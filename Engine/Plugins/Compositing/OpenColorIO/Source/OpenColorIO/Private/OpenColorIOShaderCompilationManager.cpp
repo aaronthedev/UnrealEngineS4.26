@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OpenColorIOShaderCompilationManager.h"
 
@@ -97,7 +97,7 @@ void FOpenColorIOShaderCompilationManager::RunCompileJobs()
 		{
 			for (int32 JobIndex = 0; JobIndex < CurrentWorkerInfo.QueuedJobs.Num(); JobIndex++)
 			{
-				FShaderCompileJob& CurrentJob = StaticCastSharedRef<FShaderCompileJob>(CurrentWorkerInfo.QueuedJobs[JobIndex]).Get();
+				FShaderCompileJob& CurrentJob = *((FShaderCompileJob*)(CurrentWorkerInfo.QueuedJobs[JobIndex]));
 
 				check(!CurrentJob.bFinalized);
 				CurrentJob.bFinalized = true;
@@ -115,14 +115,12 @@ void FOpenColorIOShaderCompilationManager::RunCompileJobs()
 
 				UE_LOG(LogOpenColorIOShaderCompiler, Log, TEXT("Compile Job processing... %s"), *CurrentJob.Input.DebugGroupName);
 
-				CurrentJob.Input.DumpDebugInfoRootPath = GShaderCompilingManager->GetAbsoluteShaderDebugInfoDirectory() / Format.ToString();
-				FPaths::NormalizeDirectoryName(CurrentJob.Input.DumpDebugInfoRootPath);
-				const FShaderCompilingManager::EDumpShaderDebugInfo DumpShaderDebugInfo = GShaderCompilingManager->GetDumpShaderDebugInfo();
-				CurrentJob.Input.DebugExtension.Empty();
-				CurrentJob.Input.DumpDebugInfoRootPath.Empty();
-				if (DumpShaderDebugInfo == FShaderCompilingManager::EDumpShaderDebugInfo::Always)
+				FString AbsoluteDebugInfoDirectory = IFileManager::Get().ConvertToAbsolutePathForExternalAppForWrite(*(FPaths::ProjectSavedDir() / TEXT("ShaderDebugInfo")));
+				FPaths::NormalizeDirectoryName(AbsoluteDebugInfoDirectory);
+				CurrentJob.Input.DumpDebugInfoPath = AbsoluteDebugInfoDirectory / Format.ToString() / CurrentJob.Input.DebugGroupName;
+				if (!IFileManager::Get().DirectoryExists(*CurrentJob.Input.DumpDebugInfoPath))
 				{
-					CurrentJob.Input.DumpDebugInfoRootPath = GShaderCompilingManager->CreateShaderDebugInfoPath(CurrentJob.Input);
+					verifyf(IFileManager::Get().MakeDirectory(*CurrentJob.Input.DumpDebugInfoPath, true), TEXT("Failed to create directory for shader debug info '%s'"), *CurrentJob.Input.DumpDebugInfoPath);
 				}
 
 				if (IsValidRef(CurrentJob.Input.SharedEnvironment))
@@ -136,13 +134,6 @@ void FOpenColorIOShaderCompilationManager::RunCompileJobs()
 				Compiler->CompileShader(Format, CurrentJob.Input, CurrentJob.Output, FString(FPlatformProcess::ShaderDir()));
 
 				CurrentJob.bSucceeded = CurrentJob.Output.bSucceeded;
-
-				// Recompile the shader to dump debug info if desired
-				if (GShaderCompilingManager->ShouldRecompileToDumpShaderDebugInfo(CurrentJob))
-				{
-					CurrentJob.Input.DumpDebugInfoPath = GShaderCompilingManager->CreateShaderDebugInfoPath(CurrentJob.Input);
-					Compiler->CompileShader(Format, CurrentJob.Input, CurrentJob.Output, FString(FPlatformProcess::ShaderDir()));
-				}
 
 				if (CurrentJob.Output.bSucceeded)
 				{
@@ -195,10 +186,10 @@ void FOpenColorIOShaderCompilationManager::InitWorkerInfo()
 	}	
 }
 
-OPENCOLORIO_API void FOpenColorIOShaderCompilationManager::AddJobs(TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>> InNewJobs)
+OPENCOLORIO_API void FOpenColorIOShaderCompilationManager::AddJobs(TArray<FShaderCommonCompileJob*> InNewJobs)
 {
 #if WITH_EDITOR
-	for (TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>& Job : InNewJobs)
+	for (FShaderCommonCompileJob *Job : InNewJobs)
 	{
 		FOpenColorIOShaderMapCompileResults& ShaderMapInfo = OpenColorIOShaderMapJobs.FindOrAdd(Job->Id);
 		//@todo : Apply shader map isn't used for now with this compile manager. Should be merged to have a generic shader compiler
@@ -274,7 +265,7 @@ void FOpenColorIOShaderCompilationManager::ProcessCompiledOpenColorIOShaderMaps(
 		{
 			TArray<FString> Errors;
 			FOpenColorIOShaderMapFinalizeResults& CompileResults = ProcessIt.Value();
-			TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>>& ResultArray = CompileResults.FinishedJobs;
+			const TArray<FShaderCommonCompileJob*>& ResultArray = CompileResults.FinishedJobs;
 
 			// Make a copy of the array as this entry of FOpenColorIOShaderMap::ShaderMapsBeingCompiled will be removed below
 			TArray<FOpenColorIOTransformResource*> ColorTransformArray = *ColorTransforms;
@@ -282,7 +273,7 @@ void FOpenColorIOShaderCompilationManager::ProcessCompiledOpenColorIOShaderMaps(
 
 			for (int32 JobIndex = 0; JobIndex < ResultArray.Num(); JobIndex++)
 			{
-				FShaderCompileJob& CurrentJob = StaticCastSharedRef<FShaderCompileJob>(ResultArray[JobIndex]).Get();
+				FShaderCompileJob& CurrentJob = *((FShaderCompileJob*)(ResultArray[JobIndex]));
 				bSuccess = bSuccess && CurrentJob.bSucceeded;
 
 				if (bSuccess)
@@ -399,7 +390,11 @@ void FOpenColorIOShaderCompilationManager::ProcessCompiledOpenColorIOShaderMaps(
 				}
 
 				// Cleanup shader jobs and compile tracking structures
-				ResultArray.Empty();
+				for (int32 JobIndex = 0; JobIndex < ResultArray.Num(); JobIndex++)
+				{
+					delete ResultArray[JobIndex];
+				}
+
 				CompiledShaderMaps.Remove(ShaderMap->GetCompilingId());
 			}
 

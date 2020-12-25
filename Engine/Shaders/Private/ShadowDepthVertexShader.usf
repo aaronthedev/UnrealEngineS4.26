@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ShadowDepthVertexShader.usf: Vertex shader for writing shadow depth.
@@ -8,16 +8,15 @@
 #define SHADOW_DEPTH_SHADER 1
 #define USE_STENCIL_LOD_DITHER	0
 
-#include "LPVListEntry.ush"
 #include "Common.ush"
 
 // Reroute SceneTexturesStruct uniform buffer references to the shadow depth pass uniform buffer
-#if FEATURE_LEVEL >= FEATURE_LEVEL_SM5
+#if FEATURE_LEVEL >= FEATURE_LEVEL_SM4
 #define PassStruct ShadowDepthPass
 #define SceneTexturesStruct ShadowDepthPass.SceneTextures 
 #else
 #define PassStruct MobileShadowDepthPass
-#define MobileSceneTextures MobileShadowDepthPass.SceneTextures 
+#define SceneTexturesStruct MobileShadowDepthPass.SceneTextures 
 #endif
 
 #include "/Engine/Generated/Material.ush"
@@ -458,7 +457,7 @@ void PositionOnlyMain(
 #endif // #if ONEPASS_POINTLIGHT_SHADOW
 
 #if INTERPOLATE_POSITION
-	OutParameters.PixelPosition = WorldPos.xyz;
+	OutParameters.PixelPosition = WorldPos;
 #endif
 }
 

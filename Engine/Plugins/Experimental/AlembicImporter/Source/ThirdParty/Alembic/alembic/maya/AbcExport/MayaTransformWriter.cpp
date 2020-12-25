@@ -45,7 +45,7 @@ void addTranslate(const MFnDependencyNode & iTrans,
 {
     Alembic::AbcGeom::XformOp op(Alembic::AbcGeom::kTranslateOperation, iHint);
 
-    MPlug xPlug = iTrans.findPlug(xName, true);
+    MPlug xPlug = iTrans.findPlug(xName);
     int xSamp = 0;
     if (!forceStatic)
     {
@@ -56,7 +56,7 @@ void addTranslate(const MFnDependencyNode & iTrans,
     }
     double xVal = xPlug.asDouble();
 
-    MPlug yPlug = iTrans.findPlug(yName, true);
+    MPlug yPlug = iTrans.findPlug(yName);
     int ySamp = 0;
     if (!forceStatic)
     {
@@ -67,7 +67,7 @@ void addTranslate(const MFnDependencyNode & iTrans,
     }
     double yVal = yPlug.asDouble();
 
-    MPlug zPlug = iTrans.findPlug(zName, true);
+    MPlug zPlug = iTrans.findPlug(zName);
     int zSamp = 0;
     if (!forceStatic)
     {
@@ -81,7 +81,7 @@ void addTranslate(const MFnDependencyNode & iTrans,
     // this is to handle the case where there is a connection to the parent
     // plug but not to the child plugs, if the connection is there then all
     // of the children are considered animated
-    MPlug parentPlug = iTrans.findPlug(parentName, true);
+    MPlug parentPlug = iTrans.findPlug(parentName);
     int parentSamp = 0;
     if (!forceStatic)
     {
@@ -172,7 +172,7 @@ void addRotate(const MFnDependencyNode & iTrans,
     // this is to handle the case where there is a connection to the parent
     // plug but not to the child plugs, if the connection is there then all
     // of the children are considered animated
-    MPlug parentPlug = iTrans.findPlug(parentName, true);
+    MPlug parentPlug = iTrans.findPlug(parentName);
     int parentSamp = 0;
     if (!forceStatic)
     {
@@ -190,7 +190,7 @@ void addRotate(const MFnDependencyNode & iTrans,
     for (; i > -1; i--)
     {
         unsigned int index = iOrder[i];
-        MPlug plug = iTrans.findPlug(iNames[index], true);
+        MPlug plug = iTrans.findPlug(iNames[index]);
         int samp = 0;
         if (!forceStatic)
         {
@@ -237,7 +237,7 @@ void addShear(const MFnDependencyNode & iTrans, bool forceStatic,
         Alembic::AbcGeom::kMayaShearHint);
 
     MString str = "shearXY";
-    MPlug xyPlug = iTrans.findPlug(str, true);
+    MPlug xyPlug = iTrans.findPlug(str);
     int xySamp = 0;
     if (!forceStatic)
     {
@@ -246,7 +246,7 @@ void addShear(const MFnDependencyNode & iTrans, bool forceStatic,
     double xyVal = xyPlug.asDouble();
 
     str = "shearXZ";
-    MPlug xzPlug = iTrans.findPlug(str, true);
+    MPlug xzPlug = iTrans.findPlug(str);
     int xzSamp = 0;
     if (!forceStatic)
     {
@@ -255,7 +255,7 @@ void addShear(const MFnDependencyNode & iTrans, bool forceStatic,
     double xzVal = xzPlug.asDouble();
 
     str = "shearYZ";
-    MPlug yzPlug = iTrans.findPlug(str, true);
+    MPlug yzPlug = iTrans.findPlug(str);
     int yzSamp = 0;
     if (!forceStatic)
     {
@@ -267,7 +267,7 @@ void addShear(const MFnDependencyNode & iTrans, bool forceStatic,
     // plug but not to the child plugs, if the connection is there then all
     // of the children are considered animated
     str = "shear";
-    MPlug parentPlug = iTrans.findPlug(str, true);
+    MPlug parentPlug = iTrans.findPlug(str);
     if (!forceStatic && util::getSampledType(parentPlug) != 0)
     {
         xySamp = 1;
@@ -331,7 +331,7 @@ void addScale(const MFnDependencyNode & iTrans,
     Alembic::AbcGeom::XformOp op(Alembic::AbcGeom::kScaleOperation,
         Alembic::AbcGeom::kScaleHint);
 
-    MPlug xPlug = iTrans.findPlug(xName, true);
+    MPlug xPlug = iTrans.findPlug(xName);
     int xSamp = 0;
     if (!forceStatic)
     {
@@ -342,7 +342,7 @@ void addScale(const MFnDependencyNode & iTrans,
     }
     double xVal = xPlug.asDouble();
 
-    MPlug yPlug = iTrans.findPlug(yName, true);
+    MPlug yPlug = iTrans.findPlug(yName);
     int ySamp = 0;
     if (!forceStatic)
     {
@@ -353,7 +353,7 @@ void addScale(const MFnDependencyNode & iTrans,
     }
     double yVal = yPlug.asDouble();
 
-    MPlug zPlug = iTrans.findPlug(zName, true);
+    MPlug zPlug = iTrans.findPlug(zName);
     int zSamp = 0;
     if (!forceStatic)
     {
@@ -367,7 +367,7 @@ void addScale(const MFnDependencyNode & iTrans,
     // this is to handle the case where there is a connection to the parent
     // plug but not to the child plugs, if the connection is there then all
     // of the children are considered animated
-    MPlug parentPlug = iTrans.findPlug(parentName, true);
+    MPlug parentPlug = iTrans.findPlug(parentName);
     int parentSamp = 0;
     if (!forceStatic)
     {
@@ -497,8 +497,6 @@ bool setSampledRotation(Alembic::AbcGeom::XformSample& sample,
     return success;
 }
 
-// parented to the Alembic root, has extra logic for writing the rest of the
-// worldspace of the Maya DAG
 MayaTransformWriter::MayaTransformWriter(Alembic::AbcGeom::OObject & iParent,
     MDagPath & iDag, Alembic::Util::uint32_t iTimeIndex, const JobArgs & iArgs)
 {
@@ -507,88 +505,124 @@ MayaTransformWriter::MayaTransformWriter(Alembic::AbcGeom::OObject & iParent,
     mRotateOpIndex[0]      = mRotateOpIndex[1]      = mRotateOpIndex[2]      =
     mRotateAxisOpIndex[0]  = mRotateAxisOpIndex[1]  = mRotateAxisOpIndex[2]  = ~size_t(0);
 
-    MFnDagNode dagNode(iDag);
-    MString name = dagNode.name();
-
-    name = util::stripNamespaces(name, iArgs.stripNamespace);
-
-    bool hasAttrs = AttributesWriter::hasAnyAttr(dagNode, iArgs);
-
-    Alembic::Abc::OObject obj;
-    Alembic::Abc::OCompoundProperty cp;
-    Alembic::Abc::OCompoundProperty up;
-
-    if (!iArgs.writeTransforms)
+    if (iDag.hasFn(MFn::kJoint))
     {
-        obj = Alembic::Abc::OObject (iParent, name.asChar());
-        mObject = obj;
-        if (hasAttrs)
-        {
-            Alembic::Abc::OCompoundProperty xformProp(obj.getProperties(), ".xform");
-            cp = Alembic::Abc::OCompoundProperty(xformProp, ".arbGeomParams");
-            up = Alembic::Abc::OCompoundProperty(xformProp, ".userProperties");
-        }
-    }
-    else
-    {
-        Alembic::AbcGeom::OXform xform(iParent, name.asChar(), iTimeIndex);
-        mSchema = xform.getSchema();
-        obj = xform;
-        if (hasAttrs)
+        MFnIkJoint joint(iDag);
+        MString jointName = joint.name();
+
+        jointName = util::stripNamespaces(jointName, iArgs.stripNamespace);
+
+        Alembic::AbcGeom::OXform obj(iParent, jointName.asChar(),
+            iTimeIndex);
+        mSchema = obj.getSchema();
+
+        Alembic::Abc::OCompoundProperty cp;
+        Alembic::Abc::OCompoundProperty up;
+        if (AttributesWriter::hasAnyAttr(joint, iArgs))
         {
             cp = mSchema.getArbGeomParams();
             up = mSchema.getUserProperties();
         }
-    }
 
-    mAttrs = AttributesWriterPtr(new AttributesWriter(cp, up, obj, dagNode,
-        iTimeIndex, iArgs, false));
+        mAttrs = AttributesWriterPtr(new AttributesWriter(cp, up, obj, joint,
+            iTimeIndex, iArgs, false));
 
-    if (!iArgs.writeTransforms)
-    {
-        return;
-    }
-
-    // build  up our joint stack
-    if (iDag.hasFn(MFn::kJoint) && !iArgs.worldSpace)
-    {
-        MFnIkJoint joint(iDag);
-        pushTransformStack(joint, iTimeIndex == 0);
-    }
-    // build up the normal xform stack
-    else if (!iArgs.worldSpace)
-    {
-        MFnTransform trans(iDag);
-        pushTransformStack(trans, iTimeIndex == 0);
-    }
-
-    if (!iArgs.worldSpace)
-    {
-        MPlug inheritPlug = dagNode.findPlug("inheritsTransform", true);
-        if (!inheritPlug.isNull())
-        {
-            if (util::getSampledType(inheritPlug) != 0)
-            {
-                mInheritsPlug = inheritPlug;
-            }
-            mSample.setInheritsXforms(inheritPlug.asBool());
-        }
-
-        // no animated inherits plug and no animated samples?
-        // then use the default time sampling
-        if (mAnimChanList.empty() && mInheritsPlug.isNull())
-        {
-            mSchema.setTimeSampling(0);
-        }
-
-        // everything is default, don't write anything
-        if (mSample.getNumOps() == 0 && mSample.getInheritsXforms())
+        if (!iArgs.writeTransforms)
         {
             return;
         }
 
-        mSchema.set(mSample);
-        return;
+        if (!iArgs.worldSpace)
+        {
+            pushTransformStack(joint, iTimeIndex == 0);
+
+            // need to look at inheritsTransform
+            MFnDagNode dagNode(iDag);
+            MPlug inheritPlug = dagNode.findPlug("inheritsTransform");
+            if (!inheritPlug.isNull())
+            {
+                if (util::getSampledType(inheritPlug) != 0)
+                {
+                    mInheritsPlug = inheritPlug;
+                }
+                mSample.setInheritsXforms(inheritPlug.asBool());
+            }
+
+            // no animated inherits plug and no animated samples?
+            // then use the default time sampling
+            if (mAnimChanList.empty() && mInheritsPlug.isNull())
+            {
+                mSchema.setTimeSampling(0);
+            }
+
+            // everything is default, don't write anything
+            if (mSample.getNumOps() == 0 && mSample.getInheritsXforms())
+            {
+                return;
+            }
+
+            mSchema.set(mSample);
+            return;
+        }
+    }
+    else
+    {
+        MFnTransform trans(iDag);
+        MString transName = trans.name();
+
+        transName = util::stripNamespaces(transName, iArgs.stripNamespace);
+
+        Alembic::AbcGeom::OXform obj(iParent, transName.asChar(),
+            iTimeIndex);
+        mSchema = obj.getSchema();
+
+        Alembic::Abc::OCompoundProperty cp;
+        Alembic::Abc::OCompoundProperty up;
+        if (AttributesWriter::hasAnyAttr(trans, iArgs))
+        {
+            cp = mSchema.getArbGeomParams();
+            up = mSchema.getUserProperties();
+        }
+
+        mAttrs = AttributesWriterPtr(new AttributesWriter(cp, up, obj, trans,
+            iTimeIndex, iArgs, false));
+        if (!iArgs.writeTransforms)
+        {
+            return;
+        }
+
+        if (!iArgs.worldSpace)
+        {
+            pushTransformStack(trans, iTimeIndex == 0);
+
+            // need to look at inheritsTransform
+            MFnDagNode dagNode(iDag);
+            MPlug inheritPlug = dagNode.findPlug("inheritsTransform");
+            if (!inheritPlug.isNull())
+            {
+                if (util::getSampledType(inheritPlug) != 0)
+                {
+                    mInheritsPlug = inheritPlug;
+                }
+                mSample.setInheritsXforms(inheritPlug.asBool());
+            }
+
+            // no animated inherits plug and no animated samples?
+            // then use the default time sampling
+            if (mAnimChanList.empty() && mInheritsPlug.isNull())
+            {
+                mSchema.setTimeSampling(0);
+            }
+
+            // everything is default, don't write anything
+            if (mSample.getNumOps() == 0 && mSample.getInheritsXforms())
+            {
+                return;
+            }
+
+            mSchema.set(mSample);
+            return;
+        }
     }
 
     // if we didn't bail early then we need to add all the transform
@@ -606,7 +640,7 @@ MayaTransformWriter::MayaTransformWriter(Alembic::AbcGeom::OObject & iParent,
 
         // inheritsTransform exists on both joints and transforms
         MFnDagNode dagNode(dag);
-        MPlug inheritPlug = dagNode.findPlug("inheritsTransform", true);
+        MPlug inheritPlug = dagNode.findPlug("inheritsTransform");
 
         // if inheritsTransform exists and is set to false, then we
         // don't need to worry about ancestor nodes above this one
@@ -651,7 +685,8 @@ MayaTransformWriter::MayaTransformWriter(Alembic::AbcGeom::OObject & iParent,
     }
 
     // need to look at inheritsTransform
-    MPlug inheritPlug = dagNode.findPlug("inheritsTransform", true);
+    MFnDagNode dagNode(iDag);
+    MPlug inheritPlug = dagNode.findPlug("inheritsTransform");
     if (!inheritPlug.isNull())
     {
         if (util::getSampledType(inheritPlug) != 0)
@@ -679,7 +714,6 @@ MayaTransformWriter::MayaTransformWriter(Alembic::AbcGeom::OObject & iParent,
 
 }
 
-// this is the normal way for writing just the local xform
 MayaTransformWriter::MayaTransformWriter(MayaTransformWriter & iParent,
     MDagPath & iDag, Alembic::Util::uint32_t iTimeIndex, const JobArgs & iArgs)
 {
@@ -688,83 +722,80 @@ MayaTransformWriter::MayaTransformWriter(MayaTransformWriter & iParent,
     mRotateOpIndex[0]      = mRotateOpIndex[1]      = mRotateOpIndex[2]      =
     mRotateAxisOpIndex[0]  = mRotateAxisOpIndex[1]  = mRotateAxisOpIndex[2]  = ~size_t(0);
 
-    MFnDagNode dagNode(iDag);
-    MString name = dagNode.name();
-
-    name = util::stripNamespaces(name, iArgs.stripNamespace);
-
-    bool hasAttrs = AttributesWriter::hasAnyAttr(dagNode, iArgs);
-
-    Alembic::Abc::OObject obj;
-    Alembic::Abc::OCompoundProperty cp;
-    Alembic::Abc::OCompoundProperty up;
-
-    if (!iArgs.writeTransforms)
+    if (iDag.hasFn(MFn::kJoint))
     {
-        obj = Alembic::Abc::OObject (iParent.getObject(), name.asChar());
-        mObject = obj;
-        if (hasAttrs)
-        {
-            Alembic::Abc::OCompoundProperty xformProp(obj.getProperties(), ".xform");
-            cp = Alembic::Abc::OCompoundProperty(xformProp, ".arbGeomParams");
-            up = Alembic::Abc::OCompoundProperty(xformProp, ".userProperties");
-        }
-    }
-    else
-    {
-        Alembic::AbcGeom::OXform xform(iParent.getObject(), name.asChar(), iTimeIndex);
-        obj = xform;
-        mSchema = xform.getSchema();
-        if (hasAttrs)
+        MFnIkJoint joint(iDag);
+        MString jointName = joint.name();
+
+        jointName = util::stripNamespaces(jointName, iArgs.stripNamespace);
+
+        Alembic::AbcGeom::OXform obj(iParent.getObject(), jointName.asChar(),
+            iTimeIndex);
+        mSchema = obj.getSchema();
+
+        Alembic::Abc::OCompoundProperty cp;
+        Alembic::Abc::OCompoundProperty up;
+        if (AttributesWriter::hasAnyAttr(joint, iArgs))
         {
             cp = mSchema.getArbGeomParams();
             up = mSchema.getUserProperties();
         }
-    }
 
-    mAttrs = AttributesWriterPtr(new AttributesWriter(cp, up, obj, dagNode,
-        iTimeIndex, iArgs, false));
+        mAttrs = AttributesWriterPtr(new AttributesWriter(cp, up, obj, joint,
+            iTimeIndex, iArgs, false));
 
-    if (!iArgs.writeTransforms)
-    {
-        return;
-    }
+        if (!iArgs.writeTransforms)
+        {
+            return;
+        }
 
-    // build  up our joint stack
-    if (iDag.hasFn(MFn::kJoint))
-    {
-        MFnIkJoint joint(iDag);
         pushTransformStack(joint, iTimeIndex == 0);
     }
-    // build up the normal xform stack
     else
     {
         MFnTransform trans(iDag);
+        MString transName = trans.name();
+
+        transName = util::stripNamespaces(transName, iArgs.stripNamespace);
+
+        Alembic::AbcGeom::OXform obj(iParent.getObject(), transName.asChar(),
+            iTimeIndex);
+        mSchema = obj.getSchema();
+
+        Alembic::Abc::OCompoundProperty cp;
+        Alembic::Abc::OCompoundProperty up;
+        if (AttributesWriter::hasAnyAttr(trans, iArgs))
+        {
+            cp = mSchema.getArbGeomParams();
+            up = mSchema.getUserProperties();
+        }
+
+        mAttrs = AttributesWriterPtr(new AttributesWriter(cp, up, obj, trans,
+            iTimeIndex, iArgs, false));
+
+        if (!iArgs.writeTransforms)
+        {
+            return;
+        }
+
         pushTransformStack(trans, iTimeIndex == 0);
     }
 
-    MPlug inheritPlug = dagNode.findPlug("inheritsTransform", true);
+
+    // need to look at inheritsTransform
+    MFnDagNode dagNode(iDag);
+    MPlug inheritPlug = dagNode.findPlug("inheritsTransform");
     if (!inheritPlug.isNull())
     {
         if (util::getSampledType(inheritPlug) != 0)
-        {
             mInheritsPlug = inheritPlug;
-        }
-        mSample.setInheritsXforms(inheritPlug.asBool());
-    }
 
-    // no animated inherits plug and no animated samples?
-    // then use the default time sampling
-    if (mAnimChanList.empty() && mInheritsPlug.isNull())
-    {
-        mSchema.setTimeSampling(0);
+        mSample.setInheritsXforms(inheritPlug.asBool());
     }
 
     // everything is default, don't write anything
     if (mSample.getNumOps() == 0 && mSample.getInheritsXforms())
-    {
         return;
-    }
 
     mSchema.set(mSample);
 }
@@ -841,17 +872,6 @@ void MayaTransformWriter::write()
 bool MayaTransformWriter::isAnimated() const
 {
     return mAnimChanList.size() > 0 || !mInheritsPlug.isNull();
-}
-
-Alembic::Abc::OObject MayaTransformWriter::getObject()
-{
-    if (mObject.valid())
-    {
-        return mObject;
-    }
-
-    return mSchema.getObject();
-
 }
 
 void MayaTransformWriter::pushTransformStack(const MFnTransform & iTrans,
@@ -965,7 +985,7 @@ void MayaTransformWriter::pushTransformStack(const MFnIkJoint & iJoint,
 
     // inspect the inverseParent scale
     // [IS] is ignored when Segment Scale Compensate is false
-    MPlug scaleCompensatePlug = iJoint.findPlug("segmentScaleCompensate", true);
+    MPlug scaleCompensatePlug = iJoint.findPlug("segmentScaleCompensate");
     if (scaleCompensatePlug.asBool())
     {
         addScale(iJoint, "inverseScale", "inverseScaleX", "inverseScaleY",

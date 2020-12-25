@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -204,14 +204,14 @@ namespace UnrealBuildTool
 			// Skip all the config files under the Engine folder if it's an installed build
 			if(!UnrealBuildTool.IsEngineInstalled())
 			{
- 				// Check for the config file under /Engine/Programs/NotForLicensees/UnrealBuildTool
- 				FileReference NotForLicenseesConfigLocation = FileReference.Combine(UnrealBuildTool.EngineDirectory, "Restricted", "NotForLicensees", "Programs", "UnrealBuildTool", "BuildConfiguration.xml");
- 				if(FileReference.Exists(NotForLicenseesConfigLocation))
- 				{
- 					InputFiles.Add(new InputFile { Location = NotForLicenseesConfigLocation, FolderName = "NotForLicensees" });
- 				}
+				// Check for the config file under /Engine/Programs/NotForLicensees/UnrealBuildTool
+				FileReference NotForLicenseesConfigLocation = FileReference.Combine(UnrealBuildTool.EngineDirectory, "Programs", "NotForLicensees", "UnrealBuildTool", "BuildConfiguration.xml");
+				if(FileReference.Exists(NotForLicenseesConfigLocation))
+				{
+					InputFiles.Add(new InputFile { Location = NotForLicenseesConfigLocation, FolderName = "NotForLicensees" });
+				}
 
-				// Check for the user config file under /Engine/Saved/UnrealBuildTool
+				// Check for the user config file under /Engine/Programs/NotForLicensees/UnrealBuildTool
 				FileReference UserConfigLocation = FileReference.Combine(UnrealBuildTool.EngineDirectory, "Saved", "UnrealBuildTool", "BuildConfiguration.xml");
 				if(!FileReference.Exists(UserConfigLocation))
 				{
@@ -623,10 +623,6 @@ namespace UnrealBuildTool
 			else if(FieldType.IsEnum)
 			{
 				return Enum.Parse(FieldType, TrimmedText);
-			}
-			else if (FieldType == typeof(FileReference))
-			{
-				return FileReference.FromString(Text);
 			}
 			else
 			{

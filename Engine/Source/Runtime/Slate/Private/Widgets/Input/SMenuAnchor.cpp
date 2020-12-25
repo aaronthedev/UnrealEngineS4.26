@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
  
 #include "Widgets/Input/SMenuAnchor.h"
 #include "Layout/ArrangedChildren.h"
@@ -353,6 +353,7 @@ void SMenuAnchor::SetIsOpen( bool InIsOpen, const bool bFocusMenu, const int32 F
 
 					const FVector2D NewPosition = MyGeometry.AbsolutePosition;
 					FVector2D NewWindowSize = DesiredContentSize;
+					const FVector2D SummonLocationSize = MyGeometry.GetLocalSize();
 
 					FPopupTransitionEffect TransitionEffect( FPopupTransitionEffect::None );
 					if ( PlacementMode == MenuPlacement_ComboBox || PlacementMode == MenuPlacement_ComboBoxRight )
@@ -367,7 +368,6 @@ void SMenuAnchor::SetIsOpen( bool InIsOpen, const bool bFocusMenu, const int32 F
 					else if ( PlacementMode == MenuPlacement_MenuRight )
 					{
 						TransitionEffect = FPopupTransitionEffect( FPopupTransitionEffect::SubMenu );
-						NewWindowSize = MyGeometry.GetAbsoluteSize();
 					}
 
 					MethodInUse = Method.IsSet()
@@ -380,7 +380,7 @@ void SMenuAnchor::SetIsOpen( bool InIsOpen, const bool bFocusMenu, const int32 F
 						if (MethodInUse.GetPopupMethod() == EPopupMethod::CreateNewWindow)
 						{
 							// Open the pop-up
-							TSharedPtr<IMenu> NewMenu = FSlateApplication::Get().PushMenu(AsShared(), MyWidgetPath, MenuContentRef, NewPosition, TransitionEffect, bFocusMenu, NewWindowSize, MethodInUse.GetPopupMethod(), bIsCollapsedByParent);
+							TSharedPtr<IMenu> NewMenu = FSlateApplication::Get().PushMenu(AsShared(), MyWidgetPath, MenuContentRef, NewPosition, TransitionEffect, bFocusMenu, MyGeometry.GetAbsoluteSize(), MethodInUse.GetPopupMethod(), bIsCollapsedByParent);
 							
 							if (ensure(NewMenu.IsValid()))
 							{
@@ -413,22 +413,11 @@ void SMenuAnchor::SetIsOpen( bool InIsOpen, const bool bFocusMenu, const int32 F
 									UE_LOG(LogSlate, Error, TEXT(" MenuContentRef: %s"), *MenuContentRef->ToString());
 								}
 #endif
-								if (NewMenu->GetOwnedWindow().IsValid())
-								{
-									PopupMenuPtr = NewMenu;
-									NewMenu->GetOnMenuDismissed().AddSP(this, &SMenuAnchor::OnMenuClosed);
-									PopupWindowPtr = NewMenu->GetOwnedWindow();
-								}
-								else
-								{
-									UE_LOG(LogSlate, Error, TEXT(" Menu '%s' could not open '%s'"), *ToString(), *MenuContentRef->ToString());
-									if (TSharedPtr<IMenu> Pinned = PopupMenuPtr.Pin())
-									{
-										Pinned->Dismiss();
-									}
+								check(NewMenu->GetOwnedWindow().IsValid());
 
-									ResetPopupMenuContent();
-								}
+								PopupMenuPtr = NewMenu;
+								NewMenu->GetOnMenuDismissed().AddSP(this, &SMenuAnchor::OnMenuClosed);
+								PopupWindowPtr = NewMenu->GetOwnedWindow();
 							}
 						}
 						else
@@ -436,10 +425,7 @@ void SMenuAnchor::SetIsOpen( bool InIsOpen, const bool bFocusMenu, const int32 F
 							// We are re-using the current window instead of creating a new one.
 							// The popup will be presented as a child of this widget.
 							ensure(MethodInUse.GetPopupMethod() == EPopupMethod::UseCurrentWindow);
-							// We get the deepest window so that it works correctly inside a widget component
-							// though we may need to come up with a more complex setup if we ever need
-							// parents to be in a virtual window, but not the popup.
-							PopupWindowPtr = MyWidgetPath.GetDeepestWindow();
+							PopupWindowPtr = MyWidgetPath.GetWindow();
 
 							if (bFocusMenu)
 							{
@@ -476,7 +462,8 @@ void SMenuAnchor::SetIsOpen( bool InIsOpen, const bool bFocusMenu, const int32 F
 							// Start pop-up windows out transparent, then fade them in over time
 							const EWindowTransparency Transparency(EWindowTransparency::PerWindow);
 
-							FSlateRect Anchor(NewPosition, NewPosition + MyGeometry.GetLocalSize());
+							const float TargetWindowOpacity = 1.0f;
+							FSlateRect Anchor(NewPosition, NewPosition + SummonLocationSize);
 							EOrientation Orientation = (TransitionEffect.SlideDirection == FPopupTransitionEffect::SubMenu) ? Orient_Horizontal : Orient_Vertical;
 		
 							// @todo slate: Assumes that popup is not Scaled up or down from application scale.
@@ -584,11 +571,6 @@ void SMenuAnchor::OnMenuClosed(TSharedRef<IMenu> InMenu)
 	if (OnMenuOpenChanged.IsBound())
 	{
 		OnMenuOpenChanged.Execute(false);
-	}
-
-	if ( OnGetMenuContent.IsBound() )
-	{
-		SetMenuContent(SNullWidget::NullWidget);
 	}
 }
 

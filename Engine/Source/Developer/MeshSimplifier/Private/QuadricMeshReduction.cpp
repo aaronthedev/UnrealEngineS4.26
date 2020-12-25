@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
@@ -10,9 +10,9 @@
 #include "Features/IModularFeatures.h"
 #include "IMeshReductionInterfaces.h"
 #include "StaticMeshAttributes.h"
-#include "StaticMeshOperations.h"
 #include "RenderUtils.h"
 #include "Engine/StaticMesh.h"
+#include "MeshDescriptionOperations.h"
 
 class FQuadricSimplifierMeshReductionModule : public IMeshReductionModule
 {
@@ -201,7 +201,7 @@ public:
 		bool bWeldVertices = ReductionSettings.WeldingThreshold > 0.0f;
 		if (bWeldVertices)
 		{
-			FStaticMeshOperations::BuildWeldedVertexIDRemap(InMesh, ReductionSettings.WeldingThreshold, VertexIDRemap);
+			FMeshDescriptionOperations::BuildWeldedVertexIDRemap(InMesh, ReductionSettings.WeldingThreshold, VertexIDRemap);
 		}
 
 		TArray< TVertSimp< NumTexCoords > >	Verts;
@@ -223,7 +223,7 @@ public:
 		TPolygonGroupAttributesRef<FName> OutPolygonGroupMaterialNames = OutReducedMesh.PolygonGroupAttributes().GetAttributesRef<FName>(MeshAttribute::PolygonGroup::ImportedMaterialSlotName);
 
 		int32 WedgeIndex = 0;
-		for (const FPolygonID PolygonID : InMesh.Polygons().GetElementIDs())
+		for (const FPolygonID& PolygonID : InMesh.Polygons().GetElementIDs())
 		{
 			const FPolygonGroupID PolygonGroupID = InMesh.GetPolygonPolygonGroup(PolygonID);
 
@@ -437,8 +437,11 @@ public:
 		
 		float MaxErrorSqr = MeshSimp->SimplifyMesh(MAX_FLT, TargetNumTriangles, TargetNumVertices);
 
-		MeshSimp->OutputMesh(Verts.GetData(), Indexes.GetData(), &NumVerts, &NumIndexes);
-		NumTris = NumIndexes / 3;
+		NumVerts = MeshSimp->GetNumVerts();
+		NumTris = MeshSimp->GetNumTris();
+		NumIndexes = NumTris * 3;
+
+		MeshSimp->OutputMesh(Verts.GetData(), Indexes.GetData());
 		delete MeshSimp;
 
 		OutMaxDeviation = FMath::Sqrt(MaxErrorSqr) / 8.0f;
@@ -452,7 +455,7 @@ public:
 			OutReducedMesh.Vertices().Reset();
 
 			//Fill the PolygonGroups from the InMesh
-			for (const FPolygonGroupID PolygonGroupID : InMesh.PolygonGroups().GetElementIDs())
+			for (const FPolygonGroupID& PolygonGroupID : InMesh.PolygonGroups().GetElementIDs())
 			{
 				OutReducedMesh.CreatePolygonGroupWithID(PolygonGroupID);
 				OutPolygonGroupMaterialNames[PolygonGroupID] = InPolygonGroupMaterialNames[PolygonGroupID];
@@ -549,7 +552,7 @@ public:
 				// Insert a polygon into the mesh
 				TArray<FEdgeID> NewEdgeIDs;
 				const FPolygonID NewPolygonID = OutReducedMesh.CreatePolygon(MaterialPolygonGroupID, CornerInstanceIDs, &NewEdgeIDs);
-				for (const FEdgeID& NewEdgeID : NewEdgeIDs)
+				for (const FEdgeID NewEdgeID : NewEdgeIDs)
 				{
 					// @todo: set NewEdgeID edge hardness?
 				}
@@ -559,7 +562,7 @@ public:
 
 			//Remove the unused polygon group (reduce can remove all polygons from a group)
 			TArray<FPolygonGroupID> ToDeletePolygonGroupIDs;
-			for (const FPolygonGroupID PolygonGroupID : OutReducedMesh.PolygonGroups().GetElementIDs())
+			for (const FPolygonGroupID& PolygonGroupID : OutReducedMesh.PolygonGroups().GetElementIDs())
 			{
 				if (OutReducedMesh.GetPolygonGroupPolygons(PolygonGroupID).Num() == 0)
 				{

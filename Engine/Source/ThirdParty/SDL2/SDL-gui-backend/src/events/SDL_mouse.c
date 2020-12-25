@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2020 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2019 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -27,7 +27,6 @@
 #include "SDL_timer.h"
 #include "SDL_events.h"
 #include "SDL_events_c.h"
-#include "../SDL_hints_c.h"
 #include "../video/SDL_sysvideo.h"
 #ifdef __WIN32__
 #include "../core/windows/SDL_windows.h"    // For GetDoubleClickTime()
@@ -101,21 +100,30 @@ SDL_TouchMouseEventsChanged(void *userdata, const char *name, const char *oldVal
 {
     SDL_Mouse *mouse = (SDL_Mouse *)userdata;
 
-    mouse->touch_mouse_events = SDL_GetStringBoolean(hint, SDL_TRUE);
+    if (hint && (*hint == '0' || SDL_strcasecmp(hint, "false") == 0)) {
+        mouse->touch_mouse_events = SDL_FALSE;
+    } else {
+        mouse->touch_mouse_events = SDL_TRUE;
+    }
 }
 
 static void SDLCALL
 SDL_MouseTouchEventsChanged(void *userdata, const char *name, const char *oldValue, const char *hint)
 {
     SDL_Mouse *mouse = (SDL_Mouse *)userdata;
-    SDL_bool default_value;
 
+    if (hint == NULL || *hint == '\0') {
+        /* Default */
 #if defined(__ANDROID__) || (defined(__IPHONEOS__) && !defined(__TVOS__))
-    default_value = SDL_TRUE;
+        mouse->mouse_touch_events = SDL_TRUE;
 #else
-    default_value = SDL_FALSE;
+        mouse->mouse_touch_events = SDL_FALSE;
 #endif
-    mouse->mouse_touch_events = SDL_GetStringBoolean(hint, default_value);
+    } else if (*hint == '1' || SDL_strcasecmp(hint, "true") == 0) {
+        mouse->mouse_touch_events = SDL_TRUE;
+    } else {
+        mouse->mouse_touch_events = SDL_FALSE;
+    }
 
     if (mouse->mouse_touch_events) {
         SDL_AddTouch(SDL_MOUSE_TOUCHID, SDL_TOUCH_DEVICE_DIRECT, "mouse_input");
@@ -331,7 +339,7 @@ SDL_PrivateSendMouseMotion(SDL_Window * window, SDL_MouseID mouseID, int relativ
             if (window) {
                 float fx = (float)x / (float)window->w;
                 float fy = (float)y / (float)window->h;
-                SDL_SendTouchMotion(SDL_MOUSE_TOUCHID, 0, window, fx, fy, 1.0f);
+                SDL_SendTouchMotion(SDL_MOUSE_TOUCHID, 0, fx, fy, 1.0f);
             }
         }
     }
@@ -373,16 +381,19 @@ SDL_PrivateSendMouseMotion(SDL_Window * window, SDL_MouseID mouseID, int relativ
         yrel = y - mouse->last_y;
     }
 
+    /* Drop events that don't change state */
+    if (!xrel && !yrel) {
+#ifdef DEBUG_MOUSE
+        printf("Mouse event didn't change state - dropped!\n");
+#endif
+        return 0;
+    }
+
     /* Ignore relative motion when first positioning the mouse */
     if (!mouse->has_position) {
         xrel = 0;
         yrel = 0;
         mouse->has_position = SDL_TRUE;
-    } else if (!xrel && !yrel) {  /* Drop events that don't change state */
-#ifdef DEBUG_MOUSE
-        printf("Mouse event didn't change state - dropped!\n");
-#endif
-        return 0;
     }
 
     /* Ignore relative motion positioning the first touch */
@@ -538,7 +549,7 @@ SDL_PrivateSendMouseButton(SDL_Window * window, SDL_MouseID mouseID, Uint8 state
             if (window) {
                 float fx = (float)mouse->x / (float)window->w;
                 float fy = (float)mouse->y / (float)window->h;
-                SDL_SendTouch(SDL_MOUSE_TOUCHID, 0, window, track_mouse_down, fx, fy, 1.0f);
+                SDL_SendTouch(SDL_MOUSE_TOUCHID, 0, track_mouse_down, fx, fy, 1.0f);
             }
         }
     }
@@ -850,6 +861,20 @@ SDL_SetRelativeMouseMode(SDL_bool enabled)
     if (enabled == mouse->relative_mode) {
         return 0;
     }
+/* EG BEGIN */
+#ifdef SDL_WITH_EPIC_EXTENSIONS
+    if (enabled && focusWindow && ShouldUseRelativeModeWarp(mouse)) {
+#else
+    if (enabled && focusWindow) {
+#endif /* SDL_WITH_EPIC_EXTENSIONS */
+/* EG END */
+
+        /* Center it in the focused window to prevent clicks from going through
+         * to background windows.
+         */
+        SDL_SetMouseFocus(focusWindow);
+        SDL_WarpMouseInWindow(focusWindow, focusWindow->w/2, focusWindow->h/2);
+    }
 
     /* Set the relative mode */
     if (!enabled && mouse->relative_mode_warp) {
@@ -868,20 +893,6 @@ SDL_SetRelativeMouseMode(SDL_bool enabled)
     mouse->relative_mode = enabled;
     mouse->scale_accum_x = 0.0f;
     mouse->scale_accum_y = 0.0f;
-
-/* EG BEGIN */
-#ifdef SDL_WITH_EPIC_EXTENSIONS
-    if (enabled && focusWindow && ShouldUseRelativeModeWarp(mouse)) {
-#else
-    if (enabled && focusWindow) {
-#endif /* SDL_WITH_EPIC_EXTENSIONS */
-/* EG END */
-        /* Center it in the focused window to prevent clicks from going through
-         * to background windows.
-         */
-        SDL_SetMouseFocus(focusWindow);
-        SDL_WarpMouseInWindow(focusWindow, focusWindow->w/2, focusWindow->h/2);
-    }
 
     if (mouse->focus) {
         SDL_UpdateWindowGrab(mouse->focus);

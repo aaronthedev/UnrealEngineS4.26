@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VisualStudioSourceCodeAccessor.h"
 #include "VisualStudioSourceCodeAccessModule.h"
@@ -230,7 +230,7 @@ EAccessVisualStudioResult AccessVisualStudioViaDTE(TComPtr<EnvDTE::_DTE>& OutDTE
 									FString Filename(OutPath);
 									FPaths::NormalizeFilename(Filename);
 
-									if (Filename == InSolutionPath || InSolutionPath.IsEmpty())
+									if (Filename == InSolutionPath)
 									{
 										OutDTE = TempDTE;
 										AccessResult = EAccessVisualStudioResult::VSInstanceIsOpen;
@@ -915,9 +915,6 @@ bool FVisualStudioSourceCodeAccessor::OpenSourceFiles(const TArray<FString>& Abs
 
 bool FVisualStudioSourceCodeAccessor::AddSourceFiles(const TArray<FString>& AbsoluteSourcePaths, const TArray<FString>& AvailableModules)
 {
-	// This code is temporarily disabled because it doesn't account for UBT setting per-file properties for C++ source files,
-	// adding include paths, force-included headers, and so on. Intellisense does not work correctly without these properties being set.
-#if 0
 	// This requires DTE - there is no fallback for this operation when DTE is not available
 #if WITH_VISUALSTUDIO_DTE
 	bool bSuccess = true;
@@ -956,7 +953,7 @@ bool FVisualStudioSourceCodeAccessor::AddSourceFiles(const TArray<FString>& Abso
 		for (const FString& SourceFile : AbsoluteSourcePaths)
 		{
 			// First check to see if this source file is in the same module as the last source file - this is usually the case, and saves us a lot of string compares
-			if (LastSourceFilesModule && SourceFile.StartsWith(LastSourceFilesModule->ModulePath + "/"))
+			if (LastSourceFilesModule && SourceFile.StartsWith(LastSourceFilesModule->ModulePath))
 			{
 				FModuleNewSourceFiles& ModuleNewSourceFiles = ModuleToNewSourceFiles.FindChecked(LastSourceFilesModule->ModuleName);
 				ModuleNewSourceFiles.NewSourceFiles.Add(SourceFile);
@@ -967,7 +964,7 @@ bool FVisualStudioSourceCodeAccessor::AddSourceFiles(const TArray<FString>& Abso
 			LastSourceFilesModule = nullptr;
 			for (const FModuleNameAndPath& ModuleNameAndPath : ModuleNamesAndPaths)
 			{
-				if (SourceFile.StartsWith(ModuleNameAndPath.ModulePath + "/"))
+				if (SourceFile.StartsWith(ModuleNameAndPath.ModulePath))
 				{
 					LastSourceFilesModule = &ModuleNameAndPath;
 
@@ -1104,7 +1101,6 @@ bool FVisualStudioSourceCodeAccessor::AddSourceFiles(const TArray<FString>& Abso
 	}
 
 	return bSuccess;
-#endif
 #endif
 
 	return false;
@@ -1389,7 +1385,7 @@ FString FVisualStudioSourceCodeAccessor::GetSolutionPath() const
 		{
 			CachedSolutionPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
 
-			if (!FUProjectDictionary::GetDefault().IsForeignProject(CachedSolutionPath))
+			if (!FUProjectDictionary(FPaths::RootDir()).IsForeignProject(CachedSolutionPath))
 			{
 				FString MasterProjectName;
 				if (!FFileHelper::LoadFileToString(MasterProjectName, *(FPaths::EngineIntermediateDir() / TEXT("ProjectFiles/MasterProjectName.txt"))))

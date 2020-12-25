@@ -126,7 +126,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDLUX_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -138,7 +138,7 @@ private:
 
     // override SchemaBase virtuals.
     USDLUX_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -146,11 +146,10 @@ public:
     // --------------------------------------------------------------------- //
     /// Enables shadows to be cast by this light.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `bool shadow:enable = 1` |
-    /// | C++ Type | bool |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Bool |
+    /// \n  C++ Type: bool
+    /// \n  Usd Type: SdfValueTypeNames->Bool
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: True
     USDLUX_API
     UsdAttribute GetShadowEnableAttr() const;
 
@@ -169,11 +168,10 @@ public:
     /// The color of shadows cast by the light.  This is a
     /// non-physical control.  The default is to cast black shadows.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `color3f shadow:color = (0, 0, 0)` |
-    /// | C++ Type | GfVec3f |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Color3f |
+    /// \n  C++ Type: GfVec3f
+    /// \n  Usd Type: SdfValueTypeNames->Color3f
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: (0, 0, 0)
     USDLUX_API
     UsdAttribute GetShadowColorAttr() const;
 
@@ -190,14 +188,12 @@ public:
     // SHADOWDISTANCE 
     // --------------------------------------------------------------------- //
     /// The maximum distance shadows are cast.
-    /// The default value (-1) indicates no limit.
-    /// 
+    /// There is no limit unless this attribute value is overridden.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float shadow:distance = -1` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDLUX_API
     UsdAttribute GetShadowDistanceAttr() const;
 
@@ -213,15 +209,13 @@ public:
     // --------------------------------------------------------------------- //
     // SHADOWFALLOFF 
     // --------------------------------------------------------------------- //
-    /// The near distance at which shadow falloff begins.
-    /// The default value (-1) indicates no falloff.
-    /// 
+    /// The near distance at which shadow falloff beings.
+    /// There is no falloff unless this attribute value is overridden.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float shadow:falloff = -1` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDLUX_API
     UsdAttribute GetShadowFalloffAttr() const;
 
@@ -241,11 +235,10 @@ public:
     /// with linear distance within the falloff zone.
     /// This requires the use of shadowDistance and shadowFalloff.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float shadow:falloffGamma = 1` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 1.0
     USDLUX_API
     UsdAttribute GetShadowFalloffGammaAttr() const;
 
@@ -256,6 +249,34 @@ public:
     /// the default for \p writeSparsely is \c false.
     USDLUX_API
     UsdAttribute CreateShadowFalloffGammaAttr(VtValue const &defaultValue = VtValue(), bool writeSparsely=false) const;
+
+public:
+    // --------------------------------------------------------------------- //
+    // SHADOWINCLUDE 
+    // --------------------------------------------------------------------- //
+    /// Set of geometry to consider for the purpose of casting shadows from a light.  If this is not specified, all geometry is used for shadowing.
+    ///
+    USDLUX_API
+    UsdRelationship GetShadowIncludeRel() const;
+
+    /// See GetShadowIncludeRel(), and also 
+    /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create
+    USDLUX_API
+    UsdRelationship CreateShadowIncludeRel() const;
+
+public:
+    // --------------------------------------------------------------------- //
+    // SHADOWEXCLUDE 
+    // --------------------------------------------------------------------- //
+    /// Set of geometry to ignore for the purpose of casting shadows from a light.  If this is not specified, all geometry is used for shadowing.
+    ///
+    USDLUX_API
+    UsdRelationship GetShadowExcludeRel() const;
+
+    /// See GetShadowExcludeRel(), and also 
+    /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create
+    USDLUX_API
+    UsdRelationship CreateShadowExcludeRel() const;
 
 public:
     // ===================================================================== //

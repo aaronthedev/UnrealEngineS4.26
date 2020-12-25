@@ -1,234 +1,251 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
+using System.Data.SqlClient;
+using System.Diagnostics;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Web;
 using System.Web.Script.Serialization;
 
 namespace UnrealGameSync
 {
-	/// <summary>
-	/// Interface for a telemetry sink
-	/// </summary>
-	public interface ITelemetrySink : IDisposable
+	class TelemetryTimingData
 	{
-		/// <summary>
-		/// Sends a telemetry event with the given information
-		/// </summary>
-		/// <param name="EventName">Name of the event</param>
-		/// <param name="Attributes">Arbitrary object to include in the payload</param>
-		void SendEvent(string EventName, object Attributes);
+		public string Action { get; set; }
+		public string Result { get; set; }
+		public string UserName { get; set; }
+		public string Project { get; set; }
+		public DateTime Timestamp { get; set; }
+		public float Duration { get; set; }
 	}
 
-	/// <summary>
-	/// Telemetry sink that discards all events
-	/// </summary>
-	class NullTelemetrySink : ITelemetrySink
+	enum TelemetryErrorType
 	{
-		/// <inheritdoc/>
-		public void Dispose()
-		{
-		}
-
-		/// <inheritdoc/>
-		public void SendEvent(string EventName, object Attributes)
-		{
-		}
+		Crash,
 	}
 
-	/// <summary>
-	/// Epic internal telemetry sink using the data router
-	/// </summary>
-	class EpicTelemetrySink : ITelemetrySink
+	class TelemetryErrorData
 	{
-		/// <summary>
-		/// Combined url to post event streams to
-		/// </summary>
-		string Url;
+		public TelemetryErrorType Type { get; set; }
+		public string Text { get; set; }
+		public string UserName { get; set; }
+		public string Project { get; set; }
+		public DateTime Timestamp { get; set; }
+	}
 
-		/// <summary>
-		/// Lock used to modify the event queue
-		/// </summary>
-		object LockObject = new object();
+	class TelemetryStopwatch : IDisposable
+	{
+		readonly string Action;
+		readonly string Project;
+		readonly DateTime StartTime;
+		string Result;
+		DateTime EndTime;
 
-		/// <summary>
-		/// Whether a flush is queued
-		/// </summary>
-		bool bHasPendingFlush = false;
-
-		/// <summary>
-		/// List of pending events
-		/// </summary>
-		List<string> PendingEvents = new List<string>();
-
-		/// <summary>
-		/// The log writer to use
-		/// </summary>
-		TextWriter Log;
-
-		/// <summary>
-		/// Constructor
-		/// </summary>
-		public EpicTelemetrySink(string Url, TextWriter Log)
+		public TelemetryStopwatch(string InAction, string InProject)
 		{
-			this.Url = Url;
-			this.Log = Log;
-
-			Log.WriteLine("Posting to URL: {0}", Url);
+			Action = InAction;
+			Project = InProject;
+			StartTime = DateTime.UtcNow;
 		}
 
-		/// <inheritdoc/>
+		public TimeSpan Stop(string InResult)
+		{
+			EndTime = DateTime.UtcNow;
+			Result = InResult;
+			return Elapsed;
+		}
+
 		public void Dispose()
 		{
-			Flush();
-		}
-
-		/// <inheritdoc/>
-		public void Flush()
-		{
-			for (; ; )
+			if(Result == null)
 			{
-				lock (LockObject)
+				Stop("Aborted");
+			}
+			TelemetryWriter.Enqueue(Action, Result, Project, StartTime, (float)Elapsed.TotalSeconds);
+		}
+
+		public TimeSpan Elapsed
+		{
+			get { return ((Result == null)? DateTime.UtcNow : EndTime) - StartTime; }
+		}
+	}
+
+	class TelemetryWriter : IDisposable
+	{
+		static TelemetryWriter Instance;
+
+		string ApiUrl;
+		Thread WorkerThread;
+		BoundedLogWriter LogWriter;
+		bool bDisposing;
+		ConcurrentQueue<TelemetryTimingData> QueuedTimingData = new ConcurrentQueue<TelemetryTimingData>(); 
+		ConcurrentQueue<TelemetryErrorData> QueuedErrorData = new ConcurrentQueue<TelemetryErrorData>(); 
+		AutoResetEvent RefreshEvent = new AutoResetEvent(false);
+
+		public TelemetryWriter(string InApiUrl, string InLogFileName)
+		{
+			Instance = this;
+
+			ApiUrl = InApiUrl;
+
+			LogWriter = new BoundedLogWriter(InLogFileName);
+			LogWriter.WriteLine("Using connection string: {0}", ApiUrl);
+
+			WorkerThread = new Thread(() => WorkerThreadCallback());
+			WorkerThread.Start();
+		}
+
+		public void Dispose()
+		{
+			bDisposing = true;
+
+			if(WorkerThread != null)
+			{
+				RefreshEvent.Set();
+				if(!WorkerThread.Join(10 * 1000))
 				{
-					if (!bHasPendingFlush)
+					WorkerThread.Abort();
+					WorkerThread.Join();
+				}
+				WorkerThread = null;
+			}
+			if(LogWriter != null)
+			{
+				LogWriter.Dispose();
+				LogWriter = null;
+			}
+
+			Instance = null;
+		}
+
+		void WorkerThreadCallback()
+		{
+			string Version = Assembly.GetExecutingAssembly().GetName().Version.ToString();
+
+			string IpAddress = "Unknown";
+			try
+			{
+				IPHostEntry HostEntry = Dns.GetHostEntry(Dns.GetHostName());
+				foreach (IPAddress Address in HostEntry.AddressList)
+				{
+					if (Address.AddressFamily == AddressFamily.InterNetwork)
 					{
+						IpAddress = Address.ToString();
 						break;
 					}
 				}
-				Thread.Sleep(10);
 			}
-		}
-
-		/// <inheritdoc/>
-		public void SendEvent(string EventName, object Attributes)
-		{
-			string AttributesText = new JavaScriptSerializer().Serialize(Attributes);
-			if (AttributesText[0] != '{')
+			catch
 			{
-				throw new Exception("Expected event data with named properties");
 			}
 
-			string EventText = AttributesText.Insert(1, String.Format("\"EventName\":\"{0}\",", HttpUtility.JavaScriptStringEncode(EventName)));
-			lock (PendingEvents)
+			while(!bDisposing)
 			{
-				PendingEvents.Add(EventText);
-				if (!bHasPendingFlush)
+				// Wait for an update
+				RefreshEvent.WaitOne();
+
+				// Send all the timing data
+				TelemetryTimingData TimingData;
+				while(QueuedTimingData.TryDequeue(out TimingData))
 				{
-					ThreadPool.QueueUserWorkItem(Obj => BackgroundFlush());
-					bHasPendingFlush = true;
+					while(!bDisposing && !SendTimingData(TimingData, Version, IpAddress) && ApiUrl != null)
+					{
+						RefreshEvent.WaitOne(10 * 1000);
+					}
+				}
+
+				// Send all the error data
+				TelemetryErrorData ErrorData;
+				while(QueuedErrorData.TryDequeue(out ErrorData))
+				{
+					while(!SendErrorData(ErrorData, Version, IpAddress) && ApiUrl != null)
+					{
+						if(bDisposing) break;
+						RefreshEvent.WaitOne(10 * 1000);
+					}
 				}
 			}
 		}
 
-		/// <summary>
-		/// Synchronously sends a telemetry event
-		/// </summary>
-		void BackgroundFlush()
+		bool SendTimingData(TelemetryTimingData Data, string Version, string IpAddress)
 		{
-			for (; ; )
+			if(!DeploymentSettings.bSendTelemetry)
 			{
-				try
-				{
-					// Generate the content for this event
-					List<string> Events = new List<string>();
-					lock (LockObject)
-					{
-						if (PendingEvents.Count == 0)
-						{
-							bHasPendingFlush = false;
-							break;
-						}
+				return true;
+			}
 
-						Events.AddRange(PendingEvents);
-						PendingEvents.Clear();
-					}
-
-					// Print all the events we're sending
-					foreach (string Event in Events)
-					{
-						Log.WriteLine("Sending Event: {0}", Event);
-					}
-
-					// Convert the content to UTF8
-					string ContentText = String.Format("{{\"Events\":[{0}]}}", String.Join(",", Events));
-					byte[] Content = Encoding.UTF8.GetBytes(ContentText);
-
-					// Post the event data
-					HttpWebRequest Request = (HttpWebRequest)WebRequest.Create(Url);
-					Request.Method = "POST";
-					Request.ContentType = "application/json";
-					Request.UserAgent = "ue/ugs";
-					Request.Timeout = 5000;
-					Request.ContentLength = Content.Length;
-					Request.ContentType = "application/json";
-					using (Stream RequestStream = Request.GetRequestStream())
-					{
-						RequestStream.Write(Content, 0, Content.Length);
-					}
-
-					// Wait for the response and dispose of it immediately
-					using (HttpWebResponse Response = (HttpWebResponse)Request.GetResponse())
-					{
-						Log.WriteLine("Response: {0}", (int)Response.StatusCode);
-					}
-				}
-				catch (WebException Ex)
-				{
-					// Handle errors. Any non-200 responses automatically generate a WebException.
-					HttpWebResponse Response = (HttpWebResponse)Ex.Response;
-					if (Response == null)
-					{
-						Log.WriteLine("Exception while attempting to send event: {0}", Ex.ToString());
-					}
-					else
-					{
-						string ResponseText;
-						using (Stream ResponseStream = Response.GetResponseStream())
-						{
-							MemoryStream MemoryStream = new MemoryStream();
-							ResponseStream.CopyTo(MemoryStream);
-							ResponseText = Encoding.UTF8.GetString(MemoryStream.ToArray());
-						}
-						Log.WriteLine("EpicTelemetrySink: Failed to send analytics event. Code = {0}. Desc = {1}. Response = {2}.", (int)Response.StatusCode, Response.StatusDescription, ResponseText);
-					}
-				}
-				catch (Exception Ex)
-				{
-					Log.WriteLine("Exception while attempting to send event: {0}", Ex.ToString());
-				}
+			try
+			{
+				Stopwatch Timer = Stopwatch.StartNew();
+				LogWriter.WriteLine("Posting timing data... ({0}, {1}, {2}, {3}, {4}, {5})", Data.Action, Data.Result, Data.UserName, Data.Project, Data.Timestamp, Data.Duration);
+				RESTApi.POST(ApiUrl, "telemetry", new JavaScriptSerializer().Serialize(Data), string.Format("Version={0}", Version), string.Format("IpAddress={0}", IpAddress));
+				LogWriter.WriteLine("Done in {0}ms.", Timer.ElapsedMilliseconds);
+				return true;
+			}
+			catch(Exception Ex)
+			{
+				LogWriter.WriteException(Ex, "Failed with exception.");
+				return false;
 			}
 		}
-	}
 
-	/// <summary>
-	/// Global telemetry static class
-	/// </summary>
-	public static class Telemetry
-	{
-		/// <summary>
-		/// The current telemetry provider
-		/// </summary>
-		public static ITelemetrySink ActiveSink
+		bool SendErrorData(TelemetryErrorData Data, string Version, string IpAddress)
 		{
-			get; set;
+			try
+			{
+				Stopwatch Timer = Stopwatch.StartNew();
+				LogWriter.WriteLine("Posting error data... ({0}, {1})", Data.Type, Data.Timestamp);
+				RESTApi.POST(ApiUrl, "error", new JavaScriptSerializer().Serialize(Data), string.Format("Version={0}", Version), string.Format("IpAddress={0}", IpAddress));
+				LogWriter.WriteLine("Done in {0}ms.", Timer.ElapsedMilliseconds);
+				return true;
+			}
+			catch(Exception Ex)
+			{
+				LogWriter.WriteException(Ex, "Failed with exception.");
+				return false;
+			}
 		}
 
-		/// <summary>
-		/// Sends a telemetry event with the given information
-		/// </summary>
-		/// <param name="EventName">Name of the event</param>
-		/// <param name="Attributes">Arbitrary object to include in the payload</param>
-		public static void SendEvent(string EventName, object Attributes)
+		public static void Enqueue(string Action, string Result, string Project, DateTime Timestamp, float Duration)
 		{
-			ActiveSink.SendEvent(EventName, Attributes);
+			TelemetryWriter Writer = Instance;
+			if(Writer != null)
+			{
+				TelemetryTimingData Telemetry = new TelemetryTimingData();
+				Telemetry.Action = Action;
+				Telemetry.Result = Result;
+				Telemetry.UserName = Environment.UserName;
+				Telemetry.Project = Project;
+				Telemetry.Timestamp = Timestamp;
+				Telemetry.Duration = Duration;
+
+				Writer.QueuedTimingData.Enqueue(Telemetry);
+				Writer.RefreshEvent.Set();
+			}
+		}
+
+		public static void Enqueue(TelemetryErrorType Type, string Text, string Project, DateTime Timestamp)
+		{
+			TelemetryWriter Writer = Instance;
+			if(Writer != null)
+			{
+				TelemetryErrorData Error = new TelemetryErrorData();
+				Error.Type = Type;
+				Error.Text = Text;
+				Error.UserName = Environment.UserName;
+				Error.Project = Project;
+				Error.Timestamp = Timestamp;
+
+				Writer.QueuedErrorData.Enqueue(Error);
+				Writer.RefreshEvent.Set();
+			}
 		}
 	}
 }

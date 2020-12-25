@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_ITERATOR_H
-#define PXR_BASE_TF_ITERATOR_H
+#ifndef TF_ITERATOR_H
+#define TF_ITERATOR_H
 
 /// \file tf/iterator.h
 /// \ingroup group_tf_Containers
@@ -32,7 +32,6 @@
 #include "pxr/base/arch/hints.h"
 #include "pxr/base/tf/diagnosticLite.h"
 
-#include <iterator>
 #include <type_traits>
 #include <utility>
 
@@ -192,7 +191,11 @@ public:
     typedef Tf_IteratorInterface<T, Reverse> IterInterface;
     typedef typename IterInterface::IteratorType Iterator;
 
-    typedef typename std::iterator_traits<Iterator>::reference Reference;
+    typedef typename Iterator::reference Reference;
+    typedef typename std::result_of<decltype(&Iterator::operator*)(Iterator)>
+        ::type StarReturnType;
+    typedef typename std::result_of<decltype(&Iterator::operator->)(Iterator)>
+        ::type ArrowReturnType;
 
     /// Default constructor.  This iterator is uninitialized.
     TfIterator() { }
@@ -266,7 +269,7 @@ public:
 
     /// Returns the element referenced by this iterator.
     /// \return element
-    Reference operator*() {
+    StarReturnType operator*() {
         if (ARCH_UNLIKELY(!*this))
             TF_FATAL_ERROR("iterator exhausted");
         return *_data.current;
@@ -274,7 +277,7 @@ public:
 
     /// Returns the element referenced by this iterator.
     /// \return element
-    Reference operator*() const {
+    StarReturnType operator*() const {
         if (ARCH_UNLIKELY(!*this))
             TF_FATAL_ERROR("iterator exhausted");
         return *_data.current;
@@ -282,10 +285,10 @@ public:
 
     /// Returns a pointer to the element referenced by this iterator.
     /// \return pointer to element
-    Iterator& operator->() {
+    ArrowReturnType operator->() {
         if (ARCH_UNLIKELY(!*this))
             TF_FATAL_ERROR("iterator exhausted");
-        return _data.current;
+        return _data.current.operator->();
     }   
 
     /// Explicit bool conversion operator.
@@ -411,4 +414,4 @@ constexpr size_t TfArraySize(const T (&array)[N]) noexcept
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif  // PXR_BASE_TF_ITERATOR_H
+#endif  // TF_ITERATOR_H

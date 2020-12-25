@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/Text/SMultiLineEditableText.h"
 #include "Rendering/DrawElements.h"
@@ -38,7 +38,6 @@ void SMultiLineEditableText::Construct( const FArguments& InArgs )
 	bClearTextSelectionOnFocusLoss = InArgs._ClearTextSelectionOnFocusLoss;
 	bClearKeyboardFocusOnCommit = InArgs._ClearKeyboardFocusOnCommit;
 	bAllowContextMenu = InArgs._AllowContextMenu;
-	bSelectWordOnMouseDoubleClick = InArgs._SelectWordOnMouseDoubleClick;
 	OnContextMenuOpening = InArgs._OnContextMenuOpening;
 	bRevertTextOnEscape = InArgs._RevertTextOnEscape;
 	VirtualKeyboardOptions = InArgs._VirtualKeyboardOptions;
@@ -88,12 +87,6 @@ void SMultiLineEditableText::Construct( const FArguments& InArgs )
 	// build context menu extender
 	MenuExtender = MakeShareable(new FExtender);
 	MenuExtender->AddMenuExtension("EditText", EExtensionHook::Before, TSharedPtr<FUICommandList>(), InArgs._ContextMenuExtender);
-}
-
-
-void SMultiLineEditableText::GetCurrentTextLine(FString& OutTextLine) const
-{
-	EditableTextLayout->GetCurrentTextLine(OutTextLine);
 }
 
 void SMultiLineEditableText::SetText(const TAttribute< FText >& InText)
@@ -212,11 +205,6 @@ void SMultiLineEditableText::SetSelectAllTextWhenFocused(const TAttribute<bool>&
 	bSelectAllTextWhenFocused = InSelectAllTextWhenFocused;
 }
 
-void SMultiLineEditableText::SetSelectWordOnMouseDoubleClick(const TAttribute<bool>& InSelectWordOnMouseDoubleClick)
-{
-	bSelectWordOnMouseDoubleClick = InSelectWordOnMouseDoubleClick;
-}
-
 void SMultiLineEditableText::SetClearTextSelectionOnFocusLoss(const TAttribute<bool>& InClearTextSelectionOnFocusLoss)
 {
 	bClearTextSelectionOnFocusLoss = InClearTextSelectionOnFocusLoss;
@@ -287,11 +275,6 @@ bool SMultiLineEditableText::ShouldClearKeyboardFocusOnCommit() const
 bool SMultiLineEditableText::ShouldSelectAllTextOnCommit() const
 {
 	return false;
-}
-
-bool SMultiLineEditableText::ShouldSelectWordOnMouseDoubleClick() const
-{
-	return bSelectWordOnMouseDoubleClick.Get(true);
 }
 
 bool SMultiLineEditableText::CanInsertCarriageReturn() const

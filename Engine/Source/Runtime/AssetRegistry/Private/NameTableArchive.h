@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -23,10 +23,6 @@ struct TNameTableStringHash : BaseKeyFuncs<ValueType, FString, /*bInAllowDuplica
 	}
 };
 
-/** 
- * Reader for an FNameTableArchive.  An FNameTableArchive is like a normal archive but with a separate FName table embedded in it, and
- * FNames in it are serialized as indices into the Name table.
-*/
 class FNameTableArchiveReader : public FArchive
 {
 public:
@@ -58,9 +54,6 @@ private:
 	TArray<FNameEntryId> NameMap;
 };
 
-/**
- * Writer for an FNameTableArchive.  See the class comment on FNameTableArchiveReader.
- */
 class FNameTableArchiveWriter : public FArchive
 {
 public:

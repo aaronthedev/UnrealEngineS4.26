@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -51,17 +51,14 @@ class ENGINE_API UAISystemBase : public UObject
 	virtual void OnMatchStateSet(FName NewMatchState);
 
 private:
-	/** List of specific AI system class to create, can be game-specific */
 	UPROPERTY(globalconfig, noclear, meta = (MetaClass = "AISystem", DisplayName = "AISystem Class"))
 	FSoftClassPath AISystemClassName;
 
-	/** Name of a module used to spawn the AI system. If not empty, this module has to implement IAISystemModule */
 	UPROPERTY(globalconfig, noclear, meta = (MetaClass = "AISystem", DisplayName = "AISystem Module"))
 	FName AISystemModuleName;
 
 	FDelegateHandle OnMatchStateSetHandle;
 
-	/** Whether the AI system class should be spawned when connecting as a client */
 	UPROPERTY(globalconfig, noclear)
 	bool bInstantiateAISystemOnClient;
 	

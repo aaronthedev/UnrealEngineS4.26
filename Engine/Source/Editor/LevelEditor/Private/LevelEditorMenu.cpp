@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LevelEditorMenu.h"
 #include "Modules/ModuleManager.h"
@@ -98,7 +98,7 @@ void FLevelEditorMenu::RegisterLevelEditorMenus()
 								ToggleFavoriteLabel.BindStatic(&Local::GetToggleFavoriteLabelText);
 								Section.AddMenuEntry(FLevelEditorCommands::Get().ToggleFavorite, ToggleFavoriteLabel);
 							}
-							Section.AddSeparator("LevelEditorToggleFavorite");
+							Section.AddMenuSeparator("LevelEditorToggleFavorite");
 						}
 						const FMainMRUFavoritesList& MRUFavorites = *FModuleManager::LoadModuleChecked<IMainFrameModule>("MainFrame").GetMRUFavoritesList();
 						const int32 NumFavorites = MRUFavorites.GetNumFavorites();
@@ -209,7 +209,7 @@ void FLevelEditorMenu::RegisterLevelEditorMenus()
 
 				Section.AddMenuEntry( FLevelEditorCommands::Get().BrowseCVars );
 
-				Section.AddSeparator( "HelpBrowse" );
+				Section.AddMenuSeparator( "HelpBrowse" );
 
 				Section.AddMenuEntry( FLevelEditorCommands::Get().BrowseViewportControls );
 			}
@@ -251,7 +251,7 @@ TSharedRef< SWidget > FLevelEditorMenu::MakeNotificationBar( const TSharedPtr<FU
 	FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>( "LevelEditor");
 	const TSharedPtr<FExtender> NotificationBarExtenders = LevelEditorModule.GetNotificationBarExtensibilityManager()->GetAllExtenders();
 
-	FToolBarBuilder NotificationBarBuilder( CommandList, FMultiBoxCustomization::None, NotificationBarExtenders );
+	FToolBarBuilder NotificationBarBuilder( CommandList, FMultiBoxCustomization::None, NotificationBarExtenders, Orient_Horizontal );
 	NotificationBarBuilder.SetStyle(&FEditorStyle::Get(), "NotificationBar");
 	{
 		NotificationBarBuilder.BeginSection("Start");

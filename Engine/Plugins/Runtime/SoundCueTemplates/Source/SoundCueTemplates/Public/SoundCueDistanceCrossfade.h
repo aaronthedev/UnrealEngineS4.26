@@ -1,10 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "SoundCueTemplate.h"
+
+#include "Sound/SoundCueTemplate.h"
 #include "Sound/SoundNodeDistanceCrossFade.h"
+
 #include "Misc/Attribute.h"
 #include "UObject/ObjectMacros.h"
 

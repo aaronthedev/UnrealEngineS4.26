@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "EngineGlobals.h"
 #include "PhysicsPublic.h"
 #include "PhysxUserData.h"
-#include "PhysicsEngine/RigidBodyIndexPair.h"
 #include "Physics/PhysicsInterfaceTypes.h"
 
 class ISQAccelerator;
@@ -148,7 +147,7 @@ public:
 	ENGINE_API void DeferredRemoveCollisionDisableTable(uint32 SkelMeshCompID);
 
 	/** Add this SkeletalMeshComponent to the list needing kinematic bodies updated before simulating physics */
-	bool MarkForPreSimKinematicUpdate(USkeletalMeshComponent* InSkelComp, ETeleportType InTeleport, bool bNeedsSkinning);
+	void MarkForPreSimKinematicUpdate(USkeletalMeshComponent* InSkelComp, ETeleportType InTeleport, bool bNeedsSkinning);
 
 	/** Remove this SkeletalMeshComponent from set needing kinematic update before simulating physics*/
 	void ClearPreSimKinematicUpdate(USkeletalMeshComponent* InSkelComp);
@@ -168,7 +167,7 @@ public:
 	void ApplyWorldOffset(FVector InOffset);
 
 	/** Set the gravity and timing of all physics scenes */
-	ENGINE_API void SetUpForFrame(const FVector* NewGrav, float InDeltaSeconds = 0.0f, float InMaxPhysicsDeltaTime = 0.0f, float InMaxSubstepDeltaTime = 0.f, int32 InMaxSubsteps = 1, bool bUnused = false);
+	ENGINE_API void SetUpForFrame(const FVector* NewGrav, float InDeltaSeconds = 0.0f, float InMaxPhysicsDeltaTime = 0.0f);
 
 	/** Starts a frame */
 	ENGINE_API void StartFrame();
@@ -184,9 +183,6 @@ public:
 	{
 		return PhysicsSceneCompletion;
 	}
-
-	FGraphEventArray GetCompletionEvents();
-	bool IsCompletionEventComplete() const;
 
 	/** Handle exec commands related to scene (PXVIS and APEXVIS) */
 	bool HandleExecCommands(const TCHAR* Cmd, FOutputDevice* Ar);

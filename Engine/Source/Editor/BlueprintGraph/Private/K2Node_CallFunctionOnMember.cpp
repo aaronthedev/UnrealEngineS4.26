@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "K2Node_CallFunctionOnMember.h"
@@ -131,7 +131,7 @@ bool UK2Node_CallFunctionOnMember::HasExternalDependencies(TArray<class UStruct*
 {
 	const UBlueprint* SourceBlueprint = GetBlueprint();
 
-	auto VarProperty = MemberVariableToCallOn.ResolveMember<FProperty>(GetBlueprintClassFromNode());
+	auto VarProperty = MemberVariableToCallOn.ResolveMember<UProperty>(GetBlueprintClassFromNode());
 	UClass* SourceClass = VarProperty ? VarProperty->GetOwnerClass() : nullptr;
 	const bool bResult = (SourceClass != NULL) && (SourceClass->ClassGeneratedBy != SourceBlueprint);
 	if (bResult && OptionalOutput)

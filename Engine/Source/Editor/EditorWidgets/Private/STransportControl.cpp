@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "STransportControl.h"
 #include "Widgets/SBoxPanel.h"
@@ -84,7 +84,7 @@ TSharedPtr<SWidget> STransportControl::MakeTransportControlWidget(ETransportCont
 			. ContentPadding(2.0f)
 			. IsFocusable(bAreButtonsFocusable);
 	case ETransportControlWidgetType::Loop:
-		return SAssignNew(LoopButton, SButton)
+		return SNew(SButton)
 			. OnClicked(TransportControlArgs.OnToggleLooping)
 			. Visibility(TransportControlArgs.OnGetLooping.IsBound() ? EVisibility::Visible : EVisibility::Collapsed)
 			. ToolTipText( LOCTEXT("Loop", "Loop") )
@@ -264,12 +264,12 @@ const FSlateBrush* STransportControl::GetLoopStatusIcon() const
 	if (TransportControlArgs.OnGetLooping.IsBound() &&
 		TransportControlArgs.OnGetLooping.Execute())
 	{
-		return LoopButton.IsValid() && LoopButton->IsPressed() ? 
+		return BackwardPlayButton.IsValid() && BackwardPlayButton->IsPressed() ? 
 			&FEditorStyle::Get().GetWidgetStyle<FButtonStyle>("Animation.Loop.Enabled").Pressed : 
 			&FEditorStyle::Get().GetWidgetStyle<FButtonStyle>("Animation.Loop.Enabled").Normal;
 	}
 
-	return LoopButton.IsValid() && LoopButton->IsPressed() ? 
+	return BackwardPlayButton.IsValid() && BackwardPlayButton->IsPressed() ? 
 		&FEditorStyle::Get().GetWidgetStyle<FButtonStyle>("Animation.Loop.Disabled").Pressed : 
 		&FEditorStyle::Get().GetWidgetStyle<FButtonStyle>("Animation.Loop.Disabled").Normal;
 }

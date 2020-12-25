@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Internationalization/TextFormatter.h"
 #include "Misc/ScopeLock.h"
@@ -24,7 +24,7 @@ struct FStringLiteral
 {
 	explicit FStringLiteral(const FStringToken& InString)
 		: StringStartPos(InString.GetTokenStartPos())
-		, StringLen(UE_PTRDIFF_TO_INT32(InString.GetTokenEndPos() - InString.GetTokenStartPos()))
+		, StringLen(InString.GetTokenEndPos() - InString.GetTokenStartPos())
 	{
 	}
 
@@ -40,7 +40,7 @@ struct FArgumentTokenSpecifier
 {
 	explicit FArgumentTokenSpecifier(const FStringToken& InArgument)
 		: ArgumentNameStartPos(InArgument.GetTokenStartPos())
-		, ArgumentNameLen(UE_PTRDIFF_TO_INT32(InArgument.GetTokenEndPos() - InArgument.GetTokenStartPos()))
+		, ArgumentNameLen(InArgument.GetTokenEndPos() - InArgument.GetTokenStartPos())
 		, ArgumentIndex(INDEX_NONE)
 	{
 		if (ArgumentNameLen > 0)
@@ -79,7 +79,7 @@ struct FArgumentModifierTokenSpecifier
 {
 	FArgumentModifierTokenSpecifier(const FStringToken& InModifierPatternWithPipe, TSharedRef<ITextFormatArgumentModifier> InTextFormatArgumentModifier)
 		: ModifierPatternStartPos(InModifierPatternWithPipe.GetTokenStartPos() + 1) // We don't want to store the pipe
-		, ModifierPatternLen(UE_PTRDIFF_TO_INT32(InModifierPatternWithPipe.GetTokenEndPos() - InModifierPatternWithPipe.GetTokenStartPos() - 1))
+		, ModifierPatternLen(InModifierPatternWithPipe.GetTokenEndPos() - InModifierPatternWithPipe.GetTokenStartPos() - 1)
 		, TextFormatArgumentModifier(MoveTemp(InTextFormatArgumentModifier))
 	{
 	}
@@ -180,7 +180,7 @@ TOptional<FExpressionError> ParseArgumentModifier(const FTextFormatPatternDefini
 
 	// Valid modifier name?
 	FStringToken& IdentifierValue = Identifier.GetValue();
-	FTextFormatter::FCompileTextArgumentModifierFuncPtr CompileTextArgumentModifierFunc = FTextFormatter::Get().FindTextArgumentModifier(FTextFormatString::MakeReference(IdentifierValue.GetTokenStartPos(), UE_PTRDIFF_TO_INT32(IdentifierValue.GetTokenEndPos() - IdentifierValue.GetTokenStartPos())));
+	FTextFormatter::FCompileTextArgumentModifierFuncPtr CompileTextArgumentModifierFunc = FTextFormatter::Get().FindTextArgumentModifier(FTextFormatString::MakeReference(IdentifierValue.GetTokenStartPos(), IdentifierValue.GetTokenEndPos() - IdentifierValue.GetTokenStartPos()));
 	if (!CompileTextArgumentModifierFunc)
 	{
 		return TOptional<FExpressionError>();
@@ -232,7 +232,7 @@ TOptional<FExpressionError> ParseArgumentModifier(const FTextFormatPatternDefini
 
 	// Compile the parameters for this argument modifier
 	FStringToken& ParametersValue = Parameters.GetValue();
-	TSharedPtr<ITextFormatArgumentModifier> CompiledTextArgumentModifier = CompileTextArgumentModifierFunc(FTextFormatString::MakeReference(ParametersValue.GetTokenStartPos(), UE_PTRDIFF_TO_INT32(ParametersValue.GetTokenEndPos() - ParametersValue.GetTokenStartPos())), InPatternDef.AsShared());
+	TSharedPtr<ITextFormatArgumentModifier> CompiledTextArgumentModifier = CompileTextArgumentModifierFunc(FTextFormatString::MakeReference(ParametersValue.GetTokenStartPos(), ParametersValue.GetTokenEndPos() - ParametersValue.GetTokenStartPos()), InPatternDef.AsShared());
 	if (!CompiledTextArgumentModifier.IsValid())
 	{
 		return TOptional<FExpressionError>();
@@ -357,11 +357,6 @@ public:
 		FScopeLock Lock(&CompiledDataCS);
 		return IsValid_NoLock();
 	}
-
-	/**
-	 * Check whether this instance is considered identical to the other instance, based on the comparison flags provided.
-	 */
-	bool IdenticalTo(const FTextFormatData& Other, const ETextIdenticalModeFlags CompareModeFlags) const;
 
 	/**
 	 * Validate the format pattern is valid based on the rules of the given culture (or null to use the current language).
@@ -581,11 +576,6 @@ bool FTextFormat::IsValid() const
 	return TextFormatData->IsValid();
 }
 
-bool FTextFormat::IdenticalTo(const FTextFormat& Other, const ETextIdenticalModeFlags CompareModeFlags) const
-{
-	return TextFormatData->IdenticalTo(*Other.TextFormatData, CompareModeFlags);
-}
-
 FText FTextFormat::GetSourceText() const
 {
 	return TextFormatData->GetSourceText();
@@ -631,30 +621,6 @@ FTextFormatData::FTextFormatData(FString&& InString, FTextFormatPatternDefinitio
 	, SourceExpression(MoveTemp(InString))
 {
 	Compile_NoLock();
-}
-
-bool FTextFormatData::IdenticalTo(const FTextFormatData& Other, const ETextIdenticalModeFlags CompareModeFlags) const
-{
-	if (SourceType == Other.SourceType)
-	{
-		switch (SourceType)
-		{
-		case ESourceType::Text:
-			return SourceText.IdenticalTo(Other.SourceText, CompareModeFlags);
-
-		case ESourceType::String:
-			if (EnumHasAnyFlags(CompareModeFlags, ETextIdenticalModeFlags::LexicalCompareInvariants))
-			{
-				return SourceExpression.Equals(Other.SourceExpression, ESearchCase::CaseSensitive);
-			}
-			break;
-
-		default:
-			break;
-		}
-	}
-
-	return false;
 }
 
 bool FTextFormatData::IsValid_NoLock() const

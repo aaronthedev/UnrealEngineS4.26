@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -44,6 +44,26 @@ protected:
 	FMovieSceneBoolChannel BoolCurve;
 };
 
+USTRUCT()
+struct FMovieSceneFloatPropertySectionTemplate : public FMovieScenePropertySectionTemplate
+{
+	GENERATED_BODY()
+	
+	FMovieSceneFloatPropertySectionTemplate() : BlendType((EMovieSceneBlendType)0) {}
+	FMovieSceneFloatPropertySectionTemplate(const UMovieSceneFloatSection& Section, const UMovieScenePropertyTrack& Track);
+
+protected:
+
+	virtual UScriptStruct& GetScriptStructImpl() const override { return *StaticStruct(); }
+	virtual void Evaluate(const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const override;
+	virtual void Interrogate(const FMovieSceneContext& Context, FMovieSceneInterrogationData& Container, UObject* BindingOverride) const override;
+
+	UPROPERTY()
+	FMovieSceneFloatChannel FloatFunction;
+
+	UPROPERTY()
+	EMovieSceneBlendType BlendType;
+};
 
 USTRUCT()
 struct FMovieSceneBytePropertySectionTemplate : public FMovieScenePropertySectionTemplate
@@ -146,4 +166,44 @@ protected:
 
 	UPROPERTY()
 	EMovieSceneBlendType BlendType;
+};
+
+Expose_TNameOf(FTransform);
+
+USTRUCT()
+struct FMovieSceneTransformPropertySectionTemplate : public FMovieScenePropertySectionTemplate
+{
+	GENERATED_BODY()
+
+	FMovieSceneTransformPropertySectionTemplate(){}
+	FMovieSceneTransformPropertySectionTemplate(const UMovieScene3DTransformSection& Section, const UMovieScenePropertyTrack& Track);
+
+protected:
+
+	virtual UScriptStruct& GetScriptStructImpl() const override { return *StaticStruct(); }
+	virtual void Evaluate(const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const override;
+	virtual void Interrogate(const FMovieSceneContext& Context, FMovieSceneInterrogationData& Container, UObject* BindingOverride) const override;
+
+	UPROPERTY()
+	FMovieScene3DTransformTemplateData TemplateData;
+};
+
+Expose_TNameOf(FEulerTransform);
+
+USTRUCT()
+struct FMovieSceneEulerTransformPropertySectionTemplate : public FMovieScenePropertySectionTemplate
+{
+	GENERATED_BODY()
+
+	FMovieSceneEulerTransformPropertySectionTemplate(){}
+	FMovieSceneEulerTransformPropertySectionTemplate(const UMovieScene3DTransformSection& Section, const UMovieScenePropertyTrack& Track);
+
+protected:
+
+	virtual UScriptStruct& GetScriptStructImpl() const override { return *StaticStruct(); }
+	virtual void Evaluate(const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const override;
+	virtual void Interrogate(const FMovieSceneContext& Context, FMovieSceneInterrogationData& Container, UObject* BindingOverride) const override;
+
+	UPROPERTY()
+	FMovieScene3DTransformTemplateData TemplateData;
 };

@@ -1,18 +1,17 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "Tracks/MovieScenePropertyTrack.h"
-#include "Compilation/IMovieSceneTrackTemplateProducer.h"
 #include "MovieSceneActorReferenceTrack.generated.h"
 
 /**
  * Handles manipulation of actor reference properties in a movie scene
  */
 UCLASS( MinimalAPI )
-class UMovieSceneActorReferenceTrack : public UMovieScenePropertyTrack, public IMovieSceneTrackTemplateProducer
+class UMovieSceneActorReferenceTrack : public UMovieScenePropertyTrack
 {
 	GENERATED_UCLASS_BODY()
 

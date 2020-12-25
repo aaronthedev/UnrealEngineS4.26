@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -32,7 +32,7 @@ class UMaterialExpressionFontSampleParameter : public UMaterialExpressionFontSam
 #if WITH_EDITORONLY_DATA
 	/** Controls where the this parameter is displayed in a material instance parameter list. The lower the number the higher up in the parameter list. */
 	UPROPERTY(EditAnywhere, Category = MaterialExpressionFontSampleParameter)
-	int32 SortPriority = 32;
+	int32 SortPriority;
 #endif
 
 	//~ Begin UMaterialExpression Interface
@@ -53,7 +53,7 @@ class UMaterialExpressionFontSampleParameter : public UMaterialExpressionFontSam
 	//~ End UMaterialExpression Interface
 	
 	/** Return whether this is the named parameter, and fill in its value */
-	bool IsNamedParameter(const FHashedMaterialParameterInfo& ParameterInfo, UFont*& OutFontValue, int32& OutFontPage) const;
+	bool IsNamedParameter(const FMaterialParameterInfo& ParameterInfo, UFont*& OutFontValue, int32& OutFontPage) const;
 
 #if WITH_EDITOR
 	bool SetParameterValue(FName InParameterName, UFont* InFontValue, int32 InFontPage);

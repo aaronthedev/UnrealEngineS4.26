@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #if WITH_IMMEDIATE_PHYSX
 
@@ -592,9 +592,9 @@ void FPhysScene_ImmediatePhysX::FlushDeferredCollisionDisableTableQueue()
     // @todo(mlentine): For new we ignore this as we probably want a different format for this going forward
 }
 
-bool FPhysScene_ImmediatePhysX::MarkForPreSimKinematicUpdate(USkeletalMeshComponent* InSkelComp, ETeleportType InTeleport, bool bNeedsSkinning)
+void FPhysScene_ImmediatePhysX::MarkForPreSimKinematicUpdate(USkeletalMeshComponent* InSkelComp, ETeleportType InTeleport, bool bNeedsSkinning)
 {
-	return false;
+
 }
 
 void FPhysScene_ImmediatePhysX::ClearPreSimKinematicUpdate(USkeletalMeshComponent* InSkelComp)
@@ -706,7 +706,7 @@ void FPhysScene_ImmediatePhysX::DispatchPhysNotifications_AssumesLocked()
     FPhysicsDelegates::OnPhysDispatchNotifications.Broadcast(this);
 }
 
-void FPhysScene_ImmediatePhysX::SetUpForFrame(const FVector* NewGrav, float InDeltaSeconds, float InMaxPhysicsDeltaTime, float InMaxSubstepDeltaTime, int32 InMaxSubsteps)
+void FPhysScene_ImmediatePhysX::SetUpForFrame(const FVector* NewGrav, float InDeltaSeconds, float InMaxPhysicsDeltaTime)
 {
 	DeltaSeconds = FMath::Min(InDeltaSeconds, 0.033f);
 	//Create dynamic bodies and integrate their unconstrained velocities

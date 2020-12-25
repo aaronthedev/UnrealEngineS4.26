@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/CompositeCurveTable.h"
 #include "Misc/MessageDialog.h"
@@ -8,8 +8,6 @@
 #if WITH_EDITOR
 #include "CurveTableEditorUtils.h"
 #endif
-
-#include "HAL/IConsoleManager.h"
 
 #define LOCTEXT_NAMESPACE "CompositeCurveTables"
 
@@ -195,7 +193,7 @@ void UCompositeCurveTable::PostEditChangeProperty(FPropertyChangedEvent& Propert
 {
 	static FName Name_ParentTables = GET_MEMBER_NAME_CHECKED(UCompositeCurveTable, ParentTables);
 
-	FProperty* PropertyThatChanged = PropertyChangedEvent.Property;
+	UProperty* PropertyThatChanged = PropertyChangedEvent.Property;
 	const FName PropertyName = PropertyThatChanged != nullptr ? PropertyThatChanged->GetFName() : NAME_None;
 
 	if (PropertyName == Name_ParentTables)

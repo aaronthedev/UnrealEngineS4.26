@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ImagePlateComponent.h"
 
@@ -82,7 +82,7 @@ namespace
 			Material = InComponent->GetPlate().DynamicMaterial ? InComponent->GetPlate().DynamicMaterial : InComponent->GetPlate().Material;
 			if (Material)
 			{
-				MaterialRelevance |= Material->GetRelevance_Concurrent(GetScene().GetFeatureLevel());
+				MaterialRelevance |= Material->GetRelevance(GetScene().GetFeatureLevel());
 			}
 
 			FColor NewPropertyColor;
@@ -231,7 +231,7 @@ namespace
 			
 			MaterialRelevance.SetPrimitiveViewRelevance(Result);
 
-			Result.bVelocityRelevance = IsMovable() && Result.bOpaque && Result.bRenderInMainPass;
+			Result.bVelocityRelevance = IsMovable() && Result.bOpaqueRelevance && Result.bRenderInMainPass;
 
 			return Result;
 		}
@@ -445,9 +445,9 @@ void UImagePlateComponent::PostEditUndo()
 	UpdateMaterialParametersForMedia();
 }
 
-FStructProperty* UImagePlateComponent::GetImagePlateProperty()
+UStructProperty* UImagePlateComponent::GetImagePlateProperty()
 {
-	return FindFProperty<FStructProperty>(StaticClass(), GET_MEMBER_NAME_CHECKED(UImagePlateComponent, Plate));
+	return FindField<UStructProperty>(StaticClass(), GET_MEMBER_NAME_CHECKED(UImagePlateComponent, Plate));
 }
 
 #endif

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AI/Navigation/NavigationTypes.h"
 #include "AI/Navigation/NavRelevantInterface.h"
@@ -249,8 +249,7 @@ FNavHeightfieldSamples::FNavHeightfieldSamples()
 const FNavAgentProperties FNavAgentProperties::DefaultProperties;
 
 FNavAgentProperties::FNavAgentProperties(const FNavAgentProperties& Other)
-	: Super(Other)
-	, AgentRadius(Other.AgentRadius)
+	: AgentRadius(Other.AgentRadius)
 	, AgentHeight(Other.AgentHeight)
 	, AgentStepHeight(Other.AgentStepHeight)
 	, NavWalkingSearchHeightScale(Other.NavWalkingSearchHeightScale)
@@ -267,7 +266,7 @@ void FNavAgentProperties::UpdateWithCollisionComponent(UShapeComponent* Collisio
 
 bool FNavAgentProperties::IsNavDataMatching(const FNavAgentProperties& Other) const
 {
-	return (PreferredNavData == Other.PreferredNavData || PreferredNavData.IsNull() || Other.PreferredNavData.IsNull());
+	return (PreferredNavData == Other.PreferredNavData || PreferredNavData == nullptr || Other.PreferredNavData == nullptr);
 }
 
 void FNavAgentProperties::SetPreferredNavData(TSubclassOf<AActor> NavDataClass)

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -23,6 +23,7 @@ class FMenuBuilder;
 namespace Trace
 {
 	class IAnalysisSession;
+	struct FTimelineEvent;
 }
 
 namespace Insights
@@ -67,19 +68,18 @@ public:
 
 	virtual void Reset();
 
-	void RebuildColumns();
-
 	/**
 	 * Rebuilds the tree (if necessary).
 	 * @param bResync - If true, it forces a resync even if the list did not changed since last sync.
 	 */
 	virtual void RebuildTree(bool bResync);
 
-	FTableTreeNodePtr GetNodeByTableRowIndex(int32 RowIndex) const;
+	const FTableTreeNodePtr* FindNode(uint64 Id) const { return TableTreeNodesIdMap.Find(Id); }
+
+	void SelectNodeByNodeId(uint64 Id);
 	void SelectNodeByTableRowIndex(int32 RowIndex);
 
 protected:
-	void ConstructWidget(TSharedPtr<FTable> InTablePtr);
 	void UpdateTree();
 
 	/** Called when the analysis session has changed. */
@@ -134,13 +134,13 @@ protected:
 	/** Called by STreeView to generate a table row for the specified item. */
 	TSharedRef<ITableRow> TreeView_OnGenerateRow(FTableTreeNodePtr TreeNode, const TSharedRef<STableViewBase>& OwnerTable);
 
-	bool TableRow_ShouldBeEnabled(FTableTreeNodePtr NodePtr) const;
-
-	void TableRow_SetHoveredCell(TSharedPtr<FTable> TablePtr, TSharedPtr<FTableColumn> ColumnPtr, FTableTreeNodePtr NodePtr);
+	void TableRow_SetHoveredCell(TSharedPtr<FTable> TablePtr, TSharedPtr<FTableColumn> ColumnPtr, const FTableTreeNodePtr NodePtr);
 	EHorizontalAlignment TableRow_GetColumnOutlineHAlignment(const FName ColumnId) const;
 
 	FText TableRow_GetHighlightText() const;
 	FName TableRow_GetHighlightedNodeName() const;
+
+	bool TableRow_ShouldBeEnabled(const uint32 TreeNodeId) const;
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Filtering
@@ -284,11 +284,14 @@ protected:
 	/** The root node of the tree. */
 	FTableTreeNodePtr Root;
 
-	/** Table (row) nodes. Each node corresponds to a table row. Index in this array corresponds to RowIndex in source table. */
+	/** Table (row) nodes. Each node corresponds to a table row. */
 	TArray<FTableTreeNodePtr> TableTreeNodes;
 
 	/** A filtered array of group and nodes to be displayed in the tree widget. */
 	TArray<FTableTreeNodePtr> FilteredGroupNodes;
+
+	/** All nodes, stored as Id -> FTableTreeNodePtr. */
+	TMap<uint64, FTableTreeNodePtr> TableTreeNodesIdMap;
 
 	/** Currently expanded group nodes. */
 	TSet<FTableTreeNodePtr> ExpandedNodes;

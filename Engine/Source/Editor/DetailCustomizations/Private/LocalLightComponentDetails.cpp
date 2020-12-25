@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LocalLightComponentDetails.h"
 #include "LightComponentDetails.h"
@@ -95,7 +95,7 @@ namespace
 	{
 		check(Component);
 
-		FProperty* IntensityUnitsProperty = FindFieldChecked<FProperty>(ULocalLightComponent::StaticClass(), GET_MEMBER_NAME_CHECKED(ULocalLightComponent, IntensityUnits));
+		UProperty* IntensityUnitsProperty = FindFieldChecked<UProperty>(ULocalLightComponent::StaticClass(), GET_MEMBER_NAME_CHECKED(ULocalLightComponent, IntensityUnits));
 		FPropertyChangedEvent PropertyChangedEvent(IntensityUnitsProperty);
 
 		const ELightUnits PreviousUnits = Component->IntensityUnits;

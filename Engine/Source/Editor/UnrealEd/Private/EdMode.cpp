@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EdMode.h"
 #include "EditorModeTools.h"
@@ -52,7 +52,7 @@ namespace
 	 * Returns a reference to the named property value data in the given container.
 	 */
 	template<typename T>
-	T* GetPropertyValuePtrByName(const UStruct* InStruct, void* InContainer, FString PropertyName, int32 ArrayIndex, FProperty*& OutProperty)
+	T* GetPropertyValuePtrByName(const UStruct* InStruct, void* InContainer, FString PropertyName, int32 ArrayIndex, UProperty*& OutProperty)
 	{
 		T* ValuePtr = NULL;
 
@@ -73,10 +73,10 @@ namespace
 			}
 
 			// Obtain the property info from the given structure definition
-			FProperty* CurrentProp = FindFProperty<FProperty>(InStruct, FName(*NameToken));
+			UProperty* CurrentProp = FindField<UProperty>(InStruct, FName(*NameToken));
 
 			// Check first to see if this is a simple structure (i.e. not an array of structures)
-			FStructProperty* StructProp = CastField<FStructProperty>(CurrentProp);
+			UStructProperty* StructProp = Cast<UStructProperty>(CurrentProp);
 			if(StructProp != NULL)
 			{
 				// Recursively call back into this function with the structure property and container value
@@ -85,11 +85,11 @@ namespace
 			else
 			{
 				// Check to see if this is an array
-				FArrayProperty* ArrayProp = CastField<FArrayProperty>(CurrentProp);
+				UArrayProperty* ArrayProp = Cast<UArrayProperty>(CurrentProp);
 				if(ArrayProp != NULL)
 				{
 					// It is an array, now check to see if this is an array of structures
-					StructProp = CastField<FStructProperty>(ArrayProp->Inner);
+					StructProp = Cast<UStructProperty>(ArrayProp->Inner);
 					if(StructProp != NULL)
 					{
 						FScriptArrayHelper_InContainer ArrayHelper(ArrayProp, InContainer);
@@ -104,10 +104,10 @@ namespace
 		}
 		else
 		{
-			FProperty* Prop = FindFProperty<FProperty>(InStruct, FName(*PropertyName));
+			UProperty* Prop = FindField<UProperty>(InStruct, FName(*PropertyName));
 			if(Prop != NULL)
 			{
-				if( FArrayProperty* ArrayProp = CastField<FArrayProperty>(Prop) )
+				if( UArrayProperty* ArrayProp = Cast<UArrayProperty>(Prop) )
 				{
 					check(ArrayIndex != INDEX_NONE);
 
@@ -138,7 +138,7 @@ namespace
 	T GetPropertyValueByName(UObject* Object, FString PropertyName, int32 PropertyIndex)
 	{
 		T Value;
-		FProperty* DummyProperty = NULL;
+		UProperty* DummyProperty = NULL;
 		if (T* ValuePtr = GetPropertyValuePtrByName<T>(Object->GetClass(), Object, PropertyName, PropertyIndex, DummyProperty))
 		{
 			Value = *ValuePtr;
@@ -150,7 +150,7 @@ namespace
 	 * Sets the property with the given name in the given Actor instance to the given value.
 	 */
 	template<typename T>
-	void SetPropertyValueByName(UObject* Object, FString PropertyName, int32 PropertyIndex, const T& InValue, FProperty*& OutProperty)
+	void SetPropertyValueByName(UObject* Object, FString PropertyName, int32 PropertyIndex, const T& InValue, UProperty*& OutProperty)
 	{
 		if (T* ValuePtr = GetPropertyValuePtrByName<T>(Object->GetClass(), Object, PropertyName, PropertyIndex, OutProperty))
 		{
@@ -361,7 +361,7 @@ bool FEdMode::InputDelta(FEditorViewportClient* InViewportClient, FViewport* InV
 				BestSelectedItem->PreEditChange(NULL);
 
 				// Property that we actually change
-				FProperty* SetProperty = NULL;
+				UProperty* SetProperty = NULL;
 
 				if (bEditedPropertyIsTransform)
 				{
@@ -590,16 +590,15 @@ void FEdMode::Enter()
 	bPendingDeletion = false;
 
 	FEditorDelegates::EditorModeIDEnter.Broadcast( GetID() );
+	const bool bIsEnteringMode = true;
+	Owner->BroadcastEditorModeIDChanged( GetID(), bIsEnteringMode );
 }
 
 void FEdMode::Exit()
 {
+	const bool bIsEnteringMode = false;
+	Owner->BroadcastEditorModeIDChanged( GetID(), bIsEnteringMode );
 	FEditorDelegates::EditorModeIDExit.Broadcast(GetID());
-}
-
-UTexture2D* FEdMode::GetVertexTexture()
-{
-	return GEngine->DefaultBSPVertexTexture;
 }
 
 void FEdMode::SetCurrentTool( EModeTools InID )
@@ -793,9 +792,8 @@ void FEdMode::DrawHUD(FEditorViewportClient* ViewportClient,FViewport* Viewport,
 		{
 			FEditorScriptExecutionGuard ScriptGuard;
 
-			FIntPoint SizeXYWithDPIScale = Viewport->GetSizeXY() / Canvas->GetDPIScale();
-			const int32 HalfX = 0.5f * SizeXYWithDPIScale.X;
-			const int32 HalfY = 0.5f * SizeXYWithDPIScale.Y;
+			const int32 HalfX = 0.5f * Viewport->GetSizeXY().X;
+			const int32 HalfY = 0.5f * Viewport->GetSizeXY().Y;
 
 			UClass* Class = BestSelectedItem->GetClass();		
 			TArray<FPropertyWidgetInfo> WidgetInfos;
@@ -918,50 +916,50 @@ bool FEdMode::CanCreateWidgetForStructure(const UStruct* InPropStruct)
 	return InPropStruct && (InPropStruct->GetFName() == NAME_Vector || InPropStruct->GetFName() == NAME_Transform);
 }
 
-bool FEdMode::CanCreateWidgetForProperty(FProperty* InProp)
+bool FEdMode::CanCreateWidgetForProperty(UProperty* InProp)
 {
-	FStructProperty* TestProperty = CastField<FStructProperty>(InProp);
+	UStructProperty* TestProperty = Cast<UStructProperty>(InProp);
 	if( !TestProperty )
 	{
-		FArrayProperty* ArrayProperty = CastField<FArrayProperty>(InProp);
+		UArrayProperty* ArrayProperty = Cast<UArrayProperty>(InProp);
 		if( ArrayProperty )
 		{
-			TestProperty = CastField<FStructProperty>(ArrayProperty->Inner);
+			TestProperty = Cast<UStructProperty>(ArrayProperty->Inner);
 		}
 	}
 	return (TestProperty != NULL) && CanCreateWidgetForStructure(TestProperty->Struct);
 }
 
-bool FEdMode::ShouldCreateWidgetForProperty(FProperty* InProp)
+bool FEdMode::ShouldCreateWidgetForProperty(UProperty* InProp)
 {
 	return CanCreateWidgetForProperty(InProp) && InProp->HasMetaData(MD_MakeEditWidget);
 }
 
-static bool IsTransformProperty(FProperty* InProp)
+static bool IsTransformProperty(UProperty* InProp)
 {
-	FStructProperty* StructProp = CastField<FStructProperty>(InProp);
+	UStructProperty* StructProp = Cast<UStructProperty>(InProp);
 	return (StructProp != NULL && StructProp->Struct->GetFName() == NAME_Transform);
 
 }
 
 struct FPropertyWidgetInfoChainElement
 {
-	FProperty* Property;
+	UProperty* Property;
 	int32 Index;
 
-	FPropertyWidgetInfoChainElement(FProperty* InProperty = nullptr, int32 InIndex = INDEX_NONE)
+	FPropertyWidgetInfoChainElement(UProperty* InProperty = nullptr, int32 InIndex = INDEX_NONE)
 		: Property(InProperty), Index(InIndex)
 	{}
 
-	static bool ShouldCreateWidgetSomwhereInBranch(FProperty* InProp)
+	static bool ShouldCreateWidgetSomwhereInBranch(UProperty* InProp)
 	{
-		FStructProperty* StructProperty = CastField<FStructProperty>(InProp);
+		UStructProperty* StructProperty = Cast<UStructProperty>(InProp);
 		if (!StructProperty)
 		{
-			FArrayProperty* ArrayProperty = CastField<FArrayProperty>(InProp);
+			UArrayProperty* ArrayProperty = Cast<UArrayProperty>(InProp);
 			if (ArrayProperty)
 			{
-				StructProperty = CastField<FStructProperty>(ArrayProperty->Inner);
+				StructProperty = Cast<UStructProperty>(ArrayProperty->Inner);
 			}
 		}
 
@@ -972,7 +970,7 @@ struct FPropertyWidgetInfoChainElement
 				return true;
 			}
 
-			for (TFieldIterator<FProperty> PropertyIt(StructProperty->Struct, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
+			for (TFieldIterator<UProperty> PropertyIt(StructProperty->Struct, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
 			{
 				if (ShouldCreateWidgetSomwhereInBranch(*PropertyIt))
 				{
@@ -984,7 +982,7 @@ struct FPropertyWidgetInfoChainElement
 		return false;
 	}
 
-	static FEdMode::FPropertyWidgetInfo CreateWidgetInfo(const TArray<FPropertyWidgetInfoChainElement>& Chain, bool bIsTransform, FProperty* CurrentProp, int32 Index = INDEX_NONE)
+	static FEdMode::FPropertyWidgetInfo CreateWidgetInfo(const TArray<FPropertyWidgetInfoChainElement>& Chain, bool bIsTransform, UProperty* CurrentProp, int32 Index = INDEX_NONE)
 	{
 		check(CurrentProp);
 		FEdMode::FPropertyWidgetInfo WidgetInfo;
@@ -1017,14 +1015,14 @@ struct FPropertyWidgetInfoChainElement
 
 	static void RecursiveGet(const FEdMode& EdMode, const UStruct* InStruct, const void* InContainer, TArray<FEdMode::FPropertyWidgetInfo>& OutInfos, TArray<FPropertyWidgetInfoChainElement>& Chain)
 	{
-		for (TFieldIterator<FProperty> PropertyIt(InStruct, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
+		for (TFieldIterator<UProperty> PropertyIt(InStruct, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
 		{
-			FProperty* CurrentProp = *PropertyIt;
+			UProperty* CurrentProp = *PropertyIt;
 			check(CurrentProp);
 
 			if (EdMode.ShouldCreateWidgetForProperty(CurrentProp))
 			{
-				if (FArrayProperty* ArrayProp = CastField<FArrayProperty>(CurrentProp))
+				if (UArrayProperty* ArrayProp = Cast<UArrayProperty>(CurrentProp))
 				{
 					check(InContainer);
 					FScriptArrayHelper_InContainer ArrayHelper(ArrayProp, InContainer);
@@ -1040,7 +1038,7 @@ struct FPropertyWidgetInfoChainElement
 					OutInfos.Add(FPropertyWidgetInfoChainElement::CreateWidgetInfo(Chain, IsTransformProperty(CurrentProp), CurrentProp));
 				}
 			}
-			else if (FStructProperty* StructProp = CastField<FStructProperty>(CurrentProp))
+			else if (UStructProperty* StructProp = Cast<UStructProperty>(CurrentProp))
 			{
 				// Recursively traverse into structures, looking for additional vector properties to expose
 				Chain.Push(FPropertyWidgetInfoChainElement(StructProp));
@@ -1051,10 +1049,10 @@ struct FPropertyWidgetInfoChainElement
 					, Chain);
 				Chain.Pop(false);
 			}
-			else if (FArrayProperty* ArrayProp = CastField<FArrayProperty>(CurrentProp))
+			else if (UArrayProperty* ArrayProp = Cast<UArrayProperty>(CurrentProp))
 			{
 				// Recursively traverse into arrays of structures, looking for additional vector properties to expose
-				FStructProperty* InnerStructProp = CastField<FStructProperty>(ArrayProp->Inner);
+				UStructProperty* InnerStructProp = Cast<UStructProperty>(ArrayProp->Inner);
 				if (InnerStructProp)
 				{
 					FScriptArrayHelper_InContainer ArrayHelper(ArrayProp, InContainer);

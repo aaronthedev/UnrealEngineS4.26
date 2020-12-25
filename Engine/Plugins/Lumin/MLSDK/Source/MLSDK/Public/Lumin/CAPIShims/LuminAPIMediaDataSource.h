@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,13 +11,13 @@ LUMIN_THIRD_PARTY_INCLUDES_START
 #include <ml_media_data_source.h>
 LUMIN_THIRD_PARTY_INCLUDES_END
 
-namespace LUMIN_MLSDK_API
+namespace MLSDK_API
 {
 
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaDataSourceCreate)
-#define MLMediaDataSourceCreate ::LUMIN_MLSDK_API::MLMediaDataSourceCreateShim
+#define MLMediaDataSourceCreate ::MLSDK_API::MLMediaDataSourceCreateShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaDataSourceDestroy)
-#define MLMediaDataSourceDestroy ::LUMIN_MLSDK_API::MLMediaDataSourceDestroyShim
+#define MLMediaDataSourceDestroy ::MLSDK_API::MLMediaDataSourceDestroyShim
 
 }
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ParticleVertexFactory.h: Particle vertex factory definitions.
@@ -42,15 +42,11 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FNiagaraRibbonUniformParameters, NIAGARAVER
 	SHADER_PARAMETER(int, MaterialParam1DataOffset)
 	SHADER_PARAMETER(int, MaterialParam2DataOffset)
 	SHADER_PARAMETER(int, MaterialParam3DataOffset)
-	SHADER_PARAMETER(int, U0OverrideDataOffset)
-	SHADER_PARAMETER(int, V0RangeOverrideDataOffset)
-	SHADER_PARAMETER(int, U1OverrideDataOffset)
-	SHADER_PARAMETER(int, V1RangeOverrideDataOffset)
 	SHADER_PARAMETER(int, TotalNumInstances)
 	SHADER_PARAMETER(int, InterpCount)
 	SHADER_PARAMETER(float, OneOverInterpCount)
-	SHADER_PARAMETER(int, U0DistributionMode)
-	SHADER_PARAMETER(int, U1DistributionMode)
+	SHADER_PARAMETER(float, OneOverUV0TilingDistance)
+	SHADER_PARAMETER(float, OneOverUV1TilingDistance)
 	SHADER_PARAMETER(FVector4, PackedVData)
 	SHADER_PARAMETER(uint32, bLocalSpace)
 	SHADER_PARAMETER_EX(float, DeltaSeconds, EShaderPrecisionModifier::Half)
@@ -58,6 +54,7 @@ END_GLOBAL_SHADER_PARAMETER_STRUCT()
 typedef TUniformBufferRef<FNiagaraRibbonUniformParameters> FNiagaraRibbonUniformBufferRef;
 
 BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FNiagaraRibbonVFLooseParameters, NIAGARAVERTEXFACTORIES_API)
+	SHADER_PARAMETER(uint32, NiagaraFloatDataOffset)
 	SHADER_PARAMETER(uint32, NiagaraFloatDataStride)
 	SHADER_PARAMETER(uint32, SortedIndicesOffset)
 	SHADER_PARAMETER(uint32, FacingMode)
@@ -66,7 +63,6 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FNiagaraRibbonVFLooseParameters, NIAGARAVER
 	SHADER_PARAMETER_SRV(Buffer<uint>, MultiRibbonIndices)
 	SHADER_PARAMETER_SRV(Buffer<float>, PackedPerRibbonDataByIndex)
 	SHADER_PARAMETER_SRV(Buffer<float>, NiagaraParticleDataFloat)
-	SHADER_PARAMETER_SRV(Buffer<float>, NiagaraParticleDataHalf)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 typedef TUniformBufferRef<FNiagaraRibbonVFLooseParameters> FNiagaraRibbonVFLooseParametersRef;
 
@@ -99,12 +95,12 @@ public:
 	/**
 	* Should we cache the material's shadertype on this platform with this vertex factory?
 	*/
-	static bool ShouldCompilePermutation(const FVertexFactoryShaderPermutationParameters& Parameters);
+	static bool ShouldCompilePermutation(EShaderPlatform Platform, const class FMaterial* Material, const class FShaderType* ShaderType);
 
 	/**
 	* Can be overridden by FVertexFactory subclasses to modify their compile environment just before compilation occurs.
 	*/
-	static void ModifyCompilationEnvironment(const FVertexFactoryShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment);
+	static void ModifyCompilationEnvironment(const FVertexFactoryType* Type, EShaderPlatform Platform, const FMaterial* Material, FShaderCompilerEnvironment& OutEnvironment);
 
 	// FRenderResource interface.
 	virtual void InitRHI() override;
@@ -134,6 +130,14 @@ public:
 	* Set the source vertex buffer that contains particle dynamic parameter data.
 	*/
 	void SetDynamicParameterBuffer(const FVertexBuffer* InDynamicParameterBuffer, int32 ParameterIndex, uint32 StreamOffset, uint32 Stride);
+
+
+	void SetParticleData(const FShaderResourceViewRHIRef& InParticleDataFloatSRV, uint32 InFloatDataOffset, uint32 InFloatDataStride)
+	{
+		ParticleDataFloatSRV = InParticleDataFloatSRV;
+		FloatDataOffset = InFloatDataOffset;
+		FloatDataStride = InFloatDataStride;
+	}
 
 	void SetSortedIndices(const FVertexBufferRHIRef& InSortedIndicesBuffer, const FShaderResourceViewRHIRef& InSortedIndicesSRV, uint32 InSortedIndicesOffset)
 	{
@@ -166,7 +170,22 @@ public:
 		FacingMode = InFacingMode;
 	}
 
-	FORCEINLINE FRHIShaderResourceView* GetSortedIndicesSRV()
+	FORCEINLINE FShaderResourceViewRHIRef GetParticleDataFloatSRV()
+	{
+		return ParticleDataFloatSRV;
+	}
+
+	FORCEINLINE int32 GetFloatDataOffset()
+	{
+		return FloatDataOffset;
+	}
+
+	FORCEINLINE int32 GetFloatDataStride()
+	{
+		return FloatDataStride;
+	}
+
+	FORCEINLINE FShaderResourceViewRHIRef GetSortedIndicesSRV()
 	{
 		return SortedIndicesSRV;
 	}
@@ -176,17 +195,17 @@ public:
 		return SortedIndicesOffset;
 	}
 
-	FORCEINLINE FRHIShaderResourceView* GetTangentAndDistancesSRV()
+	FORCEINLINE FShaderResourceViewRHIRef GetTangentAndDistancesSRV()
 	{
 		return TangentAndDistancesSRV;
 	}
 
-	FORCEINLINE FRHIShaderResourceView* GetMultiRibbonIndicesSRV()
+	FORCEINLINE FShaderResourceViewRHIRef GetMultiRibbonIndicesSRV()
 	{
 		return MultiRibbonIndicesSRV;
 	}
 
-	FORCEINLINE FRHIShaderResourceView* GetPackedPerRibbonDataByIndexSRV()
+	FORCEINLINE FShaderResourceViewRHIRef GetPackedPerRibbonDataByIndexSRV()
 	{
 		return PackedPerRibbonDataByIndexSRV;
 	}
@@ -195,6 +214,11 @@ public:
 	{
 		return FacingMode;
 	}
+
+	/**
+	* Construct shader parameters for this type of vertex factory.
+	*/
+	static FVertexFactoryShaderParameters* ConstructShaderParameters(EShaderFrequency ShaderFrequency);
 
 	FIndexBuffer*& GetIndexBuffer()
 	{
@@ -224,6 +248,10 @@ private:
 	int32 OutTriangleCount;
 
 	const FNiagaraDataSet *DataSet;
+
+	FShaderResourceViewRHIRef ParticleDataFloatSRV;
+	uint32 FloatDataOffset;
+	uint32 FloatDataStride;
 
 	FVertexBufferRHIRef SortedIndicesBuffer;
 	FVertexBufferRHIRef TangentAndDistancesBuffer;

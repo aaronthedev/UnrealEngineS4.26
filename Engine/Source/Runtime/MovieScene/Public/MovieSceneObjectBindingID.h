@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,8 +10,6 @@
 #include "MovieSceneObjectBindingID.generated.h"
 
 struct FMovieSceneSequenceHierarchy;
-
-class IMovieScenePlayer;
 
 /** Enumeration specifying how a movie scene object binding ID relates to the sequence */
 UENUM()
@@ -94,7 +92,7 @@ struct FMovieSceneObjectBindingID
 	/**
 	 * Resolve this binding ID from a local binding to be accessible from the root, by treating the specified local sequence ID as this binding's root
 	 */
-	MOVIESCENE_API FMovieSceneObjectBindingID ResolveLocalToRoot(FMovieSceneSequenceID LocalSequenceID, IMovieScenePlayer& Player) const;
+	MOVIESCENE_API FMovieSceneObjectBindingID ResolveLocalToRoot(FMovieSceneSequenceID LocalSequenceID, const FMovieSceneSequenceHierarchy& Hierarchy) const;
 
 public:
 

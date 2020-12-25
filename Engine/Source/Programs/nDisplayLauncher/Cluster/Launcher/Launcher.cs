@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 using System;
@@ -38,16 +38,14 @@ namespace nDisplayLauncher.Cluster
 		// run application params\keys
 		private const string ArgMandatory = "-dc_cluster -nosplash -fixedseed";
 
-		private const string ArgConfig = "-dc_cfg";
-		private const string ArgNode   = "-dc_node";
-		private const string ArgGpu    = "-dc_gpu";
+		private const string ArgConfig = "dc_cfg";
+		private const string ArgNode   = "dc_node";
 
 		// switches
 		private const string ArgFullscreen           = "-fullscreen";
 		private const string ArgWindowed             = "-windowed";
 		private const string ArgNoTextureStreaming   = "-notexturestreaming";
 		private const string ArgUseAllAvailableCores = "-useallavailablecores";
-		private const string ArgForceRes             = "-forceres";
 
 		public enum ClusterCommandType
 		{
@@ -214,13 +212,12 @@ namespace nDisplayLauncher.Cluster
 		}
 
 		public static UE4LogVerbosity UE4LogVerbosity_FromString(string From, UE4LogVerbosity Default)
-		{			
+		{
+			From = From.Trim();
 			if (string.IsNullOrEmpty(From))
 			{
 				return Default;
 			}
-
-			From = From.Trim();
 
 			if (string.Compare(From, "All", true) == 0)
 			{

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BlueprintCompilerCppBackend.h"
 #include "UObject/UnrealType.h"
@@ -562,180 +562,51 @@ FString FBlueprintCompilerCppBackend::EmitSwitchValueStatmentInner(FEmitterLocal
 
 struct FCastWildCard
 {
-	// Type-dependent parameter info.
-	struct FTypeDependentParamInfo
-	{
-		FString PropertyName;
-		uint8 bIsValueTypeDependency : 1;
-
-		FTypeDependentParamInfo() : bIsValueTypeDependency(0) {}
-	};
-
-	// Captures all type-dependent parameter info for a single function call.
-	struct FFunctionParamTypeDependencyInfo
-	{
-		int32 ParamIndex;
-		TArray<FTypeDependentParamInfo> TypeDependentParams;
-
-		FFunctionParamTypeDependencyInfo() : ParamIndex(INDEX_NONE) {}
-	};
-
-	TArray<FFunctionParamTypeDependencyInfo> FunctionParamTypeDependencies;
+	TArray<FString> TypeDependentPinNames;
+	int32 ArrayParamIndex = -1;
 	const FBlueprintCompiledStatement& Statement;
 
-	FCastWildCard(const FBlueprintCompiledStatement& InStatement) : Statement(InStatement)
+	FCastWildCard(const FBlueprintCompiledStatement& InStatement) : ArrayParamIndex(-1), Statement(InStatement)
 	{
-		// Determine the index of the given parameter property within the function's overall parameter list.
-		auto GetParamPropertyIndexLambda = [&Statement = this->Statement](const FString& InPropertyName) -> int32
+		const FString& DependentPinMetaData = Statement.FunctionToCall->GetMetaData(FBlueprintMetadata::MD_ArrayDependentParam);
+		DependentPinMetaData.ParseIntoArray(TypeDependentPinNames, TEXT(","), true);
+
+		const FString& ArrayPointerMetaData = Statement.FunctionToCall->GetMetaData(FBlueprintMetadata::MD_ArrayParam);
+		TArray<FString> ArrayPinComboNames;
+		ArrayPointerMetaData.ParseIntoArray(ArrayPinComboNames, TEXT(","), true);
+
+		int32 LocNumParams = 0;
+		if (ArrayPinComboNames.Num() == 1)
 		{
-			int32 LocParamIndex = 0;
-			for (TFieldIterator<FProperty> PropIt(Statement.FunctionToCall); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt, ++LocParamIndex)
+			for (TFieldIterator<UProperty> PropIt(Statement.FunctionToCall); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
 			{
-				// Skip the return param as it's not included as a type-dependent parameter by name.
-				if (PropIt->HasAnyPropertyFlags(CPF_ReturnParm))
+				if (!PropIt->HasAnyPropertyFlags(CPF_ReturnParm))
 				{
-					continue;
-				}
-
-				if (PropIt->GetName() == InPropertyName)
-				{
-					return LocParamIndex;
-				}
-			}
-
-			return INDEX_NONE;
-		};
-
-		// Map container param types (only one param per function call)
-		const FString& MapParamPropertyName = Statement.FunctionToCall->GetMetaData(FBlueprintMetadata::MD_MapParam);
-		if (!MapParamPropertyName.IsEmpty())
-		{
-			FFunctionParamTypeDependencyInfo MapParamTypeDependency;
-			MapParamTypeDependency.ParamIndex = GetParamPropertyIndexLambda(MapParamPropertyName);
-
-			const FString& MapKeyParamName = Statement.FunctionToCall->GetMetaData(FBlueprintMetadata::MD_MapKeyParam);
-			if (!MapKeyParamName.IsEmpty())
-			{
-				FTypeDependentParamInfo TypeDependentMapKeyParamInfo;
-				TypeDependentMapKeyParamInfo.PropertyName = MapKeyParamName;
-				MapParamTypeDependency.TypeDependentParams.Add(MoveTemp(TypeDependentMapKeyParamInfo));
-			}
-
-			const FString& MapValueParamName = Statement.FunctionToCall->GetMetaData(FBlueprintMetadata::MD_MapValueParam);
-			if (!MapValueParamName.IsEmpty())
-			{
-				FTypeDependentParamInfo TypeDependentMapValueParam;
-				TypeDependentMapValueParam.PropertyName = MapValueParamName;
-				TypeDependentMapValueParam.bIsValueTypeDependency = 1;
-				MapParamTypeDependency.TypeDependentParams.Add(MoveTemp(TypeDependentMapValueParam));
-			}
-
-			FunctionParamTypeDependencies.Add(MoveTemp(MapParamTypeDependency));
-		}
-
-		// Set container param types
-		const FString& SetParamMetadata = Statement.FunctionToCall->GetMetaData(FBlueprintMetadata::MD_SetParam);
-		if (!SetParamMetadata.IsEmpty())
-		{
-			TArray<FString> SetTypeDependencyParamGroups;
-			SetParamMetadata.ParseIntoArray(SetTypeDependencyParamGroups, TEXT(","), true);
-
-			for (const FString& SetTypeDependencyParamGroup : SetTypeDependencyParamGroups)
-			{
-				// Actual set param name is the first entry, followed by dependent param names, each delimited by '|'
-				TArray<FString> SetTypeDependencyParamPropertyNames;
-				SetTypeDependencyParamGroup.ParseIntoArray(SetTypeDependencyParamPropertyNames, TEXT("|"), true);
-
-				if (SetTypeDependencyParamPropertyNames.Num() > 0)
-				{
-					FFunctionParamTypeDependencyInfo SetParamTypeDependency;
-					SetParamTypeDependency.ParamIndex = GetParamPropertyIndexLambda(SetTypeDependencyParamPropertyNames[0]);
-
-					for (int i = 1; i < SetTypeDependencyParamPropertyNames.Num(); ++i)
+					if (PropIt->GetName() == ArrayPinComboNames[0])
 					{
-						FTypeDependentParamInfo TypeDependentSetValueParam;
-						TypeDependentSetValueParam.PropertyName = SetTypeDependencyParamPropertyNames[i];
-						SetParamTypeDependency.TypeDependentParams.Add(MoveTemp(TypeDependentSetValueParam));
+						ArrayParamIndex = LocNumParams;
+						break;
 					}
-
-					FunctionParamTypeDependencies.Add(MoveTemp(SetParamTypeDependency));
-				}
-			}
-		}
-
-		// Array container param types
-		const FString& ArrayParamMetadata = Statement.FunctionToCall->GetMetaData(FBlueprintMetadata::MD_ArrayParam);
-		if (!ArrayParamMetadata.IsEmpty())
-		{
-			TArray<FString> ArrayTypeDependencyComboNames;
-			ArrayParamMetadata.ParseIntoArray(ArrayTypeDependencyComboNames, TEXT(","), true);
-
-			for (const FString& ArrayTypeDependencyComboName : ArrayTypeDependencyComboNames)
-			{
-				// This might be legacy formatting, but it follows the convention used in FKismetCompilerUtilities::IsTypeCompatibleWithProperty() and elsewhere.
-				TArray<FString> ArrayTypeDependencyParamPropertyNames;
-				ArrayTypeDependencyComboName.ParseIntoArray(ArrayTypeDependencyParamPropertyNames, TEXT("|"), true);
-
-				if (ArrayTypeDependencyParamPropertyNames.Num() > 0)
-				{
-					// The first string represents the parameter on which the remaining parameters will be type-dependent.
-					FFunctionParamTypeDependencyInfo ArrayParamTypeDependency;
-					ArrayParamTypeDependency.ParamIndex = GetParamPropertyIndexLambda(ArrayTypeDependencyParamPropertyNames[0]);
-
-					const FString& ArrayTypeDependentParamMetadata = Statement.FunctionToCall->GetMetaData(FBlueprintMetadata::MD_ArrayDependentParam);
-					if (!ArrayTypeDependentParamMetadata.IsEmpty())
-					{
-						TArray<FString> ArrayTypeDependentParamPropertyNames;
-						ArrayTypeDependentParamMetadata.ParseIntoArray(ArrayTypeDependentParamPropertyNames, TEXT(","), true);
-
-						for (const FString& ArrayTypeDependentParamPropertyName : ArrayTypeDependentParamPropertyNames)
-						{
-							FTypeDependentParamInfo TypeDependentArrayValueParam;
-							TypeDependentArrayValueParam.PropertyName = ArrayTypeDependentParamPropertyName;
-							ArrayParamTypeDependency.TypeDependentParams.Add(MoveTemp(TypeDependentArrayValueParam));
-						}
-					}
-
-					FunctionParamTypeDependencies.Add(MoveTemp(ArrayParamTypeDependency));
+					LocNumParams++;
 				}
 			}
 		}
 	}
 
-	bool FillWildcardType(const FProperty* FuncParamProperty, FEdGraphPinType& LType)
+	bool FillWildcardType(const UProperty* FuncParamProperty, FEdGraphPinType& LType)
 	{
 		if ((FuncParamProperty->HasAnyPropertyFlags(CPF_ConstParm) || !FuncParamProperty->HasAnyPropertyFlags(CPF_OutParm)) // it's pointless(?) and unsafe(?) to cast Output parameter
-			&& ((LType.PinCategory == UEdGraphSchema_K2::PC_Wildcard) || (LType.PinCategory == UEdGraphSchema_K2::PC_Int)))
+			&& (ArrayParamIndex >= 0)
+			&& ((LType.PinCategory == UEdGraphSchema_K2::PC_Wildcard) || (LType.PinCategory == UEdGraphSchema_K2::PC_Int))
+			&& TypeDependentPinNames.Contains(FuncParamProperty->GetName()))
 		{
-			for (const FFunctionParamTypeDependencyInfo& FunctionParamTypeDependency : FunctionParamTypeDependencies)
-			{
-				const FTypeDependentParamInfo* TypeDependentParam = FunctionParamTypeDependency.TypeDependentParams.FindByPredicate([FuncParamProperty](const FTypeDependentParamInfo& InParam)
-				{
-					return InParam.PropertyName == FuncParamProperty->GetName();
-				});
-
-				if (TypeDependentParam)
-				{
-					FBPTerminal* TypeDependentTerm = Statement.RHS[FunctionParamTypeDependency.ParamIndex];
-					check(TypeDependentTerm);
-
-					if (TypeDependentParam->bIsValueTypeDependency)
-					{
-						LType.PinCategory = TypeDependentTerm->Type.PinValueType.TerminalCategory;
-						LType.PinSubCategory = TypeDependentTerm->Type.PinValueType.TerminalSubCategory;
-						LType.PinSubCategoryObject = TypeDependentTerm->Type.PinValueType.TerminalSubCategoryObject;
-					}
-					else
-					{
-						LType.PinCategory = TypeDependentTerm->Type.PinCategory;
-						LType.PinSubCategory = TypeDependentTerm->Type.PinSubCategory;
-						LType.PinSubCategoryObject = TypeDependentTerm->Type.PinSubCategoryObject;
-						LType.PinSubCategoryMemberReference = TypeDependentTerm->Type.PinSubCategoryMemberReference;
-					}
-					
-					return true;
-				}
-			}
+			FBPTerminal* ArrayTerm = Statement.RHS[ArrayParamIndex];
+			check(ArrayTerm);
+			LType.PinCategory = ArrayTerm->Type.PinCategory;
+			LType.PinSubCategory = ArrayTerm->Type.PinSubCategory;
+			LType.PinSubCategoryObject = ArrayTerm->Type.PinSubCategoryObject;
+			LType.PinSubCategoryMemberReference = ArrayTerm->Type.PinSubCategoryMemberReference;
+			return true;
 		}
 		return false;
 	}
@@ -748,9 +619,9 @@ FString FBlueprintCompilerCppBackend::EmitMethodInputParameterList(FEmitterLocal
 	FString Result;
 	int32 NumParams = 0;
 
-	for (TFieldIterator<FProperty> PropIt(Statement.FunctionToCall); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
+	for (TFieldIterator<UProperty> PropIt(Statement.FunctionToCall); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
 	{
-		FProperty* FuncParamProperty = *PropIt;
+		UProperty* FuncParamProperty = *PropIt;
 
 		if (!FuncParamProperty->HasAnyPropertyFlags(CPF_ReturnParm))
 		{
@@ -768,7 +639,7 @@ FString FBlueprintCompilerCppBackend::EmitMethodInputParameterList(FEmitterLocal
 			{
 				// The target label will only ever be set on a call function when calling into the Ubergraph or
 				// on a latent function that will later call into the ubergraph, either of which requires a patchup
-				FStructProperty* StructProp = CastField<FStructProperty>(FuncParamProperty);
+				UStructProperty* StructProp = Cast<UStructProperty>(FuncParamProperty);
 				if (StructProp && (StructProp->Struct == FLatentActionInfo::StaticStruct()))
 				{
 					// Latent function info case
@@ -811,26 +682,6 @@ FString FBlueprintCompilerCppBackend::EmitMethodInputParameterList(FEmitterLocal
 		}
 	}
 
-	const bool bIsVariadic = Statement.FunctionToCall->HasMetaData(FBlueprintMetadata::MD_Variadic);
-	if (bIsVariadic)
-	{
-		// Variadic functions may have extra terms they need to emit after the main set of function arguments
-		// These are all considered wildcards so no type checking will be performed on them
-		// It is the responsibility of the thunk function to interpret their types correctly based on other function input
-		for (; NumParams < Statement.RHS.Num(); ++NumParams)
-		{
-			FBPTerminal* Term = Statement.RHS[NumParams];
-			check(Term);
-
-			if (NumParams > 0)
-			{
-				Result += TEXT(", ");
-			}
-
-			Result += TermToText(EmitterContext, Term, ENativizedTermUsage::UnspecifiedOrReference);
-		}
-	}
-
 	return Result;
 }
 
@@ -842,12 +693,12 @@ static FString CustomThunkFunctionPostfix(FBlueprintCompiledStatement& Statement
 
 	int32 NumParams = 0;
 	FBPTerminal* ArrayTerm = nullptr;
-	for (TFieldIterator<FProperty> PropIt(Statement.FunctionToCall); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
+	for (TFieldIterator<UProperty> PropIt(Statement.FunctionToCall); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
 	{
-		FProperty* FuncParamProperty = *PropIt;
+		UProperty* FuncParamProperty = *PropIt;
 		if (!FuncParamProperty->HasAnyPropertyFlags(CPF_ReturnParm))
 		{
-			if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(*PropIt))
+			if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(*PropIt))
 			{
 				ArrayTerm = Statement.RHS[NumParams];
 				ensure(ArrayTerm && ArrayTerm->Type.IsArray());
@@ -919,12 +770,12 @@ FString FBlueprintCompilerCppBackend::EmitCallStatmentInner(FEmitterLocalContext
 		// Cloned logic from: FScriptBytecodeWriter::EmitFunctionCall
 		// Array output parameters are cleared, in case the native function doesn't clear them before filling.
 		int32 NumParams = 0;
-		for (TFieldIterator<FProperty> PropIt(Statement.FunctionToCall); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
+		for (TFieldIterator<UProperty> PropIt(Statement.FunctionToCall); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
 		{
-			FProperty* Param = *PropIt;
+			UProperty* Param = *PropIt;
 			if (ensure(Param) && !Param->HasAnyPropertyFlags(CPF_ReturnParm))
 			{
-				const bool bShouldParameterBeCleared = Param->IsA<FArrayProperty>()
+				const bool bShouldParameterBeCleared = Param->IsA<UArrayProperty>()
 					&& Param->HasAllPropertyFlags(CPF_Parm | CPF_OutParm)
 					&& !Param->HasAnyPropertyFlags(CPF_ReferenceParm | CPF_ConstParm | CPF_ReturnParm);
 				if (bShouldParameterBeCleared)
@@ -944,7 +795,7 @@ FString FBlueprintCompilerCppBackend::EmitCallStatmentInner(FEmitterLocalContext
 	if (!bInline)
 	{
 		// Handle the return value of the function being called
-		FProperty* FuncToCallReturnProperty = Statement.FunctionToCall->GetReturnProperty();
+		UProperty* FuncToCallReturnProperty = Statement.FunctionToCall->GetReturnProperty();
 		if (FuncToCallReturnProperty && ensure(Statement.LHS))
 		{
 			SetterExpression = MakeUnique<FSetterExpressionBuilder>(*this, EmitterContext, Statement.LHS);
@@ -984,9 +835,9 @@ FString FBlueprintCompilerCppBackend::EmitCallStatmentInner(FEmitterLocalContext
 	{
 		UBlueprintGeneratedClass* OwnerBPGC = Cast<UBlueprintGeneratedClass>(FunctionOwner);
 		const bool bUnconvertedClass = OwnerBPGC && !EmitterContext.Dependencies.WillClassBeConverted(OwnerBPGC);
-		const bool bIsCustomThunk = bStaticCall && ( Statement.FunctionToCall->GetBoolMetaData(FBlueprintMetadata::MD_CustomThunk)
-			|| Statement.FunctionToCall->HasMetaData(FBlueprintMetadata::MD_CustomStructureParam)
-			|| Statement.FunctionToCall->HasMetaData(FBlueprintMetadata::MD_ArrayParam) );
+		const bool bIsCustomThunk = bStaticCall && ( Statement.FunctionToCall->GetBoolMetaData(TEXT("CustomThunk"))
+			|| Statement.FunctionToCall->HasMetaData(TEXT("CustomStructureParam"))
+			|| Statement.FunctionToCall->HasMetaData(TEXT("ArrayParm")) );
 		if (bUnconvertedClass)
 		{
 			ensure(!Statement.bIsParentContext); //unsupported yet
@@ -999,23 +850,7 @@ FString FBlueprintCompilerCppBackend::EmitCallStatmentInner(FEmitterLocalContext
 		else if (bStaticCall)
 		{
 			UClass* OwnerClass = Statement.FunctionToCall->GetOuterUClass();
-			if (bIsCustomThunk)
-			{
-				// Check class metadata for a specified CustomThunkTemplates override
-				FString CustomThunkTemplatesName;
-				if (!OwnerClass->GetStringMetaDataHierarchical(FBlueprintMetadata::MD_CustomThunkTemplates, &CustomThunkTemplatesName))
-				{
-					// Fall back to the engine-supplied templates
-					CustomThunkTemplatesName = TEXT("FCustomThunkTemplates");
-				}
-
-				Result += CustomThunkTemplatesName + TEXT("::");
-			}
-			else
-			{
-				Result += FString::Printf(TEXT("%s::"), *FEmitHelper::GetCppName(OwnerClass));
-			}
-
+			Result += bIsCustomThunk ? TEXT("FCustomThunkTemplates::") : FString::Printf(TEXT("%s::"), *FEmitHelper::GetCppName(OwnerClass));
 		}
 		else if (bCallOnDifferentObject) //@TODO: Badness, could be a self reference wired to another instance!
 		{
@@ -1234,7 +1069,7 @@ FString FBlueprintCompilerCppBackend::TermToText(FEmitterLocalContext& EmitterCo
 				ResultPath += FEmitHelper::GetCppName(Term->AssociatedVarProperty);
 
 				// convert bitfield to bool...
-				FBoolProperty* BoolProperty = CastField<FBoolProperty>(Term->AssociatedVarProperty);
+				UBoolProperty* BoolProperty = Cast<UBoolProperty>(Term->AssociatedVarProperty);
 				if (bGetter && BoolProperty && !BoolProperty->IsNativeBool())
 				{
 					//TODO: the result still cannot be used as reference
@@ -1287,7 +1122,7 @@ FString FBlueprintCompilerCppBackend::LatentFunctionInfoTermToText(FEmitterLocal
 
 	// Find the term name we need to fixup
 	FString FixupTermName;
-	for (FProperty* Prop = LatentInfoStruct->PropertyLink; Prop; Prop = Prop->PropertyLinkNext)
+	for (UProperty* Prop = LatentInfoStruct->PropertyLink; Prop; Prop = Prop->PropertyLinkNext)
 	{
 		static const FName NeedsLatentFixup(TEXT("NeedsLatentFixup"));
 		if (Prop->GetBoolMetaData(NeedsLatentFixup))

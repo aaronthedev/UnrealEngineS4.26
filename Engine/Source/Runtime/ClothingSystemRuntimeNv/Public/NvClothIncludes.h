@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,7 +14,9 @@
 PUSH_MACRO(check)
 #undef check
 
-#if PLATFORM_MICROSOFT
+#if PLATFORM_XBOXONE
+	#pragma pack(push,16)
+#elif PLATFORM_WINDOWS
 	#if PLATFORM_64BITS
 		#pragma pack(push,16)
 	#elif PLATFORM_32BITS
@@ -35,7 +37,9 @@ PUSH_MACRO(check)
 #include "NvClothExt/ClothFabricCooker.h"
 #include "NvClothExt/ClothMeshQuadifier.h"
 
-#if PLATFORM_MICROSOFT
+#if PLATFORM_XBOXONE
+	#pragma pack(pop)
+#elif PLATFORM_WINDOWS
 	#if PLATFORM_64BITS
 		#pragma pack(pop)
 	#elif PLATFORM_32BITS

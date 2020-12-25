@@ -1,7 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimNodes/AnimNode_RotateRootBone.h"
-#include "Animation/AnimTrace.h"
 
 /////////////////////////////////////////////////////
 // FAnimNode_RotateRootBone
@@ -31,9 +30,6 @@ void FAnimNode_RotateRootBone::Update_AnyThread(const FAnimationUpdateContext& C
 
 	ActualPitch = PitchScaleBiasClamp.ApplyTo(Pitch, Context.GetDeltaTime());
 	ActualYaw = YawScaleBiasClamp.ApplyTo(Yaw, Context.GetDeltaTime());
-
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Pitch"), ActualPitch);
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Yaw"), ActualYaw);
 }
 
 void FAnimNode_RotateRootBone::Evaluate_AnyThread(FPoseContext& Output)

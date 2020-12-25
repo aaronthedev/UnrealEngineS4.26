@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // Use ShaderPrint to debug print from any shader type.
 // Call BeginView() at the start of a view to init the debug output buffer.
@@ -23,11 +23,6 @@ namespace ShaderPrint
 	bool IsSupported(FViewInfo const& View);
 	// Have we enabled the ShaderPrint system?
 	bool IsEnabled();
-
-	// Accessors for controlling from code: enabling/disabling, font size, and max drawn element
-	void SetEnabled(bool bInEnabled);
-	void SetFontSize(int32 InFontSize);
-	void SetMaxValueCount(int32 InMaxCount);
 
 	// Allocate the debug print buffer associated with the view
 	void BeginView(FRHICommandListImmediate& RHICmdList, FViewInfo& View);

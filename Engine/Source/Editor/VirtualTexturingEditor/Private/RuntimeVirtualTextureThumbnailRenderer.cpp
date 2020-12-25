@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RuntimeVirtualTextureThumbnailRenderer.h"
 
@@ -37,46 +37,41 @@ URuntimeVirtualTextureThumbnailRenderer::URuntimeVirtualTextureThumbnailRenderer
 bool URuntimeVirtualTextureThumbnailRenderer::CanVisualizeAsset(UObject* Object)
 {
 	URuntimeVirtualTexture* RuntimeVirtualTexture = Cast<URuntimeVirtualTexture>(Object);
-
-	// We need a matching URuntimeVirtualTextureComponent in a Scene to be able to render a thumbnail
-	URuntimeVirtualTextureComponent* RuntimeVirtualTextureComponent = FindComponent(RuntimeVirtualTexture);
-	if (RuntimeVirtualTextureComponent != nullptr)
+	if (RuntimeVirtualTexture->GetEnabled())
 	{
-		FSceneInterface* Scene = RuntimeVirtualTextureComponent->GetScene();
-		if (Scene != nullptr && RuntimeVirtualTexture::IsSceneReadyToRender(Scene->GetRenderScene()))
+		// We need a matching URuntimeVirtualTextureComponent in a Scene to be able to render a thumbnail
+		URuntimeVirtualTextureComponent* RuntimeVirtualTextureComponent = FindComponent(RuntimeVirtualTexture);
+		if (RuntimeVirtualTextureComponent != nullptr)
 		{
-			return true;
+			FSceneInterface* Scene = RuntimeVirtualTextureComponent->GetScene();
+			if (Scene != nullptr && RuntimeVirtualTexture::IsSceneReadyToRender(Scene->GetRenderScene()))
+			{
+				return true;
+			}
 		}
 	}
 
 	return false;
 }
 
-void URuntimeVirtualTextureThumbnailRenderer::Draw(UObject* Object, int32 X, int32 Y, uint32 Width, uint32 Height, FRenderTarget* RenderTarget, FCanvas* Canvas, bool bAdditionalViewFamily)
+void URuntimeVirtualTextureThumbnailRenderer::Draw(UObject* Object, int32 X, int32 Y, uint32 Width, uint32 Height, FRenderTarget* RenderTarget, FCanvas* Canvas)
 {
-	//todo[vt]: Handle case where a null or floating point render target is passed in. (This happens on package save.)
-	if (RenderTarget->GetRenderTargetTexture() == nullptr || RenderTarget->GetRenderTargetTexture()->GetFormat() != PF_B8G8R8A8)
-	{
-		return;
-	}
-
 	URuntimeVirtualTexture* RuntimeVirtualTexture = Cast<URuntimeVirtualTexture>(Object);
 	URuntimeVirtualTextureComponent* RuntimeVirtualTextureComponent = FindComponent(RuntimeVirtualTexture);
 	FSceneInterface* Scene = RuntimeVirtualTextureComponent != nullptr ? RuntimeVirtualTextureComponent->GetScene() : nullptr;
 	check(Scene != nullptr);
 
 	const FBox2D DestBox = FBox2D(FVector2D(X, Y), FVector2D(Width, Height));
-	const FTransform Transform = RuntimeVirtualTextureComponent->GetComponentTransform();
-	const FBox Bounds = RuntimeVirtualTextureComponent->Bounds.GetBox();
+	const FTransform Transform = RuntimeVirtualTextureComponent->GetVirtualTextureTransform();
 	const uint32 VirtualTextureSceneIndex = RuntimeVirtualTexture::GetRuntimeVirtualTextureSceneIndex_GameThread(RuntimeVirtualTextureComponent);
 	const ERuntimeVirtualTextureMaterialType MaterialType = RuntimeVirtualTexture->GetMaterialType();
 
 	FVTProducerDescription VTDesc;
-	RuntimeVirtualTexture->GetProducerDescription(VTDesc, URuntimeVirtualTexture::FInitSettings(), Transform);
+	RuntimeVirtualTexture->GetProducerDescription(VTDesc, Transform);
 	const int32 MaxLevel = (int32)FMath::CeilLogTwo(FMath::Max(VTDesc.BlockWidthInTiles, VTDesc.BlockHeightInTiles));
 
 	ENQUEUE_RENDER_COMMAND(BakeStreamingTextureTileCommand)(
-		[Scene, VirtualTextureSceneIndex, MaterialType, RenderTarget, DestBox, Transform, Bounds, MaxLevel](FRHICommandListImmediate& RHICmdList)
+		[Scene, VirtualTextureSceneIndex, MaterialType, RenderTarget, DestBox, Transform, MaxLevel](FRHICommandListImmediate& RHICmdList)
 	{
 		FMaterialRenderProxy::UpdateDeferredCachedUniformExpressions();
 
@@ -84,7 +79,6 @@ void URuntimeVirtualTextureThumbnailRenderer::Draw(UObject* Object, int32 X, int
 		Desc.Scene = Scene->GetRenderScene();
 		Desc.RuntimeVirtualTextureMask = 1 << VirtualTextureSceneIndex;
 		Desc.UVToWorld = Transform;
-		Desc.WorldBounds = Bounds;
 		Desc.MaterialType = MaterialType;
 		Desc.MaxLevel = MaxLevel;
 		Desc.bClearTextures = true;

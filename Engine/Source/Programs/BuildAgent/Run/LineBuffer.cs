@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -67,45 +67,38 @@ namespace BuildAgent.Run
 
 		public bool TryGetLine(int Offset, out string NextLine)
 		{
-			if (Offset >= 0)
-			{
-				// Add new lines to the buffer
-				while (Offset >= NextLines.Count)
-				{
-					NextLines.Add(ReadLine());
-				}
-				NextLine = NextLines[Offset];
-				return NextLine != null;
-			}
-			else if (Offset >= -HistoryCount)
-			{
-				// Retrieve a line from the history buffer
-				int Idx = HistoryIdx + 1 + Offset;
-				if (Idx < 0)
-				{
-					Idx += History.Length;
-				}
-				NextLine = History[Idx];
-				return true;
-			}
-			else
-			{
-				// Invalid index
-				NextLine = null;
-				return false;
-			}
+			NextLine = this[Offset];
+			return NextLine != null;
 		}
 
 		public string this[int Offset]
 		{
 			get
 			{
-				string Line;
-				if (!TryGetLine(Offset, out Line))
+				if (Offset >= 0)
 				{
+					// Add new lines to the buffer
+					while (Offset >= NextLines.Count)
+					{
+						NextLines.Add(ReadLine());
+					}
+					return NextLines[Offset];
+				}
+				else if (Offset >= -HistoryCount)
+				{
+					// Retrieve a line from the history buffer
+					int Idx = HistoryIdx + 1 + Offset;
+					if (Idx < 0)
+					{
+						Idx += History.Length;
+					}
+					return History[Idx];
+				}
+				else
+				{
+					// Invalid index
 					throw new ArgumentException(String.Format("Invalid line buffer offset ({0})", Offset));
 				}
-				return Line;
 			}
 		}
 

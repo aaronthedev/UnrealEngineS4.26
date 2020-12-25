@@ -20,7 +20,6 @@
 #include <vector>
 
 #include "gmock/gmock.h"
-#include "source/util/string_utils.h"
 #include "test/test_fixture.h"
 #include "test/unit_spirv.h"
 
@@ -29,7 +28,7 @@ namespace {
 
 using spvtest::EnumCase;
 using spvtest::MakeInstruction;
-using utils::MakeVector;
+using spvtest::MakeVector;
 using ::testing::Combine;
 using ::testing::Eq;
 using ::testing::TestWithParam;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,6 +6,9 @@
 
 #include "SimulationEditorExtender.h"
 #include "Containers/BitArray.h"
+
+class USkeletalMeshComponent;
+class FPrimitiveDrawInterface;
 
 namespace Chaos
 {
@@ -19,7 +22,6 @@ namespace Chaos
 		virtual UClass* GetSupportedSimulationFactoryClass() override;
 		virtual void ExtendViewportShowMenu(FMenuBuilder& MenuBuilder, TSharedRef<IPersonaPreviewScene> PreviewScene) override;
 		virtual void DebugDrawSimulation(const IClothingSimulation* Simulation, USkeletalMeshComponent* OwnerComponent, FPrimitiveDrawInterface* PDI) override;
-		virtual void DebugDrawSimulationTexts(const IClothingSimulation* Simulation, USkeletalMeshComponent* OwnerComponent, FCanvas* Canvas, const FSceneView* SceneView) override;
 		// End ISimulationEditorExtender Interface
 
 	private:

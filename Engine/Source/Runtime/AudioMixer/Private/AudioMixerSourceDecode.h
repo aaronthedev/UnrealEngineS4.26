@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Containers/Queue.h"
 #include "Sound/SoundWaveProcedural.h"
-#include "Sound/SoundGenerator.h"
 #include "AudioDecompress.h"
 #include "AudioMixerBuffer.h"
 
@@ -19,11 +18,7 @@ namespace Audio
 	struct FProceduralAudioTaskData
 	{
 		// The procedural sound wave ptr to use to generate audio with
-		// TODO: remove the need for this
 		USoundWave* ProceduralSoundWave;
-
-		// The sound generator to use to generate audio
-		ISoundGeneratorPtr SoundGenerator;
 
 		// The audio buffer to fill from the results of the generation
 		float* AudioData;
@@ -34,15 +29,11 @@ namespace Audio
 		// The number of channels of the procedural buffer
 		int32 NumChannels;
 
-		// Force decodes to execute synchronously
-		bool bForceSyncDecode;
-
 		FProceduralAudioTaskData()
 			: ProceduralSoundWave(nullptr)
 			, AudioData(nullptr)
 			, NumSamples(0)
 			, NumChannels(0)
-			, bForceSyncDecode(false)
 		{}
 	};
 
@@ -73,10 +64,6 @@ namespace Audio
 		// Whether or not to skip the first buffer
 		bool bSkipFirstBuffer;
 
-		// Force this decoding operation to occur synchronously,
-		// regardless of the value of au.ForceSyncAudioDecodes. (used by time synth)
-		bool bForceSyncDecode;
-
 		FDecodeAudioTaskData()
 			: AudioData(nullptr)
 			, DecompressionState(nullptr)
@@ -86,7 +73,6 @@ namespace Audio
 			, NumFramesToDecode(0)
 			, bLoopingMode(false)
 			, bSkipFirstBuffer(false)
-			, bForceSyncDecode(false)
 		{}
 	};
 

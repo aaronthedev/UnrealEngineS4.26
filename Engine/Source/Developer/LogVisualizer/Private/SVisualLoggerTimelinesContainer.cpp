@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SVisualLoggerTimelinesContainer.h"
 #include "SVisualLoggerTimeline.h"
@@ -152,6 +152,15 @@ FReply SVisualLoggerTimelinesContainer::OnMouseMove(const FGeometry& MyGeometry,
 	if (MouseEvent.GetEffectingButton() != EKeys::LeftMouseButton)
 	{
 		return TimeSliderController->OnMouseMove(*this, MyGeometry, MouseEvent);
+	}
+	return FReply::Unhandled();
+}
+
+FReply SVisualLoggerTimelinesContainer::OnMouseWheel(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
+{
+	if (MouseEvent.IsLeftControlDown() || MouseEvent.IsLeftShiftDown())
+	{
+		return TimeSliderController->OnMouseWheel(*this, MyGeometry, MouseEvent);
 	}
 	return FReply::Unhandled();
 }

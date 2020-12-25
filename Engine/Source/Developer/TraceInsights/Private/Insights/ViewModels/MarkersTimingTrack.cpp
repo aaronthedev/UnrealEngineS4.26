@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MarkersTimingTrack.h"
 
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
-#include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Styling/CoreStyle.h"
 #include "TraceServices/AnalysisService.h"
 
@@ -20,25 +19,23 @@
 #define LOCTEXT_NAMESPACE "MarkersTimingTrack"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
-
-INSIGHTS_IMPLEMENT_RTTI(FMarkersTimingTrack)
-
+// FMarkersTimingTrack
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-FMarkersTimingTrack::FMarkersTimingTrack()
-	: FBaseTimingTrack(TEXT("Markers (Bookmarks / Logs)"))
+FMarkersTimingTrack::FMarkersTimingTrack(uint64 InTrackId)
+	: FBaseTimingTrack(InTrackId)
 	//, TimeMarkerBoxes()
 	//, TimeMarkerTexts()
+	, bIsCollapsed(false)
 	, bUseOnlyBookmarks(true)
-	, Header(*this)
+	, TargetHoveredAnimPercent(0.0f)
+	, CurrentHoveredAnimPercent(0.0f)
 	, NumLogMessages(0)
 	, NumDrawBoxes(0)
 	, NumDrawTexts(0)
 	, WhiteBrush(FInsightsStyle::Get().GetBrush("WhiteBrush"))
 	, Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
 {
-	SetValidLocations(ETimingTrackLocation::TopDocked | ETimingTrackLocation::BottomDocked);
-	SetOrder(FTimingTrackOrder::Markers);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -56,67 +53,86 @@ void FMarkersTimingTrack::Reset()
 	TimeMarkerBoxes.Reset();
 	TimeMarkerTexts.Reset();
 
+	bIsCollapsed = false;
 	bUseOnlyBookmarks = true;
 
-	Header.Reset();
-	Header.SetIsInBackground(true);
-	Header.SetCanBeCollapsed(true);
+	TargetHoveredAnimPercent = 0.0f;
+	CurrentHoveredAnimPercent = 0.0f;
 
 	NumLogMessages = 0;
 	NumDrawBoxes = 0;
 	NumDrawTexts = 0;
 
-	UpdateTrackNameAndHeight();
+	UpdateHeight();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void FMarkersTimingTrack::UpdateTrackNameAndHeight()
+void FMarkersTimingTrack::UpdateHeight()
 {
+	constexpr float BookmarksTrackHeight = 14.0f;
+	constexpr float TimeMarkersTrackHeight = 28.0f;
+
 	if (bUseOnlyBookmarks)
 	{
-		const FString NameString = TEXT("Bookmarks");
-		SetName(NameString);
-		SetHeight(14.0f);
+		SetHeight(BookmarksTrackHeight);
 	}
 	else
 	{
-		const FString NameString = TEXT("Logs");
-		SetName(NameString);
-		SetHeight(28.0f);
+		SetHeight(TimeMarkersTrackHeight);
 	}
-
-	Header.UpdateSize();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void FMarkersTimingTrack::Update(const ITimingTrackUpdateContext& Context)
+void FMarkersTimingTrack::UpdateHoveredState(float MouseX, float MouseY, const FTimingTrackViewport& Viewport)
 {
-	Header.Update(Context);
+	constexpr float HeaderWidth = 80.0f;
+	constexpr float HeaderHeight = 14.0f;
 
-	const FTimingTrackViewport& Viewport = Context.GetViewport();
-	if (IsDirty() || Viewport.IsHorizontalViewportDirty())
+	if (MouseY >= GetPosY() && MouseY < GetPosY() + GetHeight())
 	{
-		ClearDirtyFlag();
-
-		UpdateDrawState(Viewport);
+		SetHoveredState(true);
+		SetHeaderHoveredState(MouseX < HeaderWidth && MouseY < GetPosY() + HeaderHeight);
+		TargetHoveredAnimPercent = 1.0f;
+	}
+	else
+	{
+		SetHoveredState(false);
+		TargetHoveredAnimPercent = 0.0f;
 	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void FMarkersTimingTrack::PostUpdate(const ITimingTrackUpdateContext& Context)
+void FMarkersTimingTrack::Tick(const double InCurrentTime, const float InDeltaTime)
 {
-	const float MouseY = Context.GetMousePosition().Y;
-	SetHoveredState(MouseY >= GetPosY() && MouseY < GetPosY() + GetHeight());
-
-	Header.PostUpdate(Context);
+	if (CurrentHoveredAnimPercent != TargetHoveredAnimPercent)
+	{
+		if (CurrentHoveredAnimPercent < TargetHoveredAnimPercent)
+		{
+			const float ShowAnimSpeed = 2 * InDeltaTime;
+			CurrentHoveredAnimPercent += ShowAnimSpeed;
+			if (CurrentHoveredAnimPercent > TargetHoveredAnimPercent)
+			{
+				CurrentHoveredAnimPercent = TargetHoveredAnimPercent;
+			}
+		}
+		else
+		{
+			const float HideAnimSpeed = 3 * InDeltaTime;
+			CurrentHoveredAnimPercent -= HideAnimSpeed;
+			if (CurrentHoveredAnimPercent < TargetHoveredAnimPercent)
+			{
+				CurrentHoveredAnimPercent = TargetHoveredAnimPercent;
+			}
+		}
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void FMarkersTimingTrack::UpdateDrawState(const FTimingTrackViewport& InViewport)
+void FMarkersTimingTrack::Update(const FTimingTrackViewport& InViewport)
 {
 	FTimeMarkerTrackBuilder Builder(*this, InViewport);
 
@@ -139,25 +155,19 @@ void FMarkersTimingTrack::UpdateDrawState(const FTimingTrackViewport& InViewport
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void FMarkersTimingTrack::Draw(const ITimingTrackDrawContext& Context) const
+void FMarkersTimingTrack::Draw(FDrawContext& DrawContext, const FTimingTrackViewport& Viewport) const
 {
-	FDrawContext& DrawContext = Context.GetDrawContext();
-	const FTimingTrackViewport& Viewport = Context.GetViewport();
+	const FLinearColor BackgroundColor(0.04f, 0.04f, 0.04f, 1.0f);
 
 	// Draw background.
-	const FLinearColor BackgroundColor(0.04f, 0.04f, 0.04f, 1.0f);
 	DrawContext.DrawBox(0.0f, GetPosY(), Viewport.GetWidth(), GetHeight(), WhiteBrush, BackgroundColor);
 	DrawContext.LayerId++;
 
-	Header.Draw(Context);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void FMarkersTimingTrack::PostDraw(const ITimingTrackDrawContext& Context) const
-{
-	FDrawContext& DrawContext = Context.GetDrawContext();
-	const FTimingTrackViewport& Viewport = Context.GetViewport();
+	// Draw the track's header, in background.
+	if (!IsHovered() || CurrentHoveredAnimPercent < 1.0)
+	{
+		DrawHeader(DrawContext, true);
+	}
 
 	//////////////////////////////////////////////////
 	// Draw vertical lines.
@@ -211,75 +221,71 @@ void FMarkersTimingTrack::PostDraw(const ITimingTrackDrawContext& Context) const
 
 	//////////////////////////////////////////////////
 
-	Header.PostDraw(Context);
+	// When hovered, the track's header is draw on top.
+	if (IsHovered() || CurrentHoveredAnimPercent > 0.0)
+	{
+		DrawHeader(DrawContext, false);
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-FReply FMarkersTimingTrack::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
+void FMarkersTimingTrack::DrawHeader(FDrawContext& DrawContext, bool bFirstDraw) const
 {
-	FReply Reply = FReply::Unhandled();
+	const FString Name = IsBookmarksTrack() ? TEXT("Bookmarks") : TEXT("Logs");
+	//const float ArrowSize = 6.0f;
+	const float ArrowSizeX = 4.0f;
+	const float ArrowSizeY = 8.0f;
+	const float ArrowX = IsBookmarksTrack() ? 64.0f : 31.0f;
+	const float ArrowY = GetPosY() + 3.0f;
+	const float HeaderW = ArrowX + ArrowSizeX + 4.0f;
+	const float HeaderH = 14.0f;
 
-	if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+	if (!bFirstDraw)
 	{
-		if (IsVisible() && IsHeaderHovered())
+		DrawContext.DrawBox(0.0f, GetPosY(), HeaderW, HeaderH, WhiteBrush, FLinearColor(0.04f, 0.04f, 0.04f, CurrentHoveredAnimPercent));
+		DrawContext.LayerId++;
+	}
+
+	FLinearColor Color;
+	if (bFirstDraw || CurrentHoveredAnimPercent == 0.0)
+	{
+		Color = FLinearColor(0.07f, 0.07f, 0.07f, 1.0f);
+	}
+	else if (IsHeaderHovered())
+	{
+		Color = FLinearColor(1.0f, 1.0f, 0.0f, CurrentHoveredAnimPercent);
+	}
+	else
+	{
+		Color = FLinearColor(1.0f, 1.0f, 1.0f, CurrentHoveredAnimPercent);
+	}
+
+	// Draw "Bookmarks" or "Logs" text.
+	DrawContext.DrawText(2.0f, GetPosY() + 1.0f, Name, Font, Color);
+
+	if (IsCollapsed())
+	{
+		// Draw "right empty arrow".
+		TArray<FVector2D> Points =
 		{
-			ToggleCollapsed();
-			Reply = FReply::Handled();
+			FVector2D(ArrowX, ArrowY),
+			FVector2D(ArrowX, ArrowY + ArrowSizeY),
+			FVector2D(ArrowX + ArrowSizeX, ArrowY + ArrowSizeY / 2.0f),
+			FVector2D(ArrowX, ArrowY)
+		};
+		FSlateDrawElement::MakeLines(DrawContext.ElementList, DrawContext.LayerId, DrawContext.Geometry.ToPaintGeometry(), Points, DrawContext.DrawEffects, Color, false, 1.0f);
+	}
+	else
+	{
+		// Draw "down-right filled arrow".
+		for (float A = 1.0f; A < ArrowSizeY; A += 1.0f)
+		{
+			DrawContext.DrawBox(ArrowX - 3.0 + ArrowSizeY - A, ArrowY + A - 1.0f, A, 1.0f, WhiteBrush, Color);
 		}
 	}
 
-	return Reply;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-FReply FMarkersTimingTrack::OnMouseButtonDoubleClick(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
-{
-	return OnMouseButtonDown(MyGeometry, MouseEvent);
-}
-
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void FMarkersTimingTrack::BuildContextMenu(FMenuBuilder& MenuBuilder)
-{
-	MenuBuilder.BeginSection(TEXT("Misc"));
-	{
-		MenuBuilder.AddMenuEntry(
-			LOCTEXT("ContextMenu_ToggleCollapsed", "Collapsed"),
-			LOCTEXT("ContextMenu_ToggleCollapsed_Desc", "Whether the vertical marker lines are collapsed or expanded."),
-			FSlateIcon(),
-			FUIAction(FExecuteAction::CreateSP(this, &FMarkersTimingTrack::ToggleCollapsed),
-					  FCanExecuteAction(),
-					  FIsActionChecked::CreateSP(this, &FMarkersTimingTrack::IsCollapsed)),
-			NAME_None,
-			EUserInterfaceActionType::ToggleButton
-		);
-
-		MenuBuilder.AddMenuEntry(
-			LOCTEXT("ContextMenu_Bookmarks", "Bookmarks"),
-			LOCTEXT("ContextMenu_Bookmarks_Desc", "Change this track to show only the bookmarks."),
-			FSlateIcon(),
-			FUIAction(FExecuteAction::CreateSP(this, &FMarkersTimingTrack::SetBookmarksTrack),
-						FCanExecuteAction(),
-						FIsActionChecked::CreateSP(this, &FMarkersTimingTrack::IsBookmarksTrack)),
-			NAME_None,
-			EUserInterfaceActionType::RadioButton
-		);
-
-		MenuBuilder.AddMenuEntry(
-			LOCTEXT("ContextMenu_Logs", "Logs"),
-			LOCTEXT("ContextMenu_Logs_Desc", "Change this track to show all logs."),
-			FSlateIcon(),
-			FUIAction(FExecuteAction::CreateSP(this, &FMarkersTimingTrack::SetLogsTrack),
-					  FCanExecuteAction(),
-					  FIsActionChecked::CreateSP(this, &FMarkersTimingTrack::IsLogsTrack)),
-			NAME_None,
-			EUserInterfaceActionType::RadioButton
-		);
-	}
-	MenuBuilder.EndSection();
+	DrawContext.LayerId++;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -326,19 +332,14 @@ void FTimeMarkerTrackBuilder::AddLogMessage(const Trace::FLogMessage& Message)
 			[this](const Trace::FLogMessage& Message) { AddLogMessage(Message); });
 	}
 
-	check(Message.Category != nullptr);
-	//check(Message.Category->Name != nullptr);
-
-	const TCHAR* CategoryName = Message.Category->Name != nullptr ? Message.Category->Name : TEXT("");
-
-	if (!Track.bUseOnlyBookmarks || FCString::Strcmp(CategoryName, TEXT("LogBookmark")) == 0)
+	if (!Track.bUseOnlyBookmarks || FCString::Strcmp(Message.Category->Name, TEXT("LogBookmark")) == 0)
 	{
 		float X = Viewport.TimeToSlateUnitsRounded(Message.Time);
-		if (X < 0.0f)
+		if (X < 0)
 		{
 			X = -1.0f;
 		}
-		AddTimeMarker(X, Message.Index, Message.Verbosity, CategoryName, Message.Message);
+		AddTimeMarker(X, Message.Index, Message.Verbosity, Message.Category->Name, Message.Message);
 	}
 }
 
@@ -350,7 +351,7 @@ FLinearColor FTimeMarkerTrackBuilder::GetColorByCategory(const TCHAR* const Cate
 	FString CategoryStr(Category);
 	if (CategoryStr.StartsWith(TEXT("Log")))
 	{
-		CategoryStr.RightChopInline(3, false);
+		CategoryStr = CategoryStr.RightChop(3);
 	}
 
 	uint32 Hash = 0;
@@ -369,14 +370,14 @@ FLinearColor FTimeMarkerTrackBuilder::GetColorByVerbosity(const ELogVerbosity::T
 {
 	static FLinearColor Colors[] =
 	{
-		FLinearColor(0.0f, 0.0f, 0.0f, 1.0f), // NoLogging
-		FLinearColor(1.0f, 0.0f, 0.0f, 1.0f), // Fatal
-		FLinearColor(1.0f, 0.3f, 0.0f, 1.0f), // Error
-		FLinearColor(0.7f, 0.5f, 0.0f, 1.0f), // Warning
-		FLinearColor(0.0f, 0.7f, 0.0f, 1.0f), // Display
-		FLinearColor(0.0f, 0.7f, 1.0f, 1.0f), // Log
-		FLinearColor(0.7f, 0.7f, 0.7f, 1.0f), // Verbose
-		FLinearColor(1.0f, 1.0f, 1.0f, 1.0f), // VeryVerbose
+		FLinearColor(0.0, 0.0, 0.0, 1.0), // NoLogging
+		FLinearColor(1.0, 0.0, 0.0, 1.0), // Fatal
+		FLinearColor(1.0, 0.3, 0.0, 1.0), // Error
+		FLinearColor(0.7, 0.5, 0.0, 1.0), // Warning
+		FLinearColor(0.0, 0.7, 0.0, 1.0), // Display
+		FLinearColor(0.0, 0.7, 1.0, 1.0), // Log
+		FLinearColor(0.7, 0.7, 0.7, 1.0), // Verbose
+		FLinearColor(1.0, 1.0, 1.0, 1.0), // VeryVerbose
 	};
 	static_assert(sizeof(Colors) / sizeof(FLinearColor) == (int)ELogVerbosity::Type::All + 1, "ELogVerbosity::Type has changed!?");
 	//return Colors[Verbosity & ELogVerbosity::VerbosityMask];
@@ -423,7 +424,7 @@ void FTimeMarkerTrackBuilder::Flush(float AvailableTextW)
 			FString CategoryStr(LastCategory);
 			if (CategoryStr.StartsWith(TEXT("Log")))
 			{
-				CategoryStr.RightChopInline(3, false);
+				CategoryStr = CategoryStr.RightChop(3);
 			}
 
 			const int32 LastWholeCharacterIndexCategory = FontMeasureService->FindLastWholeCharacterIndexBeforeOffset(CategoryStr, Font, FMath::RoundToInt(AvailableTextW - 2.0f));

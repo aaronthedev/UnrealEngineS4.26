@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "AudioMixer.h"
 #include "Lumin/CAPIShims/LuminAPI.h"
 #include "FakeDeviceCallbackRunnable.h"
-#include "Lumin/CAPIShims/LuminAPIAudio.h"
 
 // Any platform defines
 namespace Audio
@@ -22,8 +21,6 @@ namespace Audio
 		//~ Begin IAudioMixerPlatformInterface
 		virtual EAudioMixerPlatformApi::Type GetPlatformApi() const override { return EAudioMixerPlatformApi::Null; }
 		virtual bool InitializeHardware() override;
-		virtual bool CheckAudioDeviceChange() override;
-		virtual void ResumePlaybackOnNewDevice() override;
 		virtual bool TeardownHardware() override;
 		virtual bool IsInitialized() const override;
 		virtual bool GetNumOutputDevices(uint32& OutNumOutputDevices) override;
@@ -46,32 +43,30 @@ namespace Audio
 
 		//~ End IAudioMixerPlatformInterface
 
+		uint8* CachedBufferHandle;
+
+
 		virtual int32 GetNumFrames(const int32 InNumReqestedFrames) override;
 
-		// void FlushUEBuffers();
-
 		void DeviceStandby();
-		void DevicePausedStandby();
 		void DeviceActive();
 
 	private:
+#if WITH_MLSDK
+		static const TCHAR* GetErrorString(MLResult Result);
+#endif //WITH_MLSDK
+
 		bool bSuspended;
 		bool bInitialized;
+		bool bInCallback;
 
-		FThreadSafeBool bChangeStandby;
-
-		FCriticalSection SuspendedCriticalSection;
-		FCriticalSection SwapCriticalSection;
+		FFakeDeviceCallbackRunnable FakeCallback;
 
 #if WITH_MLSDK
-		uint32 OutSize;
-		uint32 OutMinimalSize;
-		MLAudioBufferFormat BufferFormat;
-
 		MLHandle StreamHandle;
+		FCriticalSection StreamHandleCriticalSection;
 		// Static callback used for MLAudio:
 		static void MLAudioCallback(MLHandle Handle, void* CallbackContext);
-		static void MLAudioEventImplCallback(MLHandle Handle, MLAudioEvent Event, void* CallbackContext);
 #endif //WITH_MLSDK
 	};
 

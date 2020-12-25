@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -36,8 +36,6 @@ public:
 	virtual IDetailPropertyRow& Visibility( TAttribute<EVisibility> Visibility ) override;
 	virtual IDetailPropertyRow& OverrideResetToDefault(const FResetToDefaultOverride& ResetToDefault) override;
 	virtual FDetailWidgetRow& CustomWidget( bool bShowChildren = false ) override;
-	virtual FDetailWidgetDecl* CustomNameWidget() override;
-	virtual FDetailWidgetDecl* CustomValueWidget() override;
 	virtual void GetDefaultWidgets( TSharedPtr<SWidget>& OutNameWidget, TSharedPtr<SWidget>& OutValueWidget, bool bAddWidgetDecoration = false) override;
 	virtual void GetDefaultWidgets( TSharedPtr<SWidget>& OutNameWidget, TSharedPtr<SWidget>& OutValueWidget, FDetailWidgetRow& Row, bool bAddWidgetDecoration = false) override;
 
@@ -188,8 +186,6 @@ private:
 	TSharedPtr<FPropertyEditor> PropertyEditor;
 	/** The property editor for this row's key */
 	TSharedPtr<FPropertyEditor> PropertyKeyEditor;
-	/** The property Type customization for this row's key */
-	TSharedPtr<IPropertyTypeCustomization> CachedKeyCustomTypeInterface;
 	/** Custom widgets to use for this row instead of the default ones */
 	TSharedPtr<FDetailWidgetRow> CustomPropertyWidget;
 	/** User customized edit condition */

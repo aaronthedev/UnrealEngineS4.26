@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,28 +12,16 @@
 #include "BonePose.h"
 #include "Logging/TokenizedMessage.h"
 #include "Stats/StatsHierarchical.h"
-#include "Animation/AnimTrace.h"
-#include "Animation/AnimationPoseData.h"
-#include "UObject/FieldPath.h"
-#include "CustomAttributesRuntime.h"
-
-// WARNING: This should always be the last include in any file that needs it (except .generated.h)
-#include "UObject/UndefineUPropertyMacros.h"
-
 #include "AnimNodeBase.generated.h"
 
 #define DECLARE_SCOPE_HIERARCHICAL_COUNTER_ANIMNODE(Method) \
 	DECLARE_SCOPE_HIERARCHICAL_COUNTER_FUNC()
-
-#define ANIM_NODE_IDS_AVAILABLE	(ANIM_TRACE_ENABLED || WITH_EDITORONLY_DATA)
 
 class IAnimClassInterface;
 class UAnimBlueprint;
 class UAnimInstance;
 struct FAnimInstanceProxy;
 struct FAnimNode_Base;
-class UProperty;
-struct FPropertyAccessLibrary;
 
 /**
  * Utility container for tracking a stack of ancestor nodes by node type during graph traversal
@@ -164,21 +152,6 @@ public:
 	ENGINE_API UAnimBlueprint* GetAnimBlueprint() const;
 #endif //WITH_EDITORONLY_DATA
 
-#if ANIM_NODE_IDS_AVAILABLE
-	// Get the current node Id, set when we recurse into graph traversal functions from pose links
-	ENGINE_API int32 GetCurrentNodeId() const { return CurrentNodeId; }
-
-	// Get the previous node Id, set when we recurse into graph traversal functions from pose links
-	ENGINE_API int32 GetPreviousNodeId() const { return PreviousNodeId; }
-
-protected:
-	// The current node ID, set when we recurse into graph traversal functions from pose links
-	int32 CurrentNodeId;
-
-	// The previous node ID, set when we recurse into graph traversal functions from pose links
-	int32 PreviousNodeId;
-#endif
-
 protected:
 
 	/** Interface for node contexts to register log messages with the proxy */
@@ -247,10 +220,6 @@ public:
 		, RootMotionWeightModifier(Copy.RootMotionWeightModifier)
 		, DeltaTime(Copy.DeltaTime)
 	{
-#if ANIM_TRACE_ENABLED
-		CurrentNodeId = Copy.CurrentNodeId;
-		PreviousNodeId = Copy.PreviousNodeId;
-#endif
 	}
 
 public:
@@ -263,11 +232,6 @@ public:
 	{
 		FAnimationUpdateContext Result(*this);
 		Result.SharedContext = InSharedContext;
-
-#if ANIM_TRACE_ENABLED
-		// This is currently only used in the case of cached poses, where we dont want to preserve the previous node, so clear it here
-		Result.PreviousNodeId = INDEX_NONE;
-#endif
 
 		return Result;
 	}
@@ -306,16 +270,6 @@ public:
 
 		return Result;
 	}
-
-#if ANIM_NODE_IDS_AVAILABLE
-	FAnimationUpdateContext WithNodeId(int32 InNodeId) const
-	{ 
-		FAnimationUpdateContext Result(*this);
-		Result.PreviousNodeId = CurrentNodeId;
-		Result.CurrentNodeId = InNodeId;
-		return Result; 
-	}
-#endif
 
 	// Add a node to the list of tracked ancestors
 	template<typename NodeType>
@@ -367,10 +321,9 @@ public:
 struct FPoseContext : public FAnimationBaseContext
 {
 public:
-	/* These Pose/Curve/Attributes are allocated using MemStack. You should not use it outside of stack. */
+	/* These Pose/Curve is stack allocator. You should not use it outside of stack. */
 	FCompactPose	Pose;
 	FBlendedCurve	Curve;
-	FStackCustomAttributes CustomAttributes;
 
 public:
 	// This constructor allocates a new uninitialized pose for the specified anim instance
@@ -387,26 +340,7 @@ public:
 		, bExpectsAdditivePose(SourceContext.bExpectsAdditivePose || bInOverrideExpectsAdditivePose)
 	{
 		Initialize(SourceContext.AnimInstanceProxy);
-
-#if ANIM_NODE_IDS_AVAILABLE
-		CurrentNodeId = SourceContext.CurrentNodeId;
-		PreviousNodeId = SourceContext.PreviousNodeId;
-#endif
 	}
-
-#if ANIM_NODE_IDS_AVAILABLE
-	void SetNodeId(int32 InNodeId)
-	{ 
-		PreviousNodeId = CurrentNodeId;
-		CurrentNodeId = InNodeId;
-	}
-
-	void SetNodeIds(const FAnimationBaseContext& InContext)
-	{ 
-		CurrentNodeId = InContext.GetCurrentNodeId();
-		PreviousNodeId = InContext.GetPreviousNodeId();
-	}
-#endif
 
 	ENGINE_API void Initialize(FAnimInstanceProxy* InAnimInstanceProxy);
 
@@ -449,7 +383,6 @@ public:
 
 		Pose = Other.Pose;
 		Curve = Other.Curve;
-		CustomAttributes = Other.CustomAttributes;
 		bExpectsAdditivePose = Other.bExpectsAdditivePose;
 		return *this;
 	}
@@ -470,7 +403,6 @@ struct FComponentSpacePoseContext : public FAnimationBaseContext
 public:
 	FCSPose<FCompactPose>	Pose;
 	FBlendedCurve			Curve;
-	FStackCustomAttributes CustomAttributes;
 
 public:
 	// This constructor allocates a new uninitialized pose for the specified anim instance
@@ -485,26 +417,7 @@ public:
 		: FAnimationBaseContext(SourceContext.AnimInstanceProxy)
 	{
 		// No need to initialize, done through FA2CSPose::AllocateLocalPoses
-
-#if ANIM_NODE_IDS_AVAILABLE
-		CurrentNodeId = SourceContext.CurrentNodeId;
-		PreviousNodeId = SourceContext.PreviousNodeId;
-#endif
 	}
-
-#if ANIM_NODE_IDS_AVAILABLE
-	void SetNodeId(int32 InNodeId)
-	{ 
-		PreviousNodeId = CurrentNodeId;
-		CurrentNodeId = InNodeId;
-	}
-
-	void SetNodeIds(const FAnimationBaseContext& InContext)
-	{ 
-		CurrentNodeId = InContext.GetCurrentNodeId();
-		PreviousNodeId = InContext.GetPreviousNodeId();
-	}
-#endif
 
 	ENGINE_API void ResetToRefPose();
 
@@ -722,25 +635,102 @@ enum class EPostCopyOperation : uint8
 	LogicalNegateBool,
 };
 
+UENUM()
+enum class ECopyType : uint8
+{
+	// Just copy the memory
+	MemCopy,
+
+	// Read and write properties using bool property helpers, as source/dest could be bitfield or boolean
+	BoolProperty,
+	
+	// Use struct copy operation, as this needs to correctly handle CPP struct ops
+	StructProperty,
+
+	// Read and write properties using object property helpers, as source/dest could be regular/weak/lazy etc.
+	ObjectProperty,
+};
+
+
 USTRUCT()
 struct FExposedValueCopyRecord
 {
-	GENERATED_BODY()
+	GENERATED_USTRUCT_BODY()
 
-	FExposedValueCopyRecord() = default;
+	FExposedValueCopyRecord()
+		:
+#if WITH_EDITORONLY_DATA
+		  SourceProperty_DEPRECATED(nullptr), 
+#endif
+		  SourcePropertyName(NAME_None)
+		, SourceSubPropertyName(NAME_None)
+		, SourceArrayIndex(0)
+		, bInstanceIsTarget(false)
+		, PostCopyOperation(EPostCopyOperation::None)
+		, CopyType(ECopyType::MemCopy)
+		, DestProperty(nullptr)
+		, DestArrayIndex(0)
+		, Size(0)
+		, CachedSourceProperty(nullptr)
+		, CachedSourceStructSubProperty(nullptr)
+	{}
 
-	FExposedValueCopyRecord(int32 InCopyIndex, EPostCopyOperation InPostCopyOperation)
-		: CopyIndex(InCopyIndex)
-		, PostCopyOperation(InPostCopyOperation)
-	{
-	}
+	void* GetDestAddr(FAnimInstanceProxy* Proxy, const UProperty* NodeProperty) const;
+	const void* GetSourceAddr(FAnimInstanceProxy* Proxy) const;
+
+#if WITH_EDITORONLY_DATA
+	void PostSerialize(const FArchive& Ar);
 
 	UPROPERTY()
-	int32 CopyIndex = INDEX_NONE;
+	UProperty* SourceProperty_DEPRECATED;
+#endif
 
 	UPROPERTY()
-	EPostCopyOperation PostCopyOperation = EPostCopyOperation::None;
+	FName SourcePropertyName;
+
+	UPROPERTY()
+	FName SourceSubPropertyName;
+
+	UPROPERTY()
+	int32 SourceArrayIndex;
+
+	// Whether or not the anim instance object is the target for the copy instead of a node.
+	UPROPERTY()
+	bool bInstanceIsTarget;
+
+	UPROPERTY()
+	EPostCopyOperation PostCopyOperation;
+
+	UPROPERTY(Transient)
+	ECopyType CopyType;
+
+	UPROPERTY()
+	UProperty* DestProperty;
+
+	UPROPERTY()
+	int32 DestArrayIndex;
+
+	UPROPERTY()
+	int32 Size;
+
+	// cached source property
+	UPROPERTY()
+	UProperty* CachedSourceProperty;
+
+	UPROPERTY()
+	UProperty* CachedSourceStructSubProperty;
 };
+
+#if WITH_EDITORONLY_DATA
+template<>
+struct TStructOpsTypeTraits< FExposedValueCopyRecord > : public TStructOpsTypeTraitsBase2< FExposedValueCopyRecord >
+{
+	enum
+	{
+		WithPostSerialize = true,
+	};
+};
+#endif
 
 // An exposed value updater
 USTRUCT()
@@ -752,7 +742,6 @@ struct ENGINE_API FExposedValueHandler
 		: BoundFunction(NAME_None)
 		, Function(nullptr)
 		, ValueHandlerNodeProperty(nullptr)
-		, PropertyAccessLibrary(nullptr)
 		, bInitialized(false)
 	{
 	}
@@ -773,24 +762,16 @@ struct ENGINE_API FExposedValueHandler
 	// is instantiated from this property the node's ExposedValueHandler will 
 	// point back to this FExposedValueHandler:
 	UPROPERTY()
-	TFieldPath<FStructProperty> ValueHandlerNodeProperty;
-
-	// Cached property access library ptr
-	const FPropertyAccessLibrary* PropertyAccessLibrary;
+	UStructProperty* ValueHandlerNodeProperty;
 
 	// Prevent multiple initialization
 	bool bInitialized;
 
-	// Helper function to bind an array of handlers.
-	// This is called for nativized builds to initialize against a dynamic class
-	static void DynamicClassInitialization(TArray<FExposedValueHandler>& Handlers, UDynamicClass* InDynamicClass);
-
-	// Helper function to bind an array of handlers.
-	// This is called for non-nativized builds to initialize against a UAnimBlueprintGeneratedClass
-	static void ClassInitialization(TArray<FExposedValueHandler>& Handlers, UObject* ClassDefaultObject);
+	// Helper function to bind an array of handlers:
+	static void Initialize(TArray<FExposedValueHandler>& Handlers, UObject* ClassDefaultObject );
 
 	// Bind copy records and cache UFunction if necessary
-	void Initialize(UClass* InClass, const FPropertyAccessLibrary& InPropertyAccessLibrary);
+	void Initialize(UObject* AnimInstanceObject, int32 NodeOffset);
 
 	// Execute the function and copy records
 	void Execute(const FAnimationBaseContext& Context) const;
@@ -958,6 +939,3 @@ private:
 	// Reference to the exposed value handler used by this node. Allocated on the class, rather than per instance:
 	const FExposedValueHandler* ExposedValueHandler = nullptr;
 };
-
-
-#include "UObject/DefineUPropertyMacros.h"

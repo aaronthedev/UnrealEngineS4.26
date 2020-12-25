@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -60,6 +60,21 @@ struct FWidgetCompilerOptions
 	GENERATED_BODY()
 
 public:
+
+	/**
+	 * As a precaution, the slow construction widget tree is cooked in case some non-fast construct widget
+	 * needs it.  If your project does not need the slow path at all, then disable this, so that you can re-coop
+	 * that memory.
+	 */
+	UPROPERTY(EditAnywhere, Category = Compiler)
+	bool bCookSlowConstructionWidgetTree = true;
+
+	/**
+	 * By default all widgets can be dynamically created.  By disabling this by default you require widgets
+	 * to opt into it, which saves memory, because a template doesn't need to be constructed for it.
+	 */
+	UPROPERTY(EditAnywhere, Category = Compiler)
+	bool bWidgetSupportsDynamicCreation = true;
 
 	/**
 	 * If you disable this, these widgets these compiler options apply to will not be allowed to implement Tick.
@@ -168,16 +183,11 @@ public:
 	UPROPERTY(EditAnywhere, config, Category = Designer)
 	TSubclassOf<UPanelWidget> DefaultRootWidget;
 
-	/**
-	 * The default parent class for all newly constructed widget blueprints.
-	 * The WidgetParentClass must have an empty widget hierarchy.
-	 */
-	UPROPERTY(config, meta = (AllowAbstract = ""))
-	TSoftClassPtr<UUserWidget> DefaultWidgetParentClass;
-
 	UPROPERTY(EditAnywhere, config, Category=Designer)
 	TArray<FDebugResolution> DebugResolutions;
 
+	bool CompilerOption_SupportsDynamicCreation(const class UWidgetBlueprint* WidgetBlueprint) const;
+	bool CompilerOption_CookSlowConstructionWidgetTree(const class UWidgetBlueprint* WidgetBlueprint) const;
 	bool CompilerOption_AllowBlueprintTick(const class UWidgetBlueprint* WidgetBlueprint) const;
 	bool CompilerOption_AllowBlueprintPaint(const class UWidgetBlueprint* WidgetBlueprint) const;
 	EPropertyBindingPermissionLevel CompilerOption_PropertyBindingRule(const class UWidgetBlueprint* WidgetBlueprint) const;
@@ -205,4 +215,11 @@ protected:
 
 	/** This one is unsaved, we compare it on post init to see if the save matches real */
 	int32 CurrentVersion;
+
+private:
+	UPROPERTY(config)
+	bool bCookSlowConstructionWidgetTree_DEPRECATED;
+
+	UPROPERTY(config)
+	bool bWidgetSupportsDynamicCreation_DEPRECATED;
 };

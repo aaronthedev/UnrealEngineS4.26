@@ -144,9 +144,8 @@ namespace coff
 #endif
 
 					case Type::UNKNOWN:				return "UNKNOWN";
+					default:						return "Invalid type";
 				}
-
-				return "Invalid type";
 			}
 
 			// returns the byte distance to the position of where the relocation should be applied
@@ -179,11 +178,10 @@ namespace coff
 					case Type::VA_32:
 					case Type::RVA_32:
 					case Type::UNKNOWN:
-						break;
+					default:
+						LC_ERROR_DEV("Unexpected relocation type %s (%d)", ToString(type), type);
+						return 0u;
 				}
-
-				LC_ERROR_DEV("Unexpected relocation type %s (%d)", ToString(type), type);
-				return 0u;
 			}
 		};
 

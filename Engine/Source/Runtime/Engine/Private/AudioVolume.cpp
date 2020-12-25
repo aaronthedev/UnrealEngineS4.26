@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AudioVolume.cpp: Used to affect audio settings in the game and editor.
@@ -45,6 +45,127 @@ void FInteriorSettings::PostSerialize(const FArchive& Ar)
 }
 #endif
 
+bool FReverbSettings::operator==(const FReverbSettings& Other) const
+{
+	return (bApplyReverb == Other.bApplyReverb
+			&& ReverbEffect == Other.ReverbEffect
+			&& ReverbPluginEffect == Other.ReverbPluginEffect
+			&& Volume == Other.Volume
+			&& FadeTime == Other.FadeTime);
+}
+
+#if WITH_EDITORONLY_DATA
+void FReverbSettings::PostSerialize(const FArchive& Ar)
+{
+	if( Ar.UE4Ver() < VER_UE4_REVERB_EFFECT_ASSET_TYPE )
+	{
+		FString ReverbAssetName;
+		switch(ReverbType_DEPRECATED)
+		{
+			case REVERB_Default:
+				// No replacement asset for default reverb type
+				return;
+
+			case REVERB_Bathroom:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/Bathroom.Bathroom");
+				break;
+
+			case REVERB_StoneRoom:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/StoneRoom.StoneRoom");
+				break;
+
+			case REVERB_Auditorium:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/Auditorium.Auditorium");
+				break;
+
+			case REVERB_ConcertHall:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/ConcertHall.ConcertHall");
+				break;
+
+			case REVERB_Cave:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/Cave.Cave");
+				break;
+
+			case REVERB_Hallway:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/Hallway.Hallway");
+				break;
+
+			case REVERB_StoneCorridor:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/StoneCorridor.StoneCorridor");
+				break;
+
+			case REVERB_Alley:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/Alley.Alley");
+				break;
+
+			case REVERB_Forest:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/Forest.Forest");
+				break;
+
+			case REVERB_City:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/City.City");
+				break;
+
+			case REVERB_Mountains:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/Mountains.Mountains");
+				break;
+
+			case REVERB_Quarry:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/Quarry.Quarry");
+				break;
+
+			case REVERB_Plain:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/Plain.Plain");
+				break;
+
+			case REVERB_ParkingLot:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/ParkingLot.ParkingLot");
+				break;
+
+			case REVERB_SewerPipe:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/SewerPipe.SewerPipe");
+				break;
+
+			case REVERB_Underwater:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/Underwater.Underwater");
+				break;
+
+			case REVERB_SmallRoom:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/SmallRoom.SmallRoom");
+				break;
+
+			case REVERB_MediumRoom:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/MediumRoom.MediumRoom");
+				break;
+
+			case REVERB_LargeRoom:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/LargeRoom.LargeRoom");
+				break;
+
+			case REVERB_MediumHall:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/MediumHall.MediumHall");
+				break;
+
+			case REVERB_LargeHall:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/LargeHall.LargeHall");
+				break;
+
+			case REVERB_Plate:
+				ReverbAssetName = TEXT("/Engine/EngineSounds/ReverbSettings/Plate.Plate");
+				break;
+
+			default:
+				// This should cover every type of reverb preset
+				checkNoEntry();
+				break;
+		}
+
+		ReverbEffect = LoadObject<UReverbEffect>(NULL, *ReverbAssetName);
+		check( ReverbEffect );
+	}
+}
+#endif
+
 bool FInteriorSettings::operator==(const FInteriorSettings& Other) const
 {
 	return (Other.bIsWorldSettings == bIsWorldSettings)
@@ -83,8 +204,6 @@ FAudioVolumeProxy::FAudioVolumeProxy(const AAudioVolume* AudioVolume)
 	, Priority(AudioVolume->GetPriority())
 	, ReverbSettings(AudioVolume->GetReverbSettings())
 	, InteriorSettings(AudioVolume->GetInteriorSettings())
-	, SubmixSendSettings(AudioVolume->GetSubmixSendSettings())
-	, SubmixOverrideSettings(AudioVolume->GetSubmixOverrideSettings())
 	, BodyInstance(AudioVolume->GetBrushComponent()->GetBodyInstance())
 {
 }
@@ -93,18 +212,15 @@ void AAudioVolume::AddProxy() const
 {
 	if (UWorld* World = GetWorld())
 	{
-		if (FAudioDeviceHandle AudioDeviceHandle = World->GetAudioDevice())
+		if (FAudioDevice* AudioDevice = World->GetAudioDevice())
 		{
 			DECLARE_CYCLE_STAT(TEXT("FAudioThreadTask.AddAudioVolumeProxy"), STAT_AudioAddAudioVolumeProxy, STATGROUP_TaskGraphTasks);
 
 			FAudioVolumeProxy Proxy(this);
 
-			FAudioThread::RunCommandOnAudioThread([AudioDeviceHandle, Proxy]() mutable
+			FAudioThread::RunCommandOnAudioThread([AudioDevice, Proxy]()
 			{
-				if (AudioDeviceHandle)
-				{
-					AudioDeviceHandle->AddAudioVolumeProxy(Proxy);
-				}
+				AudioDevice->AddAudioVolumeProxy(Proxy);
 			}, GET_STATID(STAT_AudioAddAudioVolumeProxy));
 		}
 	}
@@ -127,17 +243,14 @@ void AAudioVolume::RemoveProxy() const
 	UWorld* World = GetWorld();
 	if (World)
 	{
-		if (FAudioDeviceHandle AudioDeviceHandle = World->GetAudioDevice())
+		if (FAudioDevice* AudioDevice = World->GetAudioDevice())
 		{
 			DECLARE_CYCLE_STAT(TEXT("FAudioThreadTask.RemoveAudioVolumeProxy"), STAT_AudioRemoveAudioVolumeProxy, STATGROUP_TaskGraphTasks);
 
 			const uint32 AudioVolumeID = GetUniqueID();
-			FAudioThread::RunCommandOnAudioThread([AudioDeviceHandle, AudioVolumeID]() mutable
+			FAudioThread::RunCommandOnAudioThread([AudioDevice, AudioVolumeID]()
 			{
-				if (AudioDeviceHandle)
-				{
-					AudioDeviceHandle->RemoveAudioVolumeProxy(AudioVolumeID);
-				}
+				AudioDevice->RemoveAudioVolumeProxy(AudioVolumeID);
 			}, GET_STATID(STAT_AudioRemoveAudioVolumeProxy));
 		}
 	}
@@ -156,7 +269,7 @@ void AAudioVolume::UpdateProxy() const
 {
 	if (UWorld* World = GetWorld())
 	{
-		if (FAudioDevice* AudioDevice = World->GetAudioDeviceRaw())
+		if (FAudioDevice* AudioDevice = World->GetAudioDevice())
 		{
 			DECLARE_CYCLE_STAT(TEXT("FAudioThreadTask.UpdateAudioVolumeProxy"), STAT_AudioUpdateAudioVolumeProxy, STATGROUP_TaskGraphTasks);
 
@@ -211,10 +324,7 @@ void AAudioVolume::PostRegisterAllComponents()
 	Super::PostRegisterAllComponents();
 
 	GetRootComponent()->TransformUpdated.AddUObject(this, &AAudioVolume::TransformUpdated);
-	if (bEnabled)
-	{
-		AddProxy();
-	}
+	AddProxy();
 
 	UWorld* World = GetWorld();
 	World->AudioVolumes.Add(this);
@@ -279,24 +389,6 @@ void AAudioVolume::SetInteriorSettings(const FInteriorSettings& NewInteriorSetti
 		{
 			UpdateProxy();
 		}
-	}
-}
-
-void AAudioVolume::SetSubmixSendSettings(const TArray<FAudioVolumeSubmixSendSettings>& NewSubmixSendSettings)
-{
-	SubmixSendSettings = NewSubmixSendSettings;
-	if (bEnabled)
-	{
-		UpdateProxy();
-	}
-}
-
-void AAudioVolume::SetSubmixOverrideSettings(const TArray<FAudioVolumeSubmixOverrideSettings>& NewSubmixOverrideSettings)
-{
-	SubmixOverrideSettings = NewSubmixOverrideSettings;
-	if (bEnabled)
-	{
-		UpdateProxy();
 	}
 }
 

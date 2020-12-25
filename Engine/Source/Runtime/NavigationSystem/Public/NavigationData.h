@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -551,9 +551,6 @@ public:
 	virtual void PostLoad() override;
 #if WITH_EDITOR
 	virtual void PostEditUndo() override;
-	virtual bool SupportsExternalPackaging() const override { return false; }
-	bool IsBuildingOnLoad() const { return bIsBuildingOnLoad; }
-	void SetIsBuildingOnLoad(bool bValue) { bIsBuildingOnLoad = bValue; }
 #endif // WITH_EDITOR
 	virtual void Destroyed() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
@@ -624,13 +621,10 @@ public:
 	/** Cancels current build  */
 	virtual void CancelBuild();
 
-	/** Ticks navigation build
-	 *  If the generator is set to time sliced rebuild then this function will only get called when 
-	 *  there is sufficient time (effectively roughly once in n frames where n is the number of time sliced nav data generators currently building)
-	 */
+	/** Ticks navigation build  */
 	virtual void TickAsyncBuild(float DeltaSeconds);
 	
-	/** Retrieves navigation data generator */
+	/** Retrieves navmesh's generator */
 	FNavDataGenerator* GetGenerator() { return NavDataGenerator.Get(); }
 	const FNavDataGenerator* GetGenerator() const { return NavDataGenerator.Get(); }
 
@@ -668,7 +662,15 @@ public:
 		SharedPath->SetQueryData(QueryData);
 		SharedPath->SetTimeStamp( GetWorldTimeStamp() );
 
-		const_cast<ANavigationData*>(this)->RegisterActivePath(SharedPath);
+		DECLARE_CYCLE_STAT(TEXT("FSimpleDelegateGraphTask.Adding a path to ActivePaths"),
+			STAT_FSimpleDelegateGraphTask_AddingPathToActivePaths,
+			STATGROUP_TaskGraphTasks);
+
+		FSimpleDelegateGraphTask::CreateAndDispatchWhenReady(
+			FSimpleDelegateGraphTask::FDelegate::CreateUObject(const_cast<ANavigationData*>(this), &ANavigationData::RegisterActivePath, SharedPath),
+			GET_STATID(STAT_FSimpleDelegateGraphTask_AddingPathToActivePaths), NULL, ENamedThreads::GameThread
+		);
+
 		return SharedPath;
 	}
 	
@@ -682,11 +684,7 @@ public:
 		ObservedPaths.Add(SharedPath);
 	}
 
-    void RequestRePath(FNavPathSharedPtr Path, ENavPathUpdateType::Type Reason)
-    {
-	    check(IsInGameThread());
-	    RepathRequests.AddUnique(FNavPathRecalculationRequest(Path, Reason)); 
-    }
+	void RequestRePath(FNavPathSharedPtr Path, ENavPathUpdateType::Type Reason) { RepathRequests.AddUnique(FNavPathRecalculationRequest(Path, Reason)); }
 
 protected:
 	/** removes from ActivePaths all paths that no longer have shared references (and are invalid in fact) */
@@ -694,8 +692,7 @@ protected:
 
 	void RegisterActivePath(FNavPathSharedPtr SharedPath)
 	{
-		// Paths can be registered from main thread and async pathfinding thread
-		FScopeLock PathLock(&ActivePathsLock);
+		check(IsInGameThread());
 		ActivePaths.Add(SharedPath);
 	}
 
@@ -810,12 +807,6 @@ public:
 
 	/** Raycasts batched for efficiency */
 	virtual void BatchRaycast(TArray<FNavigationRaycastWork>& Workload, FSharedConstNavQueryFilter QueryFilter, const UObject* Querier = NULL) const PURE_VIRTUAL(ANavigationData::BatchRaycast, );
-
-	/**	Tries to move current nav location towards target constrained to navigable area. Faster than ProjectPointToNavmesh.
-	 *	@param OutLocation if successful this variable will be filed with result
-	 *	@return true if successful, false otherwise
-	 */
-	virtual bool FindMoveAlongSurface(const FNavLocation& StartLocation, const FVector& TargetPosition, FNavLocation& OutLocation, FSharedConstNavQueryFilter Filter = NULL, const UObject* Querier = NULL) const PURE_VIRTUAL(ANavigationData::FindMoveAlongSurface, return false;);
 
 	virtual FNavLocation GetRandomPoint(FSharedConstNavQueryFilter Filter = NULL, const UObject* Querier = NULL) const PURE_VIRTUAL(ANavigationData::GetRandomPoint, return FNavLocation(););
 
@@ -958,9 +949,6 @@ protected:
 	 */
 	TArray<FNavPathWeakPtr> ActivePaths;
 
-	/** Synchronization object for paths registration from main thread and async pathfinding thread */
-	mutable FCriticalSection ActivePathsLock;
-
 	/**
 	 *	Contains paths that requested observing its goal's location. These paths will be 
 	 *	processed on a regular basis (@see ObservedPathsTickInterval) */
@@ -996,10 +984,6 @@ protected:
 	 *	to be applied at later date with SetRebuildingSuspended(false) call */
 	uint32 bRebuildingSuspended : 1;
 
-#if WITH_EDITORONLY_DATA
-	uint32 bIsBuildingOnLoad : 1;
-#endif
-
 private:
 	uint16 NavDataUniqueID;
 
@@ -1018,7 +1002,7 @@ struct FAsyncPathFindingQuery : public FPathFindingQuery
 		, Mode(EPathFindingMode::Regular)
 	{ }
 
-	FAsyncPathFindingQuery(const UObject* InOwner, const ANavigationData& InNavData, const FVector& Start, const FVector& End, const FNavPathQueryDelegate& Delegate, FSharedConstNavQueryFilter SourceQueryFilter, const float CostLimit = FLT_MAX);
+	FAsyncPathFindingQuery(const UObject* InOwner, const ANavigationData& InNavData, const FVector& Start, const FVector& End, const FNavPathQueryDelegate& Delegate, FSharedConstNavQueryFilter SourceQueryFilter);
 	FAsyncPathFindingQuery(const FPathFindingQuery& Query, const FNavPathQueryDelegate& Delegate, const EPathFindingMode::Type QueryMode);
 
 protected:

@@ -1,40 +1,73 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Animation/AnimNodeBase.h"
 #include "Animation/AnimClassInterface.h"
 #include "Animation/AnimInstanceProxy.h"
-#include "Animation/AnimTrace.h"
-#include "UObject/CoreObjectVersion.h"
-#include "PropertyAccess.h"
+
+void* FExposedValueCopyRecord::GetDestAddr(FAnimInstanceProxy* Proxy, const UProperty* NodeProperty) const
+{
+	UObject* Instance = Proxy->GetAnimInstanceObject();
+	if (const UArrayProperty* DestArrayProperty = Cast<UArrayProperty>(DestProperty))
+	{
+		if (!bInstanceIsTarget)
+		{
+			FScriptArrayHelper PropArrayHelper(DestArrayProperty, DestProperty->ContainerPtrToValuePtr<uint8>( NodeProperty->ContainerPtrToValuePtr<uint8>(Instance) ));
+			return PropArrayHelper.GetRawPtr(DestArrayIndex);
+		}
+		else
+		{
+			FScriptArrayHelper PropArrayHelper(DestArrayProperty, Instance);
+			return PropArrayHelper.GetRawPtr(DestArrayIndex);
+		}
+	}
+	else if(!bInstanceIsTarget)
+	{
+		return DestProperty->ContainerPtrToValuePtr<uint8>( NodeProperty->ContainerPtrToValuePtr<uint8>(Instance) );
+	}
+	else
+	{
+		return DestProperty->ContainerPtrToValuePtr<uint8>( Instance );
+	}
+}
+
+const void* FExposedValueCopyRecord::GetSourceAddr(FAnimInstanceProxy* Proxy) const
+{	
+	const UObject* Instance = Proxy->GetAnimInstanceObject();
+	if (const UArrayProperty* SourceArrayProperty = Cast<UArrayProperty>(CachedSourceProperty))
+	{
+		// the compiler should not be generating any code that calls down this path at the moment - it is untested
+		check(false);
+	}
+
+	if(CachedSourceStructSubProperty)
+	{
+		return CachedSourceStructSubProperty->ContainerPtrToValuePtr<uint8>(
+			CachedSourceProperty->ContainerPtrToValuePtr<uint8>(Instance),
+			SourceArrayIndex
+		);
+	}
+	else
+	{
+		return CachedSourceProperty->ContainerPtrToValuePtr<uint8>(Instance, SourceArrayIndex);
+	}
+}
 
 /////////////////////////////////////////////////////
 // FAnimationBaseContext
 
 FAnimationBaseContext::FAnimationBaseContext()
 	: AnimInstanceProxy(nullptr)
-#if ANIM_TRACE_ENABLED
-	, CurrentNodeId(INDEX_NONE)
-	, PreviousNodeId(INDEX_NONE)
-#endif
 {
 }
 
 FAnimationBaseContext::FAnimationBaseContext(FAnimInstanceProxy* InAnimInstanceProxy)
 	: AnimInstanceProxy(InAnimInstanceProxy)
-#if ANIM_TRACE_ENABLED
-	, CurrentNodeId(INDEX_NONE)
-	, PreviousNodeId(INDEX_NONE)
-#endif
 {
 }
 
 FAnimationBaseContext::FAnimationBaseContext(const FAnimationBaseContext& InContext)
-	: AnimInstanceProxy(InContext.AnimInstanceProxy)
-#if ANIM_TRACE_ENABLED
-	, CurrentNodeId(InContext.CurrentNodeId)
-	, PreviousNodeId(InContext.PreviousNodeId)
-#endif
 {
+	AnimInstanceProxy = InContext.AnimInstanceProxy;
 }
 
 IAnimClassInterface* FAnimationBaseContext::GetAnimClass() const
@@ -159,10 +192,10 @@ void FPoseLinkBase::AttemptRelink(const FAnimationBaseContext& Context)
 		check(AnimBlueprintClass);
 
 		// adding ensure. We had a crash on here
-		const TArray<FStructProperty*>& AnimNodeProperties = AnimBlueprintClass->GetAnimNodeProperties();
+		const TArray<UStructProperty*>& AnimNodeProperties = AnimBlueprintClass->GetAnimNodeProperties();
 		if ( ensure(AnimNodeProperties.IsValidIndex(LinkID)) )
 		{
-			FStructProperty* LinkedProperty = AnimNodeProperties[LinkID];
+			UProperty* LinkedProperty = AnimNodeProperties[LinkID];
 			void* LinkedNodePtr = LinkedProperty->ContainerPtrToValuePtr<void>(Context.AnimInstanceProxy->GetAnimInstanceObject());
 			LinkedNode = (FAnimNode_Base*)LinkedNodePtr;
 		}
@@ -296,15 +329,7 @@ void FPoseLinkBase::Update(const FAnimationUpdateContext& Context)
 
 	if (LinkedNode != NULL)
 	{
-#if ANIM_TRACE_ENABLED
-		{
-			FAnimationUpdateContext LinkContext(Context.WithNodeId(LinkID));
-			TRACE_SCOPED_ANIM_NODE(LinkContext);
-			LinkedNode->Update_AnyThread(LinkContext);
-		}
-#else
 		LinkedNode->Update_AnyThread(Context);
-#endif
 	}
 }
 
@@ -347,15 +372,7 @@ void FPoseLink::Evaluate(FPoseContext& Output)
 #if ENABLE_ANIMNODE_POSE_DEBUG
 		CurrentPose.ResetToAdditiveIdentity();
 #endif
-
-		{
-#if ANIM_TRACE_ENABLED
-			Output.SetNodeId(LinkID);
-			TRACE_SCOPED_ANIM_NODE(Output);
-#endif
-			LinkedNode->Evaluate_AnyThread(Output);
-		}
-
+		LinkedNode->Evaluate_AnyThread(Output);
 #if ENABLE_ANIMNODE_POSE_DEBUG
 		CurrentPose.CopyBonesFrom(Output.Pose);
 #endif
@@ -375,19 +392,12 @@ void FPoseLink::Evaluate(FPoseContext& Output)
 	if (Output.ContainsNaN())
 	{
 		// Show bone transform with some useful debug info
-		const auto& Bones = Output.Pose.GetBones();
-		for (int32 CPIndex = 0; CPIndex < Bones.Num(); ++CPIndex)
+		for (const FTransform& Bone : Output.Pose.GetBones())
 		{
-			const FTransform& Bone = Bones[CPIndex];
 			if (Bone.ContainsNaN())
 			{
-				const FBoneContainer& BoneContainer = Output.Pose.GetBoneContainer();
-				const FReferenceSkeleton& RefSkel = BoneContainer.GetReferenceSkeleton();
-				const FMeshPoseBoneIndex MeshBoneIndex = BoneContainer.MakeMeshPoseIndex(FCompactPoseBoneIndex(CPIndex));
-				ensureMsgf(!Bone.ContainsNaN(), TEXT("Bone (%s) contains NaN from AnimInstance:[%s] Node:[%s] Value:[%s]"),
-					*RefSkel.GetBoneName(MeshBoneIndex.GetInt()).ToString(),
-					*Output.AnimInstanceProxy->GetAnimInstanceName(), LinkedNode ? *LinkedNode->StaticStruct()->GetName() : TEXT("NULL"), 
-					*Bone.ToString());
+				ensureMsgf(!Bone.ContainsNaN(), TEXT("Bone transform contains NaN from AnimInstance:[%s] Node:[%s] Value:[%s]")
+					, *Output.AnimInstanceProxy->GetAnimInstanceName(), LinkedNode ? *LinkedNode->StaticStruct()->GetName() : TEXT("NULL"), *Bone.ToString());
 			}
 		}
 	}
@@ -395,19 +405,12 @@ void FPoseLink::Evaluate(FPoseContext& Output)
 	if (!Output.IsNormalized())
 	{
 		// Show bone transform with some useful debug info
-		const auto& Bones = Output.Pose.GetBones();
-		for (int32 CPIndex = 0; CPIndex < Bones.Num(); ++CPIndex)
+		for (const FTransform& Bone : Output.Pose.GetBones())
 		{
-			const FTransform& Bone = Bones[CPIndex];
 			if (!Bone.IsRotationNormalized())
 			{
-				const FBoneContainer& BoneContainer = Output.Pose.GetBoneContainer();
-				const FReferenceSkeleton& RefSkel = BoneContainer.GetReferenceSkeleton();
-				const FMeshPoseBoneIndex MeshBoneIndex = BoneContainer.MakeMeshPoseIndex(FCompactPoseBoneIndex(CPIndex));
-				ensureMsgf(Bone.IsRotationNormalized(), TEXT("Bone (%s) Rotation not normalized from AnimInstance:[%s] Node:[%s] Rotation:[%s]"), 
-					*RefSkel.GetBoneName(MeshBoneIndex.GetInt()).ToString(),
-					*Output.AnimInstanceProxy->GetAnimInstanceName(), LinkedNode ? *LinkedNode->StaticStruct()->GetName() : TEXT("NULL"), 
-					*Bone.GetRotation().ToString());
+				ensureMsgf(Bone.IsRotationNormalized(), TEXT("Bone Rotation not normalized from AnimInstance:[%s] Node:[%s] Rotation:[%s]")
+					, *Output.AnimInstanceProxy->GetAnimInstanceName(), LinkedNode ? *LinkedNode->StaticStruct()->GetName() : TEXT("NULL"), *Bone.GetRotation().ToString());
 			}
 		}
 	}
@@ -434,13 +437,7 @@ void FComponentSpacePoseLink::EvaluateComponentSpace(FComponentSpacePoseContext&
 
 	if (LinkedNode != NULL)
 	{
-		{
-#if ANIM_TRACE_ENABLED
-			Output.SetNodeId(LinkID);
-			TRACE_SCOPED_ANIM_NODE(Output);
-#endif
-			LinkedNode->EvaluateComponentSpace_AnyThread(Output);
-		}
+		LinkedNode->EvaluateComponentSpace_AnyThread(Output);
 
 #if WITH_EDITOR
 		Output.AnimInstanceProxy->RegisterWatchedPose(Output.Pose, LinkID);
@@ -553,31 +550,29 @@ void FNodeDebugData::GetFlattenedDebugData(TArray<FFlattenedDebugData>& Flattene
 	}
 }
 
-void FExposedValueHandler::DynamicClassInitialization(TArray<FExposedValueHandler>& InHandlers, UDynamicClass* InDynamicClass)
+#if WITH_EDITORONLY_DATA
+void FExposedValueCopyRecord::PostSerialize(const FArchive& Ar)
 {
-	const FPropertyAccessLibrary& PropertyAccessLibrary = IAnimClassInterface::GetFromClass(InDynamicClass)->GetPropertyAccessLibrary();
-
-	for(FExposedValueHandler& Handler : InHandlers)
+	// backwards compatibility: check value of deprecated source property and patch up property name
+	if(SourceProperty_DEPRECATED && SourcePropertyName == NAME_None)
 	{
-		Handler.Initialize(InDynamicClass, PropertyAccessLibrary);
+		SourcePropertyName = SourceProperty_DEPRECATED->GetFName();
 	}
 }
+#endif
 
-void FExposedValueHandler::ClassInitialization(TArray<FExposedValueHandler>& InHandlers, UObject* InClassDefaultObject)
+void FExposedValueHandler::Initialize(TArray<FExposedValueHandler>& Handlers, UObject* ClassDefaultObject )
 {
-	UClass* Class = InClassDefaultObject->GetClass();
-	const FPropertyAccessLibrary& PropertyAccessLibrary = IAnimClassInterface::GetFromClass(Class)->GetPropertyAccessLibrary();
-
-	for(FExposedValueHandler& Handler : InHandlers)
+	for(FExposedValueHandler& Handler : Handlers)
 	{
-		FAnimNode_Base* AnimNode = Handler.ValueHandlerNodeProperty->ContainerPtrToValuePtr<FAnimNode_Base>(InClassDefaultObject);
+		FAnimNode_Base* AnimNode = Handler.ValueHandlerNodeProperty->ContainerPtrToValuePtr<FAnimNode_Base>(ClassDefaultObject);
 		check(AnimNode);
 		AnimNode->SetExposedValueHandler(&Handler);
-		Handler.Initialize(Class, PropertyAccessLibrary);
+		Handler.Initialize(ClassDefaultObject, Handler.ValueHandlerNodeProperty->GetOffset_ForInternal());
 	}
 }
 
-void FExposedValueHandler::Initialize(UClass* InClass, const FPropertyAccessLibrary& InPropertyAccessLibrary)
+void FExposedValueHandler::Initialize(UObject* AnimInstanceObject, int32 NodeOffset)
 {
 	// bInitialized may no longer be necessary, but leaving alone for now:
 	if (bInitialized)
@@ -589,14 +584,14 @@ void FExposedValueHandler::Initialize(UClass* InClass, const FPropertyAccessLibr
 	{
 		// This cached function is NULL when the CDO is initially serialized, or (in editor) when the class has been
 		// recompiled and any instances have been re-instanced. When new instances are spawned, this function is
-		// duplicated (it is a FProperty) onto those instances so we dont pay the cost of the FindFunction() call
+		// duplicated (it is a UProperty) onto those instances so we dont pay the cost of the FindFunction() call
 #if !WITH_EDITOR
 		if (Function == nullptr)
 #endif
 		{
 			// we cant call FindFunction on anything but the game thread as it accesses a shared map in the object's class
 			check(IsInGameThread());
-			Function = InClass->FindFunctionByName(BoundFunction);
+			Function = AnimInstanceObject->FindFunction(BoundFunction);
 			check(Function);
 		}
 	}
@@ -605,8 +600,80 @@ void FExposedValueHandler::Initialize(UClass* InClass, const FPropertyAccessLibr
 		Function = NULL;
 	}
 
-	// Cache property access library
-	PropertyAccessLibrary = &InPropertyAccessLibrary;
+	// initialize copy records
+	for (FExposedValueCopyRecord& CopyRecord : CopyRecords)
+	{
+		// We do a similar thing to the above function caching process for properties here too
+#if !WITH_EDITOR
+		if (CopyRecord.CachedSourceProperty == nullptr)
+#endif
+		{
+			CopyRecord.CachedSourceProperty = AnimInstanceObject->GetClass()->FindPropertyByName(CopyRecord.SourcePropertyName);
+		}
+		check(CopyRecord.CachedSourceProperty);
+
+		if (UArrayProperty* SourceArrayProperty = Cast<UArrayProperty>(CopyRecord.CachedSourceProperty))
+		{
+			// the compiler should not be generating any code that calls down this path at the moment - it is untested
+			check(false);
+			//	FScriptArrayHelper ArrayHelper(SourceArrayProperty, CopyRecord.CachedSourceProperty->ContainerPtrToValuePtr<uint8>(AnimInstanceObject));
+			//	check(ArrayHelper.IsValidIndex(CopyRecord.SourceArrayIndex));
+			//	CopyRecord.Source = ArrayHelper.GetRawPtr(CopyRecord.SourceArrayIndex);
+			//	CopyRecord.Size = ArrayHelper.Num() * SourceArrayProperty->Inner->GetSize();
+		}
+		else
+		{
+			if (CopyRecord.SourceSubPropertyName != NAME_None)
+			{
+				UStructProperty* SourceStructProperty = CastChecked<UStructProperty>(CopyRecord.CachedSourceProperty);
+#if !WITH_EDITOR
+				if (CopyRecord.CachedSourceStructSubProperty == nullptr)
+#endif
+				{
+					CopyRecord.CachedSourceStructSubProperty = SourceStructProperty->Struct->FindPropertyByName(CopyRecord.SourceSubPropertyName);
+				}
+				check(CopyRecord.CachedSourceStructSubProperty);
+				CopyRecord.Size = CopyRecord.CachedSourceStructSubProperty->GetSize();
+			}
+			else
+			{
+				CopyRecord.Size = CopyRecord.CachedSourceProperty->GetSize();
+			}
+		}
+
+		if (UArrayProperty* DestArrayProperty = Cast<UArrayProperty>(CopyRecord.DestProperty))
+		{
+		}
+		else if(CopyRecord.DestProperty != nullptr)
+		{
+			if (CopyRecord.bInstanceIsTarget)
+			{
+				// Re-find our dest property as it (or its class outer) may have changed
+				if (CopyRecord.DestProperty->GetOuter() != AnimInstanceObject->GetClass())
+				{
+					CopyRecord.DestProperty = AnimInstanceObject->GetClass()->FindPropertyByName(CopyRecord.DestProperty->GetFName());
+				}
+				check(CopyRecord.DestProperty);
+			}
+
+			if (UBoolProperty* BoolProperty = Cast<UBoolProperty>(CopyRecord.DestProperty))
+			{
+				CopyRecord.CopyType = ECopyType::BoolProperty;
+			}
+			else if (UStructProperty* StructProperty = Cast<UStructProperty>(CopyRecord.DestProperty))
+			{
+				CopyRecord.CopyType = ECopyType::StructProperty;
+			}
+			else if (UObjectPropertyBase* ObjectProperty = Cast<UObjectPropertyBase>(CopyRecord.DestProperty))
+			{
+				CopyRecord.CopyType = ECopyType::ObjectProperty;
+			}
+			else
+			{
+				CopyRecord.CopyType = ECopyType::MemCopy;
+			}
+		}
+	}
 
 	bInitialized = true;
 }
@@ -618,22 +685,60 @@ void FExposedValueHandler::Execute(const FAnimationBaseContext& Context) const
 		Context.AnimInstanceProxy->GetAnimInstanceObject()->ProcessEvent(Function, NULL);
 	}
 
-	if(CopyRecords.Num() > 0)
+	for(const FExposedValueCopyRecord& CopyRecord : CopyRecords)
 	{
-		if(PropertyAccessLibrary != nullptr)
+		// if any of these checks fail then it's likely that Initialize has not been called.
+		// has new anim node type been added that doesnt call the base class Initialize()?
+		checkSlow(CopyRecord.Size != 0);
+		
+		UProperty* SourceProperty = CopyRecord.CachedSourceStructSubProperty != nullptr ? CopyRecord.CachedSourceStructSubProperty : CopyRecord.CachedSourceProperty;
+
+		void* Dest = CopyRecord.GetDestAddr(Context.AnimInstanceProxy, ValueHandlerNodeProperty);
+		const void* Src = CopyRecord.GetSourceAddr(Context.AnimInstanceProxy);;
+
+		switch(CopyRecord.PostCopyOperation)
 		{
-			UObject* AnimInstanceObject = Context.AnimInstanceProxy->GetAnimInstanceObject();
-			for(const FExposedValueCopyRecord& CopyRecord : CopyRecords)
+		case EPostCopyOperation::None:
 			{
-				PropertyAccess::ProcessCopy(AnimInstanceObject, *PropertyAccessLibrary, EPropertyAccessCopyBatch::InternalUnbatched, CopyRecord.CopyIndex, [&CopyRecord](const FProperty* InProperty, void* InAddress)
+				switch(CopyRecord.CopyType)
 				{
-					if(CopyRecord.PostCopyOperation == EPostCopyOperation::LogicalNegateBool)
+				default:
+				case ECopyType::MemCopy:
+					FMemory::Memcpy(Dest, Src, CopyRecord.Size);
+					break;
+				case ECopyType::BoolProperty:
 					{
-						bool bValue = static_cast<const FBoolProperty*>(InProperty)->GetPropertyValue(InAddress);
-						static_cast<const FBoolProperty*>(InProperty)->SetPropertyValue(InAddress, !bValue);
+						bool bValue = static_cast<UBoolProperty*>(SourceProperty)->GetPropertyValue(Src);
+						static_cast<UBoolProperty*>(CopyRecord.DestProperty)->SetPropertyValue(Dest, bValue);
 					}
-				});
+					break;
+				case ECopyType::StructProperty:
+					static_cast<UStructProperty*>(CopyRecord.DestProperty)->Struct->CopyScriptStruct(Dest, Src);
+					break;
+				case ECopyType::ObjectProperty:
+					{
+						UObject* Value = static_cast<UObjectPropertyBase*>(SourceProperty)->GetObjectPropertyValue(Src);
+						static_cast<UObjectPropertyBase*>(CopyRecord.DestProperty)->SetObjectPropertyValue(Dest, Value);
+					}
+					break;
+				}
 			}
+			break;
+		case EPostCopyOperation::LogicalNegateBool:
+			{
+				check(SourceProperty != nullptr && CopyRecord.DestProperty != nullptr);
+
+				bool bValue = static_cast<UBoolProperty*>(SourceProperty)->GetPropertyValue(Src);
+				if (CopyRecord.CopyType == ECopyType::BoolProperty)
+				{
+					static_cast<UBoolProperty*>(CopyRecord.DestProperty)->SetPropertyValue(Dest, !bValue);
+				}
+				else if (UArrayProperty* DestArrayProperty = Cast<UArrayProperty>(CopyRecord.DestProperty))
+				{
+					static_cast<UBoolProperty*>(DestArrayProperty->Inner)->SetPropertyValue(Dest, !bValue); // added to support arrays
+				}
+			}
+			break;
 		}
 	}
 }

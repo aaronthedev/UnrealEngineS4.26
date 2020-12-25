@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -297,15 +297,15 @@ public:
 			// any previously installed chunks get mounted 
 			if (!CurrentMountPaks->Contains(PakPath) && !MountedPaks.Contains(PakPath))
 			{
-				if (FCoreDelegates::MountPak.IsBound())
+				if (FCoreDelegates::OnMountPak.IsBound())
 				{
-					auto bSuccess = FCoreDelegates::MountPak.Execute(PakPath, PakReadOrder);
+					auto bSuccess = FCoreDelegates::OnMountPak.Execute(PakPath, PakReadOrder, nullptr);
 #if !UE_BUILD_SHIPPING
 					if (!bSuccess)
 					{
 						// This can fail because of the sandbox system - which the pak system doesn't understand.
 						auto SandboxedPath = IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*PakPath);
-						bSuccess = FCoreDelegates::MountPak.Execute(SandboxedPath, PakReadOrder);
+						bSuccess = FCoreDelegates::OnMountPak.Execute(SandboxedPath, PakReadOrder, nullptr);
 					}
 #endif
 					//Register the install

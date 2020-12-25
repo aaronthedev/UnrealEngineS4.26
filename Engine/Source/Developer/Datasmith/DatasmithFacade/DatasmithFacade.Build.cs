@@ -1,10 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System.IO;
 
 namespace UnrealBuildTool.Rules
 {
-	[SupportedPlatforms("Win64", "Mac")]
+	[SupportedPlatforms("Win64")]
 	public class DatasmithFacade : ModuleRules
 	{
 		public DatasmithFacade(ReadOnlyTargetRules Target)
@@ -14,7 +14,7 @@ namespace UnrealBuildTool.Rules
 				new string[]
 				{
 					"Core",
-					"DatasmithCore"
+                    "DatasmithCore"
 				}
 			);
 
@@ -23,10 +23,6 @@ namespace UnrealBuildTool.Rules
 				{
 					"DatasmithExporter",
 					"UEOpenExr",
-
-					// DirectLink
-					"Messaging",
-					"MessagingCommon",
 				}
 			);
 		}

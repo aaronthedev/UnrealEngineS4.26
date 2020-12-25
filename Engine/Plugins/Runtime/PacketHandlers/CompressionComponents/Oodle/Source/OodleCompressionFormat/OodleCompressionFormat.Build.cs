@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -20,7 +20,7 @@ public class OodleCompressionFormat : ModuleRules
 				"Analytics"
 			});
 
-		if (Target.Platform.IsInGroup(UnrealPlatformGroup.Windows))
+		if (Target.Platform == UnrealTargetPlatform.Win64 || Target.Platform == UnrealTargetPlatform.Win32)
 		{
 			// this is needed to hunt down the DLL in the binaries directory for running unstaged
 			PrivateDependencyModuleNames.AddRange(
@@ -30,8 +30,8 @@ public class OodleCompressionFormat : ModuleRules
 		}
 
 		// Check the NotForLicensees folder first
-		string OodleNotForLicenseesBuildFile = System.IO.Path.Combine(EngineDirectory, 
-			"Restricted/NotForLicensees/Source/ThirdParty/RadGames/OodleData/OodleData.Build.cs");
+		string OodleNotForLicenseesBuildFile = System.IO.Path.Combine(Target.UEThirdPartySourceDirectory, 
+			"NotForLicensees/RadGames/OodleData/OodleData.Build.cs");
 		string OodleLicenseesBuildFile = System.IO.Path.Combine(Target.UEThirdPartySourceDirectory,
 			"RadGames/OodleData/OodleData.Build.cs");
 

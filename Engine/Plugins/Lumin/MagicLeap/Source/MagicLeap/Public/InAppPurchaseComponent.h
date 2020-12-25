@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -33,7 +33,7 @@ enum class CloudStatus : uint8
 };
 
 USTRUCT(BlueprintType)
-struct MAGICLEAP_API FPurchaseItemDetails
+struct FPurchaseItemDetails
 {
 	GENERATED_BODY()
 
@@ -53,7 +53,7 @@ struct MAGICLEAP_API FPurchaseItemDetails
 };
 
 USTRUCT(BlueprintType)
-struct MAGICLEAP_API FPurchaseConfirmation
+struct FPurchaseConfirmation
 {
 	GENERATED_BODY()
 	/*! This is the unique order id for this purchase. */

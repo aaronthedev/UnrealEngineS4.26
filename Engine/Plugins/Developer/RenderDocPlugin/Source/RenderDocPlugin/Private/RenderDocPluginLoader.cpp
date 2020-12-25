@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RenderDocPluginLoader.h"
 #include "RenderDocPluginModule.h"
@@ -36,14 +36,7 @@ static void* LoadAndCheckRenderDocLibrary(FRenderDocPluginLoader::RENDERDOC_API_
 	FString PathToRenderDocDLL = FPaths::Combine(*RenderdocPath, *FString("renderdoc.dll"));
 	if (!FPaths::FileExists(PathToRenderDocDLL))
 	{
-		if (FApp::IsUnattended())
-		{
-			UE_LOG(RenderDocPlugin, Display, TEXT("unable to locate RenderDoc library at: %s"), *PathToRenderDocDLL);
-		}
-		else
-		{
-			UE_LOG(RenderDocPlugin, Warning, TEXT("unable to locate RenderDoc library at: %s"), *PathToRenderDocDLL);
-		}
+		UE_LOG(RenderDocPlugin, Warning, TEXT("unable to locate RenderDoc library at: %s"), *PathToRenderDocDLL);
 		return(nullptr);
 	}
 
@@ -90,29 +83,12 @@ void FRenderDocPluginLoader::Initialize()
 	RenderDocDLL = nullptr;
 	RenderDocAPI = nullptr;
 
-	bool bDisableFrameTraceCapture = FParse::Param(FCommandLine::Get(), TEXT("DisableFrameTraceCapture"));
-	if (bDisableFrameTraceCapture)
-	{
-		UE_LOG(RenderDocPlugin, Display, TEXT("RenderDoc plugin will not be loaded because -DisableFrameTraceCapture cmd line flag."));
-		return;
-	}
-
-	if (FApp::IsUnattended())
-	{
-		IConsoleVariable* CVarAutomationAllowFrameTraceCapture = IConsoleManager::Get().FindConsoleVariable(TEXT("AutomationAllowFrameTraceCapture"), false);
-		if (!CVarAutomationAllowFrameTraceCapture || CVarAutomationAllowFrameTraceCapture->GetInt() == 0)
-		{
-			UE_LOG(RenderDocPlugin, Display, TEXT("RenderDoc plugin will not be loaded because AutomationAllowFrameTraceCapture cvar is set to 0."));
-			return;
-		}
-	}
-
 	if (GUsingNullRHI)
 	{
 		// THIS WILL NEVER TRIGGER because of a sort of chicken-and-egg problem: RenderDoc Loader is a PostConfigInit
 		// plugin, and GUsingNullRHI is only initialized properly between PostConfigInit and PreLoadingScreen phases.
 		// (nevertheless, keep this comment around for future iterations of UE4)
-		UE_LOG(RenderDocPlugin, Display, TEXT("RenderDoc plugin will not be loaded because a null RHI (Cook Server, perhaps) is being used."));
+		UE_LOG(RenderDocPlugin, Warning, TEXT("this plugin will not be loaded because a null RHI (Cook Server, perhaps) is being used."));
 		return;
 	}
 	
@@ -137,23 +113,22 @@ void FRenderDocPluginLoader::Initialize()
 	}
 
 	// 3) Check for a RenderDoc custom installation by prompting the user:
-	IDesktopPlatform* DesktopPlatform = FDesktopPlatformModule::Get();
-	if (RenderDocDLL == nullptr && DesktopPlatform && !FApp::IsUnattended())
+	if (RenderDocDLL == nullptr)
 	{
 		//Renderdoc does not seem to be installed, but it might be built from source or downloaded by archive, 
 		//so prompt the user to navigate to the main exe file
 		UE_LOG(RenderDocPlugin, Log, TEXT("RenderDoc library not found; provide a custom installation location..."));
-
 		FString RenderdocPath;
-		// renderdocui.exe is the old executable name, it was changed to qrenderdoc.exe in 1.0.
-		// If users upgraded from pre-1.0 to 1.0+, renderdocui.exe is a redirect to qrenderdoc.exe; otherwise only the new executable exists.
-		FString Filter = TEXT("RenderDoc executable|renderdocui.exe;qrenderdoc.exe");
-		TArray<FString> OutFiles;
-		if (DesktopPlatform->OpenFileDialog(nullptr, TEXT("Locate main RenderDoc executable..."), TEXT(""), TEXT(""), Filter, EFileDialogFlags::None, OutFiles))
+		IDesktopPlatform* DesktopPlatform = FDesktopPlatformModule::Get();
+		if (DesktopPlatform)
 		{
-			RenderdocPath = OutFiles[0];
+			FString Filter = TEXT("Renderdoc executable|renderdocui.exe");
+			TArray<FString> OutFiles;
+			if (DesktopPlatform->OpenFileDialog(nullptr, TEXT("Locate main Renderdoc executable..."), TEXT(""), TEXT(""), Filter, EFileDialogFlags::None, OutFiles))
+			{
+				RenderdocPath = OutFiles[0];
+			}
 		}
-
 		RenderdocPath = FPaths::GetPath(RenderdocPath);
 		RenderDocDLL = LoadAndCheckRenderDocLibrary(RenderDocAPI, RenderdocPath);
 		if (RenderDocDLL)
@@ -165,15 +140,7 @@ void FRenderDocPluginLoader::Initialize()
 	// 4) All bets are off; aborting...
 	if (RenderDocDLL == nullptr)
 	{
-		if (FApp::IsUnattended())
-		{
-			UE_LOG(RenderDocPlugin, Display, TEXT("Unable to initialize the plugin because no RenderDoc libray has been located."));
-		}
-		else
-		{
-			UE_LOG(RenderDocPlugin, Warning, TEXT("Unable to initialize the plugin because no RenderDoc libray has been located."));
-		}
-
+		UE_LOG(RenderDocPlugin, Warning, TEXT("unable to initialize the plugin because no RenderDoc libray has been located."));
 		return;
 	}
 

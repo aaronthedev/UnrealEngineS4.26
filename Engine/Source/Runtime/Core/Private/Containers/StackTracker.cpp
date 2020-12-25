@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Containers/StackTracker.h"
 #include "HAL/PlatformStackWalk.h"
@@ -54,10 +54,10 @@ void FStackTracker::CaptureStackTrace(int32 EntriesToIgnore, void* UserData, int
 						AddressInformation[0] = 0;
 						FPlatformStackWalk::ProgramCounterToHumanReadableString( 1, BackTrace[Index], AddressInformation, UE_ARRAY_COUNT(AddressInformation)-1 );
 						FString Symbol(AddressInformation);
-						int32 Spot = Symbol.Find(TEXT(" - "), ESearchCase::CaseSensitive);
+						int32 Spot = Symbol.Find(TEXT(" - "));
 						if (Spot != INDEX_NONE)
 						{
-							Symbol.RightChopInline(Spot + 3, false);
+							Symbol = Symbol.RightChop(Spot + 3);
 						}
 						Existing = StringAliasMap.Find(Symbol);
 						if (Existing)
@@ -143,7 +143,7 @@ void FStackTracker::DumpStackTraces(int32 StackThreshold, FOutputDevice& Ar, flo
 	}
 
 	// Calculate the number of frames we captured.
-	uint64 FramesCaptured = 0;
+	int32 FramesCaptured = 0;
 	if( bIsEnabled )
 	{
 		FramesCaptured = GFrameCounter - StartFrameCounter;
@@ -166,7 +166,7 @@ void FStackTracker::DumpStackTraces(int32 StackThreshold, FOutputDevice& Ar, flo
 	}
 	else
 	{
-		Ar.Logf(TEXT("Captured %i unique callstacks totalling %i function calls over %i frames, averaging %5.2f calls/frame, Avg Per Frame"), SortedCallStacks.Num(), (int32)TotalStackCount, FramesCaptured, (float)TotalStackCount / (float)FramesCaptured);
+		Ar.Logf(TEXT("Captured %i unique callstacks totalling %i function calls over %i frames, averaging %5.2f calls/frame, Avg Per Frame"), SortedCallStacks.Num(), (int32)TotalStackCount, FramesCaptured, (float) TotalStackCount / FramesCaptured);
 	}
 
 	// Iterate over each callstack and write out info in human readable form in CSV format

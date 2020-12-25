@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,13 +18,10 @@ class VARIANTMANAGERCONTENT_API UVariantObjectBinding : public UObject
 	GENERATED_UCLASS_BODY()
 
 public:
-	void SetObject(UObject* InObject);
+
+	void Init(UObject* InObject);
 
 	class UVariant* GetParent();
-
-	// UObject Interface
-	virtual void Serialize(FArchive& Ar) override;
-	//~ End UObject Interface
 
 	FText GetDisplayText() const;
 
@@ -47,13 +44,6 @@ public:
 #endif
 
 private:
-	/**
-	 * Whenever we resolve, we cache the actor label here so that if we can't
-	 * resolve anymore we can better indicate which actor is missing, instead of just
-	 * saying 'Unloaded binding'
-	 */
-	UPROPERTY()
-	mutable FString CachedActorLabel;
 
 	UPROPERTY()
 	mutable FSoftObjectPath ObjectPtr;

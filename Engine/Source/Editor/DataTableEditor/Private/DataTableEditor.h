@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -43,8 +43,6 @@ public:
 	 */
 	virtual void InitDataTableEditor( const EToolkitMode::Type Mode, const TSharedPtr< class IToolkitHost >& InitToolkitHost, UDataTable* Table );
 
-	virtual bool CanEditRows() const;
-
 	/** Constructor */
 	FDataTableEditor();
 
@@ -85,6 +83,8 @@ public:
 protected:
 
 	void RefreshCachedDataTable(const FName InCachedSelection = NAME_None, const bool bUpdateEvenIfValid = false);
+
+	void ImportDataTableUpdate();
 
 	void UpdateVisibleRows(const FName InCachedSelection = NAME_None, const bool bUpdateEvenIfValid = false);
 
@@ -157,6 +157,8 @@ protected:
 	/** Helper function for creating and registering the tab containing the row editor */
 	virtual void CreateAndRegisterRowEditorTab(const TSharedRef<class FTabManager>& InTabManager);
 
+	void BrowseDocumentation_Execute() const;
+
 	virtual FString GetDocumentationLink() const override;
 	
 	void OnAddClicked();
@@ -175,6 +177,9 @@ protected:
 
 	void OnEditDataTableStructClicked();
 
+	FReply SaveDataTable_Execute();
+	FReply BrowseForDataTable_Execute();
+	
 	void ExtendToolbar(TSharedPtr<FExtender> Extender);
 	void FillToolbar(FToolBarBuilder& ToolbarBuilder);
 

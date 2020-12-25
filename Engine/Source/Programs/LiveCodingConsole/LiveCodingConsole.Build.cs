@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -18,22 +18,10 @@ public class LiveCodingConsole : ModuleRules
 				"SlateCore",
 				"StandaloneRenderer",
 				"MessageLog",
-				"LiveCodingServer",
-				"SourceCodeAccess"
+				"LiveCodingServer"
 			});
-
-		if (Target.Platform == UnrealTargetPlatform.Mac)
-		{
-			PrivateDependencyModuleNames.Add("XCodeSourceCodeAccess");
-			AddEngineThirdPartyPrivateStaticDependencies(Target, "CEF3");
-		}
-		else if (Target.Platform == UnrealTargetPlatform.Win64)
-		{
-			PrivateDependencyModuleNames.Add("VisualStudioDTE");
-			PrivateDependencyModuleNames.Add("VisualStudioSourceCodeAccess");
-		}
 
 		PublicIncludePaths.Add("Runtime/Launch/Public");
 		PrivateIncludePaths.Add("Runtime/Launch/Private");      // For LaunchEngineLoop.cpp include
-	}
+    }
 }

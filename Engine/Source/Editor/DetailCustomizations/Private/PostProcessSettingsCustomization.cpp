@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PostProcessSettingsCustomization.h"
 #include "UObject/UnrealType.h"
@@ -105,8 +105,8 @@ void FPostProcessSettingsCustomization::CustomizeChildren( TSharedRef<IPropertyH
 	uint32 NumChildren = 0;
 	FPropertyAccess::Result Result = StructPropertyHandle->GetNumChildren(NumChildren);
 
-	FProperty* Prop = StructPropertyHandle->GetProperty();
-	FStructProperty* StructProp = CastField<FStructProperty>(Prop);
+	UProperty* Prop = StructPropertyHandle->GetProperty();
+	UStructProperty* StructProp = Cast<UStructProperty>(Prop);
 
 	// a category with this name should be one level higher, should be "PostProcessSettings"
 	FName ClassName = StructProp->Struct->GetFName();
@@ -125,7 +125,7 @@ void FPostProcessSettingsCustomization::CustomizeChildren( TSharedRef<IPropertyH
 	const bool bDesktopTonemapperFilm = VarTonemapperFilm->GetValueOnGameThread() == 1;
 	const bool bMobileTonemapperFilm = VarMobileTonemapperFilm->GetValueOnGameThread() == 1;
 	const bool bUsingFilmTonemapper = bDesktopTonemapperFilm || bMobileTonemapperFilm;		// Are any platforms use film tonemapper
-	const bool bUsingLegacyTonemapper = !bDesktopTonemapperFilm || !bMobileTonemapperFilm;	// Are any platforms use legacy tonemapper
+	const bool bUsingLegacyTonemapper = !bDesktopTonemapperFilm || !bMobileTonemapperFilm;	// Are any platforms use legacy/ES2 tonemapper
 
 	static const auto VarDefaultAutoExposureExtendDefaultLuminanceRange = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange"));
 	const bool bExtendedLuminanceRange = VarDefaultAutoExposureExtendDefaultLuminanceRange->GetValueOnGameThread() == 1;
@@ -143,7 +143,7 @@ void FPostProcessSettingsCustomization::CustomizeChildren( TSharedRef<IPropertyH
 
 			if( ChildHandle.IsValid() && ChildHandle->GetProperty() )
 			{
-				FProperty* Property = ChildHandle->GetProperty();
+				UProperty* Property = ChildHandle->GetProperty();
 
 				FName CategoryFName = FObjectEditorUtils::GetCategoryFName(Property);
 					
@@ -151,7 +151,7 @@ void FPostProcessSettingsCustomization::CustomizeChildren( TSharedRef<IPropertyH
 				{
 					bool bIsLegacyTonemapperPropery = ChildHandle->HasMetaData(LegacyTonemapperName);
 
-					// Hide in case no platforms use legacy tonemapper
+					// Hide in case no platforms use legacy/ES2 tonemapper
 					// Hide in case no platforms use film tonemapper
 					if ((bIsLegacyTonemapperPropery && !bUsingLegacyTonemapper) || (!bIsLegacyTonemapperPropery && !bUsingFilmTonemapper))
 					{

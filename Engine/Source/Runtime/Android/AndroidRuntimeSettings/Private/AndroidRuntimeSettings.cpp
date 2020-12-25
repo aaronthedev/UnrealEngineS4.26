@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AndroidRuntimeSettings.h"
 #include "Modules/ModuleManager.h"
@@ -28,18 +28,25 @@ UAndroidRuntimeSettings::UAndroidRuntimeSettings(const FObjectInitializer& Objec
 	, AudioSampleRate(44100)
 	, AudioCallbackBufferFrameSize(1024)
 	, AudioNumBuffersToEnqueue(4)
+	, bMultiTargetFormat_ETC1(true)
+	, bMultiTargetFormat_ETC1a(true)
 	, bMultiTargetFormat_ETC2(true)
 	, bMultiTargetFormat_DXT(true)
+	, bMultiTargetFormat_PVRTC(true)
+	, bMultiTargetFormat_ATC(true)
 	, bMultiTargetFormat_ASTC(true)
+	, TextureFormatPriority_ETC1(0.1f)
+	, TextureFormatPriority_ETC1a(0.18f)
 	, TextureFormatPriority_ETC2(0.2f)
 	, TextureFormatPriority_DXT(0.6f)
+	, TextureFormatPriority_PVRTC(0.8f)
+	, TextureFormatPriority_ATC(0.5f)
 	, TextureFormatPriority_ASTC(0.9f)
-	, bStreamLandscapeMeshLODs(false)
 {
-	bBuildForES31 = bBuildForES31 || !bSupportsVulkan;
+	bBuildForES2 = !bBuildForES2 && !bBuildForES31 && !bSupportsVulkan;
 }
 
-void UAndroidRuntimeSettings::PostReloadConfig(FProperty* PropertyThatWasLoaded)
+void UAndroidRuntimeSettings::PostReloadConfig(UProperty* PropertyThatWasLoaded)
 {
 	Super::PostReloadConfig(PropertyThatWasLoaded);
 
@@ -54,7 +61,7 @@ void UAndroidRuntimeSettings::PostReloadConfig(FProperty* PropertyThatWasLoaded)
 
 void UAndroidRuntimeSettings::HandlesRGBHWSupport()
 {
-	const bool SupportssRGB = PackageForOculusMobile.Num() > 0;
+	const bool SupportssRGB = !bBuildForES2 && PackageForOculusMobile.Num() > 0;
 	URendererSettings* const Settings = GetMutableDefault<URendererSettings>();
 	static auto* MobileUseHWsRGBEncodingCVAR = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Mobile.UseHWsRGBEncoding"));
 
@@ -96,6 +103,7 @@ void UAndroidRuntimeSettings::PostEditChangeProperty(struct FPropertyChangedEven
 	if (PropertyChangedEvent.Property != nullptr)
 	{
 		if (PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(UAndroidRuntimeSettings, bSupportsVulkan) ||
+			PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(UAndroidRuntimeSettings, bBuildForES2) ||
 			PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(UAndroidRuntimeSettings, bBuildForES31))
 		{
 			// Supported shader formats changed so invalidate cache
@@ -112,10 +120,10 @@ void UAndroidRuntimeSettings::PostEditChangeProperty(struct FPropertyChangedEven
 		UpdateSinglePropertyInConfigFile(PropertyChangedEvent.Property, GetDefaultConfigFilename());
 
 		// Ensure we have at least one format for Android_Multi
-		if (!bMultiTargetFormat_ETC2 && !bMultiTargetFormat_DXT && !bMultiTargetFormat_ASTC)
+		if (!bMultiTargetFormat_ETC1 && !bMultiTargetFormat_ETC1a && !bMultiTargetFormat_ETC2 && !bMultiTargetFormat_DXT && !bMultiTargetFormat_PVRTC && !bMultiTargetFormat_ATC && !bMultiTargetFormat_ASTC)
 		{
-			bMultiTargetFormat_ETC2 = true;
-			UpdateSinglePropertyInConfigFile(GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UAndroidRuntimeSettings, bMultiTargetFormat_ETC2)), GetDefaultConfigFilename());
+			bMultiTargetFormat_ETC1 = true;
+			UpdateSinglePropertyInConfigFile(GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UAndroidRuntimeSettings, bMultiTargetFormat_ETC1)), GetDefaultConfigFilename());
 		}
 
 		// Notify the AndroidTargetPlatform module if it's loaded
@@ -202,6 +210,18 @@ void UAndroidRuntimeSettings::PostInitProperties()
 		UpdateDefaultConfigFile();
 	}
 
+	// Upgrade old Oculus packaging settings as necessary.
+	const TCHAR* AndroidSettings = TEXT("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings");
+	bool bPackageForGearVR = false;
+	GConfig->GetBool(AndroidSettings, TEXT("bPackageForGearVR"), bPackageForGearVR, GEngineIni);
+	if (bPackageForGearVR)
+	{
+		// Update default config
+		PackageForOculusMobile.Add(EOculusMobileDevice::GearGo);
+		UpdateDefaultConfigFile();
+	}
+
+	// Enable ES2 if no GPU arch is selected. (as can be the case with the removal of ESDeferred) 
 	EnsureValidGPUArch();
 	HandlesRGBHWSupport();
 }
@@ -209,7 +229,7 @@ void UAndroidRuntimeSettings::PostInitProperties()
 void UAndroidRuntimeSettings::EnsureValidGPUArch()
 {
 	// Ensure that at least one GPU architecture is supported
-	if (!bSupportsVulkan && !bBuildForES31)
+	if (!bBuildForES2 && !bSupportsVulkan && !bBuildForES31)
 	{
 		bBuildForES31 = true;
 		UpdateSinglePropertyInConfigFile(GetClass()->FindPropertyByName(GET_MEMBER_NAME_CHECKED(UAndroidRuntimeSettings, bBuildForES31)), GetDefaultConfigFilename());

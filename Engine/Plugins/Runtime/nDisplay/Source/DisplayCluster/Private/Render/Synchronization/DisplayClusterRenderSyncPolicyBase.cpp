@@ -1,16 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Render/Synchronization/DisplayClusterRenderSyncPolicyBase.h"
 
 #include "Cluster/IPDisplayClusterClusterManager.h"
-#include "Cluster/Controller/IDisplayClusterNodeController.h"
+#include "Cluster/Controller/IPDisplayClusterNodeController.h"
 
-#include "Misc/DisplayClusterGlobals.h"
-#include "Misc/DisplayClusterLog.h"
+#include "DisplayClusterGlobals.h"
+#include "DisplayClusterLog.h"
 
 
-FDisplayClusterRenderSyncPolicyBase::FDisplayClusterRenderSyncPolicyBase(const TMap<FString, FString>& InParameters)
-	: Parameters(InParameters)
+FDisplayClusterRenderSyncPolicyBase::FDisplayClusterRenderSyncPolicyBase()
 {
 }
 
@@ -21,19 +20,21 @@ FDisplayClusterRenderSyncPolicyBase::~FDisplayClusterRenderSyncPolicyBase()
 
 void FDisplayClusterRenderSyncPolicyBase::SyncBarrierRenderThread()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterRenderSync);
+
 	if (GDisplayCluster->GetOperationMode() == EDisplayClusterOperationMode::Disabled)
 	{
 		return;
 	}
 
-	double ThreadTime  = 0.f;
-	double BarrierTime = 0.f;
+	double tTime = 0.f;
+	double bTime = 0.f;
 
-	IDisplayClusterNodeController* const pController = GDisplayCluster->GetPrivateClusterMgr()->GetController();
+	IPDisplayClusterNodeController* const pController = GDisplayCluster->GetPrivateClusterMgr()->GetController();
 	if (pController)
 	{
-		pController->WaitForSwapSync(&ThreadTime, &BarrierTime);
+		pController->WaitForSwapSync(&tTime, &bTime);
 	}
 
-	UE_LOG(LogDisplayClusterRenderSync, VeryVerbose, TEXT("Render barrier wait: t=%lf b=%lf"), ThreadTime, BarrierTime);
+	UE_LOG(LogDisplayClusterRenderSync, Verbose, TEXT("Render barrier wait: t=%lf b=%lf"), tTime, bTime);
 }

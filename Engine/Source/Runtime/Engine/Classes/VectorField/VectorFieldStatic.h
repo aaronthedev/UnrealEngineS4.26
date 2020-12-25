@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	VectorField: A 3D grid of vectors.
@@ -7,7 +7,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Math/Float16.h"
 #include "UObject/ObjectMacros.h"
 #include "Serialization/BulkData.h"
 #include "VectorField/VectorField.h"
@@ -15,11 +14,6 @@
 
 class FRHITexture;
 struct FPropertyChangedEvent;
-
-// The internal representation of the CPU data (if used) is based on how we can
-// effectively sample it.  Currently we'll decide that based on if we have ISPC
-// supported
-#define VECTOR_FIELD_DATA_AS_HALF (INTEL_ISPC)
 
 UCLASS(hidecategories=VectorFieldBounds, MinimalAPI)
 class UVectorFieldStatic : public UVectorField
@@ -49,6 +43,11 @@ public:
 	/** Source vector data. */
 	FByteBulkData SourceData;
 
+	/** Local copy of the source vector data. */
+	UPROPERTY(Transient)
+	TArray<FVector4> CPUData; 
+
+
 #if WITH_EDITORONLY_DATA
 	UPROPERTY()
 	FString SourceFilePath_DEPRECATED;
@@ -60,7 +59,6 @@ public:
 	//~ Begin UObject Interface.
 	virtual void PostLoad() override;
 	virtual void BeginDestroy() override;
-	virtual void GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize) override;
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif // WITH_EDITOR
@@ -80,13 +78,8 @@ public:
 	 */
 	ENGINE_API void InitResource();
 
-	/** Takes a local copy of the source bulk data so that it is readable at runtime on the CPU. 
-	* @param bDiscardData If the internal loaded data should be discarded after calling this or not.
-	*/
-	ENGINE_API void UpdateCPUData(bool bDiscardData);
-
-	UE_DEPRECATED(4.25, "Please call UpdateCPUData(bool bDiscardData) instead and choose if the internal data should be discarded or not")
-	ENGINE_API void UpdateCPUData() { UpdateCPUData(true); }
+	/** Takes a local copy of the source bulk data so that it is readable at runtime on the CPU. */
+	ENGINE_API void UpdateCPUData();
 
 #if WITH_EDITOR
 	/** Sets the bAllowCPUAccess flag and calls UpdateCPUData(). */
@@ -95,25 +88,8 @@ public:
 
 	/** Returns a reference to a 3D texture handle for the GPU data. */
 	ENGINE_API FRHITexture* GetVolumeTextureRef();
-
-	ENGINE_API FVector FilteredSample(const FVector& SamplePosition, const FVector& TilingAxes) const;
-	ENGINE_API FVector Sample(const FIntVector& SamplePosition) const;
-
-	using InternalFloatType = 
-#if VECTOR_FIELD_DATA_AS_HALF
-		FFloat16;
-#else
-		float;
-#endif
-
-	TConstArrayView<InternalFloatType> ReadCPUData() const
-	{
-		return MakeArrayView<const InternalFloatType>(reinterpret_cast<const InternalFloatType*>(CPUData.GetData()), CPUData.Num() / sizeof(InternalFloatType));
-	}
-
-	bool HasCPUData() const { return bAllowCPUAccess && CPUData.Num(); }
-
 private:
+
 	/** Permit the factory class to update and release resources externally. */
 	friend class UVectorFieldStaticFactory;
 
@@ -128,21 +104,6 @@ private:
 	 */
 	ENGINE_API void ReleaseResource();
 
-	FORCEINLINE FVector SampleInternal(int32 SampleIndex) const;
-
-	/** Local copy of the source vector data.  May be stored in half precision if it can be sampled efficiently */
-	TArray<uint8> CPUData;
+	
 };
 
-// work around for the private nature of FVectorFieldResource
-struct ENGINE_API FVectorFieldTextureAccessor
-{
-	FVectorFieldTextureAccessor(UVectorField* InVectorField);
-	FVectorFieldTextureAccessor(const FVectorFieldTextureAccessor& rhs);
-	~FVectorFieldTextureAccessor();
-
-	FRHITexture* GetTexture() const;
-
-private:
-	TUniquePtr<struct FVectorFieldTextureAccessorImpl> Impl;
-};

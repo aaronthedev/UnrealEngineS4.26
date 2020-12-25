@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	RenderResource.h: Render resource definitions.
@@ -10,61 +10,32 @@
 #include "Containers/List.h"
 #include "RHI.h"
 #include "RenderCore.h"
-#include "Serialization/MemoryLayout.h"
-#include "Containers/DynamicRHIResourceArray.h"
 
 /** Number of frames after which unused global resource allocations will be discarded. */
 extern int32 GGlobalBufferNumFramesUnusedThresold;
 
 /**
  * A rendering resource which is owned by the rendering thread.
- * NOTE - Adding new virtual methods to this class may require stubs added to FViewport/FDummyViewport, otherwise certain modules may have link errors
  */
 class RENDERCORE_API FRenderResource
 {
 public:
-	template<typename FunctionType>
-	static void ForAllResources(const FunctionType& Function)
-	{
-		const TArray<FRenderResource*>& ResourceList = GetResourceList();
-		ResourceListIterationActive.Increment();
-		for (int32 Index = 0; Index < ResourceList.Num(); ++Index)
-		{
-			FRenderResource* Resource = ResourceList[Index];
-			if (Resource)
-			{
-				checkSlow(Resource->ListIndex == Index);
-				Function(Resource);
-			}
-		}
-		ResourceListIterationActive.Decrement();
-	}
 
-	static void InitRHIForAllResources()
-	{
-		ForAllResources([](FRenderResource* Resource) { Resource->InitRHI(); });
-		// Dynamic resources can have dependencies on static resources (with uniform buffers) and must initialized last!
-		ForAllResources([](FRenderResource* Resource) { Resource->InitDynamicRHI(); });
-	}
-
-	static void ReleaseRHIForAllResources()
-	{
-		ForAllResources([](FRenderResource* Resource) { check(Resource->IsInitialized()); Resource->ReleaseRHI(); });
-		ForAllResources([](FRenderResource* Resource) { Resource->ReleaseDynamicRHI(); });
-	}
+	/** @return The global initialized resource list. */
+	static TLinkedList<FRenderResource*>*& GetResourceList();
 
 	static void ChangeFeatureLevel(ERHIFeatureLevel::Type NewFeatureLevel);
 
 	/** Default constructor. */
 	FRenderResource()
-		: ListIndex(INDEX_NONE)
-		, FeatureLevel(ERHIFeatureLevel::Num)
+		: FeatureLevel(ERHIFeatureLevel::Num)
+		, bInitialized(false)
 	{}
 
 	/** Constructor when we know what feature level this resource should support */
 	FRenderResource(ERHIFeatureLevel::Type InFeatureLevel)
-		: ListIndex(INDEX_NONE)
-		, FeatureLevel(InFeatureLevel)
+		: FeatureLevel(InFeatureLevel)
+		, bInitialized(false)
 	{}
 
 	/** Destructor used to catch unreleased resources. */
@@ -118,31 +89,32 @@ public:
 	 */
 	void UpdateRHI();
 
+	// Probably temporary code that sends a task back to renderthread_local and blocks waiting for it to call InitResource
+	void InitResourceFromPossiblyParallelRendering();
+
 	/** @return The resource's friendly name.  Typically a UObject name. */
 	virtual FString GetFriendlyName() const { return TEXT("undefined"); }
 
 	// Accessors.
-	FORCEINLINE bool IsInitialized() const { return ListIndex != INDEX_NONE; }
+	FORCEINLINE bool IsInitialized() const { return bInitialized; }
 
 	/** Initialize all resources initialized before the RHI was initialized */
 	static void InitPreRHIResources();
 
-private:
-	/** @return The global initialized resource list. */
-	static TArray<FRenderResource*>& GetResourceList();
-
-	static FThreadSafeCounter ResourceListIterationActive;
-
-	int32 ListIndex;
-
 protected:
 	// This is used during mobile editor preview refactor, this will eventually be replaced with a parameter to InitRHI() etc..
-	void SetFeatureLevel(const FStaticFeatureLevel InFeatureLevel) { FeatureLevel = (ERHIFeatureLevel::Type)InFeatureLevel; }
-	const FStaticFeatureLevel GetFeatureLevel() const { return FeatureLevel == ERHIFeatureLevel::Num ? FStaticFeatureLevel(GMaxRHIFeatureLevel) : FeatureLevel; }
+	ERHIFeatureLevel::Type GetFeatureLevel() const { return FeatureLevel == ERHIFeatureLevel::Num ? GMaxRHIFeatureLevel : FeatureLevel; }
 	FORCEINLINE bool HasValidFeatureLevel() const { return FeatureLevel < ERHIFeatureLevel::Num; }
 
+	ERHIFeatureLevel::Type FeatureLevel;
+
 private:
-	TEnumAsByte<ERHIFeatureLevel::Type> FeatureLevel;
+	/** True if the resource has been initialized. */
+	bool bInitialized;
+
+	#if PLATFORM_NEEDS_RHIRESOURCELIST
+	TLinkedList<FRenderResource*> ResourceLink;
+	#endif
 };
 
 /**
@@ -411,11 +383,6 @@ public:
 	{
 		return 0;
 	}
-	/** Returns the depth of the texture in pixels. */
-	virtual uint32 GetSizeZ() const
-	{
-		return 0;
-	}
 
 	// FRenderResource interface.
 	virtual void ReleaseRHI() override
@@ -425,9 +392,6 @@ public:
 		DeferredPassSamplerStateRHI.SafeRelease();
 	}
 	virtual FString GetFriendlyName() const override { return TEXT("FTexture"); }
-
-protected:
-	RENDERCORE_API static FRHISamplerState* GetOrCreateSamplerState(const FSamplerStateInitializerRHI& Initializer);
 };
 
 /** A textures resource that includes an SRV. */
@@ -437,16 +401,11 @@ public:
 	/** SRV that views the entire texture */
 	FShaderResourceViewRHIRef ShaderResourceViewRHI;
 
-	/** *optional* UAV that views the entire texture */
-	FUnorderedAccessViewRHIRef UnorderedAccessViewRHI;
-
-
 	virtual ~FTextureWithSRV() {}
 
 	virtual void ReleaseRHI() override
 	{
 		ShaderResourceViewRHI.SafeRelease();
-		UnorderedAccessViewRHI.SafeRelease();
 		FTexture::ReleaseRHI();
 	}
 };
@@ -511,23 +470,6 @@ public:
 	virtual FString GetFriendlyName() const override { return TEXT("FVertexBuffer"); }
 };
 
-class RENDERCORE_API FVertexBufferWithSRV : public FVertexBuffer
-{
-public:
-	/** SRV that views the entire texture */
-	FShaderResourceViewRHIRef ShaderResourceViewRHI;
-
-	/** *optional* UAV that views the entire texture */
-	FUnorderedAccessViewRHIRef UnorderedAccessViewRHI;
-
-	virtual void ReleaseRHI() override
-	{
-		ShaderResourceViewRHI.SafeRelease();
-		UnorderedAccessViewRHI.SafeRelease();
-		FVertexBuffer::ReleaseRHI();
-	}
-};
-
 /**
 * A vertex buffer with a single color component.  This is used on meshes that don't have a color component
 * to keep from needing a separate vertex factory to handle this case.
@@ -566,42 +508,6 @@ public:
 /** The global null color vertex buffer, which is set with a stride of 0 on meshes without a color component. */
 extern RENDERCORE_API TGlobalResource<FNullColorVertexBuffer> GNullColorVertexBuffer;
 
-/**
-* A vertex buffer with a single zero float3 component.
-*/
-class FNullVertexBuffer : public FVertexBuffer
-{
-public:
-	/**
-	* Initialize the RHI for this rendering resource
-	*/
-	virtual void InitRHI() override
-	{
-		// create a static vertex buffer
-		FRHIResourceCreateInfo CreateInfo;
-
-		void* LockedData = nullptr;
-		VertexBufferRHI = RHICreateAndLockVertexBuffer(sizeof(float) * 3, BUF_Static | BUF_ZeroStride | BUF_ShaderResource, CreateInfo, LockedData);
-
-		*reinterpret_cast<FVector*>(LockedData) = FVector(0.0f);
-
-		RHIUnlockVertexBuffer(VertexBufferRHI);
-
-		VertexBufferSRV = RHICreateShaderResourceView(VertexBufferRHI, sizeof(FColor), PF_R8G8B8A8);
-	}
-
-	virtual void ReleaseRHI() override
-	{
-		VertexBufferSRV.SafeRelease();
-		FVertexBuffer::ReleaseRHI();
-	}
-
-	FShaderResourceViewRHIRef VertexBufferSRV;
-};
-
-/** The global null vertex buffer, which is set with a stride of 0 on meshes */
-extern RENDERCORE_API TGlobalResource<FNullVertexBuffer> GNullVertexBuffer;
-
 /** An index buffer resource. */
 class FIndexBuffer : public FRenderResource
 {
@@ -624,8 +530,14 @@ FORCEINLINE bool ShouldCompileRayTracingShadersForProject(EShaderPlatform Shader
 {
 	if (RHISupportsRayTracingShaders(ShaderPlatform))
 	{
-		extern RENDERCORE_API uint64 GRayTracingPlaformMask;
-		return !!(GRayTracingPlaformMask & (1ull << ShaderPlatform));
+		// r.RayTracing is a read-only CVar. UE needs to be restarted to effectively change it
+		auto GetRayTracingCVarValue = []()
+		{
+			auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.RayTracing"));
+			return CVar && CVar->GetInt() > 0;
+		};
+		static const bool bRayTracingEnabled = GetRayTracingCVarValue();
+		return bRayTracingEnabled;
 	}
 	else
 	{
@@ -633,36 +545,43 @@ FORCEINLINE bool ShouldCompileRayTracingShadersForProject(EShaderPlatform Shader
 	}
 }
 
-// Returns `true` when running on RT-capable machine, RT support is enabled for the project and by game graphics options.
-// This function may only be called at runtime, never during cooking.
-extern RENDERCORE_API bool IsRayTracingEnabled();
+// Returns `true` when running on RT-capable machine and RT support is enabled for the project.
+// This function is a runtime only function!
+FORCEINLINE bool IsRayTracingEnabled()
+{
+	if (GRHISupportsRayTracing)
+	{
+		// r.RayTracing is a read-only CVar. UE needs to be restarted to effectively change it
+		auto GetRayTracingCVarValue = []()
+		{
+			auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.RayTracing"));
+			return CVar && CVar->GetInt() > 0;
+		};
+		static const bool bRayTracingEnabled = GetRayTracingCVarValue();
+		return bRayTracingEnabled;
+	}
+	else
+	{
+		return false;
+	}
+}
+
+#if RHI_RAYTRACING
 
 /** A ray tracing geometry resource */
 class RENDERCORE_API FRayTracingGeometry : public FRenderResource
 {
 public:
-	TResourceArray<uint8> RawData;
+	FRayTracingGeometryRHIRef RayTracingGeometryRHI;
+	FRayTracingGeometryInitializer Initializer;
 
 	/** Default constructor. */
 	FRayTracingGeometry()
+		: RayTracingGeometryRHI(NULL)
 	{}
 
 	/** Destructor. */
 	virtual ~FRayTracingGeometry() {}
-
-#if RHI_RAYTRACING
-	FRayTracingGeometryRHIRef RayTracingGeometryRHI;
-	FRayTracingGeometryInitializer Initializer;
-
-	/** When set to NonSharedVertexBuffers, then shared vertex buffers are not used  */
-	static constexpr int64 NonSharedVertexBuffers = -1;
-
-	/** 
-	Vertex buffers for dynamic geometries may be sub-allocated from a shared pool, which is periodically reset and its generation ID is incremented.
-	Geometries that use the shared buffer must be updated (rebuilt or refit) before they are used for rendering after the pool is reset.
-	This is validated by comparing the current shared pool generation ID against generation IDs stored in FRayTracingGeometry during latest update.
-	*/
-	int64 DynamicGeometrySharedBufferGenerationID = NonSharedVertexBuffers;
 
 	// FRenderResource interface.
 	virtual void ReleaseRHI() override
@@ -678,15 +597,6 @@ public:
 
 	virtual void InitRHI() override
 	{
-		if (!IsRayTracingEnabled())
-			return;
-
-		check(RawData.Num() == 0 || Initializer.OfflineData == nullptr);
-		if (RawData.Num())
-		{
-			Initializer.OfflineData = &RawData;
-		}
-
 		bool bAllSegmentsAreValid = true;
 		for (const FRayTracingGeometrySegment& Segment : Initializer.Segments)
 		{
@@ -697,34 +607,22 @@ public:
 			}
 		}
 
-		if (Initializer.IndexBuffer && bAllSegmentsAreValid)
+		if (Initializer.IndexBuffer && bAllSegmentsAreValid && IsRayTracingEnabled())
 		{
 			RayTracingGeometryRHI = RHICreateRayTracingGeometry(Initializer);
-			if (Initializer.OfflineData == nullptr)
-			{
-				// If offline data is not available, then acceleration structure must be built at run-time.
-				FRHICommandListExecutor::GetImmediateCommandList().BuildAccelerationStructure(RayTracingGeometryRHI);
-			}
-			else
-			{
-				// Offline data ownership is transferred to the RHI, which discards it after use.
-				// It is no longer valid to use it after this point.
-				Initializer.OfflineData = nullptr;
-			}
+			FRHICommandListExecutor::GetImmediateCommandList().BuildAccelerationStructure(RayTracingGeometryRHI);
 		}
 	}
-
-
-#endif
 };
 
-#if RHI_RAYTRACING
 class RENDERCORE_API FRayTracingScene : public FRenderResource
 {
 public:
 	FRayTracingSceneRHIRef RayTracingSceneRHI = nullptr;
 
 	virtual FString GetFriendlyName() const override { return TEXT("FRayTracingScene"); }
+
+	
 
 	virtual void ReleaseRHI()
 	{
@@ -809,36 +707,25 @@ public:
 	struct FAllocation
 	{
 		/** The location of the buffer in main memory. */
-		uint8* Buffer = nullptr;
+		uint8* Buffer;
 		/** The vertex buffer to bind for draw calls. */
-		FIndexBuffer* IndexBuffer = nullptr;
+		FIndexBuffer* IndexBuffer;
 		/** The offset in to the index buffer. */
-		uint32 FirstIndex = 0;
+		uint32 FirstIndex;
+
+		/** Default constructor. */
+		FAllocation()
+			: Buffer(NULL)
+			, IndexBuffer(NULL)
+			, FirstIndex(0)
+		{
+		}
 
 		/** Returns true if the allocation is valid. */
 		FORCEINLINE bool IsValid() const
 		{
 			return Buffer != NULL;
 		}
-	};
-
-	/** Information data with usage details to avoid passing around parameters. */
-	struct FAllocationEx : public FAllocation
-	{
-		FAllocationEx() = default;
-
-		FAllocationEx(const FAllocation& InRef, uint32 InNumIndices, uint32 InIndexStride) 
-			: FAllocation(InRef)
-			, NumIndices(InNumIndices)
-			, IndexStride(InIndexStride) 
-		{}
-
-		/** The number of indices allocated. */
-		uint32 NumIndices = 0;
-		/** The allocation stride (2 or 4 bytes). */
-		uint32 IndexStride = 0;
-		/** The maximum value of the indices used. */
-		uint32 MaxUsedIndex = 0;
 	};
 
 	/** Default constructor. */
@@ -861,9 +748,9 @@ public:
 	 * @returns an FAllocation with information regarding the allocated memory.
 	 */
 	template <typename IndexType>
-	FORCEINLINE FAllocationEx Allocate(uint32 NumIndices)
+	inline FAllocation Allocate(uint32 NumIndices)
 	{
-		return FAllocationEx(Allocate(NumIndices, sizeof(IndexType)), NumIndices, sizeof(IndexType));
+		return Allocate(NumIndices, sizeof(IndexType));
 	}
 
 	/**
@@ -939,19 +826,3 @@ private:
 	uint32 NextBoundShaderStateIndex;
 	FCriticalSection BoundShaderStateHistoryLock;
 };
-
-/**Note, this should only be used when a platform requires special shader compilation for 32 bit pixel format render targets.
-Does not replace pixel format associations across the board**/
-
-FORCEINLINE bool PlatformRequires128bitRT(EPixelFormat PixelFormat)
-{
-	switch (PixelFormat)
-	{
-	case PF_R32_FLOAT:
-	case PF_G32R32F:
-	case PF_A32B32G32R32F:
-		return FDataDrivenShaderPlatformInfo::GetRequiresExplicit128bitRT(GMaxRHIShaderPlatform);
-	default:
-		return false;
-	}
-}

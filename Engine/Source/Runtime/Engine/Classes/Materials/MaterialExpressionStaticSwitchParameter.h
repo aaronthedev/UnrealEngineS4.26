@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -14,13 +14,12 @@ class UMaterialExpressionStaticSwitchParameter : public UMaterialExpressionStati
 {
 	GENERATED_UCLASS_BODY()
 
-#if WITH_EDITORONLY_DATA
 	UPROPERTY()
 	FExpressionInput A;
 
 	UPROPERTY()
 	FExpressionInput B;
-#endif
+
 
 	//~ Begin UMaterialExpression Interface
 #if WITH_EDITOR

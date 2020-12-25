@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
 
 #include "Containers/Array.h"
 #include "Math/Color.h"
-#include "Misc/Paths.h"
 
 class FArchive;
 
@@ -17,9 +16,6 @@ using CADUUID = uint32;  // Universal unique identifier that be used for the unr
 
 namespace CADLibrary
 {
-
-// TODO: Remove from hear and replace by DatasmithUtils::GetCleanFilenameAndExtension... But need to remove DatasmithCore dependancies 
-CADTOOLS_API void GetCleanFilenameAndExtension(const FString& InFilePath, FString& OutFilename, FString& OutExtension);
 
 class CADTOOLS_API FCADMaterial
 {
@@ -44,44 +40,6 @@ struct CADTOOLS_API FObjectDisplayDataId
 	ColorId Color = 0; // => FastHash == ColorId+Transparency
 };
 
-struct CADTOOLS_API FFileDescription
-{
-	explicit FFileDescription(const TCHAR* InFilePath = nullptr, const TCHAR* InConfiguration = nullptr, const TCHAR* InRootFilePath = nullptr)
-		: Path(InFilePath)
-		, Configuration(InConfiguration)
-		, MainCadFilePath(InRootFilePath)
-	{
-		if (MainCadFilePath.IsEmpty() && !Path.IsEmpty())
-		{
-			MainCadFilePath = FPaths::GetPath(Path);
-		}
-
-		GetCleanFilenameAndExtension(Path, Name, Extension);
-		Name += TEXT(".") + Extension;
-	}
-
-	/**
-	 * Used to replace CADFile path by the path of the file saved in KernelIO format (*.ct)
-	 */ 
-	void ReplaceByKernelIOBackup(const FString& InKernelIOBackupPath)
-	{
-		Path = InKernelIOBackupPath;
-	}
-
-	bool operator==(const FFileDescription& Other) const
-	{
-		return (FPaths::IsSamePath(Path, Other.Path) && (Configuration == Other.Configuration));
-	}
-
-	friend CADTOOLS_API FArchive& operator<<(FArchive& Ar, FFileDescription& File);
-
-	FString Path;
-	FString Name;  
-	FString Extension;
-	FString Configuration;
-	FString MainCadFilePath;
-};
-
 /**
  * Helper struct to store tessellation data from CoreTech
  */
@@ -89,14 +47,21 @@ struct CADTOOLS_API FTessellationData
 {
 	friend CADTOOLS_API FArchive& operator<<(FArchive& Ar, FTessellationData& Tessellation);
 
-	int32    PatchId = 0;
-
-	TArray<FVector> VertexArray;
-	TArray<FVector> NormalArray;
-	TArray<int32> IndexArray;
-	TArray<FVector2D> TexCoordArray;
+	TArray<uint8> VertexArray;
+	TArray<uint8> NormalArray;
+	TArray<uint8> IndexArray;
+	TArray<uint8> TexCoordArray;
+	uint32        VertexCount = 0;
+	uint32        NormalCount = 0;
+	uint32        IndexCount = 0;
+	uint32        TexCoordCount = 0;
 
 	uint32    StartVertexIndex = 0;
+
+	uint8 SizeOfVertexType = 0;
+	uint8 SizeOfTexCoordType = 0;
+	uint8 SizeOfNormalType = 0;
+	uint8 SizeOfIndexType = 0;
 
 	CADUUID ColorName = 0;
 	CADUUID MaterialName = 0;
@@ -110,14 +75,12 @@ class CADTOOLS_API FBodyMesh
 public:
 	FBodyMesh(CadId InBodyID = 0) : BodyID(InBodyID)
 	{
-		BBox.Init();
 	}
 
 	friend FArchive& operator<<(FArchive& Ar, FBodyMesh& BodyMesh);
 
 public:
 	TArray<FTessellationData> Faces;
-	FBox BBox;
 
 	uint32 TriangleCount = 0;
 	CadId BodyID = 0;
@@ -221,11 +184,4 @@ inline void CopyValue(const void* Source, int Offset, uint8 Size, int32 Dest[3])
 	}
 }
 
-using ::GetTypeHash;
-FORCEINLINE CADTOOLS_API uint32 GetTypeHash(const FFileDescription& FileDescription)
-{
-	return HashCombine(GetTypeHash(FileDescription.Name), GetTypeHash(FileDescription.Configuration));
-};
-
 }
-

@@ -1,26 +1,17 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
-#include "RenderGraph.h"
+#include "CoreMinimal.h"
+#include "ShaderParameters.h"
+#include "Shader.h"
 #include "GlobalShader.h"
+#include "ShaderParameterUtils.h"
+#include "RendererInterface.h"
 
-class RENDERER_API FRenderTargetWriteMask
+class FRenderTargetWriteMask
 {
 public:
-	static void Decode(
-		FRHICommandListImmediate& RHICmdList,
-		FGlobalShaderMap* ShaderMap,
-		TArrayView<IPooledRenderTarget* const> InRenderTargets,
-		TRefCountPtr<IPooledRenderTarget>& OutRTWriteMask,
-		ETextureCreateFlags RTWriteMaskFastVRamConfig,
-		const TCHAR* RTWriteMaskDebugName);
-
-	static void Decode(
-		FRDGBuilder& GraphBuilder,
-		FGlobalShaderMap* ShaderMap,
-		TArrayView<FRDGTextureRef const> InRenderTargets,
-		FRDGTextureRef& OutRTWriteMask,
-		ETextureCreateFlags RTWriteMaskFastVRamConfig,
-		const TCHAR* RTWriteMaskDebugName);
-};	
+	template <uint32 NumRenderTargets>
+	static void Decode(FRHICommandListImmediate& RHICmdList, TShaderMap<FGlobalShaderType>* ShaderMap, IPooledRenderTarget* InRenderTargets[NumRenderTargets], TRefCountPtr<IPooledRenderTarget>& OutRTWriteMask, uint32 RTWriteMaskFastVRamConfig, const TCHAR* RTWriteMaskDebugName);
+};

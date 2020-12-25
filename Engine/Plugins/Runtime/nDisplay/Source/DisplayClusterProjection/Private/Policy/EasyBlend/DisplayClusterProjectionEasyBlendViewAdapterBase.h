@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -35,14 +35,13 @@ public:
 
 public:
 	const FIntPoint& GetViewportSize() const
-	{
-		return InitParams.ViewportSize;
-	}
+	{ return InitParams.ViewportSize; }
+
+	FIntPoint GetViewportSize()
+	{ return InitParams.ViewportSize; }
 
 	uint32 GetNumViews() const
-	{
-		return InitParams.NumViews;
-	}
+	{ return InitParams.NumViews; }
 
 public:
 	virtual bool CalculateView(const uint32 ViewIdx, FVector& InOutViewLocation, FRotator& InOutViewRotation, const FVector& ViewOffset, const float WorldToMeters, const float NCP, const float FCP) = 0;

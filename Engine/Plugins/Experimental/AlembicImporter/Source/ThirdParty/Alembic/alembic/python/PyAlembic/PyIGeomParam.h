@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef PyAlembic_PyIGeomParam_h
-#define PyAlembic_PyIGeomParam_h
+#ifndef _PyAlembic_PyIGeomParam_h_
+#define _PyAlembic_PyIGeomParam_h_
 
 #include <Foundation.h>
 

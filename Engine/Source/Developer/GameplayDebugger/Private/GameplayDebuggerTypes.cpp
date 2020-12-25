@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayDebuggerTypes.h"
 #include "InputCoreTypes.h"
@@ -8,17 +8,8 @@
 #include "DrawDebugHelpers.h"
 #include "CanvasItem.h"
 #include "Engine/Canvas.h"
-#include "Engine/World.h"
 
 DEFINE_LOG_CATEGORY(LogGameplayDebug);
-
-namespace FGameplayDebuggerUtils
-{
-	bool IsAuthority(UWorld* World)
-	{
-		return (World == nullptr) || (World->GetNetMode() != NM_Client) || World->IsPlayingReplay();
-	}
-}
 
 //////////////////////////////////////////////////////////////////////////
 // FGameplayDebuggerShape
@@ -144,8 +135,7 @@ void FGameplayDebuggerShape::Draw(UWorld* World, FGameplayDebuggerCanvasContext&
 	case EGameplayDebuggerShape::Cone:
 		if (ShapeData.Num() == 3 && ShapeData[2].X > 0)
 		{
-			const float DefaultConeAngle = 0.25f; // ~ 15 degrees
-			DrawDebugCone(World, ShapeData[0], ShapeData[1], ShapeData[2].X, DefaultConeAngle, DefaultConeAngle, 16, Color);
+			DrawDebugCone(World, ShapeData[0], ShapeData[1], ShapeData[2].X, PI * 0.5f, PI * 0.5f, 16, Color);
 			DescLocation = ShapeData[0];
 		}
 		break;
@@ -416,17 +406,32 @@ void FGameplayDebuggerCanvasContext::Print(const FColor& Color, const FString& S
 
 void FGameplayDebuggerCanvasContext::PrintAt(float PosX, float PosY, const FString& String)
 {
-	PrintAt(PosX, PosY, FColor::White, String);
+	const float SavedPosX = CursorX;
+	const float SavedPosY = CursorY;
+	const float SavedDefX = DefaultX;
+
+	DefaultX = CursorX = PosX;
+	DefaultY = CursorY = PosY;
+	Print(FColor::White, String);
+
+	CursorX = SavedPosX;
+	CursorY = SavedPosY;
+	DefaultX = SavedDefX;
 }
 
 void FGameplayDebuggerCanvasContext::PrintAt(float PosX, float PosY, const FColor& Color, const FString& String)
 {
-	TGuardValue<float> ScopedCursorX(CursorX, PosX);
-	TGuardValue<float> ScopedCursorY(CursorY, PosY);
-	TGuardValue<float> ScopedDefaultX(DefaultX, PosX);
-	TGuardValue<float> ScopedDefaultY(DefaultY, PosY);
+	const float SavedPosX = CursorX;
+	const float SavedPosY = CursorY;
+	const float SavedDefX = DefaultX;
 
+	DefaultX = CursorX = PosX;
+	DefaultY = CursorY = PosY;
 	Print(Color, String);
+
+	CursorX = SavedPosX;
+	CursorY = SavedPosY;
+	DefaultX = SavedDefX;
 }
 
 // copied from Core/Private/Misc/VarargsHeler.h 

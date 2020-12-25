@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,8 +7,6 @@
 
 struct CORE_API FWindowsPlatformCrashContext : public FGenericCrashContext
 {
-	static const TCHAR* const UE4GPUAftermathMinidumpName;
-	
 	FWindowsPlatformCrashContext(ECrashContextType InType, const TCHAR* InErrorMessage)
 		: FGenericCrashContext(InType, InErrorMessage)
 	{

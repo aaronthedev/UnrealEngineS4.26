@@ -1,7 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "SoundCueContainer.h"
 
 #include "Sound/SoundCue.h"
+#include "Sound/SoundCueTemplate.h"
 #include "Sound/SoundWave.h"
 #include "Sound/SoundNode.h"
 #include "Sound/SoundNodeConcatenator.h"
@@ -10,6 +11,7 @@
 #include "Sound/SoundNodeQualityLevel.h"
 #include "Sound/SoundNodeRandom.h"
 #include "Sound/SoundNodeWavePlayer.h"
+#include "SoundCueTemplateSettings.h"
 #include "SoundCueTemplatesModule.h"
 
 #if WITH_EDITORONLY_DATA

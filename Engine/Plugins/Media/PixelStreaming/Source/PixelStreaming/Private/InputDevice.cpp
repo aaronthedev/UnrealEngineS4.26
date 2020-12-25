@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "InputDevice.h"
 #include "PixelStreamerInputComponent.h"
@@ -36,6 +36,8 @@ class FCursor : public ICursor
 public:
 	FCursor() {}
 	virtual ~FCursor() = default;
+	virtual void* CreateCursorFromFile(const FString& InPathToCursorWithoutExtension, FVector2D HotSpot) override { return nullptr; }
+	virtual void* CreateCursorFromRGBABuffer(const FColor* Pixels, int32 Width, int32 Height, FVector2D InHotSpot) override { return nullptr; }
 	virtual FVector2D GetPosition() const override { return Position; }
 	virtual void SetPosition(const int32 X, const int32 Y) override { Position = FVector2D(X, Y); };
 	virtual void SetType(const EMouseCursor::Type InNewCursor) override {};
@@ -61,12 +63,6 @@ public:
 		: GenericApplication(MakeShareable(new FCursor()))
 		, WrappedApplication(InWrappedApplication)
 	{
-		// Whether we want to always consider the mouse as attached. This allow
-		// us to run Pixel Streaming on a machine which has no physical mouse
-		// and just let the browser supply mouse positions.
-		const UPixelStreamingSettings* Settings = GetDefault<UPixelStreamingSettings>();
-		check(Settings);
-		bMouseAlwaysAttached = Settings->bPixelStreamerMouseAlwaysAttached;
 	}
 
 	/**
@@ -87,6 +83,7 @@ public:
 	virtual void SetHighPrecisionMouseMode(const bool Enable, const TSharedPtr< FGenericWindow >& InWindow) { WrappedApplication->SetHighPrecisionMouseMode(Enable, InWindow); };
 	virtual bool IsUsingHighPrecisionMouseMode() const { return WrappedApplication->IsUsingHighPrecisionMouseMode(); }
 	virtual bool IsUsingTrackpad() const { return WrappedApplication->IsUsingTrackpad(); }
+	virtual bool IsMouseAttached() const { return WrappedApplication->IsMouseAttached(); }
 	virtual bool IsGamepadAttached() const { return WrappedApplication->IsGamepadAttached(); }
 	virtual void RegisterConsoleCommandListener(const FOnConsoleCommandListener& InListener) { WrappedApplication->RegisterConsoleCommandListener(InListener); }
 	virtual void AddPendingConsoleCommand(const FString& InCommand) { WrappedApplication->AddPendingConsoleCommand(InCommand); }
@@ -107,10 +104,8 @@ public:
 	 * Functions with overridden behavior.
 	 */
 	virtual bool IsCursorDirectlyOverSlateWindow() const { return true; }
-	virtual bool IsMouseAttached() const { return bMouseAlwaysAttached ? true : WrappedApplication->IsMouseAttached(); }
 
 	TSharedPtr<GenericApplication> WrappedApplication;
-	bool bMouseAlwaysAttached;
 };
 
 const FVector2D FInputDevice::UnfocusedPos(-1.0f, -1.0f);
@@ -131,20 +126,8 @@ FInputDevice::FInputDevice(const TSharedRef<FGenericApplicationMessageHandler>& 
 		const UPixelStreamingSettings* Settings = GetDefault<UPixelStreamingSettings>();
 		check(Settings);
 		
-		// Check to see if we want to hide the cursor (by making it invisible).
-		// This is required if we want to make the cursor client-side (displayed
-		// only by the the browser).
-		bool bHideCursor = FParse::Param(FCommandLine::Get(), TEXT("PixelStreamingHideCursor"));
-		if (bHideCursor)
-		{
-			GEngine->GameViewport->AddSoftwareCursor(EMouseCursor::Default, Settings->PixelStreamerHiddenCursorClassName);
-			GEngine->GameViewport->AddSoftwareCursor(EMouseCursor::TextEditBeam, Settings->PixelStreamerHiddenCursorClassName);
-		}
-		else
-		{
-			GEngine->GameViewport->AddSoftwareCursor(EMouseCursor::Default, Settings->PixelStreamerDefaultCursorClassName);
-			GEngine->GameViewport->AddSoftwareCursor(EMouseCursor::TextEditBeam, Settings->PixelStreamerTextEditBeamCursorClassName);
-		}
+		GEngine->GameViewport->AddSoftwareCursor(EMouseCursor::Default, Settings->PixelStreamerDefaultCursorClassName);
+		GEngine->GameViewport->AddSoftwareCursor(EMouseCursor::TextEditBeam, Settings->PixelStreamerTextEditBeamCursorClassName);
 	}
 }
 
@@ -586,7 +569,6 @@ void FInputDevice::OnMessage(const uint8* Data, uint32 Size)
 		checkf(Size == 0, TEXT("%d, %d"), Size, Descriptor.Len());
 		UE_LOG(PixelStreamerInput, Verbose, TEXT("Command: %s"), *Descriptor);
 		ProcessCommand(Descriptor);
-		break;
 	}
 	case EToStreamerMsg::KeyDown:
 	{

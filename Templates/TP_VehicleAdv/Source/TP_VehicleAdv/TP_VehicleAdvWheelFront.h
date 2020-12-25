@@ -1,12 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "VehicleWheel.h"
 #include "TP_VehicleAdvWheelFront.generated.h"
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 UCLASS()
 class UTP_VehicleAdvWheelFront : public UVehicleWheel
@@ -17,4 +15,5 @@ public:
 	UTP_VehicleAdvWheelFront();
 };
 
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
+
+

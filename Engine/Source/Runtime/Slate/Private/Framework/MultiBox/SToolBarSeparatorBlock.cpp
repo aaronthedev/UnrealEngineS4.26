@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Framework/MultiBox/SToolBarSeparatorBlock.h"
 #include "Widgets/SBoxPanel.h"
@@ -10,7 +10,7 @@
  * Constructor
  */
 FToolBarSeparatorBlock::FToolBarSeparatorBlock(const FName& InExtensionHook)
-	: FMultiBlock( nullptr, nullptr, InExtensionHook, EMultiBlockType::Separator )
+	: FMultiBlock( nullptr, nullptr, InExtensionHook, EMultiBlockType::ToolBarSeparator )
 {
 }
 
@@ -18,7 +18,7 @@ FToolBarSeparatorBlock::FToolBarSeparatorBlock(const FName& InExtensionHook)
 
 void FToolBarSeparatorBlock::CreateMenuEntry(FMenuBuilder& MenuBuilder) const
 {
-	MenuBuilder.AddSeparator();
+	MenuBuilder.AddMenuSeparator();
 }
 
 
@@ -65,5 +65,6 @@ void SToolBarSeparatorBlock::BuildMultiBlockWidget(const ISlateStyle* StyleSet, 
 	];
 
 	// Add this widget to the search list of the multibox and hide it
-	OwnerMultiBoxWidget.Pin()->AddElement(this->AsWidget(), FText::GetEmpty(), MultiBlock->GetSearchable());
+	if (MultiBlock->GetSearchable())
+		OwnerMultiBoxWidget.Pin()->AddSearchElement(this->AsWidget(), FText::GetEmpty());
 }

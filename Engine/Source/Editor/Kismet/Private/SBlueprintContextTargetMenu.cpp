@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SBlueprintContextTargetMenu.h"
 #include "Engine/Blueprint.h"
@@ -170,9 +170,9 @@ static UClass* ContextMenuTargetProfileImpl::GetPinClass(UEdGraphPin const* Pin)
 //------------------------------------------------------------------------------
 static bool ContextMenuTargetProfileImpl::HasAnyExposedComponents(UClass* TargetClass)
 {
-	for (TFieldIterator<FObjectProperty> PropertyIt(TargetClass, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
+	for (TFieldIterator<UObjectProperty> PropertyIt(TargetClass, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
 	{
-		FObjectProperty* ObjectProperty = *PropertyIt;
+		UObjectProperty* ObjectProperty = *PropertyIt;
 		if (!ObjectProperty->HasAnyPropertyFlags(CPF_BlueprintVisible) || !ObjectProperty->PropertyClass->IsChildOf<UActorComponent>())
 		{
 			continue;

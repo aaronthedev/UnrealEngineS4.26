@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #if USE_ANDROID_LAUNCH
@@ -117,8 +117,6 @@ static const uint32 ValidGamepadKeyCodesList[] =
 static TSet<uint32> ValidGamepadKeyCodes;
 
 // -nostdlib means no crtbegin_so.o, so we have to provide our own __dso_handle and atexit()
-// this is not needed now we are using stdlib (later NDK has more functionality we should keep)
-#if 0
 extern "C"
 {
 	int atexit(void (*func)(void)) { return 0; }
@@ -126,7 +124,6 @@ extern "C"
 	extern void *__dso_handle __attribute__((__visibility__ ("hidden")));
 	void *__dso_handle;
 }
-#endif
 
 int32 GAndroidEnableNativeResizeEvent = 0;
 static FAutoConsoleVariableRef CVarEnableResizeNativeEvent(
@@ -667,8 +664,6 @@ bool IsInAndroidEventThread()
 
 static void* AndroidEventThreadWorker( void* param )
 {
-	FAndroidMisc::SetThreadName("EventWorker");
-
 	struct android_app* state = (struct android_app*)param;
 
 	FPlatformProcess::SetThreadAffinityMask(FPlatformAffinity::GetMainGameMask());
@@ -737,8 +732,6 @@ struct android_app* GNativeAndroidApp = NULL;
 
 void android_main(struct android_app* state)
 {
-	GGameThreadId = FPlatformTLS::GetCurrentThreadId();
-
 	BootTimingPoint("android_main");
 	FPlatformMisc::LowLevelOutputDebugString(TEXT("Entering native app glue main function"));
 	
@@ -1393,22 +1386,12 @@ static void OnAppCommandCB(struct android_app* app, int32_t cmd)
 		break;
 	case APP_CMD_PAUSE:
 	{
+		bIsResumed = false;
 		/**
 		 * Command from main thread: the app's activity has been paused.
 		 */
 		FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Case APP_CMD_PAUSE"));
 		UE_LOG(LogAndroid, Log, TEXT("Case APP_CMD_PAUSE"));
-
-		// Ignore pause command for Oculus if the window hasn't been initialized to prevent halting initial load
-		// if the headset is not active
-		if (!bHasWindow && FAndroidMisc::IsStandaloneStereoOnlyDevice())
-		{
-			FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Oculus: Ignoring APP_CMD_PAUSE command before APP_CMD_INIT_WINDOW"));
-			UE_LOG(LogAndroid, Log, TEXT("Oculus: Ignoring APP_CMD_PAUSE command before APP_CMD_INIT_WINDOW"));
-			break;
-		}
-
-		bIsResumed = false;
 		FAppEventManager::GetInstance()->EnqueueAppEvent(APP_EVENT_STATE_ON_PAUSE);
 
 		bool bAllowReboot = true;
@@ -1559,7 +1542,7 @@ JNI_METHOD void Java_com_epicgames_ue4_GameActivity_nativeInitHMDs(JNIEnv* jenv,
 	GHMDsInitialized = true;
 }
 
-JNI_METHOD void Java_com_epicgames_ue4_GameActivity_nativeSetAndroidVersionInformation(JNIEnv* jenv, jobject thiz, jstring androidVersion, jint targetSDKversion, jstring phoneMake, jstring phoneModel, jstring phoneBuildNumber, jstring osLanguage )
+JNI_METHOD void Java_com_epicgames_ue4_GameActivity_nativeSetAndroidVersionInformation(JNIEnv* jenv, jobject thiz, jstring androidVersion, jstring phoneMake, jstring phoneModel, jstring phoneBuildNumber, jstring osLanguage )
 {
 	auto UEAndroidVersion = FJavaHelper::FStringFromParam(jenv, androidVersion);
 	auto UEPhoneMake = FJavaHelper::FStringFromParam(jenv, phoneMake);
@@ -1567,7 +1550,7 @@ JNI_METHOD void Java_com_epicgames_ue4_GameActivity_nativeSetAndroidVersionInfor
 	auto UEPhoneBuildNumber = FJavaHelper::FStringFromParam(jenv, phoneBuildNumber);
 	auto UEOSLanguage = FJavaHelper::FStringFromParam(jenv, osLanguage);
 	
-	FAndroidMisc::SetVersionInfo( UEAndroidVersion, targetSDKversion, UEPhoneMake, UEPhoneModel, UEPhoneBuildNumber, UEOSLanguage );
+	FAndroidMisc::SetVersionInfo( UEAndroidVersion, UEPhoneMake, UEPhoneModel, UEPhoneBuildNumber, UEOSLanguage );
 }
 
 //This function is declared in the Java-defined class, GameActivity.java: "public native void nativeOnInitialDownloadStarted();

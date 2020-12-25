@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -50,8 +50,7 @@ enum class ETextLocation
 	NextPage,
 };
 
-UENUM(BlueprintType)
-enum class EVirtualKeyboardTrigger : uint8
+enum class EVirtualKeyboardTrigger
 {
 	/** Display the virtual keyboard when the widget gains keyboard focus by a pointer action. */
 	OnFocusByPointer,
@@ -225,9 +224,6 @@ public:
 
 	/** Should we select all text when the user commits text to this widget? */
 	virtual bool ShouldSelectAllTextOnCommit() const = 0;
-
-	/** Should we select word on mouse double click? */
-	virtual bool ShouldSelectWordOnMouseDoubleClick() const = 0;
 
 	/** Are we currently able to insert a carriage return? (some widgets have modifier keys that need to be pressed) */
 	virtual bool CanInsertCarriageReturn() const = 0;

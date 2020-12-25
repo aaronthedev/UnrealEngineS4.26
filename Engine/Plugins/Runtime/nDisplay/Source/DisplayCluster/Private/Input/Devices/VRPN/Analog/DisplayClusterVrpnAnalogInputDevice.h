@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,8 +10,6 @@
 #include "Windows/HideWindowsPlatformTypes.h"
 #endif
 
-class UDisplayClusterConfigurationInputDeviceAnalog;
-
 
 /**
  * VRPN analog device implementation
@@ -20,7 +18,7 @@ class FDisplayClusterVrpnAnalogInputDevice
 	: public FDisplayClusterVrpnAnalogInputDataHolder
 {
 public:
-	FDisplayClusterVrpnAnalogInputDevice(const FString& DeviceId, const UDisplayClusterConfigurationInputDeviceAnalog* CfgDevice);
+	FDisplayClusterVrpnAnalogInputDevice(const FDisplayClusterConfigInput& config);
 	virtual ~FDisplayClusterVrpnAnalogInputDevice();
 
 public:
@@ -32,7 +30,7 @@ public:
 
 private:
 	// Data update handler
-	static void VRPN_CALLBACK HandleAnalogDevice(void *UserData, vrpn_ANALOGCB const AnalogData);
+	static void VRPN_CALLBACK HandleAnalogDevice(void *userData, vrpn_ANALOGCB const tr);
 
 private:
 	// The device (PIMPL)

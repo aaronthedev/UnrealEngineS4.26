@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ChaosSQTypes.h"
 #include "Chaos/ChaosArchive.h"
@@ -10,7 +10,7 @@ namespace ChaosInterface
 	void FActorShape::Serialize(Chaos::FChaosArchive& Ar)
 	{
 		Ar << Chaos::AsAlwaysSerializable(Actor);
-		auto NonConstShape = const_cast<Chaos::FPerShapeData*>(Shape);
+		auto NonConstShape = const_cast<Chaos::TPerShapeData<float, 3>*>(Shape);
 		Ar << Chaos::AsAlwaysSerializable(NonConstShape);
 		Shape = NonConstShape;
 	}

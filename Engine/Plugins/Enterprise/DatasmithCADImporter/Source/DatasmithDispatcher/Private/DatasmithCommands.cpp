@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithCommands.h"
 
@@ -39,14 +39,14 @@ namespace DatasmithDispatcher
 		if (TSharedPtr<ICommand> Command = CreateCommand(static_cast<ECommandId>(type)))
 		{
 			ArReader << *Command;
-			return ArReader.IsError() ? nullptr : Command;
+			return ArReader.ArIsError ? nullptr : Command;
 		}
 		return nullptr;
 	}
 
 	void FRunTaskCommand::SerializeImpl(FArchive& Ar)
 	{
-		Ar << JobFileDescription;
+		Ar << JobFilePath;
 		Ar << JobIndex;
 	}
 
@@ -56,7 +56,6 @@ namespace DatasmithDispatcher
 		Ar << ProcessResult;
 		Ar << SceneGraphFileName;
 		Ar << GeomFileName;
-		Ar << WarningMessages;
 	}
 
 	void FImportParametersCommand::SerializeImpl(FArchive& Ar)

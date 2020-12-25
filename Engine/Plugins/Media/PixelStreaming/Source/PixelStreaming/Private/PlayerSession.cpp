@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PlayerSession.h"
 #include "Streamer.h"
@@ -195,7 +195,7 @@ void FPlayerSession::OnMessage(const webrtc::DataBuffer& Buffer)
 		check(Buffer.data.size() == 1);
 		Streamer.OnQualityOwnership(PlayerId);
 	}
-	else if (!IsEngineExitRequested())
+	else
 	{
 		InputDevice.OnMessage(Buffer.data.data(), static_cast<uint32>(Buffer.data.size()));
 	}
@@ -252,7 +252,7 @@ void FPlayerSession::SendMessage(PixelStreamingProtocol::EToPlayerMsg Type, cons
 	DataChannel->Send(webrtc::DataBuffer(Buffer, true));
 }
 
-void FPlayerSession::SendFreezeFrame(const TArray64<uint8>& JpegBytes)
+void FPlayerSession::SendFreezeFrame(const TArray<uint8>& JpegBytes)
 {
 	if (!DataChannel)
 	{

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EngineAnalytics.h"
 #include "Misc/Guid.h"
@@ -15,14 +15,14 @@
 #include "EngineSessionManager.h"
 #include "Misc/EngineVersion.h"
 #include "RHI.h"
-#include "GenericPlatform/GenericPlatformCrashContext.h"
-#include "StudioAnalytics.h"
 
 #if WITH_EDITOR
 #include "EditorAnalyticsSession.h"
 #include "EditorSessionSummarySender.h"
 #include "Analytics/EditorSessionSummaryWriter.h"
 #endif
+
+#include "GenericPlatform/GenericPlatformCrashContext.h"
 
 bool FEngineAnalytics::bIsInitialized;
 TSharedPtr<IAnalyticsProviderET> FEngineAnalytics::Analytics;
@@ -33,38 +33,35 @@ static TSharedPtr<FEditorSessionSummaryWriter> SessionSummaryWriter;
 static TSharedPtr<FEditorSessionSummarySender> SessionSummarySender;
 #endif
 
-static TSharedPtr<IAnalyticsProviderET> CreateEpicAnalyticsProvider()
+/**
+* Default config func.
+*/
+FAnalyticsET::Config DefaultEngineAnalyticsConfigFunc()
 {
-	FAnalyticsET::Config Config;
-	{
-		// We always use the "Release" analytics account unless we're running in analytics test mode (usually with
-		// a command-line parameter), or we're an internal Epic build
-		const EAnalyticsBuildType AnalyticsBuildType = GetAnalyticsBuildType();
-		const bool bUseReleaseAccount =
-			(AnalyticsBuildType == EAnalyticsBuildType::Development || AnalyticsBuildType == EAnalyticsBuildType::Release) &&
-			!FEngineBuildSettings::IsInternalBuild();	// Internal Epic build
-		const TCHAR* BuildTypeStr = bUseReleaseAccount ? TEXT("Release") : TEXT("Dev");
-
-		FString UE4TypeOverride;
-		bool bHasOverride = GConfig->GetString(TEXT("Analytics"), TEXT("UE4TypeOverride"), UE4TypeOverride, GEngineIni);
-		const TCHAR* UE4TypeStr = bHasOverride ? *UE4TypeOverride : FEngineBuildSettings::IsPerforceBuild() ? TEXT("Perforce") : TEXT("UnrealEngine");
-		Config.APIKeyET = FString::Printf(TEXT("UEEditor.%s.%s"), UE4TypeStr, BuildTypeStr);
-	}
-	Config.APIServerET = TEXT("https://datarouter.ol.epicgames.com/");
-	Config.AppEnvironment = TEXT("datacollector-binary");
-	Config.AppVersionET = FEngineVersion::Current().ToString();
-
-	// Connect the engine analytics provider (if there is a configuration delegate installed)
-	return FAnalyticsET::Get().CreateAnalyticsProvider(Config);
+	return FAnalyticsET::Config();
 }
 
-IAnalyticsProviderET& FEngineAnalytics::GetProvider()
+/**
+* Engine analytics config to initialize the analytics provider.
+* External code should bind this delegate if engine analytics are desired,
+* preferably in private code that won't be redistributed.
+*/
+TFunction<FAnalyticsET::Config()>& GetEngineAnalyticsConfigFunc()
+{
+	static TFunction<FAnalyticsET::Config()> Config = &DefaultEngineAnalyticsConfigFunc;
+	return Config;
+}
+
+/**
+ * Get analytics pointer
+ */
+IAnalyticsProvider& FEngineAnalytics::GetProvider()
 {
 	checkf(bIsInitialized && IsAvailable(), TEXT("FEngineAnalytics::GetProvider called outside of Initialize/Shutdown."));
 
 	return *Analytics.Get();
 }
-
+ 
 void FEngineAnalytics::Initialize()
 {
 	checkf(!bIsInitialized, TEXT("FEngineAnalytics::Initialize called more than once."));
@@ -88,17 +85,48 @@ void FEngineAnalytics::Initialize()
 
 	if (bShouldInitAnalytics)
 	{
-		Analytics = CreateEpicAnalyticsProvider();
+		// Get the default config.
+		FAnalyticsET::Config Config = GetEngineAnalyticsConfigFunc()();
+		// Set any fields that weren't set by default.
+		if (Config.APIKeyET.IsEmpty())
+		{
+			// We always use the "Release" analytics account unless we're running in analytics test mode (usually with
+			// a command-line parameter), or we're an internal Epic build
+			const EAnalyticsBuildType AnalyticsBuildType = GetAnalyticsBuildType();
+			const bool bUseReleaseAccount =
+				(AnalyticsBuildType == EAnalyticsBuildType::Development || AnalyticsBuildType == EAnalyticsBuildType::Release) &&
+				!FEngineBuildSettings::IsInternalBuild();	// Internal Epic build
+			const TCHAR* BuildTypeStr = bUseReleaseAccount ? TEXT("Release") : TEXT("Dev");
+
+			FString UE4TypeOverride;
+			bool bHasOverride = GConfig->GetString(TEXT("Analytics"), TEXT("UE4TypeOverride"), UE4TypeOverride, GEngineIni);
+			const TCHAR* UE4TypeStr = bHasOverride ? *UE4TypeOverride : FEngineBuildSettings::IsPerforceBuild() ? TEXT("Perforce") : TEXT("UnrealEngine");
+			Config.APIKeyET = FString::Printf(TEXT("UEEditor.%s.%s"), UE4TypeStr, BuildTypeStr);
+		}
+		if (Config.APIServerET.IsEmpty())
+		{
+			Config.APIServerET = TEXT("https://datarouter.ol.epicgames.com/");
+		}
+		if (Config.AppEnvironment.IsEmpty())
+		{
+			Config.AppEnvironment = TEXT("datacollector-source");
+		}
+		if (Config.AppVersionET.IsEmpty())
+		{
+			Config.AppVersionET = FEngineVersion::Current().ToString();
+		}
+
+		// Connect the engine analytics provider (if there is a configuration delegate installed)
+		Analytics = FAnalyticsET::Get().CreateAnalyticsProvider(Config);
 
 		if (Analytics.IsValid())
 		{
 			Analytics->SetUserID(FString::Printf(TEXT("%s|%s|%s"), *FPlatformMisc::GetLoginId(), *FPlatformMisc::GetEpicAccountId(), *FPlatformMisc::GetOperatingSystemId()));
 
-			const UGeneralProjectSettings& ProjectSettings = *GetDefault<UGeneralProjectSettings>();
-
 			TArray<FAnalyticsEventAttribute> StartSessionAttributes;
 			GEngine->CreateStartupAnalyticsAttributes( StartSessionAttributes );
 			// Add project info whether we are in editor or game.
+			const UGeneralProjectSettings& ProjectSettings = *GetDefault<UGeneralProjectSettings>();
 			FString OSMajor;
 			FString OSMinor;
 			FPlatformMemoryStats Stats = FPlatformMemory::GetStats();
@@ -123,13 +151,6 @@ void FEngineAnalytics::Initialize()
 			StartSessionAttributes.Emplace(TEXT("OSMinor"), OSMinor);
 			StartSessionAttributes.Emplace(TEXT("OSVersion"), FPlatformMisc::GetOSVersion());
 			StartSessionAttributes.Emplace(TEXT("Is64BitOS"), FPlatformMisc::Is64bitOperatingSystem());
-
-			// allow editor events to be correlated to StudioAnalytics events (if there is a studio analytics provider)
-			if (FStudioAnalytics::IsAvailable())
-			{
-				Analytics->SetDefaultEventAttributes(MakeAnalyticsEventAttributeArray(TEXT("StudioAnalyticsSessionID"), FStudioAnalytics::GetProvider().GetSessionID()));
-			}
-
 			Analytics->StartSession(MoveTemp(StartSessionAttributes));
 
 			bIsInitialized = true;
@@ -138,15 +159,42 @@ void FEngineAnalytics::Initialize()
 		// Create the session manager singleton
 		if (!SessionManager.IsValid())
 		{
-			SessionManager = MakeShared<FEngineSessionManager>(EEngineSessionManagerMode::Editor);
+			SessionManager = MakeShareable(new FEngineSessionManager(EEngineSessionManagerMode::Editor));
 			SessionManager->Initialize();
 		}
 
 #if WITH_EDITOR
 		if (!SessionSummaryWriter.IsValid())
 		{
-			SessionSummaryWriter = MakeShared<FEditorSessionSummaryWriter>(FGenericCrashContext::GetOutOfProcessCrashReporterProcessId());
+			SessionSummaryWriter = MakeShareable(new FEditorSessionSummaryWriter());
 			SessionSummaryWriter->Initialize();
+
+			// This scope is a hack for 4.24.3: It adds 3 extra keys to the session summary to let CrashReportClientEditor
+			// impersonate the Editor when sending the summary report (See EditorSessionSummarySender.cpp).
+			{
+				FGuid SessionId;
+				FString SessionIdStr = Analytics->GetSessionID();
+				if (FGuid::Parse(SessionIdStr, SessionId))
+				{
+					// Convert session GUID to one without braces or other chars that might not be suitable for storage
+					SessionIdStr = SessionId.ToString(EGuidFormats::DigitsWithHyphens);
+				}
+
+				// Add extra fields to the session here for 4.24.3. Done here to keep the FEditorAnalyticsSession public header untouched and avoiding undesired dependencies,
+				// but the member were added to FEditorAnalyticsSession in 4.25.
+				const FString StoreId(TEXT("Epic Games"));
+				const FString SessionSummarySection(TEXT("Unreal Engine/Session Summary/1_0"));
+				const FString StorageLocation = SessionSummarySection + TEXT("/") + SessionIdStr;
+				const FString AppIdStoreKey(TEXT("AppId"));
+				const FString AppVersionStoreKey(TEXT("AppVersion"));
+				const FString UserIdStoreKey(TEXT("UserId"));
+
+				FEditorAnalyticsSession::Lock();
+				FPlatformMisc::SetStoredValue(StoreId, StorageLocation, AppIdStoreKey, Analytics->GetAppID());
+				FPlatformMisc::SetStoredValue(StoreId, StorageLocation, AppVersionStoreKey, Analytics->GetAppVersion());
+				FPlatformMisc::SetStoredValue(StoreId, StorageLocation, UserIdStoreKey, Analytics->GetUserID());
+				FEditorAnalyticsSession::Unlock();
+			}
 		}
 
 		if (!SessionSummarySender.IsValid())
@@ -208,16 +256,6 @@ void FEngineAnalytics::Tick(float DeltaTime)
 	if (SessionSummarySender.IsValid())
 	{
 		SessionSummarySender->Tick(DeltaTime);
-	}
-#endif
-}
-
-void FEngineAnalytics::LowDriveSpaceDetected()
-{
-#if WITH_EDITOR
-	if (SessionSummaryWriter.IsValid())
-	{
-		SessionSummaryWriter->LowDriveSpaceDetected();
 	}
 #endif
 }

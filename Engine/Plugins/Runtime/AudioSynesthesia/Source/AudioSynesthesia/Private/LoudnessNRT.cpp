@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LoudnessNRT.h"
 #include "LoudnessNRTFactory.h"
@@ -71,18 +71,6 @@ TUniquePtr<Audio::IAnalyzerNRTSettings> ULoudnessNRTSettings::GetSettings(const 
 	
 	return Settings;
 }
-
-#if WITH_EDITOR
-FText ULoudnessNRTSettings::GetAssetActionName() const
-{
-	return NSLOCTEXT("AssetTypeActions", "AssetTypeActions_AssetSoundSynesthesiaLoudnessNRTSettings", "Synesthesia NRT Settings (Loudness)");
-}
-
-UClass* ULoudnessNRTSettings::GetSupportedClass() const
-{
-	return ULoudnessNRTSettings::StaticClass();
-}
-#endif
 
 /***************************************************************************/
 /**********************        ULoudnessNRT         ************************/
@@ -173,18 +161,6 @@ TUniquePtr<Audio::IAnalyzerNRTSettings> ULoudnessNRT::GetSettings(const float In
 
 	return AnalyzerSettings;
 }
-
-#if WITH_EDITOR
-FText ULoudnessNRT::GetAssetActionName() const
-{
-	return NSLOCTEXT("AssetTypeActions", "AssetTypeActions_AssetSoundSynesthesiaLoudnessNRT", "Synesthesia NRT (Loudness)");
-}
-
-UClass* ULoudnessNRT::GetSupportedClass() const
-{
-	return ULoudnessNRT::StaticClass();
-}
-#endif
 
 FName ULoudnessNRT::GetAnalyzerNRTFactoryName() const
 {

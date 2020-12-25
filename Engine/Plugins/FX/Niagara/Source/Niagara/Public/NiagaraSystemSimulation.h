@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,21 +7,10 @@
 #include "UObject/GCObject.h"
 #include "NiagaraDataSet.h"
 #include "NiagaraScriptExecutionContext.h"
-#include "NiagaraSystem.h"
 
-class UNiagaraEffectType;
 class UWorld;
 class UNiagaraParameterCollection;
 class UNiagaraParameterCollectionInstance;
-
-enum class ENiagaraGPUTickHandlingMode
-{
-	None, /** No GPU Ticks needed. */
-	GameThread,/** Each system has to submit it's GPU tick individually on the game thread. */
-	Concurrent,/** Each system has to submit it's GPU tick individually during it's concurrent tick. */
-	GameThreadBatched,/** Systems can submit their GPU ticks in batches but it must be done on the game thread. */
-	ConcurrentBatched,/** Systems can submit their GPU ticks in batches during concurrent tick. */
-};
 
 //TODO: It would be good to have the batch size be variable per system to try to keep a good work/overhead ratio.
 //Can possibly adjust in future based on average batch execution time.
@@ -41,70 +30,40 @@ struct FNiagaraParameterStoreToDataSetBinding
 		int32 DataSetComponentOffset;
 		FDataOffsets(int32 InParamOffset, int32 InDataSetComponentOffset) : ParameterOffset(InParamOffset), DataSetComponentOffset(InDataSetComponentOffset) {}
 	};
-	struct FHalfDataOffsets : public FDataOffsets
-	{
-		bool ApplyAsFloat;
-		FHalfDataOffsets(int32 InParamOffset, int32 InDataSetComponentOffset, bool InApplyAsFloat) : FDataOffsets(InParamOffset, InDataSetComponentOffset), ApplyAsFloat(InApplyAsFloat) {}
-	};
-
 	TArray<FDataOffsets> FloatOffsets;
 	TArray<FDataOffsets> Int32Offsets;
-	TArray<FHalfDataOffsets> HalfOffsets;
 
 	void Empty()
 	{
 		FloatOffsets.Empty();
 		Int32Offsets.Empty();
-		HalfOffsets.Empty();
 	}
 
 	void Init(FNiagaraDataSet& DataSet, const FNiagaraParameterStore& ParameterStore)
 	{
 		//For now, until I get time to refactor all the layout info into something more coherent we'll init like this and just have to assume the correct layout sets and stores are used later.
 		//Can check it but it'd be v slow.
-		const auto& DataSetVariables = DataSet.GetVariables();
-		const auto& DataSetVariableLayouts = DataSet.GetVariableLayouts();
-		for (int i=0; i < DataSetVariables.Num(); ++i)
+
+		for (const FNiagaraVariable& Var : DataSet.GetVariables())
 		{
-			const FNiagaraVariable& Var = DataSetVariables[i];
-			const int32* ParameterOffsetPtr = ParameterStore.FindParameterOffset(Var, true);
-			if (ParameterOffsetPtr == nullptr)
+			const FNiagaraVariableLayoutInfo* Layout = DataSet.GetVariableLayout(Var);
+			const int32* ParameterOffsetPtr = ParameterStore.FindParameterOffset(Var);
+			int32 NumFloats = 0;
+			int32 NumInts = 0;
+			if (ParameterOffsetPtr && Layout)
 			{
-				continue;
-			}
-
-			const FNiagaraVariableLayoutInfo& Layout = DataSetVariableLayouts[i];
-			const int32 ParameterOffset = *ParameterOffsetPtr;
-			for (uint32 CompIdx = 0; CompIdx < Layout.GetNumFloatComponents(); ++CompIdx)
-			{
-				const int32 ParamOffset = ParameterOffset + Layout.LayoutInfo.FloatComponentByteOffsets[CompIdx];
-				const int32 DataSetOffset = Layout.FloatComponentStart + CompIdx;
-				FloatOffsets.Emplace(ParamOffset, DataSetOffset);
-			}
-			for (uint32 CompIdx = 0; CompIdx < Layout.GetNumInt32Components(); ++CompIdx)
-			{
-				const int32 ParamOffset = ParameterOffset + Layout.LayoutInfo.Int32ComponentByteOffsets[CompIdx];
-				const int32 DataSetOffset = Layout.Int32ComponentStart + CompIdx;
-				Int32Offsets.Emplace(ParamOffset, DataSetOffset);
-			}
-			for (uint32 CompIdx = 0; CompIdx < Layout.GetNumHalfComponents(); ++CompIdx)
-			{
-				constexpr bool ParameterSetsSupportHalf = false;
-
-				if (ParameterSetsSupportHalf)
+				int32 ParameterOffset = *ParameterOffsetPtr;
+				for (uint32 CompIdx = 0; CompIdx < Layout->GetNumFloatComponents(); ++CompIdx)
 				{
-					const int32 ParamOffset = ParameterOffset + Layout.LayoutInfo.HalfComponentByteOffsets[CompIdx];
-					const int32 DataSetOffset = Layout.HalfComponentStart + CompIdx;
-					HalfOffsets.Emplace(ParamOffset, DataSetOffset, !ParameterSetsSupportHalf);
+					int32 ParamOffset = ParameterOffset + Layout->LayoutInfo.FloatComponentByteOffsets[CompIdx];
+					int32 DataSetOffset = Layout->FloatComponentStart + NumFloats++;
+					FloatOffsets.Emplace(ParamOffset, DataSetOffset);
 				}
-				else
+				for (uint32 CompIdx = 0; CompIdx < Layout->GetNumInt32Components(); ++CompIdx)
 				{
-					// if parameter sets don't support half, then we need to write in floats into the parameter set, and
-					// for that we need to adjust the offset based on the difference in stride between float & half
-					// In reality 
-					const int32 ParamOffset = ParameterOffset + sizeof(float) * Layout.LayoutInfo.HalfComponentByteOffsets[CompIdx] / sizeof(FFloat16);
-					const int32 DataSetOffset = Layout.HalfComponentStart + CompIdx;
-					HalfOffsets.Emplace(ParamOffset, DataSetOffset, !ParameterSetsSupportHalf);
+					int32 ParamOffset = ParameterOffset + Layout->LayoutInfo.Int32ComponentByteOffsets[CompIdx];
+					int32 DataSetOffset = Layout->Int32ComponentStart + NumInts++;
+					Int32Offsets.Emplace(ParamOffset, DataSetOffset);
 				}
 			}
 		}
@@ -128,18 +87,6 @@ struct FNiagaraParameterStoreToDataSetBinding
 			int32* DataSetPtr = CurrBuffer->GetInstancePtrInt32(DataOffsets.DataSetComponentOffset, DataSetInstanceIndex);
 			ParameterStore.SetParameterByOffset(DataOffsets.ParameterOffset, *DataSetPtr);
 		}
-		for (const FHalfDataOffsets& DataOffsets : HalfOffsets)
-		{
-			FFloat16* DataSetPtr = CurrBuffer->GetInstancePtrHalf(DataOffsets.DataSetComponentOffset, DataSetInstanceIndex);
-			if (DataOffsets.ApplyAsFloat)
-			{
-				ParameterStore.SetParameterByOffset(DataOffsets.ParameterOffset, DataSetPtr->GetFloat());
-			}
-			else
-			{
-				ParameterStore.SetParameterByOffset(DataOffsets.ParameterOffset, *DataSetPtr);
-			}
-		}
 
 #if NIAGARA_NAN_CHECKING
 		ParameterStore.CheckForNaNs();
@@ -148,7 +95,7 @@ struct FNiagaraParameterStoreToDataSetBinding
 		ParameterStore.OnParameterChange();
 	}
 
-	FORCEINLINE_DEBUGGABLE void ParameterStoreToDataSet(const FNiagaraParameterStore& ParameterStore, FNiagaraDataSet& DataSet, int32 DataSetInstanceIndex)
+	FORCEINLINE_DEBUGGABLE void ParameterStoreToDataSet(FNiagaraParameterStore& ParameterStore, FNiagaraDataSet& DataSet, int32 DataSetInstanceIndex)
 	{
 		FNiagaraDataBuffer& CurrBuffer = DataSet.GetDestinationDataChecked();
 		const uint8* ParameterData = ParameterStore.GetParameterDataArray().GetData();
@@ -169,21 +116,6 @@ struct FNiagaraParameterStoreToDataSetBinding
 			int32* DataSetPtr = CurrBuffer.GetInstancePtrInt32(DataOffsets.DataSetComponentOffset, DataSetInstanceIndex);
 			*DataSetPtr = *ParamPtr;
 		}
-		for (const FHalfDataOffsets& DataOffsets : HalfOffsets)
-		{
-			FFloat16* DataSetPtr = CurrBuffer.GetInstancePtrHalf(DataOffsets.DataSetComponentOffset, DataSetInstanceIndex);
-
-			if (DataOffsets.ApplyAsFloat)
-			{
-				float* ParamPtr = (float*)(ParameterData + DataOffsets.ParameterOffset);
-				*DataSetPtr = *ParamPtr;
-			}
-			else
-			{
-				FFloat16* ParamPtr = (FFloat16*)(ParameterData + DataOffsets.ParameterOffset);
-				*DataSetPtr = *ParamPtr;
-			}
-		}
 
 #if NIAGARA_NAN_CHECKING
 		DataSet.CheckForNaNs();
@@ -191,31 +123,9 @@ struct FNiagaraParameterStoreToDataSetBinding
 	}
 };
 
-struct FNiagaraConstantBufferToDataSetBinding
-{
-	static void CopyToDataSets(
-		const FNiagaraSystemCompiledData& CompiledData,
-		const FNiagaraSystemInstance& SystemInstance,
-		FNiagaraDataSet& SpawnDataSet,
-		FNiagaraDataSet& UpdateDataSet,
-		int32 DataSetInstanceIndex);
-
-protected:
-	static void ApplyOffsets(const FNiagaraParameterDataSetBindingCollection& Offsets, const uint8* SourceData, FNiagaraDataSet& DataSet, int32 DataSetInstanceIndex);
-};
-
 struct FNiagaraSystemSimulationTickContext
 {
-private:
-	FNiagaraSystemSimulationTickContext(TArray<FNiagaraSystemInstance*>& InInstances, FNiagaraDataSet& InDataSet)
-		: Instances(InInstances)
-		, DataSet(InDataSet)
-	{
-	}
-
-public:
-	static FNiagaraSystemSimulationTickContext MakeContextForTicking(class FNiagaraSystemSimulation* Owner, TArray<FNiagaraSystemInstance*>& Instances, FNiagaraDataSet& DataSet, float DeltaSeconds, int32 SpawnNum, const FGraphEventRef& MyCompletionGraphEvent);
-	static FNiagaraSystemSimulationTickContext MakeContextForSpawning(class FNiagaraSystemSimulation* Owner, TArray<FNiagaraSystemInstance*>& Instances, FNiagaraDataSet& DataSet, float DeltaSeconds, int32 SpawnNum, bool bAllowAsync);
+	FNiagaraSystemSimulationTickContext(class FNiagaraSystemSimulation* Owner, TArray<FNiagaraSystemInstance*>& Instances, FNiagaraDataSet& DataSet, float DeltaSeconds, int32 SpawnNum, int EffectsQuality, const FGraphEventRef& MyCompletionGraphEvent);
 
 	class FNiagaraSystemSimulation*		Owner;
 	UNiagaraSystem*						System;
@@ -236,19 +146,14 @@ public:
 };
 
 /** Simulation performing all system and emitter scripts for a instances of a UNiagaraSystem in a world. */
-class FNiagaraSystemSimulation : public TSharedFromThis<FNiagaraSystemSimulation, ESPMode::ThreadSafe>, FGCObject
+class FNiagaraSystemSimulation : public TSharedFromThis<FNiagaraSystemSimulation, ESPMode::ThreadSafe>
 {
 	friend FNiagaraSystemSimulationTickContext;
 public:
-
-	//FGCObject Interface
-	virtual void AddReferencedObjects(FReferenceCollector& Collector)override;
-	//FGCObject Interface END
-
-	FNiagaraSystemSimulation();
 	~FNiagaraSystemSimulation();
 	bool Init(UNiagaraSystem* InSystem, UWorld* InWorld, bool bInIsSolo, ETickingGroup TickGroup);
 	void Destroy();
+	bool Tick(float DeltaSeconds);
 
 	bool IsValid()const { return WeakSystem.Get() != nullptr && bCanExecute && World != nullptr; }
 
@@ -257,12 +162,12 @@ public:
 	/** Second phase of system sim tick that can run on any thread. */
 	void Tick_Concurrent(FNiagaraSystemSimulationTickContext& Context);
 
+	void TickFastPath(FNiagaraSystemSimulationTickContext& Context);
+
 	/** Update TickGroups for pending instances and execute tick group promotions. */
 	void UpdateTickGroups_GameThread();
 	/** Spawn any pending instances, assumes that you have update tick groups ahead of time. */
-	void Spawn_GameThread(float DeltaSeconds, bool bPostActorTick);
-	/** Spawn any pending instances */
-	void Spawn_Concurrent(FNiagaraSystemSimulationTickContext& Context);
+	void Spawn_GameThread(float DeltaSeconds);
 
 	/** Promote instances that have ticked during */
 
@@ -293,28 +198,12 @@ public:
 
 	bool GetIsSolo() const { return bIsSolo; }
 
-	FNiagaraScriptExecutionContextBase* GetSpawnExecutionContext() { return SpawnExecContext.Get(); }
-	FNiagaraScriptExecutionContextBase* GetUpdateExecutionContext() { return UpdateExecContext.Get(); }
+	FNiagaraScriptExecutionContext& GetSpawnExecutionContext() { return SpawnExecContext; }
+	FNiagaraScriptExecutionContext& GetUpdateExecutionContext() { return UpdateExecContext; }
 
 	void AddTickGroupPromotion(FNiagaraSystemInstance* Instance);
-	int32 AddPendingSystemInstance(FNiagaraSystemInstance* Instance);
-
-	const FString& GetCrashReporterTag()const;
-
-	ETickingGroup GetTickGroup() const { return SystemTickGroup; }
-
-	FORCEINLINE NiagaraEmitterInstanceBatcher* GetBatcher()const { return Batcher; }
-
-	ENiagaraGPUTickHandlingMode GetGPUTickHandlingMode()const;
-
-	/** If true we use legacy simulation contexts that could not handle per instance DI calls in the system scripts and would force the whole simulation solo. */
-	static bool UseLegacySystemSimulationContexts();
-	static void OnChanged_UseLegacySystemSimulationContexts(class IConsoleVariable* CVar);
 
 protected:
-	/** Sets constant parameter values */
-	void SetupParameters_GameThread(float DeltaSeconds);
-
 	/** Does any prep work for system simulation such as pulling instance parameters into a dataset. */
 	void PrepareForSystemSimulate(FNiagaraSystemSimulationTickContext& Context);
 	/** Runs the system spawn script for new system instances. */
@@ -323,20 +212,17 @@ protected:
 	void UpdateSystemInstances(FNiagaraSystemSimulationTickContext& Context);
 	/** Transfers the results of the system simulation into the emitter instances. */
 	void TransferSystemSimResults(FNiagaraSystemSimulationTickContext& Context);
-	/** Builds the constant buffer table for a given script execution */
-	void BuildConstantBufferTable(
-		const FNiagaraGlobalParameters& GlobalParameters,
-		TUniquePtr<FNiagaraScriptExecutionContextBase>& ExecContext,
-		FScriptExecutionConstantBufferTable& ConstantBufferTable) const;
+
+	/** Should we push the system sim tick off the game thread. */
+	FORCEINLINE bool ShouldTickAsync(const FNiagaraSystemSimulationTickContext& Context);
+	/** Should we push the system instance ticks off the game thread. */
+	FORCEINLINE bool ShouldTickInstancesAsync(const FNiagaraSystemSimulationTickContext& Context);
 
 	void AddSystemToTickBatch(FNiagaraSystemInstance* Instance, FNiagaraSystemSimulationTickContext& Context);
 	void FlushTickBatch(FNiagaraSystemSimulationTickContext& Context);
 
 	/** System of instances being simulated.  We use a weak object ptr here because once the last referencing object goes away this system may be come invalid at runtime. */
 	TWeakObjectPtr<UNiagaraSystem> WeakSystem;
-
-	/** We cache off the effect type in the unlikely even that someone GCs the System from under us so that we can keep the effect types instance count etc accurate. */
-	UNiagaraEffectType* EffectType;
 
 	/** Which tick group we are in, only valid when not in Solo mode. */
 	ETickingGroup SystemTickGroup = TG_MAX;
@@ -359,8 +245,8 @@ protected:
 	FNiagaraDataSet SpawnInstanceParameterDataSet;
 	FNiagaraDataSet UpdateInstanceParameterDataSet;
 
-	TUniquePtr<FNiagaraScriptExecutionContextBase> SpawnExecContext;
-	TUniquePtr<FNiagaraScriptExecutionContextBase> UpdateExecContext;
+	FNiagaraScriptExecutionContext SpawnExecContext;
+	FNiagaraScriptExecutionContext UpdateExecContext;
 
 	/** Bindings that pull per component parameters into the spawn parameter dataset. */
 	FNiagaraParameterStoreToDataSetBinding SpawnInstanceParameterToDataSetBinding;
@@ -373,13 +259,17 @@ protected:
 	TArray<FNiagaraParameterStoreToDataSetBinding> DataSetToEmitterUpdateParameters;
 	/** Binding to push system attributes into each emitter event parameters. */
 	TArray<TArray<FNiagaraParameterStoreToDataSetBinding>> DataSetToEmitterEventParameters;
-	/** Binding to push system attributes into each emitter gpu parameters. */
-	TArray<FNiagaraParameterStoreToDataSetBinding> DataSetToEmitterGPUParameters;
-	/** Binding to push system attributes into each emitter renderer parameters. */
-	TArray<FNiagaraParameterStoreToDataSetBinding> DataSetToEmitterRendererParameters;
-
 
 	/** Direct bindings for Engine variables in System Spawn and Update scripts. */
+	FNiagaraParameterDirectBinding<float> SpawnTimeParam;
+	FNiagaraParameterDirectBinding<float> UpdateTimeParam;
+
+	FNiagaraParameterDirectBinding<float> SpawnDeltaTimeParam;
+	FNiagaraParameterDirectBinding<float> UpdateDeltaTimeParam;
+
+	FNiagaraParameterDirectBinding<float> SpawnInvDeltaTimeParam;
+	FNiagaraParameterDirectBinding<float> UpdateInvDeltaTimeParam;
+	
 	FNiagaraParameterDirectBinding<int32> SpawnNumSystemInstancesParam;
 	FNiagaraParameterDirectBinding<int32> UpdateNumSystemInstancesParam;
 
@@ -402,12 +292,18 @@ protected:
 	/** List of instances that are pending a tick group promotion. */
 	TArray<FNiagaraSystemInstance*> PendingTickGroupPromotions;
 
+	TArray<TArray<FNiagaraDataSetAccessor<FNiagaraSpawnInfo>>> EmitterSpawnInfoAccessors;
+
 	void InitParameterDataSetBindings(FNiagaraSystemInstance* SystemInst);
+
+	FNiagaraDataSetAccessor<int32> SystemExecutionStateAccessor;
+	TArray<FNiagaraDataSetAccessor<int32>> EmitterExecutionStateAccessors;
 
 	uint32 bCanExecute : 1;
 	uint32 bBindingsInitialized : 1;
 	uint32 bInSpawnPhase : 1;
 	uint32 bIsSolo : 1;
+	uint32 bHasEverTicked : 1;
 
 	/** A parameter store which contains the data interfaces parameters which were defined by the scripts. */
 	FNiagaraParameterStore ScriptDefinedDataInterfaceParameters;
@@ -419,10 +315,4 @@ protected:
 
 	/** Current task that is executing */
 	FGraphEventRef SystemTickGraphEvent;
-
-	mutable FString CrashReporterTag;
-
-	NiagaraEmitterInstanceBatcher* Batcher = nullptr;
-
-	static bool bUseLegacyExecContexts;
 };

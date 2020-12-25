@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_REGISTRY_MANAGER_H
-#define PXR_BASE_TF_REGISTRY_MANAGER_H
+#ifndef TF_REGISTRYMANAGER_H
+#define TF_REGISTRYMANAGER_H
 
 /// \file tf/registryManager.h
 /// \ingroup group_tf_Initialization
@@ -35,6 +35,7 @@
 
 #include <boost/noncopyable.hpp>
 #include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/stringize.hpp>
 
 #include <functional>
 #include <typeinfo>
@@ -126,10 +127,10 @@ TF_API void Tf_RegistryInitDtor(char const *name);
 namespace {
 struct Tf_RegistryStaticInit {
     Tf_RegistryStaticInit() {
-        Tf_RegistryInitCtor(TF_PP_STRINGIZE(MFB_ALT_PACKAGE_NAME));
+        Tf_RegistryInitCtor(BOOST_PP_STRINGIZE(MFB_ALT_PACKAGE_NAME));
     }
     ~Tf_RegistryStaticInit() {
-        Tf_RegistryInitDtor(TF_PP_STRINGIZE(MFB_ALT_PACKAGE_NAME));
+        Tf_RegistryInitDtor(BOOST_PP_STRINGIZE(MFB_ALT_PACKAGE_NAME));
     }
 };
 }
@@ -165,9 +166,9 @@ public:
     ARCH_CONSTRUCTOR(BOOST_PP_CAT(_Tf_RegistryAdd, __LINE__),                  \
                      TF_REGISTRY_PRIORITY, KEY_TYPE*, TAG*)                    \
     {                                                                          \
-        Tf_RegistryInit::Add(TF_PP_STRINGIZE(MFB_ALT_PACKAGE_NAME),            \
+        Tf_RegistryInit::Add(BOOST_PP_STRINGIZE(MFB_ALT_PACKAGE_NAME),         \
                              (void(*)(KEY_TYPE*, TAG*))_Tf_RegistryFunction,   \
-                             TF_PP_STRINGIZE(KEY_TYPE));                       \
+                             BOOST_PP_STRINGIZE(KEY_TYPE));                    \
     }                                                                          \
     _ARCH_ENSURE_PER_LIB_INIT(Tf_RegistryStaticInit, _tfRegistryInit);         \
     static void _Tf_RegistryFunction(KEY_TYPE*, TAG*)
@@ -180,10 +181,10 @@ public:
     ARCH_CONSTRUCTOR(BOOST_PP_CAT(_Tf_RegistryAdd, NAME),                      \
                      TF_REGISTRY_PRIORITY, KEY_TYPE*)                          \
     {                                                                          \
-        Tf_RegistryInit::Add(TF_PP_STRINGIZE(MFB_ALT_PACKAGE_NAME),            \
+        Tf_RegistryInit::Add(BOOST_PP_STRINGIZE(MFB_ALT_PACKAGE_NAME),         \
                              (void(*)(KEY_TYPE*, void*))                       \
                              BOOST_PP_CAT(_Tf_RegistryFunction, NAME),         \
-                             TF_PP_STRINGIZE(KEY_TYPE));                       \
+                             BOOST_PP_STRINGIZE(KEY_TYPE));                    \
     }                                                                          \
     _ARCH_ENSURE_PER_LIB_INIT(Tf_RegistryStaticInit, _tfRegistryInit);         \
     static void BOOST_PP_CAT(_Tf_RegistryFunction, NAME)(KEY_TYPE*, void*)
@@ -262,4 +263,4 @@ public:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_REGISTRY_MANAGER_H
+#endif // TF_REGISTRYMANAGER_H

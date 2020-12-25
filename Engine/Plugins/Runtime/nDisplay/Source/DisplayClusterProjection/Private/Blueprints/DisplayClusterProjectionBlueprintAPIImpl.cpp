@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Blueprints/DisplayClusterProjectionBlueprintAPIImpl.h"
 
@@ -23,7 +23,7 @@ void UDisplayClusterProjectionBlueprintAPIImpl::CameraPolicySetCamera(const FStr
 
 	IDisplayClusterProjection& Module = IDisplayClusterProjection::Get();
 	
-	TSharedPtr<IDisplayClusterProjectionPolicyFactory> Factory = Module.GetProjectionFactory(DisplayClusterProjectionStrings::projection::Camera);
+	TSharedPtr<IDisplayClusterProjectionPolicyFactory> Factory = Module.GetProjectionFactory(DisplayClusterStrings::projection::Camera);
 	if (Factory.IsValid())
 	{
 		TSharedPtr<FDisplayClusterProjectionCameraPolicyFactory> CameraFactory = StaticCastSharedPtr<FDisplayClusterProjectionCameraPolicyFactory>(Factory);
@@ -41,10 +41,4 @@ void UDisplayClusterProjectionBlueprintAPIImpl::CameraPolicySetCamera(const FStr
 		}
 	}
 
-}
-
-void UDisplayClusterProjectionBlueprintAPIImpl::AssignWarpMeshToViewport(const FString& ViewportId, UStaticMeshComponent* MeshComponent, USceneComponent* OriginComponent)
-{
-	IDisplayClusterProjection& Module = IDisplayClusterProjection::Get();
-	Module.AssignWarpMeshToViewport(ViewportId, MeshComponent, OriginComponent);
 }

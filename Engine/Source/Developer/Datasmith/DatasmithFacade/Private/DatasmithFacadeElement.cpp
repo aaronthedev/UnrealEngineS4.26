@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithFacadeElement.h"
 
@@ -43,43 +43,53 @@ void FDatasmithFacadeElement::SetWorldUnitScale(
 	float InWorldUnitScale
 )
 {
-	WorldUnitScale = FMath::IsNearlyZero(InWorldUnitScale) ? SMALL_NUMBER : InWorldUnitScale;
+	WorldUnitScale = InWorldUnitScale;
 }
 
 FDatasmithFacadeElement::FDatasmithFacadeElement(
-	const TSharedRef<IDatasmithElement>& InElement
-)
-	: InternalDatasmithElement(InElement)
-{}
-
-void FDatasmithFacadeElement::GetStringHash(const TCHAR* InString, TCHAR OutBuffer[33], size_t BufferSize)
+	const TCHAR* InElementName,
+	const TCHAR* InElementLabel
+) :
+	ElementName(InElementName),
+	ElementLabel(InElementLabel)
 {
-	FString HashedName = FMD5::HashAnsiString(InString);
-	FCString::Strncpy(OutBuffer, *HashedName, BufferSize);
+}
+
+void FDatasmithFacadeElement::HashName()
+{
+	ElementName = FMD5::HashAnsiString(*ElementName);
 }
 
 void FDatasmithFacadeElement::SetName(
 	const TCHAR* InElementName
 )
 {
-	InternalDatasmithElement->SetName(InElementName);
+	ElementName = InElementName;
 }
 
 const TCHAR* FDatasmithFacadeElement::GetName() const
 {
-	return InternalDatasmithElement->GetName();
+	return *ElementName;
 }
 
 void FDatasmithFacadeElement::SetLabel(
 	const TCHAR* InElementLabel
 )
 {
-	InternalDatasmithElement->SetLabel(InElementLabel);
+	ElementLabel = InElementLabel;
 }
 
 const TCHAR* FDatasmithFacadeElement::GetLabel() const
 {
-	return InternalDatasmithElement->GetLabel();
+	return *ElementLabel;
+}
+
+void FDatasmithFacadeElement::AddMetadataString(
+	const TCHAR* InPropertyName,
+	const TCHAR* InPropertyValue
+)
+{
+	// Do nothing by default.
 }
 
 FVector FDatasmithFacadeElement::ConvertTranslation(
@@ -87,6 +97,20 @@ FVector FDatasmithFacadeElement::ConvertTranslation(
 )
 {
 	return ConvertPosition(InVertex.X, InVertex.Y, InVertex.Z);
+}
+
+TSharedPtr<FDatasmithFacadeElement> FDatasmithFacadeElement::Optimize(
+	TSharedPtr<FDatasmithFacadeElement> InElementPtr,
+	bool                                bInNoSingleChild
+)
+{
+	// By default, prevent the Datasmith scene element from being removed by optimization.
+	return InElementPtr;
+}
+
+void FDatasmithFacadeElement::BuildAsset()
+{
+	// By default, there is no Datasmith scene element asset to build.
 }
 
 void FDatasmithFacadeElement::ExportAsset(

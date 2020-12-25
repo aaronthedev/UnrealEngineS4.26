@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CurveEditorMultiScaleTool.h"
 
@@ -492,7 +492,7 @@ void FCurveEditorMultiScaleTool::UpdateBoundingBox()
 	FSlateLayoutTransform AbsoluteToContainer = CurveEditor->GetPanel()->GetViewContainerGeometry().GetAccumulatedLayoutTransform();
 
 	const TMap<FCurveModelID, FKeyHandleSet>& SelectedKeySet = CurveEditor->GetSelection().GetAll();
-	for (const TPair<FCurveModelID, FKeyHandleSet>& Pair : SelectedKeySet)
+	for (const TPair<FCurveModelID, FKeyHandleSet> Pair : SelectedKeySet)
 	{
 		const SCurveEditorView* View = CurveEditor->FindFirstInteractiveView(Pair.Key);
 		if (!View)

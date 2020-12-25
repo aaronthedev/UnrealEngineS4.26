@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	RHIContext.h: Interface for RHI Contexts
@@ -26,80 +26,18 @@ struct FRayTracingGeometryInstance;
 struct FRayTracingShaderBindings;
 struct FRayTracingGeometrySegment;
 struct FAccelerationStructureBuildParams;
-struct FRayTracingLocalShaderBindings;
 enum class EAsyncComputeBudget;
+enum class EResourceTransitionAccess;
 enum class EResourceTransitionPipeline;
-
-#define VALIDATE_UNIFORM_BUFFER_GLOBAL_BINDINGS (!UE_BUILD_SHIPPING && !UE_BUILD_TEST)
-
-/** A list of global uniform buffer bindings. */
-class FUniformBufferStaticBindings
-{
-public:
-	FUniformBufferStaticBindings() = default;
-
-	template <typename... TArgs>
-	FUniformBufferStaticBindings(TArgs... Args)
-	{
-		std::initializer_list<FRHIUniformBuffer*> InitList = { Args... };
-
-		for (FRHIUniformBuffer* Buffer : InitList)
-		{
-			AddUniformBuffer(Buffer);
-		}
-	}
-
-	inline void AddUniformBuffer(FRHIUniformBuffer* UniformBuffer)
-	{
-		checkf(UniformBuffer, TEXT("Attemped to assign a null uniform buffer to the global uniform buffer bindings."));
-		const FRHIUniformBufferLayout& Layout = UniformBuffer->GetLayout();
-		const FUniformBufferStaticSlot Slot = Layout.StaticSlot;
-		checkf(IsUniformBufferStaticSlotValid(Slot), TEXT("Attempted to set a global uniform buffer %s with an invalid slot."), *Layout.GetDebugName());
-
-#if VALIDATE_UNIFORM_BUFFER_GLOBAL_BINDINGS
-		ensureMsgf(INDEX_NONE == Slots.Find(Slot), TEXT("Uniform Buffer %s was added twice to the binding array."), *Layout.GetDebugName());
-#endif
-
-		Slots.Add(Slot);
-		UniformBuffers.Add(UniformBuffer);
-	}
-
-	inline void TryAddUniformBuffer(FRHIUniformBuffer* UniformBuffer)
-	{
-		if (UniformBuffer)
-		{
-			AddUniformBuffer(UniformBuffer);
-		}
-	}
-
-	int32 GetUniformBufferCount() const
-	{
-		return UniformBuffers.Num();
-	}
-
-	FRHIUniformBuffer* GetUniformBuffer(int32 Index) const
-	{
-		return UniformBuffers[Index];
-	}
-
-	FUniformBufferStaticSlot GetSlot(int32 Index) const
-	{
-		return Slots[Index];
-	}
-
-private:
-	static const uint32 InlineUniformBufferCount = 8;
-	TArray<FUniformBufferStaticSlot, TInlineAllocator<InlineUniformBufferCount>> Slots;
-	TArray<FRHIUniformBuffer*, TInlineAllocator<InlineUniformBufferCount>> UniformBuffers;
-};
 
 /** Context that is capable of doing Compute work.  Can be async or compute on the gfx pipe. */
 class IRHIComputeContext
 {
 public:
-	virtual ~IRHIComputeContext()
-	{
-	}
+	/**
+	* Compute queue will wait for the fence to be written before continuing.
+	*/
+	virtual void RHIWaitComputeFence(FRHIComputeFence* InFence) = 0;
 
 	/**
 	*Sets the current compute shader.
@@ -121,44 +59,25 @@ public:
 
 	virtual void RHISetAsyncComputeBudget(EAsyncComputeBudget Budget) {}
 
-	virtual void RHIBeginTransitions(TArrayView<const FRHITransition*> Transitions) = 0;
-
-	virtual void RHIEndTransitions(TArrayView<const FRHITransition*> Transitions) = 0;
-
 	/**
-	* Clears a UAV to the multi-channel floating point value provided. Should only be called on UAVs with a floating point format, or on structured buffers.
-	* Structured buffers are treated as a regular R32_UINT buffer during the clear operation, and the Values.X component is copied directly into the buffer without any format conversion. (Y,Z,W) of Values is ignored.
-	* Typed floating point buffers undergo standard format conversion during the write operation. The conversion is determined by the format of the UAV.
+	* Explicitly transition a UAV from readable -> writable by the GPU or vice versa.
+	* Also explicitly states which pipeline the UAV can be used on next.  For example, if a Compute job just wrote this UAV for a Pixel shader to read
+	* you would do EResourceTransitionAccess::Readable and EResourceTransitionPipeline::EComputeToGfx
 	*
-	* @param UnorderedAccessViewRHI		The UAV to clear.
-	* @param Values						The values to clear the UAV to, one component per channel (XYZW = RGBA). Channels not supported by the UAV are ignored.
-	*
+	* @param TransitionType - direction of the transition
+	* @param EResourceTransitionPipeline - How this UAV is transitioning between Gfx and Compute, if at all.
+	* @param InUAVs - array of UAV objects to transition
+	* @param NumUAVs - number of UAVs to transition
+	* @param WriteComputeFence - Optional ComputeFence to write as part of this transition
 	*/
-	virtual void RHIClearUAVFloat(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FVector4& Values) = 0;
-
-	/**
-	* Clears a UAV to the multi-component unsigned integer value provided. Should only be called on UAVs with an integer format, or on structured buffers.
-	* Structured buffers are treated as a regular R32_UINT buffer during the clear operation, and the Values.X component is copied directly into the buffer without any format conversion. (Y,Z,W) of Values is ignored.
-	* Typed integer buffers undergo standard format conversion during the write operation. The conversion is determined by the format of the UAV.
-	*
-	* @param UnorderedAccessViewRHI		The UAV to clear.
-	* @param Values						The values to clear the UAV to, one component per channel (XYZW = RGBA). Channels not supported by the UAV are ignored.
-	*
-	*/
-	virtual void RHIClearUAVUint(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const FUintVector4& Values) = 0;
-
-	virtual void RHIBeginUAVOverlap() {}
-	virtual void RHIEndUAVOverlap() {}
-
-	virtual void RHIBeginUAVOverlap(TArrayView<FRHIUnorderedAccessView* const> UAVs) {}
-	virtual void RHIEndUAVOverlap(TArrayView<FRHIUnorderedAccessView* const> UAVs) {}
+	virtual void RHITransitionResources(EResourceTransitionAccess TransitionType, EResourceTransitionPipeline TransitionPipeline, FRHIUnorderedAccessView** InUAVs, int32 NumUAVs, FRHIComputeFence* WriteComputeFence) = 0;
 
 	/** Set the shader resource view of a surface.  This is used for binding TextureMS parameter types that need a multi sampled view. */
 	virtual void RHISetShaderTexture(FRHIComputeShader* PixelShader, uint32 TextureIndex, FRHITexture* NewTexture) = 0;
 
 	/**
 	* Sets sampler state.
-	* @param ComputeShader		The compute shader to set the sampler for.
+	* @param GeometryShader	The geometry shader to set the sampler for.
 	* @param SamplerIndex		The index of the sampler.
 	* @param NewState			The new sampler state.
 	*/
@@ -186,11 +105,6 @@ public:
 	virtual void RHISetShaderUniformBuffer(FRHIComputeShader* ComputeShader, uint32 BufferIndex, FRHIUniformBuffer* Buffer) = 0;
 
 	virtual void RHISetShaderParameter(FRHIComputeShader* ComputeShader, uint32 BufferIndex, uint32 BaseIndex, uint32 NumBytes, const void* NewValue) = 0;
-
-	virtual void RHISetGlobalUniformBuffers(const FUniformBufferStaticBindings& InUniformBuffers)
-	{
-		checkNoEntry();
-	}
 
 	virtual void RHIPushEvent(const TCHAR* Name, FColor Color) = 0;
 
@@ -259,28 +173,6 @@ public:
 	{
 		checkNoEntry();
 	}
-
-#if ENABLE_RHI_VALIDATION
-
-	RHIValidation::FTracker* Tracker = nullptr;
-	IRHIComputeContext* WrappingContext = nullptr;
-
-	// Always returns the platform RHI context, even when the validation RHI is active.
-	virtual IRHIComputeContext& GetLowestLevelContext() { return *this; }
-
-	// Returns the validation RHI context if the validation RHI is active, otherwise returns the platform RHI context.
-	virtual IRHIComputeContext& GetHighestLevelContext()
-	{
-		return WrappingContext ? *WrappingContext : *this;
-	}
-
-#else
-
-	// Fast implementations when the RHI validation layer is disabled.
-	inline IRHIComputeContext& GetLowestLevelContext() { return *this; }
-	inline IRHIComputeContext& GetHighestLevelContext() { return *this; }
-
-#endif
 };
 
 enum class EAccelerationStructureBuildMode
@@ -313,16 +205,6 @@ struct FCopyBufferRegionParams
 	uint64 NumBytes;
 };
 
-struct FTransferTextureParams
-{
-	FRHITexture2D* Texture;
-	FIntVector Min;
-	FIntVector Max;
-	uint32 SrcGPUIndex;
-	uint32 DestGPUIndex;
-	bool PullData;
-};
-
 /** The interface RHI command context. Sometimes the RHI handles these. On platforms that can processes command lists in parallel, it is a separate object. */
 class IRHICommandContext : public IRHIComputeContext
 {
@@ -331,14 +213,32 @@ public:
 	{
 	}
 
+	/**
+	* Compute queue will wait for the fence to be written before continuing.
+	*/
+	virtual void RHIWaitComputeFence(FRHIComputeFence* InFence) override
+	{
+		if (InFence)
+		{
+			checkf(InFence->GetWriteEnqueued(), TEXT("ComputeFence: %s waited on before being written. This will hang the GPU."), *InFence->GetName().ToString());
+		}
+	}
+
 	virtual void RHIDispatchComputeShader(uint32 ThreadGroupCountX, uint32 ThreadGroupCountY, uint32 ThreadGroupCountZ) = 0;
 
 	virtual void RHIDispatchIndirectComputeShader(FRHIVertexBuffer* ArgumentBuffer, uint32 ArgumentOffset) = 0;
+
+	virtual void RHIAutomaticCacheFlushAfterComputeShader(bool bEnable) = 0;
+
+	virtual void RHIFlushComputeShaderCache() = 0;
 
 	// Useful when used with geometry shader (emit polygons to different viewports), otherwise SetViewPort() is simpler
 	// @param Count >0
 	// @param Data must not be 0
 	virtual void RHISetMultipleViewports(uint32 Count, const FViewportBounds* Data) = 0;
+
+	/** Clears a UAV to the multi-component value provided. */
+	virtual void RHIClearTinyUAV(FRHIUnorderedAccessView* UnorderedAccessViewRHI, const uint32* Values) = 0;
 
 	/**
 	* Resolves from one texture to another.
@@ -358,19 +258,71 @@ public:
 		/* empty default implementation */
 	}
 
+	/**
+	* Explicitly transition a texture resource from readable -> writable by the GPU or vice versa.
+	* We know render targets are only used as rendered targets on the Gfx pipeline, so these transitions are assumed to be implemented such
+	* Gfx->Gfx and Gfx->Compute pipeline transitions are both handled by this call by the RHI implementation.  Hence, no pipeline parameter on this call.
+	*
+	* @param TransitionType - direction of the transition
+	* @param InTextures - array of texture objects to transition
+	* @param NumTextures - number of textures to transition
+	*/
+	virtual void RHITransitionResources(EResourceTransitionAccess TransitionType, FRHITexture** InTextures, int32 NumTextures)
+	{
+		if (TransitionType == EResourceTransitionAccess::EReadable)
+		{
+			const FResolveParams ResolveParams;
+			for (int32 i = 0; i < NumTextures; ++i)
+			{
+				RHICopyToResolveTarget(InTextures[i], InTextures[i], ResolveParams);
+			}
+		}
+	}
+
+	/**
+	* Explicitly transition a UAV from readable -> writable by the GPU or vice versa.
+	* Also explicitly states which pipeline the UAV can be used on next.  For example, if a Compute job just wrote this UAV for a Pixel shader to read
+	* you would do EResourceTransitionAccess::Readable and EResourceTransitionPipeline::EComputeToGfx
+	*
+	* @param TransitionType - direction of the transition
+	* @param EResourceTransitionPipeline - How this UAV is transitioning between Gfx and Compute, if at all.
+	* @param InUAVs - array of UAV objects to transition
+	* @param NumUAVs - number of UAVs to transition
+	* @param WriteComputeFence - Optional ComputeFence to write as part of this transition
+	*/
+	virtual void RHITransitionResources(EResourceTransitionAccess TransitionType, EResourceTransitionPipeline TransitionPipeline, FRHIUnorderedAccessView** InUAVs, int32 NumUAVs, FRHIComputeFence* WriteComputeFence)
+	{
+		if (WriteComputeFence)
+		{
+			WriteComputeFence->WriteFence();
+		}
+	}
+
+	void RHITransitionResources(EResourceTransitionAccess TransitionType, EResourceTransitionPipeline TransitionPipeline, FRHIUnorderedAccessView** InUAVs, int32 NumUAVs)
+	{
+		RHITransitionResources(TransitionType, TransitionPipeline, InUAVs, NumUAVs, nullptr);
+	}
+
+	/**
+	* Explicitly transition a depth/stencil texture from readable -> writable by the GPU or vice versa.
+	* This implementation provides compatibility with the old RHI behavior where the stencil mode is ignored and the whole depth/stencil resource is transitioned.
+	*
+	* RHIs should override this method to implement stencil-specific resource barriers.
+	*/
+	virtual void RHITransitionResources(FExclusiveDepthStencil DepthStencilMode, FRHITexture* DepthTexture)
+	{
+		if (DepthStencilMode.IsUsingDepthStencil())
+		{
+			RHITransitionResources(DepthStencilMode.IsAnyWrite()
+				? EResourceTransitionAccess::EWritable
+				: EResourceTransitionAccess::EReadable, 
+				&DepthTexture, 1);
+		}
+	}
+
 	virtual void RHIBeginRenderQuery(FRHIRenderQuery* RenderQuery) = 0;
 
 	virtual void RHIEndRenderQuery(FRHIRenderQuery* RenderQuery) = 0;
-
-	virtual void RHICalibrateTimers()
-	{
-		/* empty default implementation */
-	}
-
-	virtual void RHICalibrateTimers(FRHITimestampCalibrationQuery* CalibrationQuery)
-	{
-		/* empty default implementation */
-	}
 
 	// Used for OpenGL to check and see if any occlusion queries can be read back on the RHI thread. If they aren't ready when we need them, then we end up stalling.
 	virtual void RHIPollOcclusionQueries()
@@ -436,9 +388,9 @@ public:
 	// @param MinY including like Win32 RECT
 	// @param MaxX excluding like Win32 RECT
 	// @param MaxY excluding like Win32 RECT
-	virtual void RHISetViewport(float MinX, float MinY, float MinZ, float MaxX, float MaxY, float MaxZ) = 0;
+	virtual void RHISetViewport(uint32 MinX, uint32 MinY, float MinZ, uint32 MaxX, uint32 MaxY, float MaxZ) = 0;
 
-	virtual void RHISetStereoViewport(float LeftMinX, float RightMinX, float LeftMinY, float RightMinY, float MinZ, float LeftMaxX, float RightMaxX, float LeftMaxY, float RightMaxY, float MaxZ)
+	virtual void RHISetStereoViewport(uint32 LeftMinX, uint32 RightMinX, uint32 LeftMinY, uint32 RightMinY, float MinZ, uint32 LeftMaxX, uint32 RightMaxX, uint32 LeftMaxY, uint32 RightMaxY, float MaxZ)
 	{
 		/* empty default implementation */
 	}
@@ -449,17 +401,29 @@ public:
 	// @param MaxY excluding like Win32 RECT
 	virtual void RHISetScissorRect(bool bEnable, uint32 MinX, uint32 MinY, uint32 MaxX, uint32 MaxY) = 0;
 
-	virtual void RHISetGraphicsPipelineState(FRHIGraphicsPipelineState* GraphicsState, bool bApplyAdditionalState) = 0;
+	virtual void RHISetGraphicsPipelineState(FRHIGraphicsPipelineState* GraphicsState) = 0;
 
-	/** Set the shader resource view of a surface. */
-	virtual void RHISetShaderTexture(FRHIGraphicsShader* Shader, uint32 TextureIndex, FRHITexture* NewTexture) = 0;
+	/** Set the shader resource view of a surface.  This is used for binding TextureMS parameter types that need a multi sampled view. */
+	virtual void RHISetShaderTexture(FRHIVertexShader* VertexShader, uint32 TextureIndex, FRHITexture* NewTexture) = 0;
+
+	/** Set the shader resource view of a surface.  This is used for binding TextureMS parameter types that need a multi sampled view. */
+	virtual void RHISetShaderTexture(FRHIHullShader* HullShader, uint32 TextureIndex, FRHITexture* NewTexture) = 0;
+
+	/** Set the shader resource view of a surface.  This is used for binding TextureMS parameter types that need a multi sampled view. */
+	virtual void RHISetShaderTexture(FRHIDomainShader* DomainShader, uint32 TextureIndex, FRHITexture* NewTexture) = 0;
+
+	/** Set the shader resource view of a surface.  This is used for binding TextureMS parameter types that need a multi sampled view. */
+	virtual void RHISetShaderTexture(FRHIGeometryShader* GeometryShader, uint32 TextureIndex, FRHITexture* NewTexture) = 0;
+
+	/** Set the shader resource view of a surface.  This is used for binding TextureMS parameter types that need a multi sampled view. */
+	virtual void RHISetShaderTexture(FRHIPixelShader* PixelShader, uint32 TextureIndex, FRHITexture* NewTexture) = 0;
 
 	/** Set the shader resource view of a surface.  This is used for binding TextureMS parameter types that need a multi sampled view. */
 	virtual void RHISetShaderTexture(FRHIComputeShader* PixelShader, uint32 TextureIndex, FRHITexture* NewTexture) = 0;
 
 	/**
 	* Sets sampler state.
-	* @param ComputeShader		The compute shader to set the sampler for.
+	* @param GeometryShader	The geometry shader to set the sampler for.
 	* @param SamplerIndex		The index of the sampler.
 	* @param NewState			The new sampler state.
 	*/
@@ -467,20 +431,43 @@ public:
 
 	/**
 	* Sets sampler state.
-	* @param Shader				The shader to set the sampler for.
+	* @param GeometryShader	The geometry shader to set the sampler for.
 	* @param SamplerIndex		The index of the sampler.
 	* @param NewState			The new sampler state.
 	*/
-	virtual void RHISetShaderSampler(FRHIGraphicsShader* Shader, uint32 SamplerIndex, FRHISamplerState* NewState) = 0;
+	virtual void RHISetShaderSampler(FRHIVertexShader* VertexShader, uint32 SamplerIndex, FRHISamplerState* NewState) = 0;
 
 	/**
-	* Sets a pixel shader UAV parameter.
-	* @param PixelShader		The pixel shader to set the UAV for.
-	* @param UAVIndex		The index of the UAVIndex.
-	* @param UAV			The new UAV.
+	* Sets sampler state.
+	* @param GeometryShader	The geometry shader to set the sampler for.
+	* @param SamplerIndex		The index of the sampler.
+	* @param NewState			The new sampler state.
 	*/
-	virtual void RHISetUAVParameter(FRHIPixelShader* PixelShader, uint32 UAVIndex, FRHIUnorderedAccessView* UAV) = 0;
+	virtual void RHISetShaderSampler(FRHIGeometryShader* GeometryShader, uint32 SamplerIndex, FRHISamplerState* NewState) = 0;
 
+	/**
+	* Sets sampler state.
+	* @param GeometryShader	The geometry shader to set the sampler for.
+	* @param SamplerIndex		The index of the sampler.
+	* @param NewState			The new sampler state.
+	*/
+	virtual void RHISetShaderSampler(FRHIDomainShader* DomainShader, uint32 SamplerIndex, FRHISamplerState* NewState) = 0;
+
+	/**
+	* Sets sampler state.
+	* @param GeometryShader	The geometry shader to set the sampler for.
+	* @param SamplerIndex		The index of the sampler.
+	* @param NewState			The new sampler state.
+	*/
+	virtual void RHISetShaderSampler(FRHIHullShader* HullShader, uint32 SamplerIndex, FRHISamplerState* NewState) = 0;
+
+	/**
+	* Sets sampler state.
+	* @param GeometryShader	The geometry shader to set the sampler for.
+	* @param SamplerIndex		The index of the sampler.
+	* @param NewState			The new sampler state.
+	*/
+	virtual void RHISetShaderSampler(FRHIPixelShader* PixelShader, uint32 SamplerIndex, FRHISamplerState* NewState) = 0;
 
 	/**
 	* Sets a compute shader UAV parameter.
@@ -499,21 +486,54 @@ public:
 	*/
 	virtual void RHISetUAVParameter(FRHIComputeShader* ComputeShader, uint32 UAVIndex, FRHIUnorderedAccessView* UAV, uint32 InitialCount) = 0;
 
+	virtual void RHISetShaderResourceViewParameter(FRHIPixelShader* PixelShader, uint32 SamplerIndex, FRHIShaderResourceView* SRV) = 0;
+
+	virtual void RHISetShaderResourceViewParameter(FRHIVertexShader* VertexShader, uint32 SamplerIndex, FRHIShaderResourceView* SRV) = 0;
+
 	virtual void RHISetShaderResourceViewParameter(FRHIComputeShader* ComputeShader, uint32 SamplerIndex, FRHIShaderResourceView* SRV) = 0;
 
-	virtual void RHISetShaderResourceViewParameter(FRHIGraphicsShader* Shader, uint32 SamplerIndex, FRHIShaderResourceView* SRV) = 0;
+	virtual void RHISetShaderResourceViewParameter(FRHIHullShader* HullShader, uint32 SamplerIndex, FRHIShaderResourceView* SRV) = 0;
 
-	virtual void RHISetShaderUniformBuffer(FRHIGraphicsShader* Shader, uint32 BufferIndex, FRHIUniformBuffer* Buffer) = 0;
+	virtual void RHISetShaderResourceViewParameter(FRHIDomainShader* DomainShader, uint32 SamplerIndex, FRHIShaderResourceView* SRV) = 0;
+
+	virtual void RHISetShaderResourceViewParameter(FRHIGeometryShader* GeometryShader, uint32 SamplerIndex, FRHIShaderResourceView* SRV) = 0;
+
+	virtual void RHISetShaderUniformBuffer(FRHIVertexShader* VertexShader, uint32 BufferIndex, FRHIUniformBuffer* Buffer) = 0;
+
+	virtual void RHISetShaderUniformBuffer(FRHIHullShader* HullShader, uint32 BufferIndex, FRHIUniformBuffer* Buffer) = 0;
+
+	virtual void RHISetShaderUniformBuffer(FRHIDomainShader* DomainShader, uint32 BufferIndex, FRHIUniformBuffer* Buffer) = 0;
+
+	virtual void RHISetShaderUniformBuffer(FRHIGeometryShader* GeometryShader, uint32 BufferIndex, FRHIUniformBuffer* Buffer) = 0;
+
+	virtual void RHISetShaderUniformBuffer(FRHIPixelShader* PixelShader, uint32 BufferIndex, FRHIUniformBuffer* Buffer) = 0;
 
 	virtual void RHISetShaderUniformBuffer(FRHIComputeShader* ComputeShader, uint32 BufferIndex, FRHIUniformBuffer* Buffer) = 0;
 
-	virtual void RHISetShaderParameter(FRHIGraphicsShader* Shader, uint32 BufferIndex, uint32 BaseIndex, uint32 NumBytes, const void* NewValue) = 0;
+	virtual void RHISetShaderParameter(FRHIVertexShader* VertexShader, uint32 BufferIndex, uint32 BaseIndex, uint32 NumBytes, const void* NewValue) = 0;
+
+	virtual void RHISetShaderParameter(FRHIPixelShader* PixelShader, uint32 BufferIndex, uint32 BaseIndex, uint32 NumBytes, const void* NewValue) = 0;
+
+	virtual void RHISetShaderParameter(FRHIHullShader* HullShader, uint32 BufferIndex, uint32 BaseIndex, uint32 NumBytes, const void* NewValue) = 0;
+
+	virtual void RHISetShaderParameter(FRHIDomainShader* DomainShader, uint32 BufferIndex, uint32 BaseIndex, uint32 NumBytes, const void* NewValue) = 0;
+
+	virtual void RHISetShaderParameter(FRHIGeometryShader* GeometryShader, uint32 BufferIndex, uint32 BaseIndex, uint32 NumBytes, const void* NewValue) = 0;
 
 	virtual void RHISetShaderParameter(FRHIComputeShader* ComputeShader, uint32 BufferIndex, uint32 BaseIndex, uint32 NumBytes, const void* NewValue) = 0;
 
 	virtual void RHISetStencilRef(uint32 StencilRef) {}
 
 	virtual void RHISetBlendFactor(const FLinearColor& BlendFactor) {}
+
+	virtual void RHISetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, const FRHIDepthRenderTargetView* NewDepthStencilTarget, uint32 NumUAVs, FRHIUnorderedAccessView* const* UAVs) = 0;
+
+	virtual void RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo) = 0;
+
+	// Bind the clear state of the currently set render targets. This is used by platforms which
+	// need the state of the target when finalizing a hardware clear or a resource transition to SRV
+	// The explicit bind is needed to support parallel rendering (propagate state between contexts).
+	virtual void RHIBindClearMRTValues(bool bClearColor, bool bClearDepth, bool bClearStencil) {}
 
 	virtual void RHIDrawPrimitive(uint32 BaseVertexIndex, uint32 NumPrimitives, uint32 NumInstances) = 0;
 
@@ -534,23 +554,70 @@ public:
 	*/
 	virtual void RHISetDepthBounds(float MinDepth, float MaxDepth) = 0;
 
-	virtual void RHISetShadingRate(EVRSShadingRate ShadingRate, EVRSRateCombiner Combiner)
-	{
-		/* empty default implementation */
-	} 
-	
-	virtual void RHISetShadingRateImage(FRHITexture* RateImageTexture, EVRSRateCombiner Combiner)
-	{
-		/* empty default implementation */
-	}
-
 	virtual void RHIUpdateTextureReference(FRHITextureReference* TextureRef, FRHITexture* NewTexture) = 0;
 
-	virtual void RHIBeginRenderPass(const FRHIRenderPassInfo& InInfo, const TCHAR* InName) = 0;
+	virtual void RHIBeginRenderPass(const FRHIRenderPassInfo& InInfo, const TCHAR* InName)
+	{
+		if (InInfo.bGeneratingMips)
+		{
+			FRHITexture* Textures[MaxSimultaneousRenderTargets];
+			FRHITexture** LastTexture = Textures;
+			for (int32 Index = 0; Index < MaxSimultaneousRenderTargets; ++Index)
+			{
+				if (!InInfo.ColorRenderTargets[Index].RenderTarget)
+				{
+					break;
+				}
 
-	virtual void RHIEndRenderPass() = 0;
+				*LastTexture = InInfo.ColorRenderTargets[Index].RenderTarget;
+				++LastTexture;
+			}
 
+			//Use RWBarrier since we don't transition individual subresources.  Basically treat the whole texture as R/W as we walk down the mip chain.
+			int32 NumTextures = (int32)(LastTexture - Textures);
+			if (NumTextures)
+			{
+				RHITransitionResources(EResourceTransitionAccess::ERWSubResBarrier, Textures, NumTextures);
+			}
+		}
+
+		FRHISetRenderTargetsInfo RTInfo;
+		InInfo.ConvertToRenderTargetsInfo(RTInfo);
+		RHISetRenderTargetsAndClear(RTInfo);
+
+		RenderPassInfo = InInfo;
+	}
+
+	virtual void RHIEndRenderPass()
+	{
+		for (int32 Index = 0; Index < MaxSimultaneousRenderTargets; ++Index)
+		{
+			if (!RenderPassInfo.ColorRenderTargets[Index].RenderTarget)
+			{
+				break;
+			}
+			if (RenderPassInfo.ColorRenderTargets[Index].ResolveTarget)
+			{
+				RHICopyToResolveTarget(RenderPassInfo.ColorRenderTargets[Index].RenderTarget, RenderPassInfo.ColorRenderTargets[Index].ResolveTarget, RenderPassInfo.ResolveParameters);
+			}
+		}
+
+		if (RenderPassInfo.DepthStencilRenderTarget.DepthStencilTarget && RenderPassInfo.DepthStencilRenderTarget.ResolveTarget)
+		{
+			RHICopyToResolveTarget(RenderPassInfo.DepthStencilRenderTarget.DepthStencilTarget, RenderPassInfo.DepthStencilRenderTarget.ResolveTarget, RenderPassInfo.ResolveParameters);
+		}
+	}
+	
 	virtual void RHINextSubpass()
+	{
+	}
+
+	virtual void RHIBeginComputePass(const TCHAR* InName)
+	{
+		RHISetRenderTargets(0, nullptr, nullptr, 0, nullptr);
+	}
+
+	virtual void RHIEndComputePass()
 	{
 	}
 
@@ -582,13 +649,12 @@ public:
 			}
 		}
 	}
-
+#if RHI_RAYTRACING
 	virtual void RHICopyBufferRegion(FRHIVertexBuffer* DestBuffer, uint64 DstOffset, FRHIVertexBuffer* SourceBuffer, uint64 SrcOffset, uint64 NumBytes)
 	{
 		checkNoEntry();
 	}
 
-#if RHI_RAYTRACING
 	virtual void RHICopyBufferRegions(const TArrayView<const FCopyBufferRegionParams> Params)
 	{
 		checkNoEntry();
@@ -643,11 +709,6 @@ public:
 		checkNoEntry();
 	}
 
-	virtual void RHISetRayTracingHitGroups(FRHIRayTracingScene* Scene, FRHIRayTracingPipelineState* Pipeline, uint32 NumBindings, const FRayTracingLocalShaderBindings* Bindings)
-	{
-		checkNoEntry();
-	}
-
 	virtual void RHISetRayTracingHitGroup(
 		FRHIRayTracingScene* Scene, uint32 InstanceIndex, uint32 SegmentIndex, uint32 ShaderSlot,
 		FRHIRayTracingPipelineState* Pipeline, uint32 HitGroupIndex,
@@ -666,22 +727,6 @@ public:
 	{
 		checkNoEntry();
 	}
-
-	virtual void RHISetRayTracingMissShader(
-		FRHIRayTracingScene* Scene, uint32 ShaderSlotInScene,
-		FRHIRayTracingPipelineState* Pipeline, uint32 ShaderIndexInPipeline,
-		uint32 NumUniformBuffers, FRHIUniformBuffer* const* UniformBuffers,
-		uint32 UserData)
-	{
-		checkNoEntry();
-	}
-
-#if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
-	virtual void RHIBackBufferWaitTrackingBeginFrame(uint64 FrameToken, bool bDeferred)
-	{
-		checkNoEntry();
-	}
-#endif // #if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
 
 	protected:
 		FRHIRenderPassInfo RenderPassInfo;
@@ -721,7 +766,7 @@ public:
 	* This will set most relevant pipeline state. Legacy APIs are expected to set corresponding disjoint state as well.
 	* @param GraphicsShaderState - the graphics pipeline state
 	*/
-	virtual void RHISetGraphicsPipelineState(FRHIGraphicsPipelineState* GraphicsState, bool bApplyAdditionalState) override
+	virtual void RHISetGraphicsPipelineState(FRHIGraphicsPipelineState* GraphicsState) override
 	{
 		FRHIGraphicsPipelineStateFallBack* FallbackGraphicsState = static_cast<FRHIGraphicsPipelineStateFallBack*>(GraphicsState);
 		FGraphicsPipelineStateInitializer& PsoInit = FallbackGraphicsState->Initializer;

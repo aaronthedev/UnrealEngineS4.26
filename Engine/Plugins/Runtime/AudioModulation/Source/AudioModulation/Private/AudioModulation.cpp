@@ -1,13 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "AudioModulation.h"
 
+#include "AudioModulationInternal.h"
 #include "AudioModulationLogging.h"
-#include "AudioModulationSystem.h"
 #include "CanvasTypes.h"
 #include "Features/IModularFeatures.h"
-#include "IAudioModulation.h"
+#include "IAudioExtensionPlugin.h"
 #include "Modules/ModuleManager.h"
-#include "SoundControlBusMix.h"
 #include "SoundModulationPatch.h"
 #include "UnrealClient.h"
 
@@ -18,174 +17,79 @@ DEFINE_STAT(STAT_AudioModulationProcessModulators);
 namespace AudioModulation
 {
 	FAudioModulation::FAudioModulation()
-		: ModSystem(new FAudioModulationSystem())
 	{
+		Impl = TUniquePtr<FAudioModulationImpl>(new FAudioModulationImpl());
 	}
 
-	FAudioModulation::~FAudioModulation()
+	FAudioModulationImpl* FAudioModulation::GetImpl()
 	{
-		delete ModSystem;
+		return Impl.Get();
 	}
 
-	Audio::FModulationParameter FAudioModulation::GetParameter(FName InParamName)
+	float FAudioModulation::CalculateInitialVolume(const USoundModulationPluginSourceSettingsBase& Settings)
 	{
-		return ModSystem->GetParameter(InParamName);
+		return Impl->CalculateInitialVolume(Settings);
 	}
 
 	void FAudioModulation::Initialize(const FAudioPluginInitializationParams& InitializationParams)
 	{
-		ModSystem->Initialize(InitializationParams);
+		Impl->Initialize(InitializationParams);
 	}
 
-	void FAudioModulation::OnAuditionEnd()
+#if WITH_EDITOR
+	void FAudioModulation::OnEditPluginSettings(const USoundModulationPluginSourceSettingsBase& Settings)
 	{
-		ModSystem->OnAuditionEnd();
+		Impl->OnEditPluginSettings(Settings);
+	}
+#endif // WITH_EDITOR
+
+	void FAudioModulation::OnInitSound(ISoundModulatable& Sound, const USoundModulationPluginSourceSettingsBase& Settings)
+	{
+		Impl->OnInitSound(Sound, Settings);
 	}
 
-	void FAudioModulation::ActivateBus(const USoundControlBus& InBus)
+	void FAudioModulation::OnInitSource(const uint32 SourceId, const FName& AudioComponentUserId, const uint32 NumChannels, const USoundModulationPluginSourceSettingsBase& Settings)
 	{
-		ModSystem->ActivateBus(InBus);
+		Impl->OnInitSource(SourceId, AudioComponentUserId, NumChannels, Settings);
 	}
 
-	void FAudioModulation::ActivateBusMix(const USoundControlBusMix& InBusMix)
+	void FAudioModulation::OnReleaseSound(ISoundModulatable& Sound)
 	{
-		ModSystem->ActivateBusMix(InBusMix);
+		Impl->OnReleaseSound(Sound);
 	}
 
-	void FAudioModulation::ActivateGenerator(const USoundModulationGenerator& InGenerator)
+	void FAudioModulation::OnReleaseSource(const uint32 SourceId)
 	{
-		ModSystem->ActivateGenerator(InGenerator);
-	}
-
-	void FAudioModulation::DeactivateBus(const USoundControlBus& InBus)
-	{
-		ModSystem->DeactivateBus(InBus);
-	}
-
-	void FAudioModulation::DeactivateBusMix(const USoundControlBusMix& InBusMix)
-	{
-		ModSystem->DeactivateBusMix(InBusMix);
-	}
-
-	void FAudioModulation::DeactivateAllBusMixes()
-	{
-		ModSystem->DeactivateAllBusMixes();
-	}
-
-	void FAudioModulation::DeactivateGenerator(const USoundModulationGenerator& InGenerator)
-	{
-		ModSystem->DeactivateGenerator(InGenerator);
-	}
-
-#if !UE_BUILD_SHIPPING
-	void FAudioModulation::SetDebugBusFilter(const FString* InNameFilter)
-	{
-		ModSystem->SetDebugBusFilter(InNameFilter);
-	}
-
-	void FAudioModulation::SetDebugGeneratorFilter(const FString* InFilter)
-	{
-		ModSystem->SetDebugGeneratorFilter(InFilter);
-	}
-
-	void FAudioModulation::SetDebugGeneratorTypeFilter(const FString* InFilter, bool bInIsEnabled)
-	{
-		ModSystem->SetDebugGeneratorTypeFilter(InFilter, bInIsEnabled);
-	}
-
-	void FAudioModulation::SetDebugGeneratorsEnabled(bool bInIsEnabled)
-	{
-		ModSystem->SetDebugGeneratorsEnabled(bInIsEnabled);
-	}
-
-	void FAudioModulation::SetDebugMatrixEnabled(bool bInIsEnabled)
-	{
-		ModSystem->SetDebugMatrixEnabled(bInIsEnabled);
-	}
-
-	void FAudioModulation::SetDebugMixFilter(const FString* InNameFilter)
-	{
-		ModSystem->SetDebugMixFilter(InNameFilter);
-	}
-
-#endif // !UE_BUILD_SHIPPING
-
-	void FAudioModulation::SaveMixToProfile(const USoundControlBusMix& InBusMix, const int32 InProfileIndex)
-	{
-		ModSystem->SaveMixToProfile(InBusMix, InProfileIndex);
-	}
-
-	TArray<FSoundControlBusMixStage> FAudioModulation::LoadMixFromProfile(const int32 InProfileIndex, USoundControlBusMix& OutBusMix)
-	{
-		return ModSystem->LoadMixFromProfile(InProfileIndex, OutBusMix);
-	}
-
-	void FAudioModulation::UpdateMix(const TArray<FSoundControlBusMixStage>& InStages, USoundControlBusMix& InOutMix, bool bInUpdateObject, float InFadeTime)
-	{
-		ModSystem->UpdateMix(InStages, InOutMix, bInUpdateObject, InFadeTime);
-	}
-
-	void FAudioModulation::UpdateMix(const USoundControlBusMix& InMix, float InFadeTime)
-	{
-		ModSystem->UpdateMix(InMix, InFadeTime);
-	}
-
-	void FAudioModulation::UpdateMixByFilter(const FString& InAddressFilter, const TSubclassOf<USoundModulationParameter>& InParamClassFilter, USoundModulationParameter* InParamFilter, float Value, float FadeTime, USoundControlBusMix& InOutMix, bool bInUpdateObject)
-	{
-		ModSystem->UpdateMixByFilter(InAddressFilter, InParamClassFilter, InParamFilter, Value, FadeTime, InOutMix, bInUpdateObject);
-	}
-
-	void FAudioModulation::SoloBusMix(const USoundControlBusMix& InBusMix)
-	{
-		ModSystem->SoloBusMix(InBusMix);
+		Impl->OnReleaseSource(SourceId);
 	}
 
 #if !UE_BUILD_SHIPPING
 	bool FAudioModulation::OnPostHelp(FCommonViewportClient* ViewportClient, const TCHAR* Stream)
 	{
-		return ModSystem->OnPostHelp(ViewportClient, Stream);
+		return Impl->OnPostHelp(ViewportClient, Stream);
 	}
 
 	int32 FAudioModulation::OnRenderStat(FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const UFont& Font, const FVector* ViewLocation, const FRotator* ViewRotation)
 	{
-		return ModSystem->OnRenderStat(Viewport, Canvas, X, Y, Font, ViewLocation, ViewRotation);
+		return Impl->OnRenderStat(Viewport, Canvas, X, Y, Font, ViewLocation, ViewRotation);
 	}
 
 	bool FAudioModulation::OnToggleStat(FCommonViewportClient* ViewportClient, const TCHAR* Stream)
 	{
-		return ModSystem->OnToggleStat(ViewportClient, Stream);
+		return Impl->OnToggleStat(ViewportClient, Stream);
 	}
 #endif // !UE_BUILD_SHIPPING
 
-	void FAudioModulation::ProcessModulators(const double InElapsed)
+	bool FAudioModulation::ProcessControls(const uint32 InSourceId, FSoundModulationControls& OutControls)
+	{
+		SCOPE_CYCLE_COUNTER(STAT_AudioModulationProcessControls);
+		return Impl->ProcessControls(InSourceId, OutControls);
+	}
+
+	void FAudioModulation::ProcessModulators(const float Elapsed)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_AudioModulationProcessModulators);
-		ModSystem->ProcessModulators(InElapsed);
-	}
-
-	Audio::FModulatorTypeId FAudioModulation::RegisterModulator(Audio::FModulatorHandleId InHandleId, const USoundModulatorBase* InModulatorBase, Audio::FModulationParameter& OutParameter)
-	{
-		return ModSystem->RegisterModulator(InHandleId, InModulatorBase, OutParameter);
-	}
-
-	void FAudioModulation::RegisterModulator(Audio::FModulatorHandleId InHandleId, Audio::FModulatorId InModulatorId)
-	{
-		ModSystem->RegisterModulator(InHandleId, InModulatorId);
-	}
-
-	bool FAudioModulation::GetModulatorValue(const Audio::FModulatorHandle& ModulatorHandle, float& OutValue) const
-	{
-		return ModSystem->GetModulatorValue(ModulatorHandle, OutValue);
-	}
-
-	void FAudioModulation::UnregisterModulator(const Audio::FModulatorHandle& InHandle)
-	{
-		ModSystem->UnregisterModulator(InHandle);
-	}
-
-	void FAudioModulation::UpdateModulator(const USoundModulatorBase& InModulator)
-	{
-		ModSystem->UpdateModulator(InModulator);
+		Impl->ProcessModulators(Elapsed);
 	}
 } // namespace AudioModulation
 

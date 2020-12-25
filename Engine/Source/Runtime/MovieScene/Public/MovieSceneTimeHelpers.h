@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,25 +8,8 @@
 #include "Math/Range.h"
 #include "Math/RangeBound.h"
 
-struct FFrameRate;
-class UMovieScene;
-
-namespace UE
-{
 namespace MovieScene
 {
-
-class MOVIESCENE_API TimeHelpers
-{
-public:
-
-/**
- * Migrate the frame times of the movie scene from the source frame rate to the destination frame rate
- */
-
-static void MigrateFrameTimes(FFrameRate SourceRate, FFrameRate DestinationRate, UMovieScene* MovieScene);
-
-};
 
 /**
  * Return the first frame number included by the specified closed lower bound. For example, a bound of (0 would return 1, and [0 would return 0
@@ -207,14 +190,13 @@ inline FFrameTime ClampToDiscreteRange(FFrameTime InTime, const TRange<FFrameNum
 
 
 } // namespace MovieScene
-} // namespace UE
 
 inline FString LexToString(const TRange<FFrameNumber>& InRange)
 {
 	TRangeBound<FFrameNumber> SourceLower = InRange.GetLowerBound();
 	TRangeBound<FFrameNumber> SourceUpper = InRange.GetUpperBound();
 
-	return *FString::Printf(TEXT("%s,%s"),
+	return *FString::Printf(TEXT("%s-%s"),
 		SourceLower.IsOpen() ?
 		TEXT("[-inf") :
 		SourceLower.IsInclusive() ?

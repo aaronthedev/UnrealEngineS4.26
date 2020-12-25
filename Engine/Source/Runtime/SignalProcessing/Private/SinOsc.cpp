@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DSP/SinOsc.h"
 
@@ -44,16 +44,6 @@ namespace Audio
 		SampleRate = InSampleRate;
 
 		SetFrequency(InFrequencyHz);
-	}
-
-	void FSineOsc::SetScale(const float InScale)
-	{
-		Scale = InScale;
-	}
-
-	void FSineOsc::SetAdd(const float InAdd)
-	{
-		Add = InAdd;
 	}
 
 	void FSineOsc::SetFrequency(const float InFrequencyHz)

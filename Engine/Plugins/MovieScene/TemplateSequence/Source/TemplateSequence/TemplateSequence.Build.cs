@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -14,9 +14,14 @@ public class TemplateSequence : ModuleRules
 				"CoreUObject",
 				"Engine",
 				"MovieScene",
-				"MovieSceneTracks",
 				"TimeManagement",
 				"LevelSequence"
+				}
+		);
+
+		PrivateDependencyModuleNames.AddRange(
+			new string[] {
+				"MovieSceneTracks"
 				}
 		);
 	}

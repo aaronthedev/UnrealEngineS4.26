@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "NiagaraCommon.h"
@@ -6,7 +6,7 @@
 #include "VectorVM.h"
 #include "StaticMeshResources.h"
 #include "Curves/RichCurve.h"
-#include "NiagaraDataInterfaceCurveBase.h"
+#include "NiagaraDataInterface.h"
 #include "NiagaraDataInterfaceColorCurve.generated.h"
 
 class INiagaraCompiler;
@@ -36,18 +36,16 @@ public:
 
 	//UObject Interface
 	virtual void PostInitProperties() override;
-	virtual void Serialize(FArchive& Ar) override;
+	virtual void PostLoad() override;
 	//UObject Interface End
 
 	enum
 	{
 		CurveLUTNumElems = 4,
+		CurveLUTMax = (CurveLUTWidth * CurveLUTNumElems) - 1,
 	};
 
-#if WITH_EDITORONLY_DATA
-	virtual void UpdateTimeRanges() override;
-	virtual TArray<float> BuildLUT(int32 NumEntries) const override;
-#endif
+	void UpdateLUT();
 
 	virtual void GetFunctions(TArray<FNiagaraFunctionSignature>& OutFunctions)override;
 	virtual void GetVMExternalFunction(const FVMExternalFunctionBindingInfo& BindingInfo, void* InstanceData, FVMExternalFunction &OutFunc) override;
@@ -60,7 +58,7 @@ public:
 	//~ UNiagaraDataInterfaceCurveBase interface
 	virtual void GetCurveData(TArray<FCurveData>& OutCurveData) override;
 
-	virtual bool GetFunctionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, const FNiagaraDataInterfaceGeneratedFunction& FunctionInfo, int FunctionInstanceIndex, FString& OutHLSL) override;
+	virtual bool GetFunctionHLSL(const FName&  DefinitionFunctionName, FString InstanceFunctionName, FNiagaraDataInterfaceGPUParamInfo& ParamInfo, FString& OutHLSL) override;
 
 	virtual int32 GetCurveNumElems()const { return CurveLUTNumElems; }
 protected:

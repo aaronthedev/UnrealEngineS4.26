@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "GraphEditorModule.h"
@@ -6,8 +6,6 @@
 
 #include "GraphEditorActions.h"
 #include "SGraphEditorImpl.h"
-
-#include "ToolMenus.h"
 
 IMPLEMENT_MODULE(FGraphEditorModule, GraphEditor);
 
@@ -33,9 +31,6 @@ void FGraphEditorModule::StartupModule()
 
 void FGraphEditorModule::ShutdownModule()
 {
-	UToolMenus::UnRegisterStartupCallback(this);
-	UToolMenus::UnregisterOwner(this);
-
 	// Notify all the instances of GraphEditor that their code is about to be unloaded.
 	for (auto InstanceIt = SGraphEditor::AllInstances.CreateIterator(); InstanceIt; ++InstanceIt)
 	{

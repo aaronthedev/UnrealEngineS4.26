@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "Templates/SharedPointer.h"
@@ -75,7 +75,7 @@ private:
 	uint32 ID;
 };
 
-DECLARE_MULTICAST_DELEGATE(FOnOptionsRefresh);
+typedef TMulticastDelegate<void> FOnOptionsRefresh;
 
 /**
 * You can extend the Curve Editor toolset by implementing this interface. The Curve Editor guarantees that only

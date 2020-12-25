@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShaderComparisonTests.h"
 
@@ -144,14 +144,14 @@ bool FCompareBasepassShaders::RunTest(const FString& Parameters)
     for (int i = 0; i < NUM_CAMERAS; ++i)
     {
         FString CompareBasepassShadersTestName = FString::Printf(TEXT("CompareBasepassShaders_Game/%s/%d"), *FPaths::GetBaseFilename(MapName), i);
-		ScreenshotFileName[i] = AutomationCommon::GetScreenshotName(CompareBasepassShadersTestName);
+        AutomationCommon::GetScreenshotPath(CompareBasepassShadersTestName, ScreenshotFileName[i]);
         CompareBasepassShadersTestName = FString::Printf(TEXT("Incoming/CompareBasepassShaders_Game/%s/%d"), *FPaths::GetBaseFilename(MapName), i);
-		RealScreenshotFileName[i] = AutomationCommon::GetScreenshotName(CompareBasepassShadersTestName);
+        AutomationCommon::GetScreenshotPath(CompareBasepassShadersTestName, RealScreenshotFileName[i]);
         RealScreenshotFileName[i] = "../../../" + RealScreenshotFileName[i];
         CompareBasepassShadersTestName = FString::Printf(TEXT("CompareBasepassShaders_Game/%s_fp16/%d"), *FPaths::GetBaseFilename(MapName), i);
-		FP16ScreenshotFileName[i] = AutomationCommon::GetScreenshotName(CompareBasepassShadersTestName);
+        AutomationCommon::GetScreenshotPath(CompareBasepassShadersTestName, FP16ScreenshotFileName[i]);
         CompareBasepassShadersTestName = FString::Printf(TEXT("Incoming/CompareBasepassShaders_Game/%s_fp16/%d"), *FPaths::GetBaseFilename(MapName), i);
-		RealFP16ScreenshotFileName[i] = AutomationCommon::GetScreenshotName(CompareBasepassShadersTestName);
+        AutomationCommon::GetScreenshotPath(CompareBasepassShadersTestName, RealFP16ScreenshotFileName[i]);
         RealFP16ScreenshotFileName[i] = "../../../" + RealFP16ScreenshotFileName[i];
     }
 
@@ -236,7 +236,7 @@ bool FCompareBasepassShaders::RunTest(const FString& Parameters)
             PathName = "../../../" + PathName;
             UE_LOG(ShaderComparisonTests, Log, TEXT("Screenshots are at %s and %s."), *RealScreenshotFileName[i], *RealFP16ScreenshotFileName[i]);
             UE_LOG(ShaderComparisonTests, Log, TEXT("Difference is stored in %s"), *PathName);
-            auto single_similarity = FImageComparer().CompareStructuralSimilarity(RealScreenshotFileName[i], RealFP16ScreenshotFileName[i], FImageComparer::EStructuralSimilarityComponent::Luminance, "");
+            auto single_similarity = FImageComparer(PathName).CompareStructuralSimilarity(RealScreenshotFileName[i], RealFP16ScreenshotFileName[i], FImageComparer::EStructuralSimilarityComponent::Luminance);
             similarity = single_similarity < similarity ? single_similarity : similarity;
             UE_LOG(ShaderComparisonTests, Log, TEXT("Similarity is %f after %d."), similarity, i);
         }

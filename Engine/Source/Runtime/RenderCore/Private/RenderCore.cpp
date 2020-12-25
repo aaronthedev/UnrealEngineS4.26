@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	RenderCore.h: Render core module implementation.
@@ -55,7 +55,6 @@ DEFINE_STAT(STAT_LightingDrawTime);
 DEFINE_STAT(STAT_DynamicPrimitiveDrawTime);
 DEFINE_STAT(STAT_StaticDrawListDrawTime);
 DEFINE_STAT(STAT_BasePassDrawTime);
-DEFINE_STAT(STAT_AnisotropyPassDrawTime);
 DEFINE_STAT(STAT_DepthDrawTime);
 DEFINE_STAT(STAT_WaterPassDrawTime);
 DEFINE_STAT(STAT_DynamicShadowSetupTime);
@@ -176,7 +175,6 @@ DEFINE_STAT(STAT_RemoveScenePrimitiveTime);
 DEFINE_STAT(STAT_AddScenePrimitiveRenderThreadTime);
 DEFINE_STAT(STAT_UpdateScenePrimitiveRenderThreadTime);
 DEFINE_STAT(STAT_UpdatePrimitiveTransformRenderThreadTime);
-DEFINE_STAT(STAT_FlushAsyncLPICreation);
 
 DEFINE_STAT(STAT_RemoveScenePrimitiveGT);
 DEFINE_STAT(STAT_AddScenePrimitiveGT);
@@ -268,19 +266,6 @@ RENDERCORE_API int32 GetCVarForceLOD()
 	return Ret;
 }
 
-RENDERCORE_API int32 GetCVarForceLOD_AnyThread()
-{
-	int32 Ret = -1;
-
-#if EXPOSE_FORCE_LOD
-	{
-		Ret = CVarForceLOD.GetValueOnAnyThread();
-	}
-#endif // EXPOSE_FORCE_LOD
-
-	return Ret;
-}
-
 RENDERCORE_API int32 GetCVarForceLODShadow()
 {
 	int32 Ret = -1;
@@ -288,19 +273,6 @@ RENDERCORE_API int32 GetCVarForceLODShadow()
 #if EXPOSE_FORCE_LOD
 	{
 		Ret = CVarForceLODShadow.GetValueOnRenderThread();
-	}
-#endif // EXPOSE_FORCE_LOD
-
-	return Ret;
-}
-
-RENDERCORE_API int32 GetCVarForceLODShadow_AnyThread()
-{
-	int32 Ret = -1;
-
-#if EXPOSE_FORCE_LOD
-	{
-		Ret = CVarForceLODShadow.GetValueOnAnyThread();
 	}
 #endif // EXPOSE_FORCE_LOD
 

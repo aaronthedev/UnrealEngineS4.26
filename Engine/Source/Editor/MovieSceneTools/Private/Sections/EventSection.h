@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -56,7 +56,7 @@ public:
 public:
 
 	virtual int32 OnPaintSection(FSequencerSectionPainter& Painter) const override;
-	virtual FReply OnKeyDoubleClicked(const TArray<FKeyHandle>& KeyHandles) override;
+	virtual FReply OnKeyDoubleClicked(FKeyHandle KeyHandle) override;
 };
 
 class FEventRepeaterSection

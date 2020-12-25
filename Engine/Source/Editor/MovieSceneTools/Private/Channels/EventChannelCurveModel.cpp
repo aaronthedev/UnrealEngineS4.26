@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EventChannelCurveModel.h"
 #include "Math/Vector2D.h"
@@ -64,13 +64,10 @@ void FEventChannelCurveModel::AddKeys(TArrayView<const FKeyPosition> InKeyPositi
 			Section->ExpandToFrame(Time);
 
 			FMovieSceneEvent Value;
-			FKeyHandle NewHandle = ChannelData.UpdateOrAddKey(Time, Value);
-			if (NewHandle != FKeyHandle::Invalid())
+			int32 KeyIndex = ChannelData.AddKey(Time, Value);
+			if (OutKeyHandles)
 			{
-				if (OutKeyHandles)
-				{
-					(*OutKeyHandles)[Index] = NewHandle;
-				}
+				(*OutKeyHandles)[Index] = ChannelData.GetHandle(KeyIndex);
 			}
 		}
 	}
@@ -167,7 +164,7 @@ void FEventChannelCurveModel::GetKeyPositions(TArrayView<const FKeyHandle> InKey
 	}
 }
 
-void FEventChannelCurveModel::SetKeyPositions(TArrayView<const FKeyHandle> InKeys, TArrayView<const FKeyPosition> InKeyPositions, EPropertyChangeType::Type ChangeType)
+void FEventChannelCurveModel::SetKeyPositions(TArrayView<const FKeyHandle> InKeys, TArrayView<const FKeyPosition> InKeyPositions)
 {
 	FMovieSceneEventChannel* Channel = ChannelHandle.Get();
 	UMovieSceneSection*      Section = WeakSection.Get();
@@ -197,7 +194,7 @@ void FEventChannelCurveModel::GetKeyAttributes(TArrayView<const FKeyHandle> InKe
 {
 }
 
-void FEventChannelCurveModel::SetKeyAttributes(TArrayView<const FKeyHandle> InKeys, TArrayView<const FKeyAttributes> InAttributes, EPropertyChangeType::Type ChangeType)
+void FEventChannelCurveModel::SetKeyAttributes(TArrayView<const FKeyHandle> InKeys, TArrayView<const FKeyAttributes> InAttributes)
 {
 }
 

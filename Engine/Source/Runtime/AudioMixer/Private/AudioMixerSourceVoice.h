@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -47,20 +47,8 @@ namespace Audio
 		// Sets the source voice's HPF filter frequency.
 		void SetHPFFrequency(const float InFrequency);
 
-		// Sets the source voice modulation base pitch value.
-		void SetModPitch(const float InPitch);
-
-		// Sets the source voice's volume modulation base frequency.
-		void SetModVolume(const float InVolume);
-
-		// Sets the source voice's LPF filter modulation base frequency.
-		void SetModLPFFrequency(const float InFrequency);
-
-		// Sets the source voice's HPF filter modulation base frequency.
-		void SetModHPFFrequency(const float InFrequency);
-
 		// Sets the source voice's channel map (2d or 3d).
-		void SetChannelMap(const uint32 NumInputChannels, const Audio::AlignedFloatBuffer& InChannelMap, const bool bInIs3D, const bool bInIsCenterChannelOnly);
+		void SetChannelMap(ESubmixChannelFormat InChannelType, const uint32 NumInputChannels, const Audio::AlignedFloatBuffer& InChannelMap, const bool bInIs3D, const bool bInIsCenterChannelOnly);
 
 		// Sets params used by HRTF spatializer
 		void SetSpatializationParams(const FSpatializationParams& InParams);
@@ -95,11 +83,6 @@ namespace Audio
 		// Whether or not the device changed and needs another speaker map sent
 		bool NeedsSpeakerMap() const;
 
-		// Whether or not the voice is currently using HRTF spatialization.
-		//
-		// @param bDefaultValue - This value will be returned if voice does not have a valid source id.
-		bool IsUsingHRTFSpatializer(bool bDefaultValue) const;
-
 		// Retrieves the total number of samples played.
 		int64 GetNumFramesPlayed() const;
 
@@ -107,22 +90,13 @@ namespace Audio
 		float GetEnvelopeValue() const;
 
 		// Mixes the dry and wet buffer audio into the given buffers.
-		void MixOutputBuffers(int32 InNumChannels, const float SendLevel, EMixerSourceSubmixSendStage InSubmixSendStage, AlignedFloatBuffer& OutWetBuffer) const;
-
-		// For soundfield conversions, get the encoded audio.
-		const ISoundfieldAudioPacket* GetEncodedOutput(const FSoundfieldEncodingKey& InKey) const;
-
-		// This will return the listener rotation used for this source voice.
-		const FQuat GetListenerRotationForVoice() const;
+		void MixOutputBuffers(const ESubmixChannelFormat InSubmixChannelType, const float SendLevel, AlignedFloatBuffer& OutWetBuffer) const;
 
 		// Sets the submix send levels
 		void SetSubmixSendInfo(FMixerSubmixWeakPtr Submix, const float SendLevel);
 
-		// Clears the submix send to the given submix
-		void ClearSubmixSendInfo(FMixerSubmixWeakPtr Submix);
-
 		// Set the source bus send levels
-		void SetAudioBusSendInfo(EBusSendType InBusSendType, uint32 AudioBusId, float BusSendLevel);
+		void SetBusSendInfo(EBusSendType InBusSendType, FMixerBusSend& BusSend);
 
 		// Called when the source is a bus and needs to mix other sources together to generate output
 		void OnMixBus(FMixerSourceVoiceBuffer* OutMixerSourceBuffer);
@@ -134,7 +108,7 @@ namespace Audio
 		FMixerSourceManager* SourceManager;
 		TMap<uint32, FMixerSourceSubmixSend> SubmixSends;
 		FMixerDevice* MixerDevice;
-		TArray<float> DeviceChannelMap;
+		TMap<ESubmixChannelFormat, TArray<float>> ChannelMaps;
 		FThreadSafeBool bStopFadedOut;
 		float Pitch;
 		float Volume;
@@ -142,10 +116,6 @@ namespace Audio
 		float Distance;
 		float LPFFrequency;
 		float HPFFrequency;
-		float PitchModBase;
-		float VolumeModBase;
-		float LPFFrequencyModBase;
-		float HPFFrequencyModBase;
 		int32 SourceId;
 		uint16 bIsPlaying : 1;
 		uint16 bIsPaused : 1;

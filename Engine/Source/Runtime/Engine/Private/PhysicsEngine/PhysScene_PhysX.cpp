@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #if !WITH_CHAOS && !WITH_IMMEDIATE_PHYSX
 
@@ -40,7 +40,6 @@
 #include "PhysicsEngine/ConstraintInstance.h"
 #include "PhysicsReplication.h"
 #include "ProfilingDebugging/CsvProfiler.h"
-
 #include "PhysTestSerializer.h"
 
 /** Physics stats **/
@@ -436,7 +435,6 @@ FPhysScene_PhysX::FPhysScene_PhysX(const AWorldSettings* Settings)
 #endif
 #endif 
 {
-	LLM_SCOPE(ELLMTag::PhysX);
 	LineBatcher = NULL;
 	OwningWorld = NULL;
 #if WITH_PHYSX
@@ -957,7 +955,7 @@ void GatherClothingStats(const UWorld* World)
 }
 
 
-bool FPhysScene_PhysX::MarkForPreSimKinematicUpdate(USkeletalMeshComponent* InSkelComp, ETeleportType InTeleport, bool bNeedsSkinning)
+void FPhysScene_PhysX::MarkForPreSimKinematicUpdate(USkeletalMeshComponent* InSkelComp, ETeleportType InTeleport, bool bNeedsSkinning)
 {
 	// If null, or pending kill, do nothing
 	if (InSkelComp != nullptr && !InSkelComp->IsPendingKill())
@@ -972,7 +970,7 @@ bool FPhysScene_PhysX::MarkForPreSimKinematicUpdate(USkeletalMeshComponent* InSk
 				Info.TeleportType = InTeleport;
 				Info.bNeedsSkinning = bNeedsSkinning;
 				DeferredKinematicUpdateSkelMeshes.Emplace(InSkelComp, Info);
-				return true;
+				return;
 			}
 
 			FDeferredKinematicUpdateInfo& Info = FoundItem->Value;
@@ -1002,8 +1000,6 @@ bool FPhysScene_PhysX::MarkForPreSimKinematicUpdate(USkeletalMeshComponent* InSk
 			InSkelComp->bDeferredKinematicUpdate = true;
 		}
 	}
-
-	return true;
 }
 
 void FPhysScene_PhysX::ClearPreSimKinematicUpdate(USkeletalMeshComponent* InSkelComp)
@@ -1201,26 +1197,6 @@ void FPhysScene_PhysX::WaitPhysScenes()
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_FPhysScene_WaitPhysScenes);
 		FTaskGraphInterface::Get().WaitUntilTasksComplete(ThingsToComplete, ENamedThreads::GameThread);
 	}
-
-
-}
-
-FGraphEventArray FPhysScene_PhysX::GetCompletionEvents()
-{
-	FGraphEventArray CompletionEvents;
-	CompletionEvents.Add(PhysicsSceneCompletion);
-	return CompletionEvents;
-
-}
-
-bool FPhysScene_PhysX::IsCompletionEventComplete() const
-{
-	if (PhysicsSceneCompletion && !PhysicsSceneCompletion->IsComplete())
-	{
-		return false;
-	}
-
-	return true;
 }
 
 void FPhysScene_PhysX::SceneCompletionTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
@@ -1461,7 +1437,7 @@ void FPhysScene_PhysX::DispatchPhysNotifications_AssumesLocked()
 
 }
 
-void FPhysScene_PhysX::SetUpForFrame(const FVector* NewGrav, float InDeltaSeconds, float InMaxPhysicsDeltaTime, float InMaxSubstepDeltaTime, int32 InMaxSubsteps, bool bUnused)
+void FPhysScene_PhysX::SetUpForFrame(const FVector* NewGrav, float InDeltaSeconds, float InMaxPhysicsDeltaTime)
 {
 	DeltaSeconds = InDeltaSeconds;
 	MaxPhysicsDeltaTime = InMaxPhysicsDeltaTime;

@@ -1,6 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-#include "Trace/Config.h"
+#include "Trace/Trace.h"
 
 #if UE_TRACE_ENABLED
 
@@ -13,10 +13,41 @@
 #include "Windows/HideWindowsPlatformTypes.h"
 
 #pragma warning(push)
+#pragma warning(disable : 6250) // VirtualFree() missing MEM_RELEASE - a false positive
 #pragma warning(disable : 6031) // WSAStartup() return ignore  - we're error tolerant
 
 namespace Trace {
 namespace Private {
+
+////////////////////////////////////////////////////////////////////////////////
+uint8* MemoryReserve(SIZE_T Size)
+{
+	return (uint8*)VirtualAlloc(nullptr, Size, MEM_RESERVE, PAGE_READWRITE);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void MemoryFree(void* Address, SIZE_T Size)
+{
+	VirtualFree(Address, 0, MEM_RELEASE);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void MemoryMap(void* Address, SIZE_T Size)
+{
+	auto Inner = [] (void* Address, SIZE_T Size) -> void*
+	{
+		return VirtualAlloc(Address, Size, MEM_COMMIT, PAGE_READWRITE);
+	};
+	Inner(Address, Size);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void MemoryUnmap(void* Address, SIZE_T Size)
+{
+	VirtualFree(Address, Size, MEM_DECOMMIT);
+}
+
+
 
 ////////////////////////////////////////////////////////////////////////////////
 UPTRINT ThreadCreate(const ANSICHAR* Name, void (*Entry)())
@@ -61,7 +92,7 @@ uint64 TimeGetFrequency()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TRACELOG_API uint64 TimeGetTimestamp()
+uint64 TimeGetTimestamp()
 {
 	LARGE_INTEGER Value;
 	QueryPerformanceCounter(&Value);
@@ -118,7 +149,7 @@ UPTRINT TcpSocketConnect(const ANSICHAR* Host, uint16 Port)
 	// socket() will create a socket with overlapped IO support which we don't
 	// want as it complicates sharing Io*() API with FileOpen(). So we use
 	// WSASocket instead which affords us more control over socket properties
-	SOCKET Socket = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, nullptr, 0, WSA_FLAG_NO_HANDLE_INHERIT);
+	SOCKET Socket = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, nullptr, 0, 0);
 	if (Socket == INVALID_SOCKET)
 	{
 		return 0;
@@ -146,7 +177,7 @@ UPTRINT TcpSocketListen(uint16 Port)
 	TcpSocketInitialize();
 
 	// See TcpSocketConnect() for why WSASocket() is used here.
-	SOCKET Socket = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, nullptr, 0, WSA_FLAG_NO_HANDLE_INHERIT);
+	SOCKET Socket = WSASocket(AF_INET, SOCK_STREAM, IPPROTO_TCP, nullptr, 0, 0);
 	if (Socket == INVALID_SOCKET)
 	{
 		return 0;

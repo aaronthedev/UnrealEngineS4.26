@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LevelEditorModesActions.h"
-#include "Subsystems/AssetEditorSubsystem.h"
-#include "Editor.h"
+#include "EditorModeRegistry.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LevelEditorModesActions, Log, All);
 
@@ -17,7 +16,7 @@ void FLevelEditorModesCommands::RegisterCommands()
 	int editorMode = 0;
 	FKey EdModeKeys[9] = { EKeys::One, EKeys::Two, EKeys::Three, EKeys::Four, EKeys::Five, EKeys::Six, EKeys::Seven, EKeys::Eight, EKeys::Nine };
 
-	for ( const FEditorModeInfo& Mode : GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->GetEditorModeInfoOrderedByPriority())
+	for ( const FEditorModeInfo& Mode : FEditorModeRegistry::Get().GetSortedModeInfo() )
 	{
 		// If the mode isn't visible don't create a menu option for it.
 		if (!Mode.bVisible)

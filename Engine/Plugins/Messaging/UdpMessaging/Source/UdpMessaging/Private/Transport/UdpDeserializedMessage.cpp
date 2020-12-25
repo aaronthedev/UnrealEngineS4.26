@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Transport/UdpDeserializedMessage.h"
 
@@ -11,7 +11,6 @@
 #include "UObject/Class.h"
 #include "UObject/Package.h"
 #include "UdpMessagingPrivate.h"
-#include "UdpMessagingSettings.h"
 
 
 /* FUdpDeserializedMessage structors
@@ -43,7 +42,7 @@ class FUdpDeserializedMessageDetails
 {
 public:
 	static bool DeserializeV10(FUdpDeserializedMessage& DeserializedMessage, FMemoryReader& MessageReader);
-	static bool DeserializeV11_14(FUdpDeserializedMessage& DeserializedMessage, FMemoryReader& MessageReader);
+	static bool DeserializeV11_12(FUdpDeserializedMessage& DeserializedMessage, FMemoryReader& MessageReader);
 	static bool Deserialize(FUdpDeserializedMessage& DeserializedMessage, const FUdpReassembledMessage& ReassembledMessage);
 };
 
@@ -232,7 +231,7 @@ bool FUdpDeserializedMessageDetails::DeserializeV10(FUdpDeserializedMessage& Des
 	return FStructDeserializer::Deserialize(DeserializedMessage.MessageData, *DeserializedMessage.TypeInfo, Backend);
 }
 
-bool FUdpDeserializedMessageDetails::DeserializeV11_14(FUdpDeserializedMessage& DeserializedMessage, FMemoryReader& MessageReader)
+bool FUdpDeserializedMessageDetails::DeserializeV11_12(FUdpDeserializedMessage& DeserializedMessage, FMemoryReader& MessageReader)
 {
 	// message type info
 	{
@@ -332,17 +331,10 @@ bool FUdpDeserializedMessageDetails::DeserializeV11_14(FUdpDeserializedMessage& 
 		return FStructDeserializer::Deserialize(DeserializedMessage.MessageData, *DeserializedMessage.TypeInfo, Backend);
 	}
 	break;
-	case EUdpMessageFormat::CborPlatformEndianness:
+	case EUdpMessageFormat::Cbor:
 	{
-		// deserialize cbor (using this platform endianness).
-		FCborStructDeserializerBackend Backend(MessageReader, ECborEndianness::Platform);
-		return FStructDeserializer::Deserialize(DeserializedMessage.MessageData, *DeserializedMessage.TypeInfo, Backend);
-	}
-	break;
-	case EUdpMessageFormat::CborStandardEndianness:
-	{
-		// deserialize cbor (using the CBOR standard endianness - big endian).
-		FCborStructDeserializerBackend Backend(MessageReader, ECborEndianness::StandardCompliant);
+		// deserialize cbor
+		FCborStructDeserializerBackend Backend(MessageReader);
 		return FStructDeserializer::Deserialize(DeserializedMessage.MessageData, *DeserializedMessage.TypeInfo, Backend);
 	}
 	break;
@@ -377,11 +369,7 @@ bool FUdpDeserializedMessageDetails::Deserialize(FUdpDeserializedMessage& Deseri
 	case 11:
 		// fallthrough
 	case 12:
-		// fallthrough
-	case 13:
-		// fallthrough
-	case 14:
-		return DeserializeV11_14(DeserializedMessage, MessageReader);
+		return DeserializeV11_12(DeserializedMessage, MessageReader);
 		break;
 
 	default:

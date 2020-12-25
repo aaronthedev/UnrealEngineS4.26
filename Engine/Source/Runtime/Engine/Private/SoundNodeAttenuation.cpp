@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Sound/SoundNodeAttenuation.h"
@@ -58,10 +58,10 @@ void USoundNodeAttenuation::ParseNodes(FAudioDevice* AudioDevice, const UPTRINT 
 	const FSoundAttenuationSettings* Settings = (ActiveSound.bAllowSpatialization ? GetAttenuationSettingsToApply() : nullptr);
 	if (Settings)
 	{
+		const FListener& Listener = AudioDevice->GetListeners()[0];
+
 		// Update this node's attenuation settings overrides
-		check(AudioDevice);
-		const int32 ClosestListenerIndex = AudioDevice->FindClosestListenerIndex(UpdatedParseParams.Transform);
-		ActiveSound.ParseAttenuation(UpdatedParseParams, ClosestListenerIndex, *Settings);
+		ActiveSound.ParseAttenuation(UpdatedParseParams, Listener, *Settings);
 	}
 	else
 	{

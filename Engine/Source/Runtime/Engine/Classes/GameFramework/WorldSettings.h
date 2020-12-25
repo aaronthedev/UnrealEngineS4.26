@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -250,18 +250,15 @@ struct ENGINE_API FNetViewer
 	FVector ViewDir;
 
 	FNetViewer()
-		: Connection(nullptr)
-		, InViewer(nullptr)
-		, ViewTarget(nullptr)
+		: Connection(NULL)
+		, InViewer(NULL)
+		, ViewTarget(NULL)
 		, ViewLocation(ForceInit)
 		, ViewDir(ForceInit)
 	{
 	}
 
 	FNetViewer(UNetConnection* InConnection, float DeltaSeconds);
-
-	/** For use by replication graph, connection likely null */
-	FNetViewer(AController* InController);
 };
 
 USTRUCT()
@@ -632,12 +629,12 @@ public:
 	TSoftClassPtr<class UHierarchicalLODSetup> HLODSetupAsset;
 
 	/** If set overrides the project-wide base material used for Proxy Materials*/
-	UPROPERTY(EditAnywhere, config, Category = LODSystem, meta=(editcondition = "bEnableHierarchicalLODSystem && HLODSetupAsset == nullptr"))
+	UPROPERTY(EditAnywhere, config, Category = LODSystem)
 	TSoftObjectPtr<class UMaterialInterface> OverrideBaseMaterial;	
 
 protected:
 	/** Hierarchical LOD Setup */
-	UPROPERTY(EditAnywhere, Category=LODSystem, config, meta=(editcondition = "bEnableHierarchicalLODSystem && HLODSetupAsset == nullptr"))
+	UPROPERTY(EditAnywhere, Category=LODSystem, config)
 	TArray<struct FHierarchicalSimplification>	HierarchicalLODSetup;
 
 public:
@@ -725,7 +722,7 @@ public:
 	//~ Begin UObject Interface.
 	virtual void PostLoad() override;
 #if WITH_EDITOR
-	virtual bool CanEditChange(const FProperty* InProperty) const override;
+	virtual bool CanEditChange(const UProperty* InProperty) const override;
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 	virtual void PostTransacted(const FTransactionObjectEvent& TransactionEvent) override;
 #endif // WITH_EDITOR
@@ -736,7 +733,6 @@ public:
 #if WITH_EDITOR
 	virtual void CheckForErrors() override;
 	virtual bool IsSelectable() const override { return false; }
-	virtual bool SupportsExternalPackaging() const override { return false; }
 #endif // WITH_EDITOR
 	virtual void PostInitProperties() override;
 	virtual void PreInitializeComponents() override;
@@ -768,14 +764,7 @@ public:
 	 *	no navigation system will be created*/
 	UNavigationSystemConfig* const GetNavigationSystemConfig() const { return NavigationSystemConfigOverride ? NavigationSystemConfigOverride : NavigationSystemConfig; }
 
-	/** 
-	 * Sets a configuration override for NavigationSystem's creation. 
-	 * If set, GetNavigationSystemConfig will return this configuration instead NavigationSystemConfig. 
-	 */
 	void SetNavigationSystemConfigOverride(UNavigationSystemConfig* NewConfig);
-
-	/** @return current configuration override for NavigationSystem's creation, if any. */
-	const UNavigationSystemConfig* GetNavigationSystemConfigOverride() const { return NavigationSystemConfigOverride; }
 
 	/** @return whether given world is configured to host any NavigationSystem */
 	bool IsNavigationSystemEnabled() const;

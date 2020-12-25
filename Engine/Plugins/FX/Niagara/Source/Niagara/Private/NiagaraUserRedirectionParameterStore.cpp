@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraUserRedirectionParameterStore.h"
 #include "NiagaraStats.h"
@@ -23,22 +23,10 @@ FNiagaraUserRedirectionParameterStore& FNiagaraUserRedirectionParameterStore::op
 	return *this;
 }
 
-bool FNiagaraUserRedirectionParameterStore::IsUserParameter(const FNiagaraVariableBase& InVar) 
+bool FNiagaraUserRedirectionParameterStore::IsUserParameter(const FNiagaraVariable& InVar) const
 {
 	return InVar.GetName().ToString().StartsWith(TEXT("User."));
 }
-
-void FNiagaraUserRedirectionParameterStore::MakeUserVariable(FNiagaraVariableBase& InVar)
-{
-	if (IsUserParameter(InVar))
-	{
-		return;
-	}
-	FName DisplayName(*(TEXT("User.") + InVar.GetName().ToString()));
-	InVar.SetName(DisplayName);
-	return;
-}
-
 
 FNiagaraVariable FNiagaraUserRedirectionParameterStore::GetUserRedirection(const FNiagaraVariable & InVar) const
 {
@@ -56,7 +44,7 @@ void FNiagaraUserRedirectionParameterStore::RecreateRedirections()
 {
 	UserParameterRedirects.Reset();
 
-	for (const FNiagaraVariable Var : ReadParameterVariables())
+	for (const FNiagaraVariable& Var : GetSortedParameterOffsets())
 	{
 		if (IsUserParameter(Var))
 		{
@@ -65,39 +53,16 @@ void FNiagaraUserRedirectionParameterStore::RecreateRedirections()
 	}
 }
 
-bool FNiagaraUserRedirectionParameterStore::RedirectUserVariable(FNiagaraVariableBase& UserVar) const
-{
-	if (const FNiagaraVariable* RedirectedKey = UserParameterRedirects.Find(UserVar))
-	{
-		UserVar = FNiagaraVariableBase(*RedirectedKey);
-		return true;
-	}
-
-	if (IsUserParameter(UserVar))
-	{
-		return true;
-	}
-
-	return false;
-}
-
 bool FNiagaraUserRedirectionParameterStore::AddParameter(const FNiagaraVariable& Param, bool bInitialize /*= true*/, bool bTriggerRebind /*= true*/, int32* OutOffset /*= nullptr*/)
 {
-	FNiagaraVariable AddParam;
 	if (IsUserParameter(Param))
 	{
-		AddParam = Param;
+		UserParameterRedirects.Add(GetUserRedirection(Param), Param);
 	}
-	else
-	{
-		AddParam = FNiagaraVariable(Param.GetType(), *(TEXT("User.") + Param.GetName().ToString()));
-	}
-
-	UserParameterRedirects.Add(GetUserRedirection(AddParam), AddParam);
-	return Super::AddParameter(AddParam, bInitialize, bTriggerRebind, OutOffset);
+	return Super::AddParameter(Param, bInitialize, bTriggerRebind, OutOffset);
 }
 
-bool FNiagaraUserRedirectionParameterStore::RemoveParameter(const FNiagaraVariableBase& InVar)
+bool FNiagaraUserRedirectionParameterStore::RemoveParameter(const FNiagaraVariable& InVar)
 {
 	const FNiagaraVariable* Redirection = UserParameterRedirects.Find(InVar);
 	const FNiagaraVariable& ToRemove = Redirection ? *Redirection : InVar;
@@ -134,8 +99,6 @@ bool FNiagaraUserRedirectionParameterStore::SerializeFromMismatchedTag(const FPr
 	{
 		FNiagaraParameterStore OldStore;
 		FNiagaraParameterStore::StaticStruct()->SerializeItem(Slot, &OldStore, nullptr);
-		// Call PostLoad() to convert the serialized ParameterOffsets to SortedParameterOffsets.
-		OldStore.PostLoad();
 		*this = OldStore;
 		return true;
 	}

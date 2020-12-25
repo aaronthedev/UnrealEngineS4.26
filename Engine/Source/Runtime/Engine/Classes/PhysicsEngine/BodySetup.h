@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,25 +9,22 @@
 #include "EngineDefines.h"
 #include "PhysicsEngine/BodyInstance.h"
 #include "Serialization/BulkData.h"
-#include "BodySetupEnums.h"
+#include "PhysicsEngine/BodySetupEnums.h"
 #include "PhysicsEngine/AggregateGeom.h"
 #include "Interfaces/Interface_CollisionDataProvider.h"
 #include "HAL/ThreadSafeBool.h"
 #include "Async/TaskGraphInterfaces.h"
-#include "BodySetupCore.h"
 #include "BodySetup.generated.h"
 
 
 class ITargetPlatform;
 class UPhysicalMaterial;
-class UPhysicalMaterialMask;
 class UPrimitiveComponent;
 struct FShapeData;
 enum class EPhysXMeshCookFlags : uint8;
 
 DECLARE_DELEGATE_OneParam(FOnAsyncPhysicsCookFinished, bool);
 
-#if PHYSICS_INTERFACE_PHYSX
 namespace physx
 {
 	class PxTriangleMesh;
@@ -41,14 +38,15 @@ namespace physx
 	class PxTriangleMesh;
 	class PxTriangleMeshGeometry;
 }
-#endif
 
 #if WITH_CHAOS
 namespace Chaos
 {
-	class FImplicitObject;
+	template<typename T, int d>
+	class TImplicitObject;
 
-	class FTriangleMeshImplicitObject;
+	template <typename T>
+	class TTriangleMeshImplicitObject;
 }
 
 template<typename T, int d>
@@ -124,9 +122,6 @@ struct ENGINE_API FCookBodySetupInfo
 	/** Whether to support UV from hit results */
 	bool bSupportUVFromHitResults;
 
-	/** Whether to support face remap, needed for physical material masks */
-	bool bSupportFaceRemap;
-
 	/** Error generating cook info for trimesh*/
 	bool bTriMeshError;
 };
@@ -143,7 +138,7 @@ struct FPhysXCookHelper;
  */
 
 UCLASS(collapseCategories, MinimalAPI)
-class UBodySetup : public UBodySetupCore
+class UBodySetup : public UObject
 {
 	GENERATED_UCLASS_BODY()
 
@@ -154,6 +149,16 @@ class UBodySetup : public UBodySetupCore
 	/** Simplified collision representation of this  */
 	UPROPERTY(EditAnywhere, Category = BodySetup, meta=(DisplayName = "Primitives", NoResetToDefault))
 	struct FKAggregateGeom AggGeom;
+
+	/** Used in the PhysicsAsset case. Associates this Body with Bone in a skeletal mesh. */
+	UPROPERTY(Category=BodySetup, VisibleAnywhere)
+	FName BoneName;
+
+	/** 
+	 *	If simulated it will use physics, if kinematic it will not be affected by physics, but can interact with physically simulated bodies. Default will inherit from OwnerComponent's behavior.
+	 */
+	UPROPERTY(EditAnywhere, Category=Physics)
+	TEnumAsByte<EPhysicsType> PhysicsType;
 
 	/** 
 	 *	If true (and bEnableFullAnimWeightBodies in SkelMeshComp is true), the physics of this bone will always be blended into the skeletal mesh, regardless of what PhysicsWeight of the SkelMeshComp is. 
@@ -198,13 +203,6 @@ class UBodySetup : public UBodySetupCore
 	UPROPERTY()
 	uint8 bGenerateMirroredCollision:1;
 
-	/** 
-	 * If true, the physics triangle mesh will store UVs and the face remap table. This is needed
-	 * to support physical material masks in scene queries. 
-	 */
-	UPROPERTY()
-	uint8 bSupportUVsAndFaceRemap:1;
-
 	/** Flag used to know if we have created the physics convex and tri meshes from the cooked data yet */
 	uint8 bCreatedPhysicsMeshes:1;
 
@@ -216,7 +214,17 @@ class UBodySetup : public UBodySetupCore
 
 	/** Indicates that we will never use convex or trimesh shapes. This is an optimization to skip checking for binary data. */
 	uint8 bNeverNeedsCookedCollisionData:1;
-	
+
+	/** Collision Type for this body. This eventually changes response to collision to others **/
+	UPROPERTY(EditAnywhere, Category=Collision)
+	TEnumAsByte<enum EBodyCollisionResponse::Type> CollisionReponse;
+
+	/** Collision Trace behavior - by default, it will keep simple(convex)/complex(per-poly) separate **/
+	UPROPERTY(EditAnywhere, Category=Collision, meta=(DisplayName = "Collision Complexity"))
+	TEnumAsByte<enum ECollisionTraceFlag> CollisionTraceFlag;
+
+	ENGINE_API TEnumAsByte<enum ECollisionTraceFlag> GetCollisionTraceFlag() const;
+
 	/** Physical material to use for simple collision on this body. Encodes information about density, friction etc. */
 	UPROPERTY(EditAnywhere, Category=Physics, meta=(DisplayName="Simple Collision Physical Material"))
 	class UPhysicalMaterial* PhysMaterial;
@@ -249,16 +257,18 @@ private:
 
 public:
 
+#if WITH_PHYSX
+	/** Physics triangle mesh, created from cooked data in CreatePhysicsMeshes */
+	TArray<physx::PxTriangleMesh*> TriMeshes;
+#endif
+
 #if WITH_CHAOS
 	//FBodySetupTriMeshes* TriMeshWrapper;
-	TArray<TSharedPtr<Chaos::FTriangleMeshImplicitObject, ESPMode::ThreadSafe>> ChaosTriMeshes;
+	TArray<TUniquePtr<Chaos::TTriangleMeshImplicitObject<float>>> ChaosTriMeshes;
 #endif
 
 	/** Additional UV info, if available. Used for determining UV for a line trace impact. */
 	FBodySetupUVInfo UVInfo;
-
-	/** Additional face remap table, if available. Used for determining face index mapping from collision mesh to static mesh, for use with physical material masks */
-	TArray<int32> FaceRemap;
 
 	/** Default properties of the body instance, copied into objects on instantiation, was URB_BodyInstance */
 	UPROPERTY(EditAnywhere, Category=Collision, meta=(FullyExpand = "true"))
@@ -271,7 +281,7 @@ public:
 	UPROPERTY()
 	FVector BuildScale3D;
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 	/** References the current async cook helper. Used to be able to abort a cook task */
 	FPhysXCookHelper* CurrentCookHelper;
 #endif
@@ -286,7 +296,6 @@ public:
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
 	virtual void PostEditUndo() override;
-	virtual EDataValidationResult IsDataValid(TArray<FText>& ValidationErrors) override;
 #endif // WITH_EDITOR
 	virtual void GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize) override;
 	//~ End UObject Interface.
@@ -324,8 +333,6 @@ private:
 	/** Finalize game thread data before calling back user's delegate */
 	void FinishCreatePhysicsMeshesAsync(FPhysXCookHelper* AsyncPhysicsCookHelper, FOnAsyncPhysicsCookFinished OnAsyncPhysicsCookFinished);
 #elif WITH_CHAOS
-	// TODO: ProcessFormatData_Chaos is calling ProcessFormatData_Chaos directly - it's better if CreatePhysicsMeshes can be used but that code path requires WITH_EDITOR
-	friend class UMRMeshComponent;
 	bool ProcessFormatData_Chaos(FByteBulkData* FormatData);
 	bool RuntimeCookPhysics_Chaos();
 	void FinishCreatingPhysicsMeshes_Chaos(FChaosDerivedDataReader<float, 3>& InReader);
@@ -383,7 +390,7 @@ public:
 	 * @param		bRemoveExisting			If true, clears any pre-existing collision
 	 * @return								true on success, false on failure because of vertex count overflow.
 	 */
-	ENGINE_API bool CreateFromModel(class UModel* InModel, bool bRemoveExisting);
+	ENGINE_API void CreateFromModel(class UModel* InModel, bool bRemoveExisting);
 
 	/**
 	 * Updates the tri mesh collision with new positions, and refits the BVH to match. 
@@ -435,7 +442,7 @@ public:
 	/*
 	* Copy all UPROPERTY settings except the collision geometry.
 	* This function is use when we restore the original data after a re-import of a static mesh.
-	* All FProperty should be copy here except the collision geometry (i.e. AggGeom)
+	* All UProperty should be copy here except the collision geometry (i.e. AggGeom)
 	*/
 	ENGINE_API virtual void CopyBodySetupProperty(const UBodySetup* Other);
 #endif // WITH_EDITOR
@@ -447,8 +454,7 @@ public:
 		FBodyInstance* OwningInstance, 
 		FVector& Scale3D, 
 		UPhysicalMaterial* SimpleMaterial,
-		TArray<UPhysicalMaterial*>& ComplexMaterials,
-		TArray<FPhysicalMaterialMaskParams>& ComplexMaterialMasks,
+		TArray<UPhysicalMaterial*>& ComplexMaterials, 
 		const FBodyCollisionData& BodyCollisionData,
 		const FTransform& RelativeTM = FTransform::Identity, 
 		TArray<FPhysicsShapeHandle>* NewShapes = NULL);

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	GPUBenchmark.cpp: GPUBenchmark to compute performance index to set video options automatically
@@ -49,8 +49,8 @@ class FPostProcessBenchmarkPS : public FGlobalShader
 	FPostProcessBenchmarkPS() {}
 
 public:
-	LAYOUT_FIELD(FShaderResourceParameter, InputTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, InputTextureSampler);
+	FShaderResourceParameter InputTexture;
+	FShaderResourceParameter InputTextureSampler;
 
 	/** Initialization constructor. */
 	FPostProcessBenchmarkPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -60,9 +60,17 @@ public:
 		InputTextureSampler.Bind(Initializer.ParameterMap,TEXT("InputTextureSampler"));
 	}
 
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << InputTexture << InputTextureSampler;
+		return bShaderHasOutdatedParameters;
+	}
+
 	void SetParameters(FRHICommandList& RHICmdList, const FSceneView& View, TRefCountPtr<IPooledRenderTarget>& Src)
 	{
-		FRHIPixelShader* ShaderRHI = RHICmdList.GetBoundPixelShader();
+		FRHIPixelShader* ShaderRHI = GetPixelShader();
 
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, View.ViewUniformBuffer);
 
@@ -115,9 +123,17 @@ public:
 	{
 	}
 
+	/** Serializer */
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+
+		return bShaderHasOutdatedParameters;
+	}
+
 	void SetParameters(FRHICommandList& RHICmdList, const FSceneView& View)
 	{
-		FRHIVertexShader* ShaderRHI = RHICmdList.GetBoundVertexShader();
+		FRHIVertexShader* ShaderRHI = GetVertexShader();
 		
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, View.ViewUniformBuffer);
 	}
@@ -194,8 +210,8 @@ void RunBenchmarkShader(FRHICommandList& RHICmdList, FRHIVertexBuffer* VertexThr
 		: GFilterVertexDeclaration.VertexDeclarationRHI;
 
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = VertexDeclaration;
-	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -246,7 +262,7 @@ void RunBenchmarkShader(FRHICommandList& RHICmdList, FRHIVertexBuffer* VertexThr
 				GBenchmarkResolution, LocalHeight,
 				FIntPoint(GBenchmarkResolution, GBenchmarkResolution),
 				FIntPoint(GBenchmarkResolution, GBenchmarkResolution),
-				VertexShader,
+				*VertexShader,
 				EDRF_Default);
 		}
 	}
@@ -397,7 +413,6 @@ void RendererGPUBenchmark(FRHICommandListImmediate& RHICmdList, FSynthBenchmarkR
 {
 	check(IsInRenderingThread());
 
-	// Multi-GPU support : Benchmark needs to be made MGPU-aware.
 	bool bValidGPUTimer = (FGPUTiming::GetTimingFrequency() / (1000 * 1000)) != 0;
 
 	if(!bValidGPUTimer)
@@ -487,21 +502,25 @@ void RendererGPUBenchmark(FRHICommandListImmediate& RHICmdList, FSynthBenchmarkR
 			UE_LOG(LogSynthBenchmark, Warning, TEXT("GPU driver does not support timer queries."));
 
 #else
-			// Workaround for Metal not having a timing API and Intel and NVIDIA drivers not properly supporting command-buffer completion handler based implementation...
-			// On AMD GSupportsTimestampRenderQueries is true
+			// Workaround for Metal not having a timing API and some drivers not properly supporting command-buffer completion handler based implementation...
 			FTextureMemoryStats MemStats;
 			RHIGetTextureMemoryStats(MemStats);
 			
 			float PerfScale = 1.0f;
-			if (MemStats.TotalGraphicsMemory < (2ll * 1024ll * 1024ll * 1024ll))
+			if(MemStats.TotalGraphicsMemory < (2ll * 1024ll * 1024ll * 1024ll))
 			{
-				// Assume Intel HD 5000, Iris, Iris Pro performance, or low end NVIDIA - low settings
-				PerfScale = 6.2f;
+				// Assume Intel HD 5000, Iris, Iris Pro performance - not dreadful
+				PerfScale = 4.2f;
 			}
-			else if (MemStats.TotalGraphicsMemory < (3ll * 1024ll * 1024ll * 1024ll))
+			else if(MemStats.TotalGraphicsMemory < (3ll * 1024ll * 1024ll * 1024ll))
 			{
-				// Assume NVIDIA 6x0 & 7x0 series - medium settings
-				PerfScale = 3.0f;
+				// Assume Nvidia 6x0 & 7x0 series/AMD M370X or Radeon Pro 4x0 series - mostly OK
+				PerfScale = 2.0f;
+			}
+			else
+			{
+				// AMD 7xx0 & Dx00 series - should be pretty beefy
+				PerfScale = 1.2f;
 			}
 
 			for (int32 Index = 0; Index < MethodCount; ++Index)
@@ -538,14 +557,10 @@ void RendererGPUBenchmark(FRHICommandListImmediate& RHICmdList, FSynthBenchmarkR
 		}
 
 		RHICmdList.EndRenderQuery(TimerQueries[0].GetQuery());
-		
-		SCOPED_DRAW_EVENTF(RHICmdList, Benchmark, TEXT("Scale:%f"), WorkScale);
 
 		// multiple iterations to see how trust able the values are
 		for(uint32 Iteration = 0; Iteration < IterationCount; ++Iteration)
 		{
-			SCOPED_DRAW_EVENTF(RHICmdList, Benchmark, TEXT("Iteration:%d"), Iteration);
-
 			for(uint32 MethodIterator = 0; MethodIterator < MethodCount; ++MethodIterator)
 			{
 				// alternate between forward and backward (should give the same number)
@@ -602,7 +617,6 @@ void RendererGPUBenchmark(FRHICommandListImmediate& RHICmdList, FSynthBenchmarkR
 		{
 			uint64 OldAbsTime = 0;
 			// flushes the RHI thread to make sure all RHICmdList.EndRenderQuery() commands got executed.
-			RHICmdList.SubmitCommandsHint();
 			RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThread);
 			RHICmdList.GetRenderQueryResult(TimerQueries[0].GetQuery(), OldAbsTime, true);
 

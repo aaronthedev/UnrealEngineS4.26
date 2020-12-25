@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2020 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2019 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -75,19 +75,13 @@ WINRT_ShowMessageBox(const SDL_MessageBoxData *messageboxdata, int *buttonid)
     MessageDialog ^ dialog = ref new MessageDialog(WINRT_UTF8ToPlatformString(messageboxdata->message));
     dialog->Title = WINRT_UTF8ToPlatformString(messageboxdata->title);
     for (int i = 0; i < messageboxdata->numbuttons; ++i) {
-        const SDL_MessageBoxButtonData *sdlButton;
-        if (messageboxdata->flags & SDL_MESSAGEBOX_BUTTONS_RIGHT_TO_LEFT) {
-            sdlButton = &messageboxdata->buttons[messageboxdata->numbuttons - 1 - i];
-        } else {
-            sdlButton = &messageboxdata->buttons[i];
-        }
-        UICommand ^ button = ref new UICommand(WINRT_UTF8ToPlatformString(sdlButton->text));
-        button->Id = safe_cast<IntPtr>((int)(sdlButton - messageboxdata->buttons));
+        UICommand ^ button = ref new UICommand(WINRT_UTF8ToPlatformString(messageboxdata->buttons[i].text));
+        button->Id = safe_cast<IntPtr>(i);
         dialog->Commands->Append(button);
-        if (sdlButton->flags & SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT) {
+        if (messageboxdata->buttons[i].flags & SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT) {
             dialog->CancelCommandIndex = i;
         }
-        if (sdlButton->flags & SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT) {
+        if (messageboxdata->buttons[i].flags & SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT) {
             dialog->DefaultCommandIndex = i;
         }
     }
@@ -104,7 +98,7 @@ WINRT_ShowMessageBox(const SDL_MessageBoxData *messageboxdata, int *buttonid)
         return SDL_SetError("An unknown error occurred in displaying the WinRT MessageDialog");
     }
     if (buttonid) {
-        IntPtr results = safe_cast<IntPtr>((int)(operation->GetResults()->Id));
+        IntPtr results = safe_cast<IntPtr>(operation->GetResults()->Id);
         int clicked_index = results.ToInt32();
         *buttonid = messageboxdata->buttons[clicked_index].buttonid;
     }

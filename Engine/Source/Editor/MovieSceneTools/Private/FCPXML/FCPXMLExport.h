@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -50,18 +50,16 @@ public:
 public:
 	/** Creates project node. */
 	bool ConstructProjectNode(TSharedRef<FFCPXMLNode> InParentNode);
-	/** Creates master video clip nodes. */
-	virtual bool ConstructMasterVideoClipNodes(TSharedRef<FFCPXMLNode> InParentNode);
-	/** Creates master audio clip nodes. */
-	bool ConstructMasterAudioClipNodes(TSharedRef<FFCPXMLNode> InParentNode);
-	/** Creates master video clip node. */
+	/** Creates master clip nodes. */
+	bool ConstructMasterClipNodes(TSharedRef<FFCPXMLNode> InParentNode);
+	/** Creates master clip node. */
 	bool ConstructMasterClipNode(TSharedRef<FFCPXMLNode> InParentNode, const TSharedPtr<FMovieSceneExportCinematicSectionData> InCinematicSectionData, const TSharedPtr<FMovieSceneExportCinematicMasterTrackData> InCinematicMasterTrackData);
-	/** Creates master audio clip node. */
+	/** Creates master clip node. */
 	bool ConstructMasterClipNode(TSharedRef<FFCPXMLNode> InParentNode, const TSharedPtr<FMovieSceneExportAudioSectionData> InAudioSectionData, const TSharedPtr<FMovieSceneExportAudioMasterTrackData> InCinematicMasterTrackData);
 	/** Creates colorinfo node. */
-	bool ConstructColorInfoNode(TSharedRef<FFCPXMLNode> InParentNode);
+	bool ConstructColorInfoNode(TSharedRef<FFCPXMLNode> InParentNode, const TSharedPtr<FMovieSceneExportSectionData> InSectionData);
 	/** Creates logginginfo node. */
-	bool ConstructLoggingInfoNode(TSharedRef<FFCPXMLNode> InParentNode, const UMovieSceneSection* InMovieSceneSection);
+	bool ConstructLoggingInfoNode(TSharedRef<FFCPXMLNode> InParentNode, const TSharedPtr<FMovieSceneExportCinematicSectionData> InSectionData);
 	/** Creates logginginfo node. */
 	bool ConstructLoggingInfoNode(TSharedRef<FFCPXMLNode> InParentNode, const TSharedPtr<FMovieSceneExportAudioSectionData> InSectionData);
 	/** Creates sequence node. */
@@ -71,7 +69,7 @@ public:
 	/** Creates audio node. */
 	bool ConstructAudioNode(TSharedRef<FFCPXMLNode> InParentNode);
 	/** Creates video track node. */
-	virtual bool ConstructVideoTrackNode(TSharedRef<FFCPXMLNode> InParentNode, const TSharedPtr<FMovieSceneExportCinematicTrackData> InCinematicTrackData, const TSharedPtr<FMovieSceneExportCinematicMasterTrackData> InCinematicMasterTrackData);
+	bool ConstructVideoTrackNode(TSharedRef<FFCPXMLNode> InParentNode, const TSharedPtr<FMovieSceneExportCinematicTrackData> InCinematicTrackData, const TSharedPtr<FMovieSceneExportCinematicMasterTrackData> InCinematicMasterTrackData);
 	/** Creates audio track node. */
 	bool ConstructAudioTrackNode(TSharedRef<FFCPXMLNode> InParentNode, const TSharedPtr<FMovieSceneExportAudioTrackData> InAudioTrackData, const TSharedPtr<FMovieSceneExportAudioMasterTrackData> InAudioMasterTrackData, uint32 InTrackIndex, uint32 OutNumTracks);
 	/** Creates video clip item node. */
@@ -101,7 +99,7 @@ public:
 	/** Get audio duration, start, end, in, out frames for a given cinematic shot section */
 	bool GetAudioSectionFrames(const TSharedPtr<FMovieSceneExportAudioSectionData> InAudioSectionData, int32& OutDuration, int32& OutStartFrame, int32& OutEndFrame, int32& OutInFrame, int32& OutOutFrame);
 
-protected:
+private:
 
 	/** Has master clip id for given section */
 	bool HasMasterClipIdName(const TSharedPtr<FMovieSceneExportSectionData> InSection, FString& OutName, bool& bOutMasterClipExists);
@@ -127,7 +125,7 @@ protected:
 	/** Get audio section group name */
 	static FString GetAudioSectionName(const UMovieSceneSection* InAudioSection);
 
-protected:
+private:
 
 	TSharedRef<FMovieSceneExportData> ExportData;
 	TSharedRef<FMovieSceneTranslatorContext> ExportContext;

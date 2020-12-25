@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*================================================================================================
 	RayTracingBuiltInResources.h: used in ray tracing shaders and C++ code to define resources 
@@ -44,9 +44,8 @@ struct FHitGroupSystemRootConstants
 	// User-provided constant assigned to the hit group
 	UINT_TYPE UserData;
 
-	// Index of the first geometry instance that belongs to the current batch.
-	// Can be used to emulate SV_InstanceID in ray tracing shaders.
-	UINT_TYPE BaseInstanceIndex;
+	// Padding to ensure that root parameters are properly aligned to 8-byte boundary
+	UINT_TYPE Unused;
 
 	// Helper functions
 
@@ -74,7 +73,7 @@ struct FHitGroupSystemRootConstants
 
 #if INCLUDED_FROM_HLSL_CODE
 
-#ifndef OVERRIDE_RAYTRACINGBUILTINSHADERS_USH
+#ifndef PLATFORM_RAY_TRACING_USH
 	#define RT_CONCATENATE2(a, b) a##b
 	#define RT_CONCATENATE(a, b) RT_CONCATENATE2(a, b)
 	#define RT_REGISTER(InType, InIndex, InSpace) register(RT_CONCATENATE(InType, InIndex), RT_CONCATENATE(space, InSpace))
@@ -85,7 +84,7 @@ struct FHitGroupSystemRootConstants
 	#undef RT_REGISTER
 	#undef RT_CONCATENATE
 	#undef RT_CONCATENATE2
-#endif // !OVERRIDE_RAYTRACINGBUILTINSHADERS_USH
+#endif // !PLATFORM_RAY_TRACING_USH
 
 #endif // INCLUDED_FROM_HLSL_CODE
 

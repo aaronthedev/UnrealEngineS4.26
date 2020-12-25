@@ -1,42 +1,33 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
-#include "Chaos/Core.h"
 #include "Chaos/Declares.h"
 #include "Chaos/Vector.h"
 
 namespace Chaos
 {
-	class FPBDConstraintContainer;
-
+	template<class T, int d>
+	class TPBDConstraintContainer;
 
 	/**
 	 * Base class for constraint handles.
+	 * @todo(ccaulfield): Add checked down-casting to specific constraint-type handle
 	 */
-	class CHAOS_API FConstraintHandle
+	template<class T, int d>
+	class CHAOS_API TConstraintHandle
 	{
 	public:
-		enum class EType : uint8
-		{
-			Invalid = 0,
-			Collision,
-			RigidSpring,
-			DynamicSpring,
-			Position,
-			Joint,
-			Suspension
-		};
+		using FReal = T;
+		static const int Dimensions = d;
+		using FGeometryParticleHandle = TGeometryParticleHandle<FReal, Dimensions>;
 
-
-		using FGeometryParticleHandle = TGeometryParticleHandle<FReal, 3>;
-
-		FConstraintHandle() : Type(EType::Invalid), ConstraintIndex(INDEX_NONE) { }
-		FConstraintHandle(EType InType, int32 InConstraintIndex): Type(InType), ConstraintIndex(InConstraintIndex) {}
-		virtual ~FConstraintHandle() {}
+		TConstraintHandle() : ConstraintIndex(INDEX_NONE) {}
+		TConstraintHandle(int32 InConstraintIndex) : ConstraintIndex(InConstraintIndex) {}
+		~TConstraintHandle() {}
 
 		bool IsValid() const
 		{
-			return (ConstraintIndex != INDEX_NONE && IsEnabled());
+			return (ConstraintIndex != INDEX_NONE);
 		}
 
 		int32 GetConstraintIndex() const
@@ -44,16 +35,9 @@ namespace Chaos
 			return ConstraintIndex;
 		}
 
-		virtual void SetEnabled(bool InEnabled) = 0;
-		virtual bool IsEnabled() const = 0;
-
-		template<typename T>  T* As() { return T::StaticType() == Type ? static_cast<T*>(this) : nullptr; }
-		template<typename T>  const T* As() const { return T::StaticType() == Type ? static_cast<const T*>(this) : nullptr; }
-
 	protected:
-		friend class FPBDConstraintContainer;
+		friend class TPBDConstraintContainer<T, d>;
 
-		EType Type;
 		int32 ConstraintIndex;
 	};
 
@@ -62,21 +46,21 @@ namespace Chaos
 	 * Utility base class for ConstraintHandles. Provides basic functionality common to most constraint containers.
 	 */
 	template<typename T_CONTAINER>
-	class CHAOS_API TContainerConstraintHandle : public FConstraintHandle
+	class CHAOS_API TContainerConstraintHandle : public TConstraintHandle<typename T_CONTAINER::FReal, T_CONTAINER::Dimensions>
 	{
 	public:
-		using Base = FConstraintHandle;
+		using Base = TConstraintHandle<typename T_CONTAINER::FReal, T_CONTAINER::Dimensions>;
+		using FReal = typename Base::FReal;
+		static const int Dimensions = Base::Dimensions;
 		using FGeometryParticleHandle = typename Base::FGeometryParticleHandle;
 		using FConstraintContainer = T_CONTAINER;
 
 		TContainerConstraintHandle() : ConstraintContainer(nullptr) {}
-		TContainerConstraintHandle(Base::EType InType, FConstraintContainer* InConstraintContainer, int32 InConstraintIndex)
-			: FConstraintHandle(InType, InConstraintIndex), ConstraintContainer(InConstraintContainer) {}
+		TContainerConstraintHandle(FConstraintContainer* InConstraintContainer, int32 InConstraintIndex) : TConstraintHandle<FReal, Dimensions>(InConstraintIndex), ConstraintContainer(InConstraintContainer) {}
 
 		void RemoveConstraint() { ConstraintContainer->RemoveConstraint(ConstraintIndex); }
 
-		void SetEnabled(bool InEnabled) override { ConstraintContainer->SetConstraintEnabled(ConstraintIndex,InEnabled); }
-		bool IsEnabled() const override { return ConstraintContainer->IsConstraintEnabled(ConstraintIndex); }
+		TVector<FGeometryParticleHandle*, 2> GetConstrainedParticles() const { return ConstraintContainer->GetConstrainedParticles(ConstraintIndex); }
 
 	protected:
 		using Base::ConstraintIndex;
@@ -94,11 +78,9 @@ namespace Chaos
 	{
 	public:
 		using FConstraintContainer = T_CONTAINER;
-		using FConstraintContainerHandle = typename FConstraintContainer::FConstraintContainerHandle;
+		using FConstraintHandle = typename FConstraintContainer::FConstraintHandle;
 
-		FConstraintContainerHandle* AllocHandle(FConstraintContainer* ConstraintContainer, int32 ConstraintIndex) { return new FConstraintContainerHandle(ConstraintContainer, ConstraintIndex); }
-		template<class TYPE>
-		FConstraintContainerHandle* AllocHandle(FConstraintContainer* ConstraintContainer, int32 ConstraintIndex) { return new FConstraintContainerHandle(ConstraintContainer, ConstraintIndex, TYPE::StaticType()); }
-		void FreeHandle(FConstraintContainerHandle* Handle) { delete Handle; }
+		FConstraintHandle* AllocHandle(FConstraintContainer* ConstraintContainer, int32 ConstraintIndex) { return new FConstraintHandle(ConstraintContainer, ConstraintIndex); }
+		void FreeHandle(FConstraintHandle* Handle) { delete Handle; }
 	};
 }

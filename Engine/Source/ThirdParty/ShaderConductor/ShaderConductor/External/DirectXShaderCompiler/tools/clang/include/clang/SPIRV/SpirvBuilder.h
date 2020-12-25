@@ -45,7 +45,7 @@ public:
   SpirvBuilder &operator=(SpirvBuilder &&) = delete;
 
   /// Returns the SPIR-V module being built.
-  SpirvModule *getModule() { return mod; }
+  SpirvModule *getModule() { return module; }
 
   // === Function and Basic Block ===
 
@@ -54,8 +54,7 @@ public:
   /// on failure.
   ///
   /// At any time, there can only exist at most one function under building.
-  SpirvFunction *beginFunction(QualType returnType,
-                               llvm::ArrayRef<QualType> paramTypes,
+  SpirvFunction *beginFunction(QualType returnType, SpirvType *functionType,
                                SourceLocation, llvm::StringRef name = "",
                                bool isPrecise = false,
                                SpirvFunction *func = nullptr);
@@ -115,6 +114,10 @@ public:
   createCompositeConstruct(QualType resultType,
                            llvm::ArrayRef<SpirvInstruction *> constituents,
                            SourceLocation loc);
+  SpirvCompositeConstruct *
+  createCompositeConstruct(const SpirvType *resultType,
+                           llvm::ArrayRef<SpirvInstruction *> constituents,
+                           SourceLocation loc);
 
   /// \brief Creates a composite extract instruction. The given composite is
   /// indexed using the given literal indexes to obtain the resulting element.
@@ -164,11 +167,12 @@ public:
   /// \brief Creates an access chain instruction to retrieve the element from
   /// the given base by walking through the given indexes. Returns the
   /// instruction pointer for the pointer to the element.
-  /// Note: The given 'resultType' should be the underlying value type, not the
-  /// pointer type. The type lowering pass automatically adds pointerness and
-  /// proper storage class (based on the access base) to the result type.
   SpirvAccessChain *
   createAccessChain(QualType resultType, SpirvInstruction *base,
+                    llvm::ArrayRef<SpirvInstruction *> indexes,
+                    SourceLocation loc);
+  SpirvAccessChain *
+  createAccessChain(const SpirvType *resultType, SpirvInstruction *base,
                     llvm::ArrayRef<SpirvInstruction *> indexes,
                     SourceLocation loc);
 
@@ -181,13 +185,12 @@ public:
   /// the instruction pointer for the result.
   SpirvBinaryOp *createBinaryOp(spv::Op op, QualType resultType,
                                 SpirvInstruction *lhs, SpirvInstruction *rhs,
-                                SourceLocation loc);
+                                SourceLocation loc = {});
 
-  SpirvSpecConstantBinaryOp *createSpecConstantBinaryOp(spv::Op op,
-                                                        QualType resultType,
-                                                        SpirvInstruction *lhs,
-                                                        SpirvInstruction *rhs,
-                                                        SourceLocation loc);
+  SpirvSpecConstantBinaryOp *
+  createSpecConstantBinaryOp(spv::Op op, QualType resultType,
+                             SpirvInstruction *lhs, SpirvInstruction *rhs,
+                             SourceLocation loc = {});
 
   /// \brief Creates an operation with the given OpGroupNonUniform* SPIR-V
   /// opcode.
@@ -259,7 +262,7 @@ public:
                     SpirvInstruction *constOffset, SpirvInstruction *varOffset,
                     SpirvInstruction *constOffsets, SpirvInstruction *sample,
                     SpirvInstruction *minLod, SpirvInstruction *residencyCodeId,
-                    SourceLocation loc);
+                    SourceLocation loc = {});
 
   /// \brief Creates SPIR-V instructions for reading a texel from an image. If
   /// doImageFetch is true, OpImageFetch is used. OpImageRead is used otherwise.
@@ -275,12 +278,12 @@ public:
       SpirvInstruction *lod, SpirvInstruction *constOffset,
       SpirvInstruction *varOffset, SpirvInstruction *constOffsets,
       SpirvInstruction *sample, SpirvInstruction *residencyCode,
-      SourceLocation loc);
+      SourceLocation loc = {});
 
   /// \brief Creates SPIR-V instructions for writing to the given image.
   void createImageWrite(QualType imageType, SpirvInstruction *image,
                         SpirvInstruction *coord, SpirvInstruction *texel,
-                        SourceLocation loc);
+                        SourceLocation loc = {});
 
   /// \brief Creates SPIR-V instructions for gathering the given image.
   ///
@@ -424,7 +427,7 @@ public:
   /// \brief Sets the shader model version, source file name, and source file
   /// content. Returns the SpirvString instruction of the file name.
   inline SpirvString *setDebugSource(uint32_t major, uint32_t minor,
-                                     const std::vector<llvm::StringRef> &name,
+                                     llvm::StringRef name,
                                      llvm::StringRef content);
 
   /// \brief Adds an execution mode to the module under construction.
@@ -446,7 +449,7 @@ public:
   /// constructed in this method.
   SpirvVariable *addStageIOVar(QualType type, spv::StorageClass storageClass,
                                std::string name, bool isPrecise,
-                               SourceLocation loc);
+                               SourceLocation loc = {});
 
   /// \brief Adds a stage builtin variable whose value is of the given type.
   ///
@@ -455,7 +458,7 @@ public:
   SpirvVariable *addStageBuiltinVar(QualType type,
                                     spv::StorageClass storageClass,
                                     spv::BuiltIn, bool isPrecise,
-                                    SourceLocation loc);
+                                    SourceLocation loc = {});
 
   /// \brief Adds a module variable. This variable should not have the Function
   /// storage class.
@@ -481,7 +484,7 @@ public:
 
   /// \brief Decorates the given target with the given descriptor set and
   /// binding number.
-  void decorateDSetBinding(SpirvVariable *target, uint32_t setNumber,
+  void decorateDSetBinding(SpirvInstruction *target, uint32_t setNumber,
                            uint32_t bindingNumber);
 
   /// \brief Decorates the given target with the given SpecId.
@@ -518,18 +521,6 @@ public:
 
   /// \brief Decorates the given target with NoContraction
   void decorateNoContraction(SpirvInstruction *target, SourceLocation);
-
-  // UE Change Begin
-  /// \brief Decorates the given target with invariant
-  void decorateInvariant(SpirvInstruction *target, SourceLocation);
-  // UE Change Begin
-
-  /// \brief Decorates the given target with PerPrimitiveNV
-  void decoratePerPrimitiveNV(SpirvInstruction *target, SourceLocation);
-
-  /// \brief Decorates the given target with PerTaskNV
-  void decoratePerTaskNV(SpirvInstruction *target, uint32_t offset,
-                         SourceLocation);
 
   /// --- Constants ---
   /// Each of these methods can acquire a unique constant from the SpirvContext,
@@ -574,7 +565,7 @@ private:
   ASTContext &astContext;
   SpirvContext &context; ///< From which we allocate various SPIR-V object
 
-  SpirvModule *mod;             ///< The current module being built
+  SpirvModule *module;          ///< The current module being built
   SpirvFunction *function;      ///< The current function being built
   SpirvBasicBlock *insertPoint; ///< The current basic block being built
 
@@ -600,59 +591,48 @@ private:
 };
 
 void SpirvBuilder::requireCapability(spv::Capability cap, SourceLocation loc) {
-  mod->addCapability(new (context) SpirvCapability(loc, cap));
+  module->addCapability(new (context) SpirvCapability(loc, cap));
 }
 
 void SpirvBuilder::requireExtension(llvm::StringRef ext, SourceLocation loc) {
-  mod->addExtension(new (context) SpirvExtension(loc, ext));
+  module->addExtension(new (context) SpirvExtension(loc, ext));
 }
 
 void SpirvBuilder::setMemoryModel(spv::AddressingModel addrModel,
                                   spv::MemoryModel memModel) {
-  mod->setMemoryModel(new (context) SpirvMemoryModel(addrModel, memModel));
+  module->setMemoryModel(new (context) SpirvMemoryModel(addrModel, memModel));
 }
 
 void SpirvBuilder::addEntryPoint(spv::ExecutionModel em, SpirvFunction *target,
                                  std::string targetName,
                                  llvm::ArrayRef<SpirvVariable *> interfaces) {
-  mod->addEntryPoint(new (context) SpirvEntryPoint(
+  module->addEntryPoint(new (context) SpirvEntryPoint(
       target->getSourceLocation(), em, target, targetName, interfaces));
 }
 
-SpirvString *
-SpirvBuilder::setDebugSource(uint32_t major, uint32_t minor,
-                             const std::vector<llvm::StringRef> &fileNames,
-                             llvm::StringRef content) {
+SpirvString *SpirvBuilder::setDebugSource(uint32_t major, uint32_t minor,
+                                          llvm::StringRef name,
+                                          llvm::StringRef content) {
   uint32_t version = 100 * major + 10 * minor;
-  SpirvSource *mainSource = nullptr;
-  for (const auto &name : fileNames) {
-    SpirvString *fileString =
-        name.empty() ? nullptr
-                     : new (context) SpirvString(/*SourceLocation*/ {}, name);
-    SpirvSource *debugSource = new (context)
-        SpirvSource(/*SourceLocation*/ {}, spv::SourceLanguage::HLSL, version,
-                    fileString, content);
-    mod->addDebugSource(debugSource);
-    if (!mainSource)
-      mainSource = debugSource;
-  }
 
-  // If mainSource is nullptr, fileNames is empty and no input file is
-  // specified. We must create a SpirvSource for OpSource HLSL <version>.
-  if (!mainSource) {
-    mainSource = new (context)
-        SpirvSource(/*SourceLocation*/ {}, spv::SourceLanguage::HLSL, version,
-                    nullptr, content);
-    mod->addDebugSource(mainSource);
-  }
-  return mainSource->getFile();
+  SpirvString *fileString =
+      name.empty() ? nullptr
+                   : new (context) SpirvString(/*SourceLocation*/ {}, name);
+
+  SpirvSource *debugSource = new (context)
+      SpirvSource(/*SourceLocation*/ {}, spv::SourceLanguage::HLSL, version,
+                  fileString, content);
+
+  module->addDebugSource(debugSource);
+
+  return fileString;
 }
 
 void SpirvBuilder::addExecutionMode(SpirvFunction *entryPoint,
                                     spv::ExecutionMode em,
                                     llvm::ArrayRef<uint32_t> params,
                                     SourceLocation loc) {
-  mod->addExecutionMode(
+  module->addExecutionMode(
       new (context) SpirvExecutionMode(loc, entryPoint, em, params, false));
 }
 

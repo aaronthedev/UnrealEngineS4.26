@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,9 +13,9 @@ namespace Algo
 	 * @param  Range  The range to sort.
 	 */
 	template <typename RangeType>
-	FORCEINLINE void Sort(RangeType&& Range)
+	FORCEINLINE void Sort(RangeType& Range)
 	{
-		IntroSort(Forward<RangeType>(Range));
+		IntroSort(Range);
 	}
 
 	/**
@@ -25,9 +25,9 @@ namespace Algo
 	 * @param  Predicate  A binary predicate object used to specify if one element should precede another.
 	 */
 	template <typename RangeType, typename PredicateType>
-	FORCEINLINE void Sort(RangeType&& Range, PredicateType Pred)
+	FORCEINLINE void Sort(RangeType& Range, PredicateType Pred)
 	{
-		IntroSort(Forward<RangeType>(Range), MoveTemp(Pred));
+		IntroSort(Range, MoveTemp(Pred));
 	}
 
 	/**
@@ -37,9 +37,9 @@ namespace Algo
 	 * @param  Proj   The projection to sort by when applied to the element.
 	 */
 	template <typename RangeType, typename ProjectionType>
-	FORCEINLINE void SortBy(RangeType&& Range, ProjectionType Proj)
+	FORCEINLINE void SortBy(RangeType& Range, ProjectionType Proj)
 	{
-		IntroSortBy(Forward<RangeType>(Range), MoveTemp(Proj));
+		IntroSortBy(Range, MoveTemp(Proj));
 	}
 
 	/**
@@ -50,8 +50,8 @@ namespace Algo
 	 * @param  Predicate  A binary predicate object, applied to the projection, used to specify if one element should precede another.
 	 */
 	template <typename RangeType, typename ProjectionType, typename PredicateType>
-	FORCEINLINE void SortBy(RangeType&& Range, ProjectionType Proj, PredicateType Pred)
+	FORCEINLINE void SortBy(RangeType& Range, ProjectionType Proj, PredicateType Pred)
 	{
-		IntroSortBy(Forward<RangeType>(Range), MoveTemp(Proj), MoveTemp(Pred));
+		IntroSortBy(Range, MoveTemp(Proj), MoveTemp(Pred));
 	}
 }

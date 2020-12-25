@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 ActorFactory.cpp: 
@@ -17,7 +17,6 @@ ActorFactory.cpp:
 #include "ActorFactories/ActorFactoryAmbientSound.h"
 #include "ActorFactories/ActorFactoryAtmosphericFog.h"
 #include "ActorFactories/ActorFactorySkyAtmosphere.h"
-#include "ActorFactories/ActorFactoryVolumetricCloud.h"
 #include "ActorFactories/ActorFactoryBlueprint.h"
 #include "ActorFactories/ActorFactoryBoxReflectionCapture.h"
 #include "ActorFactories/ActorFactoryBoxVolume.h"
@@ -95,7 +94,6 @@ ActorFactory.cpp:
 #include "Components/DecalComponent.h"
 #include "Components/BillboardComponent.h"
 #include "Components/SkyAtmosphereComponent.h"
-#include "Components/VolumetricCloudComponent.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Animation/AnimBlueprintGeneratedClass.h"
 #include "Engine/Polys.h"
@@ -313,7 +311,6 @@ AActor* UActorFactory::SpawnActor( UObject* Asset, ULevel* InLevel, const FTrans
 		FActorSpawnParameters SpawnInfo;
 		SpawnInfo.OverrideLevel = InLevel;
 		SpawnInfo.ObjectFlags = InObjectFlags;
-		SpawnInfo.bCreateActorPackage = true;
 		SpawnInfo.Name = Name;
 #if WITH_EDITOR
 		SpawnInfo.bTemporaryEditorActor = FLevelEditorViewportClient::IsDroppingPreviewActor();
@@ -877,7 +874,7 @@ bool UActorFactoryAnimationAsset::CanCreateActorFrom( const FAssetData& AssetDat
 	return true;
 }
 
-USkeletalMesh* UActorFactoryAnimationAsset::GetSkeletalMeshFromAsset( UObject* Asset )
+USkeletalMesh* UActorFactoryAnimationAsset::GetSkeletalMeshFromAsset( UObject* Asset ) const
 {
 	USkeletalMesh* SkeletalMesh = NULL;
 	
@@ -955,22 +952,25 @@ void UActorFactoryAnimationAsset::PostCreateBlueprint( UObject* Asset,  AActor* 
 /*-----------------------------------------------------------------------------
 UActorFactorySkeletalMesh
 -----------------------------------------------------------------------------*/
-
-// static storage
-TMap<UClass*, FGetSkeletalMeshFromAssetDelegate> UActorFactorySkeletalMesh::GetSkeletalMeshDelegates;
-TMap<UClass*, FPostSkeletalMeshActorSpawnedDelegate> UActorFactorySkeletalMesh::PostSkeletalMeshActorSpawnedDelegates;
-
 UActorFactorySkeletalMesh::UActorFactorySkeletalMesh(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 { 
 	DisplayName = LOCTEXT("SkeletalMeshDisplayName", "Skeletal Mesh");
 	NewActorClass = ASkeletalMeshActor::StaticClass();
 	bUseSurfaceOrientation = true;
-	ClassUsedForDelegate = nullptr;
 }
 
 bool UActorFactorySkeletalMesh::CanCreateActorFrom( const FAssetData& AssetData, FText& OutErrorMsg )
 {	
+	if ( !AssetData.IsValid() || 
+		( !AssetData.GetClass()->IsChildOf( USkeletalMesh::StaticClass() ) && 
+		  !AssetData.GetClass()->IsChildOf( UAnimBlueprint::StaticClass() ) && 
+		  !AssetData.GetClass()->IsChildOf( USkeleton::StaticClass() ) ) )
+	{
+		OutErrorMsg = NSLOCTEXT("CanCreateActor", "NoAnimSeq", "A valid anim sequence must be specified.");
+		return false;
+	}
+
 	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
 	IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
 	FAssetData SkeletalMeshData;
@@ -1035,16 +1035,9 @@ bool UActorFactorySkeletalMesh::CanCreateActorFrom( const FAssetData& AssetData,
 				return false;
 			}
 		}
-	}
-
-	if (!SkeletalMeshData.IsValid())
-	{
-		for (const auto& Pair : UActorFactorySkeletalMesh::GetSkeletalMeshDelegates)
+		else
 		{
-			if (Pair.Value.Execute(AssetData.GetAsset()) != nullptr)
-			{
-				return true;
-			}
+			OutErrorMsg = NSLOCTEXT("CanCreateActor", "NoSkelMeshTargetSkeleton", "SkeletalMesh must have a valid Target Skeleton.");
 		}
 	}
 
@@ -1065,7 +1058,7 @@ bool UActorFactorySkeletalMesh::CanCreateActorFrom( const FAssetData& AssetData,
 	return true;
 }
 
-USkeletalMesh* UActorFactorySkeletalMesh::GetSkeletalMeshFromAsset( UObject* Asset )
+USkeletalMesh* UActorFactorySkeletalMesh::GetSkeletalMeshFromAsset( UObject* Asset ) const
 {
 	USkeletalMesh*SkeletalMesh = Cast<USkeletalMesh>( Asset );
 	UAnimBlueprint* AnimBlueprint = Cast<UAnimBlueprint>( Asset );
@@ -1080,19 +1073,6 @@ USkeletalMesh* UActorFactorySkeletalMesh::GetSkeletalMeshFromAsset( UObject* Ass
 	if( SkeletalMesh == NULL && Skeleton != NULL )
 	{
 		SkeletalMesh = Skeleton->GetPreviewMesh(true);
-	}
-
-	if (SkeletalMesh == NULL)
-	{
-		for (const auto& Pair : UActorFactorySkeletalMesh::GetSkeletalMeshDelegates)
-		{
-			if (USkeletalMesh* SkeletalMeshFromDelegate = Pair.Value.Execute(Asset))
-			{
-				ClassUsedForDelegate = Pair.Key;
-				SkeletalMesh = SkeletalMeshFromDelegate;
-				break;
-			}
-		}
 	}
 
 	check( SkeletalMesh != NULL );
@@ -1123,12 +1103,6 @@ void UActorFactorySkeletalMesh::PostSpawnActor( UObject* Asset, AActor* NewActor
 	{
 		NewSMActor->GetSkeletalMeshComponent()->SetAnimInstanceClass(AnimBlueprint->GeneratedClass);
 	}
-
-	if (ClassUsedForDelegate != NULL)
-	{
-		UActorFactorySkeletalMesh::PostSkeletalMeshActorSpawnedDelegates.FindChecked(ClassUsedForDelegate).Execute(NewSMActor, Asset);
-	}
-
 }
 
 void UActorFactorySkeletalMesh::PostCreateBlueprint( UObject* Asset, AActor* CDO )
@@ -1149,23 +1123,6 @@ FQuat UActorFactorySkeletalMesh::AlignObjectToSurfaceNormal(const FVector& InSur
 	// Meshes align the Z (up) axis with the surface normal
 	return FindActorAlignmentRotation(ActorRotation, FVector(0.f, 0.f, 1.f), InSurfaceNormal);
 }
-
-void UActorFactorySkeletalMesh::RegisterDelegatesForAssetClass(
-	UClass* InAssetClass,
-	FGetSkeletalMeshFromAssetDelegate GetSkeletalMeshFromAssetDelegate,
-	FPostSkeletalMeshActorSpawnedDelegate PostSkeletalMeshActorSpawnedDelegate
-)
-{
-	UActorFactorySkeletalMesh::GetSkeletalMeshDelegates.Add(InAssetClass, GetSkeletalMeshFromAssetDelegate);
-	UActorFactorySkeletalMesh::PostSkeletalMeshActorSpawnedDelegates.Add(InAssetClass, PostSkeletalMeshActorSpawnedDelegate);
-}
-
-void UActorFactorySkeletalMesh::UnregisterDelegatesForAssetClass(UClass* InAssetClass)
-{
-	UActorFactorySkeletalMesh::GetSkeletalMeshDelegates.Remove(InAssetClass);
-	UActorFactorySkeletalMesh::PostSkeletalMeshActorSpawnedDelegates.Remove(InAssetClass);
-}
-
 
 /*-----------------------------------------------------------------------------
 UActorFactoryCameraActor
@@ -1417,8 +1374,8 @@ bool UActorFactoryBlueprint::CanCreateActorFrom( const FAssetData& AssetData, FT
 		FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 		IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
 
-		const FStringView ObjectPath = FPackageName::ExportTextPathToObjectPath(FStringView(ParentClassPath));
-		const FName ParentClassPathFName = FName( FPackageName::ObjectPathToObjectName(ObjectPath) );
+		const FString ObjectPath = FPackageName::ExportTextPathToObjectPath(*ParentClassPath);
+		const FName ParentClassPathFName = FName( *FPackageName::ObjectPathToObjectName(ObjectPath) );
 		TArray<FName> AncestorClassNames;
 		AssetRegistry.GetAncestorClassNames(ParentClassPathFName, AncestorClassNames);
 
@@ -1645,10 +1602,8 @@ UActorFactoryAtmosphericFog
 UActorFactoryAtmosphericFog::UActorFactoryAtmosphericFog(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	DisplayName = LOCTEXT("AtmosphericFogDisplayName", "Atmospheric Fog");
 	NewActorClass = AAtmosphericFog::StaticClass();
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 /*-----------------------------------------------------------------------------
@@ -1659,16 +1614,6 @@ UActorFactorySkyAtmosphere::UActorFactorySkyAtmosphere(const FObjectInitializer&
 {
 	DisplayName = LOCTEXT("SkyAtmosphereDisplayName", "Sky Atmosphere");
 	NewActorClass = ASkyAtmosphere::StaticClass();
-}
-
-/*-----------------------------------------------------------------------------
-UActorFactoryVolumetricCloud
------------------------------------------------------------------------------*/
-UActorFactoryVolumetricCloud::UActorFactoryVolumetricCloud(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer)
-{
-	DisplayName = LOCTEXT("VolumetricCloudDisplayName", "Volumetric Cloud");
-	NewActorClass = AVolumetricCloud::StaticClass();
 }
 
 /*-----------------------------------------------------------------------------
@@ -1768,13 +1713,10 @@ void CreateBrushForVolumeActor( AVolume* NewActor, UBrushBuilder* BrushBuilder )
 		// this code builds a brush for the new actor
 		NewActor->PreEditChange(NULL);
 
-		// Use the same object flags as the owner volume
-		EObjectFlags ObjectFlags = NewActor->GetFlags() & (RF_Transient | RF_Transactional);
-
 		NewActor->PolyFlags = 0;
-		NewActor->Brush = NewObject<UModel>(NewActor, NAME_None, ObjectFlags);
+		NewActor->Brush = NewObject<UModel>(NewActor, NAME_None, RF_Transactional);
 		NewActor->Brush->Initialize(nullptr, true);
-		NewActor->Brush->Polys = NewObject<UPolys>(NewActor->Brush, NAME_None, ObjectFlags);
+		NewActor->Brush->Polys = NewObject<UPolys>(NewActor->Brush, NAME_None, RF_Transactional);
 		NewActor->GetBrushComponent()->Brush = NewActor->Brush;
 		if(BrushBuilder != nullptr)
 		{

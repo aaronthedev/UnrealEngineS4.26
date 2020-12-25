@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,8 +19,7 @@ public:
 public:
 
 	//~ ISequencerSection interface
-	virtual FReply OnKeyDoubleClicked(const TArray<FKeyHandle>& KeyHandles) override;
-	virtual int32 OnPaintSection(FSequencerSectionPainter& InPainter) const override;
+
 	virtual bool RequestDeleteCategory(const TArray<FName>& CategoryNamePath) override;
 	virtual bool RequestDeleteKeyArea(const TArray<FName>& KeyAreaNamePath) override;
 };

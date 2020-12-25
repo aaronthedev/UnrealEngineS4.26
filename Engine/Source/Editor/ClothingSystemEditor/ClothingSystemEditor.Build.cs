@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -11,9 +11,8 @@ public class ClothingSystemEditor : ModuleRules
         PublicIncludePathModuleNames.Add("ClothingSystemRuntimeInterface");
         PublicIncludePathModuleNames.Add("ClothingSystemRuntimeNv");
         PublicIncludePathModuleNames.Add("ClothingSystemEditorInterface");
-		PublicIncludePathModuleNames.Add("Persona");
 
-		PrivateDependencyModuleNames.AddRange(
+        PrivateDependencyModuleNames.AddRange(
             new string[]
             {
                 "Engine",
@@ -32,16 +31,11 @@ public class ClothingSystemEditor : ModuleRules
                 "UnrealEd",
                 "SlateCore",
                 "Slate",
+                "Persona",
                 "ClothingSystemEditorInterface"
             }
 		);
-
-		PrivateIncludePathModuleNames.AddRange(
-            new string[] {
-                "Persona",
-            }
-        );
-
+        
         SetupModulePhysicsSupport(Target);
 	}
 }

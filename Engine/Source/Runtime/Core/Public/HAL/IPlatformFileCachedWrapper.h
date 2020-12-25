@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -23,8 +23,8 @@ class CORE_API FCachedFileHandle : public IFileHandle
 public:
 	FCachedFileHandle(IFileHandle* InFileHandle, bool bInReadable, bool bInWritable)
 		: FileHandle(InFileHandle)
-		, FilePos(InFileHandle->Tell())
-		, TellPos(FilePos)
+		, FilePos(0)
+		, TellPos(0)
 		, FileSize(InFileHandle->Size())
 		, bWritable(bInWritable)
 		, bReadable(bInReadable)
@@ -177,13 +177,7 @@ public:
 	{
 		if (bWritable)
 		{
-			if (FileHandle->Truncate(NewSize))
-			{
-				FlushCache();
-				FilePos = TellPos = FileHandle->Tell();
-				FileSize = FileHandle->Size();
-				return true;
-			}
+			return FileHandle->Truncate(NewSize);
 		}
 		return false;
 	}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WebMMediaFactoryPrivate.h"
 
@@ -6,14 +6,12 @@
 #include "Containers/Array.h"
 #include "Containers/UnrealString.h"
 #include "Internationalization/Internationalization.h"
-#include "Misc/Guid.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleInterface.h"
 #include "Modules/ModuleManager.h"
 #include "IMediaModule.h"
 #include "IMediaPlayerFactory.h"
 #include "UObject/NameTypes.h"
-#include "HAL/PlatformProperties.h"
 
 #include "../../WebMMedia/Public/IWebMMediaModule.h"
 
@@ -96,12 +94,6 @@ public:
 		return PlayerName;
 	}
 
-	virtual FGuid GetPlayerPluginGUID() const override
-	{
-		static FGuid PlayerPluginGUID(0xdfbb4e57, 0x07dc4b4a, 0xa25b5cba, 0x0f963ac3);
-		return PlayerPluginGUID;
-	}
-
 	virtual const TArray<FString>& GetSupportedPlatforms() const override
 	{
 		return SupportedPlatforms;
@@ -121,11 +113,11 @@ public:
 		// supported file extensions
 		SupportedFileExtensions.Add(TEXT("webm"));
 
-		// supported platforms
-		SupportedPlatforms.Add(TEXT("Linux"));
-		SupportedPlatforms.Add(TEXT("Mac"));
-		SupportedPlatforms.Add(TEXT("Windows"));
-		SupportedPlatforms.AddUnique(FPlatformProperties::IniPlatformName());
+		// if the module got built and run succesfully on this platform, it means it's supported
+		SupportedPlatforms.Add(FPlatformMisc::GetUBTPlatform());
+		
+		// Extra care to support windows, because platform name is Win64
+		SupportedPlatforms.Add("Windows");
 
 		// supported schemes
 		SupportedUriSchemes.Add(TEXT("file"));

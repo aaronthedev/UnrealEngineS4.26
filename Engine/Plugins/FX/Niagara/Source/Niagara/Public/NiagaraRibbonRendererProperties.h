@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,12 +6,9 @@
 #include "UObject/ObjectMacros.h"
 #include "NiagaraRendererProperties.h"
 #include "NiagaraCommon.h"
-#include "NiagaraDataSetAccessor.h"
 #include "NiagaraRibbonRendererProperties.generated.h"
 
 class FNiagaraEmitterInstance;
-class FAssetThumbnailPool;
-class SWidget;
 
 UENUM()
 enum class ENiagaraRibbonFacingMode : uint8
@@ -57,98 +54,8 @@ enum class ENiagaraRibbonTessellationMode : uint8
 	Disabled
 };
 
-/** Specifies options for handling UVs at the leading and trailing edges of ribbons. */
-UENUM()
-enum class ENiagaraRibbonUVEdgeMode
-{
-	/** The UV value at the edge will smoothly transition across the segment using normalized age.
-	This will result in	UV values which are outside of the standard 0-1 range and works best with
-	clamped textures. */
-	SmoothTransition,
-	/** The UV value at the edge will be locked to 0 at the leading edge, or locked to 1 at the
-	Trailing edge. */
-	Locked,
-};
-
-/** Specifies options for distributing UV values across ribbon segments. */
-UENUM()
-enum class ENiagaraRibbonUVDistributionMode
-{
-	/** Ribbon UVs will be scaled to the 0-1 range and distributed evenly across uv segments regardless of segment length. */
-	ScaledUniformly,
-	/** Ribbon UVs will be scaled to the 0-1 range and will be distributed along the ribbon segments based on their length, i.e. short segments get less UV range and large segments get more. */
-	ScaledUsingRibbonSegmentLength,
-	/** Ribbon UVs will be tiled along the length of the ribbon based on segment length and the Tile Over Length Scale value. NOTE: This is not equivalent to distance tiling which tiles over owner distance traveled, this requires per particle U override values and can be setup with modules. */
-	TiledOverRibbonLength
-};
-
-/** Defines settings for UV behavior for a UV channel on ribbons. */
-USTRUCT()
-struct FNiagaraRibbonUVSettings
-{
-	GENERATED_BODY();
-
-	FNiagaraRibbonUVSettings();
-
-	/** Specifies how UVs behave at the leading edge of the ribbon where particles are being added. */
-	UPROPERTY(EditAnywhere, Category = UVs)
-	ENiagaraRibbonUVEdgeMode LeadingEdgeMode;
-
-	/** Specifies how UVs behave at the trailing edge of the ribbon where particles are being removed. */
-	UPROPERTY(EditAnywhere, Category = UVs)
-	ENiagaraRibbonUVEdgeMode TrailingEdgeMode;
-
-	/** Specifies how ribbon UVs are distributed along the length of a ribbon. */
-	UPROPERTY(EditAnywhere, Category = UVs)
-	ENiagaraRibbonUVDistributionMode DistributionMode;
-
-	/** Specifies the length in world units to use when tiling UVs across the ribbon when using the tiled distribution mode. */
-	UPROPERTY(EditAnywhere, Category = UVs)
-	float TilingLength;
-
-	/** Specifies and additional offsets which are applied to the UV range */
-	UPROPERTY(EditAnywhere, Category = UVs)
-	FVector2D Offset;
-
-	/** Specifies and additional scalers which are applied to the UV range. */
-	UPROPERTY(EditAnywhere, Category = UVs)
-	FVector2D Scale;
-
-	/** Enables overriding overriding the U componenet with values read from the particles.  When enabled edge behavior and distribution are ignored. */
-	UPROPERTY(EditAnywhere, Category = UVs)
-	bool bEnablePerParticleUOverride;
-
-	/** Enables overriding the range of the V component with values read from the particles. */
-	UPROPERTY(EditAnywhere, Category = UVs)
-	bool bEnablePerParticleVRangeOverride;
-};
-
-namespace ENiagaraRibbonVFLayout
-{
-	enum Type
-	{
-		Position,
-		Velocity,
-		Color,
-		Width,
-		Twist,
-		Facing,
-		NormalizedAge,
-		MaterialRandom,
-		MaterialParam0,
-		MaterialParam1,
-		MaterialParam2,
-		MaterialParam3,
-		U0Override,
-		V0RangeOverride,
-		U1Override,
-		V1RangeOverride,
-		Num,
-	};
-};
-
 UCLASS(editinlinenew, meta = (DisplayName = "Ribbon Renderer"))
-class NIAGARA_API UNiagaraRibbonRendererProperties : public UNiagaraRendererProperties
+class UNiagaraRibbonRendererProperties : public UNiagaraRendererProperties
 {
 public:
 	GENERATED_BODY()
@@ -156,76 +63,58 @@ public:
 	UNiagaraRibbonRendererProperties();
 
 	//UObject Interface
-	virtual void PostLoad() override;
 	virtual void PostInitProperties() override;
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
-	virtual bool CanEditChange(const FProperty* InProperty) const override;
+	virtual bool CanEditChange(const UProperty* InProperty) const override;
 #endif
 	//UObject Interface END
 
 	static void InitCDOPropertiesAfterModuleStartup();
 
 	//UNiagaraRendererProperties Interface
-	virtual FNiagaraRenderer* CreateEmitterRenderer(ERHIFeatureLevel::Type FeatureLevel, const FNiagaraEmitterInstance* Emitter, const UNiagaraComponent* InComponent) override;
+	virtual FNiagaraRenderer* CreateEmitterRenderer(ERHIFeatureLevel::Type FeatureLevel, const FNiagaraEmitterInstance* Emitter) override;
 	virtual class FNiagaraBoundsCalculator* CreateBoundsCalculator() override;
 	virtual void GetUsedMaterials(const FNiagaraEmitterInstance* InEmitter, TArray<UMaterialInterface*>& OutMaterials) const override;
 	virtual bool IsSimTargetSupported(ENiagaraSimTarget InSimTarget) const override { return (InSimTarget == ENiagaraSimTarget::CPUSim); };
 #if WITH_EDITOR
 	virtual bool IsMaterialValidForRenderer(UMaterial* Material, FText& InvalidMessage) override;
 	virtual void FixMaterial(UMaterial* Material);
+	virtual const TArray<FNiagaraVariable>& GetRequiredAttributes() override;
 	virtual const TArray<FNiagaraVariable>& GetOptionalAttributes() override;
-	virtual void GetRendererWidgets(const FNiagaraEmitterInstance* InEmitter, TArray<TSharedPtr<SWidget>>& OutWidgets, TSharedPtr<FAssetThumbnailPool> InThumbnailPool) const override;
-	virtual void GetRendererTooltipWidgets(const FNiagaraEmitterInstance* InEmitter, TArray<TSharedPtr<SWidget>>& OutWidgets, TSharedPtr<FAssetThumbnailPool> InThumbnailPool) const override;
-	virtual void GetRendererFeedback(const UNiagaraEmitter* InEmitter, TArray<FText>& OutErrors, TArray<FText>& OutWarnings, TArray<FText>& OutInfo) const override;
 #endif
-	virtual void CacheFromCompiledData(const FNiagaraDataSetCompiledData* CompiledData) override;
 	//UNiagaraRendererProperties Interface END
+
 
 	UPROPERTY(EditAnywhere, Category = "Ribbon Rendering")
 	UMaterialInterface* Material;
 
-	/** Use the UMaterialInterface bound to this user variable if it is set to a valid value. If this is bound to a valid value and Material is also set, UserParamBinding wins.*/
-	UPROPERTY(EditAnywhere, Category = "Ribbon Rendering")
-	FNiagaraUserParameterBinding MaterialUserParamBinding;
-
 	UPROPERTY(EditAnywhere, Category = "Ribbon Rendering")
 	ENiagaraRibbonFacingMode FacingMode;
 
-	UPROPERTY(EditAnywhere, Category = "Ribbon Rendering")
-	FNiagaraRibbonUVSettings UV0Settings;
-
-	UPROPERTY(EditAnywhere, Category = "Ribbon Rendering")
-	FNiagaraRibbonUVSettings UV1Settings;
-
-#if WITH_EDITORONLY_DATA
-private:
 	/** Tiles UV0 based on the distance traversed by the ribbon. Disables offsetting UVs by age. */
-	UPROPERTY()
-	float UV0TilingDistance_DEPRECATED;
-	UPROPERTY()
-	FVector2D UV0Scale_DEPRECATED;
-	UPROPERTY()
-	FVector2D UV0Offset_DEPRECATED;
+	UPROPERTY(EditAnywhere, Category = "Ribbon Rendering")
+	float UV0TilingDistance;
+	UPROPERTY(EditAnywhere, Category = "Ribbon Rendering")
+	FVector2D UV0Scale;
+	UPROPERTY(EditAnywhere, Category = "Ribbon Rendering")
+	FVector2D UV0Offset;
 
 	/** Defines the mode to use when offsetting UV channel 0 by age which enables smooth texture movement when particles are added and removed at the end of the ribbon.  Not used when the RibbonLinkOrder binding is in use or when tiling distance is in use. */
-	UPROPERTY()
-	ENiagaraRibbonAgeOffsetMode UV0AgeOffsetMode_DEPRECATED;
+	UPROPERTY(EditAnywhere, Category = "Ribbon Rendering")
+	ENiagaraRibbonAgeOffsetMode UV0AgeOffsetMode;
 
 	/** Tiles UV1 based on the distance traversed by the ribbon. Disables offsetting UVs by age. */
-	UPROPERTY()
-	float UV1TilingDistance_DEPRECATED;
-	UPROPERTY()
-	FVector2D UV1Scale_DEPRECATED;
-	UPROPERTY()
-	FVector2D UV1Offset_DEPRECATED;
+	UPROPERTY(EditAnywhere, Category = "Ribbon Rendering")
+	float UV1TilingDistance;
+	UPROPERTY(EditAnywhere, Category = "Ribbon Rendering")
+	FVector2D UV1Scale;
+	UPROPERTY(EditAnywhere, Category = "Ribbon Rendering")
+	FVector2D UV1Offset;
 
 	/** Defines the mode to use when offsetting UV channel 1 by age which enables smooth texture movement when particles are added and removed at the end of the ribbon.  Not used when the RibbonLinkOrder binding is in use or when tiling distance is in use. */
-	UPROPERTY()
-	ENiagaraRibbonAgeOffsetMode UV1AgeOffsetMode_DEPRECATED;
-#endif
-
-public:
+	UPROPERTY(EditAnywhere, Category = "Ribbon Rendering")
+	ENiagaraRibbonAgeOffsetMode UV1AgeOffsetMode;
 
 	/** If true, the particles are only sorted when using a translucent material. */
 	UPROPERTY(EditAnywhere, Category = "Ribbon Rendering")
@@ -263,95 +152,60 @@ public:
 	bool bScreenSpaceTessellation;
 
 	/** Which attribute should we use for position when generating ribbons?*/
-	UPROPERTY(EditAnywhere, Category = "Bindings")
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "Bindings")
 	FNiagaraVariableAttributeBinding PositionBinding;
 
 	/** Which attribute should we use for color when generating ribbons?*/
-	UPROPERTY(EditAnywhere, Category = "Bindings")
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "Bindings")
 	FNiagaraVariableAttributeBinding ColorBinding;
 
 	/** Which attribute should we use for velocity when generating ribbons?*/
-	UPROPERTY(EditAnywhere, Category = "Bindings")
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "Bindings")
 	FNiagaraVariableAttributeBinding VelocityBinding;
 
 	/** Which attribute should we use for normalized age when generating ribbons?*/
-	UPROPERTY(EditAnywhere, Category = "Bindings")
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "Bindings")
 	FNiagaraVariableAttributeBinding NormalizedAgeBinding;
 
 	/** Which attribute should we use for ribbon twist when generating ribbons?*/
-	UPROPERTY(EditAnywhere, Category = "Bindings")
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "Bindings")
 	FNiagaraVariableAttributeBinding RibbonTwistBinding;
 
 	/** Which attribute should we use for ribbon width when generating ribbons?*/
-	UPROPERTY(EditAnywhere, Category = "Bindings")
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "Bindings")
 	FNiagaraVariableAttributeBinding RibbonWidthBinding;
 
 	/** Which attribute should we use for ribbon facing when generating ribbons?*/
-	UPROPERTY(EditAnywhere, Category = "Bindings")
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "Bindings")
 	FNiagaraVariableAttributeBinding RibbonFacingBinding;
 	
 	/** Which attribute should we use for ribbon id when generating ribbons?*/
-	UPROPERTY(EditAnywhere, Category = "Bindings")
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "Bindings")
 	FNiagaraVariableAttributeBinding RibbonIdBinding;
 
 	/** Which attribute should we use for RibbonLinkOrder when generating ribbons?*/
-	UPROPERTY(EditAnywhere, Category = "Bindings")
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "Bindings")
 	FNiagaraVariableAttributeBinding RibbonLinkOrderBinding;
 
 	/** Which attribute should we use for MaterialRandom when generating ribbons?*/
-	UPROPERTY(EditAnywhere, Category = "Bindings")
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "Bindings")
 	FNiagaraVariableAttributeBinding MaterialRandomBinding;
 
 	/** Which attribute should we use for dynamic material parameters when generating ribbons?*/
-	UPROPERTY(EditAnywhere, Category = "Bindings")
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "Bindings")
 	FNiagaraVariableAttributeBinding DynamicMaterialBinding;
 
 	/** Which attribute should we use for dynamic material parameters when generating ribbons?*/
-	UPROPERTY(EditAnywhere, Category = "Bindings")
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "Bindings")
 	FNiagaraVariableAttributeBinding DynamicMaterial1Binding;
 
 	/** Which attribute should we use for dynamic material parameters when generating ribbons?*/
-	UPROPERTY(EditAnywhere, Category = "Bindings")
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "Bindings")
 	FNiagaraVariableAttributeBinding DynamicMaterial2Binding;
 
 	/** Which attribute should we use for dynamic material parameters when generating ribbons?*/
-	UPROPERTY(EditAnywhere, Category = "Bindings")
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "Bindings")
 	FNiagaraVariableAttributeBinding DynamicMaterial3Binding;
-
-	/** Which attribute should we use for UV0 U when generating ribbons?*/
-	UPROPERTY(EditAnywhere, Category = "Bindings")
-	FNiagaraVariableAttributeBinding U0OverrideBinding;
-
-	/** Which attribute should we use for UV0 V when generating ribbons?*/
-	UPROPERTY(EditAnywhere, Category = "Bindings")
-	FNiagaraVariableAttributeBinding V0RangeOverrideBinding;
-
-	/** Which attribute should we use for UV1 U when generating ribbons?*/
-	UPROPERTY(EditAnywhere, Category = "Bindings")
-	FNiagaraVariableAttributeBinding U1OverrideBinding;
-
-	/** Which attribute should we use for UV1 V when generating ribbons?*/
-	UPROPERTY(EditAnywhere, Category = "Bindings")
-	FNiagaraVariableAttributeBinding V1RangeOverrideBinding;
-
-	bool								bSortKeyDataSetAccessorIsAge = false;
-	FNiagaraDataSetAccessor<float>		SortKeyDataSetAccessor;
-	FNiagaraDataSetAccessor<FVector>	PositionDataSetAccessor;
-	FNiagaraDataSetAccessor<float>		SizeDataSetAccessor;
-	FNiagaraDataSetAccessor<float>		TwistDataSetAccessor;
-	FNiagaraDataSetAccessor<FVector>	FacingDataSetAccessor;
-	FNiagaraDataSetAccessor<FVector4>	MaterialParam0DataSetAccessor;
-	FNiagaraDataSetAccessor<FVector4>	MaterialParam1DataSetAccessor;
-	FNiagaraDataSetAccessor<FVector4>	MaterialParam2DataSetAccessor;
-	FNiagaraDataSetAccessor<FVector4>	MaterialParam3DataSetAccessor;
-	bool								U0OverrideIsBound;
-	bool								U1OverrideIsBound;
-
-	FNiagaraDataSetAccessor<int32>		RibbonIdDataSetAccessor;
-	FNiagaraDataSetAccessor<FNiagaraID>	RibbonFullIDDataSetAccessor;
-
-	uint32 MaterialParamValidMask = 0;
-	FNiagaraRendererLayout RendererLayout;
 
 protected:
 	void InitBindings();

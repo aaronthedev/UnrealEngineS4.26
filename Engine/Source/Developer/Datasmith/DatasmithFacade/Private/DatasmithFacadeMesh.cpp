@@ -1,8 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithFacadeMesh.h"
-
-#include "DatasmithFacadeScene.h"
 
 // Datasmith SDK.
 #include "DatasmithMesh.h"
@@ -10,10 +8,12 @@
 
 
 FDatasmithFacadeMesh::FDatasmithFacadeMesh(
-	const TCHAR* InElementName
-)
-	: FDatasmithFacadeElement(FDatasmithSceneFactory::CreateMesh(InElementName))
-{}
+	const TCHAR* InElementName,
+	const TCHAR* InElementLabel
+) :
+	FDatasmithFacadeElement(InElementName, InElementLabel)
+{
+}
 
 void FDatasmithFacadeMesh::AddVertex(
 	float InX,
@@ -94,10 +94,34 @@ int FDatasmithFacadeMesh::GetTriangleCount() const
 	return TriangleArray.Num();
 }
 
-TSharedPtr<FDatasmithMesh> FDatasmithFacadeMesh::GenerateDatasmithMesh()
+void FDatasmithFacadeMesh::AddMetadataString(
+	const TCHAR* InPropertyName,
+	const TCHAR* InPropertyValue
+)
+{
+	// Create a new Datasmith metadata string property.
+	TSharedPtr<IDatasmithKeyValueProperty> MetadataPropertyPtr = FDatasmithSceneFactory::CreateKeyValueProperty(InPropertyName);
+	MetadataPropertyPtr->SetPropertyType(EDatasmithKeyValuePropertyType::String);
+	MetadataPropertyPtr->SetValue(InPropertyValue);
+
+	// Add the new property to the array of Datasmith metadata properties.
+	MetadataPropertyArray.Add(MetadataPropertyPtr);
+}
+
+TSharedPtr<FDatasmithMesh> FDatasmithFacadeMesh::GetAsset() const
+{
+	return MeshPtr;
+}
+
+TSharedPtr<IDatasmithMeshElement> FDatasmithFacadeMesh::GetMeshElement() const
+{
+	return MeshElementPtr;
+}
+
+void FDatasmithFacadeMesh::BuildAsset()
 {
 	// Create a new Datasmith static mesh.
-	TSharedPtr<FDatasmithMesh> MeshPtr = MakeShared<FDatasmithMesh>();
+	MeshPtr = TSharedPtr<FDatasmithMesh>(new FDatasmithMesh);
 
 	// Get the number of mesh vertices (must be > 0).
 	int32 VertexCount = VertexPointArray.Num();
@@ -179,8 +203,6 @@ TSharedPtr<FDatasmithMesh> FDatasmithFacadeMesh::GenerateDatasmithMesh()
 		FVector const& TriangleNormal = TriangleNormalArray[NormalNo];
 		MeshPtr->SetNormal(NormalNo, TriangleNormal.X, TriangleNormal.Y, TriangleNormal.Z);
 	}
-
-	return MeshPtr;
 }
 
 void FDatasmithFacadeMesh::ExportAsset(
@@ -188,36 +210,58 @@ void FDatasmithFacadeMesh::ExportAsset(
 )
 {
 	// Build the Datasmith static mesh asset.
-	TSharedPtr<FDatasmithMesh> MeshPtr = GenerateDatasmithMesh();
+	BuildAsset();
 
 	// Export the Datasmith static mesh asset into an Datasmith mesh file.
-	TSharedPtr<IDatasmithMeshElement> MeshElement = GetDatasmithMeshElement();
 	FDatasmithMeshExporter MeshExporter;
+	MeshElementPtr = MeshExporter.ExportToUObject(*InAssetFolder, *ElementName, *MeshPtr.Get(), nullptr, FDatasmithExportOptions::LightmapUV);
 
-	if (!MeshExporter.ExportToUObject( MeshElement, *InAssetFolder, *MeshPtr.Get(), nullptr, FDatasmithExportOptions::LightmapUV ) )
+	if (!MeshElementPtr.IsValid())
 	{
 		// TODO: Append a message to the build summary.
-		FString Msg = FString::Printf(TEXT("WARNING: Cannot export mesh %ls (%ls): %ls"), MeshElement->GetName(), MeshElement->GetLabel(), *MeshExporter.GetLastError());
+		FString Msg = FString::Printf(TEXT("WARNING: Cannot export mesh %ls (%ls): %ls"), *ElementName, *ElementLabel, *MeshExporter.GetLastError());
 	}
 }
 
 void FDatasmithFacadeMesh::BuildScene(
-	FDatasmithFacadeScene& SceneRef
+	TSharedRef<IDatasmithScene> IOSceneRef
 )
 {
-	TSharedPtr<IDatasmithMeshElement> MeshElement = GetDatasmithMeshElement();
+	if (!MeshElementPtr.IsValid())
+	{
+		MeshElementPtr = FDatasmithSceneFactory::CreateMesh(*ElementName);
+	}
+
+	// Set the mesh element label used in the Unreal UI.
+	MeshElementPtr->SetLabel(*ElementLabel);
 
 	// Add the material names utilized by the Datasmith static mesh.
 	for (auto const& MaterialNameEntry : MaterialNameMap)
 	{
-		MeshElement->SetMaterial(*MaterialNameEntry.Value, MaterialNameEntry.Key);
+		MeshElementPtr->SetMaterial(*MaterialNameEntry.Value, MaterialNameEntry.Key);
+	}
+
+	if (MetadataPropertyArray.Num() > 0)
+	{
+		// Create a Datasmith metadata element.
+		TSharedPtr<IDatasmithMetaDataElement> MetadataPtr = FDatasmithSceneFactory::CreateMetaData(*(ElementName + TEXT("_DATA")));
+
+		// Set the metadata label used in the Unreal UI.
+		MetadataPtr->SetLabel(*ElementLabel);
+
+		// Set the mesh associated with the Datasmith metadata.
+		MetadataPtr->SetAssociatedElement(MeshElementPtr);
+
+		// Add the metadata properties to the Datasmith metadata.
+		for (TSharedPtr<IDatasmithKeyValueProperty> MetadataPropertyPtr : MetadataPropertyArray)
+		{
+			MetadataPtr->AddProperty(MetadataPropertyPtr);
+		}
+
+		// Add the Datasmith metadata to the Datasmith scene.
+		IOSceneRef->AddMetaData(MetadataPtr);
 	}
 
 	// Add the Datasmith mesh element to the Datasmith scene.
-	SceneRef.GetScene()->AddMesh(MeshElement);
-}
-
-TSharedRef<IDatasmithMeshElement> FDatasmithFacadeMesh::GetDatasmithMeshElement() const
-{
-	return StaticCastSharedRef<IDatasmithMeshElement>(InternalDatasmithElement);
+	IOSceneRef->AddMesh(MeshElementPtr);
 }

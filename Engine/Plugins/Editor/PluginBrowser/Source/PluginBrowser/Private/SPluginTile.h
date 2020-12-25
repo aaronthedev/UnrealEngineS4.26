@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -30,9 +30,6 @@ class SPluginTile : public SCompoundWidget
 	void Construct( const FArguments& Args, const TSharedRef< class SPluginTileList > Owner, TSharedRef<IPlugin> Plugin );
 
 private:
-
-	/** Returns text to display for the plugin name. */
-	FText GetPluginNameText() const;
 
 	/** Updates the contents of this tile */
 	void RecreateWidgets();

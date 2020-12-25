@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -27,9 +27,6 @@ public:
 
 	/** Returns connection delay */
 	int32 GetConnectionRetryDelay() const;
-
-	/** Returns whether to stop the transport service when the application deactivates */
-	bool ShouldStopServiceWhenAppDeactivates() const;
 
 private:
 
@@ -60,8 +57,4 @@ private:
 	 */
 	UPROPERTY(config, EditAnywhere, Category = Transport)
 	int32 ConnectionRetryDelay;
-
-	/** Whether to stop the transport service when the application deactivates, and restart it when the application is reactivated */
-	UPROPERTY(config)
-	bool bStopServiceWhenAppDeactivates = true;
 };

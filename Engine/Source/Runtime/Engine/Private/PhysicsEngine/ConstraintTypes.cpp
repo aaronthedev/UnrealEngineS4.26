@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PhysicsEngine/ConstraintTypes.h"
 #include "HAL/IConsoleManager.h"
@@ -11,7 +11,7 @@ extern TAutoConsoleVariable<float> CVarConstraintLinearStiffnessScale;
 extern TAutoConsoleVariable<float> CVarConstraintAngularDampingScale;
 extern TAutoConsoleVariable<float> CVarConstraintAngularStiffnessScale;
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 
 enum class ESoftLimitTypeHelper
 {

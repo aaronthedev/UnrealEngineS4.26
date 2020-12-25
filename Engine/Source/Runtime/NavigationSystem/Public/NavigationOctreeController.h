@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "NavigationOctree.h"
@@ -31,7 +31,7 @@ struct NAVIGATIONSYSTEM_API FNavigationOctreeController
 
 	const FNavigationOctree* GetOctree() const;
 	FNavigationOctree* GetMutableOctree();
-	const FOctreeElementId2* GetObjectsNavOctreeId(const UObject& Object) const;
+	const FOctreeElementId* GetObjectsNavOctreeId(const UObject& Object) const;
 	bool GetNavOctreeElementData(const UObject& NodeOwner, int32& DirtyFlags, FBox& DirtyBounds);
 	const FNavigationRelevantData* GetDataForObject(const UObject& Object) const;
 	FNavigationRelevantData* GetMutableDataForObject(const UObject& Object);
@@ -39,7 +39,7 @@ struct NAVIGATIONSYSTEM_API FNavigationOctreeController
 	bool IsNavigationOctreeLocked() const;
 	/** basically says if navoctree has been created already */
 	bool IsValid() const { return NavOctree.IsValid(); }
-	bool IsValidElement(const FOctreeElementId2& ElementId) const;
+	bool IsValidElement(const FOctreeElementId& ElementId) const;
 	bool IsEmpty() const { return (IsValid() == false) || NavOctree->GetSizeBytes() == 0; }
 
 private:
@@ -54,7 +54,7 @@ FORCEINLINE uint32 FNavigationOctreeController::HashObject(const UObject& Object
 	return FNavigationOctree::HashObject(Object);
 }
 
-FORCEINLINE_DEBUGGABLE const FOctreeElementId2* FNavigationOctreeController::GetObjectsNavOctreeId(const UObject& Object) const
+FORCEINLINE_DEBUGGABLE const FOctreeElementId* FNavigationOctreeController::GetObjectsNavOctreeId(const UObject& Object) const
 { 
 	return NavOctree.IsValid()
 		? NavOctree->ObjectToOctreeId.Find(HashObject(Object))
@@ -99,7 +99,7 @@ FORCEINLINE void FNavigationOctreeController::SetNavigationOctreeLock(bool bLock
 	bNavOctreeLock = bLock; 
 }
 
-FORCEINLINE bool FNavigationOctreeController::IsValidElement(const FOctreeElementId2& ElementId) const
+FORCEINLINE bool FNavigationOctreeController::IsValidElement(const FOctreeElementId& ElementId) const
 {
 	return IsValid() && NavOctree->IsValidElementId(ElementId);
 }

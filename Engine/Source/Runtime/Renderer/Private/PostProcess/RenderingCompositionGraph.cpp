@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	RenderingCompositionGraph.cpp: Scene pass order and dependency system.
@@ -24,8 +24,6 @@
 #include "ImageWriteQueue.h"
 #include "ImageWriteStream.h"
 #include "Modules/ModuleManager.h"
-
-IMPLEMENT_TYPE_LAYOUT(FPostProcessPassParameters);
 
 void ExecuteCompositionGraphDebug();
 
@@ -265,8 +263,6 @@ void FRenderingCompositePassContext::Process(const TArray<FRenderingCompositePas
 		Graph.RecursivelyGatherDependencies(Root);
 	}
 
-	SceneTexturesUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(RHICmdList, FeatureLevel);
-
 	if(bNewOrder)
 	{
 		// process in the order the nodes have been created (for more control), unless the dependencies require it differently
@@ -411,10 +407,8 @@ TUniquePtr<FImagePixelData> FRenderingCompositionGraph::GetDumpOutput(FRendering
 	{
 		case PF_FloatRGBA:
 		{
-			TArray<FFloat16Color> RawPixels;
-			RawPixels.SetNum(SourceRect.Width() * SourceRect.Height());
-			Context.RHICmdList.ReadSurfaceFloatData(Texture, SourceRect, RawPixels, (ECubeFace)0, 0, 0);
-			TUniquePtr<TImagePixelData<FFloat16Color>> PixelData = MakeUnique<TImagePixelData<FFloat16Color>>(SourceRect.Size(), TArray64<FFloat16Color>(MoveTemp(RawPixels)));
+			TUniquePtr<TImagePixelData<FFloat16Color>> PixelData = MakeUnique<TImagePixelData<FFloat16Color>>(SourceRect.Size());
+			Context.RHICmdList.ReadSurfaceFloatData(Texture, SourceRect, PixelData->Pixels, (ECubeFace)0, 0, 0);
 
 			check(PixelData->IsDataWellFormed());
 
@@ -426,10 +420,8 @@ TUniquePtr<FImagePixelData> FRenderingCompositionGraph::GetDumpOutput(FRendering
 			FReadSurfaceDataFlags ReadDataFlags(RCM_MinMax);
 			ReadDataFlags.SetLinearToGamma(false);
 
-			TArray<FLinearColor> RawPixels;
-			RawPixels.SetNum(SourceRect.Width() * SourceRect.Height());
-			Context.RHICmdList.ReadSurfaceData(Texture, SourceRect, RawPixels, ReadDataFlags);
-			TUniquePtr<TImagePixelData<FLinearColor>> PixelData = MakeUnique<TImagePixelData<FLinearColor>>(SourceRect.Size(), TArray64<FLinearColor>(MoveTemp(RawPixels)));
+			TUniquePtr<TImagePixelData<FLinearColor>> PixelData = MakeUnique<TImagePixelData<FLinearColor>>(SourceRect.Size());
+			Context.RHICmdList.ReadSurfaceData(Texture, SourceRect, PixelData->Pixels, ReadDataFlags);
 
 			check(PixelData->IsDataWellFormed());
 
@@ -442,10 +434,8 @@ TUniquePtr<FImagePixelData> FRenderingCompositionGraph::GetDumpOutput(FRendering
 			FReadSurfaceDataFlags ReadDataFlags;
 			ReadDataFlags.SetLinearToGamma(false);
 
-			TArray<FColor> RawPixels;
-			RawPixels.SetNum(SourceRect.Width() * SourceRect.Height());
-			Context.RHICmdList.ReadSurfaceData(Texture, SourceRect, RawPixels, ReadDataFlags);
-			TUniquePtr<TImagePixelData<FColor>> PixelData = MakeUnique<TImagePixelData<FColor>>(SourceRect.Size(), TArray64<FColor>(MoveTemp(RawPixels)));
+			TUniquePtr<TImagePixelData<FColor>> PixelData = MakeUnique<TImagePixelData<FColor>>(SourceRect.Size());
+			Context.RHICmdList.ReadSurfaceData(Texture, SourceRect, PixelData->Pixels, ReadDataFlags);
 
 			check(PixelData->IsDataWellFormed());
 
@@ -598,22 +588,10 @@ void FRenderingCompositionGraph::RecursivelyProcess(const FRenderingCompositeOut
 		Context.Pass = Pass;
 		Context.SetViewportInvalid();
 
-		if (Pass->bBindGlobalUniformBuffers)
-		{
-			FUniformBufferStaticBindings GlobalUniformBuffers;
-			GlobalUniformBuffers.AddUniformBuffer(Context.SceneTexturesUniformBuffer);
-			Context.RHICmdList.SetGlobalUniformBuffers(GlobalUniformBuffers);
-		}
-
 		// then process the pass itself
 		check(!Context.RHICmdList.IsInsideRenderPass());
 		Pass->Process(Context);
 		check(!Context.RHICmdList.IsInsideRenderPass());
-
-		if (Pass->bBindGlobalUniformBuffers)
-		{
-			Context.RHICmdList.SetGlobalUniformBuffers({});
-		}
 	}
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
@@ -903,6 +881,7 @@ FRenderingCompositeOutput *FRenderingCompositeOutputRef::GetOutput() const
 
 void FPostProcessPassParameters::Bind(const FShaderParameterMap& ParameterMap)
 {
+	BilinearTextureSampler.Bind(ParameterMap,TEXT("BilinearTextureSampler"));
 	ViewportSize.Bind(ParameterMap,TEXT("ViewportSize"));
 	ViewportRect.Bind(ParameterMap,TEXT("ViewportRect"));
 	ScreenPosToPixel.Bind(ParameterMap, TEXT("ScreenPosToPixel"));
@@ -973,6 +952,15 @@ void FPostProcessPassParameters::Set(
 	check(FilterOverrideArray || Filter);
 	// but not both
 	check(!FilterOverrideArray || !Filter);
+
+	if(BilinearTextureSampler.IsBound())
+	{
+		RHICmdList.SetShaderSampler(
+			ShaderRHI, 
+			BilinearTextureSampler.GetBaseIndex(), 
+			TStaticSamplerState<SF_Bilinear>::GetRHI()
+			);
+	}
 
 	if(ViewportSize.IsBound() || ScreenPosToPixel.IsBound() || ViewportRect.IsBound())
 	{
@@ -1105,7 +1093,7 @@ IMPLEMENT_POST_PROCESS_PARAM_SET(FRHIComputeShader, FRHIAsyncComputeCommandListI
 
 FArchive& operator<<(FArchive& Ar, FPostProcessPassParameters& P)
 {
-	Ar << P.ViewportSize << P.ScreenPosToPixel << P.SceneColorBufferUVViewport << P.ViewportRect;
+	Ar << P.BilinearTextureSampler << P.ViewportSize << P.ScreenPosToPixel << P.SceneColorBufferUVViewport << P.ViewportRect;
 
 	for(uint32 i = 0; i < ePId_Input_MAX; ++i)
 	{
@@ -1124,7 +1112,7 @@ const FSceneRenderTargetItem& FRenderingCompositeOutput::RequestSurface(const FR
 {
 	if(PooledRenderTarget)
 	{
-		Context.RHICmdList.Transition(FRHITransitionInfo(PooledRenderTarget->GetRenderTargetItem().TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
+		Context.RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, PooledRenderTarget->GetRenderTargetItem().TargetableTexture);
 		return PooledRenderTarget->GetRenderTargetItem();
 	}
 
@@ -1247,7 +1235,7 @@ void FRenderingCompositePass::ExtractRDGTextureForOutput(FRDGBuilder& GraphBuild
 
 	if (FRenderingCompositeOutput* Output = GetOutput(OutputId))
 	{
-		Output->RenderTargetDesc = Translate(Texture->Desc);
+		Output->RenderTargetDesc = Texture->Desc;
 		GraphBuilder.QueueTextureExtraction(Texture, &Output->PooledRenderTarget);
 	}
 }

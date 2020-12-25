@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // This code is modified from that in the Mesa3D Graphics library available at
 // http://mesa3d.org/
@@ -632,9 +632,7 @@ void ir_copy_propagation_elements_visitor::kill(kill_entry *k)
             }
             if (entry->rhs == k->var)
             {
-				e->remove();
-			
-				exec_list* ilist = acp->find_acpe_hash_entry_list(entry->lhs);
+                exec_list* ilist = acp->find_acpe_hash_entry_list(entry->lhs);
                 if(ilist)
                 {
                     foreach_list_safe(iter2, ilist)
@@ -647,6 +645,7 @@ void ir_copy_propagation_elements_visitor::kill(kill_entry *k)
                     }
                 }
                 
+                e->remove();
                 if (entry->next && entry->prev)
                 {
                     entry->remove();

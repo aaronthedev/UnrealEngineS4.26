@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // ported from geometry3Sharp Segment2
 
@@ -10,20 +10,18 @@
 
 
 /*
- * 2D Line Segment stored as Center point, normalized Direction vector, and scalar Extent
+ * 2D Line Segmented stored as Center point, normalized Direction vector, and scalar Extent
  */
 template<typename T>
 struct TSegment2
 {
 public:
 	/** Center point of segment */
-	FVector2<T> Center = FVector2<T>::Zero();
+	FVector2<T> Center;
 	/** normalized Direction vector of segment */
-	FVector2<T> Direction = FVector2<T>::UnitX();
+	FVector2<T> Direction;
 	/** Extent of segment, which is half the total length */
-	T Extent = (T)0;
-
-	TSegment2() = default;
+	T Extent;
 
 	/**
 	 * Construct a Segment from two Points
@@ -323,20 +321,18 @@ typedef TSegment2<double> FSegment2d;
 
 
 /*
- * 3D Line Segment stored as Center point, normalized Direction vector, and scalar Extent
+ * 3D Line Segmented stored as Center point, normalized Direction vector, and scalar Extent
  */
 template<typename T>
 struct TSegment3
 {
 public:
 	/** Center point of segment */
-	FVector3<T> Center = FVector3<T>::Zero();
+	FVector3<T> Center;
 	/** normalized Direction vector of segment */
-	FVector3<T> Direction = FVector3<T>::UnitX();
+	FVector3<T> Direction;
 	/** Extent of segment, which is half the total length */
-	T Extent = (T)0;
-
-	TSegment3() = default;
+	T Extent;
 
 	/**
 	 * Construct a Segment from two Points
@@ -495,32 +491,6 @@ public:
 		return TMathUtil<T>::Clamp(Alpha, (T)0, (T)1);
 	}
 
-	/**
-	 * @return axis-aligned bounding box of line segment
-	 */
-	TAxisAlignedBox3<T> GetBounds() const
-	{
-		TAxisAlignedBox3<T> Result;
-		
-		for (int32 j = 0; j < 3; ++j)
-		{
-			T LowValue = Center[j] - Extent * Direction[j];
-			T HighValue = Center[j] + Extent * Direction[j];
-			Result.Min[j] = TMathUtil<T>::Min(LowValue, HighValue);
-			Result.Max[j] = TMathUtil<T>::Max(LowValue, HighValue);
-		}
-		return Result;
-	}
-
-	/**
-	 * @return axis-aligned bounding box of line segment thickened to given SegmentRadius
-	 */
-	TAxisAlignedBox3<T> GetBounds(T SegmentRadius) const
-	{
-		TAxisAlignedBox3<T> Result = GetBounds();
-		Result.Expand(SegmentRadius);
-		return Result;
-	}
 
 protected:
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "FacialAnimationImportItem.h"
 #include "FacialAnimationBulkImporterSettings.h"
@@ -29,7 +29,7 @@ bool FFacialAnimationImportItem::Import()
 USoundWave* FFacialAnimationImportItem::ImportSoundWave(const FString& InSoundWavePackageName, const FString& InSoundWaveAssetName, const FString& InWavFilename) const
 {
 	// Find or create the package to host the sound wave
-	UPackage* const SoundWavePackage = CreatePackage(*InSoundWavePackageName);
+	UPackage* const SoundWavePackage = CreatePackage(nullptr, *InSoundWavePackageName);
 	if (!SoundWavePackage)
 	{
 		FMessageLog("Import").Error(FText::Format(LOCTEXT("SoundWavePackageError", "Failed to create a sound wave package '{0}'."), FText::FromString(InSoundWavePackageName)));

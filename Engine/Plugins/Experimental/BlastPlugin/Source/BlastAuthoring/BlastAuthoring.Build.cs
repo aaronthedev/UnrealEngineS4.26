@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -16,7 +16,7 @@ namespace UnrealBuildTool.Rules
 					"StaticMeshDescription",
                     "Blast",
                     "BlastCore",
-					"Chaos",
+                    "GeometryCollectionCore",
                     "GeometryCollectionEngine"
 
 					// ... add other public dependencies that you statically link with here ...

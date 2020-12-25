@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ProfilingDebugging/TracingProfiler.h"
 
@@ -13,8 +13,6 @@
 #include "RHI.h"
 #include "RenderingThread.h"
 #include "UObject/NameTypes.h"
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 static TAutoConsoleVariable<int32> GTracingProfileBufferSize(
 	TEXT("TracingProfiler.BufferSize"),
@@ -154,8 +152,6 @@ void FTracingProfiler::BeginFrameRT()
 	}
 
 	bCapturingRT = bCapturing;
-
-	RenderThreadId = FPlatformTLS::GetCurrentThreadId();
 }
 
 void FTracingProfiler::EndFrameRT()
@@ -170,7 +166,7 @@ void FTracingProfiler::EndFrameRT()
 	AddCPUEvent(NAME_RenderThread,
 		RenderThreadFrameBeginCycle,
 		RenderThreadFrameEndCycle,
-		RenderThreadId,
+		GRenderThreadId,
 		GFrameNumberRenderThread);
 }
 
@@ -248,7 +244,7 @@ void FTracingProfiler::WriteCaptureToFile()
 
 	int32 MaxGPUIndex = -1;
 	uint64 FirstCPUTimestampCycles = UINT64_MAX;
-	TStaticArray<uint64, MAX_NUM_GPUS> FirstGPUTimestampMicroseconds(UINT64_MAX);
+	uint64 FirstGPUTimestampMicroseconds = UINT64_MAX;
 	for (const FEvent& Event : CapturedEvents)
 	{
 		if (IsEventValid(Event))
@@ -256,7 +252,7 @@ void FTracingProfiler::WriteCaptureToFile()
 			if (Event.Type == EEventType::GPU)
 			{
 				MaxGPUIndex = FMath::Max<int32>(MaxGPUIndex, Event.GPU.GPUIndex);
-				FirstGPUTimestampMicroseconds[Event.GPU.GPUIndex] = FMath::Min(FirstGPUTimestampMicroseconds[Event.GPU.GPUIndex], Event.GPU.BeginMicroseconds);
+				FirstGPUTimestampMicroseconds = FMath::Min(FirstGPUTimestampMicroseconds, Event.GPU.BeginMicroseconds);
 			}
 			else
 			{
@@ -284,7 +280,7 @@ void FTracingProfiler::WriteCaptureToFile()
 		R"({"pid":%d, "tid":%d, "ph": "M", "name": "thread_name", "args":{"name":"Render thread"}},)"
 		R"({"pid":%d, "tid":%d, "ph": "M", "name": "thread_sort_index", "args":{"sort_index": %d}},)"
 		"\n",
-		Pid, RenderThreadId, Pid, RenderThreadId, SortIndex);
+		Pid, GRenderThreadId, Pid, GRenderThreadId, SortIndex);
 	WriteString(StringBuffer);
 	SortIndex++;
 
@@ -298,25 +294,16 @@ void FTracingProfiler::WriteCaptureToFile()
 
 	// Align GPU and CPU timestamps
 
-	TStaticArray<FGPUTimingCalibrationTimestamp, MAX_NUM_GPUS> CalibrationTimestamps(FGPUTimingCalibrationTimestamp{});
-	for (uint32 GPUIndex : FRHIGPUMask::All())
-	{
-		FGPUTimingCalibrationTimestamp& CalibrationTimestamp = CalibrationTimestamps[GPUIndex];
-		CalibrationTimestamp = FGPUTiming::GetCalibrationTimestamp(GPUIndex);
+	FGPUTimingCalibrationTimestamp CalibrationTimestamp = FGPUTiming::GetCalibrationTimestamp();
 
-		// If platform does not support GPU/CPU timer alignment, then simply align GPU and CPU on first event
-		if (CalibrationTimestamp.CPUMicroseconds == 0 || CalibrationTimestamp.GPUMicroseconds == 0)
-		{
-			CalibrationTimestamp.CPUMicroseconds = CyclesToMicroseconds64(FirstCPUTimestampCycles);
-			CalibrationTimestamp.GPUMicroseconds = FirstGPUTimestampMicroseconds[GPUIndex];
-		}
+	// If platform does not support GPU/CPU timer alignment, then simply align GPU and CPU on first event
+	if (CalibrationTimestamp.CPUMicroseconds == 0 || CalibrationTimestamp.GPUMicroseconds == 0)
+	{
+		CalibrationTimestamp.CPUMicroseconds = CyclesToMicroseconds64(FirstCPUTimestampCycles);
+		CalibrationTimestamp.GPUMicroseconds = FirstGPUTimestampMicroseconds;
 	}
 
-	TStaticArray<uint64, MAX_NUM_GPUS> GPUTimeOffsets;
-	for (uint32 GPUIndex : FRHIGPUMask::All())
-	{
-		GPUTimeOffsets[GPUIndex] = CalibrationTimestamps[GPUIndex].CPUMicroseconds - CalibrationTimestamps[GPUIndex].GPUMicroseconds;
-	}
+	const uint64 GPUTimeOffset = CalibrationTimestamp.CPUMicroseconds - CalibrationTimestamp.GPUMicroseconds;
 
 	// Write out all events
 
@@ -341,8 +328,8 @@ void FTracingProfiler::WriteCaptureToFile()
 			// Note: We could also use `clock_sync` metadata to synchronize events in Chrome viewer.
 			// Advantage of doing it manually is that trace log can be consumed by a less sophisticated
 			// parser that does not implement all the features of Chrome viewer.
-			TimeBeginMicroseconds = Event.GPU.BeginMicroseconds + GPUTimeOffsets[Event.GPU.GPUIndex];
-			TimeEndMicroseconds = Event.GPU.EndMicroseconds + GPUTimeOffsets[Event.GPU.GPUIndex];
+			TimeBeginMicroseconds = Event.GPU.BeginMicroseconds + GPUTimeOffset;
+			TimeEndMicroseconds = Event.GPU.EndMicroseconds + GPUTimeOffset;
 			break;
 		default:
 			verifyf(0, TEXT("Unexpected profiling event type"));
@@ -379,7 +366,5 @@ void FTracingProfiler::WriteCaptureToFile()
 
 	OutputFile->Close();
 }
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 #endif //TRACING_PROFILER

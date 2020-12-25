@@ -1,10 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BlueprintEditorSettings.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Editor/EditorPerProjectUserSettings.h"
 #include "Settings/EditorExperimentalSettings.h"
-#include "BlueprintActionDatabase.h"
+
 #include "FindInBlueprintManager.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "Editor.h"
@@ -14,8 +14,6 @@ UBlueprintEditorSettings::UBlueprintEditorSettings(const FObjectInitializer& Obj
 	// Style Settings
 	, bDrawMidpointArrowsInBlueprints(false)
 	, bShowGraphInstructionText(true)
-	, bHideUnrelatedNodes(false)
-	, bShowShortTooltips(true)
 	// Workflow Settings
 	, bSplitContextTargetSettings(true)
 	, bExposeAllMemberComponentFunctions(true)
@@ -30,7 +28,6 @@ UBlueprintEditorSettings::UBlueprintEditorSettings(const FObjectInitializer& Obj
 	, bAlwaysShowInterfacesInOverrides(true)
 	, bShowParentClassInOverrides(true)
 	, bShowEmptySections(true)
-	, bShowAccessSpecifier(false)
 	, bSpawnDefaultBlueprintNodes(true)
 	, bHideConstructionScriptComponentsInDetailsView(true)
 	, bHostFindInBlueprintsInGlobalTab(true)
@@ -85,18 +82,6 @@ void UBlueprintEditorSettings::PostEditChangeProperty(FPropertyChangedEvent& Pro
 
 		// Enable or disable the feature through the FiB manager.
 		FFindInBlueprintSearchManager::Get().EnableGlobalFindResults(bHostFindInBlueprintsInGlobalTab);
-	}
-
-	bool bShouldRebuildRegistry = false;
-	
-	if (PropertyName == GET_MEMBER_NAME_CHECKED(UBlueprintEditorSettings, bExposeDeprecatedFunctions))
-	{
-		bShouldRebuildRegistry = true;
-	}
-
-	if (bShouldRebuildRegistry)
-	{
-		FBlueprintActionDatabase::Get().RefreshAll();
 	}
 
 	Super::PostEditChangeProperty(PropertyChangedEvent);

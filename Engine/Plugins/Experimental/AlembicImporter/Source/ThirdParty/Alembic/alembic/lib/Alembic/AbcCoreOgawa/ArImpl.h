@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcCoreOgawa_ArImpl_h
-#define Alembic_AbcCoreOgawa_ArImpl_h
+#ifndef _Alembic_AbcCoreOgawa_ArImpl_h_
+#define _Alembic_AbcCoreOgawa_ArImpl_h_
 
 #include <Alembic/AbcCoreOgawa/Foundation.h>
 #include <Alembic/AbcCoreOgawa/StreamManager.h>
@@ -56,8 +56,7 @@ private:
     friend class ReadArchive;
 
     ArImpl( const std::string &iFileName,
-            size_t iNumStreams=1,
-            bool iUseMMap=true);
+            size_t iNumStreams=1 );
 
     ArImpl( const std::vector< std::istream * > & iStreams );
 

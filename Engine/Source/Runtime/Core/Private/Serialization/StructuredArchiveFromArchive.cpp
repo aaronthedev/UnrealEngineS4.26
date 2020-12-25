@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Serialization/StructuredArchive.h"
 #include "Containers/Set.h"
@@ -19,19 +19,13 @@ struct FStructuredArchiveFromArchive::FImpl
 };
 
 FStructuredArchiveFromArchive::FStructuredArchiveFromArchive(FArchive& Ar)
+	: Pimpl(Ar)
 {
-	static_assert(FStructuredArchiveFromArchive::ImplSize >= sizeof(FStructuredArchiveFromArchive::FImpl), "FStructuredArchiveFromArchive::ImplSize must fit in the size of FStructuredArchiveFromArchive::Impl");
-	static_assert(FStructuredArchiveFromArchive::ImplAlignment >= alignof(FStructuredArchiveFromArchive::FImpl), "FStructuredArchiveFromArchive::ImplAlignment must be compatible with the alignment of FStructuredArchiveFromArchive::Impl");
-
-	new (ImplStorage) FImpl(Ar);
 }
 
-FStructuredArchiveFromArchive::~FStructuredArchiveFromArchive()
-{
-	DestructItem((FImpl*)ImplStorage);
-}
+FStructuredArchiveFromArchive::~FStructuredArchiveFromArchive() = default;
 
 FStructuredArchive::FSlot FStructuredArchiveFromArchive::GetSlot()
 {
-	return ((FImpl*)ImplStorage)->Slot;
+	return Pimpl->Slot;
 }

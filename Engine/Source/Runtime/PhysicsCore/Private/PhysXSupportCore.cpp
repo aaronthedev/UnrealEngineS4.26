@@ -1,8 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PhysXSupportCore.h"
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 #include "PhysicsPublicCore.h"
 #include "PhysXSupportCore.h"
 #include "HAL/IConsoleManager.h"
@@ -11,9 +11,6 @@ PxFoundation* GPhysXFoundation = nullptr;
 FPhysXAllocator* GPhysXAllocator = nullptr;
 PxPvd* GPhysXVisualDebugger = nullptr;
 physx::PxPhysics* GPhysXSDK = nullptr;
-
-TArray<PxMaterial*> GPhysXPendingKillMaterial;
-
 #if WITH_APEX
 PHYSICSCORE_API apex::ApexSDK* GApexSDK = nullptr;
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,7 +18,6 @@ struct FBodyInstance;
 struct FCollisionResponseParams;
 struct FPropertyChangedEvent;
 
-/** Structure representing a collision profile name, this gets a special UI in the editor */
 USTRUCT(BlueprintType)
 struct FCollisionProfileName
 {
@@ -32,7 +31,7 @@ struct FCollisionProfileName
 		: Name(InName)
 	{}
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Collision)
+	UPROPERTY(EditAnywhere, Category = Collision)
 	FName Name;
 };
 
@@ -45,11 +44,9 @@ struct ENGINE_API FCollisionResponseTemplate
 {
 	GENERATED_USTRUCT_BODY()
 
-	/** Name of collision profile */
 	UPROPERTY()
 	FName Name;
 
-	/** Type of collision used for things with this profile */
 	UPROPERTY()
 	TEnumAsByte<ECollisionEnabled::Type> CollisionEnabled;
 
@@ -57,14 +54,12 @@ struct ENGINE_API FCollisionResponseTemplate
 	// no property anymore
 	TEnumAsByte<enum ECollisionChannel> ObjectType;
 
-	/** If this profile can be modified by games */
 	UPROPERTY()
 	bool	bCanModify;
 
 	/** This is result of ResponseToChannel after loaded - please note that it is not property serializable **/
 	struct FCollisionResponseContainer ResponseToChannels;
 
-	/** Collision object type to use for things with this profile */
 	UPROPERTY()
 	FName ObjectTypeName;
 
@@ -113,7 +108,7 @@ struct FCustomChannelSetup
 	UPROPERTY()
 	bool bStaticObject;	
 
-	/** Name used in editor and metadata to refer to this channel */
+	/** Name of channel you'd like to show up **/
 	UPROPERTY()
 	FName Name;
 
@@ -142,8 +137,7 @@ USTRUCT()
 struct ENGINE_API FCustomProfile
 {
 	GENERATED_USTRUCT_BODY()
-	
-	/** Name of new profile to add */
+
 	UPROPERTY()
 	FName Name;
 
@@ -163,23 +157,20 @@ class UCollisionProfile : public UDeveloperSettings
 
 private:
 
-	/** List of all profiles, engine and game-specific */
+	// This is hacky, but without this edit tag, we can't get valid property handle
+	// and we can't save them properly to config, so we need this tag. 
 	UPROPERTY(globalconfig)
 	TArray<FCollisionResponseTemplate>	Profiles;
 
-	/** Game-specific overrides to default responses to collision channels */
 	UPROPERTY(globalconfig)
 	TArray<FCustomChannelSetup>			DefaultChannelResponses;
 
-	/** Game-specific overrides to engine profiles */
 	UPROPERTY(globalconfig)
 	TArray<FCustomProfile>				EditProfiles;
 
-	/** Used to handle renaming profiles */
 	UPROPERTY(globalconfig)
 	TArray<FRedirector>					ProfileRedirects;
 
-	/** Used to handle renaming collision channels */
 	UPROPERTY(globalconfig)
 	TArray<FRedirector>					CollisionChannelRedirects;
 
@@ -197,12 +188,8 @@ public:
 	/** Accessor and initializer **/
 	ENGINE_API static UCollisionProfile* Get();
 
-	/** Holds a delegate to be invoked when LoadProfileConfig is called. */
-	DECLARE_MULTICAST_DELEGATE_OneParam(FOnLoadProfileConfig, UCollisionProfile*);
-	FOnLoadProfileConfig OnLoadProfileConfig;
-
 	/** Begin UObject interface */
-	virtual void PostReloadConfig(class FProperty* PropertyThatWasLoaded) override;
+	virtual void PostReloadConfig(class UProperty* PropertyThatWasLoaded) override;
 	/** End UObject interface */
 
 	/** Fill up the array with the profile names **/
@@ -314,10 +301,4 @@ private:
 	ENGINE_API void AddProfileRedirect(FName OldName, FName NewName);
 
 	friend class FCollisionProfileDetails;
-	friend struct FCollisionProfilePrivateAccessor;
-};
-
-struct ENGINE_API FCollisionProfilePrivateAccessor
-{
-	static bool AddProfileTemplate(FCollisionResponseTemplate& NewProfileData);
 };

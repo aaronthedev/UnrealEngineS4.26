@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -97,7 +97,7 @@ namespace IntersectionUtil
 		const FVector3<RealType>& SphereCenter, 
 		RealType SphereRadius)
 	{
-		// adapted from GeometricTools GTEngine
+		// [RMS] adapted from GeometricTools GTEngine
 		// https://www.geometrictools.com/GTEngine/Include/Mathematics/GteIntrLine3Sphere3.h
 
 		// The sphere is (X-C)^T*(X-C)-1 = 0 and the line is X = P+t*D.
@@ -127,7 +127,7 @@ namespace IntersectionUtil
 		RealType SphereRadius,
 		FLinearIntersection& ResultOut)
 	{
-		// adapted from GeometricTools GTEngine
+		// [RMS] adapted from GeometricTools GTEngine
 		// https://www.geometrictools.com/GTEngine/Include/Mathematics/GteIntrLine3Sphere3.h
 
 		// The sphere is (X-C)^T*(X-C)-1 = 0 and the line is X = P+t*D.
@@ -187,7 +187,7 @@ namespace IntersectionUtil
 		const FVector3<RealType>& SphereCenter, 
 		RealType SphereRadius)
 	{
-		// adapted from GeometricTools GTEngine
+		// [RMS] adapted from GeometricTools GTEngine
 		// https://www.geometrictools.com/GTEngine/Include/Mathematics/GteIntrRay3Sphere3.h
 
 		// The sphere is (X-C)^T*(X-C)-1 = 0 and the line is X = P+t*D.
@@ -226,7 +226,7 @@ namespace IntersectionUtil
 		RealType SphereRadius, 
 		FLinearIntersection& Result)
 	{
-		// adapted from GeometricTools GTEngine
+		// [RMS] adapted from GeometricTools GTEngine
 		// https://www.geometrictools.com/GTEngine/Include/Mathematics/GteIntrRay3Sphere3.h
 
 		RaySphereIntersection(RayOrigin, RayDirection, SphereCenter, SphereRadius, Result);

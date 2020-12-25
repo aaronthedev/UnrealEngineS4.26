@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UObject/Package.h"
 #include "HAL/FileManager.h"
@@ -7,7 +7,6 @@
 #include "Misc/PackageName.h"
 #include "UObject/LinkerLoad.h"
 #include "UObject/LinkerManager.h"
-#include "UObject/UObjectHash.h"
 #include "UObject/UObjectThreadContext.h"
 
 /*-----------------------------------------------------------------------------
@@ -41,7 +40,6 @@ void UPackage::PostInitProperties()
 
 #if WITH_EDITORONLY_DATA
 	MetaData = nullptr;
-	PersistentGuid = FGuid::NewGuid();
 #endif
 	LinkerPackageVersion = GPackageFileUE4Version;
 	LinkerLicenseeVersion = GPackageFileLicenseeUE4Version;
@@ -113,40 +111,35 @@ void UPackage::Serialize( FArchive& Ar )
 	}
 }
 
-UObject* UPackage::FindAssetInPackage() const
-{
-	UObject* Asset = nullptr;
-	ForEachObjectWithPackage(this, [&Asset](UObject* Object)
-		{
-			if (Object->IsAsset())
-			{
-				ensure(Asset == nullptr);
-				Asset = Object;
-				return false;
-			}
-			return true;
-		}, false);
-	return Asset;
+void UPackage::AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector)
+{	
+	UPackage* This = CastChecked<UPackage>(InThis);
+#if WITH_EDITOR
+	if( GIsEditor )
+	{
+		// Required by the unified GC when running in the editor
+		Collector.AddReferencedObject(This->MetaData, This);
+	}
+#endif
+	Super::AddReferencedObjects(This, Collector);
 }
 
-TArray<UPackage*> UPackage::GetExternalPackages() const
+#if WITH_EDITORONLY_DATA
+bool UPackage::IsOwned() const
 {
-	TArray<UPackage*> Result;
-	TArray<UObject*> TopLevelObjects;
-	GetObjectsWithPackage(const_cast<UPackage*>(this), TopLevelObjects, false);
-	for (UObject* Object : TopLevelObjects)
-	{
-		ForEachObjectWithOuter(Object, [&Result, ThisPackage = this](UObject* InObject)
-			{
-				UPackage* ObjectPackage = InObject->GetExternalPackage();
-				if (ObjectPackage && ObjectPackage != ThisPackage)
-				{
-					Result.Add(ObjectPackage);
-				}
-			});
-	}
-	return Result;
+	return OwnerPersistentGuid.IsValid();
 }
+
+bool UPackage::IsOwnedBy(const UPackage* Package) const
+{
+	return OwnerPersistentGuid.IsValid() && (OwnerPersistentGuid == Package->GetPersistentGuid());
+}
+
+bool UPackage::HasSameOwner(const UPackage* Package) const
+{
+	return OwnerPersistentGuid.IsValid() && (OwnerPersistentGuid == Package->OwnerPersistentGuid);
+}
+#endif
 
 /**
  * Gets (after possibly creating) a metadata object for this package
@@ -229,12 +222,7 @@ bool UPackage::IsFullyLoaded() const
 		FString DummyFilename;
 		FString SourcePackageName = FileName != NAME_None ? FileName.ToString() : GetName();
 		// Try to find matching package in package file cache. We use the source package name here as it may be loaded into a temporary package
-		if (HasAnyPackageFlags(PKG_CompiledIn))
-		{
-			// Native packages don't have a file size but are always considered fully loaded.
-			bHasBeenFullyLoaded = true;
-		}
-		else if (	!GetConvertedDynamicPackageNameToTypeName().Contains(GetFName()) &&
+		if (	!GetConvertedDynamicPackageNameToTypeName().Contains(GetFName()) &&
 				(
 					!FPackageName::DoesPackageExist(*SourcePackageName, NULL, &DummyFilename ) ||
 					(GIsEditor && IFileManager::Get().FileSize(*DummyFilename) < 0) 
@@ -296,12 +284,14 @@ void UPackage::SetLoadedByEditorPropertiesOnly(bool bIsEditorOnly, bool bRecursi
 #if WITH_EDITORONLY_DATA
 IMPLEMENT_CORE_INTRINSIC_CLASS(UPackage, UObject,
 	{
+		Class->ClassAddReferencedObjects = &UPackage::AddReferencedObjects;
 		Class->EmitObjectReference(STRUCT_OFFSET(UPackage, MetaData), TEXT("MetaData"));
 	}
 );
 #else
 IMPLEMENT_CORE_INTRINSIC_CLASS(UPackage, UObject,
 	{
+		Class->ClassAddReferencedObjects = &UPackage::AddReferencedObjects;
 	}
 );
 #endif

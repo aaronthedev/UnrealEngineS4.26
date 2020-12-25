@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithImportFactory.h"
 
@@ -10,11 +10,10 @@
 #include "DatasmithSceneActor.h"
 #include "DatasmithSceneFactory.h"
 #include "DatasmithStaticMeshImporter.h"
-#include "DatasmithTranslatableSource.h"
-#include "DatasmithTranslatorManager.h"
-#include "DatasmithUtils.h"
 #include "IDatasmithSceneElements.h"
 #include "LayoutUV.h"
+#include "Translators/DatasmithTranslatableSource.h"
+#include "Translators/DatasmithTranslatorManager.h"
 #include "Utility/DatasmithImporterUtils.h"
 #include "Utility/DatasmithImportFactoryHelper.h"
 
@@ -30,19 +29,10 @@
 #include "Misc/PackageName.h"
 #include "Misc/ScopedSlowTask.h"
 #include "PackageTools.h"
-#include "Subsystems/AssetEditorSubsystem.h"
 #include "Subsystems/ImportSubsystem.h"
-#include "Templates/UniquePtr.h"
+#include "Subsystems/AssetEditorSubsystem.h"
 
 #include "Editor/EditorEngine.h"
-#include "MeshUtilities.h"
-
-#if PLATFORM_WINDOWS
-#include "Windows/AllowWindowsPlatformTypes.h"
-	#include <psapi.h>
-#include "Windows/HideWindowsPlatformTypes.h"
-#endif
-
 extern UNREALED_API UEditorEngine* GEditor;
 
 #define LOCTEXT_NAMESPACE "DatasmithImportFactory"
@@ -120,14 +110,11 @@ namespace DatasmithImportFactoryImpl
 
 		if (AssetName.IsEmpty())
 		{
-			AssetName = FPaths::GetBaseFilename(InContext.Options->FilePath);
+			FString FilenameBase = FPaths::GetBaseFilename(InContext.Options->FilePath);
+			AssetName = UPackageTools::SanitizePackageName(FilenameBase);
 		}
 
-		AssetName = FDatasmithUtils::SanitizeObjectName(AssetName);
-
 		FString PackageName = FPaths::Combine(InContext.AssetsContext.RootFolderPath, AssetName);
-		PackageName = UPackageTools::SanitizePackageName(PackageName);
-
 
 		FText CreateAssetFailure =  LOCTEXT( "CreateSceneAsset_PackageFailure", "Failed to create the Datasmith Scene asset." );
 		FText OutFailureReason;
@@ -141,7 +128,7 @@ namespace DatasmithImportFactoryImpl
 		UDatasmithScene* SceneAsset = FDatasmithImporterUtils::FindObject< UDatasmithScene >( nullptr, PackageName );
 		if ( !SceneAsset )
 		{
-			UPackage* Package = CreatePackage( *PackageName );
+			UPackage* Package = CreatePackage( nullptr, *PackageName );
 			if ( !ensure(Package) )
 			{
 				InContext.LogError( CreateAssetFailure );
@@ -152,18 +139,12 @@ namespace DatasmithImportFactoryImpl
 			SceneAsset = NewObject< UDatasmithScene >( Package, FName(*AssetName), RF_Public | RF_Standalone );
 		}
 
-		UDatasmithTranslatedSceneImportData* ReImportSceneData = NewObject< UDatasmithTranslatedSceneImportData >( SceneAsset );
+		UDatasmithSceneImportData* ReImportSceneData = NewObject< UDatasmithSceneImportData >( SceneAsset, UDatasmithTranslatedSceneImportData::StaticClass() );
 		SceneAsset->AssetImportData = ReImportSceneData;
 
 		// Copy over the changes the user may have done on the options
 		ReImportSceneData->BaseOptions = InContext.Options->BaseOptions;
 
-		for (const TStrongObjectPtr<UDatasmithOptionsBase>& Option : InContext.AdditionalImportOptions)
-		{
-			UDatasmithOptionsBase* OptionObj = Option.Get();
-			OptionObj->Rename(nullptr, ReImportSceneData);
-			ReImportSceneData->AdditionalOptions.Add(OptionObj);
-		}
 		ReImportSceneData->Update( InContext.Options->FilePath, InContext.FileHash.IsValid() ? &InContext.FileHash : nullptr );
 
 		FAssetRegistryModule::AssetCreated(ReImportSceneData);
@@ -187,24 +168,15 @@ namespace DatasmithImportFactoryImpl
 			return false;
 		}
 
-		TUniquePtr<FScopedSlowTask> ProgressPtr;
-		FScopedSlowTask* Progress = nullptr;
-		if ( InContext.FeedbackContext )
-		{
-			ProgressPtr = MakeUnique<FScopedSlowTask>(100.0f, LOCTEXT("StartWork", "Unreal Datasmith ..."), true, *InContext.FeedbackContext);
-			Progress = ProgressPtr.Get();
-			Progress->MakeDialog(true);
-		}
+		FScopedSlowTask Progress(100.0f, LOCTEXT("StartWork", "Unreal Datasmith ..."), true, *InContext.Warn);
+		Progress.MakeDialog(true);
 
 		// Filter element that need to be imported depending on dirty state (or eventually depending on options)
 		FDatasmithImporter::FilterElementsToImport(InContext);
 
 		// TEXTURES
 		// We need the textures before the materials
-		if ( Progress )
-		{
-			Progress->EnterProgressFrame( 20.f );
-		}
+		Progress.EnterProgressFrame( 20.f );
 		FDatasmithImporter::ImportTextures(InContext);
 
 		if ( InContext.bUserCancelled )
@@ -215,10 +187,7 @@ namespace DatasmithImportFactoryImpl
 
 		// MATERIALS
 		// We need to import the materials before the static meshes to know about the meshes build requirements that are driven by the materials
-		if ( Progress )
-		{
-			Progress->EnterProgressFrame( 5.f );
-		}
+		Progress.EnterProgressFrame( 5.f );
 		FDatasmithImporter::ImportMaterials(InContext);
 
 		if ( InContext.bUserCancelled )
@@ -234,10 +203,7 @@ namespace DatasmithImportFactoryImpl
 		}
 
 		// STATIC MESHES
-		if ( Progress )
-		{
-			Progress->EnterProgressFrame( 25.f );
-		}
+		Progress.EnterProgressFrame( 25.f );
 		FDatasmithImporter::ImportStaticMeshes( InContext );
 
 		if ( InContext.bUserCancelled )
@@ -246,10 +212,7 @@ namespace DatasmithImportFactoryImpl
 			return false;
 		}
 
-		if ( Progress )
-		{
-			Progress->EnterProgressFrame( 10.f );
-		}
+		Progress.EnterProgressFrame( 10.f );
 		FDatasmithStaticMeshImporter::PreBuildStaticMeshes(InContext);
 
 		if ( InContext.bUserCancelled )
@@ -261,10 +224,7 @@ namespace DatasmithImportFactoryImpl
 		// ACTORS
 		if( InContext.ShouldImportActors() )
 		{
-			if ( Progress )
-			{
-				Progress->EnterProgressFrame( 10.f );
-			}
+			Progress.EnterProgressFrame( 10.f );
 
 			FDatasmithImporter::ImportActors( InContext );
 
@@ -287,10 +247,7 @@ namespace DatasmithImportFactoryImpl
 			return false;
 		}
 
-		if ( Progress )
-		{
-			Progress->EnterProgressFrame( 30.f );
-		}
+		Progress.EnterProgressFrame( 30.f );
 		FDatasmithImporter::FinalizeImport(InContext, TSet<UObject*>());
 
 		// THUMBNAIL
@@ -346,23 +303,9 @@ namespace DatasmithImportFactoryImpl
 
 		DatasmithImportFactoryImpl::SendAnalytics(ImportContext, FMath::RoundToInt(ElapsedSeconds), true);
 
-		CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
-
-		FString MemoryStats;
-#if PLATFORM_WINDOWS
-		PROCESS_MEMORY_COUNTERS_EX MemoryInfo;
-		GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&MemoryInfo, sizeof(MemoryInfo));
-
-		double PrivateBytesGB   = double(MemoryInfo.PrivateUsage) / (1024*1024*1024);
-		double WorkingSetGB     = double(MemoryInfo.WorkingSetSize) / (1024*1024*1024);
-		double PeakWorkingSetFB = double(MemoryInfo.PeakWorkingSetSize) / (1024*1024*1024);
-
-		MemoryStats = FString::Printf(TEXT(" [Private Bytes: %.02f GB, Working Set %.02f GB, Peak Working Set %.02f GB]"), PrivateBytesGB, WorkingSetGB, PeakWorkingSetFB);
-#endif
-
 		int ElapsedMin = int(ElapsedSeconds / 60.0);
 		ElapsedSeconds -= 60.0 * (double)ElapsedMin;
-		UE_LOG(LogDatasmithImport, Log, TEXT("%s %s in [%d min %.3f s]%s"), ImportContext.bIsAReimport ? TEXT("Reimported") : TEXT("Imported"), ImportContext.Scene->GetName(), ElapsedMin, ElapsedSeconds, *MemoryStats);
+		UE_LOG(LogDatasmithImport, Log, TEXT("%s %s in [%d min %.3f s]"), ImportContext.bIsAReimport ? TEXT("Reimported") : TEXT("Imported"), ImportContext.Scene->GetName(), ElapsedMin, ElapsedSeconds);
 	}
 
 } // ns DatasmithImportFactoryImpl
@@ -422,9 +365,13 @@ void UDatasmithImportFactory::CleanUp()
 
 bool UDatasmithImportFactory::IsExtensionSupported(const FString& Filename)
 {
-	FString Extension;
-	FString Name;
-	FDatasmithUtils::GetCleanFilenameAndExtension(Filename, Name, Extension);
+	FString Extension = FPaths::GetExtension(Filename);
+	if (FCString::IsNumeric(*Extension))
+	{
+		FString BaseFilename = FPaths::GetBaseFilename(Filename);
+		Extension = FPaths::GetExtension(BaseFilename);
+	}
+
 	auto ExtensionMatch = [&Extension](const FString& Format) { return Format.StartsWith(Extension); };
 	return !Extension.IsEmpty() && Algo::FindByPredicate(Formats, ExtensionMatch) != nullptr;
 }
@@ -474,6 +421,8 @@ UObject* UDatasmithImportFactory::FactoryCreateFile(UClass* InClass, UObject* In
 	FDatasmithTranslatableSceneSource TranslatableSource(Source);
 	if (!TranslatableSource.IsTranslatable())
 	{
+		bOperationCanceled = true;
+		bOutOperationCanceled = true;
 		UE_LOG(LogDatasmithImport, Warning, TEXT("Datasmith import error: no suitable translator found for this source. Abort import."));
 		return nullptr;
 	}
@@ -503,14 +452,16 @@ UObject* UDatasmithImportFactory::FactoryCreateFile(UClass* InClass, UObject* In
 
 	if (!TranslatableSource.Translate(Scene))
 	{
+		bOperationCanceled = true;
+		bOutOperationCanceled = true;
 		UE_LOG(LogDatasmithImport, Warning, TEXT("Datasmith import error: Scene translation failure. Abort import."));
 		return nullptr;
 	}
 
-	if (!Import( ImportContext ))
+	bOutOperationCanceled = !Import( ImportContext );
+	if (bOutOperationCanceled)
 	{
 		bOperationCanceled = true;
-		bOutOperationCanceled = true;
 		UE_LOG(LogDatasmithImport, Warning, TEXT("Datasmith import error. Abort import."));
 		return nullptr;
 	}
@@ -658,17 +609,6 @@ EReimportResult::Type UDatasmithImportFactory::ReimportStaticMesh(UStaticMesh* M
 
 	ImportContext.SceneAsset = FDatasmithImporterUtils::FindDatasmithSceneForAsset( Mesh );
 
-	// Restore additional import options
-	UDatasmithTranslatedSceneImportData* SceneAssetImportData = ExactCast<UDatasmithTranslatedSceneImportData>(ImportContext.SceneAsset->AssetImportData);
-	if (SceneAssetImportData)
-	{
-		ImportContext.AdditionalImportOptions.Empty();
-		for (UDatasmithOptionsBase* AdditionalOption : SceneAssetImportData->AdditionalOptions)
-		{
-			ImportContext.AdditionalImportOptions.Emplace(AdditionalOption);
-		}
-	}
-
 	TSharedRef< IDatasmithScene > Scene = FDatasmithSceneFactory::CreateScene(*Source.GetSceneName());
 	bool bIsSilent = true;
 	if ( !ImportContext.Init( Scene, MeshImportData->AssetImportOptions.PackagePath.ToString(), Mesh->GetFlags(), GWarn, ImportSettingsJson, bIsSilent ) )
@@ -759,6 +699,7 @@ EReimportResult::Type UDatasmithImportFactory::ReimportStaticMesh(UStaticMesh* M
 EReimportResult::Type UDatasmithImportFactory::ReimportScene(UDatasmithScene* SceneAsset)
 {
 	// #ueent_todo: unify with import, BP, python, DP.
+	// Missing a Pipeline object ?
 	if (!SceneAsset || !SceneAsset->AssetImportData)
 	{
 		return EReimportResult::Failed;
@@ -782,13 +723,6 @@ EReimportResult::Type UDatasmithImportFactory::ReimportScene(UDatasmithScene* Sc
 	FDatasmithImportContext ImportContext(Source.GetSourceFile(), bLoadConfig, GetLoggerName(), GetDisplayName(), TranslatableSource.GetTranslator());
 	ImportContext.SceneAsset = SceneAsset;
 	ImportContext.Options->BaseOptions = ReimportData.BaseOptions; // Restore options as used in original import
-	if (UDatasmithTranslatedSceneImportData* TranslatedSceneReimportData = Cast<UDatasmithTranslatedSceneImportData>(SceneAsset->AssetImportData))
-	{
-		for (UDatasmithOptionsBase* Option : TranslatedSceneReimportData->AdditionalOptions)
-		{
-			ImportContext.UpdateImportOption(Option);
-		}
-	}
 	ImportContext.bIsAReimport = true;
 
 	FString ImportPath = ImportContext.Options->BaseOptions.AssetOptions.PackagePath.ToString();
@@ -920,11 +854,8 @@ EReimportResult::Type UDatasmithImportFactory::ReimportMaterial( UMaterialInterf
 
 	FDatasmithImporter::ImportMaterial( ImportContext, MaterialElement.ToSharedRef(), Material );
 
-	const FString& RootFolderPath = ImportContext.AssetsContext.RootFolderPath;
-	const FString& TransientFolderPath = ImportContext.AssetsContext.TransientFolderPath;
-
 	UMaterialInterface* NewMaterial = ImportContext.ImportedMaterials.FindRef( MaterialElement.ToSharedRef() );
-	FDatasmithImporter::FinalizeMaterial( NewMaterial, *MaterialPath, *TransientFolderPath, *RootFolderPath, Material );
+	FDatasmithImporter::FinalizeMaterial( NewMaterial, *MaterialPath, Material );
 
 	FGlobalComponentReregisterContext RecreateComponents;
 

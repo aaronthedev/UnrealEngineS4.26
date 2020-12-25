@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,7 +12,7 @@
  * Base class for movie scene tracks that can be renamed by the user.
  */
 UCLASS(abstract, MinimalAPI)
-class UMovieSceneNameableTrack
+class MOVIESCENE_VTABLE UMovieSceneNameableTrack
 	: public UMovieSceneTrack
 {
 	GENERATED_BODY()
@@ -33,14 +33,6 @@ public:
 	 * @return Whether this track can be renamed.
 	 */
 	MOVIESCENE_API virtual bool CanRename() const { return true; }
-
-	/** 
-	 * Validate the new display name. 
-	 *
-	 * @return True if the given display name is valid, false if it is not. 
-	 * Error message should be set if the name is not valid.
-	 */
-	MOVIESCENE_API virtual bool ValidateDisplayName(const FText& NewDisplayName, FText& OutErrorMessage) const;
 
 public:
 

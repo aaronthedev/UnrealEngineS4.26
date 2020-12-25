@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	UObjectLinker.cpp: Unreal object linker relationship management
@@ -82,16 +82,10 @@ template <> struct TIsPODType<FLinkerIndexPair> { enum { Value = false }; };
  * A: It does not need to be. This is GC-Safe.
  * Objects are detached from their linkers prior to destruction of either the linker or the object
  *
- * NOTE: We're currently using chunked annotations for linkers to emphasize memory
+ * NOTE: We're currently using dense annotations for linkers to emphasize speed over memory
  * usage, but might want to revisit this decision on platforms that are memory limited.
- *
- * LINUX SERVER NOTE: For servers we are using Sparse to emphasize speed over memory usage
  */
-#if PLATFORM_LINUX && UE_SERVER
-static FUObjectAnnotationSparse<FLinkerIndexPair, false> LinkerAnnotation;
-#else
 static FUObjectAnnotationChunked<FLinkerIndexPair, false> LinkerAnnotation;
-#endif
 
 /** Remove all annotations on exit. This is to prevent issues with the order of static destruction of singletons. */
 void CleanupLinkerAnnotations()
@@ -109,7 +103,7 @@ void UObject::SetLinker( FLinkerLoad* LinkerLoad, int32 LinkerIndex, bool bShoul
 	if( Existing.Linker && bShouldDetachExisting )
 	{
 		checkf(!HasAnyFlags(RF_NeedLoad|RF_NeedPostLoad), TEXT("Detaching from existing linker for %s while object %s needs loaded"), *Existing.Linker->GetArchiveName(), *GetFullName());
-		check(Existing.Linker->ExportMap[Existing.LinkerIndex].Object!=nullptr);
+		check(Existing.Linker->ExportMap[Existing.LinkerIndex].Object!=NULL);
 		check(Existing.Linker->ExportMap[Existing.LinkerIndex].Object==this);
 		Existing.Linker->ExportMap[Existing.LinkerIndex].ResetObject();
 	}
@@ -117,11 +111,6 @@ void UObject::SetLinker( FLinkerLoad* LinkerLoad, int32 LinkerIndex, bool bShoul
 	if (Existing.Linker == LinkerLoad)
 	{
 		bShouldDetachExisting = false; // no change so don't call notify
-	}
-	// if we have a valid annotation and are setting a new valid linker, remove the annotation first
-	else if (!Existing.IsDefault() && LinkerLoad != nullptr)
-	{
-		LinkerAnnotation.RemoveAnnotation(this);
 	}
 	if (Existing.Linker != LinkerLoad || Existing.LinkerIndex != LinkerIndex)
 	{

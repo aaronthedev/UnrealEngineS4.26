@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DisplayNodes/SequencerDisplayNode.h"
 #include "Curves/KeyHandle.h"
@@ -29,7 +29,6 @@
 #include "Tree/SCurveEditorTreePin.h"
 #include "Tree/CurveEditorTreeFilter.h"
 #include "ScopedTransaction.h"
-#include "MovieSceneTrack.h"
 #include "SequencerKeyTimeCache.h"
 #include "SequencerNodeSortingMethods.h"
 #include "SequencerSelectionCurveFilter.h"
@@ -341,8 +340,8 @@ void SSequencerCombinedKeysTrack::GenerateCachedKeyPositions(const FGeometry& Al
 		}
 
 		// Generate a new cache
-		FSequencerCachedKeys TempCache(KeyArea);
-		TempCache.Update(CachedTickResolution);
+		FSequencerCachedKeys TempCache;
+		TempCache.Update(KeyArea, CachedTickResolution);
 
 		if (CacheKey.IsValid())
 		{
@@ -452,8 +451,6 @@ void FSequencerDisplayNode::SetParent(TSharedPtr<FSequencerDisplayNode> InParent
 	TSharedPtr<FSequencerDisplayNode> CurrentParent = ParentNode.Pin();
 	if (CurrentParent != InParent)
 	{
-		const FString OldPath = GetPathName();
-
 		TSharedRef<FSequencerDisplayNode> ThisNode = AsShared();
 		if (CurrentParent)
 		{
@@ -481,11 +478,9 @@ void FSequencerDisplayNode::SetParent(TSharedPtr<FSequencerDisplayNode> InParent
 				ParentTree.SavePinnedState(*this, false);
 			}
 		}
-
-		ParentNode = InParent;
-
-		ParentTree.GetSequencer().OnNodePathChanged(OldPath, GetPathName());
 	}
+
+	ParentNode = InParent;
 }
 
 void FSequencerDisplayNode::MoveChild(int32 InChildIndex, int32 InDesiredNewIndex)
@@ -586,22 +581,6 @@ TSharedPtr<FSequencerObjectBindingNode> FSequencerDisplayNode::FindParentObjectB
 
 	return nullptr;
 }
-
-TSharedPtr<FSequencerTrackNode> FSequencerDisplayNode::FindParentTrackNode() const
-{
-	TSharedPtr<FSequencerDisplayNode> CurrentParentNode = GetParent();
-	while (CurrentParentNode.IsValid())
-	{
-		if (CurrentParentNode->GetType() == ESequencerNode::Track)
-		{
-			return StaticCastSharedPtr<FSequencerTrackNode>(CurrentParentNode);
-		}
-		CurrentParentNode = CurrentParentNode->GetParent();
-	}
-
-	return nullptr;
-}
-
 
 FGuid FSequencerDisplayNode::GetObjectGuid() const
 {
@@ -791,12 +770,6 @@ bool FSequencerDisplayNode::IsDimmed() const
 	return bDimLabel;
 }
 
-FSlateFontInfo FSequencerDisplayNode::GetDisplayNameFont() const
-{
-	FSlateFontInfo NodeFont = FEditorStyle::GetFontStyle("Sequencer.AnimationOutliner.RegularFont");
-	return NodeFont;
-}
-
 FLinearColor FSequencerDisplayNode::GetDisplayNameColor() const
 {
 	return IsDimmed() ? FLinearColor(0.6f, 0.6f, 0.6f, 0.6f) : FLinearColor(1.0f, 1.0f, 1.0f, 1.0f);
@@ -812,11 +785,6 @@ bool FSequencerDisplayNode::ValidateDisplayName(const FText& NewDisplayName, FTe
 	if (NewDisplayName.IsEmpty())
 	{
 		OutErrorMessage = NSLOCTEXT("Sequencer", "RenameFailed_LeftBlank", "Labels cannot be left blank");
-		return false;
-	}
-	else if (NewDisplayName.ToString().Len() >= NAME_SIZE)
-	{
-		OutErrorMessage = FText::Format(NSLOCTEXT("Sequencer", "RenameFailed_TooLong", "Names must be less than {0} characters long"), NAME_SIZE);
 		return false;
 	}
 	return true;
@@ -930,12 +898,6 @@ FString FSequencerDisplayNode::GetPathName() const
 	return PathName;
 }
 
-void FSequencerDisplayNode::SetNodeName(const FName& InName)
-{
-	const FString OldPath = GetPathName();
-	NodeName = InName;
-	ParentTree.GetSequencer().OnNodePathChanged(OldPath, GetPathName());
-}
 
 TSharedPtr<SWidget> FSequencerDisplayNode::OnSummonContextMenu()
 {
@@ -966,7 +928,7 @@ TSharedPtr<SWidget> FSequencerDisplayNode::OnSummonContextMenu()
 
 namespace
 {
-	void AddEvalOptionsPropertyMenuItem(FMenuBuilder& MenuBuilder, FCanExecuteAction InCanExecute, const TArray<UMovieSceneTrack*>& AllTracks, const FBoolProperty* Property, TFunction<bool(UMovieSceneTrack*)> Validator = nullptr)
+	void AddEvalOptionsPropertyMenuItem(FMenuBuilder& MenuBuilder, FCanExecuteAction InCanExecute, const TArray<UMovieSceneTrack*>& AllTracks, const UBoolProperty* Property, TFunction<bool(UMovieSceneTrack*)> Validator = nullptr)
 	{
 		bool bIsChecked = AllTracks.ContainsByPredicate(
 			[=](UMovieSceneTrack* InTrack)
@@ -1000,7 +962,7 @@ namespace
 		);
 	}
 
-	void AddDisplayOptionsPropertyMenuItem(FMenuBuilder& MenuBuilder, FCanExecuteAction InCanExecute, const TArray<UMovieSceneTrack*>& AllTracks, const FBoolProperty* Property, TFunction<bool(UMovieSceneTrack*)> Validator = nullptr)
+	void AddDisplayOptionsPropertyMenuItem(FMenuBuilder& MenuBuilder, FCanExecuteAction InCanExecute, const TArray<UMovieSceneTrack*>& AllTracks, const UBoolProperty* Property, TFunction<bool(UMovieSceneTrack*)> Validator = nullptr)
 	{
 		bool bIsChecked = AllTracks.ContainsByPredicate(
 			[=](UMovieSceneTrack* InTrack)
@@ -1043,9 +1005,9 @@ void FSequencerDisplayNode::BuildContextMenu(FMenuBuilder& MenuBuilder)
 
 	ESequencerNode::Type BaseNodeType = BaseNode->GetType();
 
-	bool bFilterableNode = (BaseNodeType == ESequencerNode::Track || BaseNodeType == ESequencerNode::Object || BaseNodeType == ESequencerNode::Folder);
-	bool bIsReadOnly = GetSequencer().IsReadOnly();
-	FCanExecuteAction CanExecute = FCanExecuteAction::CreateLambda([bIsReadOnly]{ return !bIsReadOnly; });
+	bool bCanSolo = (BaseNodeType == ESequencerNode::Track || BaseNodeType == ESequencerNode::Object || BaseNodeType == ESequencerNode::Folder);
+	bool bIsReadOnly = !GetSequencer().IsReadOnly();
+	FCanExecuteAction CanExecute = FCanExecuteAction::CreateLambda([bIsReadOnly]{ return bIsReadOnly; });
 
 	MenuBuilder.BeginSection("Edit", LOCTEXT("EditContextMenuSectionName", "Edit"));
 	{
@@ -1079,7 +1041,7 @@ void FSequencerDisplayNode::BuildContextMenu(FMenuBuilder& MenuBuilder)
 			);
 		}
 
-		if (bFilterableNode)
+		if (bCanSolo)
 		{
 			MenuBuilder.AddMenuEntry(
 				LOCTEXT("ToggleNodeSolo", "Solo"),
@@ -1175,15 +1137,6 @@ void FSequencerDisplayNode::BuildContextMenu(FMenuBuilder& MenuBuilder)
 				FSlateIcon(FEditorStyle::GetStyleSetName(), "ContentBrowser.AssetTreeFolderOpen"),
 				FUIAction(FExecuteAction::CreateSP(&GetSequencer(), &FSequencer::MoveSelectedNodesToNewFolder)));
 		}
-
-		if (bFilterableNode && !bIsReadOnly)
-		{
-			MenuBuilder.AddSubMenu(
-				LOCTEXT("AddNodesToNodeGroup", "Add to Group"),
-				LOCTEXT("AddNodesToNodeGroupTooltip", "Add selected nodes to a group"),
-				FNewMenuDelegate::CreateSP(&GetSequencer(), &FSequencer::BuildAddSelectedToNodeGroupMenu));
-
-		}
 	}
 	MenuBuilder.EndSection();
 
@@ -1193,7 +1146,7 @@ void FSequencerDisplayNode::BuildContextMenu(FMenuBuilder& MenuBuilder)
 		{
 			UStruct* EvalOptionsStruct = FMovieSceneTrackEvalOptions::StaticStruct();
 
-			const FBoolProperty* NearestSectionProperty = CastField<FBoolProperty>(EvalOptionsStruct->FindPropertyByName(GET_MEMBER_NAME_CHECKED(FMovieSceneTrackEvalOptions, bEvalNearestSection)));
+			const UBoolProperty* NearestSectionProperty = Cast<UBoolProperty>(EvalOptionsStruct->FindPropertyByName(GET_MEMBER_NAME_CHECKED(FMovieSceneTrackEvalOptions, bEvalNearestSection)));
 			auto CanEvaluateNearest = [](UMovieSceneTrack* InTrack) { return InTrack->EvalOptions.bCanEvaluateNearestSection != 0; };
 			if (NearestSectionProperty && AllTracks.ContainsByPredicate(CanEvaluateNearest))
 			{
@@ -1201,13 +1154,13 @@ void FSequencerDisplayNode::BuildContextMenu(FMenuBuilder& MenuBuilder)
 				AddEvalOptionsPropertyMenuItem(MenuBuilder, CanExecute, AllTracks, NearestSectionProperty, Validator);
 			}
 
-			const FBoolProperty* PrerollProperty = CastField<FBoolProperty>(EvalOptionsStruct->FindPropertyByName(GET_MEMBER_NAME_CHECKED(FMovieSceneTrackEvalOptions, bEvaluateInPreroll)));
+			const UBoolProperty* PrerollProperty = Cast<UBoolProperty>(EvalOptionsStruct->FindPropertyByName(GET_MEMBER_NAME_CHECKED(FMovieSceneTrackEvalOptions, bEvaluateInPreroll)));
 			if (PrerollProperty)
 			{
 				AddEvalOptionsPropertyMenuItem(MenuBuilder, CanExecute, AllTracks, PrerollProperty);
 			}
 
-			const FBoolProperty* PostrollProperty = CastField<FBoolProperty>(EvalOptionsStruct->FindPropertyByName(GET_MEMBER_NAME_CHECKED(FMovieSceneTrackEvalOptions, bEvaluateInPostroll)));
+			const UBoolProperty* PostrollProperty = Cast<UBoolProperty>(EvalOptionsStruct->FindPropertyByName(GET_MEMBER_NAME_CHECKED(FMovieSceneTrackEvalOptions, bEvaluateInPostroll)));
 			if (PostrollProperty)
 			{
 				AddEvalOptionsPropertyMenuItem(MenuBuilder, CanExecute, AllTracks, PostrollProperty);
@@ -1219,7 +1172,7 @@ void FSequencerDisplayNode::BuildContextMenu(FMenuBuilder& MenuBuilder)
 		{
 			UStruct* DisplayOptionsStruct = FMovieSceneTrackDisplayOptions::StaticStruct();
 
-			const FBoolProperty* ShowVerticalFramesProperty = CastField<FBoolProperty>(DisplayOptionsStruct->FindPropertyByName(GET_MEMBER_NAME_CHECKED(FMovieSceneTrackDisplayOptions, bShowVerticalFrames)));
+			const UBoolProperty* ShowVerticalFramesProperty = Cast<UBoolProperty>(DisplayOptionsStruct->FindPropertyByName(GET_MEMBER_NAME_CHECKED(FMovieSceneTrackDisplayOptions, bShowVerticalFrames)));
 			if (ShowVerticalFramesProperty)
 			{
 				AddDisplayOptionsPropertyMenuItem(MenuBuilder, CanExecute, AllTracks, ShowVerticalFramesProperty);
@@ -1383,7 +1336,6 @@ TSharedPtr<SWidget> FSequencerDisplayNode::GenerateCurveEditorTreeWidget(const F
 			[
 				SNew(STextBlock)
 				.Text(this, &FSequencerDisplayNode::GetDisplayName)
-				.Font(this, &FSequencerDisplayNode::GetDisplayNameFont)
 				.HighlightText_Static(SequencerNodeConstants::GetCurveEditorHighlightText, InCurveEditor)
 				.ToolTipText(this, &FSequencerDisplayNode::GetDisplayNameToolTipText)
 			];

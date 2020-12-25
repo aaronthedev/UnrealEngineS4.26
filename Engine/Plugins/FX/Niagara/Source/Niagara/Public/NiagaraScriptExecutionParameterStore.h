@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -16,13 +16,13 @@ public:
 	FNiagaraScriptExecutionPaddingInfo(uint32 InSrcOffset, uint32 InDestOffset, uint32 InSrcSize, uint32 InDestSize) : SrcOffset(InSrcOffset), DestOffset(InDestOffset), SrcSize(InSrcSize), DestSize(InDestSize) {}
 
 	UPROPERTY()
-	uint16 SrcOffset;
+	uint32 SrcOffset;
 	UPROPERTY()
-	uint16 DestOffset;
+	uint32 DestOffset;
 	UPROPERTY()
-	uint16 SrcSize;
+	uint32 SrcSize;
 	UPROPERTY()
-	uint16 DestSize;
+	uint32 DestSize;
 };
 
 /**
@@ -42,16 +42,15 @@ public:
 
 	//TODO: These function can probably go away entirely when we replace the FNiagaraParameters and DataInterface info in the script with an FNiagaraParameterStore.
 	//Special care with prev params and internal params will have to be taken there.
-#if WITH_EDITORONLY_DATA
 	/** Call this init function if you are using a Niagara parameter store within a UNiagaraScript.*/
 	void InitFromOwningScript(UNiagaraScript* Script, ENiagaraSimTarget SimTarget, bool bNotifyAsDirty);
+	/** Call this init function if you are using a Niagara parameter store within an FNiagaraScriptExecutionContext.*/
+	void InitFromOwningContext(UNiagaraScript* Script, ENiagaraSimTarget SimTarget, bool bNotifyAsDirty);
 	void AddScriptParams(UNiagaraScript* Script, ENiagaraSimTarget SimTarget, bool bTriggerRebind);
-	void CoalescePaddingInfo();
-#endif
+	void CopyCurrToPrev();
 
 	virtual bool AddParameter(const FNiagaraVariable& Param, bool bInitInterfaces = true, bool bTriggerRebind = true, int32* OutOffset = nullptr) override
 	{
-#if WITH_EDITORONLY_DATA
 		int32 NewParamOffset = INDEX_NONE;
 		const bool bAdded = FNiagaraParameterStore::AddParameter(Param, bInitInterfaces, bTriggerRebind, &NewParamOffset);
 		if (bAdded)
@@ -63,40 +62,43 @@ public:
 			*OutOffset = NewParamOffset;
 		}
 		return bAdded;
-#else
-		check(0);
-		return false;
-#endif
 	}
 
-	virtual bool RemoveParameter(const FNiagaraVariableBase& Param) override
+	virtual bool RemoveParameter(const FNiagaraVariable& Param) override
 	{
 		check(0);//Not allowed to remove parameters from an execution store as it will adjust the table layout mess up the 
 		return false;
 	}
 
-	virtual void RenameParameter(const FNiagaraVariableBase& Param, FName NewName) override
+	void RenameParameter(FNiagaraVariable& Param, FName NewName)
 	{
 		check(0);//Can't rename parameters for an execution store.
 	}
 
-	virtual void Empty(bool bClearBindings = true) override
+	virtual void Empty(bool bClearBindings=true) override
 	{
 		FNiagaraParameterStore::Empty(bClearBindings);
-		ParameterSize = 0;
-		PaddedParameterSize = 0;
 		PaddingInfo.Empty();
+		PaddedParameterSize = 0;
 		bInitialized = false;
 	}
 
-	virtual void Reset(bool bClearBindings = true) override
-	{
-		FNiagaraParameterStore::Reset(bClearBindings);
-		ParameterSize = 0;
-		PaddedParameterSize = 0;
-		PaddingInfo.Empty();
-		bInitialized = false;
-	}
+	// Just the external parameters, not previous or internal...
+	uint32 GetExternalParameterSize() { return ParameterSize; }
+
+	// The entire buffer padded out by the required alignment of the types..
+	uint32 GetPaddedParameterSizeInBytes() { return PaddedParameterSize; }
+
+	// Helper that converts the data from the base type array internally into the padded out renderer-ready format.
+	void CopyParameterDataToPaddedBuffer(uint8* InTargetBuffer, uint32 InTargetBufferSizeInBytes);
+
+
+	bool IsInitialized() const {return bInitialized;}
+	void SetAsInitialized() { bInitialized = true; }
+protected:
+	void AddPaddedParamSize(const FNiagaraTypeDefinition& InParamType, uint32 InOffset);
+
+private:
 
 	/** Size of the parameter data not including prev frame values or internal constants. Allows copying into previous parameter values for interpolated spawn scripts. */
 	UPROPERTY()
@@ -105,91 +107,11 @@ public:
 	UPROPERTY()
 	uint32 PaddedParameterSize;
 
+	static void GenerateLayoutInfoInternal(TArray<FNiagaraScriptExecutionPaddingInfo>& Members, uint32& NextMemberOffset, const UStruct* InSrcStruct, uint32 InSrcOffset);
+
 	UPROPERTY()
 	TArray<FNiagaraScriptExecutionPaddingInfo> PaddingInfo;
 
 	UPROPERTY()
-	uint8 bInitialized : 1;
-
-#if WITH_EDITORONLY_DATA
-	TArray<uint8> CachedScriptLiterals;
-#endif
-
-protected:
-	void AddPaddedParamSize(const FNiagaraTypeDefinition& InParamType, uint32 InOffset);
-	void AddAlignmentPadding();
-
-private:
-
-#if WITH_EDITORONLY_DATA
-	static uint32 GenerateLayoutInfoInternal(TArray<FNiagaraScriptExecutionPaddingInfo>& Members, uint32& NextMemberOffset, const UStruct* InSrcStruct, uint32 InSrcOffset);
-#endif
-};
-
-//////////////////////////////////////////////////////////////////////////
-/// FNiagaraScriptInstanceParameterStore
-//////////////////////////////////////////////////////////////////////////
-
-USTRUCT()
-struct FNiagaraScriptInstanceParameterStore : public FNiagaraParameterStore
-{
-	GENERATED_USTRUCT_BODY()
-
-public:
-	FNiagaraScriptInstanceParameterStore();
-	virtual ~FNiagaraScriptInstanceParameterStore() = default;
-
-	/** Call this init function if you are using a Niagara parameter store within an FNiagaraScriptExecutionContext.*/
-	void InitFromOwningContext(UNiagaraScript* Script, ENiagaraSimTarget SimTarget, bool bNotifyAsDirty);
-	void CopyCurrToPrev();
-
-	virtual bool AddParameter(const FNiagaraVariable& Param, bool bInitInterfaces = true, bool bTriggerRebind = true, int32* OutOffset = nullptr) override
-	{
-		check(0);
-		return false;
-	}
-
-	virtual bool RemoveParameter(const FNiagaraVariableBase& Param) override
-	{
-		check(0);//Not allowed to remove parameters from an execution store as it will adjust the table layout mess up the 
-		return false;
-	}
-
-	virtual void RenameParameter(const FNiagaraVariableBase& Param, FName NewName) override
-	{
-		check(0);//Can't rename parameters for an execution store.
-	}
-
-	virtual void Empty(bool bClearBindings = true) override
-	{
-		FNiagaraParameterStore::Empty(bClearBindings);
-		ScriptParameterStore.Reset();
-		bInitialized = false;
-	}
-
-	virtual void Reset(bool bClearBindings = true) override
-	{
-		FNiagaraParameterStore::Reset(bClearBindings);
-		ScriptParameterStore.Reset();
-		bInitialized = false;
-	}
-
-	// Just the external parameters, not previous or internal...
-	uint32 GetExternalParameterSize() const;
-
-	uint32 GetPaddedParameterSizeInBytes() const;
-
-	// Helper that converts the data from the base type array internally into the padded out renderer-ready format.
-	void CopyParameterDataToPaddedBuffer(uint8* InTargetBuffer, uint32 InTargetBufferSizeInBytes) const;
-
-#if WITH_EDITORONLY_DATA
-	TArrayView<const uint8> GetScriptLiterals() const;
-#endif
-
-	virtual TArrayView<const FNiagaraVariableWithOffset> ReadParameterVariables() const override;
-
-private:
-	FNiagaraCompiledDataReference<FNiagaraScriptExecutionParameterStore> ScriptParameterStore;
-
 	uint8 bInitialized : 1;
 };

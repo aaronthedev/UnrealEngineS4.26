@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -61,13 +61,6 @@ namespace UnrealBuildTool
 		public bool bEnableUndefinedBehaviorSanitizer = false;
 
 		/// <summary>
-		/// Enables memory sanitizer (MSan)
-		/// </summary>
-		[CommandLine("-EnableMSan")]
-		[XmlConfigFile(Category = "BuildConfiguration", Name = "bEnableMemorySanitizer")]
-		public bool bEnableMemorySanitizer = false;
-
-		/// <summary>
 		/// Enables "thin" LTO
 		/// </summary>
 		[CommandLine("-ThinLTO")]
@@ -127,11 +120,6 @@ namespace UnrealBuildTool
 			get { return Inner.bEnableUndefinedBehaviorSanitizer; }
 		}
 
-		public bool bEnableMemorySanitizer
-		{
-			get { return Inner.bEnableMemorySanitizer; }
-		}
-
 		public bool bEnableThinLTO
 		{
 			get { return Inner.bEnableThinLTO; }
@@ -179,15 +167,6 @@ namespace UnrealBuildTool
 		}
 
 		/// <summary>
-		/// Returns SDK string as required by the platform
-		/// </summary>
-		/// <returns>Valid SDK string</returns>
-		public override string GetRequiredSDKString()
-		{
-			return SDK.GetRequiredSDKString();
-		}
-
-		/// <summary>
 		/// Find the default architecture for the given project
 		/// </summary>
 		public override string GetDefaultArchitecture(FileReference ProjectFile)
@@ -230,33 +209,6 @@ namespace UnrealBuildTool
 				Target.bAllowLTCG = true;
 			}
 
-			if (!Target.IsNameOverriden())
-			{
-				string SanitizerSuffix = null;
-
-				if (Target.LinuxPlatform.bEnableAddressSanitizer)
-				{
-					SanitizerSuffix = "ASan";
-				}
-				else if (Target.LinuxPlatform.bEnableThreadSanitizer)
-				{
-					SanitizerSuffix = "TSan";
-				}
-				else if (Target.LinuxPlatform.bEnableUndefinedBehaviorSanitizer)
-				{
-					SanitizerSuffix = "UBSan";
-				}
-				else if (Target.LinuxPlatform.bEnableMemorySanitizer)
-				{
-					SanitizerSuffix = "MSan";
-				}
-
-				if (!String.IsNullOrEmpty(SanitizerSuffix))
-				{
-					Target.Name = Target.Name + "-" + SanitizerSuffix;
-				}
-			}
-
 			if (Target.bAllowLTCG && Target.LinkType != TargetLinkType.Monolithic)
 			{
 				throw new BuildException("LTO (LTCG) for modular builds is not supported (lld is not currently used for dynamic libraries).");
@@ -274,7 +226,11 @@ namespace UnrealBuildTool
 			// check if OS update invalidated our build
 			Target.bCheckSystemHeadersForModification = (BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Linux);
 
-			Target.bCompileISPC = Target.Architecture.StartsWith("x86_64");
+			// At the moment ICU has not been compiled for AArch64 and i686.
+			if (Target.Architecture.StartsWith("aarch64") || Target.Architecture.StartsWith("i686"))
+			{
+				Target.bCompileICU = false;
+			}
 		}
 
 		/// <summary>
@@ -382,12 +338,6 @@ namespace UnrealBuildTool
 		/// <param name="Target">The target being build</param>
 		public override void ModifyModuleRulesForOtherPlatform(string ModuleName, ModuleRules Rules, ReadOnlyTargetRules Target)
 		{
-			// don't do any target platform stuff if SDK is not available
-			if (!UEBuildPlatform.IsPlatformAvailable(Platform))
-			{
-				return;
-			}
-
 			if ((Target.Platform == UnrealTargetPlatform.Win32) || (Target.Platform == UnrealTargetPlatform.Win64))
 			{
 				if (!Target.bBuildRequiresCookedData)
@@ -459,7 +409,6 @@ namespace UnrealBuildTool
 				{
 					Rules.DynamicallyLoadedModuleNames.Add("ShaderFormatOpenGL");
 					Rules.DynamicallyLoadedModuleNames.Add("VulkanShaderFormat");
-					Rules.DynamicallyLoadedModuleNames.Add("ShaderFormatVectorVM");
 				}
 			}
 		}
@@ -543,7 +492,7 @@ namespace UnrealBuildTool
 			}
 
 			// link with Linux libraries.
-			LinkEnvironment.SystemLibraries.Add("pthread");
+			LinkEnvironment.AdditionalLibraries.Add("pthread");
 
 			// let this class or a sub class do settings specific to that class
 			SetUpSpecificEnvironment(Target, CompileEnvironment, LinkEnvironment);
@@ -576,55 +525,21 @@ namespace UnrealBuildTool
 		{
 			LinuxToolChainOptions Options = LinuxToolChainOptions.None;
 
-			if (Target.LinuxPlatform.bEnableAddressSanitizer)
+			if(Target.LinuxPlatform.bEnableAddressSanitizer)
 			{
 				Options |= LinuxToolChainOptions.EnableAddressSanitizer;
-
-				if (Target.LinkType != TargetLinkType.Monolithic)
-				{
-					Options |= LinuxToolChainOptions.EnableSharedSanitizer;
-				}
 			}
-			if (Target.LinuxPlatform.bEnableThreadSanitizer)
+			if(Target.LinuxPlatform.bEnableThreadSanitizer)
 			{
 				Options |= LinuxToolChainOptions.EnableThreadSanitizer;
-
-				if (Target.LinkType != TargetLinkType.Monolithic)
-				{
-					throw new BuildException("Thread Sanitizer (TSan) unsupported for non-monolithic builds");
-				}
 			}
-			if (Target.LinuxPlatform.bEnableUndefinedBehaviorSanitizer)
+			if(Target.LinuxPlatform.bEnableUndefinedBehaviorSanitizer)
 			{
 				Options |= LinuxToolChainOptions.EnableUndefinedBehaviorSanitizer;
-
-				if (Target.LinkType != TargetLinkType.Monolithic)
-				{
-					Options |= LinuxToolChainOptions.EnableSharedSanitizer;
-				}
 			}
-			if (Target.LinuxPlatform.bEnableMemorySanitizer)
-			{
-				Options |= LinuxToolChainOptions.EnableMemorySanitizer;
-
-				if (Target.LinkType != TargetLinkType.Monolithic)
-				{
-					throw new BuildException("Memory Sanitizer (MSan) unsupported for non-monolithic builds");
-				}
-			}
-			if (Target.LinuxPlatform.bEnableThinLTO)
+			if(Target.LinuxPlatform.bEnableThinLTO)
 			{
 				Options |= LinuxToolChainOptions.EnableThinLTO;
-			}
-
-			// When building a monolithic editor we have to avoid using objcopy.exe as it cannot handle files
-			// larger then 4GB. This is only an issue with our binutils objcopy.exe.
-			// llvm-objcopy.exe does not have this issue and once we switch over to using that in clang 10.0.1 we can remove this!
-			if ((BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Win64) &&
-				(Target.LinkType == TargetLinkType.Monolithic) &&
-				(Target.Type == TargetType.Editor))
-			{
-				Options |= LinuxToolChainOptions.DisableSplitDebugInfoWithObjCopy;
 			}
 
 			return new LinuxToolChain(Target.Architecture, SDK, Target.LinuxPlatform.bPreservePSYM, Options);
@@ -644,7 +559,7 @@ namespace UnrealBuildTool
 		/// <summary>
 		/// This is the SDK version we support
 		/// </summary>
-		static string ExpectedSDKVersion = "v17_clang-10.0.1-centos7";	// now unified for all the architectures
+		static string ExpectedSDKVersion = "v15_clang-8.0.1-centos7";	// now unified for all the architectures
 
 		/// <summary>
 		/// Platform name (embeds architecture for now)
@@ -685,35 +600,10 @@ namespace UnrealBuildTool
 		}
 
 		/// <summary>
-		/// Returns a path to the internal SDK
-		/// </summary>
-		/// <returns>Valid path to the internal SDK, null otherwise</returns>
-		static public string GetInternalSDKPath()
-		{
-			string SDKRoot = Environment.GetEnvironmentVariable(SDKRootEnvVar);
-			if (!String.IsNullOrEmpty(SDKRoot))
-			{
-				string AutoSDKPath = Path.Combine(SDKRoot, "Host" + BuildHostPlatform.Current.Platform, TargetPlatformName, ExpectedSDKVersion, LinuxPlatform.DefaultHostArchitecture);
-				if (DirectoryReference.Exists(new DirectoryReference(AutoSDKPath)))
-				{
-					return AutoSDKPath;
-				}
-			}
-
-			string InTreeSDKPath = Path.Combine(LinuxPlatformSDK.GetInTreeSDKRoot().FullName, ExpectedSDKVersion, LinuxPlatform.DefaultHostArchitecture);
-			if (DirectoryReference.Exists(new DirectoryReference(InTreeSDKPath)))
-			{
-				return InTreeSDKPath;
-			}
-
-			return null;
-		}
-
-		/// <summary>
 		/// Returns SDK string as required by the platform
 		/// </summary>
 		/// <returns>Valid SDK string</returns>
-		public override string GetRequiredSDKString()
+		protected override string GetRequiredSDKString()
 		{
 			return ExpectedSDKVersion;
 		}
@@ -927,15 +817,22 @@ namespace UnrealBuildTool
 			LinuxPlatformSDK SDK = new LinuxPlatformSDK();
 			SDK.ManageAndValidateSDK();
 
-			// Register this build platform for Linux x86-64 and AArch64
-			UEBuildPlatform.RegisterBuildPlatform(new LinuxPlatform(UnrealTargetPlatform.Linux, SDK));
-			UEBuildPlatform.RegisterPlatformWithGroup(UnrealTargetPlatform.Linux, UnrealPlatformGroup.Linux);
-			UEBuildPlatform.RegisterPlatformWithGroup(UnrealTargetPlatform.Linux, UnrealPlatformGroup.Unix);
-			UEBuildPlatform.RegisterPlatformWithGroup(UnrealTargetPlatform.Linux, UnrealPlatformGroup.Desktop);
+			if ((ProjectFileGenerator.bGenerateProjectFiles == true) || (SDK.HasRequiredSDKsInstalled() == SDKStatus.Valid))
+			{
+				FileReference LinuxTargetPlatformFile = FileReference.Combine(UnrealBuildTool.EngineSourceDirectory, "Developer", "Linux", "LinuxTargetPlatform", "LinuxTargetPlatform.Build.cs");
+				if (FileReference.Exists(LinuxTargetPlatformFile))
+				{
+					// Register this build platform for Linux x86-64 and AArch64
+					Log.TraceVerbose("        Registering for {0}", UnrealTargetPlatform.Linux.ToString());
+					UEBuildPlatform.RegisterBuildPlatform(new LinuxPlatform(UnrealTargetPlatform.Linux, SDK));
+					UEBuildPlatform.RegisterPlatformWithGroup(UnrealTargetPlatform.Linux, UnrealPlatformGroup.Linux);
+					UEBuildPlatform.RegisterPlatformWithGroup(UnrealTargetPlatform.Linux, UnrealPlatformGroup.Unix);
 
-			UEBuildPlatform.RegisterBuildPlatform(new LinuxPlatform(UnrealTargetPlatform.LinuxAArch64, SDK));
-			UEBuildPlatform.RegisterPlatformWithGroup(UnrealTargetPlatform.LinuxAArch64, UnrealPlatformGroup.Linux);
-			UEBuildPlatform.RegisterPlatformWithGroup(UnrealTargetPlatform.LinuxAArch64, UnrealPlatformGroup.Unix);
+					UEBuildPlatform.RegisterBuildPlatform(new LinuxPlatform(UnrealTargetPlatform.LinuxAArch64, SDK));
+					UEBuildPlatform.RegisterPlatformWithGroup(UnrealTargetPlatform.LinuxAArch64, UnrealPlatformGroup.Linux);
+					UEBuildPlatform.RegisterPlatformWithGroup(UnrealTargetPlatform.LinuxAArch64, UnrealPlatformGroup.Unix);
+				}
+			}
 		}
 	}
 }

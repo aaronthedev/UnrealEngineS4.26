@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Chat/ChatSlashCommands.h"
 #include "Chat/SocialChatManager.h"
@@ -44,7 +44,7 @@ void FRegisteredSlashCommands::RegisterCommand(const TSharedPtr<FChatSlashComman
 {
 	if (NewSlashCommand.IsValid())
 	{
-		for (const TSharedPtr<FChatSlashCommand>& Cmd : RegisteredCustomSlashCommands)
+		for (const TSharedPtr<FChatSlashCommand> Cmd : RegisteredCustomSlashCommands)
 		{
 			if (Cmd.IsValid())
 			{
@@ -278,7 +278,7 @@ void FRegisteredSlashCommands::HandleCultureChanged() const
 	{
 		CustomCmd->RecacheForLocalization();
 	}
-	for (const TSharedPtr<FChatSlashCommand> InteractionCmd : RegisteredInteractionSlashCommands)
+	for (const TSharedPtr<FChatSlashCommand>& InteractionCmd : RegisteredInteractionSlashCommands)
 	{
 		InteractionCmd->RecacheForLocalization();
 	}

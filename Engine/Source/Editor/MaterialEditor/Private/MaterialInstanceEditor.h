@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -58,10 +58,7 @@ public:
 	/** IToolkit interface */
 	virtual FName GetToolkitFName() const override;
 	virtual FText GetBaseToolkitName() const override;
-	virtual FText GetToolkitName() const override;
-	virtual FText GetToolkitToolTipText() const override;
 	virtual FString GetWorldCentricTabPrefix() const override;
-	virtual void InitToolMenuContext(struct FToolMenuContext& MenuContext) override;
 
 	/** @return Returns the color and opacity to use for the color that appears behind the tab text for this toolkit's tab in world-centric mode. */
 	virtual FLinearColor GetWorldCentricTabColorScale() const override;
@@ -70,10 +67,10 @@ public:
 	virtual UMaterialInterface* GetMaterialInterface() const override;
 
 	/** Pre edit change notify for properties. */
-	virtual void NotifyPreChange( FProperty* PropertyAboutToChange ) override;
+	virtual void NotifyPreChange( UProperty* PropertyAboutToChange ) override;
 
 	/** Post edit change notify for properties. */
-	virtual void NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, FProperty* PropertyThatChanged ) override;
+	virtual void NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, UProperty* PropertyThatChanged ) override;
 
 	void PreSavePackage(UPackage* Obj);
 
@@ -112,9 +109,6 @@ public:
 
 	/** call this to notify the editor that the edited material changed from outside */
 	virtual void NotifyExternalMaterialChange() override;
-
-	// IMaterial Editor Interface
-	virtual void GenerateInheritanceMenu(class UToolMenu* Menu) override;
 
 protected:
 	//~ FAssetEditorToolkit interface
@@ -163,6 +157,8 @@ private:
 	void RegisterToolBar();
 	/** Builds the toolbar widget for the material editor */
 	void ExtendToolbar();
+
+	void GenerateInheritanceMenu(UToolMenu* Menu);
 
 	/** If re-initializing for a material function instance re-generate the proxy materials */
 	void ReInitMaterialFunctionProxies();

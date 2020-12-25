@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -27,13 +27,11 @@ public class SequencerScriptingEditor : ModuleRules
 				"Core",
 				"TimeManagement",
 				"MovieScene",
-				"MovieSceneCaptureDialog",
-				"MovieSceneTools",
+                "MovieSceneTools",
                 "MovieSceneTracks",
-				"CinematicCamera",
-				"SequencerScripting",
-			}
-		);
+                "CinematicCamera",
+            }
+        );
 
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
@@ -44,11 +42,11 @@ public class SequencerScriptingEditor : ModuleRules
 				"PythonScriptPlugin",
 				"Slate",
 				"SlateCore",
+				"MovieSceneCaptureDialog",
                 "MovieSceneCapture",
                 "LevelSequence",
+				"SequencerScripting",
                 "UnrealEd",
-                "Sequencer",
-                "BlueprintGraph"
             }
 		);
 

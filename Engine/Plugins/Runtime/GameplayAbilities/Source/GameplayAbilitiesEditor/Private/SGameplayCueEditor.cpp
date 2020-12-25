@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SGameplayCueEditor.h"
 #include "Modules/ModuleManager.h"
@@ -903,10 +903,10 @@ TSharedRef<ITableRow> SGameplayCueEditorImpl::OnGenerateWidgetForGameplayCueList
 					int32 idx;
 					if (ObjName.FindLastChar(TEXT('.'), idx))
 					{
-						ObjName.RightChopInline(idx + 1, false);
+						ObjName = ObjName.RightChop(idx + 1);
 						if (ObjName.FindLastChar(TEXT('_'), idx))
 						{
-							ObjName.LeftInline(idx);
+							ObjName = ObjName.Left(idx);
 						}
 					}
 

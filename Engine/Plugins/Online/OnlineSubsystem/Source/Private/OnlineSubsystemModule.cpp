@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineSubsystemModule.h"
 #include "Misc/CommandLine.h"
@@ -110,7 +110,28 @@ static inline void ReadOnlineSubsystemConfigPairs(const TCHAR* Section, const TC
 	GConfig->GetArray(Section, Key, ConfigPairs, ConfigFile);
 	OutPairs.Reserve(ConfigPairs.Num());
 
-	ParseOnlineSubsystemConfigPairs(ConfigPairs, OutPairs);
+	// Takes on the pattern "(Key=Value)"
+	for (const FString& ConfigEntry : ConfigPairs)
+	{
+		FString TrimmedConfigEntry = ConfigEntry.TrimStartAndEnd();
+		FString KeyString;
+		FString ValueString;
+
+		if (TrimmedConfigEntry.Left(1) == TEXT("("))
+		{
+			TrimmedConfigEntry = TrimmedConfigEntry.RightChop(1);
+		}
+		if (TrimmedConfigEntry.Right(1) == TEXT(")"))
+		{
+			TrimmedConfigEntry = TrimmedConfigEntry.LeftChop(1);
+		}
+		if (TrimmedConfigEntry.Split(TEXT("="), &KeyString, &ValueString))
+		{
+			KeyString.TrimStartAndEndInline();
+			ValueString.TrimStartAndEndInline();
+		}
+		OutPairs.Emplace(MoveTemp(KeyString), MoveTemp(ValueString));
+	}
 }
 
 void FOnlineSubsystemModule::ProcessConfigDefinedSubsystems()

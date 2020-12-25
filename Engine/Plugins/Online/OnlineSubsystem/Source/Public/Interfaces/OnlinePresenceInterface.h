@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -27,28 +27,25 @@ typedef FString FPresenceKey;
 typedef FOnlineKeyValuePairs<FPresenceKey, FVariantData> FPresenceProperties;
 
 /** The default key that will update presence text in the platform's UI */
-extern ONLINESUBSYSTEM_API const FString DefaultPresenceKey;
+const FString DefaultPresenceKey = TEXT("RichPresence");
 
 /** Custom presence data that is not seen by users but can be polled */
-extern ONLINESUBSYSTEM_API const FString CustomPresenceDataKey;
+const FString CustomPresenceDataKey = TEXT("CustomData");
 
 /** Name of the client that sent the presence update */
-extern ONLINESUBSYSTEM_API const FString DefaultAppIdKey;
-
-/** User friendly name of the client that sent the presence update */
-const FString DefaultProductNameKey = TEXT("ProductName");
+const FString DefaultAppIdKey = TEXT("AppId");
 
 /** Platform of the client that sent the presence update */
-extern ONLINESUBSYSTEM_API const FString DefaultPlatformKey;
+const FString DefaultPlatformKey = TEXT("Platform");
 
 /** Override Id of the client to set the presence state to */
-extern ONLINESUBSYSTEM_API const FString OverrideAppIdKey;
+const FString OverrideAppIdKey = TEXT("OverrideAppId");
 
 /** Id of the session for the presence update. @todo samz - SessionId on presence data should be FUniqueNetId not uint64 */
-extern ONLINESUBSYSTEM_API const FString DefaultSessionIdKey;
+const FString DefaultSessionIdKey = TEXT("SessionId");
 
 /** Resource the client is logged in with */
-extern ONLINESUBSYSTEM_API const FString PresenceResourceKey;
+const FString PresenceResourceKey = TEXT("ResourceKey");
 
 namespace EOnlinePresenceState
 {
@@ -184,7 +181,6 @@ public:
 	uint32 bIsPlayingThisGame:1;
 	uint32 bIsJoinable:1;
 	uint32 bHasVoiceSupport:1;
-	FDateTime LastOnline;
 	FOnlineUserPresenceStatus Status;
 
 	/** Constructor */
@@ -202,7 +198,6 @@ public:
 		bIsJoinable = 0;
 		bHasVoiceSupport = 0;
 		Status = FOnlineUserPresenceStatus();
-		LastOnline = FDateTime::MaxValue();
 	}
 
 	const FString GetPlatform() const
@@ -289,17 +284,8 @@ public:
 	 * @param Users The list of unique ids of the users to query for presence information.
 	 * @param Delegate The delegate to be executed when the potentially asynchronous query operation completes.
 	 */
+	//@todo samz - interface should be QueryPresence(const FUniqueNetId& User,  const TArray<TSharedRef<const FUniqueNetId> >& UserIds, const FOnPresenceTaskCompleteDelegate& Delegate)
 	virtual void QueryPresence(const FUniqueNetId& User, const FOnPresenceTaskCompleteDelegate& Delegate = FOnPresenceTaskCompleteDelegate()) = 0;
-
-	/**
-	 * Starts an async operation that will update the cache with presence data from all users in the Users array.
-	 * On platforms that support multiple keys, this function will query all keys.
-	 *
-	 * @param Users The unique id of the user initiating the query for presence information.
-	 * @param UserIds The list of unique ids of the users to query for presence information.
-	 * @param Delegate The delegate to be executed when the potentially asynchronous query operation completes.
-	 */
-	virtual void QueryPresence(const FUniqueNetId& LocalUserId, const TArray<TSharedRef<const FUniqueNetId>>& UserIds, const FOnPresenceTaskCompleteDelegate& Delegate) {};
 
 	/**
 	 * Delegate executed when new presence data is available for a user.

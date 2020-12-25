@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,8 +6,6 @@
 #include "UObject/Object.h"
 #include "UObject/Class.h"
 #include "Engine/Selection.h"
-
-static_assert(DO_BLUEPRINT_GUARD, "KismetDebugUtilities assumes BP exception tracking is enabled");
 
 class UBlueprint;
 class UBreakpoint;
@@ -139,7 +137,7 @@ public:
 	static void RequestStepOut();
 
 	/** Called on terminatation of the current script execution so we can reset any break conditions */
-	static void EndOfScriptExecution(const FBlueprintContextTracker& BlueprintContext);
+	static void EndOfScriptExecution();
 
 	// The maximum number of trace samples to gather before overwriting old ones
 	enum { MAX_TRACE_STACK_SAMPLES = 1024 };
@@ -197,10 +195,10 @@ public:
 	// Blueprint utils 
 
 	// Looks thru the debugging data for any class variables associated with the pin
-	static class FProperty* FindClassPropertyForPin(UBlueprint* Blueprint, const UEdGraphPin* Pin);
+	static class UProperty* FindClassPropertyForPin(UBlueprint* Blueprint, const UEdGraphPin* Pin);
 
 	// Looks thru the debugging data for any class variables associated with the node (e.g., temporary variables or timelines)
-	static class FProperty* FindClassPropertyForNode(UBlueprint* Blueprint, const UEdGraphNode* Node);
+	static class UProperty* FindClassPropertyForNode(UBlueprint* Blueprint, const UEdGraphNode* Node);
 
 	// Is there debugging data available for this blueprint?
 	static bool HasDebuggingData(const UBlueprint* Blueprint);
@@ -248,24 +246,12 @@ protected:
 	static void CheckBreakConditions(UEdGraphNode* NodeStoppedAt, bool bHitBreakpoint, int32 BreakpointOffset, bool& InOutBreakExecution);
 	static void AttemptToBreakExecution(UBlueprint* BlueprintObj, const UObject* ActiveObject, const FFrame& StackFrame, const FBlueprintExceptionInfo& Info, UEdGraphNode* NodeStoppedAt, int32 DebugOpcodeOffset);
 
-	static void GetDebugInfo_InContainer(int32 Index, FDebugInfo& DebugInfo, FProperty* Property, const void* Data);
-	static void GetDebugInfoInternal(FDebugInfo& DebugInfo, FProperty* Property, const void* PropertyValue);
+	static void GetDebugInfo_InContainer(int32 Index, FDebugInfo& DebugInfo, UProperty* Property, const void* Data);
+	static void GetDebugInfoInternal(FDebugInfo& DebugInfo, UProperty* Property, const void* PropertyValue);
 
-	/**
-	* @brief	Helper function for converting between blueprint and debuggable data
-	*			output params are only valid if the return result is EWatchTextResult::EWTR_Valid
-	* 
-	* @param 	Blueprint		Active blueprint that is being debugged
-	* @param 	ActiveObject	Instance of the object that is being debugged
-	* @param 	WatchPin		The pin where this debug breakpoint is from
-	* @param 	OutProperty		Property of interest
-	* @param 	OutData			Populated with the property address of interest
-	* @param 	OutDelta		Populated with the same thing as OutData
-	* @param 	OutParent		Populated with the active object
-	* @param 	SeenObjects		Used to track what objects have been traversed to find the OutProperty address
-	* @return	EWTR_Valid if the debug data could be found, otherwise an appropriate error code
-	*/
-	static EWatchTextResult FindDebuggingData(UBlueprint* Blueprint, UObject* ActiveObject, const UEdGraphPin* WatchPin, FProperty*& OutProperty, void*& OutData, void*& OutDelta, UObject*& OutParent, TArray<UObject*>& SeenObjects, bool* OutbShouldUseContainerOffset = nullptr);
+	// helper function for converting between blueprint and debuggable data
+	// output params are only valid if the return result is EWatchTextResult::EWTR_Valid
+	static EWatchTextResult FindDebuggingData(UBlueprint* Blueprint, UObject* ActiveObject, const UEdGraphPin* WatchPin, UProperty*& OutProperty, void*& OutData, void*& OutDelta, UObject*& OutParent, TArray<UObject*>& SeenObjects);
 
 private:
 	FKismetDebugUtilities() {}

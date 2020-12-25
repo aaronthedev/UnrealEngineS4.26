@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_OSTREAM_METHODS_H
-#define PXR_BASE_TF_OSTREAM_METHODS_H
+#ifndef TF_OSTREAMMETHODS_H
+#define TF_OSTREAMMETHODS_H
 
 /// \file tf/ostreamMethods.h
 /// \ingroup group_tf_DebuggingOutput
@@ -41,7 +41,7 @@
 #include "pxr/pxr.h"
 #include "pxr/base/tf/hashmap.h"
 
-#include <ostream>
+#include <iostream>
 #include <vector>
 #include <list>
 #include <map>
@@ -136,4 +136,4 @@ operator<<(std::ostream &out, const std::map<K, M> &h)
 
 } // namespace std
 
-#endif // PXR_BASE_TF_OSTREAM_METHODS_H 
+#endif // TF_OSTREAMMETHODS_H 

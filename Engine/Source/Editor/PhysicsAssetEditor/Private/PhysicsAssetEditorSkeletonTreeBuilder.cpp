@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PhysicsAssetEditorSkeletonTreeBuilder.h"
 #include "SkeletonTreePhysicsBodyItem.h"
@@ -14,10 +14,8 @@
 FPhysicsAssetEditorSkeletonTreeBuilder::FPhysicsAssetEditorSkeletonTreeBuilder(UPhysicsAsset* InPhysicsAsset, const FSkeletonTreeBuilderArgs& InSkeletonTreeBuilderArgs)
 	: FSkeletonTreeBuilder(InSkeletonTreeBuilderArgs)
 	, bShowBodies(true)
-	, bShowKinematicBodies(true)
-	, bShowSimulatedBodies(true)
-	, bShowConstraints(false)
-	, bShowPrimitives(false)
+	, bShowConstraints(true)
+	, bShowPrimitives(true)
 	, PhysicsAsset(InPhysicsAsset)
 {
 }
@@ -45,7 +43,7 @@ ESkeletonTreeFilterResult FPhysicsAssetEditorSkeletonTreeBuilder::FilterItem(con
 
 		if (InArgs.TextFilter.IsValid())
 		{
-			if (InArgs.TextFilter->TestTextFilter(FBasicStringFilterExpressionContext(InItem->GetRowItemName().ToString())))
+			if (InArgs.TextFilter->TestTextFilter(FSkeletonTreeFilterContext(InItem->GetRowItemName())))
 			{
 				Result = ESkeletonTreeFilterResult::ShownHighlighted;
 			}
@@ -57,26 +55,7 @@ ESkeletonTreeFilterResult FPhysicsAssetEditorSkeletonTreeBuilder::FilterItem(con
 
 		if(InItem->IsOfType<FSkeletonTreePhysicsBodyItem>())
 		{
-			bool bShouldHideBody = false;
 			if(!bShowBodies)
-			{
-				bShouldHideBody = true;
-			}
-			else
-			{
-				if (UBodySetup* BodySetup = Cast<UBodySetup>(InItem->GetObject()))
-				{
-					if (BodySetup->PhysicsType == EPhysicsType::PhysType_Simulated && !bShowSimulatedBodies)
-					{
-						bShouldHideBody = true;
-					}
-					else if (BodySetup->PhysicsType == EPhysicsType::PhysType_Kinematic && !bShowKinematicBodies)
-					{
-						bShouldHideBody = true;
-					}
-				}
-			}
-			if (bShouldHideBody)
 			{
 				Result = ESkeletonTreeFilterResult::Hidden;
 			}

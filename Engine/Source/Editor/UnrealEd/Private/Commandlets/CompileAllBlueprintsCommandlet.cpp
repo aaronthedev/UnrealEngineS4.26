@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Commandlets/CompileAllBlueprintsCommandlet.h"
 
@@ -22,7 +22,6 @@ UCompileAllBlueprintsCommandlet::UCompileAllBlueprintsCommandlet(const FObjectIn
 	bCookedOnly = false;
 	bDirtyOnly = false;
 	bSimpleAssetList = false;
-	BlueprintBaseClassName = UBlueprint::StaticClass()->GetFName();
 
 	TotalNumFailedLoads = 0;
 	TotalNumFatalIssues = 0;
@@ -80,11 +79,6 @@ void UCompileAllBlueprintsCommandlet::InitCommandLine(const FString& Params)
 	{
 		const FString& WhitelistFullPath = SwitchParams[TEXT("WhitelistFile")];
 		ParseWhitelist(WhitelistFullPath);
-	}
-
-	if (SwitchParams.Contains(TEXT("BlueprintBaseClass")))
-	{
-		BlueprintBaseClassName = *SwitchParams[TEXT("BlueprintBaseClass")];
 	}
 }
 
@@ -180,7 +174,7 @@ void UCompileAllBlueprintsCommandlet::BuildBlueprintAssetList()
 	UE_LOG(LogCompileAllBlueprintsCommandlet, Display, TEXT("Finished Loading Asset Registry."));
 	
 	UE_LOG(LogCompileAllBlueprintsCommandlet, Display, TEXT("Gathering All Blueprints From Asset Registry..."));
-	AssetRegistryModule.Get().GetAssetsByClass(BlueprintBaseClassName, BlueprintAssetList, true);
+	AssetRegistryModule.Get().GetAssetsByClass(UBlueprint::StaticClass()->GetFName(), BlueprintAssetList, true);
 }
 
 bool UCompileAllBlueprintsCommandlet::ShouldBuildAsset(FAssetData const& Asset) const
@@ -221,10 +215,10 @@ bool UCompileAllBlueprintsCommandlet::ShouldBuildAsset(FAssetData const& Asset) 
 		bShouldBuild = false;
 	}
 
-	if ((WhitelistFiles.Num() > 0) && (!CheckInWhitelist(Asset)))
+	if ((WhitelistFiles.Num() > 0) && (CheckInWhitelist(Asset)))
 	{
 		FString const AssetPath = Asset.ObjectPath.ToString();
-		UE_LOG(LogCompileAllBlueprintsCommandlet, Verbose, TEXT("Skipping Building %s: As the asset is not part of the whitelist"), *AssetPath);
+		UE_LOG(LogCompileAllBlueprintsCommandlet, Verbose, TEXT("Skipping Building %s: As the asset is part of the whitelist"), *AssetPath);
 		bShouldBuild = false;
 	}
 

@@ -1,9 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 	
 #include "CoreMinimal.h"
-
-#if WINDOWS_USE_FEATURE_LAUNCH
-
 #include "Misc/App.h"
 #include "Misc/OutputDeviceError.h"
 #include "LaunchEngineLoop.h"
@@ -18,7 +15,7 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogLaunchWindows, Log, All);
 
-extern int32 GuardedMain( const TCHAR* CmdLine );
+extern int32 GuardedMain( const TCHAR* CmdLine, HINSTANCE hInInstance, HINSTANCE hPrevInstance, int32 nCmdShow );
 extern void LaunchStaticShutdownAfterError();
 
 // http://developer.download.nvidia.com/devzone/devcenter/gamegraphics/files/OptimusRenderingPolicies.pdf
@@ -124,7 +121,7 @@ void SetupWindowsEnvironment( void )
  * The inner exception handler catches crashes/asserts in native C++ code and is the only way to get the correct callstack
  * when running a 64-bit executable. However, XAudio2 doesn't like this and it may result in no sound.
  */
-LAUNCH_API int32 GuardedMainWrapper( const TCHAR* CmdLine )
+LAUNCH_API int32 GuardedMainWrapper( const TCHAR* CmdLine, HINSTANCE hInInstance, HINSTANCE hPrevInstance, int32 nCmdShow )
 {
 	int32 ErrorLevel = 0;
 	if ( GEnableInnerException )
@@ -134,7 +131,7 @@ LAUNCH_API int32 GuardedMainWrapper( const TCHAR* CmdLine )
 #endif
 		{
 			// Run the guarded code.
-			ErrorLevel = GuardedMain( CmdLine );
+			ErrorLevel = GuardedMain( CmdLine, hInInstance, hPrevInstance, nCmdShow );
 		}
 #if !PLATFORM_SEH_EXCEPTIONS_DISABLED
 		__except( ReportCrash( GetExceptionInformation() ), EXCEPTION_CONTINUE_SEARCH )
@@ -147,7 +144,7 @@ LAUNCH_API int32 GuardedMainWrapper( const TCHAR* CmdLine )
 	else
 	{
 		// Run the guarded code.
-		ErrorLevel = GuardedMain( CmdLine );
+		ErrorLevel = GuardedMain( CmdLine, hInInstance, hPrevInstance, nCmdShow );
 	}
 	return ErrorLevel;
 }
@@ -231,8 +228,6 @@ int32 WINAPI WinMain( _In_ HINSTANCE hInInstance, _In_opt_ HINSTANCE hPrevInstan
 	}
 #endif
 
-	bool bNoExceptionHandler = FParse::Param(CmdLine,TEXT("noexceptionhandler"));
-	(void)bNoExceptionHandler;
 	// Using the -noinnerexception parameter will disable the exception handler within native C++, which is call from managed code,
 	// which is called from this function.
 	// The default case is to have three wrapped exception handlers 
@@ -240,7 +235,7 @@ int32 WINAPI WinMain( _In_ HINSTANCE hInInstance, _In_opt_ HINSTANCE hPrevInstan
 	// The inner exception handler in GuardedMainWrapper() catches crashes/asserts in native C++ code and is the only way to get the
 	// correct callstack when running a 64-bit executable. However, XAudio2 sometimes (?) don't like this and it may result in no sound.
 #ifdef _WIN64
-	if ( FParse::Param(CmdLine,TEXT("noinnerexception")) || FApp::IsBenchmarking() || bNoExceptionHandler)
+	if ( FParse::Param(CmdLine,TEXT("noinnerexception")) || FApp::IsBenchmarking() )
 	{
 		GEnableInnerException = false;
 	}
@@ -249,12 +244,12 @@ int32 WINAPI WinMain( _In_ HINSTANCE hInInstance, _In_opt_ HINSTANCE hPrevInstan
 #if UE_BUILD_DEBUG
 	if( true && !GAlwaysReportCrash )
 #else
-	if( bNoExceptionHandler || (FPlatformMisc::IsDebuggerPresent() && !GAlwaysReportCrash ))
+	if( FPlatformMisc::IsDebuggerPresent() && !GAlwaysReportCrash )
 #endif
 	{
 		// Don't use exception handling when a debugger is attached to exactly trap the crash. This does NOT check
 		// whether we are the first instance or not!
-		ErrorLevel = GuardedMain( CmdLine );
+		ErrorLevel = GuardedMain( CmdLine, hInInstance, hPrevInstance, nCmdShow );
 	}
 	else
 	{
@@ -265,7 +260,7 @@ int32 WINAPI WinMain( _In_ HINSTANCE hInInstance, _In_opt_ HINSTANCE hPrevInstan
  		{
 			GIsGuarded = 1;
 			// Run the guarded code.
-			ErrorLevel = GuardedMainWrapper( CmdLine );
+			ErrorLevel = GuardedMainWrapper( CmdLine, hInInstance, hPrevInstance, nCmdShow );
 			GIsGuarded = 0;
 		}
 #if !PLATFORM_SEH_EXCEPTIONS_DISABLED
@@ -308,6 +303,4 @@ int32 WINAPI WinMain( _In_ HINSTANCE hInInstance, _In_opt_ HINSTANCE hPrevInstan
 
 	return ErrorLevel;
 }
-
-#endif //WINDOWS_USE_FEATURE_LAUNCH
 

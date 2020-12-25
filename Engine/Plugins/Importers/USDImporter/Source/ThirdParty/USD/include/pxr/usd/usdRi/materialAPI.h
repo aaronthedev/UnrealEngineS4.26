@@ -136,7 +136,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDRI_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -148,7 +148,7 @@ private:
 
     // override SchemaBase virtuals.
     USDRI_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -156,11 +156,10 @@ public:
     // --------------------------------------------------------------------- //
     /// 
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `token outputs:ri:surface` |
-    /// | C++ Type | TfToken |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
+    /// \n  C++ Type: TfToken
+    /// \n  Usd Type: SdfValueTypeNames->Token
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDRI_API
     UsdAttribute GetSurfaceAttr() const;
 
@@ -178,11 +177,10 @@ public:
     // --------------------------------------------------------------------- //
     /// 
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `token outputs:ri:displacement` |
-    /// | C++ Type | TfToken |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
+    /// \n  C++ Type: TfToken
+    /// \n  Usd Type: SdfValueTypeNames->Token
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDRI_API
     UsdAttribute GetDisplacementAttr() const;
 
@@ -200,11 +198,10 @@ public:
     // --------------------------------------------------------------------- //
     /// 
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `token outputs:ri:volume` |
-    /// | C++ Type | TfToken |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
+    /// \n  C++ Type: TfToken
+    /// \n  Usd Type: SdfValueTypeNames->Token
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDRI_API
     UsdAttribute GetVolumeAttr() const;
 
@@ -304,6 +301,22 @@ public:
     /// @}
 
 
+    // --------------------------------------------------------------------- //
+    /// \name Convenience API 
+    /// This API is provided here mainly to handle backwards compatibility with 
+    /// the old encoding of shading networks.
+    // --------------------------------------------------------------------- //
+    /// @{
+        
+    /// Set the input consumer of the given \p interfaceInput to the specified 
+    /// input, \p consumer.
+    /// 
+    /// This sets the connected source of \p consumer to \p interfaceInput.
+    /// 
+    USDRI_API
+    bool SetInterfaceInputConsumer(UsdShadeInput &interfaceInput, 
+                                   const UsdShadeInput &consumer) const;
+
     /// Walks the namespace subtree below the material and computes a map 
     /// containing the list of all inputs on the material and the associated 
     /// vector of consumers of their values. The consumers can be inputs on 
@@ -312,6 +325,10 @@ public:
     UsdShadeNodeGraph::InterfaceInputConsumersMap
     ComputeInterfaceInputConsumersMap(
             bool computeTransitiveConsumers=false) const;
+
+    /// Returns all the interface inputs belonging to the material.
+    USDRI_API
+    std::vector<UsdShadeInput> GetInterfaceInputs() const;
 
     /// @}
 

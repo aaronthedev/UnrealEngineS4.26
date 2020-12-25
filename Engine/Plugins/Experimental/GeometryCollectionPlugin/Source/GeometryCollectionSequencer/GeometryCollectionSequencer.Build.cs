@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -22,7 +22,6 @@ namespace UnrealBuildTool.Rules
                     "CoreUObject",
                     "EditorStyle",
                     "Engine",
-					"LevelSequence",
                     "MovieScene",
                     "MovieSceneTools",
                     "MovieSceneTracks",
@@ -33,8 +32,9 @@ namespace UnrealBuildTool.Rules
                     "TimeManagement",
                     "UnrealEd",
                     "GeometryCollectionTracks",
-					"Chaos",
+                    "GeometryCollectionCore",
                     "GeometryCollectionEngine",
+                    "GeometryCollectionSimulationCore",
                 }
             );
         }

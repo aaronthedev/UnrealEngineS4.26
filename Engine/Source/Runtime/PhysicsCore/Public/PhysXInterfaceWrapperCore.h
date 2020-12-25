@@ -1,7 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 #include "PhysXPublicCore.h"
 #include "PhysicsInterfaceUtilsCore.h"
 #include "PhysicsInterfaceWrapperShared.h"
@@ -216,7 +216,7 @@ FORCEINLINE ECollisionShapeType GetGeometryType(const PxShape& Shape)
 	return P2UGeometryType(Shape.getGeometryType());
 }
 
-FORCEINLINE PxMaterial* GetMaterialFromInternalFaceIndex(const PxShape& Shape, const FPhysicsActor& Actor, uint32 InternalFaceIndex)
+FORCEINLINE PxMaterial* GetMaterialFromInternalFaceIndex(const PxShape& Shape, uint32 InternalFaceIndex)
 {
 	return Shape.getMaterialFromInternalFaceIndex(InternalFaceIndex);
 }

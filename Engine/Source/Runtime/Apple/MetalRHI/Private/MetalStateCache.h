@@ -1,15 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "MetalRHIPrivate.h"
-#include "MetalUniformBuffer.h"
-#include "Shaders/MetalShaderParameterCache.h"
 #include "MetalCommandEncoder.h"
 #include "MetalPipeline.h"
-
-class FMetalGraphicsPipelineState;
-class FMetalQueryBuffer;
 
 enum EMetalPipelineFlags
 {
@@ -154,8 +149,8 @@ public:
 	mtlpp::RenderPassDescriptor GetRenderPassDescriptor(void) const { return RenderPassDesc; }
 	uint32 GetSampleCount(void) const { return SampleCount; }
     bool IsLinearBuffer(EMetalShaderStages ShaderStage, uint32 BindIndex);
-	FMetalShaderPipeline* GetPipelineState() const;
-	EPrimitiveType GetPrimitiveType();
+    FMetalShaderPipeline* GetPipelineState(void) const { return GraphicsPSO->GetPipeline(GetIndexType()); }
+	EPrimitiveType GetPrimitiveType() { check(IsValidRef(GraphicsPSO)); return GraphicsPSO->GetPrimitiveType(); }
 	mtlpp::VisibilityResultMode GetVisibilityResultMode() { return VisibilityMode; }
 	uint32 GetVisibilityResultOffset() { return VisibilityOffset; }
 	

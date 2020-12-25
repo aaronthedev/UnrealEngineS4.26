@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ProfilingDebugging/ExternalProfiler.h"
 #include "Logging/LogMacros.h"
@@ -45,7 +45,7 @@ bool FActiveExternalProfilerBase::bDidInitialize = false;
 
 FExternalProfiler* FActiveExternalProfilerBase::ActiveProfiler = NULL;
 
-FExternalProfiler* FActiveExternalProfilerBase::InitActiveProfiler()
+FExternalProfiler* FActiveExternalProfilerBase::GetActiveProfiler()
 {
 	// Create profiler on demand.
 	if (ActiveProfiler == NULL && !bDidInitialize)

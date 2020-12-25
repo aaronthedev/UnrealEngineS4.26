@@ -741,7 +741,7 @@ void PxVehicleWheels::setup
 	}
 }
 
-void	PxVehicleWheels::requiresObjects(PxProcessPxBaseCallback& c)
+void	PxVehicleWheels::requires(PxProcessPxBaseCallback& c)
 {
 	c.process(*mActor);
 

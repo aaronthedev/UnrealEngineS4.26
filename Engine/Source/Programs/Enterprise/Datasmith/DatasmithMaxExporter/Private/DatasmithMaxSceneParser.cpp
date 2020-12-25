@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithMaxSceneParser.h"
 
@@ -468,7 +468,7 @@ void FDatasmithMaxSceneParser::MaterialEnum(Mtl* Material, bool bAddMaterial)
 			Materials.Add(Material);
 		}
 
-		bool bAddRecursively = Material->ClassID() == THEARANDOMCLASS || Material->ClassID() == VRAYBLENDMATCLASS || Material->ClassID() == CORONALAYERMATCLASS;
+		bool bAddRecursively = Material->ClassID() == THEARANDOMCLASS || Material->ClassID() == VRAYBLENDMATCLASS;
 		for (int i = 0; i < Material->NumSubMtls(); i++)
 		{
 			MaterialEnum(Material->GetSubMtl(i), bAddRecursively);
@@ -520,8 +520,6 @@ void FDatasmithMaxSceneParser::LightTexEnum(INode* Node)
 					}
 				}
 			}
-
-			ParamBlock2->ReleaseDesc();
 		}
 	}
 }

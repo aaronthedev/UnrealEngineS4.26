@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Tests/AutomationEditorPromotionCommon.h"
 #include "Misc/AutomationTest.h"
@@ -72,7 +72,7 @@ UMaterial* FEditorPromotionTestUtilities::CreateMaterialFromTexture(UTexture* In
 
 	const FString AssetName = FString::Printf(TEXT("%s_Mat"), *InTexture->GetName());
 	const FString PackageName = FEditorPromotionTestUtilities::GetGamePath() + TEXT("/") + AssetName;
-	UPackage* AssetPackage = CreatePackage( *PackageName);
+	UPackage* AssetPackage = CreatePackage(NULL, *PackageName);
 	EObjectFlags Flags = RF_Public | RF_Standalone;
 
 	UObject* CreatedAsset = Factory->FactoryCreateNew(UMaterial::StaticClass(), AssetPackage, FName(*AssetName), Flags, NULL, GWarn);
@@ -193,7 +193,7 @@ void FEditorPromotionTestUtilities::SendCommandToCurrentEditor(const FInputChord
 */
 FString FEditorPromotionTestUtilities::GetPropertyByName(UObject* TargetObject, const FString& InVariableName)
 {
-	FProperty* FoundProperty = FindFProperty<FProperty>(TargetObject->GetClass(), *InVariableName);
+	UProperty* FoundProperty = FindField<UProperty>(TargetObject->GetClass(), *InVariableName);
 	if (FoundProperty)
 	{
 		FString ValueString;
@@ -213,7 +213,7 @@ FString FEditorPromotionTestUtilities::GetPropertyByName(UObject* TargetObject, 
 */
 void FEditorPromotionTestUtilities::SetPropertyByName(UObject* TargetObject, const FString& InVariableName, const FString& NewValueString)
 {
-	FProperty* FoundProperty = FindFProperty<FProperty>(TargetObject->GetClass(), *InVariableName);
+	UProperty* FoundProperty = FindField<UProperty>(TargetObject->GetClass(), *InVariableName);
 	if (FoundProperty)
 	{
 		const FScopedTransaction PropertyChanged(LOCTEXT("PropertyChanged", "Object Property Change"));
@@ -235,14 +235,7 @@ void FEditorPromotionTestUtilities::StartPIE(bool bSimulateInEditor)
 	FLevelEditorModule& LevelEditorModule = FModuleManager::Get().GetModuleChecked<FLevelEditorModule>(TEXT("LevelEditor"));
 	TSharedPtr<class IAssetViewport> ActiveLevelViewport = LevelEditorModule.GetFirstActiveViewport();
 
-	FRequestPlaySessionParams SessionParams;
-	SessionParams.DestinationSlateViewport = ActiveLevelViewport;
-	if (bSimulateInEditor)
-	{
-		SessionParams.WorldType = EPlaySessionWorldType::SimulateInEditor;
-	}
-
-	GUnrealEd->RequestPlaySession(SessionParams);
+	GUnrealEd->RequestPlaySession(false, ActiveLevelViewport, bSimulateInEditor, NULL, NULL, -1, false);
 }
 
 /**
@@ -288,7 +281,7 @@ void FEditorPromotionTestUtilities::TakeScreenshot(const FString& ScreenshotName
 		FIntVector OutImageSize;
 		if (FSlateApplication::Get().TakeScreenshot(WindowRef, OutImageData, OutImageSize))
 		{
-			FAutomationScreenshotData Data = AutomationCommon::BuildScreenshotData(TEXT("Editor"), TEXT("PromotionTest"), ScreenshotName, OutImageSize.X, OutImageSize.Y);
+			FAutomationScreenshotData Data = AutomationCommon::BuildScreenshotData(TEXT("Editor"), ScreenshotName, OutImageSize.X, OutImageSize.Y);
 
 			// Copy the relevant data into the metadata for the screenshot.
 			Data.bHasComparisonRules = true;

@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_PREPROCESSOR_UTILS_H
-#define PXR_BASE_TF_PREPROCESSOR_UTILS_H
+#ifndef TF_PREPROCESSOR_UTILS_H
+#define TF_PREPROCESSOR_UTILS_H
 
 /// \file tf/preprocessorUtils.h
 /// \ingroup group_tf_Preprocessor
@@ -46,7 +46,7 @@
 #include <boost/preprocessor/tuple/eat.hpp>
 #include <boost/preprocessor/tuple/to_list.hpp>
 #include <boost/preprocessor/tuple/to_seq.hpp>
-#if defined(ARCH_COMPILER_MSVC)
+#if defined(ARCH_OS_WINDOWS)
 #include <boost/preprocessor/variadic/size.hpp>
 #include <boost/vmd/is_empty.hpp>
 #include <boost/vmd/is_tuple.hpp>
@@ -66,7 +66,7 @@ ARCH_PRAGMA_MACRO_TOO_FEW_ARGUMENTS
 ///
 /// \ingroup group_tf_Preprocessor
 /// \hideinitializer
-#if defined(ARCH_COMPILER_MSVC)
+#if defined(ARCH_OS_WINDOWS)
 #define TF_NUM_ARGS(...) \
     BOOST_PP_IIF(BOOST_VMD_IS_EMPTY(__VA_ARGS__),\
         0, BOOST_PP_VARIADIC_SIZE(__VA_ARGS__))
@@ -189,7 +189,7 @@ ARCH_PRAGMA_MACRO_TOO_FEW_ARGUMENTS
 /// Exapnds to 1 if the argument is a tuple, and 0 otherwise.
 /// \ingroup group_tf_Preprocessor
 /// \hideinitializer
-#if defined(ARCH_COMPILER_MSVC)
+#if defined(ARCH_OS_WINDOWS)
     #define TF_PP_IS_TUPLE(sequence) \
         BOOST_VMD_IS_TUPLE(sequence)
 #else
@@ -321,4 +321,4 @@ ARCH_PRAGMA_MACRO_TOO_FEW_ARGUMENTS
 #error "TF_MAX_ARITY is larger than _MAX_ARGS"
 #endif
 
-#endif /* PXR_BASE_TF_PREPROCESSOR_UTILS_H */
+#endif /* TF_PREPROCESSOR_UTILS_H */

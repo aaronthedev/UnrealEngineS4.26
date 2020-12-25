@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -32,15 +32,15 @@ struct FBehaviorTreeSearchData;
 
 DECLARE_STATS_GROUP(TEXT("Behavior Tree"), STATGROUP_AIBehaviorTree, STATCAT_Advanced);
 
-DECLARE_CYCLE_STAT_EXTERN(TEXT("BT Tick"),STAT_AI_BehaviorTree_Tick,STATGROUP_AIBehaviorTree, );
-DECLARE_CYCLE_STAT_EXTERN(TEXT("BT Load Time"),STAT_AI_BehaviorTree_LoadTime,STATGROUP_AIBehaviorTree, );
-DECLARE_CYCLE_STAT_EXTERN(TEXT("BT Search Time"),STAT_AI_BehaviorTree_SearchTime,STATGROUP_AIBehaviorTree, );
-DECLARE_CYCLE_STAT_EXTERN(TEXT("BT Execution Time"),STAT_AI_BehaviorTree_ExecutionTime,STATGROUP_AIBehaviorTree, );
-DECLARE_CYCLE_STAT_EXTERN(TEXT("BT Auxiliary Update Time"),STAT_AI_BehaviorTree_AuxUpdateTime,STATGROUP_AIBehaviorTree, );
-DECLARE_CYCLE_STAT_EXTERN(TEXT("BT Cleanup Time"), STAT_AI_BehaviorTree_Cleanup, STATGROUP_AIBehaviorTree, );
-DECLARE_CYCLE_STAT_EXTERN(TEXT("BT Stop Tree Time"), STAT_AI_BehaviorTree_StopTree, STATGROUP_AIBehaviorTree, );
-DECLARE_DWORD_ACCUMULATOR_STAT_EXTERN(TEXT("Num Templates"),STAT_AI_BehaviorTree_NumTemplates,STATGROUP_AIBehaviorTree, );
-DECLARE_DWORD_ACCUMULATOR_STAT_EXTERN(TEXT("Num Instances"),STAT_AI_BehaviorTree_NumInstances,STATGROUP_AIBehaviorTree, );
+DECLARE_CYCLE_STAT_EXTERN(TEXT("Tick"),STAT_AI_BehaviorTree_Tick,STATGROUP_AIBehaviorTree, );
+DECLARE_CYCLE_STAT_EXTERN(TEXT("Load Time"),STAT_AI_BehaviorTree_LoadTime,STATGROUP_AIBehaviorTree, );
+DECLARE_CYCLE_STAT_EXTERN(TEXT("Search Time"),STAT_AI_BehaviorTree_SearchTime,STATGROUP_AIBehaviorTree, );
+DECLARE_CYCLE_STAT_EXTERN(TEXT("Execution Time"),STAT_AI_BehaviorTree_ExecutionTime,STATGROUP_AIBehaviorTree, );
+DECLARE_CYCLE_STAT_EXTERN(TEXT("Auxiliary Update Time"),STAT_AI_BehaviorTree_AuxUpdateTime,STATGROUP_AIBehaviorTree, );
+DECLARE_CYCLE_STAT_EXTERN(TEXT("Cleanup Time"), STAT_AI_BehaviorTree_Cleanup, STATGROUP_AIBehaviorTree, );
+DECLARE_CYCLE_STAT_EXTERN(TEXT("Stop Tree Time"), STAT_AI_BehaviorTree_StopTree, STATGROUP_AIBehaviorTree, );
+DECLARE_DWORD_COUNTER_STAT_EXTERN(TEXT("Num Templates"),STAT_AI_BehaviorTree_NumTemplates,STATGROUP_AIBehaviorTree, );
+DECLARE_DWORD_COUNTER_STAT_EXTERN(TEXT("Num Instances"),STAT_AI_BehaviorTree_NumInstances,STATGROUP_AIBehaviorTree, );
 DECLARE_MEMORY_STAT_EXTERN(TEXT("Instance memory"),STAT_AI_BehaviorTree_InstanceMemory,STATGROUP_AIBehaviorTree, AIMODULE_API);
 
 namespace FBlackboard
@@ -247,7 +247,7 @@ struct FBehaviorTreeDebuggerInstance
 /** debugger data about current execution step */
 struct FBehaviorTreeExecutionStep
 {
-	FBehaviorTreeExecutionStep() : TimeStamp(0.f), ExecutionStepId(InvalidExecutionId) {}
+	FBehaviorTreeExecutionStep() : TimeStamp(0.f), StepIndex(INDEX_NONE) {}
 
 	/** subtree instance stack */
 	TArray<FBehaviorTreeDebuggerInstance> InstanceStack;
@@ -258,10 +258,8 @@ struct FBehaviorTreeExecutionStep
 	/** Game world's time stamp of this step */
 	float TimeStamp;
 
-	static constexpr int32 InvalidExecutionId = -1;
-
-	/** Id of execution step */
-	int32 ExecutionStepId;
+	/** index of execution step */
+	int32 StepIndex;
 };
 
 /** identifier of subtree instance */
@@ -320,19 +318,22 @@ struct FBehaviorTreeInstance
 	/** delegate sending a notify when tree instance is removed from active stack */
 	FBTInstanceDeactivation DeactivationNotify;
 
-	AIMODULE_API FBehaviorTreeInstance();
-	AIMODULE_API FBehaviorTreeInstance(const FBehaviorTreeInstance& Other);
-	AIMODULE_API FBehaviorTreeInstance(int32 MemorySize);
-	AIMODULE_API ~FBehaviorTreeInstance();
+	FBehaviorTreeInstance() { IncMemoryStats(); }
+	FBehaviorTreeInstance(const FBehaviorTreeInstance& Other) { *this = Other; IncMemoryStats(); }
+	FBehaviorTreeInstance(int32 MemorySize) { InstanceMemory.AddZeroed(MemorySize); IncMemoryStats(); }
+	~FBehaviorTreeInstance() { DecMemoryStats(); }
 
 #if STATS
-	void IncMemoryStats() const;
-	void DecMemoryStats() const;
-	uint32 GetAllocatedSize() const;
+	FORCEINLINE void IncMemoryStats() { INC_MEMORY_STAT_BY(STAT_AI_BehaviorTree_InstanceMemory, GetAllocatedSize()); }
+	FORCEINLINE void DecMemoryStats() { DEC_MEMORY_STAT_BY(STAT_AI_BehaviorTree_InstanceMemory, GetAllocatedSize()); }
+	FORCEINLINE uint32 GetAllocatedSize() const 
+	{
+		return sizeof(*this) + ActiveAuxNodes.GetAllocatedSize() + ParallelTasks.GetAllocatedSize() + InstanceMemory.GetAllocatedSize(); 
+	}
 #else
 	FORCEINLINE uint32 GetAllocatedSize() const { return 0; }
-	FORCEINLINE void IncMemoryStats() const {}
-	FORCEINLINE void DecMemoryStats() const {}
+	FORCEINLINE void IncMemoryStats() {}
+	FORCEINLINE void DecMemoryStats() {}
 #endif // STATS
 
 	/** initialize memory and create node instances */
@@ -347,62 +348,10 @@ struct FBehaviorTreeInstance
 	/** deactivate all active aux nodes and remove their requests from SearchData */
 	void DeactivateNodes(FBehaviorTreeSearchData& SearchData, uint16 InstanceIndex);
 
-	/** get list of all active auxiliary nodes */
-	TArrayView<UBTAuxiliaryNode* const> GetActiveAuxNodes() const { return ActiveAuxNodes; }
-
-	/** add specified node to the active nodes list */
-	void AddToActiveAuxNodes(UBTAuxiliaryNode* AuxNode);
-
-	/** remove specified node from the active nodes list */
-	void RemoveFromActiveAuxNodes(UBTAuxiliaryNode* AuxNode);
-
-	/** remove all auxiliary nodes from active nodes list */
-	void ResetActiveAuxNodes();
-
-	/** iterate on auxiliary nodes and call ExecFunc on each of them. Nodes can not be added or removed during the iteration */
-	void ExecuteOnEachAuxNode(TFunctionRef<void(const UBTAuxiliaryNode&)> ExecFunc);
-
-	/** get list of all active parallel tasks */
-	TArrayView<const FBehaviorTreeParallelTask> GetParallelTasks() const { return ParallelTasks; }
-
-	/** add new parallel task */
-	void AddToParallelTasks(FBehaviorTreeParallelTask&& ParallelTask);
-
-	/** remove parallel task at given index */
-	void RemoveParallelTaskAt(int32 TaskIndex);
-
-	/** mark parallel task at given index as pending abort */
-	void MarkParallelTaskAsAbortingAt(int32 TaskIndex);
-
-	/** indicates if the provided index is a valid parallel task index */
-	bool IsValidParallelTaskIndex(const int32 Index) const { return ParallelTasks.IsValidIndex(Index); }
-
-	/** iterate on parallel tasks and call ExecFunc on each of them. Supports removing the iterated task while processed */
-	void ExecuteOnEachParallelTask(TFunctionRef<void(const FBehaviorTreeParallelTask&, const int32)> ExecFunc);
-
-	/** set instance memory */
-	void SetInstanceMemory(const TArray<uint8>& Memory);
-
-	/** get instance memory */
-	TArrayView<const uint8> GetInstanceMemory() const { return InstanceMemory; }
-
 protected:
 
 	/** worker for updating all nodes */
 	void CleanupNodes(UBehaviorTreeComponent& OwnerComp, UBTCompositeNode& Node, EBTMemoryClear::Type CleanupType);
-
-private:
-#if DO_ENSURE
-	/** debug flag to detect modifications to the array of nodes while iterating through it */
-	bool bIteratingNodes = false;
-
-	/**
-	 * debug flag to detect forbidden modifications to the array of parallel tasks while iterating through it
-	 * the only allowed modification is to unregister the task on which the exec function is executed
-	 * @see ExecuteOnEachParallelTask
-	 */
-	int32 ParallelTaskIndex = INDEX_NONE;
-#endif // DO_ENSURE
 };
 
 struct FBTNodeIndex
@@ -420,33 +369,9 @@ struct FBTNodeIndex
 	bool IsSet() const { return InstanceIndex < MAX_uint16; }
 
 	FORCEINLINE bool operator==(const FBTNodeIndex& Other) const { return Other.ExecutionIndex == ExecutionIndex && Other.InstanceIndex == InstanceIndex; }
-	FORCEINLINE bool operator!=(const FBTNodeIndex& Other) const { return !operator==(Other); }
 	FORCEINLINE friend uint32 GetTypeHash(const FBTNodeIndex& Other) { return Other.ExecutionIndex ^ Other.InstanceIndex; }
 
 	FORCEINLINE FString Describe() const { return FString::Printf(TEXT("[%d:%d]"), InstanceIndex, ExecutionIndex); }
-};
-
-struct FBTNodeIndexRange
-{
-	/** first node index */
-	FBTNodeIndex FromIndex;
-
-	/** last node index */
-	FBTNodeIndex ToIndex;
-
-	FBTNodeIndexRange(const FBTNodeIndex& From, const FBTNodeIndex& To) : FromIndex(From), ToIndex(To) {}
-
-	bool IsSet() const { return FromIndex.IsSet() && ToIndex.IsSet(); }
-
-	bool operator==(const FBTNodeIndexRange& Other) const { return Other.FromIndex == FromIndex && Other.ToIndex == ToIndex; }
-	bool operator!=(const FBTNodeIndexRange& Other) const { return !operator==(Other); }
-
-	bool Contains(const FBTNodeIndex& Index) const
-	{ 
-		return Index.InstanceIndex == FromIndex.InstanceIndex && FromIndex.ExecutionIndex <= Index.ExecutionIndex && Index.ExecutionIndex <= ToIndex.ExecutionIndex;
-	}
-
-	FString Describe() const { return FString::Printf(TEXT("[%s...%s]"), *FromIndex.Describe(), *ToIndex.Describe()); }
 };
 
 /** node update data */
@@ -494,9 +419,6 @@ struct FBehaviorTreeSearchData
 	/** notifies for tree instances */
 	TArray<FBehaviorTreeSearchUpdateNotify> PendingNotifies;
 
-	/** node under which the search was performed */
-	FBTNodeIndex SearchRootNode;
-
 	/** first node allowed in search */
 	FBTNodeIndex SearchStart;
 
@@ -508,21 +430,6 @@ struct FBehaviorTreeSearchData
 
 	/** active instance index to rollback to */
 	int32 RollbackInstanceIdx;
-
-	/** start index of the deactivated branch */
-	FBTNodeIndex DeactivatedBranchStart;
-
-	/** end index of the deactivated branch */
-	FBTNodeIndex DeactivatedBranchEnd;
-
-	/** saved start index of the deactivated branch for rollback */
-	FBTNodeIndex RollbackDeactivatedBranchStart;
-
-	/** saved end index of the deactivated branch for rollback */
-	FBTNodeIndex RollbackDeactivatedBranchEnd;
-
-	/** if set, execution request from node in the deactivated branch will be skipped */
-	uint32 bFilterOutRequestFromDeactivatedBranch : 1;
 
 	/** if set, current search will be restarted in next tick */
 	uint32 bPostponeSearch : 1;
@@ -543,14 +450,8 @@ struct FBehaviorTreeSearchData
 	void Reset();
 
 	FBehaviorTreeSearchData(UBehaviorTreeComponent& InOwnerComp) 
-		: OwnerComp(InOwnerComp), RollbackInstanceIdx(INDEX_NONE)
-		, bFilterOutRequestFromDeactivatedBranch(false)
-		, bPostponeSearch(false)
-		, bSearchInProgress(false)
-		, bPreserveActiveNodeMemoryOnRollback(false)
+		: OwnerComp(InOwnerComp), RollbackInstanceIdx(INDEX_NONE), bPostponeSearch(false), bSearchInProgress(false), bPreserveActiveNodeMemoryOnRollback(false)
 	{}
-
-	FBehaviorTreeSearchData() = delete;
 
 private:
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,15 +9,6 @@
 
 #define BINNEDCOMMON_MAX_LISTED_SMALL_POOL_SIZE	28672
 #define BINNEDCOMMON_NUM_LISTED_SMALL_POOLS	49
-
-#if !defined(BINNEDCOMMON_USE_SEPARATE_VM_PER_POOL)
-	#if PLATFORM_WINDOWS
-		#define BINNEDCOMMON_USE_SEPARATE_VM_PER_POOL (1)
-	#else
-		#define BINNEDCOMMON_USE_SEPARATE_VM_PER_POOL (0)
-	#endif
-#endif
-
 
 class FBitTree
 {
@@ -78,7 +69,7 @@ struct FArenaParams
 	uint8 MaxGlobalBundles = 32;
 	uint8 MinimumAlignmentShift = 4;
 	uint8 PoolCount;
-	bool bUseSeparateVMPerPool = !!(BINNEDCOMMON_USE_SEPARATE_VM_PER_POOL);
+	bool bUseSeparateVMPerPool = !!(PLATFORM_XBOXONE || PLATFORM_WINDOWS);
 	bool bPerThreadCaches = true;
 	bool bUseStandardSmallPoolSizes = true;
 	bool bAttemptToAlignSmallBocks = true;

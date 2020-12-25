@@ -1,10 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "HttpConnectionTypes.h"
 #include "HttpRouter.h"
-#include "HttpServerConfig.h"
-#include "SocketSubsystem.h"
 
 struct FHttpConnection;
 struct FHttpPath;
@@ -20,9 +18,9 @@ public:
 	/**
 	 * Constructor
 	 *
-	 *  @param InListenPort The port on which to listen for incoming connections
+	 *  @param ListenPort The port on which to listen for incoming connections
 	 */
-	FHttpListener(uint32 InListenPort);
+	FHttpListener(uint32 ListenPort);
 
 	/**
 	 * Destructor
@@ -31,7 +29,7 @@ public:
 
 	/**
 	 * Starts listening for and accepting incoming connections
-	 * 
+	 *
 	 * @return true if the listener was able to start listening, false otherwise
 	 */
 	bool StartListening();
@@ -76,9 +74,11 @@ public:
 private:
 
 	/**
-	 * Accepts available connection(s)
+	 * Accepts a single available connection
+	 * 
+	 * @param MaxConnectionsToAccept The maximum number of connections to accept
 	 */
-	void AcceptConnections();
+	void AcceptConnections(uint32 MaxConnectionsToAccept);
 
 	/**
 	 * Ticks connections in reading/writing phases
@@ -101,7 +101,7 @@ private:
 	uint32 ListenPort = 0;
 
 	/** The binding socket which accepts incoming connections */
-	FUniqueSocket ListenSocket;
+	FSocket* ListenSocket = nullptr;
 
 	/** The mechanism that routes requests to respective handlers  */
 	TSharedPtr<FHttpRouter> Router = nullptr;
@@ -112,6 +112,10 @@ private:
 	/** The total number of connections accepted by this listener */
 	uint32 NumConnectionsAccepted = 0;
 
-	/** Listener configuration data */
-	FHttpServerListenerConfig Config;
+	/** Maximum number of connections to accept per frame */
+	static constexpr uint32 MaxConnectionsToAcceptPerFrame = 1;
+	/** Maximum number of pending connections to queue */
+	static constexpr uint32 ListenerConnectionBacklogSize = 16;
+	/** Maximum send buffer size */
+	static constexpr uint32 ListenerBufferSize = 512 * 1024;
 };

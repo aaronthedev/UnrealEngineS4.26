@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AudioMixerPlatformNonRealtime.h"
 #include "AudioMixer.h"
@@ -9,10 +9,6 @@
 
 #ifndef WITH_XMA2
 #define WITH_XMA2 0
-#endif
-
-#ifndef HAS_COMPRESSED_AUDIO_INFO_CLASS
-#define HAS_COMPRESSED_AUDIO_INFO_CLASS 0
 #endif
 
 #if WITH_XMA2
@@ -45,11 +41,10 @@ FAutoConsoleVariableRef CVarRenderEveryTick(
 
 namespace Audio
 {
-	FMixerPlatformNonRealtime::FMixerPlatformNonRealtime(float InSampleRate /*= 48000*/, float InNumChannels /*= 2*/)
+	FMixerPlatformNonRealtime::FMixerPlatformNonRealtime(float InSampleRate /*= 48000*/, float InNumChannels /*= 2*/, float ExpectedCallbackDuration /*= 0.033f*/)
 		: SampleRate(InSampleRate)
 		, NumChannels(InNumChannels)
 		, TotalDurationRendered(0.0)
-		, TotalDesiredRender(0.0)
 		, TickDelta(0.0)
 		, bIsInitialized(false)
 		, bIsDeviceOpen(false)
@@ -68,18 +63,25 @@ namespace Audio
 		}
 
 		const double TimePerCallback = ((double) AudioStreamInfo.NumOutputFrames) / AudioStreamInfo.DeviceInfo.SampleRate;
+		double SecondsRendered = TotalDurationRendered;
+		TotalDurationRendered += NumSecondsToRender;
 
-		// Increment how much audio time the user wants to have been rendered. 
-		TotalDesiredRender += NumSecondsToRender;
+		CurrentBufferWriteIndex = 0;
+		CurrentBufferReadIndex = 0;
 
-		// Keep rendering audio until we surpass their desired time, TimePerCallback may be much smaller than NumSecondsToRender.
-		while (TotalDurationRendered < TotalDesiredRender)
+
+		while (SecondsRendered < TotalDurationRendered)
 		{
-			OutputBuffer.MixNextBuffer();
+			// RenderTimeAnalysis.Start();
+			OutputBuffers[CurrentBufferWriteIndex].MixNextBuffer();
+			// RenderTimeAnalysis.End();
 
 			ReadNextBuffer();
-			TotalDurationRendered += TimePerCallback;
+			SecondsRendered += TimePerCallback;
 		}
+
+		CurrentBufferReadIndex = INDEX_NONE;
+		CurrentBufferWriteIndex = INDEX_NONE;
 	}
 
 	void FMixerPlatformNonRealtime::OpenFileToWriteAudioTo(const FString& OutPath)
@@ -124,7 +126,7 @@ namespace Audio
 
 #if WITH_XMA2
 		//Initialize our XMA2 decoder context
-		XMA2_INFO_CALL(FXMAAudioInfo::Initialize());
+		FXMAAudioInfo::Initialize();
 #endif //#if WITH_XMA2
 
 		// Load ogg and vorbis dlls if they haven't been loaded yet
@@ -145,7 +147,7 @@ namespace Audio
 		}
 
 #if WITH_XMA2
-		XMA2_INFO_CALL(FXMAAudioInfo::Shutdown());
+		FXMAAudioInfo::Shutdown();
 #endif
 
 		bIsInitialized = false;
@@ -286,10 +288,8 @@ namespace Audio
 
 	void FMixerPlatformNonRealtime::ResumePlaybackOnNewDevice()
 	{
-		int32 PoppedSampleCount;
-		TArrayView<const uint8> PoppedAudio = OutputBuffer.PopBufferData(PoppedSampleCount);
-		SubmitBuffer(PoppedAudio.GetData());
-		check(OpenStreamParams.NumFrames * AudioStreamInfo.DeviceInfo.NumChannels == OutputBuffer.GetNumSamples());
+		SubmitBuffer(OutputBuffers[CurrentBufferReadIndex].GetBufferData());
+		check(OpenStreamParams.NumFrames * AudioStreamInfo.DeviceInfo.NumChannels == OutputBuffers[CurrentBufferReadIndex].GetBuffer().Num());
 
 		AudioRenderEvent->Trigger();
 	}
@@ -312,13 +312,13 @@ namespace Audio
 		static FName NAME_XMA(TEXT("XMA"));
 
 #if WITH_XMA2 && USE_XMA2_FOR_STREAMING
-		if (InSoundWave->IsStreaming(nullptr) && InSoundWave->NumChannels <= 2)
+		if (InSoundWave->IsStreaming() && InSoundWave->NumChannels <= 2)
 		{
 			return NAME_XMA;
 		}
 #endif
 
-		if (InSoundWave->IsStreaming(nullptr))
+		if (InSoundWave->IsStreaming())
 		{
 #if USE_VORBIS_FOR_STREAMING
 			return NAME_OGG;
@@ -339,27 +339,27 @@ namespace Audio
 
 	bool FMixerPlatformNonRealtime::HasCompressedAudioInfoClass(USoundWave* InSoundWave)
 	{
-#if PLATFORM_WINDOWS || HAS_COMPRESSED_AUDIO_INFO_CLASS
+#if PLATFORM_WINDOWS || PLATFORM_XBOXONE
 		return true;
 #else
 		return false;
-#endif // PLATFORM_WINDOWS || HAS_COMPRESSED_AUDIO_INFO_CLASS
+#endif // PLATFORM_WINDOWS || PLATFORM_XBOXONE
 	}
 
 	ICompressedAudioInfo* FMixerPlatformNonRealtime::CreateCompressedAudioInfo(USoundWave* InSoundWave)
 	{
 		// TODO: Currently this is a copy paste of the XAudio2 platform interface. Ultimately, this function needs to propogate to the current platform's correct CrateCompressedAudioInfo call.
-#if PLATFORM_WINDOWS || HAS_COMPRESSED_AUDIO_INFO_CLASS
+#if PLATFORM_WINDOWS || PLATFORM_XBOXONE
 		check(InSoundWave);
 
 #if WITH_XMA2 && USE_XMA2_FOR_STREAMING
 		if (InSoundWave->IsStreaming() && InSoundWave->NumChannels <= 2 )
 		{
-			return XMA2_INFO_NEW();
+			return new FXMAAudioInfo();
 		}
 #endif
 
-		if (InSoundWave->IsStreaming(nullptr))
+		if (InSoundWave->IsStreaming())
 		{
 #if USE_VORBIS_FOR_STREAMING
 			return new FVorbisAudioInfo();
@@ -378,10 +378,10 @@ namespace Audio
 		static const FName NAME_XMA(TEXT("XMA"));
 		if (FPlatformProperties::RequiresCookedData() ? InSoundWave->HasCompressedData(NAME_XMA) : (InSoundWave->GetCompressedData(NAME_XMA) != nullptr))
 		{
-			return XMA2_INFO_NEW();
+			return new FXMAAudioInfo();
 		}
 #endif // WITH_XMA2
-#endif // PLATFORM_WINDOWS || HAS_COMPRESSED_AUDIO_INFO_CLASS
+#endif // PLATFORM_WINDOWS || WITH_XMA2
 
 		return nullptr;
 	}
@@ -399,10 +399,6 @@ namespace Audio
 
 	void FMixerPlatformNonRealtime::OnHardwareUpdate()
 	{
-#if WITH_XMA2
-		XMA2_INFO_CALL(FXMAAudioInfo::Tick());
-#endif //WITH_XMA2
-
 		if (RenderEveryTickCvar)
 		{
 			RenderAudio(TickDelta);
@@ -414,12 +410,6 @@ namespace Audio
 		return true;
 	}
 
-	void FMixerPlatformNonRealtime::FadeOut()
-	{
-		bFadedOut = true;
-		FadeVolume = 0.f;
-	}
-
 	uint32 FMixerPlatformNonRealtime::RunInternal()
 	{
 		// Not used.
@@ -429,11 +419,5 @@ namespace Audio
 	bool FMixerPlatformNonRealtime::DisablePCMAudioCaching() const
 	{
 		return true;
-	}
-
-	void FMixerPlatformNonRealtime::FadeIn()
-	{
-		bFadedOut = false;
-		FadeVolume = 1.0f;
 	}
 }

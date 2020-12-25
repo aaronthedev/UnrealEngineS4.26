@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Channels/RemoteSessionARSystemChannel.h"
 #include "RemoteSession.h"
@@ -163,28 +163,23 @@ void FARSystemProxy::RemoveTrackable(FGuid UniqueId)
 }
 
 
-FRemoteSessionARSystemChannel::FRemoteSessionARSystemChannel(ERemoteSessionChannelMode InRole, TSharedPtr<IBackChannelConnection, ESPMode::ThreadSafe> InConnection)
+FRemoteSessionARSystemChannel::FRemoteSessionARSystemChannel(ERemoteSessionChannelMode InRole, TSharedPtr<FBackChannelOSCConnection, ESPMode::ThreadSafe> InConnection)
 	: FRemoteSessionXRTrackingChannel(InRole, InConnection, InRole == ERemoteSessionChannelMode::Read ? FARSystemProxy::GetARSystemPtr() : nullptr)
 {
 	// Are we receiving updates from the AR system? or sending them
 	if (Role == ERemoteSessionChannelMode::Read)
 	{
-		InitMessageCallbackHandle = Connection->AddRouteDelegate(INIT_MESSAGE_ADDRESS, FBackChannelRouteDelegate::FDelegate::CreateRaw(this, &FRemoteSessionARSystemChannel::ReceiveARInit));
-		
-		// #agrant todo: need equivalent
-		//Connection->SetMessageOptions(INIT_MESSAGE_ADDRESS, 1);
+		InitMessageCallbackHandle = Connection->AddMessageHandler(INIT_MESSAGE_ADDRESS, FBackChannelDispatchDelegate::FDelegate::CreateRaw(this, &FRemoteSessionARSystemChannel::ReceiveARInit));
+		Connection->SetMessageOptions(INIT_MESSAGE_ADDRESS, 1);
 
-		AddMessageCallbackHandle = Connection->AddRouteDelegate(ADD_TRACKABLE_MESSAGE_ADDRESS, FBackChannelRouteDelegate::FDelegate::CreateRaw(this, &FRemoteSessionARSystemChannel::ReceiveAddTrackable));
-		// #agrant todo: need equivalent
-		//Connection->SetMessageOptions(ADD_TRACKABLE_MESSAGE_ADDRESS, 1000);
+		AddMessageCallbackHandle = Connection->AddMessageHandler(ADD_TRACKABLE_MESSAGE_ADDRESS, FBackChannelDispatchDelegate::FDelegate::CreateRaw(this, &FRemoteSessionARSystemChannel::ReceiveAddTrackable));
+		Connection->SetMessageOptions(ADD_TRACKABLE_MESSAGE_ADDRESS, 1000);
 
-		UpdateMessageCallbackHandle = Connection->AddRouteDelegate(UPDATE_TRACKABLE_MESSAGE_ADDRESS, FBackChannelRouteDelegate::FDelegate::CreateRaw(this, &FRemoteSessionARSystemChannel::ReceiveUpdateTrackable));
-		// #agrant todo: need equivalent
-		//Connection->SetMessageOptions(UPDATE_TRACKABLE_MESSAGE_ADDRESS, 1000);
+		UpdateMessageCallbackHandle = Connection->AddMessageHandler(UPDATE_TRACKABLE_MESSAGE_ADDRESS, FBackChannelDispatchDelegate::FDelegate::CreateRaw(this, &FRemoteSessionARSystemChannel::ReceiveUpdateTrackable));
+		Connection->SetMessageOptions(UPDATE_TRACKABLE_MESSAGE_ADDRESS, 1000);
 
-		RemoveMessageCallbackHandle = Connection->AddRouteDelegate(REMOVE_TRACKABLE_MESSAGE_ADDRESS, FBackChannelRouteDelegate::FDelegate::CreateRaw(this, &FRemoteSessionARSystemChannel::ReceiveRemoveTrackable));
-		// #agrant todo: need equivalent
-		//Connection->SetMessageOptions(REMOVE_TRACKABLE_MESSAGE_ADDRESS, 1000);
+		RemoveMessageCallbackHandle = Connection->AddMessageHandler(REMOVE_TRACKABLE_MESSAGE_ADDRESS, FBackChannelDispatchDelegate::FDelegate::CreateRaw(this, &FRemoteSessionARSystemChannel::ReceiveRemoveTrackable));
+		Connection->SetMessageOptions(REMOVE_TRACKABLE_MESSAGE_ADDRESS, 1000);
 	}
 	else
 	{
@@ -200,10 +195,10 @@ FRemoteSessionARSystemChannel::~FRemoteSessionARSystemChannel()
 	if (Role == ERemoteSessionChannelMode::Read)
 	{
 		// Clean up all of the message handlers
-		Connection->RemoveRouteDelegate(INIT_MESSAGE_ADDRESS, InitMessageCallbackHandle);
-		Connection->RemoveRouteDelegate(ADD_TRACKABLE_MESSAGE_ADDRESS, AddMessageCallbackHandle);
-		Connection->RemoveRouteDelegate(UPDATE_TRACKABLE_MESSAGE_ADDRESS, UpdateMessageCallbackHandle);
-		Connection->RemoveRouteDelegate(REMOVE_TRACKABLE_MESSAGE_ADDRESS, RemoveMessageCallbackHandle);
+		Connection->RemoveMessageHandler(INIT_MESSAGE_ADDRESS, InitMessageCallbackHandle);
+		Connection->RemoveMessageHandler(ADD_TRACKABLE_MESSAGE_ADDRESS, AddMessageCallbackHandle);
+		Connection->RemoveMessageHandler(UPDATE_TRACKABLE_MESSAGE_ADDRESS, UpdateMessageCallbackHandle);
+		Connection->RemoveMessageHandler(REMOVE_TRACKABLE_MESSAGE_ADDRESS, RemoveMessageCallbackHandle);
 	}
 	else
 	{
@@ -216,12 +211,12 @@ FRemoteSessionARSystemChannel::~FRemoteSessionARSystemChannel()
 	FARSystemProxy::Destroy();
 }
 
-void FRemoteSessionARSystemChannel::ReceiveARInit(IBackChannelPacket& Message)
+void FRemoteSessionARSystemChannel::ReceiveARInit(FBackChannelOSCMessage& Message, FBackChannelOSCDispatch& Dispatch)
 {
 	check(ARSystemSupport != nullptr);
 
 	TArray<uint8> MsgData;
-	Message.Read(TEXT("Data"), MsgData);
+	Message << MsgData;
 
 	FMemoryReader Ar(MsgData);
 	TwoParamMsg<FString, TArray<FARVideoFormat>> MsgParam(Ar);
@@ -253,12 +248,12 @@ void FRemoteSessionARSystemChannel::ReceiveARInit_GameThread(FString ConfigObjec
 	FARSystemProxy::Get()->SetSessionConfig(SessionConfig);
 }
 
-void FRemoteSessionARSystemChannel::ReceiveAddTrackable(IBackChannelPacket& Message)
+void FRemoteSessionARSystemChannel::ReceiveAddTrackable(FBackChannelOSCMessage& Message, FBackChannelOSCDispatch& Dispatch)
 {
 	FString ClassPathName;
-	Message.Read(TEXT("Name"), ClassPathName);
+	Message.Read(ClassPathName);
 	TSharedPtr<TArray<uint8>, ESPMode::ThreadSafe> DataCopy = MakeShareable(new TArray<uint8>());
-	Message.Read(TEXT("Data"), *DataCopy);
+	Message.Read(*DataCopy);
 
 	// Since we are dealing with creating new UObjects, this needs to happen on the game thread
 	auto AddTrackableTask = FSimpleDelegateGraphTask::FDelegate::CreateRaw(this, &FRemoteSessionARSystemChannel::ReceiveAddTrackable_GameThread, ClassPathName, DataCopy);
@@ -294,14 +289,14 @@ void FRemoteSessionARSystemChannel::ReceiveAddTrackable_GameThread(FString Class
 	}
 }
 
-void FRemoteSessionARSystemChannel::ReceiveUpdateTrackable(IBackChannelPacket& Message)
+void FRemoteSessionARSystemChannel::ReceiveUpdateTrackable(FBackChannelOSCMessage& Message, FBackChannelOSCDispatch& Dispatch)
 {
 	FGuid UniqueId;
 	FString StringGuid;
-	Message.Read(TEXT("GUID"), StringGuid);
+	Message.Read(StringGuid);
 	FGuid::Parse(StringGuid, UniqueId);
 	TSharedPtr<TArray<uint8>, ESPMode::ThreadSafe> DataCopy = MakeShareable(new TArray<uint8>());
-	Message.Read(TEXT("Data"), *DataCopy);
+	Message.Read(*DataCopy);
 
 	// Since we are dealing with updating UObjects, this needs to happen on the game thread
 	auto UpdateTrackableTask = FSimpleDelegateGraphTask::FDelegate::CreateRaw(this, &FRemoteSessionARSystemChannel::ReceiveUpdateTrackable_GameThread, UniqueId, DataCopy);
@@ -331,11 +326,11 @@ void FRemoteSessionARSystemChannel::ReceiveUpdateTrackable_GameThread(FGuid Uniq
 	}
 }
 
-void FRemoteSessionARSystemChannel::ReceiveRemoveTrackable(IBackChannelPacket& Message)
+void FRemoteSessionARSystemChannel::ReceiveRemoveTrackable(FBackChannelOSCMessage& Message, FBackChannelOSCDispatch& Dispatch)
 {
 	FGuid UniqueId;
 	FString StringGuid;
-	Message.Read(TEXT("GUID"), StringGuid);
+	Message.Read(StringGuid);
 	FGuid::Parse(StringGuid, UniqueId);
 
 	// Since we are dealing with updating UObjects, this needs to happen on the game thread
@@ -363,8 +358,8 @@ void FRemoteSessionARSystemChannel::SendARInitMessage()
 			TArray<FARVideoFormat> SupportedFormats = UARBlueprintLibrary::GetSupportedVideoFormats(Config->GetSessionType());
 
 			TwoParamMsg<FString, TArray<FARVideoFormat>> MsgParam(PathName, SupportedFormats);
-			TBackChannelSharedPtr<FBackChannelOSCMessage> Msg = MakeShared<FBackChannelOSCMessage, ESPMode::ThreadSafe>(INIT_MESSAGE_ADDRESS);
-			Msg->Write(TEXT("Data"),MsgParam.AsData());
+			FBackChannelOSCMessage Msg(INIT_MESSAGE_ADDRESS);
+			Msg.Write(MsgParam.AsData());
 
 			Connection->SendPacket(Msg);
 
@@ -383,10 +378,9 @@ void FRemoteSessionARSystemChannel::SendAddedMessage(UARTrackedGeometry* Added)
 
 	FString ClassPathName = Added->GetClass()->GetPathName();
 
-	TBackChannelSharedPtr<FBackChannelOSCMessage> Msg = MakeShared<FBackChannelOSCMessage, ESPMode::ThreadSafe>(ADD_TRACKABLE_MESSAGE_ADDRESS);
-
-	Msg->Write(TEXT("Name"), ClassPathName);
-	Msg->Write(TEXT("Data"), SerializeBuffer);
+	FBackChannelOSCMessage Msg(ADD_TRACKABLE_MESSAGE_ADDRESS);
+	Msg.Write(ClassPathName);
+	Msg.Write(SerializeBuffer);
 	Connection->SendPacket(Msg);
 
 	UE_LOG(LogRemoteSession, Log, TEXT("Sent trackable added (%s)"), *Added->GetName());
@@ -402,10 +396,9 @@ void FRemoteSessionARSystemChannel::SendUpdatedMessage(UARTrackedGeometry* Updat
 
 	FString TrackableGuid = Updated->UniqueId.ToString();
 
-	TBackChannelSharedPtr<FBackChannelOSCMessage> Msg = MakeShared<FBackChannelOSCMessage, ESPMode::ThreadSafe>(UPDATE_TRACKABLE_MESSAGE_ADDRESS);
-
-	Msg->Write(TEXT("GUID"), TrackableGuid);
-	Msg->Write(TEXT("Data"), SerializeBuffer);
+	FBackChannelOSCMessage Msg(UPDATE_TRACKABLE_MESSAGE_ADDRESS);
+	Msg.Write(TrackableGuid);
+	Msg.Write(SerializeBuffer);
 	Connection->SendPacket(Msg);
 
 	UE_LOG(LogRemoteSession, Log, TEXT("Sent trackable updated (%s)"), *Updated->GetName());
@@ -415,15 +408,14 @@ void FRemoteSessionARSystemChannel::SendRemovedMessage(UARTrackedGeometry* Remov
 {
 	FString TrackableGuid = Removed->UniqueId.ToString();
 
-	TBackChannelSharedPtr<FBackChannelOSCMessage> Msg = MakeShared<FBackChannelOSCMessage, ESPMode::ThreadSafe>(UPDATE_TRACKABLE_MESSAGE_ADDRESS);
-
-	Msg->Write(TEXT("GUID"), TrackableGuid);
+	FBackChannelOSCMessage Msg(UPDATE_TRACKABLE_MESSAGE_ADDRESS);
+	Msg.Write(TrackableGuid);
 	Connection->SendPacket(Msg);
 
 	UE_LOG(LogRemoteSession, Log, TEXT("Sent trackable removed (%s)"), *Removed->GetName());
 }
 
-TSharedPtr<IRemoteSessionChannel> FRemoteSessionARSystemChannelFactoryWorker::Construct(ERemoteSessionChannelMode InMode, TSharedPtr<IBackChannelConnection, ESPMode::ThreadSafe> InConnection) const
+TSharedPtr<IRemoteSessionChannel> FRemoteSessionARSystemChannelFactoryWorker::Construct(ERemoteSessionChannelMode InMode, TSharedPtr<FBackChannelOSCConnection, ESPMode::ThreadSafe> InConnection) const
 {
 	bool IsSupported = (InMode == ERemoteSessionChannelMode::Read) || UARBlueprintLibrary::IsSessionTypeSupported(EARSessionType::World);
 	if (IsSupported)

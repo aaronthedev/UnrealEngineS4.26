@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -86,30 +86,24 @@ struct FNetworkPacketEvent
 
 struct FPacketContentViewDrawState
 {
-	struct FBoxPrimitive
+	struct FBox
 	{
-		int32 Depth;
 		float X;
+		float Y;
 		float W;
+		float H;
 		FLinearColor Color;
 	};
 
-	struct FTextPrimitive
+	struct FText
 	{
-		int32 Depth;
 		float X;
+		float Y;
 		FString Text;
 		bool bWhite;
 	};
 
 	FPacketContentViewDrawState()
-		: Events()
-		, Boxes()
-		, InsideBoxes()
-		, Borders()
-		, Texts()
-		, NumLanes(0)
-		, NumMergedBoxes(0)
 	{
 	}
 
@@ -117,26 +111,17 @@ struct FPacketContentViewDrawState
 	{
 		Events.Reset();
 		Boxes.Reset();
-		InsideBoxes.Reset();
 		Borders.Reset();
 		Texts.Reset();
-		NumLanes = 0;
 		NumMergedBoxes = 0;
 	}
 
-	int32 GetNumLanes() const { return NumLanes; }
-
-	int32 GetNumEvents() const { return Events.Num(); }
 	int32 GetNumMergedBoxes() const { return NumMergedBoxes; }
-	int32 GetTotalNumBoxes() const { return Boxes.Num() + InsideBoxes.Num(); }
 
 	TArray<FNetworkPacketEvent> Events;
-	TArray<FBoxPrimitive> Boxes;
-	TArray<FBoxPrimitive> InsideBoxes;
-	TArray<FBoxPrimitive> Borders;
-	TArray<FTextPrimitive> Texts;
-
-	int32 NumLanes;
+	TArray<FBox> Boxes;
+	TArray<FBox> Borders;
+	TArray<FText> Texts;
 
 	// Debug stats.
 	int32 NumMergedBoxes;
@@ -170,10 +155,8 @@ public:
 	void AddEvent(const Trace::FNetProfilerContentEvent& Event, const TCHAR* Name, uint32 NetId);
 	void Flush();
 
-	int32 GetMaxDepth() const { return MaxDepth; }
-
 private:
-	void FlushBox(const FBoxData& Box, const int32 Depth);
+	void FlushBox(const FBoxData& Box, const float EventY, const float EventH);
 
 private:
 	FPacketContentViewDrawState& DrawState; // cached draw state to build
@@ -211,16 +194,8 @@ public:
 	const FSlateBrush* GetWhiteBrush() const { return WhiteBrush; }
 	const FSlateFontInfo& GetEventFont() const { return EventFont; }
 
-	float GetLayoutPosY() const { return LayoutPosY; }
-	float GetLayoutEventH() const { return LayoutEventH; }
-	float GetLayoutEventDY() const { return LayoutEventDY; }
-
-	void SetLayoutPosY(const float InLayoutPosY) { LayoutPosY = InLayoutPosY; }
-	void SetLayoutEventH(const float InLayoutEventH) { LayoutEventH = InLayoutEventH; }
-	void SetLayoutEventDY(const float InLayoutEventDY) { LayoutEventDY = InLayoutEventDY; }
-
 	void DrawBackground() const;
-	void Draw(const FPacketContentViewDrawState& DrawState, const float Opacity = 1.0f) const;
+	void Draw(const FPacketContentViewDrawState& DrawState) const;
 	void DrawEventHighlight(const FNetworkPacketEvent& Event, EHighlightMode Mode) const;
 
 	static FLinearColor GetColorByType(int32 Type);
@@ -234,10 +209,6 @@ private:
 	const FSlateBrush* HoveredEventBorderBrush;
 	const FSlateBrush* SelectedEventBorderBrush;
 	const FSlateFontInfo EventFont;
-
-	float LayoutPosY;
-	float LayoutEventH;
-	float LayoutEventDY;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcGeom_Tests_CurvesData_h
-#define Alembic_AbcGeom_Tests_CurvesData_h
+#ifndef _Alembic_AbcGeom_Tests_CurvesData_h_
+#define _Alembic_AbcGeom_Tests_CurvesData_h_
 
 #include <Alembic/AbcGeom/All.h>
 

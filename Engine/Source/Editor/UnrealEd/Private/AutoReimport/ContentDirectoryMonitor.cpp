@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AutoReimport/ContentDirectoryMonitor.h"
 #include "HAL/FileManager.h"
@@ -302,7 +302,7 @@ void FContentDirectoryMonitor::ProcessAdditions(const DirectoryWatcher::FTimeLim
 		}
 		else
 		{
-			UPackage* NewPackage = CreatePackage( *PackagePath);
+			UPackage* NewPackage = CreatePackage(nullptr, *PackagePath);
 			if ( !ensure(NewPackage) )
 			{
 				Context.AddMessage(EMessageSeverity::Error, FText::Format(LOCTEXT("Error_FailedToCreateAsset", "Failed to create new asset ({0}) for file ({1})."), FText::FromString(NewAssetName), FText::FromString(FullFilename)));

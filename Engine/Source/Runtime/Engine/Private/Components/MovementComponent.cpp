@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "GameFramework/MovementComponent.h"
@@ -72,7 +72,7 @@ void UMovementComponent::SetUpdatedComponent(USceneComponent* NewUpdatedComponen
 	UpdatedPrimitive = Cast<UPrimitiveComponent>(UpdatedComponent);
 
 	// Assign delegates
-	if (UpdatedComponent)
+	if (UpdatedComponent && !UpdatedComponent->IsPendingKill())
 	{
 		// Listen to events regardless of whether enabled, in case physics volume updates are later enabled.
 		UpdatedComponent->PhysicsVolumeChangedDelegate.AddUniqueDynamic(this, &UMovementComponent::PhysicsVolumeChanged);
@@ -114,7 +114,7 @@ void UMovementComponent::InitializeComponent()
 	Super::InitializeComponent();
 
 	// RootComponent is null in OnRegister for blueprint (non-native) root components.
-	if (bAutoRegisterUpdatedComponent && !IsValid(UpdatedComponent))
+	if (!UpdatedComponent && bAutoRegisterUpdatedComponent)
 	{
 		// Auto-register owner's root component if found.
 		if (AActor* MyActor = GetOwner())
@@ -248,7 +248,7 @@ void UMovementComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyC
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
-	const FProperty* PropertyThatChanged = PropertyChangedEvent.MemberProperty;
+	const UProperty* PropertyThatChanged = PropertyChangedEvent.MemberProperty;
 	if (PropertyThatChanged)
 	{
 		if (PropertyThatChanged->GetFName() == GET_MEMBER_NAME_CHECKED(UMovementComponent, PlaneConstraintAxisSetting))

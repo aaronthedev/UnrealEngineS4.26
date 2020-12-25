@@ -1,23 +1,32 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "Chaos/PBDConstraintContainer.h"
 
 namespace Chaos
 {
-	FPBDConstraintContainer::FPBDConstraintContainer()
+	template<typename T, int d>
+	TPBDConstraintContainer<T, d>::TPBDConstraintContainer()
 	{
 	}
 
-	FPBDConstraintContainer::~FPBDConstraintContainer()
+	template<typename T, int d>
+	TPBDConstraintContainer<T, d>::~TPBDConstraintContainer()
 	{
 	}
 
-	int32 FPBDConstraintContainer::GetConstraintIndex(const FConstraintHandle* ConstraintHandle) const
+	template<typename T, int d>
+	int32 TPBDConstraintContainer<T, d>::GetConstraintIndex(const TConstraintHandle<T, d>* ConstraintHandle) const
 	{
-		return ConstraintHandle->GetConstraintIndex();
+		return ConstraintHandle->ConstraintIndex;
 	}
 
-	void FPBDConstraintContainer::SetConstraintIndex(FConstraintHandle* ConstraintHandle, int32 ConstraintIndex) const
+	template<typename T, int d>
+	void TPBDConstraintContainer<T, d>::SetConstraintIndex(TConstraintHandle<T, d>* ConstraintHandle, int32 ConstraintIndex) const
 	{
 		ConstraintHandle->ConstraintIndex = ConstraintIndex;
 	}
+}
+
+namespace Chaos
+{
+	template class TPBDConstraintContainer<float, 3>;
 }

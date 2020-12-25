@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BoneControllers/AnimNode_CopyBone.h"
 #include "AnimationRuntime.h"
 #include "Animation/AnimInstanceProxy.h"
-#include "Animation/AnimTrace.h"
 
 /////////////////////////////////////////////////////
 // FAnimNode_CopyBone
@@ -79,9 +78,6 @@ void FAnimNode_CopyBone::EvaluateSkeletalControl_AnyThread(FComponentSpacePoseCo
 
 	// Output new transform for current bone.
 	OutBoneTransforms.Add(FBoneTransform(TargetBoneIndex, CurrentBoneTM));
-
-	TRACE_ANIM_NODE_VALUE(Output, TEXT("Source Bone"), SourceBone.BoneName);
-	TRACE_ANIM_NODE_VALUE(Output, TEXT("Target Bone"), TargetBone.BoneName);
 }
 
 bool FAnimNode_CopyBone::IsValidToEvaluate(const USkeleton* Skeleton, const FBoneContainer& RequiredBones) 

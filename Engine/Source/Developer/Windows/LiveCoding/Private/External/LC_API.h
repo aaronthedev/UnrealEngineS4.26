@@ -4,6 +4,16 @@
 
 #include "LPP_API.h"
 
+class ClientStartupThread;
+
+
+// internal API, initialized by entryPoint
+namespace api
+{
+	void Startup(ClientStartupThread* startupThread);
+	void Shutdown(void);
+}
+
 
 // external Live++ API exported into DLL
 // BEGIN EPIC MOD - Internalizing API
@@ -11,10 +21,6 @@
 //#define LPP_DLL_API(_rv) extern "C" __declspec(dllexport) _rv __cdecl
 // END EPIC MOD - Internalizing API
 
-// BEGIN EPIC MOD - Adding instance to startup function
-LPP_DLL_API(void) LppStartup(void* thisInstance);
-// END EPIC MOD
-LPP_DLL_API(void) LppShutdown(void);
 LPP_DLL_API(const char*) LppGetVersion(void);
 LPP_DLL_API(int) LppCheckVersion(const char* apiVersion);
 LPP_DLL_API(void) LppRegisterProcessGroup(const char* groupName);
@@ -25,7 +31,6 @@ LPP_DLL_API(void) LppLogMessage(const wchar_t* message);
 LPP_DLL_API(void) LppBuildPatch(const wchar_t* moduleNames[], const wchar_t* objPaths[], const wchar_t* amalgamatedObjPaths[], unsigned int count);
 LPP_DLL_API(void) LppInstallExceptionHandler(void);
 LPP_DLL_API(void) LppUseExternalBuildSystem(void);
-LPP_DLL_API(void) LppTriggerRestart(void);
 LPP_DLL_API(int) LppWantsRestart(void);
 LPP_DLL_API(void) LppRestart(lpp::RestartBehaviour behaviour, unsigned int exitCode);
 LPP_DLL_API(void*) LppEnableModule(const wchar_t* nameOfExeOrDll);

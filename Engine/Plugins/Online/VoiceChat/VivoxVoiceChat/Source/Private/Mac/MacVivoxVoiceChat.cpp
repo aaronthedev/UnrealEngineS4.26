@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MacVivoxVoiceChat.h"
 
@@ -34,17 +34,18 @@ bool FMacVivoxVoiceChat::Initialize()
 
 bool FMacVivoxVoiceChat::LoadVivoxModules()
 {
+	const FString BinaryPath = FPaths::EngineDir() / TEXT("Binaries/ThirdParty/Vivox/Mac");
 	const FString VivoxORTPFile = TEXT("libortp.dylib");
 	const FString VivoxSDKFile = TEXT("libvivoxsdk.dylib");
 
 	if (VivoxORTPHandle == nullptr)
 	{
-		VivoxORTPHandle = FPlatformProcess::GetDllHandle(*VivoxORTPFile);
+		VivoxORTPHandle = FPlatformProcess::GetDllHandle(*(BinaryPath / VivoxORTPFile));
 	}
 
 	if (VivoxSDKHandle == nullptr)
 	{
-		VivoxSDKHandle = FPlatformProcess::GetDllHandle(*VivoxSDKFile);
+		VivoxSDKHandle = FPlatformProcess::GetDllHandle(*(BinaryPath / VivoxSDKFile));
 	}
 
 	return VivoxORTPHandle && VivoxSDKHandle;

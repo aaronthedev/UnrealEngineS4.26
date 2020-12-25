@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Windows/WindowsTextInputMethodSystem.h"
 #include "CoreGlobals.h"
@@ -172,14 +172,15 @@ bool FWindowsTextInputMethodSystem::Initialize()
 		if(SUCCEEDED(TSFInputProcessorProfileManager->GetActiveProfile(GUID_TFCAT_TIP_KEYBOARD, &TSFProfile)) && TSFProfile.hkl && TSFProfile.dwProfileType == TF_PROFILETYPE_INPUTPROCESSOR)
 		{
 			check(TSFProfile.hkl == KeyboardLayout);
+
 			CurrentAPI = EAPI::TSF;
+			LogActiveIMEInfo();
 		}
 		else if(::ImmGetIMEFileName(KeyboardLayout, nullptr, 0) > 0)
 		{
 			CurrentAPI = EAPI::IMM;
+			LogActiveIMEInfo();
 		}
-
-		LogActiveIMEInfo();
 	}
 
 	return Result;
@@ -238,11 +239,11 @@ void FWindowsTextInputMethodSystem::LogActiveIMEInfo()
 
 	if(APIString.IsEmpty())
 	{
-		UE_LOG(LogWindowsTextInputMethodSystem, Display, TEXT("IME system deactivated."));
+		UE_LOG(LogWindowsTextInputMethodSystem, Display, TEXT("IME system now deactivated."));
 	}
 	else
 	{
-		UE_LOG(LogWindowsTextInputMethodSystem, Display, TEXT("IME system activated using %s."), *APIString);
+		UE_LOG(LogWindowsTextInputMethodSystem, Display, TEXT("IME system now activated using %s."), *APIString);
 	}
 }
 
@@ -252,12 +253,6 @@ bool FWindowsTextInputMethodSystem::InitializeIMM()
 
 	IMMContextId = ::ImmCreateContext();
 	UpdateIMMProperty(::GetKeyboardLayout(0));
-
-	if (!IMMContextId)
-	{
-		UE_CLOG(!GIsBuildMachine, LogWindowsTextInputMethodSystem, Warning, TEXT("Initialization failed while creating the IMM context."));
-		return false;
-	}
 
 	UE_LOG(LogWindowsTextInputMethodSystem, Verbose, TEXT("Initialized IMM!"));
 
@@ -409,10 +404,10 @@ bool FWindowsTextInputMethodSystem::InitializeTSF()
 		Result = ::CoCreateInstance(CLSID_TF_ThreadMgr, NULL, CLSCTX_INPROC_SERVER, IID_ITfThreadMgr, reinterpret_cast<void**>(&(RawPointerTSFThreadManager)));
 		if(FAILED(Result))
 		{
+			TCHAR ErrorMsg[1024];
+			FPlatformMisc::GetSystemErrorMessage(ErrorMsg, 1024, Result);
 			if (!GIsBuildMachine)
 			{
-				TCHAR ErrorMsg[1024];
-				FPlatformMisc::GetSystemErrorMessage(ErrorMsg, 1024, Result);
 				UE_LOG(LogWindowsTextInputMethodSystem, Warning, TEXT("Initialization failed while creating the TSF thread manager. %s (0x%08x)"), ErrorMsg, Result);
 			}
 			TSFInputProcessorProfiles.Reset();
@@ -511,7 +506,10 @@ bool FWindowsTextInputMethodSystem::InitializeTSF()
 	{
 		TCHAR ErrorMsg[1024];
 		FPlatformMisc::GetSystemErrorMessage(ErrorMsg, 1024, Result);
-		UE_LOG(LogWindowsTextInputMethodSystem, Warning, TEXT("Initialization failed while creating the TSF document manager. %s (0x%08x)"), ErrorMsg, Result);
+		if (!GIsBuildMachine)
+		{
+			UE_LOG(LogWindowsTextInputMethodSystem, Warning, TEXT("Initialization failed while creating the TSF thread manager. %s (0x%08x)"), ErrorMsg, Result);
+		}
 		TSFInputProcessorProfiles.Reset();
 		TSFInputProcessorProfileManager.Reset();
 		TSFThreadManager.Reset();
@@ -525,11 +523,12 @@ bool FWindowsTextInputMethodSystem::InitializeTSF()
 	{
 		TCHAR ErrorMsg[1024];
 		FPlatformMisc::GetSystemErrorMessage(ErrorMsg, 1024, Result);
-		UE_LOG(LogWindowsTextInputMethodSystem, Error, TEXT("Initialization failed while activating the TSF document manager. %s (0x%08x)"), ErrorMsg, Result);
+		UE_LOG(LogWindowsTextInputMethodSystem, Error, TEXT("Initialization failed while activating the TSF thread manager. %s (0x%08x)"), ErrorMsg, Result);
 		TSFInputProcessorProfiles.Reset();
 		TSFInputProcessorProfileManager.Reset();
 		TSFThreadManager.Reset();
 		TSFActivationProxy.Reset();
+		TSFThreadManager.Reset();
 		return false;
 	}
 
@@ -622,16 +621,7 @@ void FWindowsTextInputMethodSystem::ApplyDefaults(const TSharedRef<FGenericWindo
 	HIMC IMMContextToSet = nullptr;
 	if(ActiveContext.IsValid())
 	{
-		const HRESULT Result = TSFThreadManager->GetFocus(&TSFDocumentManagerToSet);
-		if (FAILED(Result))
-		{
-			TSFDocumentManagerToSet = nullptr;
-
-			TCHAR ErrorMsg[1024];
-			FPlatformMisc::GetSystemErrorMessage(ErrorMsg, 1024, Result);
-			UE_LOG(LogWindowsTextInputMethodSystem, Error, TEXT("Getting the active TSF document manager failed, so will fallback to using the disabled document manager. %s (0x%08x)"), ErrorMsg, Result);
-		}
-
+		TSFThreadManager->GetFocus(&TSFDocumentManagerToSet);
 		IMMContextToSet = IMMContextId;
 	}
 

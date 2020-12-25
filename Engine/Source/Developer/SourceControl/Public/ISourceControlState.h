@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -100,7 +100,7 @@ public:
 	/** Get whether this file can be checked out */
 	virtual bool CanCheckout() const = 0;
 
-	/** Get whether this file is checked out by the current user*/
+	/** Get whether this file is checked out */
 	virtual bool IsCheckedOut() const = 0;
 
 	/** Get whether this file is checked out by someone else in the current branch */

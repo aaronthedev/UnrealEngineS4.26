@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,7 +14,6 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/Input/SEditableText.h"
 #include "Widgets/Layout/SBorder.h"
-#include "Framework/SlateDelegates.h"
 
 class IErrorReportingWidget;
 class SBox;
@@ -48,7 +47,6 @@ public:
 		, _AllowContextMenu(true)
 		, _MinDesiredWidth( 0.0f )
 		, _SelectAllTextOnCommit( false )
-		, _SelectWordOnMouseDoubleClick(true)
 		, _BackgroundColor()
 		, _Padding()
 		, _ErrorReporting()
@@ -115,17 +113,11 @@ public:
 		/** Called whenever the text is committed.  This happens when the user presses enter or the text box loses focus. */
 		SLATE_EVENT( FOnTextCommitted, OnTextCommitted )
 
-		/** Called whenever the text is changed programmatically or interactively by the user */
-		SLATE_EVENT( FOnVerifyTextChanged, OnVerifyTextChanged )
-
 		/** Minimum width that a text block should be */
 		SLATE_ATTRIBUTE( float, MinDesiredWidth )
 
 		/** Whether to select all text when pressing enter to commit changes */
 		SLATE_ATTRIBUTE( bool, SelectAllTextOnCommit )
-
-		/** Whether to select word on mouse double click on the widget */
-		SLATE_ATTRIBUTE(bool, SelectWordOnMouseDoubleClick)
 
 		/** Callback delegate to have first chance handling of the OnKeyChar event */
 		SLATE_EVENT(FOnKeyChar, OnKeyCharHandler)
@@ -286,13 +278,6 @@ public:
 	 */
 	void SetSelectAllTextOnCommit(const TAttribute<bool>& InSelectAllTextOnCommit);
 
-	/**
-	 * Sets whether to select select word on mouse double click
-	 *
-	 * @param  InSelectWordOnMouseDoubleClick		Select select word on mouse double click?
-	 */
-	void SetSelectWordOnMouseDoubleClick(const TAttribute<bool>& InSelectWordOnMouseDoubleClick);
-
 	/** See Justification attribute */
 	void SetJustification(const TAttribute<ETextJustify::Type>& InJustification);
 
@@ -372,11 +357,6 @@ protected:
 	virtual TSharedRef<FSlateAccessibleWidget> CreateAccessibleWidget() override;
 	virtual TOptional<FText> GetDefaultAccessibleText(EAccessibleType AccessibleType = EAccessibleType::Main) const override;
 #endif
-	/** Callback for the editable text's OnTextChanged event */
-	void OnEditableTextChanged(const FText& InText);
-
-	/** Callback when the editable text is committed. */
-	void OnEditableTextCommitted(const FText& InText, ETextCommit::Type InCommitType);
 
 	const FEditableTextBoxStyle* Style;
 
@@ -406,15 +386,6 @@ protected:
 
 	/** SomeWidget reporting */
 	TSharedPtr<class IErrorReportingWidget> ErrorReporting;
-
-	/** Called when the text is changed interactively */
-	FOnTextChanged OnTextChanged;
-
-	/** Called when the user commits their change to the editable text control */
-	FOnTextCommitted OnTextCommitted;	
-
-	/** Callback to verify text when changed. Will return an error message to denote problems. */
-	FOnVerifyTextChanged OnVerifyTextChanged;
 
 private:
 

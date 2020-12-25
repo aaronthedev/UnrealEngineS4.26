@@ -1,23 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
-#include "InteractiveTool.h"
+#include "CoreMinimal.h"
+#include "EdMode.h"
 #include "InteractiveToolsContext.h"
 #include "Delegates/Delegate.h"
-#include "InputCoreTypes.h"
-#include "Engine/EngineBaseTypes.h"
-
 #include "EdModeInteractiveToolsContext.generated.h"
-
-class FEdMode;
-class FEditorModeTools;
-class FEditorViewportClient;
-class FSceneView;
-class FViewport;
-class UMaterialInterface;
-class FPrimitiveDrawInterface;
-class FViewportClient;
 
 /**
  * EdModeInteractiveToolsContext is an extension/adapter of an InteractiveToolsContext which 
@@ -34,10 +23,7 @@ public:
 	UEdModeInteractiveToolsContext();
 
 
-	virtual void InitializeContextFromEdMode(FEdMode* EditorModeIn,
-		IToolsContextAssetAPI* UseAssetAPI = nullptr);
-	virtual void InitializeContextWithEditorModeManager(FEditorModeTools* InEditorModeManager,
-		IToolsContextAssetAPI* UseAssetAPI = nullptr);
+	virtual void InitializeContextFromEdMode(FEdMode* EditorMode);
 	virtual void ShutdownContext();
 
 	// default behavior is to accept active tool
@@ -60,7 +46,6 @@ public:
 
 	virtual void Tick(FEditorViewportClient* ViewportClient, float DeltaTime);
 	virtual void Render(const FSceneView* View, FViewport* Viewport, FPrimitiveDrawInterface* PDI);
-	virtual void DrawHUD(FViewportClient* ViewportClient,FViewport* Viewport,const FSceneView* View, FCanvas* Canvas);
 
 	virtual bool ProcessEditDelete();
 
@@ -87,9 +72,16 @@ public:
 	virtual void StartTool(const FString& ToolTypeIdentifier);
 	virtual void EndTool(EToolShutdownType ShutdownType);
 
-	virtual bool ShouldIgnoreHotkeys() const { return bInFlyMode; }
 
-	virtual FRay GetLastWorldRay() const;
+public:
+	// forwards message to OnToolNotificationMessage delegate
+	virtual void PostToolNotificationMessage(const FText& Message);
+	virtual void PostToolWarningMessage(const FText& Message);
+
+	DECLARE_MULTICAST_DELEGATE_OneParam(FEdModeToolsContextToolNotification, const FText&);
+	FEdModeToolsContextToolNotification OnToolNotificationMessage;
+	FEdModeToolsContextToolNotification OnToolWarningMessage;
+
 
 protected:
 	// we hide these 
@@ -104,28 +96,22 @@ public:
 	UMaterialInterface* StandardVertexColorMaterial;
 
 protected:
+	FEdMode* EditorMode;
+
 	// called when PIE is about to start, shuts down active tools
 	FDelegateHandle BeginPIEDelegateHandle;
 	// called before a Save starts. This currently shuts down active tools.
 	FDelegateHandle PreSaveWorldDelegateHandle;
 	// called when a map is changed
 	FDelegateHandle WorldTearDownDelegateHandle;
-	// called when viewport clients change
-	FDelegateHandle ViewportClientListChangedHandle;
 
 	// EdMode implementation of InteractiveToolFramework APIs - see ToolContextInterfaces.h
 	IToolsContextQueriesAPI* QueriesAPI;
 	IToolsContextTransactionsAPI* TransactionAPI;
 	IToolsContextAssetAPI* AssetAPI;
 
-	// Tools need to be able to Invalidate the view, in case it is not Realtime.
-	// Currently we do this very aggressively, and also force Realtime to be on, but in general we should be able to rely on Invalidation.
-	// However there are multiple Views and we do not want to Invalidate immediately, so we store a timestamp for each
-	// ViewportClient, and invalidate it when we see it if it's timestamp is out-of-date.
-	// (In theory this map will continually grow as new Viewports are created...)
-	TMap<FViewportClient*, int32> InvalidationMap;
-	// current invalidation timestamp, incremented by invalidation calls
-	int32 InvalidationTimestamp = 0;
+	// if true, we invalidate the ViewportClient on next tick
+	bool bInvalidationPending;
 
 	/** Input event instance used to keep track of various button states, etc, that we cannot directly query on-demand */
 	FInputDeviceState CurrentMouseState;
@@ -134,18 +120,12 @@ protected:
 	// Copy-pasted from other Editor code, seems kind of expensive?
 	static FRay GetRayFromMousePos(FEditorViewportClient* ViewportClient, FViewport* Viewport, int MouseX, int MouseY);
 
-	/** This will be set to true if user is in right-mouse "fly mode", which requires special handling to intercept hotkeys/etc */
-	bool bInFlyMode = false;
 
 	// editor UI state that we set before starting tool and when exiting tool
 	// Currently disabling anti-aliasing during active Tools because it causes PDI flickering
-	void SetEditorStateForTool();
+	bool bHaveSavedEditorState = false;
+	bool bSavedAntiAliasingState = false;
+	void SaveEditorStateAndSetForTool();
 	void RestoreEditorState();
-
-	TOptional<FString> PendingToolToStart = {};
-	TOptional<EToolShutdownType> PendingToolShutdownType = {};
-
-private:
-	FEditorModeTools* EditorModeManager = nullptr;
 
 };

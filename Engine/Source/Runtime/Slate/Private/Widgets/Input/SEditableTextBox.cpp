@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -32,9 +32,6 @@ void SEditableTextBox::Construct( const FArguments& InArgs )
 	ForegroundColorOverride = InArgs._ForegroundColor;
 	BackgroundColorOverride = InArgs._BackgroundColor;
 	ReadOnlyForegroundColorOverride = InArgs._ReadOnlyForegroundColor;
-	OnTextChanged = InArgs._OnTextChanged;
-	OnVerifyTextChanged = InArgs._OnVerifyTextChanged;
-	OnTextCommitted = InArgs._OnTextCommitted;
 
 	SBorder::Construct( SBorder::FArguments()
 		.BorderImage( this, &SEditableTextBox::GetBorderImage )
@@ -68,11 +65,10 @@ void SEditableTextBox::Construct( const FArguments& InArgs )
 					.AllowContextMenu( InArgs._AllowContextMenu )
 					.OnContextMenuOpening( InArgs._OnContextMenuOpening )
 					.ContextMenuExtender( InArgs._ContextMenuExtender )
-					.OnTextChanged(this, &SEditableTextBox::OnEditableTextChanged)
-					.OnTextCommitted(this, &SEditableTextBox::OnEditableTextCommitted)
+					.OnTextChanged( InArgs._OnTextChanged )
+					.OnTextCommitted( InArgs._OnTextCommitted )
 					.MinDesiredWidth( InArgs._MinDesiredWidth )
 					.SelectAllTextOnCommit( InArgs._SelectAllTextOnCommit )
-					.SelectWordOnMouseDoubleClick(InArgs._SelectWordOnMouseDoubleClick)
 					.OnKeyCharHandler( InArgs._OnKeyCharHandler )			
 					.OnKeyDownHandler( InArgs._OnKeyDownHandler )
 					.VirtualKeyboardType( InArgs._VirtualKeyboardType )
@@ -396,10 +392,6 @@ void SEditableTextBox::SetSelectAllTextOnCommit(const TAttribute<bool>& InSelect
 	EditableText->SetSelectAllTextOnCommit(InSelectAllTextOnCommit);
 }
 
-void SEditableTextBox::SetSelectWordOnMouseDoubleClick(const TAttribute<bool>& InSelectWordOnMouseDoubleClick)
-{
-	EditableText->SetSelectWordOnMouseDoubleClick(InSelectWordOnMouseDoubleClick);
-}
 
 void SEditableTextBox::SetJustification(const TAttribute<ETextJustify::Type>& InJustification)
 {
@@ -434,49 +426,3 @@ TOptional<FText> SEditableTextBox::GetDefaultAccessibleText(EAccessibleType Acce
 	return TOptional<FText>();
 }
 #endif
-
-void SEditableTextBox::OnEditableTextChanged(const FText& InText)
-{
-	OnTextChanged.ExecuteIfBound(InText);
-
-	if (OnVerifyTextChanged.IsBound())
-	{
-		FText OutErrorMessage;
-		if (!OnVerifyTextChanged.Execute(InText, OutErrorMessage))
-		{
-			// Display as an error.
-			SetError(OutErrorMessage);
-		}
-		else
-		{
-			SetError(FText::GetEmpty());
-		}
-	}
-}
-
-void SEditableTextBox::OnEditableTextCommitted(const FText& InText, ETextCommit::Type InCommitType)
-{
-	if (OnVerifyTextChanged.IsBound())
-	{
-		FText OutErrorMessage;
-		if (!OnVerifyTextChanged.Execute(InText, OutErrorMessage))
-		{
-           		// Display as an error.
-			if (InCommitType == ETextCommit::OnEnter)
-			{
-				SetError(OutErrorMessage);
-			}
-			return;
-		}
-		else
-		{
-			if (InCommitType == ETextCommit::OnEnter)
-			{
-				SetError(FText::GetEmpty());
-			}
-			
-		}		
-	}
-
-	OnTextCommitted.ExecuteIfBound(InText, InCommitType);
-}

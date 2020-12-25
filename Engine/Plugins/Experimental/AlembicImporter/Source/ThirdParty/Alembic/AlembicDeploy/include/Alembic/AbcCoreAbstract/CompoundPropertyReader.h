@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcCoreAbstract_CompoundPropertyReader_h
-#define Alembic_AbcCoreAbstract_CompoundPropertyReader_h
+#ifndef _Alembic_AbcCoreAbstract_CompoundPropertyReader_h_
+#define _Alembic_AbcCoreAbstract_CompoundPropertyReader_h_
 
 #include <Alembic/Util/Export.h>
 #include <Alembic/AbcCoreAbstract/Foundation.h>

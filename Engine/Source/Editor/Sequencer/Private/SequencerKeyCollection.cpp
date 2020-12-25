@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SequencerKeyCollection.h"
 #include "MovieSceneSection.h"
@@ -283,17 +283,8 @@ TOptional<FFrameNumber> FSequencerKeyCollection::GetNextKey(FFrameNumber FrameNu
 	{
 		return GroupedTimes[Index];
 	}
-	else if (GroupedTimes.Num() > 0)
+	else
 	{
-		if (Direction == EFindKeyDirection::Forwards)
-		{
-			return GroupedTimes[0];
-		}
-		else
-		{
-			return GroupedTimes.Last();
-		}
+		return TOptional<FFrameNumber>();
 	}
-
-	return TOptional<FFrameNumber>();
 }

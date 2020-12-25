@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "CoreMinimal.h"
@@ -15,6 +15,7 @@
 #include "RenderingThread.h"
 #include "RHI.h"
 #include "RHIResources.h"
+#include "MagicLeapPluginUtil.h" // for ML_INCLUDES_START/END
 
 class FMediaSamples;
 class IMediaEventSink;
@@ -43,7 +44,7 @@ public:
 	virtual IMediaCache& GetCache() override;
 	virtual IMediaControls& GetControls() override;
 	virtual FString GetInfo() const override;
-	virtual FGuid GetPlayerPluginGUID() const override;
+	virtual FName GetPlayerName() const override;
 	virtual IMediaSamples& GetSamples() override;
 	virtual FString GetStats() const override;
 	virtual IMediaTracks& GetTracks() override;

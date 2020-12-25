@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,8 +6,6 @@
 #include "MovieScene.h"
 #include "UObject/SoftObjectPtr.h"
 #include "TemplateSequence.generated.h"
-
-class MovieSceneTrack;
 
 /*
  * Movie scene animation that can be instanced multiple times inside a level sequence.
@@ -21,9 +19,6 @@ public:
 	UTemplateSequence(const FObjectInitializer& ObjectInitializer);
 
 	void Initialize();
-
-	/** Gets the object binding that corresponds to the root spawnable that serves as the template. */
-	FGuid GetRootObjectBindingID() const;
 
 	//~ UMovieSceneSequence interface
 	virtual void BindPossessableObject(const FGuid& ObjectId, UObject& PossessedObject, UObject* Context) override;
@@ -39,10 +34,6 @@ public:
 
 #if WITH_EDITOR
 	virtual FText GetDisplayName() const override;
-
-	virtual ETrackSupport IsTrackSupported(TSubclassOf<class UMovieSceneTrack> InTrackClass) const override;
-	virtual void GetAssetRegistryTagMetadata(TMap<FName, FAssetRegistryTagMetadata>& OutMetadata) const override;
-	virtual void GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const override;
 #endif
 
 public:

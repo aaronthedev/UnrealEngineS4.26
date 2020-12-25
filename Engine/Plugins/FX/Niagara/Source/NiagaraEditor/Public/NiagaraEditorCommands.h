@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "Framework/Commands/Commands.h"
@@ -24,18 +24,13 @@ public:
 	virtual void RegisterCommands() override;
 
 	TSharedPtr<FUICommandInfo> Apply;
-	TSharedPtr<FUICommandInfo> Discard;
 	TSharedPtr<FUICommandInfo> Compile;
 	TSharedPtr<FUICommandInfo> RefreshNodes;
 	TSharedPtr<FUICommandInfo> ResetSimulation;
-	TSharedPtr<FUICommandInfo> SelectNextUsage;
-	TSharedPtr<FUICommandInfo> CreateAssetFromSelection;
 
 	/** Toggles the preview pane's grid */
 	TSharedPtr<FUICommandInfo> TogglePreviewGrid;
 	TSharedPtr<FUICommandInfo> ToggleInstructionCounts;
-	TSharedPtr<FUICommandInfo> ToggleParticleCounts;
-	TSharedPtr<FUICommandInfo> ToggleEmitterExecutionOrder;
 
 	/** Toggles the preview pane's background */
 	TSharedPtr< FUICommandInfo > TogglePreviewBackground;
@@ -48,14 +43,6 @@ public:
 	TSharedPtr<FUICommandInfo> ToggleBounds_SetFixedBounds;
 	TSharedPtr<FUICommandInfo> SaveThumbnailImage;
 
-	TSharedPtr<FUICommandInfo> ToggleStatPerformance;
-	TSharedPtr<FUICommandInfo> ToggleStatPerformanceGPU;
-	TSharedPtr<FUICommandInfo> ClearStatPerformance;
-	TSharedPtr<FUICommandInfo> ToggleStatPerformanceTypeAvg;
-	TSharedPtr<FUICommandInfo> ToggleStatPerformanceTypeMax;
-	TSharedPtr<FUICommandInfo> ToggleStatPerformanceModePercent;
-	TSharedPtr<FUICommandInfo> ToggleStatPerformanceModeAbsolute;
-	
 	TSharedPtr<FUICommandInfo> ToggleAutoPlay;
 	TSharedPtr<FUICommandInfo> ToggleResetSimulationOnChange;
 	TSharedPtr<FUICommandInfo> ToggleResimulateOnChangeWhilePaused;

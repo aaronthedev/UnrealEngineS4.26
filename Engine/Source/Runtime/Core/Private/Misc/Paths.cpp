@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // Core includes.
 #include "Misc/Paths.h"
@@ -17,13 +17,8 @@
 #include "Misc/DataDrivenPlatformInfoRegistry.h"
 #include "Misc/EngineVersion.h"
 #include "Misc/LazySingleton.h"
-#include "Containers/StringView.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogPaths, Log, All);
-
-#if !defined(SUPPORTS_LOGS_IN_USERDIR)
-	#define SUPPORTS_LOGS_IN_USERDIR 0
-#endif
 
 struct FPaths::FStaticData
 {
@@ -32,7 +27,6 @@ struct FPaths::FStaticData
 
 	FString         UserDirArg;
 	FString         GameSavedDir;
-	FString         EngineSavedDir;
 	FString         ShaderDir;
 	FString         UserFolder;
 	TArray<FString> EngineLocalizationPaths;
@@ -46,7 +40,6 @@ struct FPaths::FStaticData
 
 	bool bUserDirArgInitialized                    = false;
 	bool bGameSavedDirInitialized                  = false;
-	bool bEngineSavedDirInitialized                = false;
 	bool bShaderDirInitialized                     = false;
 	bool bUserFolderInitialized                    = false;
 	bool bEngineLocalizationPathsInitialized       = false;
@@ -68,12 +61,12 @@ namespace UE4Paths_Private
 	auto IsSlashOrBackslash    = [](TCHAR C) { return C == TEXT('/') || C == TEXT('\\'); };
 	auto IsNotSlashOrBackslash = [](TCHAR C) { return C != TEXT('/') && C != TEXT('\\'); };
 
-	FString GetSavedDirSuffix(const FString& BaseDir, const TCHAR* CommandLineArgument)
+	FString GameSavedDir()
 	{
-		FString Result = BaseDir + TEXT("Saved");
+		FString Result = FPaths::ProjectUserDir();
 
 		FString NonDefaultSavedDirSuffix;
-		if (FParse::Value(FCommandLine::Get(), CommandLineArgument, NonDefaultSavedDirSuffix))
+		if (FParse::Value(FCommandLine::Get(), TEXT("-saveddirsuffix="), NonDefaultSavedDirSuffix))
 		{
 			for (int32 CharIdx = 0; CharIdx < NonDefaultSavedDirSuffix.Len(); ++CharIdx)
 			{
@@ -83,26 +76,18 @@ namespace UE4Paths_Private
 					--CharIdx;
 				}
 			}
-		}
 
-		if (!NonDefaultSavedDirSuffix.IsEmpty())
+			if (!NonDefaultSavedDirSuffix.IsEmpty())
+			{
+				Result += TEXT("Saved_") + NonDefaultSavedDirSuffix + TEXT("/");
+			}
+		}
+		else
 		{
-			Result += TEXT("_") + NonDefaultSavedDirSuffix;
+			Result += TEXT("Saved/");
 		}
-
-		Result += TEXT("/");
 
 		return Result;
-	}
-
-	FString GameSavedDir()
-	{
-		return GetSavedDirSuffix(FPaths::ProjectUserDir(), TEXT("-saveddirsuffix="));
-	}
-
-	FString EngineSavedDir()
-	{
-		return GetSavedDirSuffix(FPaths::EngineUserDir(), TEXT("-enginesaveddirsuffix="));
 	}
 
 	FString ConvertRelativePathToFullInternal(FString&& BasePath, FString&& InPath)
@@ -200,13 +185,7 @@ FString FPaths::EngineIntermediateDir()
 
 FString FPaths::EngineSavedDir()
 {
-	FStaticData& StaticData = TLazySingleton<FStaticData>::Get();
-	if (!StaticData.bEngineSavedDirInitialized)
-	{
-		StaticData.EngineSavedDir = UE4Paths_Private::EngineSavedDir();
-		StaticData.bEngineSavedDirInitialized = true;
-	}
-	return StaticData.EngineSavedDir;
+	return EngineUserDir() + TEXT("Saved/");
 }
 
 FString FPaths::EnginePluginsDir()
@@ -217,11 +196,6 @@ FString FPaths::EnginePluginsDir()
 FString FPaths::EngineDefaultLayoutDir()
 {
 	return FPaths::EngineConfigDir() + TEXT("Layouts/");
-}
-
-FString FPaths::EngineProjectLayoutDir()
-{
-	return FPaths::ProjectConfigDir() + TEXT("Layouts/");
 }
 
 FString FPaths::EngineUserLayoutDir()
@@ -252,43 +226,6 @@ FString FPaths::EnginePlatformExtensionsDir()
 FString FPaths::ProjectPlatformExtensionsDir()
 {
 	return FPaths::ProjectDir() + TEXT("Platforms/");
-}
-
-
-static void AddIfDirectoryExists(TArray<FString>& ExtensionDirs, FString&& Dir)
-{
-	if (FPaths::DirectoryExists(Dir))
-	{
-		ExtensionDirs.Add(Dir);
-	}
-}
-
-static void GetExtensionDirsInternal(TArray<FString>& ExtensionDirs, const FString& BaseDir, const FString& SubDir)
-{
-	AddIfDirectoryExists(ExtensionDirs, FPaths::Combine(BaseDir, SubDir));
-
-	FString PlatformExtensionBaseDir = FPaths::Combine(BaseDir, TEXT("Platforms"));
-	for (const FString& PlatformName : FDataDrivenPlatformInfoRegistry::GetValidPlatformDirectoryNames())
-	{
-		AddIfDirectoryExists(ExtensionDirs, FPaths::Combine(PlatformExtensionBaseDir, PlatformName, SubDir));
-	}
-
-	FString RestrictedBaseDir = FPaths::Combine(BaseDir, TEXT("Restricted"));
-	IFileManager::Get().IterateDirectory(*RestrictedBaseDir, [&ExtensionDirs, SubDir](const TCHAR* FilenameOrDirectory, bool bIsDirectory)  -> bool
-	{
-		if (bIsDirectory)
-		{
-			GetExtensionDirsInternal(ExtensionDirs, FilenameOrDirectory, SubDir);
-		}
-		return true;
-	});
-}
-
-TArray<FString> FPaths::GetExtensionDirs(const FString& BaseDir, const FString& SubDir)
-{
-	TArray<FString> ExtensionDirs;
-	GetExtensionDirsInternal(ExtensionDirs, BaseDir, SubDir);
-	return ExtensionDirs;
 }
 
 FString FPaths::RootDir()
@@ -330,7 +267,7 @@ FString FPaths::ProjectConfigDir()
 	return FPaths::ProjectDir() + TEXT("Config/");
 }
 
-const FString& FPaths::ProjectSavedDir()
+FString FPaths::ProjectSavedDir()
 {
 	FStaticData& StaticData = TLazySingleton<FStaticData>::Get();
 	if (!StaticData.bGameSavedDirInitialized)
@@ -431,7 +368,7 @@ FString FPaths::ProjectLogDir()
 	{
 		return *OverrideDir;
 	}
-#elif PLATFORM_MAC || SUPPORTS_LOGS_IN_USERDIR
+#elif PLATFORM_MAC || PLATFORM_XBOXONE
 	if (CustomUserDirArgument().IsEmpty())
 	{
 		return FPlatformProcess::UserLogsDir();
@@ -454,12 +391,7 @@ FString FPaths::AutomationDir()
 
 FString FPaths::AutomationTransientDir()
 {
-	return FPaths::AutomationDir() + TEXT("Tmp/");
-}
-
-FString FPaths::AutomationReportsDir()
-{
-	return FPaths::AutomationDir() + TEXT("Reports/");
+	return FPaths::AutomationDir() + TEXT("Transient/");
 }
 
 FString FPaths::AutomationLogDir()
@@ -777,40 +709,26 @@ FString FPaths::GetCleanFilename(FString&& InPath)
 	return MoveTemp(InPath);
 }
 
-template<typename T>
-FString GetBaseFilenameImpl(T&& InPath, bool bRemovePath)
+FString FPaths::GetBaseFilename( const FString& InPath, bool bRemovePath )
 {
-	FString Wk = bRemovePath ? FPaths::GetCleanFilename(Forward<T>(InPath)) : Forward<T>(InPath);
+	FString Wk = bRemovePath ? GetCleanFilename(InPath) : InPath;
 
 	// remove the extension
-	const int32 ExtPos = Wk.Find(TEXT("."), ESearchCase::CaseSensitive, ESearchDir::FromEnd);
-
-	if (ExtPos != INDEX_NONE)
+	int32 ExtPos = Wk.Find(TEXT("."), ESearchCase::CaseSensitive, ESearchDir::FromEnd);
+	
+	// determine the position of the path/leaf separator
+	int32 LeafPos = INDEX_NONE;
+	if (!bRemovePath)
 	{
-		// determine the position of the path/leaf separator
-		int32 LeafPos = INDEX_NONE;
-		if (!bRemovePath)
-		{
-			LeafPos = Wk.FindLastCharByPredicate(UE4Paths_Private::IsSlashOrBackslash);
-		}
+		LeafPos = Wk.FindLastCharByPredicate(UE4Paths_Private::IsSlashOrBackslash);
+	}
 
-		if (LeafPos == INDEX_NONE || ExtPos > LeafPos)
-		{
-			Wk.LeftInline(ExtPos);
-		}
+	if (ExtPos != INDEX_NONE && (LeafPos == INDEX_NONE || ExtPos > LeafPos))
+	{
+		Wk = Wk.Left(ExtPos);
 	}
 
 	return Wk;
-}
-
-FString FPaths::GetBaseFilename(const FString& InPath, bool bRemovePath)
-{
-	return GetBaseFilenameImpl(InPath, bRemovePath);
-}
-
-FString FPaths::GetBaseFilename(FString&& InPath, bool bRemovePath)
-{
-	return GetBaseFilenameImpl(MoveTemp(InPath), bRemovePath);
 }
 
 FString FPaths::GetPath(const FString& InPath)
@@ -985,11 +903,11 @@ bool FPaths::IsDrive(const FString& InPath)
 				int32 SlashIndex = CheckPath.Find(TEXT("\\"), ESearchCase::CaseSensitive);
 				if (SlashIndex != INDEX_NONE)
 				{
-					CheckPath.RightInline(CheckPath.Len() - SlashIndex  - 1, false);
+					CheckPath = CheckPath.Right(CheckPath.Len() - SlashIndex  - 1);
 				}
 				else
 				{
-					CheckPath.Reset();
+					CheckPath = TEXT("");
 				}
 			}
 		}
@@ -1014,7 +932,7 @@ bool FPaths::IsDrive(const FString& InPath)
 					// It's a real folder, so add one to the count
 					CheckCount++;
 				}
-				CheckPath.RightInline(CheckPath.Len() - SlashIndex  - 1, false);
+				CheckPath = CheckPath.Right(CheckPath.Len() - SlashIndex  - 1);
 				SlashIndex = CheckPath.Find(TEXT("\\"), ESearchCase::CaseSensitive);
 			}
 
@@ -1081,42 +999,16 @@ bool FPaths::CollapseRelativeDirectories(FString& InPath)
 	{
 		// An empty path is finished
 		if (InPath.IsEmpty())
-		{
 			break;
-		}
 
 		// Consider empty paths or paths which start with .. or /.. as invalid
 		if (InPath.StartsWith(TEXT(".."), ESearchCase::CaseSensitive) || InPath.StartsWith(ParentDir))
-		{
 			return false;
-		}
 
 		// If there are no "/.."s left then we're done
-		int32 Index = InPath.Find(ParentDir, ESearchCase::CaseSensitive);
+		const int32 Index = InPath.Find(ParentDir, ESearchCase::CaseSensitive);
 		if (Index == -1)
-		{
 			break;
-		}
-
-		// Ignore folders beginning with dots
-		for (;;)
-		{
-			if (InPath.Len() <= Index + ParentDirLength || InPath[Index + ParentDirLength] == TEXT('/'))
-			{
-				break;
-			}
-
-			Index = InPath.Find(ParentDir, ESearchCase::CaseSensitive, ESearchDir::FromStart, Index + ParentDirLength);
-			if (Index == -1)
-			{
-				break;
-			}
-		}
-
-		if (Index == -1)
-		{
-			break;
-		}
 
 		int32 PreviousSeparatorIndex = Index;
 		for (;;)
@@ -1126,23 +1018,17 @@ bool FPaths::CollapseRelativeDirectories(FString& InPath)
 
 			// Stop if we've hit the start of the string
 			if (PreviousSeparatorIndex == 0)
-			{
 				break;
-			}
 
 			// Stop if we've found a directory that isn't "/./"
 			if ((Index - PreviousSeparatorIndex) > 1 && (InPath[PreviousSeparatorIndex + 1] != TEXT('.') || InPath[PreviousSeparatorIndex + 2] != TEXT('/')))
-			{
 				break;
-			}
 		}
 
 		// If we're attempting to remove the drive letter, that's illegal
 		int32 Colon = InPath.Find(TEXT(":"), ESearchCase::CaseSensitive, ESearchDir::FromStart, PreviousSeparatorIndex);
 		if (Colon >= 0 && Colon < Index)
-		{
 			return false;
-		}
 
 		InPath.RemoveAt(PreviousSeparatorIndex, Index - PreviousSeparatorIndex + ParentDirLength, false);
 	}
@@ -1156,88 +1042,52 @@ bool FPaths::CollapseRelativeDirectories(FString& InPath)
 
 void FPaths::RemoveDuplicateSlashes(FString& InPath)
 {
-	TCHAR* Text = InPath.GetCharArray().GetData();
-	if (!Text)
+	while (InPath.Contains(TEXT("//"), ESearchCase::CaseSensitive))
 	{
-		return;
+		InPath = InPath.Replace(TEXT("//"), TEXT("/"), ESearchCase::CaseSensitive);
 	}
-	const TCHAR* const TwoSlashStr = TEXT("//");
-	const TCHAR SlashChr = TEXT('/');
-
-	TCHAR* const EditStart = TCString<TCHAR>::Strstr(Text, TwoSlashStr);
-	if (!EditStart)
-	{
-		return;
-	}
-	const TCHAR* const TextEnd = Text + InPath.Len();
-
-	// Since we know we've found TwoSlashes, point the initial Write head at the spot where the second slash is (which we shall skip), and point the Read head at the next character after the second slash
-	TCHAR* Write = EditStart + 1;	// The position to write the next character of the output
-	const TCHAR* Read = Write + 1;	// The next character of the input to read
-
-	for (; Read < TextEnd; ++Read)
-	{
-		TCHAR NextChar = *Read;
-		if (Write[-1] != SlashChr || NextChar != SlashChr)
-		{
-			*Write++ = NextChar;
-		}
-		else
-		{
-			// Skip the NextChar when adding on a slash after an existing slash, e.g // or more generally before/////after
-			//                                                                       WR                         W  R
-		}
-	}
-	*Write = TEXT('\0');
-	InPath.TrimToNullTerminator();
 }
 
-FString FPaths::CreateStandardFilename(const FString& InPath)
+void FPaths::MakeStandardFilename(FString& InPath)
 {
 	// if this is an empty path, use the relative base dir
 	if (InPath.Len() == 0)
 	{
-		FString BaseDir = FPlatformProcess::BaseDir();
+		InPath = FPlatformProcess::BaseDir();
 		// if the base directory is nothing then this function will recurse infinitely instead of returning nothing.
-		if (BaseDir.Len() == 0)
-			return BaseDir;
-		return FPaths::CreateStandardFilename(BaseDir);
+		if (InPath.Len() == 0)
+			return;
+		FPaths::MakeStandardFilename(InPath);
+		return;
 	}
 
-	FString WithSlashes = InPath;
-	WithSlashes.ReplaceInline(TEXT("\\"), TEXT("/"), ESearchCase::CaseSensitive);
-	const FStringView SlashesView(WithSlashes);
+	FString WithSlashes = InPath.Replace(TEXT("\\"), TEXT("/"), ESearchCase::CaseSensitive);
 
-	const TCHAR* RootDirectory = FPlatformMisc::RootDir();
-	const FStringView RootDirectoryView(RootDirectory);
+	FString RootDirectory = FPaths::RootDir();
 
 	// look for paths that cannot be made relative, and are therefore left alone
 	// UNC (windows) network path
 	bool bCannotBeStandardized = InPath.StartsWith(TEXT("\\\\"), ESearchCase::CaseSensitive);
 	// windows drive letter path that doesn't start with base dir
-	bCannotBeStandardized |= ((InPath.Len() > 1) && (InPath[1] == ':') && !SlashesView.StartsWith(RootDirectoryView));
+	bCannotBeStandardized |= ((InPath.Len() > 1) && (InPath[1] == ':') && !WithSlashes.StartsWith(RootDirectory));
 	// Unix style absolute path that doesn't start with base dir
-	bCannotBeStandardized |= (WithSlashes.GetCharArray()[0] == '/' && !SlashesView.StartsWith(RootDirectoryView));
+	bCannotBeStandardized |= (WithSlashes.GetCharArray()[0] == '/' && !WithSlashes.StartsWith(RootDirectory));
 
 	// if it can't be standardized, just return itself
 	if (bCannotBeStandardized)
 	{
-		return InPath;
+		return;
 	}
 
 	// make an absolute path
-	FString Standardized = FPaths::ConvertRelativePathToFull(WithSlashes);
+	
+	FString Standardized = FPaths::ConvertRelativePathToFull(InPath);
 
 	// remove duplicate slashes
 	FPaths::RemoveDuplicateSlashes(Standardized);
-	// make it relative to Engine\Binaries\Platform
-	Standardized.ReplaceInline(RootDirectory, *FPaths::GetRelativePathToRoot());
-	return Standardized;
-}
 
-void FPaths::MakeStandardFilename(FString& InPath)
-{
-	InPath = FPaths::CreateStandardFilename(InPath);
+	// make it relative to Engine\Binaries\Platform
+	InPath = Standardized.Replace(*RootDirectory, *FPaths::GetRelativePathToRoot());
 }
 
 void FPaths::MakePlatformFilename( FString& InPath )
@@ -1249,8 +1099,9 @@ void FPaths::MakePlatformFilename( FString& InPath )
 bool FPaths::MakePathRelativeTo( FString& InPath, const TCHAR* InRelativeTo )
 {
 	FString Target = FPaths::ConvertRelativePathToFull(InPath);
-	FString Source = FPaths::GetPath(FPaths::ConvertRelativePathToFull(InRelativeTo));
-
+	FString Source = FPaths::ConvertRelativePathToFull(InRelativeTo);
+	
+	Source = FPaths::GetPath(Source);
 	Source.ReplaceInline(TEXT("\\"), TEXT("/"), ESearchCase::CaseSensitive);
 	Target.ReplaceInline(TEXT("\\"), TEXT("/"), ESearchCase::CaseSensitive);
 
@@ -1262,7 +1113,7 @@ bool FPaths::MakePathRelativeTo( FString& InPath, const TCHAR* InRelativeTo )
 	if (TargetArray.Num() && SourceArray.Num())
 	{
 		// Check for being on different drives
-		if ((TargetArray[0].Len() > 1) && (TargetArray[0][1] == TEXT(':')) && (SourceArray[0].Len() > 1) && (SourceArray[0][1] == TEXT(':')))
+		if ((TargetArray[0][1] == TEXT(':')) && (SourceArray[0][1] == TEXT(':')))
 		{
 			if (FChar::ToUpper(TargetArray[0][0]) != FChar::ToUpper(SourceArray[0][0]))
 			{
@@ -1291,7 +1142,7 @@ bool FPaths::MakePathRelativeTo( FString& InPath, const TCHAR* InRelativeTo )
 		}
 	}
 	
-	InPath = MoveTemp(Result);
+	InPath = Result;
 	return true;
 }
 
@@ -1457,7 +1308,7 @@ bool FPaths::ValidatePath( const FString& InPath, FText* OutReason )
 	// The loop below requires that the path not end with a /
 	if(Standardized.EndsWith(TEXT("/"), ESearchCase::CaseSensitive))
 	{
-		Standardized.LeftChopInline(1, false);
+		Standardized = Standardized.LeftChop(1);
 	}
 
 	// Walk each part of the path looking for name errors
@@ -1578,13 +1429,13 @@ void FPaths::CombineInternal(FString& OutPath, const TCHAR** Pathes, int32 NumPa
 
 bool FPaths::IsSamePath(const FString& PathA, const FString& PathB)
 {
-	FString TmpA = FPaths::ConvertRelativePathToFull(PathA);
-	FString TmpB = FPaths::ConvertRelativePathToFull(PathB);
+	FString TmpA = PathA;
+	FString TmpB = PathB;
 
-	FPaths::RemoveDuplicateSlashes(TmpA);
-	FPaths::RemoveDuplicateSlashes(TmpB);
+	MakeStandardFilename(TmpA);
+	MakeStandardFilename(TmpB);
 
-#if PLATFORM_MICROSOFT
+#if PLATFORM_WINDOWS || PLATFORM_XBOXONE || PLATFORM_HOLOLENS
 	return FCString::Stricmp(*TmpA, *TmpB) == 0;
 #else
 	return FCString::Strcmp(*TmpA, *TmpB) == 0;
@@ -1601,13 +1452,13 @@ bool FPaths::IsUnderDirectory(const FString& InPath, const FString& InDirectory)
 		Directory.RemoveAt(Directory.Len() - 1);
 	}
 
-#if PLATFORM_MICROSOFT
+#if PLATFORM_WINDOWS || PLATFORM_XBOXONE || PLATFORM_HOLOLENS
 	int Compare = FCString::Strnicmp(*Path, *Directory, Directory.Len());
 #else
 	int Compare = FCString::Strncmp(*Path, *Directory, Directory.Len());
 #endif
 
-	return Compare == 0 && (Path.Len() == Directory.Len() || Path[Directory.Len()] == '/');
+	return Compare == 0 && (Path[Directory.Len()] == 0 || Path[Directory.Len()] == '/');
 }
 
 

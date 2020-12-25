@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PreviewScene.h: Preview scene definitions.
@@ -46,7 +46,6 @@ public:
 		uint32 bEditor:1;
 
 		TSubclassOf<class AGameModeBase> DefaultGameMode;
-		class UGameInstance* OwningGameInstance = nullptr;
 
 		ConstructionValues& SetCreateDefaultLighting(const bool bDefault) { bDefaultLighting = bDefault; return *this; }
 		ConstructionValues& SetLightRotation(const FRotator& Rotation) { LightRotation = Rotation; return *this; }
@@ -61,7 +60,6 @@ public:
 		ConstructionValues& SetEditor(const bool bInEditor) { bEditor = bInEditor; return *this; }
 
 		ConstructionValues& SetDefaultGameMode(TSubclassOf<class AGameModeBase> GameMode) { DefaultGameMode = GameMode; return *this; }
-		ConstructionValues& SetOwningGameInstance(class UGameInstance* InGameInstance) { OwningGameInstance = InGameInstance; return *this; }
 	};
 
 	// for physical correct light computations we multiply diffuse and specular lights by PI (see LABEL_RealEnergy)
@@ -117,8 +115,8 @@ private:
 	TArray<class UActorComponent*> Components;
 
 protected:
-	class UWorld* PreviewWorld = nullptr;
-	class ULineBatchComponent* LineBatcher = nullptr;
+	class UWorld* PreviewWorld;
+	class ULineBatchComponent* LineBatcher;
 
 	/** This controls whether or not all mip levels of textures used by UMeshComponents added to this preview window should be loaded and remain loaded. */
 	bool bForceAllUsedMipsResident;

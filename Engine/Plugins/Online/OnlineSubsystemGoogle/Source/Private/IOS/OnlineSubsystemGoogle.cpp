@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineSubsystemGoogle.h"
 #include "OnlineSubsystemGooglePrivate.h"
@@ -12,6 +12,11 @@
 
 static void OnGoogleOpenURL(UIApplication* application, NSURL* url, NSString* sourceApplication, id annotation)
 {
+	// post iOS8 call signature
+	//bool bResult = [[GIDSignIn sharedInstance] handleURL:url
+	//						           sourceApplication:options[UIApplicationOpenURLOptionsSourceApplicationKey]
+	//								   annotation:options[UIApplicationOpenURLOptionsAnnotationKey]];
+
 	bool bResult = [[GIDSignIn sharedInstance] handleURL:url
 								       sourceApplication:sourceApplication
 									   annotation:annotation];

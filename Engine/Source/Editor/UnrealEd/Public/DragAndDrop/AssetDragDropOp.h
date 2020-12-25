@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -64,33 +64,24 @@ public:
 
 	FText GetDecoratorText() const;
 
-protected:
-	void Init(TArray<FAssetData> InAssetData, TArray<FString> InAssetPaths, UActorFactory* InActorFactory);
-	virtual void InitThumbnail();
-
-	virtual bool HasFiles() const;
-	virtual bool HasFolders() const;
-
-	virtual int32 GetTotalCount() const;
-	virtual FText GetFirstItemText() const;
-
 private:
+	void Init();
+
 	/** Data for the assets this item represents */
 	TArray<FAssetData> AssetData;
 
 	/** Data for the asset paths this item represents */
 	TArray<FString> AssetPaths;
 
-	/** The actor factory to use if converting this asset to an actor */
-	TWeakObjectPtr<UActorFactory> ActorFactory;
-
-protected:
 	/** Pool for maintaining and rendering thumbnails */
 	TSharedPtr<FAssetThumbnailPool> ThumbnailPool;
 
 	/** Handle to the thumbnail resource */
 	TSharedPtr<FAssetThumbnail> AssetThumbnail;
 
+	/** The actor factory to use if converting this asset to an actor */
+	TWeakObjectPtr<UActorFactory> ActorFactory;
+
 	/** The size of the thumbnail */
-	int32 ThumbnailSize = 0;
+	int32 ThumbnailSize;
 };

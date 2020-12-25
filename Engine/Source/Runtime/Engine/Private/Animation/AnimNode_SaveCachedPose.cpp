@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Animation/AnimNode_SaveCachedPose.h"
 #include "Animation/AnimInstanceProxy.h"
-#include "Animation/AnimTrace.h"
 
 /////////////////////////////////////////////////////
 // FAnimNode_SaveCachedPose
@@ -53,8 +52,6 @@ void FAnimNode_SaveCachedPose::Update_AnyThread(const FAnimationUpdateContext& C
 
 	// Store this context for the post update
 	CachedUpdate.Context = Context.WithOtherSharedContext(CachedUpdate.SharedContext.Get());
-
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Name"), CachePoseName);
 }
 
 void FAnimNode_SaveCachedPose::Evaluate_AnyThread(FPoseContext& Output)
@@ -67,13 +64,11 @@ void FAnimNode_SaveCachedPose::Evaluate_AnyThread(FPoseContext& Output)
 		Pose.Evaluate(CachingContext);
 		CachedPose.MoveBonesFrom(CachingContext.Pose);
 		CachedCurve.MoveFrom(CachingContext.Curve);
-		CachedAttributes.MoveFrom(CachingContext.CustomAttributes);
 	}
 
 	// Return the cached result
 	Output.Pose.CopyBonesFrom(CachedPose);
 	Output.Curve.CopyFrom(CachedCurve);
-	Output.CustomAttributes.CopyFrom(CachedAttributes);
 }
 
 void FAnimNode_SaveCachedPose::GatherDebugData(FNodeDebugData& DebugData)
@@ -109,10 +104,7 @@ void FAnimNode_SaveCachedPose::PostGraphUpdate()
 		}
 
 		// Update the max weighted pose node
-		{
-			TRACE_SCOPED_ANIM_NODE(CachedUpdateContexts[MaxWeightIdx].Context);
-			Pose.Update(CachedUpdateContexts[MaxWeightIdx].Context);
-		}
+		Pose.Update(CachedUpdateContexts[MaxWeightIdx].Context);
 
 		// Determine if any ancestors are interested in the other updates we'll be skipping
 		TArray<FAnimNode_Base*, TInlineAllocator<4>> AncestorsWithSkippedUpdateHandlers;

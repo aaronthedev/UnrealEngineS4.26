@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using Microsoft.Win32.SafeHandles;
 using System;
@@ -104,21 +104,26 @@ namespace Tools.DotNETCommon
 				}
 
 				// Find any process ids which are a descendant from the root process it
-				HashSet<uint> ChildProcessIds = new HashSet<uint>();
-				for (bool bContinueLoop = true; bContinueLoop; )
+				List<uint> ChildProcessIds = new List<uint>();
+				foreach (KeyValuePair<uint, uint> Pair in ProcessIdToParentProcessId)
 				{
-					bContinueLoop = false;
-					foreach (KeyValuePair<uint, uint> Pair in ProcessIdToParentProcessId)
+					uint ParentProcessId = Pair.Value;
+					for (; ; )
 					{
-						if (Pair.Value == RootProcessId || ChildProcessIds.Contains(Pair.Value))
+						if (ParentProcessId == RootProcessId)
 						{
-							bContinueLoop |= ChildProcessIds.Add(Pair.Key);
+							ChildProcessIds.Add(Pair.Key);
+							break;
+						}
+						if (!ProcessIdToParentProcessId.TryGetValue(ParentProcessId, out ParentProcessId))
+						{
+							break;
 						}
 					}
 				}
 
 				// If there's nothing running, we can quit
-				if (!ChildProcessIds.Any())
+				if (ChildProcessIds.Count == 0)
 				{
 					break;
 				}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /** Interface for Audio Analyzer Assets. */
 
@@ -18,18 +18,18 @@ class AUDIOANALYZER_API UAudioAnalyzerAsset : public UObject
 
 	public:
 
-#if WITH_EDITOR
+#ifdef WITH_EDITOR
 		virtual bool HasAssetActions() const { return true; }
 
 		/**
 		 * GetAssetActionName() returns the FText displayed in the editor.
 		 */ 
-		virtual FText GetAssetActionName() const PURE_VIRTUAL(UAudioAnalyzerAsset::GetAssetActionName, return FText(););
+		virtual FText GetAssetActionName() const PURE_VIRTUAL(UAudioAnalyzerNRTAsset::GetAssetActionName, return FText(););
 
 		/**
 		 * GetSupportedClass() returns the class which should be associated with these asset actions.
 		 */ 
-		virtual UClass* GetSupportedClass() const PURE_VIRTUAL(UAudioAnalyzerAsset::GetSupportedClass, return nullptr;);
+		virtual UClass* GetSupportedClass() const PURE_VIRTUAL(UAudioAnalyzerNRTAsset::GetSupportedClass, return nullptr;);
 
 		/**
 		 * GetTypeColor() returns the color used to display asset icons within the editor.

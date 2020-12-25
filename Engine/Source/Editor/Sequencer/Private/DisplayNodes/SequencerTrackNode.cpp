@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DisplayNodes/SequencerTrackNode.h"
 #include "Algo/Copy.h"
-#include "Algo/Sort.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SSpacer.h"
@@ -200,52 +199,42 @@ void FSequencerTrackNode::UpdateSections()
 		ObjectBinding = ObjectBindingNode->GetObjectBinding();
 	}
 
-	TArray<UMovieSceneSection*, TInlineAllocator<4>> NewSections;
+	TArray<UMovieSceneSection*, TInlineAllocator<4>> CurrentSections;
 
 	// ParentTracks never contain sections
 	if (SubTrackMode == ESubTrackMode::SubTrack)
 	{
-		Algo::CopyIf(Track->GetAllSections(), NewSections, [this](UMovieSceneSection* In) { return In->GetRowIndex() == this->RowIndex; });
+		Algo::CopyIf(Track->GetAllSections(), CurrentSections, [this](UMovieSceneSection* In) { return In->GetRowIndex() == this->RowIndex; });
 	}
 	else if (SubTrackMode == ESubTrackMode::None)
 	{
-		NewSections = Track->GetAllSections();
+		CurrentSections = Track->GetAllSections();
 	}
 
-	Algo::SortBy(Sections, &ISequencerSection::GetSectionObject);
-	Algo::Sort(NewSections);
-
-	for (int32 Index = 0; Index < NewSections.Num(); ++Index)
+	if (Sections.Num() != CurrentSections.Num())
 	{
-		UMovieSceneSection* ThisSection = NewSections[Index];
+		Sections.Empty();
+	}
 
-		// Remove any old sections that are less that this one
-		while (Index < Sections.Num() && Sections[Index]->GetSectionObject() < ThisSection)
-		{
-			Sections.RemoveAt(Index, 1, false);
-		}
+	for (int32 Index = 0; Index < CurrentSections.Num(); ++Index)
+	{
+		UMovieSceneSection* ThisSection     = CurrentSections[Index];
+		UMovieSceneSection* ExistingSection = Index < Sections.Num() ? Sections[Index]->GetSectionObject() : nullptr;
 
-		if (Index >= Sections.Num() || Sections[Index]->GetSectionObject() != ThisSection)
+		// Add a new section interface if there isn't one, or it doesn't correspond to the same section
+		if ( !ExistingSection || ExistingSection != ThisSection )
 		{
-			// Generate a new section if it didn't exist before
 			TSharedRef<ISequencerSection> SectionInterface = AssociatedEditor.MakeSectionInterface(*ThisSection, *Track, ObjectBinding);
 			Sections.Insert(SectionInterface, Index);
 		}
 
 		// Ask the section to generate its inner layout
-		FSequencerSectionLayoutBuilder LayoutBuilder(SharedThis(this), Sections[Index]);
+		FSequencerSectionLayoutBuilder LayoutBuilder(SharedThis(this), ThisSection);
 		Sections[Index]->GenerateSectionLayout(LayoutBuilder);
 	}
 
-	// Prune any left overs
-	const int32 Remaining = Sections.Num() - NewSections.Num();
-	if (Remaining > 0)
-	{
-		Sections.RemoveAt(NewSections.Num(), Remaining, true);
-	}
-
 	// Crop the section array at the new length
-	const int32 NumToRemove = Sections.Num() - NewSections.Num();
+	const int32 NumToRemove = Sections.Num() - CurrentSections.Num();
 	if (NumToRemove > 0)
 	{
 		Sections.RemoveAt(Sections.Num()-NumToRemove, NumToRemove, true);
@@ -337,34 +326,12 @@ void FSequencerTrackNode::BuildContextMenu(FMenuBuilder& MenuBuilder)
 			FNewMenuDelegate::CreateLambda([=](FMenuBuilder& SubMenuBuilder){
 				FSequencerUtilities::PopulateMenu_CreateNewSection(SubMenuBuilder, NewRowIndex, Track, WeakSequencer);
 			})
-		);	
-	}
-
-	TArray<TWeakObjectPtr<UObject>> TrackSections;
-	if (Track)
-	{
-		for (UMovieSceneSection* Section : Track->GetAllSections())
-		{
-			if (SubTrackMode != ESubTrackMode::SubTrack || GetRowIndex() == Section->GetRowIndex())
-			{
-				TrackSections.Add(Section);
-			}
-		}
-	}
+		);
 		
-	if (TrackSections.Num())
-	{
-		MenuBuilder.AddSubMenu(
-			TrackSections.Num() > 1 ? LOCTEXT("BatchEditSections", "Batch Edit Sections") : LOCTEXT("EditSection", "Edit Section"),
-			FText(),
-			FNewMenuDelegate::CreateLambda([=](FMenuBuilder& SubMenuBuilder){
-				SequencerHelpers::AddPropertiesMenu(GetSequencer(), SubMenuBuilder, TrackSections);
-			})
-		);	
 	}
-
 	FSequencerDisplayNode::BuildContextMenu(MenuBuilder );
 }
+
 
 bool FSequencerTrackNode::CanRenameNode() const
 {
@@ -377,16 +344,6 @@ bool FSequencerTrackNode::CanRenameNode() const
 	return false;
 }
 
-
-bool FSequencerTrackNode::ValidateDisplayName(const FText& NewDisplayName, FText& OutErrorMessage) const
-{
-	auto NameableTrack = Cast<UMovieSceneNameableTrack>(AssociatedTrack.Get());
-	if (NameableTrack != nullptr)
-	{
-		return NameableTrack->ValidateDisplayName(NewDisplayName, OutErrorMessage);
-	}
-	return FSequencerDisplayNode::ValidateDisplayName(NewDisplayName, OutErrorMessage);
-}
 
 FReply FSequencerTrackNode::CreateNewSection() const
 {
@@ -761,7 +718,7 @@ FLinearColor FSequencerTrackNode::GetDisplayNameColor() const
 			{
 				if (UObject* Object = WeakObject.Get())
 				{
-					FTrackInstancePropertyBindings PropertyBinding(PropertyTrack->GetPropertyName(), PropertyTrack->GetPropertyPath().ToString());
+					FTrackInstancePropertyBindings PropertyBinding(PropertyTrack->GetPropertyName(), PropertyTrack->GetPropertyPath());
 					if (PropertyBinding.GetProperty(*Object))
 					{
 						return bIsDimmed ? FLinearColor(0.6f, 0.6f, 0.6f, 0.6f) : FLinearColor::White;
@@ -816,8 +773,6 @@ void FSequencerTrackNode::SetDisplayName(const FText& NewDisplayName)
 
 		NameableTrack->SetDisplayName(NewDisplayName);
 		GetSequencer().NotifyMovieSceneDataChanged(EMovieSceneDataChangeType::TrackValueChanged);
-
-		SetNodeName(FName(*NewDisplayName.ToString()));
 	}
 }
 
@@ -971,32 +926,6 @@ void FSequencerTrackNode::CreateCurveModels(TArray<TUniquePtr<FCurveModel>>& Out
 	{
 		KeyAreaNode->CreateCurveModels(OutCurveModels);
 	}
-}
-
-FSlateFontInfo FSequencerTrackNode::GetDisplayNameFont() const
-{
-	bool bAllAnimated = false;
-	TSharedPtr<FSequencerSectionKeyAreaNode> TopLevelKeyArea = GetTopLevelKeyNode();
-	if (TopLevelKeyArea.IsValid())
-	{
-		for (const TSharedRef<IKeyArea>& KeyArea : TopLevelKeyArea->GetAllKeyAreas())
-		{
-			FMovieSceneChannel* Channel = KeyArea->ResolveChannel();
-			if (!Channel || Channel->GetNumKeys() == 0)
-			{
-				return FSequencerDisplayNode::GetDisplayNameFont();
-			}
-			else
-			{
-				bAllAnimated = true;
-			}
-		}
-		if (bAllAnimated == true)
-		{
-			return FEditorStyle::GetFontStyle("Sequencer.AnimationOutliner.ItalicFont");
-		}
-	}
-	return FSequencerDisplayNode::GetDisplayNameFont();
 }
 
 

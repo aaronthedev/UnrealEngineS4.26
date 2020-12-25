@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TimecodeSynchronizer.h"
 #include "TimecodeSynchronizerModule.h"
@@ -205,7 +205,6 @@ UTimecodeSynchronizer::UTimecodeSynchronizer()
 	, ActiveMasterSynchronizationTimecodedSourceIndex(INDEX_NONE)
 	, bFailGuard(false)
 	, bAddSourcesGuard(false)
-	, bShouldResetTimecodeProvider(false)
 {
 }
 
@@ -220,7 +219,7 @@ void UTimecodeSynchronizer::BeginDestroy()
 }
 
 #if WITH_EDITOR
-bool UTimecodeSynchronizer::CanEditChange(const FProperty* InProperty) const
+bool UTimecodeSynchronizer::CanEditChange(const UProperty* InProperty) const
 {
 	if (!Super::CanEditChange(InProperty))
 	{
@@ -271,12 +270,7 @@ void UTimecodeSynchronizer::PostEditChangeChainProperty(FPropertyChangedChainEve
 }
 #endif
 
-FQualifiedFrameTime UTimecodeSynchronizer::GetQualifiedFrameTime() const
-{
-	return FQualifiedFrameTime(GetTimecodeInternal(), GetFrameRateInternal());
-}
-
-FTimecode UTimecodeSynchronizer::GetTimecodeInternal() const
+FTimecode UTimecodeSynchronizer::GetTimecode() const
 {
 	FTimecode Timecode;
 	if (IsSynchronized())
@@ -324,15 +318,15 @@ FFrameTime UTimecodeSynchronizer::GetProviderFrameTime() const
 			UE_LOG(LogTimecodeSynchronizer, Log, TEXT("Unable to get frame time - Invalid source specified."));
 		}
 	}
-	else if (CachedProxiedTimecodeProvider)
+	else if (CachedTimecodeProvider)
 	{
-		ProviderFrameTime = FFrameTime(CachedProxiedTimecodeProvider->GetTimecode().ToFrameNumber(GetFrameRate()));
+		ProviderFrameTime = FFrameTime(CachedTimecodeProvider->GetTimecode().ToFrameNumber(GetFrameRate()));
 	}
 
 	return ProviderFrameTime;
 }
 
-FFrameRate UTimecodeSynchronizer::GetFrameRateInternal() const
+FFrameRate UTimecodeSynchronizer::GetFrameRate() const
 {
 	return RegisteredCustomTimeStep ? RegisteredCustomTimeStep->GetFixedFrameRate() : FixedFrameRate;
 }
@@ -357,11 +351,11 @@ ETimecodeProviderSynchronizationState UTimecodeSynchronizer::GetSynchronizationS
 bool UTimecodeSynchronizer::Initialize(class UEngine* InEngine)
 {
 	// The engine only allows one provider to be active at a given time.
-	// However, we are a special case just acting as a pass through.
+	// However, we are a specical case just acting as a pass through.
 	// Therefore, we need to make sure we pass along the initialization / shutdown requests.
-	if (CachedProxiedTimecodeProvider)
+	if (CachedTimecodeProvider)
 	{
-		return CachedProxiedTimecodeProvider->Initialize(InEngine);
+		return const_cast<UTimecodeProvider*>(CachedTimecodeProvider)->Initialize(InEngine);
 	}
 
 	return true;
@@ -369,9 +363,9 @@ bool UTimecodeSynchronizer::Initialize(class UEngine* InEngine)
 
 void UTimecodeSynchronizer::Shutdown(class UEngine* InEngine)
 {
-	if (CachedProxiedTimecodeProvider)
+	if (CachedTimecodeProvider)
 	{
-		CachedProxiedTimecodeProvider->Shutdown(InEngine);
+		const_cast<UTimecodeProvider*>(CachedTimecodeProvider)->Shutdown(InEngine);
 	}
 }
 
@@ -398,7 +392,6 @@ void UTimecodeSynchronizer::Register()
 	if (!bRegistered)
 	{
 		bRegistered = true;
-		bShouldResetTimecodeProvider = false;
 
 		if (FrameRateSource == ETimecodeSynchronizationFrameRateSources::EngineCustomTimeStepFrameRate)
 		{
@@ -428,29 +421,33 @@ void UTimecodeSynchronizer::Register()
 			GEngine->bUseFixedFrameRate = true;
 		}
 
-		CachedPreviousTimecodeProvider = GEngine->GetTimecodeProvider();
 		if (TimecodeProviderType == ETimecodeSynchronizationTimecodeType::TimecodeProvider)
 		{
-			CachedProxiedTimecodeProvider = TimecodeProvider;
+			CachedTimecodeProvider = TimecodeProvider;
 		}
 		else if (TimecodeProviderType == ETimecodeSynchronizationTimecodeType::DefaultProvider)
 		{
-			CachedProxiedTimecodeProvider = GEngine->GetTimecodeProvider();
+			CachedTimecodeProvider = GEngine->GetDefaultTimecodeProvider();
 		}
 		else
 		{
-			CachedProxiedTimecodeProvider = nullptr;
+			CachedTimecodeProvider = nullptr;
 		}
 
-		bShouldResetTimecodeProvider = true;
+		// Set TimecodeProvider
+		if (GEngine->GetTimecodeProvider() != GEngine->GetDefaultTimecodeProvider())
+		{
+			UE_LOG(LogTimecodeSynchronizer, Error, TEXT("A Timecode Provider is already in place."));
+			SwitchState(ESynchronizationState::Error);
+			return;
+		}
+
 		if (!GEngine->SetTimecodeProvider(this))
 		{
 			UE_LOG(LogTimecodeSynchronizer, Error, TEXT("TimecodeProvider failed to be set on Engine."));
 			SwitchState(ESynchronizationState::Error);
 			return;
 		}
-
-		GEngine->OnTimecodeProviderChanged().AddUObject(this, &UTimecodeSynchronizer::OnTimecodeProviderChanged);
 
 		SetTickEnabled(true);
 	}
@@ -462,14 +459,12 @@ void UTimecodeSynchronizer::Unregister()
 	{
 		bRegistered = false;
 
-		GEngine->OnTimecodeProviderChanged().RemoveAll(this);
-		if (GEngine->GetTimecodeProvider() == this)
+		const UTimecodeProvider* Provider = GEngine->GetTimecodeProvider();
+		if (Provider == this)
 		{
-			GEngine->SetTimecodeProvider(bShouldResetTimecodeProvider ? CachedPreviousTimecodeProvider : nullptr);
-			bShouldResetTimecodeProvider = false;
+			GEngine->SetTimecodeProvider(nullptr);
 		}
-		CachedPreviousTimecodeProvider = nullptr;
-		CachedProxiedTimecodeProvider = nullptr;
+		CachedTimecodeProvider = nullptr;
 
 		if (RegisteredCustomTimeStep == nullptr)
 		{
@@ -479,17 +474,6 @@ void UTimecodeSynchronizer::Unregister()
 		RegisteredCustomTimeStep = nullptr;
 
 		SetTickEnabled(false);
-	}
-}
-
-void UTimecodeSynchronizer::OnTimecodeProviderChanged()
-{
-	if (bRegistered && !IsError())
-	{
-		bShouldResetTimecodeProvider = false;
-		UE_LOG(LogTimecodeSynchronizer, Error, TEXT("The Engine's TimecodeProvider changed."));
-		SwitchState(ESynchronizationState::Error);
-		return;
 	}
 }
 
@@ -725,8 +709,7 @@ bool UTimecodeSynchronizer::Tick_TestTimecode()
 		SwitchState(ESynchronizationState::Error);
 		return false;
 	}
-
-	if (TimecodeProviderType == ETimecodeSynchronizationTimecodeType::InputSource)
+	else if (TimecodeProviderType == ETimecodeSynchronizationTimecodeType::InputSource)
 	{
 		if (!SynchronizedSources.IsValidIndex(ActiveMasterSynchronizationTimecodedSourceIndex))
 		{
@@ -739,14 +722,14 @@ bool UTimecodeSynchronizer::Tick_TestTimecode()
 	}
 	else 
 	{
-		if (CachedProxiedTimecodeProvider == nullptr)
+		if (CachedTimecodeProvider == nullptr)
 		{
 			UE_LOG(LogTimecodeSynchronizer, Error, TEXT("The TimecodeProvider became invalid while synchronizing."));
 			SwitchState(ESynchronizationState::Error);
 			return false;
 		}
 
-		const ETimecodeProviderSynchronizationState SynchronizationState = CachedProxiedTimecodeProvider->GetSynchronizationState();
+		const ETimecodeProviderSynchronizationState SynchronizationState = CachedTimecodeProvider->GetSynchronizationState();
 		if (SynchronizationState != ETimecodeProviderSynchronizationState::Synchronized && SynchronizationState != ETimecodeProviderSynchronizationState::Synchronizing)
 		{
 			UE_LOG(LogTimecodeSynchronizer, Error, TEXT("The TimecodeProvider stopped while synchronizing."));
@@ -754,7 +737,7 @@ bool UTimecodeSynchronizer::Tick_TestTimecode()
 			return false;
 		}
 
-		if (CachedProxiedTimecodeProvider->GetFrameRate() != GetFrameRate())
+		if (CachedTimecodeProvider->GetFrameRate() != GetFrameRate())
 		{
 			UE_LOG(LogTimecodeSynchronizer, Error, TEXT("The TimecodeProvider frame rate do not correspond to the specified frame rate."));
 			SwitchState(ESynchronizationState::Error);
@@ -863,7 +846,7 @@ const bool FTimecodeSynchronizerActiveTimecodedInputSource::UpdateSourceState(co
 {
 	check(InputSource);
 
-	bIsReady = InputSource->IsReady() && InputSource->GetFrameRate().IsValid() && InputSource->GetFrameRate().Numerator > 0;
+	bIsReady = InputSource->IsReady();
 
 	if (bIsReady)
 	{
@@ -891,7 +874,7 @@ void UTimecodeSynchronizer::StartSources()
 	FTimeSynchronizationStartData StartData;
 	CurrentSystemFrameTime = StartData.StartFrame = CalculateSyncTime();
 
-	FApp::SetCurrentFrameTime(GetDelayedQualifiedFrameTime());
+	FApp::SetTimecodeAndFrameRate(GetTimecode(), GetFrameRate());
 
 	for (UTimeSynchronizationSource* InputSource : TimeSynchronizationInputSources)
 	{
@@ -1018,9 +1001,9 @@ void UTimecodeSynchronizer::UpdateSourceStates()
 		const FString StateString = SynchronizationStateToString(State);
 		if (InvalidSources.Num() > 0)
 		{
-			for (const FTimecodeSynchronizerActiveTimecodedInputSource* InvalidSource : InvalidSources)
+			for (const FTimecodeSynchronizerActiveTimecodedInputSource* UnreadySource : UnreadySources)
 			{
-				UE_LOG(LogTimecodeSynchronizer, Error, TEXT("Source '%s' is not valid during State '%s'"), *(InvalidSource->GetDisplayName()), *StateString);
+				UE_LOG(LogTimecodeSynchronizer, Error, TEXT("Invalid source found unready during State '%s'"), *StateString);
 			}
 		}
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -43,26 +43,6 @@ namespace UnrealGameSync
 		public override Encoding Encoding
 		{
 			get { return Encoding.UTF8; }
-		}
-	}
-
-	class ThreadSafeTextWriter : LineBasedTextWriter
-	{
-		object LockObject;
-		TextWriter Inner;
-
-		public ThreadSafeTextWriter(TextWriter Inner)
-		{
-			this.LockObject = new object();
-			this.Inner = Inner;
-		}
-
-		protected override void FlushLine(string Line)
-		{
-			lock (LockObject)
-			{
-				Inner.WriteLine(Line);
-			}
 		}
 	}
 

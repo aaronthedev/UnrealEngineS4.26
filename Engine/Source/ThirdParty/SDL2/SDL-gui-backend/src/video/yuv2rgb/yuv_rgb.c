@@ -2,8 +2,6 @@
 // Distributed under BSD 3-Clause License
 #include "../../SDL_internal.h"
 
-#if SDL_HAVE_YUV
-
 #include "yuv_rgb.h"
 
 #include "SDL_cpuinfo.h"
@@ -687,4 +685,3 @@ void rgb24_yuv420_sseu(uint32_t width, uint32_t height,
 
 #endif //__SSE2__
 
-#endif /* SDL_HAVE_YUV */

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Logging/LogSuppressionInterface.h"
 #include "Misc/AssertionMacros.h"
@@ -136,7 +136,7 @@ class FLogSuppressionImplementation: public FLogSuppressionInterface, private FS
 			FString Command = SubCmds[Index].TrimStart();
 			if (Command.StartsWith(LogString))
 			{
-				Command.RightInline(Command.Len() - (UE_ARRAY_COUNT(LogString) - 1), false);
+				Command = Command.Right(Command.Len() - (UE_ARRAY_COUNT(LogString) - 1));
 			}
 			TArray<FString> CommandParts;
 			Command.ParseIntoArrayWS(CommandParts);
@@ -518,10 +518,10 @@ class FLogSuppressionImplementation: public FLogSuppressionInterface, private FS
 				{
 					break;
 				}
-				CmdLineEnv.MidInline(Index + LogCmds.Len(), MAX_int32, false);
+				CmdLineEnv = CmdLineEnv.Mid(Index + LogCmds.Len());
 			}
 			// now strip off the environment arg part
-			CmdLine.MidInline(0, IndexOfEnv, false);
+			CmdLine = CmdLine.Mid(0, IndexOfEnv);
 		}
 		while (1)
 		{
@@ -538,7 +538,7 @@ class FLogSuppressionImplementation: public FLogSuppressionInterface, private FS
 			{
 				break;
 			}
-			CmdLine.MidInline(Index + LogCmds.Len(), MAX_int32, false);
+			CmdLine = CmdLine.Mid(Index + LogCmds.Len());
 		}
 #endif // !UE_BUILD_SHIPPING
 

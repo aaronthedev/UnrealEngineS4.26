@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PlacementMode.h"
 #include "EditorViewportClient.h"
@@ -14,7 +14,6 @@
 
 #include "Toolkits/ToolkitManager.h"
 #include "IAssetViewport.h"
-#include "Classes/EditorStyleSettings.h"
 
 FPlacementMode::FPlacementMode()
 	: AssetsToPlace()
@@ -31,11 +30,13 @@ FPlacementMode::~FPlacementMode()
 
 void FPlacementMode::Initialize()
 {
+	//GConfig->GetFloat(TEXT("PlacementMode"), TEXT("AssetThumbnailScale"), AssetThumbnailScale, GEditorPerProjectIni);
+	//GConfig->GetBool( TEXT( "PlacementMode" ), TEXT( "ShowOtherDeveloperAssets" ), ShowOtherDeveloperAssets, GEditorPerProjectIni );
 }
 
 bool FPlacementMode::UsesToolkits() const
 {
-	return GetDefault<UEditorStyleSettings>()->bEnableLegacyEditorModeUI;
+	return true;
 }
 
 void FPlacementMode::Enter()
@@ -43,8 +44,7 @@ void FPlacementMode::Enter()
 	// Call parent implementation
 	FEdMode::Enter();
 
-	
-	if(!Toolkit.IsValid() && GetDefault<UEditorStyleSettings>()->bEnableLegacyEditorModeUI)
+	if ( !Toolkit.IsValid() )
 	{
 		Toolkit = MakeShareable( new FPlacementModeToolkit );
 		Toolkit->Init(Owner->GetToolkitHost());
@@ -449,6 +449,8 @@ bool FPlacementMode::UsesPropertyWidgets() const
 bool FPlacementMode::IsCompatibleWith(FEditorModeID OtherModeID) const
 {
 	return
+		OtherModeID == FBuiltinEditorModes::EM_Bsp			||
+		OtherModeID == FBuiltinEditorModes::EM_Geometry		||
 		OtherModeID == FBuiltinEditorModes::EM_InterpEdit	||
 		OtherModeID == FBuiltinEditorModes::EM_MeshPaint	||
 		OtherModeID == FBuiltinEditorModes::EM_Foliage		||

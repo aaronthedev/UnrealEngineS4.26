@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreTypes.h"
 #include "HAL/PlatformAtomics.h"
 #include "Misc/AssertionMacros.h"
-#include "Misc/EnumClassFlags.h"
 #include "Templates/UnrealTypeTraits.h"
 #include "Containers/Array.h"
 #include "Containers/UnrealString.h"
@@ -57,33 +56,6 @@ namespace ETextComparisonLevel
 		Quinary		// Identical
 	};
 }
-
-enum class ETextIdenticalModeFlags : uint8
-{
-	/** No special behavior */
-	None = 0,
-
-	/**
-	 * Deep compare the text data.
-	 *
-	 * When set, two pieces of generated text (eg, from FText::Format, FText::AsNumber, FText::AsDate, FText::ToUpper, etc) 
-	 * will test their internal data to see if they contain identical inputs (so would produce an identical output).
-	 *
-	 * When clear, no two separate pieces of generated text will ever compare as identical!
-	 */
-	DeepCompare = 1<<0,
-
-	/**
-	 * Compare invariant data lexically.
-	 *
-	 * When set, two pieces of invariant text (eg, from FText::AsCultureInvariant, FText::FromString, FText::FromName, or INVTEXT)
-	 * will compare their display string data lexically to see if they are identical.
-	 *
-	 * When clear, no two separate pieces of invariant text will ever compare as identical!
-	 */
-	LexicalCompareInvariants = 1<<1,
-};
-ENUM_CLASS_FLAGS(ETextIdenticalModeFlags);
 
 enum class ETextPluralType : uint8
 {
@@ -233,14 +205,6 @@ struct CORE_API FNumberParsingOptions
 	bool UseGrouping;
 	FNumberParsingOptions& SetUseGrouping( bool InValue ){ UseGrouping = InValue; return *this; }
 
-	/** The number needs to be representable inside its type limits to be considered valid. */
-	bool InsideLimits;
-	FNumberParsingOptions& SetInsideLimits(bool InValue) { InsideLimits = InValue; return *this; }
-
-	/** Clamp the parsed value to its type limits. */
-	bool UseClamping;
-	FNumberParsingOptions& SetUseClamping(bool InValue) { UseClamping = InValue; return *this; }
-
 	friend void operator<<(FStructuredArchive::FSlot Slot, FNumberParsingOptions& Value);
 
 	/** Get the hash code to use for the given parsing options */
@@ -311,11 +275,6 @@ public:
 	 * Test to see whether this instance contains valid compiled data.
 	 */
 	bool IsValid() const;
-
-	/**
-	 * Check whether this instance is considered identical to the other instance, based on the comparison flags provided.
-	 */
-	bool IdenticalTo(const FTextFormat& Other, const ETextIdenticalModeFlags CompareModeFlags) const;
 
 	/**
 	 * Get the source text that we're holding.
@@ -503,12 +462,10 @@ public:
 	/**
 	 * Check to see if this FText is identical to the other FText
 	 * 
-	 * @note This function defaults to only testing that the internal data has the same target (which makes it very fast!), rather than performing any deep or lexical analysis.
-	 *       The ETextIdenticalModeFlags can modify this default behavior. See the comments on those flag options for more information.
-	 *
-	 * @note If you actually want to perform a full lexical comparison, then you need to use EqualTo instead.
+	 * Note:	This doesn't compare the text, but only checks that the internal string pointers have the same target (which makes it very fast!)
+	 *			If you actually want to perform a lexical comparison, then you need to use EqualTo instead
 	 */
-	bool IdenticalTo( const FText& Other, const ETextIdenticalModeFlags CompareModeFlags = ETextIdenticalModeFlags::None ) const;
+	bool IdenticalTo( const FText& Other ) const;
 
 	class CORE_API FSortPredicate
 	{
@@ -732,7 +689,7 @@ private:
 
 	FText( FString&& InSourceString, const FTextKey& InNamespace, const FTextKey& InKey, uint32 InFlags=0 );
 
-	static void SerializeText( FArchive& Ar, FText& Value );
+	static void SerializeText(FArchive& Ar, FText& Value);
 	static void SerializeText(FStructuredArchive::FSlot Slot, FText& Value);
 
 	/** Returns the source string of the FText */
@@ -781,7 +738,7 @@ public:
 	friend class FArchiveFromStructuredArchiveImpl;
 	friend class FJsonArchiveInputFormatter;
 	friend class FJsonArchiveOutputFormatter;
-	friend class FTextProperty;
+	friend class UTextProperty;
 	friend class FFormatArgumentValue;
 	friend class FTextHistory_NamedFormat;
 	friend class FTextHistory_ArgumentDataFormat;
@@ -854,8 +811,6 @@ public:
 	}
 
 	friend void operator<<(FStructuredArchive::FSlot Slot, FFormatArgumentValue& Value);
-
-	bool IdenticalTo(const FFormatArgumentValue& Other, const ETextIdenticalModeFlags CompareModeFlags) const;
 
 	FString ToFormattedString(const bool bInRebuildText, const bool bInRebuildAsSource) const;
 	void ToFormattedString(const bool bInRebuildText, const bool bInRebuildAsSource, FString& OutResult) const;

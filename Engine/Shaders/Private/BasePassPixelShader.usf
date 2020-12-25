@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	BasePassPixelShader.usf: Base pass pixel shader
@@ -9,29 +9,18 @@
 // Reroute SceneTexturesStruct uniform buffer references to the appropriate base pass uniform buffer
 #if MATERIALBLENDING_TRANSLUCENT || MATERIALBLENDING_ADDITIVE || MATERIALBLENDING_MODULATE
 	#define SceneTexturesStruct TranslucentBasePass.SceneTextures 
-	#define EyeAdaptationStruct TranslucentBasePass
-	#define SceneColorCopyTexture	TranslucentBasePass.SceneColorCopyTexture
-	#define PreIntegratedGF			TranslucentBasePass.PreIntegratedGFTexture
-	#if SUPPORTS_INDEPENDENT_SAMPLERS
-		#define PreIntegratedGFSampler	View.SharedBilinearClampedSampler
-		#define SceneColorCopySampler	View.SharedBilinearClampedSampler
-	#else
-		#define PreIntegratedGFSampler	TranslucentBasePass.PreIntegratedGFSampler
-		#define SceneColorCopySampler	TranslucentBasePass.SceneColorCopySampler
-	#endif
+	#define EyeAdaptationStruct TranslucentBasePass.SceneTextures
 #else
 	#define EyeAdaptationStruct OpaqueBasePass
 #endif
 
-// Material setting to allow forward shading (including mobile) to use preintegrated GF lut for simple IBL.
-#if MATERIAL_SHADINGMODEL_SINGLELAYERWATER || (FORWARD_SHADING && MATERIAL_USE_PREINTEGRATED_GF)
-	#define PreIntegratedGF			OpaqueBasePass.PreIntegratedGFTexture
-
-	#if SUPPORTS_INDEPENDENT_SAMPLERS
-		#define PreIntegratedGFSampler	View.SharedBilinearClampedSampler
-	#else
-		#define PreIntegratedGFSampler	OpaqueBasePass.PreIntegratedGFSampler
-	#endif
+#if MATERIAL_SHADINGMODEL_SINGLELAYERWATER
+#define PreIntegratedGF			OpaqueBasePass.PreIntegratedGFTexture
+#if SUPPORTS_INDEPENDENT_SAMPLERS
+#define PreIntegratedGFSampler	View.SharedBilinearClampedSampler
+#else
+#define PreIntegratedGFSampler	OpaqueBasePass.PreIntegratedGFSampler
+#endif
 #endif
 
 #include "SHCommon.ush"
@@ -56,13 +45,17 @@
 #if PROJECT_SUPPORT_SKY_ATMOSPHERE
 	#include "SkyAtmosphereCommon.ush"
 #endif
-#if MATERIAL_ENABLE_TRANSLUCENCY_CLOUD_FOGGING
-#include "VolumetricCloudCommon.ush"
-#endif
 #endif
 
 #include "ReflectionEnvironmentShared.ush"
 
+#if LIGHTMAP_VT_ENABLED || NUM_VIRTUALTEXTURE_SAMPLES
+#if COMPILER_HLSLCC
+	RWTexture2D<uint> VTFeedbackBuffer;
+#else
+	RWTexture2D<uint> VTFeedbackBuffer : register(VT_FEEDBACK_REGISTER);
+#endif
+#endif
 
 float NormalCurvatureToRoughness(float3 WorldNormal)
 {
@@ -83,12 +76,6 @@ float NormalCurvatureToRoughness(float3 WorldNormal)
 #include "ShadingModels.ush"
 #endif
 
-#if MATERIAL_SHADINGMODEL_HAIR
-#ifndef USE_HAIR_COMPLEX_TRANSMITTANCE
-#define USE_HAIR_COMPLEX_TRANSMITTANCE 0
-#endif
-#endif
-
 #ifndef COMPILER_GLSL
 	#define COMPILER_GLSL 0
 #endif
@@ -102,7 +89,6 @@ float NormalCurvatureToRoughness(float3 WorldNormal)
 #if SINGLE_LAYER_WATER_SIMPLE_FORWARD
 
 	// Use mobile like simple shading
-	#undef SIMPLE_SINGLE_LAYER_WATER
 	#define SIMPLE_SINGLE_LAYER_WATER 1
 
 	// Remove forward lighting directional light shadow
@@ -116,11 +102,9 @@ float NormalCurvatureToRoughness(float3 WorldNormal)
 
 #endif
 
-#include "SingleLayerWaterShading.ush"
+#include "SingleLayerWaterCommon.ush"
 
 #endif // MATERIAL_SHADINGMODEL_SINGLELAYERWATER
-
-#include "ThinTranslucentCommon.ush"
 
 #if TRANSLUCENCY_LIGHTING_SURFACE_LIGHTINGVOLUME || TRANSLUCENCY_LIGHTING_SURFACE_FORWARDSHADING || FORWARD_SHADING || MATERIAL_SHADINGMODEL_SINGLELAYERWATER
 #include "ForwardLightingCommon.ush"
@@ -269,7 +253,7 @@ float3 GetTranslucencyVolumeLighting(
 
 #endif
 
-#if SIMPLE_FORWARD_SHADING || PLATFORM_FORCE_SIMPLE_SKY_DIFFUSE
+#if SIMPLE_FORWARD_SHADING
 	#define GetEffectiveSkySHDiffuse GetSkySHDiffuseSimple
 #else
 	#define GetEffectiveSkySHDiffuse GetSkySHDiffuse
@@ -359,9 +343,15 @@ void GetSkyLighting(FMaterialPixelParameters MaterialParameters, VTPageTableResu
 #if SUPPORTS_INDEPENDENT_SAMPLERS
 	#define ILCSharedSampler1 View.SharedBilinearClampedSampler
 	#define ILCSharedSampler2 View.SharedBilinearClampedSampler
+
+	#define SingleLayerWaterSceneColorSampler View.SharedBilinearClampedSampler
+	#define SingleLayerWaterSceneDepthSampler View.SharedPointClampedSampler
 #else
 	#define ILCSharedSampler1 IndirectLightingCache.IndirectLightingCacheTextureSampler1
 	#define ILCSharedSampler2 IndirectLightingCache.IndirectLightingCacheTextureSampler2
+
+	#define SingleLayerWaterSceneColorSampler OpaqueBasePass.SceneColorWithoutSingleLayerWaterSampler
+	#define SingleLayerWaterSceneDepthSampler OpaqueBasePass.SceneDepthWithoutSingleLayerWaterSampler
 #endif
 
 /** Calculates indirect lighting contribution on this object from precomputed data. */
@@ -760,8 +750,8 @@ void ApplyBentNormal( in FMaterialPixelParameters MaterialParameters, in float R
 uint GetSelectiveOutputMask()
 {
 	uint Mask = 0;
-#if MATERIAL_USES_ANISOTROPY
-	Mask |= HAS_ANISOTROPY_MASK;
+#if !WRITES_CUSTOMDATA_TO_GBUFFER
+	Mask |= SKIP_CUSTOMDATA_MASK;
 #endif
 #if !GBUFFER_HAS_PRECSHADOWFACTOR
 	Mask |= SKIP_PRECSHADOW_MASK;
@@ -793,13 +783,11 @@ void FPixelShaderInOut_MainPS(
 
 	// Velocity
 	float4 OutVelocity = 0;
-	
 	// CustomData
 	float4 OutGBufferD = 0;
-	
 	// PreShadowFactor
 	float4 OutGBufferE = 0;
-	
+
 	FMaterialPixelParameters MaterialParameters = GetMaterialPixelParameters(Interpolants, In.SvPosition);
 	FPixelMaterialInputs PixelMaterialInputs;
 
@@ -871,16 +859,7 @@ void FPixelShaderInOut_MainPS(
 
 	float MaterialAO = GetMaterialAmbientOcclusion(PixelMaterialInputs);
 	float Roughness = GetMaterialRoughness(PixelMaterialInputs);
-	float Anisotropy = GetMaterialAnisotropy(PixelMaterialInputs);
 	uint ShadingModel = GetMaterialShadingModel(PixelMaterialInputs);
-
-	half Opacity = GetMaterialOpacity(PixelMaterialInputs);
-
-// Opacity for this model is the coverage of the top layer over the transmission surface. Since the
-// underlying material isn't allowed to be metallic, we are scaling the metallic value by the coverage.
-#if MATERIAL_SHADINGMODEL_THIN_TRANSLUCENT
-	Metallic *= Opacity;
-#endif
 
 	// 0..1, SubsurfaceProfileId = int(x * 255)
 	float SubsurfaceProfile = 0;
@@ -942,6 +921,7 @@ void FPixelShaderInOut_MainPS(
 		}
 #endif
 
+	half Opacity = GetMaterialOpacity(PixelMaterialInputs);
 	const float BaseMaterialCoverageOverWater = Opacity;
 	const float WaterVisibility = 1.0 - BaseMaterialCoverageOverWater;
 
@@ -968,12 +948,10 @@ void FPixelShaderInOut_MainPS(
 		Metallic,
 		Specular,
 		Roughness,
-		Anisotropy,
 		SubsurfaceColor,
 		SubsurfaceProfile,
 		GBufferDither,
-		ShadingModel
-		);
+ShadingModel);
 
 #if USES_GBUFFER
 	GBuffer.SelectiveOutputMask = GetSelectiveOutputMask();
@@ -982,24 +960,17 @@ void FPixelShaderInOut_MainPS(
 
 #if WRITES_VELOCITY_TO_GBUFFER
 	BRANCH
-	if (GetPrimitiveData(MaterialParameters.PrimitiveId).OutputVelocity > 0 || View.ForceDrawAllVelocities != 0)
+	if (GetPrimitiveData(MaterialParameters.PrimitiveId).OutputVelocity>0)
 	{
 		// 2d velocity, includes camera an object motion
 	#if WRITES_VELOCITY_TO_GBUFFER_USE_POS_INTERPOLATOR
-		float3 Velocity = Calculate3DVelocity(BasePassInterpolants.VelocityScreenPosition, BasePassInterpolants.VelocityPrevScreenPosition);
+		float2 Velocity = Calculate2DVelocity(BasePassInterpolants.VelocityScreenPosition, BasePassInterpolants.VelocityPrevScreenPosition);
 	#else
-		float3 Velocity = Calculate3DVelocity(MaterialParameters.ScreenPosition, BasePassInterpolants.VelocityPrevScreenPosition);
+		float2 Velocity = Calculate2DVelocity(MaterialParameters.ScreenPosition, BasePassInterpolants.VelocityPrevScreenPosition);
 	#endif
 
-		float4 EncodedVelocity = EncodeVelocityToTexture(Velocity);
-
-		FLATTEN
-		if (GetPrimitiveData(MaterialParameters.PrimitiveId).DrawsVelocity == 0.0 && View.ForceDrawAllVelocities == 0)
-		{
-			// TODO: remove one of the DrawsVelocity or OutputVelocity
-			EncodedVelocity = 0.0;
-		}
-
+		// Make sure not to touch 0,0 which is clear color
+		float4 EncodedVelocity = float4(EncodeVelocityToTexture(Velocity) * GetPrimitiveData(MaterialParameters.PrimitiveId).DrawsVelocity, 0, 0);
 	#if USES_GBUFFER
 		GBuffer.Velocity = EncodedVelocity;
 	#else
@@ -1075,9 +1046,6 @@ void FPixelShaderInOut_MainPS(
 	half3 Color = 0;
 	float IndirectIrradiance = 0;
 
-	half3 ColorSeparateSpecular = 0;
-	half3 ColorSeparateEmissive = 0;
-
 	#if !MATERIAL_SHADINGMODEL_UNLIT
 
 		float3 DiffuseDir = BentNormal;
@@ -1102,16 +1070,13 @@ void FPixelShaderInOut_MainPS(
 		#if MATERIAL_SHADINGMODEL_HAIR
 		if (GBuffer.ShadingModelID == SHADINGMODELID_HAIR)
 		{
-			FHairTransmittanceData TransmittanceData = InitHairTransmittanceData(true);
+			FHairTransmittanceData TransmittanceData = InitHairTransmittanceData();
 			float3 N = MaterialParameters.WorldNormal;
 			float3 V = MaterialParameters.CameraVector;
 			float3 L = normalize( V - N * dot(V,N) );
 			DiffuseDir = L;
-			DiffuseColorForIndirect = 2*PI * HairShading( GBuffer, L, V, N, 1, TransmittanceData, 0, 0.2, uint2(0,0));
-
-			#if USE_HAIR_COMPLEX_TRANSMITTANCE
-			GBuffer.CustomData.a = 1.f / 255.f;
-			#endif
+			bool bEvalMultiScatter = true;
+			DiffuseColorForIndirect = 2*PI * HairShading( GBuffer, L, V, N, 1, TransmittanceData, 0, 0.2, uint2(0,0), bEvalMultiScatter);
 		}
 		#endif
 
@@ -1153,41 +1118,27 @@ void FPixelShaderInOut_MainPS(
 			uint GridIndex = 0;
 
 			#if FEATURE_LEVEL >= FEATURE_LEVEL_SM5
-				GridIndex = ComputeLightGridCellIndex((uint2)(MaterialParameters.SvPosition.xy * View.LightProbeSizeRatioAndInvSizeRatio.zw - ResolvedView.ViewRectMin.xy), MaterialParameters.SvPosition.w, EyeIndex);
+				GridIndex = ComputeLightGridCellIndex((uint2)(MaterialParameters.SvPosition.xy - ResolvedView.ViewRectMin.xy), MaterialParameters.SvPosition.w, EyeIndex);
 
 				#if FORWARD_SHADING || TRANSLUCENCY_LIGHTING_SURFACE_FORWARDSHADING || MATERIAL_SHADINGMODEL_SINGLELAYERWATER
 					const float Dither = InterleavedGradientNoise(MaterialParameters.SvPosition.xy, View.StateFrameIndexMod8);
-					FDeferredLightingSplit ForwardDirectLighting = GetForwardDirectLightingSplit(GridIndex, MaterialParameters.AbsoluteWorldPosition, MaterialParameters.CameraVector, GBuffer, NearestResolvedDepthScreenUV, MaterialParameters.PrimitiveId, EyeIndex, Dither, DirectionalLightShadow);
-					
-					#if MATERIAL_SHADINGMODEL_THIN_TRANSLUCENT
-						DiffuseColor += ForwardDirectLighting.DiffuseLighting.rgb;
-						ColorSeparateSpecular += ForwardDirectLighting.SpecularLighting.rgb;
-					#else
-						Color += ForwardDirectLighting.DiffuseLighting.rgb;
-						Color += ForwardDirectLighting.SpecularLighting.rgb;
-					#endif
+					float3 ForwardDirectLighting = GetForwardDirectLighting(GridIndex, MaterialParameters.AbsoluteWorldPosition, MaterialParameters.CameraVector, GBuffer, NearestResolvedDepthScreenUV, MaterialParameters.PrimitiveId, EyeIndex, Dither, DirectionalLightShadow);
+					Color += ForwardDirectLighting;
 				#endif
 			#endif
 				// No IBL for water in deferred: that is skipped because it is done in the water composite pass. It should however be applied when using forward shading in order to get reflection without the water composite pass.
-			#if !(MATERIAL_SINGLE_SHADINGMODEL && MATERIAL_SHADINGMODEL_HAIR) && (!MATERIAL_SHADINGMODEL_SINGLELAYERWATER || FORWARD_SHADING)
+			#if !(MATERIAL_SINGLE_SHADINGMODEL && MATERIAL_SHADINGMODEL_HAIR) && (!MATERIAL_SHADINGMODEL_SINGLELAYERWATER || FORWARD_SHADING) 
 				if (GBuffer.ShadingModelID != SHADINGMODELID_HAIR)
 				{
 					int SingleCaptureIndex = GetPrimitiveData(MaterialParameters.PrimitiveId).SingleCaptureIndex;
-
-					half3 ReflectionColor = GetImageBasedReflectionLighting(MaterialParameters, GBuffer.Roughness, GBuffer.SpecularColor, IndirectIrradiance, GridIndex, SingleCaptureIndex, EyeIndex)
+					Color += GetImageBasedReflectionLighting(MaterialParameters, GBuffer.Roughness, GBuffer.SpecularColor, IndirectIrradiance, GridIndex, SingleCaptureIndex, EyeIndex)
 						* IndirectOcclusion
 						* AOMultiBounce(GBuffer.SpecularColor, SpecOcclusion);
-
-					#if MATERIAL_SHADINGMODEL_THIN_TRANSLUCENT
-						ColorSeparateSpecular += ReflectionColor;
-					#else
-						Color += ReflectionColor;
-					#endif
 				}
 			#endif
         #endif
 
-		#if SIMPLE_FORWARD_DIRECTIONAL_LIGHT && !MATERIAL_SHADINGMODEL_SINGLELAYERWATER && !MATERIAL_SHADINGMODEL_THIN_TRANSLUCENT
+		#if SIMPLE_FORWARD_DIRECTIONAL_LIGHT
 
 			float3 DirectionalLighting = GetSimpleForwardLightingDirectionalLight(
 				GBuffer,
@@ -1220,7 +1171,7 @@ void FPixelShaderInOut_MainPS(
 
 	float4 Fogging = HeightFogging;
 
-#if NEEDS_BASEPASS_PIXEL_VOLUMETRIC_FOGGING && COMPILE_BASEPASS_PIXEL_VOLUMETRIC_FOGGING
+#if NEEDS_BASEPASS_PIXEL_VOLUMETRIC_FOGGING
 	if (FogStruct.ApplyVolumetricFog > 0) 
 	{
 		float3 VolumeUV = ComputeVolumeUV(MaterialParameters.AbsoluteWorldPosition, ResolvedView.WorldToClip);
@@ -1228,41 +1179,24 @@ void FPixelShaderInOut_MainPS(
 	}
 #endif
 
-#if NEEDS_BASEPASS_PIXEL_FOGGING
-	const float OneOverPreExposure = USE_PREEXPOSURE ? ResolvedView.OneOverPreExposure : 1.0f;
-	float4 NDCPosition = mul(float4(MaterialParameters.AbsoluteWorldPosition.xyz, 1), ResolvedView.WorldToClip);
-#endif
-
 #if NEEDS_BASEPASS_PIXEL_FOGGING && PROJECT_SUPPORT_SKY_ATMOSPHERE && MATERIAL_IS_SKY==0 // Do not apply aerial perpsective on sky materials
 	if (ResolvedView.SkyAtmosphereApplyCameraAerialPerspectiveVolume > 0.0f)
 	{
+		const float OneOverPreExposure = USE_PREEXPOSURE ? ResolvedView.OneOverPreExposure : 1.0f;
 
+		float4 NDCPosition = mul(float4(MaterialParameters.AbsoluteWorldPosition.xyz, 1), ResolvedView.WorldToClip);
 
 		// Sample the aerial perspective (AP).
 		Fogging = GetAerialPerspectiveLuminanceTransmittanceWithFogOver(
-			ResolvedView.RealTimeReflectionCapture, ResolvedView.SkyAtmosphereCameraAerialPerspectiveVolumeSizeAndInvSize,
 			NDCPosition, MaterialParameters.AbsoluteWorldPosition.xyz*CM_TO_SKY_UNIT, ResolvedView.WorldCameraOrigin.xyz*CM_TO_SKY_UNIT,
 			View.CameraAerialPerspectiveVolume, View.CameraAerialPerspectiveVolumeSampler,
 			ResolvedView.SkyAtmosphereCameraAerialPerspectiveVolumeDepthResolutionInv,
 			ResolvedView.SkyAtmosphereCameraAerialPerspectiveVolumeDepthResolution,
-			ResolvedView.SkyAtmosphereAerialPerspectiveStartDepthKm,
-			ResolvedView.SkyAtmosphereCameraAerialPerspectiveVolumeDepthSliceLengthKm,
-			ResolvedView.SkyAtmosphereCameraAerialPerspectiveVolumeDepthSliceLengthKmInv,
+			ResolvedView.SkyAtmosphereAerialPerspectiveStartDepth,
+			ResolvedView.SkyAtmosphereCameraAerialPerspectiveVolumeDepthSliceLength,
+			ResolvedView.SkyAtmosphereCameraAerialPerspectiveVolumeDepthSliceLengthInv, 
 			OneOverPreExposure, Fogging);
 	}
-#endif
-
-#if NEEDS_BASEPASS_PIXEL_FOGGING && MATERIAL_ENABLE_TRANSLUCENCY_CLOUD_FOGGING
-
-	if (TranslucentBasePass.ApplyVolumetricCloudOnTransparent > 0.0f)
-	{
-		Fogging = GetCloudLuminanceTransmittanceOverFog(
-			NDCPosition, MaterialParameters.AbsoluteWorldPosition.xyz, ResolvedView.WorldCameraOrigin.xyz,
-			TranslucentBasePass.VolumetricCloudColor, TranslucentBasePass.VolumetricCloudColorSampler,
-			TranslucentBasePass.VolumetricCloudDepth, TranslucentBasePass.VolumetricCloudDepthSampler,
-			OneOverPreExposure, Fogging);
-	}
-
 #endif
 
 	// Volume lighting for lit translucency
@@ -1282,8 +1216,7 @@ void FPixelShaderInOut_MainPS(
 
 	half3 Emissive = GetMaterialEmissive(PixelMaterialInputs);
 
-	// The following block is disabled on Vulkan because it triggers an nvidia driver bug (UE-101609).
-#if USE_DEVELOPMENT_SHADERS && !VULKAN_PROFILE_SM5
+#if USE_DEVELOPMENT_SHADERS
 	// this feature is only needed for development/editor - we can compile it out for a shipping build (see r.CompileShadersForDevelopment cvar help)
 	#if METAL_SM5_PROFILE || SM5_PROFILE || SM4_PROFILE || METAL_SM5_NOTESS_PROFILE || VULKAN_PROFILE_SM5
 		BRANCH
@@ -1299,15 +1232,11 @@ void FPixelShaderInOut_MainPS(
 	#endif
 #endif
 
-#if !POST_PROCESS_SUBSURFACE && !MATERIAL_SHADINGMODEL_THIN_TRANSLUCENT
- 	// For skin we need to keep them separate. We also keep them separate for thin translucent.
-	// Otherwise just add them together.
+#if !POST_PROCESS_SUBSURFACE
+ 	// For non-skin, we just add diffuse and non-diffuse color together, otherwise we need to keep them separate
 	Color += DiffuseColor;
 #endif
-
-#if !MATERIAL_SHADINGMODEL_THIN_TRANSLUCENT
 	Color += Emissive;
-#endif
 
 #if MATERIAL_SHADINGMODEL_SINGLELAYERWATER
 	{
@@ -1340,37 +1269,13 @@ void FPixelShaderInOut_MainPS(
 			DirectionalLightShadow,
 			OpaqueBasePass.SceneColorWithoutSingleLayerWaterTexture, SingleLayerWaterSceneColorSampler,
 			OpaqueBasePass.SceneDepthWithoutSingleLayerWaterTexture, SingleLayerWaterSceneDepthSampler,
-			OpaqueBasePass.SceneWithoutSingleLayerWaterMinMaxUV.xy,
-			OpaqueBasePass.SceneWithoutSingleLayerWaterMinMaxUV.zw,
+			OpaqueBasePass.SceneWithoutSingleLayerWaterMaxUV,
 			Specular, OpaqueBasePass.DistortionParams,
 			SunIlluminance, WaterDiffuseIndirectIlluminance, EnvBrdf,
 			CameraIsUnderWater, WaterVisibility, EyeIndex).Luminance;
 #endif
 	}
 #endif // MATERIAL_SHADINGMODEL_SINGLELAYERWATER
-
-#if MATERIAL_SHADINGMODEL_THIN_TRANSLUCENT
-
-	float3 DualBlendColorAdd = 0.0f;
-	float3 DualBlendColorMul = 1.0f;
-
-	{
-		AccumulateThinTranslucentModel(
-								DualBlendColorAdd,
-								DualBlendColorMul,
-								MaterialParameters,
-								GBuffer,
-								DiffuseColor,
-								ColorSeparateSpecular,
-								Emissive,
-								Opacity);
-
-		Color = 0;
-		Opacity = 1.0f;
-	}
-
-#endif
-
 
 	#if MATERIAL_DOMAIN_POSTPROCESS
 		#if MATERIAL_OUTPUT_OPACITY_AS_ALPHA
@@ -1379,31 +1284,6 @@ void FPixelShaderInOut_MainPS(
 			Out.MRT[0] = half4(Color, 0);
 		#endif
 		Out.MRT[0] = RETURN_COLOR(Out.MRT[0]);
-	// MATERIAL_SHADINGMODEL_THIN_TRANSLUCENT must come first because it also has MATERIALBLENDING_TRANSLUCENT defined
-	#elif MATERIAL_SHADINGMODEL_THIN_TRANSLUCENT
-		// After thin translucency, the final color is going to be:
-		//    FinalColor = DualBlendColorAdd + DualBlendColorMul * BackgroundColor;
-	    // To apply fogging, we want the final equation to be:
-		//    FinalColor = Fogging.rgb + Fogging.a * (DualBlendColorAdd + DualBlendColorMul * BackgroundColor);
-		//    FinalColor = (Fogging.rgb + Fogging.a * DualBlendColorAdd) + Fogging.a * DualBlendColorMul * BackgroundColor;
-		// Or in other words:
-		//    AdjustedDualBlendAdd = Fogging.rgb + Fogging.a * DualBlendColorAdd;
-		//    AdjustedDualBlendMul = Fogging.a * DualBlendColorMul;
-		//    FinalColor = AdjustedDualBlendAdd + AdjustedDualBlendMul * BackgroundColor;
-
-		float3 AdjustedDualBlendAdd = Fogging.rgb + Fogging.a * DualBlendColorAdd;
-		float3 AdjustedDualBlendMul =               Fogging.a * DualBlendColorMul;
-
-		#if THIN_TRANSLUCENT_USE_DUAL_BLEND
-			// no RETURN_COLOR because these values are explicit multiplies and adds
-			Out.MRT[0] = half4(AdjustedDualBlendAdd,0.0);
-			Out.MRT[1] = half4(AdjustedDualBlendMul,1.0);
-		#else
-			// In the fallback case, we are blending with the mode 
-			float AdjustedAlpha = saturate(1-dot(AdjustedDualBlendMul,float3(1.0f,1.0f,1.0f)/3.0f));
-			Out.MRT[0] = half4(AdjustedDualBlendAdd,AdjustedAlpha);
-			Out.MRT[0] = RETURN_COLOR(Out.MRT[0]);
-		#endif
 	#elif MATERIALBLENDING_ALPHAHOLDOUT
 		// not implemented for holdout
 		Out.MRT[0] = half4(Color * Fogging.a + Fogging.rgb * Opacity, Opacity);
@@ -1505,27 +1385,11 @@ void FPixelShaderInOut_MainPS(
 #endif
 
 #if !MATERIALBLENDING_MODULATE && USE_PREEXPOSURE
-#if MATERIAL_IS_SKY
-	// Dynamic capture exposure is 1 as of today.
-	const float ViewPreExposure = View.RealTimeReflectionCapture>0.0f ? View.RealTimeReflectionCapturePreExposure : View.PreExposure;
-#else
-	const float ViewPreExposure = View.PreExposure;
-#endif
-	// We need to multiply pre-exposure by all components including A, otherwise the ratio of
-	// diffuse to specular lighting will get messed up in the SSS pass.
-	// RGB: Full color (Diffuse + Specular)
-	// A:   Diffuse Intensity, but only if we are not blending
-	#if MATERIAL_DOMAIN_POSTPROCESS || MATERIAL_SHADINGMODEL_THIN_TRANSLUCENT || MATERIALBLENDING_ALPHAHOLDOUT || MATERIALBLENDING_ALPHACOMPOSITE || MATERIALBLENDING_TRANSLUCENT || MATERIALBLENDING_ADDITIVE
-		Out.MRT[0].rgb  *= ViewPreExposure;
-	#else
-		Out.MRT[0].rgba *= ViewPreExposure;
-	#endif
+	Out.MRT[0].xyz *= View.PreExposure;
 #endif
 #if MATERIAL_IS_SKY
-	// Sky materials can result in high luminance values, e.g. the sun disk. 
-	// This is so we make sure to at least stay within the boundaries of fp10 and not cause NaN on some platforms.
-	// We also half that range to also make sure we have room for other additive elements such as bloom, clouds or particle visual effects.
-	Out.MRT[0].xyz = min(Out.MRT[0].xyz, Max10BitsFloat.xxx * 0.5f);
+	// Sky materials can result in high luminance values, e.g. the sun disk. So we make sure to at least stay within the boundaries of fp10 for some platforms.
+	Out.MRT[0].xyz = min(Out.MRT[0].xyz, Max10BitsFloat.xxx);
 #endif
 
 #if NUM_VIRTUALTEXTURE_SAMPLES || LIGHTMAP_VT_ENABLED
@@ -1534,14 +1398,14 @@ void FPixelShaderInOut_MainPS(
 		MaterialParameters.SvPosition,
 		Opacity * DBufferOpacity,
 		View.FrameNumber,
-		View.VTFeedbackBuffer
+		VTFeedbackBuffer
 	);
 #endif
 }
 
 // If virtual texture is enabled then use early depth test so that UAV feedback buffer writes respect the depth test
 #if NUM_VIRTUALTEXTURE_SAMPLES || LIGHTMAP_VT_ENABLED
-	#if COMPILER_SUPPORTS_DEPTHSTENCIL_EARLYTEST_LATEWRITE
+	#if COMPILER_SUPPORT_DEPTHSTENCIL_EARLYTEST_LATEWRITE
 		// If we support early depth test with late write behaviour then use it since we may be using discard, or modifying depth
 		#define PIXELSHADER_EARLYDEPTHSTENCIL DEPTHSTENCIL_EARLYTEST_LATEWRITE
 	#elif !OUTPUT_PIXEL_DEPTH_OFFSET
@@ -1569,8 +1433,7 @@ void FPixelShaderInOut_MainPS(
 	#endif //GBUFFER_HAS_VELOCITY
 #else //USES_GBUFFER
 	#define PIXELSHADEROUTPUT_MRT0 1
-	// we also need MRT for thin translucency due to dual blending if we are not on the fallback path
-	#define PIXELSHADEROUTPUT_MRT1 (WRITES_VELOCITY_TO_GBUFFER || (MATERIAL_SHADINGMODEL_THIN_TRANSLUCENT && THIN_TRANSLUCENT_USE_DUAL_BLEND))
+	#define PIXELSHADEROUTPUT_MRT1 WRITES_VELOCITY_TO_GBUFFER
 #endif //USES_GBUFFER
 #define PIXELSHADEROUTPUT_A2C ((EDITOR_ALPHA2COVERAGE) != 0)
 #define PIXELSHADEROUTPUT_COVERAGE (MATERIALBLENDING_MASKED_USING_COVERAGE && !EARLY_Z_PASS_ONLY_MATERIAL_MASKING)

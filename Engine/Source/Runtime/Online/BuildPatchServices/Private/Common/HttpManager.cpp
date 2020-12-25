@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Common/HttpManager.h"
 #include "HttpModule.h"
@@ -13,7 +13,7 @@ namespace BuildPatchServices
 		~FHttpManager();
 
 		// IHttpManager interface begin.
-		virtual TSharedRef<IHttpRequest, ESPMode::ThreadSafe> CreateRequest() override;
+		virtual TSharedRef<IHttpRequest> CreateRequest() override;
 		// IHttpManager interface end.
 
 	private:
@@ -29,7 +29,7 @@ namespace BuildPatchServices
 	{
 	}
 
-	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> FHttpManager::CreateRequest()
+	TSharedRef<IHttpRequest> FHttpManager::CreateRequest()
 	{
 		return HttpModule.CreateRequest();
 	}

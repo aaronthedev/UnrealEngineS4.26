@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	SceneComponent.cpp
@@ -33,11 +33,6 @@
 #include "DeviceProfiles/DeviceProfileManager.h"
 #include "Interfaces/ITargetPlatform.h"
 #include "DeviceProfiles/DeviceProfile.h"
-#include "Net/Core/PushModel/PushModel.h"
-
-#if WITH_EDITOR
-#include "Settings/LevelEditorViewportSettings.h"	// For legacy post edit move behavior
-#endif // WITH_EDITOR
 
 #define LOCTEXT_NAMESPACE "SceneComponent"
 
@@ -53,7 +48,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogSceneComponent, Log, All);
 
 DECLARE_CYCLE_STAT(TEXT("UpdateComponentToWorld"), STAT_UpdateComponentToWorld, STATGROUP_Component);
 DECLARE_CYCLE_STAT(TEXT("UpdateChildTransforms"), STAT_UpdateChildTransforms, STATGROUP_Component);
-DECLARE_CYCLE_STAT(TEXT("Component CalcBounds"), STAT_ComponentCalcBounds, STATGROUP_Component);
+DECLARE_CYCLE_STAT(TEXT("Component UpdateBounds"), STAT_ComponentUpdateBounds, STATGROUP_Component);
 DECLARE_CYCLE_STAT(TEXT("Component UpdateNavData"), STAT_ComponentUpdateNavData, STATGROUP_Component);
 DECLARE_CYCLE_STAT(TEXT("Component PostUpdateNavData"), STAT_ComponentPostUpdateNavData, STATGROUP_Component);
 
@@ -270,7 +265,6 @@ static int32 SetAncestorMobility(USceneComponent const* SceneComponentObject, EC
  * This method walks the hierarchy and alters parent/child component's Mobility as a result of
  * this property change.
  */
-bool GNotifyAboutMobilityUpdate = true;
 static void UpdateAttachedMobility(USceneComponent* ComponentThatChanged)
 {
 	// Attached parent components can't be more mobile than their children. This means that 
@@ -324,22 +318,19 @@ static void UpdateAttachedMobility(USceneComponent* ComponentThatChanged)
 			{
 				ComponentThatChanged->DetachFromComponent(FDetachmentTransformRules::KeepWorldTransform);
 
-				if (GNotifyAboutMobilityUpdate)
-				{
-					// Fire off a notification
-					FText NotificationText = FText::Format(LOCTEXT("ComponentDetachedFromParentDueToMobility", "Caused {0} to be detached from its parent {1} because it does not allow to be static"), FText::FromName(ComponentThatChanged->GetFName()), FText::FromName(ParentComponent->GetFName()));
-					FNotificationInfo Info(NotificationText);
-					Info.bFireAndForget = true;
-					Info.bUseThrobber = true;
-					Info.ExpireDuration = 2.0f;
-					FSlateNotificationManager::Get().AddNotification(Info);
-				}
+				// Fire off a notification
+				FText NotificationText = FText::Format(LOCTEXT("ComponentDetachedFromParentDueToMobility", "Caused {0} to be detached from its parent {1} because it does not allow to be static"), FText::FromName(ComponentThatChanged->GetFName()), FText::FromName(ParentComponent->GetFName()));
+				FNotificationInfo Info(NotificationText);
+				Info.bFireAndForget = true;
+				Info.bUseThrobber = true;
+				Info.ExpireDuration = 2.0f;
+				FSlateNotificationManager::Get().AddNotification(Info);
 			}
 		}		
 	}
 
 	// if we altered any components (other than the ones selected), then notify the user
-	if (GNotifyAboutMobilityUpdate && NumMobilityChanges > 0)
+	if(NumMobilityChanges > 0)
 	{
 		FText NotificationText = LOCTEXT("MobilityAlteredSingularNotification", "Caused 1 component to also change Mobility");
 		if(NumMobilityChanges > 1)
@@ -453,7 +444,7 @@ static bool SceneComponentNeedsLoadForTarget(USceneComponent const* SceneCompone
 		}
 	}
 
-	return TargetPlatform->HasEditorOnlyData() || !SceneComponentObject->IsEditorOnly();
+	return true;
 }
 
 static bool CheckDescendantsAreAlsoCulledForTarget(USceneComponent const* SceneComponentObject, const ITargetPlatform* TargetPlatform)
@@ -486,7 +477,7 @@ bool USceneComponent::NeedsLoadForTargetPlatform(const ITargetPlatform* TargetPl
 		// Child not culled, so warn
 		if(!bDescendantsCulled)
 		{
-			UE_LOG(LogSceneComponent, Warning, TEXT("Component %s not cooked out for client because descendants were not also cooked out."), *GetPathName());
+			UE_LOG(LogSceneComponent, Warning, TEXT("Component %s not cooked out for client because descendants were not also cooked out."), *GetName());
 			return true;
 		}
 
@@ -510,11 +501,11 @@ void USceneComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChan
 	{
 		UpdateAttachedMobility(this);
 	}
-	else if (bIsEditorOnly && PropertyName == GET_MEMBER_NAME_CHECKED(UActorComponent, bIsEditorOnly))
+	if (bIsEditorOnly && PropertyName == GET_MEMBER_NAME_CHECKED(UActorComponent, bIsEditorOnly))
 	{
 		UpdateAttachedIsEditorOnly(this);
 	}
-	else if (PropertyName == USceneComponent::GetVisiblePropertyName())
+	if (PropertyName == USceneComponent::GetVisiblePropertyName())
 	{
 		OnVisibilityChanged();
 	}
@@ -523,18 +514,12 @@ void USceneComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChan
 		OnHiddenInGameChanged();
 	}
 
-	// If this is a template object when the property change is propagated to instances we don't want duplicate notification toasts
-	TGuardValue<bool> MobilityNotificationGuard(GNotifyAboutMobilityUpdate, (IsTemplate() ? false : GNotifyAboutMobilityUpdate));
-
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
 	const bool bLocationChanged = (PropertyName == LocationName || MemberPropertyName == LocationName);
 	if (bLocationChanged || (PropertyName == RotationName || MemberPropertyName == RotationName) || (PropertyName == ScaleName || MemberPropertyName == ScaleName))
 	{
-		TransformUpdated.Broadcast(this, EUpdateTransformFlags::None, ETeleportType::ResetPhysics);
-
 		FNavigationSystem::UpdateComponentData(*this);
-
 		if (!GIsDemoMode)
 		{
 			InvalidateLightingCacheDetailed(true, bLocationChanged);
@@ -553,9 +538,6 @@ void USceneComponent::PostEditChangeChainProperty(FPropertyChangedChainEvent& Pr
 	{
 		UpdateAttachedIsEditorOnly(this);
 	}
-
-	// If this is a template object when the property change is propagated to instances we don't want duplicate notification toasts
-	TGuardValue<bool> MobilityNotificationGuard(GNotifyAboutMobilityUpdate, (IsTemplate() ? false : GNotifyAboutMobilityUpdate));
 
 	Super::PostEditChangeChainProperty(PropertyChangedEvent);
 }
@@ -1202,6 +1184,8 @@ void USceneComponent::CalcBoundingCylinder(float& CylinderRadius, float& Cylinde
 
 void USceneComponent::UpdateBounds()
 {
+	SCOPE_CYCLE_COUNTER(STAT_ComponentUpdateBounds);
+
 	// if use parent bound if attach parent exists, and the flag is set
 	// since parents tick first before child, this should work correctly
 	if ( bUseAttachParentBound && GetAttachParent() != nullptr )
@@ -1210,7 +1194,6 @@ void USceneComponent::UpdateBounds()
 	}
 	else
 	{
-		SCOPE_CYCLE_COUNTER(STAT_ComponentCalcBounds);
 		// Calculate new bounds
 		Bounds = CalcBounds(GetComponentTransform());
 	}
@@ -1358,14 +1341,6 @@ void USceneComponent::AddWorldTransform(const FTransform& DeltaTransform, bool b
 	const FQuat NewWorldRotation = DeltaTransform.GetRotation() * LocalComponentTransform.GetRotation();
 	const FVector NewWorldLocation = FTransform::AddTranslations(DeltaTransform, LocalComponentTransform);
 	SetWorldTransform(FTransform(NewWorldRotation, NewWorldLocation, FVector(1,1,1)),bSweep, OutSweepHitResult, Teleport);
-}
-
-void USceneComponent::AddWorldTransformKeepScale(const FTransform& DeltaTransform, bool bSweep, FHitResult* OutSweepHitResult, ETeleportType Teleport)
-{
-	const FTransform& LocalComponentTransform = GetComponentTransform();
-	const FQuat NewWorldRotation = DeltaTransform.GetRotation() * LocalComponentTransform.GetRotation();
-	const FVector NewWorldLocation = FTransform::AddTranslations(DeltaTransform, LocalComponentTransform);
-	SetWorldTransform(FTransform(NewWorldRotation, NewWorldLocation, LocalComponentTransform.GetScale3D()), bSweep, OutSweepHitResult, Teleport);
 }
 
 void USceneComponent::SetRelativeScale3D(FVector NewScale3D)
@@ -2310,7 +2285,9 @@ void FSceneComponentInstanceData::ApplyToComponent(UActorComponent* Component, c
 		// and so the rebuilt component should not take back attachment ownership
 		if (ChildComponent && (ChildComponent->GetAttachParent() == nullptr || ChildComponent->GetAttachParent()->IsPendingKill()))
 		{
-			ChildComponent->SetRelativeTransform_Direct(ChildComponentPair.Value);
+			ChildComponent->SetRelativeLocation_Direct(ChildComponentPair.Value.GetLocation());
+			ChildComponent->SetRelativeRotation_Direct(ChildComponentPair.Value.GetRotation().Rotator());
+			ChildComponent->SetRelativeScale3D_Direct(ChildComponentPair.Value.GetScale3D());
 			ChildComponent->AttachToComponent(SceneComponent, FAttachmentTransformRules::KeepRelativeTransform);
 		}
 	}
@@ -2399,7 +2376,7 @@ void USceneComponent::UpdateChildTransforms(EUpdateTransformFlags UpdateTransfor
 	}
 }
 
-void USceneComponent::PostInterpChange(FProperty* PropertyThatChanged)
+void USceneComponent::PostInterpChange(UProperty* PropertyThatChanged)
 {
 	Super::PostInterpChange(PropertyThatChanged);
 
@@ -2788,13 +2765,19 @@ bool USceneComponent::InternalSetWorldLocationAndRotation(FVector NewLocation, c
 			RelativeRotationCache.RotatorToQuat(NewRelativeRotation);
 		}
 
+
 #if ENABLE_NAN_DIAGNOSTIC
-		if (GetRelativeRotation().ContainsNaN())
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+		if (RelativeRotation.ContainsNaN())
 		{
-			logOrEnsureNanError(TEXT("USceneComponent:InternalSetWorldLocationAndRotation found NaN in RelativeRotation: %s"), *GetRelativeRotation().ToString());
-			SetRelativeRotation_Direct(FRotator::ZeroRotator);
+			logOrEnsureNanError(TEXT("USceneComponent:InternalSetWorldLocationAndRotation found NaN in RelativeRotation: %s"), *RelativeRotation.ToString());
+			RelativeRotation = FRotator::ZeroRotator;
+			// MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, RelativeRotation, this);
 		}
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #endif
+
+
 		UpdateComponentToWorldWithParent(GetAttachParent(),GetAttachSocketName(), SkipPhysicsToEnum(bNoPhysics), RelativeRotationCache.GetCachedQuat(), Teleport);
 
 		// we need to call this even if this component itself is not navigation relevant
@@ -2943,7 +2926,7 @@ bool USceneComponent::ShouldRender() const
 
 #if !UE_BUILD_SHIPPING
 	// If we want to create render state even for hidden components, return true here
-	if (World && World->bCreateRenderStateForHiddenComponentsWithCollsion && IsCollisionEnabled())
+	if (World && World->bCreateRenderStateForHiddenComponents)
 	{
 		return true;
 	}
@@ -3206,9 +3189,9 @@ void USceneComponent::OnRep_AttachChildren()
 	{
 		for (USceneComponent* AttachChild : AttachChildren)
 		{
-			// Clear out any initially attached components from the ClientAttachedChildren array that end up becoming replicated, but only if the child now is NetSimulating.
-			if (AttachChild && AttachChild->IsNetSimulating())
+			if (AttachChild)
 			{
+				// Clear out any initially attached components from the client attached list that end up becoming replicated
 				ClientAttachedChildren.Remove(AttachChild);
 			}
 		}
@@ -3266,11 +3249,11 @@ void USceneComponent::PostRepNotifies()
 		Exchange(NetOldAttachSocketName, AttachSocketName);
 		
 		// Note: This is a local fix for JIRA UE-43355.
-		if (bShouldSnapLocationWhenAttached && !bNetUpdateTransform)
+		if (bShouldSnapLocationWhenAttached)
 		{
 			SetRelativeLocation_Direct(FVector::ZeroVector);
 		}
-		if (bShouldSnapRotationWhenAttached && !bNetUpdateTransform)
+		if (bShouldSnapRotationWhenAttached)
 		{
 			SetRelativeRotation_Direct(FRotator::ZeroRotator);
 		}
@@ -3309,22 +3292,25 @@ void USceneComponent::GetLifetimeReplicatedProps(TArray< FLifetimeProperty > & O
 {
 	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 	
-	FDoRepLifetimeParams SharedParams;
-	SharedParams.bIsPushBased = true;
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	DOREPLIFETIME(USceneComponent, bAbsoluteLocation);
+	DOREPLIFETIME(USceneComponent, bAbsoluteRotation);
+	DOREPLIFETIME(USceneComponent, bAbsoluteScale);
+	DOREPLIFETIME(USceneComponent, bVisible);
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
-	DOREPLIFETIME_WITH_PARAMS_FAST(USceneComponent, bAbsoluteLocation, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(USceneComponent, bAbsoluteRotation, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(USceneComponent, bAbsoluteScale, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(USceneComponent, bVisible, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(USceneComponent, bShouldBeAttached, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(USceneComponent, bShouldSnapLocationWhenAttached, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(USceneComponent, bShouldSnapRotationWhenAttached, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(USceneComponent, AttachParent, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(USceneComponent, AttachChildren, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(USceneComponent, AttachSocketName, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(USceneComponent, RelativeLocation, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(USceneComponent, RelativeRotation, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(USceneComponent, RelativeScale3D, SharedParams);
+	DOREPLIFETIME(USceneComponent, bShouldBeAttached);
+	DOREPLIFETIME(USceneComponent, bShouldSnapLocationWhenAttached);
+	DOREPLIFETIME(USceneComponent, bShouldSnapRotationWhenAttached);
+	DOREPLIFETIME(USceneComponent, AttachParent);
+	DOREPLIFETIME(USceneComponent, AttachChildren);
+	DOREPLIFETIME(USceneComponent, AttachSocketName);
+
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	DOREPLIFETIME(USceneComponent, RelativeLocation);
+	DOREPLIFETIME(USceneComponent, RelativeRotation);
+	DOREPLIFETIME(USceneComponent, RelativeScale3D);
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 #if WITH_EDITOR
@@ -3336,24 +3322,9 @@ void USceneComponent::PostEditComponentMove(bool bFinished)
 		// This allows listeners to be notified of intermediate changes of state
 		SnapshotTransactionBuffer(this);
 	}
-
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	if (!GetDefault<ULevelEditorViewportSettings>()->bUseLegacyPostEditBehavior)
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-	{
-		// Call on all attached children
-		TArray<USceneComponent*> AttachChildrenCopy(GetAttachChildren());
-		for (USceneComponent* ChildComponent : AttachChildrenCopy)
-		{
-			if (ChildComponent)
-			{
-				ChildComponent->PostEditComponentMove(bFinished);
-			}
-		}
-	}
 }
 
-bool USceneComponent::CanEditChange( const FProperty* Property ) const
+bool USceneComponent::CanEditChange( const UProperty* Property ) const
 {
 	bool bIsEditable = Super::CanEditChange( Property );
 	if( bIsEditable && Property != nullptr )
@@ -3405,18 +3376,22 @@ FScopedPreventAttachedComponentMove::FScopedPreventAttachedComponentMove(USceneC
 		bSavedNonAbsoluteComponent = !(bSavedAbsoluteLocation && bSavedAbsoluteRotation && bSavedAbsoluteScale);
 
 		// These are only going to be changed temporarily and reset, so we'll allow access here.
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		// Use absolute (stay in world space no matter what parent does)
 		Owner->bAbsoluteLocation = true;
 		Owner->bAbsoluteRotation = true;
 		Owner->bAbsoluteScale = true;
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 		if (bSavedNonAbsoluteComponent && Owner->GetAttachParent())
 		{
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			// Make RelativeLocation etc relative to the world.
 			Component->ConditionalUpdateComponentToWorld();
 			Owner->RelativeLocation = Owner->GetComponentLocation();
 			Owner->RelativeRotation = Owner->GetComponentRotation();
 			Owner->RelativeScale3D = Owner->GetComponentScale();
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		}
 	}
 	else
@@ -3431,9 +3406,11 @@ FScopedPreventAttachedComponentMove::~FScopedPreventAttachedComponentMove()
 {
 	if (Owner)
 	{
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		Owner->bAbsoluteLocation = bSavedAbsoluteLocation;
 		Owner->bAbsoluteRotation = bSavedAbsoluteRotation;
 		Owner->bAbsoluteScale = bSavedAbsoluteScale;
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 		if (bSavedNonAbsoluteComponent && Owner->GetAttachParent())
 		{
@@ -3541,11 +3518,13 @@ void FScopedMovementUpdate::RevertMove()
 		
 		if (IsTransformDirty())
 		{
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			// Teleport to start
 			Component->ComponentToWorld = InitialTransform;
 			Component->RelativeLocation = InitialRelativeLocation;
 			Component->RelativeRotation = InitialRelativeRotation;
 			Component->RelativeScale3D = InitialRelativeScale;
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 			if (!IsDeferringUpdates())
 			{
@@ -3861,21 +3840,20 @@ void USceneComponent::K2_AddWorldTransform(const FTransform& DeltaTransform, boo
 	AddWorldTransform(DeltaTransform, bSweep, (bSweep ? &SweepHitResult : nullptr), TeleportFlagToEnum(bTeleport));
 }
 
-void USceneComponent::K2_AddWorldTransformKeepScale(const FTransform& DeltaTransform, bool bSweep, FHitResult& SweepHitResult, bool bTeleport)
-{
-	AddWorldTransformKeepScale(DeltaTransform, bSweep, (bSweep ? &SweepHitResult : nullptr), TeleportFlagToEnum(bTeleport));
-}
-
 void USceneComponent::SetVisibleFlag(const bool bNewVisible)
 {
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	bVisible = bNewVisible;
-	MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, bVisible, this);
+	// MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, bVisible, this);
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 FVector& USceneComponent::GetRelativeLocation_DirectMutable()
 {
-	MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, RelativeLocation, this);
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	// MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, RelativeLocation, this);
 	return RelativeLocation;
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 void USceneComponent::SetRelativeLocation_Direct(const FVector NewRelativeLocation)
@@ -3885,8 +3863,10 @@ void USceneComponent::SetRelativeLocation_Direct(const FVector NewRelativeLocati
 
 FRotator& USceneComponent::GetRelativeRotation_DirectMutable()
 {
-	MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, RelativeRotation, this);
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	// MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, RelativeRotation, this);
 	return RelativeRotation;
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 void USceneComponent::SetRelativeRotation_Direct(const FRotator NewRelativeRotation)
@@ -3896,8 +3876,10 @@ void USceneComponent::SetRelativeRotation_Direct(const FRotator NewRelativeRotat
 
 FVector& USceneComponent::GetRelativeScale3D_DirectMutable()
 {
-	MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, RelativeScale3D, this);
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	// MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, RelativeScale3D, this);
 	return RelativeScale3D;
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 void USceneComponent::SetRelativeScale3D_Direct(const FVector NewRelativeScale3D)
@@ -3907,37 +3889,47 @@ void USceneComponent::SetRelativeScale3D_Direct(const FVector NewRelativeScale3D
 
 void USceneComponent::SetUsingAbsoluteLocation(bool bInAbsoluteLocation)
 {
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	bAbsoluteLocation = bInAbsoluteLocation;
-	MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, bAbsoluteLocation, this);
+	// MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, bAbsoluteLocation, this);
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 void USceneComponent::SetUsingAbsoluteRotation(bool bInAbsoluteRotation)
 {
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	bAbsoluteRotation = bInAbsoluteRotation;
-	MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, bAbsoluteRotation, this);
+	// MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, bAbsoluteRotation, this);
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 void USceneComponent::SetUsingAbsoluteScale(bool bInAbsoluteScale)
 {
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	bAbsoluteScale = bInAbsoluteScale;
-	MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, bAbsoluteScale, this);
+	// MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, bAbsoluteScale, this);
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 void USceneComponent::SetAttachParent(USceneComponent* NewAttachParent)
 {
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	AttachParent = NewAttachParent;
-	MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, AttachParent, this);
+	// MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, AttachParent, this);
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 void USceneComponent::SetAttachSocketName(FName NewSocketName)
 {
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	AttachSocketName = NewSocketName;
-	MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, AttachSocketName, this);
+	// MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, AttachSocketName, this);
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 void USceneComponent::ModifiedAttachChildren()
 {
-	MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, AttachChildren, this);
+	// MARK_PROPERTY_DIRTY_FROM_NAME(USceneComponent, AttachChildren, this);
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections;
@@ -19,7 +19,7 @@ namespace AutomationTool
 {
 	public partial class PackageUtils
 	{
-		private static void UnpakBuild(FileReference ProjectFile, string SourceDirectory, List<string> PakFiles, string TargetDirectory, string CryptoFilename, string AdditionalArgs)
+		private static void UnpakBuild(string SourceDirectory, List<string> PakFiles, string TargetDirectory, string CryptoFilename, string AdditionalArgs)
 		{
 			if (!CommandUtils.DirectoryExists(SourceDirectory))
 			{
@@ -30,13 +30,11 @@ namespace AutomationTool
 			string UnrealPakExe = CommandUtils.CombinePaths(CommandUtils.CmdEnv.LocalRoot, "Engine/Binaries/Win64/UnrealPak.exe");
 			CommandUtils.CreateDirectory(TargetDirectory);
 
-			string ProjectArg = ProjectFile != null ? ProjectFile.FullName : "";
-
 			Parallel.ForEach(PakFiles, pakFile =>
 			{
 				string PathFileFullPath = CommandUtils.CombinePaths(SourceDirectory, pakFile);
-				string UnrealPakCommandLine = string.Format("{0} {1} -Extract {2} -ExtractToMountPoint -cryptokeys=\"{3}\" {4}",
-															ProjectArg, PathFileFullPath, TargetDirectory, CryptoFilename, AdditionalArgs);
+				string UnrealPakCommandLine = string.Format("{0} -Extract {1} -ExtractToMountPoint -cryptokeys=\"{2}\" {3}",
+															PathFileFullPath, TargetDirectory, CryptoFilename, AdditionalArgs);
 				CommandUtils.RunAndLog(CommandUtils.CmdEnv, UnrealPakExe, UnrealPakCommandLine, Options: CommandUtils.ERunOptions.Default | CommandUtils.ERunOptions.UTF8Output | CommandUtils.ERunOptions.SpewIsVerbose);
 				//CommandUtils.Log(UnrealPakCommandLine);
 			});
@@ -78,18 +76,7 @@ namespace AutomationTool
 			PatchLayers = SortedLayers.Select(patchLayer => patchLayer.Select(fileInfo => fileInfo.Name).ToList()).ToArray();
 		}
 
-
-		/// <summary>
-		/// Extracts all pak files for a given project.
-		/// </summary>
-		/// <param name="SourceDirectory">Source file to read paks from</param>
-		/// <param name="TargetDirectory">Destinaton path where the contents of the pak file will be written</param>
-		/// <param name="CryptoKeysFilename">Path to the json bloc with keys if encryption is used</param>
-		/// <param name="AdditionalArgs">Additional args to pass to UnrealPak</param>
-		/// <param name="bExtractByLayers">Extract as layers. E.g. patch paks will be extracted after the base paks and will overwrite files</param>
-		/// <param name="ProjectFile">Path to the project file. Can be null if UnrealPak is not built with project specific options or plugins</param>
-		/// <returns></returns>
-		public static void ExtractPakFiles(DirectoryInfo SourceDirectory, string TargetDirectory, string CryptoKeysFilename, string AdditionalArgs, bool bExtractByLayers, FileReference ProjectFile=null)
+		public static void ExtractPakFiles(DirectoryInfo SourceDirectory, string TargetDirectory, string CryptoKeysFilename, string AdditionalArgs, bool bExtractByLayers)
 		{
 			var PakFiles = SourceDirectory.GetFiles("*.pak", SearchOption.TopDirectoryOnly);
 
@@ -103,12 +90,12 @@ namespace AutomationTool
 
 				for (int layerIndex = 0; layerIndex < NumLayers; layerIndex++)
 				{
-					UnpakBuild(ProjectFile, SourceDirectory.FullName, PatchLayers[layerIndex], TargetDirectory, CryptoKeysFilename, AdditionalArgs);
+					UnpakBuild(SourceDirectory.FullName, PatchLayers[layerIndex], TargetDirectory, CryptoKeysFilename, AdditionalArgs);
 				}
 			}
 			else
 			{
-				UnpakBuild(ProjectFile, SourceDirectory.FullName, PakFiles.Select(file => file.Name).ToList(), TargetDirectory, CryptoKeysFilename, AdditionalArgs);
+				UnpakBuild(SourceDirectory.FullName, PakFiles.Select(file => file.Name).ToList(), TargetDirectory, CryptoKeysFilename, AdditionalArgs);
 			}
 		}
 	}

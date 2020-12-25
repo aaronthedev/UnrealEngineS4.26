@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,59 +8,79 @@
 // This implementation is used by both Windows and XBoxOne
 #if PLATFORM_WINDOWS
 #include <intrin.h>
-#include <smmintrin.h>
+#elif PLATFORM_XBOXONE
+#include "XboxOne/XboxOneSystemIncludes.h"
 #endif
 
-#include "Math/UnrealPlatformMathSSE4.h"
+#if PLATFORM_ENABLE_VECTORINTRINSICS
+#include "Math/UnrealPlatformMathSSE.h"
+#endif
 
 /**
 * Windows implementation of the Math OS functions
 **/
-struct FWindowsPlatformMath : public TUnrealPlatformMathSSE4Base<FGenericPlatformMath>
+struct FWindowsPlatformMath : public FGenericPlatformMath
 {
-#if PLATFORM_XBOXONE
-	static FORCEINLINE void WideVectorLoadHalf(float* RESTRICT Dst, const uint16* RESTRICT Src)
-	{
-		_mm256_storeu_ps(Dst, _mm256_cvtph_ps(_mm_loadu_si128((__m128i*)Src)));
-	}
-
-	static FORCEINLINE void WideVectorStoreHalf(uint16* RESTRICT Dst, const float* RESTRICT Src)
-	{
-		_mm_storeu_si128((__m128i*)Dst, _mm256_cvtps_ph(_mm256_loadu_ps(Src), _MM_FROUND_TO_NEAREST_INT));
-	}
-
-	static FORCEINLINE void VectorStoreHalf(uint16* RESTRICT Dst, const float* RESTRICT Src)
-	{
-		_mm_storeu_si64((__m128i*)Dst, _mm_cvtps_ph(_mm_loadu_ps(Src), _MM_FROUND_TO_NEAREST_INT));
-	}
-
-	static FORCEINLINE void VectorLoadHalf(float* RESTRICT Dst, const uint16* RESTRICT Src)
-	{
-		_mm_storeu_ps(Dst, _mm_cvtph_ps(_mm_loadu_si64((__m128i*)Src)));
-	}
-
-	static FORCEINLINE float LoadHalf(const uint16* Ptr)
-	{
-		float Value;
-		_mm_store_ss(&Value, _mm_cvtph_ps(_mm_loadu_si16(Ptr)));
-		return Value;
-	}
-
-	static FORCEINLINE void StoreHalf(uint16* Ptr, float Value)
-	{
-		_mm_storeu_si16(Ptr, _mm_cvtps_ph(_mm_load_ss(&Value), _MM_FROUND_TO_NEAREST_INT));
-	}
-#endif
-
 #if PLATFORM_ENABLE_VECTORINTRINSICS
+	static FORCEINLINE int32 TruncToInt(float F)
+	{
+		return _mm_cvtt_ss2si(_mm_set_ss(F));
+	}
+
+	static FORCEINLINE float TruncToFloat( float F )
+	{
+		return (float)TruncToInt(F); // same as generic implementation, but this will call the faster trunc
+	}
+
+	static FORCEINLINE int32 RoundToInt( float F )
+	{
+		// Note: the x2 is to workaround the rounding-to-nearest-even-number issue when the fraction is .5
+		return _mm_cvt_ss2si( _mm_set_ss(F + F + 0.5f) ) >> 1;
+	}
+
+	static FORCEINLINE float RoundToFloat(float F)
+	{
+		return (float)RoundToInt(F);
+	}
+
+	static FORCEINLINE int32 FloorToInt(float F)
+	{
+		return _mm_cvt_ss2si(_mm_set_ss(F + F - 0.5f)) >> 1;
+	}
+
+	static FORCEINLINE float FloorToFloat(float F)
+	{
+		return (float)FloorToInt(F);
+	}
+
+	static FORCEINLINE int32 CeilToInt(float F)
+	{
+		// Note: the x2 is to workaround the rounding-to-nearest-even-number issue when the fraction is .5
+		return -(_mm_cvt_ss2si(_mm_set_ss(-0.5f - (F + F))) >> 1);
+	}
+
+	static FORCEINLINE float CeilToFloat(float F)
+	{
+		// Note: the x2 is to workaround the rounding-to-nearest-even-number issue when the fraction is .5
+		return (float)CeilToInt(F);
+	}
+
 	static FORCEINLINE bool IsNaN( float A ) { return _isnan(A) != 0; }
-	static FORCEINLINE bool IsNaN(double A) { return _isnan(A) != 0; }
 	static FORCEINLINE bool IsFinite( float A ) { return _finite(A) != 0; }
-	static FORCEINLINE bool IsFinite(double A) { return _finite(A) != 0; }
 
-	#pragma intrinsic(_BitScanReverse)
+	static FORCEINLINE float InvSqrt(float F)
+	{
+		return UnrealPlatformMathSSE::InvSqrt(F);
+	}
 
-	static FORCEINLINE uint32 FloorLog2(uint32 Value)
+	static FORCEINLINE float InvSqrtEst( float F )
+	{
+		return UnrealPlatformMathSSE::InvSqrtEst(F);
+	}
+		
+
+	#pragma intrinsic( _BitScanReverse )
+	static FORCEINLINE uint32 FloorLog2(uint32 Value) 
 	{
 		// Use BSR to return the log2 of the integer
 		unsigned long Log2;
@@ -71,13 +91,17 @@ struct FWindowsPlatformMath : public TUnrealPlatformMathSSE4Base<FGenericPlatfor
 
 		return 0;
 	}
-	static FORCEINLINE uint8 CountLeadingZeros8(uint8 Value)
+	static FORCEINLINE uint32 CountLeadingZeros(uint32 Value)
 	{
+		// Use BSR to return the log2 of the integer
 		unsigned long Log2;
-		_BitScanReverse(&Log2, (uint32(Value) << 1) | 1);
-		return uint8(8 - Log2);
-	}
+		if(_BitScanReverse(&Log2, Value) != 0)
+		{
+			return 31 - Log2;
+		}
 
+		return 32;
+	}
 	static FORCEINLINE uint32 CountTrailingZeros(uint32 Value)
 	{
 		if (Value == 0)
@@ -88,47 +112,36 @@ struct FWindowsPlatformMath : public TUnrealPlatformMathSSE4Base<FGenericPlatfor
 		_BitScanForward( &BitIndex, Value );	// Scans from LSB to MSB
 		return BitIndex;
 	}
-
 	static FORCEINLINE uint32 CeilLogTwo( uint32 Arg )
 	{
 		int32 Bitmask = ((int32)(CountLeadingZeros(Arg) << 26)) >> 31;
 		return (32 - CountLeadingZeros(Arg - 1)) & (~Bitmask);
 	}
-
 	static FORCEINLINE uint32 RoundUpToPowerOfTwo(uint32 Arg)
 	{
 		return 1 << CeilLogTwo(Arg);
 	}
-
 	static FORCEINLINE uint64 RoundUpToPowerOfTwo64(uint64 Arg)
 	{
 		return uint64(1) << CeilLogTwo64(Arg);
 	}
-
 #if PLATFORM_64BITS
-
-	#pragma intrinsic(_BitScanReverse64)
-
-	static FORCEINLINE uint64 FloorLog2_64(uint64 Value)
-	{
-		unsigned long Log2;
-		long Mask = -long(_BitScanReverse64(&Log2, Value) != 0);
-		return Log2 & Mask;
-	}
-
 	static FORCEINLINE uint64 CeilLogTwo64(uint64 Arg)
 	{
 		int64 Bitmask = ((int64)(CountLeadingZeros64(Arg) << 57)) >> 63;
 		return (64 - CountLeadingZeros64(Arg - 1)) & (~Bitmask);
 	}
-
 	static FORCEINLINE uint64 CountLeadingZeros64(uint64 Value)
 	{
+		// Use BSR to return the log2 of the integer
 		unsigned long Log2;
-		long Mask = -long(_BitScanReverse64(&Log2, Value) != 0);
-		return ((63 - Log2) & Mask) | (64 & ~Mask);
-	}
+		if (_BitScanReverse64(&Log2, Value) != 0)
+		{
+			return 63 - Log2;
+		}
 
+		return 64;
+	}
 	static FORCEINLINE uint64 CountTrailingZeros64(uint64 Value)
 	{
 		if (Value == 0)
@@ -138,22 +151,6 @@ struct FWindowsPlatformMath : public TUnrealPlatformMathSSE4Base<FGenericPlatfor
 		unsigned long BitIndex;	// 0-based, where the LSB is 0 and MSB is 31
 		_BitScanForward64( &BitIndex, Value );	// Scans from LSB to MSB
 		return BitIndex;
-	}
-
-	static FORCEINLINE uint32 CountLeadingZeros(uint32 Value)
-	{
-		unsigned long Log2;
-		_BitScanReverse64(&Log2, (uint64(Value) << 1) | 1);
-		return 32 - Log2;
-	}
-
-#else // 32-bit
-
-	static FORCEINLINE uint32 CountLeadingZeros(uint32 Value)
-	{
-		unsigned long Log2;
-		long Mask = -long(_BitScanReverse(&Log2, Value) != 0);
-		return ((31 - Log2) & Mask) | (32 & ~Mask);
 	}
 
 #endif
@@ -169,3 +166,4 @@ struct FWindowsPlatformMath : public TUnrealPlatformMathSSE4Base<FGenericPlatfor
 };
 
 typedef FWindowsPlatformMath FPlatformMath;
+

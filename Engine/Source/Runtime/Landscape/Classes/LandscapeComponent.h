@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,13 +8,9 @@
 #include "Engine/TextureStreamingTypes.h"
 #include "Components/PrimitiveComponent.h"
 #include "PerPlatformProperties.h"
-#include "LandscapePhysicalMaterial.h"
 #include "LandscapeWeightmapUsage.h"
-#include "Engine/StreamableRenderAsset.h"
 
 #include "LandscapeComponent.generated.h"
-
-#define LANDSCAPE_LOD_STREAMING_USE_TOKEN (!WITH_EDITORONLY_DATA && USE_BULKDATA_STREAMING_TOKEN)
 
 class ALandscape;
 class ALandscapeProxy;
@@ -111,19 +107,9 @@ class FLandscapeComponentDerivedData
 	/** The compressed Landscape component data for mobile rendering. Serialized to disk. 
 	    On device, freed once it has been decompressed. */
 	TArray<uint8> CompressedLandscapeData;
-
-#if LANDSCAPE_LOD_STREAMING_USE_TOKEN
-	TArray<FBulkDataStreamingToken> StreamingLODDataArray;
-#else
-	TArray<FByteBulkData> StreamingLODDataArray;
-#endif
 	
 	/** Cached render data. Only valid on device. */
 	TSharedPtr<FLandscapeMobileRenderData, ESPMode::ThreadSafe > CachedRenderData;
-
-	FString CachedLODDataFileName;
-
-	friend class ULandscapeLODStreamingProxy;
 
 public:
 	/** Returns true if there is any valid platform data */
@@ -141,16 +127,11 @@ public:
 	/** Returns the size of the platform data if there is any. */
 	int32 GetPlatformDataSize() const
 	{
-		int32 Result = CompressedLandscapeData.Num();
-		for (int32 Idx = 0; Idx < StreamingLODDataArray.Num(); ++Idx)
-		{
-			Result += (int32)StreamingLODDataArray[Idx].GetBulkDataSize();
-		}
-		return Result;
+		return CompressedLandscapeData.Num();
 	}
 
 	/** Initializes the compressed data from an uncompressed source. */
-	void InitializeFromUncompressedData(const TArray<uint8>& UncompressedData, const TArray<TArray<uint8>>& StreamingLODs);
+	void InitializeFromUncompressedData(const TArray<uint8>& UncompressedData);
 
 	/** Decompresses data if necessary and returns the render data object. 
      *  On device, this frees the compressed data and keeps a reference to the render data. */
@@ -160,34 +141,34 @@ public:
 	static FString GetDDCKeyString(const FGuid& StateId);
 
 	/** Loads the platform data from DDC */
-	bool LoadFromDDC(const FGuid& StateId, UObject* Component);
+	bool LoadFromDDC(const FGuid& StateId);
 
 	/** Saves the compressed platform data to the DDC */
-	void SaveToDDC(const FGuid& StateId, UObject* Component);
+	void SaveToDDC(const FGuid& StateId);
 
 	/* Serializer */
-	void Serialize(FArchive& Ar, UObject* Owner);
+	friend FArchive& operator<<(FArchive& Ar, FLandscapeComponentDerivedData& Data);
 };
 
-/* Used to uniquely reference a landscape vertex in a component. */
+/* Used to uniquely reference a landscape vertex in a component, and generate a key suitable for a TMap. */
 struct FLandscapeVertexRef
 {
 	FLandscapeVertexRef(int16 InX, int16 InY, int8 InSubX, int8 InSubY)
-		: X(InX)
-		, Y(InY)
-		, SubX(InSubX)
-		, SubY(InSubY)
+	: X(InX)
+	, Y(InY)
+	, SubX(InSubX)
+	, SubY(InSubY)
 	{}
+	int16 X;
+	int16 Y;
+	int8 SubX;
+	int8 SubY;
 
-	uint32 X : 8;
-	uint32 Y : 8;
-	uint32 SubX : 8;
-	uint32 SubY : 8;
-
-	/** Helper to provide a standard ordering for vertex arrays. */
-	static int32 GetVertexIndex(FLandscapeVertexRef Vert, int32 SubsectionCount, int32 SubsectionVerts)
+	uint64 MakeKey() const
 	{
-		return (Vert.SubY * SubsectionVerts + Vert.Y) * SubsectionVerts * SubsectionCount + Vert.SubX * SubsectionVerts + Vert.X;
+		// this is very bad for TMap
+		//return (uint64)X << 32 | (uint64)Y << 16 | (uint64)SubX << 8 | (uint64)SubY;
+		return HashCombine((uint32(X) << 8) | uint32(SubY), (uint32(SubX) << 24) | uint32(Y));
 	}
 };
 
@@ -224,14 +205,6 @@ struct FWeightmapLayerAllocationInfo
 	FName GetLayerName() const;
 
 	uint32 GetHash() const;
-
-	void Free()
-	{
-		WeightmapTextureChannel = 255;
-		WeightmapTextureIndex = 255;
-	}
-
-	bool IsAllocated() const { return (WeightmapTextureChannel != 255 && WeightmapTextureIndex != 255); }
 };
 
 struct FLandscapeComponentGrassData
@@ -251,17 +224,10 @@ struct FLandscapeComponentGrassData
 #if WITH_EDITORONLY_DATA
 	// Height data for LODs 1+, keyed on LOD index
 	TMap<int32, TArray<uint16>> HeightMipData;
-
-	// Grass data was updated but not saved yet
-	bool bIsDirty;
 #endif
 	TMap<ULandscapeGrassType*, TArray<uint8>> WeightData;
 
-	FLandscapeComponentGrassData()
-#if WITH_EDITORONLY_DATA
-		: bIsDirty(false) 
-#endif
-	{}
+	FLandscapeComponentGrassData() {}
 
 #if WITH_EDITOR
 	FLandscapeComponentGrassData(ULandscapeComponent* Component);
@@ -367,9 +333,9 @@ enum ELandscapeLayerUpdateMode : uint32
 	Update_All_Editing = Update_Weightmap_Editing | Update_Heightmap_Editing,
 	Update_All_Editing_NoCollision = Update_Weightmap_Editing_NoCollision | Update_Heightmap_Editing_NoCollision,
 	// In cases where we couldn't update the clients right away this flag will be set in RegenerateLayersContent
-	Update_Client_Deferred = 1 << 6,
+	Update_Client_Deferred = 1 << 4,
 	// Update landscape component clients while editing
-	Update_Client_Editing = 1 << 7
+	Update_Client_Editing = 1 << 5
 };
 
 static const uint32 DefaultSplineHash = 0xFFFFFFFF;
@@ -382,39 +348,6 @@ enum ELandscapeClearMode
 	Clear_Weightmap = 1 << 0 UMETA(DisplayName = "Paint"),
 	Clear_Heightmap = 1 << 1 UMETA(DisplayName = "Sculpt"),
 	Clear_All = Clear_Weightmap | Clear_Heightmap UMETA(DisplayName = "All")
-};
-
-UCLASS(MinimalAPI)
-class ULandscapeLODStreamingProxy : public UStreamableRenderAsset
-{
-	GENERATED_UCLASS_BODY()
-
-	//~ Begin UStreamableRenderAsset Interface
-	virtual LANDSCAPE_API int32 CalcCumulativeLODSize(int32 NumLODs) const final override;
-	virtual LANDSCAPE_API FIoFilenameHash GetMipIoFilenameHash(const int32 MipIndex) const  final override;
-	virtual LANDSCAPE_API bool HasPendingRenderResourceInitialization() const final override;
-	virtual bool StreamOut(int32 NewMipCount) final override;
-	virtual bool StreamIn(int32 NewMipCount, bool bHighPrio) final override;
-	virtual EStreamableRenderAssetType GetRenderAssetType() const final override { return EStreamableRenderAssetType::LandscapeMeshMobile; }
-	//~ End UStreamableRenderAsset Interface
-
-	LANDSCAPE_API bool GetMipDataFilename(const int32 MipIndex, FString& OutBulkDataFilename) const;
-
-
-	LANDSCAPE_API TArray<float> GetLODScreenSizeArray() const;
-	LANDSCAPE_API TSharedPtr<FLandscapeMobileRenderData, ESPMode::ThreadSafe> GetRenderData() const;
-
-	typedef typename TChooseClass<LANDSCAPE_LOD_STREAMING_USE_TOKEN, FBulkDataStreamingToken, FByteBulkData>::Result BulkDataType;
-	LANDSCAPE_API BulkDataType& GetStreamingLODBulkData(int32 LODIdx) const;
-
-	static LANDSCAPE_API void CancelAllPendingStreamingActions();
-
-	void ClearStreamingResourceState();
-	void InitResourceStateForMobileStreaming();
-
-private:
-
-	ULandscapeComponent* LandscapeComponent = nullptr;
 };
 
 UCLASS(hidecategories=(Display, Attachment, Physics, Debug, Collision, Movement, Rendering, PrimitiveComponent, Object, Transform, Mobility, VirtualTexture), showcategories=("Rendering|Material"), MinimalAPI, Within=LandscapeProxy)
@@ -531,10 +464,6 @@ private:
 	UPROPERTY(TextExportTransient)
 	TArray<UTexture2D*> WeightmapTextures;
 
-	/** Used to interface the component to the LOD streamer. */
-	UPROPERTY()
-	ULandscapeLODStreamingProxy* LODStreamingProxy;
-
 public:
 
 	/** Uniquely identifies this component's built map data. */
@@ -599,7 +528,7 @@ public:
 	UPROPERTY(Transient, DuplicateTransient, NonTransactional)
 	FLandscapeEditToolRenderData EditToolRenderData;
 
-	/** Hash of source for mobile generated data. Used determine if we need to re-generate mobile pixel data. */
+	/** Hash of source for ES2 generated data. Used determine if we need to re-generate ES2 pixel data. */
 	UPROPERTY(DuplicateTransient)
 	FGuid MobileDataSourceHash;
 
@@ -612,13 +541,9 @@ public:
 
 	UPROPERTY()
 	uint32 SplineHash;
-
-	/** Represents hash for last PhysicalMaterialTask */
-	UPROPERTY()
-	uint32 PhysicalMaterialHash;
 #endif
 
-	/** For mobile */
+	/** For ES2 */
 	UPROPERTY()
 	uint8 MobileBlendableLayerMask;
 
@@ -629,7 +554,7 @@ public:
 	UPROPERTY(NonPIEDuplicateTransient)
 	TArray<UMaterialInterface*> MobileMaterialInterfaces;
 
-	/** Generated weightmap textures used for mobile. The first entry is also used for the normal map. 
+	/** Generated weightmap textures used for ES2. The first entry is also used for the normal map. 
 	  * Serialized only when cooking or loading cooked builds. */
 	UPROPERTY(NonPIEDuplicateTransient)
 	TArray<UTexture2D*> MobileWeightmapTextures;
@@ -656,11 +581,6 @@ public:
 	TArray<FBox> ActiveExcludedBoxes;
 	uint32 ChangeTag;
 
-#if WITH_EDITOR
-	/** Physical material update task */
-	FLandscapePhysicalMaterialRenderTask PhysicalMaterialTask;
-	uint32 CalculatePhysicalMaterialTaskHash() const;
-#endif
 
 	//~ Begin UObject Interface.	
 	virtual void PostInitProperties() override;	
@@ -672,7 +592,7 @@ public:
 	virtual void BeginCacheForCookedPlatformData(const ITargetPlatform* TargetPlatform) override;
 	virtual void PostLoad() override;
 	virtual void PostEditUndo() override;
-	virtual void PreEditChange(FProperty* PropertyThatWillChange) override;
+	virtual void PreEditChange(UProperty* PropertyThatWillChange) override;
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 	//~ End UObject Interface
 
@@ -823,7 +743,7 @@ public:
 	LANDSCAPE_API float EditorGetPaintLayerWeightByNameAtLocation(const FVector& InLocation, const FName InPaintLayerName);
 		
 	/** Get the landscape actor associated with this component. */
-	LANDSCAPE_API ALandscape* GetLandscapeActor() const;
+	ALandscape* GetLandscapeActor() const;
 
 	/** Get the level in which the owning actor resides */
 	ULevel* GetLevel() const;
@@ -837,17 +757,10 @@ public:
 	LANDSCAPE_API ALandscapeProxy* GetLandscapeProxy() const;
 
 	/** @return Component section base as FIntPoint */
-	LANDSCAPE_API FIntPoint GetSectionBase() const
-	{
-		return FIntPoint(SectionBaseX, SectionBaseY);
-	}
+	LANDSCAPE_API FIntPoint GetSectionBase() const; 
 
 	/** @param InSectionBase new section base for a component */
-	LANDSCAPE_API void SetSectionBase(FIntPoint InSectionBase)
-	{
-		SectionBaseX = InSectionBase.X;
-		SectionBaseY = InSectionBase.Y;
-	}
+	LANDSCAPE_API void SetSectionBase(FIntPoint InSectionBase);
 
 	/** @todo document */
 	const FGuid& GetLightingGuid() const
@@ -979,24 +892,16 @@ public:
 	 */
 	LANDSCAPE_API void UpdateCollisionLayerData();
 
-	/** Update physical material render tasks. */
-	void UpdatePhysicalMaterialTasks();
-	/** Update collision component physical materials from render task results. */
-	void UpdateCollisionPhysicalMaterialData(TArray<UPhysicalMaterial*> const& InPhysicalMaterials, TArray<uint8> const& InMaterialIds);
-
 	/**
 	 * Create weightmaps for this component for the layers specified in the WeightmapLayerAllocations array
 	 */
 	LANDSCAPE_API void ReallocateWeightmaps(FLandscapeEditDataInterface* DataInterface = nullptr, bool InCanUseEditingWeightmap = true, bool InSaveToTransactionBuffer = true, bool InInitPlatformDataAsync = false, bool InForceReallocate = false, ALandscapeProxy* InTargetProxy = nullptr, TArray<UTexture2D*>* OutNewCreatedTextures = nullptr);
 
-	/** Returns the component's LandscapeMaterial, or the Component's OverrideLandscapeMaterial if set */
+	/** Returns the actor's LandscapeMaterial, or the Component's OverrideLandscapeMaterial if set */
 	LANDSCAPE_API UMaterialInterface* GetLandscapeMaterial(int8 InLODIndex = INDEX_NONE) const;
 
-	/** Returns the components's LandscapeHoleMaterial, or the Component's OverrideLandscapeHoleMaterial if set */
+	/** Returns the actor's LandscapeHoleMaterial, or the Component's OverrideLandscapeHoleMaterial if set */
 	LANDSCAPE_API UMaterialInterface* GetLandscapeHoleMaterial() const;
-
-	/** Returns true if the component has a valid LandscapeHoleMaterial */
-	LANDSCAPE_API bool IsLandscapeHoleMaterialValid() const;
 
 	/** Returns true if this component has visibility painted */
 	LANDSCAPE_API bool ComponentHasVisibilityPainted() const;
@@ -1025,16 +930,13 @@ public:
 	LANDSCAPE_API void InitWeightmapData(TArray<ULandscapeLayerInfoObject*>& LayerInfos, TArray<TArray<uint8> >& Weights);
 
 	/** @todo document */
-	LANDSCAPE_API float GetLayerWeightAtLocation( const FVector& InLocation, ULandscapeLayerInfoObject* LayerInfo, TArray<uint8>* LayerCache = NULL, bool bUseEditingWeightmap = false);
+	LANDSCAPE_API float GetLayerWeightAtLocation( const FVector& InLocation, ULandscapeLayerInfoObject* LayerInfo, TArray<uint8>* LayerCache=NULL );
 
 	/** Extends passed region with this component section size */
 	LANDSCAPE_API void GetComponentExtent(int32& MinX, int32& MinY, int32& MaxX, int32& MaxY) const;
 
 	/** Updates navigation properties to match landscape's master switch */
 	void UpdateNavigationRelevance();
-
-	/** Updates the reject navmesh underneath flag in the collision component */
-	void UpdateRejectNavmeshUnderneath();
 	
 	/** Updates the values of component-level properties exposed by the Landscape Actor */
 	LANDSCAPE_API void UpdatedSharedPropertiesFromActor();
@@ -1051,7 +953,6 @@ public:
 
 	friend class FLandscapeComponentSceneProxy;
 	friend struct FLandscapeComponentDataInterface;
-	friend class ULandscapeLODStreamingProxy;
 
 	void SetLOD(bool bForced, int32 InLODValue);
 
@@ -1062,7 +963,7 @@ protected:
 	void UpdateCollisionHeightBuffer(int32 InComponentX1, int32 InComponentY1, int32 InComponentX2, int32 InComponentY2, int32 InCollisionMipLevel, int32 InHeightmapSizeU, int32 InHeightmapSizeV,
 		const FColor* const InHeightmapTextureMipData, uint16* CollisionHeightData, uint16* GrassHeightData,
 		const FColor* const InXYOffsetTextureMipData, uint16* CollisionXYOffsetData);
-	void UpdateDominantLayerBuffer(int32 InComponentX1, int32 InComponentY1, int32 InComponentX2, int32 InComponentY2, int32 InCollisionMipLevel, int32 InWeightmapSizeU, int32 InDataLayerIdx, const TArray<uint8*>& InCollisionDataPtrs, const TArray<ULandscapeLayerInfoObject*>& InLayerInfos, uint8* DominantLayerData);
+	void UpdateDominantLayerBuffer(int32 InComponentX1, int32 InComponentY1, int32 InComponentX2, int32 InComponentY2, int32 InCollisionMipLevel, int32 InWeightmapSizeU, int32 InDataLayerIdx, const TArray<uint8*>& InCollisionDataPtrs, uint8* DominantLayerData);
 #endif
 
 	/** Whether the component type supports static lighting. */

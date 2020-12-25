@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -143,33 +143,10 @@ protected:
 	mutable bool bSet;
 };
 
-struct FCrashPropertyXmlNode
-{
-	friend struct FPrimaryCrashProperties;
-	/** Assignment operator for . */
-	FCrashPropertyXmlNode& operator=(const FXmlNode* Node);
-protected:
-	/** Initialization constructor. */
-	FCrashPropertyXmlNode(const FString& InMainCategory, const FString& InSecondCategory, FPrimaryCrashProperties* InOwner);
-
-protected:
-	/** Owner of the property. */
-	FPrimaryCrashProperties* Owner;
-
-	/** Main category in the crash context. */
-	FString MainCategory;
-
-	/** Second category in the crash context. */
-	FString SecondCategory;
-
-	mutable bool bSet;
-};
-
 /** Primary crash properties required by the crash report system. */
 struct FPrimaryCrashProperties
 {
 	friend struct FCrashProperty;
-	friend struct FCrashPropertyXmlNode;
 
 	/** Version. */
 	ECrashDescVersions CrashVersion;
@@ -295,11 +272,6 @@ struct FPrimaryCrashProperties
 	 */
 	FString PCallStackHash;
 
-	/*
-	 * The signal that was raised to enter the crash handler
-	 */
-	int32 CrashSignal;
-
 	/**
 	 * Specifies the number of stack frames in the callstack to ignore when symbolicating from a minidump.
 	 */
@@ -417,16 +389,6 @@ struct FPrimaryCrashProperties
 	FCrashProperty CPUBrand;
 
 	/**
-	 *	Thread contexts, XML elements containing info specific to an active thread, e.g. callstacks
-	 */
-	FCrashPropertyXmlNode Threads;
-
-	/**
-	 *	Optional additional data for platform properties
-	 */
-	FCrashPropertyXmlNode PlatformPropertiesExtras;
-
-	/**
 	 * Whether it was an OOM or not
 	 */
 	bool bIsOOM;
@@ -436,16 +398,6 @@ struct FPrimaryCrashProperties
 	 */
 	bool bLowMemoryWarning;
 	
-	/**
-	 * Whether we were in the background when the crash happened
-	 */
-	bool bInBackground;
-
-	/**
-	 * Whether we crashed during shutdown
-	 */
-	bool bIsRequestingExit;
-
 protected:
 	/** Default constructor. */
 	FPrimaryCrashProperties();
@@ -554,37 +506,6 @@ protected:
 			}
 		}
 	}
-
-	/** Sets a crash property to a new value. */
-	void SetCrashProperty(const FString& MainCategory, const FString& SecondCategory, const FXmlNode* NewNode)
-	{
-		if (XmlFile->IsValid())
-		{
-			FXmlNode* MainNode = XmlFile->GetRootNode()->FindChildNode(MainCategory);
-			if (MainNode)
-			{
-				FXmlNode* CategoryNode = MainNode->FindChildNode(SecondCategory);
-				const FString& Content = NewNode->GetContent();
-
-				if(!CategoryNode) // can only add.
-				{
-					TFunction<void(FXmlNode*, const FXmlNode*)> AppendNode;
-					AppendNode = [&AppendNode](FXmlNode* DestNode, const FXmlNode* SourceNode)
-					{
-						DestNode->AppendChildNode(SourceNode->GetTag(), SourceNode->GetContent());
-						for (const FXmlNode *SourceChild : SourceNode->GetChildrenNodes())
-						{
-							const TArray<FXmlNode *>& DestChildren = DestNode->GetChildrenNodes();
-							AppendNode(DestChildren.Last(), SourceChild);
-						}
-					};
-
-					AppendNode(MainNode, NewNode);
-				}
-			}
-		}
-	}
-
 
 	/** Encodes multi line property to be saved as single line. */
 	FString EncodeArrayStringAsXMLString( const TArray<FString>& ArrayString ) const;

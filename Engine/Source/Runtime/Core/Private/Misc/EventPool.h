@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -84,7 +84,10 @@ public:
 #if USE_EVENT_POOLING
 	~FEventPool()
 	{
-		EmptyPool();
+		while (FEvent* Event = Pool.Pop())
+		{
+			delete Event;
+		}
 	}
 #endif
 
@@ -133,16 +136,6 @@ public:
 		Pool.Push(Result);
 #else
 		delete Result;
-#endif
-	}
-
-	void EmptyPool()
-	{
-#if USE_EVENT_POOLING
-		while (FEvent* Event = Pool.Pop())
-		{
-			delete Event;
-		}
 #endif
 	}
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineSessionAsyncServerSteam.h"
 #include "GameFramework/GameStateBase.h"
@@ -27,7 +27,7 @@
 #ifndef UE4_PROJECT_STEAMPRODUCTNAME
 #ifdef STEAMPRODUCTNAME
 UE_DEPRECATED(4.22, "The Steam Product Name Macro has been updated to be configurable from your Target.cs file. Please change STEAMPRODUCTNAME to UE4_PROJECT_STEAMPRODUCTNAME.")
-#define SPN STEAMPRODUCTNAME
+#define UE4_PROJECT_STEAMPRODUCTNAME STEAMPRODUCTNAME
 #else
 #define SPN "Spirit"
 #endif
@@ -36,7 +36,7 @@ UE_DEPRECATED(4.22, "The Steam Product Name Macro has been updated to be configu
 #ifndef UE4_PROJECT_STEAMGAMEDIR
 #ifdef STEAMGAMEDIR
 UE_DEPRECATED(4.22, "The Steam Game Directory Macro has been updated to be configurable from your Target.cs file. Please change STEAMGAMEDIR to UE4_PROJECT_STEAMGAMEDIR.")
-#define SGDIR STEAMGAMEDIR
+#define UE4_PROJECT_STEAMGAMEDIR STEAMGAMEDIR
 #else
 #define SGDIR "Spirit"
 #endif
@@ -45,7 +45,7 @@ UE_DEPRECATED(4.22, "The Steam Game Directory Macro has been updated to be confi
 #ifndef UE4_PROJECT_STEAMGAMEDESC
 #ifdef STEAMGAMEDESC
 UE_DEPRECATED(4.22, "The Steam Game Description Macro has been updated to be configurable from your Target.cs file. Please change STEAMGAMEDESC to UE4_PROJECT_STEAMGAMEDESC.")
-#define SGDESC STEAMGAMEDESC
+#define UE4_PROJECT_STEAMGAMEDESC STEAMGAMEDESC
 #else
 #define SGDESC "Spirit"
 #endif
@@ -197,7 +197,7 @@ void GetServerKeyValuePairsFromSession(const FOnlineSession* Session, FSteamSess
 	FUniqueNetIdSteam* SteamId = (FUniqueNetIdSteam*)(Session->OwningUserId.Get());
 	FString OwningUserIdStr = SteamId->ToString();
 	KeyValuePairs.Add(STEAMKEY_OWNINGUSERID, OwningUserIdStr);
-	KeyValuePairs.Add(STEAMKEY_OWNINGUSERNAME, Session->OwningUserName);
+	KeyValuePairs.Add(STEAMKEY_OWNINGUSERNAME, TEXT("Spirit Official Server")); // Session->OwningUserName);
 	//KeyValuePairs.Add(STEAMKEY_NUMOPENPRIVATECONNECTIONS, FString::FromInt(Session->NumOpenPrivateConnections));
 	//KeyValuePairs.Add(STEAMKEY_NUMOPENPUBLICCONNECTIONS, FString::FromInt(Session->NumOpenPublicConnections));
 }
@@ -256,10 +256,10 @@ void UpdatePublishedSettings(UWorld* World, FNamedOnlineSession* Session)
 			for (int32 PlayerIdx=0; PlayerIdx < GameState->PlayerArray.Num(); PlayerIdx++)
 			{
 				APlayerState const* const PlayerState = GameState->PlayerArray[PlayerIdx];
-				if (PlayerState && PlayerState->GetUniqueId().IsValid())
+				if (PlayerState && PlayerState->UniqueId.IsValid())
 				{
-					CSteamID SteamId(*(uint64*)PlayerState->GetUniqueId()->GetBytes());
-					SteamGameServerPtr->BUpdateUserData(SteamId, TCHAR_TO_UTF8(*PlayerState->GetPlayerName()), PlayerState->GetScore());
+					CSteamID SteamId(*(uint64*)PlayerState->UniqueId->GetBytes());
+					SteamGameServerPtr->BUpdateUserData(SteamId, TCHAR_TO_UTF8(*PlayerState->GetPlayerName()), PlayerState->Score);
 				}
 			}
 		}
@@ -444,7 +444,7 @@ void FOnlineAsyncTaskSteamCreateServer::Finalize()
 
 			// Create the proper ip address for this server
 			NewSessionInfo->HostAddr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->CreateInternetAddr();
-			NewSessionInfo->HostAddr->SetIp(SteamGameServerPtr->GetPublicIP().m_unIPv4);
+			NewSessionInfo->HostAddr->SetIp(SteamGameServerPtr->GetPublicIP());
 			NewSessionInfo->HostAddr->SetPort(Subsystem->GetGameServerGamePort());
 			UE_LOG_ONLINE_SESSION(Verbose, TEXT("Server IP: %s"), *NewSessionInfo->HostAddr->ToString(true));
 
@@ -455,10 +455,8 @@ void FOnlineAsyncTaskSteamCreateServer::Finalize()
 				Session->OwningUserId = SessionInt->GameServerSteamId;
 
 				// Figure if we need to override the server name here
-				FString CustomDedicatedServerName = SessionInt->GetCustomDedicatedServerName();
-				//Session->OwningUserName = (!CustomDedicatedServerName.IsEmpty()) ? CustomDedicatedServerName : Session->OwningUserId->ToString();
-				Session->OwningUserName = "SpiritOfficialServer NA";
-
+				//FString CustomDedicatedServerName = SessionInt->GetCustomDedicatedServerName();
+				Session->OwningUserName = FString("SpiritOfficialServer");//(!CustomDedicatedServerName.IsEmpty()) ? CustomDedicatedServerName : Session->OwningUserId->ToString();
 			}
 
 			bool bShouldUseAdvertise = true;
@@ -482,7 +480,7 @@ void FOnlineAsyncTaskSteamCreateServer::Finalize()
 			if (SteamUser() && bShouldUseAdvertise)
 			{
 				UE_LOG_ONLINE(Warning, TEXT("AUTH: CreateServerSteam is calling the depricated AdvertiseGame call"));
-				SteamUser()->AdvertiseGame(k_steamIDNonSteamGS, SteamGameServerPtr->GetPublicIP().m_unIPv4, Subsystem->GetGameServerGamePort());
+				SteamUser()->AdvertiseGame(k_steamIDNonSteamGS, SteamGameServerPtr->GetPublicIP(), Subsystem->GetGameServerGamePort());
 			}
 		}
 		else
@@ -808,11 +806,7 @@ void FPendingSearchResultSteam::RemoveSelf()
  */
 void FPendingSearchResultSteam::CancelQuery()
 {
-	if (ServerQueryHandle != HSERVERQUERY_INVALID)
-	{
-		SteamMatchmakingServers()->CancelServerQuery(ServerQueryHandle);
-		ServerQueryHandle = HSERVERQUERY_INVALID;
-	}
+	SteamMatchmakingServers()->CancelServerQuery(ServerQueryHandle);
 }
 
 /**

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AssetTools/TemplateSequenceActions.h"
 #include "EngineGlobals.h"
@@ -60,16 +60,11 @@ void FTemplateSequenceActions::OpenAssetEditor(const TArray<UObject*>& InObjects
 		if (TemplateSequence != nullptr)
 		{
 			TSharedRef<FTemplateSequenceEditorToolkit> Toolkit = MakeShareable(new FTemplateSequenceEditorToolkit(Style));
-			FTemplateSequenceToolkitParams ToolkitParams;
-			InitializeToolkitParams(ToolkitParams);
-			Toolkit->Initialize(Mode, EditWithinLevelEditor, TemplateSequence, ToolkitParams);
+			Toolkit->Initialize(Mode, EditWithinLevelEditor, TemplateSequence);
 		}
 	}
 }
 
-void FTemplateSequenceActions::InitializeToolkitParams(FTemplateSequenceToolkitParams& ToolkitParams) const
-{
-}
 
 bool FTemplateSequenceActions::ShouldForceWorldCentric()
 {

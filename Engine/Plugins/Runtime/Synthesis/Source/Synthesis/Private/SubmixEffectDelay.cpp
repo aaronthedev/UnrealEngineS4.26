@@ -1,9 +1,5 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "SubmixEffects/SubmixEffectDelay.h"
-#include "Sound/SoundEffectPreset.h"
-
-const float FSubmixEffectDelay::MinLengthDelaySec = 0.4f;
 
 FSubmixEffectDelay::FSubmixEffectDelay()
 	: SampleRate(0.0f)
@@ -80,27 +76,25 @@ void FSubmixEffectDelay::SetInterpolationTime(float Time)
 
 void FSubmixEffectDelay::SetDelayLineLength(float Length)
 {
-	TargetDelayLineLength = FMath::Clamp(Length, MinLengthDelaySec, MaxDelayLineLength);
+	TargetDelayLineLength = FMath::Clamp(Length, 0.4f, MaxDelayLineLength);
 	InterpolationInfo.SetValue(TargetDelayLineLength, InterpolationTime);
 }
 
 void FSubmixEffectDelay::UpdateParameters()
 {
-
 	FSubmixEffectDelaySettings NewSettings;
 
 	if (Params.GetParams(&NewSettings))
 	{
 		Audio::FDelay* DelaysPtr = DelayLines.GetData();
 
-		const float LastLength = MaxDelayLineLength;
-
-		MaxDelayLineLength = FMath::Max(NewSettings.MaximumDelayLength, MinLengthDelaySec);
+		MaxDelayLineLength = NewSettings.MaximumDelayLength;
 		InterpolationTime = NewSettings.InterpolationTime / 1000.0f;
 
-		SetDelayLineLength(NewSettings.DelayLength);
+		TargetDelayLineLength = FMath::Clamp(NewSettings.DelayLength, 0.4f, MaxDelayLineLength);
+		InterpolationInfo.SetValue(TargetDelayLineLength, InterpolationTime);
 
-		if (MaxDelayLineLength != LastLength)
+		if (MaxDelayLineLength != NewSettings.MaximumDelayLength)
 		{
 			for (int32 DelayIndex = 0; DelayIndex < DelayLines.Num(); DelayIndex++)
 			{
@@ -132,23 +126,29 @@ void FSubmixEffectDelay::OnNumChannelsChanged(int32 NumChannels)
 void USubmixEffectDelayPreset::SetInterpolationTime(float Time)
 {
 	DynamicSettings.InterpolationTime = Time;
-
 	// Dispatch to all effect instances:
-	EffectCommand<FSubmixEffectDelay>([Time](FSubmixEffectDelay& TapDelay)
+	for (FSoundEffectBase* EffectBaseInstance : Instances)
 	{
-		TapDelay.SetInterpolationTime(Time);
-	});
+		FSubmixEffectDelay* TapDelay = (FSubmixEffectDelay*)EffectBaseInstance;
+		EffectBaseInstance->EffectCommand([TapDelay, Time]()
+		{
+			TapDelay->SetInterpolationTime(Time);
+		});
+	}
 }
 
 void USubmixEffectDelayPreset::SetDelay(float Length)
 {
 	DynamicSettings.DelayLength = Length;
-
 	// Dispatch to all effect instances:
-	EffectCommand<FSubmixEffectDelay>([Length](FSubmixEffectDelay& TapDelay)
+	for (FSoundEffectBase* EffectBaseInstance : Instances)
 	{
-		TapDelay.SetDelayLineLength(Length);
-	});
+		FSubmixEffectDelay* Delay = (FSubmixEffectDelay*)EffectBaseInstance;
+		EffectBaseInstance->EffectCommand([Delay, Length]()
+		{
+			Delay->SetDelayLineLength(Length);
+		});
+	}
 }
 
 void USubmixEffectDelayPreset::OnInit()

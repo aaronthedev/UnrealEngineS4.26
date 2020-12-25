@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,7 +25,7 @@ struct FSequencerSelectionCurveFilter : FCurveEditorTreeFilter
 	 */
 	void Update(const TSet<TSharedRef<FSequencerDisplayNode>>& SelectedNodes)
 	{
-		NodesToFilter.Empty(SelectedNodes.Num());
+		NodesToFilter.Reserve(SelectedNodes.Num());
 
 		for (const TSharedRef<FSequencerDisplayNode>& SelectedNode : SelectedNodes)
 		{

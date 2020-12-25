@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayCueManager.h"
 #include "Engine/ObjectLibrary.h"
@@ -112,7 +112,7 @@ void UGameplayCueManager::HandleGameplayCues(AActor* TargetActor, const FGamepla
 #if WITH_EDITOR
 	if (GIsEditor && TargetActor == nullptr && UGameplayCueManager::PreviewComponent)
 	{
-		TargetActor = GetMutableDefault<AActor>();
+		TargetActor = Cast<AActor>(AActor::StaticClass()->GetDefaultObject());
 	}
 #endif
 
@@ -155,15 +155,22 @@ void UGameplayCueManager::HandleGameplayCue(AActor* TargetActor, FGameplayTag Ga
 
 bool UGameplayCueManager::ShouldSuppressGameplayCues(AActor* TargetActor)
 {
-	if (DisableGameplayCues ||
-		!TargetActor ||
-		(GameplayCueRunOnDedicatedServer == 0 && IsDedicatedServerForGameplayCue()))
+	if (DisableGameplayCues)
+	{
+		return true;
+	}
+
+	if (GameplayCueRunOnDedicatedServer == 0 && IsDedicatedServerForGameplayCue())
+	{
+		return true;
+	}
+
+	if (TargetActor == nullptr)
 	{
 		return true;
 	}
 
 	return false;
-
 }
 
 void UGameplayCueManager::RouteGameplayCue(AActor* TargetActor, FGameplayTag GameplayCueTag, EGameplayCueEvent::Type EventType, const FGameplayCueParameters& Parameters, EGameplayCueExecutionOptions Options)
@@ -306,20 +313,9 @@ void UGameplayCueManager::OnMissingCueAsyncLoadComplete(FSoftObjectPath LoadedOb
 		return;
 	}
 
-	if (OwningSet.IsValid())
+	if (OwningSet.IsValid() && TargetActor.IsValid())
 	{
-		CurrentWorld = TargetActor.IsValid() ? TargetActor->GetWorld() : nullptr;
-		if (!CurrentWorld)
-		{
-			// TargetActor has since been destroyed.  Attempt to get the world from the other actors.
-			const AActor* CueInstigator = Parameters.GetInstigator();
-			CurrentWorld = CueInstigator ? CueInstigator->GetWorld() : nullptr;
-			if (!CurrentWorld)
-			{
-				const AActor* EffectCauser = Parameters.GetEffectCauser();
-				CurrentWorld = EffectCauser ? EffectCauser->GetWorld() : nullptr;
-			}
-		}
+		CurrentWorld = TargetActor->GetWorld();
 
 		// Don't handle gameplay cues when world is tearing down
 		if (!GetWorld() || GetWorld()->bIsTearingDown)
@@ -418,7 +414,7 @@ AGameplayCueNotify_Actor* UGameplayCueManager::GetInstancedCueActor(AActor* Targ
 					}
 					
 					// outside of replays, this should not happen. GC Notifies should not be actually destroyed.
-					checkf(World->IsPlayingReplay(), TEXT("Spawned Cue is pending kill or null: %s."), *GetNameSafe(SpawnedCue));
+					checkf(World->DemoNetDriver, TEXT("Spawned Cue is pending kill or null: %s."), *GetNameSafe(SpawnedCue));
 
 					if (PreallocatedList->Num() <= 0)
 					{
@@ -496,7 +492,7 @@ void UGameplayCueManager::NotifyGameplayCueActorFinished(AGameplayCueNotify_Acto
 		{
 			if (Actor->IsPendingKill())
 			{
-				ensureMsgf(GetWorld()->IsPlayingReplay(), TEXT("GameplayCueNotify %s is pending kill in ::NotifyGameplayCueActorFinished (and not in network demo)"), *GetNameSafe(Actor));
+				ensureMsgf(GetWorld()->DemoNetDriver, TEXT("GameplayCueNotify %s is pending kill in ::NotifyGameplayCueActorFinished (and not in network demo)"), *GetNameSafe(Actor));
 				return;
 			}
 			Actor->bInRecycleQueue = true;
@@ -892,7 +888,7 @@ void UGameplayCueManager::BuildCuesToAddToGlobalSet(const TArray<FAssetData>& As
 			{
 				// Add a new NotifyData entry to our flat list for this one
 				FSoftObjectPath StringRef;
-				StringRef.SetPath(FPackageName::ExportTextPathToObjectPath(GeneratedClassTag));
+				StringRef.SetPath(FPackageName::ExportTextPathToObjectPath(*GeneratedClassTag));
 
 				OutCuesToAdd.Add(FGameplayCueReferencePair(GameplayCueTag, StringRef));
 
@@ -1289,7 +1285,7 @@ void UGameplayCueManager::InvokeGameplayCueExecuted_FromSpec(UAbilitySystemCompo
 
 	if (AbilitySystemAlwaysConvertGESpecToGCParams)
 	{
-		// Transform the GE Spec into GameplayCue parameters here (on the server)
+		// Transform the GE Spec into GameplayCue parmameters here (on the server)
 		PendingCue.PayloadType = EGameplayCuePayloadType::CueParameters;
 		PendingCue.OwningComponent = OwningComponent;
 		PendingCue.PredictionKey = PredictionKey;
@@ -1305,48 +1301,55 @@ void UGameplayCueManager::InvokeGameplayCueExecuted_FromSpec(UAbilitySystemCompo
 	}
 	else
 	{
-		// Transform the GE Spec into a FGameplayEffectSpecForRPC (holds less information than the GE Spec itself, but more information than the FGameplayCueParameter)
+		// Transform the GE Spec into a FGameplayEffectSpecForRPC (holds less information than the GE Spec itself, but more information that the FGamepalyCueParameter)
 		PendingCue.PayloadType = EGameplayCuePayloadType::FromSpec;
 		PendingCue.OwningComponent = OwningComponent;
 		PendingCue.FromSpec = FGameplayEffectSpecForRPC(Spec);
 		PendingCue.PredictionKey = PredictionKey;
 	}
 
-	AddPendingCueExecuteInternal(PendingCue);
+	if (ProcessPendingCueExecute(PendingCue))
+	{
+		PendingExecuteCues.Add(PendingCue);
+	}
+
+	if (GameplayCueSendContextCount == 0)
+	{
+		// Not in a context, flush now
+		FlushPendingCues();
+	}
 }
 
 void UGameplayCueManager::InvokeGameplayCueExecuted(UAbilitySystemComponent* OwningComponent, const FGameplayTag GameplayCueTag, FPredictionKey PredictionKey, FGameplayEffectContextHandle EffectContext)
 {
-	if (OwningComponent)
-	{
-		FGameplayCuePendingExecute PendingCue;
-		PendingCue.PayloadType = EGameplayCuePayloadType::CueParameters;
-		PendingCue.GameplayCueTags.Add(GameplayCueTag);
-		PendingCue.OwningComponent = OwningComponent;
-		UAbilitySystemGlobals::Get().InitGameplayCueParameters(PendingCue.CueParameters, EffectContext);
-		PendingCue.PredictionKey = PredictionKey;
+	FGameplayCuePendingExecute PendingCue;
+	PendingCue.PayloadType = EGameplayCuePayloadType::CueParameters;
+	PendingCue.GameplayCueTags.Add(GameplayCueTag);
+	PendingCue.OwningComponent = OwningComponent;
+	UAbilitySystemGlobals::Get().InitGameplayCueParameters(PendingCue.CueParameters, EffectContext);
+	PendingCue.PredictionKey = PredictionKey;
 
-		AddPendingCueExecuteInternal(PendingCue);
+	if (ProcessPendingCueExecute(PendingCue))
+	{
+		PendingExecuteCues.Add(PendingCue);
+	}
+
+	if (GameplayCueSendContextCount == 0)
+	{
+		// Not in a context, flush now
+		FlushPendingCues();
 	}
 }
 
 void UGameplayCueManager::InvokeGameplayCueExecuted_WithParams(UAbilitySystemComponent* OwningComponent, const FGameplayTag GameplayCueTag, FPredictionKey PredictionKey, FGameplayCueParameters GameplayCueParameters)
 {
-	if (OwningComponent)
-	{
-		FGameplayCuePendingExecute PendingCue;
-		PendingCue.PayloadType = EGameplayCuePayloadType::CueParameters;
-		PendingCue.GameplayCueTags.Add(GameplayCueTag);
-		PendingCue.OwningComponent = OwningComponent;
-		PendingCue.CueParameters = GameplayCueParameters;
-		PendingCue.PredictionKey = PredictionKey;
+	FGameplayCuePendingExecute PendingCue;
+	PendingCue.PayloadType = EGameplayCuePayloadType::CueParameters;
+	PendingCue.GameplayCueTags.Add(GameplayCueTag);
+	PendingCue.OwningComponent = OwningComponent;
+	PendingCue.CueParameters = GameplayCueParameters;
+	PendingCue.PredictionKey = PredictionKey;
 
-		AddPendingCueExecuteInternal(PendingCue);
-	}
-}
-
-void UGameplayCueManager::AddPendingCueExecuteInternal(FGameplayCuePendingExecute& PendingCue)
-{
 	if (ProcessPendingCueExecute(PendingCue))
 	{
 		PendingExecuteCues.Add(PendingCue);
@@ -1402,13 +1405,14 @@ void UGameplayCueManager::FlushPendingCues()
 			}
 
 			// TODO: Could implement non-rpc method for replicating if desired
-			if (PendingCue.PayloadType == EGameplayCuePayloadType::CueParameters)
+			switch (PendingCue.PayloadType)
 			{
+			case EGameplayCuePayloadType::CueParameters:
 				if (ensure(PendingCue.GameplayCueTags.Num() >= 1))
 				{
 					if (bHasAuthority)
 					{
-						RepInterface->ForceReplication();
+						PendingCue.OwningComponent->ForceReplication();
 						if (PendingCue.GameplayCueTags.Num() > 1)
 						{
 							RepInterface->Call_InvokeGameplayCuesExecuted_WithParams(FGameplayTagContainer::CreateFromArray(PendingCue.GameplayCueTags), PendingCue.PredictionKey, PendingCue.CueParameters);
@@ -1429,9 +1433,34 @@ void UGameplayCueManager::FlushPendingCues()
 						}
 					}
 				}
-			}
-			else if (PendingCue.PayloadType == EGameplayCuePayloadType::FromSpec)
-			{
+				break;
+			case EGameplayCuePayloadType::EffectContext:
+				if (ensure(PendingCue.GameplayCueTags.Num() >= 1))
+				{
+					if (bHasAuthority)
+					{
+						PendingCue.OwningComponent->ForceReplication();
+						if (PendingCue.GameplayCueTags.Num() > 1)
+						{
+							RepInterface->Call_InvokeGameplayCuesExecuted(FGameplayTagContainer::CreateFromArray(PendingCue.GameplayCueTags), PendingCue.PredictionKey, PendingCue.CueParameters.EffectContext);
+						}
+						else
+						{
+							RepInterface->Call_InvokeGameplayCueExecuted(PendingCue.GameplayCueTags[0], PendingCue.PredictionKey, PendingCue.CueParameters.EffectContext);
+							static FName NetMulticast_InvokeGameplayCueExecutedName = TEXT("NetMulticast_InvokeGameplayCueExecuted");
+							CheckForTooManyRPCs(NetMulticast_InvokeGameplayCueExecutedName, PendingCue, PendingCue.GameplayCueTags[0].ToString(), PendingCue.CueParameters.EffectContext.Get());
+						}
+					}
+					else if (bLocalPredictionKey)
+					{
+						for (const FGameplayTag& Tag : PendingCue.GameplayCueTags)
+						{
+							PendingCue.OwningComponent->InvokeGameplayCueEvent(Tag, EGameplayCueEvent::Executed, PendingCue.CueParameters.EffectContext);
+						}
+					}
+				}
+				break;
+			case EGameplayCuePayloadType::FromSpec:
 				if (bHasAuthority)
 				{
 					RepInterface->ForceReplication();
@@ -1444,6 +1473,7 @@ void UGameplayCueManager::FlushPendingCues()
 				{
 					PendingCue.OwningComponent->InvokeGameplayCueEvent(PendingCue.FromSpec, EGameplayCueEvent::Executed);
 				}
+				break;
 			}
 		}
 	}
@@ -1653,7 +1683,7 @@ void UGameplayCueManager::OnPreReplayScrub(UWorld* World)
 	// among all level collections, this would clear all current preallocated instances from the list,
 	// but there's no need to, and the actor instances would still be around, causing a leak.
 	const FLevelCollection* const DuplicateLevelCollection = World ? World->FindCollectionByType(ELevelCollectionType::DynamicDuplicatedLevels) : nullptr;
-	if (DuplicateLevelCollection && DuplicateLevelCollection->GetDemoNetDriver() == World->GetDemoNetDriver())
+	if (DuplicateLevelCollection && DuplicateLevelCollection->GetDemoNetDriver() == World->DemoNetDriver)
 	{
 		return;
 	}

@@ -1415,8 +1415,7 @@ TEST_F(ValidateSSA, TypeForwardPointerForwardReference) {
                OpName %intptrt "intptrt"
                OpTypeForwardPointer %intptrt UniformConstant
        %uint = OpTypeInt 32 0
-     %struct = OpTypeStruct %uint
-    %intptrt = OpTypePointer UniformConstant %struct
+    %intptrt = OpTypePointer UniformConstant %uint
 )";
 
   CompileSuccessfully(str);

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SFoliagePalette.h"
 #include "Widgets/Layout/SSplitter.h"
@@ -32,9 +32,6 @@
 #include "IDetailsView.h"
 #include "AssetSelection.h"
 #include "ScopedTransaction.h"
-#include "AssetData.h"
-#include "Engine/StaticMesh.h"
-#include "Editor.h"
 
 
 #include "Widgets/Layout/SScaleBox.h"

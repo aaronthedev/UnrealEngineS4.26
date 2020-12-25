@@ -88,7 +88,6 @@
 			<graph title="Physical Memory" budget="300"/>
 			<graph title="Dynamic Resolution" budget="80"/>
 			<graph title="GPU Breakdown" budget="16.66" />
-			<graph title="Niagara Breakdown" budget="33.33"/>
 			<graph title="RHI Drawcalls" budget="3000" />
 			<graph title="Renderthread Breakdown" budget="16.66"/>
 			<graph title="Renderthread Breakdown Raw" budget="16.66"/>
@@ -97,10 +96,6 @@
 			<graph title="Animation Budget" budget="1.5" />
 			<graph title="Log Counts" budget="0" />
 			<graph title="CSV Profiler" budget="0" />
-			<graph title="CSV Profiler" budget="0" />
-			<graph title="Android Memory" budget="0" />
-			<graph title="Android Thermals" budget="0" />
-			<graph title="Android CPU" budget="0" />
 		</reporttype>
 
 
@@ -146,16 +141,12 @@
 			<graph title="Physical Memory" budget="300"/>
 			<graph title="Dynamic Resolution" budget="80"/>
 			<graph title="GPU Breakdown" budget="33.33" />
-			<graph title="Niagara Breakdown" budget="33.33"/>
 			<graph title="RHI Drawcalls" budget="2000" />
 			<graph title="Renderthread Breakdown" budget="33.33"/>
 			<graph title="Renderthread Breakdown Raw" budget="33.33"/>
 			<graph title="Animation Budget" budget="3.0" />
 			<graph title="Log Counts" budget="0" />
 			<graph title="CSV Profiler" budget="0" />
-			<graph title="Android Memory" budget="0" />
-			<graph title="Android Thermals" budget="0" />
-			<graph title="Android CPU" budget="0" />
 		</reporttype>
 
 		<reporttype name="Memory" title="Physical Memory Report" vsync="1">

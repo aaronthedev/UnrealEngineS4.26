@@ -1,9 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraStandaloneScriptViewModel.h"
 #include "NiagaraMessageManager.h"
-#include "NiagaraMessages.h"
-#include "NiagaraMessageUtilities.h"
 
 FNiagaraStandaloneScriptViewModel::FNiagaraStandaloneScriptViewModel(
 	FText DisplayName,
@@ -21,28 +19,21 @@ void FNiagaraStandaloneScriptViewModel::Initialize(UNiagaraScript* InScript, UNi
 {
 	SetScript(InScript);
 	SourceScript = InSourceScript;
-	SendLastCompileMessages(SourceScript);
-}
-
-UNiagaraScript* FNiagaraStandaloneScriptViewModel::GetStandaloneScript()
-{
-	checkf(Scripts.Num() == 1, TEXT("StandaloneScriptViewModel did not have exactly one script!"));
-	return Scripts[0].Get();
+	SendLastCompileMessageJobs(SourceScript);
 }
 
 void FNiagaraStandaloneScriptViewModel::OnVMScriptCompiled(UNiagaraScript* InScript)
 {
 	FNiagaraScriptViewModel::OnVMScriptCompiled(InScript);
-	SendLastCompileMessages(InScript);
+	SendLastCompileMessageJobs(InScript);
 }
 
-void FNiagaraStandaloneScriptViewModel::SendLastCompileMessages(const UNiagaraScript* InScript)
+void FNiagaraStandaloneScriptViewModel::SendLastCompileMessageJobs(const UNiagaraScript* InScript)
 {
-	FNiagaraMessageManager* MessageManager = FNiagaraMessageManager::Get();
-	MessageManager->ClearAssetMessagesForTopic(ScriptMessageLogGuidKey, FNiagaraMessageTopics::CompilerTopicName);
-
 	int32 ErrorCount = 0;
 	int32 WarningCount = 0;
+
+	TArray<TSharedPtr<const INiagaraMessageJob>> JobBatchToQueue;
 
 	const TArray<FNiagaraCompileEvent>& CurrentCompileEvents = InScript->GetVMExecutableData().LastCompileEvents;
 
@@ -59,10 +50,10 @@ void FNiagaraStandaloneScriptViewModel::SendLastCompileMessages(const UNiagaraSc
 			WarningCount++;
 		}
 
-		MessageManager->AddMessageJob(MakeUnique<FNiagaraMessageJobCompileEvent>(CompileEvent, TWeakObjectPtr<const UNiagaraScript>(InScript), TOptional<const FString>(), SourceScript->GetPathName()), ScriptMessageLogGuidKey);
+		JobBatchToQueue.Add(MakeShared<FNiagaraMessageJobCompileEvent>(CompileEvent, TWeakObjectPtr<const UNiagaraScript>(InScript), TOptional<const FString>(), SourceScript->GetPathName()));
 	}
 
-	const FText PostCompileSummaryText = FNiagaraMessageUtilities::MakePostCompileSummaryText(FText::FromString("Script"), GetLatestCompileStatus(), WarningCount, ErrorCount);
-	TSharedRef<const FNiagaraMessageText> PostCompileSummaryMessage =  MakeShared<FNiagaraMessageText>(PostCompileSummaryText, EMessageSeverity::Info, FNiagaraMessageTopics::CompilerTopicName);
-	MessageManager->AddMessage(PostCompileSummaryMessage, ScriptMessageLogGuidKey);
+	JobBatchToQueue.Insert(MakeShared<FNiagaraMessageJobPostCompileSummary>(ErrorCount, WarningCount, GetLatestCompileStatus(), FText::FromString("Script")), 0);
+	FNiagaraMessageManager::Get()->RefreshMessagesForAssetKeyAndMessageJobType(ScriptMessageLogGuidKey, ENiagaraMessageJobType::CompileEventMessageJob);
+	FNiagaraMessageManager::Get()->QueueMessageJobBatch(JobBatchToQueue, ScriptMessageLogGuidKey);
 }

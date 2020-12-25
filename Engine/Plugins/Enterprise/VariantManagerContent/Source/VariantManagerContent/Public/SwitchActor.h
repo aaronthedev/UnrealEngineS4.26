@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,8 +7,6 @@
 #include "GameFramework/Actor.h"
 
 #include "SwitchActor.generated.h"
-
-#define SWITCH_ACTOR_SELECTED_OPTION_NAME TEXT("Selected Option")
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnSwitchActorSwitch, int32 /* new selected index */);
 
@@ -38,18 +36,9 @@ public:
 	FOnSwitchActorSwitch& GetOnSwitchDelegate();
 
 private:
-	// Dedicated function to set our visibility so that we can restore our component
-	// hierarchy to the last-set option, in case e.g. we're overriden by a parent ASwitchActor
-	void SetVisibility(bool bVisible);
-
-	void PostLoad() override;
-
 	FOnSwitchActorSwitch OnSwitchActorSwitch;
 
 	// Exposing our root component like this allows manual Mobility control on the details panel
 	UPROPERTY(Category = SwitchActor, VisibleAnywhere)
 	class USceneComponent* SceneComponent;
-
-	UPROPERTY()
-	int32 LastSelectedOption;
 };

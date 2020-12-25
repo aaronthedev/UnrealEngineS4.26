@@ -12,18 +12,14 @@
 * Add a default value for every new UPROPERTY in this class in <UnrealEngine>/Engine/Config/BaseEngine.ini
 */
 
-DECLARE_DELEGATE_TwoParams(FWindowsMixedRealityRemotingStatusChanged, FString /*RemotingMessage*/, FLinearColor /*StatusColor*/);
-
 /**
  * Implements the settings for the WindowsMixedReality runtime platform.
  */
-UCLASS(config=EditorPerProjectUserSettings)
+UCLASS(config=Engine, defaultconfig)
 class WINDOWSMIXEDREALITYRUNTIMESETTINGS_API UWindowsMixedRealityRuntimeSettings : public UObject
 {
 public:
 	GENERATED_BODY()
-
-	FWindowsMixedRealityRemotingStatusChanged OnRemotingStatusChanged;
 
 private:
 	static class UWindowsMixedRealityRuntimeSettings* WMRSettingsSingleton;
@@ -45,9 +41,6 @@ public:
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Holographic Remoting", Meta = (EditCondition = "bEnableRemotingForEditor", DisplayName = "Max network transfer rate (kb/s)"))
 	unsigned int MaxBitrate = 4000;
 	
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Holographic Remoting", Meta = (DeprecatedProperty, DisplayName = "HoloLens 1 Remoting (Deprecated, removing for UE5)", Tooltip = "If True remoting connect will assume the device being connected is a HL1, if False HL2 is assumed.  If you chose wrong remoting will fail to connect.  Hololens1 remoting is deprecated and will be removed for UE5.", DeprecationMessage = "Hololens1 remoting is deprecated and will be removed for UE5."))
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Holographic Remoting", Meta = (DisplayName = "HoloLens 1 Remoting", Tooltip = "If True remoting connect will assume the device being connected is a HL1, if False HL2 is assumed.  If you chose wrong remoting will fail to connect."))
 	bool IsHoloLens1Remoting = false;
-
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Input Simulation", Meta = (DisplayName = "Enable Input Simulation", Tooltip = "Enable simulation of AR input in the editor when no HMD is connected."))
-	bool bEnableInputSimulation = true;
 };

@@ -1,40 +1,25 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RBF/RBFSolver.h"
-
-#include "RBF/RBFInterpolator.h"
-
 #include "EngineLogs.h"
 
-#include "Containers/Set.h"
-
-
-FRotator FRBFEntry::AsRotator(int32 Index) const
+FQuat FRBFEntry::AsQuat(int32 Index) const
 {
-	FRotator Result = FRotator::ZeroRotator;
+	FQuat Result = FQuat::Identity;
 
 	const int32 BaseIndex = Index * 3;
 
 	if (Values.Num() >= BaseIndex + 3)
 	{
-		Result.Roll = Values[BaseIndex + 0];
-		Result.Pitch = Values[BaseIndex + 1];
-		Result.Yaw = Values[BaseIndex + 2];
+		FRotator Rot;
+		Rot.Roll	= Values[BaseIndex + 0];
+		Rot.Pitch	= Values[BaseIndex + 1];
+		Rot.Yaw		= Values[BaseIndex + 2];
+		Result = FQuat(Rot);
 	}
+
 	return Result;
 }
-
-FQuat FRBFEntry::AsQuat(int32 Index) const
-{
-	return AsRotator(Index).Quaternion();
-}
-
-FVector FRBFEntry::AsVector(int32 Index) const
-{
-	return AsRotator(Index).Vector();
-}
-
-
 
 void FRBFEntry::AddFromRotator(const FRotator& InRot)
 {
@@ -58,9 +43,7 @@ void FRBFEntry::AddFromVector(const FVector& InVector)
 
 FRBFParams::FRBFParams()
 	: TargetDimensions(3)
-	, SolverType(ERBFSolverType::Additive)
 	, Radius(1.f)
-	, bAutomaticRadius(false)
 	, Function(ERBFFunctionType::Gaussian)
 	, DistanceMethod(ERBFDistanceMethod::Euclidean)
 	, TwistAxis(EBoneAxis::BA_X)
@@ -87,228 +70,79 @@ FVector FRBFParams::GetTwistAxisVector() const
 	}
 }
 
-
 //////////////////////////////////////////////////////////////////////////
-
-/* Returns the distance between entries, using different metrics, in radians. */
-static float GetDistanceBetweenEntries(
-	const FRBFEntry& A,
-	const FRBFEntry& B,
-	ERBFDistanceMethod DistanceMetric,
-	const FVector &TwistAxis
-)
-{
-	check(A.GetDimensions() == B.GetDimensions());
-
-	const int32 NumRots = A.GetDimensions() / 3;
-	float TotalDistance = 0.0f;
-
-	for (int32 i = 0; i < NumRots; i++)
-	{
-		float Distance = 0.0f;
-		switch (DistanceMetric)
-		{
-		case ERBFDistanceMethod::Euclidean:
-			Distance = RBFDistanceMetric::Euclidean(A.AsRotator(i), B.AsRotator(i));
-			break;
-
-		case ERBFDistanceMethod::Quaternion:
-			Distance = RBFDistanceMetric::ArcLength(A.AsQuat(i), B.AsQuat(i));
-			break;
-
-		case ERBFDistanceMethod::SwingAngle:
-		case ERBFDistanceMethod::DefaultMethod:
-			Distance += RBFDistanceMetric::SwingAngle(A.AsQuat(i), B.AsQuat(i), TwistAxis);
-			break;
-
-		case ERBFDistanceMethod::TwistAngle:
-			Distance += RBFDistanceMetric::TwistAngle(A.AsQuat(i), B.AsQuat(i), TwistAxis);
-			break;
-		}
-
-		TotalDistance += FMath::Square(Distance);
-	}
-
-	return FMath::Sqrt(TotalDistance);
-}
-
 
 float FRBFSolver::FindDistanceBetweenEntries(const FRBFEntry& A, const FRBFEntry& B, const FRBFParams& Params, ERBFDistanceMethod OverrideMethod)
 {
+	check(A.GetDimensions() == B.GetDimensions());
+
 	ERBFDistanceMethod DistanceMethod = OverrideMethod == ERBFDistanceMethod::DefaultMethod ? Params.DistanceMethod : OverrideMethod;
 
-	float Distance = GetDistanceBetweenEntries(A, B, DistanceMethod, Params.GetTwistAxisVector());
-	return FMath::RadiansToDegrees(Distance);
-}
-
-
-// Sigma controls the falloff width. The larger the value the narrower the falloff
-static float GetWeightedValue(
-	float Value, 
-	float KernelWidth, 
-	ERBFFunctionType FalloffFunctionType,
-	bool bBackCompFix = false
-)
-{
-	if (ensure(Value >= 0.0f))
+	// Simple n-dimensional distance
+	if (DistanceMethod == ERBFDistanceMethod::Euclidean)
 	{
-		switch (FalloffFunctionType)
+		float DistSqr = 0.f;
+
+		for (int32 i = 0; i < A.Values.Num(); i++)
 		{
-		case ERBFFunctionType::Linear:
-		case ERBFFunctionType::DefaultFunction:
-		default:
-			if (bBackCompFix)
-			{
-				// This is how the old code formulated it. It has no control over the falloff
-				// but ignores all values that have a distance greater than 1.0.
-				return FMath::Max(1.0f - Value, 0.0f);
-			}
-			else
-			{
-				return RBFKernel::Linear(Value, KernelWidth);
-			}
-
-		case ERBFFunctionType::Gaussian:
-			if (bBackCompFix)
-			{
-				// This is how the old code formulated it. It has a much wider falloff than the
-				// one below it.
-				return FMath::Exp(-Value * Value);
-			}
-			else
-			{
-				return RBFKernel::Gaussian(Value, KernelWidth);
-			}
-
-		case ERBFFunctionType::Exponential:
-			if (bBackCompFix)
-			{
-				// This is how the old code formulated it. It has a much wider falloff than the
-				// one below it.
-				return 1.f / FMath::Exp(Value);
-			}
-			else
-			{
-				return RBFKernel::Exponential(Value, KernelWidth);
-			}
-
-		case ERBFFunctionType::Cubic:
-			return RBFKernel::Cubic(Value, KernelWidth);
-
-		case ERBFFunctionType::Quintic:
-			return RBFKernel::Quintic(Value, KernelWidth);
+			DistSqr += FMath::Square(A.Values[i] - B.Values[i]);
 		}
+
+		return FMath::Sqrt(DistSqr);
+	}
+	// Treat values as sequence of eulers - find quat distance between each pair, then sqrt-sum-of-squares of those
+	else if (DistanceMethod == ERBFDistanceMethod::Quaternion)
+	{
+		float DistSqr = 0.f;
+
+		const int32 NumRots = A.GetDimensions() / 3;
+		for (int32 RotIdx = 0; RotIdx < NumRots; RotIdx++)
+		{
+			float RadDist = A.AsQuat(RotIdx).AngularDistance(B.AsQuat(RotIdx));
+			DistSqr += FMath::Square(FMath::RadiansToDegrees(RadDist));
+		}
+
+		return FMath::Sqrt(DistSqr);
+	}
+	// Treat values as sequence of eulers - find 'swing' distance between each pair, then sqrt-sum-of-squares of those
+	else if(DistanceMethod == ERBFDistanceMethod::SwingAngle || DistanceMethod == ERBFDistanceMethod::DefaultMethod)
+	{
+		float DistSqr = 0.f;
+
+		const int32 NumRots = A.GetDimensions() / 3;
+		for (int32 RotIdx = 0; RotIdx < NumRots; RotIdx++)
+		{
+			FVector TwistVector = Params.GetTwistAxisVector();
+			FVector VecA = A.AsQuat(RotIdx).RotateVector(TwistVector);
+			FVector VecB = B.AsQuat(RotIdx).RotateVector(TwistVector);
+
+			const float Dot = FVector::DotProduct(VecA, VecB);
+			const float RadDist = FMath::Acos(Dot);
+			DistSqr += FMath::Square(FMath::RadiansToDegrees(RadDist));
+		}
+
+		return FMath::Sqrt(DistSqr);
 	}
 	else
 	{
-		return 0.0f;
+		ensureMsgf(false, TEXT("Unknown ERBFDistanceMethod"));
+		return 0.f;
 	}
 }
 
-static float GetOptimalKernelWidth(
-	const FRBFParams& Params,
-	const FVector &TwistAxis,
-	const TArrayView<FRBFEntry>& Targets
-	)
-	{
-		float Sum = 0.0f;
-		int Count = 0;
-
-		for (const FRBFEntry& A : Targets)
-		{
-			for (const FRBFEntry& B : Targets)
-			{
-				if (&A != &B)
-				{
-					Sum += GetDistanceBetweenEntries(A, B, Params.DistanceMethod, TwistAxis);
-				Count++;
-				}
-			}
-		}
-
-	return Sum / float(Count);
-}
-
-static auto InterpolativeWeightFunction(
-	const FRBFParams& Params,
-	const TArrayView<FRBFEntry>& Targets
-	)
+void FRBFSolver::Solve(const FRBFParams& Params, const TArray<FRBFTarget>& Targets, const FRBFEntry& Input, TArray<FRBFOutputWeight>& OutputWeights)
 {
-	FVector TwistAxis = Params.GetTwistAxisVector();
-
-	float KernelWidth;
-	if (Params.bAutomaticRadius)
+	if (Params.TargetDimensions != Input.GetDimensions())
 	{
-		KernelWidth = GetOptimalKernelWidth(Params, TwistAxis, Targets);
-	}
-	else 
-	{
-		KernelWidth = FMath::DegreesToRadians(Params.Radius);
+		UE_LOG(LogAnimation, Warning, TEXT("Input dimensionality is %d, expected %d"), Input.GetDimensions(), Params.TargetDimensions);
+		return;
 	}
 
-	return [KernelWidth, TwistAxis, &Params](const FRBFEntry& A, const FRBFEntry& B) {
-		float Distance = GetDistanceBetweenEntries(A, B, Params.DistanceMethod, TwistAxis);
-		return GetWeightedValue(Distance, KernelWidth, Params.Function);
-	};
-}
+	TArray<float> AllWeights;
+	AllWeights.AddZeroed(Targets.Num());
 
-static bool ValidateInterpolative(
-	const FRBFParams& Params,
-	const TArray<FRBFTarget>& Targets,
-	TArray<int>& InvalidTargets
-)
-{
-	TArray<FRBFEntry> EntryTargets;
-	for (const auto& T : Targets)
-		EntryTargets.Add(T);
+	float TotalWeight = 0.f; // Keep track of total weight generated, to renormalize at the end
 
-	TArray<TTuple<int, int>> InvalidPairs;
-	TSet<int> InvalidTargetSet;
-
-	InvalidTargets.Empty();
-	if (TRBFInterpolator<FRBFEntry>::GetIdenticalNodePairs(EntryTargets, InterpolativeWeightFunction(Params, EntryTargets), InvalidPairs))
-	{
-		// We mark the second of the pair to be invalid. Given how GetInvalidNodePairs iterates over all possible pairs,
-		// this should guarantee to catch them all.
-		for (const auto& IP : InvalidPairs)
-			InvalidTargetSet.Add(IP.Get<1>());
-
-		for (const auto& IT : InvalidTargetSet)
-			InvalidTargets.Add(IT);
-
-		// Return things in a nice sorted order, rather than TSet's hash order.
-		InvalidTargets.Sort();
-	}
-
-	return InvalidTargets.Num() == 0;
-}
-
-bool FRBFSolver::ValidateTargets(
-	const FRBFParams& Params,
-	const TArray<FRBFTarget>& Targets,
-	TArray<int>& InvalidTargets
-)
-{
-	switch (Params.SolverType)
-	{
-	case ERBFSolverType::Additive:
-	default:
-		// The additive solver does not care
-		return true;
-
-	case ERBFSolverType::Interpolative:
-		return ValidateInterpolative(Params, Targets, InvalidTargets);
-	}
-}
-
-
-static void SolveAdditive(
-	const FRBFParams& Params,
-	const TArray<FRBFTarget>& Targets,
-	const FRBFEntry& Input,
-	TArray<float>& AllWeights
-	)
-{
 	// Iterate over each pose, adding its contribution
 	for (int32 TargetIdx = 0; TargetIdx < Targets.Num(); TargetIdx++)
 	{
@@ -316,13 +150,32 @@ static void SolveAdditive(
 		ERBFFunctionType FunctionType = Target.FunctionType == ERBFFunctionType::DefaultFunction ? Params.Function : Target.FunctionType;
 
 		// Find distance
-		const float Distance = FRBFSolver::FindDistanceBetweenEntries(Target, Input, Params, Target.DistanceMethod);
-		const float Scaling = FRBFSolver::GetRadiusForTarget(Target, Params);
+		const float Distance = FindDistanceBetweenEntries(Target, Input, Params, Target.DistanceMethod);
+		const float Scaling = GetRadiusForTarget(Target, Params);
 		const float X = Distance / Scaling;
 
-		// Evaluate radial basis function to find weight. We default to sigma = 1.0 and scale instead
-		// using the radius value. We use the old formulation for Gauss + 
-		float Weight = GetWeightedValue(X, 1.0f, FunctionType, /*BackCompFix=*/ true);
+		// Evaluate radial basis function to find weight
+		float Weight = 0.f;
+		if (FunctionType == ERBFFunctionType::Gaussian)
+		{
+			Weight = FMath::Exp(-(X * X));
+		}
+		else if (FunctionType == ERBFFunctionType::Exponential)
+		{
+			Weight = 1.f / FMath::Exp(X);
+		}
+		else if (FunctionType == ERBFFunctionType::Linear || FunctionType == ERBFFunctionType::DefaultFunction)
+		{
+			Weight = FMath::Max(1.f - X, 0.f);
+		}
+		else if (FunctionType == ERBFFunctionType::Cubic)
+		{
+			Weight = FMath::Max(1.f - (X * X * X), 0.f);
+		}
+		else if (FunctionType == ERBFFunctionType::Quintic)
+		{
+			Weight = FMath::Max(1.f - (X * X * X * X * X), 0.f);
+		}
 
 		// Apply custom curve if desired
 		if (Target.bApplyCustomCurve)
@@ -332,69 +185,8 @@ static void SolveAdditive(
 
 		// Add to array of all weights. Don't threshold yet, wait for normalization step.
 		AllWeights[TargetIdx] = Weight;
-	}
-}
 
-
-static void SolveInterpolative(
-	const FRBFParams& Params,
-	const TArray<FRBFTarget>& Targets,
-	const FRBFEntry& Input,
-	TArray<float> &AllWeights
-	)
-{
-	check(Input.GetDimensions() == 3);
-
-	TArray<FRBFEntry, TMemStackAllocator<>> EntryTargets;
-	EntryTargets.Reset(Targets.Num());
-	for (const auto& T : Targets)
-		EntryTargets.Add(T);
-
-	// FIXME: We ought to be able to store the initial RBF interpolator matrix and re-use it between solves
-	// but that requires larger changes in the PoseDriver and how this code is wrapped.
-	TRBFInterpolator<FRBFEntry> Rbf(EntryTargets, InterpolativeWeightFunction(Params, EntryTargets), false);
-
-	Rbf.Interpolate(AllWeights, Input);
-
-	// Scale the weight by the scale factor on the target.
-	for (int32 i = 0; i < Targets.Num(); i++)
-	{
-		AllWeights[i] *= Targets[i].ScaleFactor;
-	}
-
-}
-
-
-void FRBFSolver::Solve(
-	const FRBFParams& Params, 
-	const TArray<FRBFTarget>& Targets, 
-	const FRBFEntry& Input, 
-	TArray<FRBFOutputWeight>& OutputWeights
-	)
-{
-	if (!ensure(Params.TargetDimensions == Input.GetDimensions()))
-	{
-		return;
-	}
-
-	TArray<float> AllWeights;
-	AllWeights.AddZeroed(Targets.Num());
-
-	switch (Params.SolverType)
-	{
-	case ERBFSolverType::Additive:
-	default:
-		SolveAdditive(Params, Targets, Input, AllWeights);
-		break;
-
-	case ERBFSolverType::Interpolative:
-		SolveInterpolative(Params, Targets, Input, AllWeights);
-		break;
-	}
-
-	float TotalWeight = 0.f; // Keep track of total weight generated, to normalize at the end
-	for (float Weight : AllWeights)
-	{
+		// Add weight to total
 		TotalWeight += Weight;
 	}
 
@@ -504,26 +296,5 @@ bool FRBFSolver::FindTargetNeighbourDistances(const FRBFParams& Params, const TA
 
 float FRBFSolver::GetRadiusForTarget(const FRBFTarget& Target, const FRBFParams& Params)
 {
-	float Radius = Params.Radius;
-	if (Params.SolverType == ERBFSolverType::Additive)
-	{
-		Radius *= Target.ScaleFactor;
-	}
-
-	return FMath::Max(Radius, KINDA_SMALL_NUMBER);
-}
-
-
-float FRBFSolver::GetOptimalRadiusForTargets(const FRBFParams& Params, const TArray<FRBFTarget>& Targets)
-{
-	TArray<FRBFEntry, TMemStackAllocator<>> EntryTargets;
-	EntryTargets.Reset(Targets.Num());
-	for (const auto& T : Targets)
-		EntryTargets.Add(T);
-
-	FVector TwistAxis = Params.GetTwistAxisVector();
-
-	float KernelWidth = GetOptimalKernelWidth(Params, TwistAxis, EntryTargets);
-
-	return FMath::RadiansToDegrees(KernelWidth);
+	return FMath::Max(Params.Radius * Target.ScaleFactor, KINDA_SMALL_NUMBER);
 }

@@ -1,8 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	DestructibleComponent.cpp: UDestructibleComponent methods.
 =============================================================================*/
+
 
 #include "DestructibleComponent.h"
 #include "EngineStats.h"
@@ -25,15 +26,13 @@
 #include "Physics/PhysicsInterfaceUtils.h"
 #include "UObject/UObjectThreadContext.h"
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 #include "Physics/PhysicsGeometry.h"
 #endif
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-
 UDestructibleComponent::UDestructibleComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 	, PhysxUserData(this)
 #endif
 {
@@ -1450,7 +1449,7 @@ bool UDestructibleComponent::IsAnySimulatingPhysics() const
 	return !!BodyInstance.bSimulatePhysics;
 }
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 
 bool UDestructibleComponent::IsChunkLarge(PxRigidActor* ChunkActor) const
 {
@@ -1504,7 +1503,7 @@ void UDestructibleComponent::SetCollisionEnabled(ECollisionEnabled::Type NewType
 #endif // WITH_APEX
 }
 
-void UDestructibleComponent::SetCollisionProfileName(FName InCollisionProfileName, bool bUpdateOverlaps)
+void UDestructibleComponent::SetCollisionProfileName(FName InCollisionProfileName)
 {
     FBodyInstance* LocalInstance = GetBodyInstance();
     if (!LocalInstance)
@@ -1530,12 +1529,12 @@ void UDestructibleComponent::SetCollisionProfileName(FName InCollisionProfileNam
 		{
 			EnsurePhysicsStateCreated();
 		}
-		OnComponentCollisionSettingsChanged(bUpdateOverlaps);
+		OnComponentCollisionSettingsChanged();
 	}
 }
 
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 
 void UDestructibleComponent::SetCollisionResponseForActor(PxRigidDynamic* Actor, int32 ChunkIdx, const FCollisionResponseContainer* ResponseOverride /*= NULL*/)
 {
@@ -1680,4 +1679,3 @@ void UDestructibleComponent::SetMaterial(int32 ElementIndex, UMaterialInterface*
 #endif
 }
 
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

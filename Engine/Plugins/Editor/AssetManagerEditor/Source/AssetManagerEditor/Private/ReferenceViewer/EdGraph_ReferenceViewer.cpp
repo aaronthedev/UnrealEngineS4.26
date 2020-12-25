@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ReferenceViewer/EdGraph_ReferenceViewer.h"
 #include "ReferenceViewer/EdGraphNode_Reference.h"
@@ -20,13 +20,12 @@ UEdGraph_ReferenceViewer::UEdGraph_ReferenceViewer(const FObjectInitializer& Obj
 	AssetThumbnailPool = MakeShareable( new FAssetThumbnailPool(1024) );
 
 	MaxSearchDepth = 1;
-	MaxSearchBreadth = 20;
+	MaxSearchBreadth = 15;
 
 	bLimitSearchDepth = true;
 	bLimitSearchBreadth = true;
 	bIsShowSoftReferences = true;
 	bIsShowHardReferences = true;
-	bIsShowEditorOnlyReferences = true;
 	bIsShowManagementReferences = false;
 	bIsShowSearchableNames = false;
 	bIsShowNativePackages = false;
@@ -131,11 +130,6 @@ bool UEdGraph_ReferenceViewer::IsShowHardReferences() const
 	return bIsShowHardReferences;
 }
 
-bool UEdGraph_ReferenceViewer::IsShowEditorOnlyReferences() const
-{
-	return bIsShowEditorOnlyReferences;
-}
-
 bool UEdGraph_ReferenceViewer::IsShowManagementReferences() const
 {
 	return bIsShowManagementReferences;
@@ -179,11 +173,6 @@ void UEdGraph_ReferenceViewer::SetShowSoftReferencesEnabled(bool newEnabled)
 void UEdGraph_ReferenceViewer::SetShowHardReferencesEnabled(bool newEnabled)
 {
 	bIsShowHardReferences = newEnabled;
-}
-
-void UEdGraph_ReferenceViewer::SetShowEditorOnlyReferencesEnabled(bool newEnabled)
-{
-	bIsShowEditorOnlyReferences = newEnabled;
 }
 
 void UEdGraph_ReferenceViewer::SetShowManagementReferencesEnabled(bool newEnabled)
@@ -251,32 +240,32 @@ void UEdGraph_ReferenceViewer::SetEnableCollectionFilter(bool bEnabled)
 	bEnableCollectionFilter = bEnabled;
 }
 
-FAssetManagerDependencyQuery UEdGraph_ReferenceViewer::GetReferenceSearchFlags(bool bHardOnly) const
+EAssetRegistryDependencyType::Type UEdGraph_ReferenceViewer::GetReferenceSearchFlags(bool bHardOnly) const
 {
-	using namespace UE::AssetRegistry;
-	FAssetManagerDependencyQuery Query;
-	Query.Categories = EDependencyCategory::None;
-	Query.Flags = EDependencyQuery::NoRequirements;
+	int32 ReferenceFlags = 0;
 
-	bool bLocalIsShowSoftReferences = bIsShowSoftReferences && !bHardOnly;
-	if (bLocalIsShowSoftReferences || bIsShowHardReferences)
+	if (bIsShowSoftReferences && !bHardOnly)
 	{
-		Query.Categories |= EDependencyCategory::Package;
-		Query.Flags |= bLocalIsShowSoftReferences ? EDependencyQuery::NoRequirements : EDependencyQuery::Hard;
-		Query.Flags |= bIsShowHardReferences ? EDependencyQuery::NoRequirements : EDependencyQuery::Soft;
-		Query.Flags |= bIsShowEditorOnlyReferences ? EDependencyQuery::NoRequirements : EDependencyQuery::Game;
+		ReferenceFlags |= EAssetRegistryDependencyType::Soft;
+	}
+	if (bIsShowHardReferences)
+	{
+		ReferenceFlags |= EAssetRegistryDependencyType::Hard;
 	}
 	if (bIsShowSearchableNames && !bHardOnly)
 	{
-		Query.Categories |= EDependencyCategory::SearchableName;
+		ReferenceFlags |= EAssetRegistryDependencyType::SearchableName;
 	}
 	if (bIsShowManagementReferences)
 	{
-		Query.Categories |= EDependencyCategory::Manage;
-		Query.Flags |= bHardOnly ? EDependencyQuery::Direct : EDependencyQuery::NoRequirements;
+		ReferenceFlags |= EAssetRegistryDependencyType::HardManage;
+		if (!bHardOnly)
+		{
+			ReferenceFlags |= EAssetRegistryDependencyType::SoftManage;
+		}
 	}
-
-	return Query;
+	
+	return (EAssetRegistryDependencyType::Type)ReferenceFlags;
 }
 
 UEdGraphNode_Reference* UEdGraph_ReferenceViewer::ConstructNodes(const TArray<FAssetIdentifier>& GraphRootIdentifiers, const FIntPoint& GraphRootOrigin )
@@ -369,94 +358,35 @@ UEdGraphNode_Reference* UEdGraph_ReferenceViewer::ConstructNodes(const TArray<FA
 	return RootNode;
 }
 
-void GetSortedLinks(const TArray<FAssetIdentifier>& Identifiers, bool bReferencers, const FAssetManagerDependencyQuery& Query, bool bIsShowNativePackages, TMap<FAssetIdentifier, EDependencyPinCategory>& OutLinks)
-{
-	using namespace UE::AssetRegistry;
-	auto CategoryOrder = [](EDependencyCategory InCategory)
-	{
-		switch (InCategory)
-		{
-		case EDependencyCategory::Package: return 0;
-		case EDependencyCategory::Manage: return 1;
-		case EDependencyCategory::SearchableName: return 2;
-		default: check(false);  return 3;
-		}
-	};
-	auto IsHard = [](EDependencyProperty Properties)
-	{
-		return static_cast<bool>(((Properties & EDependencyProperty::Hard) != EDependencyProperty::None) | ((Properties & EDependencyProperty::Direct) != EDependencyProperty::None));
-	};
-
-	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
-	TArray<FAssetDependency> LinksToAsset;
-	for (const FAssetIdentifier& AssetId : Identifiers)
-	{
-		LinksToAsset.Reset();
-		if (bReferencers)
-		{
-			AssetRegistry.GetReferencers(AssetId, LinksToAsset, Query.Categories, Query.Flags);
-		}
-		else
-		{
-			AssetRegistry.GetDependencies(AssetId, LinksToAsset, Query.Categories, Query.Flags);
-		}
-
-		// Sort the links from most important kind of link to least important kind of link, so that if we can't display them all in an ExceedsMaxSearchBreadth test, we
-		// show the most important links.
-		Algo::Sort(LinksToAsset, [&CategoryOrder, &IsHard](const FAssetDependency& A, const FAssetDependency& B)
-			{
-				if (A.Category != B.Category)
-				{
-					return CategoryOrder(A.Category) < CategoryOrder(B.Category);
-				}
-				if (A.Properties != B.Properties)
-				{
-					bool bAIsHard = IsHard(A.Properties);
-					bool bBIsHard = IsHard(B.Properties);
-					if (bAIsHard != bBIsHard)
-					{
-						return bAIsHard;
-					}
-				}
-				return A.AssetId.PackageName.LexicalLess(B.AssetId.PackageName);
-			});
-		for (FAssetDependency LinkToAsset : LinksToAsset)
-		{
-			EDependencyPinCategory& Category = OutLinks.FindOrAdd(LinkToAsset.AssetId, EDependencyPinCategory::LinkEndActive);
-			bool bIsHard = IsHard(LinkToAsset.Properties);
-			bool bIsUsedInGame = (LinkToAsset.Category != EDependencyCategory::Package) | ((LinkToAsset.Properties & EDependencyProperty::Game) != EDependencyProperty::None);
-			Category |= EDependencyPinCategory::LinkEndActive;
-			Category |= bIsHard ? EDependencyPinCategory::LinkTypeHard : EDependencyPinCategory::LinkTypeNone;
-			Category |= bIsUsedInGame ? EDependencyPinCategory::LinkTypeUsedInGame : EDependencyPinCategory::LinkTypeNone;
-		}
-	}
-
-	if (!bIsShowNativePackages)
-	{
-		for (TMap<FAssetIdentifier, EDependencyPinCategory>::TIterator It(OutLinks); It; ++It)
-		{
-			if (It.Key().PackageName.ToString().StartsWith(TEXT("/Script")) && !It.Key().IsValue())
-			{
-				It.RemoveCurrent();
-			}
-		}
-	}
-}
-
 int32 UEdGraph_ReferenceViewer::RecursivelyGatherSizes(bool bReferencers, const TArray<FAssetIdentifier>& Identifiers, const TSet<FName>& AllowedPackageNames, int32 CurrentDepth, TSet<FAssetIdentifier>& VisitedNames, TMap<FAssetIdentifier, int32>& OutNodeSizes) const
 {
 	check(Identifiers.Num() > 0);
 
 	VisitedNames.Append(Identifiers);
 
-	TMap<FAssetIdentifier, EDependencyPinCategory> ReferenceLinks;
-	GetSortedLinks(Identifiers, bReferencers, GetReferenceSearchFlags(false), bIsShowNativePackages, ReferenceLinks);
-
+	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	TArray<FAssetIdentifier> ReferenceNames;
-	ReferenceNames.Reserve(ReferenceLinks.Num());
-	for (const TPair<FAssetIdentifier, EDependencyPinCategory>& Pair : ReferenceLinks)
+
+	if ( bReferencers )
 	{
-		ReferenceNames.Add(Pair.Key);
+		for (const FAssetIdentifier& AssetId : Identifiers)
+		{
+			AssetRegistryModule.Get().GetReferencers(AssetId, ReferenceNames, GetReferenceSearchFlags(false));
+		}
+	}
+	else
+	{
+		for (const FAssetIdentifier& AssetId : Identifiers)
+		{
+			AssetRegistryModule.Get().GetDependencies(AssetId, ReferenceNames, GetReferenceSearchFlags(false));
+		}
+	}
+
+	if (!bIsShowNativePackages)
+	{
+		auto RemoveNativePackage = [](const FAssetIdentifier& InAsset) { return InAsset.PackageName.ToString().StartsWith(TEXT("/Script")) && !InAsset.IsValue(); };
+
+		ReferenceNames.RemoveAll(RemoveNativePackage);
 	}
 
 	int32 NodeSize = 0;
@@ -514,7 +444,8 @@ void UEdGraph_ReferenceViewer::GatherAssetData(const TSet<FName>& AllPackageName
 	for ( auto PackageIt = AllPackageNames.CreateConstIterator(); PackageIt; ++PackageIt )
 	{
 		const FString& PackageName = (*PackageIt).ToString();
-		Filter.PackageNames.Add(*PackageIt);
+		const FString& PackagePath = PackageName + TEXT(".") + FPackageName::GetLongPackageAssetName(PackageName);
+		Filter.ObjectPaths.Add( FName(*PackagePath) );
 	}
 
 	TArray<FAssetData> AssetDataList;
@@ -543,14 +474,39 @@ UEdGraphNode_Reference* UEdGraph_ReferenceViewer::RecursivelyConstructNodes(bool
 		NewNode->SetupReferenceNode(NodeLoc, Identifiers, PackagesToAssetDataMap.FindRef(Identifiers[0].PackageName));
 	}
 
-	TMap<FAssetIdentifier, EDependencyPinCategory> Referencers;
-	GetSortedLinks(Identifiers, bReferencers, GetReferenceSearchFlags(false), bIsShowNativePackages, Referencers);
+	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+	TArray<FAssetIdentifier> ReferenceNames;
+	TArray<FAssetIdentifier> HardReferenceNames;
+	if ( bReferencers )
+	{
+		for (const FAssetIdentifier& AssetId : Identifiers)
+		{
+			AssetRegistryModule.Get().GetReferencers(AssetId, HardReferenceNames, GetReferenceSearchFlags(true));
+			AssetRegistryModule.Get().GetReferencers(AssetId, ReferenceNames, GetReferenceSearchFlags(false));
+		}
+	}
+	else
+	{
+		for (const FAssetIdentifier& AssetId : Identifiers)
+		{
+			AssetRegistryModule.Get().GetDependencies(AssetId, HardReferenceNames, GetReferenceSearchFlags(true));
+			AssetRegistryModule.Get().GetDependencies(AssetId, ReferenceNames, GetReferenceSearchFlags(false));
+		}
+	}
 
-	if (Referencers.Num() > 0 && !ExceedsMaxSearchDepth(CurrentDepth))
+	if (!bIsShowNativePackages)
+	{
+		auto RemoveNativePackage = [](const FAssetIdentifier& InAsset) { return InAsset.PackageName.ToString().StartsWith(TEXT("/Script")) && !InAsset.IsValue(); };
+
+		HardReferenceNames.RemoveAll(RemoveNativePackage);
+		ReferenceNames.RemoveAll(RemoveNativePackage);
+	}
+
+	if ( ReferenceNames.Num() > 0 && !ExceedsMaxSearchDepth(CurrentDepth) )
 	{
 		FIntPoint ReferenceNodeLoc = NodeLoc;
 
-		if (bReferencers)
+		if ( bReferencers )
 		{
 			// Referencers go left
 			ReferenceNodeLoc.X -= 800;
@@ -569,30 +525,14 @@ UEdGraphNode_Reference* UEdGraph_ReferenceViewer::RecursivelyConstructNodes(bool
 
 		int32 NumReferencesMade = 0;
 		int32 NumReferencesExceedingMax = 0;
-
+		
 		// Filter for our registry source
-		TArray<FAssetIdentifier> ReferenceIds;
-		Referencers.GenerateKeyArray(ReferenceIds);
-		IAssetManagerEditorModule::Get().FilterAssetIdentifiersForCurrentRegistrySource(ReferenceIds, GetReferenceSearchFlags(false), !bReferencers);
-		if (ReferenceIds.Num() != Referencers.Num())
+		IAssetManagerEditorModule::Get().FilterAssetIdentifiersForCurrentRegistrySource(ReferenceNames, GetReferenceSearchFlags(false), !bReferencers);
+		IAssetManagerEditorModule::Get().FilterAssetIdentifiersForCurrentRegistrySource(HardReferenceNames, GetReferenceSearchFlags(false), !bReferencers);
+
+		for ( int32 RefIdx = 0; RefIdx < ReferenceNames.Num(); ++RefIdx )
 		{
-			TSet<FAssetIdentifier> KeptSet;
-			KeptSet.Reserve(ReferenceIds.Num());
-			for (FAssetIdentifier Id : ReferenceIds)
-			{
-				KeptSet.Add(Id);
-			}
-			for (TMap<FAssetIdentifier, EDependencyPinCategory>::TIterator It(Referencers); It; ++It)
-			{
-				if (!KeptSet.Contains(It.Key()))
-				{
-					It.RemoveCurrent();
-				}
-			}
-		}
-		for ( TPair<FAssetIdentifier, EDependencyPinCategory>& DependencyPair : Referencers)
-		{
-			FAssetIdentifier ReferenceName = DependencyPair.Key;
+			FAssetIdentifier ReferenceName = ReferenceNames[RefIdx];
 
 			if ( !VisitedNames.Contains(ReferenceName) && (!ReferenceName.IsPackage() || !ShouldFilterByCollection() || AllowedPackageNames.Contains(ReferenceName.PackageName)) )
 			{
@@ -609,17 +549,22 @@ UEdGraphNode_Reference* UEdGraph_ReferenceViewer::RecursivelyConstructNodes(bool
 					NewIdentifiers.Add(ReferenceName);
 					
 					UEdGraphNode_Reference* ReferenceNode = RecursivelyConstructNodes(bReferencers, RootNode, NewIdentifiers, RefNodeLoc, NodeSizes, PackagesToAssetDataMap, AllowedPackageNames, CurrentDepth + 1, VisitedNames);
-					if ( ensure(ReferenceNode) )
+
+					bool bIsHardReference = HardReferenceNames.Contains(ReferenceName);
+					if (bIsHardReference)
 					{
 						if (bReferencers)
 						{
-							ReferenceNode->GetDependencyPin()->PinType.PinCategory = ::GetName(DependencyPair.Value);
+							ReferenceNode->GetDependencyPin()->PinType.PinCategory = TEXT("hard");
 						}
 						else
 						{
-							ReferenceNode->GetReferencerPin()->PinType.PinCategory = ::GetName(DependencyPair.Value);
+							ReferenceNode->GetReferencerPin()->PinType.PinCategory = TEXT("hard"); //-V595
 						}
+					}
 
+					if ( ensure(ReferenceNode) )
+					{
 						if ( bReferencers )
 						{
 							NewNode->AddReferencer( ReferenceNode );

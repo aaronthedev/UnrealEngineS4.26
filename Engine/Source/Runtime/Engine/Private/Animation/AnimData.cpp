@@ -1,7 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AnimData.cpp: Anim data template code and related.
 =============================================================================*/ 
 
-#include "Animation/AnimClassData.h"
+
+
+/*-----------------------------------------------------------------------------
+	BoneMaskFilter.h
+-----------------------------------------------------------------------------*/

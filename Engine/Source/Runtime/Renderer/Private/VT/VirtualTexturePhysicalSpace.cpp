@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VirtualTexturePhysicalSpace.h"
 #include "VirtualTextureSystem.h"
@@ -42,9 +42,6 @@ FVirtualTexturePhysicalSpace::FVirtualTexturePhysicalSpace(const FVTPhysicalSpac
 
 	Pool.Initialize(GetNumTiles());
 
-	// Initialize this resource FeatureLevel, so it gets re-created on FeatureLevel changes
-	SetFeatureLevel(GMaxRHIFeatureLevel);
-
 #if STATS
 	const FString LongName = FString::Printf(TEXT("WorkingSet %s %%"), FormatInfo.Name);
 	WorkingSetSizeStatID = FDynamicStats::CreateStatIdDouble<STAT_GROUP_TO_FStatGroup(STATGROUP_VirtualTexturing)>(LongName);
@@ -75,41 +72,24 @@ EPixelFormat GetUnorderedAccessViewFormat(EPixelFormat InFormat)
 	return InFormat;
 }
 
-EPixelFormat RemapVirtualTexturePhysicalSpaceFormat(EPixelFormat InFormat)
-{
-	if (InFormat == PF_B8G8R8A8 && IsOpenGLPlatform(GMaxRHIShaderPlatform) && IsMobilePlatform(GMaxRHIShaderPlatform))
-	{
-		// FIXME: Mobile/Android OpenGL can't copy data between swizzled formats
-		// Always use RGBA format for both VT intermediate render targets and VT physical texture
-		// This will also make uncompressed streaming VT to have a R and B channel swapped 
-		return PF_R8G8B8A8;
-	}
-
-	return InFormat;
-}
-
 void FVirtualTexturePhysicalSpace::InitRHI()
 {
 	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
 
-	// Not all mobile RHIs support sRGB texture views/aliasing, use only linear targets on mobile
-	ETextureCreateFlags VT_SRGB = GetFeatureLevel() > ERHIFeatureLevel::ES3_1 ? TexCreate_SRGB : TexCreate_None;
-
 	for (int32 Layer = 0; Layer < Description.NumLayers; ++Layer)
 	{
-		const EPixelFormat FormatSRV = RemapVirtualTexturePhysicalSpaceFormat(Description.Format[Layer]);
+		const EPixelFormat FormatSRV = Description.Format[Layer];
 		const EPixelFormat FormatUAV = GetUnorderedAccessViewFormat(FormatSRV);
 		const bool bCreateAliasedUAV = (FormatUAV != PF_Unknown) && (FormatUAV != FormatSRV);
-		
+
 		// Allocate physical texture from the render target pool
 		const uint32 TextureSize = GetTextureSize();
 		const FPooledRenderTargetDesc Desc = FPooledRenderTargetDesc::Create2DDesc(
 			FIntPoint(TextureSize, TextureSize),
 			FormatSRV,
 			FClearValueBinding::None,
-			VT_SRGB,
-			// GPULightmass hack: always create UAV for PF_A32B32G32R32F
-			(bCreateAliasedUAV || FormatSRV == PF_A32B32G32R32F) ? TexCreate_ShaderResource | TexCreate_UAV : TexCreate_ShaderResource,
+			TexCreate_None,
+			bCreateAliasedUAV ? TexCreate_ShaderResource | TexCreate_UAV : TexCreate_ShaderResource,
 			false);
 
 		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, PooledRenderTarget[Layer], TEXT("PhysicalTexture"));
@@ -118,10 +98,9 @@ void FVirtualTexturePhysicalSpace::InitRHI()
 		// Create sRGB and non-sRGB shader resource views into the physical texture
 		FRHITextureSRVCreateInfo SRVCreateInfo;
 		SRVCreateInfo.Format = FormatSRV;
-		SRVCreateInfo.SRGBOverride = SRGBO_ForceDisable;
 		TextureSRV[Layer] = RHICreateShaderResourceView(TextureRHI, SRVCreateInfo);
 
-		SRVCreateInfo.SRGBOverride = SRGBO_Default;
+		SRVCreateInfo.SRGBOverride = SRGBO_ForceEnable;
 		TextureSRV_SRGB[Layer] = RHICreateShaderResourceView(TextureRHI, SRVCreateInfo);
 
 		if (bCreateAliasedUAV)

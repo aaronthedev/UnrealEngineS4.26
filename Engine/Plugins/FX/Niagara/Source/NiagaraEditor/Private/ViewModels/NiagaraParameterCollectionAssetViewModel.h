@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -37,8 +37,8 @@ public:
 	void UpdateOpenInstances();
 
 	//~ FNotifyHook interface
-	virtual void NotifyPreChange(FProperty* PropertyAboutToChange)override;
-	virtual void NotifyPostChange(const FPropertyChangedEvent& PropertyChangedEvent, FProperty* PropertyThatChanged)override;
+	virtual void NotifyPreChange(UProperty* PropertyAboutToChange)override;
+	virtual void NotifyPostChange(const FPropertyChangedEvent& PropertyChangedEvent, UProperty* PropertyThatChanged)override;
 
 	/** Rebuilds the parameter view models. */
 	virtual void RefreshParameterViewModels() override;
@@ -74,9 +74,6 @@ private:
 
 	void OnParameterValueChangedInternal(TSharedRef<FNiagaraCollectionParameterViewModel> ChangedParameter);
 
-	/** Called if the Collection is changed external to the UI and needs refereshing */
-	void OnCollectionChangedExternally();
-
 	FName GenerateNewName(FNiagaraTypeDefinition Type)const;
 
 private:
@@ -90,7 +87,5 @@ private:
 	UNiagaraParameterCollectionInstance* Instance;
 
 	TNiagaraViewModelManager<UNiagaraParameterCollection, FNiagaraParameterCollectionAssetViewModel>::Handle RegisteredHandle;
-
-	FDelegateHandle ExternalChangeHandle;
 };
 

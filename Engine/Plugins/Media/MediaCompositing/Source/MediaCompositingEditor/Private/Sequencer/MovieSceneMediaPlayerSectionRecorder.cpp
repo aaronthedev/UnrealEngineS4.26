@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieSceneMediaPlayerSectionRecorder.h"
 
@@ -76,7 +76,7 @@ void FMovieSceneMediaPlayerSectionRecorder::FinalizeSection(float CurrentTime)
 			FString PackageName;
 			AssetToolsModule.Get().CreateUniqueAssetName(MediaSourceBasePackageName, DefaultSuffix, /*out*/ PackageName, /*out*/ AssetName);
 
-			UPackage* MediaSourcePackage = CreatePackage(*PackageName);
+			UPackage* MediaSourcePackage = CreatePackage(nullptr, *PackageName);
 
 			UImgMediaSource* ImgMediaSource = NewObject<UImgMediaSource>(MediaSourcePackage, *AssetName, RF_Public | RF_Standalone | RF_Transactional);
 			ImgMediaSource->SetSequencePath(TrackInfo.RecordingFrameFolder + TEXT("/"));

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -20,19 +20,19 @@ struct FRigUnit_TwoBoneIKSimple_DebugSettings
 	/**
 	 * If enabled debug information will be drawn 
 	 */
-	UPROPERTY(EditAnywhere, meta = (Input), Category = "DebugSettings")
+	UPROPERTY(meta = (Input))
 	bool bEnabled;
 
 	/**
 	 * The size of the debug drawing information
 	 */
-	UPROPERTY(EditAnywhere, meta = (Input, EditCondition = "bEnabled"), Category = "DebugSettings")
+	UPROPERTY(meta = (Input))
 	float Scale;
 
 	/**
 	 * The offset at which to draw the debug information in the world
 	 */
-	UPROPERTY(EditAnywhere, meta = (Input, EditCondition = "bEnabled"), Category = "DebugSettings")
+	UPROPERTY(meta = (Input))
 	FTransform WorldOffset;
 };
 
@@ -40,7 +40,7 @@ struct FRigUnit_TwoBoneIKSimple_DebugSettings
  * Solves the two bone IK given two bones.
  * Note: This node operates in world space!
  */
-USTRUCT(meta=(DisplayName="Basic IK", Category="Hierarchy", Keywords="TwoBone,IK", Deprecated = "4.25"))
+USTRUCT(meta=(DisplayName="Basic IK", Category="Hierarchy", Keywords="TwoBone,IK"))
 struct FRigUnit_TwoBoneIKSimple : public FRigUnit_HighlevelBaseMutable
 {
 	GENERATED_BODY()
@@ -62,19 +62,10 @@ struct FRigUnit_TwoBoneIKSimple : public FRigUnit_HighlevelBaseMutable
 		bPropagateToChildren = false;
 		DebugSettings = FRigUnit_TwoBoneIKSimple_DebugSettings();
 
-		CachedBoneAIndex = FCachedRigElement();
-		CachedBoneBIndex = FCachedRigElement();
-		CachedEffectorBoneIndex = FCachedRigElement();
-		CachedPoleVectorSpaceIndex = FCachedRigElement();
-	}
-
-	virtual FRigElementKey DetermineSpaceForPin(const FString& InPinPath, void* InUserContext) const override
-	{
-		if (InPinPath.StartsWith(TEXT("PoleVector")))
-		{
-			return FRigElementKey(PoleVectorSpace, ERigElementType::Bone);
-		}
-		return FRigElementKey();
+		BoneAIndex = INDEX_NONE;
+		BoneBIndex = INDEX_NONE;
+		EffectorBoneIndex = INDEX_NONE;
+		PoleVectorSpaceIndex = INDEX_NONE;
 	}
 
 	RIGVM_METHOD()
@@ -83,19 +74,19 @@ struct FRigUnit_TwoBoneIKSimple : public FRigUnit_HighlevelBaseMutable
 	/** 
 	 * The name of first bone
 	 */
-	UPROPERTY(meta = (Input))
+	UPROPERTY(meta = (Input, Constant, BoneName))
 	FName BoneA;
 
 	/** 
 	 * The name of second bone
 	 */
-	UPROPERTY(meta = (Input))
+	UPROPERTY(meta = (Input, Constant, BoneName))
 	FName BoneB;
 
 	/** 
 	 * The name of the effector bone (if exists)
 	 */
-	UPROPERTY(meta = (Input))
+	UPROPERTY(meta = (Input, Constant, BoneName))
 	FName EffectorBone;
 
 	/** 
@@ -138,7 +129,7 @@ struct FRigUnit_TwoBoneIKSimple : public FRigUnit_HighlevelBaseMutable
 	/** 
 	 * The space in which the pole vector is expressed
 	 */
-	UPROPERTY(meta = (Input))
+	UPROPERTY(meta = (Input, Constant, BoneName))
 	FName PoleVectorSpace;
 
 	/**
@@ -184,190 +175,23 @@ struct FRigUnit_TwoBoneIKSimple : public FRigUnit_HighlevelBaseMutable
 	 * of this bone will be recalculated based on their local transforms.
 	 * Note: This is computationally more expensive than turning it off.
 	 */
-	UPROPERTY(meta = (Input, Constant))
+	UPROPERTY(meta = (Input))
 	bool bPropagateToChildren;
 
 	/** 
 	 * The settings for debug drawing
 	 */
-	UPROPERTY(meta = (Input, DetailsOnly))
+	UPROPERTY(meta = (Input))
 	FRigUnit_TwoBoneIKSimple_DebugSettings DebugSettings;
 
 	UPROPERTY()
-	FCachedRigElement CachedBoneAIndex;
+	int32 BoneAIndex;
 	UPROPERTY()
-	FCachedRigElement CachedBoneBIndex;
+	int32 BoneBIndex;
 	UPROPERTY()
-	FCachedRigElement CachedEffectorBoneIndex;
+	int32 EffectorBoneIndex;
 	UPROPERTY()
-	FCachedRigElement CachedPoleVectorSpaceIndex;
-};
-
-/**
- * Solves the two bone IK given two bones.
- * Note: This node operates in world space!
- */
-USTRUCT(meta=(DisplayName="Basic IK", Category="Hierarchy", Keywords="TwoBone,IK"))
-struct FRigUnit_TwoBoneIKSimplePerItem : public FRigUnit_HighlevelBaseMutable
-{
-	GENERATED_BODY()
-
-	FRigUnit_TwoBoneIKSimplePerItem()
-	{
-		ItemA = ItemB = EffectorItem = PoleVectorSpace = FRigElementKey(NAME_None, ERigElementType::Bone);
-		Effector = FTransform::Identity;
-		PrimaryAxis = FVector(1.f, 0.f, 0.f);
-		SecondaryAxis = FVector(0.f, 1.f, 0.f);
-		SecondaryAxisWeight = 1.f;
-		PoleVector = FVector(0.f, 0.f, 1.f);
-		PoleVectorKind = EControlRigVectorKind::Direction;
-		bEnableStretch = false;
-		StretchStartRatio = 0.75f;
-		StretchMaximumRatio = 1.25f;
-		Weight = 1.f;
-		ItemALength = ItemBLength = 0.f;
-		bPropagateToChildren = false;
-		DebugSettings = FRigUnit_TwoBoneIKSimple_DebugSettings();
-
-		CachedItemAIndex = FCachedRigElement();
-		CachedItemBIndex = FCachedRigElement();
-		CachedEffectorItemIndex = FCachedRigElement();
-		CachedPoleVectorSpaceIndex = FCachedRigElement();
-	}
-
-	virtual FRigElementKey DetermineSpaceForPin(const FString& InPinPath, void* InUserContext) const override
-	{
-		if (InPinPath.StartsWith(TEXT("PoleVector")))
-		{
-			return PoleVectorSpace;
-		}
-		return FRigElementKey();
-	}
-
-	RIGVM_METHOD()
-	virtual void Execute(const FRigUnitContext& Context) override;
-
-	/** 
-	 * The name of first item
-	 */
-	UPROPERTY(meta = (Input, ExpandByDefault))
-	FRigElementKey ItemA;
-
-	/** 
-	 * The name of second item
-	 */
-	UPROPERTY(meta = (Input, ExpandByDefault))
-	FRigElementKey ItemB;
-
-	/** 
-	 * The name of the effector item (if exists)
-	 */
-	UPROPERTY(meta = (Input, ExpandByDefault))
-	FRigElementKey EffectorItem;
-
-	/** 
-	 * The transform of the effector
-	 */
-	UPROPERTY(meta = (Input))
-	FTransform Effector;
-
-	/** 
-	 * The major axis being aligned - along the item
-	 */
-	UPROPERTY(meta = (Input))
-	FVector PrimaryAxis;
-
-	/** 
-	 * The minor axis being aligned - towards the polevector
-	 */
-	UPROPERTY(meta = (Input))
-	FVector SecondaryAxis;
-
-	/**
-	 * Determines how much the secondary axis roll is being applied
-	 */
-	UPROPERTY(meta = (Input))
-	float SecondaryAxisWeight;
-
-	/** 
-	 * The polevector to use for the IK solver
-	 * This can be a location or direction.
-	 */
-	UPROPERTY(meta = (Input))
-	FVector PoleVector;
-
-	/**
-	 * The kind of pole vector this is representing - can be a direction or a location
-	 */
-	UPROPERTY(meta = (Input))
-	EControlRigVectorKind PoleVectorKind;
-
-	/** 
-	 * The space in which the pole vector is expressed
-	 */
-	UPROPERTY(meta = (Input))
-	FRigElementKey PoleVectorSpace;
-
-	/**
-	 * If set to true the stretch feature of the solver will be enabled
-	 */
-	UPROPERTY(meta = (Input))
-	bool bEnableStretch;
-
-	/**
-	 * The ratio where the stretch starts
-	 */
-	UPROPERTY(meta = (Input))
-	float StretchStartRatio;
-
-	/**
-     * The maximum allowed stretch ratio
-	 */
-	UPROPERTY(meta = (Input))
-	float StretchMaximumRatio;
-
-	/** 
-	 * The weight of the solver - how much the IK should be applied.
-	 */
-	UPROPERTY(meta = (Input))
-	float Weight;
-
-	/** 
-	 * The length of the first item.
-	 * If set to 0.0 it will be determined by the hierarchy
-	 */
-	UPROPERTY(meta = (Input))
-	float ItemALength;
-
-	/** 
-	 * The length of the second item.
-	 * If set to 0.0 it will be determined by the hierarchy
-	 */
-	UPROPERTY(meta = (Input))
-	float ItemBLength;
-
-	/**
-	 * If set to true all of the global transforms of the children
-	 * of this bone will be recalculated based on their local transforms.
-	 * Note: This is computationally more expensive than turning it off.
-	 */
-	UPROPERTY(meta = (Input, Constant))
-	bool bPropagateToChildren;
-
-	/** 
-	 * The settings for debug drawing
-	 */
-	UPROPERTY(meta = (Input, DetailsOnly))
-	FRigUnit_TwoBoneIKSimple_DebugSettings DebugSettings;
-
-	UPROPERTY()
-	FCachedRigElement CachedItemAIndex;
-	UPROPERTY()
-	FCachedRigElement CachedItemBIndex;
-	UPROPERTY()
-	FCachedRigElement CachedEffectorItemIndex;
-	UPROPERTY()
-	FCachedRigElement CachedPoleVectorSpaceIndex;
+	int32 PoleVectorSpaceIndex;
 };
 
 /**

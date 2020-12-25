@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -46,7 +46,7 @@ public:
 	 * @param TrackType     A UMovieSceneTrack class type specifying which types of track to return
 	 * @return An array containing any tracks that match the type specified
 	 */
-	UFUNCTION(BlueprintCallable, Category="Sequence", meta=(ScriptMethod, DeterminesOutputType="TrackType"))
+	UFUNCTION(BlueprintCallable, Category="Sequence", meta=(ScriptMethod))
 	static TArray<UMovieSceneTrack*> FindMasterTracksByType(UMovieSceneSequence* Sequence, TSubclassOf<UMovieSceneTrack> TrackType);
 
 	/**
@@ -56,7 +56,7 @@ public:
 	 * @param TrackType     A UMovieSceneTrack class type specifying the exact types of track to return
 	 * @return An array containing any tracks that are exactly the same as the type specified
 	 */
-	UFUNCTION(BlueprintCallable, Category="Sequence", meta=(ScriptMethod, DeterminesOutputType="TrackType"))
+	UFUNCTION(BlueprintCallable, Category="Sequence", meta=(ScriptMethod))
 	static TArray<UMovieSceneTrack*> FindMasterTracksByExactType(UMovieSceneSequence* Sequence, TSubclassOf<UMovieSceneTrack> TrackType);
 
 	/**
@@ -66,18 +66,8 @@ public:
 	 * @param TrackType     A UMovieSceneTrack class type to create
 	 * @return The newly created track, if successful
 	 */
-	UFUNCTION(BlueprintCallable, Category="Sequence", meta=(ScriptMethod, DeterminesOutputType="TrackType"))
-	static UMovieSceneTrack* AddMasterTrack(UMovieSceneSequence* Sequence, TSubclassOf<UMovieSceneTrack> TrackType);
-
-	/**
-	 * Removes a master track
-	 *
-	 * @param Sequence        The sequence to use
-	 * @param MasterTrack     The master track to remove
-	 * @return Whether the master track was successfully removed
-	 */
 	UFUNCTION(BlueprintCallable, Category="Sequence", meta=(ScriptMethod))
-	static bool RemoveMasterTrack(UMovieSceneSequence* Sequence, UMovieSceneTrack* MasterTrack);
+	static UMovieSceneTrack* AddMasterTrack(UMovieSceneSequence* Sequence, TSubclassOf<UMovieSceneTrack> TrackType);
 
 	/**
 	 * Gets this sequence's display rate
@@ -107,22 +97,13 @@ public:
 	static FFrameRate GetTickResolution(UMovieSceneSequence* Sequence);
 
 	/**
-	 * Sets this sequence's tick resolution and migrates frame times
+	 * Sets this sequence's tick resolution
 	 *
 	 * @param Sequence        The sequence to use
 	 * @param TickResolution The tick resolution of the sequence, defining the smallest unit of time representable on this sequence
 	 */
 	UFUNCTION(BlueprintCallable, Category="Sequence", meta=(ScriptMethod))
 	static void SetTickResolution(UMovieSceneSequence* Sequence, FFrameRate TickResolution);
-
-	/**
-	 * Sets this sequence's tick resolution directly without migrating frame times
-	 *
-	 * @param Sequence        The sequence to use
-	 * @param TickResolution The tick resolution of the sequence, defining the smallest unit of time representable on this sequence
-	 */
-	UFUNCTION(BlueprintCallable, Category="Sequence", meta=(ScriptMethod))
-	static void SetTickResolutionDirectly(UMovieSceneSequence* Sequence, FFrameRate TickResolution);
 
 	/**
 	 * Make a new range for this sequence in its display rate
@@ -146,17 +127,11 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Sequence", meta=(ScriptMethod))
 	static FSequencerScriptingRange MakeRangeSeconds(UMovieSceneSequence* Sequence, float StartTime, float Duration);
 
-	/**
-	 * Get playback range of this sequence in display rate resolution
-	 *
-	 * @param Sequence        The sequence within which to get the playback range
-	 * @return Playback range of this sequence
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequence", meta = (ScriptMethod))
+	UE_DEPRECATED(4.22, "Please use GetPlaybackStart and GetPlaybackEnd instead.")
 	static FSequencerScriptingRange GetPlaybackRange(UMovieSceneSequence* Sequence);
 
 	/**
-	 * Get playback start of this sequence in display rate resolution
+	 * Get playback start of this sequence
 	 *
 	 * @param Sequence        The sequence within which to get the playback start
 	 * @return Playback start of this sequence
@@ -174,7 +149,7 @@ public:
 	static float GetPlaybackStartSeconds(UMovieSceneSequence* Sequence);
 
 	/**
-	 * Get playback end of this sequence in display rate resolution
+	 * Get playback end of this sequence
 	 *
 	 * @param Sequence        The sequence within which to get the playback end
 	 * @return Playback end of this sequence
@@ -300,42 +275,6 @@ public:
 	static float GetWorkRangeEnd(UMovieSceneSequence* InSequence);
 
 	/**
-	 * Set the evaluation type for this sequence
-	 *
-	 * @param Sequence The sequence within which to set the evaluation type
-	 * @param InEvaluationType The evaluation type to set for this sequence
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequence", meta = (ScriptMethod))
-	static void SetEvaluationType(UMovieSceneSequence* InSequence, EMovieSceneEvaluationType InEvaluationType);
-
-	/**
-	 * Get the evaluation type for this sequence
-	 *
-	 * @param Sequence The sequence within which to get the evaluation type
-	 * @return The evaluation type for this sequence
-	 */
-	UFUNCTION(BlueprintPure, Category = "Sequence", meta = (ScriptMethod))
-	static EMovieSceneEvaluationType GetEvaluationType(UMovieSceneSequence* InSequence);
-
-	/**
-	 * Set the clock source for this sequence
-	 *
-	 * @param Sequence The sequence within which to set the clock source
-	 * @param InClockSource The clock source to set for this sequence
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequence", meta = (ScriptMethod))
-	static void SetClockSource(UMovieSceneSequence* InSequence, EUpdateClockSource InClockSource);
-
-	/**
-	 * Get the clock source for this sequence
-	 *
-	 * @param Sequence The sequence within which to get the clock source
-	 * @return The clock source for this sequence
-	 */
-	UFUNCTION(BlueprintPure, Category = "Sequence", meta = (ScriptMethod))
-	static EUpdateClockSource GetClockSource(UMovieSceneSequence* InSequence);
-
-	/**
 	 * Get the timecode source of this sequence
 	 *
 	 * @param Sequence        The sequence within which to get the timecode source
@@ -353,16 +292,6 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category="Sequence", meta=(ScriptMethod))
 	static FSequencerBindingProxy FindBindingByName(UMovieSceneSequence* Sequence, FString Name);
-
-	/**
-	 * Attempt to locate a binding in this sequence by its Id
-	 *
-	 * @param Sequence        The sequence within which to find the binding
-	 * @param BindingId       The binding Id to look up
-	 * @return A unique identifier for the binding, or invalid
-	 */
-	UFUNCTION(BlueprintCallable, Category="Sequence", meta=(ScriptMethod))
-	static FSequencerBindingProxy FindBindingById(UMovieSceneSequence* Sequence, FGuid BindingId);
 
 	/**
 	 * Get all the bindings in this sequence
@@ -438,23 +367,10 @@ public:
 	 *
 	 * @param MasterSequence  The master sequence that contains the sequence
 	 * @param Binding The binding proxy to generate the binding id from
-	 * @param Space The object binding space to resolve from (Root or Local)
 	 * @return The new object binding id
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Sequence", meta = (ScriptMethod))
-	static FMovieSceneObjectBindingID MakeBindingID(UMovieSceneSequence* MasterSequence, const FSequencerBindingProxy& InBinding, EMovieSceneObjectBindingSpace Space = EMovieSceneObjectBindingSpace::Root);
-
-
-	/**
-	 * Make a binding for the given binding ID
-	 *
-	 * @param MasterSequence  The master sequence that contains the sequence
-	 * @param ObjectBindingID The object binding id that has the guid and the sequence id
-	 * @return The new binding proxy
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequence", meta = (ScriptMethod))
-	static FSequencerBindingProxy ResolveBindingID(UMovieSceneSequence* MasterSequence, FMovieSceneObjectBindingID InObjectBindingID);
-
+	static FMovieSceneObjectBindingID MakeBindingID(UMovieSceneSequence* MasterSequence, const FSequencerBindingProxy& InBinding);
 
 	/**
 	 * Get the root folders in the provided sequence
@@ -506,33 +422,18 @@ public:
 	static int32 AddMarkedFrame(UMovieSceneSequence* Sequence, const FMovieSceneMarkedFrame& InMarkedFrame);
 
 	/*
-	 * Sets the frame number for the given marked frame index. Does not maintain sort. Call SortMarkedFrames
+	 * Remove the user marked frame by index.
 	 *
-	 * @InMarkIndex The given user marked frame index to edit
-	 * @InFrameNumber The frame number to set
+	 * @RemoveIndex The index to the user marked frame to remove
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Sequence", meta = (ScriptMethod))
-	static void SetMarkedFrame(UMovieSceneSequence* Sequence, int32 InMarkIndex, FFrameNumber InFrameNumber);
+	static void RemoveMarkedFrame(UMovieSceneSequence* Sequence, int32 RemoveIndex);
 
 	/*
-	 * Delete the user marked frame by index.
-	 *
-	 * @DeleteIndex The index to the user marked frame to delete
+	 * Clear all user marked frames
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Sequence", meta = (ScriptMethod))
-	static void DeleteMarkedFrame(UMovieSceneSequence* Sequence, int32 DeleteIndex);
-
-	/*
-	 * Delete all user marked frames
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequence", meta = (ScriptMethod))
-	static void DeleteMarkedFrames(UMovieSceneSequence* Sequence);
-
-	/*
-	 * Sort the marked frames in chronological order
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequence", meta = (ScriptMethod))
-	static void SortMarkedFrames(UMovieSceneSequence* Sequence);
+	static void ClearMarkedFrames(UMovieSceneSequence* Sequence);
 
 	/*
 	 * Find the user marked frame by label
@@ -558,20 +459,4 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Sequence", meta = (ScriptMethod))
 	static int32 FindNextMarkedFrame(UMovieSceneSequence* Sequence, FFrameNumber InFrameNumber, bool bForward);
-
-	/*
-	 * Set read only
-	 *
-	 * @bInReadOnly Whether the movie scene should be read only or not
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequence", meta = (ScriptMethod))
-	static void SetReadOnly(UMovieSceneSequence* Sequence, bool bInReadOnly);
-
-	/*
-	 * Is read only
-	 *
-	 * @return Whether the movie scene is read only or not
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Sequence", meta = (ScriptMethod))
-	static bool IsReadOnly(UMovieSceneSequence* Sequence);
 };

@@ -1,8 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Render/Synchronization/DisplayClusterRenderSyncPolicySoftwareDX11.h"
 
-#include "Misc/DisplayClusterLog.h"
+#include "DisplayClusterLog.h"
 
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
@@ -20,7 +20,7 @@
 #include "D3D11Resources.h"
 #include "D3D11Viewport.h"
 
-#include "nvapi.h"
+#include "NVIDIA/nvapi/nvapi.h"
 
 
 static TAutoConsoleVariable<int32> CVarAdvancedSyncEnabled(
@@ -94,8 +94,7 @@ static NvU32 DisplayAmount = 0;
 static NvDisplayHandle DisplayHandles[NVAPI_MAX_DISPLAYS];
 
 
-FDisplayClusterRenderSyncPolicySoftwareDX11::FDisplayClusterRenderSyncPolicySoftwareDX11(const TMap<FString, FString>& Parameters)
-	: FDisplayClusterRenderSyncPolicySoftwareBase(Parameters)
+FDisplayClusterRenderSyncPolicySoftwareDX11::FDisplayClusterRenderSyncPolicySoftwareDX11()
 {
 	// We check the console variable once at start. The advanced synchronization policy is not 
 	// supposed to be activated/deactivated at runtime. Use .ini settings to set desired value.

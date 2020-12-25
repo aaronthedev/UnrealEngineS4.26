@@ -1,15 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ViewModels/Stack/NiagaraStackItemGroup.h"
 #include "ViewModels/Stack/NiagaraStackItem.h"
 #include "ViewModels/Stack/NiagaraStackErrorItem.h"
 #include "ViewModels/Stack/NiagaraStackEntry.h"
-#include "ViewModels/Stack/NiagaraStackModuleItem.h"
 #include "NiagaraStackEditorData.h"
 #include "ViewModels/Stack/NiagaraStackGraphUtilities.h"
 #include "ViewModels/NiagaraSystemViewModel.h"
 #include "ViewModels/NiagaraEmitterHandleViewModel.h"
 #include "ViewModels/NiagaraEmitterViewModel.h"
+
 
 void UNiagaraStackItemGroup::Initialize(FRequiredEntryData InRequiredEntryData, FText InDisplayName, FText InToolTip, INiagaraStackItemGroupAddUtilities* InAddUtilities)
 {
@@ -18,8 +18,6 @@ void UNiagaraStackItemGroup::Initialize(FRequiredEntryData InRequiredEntryData, 
 	GroupToolTip = InToolTip;
 	AddUtilities = InAddUtilities;
 	GroupFooter = nullptr;
-
-	AddChildFilter(FOnFilterChild::CreateUObject(this, &UNiagaraStackItemGroup::FilterChildrenWithIssues));
 }
 
 FText UNiagaraStackItemGroup::GetDisplayName() const
@@ -113,27 +111,11 @@ int32 UNiagaraStackItemGroup::GetChildIndentLevel() const
 	return GetIndentLevel();
 }
 
-void UNiagaraStackItemGroup::ChildStructureChangedInternal()
+void UNiagaraStackItemGroup::ChlildStructureChangedInternal()
 {
-	Super::ChildStructureChangedInternal();
+	Super::ChlildStructureChangedInternal();
 	RecursiveStackIssuesCount.Reset();
 	HighestIssueSeverity.Reset();
-}
-
-bool UNiagaraStackItemGroup::FilterChildrenWithIssues(const UNiagaraStackEntry& Child) const
-{
-	if (GetStackEditorData().GetShowOnlyIssues() == false)
-	{
-		return true;
-	}
-
-	const UNiagaraStackModuleItem* Module = Cast<UNiagaraStackModuleItem>(&Child);
-	if (Module != nullptr)
-	{
-		return Module->HasIssuesOrAnyChildHasIssues();
-	}
-
-	return false;
 }
 
 void UNiagaraStackItemGroupFooter::Initialize(FRequiredEntryData InRequiredEntryData)

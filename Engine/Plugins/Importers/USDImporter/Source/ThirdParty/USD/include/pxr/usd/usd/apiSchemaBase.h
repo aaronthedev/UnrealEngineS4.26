@@ -156,7 +156,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USD_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -168,7 +168,7 @@ private:
 
     // override SchemaBase virtuals.
     USD_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // ===================================================================== //
@@ -291,7 +291,7 @@ protected:
     /// 
     /// \sa UsdPrim::HasAPI()
     USD_API
-    bool _IsCompatible() const override;
+    virtual bool _IsCompatible() const override;
 
 private:
     // Helper method for adding 'apiName' to the apiSchemas metadata on the 

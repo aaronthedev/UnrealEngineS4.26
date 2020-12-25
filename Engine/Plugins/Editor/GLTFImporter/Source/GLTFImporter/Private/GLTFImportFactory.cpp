@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GLTFImportFactory.h"
 
@@ -90,7 +90,6 @@ UObject* UGLTFImportFactory::FactoryCreateFile(UClass* InClass, UObject* InParen
                                                const TCHAR* Parms, FFeedbackContext* Warn, bool& bOutOperationCanceled)
 {
 	GEditor->GetEditorSubsystem<UImportSubsystem>()->BroadcastAssetPreImport(this, InClass, InParent, InName, Parms);
-	AdditionalImportedObjects.Empty();
 
 	Warn->Log(Filename);
 
@@ -119,7 +118,7 @@ UObject* UGLTFImportFactory::FactoryCreateFile(UClass* InClass, UObject* InParen
 	{
 		const FString AssetName      = Context.Asset.Name;
 		const FString NewPackageName = UPackageTools::SanitizePackageName(*(FPaths::GetPath(InParent->GetName()) / AssetName));
-		UObject*      ParentPackage  = NewPackageName == InParent->GetName() ? InParent : CreatePackage(*NewPackageName);
+		UObject*      ParentPackage  = NewPackageName == InParent->GetName() ? InParent : CreatePackage(nullptr, *NewPackageName);
 
 		const TArray<UStaticMesh*>& CreatedMeshes = Context.CreateMeshes(ParentPackage, Flags, false);
 		Context.CreateMaterials(ParentPackage, Flags);
@@ -132,7 +131,6 @@ UObject* UGLTFImportFactory::FactoryCreateFile(UClass* InClass, UObject* InParen
 		else if (CreatedMeshes.Num() != 0)
 		{
 			Object = CreatedMeshes[0]->GetOutermost();
-			AdditionalImportedObjects.Append(CreatedMeshes);
 		}
 	}
 
@@ -151,7 +149,6 @@ void UGLTFImportFactory::CleanUp()
 	Context.StaticMeshFactory.CleanUp();
 
 	Context.Asset.Clear(8 * 1024, 512);
-	Super::CleanUp();
 }
 
 void UGLTFImportFactory::UpdateMeshes() const

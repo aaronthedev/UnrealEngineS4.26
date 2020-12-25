@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimationNodes/SAnimationGraphNode.h"
 #include "Widgets/SBoxPanel.h"
@@ -10,16 +10,6 @@
 #include "AnimGraphNode_Base.h"
 #include "IDocumentation.h"
 #include "AnimationEditorUtils.h"
-#include "Kismet2/BlueprintEditorUtils.h"
-#include "Animation/AnimInstance.h"
-#include "GraphEditorSettings.h"
-#include "SLevelOfDetailBranchNode.h"
-#include "Widgets/Layout/SSpacer.h"
-#include "AnimationGraphSchema.h"
-#include "SGraphPin.h"
-#include "Widgets/Layout/SWrapBox.h"
-
-#define LOCTEXT_NAMESPACE "AnimationGraphNode"
 
 class SPoseViewColourPickerPopup : public SCompoundWidget
 {
@@ -71,7 +61,7 @@ public:
 			.Padding(5.f, 2.f)
 			[
 				SNew(SButton)
-				.Text(LOCTEXT("RemovePoseWatch", "Remove Pose Watch"))
+				.Text(NSLOCTEXT("AnimationGraphNode", "RemovePoseWatch", "Remove Pose Watch"))
 				.OnClicked(this, &SPoseViewColourPickerPopup::RemovePoseWatch)
 			];
 
@@ -118,19 +108,17 @@ void SAnimationGraphNode::Construct(const FArguments& InArgs, UAnimGraphNode_Bas
 
 	this->UpdateGraphNode();
 
-	ReconfigurePinWidgetsForPropertyBindings();
-
 	const FSlateBrush* ImageBrush = FEditorStyle::Get().GetBrush(TEXT("Graph.AnimationFastPathIndicator"));
 
 	IndicatorWidget =
 		SNew(SImage)
 		.Image(ImageBrush)
-		.ToolTip(IDocumentation::Get()->CreateToolTip(LOCTEXT("AnimGraphNodeIndicatorTooltip", "Fast path enabled: This node is not using any Blueprint calls to update its data."), NULL, TEXT("Shared/GraphNodes/Animation"), TEXT("GraphNode_FastPathInfo")))
+		.ToolTip(IDocumentation::Get()->CreateToolTip(NSLOCTEXT("AnimationGraphNode", "AnimGraphNodeIndicatorTooltip", "Fast path enabled: This node is not using any Blueprint calls to update its data."), NULL, TEXT("Shared/GraphNodes/Animation"), TEXT("GraphNode_FastPathInfo")))
 		.Visibility(EVisibility::Visible);
 
 	PoseViewWidget =
 		SNew(SButton)
-		.ToolTipText(LOCTEXT("SpawnColourPicker", "Pose watch active. Click to spawn the pose watch colour picker"))
+		.ToolTipText(NSLOCTEXT("AnimationGraphNode", "SpawnColourPicker", "Pose watch active. Click to spawn the pose watch colour picker"))
 		.OnClicked(this, &SAnimationGraphNode::SpawnColourPicker)
 		.ButtonColorAndOpacity(this, &SAnimationGraphNode::GetPoseViewColour)
 		[
@@ -223,146 +211,3 @@ void SAnimationGraphNode::HandleNodeTitleChanged()
 		NodeTitle->MarkDirty();
 	}
 }
-
-void SAnimationGraphNode::GetNodeInfoPopups(FNodeInfoContext* Context, TArray<FGraphInformationPopupInfo>& Popups) const
-{
-	SGraphNodeK2Base::GetNodeInfoPopups(Context, Popups);
-
-	UAnimBlueprint* AnimBlueprint = Cast<UAnimBlueprint>(FBlueprintEditorUtils::FindBlueprintForNode(GraphNode));
-	if(AnimBlueprint)
-	{
-		UAnimInstance* ActiveObject = Cast<UAnimInstance>(AnimBlueprint->GetObjectBeingDebugged());
-		UAnimBlueprintGeneratedClass* Class = AnimBlueprint->GetAnimBlueprintGeneratedClass();
-
-		const FLinearColor Color(1.f, 0.5f, 0.25f);
-
-		// Display various types of debug data
-		if ((ActiveObject != NULL) && (Class != NULL))
-		{
-			if (Class->GetAnimNodeProperties().Num())
-			{
-				if(int32* NodeIndexPtr = Class->GetAnimBlueprintDebugData().NodePropertyToIndexMap.Find(TWeakObjectPtr<UAnimGraphNode_Base>(Cast<UAnimGraphNode_Base>(GraphNode))))
-				{
-					int32 AnimNodeIndex = *NodeIndexPtr;
-					// reverse node index temporarily because of a bug in NodeGuidToIndexMap
-					AnimNodeIndex = Class->GetAnimNodeProperties().Num() - AnimNodeIndex - 1;
-
-					if (FAnimBlueprintDebugData::FNodeValue* DebugInfo = Class->GetAnimBlueprintDebugData().NodeValuesThisFrame.FindByPredicate([AnimNodeIndex](const FAnimBlueprintDebugData::FNodeValue& InValue){ return InValue.NodeID == AnimNodeIndex; }))
-					{
-						Popups.Emplace(nullptr, Color, DebugInfo->Text);
-					}
-				}
-			}
-		}
-	}
-}
-
-void SAnimationGraphNode::ReconfigurePinWidgetsForPropertyBindings()
-{
-	UAnimGraphNode_Base* AnimGraphNode = CastChecked<UAnimGraphNode_Base>(GraphNode);
-
-	for(UEdGraphPin* Pin : AnimGraphNode->Pins)
-	{
-		FEdGraphPinType PinType = Pin->PinType;
-		if(Pin->Direction == EGPD_Input && !UAnimationGraphSchema::IsPosePin(PinType))
-		{
-			TSharedPtr<SGraphPin> PinWidget = FindWidgetForPin(Pin);
-
-			if(PinWidget.IsValid())
-			{
-				// Compare FName without number to make sure we catch array properties that are split into multiple pins
-				FName ComparisonName = Pin->GetFName();
-				ComparisonName.SetNumber(0);
-
-				// Hide any value widgets when we have bindings
-				if(PinWidget->GetValueWidget() != SNullWidget::NullWidget)
-				{
-					TWeakPtr<SGraphPin> WeakPinWidget = PinWidget;
-
-					PinWidget->GetValueWidget()->SetVisibility(MakeAttributeLambda([ComparisonName, AnimGraphNode, WeakPinWidget]()
-					{
-						EVisibility Visibility = EVisibility::Collapsed;
-
-						if(WeakPinWidget.IsValid())
-						{
-							Visibility = WeakPinWidget.Pin()->GetDefaultValueVisibility();
-
-							if (FAnimGraphNodePropertyBinding* BindingPtr = AnimGraphNode->PropertyBindings.Find(ComparisonName))
-							{
-								Visibility = EVisibility::Collapsed;
-							}
-						}
-
-						return Visibility;
-					}));
-				}
-
-				// Add an image & label for a binding
-				PinWidget->GetLabelAndValue()->AddSlot()
-				[
-					SNew(SHorizontalBox)
-					.ToolTipText_Lambda([ComparisonName, AnimGraphNode]()
-					{
-						if (FAnimGraphNodePropertyBinding* BindingPtr = AnimGraphNode->PropertyBindings.Find(ComparisonName))
-						{
-							return FText::Format(LOCTEXT("BindingTooltipFormat", "Pin is bound to property '{0}'"), BindingPtr->PathAsText);
-						}
-
-						return FText::GetEmpty();
-					})
-					.Visibility_Lambda([ComparisonName, AnimGraphNode]()
-					{
-						return AnimGraphNode->PropertyBindings.Contains(ComparisonName) ? EVisibility::Visible : EVisibility::Collapsed;
-					})
-					+SHorizontalBox::Slot()
-					.AutoWidth()
-					.VAlign(VAlign_Center)
-					.Padding(3.0f, 2.0f)
-					[
-						SNew(SImage)
-						.Image_Lambda([ComparisonName, AnimGraphNode, PinType]() -> const FSlateBrush*
-						{
-							if (FAnimGraphNodePropertyBinding* BindingPtr = AnimGraphNode->PropertyBindings.Find(ComparisonName))
-							{
-								static FName FunctionIcon(TEXT("GraphEditor.Function_16x"));
-
-								return BindingPtr->Type == EAnimGraphNodePropertyBindingType::Property ? FBlueprintEditorUtils::GetIconFromPin(PinType, true) : FEditorStyle::GetBrush(FunctionIcon);
-							}
-
-							return nullptr;
-						})
-						.ColorAndOpacity_Lambda([AnimGraphNode, ComparisonName]()
-						{
-							if(const UEdGraphSchema* Schema = AnimGraphNode->GetSchema())
-							{
-								if (FAnimGraphNodePropertyBinding* BindingPtr = AnimGraphNode->PropertyBindings.Find(ComparisonName))
-								{
-									return Schema->GetPinTypeColor(BindingPtr->bIsPromotion ? BindingPtr->PromotedPinType : BindingPtr->PinType);
-								}
-							}
-							return FLinearColor::White;
-						})
-					]
-					+SHorizontalBox::Slot()
-					.AutoWidth()
-					.VAlign(VAlign_Center)
-					.Padding(3.0f, 2.0f)
-					[
-						SNew(STextBlock)
-						.Text_Lambda([ComparisonName, AnimGraphNode]()
-						{
-							if (const FAnimGraphNodePropertyBinding* BindingPtr = AnimGraphNode->PropertyBindings.Find(ComparisonName))
-							{
-								return BindingPtr->PathAsText;
-							}
-
-							return FText::GetEmpty();
-						})
-					]
-				];
-			}
-		}
-	}
-}
-
-#undef LOCTEXT_NAMESPACE

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,7 +13,6 @@
 #include "Containers/Union.h"
 #include "Containers/Map.h"
 #include "Templates/Function.h"
-#include "EntitySystem/Interrogation/MovieSceneInterrogationLinker.h"
 
 struct FMovieSceneFloatChannel;
 
@@ -80,7 +79,7 @@ private:
 	void ShowPickerSubMenu(FMenuBuilder& MenuBuilder, TArray<FGuid> ObjectBindings, UMovieSceneSection* Section);
 
 	/** Helper for AddKeyInternal to get transform tracks for child */
-	void FindOrCreateTransformTrack(const TRange<FFrameNumber>& InAttachRange, UMovieScene* InMovieScene, const FGuid& InObjectHandle, UMovieScene3DTransformTrack*& OutTransformTrack, UMovieScene3DTransformSection*& OutTransformSection);
+	void FindOrCreateTransformTrack(const TRange<FFrameNumber>& InAttachRange, UMovieScene* InMovieScene, const FGuid& InObjectHandle, UMovieScene3DTransformTrack*& OutTransformTrack, UMovieScene3DTransformSection*& OutTransformSection, FMovieSceneEvaluationTrack*& OutEvalTrack);
 
 	/** Helper for AddKeyInternal to offset child track's keys */
 	template<typename ModifierFuncType>
@@ -92,7 +91,4 @@ private:
 
 private:
 	ETransformPreserveType PreserveType;
-
-public:
-	TUniquePtr<UE::MovieScene::FSystemInterrogator> Interrogator;
 };

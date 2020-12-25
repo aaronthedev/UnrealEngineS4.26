@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef AbcExport_Foundation_h
-#define AbcExport_Foundation_h
+#ifndef _AbcExport_Foundation_h_
+#define _AbcExport_Foundation_h_
 
 #include <Alembic/AbcGeom/All.h>
 
@@ -58,7 +58,6 @@
 #include <maya/MFnAmbientLight.h>
 #include <maya/MFnAttribute.h>
 #include <maya/MFnCamera.h>
-#include <maya/MFnComponentListData.h>
 #include <maya/MFnDagNode.h>
 #include <maya/MFnData.h>
 #include <maya/MFnDependencyNode.h>
@@ -135,4 +134,4 @@
 
 #define ABCEXPORT_VERSION "1.0"
 
-#endif  // AbcExport_Foundation_h
+#endif  // _AbcExport_Foundation_h_

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -83,19 +83,19 @@ class UDialogueWave : public UObject
 	GENERATED_UCLASS_BODY()
 
 	/** true if this dialogue is considered to contain mature/adult content. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Filter, AssetRegistrySearchable)
+	UPROPERTY(EditAnywhere, Category=Filter, AssetRegistrySearchable)
 	uint32 bMature:1;
 
 	/**  */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Script, meta=(InlineEditConditionToggle))
+	UPROPERTY(EditAnywhere, Category=Script, meta=(InlineEditConditionToggle))
 	uint32 bOverride_SubtitleOverride : 1;
 
 	/** A localized version of the text that is actually spoken phonetically in the audio. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Script)
+	UPROPERTY(EditAnywhere, Category=Script)
 	FString SpokenText;
 
 	/** A localized version of the subtitle text that should be displayed for this audio. By default this will be the same as the Spoken Text. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Script, meta=(EditCondition="bOverride_SubtitleOverride"))
+	UPROPERTY(EditAnywhere, Category=Script, meta=(EditCondition="bOverride_SubtitleOverride"))
 	FString SubtitleOverride;
 
 #if WITH_EDITORONLY_DATA

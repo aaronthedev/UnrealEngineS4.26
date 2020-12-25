@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Internationalization/Internationalization.h"
 #include "Internationalization/TextLocalizationResource.h"
@@ -54,7 +54,7 @@ bool FInternationalization::SetCurrentCulture(const FString& InCultureName)
 			CurrentLocale = NewCulture;
 			CurrentAssetGroupCultures.Reset();
 	
-			Implementation->HandleLanguageChanged(CurrentLanguage.ToSharedRef());
+			Implementation->HandleLanguageChanged(InCultureName);
 	
 			BroadcastCultureChanged();
 		}
@@ -73,7 +73,7 @@ bool FInternationalization::SetCurrentLanguage(const FString& InCultureName)
 		{
 			CurrentLanguage = NewCulture;
 
-			Implementation->HandleLanguageChanged(CurrentLanguage.ToSharedRef());
+			Implementation->HandleLanguageChanged(InCultureName);
 
 			BroadcastCultureChanged();
 		}
@@ -110,7 +110,7 @@ bool FInternationalization::SetCurrentLanguageAndLocale(const FString& InCulture
 			CurrentLanguage = NewCulture;
 			CurrentLocale = NewCulture;
 
-			Implementation->HandleLanguageChanged(CurrentLanguage.ToSharedRef());
+			Implementation->HandleLanguageChanged(InCultureName);
 
 			BroadcastCultureChanged();
 		}
@@ -205,7 +205,7 @@ void FInternationalization::RestoreCultureState(const FCultureStateSnapshot& InS
 
 				CurrentLanguage = NewCulture;
 
-				Implementation->HandleLanguageChanged(CurrentLanguage.ToSharedRef());
+				Implementation->HandleLanguageChanged(InSnapshot.Language);
 			}
 		}
 	}
@@ -351,7 +351,7 @@ FString& FInternationalization::Leetify(FString& SourceString)
 				const TCHAR* ArgumentEndPtr = FCString::Strchr(RawSourceStringPtr + SourceCharIndex + 1, SourceArgumentEndMarker);
 				if (ArgumentEndPtr)
 				{
-					const int32 ArgumentEndIndex = UE_PTRDIFF_TO_INT32(ArgumentEndPtr - RawSourceStringPtr);
+					const int32 ArgumentEndIndex = ArgumentEndPtr - RawSourceStringPtr;
 
 					// Inject a marker before the argument block
 					LeetifiedString.AppendChar(LeetifyArgumentStartMarker);
@@ -417,16 +417,6 @@ bool FInternationalization::IsCultureRemapped(const FString& Name, FString* OutM
 bool FInternationalization::IsCultureAllowed(const FString& Name)
 {
 	return Implementation->IsCultureAllowed(Name);
-}
-
-void FInternationalization::RefreshCultureDisplayNames(const TArray<FString>& InPrioritizedDisplayCultureNames)
-{
-	Implementation->RefreshCultureDisplayNames(InPrioritizedDisplayCultureNames);
-}
-
-void FInternationalization::RefreshCachedConfigData()
-{
-	Implementation->RefreshCachedConfigData();
 }
 
 void FInternationalization::GetCultureNames(TArray<FString>& CultureNames) const

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PortableObjectFormatDOM.h"
 #include "Internationalization/Culture.h"
@@ -761,7 +761,7 @@ void FPortableObjectFormatDOM::CreateNewHeader()
 	//Hard code some header entries for now in the following format
 	/*
 	# Engine English translation
-	# Copyright Epic Games, Inc. All Rights Reserved.
+	# Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 	#
 	msgid ""
 	msgstr ""
@@ -790,13 +790,8 @@ void FPortableObjectFormatDOM::CreateNewHeader()
 	Header.SetEntryValue( TEXT("Plural-Forms"), Language.GetPluralForms() );
 
 	Header.Comments.Add( FString::Printf(TEXT("%s %s translation."), *GetProjectName(), *Language.EnglishName() ) );
-	Header.Comments.Add( TEXT("Copyright Epic Games, Inc. All Rights Reserved.") );
+	Header.Comments.Add( TEXT("Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.") );
 	Header.Comments.Add( FString(TEXT("")) );
-}
-
-void FPortableObjectFormatDOM::SetHeaderValue(const FString& EntryKey, const FString& EntryValue)
-{
-	Header.SetEntryValue(EntryKey, EntryValue);
 }
 
 bool FPortableObjectFormatDOM::SetLanguage( const FString& LanguageCode, const FString& LangPluralForms )
@@ -911,6 +906,14 @@ void FPortableObjectEntry::AddExtractedComment( const FString& InComment )
 	{
 		ExtractedComments.AddUnique(InComment);
 	}
+
+	//// Extracted comments can contain multiple references in a single line so we parse those out.
+	//TArray<FString> CommentsToProcess;
+	//InComment.ParseIntoArray( CommentsToProcess, TEXT(" "), true );
+	//for( const FString& ExtractedComment : CommentsToProcess )
+	//{
+	//	ExtractedComments.AddUnique( ExtractedComment );
+	//}
 }
 
 void FPortableObjectEntry::AddReference( const FString& InReference )
@@ -919,6 +922,14 @@ void FPortableObjectEntry::AddReference( const FString& InReference )
 	{
 		ReferenceComments.AddUnique(InReference);
 	}
+	
+	//// Reference comments can contain multiple references in a single line so we parse those out.
+	//TArray<FString> ReferencesToProcess;
+	//InReference.ParseIntoArray( ReferencesToProcess, TEXT(" "), true );
+	//for( const FString& Reference : ReferencesToProcess )
+	//{
+	//	ReferenceComments.AddUnique( Reference );
+	//}
 }
 
 void FPortableObjectEntry::AddExtractedComments( const TArray<FString>& InComments )
@@ -934,22 +945,6 @@ void FPortableObjectEntry::AddReferences( const TArray<FString>& InReferences )
 	for( const FString& Reference : InReferences )
 	{
 		AddReference( Reference );
-	}
-}
-
-void FPortableObjectEntry::AddTranslatorComment(const FString& InComment)
-{
-	if (!InComment.IsEmpty())
-	{
-		TranslatorComments.AddUnique(InComment);
-	}
-}
-
-void FPortableObjectEntry::AddTranslatorComments(const TArray<FString>& InComments)
-{
-	for (const FString& TranslatorComment : InComments)
-	{
-		AddTranslatorComment(TranslatorComment);
 	}
 }
 

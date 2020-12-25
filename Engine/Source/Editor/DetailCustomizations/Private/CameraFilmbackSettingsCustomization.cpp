@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CameraFilmbackSettingsCustomization.h"
 #include "PropertyHandle.h"
@@ -47,7 +47,7 @@ void FCameraFilmbackSettingsCustomization::CustomizeHeader(TSharedRef<IPropertyH
 			.OptionsSource(&PresetComboList)
 			.OnGenerateWidget(this, &FCameraFilmbackSettingsCustomization::MakePresetComboWidget)
 			.OnSelectionChanged(this, &FCameraFilmbackSettingsCustomization::OnPresetChanged)
-			.IsEnabled(this, &FCameraFilmbackSettingsCustomization::IsPresetEnabled)
+			.IsEnabled(FSlateApplication::Get().GetNormalExecutionAttribute())
 			.ContentPadding(2)
 			.Content()
 			[
@@ -89,19 +89,6 @@ TSharedRef<SWidget> FCameraFilmbackSettingsCustomization::MakePresetComboWidget(
 		SNew(STextBlock)
 		.Text(FText::FromString(*InItem))
 		.Font(IDetailLayoutBuilder::GetDetailFont());
-}
-
-bool FCameraFilmbackSettingsCustomization::IsPresetEnabled() const
-{
-	bool bEnabled = false;
-	if (SensorHeightHandle.IsValid() && SensorWidthHandle.IsValid())
-	{
-		bEnabled = (
-				SensorHeightHandle->IsEditable() &&
-				SensorWidthHandle->IsEditable() &&
-				FSlateApplication::Get().GetNormalExecutionAttribute().Get());
-	}
-	return bEnabled;
 }
 
 void FCameraFilmbackSettingsCustomization::OnPresetChanged(TSharedPtr<FString> NewSelection, ESelectInfo::Type SelectInfo)

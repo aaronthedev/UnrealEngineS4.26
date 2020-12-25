@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -46,7 +46,7 @@ public:
 	FString BaseFileName;
 
 	/** Use the default back buffer size or specify a specific size to capture. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category="Media", meta = (InlineEditConditionToggle))
+	UPROPERTY(BlueprintReadWrite, Category="Media")
 	bool bOverrideDesiredSize;
 
 	/** Use the default back buffer size or specify a specific size to capture. */
@@ -54,7 +54,7 @@ public:
 	FIntPoint DesiredSize;
 
 	/** Use the default back buffer pixel format or specify a specific the pixel format to capture. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category="Media", meta = (InlineEditConditionToggle))
+	UPROPERTY(BlueprintReadWrite, Category="Media")
 	bool bOverridePixelFormat;
 
 	/** Use the default back buffer pixel format or specify a specific the pixel format to capture. */

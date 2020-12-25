@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieSceneTranslatorEDL.h"
 #include "MovieScene.h"
@@ -190,9 +190,9 @@ void ParseFromEDL(const FString& InputString, FFrameRate TickResolution, FFrameR
 				ReelName = InputChars[4];
 
 				//@todo can't assume avi's written out
-				ReelName.LeftChopInline(4, false); // strip .avi
+				ReelName = ReelName.LeftChop(4); // strip .avi
 
-				FString ElementName = MoveTemp(ReelName);
+				FString ElementName = ReelName;
 				FString ElementPath = ElementName;
 
 				// If everything checks out add to OutShotData
@@ -471,8 +471,8 @@ bool MovieSceneTranslatorEDL::ExportEDL(const UMovieScene* InMovieScene, FFrameR
 				FString ShotName = CinematicShotSection->GetShotDisplayName();
 				FString ShotPath = CinematicShotSection->GetSequence()->GetMovieScene()->GetOuter()->GetPathName();
 
-				FFrameNumber SourceInFrame = ConvertFrameTime(InHandleFrames, InFrameRate, TickResolution).FrameNumber;
-				FFrameNumber SourceOutFrame = ConvertFrameTime(InHandleFrames, InFrameRate, TickResolution).FrameNumber + UE::MovieScene::DiscreteSize(CinematicShotSection->GetRange());
+				FFrameNumber SourceInFrame = ConvertFrameTime(InHandleFrames + 1, InFrameRate, TickResolution).FrameNumber;
+				FFrameNumber SourceOutFrame = ConvertFrameTime(InHandleFrames, InFrameRate, TickResolution).FrameNumber + MovieScene::DiscreteSize(CinematicShotSection->GetRange());
 
 				FFrameNumber EditInFrame    = CinematicShotSection->GetInclusiveStartFrame();
 				FFrameNumber EditOutFrame   = CinematicShotSection->GetExclusiveEndFrame();

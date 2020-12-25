@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "AudioCaptureCore.h"
-#include "AudioCaptureCoreLog.h"
 #include "Features/IModularFeatures.h"
 
 namespace Audio
@@ -33,7 +32,7 @@ namespace Audio
 	FORCEINLINE TUniquePtr<IAudioCaptureStream> FAudioCapture::CreateImpl()
 	{
 		TArray<IAudioCaptureFactory*> AudioCaptureStreamFactories = IModularFeatures::Get().GetModularFeatureImplementations<IAudioCaptureFactory>(IAudioCaptureFactory::GetModularFeatureName());
-
+		
 		// For now, just return the first audio capture stream implemented. We can make this configurable at a later point.
 		if (AudioCaptureStreamFactories.Num() > 0 && AudioCaptureStreamFactories[0] != nullptr)
 		{

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,21 +9,21 @@
 struct FTraceRouteRecord
 {
 	struct FObjectGraphNode*	GraphNode;
-	TArray<FProperty*>			ReferencerProperties;
+	TArray<UProperty*>			ReferencerProperties;
 
-	FTraceRouteRecord( struct FObjectGraphNode* InGraphNode, FProperty* InReferencerProperty)
+	FTraceRouteRecord( struct FObjectGraphNode* InGraphNode, UProperty* InReferencerProperty)
 	: GraphNode(InGraphNode)
 	{
 		ReferencerProperties.Add(InReferencerProperty);
 	}
 
-	FTraceRouteRecord( struct FObjectGraphNode* InGraphNode, const TArray<FProperty*>&	InReferencerProperties )
+	FTraceRouteRecord( struct FObjectGraphNode* InGraphNode, const TArray<UProperty*>&	InReferencerProperties )
 		: GraphNode(InGraphNode)
 	{
 		ReferencerProperties = InReferencerProperties;
 	}
 
-	void Add(FProperty* InReferencerProperty)
+	void Add(UProperty* InReferencerProperty)
 	{
 		ReferencerProperties.Add(InReferencerProperty);
 	}
@@ -50,7 +50,7 @@ struct FObjectGraphNode
 	 * The property that references NodeObject; only set on nodes which are part
 	 * of the calculated shortest route
 	 */
-	TArray<FProperty*>							ReferencerProperties;
+	TArray<UProperty*>							ReferencerProperties;
 
 	/** Default constructor */
 	FObjectGraphNode( UObject* InNodeObject=NULL )

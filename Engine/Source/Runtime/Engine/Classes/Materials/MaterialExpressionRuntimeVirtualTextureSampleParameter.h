@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -26,7 +26,7 @@ class UMaterialExpressionRuntimeVirtualTextureSampleParameter : public UMaterial
 #if WITH_EDITORONLY_DATA
 	/** Controls where the this parameter is displayed in a material instance parameter list. The lower the number the higher up in the parameter list. */
 	UPROPERTY(EditAnywhere, Category = MaterialParameter)
-	int32 SortPriority = 32;
+	int32 SortPriority;
 #endif
 
 #if WITH_EDITOR
@@ -35,7 +35,7 @@ class UMaterialExpressionRuntimeVirtualTextureSampleParameter : public UMaterial
 #endif
 
 	/** Return whether this is the named parameter from this material expression, and if it is then return its value. */
-	bool IsNamedParameter(const FHashedMaterialParameterInfo& ParameterInfo, URuntimeVirtualTexture*& OutValue) const;
+	bool IsNamedParameter(const FMaterialParameterInfo& ParameterInfo, URuntimeVirtualTexture*& OutValue) const;
 	/** Adds to arrays of parameter info and id with the values used by this material expression. */
 	void GetAllParameterInfo(TArray<FMaterialParameterInfo> &OutParameterInfo, TArray<FGuid> &OutParameterIds, const FMaterialParameterInfo& InBaseParameterInfo) const;
 

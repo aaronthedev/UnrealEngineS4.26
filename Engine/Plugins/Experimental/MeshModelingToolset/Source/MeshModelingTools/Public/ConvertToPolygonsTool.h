@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -30,16 +30,6 @@ public:
 
 
 
-UENUM()
-enum class EConvertToPolygonsMode
-{
-	/** Convert based on Angle Tolerance between Face Normals */
-	FaceNormalDeviation,
-	/** Create PolyGroups based on UV Islands */
-	FromUVISlands
-};
-
-
 
 UCLASS()
 class MESHMODELINGTOOLS_API UConvertToPolygonsToolProperties : public UInteractiveToolPropertySet
@@ -47,21 +37,12 @@ class MESHMODELINGTOOLS_API UConvertToPolygonsToolProperties : public UInteracti
 	GENERATED_BODY()
 
 public:
-	/** Strategy to use to group triangles */
-	UPROPERTY(EditAnywhere, Category = PolyGroups)
-	EConvertToPolygonsMode ConversionMode = EConvertToPolygonsMode::FaceNormalDeviation;
-
 	/** Tolerance for planarity */
-	UPROPERTY(EditAnywhere, Category = PolyGroups, meta = (UIMin = "0.001", UIMax = "20.0", ClampMin = "0.0", ClampMax = "90.0", EditCondition = "ConversionMode == EConvertToPolygonsMode::FaceNormalDeviation"))
+	UPROPERTY(EditAnywhere, Category = PolyGroups, meta = (UIMin = "0.001", UIMax = "20.0", ClampMin = "0.0", ClampMax = "90.0"))
 	float AngleTolerance = 0.1f;
 
-	/** If true, normals are recomputed per-group, with hard edges at group boundaries */
 	UPROPERTY(EditAnywhere, Category = PolyGroups)
 	bool bCalculateNormals = true;
-	
-	/** Display each group with a different auto-generated color */
-	UPROPERTY(EditAnywhere, Category = Display)
-	bool bShowGroupColors = true;
 };
 
 /**
@@ -73,18 +54,16 @@ class MESHMODELINGTOOLS_API UConvertToPolygonsTool : public USingleSelectionTool
 	GENERATED_BODY()
 
 public:
-	UConvertToPolygonsTool();
-
 	virtual void Setup() override;
 	virtual void Shutdown(EToolShutdownType ShutdownType) override;
 
 	virtual void Render(IToolsContextRenderAPI* RenderAPI) override;
-	virtual void OnTick(float DeltaTime) override;
 
 	virtual bool HasCancel() const override { return true; }
-	virtual bool HasAccept() const override { return true; }
+	virtual bool HasAccept() const override;
+	virtual bool CanAccept() const override;
 
-	virtual void OnPropertyModified(UObject* PropertySet, FProperty* Property) override;
+	virtual void OnPropertyModified(UObject* PropertySet, UProperty* Property) override;
 
 protected:
 	UPROPERTY()
@@ -96,12 +75,9 @@ protected:
 protected:
 	FDynamicMesh3 SearchMesh;
 	FDynamicMeshNormalOverlay InitialNormals;
-
 	FFindPolygonsAlgorithm Polygons;
 	bool bPolygonsValid = false;
 	void UpdatePolygons();
-
-	void UpdateVisualization();
 
 	void ConvertToPolygons(FMeshDescription* MeshIn);
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -21,8 +21,6 @@ public class UMGEditor : ModuleRules
 				"Editor/UMGEditor/Private/DragDrop",
                 "Editor/UMGEditor/Private/Utility",
 			});
-
-		OverridePackageType = PackageOverrideType.EngineDeveloper;
 
 		PrivateIncludePathModuleNames.AddRange(
 			new string[] {
@@ -56,7 +54,6 @@ public class UMGEditor : ModuleRules
 				"EditorStyle",
 				"Slate",
 				"SlateCore",
-				"SlateRHIRenderer",
 				"MessageLog",
 				"MovieScene",
 				"MovieSceneTools",
@@ -67,10 +64,7 @@ public class UMGEditor : ModuleRules
                 "TargetPlatform",
 				"TimeManagement",
 				"GameProjectGeneration",
-				"PropertyPath",
-				"ToolMenus",
-				"SlateReflector",
-				"DeveloperSettings",
+				"PropertyPath"
 			}
 			);
 	}

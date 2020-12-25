@@ -1,10 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
-#include "DatasmithUtils.h"
 #include "Math/Vector.h"
-#include "Templates/TypeHash.h"
 
 namespace CADLibrary
 {
@@ -13,6 +11,14 @@ namespace CADLibrary
 		StitchingNone = 0,
 		StitchingHeal,
 		StitchingSew,
+	};
+
+	enum class EModelCoordSystem : uint8
+	{
+		ZUp_LeftHanded,
+		ZUp_RightHanded,
+		YUp_LeftHanded,
+		YUp_RightHanded,
 	};
 
 	enum class EDisplayPreference : uint8
@@ -30,12 +36,6 @@ namespace CADLibrary
 		BodyOnly,
 	};
 
-	//enum class ERetessellationRule : uint8
-	//{
-	//	All = 0,
-	//	SkipDeletedSurfaces,
-	//};
-
 	struct FImportParameters
 	{
 		double MetricUnit = 0.001;
@@ -44,12 +44,10 @@ namespace CADLibrary
 		double MaxEdgeLength = 0.0;
 		double MaxNormalAngle = 20.0;
 		EStitchingTechnique StitchingTechnique = EStitchingTechnique::StitchingNone;
-		FDatasmithUtils::EModelCoordSystem ModelCoordSys = FDatasmithUtils::EModelCoordSystem::ZUp_RightHanded;
+		EModelCoordSystem ModelCoordSys = EModelCoordSystem::ZUp_RightHanded;
 		EDisplayDataPropagationMode Propagation = EDisplayDataPropagationMode::TopDown;
 		EDisplayPreference DisplayPreference = EDisplayPreference::MaterialPrefered;
 		bool bScaleUVMap = true;
-		bool bEnableCacheUsage = true;
-		//ERetessellationRule RetessellationRule = ERetessellationRule::All;
 
 		uint32 GetHash() const
 		{

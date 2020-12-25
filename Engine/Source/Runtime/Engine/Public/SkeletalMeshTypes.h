@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -60,8 +60,6 @@ struct FSkeletalMeshCustomVersion
 		SectionIgnoreByReduceAdded = 16,
 		// Adding skin weight profile support
 		SkinWeightProfiles = 17,
-		// Remove uninitialized/deprecated enable cloth LOD flag
-		RemoveEnableClothLOD = 18,
 
 		// -----<new versions can be added above this line>-------------------------------------------------
 		VersionPlusOne,
@@ -84,8 +82,6 @@ struct FRecomputeTangentCustomVersion
 		BeforeCustomVersionWasAdded = 0,
 		// We serialize the RecomputeTangent Option
 		RuntimeRecomputeTangent = 1,
-		// Choose which Vertex Color channel to use as mask to blend tangents
-		RecomputeTangentVertexColorMask = 2,
 		// -----<new versions can be added above this line>-------------------------------------------------
 		VersionPlusOne,
 		LatestVersion = VersionPlusOne - 1
@@ -132,20 +128,6 @@ struct ESkeletalMeshVertexFlags
 	};
 };
 
-/** Name of vertex color channels */
-enum class ESkinVertexColorChannel : uint8
-{
-	// 
-	Red = 0,
-	// 
-	Green = 1,
-	// 
-	Blue = 2,
-	//
-	Alpha = 3
-};
-
-
 
 /**
  * A structure for holding mesh-to-mesh triangle influences to skin one mesh to another (similar to a wrap deformer)
@@ -168,13 +150,29 @@ struct FMeshToMeshVertData
 	// skinning, anything else uses the source mesh and the above skin data to get the final position
 	uint16	 SourceMeshVertIndices[4];
 
-	// For weighted averaging of multiple triangle influences
-	float	 Weight = 0.0f;
+	// Dummy for alignment (16 bytes)
+	uint32	 Padding[2];
 
-	// Dummy for alignment
-	uint32	 Padding;
-
-	friend ENGINE_API FArchive& operator<<(FArchive& Ar, FMeshToMeshVertData& V);
+	/**
+	 * Serializer
+	 *
+	 * @param Ar - archive to serialize with
+	 * @param V - vertex to serialize
+	 * @return archive that was used
+	 */
+	friend FArchive& operator<<(FArchive& Ar, FMeshToMeshVertData& V)
+	{
+		Ar	<< V.PositionBaryCoordsAndDist 
+			<< V.NormalBaryCoordsAndDist
+			<< V.TangentBaryCoordsAndDist
+			<< V.SourceMeshVertIndices[0]
+			<< V.SourceMeshVertIndices[1]
+			<< V.SourceMeshVertIndices[2]
+			<< V.SourceMeshVertIndices[3]
+			<< V.Padding[0]
+			<< V.Padding[1];
+		return Ar;
+	}
 };
 
 struct FClothingSectionData
@@ -325,9 +323,6 @@ protected:
 	uint8 bIsCPUSkinned : 1;
 	uint8 bCanHighlightSelectedSections : 1;
 	uint8 bRenderStatic:1;
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	uint8 bDrawDebugSkeleton:1;
-#endif
 
 	TEnumAsByte<ERHIFeatureLevel::Type> FeatureLevel;
 
@@ -383,11 +378,6 @@ protected:
 	
 	/** The primitive's pre-skinned local space bounds. */
 	FBoxSphereBounds PreSkinnedLocalBounds;
-
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	/** The color we draw this component in if drawing debug bones */
-	TOptional<FLinearColor> DebugDrawColor;
-#endif
 
 #if WITH_EDITORONLY_DATA
 	/** The component streaming distance multiplier */

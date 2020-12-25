@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -58,9 +58,6 @@ public:
 		/** Content for the dialog */
 		SLATE_ARGUMENT(TSharedPtr<SWidget>, DialogContent)
 
-		/** Event triggered when the dialog is closed, either because one of the buttons is pressed, or the windows is closed. */
-		SLATE_EVENT(FSimpleDelegate, OnClosed)
-
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
@@ -73,13 +70,11 @@ public:
 	/** Show a modal dialog. Will block until an input is received.
 	 * Returns the index of the button that was pressed.
 	 */
-	int32 ShowModal();
+	int ShowModal();
 
 private:
-	FReply OnButtonClicked(FSimpleDelegate OnClicked, int32 ButtonIndex);
+	FReply OnButtonClicked(FSimpleDelegate OnClicked, int ButtonIndex);
 
 	/** The index of the button that was pressed last. */
-	int32 LastPressedButton = -1;
-
-	FSimpleDelegate OnClosed;
+	int LastPressedButton = -1;
 };

@@ -1,7 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
+/*=============================================================================
+	UnArchive.cpp: Core archive classes.
+=============================================================================*/
 #include "Serialization/Archive.h"
-#include "Serialization/ArchiveProxy.h"
 #include "Math/UnrealMathUtility.h"
 #include "HAL/UnrealMemory.h"
 #include "Containers/Array.h"
@@ -10,6 +12,7 @@
 #include "Logging/LogMacros.h"
 #include "Misc/Parse.h"
 #include "UObject/ObjectVersion.h"
+#include "Serialization/ArchiveProxy.h"
 #include "Serialization/NameAsStringProxyArchive.h"
 #include "Misc/CommandLine.h"
 #include "Internationalization/Text.h"
@@ -23,39 +26,11 @@
 #include "Serialization/CompressedChunkInfo.h"
 #include "Serialization/ArchiveSerializedPropertyChain.h"
 
-PRAGMA_DISABLE_UNSAFE_TYPECAST_WARNINGS
-
-namespace ArchiveUtil
-{
-
-template<typename T>
-FArchive& SerializeByteOrderSwapped(FArchive& Ar, T& Value)
-{
-	static_assert(!TIsSigned<T>::Value, "To reduce the number of template instances, cast 'Value' to a uint16&, uint32& or uint64& prior to the call.");
-
-	if (Ar.IsLoading())
-	{
-		// Read and swap.
-		Ar.Serialize(&Value, sizeof(T));
-		Value = ByteSwap(Value);
-	}
-	else // Saving
-	{
-		// Swap and write.
-		T SwappedValue = ByteSwap(Value);
-		Ar.Serialize(&SwappedValue, sizeof(T));
-	}
-	return Ar;
-}
-
-} // namespace ArchiveUtil
-
-
 /*-----------------------------------------------------------------------------
 	FArchive implementation.
 -----------------------------------------------------------------------------*/
 
-FArchiveState::FArchiveState()
+FArchive::FArchive()
 {
 #if DEVIRTUALIZE_FLinkerLoad_Serialize
 	ActiveFPLB = &InlineFPLB;
@@ -69,7 +44,7 @@ FArchiveState::FArchiveState()
 	Reset();
 }
 
-FArchiveState::FArchiveState(const FArchiveState& ArchiveToCopy)
+FArchive::FArchive(const FArchive& ArchiveToCopy)
 {
 #if DEVIRTUALIZE_FLinkerLoad_Serialize
 	ActiveFPLB = &InlineFPLB;
@@ -97,7 +72,7 @@ FArchiveState::FArchiveState(const FArchiveState& ArchiveToCopy)
 	}
 }
 
-FArchiveState& FArchiveState::operator=(const FArchiveState& ArchiveToCopy)
+FArchive& FArchive::operator=(const FArchive& ArchiveToCopy)
 {
 #if DEVIRTUALIZE_FLinkerLoad_Serialize
 	ActiveFPLB = &InlineFPLB;
@@ -131,10 +106,8 @@ FArchiveState& FArchiveState::operator=(const FArchiveState& ArchiveToCopy)
 	return *this;
 }
 
-FArchiveState::~FArchiveState()
+FArchive::~FArchive()
 {
-	checkf(NextProxy == nullptr, TEXT("Archive destroyed before its proxies"));
-
 	delete CustomVersionContainer;
 
 	delete SerializedPropertyChain;
@@ -144,7 +117,8 @@ FArchiveState::~FArchiveState()
 #endif // USE_STABLE_LOCALIZATION_KEYS
 }
 
-void FArchiveState::Reset()
+
+void FArchive::Reset()
 {
 #if DEVIRTUALIZE_FLinkerLoad_Serialize
 	ActiveFPLB->Reset();
@@ -159,7 +133,6 @@ void FArchiveState::Reset()
 	ArIsTransacting						= false;
 	ArIsTextFormat						= false;
 	ArWantBinaryPropertySerialization	= false;
-	ArUseUnversionedPropertySerialization = false;
 	ArForceUnicode						= false;
 	ArIsPersistent						= false;
 	ArIsError							= false;
@@ -205,7 +178,7 @@ void FArchiveState::Reset()
 	ResetCustomVersions();
 }
 
-void FArchiveState::CopyTrivialFArchiveStatusMembers(const FArchiveState& ArchiveToCopy)
+void FArchive::CopyTrivialFArchiveStatusMembers(const FArchive& ArchiveToCopy)
 {
 	ArUE4Ver                             = ArchiveToCopy.ArUE4Ver;
 	ArLicenseeUE4Ver                     = ArchiveToCopy.ArLicenseeUE4Ver;
@@ -217,7 +190,6 @@ void FArchiveState::CopyTrivialFArchiveStatusMembers(const FArchiveState& Archiv
 	ArIsTransacting                      = ArchiveToCopy.ArIsTransacting;
 	ArIsTextFormat                       = ArchiveToCopy.ArIsTextFormat;
 	ArWantBinaryPropertySerialization    = ArchiveToCopy.ArWantBinaryPropertySerialization;
-	ArUseUnversionedPropertySerialization = ArchiveToCopy.ArUseUnversionedPropertySerialization;
 	ArForceUnicode                       = ArchiveToCopy.ArForceUnicode;
 	ArIsPersistent                       = ArchiveToCopy.ArIsPersistent;
 	ArIsError                            = ArchiveToCopy.ArIsError;
@@ -252,70 +224,18 @@ void FArchiveState::CopyTrivialFArchiveStatusMembers(const FArchiveState& Archiv
 #endif // USE_STABLE_LOCALIZATION_KEYS
 }
 
-
-void FArchiveState::LinkProxy(FArchiveState& Inner, FArchiveState& Proxy)
-{
-	Proxy.NextProxy = Inner.NextProxy;
-	Inner.NextProxy = &Proxy;
-}
-
-void FArchiveState::UnlinkProxy(FArchiveState& Inner, FArchiveState& Proxy)
-{
-	FArchiveState* Prev = &Inner;
-	while (Prev->NextProxy != &Proxy)
-	{
-		Prev = Prev->NextProxy;
-		checkf(Prev, TEXT("Proxy link not found - likely  lifetime violation"));
-	}
-
-	Prev->NextProxy = Proxy.NextProxy;
-	Proxy.NextProxy = nullptr;
-}
-
-template<typename T>
-FORCEINLINE void FArchiveState::ForEachState(T Func)
-{
-	FArchiveState& RootState = GetInnermostState();
-	Func(RootState);
-
-	for (FArchiveState* Proxy = RootState.NextProxy; Proxy; Proxy = Proxy->NextProxy)
-	{
-		Func(*Proxy);
-	}
-}
-
-void FArchiveState::SetArchiveState(const FArchiveState& InState)
-{
-	ForEachState([&InState](FArchiveState& State) { State = InState; });
-}
-
-void FArchiveState::SetError()
-{
-	ForEachState([](FArchiveState& State) { State.ArIsError = true; });
-}
-
-void FArchiveState::SetCriticalError()
-{
-	ForEachState([](FArchiveState& State) { State.ArIsError = State.ArIsCriticalError = true; });
-}
-
-void FArchiveState::ClearError()
-{
-	ForEachState([](FArchiveState& State) { State.ArIsError = false; });
-}
-
 /**
  * Returns the name of the Archive.  Useful for getting the name of the package a struct or object
  * is in when a loading error occurs.
  *
  * This is overridden for the specific Archive Types
  **/
-FString FArchiveState::GetArchiveName() const
+FString FArchive::GetArchiveName() const
 {
 	return TEXT("FArchive");
 }
 
-void FArchiveState::GetSerializedPropertyChain(TArray<class FProperty*>& OutProperties) const
+void FArchive::GetSerializedPropertyChain(TArray<class UProperty*>& OutProperties) const
 {
 	if (SerializedPropertyChain)
 	{
@@ -329,7 +249,7 @@ void FArchiveState::GetSerializedPropertyChain(TArray<class FProperty*>& OutProp
 	}
 }
 
-void FArchiveState::SetSerializedPropertyChain(const FArchiveSerializedPropertyChain* InSerializedPropertyChain, class FProperty* InSerializedPropertyOverride)
+void FArchive::SetSerializedPropertyChain(const FArchiveSerializedPropertyChain* InSerializedPropertyChain, class UProperty* InSerializedPropertyOverride)
 {
 	if (InSerializedPropertyChain && InSerializedPropertyChain->GetNumProperties() > 0)
 	{
@@ -359,7 +279,7 @@ void FArchiveState::SetSerializedPropertyChain(const FArchiveSerializedPropertyC
 	}
 }
 
-void FArchive::PushSerializedProperty(class FProperty* InProperty, const bool bIsEditorOnlyProperty)
+void FArchive::PushSerializedProperty(class UProperty* InProperty, const bool bIsEditorOnlyProperty)
 {
 	if (InProperty)
 	{
@@ -375,7 +295,7 @@ void FArchive::PushSerializedProperty(class FProperty* InProperty, const bool bI
 	}
 }
 
-void FArchive::PopSerializedProperty(class FProperty* InProperty, const bool bIsEditorOnlyProperty)
+void FArchive::PopSerializedProperty(class UProperty* InProperty, const bool bIsEditorOnlyProperty)
 {
 	if (InProperty)
 	{
@@ -396,14 +316,14 @@ void FArchive::PopSerializedProperty(class FProperty* InProperty, const bool bIs
 }
 
 #if WITH_EDITORONLY_DATA
-bool FArchiveState::IsEditorOnlyPropertyOnTheStack() const
+bool FArchive::IsEditorOnlyPropertyOnTheStack() const
 {
 	return SerializedPropertyChain && SerializedPropertyChain->HasEditorOnlyProperty();
 }
 #endif
 
 #if USE_STABLE_LOCALIZATION_KEYS
-void FArchiveState::SetBaseLocalizationNamespace(const FString& InLocalizationNamespace)
+void FArchive::SetBaseLocalizationNamespace(const FString& InLocalizationNamespace)
 {
 	if (InLocalizationNamespace.IsEmpty())
 	{
@@ -419,15 +339,15 @@ void FArchiveState::SetBaseLocalizationNamespace(const FString& InLocalizationNa
 		*LocalizationNamespacePtr = InLocalizationNamespace;
 	}
 }
-FString FArchiveState::GetBaseLocalizationNamespace() const
+FString FArchive::GetBaseLocalizationNamespace() const
 {
 	return LocalizationNamespacePtr ? *LocalizationNamespacePtr : FString();
 }
-void FArchiveState::SetLocalizationNamespace(const FString& InLocalizationNamespace)
+void FArchive::SetLocalizationNamespace(const FString& InLocalizationNamespace)
 {
 	SetBaseLocalizationNamespace(InLocalizationNamespace);
 }
-FString FArchiveState::GetLocalizationNamespace() const
+FString FArchive::GetLocalizationNamespace() const
 {
 	return GetBaseLocalizationNamespace();
 }
@@ -500,13 +420,13 @@ void FArchive::SerializeBool( bool& D )
 	{
 		UE_LOG(LogSerialization, Error, TEXT("Invalid boolean encountered while reading archive %s - stream is most likely corrupted."), *GetArchiveName());
 
-		this->SetError();
+		this->ArIsError = true;
 	}
 	D = !!OldUBoolValue;
 }
 #endif
 
-const FCustomVersionContainer& FArchiveState::GetCustomVersions() const
+const FCustomVersionContainer& FArchive::GetCustomVersions() const
 {
 	if (!CustomVersionContainer)
 	{
@@ -532,7 +452,7 @@ const FCustomVersionContainer& FArchiveState::GetCustomVersions() const
 	return *CustomVersionContainer;
 }
 
-void FArchiveState::SetCustomVersions(const FCustomVersionContainer& NewVersions)
+void FArchive::SetCustomVersions(const FCustomVersionContainer& NewVersions)
 {
 	if (!CustomVersionContainer)
 	{
@@ -545,7 +465,7 @@ void FArchiveState::SetCustomVersions(const FCustomVersionContainer& NewVersions
 	bCustomVersionsAreReset = false;
 }
 
-void FArchiveState::ResetCustomVersions()
+void FArchive::ResetCustomVersions()
 {
 	bCustomVersionsAreReset = true;
 }
@@ -562,7 +482,7 @@ void FArchive::UsingCustomVersion(const FGuid& Key)
 	const_cast<FCustomVersionContainer&>(GetCustomVersions()).SetVersion(Key, RegisteredVersion.Version, RegisteredVersion.GetFriendlyName());
 }
 
-int32 FArchiveState::CustomVer(const FGuid& Key) const
+int32 FArchive::CustomVer(const FGuid& Key) const
 {
 	auto* CustomVersion = GetCustomVersions().GetVersion(Key);
 
@@ -573,7 +493,7 @@ int32 FArchiveState::CustomVer(const FGuid& Key) const
 	return CustomVersion ? CustomVersion->Version : -1;
 }
 
-void FArchiveState::SetCustomVersion(const FGuid& Key, int32 Version, FName FriendlyName)
+void FArchive::SetCustomVersion(const FGuid& Key, int32 Version, FName FriendlyName)
 {
 	const_cast<FCustomVersionContainer&>(GetCustomVersions()).SetVersion(Key, Version, FriendlyName);
 }
@@ -1087,38 +1007,6 @@ void FArchive::ByteSwap(void* V, int32 Length)
 	}
 }
 
-FArchive& FArchive::SerializeByteOrderSwapped(void* V, int32 Length)
-{
-	if (IsLoading())
-	{
-		Serialize(V, Length); // Read.
-		ByteSwap(V, Length); // Swap.
-	}
-	else // Writing
-	{
-		ByteSwap(V, Length); // Swap V.
-		Serialize(V, Length); // Write V.
-		ByteSwap(V, Length); // Swap V back to its original byte order to prevent caller from observing V swapped.
-	}
-
-	return *this;
-}
-
-FArchive& FArchive::SerializeByteOrderSwapped(uint16& Value)
-{
-	return ArchiveUtil::SerializeByteOrderSwapped(*this, Value);
-}
-
-FArchive& FArchive::SerializeByteOrderSwapped(uint32& Value)
-{
-	return ArchiveUtil::SerializeByteOrderSwapped(*this, Value);
-}
-
-FArchive& FArchive::SerializeByteOrderSwapped(uint64& Value)
-{
-	return ArchiveUtil::SerializeByteOrderSwapped(*this, Value);
-}
-
 void FArchive::SerializeIntPacked(uint32& Value)
 {
 	if (IsLoading())
@@ -1195,71 +1083,62 @@ void FArchive::LogfImpl(const TCHAR* Fmt, ...)
 	FMemory::SystemFree( Buffer );
 }
 
-void FArchiveState::SetUE4Ver(int32 InVer)
+void FArchive::SetUE4Ver(int32 InVer)
 {
 	ArUE4Ver = InVer;
 }
 
-void FArchiveState::SetLicenseeUE4Ver(int32 InVer)
+void FArchive::SetLicenseeUE4Ver(int32 InVer)
 {
 	ArLicenseeUE4Ver = InVer;
 }
 
-void FArchiveState::SetEngineVer(const FEngineVersionBase& InVer)
+void FArchive::SetEngineVer(const FEngineVersionBase& InVer)
 {
 	ArEngineVer = InVer;
 }
 
-void FArchiveState::SetEngineNetVer(const uint32 InEngineNetVer)
+void FArchive::SetEngineNetVer(const uint32 InEngineNetVer)
 {
 	ArEngineNetVer = InEngineNetVer;
 }
 
-void FArchiveState::SetGameNetVer(const uint32 InGameNetVer)
+void FArchive::SetGameNetVer(const uint32 InGameNetVer)
 {
 	ArGameNetVer = InGameNetVer;
 }
 
-void FArchiveState::SetIsLoading(bool bInIsLoading)
+void FArchive::SetIsLoading(bool bInIsLoading)
 {
 	ArIsLoading = bInIsLoading;
 }
 
-void FArchiveState::SetIsSaving(bool bInIsSaving)
+void FArchive::SetIsSaving(bool bInIsSaving)
 {
 	ArIsSaving = bInIsSaving;
 }
 
-void FArchiveState::SetIsTransacting(bool bInIsTransacting)
+void FArchive::SetIsTransacting(bool bInIsTransacting)
 {
 	ArIsTransacting = bInIsTransacting;
 }
 
-void FArchiveState::SetIsTextFormat(bool bInIsTextFormat)
+void FArchive::SetIsTextFormat(bool bInIsTextFormat)
 {
 	ArIsTextFormat = bInIsTextFormat;
 }
 
-void FArchiveState::SetWantBinaryPropertySerialization(bool bInWantBinaryPropertySerialization)
+void FArchive::SetWantBinaryPropertySerialization(bool bInWantBinaryPropertySerialization)
 {
 	ArWantBinaryPropertySerialization = bInWantBinaryPropertySerialization;
 }
 
-void FArchiveState::SetUseUnversionedPropertySerialization(bool bInUseUnversioned)
-{
-	ArUseUnversionedPropertySerialization = bInUseUnversioned;
-}
-
-void FArchiveState::SetForceUnicode(bool bInForceUnicode)
+void FArchive::SetForceUnicode(bool bInForceUnicode)
 {
 	ArForceUnicode = bInForceUnicode;
 }
 
-void FArchiveState::SetIsPersistent(bool bInIsPersistent)
+void FArchive::SetIsPersistent(bool bInIsPersistent)
 {
 	ArIsPersistent = bInIsPersistent;
 }
-
-static_assert(sizeof(FArchive) == sizeof(FArchiveState), "New FArchive members should be added to FArchiveState instead");
-
-PRAGMA_ENABLE_UNSAFE_TYPECAST_WARNINGS

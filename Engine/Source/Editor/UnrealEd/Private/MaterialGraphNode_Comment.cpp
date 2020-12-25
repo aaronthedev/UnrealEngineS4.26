@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MaterialGraphNode_Comment.cpp
@@ -106,7 +106,7 @@ void UMaterialGraphNode_Comment::PostPlacedNewNode()
 void UMaterialGraphNode_Comment::OnRenameNode(const FString& NewName)
 {
 	// send property changed events
-	FProperty* NodeCommentProperty = FindFProperty<FProperty>(GetClass(), "NodeComment");
+	UProperty* NodeCommentProperty = FindField<UProperty>(GetClass(), "NodeComment");
 	if(NodeCommentProperty != NULL)
 	{
 		PreEditChange(NodeCommentProperty);

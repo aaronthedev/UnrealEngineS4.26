@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WmfMediaPlayer.h"
 
@@ -80,11 +80,12 @@ FString FWmfMediaPlayer::GetInfo() const
 }
 
 
-FGuid FWmfMediaPlayer::GetPlayerPluginGUID() const
+FName FWmfMediaPlayer::GetPlayerName() const
 {
-	static FGuid PlayerPluginGUID(0x82f2a4c0, 0x225448c6, 0x853ff0a3, 0x0a2b08b7);
-	return PlayerPluginGUID;
+	static FName PlayerName(TEXT("WmfMedia"));
+	return PlayerName;
 }
+
 
 IMediaSamples& FWmfMediaPlayer::GetSamples()
 {
@@ -175,7 +176,7 @@ void FWmfMediaPlayer::TickFetch(FTimespan /*DeltaTime*/, FTimespan /*Timecode*/)
 	if (TrackSelectionChanged)
 	{
 		// less than windows 10, seem to be a problem switching stream. The issue is also present when hardware acceleration is enabled.
-		if (!FPlatformMisc::VerifyWindowsVersion(10, 0) /* Anything < Windows 10.0 */ || GetDefault<UWmfMediaSettings>()->HardwareAcceleratedVideoDecoding)
+		if (!FWindowsPlatformMisc::VerifyWindowsVersion(10, 0) /* Anything < Windows 10.0 */ || GetDefault<UWmfMediaSettings>()->HardwareAcceleratedVideoDecoding)
 		{
 			const auto Settings = GetDefault<UWmfMediaSettings>();
 			check(Settings != nullptr);

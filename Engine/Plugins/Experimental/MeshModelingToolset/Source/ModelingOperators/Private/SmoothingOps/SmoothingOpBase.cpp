@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SmoothingOps/SmoothingOpBase.h"
 
@@ -6,9 +6,10 @@
 #include "MeshNormals.h"
 
 
-FSmoothingOpBase::FSmoothingOpBase(const FDynamicMesh3* Mesh, const FOptions& OptionsIn) :
-	FDynamicMeshOperator(),
-	SmoothOptions(OptionsIn)
+FSmoothingOpBase::FSmoothingOpBase(const FDynamicMesh3* Mesh, float Speed, int32 Iterations) :
+		FDynamicMeshOperator(),
+		SmoothSpeed(Speed),
+		SmoothIterations(Iterations)
 {
 	// deep copy the src mesh into the result mesh.  This ResultMesh will be directly updated by the smoothing.
 	ResultMesh->Copy(*Mesh);
@@ -21,7 +22,7 @@ FSmoothingOpBase::FSmoothingOpBase(const FDynamicMesh3* Mesh, const FOptions& Op
 	}
 }
 
-void FSmoothingOpBase::SetTransform(const FTransform3d& XForm)
+void FSmoothingOpBase::SetTransform(FTransform3d& XForm)
 {
 	ResultTransform = XForm;
 }

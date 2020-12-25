@@ -1,7 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BehaviorTree/BehaviorTreeTypes.h"
-#include "BehaviorTree/BehaviorTree.h"
 #include "GameFramework/Actor.h"
 #include "BehaviorTree/BTDecorator.h"
 #include "BehaviorTree/BTService.h"
@@ -144,154 +143,6 @@ void FBehaviorTreeInstance::CleanupNodes(UBehaviorTreeComponent& OwnerComp, UBTC
 	}
 }
 
-#if STATS
-
-void FBehaviorTreeInstance::IncMemoryStats() const
-{
-	INC_MEMORY_STAT_BY(STAT_AI_BehaviorTree_InstanceMemory, GetAllocatedSize());
-}
-
-void FBehaviorTreeInstance::DecMemoryStats() const
-{
-	DEC_MEMORY_STAT_BY(STAT_AI_BehaviorTree_InstanceMemory, GetAllocatedSize());
-}
-
-uint32 FBehaviorTreeInstance::GetAllocatedSize() const
-{
-	return sizeof(*this) + ActiveAuxNodes.GetAllocatedSize() + ParallelTasks.GetAllocatedSize() + InstanceMemory.GetAllocatedSize();
-}
-
-#define MEM_STAT_UPDATE_WRAPPER(cmd) \
-	DecMemoryStats();\
-	cmd; \
-	IncMemoryStats();
-
-#else
-
-#define MEM_STAT_UPDATE_WRAPPER(cmd) cmd;
-
-#endif // STATS
-
-FBehaviorTreeInstance::FBehaviorTreeInstance()
-{
-	IncMemoryStats(); 
-	INC_DWORD_STAT(STAT_AI_BehaviorTree_NumInstances);
-}
-
-FBehaviorTreeInstance::FBehaviorTreeInstance(const FBehaviorTreeInstance& Other)
-{ 
-	*this = Other; 
-	IncMemoryStats();
-	INC_DWORD_STAT(STAT_AI_BehaviorTree_NumInstances);
-}
-
-FBehaviorTreeInstance::FBehaviorTreeInstance(int32 MemorySize)
-{
-	InstanceMemory.AddZeroed(MemorySize);
-	IncMemoryStats();
-	INC_DWORD_STAT(STAT_AI_BehaviorTree_NumInstances);
-}
-
-FBehaviorTreeInstance::~FBehaviorTreeInstance()
-{
-	DecMemoryStats();
-	DEC_DWORD_STAT(STAT_AI_BehaviorTree_NumInstances);
-}
-
-void FBehaviorTreeInstance::AddToActiveAuxNodes(UBTAuxiliaryNode* AuxNode)
-{
-#if DO_ENSURE
-	ensureAlwaysMsgf(bIteratingNodes == false, TEXT("Adding aux node while iterating through them is not allowed."));
-#endif // DO_ENSURE
-	MEM_STAT_UPDATE_WRAPPER(ActiveAuxNodes.Add(AuxNode));
-}
-
-void FBehaviorTreeInstance::RemoveFromActiveAuxNodes(UBTAuxiliaryNode* AuxNode)
-{
-#if DO_ENSURE
-	ensureAlwaysMsgf(bIteratingNodes == false, TEXT("Removing aux node while iterating through them is not allowed."));
-#endif // DO_ENSURE
-	MEM_STAT_UPDATE_WRAPPER(ActiveAuxNodes.RemoveSingleSwap(AuxNode));
-}
-
-void FBehaviorTreeInstance::ResetActiveAuxNodes()
-{
-#if DO_ENSURE
-	ensureAlwaysMsgf(bIteratingNodes == false, TEXT("Resetting aux node list while iterating through them is not allowed."));
-#endif // DO_ENSURE
-	MEM_STAT_UPDATE_WRAPPER(ActiveAuxNodes.Reset());
-}
-
-void FBehaviorTreeInstance::AddToParallelTasks(FBehaviorTreeParallelTask&& ParallelTask)
-{
-#if DO_ENSURE
-	ensureMsgf(ParallelTaskIndex == INDEX_NONE, TEXT("Adding to the the list of parallel tasks from ExecuteOnEachParallelTask is not allowed."));
-#endif // DO_ENSURE
-	MEM_STAT_UPDATE_WRAPPER(ParallelTasks.Add(ParallelTask));
-}
-
-void FBehaviorTreeInstance::RemoveParallelTaskAt(int32 TaskIndex)
-{
-	check(ParallelTasks.IsValidIndex(TaskIndex));
-#if DO_ENSURE
-	ensureMsgf(ParallelTaskIndex == INDEX_NONE || ParallelTaskIndex == TaskIndex, 
-		TEXT("Removing from the list of parallel tasks from ExecuteOnEachParallelTask is only supported for the current task. Otherwise the iteration is broken."));
-#endif // DO_ENSURE
-
-	MEM_STAT_UPDATE_WRAPPER(ParallelTasks.RemoveAt(TaskIndex, /*Count=*/1, /*bAllowShrinking=*/false));
-}
-
-void FBehaviorTreeInstance::MarkParallelTaskAsAbortingAt(int32 TaskIndex)
-{
-	check(ParallelTasks.IsValidIndex(TaskIndex));
-	ParallelTasks[TaskIndex].Status = EBTTaskStatus::Aborting;
-}
-
-void FBehaviorTreeInstance::SetInstanceMemory(const TArray<uint8>& Memory)
-{
-	MEM_STAT_UPDATE_WRAPPER(InstanceMemory = Memory);
-}
-
-#undef MEM_STAT_UPDATE_WRAPPER
-
-void FBehaviorTreeInstance::ExecuteOnEachAuxNode(TFunctionRef<void(const UBTAuxiliaryNode&)> ExecFunc)
-{
-#if DO_ENSURE
-	TGuardValue<bool> IteratingGuard(bIteratingNodes, true);
-#endif // DO_ENSURE
-
-	for (const UBTAuxiliaryNode* AuxNode : ActiveAuxNodes)
-	{
-		check(AuxNode != NULL);
-		ExecFunc(*AuxNode);
-	}
-}
-
-void FBehaviorTreeInstance::ExecuteOnEachParallelTask(TFunctionRef<void(const FBehaviorTreeParallelTask&, const int32)> ExecFunc)
-{
-	// calling ExecFunc might unregister parallel task, modifying array we're iterating on - iterator needs to be moved one step back in that case
-	for (int32 Index = 0; Index < ParallelTasks.Num(); ++Index)
-	{
-		const FBehaviorTreeParallelTask& ParallelTaskInfo = ParallelTasks[Index];
-		const UBTTaskNode* CachedParallelTask = ParallelTaskInfo.TaskNode;
-		const int32 CachedNumTasks = ParallelTasks.Num();
-
-#if DO_ENSURE
-		ensureAlways(ParallelTaskIndex == INDEX_NONE);
-		TGuardValue<int32> IndexGuard(ParallelTaskIndex, Index);
-#endif // DO_ENSURE
-
-		ExecFunc(ParallelTaskInfo, Index);
-
-		const bool bIsStillValid = ParallelTasks.IsValidIndex(Index) && (ParallelTaskInfo.TaskNode == CachedParallelTask);
-		if (!bIsStillValid)
-		{
-			// move iterator back if current task was unregistered
-			Index--;
-		}
-	}
-}
-
 bool FBehaviorTreeInstance::HasActiveNode(uint16 TestExecutionIndex) const
 {
 	if (ActiveNode && ActiveNode->GetExecutionIndex() == TestExecutionIndex)
@@ -430,13 +281,9 @@ void FBehaviorTreeSearchData::Reset()
 {
 	PendingUpdates.Reset();
 	PendingNotifies.Reset();
-	SearchRootNode = FBTNodeIndex();
 	SearchStart = FBTNodeIndex();
 	SearchEnd = FBTNodeIndex();
 	RollbackInstanceIdx = INDEX_NONE;
-	DeactivatedBranchStart = FBTNodeIndex();
-	DeactivatedBranchEnd = FBTNodeIndex();
-	bFilterOutRequestFromDeactivatedBranch = false;
 	bSearchInProgress = false;
 	bPostponeSearch = false;
 	bPreserveActiveNodeMemoryOnRollback = false;
@@ -616,7 +463,7 @@ FString UBehaviorTreeTypes::DescribeNodeUpdateMode(EBTNodeUpdateMode::Type Updat
 
 FString UBehaviorTreeTypes::DescribeNodeHelper(const UBTNode* Node)
 {
-	return Node ? FString::Printf(TEXT("%s::%s[%d]"), *GetNameSafe(Node->GetTreeAsset()), *Node->GetNodeName(), Node->GetExecutionIndex()) : FString();
+	return Node ? FString::Printf(TEXT("%s[%d]"), *Node->GetNodeName(), Node->GetExecutionIndex()) : FString();
 }
 
 FString UBehaviorTreeTypes::GetShortTypeName(const UObject* Ob)
@@ -627,10 +474,10 @@ FString UBehaviorTreeTypes::GetShortTypeName(const UObject* Ob)
 	}
 
 	FString TypeDesc = Ob->GetClass()->GetName();
-	const int32 ShortNameIdx = TypeDesc.Find(TEXT("_"), ESearchCase::CaseSensitive);
+	const int32 ShortNameIdx = TypeDesc.Find(TEXT("_"));
 	if (ShortNameIdx != INDEX_NONE)
 	{
-		TypeDesc.MidInline(ShortNameIdx + 1, MAX_int32, false);
+		TypeDesc = TypeDesc.Mid(ShortNameIdx + 1);
 	}
 
 	return TypeDesc;

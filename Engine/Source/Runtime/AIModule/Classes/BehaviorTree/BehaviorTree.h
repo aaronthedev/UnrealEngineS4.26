@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -12,7 +12,7 @@ class UBlackboardData;
 class UBTDecorator;
 
 UCLASS(BlueprintType)
-class AIMODULE_API UBehaviorTree : public UObject, public IBlackboardAssetProvider
+class AIMODULE_API UBehaviorTree : public UObject
 {
 	GENERATED_UCLASS_BODY()
 
@@ -31,11 +31,6 @@ class AIMODULE_API UBehaviorTree : public UObject, public IBlackboardAssetProvid
 	TArray<FEditedDocumentInfo> LastEditedDocuments;
 
 #endif
-
-	// BEGIN IBlackboardAssetProvider
-	/** @return blackboard asset */
-	virtual UBlackboardData* GetBlackboardAsset() const override;
-	// END IBlackboardAssetProvider
 
 	/** blackboard asset for this tree */
 	UPROPERTY()

@@ -26,11 +26,11 @@
  * Complain if we see this header twice through.
  */
 
-#ifdef PXR_BASE_TF_INSTANTIATE_TYPE_H
+#ifdef TF_INSTANTIATETYPE_H
 #error This file should only be included once in any given source (.cpp) file.
 #endif
 
-#define PXR_BASE_TF_INSTANTIATE_TYPE_H
+#define TF_INSTANTIATETYPE_H
 
 #include "pxr/pxr.h"
 #include "pxr/base/arch/attributes.h"

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/STakeRecorderPanel.h"
 #include "Widgets/TakeRecorderWidgetConstants.h"
@@ -125,9 +125,6 @@ void STakeRecorderPanel::Construct(const FArguments& InArgs)
 		SuppliedLevelSequence  = InArgs._SequenceToView;
 	}
 
-	/** Clear the dirty flag since the preset was just initialized. */
-	TransientPreset->GetOutermost()->SetDirtyFlag(false);
-
 	// Create the child widgets that need to know about our level sequence
 	CockpitWidget = SNew(STakeRecorderCockpit)
 	.LevelSequence(this, &STakeRecorderPanel::GetLevelSequence);
@@ -182,7 +179,7 @@ void STakeRecorderPanel::Construct(const FArguments& InArgs)
 			SNew(SBorder)
 			.BorderImage(FEditorStyle::GetBrush("DetailsView.CategoryTop"))
 			.BorderBackgroundColor( FLinearColor( .6,.6,.6, 1.0f ) )
-			.IsEnabled_Lambda([this]() { return !CockpitWidget->Reviewing() && !CockpitWidget->Recording(); })
+			.IsEnabled_Lambda([this]() { return !CockpitWidget->Reviewing(); })
 			[
 				SNew(SHorizontalBox)
 
@@ -251,7 +248,6 @@ void STakeRecorderPanel::Construct(const FArguments& InArgs)
 		+ SVerticalBox::Slot()
 		[
 			SNew(SHorizontalBox)
-			.IsEnabled_Lambda([this]() { return !CockpitWidget->Recording(); })
 			+ SHorizontalBox::Slot()
 			[
 				LevelSequenceTakeWidget.ToSharedRef()
@@ -262,15 +258,15 @@ void STakeRecorderPanel::Construct(const FArguments& InArgs)
 
 TSharedRef<SWidget> STakeRecorderPanel::MakeToolBar()
 {
-	int ButtonBoxSize = 28;
-	TSharedPtr<SHorizontalBox> ButtonHolder;
 
-	TSharedRef<SBorder> Border = SNew(SBorder)
+	int ButtonBoxSize = 28;
+	return SNew(SBorder)
+
 	.BorderImage(FEditorStyle::GetBrush("ToolPanel.GroupBorder"))
 	.Padding(FMargin(3.f, 3.f))
 	[
 
-		SAssignNew(ButtonHolder, SHorizontalBox)
+		SNew(SHorizontalBox)
 
 		+ SHorizontalBox::Slot()
 		.Padding(TakeRecorder::ButtonOffset)
@@ -284,10 +280,10 @@ TSharedRef<SWidget> STakeRecorderPanel::MakeToolBar()
 				SNew(SButton)
 				.HAlign(HAlign_Center)
 				.VAlign(VAlign_Center)
-				.ToolTipText(LOCTEXT("ClearPendingTake", "Clear Pending Take"))
+				.ToolTipText(LOCTEXT("Add", "Create a New Take"))
 				.ForegroundColor(FSlateColor::UseForeground())
 				.ButtonStyle(FEditorStyle::Get(), "HoverHintOnly")
-				.OnClicked(this, &STakeRecorderPanel::OnClearPendingTake)
+				.OnClicked(this, &STakeRecorderPanel::OnNewTake)
 				[
 					SNew(STextBlock)
 					.Font(FEditorStyle::Get().GetFontStyle("FontAwesome.14"))
@@ -392,7 +388,6 @@ TSharedRef<SWidget> STakeRecorderPanel::MakeToolBar()
 		]
 
 		+ SHorizontalBox::Slot()
-		.Padding(TakeRecorder::ButtonOffset)
 		.VAlign(VAlign_Center)
 		.AutoWidth()
 		[
@@ -406,7 +401,6 @@ TSharedRef<SWidget> STakeRecorderPanel::MakeToolBar()
 		]
 
 		+ SHorizontalBox::Slot()
-		.Padding(TakeRecorder::ButtonOffset)
 		.VAlign(VAlign_Fill)
 		.AutoWidth()
 		[
@@ -430,27 +424,6 @@ TSharedRef<SWidget> STakeRecorderPanel::MakeToolBar()
 			]
 		]
 	];
-
-	ITakeRecorderModule& TakeRecorderModule = FModuleManager::Get().LoadModuleChecked<ITakeRecorderModule>("TakeRecorder");
-	TArray<TSharedRef<SWidget>> OutExtensions;
-	TakeRecorderModule.GetToolbarExtensionGenerators().Broadcast(OutExtensions);
-
-	for (const TSharedRef<SWidget>& Widget : OutExtensions)
-	{
-		ButtonHolder->AddSlot()
-		.Padding(TakeRecorder::ButtonOffset)
-		.VAlign(VAlign_Center)
-		.AutoWidth()
-		[
-			SNew(SBox)
-			.HeightOverride(ButtonBoxSize)
-			[
-				Widget
-			]
-		];
-	}
-
-	return Border;
 }
 PRAGMA_ENABLE_OPTIMIZATION
 
@@ -475,32 +448,19 @@ UTakeMetaData* STakeRecorderPanel::GetTakeMetaData() const
 	return CockpitWidget->GetMetaData();
 }
 
-void STakeRecorderPanel::ClearPendingTake()
+void STakeRecorderPanel::NewTake()
 {
 	if (CockpitWidget->Reviewing())
 	{
 		LastRecordedLevelSequence = SuppliedLevelSequence;
 	}
 
-	UTakeRecorderSources* BaseSources = nullptr;
-
-	if (ULevelSequence* CurrentLevelSequence = GetLevelSequence())
-	{
-		BaseSources = CurrentLevelSequence->FindMetaData<UTakeRecorderSources>();
-	}
-
 	SuppliedLevelSequence = nullptr;
 
-	FScopedTransaction Transaction(LOCTEXT("ClearPendingTake_Transaction", "Clear Pending Take"));
+	FScopedTransaction Transaction(LOCTEXT("NewTake_Transaction", "New Take"));
 
 	TransientPreset->Modify();
 	TransientPreset->CreateLevelSequence();
-
-	ULevelSequence* LevelSequence = TransientPreset->GetLevelSequence();
-	if (LevelSequence && BaseSources)
-	{
-		LevelSequence->CopyMetaData(BaseSources);
-	}
 }
 
 UTakePreset* STakeRecorderPanel::AllocateTransientPreset()
@@ -517,7 +477,7 @@ UTakePreset* STakeRecorderPanel::AllocateTransientPreset()
 
 	static FName DesiredName = "PendingTake";
 
-	UPackage* NewPackage = CreatePackage(PackageName);
+	UPackage* NewPackage = CreatePackage(nullptr, PackageName);
 	NewPackage->SetFlags(RF_Transient);
 	NewPackage->AddToRoot();
 
@@ -611,7 +571,6 @@ void STakeRecorderPanel::OnImportPreset(const FAssetData& InPreset)
 
 		TransientPreset->Modify();
 		TransientPreset->CopyFrom(Take);
-		TransientPreset->GetOutermost()->SetDirtyFlag(false);
 
 		CockpitWidget->GetMetaData()->SetPresetOrigin(Take);
 	}
@@ -713,7 +672,7 @@ void STakeRecorderPanel::OnSaveAsPreset()
 
 	// Saving into a new package
 	const FString NewAssetName = FPackageName::GetLongPackageAssetName(PackageName);
-	UPackage*     NewPackage   = CreatePackage(*PackageName);
+	UPackage*     NewPackage   = CreatePackage(nullptr, *PackageName);
 	UTakePreset*  NewPreset    = NewObject<UTakePreset>(NewPackage, *NewAssetName, RF_Public | RF_Standalone | RF_Transactional);
 
 	if (NewPreset)
@@ -726,8 +685,6 @@ void STakeRecorderPanel::OnSaveAsPreset()
 		}
 
 		NewPreset->MarkPackageDirty();
-		// Clear the package dirty flag on the transient preset since it was saved.
-		TransientPreset->GetOutermost()->SetDirtyFlag(false);
 		FAssetRegistryModule::AssetCreated(NewPreset);
 
 		FEditorFileUtils::PromptForCheckoutAndSave({ NewPackage }, false, false);
@@ -751,15 +708,15 @@ FReply STakeRecorderPanel::OnBackToPendingTake()
 	return FReply::Handled();
 }
 
-FReply STakeRecorderPanel::OnClearPendingTake()
+FReply STakeRecorderPanel::OnNewTake()
 {
-	FText WarningMessage (LOCTEXT("Warning_ClearPendingTake", "Are you sure you want to clear the pending take? Your current tracks will be discarded."));
+	FText WarningMessage (LOCTEXT("Warning_NewTake", "Are you sure you want to create a new empty take setup? Your current changes will be discarded."));
 	if (EAppReturnType::No == FMessageDialog::Open(EAppMsgType::YesNo, WarningMessage))
 	{
 		return FReply::Handled();
 	}
 
-	ClearPendingTake();
+	NewTake();
 	return FReply::Handled();
 }
 
@@ -789,7 +746,6 @@ FReply STakeRecorderPanel::OnRevertChanges()
 
 	TransientPreset->Modify();
 	TransientPreset->CopyFrom(PresetOrigin);
-	TransientPreset->GetOutermost()->SetDirtyFlag(false);
 
 	return FReply::Handled();
 }
@@ -901,7 +857,7 @@ void STakeRecorderPanel::ToggleTakeBrowserCheckState(ECheckBoxState CheckState)
 	}
 	else 
 	{
-		TakesBrowserTab = LevelEditorModule.GetLevelEditorTabManager()->TryInvokeTab(ITakeRecorderModule::TakesBrowserTabName);
+		TakesBrowserTab = LevelEditorModule.GetLevelEditorTabManager()->InvokeTab(ITakeRecorderModule::TakesBrowserTabName);
 
 		bool bAllowLockedBrowser =  true;
 		bool bFocusContentBrowser = false;

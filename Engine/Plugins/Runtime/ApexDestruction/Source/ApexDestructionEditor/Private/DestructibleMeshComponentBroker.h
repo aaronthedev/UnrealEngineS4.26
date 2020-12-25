@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,7 +8,7 @@
 
 //////////////////////////////////////////////////////////////////////////
 // FDestructibleMeshComponentBroker
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
+
 class FDestructibleMeshComponentBroker : public IComponentAssetBroker
 {
 public:
@@ -42,4 +42,3 @@ public:
 		return NULL;
 	}
 };
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

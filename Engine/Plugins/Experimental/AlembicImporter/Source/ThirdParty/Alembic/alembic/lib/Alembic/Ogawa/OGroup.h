@@ -33,8 +33,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_Ogawa_OGroup_h
-#define Alembic_Ogawa_OGroup_h
+#ifndef _Alembic_Ogawa_OGroup_h_
+#define _Alembic_Ogawa_OGroup_h_
 
 #include <Alembic/Util/Export.h>
 #include <Alembic/Ogawa/Foundation.h>

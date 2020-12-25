@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Containers/ContainersFwd.h"
 #include "Curves/KeyHandle.h"
 #include "Channels/MovieSceneChannelHandle.h"
 
@@ -11,6 +10,8 @@ struct FFrameNumber;
 
 class IKeyArea;
 class UMovieSceneSection;
+
+template<typename> class TArrayView;
 
 /**
  * Represents a selected key in the sequencer
@@ -31,7 +32,7 @@ public:
 	/** Create and initialize a new instance. */
 	FSequencerSelectedKey(UMovieSceneSection& InSection, TSharedPtr<IKeyArea> InKeyArea, FKeyHandle InKeyHandle)
 		: Section(&InSection)
-		, KeyArea(MoveTemp(InKeyArea))
+		, KeyArea(InKeyArea)
 		, KeyHandle(InKeyHandle)
 	{}
 

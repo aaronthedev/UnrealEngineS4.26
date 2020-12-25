@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -137,17 +137,6 @@ namespace UE4SharedPointer_Private
 }
 
 
-// TSharedPtr of one mode to a type which has a TSharedFromThis only of another mode is illegal.
-// A type which does not inherit TSharedFromThis at all is ok.
-// We only check this inside the constructor because we don't necessarily have the full type of T when we declare a TSharedPtr<T>.
-#define UE_TSHAREDPTR_STATIC_ASSERT_VALID_MODE(ObjectType, Mode) \
-	enum \
-	{ \
-		ObjectTypeHasSameModeSharedFromThis = TPointerIsConvertibleFromTo<ObjectType, TSharedFromThis<ObjectType, Mode>>::Value, \
-		ObjectTypeHasOppositeModeSharedFromThis = TPointerIsConvertibleFromTo<ObjectType, TSharedFromThis<ObjectType, (Mode == ESPMode::NotThreadSafe) ? ESPMode::ThreadSafe : ESPMode::NotThreadSafe>>::Value \
-	}; \
-	static_assert(ObjectTypeHasSameModeSharedFromThis || !ObjectTypeHasOppositeModeSharedFromThis, "You cannot use a TSharedPtr of one mode with a type which inherits TSharedFromThis of another mode.");
-
 /**
  * TSharedRef is a non-nullable, non-intrusive reference-counted authoritative object reference.
  *
@@ -170,14 +159,12 @@ public:
 	 */
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE explicit TSharedRef( OtherType* InObject )
 		: Object( InObject )
 		, SharedReferenceCount( SharedPointerInternals::NewDefaultReferenceController( InObject ) )
 	{
-		UE_TSHAREDPTR_STATIC_ASSERT_VALID_MODE(ObjectType, Mode)
-
 		Init(InObject);
 	}
 
@@ -190,14 +177,12 @@ public:
 	template <
 		typename OtherType,
 		typename DeleterType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE TSharedRef( OtherType* InObject, DeleterType&& InDeleter )
 		: Object( InObject )
 		, SharedReferenceCount( SharedPointerInternals::NewCustomReferenceController( InObject, Forward< DeleterType >( InDeleter ) ) )
 	{
-		UE_TSHAREDPTR_STATIC_ASSERT_VALID_MODE(ObjectType, Mode)
-
 		Init(InObject);
 	}
 
@@ -223,14 +208,12 @@ public:
 	// NOTE: The following is an Unreal extension to standard shared_ptr behavior
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE TSharedRef( SharedPointerInternals::FRawPtrProxy< OtherType > const& InRawPtrProxy )
 		: Object( InRawPtrProxy.Object )
 		, SharedReferenceCount( InRawPtrProxy.ReferenceController )
 	{
-		UE_TSHAREDPTR_STATIC_ASSERT_VALID_MODE(ObjectType, Mode)
-
 		// If the following assert goes off, it means a TSharedRef was initialized from a nullptr object pointer.
 		// Shared references must never be nullptr, so either pass a valid object or consider using TSharedPtr instead.
 		check( InRawPtrProxy.Object != nullptr );
@@ -248,13 +231,12 @@ public:
 	 */
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE TSharedRef( TSharedRef< OtherType, Mode > const& InSharedRef )
 		: Object( InSharedRef.Object )
 		, SharedReferenceCount( InSharedRef.SharedReferenceCount )
-	{
-	}
+	{ }
 
 	/**
 	 * Special constructor used internally to statically cast one shared reference type to another.  You
@@ -268,9 +250,8 @@ public:
 	FORCEINLINE TSharedRef( TSharedRef< OtherType, Mode > const& InSharedRef, SharedPointerInternals::FStaticCastTag )
 		: Object( static_cast< ObjectType* >( InSharedRef.Object ) )
 		, SharedReferenceCount( InSharedRef.SharedReferenceCount )
-	{
-	}
-
+	{ }
+  
 	/**
 	 * Special constructor used internally to cast a 'const' shared reference a 'mutable' reference.  You
 	 * should never call this constructor directly.  Instead, use the ConstCastSharedRef() function.
@@ -283,8 +264,7 @@ public:
 	FORCEINLINE TSharedRef( TSharedRef< OtherType, Mode > const& InSharedRef, SharedPointerInternals::FConstCastTag )
 		: Object( const_cast< ObjectType* >( InSharedRef.Object ) )
 		, SharedReferenceCount( InSharedRef.SharedReferenceCount )
-	{
-	}
+	{ }
 
 	/**
 	 * Aliasing constructor used to create a shared reference which shares its reference count with
@@ -347,7 +327,7 @@ public:
 	// NOTE: The following is an Unreal extension to standard shared_ptr behavior
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE TSharedRef& operator=( SharedPointerInternals::FRawPtrProxy< OtherType > const& InRawPtrProxy )
 	{
@@ -439,7 +419,7 @@ private:
 	 */
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE explicit TSharedRef( TSharedPtr< OtherType, Mode > const& InSharedPtr )
 		: Object( InSharedPtr.Object )
@@ -452,7 +432,7 @@ private:
 
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE explicit TSharedRef( TSharedPtr< OtherType, Mode >&& InSharedPtr )
 		: Object( InSharedPtr.Object )
@@ -520,8 +500,6 @@ private:
 		: Object(InObject)
 		, SharedReferenceCount(InSharedReferenceCount)
 	{
-		UE_TSHAREDPTR_STATIC_ASSERT_VALID_MODE(ObjectType, Mode)
-
 		Init(InObject);
 	}
 };
@@ -558,6 +536,16 @@ struct FMakeReferenceTo<const void>
 template< class ObjectType, ESPMode Mode >
 class TSharedPtr
 {
+	enum
+	{
+		ObjectTypeHasSameModeSharedFromThis     = TPointerIsConvertibleFromTo<ObjectType, TSharedFromThis<ObjectType, Mode>>::Value,
+		ObjectTypeHasOppositeModeSharedFromThis = TPointerIsConvertibleFromTo<ObjectType, TSharedFromThis<ObjectType, (Mode == ESPMode::NotThreadSafe) ? ESPMode::ThreadSafe : ESPMode::NotThreadSafe>>::Value
+	};
+
+	// TSharedPtr of one mode to a type which has a TSharedFromThis only of another mode is illegal.
+	// A type which does not inherit TSharedFromThis at all is ok.
+	static_assert( TSharedPtr::ObjectTypeHasSameModeSharedFromThis || !TSharedPtr::ObjectTypeHasOppositeModeSharedFromThis, "You cannot use a TSharedPtr of one mode with a type which inherits TSharedFromThis of another mode.");
+
 public:
 	using ElementType = ObjectType;
 
@@ -568,8 +556,7 @@ public:
 	FORCEINLINE TSharedPtr( SharedPointerInternals::FNullTag* = nullptr )
 		: Object( nullptr )
 		, SharedReferenceCount()
-	{
-	}
+	{ }
 
 	/**
 	 * Constructs a shared pointer that owns the specified object.  Note that passing nullptr here will
@@ -579,14 +566,12 @@ public:
 	 */
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE explicit TSharedPtr( OtherType* InObject )
 		: Object( InObject )
 		, SharedReferenceCount( SharedPointerInternals::NewDefaultReferenceController( InObject ) )
 	{
-		UE_TSHAREDPTR_STATIC_ASSERT_VALID_MODE(ObjectType, Mode)
-
 		// If the object happens to be derived from TSharedFromThis, the following method
 		// will prime the object with a weak pointer to itself.
 		SharedPointerInternals::EnableSharedFromThis( this, InObject, InObject );
@@ -602,14 +587,12 @@ public:
 	template <
 		typename OtherType,
 		typename DeleterType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE TSharedPtr( OtherType* InObject, DeleterType&& InDeleter )
 		: Object( InObject )
 		, SharedReferenceCount( SharedPointerInternals::NewCustomReferenceController( InObject, Forward< DeleterType >( InDeleter ) ) )
 	{
-		UE_TSHAREDPTR_STATIC_ASSERT_VALID_MODE(ObjectType, Mode)
-
 		// If the object happens to be derived from TSharedFromThis, the following method
 		// will prime the object with a weak pointer to itself.
 		SharedPointerInternals::EnableSharedFromThis( this, InObject, InObject );
@@ -623,14 +606,12 @@ public:
 	// NOTE: The following is an Unreal extension to standard shared_ptr behavior
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE TSharedPtr( SharedPointerInternals::FRawPtrProxy< OtherType > const& InRawPtrProxy )
 		: Object( InRawPtrProxy.Object )
 		, SharedReferenceCount( InRawPtrProxy.ReferenceController )
 	{
-		UE_TSHAREDPTR_STATIC_ASSERT_VALID_MODE(ObjectType, Mode)
-
 		// If the object happens to be derived from TSharedFromThis, the following method
 		// will prime the object with a weak pointer to itself.
 		SharedPointerInternals::EnableSharedFromThis( this, InRawPtrProxy.Object, InRawPtrProxy.Object );
@@ -644,19 +625,17 @@ public:
 	 */
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE TSharedPtr( TSharedPtr< OtherType, Mode > const& InSharedPtr )
 		: Object( InSharedPtr.Object )
 		, SharedReferenceCount( InSharedPtr.SharedReferenceCount )
-	{
-	}
+	{ }
 
 	FORCEINLINE TSharedPtr( TSharedPtr const& InSharedPtr )
 		: Object( InSharedPtr.Object )
 		, SharedReferenceCount( InSharedPtr.SharedReferenceCount )
-	{
-	}
+	{ }
 
 	FORCEINLINE TSharedPtr( TSharedPtr&& InSharedPtr )
 		: Object( InSharedPtr.Object )
@@ -674,7 +653,7 @@ public:
 	// NOTE: The following is an Unreal extension to standard shared_ptr behavior
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE TSharedPtr( TSharedRef< OtherType, Mode > const& InSharedRef )
 		: Object( InSharedRef.Object )
@@ -696,8 +675,7 @@ public:
 	FORCEINLINE TSharedPtr( TSharedPtr< OtherType, Mode > const& InSharedPtr, SharedPointerInternals::FStaticCastTag )
 		: Object( static_cast< ObjectType* >( InSharedPtr.Object ) )
 		, SharedReferenceCount( InSharedPtr.SharedReferenceCount )
-	{
-	}
+	{ }
 	
 	/**
 	 * Special constructor used internally to cast a 'const' shared pointer a 'mutable' pointer.  You
@@ -711,8 +689,7 @@ public:
 	FORCEINLINE TSharedPtr( TSharedPtr< OtherType, Mode > const& InSharedPtr, SharedPointerInternals::FConstCastTag )
 		: Object( const_cast< ObjectType* >( InSharedPtr.Object ) )
 		, SharedReferenceCount( InSharedPtr.SharedReferenceCount )
-	{
-	}
+	{ }
 
 	/**
 	 * Aliasing constructor used to create a shared pointer which shares its reference count with
@@ -725,8 +702,7 @@ public:
 	FORCEINLINE TSharedPtr( TSharedPtr< OtherType, Mode > const& OtherSharedPtr, ObjectType* InObject )
 		: Object( InObject )
 		, SharedReferenceCount( OtherSharedPtr.SharedReferenceCount )
-	{
-	}
+	{ }
 
 	/**
 	 * Aliasing constructor used to create a shared pointer which shares its reference count with
@@ -754,8 +730,7 @@ public:
 	FORCEINLINE TSharedPtr( TSharedRef< OtherType, Mode > const& OtherSharedRef, ObjectType* InObject )
 		: Object( InObject )
 		, SharedReferenceCount( OtherSharedRef.SharedReferenceCount )
-	{
-	}
+	{ }
 
 	/**
 	 * Assignment to a nullptr pointer.  The object currently referenced by this shared pointer will no longer be
@@ -803,7 +778,7 @@ public:
 	// NOTE: The following is an Unreal extension to standard shared_ptr behavior
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE TSharedPtr& operator=( SharedPointerInternals::FRawPtrProxy< OtherType > const& InRawPtrProxy )
 	{
@@ -817,26 +792,12 @@ public:
 	 * @return  Reference to the object
 	 */
 	// NOTE: The following is an Unreal extension to standard shared_ptr behavior
-	FORCEINLINE TSharedRef< ObjectType, Mode > ToSharedRef() const&
+	FORCEINLINE TSharedRef< ObjectType, Mode > ToSharedRef() const
 	{
-		// If this assert goes off, it means a shared reference was created from a shared pointer that was nullptr.
-		// Shared references are never allowed to be null.  Consider using TSharedPtr instead.
+ 		// If this assert goes off, it means a shared reference was created from a shared pointer that was nullptr.
+ 		// Shared references are never allowed to be null.  Consider using TSharedPtr instead.
 		check( IsValid() );
 		return TSharedRef< ObjectType, Mode >( *this );
-	}
-
-	/**
-	 * Converts a shared pointer to a shared reference.  The pointer *must* be valid or an assertion will trigger.
-	 *
-	 * @return  Reference to the object
-	 */
-	 // NOTE: The following is an Unreal extension to standard shared_ptr behavior
-	FORCEINLINE TSharedRef< ObjectType, Mode > ToSharedRef() &&
-	{
-		// If this assert goes off, it means a shared reference was created from a shared pointer that was nullptr.
-		// Shared references are never allowed to be null.  Consider using TSharedPtr instead.
-		check( IsValid() );
-		return TSharedRef< ObjectType, Mode >( MoveTemp( *this ) );
 	}
 
 	/**
@@ -936,7 +897,7 @@ private:
 	 */
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE explicit TSharedPtr( TWeakPtr< OtherType, Mode > const& InWeakPtr )
 		: Object( nullptr )
@@ -947,32 +908,6 @@ private:
 		if( SharedReferenceCount.IsValid() )
 		{
 			Object = InWeakPtr.Object;
-		}
-	}
-
-	/**
-	 * Constructs a shared pointer from a weak pointer, allowing you to access the object (if it
-	 * hasn't expired yet.)  Remember, if there are no more shared references to the object, the
-	 * shared pointer will not be valid.  You should always check to make sure this shared
-	 * pointer is valid before trying to dereference the shared pointer!
-	 *
-	 * NOTE: This constructor is private to force users to be explicit when converting a weak
-	 *       pointer to a shared pointer.  Use the weak pointer's Pin() method instead!
-	 */
-	template <
-		typename OtherType,
-		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
-	>
-	FORCEINLINE explicit TSharedPtr(TWeakPtr< OtherType, Mode >&& InWeakPtr)
-		: Object(nullptr)
-		, SharedReferenceCount( MoveTemp( InWeakPtr.WeakReferenceCount ) )
-	{
-		// Check that the shared reference was created from the weak reference successfully.  We'll only
-		// cache a pointer to the object if we have a valid shared reference.
-		if (SharedReferenceCount.IsValid())
-		{
-			Object = InWeakPtr.Object;
-			InWeakPtr.Object = nullptr;
 		}
 	}
 
@@ -1006,20 +941,6 @@ private:
 	SharedPointerInternals::FSharedReferencer< Mode > SharedReferenceCount;
 };
 
-//template< class ObjectType, ESPMode Mode >
-//class TSharedPtr
-
-namespace Freeze
-{
-	template<class ObjectType, ESPMode Mode>
-	void IntrinsicWriteMemoryImage(FMemoryImageWriter& Writer, const TSharedPtr<ObjectType, Mode>& Object, const FTypeLayoutDesc&)
-	{
-		// we never want to freeze pointers, so write an empty one
-		Writer.WriteBytes(TSharedPtr<ObjectType, Mode>());
-	}
-}
-
-DECLARE_TEMPLATE_INTRINSIC_TYPE_LAYOUT((template<class ObjectType, ESPMode Mode>), (TSharedPtr<ObjectType, Mode>));
 
 template<class ObjectType, ESPMode Mode> struct TIsZeroConstructType<TSharedPtr<ObjectType, Mode>> { enum { Value = true }; };
 
@@ -1039,8 +960,7 @@ public:
 	FORCEINLINE TWeakPtr( SharedPointerInternals::FNullTag* = nullptr )
 		: Object( nullptr )
 		, WeakReferenceCount()
-	{
-	}
+	{ }
 
 	/**
 	 * Constructs a weak pointer from a shared reference
@@ -1050,13 +970,12 @@ public:
 	// NOTE: The following is an Unreal extension to standard shared_ptr behavior
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE TWeakPtr( TSharedRef< OtherType, Mode > const& InSharedRef )
 		: Object( InSharedRef.Object )
 		, WeakReferenceCount( InSharedRef.SharedReferenceCount )
-	{
-	}
+	{ }
 
 	/**
 	 * Constructs a weak pointer from a shared pointer
@@ -1065,13 +984,12 @@ public:
 	 */
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE TWeakPtr( TSharedPtr< OtherType, Mode > const& InSharedPtr )
 		: Object( InSharedPtr.Object )
 		, WeakReferenceCount( InSharedPtr.SharedReferenceCount )
-	{
-	}
+	{ }
 
 	/**
 	 * Constructs a weak pointer from a weak pointer of another type.
@@ -1081,17 +999,16 @@ public:
 	 */
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE TWeakPtr( TWeakPtr< OtherType, Mode > const& InWeakPtr )
 		: Object( InWeakPtr.Object )
 		, WeakReferenceCount( InWeakPtr.WeakReferenceCount )
-	{
-	}
+	{ }
 
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE TWeakPtr( TWeakPtr< OtherType, Mode >&& InWeakPtr )
 		: Object( InWeakPtr.Object )
@@ -1103,8 +1020,7 @@ public:
 	FORCEINLINE TWeakPtr( TWeakPtr const& InWeakPtr )
 		: Object( InWeakPtr.Object )
 		, WeakReferenceCount( InWeakPtr.WeakReferenceCount )
-	{
-	}
+	{ }
 
 	FORCEINLINE TWeakPtr( TWeakPtr&& InWeakPtr )
 		: Object( InWeakPtr.Object )
@@ -1154,7 +1070,7 @@ public:
 	 */
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE TWeakPtr& operator=( TWeakPtr<OtherType, Mode> const& InWeakPtr )
 	{
@@ -1165,7 +1081,7 @@ public:
 
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE TWeakPtr& operator=( TWeakPtr<OtherType, Mode>&& InWeakPtr )
 	{
@@ -1183,7 +1099,7 @@ public:
 	// NOTE: The following is an Unreal extension to standard shared_ptr behavior
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE TWeakPtr& operator=( TSharedRef< OtherType, Mode > const& InSharedRef )
 	{
@@ -1199,7 +1115,7 @@ public:
 	 */
 	template <
 		typename OtherType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE TWeakPtr& operator=( TSharedPtr< OtherType, Mode > const& InSharedPtr )
 	{
@@ -1216,22 +1132,9 @@ public:
 	 *
 	 * @return  Shared pointer for this object (will only be valid if still referenced!)
 	 */
-	FORCEINLINE TSharedPtr< ObjectType, Mode > Pin() const&
+	FORCEINLINE TSharedPtr< ObjectType, Mode > Pin() const
 	{
 		return TSharedPtr< ObjectType, Mode >( *this );
-	}
-
-	/**
-	 * Converts this weak pointer to a shared pointer that you can use to access the object (if it
-	 * hasn't expired yet.)  Remember, if there are no more shared references to the object, the
-	 * returned shared pointer will not be valid.  You should always check to make sure the returned
-	 * pointer is valid before trying to dereference the shared pointer!
-	 *
-	 * @return  Shared pointer for this object (will only be valid if still referenced!)
-	 */
-	FORCEINLINE TSharedPtr< ObjectType, Mode > Pin() &&
-	{
-		return TSharedPtr< ObjectType, Mode >( MoveTemp( *this ) );
 	}
 
 	/**
@@ -1330,7 +1233,7 @@ public:
 
 		// Now that we've verified the shared pointer is valid, we'll convert it to a shared reference
 		// and return it!
-		return MoveTemp( SharedThis ).ToSharedRef();
+		return SharedThis.ToSharedRef();
 	}
 
 	/**
@@ -1357,7 +1260,7 @@ public:
 
 		// Now that we've verified the shared pointer is valid, we'll convert it to a shared reference
 		// and return it!
-		return MoveTemp( SharedThis ).ToSharedRef();
+		return SharedThis.ToSharedRef();
 	}
 
 protected:
@@ -1833,10 +1736,6 @@ FORCEINLINE SharedPointerInternals::FRawPtrProxy< ObjectType > MakeShareable( Ob
 /**
  * MakeShared utility function.  Allocates a new ObjectType and reference controller in a single memory block.
  * Equivalent to std::make_shared.
- *
- * NOTE: If the constructor is private/protected you will need to friend the intrusive reference controller in your class. e.g.
- * 	  template <typename ObjectType>
- *	  friend class SharedPointerInternals::TIntrusiveReferenceController;
  */
 template <typename InObjectType, ESPMode InMode = ESPMode::Fast, typename... InArgTypes>
 FORCEINLINE TSharedRef<InObjectType, InMode> MakeShared(InArgTypes&&... Args)

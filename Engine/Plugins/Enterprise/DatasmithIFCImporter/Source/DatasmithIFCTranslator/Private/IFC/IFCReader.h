@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -244,7 +244,7 @@ namespace IFC
 		int64 IfcTransportElementEntity = 0;
 		int64 IfcVirtualElementEntity = 0;
 		int64 IfcReinforcingElementEntity = 0;
-		int64 IfcOpeningElementEntity = 0;
+		
 		
 		
 

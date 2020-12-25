@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -163,14 +163,4 @@ public:
 	virtual bool UpdateStates() const override;
 private:
 	TArray< FString > UpdatedFiles;
-};
-
-class FPerforceChangeStatusWorker : public IPerforceSourceControlWorker
-{
-public:
-	virtual ~FPerforceChangeStatusWorker() {}
-	// IPerforceSourceControlWorker interface
-	virtual FName GetName() const override;
-	virtual bool Execute(class FPerforceSourceControlCommand& InCommand) override;
-	virtual bool UpdateStates() const override;
 };

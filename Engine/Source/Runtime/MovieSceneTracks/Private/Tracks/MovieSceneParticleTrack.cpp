@@ -1,7 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Tracks/MovieSceneParticleTrack.h"
-#include "Evaluation/MovieSceneParticleTemplate.h"
 #include "MovieSceneCommonHelpers.h"
 #include "Sections/MovieSceneParticleSection.h"
 
@@ -15,12 +14,6 @@ UMovieSceneParticleTrack::UMovieSceneParticleTrack( const FObjectInitializer& Ob
 #if WITH_EDITORONLY_DATA
 	TrackTint = FColor(255,255,255,160);
 #endif
-}
-
-
-FMovieSceneEvalTemplatePtr UMovieSceneParticleTrack::CreateTemplateForSection(const UMovieSceneSection& InSection) const
-{
-	return FMovieSceneParticleSectionTemplate(*CastChecked<const UMovieSceneParticleSection>(&InSection));
 }
 
 

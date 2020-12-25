@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	D3D11VertexBuffer.cpp: D3D vertex buffer RHI implementation.
@@ -6,14 +6,7 @@
 
 #include "D3D11RHIPrivate.h"
 
-TAutoConsoleVariable<int32> GCVarUseSharedKeyedMutex(
-	TEXT("r.D3D11.UseSharedKeyMutex"),
-	0,
-	TEXT("If 1, BUF_Shared vertex / index buffer and TexCreate_Shared texture will be created\n")
-	TEXT("with the D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX flag instead of D3D11_RESOURCE_MISC_SHARED (default).\n"),
-	ECVF_Default);
-
-FVertexBufferRHIRef FD3D11DynamicRHI::RHICreateVertexBuffer(uint32 Size,uint32 InUsage, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo)
+FVertexBufferRHIRef FD3D11DynamicRHI::RHICreateVertexBuffer(uint32 Size,uint32 InUsage, FRHIResourceCreateInfo& CreateInfo)
 {
 	if (CreateInfo.bWithoutNativeResource)
 	{
@@ -35,6 +28,12 @@ FVertexBufferRHIRef FD3D11DynamicRHI::RHICreateVertexBuffer(uint32 Size,uint32 I
 	if (InUsage & BUF_UnorderedAccess)
 	{
 		Desc.BindFlags |= D3D11_BIND_UNORDERED_ACCESS;
+
+		static bool bRequiresRawView = (GMaxRHIFeatureLevel < ERHIFeatureLevel::SM5);
+		if (bRequiresRawView)
+		{
+			Desc.MiscFlags |= D3D11_RESOURCE_MISC_BUFFER_ALLOW_RAW_VIEWS;
+		}
 	}
 
 	if (InUsage & BUF_ByteAddressBuffer)
@@ -55,18 +54,6 @@ FVertexBufferRHIRef FD3D11DynamicRHI::RHICreateVertexBuffer(uint32 Size,uint32 I
 	if (InUsage & BUF_ShaderResource)
 	{
 		Desc.BindFlags |= D3D11_BIND_SHADER_RESOURCE;
-	}
-
-	if (InUsage & BUF_Shared)
-	{
-		if (GCVarUseSharedKeyedMutex->GetInt() != 0)
-		{
-			Desc.MiscFlags |= D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
-		}
-		else
-		{
-			Desc.MiscFlags |= D3D11_RESOURCE_MISC_SHARED;
-		}
 	}
 
 	if (FPlatformMemory::SupportsFastVRAMMemory())
@@ -94,18 +81,11 @@ FVertexBufferRHIRef FD3D11DynamicRHI::RHICreateVertexBuffer(uint32 Size,uint32 I
 	}
 
 	TRefCountPtr<ID3D11Buffer> VertexBufferResource;
-	check(Desc.ByteWidth != 0); //tracking down an elusive bug.
 	HRESULT Result = Direct3DDevice->CreateBuffer(&Desc, pInitData, VertexBufferResource.GetInitReference());
-	check(Desc.ByteWidth != 0); //tracking down an elusive bug.
 	if (FAILED(Result))
 	{
 		UE_LOG(LogD3D11RHI, Error, TEXT("D3DDevice failed CreateBuffer VB with ByteWidth=%d, BindFlags=0x%x Usage=%d, CPUAccess=0x%x, MiscFlags=0x%x"), Desc.ByteWidth, (uint32)Desc.BindFlags, (uint32)Desc.Usage, Desc.CPUAccessFlags, Desc.MiscFlags);
 		VERIFYD3D11RESULT_EX(Result, Direct3DDevice);
-	}
-
-	if (CreateInfo.DebugName)
-	{
-		VertexBufferResource->SetPrivateData(WKPDID_D3DDebugObjectName, FCString::Strlen(CreateInfo.DebugName) + 1, TCHAR_TO_ANSI(CreateInfo.DebugName));
 	}
 
 	UpdateBufferStats(VertexBufferResource, true);
@@ -123,10 +103,9 @@ FVertexBufferRHIRef FD3D11DynamicRHI::CreateVertexBuffer_RenderThread(
 	class FRHICommandListImmediate& RHICmdList,
 	uint32 Size,
 	uint32 InUsage,
-	ERHIAccess InResourceState,
 	FRHIResourceCreateInfo& CreateInfo)
 {
-	return RHICreateVertexBuffer(Size, InUsage, InResourceState, CreateInfo);
+	return RHICreateVertexBuffer(Size, InUsage, CreateInfo);
 }
 
 void* FD3D11DynamicRHI::LockVertexBuffer_BottomOfPipe(FRHICommandListImmediate& RHICmdList, FRHIVertexBuffer* VertexBufferRHI,uint32 Offset,uint32 Size,EResourceLockMode LockMode)

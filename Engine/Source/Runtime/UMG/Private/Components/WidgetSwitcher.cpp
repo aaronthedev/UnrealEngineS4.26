@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/WidgetSwitcher.h"
 #include "SlateFwd.h"
@@ -97,7 +97,7 @@ void UWidgetSwitcher::OnSlotAdded(UPanelSlot* InSlot)
 void UWidgetSwitcher::OnSlotRemoved(UPanelSlot* InSlot)
 {
 	// Remove the widget from the live slot if it exists.
-	if ( MyWidgetSwitcher.IsValid() && InSlot->Content)
+	if ( MyWidgetSwitcher.IsValid() )
 	{
 		TSharedPtr<SWidget> Widget = InSlot->Content->GetCachedWidget();
 		if ( Widget.IsValid() )

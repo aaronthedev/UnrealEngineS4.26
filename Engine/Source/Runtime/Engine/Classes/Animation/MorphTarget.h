@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -76,22 +76,19 @@ struct FMorphTargetLODModel
 		Ar.UsingCustomVersion(FEditorObjectVersion::GUID);
 		Ar.UsingCustomVersion(FFortniteMainBranchObjectVersion::GUID);
 
-		if (!Ar.IsObjectReferenceCollector())
+		if (Ar.IsLoading() && Ar.CustomVer(FEditorObjectVersion::GUID) < FEditorObjectVersion::AddedMorphTargetSectionIndices)
 		{
-			if (Ar.IsLoading() && Ar.CustomVer(FEditorObjectVersion::GUID) < FEditorObjectVersion::AddedMorphTargetSectionIndices)
-			{
-				Ar << M.Vertices << M.NumBaseMeshVerts;
-				M.bGeneratedByEngine = false;
-			}
-			else if (Ar.IsLoading() && Ar.CustomVer(FFortniteMainBranchObjectVersion::GUID) < FFortniteMainBranchObjectVersion::SaveGeneratedMorphTargetByEngine)
-			{
-				Ar << M.Vertices << M.NumBaseMeshVerts << M.SectionIndices;
-				M.bGeneratedByEngine = false;
-			}
-			else
-			{
-				Ar << M.Vertices << M.NumBaseMeshVerts << M.SectionIndices << M.bGeneratedByEngine;
-			}
+			Ar << M.Vertices << M.NumBaseMeshVerts;
+			M.bGeneratedByEngine = false;
+		}
+		else if (Ar.IsLoading() && Ar.CustomVer(FFortniteMainBranchObjectVersion::GUID) < FFortniteMainBranchObjectVersion::SaveGeneratedMorphTargetByEngine)
+		{
+			Ar << M.Vertices << M.NumBaseMeshVerts << M.SectionIndices; 
+			M.bGeneratedByEngine = false;
+		}
+		else
+		{
+			Ar << M.Vertices << M.NumBaseMeshVerts << M.SectionIndices << M.bGeneratedByEngine;
 		}
 
 		return Ar;
@@ -134,7 +131,7 @@ public:
 
 #if WITH_EDITOR
 	/** Populates the given morph target LOD model with the provided deltas */
-	ENGINE_API void PopulateDeltas(const TArray<FMorphTargetDelta>& Deltas, const int32 LODIndex, const TArray<struct FSkelMeshSection>& Sections, const bool bCompareNormal = false, const bool bGeneratedByReductionSetting = false, const float PositionThreshold = THRESH_POINTS_ARE_NEAR);
+	ENGINE_API void PopulateDeltas(const TArray<FMorphTargetDelta>& Deltas, const int32 LODIndex, const TArray<struct FSkelMeshSection>& Sections, const bool bCompareNormal = false, const bool bGeneratedByReductionSetting = false);
 	/** Remove empty LODModels */
 	ENGINE_API void RemoveEmptyMorphTargets();
 #endif // WITH_EDITOR

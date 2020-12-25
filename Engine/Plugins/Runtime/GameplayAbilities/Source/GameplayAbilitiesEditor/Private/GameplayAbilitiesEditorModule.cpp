@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayAbilitiesEditorModule.h"
 #include "Stats/StatsMisc.h"
@@ -179,7 +179,7 @@ void FGameplayAbilitiesEditorModule::StartupModule()
 	{
 		FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>( TEXT("LevelEditor") );
 		TSharedPtr<FTabManager> LevelEditorTabManager = LevelEditorModule.GetLevelEditorTabManager();
-		LevelEditorTabManager->TryInvokeTab(FName("GameplayCueApp"));
+		LevelEditorTabManager->InvokeTab(FName("GameplayCueApp"));
 	}
 #endif // WITH_HOT_RELOAD
 
@@ -198,7 +198,7 @@ void FGameplayAbilitiesEditorModule::HandleNotify_OpenAssetInEditor(FString Asse
 	{
 		FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>(TEXT("LevelEditor"));
 		TSharedPtr<FTabManager> LevelEditorTabManager = LevelEditorModule.GetLevelEditorTabManager();
-		LevelEditorTabManager->TryInvokeTab(FName("GameplayCueApp"));
+		LevelEditorTabManager->InvokeTab(FName("GameplayCueApp"));
 	}
 
 	//UE_LOG(LogTemp, Display, TEXT("HandleNotify_OpenAssetInEditor!!! %s %d"), *AssetName, AssetType);
@@ -215,7 +215,7 @@ void FGameplayAbilitiesEditorModule::HandleNotify_FindAssetInEditor(FString Asse
 	{
 		FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>(TEXT("LevelEditor"));
 		TSharedPtr<FTabManager> LevelEditorTabManager = LevelEditorModule.GetLevelEditorTabManager();
-		LevelEditorTabManager->TryInvokeTab(FName("GameplayCueApp"));
+		LevelEditorTabManager->InvokeTab(FName("GameplayCueApp"));
 	}
 
 	//UE_LOG(LogTemp, Display, TEXT("HandleNotify_FindAssetInEditor!!! %s %d"), *AssetName, AssetType);

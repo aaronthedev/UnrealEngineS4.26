@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_ANY_WEAK_PTR_H
-#define PXR_BASE_TF_ANY_WEAK_PTR_H
+#ifndef TF_ANYWEAKPTR_H
+#define TF_ANYWEAKPTR_H
 
 /// \file tf/anyWeakPtr.h
 /// \ingroup group_tf_Memory
@@ -31,6 +31,7 @@
 #include "pxr/pxr.h"
 #include "pxr/base/tf/api.h"
 #include "pxr/base/tf/cxxCast.h"
+#include "pxr/base/tf/traits.h"
 #include "pxr/base/tf/type.h"
 #include "pxr/base/tf/weakPtr.h"
 
@@ -296,7 +297,7 @@ template <class Ptr>
 bool
 TfAnyWeakPtr::_PointerHolder<Ptr>::_IsConst() const
 {
-    return std::is_const<typename Ptr::DataType>::value;
+    return TfTraits::Type<typename Ptr::DataType>::isConst;
 }
 
 PXR_NAMESPACE_CLOSE_SCOPE

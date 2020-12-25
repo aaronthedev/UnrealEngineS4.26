@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_WORK_REDUCE_H
-#define PXR_BASE_WORK_REDUCE_H
+#ifndef WORK_REDUCE_H
+#define WORK_REDUCE_H
 
 /// \file work/reduce.h
 #include "pxr/pxr.h"
@@ -165,4 +165,4 @@ WorkParallelReduceN(
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_WORK_REDUCE_H
+#endif // WORK_REDUCE_H

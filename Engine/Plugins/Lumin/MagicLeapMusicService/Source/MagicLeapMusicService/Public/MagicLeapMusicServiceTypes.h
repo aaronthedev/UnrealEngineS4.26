@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -87,7 +87,7 @@ enum class EMagicLeapMusicServiceStatus : uint8
 };
 
 USTRUCT(BlueprintType)
-struct MAGICLEAPMUSICSERVICE_API FMagicLeapMusicServiceTrackMetadata
+struct FMagicLeapMusicServiceTrackMetadata
 {
 	GENERATED_BODY()
 
@@ -134,7 +134,7 @@ DECLARE_DYNAMIC_DELEGATE_OneParam(FMagicLeapMusicServiceVolumeDelegate, const fl
 
 
 USTRUCT(BlueprintType)
-struct MAGICLEAPMUSICSERVICE_API FMagicLeapMusicServiceCallbacks
+struct FMagicLeapMusicServiceCallbacks
 {
 	GENERATED_BODY()
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BPFunctionDragDropAction.h"
 #include "EdGraph/EdGraph.h"
@@ -282,7 +282,7 @@ UFunction const* FKismetFunctionDragDropAction::GetFunctionProperty() const
 	check(OwningClass != nullptr);
 	check(FunctionName != NAME_None);
 
-	UFunction* Function = FindUField<UFunction>(OwningClass, FunctionName);
+	UFunction* Function = FindField<UFunction>(OwningClass, FunctionName);
 	return Function;
 }
 

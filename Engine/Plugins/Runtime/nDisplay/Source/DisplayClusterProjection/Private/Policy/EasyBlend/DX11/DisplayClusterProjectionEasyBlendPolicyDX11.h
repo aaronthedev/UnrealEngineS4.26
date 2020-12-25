@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,14 +14,17 @@ class FDisplayClusterProjectionEasyBlendPolicyDX11
 	: public FDisplayClusterProjectionEasyBlendPolicyBase
 {
 public:
-	FDisplayClusterProjectionEasyBlendPolicyDX11(const FString& ViewportId, const TMap<FString, FString>& Parameters)
-		: FDisplayClusterProjectionEasyBlendPolicyBase(ViewportId, Parameters)
+	FDisplayClusterProjectionEasyBlendPolicyDX11(const FString& ViewportId)
+		: FDisplayClusterProjectionEasyBlendPolicyBase(ViewportId)
+	{ }
+
+	virtual ~FDisplayClusterProjectionEasyBlendPolicyDX11()
 	{ }
 
 protected:
-	virtual TUniquePtr<FDisplayClusterProjectionEasyBlendViewAdapterBase> CreateViewAdapter(const FDisplayClusterProjectionEasyBlendViewAdapterBase::FInitParams& InitParams) override
+	virtual TSharedPtr<FDisplayClusterProjectionEasyBlendViewAdapterBase> CreateViewAdapter(const FDisplayClusterProjectionEasyBlendViewAdapterBase::FInitParams& InitParams) override
 	{
 		UE_LOG(LogDisplayClusterProjectionEasyBlend, Log, TEXT("Instantiating EasyBlend DX11 viewport adapter..."));
-		return MakeUnique<FDisplayClusterProjectionEasyBlendViewAdapterDX11>(InitParams);
+		return MakeShareable(new FDisplayClusterProjectionEasyBlendViewAdapterDX11(InitParams));
 	}
 };

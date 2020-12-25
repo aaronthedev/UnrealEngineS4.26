@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "XmppJingle/XmppPubSubJingle.h"
 #include "XmppJingle/XmppConnectionJingle.h"
 #include "XmppLog.h"
 #include "Misc/ScopeLock.h"
 #include "Containers/BackgroundableTicker.h"
-#include "Stats/Stats.h"
 
 #if WITH_XMPP_JINGLE
 
@@ -148,7 +147,6 @@ FXmppPubSubJingle::~FXmppPubSubJingle()
 
 bool FXmppPubSubJingle::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FXmppPubSubJingle_Tick);
 	while (!ResultOpQueue.IsEmpty())
 	{
 		FXmppPubSubOpResult* ResultOp = NULL;

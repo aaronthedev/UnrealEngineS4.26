@@ -1,14 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
-
 #include "CapturableProperty.h"
-#include "Variant.h"
-#include "VariantSet.h"
 #include "VariantManager.h"
 
 #include "VariantManagerBlueprintLibrary.generated.h"
@@ -62,16 +59,6 @@ public:
 	UFUNCTION(BlueprintCallable, meta=(ScriptMethod), Category = "VariantManager")
 	static UPropertyValue* CaptureProperty(UVariant* Variant, AActor* Actor, FString PropertyPath);
 
-
-
-	UFUNCTION(BlueprintCallable, meta=(ScriptMethod), Category="VariantManager" )
-	static int32 AddDependency(UVariant* Variant, UPARAM(ref) FVariantDependency& Dependency);
-
-	UFUNCTION(BlueprintCallable, meta=(ScriptMethod), Category="VariantManager")
-	static void SetDependency(UVariant* Variant, int32 Index, UPARAM(ref) FVariantDependency& Dependency);
-
-	UFUNCTION(BlueprintCallable, meta=(ScriptMethod), Category="VariantManager")
-	static void DeleteDependency(UVariant* Variant, int32 Index);
 
 
 

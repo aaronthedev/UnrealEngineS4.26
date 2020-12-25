@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,9 +6,9 @@
 #include "Containers/Union.h"
 #include "Physics/PhysicsInterfaceTypes.h"
 #include "PhysicsInterfaceUtilsCore.h"
+#include "PhysicsEngine/ConstraintInstance.h"
 
 class FPhysScene_PhysX;
-struct FConstraintInstance;
 
 // FILTER DATA
 
@@ -30,8 +30,6 @@ struct FConstraintBrokenDelegateData
 	int32 ConstraintIndex;
 };
 
-#endif // WITH_PHYSX
-
 class FPhysicsReplication;
 
 /** Interface for the creation of customized physics replication.*/
@@ -41,3 +39,4 @@ public:
 	virtual FPhysicsReplication* Create(FPhysScene* OwningPhysScene) = 0;
 	virtual void Destroy(FPhysicsReplication* PhysicsReplication) = 0;
 };
+#endif // WITH_PHYX

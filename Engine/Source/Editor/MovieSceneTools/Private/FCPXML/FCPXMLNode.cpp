@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "FCPXML/FCPXMLNode.h"
 #include "FCPXML/FCPXMLFile.h"
@@ -187,7 +187,7 @@ void FFCPXMLNode::GetXmlBuffer(const FString& Indent, FString& Output) const
 	else
 	{
 		Output += TEXT(">") LINE_TERMINATOR;
-		for (const TSharedPtr<FFCPXMLNode> ChildNode : Children)
+		for (const TSharedPtr<FFCPXMLNode>& ChildNode : Children)
 		{
 			ChildNode->GetXmlBuffer(Indent + TEXT("\t"), Output);
 		}

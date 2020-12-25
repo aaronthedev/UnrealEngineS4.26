@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,8 +6,6 @@
 #include "UObject/ObjectMacros.h"
 #include "EngineDefines.h"
 #include "PhysxUserData.h"
-#include "PhysicsCore/Public/PhysicsInterfaceTypesCore.h"
-#include "Engine/EngineTypes.h"
 #include "ShapeElem.generated.h"
 
 namespace EAggCollisionShape
@@ -32,36 +30,30 @@ struct FKShapeElem
 
 	FKShapeElem()
 	: RestOffset(0.f)
-#if WITH_EDITORONLY_DATA
-	, bIsGenerated(false)
-#endif
 	, ShapeType(EAggCollisionShape::Unknown)
 	, bContributeToMass(true)
-	, CollisionEnabled(ECollisionEnabled::QueryAndPhysics)
+#if WITH_PHYSX
 	, UserData(this)
+#endif
 	{}
 
 	FKShapeElem(EAggCollisionShape::Type InShapeType)
 	: RestOffset(0.f)
-#if WITH_EDITORONLY_DATA
-	, bIsGenerated(false)
-#endif
 	, ShapeType(InShapeType)
 	, bContributeToMass(true)
-	, CollisionEnabled(ECollisionEnabled::QueryAndPhysics)
+#if WITH_PHYSX
 	, UserData(this)
+#endif
 	{}
 
 	FKShapeElem(const FKShapeElem& Copy)
 	: RestOffset(Copy.RestOffset)
-#if WITH_EDITORONLY_DATA
-	, bIsGenerated(Copy.bIsGenerated)
-#endif
 	, Name(Copy.Name)
 	, ShapeType(Copy.ShapeType)
 	, bContributeToMass(Copy.bContributeToMass)
-	, CollisionEnabled(ECollisionEnabled::QueryAndPhysics)
+#if WITH_PHYSX
 	, UserData(this)
+#endif
 	{
 	}
 
@@ -80,7 +72,9 @@ struct FKShapeElem
 		return (T*)this;
 	}
 
-	const FUserData* GetUserData() const { FUserData::Set<FKShapeElem>((void*)&UserData, const_cast<FKShapeElem*>(this));  return &UserData; }
+#if WITH_PHYSX
+	const FPhysxUserData* GetUserData() const { FPhysxUserData::Set<FKShapeElem>((void*)&UserData, const_cast<FKShapeElem*>(this));  return &UserData; }
+#endif // WITH_PHYSX
 
 	ENGINE_API static EAggCollisionShape::Type StaticShapeType;
 
@@ -96,35 +90,19 @@ struct FKShapeElem
 	/** Set whether this shape will contribute to the mass of the body */
 	ENGINE_API void SetContributeToMass(bool bInContributeToMass) { bContributeToMass = bInContributeToMass; }
 
-#if WITH_CHAOS
-	/** Set whether this shape should be considered for query or sim collision */
-	ENGINE_API void SetCollisionEnabled(ECollisionEnabled::Type InCollisionEnabled) { CollisionEnabled = InCollisionEnabled; }
-#endif
-
-	/** Get whether this shape should be considered for query or sim collision */
-	ENGINE_API ECollisionEnabled::Type GetCollisionEnabled() const { return CollisionEnabled; }
-
 	/** Offset used when generating contact points. This allows you to smooth out
 		the Minkowski sum by radius R. Useful for making objects slide smoothly
 		on top of irregularities  */
 	UPROPERTY(Category = Shape, EditAnywhere)
 	float RestOffset;
 
-#if WITH_EDITORONLY_DATA
-	/** True when the shape was created by the engine and was not imported. */
-	UPROPERTY()
-	uint8 bIsGenerated : 1;
-#endif
-
 protected:
 	/** Helper function to safely clone instances of this shape element */
 	void CloneElem(const FKShapeElem& Other)
 	{
-		RestOffset = Other.RestOffset;
 		ShapeType = Other.ShapeType;
 		Name = Other.Name;
 		bContributeToMass = Other.bContributeToMass;
-		CollisionEnabled = Other.CollisionEnabled;
 	}
 
 private:
@@ -140,10 +118,7 @@ private:
 	UPROPERTY(Category=Shape, EditAnywhere)
 	uint8 bContributeToMass : 1;
 
-	/** Course per-primitive collision filtering. This allows for individual primitives to
-		be toggled in and out of sim and query collision without changing filtering details. */
-	UPROPERTY(Category=Shape, EditAnywhere)
-	TEnumAsByte<ECollisionEnabled::Type> CollisionEnabled;
-
-	FUserData UserData;
+#if WITH_PHYSX
+	FPhysxUserData UserData;
+#endif // WITH_PHYSX
 };

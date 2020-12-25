@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VideoDecoder.h"
 #include "VideoSink.h"
@@ -321,7 +321,13 @@ bool FVideoDecoder::QueueBuffer(const webrtc::EncodedImage& InputImage, bool Mis
 
 	TRefCountPtr<IMFMediaBuffer> MediaBuffer;
 
+	int64 CaptureTs = 0;
 	SIZE_T BufferSize = InputImage._length;
+	if (FHUDStats::Get().bEnabled)
+	{
+		BufferSize -= sizeof(CaptureTs); // capture timestamp is appended to encoded frame
+		CaptureTs = *reinterpret_cast<const int64*>(InputImage._buffer + BufferSize);
+	}
 
 	CHECK_HR(MFCreateMemoryBuffer(BufferSize, MediaBuffer.GetInitReference()));
 
@@ -339,15 +345,10 @@ bool FVideoDecoder::QueueBuffer(const webrtc::EncodedImage& InputImage, bool Mis
 	CHECK_HR(Sample->AddBuffer(MediaBuffer));
 	// don't bother converting 90KHz -> 10MHz, decoder doesn't care and we can lose precision on convertion back and forth
 	CHECK_HR(Sample->SetSampleTime(InputImage.Timestamp()));
-
-	// #AVENCODER : What should we do here with the CaptureTs ? That was part of the buffer, and I removed it.
-#if 0
 	// to pass capture timestamp through decoder we set it as sample duration as we don't use duration
 	CHECK_HR(Sample->SetSampleDuration(CaptureTs));
 
 	UE_LOG(LogVideoDecoder, VeryVerbose, TEXT("(%d) enqueueing sample ts %u, capture ts %lld, queue size %d"), RtcTimeMs(), InputImage.Timestamp(), CaptureTs, InputQueueSize.GetValue() + 1);
-#endif
-
 	verify(InputQueue.Enqueue(Sample));
 	InputQueueSize.Increment();
 	InputQueuedEvent->Trigger();
@@ -357,7 +358,7 @@ bool FVideoDecoder::QueueBuffer(const webrtc::EncodedImage& InputImage, bool Mis
 
 void FVideoDecoder::DecodeThreadFunc()
 {
-	LLM_SCOPE(ELLMTag::MediaStreaming);
+	LLM_SCOPE(ELLMTag::VideoStreaming);
 	// first checks if decoder has output and only if it asks for more input the input is provided
 	// this way we work around decoder hanging if all samples from its internal pool are in use (h/w decoder)
 
@@ -581,12 +582,12 @@ bool FVideoDecoder::ProcessOutputHW(IMFSample* MFSample)
 	check(DecodeCallback);
 	webrtc::VideoFrame VideoFrame = webrtc::VideoFrame::Builder{}.
 		set_video_frame_buffer(new rtc::RefCountedObject<FVideoFrameBuffer>(TextureSample)).
-		set_timestamp_rtp(TextureSample->GetTime().Time.GetTicks()).
+		set_timestamp_rtp(TextureSample->GetTime().GetTicks()).
 		build();
 
 	DecodeCallback->Decoded(VideoFrame);
 
-	UE_LOG(LogVideoDecoder, VeryVerbose, TEXT("ProcessOutputHW: #%d (%d), ts %lld, capture ts %lld"), OutputFrameProcessedCount, InputFrameProcessedCount - OutputFrameProcessedCount, TextureSample->GetTime().Time.GetTicks(), TextureSample->GetDuration().GetTicks());
+	UE_LOG(LogVideoDecoder, VeryVerbose, TEXT("ProcessOutputHW: #%d (%d), ts %lld, capture ts %lld"), OutputFrameProcessedCount, InputFrameProcessedCount - OutputFrameProcessedCount, TextureSample->GetTime().GetTicks(), TextureSample->GetDuration().GetTicks());
 	++OutputFrameProcessedCount;
 
 	// decoder `AddRef`ed it for us. Not releasing it leads to decoder hanging
@@ -608,12 +609,12 @@ bool FVideoDecoder::ProcessOutputSW(const FSwTextureSampleRef& TextureSample)
 	check(DecodeCallback);
 	webrtc::VideoFrame VideoFrame = webrtc::VideoFrame::Builder{}.
 		set_video_frame_buffer(new rtc::RefCountedObject<FVideoFrameBuffer>(TextureSample)).
-		set_timestamp_rtp(TextureSample->GetTime().Time.GetTicks()).
+		set_timestamp_rtp(TextureSample->GetTime().GetTicks()).
 		build();
 
 	DecodeCallback->Decoded(VideoFrame);
 
-	UE_LOG(LogVideoDecoder, VeryVerbose, TEXT("ProcessOutputSW: #%d, ts %.3f, d %.3f"), OutputFrameProcessedCount, TextureSample->GetTime().Time.GetTotalSeconds(), TextureSample->GetDuration().GetTotalSeconds());
+	UE_LOG(LogVideoDecoder, VeryVerbose, TEXT("ProcessOutputSW: #%d, ts %.3f, d %.3f"), OutputFrameProcessedCount, TextureSample->GetTime().GetTotalSeconds(), TextureSample->GetDuration().GetTotalSeconds());
 	++OutputFrameProcessedCount;
 	return true;
 }

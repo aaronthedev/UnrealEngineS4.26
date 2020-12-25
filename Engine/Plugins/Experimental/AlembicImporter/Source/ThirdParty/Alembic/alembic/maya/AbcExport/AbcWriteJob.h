@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef AbcExport_AbcWriteJob_h
-#define AbcExport_AbcWriteJob_h
+#ifndef _AbcExport_AbcWriteJob_h_
+#define _AbcExport_AbcWriteJob_h_
 
 #include "Foundation.h"
 
@@ -171,7 +171,8 @@ class AbcWriteJob
     void postCallback(double iFrame);
 
     MBoundingBox getBoundingBox(double iFrame, const MMatrix & eMInvMat);
-    void setup(double iFrame, MayaTransformWriterPtr iParent);
+    void setup(double iFrame, MayaTransformWriterPtr iParent,
+               GetMembersMap& gmMap);
 
     // Currently Arnold and Renderman can not handle curve groups where the
     // degrees and closed status are different per curve.
@@ -230,4 +231,4 @@ class AbcWriteJob
 
 typedef Alembic::Util::shared_ptr < AbcWriteJob > AbcWriteJobPtr;
 
-#endif  // AbcExport_AbcWriteJob_h
+#endif  // _AbcExport_AbcWriteJob_h_

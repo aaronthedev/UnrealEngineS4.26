@@ -1,11 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #if WITH_EDITOR
 
 #include "ScreenPass.h"
-#include "SceneRenderTargetParameters.h"
+
+class FSceneTextureParameters;
 
 struct FPixelInspectorInputs
 {
@@ -20,6 +21,9 @@ struct FPixelInspectorInputs
 
 	// [Required] The original scene color before processing.
 	FScreenPassTexture OriginalSceneColor;
+
+	// [Required] The scene textures with GBuffer data.
+	const FSceneTextureParameters* SceneTextures = nullptr;
 };
 
 FScreenPassTexture AddPixelInspectorPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FPixelInspectorInputs& Inputs);

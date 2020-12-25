@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UserDefinedEnumEditor.h"
 #include "Editor.h"
@@ -86,7 +86,7 @@ public:
 	{
 		bool bValidName = true;
 
-		bool bUnchangedName = (InText.ToString().Equals(TargetEnum->GetDisplayNameTextByIndex(EnumeratorIndex).ToString()));
+		bool bUnchangedName = (InText.ToString() == TargetEnum->GetDisplayNameTextByIndex(EnumeratorIndex).ToString());
 		if (InText.IsEmpty())
 		{
 			OutErrorMsg = LOCTEXT("NameMissingError", "You must provide a name.");

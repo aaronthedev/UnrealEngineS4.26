@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 GPUFastFourierTransform.h: Interface for Fast Fourier Transform (FFT) on GPU.
@@ -8,7 +8,6 @@ GPUFastFourierTransform.h: Interface for Fast Fourier Transform (FFT) on GPU.
 
 #include "CoreMinimal.h"
 #include "Math/NumericLimits.h"
-#include "GlobalShader.h"
 #include "RendererInterface.h"
 #include "RHI.h"
 #include "RHIStaticStates.h"
@@ -83,7 +82,7 @@ namespace GPUFFT
 	{
 	public:
 
-		typedef FGlobalShaderMap  ShaderMapType;
+		typedef TShaderMap<FGlobalShaderType>  ShaderMapType;
 
 		FGPUFFTShaderContext(FRHICommandList& CmdList, const FGPUFFTShaderContext::ShaderMapType& Map)
 			: RHICmdList(&CmdList), ShaderMap(&Map)
@@ -572,9 +571,9 @@ namespace GPUFFTComputeShaderUtils
 
 		// Factory method.
 		template <typename ComputeShaderT>
-		inline static FScopedUAVBind BindOutput(FRHICommandList& CmdList, const TShaderRef<ComputeShaderT>& Shader, const FUnorderedAccessViewRHIRef& BufferUAV)
+		inline static FScopedUAVBind BindOutput(FRHICommandList& CmdList, ComputeShaderT* Shader, FUnorderedAccessViewRHIRef BufferUAV)
 		{
-			FRHIComputeShader* ShaderRHI = Shader.GetComputeShader();
+			FRHIComputeShader* ShaderRHI = Shader->GetComputeShader();
 			const uint32 BaseIndex = Shader->DestinationResourceParameter().GetBaseIndex();
 			return FScopedUAVBind(CmdList, ShaderRHI, BaseIndex, BufferUAV);
 		}

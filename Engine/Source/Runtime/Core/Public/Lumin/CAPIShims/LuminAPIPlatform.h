@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,11 +10,11 @@ LUMIN_THIRD_PARTY_INCLUDES_START
 #include <ml_platform.h>
 LUMIN_THIRD_PARTY_INCLUDES_END
 
-namespace LUMIN_MLSDK_API
+namespace MLSDK_API
 {
 
 CREATE_FUNCTION_SHIM(ml_platform, MLResult, MLPlatformGetAPILevel)
-#define MLPlatformGetAPILevel ::LUMIN_MLSDK_API::MLPlatformGetAPILevelShim
+#define MLPlatformGetAPILevel ::MLSDK_API::MLPlatformGetAPILevelShim
 
 }
 

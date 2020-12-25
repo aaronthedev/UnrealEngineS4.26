@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraEmitterTrackEditor.h"
 #include "NiagaraEmitter.h"
@@ -12,7 +12,7 @@
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "NiagaraEditorStyle.h"
 #include "NiagaraEditorModule.h"
-#include "NiagaraEditorUtilities.h"
+
 #include "EditorStyleSet.h"
 #include "Styling/SlateIconFinder.h"
 #include "Widgets/SBoxPanel.h"
@@ -20,7 +20,6 @@
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Modules/ModuleManager.h"
-#include "ViewModels/Stack/NiagaraStackRendererItem.h"
 
 #define LOCTEXT_NAMESPACE "NiagaraEmitterTrackEditor"
 
@@ -79,29 +78,23 @@ public:
 			];
 
 		// Renderer buttons
-
-		EmitterTrack->GetEmitterHandleViewModel()->GetRendererEntries(RendererEntryData);
-		for (UNiagaraStackEntry* RendererEntry : RendererEntryData)
+		for (UNiagaraRendererProperties* Renderer : EmitterTrack->GetEmitterHandleViewModel()->GetEmitterViewModel()->GetEmitter()->GetRenderers())
 		{
-			if (UNiagaraStackRendererItem* RendererItem = Cast<UNiagaraStackRendererItem>(RendererEntry))
-			{
-				UNiagaraRendererProperties* Renderer = RendererItem->GetRendererProperties();
-				TrackBox->AddSlot()
-					.AutoWidth()
-					.VAlign(VAlign_Center)
-					.Padding(3, 0, 0, 0)
+			TrackBox->AddSlot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(3, 0, 0, 0)
+				[
+					SNew(SButton)
+					.ButtonStyle(FEditorStyle::Get(), "HoverHintOnly")
+					.IsFocusable(false)
+					.ToolTipText(FText::Format(LOCTEXT("RenderButtonToolTip", "{0} - Press to select."), FText::FromString(FName::NameToDisplayString(Renderer->GetName(), false))))
+					.OnClicked(this, &SEmitterTrackWidget::OnRenderButtonClicked)
 					[
-						SNew(SButton)
-						.ButtonStyle(FEditorStyle::Get(), "HoverHintOnly")
-						.IsFocusable(false)
-						.ToolTipText(FText::Format(LOCTEXT("RenderButtonToolTip", "{0} - Press to select."), FText::FromString(FName::NameToDisplayString(Renderer->GetName(), false))))
-						.OnClicked(this, &SEmitterTrackWidget::OnRenderButtonClicked, RendererEntry)
-						[
-							SNew(SImage)
-							.Image(FSlateIconFinder::FindIconBrushForClass(Renderer->GetClass()))
-						]
-					];
-			}
+						SNew(SImage)
+						.Image(FSlateIconFinder::FindIconBrushForClass(Renderer->GetClass()))
+					]
+				];
 		}
 
 		// Enabled checkbox.
@@ -190,15 +183,8 @@ private:
 			: FLinearColor::Gray;
 	}
 
-	FReply OnRenderButtonClicked(UNiagaraStackEntry* InRendererEntry)
+	FReply OnRenderButtonClicked()
 	{
-		if (EmitterTrack.IsValid())
-		{
-			TArray<UNiagaraStackEntry*> SelectedEntries;
-			SelectedEntries.Add(InRendererEntry);
-			TArray<UNiagaraStackEntry*> DeselectedEntries;
-			EmitterTrack->GetSystemViewModel().GetSelectionViewModel()->UpdateSelectedEntries(SelectedEntries, DeselectedEntries, true);
-		}
 		return FReply::Handled();
 	}
 
@@ -215,7 +201,6 @@ private:
 private:
 	TWeakObjectPtr<UMovieSceneNiagaraEmitterTrack> EmitterTrack;
 	mutable TOptional<FText> TrackErrorIconToolTip;
-	TArray<UNiagaraStackEntry*> RendererEntryData;
 };
 
 FNiagaraEmitterTrackEditor::FNiagaraEmitterTrackEditor(TSharedPtr<ISequencer> Sequencer) 
@@ -261,7 +246,26 @@ void FNiagaraEmitterTrackEditor::BuildTrackContextMenu( FMenuBuilder& MenuBuilde
 
 	if (SystemViewModel.GetEditMode() == ENiagaraSystemViewModelEditMode::SystemAsset)
 	{
-		FNiagaraEditorUtilities::AddEmitterContextMenuActions(MenuBuilder, EmitterTrack->GetEmitterHandleViewModel());
+		MenuBuilder.BeginSection("Niagara", LOCTEXT("NiagaraContextMenuSectionName", "Niagara"));
+		{
+			MenuBuilder.AddMenuEntry(
+				EmitterTrack->GetEmitterHandleViewModel()->GetIsIsolated()
+					? LOCTEXT("RemoveFromIsolation", "Remove this from isolation.")
+					: LOCTEXT("AddToIsolation", "Add this to isolation"),
+				EmitterTrack->GetEmitterHandleViewModel()->GetIsIsolated()
+					? LOCTEXT("RemoveFromIsolation_NoChangeOthers", "Remove this emitter from isolation, without changing other emitters.")
+					: LOCTEXT("AddToIsolation_NoChangeOthers", "Add this emitter to isolation, without changing other emitters."),
+				FSlateIcon(),
+				FUIAction(FExecuteAction::CreateRaw(&SystemViewModel, &FNiagaraSystemViewModel::ToggleEmitterIsolation, EmitterTrack->GetEmitterHandleViewModel().ToSharedRef())));
+			
+			TArray<FGuid> SelectedEmitterHandleIds = SystemViewModel.GetSelectionViewModel()->GetSelectedEmitterHandleIds();
+			MenuBuilder.AddMenuEntry(
+				LOCTEXT("IsolateSelected", "Isolate all selected"),
+				LOCTEXT("IsolateSelectedToolTip", "Add all of the selected emitters to isloation"),
+				FSlateIcon(),
+				FUIAction(FExecuteAction::CreateRaw(&SystemViewModel, &FNiagaraSystemViewModel::IsolateEmitters, SelectedEmitterHandleIds)));
+		}
+		MenuBuilder.EndSection();
 	}
 }
 

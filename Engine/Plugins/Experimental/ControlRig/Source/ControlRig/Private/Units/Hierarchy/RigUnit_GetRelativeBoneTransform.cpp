@@ -1,7 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RigUnit_GetRelativeBoneTransform.h"
 #include "Units/RigUnitContext.h"
+
+FString FRigUnit_GetRelativeBoneTransform::GetUnitLabel() const
+{
+	return FString::Printf(TEXT("Get Relative Transform %s"), *Bone.ToString());
+}
 
 FRigUnit_GetRelativeBoneTransform_Execute()
 {
@@ -13,23 +18,15 @@ FRigUnit_GetRelativeBoneTransform_Execute()
 		{
 			case EControlRigState::Init:
 			{
-				CachedBone.Reset();
-				CachedSpace.Reset();
+				CachedBoneIndex = Hierarchy->GetIndex(Bone);
+				CachedSpaceIndex = Hierarchy->GetIndex(Space);
 			}
 			case EControlRigState::Update:
 			{
-				if (!CachedBone.UpdateCache(Bone, Hierarchy))
+				if (CachedBoneIndex != INDEX_NONE && CachedSpaceIndex != INDEX_NONE)
 				{
-					UE_CONTROLRIG_RIGUNIT_REPORT_WARNING(TEXT("Bone '%s' is not valid."), *Bone.ToString());
-				}
-				else if (!CachedSpace.UpdateCache(Space, Hierarchy))
-				{
-					UE_CONTROLRIG_RIGUNIT_REPORT_WARNING(TEXT("Space '%s' is not valid."), *Space.ToString());
-				}
-				else
-				{
-					const FTransform SpaceTransform = Hierarchy->GetGlobalTransform(CachedSpace);
-					const FTransform BoneTransform = Hierarchy->GetGlobalTransform(CachedBone);
+					const FTransform SpaceTransform = Hierarchy->GetGlobalTransform(CachedSpaceIndex);
+					const FTransform BoneTransform = Hierarchy->GetGlobalTransform(CachedBoneIndex);
 					Transform = BoneTransform.GetRelativeTransform(SpaceTransform);
 				}
 			}

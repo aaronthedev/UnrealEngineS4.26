@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,7 +14,7 @@ bool GenerateDiskLightOcclusionRay(
 )
 {
 	RayOrigin = WorldPosition;
-	RayDirection = float3(0,0,0);
+	RayDirection = 0.0;
 	RayTMin = 0.01;
 	RayTMax = RayTMin;
 

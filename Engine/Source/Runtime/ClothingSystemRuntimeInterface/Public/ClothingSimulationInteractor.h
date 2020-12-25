@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,7 +14,7 @@ class IClothingSimulationContext;
  * Only write to the simulation and context during the call to Sync, as that is
  * guaranteed to be a safe place to access this data.
  */
-UCLASS(Abstract, BlueprintType)
+UCLASS(Abstract)
 class CLOTHINGSYSTEMRUNTIMEINTERFACE_API UClothingSimulationInteractor : public UObject
 {
 	GENERATED_BODY()
@@ -41,51 +41,6 @@ public:
 	// written in a way to pick up these changes on the next update
 	virtual void Sync(IClothingSimulation* InSimulation, IClothingSimulationContext* InContext)
 	PURE_VIRTUAL(UClothingSimulationInteractor::Sync, );
-
-	// Set the stiffness of the spring force for the animation drive
-	UFUNCTION(BlueprintCallable, Category = ClothingSimulation)
-	virtual void SetAnimDriveSpringStiffness(float InStiffness)
-	PURE_VIRTUAL(UClothingSimulationInteractor::SetAnimDriveSpringStiffness, );
-
-	// Set a new gravity override and enable the override
-	UFUNCTION(BlueprintCallable, Category = ClothingSimulation)
-	virtual void EnableGravityOverride(const FVector& InVector)
-	PURE_VIRTUAL(UClothingSimulationInteractor::EnableGravityOverride, );
-
-	// Disable any currently set gravity override
-	UFUNCTION(BlueprintCallable, Category = ClothingSimulation)
-	virtual void DisableGravityOverride()
-	PURE_VIRTUAL(UClothingSimulationInteractor::DisableGravityOverride, );
-
-	// Return the number of cloths run by the simulation.
-	UFUNCTION(BlueprintCallable, Category = ClothingSimulation)
-	virtual int32 GetNumCloths() const
-	PURE_VIRTUAL(UClothingSimulationInteractor::GetNumCloths, return 0;);
-
-	// Return the number of kinematic (animated) particles.
-	UFUNCTION(BlueprintCallable, Category = ClothingSimulation)
-	virtual int32 GetNumKinematicParticles() const
-	PURE_VIRTUAL(UClothingSimulationInteractor::GetNumKinematicParticles, return 0;);
-
-	// Return the number of dynamic (simulated) particles.
-	UFUNCTION(BlueprintCallable, Category = ClothingSimulation)
-	virtual int32 GetNumDynamicParticles() const
-	PURE_VIRTUAL(UClothingSimulationInteractor::GetNumDynamicParticles, return 0;);
-
-	// Return the solver number of iterations.
-	UFUNCTION(BlueprintCallable, Category = ClothingSimulation)
-	virtual int32 GetNumIterations() const
-	PURE_VIRTUAL(UClothingSimulationInteractor::GetNumIterations, return 0;);
-
-	// Return the solver number of subdivisions.
-	UFUNCTION(BlueprintCallable, Category = ClothingSimulation)
-	virtual int32 GetNumSubsteps() const
-	PURE_VIRTUAL(UClothingSimulationInteractor::GetNumSubsteps, return 0;);
-
-	// Return the instant average simulation time in ms. 
-	UFUNCTION(BlueprintCallable, Category = ClothingSimulation)
-	virtual float GetSimulationTime() const
-	PURE_VIRTUAL(UClothingSimulationInteractor::GetSimulationTime, return 0.f;);
 
 protected:
 

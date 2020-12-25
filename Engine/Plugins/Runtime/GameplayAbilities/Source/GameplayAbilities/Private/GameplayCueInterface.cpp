@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayCueInterface.h"
 #include "AbilitySystemStats.h"
@@ -25,13 +25,13 @@ UGameplayCueInterface::UGameplayCueInterface(const FObjectInitializer& ObjectIni
 {
 }
 
-void IGameplayCueInterface::DispatchBlueprintCustomHandler(UObject* Object, UFunction* Func, EGameplayCueEvent::Type EventType, FGameplayCueParameters Parameters)
+void IGameplayCueInterface::DispatchBlueprintCustomHandler(AActor* Actor, UFunction* Func, EGameplayCueEvent::Type EventType, FGameplayCueParameters Parameters)
 {
-	GameplayCueInterface_eventBlueprintCustomHandler_Parms Params;
-	Params.EventType = EventType;
-	Params.Parameters = Parameters;
+	GameplayCueInterface_eventBlueprintCustomHandler_Parms Parms;
+	Parms.EventType = EventType;
+	Parms.Parameters = Parameters;
 
-	Object->ProcessEvent(Func, &Params);
+	Actor->ProcessEvent(Func, &Parms);
 }
 
 void IGameplayCueInterface::ClearTagToFunctionMap()
@@ -41,40 +41,20 @@ void IGameplayCueInterface::ClearTagToFunctionMap()
 
 void IGameplayCueInterface::HandleGameplayCues(AActor *Self, const FGameplayTagContainer& GameplayCueTags, EGameplayCueEvent::Type EventType, FGameplayCueParameters Parameters)
 {
-	HandleGameplayCues((UObject*)Self, GameplayCueTags, EventType, Parameters);
-}
-
-void IGameplayCueInterface::HandleGameplayCues(UObject* Self, const FGameplayTagContainer& GameplayCueTags, EGameplayCueEvent::Type EventType, FGameplayCueParameters Parameters)
-{
-	for (FGameplayTag CueTag : GameplayCueTags)
+	for (auto TagIt = GameplayCueTags.CreateConstIterator(); TagIt; ++TagIt)
 	{
-		HandleGameplayCue(Self, CueTag, EventType, Parameters);
+		HandleGameplayCue(Self, *TagIt, EventType, Parameters);
 	}
 }
 
 bool IGameplayCueInterface::ShouldAcceptGameplayCue(AActor *Self, FGameplayTag GameplayCueTag, EGameplayCueEvent::Type EventType, FGameplayCueParameters Parameters)
-{
-	return ShouldAcceptGameplayCue((UObject*)Self, GameplayCueTag, EventType, Parameters);
-}
-
-bool IGameplayCueInterface::ShouldAcceptGameplayCue(UObject* Self, FGameplayTag GameplayCueTag, EGameplayCueEvent::Type EventType, FGameplayCueParameters Parameters)
 {
 	return true;
 }
 
 void IGameplayCueInterface::HandleGameplayCue(AActor *Self, FGameplayTag GameplayCueTag, EGameplayCueEvent::Type EventType, FGameplayCueParameters Parameters)
 {
-	HandleGameplayCue((UObject*)Self, GameplayCueTag, EventType, Parameters);
-}
-
-void IGameplayCueInterface::HandleGameplayCue(UObject* Self, FGameplayTag GameplayCueTag, EGameplayCueEvent::Type EventType, FGameplayCueParameters Parameters)
-{
 	SCOPE_CYCLE_COUNTER(STAT_GameplayCueInterface_HandleGameplayCue);
-
-	if (!Self)
-	{
-		return;
-	}
 
 	// Look up a custom function for this gameplay tag. 
 	UClass* Class = Self->GetClass();
@@ -143,17 +123,14 @@ void IGameplayCueInterface::HandleGameplayCue(UObject* Self, FGameplayTag Gamepl
 
 	if (bShouldContinue)
 	{
-		if (AActor* SelfActor = Cast<AActor>(Self))
+		TArray<UGameplayCueSet*> Sets;
+		GetGameplayCueSets(Sets);
+		for (UGameplayCueSet* Set : Sets)
 		{
-			TArray<UGameplayCueSet*> Sets;
-			GetGameplayCueSets(Sets);
-			for (UGameplayCueSet* Set : Sets)
+			bShouldContinue = Set->HandleGameplayCue(Self, GameplayCueTag, EventType, Parameters);
+			if (!bShouldContinue)
 			{
-				bShouldContinue = Set->HandleGameplayCue(SelfActor, GameplayCueTag, EventType, Parameters);
-				if (!bShouldContinue)
-				{
-					break;
-				}
+				break;
 			}
 		}
 	}
@@ -463,9 +440,6 @@ bool FMinimalGameplayCueReplicationProxy::NetSerialize(FArchive& Ar, class UPack
 				// This is a new tag, we need to invoke the WhileActive gameplaycue event
 				Owner->SetTagMapCount(ReplicatedTag, 1);
 				Owner->InvokeGameplayCueEvent(ReplicatedTag, EGameplayCueEvent::WhileActive, Parameters);
-
-				// The demo recorder needs to believe that this structure is dirty so it will get saved into the demo stream
-				LastSourceArrayReplicationKey++;
 			}
 		}
 
@@ -477,9 +451,6 @@ bool FMinimalGameplayCueReplicationProxy::NetSerialize(FArchive& Ar, class UPack
 				FGameplayTag& RemovedTag = LocalTags[It.GetIndex()];
 				Owner->SetTagMapCount(RemovedTag, 0);
 				Owner->InvokeGameplayCueEvent(RemovedTag, EGameplayCueEvent::Removed, Parameters);
-
-				// The demo recorder needs to believe that this structure is dirty so it will get saved into the demo stream
-				LastSourceArrayReplicationKey++;
 			}
 		}
 	}

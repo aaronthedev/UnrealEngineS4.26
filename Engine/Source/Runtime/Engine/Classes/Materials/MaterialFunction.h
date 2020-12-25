@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -34,11 +34,9 @@ class UMaterialFunction : public UMaterialFunctionInterface
 	UPROPERTY(EditAnywhere, Category=MaterialFunction, AssetRegistrySearchable)
 	FString Description;
 
-#if WITH_EDITORONLY_DATA
 	/** Array of material expressions, excluding Comments.  Used by the material editor. */
 	UPROPERTY()
 	TArray<UMaterialExpression*> FunctionExpressions;
-#endif // WITH_EDITORONLY_DATA
 
 	/** Whether to list this function in the material function library, which is a window in the material editor that lists categorized functions. */
 	UPROPERTY(EditAnywhere, Category=MaterialFunction, AssetRegistrySearchable)
@@ -71,15 +69,12 @@ class UMaterialFunction : public UMaterialFunctionInterface
 
 	UPROPERTY(transient)
 	UMaterial* PreviewMaterial;
-
-	UPROPERTY()
-	TArray<class UMaterialExpressionMaterialFunctionCall*> DependentFunctionExpressionCandidates;
+#endif // WITH_EDITORONLY_DATA
 
 private:
 	/** Transient flag used to track re-entrance in recursive functions like IsDependent. */
 	UPROPERTY(transient)
 	uint8 bReentrantFlag:1;
-#endif // WITH_EDITORONLY_DATA
 
 public:
 	//~ Begin UObject Interface.
@@ -114,29 +109,19 @@ public:
 	virtual void UnlinkFromCaller() override;
 #endif
 
-#if WITH_EDITORONLY_DATA
 	/** @return true if this function is dependent on the passed in function, directly or indirectly. */
 	virtual bool IsDependent(UMaterialFunctionInterface* OtherFunction) override;
 
-	/**
-	 * Iterates all functions that this function is dependent on, directly or indrectly.
-	 *
-	 * @param Predicate a visitor predicate returning true to continue iteration, false to break
-	 *
-	 * @return true if all dependent functions were visited, false if the Predicate did break iteration
-	 */
-	ENGINE_API virtual bool IterateDependentFunctions(TFunctionRef<bool(UMaterialFunctionInterface*)> Predicate) const override;
-
 	/** Returns an array of the functions that this function is dependent on, directly or indirectly. */
 	ENGINE_API virtual void GetDependentFunctions(TArray<UMaterialFunctionInterface*>& DependentFunctions) const override;
-#endif // WITH_EDITORONLY_DATA
+
+	/** Appends textures referenced by the expressions in this function. */
+	virtual void AppendReferencedTextures(TArray<UObject*>& InOutTextures) const override;
 
 #if WITH_EDITOR
 	virtual UMaterialInterface* GetPreviewMaterial() override;
 
 	virtual void UpdateInputOutputTypes() override;
-
-	virtual void UpdateDependentFunctionCandidates();
 
 	/**
 	 * Checks whether a Material Function is arranged in the old style, with inputs flowing from right to left
@@ -146,15 +131,11 @@ public:
 
 	virtual UMaterialFunctionInterface* GetBaseFunction() override { return this; }
 	virtual const UMaterialFunctionInterface* GetBaseFunction() const override { return this; }
-#if WITH_EDITORONLY_DATA
 	virtual const TArray<UMaterialExpression*>* GetFunctionExpressions() const override { return &FunctionExpressions; }
-#endif
 	virtual const FString* GetDescription() const override { return &Description; }
 
-#if WITH_EDITOR
 	virtual bool GetReentrantFlag() const override { return bReentrantFlag; }
 	virtual void SetReentrantFlag(const bool bIsReentrant) override { bReentrantFlag = bIsReentrant; }
-#endif
 	//~ End UMaterialFunctionInterface interface
 
 

@@ -1,5 +1,5 @@
 // Copyright (C) Microsoft. All rights reserved.
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -19,7 +19,7 @@ namespace PerfReportTool
 {
     class Version
     {
-        private static string VersionString = "4.14";
+        private static string VersionString = "3.87";
 
         public static string Get() { return VersionString; }
     };
@@ -219,116 +219,21 @@ namespace PerfReportTool
 
     class CachedCsvFile
     {
-		public CachedCsvFile(string inFilename, bool useCacheFiles, DerivedMetadataMappings derivedMetadataMappings)
-		{
-			if (inFilename.ToLower().EndsWith(".csv"))
-			{
-				isBinaryFile = false;
-			}
-			else if (inFilename.ToLower().EndsWith(".csv.bin"))
-			{
-				isBinaryFile = true;
-			}
-			else
-			{
-				throw new Exception("File extension not supported for file " + inFilename);
-			}
-
-			string cacheFilename = inFilename + ".cache";
-			if (useCacheFiles && File.Exists(cacheFilename))
-			{
-				string[] fileLines = File.ReadAllLines(cacheFilename);
-
-				// Put the stats and metadata lines in the standard order
-				if (fileLines.Length >= 3)
-				{
-					string metadataLine = fileLines[1];
-					string statsLine = fileLines[2];
-					fileLines[1] = statsLine;
-					fileLines[2] = metadataLine;
-				}
-				dummyCsvStats = CsvStats.ReadCSVFromLines(fileLines, null, 0, true);
-			}
-			else
-			{
-				if (isBinaryFile)
-				{
-					dummyCsvStats = CsvStats.ReadBinFile(inFilename, null, 0, true);
-				}
-				else
-				{
-					textCsvLines = File.ReadAllLines(inFilename);
-					if (textCsvLines.Length > 0)
-					{
-						dummyCsvStats = CsvStats.ReadCSVFromLines(textCsvLines, null, 0, true);
-					}
-					else
-					{
-						Console.WriteLine("CSV file " + inFilename + " is contains no lines!");
-						dummyCsvStats = new CsvStats();
-					}
-				}
-			} 
+        public CachedCsvFile(string inFilename)
+        {
+            lines = File.ReadAllLines(inFilename);
             filename = inFilename;
-            if (dummyCsvStats != null && dummyCsvStats.metaData != null)
+            if (lines.Length >= 2)
             {
+                // Read CSV stats without data
+                dummyCsvStats = CsvStats.ReadCSVFromLines(lines, null, 0, true);
 				metadata = dummyCsvStats.metaData;
-				derivedMetadataMappings.ApplyMapping(metadata);
-			}
-
-		}
-
-		public void PrepareCsvData()
-		{
-			if (isBinaryFile)
-			{
-				finalCsv = CsvStats.ReadBinFile(filename);
-			}
-			else
-			{
-				if (textCsvLines == null)
-				{
-					textCsvLines = File.ReadAllLines(filename);
-				}
-			}
-		}
-
-		public CsvStats GetFinalCsv()
-		{
-			if (finalCsv != null)
-			{
-				return finalCsv;
-			}
-			if (!isBinaryFile)
-			{
-				finalCsv = CsvStats.ReadCSVFromLines(textCsvLines, null);
-				return finalCsv;
-			}
-			return null;
-		}
-
-
-		public bool DoesMetadataMatchFilter(string metadataFilterString)
-		{
-			if (metadataFilterString==null || metadataFilterString=="")
-			{
-				return true;
-			}
-			if (metadata == null)
-			{
-				Console.WriteLine("CSV " + filename + " has no metadata");
-				return false;
-			}
-			return CsvStats.DoesMetadataMatchFilter(metadata, metadataFilterString);
-		}
-
-
-		public string filename;
-        public string[] textCsvLines;
+            }
+        }
+        public string filename;
+        public string[] lines;
         public CsvStats dummyCsvStats;
-		public CsvStats finalCsv;
-		public CsvMetadata metadata;
-		bool isBinaryFile;
+        public CsvMetadata metadata;
     };
 
 
@@ -357,9 +262,6 @@ namespace PerfReportTool
 			"       -writeSummaryCsv : if specified, a csv file containing summary information will be generated. Not available in bulk mode.\n" +
 			"       -beginEvent <event> : strip data before this event\n"+
 			"       -endEvent <event> : strip data after this event\n" +
-			"       -noBatchedGraphs : disable batched/multithreaded graph generation (default is enabled)\n" +
-			"       -graphThreads : use with -batchedGraphs to control the number of threads per CsvToSVG instance (default: PC core count/2)\n" +
-			"       -nocommandlineEmbed : don't embed the commandline "+
 			"\n" +
 			"Optional bulk mode args: (use with -csvdir)\n" +
 			"       -recurse \n" +
@@ -373,18 +275,12 @@ namespace PerfReportTool
 			"       -summaryTable <name> :\n" +
 			"           Selects a custom summary table type from the list in reportTypes.xml \n"+
 			"           (if not specified, 'default' will be used)\n" +
-			"       -condensedSummaryTable <name> :\n" +
-			"           Selects a custom condensed summary table type from the list in reportTypes.xml \n"+
-			"           (if not specified, 'condensed' will be used)\n" +
 			"       -summaryTableFilename <name> : use the specified filename for the summary table (instead of SummaryTable.html)\n"+
             "       -metadataFilter <key=value,key=value...> : filters based on CSV metadata\n" +
             "       -precacheCount <n> : number of CSV files to precache in the lookahead cache (0 for no precache)\n" +
             "       -precacheThreadCount <n> : number of threads to use for the CSV lookahead cache (default 8)\n" +
 			"       -readAllStats : reads all stats so that any stat can be output to the summary table. Useful with -customtable in bulk mode (off by default)\n" +
 			"       -externalGraphs : enables external graphs (off by default)\n" +
-			"       -noCacheFiles: disables usage of .csv.cache files. Cache files are much faster if filtering on metadata\n" +
-			"       -spreadsheetfriendly: outputs a single quote before non-numeric entries in summary tables\n" +
-			"       -noSummaryMinMax: don't make min/max columns for each stat in a condensed summary\n" +
 			"";
 			/*
 			"Note on custom tables:\n" +
@@ -397,6 +293,7 @@ namespace PerfReportTool
 			*/
 
 		Dictionary<string, string> statDisplaynameMapping;
+        Dictionary<string, Process> SvgProcesses = new Dictionary<string,Process>();
 		ReportXML reportXML;
 
 		string GetBaseDirectory()
@@ -425,7 +322,6 @@ namespace PerfReportTool
 				WriteLine(formatString);
 				return;
 			}
-			WriteLine("PerfReportTool v" + Version.Get());
 
 			ReadCommandLine(args);
             PerfLog perfLog = new PerfLog(GetBoolArg("perfLog"));
@@ -443,18 +339,18 @@ namespace PerfReportTool
 				string csvDir = GetArg("csvDir");
 				if (csvDir.Length > 0)
 				{
+					DirectoryInfo di = new DirectoryInfo(csvDir);
 					bool recurse = GetBoolArg("recurse");
 					string searchPattern = GetArg("searchPattern", false);
 					if (searchPattern == "")
 					{
-						searchPattern = "*.csv;*.csv.bin";
+						searchPattern = "*.csv";
 					}
 					else if (!searchPattern.Contains('.'))
 					{
-						searchPattern += ".csv;*.csv.bin";
+						searchPattern += ".csv";
 					}
-
-					System.IO.FileInfo[] files = GetFilesWithSearchPattern(csvDir, searchPattern, recurse);
+					var files = di.GetFiles(searchPattern, recurse ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly);
 					csvFilenames = new string[files.Length];
 					int i = 0;
 					foreach (FileInfo csvFile in files)
@@ -486,6 +382,9 @@ namespace PerfReportTool
 			reportXML = new ReportXML(GetArg("graphxml", false), GetArg("reportxml", false), GetArg("reportxmlbasedir", false));
 			statDisplaynameMapping = reportXML.GetDisplayNameMapping();
 
+            string metadataFilterString = "";
+            metadataFilterString = GetArg("metadataFilter");
+
             // Create the output directory if requested
             string outputDir = GetArg("o", false).ToLower();
             if (!string.IsNullOrEmpty(outputDir))
@@ -496,33 +395,18 @@ namespace PerfReportTool
                 }
             }
 
-			int precacheCount = GetIntArg("precacheCount", 8);
-			int precacheThreads = GetIntArg("precacheThreads", 8);
-			bool bBatchedGraphs = true;
-			if ( GetBoolArg("noBatchedGraphs") )
-			{
-				bBatchedGraphs = false;
-			}
-			if (bBatchedGraphs)
-			{
-				WriteLine("Batched graph generation enabled.");
-			}
-			else
-			{
-				WriteLine("Batched graph generation disabled.");
-			}
+            perfLog.LogTiming("Initialization");
 
-			perfLog.LogTiming("Initialization");
-
-			string metadataFilterString = GetArg("metadataFilter", null);
-
-			CsvFileCache csvFileCache = new CsvFileCache(csvFilenames, precacheCount, precacheThreads, !GetBoolArg("disableCacheFiles"), metadataFilterString, reportXML.derivedMetadataMappings);
+            int precacheCount = GetIntArg("precacheCount", 8);
+            int precacheThreads = GetIntArg("precacheThreads", 8);
+            CsvFileCache csvFileCache = new CsvFileCache(csvFilenames, precacheCount, precacheThreads);
             SummaryMetadataTable metadataTable = new SummaryMetadataTable();
             for ( int i=0; i<csvFilenames.Length; i++)
 			{
                 try
                 {
                     CachedCsvFile cachedCsvFile = csvFileCache.GetNextCachedCsvFile();
+					reportXML.ApplyDerivedMetadata(cachedCsvFile.metadata);
                     Console.WriteLine("-------------------------------------------------");
                     Console.WriteLine("CSV " + (i+1) + "/" + csvFilenames.Length ) ;
                     Console.WriteLine(csvFilenames[i] );
@@ -532,10 +416,16 @@ namespace PerfReportTool
 						metadata = new SummaryMetadata();
 					}
 
-					perfLog.LogTiming("  CsvCacheRead");
-                    if (cachedCsvFile != null)
+                    bool bGenerateReport = true;
+                    if (metadataFilterString.Length > 0)
                     {
-                        GenerateReport(cachedCsvFile, outputDir, bBulkMode, metadata, bBatchedGraphs);
+                        bGenerateReport = DoesCsvMetadataMatchFilter(cachedCsvFile, metadataFilterString);
+                    }
+                    perfLog.LogTiming("  CsvCacheRead");
+
+                    if (bGenerateReport)
+                    {
+                        GenerateReport(cachedCsvFile, outputDir, bBulkMode, metadata);
                         if (metadata != null)
                         {
                             metadataTable.Add(metadata);
@@ -547,7 +437,7 @@ namespace PerfReportTool
 				{
 					if (bBulkMode)
 					{
-						Console.Out.WriteLine("[ERROR] : "+ e.Message);
+						Console.Out.WriteLine(e.Message);
 					}
 					else
 					{
@@ -570,7 +460,6 @@ namespace PerfReportTool
 				string customSummaryTableFilter = GetArg("customTable");
 				bool bCsvTable = GetBoolArg("csvTable");
 				bool bCollateTable = GetBoolArg("collateTable");
-				bool bSpreadsheetFriendlyStrings = GetBoolArg("spreadsheetFriendly");
 				if (customSummaryTableFilter.Length > 0)
 				{
 					string customSummaryTableRowSort = GetArg("customTableSort");
@@ -578,11 +467,11 @@ namespace PerfReportTool
 					{
 						customSummaryTableRowSort = "buildversion,deviceprofile";
 					}
-					WriteMetadataTableReport(outputDir, summaryTableFilename, metadataTable, customSummaryTableFilter.Split(',').ToList(), customSummaryTableRowSort.Split(',').ToList(), false, bCsvTable, bSpreadsheetFriendlyStrings);
+					WriteMetadataTableReport(outputDir, summaryTableFilename, metadataTable, customSummaryTableFilter.Split(',').ToList(), customSummaryTableRowSort.Split(',').ToList(), false, bCsvTable);
 
 					if (bCollateTable)
 					{
-						WriteMetadataTableReport(outputDir, summaryTableFilename+"_Collated", metadataTable, customSummaryTableFilter.Split(',').ToList(), customSummaryTableRowSort.Split(',').ToList(), true, bCsvTable, bSpreadsheetFriendlyStrings);
+						WriteMetadataTableReport(outputDir, summaryTableFilename+"_Collated", metadataTable, customSummaryTableFilter.Split(',').ToList(), customSummaryTableRowSort.Split(',').ToList(), true, bCsvTable);
 					}
 				}
 				else
@@ -593,19 +482,18 @@ namespace PerfReportTool
 						summaryTableName = "default";
 					}
 					SummaryTableInfo tableInfo = reportXML.GetSummaryTable(summaryTableName);
-					WriteMetadataTableReport(outputDir, summaryTableFilename, metadataTable, tableInfo, false, bCsvTable, bSpreadsheetFriendlyStrings );
+					WriteMetadataTableReport(outputDir, summaryTableFilename, metadataTable, tableInfo, false, bCsvTable);
 					if (bCollateTable)
 					{
-						WriteMetadataTableReport(outputDir, summaryTableFilename, metadataTable, tableInfo, true, bCsvTable, bSpreadsheetFriendlyStrings);
+						WriteMetadataTableReport(outputDir, summaryTableFilename, metadataTable, tableInfo, true, bCsvTable);
 					}
 				}
 
-				// EmailTable is hardcoded to use the condensed type
-				string condensedSummaryTable = GetArg("condensedSummaryTable",null);
-				if (GetBoolArg("emailSummary") || GetBoolArg("emailTable") || condensedSummaryTable != null)
+				// EmailTable is hardcoded to use the condensed report type
+				if (GetBoolArg("emailSummary") || GetBoolArg("emailTable"))
 				{
-					SummaryTableInfo tableInfo = reportXML.GetSummaryTable(condensedSummaryTable == null ? "condensed" : condensedSummaryTable);
-					WriteMetadataTableReport(outputDir, summaryTableFilename+"_Email", metadataTable, tableInfo, true, false, bSpreadsheetFriendlyStrings);
+					SummaryTableInfo tableInfo = reportXML.GetSummaryTable("condensed");
+					WriteMetadataTableReport(outputDir, summaryTableFilename+"_Email", metadataTable, tableInfo, true);
 				}
                 perfLog.LogTiming("WriteSummaryTable");
             }
@@ -613,24 +501,22 @@ namespace PerfReportTool
             perfLog.LogTotalTiming();
         }
 
-        void WriteMetadataTableReport(string outputDir, string filenameWithoutExtension, SummaryMetadataTable table, SummaryTableInfo tableInfo, bool bCollated, bool bToCSV, bool bSpreadsheetFriendlyStrings)
+        void WriteMetadataTableReport(string outputDir, string filenameWithoutExtension, SummaryMetadataTable table, SummaryTableInfo tableInfo, bool bCollated = false , bool bToCSV = false )
 		{
-			WriteMetadataTableReport(outputDir, filenameWithoutExtension, table, tableInfo.columnFilterList, tableInfo.rowSortList, bCollated, bToCSV, bSpreadsheetFriendlyStrings);
+			WriteMetadataTableReport(outputDir, filenameWithoutExtension, table, tableInfo.columnFilterList, tableInfo.rowSortList, bCollated, bToCSV);
 		}
 
-		void WriteMetadataTableReport(string outputDir, string filenameWithoutExtension, SummaryMetadataTable table, List<string> columnFilterList, List<string> rowSortList, bool bCollated, bool bToCSV, bool bSpreadsheetFriendlyStrings)
+		void WriteMetadataTableReport(string outputDir, string filenameWithoutExtension, SummaryMetadataTable table, List<string> columnFilterList, List<string> rowSortList, bool bCollated = false, bool bToCSV = false)
 		{
-			bool addMinMaxColumns = !GetBoolArg("noSummaryMinMax");
-			if (!string.IsNullOrEmpty(outputDir))
+            if (!string.IsNullOrEmpty(outputDir))
             {
                 filenameWithoutExtension = Path.Combine(outputDir, filenameWithoutExtension);
             }
 
-
             SummaryMetadataTable filteredTable = table.SortAndFilter(columnFilterList, rowSortList);
 			if (bCollated)
 			{
-				filteredTable = filteredTable.CollateSortedTable(rowSortList, addMinMaxColumns);
+				filteredTable = filteredTable.CollateSortedTable(rowSortList);
 			}
 			if (bToCSV)
 			{
@@ -639,18 +525,12 @@ namespace PerfReportTool
 			else
 			{
 				filteredTable.ApplyDisplayNameMapping(statDisplaynameMapping);
-				filteredTable.WriteToHTML(filenameWithoutExtension+".html", Version.Get(), bSpreadsheetFriendlyStrings);
+				filteredTable.WriteToHTML(filenameWithoutExtension+".html", Version.Get());
 			}
 		}
 
 		string ReplaceFileExtension( string path, string newExtension )
         {
-			// Special case for .bin.csv
-			if (path.ToLower().EndsWith(".csv.bin"))
-			{
-				return path.Substring(0, path.Length - 8)+ newExtension;
-			}
-
             int lastDotIndex = path.LastIndexOf('.');
             if ( path.EndsWith("\""))
             {
@@ -670,6 +550,34 @@ namespace PerfReportTool
 
 		static Dictionary<string, bool> UniqueHTMLFilemameLookup = new Dictionary<string, bool>();
 
+        bool DoesCsvMetadataMatchFilter(CachedCsvFile csvFile, string metadataFilterString)
+        {
+            CsvMetadata metadata = csvFile.metadata;
+            if (metadata == null)
+            {
+                Console.WriteLine("CSV " + csvFile.filename + " has no metadata");
+                return false;
+            }
+            string[] keyValuePairStrs = metadataFilterString.Split(',');
+            foreach (string keyValuePairStr in keyValuePairStrs)
+            {
+                string[] keyValue = keyValuePairStr.Split('=');
+                if (keyValue.Length != 2)
+                {
+                    return false;
+                }
+                string key = keyValue[0].ToLower();
+                if (!metadata.Values.ContainsKey(key))
+                {
+                    return false;
+                }
+                if (metadata.Values[key].ToLower() != keyValue[1].ToLower())
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
         class PerfLog
         {
             public PerfLog(bool inLoggingEnabled)
@@ -709,7 +617,7 @@ namespace PerfReportTool
             bool loggingEnabled;
         }
 
-        void GenerateReport(CachedCsvFile csvFile, string outputDir, bool bBulkMode, SummaryMetadata summaryMetadata, bool bBatchedGraphs)
+        void GenerateReport(CachedCsvFile csvFile, string outputDir, bool bBulkMode, SummaryMetadata summaryMetadata)
         {
             PerfLog perfLog = new PerfLog(GetBoolArg("perfLog"));
             string shortName = ReplaceFileExtension(MakeShortFilename(csvFile.filename), "");
@@ -778,23 +686,16 @@ namespace PerfReportTool
             string [] statsToSummarise = statsToSummariseList.ToArray();
 
             float thickness = 1.0f;
-			List<string> csvToSvgCommandlines = new List<string>();
-			List<string> svgFilenames = new List<string>();
-			string responseFilename = null;
-			List<Process> csvToSvgProcesses = new List<Process>();
+
+            List<string> svgFilenames = new List<string>();
             if (writeDetailedReport)
             {
-				// Generate all the graphs asyncronously
+                // Generate all the graphs asyncronously
                 foreach (ReportGraph graph in reportTypeInfo.graphs)
                 {
-					string svgFilename = String.Empty;
-					if (graph.isExternal && !GetBoolArg("externalGraphs"))
-					{
-						svgFilenames.Add(svgFilename);
-						continue;
-					}
-					bool bFoundStat = false;
-					foreach (string statString in graph.settings.statString.value.Split(' '))
+                    bool bFoundStat = false;
+
+                    foreach (string statString in graph.settings.statString.value.Split(' '))
                     {
                         List<StatSamples> matchingStats = csvFile.dummyCsvStats.GetStatsMatchingString(statString);
                         if (matchingStats.Count > 0)
@@ -804,55 +705,38 @@ namespace PerfReportTool
                         }
 
                     }
-					if (bFoundStat)
-					{
-						float graphScale = GetFloatArg("graphScale", 1.0f);
-						svgFilename = GetTempFilename(csvFile.filename) + ".svg";
-						string args = GetCsvToSvgArgs(csvFile.filename, svgFilename, graph, thickness, minX, maxX, false, svgFilenames.Count);
-						if (bBatchedGraphs)
-						{
-							csvToSvgCommandlines.Add(args);
-						}
-						else
-						{
-							Process csvToSvgProcess = LaunchCsvToSvgAsync(args);
-							csvToSvgProcesses.Add(csvToSvgProcess);
-						}
+                    if (!bFoundStat)
+                    {
+						svgFilenames.Add(String.Empty);
+						continue;
 					}
+                    float graphScale = GetFloatArg("graphScale", 1.0f);
+
+					if (graph.isExternal && !GetBoolArg("externalGraphs"))
+					{
+						svgFilenames.Add(String.Empty);
+						continue;
+					}
+					string svgFilename = MakeGraphAsync(csvFile.filename, graph, thickness, minX, maxX, false, graphScale);
 					svgFilenames.Add(svgFilename);
                 }
-
-				if (bBatchedGraphs)
-				{
-					// Save the response file
-					responseFilename = GetTempFilename(csvFile.filename) + "_response.txt";
-					System.IO.File.WriteAllLines(responseFilename, csvToSvgCommandlines);
-					Process csvToSvgProcess = LaunchCsvToSvgAsync("-batchCommands "+responseFilename +" -mt " + GetIntArg("graphThreads", Environment.ProcessorCount/2).ToString() );
-					csvToSvgProcesses.Add(csvToSvgProcess);
-				}
-			}
+            }
             perfLog.LogTiming("    Initial Processing");
 
             // Read the csv stats while we wait for the graphs to complete
             int numFramesStripped = 0;
-            CsvStats csvStats = ReadCsvStats(csvFile, minX, maxX);
-			CsvStats unstrippedCsvStats = csvStats;
-			perfLog.LogTiming("    ReadCsvStats");
-
-			if (!GetBoolArg("noStripEvents"))
-			{
-				CsvStats strippedCsvStats = StripCsvStatsByEvents(unstrippedCsvStats, out numFramesStripped);
-				csvStats = strippedCsvStats;
-			}
-
-			perfLog.LogTiming("    FilterStats");
+            CsvStats csvStats = ReadCsvStats(csvFile, minX, maxX, out numFramesStripped);
+            perfLog.LogTiming("    ReadCsvStats");
 
             if ( writeDetailedReport )
             { 
-                // wait on the graph processes to complete
-                foreach (Process process in csvToSvgProcesses)
+                // wait on the graphs to complete
+                foreach (string svgFilename in svgFilenames)
 				{
-					process.WaitForExit();
+					if(!String.IsNullOrEmpty(svgFilename))
+					{
+						WaitForGraph(svgFilename);
+					}
 				}
                 perfLog.LogTiming("    WaitForAsyncGraphs");
             }
@@ -864,17 +748,12 @@ namespace PerfReportTool
 
 			if (!GetBoolArg("readAllStats"))
 			{
-				// Strip out stats if they're not in the summary
 				List<string> ListOfKeys = new List<string>(csvStats.Stats.Keys);
 				for (int i = csvStats.Stats.Keys.Count - 1; i >= 0; i--)
 				{
 					if (!statsToSummarise.Contains(ListOfKeys[i]))
 					{
 						csvStats.Stats.Remove(ListOfKeys[i]);
-						if (csvStats != unstrippedCsvStats)
-						{
-							unstrippedCsvStats.Stats.Remove(ListOfKeys[i]);
-						}
 					}
 				}
 			}
@@ -932,28 +811,24 @@ namespace PerfReportTool
             }
 
             // Write the report
-            WriteReport(htmlFilename, title, svgFilenames, reportTypeInfo, csvStats, unstrippedCsvStats, numFramesStripped, minX, maxX, bBulkMode, summaryMetadata);
+            WriteReport(htmlFilename, title, svgFilenames, reportTypeInfo, csvStats, numFramesStripped, minX, maxX, bBulkMode, summaryMetadata);
             perfLog.LogTiming("    WriteReport");
 
             // Delete the temp files
             foreach (string svgFilename in svgFilenames)
             {
-				if(svgFilename != String.Empty && File.Exists(svgFilename))
+				if(File.Exists(svgFilename))
 				{
 					File.Delete(svgFilename);
 				}
-			}
-			if (responseFilename != null && File.Exists(responseFilename))
-			{
-				File.Delete(responseFilename);
-			}
-		}
-		CsvStats ReadCsvStats(CachedCsvFile csvFile, int minX, int maxX)
-		{
-			CsvStats csvStats = csvFile.GetFinalCsv();
+            }
+        }
+        CsvStats ReadCsvStats(CachedCsvFile csvFile, int minX, int maxX, out int numFramesStripped)
+        {
+            CsvStats csvStats = CsvStats.ReadCSVFromLines(csvFile.lines, null);
 			reportXML.ApplyDerivedMetadata(csvStats.metaData);
 
-			if (csvStats.metaData == null)
+			if ( csvStats.metaData == null )
 			{
 				csvStats.metaData = new CsvMetadata();
 			}
@@ -973,8 +848,8 @@ namespace PerfReportTool
 				}
 			}
 			string endEventStr = GetArg("endEvent").ToLower();
-			if (endEventStr != "")
-			{
+			if ( endEventStr != "")
+			{ 
 				for (int i = csvStats.Events.Count - 1; i >= 0; i--)
 				{
 					CsvEvent ev = csvStats.Events[i];
@@ -986,53 +861,35 @@ namespace PerfReportTool
 				}
 			}
 
-			// Strip out all stats with a zero total
-			List<StatSamples> allStats = new List<StatSamples>();
-			foreach (StatSamples stat in csvStats.Stats.Values)
-			{
-				allStats.Add(stat);
-			}
-			csvStats.Stats.Clear();
-			foreach (StatSamples stat in allStats)
-			{
-				if (stat.total != 0.0f)
-				{
-					csvStats.AddStat(stat);
-				}
-			}
-
 			// Crop the stats to the range
 			csvStats.CropStats(minX, maxX);
-			return csvStats;
-		}
 
-		CsvStats StripCsvStatsByEvents(CsvStats csvStats, out int numFramesStripped)
-		{
-			numFramesStripped = 0;
+            numFramesStripped = 0;
             List<CsvEventStripInfo> eventsToStrip = reportXML.GetCsvEventsToStrip();
-			CsvStats strippedStats = csvStats;
-            if (eventsToStrip != null)
+            if (!GetBoolArg("noStripEvents"))
             {
-				// This can have issues if we strip events and then subsequently strip overlapping events. We'd get better results if we did it in a single pass
-				foreach (CsvEventStripInfo eventStripInfo in eventsToStrip)
+                if (eventsToStrip != null)
                 {
-					int numFramesStrippedThisStage = 0;
-					strippedStats = strippedStats.StripByEvents(eventStripInfo.beginName, eventStripInfo.endName, false, out numFramesStrippedThisStage);
-					numFramesStripped += numFramesStrippedThisStage;
-				}
+                    // This can have issues if we strip events and then subsequently strip overlapping events. We'd get better results here if we did this in a single pass
+                    foreach (CsvEventStripInfo eventStripInfo in eventsToStrip)
+                    {
+                        numFramesStripped += csvStats.StripByEvents(eventStripInfo.beginName, eventStripInfo.endName);
+                    }
+                }
             }
 
             if (numFramesStripped > 0 )
             {
                 Console.WriteLine("CSV frames excluded : " + numFramesStripped);
             }
-            return strippedStats;
+
+            return csvStats;
         }
 
       
 
 
-        void WriteReport(string htmlFilename, string title, List<string> svgFilenames, ReportTypeInfo reportTypeInfo, CsvStats csvStats, CsvStats unstrippedCsvStats, int numFramesStripped, int minX, int maxX, bool bBulkMode, SummaryMetadata summaryMetadata)
+        void WriteReport(string htmlFilename, string title, List<string> svgFilenames, ReportTypeInfo reportTypeInfo, CsvStats csvStats, int numFramesStripped, int minX, int maxX, bool bBulkMode, SummaryMetadata summaryMetadata)
         {
  
             ReportGraph[] graphs = reportTypeInfo.graphs.ToArray();
@@ -1045,15 +902,8 @@ namespace PerfReportTool
 				htmlFile.WriteLine("<html>");
 				htmlFile.WriteLine("  <head>");
 				htmlFile.WriteLine("    <meta http-equiv='X-UA-Compatible' content='IE=edge'/>");
-				if ( GetBoolArg("nocommandlineEmbed"))
-				{
-					htmlFile.WriteLine("    <![CDATA[ \nCreated with PerfReportTool " + Version.Get() );
-				}
-				else
-				{
-					htmlFile.WriteLine("    <![CDATA[ \nCreated with PerfReportTool " + Version.Get() + " with commandline:");
-					htmlFile.WriteLine(commandLine.GetCommandLine());
-				}
+				htmlFile.WriteLine("    <![CDATA[ \nCreated with PerfReportTool " + Version.Get() + " with commandline:");
+				htmlFile.WriteLine(commandLine);
 				htmlFile.WriteLine("    ]]>");
 				htmlFile.WriteLine("    <title>" + titleStr + "</title>");
 				htmlFile.WriteLine("  </head>");
@@ -1113,7 +963,7 @@ namespace PerfReportTool
             PeakSummary peakSummary = null;
             foreach (Summary summary in reportTypeInfo.summaries)
             {
-                summary.WriteSummaryData(htmlFile, summary.useUnstrippedCsvStats ? unstrippedCsvStats : csvStats, bIncludeSummaryCsv, summaryMetadata, htmlFilename);
+                summary.WriteSummaryData(htmlFile, csvStats, bIncludeSummaryCsv, summaryMetadata, htmlFilename);
                 if ( summary.GetType() == typeof(PeakSummary) )
                 {
                     peakSummary = (PeakSummary)summary;
@@ -1136,10 +986,7 @@ namespace PerfReportTool
 				{
 					htmlFile.WriteLine("<ul>");
 					string currentCategory = sections[index];
-					if (currentCategory.Length > 0)
-					{
-						htmlFile.WriteLine("<h4>" + currentCategory + " Graphs</h4>");
-					}
+					htmlFile.WriteLine("<h4>" + currentCategory + " Graphs</h4>");
 					for (int i = 0; i < svgFilenames.Count(); i++)
 					{
 						string svgFilename = svgFilenames[i];
@@ -1216,7 +1063,7 @@ namespace PerfReportTool
             htmlFile.WriteLine("  <head>");
             htmlFile.WriteLine("    <meta http-equiv='X-UA-Compatible' content='IE=edge'/>");
             htmlFile.WriteLine("    <![CDATA[ \nCreated with PerfReportTool " + Version.Get() + " with commandline:");
-            htmlFile.WriteLine(commandLine.GetCommandLine());
+            htmlFile.WriteLine(commandLine);
             htmlFile.WriteLine("    ]]>");
             htmlFile.WriteLine("    <title>" + titleStr + "</title>");
             htmlFile.WriteLine("  </head>");
@@ -1264,66 +1111,64 @@ namespace PerfReportTool
             return str.Replace(" ", "");
         }
 
-		string GetTempFilename(string csvFilename)
-		{
-			string shortFileName = MakeShortFilename(csvFilename).Replace(" ", "_");
-			return Path.Combine( Path.GetTempPath(), shortFileName+"_"+Guid.NewGuid().ToString().Substring(26));
-		}
-		string GetCsvToSvgArgs(string csvFilename, string svgFilename, ReportGraph graph, double thicknessMultiplier, int minx, int maxx, bool multipleCSVs, int graphIndex, float scaleby = 1.0f)
-		{
-			string title = graph.title;
+        string MakeGraphAsync(string csvFilename, ReportGraph graph, double thicknessMultiplier, int minx, int maxx, bool multipleCSVs, float scaleby = 1.0f)
+        {
+            string title = graph.title;
 
-			GraphSettings graphSettings = graph.settings;
-			string statString = graphSettings.statString.value;
-			double thickness = graphSettings.thickness.value * thicknessMultiplier;
-			float maxy = GetFloatArg("maxy", (float)graphSettings.maxy.value);
-			bool smooth = graphSettings.smooth.value;
-			double smoothKernelPercent = graphSettings.smoothKernelPercent.value;
-			double smoothKernelSize = graphSettings.smoothKernelSize.value;
-			double compression = graphSettings.compression.value;
-			int width = graphSettings.width.value;
-			int height = graphSettings.height.value;
-			string additionalArgs = graphSettings.additionalArgs.value;
-			bool stacked = graphSettings.stacked.value;
-			bool showAverages = graphSettings.showAverages.value;
-			bool filterOutZeros = graphSettings.filterOutZeros.value;
-			bool snapToPeaks = false;
-			if (graphSettings.snapToPeaks.isSet)
-			{
-				snapToPeaks = graphSettings.snapToPeaks.value;
-			}
+            GraphSettings graphSettings = graph.settings;
+            string statString = graphSettings.statString.value;
+            double thickness = graphSettings.thickness.value * thicknessMultiplier;
+            float maxy = GetFloatArg("maxy", (float)graphSettings.maxy.value);
 
-			int lineDecimalPlaces = graphSettings.lineDecimalPlaces.isSet ? graphSettings.lineDecimalPlaces.value : 1;
-			int maxHierarchyDepth = graphSettings.maxHierarchyDepth.value;
-			string hideStatPrefix = graphSettings.hideStatPrefix.value;
-			string showEvents = graphSettings.showEvents.value;
-			double statMultiplier = graphSettings.statMultiplier.isSet ? graphSettings.statMultiplier.value : 1.0;
-			bool hideEventNames = false;
-			if (multipleCSVs)
-			{
-				showEvents = "CSV:*";
-				hideEventNames = true;
-			}
-			bool interactive = true;
-			double budget = graph.budget;
-			string smoothParams = "";
-			if (smooth)
-			{
-				smoothParams = " -smooth";
-				if (smoothKernelPercent >= 0.0f)
-				{
-					smoothParams += " -smoothKernelPercent " + smoothKernelPercent.ToString();
-				}
-				if (smoothKernelSize >= 0.0f)
-				{
-					smoothParams += " -smoothKernelSize " + smoothKernelSize.ToString();
-				}
-			}
+            bool smooth = graphSettings.smooth.value;
+            double smoothKernelPercent = graphSettings.smoothKernelPercent.value;
+            double smoothKernelSize = graphSettings.smoothKernelSize.value;
+            double compression = graphSettings.compression.value;
+            int width = graphSettings.width.value;
+            int height = graphSettings.height.value;
+            string additionalArgs = graphSettings.additionalArgs.value;
+            bool stacked = graphSettings.stacked.value;
+            bool showAverages = graphSettings.showAverages.value;
+            bool filterOutZeros = graphSettings.filterOutZeros.value;
 
-			string highlightEventRegions = "";
-			if (!GetBoolArg("noStripEvents"))
-			{
-				List<CsvEventStripInfo> eventsToStrip = reportXML.GetCsvEventsToStrip();
+            int maxHierarchyDepth = graphSettings.maxHierarchyDepth.value;
+            string hideStatPrefix = graphSettings.hideStatPrefix.value;
+            string showEvents = graphSettings.showEvents.value;
+            double statMultiplier = graphSettings.statMultiplier.isSet ? graphSettings.statMultiplier.value : 1.0;
+
+            bool hideEventNames = false;
+            if ( multipleCSVs )
+            {
+                showEvents = "CSV:*";
+                hideEventNames = true;
+            }
+            bool interactive = true;
+
+            string outFilename = Path.GetTempFileName();
+
+
+            string svgName = title.Replace(" ", "_");
+            double budget = graph.budget;
+
+            string smoothParams = "";
+
+            if (smooth)
+            {
+                smoothParams = " -smooth";
+                if ( smoothKernelPercent >= 0.0f )
+                {
+                    smoothParams += " -smoothKernelPercent " + smoothKernelPercent.ToString();
+                }
+                if (smoothKernelSize >= 0.0f)
+                {
+                    smoothParams += " -smoothKernelSize " + smoothKernelSize.ToString();
+                }
+            }
+
+            string highlightEventRegions = "";
+            if (!GetBoolArg("noStripEvents"))
+            {
+                List<CsvEventStripInfo> eventsToStrip = reportXML.GetCsvEventsToStrip();
 				if (eventsToStrip != null)
 				{
 					highlightEventRegions += "\"";
@@ -1336,57 +1181,55 @@ namespace PerfReportTool
 						string endEvent = (eventsToStrip[i].endName == null) ? "{NULL}" : eventsToStrip[i].endName;
 						highlightEventRegions += eventsToStrip[i].beginName + "," + endEvent;
 					}
-					highlightEventRegions += "\"";
+	                highlightEventRegions += "\"";
 				}
-			}
+            }
 
 			OptionalDouble minFilterStatValueSetting = graph.minFilterStatValue.isSet ? graph.minFilterStatValue : graphSettings.minFilterStatValue;
 
-			string args =
-				" -csvs \"" + csvFilename + "\"" +
-				" -title \"" + title + "\"" +
-				" -o " + svgFilename +
-				" -stats " + statString +
-				" -width " + (width * scaleby).ToString() +
-				" -height " + (height * scaleby).ToString() +
-				" -budget " + budget.ToString() +
-				" -maxy " + maxy.ToString() +
-				" -uniqueID Graph_" + graphIndex.ToString() +
-				" -lineDecimalPlaces " + lineDecimalPlaces.ToString() +
-				" -nocommandlineEmbed "+
+			string shortFileName = MakeShortFilename(csvFilename).Replace(" ", "_");
 
-				((statMultiplier != 1.0) ? " -statMultiplier " + statMultiplier.ToString("0.0000000000000000000000") : "") +
-				(hideEventNames ? " -hideeventNames 1" : "") +
-				((minx > 0) ? (" -minx " + minx.ToString()) : "") +
-				((maxx != Int32.MaxValue) ? (" -maxx " + maxx.ToString()) : "") +
+			outFilename += "_" + shortFileName + svgName + ".svg";
+            string args =
+                " -csvs \""  + csvFilename  + "\"" +
+                " -title \"" + title + "\"" +
+                " -o "       + outFilename  +
+                " -stats "   + statString   +
+                " -width "   + (width*scaleby).ToString()  +
+                " -height "  + (height*scaleby).ToString() +
+                " -budget "  + budget.ToString() +
+                " -maxy "    + maxy.ToString()   +
+
+                ( ( statMultiplier != 1.0)   ? " -statMultiplier " + statMultiplier.ToString("0.0000000000000000000000") : "") +
+                (hideEventNames              ? " -hideeventNames 1" : "") +
+                ( ( minx > 0 )               ? ( " -minx " + minx.ToString() ) : "" ) +
+                ( ( maxx != Int32.MaxValue ) ? ( " -maxx " + maxx.ToString() ) : "" ) +
 				OptionalHelper.GetDoubleSetting(graphSettings.miny, " -miny ") +
 				OptionalHelper.GetDoubleSetting(graphSettings.threshold, " -threshold ") +
 				OptionalHelper.GetDoubleSetting(graphSettings.averageThreshold, " -averageThreshold ") +
 				OptionalHelper.GetDoubleSetting(minFilterStatValueSetting, " -minFilterStatValue ") +
 				OptionalHelper.GetStringSetting(graphSettings.minFilterStatName, " -minFilterStatName ") +
-				(compression > 0.0 ? " -compression " + compression.ToString() : "") +
-				(thickness > 0.0 ? " -thickness " + thickness.ToString() : "") +
-				smoothParams +
-				(interactive ? " -interactive" : "") +
-				(stacked ? " -stacked -forceLegendSort" : "") +
-				(showAverages ? " -showAverages" : "") +
-				(snapToPeaks ? "" : " -nosnap") +
-				(filterOutZeros ? " -filterOutZeros" : "") +
-				(maxHierarchyDepth >= 0 ? " -maxHierarchyDepth " + maxHierarchyDepth.ToString() : "") +
-				(hideStatPrefix.Length > 0 ? " -hideStatPrefix " + hideStatPrefix : "") +
-				(graphSettings.mainStat.isSet ? " -stacktotalstat " + graphSettings.mainStat.value : "") +
-				(showEvents.Length > 0 ? " -showevents " + showEvents : "") +
-				(highlightEventRegions.Length > 0 ? " -highlightEventRegions " + highlightEventRegions : "") +
+				(compression > 0.0           ? " -compression " + compression.ToString() : "") +
+                (thickness > 0.0             ? " -thickness " + thickness.ToString() : "") +
+                smoothParams + 
+                (interactive                  ? " -interactive" : "") +
+                (stacked                      ? " -stacked -forceLegendSort" : "") +
+                (showAverages                 ? " -showAverages" : "") +
+                (filterOutZeros               ? " -filterOutZeros" : "") +
+                (maxHierarchyDepth >=0        ? " -maxHierarchyDepth " + maxHierarchyDepth.ToString() : "") +
+                (hideStatPrefix.Length>0      ? " -hideStatPrefix " + hideStatPrefix : "") +
+                (graphSettings.mainStat.isSet ? " -stacktotalstat " + graphSettings.mainStat.value : "") +
+                (showEvents.Length>0          ? " -showevents "+showEvents : "") +
+                (highlightEventRegions.Length>0 ? " -highlightEventRegions " + highlightEventRegions : "") +
 				(graphSettings.legendAverageThreshold.isSet ? " -legendAverageThreshold " + graphSettings.legendAverageThreshold.value : "") +
 
 				(graphSettings.ignoreStats.isSet ? " -ignoreStats " + graphSettings.ignoreStats.value : "") +
-				" " + additionalArgs;
-			return args;
-		}
+                " "+additionalArgs;
 
-		Process LaunchCsvToSvgAsync(string args)
-		{
-			string csvToolPath = GetBaseDirectory() + "/CSVToSVG.exe";
+
+
+
+            string csvToolPath = GetBaseDirectory() + "/CSVToSVG.exe";
 			string binary = csvToolPath;
 
 			// run mono on non-Windows hosts
@@ -1403,7 +1246,9 @@ namespace PerfReportTool
             startInfo.CreateNoWindow = true;
             startInfo.UseShellExecute = false;
             Process process = Process.Start(startInfo);
-			return process;
+
+            SvgProcesses[outFilename] = process;
+            return outFilename;
         }
 
         int CountCSVs( CsvStats csvStats)
@@ -1429,6 +1274,14 @@ namespace PerfReportTool
             return csvCount;
         }
 
+        void WaitForGraph(string filename)
+        {
+            Process process = SvgProcesses[filename];
+            process.WaitForExit();
+        }
+
+
+
         static int Main(string[] args)
         {
             Program program = new Program();
@@ -1451,25 +1304,11 @@ namespace PerfReportTool
 
             return 0;
         }
-
-		System.IO.FileInfo[] GetFilesWithSearchPattern(string directory, string searchPatternStr, bool recurse)
-		{
-			List<System.IO.FileInfo> fileList = new List<FileInfo>();
-			string[] searchPatterns = searchPatternStr.Split(';');
-			DirectoryInfo di = new DirectoryInfo(directory);
-			foreach (string searchPattern in searchPatterns)
-			{
-				System.IO.FileInfo[] files = di.GetFiles(searchPattern, recurse ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly);
-				fileList.AddRange(files);
-			}
-			return fileList.Distinct().ToArray();
-		}
-
     }
 
     class ReportTypeInfo
     {
-        public ReportTypeInfo(XElement element, Dictionary<string,XElement> sharedSummaries, string baseXmlDirectory)
+        public ReportTypeInfo(XElement element)
         {
             graphs = new List<ReportGraph>();
             summaries = new List<Summary>();
@@ -1481,45 +1320,28 @@ namespace PerfReportTool
 					ReportGraph graph = new ReportGraph(child);
 					graphs.Add(graph);
 				}
-				else if (child.Name == "summary" || child.Name=="summaryRef")
+				else if (child.Name == "summary")
 				{
-					XElement summaryElement = null;
-					if (child.Name == "summaryRef")
-					{
-						summaryElement = sharedSummaries[child.Attribute("name").Value];
-					}
-					else
-					{
-						summaryElement = child;
-					}
-					string summaryType = summaryElement.Attribute("type").Value;
+					string summaryType = child.Attribute("type").Value;
 					if (summaryType == "histogram")
 					{
-						summaries.Add(new HistogramSummary(summaryElement, baseXmlDirectory));
+						summaries.Add(new HistogramSummary(child));
 					}
 					else if (summaryType == "peak")
 					{
-						summaries.Add(new PeakSummary(summaryElement, baseXmlDirectory));
+						summaries.Add(new PeakSummary(child));
 					}
 					else if (summaryType == "fpschart")
 					{
-						summaries.Add(new FPSChartSummary(summaryElement, baseXmlDirectory));
+						summaries.Add(new FPSChartSummary(child));
 					}
 					else if (summaryType == "hitches")
 					{
-						summaries.Add(new HitchSummary(summaryElement, baseXmlDirectory));
+						summaries.Add(new HitchSummary(child));
 					}
 					else if (summaryType == "event")
 					{
-						summaries.Add(new EventSummary(summaryElement, baseXmlDirectory));
-					}
-					else if (summaryType == "boundedstatvalues")
-					{
-						summaries.Add(new BoundedStatValuesSummary(summaryElement, baseXmlDirectory));
-					}
-					else if (summaryType == "mapoverlay")
-					{
-						summaries.Add(new MapOverlaySummary(summaryElement, baseXmlDirectory));
+						summaries.Add(new EventSummary(child));
 					}
 				}
 				else if (child.Name == "metadataToShow")
@@ -1588,8 +1410,6 @@ namespace PerfReportTool
             additionalArgs = new OptionalString(element, "additionalArgs", true);
             statMultiplier = new OptionalDouble(element, "statMultiplier");
 			legendAverageThreshold = new OptionalDouble(element, "legendAverageThreshold");
-			snapToPeaks = new OptionalBool(element, "snapToPeaks");
-			lineDecimalPlaces = new OptionalInt(element, "lineDecimalPlaces");
 		}
 		public void InheritFrom(GraphSettings baseSettings)
         {
@@ -1619,8 +1439,6 @@ namespace PerfReportTool
             statMultiplier.InheritFrom(baseSettings.statMultiplier);
             ignoreStats.InheritFrom(baseSettings.ignoreStats);
 			legendAverageThreshold.InheritFrom(baseSettings.legendAverageThreshold);
-			snapToPeaks.InheritFrom(baseSettings.snapToPeaks);
-			lineDecimalPlaces.InheritFrom(baseSettings.lineDecimalPlaces);
 
 		}
         public OptionalBool smooth;
@@ -1650,10 +1468,7 @@ namespace PerfReportTool
 		public OptionalDouble legendAverageThreshold;
 
 		public OptionalBool requiresDetailedStats;
-		public OptionalBool snapToPeaks;
-		public OptionalInt lineDecimalPlaces;
-
-	};
+    };
 
 	static class Extensions
 	{
@@ -1762,8 +1577,6 @@ namespace PerfReportTool
 				}
 			}
 			Console.Out.WriteLine("BaseDir: " + baseDirectory);
-
-			baseXmlDirectory = baseDirectory;
 
 			// Read the report type XML
 			reportTypeXmlFilename = Path.Combine(baseDirectory, "reportTypes.xml" );
@@ -1917,17 +1730,6 @@ namespace PerfReportTool
 				}
 			}
 
-			// Add any shared summaries
-			XElement sharedSummariesElement = rootElement.Element("sharedSummaries");
-			sharedSummaries = new Dictionary<string, XElement>();
-			if (sharedSummariesElement != null)
-			{
-				foreach (XElement summaryElement in sharedSummariesElement.Elements("summary"))
-				{
-					sharedSummaries.Add(summaryElement.Attribute("refName").Value, summaryElement);
-				}
-			}
-
 		}
 
 		public ReportTypeInfo GetReportTypeInfo(string reportType, CachedCsvFile csvFile, bool bBulkMode, bool forceReportType )
@@ -1940,7 +1742,7 @@ namespace PerfReportTool
 				{
 					if (IsReportTypeXMLCompatibleWithStats(element, csvFile.dummyCsvStats))
 					{
-						reportTypeInfo = new ReportTypeInfo(element, sharedSummaries, baseXmlDirectory);
+						reportTypeInfo = new ReportTypeInfo(element);
 						break;
 					}
 				}
@@ -1951,20 +1753,20 @@ namespace PerfReportTool
 			}
 			else
 			{
-				XElement foundReportTypeElement = null;
+				XElement foundReporTypeElement = null;
 				foreach (XElement element in reportTypesElement.Elements("reporttype"))
 				{
 					if (element.Attribute("name").Value.ToLower() == reportType)
 					{
-						foundReportTypeElement = element;
+						foundReporTypeElement = element;
 					}
 				}
-				if (foundReportTypeElement == null)
+				if (foundReporTypeElement == null)
 				{
 					throw new Exception("Report type " + reportType + " not found in " + reportTypeXmlFilename);
 				}
 
-                if (!IsReportTypeXMLCompatibleWithStats(foundReportTypeElement, csvFile.dummyCsvStats))
+                if (!IsReportTypeXMLCompatibleWithStats(foundReporTypeElement, csvFile.dummyCsvStats))
                 {
                     if (forceReportType)
                     {
@@ -1975,7 +1777,7 @@ namespace PerfReportTool
                         throw new Exception("Report type " + reportType + " is not compatible with CSV " + csvFile.filename);
                     }
                 }
-                reportTypeInfo = new ReportTypeInfo(foundReportTypeElement, sharedSummaries, baseXmlDirectory);
+                reportTypeInfo = new ReportTypeInfo(foundReporTypeElement);
             }
 
             // Load the graphs
@@ -2072,7 +1874,7 @@ namespace PerfReportTool
 
 		public SummaryTableInfo GetSummaryTable(string name)
 		{
-			if (summaryTables.ContainsKey(name.ToLower()))
+			if (summaryTables.ContainsKey(name))
 			{
 				return summaryTables[name.ToLower()];
 			}
@@ -2099,19 +1901,17 @@ namespace PerfReportTool
 		XElement rootElement;
 		XElement graphGroupsElement;
 		XElement summaryTablesElement;
-		Dictionary<string,XElement> sharedSummaries;
 		Dictionary<string, GraphSettings> graphs;
 		Dictionary<string, string> statDisplayNameMapping;
-		string baseXmlDirectory;
+		DerivedMetadataMappings derivedMetadataMappings;
 
 		List<CsvEventStripInfo> csvEventsToStrip;
         string reportTypeXmlFilename;
-		public DerivedMetadataMappings derivedMetadataMappings;
 	}
 
-	class CsvFileCache
+    class CsvFileCache
     {
-        public CsvFileCache( string[] inCsvFilenames, int inLookaheadCount, int inThreadCount, bool inUseCacheFiles, string inMetadataFilterString, DerivedMetadataMappings inDerivedMetadataMappings )
+        public CsvFileCache( string[] inCsvFilenames, int inLookaheadCount, int inThreadCount )
         {
             csvFileInfos = new CsvFileInfo[inCsvFilenames.Length];
             for (int i = 0; i < inCsvFilenames.Length; i++)
@@ -2120,20 +1920,17 @@ namespace PerfReportTool
             }
             fileCache = this;
             writeIndex = 0;
-			useCacheFiles = inUseCacheFiles;
             readIndex = 0;
             lookaheadCount = inLookaheadCount;
             countFreedSinceLastGC = 0;
-			metadataFilterString = inMetadataFilterString;
-			derivedMetadataMappings = inDerivedMetadataMappings;
 
-			// Kick off the workers (must be done last)
-			if (inLookaheadCount > 0)
+            // Kick off the workers (must be done last)
+            if (inLookaheadCount > 0)
             {
                 precacheThreads = new Thread[inThreadCount];
                 precacheJobs = new ThreadStart[inThreadCount];
                 for (int i = 0; i < precacheThreads.Length; i++)
-                { 
+                {
                     precacheJobs[i] = new ThreadStart(PrecacheThreadRun);
                     precacheThreads[i] = new Thread(precacheJobs[i]);
                     precacheThreads[i].Start();
@@ -2149,18 +1946,12 @@ namespace PerfReportTool
                 // We're done
                 return null;
             }
-
-			// Find the next valid fileinfo
-			CsvFileInfo fileInfo = csvFileInfos[readIndex];
-			if (precacheThreads == null)
+            CsvFileInfo fileInfo = csvFileInfos[readIndex];
+            if (precacheThreads == null)
             {
-                file = new CachedCsvFile(fileInfo.filename, useCacheFiles, derivedMetadataMappings);
-				if (!file.DoesMetadataMatchFilter(metadataFilterString))
-				{
-					return null;
-				}
-			}
-			else
+                file = new CachedCsvFile(fileInfo.filename);
+            }
+            else
             {
                 while (true)
                 {
@@ -2168,9 +1959,9 @@ namespace PerfReportTool
                     {
                         if (fileInfo.isReady)
                         {
-							file = fileInfo.cachedFile;
-							fileInfo.cachedFile = null;
-							countFreedSinceLastGC++;
+                            file = fileInfo.cachedFile;
+                            fileInfo.cachedFile = null;
+                            countFreedSinceLastGC++;
                             // Periodically GC
                             if (countFreedSinceLastGC>16)
                             {
@@ -2178,12 +1969,7 @@ namespace PerfReportTool
                                 GC.WaitForPendingFinalizers();
                                 countFreedSinceLastGC = 0;
                             }
-							if (!file.DoesMetadataMatchFilter(metadataFilterString))
-							{
-							    Console.WriteLine("Skipping!");
-							    file = null;
-							}
-							break;
+                            break;
                         }
                     }
 					// The data isn't ready yet, so sleep for a bit
@@ -2220,17 +2006,10 @@ namespace PerfReportTool
                 // Process the file
                 lock (fileInfo.cs)
                 {
-					CachedCsvFile file = new CachedCsvFile(fileInfo.filename, useCacheFiles, derivedMetadataMappings);
-					if ( file.DoesMetadataMatchFilter(metadataFilterString))
-					{
-						// Only read the full file data if the metadata matches
-						file.PrepareCsvData();
-						fileInfo.isValid = true;
-					}
-					fileInfo.cachedFile = file;
-					fileInfo.isReady = true;
-				}
-			}
+                    fileInfo.cachedFile = new CachedCsvFile(fileInfo.filename);
+                    fileInfo.isReady = true;
+                }
+            }
         }
 
 
@@ -2241,11 +2020,8 @@ namespace PerfReportTool
         int readIndex;
         int lookaheadCount;
         int countFreedSinceLastGC;
-		bool useCacheFiles;
-		string metadataFilterString;
-		DerivedMetadataMappings derivedMetadataMappings;
 
-		static CsvFileCache fileCache;
+        static CsvFileCache fileCache;
 
         class CsvFileInfo
         {
@@ -2254,14 +2030,12 @@ namespace PerfReportTool
                 filename = inFilename;
                 cachedFile = null;
                 isReady = false;
-				isValid = false;
-				cs = new object();
+                cs = new object();
             }
             public CachedCsvFile cachedFile;
             public bool isReady;
             public object cs;
             public string filename;
-			public bool isValid;
         }
         CsvFileInfo[] csvFileInfos;
 

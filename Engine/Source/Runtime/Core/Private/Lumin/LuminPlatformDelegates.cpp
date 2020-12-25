@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Lumin/LuminPlatformDelegates.h"
 
@@ -7,5 +7,3 @@ FLuminDelegates::FLuminAppStartupArgumentsDelegate FLuminDelegates::LuminAppRece
 FLuminDelegates::FLuminApplicationLifetimeDelegate FLuminDelegates::DeviceHasReactivatedDelegate;
 FLuminDelegates::FLuminApplicationLifetimeDelegate FLuminDelegates::DeviceWillEnterRealityModeDelegate;
 FLuminDelegates::FLuminApplicationLifetimeDelegate FLuminDelegates::DeviceWillGoInStandbyDelegate;
-FLuminDelegates::FLuminApplicationLifetimeFocusLostDelegate FLuminDelegates::FocusLostDelegate;
-FLuminDelegates::FLuminApplicationLifetimeDelegate FLuminDelegates::FocusGainedDelegate;

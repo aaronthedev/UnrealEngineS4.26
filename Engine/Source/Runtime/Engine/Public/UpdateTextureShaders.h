@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -22,15 +22,24 @@ public:
 		DestTexture.Bind(Initializer.ParameterMap, TEXT("DestTexture"), SPF_Mandatory);
 	}
 
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << SrcPitchParameter << SrcBuffer << DestPosSizeParameter << DestTexture;
+		return bShaderHasOutdatedParameters;
+	}
+
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
-	LAYOUT_FIELD(FShaderParameter, SrcPitchParameter);
-	LAYOUT_FIELD(FShaderResourceParameter, SrcBuffer);
-	LAYOUT_FIELD(FShaderParameter, DestPosSizeParameter);
-	LAYOUT_FIELD(FShaderResourceParameter, DestTexture);
+//protected:
+	FShaderParameter SrcPitchParameter;
+	FShaderResourceParameter SrcBuffer;
+	FShaderParameter DestPosSizeParameter;
+	FShaderResourceParameter DestTexture;
 };
 
 template<uint32 NumComponents>
@@ -46,6 +55,14 @@ public:
 		SrcBuffer.Bind(Initializer.ParameterMap, TEXT("TSrcBuffer"), SPF_Mandatory);
 		DestPosSizeParameter.Bind(Initializer.ParameterMap, TEXT("DestPosSize"), SPF_Mandatory);
 		DestTexture.Bind(Initializer.ParameterMap, TEXT("TDestTexture"), SPF_Mandatory);
+	}
+
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << SrcPitchParameter << SrcBuffer << DestPosSizeParameter << DestTexture;
+		return bShaderHasOutdatedParameters;
 	}
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
@@ -68,10 +85,11 @@ public:
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
-	LAYOUT_FIELD(FShaderParameter, SrcPitchParameter);
-	LAYOUT_FIELD(FShaderResourceParameter, SrcBuffer);
-	LAYOUT_FIELD(FShaderParameter, DestPosSizeParameter);
-	LAYOUT_FIELD(FShaderResourceParameter, DestTexture);
+	//protected:
+	FShaderParameter SrcPitchParameter;
+	FShaderResourceParameter SrcBuffer;
+	FShaderParameter DestPosSizeParameter;
+	FShaderResourceParameter DestTexture;
 };
 
 class FUpdateTexture3DSubresouceCS : public FGlobalShader
@@ -93,19 +111,28 @@ public:
 		DestTexture3D.Bind(Initializer.ParameterMap, TEXT("DestTexture3D"), SPF_Mandatory);
 	}
 
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << SrcPitchParameter << SrcDepthPitchParameter << SrcBuffer << DestPosParameter << DestSizeParameter  << DestTexture3D;
+		return bShaderHasOutdatedParameters;
+	}
+
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
-	LAYOUT_FIELD(FShaderParameter, SrcPitchParameter);
-	LAYOUT_FIELD(FShaderParameter, SrcDepthPitchParameter);
-	LAYOUT_FIELD(FShaderResourceParameter, SrcBuffer);
+	//protected:
+	FShaderParameter SrcPitchParameter;
+	FShaderParameter SrcDepthPitchParameter;
+	FShaderResourceParameter SrcBuffer;
 
-	LAYOUT_FIELD(FShaderParameter, DestPosParameter);
-	LAYOUT_FIELD(FShaderParameter, DestSizeParameter);
+	FShaderParameter DestPosParameter;
+	FShaderParameter DestSizeParameter;
 
-	LAYOUT_FIELD(FShaderResourceParameter, DestTexture3D)
+	FShaderResourceParameter DestTexture3D;
 };
 
 class FCopyTexture2DCS : public FGlobalShader
@@ -121,14 +148,23 @@ public:
 		DestPosSize.Bind(Initializer.ParameterMap, TEXT("DestPosSize"), SPF_Mandatory);
 	}
 
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << SrcTexture << DestTexture << DestPosSize;
+		return bShaderHasOutdatedParameters;
+	}
+
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
-	LAYOUT_FIELD(FShaderResourceParameter, SrcTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, DestTexture);
-	LAYOUT_FIELD(FShaderParameter, DestPosSize);
+//protected:
+	FShaderResourceParameter SrcTexture;
+	FShaderResourceParameter DestTexture;
+	FShaderParameter DestPosSize;
 };
 
 template<uint32 NumComponents, typename ComponentType = uint32>
@@ -144,6 +180,14 @@ public:
 		DestTexture.Bind(Initializer.ParameterMap, TEXT("TDestTexture"), SPF_Mandatory);
 		SrcPosParameter.Bind(Initializer.ParameterMap, TEXT("SrcPos"), SPF_Mandatory);
 		DestPosSizeParameter.Bind(Initializer.ParameterMap, TEXT("DestPosSize"), SPF_Mandatory);
+	}
+
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << SrcTexture << DestTexture << SrcPosParameter << DestPosSizeParameter;
+		return bShaderHasOutdatedParameters;
 	}
 
 	static const TCHAR* GetTypename(uint32 Dummy)
@@ -181,10 +225,10 @@ public:
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
-	LAYOUT_FIELD(FShaderResourceParameter, SrcTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, DestTexture);
-	LAYOUT_FIELD(FShaderParameter, SrcPosParameter);
-	LAYOUT_FIELD(FShaderParameter, DestPosSizeParameter);
+	FShaderResourceParameter SrcTexture;
+	FShaderResourceParameter DestTexture;
+	FShaderParameter SrcPosParameter;
+	FShaderParameter DestPosSizeParameter;
 };
 
 template<uint32 ElementsPerThread>
@@ -200,11 +244,20 @@ public:
 		DestBuffer.Bind(Initializer.ParameterMap, TEXT("DestBuffer"), SPF_Mandatory);		
 	}
 
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << SrcBuffer << DestBuffer;
+		return bShaderHasOutdatedParameters;
+	}
+
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
 		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
-	LAYOUT_FIELD(FShaderResourceParameter, SrcBuffer);
-	LAYOUT_FIELD(FShaderResourceParameter, DestBuffer);
+	//protected:
+	FShaderResourceParameter SrcBuffer;
+	FShaderResourceParameter DestBuffer;	
 };

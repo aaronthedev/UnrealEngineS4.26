@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SOutputLog.h"
 #include "Framework/Text/IRun.h"
@@ -1285,7 +1285,7 @@ void SOutputLog::MakeSelectCategoriesSubMenu(FMenuBuilder& MenuBuilder)
 			EUserInterfaceActionType::ToggleButton
 		);
 		
-		for (const FName& Category : Filter.GetAvailableLogCategories())
+		for (const FName Category : Filter.GetAvailableLogCategories())
 		{
 			MenuBuilder.AddMenuEntry(
 				FText::AsCultureInvariant(Category.ToString()),

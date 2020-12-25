@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,6 @@
 #include "Widgets/SWidget.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "SGraphPin.h"
-#include "SLiveLinkSubjectRepresentationPicker.h"
 
 #include "LiveLinkRole.h"
 
@@ -27,8 +26,8 @@ public:
 	//~ End SGraphPin Interface
 
 private:
-	SLiveLinkSubjectRepresentationPicker::FLiveLinkSourceSubjectRole GetValue() const;
-	void SetValue(SLiveLinkSubjectRepresentationPicker::FLiveLinkSourceSubjectRole NewValue);
+	FLiveLinkSubjectRepresentation GetValue() const;
+	void SetValue(FLiveLinkSubjectRepresentation NewValue);
 
 	FLiveLinkSubjectRepresentation SubjectRepresentation;
 };

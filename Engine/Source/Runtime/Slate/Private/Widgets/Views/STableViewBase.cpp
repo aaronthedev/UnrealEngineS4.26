@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/Views/STableViewBase.h"
 #include "Rendering/DrawElements.h"
@@ -62,7 +62,6 @@ void STableViewBase::ConstructChildren( const TAttribute<float>& InItemWidth, co
 	UE_CLOG(InScrollOrientation != Orientation, LogSlate, Error, TEXT("STableViewBase does not support horizontal scrolling when displaying a header row"));
 
 	ItemsPanel = SNew(SListPanel)
-		.Clipping(GetClipping())
 		.ItemWidth(InItemWidth)
 		.ItemHeight(InItemHeight)
 		.NumDesiredItems(this, &STableViewBase::GetNumItemsBeingObserved)
@@ -970,11 +969,6 @@ FVector2D STableViewBase::GetScrollDistanceRemaining()
 TSharedRef<class SWidget> STableViewBase::GetScrollWidget()
 {
 	return SharedThis(this);
-}
-
-void STableViewBase::OnClippingChanged()
-{
-	ItemsPanel->SetClipping(GetClipping());
 }
 
 bool STableViewBase::CanUseInertialScroll( float ScrollAmount ) const

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -105,7 +105,6 @@ enum class EInAppPurchaseResult : uint8
 	Cancelled,
 };
 
-#if OSSGOOGLEPLAY_WITH_AIDL
 /**
  * Implementation of the Platform Purchase receipt. For this we provide an identifier and the encrypted data.
  */
@@ -119,18 +118,13 @@ public:
 	FString Data;
 };
 
-typedef FInAppPurchaseProductInfo FProvidedProductInformation;
-#else
-typedef FOnlineStoreOffer FProvidedProductInformation;
-#endif
-
  /**
   * Delegate fired when an IAP query for available offers has completed
   *
   * @param Response response from GooglePlay backend
   * @param ProvidedProductInformation list of offers returned in response to a query on available offer ids
   */
-DECLARE_MULTICAST_DELEGATE_TwoParams(FOnGooglePlayAvailableIAPQueryComplete, EGooglePlayBillingResponseCode /*Response*/, const TArray<FProvidedProductInformation>& /*ProvidedProductInformation*/);
+DECLARE_MULTICAST_DELEGATE_TwoParams(FOnGooglePlayAvailableIAPQueryComplete, EGooglePlayBillingResponseCode /*Response*/, const TArray<FInAppPurchaseProductInfo>& /*ProvidedProductInformation*/);
 typedef FOnGooglePlayAvailableIAPQueryComplete::FDelegate FOnGooglePlayAvailableIAPQueryCompleteDelegate;
 
 /**

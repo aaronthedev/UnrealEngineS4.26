@@ -130,15 +130,15 @@ class netrc:
         rep = ""
         for host in self.hosts.keys():
             attrs = self.hosts[host]
-            rep += "machine {host}\n\tlogin {attrs[0]}\n".format(host=host, attrs=attrs)
+            rep = rep + "machine "+ host + "\n\tlogin " + repr(attrs[0]) + "\n"
             if attrs[1]:
-                rep += "\taccount {attrs[1]}\n".format(attrs=attrs)
-            rep += "\tpassword {attrs[2]}\n".format(attrs=attrs)
+                rep = rep + "account " + repr(attrs[1])
+            rep = rep + "\tpassword " + repr(attrs[2]) + "\n"
         for macro in self.macros.keys():
-            rep += "macdef {macro}\n".format(macro=macro)
+            rep = rep + "macdef " + macro + "\n"
             for line in self.macros[macro]:
-                rep += line
-            rep += "\n"
+                rep = rep + line
+            rep = rep + "\n"
         return rep
 
 if __name__ == '__main__':

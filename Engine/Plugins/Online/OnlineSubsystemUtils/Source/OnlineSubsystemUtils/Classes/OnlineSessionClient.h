@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  * Everything a local player will use to manage online sessions.
@@ -35,8 +35,7 @@ protected:
 	FOnJoinSessionCompleteDelegate OnJoinSessionCompleteDelegate;
 	/** Delegate for accepting session invites */
 	FOnSessionUserInviteAcceptedDelegate OnSessionUserInviteAcceptedDelegate;
-	/** Delegate for handling the play together system event.  Will be removed. */
-	UE_DEPRECATED(4.26, "PlayTogether will no longer be supported and should be removed.")
+	/** Delegate for handling the play together system event */
 	FOnPlayTogetherEventReceivedDelegate OnPlayTogetherEventReceivedDelegate;
 
 	// Handles to the above delegates
@@ -45,8 +44,6 @@ protected:
 	FDelegateHandle OnDestroyForJoinSessionCompleteDelegateHandle;
 	FDelegateHandle OnDestroyForMainMenuCompleteDelegateHandle;
 	FDelegateHandle OnJoinSessionCompleteDelegateHandle;
-	/** Deprecated.  Will be removed. */
-	UE_DEPRECATED(4.26, "PlayTogether will no longer be supported and should be removed.")
 	FDelegateHandle OnPlayTogetherEventReceivedDelegateHandle;
 
 	/** Handle to outstanding start session call */

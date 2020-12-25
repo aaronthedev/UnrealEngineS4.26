@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SLevelViewport.h"
 #include "Materials/MaterialInterface.h"
@@ -73,10 +73,6 @@
 #include "EditorLevelUtils.h"
 #include "Engine/LevelStreaming.h"
 #include "Editor/WorldBrowser/Public/WorldBrowserModule.h"
-#include "Bookmarks/IBookmarkTypeTools.h"
-#include "ToolMenus.h"
-#include "Bookmarks/IBookmarkTypeTools.h"
-#include "Editor/EditorPerformanceSettings.h"
 
 static const FName LevelEditorName("LevelEditor");
 
@@ -466,6 +462,11 @@ void SLevelViewport::ConstructLevelEditorViewportClient( const FArguments& InArg
 			ViewportInstanceSettings.BufferVisualizationMode = NAME_None;
 		}
 
+		// Disable realtime viewports by default for remote sessions
+		if (FPlatformMisc::IsRemoteSession())
+		{
+			ViewportInstanceSettings.bIsRealtime = false;
+		}
 	}
 
 	if(ViewportInstanceSettings.ViewportType == LVT_Perspective)
@@ -535,42 +536,6 @@ void SLevelViewport::ConstructLevelEditorViewportClient( const FArguments& InArg
 	LevelViewportClient->SetViewModes(ViewportInstanceSettings.PerspViewModeIndex, ViewportInstanceSettings.OrthoViewModeIndex );
 
 	bShowFullToolbar = ViewportInstanceSettings.bShowFullToolbar;
-
-	// Always set to true initially
-	bShowToolbarAndControls = true; 
-
-	if (FPlatformMisc::IsRemoteSession())
-	{
-		// Bind to the change delegate of performance settings and call our handler with a dummy event to set current defaults
-		UEditorPerformanceSettings* PerformanceSettings = GetMutableDefault< UEditorPerformanceSettings>();
-		PerformanceSettings->OnSettingChanged().AddSP(this, &SLevelViewport::OnPerformanceSettingsChanged);
-		FPropertyChangedEvent DummyEvent(nullptr);
-		OnPerformanceSettingsChanged(PerformanceSettings, DummyEvent);
-	}
-}
-
-/** Updates the real-time overrride applied to the viewport */
-void SLevelViewport::OnPerformanceSettingsChanged(UObject* Obj, FPropertyChangedEvent& ChangeEvent)
-{
-	if (FPlatformMisc::IsRemoteSession())
-	{
-		const FText RDPRealtimeOverrideName = LOCTEXT("RealtimeOverrideMessage_RDP", "Remote Desktop");
-		UEditorPerformanceSettings* PerformanceSettings = GetMutableDefault< UEditorPerformanceSettings>();
-
-		if (Obj == PerformanceSettings && ensure(LevelViewportClient))
-		{
-			// Respond to settings changes by adding or removing the realtime override as appropriate
-			if (PerformanceSettings->bDisableRealtimeViewportsInRemoteSessions && !LevelViewportClient->HasRealtimeOverride(RDPRealtimeOverrideName))
-			{
-				bool bShouldBeRealtime = false;
-				LevelViewportClient->AddRealtimeOverride(bShouldBeRealtime, RDPRealtimeOverrideName);
-			}
-			else if (!PerformanceSettings->bDisableRealtimeViewportsInRemoteSessions && LevelViewportClient->HasRealtimeOverride(RDPRealtimeOverrideName))
-			{
-				LevelViewportClient->RemoveRealtimeOverride(RDPRealtimeOverrideName, false);
-			}
-		}
-	}
 }
 
 FSceneViewport* SLevelViewport::GetGameSceneViewport() const
@@ -692,16 +657,9 @@ void SLevelViewport::OnDragLeave( const FDragDropEvent& DragDropEvent )
 		LevelViewportClient->DestroyDropPreviewActors();
 	}
 
-	TSharedPtr<FDragDropOperation> Operation = DragDropEvent.GetOperation();
-	if (Operation.IsValid())
+	if (DragDropEvent.GetOperation().IsValid())
 	{
-		Operation->SetDecoratorVisibility(true);
-
-		if (Operation->IsOfType<FDecoratedDragDropOp>())
-		{
-			TSharedPtr<FDecoratedDragDropOp> DragDropOp = StaticCastSharedPtr<FDecoratedDragDropOp>(Operation);
-			DragDropOp->ResetToDefaultToolTip();
-		}
+		DragDropEvent.GetOperation()->SetDecoratorVisibility(true);
 	}
 }
 
@@ -791,9 +749,7 @@ bool SLevelViewport::HandleDragObjects(const FGeometry& MyGeometry, const FDragD
 		{
 			// At least one of the assets can't be dropped.
 			Operation->SetCursorOverride(EMouseCursor::SlashedCircle);
-			bValidDrag = false;
-			HintText = DropResult.HintText;
-			break;
+			return false;
 		}
 		else
 		{
@@ -1197,7 +1153,7 @@ void SLevelViewport::OnMapChanged( UWorld* World, EMapChangeType MapChangeType )
 		}
 		World->EditorViews[LevelViewportClient->ViewportType].CamUpdated = false;
 
-		World->ChangeFeatureLevel(GEditor->GetActiveFeatureLevelPreviewType());
+		World->ChangeFeatureLevel(GWorld->FeatureLevel);
 
 		RedrawViewport(true);
 	}
@@ -1256,7 +1212,7 @@ void FLevelViewportDropContextMenuImpl::FillDropAddReplaceActorMenu( bool bRepla
 				}
 				else
 				{
-					FUIAction Action( FExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::AddActor_Clicked, MenuItem.FactoryToUse, MenuItem.AssetData ) );
+					FUIAction Action( FExecuteAction::CreateStatic( &FLevelEditorActionCallbacks::AddActor_Clicked, MenuItem.FactoryToUse, MenuItem.AssetData, false ) );
 				
 					FText MenuEntryName = FText::Format( NSLOCTEXT("SLevelViewport", "AddActorMenuFormat", "Add {0}"), MenuItem.FactoryToUse->GetDisplayName() );
 					if ( MenuItem.AssetData.IsValid() )
@@ -1765,7 +1721,7 @@ EVisibility SLevelViewport::GetMaximizeToggleVisibility() const
 EVisibility SLevelViewport::GetCloseImmersiveButtonVisibility() const
 {
 	// Do not show the Immersive toggle button when not in immersive mode
-	return (IsImmersive() && bShowToolbarAndControls) ? EVisibility::Visible : EVisibility::Collapsed;
+	return IsImmersive() ? EVisibility::Visible : EVisibility::Collapsed;
 }
 
 EVisibility SLevelViewport::GetTransformToolbarVisibility() const
@@ -1868,15 +1824,6 @@ void SLevelViewport::OnToggleImmersive()
 		if (!ViewportName.IsNone())
 		{
 			ParentLayout.Pin()->RequestMaximizeViewport( ViewportName, bWantMaximize, bWantImmersive, bAllowAnimation );
-		}
-
-		if (bWantImmersive && LevelViewportClient->IsVisualizeCalibrationMaterialEnabled()) 
-		{
-			bShowToolbarAndControls = false;
-		}
-		else
-		{
-			bShowToolbarAndControls = true;
 		}
 	}
 }
@@ -2239,9 +2186,11 @@ void SLevelViewport::SaveConfig(const FString& ConfigName) const
 		ViewportInstanceSettings.RayTracingDebugVisualizationMode = LevelViewportClient->CurrentRayTracingDebugVisualizationMode;
 		ViewportInstanceSettings.ExposureSettings = LevelViewportClient->ExposureSettings;
 		ViewportInstanceSettings.FOVAngle = LevelViewportClient->FOVAngle;
-	
-		LevelViewportClient->SaveRealtimeStateToConfig(ViewportInstanceSettings.bIsRealtime);
-	
+		if (!FPlatformMisc::IsRemoteSession())
+		{
+			// Only save this when we're not a remote session, as remote sessions force realtime to be disabled
+			ViewportInstanceSettings.bIsRealtime = LevelViewportClient->IsRealtime();
+		}
 		ViewportInstanceSettings.bShowOnScreenStats = LevelViewportClient->ShouldShowStats();
 		ViewportInstanceSettings.FarViewPlane = LevelViewportClient->GetFarClipPlaneOverride();
 		ViewportInstanceSettings.bShowFullToolbar = bShowFullToolbar;
@@ -2339,34 +2288,52 @@ FLevelEditorViewportInstanceSettings SLevelViewport::LoadLegacyConfigFromIni(con
 	GConfig->GetBool(*IniSection, *(InConfigKey + TEXT(".bWantFPS")), ViewportInstanceSettings.bShowFPS_DEPRECATED, GEditorPerProjectIni);
 	GConfig->GetFloat(*IniSection, *(InConfigKey + TEXT(".FOVAngle")), ViewportInstanceSettings.FOVAngle, GEditorPerProjectIni);
 
+	// Disable realtime viewports by default for remote sessions
+	if (FPlatformMisc::IsRemoteSession())
+	{
+		ViewportInstanceSettings.bIsRealtime = false;
+	}
+
 	return ViewportInstanceSettings;
 }
 
 
 void SLevelViewport::OnSetBookmark( int32 BookmarkIndex )
 {
-	IBookmarkTypeTools::Get().CreateOrSetBookmark( BookmarkIndex, LevelViewportClient.Get() );
+	GLevelEditorModeTools().SetBookmark( BookmarkIndex, LevelViewportClient.Get() );
 }
 
 void SLevelViewport::OnJumpToBookmark( int32 BookmarkIndex )
 {
-	IBookmarkTypeTools::Get().JumpToBookmark( BookmarkIndex, TSharedPtr<struct FBookmarkBaseJumpToSettings>(), LevelViewportClient.Get() );
+	GLevelEditorModeTools().JumpToBookmark( BookmarkIndex, TSharedPtr<struct FBookmarkBaseJumpToSettings>(), LevelViewportClient.Get() );
 }
 
 void SLevelViewport::OnClearBookmark(int32 BookmarkIndex)
 {
-	IBookmarkTypeTools::Get().ClearBookmark(BookmarkIndex, LevelViewportClient.Get());
+	GLevelEditorModeTools().ClearBookmark(BookmarkIndex, LevelViewportClient.Get());
 }
 
 void SLevelViewport::OnClearAllBookmarks()
 {
-	IBookmarkTypeTools::Get().ClearAllBookmarks(LevelViewportClient.Get());
+	GLevelEditorModeTools().ClearAllBookmarks(LevelViewportClient.Get());
 }
 
 void SLevelViewport::OnCompactBookmarks()
 {
-	IBookmarkTypeTools::Get().CompactBookmarks(LevelViewportClient.Get());
+	GLevelEditorModeTools().CompactBookmarks(LevelViewportClient.Get());
 }
+
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+void SLevelViewport::OnClearBookMark( int32 BookmarkIndex )
+{
+	OnClearBookmark(BookmarkIndex);
+}
+
+void SLevelViewport::OnClearAllBookMarks()
+{
+	OnClearAllBookmarks();
+}
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 void SLevelViewport::OnToggleAllowCinematicPreview()
 {
@@ -3944,7 +3911,7 @@ EVisibility SLevelViewport::GetViewportControlsVisibility() const
 {
 	// Do not show the controls if this viewport has a play in editor session
 	// or is not the current viewport
-	return (&GetLevelViewportClient() == GCurrentLevelEditingViewportClient && !IsPlayInEditorViewportActive() && bShowToolbarAndControls) ? OnGetViewportContentVisibility() : EVisibility::Collapsed;
+	return (&GetLevelViewportClient() == GCurrentLevelEditingViewportClient && !IsPlayInEditorViewportActive()) ? OnGetViewportContentVisibility() : EVisibility::Collapsed;
 }
 
 void SLevelViewport::OnSetViewportConfiguration(FName ConfigurationName)
@@ -3959,7 +3926,6 @@ void SLevelViewport::OnSetViewportConfiguration(FName ConfigurationName)
 			GCurrentLevelEditingViewportClient = nullptr;
 			ViewportTabPinned->SetViewportConfiguration(ConfigurationName);
 			FSlateApplication::Get().DismissAllMenus();
-			UToolMenus::Get()->CleanupStaleWidgetsNextTick(true);
 		}
 	}
 }
@@ -4047,6 +4013,8 @@ void SLevelViewport::StartPlayInEditorSession(UGameViewportClient* PlayClient, c
 	// Remove keyboard focus to send a focus lost message to the widget to clean up any saved state from the viewport interface thats about to be swapped out
 	// Focus will be set when the game viewport is registered
 	FSlateApplication::Get().ClearKeyboardFocus(EFocusCause::SetDirectly);
+
+	PlayClient->SetPlayInEditorUseMouseForTouch(GetDefault<ULevelEditorPlaySettings>()->UseMouseForTouch);
 
 	// Attach global play world actions widget to view port
 	ActiveViewport = MakeShareable( new FSceneViewport( PlayClient, ViewportWidget) );
@@ -4551,12 +4519,6 @@ void SLevelViewport::OnFloatingButtonClicked()
 {
 	// if one of the viewports floating buttons has been clicked, update the global viewport ptr
 	LevelViewportClient->SetLastKeyViewport();
-}
-
-/** Get the visibility for viewport toolbar */
-EVisibility  SLevelViewport::GetToolbarVisibility() const
-{ 
-	return bShowToolbarAndControls ? EVisibility::Visible : EVisibility::Collapsed; 
 }
 
 void SLevelViewport::RemoveAllPreviews(const bool bRemoveFromDesktopViewport /**= true*/)

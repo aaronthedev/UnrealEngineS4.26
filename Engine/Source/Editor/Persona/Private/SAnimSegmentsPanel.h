@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -25,7 +25,6 @@ DECLARE_DELEGATE_OneParam( FOnAnimSegmentNodeClicked, int32 )
 DECLARE_DELEGATE_OneParam( FOnAnimSegmentRemoved, int32 )
 DECLARE_DELEGATE_FourParams( FOnAnimReplaceMapping, FName, int32, UAnimSequenceBase*, UAnimSequenceBase*)
 DECLARE_DELEGATE_RetVal_ThreeParams(bool, FOnDiffFromParentAsset, FName, int32, const FAnimSegment& )
-DECLARE_DELEGATE_RetVal_OneParam(FLinearColor, FOnGetNodeColor, const FAnimSegment&)
 
 //////////////////////////////////////////////////////////////////////////
 // SAnimSegmentsPanel
@@ -64,7 +63,7 @@ public:
 	SLATE_ATTRIBUTE(float, ViewInputMin)
 	SLATE_ATTRIBUTE(float, ViewInputMax)
 
-	SLATE_EVENT(FOnGetNodeColor, OnGetNodeColor)
+	SLATE_ATTRIBUTE(FLinearColor, NodeColor)
 	SLATE_ATTRIBUTE(TArray<float>, DraggableBars)
 	SLATE_ATTRIBUTE(TArray<float>, DraggableBarSnapPositions)
 	SLATE_ATTRIBUTE(float, ScrubPosition)
@@ -103,7 +102,6 @@ private:
 	FOnAnimSegmentRemoved		OnAnimSegmentRemovedDelegate;
 	FOnAnimReplaceMapping		OnAnimReplaceMapping;
 	FOnDiffFromParentAsset		OnDiffFromParentAsset;
-	FOnGetNodeColor				OnGetNodeColor;
 
 	enum ETrackViewStyle
 	{

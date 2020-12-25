@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -62,8 +62,6 @@ private:
 	bool CanPasteNodes() const;
 	void DuplicateNodes();
 	bool CanDuplicateNodes() const;
-	void RenameNode();
-	bool CanRenameNode() const;
 
 	FText GetDisplayNameInternal() const;
 
@@ -86,8 +84,6 @@ private:
 
 	/** The set of nodes objects currently selected in the graph. */
 	TSharedRef<FNiagaraObjectSelection> NodeSelection;
-
-	TArray<TWeakObjectPtr<class UNiagaraStackObject> > TempEntries;
 
 	bool bUpdatingSystemSelectionFromGraph;
 

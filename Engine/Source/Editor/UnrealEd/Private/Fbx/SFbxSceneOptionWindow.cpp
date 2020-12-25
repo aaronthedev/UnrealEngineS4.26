@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "SFbxSceneOptionWindow.h"
 #include "Modules/ModuleManager.h"
 #include "Widgets/Layout/SUniformGridPanel.h"
@@ -1319,17 +1319,17 @@ void SFbxSceneOptionWindow::Construct(const FArguments& InArgs)
 	//By default we want to see the Scene tab
 	if (!SceneInfoOriginal.IsValid())
 	{
-		FbxSceneImportTabManager->TryInvokeTab(FTabId("Scene"));
+		FbxSceneImportTabManager->InvokeTab(FTabId("Scene"));
 	}
 	else
 	{
 		if (bCanReimportHierarchy)
 		{
-			FbxSceneImportTabManager->TryInvokeTab(FTabId("SceneReImport"));
+			FbxSceneImportTabManager->InvokeTab(FTabId("SceneReImport"));
 		}
 		else
 		{
-			FbxSceneImportTabManager->TryInvokeTab(FTabId("StaticMeshesReimport"));
+			FbxSceneImportTabManager->InvokeTab(FTabId("StaticMeshesReimport"));
 		}
 	}
 }
@@ -1406,13 +1406,13 @@ void SFbxSceneOptionWindow::CopyStaticMeshOptionsToFbxOptions(UnFbx::FBXImportOp
 	ImportSettings->StaticMeshLODGroup = StaticMeshOptions->StaticMeshLODGroup;
 	switch (StaticMeshOptions->VertexColorImportOption)
 	{
-	case EFbxSceneVertexColorImportOption::Replace:
+	case EFbxSceneVertexColorImportOption::Type::Replace:
 		ImportSettings->VertexColorImportOption = EVertexColorImportOption::Type::Replace;
 		break;
-	case EFbxSceneVertexColorImportOption::Override:
+	case EFbxSceneVertexColorImportOption::Type::Override:
 		ImportSettings->VertexColorImportOption = EVertexColorImportOption::Type::Override;
 		break;
-	case EFbxSceneVertexColorImportOption::Ignore:
+	case EFbxSceneVertexColorImportOption::Type::Ignore:
 		ImportSettings->VertexColorImportOption = EVertexColorImportOption::Type::Ignore;
 		break;
 	default:
@@ -1454,16 +1454,16 @@ void SFbxSceneOptionWindow::CopyFbxOptionsToStaticMeshOptions(UnFbx::FBXImportOp
 	switch (ImportSettings->VertexColorImportOption)
 	{
 	case EVertexColorImportOption::Type::Replace:
-		StaticMeshOptions->VertexColorImportOption = EFbxSceneVertexColorImportOption::Replace;
+		StaticMeshOptions->VertexColorImportOption = EFbxSceneVertexColorImportOption::Type::Replace;
 		break;
 	case EVertexColorImportOption::Type::Override:
-		StaticMeshOptions->VertexColorImportOption = EFbxSceneVertexColorImportOption::Override;
+		StaticMeshOptions->VertexColorImportOption = EFbxSceneVertexColorImportOption::Type::Override;
 		break;
 	case EVertexColorImportOption::Type::Ignore:
-		StaticMeshOptions->VertexColorImportOption = EFbxSceneVertexColorImportOption::Ignore;
+		StaticMeshOptions->VertexColorImportOption = EFbxSceneVertexColorImportOption::Type::Ignore;
 		break;
 	default:
-		StaticMeshOptions->VertexColorImportOption = EFbxSceneVertexColorImportOption::Replace;
+		StaticMeshOptions->VertexColorImportOption = EFbxSceneVertexColorImportOption::Type::Replace;
 	}
 	StaticMeshOptions->VertexOverrideColor = ImportSettings->VertexOverrideColor;
 	switch (ImportSettings->NormalImportMethod)
@@ -1497,7 +1497,6 @@ void SFbxSceneOptionWindow::CopySkeletalMeshOptionsToFbxOptions(UnFbx::FBXImport
 	ImportSettings->OverlappingThresholds.ThresholdPosition = SkeletalMeshOptions->ThresholdPosition;
 	ImportSettings->OverlappingThresholds.ThresholdTangentNormal = SkeletalMeshOptions->ThresholdTangentNormal;
 	ImportSettings->OverlappingThresholds.ThresholdUV = SkeletalMeshOptions->ThresholdUV;
-	ImportSettings->OverlappingThresholds.MorphThresholdPosition = SkeletalMeshOptions->MorphThresholdPosition;
 	ImportSettings->bPreserveSmoothingGroups = SkeletalMeshOptions->bPreserveSmoothingGroups;
 	ImportSettings->bUpdateSkeletonReferencePose = SkeletalMeshOptions->bUpdateSkeletonReferencePose;
 	ImportSettings->bUseT0AsRefPose = SkeletalMeshOptions->bUseT0AsRefPose;
@@ -1507,7 +1506,6 @@ void SFbxSceneOptionWindow::CopySkeletalMeshOptionsToFbxOptions(UnFbx::FBXImport
 	ImportSettings->bDeleteExistingMorphTargetCurves = SkeletalMeshOptions->bDeleteExistingMorphTargetCurves;
 	ImportSettings->bImportCustomAttribute = SkeletalMeshOptions->bImportCustomAttribute;
 	ImportSettings->bDeleteExistingCustomAttributeCurves = SkeletalMeshOptions->bDeleteExistingCustomAttributeCurves;
-	ImportSettings->bDeleteExistingNonCurveCustomAttributes = SkeletalMeshOptions->bDeleteExistingNonCurveCustomAttributes;	
 	ImportSettings->bPreserveLocalTransform = SkeletalMeshOptions->bPreserveLocalTransform;
 	ImportSettings->bResample = !SkeletalMeshOptions->bUseDefaultSampleRate;
 	ImportSettings->ResampleRate = SkeletalMeshOptions->CustomSampleRate;
@@ -1523,7 +1521,6 @@ void SFbxSceneOptionWindow::CopyFbxOptionsToSkeletalMeshOptions(UnFbx::FBXImport
 	SkeletalMeshOptions->ThresholdPosition = ImportSettings->OverlappingThresholds.ThresholdPosition;
 	SkeletalMeshOptions->ThresholdTangentNormal = ImportSettings->OverlappingThresholds.ThresholdTangentNormal;
 	SkeletalMeshOptions->ThresholdUV = ImportSettings->OverlappingThresholds.ThresholdUV;
-	SkeletalMeshOptions->MorphThresholdPosition = ImportSettings->OverlappingThresholds.MorphThresholdPosition;
 	SkeletalMeshOptions->bPreserveSmoothingGroups = ImportSettings->bPreserveSmoothingGroups;
 	SkeletalMeshOptions->bUpdateSkeletonReferencePose = ImportSettings->bUpdateSkeletonReferencePose;
 	SkeletalMeshOptions->bUseT0AsRefPose = ImportSettings->bUseT0AsRefPose;
@@ -1533,7 +1530,6 @@ void SFbxSceneOptionWindow::CopyFbxOptionsToSkeletalMeshOptions(UnFbx::FBXImport
 	SkeletalMeshOptions->bDeleteExistingMorphTargetCurves = ImportSettings->bDeleteExistingMorphTargetCurves;
 	SkeletalMeshOptions->bImportCustomAttribute = ImportSettings->bImportCustomAttribute;
 	SkeletalMeshOptions->bDeleteExistingCustomAttributeCurves = ImportSettings->bDeleteExistingCustomAttributeCurves;
-	SkeletalMeshOptions->bDeleteExistingNonCurveCustomAttributes = ImportSettings->bDeleteExistingNonCurveCustomAttributes;	
 	SkeletalMeshOptions->bPreserveLocalTransform = ImportSettings->bPreserveLocalTransform;
 	SkeletalMeshOptions->bUseDefaultSampleRate = !ImportSettings->bResample;
 	SkeletalMeshOptions->CustomSampleRate = ImportSettings->ResampleRate;

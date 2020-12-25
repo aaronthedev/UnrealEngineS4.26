@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimNodes/AnimNode_MultiWayBlend.h"
 #include "AnimationRuntime.h"
@@ -9,7 +9,6 @@ struct FMultiBlendData : public TThreadSingleton<FMultiBlendData>
 	TArray<FCompactPose, TInlineAllocator<8>> SourcePoses;
 	TArray<float, TInlineAllocator<8>> SourceWeights;
 	TArray<FBlendedCurve, TInlineAllocator<8>> SourceCurves;
-	TArray<FStackCustomAttributes, TInlineAllocator<8>> SourceAttributes;
 };
 
 /////////////////////////////////////////////////////
@@ -115,7 +114,6 @@ void FAnimNode_MultiWayBlend::Evaluate_AnyThread(FPoseContext& Output)
 	FMultiBlendData& BlendData = FMultiBlendData::Get();
 	TArray<FCompactPose, TInlineAllocator<8>>& SourcePoses = BlendData.SourcePoses;
 	TArray<FBlendedCurve, TInlineAllocator<8>>& SourceCurves = BlendData.SourceCurves;
-	TArray<FStackCustomAttributes, TInlineAllocator<8>>& SourceAttributes = BlendData.SourceAttributes;
 	TArray<float, TInlineAllocator<8>>& SourceWeights = BlendData.SourceWeights;
 
 	const int32 SourcePosesInitialNum = SourcePoses.Num();
@@ -138,9 +136,6 @@ void FAnimNode_MultiWayBlend::Evaluate_AnyThread(FPoseContext& Output)
 				FBlendedCurve& SourceCurve = SourceCurves.AddDefaulted_GetRef();
 				SourceCurve.MoveFrom(PoseContext.Curve);
 
-				FStackCustomAttributes& SourceAttribute = SourceAttributes.AddDefaulted_GetRef();
-				SourceAttribute.MoveFrom(PoseContext.CustomAttributes);
-
 				SourceWeights.Add(CurrentAlpha);
 
 				++SourcePosesAdded;
@@ -153,12 +148,9 @@ void FAnimNode_MultiWayBlend::Evaluate_AnyThread(FPoseContext& Output)
 		// obtain views onto the ends of our stacks
 		TArrayView<FCompactPose> SourcePosesView = MakeArrayView(&SourcePoses[SourcePosesInitialNum], SourcePosesAdded);
 		TArrayView<FBlendedCurve> SourceCurvesView = MakeArrayView(&SourceCurves[SourcePosesInitialNum], SourcePosesAdded);
-		TArrayView<FStackCustomAttributes> SourceAttributesView = MakeArrayView(&SourceAttributes[SourcePosesInitialNum], SourcePosesAdded);
 		TArrayView<float> SourceWeightsView = MakeArrayView(&SourceWeights[SourcePosesInitialNum], SourcePosesAdded);
 
-		FAnimationPoseData AnimationPoseData(Output);
-
-		FAnimationRuntime::BlendPosesTogether(SourcePosesView, SourceCurvesView, SourceAttributesView, SourceWeightsView, AnimationPoseData);
+		FAnimationRuntime::BlendPosesTogether(SourcePosesView, SourceCurvesView, SourceWeightsView, Output.Pose, Output.Curve);
 		
 		// normalize rotation - some cases, where additive is applied less than 1, it will use non normalized rotation
 		Output.Pose.NormalizeRotations();
@@ -167,7 +159,6 @@ void FAnimNode_MultiWayBlend::Evaluate_AnyThread(FPoseContext& Output)
 		SourcePoses.SetNum(SourcePosesInitialNum, false);
 		SourceCurves.SetNum(SourcePosesInitialNum, false);
 		SourceWeights.SetNum(SourcePosesInitialNum, false);
-		SourceAttributes.SetNum(SourcePosesInitialNum, false);
 	}
 	else
 	{

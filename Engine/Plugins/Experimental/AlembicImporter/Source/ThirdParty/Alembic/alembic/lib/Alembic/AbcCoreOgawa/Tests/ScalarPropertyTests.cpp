@@ -49,7 +49,7 @@ namespace AO = Alembic::AbcCoreOgawa;
 namespace AbcA = Alembic::AbcCoreAbstract;
 
 //-*****************************************************************************
-void testWeirdStringScalar(bool iUseMMap)
+void testWeirdStringScalar()
 {
     std::string archiveName = "weirdStr.abc";
 
@@ -128,7 +128,7 @@ void testWeirdStringScalar(bool iUseMMap)
     }
 
     {
-        AO::ReadArchive r(1, iUseMMap);
+        AO::ReadArchive r;
         AbcA::ArchiveReaderPtr a = r( archiveName );
         AbcA::ObjectReaderPtr archive = a->getTop();
         AbcA::CompoundPropertyReaderPtr parent = archive->getProperties();
@@ -176,7 +176,7 @@ void testWeirdStringScalar(bool iUseMMap)
 }
 
 //-*****************************************************************************
-void testReadWriteScalars(bool iUseMMap)
+void testReadWriteScalars()
 {
 
     std::string archiveName = "staticProperties.abc";
@@ -327,7 +327,7 @@ void testReadWriteScalars(bool iUseMMap)
 
     // now we read what we've written
     {
-        AO::ReadArchive r(1, iUseMMap);
+        AO::ReadArchive r;
         AbcA::ArchiveReaderPtr a = r( archiveName );
         AbcA::ObjectReaderPtr archive = a->getTop();
         AbcA::CompoundPropertyReaderPtr parent = archive->getProperties();
@@ -483,7 +483,7 @@ void testReadWriteScalars(bool iUseMMap)
 }
 
 //-*****************************************************************************
-void testRepeatedScalarData(bool iUseMMap)
+void testRepeatedScalarData()
 {
     std::string archiveName = "repeatScalarData.abc";
 
@@ -565,7 +565,7 @@ void testRepeatedScalarData(bool iUseMMap)
     }
 
     {
-        AO::ReadArchive r(1, iUseMMap);
+        AO::ReadArchive r;
         AbcA::ArchiveReaderPtr a = r( archiveName );
         AbcA::ObjectReaderPtr archive = a->getTop();
 
@@ -734,7 +734,7 @@ void testPropScoping()
 
 }
 
-void testScalarSamples(bool iUseMMap)
+void testScalarSamples()
 {
     std::string archiveName = "numScalarSamplesTest.abc";
 
@@ -802,7 +802,7 @@ void testScalarSamples(bool iUseMMap)
     }
 
     {
-        AO::ReadArchive r(1, iUseMMap);
+        AO::ReadArchive r;
         AbcA::ArchiveReaderPtr a = r( archiveName );
         AbcA::ObjectReaderPtr archive = a->getTop();
         AbcA::ObjectReaderPtr obj = archive->getChild(0);
@@ -837,20 +837,12 @@ void testScalarSamples(bool iUseMMap)
     }
 }
 
-void runTests(bool iUseMMap)
-{
-    testWeirdStringScalar(iUseMMap);
-    testRepeatedScalarData(iUseMMap);
-    testReadWriteScalars(iUseMMap);
-    testScalarSamples(iUseMMap);
-}
-
 int main ( int argc, char *argv[] )
 {
+    testWeirdStringScalar();
+    testRepeatedScalarData();
+    testReadWriteScalars();
     testPropScoping();
-
-    runTests(true);     // Use mmap
-    runTests(false);    // Use streams
-
+    testScalarSamples();
     return 0;
 }

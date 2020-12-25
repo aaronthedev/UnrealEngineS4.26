@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -28,7 +28,7 @@ public:
 	nv::cloth::ClothMeshQuadifier* GetMeshQuadifier();
 
 	// IClothingSimulationFactoryClassProvider Interface
-	virtual TSubclassOf<UClothingSimulationFactory> GetClothingSimulationFactoryClass() const override;
+	virtual UClass* GetDefaultSimulationFactoryClass() override;
 	//////////////////////////////////////////////////////////////////////////
 
 private:

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "Android/AndroidPlatformMisc.h"
@@ -13,13 +13,11 @@ struct CORE_API FLuminPlatformMisc : public FAndroidMisc
 	 */
 	static void RequestExit(bool Force);
 	static void PlatformPreInit();
-	static void PlatformInit();
 	static bool AllowRenderThread();
 	static bool SupportsLocalCaching();
 	static bool SupportsMessaging();
 	static void GetValidTargetPlatforms(TArray<FString>& TargetPlatformNames);
 	static bool GetOverrideResolution(int32 &ResX, int32& ResY);
-	static const TCHAR* GetPlatformFeaturesModuleName();
 
 	static bool GetUseVirtualJoysticks()
 	{
@@ -37,7 +35,7 @@ struct CORE_API FLuminPlatformMisc : public FAndroidMisc
 
 	FORCEINLINE static const TCHAR* GetNullRHIShaderFormat()
 	{
-		return TEXT("GLSL_ES3_1_ANDROID");
+		return TEXT("GLSL_ES2");
 	}
 
 	static void LowLevelOutputDebugString(const TCHAR *Message);
@@ -56,7 +54,6 @@ struct CORE_API FLuminPlatformMisc : public FAndroidMisc
 	static bool ShouldUseDesktopOpenGL();
 	static const FString& GetApplicationWritableDirectoryPath();
 	static const FString& GetApplicationPackageDirectoryPath();
-	static const FString& GetApplicationTempDirectoryPath();
 	static const FString& GetApplicationApplicationPackageName();
 	static const FString& GetApplicationComponentName();
 
@@ -69,7 +66,6 @@ private:
 private:
 	static FString WritableDirPath;
 	static FString PackageDirPath;
-	static FString TempDirPath;
 	static FString PackageName;
 	static FString ComponentName;
 

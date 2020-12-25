@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
   RHIGPUReadback.h: classes for managing fences and staging buffers for
@@ -29,7 +29,7 @@ public:
 	/** Indicates if the data is in place and ready to be read. */
 	FORCEINLINE bool IsReady()
 	{
-		return !Fence || (Fence->NumPendingWriteCommands.GetValue() == 0 && Fence->Poll());
+		return !Fence || Fence->Poll();
 	}
 
 	/** Indicates if the data is in place and ready to be read on a subset of GPUs. */
@@ -66,12 +66,9 @@ public:
 	 */
 	virtual void Unlock() = 0;
 
-	FORCEINLINE const FRHIGPUMask& GetLastCopyGPUMask() const { return LastCopyGPUMask; }
-
 protected:
 
 	FGPUFenceRHIRef Fence;
-	FRHIGPUMask LastCopyGPUMask;
 };
 
 /** Buffer readback implementation. */
@@ -95,18 +92,14 @@ private:
 class RHI_API FRHIGPUTextureReadback final : public FRHIGPUMemoryReadback
 {
 public:
+
 	FRHIGPUTextureReadback(FName RequestName);
 
-	void EnqueueCopyRDG(FRHICommandList& RHICmdList, FRHITexture* SourceTexture, FResolveRect Rect = FResolveRect());
 	void EnqueueCopy(FRHICommandList& RHICmdList, FRHITexture* SourceTexture, FResolveRect Rect = FResolveRect()) override;
-
 	void* Lock(uint32 NumBytes) override;
 	void Unlock() override;
 
-	void LockTexture(FRHICommandListImmediate& RHICmdList, void*& OutBufferPtr, int32& OutRowPitchInPixels);
-
 private:
-	void EnqueueCopyInternal(FRHICommandList& RHICmdList, FRHITexture* SourceTexture, FResolveParams Params);
 
-	FTextureRHIRef DestinationStagingTexture;
+	FTextureRHIRef DestinationStagingBuffer;
 };

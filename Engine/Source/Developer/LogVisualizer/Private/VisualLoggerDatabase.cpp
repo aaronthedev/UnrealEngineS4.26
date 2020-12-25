@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VisualLoggerDatabase.h"
 #include "Engine/EngineTypes.h"
@@ -470,10 +470,7 @@ AActor* FVisualLoggerEditorInterface::GetHelperActor(UWorld* InWorld) const
 
 	FActorSpawnParameters SpawnInfo;
 	SpawnInfo.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-	// The helper actor is created on demand and only once per world so we can allow it to spawn during construction script.
-	SpawnInfo.bAllowDuringConstructionScript = true;
-
+	SpawnInfo.Name = *FString::Printf(TEXT("VisualLoggerRenderingActor"));
 	return World->SpawnActor<AVisualLoggerRenderingActor>(SpawnInfo);
 }
 

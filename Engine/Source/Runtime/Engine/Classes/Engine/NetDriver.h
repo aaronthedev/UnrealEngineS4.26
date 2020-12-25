@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 //
 // Base class of a network driver attached to an active or pending level.
@@ -17,7 +17,6 @@
 #include "Net/Core/Misc/DDoSDetection.h"
 #include "IPAddress.h"
 #include "Net/NetAnalyticsTypes.h"
-#include "Net/NetConnectionIdHandler.h"
 
 #include "NetDriver.generated.h"
 
@@ -94,7 +93,7 @@
  * That code is responsible for creating the main Game Net Driver, parsing out settings, and calling UNetDriver::InitListen.
  * Ultimately, that code will be responsible for figuring out what how exactly we listen for client connections.
  * For example, in IpNetDriver, that is where we determine the IP / Port we will bind to by calls to our configured Socket Subsystem
- * (see ISocketSubsystem::GetLocalBindAddresses and ISocketSubsystem::BindNextPort).
+ * (see ISocketSubsystem::GetLocalBindAddr and ISocketSubsystem::BindNextPort).
  *
  * Once the server is listening, it's ready to start accepting client connections.
  *
@@ -331,8 +330,6 @@ class IAnalyticsProvider;
 class FNetAnalyticsAggregator;
 class UNetDriver;
 
-enum class ECreateReplicationChangelistMgrFlags;
-
 using FConnectionMap = TMap<TSharedRef<const FInternetAddr>, UNetConnection*, FDefaultSetAllocator, FInternetAddrConstKeyMapFuncs<UNetConnection*>>;
 
 extern ENGINE_API TAutoConsoleVariable<int32> CVarNetAllowEncryption;
@@ -477,13 +474,6 @@ struct ENGINE_API FPacketSimulationSettings
 	UPROPERTY(EditAnywhere, Category = "Simulation Settings")
 	int32	PktIncomingLoss = 0;
 
-	/**
-	 * Causes sent packets to have a variable latency that fluctuates from [PktLagMin] to [PktLagMin+PktJitter]
-	 * Note that this will cause packet loss on the receiving end.
-	 */
-	UPROPERTY(EditAnywhere, Category = "Simulation Settings")
-	int32	PktJitter = 0;
-
 	/** reads in settings from the .ini file 
 	 * @note: overwrites all previous settings
 	 */
@@ -530,31 +520,6 @@ struct ENGINE_API FPacketSimulationSettings
 	bool ConfigHelperBool(const TCHAR* Name, bool& Value, const TCHAR* OptionalQualifier);
 };
 
-struct ENGINE_API FActorDestructionInfo
-{
-public:
-	FActorDestructionInfo()
-		: Reason(EChannelCloseReason::Destroyed)
-		, bIgnoreDistanceCulling(false) 
-	{}
-
-	TWeakObjectPtr<ULevel> Level; 
-	TWeakObjectPtr<UObject> ObjOuter;
-	FVector DestroyedPosition;
-	FNetworkGUID NetGUID;
-	FString PathName;
-	FName StreamingLevelName;
-	EChannelCloseReason Reason;
-
-	/** When true the destruction info data will be sent even if the viewers are not close to the actor */
-	bool bIgnoreDistanceCulling;
-
-	void CountBytes(FArchive& Ar)
-	{
-		PathName.CountBytes(Ar);
-	}
-};
-
 //
 // Priority sortable list.
 //
@@ -565,14 +530,14 @@ struct FActorPriority
 	FNetworkObjectInfo*			ActorInfo;	// Actor info.
 	class UActorChannel*		Channel;	// Actor channel.
 
-	FActorDestructionInfo *	DestructionInfo;	// Destroy an actor
+	struct FActorDestructionInfo *	DestructionInfo;	// Destroy an actor
 
 	FActorPriority() : 
 		Priority(0), ActorInfo(NULL), Channel(NULL), DestructionInfo(NULL)
 	{}
 
 	FActorPriority(class UNetConnection* InConnection, class UActorChannel* InChannel, FNetworkObjectInfo* InActorInfo, const TArray<struct FNetViewer>& Viewers, bool bLowBandwidth);
-	FActorPriority(class UNetConnection* InConnection, FActorDestructionInfo * DestructInfo, const TArray<struct FNetViewer>& Viewers );
+	FActorPriority(class UNetConnection* InConnection, struct FActorDestructionInfo * DestructInfo, const TArray<struct FNetViewer>& Viewers );
 };
 
 struct FCompareFActorPriority
@@ -580,6 +545,25 @@ struct FCompareFActorPriority
 	FORCEINLINE bool operator()( const FActorPriority& A, const FActorPriority& B ) const
 	{
 		return B.Priority < A.Priority;
+	}
+};
+
+struct FActorDestructionInfo
+{
+public:
+	FActorDestructionInfo() : Reason(EChannelCloseReason::Destroyed) {}
+
+	TWeakObjectPtr<ULevel>		Level;
+	TWeakObjectPtr<UObject>		ObjOuter;
+	FVector			DestroyedPosition;
+	FNetworkGUID	NetGUID;
+	FString			PathName;
+	FName			StreamingLevelName;
+	EChannelCloseReason Reason;
+
+	void CountBytes(FArchive& Ar)
+	{
+		PathName.CountBytes(Ar);
 	}
 };
 
@@ -648,43 +632,15 @@ struct FDisconnectedClient
 	}
 };
 
-enum class EProcessRemoteFunctionFlags : uint32
-{
-	None = 0,
-	ReplicatedActor = 1 << 0,	//! The owning actor has been replicated at least once
-								//! while processing the remote function.
-};
-ENUM_CLASS_FLAGS(EProcessRemoteFunctionFlags);
 
 UCLASS(Abstract, customConstructor, transient, MinimalAPI, config=Engine)
-class UNetDriver : public UObject, public FExec
+class ENGINE_VTABLE UNetDriver : public UObject, public FExec
 {
 	GENERATED_UCLASS_BODY()
 
 protected:
 
-	ENGINE_API void InternalProcessRemoteFunction(
-		class AActor* Actor,
-		class UObject* SubObject,
-		class UNetConnection* Connection,
-		class UFunction* Function,
-		void* Parms,
-		FOutParmRec* OutParms,
-		FFrame* Stack,
-		bool bIsServer);
-
-private:
-
-	void InternalProcessRemoteFunctionPrivate(
-		class AActor* Actor,
-		class UObject* SubObject,
-		class UNetConnection* Connection,
-		class UFunction* Function,
-		void* Parms,
-		FOutParmRec* OutParms,
-		FFrame* Stack,
-		const bool bIsServer,
-		EProcessRemoteFunctionFlags& RemoteFunctionFlags);
+	ENGINE_API void InternalProcessRemoteFunction(class AActor* Actor, class UObject* SubObject, class UNetConnection* Connection, class UFunction* Function, void* Parms, FOutParmRec* OutParms, FFrame* Stack, bool IsServer);
 
 public:
 
@@ -822,10 +778,12 @@ public:
 	UClass* ReplicationDriverClass;
 
 	/** @todo document */
-	FProperty* RoleProperty;
+	UPROPERTY()
+	UProperty* RoleProperty;
 	
 	/** @todo document */
-	FProperty* RemoteRoleProperty;
+	UPROPERTY()
+	UProperty* RemoteRoleProperty;
 
 	/** Used to specify the net driver to filter actors with (NAME_None || NAME_GameNetDriver is the default net driver) */
 	UPROPERTY(Config)
@@ -879,17 +837,9 @@ public:
 	class FNetworkNotify*		Notify;
 	
 	/** Accumulated time for the net driver, updated by Tick */
-	UE_DEPRECATED(4.25, "Time is being replaced with a double precision value, please use GetElapsedTime() instead.")
 	UPROPERTY()
 	float						Time;
 
-	double GetElapsedTime() const { return ElapsedTime; }
-	void ResetElapsedTime() { ElapsedTime = 0.0; }
-
-private:
-	double						ElapsedTime;
-
-public:
 	/** Last realtime a tick dispatch occurred. Used currently to try and diagnose timeout issues */
 	double						LastTickDispatchRealtime;
 
@@ -1135,7 +1085,7 @@ public:
 
 	//~ Begin UObject Interface.
 	ENGINE_API virtual void PostInitProperties() override;
-	ENGINE_API virtual void PostReloadConfig(FProperty* PropertyToLoad) override;
+	ENGINE_API virtual void PostReloadConfig(UProperty* PropertyToLoad) override;
 	ENGINE_API virtual void FinishDestroy() override;
 	ENGINE_API virtual void Serialize( FArchive& Ar ) override;
 	ENGINE_API static void AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector);
@@ -1281,50 +1231,7 @@ public:
 	};	
 
 	/** Process a remote function on given actor channel. This is called by ::ProcessRemoteFunction.*/
-	ENGINE_API void ProcessRemoteFunctionForChannel(
-		UActorChannel* Ch,
-		const class FClassNetCache* ClassCache,
-		const FFieldNetCache* FieldCache,
-		UObject* TargetObj,
-		UNetConnection* Connection,
-		UFunction* Function,
-		void* Parms,
-		FOutParmRec* OutParms,
-		FFrame* Stack,
-		const bool IsServer,
-		const ERemoteFunctionSendPolicy SendPolicy = ERemoteFunctionSendPolicy::Default);
-
-	ENGINE_API void ProcessRemoteFunctionForChannel(
-		UActorChannel* Ch,
-		const class FClassNetCache* ClassCache,
-		const FFieldNetCache* FieldCache,
-		UObject* TargetObj,
-		UNetConnection* Connection,
-		UFunction* Function,
-		void* Parms,
-		FOutParmRec* OutParms,
-		FFrame* Stack,
-		const bool IsServer,
-		const ERemoteFunctionSendPolicy SendPolicy,
-		EProcessRemoteFunctionFlags& RemoteFunctionFlags);
-
-private:
-
-	void ProcessRemoteFunctionForChannelPrivate(
-		UActorChannel* Ch,
-		const class FClassNetCache* ClassCache,
-		const FFieldNetCache* FieldCache,
-		UObject* TargetObj,
-		UNetConnection* Connection,
-		UFunction* Function,
-		void* Parms,
-		FOutParmRec* OutParms,
-		FFrame* Stack,
-		const bool bIsServer,
-		const ERemoteFunctionSendPolicy SendPolicy,
-		EProcessRemoteFunctionFlags& RemoteFunctionFlags);
-
-public:
+	ENGINE_API void ProcessRemoteFunctionForChannel(UActorChannel* Ch, const class FClassNetCache* ClassCache, const FFieldNetCache* FieldCache, UObject* TargetObj, UNetConnection* Connection,  UFunction* Function, void* Parms, FOutParmRec* OutParms, FFrame* Stack, const bool IsServer, const ERemoteFunctionSendPolicy SendPolicy = ERemoteFunctionSendPolicy::Default);
 
 	/** handle time update: read and process packets */
 	ENGINE_API virtual void TickDispatch( float DeltaTime );
@@ -1400,9 +1307,6 @@ public:
 	/** Flushes actor from NetDriver's dormancy list, but does not change any state on the Actor itself */
 	ENGINE_API void FlushActorDormancy(AActor *Actor, bool bWasDormInitial=false);
 
-	//~ This probably doesn't need to be exported, since it's only called by AActor::SetNetDormancy.
-
-	/** Notifies the NetDriver that the desired Dormancy state for this Actor has changed. */
 	ENGINE_API void NotifyActorDormancyChange(AActor* Actor, ENetDormancy OldDormancyState);
 
 	/** Forces properties on this actor to do a compare for one frame (rather than share shadow state) */
@@ -1425,9 +1329,6 @@ public:
 	ENGINE_API virtual void NotifyActorLevelUnloaded( AActor* Actor );
 
 	ENGINE_API virtual void NotifyActorTearOff(AActor* Actor);
-
-	/** Set whether this actor should swap roles before replicating properties. */
-	ENGINE_API void SetRoleSwapOnReplicate(AActor* Actor, bool bSwapRoles);
 
 	// ---------------------------------------------------------------
 	//
@@ -1468,7 +1369,7 @@ public:
 	 * 
 	 * @param InWorld the world to associate with this netdriver
 	 */
-	ENGINE_API virtual void SetWorld(class UWorld* InWorld);
+	ENGINE_API void SetWorld(class UWorld* InWorld);
 
 	/**
 	 * Get the world associated with this net driver
@@ -1568,7 +1469,6 @@ public:
 	/** Adds (fully initialized, ready to go) client connection to the ClientConnections list + any other game related setup */
 	ENGINE_API void	AddClientConnection(UNetConnection * NewConnection);
 
-	//~ This method should only be called by internal networking systems.
 	ENGINE_API void NotifyActorFullyDormantForConnection(AActor* Actor, UNetConnection* Connection);
 
 	/** Returns true if this actor is considered to be in a loaded level */
@@ -1593,12 +1493,10 @@ public:
 	ENGINE_API virtual bool ShouldClientDestroyActor(AActor* Actor) const;
 
 	/** Called when an actor channel is remotely opened for an actor. */
-	ENGINE_API virtual void NotifyActorChannelOpen(UActorChannel* Channel, AActor* Actor);
+	ENGINE_API virtual void NotifyActorChannelOpen(UActorChannel* Channel, AActor* Actor) {}
 	
 	/** Called when an actor channel is cleaned up foor an actor. */
-	ENGINE_API virtual void NotifyActorChannelCleanedUp(UActorChannel* Channel, EChannelCloseReason CloseReason);
-
-	ENGINE_API virtual void NotifyActorTornOff(AActor* Actor);
+	ENGINE_API virtual void NotifyActorChannelCleanedUp(UActorChannel* Channel, EChannelCloseReason CloseReason) {}
 
 	/**
 	 * Returns the current delinquency analytics and resets them.
@@ -1612,18 +1510,6 @@ public:
 
 	/** Resets the current delinquency analytics. */
 	ENGINE_API void ResetAsyncLoadDelinquencyAnalytics();
-
-	inline uint32 AllocateConnectionId() { return ConnectionIdHandler.Allocate(); }
-	inline void FreeConnectionId(uint32 Id) { return ConnectionIdHandler.Free(Id); };
-
-	/** Returns the NetConnection associated with the ConnectionId. Slow. */
-	ENGINE_API UNetConnection* GetConnectionById(uint32 ConnectionId) const;
-
-	/** Returns identifier used for NetTrace */
-	inline uint32 GetNetTraceId() const { return NetTraceId; }
-
-	/** Sends a message to a client to destroy an actor to the client.  The actor may already be destroyed locally. */
-	ENGINE_API int64 SendDestructionInfo(UNetConnection* Connection, FActorDestructionInfo* DestructionInfo);
 
 protected:
 
@@ -1681,28 +1567,14 @@ public:
 	 */
 	inline void IncreaseOutTotalNotifiedPackets() { ++OutTotalNotifiedPackets; }
 
-	bool DidHitchLastFrame() const;
-
-	static bool IsDormInitialStartupActor(AActor* Actor);
-
-	/** Unmap all references to this object, so that if later we receive this object again, we can remap the original references */
-	void MoveMappedObjectToUnmapped(const UObject* Object);
-
-	/** Whether or not this driver has an IsReplay() connection, updated in Add/RemoveClientConnection */
-	bool HasReplayConnection() const { return bHasReplayConnection; }
-
 protected:
 
 	bool bMaySendProperties;
 
-	bool bSkipServerReplicateActors = false;
-	
 	/** Stream of random numbers to be used by this instance of UNetDriver */
 	FRandomStream UpdateDelayRandomStream;
 
 private:
-
-	ENGINE_API virtual ECreateReplicationChangelistMgrFlags GetCreateReplicationChangelistMgrFlags() const;
 
 	FDelegateHandle PostGarbageCollectHandle;
 	void PostGarbageCollect();
@@ -1728,24 +1600,14 @@ private:
 	int32 DuplicateLevelID;
 
 	/** NetDriver time to end packet loss burst simulation. */
-	double PacketLossBurstEndTime;
+	float PacketLossBurstEndTime;
 
 	/** Count the number of notified packets, i.e. packets that we know if they are delivered or not. Used to reliably measure outgoing packet loss */
 	uint32 OutTotalNotifiedPackets;
-
-	/** Assigns driver unique IDs to client connections */
-	FNetConnectionIdHandler ConnectionIdHandler;
-
-	/** Unique id used by NetTrace to identify driver */
-	uint32 NetTraceId = 0;
 
 #if DO_ENABLE_NET_TEST
 	/** Dont load packet settings from config or cmdline when true*/
 	bool bForcedPacketSettings;
 #endif 
 
-	bool bDidHitchLastFrame = false;
-
-	/** cache whether or not we have a replay connection, updated when a connection is added or removed */
-	bool bHasReplayConnection;
 };

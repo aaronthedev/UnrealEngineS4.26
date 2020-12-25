@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 //
 
 #include "CoreMinimal.h"
@@ -168,7 +168,7 @@ float UHapticFeedbackEffect_SoundWave::GetDuration() const
 
 void UHapticFeedbackEffect_SoundWave::PrepareSoundWaveBuffer()
 {
-	FAudioDeviceHandle AD = GEngine->GetMainAudioDevice();
+	FAudioDevice *AD = GEngine->GetMainAudioDevice();
 	if (!AD || !SoundWave)
 	{
 		return;

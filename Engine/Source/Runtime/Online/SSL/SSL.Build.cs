@@ -1,10 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
 public class SSL : ModuleRules
 {
-	protected virtual bool bPlatformSupportsSSL
+	protected virtual bool PlatformSupportsSSL
 	{
 		get
 		{
@@ -15,21 +15,12 @@ public class SSL : ModuleRules
 				Target.IsInPlatformGroup(UnrealPlatformGroup.Unix) ||
 	            Target.Platform == UnrealTargetPlatform.IOS ||
 	            Target.Platform == UnrealTargetPlatform.Android ||
-				Target.Platform == UnrealTargetPlatform.Lumin;
-		}
-	}
-	protected virtual bool bUseDefaultSSLCert
-	{
-		get
-		{
-			return
-				Target.Platform == UnrealTargetPlatform.Mac ||
-				Target.Platform == UnrealTargetPlatform.IOS;
+				Target.Platform == UnrealTargetPlatform.Lumin ||
+	            Target.Platform == UnrealTargetPlatform.PS4;
 		}
 	}
 
-
-	public SSL(ReadOnlyTargetRules Target) : base(Target)
+    public SSL(ReadOnlyTargetRules Target) : base(Target)
     {
         PublicDefinitions.Add("SSL_PACKAGE=1");
 
@@ -39,10 +30,9 @@ public class SSL : ModuleRules
 			}
 		);
 
-		if (bPlatformSupportsSSL)
+		if (PlatformSupportsSSL)
 		{
 			PublicDefinitions.Add("WITH_SSL=1");
-			PrivateDefinitions.Add("USE_DEFAULT_SSLCERT=" + (bUseDefaultSSLCert ? "1" : "0"));
 
 			PrivateIncludePaths.AddRange(
 				new string[] {

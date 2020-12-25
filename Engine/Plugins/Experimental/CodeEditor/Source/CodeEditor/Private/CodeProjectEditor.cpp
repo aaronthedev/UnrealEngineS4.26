@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CodeProjectEditor.h"
 #include "CodeProjectItem.h"
@@ -228,7 +228,8 @@ void FCodeProjectEditor::InitCodeEditor(const EToolkitMode::Type Mode, const TSh
 	FCodeProjectEditorCommands::Register();
 
 	// Initialize the asset editor and spawn nothing (dummy layout)
-	InitAssetEditor(Mode, InitToolkitHost, CodeEditorAppName, FTabManager::FLayout::NullLayout, /*bCreateDefaultStandaloneMenu=*/ true, /*bCreateDefaultToolbar=*/ true, CodeProject);
+	const TSharedRef<FTabManager::FLayout> DummyLayout = FTabManager::NewLayout("NullLayout")->AddArea(FTabManager::NewPrimaryArea());
+	InitAssetEditor(Mode, InitToolkitHost, CodeEditorAppName, DummyLayout, /*bCreateDefaultStandaloneMenu=*/ true, /*bCreateDefaultToolbar=*/ true, CodeProject);
 
 	BindCommands();
 

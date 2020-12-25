@@ -1,11 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Policy/DisplayClusterProjectionPolicyBase.h"
+#include "Config/DisplayClusterConfigTypes.h"
+
 
 class UCameraComponent;
-class UWorld;
 
 
 /**
@@ -15,7 +16,7 @@ class FDisplayClusterProjectionCameraPolicy
 	: public FDisplayClusterProjectionPolicyBase
 {
 public:
-	FDisplayClusterProjectionCameraPolicy(const FString& ViewportId, const TMap<FString, FString>& Parameters);
+	FDisplayClusterProjectionCameraPolicy(const FString& ViewportId);
 	virtual ~FDisplayClusterProjectionCameraPolicy();
 
 public:
@@ -37,7 +38,6 @@ public:
 	void SetCamera(UCameraComponent* NewCamera, float FOVMultiplier);
 
 private:
-	UWorld* World;
 	// Camera to use for rendering
 	UCameraComponent* AssignedCamera = nullptr;
 	// FOV multiplier

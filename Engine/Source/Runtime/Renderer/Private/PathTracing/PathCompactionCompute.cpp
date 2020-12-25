@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 PathCompactionCompute.cpp: Compute path continuation shader.
@@ -64,7 +64,7 @@ public:
 		FRHIUnorderedAccessView* RadianceSortedAlphaUAV,
 		FRHIUnorderedAccessView* SampleCountSortedUAV)
 	{
-		FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
+		FRHIComputeShader* ShaderRHI = GetComputeShader();
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, View.ViewUniformBuffer);
 
 		// Input textures
@@ -82,43 +82,60 @@ public:
 
 	void UnsetParameters(
 		FRHICommandList& RHICmdList,
-		ERHIAccess TransitionAccess,
+		EResourceTransitionAccess TransitionAccess,
+		EResourceTransitionPipeline TransitionPipeline,
 		FRHIUnorderedAccessView* RadianceSortedRedUAV,
 		FRHIUnorderedAccessView* RadianceSortedGreenUAV,
 		FRHIUnorderedAccessView* RadianceSortedBlueUAV,
 		FRHIUnorderedAccessView* RadianceSortedAlphaUAV,
-		FRHIUnorderedAccessView* SampleCountSortedUAV)
+		FRHIUnorderedAccessView* SampleCountSortedUAV,
+		FRHIComputeFence* Fence)
 	{
-		FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
+		FRHIComputeShader* ShaderRHI = GetComputeShader();
 
 		SetUAVParameter(RHICmdList, ShaderRHI, RadianceSortedRedUAVParameter, FUnorderedAccessViewRHIRef());
 		SetUAVParameter(RHICmdList, ShaderRHI, RadianceSortedGreenUAVParameter, FUnorderedAccessViewRHIRef());
 		SetUAVParameter(RHICmdList, ShaderRHI, RadianceSortedBlueUAVParameter, FUnorderedAccessViewRHIRef());
 		SetUAVParameter(RHICmdList, ShaderRHI, RadianceSortedAlphaUAVParameter, FUnorderedAccessViewRHIRef());
 		SetUAVParameter(RHICmdList, ShaderRHI, SampleCountSortedUAVParameter, FUnorderedAccessViewRHIRef());
-		FRHITransitionInfo TransitionInfos[] = {
-			FRHITransitionInfo(RadianceSortedRedUAV, ERHIAccess::Unknown, TransitionAccess),
-			FRHITransitionInfo(RadianceSortedGreenUAV, ERHIAccess::Unknown, TransitionAccess),
-			FRHITransitionInfo(RadianceSortedBlueUAV, ERHIAccess::Unknown, TransitionAccess),
-			FRHITransitionInfo(RadianceSortedAlphaUAV, ERHIAccess::Unknown, TransitionAccess),
-			FRHITransitionInfo(SampleCountSortedUAV, ERHIAccess::Unknown, TransitionAccess)
+		FRHIUnorderedAccessView* UAVs[] = {
+			RadianceSortedRedUAV,
+			RadianceSortedGreenUAV,
+			RadianceSortedBlueUAV,
+			RadianceSortedAlphaUAV,
+			SampleCountSortedUAV
 		};
-		RHICmdList.Transition(MakeArrayView(TransitionInfos, UE_ARRAY_COUNT(TransitionInfos)));
+		RHICmdList.TransitionResources(TransitionAccess, TransitionPipeline, UAVs, 5, Fence);
+	}
+
+	virtual bool Serialize(FArchive& Ar)
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << ViewParameter;
+		Ar << RadianceTextureParameter;
+		Ar << SampleCountTextureParameter;
+		Ar << PixelPositionTextureParameter;
+		Ar << RadianceSortedRedUAVParameter;
+		Ar << RadianceSortedGreenUAVParameter;
+		Ar << RadianceSortedBlueUAVParameter;
+		Ar << RadianceSortedAlphaUAVParameter;
+		Ar << SampleCountSortedUAVParameter;
+		return bShaderHasOutdatedParameters;
 	}
 
 private:
 	// Input parameters
-	LAYOUT_FIELD(FShaderResourceParameter, ViewParameter);
-	LAYOUT_FIELD(FShaderResourceParameter, RadianceTextureParameter);
-	LAYOUT_FIELD(FShaderResourceParameter, SampleCountTextureParameter);
-	LAYOUT_FIELD(FShaderResourceParameter, PixelPositionTextureParameter);
+	FShaderResourceParameter ViewParameter;
+	FShaderResourceParameter RadianceTextureParameter;
+	FShaderResourceParameter SampleCountTextureParameter;
+	FShaderResourceParameter PixelPositionTextureParameter;
 
 	// Output parameters
-	LAYOUT_FIELD(FShaderResourceParameter, RadianceSortedRedUAVParameter);
-	LAYOUT_FIELD(FShaderResourceParameter, RadianceSortedGreenUAVParameter);
-	LAYOUT_FIELD(FShaderResourceParameter, RadianceSortedBlueUAVParameter);
-	LAYOUT_FIELD(FShaderResourceParameter, RadianceSortedAlphaUAVParameter);
-	LAYOUT_FIELD(FShaderResourceParameter, SampleCountSortedUAVParameter);
+	FShaderResourceParameter RadianceSortedRedUAVParameter;
+	FShaderResourceParameter RadianceSortedGreenUAVParameter;
+	FShaderResourceParameter RadianceSortedBlueUAVParameter;
+	FShaderResourceParameter RadianceSortedAlphaUAVParameter;
+	FShaderResourceParameter SampleCountSortedUAVParameter;
 };
 
 IMPLEMENT_SHADER_TYPE(, FPathCompactionCS, TEXT("/Engine/Private/PathTracing/PathCompaction.usf"), TEXT("PathCompactionCS"), SF_Compute)
@@ -137,12 +154,13 @@ void FDeferredShadingSceneRenderer::ComputePathCompaction(
 {
 	const auto ShaderMap = GetGlobalShaderMap(FeatureLevel);
 	TShaderMapRef<FPathCompactionCS> PathCompactionComputeShader(ShaderMap);
-	RHICmdList.SetComputeShader(PathCompactionComputeShader.GetComputeShader());
+	RHICmdList.SetComputeShader(PathCompactionComputeShader->GetComputeShader());
 
+	FComputeFenceRHIRef Fence = RHICmdList.CreateComputeFence(TEXT("PathCompaction"));
 	PathCompactionComputeShader->SetParameters(RHICmdList, View, RadianceTexture, SampleCountTexture, PixelPositionTexture, RadianceSortedRedUAV, RadianceSortedGreenUAV, RadianceSortedBlueUAV, RadianceSortedAlphaUAV, SampleCountSortedUAV);
 	FIntPoint ViewSize = View.ViewRect.Size();
 	FIntVector NumGroups = FIntVector::DivideAndRoundUp(FIntVector(ViewSize.X, ViewSize.Y, 0), FPathCompactionCS::GetGroupSize());
-	DispatchComputeShader(RHICmdList, PathCompactionComputeShader.GetShader(), NumGroups.X, NumGroups.Y, 1);
-	PathCompactionComputeShader->UnsetParameters(RHICmdList, ERHIAccess::SRVMask, RadianceSortedRedUAV, RadianceSortedGreenUAV, RadianceSortedBlueUAV, RadianceSortedAlphaUAV, SampleCountSortedUAV);
+	DispatchComputeShader(RHICmdList, *PathCompactionComputeShader, NumGroups.X, NumGroups.Y, 1);
+	PathCompactionComputeShader->UnsetParameters(RHICmdList, EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, RadianceSortedRedUAV, RadianceSortedGreenUAV, RadianceSortedBlueUAV, RadianceSortedAlphaUAV, SampleCountSortedUAV, Fence);
 }
 #endif // RHI_RAYTRACING

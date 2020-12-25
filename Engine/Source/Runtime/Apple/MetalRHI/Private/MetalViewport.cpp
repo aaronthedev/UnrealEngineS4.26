@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MetalViewport.cpp: Metal viewport RHI implementation.
@@ -22,7 +22,7 @@ extern int32 GMetalNonBlockingPresent;
 extern float GMetalPresentFramePacing;
 
 #if PLATFORM_IOS
-static int32 GEnablePresentPacing = 0;
+int32 GEnablePresentPacing = 0;
 static FAutoConsoleVariableRef CVarMetalEnablePresentPacing(
 	   TEXT("ios.PresentPacing"),
 	   GEnablePresentPacing,
@@ -66,19 +66,12 @@ static FAutoConsoleVariableRef CVarMetalEnablePresentPacing(
 static FCriticalSection ViewportsMutex;
 static TSet<FMetalViewport*> Viewports;
 
-FMetalViewport::FMetalViewport(void* WindowHandle, uint32 InSizeX, uint32 InSizeY, bool bInIsFullscreen, EPixelFormat Format)
-	: Drawable{nil}
-	, BackBuffer{nullptr, nullptr}
-	, Mutex{}
-	, DrawableTextures{}
-	, DisplayID{0}
-	, Block{nullptr}
-	, FrameAvailable{0}
-	, LastCompleteFrame{nullptr}
-	, bIsFullScreen{bInIsFullscreen}
+FMetalViewport::FMetalViewport(void* WindowHandle, uint32 InSizeX,uint32 InSizeY,bool bInIsFullscreen,EPixelFormat Format)
+: DisplayID(0)
+, Block(nil)
+, bIsFullScreen(bInIsFullscreen)
 #if PLATFORM_MAC
-	, View{nullptr}
-	, CustomPresent{nullptr}
+, CustomPresent(nullptr)
 #endif
 {
 #if PLATFORM_MAC
@@ -243,17 +236,17 @@ void FMetalViewport::Resize(uint32 InSizeX, uint32 InSizeY, bool bInIsFullscreen
         FTexture2DRHIRef DoubleBuffer;
         if (GMetalSupportsIntermediateBackBuffer)
         {
-            NewBackBuffer = (FMetalTexture2D*)(FRHITexture2D*)GDynamicRHI->RHICreateTexture2D(InSizeX, InSizeY, Format, 1, 1, TexCreate_RenderTargetable, ERHIAccess::Unknown, CreateInfo);
+            NewBackBuffer = (FMetalTexture2D*)(FRHITexture2D*)GDynamicRHI->RHICreateTexture2D(InSizeX, InSizeY, Format, 1, 1, TexCreate_RenderTargetable, CreateInfo);
             
             if (GMetalSeparatePresentThread)
             {
-                DoubleBuffer = GDynamicRHI->RHICreateTexture2D(InSizeX, InSizeY, Format, 1, 1, TexCreate_RenderTargetable, ERHIAccess::Unknown, CreateInfo);
+                DoubleBuffer = GDynamicRHI->RHICreateTexture2D(InSizeX, InSizeY, Format, 1, 1, TexCreate_RenderTargetable, CreateInfo);
                 ((FMetalTexture2D*)DoubleBuffer.GetReference())->Surface.Viewport = this;
             }
         }
         else
         {
-            NewBackBuffer = (FMetalTexture2D*)(FRHITexture2D*)GDynamicRHI->RHICreateTexture2D(InSizeX, InSizeY, Format, 1, 1, TexCreate_RenderTargetable | TexCreate_Presentable, ERHIAccess::Unknown, CreateInfo);
+            NewBackBuffer = (FMetalTexture2D*)(FRHITexture2D*)GDynamicRHI->RHICreateTexture2D(InSizeX, InSizeY, Format, 1, 1, TexCreate_RenderTargetable | TexCreate_Presentable, CreateInfo);
         }
         ((FMetalTexture2D*)NewBackBuffer.GetReference())->Surface.Viewport = this;
         
@@ -284,45 +277,39 @@ TRefCountPtr<FMetalTexture2D> FMetalViewport::GetBackBuffer(EMetalViewportAccess
 @end
 #endif
 
-id<CAMetalDrawable> FMetalViewport::GetDrawable(EMetalViewportAccessFlag Accessor)
+mtlpp::Drawable FMetalViewport::GetDrawable(EMetalViewportAccessFlag Accessor)
 {
 	SCOPE_CYCLE_COUNTER(STAT_MetalMakeDrawableTime);
     if (!Drawable
 #if !PLATFORM_MAC
-        || (Drawable.texture.width != BackBuffer[GetViewportIndex(Accessor)]->GetSizeX() || Drawable.texture.height != BackBuffer[GetViewportIndex(Accessor)]->GetSizeY())
+        || (((id<CAMetalDrawable>)Drawable.GetPtr()).texture.width != BackBuffer[GetViewportIndex(Accessor)]->GetSizeX() || ((id<CAMetalDrawable>)Drawable.GetPtr()).texture.height != BackBuffer[GetViewportIndex(Accessor)]->GetSizeY())
 #endif
         )
 	{
-		// Drawable changed, release the previously retained object.
-		if (Drawable != nil)
-		{
-			[Drawable release];
-			Drawable = nil;
-		}
-
 		@autoreleasepool
 		{
 			uint32 IdleStart = FPlatformTime::Cycles();
-
-#if PLATFORM_MAC
+			
+	#if PLATFORM_MAC
 			CAMetalLayer* CurrentLayer = (CAMetalLayer*)[View layer];
 			if (GMetalNonBlockingPresent == 0 || [((id<CAMetalLayerSPI>)CurrentLayer) isDrawableAvailable])
 			{
 				Drawable = CurrentLayer ? [CurrentLayer nextDrawable] : nil;
 			}
-
-#if METAL_DEBUG_OPTIONS
-			if (Drawable)
+			else
 			{
-				CGSize Size = Drawable.layer.drawableSize;
-				if ((Size.width != BackBuffer[GetViewportIndex(Accessor)]->GetSizeX() || Size.height != BackBuffer[GetViewportIndex(Accessor)]->GetSizeY()))
-				{
-					UE_LOG(LogMetal, Display, TEXT("Viewport Size Mismatch: Drawable W:%f H:%f, Viewport W:%u H:%u"), Size.width, Size.height, BackBuffer[GetViewportIndex(Accessor)]->GetSizeX(), BackBuffer[GetViewportIndex(Accessor)]->GetSizeY());
-				}
+				Drawable = nil;
 			}
-#endif // METAL_DEBUG_OPTIONS
+			
+#if METAL_DEBUG_OPTIONS
+			CGSize Size = ((id<CAMetalDrawable>)Drawable).layer.drawableSize;
+			if ((Size.width != BackBuffer[GetViewportIndex(Accessor)]->GetSizeX() || Size.height != BackBuffer[GetViewportIndex(Accessor)]->GetSizeY()))
+			{
+				UE_LOG(LogMetal, Display, TEXT("Viewport Size Mismatch: Drawable W:%f H:%f, Viewport W:%u H:%u"), Size.width, Size.height, BackBuffer[GetViewportIndex(Accessor)]->GetSizeX(), BackBuffer[GetViewportIndex(Accessor)]->GetSizeY());
+			}
+#endif
 
-#else // PLATFORM_MAC
+	#else
 			CGSize Size;
 			IOSAppDelegate* AppDelegate = [IOSAppDelegate GetDelegate];
 			do
@@ -330,8 +317,8 @@ id<CAMetalDrawable> FMetalViewport::GetDrawable(EMetalViewportAccessFlag Accesso
 				Drawable = [AppDelegate.IOSView MakeDrawable];
 				if (Drawable != nil)
 				{
-					Size.width = Drawable.texture.width;
-					Size.height = Drawable.texture.height;
+					Size.width = ((id<CAMetalDrawable>)Drawable).texture.width;
+					Size.height = ((id<CAMetalDrawable>)Drawable).texture.height;
 				}
 				else
 				{
@@ -339,9 +326,9 @@ id<CAMetalDrawable> FMetalViewport::GetDrawable(EMetalViewportAccessFlag Accesso
 				}
 			}
 			while (Drawable == nil || Size.width != BackBuffer[GetViewportIndex(Accessor)]->GetSizeX() || Size.height != BackBuffer[GetViewportIndex(Accessor)]->GetSizeY());
-
-#endif // PLATFORM_MAC
-
+			
+	#endif
+			
 			if (IsInRHIThread())
 			{
 				GWorkingRHIThreadStallTime += FPlatformTime::Cycles() - IdleStart;
@@ -351,22 +338,14 @@ id<CAMetalDrawable> FMetalViewport::GetDrawable(EMetalViewportAccessFlag Accesso
 				GRenderThreadIdle[ERenderThreadIdleTypes::WaitingForGPUPresent] += FPlatformTime::Cycles() - IdleStart;
 				GRenderThreadNumIdle[ERenderThreadIdleTypes::WaitingForGPUPresent]++;
 			}
-
-			// Retain the drawable here or it will be released when the
-			// autorelease pool goes out of scope.
-			if (Drawable != nil)
-			{
-				[Drawable retain];
-			}
-		} // autoreleasepool
+		}
 	}
-
 	return Drawable;
 }
 
 FMetalTexture FMetalViewport::GetDrawableTexture(EMetalViewportAccessFlag Accessor)
 {
-	id<CAMetalDrawable> CurrentDrawable = GetDrawable(Accessor);
+	id<CAMetalDrawable> CurrentDrawable = (id<CAMetalDrawable>)GetDrawable(Accessor);
 #if METAL_DEBUG_OPTIONS
 	@autoreleasepool
 	{
@@ -397,12 +376,10 @@ void FMetalViewport::ReleaseDrawable()
 {
 	if (!GMetalSeparatePresentThread)
 	{
-		if (Drawable != nil)
+		if (Drawable)
 		{
-			[Drawable release];
 			Drawable = nil;
 		}
-
 		if (!GMetalSupportsIntermediateBackBuffer && IsValidRef(BackBuffer[GetViewportIndex(EMetalViewportAccessRHI)]))
 		{
 			BackBuffer[GetViewportIndex(EMetalViewportAccessRHI)]->Surface.Texture = nil;
@@ -438,12 +415,12 @@ void FMetalViewport::Present(FMetalCommandQueue& CommandQueue, bool bLockToVsync
 	
 	if (!Block)
 	{
+#if !PLATFORM_MAC
+		uint32 FramePace = FPlatformRHIFramePacer::GetFramePace();
+		float MinPresentDuration = FramePace ? (1.0f / (float)FramePace) : 0.0f;
+#endif
 		Block = Block_copy(^(uint32 InDisplayID, double OutputSeconds, double OutputDuration)
 		{
-#if !PLATFORM_MAC
-			uint32 FramePace = FPlatformRHIFramePacer::GetFramePace();
-			float MinPresentDuration = FramePace ? (1.0f / (float)FramePace) : 0.0f;
-#endif
 			bool bIsInLiveResize = false;
 #if PLATFORM_MAC
 			bIsInLiveResize = View.inLiveResize;
@@ -451,7 +428,7 @@ void FMetalViewport::Present(FMetalCommandQueue& CommandQueue, bool bLockToVsync
 			if (FrameAvailable > 0 && (InDisplayID == 0 || (DisplayID == InDisplayID && !bIsInLiveResize)))
 			{
 				FPlatformAtomics::InterlockedDecrement(&FrameAvailable);
-				id<CAMetalDrawable> LocalDrawable = [GetDrawable(EMetalViewportAccessDisplayLink) retain];
+				id<CAMetalDrawable> LocalDrawable = (id<CAMetalDrawable>)[GetDrawable(EMetalViewportAccessDisplayLink) retain];
 				{
 					FScopeLock BlockLock(&Mutex);
 #if PLATFORM_MAC
@@ -489,21 +466,22 @@ void FMetalViewport::Present(FMetalCommandQueue& CommandQueue, bool bLockToVsync
 								Debugging = FMetalBlitCommandEncoderDebugging(Encoder, CmdDebug);
 							}
 #endif
+							
+							METAL_STATISTIC(Profiler->BeginEncoder(Stats, Encoder));
 							METAL_GPUPROFILE(Profiler->EncodeBlit(Stats, __FUNCTION__));
 
 							Encoder.Copy(Src, 0, 0, mtlpp::Origin(0, 0, 0), mtlpp::Size(Width, Height, 1), Dst, 0, 0, mtlpp::Origin(0, 0, 0));
 							METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, Debugging.Copy(Src, 0, 0, mtlpp::Origin(0, 0, 0), mtlpp::Size(Width, Height, 1), Dst, 0, 0, mtlpp::Origin(0, 0, 0)));
-
+							
+							METAL_STATISTIC(Profiler->EndEncoder(Stats, Encoder));
 							Encoder.EndEncoding();
 							METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, Debugging.EndEncoder());
-
+							
 							mtlpp::CommandBufferHandler H = [Src, Dst](const mtlpp::CommandBuffer &) {
-								// void
 							};
-
+							
 							CurrentCommandBuffer.AddCompletedHandler(H);
-
-							[Drawable release];
+							
 							Drawable = nil;
 						}
 						
@@ -645,12 +623,12 @@ void FMetalRHIImmediateCommandContext::RHIBeginDrawingViewport(FRHIViewport* Vie
 	if (RenderTargetRHI)
 	{
 		FRHIRenderTargetView RTV(RenderTargetRHI, GIsEditor ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad);
-		SetRenderTargets(1, &RTV, nullptr);
+		RHISetRenderTargets(1, &RTV, nullptr, 0, NULL);
 	}
 	else
 	{
 		FRHIRenderTargetView RTV(Viewport->GetBackBuffer(EMetalViewportAccessRHI), GIsEditor ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad);
-		SetRenderTargets(1, &RTV, nullptr);
+		RHISetRenderTargets(1, &RTV, nullptr, 0, NULL);
 	}
 	}
 }

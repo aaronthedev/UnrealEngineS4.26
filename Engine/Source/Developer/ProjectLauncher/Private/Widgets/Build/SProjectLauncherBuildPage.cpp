@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SProjectLauncherBuildPage.h"
 
@@ -10,7 +10,6 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Input/SEditableTextBox.h"
-#include "Widgets/Input/SComboBox.h"
 
 #include "Widgets/Cook/SProjectLauncherCookedPlatforms.h"
 #include "Widgets/Layout/SExpandableArea.h"
@@ -40,19 +39,6 @@ void SProjectLauncherBuildPage::Construct(const FArguments& InArgs, const TShare
 {
 	Model = InModel;
 
-	// create cook modes menu
-	FMenuBuilder BuildModeMenuBuilder(true, NULL);
-	{
-		FUIAction AutoAction(FExecuteAction::CreateSP(this, &SProjectLauncherBuildPage::HandleBuildModeMenuEntryClicked, ELauncherProfileBuildModes::Auto));
-		BuildModeMenuBuilder.AddMenuEntry(LOCTEXT("BuildMode_AutoAction", "Detect Automatically"), LOCTEXT("BuildMode_AutoActionHint", "Detect whether the project needs to be built automatically."), FSlateIcon(), AutoAction);
-
-		FUIAction BuildAction(FExecuteAction::CreateSP(this, &SProjectLauncherBuildPage::HandleBuildModeMenuEntryClicked, ELauncherProfileBuildModes::Build));
-		BuildModeMenuBuilder.AddMenuEntry(LOCTEXT("BuildMode_BuildAction", "Build"), LOCTEXT("BuildMode_BuildActionHint", "Build the target."), FSlateIcon(), BuildAction);
-
-		FUIAction DoNotBuildAction(FExecuteAction::CreateSP(this, &SProjectLauncherBuildPage::HandleBuildModeMenuEntryClicked, ELauncherProfileBuildModes::DoNotBuild));
-		BuildModeMenuBuilder.AddMenuEntry(LOCTEXT("BuildMode_DoNotBuildAction", "Do Not Build"), LOCTEXT("DoNotCookActionHint", "Do not build the target."), FSlateIcon(), DoNotBuildAction);
-	}
-
 	ChildSlot
 	[
 		SNew(SVerticalBox)
@@ -74,18 +60,10 @@ void SProjectLauncherBuildPage::Construct(const FArguments& InArgs, const TShare
 					.AutoWidth()
 					.Padding(8.0, 0.0, 0.0, 0.0)
 					[
-						// cooking mode menu
-						SNew(SComboButton)
-						.ButtonContent()
-						[
-							SNew(STextBlock)
-							.Text(this, &SProjectLauncherBuildPage::HandleBuildModeComboButtonContentText)
-						]
-						.ContentPadding(FMargin(6.0, 2.0))
-						.MenuContent()
-						[
-							BuildModeMenuBuilder.MakeWidget()
-						]
+						// build mode check box
+						SNew(SCheckBox)
+							.IsChecked(this, &SProjectLauncherBuildPage::HandleBuildIsChecked)
+							.OnCheckStateChanged(this, &SProjectLauncherBuildPage::HandleBuildCheckedStateChanged)
 					]
 			]
 
@@ -225,45 +203,32 @@ bool SProjectLauncherBuildPage::GenerateDSYMForProject(const FString& ProjectNam
 /* SProjectLauncherBuildPage callbacks
  *****************************************************************************/
 
-FText SProjectLauncherBuildPage::HandleBuildModeComboButtonContentText() const
+void SProjectLauncherBuildPage::HandleBuildCheckedStateChanged(ECheckBoxState CheckState)
 {
 	ILauncherProfilePtr SelectedProfile = Model->GetSelectedProfile();
 
 	if (SelectedProfile.IsValid())
 	{
-		ELauncherProfileBuildModes::Type BuildMode = SelectedProfile->GetBuildMode();
-
-		if (BuildMode == ELauncherProfileBuildModes::Auto)
-		{
-			return LOCTEXT("BuildModeComboButton_Auto", "Detect Automatically");
-		}
-
-		if (BuildMode == ELauncherProfileBuildModes::Build)
-		{
-			return LOCTEXT("BuildModeComboButton_Build", "Build");
-		}
-
-		if (BuildMode == ELauncherProfileBuildModes::DoNotBuild)
-		{
-			return LOCTEXT("BuildModeComboButton_DoNotBuild", "Do not build");
-		}
-
-		return LOCTEXT("BuildModeComboButtonDefaultText", "Select...");
+		SelectedProfile->SetBuildGame(CheckState == ECheckBoxState::Checked);
 	}
-
-	return FText();
 }
 
 
-void SProjectLauncherBuildPage::HandleBuildModeMenuEntryClicked(ELauncherProfileBuildModes::Type BuildMode)
+ECheckBoxState SProjectLauncherBuildPage::HandleBuildIsChecked() const
 {
 	ILauncherProfilePtr SelectedProfile = Model->GetSelectedProfile();
 
 	if (SelectedProfile.IsValid())
 	{
-		SelectedProfile->SetBuildMode(BuildMode);
+		if (SelectedProfile->IsBuilding())
+		{
+			return ECheckBoxState::Checked;
+		}
 	}
+
+	return ECheckBoxState::Unchecked;
 }
+
 
 void SProjectLauncherBuildPage::HandleProfileManagerProfileSelected(const ILauncherProfilePtr& SelectedProfile, const ILauncherProfilePtr& PreviousProfile)
 {
@@ -326,7 +291,7 @@ EVisibility SProjectLauncherBuildPage::ShowBuildConfiguration() const
 {
 	ILauncherProfilePtr SelectedProfile = Model->GetSelectedProfile();
 
-	if (SelectedProfile.IsValid())
+	if (SelectedProfile.IsValid() && SelectedProfile->IsBuilding())
 	{
 		return EVisibility::Visible;
 	}

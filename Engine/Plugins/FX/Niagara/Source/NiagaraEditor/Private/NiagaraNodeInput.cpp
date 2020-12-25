@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraNodeInput.h"
 #include "UObject/UnrealType.h"
@@ -9,7 +9,6 @@
 #include "NiagaraNodeOp.h"
 #include "NiagaraNodeFunctionCall.h"
 #include "EdGraphSchema_Niagara.h"
-#include "NiagaraConstants.h"
 #include "NiagaraDataInterface.h"
 #include "SNiagaraGraphNodeInput.h"
 #include "NiagaraEditorUtilities.h"
@@ -21,7 +20,7 @@ DECLARE_CYCLE_STAT(TEXT("NiagaraEditor - UNiagaraNodeInput - SortNodes"), STAT_N
 
 UNiagaraNodeInput::UNiagaraNodeInput(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-	, Usage(ENiagaraInputNodeUsage::Parameter)
+	, Usage(ENiagaraInputNodeUsage::Undefined)
 	, CallSortPriority(0)
 	, DataInterface(nullptr)
 {
@@ -71,8 +70,6 @@ void UNiagaraNodeInput::PostLoad()
 	{
 		DataInterface->OnChanged().AddUObject(this, &UNiagaraNodeInput::DataInterfaceChanged);
 	}
-
-	ValidateDataInterface();
 }
 
 void UNiagaraNodeInput::BuildParameterMapHistory(FNiagaraParameterMapHistoryBuilder& OutHistory, bool bRecursive /*= true*/, bool bFilterForCompilation /*= true*/) const
@@ -106,27 +103,9 @@ void UNiagaraNodeInput::BuildParameterMapHistory(FNiagaraParameterMapHistoryBuil
 	}
 }
 
-void UNiagaraNodeInput::AppendFunctionAliasForContext(const FNiagaraGraphFunctionAliasContext& InFunctionAliasContext, FString& InOutFunctionAlias, bool& OutOnlyOncePerNodeType)
-{
-	if (Usage == ENiagaraInputNodeUsage::TranslatorConstant && Input == TRANSLATOR_PARAM_CALL_ID)
-	{
-		OutOnlyOncePerNodeType = true;
-		// The call ID should be unique for each translated node as it is used by the seeded random functions.
-		// We don't want it to be shared across the spawn and update script, so functions including it will have the usage added to their name.
-		InOutFunctionAlias += "_ScriptUsage" + FString::FormatAsNumber((uint8)InFunctionAliasContext.ScriptUsage);
-	}
-}
-
 
 void UNiagaraNodeInput::AllocateDefaultPins()
 {
-	const FNiagaraTypeDefinition& InputType = Input.GetType();
-	if (InputType.IsUObject() && InputType.IsDataInterface() == false)
-	{
-		this->ErrorMsg = TEXT("Invalid Input Type");
-		return;
-	}
-
 	if (UClass* Class = const_cast<UClass*>(Input.GetType().GetClass()))
 	{
 		check(Class->IsChildOf(UNiagaraDataInterface::StaticClass()));
@@ -346,7 +325,7 @@ void UNiagaraNodeInput::AutowireNewNode(UEdGraphPin* FromPin)
 			ReallocatePins();
 		}
 
-		FPinCollectorArray OutPins;
+		TArray<UEdGraphPin*> OutPins;
 		GetOutputPins(OutPins);
 		check(OutPins.Num() == 1 && OutPins[0] != NULL);
 
@@ -390,7 +369,7 @@ void UNiagaraNodeInput::Compile(class FHlslNiagaraTranslator* Translator, TArray
 		//If we're in a function and this parameter hasn't been provided, compile the local default.
 		if (FunctionParam == INDEX_NONE)
 		{
-			FPinCollectorArray InputPins;
+			TArray<UEdGraphPin*> InputPins;
 			GetInputPins(InputPins);
 			int32 Default = InputPins.Num() > 0 ? Translator->CompilePin(InputPins[0]) : INDEX_NONE;
 			if (Default == INDEX_NONE)
@@ -474,8 +453,6 @@ void UNiagaraNodeInput::SetDataInterface(UNiagaraDataInterface* InDataInterface)
 	{
 		DataInterface->OnChanged().AddUObject(this, &UNiagaraNodeInput::DataInterfaceChanged);
 	}
-
-	ValidateDataInterface();
 	DataInterfaceChanged();
 }
 
@@ -487,17 +464,6 @@ void UNiagaraNodeInput::DataInterfaceChanged()
 	if (NiagaraGraph != nullptr)
 	{
 		NiagaraGraph->NotifyGraphDataInterfaceChanged();
-	}
-}
-
-void UNiagaraNodeInput::ValidateDataInterface()
-{
-	if (DataInterface != nullptr &&
-		DataInterface->GetClass()->GetMetaData("DevelopmentStatus") == TEXT("Experimental"))
-	{
-		UEdGraphNode::bHasCompilerMessage = true;
-		UEdGraphNode::ErrorType = EMessageSeverity::Info;
-		UEdGraphNode::NodeUpgradeMessage = LOCTEXT("DataInterfaceExperimental", "This data interface is marked as experimental, use with care!");
 	}
 }
 

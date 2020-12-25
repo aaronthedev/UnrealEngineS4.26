@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,7 +10,7 @@
 
 class UMaterialInterface;
 
-UENUM(BlueprintType)
+UENUM()
 enum class EMaterialSearchLocation : uint8
 {
 	/** Search for matching material in local import folder only. */
@@ -20,9 +20,7 @@ enum class EMaterialSearchLocation : uint8
 	/** Search for matching material recursively from root folder. */
 	UnderRoot,
 	/** Search for matching material in all assets folders. */
-	AllAssets,
-	/** Do not search for existing matching materials */
-	DoNotSearch,
+	AllAssets
 };
 
 UCLASS(transient)

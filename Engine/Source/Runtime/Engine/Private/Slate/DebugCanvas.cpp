@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Slate/DebugCanvas.h"
 #include "RenderingThread.h"
@@ -6,7 +6,6 @@
 #include "CanvasTypes.h"
 #include "Engine/Engine.h"
 #include "EngineModule.h"
-#include "EngineFontServices.h"
 #include "Framework/Application/SlateApplication.h"
 #include "IStereoLayers.h"
 #include "StereoRendering.h"
@@ -63,42 +62,11 @@ FDebugCanvasDrawer::FDebugCanvasDrawer()
 	, RenderThreadCanvas( NULL )
 	, RenderTarget( new FSlateCanvasRenderTarget )
 	, LayerID(INVALID_LAYER_ID)
-{
-	// watch for font cache flushes
-	if (FEngineFontServices::IsInitialized())
-	{
-		FEngineFontServices::Get().OnReleaseResources().AddRaw(this, &FDebugCanvasDrawer::HandleReleaseFontResources);
-	}
-}
+{}
 
 void FDebugCanvasDrawer::ReleaseTexture()
 {
 	LayerTexture.SafeRelease();
-}
-
-void FDebugCanvasDrawer::HandleReleaseFontResources(const class FSlateFontCache& InFontCache)
-{
-	check(IsInGameThread());
-
-	// If this function is called while we have a pending render Canvas request, then we need to force 
-	// a flush on the render thread to clear the pending batches that may reference invalid resources
-	if (RenderThreadCanvas)
-	{
-		ENQUEUE_RENDER_COMMAND(FlushFontResourcesCommand)(
-			[this](FRHICommandListImmediate& RHICmdList)
-		{
-			RenderThreadCanvas->Flush_RenderThread(RHICmdList, true, false);
-		});
-
-		FlushRenderingCommands();
-	}
-
-	// If this function is called while the game thread is still prepping a Canvas, then we need to 
-	// force clear the pending batches as they may reference invalid resources
-	if (GameThreadCanvas)
-	{
-		GameThreadCanvas->ClearBatchesToRender();
-	}
 }
 
 void FDebugCanvasDrawer::ReleaseResources()
@@ -116,12 +84,6 @@ void FDebugCanvasDrawer::ReleaseResources()
 
 FDebugCanvasDrawer::~FDebugCanvasDrawer()
 {
-	// stop watching for font cache flushes
-	if (FEngineFontServices::IsInitialized())
-	{
-		FEngineFontServices::Get().OnReleaseResources().RemoveAll(this);
-	}
-
 	delete RenderTarget;
 
 	// We assume that the render thread is no longer utilizing any canvases
@@ -291,12 +253,11 @@ void FDebugCanvasDrawer::DrawRenderThread(FRHICommandListImmediate& RHICmdList, 
 			}
 			RT = reinterpret_cast<FTexture2DRHIRef*>(HMDSwapchain == nullptr ? &LayerTexture->GetRenderTargetItem().ShaderResourceTexture : &HMDSwapchain);
 		}
-		RHICmdList.Transition(FRHITransitionInfo(*RT, ERHIAccess::Unknown, ERHIAccess::RTV));
 		RenderTarget->SetRenderTargetTexture(*RT);
 
 		bool bNeedToFlipVertical = RenderThreadCanvas->GetAllowSwitchVerticalAxis();
-		// Flip when rendering to the back buffer
-		RenderThreadCanvas->SetAllowSwitchVerticalAxis(true);
+		// Do not flip when rendering to the back buffer
+		RenderThreadCanvas->SetAllowSwitchVerticalAxis(false);
 		if (RenderThreadCanvas->IsScaledToRenderTarget() && IsValidRef(*RT)) 
 		{
 			RenderThreadCanvas->SetRenderTargetRect( FIntRect(0, 0, (*RT)->GetSizeX(), (*RT)->GetSizeY()) );

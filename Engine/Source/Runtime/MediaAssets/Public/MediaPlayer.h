@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,7 +15,6 @@
 #include "Misc/Guid.h"
 #include "Engine/LatentActionManager.h"
 #include "MediaPlayerOptions.h"
-#include "IMediaTimeSource.h"
 
 #include "MediaPlayer.generated.h"
 
@@ -65,23 +64,6 @@ enum class EMediaPlayerTrack : uint8
 
 	/** Video track. */
 	Video
-};
-
-
-UCLASS(BlueprintType, hidecategories = (Object))
-class MEDIAASSETS_API UMediaTimeStampInfo
-	: public UObject
-{
-	GENERATED_BODY()
-
-public:
-	UMediaTimeStampInfo() : Time(FTimespan::Zero()), SequenceIndex(0) {}
-
-	UPROPERTY(BlueprintReadOnly, Category = "Media|Time")
-	FTimespan Time;
-
-	UPROPERTY(BlueprintReadOnly, Category = "Media|Time")
-	int64 SequenceIndex;
 };
 
 
@@ -305,13 +287,20 @@ public:
 	FTimespan GetTime() const;
 
 	/**
-	 * Get the media's current playback timestamp.
+	 * Get time of last audio sample decoded
 	 *
-	 * @return Playback timestamp.
-	 * @see GetDuration, Seek
+	 * @return Time of last audio sample decoded.
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Media|MediaPlayer")
-	UMediaTimeStampInfo* GetTimeStamp() const;
+	UFUNCTION(BlueprintCallable, Category="Media|MediaPlayer")
+	FTimespan GetLastAudioSampleProcessedTime() const;
+
+	/**
+	 * Get time of last video sample decoded
+	 *
+	 * @return Time of last video sample decoded.
+	 */
+	UFUNCTION(BlueprintCallable, Category="Media|MediaPlayer")
+	FTimespan GetLastVideoSampleProcessedTime() const;
 
 	/**
 	 * Get the human readable name of the specified track.
@@ -655,12 +644,6 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category="Media|MediaPlayer")
 	bool Play();
-
-	/**
-	 * Starts playback from the media opened event, but can be used elsewhere.
-	 */
-	UFUNCTION(BlueprintCallable, Category="Media|MediaPlayer")
-	void PlayAndSeek();
 
 	/**
 	 * Open the previous item in the current play list.

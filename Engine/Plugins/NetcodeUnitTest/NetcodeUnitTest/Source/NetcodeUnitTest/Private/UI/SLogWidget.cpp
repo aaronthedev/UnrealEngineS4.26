@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UI/SLogWidget.h"
 #include "Fonts/FontMeasure.h"
@@ -1100,10 +1100,10 @@ void SLogWidget::AddLine(ELogType InLogType, TSharedRef<FString> LogLine, FSlate
 			// If the tab is not presently open, open it now
 			if (!CurTabInfo->bTabOpen && LogTabManager.IsValid())
 			{
-				LogTabManager->TryInvokeTab(CurTabInfo->TabIdName);
+				LogTabManager->InvokeTab(CurTabInfo->TabIdName);
 
 				// The new tab has stolen focus, now restore the old tabs focus
-				LogTabManager->TryInvokeTab(ActiveTab->TabIdName);
+				LogTabManager->InvokeTab(ActiveTab->TabIdName);
 
 				CurTabInfo->bTabOpen = true;
 			}
@@ -1145,7 +1145,7 @@ void SLogWidget::AddLine(ELogType InLogType, TSharedRef<FString> LogLine, FSlate
 	// If a focus change is required, perform it
 	if (FocusTab.IsValid() && LogTabManager.IsValid())
 	{
-		LogTabManager->TryInvokeTab(FocusTab->TabIdName);
+		LogTabManager->InvokeTab(FocusTab->TabIdName);
 	}
 }
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -97,9 +97,6 @@ public:
 
 	/** Sets the skeletal mesh to use in the next GetView() */
 	void SetSkeletalMesh(class USkeletalMesh* InSkeletalMesh);
-
-	/** Returns the preview actor within the scene */
-	class ASkeletalMeshActor* GetPreviewActor() { return PreviewActor; }
 
 protected:
 	// FThumbnailPreviewScene implementation

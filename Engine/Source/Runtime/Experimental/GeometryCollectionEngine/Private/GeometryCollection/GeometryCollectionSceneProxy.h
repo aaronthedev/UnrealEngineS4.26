@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "DynamicMeshBuilder.h"
@@ -131,7 +131,6 @@ class FGeometryCollectionSceneProxy final : public FPrimitiveSceneProxy
 	FGeometryCollectionVertexFactory VertexFactory;
 	
 	bool bSupportsManualVertexFetch;
-	const bool bSupportsTripleBufferVertexUpload;
 	
 	FStaticMeshVertexBuffers VertexBuffers;
 	FGeometryCollectionIndexBuffer IndexBuffer;
@@ -141,7 +140,6 @@ class FGeometryCollectionSceneProxy final : public FPrimitiveSceneProxy
 	TArray<FGeometryCollectionTransformBuffer, TInlineAllocator<3>> PrevTransformBuffers;
 
 	int32 CurrentTransformBufferIndex = 0;
-	FBoxSphereBounds PreSkinnedBounds;
 
 	TArray<FGeometryCollectionSection> Sections;
 #if GEOMETRYCOLLECTION_EDITOR_SELECTION
@@ -215,8 +213,6 @@ public:
 	 */
 	void UseSubSections(bool bInUsesSubSections, bool bForceInit);
 #endif
-
-	void GetPreSkinnedLocalBounds(FBoxSphereBounds& OutBounds) const override;
 
 protected:
 

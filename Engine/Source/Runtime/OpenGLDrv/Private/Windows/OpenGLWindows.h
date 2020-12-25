@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	OpenGLWindows.h: Manual loading of OpenGL functions from DLL.
@@ -285,7 +285,6 @@
 	EnumMacro(PFNGLBINDVERTEXARRAYPROC,glBindVertexArray) \
 	EnumMacro(PFNGLCOPYBUFFERSUBDATAPROC,glCopyBufferSubData) \
 	EnumMacro(PFNGLTEXBUFFERPROC,glTexBuffer) \
-	EnumMacro(PFNGLTEXBUFFERRANGEPROC,glTexBufferRange) \
 	EnumMacro(PFNGLTEXIMAGE2DMULTISAMPLEPROC,glTexImage2DMultisample) \
 	EnumMacro(PFNGLQUERYCOUNTERPROC, glQueryCounter)\
 	EnumMacro(PFNGLISSYNCPROC, glIsSync)\
@@ -368,7 +367,6 @@
 	EnumMacro(PFNGLFRAMEBUFFERTEXTUREPROC,glFramebufferTextureEXT) \
 	EnumMacro(PFNGLCOPYIMAGESUBDATAPROC, glCopyImageSubDataEXT) \
 	EnumMacro(PFNGLTEXBUFFERPROC,glTexBufferEXT) \
-	EnumMacro(PFNGLTEXBUFFERRANGEPROC,glTexBufferRangeEXT) \
 	EnumMacro(PFNGLDEPTHRANGEFPROC,glDepthRangef) \
 	EnumMacro(PFNGLCLEARDEPTHFPROC,glClearDepthf) \
 	EnumMacro(PFNGLGETSHADERPRECISIONFORMATPROC, glGetShaderPrecisionFormat) \
@@ -601,7 +599,7 @@ struct FWindowsOpenGL : public FOpenGLESDeferred
 {
 	static FORCEINLINE EShaderPlatform GetShaderPlatform()
 	{
-		return SP_OPENGL_PCES3_1;
+		return bES2Fallback ? SP_OPENGL_PCES2 : SP_OPENGL_PCES3_1;
 	}
 
 	static FORCEINLINE void InitDebugContext()

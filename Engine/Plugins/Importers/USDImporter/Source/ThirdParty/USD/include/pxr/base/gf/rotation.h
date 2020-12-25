@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_GF_ROTATION_H
-#define PXR_BASE_GF_ROTATION_H
+#ifndef GF_ROTATION_H
+#define GF_ROTATION_H
 
 /// \file gf/rotation.h
 /// \ingroup group_gf_LinearAlgebra
@@ -287,4 +287,4 @@ GF_API std::ostream& operator<<(std::ostream&, const GfRotation&);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_GF_ROTATION_H
+#endif // GF_ROTATION_H

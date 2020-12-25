@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -31,7 +31,6 @@ private:
 	FString ScreenshotName;
 	FString Notes;
 	float SecondsRemaining;
-	bool FinishedLoading;
 	bool IssuedScreenshotCapture;
 	bool TakenScreenshot;
 	FAutomationScreenshotOptions Options;

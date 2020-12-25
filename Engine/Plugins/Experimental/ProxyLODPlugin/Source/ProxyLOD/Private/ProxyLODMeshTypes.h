@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,7 +12,7 @@
 
 #include "MeshMergeData.h"
 #include "StaticMeshAttributes.h"
-#include "StaticMeshOperations.h"
+#include "MeshDescriptionOperations.h"
 
 #include "ProxyLODThreadedWrappers.h"
 #include "ProxyLODVertexTypes.h"
@@ -145,9 +145,6 @@ public:
 	// resize the mesh, deleting the current content.
 	void Resize(int32 VertCount, int32 FaceCount);
 
-	// set the real vertex & index count after duplicate removal
-	void SetVertexAndIndexCount(uint32 VertCount, uint32 IndexCount);
-
 	// Swap content with an existing mesh of the same type.
 	void Swap(TAOSMesh& other);
 	
@@ -249,19 +246,6 @@ namespace ProxyLOD
 	typedef openvdb::math::BBox<openvdb::Vec3s>   FBBox;
 }
 
-// Used to filter initialization of required values only
-enum class ERawPolyValues : uint8
-{
-	None            = 0,
-	WedgeColors     = (1 << 0),
-	WedgeTexCoords  = (1 << 1),
-	WedgeTangents   = (1 << 2),
-	VertexPositions = (1 << 3),
-	All             = 0xff
-};
-
-ENUM_CLASS_FLAGS(ERawPolyValues);
-
 /**
 * Adapter class that make an array of raw meshes appear to be a single mesh 
 * with implementation of the methods to interact with the templated openvdb mesh to volume code. 
@@ -274,7 +258,9 @@ class FMeshDescriptionArrayAdapter
 public:
 
 	FMeshDescriptionArrayAdapter(const TArray<FMeshMergeData>& InMergeDataArray, const openvdb::math::Transform::Ptr InTransform);
+
 	FMeshDescriptionArrayAdapter(const TArray<const FMeshMergeData*>& InMergeDataPtrArray);
+	
 	FMeshDescriptionArrayAdapter(const TArray<FMeshMergeData>& InMergeDataArray);
 
 	// copy constructor 
@@ -337,7 +323,7 @@ public:
 
 			TriangleCount = MeshDescription->Triangles().Num();
 			FaceSmoothingMasks.AddZeroed(TriangleCount);
-			FStaticMeshOperations::ConvertHardEdgesToSmoothGroup(*MeshDescription, FaceSmoothingMasks);
+			FMeshDescriptionOperations::ConvertHardEdgesToSmoothGroup(*MeshDescription, FaceSmoothingMasks);
 		}
 		TVertexAttributesConstRef<FVector> VertexPositions;
 		TVertexInstanceAttributesConstRef<FVector> VertexInstanceNormals;
@@ -355,21 +341,19 @@ public:
 	* @param FaceNumber          The triangle Id when treating all the meshes as a single mesh
 	* @param OutMeshIdx          The Id of the actual mesh that owns this poly
 	* @param OutLocalFaceNumber  The Id within that mesh of this poly
-	* @param RawPolyValues       Reduce computations by specifying which values will be used from FRawPoly.
 	*
 	* @return  A copy of the raw mesh data associated with this poly.
 	*/
-	FMeshDescriptionArrayAdapter::FRawPoly GetRawPoly(const size_t FaceNumber, int32& OutMeshIdx, int32& OutLocalFaceNumber, const ERawPolyValues RawPolyValues = ERawPolyValues::All ) const;
+	FMeshDescriptionArrayAdapter::FRawPoly GetRawPoly(const size_t FaceNumber, int32& OutMeshIdx, int32& OutLocalFaceNumber) const;
 	
 	/**
 	* Returns a copy of the data associated with this poly in the form of a struct.
 	*
 	* @param FaceNumber          The triangle Id when treating all the meshes as a single mesh
-	* @param RawPolyValues       Reduce computations by specifying which values will be used from FRawPoly.
 	*
 	* @return  A copy of the raw mesh data associated with this poly.
 	*/
-	FMeshDescriptionArrayAdapter::FRawPoly GetRawPoly(const size_t FaceNumber, const ERawPolyValues RawPolyValues = ERawPolyValues::All ) const;
+	FMeshDescriptionArrayAdapter::FRawPoly GetRawPoly(const size_t FaceNumber) const;
 
 	/**
 	* Total number of polygons managed by this class.
@@ -416,11 +400,12 @@ public:
 	}
 
 protected:
-	void Construct(int32 MeshCount, TFunctionRef<const FMeshMergeData* (uint32 Index)> GetMeshFunction);
 
 	const FMeshDescription& GetRawMesh(const size_t FaceNumber, int32& MeshIdx, int32& LocalFaceNumber, const FMeshDescriptionAttributesGetter** OutAttributesGetter) const;
+	
 
 	void ComputeAABB(ProxyLOD::FBBox& InOutBBox);
+	
 protected:
 
 	openvdb::math::Transform::Ptr Transform;
@@ -430,13 +415,11 @@ protected:
 	
 	ProxyLOD::FBBox   BBox;
 
-	std::vector<size_t>                      PolyOffsetArray;
-	std::vector<FMeshDescription*>           RawMeshArray;
+	std::vector<size_t>                 PolyOffsetArray;
+	std::vector<FMeshDescription*> RawMeshArray;
+	std::vector<FMeshDescriptionAttributesGetter> RawMeshArrayData;
 
-	// Use TArray because we need SetNumUninitialized
-	TArray<FMeshDescriptionAttributesGetter> RawMeshArrayData;
-
-	std::vector<const FMeshMergeData*>       MergeDataArray;
+	std::vector<const FMeshMergeData*>  MergeDataArray;
 
 	// Need to build local index buffers for each mesh because the FMeshDescription doesn't natively have the construct.
 	std::vector<std::vector<FVertexInstanceID>> IndexBufferArray;
@@ -588,16 +571,6 @@ void TAOSMesh<SimplifierVertexType>::Resize(int32 VertCount, int32 FaceCount)
 		Indexes = new uint32[NumIndexes];
 	}
 
-}
-
-template <typename SimplifierVertexType>
-void TAOSMesh<SimplifierVertexType>::SetVertexAndIndexCount(uint32 VertCount, uint32 IndexCount)
-{
-	check(VertCount <= NumVertexes);
-	check(IndexCount <= NumIndexes);
-
-	NumVertexes = VertCount;
-	NumIndexes = IndexCount;
 }
 
 template <typename SimplifierVertexType>

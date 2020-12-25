@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "XmppStrophe/XmppPresenceStrophe.h"
 #include "XmppStrophe/XmppConnectionStrophe.h"
@@ -6,7 +6,6 @@
 #include "XmppStrophe/StropheStanzaConstants.h"
 #include "Misc/EmbeddedCommunication.h"
 #include "Containers/BackgroundableTicker.h"
-#include "Stats/Stats.h"
 
 #if WITH_XMPP_STROPHE
 
@@ -79,7 +78,7 @@ bool FXmppPresenceStrophe::ReceiveStanza(const FStropheStanza& IncomingStanza)
 	{
 		Presence.bIsAvailable = true;
 
-		TOptional<const FStropheStanza> StatusTextStanza = IncomingStanza.GetChildStropheStanza(Strophe::SN_STATUS);
+		TOptional<const FStropheStanza> StatusTextStanza = IncomingStanza.GetChild(Strophe::SN_STATUS);
 		if (StatusTextStanza.IsSet())
 		{
 			Presence.StatusStr = StatusTextStanza->GetText();
@@ -87,7 +86,7 @@ bool FXmppPresenceStrophe::ReceiveStanza(const FStropheStanza& IncomingStanza)
 
 		Presence.Status = EXmppPresenceStatus::Online;
 
-		TOptional<const FStropheStanza> StatusEnumStanza = IncomingStanza.GetChildStropheStanza(Strophe::SN_SHOW);
+		TOptional<const FStropheStanza> StatusEnumStanza = IncomingStanza.GetChild(Strophe::SN_SHOW);
 		if (StatusEnumStanza.IsSet())
 		{
 			FString StatusEnum(StatusEnumStanza->GetText());
@@ -109,13 +108,11 @@ bool FXmppPresenceStrophe::ReceiveStanza(const FStropheStanza& IncomingStanza)
 			}
 		}
 
-		TOptional<const FStropheStanza> TimestampStanza = IncomingStanza.GetChildStropheStanza(Strophe::SN_DELAY);
+		TOptional<const FStropheStanza> TimestampStanza = IncomingStanza.GetChild(Strophe::SN_DELAY);
 		if (TimestampStanza.IsSet())
 		{
 			FDateTime::ParseIso8601(*TimestampStanza->GetAttribute(Strophe::SA_STAMP), Presence.SentTime);
 		}
-
-		Presence.ReceivedTime = FDateTime::UtcNow();
 
 		FString UnusedPlatformUserId;
 		Presence.UserJid.ParseResource(Presence.AppId, Presence.Platform, UnusedPlatformUserId);
@@ -212,7 +209,6 @@ TArray<TSharedPtr<FXmppUserPresence>> FXmppPresenceStrophe::GetRosterPresence(co
 
 void FXmppPresenceStrophe::GetRosterMembers(TArray<FXmppUserJid>& Members)
 {
-	check(IsInGameThread());
 	Members.Empty(RosterMembers.Num());
 	for (const TMap<FString, TSharedRef<FXmppUserPresence>>::ElementType& Pair : RosterMembers)
 	{
@@ -222,8 +218,6 @@ void FXmppPresenceStrophe::GetRosterMembers(TArray<FXmppUserJid>& Members)
 
 bool FXmppPresenceStrophe::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FXmppPresenceStrophe_Tick);
-
 	while (!IncomingPresenceUpdates.IsEmpty())
 	{
 		TUniquePtr<FXmppUserPresence> PresencePtr;

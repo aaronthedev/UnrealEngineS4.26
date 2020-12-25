@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TrackEditors/AudioTrackEditor.h"
 #include "Textures/SlateTextureData.h"
@@ -84,13 +84,8 @@ USoundWave* DeriveSoundWave(UMovieSceneAudioSection* AudioSection)
 
 float DeriveUnloopedDuration(UMovieSceneAudioSection* AudioSection)
 {
-	USoundBase* Sound = AudioSection->GetSound();
-	if (Sound && Sound->GetDuration() != INDEFINITELY_LOOPING_DURATION)
-	{
-		return Sound->GetDuration();
-	}
-
 	USoundWave* SoundWave = DeriveSoundWave(AudioSection);
+
 	const float Duration = (SoundWave ? SoundWave->GetDuration() : 0.f);
 	return Duration == INDEFINITELY_LOOPING_DURATION ? SoundWave->Duration : Duration;
 }
@@ -296,17 +291,33 @@ void FAudioThumbnail::GenerateWaveformPreview(TArray<uint8>& OutData, TRange<flo
 	
 	check(SoundWave->NumChannels == 1 || SoundWave->NumChannels == 2);
 
-	uint32 SampleRate;
-	uint16 NumChannels;
-	TArray<uint8> RawPCMData;
-	if (!SoundWave->GetImportedSoundWaveData(RawPCMData, SampleRate, NumChannels))
+	// decompress PCM data if necessary
+	if (SoundWave->RawPCMData == NULL)
 	{
-		UE_LOG(LogMovieScene, Warning, TEXT("Failed to get sound wave data for: %s Waveform will not be visible."), *SoundWave->GetPathName());
-		return;
+		// @todo Sequencer optimize - We might want to generate the data when we generate the texture
+		// and then discard the data afterwards, though that might be a perf hit traded for better memory usage
+		FAudioDevice* AudioDevice = GEngine->GetMainAudioDevice();
+		if (AudioDevice)
+		{
+			AudioDevice->StopAllSounds(true);
+
+			EDecompressionType DecompressionType =  SoundWave->DecompressionType;
+			SoundWave->DecompressionType = DTYPE_Native;
+
+			if ( SoundWave->InitAudioResource( AudioDevice->GetRuntimeFormat( SoundWave ) ) && (SoundWave->DecompressionType != DTYPE_RealTime || SoundWave->CachedRealtimeFirstBuffer == nullptr ) )
+			{
+				FAsyncAudioDecompress TempDecompress(SoundWave, AudioDevice->NumPrecacheFrames);
+				TempDecompress.StartSynchronousTask();
+			}
+
+			SoundWave->DecompressionType = DecompressionType;
+		}
 	}
 
-	const int16* LookupData = (int16*)RawPCMData.GetData();
-	const int32 LookupSize = RawPCMData.Num() * sizeof(uint8) / sizeof(int16);
+	const int32 NumChannels = SoundWave->NumChannels;
+	const int16* LookupData = (int16*)SoundWave->RawPCMData;
+	const int32 LookupDataSize = SoundWave->RawPCMDataSize;
+	const int32 LookupSize = LookupDataSize * sizeof(uint8) / sizeof(int16);
 
 	if (!LookupData || !AudioSection->HasStartFrame() || !AudioSection->HasEndFrame())
 	{
@@ -351,11 +362,6 @@ void FAudioThumbnail::GenerateWaveformPreview(TArray<uint8>& OutData, TRange<flo
 		float NextLookupFractionLooping = FMath::Fmod(NextLookupFraction, 1.f);
 		int32 NextLookupIndex = FMath::TruncToInt(NextLookupFractionLooping * LookupSize);
 		
-		if (!AudioSection->GetLooping() && LookupFraction > 1.f)
-		{
-			break;
-		}
-
 		SampleAudio(SoundWave->NumChannels, LookupData, LookupIndex, NextLookupIndex, LookupSize, MaxAmplitude);
 	}
 
@@ -608,7 +614,6 @@ FAudioSection::FAudioSection( UMovieSceneSection& InSection, TWeakPtr<ISequencer
 	: Section( InSection )
 	, StoredDrawRange(TRange<float>::Empty())
 	, StoredSectionHeight(0.f)
-	, bStoredLooping(true)
 	, Sequencer(InSequencer)
 	, InitialStartOffsetDuringResize(0)
 	, InitialStartTimeDuringResize(0)
@@ -677,20 +682,21 @@ int32 FAudioSection::OnPaintSection( FSequencerSectionPainter& Painter ) const
 		return LayerId;
 	}
 
-	// Add lines where the animation starts and ends/loops
 	FFrameRate TickResolution = TimeToPixelConverter.GetTickResolution();
-	const float AudioDuration = DeriveUnloopedDuration(AudioSection);
+	float AudioDuration = DeriveUnloopedDuration(AudioSection);
 
-	if (AudioDuration > KINDA_SMALL_NUMBER)
+	// Add lines where the animation starts and ends/loops
+	const float SeqLength = AudioDuration - TickResolution.AsSeconds(AudioSection->GetStartOffset());
+
+	if (!FMath::IsNearlyZero(SeqLength, KINDA_SMALL_NUMBER) && SeqLength > 0)
 	{
-		const float MaxOffset = Section.GetRange().Size<FFrameTime>() / TickResolution;
-		const float StartOffsetTime = TickResolution.AsSeconds(AudioSection->GetStartOffset());
-		const float SectionStartTime = TickResolution.AsSeconds(AudioSection->GetInclusiveStartFrame());
+		float MaxOffset = Section.GetRange().Size<FFrameTime>() / TickResolution;
+		float OffsetTime = SeqLength;
+		float StartTime = Section.GetInclusiveStartFrame() / TickResolution;
 
-		float OffsetTime = AudioDuration - StartOffsetTime;
 		while (OffsetTime < MaxOffset)
 		{
-			float OffsetPixel = TimeToPixelConverter.SecondsToPixel(SectionStartTime + OffsetTime);
+			float OffsetPixel = TimeToPixelConverter.SecondsToPixel(StartTime + OffsetTime) - TimeToPixelConverter.SecondsToPixel(StartTime);
 
 			FSlateDrawElement::MakeBox(
 				Painter.DrawElements,
@@ -703,12 +709,7 @@ int32 FAudioSection::OnPaintSection( FSequencerSectionPainter& Painter ) const
 				DrawEffects
 			);
 
-			OffsetTime += AudioDuration;
-
-			if (!AudioSection->GetLooping())
-			{
-				break;
-			}
+			OffsetTime += SeqLength;
 		}
 	}
 
@@ -752,8 +753,7 @@ void FAudioSection::Tick( const FGeometry& AllottedGeometry, const FGeometry& Pa
 			XOffset != StoredXOffset || XSize != StoredXSize || Track->GetColorTint() != StoredColor ||
 			StoredSoundWave != SoundWave ||
 			StoredSectionHeight != GetSectionHeight() ||
-			StoredStartOffset != AudioSection->GetStartOffset() ||
-			bStoredLooping != AudioSection->GetLooping())
+			StoredStartOffset != AudioSection->GetStartOffset())
 		{
 			float DisplayScale = XSize / DrawRange.Size<float>();
 
@@ -835,7 +835,6 @@ void FAudioSection::RegenerateWaveforms(TRange<float> DrawRange, int32 XOffset, 
 	StoredColor = ColorTint;
 	StoredStartOffset = AudioSection->GetStartOffset();
 	StoredSectionHeight = GetSectionHeight();
-	bStoredLooping = AudioSection->GetLooping();
 
 	if (DrawRange.IsDegenerate() || DrawRange.IsEmpty() || AudioSection->GetSound() == NULL)
 	{
@@ -896,8 +895,11 @@ bool FAudioTrackEditor::SupportsType( TSubclassOf<UMovieSceneTrack> Type ) const
 
 bool FAudioTrackEditor::SupportsSequence(UMovieSceneSequence* InSequence) const
 {
-	ETrackSupport TrackSupported = InSequence ? InSequence->IsTrackSupported(UMovieSceneAudioTrack::StaticClass()) : ETrackSupport::NotSupported;
-	return TrackSupported == ETrackSupport::Supported;
+	static UClass* LevelSequenceClass = FindObject<UClass>(ANY_PACKAGE, TEXT("LevelSequence"), true);
+	static UClass* WidgetAnimationClass = FindObject<UClass>(ANY_PACKAGE, TEXT("WidgetAnimation"), true);
+	return InSequence != nullptr &&
+		((LevelSequenceClass != nullptr && InSequence->GetClass()->IsChildOf(LevelSequenceClass)) ||
+		(WidgetAnimationClass != nullptr && InSequence->GetClass()->IsChildOf(WidgetAnimationClass)));
 }
 
 
@@ -1000,11 +1002,7 @@ FReply FAudioTrackEditor::OnDrop(const FDragDropEvent& DragDropEvent, UMovieScen
 		return FReply::Unhandled();
 	}
 	
-	const FScopedTransaction Transaction(LOCTEXT("DropAssets", "Drop Assets"));
-
 	TSharedPtr<FAssetDragDropOp> DragDropOp = StaticCastSharedPtr<FAssetDragDropOp>( Operation );
-
-	FMovieSceneTrackEditor::BeginKeying();
 
 	bool bAnyDropped = false;
 	for (const FAssetData& AssetData : DragDropOp->GetAssets())
@@ -1031,8 +1029,6 @@ FReply FAudioTrackEditor::OnDrop(const FDragDropEvent& DragDropEvent, UMovieScen
 			bAnyDropped = true;
 		}
 	}
-
-	FMovieSceneTrackEditor::EndKeying();
 
 	return bAnyDropped ? FReply::Handled() : FReply::Unhandled();
 }
@@ -1117,7 +1113,6 @@ FKeyPropertyResult FAudioTrackEditor::AddNewMasterSound( FFrameNumber KeyTime, U
 	}
 
 	KeyPropertyResult.bTrackModified = true;
-	KeyPropertyResult.SectionsCreated.Add(NewSection);
 	return KeyPropertyResult;
 }
 
@@ -1147,7 +1142,6 @@ FKeyPropertyResult FAudioTrackEditor::AddNewAttachedSound( FFrameNumber KeyTime,
 				UMovieSceneSection* NewSection = AudioTrack->AddNewSound(Sound, KeyTime);
 				AudioTrack->SetDisplayName(LOCTEXT("AudioTrackName", "Audio"));				
 				KeyPropertyResult.bTrackModified = true;
-				KeyPropertyResult.SectionsCreated.Add(NewSection);
 
 				GetSequencer()->EmptySelection();
 				GetSequencer()->SelectSection(NewSection);

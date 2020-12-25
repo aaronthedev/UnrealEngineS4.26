@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CurveAssetEditor.h"
 #include "Framework/MultiBox/MultiBoxDefs.h"
@@ -75,7 +75,7 @@ struct FCurveAssetEditorTreeItem : public ICurveEditorTreeItem
 			return;
 		}
 
-		TUniquePtr<FRichCurveEditorModelRaw> NewCurve = MakeUnique<FRichCurveEditorModelRaw>(static_cast<FRichCurve*>(EditInfo.CurveToEdit), CurveOwner.Get());
+		TUniquePtr<FRichCurveEditorModel> NewCurve = MakeUnique<FRichCurveEditorModel>(static_cast<FRichCurve*>(EditInfo.CurveToEdit), CurveOwner.Get());
 		NewCurve->SetShortDisplayName(CurveName);
 		NewCurve->SetColor(CurveColor);
 		OutCurveModels.Add(MoveTemp(NewCurve));
@@ -267,7 +267,7 @@ TSharedRef<SDockTab> FCurveAssetEditor::SpawnTab_CurveAsset( const FSpawnTabArgs
 				// Pin all of the created curves by default for now so that they're visible when you open the
 				// editor. Since there's only ever up to 4 channels we don't have to worry about overwhelming
 				// amounts of curves.
-				for (const FCurveModelID& CurveModel : NewItem->GetOrCreateCurves(CurveEditor.Get()))
+				for (const FCurveModelID CurveModel : NewItem->GetOrCreateCurves(CurveEditor.Get()))
 				{
 					CurveEditor->PinCurve(CurveModel);
 				}

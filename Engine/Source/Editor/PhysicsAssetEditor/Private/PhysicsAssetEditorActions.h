@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -50,8 +50,6 @@ public:
 	TSharedPtr<FUICommandInfo> ConstraintRenderingMode_Simulation_AllPositions;
 	TSharedPtr<FUICommandInfo> ConstraintRenderingMode_Simulation_AllLimits;
 	TSharedPtr<FUICommandInfo> RenderOnlySelectedSolid;
-	TSharedPtr<FUICommandInfo> HideSimulatedBodies;
-	TSharedPtr<FUICommandInfo> HideKinematicBodies;
 	TSharedPtr<FUICommandInfo> RenderOnlySelectedConstraints;
 	TSharedPtr<FUICommandInfo> DrawConstraintsAsPoints;
 	TSharedPtr<FUICommandInfo> ToggleMassProperties;
@@ -59,11 +57,6 @@ public:
 	TSharedPtr<FUICommandInfo> DisableCollisionAll;
 	TSharedPtr<FUICommandInfo> EnableCollision;
 	TSharedPtr<FUICommandInfo> EnableCollisionAll;
-	TSharedPtr<FUICommandInfo> PrimitiveQueryAndPhysics;
-	TSharedPtr<FUICommandInfo> PrimitiveQueryOnly;
-	TSharedPtr<FUICommandInfo> PrimitivePhysicsOnly;
-	TSharedPtr<FUICommandInfo> PrimitiveNoCollision;
-	TSharedPtr<FUICommandInfo> PrimitiveContributeToMass;
 	TSharedPtr<FUICommandInfo> WeldToBody;
 	TSharedPtr<FUICommandInfo> AddSphere;
 	TSharedPtr<FUICommandInfo> AddSphyl;
@@ -88,16 +81,8 @@ public:
 	TSharedPtr<FUICommandInfo> DeleteBody;
 	TSharedPtr<FUICommandInfo> DeleteAllBodiesBelow;
 	TSharedPtr<FUICommandInfo> SelectAllBodies;
-	TSharedPtr<FUICommandInfo> SelectSimulatedBodies;
-	TSharedPtr<FUICommandInfo> SelectKinematicBodies;
 	TSharedPtr<FUICommandInfo> SelectAllConstraints;
 	TSharedPtr<FUICommandInfo> ToggleSelectionType;
-	TSharedPtr<FUICommandInfo> ToggleShowSelected;
-	TSharedPtr<FUICommandInfo> ShowSelected;
-	TSharedPtr<FUICommandInfo> HideSelected;
-	TSharedPtr<FUICommandInfo> ToggleShowOnlySelected;
-	TSharedPtr<FUICommandInfo> ShowAll;
-	TSharedPtr<FUICommandInfo> HideAll;
 	TSharedPtr<FUICommandInfo> DeselectAll;
 	TSharedPtr<FUICommandInfo> Mirror;
 	TSharedPtr<FUICommandInfo> NewPhysicalAnimationProfile;
@@ -111,8 +96,6 @@ public:
 	TSharedPtr<FUICommandInfo> AddConstraintToCurrentConstraintProfile;
 	TSharedPtr<FUICommandInfo> RemoveConstraintFromCurrentConstraintProfile;
 	TSharedPtr<FUICommandInfo> ShowBodies;
-	TSharedPtr<FUICommandInfo> ShowSimulatedBodies;
-	TSharedPtr<FUICommandInfo> ShowKinematicBodies;
 	TSharedPtr<FUICommandInfo> ShowConstraints;
 	TSharedPtr<FUICommandInfo> ShowPrimitives;
 

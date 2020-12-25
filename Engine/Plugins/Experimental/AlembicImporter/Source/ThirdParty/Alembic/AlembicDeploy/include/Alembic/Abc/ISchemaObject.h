@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_Abc_ISchemaObject_h
-#define Alembic_Abc_ISchemaObject_h
+#ifndef _Alembic_Abc_ISchemaObject_h_
+#define _Alembic_Abc_ISchemaObject_h_
 
 #include <Alembic/Abc/Foundation.h>
 #include <Alembic/Abc/IObject.h>
@@ -159,11 +159,8 @@ public:
     ISchemaObject( const IObject & iObject,
                    const Argument &iArg0 = Argument(),
                    const Argument &iArg1 = Argument() )
-    : IObject( iObject )
+    : IObject( iObject.getPtr(), GetErrorHandlerPolicy( iObject, iArg0, iArg1 ) )
     {
-        getErrorHandler().setPolicy(
-            GetErrorHandlerPolicy( iObject, iArg0, iArg1 ) );
-
         ALEMBIC_ABC_SAFE_CALL_BEGIN(
             "ISchemaObject::ISchemaObject( wrap )" );
 
@@ -189,11 +186,8 @@ public:
                    WrapExistingFlag iFlag,
                    const Argument &iArg0 = Argument(),
                    const Argument &iArg1 = Argument() )
-    : IObject( iObject )
+    : IObject( iObject.getPtr(), GetErrorHandlerPolicy( iObject, iArg0, iArg1 ) )
     {
-        getErrorHandler().setPolicy(
-            GetErrorHandlerPolicy( iObject, iArg0, iArg1 ) );
-
         ALEMBIC_ABC_SAFE_CALL_BEGIN(
             "ISchemaObject::ISchemaObject( wrapflag )" );
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -53,26 +53,29 @@ class FTimerNode : public Insights::FBaseTreeNode
 {
 public:
 	static const FName TypeName;
-	static constexpr uint32 InvalidTimerId = uint32(-1);
-
-	static const FName GpuGroup;
-	static const FName CpuGroup;
+	//static constexpr uint64 InvalidTimerId = -1;
 
 public:
 	/** Initialization constructor for the timer node. */
-	FTimerNode(uint32 InTimerId, const TCHAR* InName, ETimerNodeType InType);
+	FTimerNode(uint64 InId, const FName InName, const FName InMetaGroupName, ETimerNodeType InType)
+		: FBaseTreeNode(InId, InName, InType == ETimerNodeType::Group)
+		, MetaGroupName(InMetaGroupName)
+		, Type(InType)
+		, bIsHotPath(false)
+	{
+		ResetAggregatedStats();
+	}
 
 	/** Initialization constructor for the group node. */
-	explicit FTimerNode(const FName InGroupName);
-
-	virtual ~FTimerNode();
+	FTimerNode(const FName InGroupName)
+		: FBaseTreeNode(0, InGroupName, true)
+		, Type(ETimerNodeType::Group)
+		, bIsHotPath(false)
+	{
+		ResetAggregatedStats();
+	}
 
 	virtual const FName& GetTypeName() const override { return TypeName; }
-
-	/**
-	 * @return the timer id as provided by analyzer. It can be used as an index.
-	 */
-	uint32 GetTimerId() const { return TimerId; }
 
 	/**
 	 * @return a name of the meta group that this timer node belongs to, taken from the metadata.
@@ -83,24 +86,6 @@ public:
 	 * @return a type of this timer node or ETimerNodeType::Group for group nodes.
 	 */
 	const ETimerNodeType& GetType() const { return Type; }
-
-	/**
-	 * @return color of the node. Used when showing a graph series for a stats counter.
-	 */
-	FLinearColor GetColor() const
-	{
-		return Color;
-	}
-
-	bool IsAddedToGraph() const
-	{
-		return bIsAddedToGraph;
-	}
-
-	void SetAddedToGraphFlag(bool bOnOff)
-	{
-		bIsAddedToGraph = bOnOff;
-	}
 
 	/**
 	 * @return the aggregated stats for this timer.
@@ -114,25 +99,17 @@ public:
 	void SetIsHotPath(bool bOnOff) { bIsHotPath = bOnOff; }
 
 private:
-	/** The timer id provided by analyzer. It can also be used as an index. */
-	const uint32 TimerId;
-
 	/** The name of the meta group that this timer belongs to, based on the timer's metadata; only valid for timer nodes. */
 	const FName MetaGroupName;
 
 	/** Holds the type of this timer. */
 	const ETimerNodeType Type;
 
-	/** Color of the node. */
-	FLinearColor Color;
-
-	bool bIsAddedToGraph;
+	/** Aggregated stats. */
+	Trace::FTimingProfilerAggregatedStats AggregatedStats;
 
 	/** True if this tree node is on the hot path. */
 	bool bIsHotPath;
-
-	/** Aggregated stats. */
-	Trace::FTimingProfilerAggregatedStats AggregatedStats;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

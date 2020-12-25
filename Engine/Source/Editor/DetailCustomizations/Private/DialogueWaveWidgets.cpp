@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DialogueWaveWidgets.h"
 #include "Widgets/Text/STextBlock.h"
@@ -655,7 +655,7 @@ void STargetsSummaryWidget::GenerateContent()
 		{
 			const TSharedRef<SWrapBox> WrapBox =
 				SNew( SWrapBox )
-				.PreferredSize(this, &STargetsSummaryWidget::GetPreferredWidthForWrapping);
+				.PreferredWidth(this, &STargetsSummaryWidget::GetPreferredWidthForWrapping);
 
 			// Show tiles only.
 			for(uint32 i = 0; i < TargetCount; ++i)

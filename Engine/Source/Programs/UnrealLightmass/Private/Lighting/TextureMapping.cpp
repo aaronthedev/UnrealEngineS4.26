@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Raster.h"
@@ -1074,7 +1074,7 @@ void FStaticLightingSystem::TraceToTexelCorner(
 
 	AggregateMesh->IntersectLightRay(TexelRay, true, false, false, MappingContext.RayCache, Intersection);
 
-	bHitBackface = Intersection.bIntersects && Dot3(Intersection.IntersectionVertex.WorldTangentZ, TexelRay.Direction) >= 0 && !Intersection.Mesh->IsTwoSided(Intersection.ElementIndex);
+	bHitBackface = Intersection.bIntersects && Dot3(Intersection.IntersectionVertex.WorldTangentZ, TexelRay.Direction) >= 0;
 
 #if ALLOW_LIGHTMAP_SAMPLE_DEBUGGING
 	if (bDebugThisTexel)
@@ -3295,23 +3295,30 @@ public:
 
 	/** Initialization constructor. */
 	FTexelToNumTrianglesMap(int32 InSizeX, int32 InSizeY) :
+		Data(InSizeX * InSizeY),
 		SizeX(InSizeX),
 		SizeY(InSizeY)
 	{
 		// Clear the map to zero.
-		Data.AddZeroed(SizeX * SizeY);
+		for(int32 Y = 0; Y < SizeY; Y++)
+		{
+			for(int32 X = 0; X < SizeX; X++)
+			{
+				FMemory::Memzero(&(*this)(X,Y), sizeof(FTexelToNumTriangles));
+			}
+		}
 	}
 
 	// Accessors.
 	FTexelToNumTriangles& operator()(int32 X, int32 Y)
 	{
 		const uint32 TexelIndex = Y * SizeX + X;
-		return Data[TexelIndex];
+		return Data(TexelIndex);
 	}
 	const FTexelToNumTriangles& operator()(int32 X, int32 Y) const
 	{
 		const int32 TexelIndex = Y * SizeX + X;
-		return Data[TexelIndex];
+		return Data(TexelIndex);
 	}
 
 	int32 GetSizeX() const { return SizeX; }
@@ -3320,7 +3327,7 @@ public:
 private:
 
 	/** The mapping data. */
-	TArray<FTexelToNumTriangles> Data;
+	TChunkedArray<FTexelToNumTriangles> Data;
 
 	/** The width of the mapping data. */
 	int32 SizeX;

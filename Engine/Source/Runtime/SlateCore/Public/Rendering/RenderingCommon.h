@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -26,13 +26,14 @@ DECLARE_DWORD_COUNTER_STAT_EXTERN(TEXT("Num Cached Elements"), STAT_SlateNumCach
 
 DECLARE_CYCLE_STAT_EXTERN(TEXT("PreFill Buffers RT"), STAT_SlatePreFullBufferRTTime, STATGROUP_Slate, SLATECORE_API);
 
-#define SLATE_USE_32BIT_INDICES !PLATFORM_USES_GLES
+#define SLATE_USE_32BIT_INDICES !PLATFORM_USES_ES2
 
 #if SLATE_USE_32BIT_INDICES
 typedef uint32 SlateIndex;
 #else
 typedef uint16 SlateIndex;
 #endif
+
 /**
  * Draw primitive types                   
  */
@@ -277,11 +278,6 @@ public:
 		TexCoords[3] = InTexCoords.W;
 	}
 
-	void SetPosition(const FVector2D& InPosition)
-	{
-		Position = InPosition;
-	}
-
 private:
 
 	template<ESlateVertexRounding Rounding>
@@ -358,9 +354,6 @@ struct FShortRect
 	uint16 Bottom;
 };
 
-template<> struct TIsPODType<FShortRect> { enum { Value = true }; };
-static_assert(TIsTriviallyDestructible<FShortRect>::Value == true, "FShortRect should be trivially destructible");
-
 #if STATS
 
 struct FRenderingBufferStatTracker
@@ -388,7 +381,6 @@ struct FDrawElementStatTracker
 		DEC_DWORD_STAT_BY(STAT_SlateCachedDrawElementMemory, SizeBytes);
 	}
 };
-
 template<typename StatTracker>
 class FSlateStatTrackingMemoryAllocator : public FDefaultAllocator
 {
@@ -425,6 +417,7 @@ public:
 			if (AllocatedSize)
 			{
 				StatTracker::MemoryFreed(AllocatedSize);
+
 			}
 		}
 

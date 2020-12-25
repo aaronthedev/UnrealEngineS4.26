@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ControlRigVariableDetailsCustomization.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -11,7 +11,7 @@
 #include "Widgets/Input/SCheckBox.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "ControlRigBlueprint.h"
-#include "RigVMModel/RigVMController.h"
+#include "ControlRigController.h"
 
 #define LOCTEXT_NAMESPACE "ControlRigVariableDetailsCustomization"
 
@@ -38,8 +38,7 @@ void FControlRigVariableDetailsCustomization::CustomizeDetails(IDetailLayoutBuil
 	DetailLayout.GetObjectsBeingCustomized(ObjectsBeingCustomized);
 	if (ObjectsBeingCustomized.Num() > 0)
 	{
-		UPropertyWrapper* PropertyWrapper = Cast<UPropertyWrapper>(ObjectsBeingCustomized[0].Get());
-		TWeakFieldPtr<FProperty> PropertyBeingCustomized = PropertyWrapper ? PropertyWrapper->GetProperty() : nullptr;
+		TWeakObjectPtr<UProperty> PropertyBeingCustomized(Cast<UProperty>(ObjectsBeingCustomized[0].Get()));
 		if (PropertyBeingCustomized.IsValid())
 		{
 			const FText AnimationInputText = LOCTEXT("AnimationInput", "Animation Input");
@@ -88,27 +87,109 @@ void FControlRigVariableDetailsCustomization::CustomizeDetails(IDetailLayoutBuil
 	}
 }
 
-bool FControlRigVariableDetailsCustomization::IsAnimationFlagEnabled(TWeakFieldPtr<FProperty> PropertyBeingCustomized) const
+bool FControlRigVariableDetailsCustomization::IsAnimationFlagEnabled(TWeakObjectPtr<UProperty> PropertyBeingCustomized) const
 {
+	if (PropertyBeingCustomized.IsValid() && BlueprintPtr.IsValid())
+	{
+		UControlRigBlueprint* RigBlueprint = Cast<UControlRigBlueprint>(BlueprintPtr.Get());
+		if (RigBlueprint)
+		{
+			if (RigBlueprint->Model)
+			{
+				UProperty* PropertyPtrBeingCustomized = PropertyBeingCustomized.Get();
+				const FControlRigModelNode* Node = RigBlueprint->Model->FindNode(PropertyPtrBeingCustomized->GetFName());
+				if (Node)
+				{
+					return Node->IsParameter();
+				}
+			}
+		}
+	}
 	return false;
 }
 
-ECheckBoxState FControlRigVariableDetailsCustomization::IsAnimationOutputChecked(TWeakFieldPtr<FProperty> PropertyBeingCustomized) const
+ECheckBoxState FControlRigVariableDetailsCustomization::IsAnimationOutputChecked(TWeakObjectPtr<UProperty> PropertyBeingCustomized) const
 {
+	if (PropertyBeingCustomized.IsValid() && BlueprintPtr.IsValid())
+	{
+		UControlRigBlueprint* RigBlueprint = Cast<UControlRigBlueprint>(BlueprintPtr.Get());
+		if (RigBlueprint)
+		{
+			if (RigBlueprint->Model)
+			{
+				UProperty* PropertyPtrBeingCustomized = PropertyBeingCustomized.Get();
+				const FControlRigModelNode* Node = RigBlueprint->Model->FindNode(PropertyPtrBeingCustomized->GetFName());
+				if (Node)
+				{
+					if (Node->ParameterType == EControlRigModelParameterType::Output)
+					{
+						return ECheckBoxState::Checked;
+					}
+				}
+			}
+		}
+	}
+
 	return ECheckBoxState::Unchecked;
 }
 
-void FControlRigVariableDetailsCustomization::HandleAnimationOutputCheckStateChanged(ECheckBoxState CheckBoxState, TWeakFieldPtr<FProperty> PropertyBeingCustomized)
+void FControlRigVariableDetailsCustomization::HandleAnimationOutputCheckStateChanged(ECheckBoxState CheckBoxState, TWeakObjectPtr<UProperty> PropertyBeingCustomized)
 {
+	if (PropertyBeingCustomized.IsValid() && BlueprintPtr.IsValid())
+	{
+		UControlRigBlueprint* RigBlueprint = Cast<UControlRigBlueprint>(BlueprintPtr.Get());
+		if (RigBlueprint)
+		{
+			if (RigBlueprint->ModelController)
+			{
+				UProperty* PropertyPtrBeingCustomized = PropertyBeingCustomized.Get();
+				RigBlueprint->ModelController->SetParameterType(PropertyPtrBeingCustomized->GetFName(), CheckBoxState == ECheckBoxState::Checked ? EControlRigModelParameterType::Output : EControlRigModelParameterType::Hidden);
+				FBlueprintEditorUtils::ReconstructAllNodes(BlueprintPtr.Get());
+			}
+		}
+	}
 }
 
-ECheckBoxState FControlRigVariableDetailsCustomization::IsAnimationInputChecked(TWeakFieldPtr<FProperty> PropertyBeingCustomized) const
+ECheckBoxState FControlRigVariableDetailsCustomization::IsAnimationInputChecked(TWeakObjectPtr<UProperty> PropertyBeingCustomized) const
 {
+	if (PropertyBeingCustomized.IsValid() && BlueprintPtr.IsValid())
+	{
+		UControlRigBlueprint* RigBlueprint = Cast<UControlRigBlueprint>(BlueprintPtr.Get());
+		if (RigBlueprint)
+		{
+			if (RigBlueprint->Model)
+			{
+				UProperty* PropertyPtrBeingCustomized = PropertyBeingCustomized.Get();
+				const FControlRigModelNode* Node = RigBlueprint->Model->FindNode(PropertyPtrBeingCustomized->GetFName());
+				if (Node)
+				{
+					if (Node->ParameterType == EControlRigModelParameterType::Input)
+					{
+						return ECheckBoxState::Checked;
+					}
+				}
+			}
+		}
+	}
+
 	return ECheckBoxState::Unchecked;
 }
 
-void FControlRigVariableDetailsCustomization::HandleAnimationInputCheckStateChanged(ECheckBoxState CheckBoxState, TWeakFieldPtr<FProperty> PropertyBeingCustomized)
+void FControlRigVariableDetailsCustomization::HandleAnimationInputCheckStateChanged(ECheckBoxState CheckBoxState, TWeakObjectPtr<UProperty> PropertyBeingCustomized)
 {
+	if (PropertyBeingCustomized.IsValid() && BlueprintPtr.IsValid())
+	{
+		UControlRigBlueprint* RigBlueprint = Cast<UControlRigBlueprint>(BlueprintPtr.Get());
+		if (RigBlueprint)
+		{
+			if (RigBlueprint->ModelController)
+			{
+				UProperty* PropertyPtrBeingCustomized = PropertyBeingCustomized.Get();
+				RigBlueprint->ModelController->SetParameterType(PropertyPtrBeingCustomized->GetFName(), CheckBoxState == ECheckBoxState::Checked ? EControlRigModelParameterType::Input : EControlRigModelParameterType::Hidden);
+				FBlueprintEditorUtils::ReconstructAllNodes(BlueprintPtr.Get());
+			}
+		}
+	}
 }
 
 #undef LOCTEXT_NAMESPACE

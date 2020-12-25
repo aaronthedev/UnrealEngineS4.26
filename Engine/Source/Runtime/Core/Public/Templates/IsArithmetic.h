@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -24,8 +24,6 @@ template <> struct TIsArithmetic<int8>        { enum { Value = true }; };
 template <> struct TIsArithmetic<int16>       { enum { Value = true }; };
 template <> struct TIsArithmetic<int32>       { enum { Value = true }; };
 template <> struct TIsArithmetic<int64>       { enum { Value = true }; };
-template <> struct TIsArithmetic<long>        { enum { Value = true }; };
-template <> struct TIsArithmetic<unsigned long> { enum { Value = true }; };
 template <> struct TIsArithmetic<bool>        { enum { Value = true }; };
 template <> struct TIsArithmetic<WIDECHAR>    { enum { Value = true }; };
 template <> struct TIsArithmetic<ANSICHAR>    { enum { Value = true }; };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Tests/Mock/FileSystem.mock.h"
@@ -36,7 +36,7 @@ namespace BuildPatchServices
 
 		void Serialize(void* Data, int64 Num)
 		{
-			if (Num && !IsError())
+			if (Num && !ArIsError)
 			{
 				if (Offset + Num <= TotalSize())
 				{
@@ -45,7 +45,7 @@ namespace BuildPatchServices
 				}
 				else
 				{
-					SetError();
+					ArIsError = true;
 				}
 			}
 		}

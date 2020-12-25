@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,10 +14,10 @@ struct FPropertyAndParent
 	FPropertyAndParent(const TSharedRef<IPropertyHandle>& InPropertyHandle, const TArray< TWeakObjectPtr< UObject > >& InObjects);
 
 	/** The property always exists */
-	const FProperty& Property;
+	const UProperty& Property;
 
 	/** The entire chain of parent properties, all the way to the property root. ParentProperties[0] is the immediate parent.*/
-	TArray< const FProperty* > ParentProperties;
+	TArray< const UProperty* > ParentProperties;
 
 	/** The objects for these properties */
 	TArray< TWeakObjectPtr< UObject > > Objects;
@@ -45,16 +45,16 @@ DECLARE_DELEGATE_RetVal( TSharedRef<class IDetailCustomization>, FOnGetDetailCus
 DECLARE_DELEGATE_RetVal( TSharedRef<class IPropertyTypeCustomization>, FOnGetPropertyTypeCustomizationInstance );
 
 /** Notification for when a property view changes */
-DECLARE_DELEGATE_TwoParams( FOnObjectArrayChanged, const FString&, const TArray<UObject*>& );
+DECLARE_DELEGATE_TwoParams( FOnObjectArrayChanged, const FString&, const TArray< TWeakObjectPtr< UObject > >& );
 
 /** Notification for when displayed properties changes (for instance, because the user has filtered some properties */
 DECLARE_DELEGATE( FOnDisplayedPropertiesChanged );
 
 /** Notification for when a property selection changes. */
-DECLARE_DELEGATE_OneParam( FOnPropertySelectionChanged, FProperty* )
+DECLARE_DELEGATE_OneParam( FOnPropertySelectionChanged, UProperty* )
 
 /** Notification for when a property is double clicked by the user*/
-DECLARE_DELEGATE_OneParam( FOnPropertyDoubleClicked, FProperty* )
+DECLARE_DELEGATE_OneParam( FOnPropertyDoubleClicked, UProperty* )
 
 /** Notification for when a property is clicked by the user*/
 DECLARE_DELEGATE_OneParam( FOnPropertyClicked, const TSharedPtr< class FPropertyPath >& )
@@ -73,30 +73,6 @@ DECLARE_DELEGATE_RetVal(bool, FIsPropertyEditingEnabled );
  * unsafe)
  */
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnFinishedChangingProperties, const FPropertyChangedEvent&);
-
-struct FOnGenerateGlobalRowExtensionArgs
-{
-	enum class EWidgetPosition : uint8
-	{
-		Left,
-		Right
-	};
-
-	/** The detail row's property handle. */
-	TSharedPtr<IPropertyHandle> PropertyHandle;
-	/** The detail row's property node. */
-	TSharedPtr<class FPropertyNode> PropertyNode;
-	/** The detail row's owner tree node. */
-	TWeakPtr<class IDetailTreeNode> OwnerTreeNode;
-};
-
-/**
- * Delegate called to get add an extension to a property row's name column.
- * To use, bind an handler to the delegate that adds an extension to the out array parameter.
- * When called, EWidgetPosition indicates the position for which the delegate is gathering extensions.
- * ie. The favorite system is implemented by adding the star widget when the delegate is called with the left position.
- */
-DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnGenerateGlobalRowExtension, const FOnGenerateGlobalRowExtensionArgs& /*InArgs*/, FOnGenerateGlobalRowExtensionArgs::EWidgetPosition /*InWidgetPosition*/, TArray<TSharedRef<class SWidget>>& /*OutExtensions*/);
 
 /**
  * Callback executed to query the custom layout of details

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BlueprintFieldNodeSpawner.h"
 #include "UObject/Package.h"
@@ -6,15 +6,15 @@
 #define LOCTEXT_NAMESPACE "BlueprintFieldNodeSpawner"
 
 //------------------------------------------------------------------------------
-UBlueprintFieldNodeSpawner* UBlueprintFieldNodeSpawner::Create(TSubclassOf<UK2Node> NodeClass, FFieldVariant Field, UObject* Outer/* = nullptr*/, UClass const* OwnerClass)
+UBlueprintFieldNodeSpawner* UBlueprintFieldNodeSpawner::Create(TSubclassOf<UK2Node> NodeClass, UField const* const Field, UObject* Outer/* = nullptr*/, UClass const* OwnerClass)
 {
 	if (Outer == nullptr)
 	{
 		Outer = GetTransientPackage();
 	}
 	UBlueprintFieldNodeSpawner* NodeSpawner = NewObject<UBlueprintFieldNodeSpawner>(Outer);
-	NodeSpawner->SetField(Field);
-	NodeSpawner->NodeClass = NodeClass;
+	NodeSpawner->Field      = Field;
+	NodeSpawner->NodeClass  = NodeClass;
 	NodeSpawner->OwnerClass = OwnerClass;
 	
 	return NodeSpawner;
@@ -22,9 +22,9 @@ UBlueprintFieldNodeSpawner* UBlueprintFieldNodeSpawner::Create(TSubclassOf<UK2No
 
 //------------------------------------------------------------------------------
 UBlueprintFieldNodeSpawner::UBlueprintFieldNodeSpawner(FObjectInitializer const& ObjectInitializer)
-	: Super(ObjectInitializer)	
-	, OwnerClass(nullptr)
+	: Super(ObjectInitializer)
 	, Field(nullptr)
+	, OwnerClass(nullptr)
 {
 }
 
@@ -32,15 +32,7 @@ UBlueprintFieldNodeSpawner::UBlueprintFieldNodeSpawner(FObjectInitializer const&
 FBlueprintNodeSignature UBlueprintFieldNodeSpawner::GetSpawnerSignature() const
 {
 	FBlueprintNodeSignature SpawnerSignature(NodeClass);
-	if (Field)
-	{
-		SpawnerSignature.AddSubObject(Field);
-	}
-	else
-	{
-		check(Property.Get());
-		SpawnerSignature.AddKeyValue(Property->GetPathName());
-	}
+	SpawnerSignature.AddSubObject(Field);
 
 	return SpawnerSignature;
 }
@@ -48,7 +40,7 @@ FBlueprintNodeSignature UBlueprintFieldNodeSpawner::GetSpawnerSignature() const
 //------------------------------------------------------------------------------
 UEdGraphNode* UBlueprintFieldNodeSpawner::Invoke(UEdGraph* ParentGraph, FBindingSet const& Bindings, FVector2D const Location) const
 {
-	auto PostSpawnSetupLambda = [](UEdGraphNode* NewNode, bool bIsTemplateNode, FFieldVariant InField, FSetNodeFieldDelegate SetFieldDelegate, FCustomizeNodeDelegate UserDelegate)
+	auto PostSpawnSetupLambda = [](UEdGraphNode* NewNode, bool bIsTemplateNode, UField const* InField, FSetNodeFieldDelegate SetFieldDelegate, FCustomizeNodeDelegate UserDelegate)
 	{
 		SetFieldDelegate.ExecuteIfBound(NewNode, InField);
 		UserDelegate.ExecuteIfBound(NewNode, bIsTemplateNode);
@@ -59,21 +51,9 @@ UEdGraphNode* UBlueprintFieldNodeSpawner::Invoke(UEdGraph* ParentGraph, FBinding
 }
 
 //------------------------------------------------------------------------------
-FFieldVariant UBlueprintFieldNodeSpawner::GetField() const
+UField const* UBlueprintFieldNodeSpawner::GetField() const
 {
-	return Field ? FFieldVariant(Field) : FFieldVariant(Property.Get());
-}
-
-void UBlueprintFieldNodeSpawner::SetField(FFieldVariant InField)
-{
-	if (InField.IsUObject())
-	{
-		Field = InField.Get<UField>();
-	}
-	else
-	{
-		Property = InField.Get<FProperty>();
-	}
+	return Field;
 }
 
 #undef LOCTEXT_NAMESPACE

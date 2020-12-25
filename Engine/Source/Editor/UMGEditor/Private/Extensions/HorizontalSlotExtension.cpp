@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Extensions/HorizontalSlotExtension.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
@@ -71,11 +71,7 @@ FReply FHorizontalSlotExtension::HandleShift(int32 ShiftAmount)
 	EndTransaction();
 
 	//TODO UMG Reorder the live slot without rebuilding the structure
-
-	if (UWidgetBlueprint* BlueprintPtr = Blueprint.Get())
-	{
-		FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(BlueprintPtr);
-	}
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 
 	return FReply::Handled();
 }

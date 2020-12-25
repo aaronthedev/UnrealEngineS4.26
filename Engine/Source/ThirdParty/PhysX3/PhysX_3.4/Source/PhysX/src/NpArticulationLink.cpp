@@ -41,9 +41,9 @@
 using namespace physx;
 
 // PX_SERIALIZATION
-void NpArticulationLink::requiresObjects(PxProcessPxBaseCallback& c)
+void NpArticulationLink::requires(PxProcessPxBaseCallback& c)
 {
-	NpArticulationLinkT::requiresObjects(c);
+	NpArticulationLinkT::requires(c);
 	
 	if(mInboundJoint)
 		c.process(*mInboundJoint);

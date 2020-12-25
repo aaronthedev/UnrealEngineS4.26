@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieScene/MovieSceneLiveLinkStructProperties.h"
 
@@ -9,35 +9,35 @@
 
 namespace LiveLinkPropertiesUtils
 {
-	TSharedPtr<IMovieSceneLiveLinkPropertyHandler> CreateHandlerFromProperty(FProperty* InProperty, const FLiveLinkStructPropertyBindings& InBinding, FLiveLinkPropertyData* InPropertyData)
+	TSharedPtr<IMovieSceneLiveLinkPropertyHandler> CreateHandlerFromProperty(UProperty* InProperty, const FLiveLinkStructPropertyBindings& InBinding, FLiveLinkPropertyData* InPropertyData)
 	{
-		if (InProperty->IsA(FFloatProperty::StaticClass()))
+		if (InProperty->IsA(UFloatProperty::StaticClass()))
 		{
 			return MakeShared<FMovieSceneLiveLinkPropertyHandler<float>>(InBinding, InPropertyData);
 		}
-		else if (InProperty->IsA(FIntProperty::StaticClass()))
+		else if (InProperty->IsA(UIntProperty::StaticClass()))
 		{
 			return MakeShared<FMovieSceneLiveLinkPropertyHandler<int32>>(InBinding, InPropertyData);
 		}
-		else if (InProperty->IsA(FBoolProperty::StaticClass()))
+		else if (InProperty->IsA(UBoolProperty::StaticClass()))
 		{
 			return MakeShared<FMovieSceneLiveLinkPropertyHandler<bool>>(InBinding, InPropertyData);
 		}
-		else if (InProperty->IsA(FStrProperty::StaticClass()))
+		else if (InProperty->IsA(UStrProperty::StaticClass()))
 		{
 			return MakeShared<FMovieSceneLiveLinkPropertyHandler<FString>>(InBinding, InPropertyData);
 		}
-		else if (InProperty->IsA(FByteProperty::StaticClass()))
+		else if (InProperty->IsA(UByteProperty::StaticClass()))
 		{
 			return MakeShared<FMovieSceneLiveLinkPropertyHandler<uint8>>(InBinding, InPropertyData);
 		}
-		else if (InProperty->IsA(FEnumProperty::StaticClass()))
+		else if (InProperty->IsA(UEnumProperty::StaticClass()))
 		{
 			return MakeShared<FMovieSceneLiveLinkEnumHandler>(InBinding, InPropertyData);
 		}
-		else if (InProperty->IsA(FStructProperty::StaticClass()))
+		else if (InProperty->IsA(UStructProperty::StaticClass()))
 		{
-			if (FStructProperty* StructProperty = CastField<FStructProperty>(InProperty))
+			if (UStructProperty* StructProperty = Cast<UStructProperty>(InProperty))
 			{
 				if (StructProperty->Struct->GetFName() == NAME_Transform)
 				{
@@ -60,15 +60,15 @@ namespace LiveLinkPropertiesUtils
 	TSharedPtr<IMovieSceneLiveLinkPropertyHandler> CreatePropertyHandler(const UScriptStruct& InStruct, FLiveLinkPropertyData* InPropertyData)
 	{
 		FLiveLinkStructPropertyBindings PropertyBinding(InPropertyData->PropertyName, InPropertyData->PropertyName.ToString());
-		FProperty* PropertyPtr = PropertyBinding.GetProperty(InStruct);
+		UProperty* PropertyPtr = PropertyBinding.GetProperty(InStruct);
 		if (PropertyPtr == nullptr)
 		{
 			return TSharedPtr<IMovieSceneLiveLinkPropertyHandler>();
 		}
 
-		if (PropertyPtr->IsA(FArrayProperty::StaticClass()))
+		if (PropertyPtr->IsA(UArrayProperty::StaticClass()))
 		{
-			return CreateHandlerFromProperty(CastFieldChecked<FArrayProperty>(PropertyPtr)->Inner, PropertyBinding, InPropertyData);
+			return CreateHandlerFromProperty(CastChecked<UArrayProperty>(PropertyPtr)->Inner, PropertyBinding, InPropertyData);
 		}
 		else
 		{

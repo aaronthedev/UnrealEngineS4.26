@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Net/VoiceConfig.h"
 #include "Engine/World.h"
@@ -19,62 +19,6 @@ static TAutoConsoleVariable<float> CVarVoiceSilenceDetectionReleaseTime(TEXT("vo
 static TAutoConsoleVariable<float> CVarVoiceSilenceDetectionThreshold(TEXT("voice.SilenceDetectionThreshold"),
 	0.08f,
 	TEXT("Threshold to be set for the VOIP microphone's silence detection algorithm.\n"),	
-	ECVF_Default);
-
-static float MicInputGainCvar = 1.0f;
-FAutoConsoleVariableRef CVarMicInputGain(
-	TEXT("voice.MicInputGain"),
-	MicInputGainCvar,
-	TEXT("The default gain amount in linear amplitude.\n")
-	TEXT("Value: Gain multiplier."),
-	ECVF_Default);
-
-static float MicStereoBiasCvar = 0.0f;
-FAutoConsoleVariableRef CVarMicStereoBias(
-	TEXT("voice.MicStereoBias"),
-	MicStereoBiasCvar,
-	TEXT("This will attenuate the left or right channel.\n")
-	TEXT("0.0: Centered. 1.0: right channel only. -1.0: Left channel only."),
-	ECVF_Default);
-
-static float JitterBufferDelayCvar = 0.3f;
-FAutoConsoleVariableRef CVarJitterBufferDelay(
-	TEXT("voice.JitterBufferDelay"),
-	JitterBufferDelayCvar,
-	TEXT("The default amount of audio we buffer, in seconds, before we play back audio. Decreasing this value will decrease latency but increase the potential for underruns.\n")
-	TEXT("Value: Number of seconds of audio we buffer."),
-	ECVF_Default);
-
-static float MicNoiseGateThresholdCvar = 0.08f;
-FAutoConsoleVariableRef CVarMicNoiseGateThreshold(
-	TEXT("voice.MicNoiseGateThreshold"),
-	MicNoiseGateThresholdCvar,
-	TEXT("Our threshold, in linear amplitude, for  our noise gate on input. Similar to voice.SilenceDetectionThreshold, except that audio quieter than our noise gate threshold will still output silence.\n")
-	TEXT("Value: Number of seconds of audio we buffer."),
-	ECVF_Default);
-
-static float MicNoiseGateAttackTimeCvar = 0.05f;
-FAutoConsoleVariableRef CVarMicNoiseGateAttackTime(
-	TEXT("voice.MicNoiseAttackTime"),
-	MicNoiseGateAttackTimeCvar,
-	TEXT("Sets the fade-in time for our noise gate.\n")
-	TEXT("Value: Number of seconds we fade in over."),
-	ECVF_Default);
-
-static float MicNoiseGateReleaseTimeCvar = 0.30f;
-FAutoConsoleVariableRef CVarMicNoiseGateReleaseTime(
-	TEXT("voice.MicNoiseReleaseTime"),
-	MicNoiseGateReleaseTimeCvar,
-	TEXT("Sets the fade out time for our noise gate.\n")
-	TEXT("Value: Number of seconds we fade out over."),
-	ECVF_Default);
-
-static int32 NumVoiceChannelsCvar = 1;
-FAutoConsoleVariableRef CVarNumVoiceChannels(
-	TEXT("voice.NumChannels"),
-	NumVoiceChannelsCvar,
-	TEXT("Default number of channels to capture from mic input, encode to Opus, and output. Can be set to 1 or 2.\n")
-	TEXT("Value: Number of channels to use for VOIP input and output."),
 	ECVF_Default);
 
 int32 UVOIPStatics::GetVoiceSampleRate()
@@ -117,11 +61,6 @@ int32 UVOIPStatics::GetVoiceSampleRate()
 #endif
 }
 
-int32 UVOIPStatics::GetVoiceNumChannels()
-{
-	return FMath::Clamp<int32>(NumVoiceChannelsCvar, 1, 2);
-}
-
 uint32 UVOIPStatics::GetMaxVoiceDataSize()
 {
 	int32 SampleRate = GetVoiceSampleRate();
@@ -131,16 +70,16 @@ uint32 UVOIPStatics::GetMaxVoiceDataSize()
 	{
 		case 24000:
 		{
-			return 14 * 1024 * GetVoiceNumChannels();
+			return 14 * 1024;
 		}
 		case 48000:
 		{
-			return 32 * 1024 * GetVoiceNumChannels();
+			return 32 * 1024;
 		}
 		default:
 		case 16000:
 		{
-			return 8 * 1024 * GetVoiceNumChannels();
+			return 8 * 1024;
 		}
 	}
 }
@@ -151,7 +90,7 @@ uint32 UVOIPStatics::GetMaxUncompressedVoiceDataSizePerChannel()
 	// This amounts to approximates a second of audio for the minimum voice engine tick frequency.
 	// At 48 kHz, DirectSound will occasionally have to load up to 256 samples into the overflow buffer.
 	// This is the reason for the added 1024 bytes.
-	return GetVoiceSampleRate() * sizeof(uint16) * GetVoiceNumChannels() + 1024 * GetVoiceNumChannels();
+	return GetVoiceSampleRate() * sizeof(uint16) + 1024;
 }
 
 uint32 UVOIPStatics::GetMaxCompressedVoiceDataSize()
@@ -163,16 +102,16 @@ uint32 UVOIPStatics::GetMaxCompressedVoiceDataSize()
 	{
 		case 24000:
 		{
-			return 2 * 1024 * GetVoiceNumChannels();
+			return 2 * 1024;
 		}
 		case 48000:
 		{
-			return 4 * 1024 * GetVoiceNumChannels();
+			return 4 * 1024;
 		}
 		default:
 		case 16000:
 		{
-			return 1 * 1024 * GetVoiceNumChannels();
+			return 1 * 1024;
 		}
 	}
 }
@@ -190,12 +129,18 @@ EAudioEncodeHint UVOIPStatics::GetAudioEncodingHint()
 
 float UVOIPStatics::GetBufferingDelay()
 {
-	return JitterBufferDelayCvar;
-}
-
-float UVOIPStatics::GetVoiceNoiseGateLevel()
-{
-	return MicNoiseGateThresholdCvar;
+	static bool bRetrievedBufferingDelay = false;
+	static float DesiredBufferDelay = 0.2f;
+	if (!bRetrievedBufferingDelay)
+	{
+		bRetrievedBufferingDelay = true;
+		float SettingsBufferDelay;
+		if (GConfig->GetFloat(TEXT("/Script/Engine.AudioSettings"), TEXT("VoipBufferingDelay"), SettingsBufferDelay, GEngineIni) && SettingsBufferDelay > 0.0f)
+		{
+			DesiredBufferDelay = SettingsBufferDelay;
+		}
+	}
+	return DesiredBufferDelay;
 }
 
 int32 UVOIPStatics::GetNumBufferedPackets()
@@ -281,9 +226,9 @@ bool UVOIPStatics::IsVOIPTalkerStillAlive(UVOIPTalker* InTalker)
 
 void UVOIPStatics::ResetPlayerVoiceTalker(APlayerState* InPlayerState)
 {
-	if (InPlayerState && InPlayerState->GetUniqueId().IsValid())
+	if (InPlayerState && InPlayerState->UniqueId.IsValid())
 	{
-		VoiceTalkerMap.Remove(InPlayerState->GetUniqueId());
+		VoiceTalkerMap.Remove(InPlayerState->UniqueId);
 	}
 }
 
@@ -331,10 +276,10 @@ void UVOIPTalker::RegisterWithPlayerState(APlayerState* OwningState)
 		UnregisterFromVoiceTalkerMap();
 	}
 
-	if (OwningState->GetUniqueId().IsValid())
+	if (OwningState->UniqueId.IsValid())
 	{
-		UVOIPStatics::SetVOIPTalkerForPlayer(OwningState->GetUniqueId(), this);
-		PlayerId = OwningState->GetUniqueId();
+		UVOIPStatics::SetVOIPTalkerForPlayer(OwningState->UniqueId, this);
+		PlayerId = OwningState->UniqueId;
 		bIsRegistered = true;
 	}
 }

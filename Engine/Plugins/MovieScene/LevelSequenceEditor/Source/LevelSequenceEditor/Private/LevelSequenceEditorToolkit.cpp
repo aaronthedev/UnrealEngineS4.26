@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LevelSequenceEditorToolkit.h"
 #include "Misc/LevelSequencePlaybackContext.h"
@@ -212,8 +212,8 @@ void FLevelSequenceEditorToolkit::Initialize(const EToolkitMode::Type Mode, cons
 		TSharedPtr<FTabManager> LevelEditorTabManager = LevelEditorModule.GetLevelEditorTabManager();
 		if (LevelEditorTabManager->FindExistingLiveTab(FName("LevelEditorSceneOutliner")).IsValid())
 		{
-			LevelEditorTabManager->TryInvokeTab(FName("LevelEditorSceneOutliner"))->RequestCloseTab();
-			LevelEditorTabManager->TryInvokeTab(FName("LevelEditorSceneOutliner"));
+			LevelEditorTabManager->InvokeTab(FName("LevelEditorSceneOutliner"))->RequestCloseTab();
+			LevelEditorTabManager->InvokeTab(FName("LevelEditorSceneOutliner"));
 		}
 	}
 	
@@ -511,14 +511,14 @@ void FLevelSequenceEditorToolkit::AddDefaultTracksForActor(AActor& Actor, const 
 					break;
 				}
 
-				FProperty* Property = PropertyOwnerClass->FindPropertyByName(*PropertyName);
+				UProperty* Property = PropertyOwnerClass->FindPropertyByName(*PropertyName);
 
 				if (Property != nullptr)
 				{
 					PropertyPath->AddProperty(FPropertyInfo(Property));
 				}
 
-				FStructProperty* StructProperty = CastField<FStructProperty>(Property);
+				UStructProperty* StructProperty = Cast<UStructProperty>(Property);
 
 				if (StructProperty != nullptr)
 				{
@@ -526,7 +526,7 @@ void FLevelSequenceEditorToolkit::AddDefaultTracksForActor(AActor& Actor, const 
 					continue;
 				}
 
-				FObjectProperty* ObjectProperty = CastField<FObjectProperty>(Property);
+				UObjectProperty* ObjectProperty = Cast<UObjectProperty>(Property);
 
 				if (ObjectProperty != nullptr)
 				{
@@ -537,7 +537,7 @@ void FLevelSequenceEditorToolkit::AddDefaultTracksForActor(AActor& Actor, const 
 				break;
 			}
 
-			if (!Sequencer->CanKeyProperty(FCanKeyPropertyParams(PropertyOwner->GetClass(), *PropertyPath)))
+			if (!Sequencer->CanKeyProperty(FCanKeyPropertyParams(Actor.GetClass(), *PropertyPath)))
 			{
 				continue;
 			}

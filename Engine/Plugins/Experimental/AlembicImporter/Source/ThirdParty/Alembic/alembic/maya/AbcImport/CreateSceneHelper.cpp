@@ -84,20 +84,7 @@ namespace
 
         MDagPath dpShape;
         status = mFnNode.getPath(dpShape);
-        
-	// The mesh may be an intermediate object if it's deformed. We should
-        // assign shading groups to the faces of the deformed mesh instead.
-        // Because the deformed mesh is the mesh for shading.
-        if (mFnNode.isIntermediateObject())
-        {
-            // Only non-intermediate shapes are used for shading. We call
-            // extendToShape() to find the non-intermediate shape.
-            MDagPath shadedShape = dpShape;
-            shadedShape.pop();
-            if (shadedShape.extendToShape())
-                dpShape = shadedShape;
-        }
-        
+
         // Empty the set
         MFnSet         fnSet( iSet );
         MSelectionList selList;
@@ -220,7 +207,8 @@ namespace
                     MFnTypedAttribute attr;
                     MObject attrObj = attr.create(attrName, attrName,
                                               MFnData::kString, strAttrObject);
-                    fnDepNode.addAttribute(attrObj);
+                    fnDepNode.addAttribute(attrObj,
+                                         MFnDependencyNode::kLocalDynamicAttr);
                     abcFacesetNamePlug = fnDepNode.findPlug(attrObj, true);
                 }
                 abcFacesetNamePlug.setValue(faceSetName);
@@ -290,7 +278,7 @@ namespace
             Alembic::Util::int8_t visVal;
             iVisProp.get(&visVal);
             MFnDependencyNode dep(iParent);
-            MPlug plug = dep.findPlug("visibility", true);
+            MPlug plug = dep.findPlug("visibility");
             if (!plug.isNull())
             {
                 plug.setBool(visVal != 0);
@@ -344,9 +332,9 @@ namespace
         // Set the intermediate mesh as Maya intermediate object and
         // connect it to the inMesh plug
         modifier.renameNode(ioFn.object(), fn.name() + "Orig");
-        modifier.newPlugValueBool(ioFn.findPlug("intermediateObject", true), true);
-        modifier.newPlugValueBool(ioFn.findPlug(aioAttr, true), true);
-        modifier.connect(ioFn.findPlug("outMesh", true), fn.findPlug("inMesh", true));
+        modifier.newPlugValueBool(ioFn.findPlug("intermediateObject"), true);
+        modifier.newPlugValueBool(ioFn.findPlug(aioAttr), true);
+        modifier.connect(ioFn.findPlug("outMesh"), fn.findPlug("inMesh"));
         modifier.doIt();
     }
 
@@ -355,7 +343,7 @@ namespace
         // When merge with a referenced node with history, delete the
         // previous intermediate mesh that is created by Alembic plug-in.
         MPlugArray sources;
-        fn.findPlug("inMesh", true).connectedTo(sources, true, false);
+        fn.findPlug("inMesh").connectedTo(sources, true, false);
         if (sources.length() > 0)
         {
             MObject io = sources[0].node();
@@ -440,7 +428,6 @@ bool CreateSceneVisitor::hasSampledData()
 {
 
     // Currently there's no support for bringing in particle system simulation
-	// Now there is !
     return (mData.mPropList.size() > 0
         || mData.mXformList.size() > 0
         || mData.mSubDList.size() > 0
@@ -448,7 +435,6 @@ bool CreateSceneVisitor::hasSampledData()
         || mData.mCameraList.size() > 0
         || mData.mNurbsList.size() > 0
         || mData.mCurvesList.size() > 0
-        || mData.mPointsList.size() > 0
         || mData.mLocList.size() > 0);
 }
 
@@ -1027,7 +1013,7 @@ MStatus CreateSceneVisitor::operator()(Alembic::AbcGeom::ICurves & iNode)
 
         if (!fncurve.object().isNull())
         {
-            MPlug dstPlug = fncurve.findPlug("create", true);
+            MPlug dstPlug = fncurve.findPlug("create");
             disconnectAllPlugsTo(dstPlug);
             disconnectProps(fncurve, mData.mPropList, firstProp);
             addToPropList(firstProp, curvesObj);
@@ -1047,8 +1033,12 @@ MStatus CreateSceneVisitor::operator()(Alembic::AbcGeom::IPoints& iNode)
     MStatus status = MS::kSuccess;
     MObject particleObj = MObject::kNullObj;
 
-    mData.mPointsList.push_back(iNode);
-    mData.mPointsListInitializedConstant.push_back(0);
+    bool isConstant = iNode.getSchema().isConstant();
+    if (!isConstant)
+        mData.mPointsList.push_back(iNode);
+
+    // since we don't really support animated points, don't bother
+    // with the animated properties on it
 
     bool hasDag = false;
     if (mAction != NONE && mConnectDagNode.isValid())
@@ -1057,10 +1047,6 @@ MStatus CreateSceneVisitor::operator()(Alembic::AbcGeom::IPoints& iNode)
         if (hasDag)
         {
             particleObj = mConnectDagNode.node();
-            // Create all perParticle Attribute
-            status = createPerParticleAttributes(iNode, particleObj);
-            MCHECKERROR(status);
-            mData.mPointsObjList.push_back(particleObj);
         }
     }
 
@@ -1068,24 +1054,30 @@ MStatus CreateSceneVisitor::operator()(Alembic::AbcGeom::IPoints& iNode)
     {
 
         status = create(mFrame, iNode, mParent, particleObj);
-        mData.mPointsObjList.push_back(particleObj);
-    }
-    else
-    {
-    	// This might be the first time the AlembicNode is walking through the archive
-    	// (when opening a file with an existing alembic connected to a nParticle)
-    	// We are reading the iPoint Schema, all previous step were skipped,
-    	// we need to find the data necessary for feeding custom particle attributes (stored in arbGeomParam)
-    	// We store them inside mData for reading at compute time
-    	PointSampleDataList PointSampleVec;
-    	status = getPointArbGeomParamsInfos(iNode, particleObj, PointSampleVec);
-
-		mData.mPointsDataList.push_back(PointSampleVec);
+        if (!isConstant)
+        {
+            mData.mPointsObjList.push_back(particleObj);
+        }
     }
 
-    if ( mAction >= CONNECT )
+    // don't currently care about anything animated on a particleObj
+    std::vector<Prop> fakePropList;
+    std::vector<Alembic::AbcGeom::IObject> fakeObjList;
+
+    if (particleObj != MObject::kNullObj)
     {
-    	// Should do something here ??
+        Alembic::Abc::IScalarProperty visProp =
+            getVisible(iNode, false, fakePropList, fakeObjList);
+
+        setConstantVisibility(visProp, particleObj);
+
+        Alembic::Abc::ICompoundProperty arbProp =
+            iNode.getSchema().getArbGeomParams();
+        Alembic::Abc::ICompoundProperty userProp =
+            iNode.getSchema().getUserProperties();
+
+        addProps(arbProp, particleObj, false);
+        addProps(userProp, particleObj, false);
     }
 
     if (hasDag)
@@ -1398,7 +1390,7 @@ MStatus CreateSceneVisitor::operator()(Alembic::AbcGeom::INuPatch& iNode)
             return status;
         }
 
-        MPlug dstPlug = fn.findPlug("create", true);
+        MPlug dstPlug = fn.findPlug("create");
         disconnectAllPlugsTo(dstPlug);
         disconnectProps(fn, mData.mPropList, firstProp);
         addToPropList(firstProp, nurbsObj);

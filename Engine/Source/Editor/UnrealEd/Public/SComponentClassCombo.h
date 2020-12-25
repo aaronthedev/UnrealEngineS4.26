@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,7 +13,6 @@
 
 class FComponentClassComboEntry;
 class SToolTip;
-class FTextFilterExpressionEvaluator;
 
 typedef TSharedPtr<class FComponentClassComboEntry> FComponentClassComboEntryPtr;
 
@@ -188,8 +187,9 @@ public:
 
 	/**
 	 * Updates the filtered list of component names.
+	 * @param InSearchText The search text from the search control.
 	 */
-	void GenerateFilteredComponentList();
+	void GenerateFilteredComponentList(const FString& InSearchText);
 
 	FText GetCurrentSearchString() const;
 
@@ -227,7 +227,7 @@ private:
 	TArray<FComponentClassComboEntryPtr> FilteredComponentClassList;
 
 	/** The current search string */
-	TSharedPtr<FTextFilterExpressionEvaluator> TextFilter;
+	FText CurrentSearchString;
 
 	/** The search box control - part of the combo drop down */
 	TSharedPtr<SSearchBox> SearchBox;

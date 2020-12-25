@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithMaxExporter.h"
 
@@ -584,14 +584,8 @@ int FDatasmithMaxExporter::ExportScene(FDatasmithSceneExporter* DatasmithSceneEx
 						ElementMap.Add(InSceneParser.GetNode(i), ActorElement);
 					}
 
-					TSharedPtr< IDatasmithActorElement > InversedHISMActor;
 					ActorElement->AddChild( FDatasmithMaxSceneExporter::ExportHierarchicalInstanceStaticMeshActor( DatasmithScene, InSceneParser.GetNode(i), InSceneParser.GetCustomMeshNode(i), *MeshLabel, SupportedChannels,
-						StaticMeshMtl, InSceneParser.GetInstancesTransform(i), *MeshName, UnitMultiplier, StaticMeshExportMode, InversedHISMActor) );
-
-					if( InversedHISMActor.IsValid() )
-					{
-						ActorElement->AddChild(InversedHISMActor);
-					}
+						StaticMeshMtl, InSceneParser.GetInstancesTransform(i), *MeshName, UnitMultiplier, StaticMeshExportMode) );
 
 					GeometryCounter++;
 				}

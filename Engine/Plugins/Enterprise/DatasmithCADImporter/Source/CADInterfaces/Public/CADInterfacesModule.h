@@ -1,23 +1,16 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
-#include "CoreMinimal.h"
 #include "Modules/ModuleInterface.h"
 
-#define CADINTERFACES_MODULE_NAME TEXT("CADInterfaces")
+#define CADINTERFACES_MODULE_NAME TEXT("WorkerDataManagement")
 
-DECLARE_LOG_CATEGORY_EXTERN(CADInterfaces, Log, All);
-
-enum class ECADInterfaceAvailability
-{
-	Unknown,
-	Available,
-	Unavailable,
-};
-
-class CADINTERFACES_API ICADInterfacesModule : public IModuleInterface
+class FCADInterfacesModule : public IModuleInterface
 {
 public:
-	static ICADInterfacesModule& Get();
-	static ECADInterfaceAvailability IsAvailable();
+	static FCADInterfacesModule& Get();
+	static bool IsAvailable();
+
+private:
+	virtual void StartupModule() override;
 };

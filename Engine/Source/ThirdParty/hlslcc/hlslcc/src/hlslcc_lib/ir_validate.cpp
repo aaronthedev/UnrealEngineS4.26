@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // This code is modified from that in the Mesa3D Graphics library available at
 // http://mesa3d.org/
@@ -690,11 +690,6 @@ ir_visitor_status ir_validate::visit_leave(ir_expression *ir)
 		break;
 
 	case ir_unop_bitcount:
-		validate_expr(ir->type->base_type == GLSL_TYPE_UINT);
-		validate_expr(ir->operands[0]->type->is_integer());
-		validate_expr(ir->type->components() == ir->operands[0]->type->components());
-		break;
-
 	case ir_unop_msb:
 	case ir_unop_lsb:
 		validate_expr(ir->type->base_type == GLSL_TYPE_INT);

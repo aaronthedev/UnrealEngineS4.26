@@ -1,15 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "RigHierarchyDefines.h"
-#include "RigHierarchyPose.h"
 #include "RigSpaceHierarchy.generated.h"
 
 class UControlRig;
 
-UENUM(BlueprintType)
+UENUM()
 enum class ERigSpaceType : uint8
 {
 	/** Not attached to anything */
@@ -25,7 +24,7 @@ enum class ERigSpaceType : uint8
 	Space
 };
 
-USTRUCT(BlueprintType)
+USTRUCT()
 struct CONTROLRIG_API FRigSpace : public FRigElement
 {
 	GENERATED_BODY()
@@ -41,19 +40,19 @@ struct CONTROLRIG_API FRigSpace : public FRigElement
 	}
 	virtual ~FRigSpace() {}
 
-	UPROPERTY(BlueprintReadWrite, VisibleAnywhere, Category = FRigElement)
+	UPROPERTY(VisibleAnywhere, Category = FRigElement)
 	ERigSpaceType SpaceType;
 
-	UPROPERTY(BlueprintReadOnly, VisibleAnywhere, Category = FRigElement)
+	UPROPERTY(VisibleAnywhere, Category = FRigElement)
 	FName ParentName;
 
-	UPROPERTY(BlueprintReadOnly, transient, Category = FRigElement)
+	UPROPERTY(transient)
 	int32 ParentIndex;
 
-	UPROPERTY(BlueprintReadOnly, EditAnywhere, Category = FRigElement)
+	UPROPERTY(EditAnywhere, Category = FRigElement)
 	FTransform InitialTransform;
 
-	UPROPERTY(BlueprintReadOnly, transient, EditAnywhere, Category = FRigElement)
+	UPROPERTY(transient, EditAnywhere, Category = FRigElement)
 	FTransform LocalTransform;
 
 	FORCEINLINE virtual ERigElementType GetElementType() const override
@@ -61,35 +60,32 @@ struct CONTROLRIG_API FRigSpace : public FRigElement
 		return ERigElementType::Space;
 	}
 
-	FORCEINLINE virtual FRigElementKey GetParentElementKey(bool bForce = false) const
+	FORCEINLINE virtual FRigElementKey GetParentElementKey() const
 	{
-		if (ParentIndex != INDEX_NONE || bForce)
+		switch (SpaceType)
 		{
-			switch (SpaceType)
+			case ERigSpaceType::Bone:
 			{
-				case ERigSpaceType::Bone:
-				{
-					return FRigElementKey(ParentName, ERigElementType::Bone);
-				}
-				case ERigSpaceType::Control:
-				{
-					return FRigElementKey(ParentName, ERigElementType::Control);
-				}
-				case ERigSpaceType::Space:
-				{
-					return FRigElementKey(ParentName, ERigElementType::Space);
-				}
-				default:
-				{
-					break;
-				}
+				return FRigElementKey(ParentName, ERigElementType::Bone);
+			}
+			case ERigSpaceType::Control:
+			{
+				return FRigElementKey(ParentName, ERigElementType::Control);
+			}
+			case ERigSpaceType::Space:
+			{
+				return FRigElementKey(ParentName, ERigElementType::Space);
+			}
+			default:
+			{
+				break;
 			}
 		}
 		return FRigElementKey();
 	}
 };
 
-USTRUCT(BlueprintType)
+USTRUCT()
 struct CONTROLRIG_API FRigSpaceHierarchy
 {
 	GENERATED_BODY()
@@ -175,36 +171,26 @@ struct CONTROLRIG_API FRigSpaceHierarchy
 	FTransform GetInitialGlobalTransform(int32 InIndex) const;
 
 	// updates all of the internal caches
-	void Initialize(bool bResetTransforms = true);
+	void Initialize();
 
 	// clears the hierarchy and removes all content
 	void Reset();
 
-	// returns the current pose
-	FRigPose GetPose() const;
-
-	// sets the current transforms from the given pose
-	void SetPose(FRigPose& InPose);
-
 	// resets all of the transforms back to the initial transform
 	void ResetTransforms();
 
-	// copies all initial transforms from another hierarchy
-	void CopyInitialTransforms(const FRigSpaceHierarchy& InOther);
-
+#if WITH_EDITOR
 
 	bool Select(const FName& InName, bool bSelect = true);
 	bool ClearSelection();
 	TArray<FName> CurrentSelection() const;
 	bool IsSelected(const FName& InName) const;
 
-	FRigElementSelected OnSpaceSelected;
-
-#if WITH_EDITOR
 	FRigElementAdded OnSpaceAdded;
 	FRigElementRemoved OnSpaceRemoved;
 	FRigElementRenamed OnSpaceRenamed;
 	FRigElementReparented OnSpaceReparented;
+	FRigElementSelected OnSpaceSelected;
 
 	void HandleOnElementRemoved(FRigHierarchyContainer* InContainer, const FRigElementKey& InKey);
 	void HandleOnElementRenamed(FRigHierarchyContainer* InContainer, ERigElementType InElementType, const FName& InOldName, const FName& InNewName);
@@ -227,21 +213,14 @@ private:
 	UPROPERTY()
 	TMap<FName, int32> NameToIndexMapping;
 
+#if WITH_EDITORONLY_DATA
 	UPROPERTY(transient)
 	TArray<FName> Selection;
+#endif
 
 	int32 GetIndexSlow(const FName& InName) const;
 
 	void RefreshMapping();
 
-	void AppendToPose(FRigPose& InOutPose) const;
-
-#if WITH_EDITOR
-	mutable TArray<bool> RecursionGuard;
-#endif
-
 	friend struct FRigHierarchyContainer;
-	friend struct FCachedRigElement;
-	friend class UControlRigHierarchyModifier;
-	friend class UControlRig;
 };

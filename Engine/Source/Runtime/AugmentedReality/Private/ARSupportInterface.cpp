@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ARSupportInterface.h"
 #include "ARTraceResult.h"
@@ -76,15 +76,6 @@ EARTrackingQuality FARSupportInterface ::GetTrackingQuality() const
 	return EARTrackingQuality::NotTracking;
 }
 
-EARTrackingQualityReason FARSupportInterface::GetTrackingQualityReason() const
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->OnGetTrackingQualityReason();
-	}
-	return EARTrackingQualityReason::None;
-}
-
 void FARSupportInterface ::StartARSession(UARSessionConfig* InSessionConfig)
 {
 	if (ARImplemention)
@@ -109,8 +100,7 @@ void FARSupportInterface ::StopARSession()
 {
 	if (ARImplemention)
 	{
-		//Removing check allows for extra safeguards to close down during a run.
-		//if (GetARSessionStatus().Status == EARSessionStatus::Running)
+		if (GetARSessionStatus().Status == EARSessionStatus::Running)
 		{
 			ARImplemention->OnStopARSession();
 		}
@@ -135,35 +125,7 @@ bool FARSupportInterface ::IsSessionTypeSupported(EARSessionType SessionType) co
 	return false;
 }
 
-bool FARSupportInterface::ToggleARCapture(const bool bOnOff, const EARCaptureType CaptureType)
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->OnToggleARCapture(bOnOff, CaptureType);
-	}
-	return false;
-}
-
-
-void FARSupportInterface::SetEnabledXRCamera(bool bOnOff)
-{
-	if (ARImplemention)
-	{
-		ARImplemention->OnSetEnabledXRCamera(bOnOff);
-	}
-}
-
-FIntPoint FARSupportInterface::ResizeXRCamera(const FIntPoint& InSize)
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->OnResizeXRCamera(InSize);
-	}
-	return FIntPoint(0, 0);
-}
-
-
-void FARSupportInterface::SetAlignmentTransform(const FTransform& InAlignmentTransform)
+void FARSupportInterface ::SetAlignmentTransform(const FTransform& InAlignmentTransform)
 {
 	if (ARImplemention)
 	{
@@ -208,6 +170,24 @@ TArray<UARPin*> FARSupportInterface ::GetAllPins() const
 		return ARImplemention->OnGetAllPins();
 	}
 	return TArray<UARPin*>();
+}
+
+UARTextureCameraImage* FARSupportInterface ::GetCameraImage()
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->OnGetCameraImage();
+	}
+	return nullptr;
+}
+
+UARTextureCameraDepth* FARSupportInterface ::GetCameraDepth()
+{
+	if (ARImplemention)
+	{
+		return ARImplemention->OnGetCameraDepth();
+	}
+	return nullptr;
 }
 
 bool FARSupportInterface ::AddManualEnvironmentCaptureProbe(FVector Location, FVector Extent)
@@ -282,17 +262,6 @@ void FARSupportInterface ::RemovePin(UARPin* PinToRemove)
 	}
 }
 
-bool FARSupportInterface ::TryGetOrCreatePinForNativeResource(void* InNativeResource, const FString& InPinName, UARPin*& OutPin)
-{
-	OutPin = nullptr;
-	if (ARImplemention)
-	{
-		return ARImplemention->OnTryGetOrCreatePinForNativeResource(InNativeResource, InPinName, OutPin);
-	}
-
-	return false;
-}
-
 TArray<FARVideoFormat> FARSupportInterface ::GetSupportedVideoFormats(EARSessionType SessionType) const
 {
 	if (ARImplemention)
@@ -316,7 +285,7 @@ UARCandidateImage* FARSupportInterface::AddRuntimeCandidateImage(UARSessionConfi
 {
 	if (ARImplemention && ARImplemention->OnAddRuntimeCandidateImage(SessionConfig, CandidateTexture, FriendlyName, PhysicalWidth))
 	{
-		float PhysicalHeight = PhysicalWidth / FMath::Max<int32>(1, CandidateTexture->GetSizeX()) * CandidateTexture->GetSizeY();
+		float PhysicalHeight = PhysicalWidth / CandidateTexture->GetSizeX() * CandidateTexture->GetSizeY();
 		UARCandidateImage* NewCandidateImage = UARCandidateImage::CreateNewARCandidateImage(CandidateTexture, FriendlyName, PhysicalWidth, PhysicalHeight, EARCandidateImageOrientation::Landscape);
 		SessionConfig->AddCandidateImage(NewCandidateImage);
 		return NewCandidateImage;
@@ -354,66 +323,6 @@ void FARSupportInterface ::AddReferencedObjects(FReferenceCollector& Collector)
 	}
 }
 
-bool FARSupportInterface::PinComponent(USceneComponent* ComponentToPin, UARPin* Pin)
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->OnPinComponentToARPin(ComponentToPin, Pin);
-	}
-	return false;
-}
-
-bool FARSupportInterface::IsLocalPinSaveSupported() const
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->IsLocalPinSaveSupported();
-	}
-	return false;
-}
-
-bool FARSupportInterface::ArePinsReadyToLoad()
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->ArePinsReadyToLoad();
-	}
-	return false;
-}
-
-void FARSupportInterface::LoadARPins(TMap<FName, UARPin*>& LoadedPins)
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->LoadARPins(LoadedPins);
-	}
-}
-
-bool FARSupportInterface::SaveARPin(FName InName, UARPin* InPin)
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->SaveARPin(InName, InPin);
-	}
-	return false;
-}
-
-void FARSupportInterface::RemoveSavedARPin(FName InName)
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->RemoveSavedARPin(InName);
-	}
-}
-void FARSupportInterface::RemoveAllSavedARPins()
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->RemoveAllSavedARPins();
-	}
-}
-
-
 bool FARSupportInterface::IsSessionTrackingFeatureSupported(EARSessionType SessionType, EARSessionTrackingFeature SessionTrackingFeature) const
 {
 	if (ARImplemention)
@@ -432,58 +341,22 @@ TArray<FARPose2D> FARSupportInterface::GetTracked2DPose() const
 	return {};
 }
 
-bool FARSupportInterface::IsSceneReconstructionSupported(EARSessionType SessionType, EARSceneReconstruction SceneReconstructionMethod) const
+UARTextureCameraImage* FARSupportInterface::GetPersonSegmentationImage() const
 {
 	if (ARImplemention)
 	{
-		return ARImplemention->OnIsSceneReconstructionSupported(SessionType, SceneReconstructionMethod);
-	}
-	return false;
-}
-
-bool FARSupportInterface::AddTrackedPointWithName(const FTransform& WorldTransform, const FString& PointName, bool bDeletePointsWithSameName)
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->OnAddTrackedPointWithName(WorldTransform, PointName, bDeletePointsWithSameName);
-	}
-	return false;
-}
-
-int32 FARSupportInterface::GetNumberOfTrackedFacesSupported() const
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->OnGetNumberOfTrackedFacesSupported();
-	}
-	return 0;
-}
-
-UARTexture* FARSupportInterface::GetARTexture(EARTextureType TextureType) const
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->OnGetARTexture(TextureType);
+		return ARImplemention->OnGetPersonSegmentationImage();
 	}
 	return nullptr;
 }
 
-bool FARSupportInterface::GetCameraIntrinsics(FARCameraIntrinsics& OutCameraIntrinsics) const
+UARTextureCameraImage* FARSupportInterface::GetPersonSegmentationDepthImage() const
 {
 	if (ARImplemention)
 	{
-		return ARImplemention->OnGetCameraIntrinsics(OutCameraIntrinsics);
+		return ARImplemention->OnGetPersonSegmentationDepthImage();
 	}
-	return false;
-}
-
-bool FARSupportInterface::IsARAvailable() const
-{
-	if (ARImplemention)
-	{
-		return ARImplemention->IsARAvailable();
-	}
-	return false;
+	return nullptr;
 }
 
 #define DEFINE_AR_SI_DELEGATE_FUNCS(DelegateName) \

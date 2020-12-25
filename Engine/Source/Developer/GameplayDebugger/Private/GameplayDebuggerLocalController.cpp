@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayDebuggerLocalController.h"
 #include "InputCoreTypes.h"
@@ -25,7 +25,6 @@
 #include "Engine/LocalPlayer.h"
 #include "GameFramework/PlayerInput.h"
 #include "EngineUtils.h"
-#include "HAL/IConsoleManager.h"
 
 #if WITH_EDITOR
 #include "Editor/GameplayDebuggerEdMode.h"
@@ -39,7 +38,6 @@ UGameplayDebuggerLocalController::UGameplayDebuggerLocalController(const FObject
 	bIsSelectingActor = false;
 	bIsLocallyEnabled = false;
 	bPrevLocallyEnabled = false;
-	bEnableTextShadow = false;
 	ActiveRowIdx = 0;
 }
 
@@ -99,8 +97,6 @@ void UGameplayDebuggerLocalController::Initialize(AGameplayDebuggerCategoryRepli
 	PaddingTop = SettingsCDO->DebugCanvasPaddingTop;
 	PaddingBottom = SettingsCDO->DebugCanvasPaddingBottom;
 
-	bEnableTextShadow = SettingsCDO->bDebugCanvasEnableTextShadow;
-
 	bNeedsCleanup = true;
 }
 
@@ -136,8 +132,6 @@ void UGameplayDebuggerLocalController::OnDebugDraw(class UCanvas* Canvas, class 
 		CanvasContext.CursorX = CanvasContext.DefaultX = PaddingLeft;
 		CanvasContext.CursorY = CanvasContext.DefaultY = PaddingTop;
 
-		CanvasContext.FontRenderInfo.bEnableShadow = bEnableTextShadow;
-
 		DrawHeader(CanvasContext);
 
 		if (DataPackMap.Num() != NumCategories)
@@ -166,7 +160,7 @@ extern RENDERCORE_API FTexture* GWhiteTexture;
 
 void UGameplayDebuggerLocalController::DrawHeader(FGameplayDebuggerCanvasContext& CanvasContext)
 {
-	const int32 NumRows = (NumCategorySlots + (NumCategoriesPerRow-1)) / NumCategoriesPerRow;
+	const int32 NumRows = (NumCategorySlots + 9) / 10;
 	const float LineHeight = CanvasContext.GetLineHeight();
 	const int32 NumExtensions = bSimulateMode ? 0 : CachedReplicator->GetNumExtensions();
 	const int32 NumExtensionRows = (NumExtensions > 0) ? 1 : 0;
@@ -200,7 +194,7 @@ void UGameplayDebuggerLocalController::DrawHeader(FGameplayDebuggerCanvasContext
 	CanvasContext.CursorY = UsePaddingTop;
 	if (bSimulateMode)
 	{
-		CanvasContext.Printf(TEXT("Clear {yellow}DebugAI{white} show flag to close, use %s to toggle categories."), *CategoryKeysDesc);
+		CanvasContext.Printf(TEXT("Clear {yellow}DebugAI{white} show flag to close, use %s to toggle catories."), *CategoryKeysDesc);
 
 		// reactivate editor mode when this is being drawn = show flag is set
 #if WITH_EDITOR
@@ -209,7 +203,7 @@ void UGameplayDebuggerLocalController::DrawHeader(FGameplayDebuggerCanvasContext
 	}
 	else
 	{
-		CanvasContext.Printf(TEXT("Tap {yellow}%s{white} to close, use %s to toggle categories."), *ActivationKeyDesc, *CategoryKeysDesc);
+		CanvasContext.Printf(TEXT("Tap {yellow}%s{white} to close, use %s to toggle catories."), *ActivationKeyDesc, *CategoryKeysDesc);
 	}
 
 	const FString DebugActorDesc = FString::Printf(TEXT("Debug actor: {cyan}%s"), *CachedReplicator->GetDebugActorName().ToString());
@@ -263,9 +257,9 @@ void UGameplayDebuggerLocalController::DrawHeader(FGameplayDebuggerCanvasContext
 	for (int32 RowIdx = 0; RowIdx < NumRows; RowIdx++)
 	{
 		FString CategoryRowDesc;
-		for (int32 Idx = 0; Idx < NumCategoriesPerRow; Idx++)
+		for (int32 Idx = 0; Idx < 10; Idx++)
 		{
-			const int32 CategorySlotIdx = (RowIdx * NumCategoriesPerRow) + Idx;
+			const int32 CategorySlotIdx = (RowIdx * 10) + Idx;
 			if (SlotCategoryIds.IsValidIndex(CategorySlotIdx) && 
 				SlotNames.IsValidIndex(CategorySlotIdx) &&
 				SlotCategoryIds[CategorySlotIdx].Num())
@@ -473,15 +467,10 @@ void UGameplayDebuggerLocalController::OnActivationPressed()
 
 void UGameplayDebuggerLocalController::OnActivationReleased()
 {
-	ToggleActivation();
-}
-
-void UGameplayDebuggerLocalController::ToggleActivation()
-{
 	if (CachedReplicator)
 	{
 		UWorld* World = CachedReplicator->GetWorld();
-		if (!bIsSelectingActor || StartSelectingActorHandle.IsValid())
+		if (StartSelectingActorHandle.IsValid())
 		{
 			bIsLocallyEnabled = !CachedReplicator->IsEnabled();
 			CachedReplicator->SetEnabled(bIsLocallyEnabled);
@@ -511,63 +500,63 @@ void UGameplayDebuggerLocalController::ToggleActivation()
 
 void UGameplayDebuggerLocalController::OnCategory0Pressed()
 {
-	ToggleSlotState((ActiveRowIdx * NumCategoriesPerRow) + 0);
+	ToggleSlotState((ActiveRowIdx * 10) + 0);
 }
 
 void UGameplayDebuggerLocalController::OnCategory1Pressed()
 {
-	ToggleSlotState((ActiveRowIdx * NumCategoriesPerRow) + 1);
+	ToggleSlotState((ActiveRowIdx * 10) + 1);
 }
 
 void UGameplayDebuggerLocalController::OnCategory2Pressed()
 {
-	ToggleSlotState((ActiveRowIdx * NumCategoriesPerRow) + 2);
+	ToggleSlotState((ActiveRowIdx * 10) + 2);
 }
 
 void UGameplayDebuggerLocalController::OnCategory3Pressed()
 {
-	ToggleSlotState((ActiveRowIdx * NumCategoriesPerRow) + 3);
+	ToggleSlotState((ActiveRowIdx * 10) + 3);
 }
 
 void UGameplayDebuggerLocalController::OnCategory4Pressed()
 {
-	ToggleSlotState((ActiveRowIdx * NumCategoriesPerRow) + 4);
+	ToggleSlotState((ActiveRowIdx * 10) + 4);
 }
 
 void UGameplayDebuggerLocalController::OnCategory5Pressed()
 {
-	ToggleSlotState((ActiveRowIdx * NumCategoriesPerRow) + 5);
+	ToggleSlotState((ActiveRowIdx * 10) + 5);
 }
 
 void UGameplayDebuggerLocalController::OnCategory6Pressed()
 {
-	ToggleSlotState((ActiveRowIdx * NumCategoriesPerRow) + 6);
+	ToggleSlotState((ActiveRowIdx * 10) + 6);
 }
 
 void UGameplayDebuggerLocalController::OnCategory7Pressed()
 {
-	ToggleSlotState((ActiveRowIdx * NumCategoriesPerRow) + 7);
+	ToggleSlotState((ActiveRowIdx * 10) + 7);
 }
 
 void UGameplayDebuggerLocalController::OnCategory8Pressed()
 {
-	ToggleSlotState((ActiveRowIdx * NumCategoriesPerRow) + 8);
+	ToggleSlotState((ActiveRowIdx * 10) + 8);
 }
 
 void UGameplayDebuggerLocalController::OnCategory9Pressed()
 {
-	ToggleSlotState((ActiveRowIdx * NumCategoriesPerRow) + 9);
+	ToggleSlotState((ActiveRowIdx * 10) + 9);
 }
 
 void UGameplayDebuggerLocalController::OnCategoryRowUpPressed()
 {
-	const int32 NumRows = (NumCategorySlots + (NumCategoriesPerRow-1)) / NumCategoriesPerRow;
+	const int32 NumRows = (NumCategorySlots + 9) / 10;
 	ActiveRowIdx = (NumRows > 1) ? ((ActiveRowIdx + NumRows - 1) % NumRows) : 0;
 }
 
 void UGameplayDebuggerLocalController::OnCategoryRowDownPressed()
 {
-	const int32 NumRows = (NumCategorySlots + (NumCategoriesPerRow-1)) / NumCategoriesPerRow;
+	const int32 NumRows = (NumCategorySlots + 9) / 10;
 	ActiveRowIdx = (NumRows > 1) ? ((ActiveRowIdx + 1) % NumRows) : 0;
 }
 
@@ -688,8 +677,8 @@ void UGameplayDebuggerLocalController::ToggleSlotState(int32 SlotIdx)
 			const int32 CategoryId = SlotCategoryIds[SlotIdx][Idx];
 			CachedReplicator->SetCategoryEnabled(CategoryId, !bIsEnabled);
 		}
-		// removed call to MarkComponentsRenderStateDirty since CachedReplicator->SetCategoryEnabled
-		// calls it already 
+
+		CachedReplicator->MarkComponentsRenderStateDirty();
 	}
 }
 
@@ -710,19 +699,20 @@ void UGameplayDebuggerLocalController::OnSelectionChanged(UObject* Object)
 	USelection* Selection = Cast<USelection>(Object);
 	if (Selection && CachedReplicator)
 	{
-		AActor* SelectedActor = nullptr;
+		APawn* SelectedPawn = nullptr;
 		for (int32 Idx = 0; Idx < Selection->Num(); Idx++)
 		{
-			SelectedActor = Cast<AActor>(Selection->GetSelectedObject(Idx));
-			if (SelectedActor)
+			AController* SelectedController = Cast<AController>(Selection->GetSelectedObject(Idx));
+			SelectedPawn = SelectedController ? SelectedController->GetPawn() : Cast<APawn>(Selection->GetSelectedObject(Idx));
+			if (SelectedPawn)
 			{
 				break;
 			}
 		}
 
-		if (SelectedActor)
+		if (SelectedPawn)
 		{
-			CachedReplicator->SetDebugActor(SelectedActor, false);
+			CachedReplicator->SetDebugActor(SelectedPawn, false);
 			CachedReplicator->CollectCategoryData(/*bForce=*/true);
 		}
 	}
@@ -803,163 +793,3 @@ void UGameplayDebuggerLocalController::RebuildDataPackMap()
 		}
 	}
 }
-
-/**  Helper structure to declare/define console commands in the source file and to access UGameplayDebuggerLocalController protected members */
-struct FGameplayDebuggerConsoleCommands
-{
-private:
-	static UGameplayDebuggerLocalController* GetController(UWorld* InWorld)
-	{
-		UGameplayDebuggerLocalController* Controller = nullptr;
-
-		APlayerController* LocalPC = GEngine->GetFirstLocalPlayerController(InWorld);
-		if (LocalPC)
-		{
-			Controller = AGameplayDebuggerPlayerManager::GetCurrent(InWorld).GetLocalController(*LocalPC);
-		}
-
-		UE_CLOG(Controller == nullptr, LogConsoleResponse, Error, TEXT("GameplayDebugger not available"));
-		return Controller;
-	}
-
-	static void ToggleGameplayDebugger(UWorld* InWorld)
-	{
-		if (UGameplayDebuggerLocalController* Controller = GetController(InWorld))
-		{
-			Controller->ToggleActivation();
-		}
-	}
-
-	static void SelectPreviousRow(UWorld* InWorld)
-	{
-		if (UGameplayDebuggerLocalController* Controller = GetController(InWorld))
-		{
-			Controller->OnCategoryRowUpPressed();
-		}
-	}
-
-	static void SelectNextRow(UWorld* InWorld)
-	{
-		if (UGameplayDebuggerLocalController* Controller = GetController(InWorld))
-		{
-			Controller->OnCategoryRowDownPressed();
-		}
-	}
-
-	static void ToggleCategory(const TArray<FString>& Args, UWorld* InWorld)
-	{
-		UGameplayDebuggerLocalController* Controller = GetController(InWorld);
-		if (Controller == nullptr)
-		{
-			return;
-		}
-
-		if (Args.Num() != 1)
-		{
-			UE_LOG(LogConsoleResponse, Error, TEXT("Missing category index parameter. Usage: gdt.ToggleCategory <CategoryIdx>"));
-			return;
-		}
-
-		if (!Args[0].IsNumeric())
-		{
-			UE_LOG(LogConsoleResponse, Error, TEXT("Must provide numerical value as index. Usage: gdt.ToggleCategory <CategoryIdx>"));
-			return;
-		}
-		
-		const int32 SlotIdx = TCString<TCHAR>::Atoi(*Args[0]);
-		const int32 NumSlots = Controller->SlotCategoryIds.Num();
-		const int32 NumSlotsPerRow = UGameplayDebuggerLocalController::NumCategoriesPerRow;
-		const int32 NumRows = (NumSlots + (NumSlotsPerRow-1)) / NumSlotsPerRow;
-
-		const bool bIsLastRowActive = (Controller->ActiveRowIdx == NumRows-1);
-		const int32 NumSlotsOnActiveRow = bIsLastRowActive ? NumSlots - (NumSlotsPerRow * (NumRows-1)) : NumSlotsPerRow;
-		const int32 MaxSlotIdx = FMath::Max(0, FMath::Min(NumSlots, NumSlotsOnActiveRow)-1);
-		
-		if (!(Controller->SlotCategoryIds.IsValidIndex(SlotIdx) && SlotIdx <= MaxSlotIdx))
-		{
-			UE_LOG(LogConsoleResponse, Error, TEXT("Requires a category index in the active row [0..%d]. Usage: gdt.ToggleCategory CategoryIndex"), MaxSlotIdx);
-			return;
-		}
-		
-		Controller->ToggleSlotState((Controller->ActiveRowIdx * NumSlotsPerRow)+SlotIdx);
-	}
-
-	static void EnableCategoryName(const TArray<FString>& Args, UWorld* InWorld)
-	{
-		UGameplayDebuggerLocalController* Controller = GetController(InWorld);
-		if (Controller == nullptr || Controller->CachedReplicator == nullptr)
-		{
-			UE_CLOG(Controller != nullptr && Controller->CachedReplicator == nullptr, 
-				LogConsoleResponse, Error, TEXT("Failed due to CachedReplicator being Null"));
-			return;
-		}
-
-		if (Args.Num() < 1)
-		{
-			UE_LOG(LogConsoleResponse, Error, TEXT("Missing category name parameter. Usage: gdt.EnableCategory <CategoryNamePattern> [Enable]"));
-			return;
-		}
-
-		bool bEnable = (Args.Num() == 1);
-		if (Args.Num() > 1)
-		{
-			LexFromString(bEnable, *Args[1]);
-		}
-
-		for (int32 CategoryIndex = 0; CategoryIndex < Controller->CachedReplicator->GetNumCategories(); ++CategoryIndex)
-		{
-			const TSharedRef<FGameplayDebuggerCategory> Category = Controller->CachedReplicator->GetCategory(CategoryIndex);
-			const FString CategoryName = Category->GetCategoryName().ToString();
-			if (CategoryName.Find(Args[0], ESearchCase::IgnoreCase) != INDEX_NONE)
-			{
-				Controller->CachedReplicator->SetCategoryEnabled(CategoryIndex, bEnable);
-			}
-		}
-	}
-
-	/** For legacy command: EnableGDT */
-	static FAutoConsoleCommandWithWorld EnableDebuggerCmd;
-
-	/** Various gameplay debugger commands: gdt.<command> */
-	static FAutoConsoleCommandWithWorld ToggleDebuggerCmd;
-	static FAutoConsoleCommandWithWorld SelectPreviousRowCmd;
-	static FAutoConsoleCommandWithWorld SelectNextRowCmd;
-	static FAutoConsoleCommandWithWorldAndArgs ToggleCategoryCmd;
-	static FAutoConsoleCommandWithWorldAndArgs EnableCategoryNameCmd;
-};
-
-FAutoConsoleCommandWithWorld FGameplayDebuggerConsoleCommands::EnableDebuggerCmd(
-	TEXT("EnableGDT"),
-	TEXT("Toggles Gameplay Debugger Tool"),
-	FConsoleCommandWithWorldDelegate::CreateStatic(&FGameplayDebuggerConsoleCommands::ToggleGameplayDebugger)
-);
-
-FAutoConsoleCommandWithWorld FGameplayDebuggerConsoleCommands::ToggleDebuggerCmd(
-	TEXT("gdt.Toggle"),
-	TEXT("Toggles Gameplay Debugger Tool"),
-	FConsoleCommandWithWorldDelegate::CreateStatic(&FGameplayDebuggerConsoleCommands::ToggleGameplayDebugger)
-);
-
-FAutoConsoleCommandWithWorld FGameplayDebuggerConsoleCommands::SelectPreviousRowCmd(
-	TEXT("gdt.SelectPreviousRow"),
-	TEXT("Selects previous row"),
-	FConsoleCommandWithWorldDelegate::CreateStatic(FGameplayDebuggerConsoleCommands::SelectPreviousRow)
-);
-
-FAutoConsoleCommandWithWorld FGameplayDebuggerConsoleCommands::SelectNextRowCmd(
-	TEXT("gdt.SelectNextRow"),
-	TEXT("Selects next row"),
-	FConsoleCommandWithWorldDelegate::CreateStatic(FGameplayDebuggerConsoleCommands::SelectNextRow)
-);
-
-FAutoConsoleCommandWithWorldAndArgs FGameplayDebuggerConsoleCommands::ToggleCategoryCmd(
-	TEXT("gdt.ToggleCategory"),
-	TEXT("Toggles specific category index"),
-	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&FGameplayDebuggerConsoleCommands::ToggleCategory)
-);
-
-FAutoConsoleCommandWithWorldAndArgs FGameplayDebuggerConsoleCommands::EnableCategoryNameCmd(
-	TEXT("gdt.EnableCategoryName"),
-	TEXT("Enables/disables categories matching given substring. Use: gdt.EnableCategoryName <CategoryNamePart> [Enable]"),
-	FConsoleCommandWithWorldAndArgsDelegate::CreateStatic(&FGameplayDebuggerConsoleCommands::EnableCategoryName)
-);

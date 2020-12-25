@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Kismet2/ComponentEditorUtils.h"
 #include "HAL/FileManager.h"
@@ -112,7 +112,7 @@ protected:
 		else
 		{
 			// Actor component classes should not be abstract and must also be tagged as BlueprintSpawnable
-			bCanCreate = FKismetEditorUtilities::IsClassABlueprintSpawnableComponent(ObjectClass);
+			bCanCreate = !ObjectClass->HasAnyClassFlags(CLASS_Abstract) && ObjectClass->HasMetaData(FBlueprintMetadata::MD_BlueprintSpawnableComponent);
 		}
 
 		return bCanCreate;
@@ -164,129 +164,41 @@ bool FComponentEditorUtils::CanEditComponentInstance(const UActorComponent* Acto
 		&& (!ActorComp->IsVisualizationComponent())
 		&& (ActorComp->CreationMethod != EComponentCreationMethod::UserConstructionScript || bAllowUserContructionScript)
 		&& (ParentSceneComp == nullptr || !ParentSceneComp->IsCreatedByConstructionScript() || !ActorComp->HasAnyFlags(RF_DefaultSubObject)))
-		&& (ActorComp->CreationMethod != EComponentCreationMethod::Native || FComponentEditorUtils::GetPropertyForEditableNativeComponent(ActorComp));
+		&& (ActorComp->CreationMethod != EComponentCreationMethod::Native || FComponentEditorUtils::CanEditNativeComponent(ActorComp));
 }
 
-FProperty* FComponentEditorUtils::GetPropertyForEditableNativeComponent(const UActorComponent* NativeComponent)
+bool FComponentEditorUtils::CanEditNativeComponent(const UActorComponent* NativeComponent)
 {
 	// A native component can be edited if it is bound to a member variable and that variable is marked as visible in the editor
-	// Note: We aren't concerned with whether the component is marked editable - the component itself is responsible for determining which of its properties are editable	
+	// Note: We aren't concerned with whether the component is marked editable - the component itself is responsible for determining which of its properties are editable
+
+	bool bCanEdit = false;
+	
 	UObject* ComponentOuter = (NativeComponent ? NativeComponent->GetOuter() : nullptr);
 	UClass* OwnerClass = (ComponentOuter ? ComponentOuter->GetClass() : nullptr);
-	UObject* OwnerCDO = (OwnerClass ? OwnerClass->GetDefaultObject() : nullptr);
-
 	if (OwnerClass != nullptr)
 	{
-		for (TFieldIterator<FObjectProperty> It(OwnerClass); It; ++It)
+		for (TFieldIterator<UObjectProperty> It(OwnerClass); It; ++It)
 		{
-			FObjectProperty* ObjectProp = *It;
+			UObjectProperty* ObjectProp = *It;
 
 			// Must be visible - note CPF_Edit is set for all properties that should be visible, not just those that are editable
-			if ((ObjectProp->PropertyFlags & (CPF_Edit)) == 0)
+			if (( ObjectProp->PropertyFlags & ( CPF_Edit ) ) == 0)
 			{
 				continue;
 			}
 
 			UObject* Object = ObjectProp->GetObjectPropertyValue(ObjectProp->ContainerPtrToValuePtr<void>(ComponentOuter));
-			if (Object != nullptr && Object->GetFName() == NativeComponent->GetFName())
+			bCanEdit = Object != nullptr && Object->GetFName() == NativeComponent->GetFName();
+
+			if (bCanEdit)
 			{
-				return ObjectProp;
-			}
-		}	
-	
-		// We have to check for array properties as well because they are not FObjectProperties and we want to be able to
-		// edit the inside of it
-		if (OwnerCDO != nullptr)
-		{
-			for (TFieldIterator<FArrayProperty> PropIt(OwnerClass, EFieldIteratorFlags::IncludeSuper); PropIt; ++PropIt)
-			{
-				FArrayProperty* TestProperty = *PropIt;
-				void* ArrayPropInstAddress = TestProperty->ContainerPtrToValuePtr<void>(OwnerCDO);
-
-				// Ensure that this property is valid
-				FObjectProperty* ArrayEntryProp = CastField<FObjectProperty>(TestProperty->Inner);
-				if ((ArrayEntryProp == nullptr) || !ArrayEntryProp->PropertyClass->IsChildOf<UActorComponent>() || ((TestProperty->PropertyFlags & CPF_Edit) == 0))
-				{
-					continue;
-				}
-
-				// For each object in this array
-				FScriptArrayHelper ArrayHelper(TestProperty, ArrayPropInstAddress);
-				for (int32 ComponentIndex = 0; ComponentIndex < ArrayHelper.Num(); ++ComponentIndex)
-				{
-					// If this object is the native component we are looking for, then we should be allowed to edit it
-					const uint8* ArrayValRawPtr = ArrayHelper.GetRawPtr(ComponentIndex);
-					UObject* ArrayElement = ArrayEntryProp->GetObjectPropertyValue(ArrayValRawPtr);			
-					
-					if (ArrayElement != nullptr && ArrayElement->GetFName() == NativeComponent->GetFName())
-					{
-						return ArrayEntryProp;
-					}
-				}				
-			}			
-
-			// Check for map properties as well
-			for (TFieldIterator<FMapProperty> PropIt(OwnerClass, EFieldIteratorFlags::IncludeSuper); PropIt; ++PropIt)
-			{
-				FMapProperty* TestProperty = *PropIt;
-				void* MapPropInstAddress = TestProperty->ContainerPtrToValuePtr<void>(OwnerCDO);
-				
-				// Ensure that this property is valid and that it is marked as visible in the editor
-				FObjectProperty* MapValProp = CastField<FObjectProperty>(TestProperty->ValueProp);
-				if ((MapValProp == nullptr) || !MapValProp->PropertyClass->IsChildOf<UActorComponent>() || ((TestProperty->PropertyFlags & CPF_Edit) == 0))
-				{
-					continue;
-				}
-
-				FScriptMapHelper MapHelper(TestProperty, MapPropInstAddress);
-				for (int32 MapSparseIndex = 0; MapSparseIndex < MapHelper.GetMaxIndex(); ++MapSparseIndex)
-				{
-					// For each value in the map (don't bother checking the keys, they won't be what the user can edit in this case)
-					if (MapHelper.IsValidIndex(MapSparseIndex))
-					{
-						const uint8* MapValueData = MapHelper.GetValuePtr(MapSparseIndex);						
-						UObject* ValueElement = MapValProp->GetObjectPropertyValue(MapValueData);
-						if (ValueElement != nullptr && ValueElement->GetFName() == NativeComponent->GetFName())
-						{
-							return MapValProp;
-						}
-					}
-				}
-			}
-
-			// Finally we should check for set properties
-			for (TFieldIterator<FSetProperty> PropIt(OwnerClass, EFieldIteratorFlags::IncludeSuper); PropIt; ++PropIt)
-			{
-				FSetProperty* TestProperty = *PropIt;
-				void* SetPropInstAddress = TestProperty->ContainerPtrToValuePtr<void>(OwnerCDO);
-
-				// Ensure that this property is valid and that it is marked visible
-				FObjectProperty* SetValProp = CastField<FObjectProperty>(TestProperty->ElementProp);
-				if ((SetValProp == nullptr) || !SetValProp->PropertyClass->IsChildOf<UActorComponent>() || ((TestProperty->PropertyFlags & CPF_Edit) == 0))
-				{
-					continue;
-				}
-				
-				// For each item in the set
-				FScriptSetHelper SetHelper(TestProperty, SetPropInstAddress);
-				for (int32 i = 0; i < SetHelper.Num(); ++i)
-				{
-					if (SetHelper.IsValidIndex(i))
-					{
-						const uint8* SetValData = SetHelper.GetElementPtr(i);
-						UObject* SetValueElem = SetValProp->GetObjectPropertyValue(SetValData);
-						
-						if (SetValueElem != nullptr && SetValueElem->GetFName() == NativeComponent->GetFName())
-						{
-							return SetValProp;
-						}
-					}
-				}
+				break;
 			}
 		}
-	}	
+	}
 
-	return nullptr;
+	return bCanEdit;
 }
 
 bool FComponentEditorUtils::IsValidVariableNameString(const UActorComponent* InComponent, const FString& InString)
@@ -326,14 +238,14 @@ FString FComponentEditorUtils::GenerateValidVariableName(TSubclassOf<UActorCompo
 	FString SuffixToStrip( TEXT( "Component" ) );
 	if( ComponentTypeName.EndsWith( SuffixToStrip ) )
 	{
-		ComponentTypeName.LeftInline( ComponentTypeName.Len() - SuffixToStrip.Len(), false );
+		ComponentTypeName = ComponentTypeName.Left( ComponentTypeName.Len() - SuffixToStrip.Len() );
 	}
 
 	// Strip off 'Actor' if the class ends with that so as not to confuse actors with components
 	SuffixToStrip = TEXT( "Actor" );
 	if( ComponentTypeName.EndsWith( SuffixToStrip ) )
 	{
-		ComponentTypeName.LeftInline( ComponentTypeName.Len() - SuffixToStrip.Len(), false );
+		ComponentTypeName = ComponentTypeName.Left( ComponentTypeName.Len() - SuffixToStrip.Len() );
 	}
 
 	// Try to create a name without any numerical suffix first
@@ -429,7 +341,8 @@ bool FComponentEditorUtils::CanCopyComponent(const UActorComponent* ComponentToC
 		check(ComponentClass != nullptr);
 
 		// Component class cannot be abstract and must also be tagged as BlueprintSpawnable
-		return FKismetEditorUtilities::IsClassABlueprintSpawnableComponent(ComponentClass);
+		return !ComponentClass->HasAnyClassFlags(CLASS_Abstract)
+			&& ComponentClass->HasMetaData(FBlueprintMetadata::MD_BlueprintSpawnableComponent);
 	}
 
 	return false;
@@ -471,12 +384,6 @@ void FComponentEditorUtils::CopyComponents(const TArray<UActorComponent*>& Compo
 			if (USceneComponent* DuplicatedCompAsSceneComp = Cast<USceneComponent>(DuplicatedComponent))
 			{
 				DuplicatedCompAsSceneComp->SetupAttachment(nullptr);
-
-				AActor* Owner = Component->GetOwner();
-				if (Owner && Component == Owner->GetRootComponent())
-				{
-					DuplicatedCompAsSceneComp->SetRelativeTransform_Direct(FTransform::Identity);
-				}
 			}
 
 			// Find the closest parent component of the current component within the list of components to copy
@@ -495,10 +402,10 @@ void FComponentEditorUtils::CopyComponents(const TArray<UActorComponent*>& Compo
 	const FExportObjectInnerContext Context;
 
 	// Export the component object(s) to text for copying
-	for (const TPair<FName, UActorComponent*>& ObjectPair : ObjectMap)
+	for (auto ObjectIt = ObjectMap.CreateIterator(); ObjectIt; ++ObjectIt)
 	{
 		// Get the component object to be copied
-		UActorComponent* ComponentToCopy = ObjectPair.Value;
+		UActorComponent* ComponentToCopy = ObjectIt->Value;
 		check(ComponentToCopy);
 
 		// If this component object had a parent within the selected set
@@ -550,20 +457,8 @@ void FComponentEditorUtils::PasteComponents(TArray<UActorComponent*>& OutPastedC
 
 	TargetActor->Modify();
 
-	USceneComponent* TargetParent = nullptr;
-	if (TargetComponent)
-	{
-		checkSlow(TargetActor == TargetComponent->GetOwner());
-		if (TargetActor->GetRootComponent() == TargetComponent)
-		{
-			TargetParent = TargetComponent;
-		}
-		else
-		{
-			TargetParent = TargetComponent->GetAttachParent();
-		}
-	}
-	for (const TPair<FName, UActorComponent*>& NewObjectPair : Factory->NewObjectMap)
+	USceneComponent* TargetParent = TargetComponent ? TargetComponent->GetAttachParent() : nullptr;
+	for (auto& NewObjectPair : Factory->NewObjectMap)
 	{
 		// Get the component object instance
 		UActorComponent* NewActorComponent = NewObjectPair.Value;
@@ -624,8 +519,8 @@ void FComponentEditorUtils::GetComponentsFromClipboard(TMap<FName, FName>& OutPa
 	TSharedRef<FComponentObjectTextFactory> Factory = FComponentObjectTextFactory::Get(TextToImport, bGetComponentsAsArchetypes);
 
 	// Return the created component mappings
-	OutParentMap = MoveTemp(Factory->ParentMap);
-	OutNewObjectMap = MoveTemp(Factory->NewObjectMap);
+	OutParentMap = Factory->ParentMap;
+	OutNewObjectMap = Factory->NewObjectMap;
 }
 
 bool FComponentEditorUtils::CanDeleteComponents(const TArray<UActorComponent*>& ComponentsToDelete)
@@ -781,8 +676,7 @@ UActorComponent* FComponentEditorUtils::DuplicateComponent(UActorComponent* Temp
 		TemplateComponent->SetFlags(RF_Transactional);
 
 		NewCloneComponent = DuplicateObject<UActorComponent>(TemplateComponent, Actor, NewComponentName );
-		NewCloneComponent->ClearFlags(RF_DefaultSubObject);
-
+		
 		if (!bTemplateTransactional)
 		{
 			TemplateComponent->ClearFlags(RF_Transactional);
@@ -801,7 +695,6 @@ UActorComponent* FComponentEditorUtils::DuplicateComponent(UActorComponent* Temp
 				check(RootComponent);
 
 				// GetComponentTransform() is not a UPROPERTY, so make sure the clone has calculated it properly before attachment
-				NewSceneComponent->SetRelativeTransform_Direct(FTransform::Identity);
 				NewSceneComponent->UpdateComponentToWorld();
 
 				NewSceneComponent->SetupAttachment(RootComponent);
@@ -952,7 +845,6 @@ bool FComponentEditorUtils::AttemptApplyMaterialToComponent(USceneComponent* Sce
 		}
 
 		SceneComponent->MarkRenderStateDirty();
-		SceneComponent->PostEditChange();
 		GEditor->OnSceneMaterialsModified();
 	}
 
@@ -964,7 +856,7 @@ FName FComponentEditorUtils::FindVariableNameGivenComponentInstance(const UActor
 	check(ComponentInstance != nullptr);
 
 	// When names mismatch, try finding a differently named variable pointing to the the component (the mismatch should only be possible for native components)
-	auto FindPropertyReferencingComponent = [](const UActorComponent* Component) -> FProperty*
+	auto FindPropertyReferencingComponent = [](const UActorComponent* Component) -> UProperty*
 	{
 		if (AActor* OwnerActor = Component->GetOwner())
 		{
@@ -972,9 +864,9 @@ FName FComponentEditorUtils::FindVariableNameGivenComponentInstance(const UActor
 			AActor* OwnerCDO = CastChecked<AActor>(OwnerClass->GetDefaultObject());
 			check(OwnerCDO->HasAnyFlags(RF_ClassDefaultObject));
 
-			for (TFieldIterator<FObjectProperty> PropIt(OwnerClass, EFieldIteratorFlags::IncludeSuper); PropIt; ++PropIt)
+			for (TFieldIterator<UObjectProperty> PropIt(OwnerClass, EFieldIteratorFlags::IncludeSuper); PropIt; ++PropIt)
 			{
-				FObjectProperty* TestProperty = *PropIt;
+				UObjectProperty* TestProperty = *PropIt;
 				if (Component->GetClass()->IsChildOf(TestProperty->PropertyClass))
 				{
 					void* TestPropertyInstanceAddress = TestProperty->ContainerPtrToValuePtr<void>(OwnerCDO);
@@ -987,12 +879,12 @@ FName FComponentEditorUtils::FindVariableNameGivenComponentInstance(const UActor
 				}
 			}
 
-			for (TFieldIterator<FArrayProperty> PropIt(OwnerClass, EFieldIteratorFlags::IncludeSuper); PropIt; ++PropIt)
+			for (TFieldIterator<UArrayProperty> PropIt(OwnerClass, EFieldIteratorFlags::IncludeSuper); PropIt; ++PropIt)
 			{
-				FArrayProperty* TestProperty = *PropIt;
+				UArrayProperty* TestProperty = *PropIt;
 				void* ArrayPropInstAddress = TestProperty->ContainerPtrToValuePtr<void>(OwnerCDO);
 
-				FObjectProperty* ArrayEntryProp = CastField<FObjectProperty>(TestProperty->Inner);
+				UObjectProperty* ArrayEntryProp = Cast<UObjectProperty>(TestProperty->Inner);
 				if ((ArrayEntryProp == nullptr) || !ArrayEntryProp->PropertyClass->IsChildOf<UActorComponent>())
 				{
 					continue;
@@ -1017,23 +909,23 @@ FName FComponentEditorUtils::FindVariableNameGivenComponentInstance(const UActor
 	if (AActor* OwnerActor = ComponentInstance->GetOwner())
 	{
 		UClass* OwnerActorClass = OwnerActor->GetClass();
-		if (FObjectProperty* TestProperty = FindFProperty<FObjectProperty>(OwnerActorClass, ComponentInstance->GetFName()))
+		if (UObjectProperty* TestProperty = FindField<UObjectProperty>(OwnerActorClass, ComponentInstance->GetFName()))
 		{
 			if (ComponentInstance->GetClass()->IsChildOf(TestProperty->PropertyClass))
-					{
-						return TestProperty->GetFName();
-					}
-				}
+			{
+				return TestProperty->GetFName();
+			}
+		}
 
-		if (FProperty* ReferencingProp = FindPropertyReferencingComponent(ComponentInstance))
+		if (UProperty* ReferencingProp = FindPropertyReferencingComponent(ComponentInstance))
 		{
 			return ReferencingProp->GetFName();
 		}
-			}
+	}
 
 	if (UActorComponent* Archetype = Cast<UActorComponent>(ComponentInstance->GetArchetype()))
 	{
-		if (FProperty* ReferencingProp = FindPropertyReferencingComponent(Archetype))
+		if (UProperty* ReferencingProp = FindPropertyReferencingComponent(Archetype))
 		{
 			return ReferencingProp->GetFName();
 		}
@@ -1200,12 +1092,11 @@ FComponentReference FComponentEditorUtils::MakeComponentReference(const AActor* 
 	FComponentReference Result;
 	if (InComponent)
 	{
-		AActor* ComponentOwner = InComponent->GetOwner();
 		const AActor* Owner = InExpectedComponentOwner;
-		if (ComponentOwner && ComponentOwner != Owner)
+		if (InComponent->GetOwner() && InComponent->GetOwner() != Owner)
 		{
-			Result.OtherActor = ComponentOwner;
-			Owner = ComponentOwner;
+			Result.OtherActor = InComponent->GetOwner();
+			Owner = InComponent->GetOwner();
 		}
 
 		if (InComponent->CreationMethod == EComponentCreationMethod::Native || InComponent->CreationMethod == EComponentCreationMethod::SimpleConstructionScript)
@@ -1214,7 +1105,7 @@ FComponentReference FComponentEditorUtils::MakeComponentReference(const AActor* 
 		}
 		if (Result.ComponentProperty.IsNone() && InComponent->CreationMethod != EComponentCreationMethod::UserConstructionScript)
 		{
-			Result.PathToComponent = InComponent->GetPathName(ComponentOwner);
+			Result.PathToComponent = InComponent->GetPathName(InComponent->GetOwner());
 		}
 	}
 	return Result;

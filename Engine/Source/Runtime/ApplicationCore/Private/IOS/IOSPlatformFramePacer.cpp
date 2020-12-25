@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IOS/IOSPlatformFramePacer.h"
 #include "Containers/Array.h"
@@ -15,7 +15,7 @@ static NSMutableSet<FIOSFramePacerHandler>* Handlers = [NSMutableSet new];
 
 namespace IOSDisplayConstants
 {
-	const uint32 MaxRefreshRate = 60;
+    const uint32 MaxRefreshRate = 60;
 }
 
 /*******************************************************************
@@ -26,13 +26,30 @@ namespace IOSDisplayConstants
 {
     @public
 	FEvent *FramePacerEvent;
-	int EnablePresentPacing;
 }
 
 -(void)run:(id)param;
 -(void)signal:(id)param;
 
 @end
+
+// @todo ios: Move these up into some shared header
+// __TV_OS_VERSION_MAX_ALLOWED is only defined when building for tvos, so we can use that to determine
+#if PLATFORM_TVOS
+
+#define UE4_HAS_IOS10 (__TVOS_10_0 && __TV_OS_VERSION_MAX_ALLOWED >= __TVOS_10_0)
+#define UE4_HAS_IOS9 (__TVOS_9_0 && __TV_OS_VERSION_MAX_ALLOWED >= __TVOS_9_0)
+#define UE4_TARGET_PRE_IOS10 (!__TVOS_10_0 || __TV_OS_VERSION_MIN_REQUIRED < __TVOS_10_0)
+#define UE4_TARGET_PRE_IOS9 (!__TVOS_9_0 || __TV_OS_VERSION_MIN_REQUIRED < __TVOS_9_0)
+
+#else
+
+#define UE4_HAS_IOS10 (__IPHONE_10_0 && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_10_0)
+#define UE4_HAS_IOS9 (__IPHONE_9_0 && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_9_0)
+#define UE4_TARGET_PRE_IOS10 (!__IPHONE_10_0 || __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_10_0)
+#define UE4_TARGET_PRE_IOS9 (!__IPHONE_9_0 || __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_9_0)
+
+#endif
 
 @implementation FIOSFramePacer
 
@@ -44,9 +61,17 @@ namespace IOSDisplayConstants
 {
 	NSRunLoop *runloop = [NSRunLoop currentRunLoop];
 	CADisplayLink *displayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(signal:)];
+#if UE4_HAS_IOS10
 	if ([displayLink respondsToSelector : @selector(preferredFramesPerSecond)] == YES)
 	{
-		displayLink.preferredFramesPerSecond = EnablePresentPacing ? 0 : (FIOSPlatformRHIFramePacer::GetMaxRefreshRate() / FIOSPlatformRHIFramePacer::FrameInterval);
+		displayLink.preferredFramesPerSecond = IOSDisplayConstants::MaxRefreshRate / FIOSPlatformRHIFramePacer::FrameInterval;
+	}
+	else
+#endif
+	{
+#if UE4_TARGET_PRE_IOS10
+		displayLink.frameInterval = FIOSPlatformRHIFramePacer::FrameInterval;
+#endif
 	}
 
 	[displayLink addToRunLoop:runloop forMode:NSDefaultRunLoopMode];
@@ -65,13 +90,6 @@ namespace IOSDisplayConstants
 		return;
 	};
 
-	static IConsoleVariable* PresentPacingCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("ios.PresentPacing"));
-	EnablePresentPacing = 0;
-	if (PresentPacingCVar != nullptr)
-	{
-		EnablePresentPacing = PresentPacingCVar->GetInt();
-	}
-	
 	{
 		FScopeLock Lock(&HandlersMutex);
 		CADisplayLink* displayLink = (CADisplayLink*)param;
@@ -93,23 +111,32 @@ namespace IOSDisplayConstants
 		if (VSyncCVar && VSyncCVar->GetValueOnRenderThread() > 0)
 		{
 			uint32 NewFrameInterval = VSyncIntervalCVar ? VSyncIntervalCVar->GetValueOnRenderThread() : FIOSPlatformRHIFramePacer::FrameInterval;
+//			NewFrameInterval = (NewFrameInterval < FIOSPlatformRHIFramePacer::MinFrameInterval) ? FIOSPlatformRHIFramePacer::MinFrameInterval : NewFrameInterval;
 
 			// If changed, update the display link
 			if (NewFrameInterval != FIOSPlatformRHIFramePacer::FrameInterval)
 			{
-				
 				FIOSPlatformRHIFramePacer::FrameInterval = NewFrameInterval;
-				uint32 MaxRefreshRate = FIOSPlatformRHIFramePacer::GetMaxRefreshRate();
-
+	
+#if (UE4_HAS_IOS10 || UE4_TARGET_PRE_IOS10)	
 				CADisplayLink* displayLinkParam = (CADisplayLink*)param;
-				
+#endif
+		
+#if UE4_HAS_IOS10
 				if (displayLinkParam.preferredFramesPerSecond > 0)
 				{
-					displayLinkParam.preferredFramesPerSecond = MaxRefreshRate / FIOSPlatformRHIFramePacer::FrameInterval;
+					displayLinkParam.preferredFramesPerSecond = IOSDisplayConstants::MaxRefreshRate / FIOSPlatformRHIFramePacer::FrameInterval;
+				}
+				else
+#endif
+				{
+#if UE4_TARGET_PRE_IOS10
+					displayLinkParam.frameInterval = FIOSPlatformRHIFramePacer::FrameInterval;
+#endif
 				}
 
 				// Update pacing for present
-				FIOSPlatformRHIFramePacer::Pace = MaxRefreshRate / FIOSPlatformRHIFramePacer::FrameInterval;
+				FIOSPlatformRHIFramePacer::Pace = IOSDisplayConstants::MaxRefreshRate / FIOSPlatformRHIFramePacer::FrameInterval;
 			}
 		}
 	}	
@@ -143,8 +170,7 @@ bool FIOSPlatformRHIFramePacer::IsEnabled()
 		FString FrameRateLockAsEnum;
 		GConfig->GetString(TEXT("/Script/IOSRuntimeSettings.IOSRuntimeSettings"), TEXT("FrameRateLock"), FrameRateLockAsEnum, GEngineIni);
 
-		uint32 MaxRefreshRate = GetMaxRefreshRate();
-		uint32 FrameRateLock = MaxRefreshRate;
+		uint32 FrameRateLock = IOSDisplayConstants::MaxRefreshRate;
 		FParse::Value(*FrameRateLockAsEnum, TEXT("PUFRL_"), FrameRateLock);
 
         const bool bOverridesFrameRate = FParse::Value( FCommandLine::Get(), TEXT( "FrameRateLock=" ), FrameRateLockAsEnum );
@@ -155,13 +181,13 @@ bool FIOSPlatformRHIFramePacer::IsEnabled()
         
         if (FrameRateLock == 0)
         {
-            FrameRateLock = MaxRefreshRate;
+            FrameRateLock = IOSDisplayConstants::MaxRefreshRate;
         }
 
         if (!bIsRHIFramePacerEnabled)
 		{
-			check((MaxRefreshRate % FrameRateLock) == 0);
-			FrameInterval = MaxRefreshRate / FrameRateLock;
+			check((IOSDisplayConstants::MaxRefreshRate % FrameRateLock) == 0);
+			FrameInterval = IOSDisplayConstants::MaxRefreshRate / FrameRateLock;
 			MinFrameInterval = FrameInterval;
 
 			bIsRHIFramePacerEnabled = (FrameInterval > 0);
@@ -173,60 +199,6 @@ bool FIOSPlatformRHIFramePacer::IsEnabled()
 	}
 	
 	return bIsRHIFramePacerEnabled;
-}
-
-uint32 FIOSPlatformRHIFramePacer::GetMaxRefreshRate()
-{
-	static bool bEnableDynamicMaxFPS = false;
-	static bool bInitialized = false;
-	
-	if (!bInitialized)
-	{
-		GConfig->GetBool(TEXT("/Script/IOSRuntimeSettings.IOSRuntimeSettings"), TEXT("bEnableDynamicMaxFPS"), bEnableDynamicMaxFPS, GEngineIni);
-		bInitialized = true;
-	}
-	
-	return bEnableDynamicMaxFPS ? [UIScreen mainScreen].maximumFramesPerSecond : IOSDisplayConstants::MaxRefreshRate;
-}
-
-bool FIOSPlatformRHIFramePacer::SupportsFramePace(int32 QueryFramePace)
-{
-	// Support frame rates that are an integer multiple of max refresh rate, or 0 for no pacing
-	return QueryFramePace == 0 || (GetMaxRefreshRate() % QueryFramePace) == 0;
-}
-
-int32 FIOSPlatformRHIFramePacer::SetFramePace(int32 InFramePace)
-{
-	int32 NewPace = 0;
-
-	static IConsoleVariable* SyncIntervalCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("rhi.SyncInterval"));
-	if (ensure(SyncIntervalCVar != nullptr))
-	{
-		int32 MaxRefreshRate = GetMaxRefreshRate();
-		int32 NewSyncInterval = InFramePace > 0 ? MaxRefreshRate / InFramePace : 0;
-		SyncIntervalCVar->Set(NewSyncInterval, ECVF_SetByCode);
-
-		if (NewSyncInterval > 0)
-		{
-			NewPace = MaxRefreshRate / NewSyncInterval;
-		}
-	}
-	return NewPace;
-}
-
-int32 FIOSPlatformRHIFramePacer::GetFramePace()
-{
-	int32 CurrentPace = 0;
-	static IConsoleVariable* SyncIntervalCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("rhi.SyncInterval"));
-	if (ensure(SyncIntervalCVar != nullptr))
-	{
-		int SyncInterval = SyncIntervalCVar->GetInt();
-		if (SyncInterval > 0)
-		{
-			CurrentPace = GetMaxRefreshRate() / SyncInterval;
-		}
-	}
-	return CurrentPace;
 }
 
 void FIOSPlatformRHIFramePacer::InitWithEvent(FEvent* TriggeredEvent)

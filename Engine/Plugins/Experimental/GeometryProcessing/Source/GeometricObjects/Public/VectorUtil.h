@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -22,7 +22,6 @@ enum class EIntersectionType
 	Line,
 	Polygon,
 	Plane,
-	MultiSegment,
 	Unknown
 };
 
@@ -263,7 +262,7 @@ namespace VectorUtil
 	}
 
 	/**
-	 * Fast cotangent of angle between two vectors (*do not have to be normalized unit vectors*).
+	 * Fast cotangent of angle between two vectors.
 	 * cot = cos/sin, both of which can be computed from vector identities
 	 * @return cotangent of angle between V1 and V2, or zero if result would be unstable (eg infinity)
 	 */ 
@@ -317,7 +316,7 @@ namespace VectorUtil
 	* TODO: make robust to degenerate triangles?
 	*/
 	template <typename RealType>
-	FVector3<RealType> BarycentricCoords(const FVector2<RealType>& Point, const FVector2<RealType>& V0, const FVector2<RealType>& V1, const FVector2<RealType>& V2)
+	FVector3<RealType> BarycentricCoords(const FVector3<RealType>& Point, const FVector2<RealType>& V0, const FVector2<RealType>& V1, const FVector2<RealType>& V2)
 	{
 		FVector2<RealType> kV02 = V0 - V2;
 		FVector2<RealType> kV12 = V1 - V2;
@@ -352,35 +351,6 @@ namespace VectorUtil
 		return RealType(-2.0) * atan2(bottom, top);
 	}
 
-
-	/**
-	 * Calculate gradient of scalar field values fi,fj,fk defined at corners of triangle Vi,Vj,Vk and interpolated across triangle using linear basis functions.
-	 * This gradient is a 3D vector lying in the plane of the triangle (or zero if field is constant).
-	 * @return gradient (3D vector) lying in plane of triangle.
-	 */
-	template <typename RealType>
-	inline FVector3<RealType> TriGradient(FVector3<RealType> Vi, FVector3<RealType> Vj, FVector3<RealType> Vk, RealType fi, RealType fj, RealType fk)
-	{
-		// recenter (better for precision)
-		FVector3<RealType> Centroid = (Vi + Vj + Vk) / (RealType)3;
-		Vi -= Centroid; Vj -= Centroid; Vk -= Centroid;
-		// calculate tangent-normal frame
-		FVector3<RealType> Normal = VectorUtil::Normal<RealType>(Vi, Vj, Vk);
-		FVector3<RealType> Perp0, Perp1;
-		VectorUtil::MakePerpVectors<RealType>(Normal, Perp0, Perp1);
-		// project points to triangle plane coordinates
-		FVector2<RealType> vi(Vi.Dot(Perp0), Vi.Dot(Perp1));
-		FVector2<RealType> vj(Vj.Dot(Perp0), Vj.Dot(Perp1));
-		FVector2<RealType> vk(Vk.Dot(Perp0), Vk.Dot(Perp1));
-		// calculate gradient
-		FVector2<RealType> GradX = (fj-fi)*(vi-vk).Perp() + (fk-fi)*(vj-vi).Perp();
-		// map back to 3D vector in triangle plane
-		RealType AreaScale = (RealType)1 / ((RealType)2 * VectorUtil::Area<RealType>(Vi, Vj, Vk));
-		return AreaScale * (GradX.X * Perp0 + GradX.Y * Perp1);
-	}
-
-
-
 	/**
 	 * @return angle between vectors (A-CornerPt) and (B-CornerPt)
 	 */
@@ -397,56 +367,32 @@ namespace VectorUtil
 
 
 	/**
-	 * @return sign of Bitangent relative to Normal and Tangent
+	 * @return sign of Binormal/Bitangent relative to Normal and Tangent
 	 */
 	template<typename RealType>
-	inline RealType BitangentSign(const FVector3<RealType>& NormalIn, const FVector3<RealType>& TangentIn, const FVector3<RealType>& BitangentIn)
+	inline RealType BinormalSign(const FVector3<RealType>& NormalIn, const FVector3<RealType>& TangentIn, const FVector3<RealType>& BinormalIn)
 	{
 		// following math from RenderUtils.h::GetBasisDeterminantSign()
-		RealType Cross00 = BitangentIn.Y*NormalIn.Z - BitangentIn.Z*NormalIn.Y;
-		RealType Cross10 = BitangentIn.Z*NormalIn.X - BitangentIn.X*NormalIn.Z;
-		RealType Cross20 = BitangentIn.X*NormalIn.Y - BitangentIn.Y*NormalIn.X;
+		RealType Cross00 = BinormalIn.Y*NormalIn.Z - BinormalIn.Z*NormalIn.Y;
+		RealType Cross10 = BinormalIn.Z*NormalIn.X - BinormalIn.X*NormalIn.Z;
+		RealType Cross20 = BinormalIn.X*NormalIn.Y - BinormalIn.Y*NormalIn.X;
 		RealType Determinant = TangentIn.X*Cross00 + TangentIn.Y*Cross10 + TangentIn.Z*Cross20;
 		return (Determinant < 0) ? (RealType)-1 : (RealType)1;
 	}
 
 	/**
-	 * @return Bitangent vector based on given Normal, Tangent, and Sign value (+1/-1)
+	 * @return Binormal vector based on given Normal, Tangent, and Sign value (+1/-1)
 	 */
 	template<typename RealType>
-	inline FVector3<RealType> Bitangent(const FVector3<RealType>& NormalIn, const FVector3<RealType>& TangentIn, RealType BitangentSign)
+	inline FVector3<RealType> Binormal(const FVector3<RealType>& NormalIn, const FVector3<RealType>& TangentIn, RealType BinormalSign)
 	{
-		return BitangentSign * FVector3<RealType>(
+		return BinormalSign * FVector3<RealType>(
 			NormalIn.Y*TangentIn.Z - NormalIn.Z*TangentIn.Y,
 			NormalIn.Z*TangentIn.X - NormalIn.X*TangentIn.Z,
 			NormalIn.X*TangentIn.Y - NormalIn.Y*TangentIn.X);
 	}
 
-	/**
-	 * @return Tangent-Space vector based on given Normal and Bitangent
-	 */
-	template<typename RealType>
-	inline FVector3<RealType> TangentFromBitangent(const FVector3<RealType>& NormalIn, const FVector3<RealType>& BitangentIn)
-	{
-		return BitangentIn.Cross(NormalIn);
-	}
 
-	/**
-	 * @return Bitangent vector based on given Normal and Tangent
-	 */
-	template<typename RealType>
-	inline FVector3<RealType> BitangentFromTangent(const FVector3<RealType>& NormalIn, const FVector3<RealType>& TangentIn)
-	{
-		return NormalIn.Cross(TangentIn);
-	}
-
-	/// @return Aspect ratio of triangle 
-	inline double AspectRatio(const FVector3d& v1, const FVector3d& v2, const FVector3d& v3)
-	{
-		double a = v1.Distance(v2), b = v2.Distance(v3), c = v3.Distance(v1);
-		double s = (a + b + c) / 2.0;
-		return (a * b * c) / (8.0 * (s - a) * (s - b) * (s - c));
-	}
 
 
 }; // namespace VectorUtil

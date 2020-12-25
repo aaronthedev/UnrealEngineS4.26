@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TrackEditors/PathTrackEditor.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
@@ -46,7 +46,7 @@ public:
 				if (PathSection->GetConstraintBindingID().GetSequenceID().IsValid())
 				{
 					// Ensure that this ID is resolvable from the root, based on the current local sequence ID
-					FMovieSceneObjectBindingID RootBindingID = PathSection->GetConstraintBindingID().ResolveLocalToRoot(SequenceID, *Sequencer);
+					FMovieSceneObjectBindingID RootBindingID = PathSection->GetConstraintBindingID().ResolveLocalToRoot(SequenceID, Sequencer->GetEvaluationTemplate().GetHierarchy());
 					SequenceID = RootBindingID.GetSequenceID();
 				}
 
@@ -144,7 +144,7 @@ bool F3DPathTrackEditor::IsActorPickable(const AActor* const ParentActor, FGuid 
 		if (PathSection->GetConstraintBindingID().GetSequenceID().IsValid())
 		{
 			// Ensure that this ID is resolvable from the root, based on the current local sequence ID
-			FMovieSceneObjectBindingID RootBindingID = PathSection->GetConstraintBindingID().ResolveLocalToRoot(SequenceID, *GetSequencer());
+			FMovieSceneObjectBindingID RootBindingID = PathSection->GetConstraintBindingID().ResolveLocalToRoot(SequenceID, GetSequencer()->GetEvaluationTemplate().GetHierarchy());
 			SequenceID = RootBindingID.GetSequenceID();
 		}
 
@@ -268,9 +268,8 @@ FKeyPropertyResult F3DPathTrackEditor::AddKeyInternal( FFrameNumber KeyTime, con
 				}
 
 				int32 Duration = FMath::Max(0, (PathEndTime - KeyTime).Value);
-				UMovieSceneSection* NewSection = Cast<UMovieScene3DPathTrack>(Track)->AddConstraint( KeyTime, Duration, NAME_None, NAME_None, ConstraintBindingID );
+				Cast<UMovieScene3DPathTrack>(Track)->AddConstraint( KeyTime, Duration, NAME_None, NAME_None, ConstraintBindingID );
 				KeyPropertyResult.bTrackModified = true;
-				KeyPropertyResult.SectionsCreated.Add(NewSection);
 			}
 		}
 	}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -36,7 +36,7 @@ public class PreLoadScreen : ModuleRules
 		//Need to make sure Android has Launch module so it can find and process AndroidEventManager events
 		if (Target.Platform == UnrealTargetPlatform.Android)
 		{
-			PrivateIncludePathModuleNames.AddRange(
+			PrivateDependencyModuleNames.AddRange(
 				new string[] {
 					"Launch"
 				}

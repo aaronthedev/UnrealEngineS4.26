@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VoiceCodecOpus.h"
 #include "VoiceModule.h"
@@ -337,14 +337,13 @@ int32 FVoiceEncoderOpus::Encode(const uint8* RawPCMData, uint32 RawDataSize, uin
 		}
 		else if (CompressedLength != 1)
 		{
-#if ADD_ENTROPY_TO_PACKET
 			opus_encoder_ctl(Encoder, OPUS_GET_FINAL_RANGE(&Entropy[LastEntropyIdx]));
 
+#if ADD_ENTROPY_TO_PACKET
 			UE_LOG(LogVoiceEncode, VeryVerbose, TEXT("Entropy[%d]=%d"), i, Entropy[LastEntropyIdx]);
 			EntropyOffsets[i] = Entropy[LastEntropyIdx];
-
-			LastEntropyIdx = (LastEntropyIdx + 1) % NUM_ENTROPY_VALUES;
 #endif
+			LastEntropyIdx = (LastEntropyIdx + 1) % NUM_ENTROPY_VALUES;
 
 #if DEBUG_OPUS
 			DebugFrameEncodeInfo(CompressedDataStart + CompressedBufferOffset, CompressedLength, SampleRate);
@@ -681,17 +680,16 @@ void FVoiceDecoderOpus::Decode(const uint8* InCompressedData, uint32 CompressedD
 								UE_LOG(LogVoiceDecode, Warning, TEXT("Unexpected decode result NumSamplesDecoded %d != FrameSize %d"), NumDecompressedSamples, FrameSize);
 							}
 
-#if ADD_ENTROPY_TO_PACKET
 							opus_decoder_ctl(Decoder, OPUS_GET_FINAL_RANGE(&Entropy[LastEntropyIdx]));
 
+#if ADD_ENTROPY_TO_PACKET
 							if (Entropy[LastEntropyIdx] != EntropyOffsets[i])
 							{
 								UE_LOG(LogVoiceDecode, Verbose, TEXT("Decoder Entropy[%d/%d] = %d expected %d"), i, NumFramesToDecode - 1, Entropy[LastEntropyIdx], EntropyOffsets[i]);
 							}
-
+#endif
 
 							LastEntropyIdx = (LastEntropyIdx + 1) % NUM_ENTROPY_VALUES;
-#endif
 
 							// Advance within the decompressed output stream
 							DecompressedBufferOffset += (NumDecompressedSamples * NumChannels * sizeof(opus_int16));

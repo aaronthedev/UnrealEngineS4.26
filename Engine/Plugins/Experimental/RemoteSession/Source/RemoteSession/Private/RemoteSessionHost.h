@@ -1,10 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "RemoteSessionRole.h"
 
-class IBackChannelSocketConnection;
+class IBackChannelConnection;
 class FRecordingMessageHandler;
 class FFrameGrabber;
 class IImageWrapper;
@@ -16,7 +16,9 @@ class FRemoteSessionHost : public FRemoteSessionRole, public TSharedFromThis<FRe
 public:
 
 	FRemoteSessionHost(TArray<FRemoteSessionChannelInfo> SupportedChannels);
-	~FRemoteSessionHost();	
+	~FRemoteSessionHost();
+
+	virtual void Close() override;
 
 	bool StartListening(const uint16 Port);
 
@@ -26,19 +28,14 @@ public:
 
 protected:
 
-	/* Closes all connections. Called by public Close() function which first send a graceful goodbye */
-	virtual void	CloseConnections() override;
-
-	virtual bool 	ProcessStateChange(const ConnectionState NewState, const ConnectionState OldState) override;
-
-	virtual void 	BindEndpoints(TBackChannelSharedPtr<IBackChannelConnection> InConnection) override;
-
-	void			SendChannelListToConnection();
+	virtual void	OnBindEndpoints() override;
+	virtual void	OnCreateChannels() override;
 	
-	bool			ProcessIncomingConnection(TSharedRef<IBackChannelSocketConnection> NewConnection);
+	bool			ProcessIncomingConnection(TSharedRef<IBackChannelConnection> NewConnection);
 
+	TSharedPtr<IBackChannelConnection> Listener;
 
-	TSharedPtr<IBackChannelSocketConnection> Listener;
+	TArray<FRemoteSessionChannelInfo> SupportedChannels;
 
 	/** Saved information about the editor and viewport we possessed, so we can restore it after exiting VR mode */
 	float SavedEditorDragTriggerDistance;

@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MagicLeapSharedFilePlugin.h"
 #include "Lumin/CAPIShims/LuminAPISharedFile.h"
 #include "Lumin/CAPIShims/LuminAPIFileInfo.h"
-#include "Stats/Stats.h"
 
 #if PLATFORM_LUMIN
 #include "Lumin/LuminPlatformFile.h"
@@ -138,8 +137,6 @@ bool FMagicLeapSharedFilePlugin::SharedFilePickAsync(const FMagicLeapFilesPicked
 
 bool FMagicLeapSharedFilePlugin::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FMagicLeapSharedFilePlugin_Tick);
-
 	bool bWaitingForDelegateResult_Cached;
 	FMagicLeapFilesPickedResultDelegate ResultDelegate_Cached;
 

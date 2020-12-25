@@ -18,7 +18,6 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IR/Operator.h"
 #include "llvm/Transforms/Utils/PromoteMemToReg.h"
 #include "llvm/Transforms/Utils/SSAUpdater.h"
 #include <unordered_set>
@@ -185,21 +184,11 @@ bool DxilPromoteStaticResources::PromoteStaticGlobalResources(
       GlobalVariable *GV = *(it++);
       // Build list of instructions to promote.
       for (User *U : GV->users()) {
-        if (isa<LoadInst>(U) || isa<StoreInst>(U)) {
-          Insts.emplace_back(cast<Instruction>(U));
-        } else if (GEPOperator *GEP = dyn_cast<GEPOperator>(U)) {
-          for (User *gepU : GEP->users()) {
-            DXASSERT_NOMSG(isa<LoadInst>(gepU) || isa<StoreInst>(gepU));
-            if (isa<LoadInst>(gepU) || isa<StoreInst>(gepU))
-              Insts.emplace_back(cast<Instruction>(gepU));
-          }
-        } else {
-          DXASSERT(false, "Unhandled user of resource static global");
-        }
+        Instruction *I = cast<Instruction>(U);
+        Insts.emplace_back(I);
       }
 
       LoadAndStorePromoter(Insts, SSA).run(Insts);
-      GV->removeDeadConstantUsers();
       if (GV->user_empty()) {
         bUpdated = true;
         staticResources.erase(GV);

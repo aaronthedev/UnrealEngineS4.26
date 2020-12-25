@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	CookCommandlet.cpp: Commandlet for cooking content
@@ -47,8 +47,6 @@ class UCookCommandlet
 	bool bUseSerializationForGeneratingPackageDependencies;
 	/** Only cook packages specified on commandline options (for debugging)*/
 	bool bCookSinglePackage;
-	/** Modification to bCookSinglePackage - cook transitive hard references in addition to the packages on the commandline */
-	bool bKeepSinglePackageRefs;
 	/** Should we output additional verbose cooking warnings */
 	bool bVerboseCookerWarnings;
 	/** only clean up objects which are not in use by the cooker when we gc (false will enable full gc) */
@@ -66,14 +64,16 @@ class UCookCommandlet
 	 * @param  BindAnyPort					Whether to bind on any port or the default port.
 	 * @param  Timeout						Length of time to wait for connections before attempting to close
 	 * @param  bForceClose					Whether or not the server should always shutdown after a timeout or after a user disconnects
-	 * @param  TargetPlatforms				The list of platforms that should be initialized at startup.  Other platforms will be initialized when first requested
 	 *
 	 * @return true on success, false otherwise.
 	 */
-	bool CookOnTheFly( FGuid InstanceId, int32 Timeout = 180, bool bForceClose = false, const TArray<ITargetPlatform*>& TargetPlatforms=TArray<ITargetPlatform*>() );
+	bool CookOnTheFly( FGuid InstanceId, int32 Timeout = 180, bool bForceClose = false );
 
-	/** Cooks for specified targets */
-	bool CookByTheBook(const TArray<ITargetPlatform*>& Platforms);
+	/** Cooks specified list of files */
+	bool CookByTheBook(const TArray<ITargetPlatform*>& Platforms, TArray<FString>& FilesInPath);
+
+	/** See if the cooker has exceeded max memory allowance in this case the cooker should force a garbage collection */
+	bool HasExceededMaxMemory(uint64 MaxMemoryAllowance) const;
 
 	/**	Process deferred commands */
 	void ProcessDeferredCommands();

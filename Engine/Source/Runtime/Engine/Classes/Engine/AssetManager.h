@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,12 +19,8 @@ struct FPrimaryAssetTypeData;
 struct FPrimaryAssetData;
 struct FPrimaryAssetRulesCustomOverride;
 
-/** Delegate called when acquiring resources/chunks for assets, first parameter will be true if all resources were acquired, false if any failed.
-	Second parameter will contain a list of chunks not yet downloaded */
-DECLARE_DELEGATE_TwoParams(FAssetManagerAcquireResourceDelegateEx, bool /* bSuccess */, const TArray<int32>& /* MissingChunks */);
-
 /** Delegate called when acquiring resources/chunks for assets, parameter will be true if all resources were acquired, false if any failed */
-DECLARE_DELEGATE_OneParam(FAssetManagerAcquireResourceDelegate, bool /* bSuccess */);
+DECLARE_DELEGATE_OneParam(FAssetManagerAcquireResourceDelegate, bool);
 
 /** 
  * A singleton UObject that is responsible for loading and unloading PrimaryAssets, and maintaining game-specific asset references
@@ -104,12 +100,6 @@ public:
 
 	/** This will expand out references in the passed in AssetBundleData that are pointing to other primary assets with bundles. This is useful to preload entire webs of assets */
 	virtual void RecursivelyExpandBundleData(FAssetBundleData& BundleData) const;
-
-	/** Register a delegate to call when all types are scanned at startup, if this has already happened call immediately */
-	virtual void CallOrRegister_OnCompletedInitialScan(FSimpleMulticastDelegate::FDelegate Delegate);
-
-	/** Returns true if initial scan has completed, this can be pretty late in editor builds */
-	virtual bool HasInitialScanCompleted() const;
 
 	// ACCESSING ASSET DIRECTORY
 
@@ -308,7 +298,6 @@ public:
 	 * @param CompleteDelegate		Delegate called when chunks have been acquired or failed. If any chunks fail the entire operation is considered a failure
 	 * @param Priority				Priority to use when acquiring chunks
 	 */
-	virtual void AcquireResourcesForAssetList(const TArray<FSoftObjectPath>& AssetList, FAssetManagerAcquireResourceDelegateEx CompleteDelegate, EChunkPriority::Type Priority = EChunkPriority::Immediate);
 	virtual void AcquireResourcesForAssetList(const TArray<FSoftObjectPath>& AssetList, FAssetManagerAcquireResourceDelegate CompleteDelegate, EChunkPriority::Type Priority = EChunkPriority::Immediate);
 
 	/** 
@@ -372,9 +361,6 @@ public:
 	/** Extracts all FSoftObjectPaths from a Class/Struct */
 	virtual void ExtractSoftObjectPaths(const UStruct* Struct, const void* StructValue, TArray<FSoftObjectPath>& FoundAssetReferences, const TArray<FName>& PropertiesToSkip = TArray<FName>()) const;
 
-	/** Helper function which requests the asset registery scan a list of directories/assets */
-	virtual void ScanPathsSynchronous(const TArray<FString>& PathsToScan) const;
-
 	/** Dumps out summary of managed types to log */
 	static void DumpAssetTypeSummary();
 
@@ -419,9 +405,6 @@ public:
 
 	/** Gets package names to add to the cook, and packages to never cook even if in startup set memory or referenced */
 	virtual void ModifyCook(TArray<FName>& PackagesToCook, TArray<FName>& PackagesToNeverCook);
-
-	/** Gets package names to add to a DLC cook*/
-	virtual void ModifyDLCCook(const FString& DLCName, TArray<FName>& PackagesToCook, TArray<FName>& PackagesToNeverCook);
 
 	/** Returns whether or not a specific UPackage should be cooked for the provied TargetPlatform */
 	virtual bool ShouldCookForPlatform(const UPackage* Package, const ITargetPlatform* TargetPlatform);
@@ -550,9 +533,6 @@ protected:
 	/** Called to apply the primary asset rule overrides from config */
 	virtual void ScanPrimaryAssetRulesFromConfig();
 
-	/** Helper function to read the asset registry */
-	virtual void SearchAssetRegistryPaths(TArray<FAssetData>& OutAssetDataList, TSet<FName>& OutDerivedClassNames, const TArray<FString>& Directories, const TArray<FString>& PackageNames, UClass* BaseClass, bool bHasBlueprintClasses) const;
-
 	/** Apply a single custom primary asset rule, calls function below */
 	virtual void ApplyCustomPrimaryAssetRulesOverride(const FPrimaryAssetRulesCustomOverride& CustomOverride);
 
@@ -580,11 +560,11 @@ protected:
 	bool OnAssetRegistryAvailableAfterInitialization(FName InName, FAssetRegistryState& OutNewState);
 
 #if WITH_EDITOR
-	UE_DEPRECATED(4.26, "ShouldSetManager that takes EAssetRegistryDependencyType is no longer called; switch to the version that takes EDependencyCategory")
-	virtual EAssetSetManagerResult::Type ShouldSetManager(const FAssetIdentifier& Manager, const FAssetIdentifier& Source, const FAssetIdentifier& Target, EAssetRegistryDependencyType::Type DependencyType, EAssetSetManagerFlags::Type Flags) const;
 	/** Function used during creating Management references to decide when to recurse and set references */
-	virtual EAssetSetManagerResult::Type ShouldSetManager(const FAssetIdentifier& Manager, const FAssetIdentifier& Source, const FAssetIdentifier& Target,
-		UE::AssetRegistry::EDependencyCategory Category, UE::AssetRegistry::EDependencyProperty Properties, EAssetSetManagerFlags::Type Flags) const;
+	virtual EAssetSetManagerResult::Type ShouldSetManager(const FAssetIdentifier& Manager, const FAssetIdentifier& Source, const FAssetIdentifier& Target, EAssetRegistryDependencyType::Type DependencyType, EAssetSetManagerFlags::Type Flags) const;
+
+	/** Helper function which requests the asset register scan a list of directories/assets */
+	virtual void ScanPathsSynchronous(const TArray<FString>& PathsToScan) const;
 
 	/** Called when asset registry is done loading off disk, will finish any deferred loads */
 	virtual void OnAssetRegistryFilesLoaded();
@@ -708,10 +688,6 @@ protected:
 	UPROPERTY()
 	bool bIncludeOnlyOnDiskAssets;
 
-	/** True if we have passed the initial asset registry/type scan */
-	UPROPERTY()
-	bool bHasCompletedInitialScan;
-
 	/** Number of notifications seen in this update */
 	UPROPERTY()
 	int32 NumberOfSpawnedNotifications;
@@ -721,15 +697,10 @@ protected:
 	TMap<FString, FString> PrimaryAssetIdRedirects;
 	TMap<FName, FName> AssetPathRedirects;
 
-	/** Delegate called when initial span finishes */
-	FSimpleMulticastDelegate OnCompletedInitialScanDelegate;
-
 	/** Delegate bound to chunk install */
 	FDelegateHandle ChunkInstallDelegateHandle;
 
 private:
-	/** Provide proper reentrancy for AssetRegistry temporary caching */
-	bool bOldTemporaryCachingMode = false;
 
 #if WITH_EDITOR
 	/** Recursive handler for InitializeAssetBundlesFromMetadata */

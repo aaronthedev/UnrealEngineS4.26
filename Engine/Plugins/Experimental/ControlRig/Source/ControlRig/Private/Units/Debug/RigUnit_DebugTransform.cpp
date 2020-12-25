@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Units/Debug/RigUnit_DebugTransform.h"
 #include "Units/RigUnitContext.h"
@@ -44,22 +44,6 @@ FRigUnit_DebugTransform_Execute()
 }
 
 FRigUnit_DebugTransformMutable_Execute()
-{
-	FRigUnit_DebugTransformMutableItemSpace::StaticExecute(
-		RigVMExecuteContext, 
-		Transform,
-		Mode,
-		Color,
-		Thickness,
-		Scale,
-		FRigElementKey(Space, ERigElementType::Bone), 
-		WorldOffset, 
-		bEnabled,
-		ExecuteContext, 
-		Context);
-}
-
-FRigUnit_DebugTransformMutableItemSpace_Execute()
 {
     DECLARE_SCOPE_HIERARCHICAL_COUNTER_RIGUNIT()
 	if (Context.State == EControlRigState::Init)

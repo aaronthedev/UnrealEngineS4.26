@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	UnixPlatformMemory.cpp: Unix platform memory functions
@@ -38,13 +38,11 @@
 #define UE4_PLATFORM_REDUCE_NUMBER_OF_MAPS					(0 && PLATFORM_UNIX && PLATFORM_64BITS)
 
 // do not do a root privilege check on non-x86-64 platforms (assume an embedded device)
-#ifndef UE4_DO_ROOT_PRIVILEGE_CHECK
-  #if defined(_M_X64) || defined(__x86_64__) || defined (__amd64__)
-    #define UE4_DO_ROOT_PRIVILEGE_CHECK	 1
-  #else
-    #define UE4_DO_ROOT_PRIVILEGE_CHECK	 0
-  #endif // defined(_M_X64) || defined(__x86_64__) || defined (__amd64__) 
-#endif // ifndef UE4_DO_ROOT_PRIVILEGE_CHECK
+#if defined(_M_X64) || defined(__x86_64__) || defined (__amd64__) 
+	#define UE4_DO_ROOT_PRIVILEGE_CHECK	 1
+#else
+	#define UE4_DO_ROOT_PRIVILEGE_CHECK	 0
+#endif // defined(_M_X64) || defined(__x86_64__) || defined (__amd64__) 
 
 // Set rather to use BinnedMalloc2 for binned malloc, can be overridden below
 #define USE_MALLOC_BINNED2 (1)
@@ -103,7 +101,7 @@ void FUnixPlatformMemory::Init()
 
 class FMalloc* FUnixPlatformMemory::BaseAllocator()
 {
-#if UE4_DO_ROOT_PRIVILEGE_CHECK && !IS_PROGRAM
+#if UE4_DO_ROOT_PRIVILEGE_CHECK
 	// This function gets executed very early, way before main() (because global constructors will allocate memory).
 	// This makes it ideal, if unobvious, place for a root privilege check.
 	if (geteuid() == 0)
@@ -113,7 +111,7 @@ class FMalloc* FUnixPlatformMemory::BaseAllocator()
 		// unreachable
 		return nullptr;
 	}
-#endif // UE4_DO_ROOT_PRIVILEGE_CHECK && !IS_PROGRAM
+#endif // UE4_DO_ROOT_PRIVILEGE_CHECK
 
 #if UE_USE_MALLOC_REPLAY_PROXY
 	bool bAddReplayProxy = false;
@@ -604,10 +602,8 @@ namespace UnixPlatformMemory
 			return 0;
 		}
 
-		const int NewLen = Len - kSuffixLength;
-
 		// let's check that this is indeed "kB"
-		char * Suffix = &Line[NewLen];
+		char * Suffix = &Line[Len - kSuffixLength];
 		if (strcmp(Suffix, " kB\n") != 0)
 		{
 			// Unix the kernel changed the format, huh?
@@ -617,12 +613,12 @@ namespace UnixPlatformMemory
 		// kill the kB
 		*Suffix = 0;
 
-        // find the beginning of the number
-		for (const char* NumberBegin = Line; NumberBegin < Suffix; ++NumberBegin)
+		// find the beginning of the number
+		for (const char * NumberBegin = Suffix; NumberBegin >= Line; --NumberBegin)
 		{
-			if (isdigit(*NumberBegin))
+			if (*NumberBegin == ' ')
 			{
-				return atoll(NumberBegin) * 1024ULL;
+				return static_cast< uint64 >(atol(NumberBegin + 1)) * 1024ULL;
 			}
 		}
 

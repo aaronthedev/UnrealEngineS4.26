@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -38,10 +38,6 @@ struct FHttpRequestHandlerIterator final
 		 */
 		FORCEINLINE bool HasNext() const;
 
-		/**
-		 * Holds the tokens that were removed from the end of the path.
-		 */
-		TArray<FString> ParsedTokens;
 	private:
 		FString NextPath;
 		bool bFirstIteration = true;
@@ -54,7 +50,7 @@ public:
 	/**
 	 * Constructor
 	 */
-	FHttpRequestHandlerIterator(TSharedPtr<FHttpServerRequest> InRequest, const FHttpRequestHandlerRegistrar& InRequestHandlerRegistrar);
+	FHttpRequestHandlerIterator(const TSharedPtr<FHttpServerRequest>& InRequest, const FHttpRequestHandlerRegistrar& InRequestHandlerRegistrar);
 
 	/** 
 	* Determines the next registered request handler
@@ -64,12 +60,13 @@ public:
 
 private:
 
-	/** Utility to iterate FHttpRoutes in-place */
-	FHttpPathIterator HttpPathIterator;
-
 	/** The basis request */
 	const TSharedPtr<FHttpServerRequest> Request;
 
 	/** The associative route/handler registration  */
-	const FHttpRequestHandlerRegistrar& RequestHandlerRegistrar;
+	const FHttpRequestHandlerRegistrar RequestHandlerRegistrar;
+
+	/** Utility to iterate FHttpRoutes in-place */
+	FHttpPathIterator HttpPathIterator;
+
 };

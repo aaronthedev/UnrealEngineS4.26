@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -61,7 +61,7 @@ public:
 protected:
     TWeakPtr<SWindow> OwningWindow;
 
-    TAtomic<bool> bIsEngineLoadingFinished;
+    bool bIsEngineLoadingFinished;
 private:
     
     //The name of the Plugin creating this FPreLoadScreenBase.

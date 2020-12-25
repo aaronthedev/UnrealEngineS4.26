@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EditorStaticMeshLibrary.h"
 
@@ -10,13 +10,11 @@
 #include "ContentBrowserModule.h"
 #include "Editor.h"
 #include "Editor/UnrealEdEngine.h"
-#include "EditorFramework/AssetImportData.h"
 #include "EngineUtils.h"
 #include "Engine/Brush.h"
 #include "Engine/Selection.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
-#include "FbxMeshUtils.h"
 #include "FileHelpers.h"
 #include "GameFramework/Actor.h"
 #include "IContentBrowserSingleton.h"
@@ -26,15 +24,10 @@
 #include "LevelEditorViewport.h"
 #include "Engine/MapBuildDataRegistry.h"
 #include "StaticMeshAttributes.h"
-#include "StaticMeshOperations.h"
+#include "MeshDescriptionOperations.h"
 #include "MeshMergeModule.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "ScopedTransaction.h"
-#include "Async/ParallelFor.h"
-#include "Algo/AllOf.h"
-#include "Algo/AnyOf.h"
-#include "Async/Async.h"
-#include "Misc/ScopedSlowTask.h"
 
 #include "UnrealEdGlobals.h"
 #include "UnrealEd/Private/GeomFitUtils.h"
@@ -59,8 +52,6 @@ namespace InternalEditorMeshLibrary
 		{
 			return false;
 		}
-
-		TRACE_CPUPROFILER_EVENT_SCOPE(GenerateConvexCollision)
 
 		// If RenderData has not been computed yet, do it
 		if (!StaticMesh->RenderData)
@@ -239,255 +230,6 @@ int32 UEditorStaticMeshLibrary::SetLodsWithNotification(UStaticMesh* StaticMesh,
 	}
 
 	return LODIndex;
-}
-
-void UEditorStaticMeshLibrary::GetLodReductionSettings(const UStaticMesh* StaticMesh, const int32 LodIndex, FMeshReductionSettings& OutReductionOptions)
-{
-	TGuardValue<bool> UnattendedScriptGuard(GIsRunningUnattendedScript, true);
-
-	if (!EditorScriptingUtils::CheckIfInEditorAndPIE())
-	{
-		return;
-	}
-
-	if (StaticMesh == nullptr)
-	{
-		UE_LOG(LogEditorScripting, Error, TEXT("GetLodReductionSettings: The StaticMesh is null."));
-		return;
-	}
-
-	// If LOD 0 does not exist, warn and return
-	if (LodIndex < 0 || StaticMesh->GetNumSourceModels() <= LodIndex)
-	{
-		UE_LOG(LogEditorScripting, Error, TEXT("GetLodReductionSettings: Invalid LOD index."));
-		return;
-	}
-
-	const FStaticMeshSourceModel& LODModel = StaticMesh->GetSourceModel(LodIndex);
-
-	// Copy over the reduction settings
-	OutReductionOptions = LODModel.ReductionSettings;
-}
-
-void UEditorStaticMeshLibrary::SetLodReductionSettings(UStaticMesh* StaticMesh, const int32 LodIndex, const FMeshReductionSettings& ReductionOptions)
-{
-	TGuardValue<bool> UnattendedScriptGuard(GIsRunningUnattendedScript, true);
-
-	if (!EditorScriptingUtils::CheckIfInEditorAndPIE())
-	{
-		return;
-	}
-
-	if (StaticMesh == nullptr)
-	{
-		UE_LOG(LogEditorScripting, Error, TEXT("SetLodReductionSettings: The StaticMesh is null."));
-		return;
-	}
-
-	// If LOD 0 does not exist, warn and return
-	if (LodIndex < 0 || StaticMesh->GetNumSourceModels() <= LodIndex)
-	{
-		UE_LOG(LogEditorScripting, Error, TEXT("SetLodReductionSettings: Invalid LOD index."));
-		return;
-	}
-
-	// Close the mesh editor to prevent crashing. If changes are applied, reopen it after the mesh has been built.
-	bool bStaticMeshIsEdited = false;
-	UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
-	if (AssetEditorSubsystem->FindEditorForAsset(StaticMesh, false))
-	{
-		AssetEditorSubsystem->CloseAllEditorsForAsset(StaticMesh);
-		bStaticMeshIsEdited = true;
-	}
-
-	StaticMesh->Modify();
-
-	FStaticMeshSourceModel& LODModel = StaticMesh->GetSourceModel(LodIndex);
-
-	// Copy over the reduction settings
-	LODModel.ReductionSettings = ReductionOptions;
-
-	// Request re-building of mesh with new LODs
-	StaticMesh->PostEditChange();
-
-	// Reopen MeshEditor on this mesh if the MeshEditor was previously opened in it
-	if (bStaticMeshIsEdited)
-	{
-		AssetEditorSubsystem->OpenEditorForAsset(StaticMesh);
-	}
-}
-
-void UEditorStaticMeshLibrary::GetLodBuildSettings(const UStaticMesh* StaticMesh, const int32 LodIndex, FMeshBuildSettings& OutBuildOptions)
-{
-	TGuardValue<bool> UnattendedScriptGuard(GIsRunningUnattendedScript, true);
-
-	if (!EditorScriptingUtils::CheckIfInEditorAndPIE())
-	{
-		return;
-	}
-
-	if (StaticMesh == nullptr)
-	{
-		UE_LOG(LogEditorScripting, Error, TEXT("GetLodBuildSettings: The StaticMesh is null."));
-		return;
-	}
-
-	// If LOD 0 does not exist, warn and return
-	if (LodIndex < 0 || StaticMesh->GetNumSourceModels() <= LodIndex)
-	{
-		UE_LOG(LogEditorScripting, Error, TEXT("GetLodBuildSettings: Invalid LOD index."));
-		return;
-	}
-
-	const FStaticMeshSourceModel& LODModel = StaticMesh->GetSourceModel(LodIndex);
-
-	// Copy over the reduction settings
-	OutBuildOptions = LODModel.BuildSettings;
-}
-
-void UEditorStaticMeshLibrary::SetLodBuildSettings(UStaticMesh* StaticMesh, const int32 LodIndex, const FMeshBuildSettings& BuildOptions)
-{
-	TGuardValue<bool> UnattendedScriptGuard(GIsRunningUnattendedScript, true);
-
-	if (!EditorScriptingUtils::CheckIfInEditorAndPIE())
-	{
-		return;
-	}
-
-	if (StaticMesh == nullptr)
-	{
-		UE_LOG(LogEditorScripting, Error, TEXT("SetLodBuildSettings: The StaticMesh is null."));
-		return;
-	}
-
-	// If LOD 0 does not exist, warn and return
-	if (LodIndex < 0 || StaticMesh->GetNumSourceModels() <= LodIndex)
-	{
-		UE_LOG(LogEditorScripting, Error, TEXT("SetLodBuildSettings: Invalid LOD index."));
-		return;
-	}
-
-	// Close the mesh editor to prevent crashing. If changes are applied, reopen it after the mesh has been built.
-	bool bStaticMeshIsEdited = false;
-	UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
-	if (AssetEditorSubsystem->FindEditorForAsset(StaticMesh, false))
-	{
-		AssetEditorSubsystem->CloseAllEditorsForAsset(StaticMesh);
-		bStaticMeshIsEdited = true;
-	}
-
-	StaticMesh->Modify();
-
-	FStaticMeshSourceModel& LODModel = StaticMesh->GetSourceModel(LodIndex);
-
-	// Copy over the build settings
-	LODModel.BuildSettings = BuildOptions;
-
-	// Request re-building of mesh with new LODs
-	StaticMesh->PostEditChange();
-
-	// Reopen MeshEditor on this mesh if the MeshEditor was previously opened in it
-	if (bStaticMeshIsEdited)
-	{
-		AssetEditorSubsystem->OpenEditorForAsset(StaticMesh);
-	}
-}
-
-int32 UEditorStaticMeshLibrary::ImportLOD(UStaticMesh* BaseStaticMesh, const int32 LODIndex, const FString& SourceFilename)
-{
-	TGuardValue<bool> UnattendedScriptGuard(GIsRunningUnattendedScript, true);
-
-	if (!EditorScriptingUtils::CheckIfInEditorAndPIE())
-	{
-		UE_LOG(LogEditorScripting, Error, TEXT("StaticMesh ImportLOD: Cannot import or re-import when editor PIE is active."));
-		return INDEX_NONE;
-	}
-
-	if (BaseStaticMesh == nullptr)
-	{
-		UE_LOG(LogEditorScripting, Error, TEXT("StaticMesh ImportLOD: The StaticMesh is null."));
-		return INDEX_NONE;
-	}
-
-	// Make sure the LODIndex we want to add the LOD is valid
-	if (BaseStaticMesh->GetNumSourceModels() < LODIndex)
-	{
-		UE_LOG(LogEditorScripting, Error, TEXT("StaticMesh ImportLOD: Invalid LODIndex, the LOD index cannot be greater the the number of LOD, static mesh cannot have hole in the LOD array."));
-		return INDEX_NONE;
-	}
-
-	FString ResolveFilename = SourceFilename;
-	const bool bSourceFileExists = FPaths::FileExists(ResolveFilename);
-	if(!bSourceFileExists)
-	{
-		if (BaseStaticMesh->IsSourceModelValid(LODIndex))
-		{
-			const FStaticMeshSourceModel& SourceModel = BaseStaticMesh->GetSourceModel(LODIndex);
-			ResolveFilename = SourceModel.SourceImportFilename.IsEmpty() ?
-				SourceModel.SourceImportFilename :
-				UAssetImportData::ResolveImportFilename(SourceModel.SourceImportFilename, nullptr);
-		}
-	}
-
-	if (!FPaths::FileExists(ResolveFilename))
-	{
-		UE_LOG(LogEditorScripting, Error, TEXT("StaticMesh ImportLOD: Invalid source filename."));
-		return INDEX_NONE;
-	}
-
-
-	if(!FbxMeshUtils::ImportStaticMeshLOD(BaseStaticMesh, ResolveFilename, LODIndex))
-	{
-		UE_LOG(LogEditorScripting, Error, TEXT("StaticMesh ImportLOD: Cannot import mesh LOD."));
-		return INDEX_NONE;
-	}
-	
-	GEditor->GetEditorSubsystem<UImportSubsystem>()->BroadcastAssetPostLODImport(BaseStaticMesh, LODIndex);
-
-	return LODIndex;
-}
-
-bool UEditorStaticMeshLibrary::ReimportAllCustomLODs(UStaticMesh* StaticMesh)
-{
-	TGuardValue<bool> UnattendedScriptGuard(GIsRunningUnattendedScript, true);
-
-	if (!EditorScriptingUtils::CheckIfInEditorAndPIE())
-	{
-		UE_LOG(LogEditorScripting, Error, TEXT("StaticMesh ReimportAllCustomLODs: Cannot import or re-import when editor PIE is active."));
-		return false;
-	}
-
-	if (StaticMesh == nullptr)
-	{
-		UE_LOG(LogEditorScripting, Error, TEXT("StaticMesh ReimportAllCustomLODs: The StaticMesh is null."));
-		return false;
-	}
-
-	bool bResult = true;
-	int32 LODNumber = StaticMesh->GetNumLODs();
-	//Iterate the static mesh LODs, start at index 1
-	for (int32 LODIndex = 1; LODIndex < LODNumber; ++LODIndex)
-	{
-		const FStaticMeshSourceModel& SourceModel = StaticMesh->GetSourceModel(LODIndex);
-		//Skip LOD import in the same file as the base mesh, they are already re-import
-		if (SourceModel.bImportWithBaseMesh)
-		{
-			continue;
-		}
-
-		bool bHasBeenSimplified = !StaticMesh->IsMeshDescriptionValid(LODIndex) || StaticMesh->IsReductionActive(LODIndex);
-		if (bHasBeenSimplified)
-		{
-			continue;
-		}
-
-		if (ImportLOD(StaticMesh, LODIndex, SourceModel.SourceImportFilename) != LODIndex)
-		{
-			UE_LOG(LogEditorScripting, Error, TEXT("StaticMesh ReimportAllCustomLODs: Cannot re-import LOD %d."), LODIndex);
-			bResult = false;
-		}
-	}
-	return bResult;
 }
 
 int32 UEditorStaticMeshLibrary::SetLodFromStaticMesh(UStaticMesh* DestinationStaticMesh, int32 DestinationLodIndex, UStaticMesh* SourceStaticMesh, int32 SourceLodIndex, bool bReuseExistingMaterialSlots)
@@ -949,10 +691,8 @@ int32 UEditorStaticMeshLibrary::GetConvexCollisionCount(UStaticMesh* StaticMesh)
 	return BodySetup->AggGeom.ConvexElems.Num();
 }
 
-bool UEditorStaticMeshLibrary::BulkSetConvexDecompositionCollisionsWithNotification(const TArray<UStaticMesh*>& InStaticMeshes, int32 HullCount, int32 MaxHullVerts, int32 HullPrecision, bool bApplyChanges)
+bool UEditorStaticMeshLibrary::SetConvexDecompositionCollisionsWithNotification(UStaticMesh* StaticMesh, int32 HullCount, int32 MaxHullVerts, int32 HullPrecision, bool bApplyChanges)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(UEditorStaticMeshLibrary::SetConvexDecompositionCollisionsWithNotification)
-
 	TGuardValue<bool> UnattendedScriptGuard(GIsRunningUnattendedScript, true);
 
 	if (!EditorScriptingUtils::CheckIfInEditorAndPIE())
@@ -960,10 +700,7 @@ bool UEditorStaticMeshLibrary::BulkSetConvexDecompositionCollisionsWithNotificat
 		return false;
 	}
 
-	TArray<UStaticMesh*> StaticMeshes(InStaticMeshes);
-	StaticMeshes.RemoveAll([](const UStaticMesh* StaticMesh) { return StaticMesh == nullptr || !StaticMesh->IsMeshDescriptionValid(0); });
-
-	if (StaticMeshes.Num() == 0)
+	if (StaticMesh == nullptr)
 	{
 		UE_LOG(LogEditorScripting, Error, TEXT("SetConvexDecompositionCollisions: The StaticMesh is null."));
 		return false;
@@ -975,101 +712,51 @@ bool UEditorStaticMeshLibrary::BulkSetConvexDecompositionCollisionsWithNotificat
 		return false;
 	}
 
-	if (Algo::AnyOf(StaticMeshes, [](const UStaticMesh* StaticMesh) { return StaticMesh->RenderData == nullptr; }))
-	{
-		UStaticMesh::BatchBuild(StaticMeshes);
-	}
-
-	Algo::SortBy(
-		StaticMeshes,
-		[](const UStaticMesh* StaticMesh){ return StaticMesh->RenderData->LODResources[0].VertexBuffers.StaticMeshVertexBuffer.GetNumVertices(); },
-		TGreater<>()
-	);
-
 	// Close the mesh editor to prevent crashing. Reopen it after the mesh has been built.
 	UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
-
-	TSet<UStaticMesh*> EditedStaticMeshes;
-	for (UStaticMesh* StaticMesh : StaticMeshes)
+	bool bStaticMeshIsEdited = false;
+	if (AssetEditorSubsystem->FindEditorForAsset(StaticMesh, false))
 	{
-		if (AssetEditorSubsystem->FindEditorForAsset(StaticMesh, false))
+		AssetEditorSubsystem->CloseAllEditorsForAsset(StaticMesh);
+		bStaticMeshIsEdited = true;
+	}
+
+	if (StaticMesh->BodySetup)
+	{
+		if(bApplyChanges)
 		{
-			AssetEditorSubsystem->CloseAllEditorsForAsset(StaticMesh);
-			EditedStaticMeshes.Add(StaticMesh);
+			StaticMesh->BodySetup->Modify();
 		}
 
-		if (StaticMesh->BodySetup)
-		{
-			if (bApplyChanges)
-			{
-				StaticMesh->BodySetup->Modify();
-			}
+		// Remove simple collisions
+		StaticMesh->BodySetup->RemoveSimpleCollision();
 
-			// Remove simple collisions
-			StaticMesh->BodySetup->RemoveSimpleCollision();
+		// refresh collision change back to static mesh components
+		RefreshCollisionChange(*StaticMesh);
+	}
+
+	// Generate convex collision on mesh
+	bool bResult = InternalEditorMeshLibrary::GenerateConvexCollision(StaticMesh, HullCount, MaxHullVerts, HullPrecision);
+
+	if(bApplyChanges)
+	{
+		// refresh collision change back to static mesh components
+		RefreshCollisionChange(*StaticMesh);
+
+		// Mark mesh as dirty
+		StaticMesh->MarkPackageDirty();
+
+		// Request re-building of mesh following collision changes
+		StaticMesh->PostEditChange();
+
+		// Reopen MeshEditor on this mesh if the MeshEditor was previously opened in it
+		if (bStaticMeshIsEdited)
+		{
+			AssetEditorSubsystem->OpenEditorForAsset(StaticMesh);
 		}
 	}
 
-	TArray<bool> bResults;
-	bResults.SetNumZeroed(StaticMeshes.Num());
-
-	TAtomic<uint32> Processed(0);
-	TFuture<void> Result = 
-		Async(
-			EAsyncExecution::ThreadPool,
-			[&Processed, &bResults, &StaticMeshes, HullCount, MaxHullVerts, HullPrecision]()
-			{
-				ParallelFor(
-					StaticMeshes.Num(),
-					[&Processed, &bResults, &StaticMeshes, HullCount, MaxHullVerts, HullPrecision](int32 Index)
-					{
-						bResults[Index] = InternalEditorMeshLibrary::GenerateConvexCollision(StaticMeshes[Index], HullCount, MaxHullVerts, HullPrecision);
-						Processed++;
-					},
-					EParallelForFlags::Unbalanced
-				);
-			}
-		);
-	
-	uint32 LastProcessed = 0;
-	const FText ProgressText = LOCTEXT("ComputingConvexCollision", "Computing convex collision for static mesh {0}/{1} ...");
-	FScopedSlowTask Progress(StaticMeshes.Num(), FText::Format(ProgressText, LastProcessed, StaticMeshes.Num()));
-	Progress.MakeDialog();
-	
-	while (!Result.WaitFor(FTimespan::FromMilliseconds(33.0)))
-	{
-		uint32 LocalProcessed = Processed.Load(EMemoryOrder::Relaxed);
-		Progress.EnterProgressFrame(LocalProcessed - LastProcessed, FText::Format(ProgressText, LocalProcessed, StaticMeshes.Num()));
-		LastProcessed = LocalProcessed;
-	}
-
-	// refresh collision change back to static mesh components
-	RefreshCollisionChanges(StaticMeshes);
-
-	if (bApplyChanges)
-	{
-		for (UStaticMesh* StaticMesh : StaticMeshes)
-		{
-			// Mark mesh as dirty
-			StaticMesh->MarkPackageDirty();
-
-			// Request re-building of mesh following collision changes
-			StaticMesh->PostEditChange();
-		}
-	}
-	
-	// Reopen MeshEditor on this mesh if the MeshEditor was previously opened in it
-	for (UStaticMesh* StaticMesh : EditedStaticMeshes)
-	{
-		AssetEditorSubsystem->OpenEditorForAsset(StaticMesh);
-	}
-
-	return Algo::AllOf(bResults);
-}
-
-bool UEditorStaticMeshLibrary::SetConvexDecompositionCollisionsWithNotification(UStaticMesh* StaticMesh, int32 HullCount, int32 MaxHullVerts, int32 HullPrecision, bool bApplyChanges)
-{
-	return BulkSetConvexDecompositionCollisionsWithNotification({StaticMesh}, HullCount, MaxHullVerts, HullPrecision, bApplyChanges);
+	return bResult;
 }
 
 bool UEditorStaticMeshLibrary::RemoveCollisionsWithNotification(UStaticMesh* StaticMesh, bool bApplyChanges)
@@ -1364,24 +1051,6 @@ int32 UEditorStaticMeshLibrary::GetNumberVerts(UStaticMesh* StaticMesh, int32 LO
 	return StaticMesh->GetNumVertices(LODIndex);
 }
 
-int32 UEditorStaticMeshLibrary::GetNumberMaterials(UStaticMesh* StaticMesh)
-{
-	TGuardValue<bool> UnattendedScriptGuard(GIsRunningUnattendedScript, true);
-
-	if (!EditorScriptingUtils::CheckIfInEditorAndPIE())
-	{
-		return 0;
-	}
-
-	if (StaticMesh == nullptr)
-	{
-		UE_LOG(LogEditorScripting, Error, TEXT("GetNumberMaterials: The StaticMesh is null."));
-		return 0;
-	}
-
-	return StaticMesh->StaticMaterials.Num();
-}
-
 void UEditorStaticMeshLibrary::SetAllowCPUAccess(UStaticMesh* StaticMesh, bool bAllowCPUAccess)
 {
 	TGuardValue<bool> UnattendedScriptGuard(GIsRunningUnattendedScript, true);
@@ -1549,7 +1218,7 @@ bool UEditorStaticMeshLibrary::GeneratePlanarUVChannel(UStaticMesh* StaticMesh, 
 	FUVMapParameters UVParameters(Position, Orientation.Quaternion(), StaticMesh->GetBoundingBox().GetSize(), FVector::OneVector, Tiling );
 
 	TMap<FVertexInstanceID, FVector2D> TexCoords;
-	FStaticMeshOperations::GeneratePlanarUV(*MeshDescription, UVParameters, TexCoords);
+	FMeshDescriptionOperations::GeneratePlanarUV(*MeshDescription, UVParameters, TexCoords);
 
 	return StaticMesh->SetUVChannel(LODIndex, UVChannelIndex, TexCoords);
 }
@@ -1573,7 +1242,7 @@ bool UEditorStaticMeshLibrary::GenerateCylindricalUVChannel(UStaticMesh* StaticM
 	FUVMapParameters UVParameters(Position, Orientation.Quaternion(), StaticMesh->GetBoundingBox().GetSize(), FVector::OneVector, Tiling);
 
 	TMap<FVertexInstanceID, FVector2D> TexCoords;
-	FStaticMeshOperations::GenerateCylindricalUV(*MeshDescription, UVParameters, TexCoords);
+	FMeshDescriptionOperations::GenerateCylindricalUV(*MeshDescription, UVParameters, TexCoords);
 
 	return StaticMesh->SetUVChannel(LODIndex, UVChannelIndex, TexCoords);
 }
@@ -1597,7 +1266,7 @@ bool UEditorStaticMeshLibrary::GenerateBoxUVChannel(UStaticMesh* StaticMesh, int
 	FUVMapParameters UVParameters(Position, Orientation.Quaternion(), Size, FVector::OneVector, FVector2D::UnitVector);
 
 	TMap<FVertexInstanceID, FVector2D> TexCoords;
-	FStaticMeshOperations::GenerateBoxUV(*MeshDescription, UVParameters, TexCoords);
+	FMeshDescriptionOperations::GenerateBoxUV(*MeshDescription, UVParameters, TexCoords);
 
 	return StaticMesh->SetUVChannel(LODIndex, UVChannelIndex, TexCoords);
 }

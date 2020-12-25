@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -21,23 +21,6 @@ class FMediaTextureClockSink;
 class IMediaTextureSample;
 class UMediaPlayer;
 
-
-UENUM()
-enum MediaTextureOutputFormat
-{
-	MTOF_Default					UMETA(DisplayName = "Default (sRGB)"),
-	MTOF_SRGB_LINOUT				UMETA(DisplayName = "sRGB (linear output)"),		// sRGB data, using sRGB texture formats; hence read as linear RGB
-	MTOF_MAX,
-};
-
-UENUM()
-enum MediaTextureOrientation
-{
-	MTORI_Original					UMETA(DisplayName = "Original (as decoded)"),
-	MTORI_CW90						UMETA(DisplayName = "Clockwise 90deg"),
-	MTORI_CW180						UMETA(DisplayName = "Clockwise 180deg"),
-	MTORI_CW270						UMETA(DisplayName = "Clockwise 270deg"),
-};
 
 /**
  * Implements a texture asset for rendering video tracks from UMediaPlayer assets.
@@ -63,29 +46,6 @@ class MEDIAASSETS_API UMediaTexture
 	/** The color used to clear the texture if AutoClear is enabled (default = black). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="MediaTexture")
 	FLinearColor ClearColor;
-
-	/** Basic enablement for mip generation (default = false). */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MediaTexture", meta = (DisplayName = "Enable Mipmap generation"))
-	bool EnableGenMips;
-
-	/** The number of mips to use (default = 1). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MediaTexture", meta=(DisplayName="Total number of Mipmaps to output"))
-	uint8 NumMips;
-
-	/** Enable new style output (default = false). */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "MediaTexture", meta = (DisplayName = "Enable new style output"))
-	bool NewStyleOutput;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "MediaTexture", meta = (DisplayName = "Output format (new style)"))
-	TEnumAsByte<enum MediaTextureOutputFormat> OutputFormat;
-
-	/** Current aspect ratio */
-	UPROPERTY(Transient, TextExportTransient, SkipSerialization, BlueprintReadOnly, Category = "MediaTexture", meta = (DisplayName = "Current frame's aspect ratio"))
-	float CurrentAspectRatio;
-
-	/** Current media orientation */
-	UPROPERTY(Transient, TextExportTransient, SkipSerialization, BlueprintReadOnly, Category = "MediaTexture", meta = (DisplayName = "Current frame's orientation"))
-	TEnumAsByte<enum MediaTextureOrientation> CurrentOrientation;
 
 public:
 
@@ -166,18 +126,6 @@ public:
 
 #endif
 
-	/**
-	 * Get current aspect ratio of presented frame.
-	 * @return Aspect ratio of current frame
-	 */
-	float GetCurrentAspectRatio() const;
-
-	/**
-	 * Get current orientation of presented frame.
-	 * @return Orientation of current frame
-	 */
-	MediaTextureOrientation GetCurrentOrientation() const;
-
 public:
 
 	//~ UTexture interface.
@@ -213,10 +161,7 @@ protected:
 	void TickResource(FTimespan Timecode);
 
 	/** Update the video sample queue, if necessary. */
-	void UpdatePlayerAndQueue();
-
-	/** Update sample info */
-	void UpdateSampleInfo(const TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& Sample);
+	void UpdateQueue();
 
 protected:
 

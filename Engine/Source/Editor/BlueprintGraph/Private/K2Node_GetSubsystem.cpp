@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "K2Node_GetSubsystem.h"
 
@@ -226,13 +226,8 @@ void UK2Node_GetSubsystem::GetMenuActions(FBlueprintActionDatabaseRegistrar& Act
 	UClass* ActionKey = GetClass();
 	if (ActionRegistrar.IsOpenForRegistration(ActionKey))
 	{
-		for (UClass* Iter : Subclasses)
+		for (auto& Iter : Subclasses)
 		{
-			if (!UEdGraphSchema_K2::IsAllowableBlueprintVariableType(Iter, true))
-			{
-				continue;
-			}
-
 			UBlueprintNodeSpawner* Spawner = UBlueprintNodeSpawner::Create(ActionKey);
 			check(Spawner);
 
@@ -424,13 +419,8 @@ void UK2Node_GetSubsystemFromPC::GetMenuActions(FBlueprintActionDatabaseRegistra
 	UClass* ActionKey = GetClass();
 	if (ActionRegistrar.IsOpenForRegistration(ActionKey))
 	{
-		for (UClass* Iter : Subclasses)
+		for (auto& Iter : Subclasses)
 		{
-			if (!UEdGraphSchema_K2::IsAllowableBlueprintVariableType(Iter, true))
-			{
-				continue;
-			}
-
 			UBlueprintNodeSpawner* Spawner = UBlueprintNodeSpawner::Create(ActionKey);
 			check(Spawner);
 
@@ -559,13 +549,8 @@ void UK2Node_GetEngineSubsystem::GetMenuActions(FBlueprintActionDatabaseRegistra
 	UClass* ActionKey = GetClass();
 	if (ActionRegistrar.IsOpenForRegistration(ActionKey))
 	{
-		for (UClass* Iter : Subclasses)
+		for (auto& Iter : Subclasses)
 		{
-			if (!UEdGraphSchema_K2::IsAllowableBlueprintVariableType(Iter, true))
-			{
-				continue;
-			}
-
 			UBlueprintNodeSpawner* Spawner = UBlueprintNodeSpawner::Create(ActionKey);
 			check(Spawner);
 
@@ -686,13 +671,8 @@ void UK2Node_GetEditorSubsystem::GetMenuActions(FBlueprintActionDatabaseRegistra
 	UClass* ActionKey = GetClass();
 	if (ActionRegistrar.IsOpenForRegistration(ActionKey))
 	{
-		for (UClass* Iter : Subclasses)
+		for (auto& Iter : Subclasses)
 		{
-			if (!UEdGraphSchema_K2::IsAllowableBlueprintVariableType(Iter, true))
-			{
-				continue;
-			}
-
 			UBlueprintNodeSpawner* Spawner = UBlueprintNodeSpawner::Create(ActionKey);
 			check(Spawner);
 

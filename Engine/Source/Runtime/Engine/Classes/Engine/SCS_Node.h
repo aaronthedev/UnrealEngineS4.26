@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -89,7 +89,7 @@ class USCS_Node : public UObject
 #if WITH_EDITOR
 
 	/** The scene component constructed for component editing in the SCS editor */
-	TWeakObjectPtr<USceneComponent> EditorComponentInstance;
+	class USceneComponent* EditorComponentInstance;
 
 	/** Make sure, the guid is proper - backward compatibility */
 	ENGINE_API void ValidateGuid();
@@ -186,7 +186,7 @@ class USCS_Node : public UObject
 	ENGINE_API void SetParent(USCS_Node* InParentNode);
 
 	/** Sets parent component attributes based on the given component instance */
-	ENGINE_API void SetParent(const USceneComponent* InParentComponent);
+	ENGINE_API void SetParent(USceneComponent* InParentComponent);
 
 	/** Finds and returns the parent component template through the given Blueprint */
 	ENGINE_API USceneComponent* GetParentComponentTemplate(UBlueprint* InBlueprint) const;
@@ -199,7 +199,7 @@ protected:
 private:
 	/** Internal variable name. This is used for:
 			a) Generating the component template (archetype) object name.
-			b) A FObjectProperty in the generated Blueprint class. This holds a reference to the component instance created at Actor construction time.
+			b) A UObjectProperty in the generated Blueprint class. This holds a reference to the component instance created at Actor construction time.
 			c) Archetype lookup through the generated Blueprint class. All instances route back to the archetype through the variable name (i.e. not the template name).
 	 */
 	UPROPERTY()

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	D3D11Resources.h: D3D resource RHI definitions.
@@ -42,12 +42,8 @@ struct FD3D11ShaderData
 {
 	FD3D11ShaderResourceTable			ShaderResourceTable;
 	TArray<FName>						UniformBuffers;
-	TArray<FUniformBufferStaticSlot>	StaticSlots;
 	TArray<FShaderCodeVendorExtension>	VendorExtensions;
 	bool								bShaderNeedsGlobalConstantBuffer;
-	bool								bIsSm6Shader;
-	uint16								OutputMask;
-	uint16								UAVMask;
 };
 
 /** This represents a vertex shader that hasn't been combined with a specific declaration to create a bound shader. */
@@ -158,7 +154,48 @@ public:
 class FD3D11BaseShaderResource : public IRefCountedObject
 {
 public:
-	FD3D11BaseShaderResource() {}
+	FD3D11BaseShaderResource()
+		: CurrentGPUAccess(EResourceTransitionAccess::EReadable)
+		, LastFrameWritten(-1)
+		, bDirty(false)
+	{}
+
+	void SetCurrentGPUAccess(EResourceTransitionAccess Access)
+	{
+		if (Access == EResourceTransitionAccess::EReadable)
+		{
+			bDirty = false;
+		}
+		CurrentGPUAccess = Access;
+	}
+
+	EResourceTransitionAccess GetCurrentGPUAccess() const
+	{
+		return CurrentGPUAccess;
+	}
+
+	uint32 GetLastFrameWritten() const
+	{
+		return LastFrameWritten;
+	}	
+
+	void SetDirty(bool bInDirty, uint32 CurrentFrame);
+
+	bool IsDirty() const
+	{
+		return bDirty;
+	}
+
+private:
+	
+	/** Whether the current resource is logically GPU readable or writable.  Mostly for validation for newer RHI's*/
+	EResourceTransitionAccess CurrentGPUAccess;
+
+	/** Most recent frame this resource was written to. */
+	uint32 LastFrameWritten;
+
+	/** Resource has been written to without a subsequent read barrier.  Mostly for UAVs */
+	bool bDirty;
 };
 
 /** Texture base class. */
@@ -331,7 +368,7 @@ class D3D11RHI_API TD3D11Texture2D : public BaseResourceType, public FD3D11Textu
 public:
 
 	/** Flags used when the texture was created */
-	ETextureCreateFlags Flags;
+	uint32 Flags;
 
 	/** Initialization constructor. */
 	TD3D11Texture2D(
@@ -349,7 +386,7 @@ public:
 		uint32 InNumSamples,
 		EPixelFormat InFormat,
 		bool bInCubemap,
-		ETextureCreateFlags InFlags,
+		uint32 InFlags,
 		bool bInPooled,
 		const FClearValueBinding& InClearValue
 #if PLATFORM_SUPPORTS_VIRTUAL_TEXTURES
@@ -461,7 +498,7 @@ public:
 		uint32 InSizeZ,
 		uint32 InNumMips,
 		EPixelFormat InFormat,
-		ETextureCreateFlags InFlags,
+		uint32 InFlags,
 		const FClearValueBinding& InClearValue
 		)
 	: FRHITexture3D(InSizeX,InSizeY,InSizeZ,InNumMips,InFormat,InFlags,InClearValue)
@@ -505,7 +542,7 @@ public:
 class FD3D11BaseTexture2D : public FRHITexture2D
 {
 public:
-	FD3D11BaseTexture2D(uint32 InSizeX, uint32 InSizeY, uint32 InSizeZ, uint32 InNumMips, uint32 InNumSamples, EPixelFormat InFormat, ETextureCreateFlags InFlags, const FClearValueBinding& InClearValue)
+	FD3D11BaseTexture2D(uint32 InSizeX, uint32 InSizeY, uint32 InSizeZ, uint32 InNumMips, uint32 InNumSamples, EPixelFormat InFormat, uint32 InFlags, const FClearValueBinding& InClearValue)
 	: FRHITexture2D(InSizeX,InSizeY,InNumMips,InNumSamples,InFormat,InFlags, InClearValue)
 	{}
 	uint32 GetSizeZ() const { return 0; }
@@ -514,15 +551,15 @@ public:
 class FD3D11BaseTexture2DArray : public FRHITexture2DArray
 {
 public:
-	FD3D11BaseTexture2DArray(uint32 InSizeX, uint32 InSizeY, uint32 InSizeZ, uint32 InNumMips, uint32 InNumSamples, EPixelFormat InFormat, ETextureCreateFlags InFlags, const FClearValueBinding& InClearValue)
+	FD3D11BaseTexture2DArray(uint32 InSizeX, uint32 InSizeY, uint32 InSizeZ, uint32 InNumMips, uint32 InNumSamples, EPixelFormat InFormat, uint32 InFlags, const FClearValueBinding& InClearValue)
 	: FRHITexture2DArray(InSizeX,InSizeY,InSizeZ,InNumMips,InNumSamples, InFormat,InFlags,InClearValue)
-	{}
+	{ check(InNumSamples == 1); }
 };
 
 class FD3D11BaseTextureCube : public FRHITextureCube
 {
 public:
-	FD3D11BaseTextureCube(uint32 InSizeX, uint32 InSizeY, uint32 InSizeZ, uint32 InNumMips, uint32 InNumSamples, EPixelFormat InFormat, ETextureCreateFlags InFlags, const FClearValueBinding& InClearValue)
+	FD3D11BaseTextureCube(uint32 InSizeX, uint32 InSizeY, uint32 InSizeZ, uint32 InNumMips, uint32 InNumSamples, EPixelFormat InFormat, uint32 InFlags, const FClearValueBinding& InClearValue)
 	: FRHITextureCube(InSizeX,InNumMips,InFormat,InFlags,InClearValue)
 	, SliceCount(InSizeZ)
 	{ check(InNumSamples == 1); }
@@ -687,6 +724,8 @@ public:
 
 	void Swap(FD3D11IndexBuffer& Other)
 	{
+		check(GetCurrentGPUAccess() == EResourceTransitionAccess::EReadable
+			&& GetCurrentGPUAccess() == Other.GetCurrentGPUAccess());
 		FRHIIndexBuffer::Swap(Other);
 		Resource.Swap(Other.Resource);
 	}
@@ -725,6 +764,7 @@ public:
 	: FRHIStructuredBuffer(InStride,InSize,InUsage)
 	, Resource(InResource)
 	{
+		SetCurrentGPUAccess(EResourceTransitionAccess::ERWBarrier);
 	}
 
 	virtual ~FD3D11StructuredBuffer()
@@ -771,6 +811,8 @@ public:
 
 	void Swap(FD3D11VertexBuffer& SrcBuffer)
 	{
+		check(GetCurrentGPUAccess() == EResourceTransitionAccess::EReadable
+			&& GetCurrentGPUAccess() == SrcBuffer.GetCurrentGPUAccess());
 		FRHIVertexBuffer::Swap(SrcBuffer);
 		Resource.Swap(SrcBuffer.Resource);
 	}
@@ -798,7 +840,7 @@ public:
 	}
 };
 
-class FD3D11StagingBuffer final : public FRHIStagingBuffer
+class FD3D11StagingBuffer : public FRHIStagingBuffer
 {
 	friend class FD3D11DynamicRHI;
 public:
@@ -806,10 +848,10 @@ public:
 		: FRHIStagingBuffer()
 	{}
 
-	~FD3D11StagingBuffer() override;
+	virtual ~FD3D11StagingBuffer() final override;
 
-	void* Lock(uint32 Offset, uint32 NumBytes) override;
-	void Unlock() override;
+	virtual void* Lock(uint32 Offset, uint32 NumBytes) final override;
+	virtual void Unlock() final override;
 
 private:
 	FD3D11DeviceContext* Context;

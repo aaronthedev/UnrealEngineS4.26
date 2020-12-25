@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	UnAsyncLoading.cpp: Unreal async loading code.
@@ -40,9 +40,8 @@
 #include "Blueprint/BlueprintSupport.h"
 #include "HAL/LowLevelMemTracker.h"
 #include "HAL/LowLevelMemStats.h"
-#include "HAL/IPlatformFileOpenLogWrapper.h"
 #include "ProfilingDebugging/CsvProfiler.h"
-#include "UObject/GarbageCollectionInternal.h"
+#include "UObject/GCScopeLock.h"
 #include "ProfilingDebugging/MiscTrace.h"
 #include "Serialization/LoadTimeTracePrivate.h"
 
@@ -61,6 +60,8 @@ CSV_DECLARE_CATEGORY_MODULE_EXTERN(CORE_API, FileIO);
 
 DECLARE_MEMORY_STAT(TEXT("Streaming Memory Used"),STAT_StreamingAllocSize,STATGROUP_Memory);
 
+DECLARE_STATS_GROUP_VERBOSE(TEXT("Async Load"), STATGROUP_AsyncLoad, STATCAT_Advanced);
+
 DECLARE_CYCLE_STAT(TEXT("Tick AsyncPackage"),STAT_FAsyncPackage_Tick,STATGROUP_AsyncLoad);
 
 DECLARE_CYCLE_STAT(TEXT("CreateLinker AsyncPackage"),STAT_FAsyncPackage_CreateLinker,STATGROUP_AsyncLoad);
@@ -77,13 +78,20 @@ DECLARE_CYCLE_STAT(TEXT("PostLoadObjects AsyncPackage"),STAT_FAsyncPackage_PostL
 DECLARE_CYCLE_STAT(TEXT("FinishObjects AsyncPackage"),STAT_FAsyncPackage_FinishObjects,STATGROUP_AsyncLoad);
 DECLARE_CYCLE_STAT(TEXT("CreateAsyncPackagesFromQueue"), STAT_FAsyncPackage_CreateAsyncPackagesFromQueue, STATGROUP_AsyncLoad);
 DECLARE_CYCLE_STAT(TEXT("ProcessAsyncLoading AsyncLoadingThread"), STAT_FAsyncLoadingThread_ProcessAsyncLoading, STATGROUP_AsyncLoad);
+DECLARE_CYCLE_STAT(TEXT("Async Loading Time"),STAT_AsyncLoadingTime,STATGROUP_AsyncLoad);
 DECLARE_CYCLE_STAT(TEXT("Async Loading Time Detailed"), STAT_AsyncLoadingTimeDetailed, STATGROUP_AsyncLoad);
 
+DECLARE_STATS_GROUP(TEXT("Async Load Game Thread"), STATGROUP_AsyncLoadGameThread, STATCAT_Advanced);
+
+DECLARE_CYCLE_STAT(TEXT("PostLoadObjects GT"), STAT_FAsyncPackage_PostLoadObjectsGameThread, STATGROUP_AsyncLoadGameThread);
+DECLARE_CYCLE_STAT(TEXT("TickAsyncLoading GT"), STAT_FAsyncPackage_TickAsyncLoadingGameThread, STATGROUP_AsyncLoadGameThread);
+DECLARE_CYCLE_STAT(TEXT("Flush Async Loading GT"), STAT_FAsyncPackage_FlushAsyncLoadingGameThread, STATGROUP_AsyncLoadGameThread);
+DECLARE_CYCLE_STAT(TEXT("CreateClusters GT"), STAT_FAsyncPackage_CreateClustersGameThread, STATGROUP_AsyncLoadGameThread);
 DECLARE_FLOAT_ACCUMULATOR_STAT(TEXT("Total PostLoadObjects time GT"), STAT_FAsyncPackage_TotalPostLoadGameThread, STATGROUP_AsyncLoadGameThread);
 
 DECLARE_FLOAT_ACCUMULATOR_STAT( TEXT( "Async loading block time" ), STAT_AsyncIO_AsyncLoadingBlockingTime, STATGROUP_AsyncIO );
 DECLARE_FLOAT_ACCUMULATOR_STAT( TEXT( "Async package precache wait time" ), STAT_AsyncIO_AsyncPackagePrecacheWaitTime, STATGROUP_AsyncIO );
-	
+
 /** Helper function for profiling load times */
 static FName StaticGetNativeClassName(UClass* InClass)
 {
@@ -98,25 +106,11 @@ static FName StaticGetNativeClassName(UClass* InClass)
 /** Returns true if we're inside a FGCScopeLock */
 bool IsGarbageCollectionLocked();
 
+/** Returns true if GC wants to run */
+bool IsGarbageCollectionWaiting();
+
 /** Global request ID counter */
 static FThreadSafeCounter GPackageRequestID;
-
-TAtomic<int>	GAsyncLoadingFlushIsActive(0);
-
-class FScopeAsyncLoadingFlushIsActive
-{
-public:
-	FScopeAsyncLoadingFlushIsActive()
-	{
-		GAsyncLoadingFlushIsActive++;
-	}
-
-	~FScopeAsyncLoadingFlushIsActive()
-	{
-		GAsyncLoadingFlushIsActive--;
-	}
-};
-
 
 /**
  * Updates FUObjectThreadContext with the current package when processing it.
@@ -125,11 +119,11 @@ public:
 struct FAsyncPackageScope
 {
 	/** Outer scope package */
-	void* PreviousPackage;
+	FGCObject* PreviousPackage;
 	/** Cached ThreadContext so we don't have to access it again */
 	FUObjectThreadContext& ThreadContext;
 
-	FAsyncPackageScope(void* InPackage)
+	FAsyncPackageScope(FGCObject* InPackage)
 		: ThreadContext(FUObjectThreadContext::Get())
 	{
 		PreviousPackage = ThreadContext.AsyncPackage;
@@ -157,6 +151,30 @@ static FAutoConsoleVariableRef CFlushStreamingOnExit(
 	ECVF_Default
 );
 
+static int32 GWarnIfTimeLimitExceeded = 0;
+static FAutoConsoleVariableRef CVarWarnIfTimeLimitExceeded(
+	TEXT("s.WarnIfTimeLimitExceeded"),
+	GWarnIfTimeLimitExceeded,
+	TEXT("Enables log warning if time limit for time-sliced package streaming has been exceeded."),
+	ECVF_Default
+	);
+
+static float GTimeLimitExceededMultiplier = 1.5f;
+static FAutoConsoleVariableRef CVarTimeLimitExceededMultiplier(
+	TEXT("s.TimeLimitExceededMultiplier"),
+	GTimeLimitExceededMultiplier,
+	TEXT("Multiplier for time limit exceeded warning time threshold."),
+	ECVF_Default
+	);
+
+static float GTimeLimitExceededMinTime = 0.005f;
+static FAutoConsoleVariableRef CVarTimeLimitExceededMinTime(
+	TEXT("s.TimeLimitExceededMinTime"),
+	GTimeLimitExceededMinTime,
+	TEXT("Minimum time the time limit exceeded warning will be triggered by."),
+	ECVF_Default
+	);
+
 static int32 GEventDrivenLoaderEnabledInCookedBuilds = 0;
 static FAutoConsoleVariableRef CVarEventDrivenLoaderEnabled(
 	TEXT("s.EventDrivenLoaderEnabled"),
@@ -178,6 +196,7 @@ static FAutoConsoleVariableRef CVar_MaxPrecacheRequestsInFlight(
 	GMaxPrecacheRequestsInFlight,
 	TEXT("Controls the maximum amount of precache requests to have in flight.")
 );
+
 
 int32 GMaxIncomingRequestsToStall = 100;
 static FAutoConsoleVariableRef CVar_MaxIncomingRequestsToStall(
@@ -254,6 +273,28 @@ uint32 FAsyncLoadingThread::AsyncLoadingThreadID = 0;
 FThreadSafeCounter FAsyncLoadingThread::AsyncLoadingTickCounter;
 int32 FAsyncLoadingThread::CurrentAsyncLoadingTickThreadIndex = INDEX_NONE;
 
+static void IsTimeLimitExceededPrint(double InTickStartTime, double CurrentTime, double LastTestTime, float InTimeLimit, const TCHAR* InLastTypeOfWorkPerformed = nullptr, UObject* InLastObjectWorkWasPerformedOn = nullptr)
+{
+	static double LastPrintStartTime = -1.0;
+	// Log single operations that take longer than time limit (but only in cooked builds)
+	if (LastPrintStartTime != InTickStartTime &&
+		(CurrentTime - InTickStartTime) > GTimeLimitExceededMinTime &&
+		(CurrentTime - InTickStartTime) > (GTimeLimitExceededMultiplier * InTimeLimit))
+	{
+		float EstimatedTimeForThisStep = (CurrentTime - InTickStartTime) * 1000;
+		if (LastTestTime > InTickStartTime)
+		{
+			EstimatedTimeForThisStep = (CurrentTime - LastTestTime) * 1000;
+		}
+		LastPrintStartTime = InTickStartTime;
+		UE_LOG(LogStreaming, Warning, TEXT("IsTimeLimitExceeded: %s %s Load Time %5.2fms   Last Step Time %5.2fms"),
+			InLastTypeOfWorkPerformed ? InLastTypeOfWorkPerformed : TEXT("unknown"),
+			InLastObjectWorkWasPerformedOn ? *InLastObjectWorkWasPerformedOn->GetFullName() : TEXT("nullptr"),
+			(CurrentTime - InTickStartTime) * 1000,
+			EstimatedTimeForThisStep);
+	}
+}
+
 static FORCEINLINE bool IsTimeLimitExceeded(double InTickStartTime, bool bUseTimeLimit, float InTimeLimit, const TCHAR* InLastTypeOfWorkPerformed = nullptr, UObject* InLastObjectWorkWasPerformedOn = nullptr)
 {
 	static double LastTestTime = -1.0;
@@ -278,12 +319,7 @@ static FORCEINLINE bool IsTimeLimitExceeded(double InTickStartTime, bool bUseTim
 }
 FORCEINLINE bool FAsyncPackage::IsTimeLimitExceeded()
 {
-	return AsyncLoadingThread.IsAsyncLoadingSuspendedInternal() || ::IsTimeLimitExceeded(TickStartTime, bUseTimeLimit, TimeLimit, LastTypeOfWorkPerformed, LastObjectWorkWasPerformedOn);
-}
-
-FORCENOINLINE static bool CheckForFilePackageOpenLogCommandLine()
-{
-	return FParse::Param(FCommandLine::Get(), TEXT("FilePackageOpenLog"));
+	return AsyncLoadingThread.IsAsyncLoadingSuspended() || ::IsTimeLimitExceeded(TickStartTime, bUseTimeLimit, TimeLimit, LastTypeOfWorkPerformed, LastObjectWorkWasPerformedOn);
 }
 
 DEFINE_LOG_CATEGORY_STATIC(LogAsyncArchive, Display, All);
@@ -371,16 +407,6 @@ void FAsyncLoadingThread::QueuePackage(FAsyncPackageDesc& Package)
 	{
 #if THREADSAFE_UOBJECTS
 		FScopeLock QueueLock(&QueueCritical);
-#endif
-#if !UE_BUILD_SHIPPING
-		if(CheckForFilePackageOpenLogCommandLine())
-		{
-			FPlatformFileOpenLog* PlatformFileOpenLog = (FPlatformFileOpenLog*)(FPlatformFileManager::Get().FindPlatformFile(FPlatformFileOpenLog::GetTypeName()));
-			if (PlatformFileOpenLog != nullptr)
-			{
-				PlatformFileOpenLog->AddPackageToOpenLog(*Package.Name.ToString());
-			}
-		}
 #endif
 		QueuedPackagesCounter.Increment();
 		QueuedPackages.Add(new FAsyncPackageDesc(Package, MoveTemp(Package.PackageLoadedDelegate)));
@@ -1208,7 +1234,7 @@ struct FPrecacheCallbackHandler
 
 	void CheckThottleIOState(bool bMaybeWasStalledOnIncoming = false)
 	{
-		if (UnprocessedMemUsed <= static_cast<int64>(GMaxReadyRequestsToStallMB) * 1024 * 1024 * 9 / 10)
+		if (UnprocessedMemUsed <= GMaxReadyRequestsToStallMB * 1024 * 1024 * 9 / 10)
 		{
 			if (bStalledOnMemory)
 			{
@@ -1222,7 +1248,7 @@ struct FPrecacheCallbackHandler
 			}
 			bStalledOnMemory = false;
 		}
-		else if (UnprocessedMemUsed > static_cast<int64>(GMaxReadyRequestsToStallMB) * 1024 * 1024)
+		else if (UnprocessedMemUsed > GMaxReadyRequestsToStallMB * 1024 * 1024)
 		{
 			if (!bStalledOnMemory)
 			{
@@ -1253,7 +1279,6 @@ struct FPrecacheCallbackHandler
 
 	void UpdatePlatformFilePrecacheThrottling(bool bEnablePrecacheRequests)
 	{
-		CSV_EVENT(FileIO, TEXT("Precache %s"), bEnablePrecacheRequests ? TEXT("Enabled") : TEXT("Disabled"));
 		// If we're not processing precache requests, set the min priority to GAsyncLoadingPrecachePriority + 1
 		EAsyncIOPriorityAndFlags NewMinPriority = bEnablePrecacheRequests ? AIOP_MIN : (EAsyncIOPriorityAndFlags)FMath::Clamp(GAsyncLoadingPrecachePriority + 1, (int32)AIOP_MIN, (int32)AIOP_MAX);
 		FPlatformFileManager::Get().GetPlatformFile().SetAsyncMinimumPriority(NewMinPriority);
@@ -1327,7 +1352,7 @@ FORCENOINLINE static bool CheckForFileOpenLogCommandLine()
 FORCEINLINE static bool FileOpenLogActive()
 {
 #if 1
-	static bool bDoingLoadOrder = CheckForFileOpenLogCommandLine() || CheckForFilePackageOpenLogCommandLine();
+	static bool bDoingLoadOrder = CheckForFileOpenLogCommandLine();
 	return bDoingLoadOrder;
 #else
 	return true;
@@ -1345,8 +1370,6 @@ FORCEINLINE static bool CanAddWaitingPackages(FAsyncLoadingThread& AsyncLoadingT
 
 void FAsyncLoadingThread::QueueEvent_CreateLinker(FAsyncPackage* Package, int32 EventSystemPriority)
 {
-	TRACE_LOADTIME_BEGIN_LOAD_ASYNC_PACKAGE(Package);
-
 	FileOpenLogActive();  // make sure GRandomizeLoadOrder is set up
 	check(Package);
 	Package->AddNode(EEventLoadNode::Package_LoadSummary);
@@ -1362,6 +1385,7 @@ void FAsyncLoadingThread::QueueEvent_CreateLinker(FAsyncPackage* Package, int32 
 				check(Pkg);
 				if (Pkg)
 				{
+					TRACE_LOADTIME_ASYNC_PACKAGE_SCOPE(Pkg, LoadTimeProfilerPackageEventType_CreateLinker);
 					Pkg->SetTimeLimit(Args, TEXT("Create Linker"));
 					Pkg->Event_CreateLinker();
 					Args.OutLastObjectWorkWasPerformedOn = Pkg->GetLinkerRoot();
@@ -1426,6 +1450,7 @@ void FAsyncLoadingThread::QueueEvent_FinishLinker(FWeakAsyncPackagePtr WeakPtr, 
 			check(PkgInner);
 			if (PkgInner)
 			{
+				TRACE_LOADTIME_ASYNC_PACKAGE_SCOPE(PkgInner, LoadTimeProfilerPackageEventType_FinishLinker);
 				PkgInner->SetTimeLimit(Args, TEXT("Finish Linker"));
 				PkgInner->Event_FinishLinker();
 			}
@@ -1548,8 +1573,6 @@ void FAsyncPackage::Event_FinishLinker()
 			}
 		}
 
-		TRACE_LOADTIME_PACKAGE_SUMMARY(this, Linker->Summary.TotalHeaderSize, Linker->Summary.ImportCount, Linker->Summary.ExportCount);
-
 		check(AsyncPackageLoadingState == EAsyncPackageLoadingState::WaitingForSummary);
 		AsyncPackageLoadingState = EAsyncPackageLoadingState::StartImportPackages;
 		AsyncLoadingThread.QueueEvent_StartImportPackages(this, FAsyncLoadEvent::EventSystemPriority_MAX - 1);
@@ -1578,6 +1601,7 @@ void FAsyncLoadingThread::QueueEvent_StartImportPackages(FAsyncPackage* Package,
 		FAsyncPackage* Pkg = GetPackage(WeakPtr);
 		if (Pkg)
 		{
+			TRACE_LOADTIME_ASYNC_PACKAGE_SCOPE(Pkg, LoadTimeProfilerPackageEventType_StartImportPackages);
 			Pkg->SetTimeLimit(Args, TEXT("Start Import Packages"));
 			Pkg->Event_StartImportPackages();
 		}
@@ -1633,11 +1657,12 @@ FObjectImport* FAsyncPackage::FindExistingImport(int32 LocalImportIndex)
 		Import->bImportSearchedFor = true;
 		if (Import->OuterIndex.IsNull())
 		{
-			Import->XObject = StaticFindObjectFast(UPackage::StaticClass(), nullptr, Linker->GetInstancingContext().Remap(Import->ObjectName), true);
+			Import->XObject = StaticFindObjectFast(UPackage::StaticClass(), nullptr, Import->ObjectName, true);
 			check(!Import->XObject || CastChecked<UPackage>(Import->XObject));
 		}
-		else if (Import->OuterIndex.IsImport())
+		else
 		{
+			check(Import->OuterIndex.IsImport()); // can't see how an import could have an export as an outer
 			FObjectImport* ImportOuter = FindExistingImport(Import->OuterIndex.ToImport());
 			if (ImportOuter->XObject)
 			{
@@ -1673,7 +1698,6 @@ FObjectImport* FAsyncPackage::FindExistingImport(int32 LocalImportIndex)
 				}
 			}
 		}
-		//else Outer is an export from the package we are currently loading, hence the import we are trying to find can't exist at this point.
 	}
 	return Import;
 }
@@ -1739,7 +1763,7 @@ EAsyncPackageState::Type FAsyncPackage::LoadImports_Event()
 			{
 				continue;
 			}
-			check(ImportOutermost->OuterIndex.IsNull() || ImportOutermost->HasPackageName());
+			check(ImportOutermost->OuterIndex.IsNull());
 			ImportOutermost->bImportPackageHandled = true;
 			bForcePackageLoad = true;
 			Import = ImportOutermost; // just do the rest of the package code, but start the async package even if we find the upackage
@@ -1747,14 +1771,14 @@ EAsyncPackageState::Type FAsyncPackage::LoadImports_Event()
 		// else don't set handled because bForcePackageLoad is false, meaning we might not set the thing anyway
 
 		// @todoio: why do we need this? some UFunctions have null outer in the linker.
-		if (Import->ClassName != NAME_Package && !bIsPrestreamRequest && !Import->HasPackageName())
+		if (Import->ClassName != NAME_Package && !bIsPrestreamRequest)
 		{
 			check(0);
 			continue;
 		}
 
 		// Don't try to import a package that is in an import table that we know is an invalid entry
-		if (FLinkerLoad::IsKnownMissingPackage(!Import->HasPackageName() ? Import->ObjectName : Import->GetPackageName()))
+		if (FLinkerLoad::IsKnownMissingPackage(Import->ObjectName))
 		{
 			continue;
 		}
@@ -1762,13 +1786,12 @@ EAsyncPackageState::Type FAsyncPackage::LoadImports_Event()
 		FAsyncPackage* PendingPackage = nullptr;
 		if (Import->XObject)
 		{
-			ExistingPackage = CastChecked<UPackage>(Import->XObject->GetPackage());
+			ExistingPackage = CastChecked<UPackage>(Import->XObject);
 			PendingPackage = ExistingPackage->LinkerLoad ? static_cast<FAsyncPackage*>(ExistingPackage->LinkerLoad->AsyncRoot) : nullptr;
 		}
 		const bool bCompiledInNotDynamic = IsNativeCodePackage(ExistingPackage);
 		// Our import package name is the import name
-		const FName ImportPackageToLoad = !Import->HasPackageName() ? Import->ObjectName : Import->GetPackageName();
-		const FName ImportPackageFName = Linker->GetInstancingContext().Remap(ImportPackageToLoad);
+		const FName ImportPackageFName(Import->ObjectName);
 		check(!PendingPackage || !bCompiledInNotDynamic); // we should never have a pending package for something that is compiled in
 		if (!PendingPackage && !bCompiledInNotDynamic)
 		{
@@ -1787,28 +1810,16 @@ EAsyncPackageState::Type FAsyncPackage::LoadImports_Event()
 			else if (!ExistingPackage || bForcePackageLoad)
 			{
 				// The package doesn't exist and this import is not in the dependency list so add it now.
-				check(!FPackageName::IsShortPackageName(ImportPackageFName));
-				UE_LOG(LogStreaming, Verbose, TEXT("FAsyncPackage::LoadImports for %s: Loading %s"), *Desc.NameToLoad.ToString(), *ImportPackageFName.ToString());
-				const FAsyncPackageDesc Info(INDEX_NONE, ImportPackageFName, ImportPackageToLoad);
+				check(!FPackageName::IsShortPackageName(Import->ObjectName));
+				UE_LOG(LogStreaming, Verbose, TEXT("FAsyncPackage::LoadImports for %s: Loading %s"), *Desc.NameToLoad.ToString(), *Import->ObjectName.ToString());
+				const FAsyncPackageDesc Info(INDEX_NONE, Import->ObjectName);
 				PendingPackage = new FAsyncPackage(AsyncLoadingThread, Info, EDLBootNotificationManager);
 				PendingPackage->Desc.Priority = Desc.Priority;
-				PendingPackage->Desc.SetInstancingContext(Linker->GetInstancingContext());
 				if (bIsPrestreamRequest)
 				{
-					UE_LOG(LogStreaming, Display, TEXT("%s is prestreaming %s"), *Desc.NameToLoad.ToString(), *ImportPackageToLoad.ToString());
+					UE_LOG(LogStreaming, Display, TEXT("%s is prestreaming %s"), *Desc.NameToLoad.ToString(), *Import->ObjectName.ToString());
 				}
 				TRACE_LOADTIME_ASYNC_PACKAGE_IMPORT_DEPENDENCY(this, PendingPackage);
-#if !UE_BUILD_SHIPPING
-				if(CheckForFilePackageOpenLogCommandLine())
-				{
-					FPlatformFileOpenLog* PlatformFileOpenLog = (FPlatformFileOpenLog*)(FPlatformFileManager::Get().FindPlatformFile(FPlatformFileOpenLog::GetTypeName()));
-					if (PlatformFileOpenLog != nullptr)
-					{
-						FString PackageToOpenLogName = FString::Printf(TEXT("%s %i"), *Info.Name.ToString(), GFrameCounter);
-						PlatformFileOpenLog->AddPackageToOpenLog(*PackageToOpenLogName);
-					}
-				}
-#endif
 				AsyncLoadingThread.InsertPackage(PendingPackage);
 				bDidSomething = true;
 			}
@@ -1876,6 +1887,7 @@ void FAsyncLoadingThread::QueueEvent_SetupImports(FAsyncPackage* Package, int32 
 		FAsyncPackage* Pkg = GetPackage(WeakPtr);
 		if (Pkg)
 		{
+			TRACE_LOADTIME_ASYNC_PACKAGE_SCOPE(Pkg, LoadTimeProfilerPackageEventType_SetupImports);
 			Pkg->SetTimeLimit(Args, TEXT("Setup Imports"));
 			Pkg->Event_SetupImports();
 		}
@@ -1897,34 +1909,14 @@ void FAsyncPackage::Event_SetupImports()
 	AsyncLoadingThread.QueueEvent_SetupExports(this);
 }
 
-static FPackageIndex FindImportFromExport(FLinkerLoad* ImportLinker, int32 ExportIndex, FLinkerLoad* ExportLinker)
-{
-	//@todo FH: redo ObjectNameWithOuterToExport to be a hash of object name, outer name and the class name
-	FPackageIndex Result;
-	const FObjectExport& Export = ExportLinker->ExportMap[ExportIndex];
-
-	for (int ImportIndex = 0; ImportIndex < ImportLinker->ImportMap.Num(); ++ImportIndex)
-	{
-		const FObjectImport& Import = ImportLinker->ImportMap[ImportIndex];
-		if (Import.ObjectName == Export.ObjectName &&
-			Import.ClassName == ExportLinker->ImpExp(Export.ClassIndex).ObjectName &&
-			ImportLinker->ImpExp(Import.OuterIndex).ObjectName == ExportLinker->ImpExp(Export.OuterIndex).ObjectName)
-		{
-			return FPackageIndex::FromImport(ImportIndex);
-		}
-	}
-	return FPackageIndex();
-}
-
-static FPackageIndex FindExportFromImport(FLinkerLoad* ImportLinker, int32 ImportIndex, FLinkerLoad* ExportLinker)
+static FPackageIndex FindExportFromImport(FLinkerLoad* ImportLinker, int32 ImportIndex, const TArray<FObjectImport>& SourceLinkerImportMap)
 {
 	check(ImportLinker && ImportLinker->AsyncRoot && static_cast<FAsyncPackage*>(ImportLinker->AsyncRoot)->ObjectNameWithOuterToExport.Num());
 	FPackageIndex Result;
-	const FObjectImport& Import = ExportLinker->ImportMap[ImportIndex];
-	
-	if (!Import.OuterIndex.IsNull())
+	const FObjectImport& Import = SourceLinkerImportMap[ImportIndex];
+	if (Import.OuterIndex.IsImport())
 	{
-		FPackageIndex OuterIndex = Import.OuterIndex.IsImport() ? FindExportFromImport(ImportLinker, Import.OuterIndex.ToImport(), ExportLinker) : FindImportFromExport(ImportLinker, Import.OuterIndex.ToExport(), ExportLinker);
+		FPackageIndex OuterIndex = FindExportFromImport(ImportLinker, Import.OuterIndex.ToImport(), SourceLinkerImportMap);
 		FPackageIndex* PotentialExport = static_cast<FAsyncPackage*>(ImportLinker->AsyncRoot)->ObjectNameWithOuterToExport.Find(TPair<FName, FPackageIndex>(Import.ObjectName, OuterIndex));
 		if (PotentialExport)
 		{
@@ -2007,7 +1999,8 @@ EAsyncPackageState::Type FAsyncPackage::SetupImports_Event()
 			{
 				check(!OuterMostIndex.IsNull() && OuterMostIndex.IsImport());
 				FObjectImport& OuterMostImport = Linker->Imp(OuterMostIndex);
-				if (OuterMostImport.OuterIndex.IsNull() || OuterMostImport.HasPackageName())
+
+				if (OuterMostImport.OuterIndex.IsNull())
 				{
 					break;
 				}
@@ -2015,18 +2008,17 @@ EAsyncPackageState::Type FAsyncPackage::SetupImports_Event()
 				OuterMostIndex = OuterMostImport.OuterIndex;
 			}
 			FObjectImport& OuterMostImport = Linker->Imp(OuterMostIndex);
-			check(OuterMostImport.OuterIndex.IsNull() || OuterMostImport.HasPackageName());
-			FName ImportPackageName = Linker->GetInstancingContext().Remap(!OuterMostImport.HasPackageName() ? OuterMostImport.ObjectName : OuterMostImport.GetPackageName());
-			UPackage* ImportPackage = OuterMostImport.XObject ? OuterMostImport.XObject->GetPackage() : nullptr;
+			check(OuterMostImport.OuterIndex.IsNull());
+			UPackage* ImportPackage = OuterMostImport.XObject ? CastChecked<UPackage>(OuterMostImport.XObject) : nullptr;
 			if (!ImportPackage)
 			{
-				ImportPackage = FindObjectFast<UPackage>(nullptr, ImportPackageName, false, false);
+				ImportPackage = FindObjectFast<UPackage>(NULL, OuterMostImport.ObjectName, false, false);
 				if (!ImportPackage)
 				{
 					Import.bImportFailed = true;
-					UE_CLOG(!FLinkerLoad::IsKnownMissingPackage(ImportPackageName), LogStreaming, Error, TEXT("Missing native package (%s) for import of %s in %s."), *ImportPackageName.ToString(), *Import.ObjectName.ToString(), *Desc.NameToLoad.ToString());
+					UE_CLOG(!FLinkerLoad::IsKnownMissingPackage(OuterMostImport.ObjectName), LogStreaming, Error, TEXT("Missing native package (%s) for import of %s in %s."), *OuterMostImport.ObjectName.ToString(), *Import.ObjectName.ToString(), *Desc.NameToLoad.ToString());
 				}
-				else if (OuterMostImport.OuterIndex.IsNull())
+				else
 				{
 					OuterMostImport.XObject = ImportPackage; // this is an optimization to avoid looking up import packages multiple times, also, later we assume these are already filled in
 					AddObjectReference(OuterMostImport.XObject);
@@ -2042,15 +2034,8 @@ EAsyncPackageState::Type FAsyncPackage::SetupImports_Event()
 #if USE_EVENT_DRIVEN_ASYNC_LOAD_AT_BOOT_TIME
 				if (GIsInitialLoad && !ImportLinker && ImportPackage->HasAnyPackageFlags(PKG_CompiledIn) && !bDynamicImport)
 				{
-					// compiled in package shouldn't be involved in non outer package import
-					check(OuterMostImport.OuterIndex.IsNull());
 					// OuterMostNonPackageIndex is used here because if it is a CDO or subobject, etc, we wait for the outermost thing that is not a package
-					bFireIfNoArcsAdded = !EDLBootNotificationManager.AddWaitingPackage(
-						this,
-						ImportPackageName,
-						Linker->Imp(OuterMostNonPackageIndex).ObjectName,
-						FPackageIndex::FromImport(LocalImportIndex),
-						/*bIgnoreMissingPackage*/ false);
+					bFireIfNoArcsAdded = !EDLBootNotificationManager.AddWaitingPackage(this, OuterMostImport.ObjectName, Linker->Imp(OuterMostNonPackageIndex).ObjectName, FPackageIndex::FromImport(LocalImportIndex));
 				}
 #endif
 				if (bFireIfNoArcsAdded && // if bFireIfNoArcsAdded is false, then we know we are waiting for compiled in thing, so don't bother to look for the import now
@@ -2078,8 +2063,9 @@ EAsyncPackageState::Type FAsyncPackage::SetupImports_Event()
 				{
 					check(ImportLinker->AsyncRoot != this);
 					check(!Import.OuterIndex.IsNull());
+					check(Import.OuterIndex.IsImport());
 					
-					FPackageIndex LocalExportIndex = FindExportFromImport(ImportLinker, LocalImportIndex, Linker);
+					FPackageIndex LocalExportIndex = FindExportFromImport(ImportLinker, LocalImportIndex, Linker->ImportMap);
 					FName OuterName = NAME_None;
 					if (!LocalExportIndex.IsNull())
 					{
@@ -2089,18 +2075,14 @@ EAsyncPackageState::Type FAsyncPackage::SetupImports_Event()
 						{
 							OuterName = ImportLinker->Exp(LocalExportOuterIndex).ObjectName;
 						}
-						else if (LocalExportOuterIndex.IsImport())
-						{
-							OuterName = ImportLinker->Imp(LocalExportOuterIndex).ObjectName;
-						}
 						else if (LocalExportOuterIndex.IsNull())
 						{
 							OuterName = ImportLinker->LinkerRoot->GetFName();
 						}
 						check(OuterName != NAME_None);
-						check(OuterName == Linker->GetInstancingContext().Remap(Linker->ImpExp(Import.OuterIndex).ObjectName));
+						check(OuterName == Linker->ImportMap[Import.OuterIndex.ToImport()].ObjectName);
 					}
-					//native blueprint 
+//native blueprint 
 					bool bDynamicSomethingMissingFromTheFakeExportTable = bDynamicImport && LocalExportIndex.IsNull();
 
 					// this is a hack because the fake export table is missing lots
@@ -2138,7 +2120,7 @@ EAsyncPackageState::Type FAsyncPackage::SetupImports_Event()
 						{
 							if (bDynamicSomethingMissingFromTheFakeExportTable)
 							{
-								// native blueprint 
+									//native blueprint 
 
 								// we can't set Import.SourceIndex because they would be incorrect
 
@@ -2267,6 +2249,7 @@ void FAsyncLoadingThread::QueueEvent_SetupExports(FAsyncPackage* Package, int32 
 		FAsyncPackage* Pkg = GetPackage(WeakPtr);
 		if (Pkg)
 		{
+			TRACE_LOADTIME_ASYNC_PACKAGE_SCOPE(Pkg, LoadTimeProfilerPackageEventType_SetupExports);
 			Pkg->SetTimeLimit(Args, TEXT("Setup Exports"));
 			Pkg->Event_SetupExports();
 		}
@@ -2303,6 +2286,7 @@ void FAsyncLoadingThread::QueueEvent_ProcessImportsAndExports(FAsyncPackage* Pac
 		FAsyncPackage* Pkg = GetPackage(WeakPtr);
 		if (Pkg)
 		{
+			TRACE_LOADTIME_ASYNC_PACKAGE_SCOPE(Pkg, LoadTimeProfilerPackageEventType_ProcessImportsAndExports);
 			Pkg->SetTimeLimit(Args, TEXT("ProcessImportsAndExports"));
 			Pkg->Event_ProcessImportsAndExports();
 		}
@@ -2324,6 +2308,7 @@ void FAsyncLoadingThread::QueueEvent_ProcessPostloadWait(FAsyncPackage* Package,
 		FAsyncPackage* Pkg = GetPackage(WeakPtr);
 		if (Pkg)
 		{
+			TRACE_LOADTIME_ASYNC_PACKAGE_SCOPE(Pkg, LoadTimeProfilerPackageEventType_PostLoadWait);
 			Pkg->SetTimeLimit(Args, TEXT("Process Process Postload Wait"));
 			Pkg->Event_ProcessPostloadWait();
 		}
@@ -2345,6 +2330,7 @@ void FAsyncLoadingThread::QueueEvent_ExportsDone(FAsyncPackage* Package, int32 E
 		FAsyncPackage* Pkg = GetPackage(WeakPtr);
 		if (Pkg)
 		{
+			TRACE_LOADTIME_ASYNC_PACKAGE_SCOPE(Pkg, LoadTimeProfilerPackageEventType_ExportsDone);
 			Pkg->SetTimeLimit(Args, TEXT("Exports Done"));
 			Pkg->Event_ExportsDone();
 		}
@@ -2366,6 +2352,7 @@ void FAsyncLoadingThread::QueueEvent_StartPostLoad(FAsyncPackage* Package, int32
 		FAsyncPackage* Pkg = GetPackage(WeakPtr);
 		if (Pkg)
 		{
+			TRACE_LOADTIME_ASYNC_PACKAGE_SCOPE(Pkg, LoadTimeProfilerPackageEventType_StartPostLoad);
 			Pkg->SetTimeLimit(Args, TEXT("Start Post Load"));
 			Pkg->Event_StartPostload();
 		}
@@ -2563,14 +2550,14 @@ void FAsyncPackage::LinkImport(int32 LocalImportIndex)
 					return;
 				}
 
-				if (OuterMostImport.OuterIndex.IsNull() || OuterMostImport.HasPackageName())
+				if (OuterMostImport.OuterIndex.IsNull())
 				{
 					break;
 				}
 				OuterMostIndex = OuterMostImport.OuterIndex;
 			}
 			FObjectImport& OuterMostImport = Linker->Imp(OuterMostIndex);
-			UPackage* ImportPackage = OuterMostImport.XObject ? OuterMostImport.XObject->GetOutermost() : nullptr; // these were filled in a previous step
+			UPackage* ImportPackage = (UPackage*)OuterMostImport.XObject; // these were filled in a previous step
 
 			if (!ImportPackage)
 			{
@@ -2594,20 +2581,19 @@ void FAsyncPackage::LinkImport(int32 LocalImportIndex)
 							UObject* Outer = ImportPackage;
 							if (OuterMostIndex != Import.OuterIndex)
 							{
-								if (Import.OuterIndex.IsImport())
+								FObjectImport& OuterImport = Linker->Imp(Import.OuterIndex);
+								if (!OuterImport.XObject && !OuterImport.bImportFailed)
 								{
-									FObjectImport& OuterImport = Linker->Imp(Import.OuterIndex);
 									LinkImport(Import.OuterIndex.ToImport());
-									if (OuterImport.bImportFailed)
-									{
-										Import.bImportFailed = true;
-										return;
-									}
-									Outer = OuterImport.XObject;
-									UE_CLOG(!Outer, LogStreaming, Fatal, TEXT("Missing outer for import of (%s): %s in %s was not found, but the package exists."), *Desc.NameToLoad.ToString(), *OuterImport.ObjectName.ToString(), *ImportPackage->GetFullName());
 								}
+								if (OuterImport.bImportFailed)
+								{
+									Import.bImportFailed = true;
+									return;
+								}
+								Outer = OuterImport.XObject;
+								UE_CLOG(!Outer, LogStreaming, Fatal, TEXT("Missing outer for import of (%s): %s in %s was not found, but the package exists."), *Desc.NameToLoad.ToString(), *OuterImport.ObjectName.ToString(), *ImportPackage->GetFullName());
 							}
-							//@todo FH: if we change how StaticFindObjectFast works with external package we will need to change this
 							Import.XObject = FLinkerLoad::FindImportFast(FindClass, Outer, Import.ObjectName);
 							UE_CLOG(!Import.XObject, LogStreaming, Fatal, TEXT("Missing import of (%s): %s in %s was not found, but the package exists."), *Desc.NameToLoad.ToString(), *Import.ObjectName.ToString(), *ImportPackage->GetFullName());
 						}
@@ -2785,7 +2771,7 @@ void FAsyncPackage::EventDrivenCreateExport(int32 LocalExportIndex)
 	SCOPED_LOADTIMER(Package_CreateExports);
 	FObjectExport& Export = Linker->ExportMap[LocalExportIndex];
 
-	TRACE_LOADTIME_CREATE_EXPORT_SCOPE(this, &Export.Object);
+	TRACE_LOADTIME_CREATE_EXPORT_SCOPE(Linker, &Export.Object, Export.SerialOffset, Export.SerialSize, Export.bIsAsset);
 
 	LLM_SCOPE(ELLMTag::AsyncLoading);
 	LLM_SCOPED_TAG_WITH_OBJECT_IN_SET(GetLinkerRoot(), ELLMTagSet::Assets);
@@ -2926,8 +2912,8 @@ void FAsyncPackage::EventDrivenCreateExport(int32 LocalExportIndex)
 						// Do this for all subobjects created in the native constructor.
 						if (!Export.Object->HasAnyFlags(RF_LoadCompleted))
 						{
-							UE_LOG(LogStreaming, VeryVerbose, TEXT("Note2: %s was constructed during load and is an export and so needs loading."), *Export.Object->GetFullName());
-							UE_CLOG(!Export.Object->HasAllFlags(RF_WillBeLoaded), LogStreaming, Fatal, TEXT("%s was found in memory and is an export but does not have all load flags."), *Export.Object->GetFullName());
+								UE_LOG(LogStreaming, VeryVerbose, TEXT("Note2: %s was constructed during load and is an export and so needs loading."), *Export.Object->GetFullName());
+								UE_CLOG(!Export.Object->HasAllFlags(RF_WillBeLoaded), LogStreaming, Fatal, TEXT("%s was found in memory and is an export but does not have all load flags."), *Export.Object->GetFullName());
 							if(Export.Object->HasAnyFlags(RF_ClassDefaultObject))
 							{
 								// never call PostLoadSubobjects on class default objects, this matches the behavior of the old linker where
@@ -2937,9 +2923,9 @@ void FAsyncPackage::EventDrivenCreateExport(int32 LocalExportIndex)
 							}
 							else
 							{
-								Export.Object->SetFlags(RF_NeedLoad | RF_NeedPostLoad | RF_NeedPostLoadSubobjects | RF_WasLoaded);
+							Export.Object->SetFlags(RF_NeedLoad | RF_NeedPostLoad | RF_NeedPostLoadSubobjects | RF_WasLoaded);
 							}
-							Export.Object->ClearFlags(RF_WillBeLoaded);
+								Export.Object->ClearFlags(RF_WillBeLoaded);
 						}
 					}
 				}
@@ -3038,15 +3024,18 @@ void FAsyncPackage::EventDrivenCreateExport(int32 LocalExportIndex)
 						return;
 					}
 
-					FStaticConstructObjectParameters Params(LoadClass);
-					Params.Outer = ThisParent;
-					Params.Name = NewName;
-					Params.SetFlags = ObjectLoadFlags;
-					Params.Template = Template;
-					Params.bAssumeTemplateIsArchetype = true;
-					// if our outer is actually an import, then the package we are an export of is not in our outer chain, set our package in that case
-					Params.ExternalPackage = Export.OuterIndex.IsImport() ? LinkerRoot : nullptr;
-					Export.Object = StaticConstructObject_Internal(Params);
+					Export.Object = StaticConstructObject_Internal
+						(
+							LoadClass,
+							ThisParent,
+							NewName,
+							ObjectLoadFlags,
+							EInternalObjectFlags::None,
+							Template,
+							false,
+							nullptr,
+							true
+						);
 
 					if (GIsInitialLoad || GUObjectArray.IsOpenForDisregardForGC())
 					{
@@ -3080,22 +3069,6 @@ static FPackageIndex FindExportFromObject(FLinkerLoad* Linker, UObject *Object)
 		{
 			Result = *PotentialExport;
 		}
-		// The object might be found in the linker import table instead
-		else
-		{
-			for (int i = 0; i < Linker->ImportMap.Num(); ++i)
-			{
-				const FObjectImport& Import = Linker->ImportMap[i];
-				if (Import.XObject == Object ||
-					(Import.ObjectName == Object->GetFName() &&
-					 Import.ClassName == Object->GetClass()->GetFName() &&
-					 Linker->ImpExp(Import.OuterIndex).ObjectName == Object->GetOuter()->GetFName()))
-				{
-					Result = FPackageIndex::FromImport(i);
-					break;
-				}
-			}
-		}
 	}
 	return Result;
 }
@@ -3115,11 +3088,11 @@ void FAsyncPackage::MarkNewObjectForLoadIfItIsAnExport(UObject *Object)
 
 void FAsyncPackage::EventDrivenSerializeExport(int32 LocalExportIndex)
 {
-	LLM_SCOPE(ELLMTag::UObject);
 	SCOPED_LOADTIMER(Package_PreLoadObjects);
 
 	FObjectExport& Export = Linker->ExportMap[LocalExportIndex];
 
+	LLM_SCOPE(ELLMTag::UObject);
 	LLM_SCOPED_TAG_WITH_OBJECT_IN_SET(GetLinkerRoot(), ELLMTagSet::Assets);
 	LLM_SCOPED_TAG_WITH_OBJECT_IN_SET((Export.DynamicType == FObjectExport::EDynamicType::DynamicType) ? UDynamicClass::StaticClass() :
 		CastEventDrivenIndexToObject<UClass>(Export.ClassIndex, false), ELLMTagSet::AssetClasses);
@@ -3182,7 +3155,7 @@ void FAsyncPackage::EventDrivenSerializeExport(int32 LocalExportIndex)
 
 		Object->ClearFlags(RF_NeedLoad);
 
-		TRACE_LOADTIME_SERIALIZE_EXPORT_SCOPE(Object, Export.SerialSize);
+		TRACE_LOADTIME_OBJECT_SCOPE(Object, LoadTimeProfilerObjectEventType_Serialize);
 
 		FUObjectSerializeContext* LoadContext = GetSerializeContext();
 		UObject* PrevSerializedObject = LoadContext->SerializedObject;
@@ -3197,19 +3170,15 @@ void FAsyncPackage::EventDrivenSerializeExport(int32 LocalExportIndex)
 		check(!Linker->TemplateForGetArchetypeFromLoader);
 		Linker->TemplateForGetArchetypeFromLoader = Template;
 
+		if (Object->HasAnyFlags(RF_ClassDefaultObject))
 		{
-			ACCUM_LOADTIMECOUNT_STAT(StaticGetNativeClassName(Object->GetClass()).ToString());
-			SCOPED_ACCUM_LOADTIME_STAT(StaticGetNativeClassName(Object->GetClass()).ToString());
 			SCOPED_ACCUM_LOADTIME(Serialize, StaticGetNativeClassName(Object->GetClass()));
-		
-			if (Object->HasAnyFlags(RF_ClassDefaultObject))
-			{
-				Object->GetClass()->SerializeDefaultObject(Object, *Linker);
-			}
-			else
-			{
-				Object->Serialize(*Linker);
-			}
+			Object->GetClass()->SerializeDefaultObject(Object, *Linker);
+		}
+		else
+		{
+			SCOPED_ACCUM_LOADTIME(Serialize, StaticGetNativeClassName(Object->GetClass()));
+			Object->Serialize(*Linker);
 		}
 		check(Linker->TemplateForGetArchetypeFromLoader == Template);
 		Linker->TemplateForGetArchetypeFromLoader = nullptr;
@@ -4014,6 +3983,7 @@ EAsyncPackageState::Type FAsyncLoadingThread::ProcessAsyncLoading(int32& OutPack
 
 	if (GEventDrivenLoaderEnabled)
 	{
+		SCOPE_CYCLE_COUNTER(STAT_FAsyncLoadingThread_ProcessAsyncLoading);
 #if !UE_BUILD_SHIPPING && !UE_BUILD_TEST
 		FScopedRecursionNotAllowed RecursionGuard(*this);
 #endif
@@ -4040,7 +4010,7 @@ EAsyncPackageState::Type FAsyncLoadingThread::ProcessAsyncLoading(int32& OutPack
 				}
 			}
 
-			if (IsAsyncLoadingSuspendedInternal())
+			if (IsAsyncLoadingSuspended())
 			{
 				return EAsyncPackageState::TimeOut;
 			}
@@ -4084,8 +4054,6 @@ EAsyncPackageState::Type FAsyncLoadingThread::ProcessAsyncLoading(int32& OutPack
 			}
 			if (AsyncPackagesReadyForTick.Num())
 			{
-				SCOPE_CYCLE_COUNTER(STAT_FAsyncLoadingThread_ProcessAsyncLoading);
-
 				OutPackagesProcessed++;
 				bDidSomething = true;
 				FAsyncPackage* Package = AsyncPackagesReadyForTick[0];
@@ -4338,8 +4306,7 @@ EAsyncPackageState::Type FAsyncLoadingThread::ProcessLoadedPackages(bool bUseTim
 	}
 #if USE_EVENT_DRIVEN_ASYNC_LOAD_AT_BOOT_TIME
 	if (IsMultithreaded() && GEventDrivenLoaderEnabled &&
-		ENamedThreads::GetRenderThread() == ENamedThreads::GameThread &&
-		!FTaskGraphInterface::Get().IsThreadProcessingTasks(ENamedThreads::GameThread)) // render thread tasks are actually being sent to the game thread.
+		ENamedThreads::GetRenderThread() == ENamedThreads::GameThread) // render thread tasks are actually being sent to the game thread.
 	{
 		// The async loading thread might have queued some render thread tasks (we don't have a render thread yet, so these are actually sent to the game thread)
 		// We need to process them now before we do any postloads.
@@ -4353,7 +4320,7 @@ EAsyncPackageState::Type FAsyncLoadingThread::ProcessLoadedPackages(bool bUseTim
 
 		
 	bDidSomething = LoadedPackagesToProcess.Num() > 0;
-	for (int32 PackageIndex = 0; PackageIndex < LoadedPackagesToProcess.Num() && !IsAsyncLoadingSuspendedInternal(); ++PackageIndex)
+	for (int32 PackageIndex = 0; PackageIndex < LoadedPackagesToProcess.Num() && !IsAsyncLoadingSuspended(); ++PackageIndex)
 	{
 		FAsyncPackage* Package = LoadedPackagesToProcess[PackageIndex];
 		if (Package->GetDependencyRefCount() == 0)
@@ -4413,8 +4380,6 @@ EAsyncPackageState::Type FAsyncLoadingThread::ProcessLoadedPackages(bool bUseTim
 				// We don't need the package anymore
 				PackagesToDelete.AddUnique(Package);
 				Package->MarkRequestIDsAsComplete();
-
-				TRACE_LOADTIME_END_LOAD_ASYNC_PACKAGE(Package);
 
 				if (IsTimeLimitExceeded(TickStartTime, bUseTimeLimit, TimeLimit, TEXT("ProcessLoadedPackages Misc")) || (FlushTree && !ContainsRequestID(FlushTree->RequestId)))
 				{
@@ -4525,7 +4490,7 @@ EAsyncPackageState::Type FAsyncLoadingThread::TickAsyncLoading(bool bUseTimeLimi
 	check(IsInGameThread());
 	check(!IsGarbageCollecting());
 
-	const bool bLoadingSuspended = IsAsyncLoadingSuspendedInternal();
+	const bool bLoadingSuspended = IsAsyncLoadingSuspended();
 	EAsyncPackageState::Type Result = bLoadingSuspended ? EAsyncPackageState::PendingImports : EAsyncPackageState::Complete;
 
 	if (!bLoadingSuspended)
@@ -4673,7 +4638,7 @@ FAsyncLoadingThread::FAsyncLoadingThread(int32 InThreadIndex, IEDLBootNotificati
 	CancelLoadingEvent = FPlatformProcess::GetSynchEventFromPool();
 	ThreadSuspendedEvent = FPlatformProcess::GetSynchEventFromPool();
 	ThreadResumedEvent = FPlatformProcess::GetSynchEventFromPool();
-	if ((!GEventDrivenLoaderEnabled || !USE_EVENT_DRIVEN_ASYNC_LOAD_AT_BOOT_TIME) && FAsyncLoadingThreadSettings::Get().bAsyncLoadingThreadEnabled)
+	if ((!GEventDrivenLoaderEnabled || !USE_EVENT_DRIVEN_ASYNC_LOAD_AT_BOOT_TIME) && FAsyncLoadingThread::GetAsyncLoadingThreadSettings().bAsyncLoadingThreadEnabled)
 	{
 		StartThread();
 	}
@@ -4681,18 +4646,8 @@ FAsyncLoadingThread::FAsyncLoadingThread(int32 InThreadIndex, IEDLBootNotificati
 #if !IS_PROGRAM && !WITH_EDITORONLY_DATA
 	UE_LOG(LogStreaming, Display, TEXT("Async Loading initialized: Event Driven Loader: %s, Async Loading Thread: %s, Async Post Load: %s"),
 		GEventDrivenLoaderEnabled ? TEXT("true") : TEXT("false"),
-		FAsyncLoadingThreadSettings::Get().bAsyncLoadingThreadEnabled ? TEXT("true") : TEXT("false"),
-		FAsyncLoadingThreadSettings::Get().bAsyncPostLoadEnabled ? TEXT("true") : TEXT("false"));
-
-	bool bDisableEDLWarning = false;
-	if (GConfig)
-	{
-		GConfig->GetBool(TEXT("/Script/Engine.StreamingSettings"), TEXT("s.DisableEDLDeprecationWarnings"), /* out */ bDisableEDLWarning, GEngineIni);
-	}
-	if (!GEventDrivenLoaderEnabled && !bDisableEDLWarning)
-	{
-		UE_LOG(LogStreaming, Warning, TEXT("Event Driven Loader is disabled. Loading code will use deprecated path which will be removed in future release."));
-	}
+		FAsyncLoadingThread::GetAsyncLoadingThreadSettings().bAsyncLoadingThreadEnabled ? TEXT("true") : TEXT("false"),
+		FAsyncLoadingThread::GetAsyncLoadingThreadSettings().bAsyncPostLoadEnabled ? TEXT("true") : TEXT("false"));
 #endif
 }
 
@@ -4728,21 +4683,54 @@ void FAsyncLoadingThread::ShutdownLoading()
 	ThreadResumedEvent = nullptr;	
 }
 
+FAsyncLoadingThread::FAsyncLoadingThreadSettings::FAsyncLoadingThreadSettings()
+{
+#if THREADSAFE_UOBJECTS
+	if (FPlatformProperties::RequiresCookedData())
+	{
+		check(GConfig);
+
+		bool bConfigValue = true;
+		GConfig->GetBool(TEXT("/Script/Engine.StreamingSettings"), TEXT("s.AsyncLoadingThreadEnabled"), bConfigValue, GEngineIni);
+		bool bCommandLineDisable = FParse::Param(FCommandLine::Get(), TEXT("NoAsyncLoadingThread"));
+		bool bCommandLineEnable = FParse::Param(FCommandLine::Get(), TEXT("AsyncLoadingThread"));
+		bAsyncLoadingThreadEnabled = bCommandLineEnable || (bConfigValue && FApp::ShouldUseThreadingForPerformance() && !bCommandLineDisable);
+
+		bConfigValue = true;
+		GConfig->GetBool(TEXT("/Script/Engine.StreamingSettings"), TEXT("s.AsyncPostLoadEnabled"), bConfigValue, GEngineIni);
+		bCommandLineDisable = FParse::Param(FCommandLine::Get(), TEXT("NoAsyncPostLoad"));
+		bCommandLineEnable = FParse::Param(FCommandLine::Get(), TEXT("AsyncPostLoad"));
+		bAsyncPostLoadEnabled = bCommandLineEnable || (bConfigValue && FApp::ShouldUseThreadingForPerformance() && !bCommandLineDisable);
+	}
+	else
+#endif
+	{
+		bAsyncLoadingThreadEnabled = false;
+		bAsyncPostLoadEnabled = false;
+	}
+}
+
+FAsyncLoadingThread::FAsyncLoadingThreadSettings& FAsyncLoadingThread::GetAsyncLoadingThreadSettings()
+{
+	static FAsyncLoadingThreadSettings Settings;
+	return Settings;
+}
+
 void FAsyncLoadingThread::StartThread()
 {
 	// Make sure the GC sync object is created before we start the thread (apparently this can happen before we call InitUObject())
 	FGCCSyncObject::Create();
 
-	if (!Thread && FAsyncLoadingThreadSettings::Get().bAsyncLoadingThreadEnabled)
+	if (!Thread && FAsyncLoadingThread::GetAsyncLoadingThreadSettings().bAsyncLoadingThreadEnabled)
 	{
-		Trace::ThreadGroupBegin(TEXT("AsyncLoading"));
-
 		UE_LOG(LogStreaming, Log, TEXT("Starting Async Loading Thread."));
 		bThreadStarted = true;
 		FPlatformMisc::MemoryBarrier();
 		Thread = FRunnableThread::Create(this, TEXT("FAsyncLoadingThread"), 0, TPri_Normal);
-
-		Trace::ThreadGroupEnd();
+		if (Thread)
+		{
+			TRACE_SET_THREAD_GROUP(Thread->GetThreadID(), "AsyncLoading");
+		}
 	}
 }
 
@@ -4762,7 +4750,6 @@ uint32 FAsyncLoadingThread::Run()
 	if (!IsInGameThread())
 	{
 		FPlatformProcess::SetThreadAffinityMask(FPlatformAffinity::GetAsyncLoadingThreadMask());
-		FMemory::SetupTLSCachesOnCurrentThread();
 	}
 
 	bool bWasSuspendedLastFrame = false;
@@ -5125,10 +5112,10 @@ void FAsyncLoadingThread::NotifyConstructedDuringAsyncLoading(UObject* Object, b
 		{
 			AsyncPackage->MarkNewObjectForLoadIfItIsAnExport(Object);
 		}
-	}
+		}
 	}
 
-void FAsyncLoadingThread::FireCompletedCompiledInImport(void* AsyncPackage, FPackageIndex Import)
+void FAsyncLoadingThread::FireCompletedCompiledInImport(FGCObject* AsyncPackage, FPackageIndex Import)
 {
 	FEventLoadNodePtr NodeToFire;
 	NodeToFire.WaitingPackage = FCheckedWeakAsyncPackagePtr(static_cast<FAsyncPackage*>(AsyncPackage));
@@ -5208,12 +5195,13 @@ FAsyncPackage::FAsyncPackage(FAsyncLoadingThread& InThread, const FAsyncPackageD
 , FinishObjectsTime(0.0)
 #endif // PERF_TRACK_DETAILED_ASYNC_STATS
 {
-	TRACE_LOADTIME_NEW_ASYNC_PACKAGE(this, InDesc.Name);
+	TRACE_LOADTIME_NEW_ASYNC_PACKAGE(this, *InDesc.Name.ToString());
 	AddRequestID(InDesc.RequestID);
 }
 
 FAsyncPackage::~FAsyncPackage()
 {
+	TRACE_LOADTIME_DESTROY_ASYNC_PACKAGE(this);
 #if DO_CHECK
 	if (GEventDrivenLoaderEnabled)
 	{
@@ -5240,8 +5228,6 @@ FAsyncPackage::~FAsyncPackage()
 	}
 
 	EmptyReferencedObjects();
-
-	TRACE_LOADTIME_DESTROY_ASYNC_PACKAGE(this);
 }
 
 
@@ -5262,6 +5248,7 @@ void FAsyncPackage::AddObjectReference(UObject* InObject)
 			if (!ReferencedObjects.Contains(InObject))
 			{
 				ReferencedObjects.Add(InObject);
+				InObject->AtomicallyClearInternalFlags(EInternalObjectFlags::Async);
 			}
 		}
 		UE_CLOG(InObject->HasAnyInternalFlags(EInternalObjectFlags::Unreachable), LogStreaming, Fatal, TEXT("Trying to add an unreachable object %s to FAsyncPackage %s referenced objects list."), *InObject->GetFullName(), *GetPackageName().ToString());
@@ -5270,18 +5257,7 @@ void FAsyncPackage::AddObjectReference(UObject* InObject)
 
 void FAsyncPackage::EmptyReferencedObjects()
 {
-	const EInternalObjectFlags AsyncFlags = EInternalObjectFlags::Async | EInternalObjectFlags::AsyncLoading;
 	FScopeLock ReferencedObjectsLock(&ReferencedObjectsCritical);
-	for (UObject* Obj : ReferencedObjects)
-	{
-		if (Obj)
-		{
-			// Temporary fatal messages instead of checks to find the cause for a one-time crash in shipping config
-			UE_CLOG(!Obj->IsValidLowLevelFast(), LogStreaming, Fatal, TEXT("Invalid object in Async Objects Referencer"));
-			Obj->AtomicallyClearInternalFlags(AsyncFlags);
-			check(!Obj->HasAnyInternalFlags(AsyncFlags))
-		}
-	}
 	ReferencedObjects.Reset();
 }
 
@@ -5447,6 +5423,7 @@ EAsyncPackageState::Type FAsyncPackage::TickAsyncPackage(bool InbUseTimeLimit, b
 
 	ReentryCount++;
 
+	TRACE_LOADTIME_ASYNC_PACKAGE_SCOPE(this, LoadTimeProfilerPackageEventType_Tick);
 	SCOPE_CYCLE_COUNTER(STAT_FAsyncPackage_Tick);
 	SCOPED_LOADTIMER(Package_Tick);
 
@@ -5594,7 +5571,7 @@ EAsyncPackageState::Type FAsyncPackage::TickAsyncPackage(bool InbUseTimeLimit, b
 		}
 	} while (!IsTimeLimitExceeded() && LoadingState == EAsyncPackageState::TimeOut);
 
-	check(bUseTimeLimit || LoadingState != EAsyncPackageState::TimeOut || AsyncLoadingThread.IsAsyncLoadingSuspendedInternal() || IsGarbageCollectionWaiting());
+	check(bUseTimeLimit || LoadingState != EAsyncPackageState::TimeOut || AsyncLoadingThread.IsAsyncLoadingSuspended() || IsGarbageCollectionWaiting());
 
 	if (LinkerRoot && LoadingState == EAsyncPackageState::Complete)
 	{
@@ -5642,9 +5619,8 @@ EAsyncPackageState::Type FAsyncPackage::CreateLinker()
 		// Try to find existing package or create it if not already present.
 		UPackage* Package = nullptr;
 		{
-			SCOPED_LOADTIMER(CreateLinker_CreatePackage);
 			FGCScopeGuard GCGuard;
-			Package = CreatePackage(*Desc.Name.ToString());
+			Package = CreatePackage(nullptr, *Desc.Name.ToString());
 			if (!Package)
 			{
 				UE_LOG(LogStreaming, Error, TEXT("Failed to create package %s requested by async loading code. NameToLoad: %s"), *Desc.Name.ToString(), *Desc.NameToLoad.ToString());
@@ -5666,7 +5642,6 @@ EAsyncPackageState::Type FAsyncPackage::CreateLinker()
 
 		if (Package->FileName == NAME_None && !Package->bHasBeenFullyLoaded)
 		{
-			SCOPED_LOADTIMER(CreateLinker_SetFlags);
 			// We just created the package, so set ownership flag and set up package info
 			bCreatedLinkerRoot = true;
 
@@ -5685,10 +5660,7 @@ EAsyncPackageState::Type FAsyncPackage::CreateLinker()
 		LastObjectWorkWasPerformedOn = Package;
 		// if the linker already exists, we don't need to lookup the file (it may have been pre-created with
 		// a different filename)
-		{
-			SCOPED_LOADTIMER(CreateLinker_FindLinker);
-			Linker = FLinkerLoad::FindExistingLinkerForPackage(Package);
-		}
+		Linker = FLinkerLoad::FindExistingLinkerForPackage(Package);
 		if (Linker)
 		{
 			if (GEventDrivenLoaderEnabled)
@@ -5707,7 +5679,6 @@ EAsyncPackageState::Type FAsyncPackage::CreateLinker()
 			// Process any package redirects
 			FString NameToLoad;
 			{
-				SCOPED_LOADTIMER(CreateLinker_GetRedirectedName);
 				const FCoreRedirectObjectName NewPackageName = FCoreRedirects::GetRedirectedName(ECoreRedirectFlags::Type_Package, FCoreRedirectObjectName(NAME_None, NAME_None, Desc.NameToLoad));
 				NameToLoad = NewPackageName.PackageName.ToString();
 			}
@@ -5715,7 +5686,6 @@ EAsyncPackageState::Type FAsyncPackage::CreateLinker()
 			// The editor must not redirect packages for localization.
 			if (!GIsEditor)
 			{
-				SCOPED_LOADTIMER(CreateLinker_MassagePath);
 				// Allow delegates to resolve this path
 				NameToLoad = FPackageName::GetDelegateResolvedPackagePath(NameToLoad);
 				NameToLoad = FPackageName::GetLocalizedPackagePath(NameToLoad);
@@ -5724,86 +5694,81 @@ EAsyncPackageState::Type FAsyncPackage::CreateLinker()
 			const FGuid* const Guid = Desc.Guid.IsValid() ? &Desc.Guid : nullptr;
 
 			FString PackageFileName;
-			bool DoesPackageExist = false;
-			{
-				SCOPED_LOADTIMER(CreateLinker_DoesExist);
-				DoesPackageExist = FPackageName::DoesPackageExist(NameToLoad, Guid, &PackageFileName);
-			}
+			const bool DoesPackageExist = FPackageName::DoesPackageExist(NameToLoad, Guid, &PackageFileName);
 
+			if (Desc.NameToLoad == NAME_None ||
+				(!GetConvertedDynamicPackageNameToTypeName().Contains(Desc.Name) &&
+					!DoesPackageExist))
 			{
-				SCOPED_LOADTIMER(CreateLinker_MissingPackage);
+				FName FailedLoadName = FName(*NameToLoad);
 
-				if (Desc.NameToLoad == NAME_None ||
-					(!GetConvertedDynamicPackageNameToTypeName().Contains(Desc.Name) &&
-						!DoesPackageExist))
+				if (!FLinkerLoad::IsKnownMissingPackage(FailedLoadName))
 				{
-					FName FailedLoadName = FName(*NameToLoad);
-
-					if (!FLinkerLoad::IsKnownMissingPackage(FailedLoadName))
-					{
-						UE_LOG(LogStreaming, Error, TEXT("Couldn't find file for package %s requested by async loading code. NameToLoad: %s"), *Desc.Name.ToString(), *Desc.NameToLoad.ToString());
+					UE_LOG(LogStreaming, Error, TEXT("Couldn't find file for package %s requested by async loading code. NameToLoad: %s"), *Desc.Name.ToString(), *Desc.NameToLoad.ToString());
 
 #if !WITH_EDITORONLY_DATA
-						UE_CLOG(bUseTimeLimit, LogStreaming, Error, TEXT("This will hitch streaming because it ends up searching the disk instead of finding the file in the pak file."));
+					UE_CLOG(bUseTimeLimit, LogStreaming, Error, TEXT("This will hitch streaming because it ends up searching the disk instead of finding the file in the pak file."));
 #endif
 
-						if (GEventDrivenLoaderEnabled)
+					if (GEventDrivenLoaderEnabled)
+					{
+						TSet<FName> DependentPackages;
+						FWeakAsyncPackagePtr WeakPtr(this);
+						TArray<FEventLoadNodePtr> AddedNodes;
+						EventNodeArray.GetAddedNodes(AddedNodes, this);
+						for (const FEventLoadNodePtr& NodePtr : AddedNodes)
 						{
-							TSet<FName> DependentPackages;
-							FWeakAsyncPackagePtr WeakPtr(this);
-							TArray<FEventLoadNodePtr> AddedNodes;
-							EventNodeArray.GetAddedNodes(AddedNodes, this);
-							for (const FEventLoadNodePtr& NodePtr : AddedNodes)
+							const FEventLoadNode& Node = EventNodeArray.GetNode(NodePtr);
+							for (const FEventLoadNodePtr& Other : Node.NodesWaitingForMe)
 							{
-								const FEventLoadNode& Node = EventNodeArray.GetNode(NodePtr);
-								for (const FEventLoadNodePtr& Other : Node.NodesWaitingForMe)
+								FName DependentPackageName = Other.WaitingPackage.HumanReadableStringForDebugging();
+								if (DependentPackageName != NAME_None)
 								{
-									FName DependentPackageName = Other.WaitingPackage.HumanReadableStringForDebugging();
-									if (DependentPackageName != NAME_None)
-									{
-										DependentPackages.Add(DependentPackageName);
-									}
+									DependentPackages.Add(DependentPackageName);
 								}
-							}
-
-							UE_LOG(LogStreaming, Error, TEXT("Found %d dependent packages..."), DependentPackages.Num());
-							for (const FName& DependentPackageName : DependentPackages)
-							{
-								UE_LOG(LogStreaming, Error, TEXT("  %s"), *DependentPackageName.ToString());
 							}
 						}
 
-						// Add to known missing list so it won't error again
-						FLinkerLoad::AddKnownMissingPackage(FailedLoadName);
+						UE_LOG(LogStreaming, Error, TEXT("Found %d dependent packages..."), DependentPackages.Num());
+						for (const FName& DependentPackageName : DependentPackages)
+						{
+							UE_LOG(LogStreaming, Error, TEXT("  %s"), *DependentPackageName.ToString());
+						}
 					}
 
-					bLoadHasFailed = true;
-					return EAsyncPackageState::TimeOut;
+					// Add to known missing list so it won't error again
+					FLinkerLoad::AddKnownMissingPackage(FailedLoadName);
 				}
+
+				bLoadHasFailed = true;
+				return EAsyncPackageState::TimeOut;
 			}
 
 			// Create raw async linker, requiring to be ticked till finished creating.
-			uint32 LinkerFlags = (LOAD_Async | LOAD_NoVerify);
+			uint32 LinkerFlags = LOAD_None;
+			if (FApp::IsGame() && !GIsEditor)
+			{
+				LinkerFlags |= (LOAD_Async | LOAD_NoVerify);
+			}
 #if WITH_EDITOR
-			if ((!FApp::IsGame() || GIsEditor) && (Desc.PackageFlags & PKG_PlayInEditor) != 0)
+			else if ((Desc.PackageFlags & PKG_PlayInEditor) != 0)
 			{
 				LinkerFlags |= LOAD_PackageForPIE;
 			}
 #endif
-			SCOPED_LOADTIMER(CreateLinker_CreateLinkerAsync);
 			FUObjectSerializeContext* LoadContext = GetSerializeContext();
 			if (GEventDrivenLoaderEnabled)
 			{
 				FWeakAsyncPackagePtr WeakPtr(this);
 				FPrecacheCallbackHandler* PrecacheHandler = &AsyncLoadingThread.GetPrecacheHandler();
 				check(Package);
-				Linker = FLinkerLoad::CreateLinkerAsync(LoadContext, Package, *PackageFileName, LinkerFlags, Desc.GetInstancingContext()
+				Linker = FLinkerLoad::CreateLinkerAsync(LoadContext, Package, *PackageFileName, LinkerFlags
 					, TFunction<void()>(
 						[WeakPtr, PrecacheHandler]()
-						{
-							PrecacheHandler->SummaryComplete(WeakPtr);
-						}
-					));
+				{
+					PrecacheHandler->SummaryComplete(WeakPtr);
+				}
+				));
 				if (Linker)
 				{
 					AsyncLoadingThread.GetPrecacheHandler().RegisterNewSummaryRequest(this);
@@ -5822,7 +5787,7 @@ EAsyncPackageState::Type FAsyncPackage::CreateLinker()
 			}
 			else
 			{
-				Linker = FLinkerLoad::CreateLinkerAsync(LoadContext, Package, *PackageFileName, LinkerFlags, Desc.GetInstancingContext(), TFunction<void()>([]() {}));
+				Linker = FLinkerLoad::CreateLinkerAsync(LoadContext, Package, *PackageFileName, LinkerFlags, TFunction<void()>([]() {}));
 			}
 		}
 
@@ -5830,6 +5795,7 @@ EAsyncPackageState::Type FAsyncPackage::CreateLinker()
 		check(Linker);
 		check(Linker->AsyncRoot == nullptr || Linker->AsyncRoot == this);
 		Linker->AsyncRoot = this;
+		TRACE_LOADTIME_ASYNC_PACKAGE_LINKER_ASSOCIATION(this, Linker);
 
 		UE_LOG(LogStreaming, Verbose, TEXT("FAsyncPackage::CreateLinker for %s finished."), *Desc.NameToLoad.ToString());
 	}
@@ -5893,32 +5859,20 @@ FORCEINLINE int32 ContainsDependencyPackage(TArray<FAsyncPackage*>& Dependencies
 	return INDEX_NONE;
 }
 
-/**
- * Adds a package to the list of pending import packages.
- *
- * @param PendingImport Name of the package imported either directly or by one of the imported packages
- */
-void FAsyncPackage::AddImportDependency(const FName& PendingImport, FFlushTree* FlushTree)
-{
-	AddImportDependency(PendingImport, NAME_None, FlushTree, FLinkerInstancingContext());
-}
 
 /**
- * Adds a package to the list of pending import packages.
- *
- * @param PendingImport Name of the package imported either directly or by one of the imported packages
- * @param PackageToLoad Name of the package to load into PendingImport
- * @param FlushTree Package dependency tree to be flushed
- */
-void FAsyncPackage::AddImportDependency(const FName& PendingImport, const FName& PackageToLoad, FFlushTree* FlushTree, FLinkerInstancingContext InstancingContext)
+	* Adds a package to the list of pending import packages.
+	*
+	* @param PendingImport Name of the package imported either directly or by one of the imported packages
+	*/
+void FAsyncPackage::AddImportDependency(const FName& PendingImport, FFlushTree* FlushTree)
 {
 	FAsyncPackage* PackageToStream = AsyncLoadingThread.FindAsyncPackage(PendingImport);
 	const bool bReinsert = PackageToStream != nullptr;
 
 	if (!PackageToStream)
 	{
-		FAsyncPackageDesc Info(INDEX_NONE, PendingImport, PackageToLoad);
-		Info.SetInstancingContext(MoveTemp(InstancingContext));
+		const FAsyncPackageDesc Info(INDEX_NONE, PendingImport);
 		PackageToStream = new FAsyncPackage(AsyncLoadingThread, Info, EDLBootNotificationManager);
 
 		// If priority of the dependency is not set, inherit from parent.
@@ -6020,15 +5974,16 @@ EAsyncPackageState::Type FAsyncPackage::LoadImports(FFlushTree* FlushTree)
 	while (LoadImportIndex < Linker->ImportMap.Num() && !IsTimeLimitExceeded())
 	{
 		// Get the package for this import
-		FObjectImport* Import = &Linker->ImportMap[LoadImportIndex++];
+		const FObjectImport* Import = &Linker->ImportMap[LoadImportIndex++];
 
 		while (Import->OuterIndex.IsImport())
 		{
 			Import = &Linker->Imp(Import->OuterIndex);
 		}
-	
+		check(Import->OuterIndex.IsNull());
+
 		// @todo: why do we need this? some UFunctions have null outer in the linker.
-		if (Import->ClassName != NAME_Package && !Import->HasPackageName())
+		if (Import->ClassName != NAME_Package)
 		{
 			continue;
 		}
@@ -6039,16 +5994,14 @@ EAsyncPackageState::Type FAsyncPackage::LoadImports(FFlushTree* FlushTree)
 			continue;
 		}
 
-		// Our import package name is the import name or the specified package name when the object isn't a package
-		const FLinkerInstancingContext& InstancingContext = Linker->GetInstancingContext();
-		FName ImportToLoad = !Import->HasPackageName() ? Import->ObjectName : Import->GetPackageName();
-		FName ImportPackageFName = InstancingContext.Remap(ImportToLoad);
-
 		// Don't try to import a package that is in an import table that we know is an invalid entry
-		if (FLinkerLoad::IsKnownMissingPackage(ImportPackageFName))
+		if (FLinkerLoad::IsKnownMissingPackage(Import->ObjectName))
 		{
 			continue;
 		}
+
+		// Our import package name is the import name
+		const FName ImportPackageFName(Import->ObjectName);
 
 		// Handle circular dependencies - try to find existing packages.
 		UPackage* ExistingPackage = dynamic_cast<UPackage*>(StaticFindObjectFast(UPackage::StaticClass(), nullptr, ImportPackageFName, true));
@@ -6082,12 +6035,12 @@ EAsyncPackageState::Type FAsyncPackage::LoadImports(FFlushTree* FlushTree)
 
 		if (!ExistingPackage && ContainsDependencyPackage(PendingImportedPackages, ImportPackageFName) == INDEX_NONE)
 		{
-			const FString ImportPackageName(ImportPackageFName.ToString());
+			const FString ImportPackageName(Import->ObjectName.ToString());
 			// The package doesn't exist and this import is not in the dependency list so add it now.
 			if (!FPackageName::IsShortPackageName(ImportPackageName))
 			{
 				UE_LOG(LogStreaming, Verbose, TEXT("FAsyncPackage::LoadImports for %s: Loading %s"), *Desc.NameToLoad.ToString(), *ImportPackageName);
-				AddImportDependency(ImportPackageFName, ImportToLoad, FlushTree, InstancingContext);
+				AddImportDependency(ImportPackageFName, FlushTree);
 			}
 			else
 			{
@@ -6355,6 +6308,8 @@ EAsyncPackageState::Type FAsyncPackage::FinishExternalReadDependencies()
  */
 EAsyncPackageState::Type FAsyncPackage::PostLoadObjects()
 {
+	LLM_SCOPE(ELLMTag::UObject);
+
 	SCOPE_CYCLE_COUNTER(STAT_FAsyncPackage_PostLoadObjects);
 
 	SCOPED_LOADTIMER(PostLoadObjectsTime);
@@ -6380,7 +6335,7 @@ EAsyncPackageState::Type FAsyncPackage::PostLoadObjects()
 		PreLoadIndex = PackageObjLoaded.Num(); // we did preloading in a different way and never incremented this
 	}
 
-	const bool bAsyncPostLoadEnabled = FAsyncLoadingThreadSettings::Get().bAsyncPostLoadEnabled;
+	const bool bAsyncPostLoadEnabled = FAsyncLoadingThread::GetAsyncLoadingThreadSettings().bAsyncPostLoadEnabled;
 	const bool bIsMultithreaded = AsyncLoadingThread.IsMultithreaded();
 
 	// PostLoad objects.
@@ -6405,8 +6360,9 @@ EAsyncPackageState::Type FAsyncPackage::PostLoadObjects()
 
 				ThreadContext.CurrentlyPostLoadedObjectByALT = Object;
 				{
-					TRACE_LOADTIME_POSTLOAD_EXPORT_SCOPE(Object);
+					TRACE_LOADTIME_OBJECT_SCOPE(Object, LoadTimeProfilerObjectEventType_PostLoad);
 					Object->ConditionalPostLoad();
+					Object->AtomicallyClearInternalFlags(EInternalObjectFlags::AsyncLoading);
 				}
 				ThreadContext.CurrentlyPostLoadedObjectByALT = nullptr;
 
@@ -6461,7 +6417,7 @@ EAsyncPackageState::Type FAsyncPackage::PostLoadDeferredObjects(double InTickSta
 	STAT(double PostLoadStartTime = FPlatformTime::Seconds());
 
 	while (DeferredPostLoadIndex < DeferredPostLoadObjects.Num() && 
-		!AsyncLoadingThread.IsAsyncLoadingSuspendedInternal() &&
+		!AsyncLoadingThread.IsAsyncLoadingSuspended() &&
 		!::IsTimeLimitExceeded(InTickStartTime, bInUseTimeLimit, InOutTimeLimit, LastTypeOfWorkPerformed, LastObjectWorkWasPerformedOn))
 	{
 		UObject* Object = DeferredPostLoadObjects[DeferredPostLoadIndex++];
@@ -6480,7 +6436,7 @@ EAsyncPackageState::Type FAsyncPackage::PostLoadDeferredObjects(double InTickSta
 
 		PackageScope.ThreadContext.CurrentlyPostLoadedObjectByALT = Object;
 		{
-			TRACE_LOADTIME_POSTLOAD_EXPORT_SCOPE(Object);
+			TRACE_LOADTIME_OBJECT_SCOPE(Object, LoadTimeProfilerObjectEventType_PostLoad);
 			Object->ConditionalPostLoad();
 		}
 		PackageScope.ThreadContext.CurrentlyPostLoadedObjectByALT = nullptr;
@@ -6532,7 +6488,7 @@ EAsyncPackageState::Type FAsyncPackage::PostLoadDeferredObjects(double InTickSta
 		TArray<UObject*> CDODefaultSubobjects;
 		// Clear async loading flags (we still want RF_Async, but EInternalObjectFlags::AsyncLoading can be cleared)
 		while (DeferredFinalizeIndex < DeferredFinalizeObjects.Num() &&
-			(DeferredPostLoadIndex % 100 != 0 || (!AsyncLoadingThread.IsAsyncLoadingSuspendedInternal() && !::IsTimeLimitExceeded(InTickStartTime, bInUseTimeLimit, InOutTimeLimit, LastTypeOfWorkPerformed, LastObjectWorkWasPerformedOn))))
+			(DeferredPostLoadIndex % 100 != 0 || (!AsyncLoadingThread.IsAsyncLoadingSuspended() && !::IsTimeLimitExceeded(InTickStartTime, bInUseTimeLimit, InOutTimeLimit, LastTypeOfWorkPerformed, LastObjectWorkWasPerformedOn))))
 		{
 			UObject* Object = DeferredFinalizeObjects[DeferredFinalizeIndex++];
 			if (Object)
@@ -6631,7 +6587,7 @@ EAsyncPackageState::Type FAsyncPackage::CreateClusters(double InTickStartTime, b
 	LastTypeOfWorkPerformed = TEXT("CreateClusters");
 
 	while (DeferredClusterIndex < DeferredClusterObjects.Num() &&
-		(!AsyncLoadingThread.IsAsyncLoadingSuspendedInternal() && !::IsTimeLimitExceeded(InTickStartTime, bInUseTimeLimit, InOutTimeLimit, LastTypeOfWorkPerformed, LastObjectWorkWasPerformedOn)))
+		(!AsyncLoadingThread.IsAsyncLoadingSuspended() && !::IsTimeLimitExceeded(InTickStartTime, bInUseTimeLimit, InOutTimeLimit, LastTypeOfWorkPerformed, LastObjectWorkWasPerformedOn)))
 	{
 		UObject* ClusterRootObject = DeferredClusterObjects[DeferredClusterIndex++];
 		LastObjectWorkWasPerformedOn = ClusterRootObject;
@@ -6732,6 +6688,17 @@ EAsyncPackageState::Type FAsyncPackage::FinishObjects()
 		LoadContext->DetachFromLinkers();
 	}
 
+	{
+		FScopeLock ReferencedObjectsLock(&ReferencedObjectsCritical);
+		for (UObject* Obj : ReferencedObjects)
+		{
+			if (Obj && !Obj->HasAnyFlags(RF_NeedPostLoad | RF_NeedPostLoadSubobjects))
+			{
+				Obj->AtomicallyClearInternalFlags(EInternalObjectFlags::AsyncLoading);
+			}
+		}
+	}
+
 	return EAsyncPackageState::Complete;
 }
 
@@ -6823,11 +6790,11 @@ void FAsyncPackage::Cancel()
 		{			
 		TArray<UObject*>& ThreadObjLoaded = LoadContext->PRIVATE_GetObjectsLoadedInternalUseOnly();
 		if (ThreadObjLoaded.Num())
-		{
+			{
 			PackageObjLoaded.Append(ThreadObjLoaded);
 			ThreadObjLoaded.Reset();
+			}
 		}
-	}
 
 	{
 		// Clear load flags from any referenced objects
@@ -6886,7 +6853,7 @@ void FAsyncPackage::UpdateLoadPercentage()
 	LoadPercentage = FMath::Max(NewLoadPercentage, LoadPercentage);
 }
 
-int32 FAsyncLoadingThread::LoadPackage(const FString& InName, const FGuid* InGuid, const TCHAR* InPackageToLoadFrom, FLoadPackageAsyncDelegate InCompletionDelegate, EPackageFlags InPackageFlags, int32 InPIEInstanceID, int32 InPackagePriority, const FLinkerInstancingContext* InstancingContext)
+int32 FAsyncLoadingThread::LoadPackage(const FString& InName, const FGuid* InGuid, const TCHAR* InPackageToLoadFrom, FLoadPackageAsyncDelegate InCompletionDelegate, EPackageFlags InPackageFlags, int32 InPIEInstanceID, int32 InPackagePriority)
 {
 	int32 RequestID = INDEX_NONE;
 
@@ -6962,10 +6929,6 @@ int32 FAsyncLoadingThread::LoadPackage(const FString& InName, const FGuid* InGui
 
 		// Add new package request
 		FAsyncPackageDesc PackageDesc(RequestID, *PackageName, *PackageNameToLoad, InGuid ? *InGuid : FGuid(), MoveTemp(CompletionDelegatePtr), InPackageFlags, InPIEInstanceID, InPackagePriority);
-		if (InstancingContext)
-		{
-			PackageDesc.SetInstancingContext(*InstancingContext);
-		}
 		QueuePackage(PackageDesc);
 	}
 	else
@@ -6981,7 +6944,7 @@ void FAsyncLoadingThread::FlushLoading(int32 PackageID)
  	if (IsAsyncLoading())
 	{
 		// Flushing async loading while loading is suspend will result in infinite stall
-		UE_CLOG(IsAsyncLoadingSuspendedInternal(), LogStreaming, Fatal, TEXT("Cannot Flush Async Loading while async loading is suspended (%d)"), GetAsyncLoadingSuspendedCount());
+		UE_CLOG(IsAsyncLoadingSuspended(), LogStreaming, Fatal, TEXT("Cannot Flush Async Loading while async loading is suspended (%d)"), GetAsyncLoadingSuspendedCount());
 
 		SCOPE_CYCLE_COUNTER(STAT_FAsyncPackage_FlushAsyncLoadingGameThread);
 
@@ -6989,9 +6952,24 @@ void FAsyncLoadingThread::FlushLoading(int32 PackageID)
 		{
 			return;
 		}
-		FScopeAsyncLoadingFlushIsActive FlushIsActive;
 
 		FCoreDelegates::OnAsyncLoadingFlush.Broadcast();
+
+#if NO_LOGGING == 0
+		{
+			// Log the flush, but only display once per frame to avoid log spam.
+			static uint64 LastFrameNumber = -1;
+			if (LastFrameNumber != GFrameNumber)
+			{
+				UE_LOG(LogStreaming, Display, TEXT("Flushing async loaders."));
+				LastFrameNumber = GFrameNumber;
+			}
+			else
+			{
+				UE_LOG(LogStreaming, Log, TEXT("Flushing async loaders."));
+			}
+		}
+#endif
 
 		double StartTime = FPlatformTime::Seconds();
 
@@ -7044,7 +7022,7 @@ EAsyncPackageState::Type FAsyncLoadingThread::ProcessLoadingUntilComplete(TFunct
 	SCOPE_CYCLE_COUNTER(STAT_FAsyncPackage_FlushAsyncLoadingGameThread);
 
 	// Flushing async loading while loading is suspend will result in infinite stall
-	UE_CLOG(IsAsyncLoadingSuspendedInternal(), LogStreaming, Fatal, TEXT("Cannot Flush Async Loading while async loading is suspended (%d)"), GetAsyncLoadingSuspendedCount());
+	UE_CLOG(IsAsyncLoadingSuspended(), LogStreaming, Fatal, TEXT("Cannot Flush Async Loading while async loading is suspended (%d)"), GetAsyncLoadingSuspendedCount());
 
 	if (TimeLimit <= 0.0f)
 	{
@@ -7145,7 +7123,7 @@ static FAutoConsoleCommand GDumpSerializeCmd(
 
 static FCriticalSection SummaryRacePreventer;
 
-FAsyncArchive::FAsyncArchive(const TCHAR* InFileName, FLinkerLoad* InOwner, TFunction<void()>&& InSummaryReadyCallback)
+FAsyncArchive::FAsyncArchive(const TCHAR* InFileName, TFunction<void()>&& InSummaryReadyCallback)
 	: Handle(nullptr)
 	, SizeRequestPtr(nullptr)
 	, EditorPrecacheRequestPtr(nullptr)
@@ -7169,7 +7147,6 @@ FAsyncArchive::FAsyncArchive(const TCHAR* InFileName, FLinkerLoad* InOwner, TFun
 	, SummaryReadTime(0.0)
 	, ExportReadTime(0.0)
 	, SummaryReadyCallback(Forward<TFunction<void()>>(InSummaryReadyCallback))
-	, OwnerLinker(InOwner)
 {
 	LogItem(TEXT("Open"));
 	Handle = FPlatformFileManager::Get().GetPlatformFile().OpenAsyncRead(InFileName);
@@ -7195,9 +7172,6 @@ FAsyncArchive::FAsyncArchive(const TCHAR* InFileName, FLinkerLoad* InOwner, TFun
 
 FAsyncArchive::~FAsyncArchive()
 {
-	UE_CLOG(OwnerLinker && !(OwnerLinker->GetLoader_Unsafe() == this && OwnerLinker->IsDestroyingLoader()), LogStreaming, Fatal,
-		TEXT("Destroying FAsyncArchive %s that belongs to linker %s outside of the linker's DestroyLoader code!"), *GetArchiveName(), *OwnerLinker->GetArchiveName());
-
 	// Invalidate any precached data and free memory.
 	FlushCache();
 	if (Handle)
@@ -7210,9 +7184,9 @@ FAsyncArchive::~FAsyncArchive()
 
 void FAsyncArchive::ReadCallback(bool bWasCancelled, IAsyncReadRequest* Request)
 {
-	if (bWasCancelled || IsError())
+	if (bWasCancelled || ArIsError)
 	{
-		SetError();
+		ArIsError = true;
 		return; // we don't do much with this, the code on the other thread knows how to deal with my request
 	}
 	if (LoadPhase == ELoadPhase::WaitingForSize)
@@ -7221,7 +7195,7 @@ void FAsyncArchive::ReadCallback(bool bWasCancelled, IAsyncReadRequest* Request)
 		FileSize = Request->GetSizeResults();
 		if (FileSize < 32)
 		{
-			SetError();
+			ArIsError = true;
 		}
 		else
 		{
@@ -7258,7 +7232,7 @@ void FAsyncArchive::ReadCallback(bool bWasCancelled, IAsyncReadRequest* Request)
 		uint8* Mem = Request->GetReadResults();
 		if (!Mem)
 		{
-			SetError();
+			ArIsError = true;
 			FPlatformMisc::MemoryBarrier();
 			LoadPhase = ELoadPhase::WaitingForHeader;
 		}
@@ -7269,7 +7243,7 @@ void FAsyncArchive::ReadCallback(bool bWasCancelled, IAsyncReadRequest* Request)
 			Ar << Sum;
 			if (Ar.IsError() || Sum.TotalHeaderSize > FileSize || Sum.GetFileVersionUE4() < VER_UE4_OLDEST_LOADABLE_PACKAGE)
 			{
-				SetError();
+				ArIsError = true;
 			}
 			else
 			{
@@ -7373,7 +7347,7 @@ bool FAsyncArchive::Close()
 	// Invalidate any precached data and free memory.
 	FlushCache();
 	// Return true if there were NO errors, false otherwise.
-	return !IsError();
+	return !ArIsError;
 }
 
 bool FAsyncArchive::SetCompressionMap(TArray<FCompressedChunk>* InCompressedChunks, ECompressionFlags InCompressionFlags)
@@ -7466,12 +7440,12 @@ void FAsyncArchive::CompleteRead()
 	{
 		FlushPrecacheBlock();
 	}
-	if (!IsError())
+	if (!ArIsError)
 	{
 		uint8* Mem = ReadRequestPtr->GetReadResults();
 		if (!Mem)
 		{
-			SetError();
+			ArIsError = true;
 		}
 		else
 		{
@@ -7658,7 +7632,7 @@ bool FAsyncArchive::PrecacheInternal(int64 RequestOffset, int64 RequestSize, boo
 	}
 	if (ReadRequestSize <= 0)
 	{
-		SetError();
+		ArIsError = true;
 		return true;
 	}
 	double StartTime = FPlatformTime::Seconds();
@@ -7843,7 +7817,7 @@ void FAsyncArchive::StartReadingHeader()
 {
 	//LogItem(TEXT("Start Header"));
 	WaitForIntialPhases();
-	if (!IsError())
+	if (!ArIsError)
 	{
 		if (int32(LoadPhase) < int32(ELoadPhase::WaitingForHeader))
 		{
@@ -7857,13 +7831,9 @@ void FAsyncArchive::StartReadingHeader()
 void FAsyncArchive::EndReadingHeader()
 {
 	LogItem(TEXT("End Header"));
-	
-	if (!IsError())
-	{
-		check(LoadPhase == ELoadPhase::WaitingForHeader);
-		LoadPhase = ELoadPhase::WaitingForFirstExport;
-		FlushPrecacheBlock();
-	}
+	check(LoadPhase == ELoadPhase::WaitingForHeader);
+	LoadPhase = ELoadPhase::WaitingForFirstExport;
+	FlushPrecacheBlock();
 }
 
 bool FAsyncArchive::ReadyToStartReadingHeader(bool bUseTimeLimit, bool bUseFullTimeLimit, double TickStartTime, float TimeLimit)
@@ -7902,7 +7872,7 @@ void CallSerializeHook();
 
 void FAsyncArchive::Serialize(void* Data, int64 Count)
 {
-	if (!Count || IsError())
+	if (!Count || ArIsError)
 	{
 		return;
 	}
@@ -7994,7 +7964,7 @@ void FAsyncArchive::Serialize(void* Data, int64 Count)
 		{
 		WaitRead();
 		}
-		if (IsError())
+		if (ArIsError)
 		{
 			return;
 		}
@@ -8028,7 +7998,7 @@ void FAsyncArchive::Serialize(void* Data, int64 Count)
 		{
 			verify(WaitRead());
 			void* OldRead2 = ReadRequestPtr;
-			if (!IsError())
+			if (!ArIsError)
 			{
 				checkf(AfterBlockOffset >= PrecacheStartPos && AfterBlockOffset + AfterBlockSize <= PrecacheEndPos, 
 					TEXT("Sync After Block Wait ????  %lld %lld     %lld %lld <-  %lld %lld     %lld %lld <-  %lld %lld    %p <- %p <- %p    %lld %lld <-  %lld %lld"), 
@@ -8040,7 +8010,7 @@ void FAsyncArchive::Serialize(void* Data, int64 Count)
 				);
 			}
 		}
-		if (IsError())
+		if (ArIsError)
 		{
 			return;
 		}
@@ -8177,36 +8147,5 @@ static FAutoConsoleCommand DumpSerializeCmd(
 	FConsoleCommandWithArgsDelegate::CreateStatic(&DumpSerialize)
 	);
 #endif
-
-bool IsEventDrivenLoaderEnabledInCookedBuilds()
-{
-	static struct FEventDrivenLoaderEnabledInCookedBuildsInit
-	{
-		FEventDrivenLoaderEnabledInCookedBuildsInit()
-		{
-			check(GConfig || IsEngineExitRequested());
-			if (GConfig)
-			{
-				// Ensure that the streaming settings from the config have been applied 
-				ApplyCVarSettingsFromIni(TEXT("/Script/Engine.StreamingSettings"), *GEngineIni, ECVF_SetByProjectSetting);
-			}
-		}
-	} EventDrivenLoaderEnabledInCookedBuilds;
-
-	static const bool bNoEDL = !UE_BUILD_SHIPPING && FParse::Param(FCommandLine::Get(), TEXT("NOEDL"));
-	return !bNoEDL && (GEventDrivenLoaderEnabledInCookedBuilds != 0);
-}
-
-bool IsEventDrivenLoaderEnabled()
-{
-	static struct FEventDrivenLoaderEnabledInit
-	{
-		FEventDrivenLoaderEnabledInit()
-		{
-			GEventDrivenLoaderEnabled = IsEventDrivenLoaderEnabledInCookedBuilds() && FPlatformProperties::RequiresCookedData();
-		}
-	} EventDrivenLoaderEnabledInit;
-	return GEventDrivenLoaderEnabled;
-}
 
 //#pragma clang optimize on

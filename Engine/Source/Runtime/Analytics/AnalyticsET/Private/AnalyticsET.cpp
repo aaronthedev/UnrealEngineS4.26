@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnalyticsET.h"
 #include "IAnalyticsProviderET.h"
 
 #include "HttpModule.h"
 #include "Analytics.h"
-#include "AnalyticsPerfTracker.h"
 
 IMPLEMENT_MODULE( FAnalyticsET, AnalyticsET );
 
@@ -17,9 +16,6 @@ void FAnalyticsET::StartupModule()
 
 void FAnalyticsET::ShutdownModule()
 {
-#if ANALYTICS_PERF_TRACKING_ENABLED
-	TearDownAnalyticsPerfTracker();
-#endif
 }
 
 TSharedPtr<IAnalyticsProvider> FAnalyticsET::CreateAnalyticsProvider(const FAnalyticsProviderConfigurationDelegate& GetConfigValue) const

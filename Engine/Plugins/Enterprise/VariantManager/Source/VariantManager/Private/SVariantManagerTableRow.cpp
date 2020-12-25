@@ -1,17 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SVariantManagerTableRow.h"
-
-#include "SVariantManager.h"
-#include "VariantManager.h"
-#include "VariantManagerDragDropOp.h"
-#include "VariantManagerSelection.h"
-#include "DisplayNodes/VariantManagerPropertyNode.h"
 
 #include "CoreMinimal.h"
 #include "Framework/Commands/GenericCommands.h"
 #include "GameFramework/Actor.h"
+#include "VariantManager.h"
+#include "VariantManagerDragDropOp.h"
+#include "VariantManagerSelection.h"
 #include "Styling/SlateIconFinder.h"
+#include "SVariantManager.h"
 #include "Widgets/Views/SHeaderRow.h"
 
 #define LOCTEXT_NAMESPACE "SVariantManagerTableRow"
@@ -39,8 +37,6 @@ FReply SVariantManagerTableRow::DragDetected( const FGeometry& InGeometry, const
 	TSharedPtr<FVariantManagerDisplayNode> PinnedNode = Node.Pin();
 	TSharedPtr<FVariantManager> VarMan = PinnedNode->GetVariantManager().Pin();
 
-	const FSlateBrush* Icon = PinnedNode->GetIconBrush();
-
 	if (PinnedNode.IsValid() && VarMan.IsValid())
 	{
 		FVariantManagerSelection& Selection = VarMan->GetSelection();
@@ -63,31 +59,18 @@ FReply SVariantManagerTableRow::DragDetected( const FGeometry& InGeometry, const
 			}
 
 			int32 NumNodes = DraggableNodes.Num();
-			if (NumNodes > 1)
-			{
-				Icon = FSlateIconFinder::FindIconForClass(AActor::StaticClass()).GetOptionalIcon();
-			}
 
-			DefaultHoverText = FText::Format(NSLOCTEXT("VariantManagerTableRow", "DragActorNode", "{0} actor {0}|plural(one=binding,other=bindings)" ), NumNodes);
+			DefaultHoverText = FText::Format(NSLOCTEXT("VariantManagerTableRow", "DragActorNode", "{0} actor {0}|plural(one=node,other=nodes)" ),
+				NumNodes);
+
 			break;
 		}
-		case EVariantManagerNodeType::Function:
 		case EVariantManagerNodeType::Property:
-		{
-			if (PinnedNode.IsValid() && PinnedNode->CanDrag())
-			{
-				// We only support dragging one node property/function nodes for now
-				ensure(DraggableNodes.Num() == 0);
-
-				DraggableNodes.Add(PinnedNode.ToSharedRef());
-				DefaultHoverText = FText::Format(NSLOCTEXT("VariantManagerTableRow", "DragPropertyNode", "{0}"), PinnedNode->GetDisplayName());
-			}
 			break;
-		}
 		case EVariantManagerNodeType::Variant:  // Intended fallthrough
 		case EVariantManagerNodeType::VariantSet:
 		{
-			for (const FDisplayNodeRef& SelectedNode : Selection.GetSelectedOutlinerNodes())
+			for (const FDisplayNodeRef SelectedNode : Selection.GetSelectedOutlinerNodes())
 			{
 				if (SelectedNode->CanDrag())
 				{
@@ -112,6 +95,9 @@ FReply SVariantManagerTableRow::DragDetected( const FGeometry& InGeometry, const
 		}
 
 		VarMan->GetVariantManagerWidget()->SortDisplayNodes(DraggableNodes);
+
+		// TODO: Custom icon depending on dragged node
+		const FSlateBrush* Icon = FSlateIconFinder::FindIconForClass(AActor::StaticClass()).GetOptionalIcon();
 
 		TSharedRef<FVariantManagerDragDropOp> DragDropOp = FVariantManagerDragDropOp::New(DraggableNodes);
 		DragDropOp->SetToolTip(DefaultHoverText, Icon);

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -129,7 +129,7 @@ public:
 	FArchive& operator<<(class UObject*& Obj);
 };
 
-class FFindReferencedAssets : 
+class UNREALED_VTABLE FFindReferencedAssets : 
 	public FGCObject
 {
 public:
@@ -150,12 +150,12 @@ public:
 	 *
 	 * @return true if it should be searched, false otherwise
 	 */
-	UNREALED_API static bool ShouldSearchForAssets( const UObject* Object, const TArray<UClass*>& ClassesToIgnore, const TArray<UPackage*>& PackagesToIgnore, bool bIncludeDefaults=false );
+	UNREALED_API static bool ShouldSearchForAssets( const UObject* Object, const TArray<UClass*>& ClassesToIgnore, const TArray<UObject*>& PackagesToIgnore, bool bIncludeDefaults=false );
 
 	/**
 	 * Returns a list of all assets referenced by the specified UObject.
 	 */
-	UNREALED_API static void BuildAssetList(UObject *Object, const TArray<UClass*>& IgnoreClasses, const TArray<UPackage*>& IgnorePackages, TSet<UObject*>& ReferencedAssets, bool bIncludeDefaultRefs=false);
+	UNREALED_API static void BuildAssetList(UObject *Object, const TArray<UClass*>& IgnoreClasses, const TArray<UObject*>& IgnorePackages, TSet<UObject*>& ReferencedAssets, bool bIncludeDefaultRefs=false);
 
 protected:
 	/**
@@ -173,7 +173,7 @@ protected:
 	 * This is a list of packages that should be ignored when building the
 	 * asset list as they are always loaded and therefore not pertinent
 	 */
-	TArray<UPackage*> IgnorePackages;
+	TArray<UObject*> IgnorePackages;
 
 	/**
 	 * Holds the list of assets that are being referenced by the current 

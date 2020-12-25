@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MRMeshComponent.h"
 #include "PrimitiveSceneProxy.h"
@@ -15,7 +15,6 @@
 #include "PackedNormal.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "PhysicsEngine/BodyInstance.h"
-#include "PhysicsEngine/PhysicsSettings.h"
 #include "PhysicsPublic.h"
 #include "IPhysXCooking.h"
 #include "PhysXCookHelper.h"
@@ -24,22 +23,8 @@
 #include "UObject/UObjectThreadContext.h"
 #include "Stats/Stats.h"
 #include "UObject/ConstructorHelpers.h"
-#include "Materials/MaterialInstanceDynamic.h"
-
-#if WITH_CHAOS
-	#include "Experimental/ChaosDerivedData.h"
-#endif
-
-// See ISpatialAcceleration.h, the header is not included to avoid having a dependency on Chaos
-#ifndef CHAOS_SERIALIZE_OUT
-#define CHAOS_SERIALIZE_OUT WITH_EDITOR
-#endif
-
-// When using the Chaos code path, we're using a private class FChaosDerivedDataCooker which is not exported
-#define SUPPORTS_PHYSICS_COOKING WITH_PHYSX && (PHYSICS_INTERFACE_PHYSX || (WITH_CHAOS && CHAOS_SERIALIZE_OUT && IS_MONOLITHIC))
 
 DECLARE_CYCLE_STAT(TEXT("MrMesh SetCollisionProfileName"), STAT_MrMesh_SetCollisionProfileName, STATGROUP_Physics);
-DECLARE_CYCLE_STAT(TEXT("Update Collision"), STAT_UpdateCollision, STATGROUP_MRMESH);
 
 #define DEBUG_BRICK_CULLING
 
@@ -227,13 +212,22 @@ public:
 
 	FMRMeshProxy(const UMRMeshComponent* InComponent)
 		: FPrimitiveSceneProxy(InComponent, InComponent->GetFName())
-		, MaterialToUse(InComponent->GetMaterialToUse())
+		, MaterialToUse(InComponent->Material)
 		, FeatureLevel(GetScene().GetFeatureLevel())
 		, bEnableOcclusion(InComponent->GetEnableMeshOcclusion())
 		, bUseWireframe(InComponent->GetUseWireframe())
 	{
+		if (bUseWireframe)
+		{
+			MaterialToUse = InComponent->WireframeMaterial;
+		}
+		// If this is still null, use the default material
+		if (MaterialToUse == nullptr)
+		{
+			MaterialToUse = UMaterial::GetDefaultMaterial(MD_Surface);
+		}
 	}
-	
+
 	virtual ~FMRMeshProxy()
 	{
 		for (FMRMeshProxySection* Section : ProxySections)
@@ -342,24 +336,15 @@ public:
 		}
 	}
 
-	void RenderThread_SetMaterial(bool bInUseWireframe, UMaterialInterface* Material)
+	void RenderThread_SetMaterial(UMaterialInterface* Material)
 	{
-		if (ensure(Material))
-		{
-			bUseWireframe = bInUseWireframe;
-			MaterialToUse = Material;
+		MaterialToUse = Material;
 #if WITH_EDITOR
-			// When changing materials in the editor we need to keep the verification
-			// materials set in sync to satisfy the internal class invariants. This also
-			// avoids validation errors when generating the mesh batches.
-			SetUsedMaterialForVerification(TArray<UMaterialInterface*>(&MaterialToUse, 1));
+		// When changing materials in the editor we need to keep the verification
+		// materials set in sync to satisfy the internal class invariants. This also
+		// avoids validation errors when generating the mesh batches.
+		SetUsedMaterialForVerification(TArray<UMaterialInterface*>(&MaterialToUse, 1));
 #endif
-		}
-	}
-
-	void SetEnableMeshOcclusion(bool bEnable)
-	{
-		bEnableOcclusion = bEnable;
 	}
 
 private:
@@ -483,8 +468,8 @@ private:
 		Result.bRenderInDepthPass = bEnableOcclusion;
 		Result.bUsesLightingChannels = GetLightingChannelMask() != GetDefaultLightingChannelMask();
 		Result.bRenderCustomDepth = ShouldRenderCustomDepth();
-		TMicRecursionGuard RecursionGuard;
-		Result.bSeparateTranslucency = MaterialToUse->GetMaterial_Concurrent(RecursionGuard)->bEnableSeparateTranslucency;
+		UMaterialInterface::TMicRecursionGuard RecursionGuard;
+		Result.bSeparateTranslucencyRelevance = MaterialToUse->GetMaterial_Concurrent(RecursionGuard)->bEnableSeparateTranslucency;
 		//MaterialRelevance.SetPrimitiveViewRelevance(Result);
 		return Result;
 	}
@@ -514,8 +499,10 @@ private:
 UMRMeshComponent::UMRMeshComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 	, bEnableOcclusion(false)
-	, bUseWireframe(false)
+	, bUseWireframeForNoMaterial(false)
 {
+	static ConstructorHelpers::FObjectFinder<UMaterialInterface> WireframeMaterialRef(TEXT("/Engine/EngineDebugMaterials/WireframeMaterial"));
+	WireframeMaterial = WireframeMaterialRef.Object;
 }
 
 void UMRMeshComponent::BeginPlay()
@@ -569,7 +556,7 @@ void UMRMeshComponent::SetCollisionEnabled(ECollisionEnabled::Type NewType)
 	Super::SetCollisionEnabled(NewType);
 }
 
-void UMRMeshComponent::SetCollisionProfileName(FName InCollisionProfileName, bool bUpdateOverlaps)
+void UMRMeshComponent::SetCollisionProfileName(FName InCollisionProfileName)
 {
 	SCOPE_CYCLE_COUNTER(STAT_MrMesh_SetCollisionProfileName);
 
@@ -590,7 +577,7 @@ void UMRMeshComponent::SetCollisionProfileName(FName InCollisionProfileName, boo
 		}
 	}
 
-	Super::SetCollisionProfileName(InCollisionProfileName, bUpdateOverlaps);
+	Super::SetCollisionProfileName(InCollisionProfileName);
 }
 
 void UMRMeshComponent::SetCollisionObjectType(ECollisionChannel Channel)
@@ -744,15 +731,12 @@ void UMRMeshComponent::SendBrickData_Internal(IMRMesh::FSendBrickDataArgs Args)
 {
 	check(IsInGameThread());
 	const bool bHasBrickData = Args.Indices.Num() > 0 && Args.PositionData.Num() > 0;
-	
-	OnBrickDataUpdatedDelegate.Broadcast(this, Args);
 
-#if SUPPORTS_PHYSICS_COOKING
+#if WITH_PHYSX && PHYSICS_INTERFACE_PHYSX
 	UE_LOG(LogMrMesh, Log, TEXT("SendBrickData_Internal() processing brick %llu with %i triangles"), Args.BrickId, Args.Indices.Num() / 3);
 	
 	if (!IsPendingKill() && !bNeverCreateCollisionMesh)
 	{
-		SCOPE_CYCLE_COUNTER(STAT_UpdateCollision);
 		// Physics update
 		UWorld* MyWorld = GetWorld();
 		if ( MyWorld && MyWorld->GetPhysicsScene() )
@@ -777,7 +761,6 @@ void UMRMeshComponent::SendBrickData_Internal(IMRMesh::FSendBrickDataArgs Args)
 				MyBS->ClearPhysicsMeshes();
 				MyBS->InvalidatePhysicsData();
 
-#if PHYSICS_INTERFACE_PHYSX
 				FCookBodySetupInfo CookInfo;
 				// Disable mesh cleaning by passing in EPhysXMeshCookFlags::DeformableMesh
 				static const EPhysXMeshCookFlags CookFlags = EPhysXMeshCookFlags::FastCook | EPhysXMeshCookFlags::DeformableMesh;
@@ -801,26 +784,7 @@ void UMRMeshComponent::SendBrickData_Internal(IMRMesh::FSendBrickDataArgs Args)
 				CookHelper.CreatePhysicsMeshes_Concurrent();
 
 				MyBS->FinishCreatingPhysicsMeshes_PhysX(CookHelper.OutNonMirroredConvexMeshes, CookHelper.OutMirroredConvexMeshes, CookHelper.OutTriangleMeshes);
-#else
-				// Chaos code path, save the temp pointers
-				TempPosition = &Args.PositionData;
-				TempIndices = &Args.Indices;
-				// It would be nice if we can call UBodySetup::CreatePhysicsMeshes directly, but currently that code path requires WITH_EDITOR
-				static const FName PhysicsFormatName(FPlatformProperties::GetPhysicsFormat());
-				// Build the collision data and saved it in a bulk data
-				FChaosDerivedDataCooker Cooker(MyBS, PhysicsFormatName);
-				TArray<uint8> OutData;
-				Cooker.Build(OutData);
-				FByteBulkData BulkData;
-				BulkData.Lock(LOCK_READ_WRITE);
-				FMemory::Memcpy(BulkData.Realloc(OutData.Num()), OutData.GetData(), OutData.Num());
-				BulkData.Unlock();
-				// Apply the collision data
-				MyBS->ProcessFormatData_Chaos(&BulkData);
-				// Clear the temp pointers since we don't own the data!
-				TempPosition = nullptr;
-				TempIndices = nullptr;
-#endif
+
 				FBodyInstance* MyBI = BodyInstances[BodyIndex];
 				MyBI->TermBody();
 				MyBI->InitBody(MyBS, GetComponentTransform(), this, MyWorld->GetPhysicsScene());
@@ -843,12 +807,15 @@ void UMRMeshComponent::SendBrickData_Internal(IMRMesh::FSendBrickDataArgs Args)
 			UpdateNavigationData();
 		}
 	}
-#endif // SUPPORTS_PHYSICS_COOKING
+#endif // WITH_PHYSX
 
 	if (bCreateMeshProxySections)
 	{
-		if (SceneProxy != nullptr && GIsThreadedRendering)
+		if (SceneProxy != nullptr && GRenderingThread != nullptr)
 		{
+			check(GRenderingThread != nullptr);
+			check(SceneProxy != nullptr);
+
 			// Graphics update
 			UMRMeshComponent* This = this;
 			ENQUEUE_RENDER_COMMAND(FSendBrickDataLambda)(
@@ -927,20 +894,6 @@ void UMRMeshComponent::SetMaterial(int32 ElementIndex, class UMaterialInterface*
 	}
 }
 
-UMaterialInterface* UMRMeshComponent::GetMaterial(int32 ElementIndex) const
-{
-	return Material;
-}
-
-void UMRMeshComponent::SetWireframeMaterial(class UMaterialInterface* InMaterial)
-{
-	if (WireframeMaterial != InMaterial)
-	{
-		WireframeMaterial = InMaterial;
-		MarkRenderDynamicDataDirty();
-	}
-}
-
 void UMRMeshComponent::SendRenderDynamicData_Concurrent()
 {
 	Super::SendRenderDynamicData_Concurrent();
@@ -949,17 +902,16 @@ void UMRMeshComponent::SendRenderDynamicData_Concurrent()
 	{
 		// Enqueue command to send to render thread
 		UMRMeshComponent* This = this;
-		auto InMaterial = GetMaterialToUse();
-		bool bUseWireframeLocal = bUseWireframe;
+		UMaterialInterface* InMaterial = Material;
 		ENQUEUE_RENDER_COMMAND(FSetMaterialLambda)(
-		[This, bUseWireframeLocal, InMaterial](FRHICommandListImmediate& RHICmdList)
-		{
-			FMRMeshProxy* MRMeshProxy = static_cast<FMRMeshProxy*>(This->SceneProxy);
-			if (MRMeshProxy)
+			[This, InMaterial](FRHICommandListImmediate& RHICmdList)
 			{
-				MRMeshProxy->RenderThread_SetMaterial(bUseWireframeLocal, InMaterial);
-			}
-		});
+				FMRMeshProxy* MRMeshProxy = static_cast<FMRMeshProxy*>(This->SceneProxy);
+				if (MRMeshProxy)
+				{
+					MRMeshProxy->RenderThread_SetMaterial(InMaterial);
+				}
+			});
 	}
 }
 
@@ -1005,48 +957,25 @@ struct FMeshArrayHolder :
 	TArray<FPackedNormal> BogusTangents;
 	TArray<FColor> BogusColors;
 
-	FMeshArrayHolder(TArray<FVector>& InVertices, TArray<MRMESH_INDEX_TYPE>& InIndices, TArray<FVector2D>& UVData, TArray<FPackedNormal>& TangentXZData, TArray<FColor>& ColorData)
+	FMeshArrayHolder(TArray<FVector>& InVertices, TArray<MRMESH_INDEX_TYPE>& InIndices)
 		: Vertices(MoveTemp(InVertices))
 		, Indices(MoveTemp(InIndices))
 	{
 		int32 CurrentNumVertices = Vertices.Num();
-		
-		if (UVData.Num() == CurrentNumVertices)
-		{
-			BogusUVs = MoveTemp(UVData);
-		}
-		else
-		{
-			BogusUVs.AddZeroed(CurrentNumVertices);
-		}
-		
-		if (ColorData.Num() == CurrentNumVertices)
-		{
-			BogusColors = MoveTemp(ColorData);
-		}
-		else
-		{
-			BogusColors.AddZeroed(CurrentNumVertices);
-		}
-		
-		if (TangentXZData.Num() == CurrentNumVertices * 2)
-		{
-			BogusTangents = MoveTemp(TangentXZData);
-		}
-		else
-		{
-			BogusTangents.AddZeroed(CurrentNumVertices * 2);
-		}
+
+		BogusUVs.AddZeroed(CurrentNumVertices);
+		BogusColors.AddZeroed(CurrentNumVertices);
+		BogusTangents.AddZeroed(CurrentNumVertices * 2);
 	}
 };
 
-void UMRMeshComponent::UpdateMesh(const FVector& InLocation, const FQuat& InRotation, const FVector& Scale, TArray<FVector>& Vertices, TArray<MRMESH_INDEX_TYPE>& Indices, TArray<FVector2D> UVData, TArray<FPackedNormal> TangentXZData, TArray<FColor> ColorData)
+void UMRMeshComponent::UpdateMesh(const FVector& InLocation, const FQuat& InRotation, const FVector& Scale, TArray<FVector>& Vertices, TArray<MRMESH_INDEX_TYPE>& Indices)
 {
 	SetRelativeLocationAndRotation(InLocation, InRotation);
 	SetRelativeScale3D(Scale);
 
 	// Create our struct that will hold the data until the render thread is done with it
-	TSharedPtr<FMeshArrayHolder, ESPMode::ThreadSafe> MeshHolder(new FMeshArrayHolder(Vertices, Indices, UVData, TangentXZData, ColorData));
+	TSharedPtr<FMeshArrayHolder, ESPMode::ThreadSafe> MeshHolder(new FMeshArrayHolder(Vertices, Indices));
 	// NOTE: Vertices and Indices are empty due to MoveTemp()!!!
 
 	SendBrickData_Internal(IMRMesh::FSendBrickDataArgs
@@ -1062,96 +991,3 @@ void UMRMeshComponent::UpdateMesh(const FVector& InLocation, const FQuat& InRota
 	);
 }
 
-void UMRMeshComponent::SetEnableMeshOcclusion(bool bEnable)
-{
-	bEnableOcclusion = bEnable;
-
-	// Update bEnableOcclusion on the SceneProxy, as well.
-	if (SceneProxy)
-	{
-		UMRMeshComponent* This = this;
-		ENQUEUE_RENDER_COMMAND(FSetEnableMeshOcclusionLambda)(
-			[This,bEnable](FRHICommandListImmediate& RHICmdList)
-			{
-				FMRMeshProxy* MRMeshProxy = static_cast<FMRMeshProxy*>(This->SceneProxy);
-				if (MRMeshProxy)
-				{
-					MRMeshProxy->SetEnableMeshOcclusion(bEnable);
-				}
-			}
-		);
-	}
-}
-
-void UMRMeshComponent::SetWireframeColor(const FLinearColor& InColor)
-{
-	WireframeColor = InColor;
-	if (auto MaterialInstance = Cast<UMaterialInstanceDynamic>(WireframeMaterial))
-	{
-		static const FName ParamName(TEXT("Color"));
-		MaterialInstance->SetVectorParameterValue(ParamName, InColor);
-		MarkRenderDynamicDataDirty();
-	}
-	else
-	{
-		WireframeMaterial = UMaterialInstanceDynamic::Create(WireframeMaterial, this);
-		SetWireframeColor(InColor);
-	}
-}
-
-void UMRMeshComponent::SetUseWireframe(bool InbUseWireframe)
-{
-	bUseWireframe = InbUseWireframe;
-	MarkRenderDynamicDataDirty();
-}
-
-UMaterialInterface* UMRMeshComponent::GetMaterialToUse() const
-{
-	if (bUseWireframe && WireframeMaterial)
-	{
-		return WireframeMaterial;
-	}
-	else if (Material)
-	{
-		return Material;
-	}
-	else
-	{
-		return UMaterial::GetDefaultMaterial(MD_Surface);
-	}
-}
-
-bool UMRMeshComponent::GetPhysicsTriMeshData(struct FTriMeshCollisionData* CollisionData, bool InUseAllTriData)
-{
-	if (TempPosition && TempIndices)
-	{
-		// Copy the vertices
-		CollisionData->Vertices = *TempPosition;
-		
-		// Copy the indices
-		const auto& Indices = *TempIndices;
-		CollisionData->Indices.Reset(Indices.Num() / 3);
-		for (auto Index = 0; Index < Indices.Num(); Index += 3)
-		{
-			FTriIndices Face;
-			Face.v0 = Indices[Index];
-			Face.v1 = Indices[Index + 1];
-			Face.v2 = Indices[Index + 2];
-			CollisionData->Indices.Add(Face);
-		}
-		
-		return true;
-	}
-	
-	return false;
-}
-
-bool UMRMeshComponent::ContainsPhysicsTriMeshData(bool InUseAllTriData) const
-{
-	if (TempPosition && TempIndices)
-	{
-		return true;
-	}
-	
-	return false;
-}

@@ -316,7 +316,7 @@ XformSample IXformSchema::getValue( const Abc::ISampleSelector &iSS ) const
 }
 
 //-*****************************************************************************
-bool IXformSchema::getInheritsXforms( const Abc::ISampleSelector &iSS ) const
+bool IXformSchema::getInheritsXforms( const Abc::ISampleSelector &iSS )
 {
     ALEMBIC_ABC_SAFE_CALL_BEGIN( "IXformSchema::getInheritsXforms()" );
 

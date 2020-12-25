@@ -1,20 +1,22 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/PackageName.h"
-#include "AssetRegistry/AssetData.h"
+#include "AssetData.h"
+#include "AssetRegistryModule.h"
 #include "Misc/Paths.h"
-#include "AssetRegistryPrivate.h"
+#include "Runtime/AssetRegistry/Private/AssetRegistryPrivate.h"
 
 #define LOCTEXT_NAMESPACE "AssetRegistry"
 
 class FAssetRegistryConsoleCommands
 {
 public:
-
+	const FAssetRegistryModule& Module;
+	
 	FAutoConsoleCommand GetByNameCommand;
 	FAutoConsoleCommand GetByPathCommand;
 	FAutoConsoleCommand GetByClassCommand;
@@ -23,8 +25,9 @@ public:
 	FAutoConsoleCommand GetReferencersCommand;
 	FAutoConsoleCommand FindInvalidUAssetsCommand;
 
-	FAssetRegistryConsoleCommands()
-		: GetByNameCommand(
+	FAssetRegistryConsoleCommands(const FAssetRegistryModule& InModule)
+		: Module(InModule)
+	,	GetByNameCommand(
 		TEXT( "AssetRegistry.GetByName" ),
 		*LOCTEXT("CommandText_GetByName", "Query the asset registry for assets matching the supplied package name").ToString(),
 		FConsoleCommandWithArgsDelegate::CreateRaw( this, &FAssetRegistryConsoleCommands::GetByName ) )
@@ -64,7 +67,7 @@ public:
 
 		TArray<FAssetData> AssetData;
 		const FName AssetPackageName = FName(*Args[0]);
-		IAssetRegistry::GetChecked().GetAssetsByPackageName(AssetPackageName, AssetData);
+		Module.Get().GetAssetsByPackageName(AssetPackageName, AssetData);
 		UE_LOG(LogAssetRegistry, Log, TEXT("GetAssetsByPackageName for %s:"), *AssetPackageName.ToString());
 		for (int32 AssetIdx = 0; AssetIdx < AssetData.Num(); ++AssetIdx)
 		{
@@ -82,7 +85,7 @@ public:
 
 		TArray<FAssetData> AssetData;
 		const FName AssetPath = FName(*Args[0]);
-		IAssetRegistry::GetChecked().GetAssetsByPath(AssetPath, AssetData);
+		Module.Get().GetAssetsByPath(AssetPath, AssetData);
 		UE_LOG(LogAssetRegistry, Log, TEXT("GetAssetsByPath for %s:"), *AssetPath.ToString());
 		for (int32 AssetIdx = 0; AssetIdx < AssetData.Num(); ++AssetIdx)
 		{
@@ -100,7 +103,7 @@ public:
 
 		TArray<FAssetData> AssetData;
 		const FString Classname = Args[0];
-		IAssetRegistry::GetChecked().GetAssetsByClass(FName(*Classname), AssetData);
+		Module.Get().GetAssetsByClass(FName(*Classname), AssetData);
 		UE_LOG(LogAssetRegistry, Log, TEXT("GetAssetsByClass for %s:"), *Classname);
 		for (int32 AssetIdx = 0; AssetIdx < AssetData.Num(); ++AssetIdx)
 		{
@@ -120,7 +123,7 @@ public:
 		TagsAndValues.Add(FName(*Args[0]), Args[1]);
 
 		TArray<FAssetData> AssetData;
-		IAssetRegistry::GetChecked().GetAssetsByTagValues(TagsAndValues, AssetData);
+		Module.Get().GetAssetsByTagValues(TagsAndValues, AssetData);
 		UE_LOG(LogAssetRegistry, Log, TEXT("GetAssetsByTagValues for Tag'%s' and Value'%s':"), *Args[0], *Args[1]);
 		for (int32 AssetIdx = 0; AssetIdx < AssetData.Num(); ++AssetIdx)
 		{
@@ -139,7 +142,7 @@ public:
  		const FName PackageName = FName(*Args[0]);
  		TArray<FName> Dependencies;
  		
- 		if ( IAssetRegistry::GetChecked().GetDependencies(PackageName, Dependencies) )
+ 		if ( Module.Get().GetDependencies(PackageName, Dependencies) )
  		{
 			UE_LOG(LogAssetRegistry, Log, TEXT("Dependencies for %s:"), *PackageName.ToString());
 			for ( auto DependencyIt = Dependencies.CreateConstIterator(); DependencyIt; ++DependencyIt )
@@ -164,7 +167,7 @@ public:
 		const FName PackageName = FName(*Args[0]);
 		TArray<FName> Referencers;
 
-		if ( IAssetRegistry::GetChecked().GetReferencers(PackageName, Referencers) )
+		if ( Module.Get().GetReferencers(PackageName, Referencers) )
 		{
 			UE_LOG(LogAssetRegistry, Log, TEXT("Referencers for %s:"), *PackageName.ToString());
 			for ( auto ReferencerIt = Referencers.CreateConstIterator(); ReferencerIt; ++ReferencerIt )
@@ -181,7 +184,7 @@ public:
 	void FindInvalidUAssets(const TArray<FString>& Args)
 	{
 		TArray<FAssetData> AllAssets;
-		IAssetRegistry::GetChecked().GetAllAssets(AllAssets);
+		Module.Get().GetAllAssets(AllAssets);
 
 		UE_LOG(LogAssetRegistry, Log, TEXT("Invalid UAssets:"));
 

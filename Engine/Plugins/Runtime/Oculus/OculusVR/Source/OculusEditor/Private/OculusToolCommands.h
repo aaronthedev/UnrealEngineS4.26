@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,7 +15,8 @@
 		FOculusToolCommands()
 			: TCommands<FOculusToolCommands>(TEXT("OculusTool"), NSLOCTEXT("Contexts", "OculusEditor", "OculusEditor Plugin"), NAME_None, FOculusToolStyle::GetStyleSetName()),
 			ShowOculusToolCommand(TEXT("vr.oculus.ShowToolWindow"),
-				*NSLOCTEXT("OculusRift", "CCommandText_ShowToolWindow", "Show the Oculus Editor Tool window (editor only).").ToString(),
+				*NSLOCTEXT("OculusRift", "CCommandText_ShowToolWindow",
+					"Show the Oculus Editor Tool window (editor only).").ToString(),
 				FConsoleCommandDelegate::CreateRaw(this, &FOculusToolCommands::ShowOculusTool)
 			)
 		{

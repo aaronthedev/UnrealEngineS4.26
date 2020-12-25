@@ -38,5 +38,5 @@ INCLUDE_DIRECTORIES(${CMAKE_SOURCE_DIR}/lib ${PROJECT_BINARY_DIR}/lib)
 ADD_EXECUTABLE(AbcCollection_CollectionTest
                CollectionTest.cpp
                )
-TARGET_LINK_LIBRARIES(AbcCollection_CollectionTest Alembic)
+TARGET_LINK_LIBRARIES(AbcCollection_CollectionTest ${CORE_LIBS})
 ADD_TEST(AbcCollection_Collection_TEST AbcCollection_CollectionTest)

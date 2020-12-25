@@ -1,9 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Subsystem.h"
-#include "Engine/EngineTypes.h"
+
 #include "WorldSubsystem.generated.h"
 
 /**
@@ -20,9 +20,5 @@ class ENGINE_API UWorldSubsystem : public USubsystem
 public:
 	UWorldSubsystem();
 
-	virtual UWorld* GetWorld() const override final;
-	virtual bool ShouldCreateSubsystem(UObject* Outer) const override;
-
-protected:
-	virtual bool DoesSupportWorldType(EWorldType::Type WorldType) const;
+	virtual UWorld* GetWorld() const override;
 };

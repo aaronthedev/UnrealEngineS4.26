@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -92,17 +92,11 @@ class FIOSCommandLineHelper
 			// command line text file included in the bundle
 			FString BundleCommandLineFilePath = FString([[NSBundle mainBundle] bundlePath]) + TEXT("/ue4commandline.txt");
 
+#if !UE_BUILD_SHIPPING
 			// command line text file pushed to the documents folder
 			FString DocumentsCommandLineFilePath = FString([NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) objectAtIndex:0]) + TEXT("/ue4commandline.txt");
-			
-#if UE_BUILD_SHIPPING
-			bool bIsTestFlightOrInternal = [[[[NSBundle mainBundle] appStoreReceiptURL] lastPathComponent] isEqualToString: @"sandboxReceipt"];
-#else
-			bool bIsTestFlightOrInternal = YES;
+			if (!TryReadCommandLineFile(DocumentsCommandLineFilePath))
 #endif
-			
-			bool bFoundDocumentsCommandLine = bIsTestFlightOrInternal && TryReadCommandLineFile(DocumentsCommandLineFilePath);
-			if (!bFoundDocumentsCommandLine)
 			{
 				TryReadCommandLineFile(BundleCommandLineFilePath);
 			}

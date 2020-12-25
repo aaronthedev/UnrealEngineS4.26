@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*================================================================================
 	LinuxPlatformProperties.h - Basic static properties of a platform 
@@ -159,12 +159,6 @@ struct FLinuxPlatformProperties
 	{
 		return !IsServerOnly();
 	}
-
-	static FORCEINLINE bool SupportsVirtualTextureStreaming()
-	{
-		return true;
-	}
-
 };
 
 #ifdef PROPERTY_HEADER_SHOULD_DEFINE_TYPE

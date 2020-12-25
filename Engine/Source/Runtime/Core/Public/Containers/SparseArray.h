@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -16,8 +16,6 @@
 #include "Containers/ScriptArray.h"
 #include "Containers/BitArray.h"
 #include "Serialization/StructuredArchive.h"
-#include "Serialization/MemoryImageWriter.h"
-#include "Containers/UnrealString.h"
 
 
 #if UE_BUILD_SHIPPING || UE_BUILD_TEST
@@ -55,10 +53,7 @@ union TSparseArrayElementOrFreeListLink
 	};
 };
 
-DECLARE_TEMPLATE_INTRINSIC_TYPE_LAYOUT(template<typename ElementType>, TSparseArrayElementOrFreeListLink<ElementType>);
-
-template <typename AllocatorType, typename InDerivedType = void>
-class TScriptSparseArray;
+class FScriptSparseArray;
 
 /**
  * A dynamically sized array where element indices aren't necessarily contiguous.  Memory is allocated for all 
@@ -73,12 +68,9 @@ class TSparseArray
 	using ElementType = InElementType;
 
 	friend struct TContainerTraits<TSparseArray>;
-
-	template <typename, typename>
-	friend class TScriptSparseArray;
+	friend class  FScriptSparseArray;
 
 public:
-	static const bool SupportsFreezeMemoryImage = TAllocatorTraits<Allocator>::SupportsFreezeMemoryImage && THasTypeLayout<InElementType>::Value;
 
 	/** Destructor. */
 	~TSparseArray()
@@ -195,41 +187,10 @@ public:
 	 * Add an element at the lowest free index, instead of the last freed index. 
 	 * This requires a search which can be accelerated with LowestFreeIndexSearchStart.
 	 */
-	UE_DEPRECATED(4.26, "AddAtLowestFreeIndex API is deprecated; please use EmplaceAtLowestFreeIndex instead.")
 	int32 AddAtLowestFreeIndex(const ElementType& Element, int32& LowestFreeIndexSearchStart)
 	{
 		FSparseArrayAllocationInfo Allocation = AddUninitializedAtLowestFreeIndex(LowestFreeIndexSearchStart);
 		new(Allocation) ElementType(Element);
-		return Allocation.Index;
-	}
-
-	/**
-	 * Constructs a new item at the last freed index of the array.
-	 *
-	 * @param Args	The arguments to forward to the constructor of the new item.
-	 * @return		Index to the new item
-	 */
-	template <typename... ArgsType>
-	FORCEINLINE int32 Emplace(ArgsType&&... Args)
-	{
-		FSparseArrayAllocationInfo Allocation = AddUninitialized();
-		new(Allocation) ElementType(Forward<ArgsType>(Args)...);
-		return Allocation.Index;
-	}
-
-	/**
-	 * Constructs a new item at the lowest free index of the array.
-	 * This requires a search which can be accelerated with LowestFreeIndexSearchStart.
-	 *
-	 * @param LowestFreeIndexSearchStart	Where to start the search for a free index.
-	 * @param Args							The arguments to forward to the constructor of the new item.
-	 * @return								Index to the new item
-	 */
-	template <typename... ArgsType>
-	FORCEINLINE int32 EmplaceAtLowestFreeIndex(int32& LowestFreeIndexSearchStart, ArgsType&&... Args)
-	{
-		FSparseArrayAllocationInfo Allocation = AddUninitializedAtLowestFreeIndex(LowestFreeIndexSearchStart);
-		new(Allocation) ElementType(Forward<ArgsType>(Args)...);
 		return Allocation.Index;
 	}
 
@@ -517,9 +478,9 @@ public:
 		// Copy the existing elements to a new array.
 		TSparseArray<ElementType,Allocator> CompactedArray;
 		CompactedArray.Empty(Num());
-		for(TIterator It(*this);It;++It)
+		for(TConstIterator It(*this);It;++It)
 		{
-			new(CompactedArray.AddUninitialized()) ElementType(MoveTempIfPossible(*It));
+			new(CompactedArray.AddUninitialized()) ElementType(*It);
 		}
 
 		// Replace this array with the compacted array.
@@ -806,7 +767,7 @@ public:
 	int32 PointerToIndex(const ElementType* Ptr) const
 	{
 		checkSlow(Data.Num());
-		int32 Index = (int32)((FElementOrFreeListLink*)Ptr - &GetData(0));
+		int32 Index = Ptr - &GetData(0);
 		checkSlow(Index >= 0 && Index < Data.Num() && Index < AllocationFlags.Num() && AllocationFlags[Index]);
 		return Index;
 	}
@@ -1102,130 +1063,7 @@ private:
 
 	/** The number of elements in the free list. */
 	int32 NumFreeIndices;
-
-	template<bool bFreezeMemoryImage, typename Dummy=void>
-	struct TSupportsFreezeMemoryImageHelper
-	{
-		static void WriteMemoryImage(FMemoryImageWriter& Writer, const TSparseArray&) { Writer.WriteBytes(TSparseArray()); }
-		static void CopyUnfrozen(const FMemoryUnfreezeContent& Context, const TSparseArray&, void* Dst) { new(Dst) TSparseArray(); }
-		static void AppendHash(const FPlatformTypeLayoutParameters& LayoutParams, FSHA1& Hasher) {}
-	};
-
-	template<typename Dummy>
-	struct TSupportsFreezeMemoryImageHelper<true, Dummy>
-	{
-		static void WriteMemoryImage(FMemoryImageWriter& Writer, const TSparseArray& Object)
-		{
-			// Write Data
-			const int32 NumElements = Object.Data.Num();
-			if (NumElements > 0)
-			{
-				const FTypeLayoutDesc& ElementTypeDesc = StaticGetTypeLayoutDesc<ElementType>();
-				FMemoryImageWriter ArrayWriter = Writer.WritePointer(FString::Printf(TEXT("TSparseArray<%s>"), ElementTypeDesc.Name));
-				for (int32 i = 0; i < NumElements; ++i)
-				{
-					const FElementOrFreeListLink& Elem = Object.Data[i];
-					const uint32 StartOffset = ArrayWriter.WriteAlignment<FElementOrFreeListLink>();
-					if (Object.AllocationFlags[i])
-					{
-						ArrayWriter.WriteObject(&Elem.ElementData, ElementTypeDesc);
-					}
-					else
-					{
-						ArrayWriter.WriteBytes(Elem.PrevFreeIndex);
-						ArrayWriter.WriteBytes(Elem.NextFreeIndex);
-					}
-					ArrayWriter.WritePaddingToSize(StartOffset + sizeof(FElementOrFreeListLink));
-				}
-			}
-			else
-			{
-				Writer.WriteMemoryImagePointerSizedBytes(0u);
-			}
-			Writer.WriteBytes(NumElements);
-			Writer.WriteBytes(NumElements);
-
-			//
-			Object.AllocationFlags.WriteMemoryImage(Writer);
-			Writer.WriteBytes(Object.FirstFreeIndex);
-			Writer.WriteBytes(Object.NumFreeIndices);
-		}
-
-		static void CopyUnfrozen(const FMemoryUnfreezeContent& Context, const TSparseArray& Object, void* Dst)
-		{
-			const FTypeLayoutDesc& ElementTypeDesc = StaticGetTypeLayoutDesc<ElementType>();
-			TSparseArray* DstObject = (TSparseArray*)Dst;
-			{
-				new(&DstObject->Data) DataType();
-				DstObject->Data.SetNumUninitialized(Object.Data.Num());
-				for (int32 i = 0; i < Object.Data.Num(); ++i)
-				{
-					const FElementOrFreeListLink& Elem = Object.Data[i];
-					FElementOrFreeListLink& DstElem = DstObject->Data[i];
-					if (Object.AllocationFlags[i])
-					{
-						Context.UnfreezeObject(&Elem.ElementData, ElementTypeDesc, &DstElem.ElementData);
-					}
-					else
-					{
-						DstElem.PrevFreeIndex = Elem.PrevFreeIndex;
-						DstElem.NextFreeIndex = Elem.NextFreeIndex;
-					}
-				}
-			}
-
-			new(&DstObject->AllocationFlags) AllocationBitArrayType(Object.AllocationFlags);
-			DstObject->FirstFreeIndex = Object.FirstFreeIndex;
-			DstObject->NumFreeIndices = Object.NumFreeIndices;
-		}
-
-		static void AppendHash(const FPlatformTypeLayoutParameters& LayoutParams, FSHA1& Hasher)
-		{
-			Freeze::AppendHash(StaticGetTypeLayoutDesc<ElementType>(), LayoutParams, Hasher);
-		}
-	};
-
-public:
-	void WriteMemoryImage(FMemoryImageWriter& Writer) const
-	{
-		checkf(!Writer.Is32BitTarget(), TEXT("TSparseArray does not currently support freezing for 32bits"));
-		TSupportsFreezeMemoryImageHelper<SupportsFreezeMemoryImage>::WriteMemoryImage(Writer, *this);
-	}
-
-	void CopyUnfrozen(const FMemoryUnfreezeContent& Context, void* Dst) const
-	{
-		TSupportsFreezeMemoryImageHelper<SupportsFreezeMemoryImage>::CopyUnfrozen(Context, *this, Dst);
-	}
-
-	static void AppendHash(const FPlatformTypeLayoutParameters& LayoutParams, FSHA1& Hasher)
-	{
-		TSupportsFreezeMemoryImageHelper<SupportsFreezeMemoryImage>::AppendHash(LayoutParams, Hasher);
-	}
 };
-
-namespace Freeze
-{
-	template<typename ElementType, typename Allocator>
-	void IntrinsicWriteMemoryImage(FMemoryImageWriter& Writer, const TSparseArray<ElementType, Allocator>& Object, const FTypeLayoutDesc&)
-	{
-		Object.WriteMemoryImage(Writer);
-	}
-
-	template<typename ElementType, typename Allocator>
-	void IntrinsicUnfrozenCopy(const FMemoryUnfreezeContent& Context, const TSparseArray<ElementType, Allocator>& Object, void* OutDst)
-	{
-		Object.CopyUnfrozen(Context, OutDst);
-	}
-
-	template<typename ElementType, typename Allocator>
-	uint32 IntrinsicAppendHash(const TSparseArray<ElementType, Allocator>* DummyObject, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FSHA1& Hasher)
-	{
-		TSparseArray<ElementType, Allocator>::AppendHash(LayoutParams, Hasher);
-		return DefaultAppendHash(TypeDesc, LayoutParams, Hasher);
-	}
-}
-
-DECLARE_TEMPLATE_INTRINSIC_TYPE_LAYOUT((template <typename ElementType, typename Allocator>), (TSparseArray<ElementType, Allocator>));
 
 template<typename ElementType, typename Allocator>
 struct TContainerTraits<TSparseArray<ElementType, Allocator> > : public TContainerTraitsBase<TSparseArray<ElementType, Allocator> >
@@ -1260,11 +1098,8 @@ struct FScriptSparseArrayLayout
 
 // Untyped sparse array type for accessing TSparseArray data, like FScriptArray for TArray.
 // Must have the same memory representation as a TSet.
-template <typename AllocatorType, typename InDerivedType>
-class TScriptSparseArray
+class FScriptSparseArray
 {
-	using DerivedType = typename TChooseClass<TIsVoidType<InDerivedType>::Value, TScriptSparseArray, InDerivedType>::Result;
-
 public:
 	static FScriptSparseArrayLayout GetScriptLayout(int32 ElementSize, int32 ElementAlignment)
 	{
@@ -1275,7 +1110,7 @@ public:
 		return Result;
 	}
 
-	TScriptSparseArray()
+	FScriptSparseArray()
 		: FirstFreeIndex(-1)
 		, NumFreeIndices(0)
 	{
@@ -1306,7 +1141,7 @@ public:
 		return (const uint8*)Data.GetData() + Layout.Size * Index;
 	}
 
-	void MoveAssign(DerivedType& Other, const FScriptSparseArrayLayout& Layout)
+	void MoveAssign(FScriptSparseArray& Other, const FScriptSparseArrayLayout& Layout)
 	{
 		checkSlow(this != &Other);
 		Empty(0, Layout);
@@ -1381,36 +1216,36 @@ public:
 	}
 
 private:
-	TScriptArray   <typename AllocatorType::ElementAllocator>  Data;
-	TScriptBitArray<typename AllocatorType::BitArrayAllocator> AllocationFlags;
-	int32                                                      FirstFreeIndex;
-	int32                                                      NumFreeIndices;
+	FScriptArray    Data;
+	FScriptBitArray AllocationFlags;
+	int32           FirstFreeIndex;
+	int32           NumFreeIndices;
 
 	// This function isn't intended to be called, just to be compiled to validate the correctness of the type.
 	static void CheckConstraints()
 	{
-		typedef TScriptSparseArray  ScriptType;
+		typedef FScriptSparseArray  ScriptType;
 		typedef TSparseArray<int32> RealType;
 
 		// Check that the class footprint is the same
-		static_assert(sizeof (ScriptType) == sizeof (RealType), "TScriptSparseArray's size doesn't match TSparseArray");
-		static_assert(alignof(ScriptType) == alignof(RealType), "TScriptSparseArray's alignment doesn't match TSparseArray");
+		static_assert(sizeof (ScriptType) == sizeof (RealType), "FScriptSparseArray's size doesn't match TSparseArray");
+		static_assert(alignof(ScriptType) == alignof(RealType), "FScriptSparseArray's alignment doesn't match TSparseArray");
 
 		// Check member sizes
-		static_assert(sizeof(DeclVal<ScriptType>().Data)            == sizeof(DeclVal<RealType>().Data),            "TScriptSparseArray's Data member size does not match TSparseArray's");
-		static_assert(sizeof(DeclVal<ScriptType>().AllocationFlags) == sizeof(DeclVal<RealType>().AllocationFlags), "TScriptSparseArray's AllocationFlags member size does not match TSparseArray's");
-		static_assert(sizeof(DeclVal<ScriptType>().FirstFreeIndex)  == sizeof(DeclVal<RealType>().FirstFreeIndex),  "TScriptSparseArray's FirstFreeIndex member size does not match TSparseArray's");
-		static_assert(sizeof(DeclVal<ScriptType>().NumFreeIndices)  == sizeof(DeclVal<RealType>().NumFreeIndices),  "TScriptSparseArray's NumFreeIndices member size does not match TSparseArray's");
+		static_assert(sizeof(DeclVal<ScriptType>().Data)            == sizeof(DeclVal<RealType>().Data),            "FScriptSparseArray's Data member size does not match TSparseArray's");
+		static_assert(sizeof(DeclVal<ScriptType>().AllocationFlags) == sizeof(DeclVal<RealType>().AllocationFlags), "FScriptSparseArray's AllocationFlags member size does not match TSparseArray's");
+		static_assert(sizeof(DeclVal<ScriptType>().FirstFreeIndex)  == sizeof(DeclVal<RealType>().FirstFreeIndex),  "FScriptSparseArray's FirstFreeIndex member size does not match TSparseArray's");
+		static_assert(sizeof(DeclVal<ScriptType>().NumFreeIndices)  == sizeof(DeclVal<RealType>().NumFreeIndices),  "FScriptSparseArray's NumFreeIndices member size does not match TSparseArray's");
 
 		// Check member offsets
-		static_assert(STRUCT_OFFSET(ScriptType, Data)            == STRUCT_OFFSET(RealType, Data),            "TScriptSparseArray's Data member offset does not match TSparseArray's");
-		static_assert(STRUCT_OFFSET(ScriptType, AllocationFlags) == STRUCT_OFFSET(RealType, AllocationFlags), "TScriptSparseArray's AllocationFlags member offset does not match TSparseArray's");
-		static_assert(STRUCT_OFFSET(ScriptType, FirstFreeIndex)  == STRUCT_OFFSET(RealType, FirstFreeIndex),  "TScriptSparseArray's FirstFreeIndex member offset does not match TSparseArray's");
-		static_assert(STRUCT_OFFSET(ScriptType, NumFreeIndices)  == STRUCT_OFFSET(RealType, NumFreeIndices),  "TScriptSparseArray's NumFreeIndices member offset does not match TSparseArray's");
+		static_assert(STRUCT_OFFSET(ScriptType, Data)            == STRUCT_OFFSET(RealType, Data),            "FScriptSparseArray's Data member offset does not match TSparseArray's");
+		static_assert(STRUCT_OFFSET(ScriptType, AllocationFlags) == STRUCT_OFFSET(RealType, AllocationFlags), "FScriptSparseArray's AllocationFlags member offset does not match TSparseArray's");
+		static_assert(STRUCT_OFFSET(ScriptType, FirstFreeIndex)  == STRUCT_OFFSET(RealType, FirstFreeIndex),  "FScriptSparseArray's FirstFreeIndex member offset does not match TSparseArray's");
+		static_assert(STRUCT_OFFSET(ScriptType, NumFreeIndices)  == STRUCT_OFFSET(RealType, NumFreeIndices),  "FScriptSparseArray's NumFreeIndices member offset does not match TSparseArray's");
 
 		// Check free index offsets
-		static_assert(STRUCT_OFFSET(ScriptType::FFreeListLink, PrevFreeIndex) == STRUCT_OFFSET(RealType::FElementOrFreeListLink, PrevFreeIndex), "TScriptSparseArray's FFreeListLink's PrevFreeIndex member offset does not match TSparseArray's");
-		static_assert(STRUCT_OFFSET(ScriptType::FFreeListLink, NextFreeIndex) == STRUCT_OFFSET(RealType::FElementOrFreeListLink, NextFreeIndex), "TScriptSparseArray's FFreeListLink's NextFreeIndex member offset does not match TSparseArray's");
+		static_assert(STRUCT_OFFSET(ScriptType::FFreeListLink, PrevFreeIndex) == STRUCT_OFFSET(RealType::FElementOrFreeListLink, PrevFreeIndex), "FScriptSparseArray's FFreeListLink's PrevFreeIndex member offset does not match TSparseArray's");
+		static_assert(STRUCT_OFFSET(ScriptType::FFreeListLink, NextFreeIndex) == STRUCT_OFFSET(RealType::FElementOrFreeListLink, NextFreeIndex), "FScriptSparseArray's FFreeListLink's NextFreeIndex member offset does not match TSparseArray's");
 	}
 
 	struct FFreeListLink
@@ -1431,22 +1266,14 @@ private:
 public:
 	// These should really be private, because they shouldn't be called, but there's a bunch of code
 	// that needs to be fixed first.
-	TScriptSparseArray(const TScriptSparseArray&) { check(false); }
-	void operator=(const TScriptSparseArray&) { check(false); }
+	FScriptSparseArray(const FScriptSparseArray&) { check(false); }
+	void operator=(const FScriptSparseArray&) { check(false); }
 };
 
-template <typename AllocatorType, typename InDerivedType>
-struct TIsZeroConstructType<TScriptSparseArray<AllocatorType, InDerivedType>>
+template <>
+struct TIsZeroConstructType<FScriptSparseArray>
 {
 	enum { Value = true };
-};
-
-class FScriptSparseArray : public TScriptSparseArray<FDefaultSparseArrayAllocator, FScriptSparseArray>
-{
-	using Super = TScriptSparseArray<FDefaultSparseArrayAllocator, FScriptSparseArray>;
-
-public:
-	using Super::Super;
 };
 
 /**
@@ -1454,6 +1281,6 @@ public:
  */
 inline void* operator new(size_t Size,const FSparseArrayAllocationInfo& Allocation)
 {
-	UE_ASSUME(Allocation.Pointer);
+	ASSUME(Allocation.Pointer);
 	return Allocation.Pointer;
 }

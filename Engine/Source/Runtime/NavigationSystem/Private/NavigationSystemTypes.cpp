@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NavigationSystemTypes.h"
 #include "NavLinkCustomInterface.h"
@@ -233,10 +233,8 @@ namespace NavigationHelper
 
 	bool IsBodyNavigationRelevant(const UBodySetup& BodySetup)
 	{
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 		const bool bBodyHasGeometry = (BodySetup.AggGeom.GetElementCount() > 0 || BodySetup.TriMeshes.Num() > 0);
-#elif WITH_CHAOS
-		const bool bBodyHasGeometry = (BodySetup.AggGeom.GetElementCount() > 0 || BodySetup.ChaosTriMeshes.Num() > 0);
 #else
 		const bool bBodyHasGeometry = (BodySetup.AggGeom.GetElementCount() > 0);
 #endif
@@ -298,13 +296,11 @@ UObject* INavLinkCustomInterface::GetLinkOwner() const
 
 uint32 INavLinkCustomInterface::GetUniqueId()
 {
-	UE_LOG(LogNavLink, VeryVerbose, TEXT("%s id: %u."), ANSI_TO_TCHAR(__FUNCTION__), NextUniqueId);
 	return NextUniqueId++;
 }
 
 void INavLinkCustomInterface::UpdateUniqueId(uint32 AlreadyUsedId)
 {
-	UE_CLOG(AlreadyUsedId + 1 > NextUniqueId, LogNavLink, VeryVerbose, TEXT("%s, updating NextUniqueId to: %u."), ANSI_TO_TCHAR(__FUNCTION__), AlreadyUsedId + 1)
 	NextUniqueId = FMath::Max(NextUniqueId, AlreadyUsedId + 1);
 }
 
@@ -320,15 +316,4 @@ FNavigationLink INavLinkCustomInterface::GetModifier(const INavLinkCustomInterfa
 	LinkMod.Direction = LinkDirection;
 
 	return LinkMod;
-}
-
-void INavLinkCustomInterface::OnPreWorldInitialization(UWorld* World, const UWorld::InitializationValues IVS)
-{
-	ResetUniqueId();
-}
-
-void INavLinkCustomInterface::ResetUniqueId()
-{
-	UE_LOG(LogNavLink, VeryVerbose, TEXT("Reset navlink id."));
-	NextUniqueId = 1;
 }

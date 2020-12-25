@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	RenderTargetPool.h: Scene render target pool manager.
@@ -10,24 +10,28 @@
 #include "RHI.h"
 #include "RenderResource.h"
 #include "RendererInterface.h"
-#include "RenderGraphResources.h"
+
 
 /** The reference to a pooled render target, use like this: TRefCountPtr<IPooledRenderTarget> */
 struct RENDERCORE_API FPooledRenderTarget : public IPooledRenderTarget
 {
 	FPooledRenderTarget(const FPooledRenderTargetDesc& InDesc, class FRenderTargetPool* InRenderTargetPool) 
-		: RenderTargetPool(InRenderTargetPool)
+		: NumRefs(0)
+		, UnusedForNFrames(0)
 		, Desc(InDesc)
-		, PassthroughShaderResourceTexture(TEXT("Passthrough"), {}, ERDGTextureFlags::None, ERenderTargetTexture::ShaderResource)
-	{}
-
+		, bSnapshot(false)
+		, RenderTargetPool(InRenderTargetPool)
+		, FrameNumberLastDiscard(-1)
+	{
+	}
 	/* Constructor that makes a snapshot */
 	FPooledRenderTarget(const FPooledRenderTarget& SnaphotSource)
-		: RenderTargetPool(SnaphotSource.RenderTargetPool)
+		: NumRefs(1)
+		, UnusedForNFrames(0)
 		, Desc(SnaphotSource.Desc)
-		, NumRefs(1)
 		, bSnapshot(true)
-		, PassthroughShaderResourceTexture(TEXT("Passthrough"), {}, ERDGTextureFlags::None, ERenderTargetTexture::ShaderResource)
+		, RenderTargetPool(SnaphotSource.RenderTargetPool)
+		, FrameNumberLastDiscard(-1)
 	{
 		check(IsInRenderingThread());
 		RenderTargetItem = SnaphotSource.RenderTargetItem;
@@ -50,29 +54,6 @@ struct RENDERCORE_API FPooledRenderTarget : public IPooledRenderTarget
 		return UnusedForNFrames; 
 	}
 
-	bool HasRDG() const
-	{
-		return TargetableTexture.IsValid() || ShaderResourceTexture.IsValid();
-	}
-
-	FRDGPooledTexture* GetRDG(ERenderTargetTexture Texture)
-	{
-		return Texture == ERenderTargetTexture::Targetable ? TargetableTexture : ShaderResourceTexture;
-	}
-
-	const FRDGPooledTexture* GetRDG(ERenderTargetTexture Texture) const
-	{
-		return Texture == ERenderTargetTexture::Targetable ? TargetableTexture : ShaderResourceTexture;
-	}
-
-	FRDGTextureRef GetPassthroughRDG() const
-	{
-		return &PassthroughShaderResourceTexture;
-	}
-
-	void InitRDG();
-	void InitPassthroughRDG();
-
 	// interface IPooledRenderTarget --------------
 
 	virtual uint32 AddRef() const override final;
@@ -91,50 +72,34 @@ struct RENDERCORE_API FPooledRenderTarget : public IPooledRenderTarget
 	{
 		return RenderTargetPool != nullptr;
 	}
-	bool IsCompatibleWithRDG() const override
-	{
-		return true;
-	}
 
 	virtual void SetDebugName(const TCHAR *InName);
 	virtual const FPooledRenderTargetDesc& GetDesc() const;
 	virtual uint32 ComputeMemorySize() const;
 
+// todo private:
 	FVRamAllocation VRamAllocation;
 
 private:
 
-	/** Pointer back to the pool for render targets which are actually pooled, otherwise NULL. */
-	FRenderTargetPool* RenderTargetPool;
-	
+	/** For pool management (only if NumRef == 0 the element can be reused) */
+	mutable int32 NumRefs;
+	/** Allows to defer the release to save performance on some hardware (DirectX) */
+	uint32 UnusedForNFrames;
 	/** All necessary data to create the render target */
 	FPooledRenderTargetDesc Desc;
+	/** Snapshots are sortof fake pooled render targets, they don't own anything and can outlive the things that created them. These are for threaded rendering. */
+	bool bSnapshot;
 
-	/** For pool management (only if NumRef == 0 the element can be reused) */
-	mutable int32 NumRefs = 0;
-
-	/** Allows to defer the release to save performance on some hardware (DirectX) */
-	uint32 UnusedForNFrames = 0;
+	/** Pointer back to the pool for render targets which are actually pooled, otherwise NULL. */
+	FRenderTargetPool* RenderTargetPool;
 
 	/** Keeps track of the last frame we unmapped physical memory for this resource. We can't map again in the same frame if we did that */
-	uint32 FrameNumberLastDiscard = -1;
-
-	/** Snapshots are sortof fake pooled render targets, they don't own anything and can outlive the things that created them. These are for threaded rendering. */
-	bool bSnapshot = false;
-
-	/** The transient resource discard will happen automatically on free. */
-	bool bAutoDiscard = true;
-
-	/** Pooled textures for use with RDG. */
-	TRefCountPtr<FRDGPooledTexture> TargetableTexture;
-	TRefCountPtr<FRDGPooledTexture> ShaderResourceTexture;
-	mutable FRDGTexture PassthroughShaderResourceTexture;
+	uint32 FrameNumberLastDiscard;
 
 	/** @return true:release this one, false otherwise */
 	bool OnFrameStart();
 
-	friend class FRDGTexture;
-	friend class FRDGBuilder;
 	friend class FRenderTargetPool;
 };
 
@@ -263,13 +228,7 @@ public:
 	 * call from RenderThread only
 	 * @return true if the old element was still valid, false if a new one was assigned
 	 */
-	bool FindFreeElement(
-		FRHICommandList& RHICmdList,
-		const FPooledRenderTargetDesc& Desc,
-		TRefCountPtr<IPooledRenderTarget>& Out,
-		const TCHAR* InDebugName,
-		ERenderTargetTransience TransienceHint = ERenderTargetTransience::Transient,
-		bool bDeferTextureAllocation = false);
+	bool FindFreeElement(FRHICommandList& RHICmdList, const FPooledRenderTargetDesc& Desc, TRefCountPtr<IPooledRenderTarget>& Out, const TCHAR* InDebugName, bool bDoWritableBarrier = true, ERenderTargetTransience TransienceHint = ERenderTargetTransience::Transient, bool bDeferTextureAllocation = false);
 
 	void CreateUntrackedElement(const FPooledRenderTargetDesc& Desc, TRefCountPtr<IPooledRenderTarget>& Out, const FSceneRenderTargetItem& Item);
 
@@ -324,25 +283,15 @@ public:
 	void UpdateElementSize(const TRefCountPtr<IPooledRenderTarget>& Element, const uint32 OldSize);
 
 private:
-	TRefCountPtr<FPooledRenderTarget> FindFreeElementForRDG(FRHICommandList& RHICmdList, const FRDGTextureDesc& Desc, const TCHAR* Name);
-
-	TRefCountPtr<FPooledRenderTarget> FindFreeElementInternal(
-		FRHICommandList& RHICmdList,
-		const FPooledRenderTargetDesc& InputDesc,
-		const TCHAR* InDebugName,
-		bool bDeferTextureAllocation,
-		bool bDoAcquireTransientResource);
 
 	bool DoesTargetNeedTransienceOverride(const FPooledRenderTargetDesc& InputDesc, ERenderTargetTransience TransienceHint) const;
 
 	friend void RenderTargetPoolEvents(const TArray<FString>& Args);
 
-	void FreeElementAtIndex(int32 Index);
-
 	/** Elements can be 0, we compact the buffer later. */
-	TArray<uint64> PooledRenderTargetHashes;
 	TArray< TRefCountPtr<FPooledRenderTarget> > PooledRenderTargets;
 	TArray< TRefCountPtr<FPooledRenderTarget> > DeferredDeleteArray;
+	TArray< FRHITexture* > TransitionTargets;
 
 	/** These are snapshots, have odd life times, live in the scene allocator, and don't contribute to any accounting or other management. */
 	TArray<FPooledRenderTarget*> PooledRenderTargetSnapshots;
@@ -414,7 +363,6 @@ private:
 	friend struct FPooledRenderTarget;
 	friend class FVisualizeTexture;
 	friend class FVisualizeTexturePresent;
-	friend class FRDGBuilder;
 };
 
 /** The global render targets for easy shading. */

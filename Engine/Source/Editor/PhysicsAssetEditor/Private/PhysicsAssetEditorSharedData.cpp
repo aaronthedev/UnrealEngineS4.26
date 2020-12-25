@@ -1,7 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PhysicsAssetEditorSharedData.h"
-#include "PhysicsAssetEditorPhysicsHandleComponent.h"
+#include "PhysicsEngine/PhysicsHandleComponent.h"
 #include "PhysicsEngine/RigidBodyIndexPair.h"
 #include "Misc/MessageDialog.h"
 #include "Modules/ModuleManager.h"
@@ -36,12 +36,6 @@
 
 #define LOCTEXT_NAMESPACE "PhysicsAssetEditorShared"
 
-//PRAGMA_DISABLE_OPTIMIZATION
-
-// Whether to use RigidBody AnimNode for simulation preview when using Chaos since we don't have constraints in the main scene yet.
-// NOTE: The SkeletalMeshComponent simulation overrides the AnimNode simulation if enabled, so PHAT_USE_RBAN_SIMULATION switches it off.
-#define PHAT_USE_RBAN_SIMULATION WITH_CHAOS
-
 FScopedBulkSelection::FScopedBulkSelection(TSharedPtr<FPhysicsAssetEditorSharedData> InSharedData)
 	: SharedData(InSharedData)
 {
@@ -68,21 +62,9 @@ FPhysicsAssetEditorSharedData::FPhysicsAssetEditorSharedData()
 	bNoGravitySimulation = false;
 
 	bManipulating = false;
-
-	LastClickPos = FIntPoint::ZeroValue;
-	LastClickOrigin = FVector::ZeroVector;
-	LastClickDirection = FVector::UpVector;
-	LastClickHitPos = FVector::ZeroVector;
-	LastClickHitNormal = FVector::UpVector;
-	bLastClickHit = false;
 	
 	// Construct mouse handle
-	MouseHandle = NewObject<UPhysicsAssetEditorPhysicsHandleComponent>();
-
-	// in Chaos, we have to manipulate the RBAN node in the Anim Instance (at least until we get SkelMeshComp implemented)
-#if PHAT_USE_RBAN_SIMULATION
-	MouseHandle->SetAnimInstanceMode(true);
-#endif
+	MouseHandle = NewObject<UPhysicsHandleComponent>();
 
 	// Construct sim options.
 	EditorOptions = NewObject<UPhysicsAssetEditorOptions>(GetTransientPackage(), MakeUniqueObjectName(GetTransientPackage(), UPhysicsAssetEditorOptions::StaticClass(), FName(TEXT("EditorOptions"))), RF_Transactional);
@@ -429,6 +411,7 @@ void FPhysicsAssetEditorSharedData::RefreshPhysicsAssetChange(const UPhysicsAsse
 		// since we recreate physicsstate, a lot of transient state data will be gone
 		// so have to turn simulation off again. 
 		// ideally maybe in the future, we'll fix it by controlling tick?
+		EnableSimulation(false);
 		EditorSkelComp->RecreatePhysicsState();
 		if(bFullClothRefresh)
 		{
@@ -438,7 +421,7 @@ void FPhysicsAssetEditorSharedData::RefreshPhysicsAssetChange(const UPhysicsAsse
 		{
 			UpdateClothPhysics();
 		}
-		EnableSimulation(false);
+		ForceDisableSimulation();
 	}
 }
 
@@ -567,174 +550,6 @@ void FPhysicsAssetEditorSharedData::ToggleSelectionType()
 				TmpSelectedConstraints.Add(ConstraintIdx);
 				SetSelectedConstraint(ConstraintIdx, true);
 			}
-		}
-	}
-}
-
-void FPhysicsAssetEditorSharedData::ToggleShowSelected()
-{
-	bool bAllSelectedVisible = true;
-	if (bAllSelectedVisible)
-	{
-		for (const FSelection& Selection : SelectedConstraints)
-		{
-			if (HiddenConstraints.Contains(Selection.Index))
-			{
-				bAllSelectedVisible = false;
-				break;
-			}
-		}
-	}
-	if (bAllSelectedVisible)
-	{
-		for (const FSelection& Selection : SelectedBodies)
-		{
-			if (HiddenBodies.Contains(Selection.Index))
-			{
-				bAllSelectedVisible = false;
-			}
-		}
-	}
-
-	if (bAllSelectedVisible)
-	{
-		HideSelected();
-	}
-	else
-	{
-		ShowSelected();
-	}
-}
-
-void FPhysicsAssetEditorSharedData::ToggleShowOnlySelected()
-{
-	// Show only selected: make selected items visible and all others invisible.
-	// If we are already in the ShowOnlySelected state, make all visible.
-	bool bAllSelectedVisible = true;
-	if (bAllSelectedVisible)
-	{
-		for (const FSelection& Selection : SelectedConstraints)
-		{
-			if (HiddenConstraints.Contains(Selection.Index))
-			{
-				bAllSelectedVisible = false;
-				break;
-			}
-		}
-	}
-	if (bAllSelectedVisible)
-	{
-		for (const FSelection& Selection : SelectedBodies)
-		{
-			if (HiddenBodies.Contains(Selection.Index))
-			{
-				bAllSelectedVisible = false;
-			}
-		}
-	}
-
-	bool bAllNotSelectedHidden = true;
-	if (bAllNotSelectedHidden)
-	{
-		for (int32 ConstraintIndex = 0; ConstraintIndex < PhysicsAsset->ConstraintSetup.Num(); ++ConstraintIndex)
-		{
-			// Look at unselected constraints
-			if (!SelectedConstraints.ContainsByPredicate([ConstraintIndex](FSelection& V) { return V.Index == ConstraintIndex; } ))
-			{
-				// Is it hidden?
-				if (!HiddenConstraints.Contains(ConstraintIndex))
-				{
-					bAllNotSelectedHidden = false;
-					break;
-				}
-			}
-		}
-	}
-	if (bAllNotSelectedHidden)
-	{
-		for (int32 BodyIndex = 0; BodyIndex < PhysicsAsset->SkeletalBodySetups.Num(); ++BodyIndex)
-		{
-			// Look at unselected bodies
-			if (!SelectedBodies.ContainsByPredicate([BodyIndex](FSelection& V) { return V.Index == BodyIndex; }))
-			{
-				// Is it hidden?
-				if (!HiddenBodies.Contains(BodyIndex))
-				{
-					bAllNotSelectedHidden = false;
-					break;
-				}
-			}
-		}
-	}
-
-	if (bAllSelectedVisible && bAllNotSelectedHidden)
-	{
-		ShowAll();
-	}
-	else
-	{
-		HideAll();
-		ShowSelected();
-	}
-}
-
-void FPhysicsAssetEditorSharedData::ShowAll()
-{
-	HiddenConstraints.Empty();
-	HiddenBodies.Empty();
-}
-
-
-void FPhysicsAssetEditorSharedData::HideAll()
-{
-	if (PhysicsAsset != nullptr)
-	{
-		HiddenBodies.Empty();
-		for (int32 i = 0; i < PhysicsAsset->SkeletalBodySetups.Num(); ++i)
-		{
-			HiddenBodies.Add(i);
-		}
-
-		HiddenConstraints.Empty();
-		for (int32 i = 0; i < PhysicsAsset->ConstraintSetup.Num(); ++i)
-		{
-			HiddenConstraints.Add(i);
-		}
-	}
-}
-
-void FPhysicsAssetEditorSharedData::ShowSelected()
-{
-	for (const FSelection& Selection : SelectedConstraints)
-	{
-		if (HiddenConstraints.Contains(Selection.Index))
-		{
-			HiddenConstraints.Remove(Selection.Index);
-		}
-	}
-	for (const FSelection& Selection : SelectedBodies)
-	{
-		if (HiddenBodies.Contains(Selection.Index))
-		{
-			HiddenBodies.Remove(Selection.Index);
-		}
-	}
-}
-
-void FPhysicsAssetEditorSharedData::HideSelected()
-{
-	for (const FSelection& Selection : SelectedConstraints)
-	{
-		if (!HiddenConstraints.Contains(Selection.Index))
-		{
-			HiddenConstraints.Add(Selection.Index);
-		}
-	}
-	for (const FSelection& Selection : SelectedBodies)
-	{
-		if (!HiddenBodies.Contains(Selection.Index))
-		{
-			HiddenBodies.Add(Selection.Index);
 		}
 	}
 }
@@ -957,72 +772,6 @@ void FPhysicsAssetEditorSharedData::SetCollisionBetween(int32 Body1Index, int32 
 	PreviewChangedEvent.Broadcast();
 }
 
-void FPhysicsAssetEditorSharedData::SetPrimitiveCollision(ECollisionEnabled::Type CollisionEnabled)
-{
-	if (bRunningSimulation)
-	{
-		return;
-	}
-
-	PhysicsAsset->Modify();
-
-	for (FSelection SelectedBody : SelectedBodies)
-	{
-		PhysicsAsset->SetPrimitiveCollision(SelectedBody.Index, SelectedBody.PrimitiveType, SelectedBody.PrimitiveIndex, CollisionEnabled);
-	}
-
-	PreviewChangedEvent.Broadcast();
-}
-
-bool FPhysicsAssetEditorSharedData::CanSetPrimitiveCollision(ECollisionEnabled::Type CollisionEnabled) const
-{
-	if (bRunningSimulation || SelectedBodies.Num() == 0)
-	{
-		return false;
-	}
-
-	return true;
-}
-
-bool FPhysicsAssetEditorSharedData::GetIsPrimitiveCollisionEnabled(ECollisionEnabled::Type CollisionEnabled) const
-{
-	for (const FSelection& SelectedBody : SelectedBodies)
-	{
-		if (PhysicsAsset->GetPrimitiveCollision(SelectedBody.Index, SelectedBody.PrimitiveType, SelectedBody.PrimitiveIndex) == CollisionEnabled)
-		{
-			return true;
-		}
-	}
-
-	return false;
-}
-
-void FPhysicsAssetEditorSharedData::SetPrimitiveContributeToMass(bool bContributeToMass)
-{
-	for (const FSelection& SelectedBody : SelectedBodies)
-	{
-		PhysicsAsset->SetPrimitiveContributeToMass(SelectedBody.Index, SelectedBody.PrimitiveType, SelectedBody.PrimitiveIndex, bContributeToMass);
-	}
-}
-
-bool FPhysicsAssetEditorSharedData::CanSetPrimitiveContributeToMass() const
-{
-	return true;
-}
-
-bool FPhysicsAssetEditorSharedData::GetPrimitiveContributeToMass() const
-{
-	for (const FSelection& SelectedBody : SelectedBodies)
-	{
-		if (PhysicsAsset->GetPrimitiveContributeToMass(SelectedBody.Index, SelectedBody.PrimitiveType, SelectedBody.PrimitiveIndex))
-		{
-			return true;
-		}
-	}
-
-	return false;
-}
-
 void FPhysicsAssetEditorSharedData::CopyBody()
 {
 	check(SelectedBodies.Num() == 1);
@@ -1239,6 +988,10 @@ void FPhysicsAssetEditorSharedData::MakeNewBody(int32 NewBoneIndex, bool bAutoSe
 	{
 		return;
 	}
+	if(EditorSkelComp)
+	{
+		EditorSkelComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	}
 	PhysicsAsset->Modify();
 
 	FName NewBoneName = EditorSkelMesh->RefSkeleton.GetBoneName(NewBoneIndex);
@@ -1296,13 +1049,6 @@ void FPhysicsAssetEditorSharedData::MakeNewBody(int32 NewBoneIndex, bool bAutoSe
 				
 				// If the child body is not constrained already, create a new constraint between
 				// the child body and the new body
-				// @todo: This isn't quite right. It is possible that the child constraint's parent body is not our parent body. 
-				// This can happen in a couple ways:
-				// - the user altered the child constraint to attach to a different parent bond
-				// - a new bone was added. E.g., add bone at root of hierarchy. Import mesh with new bone. Add body to root bone.
-				// So, if this happens we need to decide if we should leave the old constraint there and add a new one, or commandeer the
-				// constraint. If the former, we should probably change a constraint to a "User" constraint when they change its bones.
-				// We are currently doing the latter...
 				if (ConstraintIndex == INDEX_NONE)
 				{
 					ConstraintIndex = FPhysicsAssetUtils::CreateNewConstraint(PhysicsAsset, ChildBody->BoneName);
@@ -1322,19 +1068,16 @@ void FPhysicsAssetEditorSharedData::MakeNewBody(int32 NewBoneIndex, bool bAutoSe
 					{
 						continue;
 					}
-
+					
 					// If the constraint isn't between two child bones, then it is between a physical bone higher in the bone
 					// hierarchy than the new bone, so it needs to be fixed up by setting the constraint to point to the new bone
 					// instead. Additionally, collision needs to be re-enabled between the child bone and the identified "grandparent"
 					// bone.
 					const int32 ExistingConstraintBodyIndex = PhysicsAsset->FindBodyIndex(ExistingConstraintSetup->DefaultInstance.ConstraintBone2);
 					check(ExistingConstraintBodyIndex != INDEX_NONE);
+					check(ExistingConstraintBodyIndex == ParentBodyIndex);
 
-					// See above comments about the child constraint's parent not necessarily being our parent...
-					if (ExistingConstraintBodyIndex == ParentBodyIndex)
-					{
-						SetCollisionBetween(ChildBodyIndex, ExistingConstraintBodyIndex, true);
-					}
+					SetCollisionBetween(ChildBodyIndex, ExistingConstraintBodyIndex, true);
 				}
 
 				UPhysicsConstraintTemplate* ChildConstraintSetup = PhysicsAsset->ConstraintSetup[ ConstraintIndex ];
@@ -1905,13 +1648,15 @@ void FPhysicsAssetEditorSharedData::ToggleSimulation()
 	}
 
 	EnableSimulation(!bRunningSimulation);
+
+	bRunningSimulation = !bRunningSimulation;
 }
 
 void FPhysicsAssetEditorSharedData::EnableSimulation(bool bEnableSimulation)
 {
 	if (bEnableSimulation)
 	{
-#if !PHAT_USE_RBAN_SIMULATION
+
 		// We should not already have an instance (destroyed when stopping sim).
 		EditorSkelComp->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 		EditorSkelComp->SetSimulatePhysics(true);
@@ -1921,11 +1666,6 @@ void FPhysicsAssetEditorSharedData::EnableSimulation(bool bEnableSimulation)
 
 		// Make it start simulating
 		EditorSkelComp->WakeAllRigidBodies();
-#else
-		// Enable the PreviewInstance (containing the AnimNode_RigidBody)
-		EditorSkelComp->SetAnimationMode(EAnimationMode::AnimationCustomMode);
-		EditorSkelComp->InitAnim(true);
-#endif
 
 		if(EditorOptions->bResetClothWhenSimulating)
 		{
@@ -1934,20 +1674,15 @@ void FPhysicsAssetEditorSharedData::EnableSimulation(bool bEnableSimulation)
 	}
 	else
 	{
-		// Disable the PreviewInstance
-		//EditorSkelComp->AnimScriptInstance = nullptr;
-		//if(EditorSkelComp->GetAnimationMode() != EAnimationMode::AnimationSingleNode)
+		EditorSkelComp->AnimScriptInstance = nullptr;
+
+		if(EditorSkelComp->GetAnimationMode() != EAnimationMode::AnimationSingleNode)
 		{
 			EditorSkelComp->SetAnimationMode(EAnimationMode::AnimationSingleNode);
 		}
 
 		// Stop any animation and clear node when stopping simulation.
 		PhysicalAnimationComponent->SetSkeletalMeshComponent(nullptr);
-
-#if PHAT_USE_RBAN_SIMULATION
-		// Undo ends up recreating the anim script instance, so we need to remove it here (otherwise the AnimNode_RigidBody similation starts when we undo)
-		EditorSkelComp->ClearAnimScriptInstance();
-#endif
 
 		EditorSkelComp->SetPhysicsBlendWeight(0.f);
 		EditorSkelComp->ResetAllBodiesSimulatePhysics();
@@ -1961,8 +1696,6 @@ void FPhysicsAssetEditorSharedData::EnableSimulation(bool bEnableSimulation)
 		
 		PreviewChangedEvent.Broadcast();
 	}
-
-	bRunningSimulation = bEnableSimulation;
 }
 
 void FPhysicsAssetEditorSharedData::OpenNewBodyDlg()
@@ -2152,10 +1885,7 @@ void FPhysicsAssetEditorSharedData::AddReferencedObjects(FReferenceCollector& Co
 	Collector.AddReferencedObject(CopiedBodySetup);
 	Collector.AddReferencedObject(CopiedConstraintTemplate);
 
-	if (PreviewScene != nullptr)
-	{
-		PreviewScene.Pin()->AddReferencedObjects(Collector);
-	}
+	PreviewScene.Pin()->AddReferencedObjects(Collector);
 }
 
 void FPhysicsAssetEditorSharedData::ForceDisableSimulation()

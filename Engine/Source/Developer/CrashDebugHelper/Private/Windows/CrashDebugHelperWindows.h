@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,6 +15,10 @@ public:
 	 *	@return	bool				true if successful, false if not
 	 */
 	virtual bool CreateMinidumpDiagnosticReport( const FString& InCrashDumpName ) override;
+
+private:
+	bool InitSymbols(struct FWindowsPlatformStackWalkExt& WindowsStackWalkExt, bool bSyncSymbols);
+	void SyncAndReadSourceFile(bool bSyncSymbols, bool bAnnotate, int32 BuiltFromCL);
 };
 
 typedef FCrashDebugHelperWindows FCrashDebugHelper;

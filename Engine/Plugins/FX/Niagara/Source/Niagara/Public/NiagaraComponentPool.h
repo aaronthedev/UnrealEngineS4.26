@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -91,16 +91,13 @@ struct FNCPool
 public:
 
 	FNCPool();
-	void Cleanup(bool bFreeOnly);
+	void Cleanup();
 
 	/** Gets a component from the pool ready for use. */
-	UNiagaraComponent* Acquire(UWorld* World, UNiagaraSystem* Template, ENCPoolMethod PoolingMethod, bool bForceNew=false);
+	UNiagaraComponent* Acquire(UWorld* World, UNiagaraSystem* Template, ENCPoolMethod PoolingMethod);
 
 	/** Returns a component to the pool. */
 	void Reclaim(UNiagaraComponent* NC, const float CurrentTimeSeconds);
-
-	/** Forces us to remove a component, returns true if the component exists inside the pool. */
-	bool RemoveComponent(UNiagaraComponent* Component);
 
 	/** Kills any components that have not been used since the passed KillTime. */
 	void KillUnusedComponents(float KillTime, UNiagaraSystem* Template);
@@ -120,16 +117,10 @@ private:
 	float LastParticleSytemPoolCleanTime;
 public:
 
-	static bool Enabled();
-
 	~UNiagaraComponentPool();
 
-	void Cleanup(bool bFreeOnly=false);
+	void Cleanup();
 
-	/** Clear all free entires of the specified system. */
-	void ClearPool(UNiagaraSystem* System);
-
-	void PrimePool(UNiagaraSystem* Template, UWorld* World);
 	UNiagaraComponent* CreateWorldParticleSystem(UNiagaraSystem* Template, UWorld* World, ENCPoolMethod PoolingMethod);
 
 	/** Called when an in-use particle component is finished and wishes to be returned to the pool. */
@@ -138,12 +129,6 @@ public:
 	/** Call if you want to halt & reclaim all active particle systems and return them to their respective pools. */
 	void ReclaimActiveParticleSystems();
 	
-	/** Notification that the component is being destroyed but has relevance to the component pool. */
-	void PooledComponentDestroyed(UNiagaraComponent* Component);
-
-	/** Remove any components that are using this system. */
-	void RemoveComponentsBySystem(UNiagaraSystem* System);
-
 	/** Dumps the current state of the pool to the log. */
 	void Dump();
 };

@@ -1,17 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
  
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Containers/List.h"
-#include "Containers/StringView.h"
 #include "RHI.h"
 
 DECLARE_STATS_GROUP(TEXT("ShaderPipelineCache"),STATGROUP_PipelineStateCache, STATCAT_Advanced);
 
 DECLARE_DWORD_ACCUMULATOR_STAT_EXTERN(TEXT("Total Graphics Pipeline State Count"), STAT_TotalGraphicsPipelineStateCount, STATGROUP_PipelineStateCache, RHI_API);
 DECLARE_DWORD_ACCUMULATOR_STAT_EXTERN(TEXT("Total Compute Pipeline State Count"), STAT_TotalComputePipelineStateCount, STATGROUP_PipelineStateCache, RHI_API);
-DECLARE_DWORD_ACCUMULATOR_STAT_EXTERN(TEXT("Total RayTracing Pipeline State Count"), STAT_TotalRayTracingPipelineStateCount, STATGROUP_PipelineStateCache, RHI_API);
 
 #define PIPELINE_CACHE_DEFAULT_ENABLED (!WITH_EDITOR && PLATFORM_MAC)
 
@@ -73,41 +71,7 @@ struct RHI_API FPipelineFileCacheRasterizerState
 		return KeyHash;
 	}
 	FString ToString() const;
-	void FromString(const FStringView& Src);
-};
-
-class FRayTracingPipelineStateInitializer;
-class FRHIRayTracingShader;
-
-struct RHI_API FPipelineFileCacheRayTracingDesc
-{
-	FSHAHash ShaderHash;
-	uint32 MaxPayloadSizeInBytes = 0;
-	EShaderFrequency Frequency = SF_RayGen;
-	bool bAllowHitGroupIndexing = true;
-
-	FPipelineFileCacheRayTracingDesc() = default;
-	FPipelineFileCacheRayTracingDesc(const FRayTracingPipelineStateInitializer& Initializer, const FRHIRayTracingShader* ShaderRHI);
-
-	FString ToString() const;
-	FString HeaderLine() const;
 	void FromString(const FString& Src);
-
-	friend uint32 GetTypeHash(const FPipelineFileCacheRayTracingDesc& Desc)
-	{
-		return GetTypeHash(Desc.ShaderHash) ^
-			GetTypeHash(Desc.MaxPayloadSizeInBytes) ^
-			GetTypeHash(Desc.Frequency) ^
-			GetTypeHash(Desc.bAllowHitGroupIndexing);
-	}
-
-	bool operator == (const FPipelineFileCacheRayTracingDesc& Other) const
-	{
-		return ShaderHash == Other.ShaderHash &&
-			MaxPayloadSizeInBytes == Other.MaxPayloadSizeInBytes &&
-			Frequency == Other.Frequency &&
-			bAllowHitGroupIndexing == Other.bAllowHitGroupIndexing;
-	}
 };
 
 /**
@@ -147,7 +111,7 @@ struct RHI_API FPipelineCacheFileFormatPSO
 
 		FString ToString() const;
 		static FString HeaderLine();
-		void FromString(const FStringView& Src);
+		void FromString(const FString& Src);
 	};
 	struct RHI_API GraphicsDescriptor
 	{
@@ -163,7 +127,7 @@ struct RHI_API FPipelineCacheFileFormatPSO
 		FDepthStencilStateInitializerRHI DepthStencilState;
 		
 		EPixelFormat RenderTargetFormats[MaxSimultaneousRenderTargets];
-		ETextureCreateFlags RenderTargetFlags[MaxSimultaneousRenderTargets];
+		uint32 RenderTargetFlags[MaxSimultaneousRenderTargets];
 		uint32 RenderTargetsActive;
 		uint32 MSAASamples;
 		
@@ -181,28 +145,25 @@ struct RHI_API FPipelineCacheFileFormatPSO
 		
 		FString ToString() const;
 		static FString HeaderLine();
-		bool FromString(const FStringView& Src);
+		bool FromString(const FString& Src);
 
 		FString ShadersToString() const;
 		static FString ShaderHeaderLine();
-		void ShadersFromString(const FStringView& Src);
+		void ShadersFromString(const FString& Src);
 
 		FString StateToString() const;
 		static FString StateHeaderLine();
-		bool StateFromString(const FStringView& Src);
+		bool StateFromString(const FString& Src);
 	};
 	enum class DescriptorType : uint32
 	{
 		Compute = 0,
-		Graphics = 1,
-		RayTracing = 2,
+		Graphics = 1
 	};
 	
 	DescriptorType Type;
 	ComputeDescriptor ComputeDesc;
 	GraphicsDescriptor GraphicsDesc;
-	FPipelineFileCacheRayTracingDesc RayTracingDesc;
-
 	mutable volatile uint32 Hash;
 	
 #if PSO_COOKONLY_DATA
@@ -223,11 +184,10 @@ struct RHI_API FPipelineCacheFileFormatPSO
 	
 	static bool Init(FPipelineCacheFileFormatPSO& PSO, FRHIComputeShader const* Init);
 	static bool Init(FPipelineCacheFileFormatPSO& PSO, FGraphicsPipelineStateInitializer const& Init);
-	static bool Init(FPipelineCacheFileFormatPSO & PSO, FPipelineFileCacheRayTracingDesc const& Desc);
-
+	
 	FString CommonToString() const;
 	static FString CommonHeaderLine();
-	void CommonFromString(const FStringView& Src);
+	void CommonFromString(const FString& Src);
 	
 	// Potential cases for seperating verify logic if requiired: RunTime-Logging, RunTime-UserCaching, RunTime-PreCompile, CommandLet-Cooking
 	bool Verify() const;
@@ -239,7 +199,7 @@ struct RHI_API FPipelineCacheFileFormatPSORead
 	: Ar(nullptr)
 	, Hash(0)
 	, bReadCompleted(false)
-	, bValid(false)
+    , bValid(false)
 	{}
 	
 	~FPipelineCacheFileFormatPSORead()
@@ -256,12 +216,10 @@ struct RHI_API FPipelineCacheFileFormatPSORead
 	
 	uint32 Hash;
 	bool bReadCompleted;
-	bool bValid;
+    bool bValid;
 	
-	// Note that the contract of IAsyncReadFileHandle and IAsyncReadRequest requires that we delete the ReadRequest before deleting its ParentFileHandle. 
-	// We therefore require that ParentFileHandle is declared before ReadRequest, so that the class destructor tears down first ReadRequest then ParentFileHandle.
-	TSharedPtr<class IAsyncReadFileHandle, ESPMode::ThreadSafe> ParentFileHandle;
 	TSharedPtr<class IAsyncReadRequest, ESPMode::ThreadSafe> ReadRequest;
+	TSharedPtr<class IAsyncReadFileHandle, ESPMode::ThreadSafe> ParentFileHandle;
 };
 
 struct RHI_API FPipelineCachePSOHeader
@@ -288,10 +246,10 @@ typedef bool(*FPSOMaskComparisonFn)(uint64 ReferenceMask, uint64 PSOMask);
 
 struct FPSOUsageData
 {
-	FPSOUsageData(): UsageMask(0), PSOHash(0), EngineFlags(0) {}
-	FPSOUsageData(uint32 InPSOHash, uint64 InUsageMask, uint16 InEngineFlags): UsageMask(InUsageMask), PSOHash(InPSOHash), EngineFlags(InEngineFlags) {}
-	uint64 UsageMask;
+	FPSOUsageData(): PSOHash(0), UsageMask(0), EngineFlags(0) {}
+	FPSOUsageData(uint32 InPSOHash, uint64 InUsageMask, uint16 InEngineFlags): PSOHash(InPSOHash), UsageMask(InUsageMask), EngineFlags(InEngineFlags) {}
 	uint32 PSOHash;
+	uint64 UsageMask;
 	uint16 EngineFlags;
 };
 
@@ -329,8 +287,6 @@ public:
 	
 	static void CacheGraphicsPSO(uint32 RunTimeHash, FGraphicsPipelineStateInitializer const& Initializer);
 	static void CacheComputePSO(uint32 RunTimeHash, FRHIComputeShader const* Initializer);
-	static void CacheRayTracingPSO(const FRayTracingPipelineStateInitializer& Initializer);
-
 	static FPipelineStateStats* RegisterPSOStats(uint32 RunTimeHash);
 	
 	/*
@@ -380,7 +336,6 @@ private:
 	static TMap<uint32, FPSOUsageData> NewPSOUsage;				// For mask or engine updates - Merged + Saved (Our internal PSO hash to latest usage data) - temp working scratch, only holds updates since last "save" so is not the authority on state
 	static TMap<uint32, FPipelineStateStats*> Stats;
 	static TSet<FPipelineCacheFileFormatPSO> NewPSOs;
-	static TSet<uint32> NewPSOHashes;
     static uint32 NumNewPSOs;
 	static PSOOrder RequestedOrder;
 	static bool FileCacheEnabled;

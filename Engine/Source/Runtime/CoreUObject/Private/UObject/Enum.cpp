@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Misc/ConfigCacheIni.h"
@@ -111,7 +111,7 @@ FString UEnum::GetBaseEnumNameOnDuplication() const
 	check(DoubleColonPos != INDEX_NONE);
 
 	// Get actual base name.
-	BaseEnumName.LeftChopInline(BaseEnumName.Len() - DoubleColonPos, false);
+	BaseEnumName = BaseEnumName.LeftChop(BaseEnumName.Len() - DoubleColonPos);
 
 	return BaseEnumName;
 }
@@ -308,7 +308,7 @@ FString UEnum::GenerateEnumPrefix() const
 			}
 
 			// Trim the prefix to the length of the common prefix.
-			Prefix.LeftInline(PrefixIdx, false);
+			Prefix = Prefix.Left(PrefixIdx);
 		}
 
 		// Find the index of the rightmost underscore in the prefix.
@@ -317,7 +317,7 @@ FString UEnum::GenerateEnumPrefix() const
 		// If an underscore was found, trim the prefix so only the part before the rightmost underscore is included.
 		if (UnderscoreIdx > 0)
 		{
-			Prefix.LeftInline(UnderscoreIdx, false);
+			Prefix = Prefix.Left(UnderscoreIdx);
 		}
 		else
 		{
@@ -362,18 +362,6 @@ FString UEnum::GetNameStringByValue(int64 Value) const
 {
 	int32 Index = GetIndexByValue(Value);
 	return GetNameStringByIndex(Index);
-}
-
-bool UEnum::FindNameStringByValue(FString& Out, int64 InValue) const
-{
-	int32 Index = GetIndexByValue(InValue);
-	if (Index == INDEX_NONE)
-	{
-		return false;
-	}
-
-	Out = GetNameStringByIndex(Index);
-	return true;
 }
 
 FText UEnum::GetDisplayNameTextByIndex(int32 NameIndex) const
@@ -426,18 +414,6 @@ FText UEnum::GetDisplayNameTextByValue(int64 Value) const
 	return GetDisplayNameTextByIndex(Index);
 }
 
-bool UEnum::FindDisplayNameTextByValue(FText& Out, int64 Value) const
-{
-	int32 Index = GetIndexByValue(Value);
-	if (Index == INDEX_NONE)
-	{
-		return false;
-	}
-
-	Out = GetDisplayNameTextByIndex(Index);
-	return true;
-}
-
 FString UEnum::GetAuthoredNameStringByIndex(int32 InIndex) const
 {
 	return GetNameStringByIndex(InIndex);
@@ -447,18 +423,6 @@ FString UEnum::GetAuthoredNameStringByValue(int64 Value) const
 {
 	int32 Index = GetIndexByValue(Value);
 	return GetAuthoredNameStringByIndex(Index);
-}
-
-bool UEnum::FindAuthoredNameStringByValue(FString& Out, int64 Value) const
-{
-	int32 Index = GetIndexByValue(Value);
-	if (Index == INDEX_NONE)
-	{
-		return false;
-	}
-
-	Out = GetAuthoredNameStringByIndex(Index);
-	return true;
 }
 
 int32 UEnum::GetIndexByNameString(const FString& InSearchString, EGetByNameFlags Flags) const
@@ -588,15 +552,14 @@ bool UEnum::ContainsExistingMax() const
 	return false;
 }
 
-bool UEnum::SetEnums(TArray<TPair<FName, int64>>& InNames, UEnum::ECppForm InCppForm, EEnumFlags InFlags, bool bAddMaxKeyIfMissing)
+bool UEnum::SetEnums(TArray<TPair<FName, int64>>& InNames, UEnum::ECppForm InCppForm, bool bAddMaxKeyIfMissing)
 {
 	if (Names.Num() > 0)
 	{
 		RemoveNamesFromMasterList();
 	}
-	Names     = InNames;
-	CppForm   = InCppForm;
-	EnumFlags = InFlags;
+	Names   = InNames;
+	CppForm = InCppForm;
 
 	if (bAddMaxKeyIfMissing)
 	{
@@ -644,7 +607,7 @@ FText UEnum::GetToolTipTextByIndex(int32 NameIndex) const
 
 #endif
 
-#if WITH_EDITORONLY_DATA
+#if WITH_EDITOR || HACK_HEADER_GENERATOR
 
 bool UEnum::HasMetaData( const TCHAR* Key, int32 NameIndex/*=INDEX_NONE*/ ) const
 {
@@ -705,7 +668,7 @@ FString UEnum::GetMetaData( const TCHAR* Key, int32 NameIndex/*=INDEX_NONE*/, bo
 		if (!GConfig->GetString(TEXT("EnumRemap"), *KeyString, ResultString, GEngineIni))
 		{
 			// if this fails, then use what's after the ini:
-			ResultString.MidInline(4, MAX_int32, false);
+			ResultString = ResultString.Mid(4);
 		}
 	}
 

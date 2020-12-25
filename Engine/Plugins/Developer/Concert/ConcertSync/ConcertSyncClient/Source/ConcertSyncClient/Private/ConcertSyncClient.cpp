@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ConcertSyncClient.h"
 
@@ -115,6 +115,7 @@ void FConcertSyncClient::PersistAllSessionChanges()
 #endif
 }
 
+
 void FConcertSyncClient::GetSessionClientActions(const FConcertSessionClientInfo& InClientInfo, TArray<FConcertActionDefinition>& OutActions) const
 {
 #if WITH_EDITOR
@@ -125,16 +126,10 @@ void FConcertSyncClient::GetSessionClientActions(const FConcertSessionClientInfo
 #endif
 }
 
-void FConcertSyncClient::SetFileSharingService(TSharedPtr<IConcertFileSharingService> InFileSharingService)
-{
-	check(!FileSharingService); // Not really meant to be set more than once.
-	FileSharingService = MoveTemp(InFileSharingService);
-}
-
 void FConcertSyncClient::CreateWorkspace(const TSharedRef<FConcertSyncClientLiveSession>& InLiveSession)
 {
 	DestroyWorkspace();
-	Workspace = MakeShared<FConcertClientWorkspace>(InLiveSession, PackageBridge, TransactionBridge, FileSharingService);
+	Workspace = MakeShared<FConcertClientWorkspace>(InLiveSession, PackageBridge, TransactionBridge);
 	OnWorkspaceStartupDelegate.Broadcast(Workspace);
 #if WITH_EDITOR
 	if (GIsEditor && EnumHasAllFlags(SessionFlags, EConcertSyncSessionFlags::EnablePackages | EConcertSyncSessionFlags::ShouldUsePackageSandbox))

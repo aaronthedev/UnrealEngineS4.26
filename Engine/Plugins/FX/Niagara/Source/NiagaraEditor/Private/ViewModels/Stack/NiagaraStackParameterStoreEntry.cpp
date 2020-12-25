@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ViewModels/Stack/NiagaraStackParameterStoreEntry.h"
 #include "NiagaraScriptSource.h"
@@ -23,7 +23,6 @@
 #include "AssetRegistryModule.h"
 #include "ARFilter.h"
 #include "EdGraph/EdGraphPin.h"
-#include "NiagaraConstants.h"
 
 
 #define LOCTEXT_NAMESPACE "UNiagaraStackParameterStoreEntry"
@@ -59,12 +58,12 @@ void UNiagaraStackParameterStoreEntry::RefreshChildrenInternal(const TArray<UNia
 {
 	RefreshValueAndHandle();
 
-	if (ValueObject.IsValid() && ValueObject->IsA<UNiagaraDataInterface>())
+	if (ValueObject != nullptr)
 	{
 		if(ValueObjectEntry == nullptr || ValueObjectEntry->GetObject() != ValueObject)
 		{
 			ValueObjectEntry = NewObject<UNiagaraStackObject>(this);
-			ValueObjectEntry->Initialize(CreateDefaultChildRequiredData(), ValueObject.Get(), GetOwnerStackItemEditorDataKey());
+			ValueObjectEntry->Initialize(CreateDefaultChildRequiredData(), ValueObject, GetOwnerStackItemEditorDataKey());
 		}
 		NewChildren.Add(ValueObjectEntry);
 	}
@@ -107,7 +106,7 @@ TSharedPtr<FStructOnScope> UNiagaraStackParameterStoreEntry::GetValueStruct()
 
 UObject* UNiagaraStackParameterStoreEntry::GetValueObject()
 {
-	return ValueObject.Get();
+	return ValueObject;
 }
 
 void UNiagaraStackParameterStoreEntry::NotifyBeginValueChange()
@@ -159,7 +158,6 @@ void UNiagaraStackParameterStoreEntry::Reset()
 		{
 			UNiagaraDataInterface* DefaultObject = NewObject<UNiagaraDataInterface>(this, const_cast<UClass*>(InputType.GetClass()));
 			DefaultObject->CopyTo(ParameterStore->GetDataInterface(Var));
-			NotifyDataInterfaceChanged();
 		}
 		else if (Var.IsUObject())
 		{
@@ -170,6 +168,24 @@ void UNiagaraStackParameterStoreEntry::Reset()
 	RefreshChildren();
 	NotifyEndValueChange();
 	GetSystemViewModel()->ResetSystem();
+}
+
+bool UNiagaraStackParameterStoreEntry::CanRenameInput() const
+{
+	return true; 
+}
+
+bool UNiagaraStackParameterStoreEntry::GetIsRenamePending() const
+{
+	return CanRenameInput() && GetStackEditorData().GetModuleInputIsRenamePending(ParameterName.ToString());
+}
+
+void UNiagaraStackParameterStoreEntry::SetIsRenamePending(bool bIsRenamePending)
+{
+	if (CanRenameInput())
+	{
+		GetStackEditorData().SetModuleInputIsRenamePending(ParameterName.ToString(), bIsRenamePending);
+	}
 }
 
 TArray<UEdGraphPin*> UNiagaraStackParameterStoreEntry::GetOwningPins()
@@ -217,20 +233,22 @@ TArray<UEdGraphPin*> UNiagaraStackParameterStoreEntry::GetOwningPins()
 	return OwningPins;
 }
 
-void UNiagaraStackParameterStoreEntry::OnRenamed(FText NewName)
+void UNiagaraStackParameterStoreEntry::RenameInput(FString NewName)
 {
-	FString ActualNameString = NewName.ToString();
-	FString NamespacePrefix = FNiagaraConstants::UserNamespace.ToString() + ".";
-	if (ActualNameString.Contains(NamespacePrefix))
+	FName NewFName = FName(*NewName);
+	FString ActualNameString = NewName;
+	FString NamespacePrefix = FNiagaraParameterHandle::UserNamespace.ToString() + ".";
+	if (NewName.Contains(NamespacePrefix))
 	{
-		ActualNameString = ActualNameString.Replace(*NamespacePrefix, TEXT(""));
+		ActualNameString = NewName.Replace(*NamespacePrefix, TEXT(""));
 	}
 	FName ActualName = FName(*ActualNameString);
 	// what if it's not user namespace? dehardcode.
-	FNiagaraParameterHandle ParameterHandle(FNiagaraConstants::UserNamespace, ActualName); 
+	FNiagaraParameterHandle ParameterHandle(FNiagaraParameterHandle::UserNamespace, ActualName); 
 	FName VariableName = ParameterHandle.GetParameterHandleString();
 	if (VariableName != ParameterName)
 	{
+
 		// destroy links, rename parameter and rebuild links
 		TArray<UEdGraphPin*> OwningPins = GetOwningPins();
 		TArray<UEdGraphPin*> LinkedPins;
@@ -258,15 +276,6 @@ void UNiagaraStackParameterStoreEntry::OnRenamed(FText NewName)
 			FNiagaraStackGraphUtilities::SetLinkedValueHandleForFunctionInput(*LinkedPin, ParameterHandle);
 		}
 
-		UObject* OwnerObj = Owner.Get();
-		UNiagaraSystem* System = Cast<UNiagaraSystem>(OwnerObj);
-		UNiagaraEmitter* Emitter = Cast<UNiagaraEmitter>(OwnerObj);
-		if (System)
-			System->HandleVariableRenamed(FNiagaraVariable(InputType, ParameterName), FNiagaraVariable(InputType, VariableName), true);
-		if (Emitter)
-			Emitter->HandleVariableRenamed(FNiagaraVariable(InputType, ParameterName), FNiagaraVariable(InputType, VariableName), true);
-		
-
 		ParameterName = VariableName;
 		DisplayName = FText::FromName(ParameterName);
 	}
@@ -287,116 +296,6 @@ void UNiagaraStackParameterStoreEntry::ReplaceValueObject(UObject* Obj)
 	GetSystemViewModel()->ResetSystem();
 }
 
-bool UNiagaraStackParameterStoreEntry::TestCanCopyWithMessage(FText& OutMessage) const
-{
-	OutMessage = LOCTEXT("CanCopyMessage", "Copy the value of this user parameter input.");
-	return true;
-}
-
-bool UNiagaraStackParameterStoreEntry::TestCanPasteWithMessage(const UNiagaraClipboardContent* ClipboardContent, FText& OutMessage) const
-{
-	if (ClipboardContent->FunctionInputs.Num() == 0 || GetIsEnabledAndOwnerIsEnabled() == false)
-	{
-		// Empty clipboard, or disabled don't allow paste, but be silent.
-		return false;
-	}
-	if (ClipboardContent->FunctionInputs.Num() > 1)
-	{
-		OutMessage = LOCTEXT("CantPasteMultipleInputs", "Can't paste multiple values onto a single user parameter input.");
-		return false;
-	}
-	const UNiagaraClipboardFunctionInput* ClipboardFunctionInput = ClipboardContent->FunctionInputs[0];
-	if (ClipboardFunctionInput == nullptr)
-	{
-		return false;
-	}
-	if (ClipboardFunctionInput->InputType != InputType)
-	{
-		OutMessage = LOCTEXT("CantPasteIncorrectType", "Cannot paste inputs with mismatched types.");
-		return false;
-	}
-	if (!(ClipboardFunctionInput->ValueMode == ENiagaraClipboardFunctionInputValueMode::Local || ClipboardFunctionInput->ValueMode == ENiagaraClipboardFunctionInputValueMode::Data))
-	{
-		OutMessage = LOCTEXT("CantPasteInvalidValueMode", "Only data interfaces and local values can be pasted here.");
-		return false;
-	}
-	OutMessage = LOCTEXT("PasteMessage", "Paste the input from the clipboard here.");
-	return true;
-}
-
-FText UNiagaraStackParameterStoreEntry::GetPasteTransactionText(const UNiagaraClipboardContent* ClipboardContent) const
-{
-	return LOCTEXT("PasteInputTransactionText", "Paste Niagara user parameter value");
-}
-
-void UNiagaraStackParameterStoreEntry::Copy(UNiagaraClipboardContent* ClipboardContent) const
-{
-	if (const UNiagaraClipboardFunctionInput* ClipboardInput = ToClipboardFunctionInput(ClipboardContent))
-	{
-		ClipboardContent->FunctionInputs.Add(ClipboardInput);
-	}
-}
-
-void UNiagaraStackParameterStoreEntry::Paste(const UNiagaraClipboardContent* ClipboardContent, FText& OutPasteWarning)
-{
-	if (ensureMsgf(ClipboardContent != nullptr && ClipboardContent->FunctionInputs.Num() == 1, TEXT("Clipboard must not be null, and must contain a single input.  Call TestCanPasteWithMessage to validate")))
-	{
-		const UNiagaraClipboardFunctionInput* ClipboardInput = ClipboardContent->FunctionInputs[0];
-		if (ClipboardInput != nullptr && ClipboardInput->InputType == InputType)
-		{
-			SetValueFromClipboardFunctionInput(*ClipboardInput);
-		}
-	}
-}
-
-const UNiagaraClipboardFunctionInput* UNiagaraStackParameterStoreEntry::ToClipboardFunctionInput(UObject* InOuter) const
-{
-	// check for a local value
-	if (InputType.GetClass() == nullptr && LocalValueStruct.IsValid())
-	{
-		TArray<uint8> LocalValueData;
-		LocalValueData.AddUninitialized(InputType.GetSize());
-		FMemory::Memcpy(LocalValueData.GetData(), LocalValueStruct->GetStructMemory(), InputType.GetSize());
-		return UNiagaraClipboardFunctionInput::CreateLocalValue(InOuter, ParameterName, InputType, TOptional<bool>(), LocalValueData);
-	}
-
-	// check for a data interface
-	if (ValueObject.IsValid() && ValueObject->IsA<UNiagaraDataInterface>())
-	{
-		return UNiagaraClipboardFunctionInput::CreateDataValue(InOuter, ParameterName, InputType, TOptional<bool>(), Cast<UNiagaraDataInterface>(ValueObject.Get()));
-	}
-	return nullptr;
-}
-
-void UNiagaraStackParameterStoreEntry::SetValueFromClipboardFunctionInput(const UNiagaraClipboardFunctionInput& ClipboardFunctionInput)
-{
-	if (!ensureMsgf(ClipboardFunctionInput.InputType == InputType, TEXT("Can not set input value from clipboard, input types don't match.")))
-	{
-		return;
-	}
-	switch (ClipboardFunctionInput.ValueMode)
-	{
-	case ENiagaraClipboardFunctionInputValueMode::Local:
-	{
-		FMemory::Memcpy(LocalValueStruct->GetStructMemory(), ClipboardFunctionInput.Local.GetData(), InputType.GetSize());
-		NotifyValueChanged();
-		break;
-	}
-	case ENiagaraClipboardFunctionInputValueMode::Data:
-	{
-		UNiagaraDataInterface* InputDataInterface = Cast<UNiagaraDataInterface>(ValueObject.Get());
-		if (ensureMsgf(InputDataInterface != nullptr && ClipboardFunctionInput.Data != nullptr, TEXT("Data interface paste failed. Check that data can be pasted with TestCanPasteWithMessage() before calling Paste().")))
-		{
-			ClipboardFunctionInput.Data->CopyTo(InputDataInterface);
-			NotifyDataInterfaceChanged();
-		}
-		break;
-	}
-	default:
-		ensureMsgf(false, TEXT("An invalid value mode was used to paste user parameter data. Check that data can be pasted with TestCanPasteWithMessage() before calling Paste()."));
-		break;
-	}
-}
 
 void UNiagaraStackParameterStoreEntry::Delete()
 {
@@ -406,29 +305,19 @@ void UNiagaraStackParameterStoreEntry::Delete()
 	TArray<UEdGraphPin*> OwningPins = GetOwningPins();
 	RemovePins(OwningPins);
 
-	// Cache these here since the entry will be finalized when the owning parameter store changes.
-	TSharedPtr<FNiagaraSystemViewModel> CachedSystemViewModel = GetSystemViewModel();
-	UNiagaraDataInterface* DataInterface = Cast<UNiagaraDataInterface>(ValueObject.Get());
-
 	//remove from store
 	Owner->Modify();
 	ParameterStore->RemoveParameter(FNiagaraVariable(InputType, ParameterName));
-
-	// Update anything that was referencing that parameter
-	UObject* OwnerObj = Owner.Get();
-	UNiagaraSystem* System = Cast<UNiagaraSystem>(OwnerObj);
-	UNiagaraEmitter* Emitter = Cast<UNiagaraEmitter>(OwnerObj);
-	if (System)
-		System->HandleVariableRemoved(FNiagaraVariable(InputType, ParameterName),  true);
-	if (Emitter)
-		Emitter->HandleVariableRemoved(FNiagaraVariable(InputType, ParameterName), true);
-
-
-	// Notify the system view model that the DI has been modifier.
-	if (CachedSystemViewModel.IsValid() && DataInterface != nullptr)
+	if (InputType.IsDataInterface())
 	{
-		CachedSystemViewModel->NotifyDataObjectChanged(DataInterface);
+		UNiagaraDataInterface* DataInterface = NewObject<UNiagaraDataInterface>(this, const_cast<UClass*>(InputType.GetClass()));
+		if (DataInterface != nullptr)
+		{
+			GetSystemViewModel()->NotifyDataObjectChanged(DataInterface);
+		}
 	}
+
+	ParameterDeletedDelegate.Broadcast();
 }
 
 void UNiagaraStackParameterStoreEntry::RemovePins(TArray<UEdGraphPin*> OwningPins /*, bool bSetPreviousValue*/)
@@ -462,8 +351,8 @@ void UNiagaraStackParameterStoreEntry::RemovePins(TArray<UEdGraphPin*> OwningPin
 					UNiagaraDataInterface* CurrentValueDataInterface = Cast<UNiagaraDataInterface>(GetCurrentValueObject());
 					if (CurrentValueDataInterface != nullptr)
 					{
-						UNiagaraDataInterface* OverrideObj;
-						FNiagaraStackGraphUtilities::SetDataValueObjectForFunctionInput(*OverridePin, const_cast<UClass*>(InputType.GetClass()), InputType.GetClass()->GetName(), OverrideObj);
+						UNiagaraDataInterface* OverrideObj = NewObject<UNiagaraDataInterface>(this, const_cast<UClass*>(InputType.GetClass()));
+						FNiagaraStackGraphUtilities::SetDataValueObjectForFunctionInput(*OverridePin, const_cast<UClass*>(InputType.GetClass()), CurrentValueDataInterface->GetName(), OverrideObj);
 						CurrentValueDataInterface->CopyTo(OverrideObj);
 					}
 				}
@@ -480,10 +369,17 @@ UNiagaraStackParameterStoreEntry::FOnValueChanged& UNiagaraStackParameterStoreEn
 	return ValueChangedDelegate;
 }
 
+UNiagaraStackParameterStoreEntry::FOnParameterDeleted& UNiagaraStackParameterStoreEntry::OnParameterDeleted()
+{
+	return ParameterDeletedDelegate;
+}
+
 TSharedPtr<FNiagaraVariable> UNiagaraStackParameterStoreEntry::GetCurrentValueVariable()
 {
 	if (InputType.GetClass() == nullptr)
 	{
+		const UEdGraphSchema_Niagara* NiagaraSchema = GetDefault<UEdGraphSchema_Niagara>();
+		
 		FNiagaraVariable DefaultVariable(InputType, ParameterName);
 		const uint8* Data = ParameterStore->GetParameterData(DefaultVariable);
 		DefaultVariable.SetData(Data);
@@ -509,18 +405,9 @@ UObject* UNiagaraStackParameterStoreEntry::GetCurrentValueObject()
 	return nullptr;
 }
 
-void UNiagaraStackParameterStoreEntry::NotifyDataInterfaceChanged()
-{
-	if (ValueObject.IsValid())
-	{
-		TSharedRef<FNiagaraSystemViewModel> ViewModel = GetSystemViewModel(); 
-		ViewModel->NotifyDataObjectChanged(ValueObject.Get());
-	}
-}
-
 bool UNiagaraStackParameterStoreEntry::IsUniqueName(FString NewName)
 {
-	FString NamespacePrefix = FNiagaraConstants::UserNamespace.ToString() + "."; // correcting name of variable for comparison, all user variables start with "User."
+	FString NamespacePrefix = FNiagaraParameterHandle::UserNamespace.ToString() + "."; // correcting name of variable for comparison, all user variables start with "User."
 	if (!NewName.Contains(NamespacePrefix))
 	{
 		NewName = NamespacePrefix + NewName;

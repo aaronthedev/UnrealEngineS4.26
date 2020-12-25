@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
@@ -7,24 +7,13 @@
 #include "Templates/Casts.h"
 #include "UObject/UnrealType.h"
 
-IMPLEMENT_FIELD(FNumericProperty)
-IMPLEMENT_FIELD(FInt8Property)
-IMPLEMENT_FIELD(FInt16Property)
-IMPLEMENT_FIELD(FIntProperty)
-IMPLEMENT_FIELD(FInt64Property)
-IMPLEMENT_FIELD(FUInt16Property)
-IMPLEMENT_FIELD(FUInt32Property)
-IMPLEMENT_FIELD(FUInt64Property)
-IMPLEMENT_FIELD(FFloatProperty)
-IMPLEMENT_FIELD(FDoubleProperty)
-
-int64 FNumericProperty::ReadEnumAsInt64(FStructuredArchive::FSlot Slot, UStruct* DefaultsStruct, const FPropertyTag& Tag)
+int64 UNumericProperty::ReadEnumAsInt64(FStructuredArchive::FSlot Slot, UStruct* DefaultsStruct, const FPropertyTag& Tag)
 {
-	//@warning: mirrors loading code in FByteProperty::SerializeItem() and FEnumProperty::SerializeItem()
+	//@warning: mirrors loading code in UByteProperty::SerializeItem() and UEnumProperty::SerializeItem()
 	FName EnumName;
 	Slot << EnumName;
 
-	UEnum* Enum = FindUField<UEnum>(dynamic_cast<UClass*>(DefaultsStruct) ? static_cast<UClass*>(DefaultsStruct) : DefaultsStruct->GetTypedOuter<UClass>(), Tag.EnumName);
+	UEnum* Enum = FindField<UEnum>(dynamic_cast<UClass*>(DefaultsStruct) ? static_cast<UClass*>(DefaultsStruct) : DefaultsStruct->GetTypedOuter<UClass>(), Tag.EnumName);
 	if (!Enum)
 	{
 		Enum = FindObject<UEnum>(ANY_PACKAGE, *Tag.EnumName.ToString());
@@ -58,7 +47,7 @@ int64 FNumericProperty::ReadEnumAsInt64(FStructuredArchive::FSlot Slot, UStruct*
 	return Result;
 };
 
-const TCHAR* FNumericProperty::ImportText_Internal( const TCHAR* Buffer, void* Data, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText ) const
+const TCHAR* UNumericProperty::ImportText_Internal( const TCHAR* Buffer, void* Data, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText ) const
 {
 	if ( Buffer != NULL )
 	{
@@ -126,22 +115,22 @@ const TCHAR* FNumericProperty::ImportText_Internal( const TCHAR* Buffer, void* D
 	return Buffer;
 }
 
-void FNumericProperty::ExportTextItem( FString& ValueStr, const void* PropertyValue, const void* DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope ) const
+void UNumericProperty::ExportTextItem( FString& ValueStr, const void* PropertyValue, const void* DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope ) const
 {
 	ValueStr += GetNumericPropertyValueToString(PropertyValue);
 }
 
-bool FNumericProperty::IsFloatingPoint() const
+bool UNumericProperty::IsFloatingPoint() const
 {
 	return false;
 }
 
-bool FNumericProperty::IsInteger() const
+bool UNumericProperty::IsInteger() const
 {
 	return true;
 }
 
-UEnum* FNumericProperty::GetIntPropertyEnum() const
+UEnum* UNumericProperty::GetIntPropertyEnum() const
 {
 	return nullptr;
 }
@@ -151,7 +140,7 @@ UEnum* FNumericProperty::GetIntPropertyEnum() const
 	* @param Data - pointer to property data to set
 	* @param Value - Value to set data to
 **/
-void FNumericProperty::SetIntPropertyValue(void* Data, uint64 Value) const
+void UNumericProperty::SetIntPropertyValue(void* Data, uint64 Value) const
 {
 	check(0);
 }
@@ -161,7 +150,7 @@ void FNumericProperty::SetIntPropertyValue(void* Data, uint64 Value) const
 	* @param Data - pointer to property data to set
 	* @param Value - Value to set data to
 **/
-void FNumericProperty::SetIntPropertyValue(void* Data, int64 Value) const
+void UNumericProperty::SetIntPropertyValue(void* Data, int64 Value) const
 {
 	check(0);
 }
@@ -171,7 +160,7 @@ void FNumericProperty::SetIntPropertyValue(void* Data, int64 Value) const
 	* @param Data - pointer to property data to set
 	* @param Value - Value to set data to
 **/
-void FNumericProperty::SetFloatingPointPropertyValue(void* Data, double Value) const
+void UNumericProperty::SetFloatingPointPropertyValue(void* Data, double Value) const
 {
 	check(0);
 }
@@ -182,7 +171,7 @@ void FNumericProperty::SetFloatingPointPropertyValue(void* Data, double Value) c
 	* @param Value - Value (as a string) to set 
 	* CAUTION: This routine does not do enum name conversion
 **/
-void FNumericProperty::SetNumericPropertyValueFromString(void* Data, TCHAR const* Value) const
+void UNumericProperty::SetNumericPropertyValueFromString(void* Data, TCHAR const* Value) const
 {
 	check(0);
 }
@@ -192,7 +181,7 @@ void FNumericProperty::SetNumericPropertyValueFromString(void* Data, TCHAR const
 	* @param Data - pointer to property data to get
 	* @return Data as a signed int
 **/
-int64 FNumericProperty::GetSignedIntPropertyValue(void const* Data) const
+int64 UNumericProperty::GetSignedIntPropertyValue(void const* Data) const
 {
 	check(0);
 	return 0;
@@ -203,7 +192,7 @@ int64 FNumericProperty::GetSignedIntPropertyValue(void const* Data) const
 	* @param Data - pointer to property data to get
 	* @return Data as an unsigned int
 **/
-uint64 FNumericProperty::GetUnsignedIntPropertyValue(void const* Data) const
+uint64 UNumericProperty::GetUnsignedIntPropertyValue(void const* Data) const
 {
 	check(0);
 	return 0;
@@ -214,7 +203,7 @@ uint64 FNumericProperty::GetUnsignedIntPropertyValue(void const* Data) const
 	* @param Data - pointer to property data to get
 	* @return Data as a double
 **/
-double FNumericProperty::GetFloatingPointPropertyValue(void const* Data) const
+double UNumericProperty::GetFloatingPointPropertyValue(void const* Data) const
 {
 	check(0);
 	return 0.0;
@@ -226,8 +215,13 @@ double FNumericProperty::GetFloatingPointPropertyValue(void const* Data) const
 	* @return Data as a string
 	* CAUTION: This routine does not do enum name conversion
 **/
-FString FNumericProperty::GetNumericPropertyValueToString(void const* Data) const
+FString UNumericProperty::GetNumericPropertyValueToString(void const* Data) const
 {
 	check(0);
 	return FString();
 }
+
+IMPLEMENT_CORE_INTRINSIC_CLASS(UNumericProperty, UProperty,
+{
+}
+);

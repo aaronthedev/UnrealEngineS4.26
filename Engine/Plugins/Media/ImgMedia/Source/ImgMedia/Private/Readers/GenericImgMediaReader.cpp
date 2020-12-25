@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GenericImgMediaReader.h"
 #include "ImgMediaPrivate.h"
@@ -12,7 +12,7 @@
 /* Local helpers
  *****************************************************************************/
 
-TSharedPtr<IImageWrapper> LoadImage(const FString& ImagePath, IImageWrapperModule& ImageWrapperModule, TArray64<uint8>& OutBuffer, FImgMediaFrameInfo& OutInfo)
+TSharedPtr<IImageWrapper> LoadImage(const FString& ImagePath, IImageWrapperModule& ImageWrapperModule, TArray<uint8>& OutBuffer, FImgMediaFrameInfo& OutInfo)
 {
 	// load image into buffer
 	if (!FFileHelper::LoadFileToArray(OutBuffer, *ImagePath))
@@ -62,7 +62,7 @@ TSharedPtr<IImageWrapper> LoadImage(const FString& ImagePath, IImageWrapperModul
 	OutInfo.Dim.Y = ImageWrapper->GetHeight();
 	OutInfo.FrameRate = ImgMedia::DefaultFrameRate;
 	OutInfo.Srgb = true;
-	OutInfo.UncompressedSize = (SIZE_T)OutInfo.Dim.X * OutInfo.Dim.Y * 4;
+	OutInfo.UncompressedSize = OutInfo.Dim.X * OutInfo.Dim.Y * 4;
 
 	return ImageWrapper;
 }
@@ -81,17 +81,17 @@ FGenericImgMediaReader::FGenericImgMediaReader(IImageWrapperModule& InImageWrapp
 
 bool FGenericImgMediaReader::GetFrameInfo(const FString& ImagePath, FImgMediaFrameInfo& OutInfo)
 {
-	TArray64<uint8> InputBuffer;
+	TArray<uint8> InputBuffer;
 	TSharedPtr<IImageWrapper> ImageWrapper = LoadImage(ImagePath, ImageWrapperModule, InputBuffer, OutInfo);
 
 	return ImageWrapper.IsValid();
 }
 
 
-bool FGenericImgMediaReader::ReadFrame(const FString& ImagePath, TSharedPtr<FImgMediaFrame, ESPMode::ThreadSafe> OutFrame, int32 FrameId)
+bool FGenericImgMediaReader::ReadFrame(const FString& ImagePath, FImgMediaFrame& OutFrame)
 {
-	TArray64<uint8> InputBuffer;
-	TSharedPtr<IImageWrapper> ImageWrapper = LoadImage(ImagePath, ImageWrapperModule, InputBuffer, OutFrame->Info);
+	TArray<uint8> InputBuffer;
+	TSharedPtr<IImageWrapper> ImageWrapper = LoadImage(ImagePath, ImageWrapperModule, InputBuffer, OutFrame.Info);
 
 	if (!ImageWrapper.IsValid())
 	{
@@ -99,20 +99,21 @@ bool FGenericImgMediaReader::ReadFrame(const FString& ImagePath, TSharedPtr<FImg
 		return false;
 	}
 
-	TArray64<uint8> RawData;
+	const TArray<uint8>* RawData = nullptr;
+
 	if (!ImageWrapper->GetRaw(ERGBFormat::BGRA, 8, RawData))
 	{
 		UE_LOG(LogImgMedia, Warning, TEXT("FGenericImgMediaReader: Failed to get image data for %s"), *ImagePath);
 		return false;
 	}
 
-	const int64 RawNum = RawData.Num();
+	const int32 RawNum = RawData->Num();
 	void* Buffer = FMemory::Malloc(RawNum);
-	FMemory::Memcpy(Buffer, RawData.GetData(), RawNum);
+	FMemory::Memcpy(Buffer, RawData->GetData(), RawNum);
 
-	OutFrame->Data = MakeShareable(Buffer, [](void* ObjectToDelete) { FMemory::Free(ObjectToDelete); });
-	OutFrame->Format = EMediaTextureSampleFormat::CharBGRA;
-	OutFrame->Stride = OutFrame->Info.Dim.X * 4;
+	OutFrame.Data = MakeShareable(Buffer, [](void* ObjectToDelete) { FMemory::Free(ObjectToDelete); });
+	OutFrame.Format = EMediaTextureSampleFormat::CharBGRA;
+	OutFrame.Stride = OutFrame.Info.Dim.X * 4;
 
 	return true;
 }

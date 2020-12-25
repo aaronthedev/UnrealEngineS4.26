@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -87,14 +87,9 @@ public:
 	}
 #endif //WITH_ENGINE
 
-	virtual IMediaTextureSampleConverter* GetMediaTextureSampleConverter() override
+	virtual FTimespan GetTime() const override
 	{
-		return Frame.GetSampleConverter();
-	}
-
-	virtual FMediaTimeStamp GetTime() const override
-	{
-		return FMediaTimeStamp(Time);
+		return Time;
 	}
 
 	virtual bool IsCacheable() const override

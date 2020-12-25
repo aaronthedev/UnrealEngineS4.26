@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineStoreIOS.h"
 #include "Internationalization/Internationalization.h"
@@ -29,6 +29,15 @@ void FOnlineStoreIOS::InitStoreKit(FStoreKitHelperV2* InStoreKit)
 	FOnProductsRequestResponseDelegate OnProductsRequestResponseDelegate;
 	OnProductsRequestResponseDelegate.BindRaw(this, &FOnlineStoreIOS::OnProductPurchaseRequestResponse);
 	[StoreHelper AddOnProductRequestResponse: OnProductsRequestResponseDelegate];
+
+	// FOnTransactionCompleteIOSDelegate OnTransactionCompleteResponseDelegate = FOnTransactionCompleteIOSDelegate::CreateRaw(this, &FOnlineStoreIOS::OnTransactionCompleteResponse);
+	// [StoreHelper AddOnTransactionComplete: OnTransactionCompleteResponseDelegate];
+	
+	// FOnTransactionRestoredIOSDelegate OnTransactionRestoredDelegate = FOnTransactionRestoredIOSDelegate::CreateRaw(this, &FOnlineStoreIOS::OnTransactionRestored);
+	// [StoreHelper AddOnTransactionRestored: OnTransactionRestoredDelegate];
+	
+	// FOnRestoreTransactionsCompleteIOSDelegate OnRestoreTransactionsCompleteDelegate = FOnRestoreTransactionsCompleteIOSDelegate::CreateRaw(this, &FOnlineStoreIOS::OnRestoreTransactionsComplete);
+	// [StoreHelper AddOnRestoreTransactionsComplete: OnRestoreTransactionsCompleteDelegate];
 }
 
 FOnlineStoreIOS::~FOnlineStoreIOS()

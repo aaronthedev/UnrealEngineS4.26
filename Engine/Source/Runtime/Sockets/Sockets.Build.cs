@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -8,12 +8,9 @@ public class Sockets : ModuleRules
 	{
 		PrivateIncludePaths.Add("Runtime/Sockets/Private");
 
-		PublicIncludePathModuleNames.Add("NetCommon");
-
 		PrivateDependencyModuleNames.AddRange(
 			new string[] {
 				"Core",
-				"NetCommon"
 			});
 
 		PublicDefinitions.Add("SOCKETS_PACKAGE=1");

@@ -73,7 +73,7 @@ void NpCloth::resolveReferences(PxDeserializationContext& context)
 	mCloth.resolveReferences(mClothFabric->getScClothFabric());	
 }
 
-void NpCloth::requiresObjects(PxProcessPxBaseCallback& c)
+void NpCloth::requires(PxProcessPxBaseCallback& c)
 {
 	c.process(*mClothFabric);
 }

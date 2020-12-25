@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EnvironmentQuery/EnvQueryManager.h"
 #include "UObject/UObjectIterator.h"
@@ -116,7 +116,7 @@ UEnvQueryManager::UEnvQueryManager(const FObjectInitializer& ObjectInitializer) 
 
 	QueryCountWarningThreshold = 0;
 	QueryCountWarningInterval = 30.0;
-#if !(UE_BUILD_SHIPPING)
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	LastQueryCountWarningThresholdTime = -FLT_MAX;
 #endif
 
@@ -223,8 +223,6 @@ int32 UEnvQueryManager::RunQuery(const TSharedPtr<FEnvQueryInstance>& QueryInsta
 	QueryInstance->FinishDelegate = FinishDelegate;
 	RunningQueries.Add(QueryInstance);
 
-	UE_LOG(LogEQS, Verbose, TEXT("%s: Query: %s - Owner: %s"), ANSI_TO_TCHAR(__FUNCTION__), *QueryInstance->QueryName, *GetNameSafe(QueryInstance->Owner.Get()));
-
 	return QueryInstance->QueryID;
 }
 
@@ -247,8 +245,6 @@ void UEnvQueryManager::RunInstantQuery(const TSharedPtr<FEnvQueryInstance>& Quer
 	{
 		return;
 	}
-
-	UE_LOG(LogEQS, Verbose, TEXT("%s: Query: %s - Owner: %s"), ANSI_TO_TCHAR(__FUNCTION__), *QueryInstance->QueryName, *GetNameSafe(QueryInstance->Owner.Get()));
 
 	{
 		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(EnvQueryManager);
@@ -280,8 +276,6 @@ void UEnvQueryManager::RemoveAllQueriesByQuerier(const UObject& Querier, bool bE
 			{
 				QueryInstance->MarkAsAborted();
 
-				UE_LOG(LogEQS, Verbose, TEXT("%s: Query: %s - Owner: %s"), ANSI_TO_TCHAR(__FUNCTION__), *QueryInstance->QueryName, *GetNameSafe(QueryInstance->Owner.Get()));
-
 				if (bExecuteFinishDelegate)
 				{
 					QueryInstance->FinishDelegate.ExecuteIfBound(QueryInstance);
@@ -299,9 +293,6 @@ TSharedPtr<FEnvQueryInstance> UEnvQueryManager::PrepareQueryInstance(const FEnvQ
 	TSharedPtr<FEnvQueryInstance> QueryInstance = CreateQueryInstance(Request.QueryTemplate, RunMode);
 	if (!QueryInstance.IsValid())
 	{
-		UE_LOG(LogEQS, Warning, TEXT("Error creating query instance for QueryTemplate: %s - Owner: %s"),
-			Request.QueryTemplate != nullptr ? *Request.QueryTemplate->QueryName.ToString() : TEXT("NONE"),
-			*GetNameSafe(Request.Owner));
 		return NULL;
 	}
 
@@ -329,8 +320,6 @@ bool UEnvQueryManager::AbortQuery(int32 RequestID)
 		if (QueryInstance->QueryID == RequestID &&
 			QueryInstance->IsFinished() == false)
 		{
-			UE_LOG(LogEQS, Verbose, TEXT("%s: Query: %s - Owner: %s"), ANSI_TO_TCHAR(__FUNCTION__), *QueryInstance->QueryName, *GetNameSafe(QueryInstance->Owner.Get()));
-
 			QueryInstance->MarkAsAborted();
 			QueryInstance->FinishDelegate.ExecuteIfBound(QueryInstance);
 			
@@ -352,7 +341,7 @@ void UEnvQueryManager::Tick(float DeltaTime)
 
 	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(EnvQueryManager);
 
-#if !(UE_BUILD_SHIPPING)
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	CheckQueryCount();
 #endif
 
@@ -413,8 +402,6 @@ void UEnvQueryManager::Tick(float DeltaTime)
 						EQSDebugger.StoreStats(*QueryInstancePtr);
 						EQSDebugger.StoreQuery(QueryInstance);
 #endif // USE_EQS_DEBUGGER
-
-						UE_LOG(LogEQS, Verbose, TEXT("%s: Finished Query: %s - Owner: %s"), ANSI_TO_TCHAR(__FUNCTION__), *QueryInstance->QueryName, *GetNameSafe(QueryInstance->Owner.Get()));
 
 						QueryInstancePtr->FinishDelegate.ExecuteIfBound(QueryInstance);
 
@@ -516,7 +503,7 @@ void UEnvQueryManager::Tick(float DeltaTime)
 	}
 }
 
-#if !(UE_BUILD_SHIPPING)
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 void UEnvQueryManager::CheckQueryCount() const
 {
 	if ((QueryCountWarningThreshold > 0) && (RunningQueries.Num() >= QueryCountWarningThreshold))
@@ -525,29 +512,22 @@ void UEnvQueryManager::CheckQueryCount() const
 
 		if ((LastQueryCountWarningThresholdTime < 0.0) || ((LastQueryCountWarningThresholdTime + QueryCountWarningInterval) < CurrentTime))
 		{
-			LogQueryInfo(true /* bDisplayThresholdWarning */);
+			LogQueryCountWarning();
 
 			LastQueryCountWarningThresholdTime = CurrentTime;
 		}
 	}
 }
 
-void UEnvQueryManager::LogQueryInfo(bool bDisplayThresholdWarning) const
+void UEnvQueryManager::LogQueryCountWarning() const
 {
-	if (bDisplayThresholdWarning)
-	{
-		UE_LOG(LogEQS, Warning, TEXT("The number of EQS queries (%d) has reached the warning threshold (%d).  Logging queries."), RunningQueries.Num(), QueryCountWarningThreshold);
-	}
-	else
-	{
-		UE_LOG(LogEQS, Warning, TEXT("The number of EQS queries is (%d).  Logging queries."), RunningQueries.Num());
-	}
+	UE_LOG(LogEQS, Warning, TEXT("The number of EQS queries has reached (%d) the warning threshold (%d).  Logging queries."), RunningQueries.Num(), QueryCountWarningThreshold);
 
 	for (const TSharedPtr<FEnvQueryInstance>& RunningQuery : RunningQueries)
 	{
 		if (RunningQuery.IsValid())
 		{
-			UE_LOG(LogEQS, Warning, TEXT("Query: %s - Owner: %s - %s"), *RunningQuery->QueryName, RunningQuery->Owner.IsValid() ? *RunningQuery->Owner->GetName() : TEXT("Invalid"), *RunningQuery->GetExecutionTimeDescription());
+			UE_LOG(LogEQS, Warning, TEXT("Query: %s - Owner: %s"), *RunningQuery->QueryName, RunningQuery->Owner.IsValid() ? *RunningQuery->Owner->GetName() : TEXT("Invalid"));
 		}
 		else
 		{
@@ -556,13 +536,6 @@ void UEnvQueryManager::LogQueryInfo(bool bDisplayThresholdWarning) const
 	}
 }
 #endif
-
-void UEnvQueryManager::PrintActiveQueryInfo() const
-{
-#if !(UE_BUILD_SHIPPING)
-	LogQueryInfo(false /* bDisplayThresholdWarning */);
-#endif
-}
 
 void UEnvQueryManager::OnWorldCleanup()
 {
@@ -577,7 +550,6 @@ void UEnvQueryManager::OnWorldCleanup()
 			TSharedPtr<FEnvQueryInstance>& QueryInstance = RunningQueriesCopy[Index];
 			if (QueryInstance->IsFinished() == false)
 			{
-				UE_LOG(LogEQS, Verbose, TEXT("Query failed due to world cleanup: Query: %s - Owner: %s"), *QueryInstance->QueryName, *GetNameSafe(QueryInstance->Owner.Get()));
 				QueryInstance->MarkAsFailed();
 				QueryInstance->FinishDelegate.ExecuteIfBound(QueryInstance);
 			}

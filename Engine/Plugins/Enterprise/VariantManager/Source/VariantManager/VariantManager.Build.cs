@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -22,21 +22,16 @@ namespace UnrealBuildTool.Rules
 			PrivateDependencyModuleNames.AddRange(
 				new string[]
 				{
-					"AppFramework", // For color pickers (for color and linear color properties)
-                    "BlueprintGraph", // For function director
-					"DesktopPlatform",
-					"EditorStyle", // For standard styles on most of UI
-					"GraphEditor", // For DragDropOp, might be removed later
-					"InputCore", // For ListView keyboard control
-					"Projects", // So that we can use the IPluginManager, required for our custom style
 					"PropertyEditor",  // For functions that create the property widgets
-					"CinematicCamera",  // So we can check the CineCamera structs exist
-					"SceneOutliner",
-					"Slate",
 					"SlateCore",
+					"Slate",
+					"EditorStyle", // For standard styles on most of UI
+					"InputCore", // For ListView keyboard control
+					"GraphEditor", // For DragDropOp, might be removed later
+                    "BlueprintGraph", // For function director
+					"WorkspaceMenuStructure",
 					"ToolMenus",
 					"VariantManagerContentEditor",
-					"WorkspaceMenuStructure",
 				}
 			);
         }

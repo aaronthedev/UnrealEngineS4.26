@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BlueprintNativeCodeGenUtils.h"
 #include "BlueprintCompilationManager.h"
@@ -423,8 +423,8 @@ void FBlueprintNativeCodeGenUtils::GenerateCppCode(UObject* Obj, TSharedPtr<FStr
 
 		FDisableGatheringDataOnScope DisableFib;
 
-		const FString TempPackageName = FString::Printf(TEXT("%s%s"), *UDynamicClass::GetTempPackagePrefix(), *InBlueprintObj->GetOutermost()->GetPathName());
-		UPackage* TempPackage = CreatePackage( *TempPackageName);
+		const FString TempPackageName = FString::Printf(TEXT("/Temp/__TEMP_BP__%s"), *InBlueprintObj->GetOutermost()->GetPathName());
+		UPackage* TempPackage = CreatePackage(nullptr, *TempPackageName);
 		check(TempPackage);
 		ON_SCOPE_EXIT
 		{

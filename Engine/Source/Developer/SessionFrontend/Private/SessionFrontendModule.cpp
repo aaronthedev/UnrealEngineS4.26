@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
@@ -41,12 +41,12 @@ public:
 
 	virtual void InvokeSessionFrontend(FName SubTabToActivate = NAME_None) override
 	{
-		FGlobalTabmanager::Get()->TryInvokeTab(SessionFrontendTabName);
+		FGlobalTabmanager::Get()->InvokeTab(SessionFrontendTabName);
 		if ( WeakFrontend.IsValid() )
 		{
 			if ( SubTabToActivate != NAME_None )
 			{
-				WeakFrontend.Pin()->GetTabManager()->TryInvokeTab(SubTabToActivate);
+				WeakFrontend.Pin()->GetTabManager()->InvokeTab(SubTabToActivate);
 			}
 		}
 	}

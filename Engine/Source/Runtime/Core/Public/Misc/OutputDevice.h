@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,7 +11,7 @@
 #include "Templates/AndOrNot.h"
 #include "Templates/IsArrayOrRefOfType.h"
 
-#if !PLATFORM_SUPPORTS_COLORIZED_OUTPUT_DEVICE
+#if !PLATFORM_DESKTOP
 	// don't support colorized text on consoles
 	#define SET_WARN_COLOR(Color)
 	#define SET_WARN_COLOR_AND_BACKGROUND(Color, Bkgrnd)
@@ -131,6 +131,14 @@ public:
 	FOutputDevice& operator=(const FOutputDevice&) = default;
 
 	virtual ~FOutputDevice() = default;
+
+	// static helpers
+	UE_DEPRECATED(4.12, "Please use FOutputDeviceHelper::VerbosityToString.")
+	static const TCHAR* VerbosityToString(ELogVerbosity::Type Verbosity);
+
+	UE_DEPRECATED(4.12, "Please use FOutputDeviceHelper::FormatLogLine.")
+	static FString FormatLogLine(ELogVerbosity::Type Verbosity, const FName& Category, const TCHAR* Message = nullptr, ELogTimes::Type LogTime = ELogTimes::None, const double Time = -1.0);
+
 
 	// FOutputDevice interface.
 	virtual void Serialize( const TCHAR* V, ELogVerbosity::Type Verbosity, const FName& Category ) = 0;

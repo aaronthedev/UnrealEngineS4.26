@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,7 +10,6 @@
 #include "DatasmithMaterialInstanceTemplate.generated.h"
 
 struct FStaticParameterSet;
-class UMaterialInterface;
 class UMaterialInstanceConstant;
 class UTexture;
 
@@ -25,8 +24,7 @@ public:
 
 public:
 	void Apply( UMaterialInstanceConstant* Destination, FDatasmithStaticParameterSetTemplate* PreviousTemplate );
-	void Load( const UMaterialInstanceConstant& Source, bool bOverridesOnly = true );
-	void LoadRebase( const UMaterialInstanceConstant& Source, const FDatasmithStaticParameterSetTemplate& ComparedTemplate, const FDatasmithStaticParameterSetTemplate* MergedTemplate);
+	void Load( const UMaterialInstanceConstant& Source );
 	bool Equals( const FDatasmithStaticParameterSetTemplate& Other ) const;
 };
 
@@ -43,9 +41,6 @@ public:
 	virtual UObject* UpdateObject( UObject* Destination, bool bForce = false ) override;
 	virtual void Load( const UObject* Source ) override;
 	virtual bool Equals( const UDatasmithObjectTemplate* Other ) const override;
-	
-	UPROPERTY()
-	TSoftObjectPtr< UMaterialInterface > ParentMaterial;
 
 	UPROPERTY()
 	TMap< FName, float > ScalarParameterValues;
@@ -58,12 +53,4 @@ public:
 
 	UPROPERTY()
 	FDatasmithStaticParameterSetTemplate StaticParameters;
-
-protected:
-	virtual void LoadRebase(const UObject* Source, const UDatasmithObjectTemplate* BaseTemplate, bool bMergeTemplate) override;
-	virtual bool HasSameBase(const UDatasmithObjectTemplate* Other) const override;
-	/**
-	 * Loads all the source object properties into the template, regardless if they are different from the default values or not.
-	**/
-	virtual void LoadAll(const UObject* Source);
 };

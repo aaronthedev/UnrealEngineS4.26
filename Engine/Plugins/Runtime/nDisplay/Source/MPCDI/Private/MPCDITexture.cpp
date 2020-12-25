@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MPCDITexture.h"
 #include "Containers/ResourceArray.h"
@@ -10,41 +10,50 @@
 #include "RHIUtilities.h"
 
 
-class TextureData : public FResourceBulkDataInterface
+namespace
 {
-public:
-	TextureData(const void* InData, uint32_t InDataSize)
-		: Data(InData)
-		, DataSize(InDataSize)
-	{ }
+	class TextureData : public FResourceBulkDataInterface
+	{
+	public:
+		TextureData(const void* InData, uint32_t InDataSize)
+			: Data(InData)
+			, DataSize(InDataSize)
+		{ 
+		}
 
-public:
-	virtual const void* GetResourceBulkData() const
-	{ return Data; }
+	public:
+		virtual const void* GetResourceBulkData() const
+		{ 
+			return Data; 
+		}
 
-	virtual uint32 GetResourceBulkDataSize() const
-	{ return DataSize; }
+		virtual uint32 GetResourceBulkDataSize() const
+		{ 
+			return DataSize; 
+		}
 
-	virtual void Discard()
-	{ }
+		virtual void Discard()
+		{ 
+		}
 
-private:
-	const void* Data;
-	uint32_t    DataSize;
-};
+	private:
+		const void* Data;
+		uint32_t    DataSize;
+	};
 
-FTexture2DRHIRef CreateTexture2D(void* InData, int InWidth, int InHeight, EPixelFormat InPixelFormat)
-{
-	const uint32 DataSize = CalculateImageBytes(InWidth, InHeight, 1, InPixelFormat);
-	TextureData BulkDataInterface(InData, DataSize);
-	FRHIResourceCreateInfo CreateInfo(&BulkDataInterface);
-	return RHICreateTexture2D(InWidth, InHeight, InPixelFormat, 1, 1, TexCreate_ShaderResource, CreateInfo);
+	FTexture2DRHIRef CreateTexture2D(void* InData, int InWidth, int InHeight, EPixelFormat InPixelFormat)
+	{
+		const uint32 DataSize = CalculateImageBytes(InWidth, InHeight, 1, InPixelFormat);
+		TextureData BulkDataInterface(InData, DataSize);
+		FRHIResourceCreateInfo CreateInfo(&BulkDataInterface);
+		return RHICreateTexture2D(InWidth, InHeight, InPixelFormat, 1, 1, TexCreate_ShaderResource, CreateInfo);
+	}
 }
 
 //---------------------------------------------
 // FMPCDITexture
 //---------------------------------------------
-void FMPCDITexture::ReleaseTextureData()
+void MPCDI::FMPCDITexture::ReleaseTextureData()
 {
 	if (Data != nullptr)
 	{
@@ -53,7 +62,7 @@ void FMPCDITexture::ReleaseTextureData()
 	}
 }
 
-void FMPCDITexture::InitRHI()
+void MPCDI::FMPCDITexture::InitRHI()
 {
 	FTexture2DRHIRef Texture2D = CreateTexture2D(Data, Width, Height, PixelFormat);
 	TextureRHI = Texture2D;

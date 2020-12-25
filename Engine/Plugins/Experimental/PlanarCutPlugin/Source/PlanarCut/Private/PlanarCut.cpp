@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "PlanarCut.h"
 #include "PlanarCutPlugin.h"
 
@@ -186,14 +186,14 @@ FPlanarCells::FPlanarCells(const FPlane& P)
 	});
 }
 
-FPlanarCells::FPlanarCells(const TArrayView<const FVector> Sites, FVoronoiDiagram& Voronoi)
+FPlanarCells::FPlanarCells(const TArrayView<const FVector> Sites, FVoronoiDiagram &Voronoi)
 {
 	TArray<FVoronoiCellInfo> VoronoiCells;
 	Voronoi.ComputeAllCells(VoronoiCells);
 
 	AssumeConvexCells = true;
 	NumCells = VoronoiCells.Num();
-	CellFromPosition = TFunction<int32(FVector)>([&Voronoi](FVector Position)
+	CellFromPosition = TFunction<int32(FVector)>([&](FVector Position)
 	{
 		return Voronoi.FindCell(Position);
 	});
@@ -249,12 +249,11 @@ FPlanarCells::FPlanarCells(const TArrayView<const FBox> Boxes)
 {
 	AssumeConvexCells = true;
 	NumCells = Boxes.Num();
-	TArray<FBox> BoxesCopy(Boxes);
-	CellFromPosition = TFunction<int32(FVector)>([BoxesCopy](FVector Position)
+	CellFromPosition = TFunction<int32(FVector)>([&](FVector Position)
 	{
-		for (int32 Idx = 0; Idx < BoxesCopy.Num(); Idx++)
+		for (int32 Idx = 0; Idx < Boxes.Num(); Idx++)
 		{
-			if (BoxesCopy[Idx].IsInsideOrOn(Position))
+			if (Boxes[Idx].IsInsideOrOn(Position))
 			{
 				return Idx;
 			}
@@ -288,12 +287,12 @@ FPlanarCells::FPlanarCells(const TArrayView<const FBox> Boxes)
 	}
 }
 
-FPlanarCells::FPlanarCells(const FBox& Region, const FIntVector& CubesPerAxis)
+FPlanarCells::FPlanarCells(const FBox &Region, const FIntVector& CubesPerAxis)
 {
 	AssumeConvexCells = true;
 	NumCells = CubesPerAxis.X * CubesPerAxis.Y * CubesPerAxis.Z;
 
-	CellFromPosition = TFunction<int32(FVector)>([Region, CubesPerAxis](FVector Position)
+	CellFromPosition = TFunction<int32(FVector)>([&](FVector Position)
 	{
 		if (!Region.IsInsideOrOn(Position))
 		{
@@ -615,7 +614,7 @@ FPlanarCells::FPlanarCells(const FBox &Region, const TArrayView<const FColor> Im
 
 	AssumeConvexCells = false; // todo could set this to true if the 2D shape of each image region is convex
 
-	CellFromPosition = TFunction<int32(FVector)>([Region, PixCells, Width, Height, RegionDiagonal](FVector Position)
+	CellFromPosition = TFunction<int32(FVector)>([=](FVector Position)
 	{
 		if (!Region.IsInsideOrOn(Position))
 		{
@@ -854,10 +853,27 @@ struct OutputCells
 				}
 
 
-				// Set the transform for the child geometry
-				// Note to make it easier to procedurally texture later, it's better to leave it in the same space
-				Output.Transform[TransformIdx] = FTransform::Identity;
-				ChildInverseTransforms.Emplace(FVector::ZeroVector);
+				// Determine the transform for the child geometry -- TODO: actually compute the proper center of mass, set everything up as nicely as possible for physics
+				FVector Centroid(0);
+				float CentroidCount = 0;
+				for (int32 VertexSubIdx = 0; VertexSubIdx < NumVertices; VertexSubIdx++)
+				{
+					int32 CopyVertexIdx = CellVertexMapping[OutputCellIdx][VertexSubIdx];
+					const FGeometryCollection* CopyFromCollection = &Source;
+					if (CopyVertexIdx >= SourceVertexNumWhenCut)
+					{
+						CopyFromCollection = &AddedVertices;
+						CopyVertexIdx -= SourceVertexNumWhenCut;
+					}
+					Centroid += CopyFromCollection->Vertex[CopyVertexIdx];
+					CentroidCount++;
+				}
+				if (CentroidCount > 0)
+				{
+					Centroid /= CentroidCount;
+				}
+				Output.Transform[TransformIdx] = FTransform(FTranslationMatrix(Centroid));
+				ChildInverseTransforms.Emplace(-Centroid);
 
 				GeometrySubIdx++;
 			}
@@ -1230,8 +1246,8 @@ void CutWithPlanarCellsHelper(
 				return false;
 			}
 			int sides[3] = { 0,0,0 };
-			sides[PlaneSide(Plane, (FVector)Box.Min) + 1]++;
-			sides[PlaneSide(Plane, (FVector)Box.Max) + 1]++;
+			sides[PlaneSide(Plane, Box.Min) + 1]++;
+			sides[PlaneSide(Plane, Box.Max) + 1]++;
 			sides[PlaneSide(Plane, FVector(Box.Max.X, Box.Min.Y, Box.Min.Z)) + 1]++;
 			sides[PlaneSide(Plane, FVector(Box.Min.X, Box.Max.Y, Box.Min.Z)) + 1]++;
 			sides[PlaneSide(Plane, FVector(Box.Max.X, Box.Max.Y, Box.Min.Z)) + 1]++;
@@ -1331,7 +1347,7 @@ void CutWithPlanarCellsHelper(
 	// ~~~ PHASE 2: CUT ALL TRIANGLES THAT CROSS PLANAR FACETS ~~~	
 	// Obstacles to making this parallel: CompletedEdgeSplits and AddedVertices are both read and edited from multiple triangles; 
 	//										CellFromPosition for FVoronoiDiagram is not thread safe
-	TMap<TPair<int32, int32>, int32> CompletedEdgeSplits; // for storing edge splits after they have already happened
+	TMap<TPair<int32, int32>, int32> CompletedEdgeSplits; // TODO: maybe use?? for storing edge splits after they have already happened
 	int32 OrigTriNum = Triangles.Num();
 	
 	check(Output.Num() == Cells.NumCells);
@@ -1559,7 +1575,7 @@ void CutWithPlanarCellsHelper(
 		PlaneTriangulationInfo& Triangulation = PlaneTriangulations[PlaneIdx];
 		int32 NumBoundary = BoundaryIndices.Num();
 		FVector PlaneNormal(Plane.X, Plane.Y, Plane.Z);
-		FVector Origin = (FVector)PlaneFrames[PlaneIdx].Origin;
+		FVector Origin = PlaneFrames[PlaneIdx].Origin;
 
 		// check if constrained Delaunay triangulation problem needed for plane (false if no geometry was touching the planar facet)
 		bool bAnyElementsOnPlane = EdgesOnPlane[PlaneIdx].Num() + TrianglesOnPlane[PlaneIdx].Num() > 0;
@@ -1722,44 +1738,28 @@ void CutWithPlanarCellsHelper(
 			if (bNoiseOnPlane)
 			{
 				const FNoiseSettings& Noise = InternalMaterials->NoiseSettings.GetValue();
-				const float MinPointSpacing = .1 * float(ScaleF) * AverageGlobalScaleInv;
+				const float MinPointSpacing = .1;
 				float PointSpacing = FMath::Max(MinPointSpacing, Noise.PointSpacing*float(ScaleF) * AverageGlobalScaleInv);
-
-				// additional safety to avoid asking for hundreds of millions of noise points
-				float Area = (ScaledBounds2D.Max.X - ScaledBounds2D.Min.X) * (ScaledBounds2D.Max.Y - ScaledBounds2D.Min.Y);
-				float ApproxPointsNeeded = Area / (PointSpacing * PointSpacing);
-				float MaxPointsTarget = 100000;
-				if (ApproxPointsNeeded > MaxPointsTarget)
-				{
-					PointSpacing = FMath::Sqrt(Area / MaxPointsTarget);
-					ApproxPointsNeeded = Area / (PointSpacing * PointSpacing);
-				}
 
 				// make a new point hash for blue noise point location queries
 				// this is essentially the same as the point hash in arrangement2d but with cell spacing set based on the point spacing; the arrangement2d one can have a way-too-small point spacing!
 				TPointHashGrid2d<int> NoisePointHash(PointSpacing, -1);
-				auto HasVertexNear = [&NoisePointHash, &Arrangement, PointSpacing](const FVector2d& V, float ScaleFactor = 1.0)
+				auto HasVertexNear = [&](const FVector2d& V)
 				{
-					auto FuncDistSq = [&Arrangement, &V](int B) { return V.DistanceSquared(Arrangement.Graph.GetVertex(B)); };
-					TPair<int, double> NearestPt = NoisePointHash.FindNearestInRadius(V, PointSpacing*ScaleFactor, FuncDistSq);
-					return NearestPt.Key != NoisePointHash.GetInvalidValue();
-				};
-				auto AddNoiseVertex = [&NoisePointHash](int32 ID, const FVector2d& Pos)
-				{
-					NoisePointHash.InsertPointUnsafe(ID, Pos);
+					auto FuncDistSq = [&](int B) { return V.DistanceSquared(Arrangement.Graph.GetVertex(B)); };
+					TPair<int, double> NearestPt = NoisePointHash.FindNearestInRadius(V, PointSpacing*.99, FuncDistSq);
+					return NearestPt.Key != NoisePointHash.InvalidValue();
 				};
 				for (int32 VertIdx = 0; VertIdx < Arrangement.Graph.MaxVertexID(); VertIdx++)
 				{
 					if (Arrangement.Graph.IsVertex(VertIdx))
 					{
-						AddNoiseVertex(VertIdx, Arrangement.Graph.GetVertex(VertIdx));
+						NoisePointHash.InsertPointUnsafe(VertIdx, Arrangement.Graph.GetVertex(VertIdx));
 					}
 				}
 
 				double SpacingSq = PointSpacing*PointSpacing;
-
-				// split the edges, ensuring there is no span on any edge that is not within Spacing dist of a vertex
-				for (int32 EdgeIdx : Arrangement.Graph.EdgeIndices())
+				for (int EdgeIdx : Arrangement.Graph.EdgeIndices())
 				{
 					FDynamicGraph::FEdge Edge = Arrangement.Graph.GetEdge(EdgeIdx);
 					FVector2d A, B;
@@ -1767,15 +1767,15 @@ void CutWithPlanarCellsHelper(
 					Arrangement.Graph.GetEdgeV(EdgeIdx, A, B);
 					FVector2d Diff = B - A;
 					double DSq = Diff.SquaredLength();
-					int32 WantSamples = FMath::Sqrt(DSq / SpacingSq) + 1;
-					if (DSq > SpacingSq)
+					if (DSq > 4*SpacingSq)
 					{
+						int WantSamples = FMath::Sqrt(DSq / SpacingSq);
 						int EdgeToSplit = EdgeIdx;
 						for (int SampleIdx = 1; SampleIdx < WantSamples; SampleIdx++)
 						{
 							double T = double(SampleIdx) / double(WantSamples);
 							FVector2d Pt = A + Diff * T;
-							if (!HasVertexNear(Pt, .499))
+							if (!HasVertexNear(Pt))
 							{
 								bool bTargetAtEnd = Arrangement.Graph.GetEdge(EdgeToSplit).B == Edge.B;
 								FIndex2i NewVertEdge = Arrangement.SplitEdgeAtPoint(EdgeToSplit, Pt);
@@ -1785,12 +1785,12 @@ void CutWithPlanarCellsHelper(
 									EdgeToSplit = NewEdge;
 								}
 								
-								AddNoiseVertex(NewVertEdge.A, Pt);
+								NoisePointHash.InsertPointUnsafe(NewVertEdge.A, Pt);
 							}
 						}
+						
 					}
 				}
-				// insert internal noise points
 				for (double X = ScaledBounds2D.Min.X; X < ScaledBounds2D.Max.X; X += PointSpacing)
 				{
 					for (double Y = ScaledBounds2D.Min.Y; Y < ScaledBounds2D.Max.Y; Y += PointSpacing)
@@ -1800,10 +1800,8 @@ void CutWithPlanarCellsHelper(
 							FVector2d Pt(X + FMath::FRand() * PointSpacing*.5, Y + FMath::FRand() * PointSpacing*.5);
 							if (!HasVertexNear(Pt))
 							{
-								// we shouldn't need to check for overlap with any existing pt/edge b/c of the above edge covering
-								// (and it's much faster not to)
-								int32 PtIdx = Arrangement.InsertNewIsolatedPointUnsafe(Pt);
-								AddNoiseVertex(PtIdx, Pt);
+								int PtIdx = Arrangement.Insert(Pt);
+								NoisePointHash.InsertPointUnsafe(PtIdx, Pt);
 								NoiseVertexIndices.Add(PtIdx);
 								break;
 							}
@@ -1886,7 +1884,7 @@ void CutWithPlanarCellsHelper(
 			ensure(Arrangement.Graph.IsCompact());
 			for (int32 VertIdx = 0; VertIdx < Arrangement.Graph.MaxVertexID(); VertIdx++)
 			{
-				Triangulation.LocalVertices.Add((FVector)PlaneFrames[PlaneIdx].UnProject(Arrangement.Graph.GetVertex(VertIdx)));
+				Triangulation.LocalVertices.Add(PlaneFrames[PlaneIdx].UnProject(Arrangement.Graph.GetVertex(VertIdx)));
 			}
 			
 			for (FIntVector& Face : PlaneTriangulation)
@@ -1917,14 +1915,14 @@ void CutWithPlanarCellsHelper(
 				FVector3d Z = PlaneNormal * Amplitude;
 				for (int32 VertexIdx : NoiseVertexIndices)
 				{
-					FVector2D V = (FVector2D)(Arrangement.Graph.GetVertex(VertexIdx) * Frequency);
+					FVector2D V = Arrangement.Graph.GetVertex(VertexIdx) * Frequency;
 					float NoiseValue = 0;
 					float OctaveScale = 1;
 					for (int32 Octave = 0; Octave < Octaves; Octave++, OctaveScale *= 2)
 					{
 						NoiseValue += FMath::PerlinNoise2D(V * OctaveScale * AverageGlobalScale) / OctaveScale;
 					}
-					Triangulation.LocalVertices[VertexIdx] += (FVector)(Z * NoiseValue * AverageGlobalScaleInv);
+					Triangulation.LocalVertices[VertexIdx] += Z * NoiseValue * AverageGlobalScaleInv;
 				}
 			}
 		}
@@ -1966,8 +1964,8 @@ void CutWithPlanarCellsHelper(
 		if (NumLocalVertices > 0)
 		{
 			Triangulation.LocalUVs.SetNum(NumLocalVertices);
-			FVector FrameX = (FVector)PlaneFrames[PlaneIdx].X;
-			FVector FrameY = (FVector)PlaneFrames[PlaneIdx].Y;
+			FVector FrameX = PlaneFrames[PlaneIdx].X;
+			FVector FrameY = PlaneFrames[PlaneIdx].Y;
 			FVector LocalOrigin = Triangulation.LocalVertices[0];
 			float MinX = FMathf::MaxReal;
 			float MinY = FMathf::MaxReal;
@@ -2066,10 +2064,10 @@ void CutWithPlanarCellsHelper(
 			AddedVerticesCollection.Normal[AddIdx] = PlaneNormal;
 			AddedVerticesCollection.Normal[AddIdx + NumLocalVertices] = -AddedVerticesCollection.Normal[AddIdx];
 
-			AddedVerticesCollection.TangentU[AddIdx] = (FVector)PlaneFrames[PlaneIdx].X;
+			AddedVerticesCollection.TangentU[AddIdx] = PlaneFrames[PlaneIdx].X;
 			AddedVerticesCollection.TangentU[AddIdx + NumLocalVertices] = -AddedVerticesCollection.TangentU[AddIdx];
 
-			AddedVerticesCollection.TangentV[AddIdx] = (FVector)PlaneFrames[PlaneIdx].Y;
+			AddedVerticesCollection.TangentV[AddIdx] = PlaneFrames[PlaneIdx].Y;
 			AddedVerticesCollection.TangentV[AddIdx + NumLocalVertices] = AddedVerticesCollection.TangentV[AddIdx];
 
 			// TODO: also set color?
@@ -2110,13 +2108,13 @@ void TransformPlanes(const FTransform& Transform, const FPlanarCells& Ref, TArra
 	FTransform NormalTransform = Transform;
 	FVector3d ScaleVec(NormalTransform.GetScale3D());
 	double ScaleDetSign = FMathd::SignNonZero(ScaleVec.X) * FMathd::SignNonZero(ScaleVec.Y) * FMathd::SignNonZero(ScaleVec.Z);
-	double ScaleMaxAbs = ScaleVec.MaxAbsElement();
+	double ScaleMaxAbs = ScaleVec.MaxAbs();
 	if (ScaleMaxAbs > DBL_MIN)
 	{
 		ScaleVec /= ScaleMaxAbs;
 	}
 	FVector3d NormalScale(ScaleVec.Y*ScaleVec.Z*ScaleDetSign, ScaleVec.X*ScaleVec.Z*ScaleDetSign, ScaleVec.X*ScaleVec.Y*ScaleDetSign);
-	NormalTransform.SetScale3D((FVector)NormalScale);
+	NormalTransform.SetScale3D(NormalScale);
 	
 	Planes.SetNum(Ref.Planes.Num());
 	for (int32 PlaneIdx = 0, PlanesNum = Planes.Num(); PlaneIdx < PlanesNum; PlaneIdx++)
@@ -2477,7 +2475,7 @@ int32 CutMultipleWithMultiplePlanes(
 									FTransform NbrToLocalTransform = GlobalTransforms[NbrTransformIdx] * GlobalTransforms[ChildTransformIdx].Inverse();
 									auto NbrToLocal = [&](const FVector3d& V)
 									{
-										return FVector3d(NbrToLocalTransform.TransformPosition((FVector)V));
+										return FVector3d(NbrToLocalTransform.TransformPosition(V));
 									};
 									double OutDist;
 									ChildTree->FindNearestTriangles(*NbrTree, NbrToLocal, OutDist, ProximityThresholdDist);
@@ -2515,7 +2513,7 @@ int32 CutMultipleWithMultiplePlanes(
 								FTransform NbrToLocalTransform = GlobalTransforms[NbrTransformIdx] * GlobalTransforms[ChildTransformIdx].Inverse();
 								auto NbrToLocal = [&](const FVector3d& V)
 								{
-									return FVector3d(NbrToLocalTransform.TransformPosition((FVector)V));
+									return FVector3d(NbrToLocalTransform.TransformPosition(V));
 								};
 								double OutDist;
 								ChildTree->FindNearestTriangles(*NbrTree, NbrToLocal, OutDist, ProximityThresholdDist);

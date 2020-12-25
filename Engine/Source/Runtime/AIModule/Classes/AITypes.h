@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -406,8 +406,8 @@ struct AIMODULE_API FAIResourceLock
 	}
 
 private:
-	TArray<uint8> ResourceLockCount;
 	FLockFlags Locks;
+	TArray<uint8> ResourceLockCount;
 	bool bUseResourceLockCount;
 };
 

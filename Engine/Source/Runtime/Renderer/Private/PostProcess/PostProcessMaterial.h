@@ -1,7 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
+#include "PostProcess/RenderingCompositionGraph.h"
 #include "ScreenPass.h"
 #include "OverridePassSequence.h"
 
@@ -36,18 +37,11 @@ enum class EPostProcessMaterialInput : uint32
 };
 
 BEGIN_SHADER_PARAMETER_STRUCT(FPostProcessMaterialParameters, )
-	SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
-	SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureShaderParameters, SceneTextures)
 	SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, PostProcessOutput)
 	SHADER_PARAMETER_STRUCT_ARRAY(FScreenPassTextureInput, PostProcessInput, [kPostProcessMaterialInputCountMax])
 	SHADER_PARAMETER_SAMPLER(SamplerState, PostProcessInput_BilinearSampler)
-	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, MobileCustomStencilTexture)
-	SHADER_PARAMETER_SAMPLER(SamplerState, MobileCustomStencilTextureSampler)
-	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, EyeAdaptationTexture)
-	SHADER_PARAMETER_SRV(Buffer<float4>, EyeAdaptationBuffer)
-	SHADER_PARAMETER(int32, MobileStencilValueRef)
+	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, CustomDepth)
 	SHADER_PARAMETER(uint32, bFlipYAxis)
-	SHADER_PARAMETER(uint32, bMetalMSAAHDRDecode)
 	RENDER_TARGET_BINDING_SLOTS()
 END_SHADER_PARAMETER_STRUCT()
 
@@ -77,14 +71,13 @@ struct FPostProcessMaterialInputs
 		{
 			check(OutputFormat == PF_Unknown);
 		}
-
-		check(SceneTextures.SceneTextures || SceneTextures.MobileSceneTextures);
 	}
 
 	inline void ValidateInputExists(EPostProcessMaterialInput Input) const
 	{
 		const FScreenPassTexture Texture = GetInput(EPostProcessMaterialInput::SceneColor);
-		check(Texture.IsValid());
+		check(Texture.Texture);
+		check(!Texture.ViewRect.IsEmpty());
 	}
 
 	// [Optional] Render to the specified output. If invalid, a new texture is created and returned.
@@ -101,9 +94,6 @@ struct FPostProcessMaterialInputs
 	/** Custom stencil texture used for stencil operations. */
 	FRDGTextureRef CustomDepthTexture = nullptr;
 
-	/** The uniform buffer containing all scene textures. */
-	FSceneTextureShaderParameters SceneTextures;
-
 	/** Performs a vertical axis flip if the RHI allows it. */
 	bool bFlipYAxis = false;
 
@@ -113,8 +103,6 @@ struct FPostProcessMaterialInputs
 	 *  Set this to false when you need to guarantee creation of a dedicated output texture.
 	 */
 	bool bAllowSceneColorInputAsOutput = true;
-
-	bool bMetalMSAAHDRDecode = false;
 };
 
 FScreenPassTexture AddPostProcessMaterialPass(
@@ -136,8 +124,6 @@ struct FHighResolutionScreenshotMaskInputs
 
 	FScreenPassTexture SceneColor;
 
-	FSceneTextureShaderParameters SceneTextures;
-
 	UMaterialInterface* Material = nullptr;
 	UMaterialInterface* MaskMaterial = nullptr;
 	UMaterialInterface* CaptureRegionMaterial = nullptr;
@@ -149,3 +135,21 @@ FScreenPassTexture AddHighResolutionScreenshotMaskPass(
 	FRDGBuilder& GraphBuilder,
 	const FViewInfo& View,
 	const FHighResolutionScreenshotMaskInputs& Inputs);
+
+//////////////////////////////////////////////////////////////////////////
+//! Legacy Composition Graph Methods
+
+FRenderingCompositePass* AddPostProcessMaterialPass(
+	const FPostprocessContext& Context,
+	const UMaterialInterface* MaterialInterface,
+	EPixelFormat OutputFormat = PF_Unknown);
+
+FRenderingCompositeOutputRef AddPostProcessMaterialChain(
+	FPostprocessContext& Context,
+	EBlendableLocation InLocation,
+	FRenderingCompositeOutputRef SeparateTranslucency = FRenderingCompositeOutputRef(),
+	FRenderingCompositeOutputRef PreTonemapHDRColor = FRenderingCompositeOutputRef(),
+	FRenderingCompositeOutputRef PostTonemapHDRColor = FRenderingCompositeOutputRef(),
+	FRenderingCompositeOutputRef PreFlattenVelocity = FRenderingCompositeOutputRef());
+
+void AddHighResScreenshotMask(FPostprocessContext& Context);

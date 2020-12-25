@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -20,9 +20,7 @@ public:
 	 */
 	explicit FSequencerRootNode(FSequencerNodeTree& InParentTree)
 		: FSequencerDisplayNode(NAME_None, InParentTree)
-	{
-		bExpanded = true;
-	}
+	{}
 
 public:
 

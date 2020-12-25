@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -6,12 +6,13 @@ public class AudioModulationEditor : ModuleRules
 {
 	public AudioModulationEditor(ReadOnlyTargetRules Target) : base(Target)
 	{
+		OptimizeCode = CodeOptimization.Never;
+
 		PrivateDependencyModuleNames.AddRange(
 			new string[] {
 				"Core",
 				"CoreUObject",
 				"Engine",
-				"GameProjectGeneration",
 				"UnrealEd",
 				"PropertyEditor",
 				"SequenceRecorder",
@@ -20,10 +21,9 @@ public class AudioModulationEditor : ModuleRules
 				"InputCore",
 				"EditorStyle",
 				"AudioEditor",
-				"AudioExtensions",
 				"AudioModulation",
 				"CurveEditor",
-				"EditorWidgets"
+				"Persona"
 			}
 		);
 

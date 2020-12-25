@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -99,11 +99,11 @@ class UFoliageType : public UObject
 	virtual void SetSource(UObject* InSource) PURE_VIRTUAL(UFoliageType::SetSource, );
 	virtual void UpdateBounds() {}
 	/* Lets subclasses decide if the InstancedFoliageActor should reallocate its instances if the specified property change event occurs */
-	virtual bool IsFoliageReallocationRequiredForPropertyChange(const FProperty* Property) const { return true; }
+	virtual bool IsFoliageReallocationRequiredForPropertyChange(const UProperty* Property) const { return true; }
 
-	virtual void PreEditChange(FProperty* PropertyAboutToChange) override;
+	virtual void PreEditChange(UProperty* PropertyAboutToChange) override;
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
-	virtual bool IsSourcePropertyChange(const FProperty* Property) const { return false; }
+	virtual bool IsSourcePropertyChange(const UProperty* Property) const { return false; }
 
 	/* Notifies all relevant foliage actors that HiddenEditorView mask has been changed */
 	FOLIAGE_API void OnHiddenEditorViewMaskChanged(UWorld* InWorld);
@@ -328,10 +328,6 @@ public:
 	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category=InstanceSettings, meta=(DisplayName = "Render CustomDepth Pass"))
 	uint32 bRenderCustomDepth:1;
 
-	/** Mask used for stencil buffer writes. */
-	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category=InstanceSettings, meta = (editcondition = "bRenderCustomDepth"))
-	ERendererStencilMask CustomDepthStencilWriteMask;
-
 	/** Optionally write this 0-255 value to the stencil buffer in CustomDepth pass (Requires project setting or r.CustomDepth == 3) */
 	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category=InstanceSettings,  meta=(UIMin = "0", UIMax = "255", editcondition = "bRenderCustomDepth", DisplayName = "CustomDepth Stencil Value"))
 	int32 CustomDepthStencilValue;
@@ -449,7 +445,7 @@ public:
 	UPROPERTY(Category = Procedural, EditAnywhere, meta = (Subcategory = "Growth", XAxisName = "Normalized Age", YAxisName = "Scale Factor"))
 	FRuntimeFloatCurve ScaleCurve;
 
-	UPROPERTY(Transient)
+	UPROPERTY()
 	int32 ChangeCount;
 
 public:
@@ -526,20 +522,14 @@ public:
 	UPROPERTY(EditAnywhere, Category=Scalability)
 	uint32 bEnableDensityScaling:1;
 
-	/**
-	* Whether this foliage type should be discarded when CVarFoliageDiscardDataOnLoad is enabled.
-	*/
-	UPROPERTY(EditAnywhere, Category=Scalability)
-	uint32 bEnableDiscardOnLoad:1;
-
 public:
 	// VIRTUAL TEXTURE
 
 	/** 
-	 * Array of runtime virtual textures into which we draw the instances. 
+	 * Array of runtime virtual textures into which we render the instances. 
 	 * The mesh material also needs to be set up to output to a virtual texture. 
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=VirtualTexture, meta = (DisplayName = "Draw in Virtual Textures"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=VirtualTexture, meta = (DisplayName = "Render to Virtual Textures"))
 	TArray<URuntimeVirtualTexture*> RuntimeVirtualTextures;
 
 	/**
@@ -550,8 +540,8 @@ public:
 	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = VirtualTexture, meta = (DisplayName = "Virtual Texture Skip Mips", UIMin = "0", UIMax = "7"))
 	int32 VirtualTextureCullMips = 0;
 
-	/** Controls if this component draws in the main pass as well as in the virtual texture. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = VirtualTexture, meta = (DisplayName = "Draw in Main Pass"))
+	/** Render to the main pass based on the virtual texture settings. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = VirtualTexture, meta = (DisplayName = "Virtual Texture Pass Type"))
 	ERuntimeVirtualTextureMainPassType VirtualTextureRenderPassType = ERuntimeVirtualTextureMainPassType::Exclusive;
 
 private:

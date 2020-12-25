@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,7 +14,7 @@
  *
  * @param SampleType The type of media samples that the sinks process.
  */
-template<typename SampleType, typename SinkType=TMediaSampleSink<SampleType>>
+template<typename SampleType>
 class TMediaSampleSinks
 {
 public:
@@ -25,7 +25,7 @@ public:
 	 * @param SampleSink The sink to add.
 	 * @see Num, Remove
 	 */
-	void Add(const TSharedRef<SinkType, ESPMode::ThreadSafe>& SampleSink)
+	void Add(const TSharedRef<TMediaSampleSink<SampleType>, ESPMode::ThreadSafe>& SampleSink)
 	{
 		Sinks.AddUnique(SampleSink);
 	}
@@ -46,7 +46,7 @@ public:
 
 		for (int32 SinkIndex = Sinks.Num() - 1; SinkIndex >= 0; --SinkIndex)
 		{
-			TSharedPtr<SinkType, ESPMode::ThreadSafe> Sink = Sinks[SinkIndex].Pin();
+			TSharedPtr<TMediaSampleSink<SampleType>, ESPMode::ThreadSafe> Sink = Sinks[SinkIndex].Pin();
 
 			if (Sink.IsValid())
 			{
@@ -79,7 +79,7 @@ public:
 	{
 		for (int32 SinkIndex = Sinks.Num() - 1; SinkIndex >= 0; --SinkIndex)
 		{
-			TSharedPtr<SinkType, ESPMode::ThreadSafe> Sink = Sinks[SinkIndex].Pin();
+			TSharedPtr<TMediaSampleSink<SampleType>, ESPMode::ThreadSafe> Sink = Sinks[SinkIndex].Pin();
 
 			if (Sink.IsValid())
 			{
@@ -109,49 +109,13 @@ public:
 	 * @param SampleSink The sink to remove.
 	 * @see Add, Num
 	 */
-	void Remove(const TSharedRef<SinkType, ESPMode::ThreadSafe>& SampleSink)
+	void Remove(const TSharedRef<TMediaSampleSink<SampleType>, ESPMode::ThreadSafe>& SampleSink)
 	{
 		Sinks.Remove(SampleSink);
 	}
 
-	/**
-	 * Remove any invalid sinks
-	 */
-	void Cleanup()
-	{
-		for (int32 SinkIndex = Sinks.Num() - 1; SinkIndex >= 0; --SinkIndex)
-		{
-			if (!Sinks[SinkIndex].IsValid())
-			{
-				Sinks.RemoveAtSwap(SinkIndex);
-			}
-		}
-	}
-
-protected:
+private:
 
 	/** The collection of registered sinks. */
-	TArray<TWeakPtr<SinkType, ESPMode::ThreadSafe>> Sinks;
+	TArray<TWeakPtr<TMediaSampleSink<SampleType>, ESPMode::ThreadSafe>> Sinks;
 };
-
-typedef TMediaSampleSinks<IMediaTextureSample, FMediaTextureSampleSink> FMediaVideoSampleSinks;
-
-class FMediaAudioSampleSinks : public TMediaSampleSinks<IMediaAudioSample, FMediaAudioSampleSink>
-{
-public:
-	/**
-	 * Get primary audio sink and cleanup any invalid sinks
-	 */
-	TSharedPtr<FMediaAudioSampleSink, ESPMode::ThreadSafe> GetPrimaryAudioSink()
-	{
-		Cleanup();
-		if (Sinks.Num() == 0)
-		{
-			return TSharedPtr<FMediaAudioSampleSink, ESPMode::ThreadSafe>();
-		}
-		return Sinks[0].Pin();
-	}
-};
-
-typedef TMediaSampleSinks<IMediaOverlaySample, FMediaOverlaySampleSink> FMediaOverlaySampleSinks;
-typedef TMediaSampleSinks<IMediaBinarySample, FMediaBinarySampleSink> FMediaBinarySampleSinks;

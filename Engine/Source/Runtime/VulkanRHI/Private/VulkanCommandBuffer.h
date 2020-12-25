@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved..
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved..
 
 /*=============================================================================
 	VulkanCommandBuffer.h: Private Vulkan RHI definitions.
@@ -15,7 +15,6 @@ class FVulkanCommandBufferManager;
 class FVulkanRenderTargetLayout;
 class FVulkanQueue;
 class FVulkanDescriptorPoolSetContainer;
-class FVulkanGPUTiming;
 
 namespace VulkanRHI
 {
@@ -140,7 +139,7 @@ public:
 		return (Timing != nullptr) && (FMath::Abs((int64)FenceSignaledCounter - (int64)LastValidTiming) < 3);
 	}
 
-	void VULKANRHI_API AddWaitSemaphore(VkPipelineStageFlags InWaitFlags, VulkanRHI::FSemaphore* InWaitSemaphore);
+	void AddWaitSemaphore(VkPipelineStageFlags InWaitFlags, VulkanRHI::FSemaphore* InWaitSemaphore);
 
 	void Begin();
 	void End();
@@ -153,7 +152,6 @@ public:
 		HasEnded,
 		Submitted,
 		NotAllocated,
-		NeedReset,
 	};
 
 	VkViewport CurrentViewport;
@@ -168,7 +166,7 @@ public:
 	uint8 bIsUploadOnly					: 1;
 	uint8 bIsUniformBufferBarrierAdded	: 1;
 
-	// You never want to call Begin/EndRenderPass directly as it will mess up the layout manager.
+	// You never want to call Begin/EndRenderPass directly as it will mess up with the FTransitionAndLayoutManager
 	void BeginRenderPass(const FVulkanRenderTargetLayout& Layout, class FVulkanRenderPass* RenderPass, class FVulkanFramebuffer* Framebuffer, const VkClearValue* AttachmentClearValues);
 	void EndRenderPass();
 
@@ -234,7 +232,7 @@ public:
 	TMap<uint32, class FVulkanTypedDescriptorPoolSet*> TypedDescriptorPoolSets;
 
 	friend class FVulkanDynamicRHI;
-	friend class FVulkanLayoutManager;
+	friend class FTransitionAndLayoutManager;
 };
 
 class FVulkanCommandBufferPool
@@ -316,20 +314,7 @@ public:
 
 	VULKANRHI_API void SubmitUploadCmdBuffer(uint32 NumSignalSemaphores = 0, VkSemaphore* SignalSemaphores = nullptr);
 
-	void SubmitActiveCmdBuffer(TArrayView<VulkanRHI::FSemaphore*> SignalSemaphores);
-
-	void SubmitActiveCmdBuffer()
-	{
-		SubmitActiveCmdBuffer(MakeArrayView<VulkanRHI::FSemaphore*>(nullptr, 0));
-	}
-
-	void SubmitActiveCmdBuffer(VulkanRHI::FSemaphore* SignalSemaphore)
-	{
-		SubmitActiveCmdBuffer(MakeArrayView<VulkanRHI::FSemaphore*>(&SignalSemaphore, 1));
-	}
-
-	/** Regular SACB() expects not-ended and would rotate the command buffer immediately, but Present has a special logic */
-	void SubmitActiveCmdBufferFromPresent(VulkanRHI::FSemaphore* SignalSemaphore = nullptr);
+	void SubmitActiveCmdBuffer(VulkanRHI::FSemaphore* SignalSemaphore = nullptr);
 
 	void WaitForCmdBuffer(FVulkanCmdBuffer* CmdBuffer, float TimeInSecondsToWait = 10.0f);
 
@@ -367,16 +352,4 @@ private:
 	FVulkanCmdBuffer* ActiveCmdBuffer;
 	FVulkanCmdBuffer* UploadCmdBuffer;
 	TArray<FQueryPoolReset> PoolResets;
-
-	/** This semaphore is used to prevent overlaps between the (current) graphics cmdbuf and next upload cmdbuf. */
-	VulkanRHI::FSemaphore* ActiveCmdBufferSemaphore;
-
-	/** Holds semaphores associated with the recent upload cmdbuf(s) - waiting to be added to the next graphics cmdbuf as WaitSemaphores. */
-	TArray<VulkanRHI::FSemaphore*> RenderingCompletedSemaphores;
-	
-	/** This semaphore is used to prevent overlaps between (current) upload cmdbuf and next graphics cmdbuf. */
-	VulkanRHI::FSemaphore* UploadCmdBufferSemaphore;
-	
-	/** Holds semaphores associated with the recent upload cmdbuf(s) - waiting to be added to the next graphics cmdbuf as WaitSemaphores. */
-	TArray<VulkanRHI::FSemaphore*> UploadCompletedSemaphores;
 };

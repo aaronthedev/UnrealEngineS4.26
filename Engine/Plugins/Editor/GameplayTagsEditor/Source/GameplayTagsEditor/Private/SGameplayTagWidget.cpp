@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SGameplayTagWidget.h"
 #include "Misc/ConfigCacheIni.h"
@@ -8,7 +8,7 @@
 #include "Widgets/Images/SImage.h"
 #include "EditorStyleSet.h"
 #include "Widgets/SWindow.h"
-#include "Misc/MessageDialog.h"
+#include "Dialogs/Dialogs.h"
 #include "GameplayTagsModule.h"
 #include "ScopedTransaction.h"
 #include "Textures/SlateIcon.h"
@@ -314,41 +314,36 @@ void SGameplayTagWidget::OnFilterTextChanged( const FText& InFilterText )
 {
 	FilterString = InFilterText.ToString();	
 
-	FilterTagTree();
-}
-
-void SGameplayTagWidget::FilterTagTree()
-{
-	if (FilterString.IsEmpty())
+	if( FilterString.IsEmpty() )
 	{
-		TagTreeWidget->SetTreeItemsSource(&TagItems);
+		TagTreeWidget->SetTreeItemsSource( &TagItems );
 
-		for (int32 iItem = 0; iItem < TagItems.Num(); ++iItem)
+		for( int32 iItem = 0; iItem < TagItems.Num(); ++iItem )
 		{
-			SetDefaultTagNodeItemExpansion(TagItems[iItem]);
+			SetDefaultTagNodeItemExpansion( TagItems[iItem] );
 		}
 	}
 	else
 	{
 		FilteredTagItems.Empty();
 
-		for (int32 iItem = 0; iItem < TagItems.Num(); ++iItem)
+		for( int32 iItem = 0; iItem < TagItems.Num(); ++iItem )
 		{
-			if (FilterChildrenCheck(TagItems[iItem]))
+			if( FilterChildrenCheck( TagItems[iItem] ) )
 			{
-				FilteredTagItems.Add(TagItems[iItem]);
-				SetTagNodeItemExpansion(TagItems[iItem], true);
+				FilteredTagItems.Add( TagItems[iItem] );
+				SetTagNodeItemExpansion( TagItems[iItem], true );
 			}
 			else
 			{
-				SetTagNodeItemExpansion(TagItems[iItem], false);
+				SetTagNodeItemExpansion( TagItems[iItem], false );
 			}
 		}
 
-		TagTreeWidget->SetTreeItemsSource(&FilteredTagItems);
+		TagTreeWidget->SetTreeItemsSource( &FilteredTagItems );	
 	}
-
-	TagTreeWidget->RequestTreeRefresh();
+		
+	TagTreeWidget->RequestTreeRefresh();	
 }
 
 bool SGameplayTagWidget::FilterChildrenCheck( TSharedPtr<FGameplayTagNode> InItem )
@@ -1075,8 +1070,7 @@ void SGameplayTagWidget::VerifyAssetTagValidity()
 				FFormatNamedArguments Arguments;
 				Arguments.Add(TEXT("Objects"), FText::FromString( InvalidTagNames ));
 				FText DialogText = FText::Format( LOCTEXT("GameplayTagWidget_InvalidTags", "Invalid Tags that have been removed: \n\n{Objects}"), Arguments );
-				FText DialogTitle = LOCTEXT("GameplayTagWidget_Warning", "Warning");
-				FMessageDialog::Open( EAppMsgType::Ok, DialogText, &DialogTitle );
+				OpenMsgDlgInt( EAppMsgType::Ok, DialogText, LOCTEXT("GameplayTagWidget_Warning", "Warning") );
 			}
 		}
 	}
@@ -1084,48 +1078,11 @@ void SGameplayTagWidget::VerifyAssetTagValidity()
 
 void SGameplayTagWidget::LoadSettings()
 {
-	MigrateSettings();
-
 	TArray< TSharedPtr<FGameplayTagNode> > TagArray;
 	UGameplayTagsManager::Get().GetFilteredGameplayRootTags(TEXT(""), TagArray);
 	for (int32 TagIdx = 0; TagIdx < TagArray.Num(); ++TagIdx)
 	{
 		LoadTagNodeItemExpansion(TagArray[TagIdx] );
-	}
-}
-
-const FString& SGameplayTagWidget::GetGameplayTagsEditorStateIni()
-{
-	static FString Filename;
-
-	if (Filename.Len() == 0)
-	{
-		Filename = FString::Printf(TEXT("%s%s/GameplayTagsEditorState.ini"), *FPaths::GeneratedConfigDir(), ANSI_TO_TCHAR(FPlatformProperties::PlatformName()));
-		FPaths::MakeStandardFilename(Filename);
-	}
-
-	return Filename;
-}
-
-void SGameplayTagWidget::MigrateSettings()
-{
-	if (FConfigSection* EditorPerProjectIniSection = GConfig->GetSectionPrivate(*SettingsIniSection, /*Force=*/false, /*Const=*/true, GEditorPerProjectIni))
-	{
-		if (EditorPerProjectIniSection->Num() > 0)
-		{
-			FConfigSection* DestinationSection = GConfig->GetSectionPrivate(*SettingsIniSection, /*Force=*/true, /*Const=*/false, GetGameplayTagsEditorStateIni());
-
-			DestinationSection->Reserve(DestinationSection->Num() + EditorPerProjectIniSection->Num());
-			for (const auto& It : *EditorPerProjectIniSection)
-			{
-				DestinationSection->FindOrAdd(It.Key, It.Value);
-			}
-
-			GConfig->Flush(false, GetGameplayTagsEditorStateIni());
-		}
-
-		GConfig->EmptySection(*SettingsIniSection, GEditorPerProjectIni);
-		GConfig->Flush(false, GEditorPerProjectIni);
 	}
 }
 
@@ -1155,7 +1112,7 @@ void SGameplayTagWidget::LoadTagNodeItemExpansion( TSharedPtr<FGameplayTagNode> 
 	{
 		bool bExpanded = false;
 
-		if( GConfig->GetBool(*SettingsIniSection, *(TagContainerName + Node->GetCompleteTagString() + TEXT(".Expanded")), bExpanded, GetGameplayTagsEditorStateIni()) )
+		if( GConfig->GetBool(*SettingsIniSection, *(TagContainerName + Node->GetCompleteTagString() + TEXT(".Expanded")), bExpanded, GEditorPerProjectIni) )
 		{
 			TagTreeWidget->SetItemExpansion( Node, bExpanded );
 		}
@@ -1175,7 +1132,7 @@ void SGameplayTagWidget::LoadTagNodeItemExpansion( TSharedPtr<FGameplayTagNode> 
 void SGameplayTagWidget::OnExpansionChanged( TSharedPtr<FGameplayTagNode> InItem, bool bIsExpanded )
 {
 	// Save the new expansion setting to ini file
-	GConfig->SetBool(*SettingsIniSection, *(TagContainerName + InItem->GetCompleteTagString() + TEXT(".Expanded")), bIsExpanded, GetGameplayTagsEditorStateIni());
+	GConfig->SetBool(*SettingsIniSection, *(TagContainerName + InItem->GetCompleteTagString() + TEXT(".Expanded")), bIsExpanded, GEditorPerProjectIni);
 }
 
 void SGameplayTagWidget::SetContainer(FGameplayTagContainer* OriginalContainer, FGameplayTagContainer* EditedContainer, UObject* OwnerObj)
@@ -1255,7 +1212,7 @@ void SGameplayTagWidget::RefreshTags()
 		}
 	}
 
-	FilterTagTree();
+	TagTreeWidget->SetTreeItemsSource(&TagItems);
 }
 
 EVisibility SGameplayTagWidget::DetermineExpandableUIVisibility() const

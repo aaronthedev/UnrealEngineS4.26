@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TakeRecorderLevelSequenceSource.h"
 #include "TakesCoreLog.h"
@@ -58,7 +58,7 @@ void UTakeRecorderLevelSequenceSource::StartRecording(const FTimecode& InSection
 		if (ActorToTrigger->SequencePlayer)
 		{
 			ActorToTrigger->SequencePlayer->SetDisableCameraCuts(true);
-			ActorToTrigger->SequencePlayer->SetPlaybackPosition(FMovieSceneSequencePlaybackParams(ActorToTrigger->SequencePlayer->GetStartTime().Time, EUpdatePositionMethod::Jump));
+			ActorToTrigger->SequencePlayer->JumpToFrame(ActorToTrigger->SequencePlayer->GetStartTime().Time.FrameNumber);
 			ActorToTrigger->SequencePlayer->Play();
 		}
 		else

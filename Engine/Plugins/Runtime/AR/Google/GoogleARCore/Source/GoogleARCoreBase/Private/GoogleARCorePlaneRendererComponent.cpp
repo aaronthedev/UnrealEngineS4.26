@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GoogleARCorePlaneRendererComponent.h"
 #include "ARBlueprintLibrary.h"
@@ -7,7 +7,7 @@
 #include "DrawDebugHelpers.h"
 #include "Templates/Casts.h"
 
-UDEPRECATED_GoogleARCorePlaneRendererComponent::UDEPRECATED_GoogleARCorePlaneRendererComponent()
+UGoogleARCorePlaneRendererComponent::UGoogleARCorePlaneRendererComponent()
 	: bRenderPlane(true)
 	, bRenderBoundaryPolygon(true)
 	, PlaneColor(FColor::Green)
@@ -21,12 +21,12 @@ UDEPRECATED_GoogleARCorePlaneRendererComponent::UDEPRECATED_GoogleARCorePlaneRen
 	PlaneIndices[3] = 0; PlaneIndices[4] = 2; PlaneIndices[5] = 3;
 }
 
-void UDEPRECATED_GoogleARCorePlaneRendererComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction * ThisTickFunction)
+void UGoogleARCorePlaneRendererComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction * ThisTickFunction)
 {
 	DrawPlanes();
 }
 
-void UDEPRECATED_GoogleARCorePlaneRendererComponent::DrawPlanes()
+void UGoogleARCorePlaneRendererComponent::DrawPlanes()
 {
 	UWorld* World = GetWorld();
 	if (UARBlueprintLibrary::GetTrackingQuality() == EARTrackingQuality::OrientationAndPosition)

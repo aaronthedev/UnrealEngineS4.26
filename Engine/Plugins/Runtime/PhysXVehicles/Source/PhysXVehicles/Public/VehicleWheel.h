@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*
  * Component to handle the vehicle simulation for an actor
@@ -34,7 +34,6 @@ enum EWheelSweepType
 	Complex	UMETA(DisplayName="Complex")	
 };
 
-class UE_DEPRECATED(4.26, "PhysX is deprecated. Use the UChaosVehicleWheel from the ChaosVehiclePhysics Plugin.") UVehicleWheel;
 UCLASS(BlueprintType, Blueprintable)
 class PHYSXVEHICLES_API UVehicleWheel : public UObject
 {

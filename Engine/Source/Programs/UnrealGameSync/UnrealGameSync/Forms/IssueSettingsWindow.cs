@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -16,22 +16,11 @@ namespace UnrealGameSync
 	{
 		UserSettings Settings;
 
-		public IssueSettingsWindow(UserSettings Settings, string CurrentProject)
+		public IssueSettingsWindow(UserSettings Settings)
 		{
 			this.Settings = Settings;
 
 			InitializeComponent();
-
-			if (Settings.NotifyProjects.Count == 0)
-			{
-				NotifyProjectsCheckBox.Checked = false;
-				NotifyProjectsTextBox.Text = CurrentProject;
-			}
-			else
-			{
-				NotifyProjectsCheckBox.Checked = true;
-				NotifyProjectsTextBox.Text = String.Join(" ", Settings.NotifyProjects);
-			}
 
 			if(Settings.NotifyUnassignedMinutes < 0)
 			{
@@ -71,15 +60,9 @@ namespace UnrealGameSync
 
 		private void UpdateEnabledTextBoxes()
 		{
-			NotifyProjectsTextBox.Enabled = NotifyProjectsCheckBox.Checked;
 			NotifyUnassignedTextBox.Enabled = NotifyUnassignedCheckBox.Checked;
 			NotifyUnacknowledgedTextBox.Enabled = NotifyUnacknowledgedCheckBox.Checked;
 			NotifyUnresolvedTextBox.Enabled = NotifyUnresolvedCheckBox.Checked;
-		}
-
-		private void NotifyProjectsCheckBox_CheckedChanged(object sender, EventArgs e)
-		{
-			UpdateEnabledTextBoxes();
 		}
 
 		private void NotifyUnassignedCheckBox_CheckedChanged(object sender, EventArgs e)
@@ -99,12 +82,6 @@ namespace UnrealGameSync
 
 		private void OkBtn_Click(object sender, EventArgs e)
 		{
-			List<string> NewNotifyProjects = new List<string>();
-			if (NotifyProjectsCheckBox.Checked)
-			{
-				NewNotifyProjects.AddRange(NotifyProjectsTextBox.Text.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
-			}
-
 			int NewNotifyUnresolvedMinutes = -1;
 			if(NotifyUnresolvedCheckBox.Checked)
 			{
@@ -141,13 +118,12 @@ namespace UnrealGameSync
 				NewNotifyUnassignedMinutes = NewNotifyUnassignedMinutesValue;
 			}
 
-			Settings.NotifyProjects = NewNotifyProjects;
 			Settings.NotifyUnresolvedMinutes = NewNotifyUnresolvedMinutes;
 			Settings.NotifyUnacknowledgedMinutes = NewNotifyUnacknowledgedMinutes;
 			Settings.NotifyUnassignedMinutes = NewNotifyUnassignedMinutes;
 			Settings.Save();
 
-			DialogResult = DialogResult.OK;
+			DialogResult = DialogResult.Cancel;
 			Close();
 		}
 

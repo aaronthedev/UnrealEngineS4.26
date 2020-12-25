@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,8 +12,6 @@ class USpringArmComponent;
 class UTextRenderComponent;
 class UInputComponent;
 class UAudioComponent;
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 UCLASS(config=Game)
 class ATP_VehicleAdvPawn : public AWheeledVehicle
@@ -147,5 +145,3 @@ public:
 	/** Returns EngineSoundComponent subobject **/
 	FORCEINLINE UAudioComponent* GetEngineSoundComponent() const { return EngineSoundComponent; }
 };
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

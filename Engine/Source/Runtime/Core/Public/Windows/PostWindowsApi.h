@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // Re-enable warnings
 THIRD_PARTY_INCLUDES_END
@@ -49,7 +49,7 @@ THIRD_PARTY_INCLUDES_END
 #undef GetTempFileName
 
 // Undefine all the atomics. AllowWindowsPlatformAtomics/HideWindowsPlatformAtomics temporarily defining these macros.
-#if PLATFORM_WINDOWS || PLATFORM_HOLOLENS
+#if !PLATFORM_XBOXONE
 	#undef InterlockedIncrement
 	#undef InterlockedDecrement
 	#undef InterlockedAdd

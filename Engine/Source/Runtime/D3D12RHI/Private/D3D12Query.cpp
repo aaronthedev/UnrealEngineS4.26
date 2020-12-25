@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	D3D12Query.cpp: D3D query RHI implementation.
@@ -28,16 +28,6 @@ namespace D3D12RHI
 			TEXT("If true, enable a dummy outer occlusion query around occlusion query batches. Can help performance on some GPU architectures"),
 			ECVF_Default
 		);
-		
-#if D3D12_SUBMISSION_GAP_RECORDER
-		int32 GAdjustRenderQueryTimestamps = 1;
-		static FAutoConsoleVariableRef CVarAdjustRenderQueryTimestamps(
-			TEXT("D3D12.AdjustRenderQueryTimestamps"),
-			GAdjustRenderQueryTimestamps,
-			TEXT("If true, this adjusts render query timings to remove gaps between command list submissions\n"),
-			ECVF_Default
-		);
-#endif
 	}
 }
 using namespace D3D12RHI;
@@ -54,41 +44,33 @@ FRenderQueryRHIRef FD3D12DynamicRHI::RHICreateRenderQuery(ERenderQueryType Query
 	});
 }
 
-bool FD3D12DynamicRHI::RHIGetRenderQueryResult(FRHIRenderQuery* QueryRHI, uint64& OutResult, bool bWait, uint32 QueryGPUIndex)
+bool FD3D12DynamicRHI::RHIGetRenderQueryResult(FRHIRenderQuery* QueryRHI, uint64& OutResult, bool bWait)
 {
 	check(IsInRenderingThread());
 	FD3D12Adapter& Adapter = GetAdapter();
 
+	// Multi-GPU support: might need to support per-GPU results eventually.
 	// First generate the GPU node mask for of the latest queries.
 	FRHIGPUMask RelevantNodeMask = FRHIGPUMask::GPU0();
 	if (GNumExplicitGPUsForRendering > 1)
 	{
-		// If we're not getting results for a specific GPU, use the GPU(s) whose query
-		// submitted most recently.
-		if (QueryGPUIndex == INDEX_NONE)
+		uint32 LatestTimestamp = 0;
+		for (FD3D12RenderQuery* Query = FD3D12DynamicRHI::ResourceCast(QueryRHI); Query; Query = Query->GetNextObject())
 		{
-			uint32 LatestTimestamp = 0;
-			for (FD3D12RenderQuery& Query : *FD3D12DynamicRHI::ResourceCast(QueryRHI))
+			if (Query->Timestamp > LatestTimestamp)
 			{
-				if (Query.Timestamp > LatestTimestamp)
-				{
-					RelevantNodeMask = Query.GetParentDevice()->GetGPUMask();
-					LatestTimestamp = Query.Timestamp;
-				}
-				else if (Query.Timestamp == LatestTimestamp)
-				{
-					RelevantNodeMask |= Query.GetParentDevice()->GetGPUMask();
-				}
+				RelevantNodeMask = Query->GetParentDevice()->GetGPUMask();
+				LatestTimestamp = Query->Timestamp;
 			}
-
-			if (LatestTimestamp == 0)
+			else if (Query->Timestamp == LatestTimestamp)
 			{
-				return false;
-			}
+				RelevantNodeMask |= Query->GetParentDevice()->GetGPUMask();
+			}			
 		}
-		else
+
+		if (LatestTimestamp == 0)
 		{
-			RelevantNodeMask = FRHIGPUMask::FromIndex(QueryGPUIndex);
+			return false;
 		}
 	}
 
@@ -121,20 +103,10 @@ bool FD3D12DynamicRHI::RHIGetRenderQueryResult(FRHIRenderQuery* QueryRHI, uint64
 		if (Query->Type == RQT_AbsoluteTime)
 		{
 			// GetTimingFrequency is the number of ticks per second
-			uint64 Div = FMath::Max(1llu, FGPUTiming::GetTimingFrequency(GPUIndex) / (1000 * 1000));
+			uint64 Div = FMath::Max(1llu, FGPUTiming::GetTimingFrequency() / (1000 * 1000));
 
-#if D3D12_SUBMISSION_GAP_RECORDER
-			if (RHIConsoleVariables::GAdjustRenderQueryTimestamps)
-			{
-				OutResult = FMath::Max<uint64>(Adapter.SubmissionGapRecorder.AdjustTimestampForSubmissionGaps(Query->FrameSubmitted, Query->Result) / Div, OutResult);
-				
-			}
-			else
-#endif
-			{
-				OutResult = FMath::Max<uint64>(Query->Result / Div, OutResult);
-			}
-
+			// convert from GPU specific timestamp to micro sec (1 / 1 000 000 s) which seems a reasonable resolution
+			OutResult = FMath::Max<uint64>(Query->Result / Div, OutResult);
 			bSuccess = true;
 		}
 		else
@@ -172,9 +144,6 @@ bool FD3D12Device::GetQueryData(FD3D12RenderQuery& Query, bool bWait)
 			check(IsInRenderingThread());
 			FScopedRHIThreadStaller StallRHIThread(FRHICommandListExecutor::GetImmediateCommandList());
 			GetDefaultCommandContext().FlushCommands();	// Don't wait yet, since we're stalling the RHI thread.
-
-			// We have to make sure all command lists have actually flush and executed here
-			CommandListManager->WaitOnExecuteTask();
 		}
 
 		SyncPoint.WaitForCompletion();
@@ -240,8 +209,8 @@ FD3D12QueryHeap::FD3D12QueryHeap(FD3D12Device* InParent, const D3D12_QUERY_TYPE 
 	, LastAllocatedElement(InQueryHeapCount - 1)
 	, QueryType(InQueryType)
 	, QueryHeapCount(InQueryHeapCount)
-	, ActiveQueryHeap(nullptr)
-	, ActiveResultBuffer(nullptr)
+	, QueryHeap(nullptr)
+	, ResultBuffer(nullptr)
 {
 	check(QueryType == D3D12_QUERY_TYPE_OCCLUSION || QueryType == D3D12_QUERY_TYPE_TIMESTAMP);
 
@@ -263,7 +232,7 @@ void FD3D12QueryHeap::Init()
 
 void FD3D12QueryHeap::Destroy()
 {
-	DestroyQueryHeap();
+	DestroyQueryHeap(false);
 }
 
 uint32 FD3D12QueryHeap::GetNextElement(uint32 InElement)
@@ -313,19 +282,19 @@ uint32 FD3D12QueryHeap::AllocQuery(FD3D12CommandContext& CmdContext)
 			check(CurrentQueryBatch.bOpen && CurrentQueryBatch.ElementCount == 0);
 		}
 
-		if (CurrentQueryBatch.StartElement > CurrentElement)
-		{
-			// We're in the middle of a batch, but we're at the end of the heap
-			// We need to split the batch in two and resolve the first piece
-			EndQueryBatchAndResolveQueryData(CmdContext);
+	if (CurrentQueryBatch.StartElement > CurrentElement)
+	{
+		// We're in the middle of a batch, but we're at the end of the heap
+		// We need to split the batch in two and resolve the first piece
+		EndQueryBatchAndResolveQueryData(CmdContext);
 		}
 
 		// check for the the batch being closed due to wrap and open a new one
 		if (!CurrentQueryBatch.bOpen)
 		{
 			StartQueryBatch(CmdContext, 256);
-			check(CurrentQueryBatch.bOpen && CurrentQueryBatch.ElementCount == 0);
-		}
+		check(CurrentQueryBatch.bOpen && CurrentQueryBatch.ElementCount == 0);
+	}
 	}
 
 	// Increment the count for the current batch
@@ -340,28 +309,30 @@ void FD3D12QueryHeap::StartQueryBatch(FD3D12CommandContext& CmdContext, uint32 N
 {
 	check(!CurrentQueryBatch.bOpen);
 
-	// Clear the current batch
-	CurrentQueryBatch.Clear();
 
-	if (ActiveAllocatedElementCount + NumQueriesInBatch > QueryHeapCount)
+	if (!CurrentQueryBatch.bOpen)
 	{
-		DestroyQueryHeap();
+		// Clear the current batch
+		CurrentQueryBatch.Clear();
 
-		QueryHeapCount = Align(NumQueriesInBatch + QueryHeapCount, 65536 / ResultSize);
+		if (ActiveAllocatedElementCount + NumQueriesInBatch > QueryHeapCount)
+		{
+			DestroyQueryHeap(true);
 
-		CreateQueryHeap();
+			QueryHeapCount = Align(NumQueriesInBatch + QueryHeapCount, 65536 / ResultSize);
 
-		UE_LOG(LogD3D12RHI, Display, TEXT("QueryHeapCount is now %d elements"), QueryHeapCount);
+			CreateQueryHeap();
 
-		ActiveAllocatedElementCount = 0;
-		LastAllocatedElement = QueryHeapCount - 1;
+			UE_LOG(LogD3D12RHI, Display, TEXT("QueryHeapCount is now %d elements"), QueryHeapCount);
+
+			ActiveAllocatedElementCount = 0;
+			LastAllocatedElement = QueryHeapCount - 1;
+		}
+
+		// Start a new batch
+		CurrentQueryBatch.StartElement = GetNextElement(LastAllocatedElement);
+		CurrentQueryBatch.bOpen = true;
 	}
-
-	// Start a new batch
-	CurrentQueryBatch.StartElement = GetNextElement(LastAllocatedElement);
-	CurrentQueryBatch.UsedQueryHeap = ActiveQueryHeap;
-	CurrentQueryBatch.UsedResultBuffer = ActiveResultBuffer;
-	CurrentQueryBatch.bOpen = true;
 }
 
 void FD3D12QueryHeap::EndQueryBatchAndResolveQueryData(FD3D12CommandContext& CmdContext)
@@ -391,43 +362,38 @@ void FD3D12QueryHeap::EndQueryBatchAndResolveQueryData(FD3D12CommandContext& Cmd
 	// Track the current active batches (application is using the data)
 	LastBatch = GetNextBatchElement(LastBatch);
 	ActiveQueryBatches[LastBatch] = CurrentQueryBatch;
-	
-	// Update the active element count if still part of this query heap
+
+	// Update the head
 	QueryBatch& OldestBatch = ActiveQueryBatches[GetNextBatchElement(LastBatch)];
-	if (OldestBatch.UsedQueryHeap == ActiveQueryHeap)
-	{
-		check(ActiveAllocatedElementCount >= OldestBatch.ElementCount);
-		ActiveAllocatedElementCount -= OldestBatch.ElementCount;
-	}
+	ActiveAllocatedElementCount -= OldestBatch.ElementCount;
 
 	CmdContext.otherWorkCounter++;
 	if (CurrentQueryBatch.StartElement + CurrentQueryBatch.ElementCount <= QueryHeapCount)
 	{
 		// Single range
-		CmdContext.CommandListHandle->ResolveQueryData(
-			ActiveQueryHeap, QueryType, CurrentQueryBatch.StartElement, CurrentQueryBatch.ElementCount,
-			ActiveResultBuffer->GetResource(), GetResultBufferOffsetForElement(CurrentQueryBatch.StartElement));
+	CmdContext.CommandListHandle->ResolveQueryData(
+		QueryHeap, QueryType, CurrentQueryBatch.StartElement, CurrentQueryBatch.ElementCount,
+		ResultBuffer->GetResource(), GetResultBufferOffsetForElement(CurrentQueryBatch.StartElement));
 	}
 	else
 	{
 		// Wrapping around heap border, need two resolves for end of heap and beginning of new range
 		CmdContext.CommandListHandle->ResolveQueryData(
-			ActiveQueryHeap, QueryType, CurrentQueryBatch.StartElement, QueryHeapCount - CurrentQueryBatch.StartElement,
-			ActiveResultBuffer->GetResource(), GetResultBufferOffsetForElement(CurrentQueryBatch.StartElement));
+			QueryHeap, QueryType, CurrentQueryBatch.StartElement, QueryHeapCount - CurrentQueryBatch.StartElement,
+			ResultBuffer->GetResource(), GetResultBufferOffsetForElement(CurrentQueryBatch.StartElement));
 		CmdContext.CommandListHandle->ResolveQueryData(
-			ActiveQueryHeap, QueryType, 0, CurrentQueryBatch.ElementCount - (QueryHeapCount - CurrentQueryBatch.StartElement),
-			ActiveResultBuffer->GetResource(), 0);
+			QueryHeap, QueryType, 0, CurrentQueryBatch.ElementCount - (QueryHeapCount - CurrentQueryBatch.StartElement),
+			ResultBuffer->GetResource(), 0);
 	}
 
-	CmdContext.CommandListHandle.UpdateResidency(&ActiveQueryHeapResidencyHandle);
-	CmdContext.CommandListHandle.UpdateResidency(ActiveResultBuffer);
+	CmdContext.CommandListHandle.UpdateResidency(&QueryHeapResidencyHandle);
+	CmdContext.CommandListHandle.UpdateResidency(ResultBuffer);
 
 	// For each render query used in this batch, update the command list
-	// so we know what sync point to wait for. The query's data isn't ready to read until the above ResolveQueryData completes on the GPU.	
-	check(CurrentQueryBatch.UsedResultBuffer == ActiveResultBuffer);
+	// so we know what sync point to wait for. The query's data isn't ready to read until the above ResolveQueryData completes on the GPU.
 	for (int32 i = 0; i < CurrentQueryBatch.RenderQueries.Num(); i++)
 	{
-		CurrentQueryBatch.RenderQueries[i]->MarkResolved(CmdContext.CommandListHandle, ActiveResultBuffer);
+		CurrentQueryBatch.RenderQueries[i]->MarkResolved(CmdContext.CommandListHandle, ResultBuffer);
 	}
 }
 
@@ -440,9 +406,9 @@ void FD3D12QueryHeap::BeginQuery(FD3D12CommandContext& CmdContext, FD3D12RenderQ
 	RenderQuery->HeapIndex = AllocQuery(CmdContext);
 
 	CmdContext.otherWorkCounter++;
-	CmdContext.CommandListHandle->BeginQuery(ActiveQueryHeap, QueryType, RenderQuery->HeapIndex);
+	CmdContext.CommandListHandle->BeginQuery(QueryHeap, QueryType, RenderQuery->HeapIndex);
 
-	CmdContext.CommandListHandle.UpdateResidency(&ActiveQueryHeapResidencyHandle);
+	CmdContext.CommandListHandle.UpdateResidency(&QueryHeapResidencyHandle);
 }
 
 void FD3D12QueryHeap::EndQuery(FD3D12CommandContext& CmdContext, FD3D12RenderQuery* RenderQuery)
@@ -451,27 +417,18 @@ void FD3D12QueryHeap::EndQuery(FD3D12CommandContext& CmdContext, FD3D12RenderQue
 
 	if (QueryType == D3D12_QUERY_TYPE_OCCLUSION)
 	{
-		check(CurrentQueryBatch.bOpen);
+	check(CurrentQueryBatch.bOpen);
 	}
 	else
 	{
 		RenderQuery->Reset();
-		FD3D12Adapter* Adapter = nullptr;
-		if (GetParentDevice())
-		{
-			Adapter = GetParentDevice()->GetParentAdapter();
-			if (Adapter)
-			{
-				RenderQuery->FrameSubmitted = Adapter->GetFrameCount();
-			}
-		}
 		RenderQuery->HeapIndex = AllocQuery(CmdContext);
 	}
 
 	CmdContext.otherWorkCounter++;
-	CmdContext.CommandListHandle->EndQuery(ActiveQueryHeap, QueryType, RenderQuery->HeapIndex);
+	CmdContext.CommandListHandle->EndQuery(QueryHeap, QueryType, RenderQuery->HeapIndex);
 
-	CmdContext.CommandListHandle.UpdateResidency(&ActiveQueryHeapResidencyHandle);
+	CmdContext.CommandListHandle.UpdateResidency(&QueryHeapResidencyHandle);
 
 	// Track which render queries are used in this batch.
 	CurrentQueryBatch.RenderQueries.Push(RenderQuery);
@@ -486,12 +443,12 @@ void FD3D12QueryHeap::CreateQueryHeap()
 	QueryHeapDesc.NodeMask = GetGPUMask().GetNative();
 
 	// Create the upload heap
-	VERIFYD3D12RESULT(GetParentDevice()->GetDevice()->CreateQueryHeap(&QueryHeapDesc, IID_PPV_ARGS(ActiveQueryHeap.GetInitReference())));
-	SetName(ActiveQueryHeap, L"Query Heap");
+	VERIFYD3D12RESULT(GetParentDevice()->GetDevice()->CreateQueryHeap(&QueryHeapDesc, IID_PPV_ARGS(&QueryHeap)));
+	SetName(QueryHeap, L"Query Heap");
 
 #if ENABLE_RESIDENCY_MANAGEMENT
-	D3DX12Residency::Initialize(ActiveQueryHeapResidencyHandle, ActiveQueryHeap, ResultSize * QueryHeapDesc.Count);
-	D3DX12Residency::BeginTrackingObject(GetParentDevice()->GetResidencyManager(), ActiveQueryHeapResidencyHandle);
+	D3DX12Residency::Initialize(QueryHeapResidencyHandle, QueryHeap, ResultSize * QueryHeapDesc.Count);
+	D3DX12Residency::BeginTrackingObject(GetParentDevice()->GetResidencyManager(), QueryHeapResidencyHandle);
 #endif
 
 	FD3D12Adapter* Adapter = GetParentDevice()->GetParentAdapter();
@@ -506,42 +463,63 @@ void FD3D12QueryHeap::CreateQueryHeap()
 		ResultBufferHeapProperties,
 		D3D12_RESOURCE_STATE_COPY_DEST,
 		nullptr,
-		ActiveResultBuffer.GetInitReference(),
+		&ResultBuffer,
 		TEXT("Query Heap Result Buffer")));
 }
 
-void FD3D12QueryHeap::DestroyQueryHeap()
+void FD3D12QueryHeap::DestroyQueryHeap(bool bDeferDelete)
 {
 #if ENABLE_RESIDENCY_MANAGEMENT
-	if (D3DX12Residency::IsInitialized(ActiveQueryHeapResidencyHandle))
+	if (D3DX12Residency::IsInitialized(QueryHeapResidencyHandle))
 	{
-		D3DX12Residency::EndTrackingObject(GetParentDevice()->GetResidencyManager(), ActiveQueryHeapResidencyHandle);
-		ActiveQueryHeapResidencyHandle = {};
+		D3DX12Residency::EndTrackingObject(GetParentDevice()->GetResidencyManager(), QueryHeapResidencyHandle);
+		QueryHeapResidencyHandle = {};
 	}
 #endif
-
-	ActiveQueryHeap = nullptr;
-	ActiveResultBuffer = nullptr;
+	if (QueryHeap)
+	{
+		if (bDeferDelete)
+		{
+			FD3D12Fence& Fence = GetParentDevice()->GetCommandListManager().GetFence();
+			GetParentDevice()->GetParentAdapter()->GetDeferredDeletionQueue().EnqueueResource(QueryHeap, &Fence);
+		}
+		else
+		{
+			QueryHeap->Release();
+		}
+		QueryHeap = nullptr;
+	}
+	if (ResultBuffer)
+	{
+		if (bDeferDelete)
+		{
+			ResultBuffer->DeferDelete();
+		}
+		else
+		{
+			ResultBuffer->Release();
+		}
+		ResultBuffer = nullptr;
+	}
 }
 
 /*=============================================================================
 * class FD3D12LinearQueryHeap
 *=============================================================================*/
 
-FD3D12LinearQueryHeap::FD3D12LinearQueryHeap(FD3D12Device* InParent, D3D12_QUERY_HEAP_TYPE InHeapType, int32 InChunkSize)
+FD3D12LinearQueryHeap::FD3D12LinearQueryHeap(FD3D12Device* InParent, D3D12_QUERY_HEAP_TYPE InHeapType, int32 GrowCount)
 	: FD3D12DeviceChild(InParent)
 	, FD3D12SingleNodeGPUObject(InParent->GetGPUMask())
 	, QueryHeapType(InHeapType)
 	, QueryType(HeapTypeToQueryType(InHeapType))
-	, ChunkSize(InChunkSize)
-	, SlotToHeapIdxShift(FPlatformMath::CountBits(ChunkSize - 1))
-	, HeadSlot(0)
-	, TailSlot(0)
-	, MaxNumQueries(0)
+	, GrowNumQueries(GrowCount)
+	, SlotToHeapIdxShift(FPlatformMath::CountBits(GrowCount - 1))
 	, HeapState(HS_Open)
-	, NextToken(0)
+	, NextFreeIdx(0)
+	, CurMaxNumQueries(0)
+	, NextChunkIdx(0)
 {
-	check(ChunkSize > 0 && !(ChunkSize & (ChunkSize - 1)));
+	check(GrowCount > 0 && !(GrowCount & (GrowCount - 1)));
 }
 
 FD3D12LinearQueryHeap::~FD3D12LinearQueryHeap()
@@ -553,7 +531,7 @@ int32 FD3D12LinearQueryHeap::BeginQuery(FD3D12CommandListHandle CmdListHandle)
 {
 	const int32 SlotIdx = AllocateQueryHeapSlot();
 	const int32 HeapIdx = SlotIdx >> SlotToHeapIdxShift;
-	const int32 Offset = SlotIdx & (ChunkSize - 1);
+	const int32 Offset = SlotIdx & (GrowNumQueries - 1);
 
 	FChunk& Chunk = AllocatedChunks[HeapIdx];
 	CmdListHandle->BeginQuery(Chunk.QueryHeap, QueryType, Offset);
@@ -563,14 +541,14 @@ int32 FD3D12LinearQueryHeap::BeginQuery(FD3D12CommandListHandle CmdListHandle)
 	{
 		++Context->otherWorkCounter;
 	}
-	return SlotIdx - TailSlot;
+	return SlotIdx;
 }
 
 int32 FD3D12LinearQueryHeap::EndQuery(FD3D12CommandListHandle CmdListHandle)
 {
 	const int32 SlotIdx = AllocateQueryHeapSlot();
 	const int32 HeapIdx = SlotIdx >> SlotToHeapIdxShift;
-	const int32 Offset = SlotIdx & (ChunkSize - 1);
+	const int32 Offset = SlotIdx & (GrowNumQueries - 1);
 
 	FChunk& Chunk = AllocatedChunks[HeapIdx];
 	CmdListHandle->EndQuery(Chunk.QueryHeap, QueryType, Offset);
@@ -580,137 +558,57 @@ int32 FD3D12LinearQueryHeap::EndQuery(FD3D12CommandListHandle CmdListHandle)
 	{
 		++Context->otherWorkCounter;
 	}
-	return SlotIdx - TailSlot;
+	return SlotIdx;
 }
 
-uint64 FD3D12LinearQueryHeap::ResolveAndGetResults(TArray<uint64>& QueryResults, uint64 Token, bool bWait)
+void FD3D12LinearQueryHeap::Reset()
+{
+	HeapState = HS_Open;
+	NextFreeIdx = 0;
+}
+
+void FD3D12LinearQueryHeap::FlushAndGetResults(TArray<uint64>& QueryResults, bool bReleaseResources)
 {
 	HeapState = HS_Closed;
 	
-	if (!bWait)
-	{
-		GetQueryBatchResults(QueryResults, Token);
-	}
+	int32 NumActiveQueries = NextFreeIdx;
+	const uint64 ResultBuffSize = ResultSize * NumActiveQueries;
+	TRefCountPtr<FD3D12Resource> ResultBuff;
+	CreateResultBuffer(ResultBuffSize, ResultBuff.GetInitReference());
 
 	FD3D12CommandContext& Context = GetParentDevice()->GetDefaultCommandContext();
-	const int32 LocalHead = HeadSlot.Load(EMemoryOrder::Relaxed);
-	const int32 NumActiveQueries = LocalHead - TailSlot;
-	uint64 NewToken = INDEX_NONE;
-
-	if (NumActiveQueries > 0)
+	++Context.otherWorkCounter;
+	const int32 NumHeaps = (NumActiveQueries + GrowNumQueries - 1) >> SlotToHeapIdxShift;
+	for (int32 HeapIdx = 0; HeapIdx < NumHeaps; ++HeapIdx)
 	{
-		const uint64 ResultBuffSize = ResultSize * NumActiveQueries;
-		TRefCountPtr<FD3D12Resource> ResultBuff;
-		CreateResultBuffer(ResultBuffSize, ResultBuff.GetInitReference());
-
-		++Context.otherWorkCounter;
-		const int32 StartHeapIdx = TailSlot >> SlotToHeapIdxShift;
-		const int32 EndHeapIdx = (LocalHead - 1) >> SlotToHeapIdxShift;
-
-		for (int32 HeapIdx = StartHeapIdx; HeapIdx <= EndHeapIdx; ++HeapIdx)
-		{
-			const int32 HeapStart = HeapIdx << SlotToHeapIdxShift;
-			const int32 Offset = FMath::Max(HeapStart, TailSlot) - HeapStart;
-			const int32 NumQueries = FMath::Min((HeapIdx + 1) << SlotToHeapIdxShift, LocalHead) - (HeapStart + Offset);
-			check(NumQueries <= ChunkSize);
-			FChunk& Chunk = AllocatedChunks[HeapIdx];
-			Context.CommandListHandle->ResolveQueryData(Chunk.QueryHeap, QueryType, Offset, NumQueries, ResultBuff->GetResource(), ResultSize * (HeapStart + Offset - TailSlot));
-			Context.CommandListHandle.UpdateResidency(&Chunk.QueryHeapResidencyHandle);
-			Context.CommandListHandle.UpdateResidency(ResultBuff);
-		}
-
-		NewToken = StoreQueryBatch(Context.CommandListHandle, ResultBuff, TailSlot, NumActiveQueries);
-		TailSlot = LocalHead;
+		const int32 NumQueriesInHeap = FMath::Min(NumActiveQueries, GrowNumQueries);
+		NumActiveQueries -= GrowNumQueries;
+		FChunk& Chunk = AllocatedChunks[HeapIdx];
+		Context.CommandListHandle->ResolveQueryData(
+			Chunk.QueryHeap,
+			QueryType,
+			0,
+			NumQueriesInHeap,
+			ResultBuff->GetResource(),
+			ResultSize * HeapIdx * GrowNumQueries);
+		Context.CommandListHandle.UpdateResidency(&Chunk.QueryHeapResidencyHandle);
+		Context.CommandListHandle.UpdateResidency(ResultBuff);
 	}
 
-	if (bWait && NewToken != INDEX_NONE)
+	Context.FlushCommands(true);
+	const int32 NumResults = NextFreeIdx;
+	QueryResults.Empty(NumResults);
+	QueryResults.AddUninitialized(NumResults);
+	void* MappedResult;
+	VERIFYD3D12RESULT(ResultBuff->GetResource()->Map(0, nullptr, &MappedResult));
+	FMemory::Memcpy(QueryResults.GetData(), MappedResult, ResultBuffSize);
+	ResultBuff->GetResource()->Unmap(0, nullptr);
+
+	if (bReleaseResources)
 	{
-		Context.FlushCommands(true);
-		GetQueryBatchResults(QueryResults, NewToken);
-		NewToken = INDEX_NONE;
+		ReleaseResources();
 	}
-
-	HeapState = HS_Open;
-	return NewToken;
-}
-
-uint64 FD3D12LinearQueryHeap::StoreQueryBatch(FD3D12CommandListHandle Handle, TRefCountPtr<FD3D12Resource> ResultBuffer, int32 Offset, int32 NumResults)
-{
-	FQueryBatch& QueryBatch = PendingQueryBatches[PendingQueryBatches.AddDefaulted()];
-	QueryBatch.Handle = Handle;
-	QueryBatch.RBuffer = ResultBuffer;
-	QueryBatch.StoredCLGeneration = Handle.CurrentGeneration();
-	QueryBatch.Token = NextToken++;
-	QueryBatch.Offset = Offset;
-	QueryBatch.NResults = NumResults;
-
-	UE_LOG(LogD3D12GapRecorder, VeryVerbose, TEXT("Storing Query NumResults %d"), QueryBatch.NResults);
-	return QueryBatch.Token;
-}
-
-void FD3D12LinearQueryHeap::GetQueryBatchResults(TArray<uint64>& QueryResults, uint64 Token)
-{
-	FQueryBatch* QueryBatch = nullptr;
-	for (int32 Idx = 0; Idx < PendingQueryBatches.Num(); ++Idx)
-	{
-		if (PendingQueryBatches[Idx].Token == Token)
-		{
-			QueryBatch = &PendingQueryBatches[Idx];
-			break;
-		}
-	}
-
-	if (QueryBatch)
-	{
-		if (!QueryBatch->Handle.IsComplete(QueryBatch->StoredCLGeneration))
-		{
-			QueryBatch->Handle.WaitForCompletion(QueryBatch->StoredCLGeneration);
-		}
-
-		const uint64 ResultBuffSize = ResultSize * QueryBatch->NResults;
-		QueryResults.Empty(QueryBatch->NResults);
-		QueryResults.AddUninitialized(QueryBatch->NResults);
-
-		UE_LOG(LogD3D12GapRecorder, VeryVerbose, TEXT("Result Buffer NResults %lu Buffer Size %lu"), QueryBatch->NResults, ResultBuffSize);
-
-		void* MappedResult = nullptr;
-		VERIFYD3D12RESULT(QueryBatch->RBuffer->GetResource()->Map(0, nullptr, &MappedResult));
-		FMemory::Memcpy(QueryResults.GetData(), MappedResult, ResultBuffSize);
-
-		UE_LOG(LogD3D12GapRecorder, VeryVerbose, TEXT("Query Results Length %d"), QueryResults.Num());
-
-		QueryBatch->RBuffer->GetResource()->Unmap(0, nullptr);
-
-		int32 TmpSlot = 0;
-		for (int32 Idx = PendingQueryBatches.Num() - 1; Idx >= 0; --Idx)
-		{
-			const FQueryBatch& Batch = PendingQueryBatches[Idx];
-			if (Batch.Token <= Token)
-			{
-				TmpSlot = FMath::Max(TmpSlot, Batch.Offset + Batch.NResults);
-				PendingQueryBatches.RemoveAt(Idx);
-			}
-		}
-
-		const int32 TmpHeapIdx = TmpSlot >> SlotToHeapIdxShift;
-		if (TmpHeapIdx > 0)
-		{
-			const int32 NumActiveChunks = AllocatedChunks.Num() - TmpHeapIdx;
-			TArray<TAlignedBytes<sizeof(FChunk), 1>, TInlineAllocator<1>> TmpStorage;
-			TmpStorage.AddUninitialized(TmpHeapIdx);
-			FMemory::Memcpy(TmpStorage.GetData(), AllocatedChunks.GetData(), TmpHeapIdx * sizeof(FChunk));
-			FMemory::Memmove(AllocatedChunks.GetData(), AllocatedChunks.GetData() + TmpHeapIdx, NumActiveChunks * sizeof(FChunk));
-			FMemory::Memcpy(AllocatedChunks.GetData() + NumActiveChunks, TmpStorage.GetData(), TmpHeapIdx * sizeof(FChunk));
-
-			const int32 Offset = TmpHeapIdx << SlotToHeapIdxShift;
-			TailSlot -= Offset;
-			HeadSlot -= Offset;
-			for (int32 Idx = 0; Idx < PendingQueryBatches.Num(); ++Idx)
-			{
-				PendingQueryBatches[Idx].Offset -= Offset;
-			}
-		}
-	}
+	Reset();
 }
 
 D3D12_QUERY_TYPE FD3D12LinearQueryHeap::HeapTypeToQueryType(D3D12_QUERY_HEAP_TYPE HeapType)
@@ -730,12 +628,12 @@ D3D12_QUERY_TYPE FD3D12LinearQueryHeap::HeapTypeToQueryType(D3D12_QUERY_HEAP_TYP
 int32 FD3D12LinearQueryHeap::AllocateQueryHeapSlot()
 {
 	check(HeapState == HS_Open);
-	const int32 SlotIdx = HeadSlot++;
+	const int32 SlotIdx = FPlatformAtomics::InterlockedIncrement(&NextFreeIdx) - 1;
 
-	if (SlotIdx >= MaxNumQueries)
+	if (SlotIdx >= CurMaxNumQueries)
 	{
 		FScopeLock Lock(&CS);
-		while (SlotIdx >= MaxNumQueries)
+		while (SlotIdx >= CurMaxNumQueries)
 		{
 			Grow();
 		}
@@ -745,9 +643,11 @@ int32 FD3D12LinearQueryHeap::AllocateQueryHeapSlot()
 
 void FD3D12LinearQueryHeap::Grow()
 {
-	FChunk& NewChunk = AllocatedChunks[AllocatedChunks.AddDefaulted()];
-	CreateQueryHeap(ChunkSize, NewChunk.QueryHeap.GetInitReference(), NewChunk.QueryHeapResidencyHandle);
-	MaxNumQueries += ChunkSize;
+	const int32 ChunkIdx = NextChunkIdx++;
+	checkf(ChunkIdx < MaxNumChunks, TEXT("Running out of chunks, consider increase MaxNumChunks or GrowNumQueries"));
+	FChunk& NewChunk = AllocatedChunks[ChunkIdx];
+	CreateQueryHeap(GrowNumQueries, NewChunk.QueryHeap.GetInitReference(), NewChunk.QueryHeapResidencyHandle);
+	CurMaxNumQueries += GrowNumQueries;
 }
 
 void FD3D12LinearQueryHeap::CreateQueryHeap(int32 NumQueries, ID3D12QueryHeap** OutHeap, FD3D12ResidencyHandle& OutResidencyHandle)
@@ -784,7 +684,8 @@ void FD3D12LinearQueryHeap::CreateResultBuffer(uint64 SizeInBytes, FD3D12Resourc
 void FD3D12LinearQueryHeap::ReleaseResources()
 {
 #if ENABLE_RESIDENCY_MANAGEMENT
-	for (int32 Idx = 0; Idx < AllocatedChunks.Num(); ++Idx)
+	const int32 NumChunks = NextChunkIdx;
+	for (int32 Idx = 0; Idx < NumChunks; ++Idx)
 	{
 		FChunk& Chunk = AllocatedChunks[Idx];
 		if (D3DX12Residency::IsInitialized(Chunk.QueryHeapResidencyHandle))
@@ -794,6 +695,8 @@ void FD3D12LinearQueryHeap::ReleaseResources()
 		}
 	}
 #endif
+	NextChunkIdx = 0;
+	CurMaxNumQueries = 0;
 }
 
 /*=============================================================================
@@ -806,8 +709,8 @@ void FD3D12LinearQueryHeap::ReleaseResources()
   * @param InD3DRHI			RHI interface
   * @param InBufferSize		Number of buffered measurements
   */
-FD3D12BufferedGPUTiming::FD3D12BufferedGPUTiming(FD3D12Device* InParent, int32 InBufferSize)
-	: FD3D12DeviceChild(InParent)
+FD3D12BufferedGPUTiming::FD3D12BufferedGPUTiming(FD3D12Adapter* InParent, int32 InBufferSize)
+	: FD3D12AdapterChild(InParent)
 	, BufferSize(InBufferSize)
 	, CurrentTimestamp(-1)
 	, NumIssuedTimestamps(0)
@@ -832,14 +735,12 @@ void FD3D12BufferedGPUTiming::PlatformStaticInitialize(void* UserData)
 
 void FD3D12BufferedGPUTiming::CalibrateTimers(FD3D12Adapter* ParentAdapter)
 {
-	for (uint32 GPUIndex : FRHIGPUMask::All())
-	{
-		uint64 TimingFrequency = 0;
-		VERIFYD3D12RESULT(ParentAdapter->GetDevice(GPUIndex)->GetCommandListManager().GetTimestampFrequency(&TimingFrequency));
-		SetTimingFrequency(TimingFrequency, GPUIndex);
-		FGPUTimingCalibrationTimestamp CalibrationTimestamp = ParentAdapter->GetDevice(GPUIndex)->GetCommandListManager().GetCalibrationTimestamp();
-		SetCalibrationTimestamp(CalibrationTimestamp, GPUIndex);
-	}
+	// Multi-GPU support : GPU timing only profile GPU0 currently.
+	const uint32 GPUIndex = 0;
+
+	GTimingFrequency = 0;
+	VERIFYD3D12RESULT(ParentAdapter->GetDevice(GPUIndex)->GetCommandListManager().GetTimestampFrequency(&GTimingFrequency));
+	GCalibrationTimestamp = ParentAdapter->GetDevice(GPUIndex)->GetCommandListManager().GetCalibrationTimestamp();
 }
 
 void FD3D12DynamicRHI::RHICalibrateTimers()
@@ -857,18 +758,11 @@ void FD3D12DynamicRHI::RHICalibrateTimers()
  */
 void FD3D12BufferedGPUTiming::InitDynamicRHI()
 {
-	FD3D12Device* Device = GetParentDevice();
-	FD3D12Adapter* Adapter = Device->GetParentAdapter();
-	ID3D12Device* D3DDevice = Device->GetDevice();
+	FD3D12Adapter* Adapter = GetParentAdapter();
+	ID3D12Device* D3DDevice = Adapter->GetD3DDevice();
 	const FRHIGPUMask Node = FRHIGPUMask::All();
 
-	// StaticInitialize operates on all devices so only call it once.
-	static bool bStaticInitialized = false;
-	if (!bStaticInitialized)
-	{
-		StaticInitialize(Adapter, PlatformStaticInitialize);
-		bStaticInitialized = true;
-	}
+	StaticInitialize(Adapter, PlatformStaticInitialize);
 
 	CurrentTimestamp = 0;
 	NumIssuedTimestamps = 0;
@@ -881,7 +775,7 @@ void FD3D12BufferedGPUTiming::InitDynamicRHI()
 		QueryHeapDesc.Type = D3D12_QUERY_HEAP_TYPE_TIMESTAMP;
 		QueryHeapDesc.Count = BufferSize * 2;	// Space for each Start + End pair.
 
-		TimestampQueryHeap = Adapter->CreateLinkedObject<QueryHeap>(Device->GetGPUMask(), [&] (FD3D12Device* Device)
+		TimestampQueryHeap = Adapter->CreateLinkedObject<QueryHeap>(FRHIGPUMask::All(), [&] (FD3D12Device* Device)
 		{
 			QueryHeap* NewHeap = new QueryHeap(Device);
 			QueryHeapDesc.NodeMask = Device->GetGPUMask().GetNative();
@@ -889,16 +783,17 @@ void FD3D12BufferedGPUTiming::InitDynamicRHI()
 			SetName(NewHeap->Heap, L"FD3D12BufferedGPUTiming: Timestamp Query Heap");
 
 		#if ENABLE_RESIDENCY_MANAGEMENT
-			D3DX12Residency::Initialize(NewHeap->ResidencyHandle, NewHeap->Heap.GetReference(), 8ull * QueryHeapDesc.Count);
-			D3DX12Residency::BeginTrackingObject(Device->GetResidencyManager(), NewHeap->ResidencyHandle);
+			D3DX12Residency::Initialize(NewHeap->ResidencyHandle, NewHeap->Heap.GetReference(), 8 * QueryHeapDesc.Count);
+			D3DX12Residency::BeginTrackingObject(Adapter->GetDevice(0)->GetResidencyManager(), NewHeap->ResidencyHandle);
 		#endif
 
 			return NewHeap;
 		});
 
 
-		const uint64 Size = 8ull * QueryHeapDesc.Count; // Each timestamp query occupies 8 bytes.
-		Adapter->CreateBuffer(D3D12_HEAP_TYPE_READBACK, Device->GetGPUMask(), Node, D3D12_RESOURCE_STATE_COPY_DEST, ED3D12ResourceStateMode::Default, Size, TimestampQueryHeapBuffer.GetInitReference(), TEXT("FD3D12BufferedGPUTiming: Timestamp Query Result Buffer"));
+		// Multi-GPU support : GPU timing only profile GPU0 currently.
+		const uint64 Size = 8 * QueryHeapDesc.Count; // Each timestamp query occupies 8 bytes.
+		Adapter->CreateBuffer(D3D12_HEAP_TYPE_READBACK, FRHIGPUMask::GPU0(), Node, D3D12_RESOURCE_STATE_COPY_DEST, Size, TimestampQueryHeapBuffer.GetInitReference(), TEXT("FD3D12BufferedGPUTiming: Timestamp Query Result Buffer"));
 
 		TimestampListHandles.AddZeroed(QueryHeapDesc.Count);
 	}
@@ -912,7 +807,7 @@ void FD3D12BufferedGPUTiming::ReleaseDynamicRHI()
 #if ENABLE_RESIDENCY_MANAGEMENT
 	if (D3DX12Residency::IsInitialized(TimestampQueryHeap->ResidencyHandle))
 	{
-		D3DX12Residency::EndTrackingObject(GetParentDevice()->GetResidencyManager(), TimestampQueryHeap->ResidencyHandle);
+		D3DX12Residency::EndTrackingObject(GetParentAdapter()->GetDevice(0)->GetResidencyManager(), TimestampQueryHeap->ResidencyHandle);
 	}
 #endif
 
@@ -928,8 +823,8 @@ void FD3D12BufferedGPUTiming::ReleaseDynamicRHI()
  */
 void FD3D12BufferedGPUTiming::StartTiming()
 {
-	FD3D12Device* Device = GetParentDevice();
-	ID3D12Device* D3DDevice = Device->GetDevice();
+	FD3D12Adapter* Adapter = GetParentAdapter();
+	ID3D12Device* D3DDevice = Adapter->GetD3DDevice();
 
 	// Issue a timestamp query for the 'start' time.
 	if (GIsSupported && !bIsTiming)
@@ -940,10 +835,9 @@ void FD3D12BufferedGPUTiming::StartTiming()
 		{
 			if (SUCCEEDED(D3DDevice->SetStablePowerState(bStablePowerStateCVar)))
 			{
+				// Multi-GPU support : GPU timing only profile GPU0 currently.
 				// SetStablePowerState succeeded. Update timing frequency.
-				uint64 TimingFrequency;
-				VERIFYD3D12RESULT(Device->GetCommandListManager().GetTimestampFrequency(&TimingFrequency));
-				SetTimingFrequency(TimingFrequency, Device->GetGPUIndex());
+				VERIFYD3D12RESULT(Adapter->GetDevice(0)->GetCommandListManager().GetTimestampFrequency(&GTimingFrequency));
 				bStablePowerState = bStablePowerStateCVar;
 			}
 			else
@@ -957,7 +851,8 @@ void FD3D12BufferedGPUTiming::StartTiming()
 
 		const uint32 QueryStartIndex = GetStartTimestampIndex(CurrentTimestamp);
 
-		FD3D12CommandContext& CmdContext = Device->GetDefaultCommandContext();
+		// Multi-GPU support : GPU timing only profile GPU0 currently.
+		FD3D12CommandContext& CmdContext = Adapter->GetDevice(0)->GetDefaultCommandContext();
 
 		CmdContext.otherWorkCounter++;
 
@@ -984,7 +879,8 @@ void FD3D12BufferedGPUTiming::EndTiming()
 		const uint32 QueryEndIndex = GetEndTimestampIndex(CurrentTimestamp);
 		check(QueryEndIndex == QueryStartIndex + 1);	// Make sure they're adjacent indices.
 
-		FD3D12CommandContext& CmdContext = GetParentDevice()->GetDefaultCommandContext();
+		// Multi-GPU support : GPU timing only profile GPU0 currently.
+		FD3D12CommandContext& CmdContext = GetParentAdapter()->GetDevice(0)->GetDefaultCommandContext();
 
 		CmdContext.otherWorkCounter += 2;
 
@@ -1009,7 +905,8 @@ void FD3D12BufferedGPUTiming::EndTiming()
  */
 uint64 FD3D12BufferedGPUTiming::GetTiming(bool bGetCurrentResultsAndBlock)
 {
-	FD3D12Device* Device = GetParentDevice();
+	// Multi-GPU support : GPU timing only profile GPU0 currently.
+	FD3D12Device* Device = GetParentAdapter()->GetDevice(0);
 
 	if (GIsSupported)
 	{
@@ -1039,7 +936,7 @@ uint64 FD3D12BufferedGPUTiming::GetTiming(bool bGetCurrentResultsAndBlock)
 					
 					if (EndTime > StartTime)
 					{
-						const uint64 Bubble = Device->GetGPUProfiler().CalculateIdleTime(StartTime, EndTime);
+						const uint64 Bubble = GetParentAdapter()->GetGPUProfiler().CalculateIdleTime(StartTime, EndTime);
 						const uint64 ElapsedTime = EndTime - StartTime;
 						return ElapsedTime >= Bubble ? ElapsedTime - Bubble : 0;
 					}
@@ -1089,7 +986,7 @@ uint64 FD3D12BufferedGPUTiming::GetTiming(bool bGetCurrentResultsAndBlock)
 
 			if (EndTime > StartTime)
 			{
-				const uint64 Bubble = Device->GetGPUProfiler().CalculateIdleTime(StartTime, EndTime);
+				const uint64 Bubble = GetParentAdapter()->GetGPUProfiler().CalculateIdleTime(StartTime, EndTime);
 				const uint64 ElapsedTime = EndTime - StartTime;
 				return ElapsedTime >= Bubble ? ElapsedTime - Bubble : 0;
 			}

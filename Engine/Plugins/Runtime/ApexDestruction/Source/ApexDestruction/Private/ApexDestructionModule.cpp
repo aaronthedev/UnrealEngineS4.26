@@ -1,7 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ApexDestructionModule.h"
-#include "PhysicsCore.h"
 #include "Modules/ModuleManager.h"
 #include "ApexDestructionCustomPayload.h"
 #include "Engine/World.h"
@@ -22,9 +21,8 @@ namespace nvidia
 }
 
 #if WITH_APEX
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
+
 FApexDestructionSyncActors* FApexDestructionCustomPayload::SingletonCustomSync = nullptr;
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 nvidia::apex::ModuleDestructible* GApexModuleDestructible = nullptr;
 void* ApexDestructibleDLL = nullptr;
 
@@ -43,7 +41,6 @@ public:
 
 	virtual void	onStateChangeNotify(const nvidia::apex::ChunkStateEventData& visibilityEvent) override
 	{
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		UDestructibleComponent* DestructibleComponent = Cast<UDestructibleComponent>(FPhysxUserData::Get<UPrimitiveComponent>(visibilityEvent.destructible->userData));
 		check(DestructibleComponent);
 
@@ -53,7 +50,6 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		}
 
 		DestructibleComponent->OnVisibilityEvent(visibilityEvent);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	}
 
 	virtual bool	releaseOnNoChunksVisible(const nvidia::apex::DestructibleActor* destructible) override
@@ -82,12 +78,10 @@ public:
 
 	virtual void setContactReportFlags(physx::PxShape* PShape, physx::PxPairFlags PFlags, nvidia::apex::DestructibleActor* actor, PxU16 actorChunkIndex) override
 	{
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		UDestructibleComponent* DestructibleComponent = Cast<UDestructibleComponent>(FPhysxUserData::Get<UPrimitiveComponent>(PShape->userData));
 		check(DestructibleComponent);
 
 		DestructibleComponent->Pair(actorChunkIndex, PShape);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	}
 
 	virtual physx::PxPairFlags getContactReportFlags(const physx::PxShape* PShape) const override
@@ -118,7 +112,6 @@ static TAutoConsoleVariable<int32> CVarAPEXSortDynamicChunksByBenefit(
 
 struct FPendingApexDamageEvent
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	TWeakObjectPtr<UDestructibleComponent> DestructibleComponent;
 	apex::DamageEventReportData DamageEvent;
 	TArray<apex::ChunkData> ApexChunkData;
@@ -135,7 +128,7 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 		DamageEvent.fractureEventList = ApexChunkData.GetData();
 	}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
+
 };
 #endif
 
@@ -185,9 +178,7 @@ public:
 		GApexModuleDestructible->setUseLegacyDamageRadiusSpread(true);
 		GApexModuleDestructible->setUseLegacyChunkBoundsTesting(true);
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		FApexDestructionCustomPayload::SingletonCustomSync = new FApexDestructionSyncActors();
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 		GPhysX3Interface = &GPhysX3Interface_ApexDestructionImp;
 
@@ -198,7 +189,6 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 		Singleton = this;
 
-		UE_LOG(LogPhysicsCore, Log, TEXT("APEX is deprecated. Destruction in future will be supported using Chaos Destruction."));
 	}
 
 	virtual void OnInitPhys(FPhysScene* PhysScene)
@@ -225,7 +215,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		PendingDamageEventsMap.FindOrAdd(PhysScene);
 #endif
 	}
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
+
 	virtual void OnDispatchNotifications(FPhysScene* PhysScene)
 	{
 #if WITH_APEX
@@ -271,7 +261,6 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		}
 #endif
 	}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	static FApexDestructionModule& GetSingleton()
 	{
@@ -287,7 +276,6 @@ FApexDestructionModule* FApexDestructionModule::Singleton = nullptr;
 #if WITH_APEX
 void FApexChunkReport::onDamageNotify(const nvidia::apex::DamageEventReportData& damageEvent)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	UDestructibleComponent* DestructibleComponent = Cast<UDestructibleComponent>(FPhysxUserData::Get<UPrimitiveComponent>(damageEvent.destructible->userData));
 	check(DestructibleComponent);
 
@@ -298,10 +286,7 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 
 	FApexDestructionModule::GetSingleton().AddPendingDamageEvent(DestructibleComponent, damageEvent);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 #endif
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 IMPLEMENT_MODULE(FApexDestructionModule, ApexDestruction)
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

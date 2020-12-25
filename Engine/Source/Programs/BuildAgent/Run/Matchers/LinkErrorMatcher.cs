@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using BuildAgent.Run;
 using BuildAgent.Run.Interfaces;
@@ -17,7 +17,7 @@ namespace BuildAgent.Matchers
 		{
 			if(Input.IsMatch(@"error: linker command failed with exit code "))
 			{
-				int MinIdx = Input.MatchBackwards(0, ": In function |: undefined reference to |[^a-zA-Z]ld: ");
+				int MinIdx = Input.MatchBackwards(0, ": In function |: undefined reference to ");
 				return new ErrorMatch(ErrorSeverity.Error, ErrorPriority.Normal, "Link", Input, MinIdx, 0);
 			}
 			if (Input.IsMatch("Undefined symbols for architecture"))

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AppEventHandler.h"
 #include "AppFramework.h"
@@ -9,7 +9,7 @@
 namespace MagicLeap
 {
 	IAppEventHandler::IAppEventHandler(const TArray<EMagicLeapPrivilege>& InRequiredPrivilegeIDs)
-	: OnAppStartHandler(nullptr)
+	: OnPrivilegeEvent(nullptr)
 	, OnAppShutDownHandler(nullptr)
 	, OnAppTickHandler(nullptr)
 	, OnAppPauseHandler(nullptr)
@@ -44,14 +44,9 @@ namespace MagicLeap
 		FRequiredPrivilege RequiredPrivilege(PrivilegeID);
 		{
 			FScopeLock Lock(&CriticalSection);
-			if (!RequiredPrivileges.Contains(PrivilegeID))
-			{
-				UE_LOG(LogMagicLeap, Error, TEXT("Privilege %s was denied as it wasn't listed in the required privileges map."), *MLPrivilegeToString(PrivilegeID));
-				return EPrivilegeState::Denied;
-			}
 			RequiredPrivilege = RequiredPrivileges[PrivilegeID];
 		}
-
+		
 		if (RequiredPrivilege.State == EPrivilegeState::NotYetRequested || RequiredPrivilege.State == EPrivilegeState::Pending)
 		{
 			// Attempt a quick check first. Note that MLPrivilegesCheckPrivilege will return denied if the privilege has never been requested.
@@ -60,7 +55,7 @@ namespace MagicLeap
 			{
 				RequiredPrivilege.State = EPrivilegeState::Granted;
 				UE_LOG(LogMagicLeap, Log, TEXT("Privilege '%s' was granted."), *MagicLeap::MLPrivilegeToString(RequiredPrivilege.PrivilegeID));
-			}
+			} 
 			else if (bBlocking)
 			{
 				Result = MLPrivilegesRequestPrivilege(MagicLeap::UnrealToMLPrivilege(PrivilegeID));
@@ -136,30 +131,6 @@ namespace MagicLeap
 		return PrivilegeStateString;
 	}
 
-	bool IAppEventHandler::AddPrivilegeEventHandler(EMagicLeapPrivilege PrivilegeID, FRequiredPrivilege::FPrivilegeEventHandler&& InOnPrivilegeEvent)
-	{
-		FScopeLock Lock(&CriticalSection);
-		FRequiredPrivilege* RequiredPrivilege = RequiredPrivileges.Find(PrivilegeID);
-		if (RequiredPrivilege)
-		{
-			RequiredPrivilege->EventHandler = MoveTemp(InOnPrivilegeEvent);
-			return true;
-		}
-
-#if WITH_MLSDK
-		UE_LOG(LogMagicLeap, Error, TEXT("Failed to resolve Privilege '%s' in required privileges list!"), *MagicLeap::MLPrivilegeToString(PrivilegeID));
-#endif // WITH_MLSDK
-		return false;
-	}
-
-	void IAppEventHandler::OnAppStart()
-	{
-		if (OnAppStartHandler)
-		{
-			OnAppStartHandler();
-		}
-	}
-
 	void IAppEventHandler::OnAppShutDown()
 	{
 		if (OnAppShutDownHandler)
@@ -179,7 +150,7 @@ namespace MagicLeap
 
 		bAllPrivilegesInSync = true;
 
-		for (auto& ItRequiredPrivilege : RequiredPrivileges)
+		for(auto& ItRequiredPrivilege : RequiredPrivileges)
 		{
 			FRequiredPrivilege& RequiredPrivilege = ItRequiredPrivilege.Value;
 			if (RequiredPrivilege.State == EPrivilegeState::NotYetRequested)
@@ -222,9 +193,9 @@ namespace MagicLeap
 				}
 				}
 
-				if (Result != MLResult_Pending && RequiredPrivilege.EventHandler)
+				if (Result != MLResult_Pending && OnPrivilegeEvent)
 				{
-					RequiredPrivilege.EventHandler(RequiredPrivilege);
+					OnPrivilegeEvent(RequiredPrivilege);
 				}
 			}
 		}
@@ -259,5 +230,10 @@ namespace MagicLeap
 		{
 			OnAppResumeHandler();
 		}
+	}
+
+	bool IAppEventHandler::AsyncDestroy()
+	{
+		return FAppFramework::AsyncDestroy(this);
 	}
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System.IO;
 
@@ -24,6 +24,7 @@ namespace UnrealBuildTool.Rules
 				{
 					"Launch",
 					"LocationServicesBPLibrary",
+					"LocationServicesAndroidImpl",
 					// ... add private dependencies that you statically link with here ...
 				}
 			);

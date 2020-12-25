@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System.IO;
 using Tools.DotNETCommon;
@@ -18,36 +18,32 @@ namespace UnrealBuildTool.Rules
 					"Core",
 					"CoreUObject",
 					"DatasmithCore",
+					"DatasmithExporter",
 					"Engine",
 					"Json",
+					"MainFrame",
 					"MeshDescription",
+					"MeshDescriptionOperations",
+					"MeshUtilities",
+					"MessageLog",
 					"Slate",
 					"SlateCore",
 					"StaticMeshDescription",
 					"UEOpenExr",
-                }
+					"UnrealEd",
+				}
 			);
-
-			if (Target.Type == TargetType.Editor)
-			{
-				PrivateDependencyModuleNames.AddRange(
-					new string[]
-					{
-						"DatasmithExporter",
-					}
-				);
-			}
 
 			PublicDependencyModuleNames.AddRange(
 				new string[]
 				{
 					"DatasmithContent",
-					"DatasmithTranslator"
+					"DatasmithImporter"
 				}
 			);
 
 			// Set up the C4D Melange SDK includes and libraries.
-			string MelangeSDKLocation = Path.Combine(EngineDirectory, "Restricted/NotForLicensees/Source/ThirdParty/Enterprise/Melange/20.004_RBMelange20.0_259890");
+			string MelangeSDKLocation = Path.Combine(PluginDirectory, "Source", "ThirdParty", "NotForLicensees", "Melange", "20.004_RBMelange20.0_259890");
 
 			// When C4D Melange SDK is not part of the developer's workspace, look for environment variable Melange_SDK.
 			if (!Directory.Exists(MelangeSDKLocation))

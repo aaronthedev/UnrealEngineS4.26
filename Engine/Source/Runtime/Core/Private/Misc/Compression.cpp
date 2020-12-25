@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Misc/Compression.h"
 #include "Misc/AssertionMacros.h"
@@ -18,17 +18,10 @@ THIRD_PARTY_INCLUDES_START
 #include "ThirdParty/zlib/zlib-1.2.5/Inc/zlib.h"
 THIRD_PARTY_INCLUDES_END
 
-THIRD_PARTY_INCLUDES_START
-#define LZ4_HC_STATIC_LINKING_ONLY
-#include "Compression/lz4hc.h"
-THIRD_PARTY_INCLUDES_END
-
 DECLARE_LOG_CATEGORY_EXTERN(LogCompression, Log, All);
 DEFINE_LOG_CATEGORY(LogCompression);
 
 DECLARE_STATS_GROUP( TEXT( "Compression" ), STATGROUP_Compression, STATCAT_Advanced );
-
-PRAGMA_DISABLE_UNSAFE_TYPECAST_WARNINGS
 
 TMap<FName, struct ICompressionFormat*> FCompression::CompressionFormats;
 FCriticalSection FCompression::CompressionFormatsCriticalSection;
@@ -147,7 +140,7 @@ static bool appCompressMemoryGZIP(void* CompressedBuffer, int32& CompressedSize,
 	// This is how much memory we may need, however the consumer is allocating memory for us without knowing the required length.
 	//unsigned long CompressedMaxSize = deflateBound(&gzipstream, gzipstream.avail_in) + GzipHeaderLength;
 	gzipstream.next_out = (uint8*)CompressedBuffer;
-	gzipstream.avail_out = CompressedSize;
+	gzipstream.avail_out = UncompressedSize;
 
 	int status = 0;
 	bool bOperationSucceeded = false;
@@ -160,91 +153,6 @@ static bool appCompressMemoryGZIP(void* CompressedBuffer, int32& CompressedSize,
 
 	// Propagate compressed size from intermediate variable back into out variable.
 	CompressedSize = gzipstream.total_out;
-	return bOperationSucceeded;
-}
-
-static int appCompressMemoryBoundGZIP(int32 UncompressedSize)
-{
-	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("Compress Memory Bound GZIP"), STAT_appCompressMemoryBoundGZIP, STATGROUP_Compression);
-	z_stream gzipstream;
-	gzipstream.zalloc = &zalloc;
-	gzipstream.zfree = &zfree;
-	gzipstream.opaque = Z_NULL;
-	// Init deflate settings to use GZIP
-	int windowsBits = 15;
-	int GZIP_ENCODING = 16;
-	deflateInit2(
-		&gzipstream,
-		Z_DEFAULT_COMPRESSION,
-		Z_DEFLATED,
-		windowsBits | GZIP_ENCODING,
-		MAX_MEM_LEVEL,
-		Z_DEFAULT_STRATEGY);
-	// Return required size
-	const unsigned long GzipHeaderLength = 12;
-	int RequiredSize = deflateBound(&gzipstream, UncompressedSize) + GzipHeaderLength;
-	deflateEnd(&gzipstream);
-	return RequiredSize;
-}
-
-/**
- * Thread-safe abstract compression routine. Compresses memory from uncompressed buffer and writes it to compressed
- * buffer. Updates CompressedSize with size of compressed data.
- *
- * @param	UncompressedBuffer			Buffer containing uncompressed data
- * @param	UncompressedSize			Size of uncompressed data in bytes
- * @param	CompressedBuffer			Buffer compressed data is going to be read from
- * @param	CompressedSize				Size of CompressedBuffer data in bytes
- * @return true if compression succeeds, false if it fails because CompressedBuffer was too small or other reasons
- */
-bool appUncompressMemoryGZIP(void* UncompressedBuffer, int32 UncompressedSize, const void* CompressedBuffer, int32 CompressedSize)
-{
-	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("Uncompress Memory GZIP"), STAT_appUncompressMemoryGZIP, STATGROUP_Compression);
-
-	// Zlib wants to use unsigned long.
-	unsigned long ZCompressedSize = CompressedSize;
-	unsigned long ZUncompressedSize = UncompressedSize;
-
-	z_stream stream;
-	stream.zalloc = &zalloc;
-	stream.zfree = &zfree;
-	stream.opaque = Z_NULL;
-	stream.next_in = (uint8*)CompressedBuffer;
-	stream.avail_in = ZCompressedSize;
-	stream.next_out = (uint8*)UncompressedBuffer;
-	stream.avail_out = ZUncompressedSize;
-
-	int32 Result = inflateInit2(&stream, 16 + MAX_WBITS);
-
-	if (Result != Z_OK)
-		return false;
-
-	// Uncompress data.
-	Result = inflate(&stream, Z_FINISH);
-	if (Result == Z_STREAM_END)
-	{
-		ZUncompressedSize = stream.total_out;
-	}
-
-	int32 EndResult = inflateEnd(&stream);
-	if (Result >= Z_OK)
-	{
-		Result = EndResult;
-	}
-
-	// These warnings will be compiled out in shipping.
-	UE_CLOG(Result == Z_MEM_ERROR, LogCompression, Warning, TEXT("appUncompressMemoryGZIP failed: Error: Z_MEM_ERROR, not enough memory!"));
-	UE_CLOG(Result == Z_BUF_ERROR, LogCompression, Warning, TEXT("appUncompressMemoryGZIP failed: Error: Z_BUF_ERROR, not enough room in the output buffer!"));
-	UE_CLOG(Result == Z_DATA_ERROR, LogCompression, Warning, TEXT("appUncompressMemoryGZIP failed: Error: Z_DATA_ERROR, input data was corrupted or incomplete!"));
-
-	bool bOperationSucceeded = (Result == Z_OK);
-
-	// Sanity check to make sure we uncompressed as much data as we expected to.
-	if (UncompressedSize != ZUncompressedSize)
-	{
-		UE_LOG(LogCompression, Warning, TEXT("appUncompressMemoryGZIP failed: Mismatched uncompressed size. Expected: %d, Got:%d. Result: %d"), UncompressedSize, ZUncompressedSize, Result);
-		bOperationSucceeded = false;
-	}
 	return bOperationSucceeded;
 }
 
@@ -501,13 +409,8 @@ int32 FCompression::CompressMemoryBound(FName FormatName, int32 UncompressedSize
 	}
 	else if (FormatName == NAME_Gzip)
 	{
-		// Calculate gzip bounds for compression.
-		CompressionBound = appCompressMemoryBoundGZIP(UncompressedSize);
-	}
-	else if (FormatName == NAME_LZ4)
-	{
-		// hardcoded lz4
-		CompressionBound = LZ4_compressBound(UncompressedSize);
+		// CompressionBound = deflateBound(&gzipstream, gzipstream.avail_in) + GzipHeaderLength;
+		UE_LOG(LogCompression, Fatal, TEXT("FCompression::CompressMemoryBound - GZip is not supported yet"));
 	}
 	else
 	{
@@ -539,12 +442,6 @@ bool FCompression::CompressMemory(FName FormatName, void* CompressedBuffer, int3
 	{
 		// hardcoded gzip
 		bCompressSucceeded = appCompressMemoryGZIP(CompressedBuffer, CompressedSize, UncompressedBuffer, UncompressedSize);
-	}
-	else if (FormatName == NAME_LZ4)
-	{
-		// hardcoded lz4
-		CompressedSize = LZ4_compress_HC((const char*)UncompressedBuffer, (char*)CompressedBuffer, UncompressedSize, CompressedSize, LZ4HC_CLEVEL_MAX);
-		bCompressSucceeded = CompressedSize > 0;
 	}
 	else
 	{
@@ -615,13 +512,7 @@ bool FCompression::UncompressMemory(FName FormatName, void* UncompressedBuffer, 
 	}
 	else if (FormatName == NAME_Gzip)
 	{
-		// hardcoded gzip
-		bUncompressSucceeded = appUncompressMemoryGZIP(UncompressedBuffer, UncompressedSize, CompressedBuffer, CompressedSize);
-	}
-	else if (FormatName == NAME_LZ4)
-	{
-		// hardcoded lz4
-		bUncompressSucceeded = LZ4_decompress_safe((const char*)CompressedBuffer, (char*)UncompressedBuffer, CompressedSize, UncompressedSize) > 0;
+		// @todo buh?
 	}
 	else
 	{
@@ -902,4 +793,54 @@ bool FCompression::VerifyCompressionFlagsValid(int32 InCompressionFlags)
 /***********************
   Deprecated functions
 ***********************/
-PRAGMA_ENABLE_UNSAFE_TYPECAST_WARNINGS
+
+int32 FCompression::CompressMemoryBound(ECompressionFlags Flags, int32 UncompressedSize, int32 BitWindow)
+{
+	switch (Flags & COMPRESS_DeprecatedFormatFlagsMask)
+	{
+		case COMPRESS_ZLIB:
+			return CompressMemoryBound(NAME_Zlib, UncompressedSize, (ECompressionFlags)(Flags & COMPRESS_OptionsFlagsMask), BitWindow);
+		case COMPRESS_GZIP:
+			return CompressMemoryBound(NAME_Gzip, UncompressedSize, (ECompressionFlags)(Flags & COMPRESS_OptionsFlagsMask));
+		case COMPRESS_Custom:
+			return CompressMemoryBound(TEXT("Oodle"), UncompressedSize, (ECompressionFlags)(Flags & COMPRESS_OptionsFlagsMask));
+	}
+
+	return 0;
+}
+
+bool FCompression::CompressMemory(ECompressionFlags Flags, void* CompressedBuffer, int32& CompressedSize, const void* UncompressedBuffer, int32 UncompressedSize, int32 BitWindow)
+{
+	switch (Flags & COMPRESS_DeprecatedFormatFlagsMask)
+	{
+		case COMPRESS_ZLIB:
+			return CompressMemory(NAME_Zlib, CompressedBuffer, CompressedSize, UncompressedBuffer, UncompressedSize, (ECompressionFlags)(Flags & COMPRESS_OptionsFlagsMask), BitWindow);
+		case COMPRESS_GZIP:
+			return CompressMemory(NAME_Gzip, CompressedBuffer, CompressedSize, UncompressedBuffer, UncompressedSize, (ECompressionFlags)(Flags & COMPRESS_OptionsFlagsMask));
+		case COMPRESS_Custom:
+			return CompressMemory(TEXT("Oodle"), CompressedBuffer, CompressedSize, UncompressedBuffer, UncompressedSize, (ECompressionFlags)(Flags & COMPRESS_OptionsFlagsMask));
+	}
+
+	return false;
+}
+
+bool FCompression::UncompressMemory(ECompressionFlags Flags, void* UncompressedBuffer, int32 UncompressedSize, const void* CompressedBuffer, int32 CompressedSize, bool bIsSourcePadded, int32 BitWindow)
+{
+	if (bIsSourcePadded)
+	{
+		Flags = (ECompressionFlags)(Flags | COMPRESS_SourceIsPadded);
+	}
+
+	switch (Flags & COMPRESS_DeprecatedFormatFlagsMask)
+	{
+		case COMPRESS_ZLIB:
+			return UncompressMemory(NAME_Zlib, UncompressedBuffer, UncompressedSize, CompressedBuffer, CompressedSize, (ECompressionFlags)(Flags & COMPRESS_OptionsFlagsMask), BitWindow);
+		case COMPRESS_GZIP:
+			return UncompressMemory(NAME_Gzip, UncompressedBuffer, UncompressedSize, CompressedBuffer, CompressedSize, (ECompressionFlags)(Flags & COMPRESS_OptionsFlagsMask));
+		case COMPRESS_Custom:
+			return UncompressMemory(TEXT("Oodle"), UncompressedBuffer, UncompressedSize, CompressedBuffer, CompressedSize, (ECompressionFlags)(Flags & COMPRESS_OptionsFlagsMask));
+	}
+
+	return false;
+}
+

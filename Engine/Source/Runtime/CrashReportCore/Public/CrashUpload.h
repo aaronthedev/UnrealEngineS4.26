@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -218,7 +218,7 @@ private:
 	/**
 	 * Create a request object and bind this class's response handler to it
 	 */
-	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> CreateHttpRequest();
+	TSharedRef<IHttpRequest> CreateHttpRequest();
 
 	/**
 	 * Send a ping request to the server
@@ -264,7 +264,7 @@ public:
 	/**
 	 * Create a request object and bind this class's response handler to it
 	 */
-	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> CreateHttpRequest();
+	TSharedRef<IHttpRequest> CreateHttpRequest();
 
 	/**
 	 * Callback from HTTP library when a request has completed

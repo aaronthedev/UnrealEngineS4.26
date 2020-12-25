@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
@@ -10,6 +10,7 @@
 #include "Materials/Material.h"
 #include "StaticMeshAttributes.h"
 #include "StaticMeshOperations.h"
+#include "MeshDescriptionOperations.h"
 #include "MeshBuilder.h"
 #include "RawMesh.h"
 #include "MeshUtilities.h"
@@ -414,7 +415,7 @@ bool FMeshDescriptionTest::CompareMeshDescription(const FString& AssetName, FAut
 	}
 	else
 	{
-		for (const FEdgeID EdgeID : MeshDescription.Edges().GetElementIDs())
+		for (const FEdgeID& EdgeID : MeshDescription.Edges().GetElementIDs())
 		{
 			if (ReferenceEdgeHardnesses[EdgeID] != ResultEdgeHardnesses[EdgeID])
 			{
@@ -489,9 +490,9 @@ bool FMeshDescriptionTest::ConversionTest(FAutomationTestExecutionInfo& Executio
 				FMeshDescription ResultAssetMesh(*ReferenceAssetMesh);
 				//Convert MeshDescription to FRawMesh
 				FRawMesh RawMesh;
-				FStaticMeshOperations::ConvertToRawMesh(ResultAssetMesh, RawMesh, MaterialMap);
+				FMeshDescriptionOperations::ConvertToRawMesh(ResultAssetMesh, RawMesh, MaterialMap);
 				//Convert back the FRawmesh
-				FStaticMeshOperations::ConvertFromRawMesh(RawMesh, ResultAssetMesh, MaterialMapInverse);
+				FMeshDescriptionOperations::ConvertFromRawMesh(RawMesh, ResultAssetMesh, MaterialMapInverse);
 				if (!CompareMeshDescription(AssetName, ExecutionInfo, *ReferenceAssetMesh, ResultAssetMesh))
 				{
 					bAllSame = false;
@@ -513,9 +514,9 @@ bool FMeshDescriptionTest::ConversionTest(FAutomationTestExecutionInfo& Executio
 				//Create a temporary Mesh Description
 				FMeshDescription MeshDescription;
 				FStaticMeshAttributes(MeshDescription).Register();
-				FStaticMeshOperations::ConvertFromRawMesh(ResultRawMesh, MeshDescription, MaterialMapInverse);
+				FMeshDescriptionOperations::ConvertFromRawMesh(ResultRawMesh, MeshDescription, MaterialMapInverse);
 				//Convert back the FRawmesh
-				FStaticMeshOperations::ConvertToRawMesh(MeshDescription, ResultRawMesh, MaterialMap);
+				FMeshDescriptionOperations::ConvertToRawMesh(MeshDescription, ResultRawMesh, MaterialMap);
 				if (!CompareRawMesh(AssetName, ExecutionInfo, ReferenceRawMesh, ResultRawMesh))
 				{
 					bAllSame = false;
@@ -605,7 +606,7 @@ bool FMeshDescriptionTest::NTBTest(FAutomationTestExecutionInfo& ExecutionInfo)
 				*ErrorMessage)));
 		};
 		bool bError = false;
-		for (const FPolygonID PolygonID : MeshDescription.Polygons().GetElementIDs())
+		for (const FPolygonID& PolygonID : MeshDescription.Polygons().GetElementIDs())
 		{
 			if (bError)
 			{
@@ -614,7 +615,7 @@ bool FMeshDescriptionTest::NTBTest(FAutomationTestExecutionInfo& ExecutionInfo)
 			const FPolygonGroupID& PolygonGroupID = MeshDescription.GetPolygonPolygonGroup(PolygonID);
 			int32 PolygonIDValue = PolygonID.GetValue();
 			const TArray<FTriangleID>& TriangleIDs = MeshDescription.GetPolygonTriangleIDs(PolygonID);
-			for (const FTriangleID& TriangleID : TriangleIDs)
+			for (const FTriangleID TriangleID : TriangleIDs)
 			{
 				if (bError)
 				{
@@ -884,7 +885,7 @@ bool FMeshDescriptionBuilderTest::RunTest(const FString& Parameters)
 
 	// Get list of unique polygons connected to the vertices that have moved
 	TArray<FPolygonID> ConnectedPolygons = MeshDescription.GetVertexConnectedPolygons(TopVertexIDs[0]);
-	for (const FPolygonID& ConnectedPolygon : MeshDescription.GetVertexConnectedPolygons(BottomVertexIDs[0]))
+	for (const FPolygonID ConnectedPolygon : MeshDescription.GetVertexConnectedPolygons(BottomVertexIDs[0]))
 	{
 		ConnectedPolygons.AddUnique(ConnectedPolygon);
 	}
@@ -896,7 +897,7 @@ bool FMeshDescriptionBuilderTest::RunTest(const FString& Parameters)
 	TestTrue("PolygonsToTriangulate", ConnectedPolygons.Contains(MeshDescription.GetTrianglePolygon(BottomTriangleIDs[0])));
 	TestTrue("PolygonsToTriangulate", ConnectedPolygons.Contains(MeshDescription.GetTrianglePolygon(BottomTriangleIDs[NumSides - 1])));
 
-	for (const FPolygonID& ConnectedPolygon : ConnectedPolygons)
+	for (const FPolygonID ConnectedPolygon : ConnectedPolygons)
 	{
 		MeshDescription.ComputePolygonTriangulation(ConnectedPolygon);
 	}

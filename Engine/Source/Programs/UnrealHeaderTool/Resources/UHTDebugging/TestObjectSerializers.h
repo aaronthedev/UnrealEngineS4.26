@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -22,7 +22,7 @@ UCLASS()
 class UTestObject_FStructuredArchive : public UObject
 {
 	GENERATED_UCLASS_BODY()
-	virtual void Serialize(FStructuredArchive::FRecord Record) override;
+	virtual void Serialize(FStructuredArchive::FSlot Slot) override;
 };
 
 UCLASS()
@@ -30,7 +30,7 @@ class UTestObject_BothArchives : public UObject
 {
 	GENERATED_UCLASS_BODY()
 	virtual void Serialize(FArchive& Ar) override;
-	virtual void Serialize(FStructuredArchive::FRecord Record) override;
+	virtual void Serialize(FStructuredArchive::FSlot Slot) override;
 };
 
 UCLASS()
@@ -103,7 +103,7 @@ class UTestObject_StructuredArchiveInPreprocessorBlock : public UObject
 #define SOME_RANDOM_DEFINE 1
 // Should fail - no uproperties inside arbitrary preprocessor blocks
 UCLASS()
-class UTestObject_FPropertyInPreprocessorBlock : public UObject
+class UTestObject_UPropertyInPreprocessorBlock : public UObject
 {
 	GENERATED_UCLASS_BODY()
 

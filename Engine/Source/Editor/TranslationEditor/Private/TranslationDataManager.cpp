@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TranslationDataManager.h"
 #include "PortableObjectPipeline.h"
@@ -255,25 +255,50 @@ bool FTranslationDataManager::WriteTranslationData(bool bForceWrite /*= false*/)
 
 		bool bNeedsWrite = false;
 
-		auto WriteTranslationUnits = [&Archive , &bNeedsWrite](const TArray<UTranslationUnit*> InTranslationUnits)
+		for (UTranslationUnit* TranslationUnit : Untranslated)
 		{
-			for (UTranslationUnit* TranslationUnit : InTranslationUnits)
+			if (TranslationUnit != nullptr)
 			{
-				if (TranslationUnit)
+				const FLocItem SearchSource(TranslationUnit->Source);
+				FString OldTranslation = Archive->FindEntryByKey(TranslationUnit->Namespace, TranslationUnit->Key, TranslationUnit->KeyMetaDataObject)->Translation.Text;
+				FString TranslationToWrite = TranslationUnit->Translation;
+				if (!TranslationToWrite.Equals(OldTranslation))
 				{
-					TSharedPtr<FArchiveEntry> OldArchiveEntry = Archive->FindEntryByKey(TranslationUnit->Namespace, TranslationUnit->Key, TranslationUnit->KeyMetaDataObject);
-					if (TranslationUnit->HasBeenReviewed && (!OldArchiveEntry || !OldArchiveEntry->Source.Text.Equals(TranslationUnit->Source, ESearchCase::CaseSensitive) || !OldArchiveEntry->Translation.Text.Equals(TranslationUnit->Translation, ESearchCase::CaseSensitive)))
-					{
-						Archive->SetTranslation(TranslationUnit->Namespace, TranslationUnit->Key, FLocItem(TranslationUnit->Source), FLocItem(TranslationUnit->Translation), TranslationUnit->KeyMetaDataObject);
-						bNeedsWrite = true;
-					}
+					Archive->SetTranslation(TranslationUnit->Namespace, TranslationUnit->Key, FLocItem(TranslationUnit->Source), FLocItem(TranslationToWrite), TranslationUnit->KeyMetaDataObject);
+					bNeedsWrite = true;
 				}
 			}
-		};
+		}
 
-		WriteTranslationUnits(Untranslated);
-		WriteTranslationUnits(Review);
-		WriteTranslationUnits(Complete);
+		for (UTranslationUnit* TranslationUnit : Review)
+		{
+			if (TranslationUnit != nullptr)
+			{
+				const FLocItem SearchSource(TranslationUnit->Source);
+				FString OldTranslation = Archive->FindEntryByKey(TranslationUnit->Namespace, TranslationUnit->Key, TranslationUnit->KeyMetaDataObject)->Translation.Text;
+				FString TranslationToWrite = TranslationUnit->Translation;
+				if (TranslationUnit->HasBeenReviewed && !TranslationToWrite.Equals(OldTranslation))
+				{
+					Archive->SetTranslation(TranslationUnit->Namespace, TranslationUnit->Key, FLocItem(TranslationUnit->Source), FLocItem(TranslationToWrite), TranslationUnit->KeyMetaDataObject);
+					bNeedsWrite = true;
+				}
+			}
+		}
+
+		for (UTranslationUnit* TranslationUnit : Complete)
+		{
+			if (TranslationUnit != nullptr)
+			{
+				const FLocItem SearchSource(TranslationUnit->Source);
+				FString OldTranslation = Archive->FindEntryByKey(TranslationUnit->Namespace, TranslationUnit->Key, TranslationUnit->KeyMetaDataObject)->Translation.Text;
+				FString TranslationToWrite = TranslationUnit->Translation;
+				if (!TranslationToWrite.Equals(OldTranslation))
+				{
+					Archive->SetTranslation(TranslationUnit->Namespace, TranslationUnit->Key, FLocItem(TranslationUnit->Source), FLocItem(TranslationToWrite), TranslationUnit->KeyMetaDataObject);
+					bNeedsWrite = true;
+				}
+			}
+		}
 
 		bSuccess = true;
 
@@ -701,9 +726,15 @@ void FTranslationDataManager::LoadFromArchive(TArray<UTranslationUnit*>& InTrans
 					const FString PreviousTranslation = TranslationUnit->Translation;
 					TranslationUnit->Translation.Reset();
 
-					if (ArchiveEntry->Translation.Text.IsEmpty())
+					FString TranslatedString = ArchiveEntry->Translation.Text;
+					if (!ArchiveEntry->Source.Text.Equals(TranslationUnit->Source, ESearchCase::CaseSensitive))
 					{
-						// No current translation - try and find an historic one
+						// Stale translation
+						TranslatedString.Reset();
+					}
+
+					if (TranslatedString.IsEmpty())
+					{
 						bool bHasTranslationHistory = false;
 						int32 MostRecentNonNullTranslationIndex = -1;
 						int32 ContextForRecentTranslation = -1;
@@ -739,15 +770,9 @@ void FTranslationDataManager::LoadFromArchive(TArray<UTranslationUnit*>& InTrans
 							Untranslated.Add(TranslationUnit);
 						}
 					}
-					else if (!ArchiveEntry->Source.Text.Equals(TranslationUnit->Source, ESearchCase::CaseSensitive))
-					{
-						// If we have a stale translation, this goes in the Needs Review tab
-						TranslationUnit->Translation = ArchiveEntry->Translation.Text;
-						Review.Add(TranslationUnit);
-					}
 					else
 					{
-						TranslationUnit->Translation = ArchiveEntry->Translation.Text;
+						TranslationUnit->Translation = TranslatedString;
 						TranslationUnit->HasBeenReviewed = true;
 						Complete.Add(TranslationUnit);
 					}
@@ -892,7 +917,6 @@ bool FTranslationDataManager::SaveSelectedTranslations(TArray<UTranslationUnit*>
 				PortableObjectDom.SetProjectName(ManifestAndArchiveName);
 				PortableObjectDom.SetLanguage(CultureName);
 				PortableObjectDom.CreateNewHeader();
-				PortableObjectPipeline::UpdatePOFileHeaderForSettings(PortableObjectDom, LocalizationTarget->Settings.ExportSettings.CollapseMode, LocalizationTarget->Settings.ExportSettings.POFormat);
 
 				TArray<UTranslationUnit*>& TranslationsArray = DataManager->GetAllTranslationsArray();
 				TSharedPtr<TArray<UTranslationUnit*>> EditedItems = Item.Value;
@@ -923,7 +947,10 @@ bool FTranslationDataManager::SaveSelectedTranslations(TArray<UTranslationUnit*>
 									// Add the PO entry
 									{
 										TSharedRef<FPortableObjectEntry> PoEntry = MakeShareable(new FPortableObjectEntry());
-										PortableObjectPipeline::PopulateBasicPOFileEntry(*PoEntry, Translation->Namespace, ContextInfo.Key, nullptr, Translation->Source, Translation->Translation, LocalizationTarget->Settings.ExportSettings.CollapseMode, LocalizationTarget->Settings.ExportSettings.POFormat);
+
+										PoEntry->MsgId = PortableObjectPipeline::ConditionArchiveStrForPo(Translation->Source);
+										PoEntry->MsgCtxt = PortableObjectPipeline::ConditionIdentityForPOMsgCtxt(Translation->Namespace, ContextInfo.Key, nullptr, LocalizationTarget->Settings.ExportSettings.CollapseMode);
+										PoEntry->MsgStr.Add(PortableObjectPipeline::ConditionArchiveStrForPo(Translation->Translation));
 
 										//@TODO: We support additional metadata entries that can be translated.  How do those fit in the PO file format?  Ex: isMature
 										const FString PORefString = PortableObjectPipeline::ConvertSrcLocationToPORef(ContextInfo.Context);

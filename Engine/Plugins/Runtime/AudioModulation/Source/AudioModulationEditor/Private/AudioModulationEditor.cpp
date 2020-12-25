@@ -1,37 +1,21 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "AudioModulationEditor.h"
 
-#include "AssetRegistryModule.h"
+#include "AssetTypeActions/AssetTypeActions_SoundModulationSettings.h"
 #include "AssetTypeActions/AssetTypeActions_SoundControlBus.h"
 #include "AssetTypeActions/AssetTypeActions_SoundControlBusMix.h"
-#include "AssetTypeActions/AssetTypeActions_SoundModulationGenerator.h"
-#include "AssetTypeActions/AssetTypeActions_SoundModulationParameter.h"
-#include "AssetTypeActions/AssetTypeActions_SoundModulationPatch.h"
-#include "Editors/ModulationPatchCurveEditorViewStacked.h"
-#include "Framework/Commands/UIAction.h"
-#include "Framework/MultiBox/MultiBoxBuilder.h"
-#include "Framework/MultiBox/MultiBoxExtender.h"
-#include "IAssetRegistry.h"
-#include "ICurveEditorModule.h"
-#include "Internationalization/Internationalization.h"
-#include "Layouts/SoundControlBusMixStageLayout.h"
+#include "AssetTypeActions/AssetTypeActions_SoundModulatorLFO.h"
+#include "Editors/ModulationSettingsCurveEditorViewStacked.h"
 #include "Layouts/SoundControlModulationPatchLayout.h"
-#include "Layouts/SoundModulationParameterSettingsLayout.h"
+#include "Layouts/SoundModulationParameterLayout.h"
 #include "Layouts/SoundModulationTransformLayout.h"
-#include "LevelEditor.h"
-#include "Sound/SoundBase.h"
-#include "SoundModulationParameter.h"
 #include "SoundModulationTransform.h"
-#include "Templates/SharedPointer.h"
-#include "Textures/SlateIcon.h"
-#include "UObject/UObjectIterator.h"
+#include "ICurveEditorModule.h"
 
 
-DEFINE_LOG_CATEGORY(LogAudioModulationEditor);
-
-namespace AudioModulationEditor
+namespace
 {
-	static const FName ToolName = TEXT("AssetTools");
+	static const FName AssetToolsName = TEXT("AssetTools");
 
 	template <typename T>
 	void AddAssetAction(IAssetTools& AssetTools, TArray<TSharedPtr<FAssetTypeActions_Base>>& AssetArray)
@@ -41,21 +25,20 @@ namespace AudioModulationEditor
 		AssetTools.RegisterAssetTypeActions(AssetAction.ToSharedRef());
 		AssetArray.Add(AssetActionBase);
 	}
-} // namespace AudioModulationEditor
-
+} // namespace <>
 
 FAudioModulationEditorModule::FAudioModulationEditorModule()
 {
 }
 
-TSharedPtr<FExtensibilityManager> FAudioModulationEditorModule::GetModulationPatchMenuExtensibilityManager()
+TSharedPtr<FExtensibilityManager> FAudioModulationEditorModule::GetModulationSettingsMenuExtensibilityManager()
 {
-	return ModulationPatchMenuExtensibilityManager;
+	return ModulationSettingsMenuExtensibilityManager;
 }
 
-TSharedPtr<FExtensibilityManager> FAudioModulationEditorModule::GetModulationPatchToolbarExtensibilityManager()
+TSharedPtr<FExtensibilityManager> FAudioModulationEditorModule::GetModulationSettingsToolbarExtensibilityManager()
 {
-	return ModulationPatchToolBarExtensibilityManager;
+	return ModulationSettingsToolBarExtensibilityManager;
 }
 
 void FAudioModulationEditorModule::SetIcon(const FString& ClassName)
@@ -63,7 +46,7 @@ void FAudioModulationEditorModule::SetIcon(const FString& ClassName)
 	static const FVector2D Icon16 = FVector2D(16.0f, 16.0f);
 	static const FVector2D Icon64 = FVector2D(64.0f, 64.0f);
 
-	static const FString IconDir = FPaths::EnginePluginsDir() / FString(TEXT("Runtime/AudioModulation/Content"));
+	static const FString IconDir = FPaths::EngineDir() / FString(TEXT("Plugins/Runtime/AudioModulation/Icons"));
 
 	const FString IconFileName16 = FString::Printf(TEXT("%s_16x.png"), *ClassName);
 	const FString IconFileName64 = FString::Printf(TEXT("%s_64x.png"), *ClassName);
@@ -77,84 +60,77 @@ void FAudioModulationEditorModule::StartupModule()
 	static const FName AudioModulationStyleName(TEXT("AudioModulationStyle"));
 	StyleSet = MakeShared<FSlateStyleSet>(AudioModulationStyleName);
 
-	ModulationPatchToolBarExtensibilityManager = MakeShared<FExtensibilityManager>();
-	ModulationPatchMenuExtensibilityManager = MakeShared<FExtensibilityManager>();
+	ModulationSettingsToolBarExtensibilityManager = MakeShared<FExtensibilityManager>();
+	ModulationSettingsMenuExtensibilityManager = MakeShared<FExtensibilityManager>();
 
 	// Register the audio editor asset type actions
-	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>(AudioModulationEditor::ToolName).Get();
+	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>(AssetToolsName).Get();
 
-	AudioModulationEditor::AddAssetAction<FAssetTypeActions_SoundControlBus>(AssetTools, AssetActions);
-	AudioModulationEditor::AddAssetAction<FAssetTypeActions_SoundControlBusMix>(AssetTools, AssetActions);
-	AudioModulationEditor::AddAssetAction<FAssetTypeActions_SoundModulationGenerator>(AssetTools, AssetActions);
-	AudioModulationEditor::AddAssetAction<FAssetTypeActions_SoundModulationParameter>(AssetTools, AssetActions);
-	AudioModulationEditor::AddAssetAction<FAssetTypeActions_SoundModulationPatch>(AssetTools, AssetActions);
+	AddAssetAction<FAssetTypeActions_SoundVolumeControlBus>(AssetTools, AssetActions);
+	AddAssetAction<FAssetTypeActions_SoundPitchControlBus>(AssetTools, AssetActions);
+	AddAssetAction<FAssetTypeActions_SoundHPFControlBus>(AssetTools, AssetActions);
+	AddAssetAction<FAssetTypeActions_SoundLPFControlBus>(AssetTools, AssetActions);
+	AddAssetAction<FAssetTypeActions_SoundControlBus>(AssetTools, AssetActions);
+	AddAssetAction<FAssetTypeActions_SoundControlBusMix>(AssetTools, AssetActions);
+	AddAssetAction<FAssetTypeActions_SoundModulatorLFO>(AssetTools, AssetActions);
+	AddAssetAction<FAssetTypeActions_SoundModulationSettings>(AssetTools, AssetActions);
 
+	SetIcon(TEXT("SoundVolumeControlBus"));
+	SetIcon(TEXT("SoundPitchControlBus"));
+	SetIcon(TEXT("SoundHPFControlBus"));
+	SetIcon(TEXT("SoundLPFControlBus"));
 	SetIcon(TEXT("SoundControlBus"));
 	SetIcon(TEXT("SoundControlBusMix"));
-	SetIcon(TEXT("SoundModulationGenerator"));
-	SetIcon(TEXT("SoundModulationPatch"));
-	SetIcon(TEXT("SoundModulationParameter"));
+	SetIcon(TEXT("SoundBusModulatorLFO"));
+	SetIcon(TEXT("SoundModulationSettings"));
 
 	RegisterCustomPropertyLayouts();
 
 	ICurveEditorModule& CurveEditorModule = FModuleManager::LoadModuleChecked<ICurveEditorModule>("CurveEditor");
-	FModPatchCurveEditorModel::ViewId = CurveEditorModule.RegisterView(FOnCreateCurveEditorView::CreateStatic(
+	FModCurveEditorModel::ViewId = CurveEditorModule.RegisterView(FOnCreateCurveEditorView::CreateStatic(
 		[](TWeakPtr<FCurveEditor> WeakCurveEditor) -> TSharedRef<SCurveEditorView>
 		{
-			return SNew(SModulationPatchEditorViewStacked, WeakCurveEditor);
+			return SNew(SModulationSettingsEditorViewStacked, WeakCurveEditor);
 		}
 	));
 
 	FSlateStyleRegistry::RegisterSlateStyle(*StyleSet.Get());
-
-	// All parameters are required to always be loaded in editor to enable them to be referenced via object
-	// metadata and custom layouts, even if they are not referenced by runtime uobjects/systems directly
-	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
-	TArray<FAssetData> Assets;
-	AssetRegistry.OnAssetAdded().AddLambda([](const FAssetData& InAssetData)
-	{
-		if (InAssetData.GetClass()->IsChildOf<USoundModulationParameter>())
-		{
-			if (USoundModulationParameter* Parameter = CastChecked<USoundModulationParameter>(InAssetData.GetAsset()))
-			{
-				Parameter->AddToRoot();
-			}
-		}
-	});
-	AssetRegistry.OnInMemoryAssetDeleted().AddLambda([](UObject* ObjectDeleted)
-	{
-		if (USoundModulationParameter* Parameter = Cast<USoundModulationParameter>(ObjectDeleted))
-		{
-			Parameter->RemoveFromRoot();
-		}
-	});
 }
 
 void FAudioModulationEditorModule::RegisterCustomPropertyLayouts()
 {
 	FPropertyEditorModule& PropertyModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor"));
-	PropertyModule.RegisterCustomPropertyTypeLayout("SoundModulationTransform",
+	PropertyModule.RegisterCustomPropertyTypeLayout("SoundModulationOutputTransform",
 		FOnGetPropertyTypeCustomizationInstance::CreateStatic(
-			&FSoundModulationTransformLayoutCustomization::MakeInstance));
-	PropertyModule.RegisterCustomPropertyTypeLayout("SoundModulationParameterSettings",
+			&FSoundModulationOutputTransformLayoutCustomization::MakeInstance));
+// 	PropertyModule.RegisterCustomPropertyTypeLayout("SoundModulationParameter",
+// 		FOnGetPropertyTypeCustomizationInstance::CreateStatic(
+// 			&FSoundModulationParameterLayoutCustomization::MakeInstance));
+	PropertyModule.RegisterCustomPropertyTypeLayout("SoundVolumeModulationPatch",
 		FOnGetPropertyTypeCustomizationInstance::CreateStatic(
-			&FSoundModulationParameterSettingsLayoutCustomization::MakeInstance));
+			&FSoundVolumeModulationPatchLayoutCustomization::MakeInstance));
+	PropertyModule.RegisterCustomPropertyTypeLayout("SoundPitchModulationPatch",
+		FOnGetPropertyTypeCustomizationInstance::CreateStatic(
+			&FSoundPitchModulationPatchLayoutCustomization::MakeInstance));
+	PropertyModule.RegisterCustomPropertyTypeLayout("SoundHPFModulationPatch",
+		FOnGetPropertyTypeCustomizationInstance::CreateStatic(
+			&FSoundHPFModulationPatchLayoutCustomization::MakeInstance));
+	PropertyModule.RegisterCustomPropertyTypeLayout("SoundLPFModulationPatch",
+		FOnGetPropertyTypeCustomizationInstance::CreateStatic(
+			&FSoundLPFModulationPatchLayoutCustomization::MakeInstance));
 	PropertyModule.RegisterCustomPropertyTypeLayout("SoundControlModulationPatch",
 		FOnGetPropertyTypeCustomizationInstance::CreateStatic(
 			&FSoundControlModulationPatchLayoutCustomization::MakeInstance));
-	PropertyModule.RegisterCustomPropertyTypeLayout("SoundControlBusMixStage",
-		FOnGetPropertyTypeCustomizationInstance::CreateStatic(
-			&FSoundControlBusMixStageLayoutCustomization::MakeInstance));
 }
 
 void FAudioModulationEditorModule::ShutdownModule()
 {
-	ModulationPatchToolBarExtensibilityManager.Reset();
-	ModulationPatchMenuExtensibilityManager.Reset();
+	ModulationSettingsToolBarExtensibilityManager.Reset();
+	ModulationSettingsMenuExtensibilityManager.Reset();
 
-	if (FModuleManager::Get().IsModuleLoaded(AudioModulationEditor::ToolName))
+	if (FModuleManager::Get().IsModuleLoaded(AssetToolsName))
 	{
-		IAssetTools& AssetTools = FModuleManager::GetModuleChecked<FAssetToolsModule>(AudioModulationEditor::ToolName).Get();
+		IAssetTools& AssetTools = FModuleManager::GetModuleChecked<FAssetToolsModule>(AssetToolsName).Get();
 		for (TSharedPtr<FAssetTypeActions_Base>& AssetAction : AssetActions)
 		{
 			AssetTools.UnregisterAssetTypeActions(AssetAction.ToSharedRef());
@@ -164,9 +140,9 @@ void FAudioModulationEditorModule::ShutdownModule()
 
 	if (ICurveEditorModule* CurveEditorModule = FModuleManager::GetModulePtr<ICurveEditorModule>("CurveEditor"))
 	{
-		CurveEditorModule->UnregisterView(FModPatchCurveEditorModel::ViewId);
+		CurveEditorModule->UnregisterView(FModCurveEditorModel::ViewId);
 	}
-	FModPatchCurveEditorModel::ViewId = ECurveEditorViewID::Invalid;
+	FModCurveEditorModel::ViewId = ECurveEditorViewID::Invalid;
 
 	FSlateStyleRegistry::UnRegisterSlateStyle(*StyleSet.Get());
 }

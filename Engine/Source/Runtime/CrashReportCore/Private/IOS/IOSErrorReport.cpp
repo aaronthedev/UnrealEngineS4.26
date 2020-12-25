@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IOS/IOSErrorReport.h"
 #include "../CrashReportUtil.h"
@@ -50,11 +50,11 @@ FString FIOSErrorReport::FindCrashedAppPath() const
 			int32 LineEnd = -1;
 			if(PathData.FindChar( TCHAR('\r'), LineEnd ))
 			{
-				PathData.LeftInline(LineEnd, false);
+				PathData = PathData.Left(LineEnd);
 			}
 			if(PathData.FindChar( TCHAR('\n'), LineEnd ))
 			{
-				PathData.LeftInline(LineEnd, false);
+				PathData = PathData.Left(LineEnd);
 			}
 			return PathData;
 		}

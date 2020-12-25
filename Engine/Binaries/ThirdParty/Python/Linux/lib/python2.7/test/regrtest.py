@@ -174,21 +174,20 @@ Pattern examples:
 import StringIO
 import datetime
 import getopt
-import imp
 import json
-import math
 import os
-import platform
 import random
 import re
 import shutil
 import sys
-import sysconfig
-import tempfile
 import time
 import traceback
-import unittest
 import warnings
+import unittest
+import tempfile
+import imp
+import platform
+import sysconfig
 
 
 # Some times __path__ and __file__ are not absolute (e.g. while running from
@@ -241,7 +240,6 @@ SKIPPED = -2
 RESOURCE_DENIED = -3
 INTERRUPTED = -4
 CHILD_ERROR = -5   # error in a child process
-TEST_DID_NOT_RUN = -6   # error in a child process
 
 # Minimum duration of a test to display its duration or to mention that
 # the test is running in background
@@ -250,7 +248,7 @@ PROGRESS_MIN_TIME = 30.0   # seconds
 # Display the running tests if nothing happened last N seconds
 PROGRESS_UPDATE = 30.0   # seconds
 
-from test import support
+from test import test_support
 
 ALL_RESOURCES = ('audio', 'curses', 'largefile', 'network', 'bsddb',
                  'decimal', 'cpu', 'subprocess', 'urlfetch', 'gui',
@@ -272,25 +270,13 @@ def usage(code, msg=''):
 
 
 def format_duration(seconds):
-    ms = int(math.ceil(seconds * 1e3))
-    seconds, ms = divmod(ms, 1000)
-    minutes, seconds = divmod(seconds, 60)
-    hours, minutes = divmod(minutes, 60)
+    if seconds < 1.0:
+        return '%.0f ms' % (seconds * 1e3)
+    if seconds < 60.0:
+        return '%.0f sec' % seconds
 
-    parts = []
-    if hours:
-        parts.append('%s hour' % hours)
-    if minutes:
-        parts.append('%s min' % minutes)
-    if seconds:
-        parts.append('%s sec' % seconds)
-    if ms:
-        parts.append('%s ms' % ms)
-    if not parts:
-        return '0 ms'
-
-    parts = parts[:2]
-    return ' '.join(parts)
+    minutes, seconds = divmod(seconds, 60.0)
+    return '%.0f min %.0f sec' % (minutes, seconds)
 
 
 _FORMAT_TEST_RESULT = {
@@ -301,7 +287,6 @@ _FORMAT_TEST_RESULT = {
     RESOURCE_DENIED: '%s skipped (resource denied)',
     INTERRUPTED: '%s interrupted',
     CHILD_ERROR: '%s crashed',
-    TEST_DID_NOT_RUN: '%s run no tests',
 }
 
 
@@ -332,7 +317,7 @@ def unload_test_modules(save_modules):
     # Unload the newly imported modules (best effort finalization)
     for module in sys.modules.keys():
         if module not in save_modules and module.startswith("test."):
-            support.unload(module)
+            test_support.unload(module)
 
 
 def main(tests=None, testdir=None, verbose=0, quiet=False,
@@ -365,7 +350,7 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
     """
     regrtest_start_time = time.time()
 
-    support.record_original_stdout(sys.stdout)
+    test_support.record_original_stdout(sys.stdout)
     try:
         opts, args = getopt.getopt(sys.argv[1:], 'hvqxsSrf:lu:t:TD:NLR:FwWM:j:PGm:',
             ['help', 'verbose', 'verbose2', 'verbose3', 'quiet',
@@ -375,7 +360,7 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
              'runleaks', 'huntrleaks=', 'memlimit=', 'randseed=',
              'multiprocess=', 'slaveargs=', 'forever', 'header', 'pgo',
              'failfast', 'match=', 'testdir=', 'list-tests', 'list-cases',
-             'coverage', 'matchfile=', 'fail-env-changed', 'cleanup'])
+             'coverage', 'matchfile=', 'fail-env-changed'])
     except getopt.error, msg:
         usage(2, msg)
 
@@ -388,7 +373,6 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
     list_tests = False
     list_cases_opt = False
     fail_env_changed = False
-    cleanup_tests = False
     for o, a in opts:
         if o in ('-h', '--help'):
             usage(0)
@@ -422,7 +406,7 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
         elif o == '--matchfile':
             if match_tests is None:
                 match_tests = []
-            filename = os.path.join(support.SAVEDCWD, a)
+            filename = os.path.join(test_support.SAVEDCWD, a)
             with open(filename) as fp:
                 for line in fp:
                     match_tests.append(line.strip())
@@ -455,7 +439,7 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
             if len(huntrleaks) == 2 or not huntrleaks[2]:
                 huntrleaks[2:] = ["reflog.txt"]
         elif o in ('-M', '--memlimit'):
-            support.set_memlimit(a)
+            test_support.set_memlimit(a)
         elif o in ('-u', '--use'):
             u = [x.lower() for x in a.split(',')]
             for r in u:
@@ -491,8 +475,6 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
             list_cases_opt = True
         elif o == '--fail-env-changed':
             fail_env_changed = True
-        elif o == '--cleanup':
-            cleanup_tests = True
         else:
             print >>sys.stderr, ("No handler for option {}.  Please "
                 "report this as a bug at http://bugs.python.org.").format(o)
@@ -521,33 +503,10 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
         except ValueError:
             pass
 
-    if huntrleaks:
-        warmup, repetitions, _ = huntrleaks
-        if warmup < 1 or repetitions < 1:
-            msg = ("Invalid values for the --huntrleaks/-R parameters. The "
-                   "number of warmups and repetitions must be at least 1 "
-                   "each (1:1).")
-            print >>sys.stderr, msg
-            sys.exit(2)
-
-    if cleanup_tests:
-        import glob
-
-        os.chdir(support.SAVEDCWD)
-        path = os.path.join(TEMPDIR, 'test_python_*')
-        print("Cleanup %s directory" % TEMPDIR)
-        for name in glob.glob(path):
-            if os.path.isdir(name):
-                print("Remove directory: %s" % name)
-                support.rmtree(name)
-            else:
-                print("Remove file: %s" % name)
-                support.unlink(name)
-        sys.exit(0)
-
-
     if slaveargs is not None:
         args, kwargs = json.loads(slaveargs)
+        if kwargs['huntrleaks']:
+            warm_caches()
         if testdir:
             kwargs['testdir'] = testdir
         try:
@@ -558,14 +517,14 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
         print json.dumps(result)
         sys.exit(0)
 
+    if huntrleaks:
+        warm_caches()
+
     good = []
     bad = []
     skipped = []
     resource_denieds = []
     environment_changed = []
-    rerun = []
-    run_no_tests = []
-    first_result = None
     interrupted = False
 
     if findleaks:
@@ -593,7 +552,7 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
 
     if fromfile:
         tests = []
-        fp = open(os.path.join(support.SAVEDCWD, fromfile))
+        fp = open(os.path.join(test_support.SAVEDCWD, fromfile))
         for line in fp:
             guts = line.split() # assuming no test has whitespace in its name
             if guts and not guts[0].startswith('#'):
@@ -612,12 +571,6 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
                 stdtests.remove(arg)
             nottests.add(arg)
         args = []
-
-    if huntrleaks:
-        # FIXME: bpo-31731: test_io hangs with --huntrleaks
-        print("Warning: bpo-31731: test_io hangs with --huntrleaks: "
-              "exclude the test")
-        nottests.add('test_io')
 
     display_header = (verbose or header or not (quiet or single or tests or args)) and (not pgo)
     alltests = findtests(testdir, stdtests, nottests)
@@ -643,7 +596,7 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
         tracer = trace.Trace(trace=False, count=True)
 
     test_times = []
-    support.use_resources = use_resources
+    test_support.use_resources = use_resources
     save_modules = set(sys.modules)
 
     def accumulate_result(test, result):
@@ -661,8 +614,6 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
         elif ok == RESOURCE_DENIED:
             skipped.append(test)
             resource_denieds.append(test)
-        elif ok == TEST_DID_NOT_RUN:
-            run_no_tests.append(test)
         elif ok != INTERRUPTED:
             raise ValueError("invalid test result: %r" % ok)
 
@@ -686,9 +637,8 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
     def display_progress(test_index, test):
         # "[ 51/405/1] test_tcl"
         line = "{1:{0}}{2}".format(test_count_width, test_index, test_count)
-        fails = len(bad) + len(environment_changed)
-        if fails and not pgo:
-            line = '{}/{}'.format(line, fails)
+        if bad and not pgo:
+            line = '{}/{}'.format(line, len(bad))
         line = '[{}]'.format(line)
 
         # add the system load prefix: "load avg: 1.80 "
@@ -719,12 +669,6 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
         if ncpu:
             print "== CPU count:", ncpu
 
-    if huntrleaks:
-        warmup, repetitions, _ = huntrleaks
-        if warmup < 3:
-            print("WARNING: Running tests with --huntrleaks/-R and less than "
-                  "3 warmup repetitions can give false positives!")
-
     if randomize:
         random.seed(random_seed)
         print "Using random seed", random_seed
@@ -751,7 +695,7 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
                 )
                 yield (test, args_tuple)
         pending = tests_and_args()
-        opt_args = support.args_from_interpreter_flags()
+        opt_args = test_support.args_from_interpreter_flags()
         base_cmd = [sys.executable] + opt_args + ['-m', 'test.regrtest']
         # required to spawn a new process with PGO flag on/off
         if pgo:
@@ -824,7 +768,7 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
                     continue
                 dt = time.time() - worker.start_time
                 if dt >= PROGRESS_MIN_TIME:
-                    running.append('%s (%s)' % (current_test, format_duration(dt)))
+                    running.append('%s (%.0f sec)' % (current_test, dt))
             return running
 
         finished = 0
@@ -838,7 +782,6 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
                     running = get_running(workers)
                     if running and not pgo:
                         print('running: %s' % ', '.join(running))
-                        sys.stdout.flush()
                     continue
 
                 test, stdout, stderr, result = item
@@ -852,14 +795,14 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
                     if (ok not in (CHILD_ERROR, INTERRUPTED)
                         and test_time >= PROGRESS_MIN_TIME
                         and not pgo):
-                        text += ' (%s)' % format_duration(test_time)
+                        text += ' (%.0f sec)' % test_time
                     running = get_running(workers)
                     if running and not pgo:
                         text += ' -- running: %s' % ', '.join(running)
                     display_progress(test_index, text)
 
                 if stdout:
-                    print(stdout)
+                    print stdout
                 sys.stdout.flush()
                 if stderr and not pgo:
                     print >>sys.stderr, stderr
@@ -937,109 +880,56 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
 
             unload_test_modules(save_modules)
 
-
-    def get_tests_result():
-        result = []
-        if bad:
-            result.append("FAILURE")
-        elif fail_env_changed and environment_changed:
-            result.append("ENV CHANGED")
-        elif not any((good, bad, skipped, interrupted, environment_changed)):
-            result.append("NO TEST RUN")
-
-        if interrupted:
-            result.append("INTERRUPTED")
-
-        if not result:
-            result.append("SUCCESS")
-
-        result = ', '.join(result)
-        if first_result:
-            result = '%s then %s' % (first_result, result)
-        return result
-
-
-    def display_result():
+    if interrupted and not pgo:
         # print a newline after ^C
         print
-        print("== Tests result: %s ==" % get_tests_result())
+        print "Test suite interrupted by signal SIGINT."
+        omitted = set(selected) - set(good) - set(bad) - set(skipped)
+        print count(len(omitted), "test"), "omitted:"
+        printlist(omitted)
+    if good and not quiet and not pgo:
+        if not bad and not skipped and not interrupted and len(good) > 1:
+            print "All",
+        print count(len(good), "test"), "OK."
+    if print_slow:
+        test_times.sort(reverse=True)
+        print "10 slowest tests:"
+        for test_time, test in test_times[:10]:
+            print("- %s: %.1fs" % (test, test_time))
+    if bad and not pgo:
+        print count(len(bad), "test"), "failed:"
+        printlist(bad)
+    if environment_changed and not pgo:
+        print "{} altered the execution environment:".format(
+            count(len(environment_changed), "test"))
+        printlist(environment_changed)
+    if skipped and not quiet and not pgo:
+        print count(len(skipped), "test"), "skipped:"
+        printlist(skipped)
 
-        if interrupted and not pgo:
-            print
-            print "Test suite interrupted by signal SIGINT."
-            omitted = set(selected) - set(good) - set(bad) - set(skipped)
-            print count(len(omitted), "test"), "omitted:"
-            printlist(omitted)
-
-        if good and not quiet and not pgo:
-            print
-            if not bad and not skipped and not interrupted and len(good) > 1:
-                print "All",
-            print count(len(good), "test"), "OK."
-
-        if print_slow:
-            test_times.sort(reverse=True)
-            print
-            print "10 slowest tests:"
-            for test_time, test in test_times[:10]:
-                print("- %s: %.1fs" % (test, test_time))
-
-        if bad and not pgo:
-            print
-            print count(len(bad), "test"), "failed:"
-            printlist(bad)
-
-        if environment_changed and not pgo:
-            print
-            print "{} altered the execution environment:".format(
-                count(len(environment_changed), "test"))
-            printlist(environment_changed)
-
-        if skipped and not quiet and not pgo:
-            print
-            print count(len(skipped), "test"), "skipped:"
-            printlist(skipped)
-
-            e = _ExpectedSkips()
-            plat = sys.platform
-            if e.isvalid():
-                surprise = set(skipped) - e.getexpected() - set(resource_denieds)
-                if surprise:
-                    print count(len(surprise), "skip"), \
-                          "unexpected on", plat + ":"
-                    printlist(surprise)
-                else:
-                    print "Those skips are all expected on", plat + "."
+        e = _ExpectedSkips()
+        plat = sys.platform
+        if e.isvalid():
+            surprise = set(skipped) - e.getexpected() - set(resource_denieds)
+            if surprise:
+                print count(len(surprise), "skip"), \
+                      "unexpected on", plat + ":"
+                printlist(surprise)
             else:
-                print "Ask someone to teach regrtest.py about which tests are"
-                print "expected to get skipped on", plat + "."
-
-        if rerun:
-            print("")
-            print("%s:" % count(len(rerun), "re-run test"))
-            printlist(rerun)
-
-        if run_no_tests:
-            print("")
-            print("%s run no tests:" % count(len(run_no_tests), "test"))
-            printlist(run_no_tests)
-
-
-    display_result()
+                print "Those skips are all expected on", plat + "."
+        else:
+            print "Ask someone to teach regrtest.py about which tests are"
+            print "expected to get skipped on", plat + "."
 
     if verbose2 and bad:
-        first_result = get_tests_result()
-
-        print
         print "Re-running failed tests in verbose mode"
-        rerun = bad[:]
-        for test in rerun:
+        for test in bad[:]:
             print "Re-running test %r in verbose mode" % test
             sys.stdout.flush()
             try:
-                support.verbose = True
+                test_support.verbose = True
                 ok = runtest(test, True, quiet, huntrleaks, None, pgo,
-                             match_tests=match_tests, testdir=testdir)
+                             testdir=testdir)
             except KeyboardInterrupt:
                 # print a newline separate from the ^C
                 print
@@ -1051,8 +941,6 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
             if bad:
                 print count(len(bad), "test"), "failed again:"
                 printlist(bad)
-
-        display_result()
 
     if single:
         if next_single_test:
@@ -1072,7 +960,15 @@ def main(tests=None, testdir=None, verbose=0, quiet=False,
     duration = time.time() - regrtest_start_time
     print("Total duration: %s" % format_duration(duration))
 
-    print("Tests result: %s" % get_tests_result())
+    if bad:
+        result = "FAILURE"
+    elif interrupted:
+        result = "INTERRUPTED"
+    elif fail_env_changed and environment_changed:
+        result = "ENV CHANGED"
+    else:
+        result = "SUCCESS"
+    print("Tests result: %s" % result)
 
     if bad:
         sys.exit(2)
@@ -1135,20 +1031,15 @@ def runtest(test, verbose, quiet,
         ENV_CHANGED      test failed because it changed the execution environment
         FAILED           test failed
         PASSED           test passed
-        EMPTY_TEST_SUITE test ran no subtests.
     """
 
-    support.verbose = verbose  # Tell tests to be moderately quiet
+    test_support.verbose = verbose  # Tell tests to be moderately quiet
     if use_resources is not None:
-        support.use_resources = use_resources
+        test_support.use_resources = use_resources
     try:
-        support.set_match_tests(match_tests)
-        # reset the environment_altered flag to detect if a test altered
-        # the environment
-        support.environment_altered = False
+        test_support.match_tests = match_tests
         if failfast:
-            support.failfast = True
-
+            test_support.failfast = True
         return runtest_inner(test, verbose, quiet, huntrleaks, pgo, testdir)
     finally:
         cleanup_test_droppings(test, verbose)
@@ -1248,31 +1139,31 @@ class saved_test_environment:
             asyncore.close_all(ignore_all=True)
             asyncore.socket_map.update(saved_map)
 
-    def get_support_TESTFN(self):
-        if os.path.isfile(support.TESTFN):
+    def get_test_support_TESTFN(self):
+        if os.path.isfile(test_support.TESTFN):
             result = 'f'
-        elif os.path.isdir(support.TESTFN):
+        elif os.path.isdir(test_support.TESTFN):
             result = 'd'
         else:
             result = None
         return result
-    def restore_support_TESTFN(self, saved_value):
+    def restore_test_support_TESTFN(self, saved_value):
         if saved_value is None:
-            if os.path.isfile(support.TESTFN):
-                os.unlink(support.TESTFN)
-            elif os.path.isdir(support.TESTFN):
-                shutil.rmtree(support.TESTFN)
+            if os.path.isfile(test_support.TESTFN):
+                os.unlink(test_support.TESTFN)
+            elif os.path.isdir(test_support.TESTFN):
+                shutil.rmtree(test_support.TESTFN)
 
     def get_files(self):
         return sorted(fn + ('/' if os.path.isdir(fn) else '')
                       for fn in os.listdir(os.curdir))
     def restore_files(self, saved_value):
-        fn = support.TESTFN
+        fn = test_support.TESTFN
         if fn not in saved_value and (fn + '/') not in saved_value:
             if os.path.isfile(fn):
-                support.unlink(fn)
+                test_support.unlink(fn)
             elif os.path.isdir(fn):
-                support.rmtree(fn)
+                test_support.rmtree(fn)
 
     def resource_info(self):
         for name in self.resources:
@@ -1289,10 +1180,6 @@ class saved_test_environment:
     def __exit__(self, exc_type, exc_val, exc_tb):
         saved_values = self.saved_values
         del self.saved_values
-
-        # Read support.environment_altered, set by support helper functions
-        self.changed |= support.environment_altered
-
         for name, get, restore in self.resource_info():
             current = get()
             original = saved_values.pop(name)
@@ -1315,10 +1202,10 @@ class saved_test_environment:
 
 
 def post_test_cleanup():
-    support.reap_children()
+    test_support.reap_children()
 
 def runtest_inner(test, verbose, quiet, huntrleaks=False, pgo=False, testdir=None):
-    support.unload(test)
+    test_support.unload(test)
     if verbose:
         capture_stdout = None
     else:
@@ -1344,17 +1231,16 @@ def runtest_inner(test, verbose, quiet, huntrleaks=False, pgo=False, testdir=Non
                 # being imported.  For tests based on unittest or doctest,
                 # explicitly invoke their test_main() function (if it exists).
                 indirect_test = getattr(the_module, "test_main", None)
+                if indirect_test is not None:
+                    indirect_test()
                 if huntrleaks:
                     refleak = dash_R(the_module, test, indirect_test,
-                        huntrleaks, quiet)
-                else:
-                    if indirect_test is not None:
-                        indirect_test()
+                        huntrleaks)
                 test_time = time.time() - start_time
             post_test_cleanup()
         finally:
             sys.stdout = save_stdout
-    except support.ResourceDenied, msg:
+    except test_support.ResourceDenied, msg:
         if not quiet and not pgo:
             print test, "skipped --", msg
             sys.stdout.flush()
@@ -1366,13 +1252,11 @@ def runtest_inner(test, verbose, quiet, huntrleaks=False, pgo=False, testdir=Non
         return SKIPPED, test_time
     except KeyboardInterrupt:
         raise
-    except support.TestFailed, msg:
+    except test_support.TestFailed, msg:
         if not pgo:
             print >>sys.stderr, "test", test, "failed --", msg
         sys.stderr.flush()
         return FAILED, test_time
-    except support.TestDidNotRun:
-        return TEST_DID_NOT_RUN, test_time
     except:
         type, value = sys.exc_info()[:2]
         if not pgo:
@@ -1413,7 +1297,7 @@ def cleanup_test_droppings(testname, verbose):
     # since if a test leaves a file open, it cannot be deleted by name (while
     # there's nothing we can do about that here either, we can display the
     # name of the offending test, which is a real help).
-    for name in (support.TESTFN,
+    for name in (test_support.TESTFN,
                  "db_home",
                 ):
         if not os.path.exists(name):
@@ -1439,7 +1323,7 @@ def cleanup_test_droppings(testname, verbose):
             print >> sys.stderr, ("%r left behind %s %r and it couldn't be "
                 "removed: %s" % (testname, kind, name, msg))
 
-def dash_R(the_module, test, indirect_test, huntrleaks, quiet):
+def dash_R(the_module, test, indirect_test, huntrleaks):
     """Run a test multiple times, looking for reference leaks.
 
     Returns:
@@ -1451,10 +1335,6 @@ def dash_R(the_module, test, indirect_test, huntrleaks, quiet):
     if not hasattr(sys, 'gettotalrefcount'):
         raise Exception("Tracking reference leaks requires a debug build "
                         "of Python")
-
-    # Avoid false positives due to various caches
-    # filling slowly with random data:
-    warm_caches()
 
     # Save current values for dash_R_cleanup() to restore.
     fs = warnings.filters[:]
@@ -1475,14 +1355,6 @@ def dash_R(the_module, test, indirect_test, huntrleaks, quiet):
         for obj in abc.__subclasses__() + [abc]:
             abcs[obj] = obj._abc_registry.copy()
 
-    # bpo-31217: Integer pool to get a single integer object for the same
-    # value. The pool is used to prevent false alarm when checking for memory
-    # block leaks. Fill the pool with values in -1000..1000 which are the most
-    # common (reference, memory block, file descriptor) differences.
-    int_pool = {value: value for value in range(-1000, 1000)}
-    def get_pooled_int(value):
-        return int_pool.setdefault(value, value)
-
     if indirect_test:
         def run_the_test():
             indirect_test()
@@ -1492,74 +1364,39 @@ def dash_R(the_module, test, indirect_test, huntrleaks, quiet):
 
     deltas = []
     nwarmup, ntracked, fname = huntrleaks
-    fname = os.path.join(support.SAVEDCWD, fname)
-
-    # Pre-allocate to ensure that the loop doesn't allocate anything new
+    fname = os.path.join(test_support.SAVEDCWD, fname)
     repcount = nwarmup + ntracked
-    rc_deltas = [0] * repcount
-    fd_deltas = [0] * repcount
-    rep_range = list(range(repcount))
-
-    if not quiet:
-        print >> sys.stderr, "beginning", repcount, "repetitions"
-        print >> sys.stderr, ("1234567890"*(repcount//10 + 1))[:repcount]
-
+    print >> sys.stderr, "beginning", repcount, "repetitions"
+    print >> sys.stderr, ("1234567890"*(repcount//10 + 1))[:repcount]
     dash_R_cleanup(fs, ps, pic, zdc, abcs)
-
-    # initialize variables to make pyflakes quiet
-    rc_before = fd_before = 0
-
-    for i in rep_range:
+    for i in range(repcount):
+        rc_before = sys.gettotalrefcount()
         run_the_test()
-
-        if not quiet:
-            sys.stderr.write('.')
-
+        sys.stderr.write('.')
         dash_R_cleanup(fs, ps, pic, zdc, abcs)
-
         rc_after = sys.gettotalrefcount()
-        fd_after = support.fd_count()
-        rc_deltas[i] = get_pooled_int(rc_after - rc_before)
-        fd_deltas[i] = get_pooled_int(fd_after - fd_before)
-        rc_before = rc_after
-        fd_before = fd_after
+        if i >= nwarmup:
+            deltas.append(rc_after - rc_before)
+    print >> sys.stderr
 
-    if not quiet:
-        print >> sys.stderr
-
-    # These checkers return False on success, True on failure
-    def check_rc_deltas(deltas):
-        # Checker for reference counters and memomry blocks.
-        #
-        # bpo-30776: Try to ignore false positives:
-        #
-        #   [3, 0, 0]
-        #   [0, 1, 0]
-        #   [8, -8, 1]
-        #
-        # Expected leaks:
-        #
-        #   [5, 5, 6]
-        #   [10, 1, 1]
-        return all(delta >= 1 for delta in deltas)
-
-    def check_fd_deltas(deltas):
-        return any(deltas)
-
-    failed = False
-    for deltas, item_name, checker in [
-        (rc_deltas, 'references', check_rc_deltas),
-        (fd_deltas, 'file descriptors', check_fd_deltas)
-    ]:
-        deltas = deltas[nwarmup:]
-        if checker(deltas):
-            msg = '%s leaked %s %s, sum=%s' % (test, deltas, item_name, sum(deltas))
-            print >> sys.stderr, msg
-            with open(fname, "a") as refrep:
-                print >> refrep, msg
-                refrep.flush()
-            failed = True
-    return failed
+    # bpo-30776: Try to ignore false positives:
+    #
+    #   [3, 0, 0]
+    #   [0, 1, 0]
+    #   [8, -8, 1]
+    #
+    # Expected leaks:
+    #
+    #   [5, 5, 6]
+    #   [10, 1, 1]
+    if all(delta >= 1 for delta in deltas):
+        msg = '%s leaked %s references, sum=%s' % (test, deltas, sum(deltas))
+        print >> sys.stderr, msg
+        with open(fname, "a") as refrep:
+            print >> refrep, msg
+            refrep.flush()
+        return True
+    return False
 
 def dash_R_cleanup(fs, ps, pic, zdc, abcs):
     import gc, copy_reg
@@ -1686,7 +1523,7 @@ def clear_caches():
         ctypes._reset_cache()
 
     # Collect cyclic trash.
-    support.gc_collect()
+    gc.collect()
 
 def warm_caches():
     """Create explicitly internal singletons which are created on demand
@@ -1743,12 +1580,12 @@ def _list_cases(suite):
         if isinstance(test, unittest.TestSuite):
             _list_cases(test)
         elif isinstance(test, unittest.TestCase):
-            if support.match_test(test):
+            if test_support._match_test(test):
                 print(test.id())
 
 def list_cases(testdir, selected, match_tests):
-    support.verbose = False
-    support.set_match_tests(match_tests)
+    test_support.verbose = False
+    test_support.match_tests = match_tests
 
     save_modules = set(sys.modules)
     skipped = []
@@ -2182,8 +2019,8 @@ def main_in_temp_cwd():
     # Run the tests in a context manager that temporary changes the CWD to a
     # temporary and writable directory. If it's not possible to create or
     # change the CWD, the original CWD will be used. The original CWD is
-    # available from support.SAVEDCWD.
-    with support.temp_cwd(TESTCWD, quiet=True):
+    # available from test_support.SAVEDCWD.
+    with test_support.temp_cwd(TESTCWD, quiet=True):
         main()
 
 if __name__ == '__main__':

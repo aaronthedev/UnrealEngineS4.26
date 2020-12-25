@@ -1,15 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Input/Devices/VRPN/Tracker/DisplayClusterVrpnTrackerInputDataHolder.h"
-
-#include "DisplayClusterConfigurationTypes.h"
-
-#include "Misc/DisplayClusterTypesConverter.h"
-#include "Misc/DisplayClusterLog.h"
+#include "DisplayClusterUtils/DisplayClusterTypesConverter.h"
+#include "DisplayClusterLog.h"
 
 
-FDisplayClusterVrpnTrackerInputDataHolder::FDisplayClusterVrpnTrackerInputDataHolder(const FString& DeviceId, const UDisplayClusterConfigurationInputDeviceTracker* CfgDevice)
-	: FDisplayClusterInputDeviceBase<EDisplayClusterInputDeviceType::VrpnTracker>(DeviceId, CfgDevice)
+FDisplayClusterVrpnTrackerInputDataHolder::FDisplayClusterVrpnTrackerInputDataHolder(const FDisplayClusterConfigInput& config) :
+	FDisplayClusterInputDeviceBase<EDisplayClusterInputDeviceType::VrpnTracker>(config)
 {
 }
 
@@ -32,42 +29,43 @@ bool FDisplayClusterVrpnTrackerInputDataHolder::Initialize()
 //////////////////////////////////////////////////////////////////////////////////////////////
 FString FDisplayClusterVrpnTrackerInputDataHolder::SerializeToString() const
 {
-	FString Result;
-	Result.Reserve(256);
+	FString result;
+	result.Reserve(256);
 
 	for (auto it = DeviceData.CreateConstIterator(); it; ++it)
 	{
-		Result += FString::Printf(TEXT("%d%s%s%s%s%s"),
+		result += FString::Printf(TEXT("%d%s%s%s%s%s"),
 			it->Key,
 			SerializationDelimiter,
-			*DisplayClusterTypesConverter::template ToHexString(it->Value.TrackerLoc),
+			*FDisplayClusterTypesConverter::template ToHexString(it->Value.trLoc),
 			SerializationDelimiter,
-			*DisplayClusterTypesConverter::template ToHexString(it->Value.TrackerQuat),
+			*FDisplayClusterTypesConverter::template ToHexString(it->Value.trQuat),
 			SerializationDelimiter);
 	}
 
-	return Result;
+	return result;
 }
 
-bool FDisplayClusterVrpnTrackerInputDataHolder::DeserializeFromString(const FString& Data)
+bool FDisplayClusterVrpnTrackerInputDataHolder::DeserializeFromString(const FString& data)
 {
-	TArray<FString> Parsed;
-	Data.ParseIntoArray(Parsed, SerializationDelimiter);
+	TArray<FString> parsed;
+	data.ParseIntoArray(parsed, SerializationDelimiter);
 
-	if (Parsed.Num() % SerializationItems)
+	if (parsed.Num() % SerializationItems)
 	{
-		UE_LOG(LogDisplayClusterInputVRPN, Error, TEXT("Wrong items amount after deserialization [%s]"), *Data);
+		UE_LOG(LogDisplayClusterInputVRPN, Error, TEXT("Wrong items amount after deserialization [%s]"), *data);
 		return false;
 	}
 
-	for (int i = 0; i < Parsed.Num(); i += SerializationItems)
+	for (int i = 0; i < parsed.Num(); i += SerializationItems)
 	{
-		const int  ch = FCString::Atoi(*Parsed[i]);
-		const FVector  Loc  = DisplayClusterTypesConverter::template FromHexString<FVector>(Parsed[i + 1]);
-		const FQuat    Quat = DisplayClusterTypesConverter::template FromHexString<FQuat>(Parsed[i + 2]);
+		const int  ch = FCString::Atoi(*parsed[i]);
+		const FVector  loc  = FDisplayClusterTypesConverter::template FromHexString<FVector>(parsed[i + 1]);
+		const FQuat    quat = FDisplayClusterTypesConverter::template FromHexString<FQuat>(parsed[i + 2]);
 
-		DeviceData.Add(ch, FDisplayClusterVrpnTrackerChannelData{ Loc, Quat });
+		DeviceData.Add(ch, FDisplayClusterVrpnTrackerChannelData{ loc, quat });
 	}
 
 	return true;
 }
+

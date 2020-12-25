@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,7 +13,7 @@
  */
 UCLASS(MinimalAPI)
 class UMovieSceneFadeSection
-	: public UMovieSceneSection
+	: public UMovieSceneFloatSection
 {
 	GENERATED_BODY()
 
@@ -21,10 +21,6 @@ class UMovieSceneFadeSection
 	UMovieSceneFadeSection();
 
 public:
-
-	/** Float data */
-	UPROPERTY()
-	FMovieSceneFloatChannel FloatCurve;
 
 	/** Fade color. */
 	UPROPERTY(EditAnywhere, Category="Fade", meta=(InlineColorPicker))

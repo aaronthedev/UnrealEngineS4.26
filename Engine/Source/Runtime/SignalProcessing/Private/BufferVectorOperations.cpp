@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DSP/BufferVectorOperations.h"
 
@@ -6,14 +6,8 @@
 
 namespace Audio
 {
-	static void RestrictedPtrAliasCheck(const float* RESTRICT Ptr1, const float* RESTRICT Ptr2, uint32 NumFloatsInArray)
-	{
-		checkf(static_cast<uint32>(FMath::Abs(Ptr1 - Ptr2)) >= NumFloatsInArray,
-			TEXT("Using this function as an in-place operation will result in undefined behavior!"));
-	}
-
 	/* Sets a values to zero if value is denormal. Denormal numbers significantly slow down floating point operations. */
-	void BufferUnderflowClampFast(FAlignedFloatBuffer& InOutBuffer)
+	void BufferUnderflowClampFast(AlignedFloatBuffer& InOutBuffer)
 	{
 		BufferUnderflowClampFast(InOutBuffer.GetData(), InOutBuffer.Num());
 	}
@@ -73,7 +67,7 @@ namespace Audio
 		}
 	}
 
-	void BufferMultiplyByConstant(const FAlignedFloatBuffer& InFloatBuffer, float InValue, FAlignedFloatBuffer& OutFloatBuffer)
+	void BufferMultiplyByConstant(const AlignedFloatBuffer& InFloatBuffer, float InValue, AlignedFloatBuffer& OutFloatBuffer)
 	{
 		check(InFloatBuffer.Num() >= 4);
 
@@ -95,8 +89,6 @@ namespace Audio
 	void BufferMultiplyByConstant(const float* RESTRICT InFloatBuffer, float InValue, float* RESTRICT OutFloatBuffer, const int32 InNumSamples)
 	{
 		check(InNumSamples >= 4);
-		RestrictedPtrAliasCheck(InFloatBuffer, OutFloatBuffer, InNumSamples);
-
 #if !AUDIO_USE_SIMD
 		for (int32 i = 0; i < InNumSamples; ++i)
 		{
@@ -165,23 +157,8 @@ namespace Audio
 		}
 	}
 
-	void BufferSetToConstantInplace(AlignedFloatBuffer& InBuffer, float InConstant)
-	{
-		BufferSetToConstantInplace(InBuffer.GetData(), InBuffer.Num(), InConstant);
-	}
-
-	void BufferSetToConstantInplace(float* RESTRICT InBuffer, int32 NumSamples, float InConstant)
-	{
-		const VectorRegister Constant = VectorLoadFloat1(&InConstant);
-
-		for (int32 i = 0; i < NumSamples; i += 4)
-		{
-			VectorStoreAligned(Constant, &InBuffer[i]);
-		}
-	}
-
 	/* Performs an element-wise weighted sum OutputBuffer = (InBuffer1 x InGain1) + (InBuffer2 x InGain2) */
-	void BufferWeightedSumFast(const FAlignedFloatBuffer& InBuffer1, float InGain1, const FAlignedFloatBuffer& InBuffer2, float InGain2, FAlignedFloatBuffer& OutBuffer)
+	void BufferWeightedSumFast(const AlignedFloatBuffer& InBuffer1, float InGain1, const AlignedFloatBuffer& InBuffer2, float InGain2, AlignedFloatBuffer& OutBuffer)
 	{
 		checkf(InBuffer1.Num() == InBuffer2.Num(), TEXT("Buffers must be equal length"));
 		OutBuffer.Reset();
@@ -191,7 +168,7 @@ namespace Audio
 	}
 
 	/* Performs an element-wise weighted sum OutputBuffer = (InBuffer1 x InGain1) + InBuffer2 */
-	void BufferWeightedSumFast(const FAlignedFloatBuffer& InBuffer1, float InGain1, const FAlignedFloatBuffer& InBuffer2, FAlignedFloatBuffer& OutBuffer)
+	void BufferWeightedSumFast(const AlignedFloatBuffer& InBuffer1, float InGain1, const AlignedFloatBuffer& InBuffer2, AlignedFloatBuffer& OutBuffer)
 	{
 		checkf(InBuffer1.Num() == InBuffer2.Num(), TEXT("Buffers must be equal length"));
 		OutBuffer.Reset();
@@ -209,20 +186,17 @@ namespace Audio
 		checkf(IsAligned<const float*>(InBuffer2, AUDIO_SIMD_FLOAT_ALIGNMENT), TEXT("Memory must be aligned to use vector operations."));
 		checkf(IsAligned<float*>(OutBuffer, AUDIO_SIMD_FLOAT_ALIGNMENT), TEXT("Memory must be aligned to use vector operations."));
 
-		RestrictedPtrAliasCheck(InBuffer1, OutBuffer, InNum);
-		RestrictedPtrAliasCheck(InBuffer2, OutBuffer, InNum);
-
 		VectorRegister Gain1Vector = VectorLoadFloat1(&InGain1);
 		VectorRegister Gain2Vector = VectorLoadFloat1(&InGain2);
 
 		for (int32 i = 0; i < InNum; i += 4)
 		{
 			// InBuffer1 x InGain1
-			VectorRegister Input1 = VectorLoadAligned(&InBuffer1[i]);
+			VectorRegister Input1  = VectorLoadAligned(&InBuffer1[i]);
 			VectorRegister Weighted1 = VectorMultiply(Input1, Gain1Vector);
 
 			// InBuffer2 x InGain2
-			VectorRegister Input2 = VectorLoadAligned(&InBuffer2[i]);
+			VectorRegister Input2  = VectorLoadAligned(&InBuffer2[i]);
 			VectorRegister Weighted2 = VectorMultiply(Input2, Gain2Vector);
 
 			VectorRegister Output = VectorAdd(Weighted1, Weighted2);
@@ -239,18 +213,15 @@ namespace Audio
 		checkf(IsAligned<const float*>(InBuffer2, AUDIO_SIMD_FLOAT_ALIGNMENT), TEXT("Memory must be aligned to use vector operations."));
 		checkf(IsAligned<float*>(OutBuffer, AUDIO_SIMD_FLOAT_ALIGNMENT), TEXT("Memory must be aligned to use vector operations."));
 
-		RestrictedPtrAliasCheck(InBuffer1, OutBuffer, InNum);
-		RestrictedPtrAliasCheck(InBuffer2, OutBuffer, InNum);
-
 		VectorRegister Gain1Vector = VectorLoadFloat1(&InGain1);
 
 		for (int32 i = 0; i < InNum; i += 4)
 		{
 			// InBuffer1 x InGain1
-			VectorRegister Input1 = VectorLoadAligned(&InBuffer1[i]);
+			VectorRegister Input1  = VectorLoadAligned(&InBuffer1[i]);
 			VectorRegister Weighted1 = VectorMultiply(Input1, Gain1Vector);
 
-			VectorRegister Input2 = VectorLoadAligned(&InBuffer2[i]);
+			VectorRegister Input2  = VectorLoadAligned(&InBuffer2[i]);
 
 			VectorRegister Output = VectorAdd(Weighted1, Input2);
 			VectorStoreAligned(Output, &OutBuffer[i]);
@@ -335,7 +306,7 @@ namespace Audio
 #endif
 	}
 
-	void MixInBufferFast(const FAlignedFloatBuffer& InFloatBuffer, FAlignedFloatBuffer& BufferToSumTo, const float Gain)
+	void MixInBufferFast(const AlignedFloatBuffer& InFloatBuffer, AlignedFloatBuffer& BufferToSumTo, const float Gain)
 	{
 		MixInBufferFast(InFloatBuffer.GetData(), BufferToSumTo.GetData(), InFloatBuffer.Num(), Gain);
 	}
@@ -345,8 +316,6 @@ namespace Audio
 		checkf(IsAligned<const float*>(InFloatBuffer, 4), TEXT("Memory must be aligned to use vector operations."));
 		checkf(IsAligned<float*>(BufferToSumTo, 4), TEXT("Memory must be aligned to use vector operations."));
 		checkf(NumSamples % 4 == 0, TEXT("Please use a buffer size that is a multiple of 4."));
-
-		RestrictedPtrAliasCheck(InFloatBuffer, BufferToSumTo, NumSamples);
 
 #if !AUDIO_USE_SIMD
 		for (int32 i = 0; i < NumSamples; ++i)
@@ -366,7 +335,7 @@ namespace Audio
 #endif
 	}
 
-	void MixInBufferFast(const FAlignedFloatBuffer& InFloatBuffer, FAlignedFloatBuffer& BufferToSumTo)
+	void MixInBufferFast(const AlignedFloatBuffer& InFloatBuffer, AlignedFloatBuffer& BufferToSumTo)
 	{
 		checkf(InFloatBuffer.Num() == BufferToSumTo.Num(), TEXT("Buffers must be equal size"));
 		MixInBufferFast(InFloatBuffer.GetData(), BufferToSumTo.GetData(), InFloatBuffer.Num());
@@ -377,8 +346,6 @@ namespace Audio
 		checkf(IsAligned<const float*>(InFloatBuffer, 4), TEXT("Memory must be aligned to use vector operations."));
 		checkf(IsAligned<float*>(BufferToSumTo, 4), TEXT("Memory must be aligned to use vector operations."));
 		checkf(NumSamples % 4 == 0, TEXT("Please use a buffer size that is a multiple of 4."));
-
-		RestrictedPtrAliasCheck(InFloatBuffer, BufferToSumTo, NumSamples);
 
 #if !AUDIO_USE_SIMD
 		for (int32 i = 0; i < NumSamples; ++i)
@@ -396,7 +363,7 @@ namespace Audio
 #endif
 	}
 
-	void MixInBufferFast(const FAlignedFloatBuffer& InFloatBuffer, FAlignedFloatBuffer& BufferToSumTo, const float StartGain, const float EndGain)
+	void MixInBufferFast(const AlignedFloatBuffer& InFloatBuffer, AlignedFloatBuffer& BufferToSumTo, const float StartGain, const float EndGain)
 	{
 		MixInBufferFast(InFloatBuffer.GetData(), BufferToSumTo.GetData(), InFloatBuffer.Num(), StartGain, EndGain);
 	}
@@ -406,8 +373,6 @@ namespace Audio
 		checkf(IsAligned<const float*>(InFloatBuffer, 4), TEXT("Memory must be aligned to use vector operations."));
 		checkf(IsAligned<float*>(BufferToSumTo, 4), TEXT("Memory must be aligned to use vector operations."));
 		checkf(NumSamples % 4 == 0, TEXT("Please use a buffer size that is a multiple of 4."));
-
-		RestrictedPtrAliasCheck(InFloatBuffer, BufferToSumTo, NumSamples);
 
 		const int32 NumIterations = NumSamples / 4;
 
@@ -456,7 +421,7 @@ namespace Audio
 	}
 
 	/* Subtracts two buffers together element-wise. */
-	void BufferSubtractFast(const FAlignedFloatBuffer& InMinuend, const FAlignedFloatBuffer& InSubtrahend, FAlignedFloatBuffer& OutputBuffer)
+	void BufferSubtractFast(const AlignedFloatBuffer& InMinuend, const AlignedFloatBuffer& InSubtrahend, AlignedFloatBuffer& OutputBuffer)
 	{
 		const int32 InNum = InMinuend.Num();
 		OutputBuffer.Reset(InNum);
@@ -476,9 +441,6 @@ namespace Audio
 		checkf(IsAligned<const float*>(InSubtrahend, AUDIO_SIMD_FLOAT_ALIGNMENT), TEXT("Memory must be aligned to use vector operations."));
 		checkf(IsAligned<float*>(OutBuffer, AUDIO_SIMD_FLOAT_ALIGNMENT), TEXT("Memory must be aligned to use vector operations."));
 
-		RestrictedPtrAliasCheck(InMinuend, OutBuffer, InNum);
-		RestrictedPtrAliasCheck(InSubtrahend, OutBuffer, InNum);
-
 		for (int32 i = 0; i < InNum; i += 4)
 		{
 			VectorRegister Input1 = VectorLoadAligned(&InMinuend[i]);
@@ -489,7 +451,7 @@ namespace Audio
 	}
 
 	/* Performs element-wise in-place subtraction placing the result in the subtrahend. InOutSubtrahend = InMinuend - InOutSubtrahend */
-	void BufferSubtractInPlace1Fast(const FAlignedFloatBuffer& InMinuend, FAlignedFloatBuffer& InOutSubtrahend)
+	void BufferSubtractInPlace1Fast(const AlignedFloatBuffer& InMinuend, AlignedFloatBuffer& InOutSubtrahend)
 	{
 		checkf(InMinuend.Num() == InOutSubtrahend.Num(), TEXT("Input buffers must be equal length"));
 		BufferSubtractInPlace1Fast(InMinuend.GetData(), InOutSubtrahend.GetData(), InMinuend.Num());
@@ -503,8 +465,6 @@ namespace Audio
 		checkf(IsAligned<const float*>(InMinuend, AUDIO_SIMD_FLOAT_ALIGNMENT), TEXT("Memory must be aligned to use vector operations."));
 		checkf(IsAligned<const float*>(InOutSubtrahend, AUDIO_SIMD_FLOAT_ALIGNMENT), TEXT("Memory must be aligned to use vector operations."));
 		
-		RestrictedPtrAliasCheck(InMinuend, InOutSubtrahend, InNum);
-
 		for (int32 i = 0; i < InNum; i += 4)
 		{
 			VectorRegister Input1 = VectorLoadAligned(&InMinuend[i]);
@@ -516,7 +476,7 @@ namespace Audio
 	}
 	
 	/* Performs element-wise in-place subtraction placing the result in the minuend. InOutMinuend = InOutMinuend - InSubtrahend */
-	void BufferSubtractInPlace2Fast(AlignedFloatBuffer& InOutMinuend, const FAlignedFloatBuffer& InSubtrahend)
+	void BufferSubtractInPlace2Fast(AlignedFloatBuffer& InOutMinuend, const AlignedFloatBuffer& InSubtrahend)
 	{
 		checkf(InOutMinuend.Num() == InSubtrahend.Num(), TEXT("Input buffers must be equal length"));
 		BufferSubtractInPlace2Fast(InOutMinuend.GetData(), InSubtrahend.GetData(), InOutMinuend.Num());
@@ -530,8 +490,6 @@ namespace Audio
 		checkf(IsAligned<const float*>(InOutMinuend, AUDIO_SIMD_FLOAT_ALIGNMENT), TEXT("Memory must be aligned to use vector operations."));
 		checkf(IsAligned<const float*>(InSubtrahend, AUDIO_SIMD_FLOAT_ALIGNMENT), TEXT("Memory must be aligned to use vector operations."));
 
-		RestrictedPtrAliasCheck(InOutMinuend, InSubtrahend, InNum);
-		
 		for (int32 i = 0; i < InNum; i += 4)
 		{
 			VectorRegister Input1 = VectorLoadAligned(&InOutMinuend[i]);
@@ -542,7 +500,7 @@ namespace Audio
 		}
 	}
 
-	void SumBuffers(const FAlignedFloatBuffer& InFloatBuffer1, const FAlignedFloatBuffer& InFloatBuffer2, FAlignedFloatBuffer& OutputBuffer)
+	void SumBuffers(const AlignedFloatBuffer& InFloatBuffer1, const AlignedFloatBuffer& InFloatBuffer2, AlignedFloatBuffer& OutputBuffer)
 	{
 		checkf(InFloatBuffer1.Num() == InFloatBuffer2.Num(), TEXT("Input buffers must be equal length"));
 		const int32 InNum = InFloatBuffer1.Num();
@@ -558,9 +516,6 @@ namespace Audio
 		checkf(IsAligned<const float*>(InFloatBuffer2, 4), TEXT("Memory must be aligned to use vector operations."));
 		checkf(IsAligned<float*>(OutputBuffer, 4), TEXT("Memory must be aligned to use vector operations."));
 		checkf(NumSamples % 4 == 0, TEXT("Please use a buffer size that is a multiple of 4."));
-
-		RestrictedPtrAliasCheck(InFloatBuffer1, OutputBuffer, NumSamples);
-		RestrictedPtrAliasCheck(InFloatBuffer2, OutputBuffer, NumSamples);
 
 #if !AUDIO_USE_SIMD
 		for (int32 i = 0; i < NumSamples; ++i)
@@ -579,7 +534,7 @@ namespace Audio
 #endif
 	}
 
-	void MultiplyBuffersInPlace(const FAlignedFloatBuffer& InFloatBuffer, FAlignedFloatBuffer& BufferToMultiply)
+	void MultiplyBuffersInPlace(const AlignedFloatBuffer& InFloatBuffer, AlignedFloatBuffer& BufferToMultiply)
 	{
 		MultiplyBuffersInPlace(InFloatBuffer.GetData(), BufferToMultiply.GetData(), BufferToMultiply.Num());
 	}
@@ -589,8 +544,6 @@ namespace Audio
 		checkf(IsAligned<const float*>(InFloatBuffer, 4), TEXT("Memory must be aligned to use vector operations."));
 		checkf(IsAligned<const float*>(BufferToMultiply, 4), TEXT("Memory must be aligned to use vector operations."));
 		checkf(NumSamples % 4 == 0, TEXT("Please use a buffer size that is a multiple of 4."));
-
-		RestrictedPtrAliasCheck(InFloatBuffer, BufferToMultiply, NumSamples);
 
 		for (int32 i = 0; i < NumSamples; i += 4)
 		{
@@ -602,7 +555,7 @@ namespace Audio
 		}
 	}
 
-	float GetMagnitude(const FAlignedFloatBuffer& Buffer)
+	float GetMagnitude(const AlignedFloatBuffer& Buffer)
 	{
 		return GetMagnitude(Buffer.GetData(), Buffer.Num());
 	}
@@ -637,7 +590,7 @@ namespace Audio
 #endif
 	}
 
-	float GetAverageAmplitude(const FAlignedFloatBuffer& Buffer)
+	float GetAverageAmplitude(const AlignedFloatBuffer& Buffer)
 	{
 		checkf(Buffer.Num() % 4 == 0, TEXT("Please use a buffer size that is a multiple of 4."));
 
@@ -770,7 +723,7 @@ namespace Audio
 		}
 	}
 
-	void MixMonoTo2ChannelsFast(const FAlignedFloatBuffer& MonoBuffer, FAlignedFloatBuffer& DestinationBuffer, const float* RESTRICT Gains)
+	void MixMonoTo2ChannelsFast(const AlignedFloatBuffer& MonoBuffer, AlignedFloatBuffer& DestinationBuffer, const float* RESTRICT Gains)
 	{
 		MixMonoTo2ChannelsFast(MonoBuffer.GetData(), DestinationBuffer.GetData(), DestinationBuffer.Num() / 2, Gains);
 	}
@@ -799,7 +752,7 @@ namespace Audio
 		}
 	}
 
-	void MixMonoTo2ChannelsFast(const FAlignedFloatBuffer& MonoBuffer, FAlignedFloatBuffer& DestinationBuffer, const float* RESTRICT StartGains, const float* RESTRICT EndGains)
+	void MixMonoTo2ChannelsFast(const AlignedFloatBuffer& MonoBuffer, AlignedFloatBuffer& DestinationBuffer, const float* RESTRICT StartGains, const float* RESTRICT EndGains)
 	{
 		MixMonoTo2ChannelsFast(MonoBuffer.GetData(), DestinationBuffer.GetData(), DestinationBuffer.Num() / 2, StartGains, EndGains);
 	}
@@ -840,7 +793,7 @@ namespace Audio
 		}
 	}
 
-	void MixMonoTo2ChannelsFast(const FAlignedFloatBuffer& MonoBuffer, FAlignedFloatBuffer& DestinationBuffer)
+	void MixMonoTo2ChannelsFast(const AlignedFloatBuffer& MonoBuffer, AlignedFloatBuffer& DestinationBuffer)
 	{
 		MixMonoTo2ChannelsFast(MonoBuffer.GetData(), DestinationBuffer.GetData(), MonoBuffer.Num());
 	}
@@ -876,7 +829,7 @@ namespace Audio
 		}
 	}
 
-	void Mix2ChannelsTo2ChannelsFast(const FAlignedFloatBuffer& SourceBuffer, FAlignedFloatBuffer& DestinationBuffer, const float* RESTRICT Gains)
+	void Mix2ChannelsTo2ChannelsFast(const AlignedFloatBuffer& SourceBuffer, AlignedFloatBuffer& DestinationBuffer, const float* RESTRICT Gains)
 	{
 		Mix2ChannelsTo2ChannelsFast(SourceBuffer.GetData(), DestinationBuffer.GetData(), DestinationBuffer.Num() / 2, Gains);
 	}
@@ -916,7 +869,7 @@ namespace Audio
 		}
 	}
 
-	void Mix2ChannelsTo2ChannelsFast(const FAlignedFloatBuffer& SourceBuffer, FAlignedFloatBuffer& DestinationBuffer, const float* RESTRICT StartGains, const float* RESTRICT EndGains)
+	void Mix2ChannelsTo2ChannelsFast(const AlignedFloatBuffer& SourceBuffer, AlignedFloatBuffer& DestinationBuffer, const float* RESTRICT StartGains, const float* RESTRICT EndGains)
 	{
 		Mix2ChannelsTo2ChannelsFast(SourceBuffer.GetData(), DestinationBuffer.GetData(), DestinationBuffer.Num() / 2, StartGains, EndGains);
 	}
@@ -1015,7 +968,7 @@ namespace Audio
 		}
 	}
 
-	void MixMonoTo4ChannelsFast(const FAlignedFloatBuffer& MonoBuffer, FAlignedFloatBuffer& DestinationBuffer, const float* RESTRICT Gains)
+	void MixMonoTo4ChannelsFast(const AlignedFloatBuffer& MonoBuffer, AlignedFloatBuffer& DestinationBuffer, const float* RESTRICT Gains)
 	{
 		MixMonoTo4ChannelsFast(MonoBuffer.GetData(), DestinationBuffer.GetData(), DestinationBuffer.Num() / 4, Gains);
 	}
@@ -1046,7 +999,7 @@ namespace Audio
 		}
 	}
 
-	void MixMonoTo4ChannelsFast(const FAlignedFloatBuffer& MonoBuffer, FAlignedFloatBuffer& DestinationBuffer, const float* RESTRICT StartGains, const float* RESTRICT EndGains)
+	void MixMonoTo4ChannelsFast(const AlignedFloatBuffer& MonoBuffer, AlignedFloatBuffer& DestinationBuffer, const float* RESTRICT StartGains, const float* RESTRICT EndGains)
 	{
 		MixMonoTo4ChannelsFast(MonoBuffer.GetData(), DestinationBuffer.GetData(), DestinationBuffer.Num() / 4, StartGains, EndGains);
 	}
@@ -1082,7 +1035,7 @@ namespace Audio
 		}
 	}
 
-	void Mix2ChannelsTo4ChannelsFast(const FAlignedFloatBuffer& SourceBuffer, FAlignedFloatBuffer& DestinationBuffer, const float* RESTRICT Gains)
+	void Mix2ChannelsTo4ChannelsFast(const AlignedFloatBuffer& SourceBuffer, AlignedFloatBuffer& DestinationBuffer, const float* RESTRICT Gains)
 	{
 		Mix2ChannelsTo4ChannelsFast(SourceBuffer.GetData(), DestinationBuffer.GetData(), DestinationBuffer.Num() / 4, Gains);
 	}
@@ -1121,7 +1074,7 @@ namespace Audio
 		}
 	}
 
-	void Mix2ChannelsTo4ChannelsFast(const FAlignedFloatBuffer& SourceBuffer, FAlignedFloatBuffer& DestinationBuffer, const float* RESTRICT StartGains, const float* RESTRICT EndGains)
+	void Mix2ChannelsTo4ChannelsFast(const AlignedFloatBuffer& SourceBuffer, AlignedFloatBuffer& DestinationBuffer, const float* RESTRICT StartGains, const float* RESTRICT EndGains)
 	{
 		Mix2ChannelsTo4ChannelsFast(SourceBuffer.GetData(), DestinationBuffer.GetData(), DestinationBuffer.Num() / 4, StartGains, EndGains);
 	}
@@ -1239,7 +1192,7 @@ namespace Audio
 		}
 	}
 
-	void MixMonoTo6ChannelsFast(const FAlignedFloatBuffer& MonoBuffer, FAlignedFloatBuffer& DestinationBuffer, const float* RESTRICT Gains)
+	void MixMonoTo6ChannelsFast(const AlignedFloatBuffer& MonoBuffer, AlignedFloatBuffer& DestinationBuffer, const float* RESTRICT Gains)
 	{
 		MixMonoTo6ChannelsFast(MonoBuffer.GetData(), DestinationBuffer.GetData(), DestinationBuffer.Num() / 6, Gains);
 	}
@@ -1282,7 +1235,7 @@ namespace Audio
 		}
 	}
 
-	void MixMonoTo6ChannelsFast(const FAlignedFloatBuffer& MonoBuffer, FAlignedFloatBuffer& DestinationBuffer, const float* RESTRICT StartGains, const float* RESTRICT EndGains)
+	void MixMonoTo6ChannelsFast(const AlignedFloatBuffer& MonoBuffer, AlignedFloatBuffer& DestinationBuffer, const float* RESTRICT StartGains, const float* RESTRICT EndGains)
 	{
 		MixMonoTo6ChannelsFast(MonoBuffer.GetData(), DestinationBuffer.GetData(), DestinationBuffer.Num() / 6, StartGains, EndGains);
 	}
@@ -1341,7 +1294,7 @@ namespace Audio
 		}
 	}
 
-	void Mix2ChannelsTo6ChannelsFast(const FAlignedFloatBuffer& SourceBuffer, FAlignedFloatBuffer& DestinationBuffer, const float* RESTRICT Gains)
+	void Mix2ChannelsTo6ChannelsFast(const AlignedFloatBuffer& SourceBuffer, AlignedFloatBuffer& DestinationBuffer, const float* RESTRICT Gains)
 	{
 		Mix2ChannelsTo6ChannelsFast(SourceBuffer.GetData(), DestinationBuffer.GetData(), DestinationBuffer.Num() / 6, Gains);
 	}
@@ -1397,12 +1350,12 @@ namespace Audio
 			VectorStoreAligned(Result, &DestinationBuffer[OutputIndex + 4]);
 
 			Result = VectorMultiply(Input31, GainVector31);
-			Result = VectorMultiplyAdd(Input32, GainVector32, Result);
+			Result = VectorMultiplyAdd(Input32, GainVector31, Result);
 			VectorStoreAligned(Result, &DestinationBuffer[OutputIndex + 8]);
 		}
 	}
 
-	void Mix2ChannelsTo6ChannelsFast(const FAlignedFloatBuffer& SourceBuffer, FAlignedFloatBuffer& DestinationBuffer, const float* RESTRICT StartGains, const float* RESTRICT EndGains)
+	void Mix2ChannelsTo6ChannelsFast(const AlignedFloatBuffer& SourceBuffer, AlignedFloatBuffer& DestinationBuffer, const float* RESTRICT StartGains, const float* RESTRICT EndGains)
 	{
 		Mix2ChannelsTo6ChannelsFast(SourceBuffer.GetData(), DestinationBuffer.GetData(), DestinationBuffer.Num() / 6, StartGains, EndGains);
 	}
@@ -1563,7 +1516,7 @@ namespace Audio
 		}
 	}
 
-	void MixMonoTo8ChannelsFast(const FAlignedFloatBuffer& MonoBuffer, FAlignedFloatBuffer& DestinationBuffer, const float* RESTRICT Gains)
+	void MixMonoTo8ChannelsFast(const AlignedFloatBuffer& MonoBuffer, AlignedFloatBuffer& DestinationBuffer, const float* RESTRICT Gains)
 	{
 		MixMonoTo8ChannelsFast(MonoBuffer.GetData(), DestinationBuffer.GetData(), DestinationBuffer.Num() / 8, Gains);
 	}
@@ -1599,7 +1552,7 @@ namespace Audio
 		}
 	}
 
-	void MixMonoTo8ChannelsFast(const FAlignedFloatBuffer& MonoBuffer, FAlignedFloatBuffer& DestinationBuffer, const float* RESTRICT StartGains, const float* RESTRICT EndGains)
+	void MixMonoTo8ChannelsFast(const AlignedFloatBuffer& MonoBuffer, AlignedFloatBuffer& DestinationBuffer, const float* RESTRICT StartGains, const float* RESTRICT EndGains)
 	{
 		MixMonoTo8ChannelsFast(MonoBuffer.GetData(), DestinationBuffer.GetData(), DestinationBuffer.Num() / 8, StartGains, EndGains);
 	}
@@ -1644,7 +1597,7 @@ namespace Audio
 		}
 	}
 
-	void Mix2ChannelsTo8ChannelsFast(const FAlignedFloatBuffer& SourceBuffer, FAlignedFloatBuffer& DestinationBuffer, const float* RESTRICT Gains)
+	void Mix2ChannelsTo8ChannelsFast(const AlignedFloatBuffer& SourceBuffer, AlignedFloatBuffer& DestinationBuffer, const float* RESTRICT Gains)
 	{
 		Mix2ChannelsTo8ChannelsFast(SourceBuffer.GetData(), DestinationBuffer.GetData(), DestinationBuffer.Num() / 8, Gains);
 	}
@@ -1691,7 +1644,7 @@ namespace Audio
 		}
 	}
 
-	void Mix2ChannelsTo8ChannelsFast(const FAlignedFloatBuffer& SourceBuffer, FAlignedFloatBuffer& DestinationBuffer, const float* RESTRICT StartGains, const float* RESTRICT EndGains)
+	void Mix2ChannelsTo8ChannelsFast(const AlignedFloatBuffer& SourceBuffer, AlignedFloatBuffer& DestinationBuffer, const float* RESTRICT StartGains, const float* RESTRICT EndGains)
 	{
 		Mix2ChannelsTo8ChannelsFast(SourceBuffer.GetData(), DestinationBuffer.GetData(), DestinationBuffer.Num() / 8, StartGains, EndGains);
 	}
@@ -1759,7 +1712,7 @@ namespace Audio
 	/**
 	 * These functions are non-vectorized versions of the Mix[N]ChannelsTo[N]Channels functions above:
 	 */
-	void DownmixBuffer(int32 NumSourceChannels, int32 NumDestinationChannels, const FAlignedFloatBuffer& SourceBuffer, FAlignedFloatBuffer& DestinationBuffer, const float* RESTRICT Gains)
+	void DownmixBuffer(int32 NumSourceChannels, int32 NumDestinationChannels, const AlignedFloatBuffer& SourceBuffer, AlignedFloatBuffer& DestinationBuffer, const float* RESTRICT Gains)
 	{
 		DownmixBuffer(NumSourceChannels, NumDestinationChannels, SourceBuffer.GetData(), DestinationBuffer.GetData(), SourceBuffer.Num() / NumSourceChannels, Gains);
 	}
@@ -1782,7 +1735,7 @@ namespace Audio
 		}
 	}
 
-	void DownmixBuffer(int32 NumSourceChannels, int32 NumDestinationChannels, const FAlignedFloatBuffer& SourceBuffer, FAlignedFloatBuffer& DestinationBuffer, float* RESTRICT StartGains, const float* RESTRICT EndGains)
+	void DownmixBuffer(int32 NumSourceChannels, int32 NumDestinationChannels, const AlignedFloatBuffer& SourceBuffer, AlignedFloatBuffer& DestinationBuffer, float* RESTRICT StartGains, const float* RESTRICT EndGains)
 	{
 		DownmixBuffer(NumSourceChannels, NumDestinationChannels, SourceBuffer.GetData(), DestinationBuffer.GetData(), SourceBuffer.Num() / NumSourceChannels, StartGains, EndGains);
 	}
@@ -1821,30 +1774,8 @@ namespace Audio
 	}
 
 
-	SIGNALPROCESSING_API void DownmixAndSumIntoBuffer(int32 NumSourceChannels, int32 NumDestinationChannels, const FAlignedFloatBuffer& SourceBuffer, FAlignedFloatBuffer& BufferToSumTo, const float* RESTRICT Gains)
-	{
-		DownmixAndSumIntoBuffer(NumSourceChannels, NumDestinationChannels, SourceBuffer.GetData(), BufferToSumTo.GetData(), SourceBuffer.Num() / NumSourceChannels, Gains);
-	}
-
-	SIGNALPROCESSING_API void DownmixAndSumIntoBuffer(int32 NumSourceChannels, int32 NumDestinationChannels, const float* RESTRICT SourceBuffer, float* RESTRICT BufferToSumTo, int32 NumFrames, const float* RESTRICT Gains)
-	{
-		for (int32 FrameIndex = 0; FrameIndex < NumFrames; FrameIndex++)
-		{
-			float* RESTRICT OutputFrame = &BufferToSumTo[FrameIndex * NumDestinationChannels];
-			const float* RESTRICT InputFrame = &SourceBuffer[FrameIndex * NumSourceChannels];
-
-			for (int32 OutputChannelIndex = 0; OutputChannelIndex < NumDestinationChannels; OutputChannelIndex++)
-			{
-				for (int32 InputChannelIndex = 0; InputChannelIndex < NumSourceChannels; InputChannelIndex++)
-				{
-					OutputFrame[OutputChannelIndex] += InputFrame[InputChannelIndex] * Gains[InputChannelIndex * NumDestinationChannels + OutputChannelIndex];
-				}
-			}
-		}
-	}
-
 	/** Interleaves samples from two input buffers */
-	void BufferInterleave2ChannelFast(const FAlignedFloatBuffer& InBuffer1, const FAlignedFloatBuffer& InBuffer2, FAlignedFloatBuffer& OutBuffer)
+	void BufferInterleave2ChannelFast(const AlignedFloatBuffer& InBuffer1, const AlignedFloatBuffer& InBuffer2, AlignedFloatBuffer& OutBuffer)
 	{
 		checkf(InBuffer1.Num() == InBuffer2.Num(), TEXT("InBuffer1 Num not equal to InBuffer2 Num"));
 
@@ -1892,7 +1823,7 @@ namespace Audio
 	}
 
 	/** Deinterleaves samples from a 2 channel input buffer */
-	void BufferDeinterleave2ChannelFast(const FAlignedFloatBuffer& InBuffer, FAlignedFloatBuffer& OutBuffer1, FAlignedFloatBuffer& OutBuffer2)
+	void BufferDeinterleave2ChannelFast(const AlignedFloatBuffer& InBuffer, AlignedFloatBuffer& OutBuffer1, AlignedFloatBuffer& OutBuffer2)
 	{
 		const int32 InNum = InBuffer.Num();
 		const int32 InNumFrames = InNum / 2;
@@ -1936,7 +1867,7 @@ namespace Audio
 	}
 
 	/** Sums 2 channel interleaved input samples. OutSamples[n] = InSamples[2n] + InSamples[2n + 1] */
-	void BufferSum2ChannelToMonoFast(const FAlignedFloatBuffer& InSamples, FAlignedFloatBuffer& OutSamples)
+	void BufferSum2ChannelToMonoFast(const AlignedFloatBuffer& InSamples, AlignedFloatBuffer& OutSamples)
 	{
 		const int32 InNum = InSamples.Num();
 		const int32 Frames = InNum / 2;
@@ -1980,7 +1911,7 @@ namespace Audio
 		}
 	}
 
-	void BufferComplexToPowerFast(const FAlignedFloatBuffer& InRealSamples, const FAlignedFloatBuffer& InImaginarySamples, FAlignedFloatBuffer& OutPowerSamples)
+	void BufferComplexToPowerFast(const AlignedFloatBuffer& InRealSamples, const AlignedFloatBuffer& InImaginarySamples, AlignedFloatBuffer& OutPowerSamples)
 	{
 		checkf(InRealSamples.Num() == InImaginarySamples.Num(), TEXT("Input buffers must have equal number of elements"));
 
@@ -2001,9 +1932,7 @@ namespace Audio
 		checkf(IsAligned<const float*>(InImaginarySamples, AUDIO_SIMD_FLOAT_ALIGNMENT), TEXT("Memory must be aligned to use vector operations."));
 		checkf(IsAligned<float*>(OutPowerSamples, AUDIO_SIMD_FLOAT_ALIGNMENT), TEXT("Memory must be aligned to use vector operations."));
 
-		RestrictedPtrAliasCheck(InRealSamples, OutPowerSamples, InNum);
-		RestrictedPtrAliasCheck(InImaginarySamples, OutPowerSamples, InNum);
-
+		
 		for (int32 i = 0; i < InNum; i += 4)
 		{
 			VectorRegister VInReal = VectorLoadAligned(&InRealSamples[i]);
@@ -2016,75 +1945,5 @@ namespace Audio
 
 			VectorStoreAligned(VOut, &OutPowerSamples[i]);
 		}
-	}
-
-	// class FBufferLinearEase implementation
-	FBufferLinearEase::FBufferLinearEase() {}
-	FBufferLinearEase::FBufferLinearEase(const FAlignedFloatBuffer & InSourceValues, const FAlignedFloatBuffer & InTargetValues, int32 InLerpLength)
-	{
-		Init(InSourceValues, InTargetValues, InLerpLength);
-	}
-
-	FBufferLinearEase::~FBufferLinearEase() {}
-
-	void FBufferLinearEase::Init(const FAlignedFloatBuffer & InSourceValues, const FAlignedFloatBuffer & InTargetValues, int32 InLerpLength)
-	{
-		check(InSourceValues.Num());
-		check(InTargetValues.Num());
-		check(InLerpLength > 0);
-
-		BufferLength = InSourceValues.Num();
-
-		check(InTargetValues.Num() == BufferLength);
-		LerpLength = InLerpLength;
-		CurrentLerpStep = 0;
-
-		// init deltas
-		DeltaBuffer.Reset();
-		DeltaBuffer.AddZeroed(BufferLength);
-
-		const float OneOverLerpLength = 1.0f / static_cast<float>(LerpLength);
-
-		BufferSubtractFast(InTargetValues.GetData(), InSourceValues.GetData(), DeltaBuffer.GetData(), BufferLength);
-		MultiplyBufferByConstantInPlace(DeltaBuffer, OneOverLerpLength);
-	}
-
-	bool FBufferLinearEase::Update(AlignedFloatBuffer & InSourceValues)
-	{
-		check(InSourceValues.Num() == BufferLength);
-		check(CurrentLerpStep != LerpLength);
-
-		MixInBufferFast(DeltaBuffer.GetData(), InSourceValues.GetData(), BufferLength);
-
-		if (++CurrentLerpStep == LerpLength)
-		{
-			return true;
-		}
-
-		return false;
-	}
-
-	bool FBufferLinearEase::Update(uint32 StepsToJumpForward, FAlignedFloatBuffer & InSourceValues)
-	{
-		check(InSourceValues.Num() == BufferLength);
-		check(CurrentLerpStep != LerpLength);
-		check(StepsToJumpForward);
-
-		bool bIsComplete = false;
-		if ((CurrentLerpStep += StepsToJumpForward) >= LerpLength)
-		{
-			StepsToJumpForward -= (CurrentLerpStep - LerpLength);
-			CurrentLerpStep = LerpLength;
-			bIsComplete = true;
-		}
-
-		MixInBufferFast(DeltaBuffer.GetData(), InSourceValues.GetData(), BufferLength, static_cast<float>(StepsToJumpForward));
-
-		return bIsComplete;
-
-	}
-	const FAlignedFloatBuffer & FBufferLinearEase::GetDeltaBuffer()
-	{
-		return DeltaBuffer;
 	}
 }

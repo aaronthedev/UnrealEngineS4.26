@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -381,14 +381,9 @@ struct FAutomationScreenshotMetadata
 public:
 
 	UPROPERTY(EditAnywhere, Category="Message")
-	FString ScreenShotName;
-
+	FString Name;
 	UPROPERTY(EditAnywhere, Category="Message")
 	FString Context;
-
-	UPROPERTY(EditAnywhere, Category = "Message")
-	FString TestName;
-
 	UPROPERTY(EditAnywhere, Category = "Message")
 	FString Notes;
 
@@ -502,9 +497,8 @@ public:
 		static_assert((sizeof(FAutomationScreenshotMetadata) + sizeof(FString)) == sizeof(FAutomationScreenshotData), "These objects must match in size, to ensure we're copying all the members, except for FAutomationScreenshotData.Path, which we don't copy over.");
 
 		// Human readable name and associated context the screenshot was taken in.
-		ScreenShotName = Data.ScreenShotName;
+		Name = Data.Name;
 		Context = Data.Context;
-		TestName = Data.TestName;
 		Notes = Data.Notes;
 
 		// Unique Id so we know if this screenshot has already been imported.
@@ -667,10 +661,6 @@ struct FAutomationWorkerScreenImage
 	/** The screen shot data. */
 	UPROPERTY(EditAnywhere, Category="Message")
 	TArray<uint8> ScreenImage;
-
-	/** The frame trace data. */
-	UPROPERTY(EditAnywhere, Category = "Message")
-	TArray<uint8> FrameTrace;
 
 	/** The screen shot name. */
 	UPROPERTY(EditAnywhere, Category="Message")

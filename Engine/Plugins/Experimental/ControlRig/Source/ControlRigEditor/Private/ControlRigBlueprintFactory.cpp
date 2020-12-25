@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ControlRigBlueprintFactory.h"
 #include "UObject/Interface.h"
@@ -19,7 +19,6 @@
 #include "ClassViewerModule.h"
 #include "ClassViewerFilter.h"
 #include "ControlRigBlueprint.h"
-#include "ControlRigBlueprintActions.h"
 #include "ControlRigBlueprintGeneratedClass.h"
 
 #define LOCTEXT_NAMESPACE "ControlRigBlueprintFactory"
@@ -135,19 +134,7 @@ private:
 
 				// in the future we might allow it to parent to BP classes, but right now, it won't work well because of multi rig graph
 				// for now we disable it and only allow native class. 
-				if (!InClass->HasAnyClassFlags(CLASS_Deprecated) && InClass->HasAnyClassFlags(CLASS_Native) && InClass->GetOutermost() != GetTransientPackage())
-				{
-					// see if it can be blueprint base
-					const FString BlueprintBaseMetaKey(TEXT("IsBlueprintBase"));
-
-					if (InClass->HasMetaData(*BlueprintBaseMetaKey))
-					{
-						if (InClass->GetMetaData(*BlueprintBaseMetaKey) == TEXT("true"))
-						{
-							return true;
-						}
-					}
-				}
+				return (!InClass->HasAnyClassFlags(CLASS_Deprecated) && InClass->HasAnyClassFlags(CLASS_Native) && InClass->GetOutermost() != GetTransientPackage());
 			}
 
 			return false;
@@ -291,16 +278,6 @@ UObject* UControlRigBlueprintFactory::FactoryCreateNew(UClass* Class, UObject* I
 UObject* UControlRigBlueprintFactory::FactoryCreateNew(UClass* Class, UObject* InParent, FName Name, EObjectFlags Flags, UObject* Context, FFeedbackContext* Warn)
 {
 	return FactoryCreateNew(Class, InParent, Name, Flags, Context, Warn, NAME_None);
-}
-
-UControlRigBlueprint* UControlRigBlueprintFactory::CreateNewControlRigAsset(const FString& InDesiredPackagePath)
-{
-	return FControlRigBlueprintActions::CreateNewControlRigAsset(InDesiredPackagePath);
-}
-
-UControlRigBlueprint* UControlRigBlueprintFactory::CreateControlRigFromSkeletalMeshOrSkeleton(UObject* InSelectedObject)
-{
-	return FControlRigBlueprintActions::CreateControlRigFromSkeletalMeshOrSkeleton(InSelectedObject);
 }
 
 #undef LOCTEXT_NAMESPACE

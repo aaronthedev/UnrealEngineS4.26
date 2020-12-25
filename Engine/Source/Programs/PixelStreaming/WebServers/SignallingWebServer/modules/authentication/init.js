@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 // Adapted from 
 // * https://blog.risingstack.com/node-hero-node-js-authentication-passport-js/
 // * https://github.com/RisingStack/nodehero-authentication/tree/master/app
@@ -7,7 +7,7 @@
 
 const passport = require('passport');
 const session = require('express-session');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 const LocalStrategy = require('passport-local').Strategy;
 const path = require('path');
 const fs = require('fs');

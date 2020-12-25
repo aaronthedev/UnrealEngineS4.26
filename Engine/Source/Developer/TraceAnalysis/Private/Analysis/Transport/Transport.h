@@ -1,8 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
-#include "Analysis/StreamReader.h"
+#include "DataStream.h"
 
 namespace Trace
 {
@@ -12,7 +12,7 @@ class FTransport
 {
 public:
 	virtual					~FTransport() {}
-	void					SetReader(FStreamReader& InReader);
+	void					SetSource(FStreamReader::FData& InSource);
 	template <typename RetType>
 	RetType const*			GetPointer();
 	template <typename RetType>
@@ -21,13 +21,13 @@ public:
 
 protected:
 	virtual const uint8*	GetPointerImpl(uint32 BlockSize);
-	FStreamReader*			Reader;
+	FStreamReader::FData*	Source;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-inline void FTransport::SetReader(FStreamReader& InReader)
+inline void FTransport::SetSource(FStreamReader::FData& InSource)
 {
-	Reader = &InReader;
+	Source = &InSource;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -47,13 +47,13 @@ inline RetType const* FTransport::GetPointer(uint32 BlockSize)
 ////////////////////////////////////////////////////////////////////////////////
 inline void FTransport::Advance(uint32 BlockSize)
 {
-	Reader->Advance(BlockSize);
+	Source->Advance(BlockSize);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 inline const uint8* FTransport::GetPointerImpl(uint32 BlockSize)
 {
-	return Reader->GetPointer(BlockSize);
+	return Source->GetPointer(BlockSize);
 }
 
 } // namespace Trace

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -26,13 +26,14 @@ struct FVisualizeSubsurfaceInputs
 	FScreenPassTexture SceneColor;
 
 	// [Required] The scene textures used to visualize shading models.
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures = nullptr;
+	const FSceneTextureParameters* SceneTextures = nullptr;
 };
 
 FScreenPassTexture AddVisualizeSubsurfacePass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FVisualizeSubsurfaceInputs& Inputs);
 
-FRDGTextureRef AddSubsurfacePass(
-	FRDGBuilder& GraphBuilder,
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
-	TArrayView<const FViewInfo> Views,
-	FRDGTextureRef SceneColorTexture);
+//////////////////////////////////////////////////////////////////////////
+//! Shim methods to hook into the legacy pipeline until the full RDG conversion is complete.
+
+void ComputeSubsurfaceShim(FRHICommandListImmediate& RHICmdList, const TArray<FViewInfo>& Views);
+
+//////////////////////////////////////////////////////////////////////////

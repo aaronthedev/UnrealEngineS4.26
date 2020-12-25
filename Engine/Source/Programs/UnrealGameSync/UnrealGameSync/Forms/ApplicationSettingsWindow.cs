@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using Microsoft.Win32;
 using System;
@@ -53,7 +53,6 @@ namespace UnrealGameSync
 		string InitialDepotPath;
 		bool bInitialUnstable;
 		int InitialAutomationPortNumber;
-		ProtocolHandlerState InitialProtocolHandlerState;
 
 		bool? bRestartUnstable;
 
@@ -69,7 +68,6 @@ namespace UnrealGameSync
 			bInitialUnstable = bUnstable;
 
 			InitialAutomationPortNumber = AutomationServer.GetPortNumber();
-			InitialProtocolHandlerState = ProtocolHandlerUtils.GetState();
 
 			this.AutomaticallyRunAtStartupCheckBox.Checked = IsAutomaticallyRunAtStartup();
 			this.KeepInTrayCheckBox.Checked = Settings.bKeepInTray;
@@ -81,8 +79,6 @@ namespace UnrealGameSync
 			this.UserNameTextBox.Text = InitialUserName;
 			this.UserNameTextBox.Select(UserNameTextBox.TextLength, 0);
 			this.UserNameTextBox.CueBanner = (DefaultUserName == null)? "Default" : String.Format("Default ({0})", DefaultUserName);
-
-			this.ParallelSyncThreadsSpinner.Value = Math.Max(Math.Min(Settings.SyncOptions.NumThreads, ParallelSyncThreadsSpinner.Maximum), ParallelSyncThreadsSpinner.Minimum);
 
 			this.DepotPathTextBox.Text = InitialDepotPath;
 			this.DepotPathTextBox.Select(DepotPathTextBox.TextLength, 0);
@@ -101,19 +97,6 @@ namespace UnrealGameSync
 				this.EnableAutomationCheckBox.Checked = false;
 				this.AutomationPortTextBox.Enabled = false;
 				this.AutomationPortTextBox.Text = AutomationServer.DefaultPortNumber.ToString();
-			}
-
-			if(InitialProtocolHandlerState == ProtocolHandlerState.Installed)
-			{
-				this.EnableProtocolHandlerCheckBox.CheckState = CheckState.Checked;
-			}
-			else if (InitialProtocolHandlerState == ProtocolHandlerState.NotInstalled)
-			{
-				this.EnableProtocolHandlerCheckBox.CheckState = CheckState.Unchecked;
-			}
-			else
-			{
-				this.EnableProtocolHandlerCheckBox.CheckState = CheckState.Indeterminate;
 			}
 		}
 
@@ -203,26 +186,10 @@ namespace UnrealGameSync
 				Key.SetValue("UnrealGameSync", String.Format("\"{0}\" -RestoreState", OriginalExecutableFileName));
 			}
 
-			if (Settings.bKeepInTray != KeepInTrayCheckBox.Checked || Settings.SyncOptions.NumThreads != ParallelSyncThreadsSpinner.Value)
+			if(Settings.bKeepInTray != KeepInTrayCheckBox.Checked)
 			{
-				Settings.SyncOptions.NumThreads = (int)ParallelSyncThreadsSpinner.Value;
 				Settings.bKeepInTray = KeepInTrayCheckBox.Checked;
 				Settings.Save();
-			}
-
-			if (EnableProtocolHandlerCheckBox.CheckState == CheckState.Checked)
-			{
-				if (InitialProtocolHandlerState != ProtocolHandlerState.Installed)
-				{
-					ProtocolHandlerUtils.Install();
-				}
-			}
-			else if (EnableProtocolHandlerCheckBox.CheckState == CheckState.Unchecked)
-			{
-				if (InitialProtocolHandlerState != ProtocolHandlerState.NotInstalled)
-				{
-					ProtocolHandlerUtils.Uninstall();
-				}
 			}
 
 			DialogResult = DialogResult.OK;
@@ -238,12 +205,6 @@ namespace UnrealGameSync
 		private void EnableAutomationCheckBox_CheckedChanged(object sender, EventArgs e)
 		{
 			AutomationPortTextBox.Enabled = EnableAutomationCheckBox.Checked;
-		}
-
-		private void AdvancedBtn_Click(object sender, EventArgs e)
-		{
-			PerforceSyncSettingsWindow Window = new PerforceSyncSettingsWindow(Settings);
-			Window.ShowDialog();
 		}
 	}
 }

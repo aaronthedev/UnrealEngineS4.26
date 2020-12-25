@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	EmptyShaders.cpp: Empty shader RHI implementation.
@@ -9,7 +9,7 @@
 
 /** Initialization constructor. */
 template<typename BaseResourceType>
-TEmptyBaseShader<BaseResourceType>::TEmptyBaseShader(TArrayView<const uint8> Code)
+TEmptyBaseShader<BaseResourceType>::TEmptyBaseShader(const TArray<uint8>& InCode)
 {
 
 }
@@ -23,37 +23,37 @@ TEmptyBaseShader<BaseResourceType>::~TEmptyBaseShader()
 }
 
 
-FVertexShaderRHIRef FEmptyDynamicRHI::RHICreateVertexShader(TArrayView<const uint8> Code, const FSHAHash& Hash)
+FVertexShaderRHIRef FEmptyDynamicRHI::RHICreateVertexShader(const TArray<uint8>& Code)
 {
 	FEmptyVertexShader* Shader = new FEmptyVertexShader(Code);
 	return Shader;
 }
 
-FPixelShaderRHIRef FEmptyDynamicRHI::RHICreatePixelShader(TArrayView<const uint8> Code, const FSHAHash& Hash)
+FPixelShaderRHIRef FEmptyDynamicRHI::RHICreatePixelShader(const TArray<uint8>& Code)
 {
 	FEmptyPixelShader* Shader = new FEmptyPixelShader(Code);
 	return Shader;
 }
 
-FHullShaderRHIRef FEmptyDynamicRHI::RHICreateHullShader(TArrayView<const uint8> Code, const FSHAHash& Hash)
+FHullShaderRHIRef FEmptyDynamicRHI::RHICreateHullShader(const TArray<uint8>& Code) 
 { 
 	FEmptyHullShader* Shader = new FEmptyHullShader(Code);
 	return Shader;
 }
 
-FDomainShaderRHIRef FEmptyDynamicRHI::RHICreateDomainShader(TArrayView<const uint8> Code, const FSHAHash& Hash)
+FDomainShaderRHIRef FEmptyDynamicRHI::RHICreateDomainShader(const TArray<uint8>& Code) 
 { 
 	FEmptyDomainShader* Shader = new FEmptyDomainShader(Code);
 	return Shader;
 }
 
-FGeometryShaderRHIRef FEmptyDynamicRHI::RHICreateGeometryShader(TArrayView<const uint8> Code, const FSHAHash& Hash)
+FGeometryShaderRHIRef FEmptyDynamicRHI::RHICreateGeometryShader(const TArray<uint8>& Code) 
 { 
 	FEmptyGeometryShader* Shader = new FEmptyGeometryShader(Code);
 	return Shader;
 }
 
-FComputeShaderRHIRef FEmptyDynamicRHI::RHICreateComputeShader(TArrayView<const uint8> Code, const FSHAHash& Hash)
+FComputeShaderRHIRef FEmptyDynamicRHI::RHICreateComputeShader(const TArray<uint8>& Code) 
 { 
 	FEmptyComputeShader* Shader = new FEmptyComputeShader(Code);
 	return Shader;

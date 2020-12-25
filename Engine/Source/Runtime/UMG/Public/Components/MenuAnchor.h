@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -26,8 +26,6 @@ class UMG_API UMenuAnchor : public UContentWidget
 
 public:
 
-	DECLARE_DYNAMIC_DELEGATE_RetVal(UUserWidget*, FGetUserWidget);
-
 	/**
 	 * The widget class to spawn when the menu is required.  Creates the widget freshly each time.  
 	 * If you want to customize the creation of the popup, you should bind a function to OnGetMenuContentEvent 
@@ -36,14 +34,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Menu Anchor")
 	TSubclassOf<class UUserWidget> MenuClass;
 
-	/** Deprecated. Called when the menu content is requested to allow a more customized handling over what to display */
-	UE_DEPRECATED(4.26, "Use OnGetUserMenuContentEvent instead, you may need to make the previous binding return an User Widget.")
-	UPROPERTY(EditAnywhere, Category = "Events", meta = (DeprecationMessage = "4.26. Use OnGetUserMenuContentEvent instead, you may need to make the previous binding return an User Widget."))
-	FGetWidget OnGetMenuContentEvent;
-
 	/** Called when the menu content is requested to allow a more customized handling over what to display */
 	UPROPERTY(EditAnywhere, Category="Events")
-	FGetUserWidget OnGetUserMenuContentEvent;
+	FGetWidget OnGetMenuContentEvent;
 	
 	/** The placement location of the summoned widget. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Menu Anchor")

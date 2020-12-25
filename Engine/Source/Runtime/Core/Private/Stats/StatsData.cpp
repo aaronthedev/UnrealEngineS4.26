@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Stats/StatsData.h"
 #include "Templates/Greater.h"
@@ -313,7 +313,7 @@ void FRawStatStackNode::AddSelf()
 			{
 				Self.GetValue_int64() = ToPackedCallCountDuration(
 					FromPackedCallCountDuration_CallCount(Self.GetValue_int64()),
-					(uint32)MyTime);
+					MyTime);
 				Self.NameAndInfo.SetRawName(NAME_Self);
 				Children.Add(NAME_Self, new FRawStatStackNode(Self));
 			}
@@ -1101,9 +1101,9 @@ void FStatsThreadState::UpdateStatMessagesMemoryUsage()
 		const double InvMB = 1.0f / 1024.0f / 1024.0f;
 
 		// Format lines to be displayed on the hud.
-		const FString Current = FString::Printf( TEXT("Current: %.1f"), float(InvMB*double(CurrentNumStatMessages*sizeof(FStatMessage))) );
-		const FString Max = FString::Printf( TEXT("Max: %.1f"), float(InvMB*double((int64)MaxNumStatMessages*sizeof(FStatMessage))) );
-		const FString Total = FString::Printf( TEXT("Total: %.1f") , float(InvMB*double(TotalNumStatMessages*sizeof(FStatMessage))) );
+		const FString Current = FString::Printf( TEXT("Current: %.1f"), InvMB*CurrentNumStatMessages*sizeof(FStatMessage) );
+		const FString Max = FString::Printf( TEXT("Max: %.1f"), InvMB*(int64)MaxNumStatMessages*sizeof(FStatMessage) );
+		const FString Total = FString::Printf( TEXT("Total: %.1f") , InvMB*TotalNumStatMessages*sizeof(FStatMessage));
 
 		UE_LOG(LogStats, Verbose, TEXT("%s, %s, %s"), *Current, *Max, *Total );
 
@@ -1659,7 +1659,7 @@ FName FStatsThreadState::GetStatThreadName( const FStatPacket& Packet ) const
 		FName& NewThreadName = MutableThreads.FindOrAdd( Packet.ThreadId );
 		if( NewThreadName == NAME_None )
 		{
-			UE_LOG( LogStats, Display, TEXT( "There is no thread with id: %u. Please add thread metadata for this thread." ), Packet.ThreadId );
+			UE_LOG( LogStats, Warning, TEXT( "There is no thread with id: %u. Please add thread metadata for this thread." ), Packet.ThreadId );
 
 			static const FName NAME_UnknownThread = TEXT( "UnknownThread" );
 			NewThreadName = FName( *FStatsUtils::BuildUniqueThreadName( Packet.ThreadId ) );
@@ -1839,7 +1839,7 @@ FString FStatsUtils::DebugPrint(FStatMessage const& Item)
 		}
 		else if (Item.NameAndInfo.GetFlag(EStatMetaFlags::IsCycle))
 		{
-			Result = FString::Printf(TEXT("%.3fms"), FPlatformTime::ToMilliseconds64(Item.GetValue_int64()));
+			Result = FString::Printf(TEXT("%.3fms"), FPlatformTime::ToMilliseconds(Item.GetValue_int64()));
 		}
 		else
 		{
@@ -2057,7 +2057,7 @@ FString FStatsUtils::FromEscapedFString(const TCHAR* Escaped)
 				break;
 			}
 			Result += Input.Left(Index);
-			Input.RightChopInline(Index + 1, false);
+			Input = Input.RightChop(Index + 1);
 
 		}
 		{
@@ -2069,7 +2069,7 @@ FString FStatsUtils::FromEscapedFString(const TCHAR* Escaped)
 				break;
 			}
 			FString Number = Input.Left(IndexEnd);
-			Input.RightChopInline(IndexEnd + 1, false);
+			Input = Input.RightChop(IndexEnd + 1);
 			Result.AppendChar(TCHAR(uint32(FCString::Atoi64(*Number))));
 		}
 	}

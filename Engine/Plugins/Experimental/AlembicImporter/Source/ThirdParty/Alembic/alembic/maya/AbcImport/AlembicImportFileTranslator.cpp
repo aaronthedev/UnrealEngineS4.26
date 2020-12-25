@@ -43,10 +43,8 @@ MStatus AlembicImportFileTranslator::reader(
                                         const MString& optionsString,
                                         MPxFileTranslator::FileAccessMode mode)
 {
-    MFileObject fileResolver(file);
-    fileResolver.setResolveMethod(MFileObject::kInputFile);
     MString script;
-    script.format ("AbcImport \"^1s\";", fileResolver.resolvedFullName());
+    script.format ("AbcImport \"^1s\";", file.resolvedFullName());
 
     MStatus status = MGlobal::executeCommand (script);
 
@@ -58,10 +56,7 @@ AlembicImportFileTranslator::identifyFile(const MFileObject& file,
                                           const char* buffer,
                                           short size) const
 {
-    MFileObject fileResolver(file);
-    fileResolver.setResolveMethod(MFileObject::kInputFile);
-
-    MString name = fileResolver.resolvedName();
+    MString name = file.resolvedName();
     unsigned int len = name.numChars();
     if (len > 4 && name.substringW(len - 4, len - 1).toLowerCase() == ".abc")
     {

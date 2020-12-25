@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 using System;
@@ -7,7 +7,6 @@ using System.Text;
 using System.Diagnostics;
 using System.IO;
 using Tools.DotNETCommon;
-using System.Linq;
 
 namespace UnrealBuildTool
 {
@@ -17,21 +16,11 @@ namespace UnrealBuildTool
 	public class MacTargetRules
 	{
 		/// <summary>
-		/// Lists Architectures that you want to build
+		/// Whether to generate dSYM files.
+		/// Lists Architectures that you want to build.
 		/// </summary>
-		[CommandLine("-Arch=", ListSeparator = '+')]
-		[CommandLine("-Architectures=", ListSeparator = '+')]
-		public List<string> Architectures = new List<string>();
-
-		/// <summary>
-		/// Whether to generate dSYM files. Defaults to true for Shipping builds and false
-		/// for all other builds. -dsym will force generation of a dsym for other builds, 
-		/// -NoDsym will force it off for shipping.
-		/// </summary>
-		[CommandLine("-dSYM", Value = "true")]
-		[CommandLine("-NoDSYM", Value = "false")]
 		[XmlConfigFile(Category = "BuildConfiguration", Name = "bGeneratedSYMFile")]
-		public bool? bGenerateDsymFile;
+		public bool bGenerateDsymFile = true;
 
 		/// <summary>
 		/// Enables address sanitizer (ASan).
@@ -82,7 +71,7 @@ namespace UnrealBuildTool
 		#pragma warning disable CS1591
 		#endif
 
-		public bool? bGenerateDsymFile
+		public bool bGenerateDsymFile
 		{
 			get { return Inner.bGenerateDsymFile; }
 		}
@@ -100,11 +89,6 @@ namespace UnrealBuildTool
 		public bool bEnableUndefinedBehaviorSanitizer
 		{
 			get { return Inner.bEnableUndefinedBehaviorSanitizer; }
-		}
-
-		public List<string> Architectures
-		{
-			get { return Inner.Architectures; }
 		}
 
 		#if !__MonoCS__
@@ -167,26 +151,12 @@ namespace UnrealBuildTool
 				Target.GlobalDefinitions.Add("FORCE_ANSI_ALLOCATOR=1");
 			}
 
-			Target.GlobalDefinitions.Add("GL_SILENCE_DEPRECATION=1");
-
-			bool IsBuildMachine = Environment.GetEnvironmentVariable("IsBuildMachine") == "1";
-
-			// If the user explicitly provided an option for dSYM's then do that. If they did not, then we want one for shipping builds or if we're a build machine
-			bool WantDsym = Target.MacPlatform.bGenerateDsymFile ?? (Target.Configuration == UnrealTargetConfiguration.Shipping || IsBuildMachine);
-
-			Target.bUsePDBFiles = !Target.bDisableDebugInfo && WantDsym;
+			Target.bUsePDBFiles = !Target.bDisableDebugInfo && Target.Configuration != UnrealTargetConfiguration.Debug && Platform == UnrealTargetPlatform.Mac && Target.MacPlatform.bGenerateDsymFile;
 
 			// we always deploy - the build machines need to be able to copy the files back, which needs the full bundle
 			Target.bDeployAfterCompile = true;
 
 			Target.bCheckSystemHeadersForModification = BuildHostPlatform.Current.Platform != UnrealTargetPlatform.Mac;
-
-			bool bCompilingForArm = Target.MacPlatform.Architectures
-				.Where(A => A.StartsWith("Arm", StringComparison.OrdinalIgnoreCase))
-				.Any();
-
-			// Mac-Arm todo - Do we need to compile in two passes so we can set this differently?
-			Target.bCompileISPC = !bCompilingForArm;
 		}
 
 		/// <summary>
@@ -320,7 +290,6 @@ namespace UnrealBuildTool
 					// Rules.DynamicallyLoadedModuleNames.Add("ShaderFormatD3D");
 					Rules.DynamicallyLoadedModuleNames.Add("ShaderFormatOpenGL");
 					Rules.DynamicallyLoadedModuleNames.Add("MetalShaderFormat");
-					Rules.DynamicallyLoadedModuleNames.Add("ShaderFormatVectorVM");
 
 					Rules.DynamicallyLoadedModuleNames.Remove("VulkanRHI");
 					Rules.DynamicallyLoadedModuleNames.Add("VulkanShaderFormat");
@@ -382,8 +351,7 @@ namespace UnrealBuildTool
 			{
 				Options |= MacToolChainOptions.OutputDylib;
 			}
-
-			return new MacToolChain(Target.ProjectFile, Options, Target.MacPlatform.Architectures);
+			return new MacToolChain(Target.ProjectFile, Options);
 		}
 
 		/// <summary>
@@ -420,9 +388,9 @@ namespace UnrealBuildTool
 			SDK.ManageAndValidateSDK();
 
 			// Register this build platform for Mac
+			Log.TraceVerbose("        Registering for {0}", UnrealTargetPlatform.Mac.ToString());
 			UEBuildPlatform.RegisterBuildPlatform(new MacPlatform(SDK));
 			UEBuildPlatform.RegisterPlatformWithGroup(UnrealTargetPlatform.Mac, UnrealPlatformGroup.Apple);
-			UEBuildPlatform.RegisterPlatformWithGroup(UnrealTargetPlatform.Mac, UnrealPlatformGroup.Desktop);
 		}
 	}
 }

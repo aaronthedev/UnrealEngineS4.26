@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Misc/RedirectCollector.h"
 #include "Misc/CoreDelegates.h"
@@ -157,11 +157,11 @@ void FRedirectCollector::ProcessSoftObjectPathPackageList(FName FilterPackage, b
 
 	// potentially add soft object path package names to OutReferencedPackages
 	OutReferencedPackages.Reserve(SoftObjectPathProperties->Num());
-	for (const FSoftObjectPathProperty& SoftObjectPathProperty : *SoftObjectPathProperties)
+	for (const FSoftObjectPathProperty& SoftObjecPathProperty : *SoftObjectPathProperties)
 	{
-		if (!SoftObjectPathProperty.GetReferencedByEditorOnlyProperty() || bGetEditorOnly)
+		if (!SoftObjecPathProperty.GetReferencedByEditorOnlyProperty() || bGetEditorOnly)
 		{
-			const FName& ToLoadFName = SoftObjectPathProperty.GetAssetPathName();
+			const FName& ToLoadFName = SoftObjecPathProperty.GetAssetPathName();
 			FString PackageNameString = FPackageName::ObjectPathToPackageName(ToLoadFName.ToString());
 			OutReferencedPackages.Add(FName(*PackageNameString));
 		}

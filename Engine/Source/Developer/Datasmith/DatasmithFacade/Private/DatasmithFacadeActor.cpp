@@ -1,373 +1,215 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithFacadeActor.h"
-
-#include "DatasmithFacadeActorCamera.h"
-#include "DatasmithFacadeActorLight.h"
-#include "DatasmithFacadeActorMesh.h"
-#include "DatasmithFacadeScene.h"
 
 // OpenEXR third party library.
 #include "ImathMatrixAlgo.h"
 
 
 FDatasmithFacadeActor::FDatasmithFacadeActor(
-	const TCHAR* InElementName
-)
-	: FDatasmithFacadeElement(FDatasmithSceneFactory::CreateActor(InElementName))
+	const TCHAR* InElementName,
+	const TCHAR* InElementLabel
+) :
+	FDatasmithFacadeElement(InElementName, InElementLabel),
+	bIsComponent(false),
+	bOptimizeActor(true)
 {
-	TSharedPtr<IDatasmithActorElement> ActorElement = GetDatasmithActorElement();
-	ActorElement->SetIsAComponent(false);
 }
 
-FDatasmithFacadeActor::FDatasmithFacadeActor(
-	const TSharedRef<IDatasmithActorElement>& InInternalActor
-)
-	: FDatasmithFacadeElement(InInternalActor)
-{}
+void FDatasmithFacadeActor::KeepActor()
+{
+	bOptimizeActor = false;
+}
 
 void FDatasmithFacadeActor::SetWorldTransform(
-	const float InWorldMatrix[16],
-	bool bRowMajor
+	const float* InWorldMatrix
 )
 {
-	FTransform WorldTransform = ConvertTransform(InWorldMatrix, bRowMajor);
-
-	// Set the Datasmith actor world transform.
-	TSharedPtr<IDatasmithActorElement> ActorElement = GetDatasmithActorElement();
-	ActorElement->SetScale(WorldTransform.GetScale3D());
-	ActorElement->SetRotation(WorldTransform.GetRotation());
-	ActorElement->SetTranslation(WorldTransform.GetTranslation());
-}
-
-void FDatasmithFacadeActor::SetScale(
-	float X,
-	float Y,
-	float Z
-)
-{
-	GetDatasmithActorElement()->SetScale(FVector(X, Y, Z));
-}
-
-void FDatasmithFacadeActor::GetScale(
-	float& OutX,
-	float& OutY,
-	float& OutZ
-) const
-{
-	FVector ScaleVector(GetDatasmithActorElement()->GetScale());
-
-	OutX = ScaleVector.X;
-	OutY = ScaleVector.Y;
-	OutZ = ScaleVector.Z;
-}
-
-void FDatasmithFacadeActor::SetRotation(
-	float Pitch,
-	float Yaw,
-	float Roll
-)
-{
-	GetDatasmithActorElement()->SetRotation(FQuat(FRotator(Pitch, Yaw, Roll)));
-}
-
-void FDatasmithFacadeActor::GetRotation(
-	float& OutPitch,
-	float& OutYaw,
-	float& OutRoll
-) const
-{
-	FRotator Rotator(GetDatasmithActorElement()->GetRotation().Rotator());
-
-	OutPitch = Rotator.Pitch;
-	OutYaw = Rotator.Yaw;
-	OutRoll = Rotator.Roll;
-}
-
-void FDatasmithFacadeActor::SetRotation(
-	float X,
-	float Y,
-	float Z,
-	float W
-)
-{
-	GetDatasmithActorElement()->SetRotation(FQuat(X, Y, Z, W));
-}
-
-void FDatasmithFacadeActor::GetRotation(
-	float& OutX,
-	float& OutY,
-	float& OutZ,
-	float& OutW
-) const
-{
-	FQuat RotationQuat(GetDatasmithActorElement()->GetRotation());
-
-	OutX = RotationQuat.X;
-	OutY = RotationQuat.Y;
-	OutZ = RotationQuat.Z;
-	OutW = RotationQuat.W;
-}
-
-void FDatasmithFacadeActor::SetTranslation(
-	float X,
-	float Y,
-	float Z
-)
-{
-	GetDatasmithActorElement()->SetTranslation(FVector(X, Y, Z));
-}
-
-void FDatasmithFacadeActor::GetTranslation(
-	float& OutX,
-	float& OutY,
-	float& OutZ
-) const
-{
-	FVector TranslationVector(GetDatasmithActorElement()->GetTranslation());
-
-	OutX = TranslationVector.X;
-	OutY = TranslationVector.Y;
-	OutZ = TranslationVector.Z;
+	WorldTransform = ConvertTransform(InWorldMatrix);
 }
 
 void FDatasmithFacadeActor::SetLayer(
 	const TCHAR* InLayerName
 )
 {
-	GetDatasmithActorElement()->SetLayer(InLayerName);
-}
-
-const TCHAR* FDatasmithFacadeActor::GetLayer() const
-{
-	return GetDatasmithActorElement()->GetLayer();
+	if (!FString(InLayerName).IsEmpty())
+	{
+		LayerName = InLayerName;
+	}
 }
 
 void FDatasmithFacadeActor::AddTag(
 	const TCHAR* InTag
 )
 {
-	GetDatasmithActorElement()->AddTag(InTag);
+	FString Tag = InTag;
+
+	if (!Tag.IsEmpty())
+	{
+		TagArray.Add(Tag);
+	}
 }
 
-void FDatasmithFacadeActor::ResetTags()
+void FDatasmithFacadeActor::AddMetadataBoolean(
+	const TCHAR* InPropertyName,
+	bool         bInPropertyValue
+)
 {
-	GetDatasmithActorElement()->ResetTags();
+	// Create a new Datasmith metadata boolean property.
+	TSharedPtr<IDatasmithKeyValueProperty> MetadataPropertyPtr = FDatasmithSceneFactory::CreateKeyValueProperty(InPropertyName);
+	MetadataPropertyPtr->SetPropertyType(EDatasmithKeyValuePropertyType::Bool);
+	MetadataPropertyPtr->SetValue(bInPropertyValue ? TEXT("True") : TEXT("False"));
+
+	// Add the new property to the array of Datasmith metadata properties.
+	MetadataPropertyArray.Add(MetadataPropertyPtr);
 }
 
-int32 FDatasmithFacadeActor::GetTagsCount() const
+void FDatasmithFacadeActor::AddMetadataColor(
+	const TCHAR*  InPropertyName,
+	unsigned char InR,
+	unsigned char InG,
+	unsigned char InB,
+	unsigned char InA
+)
 {
-	return GetDatasmithActorElement()->GetTagsCount();
+	// Convert the sRGBA color to a Datasmith linear color.
+	FColor       Color(InR, InG, InB, InA);
+	FLinearColor LinearColor(Color);
+
+	// Create a new Datasmith metadata color property.
+	TSharedPtr<IDatasmithKeyValueProperty> MetadataPropertyPtr = FDatasmithSceneFactory::CreateKeyValueProperty(InPropertyName);
+	MetadataPropertyPtr->SetPropertyType(EDatasmithKeyValuePropertyType::Color);
+	MetadataPropertyPtr->SetValue(*LinearColor.ToString());
+
+	// Add the new property to the array of Datasmith metadata properties.
+	MetadataPropertyArray.Add(MetadataPropertyPtr);
 }
 
-const TCHAR* FDatasmithFacadeActor::GetTag(
-	int32 TagIndex
-) const
+void FDatasmithFacadeActor::AddMetadataFloat(
+	const TCHAR* InPropertyName,
+	float        InPropertyValue
+)
 {
-	return GetDatasmithActorElement()->GetTag(TagIndex);
+	// Create a new Datasmith metadata float property.
+	TSharedPtr<IDatasmithKeyValueProperty> MetadataPropertyPtr = FDatasmithSceneFactory::CreateKeyValueProperty(InPropertyName);
+	MetadataPropertyPtr->SetPropertyType(EDatasmithKeyValuePropertyType::Float);
+	MetadataPropertyPtr->SetValue(*FString::Printf(TEXT("%f"), InPropertyValue));
+
+	// Add the new property to the array of Datasmith metadata properties.
+	MetadataPropertyArray.Add(MetadataPropertyPtr);
 }
 
-bool FDatasmithFacadeActor::IsComponent() const
+void FDatasmithFacadeActor::AddMetadataString(
+	const TCHAR* InPropertyName,
+	const TCHAR* InPropertyValue
+)
 {
-	return GetDatasmithActorElement()->IsAComponent();
+	// Create a new Datasmith metadata string property.
+	TSharedPtr<IDatasmithKeyValueProperty> MetadataPropertyPtr = FDatasmithSceneFactory::CreateKeyValueProperty(InPropertyName);
+	MetadataPropertyPtr->SetPropertyType(EDatasmithKeyValuePropertyType::String);
+	MetadataPropertyPtr->SetValue(InPropertyValue);
+
+	// Add the new property to the array of Datasmith metadata properties.
+	MetadataPropertyArray.Add(MetadataPropertyPtr);
+}
+
+void FDatasmithFacadeActor::AddMetadataTexture(
+	const TCHAR* InPropertyName,
+	const TCHAR* InTextureFilePath
+)
+{
+	// Create a new Datasmith metadata texture property.
+	TSharedPtr<IDatasmithKeyValueProperty> MetadataPropertyPtr = FDatasmithSceneFactory::CreateKeyValueProperty(InPropertyName);
+	MetadataPropertyPtr->SetPropertyType(EDatasmithKeyValuePropertyType::Texture);
+	MetadataPropertyPtr->SetValue(InTextureFilePath);
+
+	// Add the new property to the array of Datasmith metadata properties.
+	MetadataPropertyArray.Add(MetadataPropertyPtr);
+}
+
+void FDatasmithFacadeActor::AddMetadataVector(
+	const TCHAR* InPropertyName,
+	const TCHAR* InPropertyValue
+)
+{
+	// Create a new Datasmith metadata vector property.
+	TSharedPtr<IDatasmithKeyValueProperty> MetadataPropertyPtr = FDatasmithSceneFactory::CreateKeyValueProperty(InPropertyName);
+	MetadataPropertyPtr->SetPropertyType(EDatasmithKeyValuePropertyType::Vector);
+	MetadataPropertyPtr->SetValue(InPropertyValue);
+
+	// Add the new property to the array of Datasmith metadata properties.
+	MetadataPropertyArray.Add(MetadataPropertyPtr);
 }
 
 void FDatasmithFacadeActor::SetIsComponent(
 	bool bInIsComponent
 )
 {
-	GetDatasmithActorElement()->SetIsAComponent(bInIsComponent);
-}
-
-void FDatasmithFacadeActor::SetAsSelector(
-	bool bInIsASelector
-)
-{
-	GetDatasmithActorElement()->SetAsSelector(bInIsASelector);
-}
-
-bool FDatasmithFacadeActor::IsASelector() const
-{
-	return GetDatasmithActorElement()->IsASelector();
-}
-
-void FDatasmithFacadeActor::SetSelectionIndex(
-	int32 InSelectionID
-)
-{
-	GetDatasmithActorElement()->SetSelectionIndex(InSelectionID);
-}
-
-int32 FDatasmithFacadeActor::GetSelectionIndex() const
-{
-	return GetDatasmithActorElement()->GetSelectionIndex();
-}
-
-void FDatasmithFacadeActor::SetVisibility(
-	bool bInVisibility
-)
-{
-	GetDatasmithActorElement()->SetVisibility(bInVisibility);
-}
-
-bool FDatasmithFacadeActor::GetVisibility() const
-{
-	return GetDatasmithActorElement()->GetVisibility();
-}
-
-FDatasmithFacadeActor::EActorType FDatasmithFacadeActor::GetActorType() const
-{
-	return FDatasmithFacadeActor::GetActorType(GetDatasmithActorElement());
-}
-
-FDatasmithFacadeActor::EActorType FDatasmithFacadeActor::GetActorType(
-	const TSharedPtr<const IDatasmithActorElement>& InActor
-)
-{
-	if (InActor->IsA(EDatasmithElementType::DirectionalLight))
-	{
-		return EActorType::DirectionalLight;
-	}
-	else if (InActor->IsA(EDatasmithElementType::AreaLight))
-	{
-		return EActorType::AreaLight;
-	}
-	else if (InActor->IsA(EDatasmithElementType::EnvironmentLight))
-	{
-		return EActorType::Unsupported;
-	}
-	else if (InActor->IsA(EDatasmithElementType::LightmassPortal))
-	{
-		return EActorType::LightmassPortal;
-	}
-	else if (InActor->IsA(EDatasmithElementType::PointLight))
-	{
-		return EActorType::PointLight;
-	}
-	else if (InActor->IsA(EDatasmithElementType::SpotLight))
-	{
-		return EActorType::SpotLight;
-	}
-	else if (InActor->IsA(EDatasmithElementType::Light))
-	{
-		return EActorType::Unsupported;
-	}
-	else if (InActor->IsA(EDatasmithElementType::StaticMeshActor))
-	{
-		return EActorType::StaticMeshActor;
-	}
-	else if (InActor->IsA(EDatasmithElementType::Camera))
-	{
-		return EActorType::Camera;
-	}
-	else if (InActor->IsA(EDatasmithElementType::Light
-		| EDatasmithElementType::HierarchicalInstanceStaticMesh
-		| EDatasmithElementType::CustomActor))
-	{
-		return EActorType::Unsupported;
-	}
-	else if (InActor->IsA(EDatasmithElementType::Actor))
-	{
-		return EActorType::Actor;
-	}
-
-	return EActorType::Unsupported;
-}
-
-FDatasmithFacadeActor* FDatasmithFacadeActor::GetNewFacadeActorFromSharedPtr(
-	const TSharedPtr<IDatasmithActorElement>& InActor
-)
-{
-	if (InActor)
-	{
-		EActorType ActorType = GetActorType(InActor);
-		TSharedRef<IDatasmithActorElement> ActorRef = InActor.ToSharedRef();
-
-		switch (ActorType)
-		{
-		case EActorType::DirectionalLight:
-			return new FDatasmithFacadeDirectionalLight(StaticCastSharedRef<IDatasmithDirectionalLightElement>(ActorRef));
-		case EActorType::AreaLight:
-			return new FDatasmithFacadeAreaLight(StaticCastSharedRef<IDatasmithAreaLightElement>(ActorRef));
-		case EActorType::LightmassPortal:
-			return new FDatasmithFacadeLightmassPortal(StaticCastSharedRef<IDatasmithLightmassPortalElement>(ActorRef));
-		case EActorType::PointLight:
-			return new FDatasmithFacadePointLight(StaticCastSharedRef<IDatasmithPointLightElement>(ActorRef));
-		case EActorType::SpotLight:
-			return new FDatasmithFacadeSpotLight(StaticCastSharedRef<IDatasmithSpotLightElement>(ActorRef));
-		case EActorType::StaticMeshActor:
-			return new FDatasmithFacadeActorMesh(StaticCastSharedRef<IDatasmithMeshActorElement>(ActorRef));
-		case EActorType::Camera:
-			return new FDatasmithFacadeActorCamera(StaticCastSharedRef<IDatasmithCameraActorElement>(ActorRef));
-		case EActorType::Actor:
-			return new FDatasmithFacadeActor(ActorRef);
-		case EActorType::Unsupported:
-		default:
-			return nullptr;
-		}
-	}
-
-	return nullptr;
+	bIsComponent = bInIsComponent;
 }
 
 void FDatasmithFacadeActor::AddChild(
 	FDatasmithFacadeActor* InChildActorPtr
 )
 {
-	if (InChildActorPtr != nullptr)
+	ChildActorArray.Add(TSharedPtr<FDatasmithFacadeActor>(InChildActorPtr));
+}
+
+void FDatasmithFacadeActor::SanitizeActorHierarchyNames()
+{
+	if (ChildActorArray.Num() > 0)
 	{
-		GetDatasmithActorElement()->AddChild(InChildActorPtr->GetDatasmithActorElement());
+		TMap<FString, int> NameCountMap;
+		TMap<FString, int> NameUsageMap;
+
+		// Count the number of times a name is reused by the Datasmith actor children.
+		for (TSharedPtr<FDatasmithFacadeActor> ChildActorPtr : ChildActorArray)
+		{
+			FString const& ChildActorName = ChildActorPtr->ElementName;
+
+			if (!NameCountMap.Contains(ChildActorName))
+			{
+				NameCountMap.Add(ChildActorName, 0);
+			}
+
+			NameCountMap[ChildActorName] ++;
+		}
+
+		// Rename with a name made unique each child of the Datasmith actor.
+		for (TSharedPtr<FDatasmithFacadeActor> ChildActorPtr : ChildActorArray)
+		{
+			FString const& ChildActorName = ChildActorPtr->ElementName;
+
+			if (!NameUsageMap.Contains(ChildActorName))
+			{
+				NameUsageMap.Add(ChildActorName, 0);
+			}
+
+			NameUsageMap[ChildActorName] ++;
+
+			// Assign a new unique name to the Datasmith actor child.
+			ChildActorPtr->ElementName = FString::Printf(TEXT("%ls.%ls_%d/%d"), *ElementName, *ChildActorName, NameUsageMap[ChildActorName], NameCountMap[ChildActorName]);
+
+			// Make sure all the actor names are unique in the hierarchy of this Datasmith actor child.
+			ChildActorPtr->SanitizeActorHierarchyNames();
+		}
 	}
-}
 
-int32 FDatasmithFacadeActor::GetChildrenCount() const
-{
-	return GetDatasmithActorElement()->GetChildrenCount();
-}
-
-FDatasmithFacadeActor* FDatasmithFacadeActor::GetNewChild(
-	int32 InIndex
-)
-{
-	TSharedPtr<IDatasmithActorElement> ChildActor = GetDatasmithActorElement()->GetChild(InIndex);
-
-	return GetNewFacadeActorFromSharedPtr(ChildActor);
-}
-
-void FDatasmithFacadeActor::RemoveChild(
-	FDatasmithFacadeActor* InChild
-)
-{
-	if (InChild)
-	{
-		GetDatasmithActorElement()->RemoveChild(InChild->GetDatasmithActorElement());
-	}
+	// Hash the Datasmith actor name to shorten it.
+	HashName();
 }
 
 FTransform FDatasmithFacadeActor::ConvertTransform(
-	const float InSourceMatrix[16],
-	bool bRowMajor
+	const float* InSourceMatrix
 ) const
 {
 	// We use Imath::extractAndRemoveScalingAndShear() because FMatrix::ExtractScaling() is deemed unreliable.
 
 	// Set up a scaling and rotation matrix.
-	Imath::Matrix44<float> Matrix;
-
-	if (bRowMajor)
-	{
-		Matrix = Imath::Matrix44<float>(InSourceMatrix[0], InSourceMatrix[4], InSourceMatrix[8],  0.0,
-										InSourceMatrix[1], InSourceMatrix[5], InSourceMatrix[9],  0.0,
-										InSourceMatrix[2], InSourceMatrix[6], InSourceMatrix[10], 0.0,
-										0.0			   , 0.0            , 0.0				, 1.0);
-	}
-	else
-	{
-		Matrix = Imath::Matrix44<float>(InSourceMatrix[0], InSourceMatrix[1], InSourceMatrix[2],  0.0,
-										InSourceMatrix[4], InSourceMatrix[5], InSourceMatrix[6],  0.0,
-										InSourceMatrix[8], InSourceMatrix[9], InSourceMatrix[10], 0.0,
-										0.0			  , 0.0              , 0.0               , 1.0);
-	}
+	Imath::Matrix44<float> Matrix(InSourceMatrix[0], InSourceMatrix[1], InSourceMatrix[2],  0.0,
+		                          InSourceMatrix[4], InSourceMatrix[5], InSourceMatrix[6],  0.0,
+		                          InSourceMatrix[8], InSourceMatrix[9], InSourceMatrix[10], 0.0,
+		                          0.0,               0.0,               0.0,                1.0);
 
 	// Remove any scaling from the matrix and get the scale vector that was initially present.
 	Imath::Vec3<float> Scale;
@@ -377,7 +219,7 @@ FTransform FDatasmithFacadeActor::ConvertTransform(
 	if (!bExtracted)
 	{
 		// TODO: Append a message to the build summary.
-		FString Msg = FString::Printf(TEXT("WARNING: Actor %ls (%ls) has some zero scaling"), GetName(), GetLabel());
+		FString Msg = FString::Printf(TEXT("WARNING: Actor %ls (%ls) has some zero scaling"), *ElementName, *ElementLabel);
 
 		return FTransform::Identity;
 	}
@@ -434,23 +276,167 @@ FTransform FDatasmithFacadeActor::ConvertTransform(
 	FQuat TransformRotation = FQuat(FVector(Axis.x, Axis.y, Axis.z), Angle);
 
 	// Scale and convert the source translation into a Datasmith actor translation.
-	FVector TransformTranslation = bRowMajor
-		? ConvertPosition(InSourceMatrix[4], InSourceMatrix[7], InSourceMatrix[11])
-		: ConvertPosition(InSourceMatrix[12], InSourceMatrix[13], InSourceMatrix[14]);
+	FVector TransformTranslation = ConvertPosition(InSourceMatrix[12], InSourceMatrix[13], InSourceMatrix[14]);
 
 	return FTransform(TransformRotation, TransformTranslation, TransformScale3D);
 }
 
+void FDatasmithFacadeActor::AddChild(
+	TSharedPtr<FDatasmithFacadeActor> InChildActorPtr
+)
+{
+	ChildActorArray.Add(InChildActorPtr);
+}
+
+TSharedPtr<FDatasmithFacadeElement> FDatasmithFacadeActor::Optimize(
+	TSharedPtr<FDatasmithFacadeElement> InElementPtr,
+	bool                                bInNoSingleChild
+)
+{
+	for (int32 ChildNo = ChildActorArray.Num() - 1; ChildNo >= 0; ChildNo--)
+	{
+		// Optimize the Datasmith child actor.
+		TSharedPtr<FDatasmithFacadeElement> ChildActorPtr = ChildActorArray[ChildNo]->Optimize(ChildActorArray[ChildNo], bInNoSingleChild);
+
+		if (ChildActorPtr.IsValid())
+		{
+			ChildActorArray[ChildNo] = StaticCastSharedPtr<FDatasmithFacadeActor>(ChildActorPtr);
+		}
+		else
+		{
+			ChildActorArray.RemoveAt(ChildNo);
+		}
+	}
+
+	if (bOptimizeActor)
+	{
+		if (ChildActorArray.Num() == 0)
+		{
+			// This Datasmith actor can be removed by optimization.
+			return TSharedPtr<FDatasmithFacadeElement>();
+		}
+
+		if (bInNoSingleChild && ChildActorArray.Num() == 1)
+		{
+			// This intermediate Datasmith actor can be removed while keeping its single child actor.
+			TSharedPtr<FDatasmithFacadeActor> SingleChildActorPtr = ChildActorArray[0];
+
+			// Make sure the single child actor will not become a dangling component in the actor hierarchy.
+			if (!bIsComponent && SingleChildActorPtr->bIsComponent)
+			{
+				SingleChildActorPtr->bIsComponent = false;
+			}
+
+			return SingleChildActorPtr;
+		}
+	}
+
+	// Prevent the Datasmith actor from being removed by optimization.
+	return InElementPtr;
+}
 
 void FDatasmithFacadeActor::BuildScene(
-	FDatasmithFacadeScene& SceneRef
+	TSharedRef<IDatasmithScene> IOSceneRef
 )
 {
 	// Create and initialize a Datasmith actor hierarchy.
-	SceneRef.GetScene()->AddActor(GetDatasmithActorElement());
+	TSharedPtr<IDatasmithActorElement> ActorHierarchyPtr = CreateActorHierarchy(IOSceneRef);
+
+	// Add the Datasmith actor hierarchy to the Datasmith scene.
+	IOSceneRef->AddActor(ActorHierarchyPtr);
 }
 
-TSharedRef<IDatasmithActorElement> FDatasmithFacadeActor::GetDatasmithActorElement() const
+TSharedPtr<IDatasmithActorElement> FDatasmithFacadeActor::CreateActorHierarchy(
+	TSharedRef<IDatasmithScene> IOSceneRef
+) const
 {
-	return StaticCastSharedRef<IDatasmithActorElement>(InternalDatasmithElement);
+	// Create a Datasmith actor element.
+	TSharedPtr<IDatasmithActorElement> ActorPtr = FDatasmithSceneFactory::CreateActor(*ElementName);
+
+	// Set the Datasmith actor properties.
+	SetActorProperties(IOSceneRef, ActorPtr);
+
+	// Add the hierarchy of children to the Datasmith actor.
+	AddActorChildren(IOSceneRef, ActorPtr);
+
+	return ActorPtr;
+}
+
+void FDatasmithFacadeActor::SetActorProperties(
+	TSharedRef<IDatasmithScene>        IOSceneRef,
+	TSharedPtr<IDatasmithActorElement> IOActorPtr
+) const
+{
+	// Set the actor label used in the Unreal UI.
+	IOActorPtr->SetLabel(*ElementLabel);
+
+	// Set the Datasmith actor world transform.
+	IOActorPtr->SetScale(WorldTransform.GetScale3D());
+	IOActorPtr->SetRotation(WorldTransform.GetRotation());
+	IOActorPtr->SetTranslation(WorldTransform.GetTranslation());
+
+	// Set the Datasmith actor layer name.
+	if (!LayerName.IsEmpty())
+	{
+		IOActorPtr->SetLayer(*LayerName);
+	}
+
+	// Add the Datasmith actor tags.
+	for (FString const& Tag : TagArray)
+	{
+		IOActorPtr->AddTag(*Tag);
+	}
+
+	if (MetadataPropertyArray.Num() > 0)
+	{
+		// Create a Datasmith metadata element.
+		TSharedPtr<IDatasmithMetaDataElement> MetadataPtr = FDatasmithSceneFactory::CreateMetaData(*(ElementName + TEXT("_DATA")));
+
+		// Set the metadata label used in the Unreal UI.
+		MetadataPtr->SetLabel(*ElementLabel);
+
+		// Set the actor associated with the Datasmith metadata.
+		MetadataPtr->SetAssociatedElement(IOActorPtr);
+
+		// Add the metadata properties to the Datasmith metadata.
+		for (TSharedPtr<IDatasmithKeyValueProperty> MetadataPropertyPtr : MetadataPropertyArray)
+		{
+			MetadataPtr->AddProperty(MetadataPropertyPtr);
+		}
+
+		// Add the Datasmith metadata to the Datasmith scene.
+		IOSceneRef->AddMetaData(MetadataPtr);
+	}
+
+	// Set whether or not the Datasmith actor is a component when used in a hierarchy.
+	IOActorPtr->SetIsAComponent(bIsComponent);
+}
+
+void FDatasmithFacadeActor::AddActorChildren(
+	TSharedRef<IDatasmithScene>        IOSceneRef,
+	TSharedPtr<IDatasmithActorElement> IOActorPtr
+) const
+{
+	// Add the hierarchy of Datasmith actor children.
+	for (TSharedPtr<FDatasmithFacadeActor> ChildActorPtr : ChildActorArray)
+	{
+		// Create and initialize a Datasmith child actor hierarchy.
+		TSharedPtr<IDatasmithActorElement> ChildActorHierarchyPtr = ChildActorPtr->CreateActorHierarchy(IOSceneRef);
+
+		if (IOActorPtr.IsValid())
+		{
+			// Add the child actor hierarchy to the Datasmith actor.
+			IOActorPtr->AddChild(ChildActorHierarchyPtr);
+		}
+		else
+		{
+			// Add the child actor hierarchy to the Datasmith scene.
+			IOSceneRef->AddActor(ChildActorHierarchyPtr);
+		}
+	}
+}
+
+const TArray<TSharedPtr<FDatasmithFacadeActor>> FDatasmithFacadeActor::GetActorChildren() const
+{
+	return ChildActorArray;
 }

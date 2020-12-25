@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ChaosStats.h"
 
-DEFINE_STAT(STAT_ChaosTick);
 DEFINE_STAT(STAT_PhysicsAdvance);
 DEFINE_STAT(STAT_SolverAdvance);
 DEFINE_STAT(STAT_HandleSolverCommands);
@@ -10,7 +9,6 @@ DEFINE_STAT(STAT_IntegrateSolver);
 DEFINE_STAT(STAT_SyncProxies);
 DEFINE_STAT(STAT_PhysCommands);
 DEFINE_STAT(STAT_TaskCommands);
-DEFINE_STAT(STAT_WaitGlobalCommands);
 DEFINE_STAT(STAT_KinematicUpdate);
 DEFINE_STAT(STAT_BeginFrame);
 DEFINE_STAT(STAT_EndFrame);
@@ -32,8 +30,6 @@ DEFINE_STAT(STAT_DispatchCollisionEvents);
 DEFINE_STAT(STAT_DispatchBreakEvents);
 DEFINE_STAT(STAT_BufferPhysicsResults);
 DEFINE_STAT(STAT_FlipResults);
-DEFINE_STAT(STAT_ProcessDeferredCreatePhysicsState);
-DEFINE_STAT(STAT_SqUpdateMaterials);
 DEFINE_STAT(STAT_CacheResultGeomCollection);
 DEFINE_STAT(STAT_CacheResultStaticMesh);
 DEFINE_STAT(STAT_CaptureDisabledState);

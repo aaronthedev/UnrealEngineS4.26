@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Tree/SCurveEditorTreePin.h"
 #include "CurveEditor.h"
@@ -49,18 +49,16 @@ FReply SCurveEditorTreePin::TogglePinned()
 
 void SCurveEditorTreePin::PinRecursive(FCurveEditorTreeItemID InTreeItem, FCurveEditor* CurveEditor) const
 {
-	FCurveEditorTreeItem* Item = CurveEditor->FindTreeItem(InTreeItem);
-	if (ensureMsgf(Item != nullptr, TEXT("Can't find curve editor tree item. Ignoring pinning request.")))
-	{
-		for (FCurveModelID CurveID : Item->GetOrCreateCurves(CurveEditor))
-		{
-			CurveEditor->PinCurve(CurveID);
-		}
+	FCurveEditorTreeItem& Item = CurveEditor->GetTreeItem(InTreeItem);
 
-		for (FCurveEditorTreeItemID Child : Item->GetChildren())
-		{
-			PinRecursive(Child, CurveEditor);
-		}
+	for (FCurveModelID CurveID : Item.GetOrCreateCurves(CurveEditor))
+	{
+		CurveEditor->PinCurve(CurveID);
+	}
+
+	for (FCurveEditorTreeItemID Child : Item.GetChildren())
+	{
+		PinRecursive(Child, CurveEditor);
 	}
 }
 
@@ -68,38 +66,31 @@ void SCurveEditorTreePin::UnpinRecursive(FCurveEditorTreeItemID InTreeItem, FCur
 {
 	const bool bIsSelected = CurveEditor->GetTreeSelectionState(InTreeItem) == ECurveEditorTreeSelectionState::Explicit;
 
-	FCurveEditorTreeItem* Item = CurveEditor->FindTreeItem(InTreeItem);
-	if (ensureMsgf(Item != nullptr, TEXT("Can't find curve editor tree item. Ignoring unpinning request.")))
+	FCurveEditorTreeItem& Item = CurveEditor->GetTreeItem(InTreeItem);
+	for (FCurveModelID CurveID : Item.GetCurves())
 	{
-		for (FCurveModelID CurveID : Item->GetCurves())
+		if (bIsSelected)
 		{
-			if (bIsSelected)
-			{
-				CurveEditor->UnpinCurve(CurveID);
-			}
-			else
-			{
-				Item->DestroyCurves(CurveEditor);
-			}
+			CurveEditor->UnpinCurve(CurveID);
 		}
+		else
+		{
+			Item.DestroyCurves(CurveEditor);
+		}
+	}
 
-		for (FCurveEditorTreeItemID Child : Item->GetChildren())
-		{
-			UnpinRecursive(Child, CurveEditor);
-		}
+	for (FCurveEditorTreeItemID Child : Item.GetChildren())
+	{
+		UnpinRecursive(Child, CurveEditor);
 	}
 }
 
 bool SCurveEditorTreePin::IsPinnedRecursive(FCurveEditorTreeItemID InTreeItem, FCurveEditor* CurveEditor) const
 {
-	const FCurveEditorTreeItem* Item = CurveEditor->FindTreeItem(InTreeItem);
-	if (!ensureMsgf(Item != nullptr, TEXT("Can't find curve editor item. Acting like it's not pinned.")))
-	{
-		return false;
-	}
+	const FCurveEditorTreeItem& Item = CurveEditor->GetTreeItem(InTreeItem);
 
-	TArrayView<const FCurveModelID>          Curves   = Item->GetCurves();
-	TArrayView<const FCurveEditorTreeItemID> Children = Item->GetChildren();
+	TArrayView<const FCurveModelID>          Curves   = Item.GetCurves();
+	TArrayView<const FCurveEditorTreeItemID> Children = Item.GetChildren();
 
 	const bool bAllChildren = Algo::AllOf(Children, [this, CurveEditor](FCurveEditorTreeItemID In){ return this->IsPinnedRecursive(In, CurveEditor); });
 

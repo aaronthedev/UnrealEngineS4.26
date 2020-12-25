@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved..
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved..
 
 /*=============================================================================
 	VulkanDevice.h: Private Vulkan RHI definitions.
@@ -39,26 +39,18 @@ struct FOptionalVulkanDeviceExtensions
 			uint32 HasEXTValidationCache : 1;
 			uint32 HasAMDBufferMarker : 1;
 			uint32 HasNVDiagnosticCheckpoints : 1;
-			uint32 HasNVDeviceDiagnosticConfig : 1;
+			uint32 HasGoogleDisplayTiming : 1;
 			uint32 HasYcbcrSampler : 1;
 			uint32 HasMemoryPriority : 1;
-			uint32 HasMemoryBudget : 1;
 			uint32 HasDriverProperties : 1;
 			uint32 HasEXTFragmentDensityMap : 1;
-			uint32 HasEXTFullscreenExclusive : 1;
-			uint32 HasKHRImageFormatList : 1;
-			uint32 HasEXTASTCDecodeMode : 1;
-			uint32 HasQcomRenderPassTransform : 1;
-			uint32 HasAtomicInt64 : 1;
-			uint32 HasBufferAtomicInt64 : 1;
-			uint32 HasScalarBlockLayoutFeatures : 1;
 		};
 		uint32 Packed;
 	};
 
 	FOptionalVulkanDeviceExtensions()
 	{
-		static_assert(sizeof(Packed) == sizeof(FOptionalVulkanDeviceExtensions), "More bits needed for Packed!");
+		static_assert(sizeof(Packed) == sizeof(FOptionalVulkanDeviceExtensions), "More bits needed!");
 		Packed = 0;
 	}
 
@@ -69,73 +61,6 @@ struct FOptionalVulkanDeviceExtensions
 		return HasAMDBufferMarker || HasNVDiagnosticCheckpoints;
 	}
 };
-namespace VulkanRHI
-{
-	class FDeferredDeletionQueue2 : public FDeviceChild
-	{
-
-	public:
-		FDeferredDeletionQueue2(FVulkanDevice* InDevice);
-		~FDeferredDeletionQueue2();
-
-		enum class EType
-		{
-			RenderPass,
-			Buffer,
-			BufferView,
-			Image,
-			ImageView,
-			Pipeline,
-			PipelineLayout,
-			Framebuffer,
-			DescriptorSetLayout,
-			Sampler,
-			Semaphore,
-			ShaderModule,
-			Event,
-			ResourceAllocation,
-			DeviceMemoryAllocation,
-			BufferSuballocation,
-		};
-
-		template <typename T>
-		inline void EnqueueResource(EType Type, T Handle)
-		{
-			static_assert(sizeof(T) <= sizeof(uint64), "Vulkan resource handle type size too large.");
-			EnqueueGenericResource(Type, (uint64)Handle);
-		}
-
-
-		void EnqueueResourceAllocation(FVulkanAllocation& Allocation);
-		void EnqueueDeviceAllocation(FDeviceMemoryAllocation* DeviceMemoryAllocation);
-
-		void ReleaseResources(bool bDeleteImmediately = false);
-
-		inline void Clear()
-		{
-			ReleaseResources(true);
-		}
-
-		void OnCmdBufferDeleted(FVulkanCmdBuffer* CmdBuffer);
-	private:
-		void EnqueueGenericResource(EType Type, uint64 Handle);
-
-		struct FEntry
-		{
-			EType StructureType;
-			uint32 FrameNumber;
-			uint64 FenceCounter;
-			FVulkanCmdBuffer* CmdBuffer;
-
-			uint64 Handle;
-			FVulkanAllocation Allocation;
-			FDeviceMemoryAllocation* DeviceMemoryAllocation;
-		};
-		FCriticalSection CS;
-		TArray<FEntry> Entries;
-	};
-}
-
 
 class FVulkanDevice
 {
@@ -237,14 +162,9 @@ public:
 		return PhysicalFeatures;
 	}
 
-	inline bool HasSeparateDepthStencilLayouts() const
-	{
-		return bHasSeparateDepthStencilLayouts;
-	}
-
 	inline bool HasUnifiedMemory() const
 	{
-		return DeviceMemoryManager.HasUnifiedMemory();
+		return MemoryManager.HasUnifiedMemory();
 	}
 
 	inline uint64 GetTimestampValidBitsMask() const
@@ -277,22 +197,22 @@ public:
 		return FormatProperties;
 	}
 
-	inline VulkanRHI::FDeviceMemoryManager& GetDeviceMemoryManager()
-	{
-		return DeviceMemoryManager;
-	}
-
-	inline const VkPhysicalDeviceMemoryProperties& GetDeviceMemoryProperties() const
-	{
-		return DeviceMemoryManager.GetMemoryProperties();
-	}
-
-	inline VulkanRHI::FMemoryManager& GetMemoryManager()
+	inline VulkanRHI::FDeviceMemoryManager& GetMemoryManager()
 	{
 		return MemoryManager;
 	}
 
-	inline VulkanRHI::FDeferredDeletionQueue2& GetDeferredDeletionQueue()
+	inline const VkPhysicalDeviceMemoryProperties& GetDeviceMemoryProperties() const
+	{
+		return MemoryManager.GetMemoryProperties();
+	}
+
+	inline VulkanRHI::FResourceHeapManager& GetResourceHeapManager()
+	{
+		return ResourceHeapManager;
+	}
+
+	inline VulkanRHI::FDeferredDeletionQueue& GetDeferredDeletionQueue()
 	{
 		return DeferredDeletionQueue;
 	}
@@ -376,7 +296,7 @@ public:
 
 	void SubmitCommandsAndFlushGPU();
 
-	FVulkanOcclusionQueryPool* AcquireOcclusionQueryPool(FVulkanCommandBufferManager* CommandBufferManager, uint32 NumQueries);
+	FVulkanOcclusionQueryPool* AcquireOcclusionQueryPool(uint32 NumQueries);
 	void ReleaseUnusedOcclusionQueryPools();
 
 	inline class FVulkanPipelineStateCacheManager* GetPipelineStateCache()
@@ -431,11 +351,11 @@ private:
 
 	VkDevice Device;
 
-	VulkanRHI::FDeviceMemoryManager DeviceMemoryManager;
+	VulkanRHI::FDeviceMemoryManager MemoryManager;
 
-	VulkanRHI::FMemoryManager MemoryManager;
+	VulkanRHI::FResourceHeapManager ResourceHeapManager;
 
-	VulkanRHI::FDeferredDeletionQueue2 DeferredDeletionQueue;
+	VulkanRHI::FDeferredDeletionQueue DeferredDeletionQueue;
 
 	VulkanRHI::FStagingManager StagingManager;
 
@@ -457,9 +377,7 @@ private:
 #if VULKAN_SUPPORTS_PHYSICAL_DEVICE_PROPERTIES2
 	VkPhysicalDeviceIDPropertiesKHR GpuIdProps;
 #endif
-
 	VkPhysicalDeviceFeatures PhysicalFeatures;
-	bool bHasSeparateDepthStencilLayouts = false;
 
 	TArray<VkQueueFamilyProperties> QueueFamilyProps;
 	VkFormatProperties FormatProperties[VK_FORMAT_RANGE_SIZE];
@@ -533,5 +451,4 @@ private:
 
 	class FVulkanPipelineStateCacheManager* PipelineStateCache;
 	friend class FVulkanDynamicRHI;
-	friend class FVulkanRHIGraphicsPipelineState;
 };

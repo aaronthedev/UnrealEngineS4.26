@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,7 +11,7 @@
 struct FSparseDelegate;
 
 /**
-*  Sparse delegates can be used for infrequently bound dynamic delegates so that the object uses only 
+*  Sparse delegates can be used for infrequently bound delegates so that the object uses only 
 *  1 byte of storage instead of having the full overhead of the delegate invocation list.
 *  The cost to invoke, add, remove, etc. from the delegate is higher than using the delegate
 *  directly and thus the memory savings benefit should be traded off against the frequency
@@ -19,7 +19,9 @@ struct FSparseDelegate;
 */
 
 
-/** Helper class for handling sparse delegate bindings */
+/**
+* Helper class for handling sparse delegate bindings
+*/
 struct COREUOBJECT_API FSparseDelegateStorage
 {
 public:
@@ -49,9 +51,6 @@ public:
 
 	/** Acquires the actual Multicast Delegate from the annotation if any delegates are bound to it. Will be null if no entry exists in the annotation for this object/delegatename. */
 	static FMulticastScriptDelegate* GetMulticastDelegate(const UObject* DelegateOwner, const FName DelegateName);
-
-	/** Acquires the actual Multicast Delegate from the annotation if any delegates are bound to it as a shared pointer. Will be null if no entry exists in the annotation for this object/delegatename. */
-	static TSharedPtr<FMulticastScriptDelegate> GetSharedMulticastDelegate(const UObject* DelegateOwner, const FName DelegateName);
 
 	/** Directly sets the Multicast Delegate for this object/delegatename pair. If the delegate is unbound it will be assigned/inserted anyways. */
 	static void SetMulticastDelegate(const UObject* DelegateOwner, const FName DelegateName, FMulticastScriptDelegate Delegate);
@@ -95,7 +94,6 @@ private:
 	static TMap<TPair<FName, FName>, size_t> SparseDelegateObjectOffsets;
 };
 
-/** Base implementation for all sparse delegate types */
 struct FSparseDelegate
 {
 public:
@@ -169,11 +167,10 @@ public:
 
 protected:
 
-	friend class FMulticastSparseDelegateProperty;
+	friend class UMulticastSparseDelegateProperty;
 	bool bIsBound;
 };
 
-/** Sparse version of TBaseDynamicDelegate */
 template <typename MulticastDelegate, typename OwningClass, typename DelegateInfoClass>
 struct TSparseDynamicDelegate : public FSparseDelegate
 {
@@ -199,26 +196,9 @@ private:
 
 public:
 	/** Returns the multicast delegate if any delegates are bound to the sparse delegate */
-	UE_DEPRECATED(4.25, "This function has been deprecated - please use GetShared() instead")
 	MulticastDelegate* Get() const
 	{
-		MulticastDelegate* Result = nullptr;
-		if (bIsBound)
-		{
-			Result = static_cast<MulticastDelegate*>(FSparseDelegateStorage::GetMulticastDelegate(GetDelegateOwner(), GetDelegateName()));
-		}
-		return Result;
-	}
-
-	/** Returns the multicast delegate if any delegates are bound to the sparse delegate */
-	TSharedPtr<MulticastDelegate> GetShared() const
-	{
-		TSharedPtr<MulticastDelegate> Result;
-		if (bIsBound)
-		{
-			Result = StaticCastSharedPtr<MulticastDelegate>(FSparseDelegateStorage::GetSharedMulticastDelegate(GetDelegateOwner(), GetDelegateName()));
-		}
-		return Result;
+		return (MulticastDelegate*)(bIsBound ? FSparseDelegateStorage::GetMulticastDelegate(GetDelegateOwner(), GetDelegateName()) : nullptr);
 	}
 
 	/**
@@ -314,14 +294,11 @@ public:
 	{
 		FSparseDelegate::__Internal_Clear(GetDelegateOwner(), GetDelegateName());
 	}
-	
-	/**
-	* Broadcasts this delegate to all bound objects, except to those that may have expired.
-	*/
+
 	template<typename... ParamTypes>
 	void Broadcast(ParamTypes... Params)
 	{
-		if (TSharedPtr<MulticastDelegate> MCDelegate = GetShared())
+		if (auto MCDelegate = Get())
 		{
 			MCDelegate->Broadcast(Params...);
 		}
@@ -421,21 +398,19 @@ private:
 	void __Internal_Clear(const UObject*, FName);
 };
 
-#define FUNC_DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE(SparseDelegateClassName, OwningClass, DelegateName, FuncParamList, FuncParamPassThru, ...) \
-	FUNC_DECLARE_DYNAMIC_MULTICAST_DELEGATE(FWeakObjectPtr, SparseDelegateClassName##_MCSignature, SparseDelegateClassName##_DelegateWrapper, FUNC_CONCAT(FuncParamList), FUNC_CONCAT(FuncParamPassThru), __VA_ARGS__) \
-	struct SparseDelegateClassName##InfoGetter \
+#define FUNC_DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE(SparseDelegateClass, OwningClass, DelegateName, FuncParamList, FuncParamPassThru, ...) \
+	FUNC_DECLARE_DYNAMIC_MULTICAST_DELEGATE(FWeakObjectPtr, SparseDelegateClass##_MCSignature, SparseDelegateClass##_DelegateWrapper, FUNC_CONCAT(FuncParamList), FUNC_CONCAT(FuncParamPassThru), __VA_ARGS__) \
+	struct SparseDelegateClass##InfoGetter \
 	{ \
 		static const char* GetDelegateName() { return #DelegateName; } \
 		template<typename T> \
 		static size_t GetDelegateOffset() { return offsetof(T, DelegateName); } \
 	}; \
-	struct SparseDelegateClassName : public TSparseDynamicDelegate<SparseDelegateClassName##_MCSignature, OwningClass, SparseDelegateClassName##InfoGetter> \
+	struct SparseDelegateClass : public TSparseDynamicDelegate<SparseDelegateClass##_MCSignature, OwningClass, SparseDelegateClass##InfoGetter> \
 	{ \
 	};
 
-/** Declares a sparse blueprint-accessible broadcast delegate that can bind to multiple native UFUNCTIONs simultaneously */
 #define DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE( SparseDelegateClass, OwningClass, DelegateName ) BODY_MACRO_COMBINE(CURRENT_FILE_ID,_,__LINE__,_DELEGATE) FUNC_DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE( SparseDelegateClass, OwningClass, DelegateName, , FUNC_CONCAT( *this ), void )
-
 #define DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_OneParam( SparseDelegateClass, OwningClass, DelegateName, Param1Type, Param1Name ) BODY_MACRO_COMBINE(CURRENT_FILE_ID,_,__LINE__,_DELEGATE) FUNC_DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE( SparseDelegateClass, OwningClass, DelegateName, FUNC_CONCAT( Param1Type InParam1 ), FUNC_CONCAT( *this, InParam1 ), void, Param1Type )
 #define DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_TwoParams( SparseDelegateClass, OwningClass, DelegateName, Param1Type, Param1Name, Param2Type, Param2Name ) BODY_MACRO_COMBINE(CURRENT_FILE_ID,_,__LINE__,_DELEGATE) FUNC_DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE( SparseDelegateClass, OwningClass, DelegateName, FUNC_CONCAT( Param1Type InParam1, Param2Type InParam2 ), FUNC_CONCAT( *this, InParam1, InParam2 ), void, Param1Type, Param2Type )
 #define DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_ThreeParams( SparseDelegateClass, OwningClass, DelegateName, Param1Type, Param1Name, Param2Type, Param2Name, Param3Type, Param3Name ) BODY_MACRO_COMBINE(CURRENT_FILE_ID,_,__LINE__,_DELEGATE) FUNC_DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE( SparseDelegateClass, OwningClass, DelegateName, FUNC_CONCAT( Param1Type InParam1, Param2Type InParam2, Param3Type InParam3 ), FUNC_CONCAT( *this, InParam1, InParam2, InParam3 ), void, Param1Type, Param2Type, Param3Type )

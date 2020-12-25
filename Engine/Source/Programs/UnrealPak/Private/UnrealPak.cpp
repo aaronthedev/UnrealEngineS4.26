@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UnrealPak.h"
 #include "RequiredProgramMainCPPInclude.h"
@@ -21,7 +21,6 @@ INT32_MAIN_INT32_ARGC_TCHAR_ARGV()
 	GLog->Flush();
 
 	FEngineLoop::AppPreExit();
-	FModuleManager::Get().UnloadModulesAtShutdown();
 	FEngineLoop::AppExit();
 
 	return Result;

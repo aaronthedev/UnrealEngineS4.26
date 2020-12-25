@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/SInvalidationPanel.h"
 #include "Rendering/DrawElements.h"
@@ -36,17 +36,15 @@ FAutoConsoleVariableRef CVarAlwaysInvalidate(
 
 SInvalidationPanel::SInvalidationPanel()
 	: EmptyChildSlot(this)
-	, HittestGrid(MakeShared<FHittestGrid>())
+	, HittestGrid()
 	, bCanCache(true)
 	, bPaintedSinceLastPrepass(true)
 	, bWasCachable(false)
 {
 	bHasCustomPrepass = true;
 	SetInvalidationRootWidget(*this);
-	SetInvalidationRootHittestGrid(HittestGrid.Get());
+	SetInvalidationRootHittestGrid(HittestGrid);
 	SetCanTick(false);
-
-	LastIncomingColorAndOpacity = FLinearColor::White;
 
 	FSlateApplicationBase::Get().OnGlobalInvalidationToggled().AddRaw(this, &SInvalidationPanel::OnGlobalInvalidationToggled);
 }
@@ -103,10 +101,10 @@ void SInvalidationPanel::OnGlobalInvalidationToggled(bool bGlobalInvalidationEna
 {
 	InvalidateRoot();
 
-	ClearAllFastPathData(true);
+	ClearAllFastPathData(false);
 }
 
-bool SInvalidationPanel::UpdateCachePrequisites(FSlateWindowElementList& OutDrawElements, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, int32 LayerId, const FWidgetStyle& InWidgetStyle) const
+bool SInvalidationPanel::UpdateCachePrequisites(FSlateWindowElementList& OutDrawElements, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, int32 LayerId) const
 {
 	bool bNeedsRecache = false;
 #if WITH_SLATE_DEBUGGING
@@ -143,12 +141,6 @@ bool SInvalidationPanel::UpdateCachePrequisites(FSlateWindowElementList& OutDraw
 	if (LastClippingState != ClippingState)
 	{
 		LastClippingState = ClippingState;
-		bNeedsRecache = true;
-	}
-
-	if (LastIncomingColorAndOpacity != InWidgetStyle.GetColorAndOpacityTint())
-	{
-		LastIncomingColorAndOpacity = InWidgetStyle.GetColorAndOpacityTint();
 		bNeedsRecache = true;
 	}
 	
@@ -198,16 +190,13 @@ int32 SInvalidationPanel::OnPaint( const FPaintArgs& Args, const FGeometry& Allo
 	if(bCanCacheThisFrame)
 	{
 		// Copy hit test grid settings from the root
-		const bool bHittestCleared = HittestGrid->SetHittestArea(Args.RootGrid.GetGridOrigin(), Args.RootGrid.GetGridSize(), Args.RootGrid.GetGridWindowOrigin());
-		HittestGrid->SetOwner(this);
-		HittestGrid->SetCullingRect(MyCullingRect);
-		FPaintArgs NewArgs = Args.WithNewHitTestGrid(HittestGrid.Get());
+		const bool bHittestCleared = HittestGrid.SetHittestArea(Args.RootGrid.GetGridOrigin(), Args.RootGrid.GetGridSize(), Args.RootGrid.GetGridWindowOrigin());
 
-		// Copy the current user index into the new grid since nested hit test grids should inherit their parents user id
-		NewArgs.GetHittestGrid().SetUserIndex(Args.RootGrid.GetUserIndex());
+		FPaintArgs NewArgs = Args.WithNewHitTestGrid(HittestGrid);
+
 		check(!GSlateEnableGlobalInvalidation);
 
-		const bool bRequiresRecache = UpdateCachePrequisites(OutDrawElements, AllottedGeometry, MyCullingRect, LayerId, InWidgetStyle);
+		const bool bRequiresRecache = UpdateCachePrequisites(OutDrawElements, AllottedGeometry, MyCullingRect, LayerId);
 		if (bHittestCleared || bRequiresRecache)
 		{
 			// @todo: Overly aggressive?
@@ -226,7 +215,7 @@ int32 SInvalidationPanel::OnPaint( const FPaintArgs& Args, const FGeometry& Allo
 		const FSlateInvalidationResult Result = MutableThis->PaintInvalidationRoot(Context);
 
 		// add our widgets to the root hit test grid
-		Args.GetHittestGrid().AddGrid(HittestGrid);
+		Args.RootGrid.AppendGrid(HittestGrid);
 
 		return Result.MaxLayerIdPainted;
 	}

@@ -33,8 +33,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_Util_Foundation_h
-#define Alembic_Util_Foundation_h
+#ifndef _Alembic_Util_Foundation_h_
+#define _Alembic_Util_Foundation_h_
 
 #include <Alembic/Util/Config.h>
 
@@ -102,7 +102,7 @@
 #include <algorithm>
 
 #ifndef ALEMBIC_VERSION_NS
-#define ALEMBIC_VERSION_NS v12
+#define ALEMBIC_VERSION_NS v9
 #endif
 
 namespace Alembic {
@@ -168,12 +168,18 @@ public:
 
     ~unique_ptr()
     {
-        delete p;
+        if ( p )
+        {
+            delete p;
+        }
     }
 
     void reset( T* val )
     {
-        delete p;
+        if ( p )
+        {
+            delete p;
+        }
         p = val;
     }
 
@@ -221,26 +227,26 @@ class mutex : noncopyable
 public:
     mutex()
     {
-         InitializeCriticalSection(&cs);
+        m = CreateMutex( NULL, FALSE, NULL );
     }
 
     ~mutex()
     {
-        DeleteCriticalSection(&cs);
+        CloseHandle( m );
     }
 
     void lock()
     {
-        EnterCriticalSection(&cs);
+        WaitForSingleObject( m, INFINITE );
     }
 
     void unlock()
     {
-        LeaveCriticalSection(&cs);
+        ReleaseMutex( m );
     }
 
 private:
-    CRITICAL_SECTION cs;
+    HANDLE m;
 };
 
 #else

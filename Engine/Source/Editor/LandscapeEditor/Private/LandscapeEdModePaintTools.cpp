@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Misc/App.h"
@@ -16,13 +16,10 @@
 #include "Landscape.h"
 #include "Logging/TokenizedMessage.h"
 #include "Logging/MessageLog.h"
-#include "Logging/LogMacros.h"
 #include "Misc/MapErrors.h"
 #include "EngineModule.h"
 
 #define LOCTEXT_NAMESPACE "LandscapeTools"
-
-DEFINE_LOG_CATEGORY(LogLandscapeTools);
 
 const int32 FNoiseParameter::Permutations[256] =
 {
@@ -106,8 +103,8 @@ public:
 	void Apply(FEditorViewportClient* ViewportClient, FLandscapeBrush* Brush, const ULandscapeEditorObject* UISettings, const TArray<FLandscapeToolInteractorPosition>& InteractorPositions)
 	{
 		// Invert when holding Shift
+		//UE_LOG(LogLandscape, Log, TEXT("bInvert = %d"), bInvert);
 		bool bInvert = InteractorPositions.Last().bModifierPressed;
-		UE_LOG(LogLandscapeTools, VeryVerbose, TEXT("bInvert = %d"), bInvert);
 
 		if (bIsWhitelistMode)
 		{
@@ -264,12 +261,12 @@ public:
 		
 		// If we render to a runtime virtual texture then we mark touched components as dirty to trigger updates
 		//todo[vt]: Would be more efficient to update VT in a single flush instead of one flush per component. Also dirtying all render state is a bit heavyweight.
-		TSet<ULandscapeComponent*> Components;
-		LandscapeInfo->GetComponentsInRegion(X1 + 1, Y1 + 1, X2 - 1, Y2 - 1, Components);
-		for (ULandscapeComponent* Component : Components)
+		ALandscape* Landscape = LandscapeInfo->LandscapeActor.Get();
+		if (Landscape != nullptr && Landscape->RuntimeVirtualTextures.Num() > 0)
 		{
-			ALandscapeProxy* Landscape = Component->GetLandscapeProxy();
-			if (Landscape != nullptr && Landscape->RuntimeVirtualTextures.Num() > 0)
+			TSet<ULandscapeComponent*> Components;
+			LandscapeInfo->GetComponentsInRegion(X1 + 1, Y1 + 1, X2 - 1, Y2 - 1, Components);
+			for (ULandscapeComponent* Component : Components)
 			{
 				Component->MarkRenderStateDirty();
 			}
@@ -287,7 +284,6 @@ public:
 
 	virtual const TCHAR* GetToolName() override { return TEXT("Paint"); }
 	virtual FText GetDisplayName() override { return NSLOCTEXT("UnrealEd", "LandscapeMode_Paint", "Paint"); };
-	virtual FText GetDisplayMessage() override { return NSLOCTEXT("UnrealEd", "LandscapeMode_Paint_Message", "The Paint tool increases or decreases the weight of the Material layer being applied to the Landscape."); };
 
 	virtual void EnterTool()
 	{
@@ -392,8 +388,8 @@ public:
 	void Apply(FEditorViewportClient* ViewportClient, FLandscapeBrush* Brush, const ULandscapeEditorObject* UISettings, const TArray<FLandscapeToolInteractorPosition>& InteractorPositions)
 	{
 		// Invert when holding Shift
+		//UE_LOG(LogLandscape, Log, TEXT("bInvert = %d"), bInvert);
 		bool bInvert = InteractorPositions.Last().bModifierPressed;
-		UE_LOG(LogLandscapeTools, VeryVerbose, TEXT("bInvert = %d"), bInvert);
 
 		// Get list of verts to update
 		FLandscapeBrushData BrushInfo = Brush->ApplyBrush(InteractorPositions);
@@ -598,7 +594,6 @@ public:
 
 	virtual const TCHAR* GetToolName() override { return TEXT("Sculpt"); }
 	virtual FText GetDisplayName() override { return NSLOCTEXT("UnrealEd", "LandscapeMode_Sculpt", "Sculpt"); };
-	virtual FText GetDisplayMessage() override { return NSLOCTEXT("UnrealEd", "LandscapeMode_Sculpt_Message", "Raise or lower the Landscape using the selected brush shape and falloff."); };
 };
 
 class FLandscapeToolErase : public FLandscapeToolPaintBase<FHeightmapToolTarget, FLandscapeToolStrokeErase>
@@ -611,7 +606,6 @@ public:
 
 	virtual const TCHAR* GetToolName() override { return TEXT("Erase"); }
 	virtual FText GetDisplayName() override { return NSLOCTEXT("UnrealEd", "LandscapeMode_Erase", "Erase"); };
-	virtual FText GetDisplayMessage() override { return NSLOCTEXT("UnrealEd", "LandscapeMode_Erase_Message", "Erase the Landscape using the selected brush shape and falloff."); };
 };
 
 // 
@@ -743,7 +737,6 @@ public:
 
 	virtual const TCHAR* GetToolName() override { return TEXT("Smooth"); }
 	virtual FText GetDisplayName() override { return NSLOCTEXT("UnrealEd", "LandscapeMode_Smooth", "Smooth"); };
-	virtual FText GetDisplayMessage() override { return NSLOCTEXT("UnrealEd", "LandscapeMode_Smooth_Message", "Smooth the Landscape within the brushes influence by averaging the Z position of the Landscape vertices."); };
 
 };
 
@@ -1061,7 +1054,6 @@ public:
 
 	virtual const TCHAR* GetToolName() override { return TEXT("Flatten"); }
 	virtual FText GetDisplayName() override { return NSLOCTEXT("UnrealEd", "LandscapeMode_Flatten", "Flatten"); };
-	virtual FText GetDisplayMessage() override { return NSLOCTEXT("UnrealEd", "LandscapeMode_Flatten_Message", "Raise and lower the Landscape to be the same Z height as the location from which you started using the tool."); };
 
 	virtual void Tick(FEditorViewportClient* ViewportClient, float DeltaTime) override
 	{
@@ -1255,7 +1247,6 @@ public:
 
 	virtual const TCHAR* GetToolName() override { return TEXT("Noise"); }
 	virtual FText GetDisplayName() override { return NSLOCTEXT("UnrealEd", "LandscapeMode_Noise", "Noise"); };
-	virtual FText GetDisplayMessage() override { return NSLOCTEXT("UnrealEd", "LandscapeMode_Noise_Message", "The Noise tool applies a noise filter to the heightmap or layer weight. The strength determines the amount of noise."); };
 };
 
 

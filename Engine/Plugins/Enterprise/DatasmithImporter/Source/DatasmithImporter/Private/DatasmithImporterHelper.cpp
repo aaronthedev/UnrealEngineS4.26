@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithImporterHelper.h"
 #include "UI/DatasmithUIManager.h"
@@ -56,7 +56,7 @@ namespace DatasmithImporterHelperInternal
 				FString Name = ObjectTools::SanitizeObjectName(FPaths::GetBaseFilename(Filename));
 				FString PackageName = ObjectTools::SanitizeInvalidChars(FPaths::Combine( *CorrectPath, *Name ), INVALID_LONGPACKAGE_CHARACTERS);
 
-				UPackage* Pkg = CreatePackage(*PackageName);
+				UPackage* Pkg = CreatePackage(nullptr, *PackageName);
 				if (!ensure(Pkg))
 				{
 					// Failed to create the package to hold this asset for some reason

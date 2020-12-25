@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Transport/UdpMessageBeacon.h"
 #include "UdpMessagingPrivate.h"
@@ -188,16 +188,15 @@ bool FUdpMessageBeacon::SendPing(const FTimespan& SocketWaitTime)
 	}
 
 	int32 Sent;
-	bool Result = true;
 	for (const auto& StaticAddress : StaticAddresses)
 	{
 		if (!Socket->SendTo(Writer.GetData(), Writer.Num(), Sent, *StaticAddress))
 		{	
-			Result = false; // send failed
+			return false; // send failed
 		}
 
 	}
-	return Result;
+	return true;
 }
 
 

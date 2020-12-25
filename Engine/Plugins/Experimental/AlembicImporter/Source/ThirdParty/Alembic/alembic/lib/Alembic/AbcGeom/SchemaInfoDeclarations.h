@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcGeom_SchemaInfoDeclarations_h
-#define Alembic_AbcGeom_SchemaInfoDeclarations_h
+#ifndef _Alembic_AbcGeom_SchemaInfoDeclarations_h_
+#define _Alembic_AbcGeom_SchemaInfoDeclarations_h_
 
 #include <Alembic/Abc/OSchema.h>
 #include <Alembic/Util/Foundation.h>

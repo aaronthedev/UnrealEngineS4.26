@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -153,17 +153,9 @@ namespace AutomationTool
 		public override bool IsScriptModuleSupported(string ModuleName)
 		{
 			// @todo: add more unsupported modules here
-			List<string> UnsupportedModules = new List<string>()
+			if (ModuleName.StartsWith("GauntletExtras", StringComparison.OrdinalIgnoreCase))
 			{
-				"GauntletExtras", "Anvil", "WinAnvil", "XboxCommonAnvil", "XboxOneAnvil", "MPX",
-				"FortniteGame",
-			};
-			foreach (string UnsupportedModule in UnsupportedModules)
-			{
-				if (ModuleName.StartsWith(UnsupportedModule, StringComparison.OrdinalIgnoreCase))
-				{
-					return false;
-				}
+				return false;
 			}
 			return true;
 		}

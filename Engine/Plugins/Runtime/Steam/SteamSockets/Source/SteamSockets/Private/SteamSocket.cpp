@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SteamSocket.h"
 #include "CoreMinimal.h"
@@ -113,16 +113,13 @@ bool FSteamSocket::Connect(const FInternetAddr& Addr)
 	FInternetAddrSteamSockets SteamAddr = *((FInternetAddrSteamSockets*)&Addr);
 	if (GetProtocol() == FNetworkProtocolTypes::SteamSocketsIP)
 	{
-		SteamNetworkingConfigValue_t LanOptions;
-		LanOptions.m_eDataType = k_ESteamNetworkingConfig_Int32;
-		LanOptions.m_eValue = k_ESteamNetworkingConfig_IP_AllowWithoutAuth;
-		LanOptions.m_val.m_int32 = (int32)bIsLANSocket;
-		InternalHandle = SocketInterface->ConnectByIPAddress(SteamAddr, 1, &LanOptions);
+		InternalHandle = SocketInterface->ConnectByIPAddress(SteamAddr);
+		SetLanOptions();
 
 	}
 	else if (GetProtocol() == FNetworkProtocolTypes::SteamSocketsP2P)
 	{
-		InternalHandle = SocketInterface->ConnectP2P(SteamAddr, SteamAddr.GetPort(), 0, nullptr);
+		InternalHandle = SocketInterface->ConnectP2P(SteamAddr, SteamAddr.GetPort());
 	}
 
 	if (InternalHandle != k_HSteamNetConnection_Invalid)
@@ -150,15 +147,12 @@ bool FSteamSocket::Listen(int32 MaxBacklog)
 	bIsListenSocket = true;
 	if (GetProtocol() == FNetworkProtocolTypes::SteamSocketsIP)
 	{
-		SteamNetworkingConfigValue_t LanOptions;
-		LanOptions.m_eDataType = k_ESteamNetworkingConfig_Int32;
-		LanOptions.m_eValue = k_ESteamNetworkingConfig_IP_AllowWithoutAuth;
-		LanOptions.m_val.m_int32 = (int32)bIsLANSocket;
-		InternalHandle = SocketInterface->CreateListenSocketIP(BindAddress, 1, &LanOptions);
+		InternalHandle = SocketInterface->CreateListenSocketIP(BindAddress);
+		SetLanOptions();
 	}
 	else
 	{
-		InternalHandle = SocketInterface->CreateListenSocketP2P(BindAddress.GetPlatformPort(), 0, nullptr);
+		InternalHandle = SocketInterface->CreateListenSocketP2P(BindAddress.GetPlatformPort());
 	}
 
 	if (InternalHandle != k_HSteamListenSocket_Invalid)
@@ -213,7 +207,7 @@ bool FSteamSocket::Send(const uint8* Data, int32 Count, int32& BytesSent)
 	if (InternalHandle != k_HSteamNetConnection_Invalid && GetConnectionState() == SCS_Connected)
 	{
 		// GetConnectionState will check the validity of the sockets interface for us.
-		switch (FSteamSocketsSubsystem::GetSteamSocketsInterface()->SendMessageToConnection(InternalHandle, (void*)Data, Count, SendMode, nullptr))
+		switch (FSteamSocketsSubsystem::GetSteamSocketsInterface()->SendMessageToConnection(InternalHandle, (void*)Data, Count, SendMode))
 		{
 			case k_EResultOK:
 				SocketSubsystem->LastSocketError = SE_NO_ERROR;

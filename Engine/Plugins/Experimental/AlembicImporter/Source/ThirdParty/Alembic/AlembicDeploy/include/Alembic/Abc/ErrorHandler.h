@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_Abc_ErrorHandler_h
-#define Alembic_Abc_ErrorHandler_h
+#ifndef _Alembic_Abc_ErrorHandler_h_
+#define _Alembic_Abc_ErrorHandler_h_
 
 #include <Alembic/Util/Export.h>
 #include <Alembic/Abc/Foundation.h>
@@ -92,7 +92,7 @@ public:
     class Context
     {
     public:
-        Context( ErrorHandler &iEhnd, const char *iCtxMsg )
+        Context( ErrorHandler &iEhnd, const std::string &iCtxMsg )
           : m_handler( iEhnd ),
             m_message( iCtxMsg ) {}
 
@@ -114,7 +114,7 @@ public:
     private:
         const Context& operator= (const Context&);
         ErrorHandler &m_handler;
-        const char *m_message;
+        std::string m_message;
     };
 
 private:

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ConcertClientSession.h"
 #include "ConcertLogGlobal.h"
@@ -7,7 +7,6 @@
 
 #include "Containers/Ticker.h"
 #include "Misc/Paths.h"
-#include "Stats/Stats.h"
 #include "UObject/StructOnScope.h"
 
 const FName ConcertClientMessageIdName("ConcertMessageId");
@@ -51,9 +50,7 @@ void FConcertClientSession::Startup()
 		ClientSessionEndpoint->RegisterRequestHandler<FConcertSession_CustomRequest, FConcertSession_CustomResponse>(this, &FConcertClientSession::CommonHandleCustomRequest);
 
 		// Setup the session tick
-		SessionTick = FTicker::GetCoreTicker().AddTicker(TEXT("ClientSession"), 0, [this](float DeltaSeconds)
-		{
-			QUICK_SCOPE_CYCLE_COUNTER(STAT_FConcertClientSession_Tick);
+		SessionTick = FTicker::GetCoreTicker().AddTicker(TEXT("ClientSession"), 0, [this](float DeltaSeconds) {
 			const FDateTime UtcNow = FDateTime::UtcNow();
 			TickConnection(DeltaSeconds, UtcNow);
 			return true;

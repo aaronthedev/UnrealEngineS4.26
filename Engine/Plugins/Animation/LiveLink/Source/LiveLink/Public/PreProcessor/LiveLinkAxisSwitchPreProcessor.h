@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -31,12 +31,9 @@ public:
 	class FLiveLinkTransformAxisSwitchPreProcessorWorker : public ILiveLinkFramePreProcessorWorker
 	{
 	public:
-		ELiveLinkAxis OrientationAxisX = ELiveLinkAxis::X;
-		ELiveLinkAxis OrientationAxisY = ELiveLinkAxis::Y;
-		ELiveLinkAxis OrientationAxisZ = ELiveLinkAxis::Z;
-		ELiveLinkAxis TranslationAxisX = ELiveLinkAxis::X;
-		ELiveLinkAxis TranslationAxisY = ELiveLinkAxis::Y;
-		ELiveLinkAxis TranslationAxisZ = ELiveLinkAxis::Z;
+		ELiveLinkAxis AxisX = ELiveLinkAxis::X;
+		ELiveLinkAxis AxisY = ELiveLinkAxis::Y;
+		ELiveLinkAxis AxisZ = ELiveLinkAxis::Z;
 
 		virtual TSubclassOf<ULiveLinkRole> GetRole() const override;
 		virtual bool PreProcessFrame(FLiveLinkFrameDataStruct& InOutFrame) const override;
@@ -44,17 +41,11 @@ public:
 
 protected:
 	UPROPERTY(EditAnywhere, Category = "LiveLink")
-	ELiveLinkAxis OrientationAxisX = ELiveLinkAxis::X;
+	ELiveLinkAxis AxisX = ELiveLinkAxis::X;
 	UPROPERTY(EditAnywhere, Category = "LiveLink")
-	ELiveLinkAxis OrientationAxisY = ELiveLinkAxis::Y;
+	ELiveLinkAxis AxisY = ELiveLinkAxis::Y;
 	UPROPERTY(EditAnywhere, Category = "LiveLink")
-	ELiveLinkAxis OrientationAxisZ = ELiveLinkAxis::Z;
-	UPROPERTY(EditAnywhere, Category = "LiveLink")
-	ELiveLinkAxis TranslationAxisX = ELiveLinkAxis::X;
-	UPROPERTY(EditAnywhere, Category = "LiveLink")
-	ELiveLinkAxis TranslationAxisY = ELiveLinkAxis::Y;
-	UPROPERTY(EditAnywhere, Category = "LiveLink")
-	ELiveLinkAxis TranslationAxisZ = ELiveLinkAxis::Z;
+	ELiveLinkAxis AxisZ = ELiveLinkAxis::Z;
 
 public:
 	virtual TSubclassOf<ULiveLinkRole> GetRole() const override;

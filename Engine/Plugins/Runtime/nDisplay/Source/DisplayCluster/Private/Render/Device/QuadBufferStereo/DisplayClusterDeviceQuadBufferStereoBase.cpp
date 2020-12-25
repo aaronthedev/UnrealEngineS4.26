@@ -1,23 +1,27 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Render/Device/QuadBufferStereo/DisplayClusterDeviceQuadBufferStereoBase.h"
 
-#include "Misc/DisplayClusterLog.h"
+#include "DisplayClusterLog.h"
 
 #include <utility>
 
 
 FDisplayClusterDeviceQuadBufferStereoBase::FDisplayClusterDeviceQuadBufferStereoBase()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterRender);
 }
 
 FDisplayClusterDeviceQuadBufferStereoBase::~FDisplayClusterDeviceQuadBufferStereoBase()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterRender);
 }
 
 
 void FDisplayClusterDeviceQuadBufferStereoBase::CalculateRenderTargetSize(const class FViewport& Viewport, uint32& InOutSizeX, uint32& InOutSizeY)
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterRender);
+	
 	check(IsInGameThread());
 
 	// Call base to calculate single-view RT size
@@ -37,6 +41,8 @@ void FDisplayClusterDeviceQuadBufferStereoBase::CalculateRenderTargetSize(const 
 
 void FDisplayClusterDeviceQuadBufferStereoBase::AdjustViewRect(enum EStereoscopicPass StereoPassType, int32& X, int32& Y, uint32& SizeX, uint32& SizeY) const
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterRender);
+
 	const EDisplayClusterEyeType EyeType = DecodeEyeType(StereoPassType);
 	const int ViewportIndex = DecodeViewportIndex(StereoPassType);
 	const int ViewIdx = DecodeViewIndex(StereoPassType);
@@ -45,17 +51,17 @@ void FDisplayClusterDeviceQuadBufferStereoBase::AdjustViewRect(enum EStereoscopi
 	FDisplayClusterRenderViewport& RenderViewport = RenderViewports[ViewportIndex];
 
 	// Provide the Engine with a viewport rectangle
-	const FIntRect& ViewportRect = RenderViewports[ViewportIndex].GetRect();
-	X = ViewportRect.Min.X;
-	Y = ViewportRect.Min.Y;
+	const FIntRect& ViewportArea = RenderViewports[ViewportIndex].GetArea();
+	X = ViewportArea.Min.X;
+	Y = ViewportArea.Min.Y;
 
 	if (EyeType == EDisplayClusterEyeType::StereoRight)
 	{
 		X += SizeX;
 	}
 
-	SizeX = ViewportRect.Width();
-	SizeY = ViewportRect.Height();
+	SizeX = ViewportArea.Width();
+	SizeY = ViewportArea.Height();
 
 	// Update view context
 	FDisplayClusterRenderViewContext& ViewContext = RenderViewport.GetContext(ViewIdx);
@@ -67,6 +73,8 @@ void FDisplayClusterDeviceQuadBufferStereoBase::AdjustViewRect(enum EStereoscopi
 
 void FDisplayClusterDeviceQuadBufferStereoBase::CopyTextureToBackBuffer_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* BackBuffer, FRHITexture2D* SrcTexture, FVector2D WindowSize) const
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterRender);
+
 	check(IsInRenderingThread());
 
 	const FIntPoint SrcSize = SrcTexture->GetSizeXY();

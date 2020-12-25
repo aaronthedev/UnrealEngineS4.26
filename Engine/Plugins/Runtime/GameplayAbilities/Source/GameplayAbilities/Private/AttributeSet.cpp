@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AttributeSet.h"
 #include "Stats/StatsMisc.h"
@@ -15,7 +15,6 @@
 #include "AbilitySystemGlobals.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemTestAttributeSet.h"
-#include "Net/Core/PushModel/PushModel.h"
 
 #if WITH_EDITOR
 #include "EditorReimportHandler.h"
@@ -53,14 +52,14 @@ void FGameplayAttributeData::SetBaseValue(float NewValue)
 }
 
 
-FGameplayAttribute::FGameplayAttribute(FProperty *NewProperty)
+FGameplayAttribute::FGameplayAttribute(UProperty *NewProperty)
 {
 	// we allow numeric properties and gameplay attribute data properties for now
 	// @todo deprecate numeric properties
-	Attribute = CastField<FNumericProperty>(NewProperty);
+	Attribute = Cast<UNumericProperty>(NewProperty);
 	AttributeOwner = nullptr;
 
-	if (!Attribute.Get())
+	if (!Attribute)
 	{
 		if (IsGameplayAttributeDataProperty(NewProperty))
 		{
@@ -68,7 +67,7 @@ FGameplayAttribute::FGameplayAttribute(FProperty *NewProperty)
 		}
 	}
 
-	if (Attribute.Get())
+	if (Attribute)
 	{
  		AttributeOwner = Attribute->GetOwnerStruct();
  		Attribute->GetName(AttributeName);
@@ -79,7 +78,7 @@ void FGameplayAttribute::SetNumericValueChecked(float& NewValue, class UAttribut
 {
 	check(Dest);
 
-	FNumericProperty* NumericProperty = CastField<FNumericProperty>(Attribute.Get());
+	UNumericProperty* NumericProperty = Cast<UNumericProperty>(Attribute);
 	float OldValue = 0.f;
 	if (NumericProperty)
 	{
@@ -87,20 +86,16 @@ void FGameplayAttribute::SetNumericValueChecked(float& NewValue, class UAttribut
 		OldValue = *static_cast<float*>(ValuePtr);
 		Dest->PreAttributeChange(*this, NewValue);
 		NumericProperty->SetFloatingPointPropertyValue(ValuePtr, NewValue);
-
-		MARK_PROPERTY_DIRTY(Dest, NumericProperty);
 	}
-	else if (IsGameplayAttributeDataProperty(Attribute.Get()))
+	else if (IsGameplayAttributeDataProperty(Attribute))
 	{
-		FStructProperty* StructProperty = CastField<FStructProperty>(Attribute.Get());
+		UStructProperty* StructProperty = Cast<UStructProperty>(Attribute);
 		check(StructProperty);
 		FGameplayAttributeData* DataPtr = StructProperty->ContainerPtrToValuePtr<FGameplayAttributeData>(Dest);
 		check(DataPtr);
 		OldValue = DataPtr->GetCurrentValue();
 		Dest->PreAttributeChange(*this, NewValue);
 		DataPtr->SetCurrentValue(NewValue);
-
-		MARK_PROPERTY_DIRTY(Dest, StructProperty);
 	}
 	else
 	{
@@ -122,15 +117,15 @@ void FGameplayAttribute::SetNumericValueChecked(float& NewValue, class UAttribut
 
 float FGameplayAttribute::GetNumericValue(const UAttributeSet* Src) const
 {
-	const FNumericProperty* const NumericProperty = CastField<FNumericProperty>(Attribute.Get());
+	const UNumericProperty* const NumericProperty = Cast<UNumericProperty>(Attribute);
 	if (NumericProperty)
 	{
 		const void* ValuePtr = NumericProperty->ContainerPtrToValuePtr<void>(Src);
 		return NumericProperty->GetFloatingPointPropertyValue(ValuePtr);
 	}
-	else if (IsGameplayAttributeDataProperty(Attribute.Get()))
+	else if (IsGameplayAttributeDataProperty(Attribute))
 	{
-		const FStructProperty* StructProperty = CastField<FStructProperty>(Attribute.Get());
+		const UStructProperty* StructProperty = Cast<UStructProperty>(Attribute);
 		check(StructProperty);
 		const FGameplayAttributeData* DataPtr = StructProperty->ContainerPtrToValuePtr<FGameplayAttributeData>(Src);
 		if (ensure(DataPtr))
@@ -144,15 +139,15 @@ float FGameplayAttribute::GetNumericValue(const UAttributeSet* Src) const
 
 float FGameplayAttribute::GetNumericValueChecked(const UAttributeSet* Src) const
 {
-	FNumericProperty* NumericProperty = CastField<FNumericProperty>(Attribute.Get());
+	UNumericProperty* NumericProperty = Cast<UNumericProperty>(Attribute);
 	if (NumericProperty)
 	{
 		const void* ValuePtr = NumericProperty->ContainerPtrToValuePtr<void>(Src);
 		return NumericProperty->GetFloatingPointPropertyValue(ValuePtr);
 	}
-	else if (IsGameplayAttributeDataProperty(Attribute.Get()))
+	else if (IsGameplayAttributeDataProperty(Attribute))
 	{
-		const FStructProperty* StructProperty = CastField<FStructProperty>(Attribute.Get());
+		const UStructProperty* StructProperty = Cast<UStructProperty>(Attribute);
 		check(StructProperty);
 		const FGameplayAttributeData* DataPtr = StructProperty->ContainerPtrToValuePtr<FGameplayAttributeData>(Src);
 		if (ensure(DataPtr))
@@ -165,40 +160,12 @@ float FGameplayAttribute::GetNumericValueChecked(const UAttributeSet* Src) const
 	return 0.f;
 }
 
-const FGameplayAttributeData* FGameplayAttribute::GetGameplayAttributeData(const UAttributeSet* Src) const
-{
-	if (Src && IsGameplayAttributeDataProperty(Attribute.Get()))
-	{
-		FStructProperty* StructProperty = CastField<FStructProperty>(Attribute.Get());
-		check(StructProperty);
-		MARK_PROPERTY_DIRTY(Src, StructProperty);
-		return StructProperty->ContainerPtrToValuePtr<FGameplayAttributeData>(Src);
-	}
-
-	return nullptr;
-}
-
-const FGameplayAttributeData* FGameplayAttribute::GetGameplayAttributeDataChecked(const UAttributeSet* Src) const
-{
-	if (Src && IsGameplayAttributeDataProperty(Attribute.Get()))
-	{
-		FStructProperty* StructProperty = CastField<FStructProperty>(Attribute.Get());
-		check(StructProperty);
-		MARK_PROPERTY_DIRTY(Src, StructProperty);
-		return StructProperty->ContainerPtrToValuePtr<FGameplayAttributeData>(Src);
-	}
-
-	check(false);
-	return nullptr;
-}
-
 FGameplayAttributeData* FGameplayAttribute::GetGameplayAttributeData(UAttributeSet* Src) const
 {
-	if (Src && IsGameplayAttributeDataProperty(Attribute.Get()))
+	if (Src && IsGameplayAttributeDataProperty(Attribute))
 	{
-		FStructProperty* StructProperty = CastField<FStructProperty>(Attribute.Get());
+		UStructProperty* StructProperty = Cast<UStructProperty>(Attribute);
 		check(StructProperty);
-		MARK_PROPERTY_DIRTY(Src, StructProperty);
 		return StructProperty->ContainerPtrToValuePtr<FGameplayAttributeData>(Src);
 	}
 
@@ -207,11 +174,10 @@ FGameplayAttributeData* FGameplayAttribute::GetGameplayAttributeData(UAttributeS
 
 FGameplayAttributeData* FGameplayAttribute::GetGameplayAttributeDataChecked(UAttributeSet* Src) const
 {
-	if (Src && IsGameplayAttributeDataProperty(Attribute.Get()))
+	if (Src && IsGameplayAttributeDataProperty(Attribute))
 	{
-		FStructProperty* StructProperty = CastField<FStructProperty>(Attribute.Get());
+		UStructProperty* StructProperty = Cast<UStructProperty>(Attribute);
 		check(StructProperty);
-		MARK_PROPERTY_DIRTY(Src, StructProperty);
 		return StructProperty->ContainerPtrToValuePtr<FGameplayAttributeData>(Src);
 	}
 
@@ -224,9 +190,9 @@ bool FGameplayAttribute::IsSystemAttribute() const
 	return GetAttributeSetClass()->IsChildOf(UAbilitySystemComponent::StaticClass());
 }
 
-bool FGameplayAttribute::IsGameplayAttributeDataProperty(const FProperty* Property)
+bool FGameplayAttribute::IsGameplayAttributeDataProperty(const UProperty* Property)
 {
-	const FStructProperty* StructProp = CastField<FStructProperty>(Property);
+	const UStructProperty* StructProp = Cast<UStructProperty>(Property);
 	if (StructProp)
 	{
 		const UStruct* Struct = StructProp->Struct;
@@ -245,16 +211,16 @@ void FGameplayAttribute::PostSerialize(const FArchive& Ar)
 {
 	if (Ar.IsLoading() && Ar.IsPersistent() && !Ar.HasAnyPortFlags(PPF_Duplicate | PPF_DuplicateForPIE))
 	{
-		if (Attribute.Get())
+		if (Attribute)
 		{
 			AttributeOwner = Attribute->GetOwnerStruct();
 			Attribute->GetName(AttributeName);
 		}
 		else if (!AttributeName.IsEmpty() && AttributeOwner != nullptr)
 		{
-			Attribute = FindFProperty<FProperty>(AttributeOwner, *AttributeName);
+			Attribute = FindField<UProperty>(AttributeOwner, *AttributeName);
 
-			if (!Attribute.Get())
+			if (!Attribute)
 			{
 				FUObjectSerializeContext* LoadContext = const_cast<FArchive*>(&Ar)->GetSerializeContext();
 				FString AssetName = (LoadContext && LoadContext->SerializedObject) ? LoadContext->SerializedObject->GetPathName() : TEXT("Unknown Object");
@@ -267,7 +233,7 @@ void FGameplayAttribute::PostSerialize(const FArchive& Ar)
 }
 #endif
 
-void FGameplayAttribute::GetAllAttributeProperties(TArray<FProperty*>& OutProperties, FString FilterMetaStr, bool UseEditorOnlyData)
+void FGameplayAttribute::GetAllAttributeProperties(TArray<UProperty*>& OutProperties, FString FilterMetaStr, bool UseEditorOnlyData)
 {
 	// Gather all UAttribute classes
 	for (TObjectIterator<UClass> ClassIt; ClassIt; ++ClassIt)
@@ -292,9 +258,9 @@ void FGameplayAttribute::GetAllAttributeProperties(TArray<FProperty*>& OutProper
 			}
 
 
-			for (TFieldIterator<FProperty> PropertyIt(Class, EFieldIteratorFlags::ExcludeSuper); PropertyIt; ++PropertyIt)
+			for (TFieldIterator<UProperty> PropertyIt(Class, EFieldIteratorFlags::ExcludeSuper); PropertyIt; ++PropertyIt)
 			{
-				FProperty* Property = *PropertyIt;
+				UProperty* Property = *PropertyIt;
 
 				if (UseEditorOnlyData)
 				{
@@ -322,9 +288,9 @@ void FGameplayAttribute::GetAllAttributeProperties(TArray<FProperty*>& OutProper
 			// UAbilitySystemComponent can add 'system' attributes
 			if (Class->IsChildOf(UAbilitySystemComponent::StaticClass()) && !Class->ClassGeneratedBy)
 			{
-				for (TFieldIterator<FProperty> PropertyIt(Class, EFieldIteratorFlags::ExcludeSuper); PropertyIt; ++PropertyIt)
+				for (TFieldIterator<UProperty> PropertyIt(Class, EFieldIteratorFlags::ExcludeSuper); PropertyIt; ++PropertyIt)
 				{
-					FProperty* Property = *PropertyIt;
+					UProperty* Property = *PropertyIt;
 
 
 					// SystemAttributes have to be explicitly tagged
@@ -374,13 +340,13 @@ void UAttributeSet::InitFromMetaDataTable(const UDataTable* DataTable)
 {
 	static const FString Context = FString(TEXT("UAttribute::BindToMetaDataTable"));
 
-	for( TFieldIterator<FProperty> It(GetClass(), EFieldIteratorFlags::IncludeSuper) ; It ; ++It )
+	for( TFieldIterator<UProperty> It(GetClass(), EFieldIteratorFlags::IncludeSuper) ; It ; ++It )
 	{
-		FProperty* Property = *It;
-		FNumericProperty *NumericProperty = CastField<FNumericProperty>(Property);
+		UProperty* Property = *It;
+		UNumericProperty *NumericProperty = Cast<UNumericProperty>(Property);
 		if (NumericProperty)
 		{
-			FString RowNameStr = FString::Printf(TEXT("%s.%s"), *Property->GetOwnerVariant().GetName(), *Property->GetName());
+			FString RowNameStr = FString::Printf(TEXT("%s.%s"), *Property->GetOuter()->GetName(), *Property->GetName());
 		
 			FAttributeMetaData * MetaData = DataTable->FindRow<FAttributeMetaData>(FName(*RowNameStr), Context, false);
 			if (MetaData)
@@ -391,12 +357,12 @@ void UAttributeSet::InitFromMetaDataTable(const UDataTable* DataTable)
 		}
 		else if (FGameplayAttribute::IsGameplayAttributeDataProperty(Property))
 		{
-			FString RowNameStr = FString::Printf(TEXT("%s.%s"), *Property->GetOwnerVariant().GetName(), *Property->GetName());
+			FString RowNameStr = FString::Printf(TEXT("%s.%s"), *Property->GetOuter()->GetName(), *Property->GetName());
 
 			FAttributeMetaData * MetaData = DataTable->FindRow<FAttributeMetaData>(FName(*RowNameStr), Context, false);
 			if (MetaData)
 			{
-				FStructProperty* StructProperty = CastField<FStructProperty>(Property);
+				UStructProperty* StructProperty = Cast<UStructProperty>(Property);
 				check(StructProperty);
 				FGameplayAttributeData* DataPtr = StructProperty->ContainerPtrToValuePtr<FGameplayAttributeData>(this);
 				check(DataPtr);
@@ -547,11 +513,6 @@ bool FScalableFloat::SerializeFromMismatchedTag(const FPropertyTag& Tag, FStruct
 
 		return true;
 	}
-	else if (Tag.Type == NAME_BoolProperty)
-	{
-		*this = FScalableFloat(Tag.BoolVal ? 1.f : 0.f);
-		return true; 
-	}
 	return false;
 }
 
@@ -661,8 +622,8 @@ void FAttributeSetInitterDiscreteLevels::PreloadAttributeSetData(const TArray<UC
 				continue;
 			}
 
-			// Find the FProperty
-			FProperty* Property = FindFProperty<FProperty>(*Set, *AttributeName);
+			// Find the UProperty
+			UProperty* Property = FindField<UProperty>(*Set, *AttributeName);
 			if (!IsSupportedProperty(Property))
 			{
 				ABILITY_LOG(Verbose, TEXT("FAttributeSetInitterDiscreteLevels::PreloadAttributeSetData Unable to match Attribute from %s (row: %s)"), *AttributeName, *RowName);
@@ -758,12 +719,8 @@ void FAttributeSetInitterDiscreteLevels::InitAttributeSetDefaults(UAbilitySystem
 	}
 
 	const FAttributeSetDefaults& SetDefaults = Collection->LevelData[Level - 1];
-	for (const UAttributeSet* Set : AbilitySystemComponent->GetSpawnedAttributes())
+	for (const UAttributeSet* Set : AbilitySystemComponent->SpawnedAttributes)
 	{
-		if (!Set)
-		{
-			continue;
-		}
 		const FAttributeDefaultValueList* DefaultDataList = SetDefaults.DataMap.Find(Set->GetClass());
 		if (DefaultDataList)
 		{
@@ -809,13 +766,8 @@ void FAttributeSetInitterDiscreteLevels::ApplyAttributeDefault(UAbilitySystemCom
 	}
 
 	const FAttributeSetDefaults& SetDefaults = Collection->LevelData[Level - 1];
-	for (const UAttributeSet* Set : AbilitySystemComponent->GetSpawnedAttributes())
+	for (const UAttributeSet* Set : AbilitySystemComponent->SpawnedAttributes)
 	{
-		if (!Set)
-		{
-			continue;
-		}
-
 		const FAttributeDefaultValueList* DefaultDataList = SetDefaults.DataMap.Find(Set->GetClass());
 		if (DefaultDataList)
 		{
@@ -837,7 +789,7 @@ void FAttributeSetInitterDiscreteLevels::ApplyAttributeDefault(UAbilitySystemCom
 	AbilitySystemComponent->ForceReplication();
 }
 
-TArray<float> FAttributeSetInitterDiscreteLevels::GetAttributeSetValues(UClass* AttributeSetClass, FProperty* AttributeProperty, FName GroupName) const
+TArray<float> FAttributeSetInitterDiscreteLevels::GetAttributeSetValues(UClass* AttributeSetClass, UProperty* AttributeProperty, FName GroupName) const
 {
 	TArray<float> AttributeSetValues;
 	const FAttributeSetDefaultsCollection* Collection = Defaults.Find(GroupName);
@@ -866,9 +818,9 @@ TArray<float> FAttributeSetInitterDiscreteLevels::GetAttributeSetValues(UClass* 
 }
 
 
-bool FAttributeSetInitterDiscreteLevels::IsSupportedProperty(FProperty* Property) const
+bool FAttributeSetInitterDiscreteLevels::IsSupportedProperty(UProperty* Property) const
 {
-	return (Property && (CastField<FNumericProperty>(Property) || FGameplayAttribute::IsGameplayAttributeDataProperty(Property)));
+	return (Property && (Cast<UNumericProperty>(Property) || FGameplayAttribute::IsGameplayAttributeDataProperty(Property)));
 }
 
 // --------------------------------------------------------------------------------
@@ -878,7 +830,7 @@ bool FAttributeSetInitterDiscreteLevels::IsSupportedProperty(FProperty* Property
 struct FBadScalableFloat
 {
 	UObject* Asset;
-	FProperty* Property;
+	UProperty* Property;
 
 	FString String;
 };
@@ -890,11 +842,11 @@ static TArray<FBadScalableFloat> GCurrentNaughtyScalableFloatList;
 
 static bool CheckForBadScalableFloats_r(void* Data, UStruct* Struct, UClass* Class);
 
-static bool CheckForBadScalableFloats_Prop_r(void* Data, FProperty* Prop, UClass* Class)
+static bool CheckForBadScalableFloats_Prop_r(void* Data, UProperty* Prop, UClass* Class)
 {
 	void* InnerData = Prop->ContainerPtrToValuePtr<void>(Data);
 
-	FStructProperty* StructProperty = CastField<FStructProperty>(Prop);
+	UStructProperty* StructProperty = Cast<UStructProperty>(Prop);
 	if (StructProperty)
 	{
 		if (StructProperty->Struct == FScalableFloat::StaticStruct())
@@ -942,7 +894,7 @@ static bool CheckForBadScalableFloats_Prop_r(void* Data, FProperty* Prop, UClass
 		}
 	}
 
-	FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Prop);
+	UArrayProperty* ArrayProperty = Cast<UArrayProperty>(Prop);
 	if (ArrayProperty)
 	{
 		FScriptArrayHelper ArrayHelper(ArrayProperty, InnerData);
@@ -959,9 +911,9 @@ static bool CheckForBadScalableFloats_Prop_r(void* Data, FProperty* Prop, UClass
 
 static bool	CheckForBadScalableFloats_r(void* Data, UStruct* Struct, UClass* Class)
 {
-	for (TFieldIterator<FProperty> FieldIt(Struct, EFieldIteratorFlags::IncludeSuper); FieldIt; ++FieldIt)
+	for (TFieldIterator<UProperty> FieldIt(Struct, EFieldIteratorFlags::IncludeSuper); FieldIt; ++FieldIt)
 	{
-		FProperty* Prop = *FieldIt;
+		UProperty* Prop = *FieldIt;
 		CheckForBadScalableFloats_Prop_r(Data, Prop, Class);
 		
 	}
@@ -973,9 +925,9 @@ static bool	CheckForBadScalableFloats_r(void* Data, UStruct* Struct, UClass* Cla
 
 static bool FindClassesWithScalableFloat_r(const TArray<FString>& Args, UStruct* Struct, UClass* Class);
 
-static bool FindClassesWithScalableFloat_Prop_r(const TArray<FString>& Args, FProperty* Prop, UClass* Class)
+static bool FindClassesWithScalableFloat_Prop_r(const TArray<FString>& Args, UProperty* Prop, UClass* Class)
 {
-	FStructProperty* StructProperty = CastField<FStructProperty>(Prop);
+	UStructProperty* StructProperty = Cast<UStructProperty>(Prop);
 	if (StructProperty)
 	{
 		if (StructProperty->Struct == FScalableFloat::StaticStruct())
@@ -989,7 +941,7 @@ static bool FindClassesWithScalableFloat_Prop_r(const TArray<FString>& Args, FPr
 		}
 	}
 
-	FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Prop);
+	UArrayProperty* ArrayProperty = Cast<UArrayProperty>(Prop);
 	if (ArrayProperty)
 	{
 		return FindClassesWithScalableFloat_Prop_r(Args, ArrayProperty->Inner, Class);
@@ -1000,9 +952,9 @@ static bool FindClassesWithScalableFloat_Prop_r(const TArray<FString>& Args, FPr
 
 static bool	FindClassesWithScalableFloat_r(const TArray<FString>& Args, UStruct* Struct, UClass* Class)
 {
-	for (TFieldIterator<FProperty> FieldIt(Struct, EFieldIteratorFlags::ExcludeSuper); FieldIt; ++FieldIt)
+	for (TFieldIterator<UProperty> FieldIt(Struct, EFieldIteratorFlags::ExcludeSuper); FieldIt; ++FieldIt)
 	{
-		FProperty* Prop = *FieldIt;
+		UProperty* Prop = *FieldIt;
 		if (FindClassesWithScalableFloat_Prop_r(Args, Prop, Class))
 		{
 			return true;

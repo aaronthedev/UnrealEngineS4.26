@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,7 +8,6 @@
 #include "Modules/ModuleInterface.h"
 #include "IDetailCustomization.h"
 #include "Input/Reply.h"
-#include "Layout/Visibility.h"
 
 class FToolBarBuilder;
 class FMenuBuilder;
@@ -69,6 +68,5 @@ public:
 	FReply PluginClickPlatFn(bool text);
 
 	void OnEnableBuildTelemetry(ECheckBoxState NewState);
-	ECheckBoxState GetBuildTelemetryCheckBoxState() const;
-	EVisibility GetOculusHMDAvailableWarningVisibility() const;
+	ECheckBoxState IsBuildTelemetryEnabled() const;
 };

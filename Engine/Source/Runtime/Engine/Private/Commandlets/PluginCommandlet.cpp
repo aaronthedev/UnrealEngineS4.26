@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Commandlets/PluginCommandlet.h"
 #include "Misc/Paths.h"
@@ -83,13 +83,10 @@ int32 UPluginCommandlet::Main(const FString& Params)
 					{
 						bSetPluginState = IProjectManager::Get().SetPluginEnabled(PluginName, bEnable, FailReason);
 
-						// Try to save the project file if needed
-						if (IProjectManager::Get().IsCurrentProjectDirty())
+						// Try to save the project file
+						if (!IProjectManager::Get().SaveCurrentProjectToDisk(FailReason))
 						{
-							if (!IProjectManager::Get().SaveCurrentProjectToDisk(FailReason))
-							{
-								bSetPluginState = false;
-							}
+							bSetPluginState = false;
 						}
 					}
 					else

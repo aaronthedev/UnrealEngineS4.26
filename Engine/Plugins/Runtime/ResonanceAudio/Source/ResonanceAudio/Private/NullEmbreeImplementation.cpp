@@ -1,17 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // In order to support resonance cross platform, we need to be able to compile Resonance on platforms we may not support Embree on.
 // For those, we noop on all RTC calls:
 
-#if !defined(USE_EMBREE)
-#define USE_EMBREE 0
-#endif 
-
-#if !defined(USE_EMBRE_FOR_RESONANCE)
-#define USE_EMBRE_FOR_RESONANCE 0
-#endif
-
-#if !USE_EMBREE || !USE_EMBRE_FOR_RESONANCE
+#if !USE_EMBREE
 
 #include "ResonanceEmbreeHelper.h"
 #include "CoreMinimal.h"
@@ -92,4 +84,4 @@ void rtcSetUserData(RTCScene scene, unsigned geomID, void* ptr)
 	checkf(false, TEXT("Embree not compiled for this platform! To support raytracing in Resonance, compile Embree for this platform and add it in ResonanceAudio.build.cs."));
 }
 
-#endif // !USE_EMBREE || !USE_EMBRE_FOR_RESONANCE
+#endif // USE_EMBREE

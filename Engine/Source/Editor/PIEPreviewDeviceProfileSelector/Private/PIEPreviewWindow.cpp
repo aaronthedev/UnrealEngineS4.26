@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PIEPreviewWindow.h"
 
@@ -34,7 +34,7 @@ SPIEPreviewWindow::~SPIEPreviewWindow()
 
 TSharedRef<SWidget> SPIEPreviewWindow::MakeWindowTitleBar(const TSharedRef<SWindow>& Window, const TSharedPtr<SWidget>& CenterContent, EHorizontalAlignment CenterContentAlignment)
 {
-	WindowTitleBar = SNew(SPIEPreviewWindowTitleBar, Window, CenterContent, EHorizontalAlignment::HAlign_Center)
+	/*TSharedRef<SPIEPreviewWindowTitleBar> */WindowTitleBar = SNew(SPIEPreviewWindowTitleBar, Window, CenterContent, EHorizontalAlignment::HAlign_Center)
 		.Visibility(EVisibility::SelfHitTestInvisible);
 
 	return WindowTitleBar.ToSharedRef();

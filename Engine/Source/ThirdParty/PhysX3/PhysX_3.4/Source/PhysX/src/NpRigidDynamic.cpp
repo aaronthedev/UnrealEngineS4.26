@@ -42,9 +42,9 @@ NpRigidDynamic::~NpRigidDynamic()
 }
 
 // PX_SERIALIZATION
-void NpRigidDynamic::requiresObjects(PxProcessPxBaseCallback& c)
+void NpRigidDynamic::requires(PxProcessPxBaseCallback& c)
 {
-	NpRigidDynamicT::requiresObjects(c);
+	NpRigidDynamicT::requires(c);
 }
 
 NpRigidDynamic* NpRigidDynamic::createObject(PxU8*& address, PxDeserializationContext& context)

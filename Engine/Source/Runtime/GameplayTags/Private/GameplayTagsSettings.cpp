@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayTagsSettings.h"
 #include "GameplayTagsModule.h"
@@ -68,7 +68,7 @@ UGameplayTagsSettings::UGameplayTagsSettings(const FObjectInitializer& ObjectIni
 }
 
 #if WITH_EDITOR
-void UGameplayTagsSettings::PreEditChange(FProperty* PropertyThatWillChange)
+void UGameplayTagsSettings::PreEditChange(UProperty* PropertyThatWillChange)
 {
 	Super::PreEditChange(PropertyThatWillChange);
 
@@ -136,11 +136,4 @@ UGameplayTagsDeveloperSettings::UGameplayTagsDeveloperSettings(const FObjectInit
 : Super(ObjectInitializer)
 {
 	
-}
-
-static const FName NAME_Advanced("Advanced");
-
-FName UGameplayTagsDeveloperSettings::GetCategoryName() const
-{
-	return NAME_Advanced;
 }

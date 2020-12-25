@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SequencerSectionLayoutBuilder.h"
 #include "DisplayNodes/SequencerSectionCategoryNode.h"
@@ -6,7 +6,7 @@
 #include "IKeyArea.h"
 
 
-FSequencerSectionLayoutBuilder::FSequencerSectionLayoutBuilder(TSharedRef<FSequencerTrackNode> InRootTrackNode, TSharedRef<ISequencerSection> InSection)
+FSequencerSectionLayoutBuilder::FSequencerSectionLayoutBuilder(TSharedRef<FSequencerTrackNode> InRootTrackNode, UMovieSceneSection* InSection)
 	: RootNode(InRootTrackNode)
 	, CurrentNode(InRootTrackNode)
 	, Section(InSection)
@@ -153,7 +153,7 @@ void FSequencerSectionLayoutBuilder::AddOrUpdateChannel(TSharedRef<FSequencerSec
 
 	KeyAreaNode->TreeSerialNumber = RootNode->TreeSerialNumber;
 
-	TSharedPtr<IKeyArea> KeyArea = KeyAreaNode->GetKeyArea(Section->GetSectionObject());
+	TSharedPtr<IKeyArea> KeyArea = KeyAreaNode->GetKeyArea(Section);
 	if (!KeyArea)
 	{
 		// No key area for this section exists - create a new one

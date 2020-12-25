@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	SScreenShotBrowser.h: Declares the SScreenShotBrowser class.
@@ -43,9 +43,8 @@ public:
 
 	TSharedRef<ITableRow> OnGenerateWidgetForScreenResults(TSharedPtr<FScreenComparisonModel> InItem, const TSharedRef<STableViewBase>& OwnerTable);
 
-	void DisplaySuccess_OnCheckStateChanged(ECheckBoxState NewRadioState);
 	void DisplayError_OnCheckStateChanged(ECheckBoxState NewRadioState);
-	void DisplayNew_OnCheckStateChanged(ECheckBoxState NewRadioState);
+	void DisplayWarning_OnCheckStateChanged(ECheckBoxState NewRadioState);
 	void OnFilterStringCommitted(const FText& InText, ETextCommit::Type InCommitType);
 
 private:
@@ -86,14 +85,11 @@ private:
 	/**  */
 	bool bReportsChanged;
 
-	/** Whether or not we're currently displaying successful tests */
-	bool bDisplayingSuccess;
-
-	/** Whether or not we're currently displaying tests with errors */
+	/** Whether or not we're currently displaying errors */
 	bool bDisplayingError;
 
 	/** Whether or not we're currently displaying warnings*/
-	bool bDisplayingNew;
+	bool bDisplayingWarning;
 
 	/** Filter string for our reports, if any */
 	FString ReportFilterString;

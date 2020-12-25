@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -67,23 +67,11 @@ public:
 	UPROPERTY(Config)
 	TArray<FAutomatedTestGroup> Groups;
 
-	/** Whether to suppress log from test results (default=false) */
+	/** Whether to treat log errors as test errors (default=true) */
 	UPROPERTY(Config)
-	bool bSuppressLogErrors;
+	bool bTreatLogErrorsAsTestErrors;
 
-	/** Whether to suppress log warnings from test results (default=false) */
-	UPROPERTY(Config)
-	bool bSuppressLogWarnings;
-
-	/** Whether to treat log warnings as test errors (default=true) */
+	/** Whether to treat log warnings as test errors (default=false) */
 	UPROPERTY(Config)
 	bool bTreatLogWarningsAsTestErrors;
-	
-	/** How long to wait between test updates (default=1sec)*/
-	UPROPERTY(Config)
-	float CheckTestIntervalSeconds;
-	
-	/** The maximum response wait time for detecting a lost game instance (default=300sec)*/
-	UPROPERTY(Config)
-	float GameInstanceLostTimerSeconds;
 };

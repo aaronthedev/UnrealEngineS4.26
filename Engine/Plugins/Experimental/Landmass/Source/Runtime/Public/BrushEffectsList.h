@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -162,6 +162,8 @@ USTRUCT(BlueprintType)
 struct FLandmassBrushEffectsList
 {
 	GENERATED_BODY()
+
+	FLandmassBrushEffectsList();
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = BrushEffects)
 	FBrushEffectBlurring Blurring;

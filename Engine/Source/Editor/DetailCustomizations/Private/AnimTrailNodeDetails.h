@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,7 +9,6 @@
 class IDetailLayoutBuilder;
 class IPropertyHandle;
 class UAnimGraphNode_Trail;
-class SCurveEditor;
 
 class FAnimTrailNodeDetails : public IDetailCustomization
 {
@@ -19,7 +18,6 @@ public:
 
 	/** IDetailCustomization interface */
 	virtual void CustomizeDetails( IDetailLayoutBuilder& DetailBuilder ) override;
-	virtual void PendingDelete() override;
 
 	struct FTrailRelaxCurveEditor: public FCurveOwnerInterface
 	{
@@ -38,8 +36,5 @@ public:
 		TSharedPtr<IPropertyHandle> TrailRelaxCurveHandle;
 
 	} TrailRelaxCurveEditor;
-
-private:
-	TSharedPtr<class SCurveEditor> TrailRelaxCurveWidget;
 };
 

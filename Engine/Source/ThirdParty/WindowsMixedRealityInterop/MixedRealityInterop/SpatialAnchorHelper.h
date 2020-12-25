@@ -11,7 +11,6 @@
 //#include <sstream>
 #include <map>
 #include <functional>
-#include <mutex>
 #include "winrt/base.h"
 #include "winrt/Windows.Perception.Spatial.h"
 
@@ -30,19 +29,14 @@ namespace WindowsMixedReality
 		void RemoveAnchor(const wchar_t* anchorId);
 		bool DoesAnchorExist(const wchar_t* anchorId) const;
 		bool GetAnchorPose(const wchar_t* anchorId, DirectX::XMFLOAT3& outScale, DirectX::XMFLOAT4& outRot, DirectX::XMFLOAT3& outTrans, winrt::Windows::Perception::Spatial::SpatialCoordinateSystem& inCoordinateSystem) const;
-		bool SaveAnchor(const wchar_t* saveId, const wchar_t* anchorId);
-		void RemoveSavedAnchor(const wchar_t* saveId);
-		bool LoadAnchors(std::function<void(const wchar_t* saveId, const wchar_t* anchorId)> anchorIdWritingFunctionPointer);
+		bool SaveAnchor(const wchar_t* anchorId);
+		void RemoveSavedAnchor(const wchar_t* anchorId);
+		bool SaveAnchors();
+		bool LoadAnchors(std::function<void(const wchar_t* text)> anchorIdWritingFunctionPointer);
 		void ClearSavedAnchors();
 		void SubscribeToRawCoordinateSystemAdjusted(winrt::Windows::Perception::Spatial::SpatialAnchor& anchor, const wchar_t* strName);
 		bool DidAnchorCoordinateSystemChange();
 		void OnRawCoordinateSystemAdjusted(const winrt::Windows::Perception::Spatial::SpatialAnchor& anchor, const winrt::Windows::Perception::Spatial::SpatialAnchorRawCoordinateSystemAdjustedEventArgs& args, const wchar_t* strName);
-		
-		// Support functions used by AzureSpatialAnchors
-		winrt::Windows::Perception::Spatial::SpatialAnchor* GetSpatialAnchor(const wchar_t* anchorId);
-		void StoreSpatialAnchor(const std::wstring& anchorId, winrt::Windows::Perception::Spatial::SpatialAnchor& newAnchor);
-
-
 
 		void SetLogCallback(void(*functionPointer)(const wchar_t* text));
 
@@ -52,7 +46,6 @@ namespace WindowsMixedReality
 		void(*m_logCallback)(const wchar_t*) = nullptr;
 
 		class MixedRealityInterop&														m_interop;
-		mutable std::mutex																m_spatialAnchorMapLock;
 		std::map<std::wstring, winrt::Windows::Perception::Spatial::SpatialAnchor>		m_spatialAnchorMap;
 		mutable std::mutex																m_spatialAnchorStoreLock;
 		winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Perception::Spatial::SpatialAnchorStore>		m_spatialAnchorStoreAsyncOperation;

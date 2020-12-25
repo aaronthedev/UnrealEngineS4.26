@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -271,13 +271,13 @@ namespace UnrealBuildTool
 		/// <returns>string    The custom configuration section for the project file; Empty string if it doesn't require one</returns>
 		public override void GetVisualStudioPlatformToolsetString(UnrealTargetPlatform InPlatform, UnrealTargetConfiguration InConfiguration, VCProjectFileFormat InProjectFileFormat, StringBuilder ProjectFileBuilder)
 		{
-			VCProjectFileGenerator.AppendPlatformToolsetProperty(ProjectFileBuilder, InProjectFileFormat);
-
 			if (IsVSAndroidSupportInstalled() || !IsNsightInstalled(InProjectFileFormat))
 			{
+				ProjectFileBuilder.AppendLine("    <PlatformToolset>" + VCProjectFileGenerator.GetProjectFilePlatformToolsetVersionString(InProjectFileFormat) + "</PlatformToolset>");
 			}
 			else
 			{
+				ProjectFileBuilder.AppendLine("    <PlatformToolset>" + VCProjectFileGenerator.GetProjectFilePlatformToolsetVersionString(InProjectFileFormat) + "</PlatformToolset>");
 				ProjectFileBuilder.AppendLine("    <AndroidNativeAPI>UseTarget</AndroidNativeAPI>");
 			}
 		}
@@ -318,7 +318,7 @@ namespace UnrealBuildTool
 				// string for <OverrideAPKPath>
 				string APKPath = Path.Combine(
 					Path.GetDirectoryName(NMakeOutputPath.FullName),
-					Path.GetFileNameWithoutExtension(NMakeOutputPath.FullName) + "-armv7.apk");
+					Path.GetFileNameWithoutExtension(NMakeOutputPath.FullName) + "-armv7-es2.apk");
 
 				// string for <BuildXmlPath> and <AndroidManifestPath>
 				string BuildXmlPath = IntermediateDirectoryPath;
@@ -467,7 +467,7 @@ namespace UnrealBuildTool
 			string FileText =   "<?xml version=\"1.0\" encoding=\"utf-8\"?>" + ProjectFileGenerator.NewLine +
 								"<Project ToolsVersion=\"14.0\" xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\">" + ProjectFileGenerator.NewLine +
 								"	<PropertyGroup Condition=\"\'$(Configuration)|$(Platform)\'==\'Debug|ARM\'\">" + ProjectFileGenerator.NewLine +
-								"		<PackagePath>" + BaseDirectory + "\\Binaries\\Android\\" + ProjectName + "-armv7.apk</PackagePath>" + ProjectFileGenerator.NewLine +
+								"		<PackagePath>" + BaseDirectory + "\\Binaries\\Android\\" + ProjectName + "-armv7-es2.apk</PackagePath>" + ProjectFileGenerator.NewLine +
 								"		<LaunchActivity>" + ProjectFileGenerator.NewLine +
 								"		</LaunchActivity>" + ProjectFileGenerator.NewLine +
 								"		<AdditionalSymbolSearchPaths>" + BaseDirectory + "\\Intermediate\\Android\\APK\\obj\\local\\armeabi-v7a;" + BaseDirectory + "\\Intermediate\\Android\\APK\\jni\\armeabi-v7a;" + BaseDirectory + "\\Binaries\\Android;$(AdditionalSymbolSearchPaths)</AdditionalSymbolSearchPaths>" + ProjectFileGenerator.NewLine +

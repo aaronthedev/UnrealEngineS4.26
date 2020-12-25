@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	UCurveLinearColorAtlas.cpp
@@ -64,7 +64,7 @@ void UCurveLinearColorAtlas::PostEditChangeProperty(struct FPropertyChangedEvent
 				{
 					if (GradientCurves[i] != nullptr)
 					{
-						GradientCurves[i]->OnUpdateCurve.AddUObject(this, &UCurveLinearColorAtlas::OnCurveUpdated);
+						GradientCurves[i]->OnUpdateGradient.AddUObject(this, &UCurveLinearColorAtlas::UpdateGradientSlot);
 					}
 				}
 				UpdateTextures();
@@ -84,16 +84,11 @@ void UCurveLinearColorAtlas::PostEditChangeProperty(struct FPropertyChangedEvent
 void UCurveLinearColorAtlas::PostLoad()
 {
 #if WITH_EDITOR
-	if (FApp::CanEverRender())
-	{
-		FinishCachePlatformData();
-	}
-
 	for (int32 i = 0; i < GradientCurves.Num(); ++i)
 	{
 		if (GradientCurves[i] != nullptr)
 		{
-			GradientCurves[i]->OnUpdateCurve.AddUObject(this, &UCurveLinearColorAtlas::OnCurveUpdated);
+			GradientCurves[i]->OnUpdateGradient.AddUObject(this, &UCurveLinearColorAtlas::UpdateGradientSlot);
 		}
 	}
 	Source.Init(TextureSize, TextureSize, 1, 1, TSF_RGBA16F);
@@ -127,43 +122,31 @@ static void RenderGradient(TArray<FFloat16Color>& InSrcData, UObject* Gradient, 
 	}
 }
 
-static void UpdateTexture(UCurveLinearColorAtlas& Atlas)
-{
-	const int32 TextureDataSize = Atlas.Source.CalcMipSize(0);
-
-	FGuid MD5Guid;
-	FMD5 MD5;
-	MD5.Update(reinterpret_cast<const uint8*>(Atlas.SrcData.GetData()), TextureDataSize);
-	MD5.Final(reinterpret_cast<uint8*>(&MD5Guid));
-
-	uint32* TextureData = reinterpret_cast<uint32*>(Atlas.Source.LockMip(0));
-	FMemory::Memcpy(TextureData, Atlas.SrcData.GetData(), TextureDataSize);
-	Atlas.Source.UnlockMip(0);
-
-	Atlas.Source.SetId(MD5Guid, /*bInGuidIsHash*/ true);
-	Atlas.UpdateResource();
-}
-
 // Immediately render a new material to the specified slot index (SlotIndex must be within this section's range)
-void UCurveLinearColorAtlas::OnCurveUpdated(UCurveBase* Curve, EPropertyChangeType::Type ChangeType)
+void UCurveLinearColorAtlas::UpdateGradientSlot(UCurveLinearColor* Gradient)
 {
-	if (ChangeType != EPropertyChangeType::Interactive)
+	check(Gradient);
+
+	int32 SlotIndex = GradientCurves.Find(Gradient);
+
+	if (SlotIndex != INDEX_NONE && (uint32)SlotIndex < MaxSlotsPerTexture())
 	{
-		UCurveLinearColor* Gradient = CastChecked<UCurveLinearColor>(Curve);
+		// Determine the position of the gradient
+		int32 StartXY = SlotIndex * TextureSize;
 
-		int32 SlotIndex = GradientCurves.Find(Gradient);
+		// Render the single gradient to the render target
+		RenderGradient(SrcData, Gradient, StartXY, SizeXY);
 
-		if (SlotIndex != INDEX_NONE && (uint32)SlotIndex < MaxSlotsPerTexture())
-		{
-			// Determine the position of the gradient
-			int32 StartXY = SlotIndex * TextureSize;
+		uint32* TextureData = (uint32*)Source.LockMip(0);
+		const int32 TextureDataSize = Source.CalcMipSize(0);
+		FMemory::Memcpy(TextureData, SrcData.GetData(), TextureDataSize);
 
-			// Render the single gradient to the render target
-			RenderGradient(SrcData, Gradient, StartXY, SizeXY);
+		Source.UnlockMip(0);
 
-			UpdateTexture(*this);
-		}
-	}	
+		// Immediately update the texture
+		UpdateResource();
+	}
+	
 }
 
 // Render any textures
@@ -195,7 +178,10 @@ void UCurveLinearColorAtlas::UpdateTextures()
 		}
 	}
 
-	UpdateTexture(*this);
+	uint32* TextureData = (uint32*)Source.LockMip(0);
+	FMemory::Memcpy(TextureData, SrcData.GetData(), TextureDataSize);
+	Source.UnlockMip(0);
+	UpdateResource();
 
 	bIsDirty = false;
 }

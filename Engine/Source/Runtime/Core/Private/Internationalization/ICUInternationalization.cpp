@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "Internationalization/ICUInternationalization.h"
 #include "HAL/FileManager.h"
 #include "HAL/LowLevelMemTracker.h"
@@ -178,8 +178,6 @@ bool FICUInternationalization::Initialize()
 	I18N->DefaultLocale = FindOrMakeCulture(FPlatformMisc::GetDefaultLocale(), EAllowDefaultCultureFallback::Yes);
 	I18N->CurrentLanguage = I18N->DefaultLanguage;
 	I18N->CurrentLocale = I18N->DefaultLocale;
-
-	HandleLanguageChanged(I18N->CurrentLanguage.ToSharedRef());
 
 #if ENABLE_LOC_TESTING
 	I18N->AddCustomCulture(MakeShared<FLeetCulture>(I18N->InvariantCulture.ToSharedRef()));
@@ -551,40 +549,16 @@ bool FICUInternationalization::IsCultureAllowed(const FString& Name)
 	return (EnabledCultures.Num() == 0 || EnabledCultures.Contains(Name)) && !DisabledCultures.Contains(Name);
 }
 
-void FICUInternationalization::RefreshCultureDisplayNames(const TArray<FString>& InPrioritizedDisplayCultureNames)
-{
-	// Update the cached display names in any existing cultures
-	FScopeLock Lock(&CachedCulturesCS);
-	for (const auto& CachedCulturePair : CachedCultures)
-	{
-		CachedCulturePair.Value->RefreshCultureDisplayNames(InPrioritizedDisplayCultureNames);
-	}
-}
-
-void FICUInternationalization::RefreshCachedConfigData()
-{
-	bHasInitializedCultureMappings = false;
-	CultureMappings.Reset();
-	ConditionalInitializeCultureMappings();
-
-	bHasInitializedAllowedCultures = false;
-	EnabledCultures.Reset();
-	DisabledCultures.Reset();
-	ConditionalInitializeAllowedCultures();
-}
-
-void FICUInternationalization::HandleLanguageChanged(const FCultureRef InNewLanguage)
+void FICUInternationalization::HandleLanguageChanged(const FString& Name)
 {
 	UErrorCode ICUStatus = U_ZERO_ERROR;
-	uloc_setDefault(StringCast<char>(*InNewLanguage->GetName()).Get(), &ICUStatus);
-
-	CachedPrioritizedDisplayCultureNames = InNewLanguage->GetPrioritizedParentCultureNames();
+	uloc_setDefault(StringCast<char>(*Name).Get(), &ICUStatus);
 
 	// Update the cached display names in any existing cultures
 	FScopeLock Lock(&CachedCulturesCS);
 	for (const auto& CachedCulturePair : CachedCultures)
 	{
-		CachedCulturePair.Value->RefreshCultureDisplayNames(CachedPrioritizedDisplayCultureNames, /*bFullRefresh*/false);
+		CachedCulturePair.Value->HandleCultureChanged();
 	}
 }
 
@@ -757,13 +731,8 @@ FCulturePtr FICUInternationalization::FindOrMakeCanonizedCulture(const FString& 
 
 	if (NewCulture.IsValid())
 	{
-		// Ensure the display name is up-to-date
-		NewCulture->RefreshCultureDisplayNames(CachedPrioritizedDisplayCultureNames, /*bFullRefresh*/false);
-
-		{
-			FScopeLock Lock(&CachedCulturesCS);
-			CachedCultures.Add(Name, NewCulture.ToSharedRef());
-		}
+		FScopeLock Lock(&CachedCulturesCS);
+		CachedCultures.Add(Name, NewCulture.ToSharedRef());
 	}
 
 	return NewCulture;
@@ -786,44 +755,28 @@ void FICUInternationalization::InitializeInvariantGregorianCalendar()
 {
 	UErrorCode ICUStatus = U_ZERO_ERROR;
 	InvariantGregorianCalendar = MakeUnique<icu::GregorianCalendar>(ICUStatus);
-	if (InvariantGregorianCalendar)
-	{
-		InvariantGregorianCalendar->setTimeZone(icu::TimeZone::getUnknown());
-	}
+	InvariantGregorianCalendar->setTimeZone(icu::TimeZone::getUnknown());
 }
 
 UDate FICUInternationalization::UEDateTimeToICUDate(const FDateTime& DateTime)
 {
-	UDate ICUDate = 0;
+	// UE4 and ICU have a different time scale for pre-Gregorian dates, so we can't just use the UNIX timestamp from the UE4 DateTime
+	// Instead we have to explode the UE4 DateTime into its component parts, and then use an ICU GregorianCalendar (set to the "unknown" 
+	// timezone so it doesn't apply any adjustment to the time) to reconstruct the DateTime as an ICU UDate in the correct scale
+	int32 Year, Month, Day;
+	DateTime.GetDate(Year, Month, Day);
+	const int32 Hour = DateTime.GetHour();
+	const int32 Minute = DateTime.GetMinute();
+	const int32 Second = DateTime.GetSecond();
 
-	if (InvariantGregorianCalendar)
 	{
-		// UE4 and ICU have a different time scale for pre-Gregorian dates, so we can't just use the UNIX timestamp from the UE4 DateTime
-		// Instead we have to explode the UE4 DateTime into its component parts, and then use an ICU GregorianCalendar (set to the "unknown" 
-		// timezone so it doesn't apply any adjustment to the time) to reconstruct the DateTime as an ICU UDate in the correct scale
-		int32 Year, Month, Day;
-		DateTime.GetDate(Year, Month, Day);
-		const int32 Hour = DateTime.GetHour();
-		const int32 Minute = DateTime.GetMinute();
-		const int32 Second = DateTime.GetSecond();
+		FScopeLock Lock(&InvariantGregorianCalendarCS);
 
-		{
-			FScopeLock Lock(&InvariantGregorianCalendarCS);
-
-			InvariantGregorianCalendar->set(Year, Month - 1, Day, Hour, Minute, Second);
-
-			UErrorCode ICUStatus = U_ZERO_ERROR;
-			ICUDate = InvariantGregorianCalendar->getTime(ICUStatus);
-		}
+		InvariantGregorianCalendar->set(Year, Month - 1, Day, Hour, Minute, Second);
+		
+		UErrorCode ICUStatus = U_ZERO_ERROR;
+		return InvariantGregorianCalendar->getTime(ICUStatus);
 	}
-	else
-	{
-		// This method is less accurate (see the comment above), but will work well enough if an ICU GregorianCalendar isn't available
-		const int64 UnixTimestamp = DateTime.ToUnixTimestamp();
-		ICUDate = static_cast<UDate>(static_cast<double>(UnixTimestamp) * U_MILLIS_PER_SECOND);
-	}
-
-	return ICUDate;
 }
 
 UBool FICUInternationalization::OpenDataFile(const void* InContext, void** OutFileContext, void** OutContents, const char* InPath)

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -177,10 +177,6 @@ class ENGINE_API UTextRenderComponent : public UPrimitiveComponent
 	//~ Begin USceneComponent Interface.
 	virtual FBoxSphereBounds CalcBounds(const FTransform& LocalToWorld) const override;
 	//~ End USceneComponent Interface.
-
-	//~ Begin UActorComponent Interface.
-	virtual bool RequiresGameThreadEndOfFrameUpdates() const override;
-	//~ End UActorComponent Interface.
 
 	//~ Begin UObject Interface.
 	virtual void PostLoad() override;

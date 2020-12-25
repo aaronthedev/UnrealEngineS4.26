@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,7 +14,7 @@
 /**
  * Widget that visualizes the contents of a FReflectorNode.
  */
-class SReflectorTreeWidgetItem
+class SLATEREFLECTOR_API SReflectorTreeWidgetItem
 	: public SMultiColumnTableRow<TSharedRef<FWidgetReflectorNodeBase>>
 {
 public:

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GeometryCollection/GeometryCollectionSceneProxy.h"
 
@@ -6,8 +6,6 @@
 #include "Engine/Engine.h"
 #include "Materials/Material.h"
 #include "GeometryCollection/GeometryCollectionComponent.h"
-#include "GeometryCollection/GeometryCollectionAlgo.h"
-#include "RHIDefinitions.h"
 #if GEOMETRYCOLLECTION_EDITOR_SELECTION
 #include "GeometryCollection/GeometryCollectionHitProxy.h"
 #endif
@@ -42,7 +40,7 @@ static TAutoConsoleVariable<int32> CVarParallelGeometryCollectionBatchSize(
 );
 
 int32 GGeometryCollectionTripleBufferUploads = 1;
-FAutoConsoleVariableRef CVarGeometryCollectionTripleBufferUploads(
+TAutoConsoleVariable<int32> CVarGeometryCollectionTripleBufferUploads(
 	TEXT("r.GeometryCollectionTripleBufferUploads"),
 	GGeometryCollectionTripleBufferUploads,
 	TEXT("Whether to triple buffer geometry collection uploads, which allows Lock_NoOverwrite uploads which are much faster on the GPU with large amounts of data."),
@@ -58,7 +56,6 @@ FGeometryCollectionSceneProxy::FGeometryCollectionSceneProxy(UGeometryCollection
 	, NumIndices(0)
 	, VertexFactory(GetScene().GetFeatureLevel())
 	, bSupportsManualVertexFetch(VertexFactory.SupportsManualVertexFetch(GetScene().GetFeatureLevel()))
-	, bSupportsTripleBufferVertexUpload(!IsMetalPlatform(GetScene().GetShaderPlatform()) && !IsVulkanPlatform(GetScene().GetShaderPlatform()))
 #if GEOMETRYCOLLECTION_EDITOR_SELECTION
 	, SubSections()
 	, SubSectionHitProxies()
@@ -118,45 +115,6 @@ FGeometryCollectionSceneProxy::FGeometryCollectionSceneProxy(UGeometryCollection
 	// changed from the prev to curr frame, but this is expensive.  We should revisit this if the draw calls for velocity
 	// rendering become a problem. One solution could be to use internal solver sleeping state to drive motion blur.
 	bAlwaysHasVelocity = true;
-
-	// Build pre-skinned bounds from the rest collection, never needs to change as this is the bounds before
-	// any movement, or skinning ever happens to the component so it is logically immutable.
-	const TSharedPtr<FGeometryCollection, ESPMode::ThreadSafe>            
-										Collection     = Component->RestCollection->GetGeometryCollection();
-	const TManagedArray<FBox>&			BoundingBoxes  = Collection->BoundingBox;
-	const TManagedArray<FTransform>&	Transform      = Collection->Transform;
-	const TManagedArray<int32>&			Parent         = Collection->Parent;
-	const TManagedArray<int32>&			TransformIndex = Collection->TransformIndex;
-
-	const int32 NumBoxes = BoundingBoxes.Num();
-	PreSkinnedBounds = Component->Bounds;
-
-	if(NumBoxes > 0)
-	{
-		TArray<FMatrix> TmpGlobalMatrices;
-		GeometryCollectionAlgo::GlobalMatrices(Transform, Parent, TmpGlobalMatrices);
-
-		FBox PreSkinnedBoundsTemp(ForceInit);
-		bool bBoundsInit = false;
-		for(int32 BoxIdx = 0; BoxIdx < NumBoxes; ++BoxIdx)
-		{
-			const int32 TIndex = TransformIndex[BoxIdx];
-			if(Collection->IsGeometry(TIndex))
-			{
-				if(!bBoundsInit)
-				{
-					PreSkinnedBoundsTemp = BoundingBoxes[BoxIdx].TransformBy(TmpGlobalMatrices[TIndex]);
-					bBoundsInit = true;
-				}
-				else
-				{
-					PreSkinnedBoundsTemp += BoundingBoxes[BoxIdx].TransformBy(TmpGlobalMatrices[TIndex]);
-				}
-			}
-		}
-
-		PreSkinnedBounds = FBoxSphereBounds(PreSkinnedBoundsTemp);
-	}
 }
 
 FGeometryCollectionSceneProxy::~FGeometryCollectionSceneProxy()
@@ -477,7 +435,7 @@ void FGeometryCollectionSceneProxy::SetDynamicData_RenderThread(FGeometryCollect
 
 		if (bSupportsManualVertexFetch)
 		{
-			const bool bLocalGeometryCollectionTripleBufferUploads = (GGeometryCollectionTripleBufferUploads != 0) && bSupportsTripleBufferVertexUpload;
+			const bool bLocalGeometryCollectionTripleBufferUploads = (GGeometryCollectionTripleBufferUploads != 0);
 
 			if (bLocalGeometryCollectionTripleBufferUploads && TransformBuffers.Num() == 1)
 			{
@@ -809,7 +767,7 @@ FPrimitiveViewRelevance FGeometryCollectionSceneProxy::GetViewRelevance(const FS
 	MaterialRelevance.SetPrimitiveViewRelevance(Result);
 
 	// #todo(dmp): why does this crash?
-	// Result.bVelocityRelevance = IsMovable() && Result.bOpaque && Result.bRenderInMainPass;
+	// Result.bVelocityRelevance = IsMovable() && Result.bOpaqueRelevance && Result.bRenderInMainPass;
 
 	return Result;
 
@@ -1019,10 +977,4 @@ void FGeometryCollectionSceneProxy::ReleaseSubSections_RenderThread()
 	SubSections.Reset();
 	SubSectionHitProxyIndexMap.Reset();
 }
-
 #endif  // #if GEOMETRYCOLLECTION_EDITOR_SELECTION
-
-void FGeometryCollectionSceneProxy::GetPreSkinnedLocalBounds(FBoxSphereBounds& OutBounds) const
-{
-	OutBounds = PreSkinnedBounds;
-}

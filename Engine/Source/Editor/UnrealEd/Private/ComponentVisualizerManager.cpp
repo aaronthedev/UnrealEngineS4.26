@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ComponentVisualizerManager.h"
 #include "Layout/WidgetPath.h"
@@ -80,29 +80,9 @@ bool FComponentVisualizerManager::HandleProxyForComponentVis(FEditorViewportClie
 			}
 		}
 	}
-
-	// DO NOT call ClearActiveComponentVis() here. If a new actor is being selected, ClearActiveComponentVis() 
-	// will eventually be called by UUnrealEdEngine::NoteSelectionChange().  If it were called here, 
-	// it would be prior to the selection transaction and thus the previous state of the component visualizer 
-	// would not be captured for undo/redo.
-
-	return false;
-}
-
-bool FComponentVisualizerManager::SetActiveComponentVis(FEditorViewportClient* InViewportClient, TSharedPtr<FComponentVisualizer>& InVisualizer)
-{
-	if (InViewportClient && InVisualizer.IsValid())
+	else
 	{
-		// call EndEditing on any currently edited visualizer, if we are going to change it
-		TSharedPtr<FComponentVisualizer> EditedVisualizer = EditedVisualizerPtr.Pin();
-		if (EditedVisualizer.IsValid() && InVisualizer.Get() != EditedVisualizer.Get())
-		{
-			EditedVisualizer->EndEditing();
-		}
-
-		EditedVisualizerPtr = InVisualizer;
-		EditedVisualizerViewportClient = InViewportClient;
-		return true;
+		ClearActiveComponentVis();
 	}
 
 	return false;
@@ -127,7 +107,10 @@ bool FComponentVisualizerManager::HandleInputKey(FEditorViewportClient* Viewport
 
 	if (EditedVisualizer.IsValid())
 	{
-		return EditedVisualizer->HandleInputKey(ViewportClient, Viewport, Key, Event);
+		if(EditedVisualizer->HandleInputKey(ViewportClient, Viewport, Key, Event))
+		{
+			return true;
+		}
 	}
 
 	return false;
@@ -137,9 +120,12 @@ bool FComponentVisualizerManager::HandleInputDelta(FEditorViewportClient* InView
 {
 	TSharedPtr<FComponentVisualizer> EditedVisualizer = EditedVisualizerPtr.Pin();
 
-	if (EditedVisualizer.IsValid() && InViewportClient && InViewportClient->GetCurrentWidgetAxis() != EAxisList::None)
+	if (EditedVisualizer.IsValid() && EditedVisualizerViewportClient == InViewportClient && InViewportClient->GetCurrentWidgetAxis() != EAxisList::None)
 	{
-		return EditedVisualizer->HandleInputDelta(InViewportClient, InViewport, InDrag, InRot, InScale);
+		if (EditedVisualizer->HandleInputDelta(InViewportClient, InViewport, InDrag, InRot, InScale))
+		{
+			return true;
+		}
 	}
 
 	return false;
@@ -149,9 +135,12 @@ bool FComponentVisualizerManager::HandleFrustumSelect(const FConvexVolume& InFru
 {
 	TSharedPtr<FComponentVisualizer> EditedVisualizer = EditedVisualizerPtr.Pin();
 
-	if (EditedVisualizer.IsValid())
+	if (EditedVisualizer.IsValid() && EditedVisualizerViewportClient == InViewportClient)
 	{
-		return EditedVisualizer->HandleFrustumSelect(InFrustum, InViewportClient, InViewport);
+		if (EditedVisualizer->HandleFrustumSelect(InFrustum, InViewportClient, InViewport))
+		{
+			return true;
+		}
 	}
 
 	return false;
@@ -161,9 +150,12 @@ bool FComponentVisualizerManager::HandleBoxSelect(const FBox& InBox, FEditorView
 {
 	TSharedPtr<FComponentVisualizer> EditedVisualizer = EditedVisualizerPtr.Pin();
 
-	if (EditedVisualizer.IsValid())
+	if (EditedVisualizer.IsValid() && EditedVisualizerViewportClient == InViewportClient)
 	{
-		return EditedVisualizer->HandleBoxSelect(InBox, InViewportClient, InViewport);
+		if (EditedVisualizer->HandleBoxSelect(InBox, InViewportClient, InViewport))
+		{
+			return true;
+		}
 	}
 
 	return false;
@@ -175,7 +167,10 @@ bool FComponentVisualizerManager::HasFocusOnSelectionBoundingBox(FBox& OutBoundi
 
 	if (EditedVisualizer.IsValid())
 	{
-		return EditedVisualizer->HasFocusOnSelectionBoundingBox(OutBoundingBox);
+		if (EditedVisualizer->HasFocusOnSelectionBoundingBox(OutBoundingBox))
+		{
+			return true;
+		}
 	}
 
 	return false;
@@ -187,7 +182,10 @@ bool FComponentVisualizerManager::HandleSnapTo(const bool bInAlign, const bool b
 
 	if (EditedVisualizer.IsValid())
 	{
-		return EditedVisualizer->HandleSnapTo(bInAlign, bInUseLineTrace, bInUseBounds, bInUsePivot, InDestination);
+		if (EditedVisualizer->HandleSnapTo(bInAlign, bInUseLineTrace, bInUseBounds, bInUsePivot, InDestination))
+		{
+			return true;
+		}
 	}
 
 	return false;

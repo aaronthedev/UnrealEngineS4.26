@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraConvertNodeViewModel.h"
 #include "NiagaraNodeConvert.h"
@@ -285,8 +285,8 @@ void FNiagaraConvertNodeViewModel::RefreshPinViewModels()
 	InputPinViewModels.Empty();
 	OutputPinViewModels.Empty();
 
-	FPinCollectorArray InputPins;
-	FPinCollectorArray OutputPins;
+	TArray<UEdGraphPin*> InputPins;
+	TArray<UEdGraphPin*> OutputPins;
 	ConvertNode.GetInputPins(InputPins);
 	ConvertNode.GetOutputPins(OutputPins);
 

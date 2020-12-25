@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	EmptyRenderTarget.cpp: Empty render target implementation.
@@ -37,12 +37,3 @@ void FEmptyDynamicRHI::RHIRead3DSurfaceFloatData(FRHITexture* TextureRHI,FIntRec
 {
 
 }
-
-void FEmptyDynamicRHI::RHIBeginRenderPass(const FRHIRenderPassInfo& InInfo, const TCHAR* InName)
-{
-}
-
-void FEmptyDynamicRHI::RHIEndRenderPass()
-{
-}
-

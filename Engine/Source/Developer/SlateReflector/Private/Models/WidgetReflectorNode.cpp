@@ -1,8 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Models/WidgetReflectorNode.h"
-
-#include "Algo/Reverse.h"
 #include "Modules/ModuleManager.h"
 #include "Serialization/JsonTypes.h"
 #include "Dom/JsonValue.h"
@@ -173,11 +171,6 @@ int32 FLiveWidgetReflectorNode::GetWidgetLineNumber() const
 	return FWidgetReflectorNodeUtils::GetWidgetLineNumber(Widget.Pin());
 }
 
-bool FLiveWidgetReflectorNode::HasValidWidgetAssetData() const
-{
-	return FWidgetReflectorNodeUtils::HasValidWidgetAssetData(Widget.Pin());
-}
-
 FAssetData FLiveWidgetReflectorNode::GetWidgetAssetData() const
 {
 	return FWidgetReflectorNodeUtils::GetWidgetAssetData(Widget.Pin());
@@ -193,7 +186,7 @@ FSlateColor FLiveWidgetReflectorNode::GetWidgetForegroundColor() const
 	return FWidgetReflectorNodeUtils::GetWidgetForegroundColor(Widget.Pin());
 }
 
-FWidgetReflectorNodeBase::TPointerAsInt FLiveWidgetReflectorNode::GetWidgetAddress() const
+FString FLiveWidgetReflectorNode::GetWidgetAddress() const
 {
 	return FWidgetReflectorNodeUtils::GetWidgetAddress(Widget.Pin());
 }
@@ -323,11 +316,6 @@ int32 FSnapshotWidgetReflectorNode::GetWidgetLineNumber() const
 	return CachedWidgetLineNumber;
 }
 
-bool FSnapshotWidgetReflectorNode::HasValidWidgetAssetData() const
-{
-	return CachedWidgetAssetData.IsValid();
-}
-
 FAssetData FSnapshotWidgetReflectorNode::GetWidgetAssetData() const
 {
 	return CachedWidgetAssetData;
@@ -343,7 +331,7 @@ FSlateColor FSnapshotWidgetReflectorNode::GetWidgetForegroundColor() const
 	return CachedWidgetForegroundColor;
 }
 
-FWidgetReflectorNodeBase::TPointerAsInt FSnapshotWidgetReflectorNode::GetWidgetAddress() const
+FString FSnapshotWidgetReflectorNode::GetWidgetAddress() const
 {
 	return CachedWidgetAddress;
 }
@@ -422,11 +410,6 @@ TSharedRef<FJsonValue> FSnapshotWidgetReflectorNode::ToJson(const TSharedRef<FSn
 			StructJsonObject->SetBoolField(TEXT("AreChildrenHitTestVisible"), InHitTestInfo.AreChildrenHitTestVisible);
 			return MakeShareable(new FJsonValueObject(StructJsonObject));
 		}
-
-		static FString ConvertPtrIntToString(FWidgetReflectorNodeBase::TPointerAsInt Value)
-		{
-			return FWidgetReflectorNodeUtils::WidgetAddressToString(Value);
-		}
 	};
 
 	TSharedRef<FJsonObject> RootJsonObject = MakeShareable(new FJsonObject());
@@ -444,7 +427,7 @@ TSharedRef<FJsonValue> FSnapshotWidgetReflectorNode::ToJson(const TSharedRef<FSn
 	RootJsonObject->SetStringField(TEXT("WidgetAssetPath"), RootSnapshotNode->CachedWidgetAssetData.ObjectPath.ToString());
 	RootJsonObject->SetField(TEXT("WidgetDesiredSize"), Internal::CreateVector2DJsonValue(RootSnapshotNode->CachedWidgetDesiredSize));
 	RootJsonObject->SetField(TEXT("WidgetForegroundColor"), Internal::CreateSlateColorJsonValue(RootSnapshotNode->CachedWidgetForegroundColor));
-	RootJsonObject->SetStringField(TEXT("WidgetAddress"), Internal::ConvertPtrIntToString(RootSnapshotNode->CachedWidgetAddress));
+	RootJsonObject->SetStringField(TEXT("WidgetAddress"), RootSnapshotNode->CachedWidgetAddress);
 	RootJsonObject->SetBoolField(TEXT("WidgetEnabled"), RootSnapshotNode->CachedWidgetEnabled);
 
 	TArray<TSharedPtr<FJsonValue>> ChildNodesJsonArray;
@@ -554,13 +537,6 @@ TSharedRef<FSnapshotWidgetReflectorNode> FSnapshotWidgetReflectorNode::FromJson(
 			HitTestInfo.AreChildrenHitTestVisible = StructJsonObject->GetBoolField(TEXT("AreChildrenHitTestVisible"));
 			return HitTestInfo;
 		}
-
-		static FWidgetReflectorNodeBase::TPointerAsInt ParsePtrIntFromString(const FString& Value)
-		{
-			FWidgetReflectorNodeBase::TPointerAsInt Result = 0;
-			LexFromString(Result, *Value);
-			return Result;
-		}
 	};
 
 	const TSharedPtr<FJsonObject>& RootJsonObject = RootJsonValue->AsObject();
@@ -582,7 +558,7 @@ TSharedRef<FSnapshotWidgetReflectorNode> FSnapshotWidgetReflectorNode::FromJson(
 	RootSnapshotNode->CachedWidgetLineNumber = RootJsonObject->GetIntegerField(TEXT("WidgetLineNumber"));
 	RootSnapshotNode->CachedWidgetDesiredSize = Internal::ParseVector2DJsonValue(RootJsonObject->GetField<EJson::None>(TEXT("WidgetDesiredSize")));
 	RootSnapshotNode->CachedWidgetForegroundColor = Internal::ParseSlateColorJsonValue(RootJsonObject->GetField<EJson::None>(TEXT("WidgetForegroundColor")));
-	RootSnapshotNode->CachedWidgetAddress = Internal::ParsePtrIntFromString(RootJsonObject->GetStringField(TEXT("WidgetAddress")));
+	RootSnapshotNode->CachedWidgetAddress = RootJsonObject->GetStringField(TEXT("WidgetAddress"));
 	RootSnapshotNode->CachedWidgetEnabled = RootJsonObject->GetBoolField(TEXT("WidgetEnabled"));
 
 	FName AssetPath(*RootJsonObject->GetStringField(TEXT("WidgetAssetPath")));
@@ -669,111 +645,29 @@ TSharedRef<FWidgetReflectorNodeBase> FWidgetReflectorNodeUtils::NewNodeTreeFrom(
 	return NewNodeInstance;
 }
 
-namespace WidgetReflectorNodeUtilsImpl
+void FWidgetReflectorNodeUtils::FindLiveWidgetPath(const TArray<TSharedRef<FWidgetReflectorNodeBase>>& CandidateNodes, const FWidgetPath& WidgetPathToFind, TArray<TSharedRef<FWidgetReflectorNodeBase>>& SearchResult, int32 NodeIndexToFind)
 {
-	void FindLiveWidgetPath(const TArray<TSharedRef<FWidgetReflectorNodeBase>>& TreeNodes, const FWidgetPath& WidgetPathToFind, TArray<TSharedRef<FWidgetReflectorNodeBase>>& SearchResult, int32 PathIndexToStart)
+	if (NodeIndexToFind < WidgetPathToFind.Widgets.Num())
 	{
-		for (int32 PathIndex = PathIndexToStart; PathIndex < WidgetPathToFind.Widgets.Num(); ++PathIndex)
-		{
-			const FArrangedWidget& WidgetToFind = WidgetPathToFind.Widgets[PathIndex];
-			const FWidgetReflectorNodeBase::TPointerAsInt WidgetPathToFindAddress = ::FWidgetReflectorNodeUtils::GetWidgetAddress(WidgetToFind.Widget);
+		const FArrangedWidget& WidgetToFind = WidgetPathToFind.Widgets[NodeIndexToFind];
 
-			for (int32 NodeIndex = 0; NodeIndex < TreeNodes.Num(); ++NodeIndex)
+		for (int32 NodeIndex = 0; NodeIndex < CandidateNodes.Num(); ++NodeIndex)
+		{
+			if (CandidateNodes[NodeIndex]->GetWidgetAddress() == GetWidgetAddress(WidgetPathToFind.Widgets[NodeIndexToFind].Widget))
 			{
-				if (TreeNodes[NodeIndex]->GetWidgetAddress() == WidgetPathToFindAddress)
-				{
-					SearchResult.Add(TreeNodes[NodeIndex]);
-					FindLiveWidgetPath(TreeNodes[NodeIndex]->GetChildNodes(), WidgetPathToFind, SearchResult, PathIndex + 1);
-				}
-			}
-		}
-	}
-
-	void FindLiveWidget(const TSharedPtr<const SWidget>& InWidgetToFind, const TSharedRef<FWidgetReflectorNodeBase>& InNodeToTest, TArray<TSharedRef<FWidgetReflectorNodeBase>>& FoundReversedList)
-	{
-		if (InNodeToTest->GetLiveWidget() == InWidgetToFind)
-		{
-			FoundReversedList.Add(InNodeToTest);
-		}
-		else
-		{
-			for (const TSharedRef<FWidgetReflectorNodeBase>& Child : InNodeToTest->GetChildNodes())
-			{
-				FindLiveWidget(InWidgetToFind, Child, FoundReversedList);
-				if (FoundReversedList.Num() > 0)
-				{
-					FoundReversedList.Add(InNodeToTest);
-					break;
-				}
-			}
-		}
-	}
-
-	void FindSnapshotWidget(FWidgetReflectorNodeBase::TPointerAsInt InWidgetToFind, const TSharedRef<FWidgetReflectorNodeBase>& InNodeToTest, TArray<TSharedRef<FWidgetReflectorNodeBase>>& FoundReversedList)
-	{
-		if (InNodeToTest->GetWidgetAddress() == InWidgetToFind)
-		{
-			FoundReversedList.Add(InNodeToTest);
-		}
-		else
-		{
-			for (const TSharedRef<FWidgetReflectorNodeBase>& Child : InNodeToTest->GetChildNodes())
-			{
-				FindSnapshotWidget(InWidgetToFind, Child, FoundReversedList);
-				if (FoundReversedList.Num() > 0)
-				{
-					FoundReversedList.Add(InNodeToTest);
-					break;
-				}
+				SearchResult.Add(CandidateNodes[NodeIndex]);
+				FindLiveWidgetPath(CandidateNodes[NodeIndex]->GetChildNodes(), WidgetPathToFind, SearchResult, NodeIndexToFind + 1);
 			}
 		}
 	}
 }
 
-void FWidgetReflectorNodeUtils::FindLiveWidgetPath(const TArray<TSharedRef<FWidgetReflectorNodeBase>>& TreeNodes, const FWidgetPath& WidgetPathToFind, TArray<TSharedRef<FWidgetReflectorNodeBase>>& SearchResult)
-{
-	SearchResult.Reset();
-	if (WidgetPathToFind.Widgets.Num() == 0)
-	{
-		return;
-	}
-	WidgetReflectorNodeUtilsImpl::FindLiveWidgetPath(TreeNodes, WidgetPathToFind, SearchResult, 0);
-}
-
-void FWidgetReflectorNodeUtils::FindLiveWidget(const TArray<TSharedRef<FWidgetReflectorNodeBase>>& CandidateNodes, const TSharedPtr<const SWidget>& WidgetToFind, TArray<TSharedRef<FWidgetReflectorNodeBase>>& SearchResult)
-{
-	SearchResult.Reset();
-	for (const TSharedRef<FWidgetReflectorNodeBase>& Itt : CandidateNodes)
-	{
-		WidgetReflectorNodeUtilsImpl::FindLiveWidget(WidgetToFind, Itt, SearchResult);
-		if (SearchResult.Num() > 0)
-		{
-			Algo::Reverse(SearchResult);
-			break;
-		}
-	}
-}
-
-void FWidgetReflectorNodeUtils::FindSnaphotWidget(const TArray<TSharedRef<FWidgetReflectorNodeBase>>& CandidateNodes, FWidgetReflectorNodeBase::TPointerAsInt WidgetToFind, TArray<TSharedRef<FWidgetReflectorNodeBase>>& SearchResult)
-{
-	SearchResult.Reset();
-	for (const TSharedRef<FWidgetReflectorNodeBase>& Itt : CandidateNodes)
-	{
-		WidgetReflectorNodeUtilsImpl::FindSnapshotWidget(WidgetToFind, Itt, SearchResult);
-		if (SearchResult.Num() > 0)
-		{
-			Algo::Reverse(SearchResult);
-			break;
-		}
-	}
-}
-
-FText FWidgetReflectorNodeUtils::GetWidgetType(const TSharedPtr<const SWidget>& InWidget)
+FText FWidgetReflectorNodeUtils::GetWidgetType(const TSharedPtr<SWidget>& InWidget)
 {
 	return (InWidget.IsValid()) ? FText::FromString(InWidget->GetTypeAsString()) : FText::GetEmpty();
 }
 
-FText FWidgetReflectorNodeUtils::GetWidgetTypeAndShortName(const TSharedPtr<const SWidget>& InWidget)
+FText FWidgetReflectorNodeUtils::GetWidgetTypeAndShortName(const TSharedPtr<SWidget>& InWidget)
 {
 	if (InWidget.IsValid())
 	{
@@ -795,42 +689,42 @@ FText FWidgetReflectorNodeUtils::GetWidgetTypeAndShortName(const TSharedPtr<cons
 	return FText::GetEmpty();
 }
 
-FText FWidgetReflectorNodeUtils::GetWidgetVisibilityText(const TSharedPtr<const SWidget>& InWidget)
+FText FWidgetReflectorNodeUtils::GetWidgetVisibilityText(const TSharedPtr<SWidget>& InWidget)
 {
 	return (InWidget.IsValid()) ? FText::FromString(InWidget->GetVisibility().ToString()) : FText::GetEmpty();
 }
 
-bool FWidgetReflectorNodeUtils::GetWidgetVisibility(const TSharedPtr<const SWidget>& InWidget)
+bool FWidgetReflectorNodeUtils::GetWidgetVisibility(const TSharedPtr<SWidget>& InWidget)
 {
 	return InWidget.IsValid() ? InWidget->GetVisibility().IsVisible() : false;
 }
 
-bool FWidgetReflectorNodeUtils::GetWidgetFocusable(const TSharedPtr<const SWidget>& InWidget)
+bool FWidgetReflectorNodeUtils::GetWidgetFocusable(const TSharedPtr<SWidget>& InWidget)
 {
 	return InWidget.IsValid() ? InWidget->SupportsKeyboardFocus() : false;
 }
 
-bool FWidgetReflectorNodeUtils::GetWidgetNeedsTick(const TSharedPtr<const SWidget>& InWidget)
+bool FWidgetReflectorNodeUtils::GetWidgetNeedsTick(const TSharedPtr<SWidget>& InWidget)
 {
 	return InWidget.IsValid() ? InWidget->GetCanTick() : false;
 }
 
-bool FWidgetReflectorNodeUtils::GetWidgetIsVolatile(const TSharedPtr<const SWidget>& InWidget)
+bool FWidgetReflectorNodeUtils::GetWidgetIsVolatile(const TSharedPtr<SWidget>& InWidget)
 {
 	return InWidget.IsValid() ? InWidget->IsVolatile() : false;
 }
 
-bool FWidgetReflectorNodeUtils::GetWidgetIsVolatileIndirectly(const TSharedPtr<const SWidget>& InWidget)
+bool FWidgetReflectorNodeUtils::GetWidgetIsVolatileIndirectly(const TSharedPtr<SWidget>& InWidget)
 {
 	return InWidget.IsValid() ? InWidget->IsVolatileIndirectly() : false;
 }
 
-bool FWidgetReflectorNodeUtils::GetWidgetHasActiveTimers(const TSharedPtr<const SWidget>& InWidget)
+bool FWidgetReflectorNodeUtils::GetWidgetHasActiveTimers(const TSharedPtr<SWidget>& InWidget)
 {
 	return InWidget.IsValid() ? InWidget->HasActiveTimers() : false;
 }
 
-FText FWidgetReflectorNodeUtils::GetWidgetClippingText(const TSharedPtr<const SWidget>& InWidget)
+FText FWidgetReflectorNodeUtils::GetWidgetClippingText(const TSharedPtr<SWidget>& InWidget)
 {
 	if ( InWidget.IsValid() )
 	{
@@ -852,35 +746,22 @@ FText FWidgetReflectorNodeUtils::GetWidgetClippingText(const TSharedPtr<const SW
 	return FText::GetEmpty();
 }
 
-FText FWidgetReflectorNodeUtils::GetWidgetReadableLocation(const TSharedPtr<const SWidget>& InWidget)
+FText FWidgetReflectorNodeUtils::GetWidgetReadableLocation(const TSharedPtr<SWidget>& InWidget)
 {
 	return FText::FromString(FReflectionMetaData::GetWidgetDebugInfo(InWidget.Get()));
 }
 
-FString FWidgetReflectorNodeUtils::GetWidgetFile(const TSharedPtr<const SWidget>& InWidget)
+FString FWidgetReflectorNodeUtils::GetWidgetFile(const TSharedPtr<SWidget>& InWidget)
 {
 	return (InWidget.IsValid()) ? InWidget->GetCreatedInLocation().GetPlainNameString() : FString();
 }
 
-int32 FWidgetReflectorNodeUtils::GetWidgetLineNumber(const TSharedPtr<const SWidget>& InWidget)
+int32 FWidgetReflectorNodeUtils::GetWidgetLineNumber(const TSharedPtr<SWidget>& InWidget)
 {
 	return (InWidget.IsValid()) ? InWidget->GetCreatedInLocation().GetNumber() : 0;
 }
 
-bool FWidgetReflectorNodeUtils::HasValidWidgetAssetData(const TSharedPtr<const SWidget>& InWidget)
-{
-	if (InWidget.IsValid())
-	{
-		if (TSharedPtr<FReflectionMetaData> MetaData = InWidget->GetMetaData<FReflectionMetaData>())
-		{
-			return MetaData->Asset.IsValid();
-		}
-	}
-
-	return false;
-}
-
-FAssetData FWidgetReflectorNodeUtils::GetWidgetAssetData(const TSharedPtr<const SWidget>& InWidget)
+FAssetData FWidgetReflectorNodeUtils::GetWidgetAssetData(const TSharedPtr<SWidget>& InWidget)
 {
 	if (InWidget.IsValid())
 	{
@@ -895,27 +776,22 @@ FAssetData FWidgetReflectorNodeUtils::GetWidgetAssetData(const TSharedPtr<const 
 	return FAssetData();
 }
 
-FVector2D FWidgetReflectorNodeUtils::GetWidgetDesiredSize(const TSharedPtr<const SWidget>& InWidget)
+FVector2D FWidgetReflectorNodeUtils::GetWidgetDesiredSize(const TSharedPtr<SWidget>& InWidget)
 {
 	return (InWidget.IsValid()) ? InWidget->GetDesiredSize() : FVector2D::ZeroVector;
 }
 
-FWidgetReflectorNodeBase::TPointerAsInt FWidgetReflectorNodeUtils::GetWidgetAddress(const TSharedPtr<const SWidget>& InWidget)
+FString FWidgetReflectorNodeUtils::GetWidgetAddress(const TSharedPtr<SWidget>& InWidget)
 {
-	return static_cast<FWidgetReflectorNodeBase::TPointerAsInt>(reinterpret_cast<PTRINT>(InWidget.Get()));
+	return FString::Printf(TEXT("0x%0llx"), reinterpret_cast<uint64>(InWidget.Get()));
 }
 
-FString FWidgetReflectorNodeUtils::WidgetAddressToString(FWidgetReflectorNodeBase::TPointerAsInt InWidgetPtr)
-{
-	return FString::Printf(TEXT("0x%0llx"), InWidgetPtr);
-}
-
-FSlateColor FWidgetReflectorNodeUtils::GetWidgetForegroundColor(const TSharedPtr<const SWidget>& InWidget)
+FSlateColor FWidgetReflectorNodeUtils::GetWidgetForegroundColor(const TSharedPtr<SWidget>& InWidget)
 {
 	return (InWidget.IsValid()) ? InWidget->GetForegroundColor() : FSlateColor::UseForeground();
 }
 
-bool FWidgetReflectorNodeUtils::GetWidgetEnabled(const TSharedPtr<const SWidget>& InWidget)
+bool FWidgetReflectorNodeUtils::GetWidgetEnabled(const TSharedPtr<SWidget>& InWidget)
 {
 	return (InWidget.IsValid()) ? InWidget->IsEnabled() : false;
 }

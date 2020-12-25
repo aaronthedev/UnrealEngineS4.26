@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MaterialGraphNode.cpp
@@ -98,13 +98,7 @@ void UMaterialGraphNode::PostEditChangeProperty(FPropertyChangedEvent& PropertyC
 			if (MaterialExpression)
 			{
 				MaterialExpression->Modify();
-
-				// Note: This if prevents an infinite loop where the comment update triggers a node update that then triggers a comment update.
-				if (MaterialExpression->Desc != NodeComment)
-				{
-					MaterialExpression->Desc = NodeComment;
-					MaterialExpression->Material->PropagateExpressionParameterChanges(MaterialExpression);
-				}
+				MaterialExpression->Desc = NodeComment;
 			}
 		}
 	}
@@ -369,7 +363,8 @@ void UMaterialGraphNode::GetNodeContextMenuActions(UToolMenu* Menu, UGraphNodeCo
 				|| (MaterialExpression->IsA(UMaterialExpressionTextureSample::StaticClass()) && !MaterialExpression->HasAParameterName())
 				|| (MaterialExpression->IsA(UMaterialExpressionRuntimeVirtualTextureSample::StaticClass()) && !MaterialExpression->HasAParameterName())
 				|| MaterialExpression->IsA(UMaterialExpressionTextureObject::StaticClass())
-				|| MaterialExpression->IsA(UMaterialExpressionComponentMask::StaticClass()))
+				|| MaterialExpression->IsA(UMaterialExpressionComponentMask::StaticClass())
+				|| MaterialExpression->IsA(UMaterialExpressionMaterialFunctionCall::StaticClass()))
 			{
 				{
 					FToolMenuSection& Section = Menu->AddSection("MaterialEditorMenu1");
@@ -720,18 +715,18 @@ void UMaterialGraphNode::OnRenameNode(const FString& NewName)
 	SetParameterName(NewName);
 	MaterialExpression->MarkPackageDirty();
 	MaterialExpression->ValidateParameterName();
-	FProperty* NameProperty = nullptr;
+	UProperty* NameProperty = nullptr;
 	if (Cast<UMaterialExpressionParameter>(MaterialExpression))
 	{
-		NameProperty = FindFieldChecked<FProperty>(UMaterialExpressionParameter::StaticClass(), GET_MEMBER_NAME_CHECKED(UMaterialExpressionParameter, ParameterName));
+		NameProperty = FindFieldChecked<UProperty>(UMaterialExpressionParameter::StaticClass(), GET_MEMBER_NAME_CHECKED(UMaterialExpressionParameter, ParameterName));
 	}
 	else if (Cast<UMaterialExpressionFontSampleParameter>(MaterialExpression))
 	{
-		NameProperty = FindFieldChecked<FProperty>(UMaterialExpressionFontSampleParameter::StaticClass(), GET_MEMBER_NAME_CHECKED(UMaterialExpressionFontSampleParameter, ParameterName));
+		NameProperty = FindFieldChecked<UProperty>(UMaterialExpressionFontSampleParameter::StaticClass(), GET_MEMBER_NAME_CHECKED(UMaterialExpressionFontSampleParameter, ParameterName));
 	}
 	else if (Cast<UMaterialExpressionTextureSampleParameter>(MaterialExpression))
 	{
-		NameProperty = FindFieldChecked<FProperty>(UMaterialExpressionTextureSampleParameter::StaticClass(), GET_MEMBER_NAME_CHECKED(UMaterialExpressionTextureSampleParameter, ParameterName));
+		NameProperty = FindFieldChecked<UProperty>(UMaterialExpressionTextureSampleParameter::StaticClass(), GET_MEMBER_NAME_CHECKED(UMaterialExpressionTextureSampleParameter, ParameterName));
 	}
 	if(NameProperty)
 	{
@@ -751,13 +746,7 @@ void UMaterialGraphNode::OnUpdateCommentText( const FString& NewComment )
 	if( MaterialExpression )
 	{
 		MaterialExpression->Modify();
-
-		// Note: This if prevents an infinite loop where the comment update triggers a node update that then triggers a comment update.
-		if (MaterialExpression->Desc != NewComment)
-		{
-			MaterialExpression->Desc = NewComment;
-			MaterialExpression->Material->PropagateExpressionParameterChanges(MaterialExpression);
-		}
+		MaterialExpression->Desc = NewComment;
 		MaterialDirtyDelegate.ExecuteIfBound();
 	}
 }

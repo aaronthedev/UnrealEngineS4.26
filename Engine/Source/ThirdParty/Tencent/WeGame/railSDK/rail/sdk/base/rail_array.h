@@ -1,4 +1,4 @@
-// Copyright (C) 2020, Entropy Game Global Limited.
+// Copyright (c) 2016, Entropy Game Global Limited.
 // All rights reserved.
 
 // portable array
@@ -74,24 +74,17 @@ class RailArray {
         return *this;
     }
 
-#if __cplusplus >= 201103L || _MSC_VER >= 1600
+#if __cplusplus >= 201103L
     RailArray(RailArray<ch_t> &&rs) : p_(rs.p_), count_(rs.count_), capacity_(rs.capacity_) {
-        rs.init_member();
+        rs.p_ = 0;
     }
 
     RailArray &operator=(RailArray<ch_t> &&rs) {
         if (&rs == this) return *this;
-        ch_t* old_p = p_;
-        size_t old_capacity = capacity_;
         p_ = rs.p_;
         count_ = rs.count_;
         capacity_ = rs.capacity_;
-        // release old array
-        if (old_p) {
-            ReleaseArray(old_p, &old_capacity);
-        }
-        rs.init_member();
-        return *this;
+        rs.p_ = 0;
     }
 #endif
 
@@ -227,9 +220,9 @@ class RailArray {
     }
 
     void ReleaseArray(ch_t*& arr, size_t* size) {
-        if (*size == 0) return;
 #if USE_MANUAL_ALLOC
         // windows and use heap alloc
+        if (*size == 0) return;
         for (size_t i = 0; i < *size; ++i) {
             arr[i].~ch_t();
         }

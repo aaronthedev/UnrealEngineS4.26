@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -39,7 +39,6 @@ class UGameplayDebuggerLocalController : public UObject
 	bool IsKeyBound(const FName KeyName) const;
 
 protected:
-	friend struct FGameplayDebuggerConsoleCommands;
 
 	UPROPERTY()
 	AGameplayDebuggerCategoryReplicator* CachedReplicator;
@@ -61,7 +60,6 @@ protected:
 	uint32 bIsSelectingActor : 1;
 	uint32 bIsLocallyEnabled : 1;
 	uint32 bPrevLocallyEnabled : 1;
-	uint32 bEnableTextShadow : 1;
 
 	FString ActivationKeyDesc;
 	FString RowUpKeyDesc;
@@ -71,7 +69,6 @@ protected:
 	int32 ActiveRowIdx;
 	int32 NumCategorySlots;
 	int32 NumCategories;
-	static constexpr int32 NumCategoriesPerRow = 10;
 
 	float PaddingLeft;
 	float PaddingRight;
@@ -106,9 +103,6 @@ protected:
 
 	/** toggle state of categories in given slot */
 	void ToggleSlotState(int32 SlotIdx);
-
-	/** toggle debugger on/off */
-	void ToggleActivation();
 
 	/** draw header row */
 	void DrawHeader(FGameplayDebuggerCanvasContext& CanvasContext);

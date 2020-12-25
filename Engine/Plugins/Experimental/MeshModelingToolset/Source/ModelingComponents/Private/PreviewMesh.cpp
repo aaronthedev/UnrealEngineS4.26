@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PreviewMesh.h"
 
 #include "Containers/StaticArray.h"
-#include "Engine/Classes/Materials/Material.h"
 
 
 APreviewMeshActor::APreviewMeshActor()
@@ -34,7 +33,7 @@ void UPreviewMesh::CreateInWorld(UWorld* World, const FTransform& WithTransform)
 	FActorSpawnParameters SpawnInfo;
 	TemporaryParentActor = World->SpawnActor<APreviewMeshActor>(FVector::ZeroVector, Rotation, SpawnInfo);
 
-	DynamicMeshComponent = NewObject<USimpleDynamicMeshComponent>(TemporaryParentActor);
+	DynamicMeshComponent = NewObject<USimpleDynamicMeshComponent>(TemporaryParentActor, "Mesh");
 	TemporaryParentActor->SetRootComponent(DynamicMeshComponent);
 	//DynamicMeshComponent->SetupAttachment(TemporaryParentActor->GetRootComponent());
 	DynamicMeshComponent->RegisterComponent();
@@ -63,109 +62,17 @@ void UPreviewMesh::Disconnect()
 
 void UPreviewMesh::SetMaterial(UMaterialInterface* Material)
 {
-	SetMaterial(0, Material);
+	check(DynamicMeshComponent);
+	DynamicMeshComponent->SetMaterial(0, Material);
 }
 
-void UPreviewMesh::SetMaterial(int MaterialIndex, UMaterialInterface* Material)
+UMaterialInterface*
+UPreviewMesh::GetMaterial() const
 {
 	check(DynamicMeshComponent);
-	DynamicMeshComponent->SetMaterial(MaterialIndex, Material);
-
-	// force rebuild because we can't change materials yet - surprisingly complicated
-	DynamicMeshComponent->NotifyMeshUpdated();
+	return DynamicMeshComponent->GetMaterial(0);
 }
 
-void UPreviewMesh::SetMaterials(const TArray<UMaterialInterface*>& Materials)
-{
-	check(DynamicMeshComponent);
-	for (int k = 0; k < Materials.Num(); ++k)
-	{
-		DynamicMeshComponent->SetMaterial(k, Materials[k]);
-	}
-
-	// force rebuild because we can't change materials yet - surprisingly complicated
-	DynamicMeshComponent->NotifyMeshUpdated();
-}
-
-int32 UPreviewMesh::GetNumMaterials() const
-{
-	check(DynamicMeshComponent);
-	return DynamicMeshComponent->GetNumMaterials();
-}
-
-UMaterialInterface* UPreviewMesh::GetMaterial(int MaterialIndex) const
-{
-	check(DynamicMeshComponent);
-	return DynamicMeshComponent->GetMaterial(MaterialIndex);
-}
-
-void UPreviewMesh::GetMaterials(TArray<UMaterialInterface*>& OutMaterials) const
-{
-	check(DynamicMeshComponent);
-	for (int32 i = 0; i < DynamicMeshComponent->GetNumMaterials(); ++i)
-	{
-		OutMaterials.Add(DynamicMeshComponent->GetMaterial(i));
-	}
-}
-
-void UPreviewMesh::SetOverrideRenderMaterial(UMaterialInterface* Material)
-{
-	check(DynamicMeshComponent);
-	return DynamicMeshComponent->SetOverrideRenderMaterial(Material);
-}
-
-void UPreviewMesh::ClearOverrideRenderMaterial()
-{
-	check(DynamicMeshComponent);
-	return DynamicMeshComponent->ClearOverrideRenderMaterial();
-}
-
-
-UMaterialInterface* UPreviewMesh::GetActiveMaterial(int MaterialIndex) const
-{
-	return DynamicMeshComponent->HasOverrideRenderMaterial(MaterialIndex) ?
-		DynamicMeshComponent->GetOverrideRenderMaterial(MaterialIndex) : GetMaterial(MaterialIndex);
-}
-
-
-
-void UPreviewMesh::SetSecondaryRenderMaterial(UMaterialInterface* Material)
-{
-	check(DynamicMeshComponent);
-	return DynamicMeshComponent->SetSecondaryRenderMaterial(Material);
-}
-
-void UPreviewMesh::ClearSecondaryRenderMaterial()
-{
-	check(DynamicMeshComponent);
-	return DynamicMeshComponent->ClearSecondaryRenderMaterial();
-}
-
-
-
-void UPreviewMesh::EnableSecondaryTriangleBuffers(TUniqueFunction<bool(const FDynamicMesh3*, int32)> TriangleFilterFunc)
-{
-	check(DynamicMeshComponent);
-	DynamicMeshComponent->EnableSecondaryTriangleBuffers(MoveTemp(TriangleFilterFunc));
-}
-
-void UPreviewMesh::DisableSecondaryTriangleBuffers()
-{
-	check(DynamicMeshComponent);
-	DynamicMeshComponent->DisableSecondaryTriangleBuffers();
-}
-
-
-void UPreviewMesh::SetTangentsMode(EDynamicMeshTangentCalcType TangentsType)
-{
-	check(DynamicMeshComponent);
-	DynamicMeshComponent->TangentsType = TangentsType;
-}
-
-const TMeshTangents<float>* UPreviewMesh::GetTangents() const
-{
-	return DynamicMeshComponent->GetTangents();
-}
 
 void UPreviewMesh::EnableWireframe(bool bEnable)
 {
@@ -196,7 +103,7 @@ void UPreviewMesh::SetVisible(bool bVisible)
 {
 	if (DynamicMeshComponent != nullptr)
 	{
-		DynamicMeshComponent->SetVisibility(bVisible, true);
+		DynamicMeshComponent->SetVisibility(bVisible);
 	}
 }
 
@@ -237,21 +144,8 @@ void UPreviewMesh::UpdatePreview(const FDynamicMesh3* Mesh)
 	}
 }
 
-void UPreviewMesh::UpdatePreview(FDynamicMesh3&& Mesh)
-{
-	DynamicMeshComponent->SetDrawOnTop(this->bDrawOnTop);
 
-	*(DynamicMeshComponent->GetMesh()) = MoveTemp(Mesh);
-	DynamicMeshComponent->NotifyMeshUpdated();
-
-	if (bBuildSpatialDataStructure)
-	{
-		MeshAABBTree.SetMesh(DynamicMeshComponent->GetMesh(), true);
-	}
-}
-
-
-const FDynamicMesh3* UPreviewMesh::GetMesh() const
+const FDynamicMesh3* UPreviewMesh::GetPreviewDynamicMesh() const
 {
 	if (DynamicMeshComponent != nullptr)
 	{
@@ -259,20 +153,6 @@ const FDynamicMesh3* UPreviewMesh::GetMesh() const
 	}
 	return nullptr;
 }
-
-FDynamicMeshAABBTree3* UPreviewMesh::GetSpatial()
-{
-	if (DynamicMeshComponent != nullptr && bBuildSpatialDataStructure)
-	{
-		if (MeshAABBTree.IsValid())
-		{
-			return &MeshAABBTree;
-		}
-	}
-	return nullptr;
-}
-
-
 
 
 TUniquePtr<FDynamicMesh3> UPreviewMesh::ExtractPreviewMesh() const
@@ -307,7 +187,7 @@ bool UPreviewMesh::FindRayIntersection(const FRay3d& WorldRay, FHitResult& HitOu
 {
 	if (IsVisible() && TemporaryParentActor != nullptr && bBuildSpatialDataStructure)
 	{
-		FTransform3d Transform(TemporaryParentActor->GetActorTransform());
+		FTransform Transform = TemporaryParentActor->GetActorTransform();
 		FRay3d LocalRay(Transform.InverseTransformPosition(WorldRay.Origin),
 			Transform.InverseTransformVector(WorldRay.Direction));
 		LocalRay.Direction.Normalize();
@@ -320,32 +200,17 @@ bool UPreviewMesh::FindRayIntersection(const FRay3d& WorldRay, FHitResult& HitOu
 			FIntrRay3Triangle3d Query(LocalRay, Triangle);
 			Query.Find();
 
+			//auto Query = MeshQueries::RayTriangleIntersection(UseMesh, HitTID, LocalRay);
+
 			HitOut.FaceIndex = HitTriID;
 			HitOut.Distance = Query.RayParameter;
-			HitOut.Normal = (FVector)Transform.TransformVectorNoScale(UseMesh->GetTriNormal(HitTriID));
+			HitOut.Normal = Transform.TransformVectorNoScale(UseMesh->GetTriNormal(HitTriID));
 			HitOut.ImpactNormal = HitOut.Normal;
-			HitOut.ImpactPoint = (FVector)Transform.TransformPosition(LocalRay.PointAt(Query.RayParameter));
+			HitOut.ImpactPoint = Transform.TransformPosition(LocalRay.PointAt(Query.RayParameter));
 			return true;
 		}
 	}
 	return false;
-}
-
-
-FVector3d UPreviewMesh::FindNearestPoint(const FVector3d& WorldPoint, bool bLinearSearch)
-{
-	FTransform3d Transform(TemporaryParentActor->GetActorTransform());
-	FVector3d LocalPoint = Transform.TransformPosition(WorldPoint);
-	const FDynamicMesh3* UseMesh = GetMesh();
-	if (bLinearSearch)
-	{
-		return TMeshQueries<FDynamicMesh3>::FindNearestPoint_LinearSearch(*UseMesh, WorldPoint);
-	}
-	if (bBuildSpatialDataStructure)
-	{
-		return MeshAABBTree.FindNearestPoint(WorldPoint);
-	}
-	return WorldPoint;
 }
 
 
@@ -362,19 +227,6 @@ void UPreviewMesh::InitializeMesh(FMeshDescription* MeshDescription)
 }
 
 
-void UPreviewMesh::ReplaceMesh(FDynamicMesh3&& NewMesh)
-{
-	FDynamicMesh3* Mesh = DynamicMeshComponent->GetMesh();
-	*Mesh = MoveTemp(NewMesh);
-
-	DynamicMeshComponent->NotifyMeshUpdated();
-
-	if (bBuildSpatialDataStructure)
-	{
-		MeshAABBTree.SetMesh(DynamicMeshComponent->GetMesh(), true);
-	}
-}
-
 
 void UPreviewMesh::EditMesh(TFunctionRef<void(FDynamicMesh3&)> EditFunc)
 {
@@ -386,56 +238,6 @@ void UPreviewMesh::EditMesh(TFunctionRef<void(FDynamicMesh3&)> EditFunc)
 	if (bBuildSpatialDataStructure)
 	{
 		MeshAABBTree.SetMesh(DynamicMeshComponent->GetMesh(), true);
-	}
-}
-
-
-void UPreviewMesh::DeferredEditMesh(TFunctionRef<void(FDynamicMesh3&)> EditFunc, bool bRebuildSpatial)
-{
-	FDynamicMesh3* Mesh = DynamicMeshComponent->GetMesh();
-	EditFunc(*Mesh);
-
-	if (bBuildSpatialDataStructure && bRebuildSpatial)
-	{
-		MeshAABBTree.SetMesh(DynamicMeshComponent->GetMesh(), true);
-	}
-}
-
-
-void UPreviewMesh::ForceRebuildSpatial()
-{
-	if (bBuildSpatialDataStructure)
-	{
-		MeshAABBTree.SetMesh(DynamicMeshComponent->GetMesh(), true);
-	}
-}
-
-
-void UPreviewMesh::NotifyDeferredEditCompleted(ERenderUpdateMode UpdateMode, EMeshRenderAttributeFlags ModifiedAttribs, bool bRebuildSpatial)
-{
-	if (bBuildSpatialDataStructure && bRebuildSpatial)
-	{
-		MeshAABBTree.SetMesh(DynamicMeshComponent->GetMesh(), true);
-	}
-
-	if (UpdateMode == ERenderUpdateMode::FullUpdate)
-	{
-		DynamicMeshComponent->NotifyMeshUpdated();
-	}
-	else if (UpdateMode == ERenderUpdateMode::FastUpdate)
-	{
-		bool bPositions = (ModifiedAttribs & EMeshRenderAttributeFlags::Positions) != EMeshRenderAttributeFlags::None;
-		bool bNormals = (ModifiedAttribs & EMeshRenderAttributeFlags::VertexNormals) != EMeshRenderAttributeFlags::None;
-		bool bColors = (ModifiedAttribs & EMeshRenderAttributeFlags::VertexColors) != EMeshRenderAttributeFlags::None;
-		bool bUVs = (ModifiedAttribs & EMeshRenderAttributeFlags::VertexUVs) != EMeshRenderAttributeFlags::None;
-		if (bPositions)
-		{
-			DynamicMeshComponent->FastNotifyPositionsUpdated(bNormals, bColors, bUVs);
-		}
-		else
-		{
-			DynamicMeshComponent->FastNotifyVertexAttributesUpdated(bNormals, bColors, bUVs);
-		}
 	}
 }
 
@@ -477,15 +279,6 @@ void UPreviewMesh::ApplyChange(const FMeshChange* Change, bool bRevert)
 		MeshAABBTree.SetMesh(DynamicMeshComponent->GetMesh(), true);
 	}
 }
-void UPreviewMesh::ApplyChange(const FMeshReplacementChange* Change, bool bRevert)
-{
-	check(DynamicMeshComponent != nullptr);
-	DynamicMeshComponent->ApplyChange(Change, bRevert);
-	if (bBuildSpatialDataStructure)
-	{
-		MeshAABBTree.SetMesh(DynamicMeshComponent->GetMesh(), true);
-	}
-}
 
 FSimpleMulticastDelegate& UPreviewMesh::GetOnMeshChanged()
 {
@@ -500,7 +293,7 @@ void UPreviewMesh::Bake(FMeshDescription* MeshDescription, bool bHaveModifiedTop
 	DynamicMeshComponent->Bake(MeshDescription, bHaveModifiedToplogy);
 }
 
-void UPreviewMesh::SetTriangleColorFunction(TFunction<FColor(const FDynamicMesh3*, int)> TriangleColorFunc, ERenderUpdateMode UpdateMode)
+void UPreviewMesh::SetTriangleColorFunction(TFunction<FColor(int)> TriangleColorFunc, ERenderUpdateMode UpdateMode)
 {
 	DynamicMeshComponent->TriangleColorFunc = TriangleColorFunc;
 	if (UpdateMode == ERenderUpdateMode::FastUpdate)

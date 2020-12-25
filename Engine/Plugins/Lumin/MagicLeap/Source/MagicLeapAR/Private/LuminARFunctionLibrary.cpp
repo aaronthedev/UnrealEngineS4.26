@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LuminARFunctionLibrary.h"
 #include "UnrealEngine.h"
@@ -6,8 +6,7 @@
 #include "LatentActions.h"
 #include "ARBlueprintLibrary.h"
 
-#include "LuminARModule.h"
-#include "LuminARTrackingSystem.h"
+#include "LuminARDevice.h"
 #include "LuminARTrackingSystem.h"
 
 
@@ -27,8 +26,7 @@ public:
 
 	virtual void UpdateOperation(FLatentResponse& Response) override
 	{
-		TSharedPtr<FLuminARImplementation, ESPMode::ThreadSafe> LuminARSystem = FLuminARModule::GetLuminARSystem();
-		bool bSessionStartedFinished = (LuminARSystem.IsValid()) ? LuminARSystem->GetStartSessionRequestFinished() : false;
+		bool bSessionStartedFinished = FLuminARDevice::GetInstance()->GetStartSessionRequestFinished();
 		Response.FinishAndTriggerIf(bSessionStartedFinished, ExecutionFunction, OutputLink, CallbackTarget);
 	}
 #if WITH_EDITOR
@@ -59,9 +57,13 @@ void ULuminARSessionFunctionLibrary::StartLuminARSession(UObject* WorldContextOb
 /************************************************************************/
 ELuminARTrackingState ULuminARFrameFunctionLibrary::GetTrackingState()
 {
-	TSharedPtr<FLuminARImplementation, ESPMode::ThreadSafe> LuminARSystem = FLuminARModule::GetLuminARSystem();
-	return (LuminARSystem.IsValid()) ? LuminARSystem->GetTrackingState() : ELuminARTrackingState::StoppedTracking;
+	return FLuminARDevice::GetInstance()->GetTrackingState();
 }
+
+//void ULuminARFrameFunctionLibrary::GetPose(FTransform& LastePose)
+//{
+//	LastePose = FLuminARDevice::GetInstance()->GetLatestPose();
+//}
 
 bool ULuminARFrameFunctionLibrary::LuminARLineTrace(UObject* WorldContextObject, const FVector2D& ScreenPosition, TSet<ELuminARLineTraceChannel> TraceChannels, TArray<FARTraceResult>& OutHitResults)
 {
@@ -71,31 +73,12 @@ bool ULuminARFrameFunctionLibrary::LuminARLineTrace(UObject* WorldContextObject,
 		TraceChannelValue = TraceChannelValue | Channel;
 	}
 
-	TSharedPtr<FLuminARImplementation, ESPMode::ThreadSafe> LuminARSystem = FLuminARModule::GetLuminARSystem();
-	if (LuminARSystem.IsValid())
-	{
-		LuminARSystem->ARLineTrace(ScreenPosition, TraceChannelValue, OutHitResults);
-		return OutHitResults.Num() > 0;
-	}
-
-	return false;
+	FLuminARDevice::GetInstance()->ARLineTrace(ScreenPosition, TraceChannelValue, OutHitResults);
+	return OutHitResults.Num() > 0;
 }
 
-ULuminARCandidateImage* ULuminARImageTrackingFunctionLibrary::AddLuminRuntimeCandidateImage(UARSessionConfig* SessionConfig, UTexture2D* CandidateTexture, FString FriendlyName, float PhysicalWidth, bool bUseUnreliablePose, bool bImageIsStationary)
+void ULuminARFrameFunctionLibrary::GetLightEstimation(FLuminARLightEstimate& LightEstimation)
 {
-	// ForwardAxisAsNormal is default for anyone using this old function since that was the orientation we used to report before providing the option.
-	return ULuminARImageTrackingFunctionLibrary::AddLuminRuntimeCandidateImageEx(SessionConfig, CandidateTexture, FriendlyName, PhysicalWidth, bUseUnreliablePose, bImageIsStationary, EMagicLeapImageTargetOrientation::ForwardAxisAsNormal);
+	LightEstimation = FLuminARDevice::GetInstance()->GetLatestLightEstimate();
 }
 
-ULuminARCandidateImage* ULuminARImageTrackingFunctionLibrary::AddLuminRuntimeCandidateImageEx(UARSessionConfig* SessionConfig, UTexture2D* CandidateTexture, FString FriendlyName, float PhysicalWidth, bool bUseUnreliablePose, bool bImageIsStationary, EMagicLeapImageTargetOrientation InAxisOrientation)
-{
-	TSharedPtr<FLuminARImplementation, ESPMode::ThreadSafe> LuminARSystem = FLuminARModule::GetLuminARSystem();
-	if (LuminARSystem.IsValid())
-	{
-		return LuminARSystem->AddLuminRuntimeCandidateImage(SessionConfig, CandidateTexture, FriendlyName, PhysicalWidth, bUseUnreliablePose, bImageIsStationary, InAxisOrientation);
-	}
-	else
-	{
-		return nullptr;
-	}
-}

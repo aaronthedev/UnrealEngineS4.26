@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,6 +19,8 @@
 #include "Containers/StaticArray.h"
 #include "MeshDescription.generated.h"
 
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+
 enum
 {
 	//Remove the _MD when FRawMesh will be remove
@@ -32,20 +34,18 @@ struct FMeshVertex
 	FMeshVertex()
 	{}
 
-private:
-
 	/** All of vertex instances which reference this vertex (for split vertex support) */
+	UE_DEPRECATED(4.24, "This member should not be accessed directly. Please use FMeshDescription::GetVertexVertexInstances instead.")
 	TArray<FVertexInstanceID> VertexInstanceIDs;
 
 	/** The edges connected to this vertex */
+	UE_DEPRECATED(4.24, "This member should not be accessed directly. Please use FMeshDescription::GetVertexConnectedEdges instead.")
 	TArray<FEdgeID> ConnectedEdgeIDs;
 
-public:
-
 	/** Serializer */
-	friend FArchive& operator<<(FArchive& Ar, FMeshVertex& Vertex)
+	friend FArchive& operator<<( FArchive& Ar, FMeshVertex& Vertex )
 	{
-		if (Ar.IsLoading() && Ar.CustomVer(FReleaseObjectVersion::GUID) < FReleaseObjectVersion::MeshDescriptionNewSerialization)
+		if( Ar.IsLoading() && Ar.CustomVer( FReleaseObjectVersion::GUID ) < FReleaseObjectVersion::MeshDescriptionNewSerialization )
 		{
 			Ar << Vertex.VertexInstanceIDs;
 			Ar << Vertex.ConnectedEdgeIDs;
@@ -61,27 +61,30 @@ struct FMeshVertexInstance
 	friend struct FMeshDescription;
 
 	FMeshVertexInstance()
-		: VertexID(FVertexID::Invalid)
+		: VertexID( FVertexID::Invalid )
 	{}
 
-private:
-
 	/** The vertex this is instancing */
+	UE_DEPRECATED(4.24, "This member should not be accessed directly. Please use FMeshDescription::GetVertexInstanceVertex instead.")
 	FVertexID VertexID;
 
-	/** List of connected triangles */
+	/** List of connected polygons. This will soon be deprecated entirely, in favour of the ConnectedTriangles list. */
+	UE_DEPRECATED(4.24, "This member should not be accessed directly. Please use FMeshDescription::GetVertexInstanceConnectedPolygons instead.")
+	TArray<FPolygonID> ConnectedPolygons;
+
+private:
+	/** List of connected polygons */
 	TArray<FTriangleID> ConnectedTriangles;
 
 public:
 
 	/** Serializer */
-	friend FArchive& operator<<(FArchive& Ar, FMeshVertexInstance& VertexInstance)
+	friend FArchive& operator<<( FArchive& Ar, FMeshVertexInstance& VertexInstance )
 	{
 		Ar << VertexInstance.VertexID;
-		if (Ar.IsLoading() && Ar.CustomVer(FReleaseObjectVersion::GUID) < FReleaseObjectVersion::MeshDescriptionNewSerialization)
+		if( Ar.IsLoading() && Ar.CustomVer( FReleaseObjectVersion::GUID ) < FReleaseObjectVersion::MeshDescriptionNewSerialization )
 		{
-			TArray<FPolygonID> ConnectedPolygons_DISCARD;
-			Ar << ConnectedPolygons_DISCARD;
+			Ar << VertexInstance.ConnectedPolygons;
 		}
 
 		return Ar;
@@ -95,31 +98,50 @@ struct FMeshEdge
 
 	FMeshEdge()
 	{
-		VertexIDs[0] = FVertexID::Invalid;
-		VertexIDs[1] = FVertexID::Invalid;
+		VertexIDs[ 0 ] = FVertexID::Invalid;
+		VertexIDs[ 1 ] = FVertexID::Invalid;
 	}
 
-private:
-
 	/** IDs of the two editable mesh vertices that make up this edge.  The winding direction is not defined. */
-	FVertexID VertexIDs[2];
+	UE_DEPRECATED(4.24, "This member should not be accessed directly. Please use FMeshDescription::GetEdgeVertex instead.")
+	FVertexID VertexIDs[ 2 ];
 
+	/** The polygons that share this edge.  It's best if there are always only two polygons that share
+	    the edge, and those polygons are facing the same direction. This will soon be deprecated entirely, in favour of the ConnectedTriangles list. */
+	UE_DEPRECATED(4.24, "This member should not be accessed directly. Please use FMeshDescription::GetEdgeConnectedPolygons instead.")
+	TArray<FPolygonID> ConnectedPolygons;
+
+private:
 	/** The triangles that share this edge */
 	TArray<FTriangleID> ConnectedTriangles;
 
 public:
 
 	/** Serializer */
-	friend FArchive& operator<<(FArchive& Ar, FMeshEdge& Edge)
+	friend FArchive& operator<<( FArchive& Ar, FMeshEdge& Edge )
 	{
-		Ar << Edge.VertexIDs[0];
-		Ar << Edge.VertexIDs[1];
-		if (Ar.IsLoading() && Ar.CustomVer(FReleaseObjectVersion::GUID) < FReleaseObjectVersion::MeshDescriptionNewSerialization)
+		Ar << Edge.VertexIDs[ 0 ];
+		Ar << Edge.VertexIDs[ 1 ];
+		if( Ar.IsLoading() && Ar.CustomVer( FReleaseObjectVersion::GUID ) < FReleaseObjectVersion::MeshDescriptionNewSerialization )
 		{
-			TArray<FPolygonID> ConnectedPolygons_DISCARD;
-			Ar << ConnectedPolygons_DISCARD;
+			Ar << Edge.ConnectedPolygons;
 		}
 
+		return Ar;
+	}
+};
+
+
+struct UE_DEPRECATED(4.24, "This class should no longer be used.") FMeshPolygonContour
+{
+	/** The ordered list of vertex instances which make up the polygon contour. The winding direction is counter-clockwise. */
+	UE_DEPRECATED(4.24, "This member should not be accessed directly. Please use FMeshDescription::GetPolygonPerimeterVertexInstances instead.")
+	TArray<FVertexInstanceID> VertexInstanceIDs;
+
+	/** Serializer */
+	friend FArchive& operator<<( FArchive& Ar, FMeshPolygonContour& Contour )
+	{
+		Ar << Contour.VertexInstanceIDs;
 		return Ar;
 	}
 };
@@ -130,45 +152,51 @@ struct FMeshTriangle
 	friend struct FMeshDescription;
 
 	FMeshTriangle()
-	{
-		VertexInstanceIDs[0] = FVertexInstanceID::Invalid;
-		VertexInstanceIDs[1] = FVertexInstanceID::Invalid;
-		VertexInstanceIDs[2] = FVertexInstanceID::Invalid;
-	}
-
-private:
+		: VertexInstanceID0( FVertexInstanceID::Invalid ),
+		  VertexInstanceID1( FVertexInstanceID::Invalid ),
+		  VertexInstanceID2( FVertexInstanceID::Invalid )
+	{}
 
 	/** Vertex instance IDs that make up this triangle.  Indices must be ordered counter-clockwise. */
-	FVertexInstanceID VertexInstanceIDs[3];
+	// @todo: when public member access is deprecated, we will replace these clumsy members with a simple array
+	UE_DEPRECATED(4.24, "Please access triangle vertex instances through Get/SetVertexInstanceID or FMeshDescription::GetTriangleVertexID.")
+	FVertexInstanceID VertexInstanceID0;
 
+	UE_DEPRECATED(4.24, "Please access triangle vertex instances through Get/SetVertexInstanceID or FMeshDescription::GetTriangleVertexID.")
+	FVertexInstanceID VertexInstanceID1;
+
+	UE_DEPRECATED(4.24, "Please access triangle vertex instances through Get/SetVertexInstanceID or FMeshDescription::GetTriangleVertexID.")
+	FVertexInstanceID VertexInstanceID2;
+
+private:
 	/** Polygon which contains this triangle */
 	FPolygonID PolygonID;
 
 public:
-
 	/** Gets the specified triangle vertex instance ID.  Pass an index between 0 and 2 inclusive. */
-	inline FVertexInstanceID GetVertexInstanceID(const int32 Index) const
+	inline FVertexInstanceID GetVertexInstanceID( const int32 Index ) const
 	{
-		checkSlow(Index >= 0 && Index <= 2);
-		return VertexInstanceIDs[Index];
+		// When we deprecate direct member access, this will be a simple array lookup
+		checkSlow( Index >= 0 && Index <= 2 );
+		return ( &VertexInstanceID0 )[ Index ];
 	}
 
 	/** Sets the specified triangle vertex instance ID.  Pass an index between 0 and 2 inclusive, and the new vertex instance ID to store. */
-	inline void SetVertexInstanceID(const int32 Index, const FVertexInstanceID NewVertexInstanceID)
+	inline void SetVertexInstanceID( const int32 Index, const FVertexInstanceID NewVertexInstanceID )
 	{
 		// When we deprecate direct member access, this will be a simple array lookup
-		checkSlow(Index >= 0 && Index <= 2);
-		VertexInstanceIDs[Index] = NewVertexInstanceID;
+		checkSlow( Index >= 0 && Index <= 2 );
+		( &VertexInstanceID0 )[ Index ] = NewVertexInstanceID;
 	}
 
 	/** Serializer */
-	friend FArchive& operator<<(FArchive& Ar, FMeshTriangle& Triangle)
+	friend FArchive& operator<<( FArchive& Ar, FMeshTriangle& Triangle )
 	{
-		Ar << Triangle.VertexInstanceIDs[0];
-		Ar << Triangle.VertexInstanceIDs[1];
-		Ar << Triangle.VertexInstanceIDs[2];
+		Ar << Triangle.VertexInstanceID0;
+		Ar << Triangle.VertexInstanceID1;
+		Ar << Triangle.VertexInstanceID2;
 
-		if (!Ar.IsLoading() || Ar.CustomVer(FEditorObjectVersion::GUID) >= FEditorObjectVersion::MeshDescriptionTriangles)
+		if( !Ar.IsLoading() || Ar.CustomVer( FEditorObjectVersion::GUID ) >= FEditorObjectVersion::MeshDescriptionTriangles )
 		{
 			Ar << Triangle.PolygonID;
 		}
@@ -183,50 +211,52 @@ struct FMeshPolygon
 	friend struct FMeshDescription;
 
 	FMeshPolygon()
-		: PolygonGroupID(FPolygonGroupID::Invalid)
+		: PolygonGroupID( FPolygonGroupID::Invalid )
 	{}
 
-private:
-
 	/** The outer boundary edges of this polygon */
-	TArray<FVertexInstanceID> VertexInstanceIDs;
+	UE_DEPRECATED(4.24, "This member should not be accessed directly. Please use FMeshDescription::GetPolygonPerimeterVertexInstances instead.")
+	FMeshPolygonContour PerimeterContour;
 
+	/** List of triangles which make up this polygon */
+	UE_DEPRECATED(4.24, "This member is no longer used. Please use GetPolygonTriangleIDs instead.")
+	TArray<FMeshTriangle> Triangles;
+
+private:
 	/** List of triangle IDs which make up this polygon */
 	TArray<FTriangleID> TriangleIDs;
 
+public:
 	/** The polygon group which contains this polygon */
+	UE_DEPRECATED(4.24, "This member should not be accessed directly. Please use FMeshDescription::GetPolygonPolygonGroup instead.")
 	FPolygonGroupID PolygonGroupID;
 
-public:
-
 	/** Serializer */
-	friend FArchive& operator<<(FArchive& Ar, FMeshPolygon& Polygon)
+	friend FArchive& operator<<( FArchive& Ar, FMeshPolygon& Polygon )
 	{
 		if (Ar.IsSaving() &&
 			Ar.CustomVer(FEditorObjectVersion::GUID) >= FEditorObjectVersion::MeshDescriptionTriangles &&
-			Polygon.VertexInstanceIDs.Num() == 3)
+			Polygon.PerimeterContour.VertexInstanceIDs.Num() == 3)
 		{
 			// Optimisation: if polygon is a triangle, don't serialize the vertices as they can be copied over from the associated triangle
-			TArray<FVertexInstanceID> Empty;
+			FMeshPolygonContour Empty;
 			Ar << Empty;
 		}
 		else
 		{
-			Ar << Polygon.VertexInstanceIDs;
+			Ar << Polygon.PerimeterContour;
 		}
 
-		if (Ar.IsLoading() && Ar.CustomVer(FEditorObjectVersion::GUID) < FEditorObjectVersion::MeshDescriptionRemovedHoles)
+		if (Ar.IsLoading() && Ar.CustomVer( FEditorObjectVersion::GUID ) < FEditorObjectVersion::MeshDescriptionRemovedHoles)
 		{
-			TArray<TArray<FVertexInstanceID>> Empty;
+			TArray<FMeshPolygonContour> Empty;
 			Ar << Empty;
 		}
-
-		if (Ar.IsLoading() && Ar.CustomVer(FReleaseObjectVersion::GUID) < FReleaseObjectVersion::MeshDescriptionNewSerialization)
+		if( Ar.IsLoading() && Ar.CustomVer( FReleaseObjectVersion::GUID ) < FReleaseObjectVersion::MeshDescriptionNewSerialization )
 		{
 			TArray<FMeshTriangle> Triangles_DISCARD;
 			Ar << Triangles_DISCARD;
 		}
-
 		Ar << Polygon.PolygonGroupID;
 
 		return Ar;
@@ -241,17 +271,14 @@ struct FMeshPolygonGroup
 	FMeshPolygonGroup()
 	{}
 
-private:
-
 	/** All polygons in this group */
+	UE_DEPRECATED(4.24, "This member should not be accessed directly. Please use FMeshDescription::GetPolygonGroupPolygons instead.")
 	TArray<FPolygonID> Polygons;
 
-public:
-
 	/** Serializer */
-	friend FArchive& operator<<(FArchive& Ar, FMeshPolygonGroup& PolygonGroup)
+	friend FArchive& operator<<( FArchive& Ar, FMeshPolygonGroup& PolygonGroup )
 	{
-		if (Ar.IsLoading() && Ar.CustomVer(FReleaseObjectVersion::GUID) < FReleaseObjectVersion::MeshDescriptionNewSerialization)
+		if( Ar.IsLoading() && Ar.CustomVer( FReleaseObjectVersion::GUID ) < FReleaseObjectVersion::MeshDescriptionNewSerialization )
 		{
 			Ar << PolygonGroup.Polygons;
 		}
@@ -355,11 +382,26 @@ public:
 	FVertexArray& Vertices() { return VertexArray; }
 	const FVertexArray& Vertices() const { return VertexArray; }
 
+	UE_DEPRECATED(4.24, "Please do not access the vertex directly - use FMeshDescription accessor methods.")
+	FMeshVertex& GetVertex(const FVertexID VertexID) { return VertexArray[VertexID]; }
+	UE_DEPRECATED(4.24, "Please do not access the vertex directly - use FMeshDescription accessor methods.")
+	const FMeshVertex& GetVertex(const FVertexID VertexID) const { return VertexArray[VertexID]; }
+
 	FVertexInstanceArray& VertexInstances() { return VertexInstanceArray; }
 	const FVertexInstanceArray& VertexInstances() const { return VertexInstanceArray; }
 
+	UE_DEPRECATED(4.24, "Please do not access the vertex instance directly - use FMeshDescription accessor methods.")
+	FMeshVertexInstance& GetVertexInstance(const FVertexInstanceID VertexInstanceID) { return VertexInstanceArray[VertexInstanceID]; }
+	UE_DEPRECATED(4.24, "Please do not access the vertex instance directly - use FMeshDescription accessor methods.")
+	const FMeshVertexInstance& GetVertexInstance(const FVertexInstanceID VertexInstanceID) const { return VertexInstanceArray[VertexInstanceID]; }
+
 	FEdgeArray& Edges() { return EdgeArray; }
 	const FEdgeArray& Edges() const { return EdgeArray; }
+
+	UE_DEPRECATED(4.24, "Please do not access the edge directly - use FMeshDescription accessor methods.")
+	FMeshEdge& GetEdge(const FEdgeID EdgeID) { return EdgeArray[EdgeID]; }
+	UE_DEPRECATED(4.24, "Please do not access the edge directly - use FMeshDescription accessor methods.")
+	const FMeshEdge& GetEdge(const FEdgeID EdgeID) const { return EdgeArray[EdgeID]; }
 
 	FTriangleArray& Triangles() { return TriangleArray; }
 	const FTriangleArray& Triangles() const { return TriangleArray; }
@@ -367,8 +409,18 @@ public:
 	FPolygonArray& Polygons() { return PolygonArray; }
 	const FPolygonArray& Polygons() const { return PolygonArray; }
 
+	UE_DEPRECATED(4.24, "Please do not access the polygon directly - use FMeshDescription accessor methods.")
+	FMeshPolygon& GetPolygon(const FPolygonID PolygonID) { return PolygonArray[PolygonID]; }
+	UE_DEPRECATED(4.24, "Please do not access the polygon directly - use FMeshDescription accessor methods.")
+	const FMeshPolygon& GetPolygon(const FPolygonID PolygonID) const { return PolygonArray[PolygonID]; }
+
 	FPolygonGroupArray& PolygonGroups() { return PolygonGroupArray; }
 	const FPolygonGroupArray& PolygonGroups() const { return PolygonGroupArray; }
+
+	UE_DEPRECATED(4.24, "Please do not access the polygon group directly - use FMeshDescription accessor methods.")
+	FMeshPolygonGroup& GetPolygonGroup(const FPolygonGroupID PolygonGroupID) { return PolygonGroupArray[PolygonGroupID]; }
+	UE_DEPRECATED(4.24, "Please do not access the polygon group directly - use FMeshDescription accessor methods.")
+	const FMeshPolygonGroup& GetPolygonGroup(const FPolygonGroupID PolygonGroupID) const { return PolygonGroupArray[PolygonGroupID]; }
 
 	TAttributesSet<FVertexID>& VertexAttributes() { return VertexAttributesSet; }
 	const TAttributesSet<FVertexID>& VertexAttributes() const { return VertexAttributesSet; }
@@ -451,7 +503,7 @@ public:
 
 	/** Deletes a vertex instance from a mesh */
 	void DeleteVertexInstance(const FVertexInstanceID VertexInstanceID, TArray<FVertexID>* InOutOrphanedVerticesPtr = nullptr);
-	
+
 	/** Returns whether the passed vertex instance ID is valid */
 	bool IsVertexInstanceValid(const FVertexInstanceID VertexInstanceID) const
 	{
@@ -479,7 +531,7 @@ public:
 		CreateEdge_Internal(EdgeID, VertexID0, VertexID1);
 	}
 
-	/** Deletes an edge from the mesh */
+	/** Deletes an edge from a mesh */
 	void DeleteEdge(const FEdgeID EdgeID, TArray<FVertexID>* InOutOrphanedVerticesPtr = nullptr);
 
 	/** Returns whether the passed edge ID is valid */
@@ -512,11 +564,6 @@ public:
 	/** Deletes a triangle from the mesh */
 	void DeleteTriangle(const FTriangleID TriangleID, TArray<FEdgeID>* InOutOrphanedEdgesPtr = nullptr, TArray<FVertexInstanceID>* InOutOrphanedVertexInstancesPtr = nullptr, TArray<FPolygonGroupID>* InOutOrphanedPolygonGroupsPtr = nullptr);
 
-	/** Deletes triangles from the mesh and remove all orphaned polygon groups, vertex instances, edges and vertices.
-		Will not compact the internal arrays, you must call Compact() manually.
-	 */
-	void DeleteTriangles(const TArray<FTriangleID>& Triangles);
-
 	/** Returns whether the passed triangle ID is valid */
 	bool IsTriangleValid(const FTriangleID TriangleID) const
 	{
@@ -546,11 +593,6 @@ public:
 
 	/** Deletes a polygon from the mesh */
 	void DeletePolygon(const FPolygonID PolygonID, TArray<FEdgeID>* InOutOrphanedEdgesPtr = nullptr, TArray<FVertexInstanceID>* InOutOrphanedVertexInstancesPtr = nullptr, TArray<FPolygonGroupID>* InOutOrphanedPolygonGroupsPtr = nullptr);
-
-	/** Deletes polygons from the mesh and remove all orphaned polygon groups, vertex instances, edges and vertices.
-		Will not compact the internal arrays, you must call Compact() manually.
-	 */
-	void DeletePolygons(const TArray<FPolygonID>& Polygons);
 
 	/** Returns whether the passed polygon ID is valid */
 	bool IsPolygonValid(const FPolygonID PolygonID) const
@@ -637,7 +679,7 @@ public:
 	void GetVertexConnectedTriangles(const FVertexID VertexID, TArray<FTriangleID, Alloc>& OutConnectedTriangleIDs) const
 	{
 		OutConnectedTriangleIDs.Reset(GetNumVertexConnectedTriangles(VertexID));
-		for (const FVertexInstanceID& VertexInstanceID : VertexArray[VertexID].VertexInstanceIDs)
+		for (const FVertexInstanceID VertexInstanceID : VertexArray[VertexID].VertexInstanceIDs)
 		{
 			OutConnectedTriangleIDs.Append(VertexInstanceArray[VertexInstanceID].ConnectedTriangles);
 		}
@@ -673,9 +715,9 @@ public:
 	void GetVertexConnectedPolygons(const FVertexID VertexID, TArray<FPolygonID, Alloc>& OutConnectedPolygonIDs) const
 	{
 		OutConnectedPolygonIDs.Reset();
-		for (const FVertexInstanceID& VertexInstanceID : VertexArray[VertexID].VertexInstanceIDs)
+		for (const FVertexInstanceID VertexInstanceID : VertexArray[VertexID].VertexInstanceIDs)
 		{
-			for (const FTriangleID& TriangleID : VertexInstanceArray[VertexInstanceID].ConnectedTriangles)
+			for (const FTriangleID TriangleID : VertexInstanceArray[VertexInstanceID].ConnectedTriangles)
 			{
 				OutConnectedPolygonIDs.AddUnique(TriangleArray[TriangleID].PolygonID);
 			}
@@ -713,7 +755,7 @@ public:
 		OutAdjacentVertexIDs.SetNumUninitialized(ConnectedEdgeIDs.Num());
 
 		int32 Index = 0;
-		for (const FEdgeID& EdgeID : ConnectedEdgeIDs)
+		for (const FEdgeID EdgeID : ConnectedEdgeIDs)
 		{
 			const FMeshEdge& Edge = EdgeArray[EdgeID];
 			OutAdjacentVertexIDs[Index] = (Edge.VertexIDs[0] == VertexID) ? Edge.VertexIDs[1] : Edge.VertexIDs[0];
@@ -768,7 +810,7 @@ public:
 	void GetVertexInstanceConnectedPolygons(const FVertexInstanceID VertexInstanceID, TArray<FPolygonID, Alloc>& OutPolygonIDs) const
 	{
 		OutPolygonIDs.Reset(VertexInstanceArray[VertexInstanceID].ConnectedTriangles.Num());
-		for (const FTriangleID& TriangleID : VertexInstanceArray[VertexInstanceID].ConnectedTriangles)
+		for (const FTriangleID TriangleID : VertexInstanceArray[VertexInstanceID].ConnectedTriangles)
 		{
 			OutPolygonIDs.AddUnique(TriangleArray[TriangleID].PolygonID);
 		}
@@ -834,7 +876,7 @@ public:
 	void GetEdgeConnectedPolygons(const FEdgeID EdgeID, TArray<FPolygonID, Alloc>& OutPolygonIDs) const
 	{
 		OutPolygonIDs.Reset(EdgeArray[EdgeID].ConnectedTriangles.Num());
-		for (const FTriangleID& TriangleID : EdgeArray[EdgeID].ConnectedTriangles)
+		for (const FTriangleID TriangleID : EdgeArray[EdgeID].ConnectedTriangles)
 		{
 			OutPolygonIDs.AddUnique(TriangleArray[TriangleID].PolygonID);
 		}
@@ -901,7 +943,7 @@ public:
 	/** Get the vertex instances which define this triangle */
 	TArrayView<const FVertexInstanceID> GetTriangleVertexInstances(const FTriangleID TriangleID) const
 	{
-		return TriangleArray[TriangleID].VertexInstanceIDs;
+		return TArrayView<const FVertexInstanceID>(&TriangleArray[TriangleID].VertexInstanceID0, 3);
 	}
 
 	/** Get the specified vertex instance by index */
@@ -952,9 +994,9 @@ public:
 	void GetTriangleAdjacentTriangles(const FTriangleID TriangleID, TArray<FTriangleID, Alloc>& OutTriangleIDs) const
 	{
 		OutTriangleIDs.Reset();
-		for (const FEdgeID& EdgeID : GetTriangleEdges(TriangleID))
+		for (const FEdgeID EdgeID : GetTriangleEdges(TriangleID))
 		{
-			for (const FTriangleID& OtherTriangleID : EdgeArray[EdgeID].ConnectedTriangles)
+			for (const FTriangleID OtherTriangleID : EdgeArray[EdgeID].ConnectedTriangles)
 			{
 				if (OtherTriangleID != TriangleID)
 				{
@@ -995,6 +1037,9 @@ public:
 	//////////////////////////////////////////////////////////////////////
 	// Polygon operations
 
+	UE_DEPRECATED(4.24, "Please use GetPolygonTriangleIDs instead.")
+	TArray<FMeshTriangle> GetPolygonTriangles(const FPolygonID PolygonID) const;
+
 	/** Return reference to an array of triangle IDs which comprise this polygon */
 	const TArray<FTriangleID>& GetPolygonTriangleIDs(const FPolygonID PolygonID) const
 	{
@@ -1007,16 +1052,28 @@ public:
 		return PolygonArray[PolygonID].TriangleIDs.Num();
 	}
 
+	UE_DEPRECATED(4.24, "Please use GetPolygonVertexInstances instead.")
+	const TArray<FVertexInstanceID>& GetPolygonPerimeterVertexInstances(const FPolygonID PolygonID) const
+	{
+		return GetPolygonVertexInstances(PolygonID);
+	}
+
 	/** Returns reference to an array of VertexInstance IDs forming the perimeter of this polygon */
 	const TArray<FVertexInstanceID>& GetPolygonVertexInstances(const FPolygonID PolygonID) const
 	{
-		return PolygonArray[PolygonID].VertexInstanceIDs;
+		return PolygonArray[PolygonID].PerimeterContour.VertexInstanceIDs;
 	}
 
 	/** Returns the number of vertices this polygon has */
 	int32 GetNumPolygonVertices(const FPolygonID PolygonID) const
 	{
-		return PolygonArray[PolygonID].VertexInstanceIDs.Num();
+		return PolygonArray[PolygonID].PerimeterContour.VertexInstanceIDs.Num();
+	}
+
+	UE_DEPRECATED(4.24, "Please use GetPolygonVertices instead.")
+	void GetPolygonPerimeterVertices(const FPolygonID PolygonID, TArray<FVertexID>& OutVertexIDs) const
+	{
+		return GetPolygonVertices(PolygonID, OutVertexIDs);
 	}
 
 	/** Populates the passed array of VertexIDs with the vertices which form the polygon perimeter */
@@ -1025,7 +1082,7 @@ public:
 	{
 		OutVertexIDs.SetNumUninitialized(GetNumPolygonVertices(PolygonID));
 		int32 Index = 0;
-		for (const FVertexInstanceID& VertexInstanceID : GetPolygonVertexInstances(PolygonID))
+		for (const FVertexInstanceID VertexInstanceID : GetPolygonVertexInstances(PolygonID))
 		{
 			OutVertexIDs[Index++] = GetVertexInstanceVertex(VertexInstanceID);
 		}
@@ -1046,6 +1103,12 @@ public:
 		TArray<FVertexID> Result;
 		this->GetPolygonVertices(PolygonID, Result);
 		return Result;
+	}
+
+	UE_DEPRECATED(4.24, "Please use GetPolygonPerimeterEdges instead.")
+	void GetPolygonEdges(const FPolygonID PolygonID, TArray<FEdgeID>& OutEdgeIDs) const
+	{
+		GetPolygonPerimeterEdges(PolygonID, OutEdgeIDs);
 	}
 
 	/** Populates the passed array with the edges which form the polygon perimeter */
@@ -1088,9 +1151,9 @@ public:
 		OutEdgeIDs.Reset(GetNumPolygonVertices(PolygonID) - 3);
 		if (GetNumPolygonVertices(PolygonID) > 3)
 		{
-			for (const FVertexInstanceID& VertexInstanceID : GetPolygonVertexInstances(PolygonID))
+			for (const FVertexInstanceID VertexInstanceID : GetPolygonVertexInstances(PolygonID))
 			{
-				for (const FEdgeID& EdgeID : GetVertexConnectedEdges(GetVertexInstanceVertex(VertexInstanceID)))
+				for (const FEdgeID EdgeID : GetVertexConnectedEdges(GetVertexInstanceVertex(VertexInstanceID)))
 				{
 					if (!OutEdgeIDs.Contains(EdgeID) && IsEdgeInternalToPolygon(EdgeID, PolygonID))
 					{
@@ -1121,7 +1184,7 @@ public:
 	/** Return the number of internal edges in this polygon */
 	int32 GetNumPolygonInternalEdges(const FPolygonID PolygonID) const
 	{
-		return PolygonArray[PolygonID].VertexInstanceIDs.Num() - 3;
+		return PolygonArray[PolygonID].PerimeterContour.VertexInstanceIDs.Num() - 3;
 	}
 
 	/** Populates the passed array with adjacent polygons */
@@ -1129,9 +1192,9 @@ public:
 	void GetPolygonAdjacentPolygons(const FPolygonID PolygonID, TArray<FPolygonID, Alloc>& OutPolygonIDs) const
 	{
 		OutPolygonIDs.Reset();
-		for (const FEdgeID& EdgeID : GetPolygonPerimeterEdges<TInlineAllocator<16>>(PolygonID))
+		for (const FEdgeID EdgeID : GetPolygonPerimeterEdges<TInlineAllocator<16>>(PolygonID))
 		{
-			for (const FPolygonID& OtherPolygonID : GetEdgeConnectedPolygons<TInlineAllocator<8>>(EdgeID))
+			for (const FPolygonID OtherPolygonID : GetEdgeConnectedPolygons<TInlineAllocator<8>>(EdgeID))
 			{
 				if (OtherPolygonID != PolygonID)
 				{
@@ -1189,6 +1252,9 @@ public:
 	/** Reverse the winding order of the vertices of this polygon */
 	void ReversePolygonFacing(const FPolygonID PolygonID);
 
+	UE_DEPRECATED(4.24, "Please use the other overload of ComputePolygonTriangulation.")
+	void ComputePolygonTriangulation(const FPolygonID PolygonID, TArray<FMeshTriangle>& OutTriangles);
+
 	/** Generates triangles and internal edges for the given polygon */
 	void ComputePolygonTriangulation(const FPolygonID PolygonID);
 
@@ -1227,6 +1293,38 @@ public:
 	/** Retriangulates the entire mesh */
 	void TriangulateMesh();
 
+	/** Set the polygon tangent and normal only for the specified polygonIDs */
+	UE_DEPRECATED(4.24, "Please use FStaticMeshOperations::ComputePolygonTangentsAndNormals.")
+	void ComputePolygonTangentsAndNormals(const TArray<FPolygonID>& PolygonIDs, float ComparisonThreshold = 0.0f);
+
+	/** Set the polygon tangent and normal for all polygons in the mesh description. */
+	UE_DEPRECATED(4.24, "Please use FStaticMeshOperations::ComputePolygonTangentsAndNormals.")
+	void ComputePolygonTangentsAndNormals(float ComparisonThreshold = 0.0f);
+	
+	/** Set the vertex instance tangent and normal only for the specified VertexInstanceIDs */
+	UE_DEPRECATED(4.24, "Please use FStaticMeshOperations::ComputeTangentsAndNormals.")
+	void ComputeTangentsAndNormals(const TArray<FVertexInstanceID>& VertexInstanceIDs, EComputeNTBsOptions ComputeNTBsOptions);
+
+	/** Set the vertex instance tangent and normal for all vertex instances in the mesh description. */
+	UE_DEPRECATED(4.24, "Please use FStaticMeshOperations::ComputeTangentsAndNormals.")
+	void ComputeTangentsAndNormals(EComputeNTBsOptions ComputeNTBsOptions);
+
+	/** Determine the edge hardnesses from existing normals */
+	UE_DEPRECATED(4.24, "Please use FStaticMeshOperations::DetermineEdgeHardnessesFromVertexInstanceNormals.")
+	void DetermineEdgeHardnessesFromVertexInstanceNormals( const float Tolerance = KINDA_SMALL_NUMBER );
+
+	/** Determine UV seams from existing vertex instance UVs */
+	UE_DEPRECATED(4.24, "UVSeam attribute is now deprecated in MeshDescription.")
+	void DetermineUVSeamsFromUVs( const int32 UVIndex, const float Tolerance = KINDA_SMALL_NUMBER );
+
+	/** Get polygons in the same UV chart as the specified polygon */
+	UE_DEPRECATED(4.24, "UVSeam attribute is now deprecated in MeshDescription.")
+	void GetPolygonsInSameChartAsPolygon( const FPolygonID PolygonID, TArray<FPolygonID>& OutPolygonIDs );
+
+	/** Get array of all UV charts */
+	UE_DEPRECATED(4.24, "UVSeam attribute is now deprecated in MeshDescription.")
+	void GetAllCharts( TArray<TArray<FPolygonID>>& OutCharts );
+
 	/** Reverses the winding order of all polygons in the mesh */
 	void ReverseAllPolygonFacing();
 
@@ -1238,42 +1336,45 @@ private:
 
 	FPlane ComputePolygonPlane(const FPolygonID PolygonID) const;
 	FVector ComputePolygonNormal(const FPolygonID PolygonID) const;
+	bool ComputePolygonTangentsAndNormals(
+		  const FPolygonID PolygonID
+		, float ComparisonThreshold
+		, const TVertexAttributesRef<FVector> VertexPositions
+		, const TVertexInstanceAttributesRef<FVector2D> VertexUVs
+		, TPolygonAttributesRef<FVector> PolygonTangents
+		, TPolygonAttributesRef<FVector> PolygonBinormals
+		, TPolygonAttributesRef<FVector> PolygonCenters
+		, TPolygonAttributesRef<FVector> PolygonNormals
+	);
+
+	void GetVertexConnectedPolygonsInSameSoftEdgedGroup(const FVertexID VertexID, const FPolygonID PolygonID, TArray<FPolygonID>& OutPolygonIDs) const;
+	void GetPolygonsInSameSoftEdgedGroupAsPolygon(const FPolygonID PolygonID, const TArray<FPolygonID>& CandidatePolygonIDs, const TArray<FEdgeID>& SoftEdgeIDs, TArray<FPolygonID>& OutPolygonIDs) const;
+	void GetConnectedSoftEdges(const FVertexID VertexID, TArray<FEdgeID>& OutConnectedSoftEdges) const;
+	void ComputeTangentsAndNormals(
+		  const FVertexInstanceID VertexInstanceID
+		, EComputeNTBsOptions ComputeNTBsOptions
+		, const TPolygonAttributesRef<FVector> PolygonNormals
+		, const TPolygonAttributesRef<FVector> PolygonTangents
+		, const TPolygonAttributesRef<FVector> PolygonBinormals
+		, TVertexInstanceAttributesRef<FVector> VertexNormals
+		, TVertexInstanceAttributesRef<FVector> VertexTangents
+		, TVertexInstanceAttributesRef<float> VertexBinormalSigns
+	);
 
 private:
 
-	void CreateVertex_Internal(const FVertexID VertexID) { VertexAttributesSet.Insert(VertexID); }
-	void CreateVertexInstance_Internal(const FVertexInstanceID VertexInstanceID, const FVertexID VertexID);
-	void CreateEdge_Internal(const FEdgeID EdgeID, const FVertexID VertexID0, const FVertexID VertexID1);
-	void CreateTriangle_Internal(const FTriangleID TriangleID, const FPolygonGroupID PolygonGroupID, TArrayView<const FVertexInstanceID> VertexInstanceIDs, TArray<FEdgeID>* OutEdgeIDs);
-	void CreatePolygon_Internal(const FPolygonID PolygonID, const FPolygonGroupID PolygonGroupID, TArrayView<const FVertexInstanceID> VertexInstanceIDs, TArray<FEdgeID>* OutEdgeIDs);
-	void CreatePolygonGroup_Internal(const FPolygonGroupID PolygonGroupID) { PolygonGroupAttributesSet.Insert(PolygonGroupID); }
-
-	template <template <typename...> class TContainer>
-	void DeleteVertexInstance_Internal(const FVertexInstanceID VertexInstanceID, TContainer<FVertexID>* InOutOrphanedVerticesPtr = nullptr);
-	template <template <typename...> class TContainer>
-	void DeleteEdge_Internal(const FEdgeID EdgeID, TContainer<FVertexID>* InOutOrphanedVerticesPtr = nullptr);
-	template <template <typename...> class TContainer>
-	void DeleteTriangle_Internal(const FTriangleID TriangleID, TContainer<FEdgeID>* InOutOrphanedEdgesPtr = nullptr, TContainer<FVertexInstanceID>* InOutOrphanedVertexInstancesPtr = nullptr, TContainer<FPolygonGroupID>* InOutOrphanedPolygonGroupsPtr = nullptr);
-	template <template <typename...> class TContainer>
-	void DeletePolygon_Internal(const FPolygonID PolygonID, TContainer<FEdgeID>* InOutOrphanedEdgesPtr = nullptr, TContainer<FVertexInstanceID>* InOutOrphanedVertexInstancesPtr = nullptr, TContainer<FPolygonGroupID>* InOutOrphanedPolygonGroupsPtr = nullptr);
+	void CreateVertex_Internal( const FVertexID VertexID ) { VertexAttributesSet.Insert( VertexID ); }
+	void CreateVertexInstance_Internal( const FVertexInstanceID VertexInstanceID, const FVertexID VertexID );
+	void CreateEdge_Internal( const FEdgeID EdgeID, const FVertexID VertexID0, const FVertexID VertexID1 );
+	void CreateTriangle_Internal( const FTriangleID TriangleID, const FPolygonGroupID PolygonGroupID, TArrayView<const FVertexInstanceID> VertexInstanceIDs, TArray<FEdgeID>* OutEdgeIDs );
+	void CreatePolygon_Internal( const FPolygonID PolygonID, const FPolygonGroupID PolygonGroupID, TArrayView<const FVertexInstanceID> VertexInstanceIDs, TArray<FEdgeID>* OutEdgeIDs );
+	void CreatePolygonGroup_Internal( const FPolygonGroupID PolygonGroupID ) { PolygonGroupAttributesSet.Insert( PolygonGroupID ); }
 
 	/** Given a set of index remappings, fixes up references to element IDs */
-	void FixUpElementIDs(const FElementIDRemappings& Remappings);
+	void FixUpElementIDs( const FElementIDRemappings& Remappings );
 
 	/** Given a set of index remappings, remaps all attributes accordingly */
-	void RemapAttributes(const FElementIDRemappings& Remappings);
-
-	template <class T>
-	void AddUnique(TArray<T>& Container, const T& Item)
-	{
-		Container.AddUnique(Item);
-	}
-
-	template <class T>
-	void AddUnique(TSet<T>& Container, const T& Item)
-	{
-		Container.Add(Item);
-	}
+	void RemapAttributes( const FElementIDRemappings& Remappings );
 
 
 	FVertexArray VertexArray;
@@ -1291,6 +1392,8 @@ private:
 	TAttributesSet<FPolygonGroupID> PolygonGroupAttributesSet;
 };
 
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
+
 
 /**
  * Bulk data storage for FMeshDescription
@@ -1299,21 +1402,21 @@ struct MESHDESCRIPTION_API FMeshDescriptionBulkData
 {
 public:
 	FMeshDescriptionBulkData()
-		: bBulkDataUpdated(false)
+		: bBulkDataUpdated( false )
 		, bGuidIsHash(false)
 	{
-		BulkData.SetBulkDataFlags(BULKDATA_SerializeCompressed | BULKDATA_SerializeCompressedBitWindow);
+		BulkData.SetBulkDataFlags( BULKDATA_SerializeCompressed | BULKDATA_SerializeCompressedBitWindow );
 	}
 
 #if WITH_EDITORONLY_DATA
 	/** Serialization */
-	void Serialize(FArchive& Ar, UObject* Owner);
+	void Serialize( FArchive& Ar, UObject* Owner );
 
 	/** Store a new mesh description in the bulk data */
-	void SaveMeshDescription(FMeshDescription& MeshDescription);
+	void SaveMeshDescription( FMeshDescription& MeshDescription );
 
 	/** Load the mesh description from the bulk data */
-	void LoadMeshDescription(FMeshDescription& MeshDescription);
+	void LoadMeshDescription( FMeshDescription& MeshDescription );
 
 	/** Empties the bulk data */
 	void Empty();
@@ -1353,5 +1456,5 @@ public:
 	GENERATED_BODY()
 
 	// UObject interface
-	virtual void Serialize(FArchive& Ar) override;
+	virtual void Serialize( FArchive& Ar ) override;
 };

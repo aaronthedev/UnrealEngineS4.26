@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -102,9 +102,6 @@ public:
 		// The level to Transform.
 		ULevel* Level;
 
-		// If the actor is non null, directly transform only this actor
-		AActor* Actor = nullptr;
-
 		// How to Transform the level.
 		const FTransform& LevelTransform;
 
@@ -155,18 +152,16 @@ public:
 	 *
 	 * @param	StreamingLevel		The level.
 	 * @param   bDoPostEditMove		Whether to call PostEditMove on actors after transforming
-	 * @param	Actor				Optional actor on which to apply the transform instead of the full level.
 	 */
-	static void ApplyEditorTransform(const ULevelStreaming* StreamingLevel, bool bDoPostEditMove = true, AActor* Actor = nullptr);
+	static void ApplyEditorTransform(const ULevelStreaming* StreamingLevel, bool bDoPostEditMove = true);
 
 	/**
 	 * Remove the LevelEditorTransform from a level.
 	 *
 	 * @param	StreamingLevel		The level.
 	 * @param	bDoPostEditMove		Whether to call PostEditMove on actors after transforming
-	 * @param	Actor				Optional actor on which to apply the transform instead of the full level.
 	 */
-	static void RemoveEditorTransform(const ULevelStreaming* StreamingLevel, bool bDoPostEditMove = true, AActor* Actor = nullptr);
+	static void RemoveEditorTransform(const ULevelStreaming* StreamingLevel, bool bDoPostEditMove = true);
 
 	/**
 	* Returns true if we are moving a level

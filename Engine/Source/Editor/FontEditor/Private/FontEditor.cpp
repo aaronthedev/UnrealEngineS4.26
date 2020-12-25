@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "FontEditor.h"
 #include "Widgets/Text/STextBlock.h"
@@ -431,11 +431,10 @@ void FFontEditor::NotifyPostChange( const FPropertyChangedEvent& PropertyChanged
 	if(PropertyChangedEvent.Property && PropertyChangedEvent.Property->GetFName() == FontCacheTypePropertyName)
 	{
 		// Show a warning message, as what we're about to do will destroy any existing data in this font object
-		const FText Title = LOCTEXT("ChangeCacheTypeWarningTitle", "Really change the font cache type?");
-		const EAppReturnType::Type DlgResult = FMessageDialog::Open(
+		const EAppReturnType::Type DlgResult = OpenMsgDlgInt(
 			EAppMsgType::YesNo, 
 			LOCTEXT("ChangeCacheTypeWarningMsg", "Changing the cache type will cause this font to be reinitialized (discarding any existing data).\n\nAre you sure you want to proceed?"), 
-			&Title
+			LOCTEXT("ChangeCacheTypeWarningTitle", "Really change the font cache type?")
 			);
 
 		bool bSuccessfullyChangedCacheType = false;
@@ -549,13 +548,13 @@ void FFontEditor::UpdateLayout()
 	switch(Font->FontCacheType)
 	{
 	case EFontCacheType::Offline:
-		TabManager->TryInvokeTab(TexturePagesViewportTabId);
-		TabManager->TryInvokeTab(PagePropertiesTabId);
+		TabManager->InvokeTab(TexturePagesViewportTabId);
+		TabManager->InvokeTab(PagePropertiesTabId);
 		CloseTab(CompositeFontEditorTabId);
 		break;
 
 	case EFontCacheType::Runtime:
-		TabManager->TryInvokeTab(CompositeFontEditorTabId);
+		TabManager->InvokeTab(CompositeFontEditorTabId);
 		CloseTab(TexturePagesViewportTabId);
 		CloseTab(PagePropertiesTabId);
 		break;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -157,10 +157,6 @@ public:
 	/** Returns true if the match start callbacks have been called */
 	UFUNCTION(BlueprintCallable, Category=Game)
 	virtual bool HasMatchStarted() const;
-
-	/** Returns true if the match can be considered ended */
-	UFUNCTION(BlueprintCallable, Category=Game)
-	virtual bool HasMatchEnded() const;
 
 	/**
 	 * Adds the delegate to the list if the player Controller has the right to pause

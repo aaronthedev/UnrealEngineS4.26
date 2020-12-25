@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,7 +11,7 @@
  *
  * Archive proxies are archive types that modify the behavior of another archive type.
  */
-class FArchiveProxy : public FArchive
+class CORE_VTABLE FArchiveProxy : public FArchive
 {
 public:
 	/**
@@ -20,13 +20,6 @@ public:
 	 * @param InInnerArchive The inner archive to proxy.
 	 */
 	CORE_API FArchiveProxy(FArchive& InInnerArchive);
-	CORE_API ~FArchiveProxy();
-
-	// Non-copyable
-	FArchiveProxy(FArchiveProxy&&) = delete;
-	FArchiveProxy(const FArchiveProxy&) = delete;
-	FArchiveProxy& operator=(FArchiveProxy&&) = delete;
-	FArchiveProxy& operator=(const FArchiveProxy&) = delete;
 
 	virtual FArchive& operator<<(FName& Value) override
 	{
@@ -65,12 +58,6 @@ public:
 	}
 
 	virtual FArchive& operator<<(FWeakObjectPtr& Value) override
-	{
-		InnerArchive << Value;
-		return *this;
-	}
-
-	virtual FArchive& operator<<(FField*& Value) override
 	{
 		InnerArchive << Value;
 		return *this;
@@ -168,6 +155,11 @@ public:
 		return InnerArchive.Close();
 	}
 
+	virtual bool GetError() override
+	{
+		return InnerArchive.GetError();
+	}
+
 	virtual void MarkScriptSerializationStart(const UObject* Obj) override
 	{
 		InnerArchive.MarkScriptSerializationStart(Obj);
@@ -208,7 +200,7 @@ public:
 		return InnerArchive.AttachExternalReadDependency(ReadCallback);
 	}
 
-	virtual bool ShouldSkipProperty(const FProperty* InProperty) const override
+	virtual bool ShouldSkipProperty(const UProperty* InProperty) const override
 	{
 		return InnerArchive.ShouldSkipProperty(InProperty);
 	}
@@ -244,28 +236,14 @@ public:
 	}
 #endif
 
-	FORCEINLINE void SetSerializedProperty(FProperty* InProperty) override
-	{
-		FArchive::SetSerializedProperty(InProperty);
-		InnerArchive.SetSerializedProperty(InProperty);
-	}
-
-	void SetSerializedPropertyChain(const FArchiveSerializedPropertyChain* InSerializedPropertyChain, class FProperty* InSerializedPropertyOverride = nullptr) override
-	{
-		FArchive::SetSerializedPropertyChain(InSerializedPropertyChain, InSerializedPropertyOverride);
-		InnerArchive.SetSerializedPropertyChain(InSerializedPropertyChain, InSerializedPropertyOverride);
-	}
-
 	/** Pushes editor-only marker to the stack of currently serialized properties */
-	virtual FORCEINLINE void PushSerializedProperty(class FProperty* InProperty, const bool bIsEditorOnlyProperty)
+	virtual FORCEINLINE void PushSerializedProperty(class UProperty* InProperty, const bool bIsEditorOnlyProperty)
 	{
-		FArchive::PushSerializedProperty(InProperty, bIsEditorOnlyProperty);
 		InnerArchive.PushSerializedProperty(InProperty, bIsEditorOnlyProperty);
 	}
 	/** Pops editor-only marker from the stack of currently serialized properties */
-	virtual FORCEINLINE void PopSerializedProperty(class FProperty* InProperty, const bool bIsEditorOnlyProperty)
+	virtual FORCEINLINE void PopSerializedProperty(class UProperty* InProperty, const bool bIsEditorOnlyProperty)
 	{
-		FArchive::PopSerializedProperty(InProperty, bIsEditorOnlyProperty);
 		InnerArchive.PopSerializedProperty(InProperty, bIsEditorOnlyProperty);
 	}
 #if WITH_EDITORONLY_DATA
@@ -284,11 +262,6 @@ public:
 	virtual FArchive* GetCacheableArchive() override
 	{
 		return InnerArchive.GetCacheableArchive();
-	}
-
-	virtual ::FArchiveState& GetInnermostState() override
-	{
-		return InnerArchive.GetInnermostState();
 	}
 
 protected:

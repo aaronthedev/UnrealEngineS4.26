@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -93,7 +93,7 @@ public:
 	UMaterialInterface* Material;
 
 	/** Maps material texture param names to prior passes/elements. Overrides the element's param mapping list above. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "CompositingMaterial", meta = (ReadOnlyKeys, DisplayName = "Input Elements"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "CompositingMaterial", meta = (ReadOnlyKeys))
 	TMap<FName, FName> ParamPassMappings;
 
 	UPROPERTY(EditDefaultsOnly, Category = "CompositingMaterial", meta = (DisplayName="Expected Param Mappings"))

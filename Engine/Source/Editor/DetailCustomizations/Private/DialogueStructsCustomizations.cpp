@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DialogueStructsCustomizations.h"
 #include "AssetThumbnail.h"
@@ -487,7 +487,7 @@ TSharedRef<SWidget> STargetSetDropDown::MakeComboButtonItemWidget(TSharedPtr<FTa
 	{
 		const TSharedRef<SWrapBox> WrapBox =
 			SNew( SWrapBox )
-			.PreferredSize( this, &STargetSetDropDown::GetPreferredWidthForWrapping );
+			.PreferredWidth( this, &STargetSetDropDown::GetPreferredWidthForWrapping );
 
 		for(int32 i = 0; i < TargetSet->Num(); ++i)
 		{

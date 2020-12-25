@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Diffing/DiffManifests.h"
 
@@ -418,7 +418,7 @@ namespace BuildPatchServices
 			FOptimisedDeltaDependencies OptimisedDeltaDependencies;
 			OptimisedDeltaDependencies.DownloadService = DownloadService.Get();
 			TUniquePtr<IOptimisedDelta> OptimisedDelta(FOptimisedDeltaFactory::Create(OptimisedDeltaConfiguration, OptimisedDeltaDependencies));
-			ManifestB = OptimisedDelta->GetResult().GetValue();
+			ManifestB = OptimisedDelta->GetDestinationManifest();
 			const int32 MetaDownloadBytes = OptimisedDelta->GetMetaDownloadSize();
 
 			TSet<FString> TagsA, TagsB;

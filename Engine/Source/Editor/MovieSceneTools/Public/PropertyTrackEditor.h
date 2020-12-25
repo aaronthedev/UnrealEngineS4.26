@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -83,7 +83,7 @@ protected:
 	* @param PropertyChangedParams Parameters associated with the property change.
 	* @param OutGeneratedKeys Array of keys that are generated from the changed property
 	*/
-	virtual void GenerateKeysFromPropertyChanged( const FPropertyChangedParams& PropertyChangedParams, UMovieSceneSection* SectionToKey, FGeneratedTrackKeys& OutGeneratedKeys ) = 0;
+	virtual void GenerateKeysFromPropertyChanged( const FPropertyChangedParams& PropertyChangedParams, FGeneratedTrackKeys& OutGeneratedKeys ) = 0;
 
 	/** When true, this track editor will only be used on properties which have specified it as a custom track class. This is necessary to prevent duplicate
 		property change handling in cases where a custom track editor handles the same type of data as one of the standard track editors. */
@@ -96,7 +96,7 @@ protected:
 	 */
 	virtual void InitializeNewTrack( TrackType* NewTrack, FPropertyChangedParams PropertyChangedParams )
 	{
-		const FProperty* ChangedProperty = PropertyChangedParams.PropertyPath.GetLeafMostProperty().Property.Get();
+		const UProperty* ChangedProperty = PropertyChangedParams.PropertyPath.GetLeafMostProperty().Property.Get();
 		if (ChangedProperty)
 		{
 			NewTrack->SetPropertyNameAndPath( ChangedProperty->GetFName(), PropertyChangedParams.GetPropertyPathString() );
@@ -108,9 +108,9 @@ protected:
 			for (int32 PropertyIndex = PropertyChangedParams.PropertyPath.GetNumProperties() - 1; PropertyIndex >= 0; --PropertyIndex)
 			{
 				const FPropertyInfo& Info = PropertyChangedParams.PropertyPath.GetPropertyInfo(PropertyIndex);
-				const FArrayProperty* ParentArrayProperty = PropertyIndex > 0 ? CastField<FArrayProperty>(PropertyChangedParams.PropertyPath.GetPropertyInfo(PropertyIndex - 1).Property.Get()) : nullptr;
+				const UArrayProperty* ParentArrayProperty = PropertyIndex > 0 ? Cast<UArrayProperty>(PropertyChangedParams.PropertyPath.GetPropertyInfo(PropertyIndex - 1).Property.Get()) : nullptr;
 
-				FProperty* ArrayInnerProperty = Info.Property.Get();
+				UProperty* ArrayInnerProperty = Info.Property.Get();
 				if (ArrayInnerProperty && Info.ArrayIndex != INDEX_NONE)
 				{
 					DisplayText = FText::Format(NSLOCTEXT("PropertyTrackEditor", "DisplayTextArrayFormat", "{0} ({1}[{2}])"),
@@ -126,7 +126,7 @@ protected:
 			{
 				for (int32 PropertyIndex = PropertyChangedParams.PropertyPath.GetNumProperties() - 1; PropertyIndex >= 0; --PropertyIndex)
 				{
-					const FStructProperty* ParentStructProperty = PropertyIndex > 0 ? CastField<FStructProperty>(PropertyChangedParams.PropertyPath.GetPropertyInfo(PropertyIndex - 1).Property.Get()) : nullptr;
+					const UStructProperty* ParentStructProperty = PropertyIndex > 0 ? Cast<UStructProperty>(PropertyChangedParams.PropertyPath.GetPropertyInfo(PropertyIndex - 1).Property.Get()) : nullptr;
 					if (ParentStructProperty)
 					{
 						DisplayText = FText::Format(NSLOCTEXT("PropertyTrackEditor", "DisplayTextStructFormat", "{0} ({1})"),
@@ -176,7 +176,7 @@ private:
 	}
 
 	/** Get a customized track class from the property if there is one, otherwise return nullptr. */
-	TSubclassOf<UMovieSceneTrack> GetCustomizedTrackClass( const FProperty* Property )
+	TSubclassOf<UMovieSceneTrack> GetCustomizedTrackClass( const UProperty* Property )
 	{
 		// Look for a customized track class for this property on the meta data
 		const FString& MetaSequencerTrackClass = Property->GetMetaData( TEXT( "SequencerTrackClass" ) );
@@ -208,7 +208,10 @@ private:
 	{
 		FKeyPropertyResult KeyPropertyResult;
 
-		FProperty* Property = PropertyChangedParams.PropertyPath.GetLeafMostProperty().Property.Get();
+		FGeneratedTrackKeys GeneratedKeys;
+		GenerateKeysFromPropertyChanged( PropertyChangedParams, GeneratedKeys );
+
+		UProperty* Property = PropertyChangedParams.PropertyPath.GetLeafMostProperty().Property.Get();
 		if (!Property)
 		{
 			return KeyPropertyResult;
@@ -232,19 +235,14 @@ private:
 		// also check for track editors which should only be used for customization.
 		if ( SupportsType( TrackClass ) && ( ForCustomizedUseOnly() == false || *CustomizedClass != nullptr) )
 		{
-			auto GenerateKeys = [this, PropertyChangedParams](UMovieSceneSection* Section, FGeneratedTrackKeys& OutGeneratedKeys)
-			{
-				this->GenerateKeysFromPropertyChanged(PropertyChangedParams, Section, OutGeneratedKeys);
-			};
-
 			return this->AddKeysToObjects(
 				PropertyChangedParams.ObjectsThatChanged,
 				KeyTime,
+				GeneratedKeys,
 				PropertyChangedParams.KeyMode,
 				TrackClass,
 				UniqueName,
-				[&](TrackType* NewTrack) { InitializeNewTrack(NewTrack, PropertyChangedParams); },
-				GenerateKeys
+				[&](TrackType* NewTrack) { InitializeNewTrack(NewTrack, PropertyChangedParams); }
 			);
 		}
 		else

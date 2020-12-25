@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NewLevelDialogModule.h"
 #include "Layout/Margin.h"
@@ -47,7 +47,7 @@ public:
 		ENQUEUE_RENDER_COMMAND(UpdateSTexture2DView)(
 			[TextureView, InTexture2D](FRHICommandListImmediate& RHICmdList)
 			{
-				TextureView->ShaderResource = InTexture2D->Resource->GetTexture2DRHI();
+				TextureView->ShaderResource = ((FTexture2DResource*)(InTexture2D->Resource))->GetTexture2DRHI();
 			});
 	}
 
@@ -140,7 +140,7 @@ public:
 					.Padding(15)
 					[
 						SAssignNew(TemplatesWrapBox, SWrapBox)
-						.PreferredSize(DEFAULT_WINDOW_SIZE.X - 35.0)   // apparently no way to auto size the width of wrap boxes
+						.PreferredWidth(DEFAULT_WINDOW_SIZE.X - 35.0)   // apparently no way to auto size the width of wrap boxes
 					]
 				]
 				+SVerticalBox::Slot()

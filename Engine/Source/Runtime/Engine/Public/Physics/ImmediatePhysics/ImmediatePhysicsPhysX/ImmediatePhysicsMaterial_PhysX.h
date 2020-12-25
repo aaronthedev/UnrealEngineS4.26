@@ -1,9 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #if WITH_PHYSX && PHYSICS_INTERFACE_PHYSX
-#include "PhysicsSettingsEnums.h"
+#include "PhysicsEngine/PhysicsSettingsEnums.h"
 
 namespace physx
 {

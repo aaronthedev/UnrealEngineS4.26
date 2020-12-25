@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BaseBehaviors/AnyButtonInputBehavior.h"
 
@@ -6,7 +6,7 @@
 
 UAnyButtonInputBehavior::UAnyButtonInputBehavior()
 {
-	SetUseLeftMouseButton();
+	ButtonNumber = 0;
 }
 
 
@@ -21,7 +21,7 @@ bool UAnyButtonInputBehavior::IsPressed(const FInputDeviceState& input)
 	if (input.IsFromDevice(EInputDevices::Mouse)) 
 	{
 		ActiveDevice = EInputDevices::Mouse;
-		return GetButtonStateFunc(input).bPressed;
+		return GetMouseButtonState(input).bPressed;
 	} 
 	else if (input.IsFromDevice(EInputDevices::TabletFingers))
 	{
@@ -37,7 +37,7 @@ bool UAnyButtonInputBehavior::IsDown(const FInputDeviceState& input)
 	if (input.IsFromDevice(EInputDevices::Mouse))
 	{
 		ActiveDevice = EInputDevices::Mouse;
-		return GetButtonStateFunc(input).bDown;
+		return GetMouseButtonState(input).bDown;
 	}
 	return false;
 }
@@ -47,7 +47,7 @@ bool UAnyButtonInputBehavior::IsReleased(const FInputDeviceState& input)
 	if (input.IsFromDevice(EInputDevices::Mouse))
 	{
 		ActiveDevice = EInputDevices::Mouse;
-		return GetButtonStateFunc(input).bReleased;
+		return GetMouseButtonState(input).bReleased;
 	}
 	return false;
 }
@@ -94,42 +94,19 @@ EInputDevices UAnyButtonInputBehavior::GetActiveDevice() const
 
 
 
-void UAnyButtonInputBehavior::SetUseLeftMouseButton()
-{
-	GetMouseButtonStateFunc = [](const FInputDeviceState& input)
-	{
-		return input.Mouse.Left;
-	};
-}
 
-void UAnyButtonInputBehavior::SetUseMiddleMouseButton()
+FDeviceButtonState UAnyButtonInputBehavior::GetMouseButtonState(const FInputDeviceState& input)
 {
-	GetMouseButtonStateFunc = [](const FInputDeviceState& input)
-	{
-		return input.Mouse.Middle;
-	};
-}
-
-void UAnyButtonInputBehavior::SetUseRightMouseButton()
-{
-	GetMouseButtonStateFunc = [](const FInputDeviceState& input)
+	if (ButtonNumber == 2)
 	{
 		return input.Mouse.Right;
-	};
-}
-
-void UAnyButtonInputBehavior::SetUseCustomMouseButton(TUniqueFunction<FDeviceButtonState(const FInputDeviceState& Input)> ButtonFunc)
-{
-	GetMouseButtonStateFunc = MoveTemp(ButtonFunc);
-}
-
-
-
-FDeviceButtonState UAnyButtonInputBehavior::GetButtonStateFunc(const FInputDeviceState& Input)
-{
-	if (ActiveDevice == EInputDevices::Mouse)
-	{
-		return GetMouseButtonStateFunc(Input);
 	}
-	return FDeviceButtonState();
+	else if (ButtonNumber == 1)
+	{
+		return input.Mouse.Middle;
+	}
+	else
+	{
+		return input.Mouse.Left;
+	}
 }

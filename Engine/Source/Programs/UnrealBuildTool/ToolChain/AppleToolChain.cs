@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections;
@@ -7,7 +7,6 @@ using System.IO;
 using System.Diagnostics;
 using System.Text;
 using Tools.DotNETCommon;
-using System.Text.RegularExpressions;
 
 namespace UnrealBuildTool
 {
@@ -155,7 +154,7 @@ namespace UnrealBuildTool
 		}
 	}
 
-	abstract class AppleToolChain : ISPCToolChain
+	abstract class AppleToolChain : UEToolChain
 	{
 		protected FileReference ProjectFile;
 
@@ -184,36 +183,6 @@ namespace UnrealBuildTool
 			StartInfo.CreateNoWindow = true;
 			Utils.RunLocalProcessAndLogOutput(StartInfo);
 		}
-
-		static Version ClangVersion = null;
-
-		protected Version GetClangVersion()
-		{	
-			if (ClangVersion == null)
-			{
-				FileReference ClangLocation = new FileReference("/usr/bin/clang");
-
-				string VersionString = Utils.RunLocalProcessAndReturnStdOut(ClangLocation.FullName, "--version");
-
-				Match M = Regex.Match(VersionString, @"version\s+(\d+)\.(\d+)\.(\d+)");
-
-				if (M.Success)
-				{
-					ClangVersion = new Version(
-						Convert.ToInt32(M.Groups[1].ToString()),
-						Convert.ToInt32(M.Groups[2].ToString()),
-						Convert.ToInt32(M.Groups[3].ToString())
-					);
-				}
-				else
-				{
-					Log.TraceError("Failed to detect clang version from output of {0} --version. Output={1}",
-						ClangLocation.FullName, VersionString);
-					ClangVersion = new Version(0, 0, 0);
-				}
-			}
-			return ClangVersion;
-		}
 		
 		protected string GetDsymutilPath(out string ExtraOptions, bool bIsForLTOBuild=false)
 		{
@@ -233,6 +202,8 @@ namespace UnrealBuildTool
 			if (Tokens.Length < 4 || Tokens[3].Contains(".") == false)
 			{
 				Log.TraceInformationOnce("Unable to parse dsymutil version out of: {0}", DsymutilVersionString);
+
+				bUseInstalledDsymutil = false;
 			}
 			else
 			{
@@ -249,9 +220,10 @@ namespace UnrealBuildTool
 					}
 					else
 					{
-						if (Major < 12)
+						Log.TraceInformationOnce("Parsed dsymutil version as {0}.{1}.{2}", Major, Minor, Patch);
+
+						if (Major < 10 || (Minor == 0 && Patch == 0))
 						{
-							Log.TraceInformationOnce("dsymutil version is {0}.{1}.{2}. Using bundled version.", Major, Minor, Patch);
 							bUseInstalledDsymutil = false;
 						}
 					}
@@ -261,7 +233,7 @@ namespace UnrealBuildTool
 			// if the installed one is too old, use a fixed up one if it can
 			if (bUseInstalledDsymutil == false)
 			{
-				FileReference PatchedDsymutilLocation = FileReference.Combine(UnrealBuildTool.EngineDirectory, "Restricted/NotForLicensees/Binaries/Mac/LLVM/bin/dsymutil");
+				FileReference PatchedDsymutilLocation = FileReference.Combine(UnrealBuildTool.EngineDirectory, "Binaries/Mac/NotForLicensees/LLVM/bin/dsymutil");
 
 				if (File.Exists(PatchedDsymutilLocation.FullName))
 				{

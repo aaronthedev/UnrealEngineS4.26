@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -80,15 +80,11 @@ private:
 	USceneComponent* TransformComponent;
 
 protected:
-	/** Delegate broadcasted when possessing a new pawn or unpossessing one */
 	FPawnChangedSignature OnNewPawn;
 
 	/** The control rotation of the Controller. See GetControlRotation. */
 	UPROPERTY()
 	FRotator ControlRotation;
-
-	/** Return false if rotation contains NaN or extremely large values (usually resulting from uninitialized values). */
-	bool IsValidControlRotation(FRotator CheckRotation) const;
 
 	/**
 	 * If true, the controller location will match the possessed Pawn's location. If false, it will not be updated. Rotation will match ControlRotation in either case.
@@ -194,11 +190,11 @@ public:
 	class APlayerController* CastToPlayerController();
 
 	/** Replicated function to set the pawn location and rotation, allowing server to force (ex. teleports). */
-	UFUNCTION(Reliable, Client, WithValidation)
+	UFUNCTION(Reliable, Client)
 	void ClientSetLocation(FVector NewLocation, FRotator NewRotation);
 
 	/** Replicated function to set the pawn rotation, allowing the server to force. */
-	UFUNCTION(Reliable, Client, WithValidation)
+	UFUNCTION(Reliable, Client)
 	void ClientSetRotation(FRotator NewRotation, bool bResetCamera = false);
 
 	/** Return the Pawn that is currently 'controlled' by this PlayerController */
@@ -270,28 +266,22 @@ public:
 	/**
 	 * Handles attaching this controller to the specified pawn.
 	 * Only runs on the network authority (where HasAuthority() returns true).
-	 * Derived native classes can override OnPossess to filter the specified pawn.
-	 * When possessed pawn changed, blueprint class gets notified by ReceivePossess
-	 * and OnNewPawn delegate is broadcasted.
 	 * @param InPawn The Pawn to be possessed.
-	 * @see HasAuthority, OnPossess, ReceivePossess
+	 * @see HasAuthority()
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintAuthorityOnly, Category=Pawn, meta=(Keywords="set controller"))
-	virtual void Possess(APawn* InPawn) final; // DEPRECATED(4.22, "Possess is marked virtual final as you should now be overriding OnPossess instead")
+	virtual void Possess(APawn* InPawn) final; // DEPRECATED(4.22, "Posssess is marked virtual final as you should now be overriding OnPossess instead")
 
 	/** Called to unpossess our pawn for any reason that is not the pawn being destroyed (destruction handled by PawnDestroyed()). */
 	UFUNCTION(BlueprintCallable, Category=Pawn, meta=(Keywords="set controller"))
-	virtual void UnPossess() final; // DEPRECATED(4.22, "Possess is marked virtual final as you should now be overriding OnUnPossess instead")
+	virtual void UnPossess() final; // DEPRECATED(4.22, "Posssess is marked virtual final as you should now be overriding OnUnPossess instead")
 
 protected:
 	/** Blueprint implementable event to react to the controller possessing a pawn */
 	UFUNCTION(BlueprintImplementableEvent, meta = (DisplayName = "On Possess"))
 	void ReceivePossess(APawn* PossessedPawn);
 
-	/**
-	 * Overridable native function for when this controller is asked to possess a pawn.
-	 * @param InPawn The Pawn to be possessed
-	 */
+	/** Overridable native function for when this controller possesses a pawn. */
 	virtual void OnPossess(APawn* InPawn);
 
 	/** Blueprint implementable event to react to the controller unpossessing a pawn */

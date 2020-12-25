@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*==============================================================================
 	ParticleModuleAccelerationConstant: Constant particle acceleration.
@@ -13,7 +13,7 @@
 
 struct FParticleEmitterInstance;
 
-UCLASS(MinimalAPI, editinlinenew, hidecategories=(Object, Acceleration), meta=(DisplayName = "Const Acceleration"))
+UCLASS(editinlinenew, hidecategories=(Object, Acceleration), meta=(DisplayName = "Const Acceleration"))
 class UParticleModuleAccelerationConstant : public UParticleModuleAccelerationBase
 {
 	GENERATED_UCLASS_BODY()

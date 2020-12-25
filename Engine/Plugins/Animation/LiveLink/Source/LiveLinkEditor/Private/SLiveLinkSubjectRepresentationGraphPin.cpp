@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SLiveLinkSubjectRepresentationGraphPin.h"
 #include "SLiveLinkSubjectRepresentationPicker.h"
@@ -27,14 +27,14 @@ TSharedRef<SWidget>	SLiveLinkSubjectRepresentationGraphPin::GetDefaultValueWidge
 		.OnValueChanged(this, &SLiveLinkSubjectRepresentationGraphPin::SetValue);
 }
 
-SLiveLinkSubjectRepresentationPicker::FLiveLinkSourceSubjectRole SLiveLinkSubjectRepresentationGraphPin::GetValue() const
+FLiveLinkSubjectRepresentation SLiveLinkSubjectRepresentationGraphPin::GetValue() const
 {
-	return SLiveLinkSubjectRepresentationPicker::FLiveLinkSourceSubjectRole(SubjectRepresentation);
+	return SubjectRepresentation;
 }
 
-void SLiveLinkSubjectRepresentationGraphPin::SetValue(SLiveLinkSubjectRepresentationPicker::FLiveLinkSourceSubjectRole NewValue)
+void SLiveLinkSubjectRepresentationGraphPin::SetValue(FLiveLinkSubjectRepresentation NewValue)
 {
-	SubjectRepresentation = NewValue.ToSubjectRepresentation();
+	SubjectRepresentation = NewValue;
 
 	FString ValueString;
 	FLiveLinkSubjectRepresentation::StaticStruct()->ExportText(ValueString, &SubjectRepresentation, nullptr, nullptr, EPropertyPortFlags::PPF_None, nullptr);

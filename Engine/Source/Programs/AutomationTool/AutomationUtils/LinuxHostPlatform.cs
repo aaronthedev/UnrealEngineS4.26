@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -7,35 +7,14 @@ using System.Text;
 using System.Diagnostics;
 using System.IO;
 using UnrealBuildTool;
-using Tools.DotNETCommon;
 
 namespace AutomationTool
 {
 	class LinuxHostPlatform : HostPlatform
 	{
-		static string CachedMsBuildTool = "";
-
 		public override string GetMsBuildExe()
 		{
-			// As of 5.0 mono comes with msbuild which performs better. If that's installed then use it
-			if (string.IsNullOrEmpty(CachedMsBuildTool))
-			{
-				int Value;
-				bool CanUseMsBuild = (int.TryParse(Environment.GetEnvironmentVariable("UE_USE_SYSTEM_MONO"), out Value) &&
-						Value != 0 &&
-						!string.IsNullOrEmpty(CommandUtils.WhichApp("msbuild")));
-
-				if (CanUseMsBuild)
-				{
-					CachedMsBuildTool = "msbuild";
-				}
-				else
-				{
-					CachedMsBuildTool = "xbuild";
-				}
-			}
-
-			return CachedMsBuildTool;
+			return "xbuild";
 		}
 
 		public override string RelativeBinariesFolder

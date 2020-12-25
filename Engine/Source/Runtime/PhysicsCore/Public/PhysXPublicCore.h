@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PhysXSupport.h: PhysX support
@@ -9,7 +9,7 @@
 #include "CoreMinimal.h"
 #include "Stats/Stats.h"
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 #include "PhysXIncludes.h"
 #include "PhysicsInterfaceTypesCore.h"
 #include "CollisionShape.h"

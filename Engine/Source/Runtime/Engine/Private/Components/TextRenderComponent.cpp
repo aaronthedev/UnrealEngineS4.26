@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/TextRenderComponent.h"
 #include "UObject/ConstructorHelpers.h"
@@ -307,7 +307,6 @@ float CalculateVerticalAlignmentOffset(
 /** Caches MIDs used by text render components to avoid excessive (re)allocation of MIDs when the SCS runs */
 class FTextRenderComponentMIDCache : public FGCObject
 {
-	FCriticalSection CriticalSection;
 public:
 	/** Array of MIDs for a particular material and font */
 	struct FMIDData
@@ -335,7 +334,7 @@ public:
 
 						// If the user provided a custom MID, we can't do anything but use that single MID for page 0
 						UMaterialInstanceDynamic* MID = Cast<UMaterialInstanceDynamic>(InMaterial);
-						for (const FMaterialParameterInfo& FontParameterInfo : FontParameters)
+						for (const FMaterialParameterInfo FontParameterInfo : FontParameters)
 						{
 							MID->SetFontParameterValue(FontParameterInfo, InFont, 0);
 						}
@@ -347,7 +346,7 @@ public:
 						for (int32 FontPageIndex = 0; FontPageIndex < NumFontPages; ++FontPageIndex)
 						{
 							UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(InMaterial, nullptr);
-							for (const FMaterialParameterInfo& FontParameterInfo : FontParameters)
+							for (const FMaterialParameterInfo FontParameterInfo : FontParameters)
 							{
 								MID->SetFontParameterValue(FontParameterInfo, InFont, FontPageIndex);
 							}
@@ -420,7 +419,7 @@ public:
 
 	FMIDDataRef GetMIDData(UMaterialInterface* InMaterial, UFont* InFont)
 	{
-		FScopeLock Lock(&CriticalSection);
+		checkfSlow(IsInGameThread(), TEXT("FTextRenderComponentMIDCache::GetMIDData is only expected to be called from the game thread!"));
 
 		check(InMaterial && InFont && InFont->FontCacheType == EFontCacheType::Offline);
 
@@ -441,8 +440,6 @@ public:
 
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override
 	{
-		FScopeLock Lock(&CriticalSection);
-
 		for (auto& MIDDataPair : CachedMIDs)
 		{
 			const FMIDDataPtr& MIDData = MIDDataPair.Value;
@@ -466,11 +463,6 @@ public:
 				}
 			}
 		}
-	}
-
-	virtual FString GetReferencerName() const override
-	{
-		return "FTextRenderComponentMIDCache";
 	}
 
 private:
@@ -522,8 +514,6 @@ private:
 
 	void PurgeUnreferencedMIDs()
 	{
-		FScopeLock Lock(&CriticalSection);
-
         QUICK_SCOPE_CYCLE_COUNTER(STAT_FTextRenderComponentMIDCache_PurgeUnreferencedMIDs);
 
 		checkfSlow(IsInGameThread(), TEXT("FTextRenderComponentMIDCache::PurgeUnreferencedMIDs is only expected to be called from the game thread!"));
@@ -657,7 +647,7 @@ FTextRenderSceneProxy::FTextRenderSceneProxy( UTextRenderComponent* Component) :
 
 	if(Component->TextMaterial)
 	{
-		const UMaterial* BaseMaterial = Component->TextMaterial->GetMaterial_Concurrent();
+		UMaterial* BaseMaterial = Component->TextMaterial->GetMaterial();
 
 		if(BaseMaterial->MaterialDomain == MD_Surface)
 		{
@@ -671,7 +661,7 @@ FTextRenderSceneProxy::FTextRenderSceneProxy( UTextRenderComponent* Component) :
 	}
 
 	TextMaterial = EffectiveMaterial;
-	MaterialRelevance |= TextMaterial->GetMaterial_Concurrent()->GetRelevance(GetScene().GetFeatureLevel());
+	MaterialRelevance |= TextMaterial->GetMaterial()->GetRelevance(GetScene().GetFeatureLevel());
 
 	if (Font && Font->FontCacheType == EFontCacheType::Offline)
 	{
@@ -825,7 +815,7 @@ FPrimitiveViewRelevance FTextRenderSceneProxy::GetViewRelevance(const FSceneView
 	}
 
 	MaterialRelevance.SetPrimitiveViewRelevance(Result);
-	Result.bVelocityRelevance = IsMovable() && Result.bOpaque && Result.bRenderInMainPass;
+	Result.bVelocityRelevance = IsMovable() && Result.bOpaqueRelevance && Result.bRenderInMainPass;
 	return Result;
 }
 
@@ -1171,11 +1161,6 @@ FBoxSphereBounds UTextRenderComponent::CalcBounds(const FTransform& LocalToWorld
 	{
 		return FBoxSphereBounds(ForceInit).TransformBy(LocalToWorld);
 	}
-}
-
-bool UTextRenderComponent::RequiresGameThreadEndOfFrameUpdates() const
-{
-	return true;
 }
 
 FMatrix UTextRenderComponent::GetRenderMatrix() const

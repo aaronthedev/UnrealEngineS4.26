@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcGeom_ONuPatch_h
-#define Alembic_AbcGeom_ONuPatch_h
+#ifndef _Alembic_AbcGeom_ONuPatch_h_
+#define _Alembic_AbcGeom_ONuPatch_h_
 
 #include <Alembic/Util/Export.h>
 #include <Alembic/AbcGeom/Foundation.h>
@@ -254,7 +254,7 @@ public:
                 (m_numV != ABC_GEOM_NUPATCH_NULL_INT_VALUE) ||
                 (m_uOrder != ABC_GEOM_NUPATCH_NULL_INT_VALUE) ||
                 (m_vOrder != ABC_GEOM_NUPATCH_NULL_INT_VALUE) ||
-                 m_uKnot || m_vKnot)
+                 m_uKnot || m_uKnot)
                  return true;
             else
                 return false;

@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // Port of geometry3Sharp PlanarHoleFiller
 
 #pragma once
 
-#include "HoleFiller.h"
 #include "CoreMinimal.h"
 #include "MathUtil.h"
 #include "VectorTypes.h"
@@ -20,7 +19,7 @@ class FDynamicMesh3;
 /**
  * Fill a set of boundary loops with planar surfaces.  User must provide the triangulation function.
  */
-class DYNAMICMESH_API FPlanarHoleFiller : public IHoleFiller
+class DYNAMICMESH_API FPlanarHoleFiller
 {
 public:
 	//
@@ -33,6 +32,11 @@ public:
 
 	FVector3d PlaneOrigin;
 	FVector3d PlaneNormal;
+
+	//
+	// Outputs
+	//
+	TArray<int> NewTriangles;
 
 public:
 	/**
@@ -55,5 +59,5 @@ public:
 		return EOperationValidationResult::Ok;
 	}
 
-	bool Fill(int GroupID = -1) override;
+	virtual bool Fill(int GroupID = -1);
 };

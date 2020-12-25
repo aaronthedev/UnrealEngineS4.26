@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
 #include "EngineDefines.h"
 #include "Physics/PhysicsInterfaceDeclares.h"
 
-struct FConstraintInstanceBase;
 
 class FPhysicsUserData_Chaos
 {
@@ -14,8 +13,7 @@ private:
 	{
 		Invalid,
 		BodyInstance,
-		PhysScene,
-		ConstraintInstanceBase
+		PhysScene
 	};
 
 	EType Type;
@@ -25,7 +23,6 @@ public:
 	FPhysicsUserData_Chaos() : Type(EType::Invalid), Payload(nullptr) { }
 	FPhysicsUserData_Chaos(FBodyInstance* InPayload) : Type(EType::BodyInstance), Payload(InPayload) { }
 	FPhysicsUserData_Chaos(FPhysScene* InPayload) : Type(EType::PhysScene), Payload(InPayload) { }
-	FPhysicsUserData_Chaos(FConstraintInstanceBase* InPayload) : Type(EType::ConstraintInstanceBase), Payload(InPayload) { }
 
 	template <class T> static T* Get(void* UserData);
 	template <class T> static void Set(void* UserData, T* InPayload);
@@ -59,9 +56,4 @@ template<> FORCEINLINE FBodyInstance* FPhysicsUserData_Chaos::Get(void* UserData
 template<> FORCEINLINE FPhysScene* FPhysicsUserData_Chaos::Get(void* UserData)
 {
 	return Get<FPhysScene, EType::PhysScene>(UserData);
-}
-
-template<> FORCEINLINE FConstraintInstanceBase* FPhysicsUserData_Chaos::Get(void* UserData)
-{
-	return Get<FConstraintInstanceBase, EType::ConstraintInstanceBase>(UserData);
 }

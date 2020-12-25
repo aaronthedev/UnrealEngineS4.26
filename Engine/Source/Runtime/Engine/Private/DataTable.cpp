@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/DataTable.h"
 #include "Internationalization/TextPackageNamespaceUtil.h"
@@ -31,32 +31,40 @@ namespace
 		}
 	}
 #endif // WITH_EDITORONLY_DATA
-}
-
-UDataTable::FScopedDataTableChange::FScopedDataTableChange(UDataTable* InTable)
-	: Table(InTable)
-{
-	FScopeLock Lock(&CriticalSection);
-	int32& Count = ScopeCount.FindOrAdd(Table);
-	++Count;
-}
-
-UDataTable::FScopedDataTableChange::~FScopedDataTableChange()
-{
-	FScopeLock Lock(&CriticalSection);
-	int32& Count = ScopeCount.FindChecked(Table);
-	--Count;
-	if (Count == 0)
+	/** Used to trigger the trigger the data table changed delegate. This allows us to trigger the delegate once from more complex changes */
+	struct FScopedDataTableChange
 	{
-		Table->HandleDataTableChanged();
-		ScopeCount.Remove(Table);
-	}
+		FScopedDataTableChange(UDataTable* InTable)
+			: Table(InTable)
+		{
+			FScopeLock Lock(&CriticalSection);
+			int32& Count = ScopeCount.FindOrAdd(Table);
+			++Count;
+		}
+		~FScopedDataTableChange()
+		{
+			FScopeLock Lock(&CriticalSection);
+			int32& Count = ScopeCount.FindChecked(Table);
+			--Count;
+			if (Count == 0)
+			{
+				Table->OnDataTableChanged().Broadcast();
+				ScopeCount.Remove(Table);
+			}
+		}
+
+	private:
+		UDataTable* Table;
+
+		static TMap<UDataTable*, int32> ScopeCount;
+		static FCriticalSection CriticalSection;
+	};
+
+	TMap< UDataTable*, int32> FScopedDataTableChange::ScopeCount;
+	FCriticalSection FScopedDataTableChange::CriticalSection;
+
+#define DATATABLE_CHANGE_SCOPE()	FScopedDataTableChange ActiveScope(this);
 }
-
-TMap<UDataTable*, int32> UDataTable::FScopedDataTableChange::ScopeCount;
-FCriticalSection UDataTable::FScopedDataTableChange::CriticalSection;
-
-#define DATATABLE_CHANGE_SCOPE()	UDataTable::FScopedDataTableChange ActiveScope(this);
 
 UDataTable::UDataTable(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -76,7 +84,7 @@ void UDataTable::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEv
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
 #if WITH_EDITORONLY_DATA
-	HandleDataTableChanged();
+	OnDataTableChanged().Broadcast();
 #endif
 }
 #endif
@@ -165,7 +173,7 @@ void UDataTable::OnPostDataImported(TArray<FString>& OutCollectedImportProblems)
 		FString DataTableTextNamespace = GetName();
 #if USE_STABLE_LOCALIZATION_KEYS
 		if (GIsEditor)
-	{
+		{
 			DataTableTextNamespace = TextNamespaceUtil::BuildFullNamespace(DataTableTextNamespace, TextNamespaceUtil::EnsurePackageNamespace(this), /*bAlwaysApplyPackageNamespace*/true);
 		}
 #endif
@@ -185,39 +193,8 @@ void UDataTable::OnPostDataImported(TArray<FString>& OutCollectedImportProblems)
 #endif
 		}
 	}
-	
-	// Don't need to call HandleDataTableChanged because it gets called by the scope and post edit callbacks
-	// If you need to handle an import-specific problem, register with FDataTableEditorUtils
-}
 
-void UDataTable::HandleDataTableChanged(FName ChangedRowName)
-{
-	if (IsPendingKillOrUnreachable() || HasAnyFlags(RF_BeginDestroyed))
-	{
-		// This gets called during destruction, don't broadcast callbacks
-		return;
-	}
-
-	// Do the row fixup before global callback
-	if (RowStruct)
-	{
-		const bool bIsNativeRowStruct = RowStruct->IsChildOf(FTableRowBase::StaticStruct());
-
-		if (bIsNativeRowStruct)
-		{
-			for (const TPair<FName, uint8*>& TableRowPair : RowMap)
-			{
-				if (ChangedRowName != NAME_None && ChangedRowName != TableRowPair.Key)
-				{
-					continue;
-				}
-
-				FTableRowBase* CurRow = reinterpret_cast<FTableRowBase*>(TableRowPair.Value);
-				CurRow->OnDataTableChanged(this, TableRowPair.Key);
-			}
-		}
-	}
-
+	OnDataTableImported().Broadcast();
 	OnDataTableChanged().Broadcast();
 }
 
@@ -416,9 +393,9 @@ void UDataTable::AddRowInternal(FName RowName, uint8* RowData)
 }
 
 /** Returns the column property where PropertyName matches the name of the column property. Returns NULL if no match is found or the match is not a supported table property */
-FProperty* UDataTable::FindTableProperty(const FName& PropertyName) const
+UProperty* UDataTable::FindTableProperty(const FName& PropertyName) const
 {
-	FProperty* Property = nullptr;
+	UProperty* Property = nullptr;
 
 	if (RowStruct)
 	{
@@ -427,7 +404,7 @@ FProperty* UDataTable::FindTableProperty(const FName& PropertyName) const
 		{
 			const FString PropertyNameStr = PropertyName.ToString();
 
-			for (TFieldIterator<FProperty> It(RowStruct); It; ++It)
+			for (TFieldIterator<UProperty> It(RowStruct); It; ++It)
 			{
 				if (PropertyNameStr == RowStruct->GetAuthoredNameForField(*It))
 				{
@@ -518,10 +495,10 @@ FString UDataTable::GetTableAsString(const EDataTableExportFlags InDTExportFlags
 		Result += FString::Printf(TEXT("Using RowStruct: %s\n\n"), *RowStruct->GetPathName());
 
 		// First build array of properties
-		TArray<FProperty*> StructProps;
-		for (TFieldIterator<FProperty> It(RowStruct); It; ++It)
+		TArray<UProperty*> StructProps;
+		for (TFieldIterator<UProperty> It(RowStruct); It; ++It)
 		{
-			FProperty* Prop = *It;
+			UProperty* Prop = *It;
 			check(Prop != nullptr);
 			StructProps.Add(Prop);
 		}
@@ -577,14 +554,10 @@ FString UDataTable::GetTableAsJSON(const EDataTableExportFlags InDTExportFlags) 
 	return Result;
 }
 
-template<typename CharType>
-bool UDataTable::WriteRowAsJSON(const TSharedRef< TJsonWriter<CharType, TPrettyJsonPrintPolicy<CharType> > >& JsonWriter, const void* RowData, const EDataTableExportFlags InDTExportFlags) const
+bool UDataTable::WriteRowAsJSON(const TSharedRef< TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR> > >& JsonWriter, const void* RowData, const EDataTableExportFlags InDTExportFlags) const
 {
-	return TDataTableExporterJSON<CharType>(InDTExportFlags, JsonWriter).WriteRow(RowStruct, RowData);
+	return FDataTableExporterJSON(InDTExportFlags, JsonWriter).WriteRow(RowStruct, RowData);
 }
-
-template ENGINE_API bool UDataTable::WriteRowAsJSON<TCHAR>(const TSharedRef< TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR> > >& JsonWriter, const void* RowData, const EDataTableExportFlags InDTExportFlags) const;
-template ENGINE_API bool UDataTable::WriteRowAsJSON<ANSICHAR>(const TSharedRef< TJsonWriter<ANSICHAR, TPrettyJsonPrintPolicy<ANSICHAR> > >& JsonWriter, const void* RowData, const EDataTableExportFlags InDTExportFlags) const;
 
 bool UDataTable::CopyImportOptions(UDataTable* SourceTable)
 {
@@ -613,28 +586,20 @@ bool UDataTable::CopyImportOptions(UDataTable* SourceTable)
 	return true;
 }
 
-template<typename CharType>
-bool UDataTable::WriteTableAsJSON(const TSharedRef< TJsonWriter<CharType, TPrettyJsonPrintPolicy<CharType> > >& JsonWriter, const EDataTableExportFlags InDTExportFlags) const
+bool UDataTable::WriteTableAsJSON(const TSharedRef< TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR> > >& JsonWriter, const EDataTableExportFlags InDTExportFlags) const
 {
-	return TDataTableExporterJSON<CharType>(InDTExportFlags, JsonWriter).WriteTable(*this);
+	return FDataTableExporterJSON(InDTExportFlags, JsonWriter).WriteTable(*this);
 }
 
-template ENGINE_API bool UDataTable::WriteTableAsJSON<TCHAR>(const TSharedRef< TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR> > >& JsonWriter, const EDataTableExportFlags InDTExportFlags) const;
-template ENGINE_API bool UDataTable::WriteTableAsJSON<ANSICHAR>(const TSharedRef< TJsonWriter<ANSICHAR, TPrettyJsonPrintPolicy<ANSICHAR> > >& JsonWriter, const EDataTableExportFlags InDTExportFlags) const;
-
-template<typename CharType>
-bool UDataTable::WriteTableAsJSONObject(const TSharedRef< TJsonWriter<CharType, TPrettyJsonPrintPolicy<CharType> > >& JsonWriter, const EDataTableExportFlags InDTExportFlags) const
+bool UDataTable::WriteTableAsJSONObject(const TSharedRef< TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR> > >& JsonWriter, const EDataTableExportFlags InDTExportFlags) const
 {
-	return TDataTableExporterJSON<CharType>(InDTExportFlags, JsonWriter).WriteTableAsObject(*this);
+	return FDataTableExporterJSON(InDTExportFlags, JsonWriter).WriteTableAsObject(*this);
 }
-
-template ENGINE_API bool UDataTable::WriteTableAsJSONObject<TCHAR>(const TSharedRef< TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR> > >& JsonWriter, const EDataTableExportFlags InDTExportFlags) const;
-template ENGINE_API bool UDataTable::WriteTableAsJSONObject<ANSICHAR>(const TSharedRef< TJsonWriter<ANSICHAR, TPrettyJsonPrintPolicy<ANSICHAR> > >& JsonWriter, const EDataTableExportFlags InDTExportFlags) const;
 #endif
 
-TArray<FProperty*> UDataTable::GetTablePropertyArray(const TArray<const TCHAR*>& Cells, UStruct* InRowStruct, TArray<FString>& OutProblems, int32 KeyColumn)
+TArray<UProperty*> UDataTable::GetTablePropertyArray(const TArray<const TCHAR*>& Cells, UStruct* InRowStruct, TArray<FString>& OutProblems, int32 KeyColumn)
 {
-	TArray<FProperty*> ColumnProps;
+	TArray<UProperty*> ColumnProps;
 
 	// Get list of all expected properties from the struct
 	TArray<FName> ExpectedPropNames = DataTableUtils::GetStructPropertyNames(InRowStruct);
@@ -645,7 +610,6 @@ TArray<FProperty*> UDataTable::GetTablePropertyArray(const TArray<const TCHAR*>&
 		ColumnProps.AddZeroed( Cells.Num() );
 
 		// Skip first column depending on option
-		TArray<FString> TempPropertyImportNames;
 		for (int32 ColIdx = 0; ColIdx < Cells.Num(); ++ColIdx)
 		{
 			if (ColIdx == KeyColumn)
@@ -662,12 +626,11 @@ TArray<FProperty*> UDataTable::GetTablePropertyArray(const TArray<const TCHAR*>&
 			}
 			else
 			{
-				FProperty* ColumnProp = FindFProperty<FProperty>(InRowStruct, PropName);
+				UProperty* ColumnProp = FindField<UProperty>(InRowStruct, PropName);
 
-				for (TFieldIterator<FProperty> It(InRowStruct); It && !ColumnProp; ++It)
+				for (TFieldIterator<UProperty> It(InRowStruct); It && !ColumnProp; ++It)
 				{
-					DataTableUtils::GetPropertyImportNames(*It, TempPropertyImportNames);
-					ColumnProp = TempPropertyImportNames.Contains(ColumnValue) ? *It : nullptr;
+					ColumnProp = DataTableUtils::GetPropertyImportNames(*It).Contains(ColumnValue) ? *It : nullptr;
 				}
 
 				// Didn't find a property with this name, problem..
@@ -709,7 +672,7 @@ TArray<FProperty*> UDataTable::GetTablePropertyArray(const TArray<const TCHAR*>&
 		// Generate warning for any properties in struct we are not filling in
 		for (int32 PropIdx = 0; PropIdx < ExpectedPropNames.Num(); PropIdx++)
 		{
-			const FProperty* const ColumnProp = FindFProperty<FProperty>(InRowStruct, ExpectedPropNames[PropIdx]);
+			const UProperty* const ColumnProp = FindField<UProperty>(InRowStruct, ExpectedPropNames[PropIdx]);
 
 #if WITH_EDITOR
 			// If the structure has specified the property as optional for import (gameplay code likely doing a custom fix-up or parse of that property),
@@ -787,6 +750,8 @@ TArray<FString> UDataTable::CreateTableFromOtherTable(const UDataTable* InTable)
 		RowMap.Add(RowMapIter.Key(), NewRawRowData);
 	}
 
+	OnDataTableChanged().Broadcast();
+
 	return OutProblems;
 }
 
@@ -798,9 +763,9 @@ TArray<FString> UDataTable::GetColumnTitles() const
 	Result.Add(TEXT("Name"));
 	if (RowStruct)
 	{
-		for (TFieldIterator<FProperty> It(RowStruct); It; ++It)
+		for (TFieldIterator<UProperty> It(RowStruct); It; ++It)
 		{
-			FProperty* Prop = *It;
+			UProperty* Prop = *It;
 			check(Prop != nullptr);
 			const FString DisplayName = DataTableUtils::GetPropertyExportName(Prop);
 			Result.Add(DisplayName);
@@ -815,9 +780,9 @@ TArray<FString> UDataTable::GetUniqueColumnTitles() const
 	Result.Add(TEXT("Name"));
 	if (RowStruct)
 	{
-		for (TFieldIterator<FProperty> It(RowStruct); It; ++It)
+		for (TFieldIterator<UProperty> It(RowStruct); It; ++It)
 		{
-			FProperty* Prop = *It;
+			UProperty* Prop = *It;
 			check(Prop != nullptr);
 			const FString DisplayName = Prop->GetName();
 			Result.Add(DisplayName);
@@ -833,15 +798,15 @@ TArray< TArray<FString> > UDataTable::GetTableData(const EDataTableExportFlags I
 	 Result.Add(GetColumnTitles());
 
 	 // First build array of properties
-	 TArray<FProperty*> StructProps;
+	 TArray<UProperty*> StructProps;
 	 if (RowStruct)
 	 {
-	 	for (TFieldIterator<FProperty> It(RowStruct); It; ++It)
-	 	{
-		 	FProperty* Prop = *It;
-			check(Prop != nullptr);
-		 	StructProps.Add(Prop);
-	 	}
+		 for (TFieldIterator<UProperty> It(RowStruct); It; ++It)
+		 {
+			 UProperty* Prop = *It;
+			 check(Prop != nullptr);
+			 StructProps.Add(Prop);
+		 }
 	 }
 
 	 // Now iterate over rows

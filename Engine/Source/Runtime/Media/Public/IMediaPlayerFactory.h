@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -101,14 +101,6 @@ public:
 	 * @see GetDisplayName
 	 */
 	virtual FName GetPlayerName() const = 0;
-
-	/**
-	 * Get the GUID for this player plugin.
-	 *
-	 * @return Media player GUID (usually corresponds to a player name)
-	 * @see GetPlayerName
-	 */
-	virtual FGuid GetPlayerPluginGUID() const = 0;
 
 	/**
 	 * Get the names of platforms that the media player supports.

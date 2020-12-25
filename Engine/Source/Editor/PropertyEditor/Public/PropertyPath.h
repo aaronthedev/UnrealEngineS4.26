@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/UnrealType.h"
-#include "UObject/WeakFieldPtr.h"
 
 struct FPropertyInfo
 {
@@ -14,7 +13,7 @@ public:
 		, ArrayIndex(INDEX_NONE)
 	{}
 
-	FPropertyInfo(TWeakFieldPtr< FProperty > InProperty, int32 InArrayIndex = INDEX_NONE)
+	FPropertyInfo(TWeakObjectPtr< UProperty > InProperty, int32 InArrayIndex = INDEX_NONE)
 		: Property(InProperty)
 		, ArrayIndex(InArrayIndex)
 	{}
@@ -29,7 +28,7 @@ public:
 		return !(*this == Other);
 	}
 
-	TWeakFieldPtr<FProperty> Property;
+	TWeakObjectPtr< UProperty > Property;
 	int32 ArrayIndex;
 };
 
@@ -43,7 +42,7 @@ public:
 		return MakeShareable( new FPropertyPath() );
 	}
 
-	static TSharedRef< FPropertyPath > Create( const TWeakFieldPtr<FProperty> Property )
+	static TSharedRef< FPropertyPath > Create( const TWeakObjectPtr< UProperty >& Property )
 	{
 		TSharedRef< FPropertyPath > NewPath = MakeShareable( new FPropertyPath() );
 
@@ -133,7 +132,7 @@ public:
 		for (int PropertyIndex = 0; PropertyIndex < Properties.Num(); PropertyIndex++)
 		{
 			const FPropertyInfo& PropInfo = Properties[ PropertyIndex ];
-			if ( !(PropInfo.Property->IsA( FArrayProperty::StaticClass() ) && PropertyIndex != Properties.Num() - 1 ) )
+			if ( !(PropInfo.Property->IsA( UArrayProperty::StaticClass() ) && PropertyIndex != Properties.Num() - 1 ) )
 			{
 				if ( !FirstAddition )
 				{

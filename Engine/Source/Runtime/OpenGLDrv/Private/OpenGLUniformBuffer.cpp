@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	OpenGLUniformBuffer.cpp: OpenGL Uniform buffer RHI implementation.
@@ -12,11 +12,16 @@
 #include "OpenGLDrv.h"
 #include "OpenGLDrvPrivate.h"
 #include "Misc/ScopeLock.h"
-#include "ShaderParameterStruct.h"
+
+#if UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT
+constexpr EUniformBufferValidation UniformBufferValidation = EUniformBufferValidation::ValidateResources;
+#else
+constexpr EUniformBufferValidation UniformBufferValidation = EUniformBufferValidation::None;
+#endif
 
 namespace OpenGLConsoleVariables
 {
-#if (PLATFORM_WINDOWS)
+#if (PLATFORM_WINDOWS || PLATFORM_ANDROIDESDEFERRED)
 	int32 RequestedUBOPoolSize = 1024*1024*16;
 #else
 	int32 RequestedUBOPoolSize = 0;
@@ -29,11 +34,7 @@ namespace OpenGLConsoleVariables
 		ECVF_ReadOnly
 		);
 
-#if PLATFORM_ANDROID
-		int32 bUBODirectWrite = 0;
-#else
-		int32 bUBODirectWrite = 1;
-#endif
+	int32 bUBODirectWrite = 1;
 
 	static FAutoConsoleVariableRef CVarUBODirectWrite(
 		TEXT("OpenGL.UBODirectWrite"),
@@ -230,8 +231,8 @@ static void ReleaseUniformBuffer(bool bEmulatedBufferData, GLuint Resource, uint
 		};
 
 		RunOnGLRenderContextThread(MoveTemp(DeleteGLBuffer));
+		DecrementBufferMemory(GL_UNIFORM_BUFFER, /*bIsStructuredBuffer=*/ false, AllocatedSize);
 	}
-	DecrementBufferMemory(GL_UNIFORM_BUFFER, /*bIsStructuredBuffer=*/ false, AllocatedSize);
 }
 
 // Does per-frame global updating for the uniform buffer pool.
@@ -446,10 +447,17 @@ static void SetLayoutTable(FOpenGLUniformBuffer* NewUniformBuffer, const void* C
 		int32 NumResources = Layout.Resources.Num();
 		NewUniformBuffer->ResourceTable.Empty(NumResources);
 		NewUniformBuffer->ResourceTable.AddZeroed(NumResources);
-
-		for (int32 Index = 0; Index < NumResources; ++Index)
+		for (int32 i = 0; i < NumResources; ++i)
 		{
-			NewUniformBuffer->ResourceTable[Index] = GetShaderParameterResourceRHI(Contents, Layout.Resources[Index].MemberOffset, Layout.Resources[Index].MemberType);
+			FRHIResource* Resource = *(FRHIResource**)((uint8*)Contents + Layout.Resources[i].MemberOffset);
+
+			// Allow null SRV's in uniform buffers for feature levels that don't support SRV's in shaders
+			if (!(GMaxRHIFeatureLevel <= ERHIFeatureLevel::ES3_1 && Layout.Resources[i].MemberType == UBMT_SRV) && Validation == EUniformBufferValidation::ValidateResources)
+			{
+				check(Resource);
+			}
+
+			NewUniformBuffer->ResourceTable[i] = Resource;
 		}
 	}
 }
@@ -602,11 +610,6 @@ FUniformBufferRHIRef FOpenGLDynamicRHI::RHICreateUniformBuffer(const void* Conte
 	// Explicitly check that the size is nonzero before allowing CreateBuffer to opaquely fail.
 	check(Layout.Resources.Num() > 0 || Layout.ConstantBufferSize > 0);
 
-	if (Validation == EUniformBufferValidation::ValidateResources)
-	{
-		ValidateShaderParameterResourcesRHI(Contents, Layout);
-	}
-
 	bool bStreamDraw = (Usage == UniformBuffer_SingleDraw || Usage == UniformBuffer_SingleFrame);
 	GLuint AllocatedResource = 0;
 	uint32 OffsetInBuffer = 0;
@@ -723,7 +726,6 @@ void FOpenGLDynamicRHI::RHIUpdateUniformBuffer(FRHIUniformBuffer* UniformBufferR
 
 	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
 	const FRHIUniformBufferLayout& Layout = UniformBufferRHI->GetLayout();
-	ValidateShaderParameterResourcesRHI(Contents, Layout);
 
 	const int32 ConstantBufferSize = Layout.ConstantBufferSize;
 	const int32 NumResources = Layout.Resources.Num();
@@ -736,9 +738,21 @@ void FOpenGLDynamicRHI::RHIUpdateUniformBuffer(FRHIUniformBuffer* UniformBufferR
 	{
 		UpdateUniformBufferContents(UniformBuffer, Contents, ConstantBufferSize);
 
-		for (int32 Index = 0; Index < NumResources; ++Index)
+		for (int32 ResourceIndex = 0; ResourceIndex < NumResources; ++ResourceIndex)
 		{
-			UniformBuffer->ResourceTable[Index] = GetShaderParameterResourceRHI(Contents, Layout.Resources[Index].MemberOffset, Layout.Resources[Index].MemberType);
+			FRHIResource* Resource = *(FRHIResource**)((uint8*)Contents + Layout.Resources[ResourceIndex].MemberOffset);
+
+			if (!(GMaxRHIFeatureLevel <= ERHIFeatureLevel::ES3_1
+				&& (Layout.Resources[ResourceIndex].MemberType == UBMT_SRV || Layout.Resources[ResourceIndex].MemberType == UBMT_RDG_TEXTURE_SRV || Layout.Resources[ResourceIndex].MemberType == UBMT_RDG_BUFFER_SRV))
+				&& UniformBufferValidation == EUniformBufferValidation::ValidateResources)
+			{
+				checkf(Resource, TEXT("Invalid resource entry creating uniform buffer, %s.Resources[%u], ResourceType 0x%x."),
+					*Layout.GetDebugName().ToString(),
+					ResourceIndex,
+					Layout.Resources[ResourceIndex].MemberType);
+			}
+
+			UniformBuffer->ResourceTable[ResourceIndex] = Resource;
 		}
 		
 		UniformBuffer->UniqueID = NextUniqueID;
@@ -752,10 +766,21 @@ void FOpenGLDynamicRHI::RHIUpdateUniformBuffer(FRHIUniformBuffer* UniformBufferR
 		{
 			CmdListResources = (FRHIResource**)RHICmdList.Alloc(sizeof(FRHIResource*) * NumResources, alignof(FRHIResource*));
 
-			for (int32 Index = 0; Index < NumResources; ++Index)
+			for (int32 ResourceIndex = 0; ResourceIndex < NumResources; ++ResourceIndex)
 			{
-				const auto Parameter = Layout.Resources[Index];
-				CmdListResources[Index] = GetShaderParameterResourceRHI(Contents, Parameter.MemberOffset, Parameter.MemberType);
+				FRHIResource* Resource = *(FRHIResource**)((uint8*)Contents + Layout.Resources[ResourceIndex].MemberOffset);
+
+				if (!(GMaxRHIFeatureLevel <= ERHIFeatureLevel::ES3_1
+					&& (Layout.Resources[ResourceIndex].MemberType == UBMT_SRV || Layout.Resources[ResourceIndex].MemberType == UBMT_RDG_TEXTURE_SRV || Layout.Resources[ResourceIndex].MemberType == UBMT_RDG_BUFFER_SRV))
+					&& UniformBufferValidation == EUniformBufferValidation::ValidateResources)
+				{
+					checkf(Resource, TEXT("Invalid resource entry creating uniform buffer, %s.Resources[%u], ResourceType 0x%x."),
+						*Layout.GetDebugName().ToString(),
+						ResourceIndex,
+						(uint8)Layout.Resources[ResourceIndex].MemberType);
+				}
+
+				CmdListResources[ResourceIndex] = Resource;
 			}
 		}
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Subsystems/SubsystemCollection.h"
 
@@ -163,7 +163,7 @@ void FSubsystemCollectionBase::Deinitialize()
 	Outer = nullptr;
 }
 
-USubsystem* FSubsystemCollectionBase::InitializeDependency(TSubclassOf<USubsystem> SubsystemClass)
+bool FSubsystemCollectionBase::InitializeDependency(TSubclassOf<USubsystem> SubsystemClass)
 {
 	if (ensureMsgf(SubsystemClass, TEXT("Attempting to add invalid subsystem as dependancy."))
 		&& ensureMsgf(bPopulating, TEXT("InitializeDependancy() should only be called from System USubsystem::Initialization() implementations."))
@@ -171,7 +171,7 @@ USubsystem* FSubsystemCollectionBase::InitializeDependency(TSubclassOf<USubsyste
 	{
 		return AddAndInitializeSubsystem(SubsystemClass);
 	}
-	return nullptr;
+	return false;
 }
 
 void FSubsystemCollectionBase::AddReferencedObjects(FReferenceCollector& Collector)
@@ -184,7 +184,7 @@ FString FSubsystemCollectionBase::GetReferencerName() const
 	return TEXT("FSubsystemCollectionBase");
 }
 
-USubsystem* FSubsystemCollectionBase::AddAndInitializeSubsystem(UClass* SubsystemClass)
+bool FSubsystemCollectionBase::AddAndInitializeSubsystem(UClass* SubsystemClass)
 {
 	if (!SubsystemMap.Contains(SubsystemClass))
 	{
@@ -194,26 +194,21 @@ USubsystem* FSubsystemCollectionBase::AddAndInitializeSubsystem(UClass* Subsyste
 			// Catch any attempt to add a subsystem of the wrong type
 			checkf(SubsystemClass->IsChildOf(BaseType), TEXT("ClassType (%s) must be a subclass of BaseType(%s)."), *SubsystemClass->GetName(), *BaseType->GetName());
 
-			// Do not create instances of classes aren't authoritative
-			if (SubsystemClass->GetAuthoritativeClass() != SubsystemClass)
-			{	
-				return nullptr;
-			}
-
 			const USubsystem* CDO = SubsystemClass->GetDefaultObject<USubsystem>();
 			if (CDO->ShouldCreateSubsystem(Outer))
 			{
-				USubsystem* Subsystem = NewObject<USubsystem>(Outer, SubsystemClass);
-				SubsystemMap.Add(SubsystemClass,Subsystem);
+				USubsystem*& Subsystem = SubsystemMap.Add(SubsystemClass);
+				Subsystem = NewObject<USubsystem>(Outer, SubsystemClass);
+
 				Subsystem->InternalOwningSubsystem = this;
 				Subsystem->Initialize(*this);
-				return Subsystem;
+				
+				return true;
 			}
 		}
-		return nullptr;
+		return false;
 	}
-
-	return SubsystemMap.FindRef(SubsystemClass);
+	return true;
 }
 
 void FSubsystemCollectionBase::RemoveAndDeinitializeSubsystem(USubsystem* Subsystem)
@@ -320,7 +315,7 @@ void FSubsystemModuleWatcher::AddClassesForModule(const FName& InModuleName)
 
 	TArray<TSubclassOf<UDynamicSubsystem>> SubsystemClasses;
 	TArray<UObject*> PackageObjects;
-	GetObjectsWithPackage(ClassPackage, PackageObjects, false);
+	GetObjectsWithOuter(ClassPackage, PackageObjects, false);
 	for (UObject* Object : PackageObjects)
 	{
 		UClass* const CurrentClass = Cast<UClass>(Object);

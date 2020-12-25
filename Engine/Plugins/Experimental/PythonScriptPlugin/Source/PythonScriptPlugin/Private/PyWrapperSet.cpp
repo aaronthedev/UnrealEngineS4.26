@@ -1,7 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PyWrapperSet.h"
 #include "PyWrapperTypeRegistry.h"
+#include "PyCore.h"
+#include "PyUtil.h"
 #include "PyConversion.h"
 #include "PyReferenceCollector.h"
 #include "UObject/UnrealType.h"
@@ -155,7 +157,7 @@ FPyWrapperSet* FPyWrapperSet::New(PyTypeObject* InType)
 	if (Self)
 	{
 		new(&Self->OwnerContext) FPyWrapperOwnerContext();
-		new(&Self->SetProp) PyUtil::FConstSetPropOnScope();
+		Self->SetProp = nullptr;
 		Self->SetInstance = nullptr;
 	}
 	return Self;
@@ -166,7 +168,6 @@ void FPyWrapperSet::Free(FPyWrapperSet* InSelf)
 	Deinit(InSelf);
 
 	InSelf->OwnerContext.~FPyWrapperOwnerContext();
-	InSelf->SetProp.~TPropOnScope();
 	FPyWrapperBase::Free(InSelf);
 }
 
@@ -180,15 +181,15 @@ int FPyWrapperSet::Init(FPyWrapperSet* InSelf, const PyUtil::FPropertyDef& InEle
 		return BaseInit;
 	}
 
-	PyUtil::FPropOnScope SetElementProp = PyUtil::FPropOnScope::OwnedReference(PyUtil::CreateProperty(InElementDef, 1));
+	UProperty* SetElementProp = PyUtil::CreateProperty(InElementDef, 1);
 	if (!SetElementProp)
 	{
 		PyUtil::SetPythonError(PyExc_Exception, InSelf, TEXT("Set element property was null during init"));
 		return -1;
 	}
 
-	PyUtil::FSetPropOnScope SetProp = PyUtil::FSetPropOnScope::OwnedReference(new FSetProperty(FFieldVariant(), PyUtil::DefaultPythonPropertyName, RF_NoFlags));
-	SetProp->ElementProp = SetElementProp.Release();
+	USetProperty* SetProp = NewObject<USetProperty>(GetPythonPropertyContainer());
+	SetProp->ElementProp = SetElementProp;
 
 	// Need to manually call Link to fix-up some data (such as the C++ property flags and the set layout) that are only set during Link
 	{
@@ -199,7 +200,7 @@ int FPyWrapperSet::Init(FPyWrapperSet* InSelf, const PyUtil::FPropertyDef& InEle
 	void* SetValue = FMemory::Malloc(SetProp->GetSize(), SetProp->GetMinAlignment());
 	SetProp->InitializeValue(SetValue);
 
-	InSelf->SetProp = MoveTemp(SetProp);
+	InSelf->SetProp = SetProp;
 	InSelf->SetInstance = SetValue;
 
 	if (!InSelf->SetProp->ElementProp->HasAnyPropertyFlags(CPF_HasGetValueTypeHash))
@@ -212,7 +213,7 @@ int FPyWrapperSet::Init(FPyWrapperSet* InSelf, const PyUtil::FPropertyDef& InEle
 	return 0;
 }
 
-int FPyWrapperSet::Init(FPyWrapperSet* InSelf, const FPyWrapperOwnerContext& InOwnerContext, const FSetProperty* InProp, void* InValue, const EPyConversionMethod InConversionMethod)
+int FPyWrapperSet::Init(FPyWrapperSet* InSelf, const FPyWrapperOwnerContext& InOwnerContext, const USetProperty* InProp, void* InValue, const EPyConversionMethod InConversionMethod)
 {
 	InOwnerContext.AssertValidConversionMethod(InConversionMethod);
 
@@ -226,30 +227,29 @@ int FPyWrapperSet::Init(FPyWrapperSet* InSelf, const FPyWrapperOwnerContext& InO
 
 	check(InProp && InValue);
 
-	PyUtil::FConstSetPropOnScope PropToUse;
+	const USetProperty* PropToUse = nullptr;
 	void* SetInstanceToUse = nullptr;
 	switch (InConversionMethod)
 	{
 	case EPyConversionMethod::Copy:
 	case EPyConversionMethod::Steal:
 		{
-			PyUtil::FPropOnScope SetElementProp = PyUtil::FPropOnScope::OwnedReference(PyUtil::CreateProperty(InProp->ElementProp));
+			UProperty* SetElementProp = PyUtil::CreateProperty(InProp->ElementProp);
 			if (!SetElementProp)
 			{
 				PyUtil::SetPythonError(PyExc_TypeError, InSelf, *FString::Printf(TEXT("Failed to create element property from '%s' (%s)"), *InProp->ElementProp->GetName(), *InProp->ElementProp->GetClass()->GetName()));
 				return -1;
 			}
 
-			PyUtil::FSetPropOnScope SetProp = PyUtil::FSetPropOnScope::OwnedReference(new FSetProperty(FFieldVariant(), PyUtil::DefaultPythonPropertyName, RF_NoFlags));
-			SetProp->ElementProp = SetElementProp.Release();
+			USetProperty* SetProp = NewObject<USetProperty>(GetPythonPropertyContainer());
+			SetProp->ElementProp = SetElementProp;
+			PropToUse = SetProp;
 			
 			// Need to manually call Link to fix-up some data (such as the C++ property flags and the set layout) that are only set during Link
 			{
 				FArchive Ar;
 				SetProp->LinkWithoutChangingOffset(Ar);
 			}
-
-			PropToUse = MoveTemp(SetProp);
 
 			SetInstanceToUse = FMemory::Malloc(PropToUse->GetSize(), PropToUse->GetMinAlignment());
 			PropToUse->InitializeValue(SetInstanceToUse);
@@ -267,7 +267,7 @@ int FPyWrapperSet::Init(FPyWrapperSet* InSelf, const FPyWrapperOwnerContext& InO
 
 	case EPyConversionMethod::Reference:
 		{
-			PropToUse = PyUtil::FConstSetPropOnScope::ExternalReference(InProp);
+			PropToUse = InProp;
 			SetInstanceToUse = InValue;
 		}
 		break;
@@ -280,7 +280,7 @@ int FPyWrapperSet::Init(FPyWrapperSet* InSelf, const FPyWrapperOwnerContext& InO
 	check(PropToUse && SetInstanceToUse);
 
 	InSelf->OwnerContext = InOwnerContext;
-	InSelf->SetProp = MoveTemp(PropToUse);
+	InSelf->SetProp = PropToUse;
 	InSelf->SetInstance = SetInstanceToUse;
 
 	if (!InSelf->SetProp->ElementProp->HasAnyPropertyFlags(CPF_HasGetValueTypeHash))
@@ -312,7 +312,7 @@ void FPyWrapperSet::Deinit(FPyWrapperSet* InSelf)
 		}
 		FMemory::Free(InSelf->SetInstance);
 	}
-	InSelf->SetProp.Reset();
+	InSelf->SetProp = nullptr;
 	InSelf->SetInstance = nullptr;
 }
 
@@ -1608,7 +1608,7 @@ void FPyWrapperSetMetaData::AddReferencedObjects(FPyWrapperBase* Instance, FRefe
 	FPyWrapperSet* Self = static_cast<FPyWrapperSet*>(Instance);
 	if (Self->SetProp && Self->SetInstance && !Self->OwnerContext.HasOwner())
 	{
-		Self->SetProp.AddReferencedObjects(Collector);
+		Collector.AddReferencedObject(Self->SetProp);
 		FPyReferenceCollector::AddReferencedObjectsFromProperty(Collector, Self->SetProp, Self->SetInstance);
 	}
 }

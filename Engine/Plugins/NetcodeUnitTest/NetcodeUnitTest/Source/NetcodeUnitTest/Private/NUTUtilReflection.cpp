@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NUTUtilReflection.h"
 #include "Containers/ArrayBuilder.h"
@@ -12,7 +12,7 @@
 // @todo #JohnB: With the DebugDump function, NextActionError often seems to be garbled, but can't see an obvious reason why.
 //					Investigate/fix this, may be a sign of a bigger problem.
 
-// @todo #JohnB: Review the FEnumProperty changes that were added elsewhere, and test them
+// @todo #JohnB: Review the UEnumProperty changes that were added elsewhere, and test them
 //					(UPDATE: The parts I've tested, I've removed this define from - there's a fair bit left to test though)
 #define UENUM_REFL 1
 
@@ -32,6 +32,7 @@
 
 FVMReflection::FVMReflection()
 	: BaseAddress(nullptr)
+	, FieldInstance(nullptr)
 	, FieldAddress(nullptr)
 	, bVerifiedFieldType(false)
 	, bSkipFieldVerification(false)
@@ -59,7 +60,7 @@ FVMReflection::FVMReflection(UObject* InBaseObject, EVMRefWarning InWarnLevel/*=
 	else
 	{
 		BaseAddress = nullptr;
-		FieldInstance = FFieldVariant();
+		FieldInstance = nullptr;
 
 		SetError(TEXT("Bad InBaseObject in constructor"));
 	}
@@ -75,12 +76,12 @@ FVMReflection::FVMReflection(FStructOnScope& InStruct, EVMRefWarning InWarnLevel
 	if (TargetStruct != nullptr)
 	{
 		BaseAddress = InStruct.GetStructMemory();
-		FieldInstance = const_cast<UStruct*>(TargetStruct);
+		FieldInstance = TargetStruct;
 	}
 	else
 	{
 		BaseAddress = nullptr;
-		FieldInstance = FFieldVariant();
+		FieldInstance = nullptr;
 
 		SetError(TEXT("Bad TargetStruct in constructor"));
 	}
@@ -122,7 +123,7 @@ FVMReflection& FVMReflection::operator ->*(FString PropertyName)
 	NotifyOperator(CurOperation);
 	AddHistory(CurOperation);
 
-	if (!bIsError && FieldInstance.IsValid())
+	if (!bIsError && FieldInstance != nullptr)
 	{
 		/**
 		 * Property Context
@@ -132,10 +133,10 @@ FVMReflection& FVMReflection::operator ->*(FString PropertyName)
 		 */
 
 		// UClass
-		if (FieldInstance.IsA(UClass::StaticClass()))
+		if (FieldInstance->IsA(UClass::StaticClass()))
 		{
-			const UClass* ClassInstance = Cast<UClass>(FieldInstance.ToUObject());
-			FProperty* FoundProperty = FindFProperty<FProperty>(ClassInstance, *PropertyName);
+			const UClass* ClassInstance = Cast<UClass>(FieldInstance);
+			UProperty* FoundProperty = FindField<UProperty>(ClassInstance, *PropertyName);
 
 			if (FoundProperty != nullptr)
 			{
@@ -151,12 +152,12 @@ FVMReflection& FVMReflection::operator ->*(FString PropertyName)
 			}
 		}
 		// UStruct
-		else if (FieldInstance.IsA(UStruct::StaticClass()))
+		else if (FieldInstance->IsA(UStruct::StaticClass()))
 		{
 			if (!IsPropertyArray() || (bVerifiedFieldType && bSetArrayElement))
 			{
-				const UStruct* InnerStruct = Cast<UStruct>(FieldInstance.ToUObject());
-				FProperty* FoundProperty = (InnerStruct != nullptr ? FindFProperty<FProperty>(InnerStruct, *PropertyName) : nullptr);
+				const UStruct* InnerStruct = Cast<UStruct>(FieldInstance);
+				UProperty* FoundProperty = (InnerStruct != nullptr ? FindField<UProperty>(InnerStruct, *PropertyName) : nullptr);
 
 				if (FoundProperty != nullptr)
 				{
@@ -191,69 +192,57 @@ FVMReflection& FVMReflection::operator ->*(FString PropertyName)
 
 		// These types are supported without any extra effort from within this function
 		// (though some, such as arrays, need extra support elsewhere)
-		static const TArray<FFieldClass*> SupportedTypes = TArrayBuilder<FFieldClass*>()
-														//.Add(UClass::StaticClass())
-														.Add(FByteProperty::StaticClass())
-														.Add(FEnumProperty::StaticClass())
-														.Add(FUInt16Property::StaticClass())
-														.Add(FUInt32Property::StaticClass())
-														.Add(FUInt64Property::StaticClass())
-														.Add(FInt8Property::StaticClass())
-														.Add(FInt16Property::StaticClass())
-														.Add(FIntProperty::StaticClass())
-														.Add(FInt64Property::StaticClass())
-														.Add(FFloatProperty::StaticClass())
-														.Add(FDoubleProperty::StaticClass())
-														.Add(FBoolProperty::StaticClass())
-														.Add(FNameProperty::StaticClass())
-														.Add(FStrProperty::StaticClass())
-														.Add(FTextProperty::StaticClass())
-														.Add(FArrayProperty::StaticClass());
+		static const TArray<UClass*> SupportedTypes = TArrayBuilder<UClass*>()
+														.Add(UClass::StaticClass())
+														.Add(UByteProperty::StaticClass())
+														.Add(UEnumProperty::StaticClass())
+														.Add(UUInt16Property::StaticClass())
+														.Add(UUInt32Property::StaticClass())
+														.Add(UUInt64Property::StaticClass())
+														.Add(UInt8Property::StaticClass())
+														.Add(UInt16Property::StaticClass())
+														.Add(UIntProperty::StaticClass())
+														.Add(UInt64Property::StaticClass())
+														.Add(UFloatProperty::StaticClass())
+														.Add(UDoubleProperty::StaticClass())
+														.Add(UBoolProperty::StaticClass())
+														.Add(UNameProperty::StaticClass())
+														.Add(UStrProperty::StaticClass())
+														.Add(UTextProperty::StaticClass())
+														.Add(UArrayProperty::StaticClass());
 
 		auto IsSupportedType =
-			[&](const FFieldClass* InClass)
+			[&](const UClass* InClass)
 			{
 				return SupportedTypes.ContainsByPredicate(
-					[&](FFieldClass* CurEntry)
+					[&](UClass* CurEntry)
 					{
 						return InClass->IsChildOf(CurEntry);
 					});
 			};
 
 
-		// FObjectProperty
+		// UObjectProperty
 		// This is a special circumstance, context changes to the object, but FieldAddress is kept pointing to the object property
 		if (IsPropertyObject())
 		{
 			ProcessObjectProperty();
 		}
-		// FStructProperty
-		// Same principle as FObjectProperty, but changing context to a UStruct
-		else if (FieldInstance.IsA(FStructProperty::StaticClass()))
+		// UStructProperty
+		// Same principle as UObjectProperty, but changing context to a UStruct
+		else if (FieldInstance->IsA(UStructProperty::StaticClass()))
 		{
 			ProcessStructProperty();
 		}
-		else
+		else if (!IsSupportedType(FieldInstance->GetClass()))
 		{
-			FString UnsupportedFieldClassName;
-			if (FieldInstance.ToUObject() && !FieldInstance.ToUObject()->IsA(UClass::StaticClass()))
-			{
-				UnsupportedFieldClassName = FieldInstance.ToUObject()->GetClass()->GetFullName();
-			}
-			else if (FieldInstance.ToField() && !IsSupportedType(FieldInstance.ToField()->GetClass()))
-			{
-				UnsupportedFieldClassName = FieldInstance.ToField()->GetClass()->GetName();
-			}
-			if (!UnsupportedFieldClassName.IsEmpty())
-			{
-				FString Error = FString::Printf(TEXT("Support for field type '%s' has not been implemented."),
-					*UnsupportedFieldClassName);
+			FString Error = FString::Printf(TEXT("Support for field type '%s' has not been implemented."),
+									*FieldInstance->GetClass()->GetFullName());
 
-				SetError(Error);
-			}
+			SetError(Error);
 		}
 	}
-	else if (!bIsError && !FieldInstance.IsValid())
+	else if (!bIsError && FieldInstance == nullptr)
 	{
 		SetError(TEXT("FieldInstance is nullptr"));
 	}
@@ -268,8 +257,8 @@ FVMReflection& FVMReflection::operator [](int32 ArrayElement)
 	NotifyOperator(CurOperation);
 	AddHistory(CurOperation);
 
-	const FProperty* FieldProp = CastField<FProperty>(FieldInstance.ToField());
-	const FArrayProperty* ArrayProp = CastField<FArrayProperty>(FieldInstance.ToField());
+	const UProperty* FieldProp = Cast<UProperty>(FieldInstance);
+	const UArrayProperty* ArrayProp = Cast<UArrayProperty>(FieldInstance);
 
 	if (!bIsError && FieldProp != nullptr && FieldAddress != nullptr && !bSetArrayElement)
 	{
@@ -308,27 +297,27 @@ FVMReflection& FVMReflection::operator [](int32 ArrayElement)
 		}
 
 
-		// Handle context changes from FObjectProperty
+		// Handle context changes from UObjectProperty
 		// This is a special circumstance, context changes to the object, but FieldAddress is kept pointing to the object property
 		if (IsPropertyObject())
 		{
 			ProcessObjectProperty();
 		}
-		// Handle context changes from FStructProperty (same principle as above)
-		else if (FieldInstance.IsA(FStructProperty::StaticClass()))
+		// Handle context changes from UStructProperty (same principle as above)
+		else if (FieldInstance->IsA(UStructProperty::StaticClass()))
 		{
 			ProcessStructProperty();
 		}
 	}
 	else if (!bIsError)
 	{
-		if (!FieldInstance.IsValid())
+		if (FieldInstance == nullptr)
 		{
 			SetError(TEXT("FieldInstance is nullptr."));
 		}
 		else if (FieldProp == nullptr)
 		{
-			SetError(FString::Printf(TEXT("Field '%s' is not a property."), *FieldInstance.GetName()));
+			SetError(FString::Printf(TEXT("Field '%s' is not a property."), *FieldInstance->GetName()));
 		}
 		else if (FieldAddress == nullptr)
 		{
@@ -351,13 +340,13 @@ FVMReflection& FVMReflection::operator [](const ANSICHAR* InFieldType)
 	NotifyOperator(CurOperation);
 	AddHistory(CurOperation);
 
-	FProperty* FieldProp = CastField<FProperty>(FieldInstance.ToField());
-	FArrayProperty* ArrayProp = CastField<FArrayProperty>(FieldProp);
-	UStruct* StructField = Cast<UStruct>(FieldInstance.ToUObject());
+	const UProperty* FieldProp = Cast<UProperty>(FieldInstance);
+	const UArrayProperty* ArrayProp = Cast<UArrayProperty>(FieldProp);
+	const UStruct* StructField = Cast<UStruct>(FieldInstance);
 
-	if (!bIsError && FieldInstance.IsValid() && FieldAddress != nullptr && !bVerifiedFieldType)
+	if (!bIsError && FieldInstance != nullptr && FieldAddress != nullptr && !bVerifiedFieldType)
 	{
-		FFieldVariant ActualFieldType;
+		const UField* ActualFieldType = nullptr;
 		FString ActualFieldTypeStr = TEXT("");
 		const TCHAR* CheckType = TEXT("");
 
@@ -381,11 +370,11 @@ FVMReflection& FVMReflection::operator [](const ANSICHAR* InFieldType)
 		}
 		else
 		{
-			SetError(FString::Printf(TEXT("Property '%s' is not a %s."), *FieldInstance.GetName(), CheckType));
+			SetError(FString::Printf(TEXT("Property '%s' is not a %s."), *FieldInstance->GetName(), CheckType));
 		}
 
 		// Handle special case of struct-arrays
-		const FStructProperty* StructProp = CastField<FStructProperty>(ActualFieldType.ToField());
+		const UStructProperty* StructProp = Cast<UStructProperty>(ActualFieldType);
 
 		if (StructProp != nullptr)
 		{
@@ -394,17 +383,17 @@ FVMReflection& FVMReflection::operator [](const ANSICHAR* InFieldType)
 		}
 
 
-		if (ActualFieldType.IsValid())
+		if (ActualFieldType != nullptr)
 		{
 			bool bTypeValid = false;
 
-			ActualFieldTypeStr = ActualFieldType.GetClassName();
+			ActualFieldTypeStr = ActualFieldType->GetClass()->GetName();
 
 			// @todo #JohnB: Try to do away with these macros, not pretty.
 			#define FIELD_TYPE_CHECK_FIRST(TypeString, TypeProperty) \
 				if (ExpectedFieldType == TypeString) \
 				{ \
-					if (ActualFieldType.IsA(TypeProperty::StaticClass())) \
+					if (ActualFieldType->IsA(TypeProperty::StaticClass())) \
 					{ \
 						bTypeValid = true; \
 					} \
@@ -412,53 +401,54 @@ FVMReflection& FVMReflection::operator [](const ANSICHAR* InFieldType)
 
 			#define FIELD_TYPE_CHECK(TypeString, TypeProperty)	else FIELD_TYPE_CHECK_FIRST(TypeString, TypeProperty)
 
-			FIELD_TYPE_CHECK_FIRST(TEXT("bool"), FBoolProperty)
-			FIELD_TYPE_CHECK(TEXT("FName"), FNameProperty)
-			FIELD_TYPE_CHECK(TEXT("uint8"), FByteProperty)
-			FIELD_TYPE_CHECK(TEXT("double"), FDoubleProperty)
-			FIELD_TYPE_CHECK(TEXT("float"), FFloatProperty)
-			FIELD_TYPE_CHECK(TEXT("int16"), FInt16Property)
-			FIELD_TYPE_CHECK(TEXT("int64"), FInt64Property)
-			FIELD_TYPE_CHECK(TEXT("int8"), FInt8Property)
-			FIELD_TYPE_CHECK(TEXT("int32"), FIntProperty)
-			FIELD_TYPE_CHECK(TEXT("uint16"), FUInt16Property)
-			FIELD_TYPE_CHECK(TEXT("uint32"), FUInt32Property)
-			FIELD_TYPE_CHECK(TEXT("uint64"), FUInt64Property)
-			FIELD_TYPE_CHECK(TEXT("FString"), FStrProperty)
-			FIELD_TYPE_CHECK(TEXT("FText"), FTextProperty)
+			FIELD_TYPE_CHECK_FIRST(TEXT("bool"), UBoolProperty)
+			FIELD_TYPE_CHECK(TEXT("FName"), UNameProperty)
+			FIELD_TYPE_CHECK(TEXT("uint8"), UByteProperty)
+			FIELD_TYPE_CHECK(TEXT("double"), UDoubleProperty)
+			FIELD_TYPE_CHECK(TEXT("float"), UFloatProperty)
+			FIELD_TYPE_CHECK(TEXT("int16"), UInt16Property)
+			FIELD_TYPE_CHECK(TEXT("int64"), UInt64Property)
+			FIELD_TYPE_CHECK(TEXT("int8"), UInt8Property)
+			FIELD_TYPE_CHECK(TEXT("int32"), UIntProperty)
+			FIELD_TYPE_CHECK(TEXT("uint16"), UUInt16Property)
+			FIELD_TYPE_CHECK(TEXT("uint32"), UUInt32Property)
+			FIELD_TYPE_CHECK(TEXT("uint64"), UUInt64Property)
+			FIELD_TYPE_CHECK(TEXT("FString"), UStrProperty)
+			FIELD_TYPE_CHECK(TEXT("FText"), UTextProperty)
 #if UENUM_REFL
-			else if (ActualFieldType.IsA(FEnumProperty::StaticClass()))
+			else if (ActualFieldType->IsA(UEnumProperty::StaticClass()))
 			{
-				FProperty* UnderlyingActualFieldType = CastField<FEnumProperty>(ActualFieldType.ToField())->GetUnderlyingProperty();
-				if (ExpectedFieldType == "uint8" && UnderlyingActualFieldType->IsA<FByteProperty>())
+				const UProperty* UnderlyingActualFieldType = Cast<UEnumProperty>(ActualFieldType)->GetUnderlyingProperty();
+
+				if (ExpectedFieldType == "uint8" && UnderlyingActualFieldType->IsA<UByteProperty>())
 				{
 					bTypeValid = true;
 				}
-				else if (ExpectedFieldType == "int16" && UnderlyingActualFieldType->IsA<FInt16Property>())
+				else if (ExpectedFieldType == "int16" && UnderlyingActualFieldType->IsA<UInt16Property>())
 				{
 					bTypeValid = true;
 				}
-				else if (ExpectedFieldType == "int64" && UnderlyingActualFieldType->IsA<FInt64Property>())
+				else if (ExpectedFieldType == "int64" && UnderlyingActualFieldType->IsA<UInt64Property>())
 				{
 					bTypeValid = true;
 				}
-				else if (ExpectedFieldType == "int8" && UnderlyingActualFieldType->IsA<FInt8Property>())
+				else if (ExpectedFieldType == "int8" && UnderlyingActualFieldType->IsA<UInt8Property>())
 				{
 					bTypeValid = true;
 				}
-				else if (ExpectedFieldType == "int32" && UnderlyingActualFieldType->IsA<FIntProperty>())
+				else if (ExpectedFieldType == "int32" && UnderlyingActualFieldType->IsA<UIntProperty>())
 				{
 					bTypeValid = true;
 				}
-				else if (ExpectedFieldType == "uint16" && UnderlyingActualFieldType->IsA<FUInt16Property>())
+				else if (ExpectedFieldType == "uint16" && UnderlyingActualFieldType->IsA<UUInt16Property>())
 				{
 					bTypeValid = true;
 				}
-				else if (ExpectedFieldType == "uint32" && UnderlyingActualFieldType->IsA<FUInt32Property>())
+				else if (ExpectedFieldType == "uint32" && UnderlyingActualFieldType->IsA<UUInt32Property>())
 				{
 					bTypeValid = true;
 				}
-				else if (ExpectedFieldType == "uint64" && UnderlyingActualFieldType->IsA<FUInt64Property>())
+				else if (ExpectedFieldType == "uint64" && UnderlyingActualFieldType->IsA<UUInt64Property>())
 				{
 					bTypeValid = true;
 				}
@@ -474,7 +464,7 @@ FVMReflection& FVMReflection::operator [](const ANSICHAR* InFieldType)
 						(ExpectedFieldType.Left(1) == TEXT("U") || ExpectedFieldType.Left(1) == TEXT("A")) &&
 						ExpectedFieldType.Right(1) == TEXT("*"))
 			{
-				FObjectPropertyBase* ObjProp = CastField<FObjectPropertyBase>(ActualFieldType.ToField());
+				const UObjectPropertyBase* ObjProp = Cast<UObjectPropertyBase>(ActualFieldType);
 
 				if (ObjProp != nullptr)
 				{
@@ -496,7 +486,7 @@ FVMReflection& FVMReflection::operator [](const ANSICHAR* InFieldType)
 			// UStruct
 			else if (ExpectedFieldType.Len() > 1 && ExpectedFieldType.Left(1) == TEXT("F"))
 			{
-				const UStruct* StructRef = Cast<UStruct>(ActualFieldType.ToUObject());
+				const UStruct* StructRef = Cast<UStruct>(ActualFieldType);
 
 				if (StructRef != nullptr)
 				{
@@ -537,7 +527,7 @@ FVMReflection& FVMReflection::operator [](const ANSICHAR* InFieldType)
 	}
 	else if (!bIsError)
 	{
-		if (!FieldInstance.IsValid())
+		if (FieldInstance == nullptr)
 		{
 			SetError(TEXT("FieldInstance is nullptr."));
 		}
@@ -558,7 +548,7 @@ void FVMReflection::ProcessObjectProperty()
 {
 	if (!IsPropertyArray() || (bVerifiedFieldType && bSetArrayElement))
 	{
-		if (FieldInstance.IsA(FObjectProperty::StaticClass()))
+		if (FieldInstance->IsA(UObjectProperty::StaticClass()))
 		{
 			UObject* PropValue = *(UObject**)FieldAddress;
 
@@ -570,10 +560,10 @@ void FVMReflection::ProcessObjectProperty()
 			else
 			{
 				bNextActionMustBeCast = true;
-				NextActionError = FString::Printf(TEXT("FObjectProperty '%s' was nullptr."), *FieldInstance.GetFullName());
+				NextActionError = FString::Printf(TEXT("UObjectProperty '%s' was nullptr."), *FieldInstance->GetFullName());
 			}
 		}
-		else if (FieldInstance.IsA(FWeakObjectProperty::StaticClass()))
+		else if (FieldInstance->IsA(UWeakObjectProperty::StaticClass()))
 		{
 			FWeakObjectPtr& PtrValue = *(FWeakObjectPtr*)FieldAddress;
 
@@ -587,10 +577,10 @@ void FVMReflection::ProcessObjectProperty()
 			else
 			{
 				bNextActionMustBeCast = true;
-				NextActionError = FString::Printf(TEXT("FWeakObjectProperty '%s' was Invalid."), *FieldInstance.GetFullName());
+				NextActionError = FString::Printf(TEXT("UWeakObjectProperty '%s' was Invalid."), *FieldInstance->GetFullName());
 			}
 		}
-		else if (FieldInstance.IsA(FSoftObjectProperty::StaticClass()))
+		else if (FieldInstance->IsA(USoftObjectProperty::StaticClass()))
 		{
 			FSoftObjectPtr& PtrValue = *(FSoftObjectPtr*)FieldAddress;
 
@@ -604,14 +594,14 @@ void FVMReflection::ProcessObjectProperty()
 			else
 			{
 				bNextActionMustBeCast = true;
-				NextActionError = FString::Printf(TEXT("FSoftObjectProperty '%s' was Invalid."), *FieldInstance.GetFullName());
+				NextActionError = FString::Printf(TEXT("USoftObjectProperty '%s' was Invalid."), *FieldInstance->GetFullName());
 			}
 		}
 		else
 		{
 			FString Error = FString::Printf(
-							TEXT("ProcessObjectProperty called with field '%s' of type '%s', instead of type 'FObjectProperty'"),
-							*FieldInstance.GetName(), *FieldInstance.GetClassName());
+							TEXT("ProcessObjectProperty called with field '%s' of type '%s', instead of type 'UObjectProperty'"),
+							*FieldInstance->GetName(), *FieldInstance->GetClass()->GetName());
 
 			SetError(Error);
 		}
@@ -622,7 +612,7 @@ void FVMReflection::ProcessStructProperty()
 {
 	if (!IsPropertyArray() || (bVerifiedFieldType && bSetArrayElement))
 	{
-		FStructProperty* StructProp = FieldInstance.Get<FStructProperty>();
+		const UStructProperty* StructProp = Cast<UStructProperty>(FieldInstance);
 
 		if (StructProp != nullptr && FieldAddress != nullptr)
 		{
@@ -638,8 +628,8 @@ void FVMReflection::ProcessStructProperty()
 			bNextActionMustBeCast = true;
 
 			NextActionError = FString::Printf(
-							TEXT("ProcessStructProperty called with field '%s' of type '%s', instead of type 'FStructProperty'"),
-							*FieldInstance.GetName(), *FieldInstance.GetClassName());
+							TEXT("ProcessStructProperty called with field '%s' of type '%s', instead of type 'UStructProperty'"),
+							*FieldInstance->GetName(), *FieldInstance->GetClass()->GetName());
 		}
 	}
 }
@@ -654,19 +644,20 @@ InType* FVMReflection::GetWritableCast(const TCHAR* InTypeStr, bool bDoingUpCast
 
 	if (CanCastProperty())
 	{
-		if (FieldInstance.IsA(InTypeClass::StaticClass()))
+		if (FieldInstance->IsA(InTypeClass::StaticClass()))
 		{
 			ReturnVal = (InType*)FieldAddress;
 		}
 #if UENUM_REFL
-		else if (FieldInstance.IsA<FEnumProperty>() && FieldInstance.Get<FEnumProperty>()->GetUnderlyingProperty()->IsA(InTypeClass::StaticClass()))
+		else if (FieldInstance->IsA<UEnumProperty>() &&
+					Cast<UEnumProperty>(FieldInstance)->GetUnderlyingProperty()->IsA(InTypeClass::StaticClass()))
 		{
 			ReturnVal = (InType*)FieldAddress;
 		}
 #endif
 		else if (!bDoingUpCast)
 		{
-			FString Error = FString::Printf(TEXT("Tried to cast type '%s' to type '%s'."), *FieldInstance.GetClassName(),
+			FString Error = FString::Printf(TEXT("Tried to cast type '%s' to type '%s'."), *FieldInstance->GetClass()->GetName(),
 						*InTypeClass::StaticClass()->GetName());
 
 			SetCastError(Error);
@@ -695,7 +686,7 @@ InType* FVMReflection::GetWritableCast(const TCHAR* InTypeStr, bool bDoingUpCast
 }
 
 template<typename InType, class InTypeClass>
-InType FVMReflection::GetNumericTypeCast(const TCHAR* InTypeStr, const TArray<FFieldClass*>& SupportedUpCasts)
+InType FVMReflection::GetNumericTypeCast(const TCHAR* InTypeStr, const TArray<UClass*>& SupportedUpCasts)
 {
 	InType ReturnVal = 0;
 	InType* ValuePtr = GetWritableCast<InType, InTypeClass>(InTypeStr, (SupportedUpCasts.Num() > 0));
@@ -710,7 +701,7 @@ InType FVMReflection::GetNumericTypeCast(const TCHAR* InTypeStr, const TArray<FF
 	else if (CanCastProperty())
 	{
 		#define NUMERIC_UPCAST_FIRST(CastType, CastTypeClass) \
-			if (FieldInstance.IsA(CastTypeClass::StaticClass())) \
+			if (FieldInstance->IsA(CastTypeClass::StaticClass())) \
 			{ \
 				if (SupportedUpCasts.Contains(CastTypeClass::StaticClass())) \
 				{ \
@@ -719,7 +710,7 @@ InType FVMReflection::GetNumericTypeCast(const TCHAR* InTypeStr, const TArray<FF
 				else \
 				{ \
 					FString Error = FString::Printf(TEXT("Type '%s' does not support upcasting to type '%s'."), \
-										*FieldInstance.GetClassName(), *InTypeClass::StaticClass()->GetName()); \
+										*FieldInstance->GetClass()->GetName(), *InTypeClass::StaticClass()->GetName()); \
 					SetCastError(Error); \
 				} \
 			}
@@ -727,51 +718,51 @@ InType FVMReflection::GetNumericTypeCast(const TCHAR* InTypeStr, const TArray<FF
 		#define NUMERIC_UPCAST(CastType, CastTypeClass) else NUMERIC_UPCAST_FIRST(CastType, CastTypeClass)
 
 		{
-			NUMERIC_UPCAST_FIRST(uint8, FByteProperty)
-			NUMERIC_UPCAST(uint16, FUInt16Property)
-			NUMERIC_UPCAST(uint32, FUInt32Property)
-			NUMERIC_UPCAST(int8, FInt8Property)
-			NUMERIC_UPCAST(int16, FInt16Property)
-			NUMERIC_UPCAST(int32, FIntProperty)
-			NUMERIC_UPCAST(float, FFloatProperty)
+			NUMERIC_UPCAST_FIRST(uint8, UByteProperty)
+			NUMERIC_UPCAST(uint16, UUInt16Property)
+			NUMERIC_UPCAST(uint32, UUInt32Property)
+			NUMERIC_UPCAST(int8, UInt8Property)
+			NUMERIC_UPCAST(int16, UInt16Property)
+			NUMERIC_UPCAST(int32, UIntProperty)
+			NUMERIC_UPCAST(float, UFloatProperty)
 #if UENUM_REFL
-			else if (FieldInstance.IsA(FEnumProperty::StaticClass()))
+			else if (FieldInstance->IsA(UEnumProperty::StaticClass()))
 			{
-				FEnumProperty* EnumFieldInstance = FieldInstance.Get<FEnumProperty>();
-				FNumericProperty* UnderlyingProp = EnumFieldInstance->GetUnderlyingProperty();
-				const FFieldClass* UnderlyingPropClass = UnderlyingProp->GetClass();
+				const UEnumProperty* EnumFieldInstance = Cast<UEnumProperty>(FieldInstance);
+				const UNumericProperty* UnderlyingProp = EnumFieldInstance->GetUnderlyingProperty();
+				const UClass* UnderlyingPropClass = UnderlyingProp->GetClass();
 
 				if (SupportedUpCasts.Contains(UnderlyingPropClass))
 				{
-					if (UnderlyingPropClass == FByteProperty::StaticClass())
+					if (UnderlyingPropClass == UByteProperty::StaticClass())
 					{
 						ReturnVal = (InType)(GetTypeCast<uint8>(InTypeStr));
 					}
-					else if (UnderlyingPropClass == FUInt16Property::StaticClass())
+					else if (UnderlyingPropClass == UUInt16Property::StaticClass())
 					{
 						ReturnVal = (InType)(GetTypeCast<uint16>(InTypeStr));
 					}
-					else if (UnderlyingPropClass == FUInt32Property::StaticClass())
+					else if (UnderlyingPropClass == UUInt32Property::StaticClass())
 					{
 						ReturnVal = (InType)(GetTypeCast<uint32>(InTypeStr));
 					}
-					else if (UnderlyingPropClass == FUInt64Property::StaticClass())
+					else if (UnderlyingPropClass == UUInt64Property::StaticClass())
 					{
 						ReturnVal = (InType)(GetTypeCast<uint64>(InTypeStr));
 					}
-					else if (UnderlyingPropClass == FInt8Property::StaticClass())
+					else if (UnderlyingPropClass == UInt8Property::StaticClass())
 					{
 						ReturnVal = (InType)(GetTypeCast<int8>(InTypeStr));
 					}
-					else if (UnderlyingPropClass == FInt16Property::StaticClass())
+					else if (UnderlyingPropClass == UInt16Property::StaticClass())
 					{
 						ReturnVal = (InType)(GetTypeCast<int16>(InTypeStr));
 					}
-					else if (UnderlyingPropClass == FIntProperty::StaticClass())
+					else if (UnderlyingPropClass == UIntProperty::StaticClass())
 					{
 						ReturnVal = (InType)(GetTypeCast<int32>(InTypeStr));
 					}
-					else if (UnderlyingPropClass == FInt64Property::StaticClass())
+					else if (UnderlyingPropClass == UInt64Property::StaticClass())
 					{
 						ReturnVal = (InType)(GetTypeCast<int64>(InTypeStr));
 					}
@@ -787,7 +778,7 @@ InType FVMReflection::GetNumericTypeCast(const TCHAR* InTypeStr, const TArray<FF
 				else
 				{
 					FString Error = FString::Printf(TEXT("Type '%s' does not support upcasting to type '%s'."),
-										*FieldInstance.GetClassName(), *InTypeClass::StaticClass()->GetName());
+										*FieldInstance->GetClass()->GetName(), *InTypeClass::StaticClass()->GetName());
 					SetCastError(Error);
 				}
 			}
@@ -795,7 +786,7 @@ InType FVMReflection::GetNumericTypeCast(const TCHAR* InTypeStr, const TArray<FF
 			else
 			{
 				FString Error = FString::Printf(TEXT("No upcast possible from type '%s' to type '%s'."),
-									*FieldInstance.GetClassName(), *InTypeClass::StaticClass()->GetName());
+									*FieldInstance->GetClass()->GetName(), *InTypeClass::StaticClass()->GetName());
 
 				SetCastError(Error);
 			}
@@ -852,7 +843,7 @@ FORCEINLINE InType FVMReflection::GetTypeCast(const TCHAR* InTypeStr)
  * Implements a pointer cast operator (can't figure out how to do this with just the template)
  *
  * @param InType		The type being cast to
- * @param InTypeClass	The FProperty class being cast to
+ * @param InTypeClass	The UProperty class being cast to
  */
 #define IMPLEMENT_GENERIC_POINTER_CAST(InType, InTypeClass) \
 	FVMReflection::operator InType*() \
@@ -866,7 +857,7 @@ FORCEINLINE InType FVMReflection::GetTypeCast(const TCHAR* InTypeStr)
  * Implements a readonly cast operator, for a numeric type
  *
  * @param InType		The type being cast to
- * @param InTypeClass	The FProperty class being cast to (not used here, but keep for clarity/consistency)
+ * @param InTypeClass	The UProperty class being cast to (not used here, but keep for clarity/consistency)
  */
 #define IMPLEMENT_NUMERIC_CAST_BASIC(InType, InTypeClass) \
 	FVMReflection::operator InType() \
@@ -878,74 +869,74 @@ FORCEINLINE InType FVMReflection::GetTypeCast(const TCHAR* InTypeStr)
  * Implements a readonly cast operator, for a numeric type, with support for additional upcast types
  *
  * @param InType				The type being cast to
- * @param InTypeClass			The FProperty class being cast to
+ * @param InTypeClass			The UProperty class being cast to
  * @param InSupportedUpCasts	A TArrayBuilder listing additional supported cast types
  */
 #define IMPLEMENT_NUMERIC_CAST(InType, InTypeClass, InSupportedUpCasts) \
 	FVMReflection::operator InType() \
 	{ \
-		static const TArray<FFieldClass*> InType##InTypeClass##UpCasts = InSupportedUpCasts; \
+		static const TArray<UClass*> InType##InTypeClass##UpCasts = InSupportedUpCasts; \
 		return GetNumericTypeCast<InType, InTypeClass>(TEXT(#InType), InType##InTypeClass##UpCasts); \
 	}
 
 // Implement numeric pointer casts
-IMPLEMENT_NUMERIC_POINTER_CAST(uint8, FByteProperty);
-IMPLEMENT_NUMERIC_POINTER_CAST(uint16, FUInt16Property);
-IMPLEMENT_NUMERIC_POINTER_CAST(uint32, FUInt32Property);
-IMPLEMENT_NUMERIC_POINTER_CAST(uint64, FUInt64Property);
-IMPLEMENT_NUMERIC_POINTER_CAST(int8, FInt8Property);
-IMPLEMENT_NUMERIC_POINTER_CAST(int16, FInt16Property);
-IMPLEMENT_NUMERIC_POINTER_CAST(int32, FIntProperty);
-IMPLEMENT_NUMERIC_POINTER_CAST(int64, FInt64Property);
-IMPLEMENT_NUMERIC_POINTER_CAST(float, FFloatProperty);
-IMPLEMENT_NUMERIC_POINTER_CAST(double, FDoubleProperty);
+IMPLEMENT_NUMERIC_POINTER_CAST(uint8, UByteProperty);
+IMPLEMENT_NUMERIC_POINTER_CAST(uint16, UUInt16Property);
+IMPLEMENT_NUMERIC_POINTER_CAST(uint32, UUInt32Property);
+IMPLEMENT_NUMERIC_POINTER_CAST(uint64, UUInt64Property);
+IMPLEMENT_NUMERIC_POINTER_CAST(int8, UInt8Property);
+IMPLEMENT_NUMERIC_POINTER_CAST(int16, UInt16Property);
+IMPLEMENT_NUMERIC_POINTER_CAST(int32, UIntProperty);
+IMPLEMENT_NUMERIC_POINTER_CAST(int64, UInt64Property);
+IMPLEMENT_NUMERIC_POINTER_CAST(float, UFloatProperty);
+IMPLEMENT_NUMERIC_POINTER_CAST(double, UDoubleProperty);
 
 
 // Implement readonly numeric casts
-IMPLEMENT_NUMERIC_CAST_BASIC(uint8, FByteProperty);
+IMPLEMENT_NUMERIC_CAST_BASIC(uint8, UByteProperty);
 
-IMPLEMENT_NUMERIC_CAST(uint16, FUInt16Property, TArrayBuilder<FFieldClass*>()
-													.Add(FByteProperty::StaticClass()));
+IMPLEMENT_NUMERIC_CAST(uint16, UUInt16Property, TArrayBuilder<UClass*>()
+													.Add(UByteProperty::StaticClass()));
 
-IMPLEMENT_NUMERIC_CAST(uint32, FUInt32Property, TArrayBuilder<FFieldClass*>()
-													.Add(FByteProperty::StaticClass())
-													.Add(FUInt16Property::StaticClass()));
+IMPLEMENT_NUMERIC_CAST(uint32, UUInt32Property, TArrayBuilder<UClass*>()
+													.Add(UByteProperty::StaticClass())
+													.Add(UUInt16Property::StaticClass()));
 
-IMPLEMENT_NUMERIC_CAST(uint64, FUInt64Property, TArrayBuilder<FFieldClass*>()
-													.Add(FByteProperty::StaticClass())
-													.Add(FUInt16Property::StaticClass())
-													.Add(FUInt32Property::StaticClass()));
+IMPLEMENT_NUMERIC_CAST(uint64, UUInt64Property, TArrayBuilder<UClass*>()
+													.Add(UByteProperty::StaticClass())
+													.Add(UUInt16Property::StaticClass())
+													.Add(UUInt32Property::StaticClass()));
 
-IMPLEMENT_NUMERIC_CAST_BASIC(int8, FInt8Property);
+IMPLEMENT_NUMERIC_CAST_BASIC(int8, UInt8Property);
 
-IMPLEMENT_NUMERIC_CAST(int16, FInt16Property, TArrayBuilder<FFieldClass*>()
-													.Add(FInt8Property::StaticClass()));
+IMPLEMENT_NUMERIC_CAST(int16, UInt16Property, TArrayBuilder<UClass*>()
+													.Add(UInt8Property::StaticClass()));
 
-IMPLEMENT_NUMERIC_CAST(int32, FIntProperty, TArrayBuilder<FFieldClass*>()
-													.Add(FInt8Property::StaticClass())
-													.Add(FInt16Property::StaticClass()));
+IMPLEMENT_NUMERIC_CAST(int32, UIntProperty, TArrayBuilder<UClass*>()
+													.Add(UInt8Property::StaticClass())
+													.Add(UInt16Property::StaticClass()));
 
-IMPLEMENT_NUMERIC_CAST(int64, FInt64Property, TArrayBuilder<FFieldClass*>()
-													.Add(FInt8Property::StaticClass())
-													.Add(FInt16Property::StaticClass())
-													.Add(FIntProperty::StaticClass()));
+IMPLEMENT_NUMERIC_CAST(int64, UInt64Property, TArrayBuilder<UClass*>()
+													.Add(UInt8Property::StaticClass())
+													.Add(UInt16Property::StaticClass())
+													.Add(UIntProperty::StaticClass()));
 
-IMPLEMENT_NUMERIC_CAST_BASIC(float, FFloatProperty);
+IMPLEMENT_NUMERIC_CAST_BASIC(float, UFloatProperty);
 
-IMPLEMENT_NUMERIC_CAST(double, FDoubleProperty, TArrayBuilder<FFieldClass*>()
-													.Add(FFloatProperty::StaticClass()));
+IMPLEMENT_NUMERIC_CAST(double, UDoubleProperty, TArrayBuilder<UClass*>()
+													.Add(UFloatProperty::StaticClass()));
 
 
 // Implement generic pointer casts
-IMPLEMENT_GENERIC_POINTER_CAST(FName, FNameProperty);
-IMPLEMENT_GENERIC_POINTER_CAST(FString, FStrProperty);
-IMPLEMENT_GENERIC_POINTER_CAST(FText, FTextProperty);
+IMPLEMENT_GENERIC_POINTER_CAST(FName, UNameProperty);
+IMPLEMENT_GENERIC_POINTER_CAST(FString, UStrProperty);
+IMPLEMENT_GENERIC_POINTER_CAST(FText, UTextProperty);
 
 
 FVMReflection::operator bool()
 {
 	bool bReturnVal = false;
-	FBoolProperty* BoolProp = FieldInstance.Get<FBoolProperty>();
+	const UBoolProperty* BoolProp = Cast<UBoolProperty>(FieldInstance);
 
 	AddCastHistory(TEXT("(bool)"));
 
@@ -957,8 +948,8 @@ FVMReflection::operator bool()
 		}
 		else
 		{
-			FString Error = FString::Printf(TEXT("FieldInstance is of type '%s', not 'FBoolProperty'."),
-								*FieldInstance.GetClassName());
+			FString Error = FString::Printf(TEXT("FieldInstance is of type '%s', not 'UBoolProperty'."),
+								*FieldInstance->GetClass()->GetName());
 
 			SetCastError(Error);
 		}
@@ -994,7 +985,7 @@ FVMReflection::operator FString()
 {
 	FString ReturnVal = TEXT("");
 
-	if (const FEnumProperty* EnumProp = FieldInstance.Get<FEnumProperty>())
+	if (const UEnumProperty* EnumProp = Cast<UEnumProperty>(FieldInstance))
 	{
 		UEnum* TargetEnum = EnumProp->GetEnum();
 		uint8 EnumValue = (uint8)(*this);
@@ -1003,7 +994,7 @@ FVMReflection::operator FString()
 
 		ReturnVal = TargetEnum->GetNameStringByValue(EnumValue);
 	}
-	else if (const FByteProperty* ByteProp = FieldInstance.Get<FByteProperty>())
+	else if (const UByteProperty* ByteProp = Cast<UByteProperty>(FieldInstance))
 	{
 		UEnum* TargetEnum = ByteProp->Enum;
 		uint8 EnumValue = (uint8)(*this);
@@ -1056,7 +1047,7 @@ FVMReflection::operator UObject**()
 
 	AddCastHistory(TEXT("(UObject**)"));
 
-	if (CanCastObject<FObjectProperty>())
+	if (CanCastObject<UObjectProperty>())
 	{
 		if (FieldAddress != nullptr)
 		{
@@ -1081,7 +1072,7 @@ FVMReflection::operator UObject*()
 
 	AddCastHistory(TEXT("(UObject*)"));
 
-	if (CanCastObject<FObjectProperty>())
+	if (CanCastObject<UObjectProperty>())
 	{
 		ReturnVal = (UObject*)BaseAddress;
 	}
@@ -1099,7 +1090,7 @@ FVMReflection::operator FSoftObjectPtr*()
 
 	AddCastHistory(TEXT("(FSoftObjectPtr*)"));
 
-	if (CanCastObject<FSoftObjectProperty>())
+	if (CanCastObject<USoftObjectProperty>())
 	{
 		ReturnVal = (FSoftObjectPtr*)FieldAddress;
 	}
@@ -1153,7 +1144,7 @@ FVMReflection::operator TSharedPtr<FScriptArrayHelper>()
 
 	if (ScriptArray != NULL)
 	{
-		ReturnVal = MakeShareable(new FScriptArrayHelper(FieldInstance.Get<FArrayProperty>(), ScriptArray));
+		ReturnVal = MakeShareable(new FScriptArrayHelper(Cast<UArrayProperty>(FieldInstance), ScriptArray));
 	}
 	else
 	{
@@ -1192,7 +1183,7 @@ FVMReflection::operator void*()
 
 FVMReflection& FVMReflection::operator = (bool Value)
 {
-	FBoolProperty* BoolProp = FieldInstance.Get<FBoolProperty>();
+	const UBoolProperty* BoolProp = Cast<UBoolProperty>(FieldInstance);
 
 	AddHistory(Value ? TEXT(" = true") : TEXT(" = false"));
 
@@ -1204,8 +1195,8 @@ FVMReflection& FVMReflection::operator = (bool Value)
 		}
 		else
 		{
-			FString Error = FString::Printf(TEXT("FieldInstance is of type '%s', not 'FBoolProperty'."),
-								*FieldInstance.GetClassName());
+			FString Error = FString::Printf(TEXT("FieldInstance is of type '%s', not 'UBoolProperty'."),
+								*FieldInstance->GetClass()->GetName());
 
 			SetError(Error);
 		}
@@ -1232,7 +1223,7 @@ FVMReflection& FVMReflection::operator = (UObject* Value)
 
 FVMReflection& FVMReflection::operator = (TCHAR* Value)
 {
-	if (FEnumProperty* EnumProp = FieldInstance.Get<FEnumProperty>())
+	if (const UEnumProperty* EnumProp = Cast<UEnumProperty>(FieldInstance))
 	{
 		UEnum* TargetEnum = EnumProp->GetEnum();
 		int64 EnumIdx = (int64)TargetEnum->GetIndexByName(Value);
@@ -1246,7 +1237,7 @@ FVMReflection& FVMReflection::operator = (TCHAR* Value)
 			SetError(FString::Printf(TEXT("Name '%s' is not a valid name within enum '%s'."), Value, *TargetEnum->GetName()));
 		}
 	}
-	else if (FByteProperty* ByteProp = FieldInstance.Get<FByteProperty>())
+	else if (const UByteProperty* ByteProp = Cast<UByteProperty>(FieldInstance))
 	{
 		UEnum* TargetEnum = ByteProp->Enum;
 		int8 EnumIdx = (int8)TargetEnum->GetIndexByName(Value);
@@ -1260,7 +1251,7 @@ FVMReflection& FVMReflection::operator = (TCHAR* Value)
 			SetError(FString::Printf(TEXT("Name '%s' is not a valid name within enum '%s'."), Value, *TargetEnum->GetName()));
 		}
 	}
-	else if (FSoftObjectProperty* SoftObjProp = FieldInstance.Get<FSoftObjectProperty>())
+	else if (const USoftObjectProperty* SoftObjProp = Cast<USoftObjectProperty>(FieldInstance))
 	{
 		FSoftObjectPtr* SoftObjPtr = (FSoftObjectPtr*)(*this);
 
@@ -1269,7 +1260,7 @@ FVMReflection& FVMReflection::operator = (TCHAR* Value)
 			*SoftObjPtr = FSoftObjectPath(Value);
 		}
 	}
-	else if (FNameProperty* NameProp = FieldInstance.Get<FNameProperty>())
+	else if (const UNameProperty* NameProp = Cast<UNameProperty>(FieldInstance))
 	{
 		FName* TargetName = (FName*)(*this);
 
@@ -1296,7 +1287,7 @@ TValueOrError<FString, FString> FVMReflection::GetValueAsString()
 {
 	TValueOrError<FString, FString> ReturnVal = MakeError(FString(TEXT("")));
 
-	if (CanCastObject<FObjectProperty>())
+	if (CanCastObject<UObjectProperty>())
 	{
 		ReturnVal = MakeValue(FString(BaseAddress != nullptr ? ((UObject*)BaseAddress)->GetFullName() : TEXT("nullptr")));
 	}
@@ -1305,7 +1296,7 @@ TValueOrError<FString, FString> FVMReflection::GetValueAsString()
 	// @todo #JohnB: Revisit this, and see if this code path is getting hit
 	else if (CanCastStruct())
 	{
-		const UScriptStruct* Struct = Cast<UScriptStruct>(FieldInstance.ToUObject());
+		const UScriptStruct* Struct = Cast<UScriptStruct>(FieldInstance);
 		UObject* Obj = (UObject*)BaseAddress;
 
 		if (Struct != nullptr && Obj != nullptr)
@@ -1316,10 +1307,10 @@ TValueOrError<FString, FString> FVMReflection::GetValueAsString()
 
 			ReturnVal = MakeValue(Result);
 		}
-		else if (Cast<UStruct>(FieldInstance.ToUObject()) != nullptr && Obj != nullptr)
+		else if (Cast<UStruct>(FieldInstance) != nullptr && Obj != nullptr)
 		{
 			ReturnVal = MakeError(FString::Printf(TEXT("(Got UStruct type '%s' when expecting UScriptStruct, need to add support)"),
-													*FieldInstance.GetClassName()));
+													*FieldInstance->GetClass()->GetName()));
 		}
 		else
 		{
@@ -1330,7 +1321,7 @@ TValueOrError<FString, FString> FVMReflection::GetValueAsString()
 	{
 		// @todo #JohnB: Static arrays
 
-		FProperty* Prop = FieldInstance.Get<FProperty>();
+		const UProperty* Prop = Cast<UProperty>(FieldInstance);
 		UObject* Obj = (UObject*)BaseAddress;
 
 		if (Prop != nullptr && Obj != nullptr)
@@ -1343,7 +1334,7 @@ TValueOrError<FString, FString> FVMReflection::GetValueAsString()
 		}
 		else
 		{
-			if (CastField<FArrayProperty>(Prop) != nullptr)
+			if (Cast<UArrayProperty>(Prop) != nullptr)
 			{
 				ReturnVal = MakeValue(FString(TEXT("(nullptr)")));
 			}
@@ -1399,7 +1390,7 @@ void FVMReflection::DebugDump()
 	UE_LOG(LogUnitTest, Log, TEXT("     - BaseAddress: %s"), (BaseAddress != NULL ? TEXT("Valid") : TEXT("NULL")));
 
 	UE_LOG(LogUnitTest, Log, TEXT("     - FieldInstance: %s"),
-			(FieldInstance.IsValid() ? *FieldInstance.GetFullName() : TEXT("NULL")));
+			(FieldInstance != NULL ? *FieldInstance->GetFullName() : TEXT("NULL")));
 	UE_LOG(LogUnitTest, Log, TEXT("     - FieldAddress: %s"), (FieldAddress != NULL ? TEXT("Valid") : TEXT("NULL")));
 	UE_LOG(LogUnitTest, Log, TEXT("     - bVerifiedFieldType: %i"), (int32)bVerifiedFieldType);
 	UE_LOG(LogUnitTest, Log, TEXT("     - bSkipFieldVerification: %i"), (int32)bSkipFieldVerification);
@@ -1510,7 +1501,7 @@ FString NUTUtilRefl::FunctionParmsToString(UFunction* InFunction, void* Parms)
 {
 	FString ReturnVal = TEXT("");
 
-	for (TFieldIterator<FProperty> It(InFunction); It && (It->PropertyFlags & (CPF_Parm|CPF_ReturnParm)) == CPF_Parm; ++It)
+	for (TFieldIterator<UProperty> It(InFunction); It && (It->PropertyFlags & (CPF_Parm|CPF_ReturnParm)) == CPF_Parm; ++It)
 	{
 		FString CurPropText;
 

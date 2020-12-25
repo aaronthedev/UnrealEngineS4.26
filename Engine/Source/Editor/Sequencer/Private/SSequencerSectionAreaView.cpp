@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SSequencerSectionAreaView.h"
 #include "Sequencer.h"
@@ -100,8 +100,7 @@ void SSequencerSectionAreaView::GenerateSectionWidgets()
 			Children.Add( 
 				SNew( SSequencerSection, SectionAreaNode.ToSharedRef(), SectionIndex ) 
 				.Visibility( this, &SSequencerSectionAreaView::GetSectionVisibility, Sections[SectionIndex]->GetSectionObject() )
-				.IsEnabled(this, &SSequencerSectionAreaView::GetSectionEnabled, Sections[SectionIndex])
-				.ToolTipText(this, &SSequencerSectionAreaView::GetSectionToolTip, Sections[SectionIndex]));
+				.IsEnabled(this, &SSequencerSectionAreaView::GetSectionEnabled, Sections[SectionIndex]));
 		}
 	}
 }
@@ -114,12 +113,6 @@ EVisibility SSequencerSectionAreaView::GetSectionVisibility(UMovieSceneSection* 
 bool SSequencerSectionAreaView::GetSectionEnabled(TSharedRef<ISequencerSection> InSequencerSection) const
 {
 	return !InSequencerSection->IsReadOnly();
-}
-
-
-FText SSequencerSectionAreaView::GetSectionToolTip(TSharedRef<ISequencerSection> InSequencerSection) const
-{
-	return InSequencerSection->GetSectionToolTip();
 }
 
 

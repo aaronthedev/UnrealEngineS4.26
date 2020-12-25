@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,6 +7,7 @@
 #include "IMagicLeapCameraPlugin.h"
 #include "MagicLeapCameraRunnable.h"
 #include "MagicLeapCameraTypes.h"
+#include "MagicLeapPluginUtil.h"
 #include "AppEventHandler.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogMagicLeapCamera, Verbose, All);
@@ -32,23 +33,17 @@ public:
 	bool IsCapturing() const;
 
 private:
-	enum class ECaptureState : uint32
-	{
-		Idle,
-		Connecting,
-		Disconnecting,
-		BeginningCapture,
-		Capturing,
-		EndingCapture,
-	};
+	bool TryPushNewCaptureTask(FCameraTask::EType InTaskType);
+	void OnAppPause();
 
+	FMagicLeapAPISetup APISetup;
 	FTickerDelegate TickDelegate;
 	FDelegateHandle TickDelegateHandle;
 	uint32 UserCount;
-	ECaptureState CaptureState;
-	float MinVidCaptureTimer;
 	MagicLeap::IAppEventHandler AppEventHandler;
 	FCameraRunnable* Runnable;
+	FCameraTask::EType CurrentTaskType;
+	FCameraTask::EType PrevTaskType;
 	FMagicLeapCameraConnect OnCameraConnect;
 	FMagicLeapCameraDisconnect OnCameraDisconnect;
 	FMagicLeapCameraCaptureImgToFileMulti OnCaptureImgToFile;
@@ -56,10 +51,6 @@ private:
 	FMagicLeapCameraStartRecordingMulti OnStartRecording;
 	FMagicLeapCameraStopRecordingMulti OnStopRecording;
 	FMagicLeapCameraLogMessageMulti OnLogMessage;
-
-	bool TryPushNewCaptureTask(FCameraTask::EType InTaskType);
-	void OnAppPause();
-	const TCHAR* CaptureStateToString(ECaptureState InCaptureState);
 };
 
 inline FMagicLeapCameraPlugin& GetMagicLeapCameraPlugin()

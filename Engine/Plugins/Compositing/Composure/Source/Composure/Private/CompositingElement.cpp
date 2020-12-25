@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CompositingElement.h"
 #include "CompositingElements/CompElementRenderTargetPool.h"
@@ -185,7 +185,7 @@ static UTexture* CompositingElement_Impl::FindLastRenderResult(const TArray<T*>&
 	for (int32 PassIndex = PassList.Num() - 1; PassIndex >= 0; --PassIndex)
 	{
 		T* Pass = PassList[PassIndex];
-		if (Pass && Pass->IsPassEnabled())
+		if (Pass && Pass->bEnabled)
 		{
 			UTexture* OldResult = nullptr;				
 			const bool bFound = ResultLookupTable.FindNamedPassResult(Pass->PassName, /*bSearchLinkedTables =*/false, OldResult);
@@ -238,7 +238,7 @@ ACompositingElement::ACompositingElement(const FObjectInitializer& ObjectInitial
 #endif
 }
 
-void ACompositingElement::SetElementName(const FName NewName)
+void ACompositingElement::SetCompIdName(const FName NewName)
 {
 	CompShotIdName = NewName;
 #if WITH_EDITOR
@@ -249,7 +249,7 @@ void ACompositingElement::SetElementName(const FName NewName)
 bool ACompositingElement::AttachAsChildLayer(ACompositingElement* Child)
 {
 	bool bModified = false;
-	if (Child && Child->Parent != this)
+	if (Child->Parent != this)
 	{
 		// @TODO-BADGERCOMP: handle shared layers
 		if (Child->Parent)
@@ -386,127 +386,29 @@ UCompositingElementPass* ACompositingElement::AddNewPass(FName PassName, TSubcla
 	if (PassType)
 	{
 		NewPass = FCompositingElementPassUtils::NewInstancedSubObj<UCompositingElementPass>(/*Outer =*/this, PassType);
-		if (NewPass)
-		{
-			NewPass->PassName = PassName;
+		NewPass->PassName = PassName;
 #if WITH_EDITOR
-			NewPass->ConstructionMethod = ConstructedBy;
-#endif	
-			if (UCompositingElementInput* InputPass = Cast<UCompositingElementInput>(NewPass))
-			{
-				UserConstructedInputs.Add(InputPass, ConstructedBy);
-				RefreshInternalInputsList();
-			}
-			else if (UCompositingElementTransform* TransformPass = Cast<UCompositingElementTransform>(NewPass))
-			{
-				UserConstructedTransforms.Add(TransformPass, ConstructedBy);
-				RefreshInternalTransformsList();
-			}
-			else if (UCompositingElementOutput* OutputPass = Cast<UCompositingElementOutput>(NewPass))
-			{
-				UserConstructedOutputs.Add(OutputPass, ConstructedBy);
-				RefreshInternalOutputsList();
-			}
-		}
-	}
-	return NewPass;
-}
+		NewPass->ConstructionMethod = ConstructedBy;
+#endif
 
-UCompositingElementInput* ACompositingElement::CreateNewInputPass(FName PassName, TSubclassOf<UCompositingElementInput> InputType)
-{
-	UCompositingElementInput* NewPass = nullptr;
-	if (InputType)
-	{
-		NewPass = FCompositingElementPassUtils::NewInstancedSubObj<UCompositingElementInput>(this, InputType);
-		if (NewPass)
+		if (UCompositingElementInput* InputPass = Cast<UCompositingElementInput>(NewPass))
 		{
-			NewPass->PassName = PassName;
-			Inputs.Add(NewPass);
+			UserConstructedInputs.Add(InputPass, ConstructedBy);
 			RefreshInternalInputsList();
 		}
-	}
-	return NewPass;
-}
-
-
-UCompositingElementTransform* ACompositingElement::CreateNewTransformPass(FName PassName, TSubclassOf<UCompositingElementTransform> TransformType)
-{
-	UCompositingElementTransform* NewPass = nullptr;
-	if (TransformType)
-	{
-		NewPass = FCompositingElementPassUtils::NewInstancedSubObj<UCompositingElementTransform>(this, TransformType);
-		if (NewPass)
+		else if (UCompositingElementTransform* TransformPass = Cast<UCompositingElementTransform>(NewPass))
 		{
-			NewPass->PassName = PassName;
-			TransformPasses.Add(NewPass);
+			UserConstructedTransforms.Add(TransformPass, ConstructedBy);
 			RefreshInternalTransformsList();
 		}
-	}
-	return NewPass;
-}
-
-UCompositingElementOutput* ACompositingElement::CreateNewOutputPass(FName PassName, TSubclassOf<UCompositingElementOutput> OutputType)
-{
-	UCompositingElementOutput* NewPass = nullptr;
-	if (OutputType)
-	{
-		NewPass = FCompositingElementPassUtils::NewInstancedSubObj<UCompositingElementOutput>(this, OutputType);
-		if (NewPass)
+		else if (UCompositingElementOutput* OutputPass = Cast<UCompositingElementOutput>(NewPass))
 		{
-			NewPass->PassName = PassName;
-			Outputs.Add(NewPass);
+			UserConstructedOutputs.Add(OutputPass, ConstructedBy);
 			RefreshInternalOutputsList();
 		}
 	}
 	return NewPass;
 }
-
-
-bool ACompositingElement::DeletePass(UCompositingElementPass* PassToDelete)
-{	
-	bool Output = false;
-	if (UCompositingElementInput* InputPass = Cast<UCompositingElementInput>(PassToDelete))
-	{
-		for (UCompositingElementInput* Pass : Inputs)
-		{
-			if (Pass && Pass->PassName.IsEqual(PassToDelete->PassName))
-			{
-				Inputs.RemoveSingle(Pass);
-				Output = true;
-				RefreshInternalInputsList();
-				break;
-			}
-		}
-	}
-	else if (UCompositingElementOutput* OutputPass = Cast<UCompositingElementOutput>(PassToDelete))
-	{
-		for (UCompositingElementOutput* Pass : Outputs)
-		{
-			if (Pass && Pass->PassName.IsEqual(PassToDelete->PassName))
-			{
-				Outputs.RemoveSingle(Pass);
-				Output = true;
-				RefreshInternalOutputsList();
-				break;
-			}
-		}
-	}
-	else if (UCompositingElementTransform* TransPass = Cast<UCompositingElementTransform>(PassToDelete))
-	{
-		for (UCompositingElementTransform* Pass : TransformPasses)
-		{
-			if (Pass && Pass->PassName.IsEqual(PassToDelete->PassName))
-			{
-				TransformPasses.RemoveSingle(Pass);
-				Output = true;
-				RefreshInternalTransformsList();
-				break;
-			}
-		}
-	}
-	return Output;
-}
-
 
 bool ACompositingElement::RemovePass(UCompositingElementPass* ElementPass)
 {
@@ -719,25 +621,6 @@ ACameraActor* ACompositingElement::FindTargetCamera() const
 	return TargetCameraActor.Get();
 }
 
-void ACompositingElement::SetTargetCamera(ACameraActor* NewCameraActor)
-{
-	if (CameraSource == ESceneCameraLinkType::Override)
-	{
-		//Override mode has the highest priority in using the camera. Should check before going to the parent. 
-		TargetCameraActor = NewCameraActor;
-	}
-	else if (Parent)
-	{
-		Parent->SetTargetCamera(NewCameraActor);
-	}
-	else 
-	{
-		//Base case for the recursive calls. Current element does not have parent and is not in override mode.
-		TargetCameraActor = NewCameraActor;
-	}
-}
-
-
 UCompositingElementInput* ACompositingElement::FindInputPass(TSubclassOf<UCompositingElementInput> InputType, UTexture*& PassResult, FName OptionalPassName)
 {
 	UCompositingElementInput* FoundInput = nullptr;
@@ -903,11 +786,7 @@ void ACompositingElement::PostLoad()
 	const int32 ComposureVer = GetLinkerCustomVersion(FComposureCustomVersion::GUID);
 	PostLoadCompatUpgrade(ComposureVer);
 
-	// Note that RefreshAllInternalPassLists is not called here because the refresh can call Reset, which is not allowed in PostLoad.
-}
 
-void ACompositingElement::BeginPlay()
-{
 	RefreshAllInternalPassLists();
 }
 
@@ -1156,7 +1035,7 @@ void ACompositingElement::GenerateInputs()
 				const ETargetUsageFlags UsageTags = bIsIntermediate ? (ETargetUsageFlags::USAGE_Input | NextIntermediateTrackingTag) : ETargetUsageFlags::USAGE_Input;
 
 				UTexture* Result = nullptr;
-				if (Input->IsPassEnabled())
+				if (Input->bEnabled)
 				{
 					FScopedTargetPoolTagAddendum IntermediateTagger((int32)UsageTags, SharedTargetPool);
 					Result = Input->GenerateInput(SharedTargetPool);
@@ -1198,7 +1077,7 @@ void ACompositingElement::ApplyTransforms(FInheritedTargetPool& SharedTargetPool
 				const ETargetUsageFlags UsageTags = bIsIntermediate ? (ETargetUsageFlags::USAGE_Transform | NextIntermediateTrackingTag) : ETargetUsageFlags::USAGE_Transform;
 
 				UTexture* Result = nullptr;
-				if (TransformPass->IsPassEnabled())
+				if (TransformPass->bEnabled)
 				{
 					FScopedTargetPoolTagAddendum IntermediateTagger((int32)UsageTags, SharedTargetPool);
 					Result = TransformPass->ApplyTransform(PreviousPass, &PassResultsTable, PostProcessProxy, TargetCam, SharedTargetPool);
@@ -1239,7 +1118,7 @@ void ACompositingElement::RelayOutputs(const FInheritedTargetPool& SharedTargetP
 	}
 
 	UCompositingElementTransform* PreviewTransforPass = GetPreviewPass();
-	if (PreviewTransforPass && PreviewTransforPass->IsPassEnabled() && IsPreviewing())
+	if (PreviewTransforPass && PreviewTransforPass->bEnabled && IsPreviewing())
 	{
 		ACameraActor* TargetCamera = FindTargetCamera();
 		if (ColorPickerDisplayImage)
@@ -1263,7 +1142,7 @@ void ACompositingElement::RelayOutputs(const FInheritedTargetPool& SharedTargetP
 	{
 		for (UCompositingElementOutput* Output : GetInternalOutputsList())
 		{
-			if (Output && Output->IsPassEnabled())
+			if (Output && Output->bEnabled)
 			{
 				Output->RelayOutput(ElementRenderResult, PostProcessProxy, SharedTargetPool);
 			}
@@ -1362,22 +1241,4 @@ void ACompositingElement::IncIntermediateTrackingTag()
 		RenderTargetPool->ReleaseTaggedTargets((int32)NextIntermediateTrackingTag, this);
 	}
 }
-
-
-void ACompositingElement::SetAutoRunChildrenAndSelf(bool bAutoRunChildAndSelf)
-{
-	TArray<ACompositingElement*> FoundChildren = GetChildElements();
-	for (ACompositingElement* Child : FoundChildren)
-	{
-		if (Child)
-		{
-			Child->SetAutoRunChildrenAndSelf(bAutoRunChildAndSelf);
-		}
-	}
-
-	//Enable/Disable the auto running rendering of current composure element
-	SetAutoRun(bAutoRunChildAndSelf);
-	bAutoRunChildElementsAndSelf = bAutoRunChildAndSelf;
-}
-
 

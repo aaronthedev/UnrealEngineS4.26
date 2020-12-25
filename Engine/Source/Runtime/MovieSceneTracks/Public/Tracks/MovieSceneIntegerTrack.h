@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,14 +6,13 @@
 #include "UObject/ObjectMacros.h"
 #include "MovieScene.h"
 #include "Tracks/MovieScenePropertyTrack.h"
-#include "Compilation/IMovieSceneTrackTemplateProducer.h"
 #include "MovieSceneIntegerTrack.generated.h"
 
 /**
  * Handles manipulation of integer properties in a movie scene
  */
 UCLASS()
-class MOVIESCENETRACKS_API UMovieSceneIntegerTrack : public UMovieScenePropertyTrack, public IMovieSceneTrackTemplateProducer
+class MOVIESCENETRACKS_API UMovieSceneIntegerTrack : public UMovieScenePropertyTrack
 {
 	GENERATED_UCLASS_BODY()
 

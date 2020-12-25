@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MeshMergeEditorExtensions.h"
 #include "StaticMeshEditorModule.h"
@@ -17,11 +17,10 @@
 #include "MeshMergeUtilities.h"
 #include "Modules/ModuleManager.h"
 #include "MeshMergeModule.h"
-#include "ToolMenus.h"
-#include "SkeletalMeshToolMenuContext.h"
 
 #define LOCTEXT_NAMESPACE "MeshMergeEditorExtensions"
 
+FDelegateHandle FMeshMergeEditorExtensions::SkeletalMeshEditorExtenderHandle;
 FDelegateHandle FMeshMergeEditorExtensions::StaticMeshEditorExtenderHandle;
 
 void FMeshMergeEditorExtensions::OnModulesChanged(FName InModuleName, EModuleChangeReason InChangeReason)
@@ -29,7 +28,11 @@ void FMeshMergeEditorExtensions::OnModulesChanged(FName InModuleName, EModuleCha
 	// If one of the modules we are interested in is loaded apply editor extensions
 	if (InChangeReason == EModuleChangeReason::ModuleLoaded)
 	{		
-		if (InModuleName == "StaticMeshEditor")
+		if (InModuleName == "SkeletalMeshEditor")
+		{
+			AddSkeletalMeshEditorToolbarExtender();
+		}
+		else if (InModuleName == "StaticMeshEditor")
 		{
 			AddStaticMeshEditorToolbarExtender();
 		}
@@ -38,6 +41,7 @@ void FMeshMergeEditorExtensions::OnModulesChanged(FName InModuleName, EModuleCha
 
 void FMeshMergeEditorExtensions::RemoveExtenders()
 {
+	RemoveSkeletalMeshEditorToolbarExtender();
 	RemoveStaticMeshEditorToolbarExtender();
 }
 
@@ -73,7 +77,7 @@ void FMeshMergeEditorExtensions::RemoveStaticMeshEditorToolbarExtender()
 
 	if (StaticMeshEditorModule)
 	{
-		StaticMeshEditorModule->GetToolBarExtensibilityManager()->GetExtenderDelegates().RemoveAll([=](const auto& In) { return In.GetHandle() == StaticMeshEditorExtenderHandle; });
+		StaticMeshEditorModule->GetToolBarExtensibilityManager()->GetExtenderDelegates().RemoveAll([=](const auto& In) { return In.GetHandle() == SkeletalMeshEditorExtenderHandle; });
 	}
 }
 
@@ -92,30 +96,57 @@ void FMeshMergeEditorExtensions::HandleAddStaticMeshActionExtenderToToolbar(FToo
 	);
 }
 
-void FMeshMergeEditorExtensions::RegisterMenus()
+void FMeshMergeEditorExtensions::AddSkeletalMeshEditorToolbarExtender()
 {
+	ISkeletalMeshEditorModule& SkeletalMeshEditorModule = FModuleManager::Get().LoadModuleChecked<ISkeletalMeshEditorModule>("SkeletalMeshEditor");
+	auto& ToolbarExtenders = SkeletalMeshEditorModule.GetAllSkeletalMeshEditorToolbarExtenders();
+
+	ToolbarExtenders.Add(ISkeletalMeshEditorModule::FSkeletalMeshEditorToolbarExtender::CreateStatic(&FMeshMergeEditorExtensions::GetSkeletalMeshEditorToolbarExtender));
+	SkeletalMeshEditorExtenderHandle = ToolbarExtenders.Last().GetHandle();
+}
+
+void FMeshMergeEditorExtensions::RemoveSkeletalMeshEditorToolbarExtender()
+{
+	ISkeletalMeshEditorModule* SkeletalMeshEditorModule = FModuleManager::Get().GetModulePtr<ISkeletalMeshEditorModule>("SkeletalMeshEditor");
+	if (SkeletalMeshEditorModule)
 	{
-		UToolMenu* Toolbar = UToolMenus::Get()->ExtendMenu("AssetEditor.SkeletalMeshEditor.ToolBar");
-		FToolMenuSection& Section = Toolbar->FindOrAddSection("SkeletalMesh");
-		Section.AddEntry(FToolMenuEntry::InitToolBarButton(
-			"BakeMaterials",
-			FToolMenuExecuteAction::CreateLambda([](const FToolMenuContext& InMenuContext)
-			{
-				USkeletalMeshToolMenuContext* Context = InMenuContext.FindContext<USkeletalMeshToolMenuContext>();
-				if (Context && Context->SkeletalMeshEditor.IsValid())
-				{
-					if (UDebugSkelMeshComponent* SkeletalMeshComponent = Context->SkeletalMeshEditor.Pin()->GetPersonaToolkit()->GetPreviewMeshComponent())
-					{
-						IMeshMergeModule& Module = FModuleManager::Get().LoadModuleChecked<IMeshMergeModule>("MeshMergeUtilities");
-						Module.GetUtilities().BakeMaterialsForComponent(SkeletalMeshComponent);
-					}
-				}
-			}),
-			LOCTEXT("BakeMaterials", "Bake out Materials"),
-			LOCTEXT("BakeMaterialsTooltip", "Bake out Materials for given LOD(s)."),
-			FSlateIcon("EditorStyle", "Persona.BakeMaterials")
-		));
+		typedef ISkeletalMeshEditorModule::FSkeletalMeshEditorToolbarExtender DelegateType;
+		SkeletalMeshEditorModule->GetAllSkeletalMeshEditorToolbarExtenders().RemoveAll([=](const DelegateType& In) { return In.GetHandle() == SkeletalMeshEditorExtenderHandle; });
 	}
+}
+
+TSharedRef<FExtender> FMeshMergeEditorExtensions::GetSkeletalMeshEditorToolbarExtender(const TSharedRef<FUICommandList> CommandList, TSharedRef<ISkeletalMeshEditor> InSkeletalMeshEditor)
+{
+	TSharedRef<FExtender> Extender = MakeShareable(new FExtender);
+	UMeshComponent* MeshComponent = InSkeletalMeshEditor->GetPersonaToolkit()->GetPreviewMeshComponent();
+
+	// Add button on skeletal mesh editor toolbar
+	Extender->AddToolBarExtension(
+		"Asset",
+		EExtensionHook::After,
+		CommandList,
+		FToolBarExtensionDelegate::CreateStatic(&FMeshMergeEditorExtensions::HandleAddSkeletalMeshActionExtenderToToolbar, MeshComponent)
+	);
+
+	return Extender;
+}
+
+void FMeshMergeEditorExtensions::HandleAddSkeletalMeshActionExtenderToToolbar(FToolBarBuilder& ParentToolbarBuilder, UMeshComponent* InMeshComponent)
+{
+	ParentToolbarBuilder.AddToolBarButton(
+		FUIAction(FExecuteAction::CreateLambda([InMeshComponent]()
+		{
+			if (USkeletalMeshComponent* SkeletalMeshComponent = Cast<USkeletalMeshComponent>(InMeshComponent))
+			{
+				IMeshMergeModule& Module = FModuleManager::Get().LoadModuleChecked<IMeshMergeModule>("MeshMergeUtilities");				
+				Module.GetUtilities().BakeMaterialsForComponent(SkeletalMeshComponent);
+			}
+		})),
+		NAME_None,
+		LOCTEXT("BakeMaterials", "Bake out Materials"),
+		LOCTEXT("BakeMaterialsTooltip", "Bake out Materials for given LOD(s)."),
+		FSlateIcon("EditorStyle", "Persona.BakeMaterials")
+	);
 }
 
 #undef LOCTEXT_NAMESPACE // "MeshMergeEditorExtensions"

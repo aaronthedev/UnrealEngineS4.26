@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "PackageTools.h"
@@ -30,7 +30,6 @@
 
 
 #include "ObjectTools.h"
-#include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Kismet2/KismetReinstanceUtilities.h"
 #include "BusyCursor.h"
@@ -40,18 +39,15 @@
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
 
-#include "AssetData.h"
 #include "AssetRegistryModule.h"
+#include "Logging/MessageLog.h"
+#include "UObject/UObjectIterator.h"
 #include "ComponentReregisterContext.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Engine/GameEngine.h"
 #include "Engine/LevelStreaming.h"
 #include "Engine/MapBuildDataRegistry.h"
 #include "Engine/Selection.h"
-#include "IAssetRegistry.h"
-#include "Logging/MessageLog.h"
-#include "UObject/UObjectGlobals.h"
-#include "UObject/UObjectIterator.h"
 
 #include "ShaderCompiler.h"
 #include "DistanceFieldAtlas.h"
@@ -84,15 +80,14 @@ UPackageTools::UPackageTools(const FObjectInitializer& ObjectInitializer)
 	{
 		check(GIsEditor);
 
-		ForEachObjectWithPackage(PackageBeingUnloaded, [](UObject* Object)
-		{
-			if ( ObjectsThatHadFlagsCleared.Find(Object) )
+		ForEachObjectWithOuter(PackageBeingUnloaded, [](UObject* Object)
 			{
-				Object->SetFlags(RF_Standalone);
-			}
-			return true;
-		},
-		true, RF_NoFlags, EInternalObjectFlags::Unreachable);
+				if ( ObjectsThatHadFlagsCleared.Find(Object) )
+				{
+					Object->SetFlags(RF_Standalone);
+				}
+			},
+			true, RF_NoFlags, EInternalObjectFlags::Unreachable);
 	}
 
 	/**
@@ -141,13 +136,12 @@ UPackageTools::UPackageTools(const FObjectInitializer& ObjectInitializer)
 		{
 			for (UPackage* Package : *InPackages)
 			{
-				ForEachObjectWithPackage(Package,[&OutObjects](UObject* Obj)
+				ForEachObjectWithOuter(Package,[&OutObjects](UObject* Obj)
 					{
 						if (ObjectTools::IsObjectBrowsable(Obj))
 						{
 							OutObjects.Add(Obj);
 						}
-						return true;
 					});
 			}
 		}
@@ -383,13 +377,12 @@ UPackageTools::UPackageTools(const FObjectInitializer& ObjectInitializer)
 				FlushRenderingCommands();
 
 				// Close any open asset editors
-				ForEachObjectWithPackage(PackageBeingUnloaded, [](UObject* Obj)
+				ForEachObjectWithOuter(PackageBeingUnloaded, [](UObject* Obj)
 				{
 					if (Obj->IsAsset())
 					{
 						GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->CloseAllEditorsForAsset(Obj);
 					}
-					return true;
 				}, false);
 
 				PackageBeingUnloaded->bHasBeenFullyLoaded = false;
@@ -402,7 +395,7 @@ UPackageTools::UPackageTools(const FObjectInitializer& ObjectInitializer)
 				// Clear RF_Standalone flag from objects in the package to be unloaded so they get GC'd.
 				{
 					TArray<UObject*> ObjectsInPackage;
-					GetObjectsWithPackage(PackageBeingUnloaded, ObjectsInPackage);
+					GetObjectsWithOuter(PackageBeingUnloaded, ObjectsInPackage);
 					for ( UObject* Object : ObjectsInPackage )
 					{
 						if (Object->HasAnyFlags(RF_Standalone))
@@ -517,13 +510,13 @@ UPackageTools::UPackageTools(const FObjectInitializer& ObjectInitializer)
 					// Get outermost packages, in case groups were selected.
 					UPackage* RealPackage = TopLevelPackage->GetOutermost() ? TopLevelPackage->GetOutermost() : TopLevelPackage;
 
-					if (RealPackage->HasAnyPackageFlags(PKG_InMemoryOnly))
-					{
-						InMemoryPackages.AddUnique(RealPackage);
-					}
-					else if (RealPackage->IsDirty())
+					if (RealPackage->IsDirty())
 					{
 						DirtyPackages.AddUnique(RealPackage);
+					}
+					else if (RealPackage->HasAnyPackageFlags(PKG_InMemoryOnly))
+					{
+						InMemoryPackages.AddUnique(RealPackage);
 					}
 					else
 					{
@@ -722,10 +715,10 @@ UPackageTools::UPackageTools(const FObjectInitializer& ObjectInitializer)
 			// We need to sort the packages to reload so that dependencies are reloaded before the assets that depend on them
 			::SortPackagesForReload(PackagesToReload);
 
-			// Remove potential references to to-be deleted objects from the global selection sets.
+			// Remove potential references to to-be deleted objects from the global selection set.
 			if (GIsEditor)
 			{
-				GEditor->ResetAllSelectionSets();
+				GEditor->GetSelectedObjects()->DeselectAll();
 			}
 			// Detach all components while loading a package.
 			// This is necessary for the cases where the load replaces existing objects which may be referenced by the attached components.
@@ -798,9 +791,7 @@ UPackageTools::UPackageTools(const FObjectInitializer& ObjectInitializer)
 			else if (UGameEngine* GameEngine = Cast<UGameEngine>(GEngine))
 			{
 				FString LoadMapError;
-				// FURL requires a package name and not an asset path
-				FString WorldPackage = FPackageName::ObjectPathToPackageName(WorldNameToReload.ToString());
-				GameEngine->LoadMap(GameEngine->GetWorldContextFromWorldChecked(GameEngine->GetGameWorld()), FURL(*WorldPackage), nullptr, LoadMapError);
+				GameEngine->LoadMap(GameEngine->GetWorldContextFromWorldChecked(GameEngine->GetGameWorld()), FURL(*WorldNameToReload.ToString()), nullptr, LoadMapError);
 			}
 		}
 		// Update the rendering resources for the levels of the current world if their map build data has changed (we skip this if reloading the current world).
@@ -852,13 +843,12 @@ UPackageTools::UPackageTools(const FObjectInitializer& ObjectInitializer)
 			GEngine->NotifyToolsOfObjectReplacement(InPackageReloadedEvent->GetRepointedObjects());
 
 			// Notify any Blueprints that are about to be unloaded.
-			ForEachObjectWithPackage(InPackageReloadedEvent->GetOldPackage(), [&](UObject* InObject)
+			ForEachObjectWithOuter(InPackageReloadedEvent->GetOldPackage(), [&](UObject* InObject)
 			{
 				if (UBlueprint* BP = Cast<UBlueprint>(InObject))
 				{
 					BP->ClearEditorReferences();
 				}
-				return true;
 			}, false, RF_Transient, EInternalObjectFlags::PendingKill);
 		}
 
@@ -962,18 +952,6 @@ UPackageTools::UPackageTools(const FObjectInitializer& ObjectInitializer)
 					BlueprintsToRecompileThisBatch.Add(BlueprintToRecompile);
 				}
 			}
-
-			// @todo FH: we should eventually have a specific api for hot reloading single objects or external packages' objects
-			// Call post edit change property on the reloaded objects in the package if they are external 
-			FPropertyChangedEvent PropertyEvent(nullptr, EPropertyChangeType::Redirected);
-			for (const auto& ObjectPair : InPackageReloadedEvent->GetRepointedObjects())
-			{
-				// An object is external, if it has a directly assigned package
-				if (ObjectPair.Value && ObjectPair.Value->GetExternalPackage())
-				{
-					ObjectPair.Value->PostEditChangeProperty(PropertyEvent);
-				}
-			}
 		}
 
 		if (InPackageReloadPhase == EPackageReloadPhase::PreBatch)
@@ -997,29 +975,6 @@ UPackageTools::UPackageTools(const FObjectInitializer& ObjectInitializer)
 			if (BlueprintsToRecompileThisBatch.Num() > 0)
 			{
 				FScopedSlowTask CompilingBlueprintsSlowTask(BlueprintsToRecompileThisBatch.Num(), NSLOCTEXT("UnrealEd", "CompilingBlueprints", "Compiling Blueprints"));
-
-				TArray<UObject*> BPs;
-				GetObjectsOfClass(UBlueprint::StaticClass(), BPs);
-				for (UObject* BP : BPs)
-				{
-					UBlueprint* AsBP = CastChecked<UBlueprint>(BP);
-					AsBP->bCachedDependenciesUpToDate = false;
-					FBlueprintEditorUtils::EnsureCachedDependenciesUpToDate(AsBP);
-					for (TWeakObjectPtr<UBlueprint> Dependent : AsBP->CachedDependents)
-					{
-						if (UBlueprint* StillAlive = Dependent.Get())
-						{
-							StillAlive->CachedDependencies.Add(AsBP);
-						}
-					}
-					for (TWeakObjectPtr<UBlueprint> Dependent : AsBP->CachedDependencies)
-					{
-						if (UBlueprint* StillAlive = Dependent.Get())
-						{
-							StillAlive->CachedDependents.Add(AsBP);
-						}
-					}
-				}
 
 				for (UBlueprint* BlueprintToRecompile : BlueprintsToRecompileThisBatch)
 				{
@@ -1228,65 +1183,6 @@ UPackageTools::UPackageTools(const FObjectInitializer& ObjectInitializer)
 		SanitizedName.ReplaceInline(TEXT("//"), TEXT("/"));
 
 		return SanitizedName;
-	}
-
-	UPackage* UPackageTools::FindOrCreatePackageForAssetType(const FName LongPackageName, UClass* AssetClass)
-	{
-		if (AssetClass)
-		{
-			// Test the asset registry first
-			// Only scan the disk cache since it's fast O(1) (otherwise the asset registry will iterate on all the objects in memory)
-			constexpr bool bIncludeOnlyOnDiskAssets = true;
-			TArray<FAssetData> OutAssets;
-			IAssetRegistry& AssetRegistry = FAssetRegistryModule::GetRegistry();
-			AssetRegistry.GetAssetsByPackageName(LongPackageName, OutAssets, bIncludeOnlyOnDiskAssets);
-			bool bShouldGenerateUniquePackageName = false;
-			int32 NumberOfAssets = OutAssets.Num();
-			if (NumberOfAssets == 1)
-			{
-				const FAssetData& AssetData = OutAssets[0];
-				if (AssetData.AssetClass != AssetClass->GetFName())
-				{
-					bShouldGenerateUniquePackageName = true;
-				}
-			}
-			else if (NumberOfAssets > 1)
-			{
-				// this shouldn't happen in UE4
-				bShouldGenerateUniquePackageName = true;
-			}
-
-			UPackage* Package = nullptr;
-			if (!bShouldGenerateUniquePackageName)
-			{
-				// Create or return the existing package
-				FString PackageNameAsString = LongPackageName.ToString();
-				Package = LoadPackage(PackageNameAsString);
-
-				if (Package)
-				{
-					UObject* Object = FindObjectFast<UObject>(Package, Package->GetFName());
-					if (Object && Object->GetClass() != AssetClass)
-					{
-						bShouldGenerateUniquePackageName = true;
-					}
-				}
-				else
-				{
-					Package = NewObject<UPackage>(nullptr, LongPackageName, RF_Public);
-				}
-			}
-
-			if (bShouldGenerateUniquePackageName)
-			{
-				FString NewPackageName = MakeUniqueObjectName(nullptr, UPackage::StaticClass(), LongPackageName).ToString();
-				Package = NewObject<UPackage>(nullptr, *NewPackageName, RF_Public);
-			}
-
-			return Package;
-		}
-
-		return nullptr;
 	}
 
 #undef LOCTEXT_NAMESPACE

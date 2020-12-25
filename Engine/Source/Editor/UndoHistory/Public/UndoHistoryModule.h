@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,7 +25,7 @@ public:
 
 	static void ExecuteOpenUndoHistory()
 	{
-		FGlobalTabmanager::Get()->TryInvokeTab(UndoHistoryTabName);
+		FGlobalTabmanager::Get()->InvokeTab(UndoHistoryTabName);
 	}
 
 private:

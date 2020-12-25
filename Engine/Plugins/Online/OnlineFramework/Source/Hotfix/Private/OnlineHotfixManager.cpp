@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineHotfixManager.h"
 #include "OnlineSubsystemUtils.h"
@@ -22,10 +22,6 @@
 #include "Engine/DataTable.h"
 #include "Curves/CurveFloat.h"
 #include "Engine/BlueprintGeneratedClass.h"
-
-#ifdef WITH_ONLINETRACING
-#include "OnlineTracingModule.h"
-#endif
 
 DEFINE_LOG_CATEGORY(LogHotfixManager);
 
@@ -257,8 +253,6 @@ void UOnlineHotfixManager::Cleanup()
 
 void UOnlineHotfixManager::StartHotfixProcess()
 {
-	UE_LOG(LogHotfixManager, Log, TEXT("Starting Hotfix Process"));
-
 	// Patching the editor this way seems like a bad idea
 	bool bShouldHotfix = IsRunningGame() || IsRunningDedicatedServer() || IsRunningClientOnly();
 	if (!bShouldHotfix)
@@ -384,8 +378,6 @@ struct FHotfixFileSortPredicate
 
 void UOnlineHotfixManager::OnEnumerateFilesComplete(bool bWasSuccessful, const FString& ErrorStr)
 {
-	UE_LOG(LogHotfixManager, Log, TEXT("EnumerateFiles Http Request Complete"));
-
 	if (bWasSuccessful)
 	{
 		check(OnlineTitleFile.IsValid());
@@ -698,7 +690,7 @@ void UOnlineHotfixManager::ApplyHotfix()
 
 void UOnlineHotfixManager::TriggerHotfixComplete(EHotfixResult HotfixResult)
 {
-	if (HotfixResult != EHotfixResult::Failed && HotfixResult != EHotfixResult::SuccessNoChange)
+	if (HotfixResult != EHotfixResult::Failed)
 	{
 		PatchAssetsFromIniFiles();
 	}
@@ -755,8 +747,6 @@ bool UOnlineHotfixManager::WantsHotfixProcessing(const FCloudFileHeader& FileHea
 
 bool UOnlineHotfixManager::ApplyHotfixProcessing(const FCloudFileHeader& FileHeader)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_UOnlineHotfixManager_ApplyHotfixProcessing);
-
 	bool bSuccess = false;
 	const FString Extension = FPaths::GetExtension(FileHeader.FileName);
 	if (Extension == TEXT("INI"))
@@ -866,7 +856,6 @@ bool UOnlineHotfixManager::HotfixIniFile(const FString& FileName, const FString&
 	bool bUpdateLogSuppression = false;
 	bool bUpdateConsoleVariables = false;
 	bool bUpdateHttpConfigs = false;
-	bool bUpdateOnlineTracing = false;
 	TSet<FString> OnlineSubSections;
 	// Find the set of object classes that were affected
 	while (StartIndex >= 0 && StartIndex < IniData.Len() && EndIndex >= StartIndex)
@@ -922,9 +911,8 @@ bool UOnlineHotfixManager::HotfixIniFile(const FString& FileName, const FString&
 				{
 					const TCHAR* LogConfigSection = TEXT("[Core.Log]");
 					const TCHAR* ConsoleVariableSection = TEXT("[ConsoleVariables]");
-					const TCHAR* HttpSection = TEXT("[HTTP"); // note "]" omitted on purpose since we want a partial match
+					const TCHAR* HttpSection = TEXT("[HTTP]");
 					const TCHAR* OnlineSubSectionKey = TEXT("[OnlineSubsystem"); // note "]" omitted on purpose since we want a partial match
-					const TCHAR* OnlineTracingSection = TEXT("[OnlineTracing]");
 					if (!bUpdateLogSuppression && FCString::Strnicmp(*IniData + StartIndex, LogConfigSection, FCString::Strlen(LogConfigSection)) == 0)
 					{
 						bUpdateLogSuppression = true;
@@ -936,10 +924,6 @@ bool UOnlineHotfixManager::HotfixIniFile(const FString& FileName, const FString&
 					else if (!bUpdateHttpConfigs &&	FCString::Strnicmp(*IniData + StartIndex, HttpSection, FCString::Strlen(HttpSection)) == 0)
 					{
 						bUpdateHttpConfigs = true;
-					}
-					else if (!bUpdateOnlineTracing && FCString::Strnicmp(*IniData + StartIndex, OnlineTracingSection, FCString::Strlen(OnlineTracingSection)) == 0)
-					{
-						bUpdateOnlineTracing = true;
 					}
 					else if (FCString::Strnicmp(*IniData + StartIndex, OnlineSubSectionKey, FCString::Strlen(OnlineSubSectionKey)) == 0)
 					{
@@ -1061,15 +1045,6 @@ bool UOnlineHotfixManager::HotfixIniFile(const FString& FileName, const FString&
 		FHttpModule::Get().UpdateConfigs();
 	}
 
-	// Reload configs for tracing system, this may init or tear it down if enable is toggled
-#ifdef WITH_ONLINETRACING
-	if (bUpdateOnlineTracing && 
-		FOnlineTracingModule::IsAvailable())
-	{
-		FOnlineTracingModule::Get().UpdateConfig();
-	}
-#endif
-
 	// Reload configs relevant to OSS config sections that were updated
 	IOnlineSubsystem* OnlineSub = IOnlineSubsystem::Get(OSSName.Len() ? FName(*OSSName, FNAME_Find) : NAME_None);
 	if (OnlineSub != nullptr)
@@ -1094,45 +1069,32 @@ bool UOnlineHotfixManager::HotfixIniFile(const FString& FileName, const FString&
 
 bool UOnlineHotfixManager::HotfixPakFile(const FCloudFileHeader& FileHeader)
 {
-	if (!FCoreDelegates::MountPak.IsBound())
+	if (!FCoreDelegates::OnMountPak.IsBound())
 	{
-		UE_LOG(LogHotfixManager, Error, TEXT("PAK file (%s) could not be mounted because MountPak is not bound"), *FileHeader.FileName);
+		UE_LOG(LogHotfixManager, Error, TEXT("PAK file (%s) could not be mounted because OnMountPak is not bound"), *FileHeader.FileName);
 		return false;
 	}
 	FString PakLocation = FString::Printf(TEXT("%s/%s"), *GetCachedDirectory(), *FileHeader.DLName);
-	if (IPakFile* PakFile = FCoreDelegates::MountPak.Execute(PakLocation, 0))
+	FPakFileVisitor Visitor;
+	if (FCoreDelegates::OnMountPak.Execute(PakLocation, 0, &Visitor))
 	{
 		MountedPakFiles.Add(FileHeader.DLName);
 		UE_LOG(LogHotfixManager, Log, TEXT("Hotfix mounted PAK file (%s)"), *FileHeader.FileName);
 		int32 NumInisReloaded = 0;
 		const double StartTime = FPlatformTime::Seconds();
-
-		// Iterate through the the pak file's contents for INI and asset reloading.
 		TArray<FString> IniList;
-		FPakFileVisitor Visitor;
-		PakFile->PakVisitPrunedFilenames(Visitor);
+		// Iterate through the pak file's contents for INI and asset reloading
 		for (const FString& InternalPakFileName : Visitor.Files)
 		{
 			if (InternalPakFileName.EndsWith(TEXT(".ini")))
 			{
 				IniList.Add(InternalPakFileName);
 			}
-		}
-
-		// Iterate through all loaded maps and see if they have patches in the pak file and therefore this hotfix needs to reload a map
-		for (TObjectIterator<UPackage> it; !bHotfixNeedsMapReload && it; ++it)
-		{
-			UPackage* Package = *it;
-			if (Package && Package->ContainsMap())
+			else if (!bHotfixNeedsMapReload && InternalPakFileName.EndsWith(FPackageName::GetMapPackageExtension()))
 			{
-				const FString FileName = FPackageName::LongPackageNameToFilename(Package->FileName.ToString(), FPackageName::GetMapPackageExtension());
-				if (PakFile->PakContains(FileName))
-				{
-					bHotfixNeedsMapReload = true;
-				}
+				bHotfixNeedsMapReload = IsMapLoaded(InternalPakFileName);
 			}
 		}
-
 		// Sort the INIs so they are processed consistently
 		IniList.Sort<FHotfixFileSortPredicate>(FHotfixFileSortPredicate(PlatformPrefix, ServerPrefix, DefaultPrefix));
 		// Now process the INIs in sorted order
@@ -1441,8 +1403,6 @@ void UOnlineHotfixManager::PatchAssetsFromIniFiles()
 						const FString& AssetPath(Tokens[0]);
 						const FString& HotfixType(Tokens[1]);
 
-						bool bAddAssetToHotfixedList = false;
-
 						// Find or load the asset
 						UObject* Asset = StaticLoadObject(AssetClass, nullptr, *AssetPath);
 						if (Asset != nullptr)
@@ -1457,7 +1417,6 @@ void UOnlineHotfixManager::PatchAssetsFromIniFiles()
 								//	+CurveTable=<curve table path>;RowUpdate;<row name>;<column name>;<new value>
 								//	+CurveFloat=<curve float path>;RowUpdate;None;<column name>;<new value>
 								HotfixRowUpdate(Asset, AssetPath, Tokens[2], Tokens[3], Tokens[4], ProblemStrings);
-								bAddAssetToHotfixedList = ProblemStrings.Num() == 0;
 							}
 							else if (HotfixType == TableUpdate && Tokens.Num() == 3)
 							{
@@ -1470,7 +1429,6 @@ void UOnlineHotfixManager::PatchAssetsFromIniFiles()
 								if (FParse::QuotedString(*Tokens[2], JsonData))
 								{
 									HotfixTableUpdate(Asset, AssetPath, JsonData, ProblemStrings);
-									bAddAssetToHotfixedList = ProblemStrings.Num() == 0;
 								}
 								else
 								{
@@ -1484,14 +1442,11 @@ void UOnlineHotfixManager::PatchAssetsFromIniFiles()
 						}
 						else
 						{
-							if (ShouldWarnAboutMissingWhenPatchingFromIni(AssetPath))
-							{
-								const FString Problem(FString::Printf(TEXT("Couldn't find or load asset '%s' (class '%s').  This asset will not be patched.  Double check that your asset type and path string is correct."), *AssetPath, *AssetClass->GetPathName()));
-								ProblemStrings.Add(Problem);
-							}
+							const FString Problem(FString::Printf(TEXT("Couldn't find or load asset '%s' (class '%s').  This asset will not be patched.  Double check that your asset type and path string is correct."), *AssetPath, *AssetClass->GetPathName()));
+							ProblemStrings.Add(Problem);
 						}
 
-						if (!bAddAssetToHotfixedList)
+						if (ProblemStrings.Num() > 0)
 						{
 							for (const FString& ProblemString : ProblemStrings)
 							{
@@ -1560,14 +1515,14 @@ void UOnlineHotfixManager::HotfixRowUpdate(UObject* Asset, const FString& AssetP
 	{
 		// Edit the row with the new value.
 		bool bWasDataTableChanged = false;
-		FProperty* DataTableRowProperty = DataTable->GetRowStruct()->FindPropertyByName(FName(*ColumnName));
+		UProperty* DataTableRowProperty = DataTable->GetRowStruct()->FindPropertyByName(FName(*ColumnName));
 		if (DataTableRowProperty)
 		{
 			// See what type of property this is.
-			FNumericProperty* NumProp = CastField<FNumericProperty>(DataTableRowProperty);
-			FStrProperty* StrProp = CastField<FStrProperty>(DataTableRowProperty);
-			FNameProperty* NameProp = CastField<FNameProperty>(DataTableRowProperty);
-			FSoftObjectProperty* SoftObjProp = CastField<FSoftObjectProperty>(DataTableRowProperty);
+			UNumericProperty* NumProp = Cast<UNumericProperty>(DataTableRowProperty);
+			UStrProperty* StrProp = Cast<UStrProperty>(DataTableRowProperty);
+			UNameProperty* NameProp = Cast<UNameProperty>(DataTableRowProperty);
+			USoftObjectProperty* SoftObjProp = Cast<USoftObjectProperty>(DataTableRowProperty);
 
 			// Get the row data by name.
 			static const FString Context = FString(TEXT("UOnlineHotfixManager::PatchAssetsFromIniFiles"));
@@ -1588,7 +1543,6 @@ void UOnlineHotfixManager::HotfixRowUpdate(UObject* Asset, const FString& AssetP
 								const int64 OldPropertyValue = NumProp->GetSignedIntPropertyValue(RowData);
 								const int64 NewPropertyValue = FCString::Atoi(*NewValue);
 								NumProp->SetIntPropertyValue(RowData, NewPropertyValue);
-								OnHotfixTableValueInt64(*Asset, RowName, ColumnName, OldPropertyValue, NewPropertyValue);
 								bWasDataTableChanged = true;
 								UE_LOG(LogHotfixManager, Verbose, TEXT("Data table %s row %s updated column %s from %i to %i."), *AssetPath, *RowName, *ColumnName, OldPropertyValue, NewPropertyValue);
 							}
@@ -1598,7 +1552,6 @@ void UOnlineHotfixManager::HotfixRowUpdate(UObject* Asset, const FString& AssetP
 								const double OldPropertyValue = NumProp->GetFloatingPointPropertyValue(RowData);
 								const double NewPropertyValue = FCString::Atod(*NewValue);
 								NumProp->SetFloatingPointPropertyValue(RowData, NewPropertyValue);
-								OnHotfixTableValueDouble(*Asset, RowName, ColumnName, OldPropertyValue, NewPropertyValue);
 								bWasDataTableChanged = true;
 								UE_LOG(LogHotfixManager, Verbose, TEXT("Data table %s row %s updated column %s from %.2f to %.2f."), *AssetPath, *RowName, *ColumnName, OldPropertyValue, NewPropertyValue);
 							}
@@ -1616,7 +1569,6 @@ void UOnlineHotfixManager::HotfixRowUpdate(UObject* Asset, const FString& AssetP
 						const FString OldPropertyValue = StrProp->GetPropertyValue(RowData);
 						const FString NewPropertyValue = NewValue;
 						StrProp->SetPropertyValue(RowData, NewPropertyValue);
-						OnHotfixTableValueString(*Asset, RowName, ColumnName, OldPropertyValue, NewPropertyValue);
 						bWasDataTableChanged = true;
 						UE_LOG(LogHotfixManager, Verbose, TEXT("Data table %s row %s updated column %s from %s to %s."), *AssetPath, *RowName, *ColumnName, *OldPropertyValue, *NewPropertyValue);
 					}
@@ -1626,7 +1578,6 @@ void UOnlineHotfixManager::HotfixRowUpdate(UObject* Asset, const FString& AssetP
 						const FName OldPropertyValue = NameProp->GetPropertyValue(RowData);
 						const FName NewPropertyValue = FName(*NewValue);
 						NameProp->SetPropertyValue(RowData, NewPropertyValue);
-						OnHotfixTableValueName(*Asset, RowName, ColumnName, OldPropertyValue, NewPropertyValue);
 						bWasDataTableChanged = true;
 						UE_LOG(LogHotfixManager, Verbose, TEXT("Data table %s row %s updated column %s from %s to %s."), *AssetPath, *RowName, *ColumnName, *OldPropertyValue.ToString(), *NewPropertyValue.ToString());
 					}
@@ -1636,7 +1587,6 @@ void UOnlineHotfixManager::HotfixRowUpdate(UObject* Asset, const FString& AssetP
 						const UObject* OldPropertyValue = SoftObjProp->GetObjectPropertyValue(RowData);
 						UObject* NewPropertyValue = LoadObject<UObject>(nullptr, *NewValue);
 						SoftObjProp->SetObjectPropertyValue(RowData, NewPropertyValue);
-						OnHotfixTableValueObject(*Asset, RowName, ColumnName, OldPropertyValue, NewPropertyValue);
 						bWasDataTableChanged = true;
 						UE_LOG(LogHotfixManager, Verbose, TEXT("Data table %s row %s updated column %s from %s to %s."), *AssetPath, *RowName, *ColumnName, *OldPropertyValue->GetFullName(), *NewPropertyValue->GetFullName());
 					}
@@ -1648,7 +1598,7 @@ void UOnlineHotfixManager::HotfixRowUpdate(UObject* Asset, const FString& AssetP
 
 						if (Error.Len() > 0)
 						{
-							const FString Problem(FString::Printf(TEXT("The data table row property named %s is not a FNumericProperty, FStrProperty, FNameProperty, or FSoftObjectProperty and it should be."), *ColumnName));
+							const FString Problem(FString::Printf(TEXT("The data table row property named %s is not a UNumericProperty, UStrProperty, UNameProperty, or USoftObjectProperty and it should be."), *ColumnName));
 							ProblemStrings.Add(Problem);
 							ProblemStrings.Add(FString::Printf(TEXT("%s"), *Error));
 						}
@@ -1677,7 +1627,7 @@ void UOnlineHotfixManager::HotfixRowUpdate(UObject* Asset, const FString& AssetP
 
 		if (bWasDataTableChanged)
 		{
-			DataTable->HandleDataTableChanged();
+			DataTable->OnDataTableChanged().Broadcast();
 		}
 	}
 	else if (CurveTable)
@@ -1705,7 +1655,6 @@ void UOnlineHotfixManager::HotfixRowUpdate(UObject* Asset, const FString& AssetP
 					Key = CurveTableRow->UpdateOrAddKey(KeyTime, NewPropertyValue);
 					if (CurveTableRow->IsKeyHandleValid(Key))
 					{
-						OnHotfixTableValueFloat(*Asset, RowName, ColumnName, OldPropertyValue, NewPropertyValue);
 						bWasCurveTableChanged = true;
 
 						if (bWasExistingKey)
@@ -1760,7 +1709,6 @@ void UOnlineHotfixManager::HotfixRowUpdate(UObject* Asset, const FString& AssetP
 					const float OldPropertyValue = CurveFloat->FloatCurve.GetKeyValue(Key);
 					const float NewPropertyValue = FCString::Atof(*NewValue);
 					CurveFloat->FloatCurve.SetKeyValue(Key, NewPropertyValue);
-					OnHotfixTableValueFloat(*Asset, RowName, ColumnName, OldPropertyValue, NewPropertyValue);
 
 					UE_LOG(LogHotfixManager, Verbose, TEXT("Curve float %s updated column %s from %.2f to %.2f."), *AssetPath, *ColumnName, OldPropertyValue, NewPropertyValue);
 				}

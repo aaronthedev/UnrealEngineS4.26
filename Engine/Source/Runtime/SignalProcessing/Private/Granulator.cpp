@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DSP/Granulator.h"
 
@@ -182,7 +182,7 @@ namespace Audio
 		}
 	}
 
-	float FGrainEnvelope::GetValue(const float Fraction) const
+	float FGrainEnvelope::GetValue(const float Fraction)
 	{
 		const int32 NumFrames = GrainEnvelope.Num() - 1;
 		const float Index = Fraction * (float)NumFrames;
@@ -190,8 +190,7 @@ namespace Audio
 		const int32 NextIndex = FMath::Min(NumFrames, PrevIndex + 1);
 		const float AlphaIndex = Index - (float)PrevIndex;
 
-		const float* GrainEnvelopePtr = GrainEnvelope.GetData();
-		return FMath::Lerp(GrainEnvelopePtr[PrevIndex], GrainEnvelopePtr[NextIndex], AlphaIndex);
+		return FMath::Lerp(GrainEnvelope[PrevIndex], GrainEnvelope[NextIndex], AlphaIndex);
 	}
 
 	FGrain::FGrain(const int32 InGrainId, FGranularSynth* InParent)
@@ -424,7 +423,7 @@ namespace Audio
 		DynamicsProcessor.SetKneeBandwidth(10.0f);
 		DynamicsProcessor.SetInputGain(0.0f);
 		DynamicsProcessor.SetOutputGain(0.0f);
-		DynamicsProcessor.SetChannelLinkMode(EDynamicsProcessorChannelLinkMode::Average);
+		DynamicsProcessor.SetChannelLinked(true);
 		DynamicsProcessor.SetAnalogMode(true);
 		DynamicsProcessor.SetPeakMode(EPeakMode::Peak);
 		DynamicsProcessor.SetProcessingMode(EDynamicsProcessingMode::Compressor);

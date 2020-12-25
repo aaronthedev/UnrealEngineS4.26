@@ -49,20 +49,6 @@ if "%COMPILER_VER%" == "2015" (
 	)
 )
 
-if "%COMPILER_VER%" == "2017" (
-	set MSVCDIR="%PROGFILES%\Microsoft Visual Studio\2017\Professional"
-	set VCVERSION=15
-	set MSBUILDDIR="%PROGFILES%\Microsoft Visual Studio\2017\Professional\MSBuild\15.0\Bin"
-
-	if "%ARCH_VER%" == "x64" (
-		set CMAKE_GENERATOR="Visual Studio 15 2017 Win64"
-	)
-	
-	if "%ARCH_VER%" == "x86" (
-		set CMAKE_GENERATOR="Visual Studio 15 2017"
-	)
-)
-
 REM setup output directory
 set OUTPUT_DIR=%cd%\Artifacts_VS%COMPILER_VER%_%ARCH_VER%_%CONFIG%
 if "%4" == "Shared" (
@@ -86,7 +72,7 @@ popd
 
 REM build project
 pushd %MSBUILDDIR%
-msbuild.exe %OUTPUT_DIR%\googletest-distribution.sln /target:ALL_BUILD /p:PlatformTarget=%ARCH_VER%;Configuration="%CONFIG%"
+msbuild %OUTPUT_DIR%\googletest-distribution.sln /target:ALL_BUILD /p:PlatformTarget=%ARCH_VER%;Configuration="%CONFIG%"
 popd
 
 REM setup binary output directory
@@ -100,12 +86,12 @@ if "%4" == "Shared" (
 )
 
 REM delete any existing library output directories
-if exist %OUTPUT_LIBS% rmdir /s /q %OUTPUT_LIBS%
+rmdir /s /q %OUTPUT_LIBS%
 mkdir %OUTPUT_LIBS%
 
 REM copy binaries
-xcopy /s /c /d /y %OUTPUT_DIR%\lib\%CONFIG% %OUTPUT_LIBS%
-
-
+mkdir %OUTPUT_LIBS%
+xcopy /s /c /d /y %OUTPUT_DIR%\googlemock\gtest\%CONFIG%\*.* %OUTPUT_LIBS%\
+xcopy /s /c /d /y %OUTPUT_DIR%\googlemock\%CONFIG%\*.* %OUTPUT_LIBS%\
 
 

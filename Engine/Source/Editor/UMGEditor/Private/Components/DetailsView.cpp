@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/DetailsView.h"
 
@@ -115,12 +115,12 @@ void UDetailsView::OnObjectChanged()
 	}
 	else
 	{
-		BuildContentWidget();
+		AsynBuildContentWidget();
 	}
 }
 
 
-void UDetailsView::NotifyPostChange(const FPropertyChangedEvent& PropertyChangedEvent, FProperty* PropertyThatChanged)
+void UDetailsView::NotifyPostChange(const FPropertyChangedEvent& PropertyChangedEvent, UProperty* PropertyThatChanged)
 {
 	FNotifyHook::NotifyPostChange(PropertyChangedEvent, PropertyThatChanged);
 
@@ -146,7 +146,7 @@ void UDetailsView::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
 			|| PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(UDetailsView, ColumnWidth))
 		{
 			SoftObjectPath = LazyObject.Get();
-			BuildContentWidget();
+			AsynBuildContentWidget();
 		}
 	}
 }

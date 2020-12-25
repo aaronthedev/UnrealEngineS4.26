@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "StaticMeshEditorTools.h"
 #include "Framework/Commands/UIAction.h"
@@ -92,18 +92,18 @@ void FStaticMeshDetails::CustomizeDetails( class IDetailLayoutBuilder& DetailBui
 	IDetailCategoryBuilder& CollisionCategory = DetailBuilder.EditCategory( "Collision", LOCTEXT("CollisionCategory", "Collision") );
 	IDetailCategoryBuilder& ImportSettingsCategory = DetailBuilder.EditCategory("ImportSettings");
 
-	TSharedRef<IPropertyHandle> LightMapCoordinateIndexProperty = DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UStaticMesh, LightMapCoordinateIndex));
-	TSharedRef<IPropertyHandle> LightMapResolutionProperty = DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UStaticMesh, LightMapResolution));
-	LightMapCoordinateIndexProperty->SetOnPropertyValueChanged(FSimpleDelegate::CreateSP(this, &FStaticMeshDetails::OnLightmapSettingsChanged));
-	LightMapResolutionProperty->SetOnPropertyValueChanged(FSimpleDelegate::CreateSP(this, &FStaticMeshDetails::OnLightmapSettingsChanged));
-
-	TSharedRef<IPropertyHandle> StaticMaterials = DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UStaticMesh, StaticMaterials));
-	StaticMaterials->MarkHiddenByCustomization();
-
 	TSharedRef<IPropertyHandle> ImportSettings = DetailBuilder.GetProperty(GET_MEMBER_NAME_CHECKED(UStaticMesh, AssetImportData));
-	if (!StaticMeshEditor.GetStaticMesh() || 
-		!StaticMeshEditor.GetStaticMesh()->AssetImportData ||
-		!StaticMeshEditor.GetStaticMesh()->AssetImportData->IsA<UFbxStaticMeshImportData>())
+
+	/**
+	 * Hotfix 4.24.1 ( Continues the old and maybe invalid assumption that AssetImportData shouldn't be able to be null )
+	 * This will be removed in 4.25
+	 */
+	if( !StaticMeshEditor.GetStaticMesh()->AssetImportData )
+	{
+		StaticMeshEditor.GetStaticMesh()->AssetImportData = NewObject<UAssetImportData>(StaticMeshEditor.GetStaticMesh(), TEXT("AssetImportData"), RF_Transactional);
+	}
+
+	if (!StaticMeshEditor.GetStaticMesh() || !StaticMeshEditor.GetStaticMesh()->AssetImportData->IsA<UFbxStaticMeshImportData>())
 	{
 		ImportSettings->MarkResetToDefaultCustomized();
 
@@ -192,13 +192,6 @@ void FStaticMeshDetails::OnInstancedFbxStaticMeshImportDataPropertyIteration(IDe
 			Row->IsEnabled(TAttribute<bool>(this, &FStaticMeshDetails::GetVertexOverrideColorEnabledState));
 		}
 	}
-}
-
-void FStaticMeshDetails::OnLightmapSettingsChanged()
-{
-	UStaticMesh* StaticMesh = StaticMeshEditor.GetStaticMesh();
-	check(StaticMesh);
-	StaticMesh->EnforceLightmapRestrictions(false);
 }
 
 bool FStaticMeshDetails::GetVertexOverrideColorEnabledState() const
@@ -1822,7 +1815,7 @@ void FMeshSectionSettingsLayout::OnPasteSectionList(int32 CurrentLODIndex)
 		{
 			// @todo: When SectionInfoMap moves location, this will need to be fixed up.
 			PRAGMA_DISABLE_DEPRECATION_WARNINGS
-			FProperty* Property = UStaticMesh::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_STRING_CHECKED(UStaticMesh, SectionInfoMap));
+			UProperty* Property = UStaticMesh::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_STRING_CHECKED(UStaticMesh, SectionInfoMap));
 			PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 			GetStaticMesh().PreEditChange(Property);
@@ -1926,7 +1919,7 @@ void FMeshSectionSettingsLayout::OnPasteSectionItem(int32 CurrentLODIndex, int32
 		{
 			// @todo: When SectionInfoMap moves location, this will need to be fixed up
 			PRAGMA_DISABLE_DEPRECATION_WARNINGS
-			FProperty* Property = UStaticMesh::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_STRING_CHECKED(UStaticMesh, SectionInfoMap));
+			UProperty* Property = UStaticMesh::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_STRING_CHECKED(UStaticMesh, SectionInfoMap));
 			PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 			GetStaticMesh().PreEditChange(Property);
@@ -2022,7 +2015,7 @@ void FMeshSectionSettingsLayout::OnSectionChanged(int32 ForLODIndex, int32 Secti
 		if (LOD.Sections.IsValidIndex(SectionIndex))
 		{
 			PRAGMA_DISABLE_DEPRECATION_WARNINGS
-			FProperty* Property = UStaticMesh::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_STRING_CHECKED(UStaticMesh, SectionInfoMap));
+			UProperty* Property = UStaticMesh::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_STRING_CHECKED(UStaticMesh, SectionInfoMap));
 			PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 			GetStaticMesh().PreEditChange(Property);
@@ -2102,7 +2095,7 @@ TSharedRef<SWidget> FMeshSectionSettingsLayout::OnGenerateCustomSectionWidgetsFo
 					.Text(LOCTEXT("CastShadow", "Cast Shadow"))
 			]
 		]
-		+ SHorizontalBox::Slot()
+		+SHorizontalBox::Slot()
 		.AutoWidth()
 		.Padding(2,0,2,0)
 		[
@@ -2116,95 +2109,7 @@ TSharedRef<SWidget> FMeshSectionSettingsLayout::OnGenerateCustomSectionWidgetsFo
 					.Font(FEditorStyle::GetFontStyle("StaticMeshEditor.NormalFont"))
 					.Text(LOCTEXT("EnableCollision", "Enable Collision"))
 			]
-		]
-		+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.Padding(2, 0, 2, 0)
-			[
-				SNew(SCheckBox)
-				.IsChecked(this, &FMeshSectionSettingsLayout::IsSectionVisibleInRayTracing, SectionIndex)
-			.OnCheckStateChanged(this, &FMeshSectionSettingsLayout::OnSectionVisibleInRayTracingChanged, SectionIndex)
-			[
-				SNew(STextBlock)
-				.Font(FEditorStyle::GetFontStyle("StaticMeshEditor.NormalFont"))
-			.Text(LOCTEXT("VisibleInRayTracing", "Visible In Ray Tracing"))
-			]
-		]
-		+ SHorizontalBox::Slot()
-		.AutoWidth()
-		.Padding(2, 0, 2, 0)
-		[
-			SNew(SCheckBox)
-			.IsChecked(this, &FMeshSectionSettingsLayout::IsSectionOpaque, SectionIndex)
-			.OnCheckStateChanged(this, &FMeshSectionSettingsLayout::OnSectionForceOpaqueFlagChanged, SectionIndex)
-			[
-				SNew(STextBlock)
-					.Font(FEditorStyle::GetFontStyle("StaticMeshEditor.NormalFont"))
-					.Text(LOCTEXT("ForceOpaque", "Force Opaque"))
-			]
 		];
-}
-
-ECheckBoxState FMeshSectionSettingsLayout::IsSectionVisibleInRayTracing(int32 SectionIndex) const
-{
-	UStaticMesh& StaticMesh = GetStaticMesh();
-	FMeshSectionInfo Info = StaticMesh.GetSectionInfoMap().Get(LODIndex, SectionIndex);
-	return Info.bVisibleInRayTracing ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-}
-
-void FMeshSectionSettingsLayout::OnSectionVisibleInRayTracingChanged(ECheckBoxState NewState, int32 SectionIndex)
-{
-	UStaticMesh& StaticMesh = GetStaticMesh();
-
-	FText TransactionTest = LOCTEXT("StaticMeshEditorSetVisibleInRayTracingSectionFlag", "Staticmesh editor: Set VisibleInRayTracing For section, the section will be visible in ray tracing effects");
-	if (NewState == ECheckBoxState::Unchecked)
-	{
-		TransactionTest = LOCTEXT("StaticMeshEditorClearVisibleInRayTracingSectionFlag", "Staticmesh editor: Clear VisibleInRayTracing For section");
-	}
-	FScopedTransaction Transaction(TransactionTest);
-
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-		FProperty* Property = UStaticMesh::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_STRING_CHECKED(UStaticMesh, SectionInfoMap));
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
-		StaticMesh.PreEditChange(Property);
-	StaticMesh.Modify();
-
-	FMeshSectionInfo Info = StaticMesh.GetSectionInfoMap().Get(LODIndex, SectionIndex);
-	Info.bVisibleInRayTracing = (NewState == ECheckBoxState::Checked) ? true : false;
-	StaticMesh.GetSectionInfoMap().Set(LODIndex, SectionIndex, Info);
-	CallPostEditChange();
-}
-
-ECheckBoxState FMeshSectionSettingsLayout::IsSectionOpaque(int32 SectionIndex) const
-{
-	UStaticMesh& StaticMesh = GetStaticMesh();
-	FMeshSectionInfo Info = StaticMesh.GetSectionInfoMap().Get(LODIndex, SectionIndex);
-	return Info.bForceOpaque ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-}
-
-void FMeshSectionSettingsLayout::OnSectionForceOpaqueFlagChanged( ECheckBoxState NewState, int32 SectionIndex )
-{
-	UStaticMesh& StaticMesh = GetStaticMesh();
-
-	FText TransactionTest = LOCTEXT("StaticMeshEditorSetForceOpaqueSectionFlag", "Staticmesh editor: Set Force Opaque For section, the section will be considered opaque in ray tracing effects");
-	if (NewState == ECheckBoxState::Unchecked)
-	{
-		TransactionTest = LOCTEXT("StaticMeshEditorClearForceOpaqueSectionFlag", "Staticmesh editor: Clear Force Opaque For section");
-	}
-	FScopedTransaction Transaction(TransactionTest);
-
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-		FProperty* Property = UStaticMesh::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_STRING_CHECKED(UStaticMesh, SectionInfoMap));
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
-		StaticMesh.PreEditChange(Property);
-	StaticMesh.Modify();
-
-	FMeshSectionInfo Info = StaticMesh.GetSectionInfoMap().Get(LODIndex, SectionIndex);
-	Info.bForceOpaque = (NewState == ECheckBoxState::Checked) ? true : false;
-	StaticMesh.GetSectionInfoMap().Set(LODIndex, SectionIndex, Info);
-	CallPostEditChange();
 }
 
 ECheckBoxState FMeshSectionSettingsLayout::DoesSectionCastShadow(int32 SectionIndex) const
@@ -2226,7 +2131,7 @@ void FMeshSectionSettingsLayout::OnSectionCastShadowChanged(ECheckBoxState NewSt
 	FScopedTransaction Transaction(TransactionTest);
 
 	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	FProperty* Property = UStaticMesh::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_STRING_CHECKED(UStaticMesh, SectionInfoMap));
+	UProperty* Property = UStaticMesh::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_STRING_CHECKED(UStaticMesh, SectionInfoMap));
 	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	StaticMesh.PreEditChange(Property);
@@ -2280,7 +2185,7 @@ void FMeshSectionSettingsLayout::OnSectionCollisionChanged(ECheckBoxState NewSta
 	FScopedTransaction Transaction(TransactionTest);
 
 	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	FProperty* Property = UStaticMesh::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_STRING_CHECKED(UStaticMesh, SectionInfoMap));
+	UProperty* Property = UStaticMesh::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_STRING_CHECKED(UStaticMesh, SectionInfoMap));
 	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	StaticMesh.PreEditChange(Property);
@@ -2363,7 +2268,7 @@ void FMeshSectionSettingsLayout::OnSectionIsolatedChanged(ECheckBoxState NewStat
 	}
 }
 
-void FMeshSectionSettingsLayout::CallPostEditChange(FProperty* PropertyChanged/*=nullptr*/)
+void FMeshSectionSettingsLayout::CallPostEditChange(UProperty* PropertyChanged/*=nullptr*/)
 {
 	UStaticMesh& StaticMesh = GetStaticMesh();
 	if( PropertyChanged )
@@ -2522,7 +2427,7 @@ void FMeshMaterialsLayout::AddToCategory(IDetailCategoryBuilder& CategoryBuilder
 
 void FMeshMaterialsLayout::OnCopyMaterialList()
 {
-	FProperty* Property = UStaticMesh::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_STRING_CHECKED(UStaticMesh, StaticMaterials));
+	UProperty* Property = UStaticMesh::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_STRING_CHECKED(UStaticMesh, StaticMaterials));
 	check(Property != nullptr);
 
 	auto JsonValue = FJsonObjectConverter::UPropertyToJsonValue(Property, &GetStaticMesh().StaticMaterials, 0, 0);
@@ -2556,7 +2461,7 @@ void FMeshMaterialsLayout::OnPasteMaterialList()
 
 	if (RootJsonValue.IsValid())
 	{
-		FProperty* Property = UStaticMesh::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_STRING_CHECKED(UStaticMesh, StaticMaterials));
+		UProperty* Property = UStaticMesh::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_STRING_CHECKED(UStaticMesh, StaticMaterials));
 		check(Property != nullptr);
 
 		GetStaticMesh().PreEditChange(Property);
@@ -2618,7 +2523,7 @@ void FMeshMaterialsLayout::OnPasteMaterialItem(int32 CurrentSlot)
 
 	if (RootJsonObject.IsValid())
 	{
-		FProperty* Property = UStaticMesh::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_STRING_CHECKED(UStaticMesh, StaticMaterials));
+		UProperty* Property = UStaticMesh::StaticClass()->FindPropertyByName(GET_MEMBER_NAME_STRING_CHECKED(UStaticMesh, StaticMaterials));
 		check(Property != nullptr);
 
 		GetStaticMesh().PreEditChange(Property);
@@ -2865,8 +2770,8 @@ void FMeshMaterialsLayout::OnMaterialNameCommitted(const FText& InValue, ETextCo
 	{
 		FScopedTransaction ScopeTransaction(LOCTEXT("StaticMeshEditorMaterialSlotNameChanged", "Staticmesh editor: Material slot name change"));
 
-		FProperty* ChangedProperty = NULL;
-		ChangedProperty = FindFProperty<FProperty>(UStaticMesh::StaticClass(), "StaticMaterials");
+		UProperty* ChangedProperty = NULL;
+		ChangedProperty = FindField<UProperty>(UStaticMesh::StaticClass(), "StaticMaterials");
 		check(ChangedProperty);
 		StaticMesh.PreEditChange(ChangedProperty);
 
@@ -3155,7 +3060,7 @@ void FMeshMaterialsLayout::SetUVDensityValue(float InDensity, ETextCommit::Type 
 	}
 }
 
-void FMeshMaterialsLayout::CallPostEditChange(FProperty* PropertyChanged/*=nullptr*/)
+void FMeshMaterialsLayout::CallPostEditChange(UProperty* PropertyChanged/*=nullptr*/)
 {
 	UStaticMesh& StaticMesh = GetStaticMesh();
 	if (PropertyChanged)
@@ -4022,7 +3927,8 @@ void FLevelOfDetailSettingsLayout::OnImportLOD(TSharedPtr<FString> NewValue, ESe
 			{
 				//Ask the user to change the LODGroup to None, if the user cancel do not re-import the LOD
 				//We can have a LODGroup with custom LOD only if custom LOD are after the generated LODGroup LODs
-				EAppReturnType::Type ReturnResult = FMessageDialog::Open(EAppMsgType::OkCancel, EAppReturnType::Ok, FText::Format(LOCTEXT("LODImport_LODGroupVersusCustomLODConflict", "This static mesh uses the LOD group \"{0}\" which generates the LOD {1}. To import a custom LOD at index {1}, the LODGroup must be cleared to \"None\"."), FText::FromName(StaticMesh->LODGroup), FText::AsNumber(LODIndex)));
+				EAppReturnType::Type ReturnResult = FMessageDialog::Open(EAppMsgType::OkCancel, EAppReturnType::Ok, FText::Format(LOCTEXT("LODImport_LODGroupVersusCustomLODConflict",
+					"This static mesh uses the LOD group \"{0}\" which generates the LOD {1}. To import a custom LOD at index {1}, the LODGroup must be cleared to \"None\"."), FText::FromName(StaticMesh->LODGroup), FText::AsNumber(LODIndex)));
 				if (ReturnResult == EAppReturnType::Cancel)
 				{
 					StaticMeshEditor.RefreshTool();
@@ -4310,11 +4216,8 @@ void FLevelOfDetailSettingsLayout::OnNumStreamedLODsCommitted(int32 InValue, ETe
 	check(StaticMesh);
 	if (UpdateStaticMeshNumStreamedLODsHelper(StaticMesh, InValue, Platform))
 	{
-		if (IStreamingManager::Get().IsRenderAssetStreamingEnabled(EStreamableRenderAssetType::StaticMesh))
-		{
-			// Make sure FStaticMeshRenderData::CurrentFirstLODIdx is not accessed on other threads
-			IStreamingManager::Get().GetRenderAssetStreamingManager().BlockTillAllRequestsFinished();
-		}
+		// Make sure FStaticMeshRenderData::CurrentFirstLODIdx is not accessed on other threads
+		IStreamingManager::Get().GetTextureStreamingManager().BlockTillAllRequestsFinished();
 		// Recache derived data and relink streaming
 		ApplyChanges();
 	}
@@ -4554,9 +4457,10 @@ void FLevelOfDetailSettingsLayout::OnSelectedLODChanged(int32 NewLodIndex)
 		return;
 	}
 	int32 CurrentDisplayLOD = StaticMeshEditor.GetStaticMeshComponent()->ForcedLodModel;
+	int32 RealCurrentDisplayLOD = CurrentDisplayLOD == 0 ? 0 : CurrentDisplayLOD - 1;
 	int32 RealNewLOD = NewLodIndex == 0 ? 0 : NewLodIndex - 1;
 
-	if (CurrentDisplayLOD == NewLodIndex || !LodCategories.IsValidIndex(RealNewLOD))
+	if (CurrentDisplayLOD == NewLodIndex || !LodCategories.IsValidIndex(RealCurrentDisplayLOD) || !LodCategories.IsValidIndex(RealNewLOD))
 	{
 		return;
 	}

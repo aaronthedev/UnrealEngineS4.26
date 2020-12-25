@@ -12,7 +12,6 @@
 #pragma once
 #include <unordered_set>
 #include <unordered_map>
-#include "dxc/DXIL/DxilConstants.h"
 
 namespace llvm {
 class Value;
@@ -50,8 +49,7 @@ private:
   // Generate DXIL input load, output store
   void GenerateDxilInputs();
   void GenerateDxilOutputs();
-  void GenerateDxilPrimOutputs();
-  void GenerateDxilInputsOutputs(DXIL::SignatureKind SK);
+  void GenerateDxilInputsOutputs(bool bInput);
   void GenerateDxilCSInputs();
   void GenerateDxilPatchConstantLdSt();
   void GenerateDxilPatchConstantFunctionInputs();
@@ -61,12 +59,6 @@ private:
   void GenerateStreamOutputOperation(llvm::Value *streamVal, unsigned streamID);
   // Generate DXIL stream output operations.
   void GenerateStreamOutputOperations();
-  // Generate DXIL EmitIndices operation.
-  void GenerateEmitIndicesOperation(llvm::Value *indicesOutput);
-  // Generate DXIL EmitIndices operations.
-  void GenerateEmitIndicesOperations();
-  // Generate DXIL GetMeshPayload operation.
-  void GenerateGetMeshPayloadOperation();
 
 private:
   llvm::Function *Entry;

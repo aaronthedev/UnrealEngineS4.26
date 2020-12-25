@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SComponentClassCombo.h"
 #include "Widgets/Layout/SSpacer.h"
@@ -18,7 +18,6 @@
 #include "EditorClassUtils.h"
 #include "Widgets/Input/SSearchBox.h"
 #include "SListViewSelectorDropdownMenu.h"
-#include "Misc/TextFilterExpressionEvaluator.h"
 
 #define LOCTEXT_NAMESPACE "ComponentClassCombo"
 
@@ -47,7 +46,6 @@ void SComponentClassCombo::Construct(const FArguments& InArgs)
 {
 	PrevSelectedIndex = INDEX_NONE;
 	OnComponentClassSelected = InArgs._OnComponentClassSelected;
-	TextFilter = MakeShared<FTextFilterExpressionEvaluator>(ETextFilterExpressionEvaluatorMode::BasicString);
 
 	FComponentTypeRegistry::Get().SubscribeToComponentList(ComponentClassList).AddRaw(this, &SComponentClassCombo::UpdateComponentClassList);
 
@@ -152,9 +150,9 @@ void SComponentClassCombo::ClearSelection()
 	}
 }
 
-void SComponentClassCombo::GenerateFilteredComponentList()
+void SComponentClassCombo::GenerateFilteredComponentList(const FString& InSearchText)
 {
-	if ( TextFilter->GetFilterText().IsEmpty() )
+	if ( InSearchText.IsEmpty() )
 	{
 		FilteredComponentClassList = *ComponentClassList;
 	}
@@ -178,7 +176,7 @@ void SComponentClassCombo::GenerateFilteredComponentList()
 			{
 				FString FriendlyComponentName = GetSanitizedComponentName( CurrentEntry );
 
-				if ( TextFilter->TestTextFilter(FBasicStringFilterExpressionContext(FriendlyComponentName)) )
+				if ( FriendlyComponentName.Contains( InSearchText, ESearchCase::IgnoreCase ) )
 				{
 					// Add the heading first if it hasn't already been added
 					if (LastHeadingIndex != INDEX_NONE)
@@ -208,16 +206,15 @@ void SComponentClassCombo::GenerateFilteredComponentList()
 
 FText SComponentClassCombo::GetCurrentSearchString() const
 {
-	return TextFilter->GetFilterText();
+	return CurrentSearchString;
 }
 
 void SComponentClassCombo::OnSearchBoxTextChanged( const FText& InSearchText )
 {
-	TextFilter->SetFilterText(InSearchText);
-	SearchBox->SetError(TextFilter->GetFilterErrorText());
+	CurrentSearchString = InSearchText;
 
 	// Generate a filtered list
-	GenerateFilteredComponentList();
+	GenerateFilteredComponentList(CurrentSearchString.ToString());
 
 	// Ask the combo to update its contents on next tick
 	ComponentClassListView->RequestListRefresh();
@@ -396,7 +393,7 @@ TSharedRef<ITableRow> SComponentClassCombo::GenerateAddComponentRow( FComponentC
 
 void SComponentClassCombo::UpdateComponentClassList()
 {
-	GenerateFilteredComponentList();
+	GenerateFilteredComponentList(CurrentSearchString.ToString());
 }
 
 FText SComponentClassCombo::GetFriendlyComponentName(FComponentClassComboEntryPtr Entry) const

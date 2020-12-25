@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ProxyLODMeshParameterization.h"
 #include "CoreMinimal.h"
@@ -55,8 +55,7 @@ bool ProxyLOD::GenerateUVs(const FTextureAtlasDesc& TextureAtlasDesc,
 
 	// Verify the mesh is valid
 	{
-	
-		HRESULT ValidateHR = DirectX::Validate(Indices.GetData(), NumFaces, NumVerts, AdjacencyArray.GetData(), DirectX::VALIDATE_DEFAULT, NULL);
+		HRESULT ValidateHR = DirectX::Validate(Indices.GetData(), NumFaces, NumVerts, AdjacencyArray.GetData(), DirectX::VALIDATE_BOWTIES, NULL);
 		if (FAILED(ValidateHR))
 		{
 			return false;
@@ -163,8 +162,6 @@ bool ProxyLOD::GenerateUVs(const FTextureAtlasDesc& TextureAtlasDesc,
 
 bool ProxyLOD::GenerateUVs(FVertexDataMesh& InOutMesh, const FTextureAtlasDesc& TextureAtlasDesc, const bool VertexColorParts)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(ProxyLOD::GenerateUVs)
-
 	// desired parameters for ISO-Chart method
 
 	// MaxChartNum = 0 will allow any number of charts to be generated.
@@ -189,7 +186,6 @@ bool ProxyLOD::GenerateUVs(FVertexDataMesh& InOutMesh, const FTextureAtlasDesc& 
 	                      const float MaxStretch, const size_t MaxChartNumber, const bool bComputeIMTFromVertexNormal, 
 	                      std::function<HRESULT __cdecl(float percentComplete)> StatusCallBack, float* MaxStretchOut, size_t* NumChartsOut)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(ProxyLOD::GenerateUVs)
 
 	std::vector<uint32> DirextXAdjacency;
 
@@ -230,10 +226,9 @@ bool ProxyLOD::GenerateUVs(FVertexDataMesh& InOutMesh, const FTextureAtlasDesc& 
 	float maxStretchUsed = 0.f;
 	size_t numChartsUsed = 0;
 
-	TArray<float> IMTArray;
-	IMTArray.SetNumUninitialized(NumFaces * 3);
-	float* pIMTArray = IMTArray.GetData();
+	
 
+	float * pIMTArray = new float[NumFaces * 3];
 	if (!bComputeIMTFromVertexNormal)
 	{
 		for (int32 f = 0; f < NumFaces; ++f)
@@ -261,31 +256,14 @@ bool ProxyLOD::GenerateUVs(FVertexDataMesh& InOutMesh, const FTextureAtlasDesc& 
 		}
 	}
 
-	std::vector<uint32_t> vPartitionResultAdjacency;
-	HRESULT hr;
-	{
-		TRACE_CPUPROFILER_EVENT_SCOPE(DirectX::UVAtlasPartition)
-		hr = DirectX::UVAtlasPartition(Pos, NumVerts, 
-			indices, DXGI_FORMAT_R32_UINT, NumFaces,
-			MaxChartNumber, MaxStretch,
-			adjacency, NULL /*false adj*/, pIMTArray,
-			StatusCallBack, DirectX::UVATLAS_DEFAULT_CALLBACK_FREQUENCY,
-			DirectX::UVATLAS_DEFAULT, vb, ib,
-			&facePartitioning, &vertexRemapArray,
-			vPartitionResultAdjacency,
-			&maxStretchUsed, &numChartsUsed);
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		TRACE_CPUPROFILER_EVENT_SCOPE(DirectX::UVAtlasPack)
-		hr = DirectX::UVAtlasPack(
-			vb, ib,
-			DXGI_FORMAT_R32_UINT,
-			width, height, gutter,
-			vPartitionResultAdjacency,
-			StatusCallBack, DirectX::UVATLAS_DEFAULT_CALLBACK_FREQUENCY);
-	}
+	HRESULT hr = DirectX::UVAtlasCreate(Pos, NumVerts,
+		indices, DXGI_FORMAT_R32_UINT, NumFaces,
+		MaxChartNumber, MaxStretch,
+		width, height, gutter,
+		adjacency, NULL /*false adj*/, pIMTArray /*IMTArray*/,
+		StatusCallBack, DirectX::UVATLAS_DEFAULT_CALLBACK_FREQUENCY,
+		DirectX::UVATLAS_DEFAULT, vb, ib,
+		&facePartitioning, &vertexRemapArray, &maxStretchUsed, &numChartsUsed);
 
 	if (MaxStretchOut)
 	{
@@ -295,11 +273,10 @@ bool ProxyLOD::GenerateUVs(FVertexDataMesh& InOutMesh, const FTextureAtlasDesc& 
 	{
 		*NumChartsOut = numChartsUsed;
 	}
+	if (FAILED(hr)) return false;
 
-	if (FAILED(hr))
-	{
-		return false;
-	}
+	if (pIMTArray) delete[] pIMTArray;
+	
 
 	// testing
 	check(ib.size() / sizeof(uint32) == NumFaces * 3);

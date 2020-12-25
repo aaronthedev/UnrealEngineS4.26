@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,7 +12,6 @@ struct FDatasmithImportContext;
 class IDatasmithActorElement;
 class IDatasmithCameraActorElement;
 class IDatasmithCustomActorElement;
-class IDatasmithDecalActorElement;
 class IDatasmithEnvironmentElement;
 class IDatasmithHierarchicalInstancedStaticMeshActorElement;
 class IDatasmithLandscapeElement;
@@ -27,7 +26,6 @@ class UHierarchicalInstancedStaticMeshComponent;
 class USceneComponent;
 class UStaticMeshComponent;
 struct FCachedActorLabels;
-class FDatasmithActorUniqueLabelProvider;
 
 class FDatasmithActorImporter
 {
@@ -57,19 +55,19 @@ public:
 	 *
 	 * @return	Returns the importer scene component. The component is not registered to allow edits. The caller needs to register it when the setup is complete.
 	 */
-	static USceneComponent* ImportSceneComponent( UClass* ComponentClass, const TSharedRef< IDatasmithActorElement >& ActorElement, FDatasmithImportContext& ImportContext, UObject* Outer, FDatasmithActorUniqueLabelProvider& UniqueNameProvider );
+	static USceneComponent* ImportSceneComponent( UClass* ComponentClass, const TSharedRef< IDatasmithActorElement >& ActorElement, FDatasmithImportContext& ImportContext, UObject* Outer );
 
 	/**
 	 * Spawns an actor with a SceneComponent
 	 */
 	static AActor* ImportBaseActor( FDatasmithImportContext& ImportContext, const TSharedRef< IDatasmithActorElement >& ActorElement );
-	static USceneComponent* ImportBaseActorAsComponent( FDatasmithImportContext& ImportContext, const TSharedRef< IDatasmithActorElement >& ActorElement, UObject* Outer, FDatasmithActorUniqueLabelProvider& UniqueNameProvider );
+	static USceneComponent* ImportBaseActorAsComponent( FDatasmithImportContext& ImportContext, const TSharedRef< IDatasmithActorElement >& ActorElement, UObject* Outer );
 
 	/**
 	 * Spawns a static mesh actor
 	 */
 	static AStaticMeshActor* ImportStaticMeshActor( FDatasmithImportContext& ImportContext, const TSharedRef< IDatasmithMeshActorElement >& MeshActorElement );
-	static UStaticMeshComponent* ImportStaticMeshComponent( FDatasmithImportContext& ImportContext, const TSharedRef< IDatasmithMeshActorElement >& MeshActorElement, UObject* Outer, FDatasmithActorUniqueLabelProvider& UniqueNameProvider );
+	static UStaticMeshComponent* ImportStaticMeshComponent( FDatasmithImportContext& ImportContext, const TSharedRef< IDatasmithMeshActorElement >& MeshActorElement, UObject* Outer );
 
 	/**
 	 * Spawns a cine camera actor
@@ -89,12 +87,7 @@ public:
 	/**
 	 * Spawns an actor with a class defined by the CustomActorElement class name
 	 */
-	static AActor* ImportCustomActor( FDatasmithImportContext& ImportContext, const TSharedRef< IDatasmithCustomActorElement >& CustomActorElement, FDatasmithActorUniqueLabelProvider& UniqueNameProvider );
-
-	/**
-	 * Spawns a Decal actor
-	 */
-	static AActor* ImportDecalActor( FDatasmithImportContext& ImportContext, const TSharedRef< IDatasmithDecalActorElement >& DecalActorElement, FDatasmithActorUniqueLabelProvider& UniqueNameProvider );
+	static AActor* ImportCustomActor( FDatasmithImportContext& ImportContext, const TSharedRef< IDatasmithCustomActorElement >& CustomActorElement );
 
 	/**
 	 * Spawns a landscape actor
@@ -104,10 +97,10 @@ public:
 	/**
 	 * Spawns an actor with a hierarchical instanced static mesh component
 	 */
-	static AActor* ImportHierarchicalInstancedStaticMeshAsActor( FDatasmithImportContext& ImportContext, const TSharedRef< IDatasmithHierarchicalInstancedStaticMeshActorElement >& HierarchicalInstancedStatictMeshActorElement, FDatasmithActorUniqueLabelProvider& UniqueNameProvider );
+	static AActor* ImportHierarchicalInstancedStaticMeshAsActor( FDatasmithImportContext& ImportContext, const TSharedRef< IDatasmithHierarchicalInstancedStaticMeshActorElement >& HierarchicalInstancedStatictMeshActorElement );
 	
 	static UHierarchicalInstancedStaticMeshComponent* ImportHierarchicalInstancedStaticMeshComponent( FDatasmithImportContext& ImportContext,
-		const TSharedRef< IDatasmithHierarchicalInstancedStaticMeshActorElement >& HierarchicalInstancedStaticMeshActorElement, UObject* Outer, FDatasmithActorUniqueLabelProvider& UniqueNameProvider );
+		const TSharedRef< IDatasmithHierarchicalInstancedStaticMeshActorElement >& HierarchicalInstancedStaticMeshActorElement, UObject* Outer );
 
 	/**
 	 * Handle Actor common properties (Layers, Tags)

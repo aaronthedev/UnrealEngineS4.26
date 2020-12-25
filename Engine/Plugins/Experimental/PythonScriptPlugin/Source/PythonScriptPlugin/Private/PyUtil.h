@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,13 +7,12 @@
 #include "CoreMinimal.h"
 #include "Containers/ArrayView.h"
 #include "Logging/LogMacros.h"
-#include "UObject/Field.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogPython, Log, All);
 
 #if WITH_PYTHON
 
-struct FPropertyAccessChangeNotify;
+class FPyWrapperOwnerContext;
 
 /** Cast a function pointer to PyCFunction (via a void* to avoid a compiler warning) */
 #define PyCFunctionCast(FUNCPTR) (PyCFunction)(void*)(FUNCPTR)
@@ -44,12 +43,10 @@ namespace PyUtil
 
 	/** Convert a TCHAR to a transient buffer that can be passed to a Python API that doesn't hold the result */
 #if PY_MAJOR_VERSION >= 3
-	#define TCHARToPyApiChar(InStr) TCHAR_TO_WCHAR(InStr)
+	#define TCHARToPyApiChar(InStr) InStr
 #else	// PY_MAJOR_VERSION >= 3
 	#define TCHARToPyApiChar(InStr) TCHAR_TO_UTF8(InStr)
 #endif	// PY_MAJOR_VERSION >= 3
-
-	extern const FName DefaultPythonPropertyName;
 
 	/** Convert a TCHAR to a persistent buffer that can be passed to a Python API that does hold the result (you have to keep the buffer around as long as Python needs it) */
 	FPyApiBuffer TCHARToPyApiBuffer(const TCHAR* InStr);
@@ -77,199 +74,62 @@ namespace PyUtil
 		return PyBool_FromLong(bResult);
 	}
 
-	/** Helper to manage a property pointer that may be potentially owned by a wrapper or stack instance */
-	template <typename TPropType>
-	class TPropOnScope
-	{
-		static_assert(TIsDerivedFrom<TPropType, FProperty>::IsDerived, "TPropType must be a FProperty-based type!");
-
-	public:
-		static TPropOnScope OwnedReference(TPropType* InProp)
-		{
-			return TPropOnScope(InProp, true);
-		}
-
-		static TPropOnScope ExternalReference(TPropType* InProp)
-		{
-			return TPropOnScope(InProp, false);
-		}
-
-		TPropOnScope() = default;
-
-		~TPropOnScope()
-		{
-			Reset();
-		}
-
-		TPropOnScope(const TPropOnScope&) = delete;
-		TPropOnScope& operator=(const TPropOnScope&) = delete;
-
-		template <
-			typename TOtherPropType,
-			typename = decltype(ImplicitConv<TPropType*>((TOtherPropType*)nullptr))
-		>
-		TPropOnScope(TPropOnScope<TOtherPropType>&& Other)
-		{
-			bOwnsProp = Other.OwnsProp();
-			Prop = Other.Release();
-
-			Other.Reset();
-		}
-
-		template <
-			typename TOtherPropType,
-			typename = decltype(ImplicitConv<TPropType*>((TOtherPropType*)nullptr))
-		>
-		TPropOnScope& operator=(TPropOnScope<TOtherPropType>&& Other)
-		{
-			if (this != (void*)&Other)
-			{
-				Reset();
-
-				bOwnsProp = Other.OwnsProp();
-				Prop = Other.Release();
-
-				Other.Reset();
-			}
-			return *this;
-		}
-
-		explicit operator bool() const
-		{
-			return IsValid();
-		}
-
-		bool IsValid() const
-		{
-			return Prop != nullptr;
-		}
-
-		operator TPropType*() const
-		{
-			return Prop;
-		}
-
-		TPropType& operator*() const
-		{
-			check(Prop);
-			return *Prop;
-		}
-
-		TPropType* operator->() const
-		{
-			check(Prop);
-			return Prop;
-		}
-
-		TPropType* Get() const
-		{
-			return Prop;
-		}
-
-		bool OwnsProp() const
-		{
-			return bOwnsProp;
-		}
-
-		TPropType* Release()
-		{
-			TPropType* LocalProp = Prop;
-			Prop = nullptr;
-			bOwnsProp = false;
-			return LocalProp;
-		}
-
-		void Reset()
-		{
-			if (bOwnsProp)
-			{
-				delete Prop;
-			}
-			Prop = nullptr;
-			bOwnsProp = false;
-		}
-
-		void AddReferencedObjects(FReferenceCollector& Collector)
-		{
-			if (Prop)
-			{
-				((typename TRemoveConst<TPropType>::Type*)Prop)->AddReferencedObjects(Collector);
-			}
-		}
-
-	private:
-		TPropOnScope(TPropType* InProp, const bool InOwnsProp)
-			: Prop(InProp)
-			, bOwnsProp(InOwnsProp)
-		{
-		}
-
-		TPropType* Prop = nullptr;
-		bool bOwnsProp = false;
-	};
-
-	typedef TPropOnScope<FProperty> FPropOnScope;
-	typedef TPropOnScope<const FProperty> FConstPropOnScope;
-	typedef TPropOnScope<FArrayProperty> FArrayPropOnScope;
-	typedef TPropOnScope<const FArrayProperty> FConstArrayPropOnScope;
-	typedef TPropOnScope<FSetProperty> FSetPropOnScope;
-	typedef TPropOnScope<const FSetProperty> FConstSetPropOnScope;
-	typedef TPropOnScope<FMapProperty> FMapPropOnScope;
-	typedef TPropOnScope<const FMapProperty> FConstMapPropOnScope;
-
 	/** Helper used to hold the value for a property value on the stack */
 	class FPropValueOnScope
 	{
 	public:
-		explicit FPropValueOnScope(FConstPropOnScope&& InProp);
+		explicit FPropValueOnScope(const UProperty* InProp);
 		~FPropValueOnScope();
+
+		FPropValueOnScope(FPropValueOnScope&) = delete;
+		FPropValueOnScope& operator=(FPropValueOnScope&) = delete;
 
 		bool SetValue(PyObject* InPyObj, const TCHAR* InErrorCtxt);
 
 		bool IsValid() const;
 
-		const FProperty* GetProp() const;
+		const UProperty* GetProp() const;
 
 		void* GetValue(const int32 InArrayIndex = 0) const;
 
 	private:
-		FConstPropOnScope Prop;
-		void* Value = nullptr;
+		const UProperty* Prop;
+		void* Value;
 	};
 
 	/** Helper used to hold the value for a single fixed array element on the stack */
 	class FFixedArrayElementOnScope : public FPropValueOnScope
 	{
 	public:
-		explicit FFixedArrayElementOnScope(const FProperty* InProp);
+		explicit FFixedArrayElementOnScope(const UProperty* InProp);
 	};
 
 	/** Helper used to hold the value for a single array element on the stack */
 	class FArrayElementOnScope : public FPropValueOnScope
 	{
 	public:
-		explicit FArrayElementOnScope(const FArrayProperty* InProp);
+		explicit FArrayElementOnScope(const UArrayProperty* InProp);
 	};
 
 	/** Helper used to hold the value for a single set element on the stack */
 	class FSetElementOnScope : public FPropValueOnScope
 	{
 	public:
-		explicit FSetElementOnScope(const FSetProperty* InProp);
+		explicit FSetElementOnScope(const USetProperty* InProp);
 	};
 
 	/** Helper used to hold the value for a single map key on the stack */
 	class FMapKeyOnScope : public FPropValueOnScope
 	{
 	public:
-		explicit FMapKeyOnScope(const FMapProperty* InProp);
+		explicit FMapKeyOnScope(const UMapProperty* InProp);
 	};
 
 	/** Helper used to hold the value for a single map value on the stack */
 	class FMapValueOnScope : public FPropValueOnScope
 	{
 	public:
-		explicit FMapValueOnScope(const FMapProperty* InProp);
+		explicit FMapValueOnScope(const UMapProperty* InProp);
 	};
 
 	/** Struct containing information needed to construct a property instance */
@@ -283,7 +143,7 @@ namespace PyUtil
 		{
 		}
 
-		explicit FPropertyDef(FFieldClass* InPropertyClass, UObject* InPropertySubType = nullptr, TSharedPtr<FPropertyDef> InKeyDef = nullptr, TSharedPtr<FPropertyDef> InValueDef = nullptr)
+		explicit FPropertyDef(UClass* InPropertyClass, UObject* InPropertySubType = nullptr, TSharedPtr<FPropertyDef> InKeyDef = nullptr, TSharedPtr<FPropertyDef> InValueDef = nullptr)
 			: PropertyClass(InPropertyClass)
 			, PropertySubType(InPropertySubType)
 			, KeyDef(InKeyDef)
@@ -291,7 +151,7 @@ namespace PyUtil
 		{
 		}
 
-		FPropertyDef(const FProperty* InProperty);
+		FPropertyDef(const UProperty* InProperty);
 
 		FORCEINLINE bool operator==(const FPropertyDef& Other) const
 		{
@@ -307,7 +167,7 @@ namespace PyUtil
 		}
 
 		/** Class of the property to create */
-		FFieldClass* PropertyClass;
+		UClass* PropertyClass;
 
 		/** Sub-type of the property (the class for object properties, the struct for struct properties, the enum for enum properties, the function for delegate properties) */
 		UObject* PropertySubType;
@@ -326,22 +186,22 @@ namespace PyUtil
 	bool CalculatePropertyDef(PyObject* InPyObj, FPropertyDef& OutPropertyDef);
 
 	/** Given a property definition, create a property instance */
-	FProperty* CreateProperty(const FPropertyDef& InPropertyDef, const int32 InArrayDim = 1, UObject* InOuter = nullptr, const FName InName = DefaultPythonPropertyName);
+	UProperty* CreateProperty(const FPropertyDef& InPropertyDef, const int32 InArrayDim = 1, UObject* InOuter = nullptr, const FName InName = NAME_None);
 
 	/** Given a Python type, create a compatible property instance */
-	FProperty* CreateProperty(PyTypeObject* InPyType, const int32 InArrayDim = 1, UObject* InOuter = nullptr, const FName InName = DefaultPythonPropertyName);
+	UProperty* CreateProperty(PyTypeObject* InPyType, const int32 InArrayDim = 1, UObject* InOuter = nullptr, const FName InName = NAME_None);
 
 	/** Given a Python instance, create a compatible property instance */
-	FProperty* CreateProperty(PyObject* InPyObj, const int32 InArrayDim = 1, UObject* InOuter = nullptr, const FName InName = DefaultPythonPropertyName);
+	UProperty* CreateProperty(PyObject* InPyObj, const int32 InArrayDim = 1, UObject* InOuter = nullptr, const FName InName = NAME_None);
 
 	/** Check to see if the given property is an input parameter for a function */
-	bool IsInputParameter(const FProperty* InParam);
+	bool IsInputParameter(const UProperty* InParam);
 
 	/** Check to see if the given property is an output parameter for a function */
-	bool IsOutputParameter(const FProperty* InParam);
+	bool IsOutputParameter(const UProperty* InParam);
 
 	/** Import a UHT default value on the given property */
-	void ImportDefaultValue(const FProperty* InProp, void* InPropValue, const FString& InDefaultValue);
+	void ImportDefaultValue(const UProperty* InProp, void* InPropValue, const FString& InDefaultValue);
 
 	/** Invoke a function call. Returns false if a Python exception was raised */
 	bool InvokeFunctionCall(UObject* InObj, const UFunction* InFunc, void* InBaseParamsAddr, const TCHAR* InErrorCtxt);
@@ -356,20 +216,10 @@ namespace PyUtil
 	int ValidateContainerLenParam(PyObject* InPyObj, int32 &OutLen, const char* InPythonArgName, const TCHAR* InErrorCtxt);
 
 	/** Validate that the given index is valid for the container length */
-	int ValidateContainerIndexParam(const Py_ssize_t InIndex, const Py_ssize_t InLen, const FProperty* InProp, const TCHAR* InErrorCtxt);
+	int ValidateContainerIndexParam(const Py_ssize_t InIndex, const Py_ssize_t InLen, const UProperty* InProp, const TCHAR* InErrorCtxt);
 
 	/** Resolve a container index (taking into account negative indices) */
 	Py_ssize_t ResolveContainerIndexParam(const Py_ssize_t InIndex, const Py_ssize_t InLen);
-
-	/**
-	 * A NewObject wrapper for Python which catches some internal check conditions and raises them as Python exceptions instead.
-	 *
-	 * @param InObjClass The class type to create an instance of.
-	 * @param InOuter The outer object that should host the new instance.
-	 * @param InName The name that should be given to the new instance (will generate a unique name if None).
-	 * @param InBaseClass The base class type required for InObjClass (ignored if null).
-	 */
-	UObject* NewObject(UClass* InObjClass, UObject* InOuter, const FName InName, UClass* InBaseClass, const TCHAR* InErrorCtxt);
 
 	/**
 	 * Given a Python object, try and get the owner Unreal object for the instance.
@@ -379,10 +229,10 @@ namespace PyUtil
 	UObject* GetOwnerObject(PyObject* InPyObj);
 
 	/** Get the current value of the given property from the given struct */
-	PyObject* GetPropertyValue(const UStruct* InStruct, const void* InStructData, const FProperty* InProp, const char *InAttributeName, PyObject* InOwnerPyObject, const TCHAR* InErrorCtxt);
+	PyObject* GetPropertyValue(const UStruct* InStruct, void* InStructData, const UProperty* InProp, const char *InAttributeName, PyObject* InOwnerPyObject, const TCHAR* InErrorCtxt);
 
 	/** Set the current value of the given property from the given struct */
-	int SetPropertyValue(const UStruct* InStruct, void* InStructData, PyObject* InValue, const FProperty* InProp, const char *InAttributeName, const FPropertyAccessChangeNotify* InChangeNotify, const uint64 InReadOnlyFlags, const bool InOwnerIsTemplate, const TCHAR* InErrorCtxt);
+	int SetPropertyValue(const UStruct* InStruct, void* InStructData, PyObject* InValue, const UProperty* InProp, const char *InAttributeName, const FPyWrapperOwnerContext& InChangeOwner, const uint64 InReadOnlyFlags, const bool InOwnerIsTemplate, const TCHAR* InErrorCtxt);
 
 	/**
 	 * Check to see if the given object implements a length function.
@@ -421,11 +271,6 @@ namespace PyUtil
 	bool IsModuleImported(const TCHAR* InModuleName, PyObject** OutPyModule = nullptr);
 
 	/**
-	 * Get the path to the Python interpreter executable of the Python SDK this plugin was compiled against.
-	 */
-	FString GetInterpreterExecutablePath(bool* OutIsEnginePython = nullptr);
-
-	/**
 	 * Ensure that the given path is on the sys.path list.
 	 */
 	void AddSystemPath(const FString& InPath);
@@ -453,7 +298,7 @@ namespace PyUtil
 	/**
 	 * Get the friendly value of the given property that can be used when stringifying property values for Python.
 	 */
-	FString GetFriendlyPropertyValue(const FProperty* InProp, const void* InPropValue, const uint32 InPropPortFlags);
+	FString GetFriendlyPropertyValue(const UProperty* InProp, const void* InPropValue, const uint32 InPropPortFlags);
 
 	/**
 	 * Get the friendly typename of the given object that can be used in error reporting.

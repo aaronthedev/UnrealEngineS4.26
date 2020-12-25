@@ -1,30 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Tools/InteractiveToolsCommands.h"
-
-
-
-enum class EModelingModeActionCommands
-{
-	FocusViewToCursor
-};
-
-
-class FModelingModeActionCommands : public TCommands<FModelingModeActionCommands>
-{
-public:
-	FModelingModeActionCommands();
-
-	virtual void RegisterCommands() override;
-
-	TSharedPtr<FUICommandInfo> FocusViewCommand;
-
-	static void RegisterCommandBindings(TSharedPtr<FUICommandList> UICommandList, TFunction<void(EModelingModeActionCommands)> OnCommandExecuted);
-	static void UnRegisterCommandBindings(TSharedPtr<FUICommandList> UICommandList);
-};
 
 
 
@@ -66,21 +45,34 @@ public:
 // would ever be used at the same time. And we cannot create/register TCommands at runtime.
 // So, we have to define a separate TCommands instance for each Tool. This is unfortunate.
 
-#define DECLARE_TOOL_ACTION_COMMANDS(CommandsClassName) \
-class CommandsClassName : public TInteractiveToolCommands<CommandsClassName> \
-{\
-public:\
-	CommandsClassName();\
-	virtual void GetToolDefaultObjectList(TArray<UInteractiveTool*>& ToolCDOs) override;\
-};\
+
+class FSculptToolActionCommands : public TInteractiveToolCommands<FSculptToolActionCommands>
+{
+public:
+	FSculptToolActionCommands();
+	virtual void GetToolDefaultObjectList(TArray<UInteractiveTool*>& ToolCDOs) override;
+};
 
 
-DECLARE_TOOL_ACTION_COMMANDS(FSculptToolActionCommands);
-DECLARE_TOOL_ACTION_COMMANDS(FVertexSculptToolActionCommands);
-DECLARE_TOOL_ACTION_COMMANDS(FTransformToolActionCommands);
-DECLARE_TOOL_ACTION_COMMANDS(FDrawPolygonToolActionCommands);
-DECLARE_TOOL_ACTION_COMMANDS(FMeshSelectionToolActionCommands);
-DECLARE_TOOL_ACTION_COMMANDS(FMeshPlaneCutToolActionCommands);
-DECLARE_TOOL_ACTION_COMMANDS(FEditMeshPolygonsToolActionCommands);
-DECLARE_TOOL_ACTION_COMMANDS(FDrawAndRevolveToolActionCommands);
+class FTransformToolActionCommands : public TInteractiveToolCommands<FTransformToolActionCommands>
+{
+public:
+	FTransformToolActionCommands();
+	virtual void GetToolDefaultObjectList(TArray<UInteractiveTool*>& ToolCDOs) override;
+};
 
+
+class FDrawPolygonToolActionCommands : public TInteractiveToolCommands<FDrawPolygonToolActionCommands>
+{
+public:
+	FDrawPolygonToolActionCommands();
+	virtual void GetToolDefaultObjectList(TArray<UInteractiveTool*>& ToolCDOs) override;
+};
+
+
+class FMeshSelectionToolActionCommands : public TInteractiveToolCommands<FMeshSelectionToolActionCommands>
+{
+public:
+	FMeshSelectionToolActionCommands();
+	virtual void GetToolDefaultObjectList(TArray<UInteractiveTool*>& ToolCDOs) override;
+};

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -27,7 +27,6 @@ namespace UnrealBuildTool.Rules
 					"EngineSettings",
 					"InputCore",
 					"PacketHandler",
-					"RenderCore",
 					"Slate",
 					"SlateCore"
 				}

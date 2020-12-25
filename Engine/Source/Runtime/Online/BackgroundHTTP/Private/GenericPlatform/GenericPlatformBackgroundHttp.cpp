@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GenericPlatform/GenericPlatformBackgroundHttp.h"
 #include "GenericPlatform/GenericPlatformBackgroundHttpManager.h"
@@ -28,4 +28,17 @@ FBackgroundHttpRequestPtr FGenericPlatformBackgroundHttp::ConstructBackgroundReq
 FBackgroundHttpResponsePtr FGenericPlatformBackgroundHttp::ConstructBackgroundResponse(int32 ResponseCode, const FString& TempFilePath)
 {
 	return MakeShared<FGenericPlatformBackgroundHttpResponse, ESPMode::ThreadSafe>(ResponseCode, TempFilePath);
+}
+
+const FString FGenericPlatformBackgroundHttp::GetTemporaryFilePathFromURL(const FString& URL)
+{
+	//For now, just save any file in the root BackgroundHttp Tempt directory under the sanitized URL
+	const FString FileName = FPaths::MakeValidFileName(URL);
+	return FPaths::Combine(GetTemporaryRootPath(), FileName);
+}
+
+const FString& FGenericPlatformBackgroundHttp::GetTemporaryRootPath()
+{
+	static FString BackgroundHttpDir = FPaths::Combine(FPlatformMisc::GamePersistentDownloadDir(), TEXT("BackgroundHttpTemp"));
+	return BackgroundHttpDir;
 }

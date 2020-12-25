@@ -1,13 +1,18 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Widgets/Views/SListView.h"
-#include "USDPrimAttributesViewModel.h"
 
 #if USE_USD_SDK
 
-class SUsdPrimPropertiesList : public SListView< TSharedPtr< FUsdPrimAttributeViewModel > >
+struct FUsdPrimProperty : public TSharedFromThis< FUsdPrimProperty >
+{
+	FString Label;
+	FString Value;
+};
+
+class SUsdPrimPropertiesList : public SListView< TSharedPtr< FUsdPrimProperty > >
 {
 	SLATE_BEGIN_ARGS( SUsdPrimPropertiesList ) {}
 	SLATE_END_ARGS()
@@ -17,11 +22,13 @@ public:
 	void SetPrimPath( const TCHAR* InPrimPath );
 
 protected:
-	TSharedRef< ITableRow > OnGenerateRow( TSharedPtr< FUsdPrimAttributeViewModel > InDisplayNode, const TSharedRef< STableViewBase >& OwnerTable );
+	TSharedRef< ITableRow > OnGenerateRow( TSharedPtr< FUsdPrimProperty > InDisplayNode, const TSharedRef< STableViewBase >& OwnerTable );
 	void GeneratePropertiesList( const TCHAR* InPrimPath );
 
 private:
-	FUsdPrimAttributesViewModel ViewModel;
+	FString PrimPath;
+
+	TArray< TSharedPtr< FUsdPrimProperty > > PrimProperties;
 	TSharedPtr< SHeaderRow > HeaderRowWidget;
 };
 

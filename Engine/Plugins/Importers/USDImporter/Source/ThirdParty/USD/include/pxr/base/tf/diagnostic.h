@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_DIAGNOSTIC_H
-#define PXR_BASE_TF_DIAGNOSTIC_H
+#ifndef TF_DIAGNOSTIC_H
+#define TF_DIAGNOSTIC_H
 
 /// \file tf/diagnostic.h
 /// \ingroup group_tf_Diagnostic
@@ -65,7 +65,8 @@ PXR_NAMESPACE_OPEN_SCOPE
 /// Please see \ref page_tf_TfError for more information about how to use
 /// TF_ERROR().
 ///
-/// This is safe to call in secondary threads.
+/// This is safe to call in secondary threads, but the error will be downgraded
+/// to a warning.
 ///
 /// \hideinitializer
 #define TF_ERROR(...)
@@ -74,12 +75,13 @@ PXR_NAMESPACE_OPEN_SCOPE
 ///
 /// This macro is a convenience.  It produces a TF_ERROR() with an error code
 /// indicating a coding error.  It takes a printf-like format specification or a
-/// std::string.  Generally, an error handling delegate will take action to turn
+/// std::string.  Generally, an error handilng delegate will take action to turn
 /// this error into a python exception, and if it remains unhandled at the end of
 /// an application iteration will roll-back the undo stack to a last-known-good
 /// state.
 ///
-/// This is safe to call in secondary threads.
+/// This is safe to call in secondary threads, but the error will be downgraded
+/// to a warning.
 ///
 /// \hideinitializer
 #define TF_CODING_ERROR(fmt, args)
@@ -90,11 +92,12 @@ PXR_NAMESPACE_OPEN_SCOPE
 /// indicating a generic runtime error.  It is preferred over TF_ERROR(0),
 /// but using a specific error code is preferred over this.  It takes a
 /// printf-like format specification or a std::string.  Generally, an error
-/// handling delegate will take action to turn this error into a python
+/// handilng delegate will take action to turn this error into a python
 /// exception, and if it remains unhandled at the end of an application iteration
 /// will roll-back the undo stack to a last-known-good state.
 ///
-/// This is safe to call in secondary threads.
+/// This is safe to call in secondary threads, but the error will be downgraded
+/// to a warning.
 ///
 /// \hideinitializer
 #define TF_RUNTIME_ERROR(fmt, args)
@@ -143,7 +146,8 @@ PXR_NAMESPACE_OPEN_SCOPE
 /// Generally, no adjustment to program state should occur as the result of
 /// this macro. This is in contrast with errors as mentioned above.
 ///
-/// This is safe to call in secondary threads.
+/// This is safe to call in secondary threads, but the warning will be printed
+/// to \c stderr rather than being handled by the diagnostic delegate.
 ///
 /// \hideinitializer
 #define TF_WARN(...)
@@ -184,7 +188,8 @@ PXR_NAMESPACE_OPEN_SCOPE
 /// Generally, no adjustment to program state should occur as the result of
 /// this macro. This is in contrast with errors as mentioned above.
 ///
-/// This is safe to call in secondary threads.
+/// This is safe to call in secondary threads, but the message will be printed
+/// to \c stderr rather than being handled by the diagnostic delegate.
 ///
 /// \hideinitializer
 #define TF_STATUS(...)
@@ -277,7 +282,8 @@ PXR_NAMESPACE_OPEN_SCOPE
 /// generate TF_FATAL_ERRORs instead and abort the program.  This is intended for
 /// testing.
 ///
-/// This is safe to call in secondary threads.
+/// This is safe to call in secondary threads, but the error will be downgraded
+/// to a warning.
 ///
 /// \hideinitializer
 #define TF_VERIFY(cond [, format, ...])
@@ -410,18 +416,19 @@ void Tf_TerminateHandler();
 #define TF_VERIFY(cond, ...)                                                   \
     (ARCH_LIKELY(cond) ? true :                                                \
      Tf_FailedVerifyHelper(TF_CALL_CONTEXT, # cond,                            \
-                           Tf_VerifyStringFormat(__VA_ARGS__)))
+                           Tf_DiagnosticStringPrintf(__VA_ARGS__)))
 
-// Helpers for TF_VERIFY.
+// Helpers for TF_VERIFY
 TF_API  bool
 Tf_FailedVerifyHelper(TfCallContext const &context,
-                      char const *condition, char const *msg);
+                      char const *condition,
+                      std::string const &msg);
 
 // Helpers for TF_VERIFY.
-inline char const *
-Tf_VerifyStringFormat() { return nullptr; }
-TF_API char const *
-Tf_VerifyStringFormat(const char *format, ...) ARCH_PRINTF_FUNCTION(1, 2);
+TF_API std::string Tf_DiagnosticStringPrintf();
+TF_API std::string Tf_DiagnosticStringPrintf(const char *format, ...)
+    ARCH_PRINTF_FUNCTION(1, 2)
+    ;
 
 #endif // !doxygen
 
@@ -480,4 +487,4 @@ void TfInstallTerminateAndCrashHandlers();
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_DIAGNOSTIC_H
+#endif // TF_DIAGNOSTIC_H

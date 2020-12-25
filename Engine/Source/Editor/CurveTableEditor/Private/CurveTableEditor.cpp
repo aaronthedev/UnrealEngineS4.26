@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CurveTableEditor.h"
 #include "Widgets/Text/STextBlock.h"
@@ -422,7 +422,7 @@ void FCurveTableEditor::CacheCurveTableForEditing()
 
 	// Find unique column titles
 	TArray<float> UniqueColumns;
-	for (const TPair<FName, FRealCurve*>& CurveRow : Table->GetRowMap())
+	for (const TPair<FName, FRealCurve*> CurveRow : Table->GetRowMap())
 	{
 		FRealCurve* Curve = CurveRow.Value;
 		for (auto CurveIt(Curve->GetKeyHandleIterator()); CurveIt; ++CurveIt)
@@ -448,7 +448,7 @@ void FCurveTableEditor::CacheCurveTableForEditing()
 
 	// Each curve is a row entry
 	AvailableRows.Reset(Table->GetRowMap().Num());
-	for (const TPair<FName, FRealCurve*>& CurveRow : Table->GetRowMap())
+	for (const TPair<FName, FRealCurve*> CurveRow : Table->GetRowMap())
 	{
 		const FName& CurveName = CurveRow.Key;
 		FRealCurve* Curve = CurveRow.Value;

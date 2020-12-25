@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -117,20 +117,11 @@ struct MOVIESCENE_API FMovieSceneTimeController_AudioClock : FMovieSceneTimeCont
 
 
 /**
-* A timing manager that retrieves its time relative to the Timecode clock
-*/
-struct MOVIESCENE_API FMovieSceneTimeController_RelativeTimecodeClock : FMovieSceneTimeController_ExternalClock
-{
-	virtual double GetCurrentTime() const override;
-};
-
-
-/**
 * A timing manager that retrieves its time from the Timecode clock
 */
-struct MOVIESCENE_API FMovieSceneTimeController_TimecodeClock : FMovieSceneTimeController
+struct MOVIESCENE_API FMovieSceneTimeController_TimecodeClock : FMovieSceneTimeController_ExternalClock
 {
-	virtual FFrameTime OnRequestCurrentTime(const FQualifiedFrameTime& InCurrentTime, float InPlayRate) override;
+	virtual double GetCurrentTime() const override;
 };
 
 

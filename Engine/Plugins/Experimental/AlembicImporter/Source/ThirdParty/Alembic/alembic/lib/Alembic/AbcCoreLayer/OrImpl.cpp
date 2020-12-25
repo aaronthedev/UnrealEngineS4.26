@@ -112,16 +112,7 @@ AbcA::ObjectReaderPtr OrImpl::getParent()
 //-*****************************************************************************
 AbcA::CompoundPropertyReaderPtr OrImpl::getProperties()
 {
-    Alembic::Util::scoped_lock l( m_lock );
-    AbcA::CompoundPropertyReaderPtr ret = m_top.lock();
-    if ( ! ret )
-    {
-        ret = Alembic::Util::shared_ptr<CprImpl>(
-            new CprImpl( shared_from_this(), m_properties ) );
-        m_top = ret;
-    }
-
-    return ret;
+    return CprImplPtr( new CprImpl( shared_from_this(), m_properties ) );
 }
 
 //-*****************************************************************************
@@ -159,18 +150,8 @@ AbcA::ObjectReaderPtr OrImpl::getChild( const std::string &iName )
 
     if( findChildItr != m_childNameMap.end() )
     {
-        Alembic::Util::scoped_lock l( m_lock );
-
-        AbcA::ObjectReaderPtr ret =
-            m_children_ptrs[ findChildItr->second ].lock();
-
-        if ( ! ret )
-        {
-            ret = Alembic::Util::shared_ptr<OrImpl>(
-                new OrImpl( shared_from_this(), findChildItr->second ) );
-            m_children_ptrs[ findChildItr->second ] = ret;
-        }
-        return ret;
+        return OrImplPtr( new OrImpl( shared_from_this(),
+                                      findChildItr->second ) );
     }
 
     return AbcA::ObjectReaderPtr();
@@ -180,16 +161,7 @@ AbcA::ObjectReaderPtr OrImpl::getChild( size_t i )
 {
     if ( i < m_childHeaders.size() )
     {
-        Alembic::Util::scoped_lock l( m_lock );
-
-        AbcA::ObjectReaderPtr ret = m_children_ptrs[i].lock();
-        if ( ! ret )
-        {
-            ret = Alembic::Util::shared_ptr<OrImpl>(
-                new OrImpl( shared_from_this(), i ) );
-            m_children_ptrs[i] = ret;
-        }
-        return ret;
+        return OrImplPtr( new OrImpl( shared_from_this(), i ) );
     }
 
     return AbcA::ObjectReaderPtr();
@@ -214,8 +186,7 @@ bool OrImpl::getPropertiesHash( Util::Digest & oDigest )
 
     if ( childVec.size() == 1 )
     {
-        const ObjectAndIndex & oi = childVec[0];
-        return oi.first->getChild( oi.second )->getPropertiesHash( oDigest );
+        return childVec[0].first->getPropertiesHash( oDigest );
     }
 
     return false;
@@ -237,8 +208,7 @@ bool OrImpl::getChildrenHash( Util::Digest & oDigest )
     // has any children
     if ( childVec.size() == 1 )
     {
-        const ObjectAndIndex & oi = childVec[0];
-        return oi.first->getChild( oi.second )->getChildrenHash( oDigest );
+        return childVec[0].first->getChildrenHash( oDigest );
     }
 
     return false;
@@ -283,7 +253,6 @@ void OrImpl::init( std::vector< AbcA::ObjectReaderPtr > & iObjects )
                     m_childHeaders.push_back( headerPtr );
                     m_children.resize( index + 1 );
                     m_children[ index ].push_back( ObjectAndIndex( *it, i ) );
-                    m_children_ptrs.resize( index + 1 );
                 }
 
                 continue;
@@ -312,7 +281,6 @@ void OrImpl::init( std::vector< AbcA::ObjectReaderPtr > & iObjects )
 
             // prune, time to clear out existing data
             m_children.erase( m_children.begin() + index );
-            m_children_ptrs.erase( m_children_ptrs.begin() + index );
             m_childHeaders.erase( m_childHeaders.begin() + index );
             m_childNameMap.erase( nameIt );
 

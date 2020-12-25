@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -73,13 +73,15 @@ class IPropertyTypeIdentifier
 public:
 	virtual ~IPropertyTypeIdentifier() {}
 
-	/**
+/**
 	 * Called to identify if a property type is customized
 	 *
 	 * @param IPropertyHandle	Handle to the property being tested
 	 */
 	virtual bool IsPropertyTypeCustomized( const IPropertyHandle& PropertyHandle ) const = 0;
 };
+
+
 
 typedef TMap< TWeakObjectPtr<UStruct>, FDetailLayoutCallback > FCustomDetailLayoutMap;
 typedef TMap< FName, FDetailLayoutCallback > FCustomDetailLayoutNameMap;
@@ -174,7 +176,7 @@ public:
 
 	/**
 	 * Registers a property type customization
-	 * A property type is a specific FProperty type, a struct, or enum type
+	 * A property type is a specific UProperty type, a struct, or enum type
 	 *
 	 * @param PropertyTypeName		The name of the property type to customize.  For structs and enums this is the name of the struct class or enum	(not StructProperty or ByteProperty) 
 	 * @param PropertyTypeLayoutDelegate	The delegate to call when querying for a custom layout of the property type
@@ -259,7 +261,7 @@ public:
 	 * @param StructOnScope		The struct to register
 	 * @return The struct property that may may be associated with the details panel
  	 */
-	virtual FStructProperty* RegisterStructOnScopeProperty(TSharedRef<FStructOnScope> StructOnScope);
+	virtual UStructProperty* RegisterStructOnScopeProperty(TSharedRef<FStructOnScope> StructOnScope);
 
 	/**
 	 *
@@ -268,7 +270,7 @@ public:
 	virtual TSharedRef< FAssetEditorToolkit > CreatePropertyEditorToolkit( const EToolkitMode::Type Mode, const TSharedPtr< IToolkitHost >& InitToolkitHost, const TArray< UObject* >& ObjectsToEdit );
 	virtual TSharedRef< FAssetEditorToolkit > CreatePropertyEditorToolkit( const EToolkitMode::Type Mode, const TSharedPtr< IToolkitHost >& InitToolkitHost, const TArray< TWeakObjectPtr< UObject > >& ObjectsToEdit );
 
-	FPropertyTypeLayoutCallback GetPropertyTypeCustomization(const FProperty* InProperty,const IPropertyHandle& PropertyHandle, const FCustomPropertyTypeLayoutMap& InstancedPropertyTypeLayoutMap);
+	FPropertyTypeLayoutCallback GetPropertyTypeCustomization(const UProperty* InProperty,const IPropertyHandle& PropertyHandle, const FCustomPropertyTypeLayoutMap& InstancedPropertyTypeLayoutMap);
 	FPropertyTypeLayoutCallback FindPropertyTypeLayoutCallback(FName PropertyTypeName, const IPropertyHandle& PropertyHandle, const FCustomPropertyTypeLayoutMap& InstancedPropertyTypeLayoutMapp);
 	bool IsCustomizedStruct(const UStruct* Struct, const FCustomPropertyTypeLayoutMap& InstancePropertyTypeLayoutMap) const;
 
@@ -276,10 +278,6 @@ public:
 	virtual FPropertyEditorOpenedEvent& OnPropertyEditorOpened() { return PropertyEditorOpened; }
 
 	const FCustomDetailLayoutNameMap& GetClassNameToDetailLayoutNameMap() const { return ClassNameToDetailLayoutNameMap; }
-
-	/** Get the global row extension generators. */
-	FOnGenerateGlobalRowExtension& GetGlobalRowExtensionDelegate() { return OnGenerateGlobalRowExtension; }
-
 private:
 
 	/**
@@ -310,11 +308,8 @@ private:
 	/** Event to be called when a property editor is opened */
 	FPropertyEditorOpenedEvent PropertyEditorOpened;
 	/** Mapping of registered floating UStructs to their struct proxy so they show correctly in the details panel */
-	TMap<FName, FStructProperty*> RegisteredStructToProxyMap;
+	TMap<FName, UStructProperty*> RegisteredStructToProxyMap;
 	/** Shared thumbnail pool used by property row generators */
 	TSharedPtr<class FAssetThumbnailPool> GlobalThumbnailPool;
-	/** Container for ScopeOnStruct FStructProperty objects */
-	UStruct* StructOnScopePropertyOwner;
-	/** Delegate called to extend the name column widget on a property row. */
-	FOnGenerateGlobalRowExtension OnGenerateGlobalRowExtension;
+
 };

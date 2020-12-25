@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -30,7 +30,6 @@ namespace UnrealBuildTool.Rules
                     "DirectXMesh",
                     "OpenVDB",
                     "UEOpenExr",
-                    "TraceLog",
                     "Core",
                     "CoreUObject",
                     "Engine",
@@ -59,6 +58,7 @@ namespace UnrealBuildTool.Rules
                     "CoreUObject",
                     "Engine",
                     "UnrealEd",
+                    "MeshDescriptionOperations"
 					// ... add private dependencies that you statically link with here ...
 				}
 				);

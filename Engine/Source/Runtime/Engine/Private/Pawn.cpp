@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Pawn.cpp: APawn AI implementation
@@ -8,7 +8,6 @@
 
 #include "GameFramework/Pawn.h"
 #include "GameFramework/DamageType.h"
-#include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/Controller.h"
 #include "Components/PrimitiveComponent.h"
@@ -29,7 +28,6 @@
 #include "GameFramework/PlayerState.h"
 #include "Components/PawnNoiseEmitterComponent.h"
 #include "GameFramework/GameNetworkManager.h"
-#include "GameFramework/InputSettings.h"
 
 DEFINE_LOG_CATEGORY(LogDamage);
 DEFINE_LOG_CATEGORY_STATIC(LogPawn, Warning, All);
@@ -215,12 +213,12 @@ bool APawn::IsLocallyControlled() const
 }
 bool APawn::IsPlayerControlled() const
 {
-	return PlayerState && !PlayerState->IsABot();
+	return PlayerState && !PlayerState->bIsABot;
 }
 
 bool APawn::IsBotControlled() const
 {
-	return PlayerState && PlayerState->IsABot();
+	return PlayerState && PlayerState->bIsABot;
 }
 
 bool APawn::ReachedDesiredRotation()
@@ -292,12 +290,10 @@ FRotator APawn::GetViewRotation() const
 	else if (GetLocalRole() < ROLE_Authority)
 	{
 		// check if being spectated
-		for (FConstPlayerControllerIterator Iterator = GetWorld()->GetPlayerControllerIterator(); Iterator; ++Iterator)
+		for( FConstPlayerControllerIterator Iterator = GetWorld()->GetPlayerControllerIterator(); Iterator; ++Iterator )
 		{
 			APlayerController* PlayerController = Iterator->Get();
-			if (PlayerController &&
-				PlayerController->PlayerCameraManager &&
-				PlayerController->PlayerCameraManager->GetViewTargetPawn() == this)
+			if(PlayerController && PlayerController->PlayerCameraManager->GetViewTargetPawn() == this)
 			{
 				return PlayerController->BlendedTargetViewRotation;
 			}
@@ -460,8 +456,6 @@ FRotator APawn::GetControlRotation() const
 
 void APawn::OnRep_Controller()
 {
-	bool bNotifyControllerChange = (Controller == nullptr);
-
 	if ( (Controller != nullptr) && (Controller->GetPawn() == nullptr) )
 	{
 		// This ensures that AController::OnRep_Pawn is called. Since we cant ensure replication order of APawn::Controller and AController::Pawn,
@@ -476,16 +470,6 @@ void APawn::OnRep_Controller()
 		if ( (PC != nullptr) && PC->bAutoManageActiveCameraTarget && (PC->PlayerCameraManager->ViewTarget.Target == Controller) )
 		{
 			PC->AutoManageActiveCameraTarget(this);
-		}
-
-		bNotifyControllerChange = true;
-	}
-
-	if (bNotifyControllerChange)
-	{
-		if (UGameInstance* GameInstance = GetGameInstance())
-		{
-			GameInstance->GetOnPawnControllerChanged().Broadcast(this, Controller);
 		}
 	}
 }
@@ -539,11 +523,6 @@ void APawn::PossessedBy(AController* NewController)
 	if (OldController != NewController)
 	{
 		ReceivePossessed(Controller);
-	
-		if (UGameInstance* GameInstance = GetGameInstance())
-		{
-			GameInstance->GetOnPawnControllerChanged().Broadcast(this, Controller);
-		}
 	}
 }
 
@@ -564,11 +543,6 @@ void APawn::UnPossessed()
 	if (OldController)
 	{
 		ReceiveUnpossessed(OldController);
-	}
-
-	if (UGameInstance* GameInstance = GetGameInstance())
-	{
-		GameInstance->GetOnPawnControllerChanged().Broadcast(this, nullptr);
 	}
 
 	ConsumeMovementInputVector();
@@ -608,7 +582,7 @@ class UPlayer* APawn::GetNetOwningPlayer()
 UInputComponent* APawn::CreatePlayerInputComponent()
 {
 	static const FName InputComponentName(TEXT("PawnInputComponent0"));
-	return NewObject<UInputComponent>(this, UInputSettings::GetDefaultInputComponentClass(), InputComponentName);
+	return NewObject<UInputComponent>(this, InputComponentName);
 }
 
 void APawn::DestroyPlayerInputComponent()
@@ -677,6 +651,7 @@ void APawn::Internal_AddMovementInput(FVector WorldAccel, bool bForce /*=false*/
 	if (bForce || !IsMoveInputIgnored())
 	{
 		ControlInputVector += WorldAccel;
+		GEngine->AddOnScreenDebugMessage(1, 0.0f, FColor::Black, FString::Printf(TEXT("dsadw")));
 	}
 }
 

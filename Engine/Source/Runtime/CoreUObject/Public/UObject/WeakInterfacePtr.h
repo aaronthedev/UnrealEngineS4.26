@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,7 +13,7 @@ struct TWeakInterfacePtr
 {
 	TWeakInterfacePtr() : InterfaceInstance(nullptr) {}
 
-	TWeakInterfacePtr(UObject* Object)
+	TWeakInterfacePtr(const UObject* Object)
 	{
 		InterfaceInstance = Cast<TInterface>(Object);
 		if (InterfaceInstance != nullptr)
@@ -80,12 +80,12 @@ struct TWeakInterfacePtr
 		return InterfaceInstance != Other.InterfaceInstance || ObjectInstance != Other.ObjectInstance;
 	}
 
-	FORCEINLINE bool operator==(const UObject* Other) const
+	FORCEINLINE bool operator==(const UObject* Other)
 	{
 		return Other == ObjectInstance.Get();
 	}
 
-	FORCEINLINE TScriptInterface<TInterface> ToScriptInterface() const
+	FORCEINLINE TScriptInterface<TInterface> ToScriptInterface()
 	{
 		UObject* Object = ObjectInstance.Get();
 		if (Object)

@@ -76,7 +76,7 @@ typedef PxU64 PxSerialObjectId;
 /**
 \brief Callback class used to process PxBase objects.
 
-@see PxSerializer::requiresObjects
+@see PxSerializer::requires
 */
 class PxProcessPxBaseCallback
 {

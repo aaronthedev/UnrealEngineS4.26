@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -186,24 +186,14 @@ public:
 		return LOCTEXT("SourceControl_Sync", "Syncing file(s) from source control...");
 	}
 
-	UE_DEPRECATED(4.26, "FSync::SetRevisionNumber(int32) has been deprecated. Please update to Fsync::SetRevision(const FString&).")
-	void SetRevisionNumber(int32 InRevisionNumber)
+	void SetRevision( int32 InRevisionNumber )
 	{
-		SetRevision(FString::Printf(TEXT("%d"), InRevisionNumber));
-	}
-	void SetRevision( const FString& InRevision )
-	{
-		Revision = InRevision;
-	}
-
-	const FString& GetRevision() const
-	{
-		return Revision;
+		RevisionNumber = InRevisionNumber;
 	}
 
 protected:
 	/** Revision to sync to */
-	FString Revision;
+	int32 RevisionNumber;
 };
 
 /**

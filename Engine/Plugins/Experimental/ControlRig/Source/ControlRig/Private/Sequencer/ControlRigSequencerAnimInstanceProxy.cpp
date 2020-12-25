@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ControlRigSequencerAnimInstanceProxy.h"
 #include "Sequencer/ControlRigSequencerAnimInstance.h"
@@ -36,18 +36,15 @@ void FControlRigSequencerAnimInstanceProxy::Initialize(UAnimInstance* InAnimInst
 
 void FControlRigSequencerAnimInstanceProxy::Update(float DeltaSeconds)
 {
-	if(GetRequiredBones().IsValid())
-	{	
-		if (bLayeredBlendChanged)
-		{
-			LayeredBoneBlendNode.ReinitializeBoneBlendWeights(GetRequiredBones(), GetSkeleton());
-			bLayeredBlendChanged = false;
-		}
-		if (bAdditiveLayeredBlendChanged)
-		{
-			AdditiveLayeredBoneBlendNode.ReinitializeBoneBlendWeights(GetRequiredBones(), GetSkeleton());
-			bAdditiveLayeredBlendChanged = false;
-		}
+	if (bLayeredBlendChanged)
+	{
+		LayeredBoneBlendNode.ReinitializeBoneBlendWeights(GetRequiredBones(), GetSkeleton());
+		bLayeredBlendChanged = false;
+	}
+	if (bAdditiveLayeredBlendChanged)
+	{
+		AdditiveLayeredBoneBlendNode.ReinitializeBoneBlendWeights(GetRequiredBones(), GetSkeleton());
+		bAdditiveLayeredBlendChanged = false;
 	}
 
 	FAnimSequencerInstanceProxy::Update(DeltaSeconds);
@@ -140,7 +137,7 @@ void FControlRigSequencerAnimInstanceProxy::InitControlRigTrack(UControlRig* InC
 	}
 }
 
-bool FControlRigSequencerAnimInstanceProxy::UpdateControlRig(UControlRig* InControlRig, uint32 SequenceId, bool bAdditive, bool bApplyBoneFilter, const FInputBlendPose& BoneFilter, float Weight, const FControlRigIOSettings& InputSettings, bool bExecute)
+bool FControlRigSequencerAnimInstanceProxy::UpdateControlRig(UControlRig* InControlRig, uint32 SequenceId, bool bAdditive, bool bApplyBoneFilter, const FInputBlendPose& BoneFilter, float Weight, bool bUpdateInput, bool bExecute)
 {
 	bool bCreated = EnsureControlRigTrack(InControlRig, bAdditive, bApplyBoneFilter, BoneFilter, SequenceId);
 
@@ -156,7 +153,7 @@ bool FControlRigSequencerAnimInstanceProxy::UpdateControlRig(UControlRig* InCont
 		BlendNode.DesiredAlphas[PlayerState->PoseIndex] = Weight;
 	}
 
-	PlayerState->ControlRigNode.InputSettings = InputSettings;
+	PlayerState->ControlRigNode.bUpdateInput = bUpdateInput;
 	PlayerState->ControlRigNode.bExecute = bExecute;
 
 	return bCreated;

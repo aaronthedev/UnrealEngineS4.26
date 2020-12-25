@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -185,30 +185,6 @@ struct FRigUnit_MathQuaternionToAxisAndAngle : public FRigUnit_MathQuaternionBas
 };
 
 /**
- * Scales a quaternion's angle
- */
-USTRUCT(meta=(DisplayName="Scale", PrototypeName="Scale", Keywords="Multiply,Angle,Scale", Constant))
-struct FRigUnit_MathQuaternionScale : public FRigUnit_MathQuaternionBase
-{
-	GENERATED_BODY()
-
-	FRigUnit_MathQuaternionScale()
-	{
-		Value = FQuat::Identity;
-		Scale = 1.f;
-	}
-
-	RIGVM_METHOD()
-	virtual void Execute(const FRigUnitContext& Context) override;
-
-	UPROPERTY(meta=(Input, Output))
-	FQuat Value;
-
-	UPROPERTY(meta=(Input))
-	float Scale;
-};
-
-/**
  * Retrieves the euler angles in degrees
  */
 USTRUCT(meta=(DisplayName="To Euler", PrototypeName="ToEuler", Keywords="Make,Construct"))
@@ -369,7 +345,7 @@ struct FRigUnit_MathQuaternionNotEquals : public FRigUnit_MathQuaternionBase
 /**
  * Return one of the two values based on the condition
  */
-USTRUCT(meta=(DisplayName="Select", PrototypeName="Select", Keywords="Pick,If", Deprecated = "4.26.0"))
+USTRUCT(meta=(DisplayName="Select", PrototypeName="Select", Keywords="Pick,If"))
 struct FRigUnit_MathQuaternionSelectBool : public FRigUnit_MathQuaternionBase
 {
 	GENERATED_BODY()
@@ -520,10 +496,7 @@ struct FRigUnit_MathQuaternionSwingTwist : public FRigUnit_MathQuaternionBase
 	FQuat Twist;
 };
 
-/**
- * Enum of possible rotation orders
- */
-USTRUCT(meta = (DisplayName = "Rotation Order", Category = "Math|Rotation", Constant))
+USTRUCT(meta = (DisplayName = "Rotation Order", Category = "Math|Rotation"))
 struct FRigUnit_MathQuaternionRotationOrder : public FRigUnit_MathBase
 {
 	GENERATED_BODY()
@@ -535,8 +508,4 @@ struct FRigUnit_MathQuaternionRotationOrder : public FRigUnit_MathBase
 
 	UPROPERTY(meta = (Input, Output))
 	EControlRigRotationOrder RotationOrder;
-
-
-	RIGVM_METHOD()
-	virtual void Execute(const FRigUnitContext& Context) override;
 };

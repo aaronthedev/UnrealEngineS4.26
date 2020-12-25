@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -172,7 +172,6 @@ class AIMODULE_API UCrowdManager : public UCrowdManagerBase
 public:
 	UCrowdManager(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
 
-	virtual void PostInitProperties() override;
 	virtual void Tick(float DeltaTime) override;
 	virtual void BeginDestroy() override;
 
@@ -335,15 +334,7 @@ protected:
 
 #if WITH_EDITOR
 	FCrowdTickHelper* TickHelper;
-#endif // WITH_EDITOR
-
-#if WITH_EDITORONLY_DATA
-	/** UWorld that's going to be used for debug drawing calls. DebugDrawingWorld should be different than GetWorld()
-	 *	only on dedicated-server.
-	 *	Note that this is only relevant when ENABLE_DRAW_DEBUG is enabled*/
-	UPROPERTY(transient)
-	UWorld* DebugDrawingWorld;
-#endif // WITH_EDITORONLY_DATA
+#endif
 
 	/** try to initialize nav data from already existing ones */
 	virtual void UpdateNavData();

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RHI.h"
 
@@ -13,7 +13,6 @@
 #include "RHI/Public/PipelineStateCache.h"
 #include "RayTracing/RayTracingSkyLight.h"
 #include "RayTracing/RaytracingOptions.h"
-#include "HAL/PlatformApplicationMisc.h"
 
 static int32 GPathTracingMaxBounces = -1;
 static FAutoConsoleVariableRef CVarPathTracingMaxBounces(
@@ -78,19 +77,12 @@ TAutoConsoleVariable<int32> CVarPathTracingRayCountFrequency(
 	ECVF_RenderThreadSafe
 );
 
-// r.PathTracing.GPUCount is read only because ComputeViewGPUMasks results cannot change after UE has been launched
+// r.PathTracing.GPUCount is ready only because ComputeViewGPUMasks results cannot change after UE has been launched
 TAutoConsoleVariable<int32> CVarPathTracingGPUCount(
 	TEXT("r.PathTracing.GPUCount"),
 	1,
 	TEXT("Sets the amount of GPUs used for computing the path tracing pass (default = 1 GPU)"),
 	ECVF_RenderThreadSafe | ECVF_ReadOnly
-);
-
-TAutoConsoleVariable<int32> CVarPathTracingWiperMode(
-	TEXT("r.PathTracing.WiperMode"),
-	0,
-	TEXT("Enables wiper mode to render using the path tracer only in a region of the screen for debugging purposes (default = 0, wiper mode disabled)"),
-	ECVF_RenderThreadSafe 
 );
 
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FPathTracingData, "PathTracingData");
@@ -113,7 +105,7 @@ public:
 	}
 
 	FPathTracingRG() {}
-	~FPathTracingRG() {}
+	virtual ~FPathTracingRG() {}
 
 	FPathTracingRG(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -194,11 +186,8 @@ public:
 			// Prepend SkyLight to light buffer
 			// WARNING: Until ray payload encodes Light data buffer, the execution depends on this ordering!
 			uint32 SkyLightIndex = 0;
-			uint8 SkyLightLightingChannelMask = 0xFF;
 			LightData.Type[SkyLightIndex] = 0;
 			LightData.Color[SkyLightIndex] = FVector(SkyLightData.Color);
-			LightData.Flags[SkyLightIndex] = SkyLightData.bTransmission & 0x01;
-			LightData.Flags[SkyLightIndex] |= (SkyLightLightingChannelMask & 0x7) << 1;
 			LightData.Count++;
 
 			for (auto Light : Lights)
@@ -209,10 +198,6 @@ public:
 
 				FLightShaderParameters LightParameters;
 				Light.LightSceneInfo->Proxy->GetLightShaderParameters(LightParameters);
-				uint32 Transmission = Light.LightSceneInfo->Proxy->Transmission();
-				uint8 LightingChannelMask = Light.LightSceneInfo->Proxy->GetLightingChannelMask();
-				LightData.Flags[LightData.Count] = Transmission & 0x01;
-				LightData.Flags[LightData.Count] |= (LightingChannelMask & 0x7) << 1;
 
 				ELightComponentType LightComponentType = (ELightComponentType)Light.LightSceneInfo->Proxy->GetLightType();
 				switch (LightComponentType)
@@ -223,7 +208,6 @@ public:
 						LightData.Type[LightData.Count] = 2;
 						LightData.Normal[LightData.Count] = LightParameters.Direction;
 						LightData.Color[LightData.Count] = LightParameters.Color;
-						LightData.Dimensions[LightData.Count] = FVector(0.0f, 0.0f, LightParameters.SourceRadius);
 						LightData.Attenuation[LightData.Count] = 1.0 / LightParameters.InvRadius;
 						break;
 					}
@@ -247,7 +231,7 @@ public:
 						LightData.Position[LightData.Count] = LightParameters.Position;
 						LightData.Normal[LightData.Count] = -LightParameters.Direction;
 						// #dxr_todo: UE-72556  define these differences from Lit..
-						LightData.Color[LightData.Count] = LightParameters.Color;
+						LightData.Color[LightData.Count] = 4.0 * PI * LightParameters.Color;
 						LightData.Dimensions[LightData.Count] = FVector(LightParameters.SpotAngles, LightParameters.SourceRadius);
 						LightData.Attenuation[LightData.Count] = 1.0 / LightParameters.InvRadius;
 						break;
@@ -258,7 +242,7 @@ public:
 						LightData.Type[LightData.Count] = 1;
 						LightData.Position[LightData.Count] = LightParameters.Position;
 						// #dxr_todo: UE-72556  define these differences from Lit..
-						LightData.Color[LightData.Count] = LightParameters.Color;
+						LightData.Color[LightData.Count] = LightParameters.Color / (4.0 * PI);
 						LightData.Dimensions[LightData.Count] = FVector(0.0, 0.0, LightParameters.SourceRadius);
 						LightData.Attenuation[LightData.Count] = 1.0 / LightParameters.InvRadius;
 						break;
@@ -319,7 +303,7 @@ public:
 		}
 	}
 
-	/*bool Serialize(FArchive& Ar)
+	bool Serialize(FArchive& Ar)
 	{
 		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 		Ar << TLASParameter;
@@ -335,20 +319,20 @@ public:
 		Ar << RayCountPerPixelRT;
 
 		return bShaderHasOutdatedParameters;
-	}*/
-	
-	LAYOUT_FIELD(FShaderResourceParameter, TLASParameter);   // RaytracingAccelerationStructure
-	LAYOUT_FIELD(FShaderUniformBufferParameter, ViewParameter);
-	LAYOUT_FIELD(FShaderUniformBufferParameter, PathTracingParameters);
-	LAYOUT_FIELD(FShaderUniformBufferParameter, SceneLightsParameters);
-	LAYOUT_FIELD(FShaderUniformBufferParameter, SkyLightParameters);
-	LAYOUT_FIELD(FShaderUniformBufferParameter, AdaptiveSamplingParameters);
+	}
+
+	FShaderResourceParameter		TLASParameter;   // RaytracingAccelerationStructure
+	FShaderUniformBufferParameter	ViewParameter;
+	FShaderUniformBufferParameter	PathTracingParameters;
+	FShaderUniformBufferParameter	SceneLightsParameters;
+	FShaderUniformBufferParameter	SkyLightParameters;
+	FShaderUniformBufferParameter	AdaptiveSamplingParameters;
 
 	// Output parameters
-	LAYOUT_FIELD(FShaderResourceParameter, RadianceRT);
-	LAYOUT_FIELD(FShaderResourceParameter, SampleCountRT);
-	LAYOUT_FIELD(FShaderResourceParameter, PixelPositionRT);
-	LAYOUT_FIELD(FShaderResourceParameter, RayCountPerPixelRT);
+	FShaderResourceParameter		RadianceRT;
+	FShaderResourceParameter		SampleCountRT;
+	FShaderResourceParameter        PixelPositionRT;
+	FShaderResourceParameter		RayCountPerPixelRT;
 };
 IMPLEMENT_SHADER_TYPE(, FPathTracingRG, TEXT("/Engine/Private/PathTracing/PathTracing.usf"), TEXT("PathTracingMainRG"), SF_RayGen);
 
@@ -404,7 +388,7 @@ class FPathTracingCompositorPS : public FGlobalShader
 		FRHITexture* CumulativeIrradianceRT,
 		FRHITexture* CumulativeSampleCountRT)
 	{
-		FRHIPixelShader* ShaderRHI = RHICmdList.GetBoundPixelShader();
+		FRHIPixelShader* ShaderRHI = GetPixelShader();
 		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, ShaderRHI, View.ViewUniformBuffer);
 		SetTextureParameter(RHICmdList, ShaderRHI, RadianceRedTexture, RadianceRedRT);
 		SetTextureParameter(RHICmdList, ShaderRHI, RadianceGreenTexture, RadianceGreenRT);
@@ -415,212 +399,134 @@ class FPathTracingCompositorPS : public FGlobalShader
 		SetTextureParameter(RHICmdList, ShaderRHI, CumulativeSampleCountTexture, CumulativeSampleCountRT);
 	}
 
-public:
-	LAYOUT_FIELD(FShaderResourceParameter, RadianceRedTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, RadianceGreenTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, RadianceBlueTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, RadianceAlphaTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, SampleCountTexture);
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOudatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << RadianceRedTexture;
+		Ar << RadianceGreenTexture;
+		Ar << RadianceBlueTexture;
+		Ar << RadianceAlphaTexture;
+		Ar << SampleCountTexture;
+		Ar << CumulativeIrradianceTexture;
+		Ar << CumulativeSampleCountTexture;
+		return bShaderHasOudatedParameters;
+	}
 
-	LAYOUT_FIELD(FShaderResourceParameter, CumulativeIrradianceTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, CumulativeSampleCountTexture);
+public:
+	FShaderResourceParameter RadianceRedTexture;
+	FShaderResourceParameter RadianceGreenTexture;
+	FShaderResourceParameter RadianceBlueTexture;
+	FShaderResourceParameter RadianceAlphaTexture;
+	FShaderResourceParameter SampleCountTexture;
+
+	FShaderResourceParameter CumulativeIrradianceTexture;
+	FShaderResourceParameter CumulativeSampleCountTexture;
 };
 
 IMPLEMENT_SHADER_TYPE(, FPathTracingCompositorPS, TEXT("/Engine/Private/PathTracing/PathTracingCompositingPixelShader.usf"), TEXT("CompositeMain"), SF_Pixel);
 
 void FDeferredShadingSceneRenderer::PreparePathTracing(const FViewInfo& View, TArray<FRHIRayTracingShader*>& OutRayGenShaders)
 {
-	if (View.RayTracingRenderMode == ERayTracingRenderMode::PathTracing)
-	{
-		// Declare all RayGen shaders that require material closest hit shaders to be bound
-		auto RayGenShader = View.ShaderMap->GetShader<FPathTracingRG>();
-		OutRayGenShaders.Add(RayGenShader.GetRayTracingShader());
-	}
+	// Declare all RayGen shaders that require material closest hit shaders to be bound
+	auto RayGenShader = View.ShaderMap->GetShader<FPathTracingRG>();
+	OutRayGenShaders.Add(RayGenShader->GetRayTracingShader());
 }
 
-BEGIN_SHADER_PARAMETER_STRUCT(FPathTracingPassParameters, )
-	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneTextureUniformParameters, SceneTextures)
-	RENDER_TARGET_BINDING_SLOTS()
-END_SHADER_PARAMETER_STRUCT()
-
-void FDeferredShadingSceneRenderer::RenderPathTracing(
-	FRDGBuilder& GraphBuilder,
-	const FViewInfo& View,
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
-	FRDGTextureRef SceneColorOutputTexture)
+void FDeferredShadingSceneRenderer::RenderPathTracing(FRHICommandListImmediate& RHICmdList, const FViewInfo& View)
 {
-	RDG_GPU_STAT_SCOPE(GraphBuilder, Stat_GPU_PathTracing);
+	SCOPED_DRAW_EVENT(RHICmdList, PathTracing);
 
-	FPathTracingPassParameters* PassParameters = GraphBuilder.AllocParameters<FPathTracingPassParameters>();
-	PassParameters->SceneTextures = SceneTexturesUniformBuffer;
+	SCOPED_GPU_STAT(RHICmdList, Stat_GPU_PathTracing);
 
-	// NOTE: The SkipRenderPass flag means this doesn't get bound. It just ensures that it's put in the RTV state.
-	PassParameters->RenderTargets[0] = FRenderTargetBinding(SceneColorOutputTexture, ERenderTargetLoadAction::ELoad);
+	// The local iteration counter.
+	static int32 SPPCount = 0;
+	// The frame independent temporal seed, not reset at the beginning of each frame unlike SPPCount to allow for less temporal aliasing.
+	static uint32 FrameIndependentTemporalSeed = 0;
 
-	GraphBuilder.AddPass(
-		RDG_EVENT_NAME("PathTracing"),
-		PassParameters,
-		ERDGPassFlags::Compute | ERDGPassFlags::Raster | ERDGPassFlags::SkipRenderPass | ERDGPassFlags::UntrackedAccess,
-		[this, &View, SceneTexturesUniformBuffer, SceneColorOutputTexture](FRHICommandListImmediate& RHICmdList)
+	// Conditionally rebuild sky light CDFs
+	if (Scene->SkyLight && Scene->SkyLight->ShouldRebuildCdf())
 	{
-		// The local iteration counter.
-		static int32 SPPCount = 0;
-		// The frame independent temporal seed, not reset at the beginning of each frame unlike SPPCount to allow for less temporal aliasing.
-		static uint32 FrameIndependentTemporalSeed = 0;
+		BuildSkyLightCdfs(RHICmdList, Scene->SkyLight);
+	}
 
-		auto ViewSize = View.ViewRect.Size();
-		FSceneViewState* ViewState = (FSceneViewState*)View.State;
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+	auto ViewSize = View.ViewRect.Size();
+	FSceneViewState* ViewState = (FSceneViewState*)View.State;
 
-		// Construct render targets for compositing
-		TRefCountPtr<IPooledRenderTarget> RadianceRT;
-		TRefCountPtr<IPooledRenderTarget> SampleCountRT;
-		TRefCountPtr<IPooledRenderTarget> PixelPositionRT;
-		TRefCountPtr<IPooledRenderTarget> RayCountPerPixelRT;
+	// Construct render targets for compositing
+	TRefCountPtr<IPooledRenderTarget> RadianceRT;
+	TRefCountPtr<IPooledRenderTarget> SampleCountRT;
+	TRefCountPtr<IPooledRenderTarget> PixelPositionRT;
+	TRefCountPtr<IPooledRenderTarget> RayCountPerPixelRT;
 
-		FPooledRenderTargetDesc Desc = Translate(SceneColorOutputTexture->Desc);
-		Desc.Flags &= ~(TexCreate_FastVRAM | TexCreate_Transient);
-		Desc.Format = PF_FloatRGBA;
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RadianceRT, TEXT("RadianceRT"));
-		// TODO: InterlockedCompareExchange() doesn't appear to work with 16-bit uint render target
-		//Desc.Format = PF_R16_UINT;
-		Desc.Format = PF_R32_UINT;
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, SampleCountRT, TEXT("SampleCountRT"));
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, PixelPositionRT, TEXT("PixelPositionRT"));
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RayCountPerPixelRT, TEXT("RayCountPerPixelRT"));
+	FPooledRenderTargetDesc Desc = SceneContext.GetSceneColor()->GetDesc();
+	Desc.Flags &= ~(TexCreate_FastVRAM | TexCreate_Transient);
+	Desc.Format = PF_FloatRGBA;
+	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RadianceRT, TEXT("RadianceRT"));
+	// TODO: InterlockedCompareExchange() doesn't appear to work with 16-bit uint render target
+	//Desc.Format = PF_R16_UINT;
+	Desc.Format = PF_R32_UINT;
+	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, SampleCountRT, TEXT("SampleCountRT"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, PixelPositionRT, TEXT("PixelPositionRT"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RayCountPerPixelRT, TEXT("RayCountPerPixelRT"));
 
-		// Clear render targets
-		FUintVector4 BlackColor(0, 0, 0, 1);
-		FVector4 BlackColorF(0, 0, 0, 1);
+	// Clear render targets
+	ClearUAV(RHICmdList, RadianceRT->GetRenderTargetItem(), FLinearColor::Black);
+	ClearUAV(RHICmdList, SampleCountRT->GetRenderTargetItem(), FLinearColor::Black);
+	ClearUAV(RHICmdList, PixelPositionRT->GetRenderTargetItem(), FLinearColor::Black);
+	ClearUAV(RHICmdList, RayCountPerPixelRT->GetRenderTargetItem(), FLinearColor::Black);
 
-		RHICmdList.ClearUAVFloat(RadianceRT->GetRenderTargetItem().UAV, BlackColorF);
-		RHICmdList.ClearUAVUint(SampleCountRT->GetRenderTargetItem().UAV, BlackColor);
-		RHICmdList.ClearUAVUint(PixelPositionRT->GetRenderTargetItem().UAV, BlackColor);
-		RHICmdList.ClearUAVUint(RayCountPerPixelRT->GetRenderTargetItem().UAV, BlackColor);
+	auto RayGenShader = GetGlobalShaderMap(FeatureLevel)->GetShader<FPathTracingRG>();
 
-		auto RayGenShader = GetGlobalShaderMap(FeatureLevel)->GetShader<FPathTracingRG>();
+	FRayTracingShaderBindingsWriter GlobalResources;
 
-		FRayTracingShaderBindingsWriter GlobalResources;
+	FSceneTexturesUniformParameters SceneTextures;
+	SetupSceneTextureUniformParameters(SceneContext, FeatureLevel, ESceneTextureSetupMode::All, SceneTextures);
+	FRHIUniformBuffer* SceneTexturesUniformBuffer = RHICreateUniformBuffer(&SceneTextures, FSceneTexturesUniformParameters::StaticStructMetadata.GetLayout(), EUniformBufferUsage::UniformBuffer_SingleDraw);
 
-		FRHIUniformBuffer* SceneTexturesUniformBufferRHI = SceneTexturesUniformBuffer->GetRHI();
+	FRHIRayTracingScene* RayTracingSceneRHI = View.RayTracingScene.RayTracingSceneRHI;
+	
+	int32 GPUCount = CVarPathTracingGPUCount.GetValueOnRenderThread();
+	uint32 MainGPUIndex = 0; // Default GPU for rendering
+	bool bDoMGPUPathTracing = GNumExplicitGPUsForRendering > 1 && GPUCount > 1;
 
-		FRHIRayTracingScene* RayTracingSceneRHI = View.RayTracingScene.RayTracingSceneRHI;
+	if (bDoMGPUPathTracing)
+	{
+		//#dxr-todo: Set minimum tile size for mGPU
+		int32 TileSizeX = FIntPoint::DivideAndRoundUp(View.ViewRect.Size(), GPUCount).X;
 
-		int32 GPUCount = CVarPathTracingGPUCount.GetValueOnRenderThread();
-		uint32 MainGPUIndex = 0; // Default GPU for rendering
+		FRHIUnorderedAccessView* UAVs[] = {
+				RadianceRT->GetRenderTargetItem().UAV,
+				SampleCountRT->GetRenderTargetItem().UAV,
+				PixelPositionRT->GetRenderTargetItem().UAV,
+				RayCountPerPixelRT->GetRenderTargetItem().UAV
+		};
 
-		float DPIScale = FPlatformApplicationMisc::GetDPIScaleFactorAtPoint(View.CursorPos.X, View.CursorPos.Y);
-		const int32 bWiperMode = CVarPathTracingWiperMode.GetValueOnRenderThread();
-		const int32 WipeOffsetX = bWiperMode ? View.CursorPos.X / DPIScale : 0;
-
-		bool bDoMGPUPathTracing = GNumExplicitGPUsForRendering > 1 && GPUCount > 1;
-
-		if (bDoMGPUPathTracing)
 		{
-			//#dxr-todo: Set minimum tile size for mGPU
-			int32 TileSizeX = FIntPoint::DivideAndRoundUp(View.ViewRect.Size(), GPUCount).X;
+			// Begin mGPU fence
+			FRHIGPUMask GPUMask = FRHIGPUMask::All();
+			FComputeFenceRHIRef Fence = RHICmdList.CreateComputeFence(TEXT("PathTracingRayGen_Fence_Begin"));
 
-			FRHIUnorderedAccessView* UAVs[] = {
-					RadianceRT->GetRenderTargetItem().UAV,
-					SampleCountRT->GetRenderTargetItem().UAV,
-					PixelPositionRT->GetRenderTargetItem().UAV,
-					RayCountPerPixelRT->GetRenderTargetItem().UAV
-			};
+			RHICmdList.TransitionResources(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToGfx, UAVs, UE_ARRAY_COUNT(UAVs), Fence);
 
+			for (uint32 GPUIndex : GPUMask)
 			{
-				// FIXME: cross-GPU fences aren't currently supported in the transition API, we need to figure it out.
-#if 0
-				// Begin mGPU fence
-				FRHIGPUMask GPUMask = FRHIGPUMask::All();
-				FComputeFenceRHIRef Fence = RHICmdList.CreateComputeFence(TEXT("PathTracingRayGen_Fence_Begin"));
+				if (GPUIndex == MainGPUIndex) 
+					continue;
 
-				RHICmdList.TransitionResources(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToGfx, UAVs, UE_ARRAY_COUNT(UAVs), Fence);
-
-				for (uint32 GPUIndex : GPUMask)
-				{
-					if (GPUIndex == MainGPUIndex)
-						continue;
-
-					SCOPED_GPU_MASK(RHICmdList, FRHIGPUMask::FromIndex(GPUIndex));
-
-					RHICmdList.WaitComputeFence(Fence);
-				}
-#endif
-			}
-
-			for (int32 GPUIndex = 0; GPUIndex < GPUCount; ++GPUIndex)
-			{
 				SCOPED_GPU_MASK(RHICmdList, FRHIGPUMask::FromIndex(GPUIndex));
 
-				FIntVector TileOffset;
-				TileOffset.X = GPUIndex * TileSizeX;
-				TileOffset.Y = 0; //vertical tiles only 
-
-				RayGenShader->SetParameters(
-					Scene,
-					View,
-					GlobalResources,
-					View.RayTracingScene,
-					View.ViewUniformBuffer,
-					SceneTexturesUniformBufferRHI,
-					Scene->Lights,
-					SPPCount, FrameIndependentTemporalSeed, ViewState->VarianceMipTreeDimensions, *ViewState->VarianceMipTree, TileOffset,
-					RadianceRT->GetRenderTargetItem().UAV,
-					SampleCountRT->GetRenderTargetItem().UAV,
-					PixelPositionRT->GetRenderTargetItem().UAV,
-					RayCountPerPixelRT->GetRenderTargetItem().UAV
-				);
-
-				int32 DispatchSizeX = FMath::Min<int32>(TileSizeX, View.ViewRect.Size().X - TileOffset.X);
-				int32 DispatchSizeY = View.ViewRect.Size().Y;
-
-				RHICmdList.RayTraceDispatch(
-					View.RayTracingMaterialPipeline,
-					RayGenShader.GetRayTracingShader(),
-					RayTracingSceneRHI, GlobalResources,
-					DispatchSizeX, DispatchSizeY
-				);
-
-				FIntRect GPURect;
-				GPURect.Min.X = TileOffset.X;
-				GPURect.Min.Y = TileOffset.Y;
-				GPURect.Max.X = TileOffset.X + DispatchSizeX;
-				GPURect.Max.Y = TileOffset.Y + DispatchSizeY;
-
-				if (GPUIndex > 0)
-				{
-					RHICmdList.TransferTexture(RadianceRT->GetRenderTargetItem().TargetableTexture->GetTexture2D(), GPURect, 1, 0, true);
-					RHICmdList.TransferTexture(SampleCountRT->GetRenderTargetItem().TargetableTexture->GetTexture2D(), GPURect, 1, 0, true);
-					RHICmdList.TransferTexture(PixelPositionRT->GetRenderTargetItem().TargetableTexture->GetTexture2D(), GPURect, 1, 0, true);
-					RHICmdList.TransferTexture(RayCountPerPixelRT->GetRenderTargetItem().TargetableTexture->GetTexture2D(), GPURect, 1, 0, true);
-				}
+				RHICmdList.WaitComputeFence(Fence);
 			}
-
-			// FIXME: cross-GPU fences aren't currently supported in the transition API, we need to figure it out.
-#if 0
-			{
-				// End mGPU fence
-				FRHIGPUMask GPUMask = FRHIGPUMask::All();
-				FComputeFenceRHIRef Fence = RHICmdList.CreateComputeFence(TEXT("PathTracingRayGen_Fence_End"));
-
-				RHICmdList.TransitionResources(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToGfx, UAVs, UE_ARRAY_COUNT(UAVs), Fence);
-
-				for (uint32 GPUIndex : GPUMask)
-				{
-					if (GPUIndex == MainGPUIndex)
-						continue;
-
-					SCOPED_GPU_MASK(RHICmdList, FRHIGPUMask::FromIndex(MainGPUIndex));
-
-					RHICmdList.WaitComputeFence(Fence);
-				}
-			}
-#endif
 		}
-		else
+
+		for (int32 GPUIndex = 0; GPUIndex < GPUCount; ++GPUIndex)
 		{
+			SCOPED_GPU_MASK(RHICmdList, FRHIGPUMask::FromIndex(GPUIndex));
+
 			FIntVector TileOffset;
-			TileOffset.X = bWiperMode > 0 ? WipeOffsetX : 0;
-			TileOffset.Y = 0;
+			TileOffset.X = GPUIndex * TileSizeX;
+			TileOffset.Y = 0; //vertical tiles only 
 
 			RayGenShader->SetParameters(
 				Scene,
@@ -628,7 +534,7 @@ void FDeferredShadingSceneRenderer::RenderPathTracing(
 				GlobalResources,
 				View.RayTracingScene,
 				View.ViewUniformBuffer,
-				SceneTexturesUniformBufferRHI,
+				SceneTexturesUniformBuffer,
 				Scene->Lights,
 				SPPCount, FrameIndependentTemporalSeed, ViewState->VarianceMipTreeDimensions, *ViewState->VarianceMipTree, TileOffset,
 				RadianceRT->GetRenderTargetItem().UAV,
@@ -637,175 +543,228 @@ void FDeferredShadingSceneRenderer::RenderPathTracing(
 				RayCountPerPixelRT->GetRenderTargetItem().UAV
 			);
 
-			int32 ViewWidth = View.ViewRect.Size().X;
-
-			int32 DispatchSizeX = bWiperMode > 0 ? ViewWidth - WipeOffsetX : ViewWidth;
+			int32 DispatchSizeX = FMath::Min<int32>(TileSizeX, View.ViewRect.Size().X - TileOffset.X);
 			int32 DispatchSizeY = View.ViewRect.Size().Y;
 
 			RHICmdList.RayTraceDispatch(
-				View.RayTracingMaterialPipeline,
-				RayGenShader.GetRayTracingShader(),
-				RayTracingSceneRHI, GlobalResources,
+				View.RayTracingMaterialPipeline, 
+				RayGenShader->GetRayTracingShader(), 
+				RayTracingSceneRHI, GlobalResources, 
 				DispatchSizeX, DispatchSizeY
 			);
+
+			FIntRect GPURect;
+			GPURect.Min.X = TileOffset.X;
+			GPURect.Min.Y = TileOffset.Y;
+			GPURect.Max.X = TileOffset.X + DispatchSizeX;
+			GPURect.Max.Y = TileOffset.Y + DispatchSizeY;
+
+			if (GPUIndex > 0)
+			{
+				RHICmdList.TransferTexture(RadianceRT->GetRenderTargetItem().TargetableTexture->GetTexture2D(), GPURect, 1, 0, true);
+				RHICmdList.TransferTexture(SampleCountRT->GetRenderTargetItem().TargetableTexture->GetTexture2D(), GPURect, 1, 0, true);
+				RHICmdList.TransferTexture(PixelPositionRT->GetRenderTargetItem().TargetableTexture->GetTexture2D(), GPURect, 1, 0, true);
+				RHICmdList.TransferTexture(RayCountPerPixelRT->GetRenderTargetItem().TargetableTexture->GetTexture2D(), GPURect, 1, 0, true);
+			}
 		}
 
-
-		// Save RayTracingIndirect for compositing
-		RHICmdList.CopyToResolveTarget(RadianceRT->GetRenderTargetItem().TargetableTexture, RadianceRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
-		RHICmdList.CopyToResolveTarget(SampleCountRT->GetRenderTargetItem().TargetableTexture, SampleCountRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
-		RHICmdList.CopyToResolveTarget(PixelPositionRT->GetRenderTargetItem().TargetableTexture, PixelPositionRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
-		RHICmdList.CopyToResolveTarget(RayCountPerPixelRT->GetRenderTargetItem().TargetableTexture, RayCountPerPixelRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
-
-		// Single GPU for launching compute shaders
-		SCOPED_GPU_MASK(RHICmdList, FRHIGPUMask::FromIndex(MainGPUIndex));
-
-		if ((SPPCount % CVarPathTracingRayCountFrequency.GetValueOnRenderThread() == 0))
 		{
-			ComputeRayCount(RHICmdList, View, RayCountPerPixelRT->GetRenderTargetItem().ShaderResourceTexture);
+			// End mGPU fence
+			FRHIGPUMask GPUMask = FRHIGPUMask::All();
+			FComputeFenceRHIRef Fence = RHICmdList.CreateComputeFence(TEXT("PathTracingRayGen_Fence_End"));
+
+			RHICmdList.TransitionResources(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToGfx, UAVs, UE_ARRAY_COUNT(UAVs), Fence);
+
+			for (uint32 GPUIndex : GPUMask)
+			{
+				if (GPUIndex == MainGPUIndex) 
+					continue;
+
+				SCOPED_GPU_MASK(RHICmdList, FRHIGPUMask::FromIndex(MainGPUIndex));
+
+				RHICmdList.WaitComputeFence(Fence); 
+			}
 		}
+	}
+	else
+	{
+		FIntVector TileOffset;
+		TileOffset.X = 0;
+		TileOffset.Y = 0; 
 
-		// Run ray continuation compute shader
-		TRefCountPtr<IPooledRenderTarget> RadianceSortedRedRT;
-		TRefCountPtr<IPooledRenderTarget> RadianceSortedGreenRT;
-		TRefCountPtr<IPooledRenderTarget> RadianceSortedBlueRT;
-		TRefCountPtr<IPooledRenderTarget> RadianceSortedAlphaRT;
-		TRefCountPtr<IPooledRenderTarget> SampleCountSortedRT;
-
-		Desc.Format = PF_R32_UINT;
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RadianceSortedRedRT, TEXT("RadianceSortedRedRT"));
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RadianceSortedGreenRT, TEXT("RadianceSortedGreenRT"));
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RadianceSortedBlueRT, TEXT("RadianceSortedBlueRT"));
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RadianceSortedAlphaRT, TEXT("RadianceSortedAlphaRT"));
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, SampleCountSortedRT, TEXT("SampleCountSortedRT"));
-
-		RHICmdList.ClearUAVUint(RadianceSortedRedRT->GetRenderTargetItem().UAV, BlackColor);
-		RHICmdList.ClearUAVUint(RadianceSortedGreenRT->GetRenderTargetItem().UAV, BlackColor);
-		RHICmdList.ClearUAVUint(RadianceSortedBlueRT->GetRenderTargetItem().UAV, BlackColor);
-		RHICmdList.ClearUAVUint(RadianceSortedAlphaRT->GetRenderTargetItem().UAV, BlackColor);
-		RHICmdList.ClearUAVUint(SampleCountSortedRT->GetRenderTargetItem().UAV, BlackColor);
-
-		ComputePathCompaction(
-			RHICmdList,
+		RayGenShader->SetParameters(
+			Scene,
 			View,
-			RadianceRT->GetRenderTargetItem().ShaderResourceTexture,
-			SampleCountRT->GetRenderTargetItem().ShaderResourceTexture,
-			PixelPositionRT->GetRenderTargetItem().ShaderResourceTexture,
-			RadianceSortedRedRT->GetRenderTargetItem().UAV,
-			RadianceSortedGreenRT->GetRenderTargetItem().UAV,
-			RadianceSortedBlueRT->GetRenderTargetItem().UAV,
-			RadianceSortedAlphaRT->GetRenderTargetItem().UAV,
-			SampleCountSortedRT->GetRenderTargetItem().UAV
+			GlobalResources,
+			View.RayTracingScene,
+			View.ViewUniformBuffer,
+			SceneTexturesUniformBuffer,
+			Scene->Lights,
+			SPPCount, FrameIndependentTemporalSeed, ViewState->VarianceMipTreeDimensions, *ViewState->VarianceMipTree, TileOffset,
+			RadianceRT->GetRenderTargetItem().UAV,
+			SampleCountRT->GetRenderTargetItem().UAV,
+			PixelPositionRT->GetRenderTargetItem().UAV,
+			RayCountPerPixelRT->GetRenderTargetItem().UAV
 		);
-
-		RHICmdList.CopyToResolveTarget(RadianceSortedRedRT->GetRenderTargetItem().TargetableTexture, RadianceSortedRedRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
-		RHICmdList.CopyToResolveTarget(RadianceSortedGreenRT->GetRenderTargetItem().TargetableTexture, RadianceSortedGreenRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
-		RHICmdList.CopyToResolveTarget(RadianceSortedBlueRT->GetRenderTargetItem().TargetableTexture, RadianceSortedBlueRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
-		RHICmdList.CopyToResolveTarget(RadianceSortedAlphaRT->GetRenderTargetItem().TargetableTexture, RadianceSortedAlphaRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
-		RHICmdList.CopyToResolveTarget(SampleCountSortedRT->GetRenderTargetItem().TargetableTexture, SampleCountSortedRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
+	
+		RHICmdList.RayTraceDispatch(View.RayTracingMaterialPipeline, RayGenShader->GetRayTracingShader(), RayTracingSceneRHI, GlobalResources, View.ViewRect.Size().X, View.ViewRect.Size().Y);
+	}
+	
 
 
-		// Construct render targets for compositing
-		TRefCountPtr<IPooledRenderTarget> OutputRadianceRT;
-		TRefCountPtr<IPooledRenderTarget> OutputSampleCountRT;
-		Desc.Flags &= ~(TexCreate_FastVRAM | TexCreate_Transient);
-		Desc.Format = PF_A32B32G32R32F;
-		//Desc.Format = PF_A16B16G16R16;
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, OutputRadianceRT, TEXT("OutputRadianceRT"));
-		Desc.Format = PF_R16_UINT;
-		//Desc.Format = PF_R32_UINT;
-		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, OutputSampleCountRT, TEXT("OutputSampleCountRT"));
+	// Save RayTracingIndirect for compositing
+	RHICmdList.CopyToResolveTarget(RadianceRT->GetRenderTargetItem().TargetableTexture, RadianceRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
+	RHICmdList.CopyToResolveTarget(SampleCountRT->GetRenderTargetItem().TargetableTexture, SampleCountRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
+	RHICmdList.CopyToResolveTarget(PixelPositionRT->GetRenderTargetItem().TargetableTexture, PixelPositionRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
+	RHICmdList.CopyToResolveTarget(RayCountPerPixelRT->GetRenderTargetItem().TargetableTexture, RayCountPerPixelRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
 
-		RHICmdList.ClearUAVFloat(OutputRadianceRT->GetRenderTargetItem().UAV, BlackColorF);
-		RHICmdList.ClearUAVUint(OutputSampleCountRT->GetRenderTargetItem().UAV, BlackColor);
+	// Single GPU for launching compute shaders
+	SCOPED_GPU_MASK(RHICmdList, FRHIGPUMask::FromIndex(MainGPUIndex));
 
-		// Run compositing engine
-		const auto ShaderMap = GetGlobalShaderMap(FeatureLevel);
+	if ((SPPCount % CVarPathTracingRayCountFrequency.GetValueOnRenderThread() == 0))
+	{
+		ComputeRayCount(RHICmdList, View, RayCountPerPixelRT->GetRenderTargetItem().ShaderResourceTexture);
+	}
 
-		TShaderMapRef<FPostProcessVS> VertexShader(ShaderMap);
-		TShaderMapRef<FPathTracingCompositorPS> PixelShader(ShaderMap);
-		FRHITexture* RenderTargets[3] =
+	// Run ray continuation compute shader
+	TRefCountPtr<IPooledRenderTarget> RadianceSortedRedRT;
+	TRefCountPtr<IPooledRenderTarget> RadianceSortedGreenRT;
+	TRefCountPtr<IPooledRenderTarget> RadianceSortedBlueRT;
+	TRefCountPtr<IPooledRenderTarget> RadianceSortedAlphaRT;
+	TRefCountPtr<IPooledRenderTarget> SampleCountSortedRT;
+	//	FPooledRenderTargetDesc Desc = SceneContext.GetSceneColor()->GetDesc();
+	//	Desc.Flags &= ~(TexCreate_FastVRAM | TexCreate_Transient);
+	Desc.Format = PF_R32_UINT;
+	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RadianceSortedRedRT, TEXT("RadianceSortedRedRT"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RadianceSortedGreenRT, TEXT("RadianceSortedGreenRT"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RadianceSortedBlueRT, TEXT("RadianceSortedBlueRT"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, RadianceSortedAlphaRT, TEXT("RadianceSortedAlphaRT"));
+	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, SampleCountSortedRT, TEXT("SampleCountSortedRT"));
+
+	ClearUAV(RHICmdList, RadianceSortedRedRT->GetRenderTargetItem(), FLinearColor::Black);
+	ClearUAV(RHICmdList, RadianceSortedGreenRT->GetRenderTargetItem(), FLinearColor::Black);
+	ClearUAV(RHICmdList, RadianceSortedBlueRT->GetRenderTargetItem(), FLinearColor::Black);
+	ClearUAV(RHICmdList, RadianceSortedAlphaRT->GetRenderTargetItem(), FLinearColor::Black);
+	ClearUAV(RHICmdList, SampleCountSortedRT->GetRenderTargetItem(), FLinearColor::Black);	
+
+	ComputePathCompaction(
+		RHICmdList,
+		View,
+		RadianceRT->GetRenderTargetItem().ShaderResourceTexture,
+		SampleCountRT->GetRenderTargetItem().ShaderResourceTexture,
+		PixelPositionRT->GetRenderTargetItem().ShaderResourceTexture,
+		RadianceSortedRedRT->GetRenderTargetItem().UAV,
+		RadianceSortedGreenRT->GetRenderTargetItem().UAV,
+		RadianceSortedBlueRT->GetRenderTargetItem().UAV,
+		RadianceSortedAlphaRT->GetRenderTargetItem().UAV,
+		SampleCountSortedRT->GetRenderTargetItem().UAV
+	);
+
+	RHICmdList.CopyToResolveTarget(RadianceSortedRedRT->GetRenderTargetItem().TargetableTexture, RadianceSortedRedRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
+	RHICmdList.CopyToResolveTarget(RadianceSortedGreenRT->GetRenderTargetItem().TargetableTexture, RadianceSortedGreenRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
+	RHICmdList.CopyToResolveTarget(RadianceSortedBlueRT->GetRenderTargetItem().TargetableTexture, RadianceSortedBlueRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
+	RHICmdList.CopyToResolveTarget(RadianceSortedAlphaRT->GetRenderTargetItem().TargetableTexture, RadianceSortedAlphaRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
+	RHICmdList.CopyToResolveTarget(SampleCountSortedRT->GetRenderTargetItem().TargetableTexture, SampleCountSortedRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
+
+
+	// Construct render targets for compositing
+	TRefCountPtr<IPooledRenderTarget> OutputRadianceRT;
+	TRefCountPtr<IPooledRenderTarget> OutputSampleCountRT;
+	Desc.Flags &= ~(TexCreate_FastVRAM | TexCreate_Transient);
+	Desc.Format = PF_A32B32G32R32F;
+	//Desc.Format = PF_A16B16G16R16;
+	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, OutputRadianceRT, TEXT("OutputRadianceRT"));
+	Desc.Format = PF_R16_UINT;
+	//Desc.Format = PF_R32_UINT;
+	GRenderTargetPool.FindFreeElement(RHICmdList, Desc, OutputSampleCountRT, TEXT("OutputSampleCountRT"));
+	ClearUAV(RHICmdList, OutputRadianceRT->GetRenderTargetItem(), FLinearColor::Black);
+	ClearUAV(RHICmdList, OutputSampleCountRT->GetRenderTargetItem(), FLinearColor::Black);
+
+	// Run compositing engine
+	const auto ShaderMap = GetGlobalShaderMap(FeatureLevel);
+
+	TShaderMapRef<FPostProcessVS> VertexShader(ShaderMap);
+	TShaderMapRef<FPathTracingCompositorPS> PixelShader(ShaderMap);
+	FRHITexture* RenderTargets[3] =
+	{
+		SceneContext.GetSceneColor()->GetRenderTargetItem().TargetableTexture,
+		OutputRadianceRT->GetRenderTargetItem().TargetableTexture,
+		OutputSampleCountRT->GetRenderTargetItem().TargetableTexture
+	};
+	FRHIRenderPassInfo RenderPassInfo(3, RenderTargets, ERenderTargetActions::Load_Store);
+	RHICmdList.BeginRenderPass(RenderPassInfo, TEXT("PathTracing"));
+
+	// DEBUG: Inspect render target in isolation
+	FGraphicsPipelineStateInitializer GraphicsPSOInit;
+	RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+	GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
+	GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
+	GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
+	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+
+	//for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+	{
+		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
+		FTextureRHIRef RadianceRedTexture = RadianceSortedRedRT->GetRenderTargetItem().ShaderResourceTexture;
+		FTextureRHIRef RadianceGreenTexture = RadianceSortedGreenRT->GetRenderTargetItem().ShaderResourceTexture;
+		FTextureRHIRef RadianceBlueTexture = RadianceSortedBlueRT->GetRenderTargetItem().ShaderResourceTexture;
+		FTextureRHIRef RadianceAlphaTexture = RadianceSortedAlphaRT->GetRenderTargetItem().ShaderResourceTexture;
+		FTextureRHIRef SampleCountTexture = SampleCountSortedRT->GetRenderTargetItem().ShaderResourceTexture;
+
+		FTextureRHIRef CumulativeRadianceTexture = GBlackTexture->TextureRHI;
+		FTextureRHIRef CumulativeSampleCount = GBlackTexture->TextureRHI;
+
+		int32 SamplesPerPixelCVar = CVarPathTracingSamplesPerPixel.GetValueOnRenderThread();
+		int32 PathTracingSamplesPerPixel = SamplesPerPixelCVar > -1 ? SamplesPerPixelCVar : View.FinalPostProcessSettings.PathTracingSamplesPerPixel;
+		if (ViewState->PathTracingIrradianceRT && SPPCount < PathTracingSamplesPerPixel)
 		{
-			SceneColorOutputTexture->GetRHI(),
-			OutputRadianceRT->GetRenderTargetItem().TargetableTexture,
-			OutputSampleCountRT->GetRenderTargetItem().TargetableTexture
-		};
-		FRHIRenderPassInfo RenderPassInfo(3, RenderTargets, ERenderTargetActions::Load_Store);
-		RHICmdList.BeginRenderPass(RenderPassInfo, TEXT("PathTracing"));
-
-		// DEBUG: Inspect render target in isolation
-		FGraphicsPipelineStateInitializer GraphicsPSOInit;
-		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
-		GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
-		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
-		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
-		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
-		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
-		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
-
-		//for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
-		{
-			RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
-			FTextureRHIRef RadianceRedTexture = RadianceSortedRedRT->GetRenderTargetItem().ShaderResourceTexture;
-			FTextureRHIRef RadianceGreenTexture = RadianceSortedGreenRT->GetRenderTargetItem().ShaderResourceTexture;
-			FTextureRHIRef RadianceBlueTexture = RadianceSortedBlueRT->GetRenderTargetItem().ShaderResourceTexture;
-			FTextureRHIRef RadianceAlphaTexture = RadianceSortedAlphaRT->GetRenderTargetItem().ShaderResourceTexture;
-			FTextureRHIRef SampleCountTexture = SampleCountSortedRT->GetRenderTargetItem().ShaderResourceTexture;
-
-			FTextureRHIRef CumulativeRadianceTexture = GBlackTexture->TextureRHI;
-			FTextureRHIRef CumulativeSampleCount = GBlackTexture->TextureRHI;
-
-			int32 SamplesPerPixelCVar = CVarPathTracingSamplesPerPixel.GetValueOnRenderThread();
-			int32 PathTracingSamplesPerPixel = SamplesPerPixelCVar > -1 ? SamplesPerPixelCVar : View.FinalPostProcessSettings.PathTracingSamplesPerPixel;
-			if (ViewState->PathTracingIrradianceRT && SPPCount < PathTracingSamplesPerPixel)
-			{
-				CumulativeRadianceTexture = ViewState->PathTracingIrradianceRT->GetRenderTargetItem().ShaderResourceTexture;
-				CumulativeSampleCount = ViewState->PathTracingSampleCountRT->GetRenderTargetItem().ShaderResourceTexture;
-				SPPCount++;
-			}
-			else
-			{
-				SPPCount = 0;
-			}
-
-			++FrameIndependentTemporalSeed;
-
-			PixelShader->SetParameters(RHICmdList, View, RadianceRedTexture, RadianceGreenTexture, RadianceBlueTexture, RadianceAlphaTexture, SampleCountTexture, CumulativeRadianceTexture, CumulativeSampleCount);
-
-			int32 DispatchSizeX = View.ViewRect.Size().X;
-
-			DrawRectangle(
-				RHICmdList,
-				WipeOffsetX, 0,
-				DispatchSizeX, View.ViewRect.Height(),
-				WipeOffsetX, View.ViewRect.Min.Y,
-				DispatchSizeX, View.ViewRect.Height(),
-				FIntPoint(View.ViewRect.Width(), View.ViewRect.Height()),
-				SceneColorOutputTexture->Desc.Extent,
-				VertexShader);
+			CumulativeRadianceTexture = ViewState->PathTracingIrradianceRT->GetRenderTargetItem().ShaderResourceTexture;
+			CumulativeSampleCount = ViewState->PathTracingSampleCountRT->GetRenderTargetItem().ShaderResourceTexture;
+			SPPCount++;
 		}
-		RHICmdList.EndRenderPass();
-
-		RHICmdList.CopyToResolveTarget(OutputRadianceRT->GetRenderTargetItem().TargetableTexture, OutputRadianceRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
-		RHICmdList.CopyToResolveTarget(OutputSampleCountRT->GetRenderTargetItem().TargetableTexture, OutputSampleCountRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
-		GVisualizeTexture.SetCheckPoint(RHICmdList, OutputRadianceRT);
-		GVisualizeTexture.SetCheckPoint(RHICmdList, OutputSampleCountRT);
-
-		// Cache values for reuse
-		ViewState->PathTracingIrradianceRT = OutputRadianceRT;
-		ViewState->PathTracingSampleCountRT = OutputSampleCountRT;
-
-		// Process variance mip for adaptive sampling
-		if (SPPCount % CVarPathTracingVarianceMapRebuildFrequency.GetValueOnRenderThread() == 0)
+		else
 		{
-			SCOPED_GPU_STAT(RHICmdList, Stat_GPU_PathTracingBuildVarianceMipTree);
-
-			BuildVarianceMipTree(RHICmdList, View, OutputRadianceRT->GetRenderTargetItem().ShaderResourceTexture, *ViewState->VarianceMipTree, ViewState->VarianceMipTreeDimensions);
+			SPPCount = 0;
 		}
 
-		VisualizeVarianceMipTree(RHICmdList, View, *ViewState->VarianceMipTree, ViewState->VarianceMipTreeDimensions);
-	});
+		++FrameIndependentTemporalSeed;
+
+		PixelShader->SetParameters(RHICmdList, View, RadianceRedTexture, RadianceGreenTexture, RadianceBlueTexture, RadianceAlphaTexture, SampleCountTexture, CumulativeRadianceTexture, CumulativeSampleCount);
+		DrawRectangle(
+			RHICmdList,
+			0, 0,
+			View.ViewRect.Width(), View.ViewRect.Height(),
+			View.ViewRect.Min.X, View.ViewRect.Min.Y,
+			View.ViewRect.Width(), View.ViewRect.Height(),
+			FIntPoint(View.ViewRect.Width(), View.ViewRect.Height()),
+			SceneContext.GetBufferSizeXY(),
+			*VertexShader);
+	}
+	RHICmdList.EndRenderPass();
+
+	RHICmdList.CopyToResolveTarget(OutputRadianceRT->GetRenderTargetItem().TargetableTexture, OutputRadianceRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
+	RHICmdList.CopyToResolveTarget(OutputSampleCountRT->GetRenderTargetItem().TargetableTexture, OutputSampleCountRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
+	GVisualizeTexture.SetCheckPoint(RHICmdList, OutputRadianceRT);
+	GVisualizeTexture.SetCheckPoint(RHICmdList, OutputSampleCountRT);
+
+	// Cache values for reuse
+	ViewState->PathTracingIrradianceRT = OutputRadianceRT;
+	ViewState->PathTracingSampleCountRT = OutputSampleCountRT;
+
+	// Process variance mip for adaptive sampling
+	if (SPPCount % CVarPathTracingVarianceMapRebuildFrequency.GetValueOnRenderThread() == 0)
+	{
+		SCOPED_GPU_STAT(RHICmdList, Stat_GPU_PathTracingBuildVarianceMipTree);
+
+		BuildVarianceMipTree(RHICmdList, View, OutputRadianceRT->GetRenderTargetItem().ShaderResourceTexture, *ViewState->VarianceMipTree, ViewState->VarianceMipTreeDimensions);
+	}
+
+	VisualizeVarianceMipTree(RHICmdList, View, *ViewState->VarianceMipTree, ViewState->VarianceMipTreeDimensions);
+
+	ResolveSceneColor(RHICmdList);
 }
 #endif

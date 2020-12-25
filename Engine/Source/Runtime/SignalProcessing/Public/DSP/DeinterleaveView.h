@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,10 +25,10 @@ namespace Audio
 		class TChannel
 		{
 			public:
-				TArray<T, InAllocator>& Values;
+				const TArray<T, InAllocator>& Values;
 				const int32 ChannelIndex;
 
-				TChannel(TArray<T, InAllocator>& InValues, const int32 InChannelIndex)
+				TChannel(const TArray<T, InAllocator>& InValues, const int32 InChannelIndex)
 				:	Values(InValues)
 				,	ChannelIndex(InChannelIndex)
 				{}
@@ -71,6 +71,12 @@ namespace Audio
 				}
 
 
+				// prepare the array
+				ArrayToFill.Reset(DeinterleaveView.NumElementsPerChannel);
+				if (DeinterleaveView.NumElementsPerChannel > 0)
+				{
+					ArrayToFill.AddUninitialized(DeinterleaveView.NumElementsPerChannel);
+				}
 			}
 
 			/** Increment the iterator forward by one channel */
@@ -108,13 +114,6 @@ namespace Audio
 				}
 				else
 				{
-					// prepare the array
-					ArrayToFill.Reset(DeinterleaveView.NumElementsPerChannel);
-					if (DeinterleaveView.NumElementsPerChannel > 0)
-					{
-						ArrayToFill.AddUninitialized(DeinterleaveView.NumElementsPerChannel);
-					}
-
 					// Fill array with deinterleave data
 					T* ArrayToFillData = ArrayToFill.GetData();
 					const T* InterleavedData = DeinterleaveView.InterleavedArray.GetData();

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	UObjectArray.h: Unreal object array
@@ -34,38 +34,13 @@ struct FUObjectItem
 	// Weak Object Pointer Serial number associated with the object
 	int32 SerialNumber;
 
-#if STATS || ENABLE_STATNAMEDEVENTS_UOBJECT
-	/** Stat id of this object, 0 if nobody asked for it yet */
-	mutable TStatId StatID;
-
-#if ENABLE_STATNAMEDEVENTS_UOBJECT
-	mutable PROFILER_CHAR* StatIDStringStorage;
-#endif
-#endif // STATS || ENABLE_STATNAMEDEVENTS
-
 	FUObjectItem()
 		: Object(nullptr)
 		, Flags(0)
 		, ClusterRootIndex(0)
 		, SerialNumber(0)
-#if ENABLE_STATNAMEDEVENTS_UOBJECT
-		, StatIDStringStorage(nullptr)
-#endif
 	{
 	}
-	~FUObjectItem()
-	{
-#if ENABLE_STATNAMEDEVENTS_UOBJECT
-		delete[] StatIDStringStorage;
-		StatIDStringStorage = nullptr;
-#endif
-	}
-
-	// Non-copyable
-	FUObjectItem(FUObjectItem&&) = delete;
-	FUObjectItem(const FUObjectItem&) = delete;
-	FUObjectItem& operator=(FUObjectItem&&) = delete;
-	FUObjectItem& operator=(const FUObjectItem&) = delete;
 
 	FORCEINLINE void SetOwnerIndex(int32 OwnerIndex)
 	{
@@ -98,7 +73,7 @@ struct FUObjectItem
 	FORCEINLINE void SetFlags(EInternalObjectFlags FlagsToSet)
 	{
 		check((int32(FlagsToSet) & ~int32(EInternalObjectFlags::AllFlags)) == 0);
-		ThisThreadAtomicallySetFlag(FlagsToSet);
+		Flags |= int32(FlagsToSet);
 	}
 
 	FORCEINLINE EInternalObjectFlags GetFlags() const
@@ -109,7 +84,7 @@ struct FUObjectItem
 	FORCEINLINE void ClearFlags(EInternalObjectFlags FlagsToClear)
 	{
 		check((int32(FlagsToClear) & ~int32(EInternalObjectFlags::AllFlags)) == 0);
-		ThisThreadAtomicallyClearedFlag(FlagsToClear);
+		Flags &= ~int32(FlagsToClear);
 	}
 
 	/**
@@ -129,6 +104,7 @@ struct FUObjectItem
 				break;
 			}
 			int32 NewValue = StartValue & ~int32(FlagToClear);
+			checkSlow(NewValue != StartValue);
 			if ((int32)FPlatformAtomics::InterlockedCompareExchange((int32*)&Flags, NewValue, StartValue) == StartValue)
 			{
 				bIChangedIt = true;
@@ -150,6 +126,7 @@ struct FUObjectItem
 				break;
 			}
 			int32 NewValue = StartValue | int32(FlagToSet);
+			checkSlow(NewValue != StartValue);
 			if ((int32)FPlatformAtomics::InterlockedCompareExchange((int32*)&Flags, NewValue, StartValue) == StartValue)
 			{
 				bIChangedIt = true;
@@ -166,11 +143,11 @@ struct FUObjectItem
 
 	FORCEINLINE void SetUnreachable()
 	{
-		ThisThreadAtomicallySetFlag(EInternalObjectFlags::Unreachable);
+		Flags |= int32(EInternalObjectFlags::Unreachable);
 	}
 	FORCEINLINE void ClearUnreachable()
 	{
-		ThisThreadAtomicallyClearedFlag(EInternalObjectFlags::Unreachable);
+		Flags &= ~int32(EInternalObjectFlags::Unreachable);
 	}
 	FORCEINLINE bool IsUnreachable() const
 	{
@@ -183,11 +160,11 @@ struct FUObjectItem
 
 	FORCEINLINE void SetPendingKill()
 	{
-		ThisThreadAtomicallySetFlag(EInternalObjectFlags::PendingKill);
+		Flags |= int32(EInternalObjectFlags::PendingKill);
 	}
 	FORCEINLINE void ClearPendingKill()
 	{
-		ThisThreadAtomicallyClearedFlag(EInternalObjectFlags::PendingKill);
+		Flags &= ~int32(EInternalObjectFlags::PendingKill);
 	}
 	FORCEINLINE bool IsPendingKill() const
 	{
@@ -196,11 +173,11 @@ struct FUObjectItem
 
 	FORCEINLINE void SetRootSet()
 	{
-		ThisThreadAtomicallySetFlag(EInternalObjectFlags::RootSet);
+		Flags |= int32(EInternalObjectFlags::RootSet);
 	}
 	FORCEINLINE void ClearRootSet()
 	{
-		ThisThreadAtomicallyClearedFlag(EInternalObjectFlags::RootSet);
+		Flags &= ~int32(EInternalObjectFlags::RootSet);
 	}
 	FORCEINLINE bool IsRootSet() const
 	{
@@ -213,10 +190,6 @@ struct FUObjectItem
 		ClusterRootIndex = 0;
 		SerialNumber = 0;
 	}
-
-#if STATS || ENABLE_STATNAMEDEVENTS_UOBJECT
-	COREUOBJECT_API void CreateStatID() const;
-#endif
 };
 
 /**
@@ -259,7 +232,7 @@ public:
 	int32 AddSingle() TSAN_SAFE
 	{
 		int32 Result = NumElements;
-		checkf(NumElements + 1 <= MaxElements, TEXT("Maximum number of UObjects (%d) exceeded, make sure you update MaxObjectsInGame/MaxObjectsInEditor/MaxObjectsInProgram in project settings."), MaxElements);
+		checkf(NumElements + 1 <= MaxElements, TEXT("Maximum number of UObjects (%d) exceeded, make sure you update MaxObjectsInGame/MaxObjectsInEditor in project settings."), MaxElements);
 		check(Result == NumElements);
 		++NumElements;
 		FPlatformMisc::MemoryBarrier();
@@ -270,7 +243,7 @@ public:
 	int32 AddRange(int32 Count) TSAN_SAFE
 	{
 		int32 Result = NumElements + Count - 1;
-		checkf(NumElements + Count <= MaxElements, TEXT("Maximum number of UObjects (%d) exceeded, make sure you update MaxObjectsInGame/MaxObjectsInEditor/MaxObjectsInProgram in project settings."), MaxElements);
+		checkf(NumElements + Count <= MaxElements, TEXT("Maximum number of UObjects (%d) exceeded, make sure you update MaxObjectsInGame/MaxObjectsInEditor in project settings."), MaxElements);
 		check(Result == (NumElements + Count - 1));
 		NumElements += Count;
 		FPlatformMisc::MemoryBarrier();
@@ -402,7 +375,7 @@ class FChunkedFixedUObjectArray
 		}
 		check(ChunkIndex < NumChunks && Objects[ChunkIndex]); // should have a valid pointer now
 	}
-    
+
 public:
 
 	/** Constructor : Probably not thread safe **/
@@ -535,7 +508,7 @@ public:
 	int32 AddRange(int32 NumToAdd) TSAN_SAFE
 	{
 		int32 Result = NumElements;
-		checkf(Result + NumToAdd <= MaxElements, TEXT("Maximum number of UObjects (%d) exceeded, make sure you update MaxObjectsInGame/MaxObjectsInEditor/MaxObjectsInProgram in project settings."), MaxElements);
+		checkf(Result + NumToAdd <= MaxElements, TEXT("Maximum number of UObjects (%d) exceeded, make sure you update MaxObjectsInGame/MaxObjectsInEditor in project settings."), MaxElements);
 		ExpandChunksToIndex(Result + NumToAdd - 1);
 		NumElements += NumToAdd;
 		return Result;
@@ -553,11 +526,6 @@ public:
 	{
 		return nullptr;
 	}
-    
-    int64 GetAllocatedSize() const
-    {
-        return MaxChunks * sizeof(FUObjectItem*) + NumChunks * NumElementsPerChunk * sizeof(FUObjectItem);
-    }
 };
 
 /***
@@ -804,13 +772,6 @@ public:
 	 * @param Listener listener to remove
 	 */
 	void RemoveUObjectDeleteListener(FUObjectDeleteListener* Listener);
-
-	/**
-	 * Removes an object from delete listeners
-	 *
-	 * @param Object to remove from delete listeners
-	 */
-	void RemoveObjectFromDeleteListeners(UObjectBase* Object);
 
 	/**
 	 * Checks if a UObject pointer is valid
@@ -1067,11 +1028,6 @@ public:
 	{
 		return ObjObjects;
 	}
-    
-    int64 GetAllocatedSize() const
-    {
-        return ObjObjects.GetAllocatedSize();
-    }
 };
 
 /** UObject cluster. Groups UObjects into a single unit for GC. */

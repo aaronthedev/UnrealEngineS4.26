@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -143,7 +143,7 @@ inline void UpdateMaskFilter(uint32& Word3, FMaskFilter NewMaskFilter)
 	Word3 |= uint32(NewMaskFilter) << (32 - NumExtraFilterBits);
 }
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 	extern ENGINE_API PxSimulationFilterShader GSimulationFilterShader;
 #endif
 

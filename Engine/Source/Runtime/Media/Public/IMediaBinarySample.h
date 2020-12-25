@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,6 @@
 #include "Misc/Optional.h"
 #include "Misc/Timecode.h"
 #include "Misc/Timespan.h"
-#include "IMediaTimeSource.h"
 
 
 /**
@@ -50,7 +49,7 @@ public:
 	 * @return Sample time.
 	 * @see GetData, GetDuration, GetSize, GetTime
 	 */
-	virtual FMediaTimeStamp GetTime() const = 0;
+	virtual FTimespan GetTime() const = 0;
 
 	/**
 	 * Get the sample timecode if available.

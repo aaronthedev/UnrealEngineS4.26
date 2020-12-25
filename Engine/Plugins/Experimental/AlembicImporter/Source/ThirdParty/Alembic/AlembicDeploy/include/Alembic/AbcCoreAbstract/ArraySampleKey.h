@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcCoreAbstract_ArraySampleKey_h
-#define Alembic_AbcCoreAbstract_ArraySampleKey_h
+#ifndef _Alembic_AbcCoreAbstract_ArraySampleKey_h_
+#define _Alembic_AbcCoreAbstract_ArraySampleKey_h_
 
 #include <Alembic/AbcCoreAbstract/Foundation.h>
 #include <Alembic/AbcCoreAbstract/DataType.h>
@@ -83,12 +83,9 @@ struct ArraySampleKey : public Alembic::Util::totally_ordered<ArraySampleKey>
 
 //-*****************************************************************************
 // Equality operator.
-struct ArraySampleKeyEqualTo
+struct ArraySampleKeyEqualTo :
+        public std::binary_function<ArraySampleKey,ArraySampleKey,bool>
 {
-    typedef ArraySampleKey first_argument_type;
-    typedef ArraySampleKey second_argument_type;
-    typedef bool result_type;
-
     bool operator()( ArraySampleKey const &a,
                      ArraySampleKey const &b ) const
     {
@@ -108,11 +105,9 @@ inline size_t StdHash( ArraySampleKey const &a )
 }
 
 //-*****************************************************************************
-struct ArraySampleKeyStdHash
+struct ArraySampleKeyStdHash :
+        public std::unary_function<ArraySampleKey,size_t>
 {
-    typedef ArraySampleKey argument_type;
-    typedef size_t result_type;
-
     size_t operator()( ArraySampleKey const &a ) const
     {
         return StdHash( a );

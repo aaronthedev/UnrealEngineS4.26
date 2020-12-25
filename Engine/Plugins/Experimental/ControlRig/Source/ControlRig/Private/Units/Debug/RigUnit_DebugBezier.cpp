@@ -1,26 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Units/Debug/RigUnit_DebugBezier.h"
 #include "Units/RigUnitContext.h"
 
 FRigUnit_DebugBezier_Execute()
-{
-	FRigUnit_DebugBezierItemSpace::StaticExecute(
-		RigVMExecuteContext, 
-		Bezier, 
-		MinimumU, 
-		MaximumU, 
-		Color, 
-		Thickness, 
-		Detail, 
-		FRigElementKey(Space, ERigElementType::Bone), 
-		WorldOffset, 
-		bEnabled,
-		ExecuteContext, 
-		Context);
-}
-
-FRigUnit_DebugBezierItemSpace_Execute()
 {
     DECLARE_SCOPE_HIERARCHICAL_COUNTER_RIGUNIT()
 	if (Context.State == EControlRigState::Init)
@@ -34,9 +17,9 @@ FRigUnit_DebugBezierItemSpace_Execute()
 	}
 
 	FTransform Transform = WorldOffset;
-	if (Space.IsValid())
+	if (Space != NAME_None && Context.GetBones() != nullptr)
 	{
-		Transform = Transform * Context.Hierarchy->GetGlobalTransform(Space);
+		Transform = Transform * Context.GetBones()->GetGlobalTransform(Space);
 	}
 
 	Context.DrawInterface->DrawBezier(Transform, Bezier, MinimumU, MaximumU, Color, Thickness, Detail);

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,7 +19,7 @@
  * A message log listing, such as the Compiler Log, or the Map Check Log.
  * Holds the log lines, and any extra widgets necessary.
  */
-class MESSAGELOG_API SMessageLogListing : public SCompoundWidget
+class SMessageLogListing : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SMessageLogListing)

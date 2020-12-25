@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,7 +13,6 @@ class FViewport;
 class UFactory;
 class IMeshPainter;
 class UViewportInteractor;
-struct FAssetData;
 
 /**
  * Mesh Paint editor mode
@@ -32,10 +31,6 @@ public:
 
 	/** FGCObject interface */
 	virtual void AddReferencedObjects( FReferenceCollector& Collector ) override;
-	virtual FString GetReferencerName() const override
-	{
-		return "IMeshPaintEdMode";
-	}
 
 	// FEdMode interface
 	virtual bool UsesToolkits() const override { return true; }

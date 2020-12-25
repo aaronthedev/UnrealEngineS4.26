@@ -100,9 +100,7 @@ class IRContext {
         constant_mgr_(nullptr),
         type_mgr_(nullptr),
         id_to_name_(nullptr),
-        max_id_bound_(kDefaultMaxIdBound),
-        preserve_bindings_(false),
-        preserve_spec_constants_(false) {
+        max_id_bound_(kDefaultMaxIdBound) {
     SetContextMessageConsumer(syntax_context_, consumer_);
     module_->SetContext(this);
   }
@@ -117,9 +115,7 @@ class IRContext {
         valid_analyses_(kAnalysisNone),
         type_mgr_(nullptr),
         id_to_name_(nullptr),
-        max_id_bound_(kDefaultMaxIdBound),
-        preserve_bindings_(false),
-        preserve_spec_constants_(false) {
+        max_id_bound_(kDefaultMaxIdBound) {
     SetContextMessageConsumer(syntax_context_, consumer_);
     module_->SetContext(this);
     InitializeCombinators();
@@ -187,24 +183,14 @@ class IRContext {
   inline IteratorRange<Module::inst_iterator> debugs3();
   inline IteratorRange<Module::const_inst_iterator> debugs3() const;
 
-  // Iterators for debug info instructions (excluding OpLine & OpNoLine)
-  // contained in this module.  These are OpExtInst for OpenCL.DebugInfo.100
-  // or DebugInfo extension placed between section 9 and 10.
-  inline Module::inst_iterator ext_inst_debuginfo_begin();
-  inline Module::inst_iterator ext_inst_debuginfo_end();
-  inline IteratorRange<Module::inst_iterator> ext_inst_debuginfo();
-  inline IteratorRange<Module::const_inst_iterator> ext_inst_debuginfo() const;
-
-  // Add |capability| to the module, if it is not already enabled.
-  inline void AddCapability(SpvCapability capability);
+  // Clears all debug instructions (excluding OpLine & OpNoLine).
+  inline void debug_clear();
 
   // Appends a capability instruction to this module.
   inline void AddCapability(std::unique_ptr<Instruction>&& c);
   // Appends an extension instruction to this module.
-  inline void AddExtension(const std::string& ext_name);
   inline void AddExtension(std::unique_ptr<Instruction>&& e);
   // Appends an extended instruction set instruction to this module.
-  inline void AddExtInstImport(const std::string& name);
   inline void AddExtInstImport(std::unique_ptr<Instruction>&& e);
   // Set the memory model for this module.
   inline void SetMemoryModel(std::unique_ptr<Instruction>&& m);
@@ -223,8 +209,6 @@ class IRContext {
   // Appends a debug 3 instruction (OpModuleProcessed) to this module.
   // This is due to decision by the SPIR Working Group, pending publication.
   inline void AddDebug3Inst(std::unique_ptr<Instruction>&& d);
-  // Appends a OpExtInst for DebugInfo to this module.
-  inline void AddExtInstDebugInfo(std::unique_ptr<Instruction>&& d);
   // Appends an annotation instruction to this module.
   inline void AddAnnotationInst(std::unique_ptr<Instruction>&& a);
   // Appends a type-declaration instruction to this module.
@@ -394,15 +378,6 @@ class IRContext {
   // |before| and |after| must be registered definitions in the DefUseManager.
   bool ReplaceAllUsesWith(uint32_t before, uint32_t after);
 
-  // Replace all uses of |before| id with |after| id if those uses
-  // (instruction, operand pair) return true for |predicate|. Returns true if
-  // any replacement happens. This method does not kill the definition of the
-  // |before| id. If |after| is the same as |before|, does nothing and return
-  // false.
-  bool ReplaceAllUsesWithPredicate(
-      uint32_t before, uint32_t after,
-      const std::function<bool(Instruction*, uint32_t)>& predicate);
-
   // Returns true if all of the analyses that are suppose to be valid are
   // actually valid.
   bool IsConsistent();
@@ -499,8 +474,6 @@ class IRContext {
     return feature_mgr_.get();
   }
 
-  void ResetFeatureManager() { feature_mgr_.reset(nullptr); }
-
   // Returns the grammar for this context.
   const AssemblyGrammar& grammar() const { return grammar_; }
 
@@ -518,20 +491,10 @@ class IRContext {
   uint32_t max_id_bound() const { return max_id_bound_; }
   void set_max_id_bound(uint32_t new_bound) { max_id_bound_ = new_bound; }
 
-  bool preserve_bindings() const { return preserve_bindings_; }
-  void set_preserve_bindings(bool should_preserve_bindings) {
-    preserve_bindings_ = should_preserve_bindings;
-  }
-
-  bool preserve_spec_constants() const { return preserve_spec_constants_; }
-  void set_preserve_spec_constants(bool should_preserve_spec_constants) {
-    preserve_spec_constants_ = should_preserve_spec_constants;
-  }
-
-  // Return id of input variable only decorated with |builtin|, if in module.
+  // Return id of variable only decorated with |builtin|, if in module.
   // Create variable and return its id otherwise. If builtin not currently
   // supported, return 0.
-  uint32_t GetBuiltinInputVarId(uint32_t builtin);
+  uint32_t GetBuiltinVarId(uint32_t builtin);
 
   // Returns the function whose id is |id|, if one exists.  Returns |nullptr|
   // otherwise.
@@ -550,7 +513,7 @@ class IRContext {
     return GetFunction(inst->result_id());
   }
 
-  // Add to |todo| all ids of functions called directly from |func|.
+  // Add to |todo| all ids of functions called in |func|.
   void AddCalls(const Function* func, std::queue<uint32_t>* todo);
 
   // Applies |pfn| to every function in the call trees that are rooted at the
@@ -569,10 +532,6 @@ class IRContext {
   // |roots| will be empty.
   bool ProcessCallTreeFromRoots(ProcessFunction& pfn,
                                 std::queue<uint32_t>* roots);
-
-  // Emmits a error message to the message consumer indicating the error
-  // described by |message| occurred in |inst|.
-  void EmitErrorMessage(std::string message, Instruction* inst);
 
  private:
   // Builds the def-use manager from scratch, even if it was already valid.
@@ -698,9 +657,9 @@ class IRContext {
   // true if the cfg is invalidated.
   bool CheckCFG();
 
-  // Return id of input variable only decorated with |builtin|, if in module.
+  // Return id of variable only decorated with |builtin|, if in module.
   // Return 0 otherwise.
-  uint32_t FindBuiltinInputVar(uint32_t builtin);
+  uint32_t FindBuiltinVar(uint32_t builtin);
 
   // Add |var_id| to all entry points in module.
   void AddVarToEntryPoints(uint32_t var_id);
@@ -791,13 +750,6 @@ class IRContext {
 
   // The maximum legal value for the id bound.
   uint32_t max_id_bound_;
-
-  // Whether all bindings within |module_| should be preserved.
-  bool preserve_bindings_;
-
-  // Whether all specialization constants within |module_|
-  // should be preserved.
-  bool preserve_spec_constants_;
 };
 
 inline IRContext::Analysis operator|(IRContext::Analysis lhs,
@@ -935,85 +887,23 @@ IteratorRange<Module::const_inst_iterator> IRContext::debugs3() const {
   return ((const Module*)module_.get())->debugs3();
 }
 
-Module::inst_iterator IRContext::ext_inst_debuginfo_begin() {
-  return module()->ext_inst_debuginfo_begin();
-}
-
-Module::inst_iterator IRContext::ext_inst_debuginfo_end() {
-  return module()->ext_inst_debuginfo_end();
-}
-
-IteratorRange<Module::inst_iterator> IRContext::ext_inst_debuginfo() {
-  return module()->ext_inst_debuginfo();
-}
-
-IteratorRange<Module::const_inst_iterator> IRContext::ext_inst_debuginfo()
-    const {
-  return ((const Module*)module_.get())->ext_inst_debuginfo();
-}
-
-void IRContext::AddCapability(SpvCapability capability) {
-  if (!get_feature_mgr()->HasCapability(capability)) {
-    std::unique_ptr<Instruction> capability_inst(new Instruction(
-        this, SpvOpCapability, 0, 0,
-        {{SPV_OPERAND_TYPE_CAPABILITY, {static_cast<uint32_t>(capability)}}}));
-    AddCapability(std::move(capability_inst));
-  }
-}
+void IRContext::debug_clear() { module_->debug_clear(); }
 
 void IRContext::AddCapability(std::unique_ptr<Instruction>&& c) {
   AddCombinatorsForCapability(c->GetSingleWordInOperand(0));
-  if (feature_mgr_ != nullptr) {
-    feature_mgr_->AddCapability(
-        static_cast<SpvCapability>(c->GetSingleWordInOperand(0)));
-  }
-  if (AreAnalysesValid(kAnalysisDefUse)) {
-    get_def_use_mgr()->AnalyzeInstDefUse(c.get());
-  }
   module()->AddCapability(std::move(c));
-}
-
-void IRContext::AddExtension(const std::string& ext_name) {
-  const auto num_chars = ext_name.size();
-  // Compute num words, accommodate the terminating null character.
-  const auto num_words = (num_chars + 1 + 3) / 4;
-  std::vector<uint32_t> ext_words(num_words, 0u);
-  std::memcpy(ext_words.data(), ext_name.data(), num_chars);
-  AddExtension(std::unique_ptr<Instruction>(
-      new Instruction(this, SpvOpExtension, 0u, 0u,
-                      {{SPV_OPERAND_TYPE_LITERAL_STRING, ext_words}})));
 }
 
 void IRContext::AddExtension(std::unique_ptr<Instruction>&& e) {
   if (AreAnalysesValid(kAnalysisDefUse)) {
     get_def_use_mgr()->AnalyzeInstDefUse(e.get());
   }
-  if (feature_mgr_ != nullptr) {
-    feature_mgr_->AddExtension(&*e);
-  }
   module()->AddExtension(std::move(e));
-}
-
-void IRContext::AddExtInstImport(const std::string& name) {
-  const auto num_chars = name.size();
-  // Compute num words, accommodate the terminating null character.
-  const auto num_words = (num_chars + 1 + 3) / 4;
-  std::vector<uint32_t> ext_words(num_words, 0u);
-  std::memcpy(ext_words.data(), name.data(), num_chars);
-  AddExtInstImport(std::unique_ptr<Instruction>(
-      new Instruction(this, SpvOpExtInstImport, 0u, TakeNextId(),
-                      {{SPV_OPERAND_TYPE_LITERAL_STRING, ext_words}})));
 }
 
 void IRContext::AddExtInstImport(std::unique_ptr<Instruction>&& e) {
   AddCombinatorsForExtension(e.get());
-  if (AreAnalysesValid(kAnalysisDefUse)) {
-    get_def_use_mgr()->AnalyzeInstDefUse(e.get());
-  }
   module()->AddExtInstImport(std::move(e));
-  if (feature_mgr_ != nullptr) {
-    feature_mgr_->AddExtInstImportIds(module());
-  }
 }
 
 void IRContext::SetMemoryModel(std::unique_ptr<Instruction>&& m) {
@@ -1043,10 +933,6 @@ void IRContext::AddDebug2Inst(std::unique_ptr<Instruction>&& d) {
 
 void IRContext::AddDebug3Inst(std::unique_ptr<Instruction>&& d) {
   module()->AddDebug3Inst(std::move(d));
-}
-
-void IRContext::AddExtInstDebugInfo(std::unique_ptr<Instruction>&& d) {
-  module()->AddExtInstDebugInfo(std::move(d));
 }
 
 void IRContext::AddAnnotationInst(std::unique_ptr<Instruction>&& a) {

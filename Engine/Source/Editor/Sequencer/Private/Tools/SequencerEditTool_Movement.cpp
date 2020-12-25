@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Tools/SequencerEditTool_Movement.h"
 #include "Editor.h"
@@ -81,7 +81,7 @@ FReply FSequencerEditTool_Movement::OnMouseMove(SWidget& OwnerWidget, const FGeo
 				{
 					DragPosition.X = FMath::Max(DragPosition.X, 0.f);
 					FFrameTime CurrentTime = VirtualTrackArea.PixelToFrame(DragPosition.X);
-					CurrentTime = UE::MovieScene::ClampToDiscreteRange(CurrentTime, Sequencer.GetPlaybackRange());
+					CurrentTime = MovieScene::ClampToDiscreteRange(CurrentTime, Sequencer.GetPlaybackRange());
 					DragPosition.X = VirtualTrackArea.FrameToPixel(CurrentTime);
 				}
 					

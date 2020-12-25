@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Chaos/ChaosSolverSettings.h"
 #include "Chaos/ChaosSolverActor.h"
@@ -14,7 +14,7 @@ UClass* UChaosSolverSettings::GetSolverActorClass() const
 	return (SolverActorClass != nullptr) ? SolverActorClass : AChaosSolverActor::StaticClass();
 }
 
-void UChaosSolverSettings::UpdateProperty(FProperty* InProperty)
+void UChaosSolverSettings::UpdateProperty(UProperty* InProperty)
 {
 	UpdateAllProperties();
 }
@@ -26,7 +26,7 @@ void UChaosSolverSettings::UpdateAllProperties()
 // internal
 void UChaosSolverSettings::RegisterSolverActorProvider()
 {
- 	FChaosSolversModule* const ChaosModule = FChaosSolversModule::GetModule();
+ 	FChaosSolversModule* const ChaosModule = FModuleManager::Get().GetModulePtr<FChaosSolversModule>("ChaosSolvers");
  	check(ChaosModule);
 	ChaosModule->RegisterSolverActorClassProvider(this);
 }
@@ -49,7 +49,7 @@ void UChaosSolverSettings::PostInitProperties()
 	UpdateAllProperties();
 }
 
-void UChaosSolverSettings::PostReloadConfig(class FProperty* PropertyThatWasLoaded)
+void UChaosSolverSettings::PostReloadConfig(class UProperty* PropertyThatWasLoaded)
 {
 	Super::PostReloadConfig(PropertyThatWasLoaded);
 

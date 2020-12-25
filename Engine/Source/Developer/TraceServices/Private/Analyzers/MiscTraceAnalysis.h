@@ -1,7 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
+#include "Trace/Trace.h"
 #include "Trace/Analyzer.h"
 #include "Templates/SharedPointer.h"
 #include "ProfilingDebugging/MiscTrace.h"
@@ -14,7 +15,6 @@ namespace Trace
 	class FBookmarkProvider;
 	class FLogProvider;
 	class FFrameProvider;
-	class FChannelProvider;
 }
 
 class FMiscTraceAnalyzer
@@ -25,11 +25,9 @@ public:
 					   Trace::FThreadProvider& ThreadProvider,
 					   Trace::FBookmarkProvider& BookmarkProvider,
 					   Trace::FLogProvider& LogProvider,
-					   Trace::FFrameProvider& FrameProvider, 
-					   Trace::FChannelProvider& ChannelProvider);
+					   Trace::FFrameProvider& FrameProvider);
 	virtual void OnAnalysisBegin(const FOnAnalysisContext& Context) override;
-	virtual void OnThreadInfo(const FThreadInfo& ThreadInfo) override;
-	virtual bool OnEvent(uint16 RouteId, EStyle Style, const FOnEventContext& Context) override;
+	virtual bool OnEvent(uint16 RouteId, const FOnEventContext& Context) override;
 
 private:
 	enum : uint16
@@ -47,8 +45,6 @@ private:
 		RouteId_EndGameFrame,
 		RouteId_BeginRenderFrame,
 		RouteId_EndRenderFrame,
-		RouteId_ChannelAnnounce,
-		RouteId_ChannelToggle,
 	};
 
 	struct FThreadState
@@ -57,15 +53,12 @@ private:
 	};
 
 	FThreadState* GetThreadState(uint32 ThreadId);
-	void OnChannelAnnounce(const FOnEventContext& Context);
-	void OnChannelToggle(const FOnEventContext& Context);
 
 	Trace::IAnalysisSession& Session;
 	Trace::FThreadProvider& ThreadProvider;
 	Trace::FBookmarkProvider& BookmarkProvider;
 	Trace::FLogProvider& LogProvider;
 	Trace::FFrameProvider& FrameProvider;
-	Trace::FChannelProvider& ChannelProvider;
 	TMap<uint32, TSharedRef<FThreadState>> ThreadStateMap;
 	uint64 LastFrameCycle[TraceFrameType_Count] = { 0, 0 };
 };

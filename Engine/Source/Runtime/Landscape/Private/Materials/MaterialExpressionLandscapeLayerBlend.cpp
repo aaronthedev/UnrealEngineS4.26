@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Materials/MaterialExpressionLandscapeLayerBlend.h"
 #include "Engine/Engine.h"
@@ -340,5 +340,11 @@ void UMaterialExpressionLandscapeLayerBlend::GetAllParameterInfo(TArray<FMateria
 		}
 	}
 }
+
+bool UMaterialExpressionLandscapeLayerBlend::NeedsLoadForClient() const
+{
+	return true;
+}
+
 
 #undef LOCTEXT_NAMESPACE

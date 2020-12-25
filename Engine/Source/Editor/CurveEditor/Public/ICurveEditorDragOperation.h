@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -33,11 +33,6 @@ public:
 	void Drag(FVector2D InitialPosition, FVector2D CurrentPosition, const FPointerEvent& MouseEvent);
 
 	/**
-	 * Potentially Evaluate a MouseWheel event which occcured during this drag operation
-	 */
-	FReply MouseWheel(FVector2D InitialPosition, FVector2D CurrentPosition, const FPointerEvent& MouseEvent);
-
-	/**
 	 * Finish this drag operation with the specified initial and current positions
 	 */
 	void EndDrag(FVector2D InitialPosition, FVector2D CurrentPosition, const FPointerEvent& MouseEvent);
@@ -61,12 +56,6 @@ protected:
 	/** Implementation method for derived types to continue a drag */
 	virtual void OnDrag(FVector2D InitialPosition, FVector2D CurrentPosition, const FPointerEvent& MouseEvent)
 	{}
-
-	/** Implementation method for derived types to evaluate a mousewheel event */
-	virtual FReply OnMouseWheel(FVector2D InitialPosition, FVector2D CurrentPosition, const FPointerEvent& MouseEvent)
-	{
-		return FReply::Unhandled();
-	}
 
 	/** Implementation method for derived types to finish a drag */
 	virtual void OnEndDrag(FVector2D InitialPosition, FVector2D CurrentPosition, const FPointerEvent& MouseEvent)

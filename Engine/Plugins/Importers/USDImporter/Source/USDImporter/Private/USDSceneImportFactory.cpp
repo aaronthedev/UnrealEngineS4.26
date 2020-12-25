@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "USDSceneImportFactory.h"
 #include "USDImportOptions.h"
@@ -16,11 +16,9 @@
 #include "JsonObjectConverter.h"
 #include "USDPrimResolver.h"
 
-#include "UsdWrappers/UsdStage.h"
-
 #define LOCTEXT_NAMESPACE "USDImportPlugin"
 
-UDEPRECATED_UUSDSceneImportFactory::UDEPRECATED_UUSDSceneImportFactory(const FObjectInitializer& ObjectInitializer)
+UUSDSceneImportFactory::UUSDSceneImportFactory(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	bCreateNew = false;
@@ -30,44 +28,41 @@ UDEPRECATED_UUSDSceneImportFactory::UDEPRECATED_UUSDSceneImportFactory(const FOb
 	bEditorImport = true;
 	bText = false;
 
-	ImportOptions_DEPRECATED = ObjectInitializer.CreateDefaultSubobject<UDEPRECATED_UUSDSceneImportOptions>(this, TEXT("USDSceneImportOptions"));
-
-	// Factory is deprecated
-	ImportPriority = -1;
+	ImportOptions = ObjectInitializer.CreateDefaultSubobject<UUSDSceneImportOptions>(this, TEXT("USDSceneImportOptions"));
 
 	Formats.Add(TEXT("usd;Universal Scene Descriptor files"));
 	Formats.Add(TEXT("usda;Universal Scene Descriptor files"));
 	Formats.Add(TEXT("usdc;Universal Scene Descriptor files"));
 }
 
-UObject* UDEPRECATED_UUSDSceneImportFactory::FactoryCreateFile(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, const FString& Filename, const TCHAR* Parms, FFeedbackContext* Warn, bool& bOutOperationCanceled)
+UObject* UUSDSceneImportFactory::FactoryCreateFile(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, const FString& Filename, const TCHAR* Parms, FFeedbackContext* Warn, bool& bOutOperationCanceled)
 {
-	UDEPRECATED_UUSDImporter* USDImporter = IUSDImporterModule::Get().GetImporter();
+	UUSDImporter* USDImporter = IUSDImporterModule::Get().GetImporter();
 
 	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
 
 	TArray<UObject*> AllAssets;
 
-	if(IsAutomatedImport() || USDImporter->ShowImportOptions(*ImportOptions_DEPRECATED))
+	if(IsAutomatedImport() || USDImporter->ShowImportOptions(*ImportOptions))
 	{
 #if USE_USD_SDK
 		// @todo: Disabled.  This messes with the ability to replace existing actors since actors with this name could still be in the transaction buffer
 		//FScopedTransaction ImportUSDScene(LOCTEXT("ImportUSDSceneTransaction", "Import USD Scene"));
 
-		UE::FUsdStage Stage = USDImporter->ReadUsdFile(ImportContext, Filename);
-		if (Stage)
+		TUsdStore< pxr::UsdStageRefPtr > Stage = USDImporter->ReadUsdFile(ImportContext, Filename);
+		if (*Stage)
 		{
 			ImportContext.Init(InParent, InName.ToString(), Stage);
-			ImportContext.ImportOptions_DEPRECATED = ImportOptions_DEPRECATED;
+			ImportContext.ImportOptions = ImportOptions;
 			ImportContext.bIsAutomated = IsAutomatedImport();
 
-			if (IsAutomatedImport() && InParent && ImportOptions_DEPRECATED->PathForAssets.Path == TEXT("/Game"))
+			if (IsAutomatedImport() && InParent && ImportOptions->PathForAssets.Path == TEXT("/Game"))
 			{
-				ImportOptions_DEPRECATED->PathForAssets.Path = ImportContext.ImportPathName;
+				ImportOptions->PathForAssets.Path = ImportContext.ImportPathName;
 			}
 
-			ImportContext.ImportPathName = ImportOptions_DEPRECATED->PathForAssets.Path;
-
+			ImportContext.ImportPathName = ImportOptions->PathForAssets.Path;
+	
 			// Actors will have the transform
 			ImportContext.bApplyWorldTransformToGeometry = false;
 
@@ -90,7 +85,7 @@ UObject* UDEPRECATED_UUSDSceneImportFactory::FactoryCreateFile(UClass* InClass, 
 	}
 }
 
-bool UDEPRECATED_UUSDSceneImportFactory::FactoryCanImport(const FString& Filename)
+bool UUSDSceneImportFactory::FactoryCanImport(const FString& Filename)
 {
 	const FString Extension = FPaths::GetExtension(Filename);
 
@@ -102,14 +97,14 @@ bool UDEPRECATED_UUSDSceneImportFactory::FactoryCanImport(const FString& Filenam
 	return false;
 }
 
-void UDEPRECATED_UUSDSceneImportFactory::CleanUp()
+void UUSDSceneImportFactory::CleanUp()
 {
 	ImportContext = FUSDSceneImportContext();
 }
 
-void UDEPRECATED_UUSDSceneImportFactory::ParseFromJson(TSharedRef<class FJsonObject> ImportSettingsJson)
+void UUSDSceneImportFactory::ParseFromJson(TSharedRef<class FJsonObject> ImportSettingsJson)
 {
-	FJsonObjectConverter::JsonObjectToUStruct(ImportSettingsJson, ImportOptions_DEPRECATED->GetClass(), ImportOptions_DEPRECATED, 0, CPF_InstancedReference);
+	FJsonObjectConverter::JsonObjectToUStruct(ImportSettingsJson, ImportOptions->GetClass(), ImportOptions, 0, CPF_InstancedReference);
 }
 
 #undef LOCTEXT_NAMESPACE

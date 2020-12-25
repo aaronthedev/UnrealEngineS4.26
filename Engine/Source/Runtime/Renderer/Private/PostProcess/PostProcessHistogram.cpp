@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PostProcessHistogram.cpp: Post processing histogram implementation.
@@ -6,7 +6,6 @@
 
 #include "PostProcess/PostProcessHistogram.h"
 #include "PostProcess/PostProcessEyeAdaptation.h"
-#include "ShaderCompilerCore.h"
 
 namespace
 {
@@ -122,11 +121,13 @@ FRDGTextureRef AddHistogramPass(
 	{
 		const FIntPoint TextureExtent = FIntPoint(FHistogramCS::HistogramTexelCount, HistogramThreadGroupCountTotal);
 
-		const FRDGTextureDesc TextureDesc = FRDGTextureDesc::Create2D(
+		const FRDGTextureDesc TextureDesc = FPooledRenderTargetDesc::Create2DDesc(
 			TextureExtent,
 			PF_FloatRGBA,
 			FClearValueBinding::None,
-			GFastVRamConfig.Histogram | TexCreate_RenderTargetable | TexCreate_UAV | TexCreate_ShaderResource);
+			GFastVRamConfig.Histogram,
+			TexCreate_RenderTargetable | TexCreate_UAV | TexCreate_ShaderResource,
+			false);
 
 		HistogramTexture = GraphBuilder.CreateTexture(TextureDesc, TEXT("Histogram"));
 
@@ -143,7 +144,7 @@ FRDGTextureRef AddHistogramPass(
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
 			RDG_EVENT_NAME("Histogram %dx%d (CS)", SceneColor.ViewRect.Width(), SceneColor.ViewRect.Height()),
-			ComputeShader,
+			*ComputeShader,
 			PassParameters,
 			FIntVector(HistogramThreadGroupCount.X, HistogramThreadGroupCount.Y, 1));
 	}
@@ -154,11 +155,13 @@ FRDGTextureRef AddHistogramPass(
 	{
 		const FIntPoint TextureExtent = FIntPoint(FHistogramCS::HistogramTexelCount, 2);
 
-		const FRDGTextureDesc TextureDesc = FRDGTextureDesc::Create2D(
+		const FRDGTextureDesc TextureDesc = FRDGTextureDesc::Create2DDesc(
 			TextureExtent,
 			FHistogramReducePS::OutputFormat,
 			FClearValueBinding::None,
-			GFastVRamConfig.HistogramReduce | TexCreate_RenderTargetable | TexCreate_ShaderResource);
+			GFastVRamConfig.HistogramReduce,
+			TexCreate_RenderTargetable | TexCreate_ShaderResource,
+			false);
 
 		HistogramReduceTexture = GraphBuilder.CreateTexture(TextureDesc, TEXT("HistogramReduce"));
 
@@ -181,7 +184,7 @@ FRDGTextureRef AddHistogramPass(
 			View,
 			OutputViewport,
 			InputViewport,
-			PixelShader,
+			*PixelShader,
 			PassParameters);
 	}
 

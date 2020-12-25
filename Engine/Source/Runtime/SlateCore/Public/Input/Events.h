@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -152,7 +152,7 @@ struct FVirtualPointerPosition
  * Base class for all mouse and keyevents.
  */
 USTRUCT(BlueprintType)
-struct FInputEvent
+struct SLATECORE_VTABLE FInputEvent
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -341,9 +341,6 @@ public:
 	/** Is this event a pointer event (touch or cursor). */
 	SLATECORE_API virtual bool IsPointerEvent() const;
 
-	/** Is this event a key event. */
-	SLATECORE_API virtual bool IsKeyEvent() const;
-
 protected:
 
 	// State of modifier keys when this event happened.
@@ -373,7 +370,7 @@ struct TStructOpsTypeTraits<FInputEvent> : public TStructOpsTypeTraitsBase2<FInp
  * It is passed to event handlers dealing with key input.
  */
 USTRUCT(BlueprintType)
-struct FKeyEvent : public FInputEvent
+struct SLATECORE_VTABLE FKeyEvent : public FInputEvent
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -439,9 +436,7 @@ public:
 		return KeyCode;
 	}
 
-	SLATECORE_API virtual FText ToText() const override;
-
-	SLATECORE_API virtual bool IsKeyEvent() const override;
+	SLATECORE_API virtual FText ToText() const override;	
 
 private:
 	// Name of the key that was pressed.
@@ -469,7 +464,7 @@ struct TStructOpsTypeTraits<FKeyEvent> : public TStructOpsTypeTraitsBase2<FKeyEv
  * It is passed to event handlers dealing with analog keys.
  */
 USTRUCT(BlueprintType)
-struct FAnalogInputEvent
+struct SLATECORE_VTABLE FAnalogInputEvent
 	: public FKeyEvent
 {
 	GENERATED_USTRUCT_BODY()
@@ -532,7 +527,7 @@ struct TStructOpsTypeTraits<FAnalogInputEvent> : public TStructOpsTypeTraitsBase
  * FCharacterEvent describes a keyboard action where the utf-16 code is given.  Used for OnKeyChar messages
  */
 USTRUCT(BlueprintType)
-struct FCharacterEvent
+struct SLATECORE_VTABLE FCharacterEvent
 	: public FInputEvent
 {
 	GENERATED_USTRUCT_BODY()
@@ -614,7 +609,7 @@ public:
  * It is passed to event handlers dealing with pointer-based input.
  */
 USTRUCT(BlueprintType)
-struct FPointerEvent
+struct SLATECORE_VTABLE FPointerEvent
 	: public FInputEvent
 {
 	GENERATED_USTRUCT_BODY()
@@ -627,7 +622,7 @@ public:
 		: ScreenSpacePosition(FVector2D(0, 0))
 		, LastScreenSpacePosition(FVector2D(0, 0))
 		, CursorDelta(FVector2D(0, 0))
-		, PressedButtons(&FTouchKeySet::EmptySet)
+		, PressedButtons(FTouchKeySet::EmptySet)
 		, EffectingButton()
 		, PointerIndex(0)
 		, TouchpadIndex(0)
@@ -654,7 +649,7 @@ public:
 		, ScreenSpacePosition(InScreenSpacePosition)
 		, LastScreenSpacePosition(InLastScreenSpacePosition)
 		, CursorDelta(InScreenSpacePosition - InLastScreenSpacePosition)
-		, PressedButtons(&InPressedButtons)
+		, PressedButtons(InPressedButtons)
 		, EffectingButton(InEffectingButton)
 		, PointerIndex(InPointerIndex)
 		, TouchpadIndex(0)
@@ -681,7 +676,7 @@ public:
 		, ScreenSpacePosition(InScreenSpacePosition)
 		, LastScreenSpacePosition(InLastScreenSpacePosition)
 		, CursorDelta(InScreenSpacePosition - InLastScreenSpacePosition)
-		, PressedButtons(&InPressedButtons)
+		, PressedButtons(InPressedButtons)
 		, EffectingButton(InEffectingButton)
 		, PointerIndex(InPointerIndex)
 		, TouchpadIndex(0)
@@ -707,7 +702,7 @@ public:
 		, ScreenSpacePosition(InScreenSpacePosition)
 		, LastScreenSpacePosition(InLastScreenSpacePosition)
 		, CursorDelta(InDelta)
-		, PressedButtons(&InPressedButtons)
+		, PressedButtons(InPressedButtons)
 		, PointerIndex(InPointerIndex)
 		, TouchpadIndex(0)
 		, Force(1.0f)
@@ -732,7 +727,7 @@ public:
 		, ScreenSpacePosition(InScreenSpacePosition)
 		, LastScreenSpacePosition(InLastScreenSpacePosition)
 		, CursorDelta(InDelta)
-		, PressedButtons(&InPressedButtons)
+		, PressedButtons(InPressedButtons)
 		, PointerIndex(InPointerIndex)
 		, TouchpadIndex(0)
 		, Force(1.0f)
@@ -774,7 +769,7 @@ public:
 		, ScreenSpacePosition(InScreenSpacePosition)
 		, LastScreenSpacePosition(InLastScreenSpacePosition)
 		, CursorDelta(InScreenSpacePosition - InLastScreenSpacePosition)
-		, PressedButtons(bPressLeftMouseButton ? &FTouchKeySet::StandardSet : &FTouchKeySet::EmptySet)
+		, PressedButtons(bPressLeftMouseButton ? FTouchKeySet::StandardSet : FTouchKeySet::EmptySet)
 		, EffectingButton(EKeys::LeftMouseButton)
 		, PointerIndex(InPointerIndex)
 		, TouchpadIndex(InTouchpadIndex)
@@ -801,7 +796,7 @@ public:
 		, ScreenSpacePosition(InScreenSpacePosition)
 		, LastScreenSpacePosition(InLastScreenSpacePosition)
 		, CursorDelta(LastScreenSpacePosition - ScreenSpacePosition)
-		, PressedButtons(&InPressedButtons)
+		, PressedButtons(InPressedButtons)
 		, PointerIndex(0)
 		, Force(1.0f)
 		, bIsTouchEvent(false)
@@ -821,12 +816,12 @@ public:
 	const FVector2D& GetLastScreenSpacePosition() const { return LastScreenSpacePosition; }
 
 	/** Returns the distance the mouse traveled since the last event was handled. */
-	const FVector2D& GetCursorDelta() const { return CursorDelta; }
+	FVector2D GetCursorDelta() const { return CursorDelta; }
 
 	/** Mouse buttons that are currently pressed */
-	bool IsMouseButtonDown( FKey MouseButton ) const { return PressedButtons->Contains( MouseButton ); }
+	bool IsMouseButtonDown( FKey MouseButton ) const { return PressedButtons.Contains( MouseButton ); }
 
-	/** Mouse button that caused this event to be raised (possibly FKey::Invalid) */
+	/** Mouse button that caused this event to be raised (possibly EB_None) */
 	FKey GetEffectingButton() const { return EffectingButton; }
 	
 	/** How much did the mouse wheel turn since the last mouse event */
@@ -863,7 +858,7 @@ public:
 	bool IsDirectionInvertedFromDevice() const { return bIsDirectionInvertedFromDevice; }
 
 	/** Returns the full set of pressed buttons */
-	const TSet<FKey>& GetPressedButtons() const { return *PressedButtons; }
+	const TSet<FKey>& GetPressedButtons() const { return PressedButtons; }
 
 	/** We override the assignment operator to allow generated code to compile with the const ref member. */
 	void operator=( const FPointerEvent& Other )
@@ -874,7 +869,7 @@ public:
 		ScreenSpacePosition = Other.ScreenSpacePosition;
 		LastScreenSpacePosition = Other.LastScreenSpacePosition;
 		CursorDelta = Other.CursorDelta;
-		PressedButtons = Other.PressedButtons;
+		const_cast<TSet<FKey>&>(PressedButtons) = Other.PressedButtons;
 		EffectingButton = Other.EffectingButton;
 		UserIndex = Other.UserIndex;
 		PointerIndex = Other.PointerIndex;
@@ -907,7 +902,7 @@ private:
 	FVector2D ScreenSpacePosition;
 	FVector2D LastScreenSpacePosition;
 	FVector2D CursorDelta;
-	const TSet<FKey>* PressedButtons;
+	const TSet<FKey>& PressedButtons;
 	FKey EffectingButton;
 	uint32 PointerIndex;
 	uint32 TouchpadIndex;

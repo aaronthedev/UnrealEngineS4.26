@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,7 +8,6 @@
 #include "Channels/MovieSceneChannelHandle.h"
 #include "Channels/MovieSceneChannel.h"
 #include "Curves/KeyHandle.h"
-#include "GenericPlatform/GenericPlatformMath.h"
 #include "MovieSceneKeyProxy.generated.h"
 
 UINTERFACE()
@@ -104,7 +103,7 @@ void IMovieSceneKeyProxy::RefreshCurrentValue(TMovieSceneChannelHandle<ChannelTy
 	{
 		auto ChannelData = Channel->GetData();
 		int32 KeyIndex = ChannelData.GetIndex(InKeyHandle);
-		if (KeyIndex != INDEX_NONE && KeyIndex < FMath::Min(ChannelData.GetValues().Num(), ChannelData.GetTimes().Num()))
+		if (KeyIndex != INDEX_NONE)
 		{
 			OutValue = ChannelData.GetValues()[KeyIndex];
 			OutTime  = ChannelData.GetTimes()[KeyIndex];

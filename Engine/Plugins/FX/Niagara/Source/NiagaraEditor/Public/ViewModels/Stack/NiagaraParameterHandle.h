@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,8 +18,6 @@ public:
 	FNiagaraParameterHandle(FName InNamespace, FName InName);
 
 	bool operator==(const FNiagaraParameterHandle& Other) const;
-
-	bool operator!=(const FNiagaraParameterHandle& Other) const { return (*this == Other) == false; }
 
 	static FNiagaraParameterHandle CreateAliasedModuleParameterHandle(const FNiagaraParameterHandle& ModuleParameterHandle, const UNiagaraNodeFunctionCall* ModuleNode);
 
@@ -41,8 +39,6 @@ public:
 
 	const FName GetNamespace() const;
 
-	const TArray<FName> GetHandleParts() const;
-
 	bool IsUserHandle() const;
 
 	bool IsEngineHandle() const;
@@ -55,23 +51,20 @@ public:
 
 	bool IsModuleHandle() const;
 
-	bool IsOutputHandle() const;
-
-	bool IsLocalHandle() const;
-
 	bool IsParameterCollectionHandle() const;
 
-	bool IsReadOnlyHandle() const;
-
-	bool IsTransientHandle() const;
-
-	bool IsDataInstanceHandle() const;
-
-	bool IsStackContextHandle() const;
+public:
+	static const FName UserNamespace;
+	static const FName EngineNamespace;
+	static const FName SystemNamespace;
+	static const FName EmitterNamespace;
+	static const FName ParticleAttributeNamespace;
+	static const FName ModuleNamespace;
+	static const FName ParameterCollectionNamespace;
+	static const FString InitialPrefix;
 
 private:
 	FName ParameterHandleName;
 	FName Name;
 	FName Namespace;
-	mutable TArray<FName> HandlePartsCache;
 };

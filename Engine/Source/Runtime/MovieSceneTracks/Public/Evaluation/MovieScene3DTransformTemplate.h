@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,6 +15,12 @@
 struct FComponentTransformPersistentData;
 class UMovieScene3DTransformSection;
 
+struct MOVIESCENETRACKS_API FGlobalTransformPersistentData : IPersistentEvaluationData
+{
+	static FSharedPersistentDataKey GetDataKey();
+
+	FTransform Origin;
+};
 
 USTRUCT()
 struct FMovieScene3DTransformTemplateData
@@ -27,7 +33,7 @@ struct FMovieScene3DTransformTemplateData
 	{}
 	FMovieScene3DTransformTemplateData(const UMovieScene3DTransformSection& Section);
 
-	UE::MovieScene::TMultiChannelValue<float, 9> Evaluate(FFrameTime InTime) const;
+	MovieScene::TMultiChannelValue<float, 9> Evaluate(FFrameTime InTime) const;
 
 	UPROPERTY()
 	FMovieSceneFloatChannel TranslationCurve[3];
@@ -49,4 +55,25 @@ struct FMovieScene3DTransformTemplateData
 
 	UPROPERTY()
 	bool bUseQuaternionInterpolation;
+};
+
+USTRUCT()
+struct FMovieSceneComponentTransformSectionTemplate : public FMovieSceneEvalTemplate
+{
+	GENERATED_BODY()
+
+	UPROPERTY()
+	FMovieScene3DTransformTemplateData TemplateData;
+
+	FMovieSceneComponentTransformSectionTemplate(){}
+	FMovieSceneComponentTransformSectionTemplate(const UMovieScene3DTransformSection& Section);
+
+protected:
+
+	virtual UScriptStruct& GetScriptStructImpl() const override { return *StaticStruct(); }
+	virtual void Evaluate(const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const override;
+	virtual void Interrogate(const FMovieSceneContext& Context, FMovieSceneInterrogationData& Container, UObject* BindingOverride) const override;
+
+private:
+	MovieScene::TMultiChannelValue<float, 9> EvaluateTransform(FFrameTime Time, const FGlobalTransformPersistentData* GlobalTransformData) const;
 };

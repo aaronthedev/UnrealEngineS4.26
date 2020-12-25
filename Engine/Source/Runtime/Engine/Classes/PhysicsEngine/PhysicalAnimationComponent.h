@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,12 +12,10 @@
 class FPrimitiveDrawInterface;
 class USkeletalMeshComponent;
 
-#if PHYSICS_INTERFACE_PHYSX
 namespace physx
 {
 	class PxRigidDynamic;
 }
-#endif
 
 /** Stores info on the type of motor that will be used for a given bone */
 USTRUCT(BlueprintType)
@@ -129,10 +127,8 @@ private:
 	struct FPhysicalAnimationInstanceData
 	{
 		struct FConstraintInstance* ConstraintInstance;
-#if WITH_CHAOS
-		FPhysicsActorHandle TargetActor;
-#else
-		physx::PxRigidDynamic* TargetActor;
+#if WITH_PHYSX
+		physx::PxRigidDynamic* TargetActor; // #PHYS2 Should prob change to FPhysicsActorReference?
 #endif
 	};
 

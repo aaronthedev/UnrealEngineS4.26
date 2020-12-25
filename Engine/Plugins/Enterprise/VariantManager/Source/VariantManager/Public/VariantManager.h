@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -39,8 +39,8 @@ public:
 	void InitVariantManager(ULevelVariantSets* InLevelVariantSets);
 
 	void CaptureNewProperties(const TArray<UVariantObjectBinding*>& Bindings);
-	void GetCapturableProperties(const TArray<AActor*>& Actors, TArray<TSharedPtr<FCapturableProperty>>& OutProperties, FString TargetPropertyPath = FString(), bool bCaptureAllArrayIndices = true);
-	void GetCapturableProperties(const TArray<UClass*>& Classes, TArray<TSharedPtr<FCapturableProperty>>& OutProperties, FString TargetPropertyPath = FString(), bool bCaptureAllArrayIndices = true);
+	void GetCapturableProperties(const TArray<AActor*>& Actors, TArray<TSharedPtr<FCapturableProperty>>& OutProperties, FString TargetPropertyPath = FString());
+	void GetCapturableProperties(const TArray<UClass*>& Classes, TArray<TSharedPtr<FCapturableProperty>>& OutProperties, FString TargetPropertyPath = FString());
 
 	// Sets up the blueprint class deriving from the function director that we'll use.
 	// Do this here as it uses editor-only code
@@ -115,7 +115,7 @@ public:
 	void CanAddActorsToVariant(const TArray<TWeakObjectPtr<AActor>>& InActors, const UVariant* InVariant, TArray<TWeakObjectPtr<AActor>>& OutActorsWeCanAdd);
 	void CanAddActorsToVariant(const TArray<UObject*>& InActors, const UVariant* InVariant, TArray<UObject*>& OutActorsWeCanAdd);
 
-	TSharedPtr<SVariantManager> GetVariantManagerWidget();
+	TSharedPtr<SVariantManager> GetVariantManagerWidget() const;
 
 	ULevelVariantSets* GetCurrentLevelVariantSets()
 	{

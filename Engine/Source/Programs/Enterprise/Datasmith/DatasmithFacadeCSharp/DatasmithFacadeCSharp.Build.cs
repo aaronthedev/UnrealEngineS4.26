@@ -1,7 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
+	[SupportedPlatforms("Win64")]
 	public class DatasmithFacadeCSharp : ModuleRules
 	{
 		public DatasmithFacadeCSharp(ReadOnlyTargetRules Target)
@@ -15,14 +16,7 @@ namespace UnrealBuildTool.Rules
 					"Core",
 					"DatasmithCore",
 					"DatasmithExporter",
-					"DatasmithExporterUI",
-					"DatasmithFacade",
-
-					// Network layer
-					"UdpMessaging",
-					"MessagingCommon",
-					"Messaging",
-					"RemoteImportMessaging",
+					"DatasmithFacade"
 				}
 			);
 

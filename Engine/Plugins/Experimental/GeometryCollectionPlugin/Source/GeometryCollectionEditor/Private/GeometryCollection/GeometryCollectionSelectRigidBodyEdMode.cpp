@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #if WITH_EDITOR
 
@@ -12,7 +12,6 @@
 #include "EditorViewportClient.h"
 #include "EngineUtils.h"
 #include "PropertyHandle.h"
-#include "GeometryCollection/GeometryCollectionComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGeometryCollectionSelectRigidBodyEdMode, Log, All);
 
@@ -108,7 +107,7 @@ void FGeometryCollectionSelectRigidBodyEdMode::DeactivateMode()
 
 		if (GEngine)
 		{
-			GEngine->RemoveOnScreenDebugMessage(MessageKey);
+			GEngine->ScreenMessages.Remove(MessageKey);
 		}
 	}
 }

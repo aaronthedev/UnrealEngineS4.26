@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using BuildAgent.Workspace.Common;
 using System;
@@ -213,13 +213,7 @@ namespace BuildAgent.Workspace
 				{
 					throw new FatalErrorException("Expected -ClientAndStream=<ClientName>:<StreamName>");
 				}
-
-				string ClientName = ClientAndStreamParam.Substring(0, Idx);
-				string StreamName = ClientAndStreamParam.Substring(Idx + 1);
-				if (!ClientAndStreams.Any(cas => cas.Key == ClientName && cas.Value == StreamName))
-				{
-					ClientAndStreams.Add(new KeyValuePair<string, string>(ClientName, StreamName));
-				}
+				ClientAndStreams.Add(new KeyValuePair<string, string>(ClientAndStreamParam.Substring(0, Idx), ClientAndStreamParam.Substring(Idx + 1)));
 			}
 			return ClientAndStreams;
 		}

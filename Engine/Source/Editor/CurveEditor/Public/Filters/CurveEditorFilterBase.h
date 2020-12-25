@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -65,7 +65,7 @@ public:
 		FKeyHandleSet& SelectedKeySet = OutSelectionMap.FindOrAdd(InCurve);
 		OutKeysToSelect.Reserve(SelectedKeySet.Num());
 
-		for (const FKeyHandle& Handle : SelectedKeySet.AsArray())
+		for (const FKeyHandle Handle : SelectedKeySet.AsArray())
 		{
 			OutKeysToSelect.Add(Handle);
 		}

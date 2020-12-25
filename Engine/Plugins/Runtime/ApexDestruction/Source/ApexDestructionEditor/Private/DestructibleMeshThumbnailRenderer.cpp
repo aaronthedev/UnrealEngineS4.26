@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DestructibleMeshThumbnailRenderer.h"
 #include "Misc/App.h"
@@ -16,9 +16,8 @@ UDestructibleMeshThumbnailRenderer::UDestructibleMeshThumbnailRenderer(const FOb
 	ThumbnailScene = nullptr;
 }
 
-void UDestructibleMeshThumbnailRenderer::Draw(UObject* Object, int32 X, int32 Y, uint32 Width, uint32 Height, FRenderTarget* RenderTarget, FCanvas* Canvas, bool bAdditionalViewFamily)
+void UDestructibleMeshThumbnailRenderer::Draw(UObject* Object, int32 X, int32 Y, uint32 Width, uint32 Height, FRenderTarget* RenderTarget, FCanvas* Canvas)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	UDestructibleMesh* DestructibleMesh = Cast<UDestructibleMesh>(Object);
 	if (DestructibleMesh != nullptr)
 	{
@@ -29,8 +28,7 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 		ThumbnailScene->SetDestructibleMesh(DestructibleMesh);
 		FSceneViewFamilyContext ViewFamily( FSceneViewFamily::ConstructionValues( RenderTarget, ThumbnailScene->GetScene(), FEngineShowFlags(ESFIM_Game) )
-			.SetWorldTimes(FApp::GetCurrentTime() - GStartTime, FApp::GetDeltaTime(), FApp::GetCurrentTime() - GStartTime)
-			.SetAdditionalViewFamily(bAdditionalViewFamily));
+			.SetWorldTimes(FApp::GetCurrentTime() - GStartTime, FApp::GetDeltaTime(), FApp::GetCurrentTime() - GStartTime));
 
 		ViewFamily.EngineShowFlags.DisableAdvancedFeatures();
 		ViewFamily.EngineShowFlags.MotionBlur = 0;
@@ -40,7 +38,6 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		RenderViewFamily(Canvas,&ViewFamily);
 		ThumbnailScene->SetDestructibleMesh(nullptr);
 	}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 void UDestructibleMeshThumbnailRenderer::BeginDestroy()

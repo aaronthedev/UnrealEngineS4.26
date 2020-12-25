@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef AlembicExport_MayaTransformWriter_h
-#define AlembicExport_MayaTransformWriter_h
+#ifndef _AlembicExport_MayaTransformWriter_h_
+#define _AlembicExport_MayaTransformWriter_h_
 
 #include "Foundation.h"
 
@@ -63,7 +63,7 @@ class MayaTransformWriter
 {
   public:
 
-    MayaTransformWriter(Alembic::Abc::OObject & iParent, MDagPath & iDag,
+    MayaTransformWriter(Alembic::Abc::OObject & iParent, MDagPath & iDag, 
         Alembic::Util::uint32_t iTimeIndex, const JobArgs & iArgs);
 
     MayaTransformWriter(MayaTransformWriter & iParent, MDagPath & iDag,
@@ -72,14 +72,12 @@ class MayaTransformWriter
     ~MayaTransformWriter();
     void write();
     bool isAnimated() const;
-    Alembic::Abc::OObject getObject();
+    Alembic::Abc::OObject getObject() {return mSchema.getObject();};
     AttributesWriterPtr getAttrs() {return mAttrs;};
 
   private:
 
     Alembic::AbcGeom::OXformSchema mSchema;
-    Alembic::AbcGeom::OObject mObject;
-
     AttributesWriterPtr mAttrs;
 
     void pushTransformStack(const MFnTransform & iTrans, bool iForceStatic);
@@ -104,4 +102,4 @@ class MayaTransformWriter
 typedef Alembic::Util::shared_ptr < MayaTransformWriter >
     MayaTransformWriterPtr;
 
-#endif  // AlembicExport_MayaTransformWriter_h
+#endif  // _AlembicExport_MayaTransformWriter_h_

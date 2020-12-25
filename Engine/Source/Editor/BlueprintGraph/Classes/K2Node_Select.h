@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -38,7 +38,7 @@ private:
 	TArray<FName> EnumEntries;
 
 	/** List of the current entries in the enum (Pin Friendly Names) */
-	UPROPERTY(Transient)
+	UPROPERTY()
 	TArray<FText> EnumEntryFriendlyNames;
 
 	/** Whether we need to reconstruct the node after the pins have changed */

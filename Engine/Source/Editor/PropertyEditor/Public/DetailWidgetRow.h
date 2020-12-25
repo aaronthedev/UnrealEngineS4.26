@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -58,7 +58,6 @@ public:
 		MaxWidth = InMaxWidth;
 		return *this;
 	}
-
 private:
 	class SInvalidDetailWidget : public SSpacer
 	{
@@ -195,22 +194,12 @@ public:
 		return *this;
 	}
 
-	bool HasNameContent() const 
-	{
-		return NameWidget.Widget->GetType() != InvalidDetailWidgetName;
-	}
-
-	bool HasValueContent() const
-	{
-		return ValueWidget.Widget->GetType() != InvalidDetailWidgetName;
-	}
-
 	/**
 	 * @return true if the row has columns, false if it spans the entire row
 	 */
 	bool HasColumns() const
 	{
-		return HasNameContent() || HasValueContent();
+		return NameWidget.Widget->GetType() != InvalidDetailWidgetName || ValueWidget.Widget->GetType() != InvalidDetailWidgetName;
 	}
 
 	/**

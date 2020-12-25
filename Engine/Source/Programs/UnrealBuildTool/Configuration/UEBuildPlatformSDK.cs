@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -90,7 +90,7 @@ namespace UnrealBuildTool
 		/// Returns SDK string as required by the platform
 		/// </summary>
 		/// <returns>Valid SDK string</returns>
-		public virtual string GetRequiredSDKString()
+		protected virtual string GetRequiredSDKString()
 		{
 			return "";
 		}

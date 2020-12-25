@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -22,7 +22,6 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 class FMenuBuilder;
-class SNetworkingProfilerWindow;
 
 namespace Trace
 {
@@ -57,14 +56,14 @@ public:
 	/** Virtual destructor. */
 	virtual ~SNetStatsView();
 
-	SLATE_BEGIN_ARGS(SNetStatsView) {}
+	SLATE_BEGIN_ARGS(SNetStatsView){}
 	SLATE_END_ARGS()
 
 	/**
 	 * Construct this widget
 	 * @param InArgs - The declaration data for this widget
 	 */
-	void Construct(const FArguments& InArgs, TSharedPtr<SNetworkingProfilerWindow> InProfilerWindow);
+	void Construct(const FArguments& InArgs);
 
 	TSharedPtr<Insights::FTable> GetTable() const { return Table; }
 
@@ -88,8 +87,11 @@ public:
 	void ResetStats();
 	void UpdateStats(uint32 InGameInstanceIndex, uint32 InConnectionIndex, Trace::ENetProfilerConnectionMode InConnectionMode, uint32 InStatsPacketStartIndex, uint32 InStatsPacketEndIndex, uint32 InStatsStartPosition, uint32 InStatsEndPosition);
 
-	FNetEventNodePtr GetNetEventNode(uint32 EventTypeIndex) const;
-	void SelectNetEventNode(uint32 EventTypeIndex);
+	void SelectNetEventNode(uint64 Id);
+
+	//const TSet<FNetEventNodePtr>& GetNetEventNodes() const { return NetEventNodes; }
+	//const TMap<uint64, FNetEventNodePtr> GetNetEventNodesIdMap() const { return NetEventNodesIdMap; }
+	const FNetEventNodePtr* GetNetEventNode(uint64 Id) const { return NetEventNodesIdMap.Find(Id); }
 
 protected:
 	void UpdateTree();
@@ -148,13 +150,13 @@ protected:
 	/** Called by STreeView to generate a table row for the specified item. */
 	TSharedRef<ITableRow> TreeView_OnGenerateRow(FNetEventNodePtr TreeNode, const TSharedRef<STableViewBase>& OwnerTable);
 
-	bool TableRow_ShouldBeEnabled(FNetEventNodePtr NodePtr) const;
-
-	void TableRow_SetHoveredCell(TSharedPtr<Insights::FTable> TablePtr, TSharedPtr<Insights::FTableColumn> ColumnPtr, FNetEventNodePtr NodePtr);
+	void TableRow_SetHoveredCell(TSharedPtr<Insights::FTable> TablePtr, TSharedPtr<Insights::FTableColumn> ColumnPtr, const FNetEventNodePtr NodePtr);
 	EHorizontalAlignment TableRow_GetColumnOutlineHAlignment(const FName ColumnId) const;
 
 	FText TableRow_GetHighlightText() const;
 	FName TableRow_GetHighlightedNodeName() const;
+
+	bool TableRow_ShouldBeEnabled(const uint32 NodeId) const;
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Filtering
@@ -251,8 +253,6 @@ protected:
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 
 protected:
-	TSharedPtr<SNetworkingProfilerWindow> ProfilerWindow;
-
 	/** Table view model. */
 	TSharedPtr<Insights::FTable> Table;
 
@@ -292,8 +292,11 @@ protected:
 	/** A filtered array of group nodes to be displayed in the tree widget. */
 	TArray<FNetEventNodePtr> FilteredGroupNodes;
 
-	/** All net event nodes. Index in this array is EventTypeIndex. */
-	TArray<FNetEventNodePtr> NetEventNodes;
+	/** All net event nodes. */
+	TSet<FNetEventNodePtr> NetEventNodes;
+
+	/** All net event nodes, stored as NodeId -> FNetEventNodePtr. */
+	TMap<uint64, FNetEventNodePtr> NetEventNodesIdMap;
 
 	/** Currently expanded group nodes. */
 	TSet<FNetEventNodePtr> ExpandedNodes;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -29,7 +29,6 @@ namespace UnrealBuildTool
 		public string ImportCertificatePassword;
 		public Dictionary<string, DirectoryReference> FrameworkNameToSourceDir;
 		public bool bForDistribution = false;
-		public bool bBuildAsFramework = false;
 
 		public IOSPostBuildSyncTarget(ReadOnlyTargetRules Target, FileReference OutputPath, DirectoryReference ProjectIntermediateDirectory, List<string> UPLScripts, VersionNumber SdkVersion, Dictionary<string, DirectoryReference> FrameworkNameToSourceDir)
 		{
@@ -50,7 +49,6 @@ namespace UnrealBuildTool
 			this.ImportCertificatePassword = Target.IOSPlatform.ImportCertificatePassword;
 			this.FrameworkNameToSourceDir = FrameworkNameToSourceDir;
 			this.bForDistribution = Target.IOSPlatform.bForDistribution;
-			this.bBuildAsFramework = Target.bShouldCompileAsDLL;
 		}
 	}
 

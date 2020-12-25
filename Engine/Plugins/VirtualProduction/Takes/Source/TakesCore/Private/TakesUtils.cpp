@@ -1,7 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TakesUtils.h"
-#include "TakesCoreLog.h"
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -34,11 +33,12 @@ UWorld* GetFirstPIEWorld()
 	return nullptr;
 }
 
-void ClampPlaybackRangeToEncompassAllSections(UMovieScene* InMovieScene, bool bUpperBoundOnly)
+void ClampPlaybackRangeToEncompassAllSections(UMovieScene* InMovieScene)
 {
 	check(InMovieScene);
 
-	TOptional < TRange<FFrameNumber> > PlayRange;
+	TRange<FFrameNumber> OriginalPlayRange = InMovieScene->GetPlaybackRange();
+	TRange<FFrameNumber> PlayRange(OriginalPlayRange.GetLowerBoundValue());
 
 	TArray<UMovieSceneSection*> MovieSceneSections = InMovieScene->GetAllSections();
 	for (UMovieSceneSection* Section : MovieSceneSections)
@@ -46,36 +46,18 @@ void ClampPlaybackRangeToEncompassAllSections(UMovieScene* InMovieScene, bool bU
 		TRange<FFrameNumber> SectionRange = Section->GetRange();
 		if (SectionRange.GetLowerBound().IsClosed() && SectionRange.GetUpperBound().IsClosed())
 		{
-			if (!PlayRange.IsSet())
-			{
-				PlayRange = SectionRange;
-			}
-			else
-			{
-				PlayRange = TRange<FFrameNumber>::Hull(PlayRange.GetValue(), SectionRange);
-			}
+			PlayRange = TRange<FFrameNumber>::Hull(PlayRange, SectionRange);
 		}
 	}
 
-	if (!PlayRange.IsSet())
-	{
-		return;
-	}
-
-	// Extend only the upper bound because the start was set at the beginning of recording
-	if (bUpperBoundOnly)
-	{
-		PlayRange.GetValue().SetLowerBoundValue(InMovieScene->GetPlaybackRange().GetLowerBoundValue());
-	}
-
-	InMovieScene->SetPlaybackRange(PlayRange.GetValue());
+	InMovieScene->SetPlaybackRange(TRange<FFrameNumber>(OriginalPlayRange.GetLowerBoundValue(), PlayRange.GetUpperBoundValue()));
 
 	// Initialize the working and view range with a little bit more space
 	FFrameRate  TickResolution = InMovieScene->GetTickResolution();
-	const double OutputViewSize = PlayRange.GetValue().Size<FFrameNumber>() / TickResolution;
+	const double OutputViewSize = PlayRange.Size<FFrameNumber>() / TickResolution;
 	const double OutputChange = OutputViewSize * 0.1;
 
-	TRange<double> NewRange = UE::MovieScene::ExpandRange(PlayRange.GetValue() / TickResolution, OutputChange);
+	TRange<double> NewRange = MovieScene::ExpandRange(PlayRange / TickResolution, OutputChange);
 	FMovieSceneEditorData& EditorData = InMovieScene->GetEditorData();
 	EditorData.ViewStart = EditorData.WorkStart = NewRange.GetLowerBoundValue();
 	EditorData.ViewEnd = EditorData.WorkEnd = NewRange.GetUpperBoundValue();
@@ -92,13 +74,8 @@ void SaveAsset(UObject* InObject)
 	UPackage* const Package = InObject->GetOutermost();
 	FString const PackageName = Package->GetName();
 	FString const PackageFileName = FPackageName::LongPackageNameToFilename(PackageName, FPackageName::GetAssetPackageExtension());
-	
-	double StartTime = FPlatformTime::Seconds();
 
 	UPackage::SavePackage(Package, NULL, RF_Standalone, *PackageFileName, GError, nullptr, false, true, SAVE_NoError);
-
-	double ElapsedTime = FPlatformTime::Seconds() - StartTime;
-	UE_LOG(LogTakesCore, Log, TEXT("Saved %s in %0.2f seconds"), *PackageName, ElapsedTime);
 }
 
 void CreateCameraCutTrack(ULevelSequence* LevelSequence, const FGuid& RecordedCameraGuid, const FMovieSceneSequenceID& SequenceID, const TRange<FFrameNumber>& InRange)

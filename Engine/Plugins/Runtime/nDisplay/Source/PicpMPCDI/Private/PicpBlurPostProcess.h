@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -75,10 +75,11 @@ class TPicpBlurPostProcessPS : public FGlobalShader
 	{
 	}
 
-	LAYOUT_FIELD(FShaderResourceParameter, SrcTextureParameter);
-	LAYOUT_FIELD(FShaderResourceParameter, BilinearClampTextureSamplerParameter);
-	LAYOUT_FIELD(FShaderParameter, SampleOffsetParameter);
-	LAYOUT_FIELD(FShaderParameter, KernelRadiusParameter);
+	FShaderResourceParameter SrcTextureParameter;
+	FShaderResourceParameter BilinearClampTextureSamplerParameter;
+	FShaderParameter SampleOffsetParameter;
+	FShaderParameter KernelRadiusParameter;
+
 
 public:
 
@@ -113,12 +114,25 @@ public:
 
 	void SetParameters(FRHICommandListImmediate& RHICmdList, FRHITexture2D* SourceTexture, FVector2D SampleOffset, int KernelRadius)
 	{
-		FRHIPixelShader* ShaderRHI = RHICmdList.GetBoundPixelShader();
+		FRHIPixelShader* ShaderRHI = GetPixelShader();
 
 		SetSamplerParameter(RHICmdList, ShaderRHI, BilinearClampTextureSamplerParameter, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 		SetTextureParameter(RHICmdList, ShaderRHI, SrcTextureParameter, SourceTexture);
 		SetShaderValue(RHICmdList, ShaderRHI, SampleOffsetParameter, SampleOffset);
 		SetShaderValue(RHICmdList, ShaderRHI, KernelRadiusParameter, KernelRadius);
+	}
+
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+
+		Ar << SrcTextureParameter;
+		Ar << BilinearClampTextureSamplerParameter;
+		Ar << SampleOffsetParameter;
+		Ar << KernelRadiusParameter;
+
+		return bShaderHasOutdatedParameters;
 	}
 };
 typedef TPicpBlurPostProcessPS<(int)EPicpBlurPostProcessShaderType::Gaussian>   FPicpBlurPostProcessDefaultPS;
@@ -140,8 +154,8 @@ class FDirectComposePS : public FGlobalShader
 	{
 	}
 
-	LAYOUT_FIELD(FShaderResourceParameter, SrcTextureParameter);
-	LAYOUT_FIELD(FShaderResourceParameter, BilinearClampTextureSamplerParameter);
+	FShaderResourceParameter SrcTextureParameter;
+	FShaderResourceParameter BilinearClampTextureSamplerParameter;
 
 public:
 
@@ -155,9 +169,20 @@ public:
 
 	void SetParameters(FRHICommandListImmediate& RHICmdList, FTextureRHIRef SourceTexture)
 	{
-		FRHIPixelShader* ShaderRHI = RHICmdList.GetBoundPixelShader();
+		FRHIPixelShader* ShaderRHI = GetPixelShader();
 
 		SetSamplerParameter(RHICmdList, ShaderRHI, BilinearClampTextureSamplerParameter, TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 		SetTextureParameter(RHICmdList, ShaderRHI, SrcTextureParameter, SourceTexture);
+	}
+
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+
+		Ar << SrcTextureParameter;
+		Ar << BilinearClampTextureSamplerParameter;
+
+		return bShaderHasOutdatedParameters;
 	}
 };

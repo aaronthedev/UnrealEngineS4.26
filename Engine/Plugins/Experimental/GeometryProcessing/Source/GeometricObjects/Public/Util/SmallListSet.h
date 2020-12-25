@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // Port of geometry3cpp small_list_set
 
@@ -32,31 +32,36 @@ protected:
 	static constexpr int32 BLOCK_LIST_OFFSET = BLOCKSIZE + 1;
 
 	/** mapping from list index to offset into block_store that contains list data */
-	TDynamicVector<int32> ListHeads{};
+	TDynamicVector<int32> ListHeads;
 
 	/** 
 	 * flat buffer used to store per-list linear-memory blocks. 
 	 * blocks are BLOCKSIZE+2 long, elements are [CurrentCount, item0...itemN, LinkedListPtr]
 	 */
-	TDynamicVector<int32> ListBlocks{};
+	TDynamicVector<int32> ListBlocks; 
 
 	/** list of free blocks as indices/offsets into block_store */
-	TDynamicVector<int32> FreeBlocks{};
+	TDynamicVector<int32> FreeBlocks;
 
 	/** number of allocated lists */
-	int32 AllocatedCount{0};
+	int32 AllocatedCount = 0;
 
 	/**
 	 * flat buffer used to store linked-list "spill" elements
 	 * each element is [value, next_ptr]
 	 */
-	TDynamicVector<int32> LinkedListElements{};
+	TDynamicVector<int32> LinkedListElements;
 
 	/** index of first free element in linked_store */
-	int32 FreeHeadIndex{NullValue};
+	int32 FreeHeadIndex;
 
 
 public:
+	FSmallListSet();
+
+	FSmallListSet(const FSmallListSet& copy);
+
+
 	/**
 	 * @return largest current list index
 	 */
@@ -157,11 +162,6 @@ public:
 	 */
 	bool Replace(int32 ListIndex, const TFunction<bool(int32)>& PredicateFunc, int32 NewValue);
 
-
-	/**
-	 * Call ApplyFunc on each element of the list at ListIndex
-	 */
-	void Enumerate(int32 ListIndex, TFunctionRef<void(int32)> ApplyFunc) const;
 
 
 	//

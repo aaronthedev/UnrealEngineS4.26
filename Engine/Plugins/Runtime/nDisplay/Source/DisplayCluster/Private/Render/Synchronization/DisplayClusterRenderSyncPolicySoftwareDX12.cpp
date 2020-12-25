@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Render/Synchronization/DisplayClusterRenderSyncPolicySoftwareDX12.h"
 
@@ -14,8 +14,7 @@
 #undef GetRenderTargetFormat
 
 
-FDisplayClusterRenderSyncPolicySoftwareDX12::FDisplayClusterRenderSyncPolicySoftwareDX12(const TMap<FString, FString>& Parameters)
-	: FDisplayClusterRenderSyncPolicySoftwareBase(Parameters)
+FDisplayClusterRenderSyncPolicySoftwareDX12::FDisplayClusterRenderSyncPolicySoftwareDX12()
 {
 }
 

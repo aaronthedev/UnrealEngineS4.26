@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_PRIM_SPEC_H
-#define PXR_USD_SDF_PRIM_SPEC_H
+#ifndef SDF_PRIMSPEC_H
+#define SDF_PRIMSPEC_H
 
 /// \file sdf/primSpec.h
 
@@ -42,6 +42,8 @@
 #include <vector>
 
 PXR_NAMESPACE_OPEN_SCOPE
+
+template <class TypePolicy> class Sdf_ListEditor;
 
 /// \class SdfPrimSpec
 ///
@@ -73,7 +75,7 @@ PXR_NAMESPACE_OPEN_SCOPE
 ///
 class SdfPrimSpec : public SdfSpec
 {
-    SDF_DECLARE_SPEC(SdfPrimSpec, SdfSpec);
+    SDF_DECLARE_SPEC(SdfSchema, SdfSpecTypePrim, SdfPrimSpec, SdfSpec);
 
 public:
     typedef SdfPrimSpecView NameChildrenView;
@@ -580,22 +582,26 @@ public:
     void ClearInstanceable();
 
     /// @}
-    /// \name Payloads
+    /// \name Payload
     /// @{
 
-    /// Returns a proxy for the prim's payloads.
+    /// Returns this prim spec's payload.
     ///
-    /// Payloads for this prim may be modified through the proxy.
+    /// The default value for payload is an empty \c SdfPayload.
     SDF_API
-    SdfPayloadsProxy GetPayloadList() const;
+    SdfPayload GetPayload() const;
 
-    /// Returns true if this prim has payloads set.
+    /// Sets this prim spec's payload.
     SDF_API
-    bool HasPayloads() const;
+    void SetPayload(const SdfPayload& value);
 
-    /// Clears the payloads for this prim.
+    /// Returns true if this prim spec has an opinion about payload.
     SDF_API
-    void ClearPayloadList();
+    bool HasPayload() const;
+
+    /// Remove the payload opinion from this prim spec if there is one.
+    SDF_API
+    void ClearPayload();
 
     /// @}
     /// \name Inherits
@@ -743,6 +749,14 @@ private:
     // this function as write access validation.
     bool _ValidateEdit(const TfToken& key) const;
 
+    // Returns a list editor object for name children order list edits.
+    boost::shared_ptr<Sdf_ListEditor<SdfNameTokenKeyPolicy> >
+    _GetNameChildrenOrderEditor() const;
+
+    // Returns a list editor object for property order list edits.
+    boost::shared_ptr<Sdf_ListEditor<SdfNameTokenKeyPolicy> >
+    _GetPropertyOrderEditor() const;
+
 private:
     static SdfPrimSpecHandle
     _New(const SdfPrimSpecHandle &parentPrim,
@@ -762,19 +776,6 @@ SDF_API
 SdfPrimSpecHandle SdfCreatePrimInLayer(const SdfLayerHandle& layer,
                                        const SdfPath& primPath);
 
-
-/// Convenience function to create a prim at the given path, and any 
-/// necessary parent prims, in the given layer.
-///
-/// If a prim already exists at the given path, do nothing and return true.
-///
-/// Any newly created specs have SdfSpecifierOver and an empty type.  primPath
-/// must be a valid prim path.  Return false and issue an error if we fail to
-/// author the required scene description.
-SDF_API 
-bool SdfJustCreatePrimInLayer(const SdfLayerHandle& layer,
-                              const SdfPath& primPath);
-
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_PRIM_SPEC_H
+#endif // SDF_PRIMSPEC_H

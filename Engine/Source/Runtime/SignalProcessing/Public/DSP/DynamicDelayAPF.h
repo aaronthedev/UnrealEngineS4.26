@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -48,7 +48,7 @@ namespace Audio
 	private:
 		// Feedback/Feedforward gain coefficient
 		FLinearEase G;
-		float EaseTimeInSec;
+		float EaseTimeInSec{ 2.0f };
 		int32 MinDelay;
 		int32 MaxDelay;
 		int32 NumDelaySamples;

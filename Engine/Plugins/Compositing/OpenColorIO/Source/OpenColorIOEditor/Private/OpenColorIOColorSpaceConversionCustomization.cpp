@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OpenColorIOColorSpaceConversionCustomization.h"
 
@@ -23,8 +23,8 @@ void FOpenColorIOColorSpaceConversionCustomization::CustomizeHeader(TSharedRef<I
 
 	if (ColorConversionProperty.IsValid())
 	{
-		FProperty* Property = ColorConversionProperty->GetProperty();
-		check(Property && CastField<FStructProperty>(Property) && CastField<FStructProperty>(Property)->Struct && CastField<FStructProperty>(Property)->Struct->IsChildOf(FOpenColorIOColorConversionSettings::StaticStruct()));
+		UProperty* Property = ColorConversionProperty->GetProperty();
+		check(Property && Cast<UStructProperty>(Property) && Cast<UStructProperty>(Property)->Struct && Cast<UStructProperty>(Property)->Struct->IsChildOf(FOpenColorIOColorConversionSettings::StaticStruct()));
 
 		if (ColorConversionProperty->GetNumPerObjectValues() == 1 && ColorConversionProperty->IsValidHandle())
 		{
@@ -201,7 +201,7 @@ TSharedRef<SWidget> FOpenColorIOColorSpaceConversionCustomization::HandleColorSp
 					(
 						FExecuteAction::CreateLambda([=] 
 						{
-							if (FStructProperty* StructProperty = CastField<FStructProperty>(InPropertyHandle->GetProperty()))
+							if (UStructProperty* StructProperty = Cast<UStructProperty>(InPropertyHandle->GetProperty()))
 							{
 								TArray<void*> RawData;
 								InPropertyHandle->AccessRawData(RawData);

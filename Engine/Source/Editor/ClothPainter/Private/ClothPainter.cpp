@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ClothPainter.h"
 #include "MeshPaintSettings.h"
@@ -203,12 +203,6 @@ void FClothPainter::ExitPaintMode()
 	{
 		SkeletalMeshComponent->UnregisterExtendedViewportTextDelegate(HoveredTextCallbackHandle);
 	}
-
-	// Remove reference to asset so it can be GC if necessary
-	if (PaintSettings)
-	{
-		PaintSettings->ClothingAssets.Reset();
-	}
 }
 
 void FClothPainter::RecalculateAutoViewRange()
@@ -277,8 +271,8 @@ void FClothPainter::Tick(FEditorViewportClient* ViewportClient, float DeltaTime)
 					Asset->ApplyParameterMasks();
 				}
 			}
-			static const bool bInvalidateDerivedDataCache = false;  // No need to rebuild the DDC while previewing
-			SkeletalMeshComponent->RebuildClothingSectionsFixedVerts(bInvalidateDerivedDataCache);
+		
+			SkeletalMeshComponent->RebuildClothingSectionsFixedVerts();
 		}
 
 		FComponentReregisterContext ReregisterContext(SkeletalMeshComponent);
@@ -570,8 +564,8 @@ void FClothPainter::OnAssetSelectionChanged(UClothingAssetCommon* InNewSelectedA
 	{
 		// Validate the incoming parameters, to make sure we only set a selection if we're going
 		// to get a valid paintable surface
-		if(InNewSelectedAsset->LodData.IsValidIndex(InAssetLod) &&
-			 InNewSelectedAsset->LodData[InAssetLod].PointWeightMaps.IsValidIndex(InMaskIndex))
+		if(InNewSelectedAsset->ClothLodData.IsValidIndex(InAssetLod) &&
+			 InNewSelectedAsset->ClothLodData[InAssetLod]->ParameterMasks.IsValidIndex(InMaskIndex))
 		{
 			const FGuid NewGuid = InNewSelectedAsset->GetAssetGuid();
 			SkeletalMeshComponent->SetMeshSectionVisibilityForCloth(SkeletalMeshComponent->SelectedClothingGuidForPainting, true);

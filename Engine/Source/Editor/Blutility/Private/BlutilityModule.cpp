@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
@@ -33,7 +33,6 @@
 #include "UObject/PurgingReferenceCollector.h"
 #include "AssetRegistryModule.h"
 #include "EditorUtilityCommon.h"
-#include "EditorUtilityToolMenu.h"
 
 #define LOCTEXT_NAMESPACE "AssetTypeActions"
 

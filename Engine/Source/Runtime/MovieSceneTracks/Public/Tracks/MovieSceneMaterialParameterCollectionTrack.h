@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,7 +15,6 @@ class UMaterialParameterCollection;
 UCLASS()
 class MOVIESCENETRACKS_API UMovieSceneMaterialParameterCollectionTrack
 	: public UMovieSceneMaterialTrack
-	, public IMovieSceneTrackTemplateProducer
 {
 public:
 

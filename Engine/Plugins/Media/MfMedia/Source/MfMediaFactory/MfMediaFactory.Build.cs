@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -33,20 +33,6 @@ namespace UnrealBuildTool.Rules
 			{
 				DynamicallyLoadedModuleNames.Add("MfMedia");
 			}
-
-			if (DoAllowHTTPSPlayback())
-			{
-				PrivateDefinitions.Add("MFMEDIAFACTORY_ALLOW_HTTPS=1");
-			}
-			else
-			{
-				PrivateDefinitions.Add("MFMEDIAFACTORY_ALLOW_HTTPS=0");
-			}
-		}
-
-		protected virtual bool DoAllowHTTPSPlayback()
-		{
-			return Target.Platform.IsInGroup(UnrealPlatformGroup.Windows);
 		}
 	}
 }

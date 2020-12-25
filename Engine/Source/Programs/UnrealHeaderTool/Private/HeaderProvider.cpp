@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "HeaderProvider.h"
 #include "UnrealHeaderTool.h"
@@ -19,10 +19,14 @@ FUnrealSourceFile* FHeaderProvider::Resolve()
 	{
 		if (Type == EHeaderProviderSourceType::ClassName)
 		{
-			FName IdName(*Id, FNAME_Find);
-			if (TSharedRef<FUnrealTypeDefinitionInfo>* Source = GTypeDefinitionInfoMap.FindByName(IdName))
+			FName IdName(*Id);
+			for (const auto& Pair : GTypeDefinitionInfoMap)
 			{
-				Cache = &(*Source)->GetUnrealSourceFile();
+				if (Pair.Key->GetFName() == IdName)
+				{
+					Cache = &Pair.Value->GetUnrealSourceFile();
+					break;
+				}
 			}
 		}
 		else if (const TSharedRef<FUnrealSourceFile>* Source = GUnrealSourceFilesMap.Find(Id))
@@ -48,5 +52,5 @@ const FString& FHeaderProvider::GetId() const
 
 bool operator==(const FHeaderProvider& A, const FHeaderProvider& B)
 {
-	return A.Type == B.Type && A.Id == B.Id;
+	return A.Id == B.Id && A.Type == B.Type;
 }

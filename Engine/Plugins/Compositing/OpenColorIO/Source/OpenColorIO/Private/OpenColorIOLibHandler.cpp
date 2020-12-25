@@ -1,12 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OpenColorIOLibHandler.h"
 
 #include "HAL/PlatformProcess.h"
 #include "Interfaces/IPluginManager.h"
+#include "IOpenColorIOModule.h"
 #include "Logging/LogMacros.h"
 #include "Misc/Paths.h"
-#include "OpenColorIOModule.h"
 
 
  //~ Static initialization

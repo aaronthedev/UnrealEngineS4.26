@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreTypes.h"
@@ -41,33 +41,6 @@ public:
 
 protected:
 	virtual ~ITextFilterExpressionContext() {}
-};
-
-// A simple basic string expression context for FString
-class FBasicStringFilterExpressionContext : public ITextFilterExpressionContext
-{
-public:
-	explicit FBasicStringFilterExpressionContext(FString&& InTestString)
-		: TestString(InTestString)
-	{
-	}
-	explicit FBasicStringFilterExpressionContext(const FString& InTestString)
-		: TestString(InTestString)
-	{
-	}
-
-	virtual bool TestBasicStringExpression(const FTextFilterString& InValue, const ETextFilterTextComparisonMode InTextComparisonMode) const override
-	{
-		return TextFilterUtils::TestBasicStringExpression(TestString, InValue, InTextComparisonMode);
-	}
-
-	virtual bool TestComplexExpression(const FName& InKey, const FTextFilterString& InValue, const ETextFilterComparisonOperation InComparisonOperation, const ETextFilterTextComparisonMode InTextComparisonMode) const override
-	{
-		return false;
-	}
-
-private:
-	const FString TestString;
 };
 
 namespace TextFilterExpressionParser
@@ -185,8 +158,7 @@ DEFINE_TEXT_EXPRESSION_OPERATOR_NODE(FNot,						2,	0x03D78990, 0x41D04E26, 0x8E9
 
 DEFINE_EXPRESSION_NODE_TYPE(TextFilterExpressionParser::FTextToken,	0x09E49538, 0x633545E3, 0x84B5644F, 0x1F11628F);
 DEFINE_EXPRESSION_NODE_TYPE(TextFilterExpressionParser::FFunction,	0x084E6214, 0x032FFA48, 0x9245ABF1, 0x9E248F1A);
-
-#undef DEFINE_TEXT_EXPRESSION_OPERATOR_NODE
+DEFINE_EXPRESSION_NODE_TYPE(bool,									0xC1CD5DCF, 0x2AB44958, 0xB3FF4F8F, 0xE665D121);
 
 DECLARE_DELEGATE_RetVal_OneParam(bool, FTokenFunctionHandler, const FTextFilterString&);
 

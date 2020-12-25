@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	
@@ -39,11 +39,6 @@
 #include "ProfilingDebugging/CookStats.h"
 #include "Engine/MapBuildDataRegistry.h"
 #include "ComponentRecreateRenderStateContext.h"
-#include "Engine/TextureCube.h"
-
-#if WITH_EDITOR
-#include "Factories/TextureFactory.h"
-#endif
 
 // ES3.0+ devices support seamless cubemap filtering, averaging edges will produce artifacts on those devices
 #define MOBILE_AVERAGE_CUBEMAP_EDGES 0 
@@ -62,12 +57,6 @@ ENGINE_API TAutoConsoleVariable<int32> CVarReflectionCaptureSize(
 	128,
 	TEXT("Set the resolution for all reflection capture cubemaps. Should be set via project's Render Settings. Must be power of 2. Defaults to 128.\n")
 	);
-
-ENGINE_API TAutoConsoleVariable<int32> CVarMobileReflectionCaptureCompression(
-	TEXT("r.Mobile.ReflectionCaptureCompression"),
-	0,
-	TEXT("Whether to use the Reflection Capture Compression or not for mobile. It will use ETC2 format to do the compression.\n")
-);
 
 TAutoConsoleVariable<int32> CVarReflectionCaptureUpdateEveryFrame(
 	TEXT("r.ReflectionCaptureUpdateEveryFrame"),
@@ -114,7 +103,7 @@ FReflectionCaptureMapBuildData* UReflectionCaptureComponent::GetMapBuildData() c
 			{
 				FReflectionCaptureMapBuildData* ReflectionBuildData = MapBuildData->GetReflectionCaptureBuildData(MapBuildDataId);
 
-				if (ReflectionBuildData && (ReflectionBuildData->CubemapSize == UReflectionCaptureComponent::GetReflectionCaptureSize() || ReflectionBuildData->HasBeenUploadedFinal()))
+				if (ReflectionBuildData && ReflectionBuildData->CubemapSize == UReflectionCaptureComponent::GetReflectionCaptureSize())
 				{
 					return ReflectionBuildData;
 				}
@@ -316,7 +305,7 @@ APlaneReflectionCapture::APlaneReflectionCapture(const FObjectInitializer& Objec
 	PlaneComponent->PreviewCaptureBox = DrawCaptureBox;
 }
 
-FColor RGBMEncode( FLinearColor Color, float MaxValueRGBM)
+FColor RGBMEncode( FLinearColor Color )
 {
 	FColor Encoded;
 
@@ -326,7 +315,7 @@ FColor RGBMEncode( FLinearColor Color, float MaxValueRGBM)
 	Color.B = FMath::Sqrt( Color.B );
 
 	// Range
-	Color /= MaxValueRGBM;
+	Color /= 16.0f;
 	
 	float MaxValue = FMath::Max( FMath::Max(Color.R, Color.G), FMath::Max(Color.B, DELTA) );
 	
@@ -486,40 +475,7 @@ static void EdgeWalkSetup( bool ReverseDirection, int32 Edge, int32 MipSize, int
 	}
 }
 
-float GetMaxValueRGBM(const TArray<uint8>& FullHDRData, int32 CubemapSize, float Brightness)
-{
-	const int32 NumMips = FMath::CeilLogTwo(CubemapSize) + 1;
-	// get MaxValue from Mip0
-	float MaxValue = 0;
-	
-	const int32 MipSize = 1 << (NumMips - 1);
-	const int32 SourceCubeFaceBytes = MipSize * MipSize * sizeof(FFloat16Color);
-
-	for (int32 CubeFace = 0; CubeFace < CubeFace_MAX; CubeFace++)
-	{
-		const int32 FaceSourceIndex = CubeFace * SourceCubeFaceBytes;
-		const FFloat16Color* FaceSourceData = (const FFloat16Color*)&FullHDRData[FaceSourceIndex];
-
-		for (int32 y = 0; y < MipSize; y++)
-		{
-			for (int32 x = 0; x < MipSize; x++)
-			{
-				int32 TexelIndex = x + y * MipSize;
-				const FLinearColor LinearColor = FLinearColor(FaceSourceData[TexelIndex]) * Brightness;
-				float MaxValueTexel = FMath::Max(FMath::Max(LinearColor.R, LinearColor.G), FMath::Max(LinearColor.B, DELTA));
-				if (MaxValue < MaxValueTexel)
-				{
-					MaxValue = MaxValueTexel;
-				}
-			}
-		}
-	}
-
-	MaxValue = FMath::Max(MaxValue, 1.0f);
-	return MaxValue;
-}
-
-void GenerateEncodedHDRData(const TArray<uint8>& FullHDRData, int32 CubemapSize, float Brightness, float MaxValueRGBM, TArray<uint8>& OutEncodedHDRData)
+void GenerateEncodedHDRData(const TArray<uint8>& FullHDRData, int32 CubemapSize, float Brightness, TArray<uint8>& OutEncodedHDRData)
 {
 	check(FullHDRData.Num() > 0);
 	const int32 NumMips = FMath::CeilLogTwo(CubemapSize) + 1;
@@ -531,8 +487,6 @@ void GenerateEncodedHDRData(const TArray<uint8>& FullHDRData, int32 CubemapSize,
 
 	OutEncodedHDRData.Empty(EncodedDataSize);
 	OutEncodedHDRData.AddZeroed(EncodedDataSize);
-	
-	MaxValueRGBM = FMath::Max(MaxValueRGBM, 1.0f);
 
 	for (int32 MipIndex = 0; MipIndex < NumMips; MipIndex++)
 	{
@@ -574,7 +528,7 @@ void GenerateEncodedHDRData(const TArray<uint8>& FullHDRData, int32 CubemapSize,
 			for( int32 Corner = 0; Corner < 4; Corner++ )
 			{
 				const FLinearColor LinearColor = AvgCornerColors[ CubeCornerList[Face][Corner] ] / 3.0f;
-				FaceDstData[ CornerTable[Corner] ] = RGBMEncode( LinearColor * Brightness, MaxValueRGBM);
+				FaceDstData[ CornerTable[Corner] ] = RGBMEncode( LinearColor * Brightness );
 			}
 		}
 
@@ -615,11 +569,11 @@ void GenerateEncodedHDRData(const TArray<uint8>& FullHDRData, int32 CubemapSize,
 				const FLinearColor EdgeColorB = FLinearColor( FaceSrcDataB[ EdgeTexelB ] );
 				const FLinearColor AvgColor = 0.5f * ( EdgeColorA + EdgeColorB );
 				
-				FaceDstDataA[ EdgeTexelA ] = FaceDstDataB[ EdgeTexelB ] = RGBMEncode( AvgColor * Brightness, MaxValueRGBM);
+				FaceDstDataA[ EdgeTexelA ] = FaceDstDataB[ EdgeTexelB ] = RGBMEncode( AvgColor * Brightness );
 			}
 		}
 #endif // MOBILE_AVERAGE_CUBEMAP_EDGES
-
+		
 		// Encode rest of texels
 		for (int32 CubeFace = 0; CubeFace < CubeFace_MAX; CubeFace++)
 		{
@@ -633,14 +587,13 @@ void GenerateEncodedHDRData(const TArray<uint8>& FullHDRData, int32 CubemapSize,
 			// Skip edges
 			const int32 SkipEdges = MOBILE_AVERAGE_CUBEMAP_EDGES ? 1 : 0;
 
-			// Find MaxValue
-			for (int32 y = SkipEdges; y < MipSize - SkipEdges; y++)
+			for( int32 y = SkipEdges; y < MipSize - SkipEdges; y++ )
 			{
-				for (int32 x = SkipEdges; x < MipSize - SkipEdges; x++)
+				for( int32 x = SkipEdges; x < MipSize - SkipEdges; x++ )
 				{
 					int32 TexelIndex = x + y * MipSize;
-					const FLinearColor LinearColor = FLinearColor(FaceSourceData[TexelIndex]) * Brightness;
-					FaceDestData[ TexelIndex ] = RGBMEncode( LinearColor, MaxValueRGBM);
+					const FLinearColor LinearColor = FLinearColor( FaceSourceData[ TexelIndex ]) * Brightness;
+					FaceDestData[ TexelIndex ] = RGBMEncode( LinearColor );
 				}
 			}
 		}
@@ -650,54 +603,120 @@ void GenerateEncodedHDRData(const TArray<uint8>& FullHDRData, int32 CubemapSize,
 	}
 }
 
-
-void GenerateEncodedHDRTextureCube(UMapBuildDataRegistry* Registry, FReflectionCaptureData& ReflectionCaptureData, FString& TextureName, float MaxValueRGBM, UReflectionCaptureComponent* CaptureComponent, bool bIsReflectionCaptureCompressionProjectSetting)
+/** 
+ * A cubemap texture resource that knows how to upload the packed capture data from a reflection capture. 
+ * @todo - support texture streaming and compression
+ */
+class FReflectionTextureCubeResource : public FTexture
 {
-#if WITH_EDITOR
-	UTextureFactory* TextureFactory = NewObject<UTextureFactory>();
-	TextureFactory->SuppressImportOverwriteDialog();
+public:
 
-	TextureFactory->CompressionSettings = TC_ReflectionCapture;
-	UTextureCube* TextureCube = TextureFactory->CreateTextureCube(Registry, FName(TextureName), RF_Standalone | RF_Public);
+	FReflectionTextureCubeResource() :
+		Size(0),
+		NumMips(0),
+		Format(PF_Unknown),
+		SourceData(nullptr)
+	{}
 
-	if (TextureCube)
+	void SetupParameters(int32 InSize, int32 InNumMips, EPixelFormat InFormat, TArray<uint8>* InSourceData)
 	{
-		TArray<uint8> TemporaryEncodedHDRCapturedData;
+		Size = InSize;
+		NumMips = InNumMips;
+		Format = InFormat;
+		SourceData = InSourceData;
+	}
 
-		GenerateEncodedHDRData(ReflectionCaptureData.FullHDRCapturedData, ReflectionCaptureData.CubemapSize, ReflectionCaptureData.Brightness, MaxValueRGBM, TemporaryEncodedHDRCapturedData);
-		const int32 NumMips = FMath::CeilLogTwo(ReflectionCaptureData.CubemapSize) + 1;
-		TextureCube->Source.Init(
-			ReflectionCaptureData.CubemapSize,
-			ReflectionCaptureData.CubemapSize,
-			6,
-			NumMips,
-			TSF_BGRA8,
-			TemporaryEncodedHDRCapturedData.GetData()
-		);
-		// the loader can suggest a compression setting
-		TextureCube->LODGroup = TEXTUREGROUP_World;
+	virtual void InitRHI() override
+	{
+		FRHIResourceCreateInfo CreateInfo;
+		TextureCubeRHI = RHICreateTextureCube(Size, Format, NumMips, 0, CreateInfo);
+		TextureRHI = TextureCubeRHI;
 
-		bool bIsCompressed = false;
-		if (CaptureComponent != nullptr)
+		if (SourceData)
 		{
-			bIsCompressed = CaptureComponent->MobileReflectionCompression == EMobileReflectionCompression::Default ? bIsReflectionCaptureCompressionProjectSetting : CaptureComponent->MobileReflectionCompression == EMobileReflectionCompression::On;
+			check(SourceData->Num() > 0);
+
+			const int32 BlockBytes = GPixelFormats[Format].BlockBytes;
+			int32 MipBaseIndex = 0;
+
+			for (int32 MipIndex = 0; MipIndex < NumMips; MipIndex++)
+			{
+				const int32 MipSize = 1 << (NumMips - MipIndex - 1);
+				const int32 CubeFaceBytes = MipSize * MipSize * BlockBytes;
+
+				for (int32 CubeFace = 0; CubeFace < CubeFace_MAX; CubeFace++)
+				{
+					uint32 DestStride = 0;
+					uint8* DestBuffer = (uint8*)RHILockTextureCubeFace(TextureCubeRHI, CubeFace, 0, MipIndex, RLM_WriteOnly, DestStride, false);
+
+					// Handle DestStride by copying each row
+					for (int32 Y = 0; Y < MipSize; Y++)
+					{
+						uint8* DestPtr = ((uint8*)DestBuffer + Y * DestStride);
+						const int32 SourceIndex = MipBaseIndex + CubeFace * CubeFaceBytes + Y * MipSize * BlockBytes;
+						const uint8* SourcePtr = &(*SourceData)[SourceIndex];
+						FMemory::Memcpy(DestPtr, SourcePtr, MipSize * BlockBytes);
+					}
+
+					RHIUnlockTextureCubeFace(TextureCubeRHI, CubeFace, 0, MipIndex, false);
+				}
+
+				MipBaseIndex += CubeFaceBytes * CubeFace_MAX;
+			}
+
+			if (!GIsEditor)
+			{
+				// Toss the source data now that we've created the cubemap
+				// Note: can't do this if we ever use this texture resource in the editor and want to save the data later
+				SourceData->Empty();
+			}
 		}
 
-		TextureCube->CompressionSettings = TC_ReflectionCapture;
-		TextureCube->CompressionNone = !bIsCompressed;
-		TextureCube->CompressionQuality = TCQ_Highest;
-		TextureCube->Filter = TF_Trilinear;
-		TextureCube->SRGB = 0;
+		// Create the sampler state RHI resource.
+		FSamplerStateInitializerRHI SamplerStateInitializer
+		(
+			SF_Trilinear,
+			AM_Clamp,
+			AM_Clamp,
+			AM_Clamp
+		);
+		SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
 
-		// for now we don't support mip map generation on cubemaps
-		TextureCube->MipGenSettings = TMGS_LeaveExistingMips;
-
-		TextureCube->UpdateResource();
-		TextureCube->MarkPackageDirty();
+		INC_MEMORY_STAT_BY(STAT_ReflectionCaptureTextureMemory,CalcTextureSize(Size,Size,Format,NumMips) * 6);
 	}
-	ReflectionCaptureData.EncodedCaptureData = TextureCube;
-#endif
-}
+
+	virtual void ReleaseRHI() override
+	{
+		DEC_MEMORY_STAT_BY(STAT_ReflectionCaptureTextureMemory,CalcTextureSize(Size,Size,Format,NumMips) * 6);
+		TextureCubeRHI.SafeRelease();
+		FTexture::ReleaseRHI();
+	}
+
+	virtual uint32 GetSizeX() const override
+	{
+		return Size;
+	}
+
+	virtual uint32 GetSizeY() const override //-V524
+	{
+		return Size;
+	}
+
+	FRHITexture* GetTextureRHI() 
+	{
+		return TextureCubeRHI;
+	}
+
+private:
+
+	int32 Size;
+	int32 NumMips;
+	EPixelFormat Format;
+	FTextureCubeRHIRef TextureCubeRHI;
+
+	TArray<uint8>* SourceData;
+};
+
 
 TArray<UReflectionCaptureComponent*> UReflectionCaptureComponent::ReflectionCapturesToUpdate;
 TArray<UReflectionCaptureComponent*> UReflectionCaptureComponent::ReflectionCapturesToUpdateForLoad;
@@ -707,18 +726,15 @@ UReflectionCaptureComponent::UReflectionCaptureComponent(const FObjectInitialize
 	: Super(ObjectInitializer)
 {
 	Brightness = 1;
-	bModifyMaxValueRGBM = false;
-	MaxValueRGBM = 0.0f;
 	// Shouldn't be able to change reflection captures at runtime
 	Mobility = EComponentMobility::Static;
-	CachedEncodedHDRCubemap = nullptr;
-	CachedAverageBrightness = 1.0f;
+
 	bNeedsRecaptureOrUpload = false;
 }
 
-void UReflectionCaptureComponent::CreateRenderState_Concurrent(FRegisterComponentContext* Context)
+void UReflectionCaptureComponent::CreateRenderState_Concurrent()
 {
-	Super::CreateRenderState_Concurrent(Context);
+	Super::CreateRenderState_Concurrent();
 
 	UpdatePreviewShape();
 
@@ -748,24 +764,27 @@ void UReflectionCaptureComponent::SendRenderTransform_Concurrent()
 void UReflectionCaptureComponent::OnRegister()
 {
 	const ERHIFeatureLevel::Type FeatureLevel = GetWorld()->FeatureLevel;
-	const bool bEncodedDataRequired = (FeatureLevel == ERHIFeatureLevel::ES3_1) && !IsMobileDeferredShadingEnabled(GMaxRHIShaderPlatform);
+	const bool bEncodedDataRequired = (FeatureLevel == ERHIFeatureLevel::ES2 || FeatureLevel == ERHIFeatureLevel::ES3_1);
 
 	if (bEncodedDataRequired)
 	{
-		const FReflectionCaptureMapBuildData* MapBuildData = GetMapBuildData();
+		FReflectionCaptureMapBuildData* MapBuildData = GetMapBuildData();
 
-		// If the MapBuildData is valid, update it. If it is not we will use the cached values, if there are any
-		if (MapBuildData)
+		if (!EncodedHDRCubemapTexture && MapBuildData)
 		{
-			CachedEncodedHDRCubemap = MapBuildData->EncodedCaptureData;
-			CachedAverageBrightness = MapBuildData->AverageBrightness;
+			EncodedHDRCubemapTexture = new FReflectionTextureCubeResource();
+			TArray<uint8>* EncodedHDRCapturedData = &MapBuildData->EncodedHDRCapturedData;
+
+			if (EncodedHDRCapturedData->Num() == 0)
+			{
+				checkf(!FPlatformProperties::RequiresCookedData(), TEXT("Cooked platform with valid MapBuildData should have generated EncodedHDRCapturedData during cook"));
+				GenerateEncodedHDRData(MapBuildData->FullHDRCapturedData, MapBuildData->CubemapSize, Brightness, TemporaryEncodedHDRCapturedData);
+				EncodedHDRCapturedData = &TemporaryEncodedHDRCapturedData;
+			}
+
+			EncodedHDRCubemapTexture->SetupParameters(MapBuildData->CubemapSize, FMath::CeilLogTwo(MapBuildData->CubemapSize) + 1, PF_B8G8R8A8, EncodedHDRCapturedData);
+			BeginInitResource(EncodedHDRCubemapTexture);
 		}
-	}
-	else
-	{
-		// SM5 doesn't require cached values
-		CachedEncodedHDRCubemap = nullptr;
-		CachedAverageBrightness = 0;
 	}
 
 	Super::OnRegister();
@@ -887,7 +906,7 @@ void UReflectionCaptureComponent::SerializeLegacyData(FArchive& Ar)
 					FReflectionCaptureMapBuildLegacyData LegacyComponentData;
 					LegacyComponentData.Id = MapBuildDataId;
 					LegacyComponentData.MapBuildData = LegacyMapBuildData;
-					GReflectionCapturesWithLegacyBuildData.AddAnnotation(this, MoveTemp(LegacyComponentData));
+					GReflectionCapturesWithLegacyBuildData.AddAnnotation(this, LegacyComponentData);
 				}
 			}
 		}
@@ -934,7 +953,7 @@ void UReflectionCaptureComponent::UpdatePreviewShape()
 }
 
 #if WITH_EDITOR
-bool UReflectionCaptureComponent::CanEditChange(const FProperty* Property) const
+bool UReflectionCaptureComponent::CanEditChange(const UProperty* Property) const
 {
 	bool bCanEditChange = Super::CanEditChange(Property);
 
@@ -951,9 +970,6 @@ void UReflectionCaptureComponent::PostEditChangeProperty(FPropertyChangedEvent& 
 {
 	if (PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(UReflectionCaptureComponent, Cubemap) ||
 		PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(UReflectionCaptureComponent, SourceCubemapAngle) ||
-		PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(UReflectionCaptureComponent, MobileReflectionCompression) ||
-		PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(UReflectionCaptureComponent, bModifyMaxValueRGBM) ||
-		PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(UReflectionCaptureComponent, MaxValueRGBM) ||
 		PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(UReflectionCaptureComponent, ReflectionSourceType))
 	{
 		MarkDirtyForRecapture();
@@ -981,6 +997,11 @@ void UReflectionCaptureComponent::BeginDestroy()
 		Scene->ReleaseReflectionCubemap(this);
 	}
 
+	if (EncodedHDRCubemapTexture)
+	{
+		BeginReleaseResource(EncodedHDRCubemapTexture);
+	}
+
 	// Begin a fence to track the progress of the above BeginReleaseResource being completed on the RT
 	ReleaseResourcesFence.BeginFence();
 
@@ -995,7 +1016,11 @@ bool UReflectionCaptureComponent::IsReadyForFinishDestroy()
 
 void UReflectionCaptureComponent::FinishDestroy()
 {
-	CachedEncodedHDRCubemap = nullptr;
+	if (EncodedHDRCubemapTexture)
+	{
+		delete EncodedHDRCubemapTexture;
+		EncodedHDRCubemapTexture = NULL;
+	}
 
 	Super::FinishDestroy();
 }
@@ -1020,7 +1045,7 @@ void UReflectionCaptureComponent::MarkDirtyForRecapture()
 	}
 }
 
-void UReflectionCaptureComponent::UpdateReflectionCaptureContents(UWorld* WorldToUpdate, const TCHAR* CaptureReason, bool bVerifyOnlyCapturing, bool bCapturingForMobile)
+void UReflectionCaptureComponent::UpdateReflectionCaptureContents(UWorld* WorldToUpdate, const TCHAR* CaptureReason, bool bVerifyOnlyCapturing)
 {
 	if (WorldToUpdate->Scene 
 		// Don't capture and read back capture contents if we are currently doing async shader compiling
@@ -1072,16 +1097,36 @@ void UReflectionCaptureComponent::UpdateReflectionCaptureContents(UWorld* WorldT
 			}
 		}
 
-		WorldToUpdate->Scene->AllocateReflectionCaptures(WorldCombinedCaptures, CaptureReason, bVerifyOnlyCapturing, bCapturingForMobile);
+		WorldToUpdate->Scene->AllocateReflectionCaptures(WorldCombinedCaptures, CaptureReason, bVerifyOnlyCapturing);
 	}
 }
 
 #if WITH_EDITOR
 void UReflectionCaptureComponent::PreFeatureLevelChange(ERHIFeatureLevel::Type PendingFeatureLevel)
 {
-	if (SupportsTextureCubeArray(PendingFeatureLevel))
+	if (PendingFeatureLevel == ERHIFeatureLevel::ES2 || PendingFeatureLevel == ERHIFeatureLevel::ES3_1)
 	{
-		CachedEncodedHDRCubemap = nullptr;
+		FReflectionCaptureMapBuildData* MapBuildData = GetMapBuildData();
+
+		if (!EncodedHDRCubemapTexture && MapBuildData)
+		{
+			EncodedHDRCubemapTexture = new FReflectionTextureCubeResource();
+			GenerateEncodedHDRData(MapBuildData->FullHDRCapturedData, MapBuildData->CubemapSize, Brightness, TemporaryEncodedHDRCapturedData);
+
+			EncodedHDRCubemapTexture->SetupParameters(MapBuildData->CubemapSize, FMath::CeilLogTwo(MapBuildData->CubemapSize) + 1, PF_B8G8R8A8, &TemporaryEncodedHDRCapturedData);
+			BeginInitResource(EncodedHDRCubemapTexture);
+		}
+	}
+	else
+	{
+		if (EncodedHDRCubemapTexture)
+		{
+			BeginReleaseResource(EncodedHDRCubemapTexture);
+			FlushRenderingCommands();
+			TemporaryEncodedHDRCapturedData.Empty();
+			delete EncodedHDRCubemapTexture;
+			EncodedHDRCubemapTexture = nullptr;
+		}
 
 		MarkDirtyForRecaptureOrUpload();
 	}
@@ -1207,14 +1252,9 @@ FReflectionCaptureProxy::FReflectionCaptureProxy(const UReflectionCaptureCompone
 	
 	// Initialize common settings
 	Component = InComponent;
+	EncodedHDRCubemap = InComponent->EncodedHDRCubemapTexture;
 	const FReflectionCaptureMapBuildData* MapBuildData = InComponent->GetMapBuildData();
-
-	EncodedHDRCubemap = Component->CachedEncodedHDRCubemap != nullptr ? Component->CachedEncodedHDRCubemap->Resource: nullptr;
-
-
-	
-	EncodedHDRAverageBrightness = Component->CachedAverageBrightness;
-	MaxValueRGBM = Component->MaxValueRGBM;
+	EncodedHDRAverageBrightness = MapBuildData ? MapBuildData->AverageBrightness : 1.0f;
 	SetTransform(InComponent->GetComponentTransform().ToMatrixWithScale());
 	InfluenceRadius = InComponent->GetInfluenceBoundingRadius();
 	Brightness = InComponent->Brightness;
@@ -1253,7 +1293,7 @@ void FReflectionCaptureProxy::UpdateMobileUniformBuffer()
 		
 	FMobileReflectionCaptureShaderParameters Parameters;
 	//To keep ImageBasedReflectionLighting coherence with PC, use AverageBrightness instead of InvAverageBrightness to calculate the IBL contribution
-	Parameters.Params = FVector4(EncodedHDRAverageBrightness, 0.f, MaxValueRGBM <= 0.0f ? 16.0f: MaxValueRGBM, 0.f);
+	Parameters.Params = FVector4(EncodedHDRAverageBrightness, 0.f, 0.f, 0.f);
 	Parameters.Texture = CaptureTexture->TextureRHI;
 	Parameters.TextureSampler = CaptureTexture->SamplerStateRHI;
 

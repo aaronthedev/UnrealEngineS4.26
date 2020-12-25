@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,7 @@
 #include "HAL/UnrealMemory.h"
 #include "Logging/LogMacros.h"
 #include "Templates/IsSigned.h"
-#include "Net/Core/Misc/ResizableCircularQueue.h"
+#include "Util/ResizableCircularQueue.h"
 #include "Util/SequenceNumber.h"
 #include "Util/SequenceHistory.h"
 

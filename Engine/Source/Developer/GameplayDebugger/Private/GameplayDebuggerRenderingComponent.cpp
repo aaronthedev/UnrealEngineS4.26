@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayDebuggerRenderingComponent.h"
 #include "GameplayDebuggerCategoryReplicator.h"
@@ -174,9 +174,9 @@ FBoxSphereBounds UGameplayDebuggerRenderingComponent::CalcBounds(const FTransfor
 	return FBoxSphereBounds(FBox::BuildAABB(FVector::ZeroVector, FVector(1000000.0f, 1000000.0f, 1000000.0f)));
 }
 
-void UGameplayDebuggerRenderingComponent::CreateRenderState_Concurrent(FRegisterComponentContext* Context)
+void UGameplayDebuggerRenderingComponent::CreateRenderState_Concurrent()
 {
-	Super::CreateRenderState_Concurrent(Context);
+	Super::CreateRenderState_Concurrent();
 
 	GameplayDebuggerDebugDrawDelegateHelper.RegisterDebugDrawDelgate();
 }

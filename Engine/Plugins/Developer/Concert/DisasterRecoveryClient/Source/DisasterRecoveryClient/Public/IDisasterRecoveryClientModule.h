@@ -1,15 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Modules/ModuleInterface.h"
 #include "Modules/ModuleManager.h"
-#include "Logging/LogMacros.h"
 
 class IConcertSyncClient;
-
-DECLARE_LOG_CATEGORY_EXTERN(LogDisasterRecovery, Log, All);
 
 /**
  * Interface for the Disaster Recovery module.

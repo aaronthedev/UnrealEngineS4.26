@@ -1,33 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RigUnit_Quaternion.h"
 
-FRigUnit_MultiplyQuaternion_Execute()
-{
-	Result = Argument0*Argument1;
-	Result.Normalize();
-}
-
-FRigUnit_InverseQuaterion_Execute()
-{
-	Result = Argument.Inverse();
-	Result.Normalize();
-}
-
-FRigUnit_QuaternionToAxisAndAngle_Execute()
-{
-	FVector NewAxis = Axis.GetSafeNormal();
-	Argument.ToAxisAndAngle(NewAxis, Angle);
-	Angle = FMath::RadiansToDegrees(Angle);
-}
-
-FRigUnit_QuaternionFromAxisAndAngle_Execute()
-{
-	FVector NewAxis = Axis.GetSafeNormal();
-	Result = FQuat(NewAxis, FMath::DegreesToRadians(Angle));
-}
-
-FRigUnit_QuaternionToAngle_Execute()
+void FRigUnit_QuaternionToAngle::Execute(const FRigUnitContext& Context)
 {
     DECLARE_SCOPE_HIERARCHICAL_COUNTER_RIGUNIT()
 	FQuat Swing, Twist;

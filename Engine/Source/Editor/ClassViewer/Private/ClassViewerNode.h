@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,7 +10,7 @@ class IPropertyHandle;
 class IUnloadedBlueprintData;
 class UBlueprint;
 
-class FClassViewerNode : public TSharedFromThis<FClassViewerNode>
+class FClassViewerNode
 {
 public:
 	FClassViewerNode(UClass* Class);

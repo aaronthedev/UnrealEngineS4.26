@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SLocalizationTargetEditorCultureRow.h"
 #include "Misc/MessageDialog.h"
@@ -409,8 +409,7 @@ FReply SLocalizationTargetEditorCultureRow::EditText()
 			NativeCultureName = LocalizationTarget->Settings.SupportedCulturesStatistics[LocalizationTarget->Settings.NativeCultureIndex].CultureName;
 		}
 		
-		FModuleManager::Get().LoadModuleChecked("TranslationEditor");
-		ITranslationEditor::OpenTranslationEditor(LocalizationTarget, Culture->GetName());
+		FModuleManager::LoadModuleChecked<ITranslationEditor>("TranslationEditor").OpenTranslationEditor(LocalizationTarget, Culture->GetName());
 	}
 
 	return FReply::Handled();

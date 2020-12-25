@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -83,11 +83,6 @@ struct ENGINE_API FAnimCurveBase
 	UPROPERTY()
 	FSmartName	Name;
 
-#if WITH_EDITORONLY_DATA
-	UPROPERTY()
-	FLinearColor Color;
-#endif
-
 private:
 	// this flag is mostly used by editor only now
 	// however I can't remove this to editor only because 
@@ -98,21 +93,12 @@ private:
 	int32		CurveTypeFlags;
 
 public:
-	FAnimCurveBase() 
-		: CurveTypeFlags(0)
-	{
-#if WITH_EDITORONLY_DATA
-		Color = MakeColor();
-#endif
-	}
+	FAnimCurveBase() : CurveTypeFlags(0) {}
 
 	FAnimCurveBase(FSmartName InName, int32 InCurveTypeFlags)
 		: Name(InName)
 		, CurveTypeFlags(InCurveTypeFlags)
-	{
-#if WITH_EDITORONLY_DATA
-		Color = MakeColor();
-#endif
+	{	
 	}
 
 	// To be able to use typedef'd types we need to serialize manually
@@ -142,15 +128,6 @@ public:
 	 * returns CurveTypeFlags
 	 */
 	int32 GetCurveTypeFlags() const;
-
-#if WITH_EDITORONLY_DATA
-	/** Get the color used to display this curve in the editor */
-	FLinearColor GetColor() const { return Color; }
-
-private:
-	/** Make an initial color */
-	FLinearColor MakeColor();
-#endif
 };
 
 USTRUCT()
@@ -182,7 +159,7 @@ struct FVectorCurve : public FAnimCurveBase
 {
 	GENERATED_USTRUCT_BODY()
 
-	enum class EIndex
+	enum EIndex
 	{
 		X = 0, 
 		Y, 
@@ -245,7 +222,37 @@ struct FTransformCurve: public FAnimCurveBase
 	void Resize(float NewLength, bool bInsert/* whether insert or remove*/, float OldStartTime, float OldEndTime);
 };
 
+/**
+* This is array of curves that run when collecting curves natively 
+*/
+struct FCurveElement
+{
+	/** Curve Value */
+	float					Value;
+	/** Whether this value is set or not */
+	bool					bValid;
 
+	FCurveElement(float InValue)
+		:  Value(InValue)
+		,  bValid (true)
+	{}
+
+	FCurveElement()
+		: Value(0.f)
+		, bValid(false)
+	{}
+
+	bool IsValid() const 
+	{
+		return bValid;
+	}
+
+	void SetValue(float InValue)
+	{
+		Value = InValue;
+		bValid = true;
+	}
+};
 
 /**
  * This struct is used to create curve snap shot of current time when extracted
@@ -255,14 +262,9 @@ struct FBaseBlendedCurve
 {
 	typedef InAllocator   Allocator;
 	/**
-	* List of curve weights for this pose
+	* List of curve elements for this pose
 	*/
-	TArray<float, Allocator> CurveWeights;
-
-	/**
-	 * A bitmask to indicate which weights are valid.
-	 */
-	TBitArray<Allocator> ValidCurveWeights;
+	TArray<FCurveElement, Allocator> Elements;
 
 	/**
 	* UID to array index look up table for Elements
@@ -297,8 +299,8 @@ struct FBaseBlendedCurve
 		check(InUIDToArrayIndexLUT != nullptr);
 		UIDToArrayIndexLUT = InUIDToArrayIndexLUT;
 		NumValidCurveCount = GetValidElementCount(UIDToArrayIndexLUT);
-		CurveWeights.Init(0.0f, NumValidCurveCount);
-		ValidCurveWeights.Init(false, NumValidCurveCount);
+		Elements.Reset();
+		Elements.AddZeroed(NumValidCurveCount);
 		// no name, means no curve
 		bInitialized = true;
 	}
@@ -311,8 +313,8 @@ struct FBaseBlendedCurve
 		UIDToArrayIndexLUT = InCurveToInitFrom.UIDToArrayIndexLUT;
 		NumValidCurveCount = GetValidElementCount(UIDToArrayIndexLUT);
 
-		CurveWeights.Init(0.0f, NumValidCurveCount);
-		ValidCurveWeights.Init(false, NumValidCurveCount);
+		Elements.Reset();
+		Elements.AddZeroed(NumValidCurveCount);
 		bInitialized = true;
 	}
 
@@ -324,8 +326,8 @@ struct FBaseBlendedCurve
 			check(InCurveToInitFrom.UIDToArrayIndexLUT != nullptr);
 			UIDToArrayIndexLUT = InCurveToInitFrom.UIDToArrayIndexLUT;
 			NumValidCurveCount = GetValidElementCount(UIDToArrayIndexLUT);
-			CurveWeights.Init(0.0f, NumValidCurveCount);
-			ValidCurveWeights.Init(false, NumValidCurveCount);
+			Elements.Reset();
+			Elements.AddZeroed(NumValidCurveCount);
 			bInitialized = true;
 		}
 	}
@@ -338,8 +340,7 @@ struct FBaseBlendedCurve
 		int32 ArrayIndex = GetArrayIndexByUID(InUid);
 		if (ArrayIndex != INDEX_NONE)
 		{
-			CurveWeights[ArrayIndex] = InValue;
-			ValidCurveWeights[ArrayIndex] = true;
+			Elements[ArrayIndex].SetValue(InValue);
 		}
 	}
 
@@ -351,7 +352,7 @@ struct FBaseBlendedCurve
 		int32 ArrayIndex = GetArrayIndexByUID(InUid);
 		if (ArrayIndex != INDEX_NONE)
 		{
-			return CurveWeights[ArrayIndex];
+			return Elements[ArrayIndex].Value;
 		}
 
 		return 0.f;
@@ -414,13 +415,10 @@ struct FBaseBlendedCurve
 		else
 		{
 			InitFrom(A);
-
-			// Only consider curve elements where either or both elements are valid.
-			for (TConstDualEitherSetBitIterator<InAllocator, InAllocator> It(A.ValidCurveWeights, B.ValidCurveWeights); It; ++It)
+			for (int32 CurveId = 0; CurveId < A.Elements.Num(); ++CurveId)
 			{
-				int32 Idx = It.GetIndex();
-				ValidCurveWeights[Idx] = true;
-				CurveWeights[Idx] = FMath::Lerp(A.CurveWeights[Idx], B.CurveWeights[Idx], Alpha);
+				Elements[CurveId].bValid = A.Elements[CurveId].bValid || B.Elements[CurveId].bValid;
+				Elements[CurveId].Value = FMath::Lerp(A.Elements[CurveId].Value, B.Elements[CurveId].Value, Alpha);
 			}
 		}
 	}
@@ -442,12 +440,10 @@ struct FBaseBlendedCurve
 		}
 		else
 		{
-			// Only consider curve elements where either or both elements are valid.
-			for (TConstDualEitherSetBitIterator<InAllocator, InAllocator> It(ValidCurveWeights, Other.ValidCurveWeights); It; ++It)
+			for (int32 CurveId = 0; CurveId < Elements.Num(); ++CurveId)
 			{
-				int32 Idx = It.GetIndex();
-				ValidCurveWeights[Idx] = true;
-				CurveWeights[Idx] = FMath::Lerp(CurveWeights[Idx], Other.CurveWeights[Idx], Alpha);
+				Elements[CurveId].bValid = Elements[CurveId].bValid || Other.Elements[CurveId].bValid;
+				Elements[CurveId].Value = FMath::Lerp(Elements[CurveId].Value, Other.Elements[CurveId].Value, Alpha);
 			}
 		}
 	}
@@ -459,11 +455,10 @@ struct FBaseBlendedCurve
 		check(bInitialized);
 		check(Num() == BaseCurve.Num());
 
-		for (TConstDualEitherSetBitIterator<InAllocator, InAllocator> It(ValidCurveWeights, BaseCurve.ValidCurveWeights); It; ++It)
+		for (int32 CurveId = 0; CurveId < Elements.Num(); ++CurveId)
 		{
-			int32 Idx = It.GetIndex();
-			ValidCurveWeights[Idx] = true;
-			CurveWeights[Idx] -= BaseCurve.CurveWeights[Idx];
+			Elements[CurveId].bValid = Elements[CurveId].bValid || BaseCurve.Elements[CurveId].bValid;
+			Elements[CurveId].Value -= BaseCurve.Elements[CurveId].Value;
 		}
 	}
 	/**
@@ -476,11 +471,10 @@ struct FBaseBlendedCurve
 
 		if (FAnimWeight::IsRelevant(Weight))
 		{
-			for (TConstDualEitherSetBitIterator<InAllocator, InAllocator> It(ValidCurveWeights, AdditiveCurve.ValidCurveWeights); It; ++It)
+			for (int32 CurveId = 0; CurveId < Elements.Num(); ++CurveId)
 			{
-				int32 Idx = It.GetIndex();
-				ValidCurveWeights[Idx] = true;
-				CurveWeights[Idx] += AdditiveCurve.CurveWeights[Idx] * Weight;
+				Elements[CurveId].bValid = Elements[CurveId].bValid || AdditiveCurve.Elements[CurveId].bValid;
+				Elements[CurveId].Value += AdditiveCurve.Elements[CurveId].Value * Weight;
 			}
 		}
 	}
@@ -488,80 +482,20 @@ struct FBaseBlendedCurve
 	/**
 	 * This doesn't blend but combine MAX(current weight, curvetocombine weight)
 	 */
-	void UseMaxValue(const FBaseBlendedCurve& CurveToCombine)
-	{
-		check(bInitialized);
-		check(Num() == CurveToCombine.Num());
-
-		for (TConstDualEitherSetBitIterator<InAllocator, InAllocator> It(ValidCurveWeights, CurveToCombine.ValidCurveWeights); It; ++It)
-		{
-			int32 Idx = It.GetIndex();
-			if (!ValidCurveWeights[Idx])
-			{
-				CurveWeights[Idx] = CurveToCombine.CurveWeights[Idx];
-				ValidCurveWeights[Idx] = true;
-			}
-			else if (CurveToCombine.ValidCurveWeights[Idx])
-			{
-				CurveWeights[Idx] = FMath::Max(CurveWeights[Idx], CurveToCombine.CurveWeights[Idx]);
-			}
-		}
-	}
-
-	/**
-	 * This doesn't blend but combine MIN(current weight, curvetocombine weight)
-	 */
-	void UseMinValue(const FBaseBlendedCurve& CurveToCombine)
-	{
-		check(bInitialized);
-		check(Num() == CurveToCombine.Num());
-
-		for (TConstDualEitherSetBitIterator<InAllocator, InAllocator> It(ValidCurveWeights, CurveToCombine.ValidCurveWeights); It; ++It)
-		{
-			int32 Idx = It.GetIndex();
-			if (!ValidCurveWeights[Idx])
-			{
-				CurveWeights[Idx] = CurveToCombine.CurveWeights[Idx];
-				ValidCurveWeights[Idx] = true;
-			}
-			else if (CurveToCombine.ValidCurveWeights[Idx])
-			{
-				CurveWeights[Idx] = FMath::Min(CurveWeights[Idx], CurveToCombine.CurveWeights[Idx]);
-			}
-		}
-	}
-
-	/**
-	 * This combines IF the input does not contain valid curve
-	 */
-	void CombinePreserved(const FBaseBlendedCurve& CurveToCombine)
-	{
-		check(bInitialized);
-		check(Num() == CurveToCombine.Num());
-
-		for (TConstSetBitIterator<InAllocator> It(CurveToCombine.ValidCurveWeights); It; ++It)
-		{
-			int32 Idx = It.GetIndex();
-			if (!ValidCurveWeights[Idx])
-			{
-				CurveWeights[Idx] = CurveToCombine.CurveWeights[Idx];
-				ValidCurveWeights[Idx] = true;
-			}
-		}
-	}
-	/**
-	 * This doesn't blend but later pose with valid curve value overrides
-	 */
 	void Combine(const FBaseBlendedCurve& CurveToCombine)
 	{
 		check(bInitialized);
 		check(Num() == CurveToCombine.Num());
 
-		for (TConstSetBitIterator<InAllocator> It(CurveToCombine.ValidCurveWeights); It; ++It)
+		for (int32 CurveId = 0; CurveId < CurveToCombine.Elements.Num(); ++CurveId)
 		{
-			int32 Idx = It.GetIndex();
-			CurveWeights[Idx] = CurveToCombine.CurveWeights[Idx];
-			ValidCurveWeights[Idx] = true;
+			// if target value is valid, we accept target value
+			if (CurveToCombine.Elements[CurveId].bValid)
+			{
+				Elements[CurveId].bValid = true;
+				Elements[CurveId].Value = CurveToCombine.Elements[CurveId].Value;
+			}
+
 		}
 	}
 
@@ -572,14 +506,16 @@ struct FBaseBlendedCurve
 	{
 		InitFrom(CurveToOverrideFrom);
 
-		CurveWeights = CurveToOverrideFrom.CurveWeights;
-		ValidCurveWeights = CurveToOverrideFrom.ValidCurveWeights;
-
-		if (!FMath::IsNearlyEqual(Weight, 1.f))
+		if (FMath::IsNearlyEqual(Weight, 1.f))
 		{
-			for (TConstSetBitIterator<InAllocator> It(ValidCurveWeights); It; ++It)
+			Override(CurveToOverrideFrom);
+		}
+		else
+		{
+			for (int32 CurveId = 0; CurveId < CurveToOverrideFrom.Elements.Num(); ++CurveId)
 			{
-				CurveWeights[It.GetIndex()] *= Weight;
+				Elements[CurveId].bValid = CurveToOverrideFrom.Elements[CurveId].bValid;
+				Elements[CurveId].Value = CurveToOverrideFrom.Elements[CurveId].Value * Weight;
 			}
 		}
 	}
@@ -595,8 +531,8 @@ struct FBaseBlendedCurve
 			check(CurveToOverrideFrom.UIDToArrayIndexLUT != nullptr);
 			UIDToArrayIndexLUT = CurveToOverrideFrom.UIDToArrayIndexLUT;
 			NumValidCurveCount = GetValidElementCount(UIDToArrayIndexLUT);
-			CurveWeights = CurveToOverrideFrom.CurveWeights;
-			ValidCurveWeights = CurveToOverrideFrom.ValidCurveWeights;
+			Elements.Reset();
+			Elements.Append(CurveToOverrideFrom.Elements);
 			bInitialized = true;
 		}
 	}
@@ -614,24 +550,23 @@ struct FBaseBlendedCurve
 			CurveToOverrideFrom.UIDToArrayIndexLUT = nullptr;
 			NumValidCurveCount = GetValidElementCount(UIDToArrayIndexLUT);
 			CurveToOverrideFrom.NumValidCurveCount = 0;
-			CurveWeights = MoveTemp(CurveToOverrideFrom.CurveWeights);
-			ValidCurveWeights = MoveTemp(CurveToOverrideFrom.ValidCurveWeights);
+			Elements = MoveTemp(CurveToOverrideFrom.Elements);
 			bInitialized = true;
 			CurveToOverrideFrom.bInitialized = false;
 		}
 	}
 
 	/** Return number of elements */
-	int32 Num() const { return CurveWeights.Num(); }
+	int32 Num() const { return Elements.Num(); }
 
 	/** CopyFrom as expected. */
 	template <typename OtherAllocator>
 	void CopyFrom(const FBaseBlendedCurve<OtherAllocator>& CurveToCopyFrom)
 	{
-		checkf(CurveToCopyFrom.IsValid(), TEXT("Copying data from an invalid curve UIDToArrayIndexLUT: 0x%x  (Sizes %i/%i)"), CurveToCopyFrom.UIDToArrayIndexLUT, (CurveToCopyFrom.UIDToArrayIndexLUT ? CurveToCopyFrom.UIDToArrayIndexLUT->Num() : -1), CurveToCopyFrom.CurveWeights.Num());
+		checkf(CurveToCopyFrom.IsValid(), TEXT("Copying data from an invalid curve UIDToArrayIndexLUT: 0x%x  (Sizes %i/%i)"), CurveToCopyFrom.UIDToArrayIndexLUT, (CurveToCopyFrom.UIDToArrayIndexLUT ? CurveToCopyFrom.UIDToArrayIndexLUT->Num() : -1), CurveToCopyFrom.Elements.Num());
 		UIDToArrayIndexLUT = CurveToCopyFrom.UIDToArrayIndexLUT;
-		CurveWeights = CurveToCopyFrom.CurveWeights;
-		ValidCurveWeights = CurveToCopyFrom.ValidCurveWeights;
+		Elements.Reset();
+		Elements.Append(CurveToCopyFrom.Elements);
 		NumValidCurveCount = GetValidElementCount(UIDToArrayIndexLUT);
 		bInitialized = true;
 	}
@@ -640,10 +575,10 @@ struct FBaseBlendedCurve
 	{
 		if (&CurveToCopyFrom != this)
 		{
-			checkf(CurveToCopyFrom.IsValid(), TEXT("Copying data from an invalid curve UIDToArrayIndexLUT: 0x%x  (Sizes %i/%i)"), CurveToCopyFrom.UIDToArrayIndexLUT, (CurveToCopyFrom.UIDToArrayIndexLUT ? CurveToCopyFrom.UIDToArrayIndexLUT->Num() : -1), CurveToCopyFrom.CurveWeights.Num());
+			checkf(CurveToCopyFrom.IsValid(), TEXT("Copying data from an invalid curve UIDToArrayIndexLUT: 0x%x  (Sizes %i/%i)"), CurveToCopyFrom.UIDToArrayIndexLUT, (CurveToCopyFrom.UIDToArrayIndexLUT ? CurveToCopyFrom.UIDToArrayIndexLUT->Num() : -1), CurveToCopyFrom.Elements.Num());
 			UIDToArrayIndexLUT = CurveToCopyFrom.UIDToArrayIndexLUT;
-			CurveWeights = CurveToCopyFrom.CurveWeights;
-			ValidCurveWeights = CurveToCopyFrom.ValidCurveWeights;
+			Elements.Reset();
+			Elements.Append(CurveToCopyFrom.Elements);
 			NumValidCurveCount = GetValidElementCount(UIDToArrayIndexLUT);
 			bInitialized = true;
 		}
@@ -656,8 +591,7 @@ struct FBaseBlendedCurve
 		CurveToMoveFrom.UIDToArrayIndexLUT = nullptr;
 		NumValidCurveCount = CurveToMoveFrom.NumValidCurveCount;
 		CurveToMoveFrom.NumValidCurveCount = 0;
-		CurveWeights = MoveTemp(CurveToMoveFrom.CurveWeights);
-		ValidCurveWeights = MoveTemp(CurveToMoveFrom.ValidCurveWeights);
+		Elements = MoveTemp(CurveToMoveFrom.Elements);
 		bInitialized = true;
 		CurveToMoveFrom.bInitialized = false;
 	}
@@ -667,8 +601,7 @@ struct FBaseBlendedCurve
 	{
 		// Set to nullptr as we only received a ptr reference from USkeleton
 		UIDToArrayIndexLUT = nullptr;
-		CurveWeights.Reset();
-		ValidCurveWeights.Reset();
+		Elements.Reset();
 		NumValidCurveCount = 0;
 		bInitialized = false;
 	}
@@ -680,7 +613,7 @@ struct FBaseBlendedCurve
 	// is the same size as our element list
 	bool IsValid() const
 	{
-		return UIDToArrayIndexLUT != nullptr && (CurveWeights.Num() == NumValidCurveCount);
+		return UIDToArrayIndexLUT != nullptr && (Elements.Num() == NumValidCurveCount);
 	}
 };
 

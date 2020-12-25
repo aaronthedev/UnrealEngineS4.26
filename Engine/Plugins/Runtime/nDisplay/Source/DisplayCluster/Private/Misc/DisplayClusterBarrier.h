@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,8 +13,8 @@
 class FDisplayClusterBarrier
 {
 public:
-	explicit FDisplayClusterBarrier(uint32 ThreadsAmount, uint32 Timeout);
-	explicit FDisplayClusterBarrier(uint32 ThreadsAmount, const FString& Name, uint32 Timeout);
+	explicit FDisplayClusterBarrier(uint32 threadsAmount, uint32 timeout);
+	explicit FDisplayClusterBarrier(uint32 threadsAmount, const FString& name, uint32 timeout);
 	~FDisplayClusterBarrier();
 
 public:
@@ -27,7 +27,7 @@ public:
 
 public:
 	// Wait until all threads arrive
-	WaitResult Wait(double* ThreadWaitTime = nullptr, double* BarrierWaitTime = nullptr);
+	WaitResult Wait(double* pThreadWaitTime = nullptr, double* pBarrierWaitTime = nullptr);
 	// Enable barrier
 	void Activate();
 	// Disable barrier (no blocking operation performed anymore)

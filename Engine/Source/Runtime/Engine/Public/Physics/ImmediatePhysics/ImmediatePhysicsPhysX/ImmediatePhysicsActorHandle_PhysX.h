@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,11 +19,6 @@ namespace ImmediatePhysics_PhysX
 		void SetWorldTransform(const FTransform& WorldTM)
 		{
 			OwningSimulation.GetLowLevelBody(ActorDataIndex).body2World = U2PTransform(ActorToBody * WorldTM);
-		}
-
-		void InitWorldTransform(const FTransform& WorldTM)
-		{
-			SetWorldTransform(WorldTM);
 		}
 
 		/** Make a body kinematic, or non-kinematic */

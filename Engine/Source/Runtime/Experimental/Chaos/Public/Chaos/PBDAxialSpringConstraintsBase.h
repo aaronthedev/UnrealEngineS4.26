@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Chaos/Array.h"
@@ -58,7 +58,7 @@ class TPBDAxialSpringConstraintsBase
 	}
 	virtual ~TPBDAxialSpringConstraintsBase() {}
 
-	inline TVector<T, d> GetDelta(const TPBDParticles<T, d>& InParticles, const int32 i) const
+	TVector<T, d> GetDelta(const TPBDParticles<T, d>& InParticles, const int32 i) const
 	{
 		const auto& Constraint = MConstraints[i];
 		int32 i1 = Constraint[0];
@@ -73,13 +73,12 @@ class TPBDAxialSpringConstraintsBase
 		const TVector<T, d> P = (P2 - P3) * MBarys[i] + P3;
 		TVector<T, d> Difference = P1 - P;
 		float Distance = Difference.Size();
-		if (UNLIKELY(Distance <= SMALL_NUMBER))
-			return TVector<T, d>((T) 0);
+		check(Distance > 1e-7);
 		TVector<T, d> Direction = Difference / Distance;
 		TVector<T, d> Delta = (Distance - MDists[i]) * Direction;
-		T CombinedInvMass = PInvMass + InParticles.InvM(i1);
-		ensure(CombinedInvMass > 1e-7);
-		return MStiffness * Delta / CombinedInvMass;
+		T CombinedMass = PInvMass + InParticles.InvM(i1);
+		check(CombinedMass > 1e-7);
+		return MStiffness * Delta / CombinedMass;
 	}
 
   private:
@@ -100,6 +99,8 @@ class TPBDAxialSpringConstraintsBase
   protected:
 	TArray<TVector<int32, 3>> MConstraints;
 	TArray<T> MBarys;
+
+  private:
 	TArray<T> MDists;
 	T MStiffness;
 };

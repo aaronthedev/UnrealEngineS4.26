@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // port of geometry3Sharp Ray3
 
@@ -62,7 +62,7 @@ public:
 	}
 
 	/**
-	 * @return smallest squared distance from ray to QueryPoint
+	 * @return smallest squared distance from line to QueryPoint
 	 */
 	inline RealType DistanceSquared(const FVector3<RealType>& QueryPoint) const
 	{
@@ -76,14 +76,6 @@ public:
 			FVector3<RealType> NearestPt = Origin + LineParam * Direction;
 			return NearestPt.DistanceSquared(QueryPoint);
 		}
-	}
-
-	/**
-	 * @return smallest squared distance from ray to QueryPoint
-	 */
-	inline RealType Distance(const FVector3<RealType>& QueryPoint) const
-	{
-		return TMathUtil<RealType>::Sqrt(DistanceSquared(QueryPoint));
 	}
 
 	/**
@@ -106,14 +98,14 @@ public:
 
 	// conversion operators
 
-	explicit inline operator FRay() const
+	inline operator FRay() const
 	{
 		return FRay((FVector)Origin, (FVector)Direction);
 	}
 	inline TRay3(const FRay & RayIn)
 	{
-		Origin = FVector3<RealType>(RayIn.Origin);
-		Direction = FVector3<RealType>(RayIn.Direction);
+		Origin = (FVector3<RealType>)RayIn.Origin;
+		Direction = (FVector3<RealType>)RayIn.Direction;
 	}
 
 

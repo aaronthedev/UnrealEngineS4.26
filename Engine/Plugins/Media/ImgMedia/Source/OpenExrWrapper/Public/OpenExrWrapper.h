@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -31,8 +31,6 @@ public:
 	FIntPoint GetDataWindow() const;
 	FFrameRate GetFrameRate(const FFrameRate& DefaultValue) const;
 	int32 GetUncompressedSize() const;
-	int32 GetNumChannels() const;
-
 	bool IsComplete() const;
 	void ReadPixels(int32 StartY, int32 EndY);
 	void SetFrameBuffer(void* Buffer, const FIntPoint& Stride);

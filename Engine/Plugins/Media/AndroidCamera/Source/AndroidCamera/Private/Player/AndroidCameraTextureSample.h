@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -142,7 +142,7 @@ public:
 			return Texture;
 		}
 
-		const ETextureCreateFlags CreateFlags = TexCreate_Dynamic | TexCreate_SRGB;
+		const uint32 CreateFlags = TexCreate_Dynamic | TexCreate_SRGB;
 
 		TRefCountPtr<FRHITexture2D> DummyTexture2DRHI;
 		FRHIResourceCreateInfo CreateInfo;
@@ -218,9 +218,9 @@ public:
 
 #endif //WITH_ENGINE
 
-	virtual FMediaTimeStamp GetTime() const override
+	virtual FTimespan GetTime() const override
 	{
-		return FMediaTimeStamp(Time);
+		return Time;
 	}
 
 	virtual bool IsCacheable() const override

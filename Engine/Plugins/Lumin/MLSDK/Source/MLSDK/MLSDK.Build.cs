@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -9,9 +9,11 @@ public class MLSDK : ModuleRules
 	public MLSDK(ReadOnlyTargetRules Target) : base(Target)
 	{
 		// Needed for FVector, FQuat and FTransform used in MagicLeapMath.h
-		PublicDependencyModuleNames.Add("Core");
+		PrivateDependencyModuleNames.Add("Core");
 		// Include headers to be public to other modules.
 		PublicIncludePaths.Add(Path.Combine(ModuleDirectory, "Public"));
+
+		Type = ModuleType.External;
 
 		LuminSDKVersionHelper SDKVersionHelper = new LuminSDKVersionHelper();
 		string MLSDKPath = System.Environment.GetEnvironmentVariable("MLSDK");

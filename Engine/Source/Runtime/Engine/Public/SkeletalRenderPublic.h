@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	SkeletalRenderPublic.h: Definitions and inline code for rendering SkeletalMeshComponent
@@ -41,6 +41,31 @@ enum class EPreviousBoneTransformUpdateMode
 	UpdatePrevious,
 
 	DuplicateCurrentToPrevious,
+};
+
+struct FCachedGeometrySection
+{
+	FRHIShaderResourceView* PositionBuffer = nullptr;
+	FRHIShaderResourceView* IndexBuffer = nullptr;
+	uint32 NumPrimitives = 0;
+	uint32 VertexBaseIndex = 0;
+	uint32 IndexBaseIndex = 0;
+	uint32 TotalVertexCount = 0;
+	uint32 TotalIndexCount = 0;
+	uint32 SectionIndex = 0;
+	int32 LODIndex = 0;
+};
+
+struct FCachedGeometry
+{
+	int32 LODIndex = 0;
+	TArray<FCachedGeometrySection> Sections;
+
+	void Reset()
+	{
+		LODIndex = 0;
+		Sections.Empty();
+	}
 };
 
 /**
@@ -189,15 +214,16 @@ public:
 	 */
 	void InitLODInfos(const USkinnedMeshComponent* InMeshComponent);
 
-	/**
-	 * Return the ID of the component to which the skeletal mesh object belongs to.
-	 */
-	FORCEINLINE uint32 GetComponentId() const { return ComponentId; }
-
-	FORCEINLINE TStatId GetStatId() const { return StatId; }
+	FORCEINLINE TStatId GetStatId() const 
+	{ 
+		return StatId; 
+	}
 
 	/** Get the skeletal mesh resource for which this mesh object was created. */
 	FORCEINLINE FSkeletalMeshRenderData& GetSkeletalMeshRenderData() const { return *SkeletalMeshRenderData; }
+
+	/** Set callback data for register/unregister/update events  */
+	virtual void SetCallbackData(struct FSkeletalMeshObjectCallbackData& CallbackData) {};
 
 #if RHI_RAYTRACING
 	/** Retrieve ray tracing geometry from the underlying mesh object */
@@ -205,6 +231,8 @@ public:
 	virtual const FRayTracingGeometry* GetRayTracingGeometry() const { return nullptr; }
 	virtual FRWBuffer* GetRayTracingDynamicVertexBuffer() { return nullptr; }
 #endif // RHI_RAYTRACING
+
+	virtual FCachedGeometry GetCachedGeometry() const { return FCachedGeometry(); };
 
 	/** Called to notify clothing data that component transform has changed */
 	virtual void RefreshClothingTransforms(const FMatrix& InNewLocalToWorld, uint32 FrameNumber) {};
@@ -291,7 +319,4 @@ protected:
 
 	/** Feature level to render for. */
 	ERHIFeatureLevel::Type FeatureLevel;
-
-	/** Component ID to which belong this  mesh object  */
-	uint32 ComponentId;
 };

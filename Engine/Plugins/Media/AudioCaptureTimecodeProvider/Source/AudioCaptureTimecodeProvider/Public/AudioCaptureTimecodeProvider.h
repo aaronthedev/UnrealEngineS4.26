@@ -1,8 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
-#include "GenlockedTimecodeProvider.h"
+#include "Engine/TimecodeProvider.h"
 
 #include "Misc/FrameRate.h"
 #include "DropTimecode.h"
@@ -13,7 +13,7 @@
  * Read the LTC from the audio capture device.
  */
 UCLASS(Blueprintable, editinlinenew)
-class AUDIOCAPTURETIMECODEPROVIDER_API UAudioCaptureTimecodeProvider : public UGenlockedTimecodeProvider
+class AUDIOCAPTURETIMECODEPROVIDER_API UAudioCaptureTimecodeProvider : public UTimecodeProvider
 {
 	GENERATED_UCLASS_BODY()
 
@@ -43,7 +43,8 @@ public:
 
 public:
 	//~ UTimecodeProvider interface
-	virtual bool FetchTimecode(FQualifiedFrameTime& OutFrameTime) override;
+	virtual FTimecode GetTimecode() const override;
+	virtual FFrameRate GetFrameRate() const override;
 	virtual ETimecodeProviderSynchronizationState GetSynchronizationState() const override { return SynchronizationState; }
 	virtual bool Initialize(class UEngine* InEngine) override;
 	virtual void Shutdown(class UEngine* InEngine) override;
@@ -52,9 +53,6 @@ public:
 	virtual void BeginDestroy() override;
 	
 private:
-	FTimecode GetTimecodeInternal() const;
-	FFrameRate GetFrameRateInternal() const;
-
 	/** Audio capture object dealing with getting audio callbacks */
 	struct FLinearTimecodeAudioCaptureCustomTimeStepImplementation;
 	friend FLinearTimecodeAudioCaptureCustomTimeStepImplementation;

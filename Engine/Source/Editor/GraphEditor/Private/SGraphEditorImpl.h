@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,8 +19,6 @@ struct FEdGraphEditAction;
 struct FGraphContextMenuArguments;
 struct FNotificationInfo;
 struct Rect;
-struct FToolMenuSection;
-class UGraphNodeContextMenuContext;
 
 
 /** Struct used for generically aligning nodes */
@@ -256,7 +254,6 @@ public:
 
 	virtual FReply OnFocusReceived( const FGeometry& MyGeometry, const FFocusEvent& InFocusEvent ) override;
 	virtual FReply OnMouseButtonDown( const FGeometry& MyGeometry, const FPointerEvent& MouseEvent ) override;
-	virtual FReply OnMouseMove( const FGeometry& MyGeometry, const FPointerEvent& MouseEvent ) override;
 	virtual FReply OnKeyDown( const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent ) override;
 	virtual bool SupportsKeyboardFocus() const override;
 	// End of SWidget interface
@@ -266,7 +263,6 @@ public:
 	virtual void ClearSelectionSet() override;
 	virtual void SetNodeSelection(UEdGraphNode* Node, bool bSelect) override;
 	virtual void SelectAllNodes() override;
-
 	virtual FVector2D GetPasteLocation() const override;
 	virtual bool IsNodeTitleVisible( const UEdGraphNode* Node, bool bRequestRename ) override;
 	virtual void JumpToNode( const UEdGraphNode* JumpToMe, bool bRequestRename = false, bool bSelectNode = true ) override;
@@ -287,7 +283,7 @@ public:
 	virtual void SetPinVisibility(SGraphEditor::EPinVisibility Visibility) override;
 	virtual TSharedRef<FActiveTimerHandle> RegisterActiveTimer(float TickPeriod, FWidgetActiveTimerDelegate TickFunction) override;
 	virtual void StraightenConnections() override;
-	virtual void StraightenConnections(UEdGraphPin* SourcePin, UEdGraphPin* PinToAlign) const override;
+	virtual void StraightenConnections(UEdGraphPin* SourcePin, UEdGraphPin* PinToAlign) override;
 	virtual void RefreshNode(UEdGraphNode& Node) override;
 	virtual void CaptureKeyboard() override;
 	virtual void SetNodeFactory(const TSharedRef<class FGraphNodeFactory>& NewNodeFactory) override;
@@ -313,12 +309,11 @@ protected:
 	// 
 	bool CanReconstructNodes() const;
 	bool CanBreakNodeLinks() const;
-	bool CanSummonCreateNodeMenu() const;
+	bool CanBreakPinLinks() const;
 
 	void ReconstructNodes();
 	void BreakNodeLinks();
-
-	void SummonCreateNodeMenu();
+	void BreakPinLinks(bool bSendNodeNotification);
 
 	// SGraphEditor interface
 	virtual void OnGraphChanged( const FEdGraphEditAction& InAction ) override;
@@ -342,21 +337,12 @@ private:
 	void RegisterContextMenu(const class UEdGraphSchema* Schema, struct FToolMenuContext& MenuContext) const;
 	class UToolMenu* GenerateContextMenu(const class UEdGraphSchema* Schema, struct FToolMenuContext& MenuContext) const;
 
+	static void RegisterContextMenuFor_EdGraphSchema(const FName ParentMenuName);
 	static FName GetNodeParentContextMenuName(UClass* InClass);
 	static FName GetNodeContextMenuName(UClass* InClass);
 	static void AddContextMenuCommentSection(UToolMenu* InMenu);
 
-	void GetPinContextMenuActionsForSchema(UToolMenu* InMenu) const;
-	void ExecuteBreakPinLinks(const FToolMenuContext& InContext) const;
-	bool IsBreakPinLinksVisible(const FToolMenuContext& InContext) const;
-	bool HasAnyLinkedPins(const FToolMenuContext& InContext) const;
-
-	void ExecuteSelectConnectedNodesFromPin(const FToolMenuContext& InContext) const;
-	void SelectAllNodesInDirection(const UEdGraphPin* InGraphPin) const;
-	bool IsSelectConnectedNodesFromPinVisible(const FToolMenuContext& InContext, EEdGraphPinDirection DirectionToSelect) const;
-
 private:
 	bool bIsActiveTimerRegistered;
-	uint32 NumNodesAddedSinceLastPointerPosition;
 };
 

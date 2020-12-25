@@ -1,10 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PhysicsEngine/PhysSubstepTasks.h"
 #include "PhysicsEngine/PhysicsSettings.h"
 #include "Physics/PhysScene_PhysX.h"
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 #include "PhysXPublic.h"
 
 uint8* PhysXCompletionTask::GetScratchBufferData()
@@ -39,7 +39,7 @@ struct FSubstepCallbackGuard
 #endif
 };
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 FPhysSubstepTask::FPhysSubstepTask(PxApexScene * GivenScene, FPhysScene* InPhysScene) :
 	NumSubsteps(0),
 	SubTime(0.f),
@@ -231,7 +231,7 @@ void FPhysSubstepTask::ApplyCustomPhysics(const FPhysTarget& PhysTarget, FBodyIn
 #endif
 }
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 bool IsKinematicHelper(const PxRigidBody* PRigidBody)
 {
 	const bool bIsKinematic = PRigidBody->getRigidBodyFlags() & PxRigidBodyFlag::eKINEMATIC;
@@ -354,7 +354,7 @@ void FPhysSubstepTask::InterpolateKinematicActor_AssumesLocked(const FPhysTarget
 
 void FPhysSubstepTask::SubstepInterpolation(float InAlpha, float DeltaTime)
 {
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 #if WITH_APEX
 	SCOPED_APEX_SCENE_WRITE_LOCK(PAScene);
 	PxScene * PScene = PAScene->getPhysXScene();
@@ -426,7 +426,7 @@ float FPhysSubstepTask::UpdateTime(float UseDelta)
 	return SubTime;
 }
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 void FPhysSubstepTask::StepSimulation(PhysXCompletionTask * Task)
 {
 	check(SubTime > 0.f);
@@ -449,7 +449,7 @@ void FPhysSubstepTask::SubstepSimulationStart()
 {
 	SCOPE_CYCLE_COUNTER(STAT_TotalPhysicsTime);
 	SCOPE_CYCLE_COUNTER(STAT_SubstepSimulationStart);
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 	check(SubTime > 0.f);
 	check(DeltaSeconds > 0.f);
 	
@@ -505,7 +505,7 @@ void FPhysSubstepTask::SubstepSimulationStart()
 
 void FPhysSubstepTask::SubstepSimulationEnd(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 {
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 	CompletionEvent = NULL;
 	if (CurrentSubStep < NumSubsteps)
 	{

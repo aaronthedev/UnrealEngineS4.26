@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Sections/EventSection.h"
 #include "MovieSceneEventUtils.h"
@@ -180,7 +180,7 @@ int32 FEventTriggerSection::OnPaintSection(FSequencerSectionPainter& Painter) co
 	return LayerId + 3;
 }
 
-FReply FEventTriggerSection::OnKeyDoubleClicked(const TArray<FKeyHandle>& KeyHandles)
+FReply FEventTriggerSection::OnKeyDoubleClicked(FKeyHandle KeyHandle)
 {
 	UMovieSceneEventTriggerSection* EventTriggerSection = Cast<UMovieSceneEventTriggerSection>( WeakSection.Get() );
 	if (!EventTriggerSection)
@@ -204,28 +204,24 @@ FReply FEventTriggerSection::OnKeyDoubleClicked(const TArray<FKeyHandle>& KeyHan
 	}
 
 	TMovieSceneChannelData<FMovieSceneEvent> ChannelData = EventTriggerSection->EventChannel.GetData();
-	for (FKeyHandle KeyHandle : KeyHandles)
+	const int32 EventIndex = ChannelData.GetIndex(KeyHandle);
+	if (EventIndex == INDEX_NONE)
 	{
-		const int32 EventIndex = ChannelData.GetIndex(KeyHandle);
-		if (EventIndex == INDEX_NONE)
-		{
-			continue;
-		}
+		return FReply::Handled();
+	}
 
-		FMovieSceneEvent* EventEntryPoint = &ChannelData.GetValues()[EventIndex];
-		UK2Node* Endpoint = FMovieSceneEventUtils::FindEndpoint(EventEntryPoint, EventTriggerSection, SequenceDirectorBP);
+	FMovieSceneEvent* EventEntryPoint = &ChannelData.GetValues()[EventIndex];
+	UK2Node* Endpoint = FMovieSceneEventUtils::FindEndpoint(EventEntryPoint, EventTriggerSection, SequenceDirectorBP);
 
-		if (!Endpoint)
-		{
-			FScopedTransaction Transaction(LOCTEXT("CreateEventEndpoint", "Create Event Endpoint"));
-			Endpoint = FMovieSceneEventUtils::BindNewUserFacingEvent(EventEntryPoint, EventTriggerSection, SequenceDirectorBP);
-		}
+	if (!Endpoint)
+	{
+		FScopedTransaction Transaction(LOCTEXT("CreateEventEndpoint", "Create Event Endpoint"));
+		Endpoint = FMovieSceneEventUtils::BindNewUserFacingEvent(EventEntryPoint, EventTriggerSection, SequenceDirectorBP);
+	}
 
-		if (Endpoint)
-		{
-			FKismetEditorUtilities::BringKismetToFocusAttentionOnObject(Endpoint, false);
-			return FReply::Handled();
-		}
+	if (Endpoint)
+	{
+		FKismetEditorUtilities::BringKismetToFocusAttentionOnObject(Endpoint, false);
 	}
 
 	return FReply::Handled();

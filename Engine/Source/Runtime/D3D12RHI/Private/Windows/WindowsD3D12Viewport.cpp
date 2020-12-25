@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	D3D12Viewport.cpp: D3D viewport RHI implementation.
@@ -14,15 +14,7 @@
 
 static const uint32 WindowsDefaultNumBackBuffers = 3;
 
-extern FD3D12Texture2D* GetSwapChainSurface(FD3D12Device* Parent, EPixelFormat PixelFormat, uint32 SizeX, uint32 SizeY, IDXGISwapChain* SwapChain, uint32 BackBufferIndex, TRefCountPtr<ID3D12Resource> BackBufferResourceOverride);
-
-static int32 GD3D12UseAllowTearing = 1;
-static FAutoConsoleVariableRef CVarD3DUseAllowTearing(
-	TEXT("r.D3D12.UseAllowTearing"),
-	GD3D12UseAllowTearing,
-	TEXT("Enable new dxgi flip mode with d3d12"),
-	ECVF_RenderThreadSafe | ECVF_ReadOnly
-);
+extern FD3D12Texture2D* GetSwapChainSurface(FD3D12Device* Parent, EPixelFormat PixelFormat, uint32 SizeX, uint32 SizeY, IDXGISwapChain* SwapChain, uint32 BackBufferIndex);
 
 FD3D12Viewport::FD3D12Viewport(class FD3D12Adapter* InParent, HWND InWindowHandle, uint32 InSizeX, uint32 InSizeY, bool bInIsFullscreen, EPixelFormat InPreferredPixelFormat) :
 	FD3D12AdapterChild(InParent),
@@ -36,20 +28,17 @@ FD3D12Viewport::FD3D12Viewport(class FD3D12Adapter* InParent, HWND InWindowHandl
 	SizeX(InSizeX),
 	SizeY(InSizeY),
 	bIsFullscreen(bInIsFullscreen),
-	bFullscreenLost(false),
 	PixelFormat(InPreferredPixelFormat),
 	bIsValid(true),
 	bHDRMetaDataSet(false),
 	ColorSpace(DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709),
 	NumBackBuffers(WindowsDefaultNumBackBuffers),
-	DummyBackBuffer_RenderThread(nullptr),
+	BackbufferMultiGPUBinding(0),
+	CurrentBackBufferIndex_RenderThread(0),
+	BackBuffer_RenderThread(nullptr),
 	CurrentBackBufferIndex_RHIThread(0),
 	BackBuffer_RHIThread(nullptr),
-#if WITH_MGPU
-	BackbufferMultiGPUBinding(0),
-	ExpectedBackBufferIndex_RenderThread(0),
-#endif //WITH_MGPU
-	SDRDummyBackBuffer_RenderThread(nullptr),
+	SDRBackBuffer_RenderThread(nullptr),
 	SDRBackBuffer_RHIThread(nullptr),
 	SDRPixelFormat(PF_B8G8R8A8),
 	Fence(InParent, FRHIGPUMask::All(), L"Viewport Fence"),
@@ -70,19 +59,16 @@ void FD3D12Viewport::Init()
 
 	bAllowTearing = false;
 	IDXGIFactory* Factory = Adapter->GetDXGIFactory2();
-	if (GD3D12UseAllowTearing)
+	if(Factory)
 	{
-		if (Factory)
+		TRefCountPtr<IDXGIFactory5> Factory5;
+		Factory->QueryInterface(IID_PPV_ARGS(Factory5.GetInitReference()));
+		if (Factory5.IsValid())
 		{
-			TRefCountPtr<IDXGIFactory5> Factory5;
-			Factory->QueryInterface(IID_PPV_ARGS(Factory5.GetInitReference()));
-			if (Factory5.IsValid())
+			BOOL AllowTearing;
+			if(SUCCEEDED(Factory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &AllowTearing, sizeof(AllowTearing))) && AllowTearing)
 			{
-				BOOL AllowTearing;
-				if (SUCCEEDED(Factory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &AllowTearing, sizeof(AllowTearing))) && AllowTearing)
-				{
-					bAllowTearing = true;
-				}
+				bAllowTearing = true;
 			}
 		}
 	}
@@ -211,19 +197,7 @@ void FD3D12Viewport::Init()
 				ID3D12CommandQueue* pCommandQueue = Adapter->GetDevice(0)->GetD3DCommandQueue();
 
 				TRefCountPtr<IDXGISwapChain> SwapChain;
-				HRESULT hr = Adapter->GetDXGIFactory2()->CreateSwapChain(pCommandQueue, &SwapChainDesc, SwapChain.GetInitReference());
-				if (FAILED(hr))
-				{
-					UE_LOG(LogD3D12RHI, Warning, TEXT("Failed to create swapchain with the following parameters:"));
-					UE_LOG(LogD3D12RHI, Warning, TEXT("\tDXGI_MODE_DESC: width: %d height: %d DXGI format: %d"), SwapChainDesc.BufferDesc.Width, SwapChainDesc.BufferDesc.Height, SwapChainDesc.BufferDesc.Format);
-					UE_LOG(LogD3D12RHI, Warning, TEXT("\tBack buffer count: %d"), NumBackBuffers);
-					UE_LOG(LogD3D12RHI, Warning, TEXT("\tWindows handle: 0x%x (IsWindow: %s)"), WindowHandle, IsWindow(WindowHandle) ? TEXT("true") : TEXT("false"));
-					UE_LOG(LogD3D12RHI, Warning, TEXT("\tFullscreen: %s"), bIsFullscreen ? TEXT("true") : TEXT("false"));
-					UE_LOG(LogD3D12RHI, Warning, TEXT("\tSwapchain flags: %d"), SwapChainFlags);
-
-					VERIFYD3D12RESULT(hr);
-				}
-				
+				VERIFYD3D12RESULT(Adapter->GetDXGIFactory2()->CreateSwapChain(pCommandQueue, &SwapChainDesc, SwapChain.GetInitReference()));
 				VERIFYD3D12RESULT(SwapChain->QueryInterface(IID_PPV_ARGS(SwapChain1.GetInitReference())));
 
 				// Get a SwapChain4 if supported.
@@ -250,62 +224,36 @@ void FD3D12Viewport::Init()
 	// : END HoloLens support
 }
 
-void FD3D12Viewport::FinalDestroyInternal()
-{
-}
-
 void FD3D12Viewport::ConditionalResetSwapChain(bool bIgnoreFocus)
 {
 	if (!bIsValid)
 	{
-		if (bFullscreenLost)
+		// Check if the viewport's window is focused before resetting the swap chain's fullscreen state.
+		HWND FocusWindow = ::GetFocus();
+		const bool bIsFocused = FocusWindow == WindowHandle;
+		const bool bIsIconic = !!::IsIconic(WindowHandle);
+		if (bIgnoreFocus || (bIsFocused && !bIsIconic))
 		{
 			FlushRenderingCommands();
-			bFullscreenLost = false;
-			Resize(SizeX, SizeY, false, PixelFormat);
-		}
-		else
-		{
-#if !PLATFORM_HOLOLENS
-			// Check if the viewport's window is focused before resetting the swap chain's fullscreen state.
-			HWND FocusWindow = ::GetFocus();
-			const bool bIsFocused = FocusWindow == WindowHandle;
-			const bool bIsIconic = !!::IsIconic(WindowHandle);
-			if (bIgnoreFocus || (bIsFocused && !bIsIconic))
-#endif
+
+			HRESULT Result = SwapChain1->SetFullscreenState(bIsFullscreen, nullptr);
+			if (SUCCEEDED(Result))
 			{
-				FlushRenderingCommands();
-
-				HRESULT Result = SwapChain1->SetFullscreenState(bIsFullscreen, nullptr);
-				if (SUCCEEDED(Result))
+				bIsValid = true;
+			}
+			else if (Result != DXGI_ERROR_NOT_CURRENTLY_AVAILABLE && Result != DXGI_STATUS_MODE_CHANGE_IN_PROGRESS)
+			{
+				const TCHAR* Name = nullptr;
+				switch (Result)
 				{
-					bIsValid = true;
-				}
-				else if (Result != DXGI_ERROR_NOT_CURRENTLY_AVAILABLE && Result != DXGI_STATUS_MODE_CHANGE_IN_PROGRESS)
-				{
-					const TCHAR* Name = nullptr;
-					switch (Result)
-					{
 #define CASE_ERROR_NAME(x)	case x: Name = TEXT(#x); break
-						EMBED_DXGI_ERROR_LIST(CASE_ERROR_NAME, ;)
+					EMBED_DXGI_ERROR_LIST(CASE_ERROR_NAME, ;)
 #undef CASE_ERROR_NAME
-					default:
-						Name = TEXT("unknown error status");
-						break;
-					}
-					UE_LOG(LogD3D12RHI, Error, TEXT("IDXGISwapChain::SetFullscreenState returned 0x%08x, %s."), Result, Name);
-
-					if (bIsFullscreen)
-					{
-						// Something went wrong, attempt to proceed in windowed mode.
-						Result = SwapChain1->SetFullscreenState(FALSE, nullptr);
-						if (SUCCEEDED(Result))
-						{
-							bIsValid = true;
-							bIsFullscreen = false;
-						}
-					}
+				default:
+					Name = TEXT("unknown error status");
+					break;
 				}
+				UE_LOG(LogD3D12RHI, Error, TEXT("IDXGISwapChain::SetFullscreenState returned 0x%08x, %s."), Result, Name);
 			}
 		}
 	}
@@ -360,7 +308,7 @@ void FD3D12Viewport::ResizeInternal()
 			FD3D12Device* Device = Adapter->GetDevice(GPUIndex);
 
 			check(BackBuffers[i].GetReference() == nullptr);
-			BackBuffers[i] = GetSwapChainSurface(Device, PixelFormat, SizeX, SizeY, SwapChain1, i, nullptr);
+			BackBuffers[i] = GetSwapChainSurface(Device, PixelFormat, SizeX, SizeY, SwapChain1, i);
 		}
 	}
 	else
@@ -368,29 +316,24 @@ void FD3D12Viewport::ResizeInternal()
 	{
 		if (SwapChain1)
 		{
-			auto Lambda = [=]() -> FString
-			{
-				return FString::Printf(TEXT("Num=%d, Size=(%d,%d), PF=%d, DXGIFormat=0x%x, Flags=0x%x"), NumBackBuffers, SizeX, SizeY, (int32)PixelFormat, (int32)GetRenderTargetFormat(PixelFormat), SwapChainFlags);
-			};
-
-			VERIFYD3D12RESULT_LAMBDA(SwapChain1->ResizeBuffers(NumBackBuffers, SizeX, SizeY, GetRenderTargetFormat(PixelFormat), SwapChainFlags), Adapter->GetD3DDevice(), Lambda);
+			VERIFYD3D12RESULT_EX(SwapChain1->ResizeBuffers(NumBackBuffers, SizeX, SizeY, GetRenderTargetFormat(PixelFormat), SwapChainFlags), Adapter->GetD3DDevice());
 		}
 
 		FD3D12Device* Device = Adapter->GetDevice(0);
 		for (uint32 i = 0; i < NumBackBuffers; ++i)
 		{
 			check(BackBuffers[i].GetReference() == nullptr);
-			BackBuffers[i] = GetSwapChainSurface(Device, PixelFormat, SizeX, SizeY, SwapChain1, i, nullptr);
+			BackBuffers[i] = GetSwapChainSurface(Device, PixelFormat, SizeX, SizeY, SwapChain1, i);
 		}
 	}
 
+	CurrentBackBufferIndex_RenderThread = 0;
+	BackBuffer_RenderThread = BackBuffers[CurrentBackBufferIndex_RenderThread].GetReference();
 	CurrentBackBufferIndex_RHIThread = 0;
 	BackBuffer_RHIThread = BackBuffers[CurrentBackBufferIndex_RHIThread].GetReference();
-	SDRBackBuffer_RHIThread = SDRBackBuffers[CurrentBackBufferIndex_RHIThread].GetReference();
 
-	// Create dummy back buffer which always reference to the actual RHI thread back buffer - can't be bound directly to D3D12
-	DummyBackBuffer_RenderThread = CreateDummyBackBufferTextures(Adapter, PixelFormat, SizeX, SizeY, false);
-	SDRDummyBackBuffer_RenderThread = (SDRBackBuffer_RHIThread != nullptr) ? CreateDummyBackBufferTextures(Adapter, PixelFormat, SizeX, SizeY, true) : nullptr;
+	SDRBackBuffer_RenderThread = SDRBackBuffers[CurrentBackBufferIndex_RenderThread].GetReference();
+	SDRBackBuffer_RHIThread = SDRBackBuffers[CurrentBackBufferIndex_RHIThread].GetReference();
 }
 
 HRESULT FD3D12Viewport::PresentInternal(int32 SyncInterval)
@@ -484,7 +427,7 @@ bool FD3D12Viewport::CurrentOutputSupportsHDR() const
 		{
 			if (!DxgiFactory2->IsCurrent())
 			{
-				Adapter->CreateDXGIFactory(false);
+				Adapter->CreateDXGIFactory();
 			}
 
 			check(Adapter->GetDXGIFactory2()->IsCurrent());

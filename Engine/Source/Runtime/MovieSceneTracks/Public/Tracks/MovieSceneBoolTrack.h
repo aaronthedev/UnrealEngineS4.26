@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "Tracks/MovieScenePropertyTrack.h"
-#include "Compilation/IMovieSceneTrackTemplateProducer.h"
 #include "MovieSceneBoolTrack.generated.h"
 
 /**
@@ -14,7 +13,6 @@
 UCLASS( MinimalAPI )
 class UMovieSceneBoolTrack
 	: public UMovieScenePropertyTrack
-	, public IMovieSceneTrackTemplateProducer
 {
 	GENERATED_BODY()
 

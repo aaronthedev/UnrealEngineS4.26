@@ -1,10 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SUSDPrimPropertiesList.h"
 
-#include "SUSDStageEditorStyle.h"
 #include "UnrealUSDWrapper.h"
-#include "USDLog.h"
 #include "USDMemory.h"
 #include "USDStageActor.h"
 #include "USDStageModule.h"
@@ -13,9 +11,14 @@
 #include "EditorStyleSet.h"
 #include "Engine/World.h"
 #include "Modules/ModuleManager.h"
-#include "ScopedTransaction.h"
 
 #if USE_USD_SDK
+#include "USDIncludesStart.h"
+
+#include "pxr/usd/usd/prim.h"
+
+#include "USDIncludesEnd.h"
+
 
 #define LOCTEXT_NAMESPACE "SUsdPrimPropertiesList"
 
@@ -23,195 +26,159 @@ namespace UsdPrimPropertiesListConstants
 {
 	const FMargin LeftRowPadding( 6.0f, 2.5f, 2.0f, 2.5f );
 	const FMargin RightRowPadding( 3.0f, 2.5f, 2.0f, 2.5f );
-	const FMargin ComboBoxItemPadding( 3.0f, 0.0f, 2.0f, 0.0f );
 
 	const TCHAR* NormalFont = TEXT("PropertyWindow.NormalFont");
 }
 
-namespace UsdPrimPropertiesListImpl
-{
-	static TMap<FString, TArray<TSharedPtr<FString>>> TokenDropdownOptions;
-
-	void ResetOptions( const FString& TokenName )
-	{
-		TokenDropdownOptions.Remove( TokenName );
-	}
-
-	TArray< TSharedPtr< FString > >* GetTokenDropdownOptions( const FUsdPrimAttributeViewModel& ViewModel )
-	{
-		TArray< TSharedPtr< FString> >* FoundOptions = TokenDropdownOptions.Find( ViewModel.Label );
-		if ( FoundOptions )
-		{
-			return FoundOptions;
-		}
-		else
-		{
-			return &UsdPrimPropertiesListImpl::TokenDropdownOptions.Add( ViewModel.Label, ViewModel.GetDropdownOptions() );
-		}
-	}
-}
-
-class SUsdPrimPropertyRow : public SMultiColumnTableRow< TSharedPtr< FUsdPrimAttributeViewModel > >
+class SUsdPrimPropertyRow : public SMultiColumnTableRow< TSharedPtr< FUsdPrimProperty > >
 {
 	SLATE_BEGIN_ARGS( SUsdPrimPropertyRow ) {}
 	SLATE_END_ARGS()
 
 public:
-	void Construct( const FArguments& InArgs, const TSharedPtr< FUsdPrimAttributeViewModel >& InUsdPrimProperty, const TSharedRef< STableViewBase >& OwnerTable );
+	void Construct( const FArguments& InArgs, const TSharedPtr< FUsdPrimProperty >& InUsdPrimProperty, const TSharedRef< STableViewBase >& OwnerTable );
 	virtual TSharedRef< SWidget > GenerateWidgetForColumn( const FName& ColumnName ) override;
 
-	void SetUsdPrimProperty( const TSharedPtr< FUsdPrimAttributeViewModel >& InUsdPrimProperty );
+	void SetUsdPrimProperty( const TSharedPtr< FUsdPrimProperty >& InUsdPrimProperty );
 
 protected:
-	FText GetLabel() const { return FText::FromString( UsdPrimAttribute->Label ); }
-	FText GetValue() const { return FText::FromString( UsdPrimAttribute->Value ); }
-	FText GetValueOrNone() const { return FText::FromString( UsdPrimAttribute->Value.IsEmpty()? TEXT("none") : UsdPrimAttribute->Value ); }
-
+	FText GetLabel() const { return FText::FromString( UsdPrimProperty->Label ); }
+	FText GetValue() const { return FText::FromString( UsdPrimProperty->Value ); }
+	
 private:
-	TSharedRef< SWidget > GenerateTextWidget(const TAttribute<FText>& Attribute);
-
-	TSharedPtr< FUsdPrimAttributeViewModel > UsdPrimAttribute;
+	TSharedPtr< FUsdPrimProperty > UsdPrimProperty;
 };
 
-void SUsdPrimPropertyRow::Construct( const FArguments& InArgs, const TSharedPtr< FUsdPrimAttributeViewModel >& InUsdPrimProperty, const TSharedRef< STableViewBase >& OwnerTable )
+void SUsdPrimPropertyRow::Construct( const FArguments& InArgs, const TSharedPtr< FUsdPrimProperty >& InUsdPrimProperty, const TSharedRef< STableViewBase >& OwnerTable )
 {
 	SetUsdPrimProperty( InUsdPrimProperty );
 
-	SMultiColumnTableRow< TSharedPtr< FUsdPrimAttributeViewModel > >::Construct( SMultiColumnTableRow< TSharedPtr< FUsdPrimAttributeViewModel > >::FArguments(), OwnerTable );
+	SMultiColumnTableRow< TSharedPtr< FUsdPrimProperty > >::Construct( SMultiColumnTableRow< TSharedPtr< FUsdPrimProperty > >::FArguments(), OwnerTable );
 }
 
 TSharedRef< SWidget > SUsdPrimPropertyRow::GenerateWidgetForColumn( const FName& ColumnName )
-{
+{	
 	TSharedRef< SWidget > ColumnWidget = SNullWidget::NullWidget;
 
 	if ( ColumnName == TEXT("PropertyName") )
 	{
-		ColumnWidget = SUsdPrimPropertyRow::GenerateTextWidget({this, &SUsdPrimPropertyRow::GetLabel});
+		SAssignNew( ColumnWidget, STextBlock )
+		.Text( this, &SUsdPrimPropertyRow::GetLabel )
+		.Font( FEditorStyle::GetFontStyle( UsdPrimPropertiesListConstants::NormalFont ) )
+		.Margin( UsdPrimPropertiesListConstants::LeftRowPadding );
 	}
 	else
 	{
-		if ( UsdPrimAttribute->WidgetType == EPrimPropertyWidget::Text )
-		{
-			ColumnWidget = GenerateTextWidget( {this, &SUsdPrimPropertyRow::GetValue} );
-		}
-		else if ( UsdPrimAttribute->WidgetType == EPrimPropertyWidget::Dropdown )
-		{
-			TArray< TSharedPtr< FString > >* Options = UsdPrimPropertiesListImpl::GetTokenDropdownOptions( *UsdPrimAttribute );
-
-			// Show a dropdown if we know the available options for that token
-			if ( Options )
-			{
-				SAssignNew( ColumnWidget, SComboBox< TSharedPtr< FString >  >)
-				.OptionsSource( Options )
-				.OnGenerateWidget_Lambda( [&]( TSharedPtr<FString> Option )
-				{
-					return SUsdPrimPropertyRow::GenerateTextWidget( FText::FromString( *Option ) );
-				})
-				.OnSelectionChanged_Lambda( [&]( TSharedPtr<FString> ChosenOption, ESelectInfo::Type SelectInfo )
-				{
-					TSharedPtr< ITypedTableView< TSharedPtr< FUsdPrimAttributeViewModel > > > PinnedParent = OwnerTablePtr.Pin();
-					TSharedPtr< SUsdPrimPropertiesList> ParentList = StaticCastSharedPtr< SUsdPrimPropertiesList >( PinnedParent );
-
-					UsdPrimAttribute->SetAttributeValue( *ChosenOption );
-				})
-				[
-					SNew( STextBlock )
-					.Text( this, &SUsdPrimPropertyRow::GetValueOrNone )
-					.Font( FEditorStyle::GetFontStyle( UsdPrimPropertiesListConstants::NormalFont ) )
-					.Margin( UsdPrimPropertiesListConstants::ComboBoxItemPadding )
-				];
-			}
-			// Fallback to just displaying a simple text box
-			else
-			{
-				ColumnWidget = SUsdPrimPropertyRow::GenerateTextWidget( {this, &SUsdPrimPropertyRow::GetValue} );
-			}
-		}
+		SAssignNew( ColumnWidget, STextBlock )
+		.Text( this, &SUsdPrimPropertyRow::GetValue )
+		.Font( FEditorStyle::GetFontStyle( UsdPrimPropertiesListConstants::NormalFont ) )
+		.Margin( UsdPrimPropertiesListConstants::RightRowPadding );
 	}
 
 	return SNew( SHorizontalBox )
 		+SHorizontalBox::Slot()
 		.HAlign( HAlign_Left )
-		.VAlign( VAlign_Fill )
+		.VAlign( VAlign_Center )
 		.AutoWidth()
 		[
-			SNew(SBox)
-			.HeightOverride( FUsdStageEditorStyle::Get()->GetFloat( "UsdStageEditor.ListItemHeight" ) )
-			.VAlign(VAlign_Center)
-			[
-				ColumnWidget
-			]
+			ColumnWidget
 		];
 }
 
-void SUsdPrimPropertyRow::SetUsdPrimProperty( const TSharedPtr< FUsdPrimAttributeViewModel >& InUsdPrimProperty )
+void SUsdPrimPropertyRow::SetUsdPrimProperty( const TSharedPtr< FUsdPrimProperty >& InUsdPrimProperty )
 {
-	UsdPrimAttribute = InUsdPrimProperty;
-}
-
-TSharedRef< SWidget > SUsdPrimPropertyRow::GenerateTextWidget(const TAttribute<FText>& Attribute)
-{
-	return SNew( SBox )
-		.HeightOverride( FUsdStageEditorStyle::Get()->GetFloat( "UsdStageEditor.ListItemHeight" ) )
-		.VAlign( VAlign_Center )
-		[
-			SNew( STextBlock )
-			.Text( Attribute )
-			.Font( FEditorStyle::GetFontStyle( UsdPrimPropertiesListConstants::NormalFont ) )
-			.Margin( UsdPrimPropertiesListConstants::RightRowPadding )
-		];
+	UsdPrimProperty = InUsdPrimProperty;
 }
 
 void SUsdPrimPropertiesList::Construct( const FArguments& InArgs, const TCHAR* InPrimPath )
 {
+	PrimPath = InPrimPath;
+
 	GeneratePropertiesList( InPrimPath );
 
-	// Clear map as usd file may have additional Kinds now
-	UsdPrimPropertiesListImpl::ResetOptions(TEXT("Kind"));
-
 	SAssignNew( HeaderRowWidget, SHeaderRow )
+	.Visibility( EVisibility::Collapsed )
 
 	+SHeaderRow::Column( FName( TEXT("PropertyName") ) )
-	.DefaultLabel( LOCTEXT( "PropertyName", "Property Name" ) )
-	.FillWidth( 25.f )
+	.FillWidth( 20.f )
 
 	+SHeaderRow::Column( FName( TEXT("PropertyValue") ) )
-	.DefaultLabel( LOCTEXT( "PropertyValue", "Value" ) )
-	.FillWidth( 75.f );
+	.FillWidth( 80.f );
 
 	SListView::Construct
 	(
 		SListView::FArguments()
-		.ListItemsSource( &ViewModel.PrimAttributes )
+		.ListItemsSource( &PrimProperties )
 		.OnGenerateRow( this, &SUsdPrimPropertiesList::OnGenerateRow )
 		.HeaderRow( HeaderRowWidget )
 	);
 }
 
-TSharedRef< ITableRow > SUsdPrimPropertiesList::OnGenerateRow( TSharedPtr< FUsdPrimAttributeViewModel > InDisplayNode, const TSharedRef< STableViewBase >& OwnerTable )
+TSharedRef< ITableRow > SUsdPrimPropertiesList::OnGenerateRow( TSharedPtr< FUsdPrimProperty > InDisplayNode, const TSharedRef< STableViewBase >& OwnerTable )
 {
 	return SNew( SUsdPrimPropertyRow, InDisplayNode, OwnerTable );
 }
 
 void SUsdPrimPropertiesList::GeneratePropertiesList( const TCHAR* InPrimPath )
 {
-	float TimeCode = 0.f;
+	PrimProperties.Reset();
 
-	IUsdStageModule& UsdStageModule = FModuleManager::Get().LoadModuleChecked< IUsdStageModule >( "UsdStage" );
-	AUsdStageActor* UsdStageActor = &UsdStageModule.GetUsdStageActor( GWorld );
+	FString PrimName;
+	FString PrimKind;
 
-	if ( UsdStageActor )
 	{
-		TimeCode = UsdStageActor->GetTime();
-		ViewModel.UsdStage = UsdStageActor->GetUsdStage();
+		IUsdStageModule& UsdStageModule = FModuleManager::Get().LoadModuleChecked< IUsdStageModule >( "UsdStage" );
+		AUsdStageActor* UsdStageActor = &UsdStageModule.GetUsdStageActor( GWorld );
+
+		if ( UsdStageActor )
+		{
+			FScopedUsdAllocs UsdAllocs;
+
+			pxr::UsdStageRefPtr UsdStage = UsdStageActor->GetUsdStage();
+
+			if ( UsdStage )
+			{
+				pxr::UsdPrim UsdPrim = UsdStage->GetPrimAtPath( UnrealToUsd::ConvertPath( InPrimPath ).Get() );
+
+				if ( UsdPrim )
+				{
+					PrimPath = InPrimPath;
+					PrimName = UsdToUnreal::ConvertString( UsdPrim.GetName() );
+					PrimKind = UsdToUnreal::ConvertString( IUsdPrim::GetKind( UsdPrim ).GetString() );
+				}
+			}
+		}
 	}
 
-	ViewModel.Refresh( InPrimPath, TimeCode );
+	{
+		FUsdPrimProperty PrimNameProperty;
+		PrimNameProperty.Label = TEXT("Name");
+		PrimNameProperty.Value = PrimName;
+	
+		PrimProperties.Add( MakeSharedUnreal< FUsdPrimProperty >( MoveTemp( PrimNameProperty ) ) );
+	}
+
+	{
+		FUsdPrimProperty PrimPathProperty;
+		PrimPathProperty.Label = TEXT("Path");
+		PrimPathProperty.Value = PrimPath;
+
+		PrimProperties.Add( MakeSharedUnreal< FUsdPrimProperty >( MoveTemp( PrimPathProperty ) ) );
+	}
+
+	{
+		FUsdPrimProperty PrimKindProperty;
+		PrimKindProperty.Label = TEXT("Kind");
+		PrimKindProperty.Value = PrimKind;
+
+		PrimProperties.Add( MakeSharedUnreal< FUsdPrimProperty >( MoveTemp( PrimKindProperty ) ) );
+	}
 }
 
 void SUsdPrimPropertiesList::SetPrimPath( const TCHAR* InPrimPath )
 {
-	GeneratePropertiesList( InPrimPath );
+	PrimPath = InPrimPath;
+	GeneratePropertiesList( *PrimPath );
 	RequestListRefresh();
 }
 

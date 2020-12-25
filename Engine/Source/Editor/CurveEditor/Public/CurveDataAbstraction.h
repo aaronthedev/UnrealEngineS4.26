@@ -1,22 +1,18 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreTypes.h"
 #include "CurveEditorTypes.h"
 #include "Curves/RichCurve.h"
-#include "CurveDataAbstraction.generated.h"
 
 struct FSlateBrush;
 
 /**
  * Generic key position information for a key on a curve
  */
-USTRUCT()
 struct FKeyPosition
 {
-	GENERATED_BODY()
-
 	FKeyPosition()
 		: InputValue(0.0), OutputValue(0.0)
 	{}
@@ -26,22 +22,16 @@ struct FKeyPosition
 	{}
 
 	/** The key's input (x-axis) position (i.e. it's time) */
-	UPROPERTY()
 	double InputValue;
-
 	/** The key's output (t-axis) position (i.e. it's value) */
-	UPROPERTY()
 	double OutputValue;
 };
 
 /**
  * Extended attributes that the curve editor understands
  */
-USTRUCT()
 struct FKeyAttributes
 {
-	GENERATED_BODY()
-		
 	FKeyAttributes()
 	{
 		bHasArriveTangent = 0;
@@ -51,13 +41,6 @@ struct FKeyAttributes
 		bHasTangentWeightMode = 0;
 		bHasArriveTangentWeight = 0;
 		bHasLeaveTangentWeight = 0;
-		ArriveTangent = 0.0f;
-		LeaveTangent = 0.0f;
-		InterpMode = RCIM_Linear;
-		TangentMode = RCTM_Auto;
-		TangentWeightMode = RCTWM_WeightedNone;
-		ArriveTangentWeight = 0.0f;
-		LeaveTangentWeight = 0.0f;
 	}
 
 	/**
@@ -150,48 +133,34 @@ struct FKeyAttributes
 private:
 
 	/** True if this key supports entry tangents */
-	UPROPERTY()
 	uint8 bHasArriveTangent : 1;
 	/** True if this key supports exit tangents */
-	UPROPERTY()
 	uint8 bHasLeaveTangent : 1;
 	/** True if this key supports interpolation modes */
-	UPROPERTY()
 	uint8 bHasInterpMode : 1;
 	/** True if this key supports tangent modes */
-	UPROPERTY()
 	uint8 bHasTangentMode : 1;
 	/** True if this key supports tangent modes */
-	UPROPERTY()
 	uint8 bHasTangentWeightMode : 1;
 	/** True if this key supports entry tangents weights*/
-	UPROPERTY()
 	uint8 bHasArriveTangentWeight : 1;
 	/** True if this key supports exit tangents weights*/
-	UPROPERTY()
 	uint8 bHasLeaveTangentWeight : 1;
 
 	/** This key's entry tangent, if bHasArriveTangent */
-	UPROPERTY()
-	float ArriveTangent{};
+	float ArriveTangent;
 	/** This key's exit tangent, if bHasLeaveTangent */
-	UPROPERTY()
-	float LeaveTangent{};
+	float LeaveTangent;
 	/** This key's interpolation mode, if bHasInterpMode */
-	UPROPERTY()
-	TEnumAsByte<ERichCurveInterpMode> InterpMode;
+	ERichCurveInterpMode InterpMode;
 	/** This key's tangent mode, if bHasTangentMode */
-	UPROPERTY()
-	TEnumAsByte<ERichCurveTangentMode> TangentMode;
+	ERichCurveTangentMode TangentMode;
 	/** This key's tangent weight mode, if bHasTangentWeightMode */
-	UPROPERTY()
-	TEnumAsByte<ERichCurveTangentWeightMode> TangentWeightMode;
+	ERichCurveTangentWeightMode TangentWeightMode;
 	/** This key's entry tangent weight, if bHasArriveTangentWeight */
-	UPROPERTY()
-	float ArriveTangentWeight{};
+	float ArriveTangentWeight;
 	/** This key's exit tangent weight, if bHasLeaveTangentWeight */
-	UPROPERTY()
-	float LeaveTangentWeight{};
+	float LeaveTangentWeight;
 
 };
 

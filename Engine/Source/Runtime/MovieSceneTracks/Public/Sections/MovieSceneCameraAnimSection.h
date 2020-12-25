@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -64,6 +64,7 @@ public:
 
 	UMovieSceneCameraAnimSection(const FObjectInitializer& ObjectInitializer);
 
+	virtual FMovieSceneEvalTemplatePtr GenerateTemplate() const override;
 	virtual void PostLoad() override;
 
 	UPROPERTY(EditAnywhere, Category="Camera Anim", meta=(ShowOnlyInnerProperties))

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GoogleARCoreCameraImage.h"
 
@@ -20,6 +20,7 @@ void UGoogleARCoreCameraImage::Release()
 #if PLATFORM_ANDROID
 	if (ArImage)
 	{
+		NdkImage = nullptr;
 		ArImage_release(ArImage);
 		ArImage = nullptr;
 	}
@@ -30,9 +31,9 @@ int32 UGoogleARCoreCameraImage::GetWidth() const
 {
 	int32_t Width = 0;
 #if PLATFORM_ANDROID
-	if (ArImage && SessionHandle)
+	if (NdkImage)
 	{
-		ArImage_getWidth(SessionHandle, ArImage, &Width);
+		AImage_getWidth_dynamic(NdkImage, &Width);
 	}
 #endif
 	return Width;
@@ -42,9 +43,9 @@ int32 UGoogleARCoreCameraImage::GetHeight() const
 {
 	int32_t Height = 0;
 #if PLATFORM_ANDROID
-	if (ArImage && SessionHandle)
+	if (NdkImage)
 	{
-		ArImage_getHeight(SessionHandle, ArImage, &Height);
+		AImage_getHeight_dynamic(NdkImage, &Height);
 	}
 #endif
 	return Height;
@@ -55,26 +56,25 @@ int32 UGoogleARCoreCameraImage::GetPlaneCount() const
 {
 	int32_t PlaneCount = 0;
 #if PLATFORM_ANDROID
-	if (ArImage && SessionHandle)
+	if (NdkImage)
 	{
-		ArImage_getNumberOfPlanes(SessionHandle, ArImage, &PlaneCount);
+		AImage_getNumberOfPlanes_dynamic(NdkImage, &PlaneCount);
 	}
 #endif
 	return PlaneCount;
 }
 
-const uint8 *UGoogleARCoreCameraImage::GetPlaneData(
+uint8 *UGoogleARCoreCameraImage::GetPlaneData(
 	int32 Plane, int32 &PixelStride,
-	int32 &RowStride, int32 &DataLength) const
+	int32 &RowStride, int32 &DataLength)
 {
-	const uint8_t *PlaneData = nullptr;
+	uint8_t *PlaneData = nullptr;
 #if PLATFORM_ANDROID
-	if (ArImage && SessionHandle)
-	{
-		ArImage_getPlanePixelStride(SessionHandle, ArImage, Plane, &PixelStride);
-		ArImage_getPlaneRowStride(SessionHandle, ArImage, Plane, &RowStride);
-		ArImage_getPlaneData(SessionHandle, ArImage, Plane, &PlaneData, &DataLength);
-	}
+	AImage_getPlanePixelStride_dynamic(NdkImage, Plane, &PixelStride);
+	AImage_getPlaneRowStride_dynamic(NdkImage, Plane, &RowStride);
+	AImage_getPlaneData_dynamic(
+		NdkImage, Plane,
+		&PlaneData, &DataLength);
 #endif
 	return PlaneData;
 }

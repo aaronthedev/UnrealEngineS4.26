@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SBlueprintDiff.h"
 #include "Widgets/Layout/SSplitter.h"
@@ -40,7 +40,7 @@ public:
 
 FText RightRevision = LOCTEXT("OlderRevisionIdentifier", "Right Revision");
 
-typedef TMap< FName, const FProperty* > FNamePropertyMap;
+typedef TMap< FName, const UProperty* > FNamePropertyMap;
 
 const FName BlueprintTypeMode = FName(TEXT("BlueprintTypeMode"));
 const FName MyBlueprintMode = FName(TEXT("MyBlueprintMode"));
@@ -96,10 +96,10 @@ public:
 
 		if (OldBlueprint && NewBlueprint)
 		{
-			for (TFieldIterator<FProperty> PropertyIt(OldBlueprint->SkeletonGeneratedClass); PropertyIt; ++PropertyIt)
+			for (TFieldIterator<UProperty> PropertyIt(OldBlueprint->SkeletonGeneratedClass); PropertyIt; ++PropertyIt)
 			{
-				FProperty* OldProperty = *PropertyIt;
-				FProperty* NewProperty = NewBlueprint->SkeletonGeneratedClass->FindPropertyByName(OldProperty->GetFName());
+				UProperty* OldProperty = *PropertyIt;
+				UProperty* NewProperty = NewBlueprint->SkeletonGeneratedClass->FindPropertyByName(OldProperty->GetFName());
 
 				FText PropertyText = FText::FromString(OldProperty->GetAuthoredName());
 
@@ -135,10 +135,10 @@ public:
 				}
 			}
 
-			for (TFieldIterator<FProperty> PropertyIt(NewBlueprint->SkeletonGeneratedClass); PropertyIt; ++PropertyIt)
+			for (TFieldIterator<UProperty> PropertyIt(NewBlueprint->SkeletonGeneratedClass); PropertyIt; ++PropertyIt)
 			{
-				FProperty* NewProperty = *PropertyIt;
-				FProperty* OldProperty = OldBlueprint->SkeletonGeneratedClass->FindPropertyByName(NewProperty->GetFName());
+				UProperty* NewProperty = *PropertyIt;
+				UProperty* OldProperty = OldBlueprint->SkeletonGeneratedClass->FindPropertyByName(NewProperty->GetFName());
 
 				if (!OldProperty)
 				{
@@ -604,7 +604,7 @@ void FBlueprintTypeDiffControl::GenerateTreeEntries(TArray< TSharedPtr<FBlueprin
 	OutTreeEntries.Push(CategoryEntry);
 
 	// Now add subobject diffs, one category per object
-	for (const TSharedPtr<FSubObjectDiff>& SubObjectDiff : SubObjectDiffs)
+	for (const TSharedPtr<FSubObjectDiff> SubObjectDiff : SubObjectDiffs)
 	{
 		Children.Reset();
 
@@ -913,8 +913,8 @@ void SBlueprintDiff::Construct( const FArguments& InArgs)
 		AssetEditorCloseDelegate = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->OnAssetEditorRequestClose().AddSP(this, &SBlueprintDiff::OnCloseAssetEditor);
 	}
 
-	FToolBarBuilder NavToolBarBuilder(TSharedPtr< const FUICommandList >(), FMultiBoxCustomization::None);
-	NavToolBarBuilder.AddToolBarButton(
+	FToolBarBuilder ToolbarBuilder(TSharedPtr< const FUICommandList >(), FMultiBoxCustomization::None);
+	ToolbarBuilder.AddToolBarButton(
 		FUIAction(
 			FExecuteAction::CreateSP(this, &SBlueprintDiff::PrevDiff),
 			FCanExecuteAction::CreateSP( this, &SBlueprintDiff::HasPrevDiff)
@@ -924,7 +924,7 @@ void SBlueprintDiff::Construct( const FArguments& InArgs)
 		, LOCTEXT("PrevDiffTooltip", "Go to previous difference")
 		, FSlateIcon(FEditorStyle::GetStyleSetName(), "BlueprintDif.PrevDiff")
 	);
-	NavToolBarBuilder.AddToolBarButton(
+	ToolbarBuilder.AddToolBarButton(
 		FUIAction(
 			FExecuteAction::CreateSP(this, &SBlueprintDiff::NextDiff),
 			FCanExecuteAction::CreateSP(this, &SBlueprintDiff::HasNextDiff)
@@ -934,21 +934,13 @@ void SBlueprintDiff::Construct( const FArguments& InArgs)
 		, LOCTEXT("NextDiffTooltip", "Go to next difference")
 		, FSlateIcon(FEditorStyle::GetStyleSetName(), "BlueprintDif.NextDiff")
 	);
-
-	FToolBarBuilder GraphToolbarBuilder(TSharedPtr< const FUICommandList >(), FMultiBoxCustomization::None);
-	GraphToolbarBuilder.AddToolBarButton(
+	ToolbarBuilder.AddSeparator();
+	ToolbarBuilder.AddToolBarButton(
 		FUIAction(FExecuteAction::CreateSP(this, &SBlueprintDiff::OnToggleLockView))
 		, NAME_None
 		, LOCTEXT("LockGraphsLabel", "Lock/Unlock")
 		, LOCTEXT("LockGraphsTooltip", "Force all graph views to change together, or allow independent scrolling/zooming")
 		, TAttribute<FSlateIcon>(this, &SBlueprintDiff::GetLockViewImage)
-	);
-	GraphToolbarBuilder.AddToolBarButton(
-		FUIAction(FExecuteAction::CreateSP(this, &SBlueprintDiff::OnToggleSplitViewMode))
-		, NAME_None
-		, LOCTEXT("SplitGraphsModeLabel", "Vertical/Horizontal")
-		, LOCTEXT("SplitGraphsModeLabelTooltip", "Toggles the split view of graphs between vertical and horizontal")
-		, TAttribute<FSlateIcon>(this, &SBlueprintDiff::GetSplitViewModeImage)
 	);
 
 	DifferencesTreeView = DiffTreeView::CreateTreeView(&MasterDifferencesList);
@@ -969,7 +961,7 @@ void SBlueprintDiff::Construct( const FArguments& InArgs)
 		];
 	};
 
-	TopRevisionInfoWidget =
+	TSharedRef<SWidget> Overlay = 
 		SNew(SSplitter)
 		.Visibility(EVisibility::HitTestInvisible)
 		+ SSplitter::Slot()
@@ -994,42 +986,12 @@ void SBlueprintDiff::Construct( const FArguments& InArgs)
 			]
 		];
 
-	GraphToolBarWidget = 
-		SNew(SSplitter)
-		.Visibility(EVisibility::HitTestInvisible)
-		+ SSplitter::Slot()
-		.Value(.2f)
-		[
-			SNew(SBox)
-		]
-		+ SSplitter::Slot()
-		.Value(.8f)
-		[
-			SNew(SHorizontalBox)
-			+SHorizontalBox::Slot()
-			.AutoWidth()
-			[
-				GraphToolbarBuilder.MakeWidget()
-			]	
-		];
-
 	this->ChildSlot
 		[
 			SNew(SBorder)
 			.BorderImage(FEditorStyle::GetBrush( "Docking.Tab", ".ContentAreaBrush" ))
 			[
 				SNew(SOverlay)
-				+ SOverlay::Slot()
-				.VAlign(VAlign_Top)
-				[
-					TopRevisionInfoWidget.ToSharedRef()		
-				]
-				+ SOverlay::Slot()
-				.VAlign(VAlign_Top)
-				.Padding(0.0f, 6.0f, 0.0f, 4.0f)
-				[
-					GraphToolBarWidget.ToSharedRef()
-				]
 				+ SOverlay::Slot()
 				[
 					SNew(SVerticalBox)
@@ -1042,7 +1004,7 @@ void SBlueprintDiff::Construct( const FArguments& InArgs)
 						.Padding(4.f)
 						.AutoWidth()
 						[
-							NavToolBarBuilder.MakeWidget()
+							ToolbarBuilder.MakeWidget()
 						]
 						+ SHorizontalBox::Slot()
 						[
@@ -1067,6 +1029,11 @@ void SBlueprintDiff::Construct( const FArguments& InArgs)
 							SAssignNew(ModeContents, SBox)
 						]
 					]
+				]
+				+ SOverlay::Slot()
+				.VAlign(VAlign_Top)
+				[
+					Overlay
 				]
 			]
 		];
@@ -1270,24 +1237,9 @@ void SBlueprintDiff::OnToggleLockView()
 	ResetGraphEditors();
 }
 
-void SBlueprintDiff::OnToggleSplitViewMode()
-{
-	bVerticalSplitGraphMode = !bVerticalSplitGraphMode;
-
-	if(SSplitter* DiffGraphSplitterPtr = DiffGraphSplitter.Get())
-	{
-		DiffGraphSplitterPtr->SetOrientation(bVerticalSplitGraphMode ? Orient_Horizontal : Orient_Vertical);
-	}
-}
-
 FSlateIcon SBlueprintDiff::GetLockViewImage() const
 {
 	return FSlateIcon(FEditorStyle::GetStyleSetName(), bLockViews ? "GenericLock" : "GenericUnlock");
-}
-
-FSlateIcon SBlueprintDiff::GetSplitViewModeImage() const
-{
-	return FSlateIcon(FEditorStyle::GetStyleSetName(), bVerticalSplitGraphMode ? "BlueprintDif.VerticalDiff.Small" : "BlueprintDif.HorizontalDiff.Small");
 }
 
 void SBlueprintDiff::ResetGraphEditors()
@@ -1682,16 +1634,23 @@ SBlueprintDiff::FDiffControl SBlueprintDiff::GenerateGraphPanel()
 			+SSplitter::Slot()
 			.Value(.8f)
 			[
-				SAssignNew(DiffGraphSplitter,SSplitter)
+				SNew(SSplitter)
 				.PhysicalSplitterHandleSize(10.0f)
-				.Orientation(bVerticalSplitGraphMode ? Orient_Horizontal : Orient_Vertical)
-				+ SSplitter::Slot() // Old revision graph slot
+				+ SSplitter::Slot()
 				[
-					GenerateGraphWidgetForPanel(PanelOld)
+					SAssignNew(PanelOld.GraphEditorBox, SBox)
+					.VAlign(VAlign_Fill)
+					[
+						DefaultEmptyPanel()
+					]
 				]
-				+ SSplitter::Slot() // New revision graph slot
+				+ SSplitter::Slot()
 				[
-					GenerateGraphWidgetForPanel(PanelNew)
+					SAssignNew(PanelNew.GraphEditorBox, SBox)
+					.VAlign(VAlign_Fill)
+					[
+						DefaultEmptyPanel()
+					]
 				]
 			]
 			+ SSplitter::Slot()
@@ -1786,43 +1745,6 @@ SBlueprintDiff::FDiffControl SBlueprintDiff::GenerateComponentsPanel()
 	return Ret;
 }
 
-TSharedRef<SOverlay> SBlueprintDiff::GenerateGraphWidgetForPanel(FDiffPanel& OutDiffPanel) const
-{
-	return SNew(SOverlay)
-		+ SOverlay::Slot() // Graph slot
-		[
-			SAssignNew(OutDiffPanel.GraphEditorBox, SBox)
-			.HAlign(HAlign_Fill)
-			[
-				DefaultEmptyPanel()
-			]
-		]
-		+ SOverlay::Slot() // Revision info slot
-		.VAlign(VAlign_Bottom)
-		.HAlign(HAlign_Right)
-		.Padding(FMargin(20.0f, 10.0f))
-		[
-			GenerateRevisionInfoWidgetForPanel(OutDiffPanel.OverlayGraphRevisionInfo,
-			DiffViewUtils::GetPanelLabel(OutDiffPanel.Blueprint, OutDiffPanel.RevisionInfo, FText()))
-		];
-}
-
-TSharedRef<SBox> SBlueprintDiff::GenerateRevisionInfoWidgetForPanel(TSharedPtr<SWidget>& OutGeneratedWidget,
-	const FText& InRevisionText) const
-{
-	return SAssignNew(OutGeneratedWidget,SBox)
-		.Padding(FMargin(4.0f, 10.0f))
-		.VAlign(VAlign_Center)
-		.HAlign(HAlign_Left)
-		[
-			SNew(STextBlock)
-			.TextStyle(FEditorStyle::Get(), "DetailsView.CategoryTextStyle")
-			.Text(InRevisionText)
-			.ShadowColorAndOpacity(FColor::Black)
-			.ShadowOffset(FVector2D(1.4,1.4))
-		];
-}
-
 void SBlueprintDiff::SetCurrentMode(FName NewMode)
 {
 	if( CurrentMode == NewMode )
@@ -1846,35 +1768,6 @@ void SBlueprintDiff::SetCurrentMode(FName NewMode)
 	{
 		ensureMsgf(false, TEXT("Diff panel does not support mode %s"), *NewMode.ToString() );
 	}
-
-	OnModeChanged(NewMode);
-}
-
-void SBlueprintDiff::UpdateTopSectionVisibility(const FName& InNewViewMode) const
-{
-	SSplitter* GraphToolBarPtr = GraphToolBarWidget.Get();
-	SSplitter* TopRevisionInfoWidgetPtr = TopRevisionInfoWidget.Get();
-
-	if (!GraphToolBarPtr || !TopRevisionInfoWidgetPtr)
-	{
-		return;
-	}
-	
-	if (InNewViewMode == GraphMode)
-	{
-		GraphToolBarPtr->SetVisibility(EVisibility::Visible);
-		TopRevisionInfoWidgetPtr->SetVisibility(EVisibility::Collapsed);
-	}
-	else
-	{
-		GraphToolBarPtr->SetVisibility(EVisibility::Collapsed);
-		TopRevisionInfoWidgetPtr->SetVisibility(EVisibility::HitTestInvisible);
-	}
-}
-
-void SBlueprintDiff::OnModeChanged(const FName& InNewViewMode) const
-{
-	UpdateTopSectionVisibility(InNewViewMode);
 }
 
 bool SBlueprintDiff::IsGraphDiffNeeded(UEdGraph* InGraph) const

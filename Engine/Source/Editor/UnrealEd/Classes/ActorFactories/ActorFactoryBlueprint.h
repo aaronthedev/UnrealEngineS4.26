@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -11,8 +11,8 @@
 class AActor;
 struct FAssetData;
 
-UCLASS(config=Editor, collapsecategories, hidecategories=Object)
-class UNREALED_API UActorFactoryBlueprint : public UActorFactory
+UCLASS(MinimalAPI, config=Editor, collapsecategories, hidecategories=Object)
+class UActorFactoryBlueprint : public UActorFactory
 {
 	GENERATED_UCLASS_BODY()
 

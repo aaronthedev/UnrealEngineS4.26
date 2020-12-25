@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ToolboxModule.h"
 #include "Textures/SlateIcon.h"
@@ -214,7 +214,7 @@ class FToolboxModule : public IToolboxModule
 
 	virtual void SummonToolbox() override
 	{
-		FGlobalTabmanager::Get()->TryInvokeTab(FTabId("DebugTools"));
+		FGlobalTabmanager::Get()->InvokeTab(FTabId("DebugTools"));
 	}
 };
 

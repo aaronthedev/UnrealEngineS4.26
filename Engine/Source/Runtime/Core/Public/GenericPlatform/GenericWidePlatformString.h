@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,7 +13,7 @@
 /**
 * Standard implementation
 **/
-struct FGenericWidePlatformString : public FGenericPlatformString
+struct CORE_VTABLE FGenericWidePlatformString : public FGenericPlatformString
 {
 	template <typename CharType>
 	static inline CharType* Strupr(CharType* Dest, SIZE_T DestCount)
@@ -65,53 +65,28 @@ public:
 	CORE_API static int32 Strlen( const WIDECHAR* String )
 	{
 		int32 Length = -1;
-
+		
 		do
 		{
 			Length++;
 		}
 		while (*String++);
-
+		
 		return Length;
 	}
 
-	CORE_API static int32 Strnlen( const WIDECHAR* String, SIZE_T StringSize )
-	{
-		int32 Length = -1;
-
-		do
-		{
-			Length++;
-		}
-		while (StringSize-- > 0 && *String++);
-
-		return Length;
-	}
 
 #if PLATFORM_TCHAR_IS_CHAR16
 	static int32 Strlen( const wchar_t* String )
 	{
 		int32 Length = -1;
-
+		
 		do
 		{
 			Length++;
 		}
 		while (*String++);
-
-		return Length;
-	}
-
-	static int32 Strnlen( const wchar_t* String, SIZE_T StringSize )
-	{
-		int32 Length = -1;
-
-		do
-		{
-			Length++;
-		}
-		while (StringSize-- > 0 && *String++);
-
+		
 		return Length;
 	}
 #endif
@@ -237,11 +212,6 @@ public:
 		return strlen( String );
 	}
 
-	CORE_API static FORCEINLINE int32 Strnlen( const ANSICHAR* String, SIZE_T StringSize )
-	{
-		return strnlen( String, StringSize );
-	}
-
 	CORE_API static FORCEINLINE const ANSICHAR* Strstr( const ANSICHAR* String, const ANSICHAR* Find)
 	{
 		return strstr(String, Find);
@@ -318,17 +288,6 @@ public:
 	{
 		int32 Result = 0;
 		while (*String++)
-		{
-			++Result;
-		}
-
-		return Result;
-	}
-
-	CORE_API static FORCEINLINE int32 Strnlen( const UCS2CHAR* String, SIZE_T StringSize )
-	{
-		int32 Result = 0;
-		while (StringSize-- > 0 && *String++)
 		{
 			++Result;
 		}

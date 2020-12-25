@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,23 +12,10 @@ class FDisplayClusterRenderSyncPolicyNvidiaBase
 	: public FDisplayClusterRenderSyncPolicyBase
 {
 public:
-	FDisplayClusterRenderSyncPolicyNvidiaBase(const TMap<FString, FString>& Parameters);
+	FDisplayClusterRenderSyncPolicyNvidiaBase();
 	virtual ~FDisplayClusterRenderSyncPolicyNvidiaBase() = 0;
 
-public:
-	//////////////////////////////////////////////////////////////////////////////////////////////
-	// IDisplayClusterRenderSyncPolicy
-	//////////////////////////////////////////////////////////////////////////////////////////////
-	virtual bool SynchronizeClusterRendering(int32& InOutSyncInterval) override;
-
-private:
-	bool InitializeNvidiaSwapLock();
-
-private:
-	bool bNvApiInitialized = false;
-	bool bNvApiBarrierSet  = false;
-
-	bool bNvDiagInit    = false;
-	bool bNvDiagPresent = false;
-	bool bNvDiagLatency = false;
+protected:
+	// Is NVIDIA API related initialization has been performed already
+	bool bNVAPIInitialized = false;
 };

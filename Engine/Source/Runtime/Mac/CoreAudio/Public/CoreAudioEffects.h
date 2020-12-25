@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	CodeAudioEffects.h: Unreal CoreAudio audio effects interface object.
@@ -26,19 +26,19 @@ public:
 	/** 
 	 * Calls the platform specific code to set the parameters that define reverb
 	 */
-	virtual void SetReverbEffectParameters(const FAudioEffectParameters& InEffectParameters);
+	virtual void SetReverbEffectParameters( const FAudioReverbEffect& ReverbEffectParameters );
 
 	/** 
 	 * Calls the platform specific code to set the parameters that define EQ
 	 */
-	virtual void SetEQEffectParameters(const FAudioEffectParameters& InEffectParameters);
+	virtual void SetEQEffectParameters( const FAudioEQEffect& EQEffectParameters );
 
 	/** 
 	 * Calls the platform specific code to set the parameters that define a radio effect.
 	 * 
 	 * @param	RadioEffectParameters	The new parameters for the radio distortion effect. 
 	 */
-	virtual void SetRadioEffectParameters(const FAudioEffectParameters& InEffectParameters);
+	virtual void SetRadioEffectParameters( const FAudioRadioEffect& RadioEffectParameters );
 
 private:
 

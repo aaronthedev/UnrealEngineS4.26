@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -58,21 +58,11 @@ public:
 	virtual IDetailCategoryBuilder& HeaderContent(TSharedRef<SWidget> InHeaderContent) = 0;
 
 	/**
-	 * Gets the current sort order of the category
-	 */
-	virtual int32 GetSortOrder() const = 0;
-
-	/**
-	 * Sets the sort order of the category
-	 */
-	virtual void SetSortOrder(int32 InSortOrder) = 0;
-
-	/**
 	 * Adds a property, shown in the default way to the category
 	 *
 	 * @param Path						The path to the property.  Can be just a name of the property or a path in the format outer.outer.value[optional_index_for_static_arrays]
 	 * @param ClassOutermost			Optional outer class if accessing a property outside of the current class being customized
-	 * @param InstanceName				Optional instance name if multiple FProperty's of the same type exist. such as two identical structs, the instance name is one of the struct variable names)
+	 * @param InstanceName				Optional instance name if multiple UProperty's of the same type exist. such as two identical structs, the instance name is one of the struct variable names)
 	 * @param Location				The location within the category where the property is shown
 	 * See IDetailCategoryBuilder::GetProperty for clarification of parameters
 	 */

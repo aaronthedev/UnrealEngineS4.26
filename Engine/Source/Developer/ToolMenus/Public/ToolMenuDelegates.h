@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -68,18 +68,17 @@ struct TOOLMENUS_API FToolDynamicUIAction
 	FToolMenuDynamicIsActionButtonVisible IsActionVisibleDelegate;
 };
 
-struct TOOLMENUS_API FNewToolMenuChoice
+struct TOOLMENUS_API FNewToolMenuWidgetChoice
 {
-	FNewToolMenuChoice() {}
-	FNewToolMenuChoice(const FOnGetContent& InOnGetContent) : OnGetContent(InOnGetContent) {}
-	FNewToolMenuChoice(const FNewToolMenuWidget& InNewToolMenuWidget) : NewToolMenuWidget(InNewToolMenuWidget) {}
-	FNewToolMenuChoice(const FNewToolMenuDelegate& InNewToolMenu) : NewToolMenu(InNewToolMenu) {}
-	FNewToolMenuChoice(const FNewMenuDelegate& InNewMenuLegacy) : NewMenuLegacy(InNewMenuLegacy) {}
+public:
+	FNewToolMenuWidgetChoice() {}
+	FNewToolMenuWidgetChoice(const FOnGetContent& InOnGetContent) : OnGetContent(InOnGetContent) {}
+	FNewToolMenuWidgetChoice(const FNewToolMenuWidget& InNewToolMenuWidget) : NewToolMenuWidget(InNewToolMenuWidget) {}
+	FNewToolMenuWidgetChoice(const FNewToolMenuDelegate& InNewToolMenu) : NewToolMenu(InNewToolMenu) {}
 
 	FOnGetContent OnGetContent;
 	FNewToolMenuWidget NewToolMenuWidget;
 	FNewToolMenuDelegate NewToolMenu;
-	FNewMenuDelegate NewMenuLegacy;
 };
 
 struct TOOLMENUS_API FToolUIActionChoice
@@ -114,6 +113,16 @@ private:
 	TOptional<FToolDynamicUIAction> DynamicToolAction;
 };
 
+struct TOOLMENUS_API FNewToolMenuChoice
+{
+	FNewToolMenuChoice() {};
+	FNewToolMenuChoice(const FNewToolMenuDelegate& InNewToolMenuDelegate) : NewToolMenuDelegate(InNewToolMenuDelegate) {}
+	FNewToolMenuChoice(const FNewMenuDelegate& InNewMenuDelegate) : NewMenuDelegate(InNewMenuDelegate) {}
+
+	FNewToolMenuDelegate NewToolMenuDelegate;
+	FNewMenuDelegate NewMenuDelegate;
+};
+
 struct TOOLMENUS_API FNewSectionConstructChoice
 {
 	FNewSectionConstructChoice() {};
@@ -124,6 +133,4 @@ struct TOOLMENUS_API FNewSectionConstructChoice
 	FNewToolMenuDelegate NewToolMenuDelegate;
 	FNewToolMenuDelegateLegacy NewToolMenuDelegateLegacy;
 	FNewToolBarDelegateLegacy NewToolBarDelegateLegacy;
-
-	bool IsBound() const { return NewToolMenuDelegate.IsBound() || NewToolMenuDelegateLegacy.IsBound() || NewToolBarDelegateLegacy.IsBound(); }
 };

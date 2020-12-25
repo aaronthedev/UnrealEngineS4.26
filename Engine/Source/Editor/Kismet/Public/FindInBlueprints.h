@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -90,24 +90,22 @@ class FFindInBlueprintsNoResult : public FFindInBlueprintsResult
 {
 public:
 	FFindInBlueprintsNoResult(const FText& InDisplayText)
-		:FFindInBlueprintsResult(InDisplayText)
+		:FFindInBlueprintsResult(InDisplayText, nullptr)
 	{
 	}
 
-	/** FFindInBlueprintsResult Interface */
 	virtual FReply OnClick() override
 	{
 		// Do nothing on click.
 		return FReply::Handled();
 	}
-	/** End FFindInBlueprintsResult Interface */
 };
 
 /** Graph nodes use this class to store their data */
 class FFindInBlueprintsGraphNode : public FFindInBlueprintsResult
 {
 public:
-	FFindInBlueprintsGraphNode();
+	FFindInBlueprintsGraphNode(const FText& InValue, TSharedPtr<FFindInBlueprintsResult> InParent);
 	virtual ~FFindInBlueprintsGraphNode() {}
 
 	/** FFindInBlueprintsResult Interface */
@@ -140,7 +138,7 @@ private:
 class FFindInBlueprintsPin : public FFindInBlueprintsResult
 {
 public:
-	FFindInBlueprintsPin(FString InSchemaName);
+	FFindInBlueprintsPin(const FText& InValue, TSharedPtr<FFindInBlueprintsResult> InParent, FString InSchemaName);
 	virtual ~FFindInBlueprintsPin() {}
 
 	/** FFindInBlueprintsResult Interface */
@@ -149,8 +147,7 @@ public:
 	virtual FText GetCategory() const override;
 	virtual void FinalizeSearchData() override;
 	/** End FFindInBlueprintsResult Interface */
-
-private:
+protected:
 	/** The name of the schema this pin exists under */
 	FString SchemaName;
 
@@ -165,7 +162,7 @@ private:
 class FFindInBlueprintsProperty : public FFindInBlueprintsResult
 {
 public:
-	FFindInBlueprintsProperty();
+	FFindInBlueprintsProperty(const FText& InValue, TSharedPtr<FFindInBlueprintsResult> InParent);
 	virtual ~FFindInBlueprintsProperty() {}
 
 	/** FFindInBlueprintsResult Interface */
@@ -175,8 +172,7 @@ public:
 	virtual FText GetCategory() const override;
 	virtual void FinalizeSearchData() override;
 	/** End FFindInBlueprintsResult Interface */
-
-private:
+protected:
 	/** The pin that this search result refers to */
 	FEdGraphPinType PinType;
 
@@ -191,7 +187,7 @@ private:
 class FFindInBlueprintsGraph : public FFindInBlueprintsResult
 {
 public:
-	FFindInBlueprintsGraph(EGraphType InGraphType);
+	FFindInBlueprintsGraph(const FText& InValue, TSharedPtr<FFindInBlueprintsResult> InParent, EGraphType InGraphType);
 	virtual ~FFindInBlueprintsGraph() {}
 
 	/** FFindInBlueprintsResult Interface */
@@ -200,30 +196,10 @@ public:
 	virtual void ParseSearchInfo(FText InKey, FText InValue) override;
 	virtual FText GetCategory() const override;
 	/** End FFindInBlueprintsResult Interface */
+protected:
 
-private:
 	/** The type of graph this represents */
 	EGraphType GraphType;
-};
-
-// Cache bar widgets.
-enum class EFiBCacheBarWidget
-{
-	ProgressBar,
-	CloseButton,
-	CancelButton,
-	CacheAllUnindexedButton,
-	CurrentAssetNameText,
-	UnresponsiveEditorWarningText,
-	ShowCacheFailuresButton
-};
-
-// Search bar widgets.
-enum class EFiBSearchBarWidget
-{
-	StatusText,
-	Throbber,
-	ProgressBar,
 };
 
 /*Widget for searching for (functions/events) across all blueprints or just a single blueprint */
@@ -233,12 +209,10 @@ public:
 	SLATE_BEGIN_ARGS( SFindInBlueprints )
 		: _bIsSearchWindow(true)
 		, _bHideSearchBar(false)
-		, _bHideFindGlobalButton(false)
 		, _ContainingTab()
 	{}
 		SLATE_ARGUMENT(bool, bIsSearchWindow)
 		SLATE_ARGUMENT(bool, bHideSearchBar)
-		SLATE_ARGUMENT(bool, bHideFindGlobalButton)
 		SLATE_ARGUMENT(TSharedPtr<SDockTab>, ContainingTab)
 	SLATE_END_ARGS()
 
@@ -253,16 +227,17 @@ public:
 	 *
 	 * @param InSearchString						String to search using
 	 * @param bInIsFindWithinBlueprint				TRUE if searching within the current Blueprint only
-	 * @param InSearchOptions						Optional search parameters.
+	 * @param InSearchFilterForImaginaryDataReturn	If requesting a callback on search complete for the filtered imaginary data, this is the filter that the raw data will be passed through. By default nothing is collected
+	 * @param InMinimiumVersionRequirement			The minimum search requirement Blueprints must be to be searched or they will be reported as out-of-date.
 	 * @param InOnSearchComplete					Callback when the search is complete, passing the filtered imaginary data (if any).
 	 */
-	void MakeSearchQuery(FString InSearchString, bool bInIsFindWithinBlueprint, const FStreamSearchOptions& InSearchOptions = FStreamSearchOptions(), FOnSearchComplete InOnSearchComplete = FOnSearchComplete());
+	void MakeSearchQuery(FString InSearchString, bool bInIsFindWithinBlueprint, enum ESearchQueryFilter InSearchFilterForImaginaryDataReturn = ESearchQueryFilter::AllFilter, EFiBVersion InMinimiumVersionRequirement = EFiBVersion::FIB_VER_LATEST, FOnSearchComplete InOnSearchComplete = FOnSearchComplete());
 
 	/** Called when caching Blueprints is started */
 	void OnCacheStarted(EFiBCacheOpType InOpType, EFiBCacheOpFlags InOpFlags);
 	
 	/** Called when caching Blueprints is complete */
-	void OnCacheComplete(EFiBCacheOpType InOpType, EFiBCacheOpFlags InOpFlags);
+	void OnCacheComplete(EFiBCacheOpType InOpType);
 
 	/**
 	 * Asynchronously caches all Blueprints below a specified version.
@@ -283,14 +258,8 @@ public:
 		return bIsLocked;
 	}
 
-	/** Determines whether a search query is actively in progress */
-	bool IsSearchInProgress() const;
-
 	/** SWidget overrides */
 	virtual FReply OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent) override;
-
-	/** Clears the currently visible results */
-	void ClearResults();
 
 private:
 	/** Processes results of the ongoing async stream search */
@@ -321,13 +290,14 @@ private:
 	TSharedRef<ITableRow> OnGenerateRow(FSearchResult InItem, const TSharedRef<STableViewBase>& OwnerTable);
 	
 	/** Launches a thread for streaming more content into the results widget */
-	void LaunchStreamThread(const FString& InSearchValue, const FStreamSearchOptions& InSearchOptions = FStreamSearchOptions(), FOnSearchComplete InOnSearchComplete = FOnSearchComplete());
+	void LaunchStreamThread(const FString& InSearchValue);
+	void LaunchStreamThread(const FString& InSearchValue, enum ESearchQueryFilter InSearchFilterForRawDataReturn, EFiBVersion InMinimiumVersionRequirement, FOnSearchComplete InOnSearchComplete);
 
 	/** Returns the percent complete on the search for the progress bar */
 	TOptional<float> GetPercentCompleteSearch() const;
 
-	/** Returns the search bar visiblity for the given widget */
-	EVisibility GetSearchBarWidgetVisiblity(EFiBSearchBarWidget InSearchBarWidget) const;
+	/** Returns the progress bar visiblity */
+	EVisibility GetSearchbarVisiblity() const;
 
 	/** Adds the "cache" bar at the bottom of the Find-in-Blueprints widget, to notify the user that the search is incomplete */
 	void ConditionallyAddCacheBar();
@@ -336,10 +306,10 @@ private:
 	FReply OnRemoveCacheBar();
 
 	/** Callback to return the cache bar's display text, informing the user of the situation */
-	FText GetCacheBarStatusText() const;
+	FText GetUnindexedAssetWarningText() const;
 
-	/** Callback to return the current asset name during a cache operation */
-	FText GetCacheBarCurrentAssetName() const;
+	/** Callback to return the cache bar's current indexing Blueprint name */
+	FText GetCurrentCacheBlueprintName() const;
 
 	/** Callback to cache all unindexed Blueprints */
 	FReply OnCacheAllUnindexedBlueprints();
@@ -356,20 +326,32 @@ private:
 	/** Gets the percent complete of the caching process */
 	TOptional<float> GetPercentCompleteCache() const;
 
-	/** Returns the caching bar's visibility, it goes invisible when there is nothing to be cached. The next search will remove this bar or make it visible again */
-	EVisibility GetCacheBarVisibility() const;
+	/** Returns the visibility of the caching progress bar, visible when in progress, hidden when not */
+	EVisibility GetCachingProgressBarVisiblity() const;
 
-	/** Returns the cache bar visibility for the given widget */
-	EVisibility GetCacheBarWidgetVisibility(EFiBCacheBarWidget InCacheBarWidget) const;
+	/** Returns the visibility of the "Cache All" button, visible when not caching, collapsed when caching is in progress */
+	EVisibility GetCacheAllUnindexedButtonVisibility() const;
+
+	/** Returns the visibility of the "Cancel" button, visible when caching is in progress, collapsed when not caching */
+	EVisibility GetCacheAllCancelButtonVisibility() const;
+
+	/** Returns the caching bar's visibility, it goes invisible when there is nothing to be cached. The next search will remove this bar or make it visible again */
+	EVisibility GetCachingBarVisibility() const;
+
+	/** Returns the visibility of the caching Blueprint name, visible when in progress, collapsed when not */
+	EVisibility GetCachingBlueprintNameVisiblity() const;
+
+	/** Returns the visibility of the popup button that displays the list of Blueprints that failed to cache */
+	EVisibility GetFailedToCacheListVisibility() const;
+
+	/** Returns the visibility of the unresponsive editor warning note text in the caching progress bar */
+	EVisibility GetUnresponsiveEditorWarningVisibility() const;
 
 	/** Returns TRUE if Blueprint caching is in progress */
 	bool IsCacheInProgress() const;
 
-	/** Returns the color of the cache bar */
-	FSlateColor GetCacheBarColor() const;
-
-	/** Returns the BG image used for the cache bar */
-	const FSlateBrush* GetCacheBarImage() const;
+	/** Returns the color of the caching bar */
+	FSlateColor GetCachingBarColor() const;
 
 	/** Callback to build the context menu when right clicking in the tree */
 	TSharedPtr<SWidget> OnContextMenuOpening();
@@ -417,6 +399,9 @@ private:
 	/* The string to search for */
 	FString	SearchValue;
 
+	/** Should we search within the current blueprint only (rather than all blueprints) */
+	bool bIsInFindWithinBlueprintMode;
+
 	/** Thread object that searches through Blueprint data on a separate thread */
 	TSharedPtr< class FStreamSearch> StreamSearch;
 
@@ -441,27 +426,6 @@ private:
 	/** Tab hosting this widget. May be invalid. */
 	TWeakPtr<SDockTab> HostTab;
 
-	/** Last cached asset name (used during continuous cache operations). */
-	mutable FName LastCachedAssetName;
-
-	/** Should we search within the current blueprint only (rather than all blueprints) */
-	bool bIsInFindWithinBlueprintMode;
-
 	/** True if current search should not be changed by an external source */
 	bool bIsLocked;
-
-	/** True if progress bar widgets should be hidden */
-	bool bHideProgressBars;
-
-	/** True if users should be allowed to close the cache bar while caching */
-	bool bShowCacheBarCloseButton;
-
-	/** True if users should be allowed to cancel the active caching operation */
-	bool bShowCacheBarCancelButton;
-
-	/** True if the unresponsive warning text should be visible in the cache bar */
-	bool bShowCacheBarUnresponsiveEditorWarningText;
-
-	/** True if cache bar should remain visible after a caching operation has ended */
-	bool bKeepCacheBarProgressVisible;
 };

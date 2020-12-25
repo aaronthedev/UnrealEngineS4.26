@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "USDMemory.h"
 
 #include "Containers/Array.h"
 #include "HAL/PlatformTLS.h"
 #include "HAL/TlsAutoCleanup.h"
-#include "Misc/ScopeLock.h"
 
 class UNREALUSDWRAPPER_API FTlsSlot final
 {
@@ -92,7 +91,6 @@ private:
 
 TOptional< FTlsSlot > FUsdMemoryManager::ActiveAllocatorsStackTLS {};
 TSet< void* > FUsdMemoryManager::SystemAllocedPtrs {};
-FCriticalSection FUsdMemoryManager::CriticalSection{};
 
 void FUsdMemoryManager::Initialize()
 {
@@ -138,18 +136,12 @@ void* FUsdMemoryManager::Malloc( SIZE_T Count )
 {
 	void* Result = nullptr;
 
-#if USD_USES_SYSTEM_MALLOC
 	if ( FUsdMemoryManager::IsUsingSystemMalloc() )
 	{
 		Result = FMemory::SystemMalloc( Count );
-
-		{
-			FScopeLock Lock( &CriticalSection );
-			SystemAllocedPtrs.Add( Result );
-		}
+		SystemAllocedPtrs.Add( Result );
 	}
 	else
-#endif // #if USD_USES_SYSTEM_MALLOC
 	{
 		Result = FMemory::Malloc( Count );
 	}
@@ -159,20 +151,14 @@ void* FUsdMemoryManager::Malloc( SIZE_T Count )
 
 void FUsdMemoryManager::Free( void* Original )
 {
-#if USD_USES_SYSTEM_MALLOC
 	// Because USD is multi-threaded, it might call us back to free an object after we've exited our allocator scope.
 	// This can happen for inlined USD functions that call delete.
 	if ( FUsdMemoryManager::IsUsingSystemMalloc() || SystemAllocedPtrs.Contains( Original ) )
 	{
-		{
-			FScopeLock Lock( &CriticalSection );
-			SystemAllocedPtrs.Remove( Original );
-		}
-
+		SystemAllocedPtrs.Remove( Original );
 		FMemory::SystemFree( Original );
 	}
 	else
-#endif // #if USD_USES_SYSTEM_MALLOC
 	{
 		FMemory::Free( Original );
 	}

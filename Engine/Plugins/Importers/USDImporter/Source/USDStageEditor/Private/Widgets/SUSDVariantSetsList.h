@@ -1,17 +1,22 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Widgets/Views/SListView.h"
-#include "USDVariantSetsViewModel.h"
 
 #if USE_USD_SDK
 
+struct FUsdVariantSet : public TSharedFromThis< FUsdVariantSet >
+{
+	FString SetName;
+	TSharedPtr< FString > VariantSelection;
+	TArray< TSharedPtr< FString > > Variants;
+};
 
-class SUsdVariantRow : public SMultiColumnTableRow< TSharedPtr< FUsdVariantSetViewModel > >
+class SUsdVariantRow : public SMultiColumnTableRow< TSharedPtr< FUsdVariantSet > >
 {
 public:
-	DECLARE_DELEGATE_TwoParams( FOnVariantSelectionChanged, const TSharedRef< FUsdVariantSetViewModel >&, const TSharedPtr< FString >& );
+	DECLARE_DELEGATE_OneParam( FOnVariantSelectionChanged, const TSharedRef< FUsdVariantSet >& );
 
 public:
 	SLATE_BEGIN_ARGS( SUsdVariantRow )
@@ -24,7 +29,7 @@ public:
 	SLATE_END_ARGS()
 
 public:
-	void Construct( const FArguments& InArgs, TSharedPtr< FUsdVariantSetViewModel > InVariantSet, const TSharedRef< STableViewBase >& OwnerTable );
+	void Construct( const FArguments& InArgs, TSharedPtr< FUsdVariantSet > InVariantSet, const TSharedRef< STableViewBase >& OwnerTable );
 
 	virtual TSharedRef< SWidget > GenerateWidgetForColumn( const FName& ColumnName ) override;
 
@@ -36,28 +41,28 @@ protected:
 
 private:
 	FString PrimPath;
-	TSharedPtr< FUsdVariantSetViewModel > VariantSet;
+	TSharedPtr< FUsdVariantSet > VariantSet;
 };
 
-class SVariantsList : public SListView< TSharedPtr< FUsdVariantSetViewModel > >
+class SVariantsList : public SListView< TSharedPtr< FUsdVariantSet > >
 {
 	SLATE_BEGIN_ARGS( SVariantsList ) {}
 	SLATE_END_ARGS()
 
 public:
-	void Construct( const FArguments& InArgs, const UE::FUsdStage& UsdStage, const TCHAR* InPrimPath );
-	void SetPrimPath( const UE::FUsdStage& UsdStage, const TCHAR* InPrimPath );
+	void Construct( const FArguments& InArgs, const TCHAR* InPrimPath );
+	void SetPrimPath( const TCHAR* InPrimPath );
 
 protected:
 	void UpdateVariantSets( const TCHAR* InPrimPath );
-	TSharedRef< ITableRow > OnGenerateRow( TSharedPtr< FUsdVariantSetViewModel > InDisplayNode, const TSharedRef< STableViewBase >& OwnerTable );
+	TSharedRef< ITableRow > OnGenerateRow( TSharedPtr< FUsdVariantSet > InDisplayNode, const TSharedRef< STableViewBase >& OwnerTable );
 
-	void OnVariantSelectionChanged( const TSharedRef< FUsdVariantSetViewModel >& VariantSet, const TSharedPtr< FString >& NewValue );
+	void OnVariantSelectionChanged( const TSharedRef< FUsdVariantSet >& VariantSet );
 
 private:
 	FString PrimPath;
 
-	FUsdVariantSetsViewModel ViewModel;
+	TArray< TSharedPtr< FUsdVariantSet > > VariantSets;
 	TSharedPtr< SHeaderRow > HeaderRowWidget;
 };
 

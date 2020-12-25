@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -24,7 +24,6 @@ class FMenuBuilder;
 class FUICommandList;
 class IDetailsView;
 class UFoliageType;
-struct FAssetData;
 
 typedef TSharedPtr<FFoliagePaletteItemModel> FFoliagePaletteItemModelPtr;
 typedef STreeView<FFoliagePaletteItemModelPtr> SFoliageTypeTreeView;

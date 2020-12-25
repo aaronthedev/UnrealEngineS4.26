@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IPAddressSteamSockets.h"
 #include "SteamSocketsPrivate.h"
@@ -68,7 +68,6 @@ void FInternetAddrSteamSockets::SetRawIp(const TArray<uint8>& RawAddr)
 		}
 
 		Addr.SetSteamID64(NewSteamId);
-		ProtocolType = FNetworkProtocolTypes::SteamSocketsP2P;
 	}
 	else if(ArrayType == k_ESteamNetworkingIdentityType_IPAddress)
 	{
@@ -82,7 +81,6 @@ void FInternetAddrSteamSockets::SetRawIp(const TArray<uint8>& RawAddr)
 		}
 
 		Addr.SetIPAddr(NewAddr);
-		ProtocolType = FNetworkProtocolTypes::SteamSocketsIP;
 	}
 }
 
@@ -107,7 +105,6 @@ void FInternetAddrSteamSockets::SetIp(const TCHAR* InAddr, bool& bIsValid)
 					P2PVirtualPort = Channel;
 					bIsValid = true;
 				}
-				ProtocolType = FNetworkProtocolTypes::SteamSocketsP2P;
 			}
 			else
 			{
@@ -118,7 +115,6 @@ void FInternetAddrSteamSockets::SetIp(const TCHAR* InAddr, bool& bIsValid)
 		else
 		{
 			Addr.SetSteamID64(FCString::Atoi64(*InAddrStr));
-			ProtocolType = FNetworkProtocolTypes::SteamSocketsP2P;
 			bIsValid = true;
 			return;
 		}
@@ -128,7 +124,6 @@ void FInternetAddrSteamSockets::SetIp(const TCHAR* InAddr, bool& bIsValid)
 		// This is an IP address. Tell Steam to parse it.
 		SteamNetworkingIPAddr NewAddress;
 		bIsValid = NewAddress.ParseString(TCHAR_TO_ANSI(InAddr));
-		ProtocolType = FNetworkProtocolTypes::SteamSocketsIP;
 		Addr.SetIPAddr(NewAddress);
 	}
 }
@@ -174,7 +169,6 @@ void FInternetAddrSteamSockets::SetAnyAddress()
 	Addr.Clear();
 	SteamNetworkingIPAddr NewAddress;
 	NewAddress.Clear();
-	ProtocolType = FNetworkProtocolTypes::SteamSocketsIP;
 	Addr.SetIPAddr(NewAddress);
 }
 

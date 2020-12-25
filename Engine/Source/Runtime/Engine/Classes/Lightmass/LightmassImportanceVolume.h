@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 //=============================================================================
 // LightmassImportanceVolume:  a bounding volume outside of which Lightmass
@@ -16,10 +16,6 @@ class ALightmassImportanceVolume : public AVolume
 {
 	GENERATED_UCLASS_BODY()
 
-#if WITH_EDITOR
-	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
-	virtual void PostEditMove(bool bFinished) override;
-#endif // WITH_EDITOR
 };
 
 

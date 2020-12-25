@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ScriptDisassembler.cpp: Disassembler for Kismet bytecode.
@@ -242,7 +242,7 @@ void FKismetBytecodeDisassembler::ProcessCommon(int32& ScriptIndex, EExprToken O
 		}
 	case EX_SetConst:
 		{
-			FProperty* InnerProp = ReadPointer<FProperty>(ScriptIndex);
+			UProperty* InnerProp = ReadPointer<UProperty>(ScriptIndex);
 			int32 Num = ReadINT(ScriptIndex);
  			Ar.Logf(TEXT("%s $%X: set set const - elements number: %d, inner property: %s"), *Indents, (int32)Opcode, Num, *GetNameSafe(InnerProp));
  			while (SerializeExpr(ScriptIndex) != EX_EndSetConst)
@@ -274,8 +274,8 @@ void FKismetBytecodeDisassembler::ProcessCommon(int32& ScriptIndex, EExprToken O
 		}
 	case EX_MapConst:
 		{
-			FProperty* KeyProp = ReadPointer<FProperty>(ScriptIndex);
-			FProperty* ValProp = ReadPointer<FProperty>(ScriptIndex);
+			UProperty* KeyProp = ReadPointer<UProperty>(ScriptIndex);
+			UProperty* ValProp = ReadPointer<UProperty>(ScriptIndex);
 			int32 Num = ReadINT(ScriptIndex);
  			Ar.Logf(TEXT("%s $%X: set map const - elements number: %d, key property: %s, val property: %s"), *Indents, (int32)Opcode, Num, *GetNameSafe(KeyProp), *GetNameSafe(ValProp));
  			while (SerializeExpr(ScriptIndex) != EX_EndMapConst)
@@ -330,7 +330,7 @@ void FKismetBytecodeDisassembler::ProcessCommon(int32& ScriptIndex, EExprToken O
 			Ar.Logf(TEXT("%s $%X: Let (Variable = Expression)"), *Indents, (int32)Opcode);
 			AddIndent();
 
-			ReadPointer<FProperty>(ScriptIndex);
+			ReadPointer<UProperty>(ScriptIndex);
 
 			// Variable expr.
 			Ar.Logf(TEXT("%s Variable:"), *Indents);
@@ -388,7 +388,7 @@ void FKismetBytecodeDisassembler::ProcessCommon(int32& ScriptIndex, EExprToken O
 			Ar.Logf(TEXT("%s $%X: LetValueOnPersistentFrame"), *Indents, (int32)Opcode);
 			AddIndent();
 
-			auto Prop = ReadPointer<FProperty>(ScriptIndex);
+			auto Prop = ReadPointer<UProperty>(ScriptIndex);
 			Ar.Logf(TEXT("%s Destination variable: %s, offset: %d"), *Indents, *GetNameSafe(Prop), 
 				Prop ? Prop->GetOffset_ForDebug() : 0);
 			
@@ -404,9 +404,9 @@ void FKismetBytecodeDisassembler::ProcessCommon(int32& ScriptIndex, EExprToken O
 			Ar.Logf(TEXT("%s $%X: Struct member context "), *Indents, (int32)Opcode);
 			AddIndent();
 
-			FProperty* Prop = ReadPointer<FProperty>(ScriptIndex);
+			UProperty* Prop = ReadPointer<UProperty>(ScriptIndex);
 
-			Ar.Logf(TEXT("%s Member named %s @ offset %d"), *Indents, *(Prop->GetName()), 
+			Ar.Logf(TEXT("%s Expression within struct %s, offset %d"), *Indents, *(Prop->GetName()), 
 				Prop->GetOffset_ForDebug()); // although that isn't a UFunction, we are not going to indirect the props of a struct, so this should be fine
 
 			Ar.Logf(TEXT("%s Expression to struct:"), *Indents);
@@ -489,31 +489,31 @@ void FKismetBytecodeDisassembler::ProcessCommon(int32& ScriptIndex, EExprToken O
 		}
 	case EX_LocalVariable:
 		{
-			FProperty* PropertyPtr = ReadPointer<FProperty>(ScriptIndex);
+			UProperty* PropertyPtr = ReadPointer<UProperty>(ScriptIndex);
 			Ar.Logf(TEXT("%s $%X: Local variable named %s"), *Indents, (int32)Opcode, PropertyPtr ? *PropertyPtr->GetName() : TEXT("(null)"));
 			break;
 		}
 	case EX_DefaultVariable:
 		{
-			FProperty* PropertyPtr = ReadPointer<FProperty>(ScriptIndex);
+			UProperty* PropertyPtr = ReadPointer<UProperty>(ScriptIndex);
 			Ar.Logf(TEXT("%s $%X: Default variable named %s"), *Indents, (int32)Opcode, PropertyPtr ? *PropertyPtr->GetName() : TEXT("(null)"));
 			break;
 		}
 	case EX_InstanceVariable:
 		{
-			FProperty* PropertyPtr = ReadPointer<FProperty>(ScriptIndex);
+			UProperty* PropertyPtr = ReadPointer<UProperty>(ScriptIndex);
 			Ar.Logf(TEXT("%s $%X: Instance variable named %s"), *Indents, (int32)Opcode, PropertyPtr ? *PropertyPtr->GetName() : TEXT("(null)"));
 			break;
 		}
 	case EX_LocalOutVariable:
 		{
-			FProperty* PropertyPtr = ReadPointer<FProperty>(ScriptIndex);
+			UProperty* PropertyPtr = ReadPointer<UProperty>(ScriptIndex);
 			Ar.Logf(TEXT("%s $%X: Local out variable named %s"), *Indents, (int32)Opcode, PropertyPtr ? *PropertyPtr->GetName() : TEXT("(null)"));
 			break;
 		}
 	case EX_ClassSparseDataVariable:
 		{
-			FProperty* PropertyPtr = ReadPointer<FProperty>(ScriptIndex);
+			UProperty* PropertyPtr = ReadPointer<UProperty>(ScriptIndex);
 			Ar.Logf(TEXT("%s $%X: Class sparse data variable named %s"), *Indents, (int32)Opcode, PropertyPtr ? *PropertyPtr->GetName() : TEXT("(null)"));
 			break;
 		}
@@ -667,10 +667,10 @@ void FKismetBytecodeDisassembler::ProcessCommon(int32& ScriptIndex, EExprToken O
 
 			// Code offset for NULL expressions.
 			CodeSkipSizeType SkipCount = ReadSkipCount(ScriptIndex);
-			Ar.Logf(TEXT("%s Skip 0x%X bytes to offset 0x%X"), *Indents, SkipCount, ScriptIndex + sizeof(FField*) + SkipCount);
+			Ar.Logf(TEXT("%s Skip Bytes: 0x%X"), *Indents, SkipCount);
 
 			// Property corresponding to the r-value data, in case the l-value needs to be mem-zero'd
-			FField* Field = ReadPointer<FField>(ScriptIndex);
+			UField* Field = ReadPointer<UField>(ScriptIndex);
 			Ar.Logf(TEXT("%s R-Value Property: %s"), *Indents, Field ? *Field->GetName() : TEXT("(null)"));
 
 			// Context expression.
@@ -684,18 +684,6 @@ void FKismetBytecodeDisassembler::ProcessCommon(int32& ScriptIndex, EExprToken O
 		{
 			int32 ConstValue = ReadINT(ScriptIndex);
 			Ar.Logf(TEXT("%s $%X: literal int32 %d"), *Indents, (int32)Opcode, ConstValue);
-			break;
-		}
-	case EX_Int64Const:
-		{
-			int64 ConstValue = ReadQWORD(ScriptIndex);
-			Ar.Logf(TEXT("%s $%X: literal int64 0x%" INT64_X_FMT), *Indents, (int32)Opcode, ConstValue);
-			break;
-		}
-	case EX_UInt64Const:
-		{
-			uint64 ConstValue = ReadQWORD(ScriptIndex);
-			Ar.Logf(TEXT("%s $%X: literal uint64 0x%" UINT64_X_FMT), *Indents, (int32)Opcode, ConstValue);
 			break;
 		}
 	case EX_SkipOffsetConst:
@@ -773,27 +761,15 @@ void FKismetBytecodeDisassembler::ProcessCommon(int32& ScriptIndex, EExprToken O
 			}
 			break;
 		}
-	case EX_PropertyConst:
-		{
-			FProperty* Pointer = ReadPointer<FProperty>(ScriptIndex);
-			Ar.Logf(TEXT("%s $%X: EX_PropertyConst (%p:%s)"), *Indents, (int32)Opcode, Pointer, Pointer ? *Pointer->GetName() : TEXT("(null)"));
-			break;
-		}
 	case EX_ObjectConst:
 		{
 			UObject* Pointer = ReadPointer<UObject>(ScriptIndex);
-			Ar.Logf(TEXT("%s $%X: EX_ObjectConst (%p:%s)"), *Indents, (int32)Opcode, Pointer, Pointer ? (Pointer->IsValidLowLevel() ? *Pointer->GetFullName() : TEXT("(not a valid object)")) : TEXT("(null)"));
+			Ar.Logf(TEXT("%s $%X: EX_ObjectConst (%p:%s)"), *Indents, (int32)Opcode, Pointer, *Pointer->GetFullName());
 			break;
 		}
 	case EX_SoftObjectConst:
 		{
 			Ar.Logf(TEXT("%s $%X: EX_SoftObjectConst"), *Indents, (int32)Opcode);
-			SerializeExpr(ScriptIndex);
-			break;
-		}
-	case EX_FieldPathConst:
-		{
-			Ar.Logf(TEXT("%s $%X: EX_FieldPathConst"), *Indents, (int32)Opcode);
 			SerializeExpr(ScriptIndex);
 			break;
 		}
@@ -863,7 +839,7 @@ void FKismetBytecodeDisassembler::ProcessCommon(int32& ScriptIndex, EExprToken O
 		}
 	case EX_ArrayConst:
 		{
-			FProperty* InnerProp = ReadPointer<FProperty>(ScriptIndex);
+			UProperty* InnerProp = ReadPointer<UProperty>(ScriptIndex);
 			int32 Num = ReadINT(ScriptIndex);
 			Ar.Logf(TEXT("%s $%X: set array const - elements number: %d, inner property: %s"), *Indents, (int32)Opcode, Num, *GetNameSafe(InnerProp));
 			while (SerializeExpr(ScriptIndex) != EX_EndArrayConst)

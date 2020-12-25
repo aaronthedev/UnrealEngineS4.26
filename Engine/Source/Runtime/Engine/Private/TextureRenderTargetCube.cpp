@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	TextureRenderTargetCube.cpp: UTextureRenderTargetCube implementation
@@ -220,7 +220,7 @@ void FTextureRenderTargetCubeResource::InitDynamicRHI()
 		}
 
 		// Create the RHI texture. Only one mip is used and the texture is targetable for resolve.
-		ETextureCreateFlags TexCreateFlags = bIsSRGB ? TexCreate_SRGB : TexCreate_None;
+		uint32 TexCreateFlags = bIsSRGB ? TexCreate_SRGB : 0;
 		{
 			FRHIResourceCreateInfo CreateInfo = { FClearValueBinding(Owner->ClearColor) };
 			RHICreateTargetableShaderResourceCube(
@@ -266,7 +266,7 @@ void FTextureRenderTargetCubeResource::InitDynamicRHI()
 		AM_Clamp,
 		AM_Clamp
 	);
-	SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
+	SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
 }
 
 /**
@@ -308,17 +308,11 @@ void FTextureRenderTargetCubeResource::UpdateDeferredResource(FRHICommandListImm
 		FRHIRenderPassInfo RPInfo(RenderTargetTextureRHI, MakeRenderTargetActions(LoadAction, ERenderTargetStoreAction::EStore));
 		TransitionRenderPassTargets(RHICmdList, RPInfo);
 		RHICmdList.BeginRenderPass(RPInfo, TEXT("UpdateTargetCube"));
-		RHICmdList.SetViewport(0.0f, 0.0f, 0.0f, (float)Dims.X, (float)Dims.Y, 1.0f);
+		RHICmdList.SetViewport(0, 0, 0.0f, Dims.X, Dims.Y, 1.0f);
 		RHICmdList.EndRenderPass();
 		// copy surface to the texture for use
 		FResolveParams ResolveParams;
 		ResolveParams.CubeFace = (ECubeFace)FaceIdx;
-
-		FRHITransitionInfo TransitionsBefore[] = {
-			FRHITransitionInfo(RenderTargetTextureRHI, ERHIAccess::RTV, ERHIAccess::ResolveSrc),
-			FRHITransitionInfo(TextureCubeRHI, ERHIAccess::Unknown, ERHIAccess::ResolveDst)
-		};
-		RHICmdList.Transition(MakeArrayView(TransitionsBefore, UE_ARRAY_COUNT(TransitionsBefore)));
 		RHICmdList.CopyToResolveTarget(RenderTargetTextureRHI, TextureCubeRHI, ResolveParams);
 	}
 }

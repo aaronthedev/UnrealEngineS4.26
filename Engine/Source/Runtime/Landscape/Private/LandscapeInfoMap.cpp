@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LandscapeInfoMap.h"
 #include "Engine/World.h"
@@ -29,7 +29,7 @@ void ULandscapeInfoMap::Serialize(FArchive& Ar)
 
 void ULandscapeInfoMap::BeginDestroy()
 {
-	if (World.IsValid())
+	if (World != nullptr)
 	{
 		World->PerModuleDataObjects.Remove(this);
 	}

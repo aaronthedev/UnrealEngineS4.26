@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  * Node which creates a texture parameter and outputs the texture object itself, instead of sampling the texture first.
@@ -17,11 +17,10 @@ class UMaterialExpressionTextureObjectParameter : public UMaterialExpressionText
 {
 	GENERATED_UCLASS_BODY()
 	
-#if WITH_EDITOR
 	//~ Begin UMaterialExpressionTextureSampleParameter Interface
 	virtual bool TextureIsValid(UTexture* InTexture, FString& OutMessage) override;
 	//~ End UMaterialExpressionTextureSampleParameter Interface
-#endif
+
 
 	//~ Begin UMaterialExpression Interface
 #if WITH_EDITOR

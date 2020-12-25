@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "OculusPlatformToolWidget.h"
 #include "Widgets/Text/SRichTextBlock.h"
 #include "DesktopPlatformModule.h"
@@ -11,22 +11,11 @@
 #include "HAL/FileManagerGeneric.h"
 #include "DOM/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
-#include "OculusHMDModule.h"
-#include "GenericPlatform/GenericPlatformMisc.h"
 
 #define LOCTEXT_NAMESPACE "OculusPlatformToolWidget"
 
 const FString UrlPlatformUtil = "https://www.oculus.com/download_app/?id=1076686279105243";
 const FString ProjectPlatformUtilPath = "Oculus/Tools/ovr-platform-util.exe";
-
-FText OculusPlatformDialogTitle = LOCTEXT("DownloadOculusPlatformUtility", "Download Oculus Platform Utility");
-FText OculusPlatformDialogMessage = LOCTEXT("DownloadOculusPlatformUtilityMessage",
-	"Oculus Platform Window would like to download the latest version of the Oculus Platform Utility."
-	" Oculus Platform Utility is a command-line tool that enables the uploading of builds to your release channels on the Oculus Developer Dashboard."
-	"\n\nYou can learn more about the Oculus Platform Utility at https://developer.oculus.com/distribute/publish-reference-platform-command-line-utility/"
-	"\n\nCanceling will prevent the download and the UPLOAD button will be unfunctional. Would you like the tool to download the Oculus Platform Utility to your project?"
-);
-
 
 FString SOculusPlatformToolWidget::LogText;
 
@@ -35,7 +24,6 @@ SOculusPlatformToolWidget::SOculusPlatformToolWidget()
 	LogTextUpdated = false;
 	ActiveUploadButton = true;
 	Options2DCollapsed = true;
-	RequestUploadButtonActive = true;
 	OptionsRedistPackagesCollapsed = true;
 
 	EnableUploadButtonDel.BindRaw(this, &SOculusPlatformToolWidget::EnableUploadButton);
@@ -44,7 +32,7 @@ SOculusPlatformToolWidget::SOculusPlatformToolWidget()
 
 	LoadConfigSettings();
 
-	FOculusHMDModule::GetPluginWrapper().SendEvent2("oculus_platform_tool", "show_window", "integration");
+	ovrp_SendEvent2("oculus_platform_tool", "show_window", "integration");
 }
 
 void SOculusPlatformToolWidget::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)
@@ -54,12 +42,6 @@ void SOculusPlatformToolWidget::Tick(const FGeometry& AllottedGeometry, const do
 	{
 		ToolConsoleLog->SetText(FText::FromString(LogText));
 		LogTextUpdated = false;
-	}
-
-	if (RequestUploadButtonActive != ActiveUploadButton)
-	{
-		ActiveUploadButton = RequestUploadButtonActive;
-		BuildButtonToolbar(ButtonToolbar);
 	}
 }
 
@@ -84,16 +66,13 @@ void SOculusPlatformToolWidget::Construct(const FArguments& InArgs)
 	BuildButtonToolbar(ButtonToolbar);
 	BuildExpansionFileBox(ExpansionFilesSettings);
 
-	if (PlatformSettings != NULL)
+	if (PlatformSettings->GetTargetPlatform() == (uint8)EOculusPlatformTarget::Rift)
 	{
-		if (PlatformSettings->GetTargetPlatform() == (uint8)EOculusPlatformTarget::Rift)
-		{
-			BuildRiftOptionalFields(OptionalSettings);
-		}
-		else
-		{
-			OptionalSettings.Get()->ClearChildren();
-		}
+		BuildRiftOptionalFields(OptionalSettings);
+	}
+	else
+	{
+		OptionalSettings.Get()->ClearChildren();
 	}
 
 	ChildSlot
@@ -196,11 +175,6 @@ void SOculusPlatformToolWidget::Construct(const FArguments& InArgs)
 
 void SOculusPlatformToolWidget::BuildGeneralSettingsBox(TSharedPtr<SVerticalBox> box)
 {
-	if (PlatformSettings == NULL)
-	{
-		return;
-	}
-
 	box.Get()->ClearChildren();
 
 	BuildTextComboBoxField(GeneralSettingsBox, LOCTEXT("TargetPlatform", "Target Platform"),
@@ -404,11 +378,6 @@ void SOculusPlatformToolWidget::BuildButtonToolbar(TSharedPtr<SHorizontalBox> bo
 
 void SOculusPlatformToolWidget::BuildRiftOptionalFields(TSharedPtr<SVerticalBox> box)
 {
-	if (PlatformSettings == NULL)
-	{
-		return;
-	}
-
 	box.Get()->ClearChildren();
 
 	// Add Launch Parameter Field
@@ -522,11 +491,6 @@ void SOculusPlatformToolWidget::BuildRedistPackagesBox(TSharedPtr<SVerticalBox> 
 
 void SOculusPlatformToolWidget::BuildExpansionFileBox(TSharedPtr<SVerticalBox> box)
 {
-	if (PlatformSettings == NULL)
-	{
-		return;
-	}
-
 	ExpansionFilesSettings.Get()->ClearChildren();
 
 	if (PlatformSettings->GetTargetPlatform() == (uint8)EOculusPlatformTarget::Rift)
@@ -644,11 +608,6 @@ void SOculusPlatformToolWidget::BuildAssetConfigBox(TSharedPtr<SVerticalBox> box
 
 bool SOculusPlatformToolWidget::ConstructArguments(FString& args)
 {
-	if (PlatformSettings == NULL)
-	{
-		return false;
-	}
-
 	// Build the args string that will be passed to the CLI. Print all errors that occur to the log.
 	bool success = true;
 
@@ -659,6 +618,9 @@ bool SOculusPlatformToolWidget::ConstructArguments(FString& args)
 			break;
 		case (uint8)EOculusPlatformTarget::Quest:
 			args = "upload-quest-build";
+			break;
+		case (uint8)EOculusPlatformTarget::Mobile:
+			args = "upload-mobile-build";
 			break;
 		default:
 			UpdateLogText(LogText + "ERROR: Invalid target platform selected");
@@ -832,7 +794,8 @@ bool SOculusPlatformToolWidget::ConstructArguments(FString& args)
 
 void SOculusPlatformToolWidget::EnableUploadButton(bool enabled)
 {
-	RequestUploadButtonActive = enabled;
+	ActiveUploadButton = enabled;
+	BuildButtonToolbar(ButtonToolbar);
 }
 
 void SOculusPlatformToolWidget::LoadConfigSettings()
@@ -870,7 +833,7 @@ FReply SOculusPlatformToolWidget::OnStartPlatformUpload()
 	FString launchArgs;
 
 	UpdateLogText("");
-	FOculusHMDModule::GetPluginWrapper().SendEvent2("oculus_platform_tool", "upload", "integration");
+	ovrp_SendEvent2("oculus_platform_tool", "upload", "integration");
 	if (ConstructArguments(launchArgs))
 	{
 		UpdateLogText(LogText + LOCTEXT("StartUpload", "Starting Platform Tool Upload Process . . .\n").ToString());
@@ -1122,11 +1085,11 @@ FReply SOculusPlatformToolWidget::OnClearLaunchFilePath()
 
 FReply SOculusPlatformToolWidget::OnSelect2DLaunchPath()
 {
-
 	if (PlatformSettings != NULL)
 	{
 		TSharedPtr<SWindow> parentWindow = FSlateApplication::Get().FindWidgetWindow(AsShared());
 		const void* parentWindowHandle = (parentWindow.IsValid() && parentWindow->GetNativeWindow().IsValid()) ? parentWindow->GetNativeWindow()->GetOSWindowHandle() : nullptr;
+
 		TArray<FString> path;
 		FString defaultPath = PlatformSettings->OculusRift2DLaunchPath.IsEmpty() ? FPaths::ProjectContentDir() : PlatformSettings->OculusRift2DLaunchPath;
 		if (FDesktopPlatformModule::Get()->OpenFileDialog(parentWindowHandle, "Choose 2D Launch File", defaultPath, defaultPath, "Executables (*.exe)|*.exe", EFileDialogFlags::None, path))
@@ -1168,11 +1131,11 @@ FReply SOculusPlatformToolWidget::OnCancelUpload()
 
 FReply SOculusPlatformToolWidget::OnSelectLanguagePacksPath()
 {
-
 	if (PlatformSettings != NULL)
 	{
 		TSharedPtr<SWindow> parentWindow = FSlateApplication::Get().FindWidgetWindow(AsShared());
 		const void* parentWindowHandle = (parentWindow.IsValid() && parentWindow->GetNativeWindow().IsValid()) ? parentWindow->GetNativeWindow()->GetOSWindowHandle() : nullptr;
+
 		FString path;
 		FString defaultPath = PlatformSettings->GetLanguagePacksPath().IsEmpty() ? FPaths::ProjectContentDir() : PlatformSettings->GetLanguagePacksPath();
 		if (FDesktopPlatformModule::Get()->OpenDirectoryDialog(parentWindowHandle, "Choose Language Packs Directory", defaultPath, path))
@@ -1198,11 +1161,11 @@ FReply SOculusPlatformToolWidget::OnClearLanguagePacksPath()
 
 FReply SOculusPlatformToolWidget::OnSelectExpansionFilesPath()
 {
-
 	if (PlatformSettings != NULL)
 	{
 		TSharedPtr<SWindow> parentWindow = FSlateApplication::Get().FindWidgetWindow(AsShared());
 		const void* parentWindowHandle = (parentWindow.IsValid() && parentWindow->GetNativeWindow().IsValid()) ? parentWindow->GetNativeWindow()->GetOSWindowHandle() : nullptr;
+
 		FString path;
 		FString defaultPath = PlatformSettings->GetExpansionFilesPath().IsEmpty() ? FPaths::ProjectContentDir() : PlatformSettings->GetExpansionFilesPath();
 		if (FDesktopPlatformModule::Get()->OpenDirectoryDialog(parentWindowHandle, "Choose Expansion Files Directory", defaultPath, path))
@@ -1356,14 +1319,14 @@ FPlatformDownloadTask::FPlatformDownloadTask(FUpdateLogTextDel textDel, FEvent* 
 	UpdateLogText = textDel;
 	SaveCompleteEvent = saveEvent;
 
-	FOculusHMDModule::GetPluginWrapper().SendEvent2("oculus_platform_tool", "provision_util", "integration");
+	ovrp_SendEvent2("oculus_platform_tool", "provision_util", "integration");
 }
 
 void FPlatformDownloadTask::DoWork()
 {
 	// Create HTTP request for downloading oculus platform tool
 	downloadCompleteEvent = FGenericPlatformProcess::GetSynchEventFromPool(false);
-	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> httpRequest = FHttpModule::Get().CreateRequest();
+	TSharedRef<IHttpRequest> httpRequest = FHttpModule::Get().CreateRequest();
 
 	httpRequest->OnProcessRequestComplete().BindRaw(this, &FPlatformDownloadTask::OnDownloadRequestComplete);
 	httpRequest->OnRequestProgress().BindRaw(this, &FPlatformDownloadTask::OnRequestDownloadProgress);
@@ -1441,18 +1404,10 @@ void FPlatformUploadTask::DoWork()
 	{
 		FEvent* PlatformToolCreatedEvent = FGenericPlatformProcess::GetSynchEventFromPool(false);
 
-		UpdateLogText.Execute(SOculusPlatformToolWidget::LogText + LOCTEXT("NoCLI", "Unable to find Oculus Platform Utility.\n").ToString());
-		EAppReturnType::Type dialogChoice = FMessageDialog::Open(EAppMsgType::OkCancel, OculusPlatformDialogMessage, &OculusPlatformDialogTitle);
-		if (dialogChoice == EAppReturnType::Ok)
-		{
-			UpdateLogText.Execute(SOculusPlatformToolWidget::LogText + LOCTEXT("DownloadCLI", "Downloading Oculus Platform Utility . . .\n").ToString());
-			(new FAsyncTask<FPlatformDownloadTask>(UpdateLogText, PlatformToolCreatedEvent))->StartBackgroundTask();
-			PlatformToolCreatedEvent->Wait();
-		}
-		else
-		{
-			return;
-		}
+		UpdateLogText.Execute(SOculusPlatformToolWidget::LogText + LOCTEXT("NoCLI", "Unable to find Oculus Platform Tool. Starting download . . .\n").ToString());
+		(new FAsyncTask<FPlatformDownloadTask>(UpdateLogText, PlatformToolCreatedEvent))->StartBackgroundTask();
+
+		PlatformToolCreatedEvent->Wait();
 
 		UpdateLogText.Execute(SOculusPlatformToolWidget::LogText + LOCTEXT("StartUploadAfterDownload", "Starting upload . . .\n").ToString());
 	}
@@ -1466,20 +1421,8 @@ void FPlatformUploadTask::DoWork()
 	while (FPlatformProcess::IsProcRunning(PlatformProcess))
 	{
 		FString log = FPlatformProcess::ReadPipe(ReadPipe);
-		if (!log.IsEmpty())
+		if (!log.IsEmpty() && !log.Contains("\u001b"))
 		{
-			// Remove parts of the log that contain escape character codes
-			int32 escapeIndex = log.Find("\u001b");
-			while (escapeIndex >= 0)
-			{
-				int32 lineEndIndex = log.Find("\n", ESearchCase::IgnoreCase, ESearchDir::FromStart, escapeIndex);
-				if (lineEndIndex < 0) // If an escape character code exists without a new line end, just remove the escape character
-				{
-					lineEndIndex = escapeIndex + 1;
-				}
-				log.RemoveAt(escapeIndex, lineEndIndex - escapeIndex);
-				escapeIndex = log.Find("\u001b");
-			}
 			UpdateLogText.Execute(SOculusPlatformToolWidget::LogText + log);
 		}
 	}
@@ -1505,18 +1448,10 @@ void FPlatformLoadRedistPackagesTask::DoWork()
 
 		FEvent* PlatformToolCreatedEvent = FGenericPlatformProcess::GetSynchEventFromPool(false);
 
-		UpdateLogText.Execute(SOculusPlatformToolWidget::LogText + LOCTEXT("NoCLI", "Unable to find Oculus Platform Utility.\n").ToString());
-		EAppReturnType::Type dialogChoice = FMessageDialog::Open(EAppMsgType::OkCancel, OculusPlatformDialogMessage, &OculusPlatformDialogTitle);
-		if (dialogChoice == EAppReturnType::Ok)
-		{
-			UpdateLogText.Execute(SOculusPlatformToolWidget::LogText + LOCTEXT("DownloadCLI", "Downloading Oculus Platform Utility . . .\n").ToString());
-			(new FAsyncTask<FPlatformDownloadTask>(UpdateLogText, PlatformToolCreatedEvent))->StartBackgroundTask();
-			PlatformToolCreatedEvent->Wait();
-		}
-		else
-		{
-			return;
-		}
+		UpdateLogText.Execute(SOculusPlatformToolWidget::LogText + LOCTEXT("NoCLI", "Unable to find Oculus Platform Tool. Starting download . . .\n").ToString());
+		(new FAsyncTask<FPlatformDownloadTask>(UpdateLogText, PlatformToolCreatedEvent))->StartBackgroundTask();
+
+		PlatformToolCreatedEvent->Wait();
 	}
 
 	// Launch CLI and pass command to list out redist packages currently avalible
@@ -1554,14 +1489,11 @@ void FPlatformLoadRedistPackagesTask::DoWork()
 	}
 
 	// Check to see if our stored copy of redist packages is outdated
-	if (PlatformSettings != NULL)
+	if (LoadedPackages.Num() > PlatformSettings->OculusRedistPackages.Num())
 	{
-		if (LoadedPackages.Num() > PlatformSettings->OculusRedistPackages.Num())
-		{
-			PlatformSettings->OculusRedistPackages = LoadedPackages;
-			PlatformSettings->SaveConfig();
-			UpdateLogText.Execute(SOculusPlatformToolWidget::LogText + LOCTEXT("FinishRedistLoad", "Finished updating redistributable packages.\n").ToString());
-		}
+		PlatformSettings->OculusRedistPackages = LoadedPackages;
+		PlatformSettings->SaveConfig();
+		UpdateLogText.Execute(SOculusPlatformToolWidget::LogText + LOCTEXT("FinishRedistLoad", "Finished updating redistributable packages.\n").ToString());
 	}
 }
 

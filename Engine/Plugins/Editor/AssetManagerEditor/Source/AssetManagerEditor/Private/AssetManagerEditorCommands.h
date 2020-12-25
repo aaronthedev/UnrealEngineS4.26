@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -21,9 +21,6 @@ public:
 
 	// Shows a size map for the selected assets
 	TSharedPtr<FUICommandInfo> ViewSizeMap;
-
-	// Shows shader cook statistics
-	TSharedPtr<FUICommandInfo> ViewShaderCookStatistics;
 
 	// Adds assets to asset audit window
 	TSharedPtr<FUICommandInfo> ViewAssetAudit;

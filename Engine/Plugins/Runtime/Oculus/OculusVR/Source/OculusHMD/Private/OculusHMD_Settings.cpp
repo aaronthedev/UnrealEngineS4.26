@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OculusHMD_Settings.h"
 
@@ -19,15 +19,10 @@ FSettings::FSettings() :
 	, PixelDensityMax(1.0f)
 	, SystemHeadset(ovrpSystemHeadset_None)
 	, FFRLevel(EFixedFoveatedRenderingLevel::FFR_Off)
-	, FFRDynamic(false)
 	, CPULevel(2)
 	, GPULevel(3)
-	, bEnableSpecificColorGamut(false)
-	, ColorSpace(EColorSpace::Unknown)
-	, HandTrackingSupport(EHandTrackingSupport::ControllersOnly)
 	, ColorScale(ovrpVector4f{1,1,1,1})
 	, ColorOffset(ovrpVector4f{0,0,0,0})
-	, bApplyColorScaleAndOffsetToAllLayers(false)
 {
 	Flags.Raw = 0;
 	Flags.bHMDEnabled = true;
@@ -38,19 +33,11 @@ FSettings::FSettings() :
 	Flags.bIsUsingDirectMultiview = false;
 #if PLATFORM_ANDROID
 	Flags.bCompositeDepth = false;
-	Flags.bsRGBEyeBuffer = true;
-	//oculus mobile is always-on stereo, no need for enableStereo codepaths
-	Flags.bStereoEnabled = true;
 #else
 	Flags.bCompositeDepth = true;
-	Flags.bsRGBEyeBuffer = false;
-	Flags.bStereoEnabled = false;
 #endif
-
 	Flags.bSupportsDash = true;
 	Flags.bRecenterHMDWithController = true;
-	Flags.bFocusAware = true;
-	Flags.bRequiresSystemKeyboard = false;
 	EyeRenderViewport[0] = EyeRenderViewport[1] = FIntRect(0, 0, 0, 0);
 
 	RenderTargetSize = FIntPoint(0, 0);

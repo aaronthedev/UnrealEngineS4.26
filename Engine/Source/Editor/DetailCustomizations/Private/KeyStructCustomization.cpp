@@ -1,12 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "KeyStructCustomization.h"
 #include "DetailWidgetRow.h"
-#include "InputSettingsDetails.h"
 #include "SKeySelector.h"
 #include "UObject/UnrealType.h"
 
 #define LOCTEXT_NAMESPACE "FKeyStructCustomization"
+
 
 /* FKeyStructCustomization static interface
  *****************************************************************************/
@@ -15,6 +15,7 @@ TSharedRef<IPropertyTypeCustomization> FKeyStructCustomization::MakeInstance( )
 {
 	return MakeShareable(new FKeyStructCustomization);
 }
+
 
 /* IPropertyTypeCustomization interface
  *****************************************************************************/
@@ -38,37 +39,6 @@ void FKeyStructCustomization::CustomizeHeader( TSharedRef<class IPropertyHandle>
 		.Font(StructCustomizationUtils.GetRegularFont())
 		.AllowClear(!StructPropertyHandle->GetProperty()->HasAnyPropertyFlags(CPF_NoClear))
 		.FilterBlueprintBindable(false)
-	];
-}
-
-void FKeyStructCustomization::CustomizeHeaderOnlyWithButton(TSharedRef<class IPropertyHandle> StructPropertyHandle, class FDetailWidgetRow& HeaderRow, IPropertyTypeCustomizationUtils& StructCustomizationUtils, TSharedRef<SWidget> Button)
-{
-	PropertyHandle = StructPropertyHandle;
-
-	// create struct header
-	HeaderRow.NameContent()
-	.MinDesiredWidth(125.0f)
-	.MaxDesiredWidth(325.0f)
-	[
-		SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot()
-		.Padding(InputConstants::PropertyPadding)
-		//.AutoWidth()
-		[
-			SNew(SKeySelector)
-			.CurrentKey(this, &FKeyStructCustomization::GetCurrentKey)
-			.OnKeyChanged(this, &FKeyStructCustomization::OnKeyChanged)
-			.Font(StructCustomizationUtils.GetRegularFont())
-			.AllowClear(!StructPropertyHandle->GetProperty()->HasAnyPropertyFlags(CPF_NoClear))
-		]
-		+ SHorizontalBox::Slot()
-		.Padding(InputConstants::PropertyPadding)
-		.HAlign(HAlign_Center)
-		.VAlign(VAlign_Center)
-		.AutoWidth()
-		[
-			Button
-		]
 	];
 }
 

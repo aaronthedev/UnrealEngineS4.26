@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Manifest.h"
 #include "UnrealHeaderTool.h"
@@ -36,7 +36,7 @@ namespace
 	template <typename T>
 	void GetJsonFieldValue(T& OutVal, const TSharedPtr<FJsonObject>& JsonObject, const TCHAR* FieldName, const TCHAR* Outer)
 	{
-		TSharedPtr<FJsonValue>* JsonValue = JsonObject->Values.Find(FieldName);
+		auto JsonValue = JsonObject->Values.Find(FieldName);
 
 		if (!JsonValue)
 		{
@@ -72,8 +72,8 @@ FManifest FManifest::LoadFromFile(const FString& Filename)
 		FError::Throwf(TEXT("Unable to load manifest: %s"), *Filename);
 	}
 
-	TSharedPtr<FJsonObject> RootObject = TSharedPtr<FJsonObject>();
-	TSharedRef<TJsonReader<TCHAR>> Reader = TJsonReaderFactory<TCHAR>::Create(Json);
+	auto RootObject = TSharedPtr<FJsonObject>();
+	auto Reader = TJsonReaderFactory<TCHAR>::Create(Json);
 
 	if (!FJsonSerializer::Deserialize(Reader, RootObject))
 	{
@@ -112,16 +112,16 @@ FManifest FManifest::LoadFromFile(const FString& Filename)
 
 	int32 ModuleIndex = 0;
 
-	for (const TSharedPtr<FJsonValue>& Module : ModulesArray)
+	for (auto Module : ModulesArray)
 	{
-		const TSharedPtr<FJsonObject>& ModuleObj = Module->AsObject();
+		auto ModuleObj = Module->AsObject();
 
 		TArray<TSharedPtr<FJsonValue>> ClassesHeaders;
 		TArray<TSharedPtr<FJsonValue>> PublicHeaders;
 		TArray<TSharedPtr<FJsonValue>> PrivateHeaders;
 
 		Result.Modules.AddZeroed();
-		FManifestModule& KnownModule = Result.Modules.Last();
+		auto& KnownModule = Result.Modules.Last();
 
 		FString Outer = FString::Printf(TEXT("Modules[%d]"), ModuleIndex);
 		FString GeneratedCodeVersionString;
@@ -140,10 +140,6 @@ FManifest FManifest::LoadFromFile(const FString& Filename)
 		FString ModuleTypeText;
 		GetJsonFieldValue(ModuleTypeText, ModuleObj, TEXT("ModuleType"), *Outer);
 		KnownModule.ModuleType = EBuildModuleType::Parse(*ModuleTypeText);
-
-		FString OverrideModuleTypeText;
-		GetJsonFieldValue(OverrideModuleTypeText, ModuleObj, TEXT("OverrideModuleType"), *Outer);
-		KnownModule.OverrideModuleType = EPackageOverrideType::Parse(*OverrideModuleTypeText);
 
 		KnownModule.LongPackageName = FPackageName::ConvertToLongScriptPackageName(*KnownModule.Name);
 
@@ -240,10 +236,8 @@ bool FManifestModule::NeedsRegeneration() const
 
 bool FManifestModule::IsCompatibleWith(const FManifestModule& ManifestModule)
 {
-	return ModuleType == ManifestModule.ModuleType
-		&& SaveExportedHeaders == ManifestModule.SaveExportedHeaders
-		&& GeneratedCodeVersion == ManifestModule.GeneratedCodeVersion
-		&& Name == ManifestModule.Name
+	return Name == ManifestModule.Name
+		&& ModuleType == ManifestModule.ModuleType
 		&& LongPackageName == ManifestModule.LongPackageName
 		&& BaseDirectory == ManifestModule.BaseDirectory
 		&& IncludeBase == ManifestModule.IncludeBase
@@ -251,5 +245,7 @@ bool FManifestModule::IsCompatibleWith(const FManifestModule& ManifestModule)
 		&& PublicUObjectClassesHeaders == ManifestModule.PublicUObjectClassesHeaders
 		&& PublicUObjectHeaders == ManifestModule.PublicUObjectHeaders
 		&& PrivateUObjectHeaders == ManifestModule.PrivateUObjectHeaders
-		&& GeneratedCPPFilenameBase == ManifestModule.GeneratedCPPFilenameBase;
+		&& GeneratedCPPFilenameBase == ManifestModule.GeneratedCPPFilenameBase
+		&& SaveExportedHeaders == ManifestModule.SaveExportedHeaders
+		&& GeneratedCodeVersion == ManifestModule.GeneratedCodeVersion;
 }

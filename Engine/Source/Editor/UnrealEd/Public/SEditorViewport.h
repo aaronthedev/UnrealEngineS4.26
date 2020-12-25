@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -79,11 +79,6 @@ public:
 	TSharedPtr<FEditorViewportClient> GetViewportClient() const { return Client; }
 
 	/**
-	 * @return The current FSceneViewport shared pointer
-	 */
-	TSharedPtr<FSceneViewport> GetSceneViewport() { return SceneViewport; }
-
-	/**
 	 * Controls the visibility of the widget transform toolbar, if there is an associated toolbar
 	 */
 	virtual EVisibility GetTransformToolbarVisibility() const;
@@ -105,9 +100,6 @@ private:
 	EShaderPlatform GetShaderPlatformHelper(const ERHIFeatureLevel::Type InFeatureLevel) const;
 
 protected:
-	/** @return true if realtime can be toggled (it cannot be toggled directly if there is an override in place) */
-	bool CanToggleRealtime() const;
-
 	/** call this function to build a 'text' widget that can display the present feature level */
 	TSharedRef<SWidget> BuildFeatureLevelWidget() const;
 ///////////////////////////////////////////////////////////////////////////////

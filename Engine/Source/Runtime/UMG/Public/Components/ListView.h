@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -47,7 +47,6 @@ public:
 	}
 
 	ESelectionMode::Type GetSelectionMode() const { return SelectionMode; }
-	EOrientation GetOrientation() const { return Orientation; }
 
 	template <typename RowWidgetT = UUserWidget>
 	RowWidgetT* GetEntryWidgetFromItem(const UObject* Item) const
@@ -159,7 +158,7 @@ protected:
 	 * Vertical will scroll vertically and arrange tiles into rows.
 	 * Horizontal will scroll horizontally and arrange tiles into columns.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = ListView)
+	UPROPERTY(EditAnywhere, Category = ListView)
 	TEnumAsByte<EOrientation> Orientation;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = ListView)
@@ -174,7 +173,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = ListView)
 	bool bIsFocusable = true;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = ListView, meta = (ClampMin = 0))
+	UPROPERTY(EditAnywhere, Category = ListEntries, meta = (ClampMin = 0))
 	float EntrySpacing = 0.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = ListView)

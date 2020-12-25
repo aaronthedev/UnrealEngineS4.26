@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2020 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2019 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -428,12 +428,6 @@ PSP_UnlockTexture(SDL_Renderer * renderer, SDL_Texture * texture)
     PSP_UpdateTexture(renderer, texture, &rect, psp_texture->data, psp_texture->pitch);
 }
 
-static void
-PSP_SetTextureScaleMode(SDL_Renderer * renderer, SDL_Texture * texture, SDL_ScaleMode scaleMode)
-{
-    /* Nothing to do because TextureActivate takes care of it */
-}
-
 static int
 PSP_SetRenderTarget(SDL_Renderer * renderer, SDL_Texture * texture)
 {
@@ -676,12 +670,7 @@ PSP_SetBlendMode(SDL_Renderer * renderer, int blendMode)
         case SDL_BLENDMODE_MOD:
                 sceGuTexFunc(GU_TFX_MODULATE , GU_TCC_RGBA);
                 sceGuEnable(GU_BLEND);
-                sceGuBlendFunc(GU_ADD, GU_FIX, GU_SRC_COLOR, 0, 0);
-            break;
-        case SDL_BLENDMODE_MUL:
-                sceGuTexFunc(GU_TFX_MODULATE , GU_TCC_RGBA);
-                sceGuEnable(GU_BLEND);
-                sceGuBlendFunc(GU_ADD, GU_DST_COLOR, GU_ONE_MINUS_SRC_ALPHA, 0, 0);
+                sceGuBlendFunc( GU_ADD, GU_FIX, GU_SRC_COLOR, 0, 0);
             break;
         }
         data->currentBlendMode = blendMode;
@@ -949,7 +938,6 @@ PSP_CreateRenderer(SDL_Window * window, Uint32 flags)
     renderer->UpdateTexture = PSP_UpdateTexture;
     renderer->LockTexture = PSP_LockTexture;
     renderer->UnlockTexture = PSP_UnlockTexture;
-    renderer->SetTextureScaleMode = PSP_SetTextureScaleMode;
     renderer->SetRenderTarget = PSP_SetRenderTarget;
     renderer->QueueSetViewport = PSP_QueueSetViewport;
     renderer->QueueSetDrawColor = PSP_QueueSetViewport;  /* SetViewport and SetDrawColor are (currently) no-ops. */

@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Modules/ModuleInterface.h"
 #include "Modules/ModuleManager.h"
 #include "Misc/ConfigCacheIni.h"
-#include "InstallBundleManagerInterface.h"
 
 /**
  * Currently empty implementation for InstallBundleModule until things are moved in here.
@@ -53,11 +52,7 @@ public:
 	{
 		// Only instantiate the bundle manager if this is the version the game has been configured to use
 		FString ModuleName;
-#if WITH_EDITOR
-		GConfig->GetString(TEXT("InstallBundleManager"), TEXT("EditorModuleName"), ModuleName, GEngineIni);
-#else
 		GConfig->GetString(TEXT("InstallBundleManager"), TEXT("ModuleName"), ModuleName, GEngineIni);
-#endif // WITH_EDITOR
 
 		if (FModuleManager::Get().GetModule(*ModuleName) == this)
 		{

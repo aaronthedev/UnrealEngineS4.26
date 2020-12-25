@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -52,7 +52,7 @@ protected:
 	 *
 	 * @param Frame The frame that was loaded by this work item.
 	 */
-	void Finalize(TSharedPtr<FImgMediaFrame, ESPMode::ThreadSafe> Frame);
+	void Finalize(FImgMediaFrame* Frame);
 
 private:
 

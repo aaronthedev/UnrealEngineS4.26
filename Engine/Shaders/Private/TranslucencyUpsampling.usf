@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	TranslucencyUpsampling.usf: PostProcessing shader to upscale
@@ -8,7 +8,7 @@
 #include "SeparateTranslucency.ush"
 
 Texture2D LowResColorTexture;
-float2 LowResExtentInverse;
+float4 LowResColorTexelSize;
 
 void SimpleUpsamplingPS(FScreenVertexOutput Input, out float4 OutColor : SV_Target0)
 {
@@ -17,5 +17,5 @@ void SimpleUpsamplingPS(FScreenVertexOutput Input, out float4 OutColor : SV_Targ
 
 void NearestDepthNeighborUpsamplingPS(FScreenVertexOutput Input, out float4 OutColor : SV_Target0)
 {
-	OutColor = NearestDepthNeighborUpsampling(Input.Position.xy, Input.UV, LowResColorTexture, LowResExtentInverse);
+	OutColor = NearestDepthNeighborUpsampling(Input.Position.xy, Input.UV, LowResColorTexture, LowResColorTexelSize.zw);
 }

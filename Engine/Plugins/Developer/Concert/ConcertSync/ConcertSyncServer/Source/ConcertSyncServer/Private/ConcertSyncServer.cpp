@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ConcertSyncServer.h"
 
@@ -167,43 +167,20 @@ bool MigrateSessionData(const FConcertSyncSessionDatabase& InSourceDatabase, con
 
 			case EConcertSyncActivityEventType::Package:
 			{
-				FConcertSyncActivity PackageActivityBasePart;
-				if (!InSourceDatabase.GetActivity(InActivityId, PackageActivityBasePart)) // This only fill up the part that is common to all activities.
+				FConcertSyncPackageActivity PackageActivity;
+				if (!InSourceDatabase.GetActivity(InActivityId, PackageActivity))
 				{
 					MIGRATE_SET_ERROR_RESULT_AND_RETURN("Failed to get package activity '%s' from database at '%s': %s", *LexToString(InActivityId), *InSourceDatabase.GetFilename(), *InSourceDatabase.GetLastError());
 				}
-				if ((InDestSessionFilter.bIncludeIgnoredActivities || !PackageActivityBasePart.bIgnored) && ConcertSyncSessionDatabaseFilterUtil::PackageEventPassesFilter(PackageActivityBasePart.EventId, InDestSessionFilter, InSourceDatabase))
+				if ((InDestSessionFilter.bIncludeIgnoredActivities || !PackageActivity.bIgnored) && ConcertSyncSessionDatabaseFilterUtil::PackageEventPassesFilter(PackageActivity.EventId, InDestSessionFilter, InSourceDatabase))
 				{
-					if (InDestSessionFilter.bMetaDataOnly)
+					if (!InSourceDatabase.GetPackageEvent(PackageActivity.EventId, PackageActivity.EventData, InDestSessionFilter.bMetaDataOnly))
 					{
-						FConcertSyncPackageEventData PackageActivityEventPart;
-						if (!InSourceDatabase.GetPackageEventMetaData(PackageActivityBasePart.EventId, PackageActivityEventPart.MetaData.PackageRevision, PackageActivityEventPart.MetaData.PackageInfo))
-						{
-							check(PackageActivityEventPart.PackageDataStream.DataAr == nullptr);
-							MIGRATE_SET_ERROR_RESULT_AND_RETURN("Failed to get package event '%s' from database at '%s': %s", *LexToString(PackageActivityBasePart.EventId), *InSourceDatabase.GetFilename(), *InSourceDatabase.GetLastError());
-						}
-						// Merge the base part with the event part to reconstruct the package activity.
-						if (!DestDatabase.SetPackageActivity(PackageActivityBasePart, PackageActivityEventPart, InDestSessionFilter.bMetaDataOnly))
-						{
-							MIGRATE_SET_ERROR_RESULT_AND_RETURN("Failed to set package activity '%s' on database at '%s': %s", *LexToString(InActivityId), *DestDatabase.GetFilename(), *DestDatabase.GetLastError());
-						}
+						MIGRATE_SET_ERROR_RESULT_AND_RETURN("Failed to get package event '%s' from database at '%s': %s", *LexToString(PackageActivity.EventId), *InSourceDatabase.GetFilename(), *InSourceDatabase.GetLastError());
 					}
-					else
+					if (!DestDatabase.SetPackageActivity(PackageActivity, InDestSessionFilter.bMetaDataOnly))
 					{
-						// Pull the package event required to fill the package specific part of the activity.
-						bool bSuccess = InSourceDatabase.GetPackageEvent(PackageActivityBasePart.EventId, [&DestDatabase, &PackageActivityBasePart, &InDestSessionFilter, InActivityId](FConcertSyncPackageEventData& PackageActivityEventPart)
-						{
-							// Merge the common activity part with the package event to reconstruct and migrate a package activity.
-							if (!DestDatabase.SetPackageActivity(PackageActivityBasePart, PackageActivityEventPart, InDestSessionFilter.bMetaDataOnly))
-							{
-								UE_LOG(LogConcert, Error, TEXT("Failed to set package activity '%s' on database at '%s': %s"), *LexToString(InActivityId), *DestDatabase.GetFilename(), *DestDatabase.GetLastError());
-							}
-						});
-
-						if (!bSuccess)
-						{
-							MIGRATE_SET_ERROR_RESULT_AND_RETURN("Failed to get package event '%s' from database at '%s': %s", *LexToString(PackageActivityBasePart.EventId), *InSourceDatabase.GetFilename(), *InSourceDatabase.GetLastError());
-						}
+						MIGRATE_SET_ERROR_RESULT_AND_RETURN("Failed to set package activity '%s' on database at '%s': %s", *LexToString(InActivityId), *DestDatabase.GetFilename(), *DestDatabase.GetLastError());
 					}
 				}
 			}
@@ -255,11 +232,6 @@ IConcertServerRef FConcertSyncServer::GetConcertServer() const
 	return ConcertServer;
 }
 
-void FConcertSyncServer::SetFileSharingService(TSharedPtr<IConcertFileSharingService> InFileSharingService)
-{
-	FileSharingService = MoveTemp(InFileSharingService);
-}
-
 void FConcertSyncServer::GetSessionsFromPath(const IConcertServer& InServer, const FString& InPath, TArray<FConcertSessionInfo>& OutSessionInfos, TArray<FDateTime>* OutSessionCreationTimes)
 {
 	IFileManager::Get().IterateDirectory(*InPath, [&OutSessionInfos, &OutSessionCreationTimes](const TCHAR* FilenameOrDirectory, bool bIsDirectory) -> bool
@@ -289,10 +261,10 @@ void FConcertSyncServer::GetSessionsFromPath(const IConcertServer& InServer, con
 	});
 }
 
-bool FConcertSyncServer::OnLiveSessionCreated(const IConcertServer& InServer, TSharedRef<IConcertServerSession> InSession)
+void FConcertSyncServer::OnLiveSessionCreated(const IConcertServer& InServer, TSharedRef<IConcertServerSession> InSession)
 {
 	ConcertSyncServerUtils::WriteSessionInfoToDirectory(InSession->GetSessionWorkingDirectory(), InSession->GetSessionInfo());
-	return CreateLiveSession(InSession);
+	CreateLiveSession(InSession);
 }
 
 void FConcertSyncServer::OnLiveSessionDestroyed(const IConcertServer& InServer, TSharedRef<IConcertServerSession> InSession)
@@ -300,10 +272,10 @@ void FConcertSyncServer::OnLiveSessionDestroyed(const IConcertServer& InServer, 
 	DestroyLiveSession(InSession);
 }
 
-bool FConcertSyncServer::OnArchivedSessionCreated(const IConcertServer& InServer, const FString& InArchivedSessionRoot, const FConcertSessionInfo& InArchivedSessionInfo)
+void FConcertSyncServer::OnArchivedSessionCreated(const IConcertServer& InServer, const FString& InArchivedSessionRoot, const FConcertSessionInfo& InArchivedSessionInfo)
 {
 	ConcertSyncServerUtils::WriteSessionInfoToDirectory(InArchivedSessionRoot, InArchivedSessionInfo);
-	return CreateArchivedSession(InArchivedSessionRoot, InArchivedSessionInfo);
+	CreateArchivedSession(InArchivedSessionRoot, InArchivedSessionInfo);
 }
 
 void FConcertSyncServer::OnArchivedSessionDestroyed(const IConcertServer& InServer, const FGuid& InArchivedSessionId)
@@ -313,7 +285,11 @@ void FConcertSyncServer::OnArchivedSessionDestroyed(const IConcertServer& InServ
 
 bool FConcertSyncServer::ArchiveSession(const IConcertServer& InServer, TSharedRef<IConcertServerSession> InLiveSession, const FString& InArchivedSessionRoot, const FConcertSessionInfo& InArchivedSessionInfo, const FConcertSessionFilter& InSessionFilter)
 {
-	return CopySession(InServer, InLiveSession, InArchivedSessionRoot, InSessionFilter);
+	if (TSharedPtr<FConcertSyncServerLiveSession> LiveSession = LiveSessions.FindRef(InLiveSession->GetId()))
+	{
+		return ConcertSyncServerUtils::MigrateSessionData(LiveSession->GetSessionDatabase(), InArchivedSessionRoot, InSessionFilter);
+	}
+	return false;
 }
 
 bool FConcertSyncServer::ArchiveSession(const IConcertServer& InServer, const FString& InLiveSessionWorkingDir, const FString& InArchivedSessionRoot, const FConcertSessionInfo& InArchivedSessionInfo, const FConcertSessionFilter& InSessionFilter)
@@ -326,15 +302,6 @@ bool FConcertSyncServer::ArchiveSession(const IConcertServer& InServer, const FS
 
 	LiveSessionDatabase.Close();
 	return RetVal;
-}
-
-bool FConcertSyncServer::CopySession(const IConcertServer& InServer, TSharedRef<IConcertServerSession> InLiveSession, const FString& NewSessionRoot, const FConcertSessionFilter& InSessionFilter)
-{
-	if (TSharedPtr<FConcertSyncServerLiveSession> LiveSession = LiveSessions.FindRef(InLiveSession->GetId()))
-	{
-		return ConcertSyncServerUtils::MigrateSessionData(LiveSession->GetSessionDatabase(), NewSessionRoot, InSessionFilter);
-	}
-	return false;
 }
 
 bool FConcertSyncServer::ExportSession(const IConcertServer& InServer, const FGuid& InSessionId, const FString& DestDir, const FConcertSessionFilter& InSessionFilter, bool bAnonymizeData)
@@ -431,8 +398,7 @@ bool FConcertSyncServer::GetSessionActivities(const FConcertSyncSessionDatabase&
 				// If the details are requested, get the package event meta-data, which contain extra info about the package name/version, etc.
 				if (bIncludeDetails)
 				{
-					// Don't pull the package data, it can be huge (few GB) and is not useful in the context of this function design. (It is used to display extra info in UI and parsing the large package data is not practical)
-					Database.GetPackageEventMetaData(SyncActivity.EventId, SyncActivity.EventData.PackageRevision, SyncActivity.EventData.Package.Info);
+					Database.GetPackageEvent(SyncActivity.EventId, SyncActivity.EventData, true/*bMetaDataOnly*/); // Just get the package event meta-data, the package data is not required to display details.
 				}
 
 				SerializedSyncActivityPayload.SetTypedPayload(SyncActivity);
@@ -470,7 +436,7 @@ void FConcertSyncServer::CreateWorkspace(const TSharedRef<FConcertSyncServerLive
 {
 	check(InLiveSession->IsValidSession());
 	DestroyWorkspace(InLiveSession);
-	LiveSessionWorkspaces.Add(InLiveSession->GetSession().GetId(), MakeShared<FConcertServerWorkspace>(InLiveSession, FileSharingService));
+	LiveSessionWorkspaces.Add(InLiveSession->GetSession().GetId(), MakeShared<FConcertServerWorkspace>(InLiveSession));
 }
 
 void FConcertSyncServer::DestroyWorkspace(const TSharedRef<FConcertSyncServerLiveSession>& InLiveSession)
@@ -490,7 +456,7 @@ void FConcertSyncServer::DestroySequencerManager(const TSharedRef<FConcertSyncSe
 	LiveSessionSequencerManagers.Remove(InLiveSession->GetSession().GetId());
 }
 
-bool FConcertSyncServer::CreateLiveSession(const TSharedRef<IConcertServerSession>& InSession)
+void FConcertSyncServer::CreateLiveSession(const TSharedRef<IConcertServerSession>& InSession)
 {
 	DestroyLiveSession(InSession);
 
@@ -503,11 +469,7 @@ bool FConcertSyncServer::CreateLiveSession(const TSharedRef<IConcertServerSessio
 		{
 			CreateSequencerManager(LiveSession.ToSharedRef());
 		}
-
-		return true;
 	}
-
-	return false;
 }
 
 void FConcertSyncServer::DestroyLiveSession(const TSharedRef<IConcertServerSession>& InSession)
@@ -520,7 +482,7 @@ void FConcertSyncServer::DestroyLiveSession(const TSharedRef<IConcertServerSessi
 	}
 }
 
-bool FConcertSyncServer::CreateArchivedSession(const FString& InArchivedSessionRoot, const FConcertSessionInfo& InArchivedSessionInfo)
+void FConcertSyncServer::CreateArchivedSession(const FString& InArchivedSessionRoot, const FConcertSessionInfo& InArchivedSessionInfo)
 {
 	DestroyArchivedSession(InArchivedSessionInfo.SessionId);
 
@@ -528,10 +490,7 @@ bool FConcertSyncServer::CreateArchivedSession(const FString& InArchivedSessionR
 	if (ArchivedSession->IsValidSession())
 	{
 		ArchivedSessions.Add(ArchivedSession->GetId(), ArchivedSession);
-		return true;
 	}
-
-	return false;
 }
 
 void FConcertSyncServer::DestroyArchivedSession(const FGuid& InArchivedSessionId)

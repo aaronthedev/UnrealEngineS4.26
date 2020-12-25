@@ -1,24 +1,24 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MeshDescriptionHelper.h"
 
-#include "BuildStatisticManager.h"
 #include "CoreMinimal.h"
 #include "CoreTypes.h"
+#include "UObject/UObjectGlobals.h"
+#include "UObject/Package.h"
 #include "Engine/EngineTypes.h"
 #include "Engine/StaticMesh.h"
-#include "IMeshReductionInterfaces.h"
-#include "IMeshReductionManagerModule.h"
-#include "Materials/Material.h"
-#include "Modules/ModuleManager.h"
-#include "RawMesh.h"
-#include "RenderUtils.h"
 #include "StaticMeshAttributes.h"
 #include "Serialization/MemoryWriter.h"
 #include "Serialization/MemoryReader.h"
-#include "StaticMeshOperations.h"
-#include "UObject/Package.h"
-#include "UObject/UObjectGlobals.h"
+#include "RenderUtils.h"
+#include "IMeshReductionInterfaces.h"
+#include "IMeshReductionManagerModule.h"
+#include "Materials/Material.h"
+#include "RawMesh.h"
+#include "BuildStatisticManager.h"
+#include "MeshDescriptionOperations.h"
+#include "Modules/ModuleManager.h"
 
 //Enable all check
 //#define ENABLE_NTB_CHECK
@@ -39,8 +39,8 @@ void FMeshDescriptionHelper::SetupRenderMeshDescription(UObject* Owner, FMeshDes
 
 	float ComparisonThreshold = BuildSettings->bRemoveDegenerates ? THRESH_POINTS_ARE_SAME : 0.0f;
 	
-	//This function make sure the Polygon Normals Tangents Binormals are computed and also remove degenerated triangle from the render mesh description.
-	FStaticMeshOperations::ComputePolygonTangentsAndNormals(RenderMeshDescription, ComparisonThreshold);
+	//This function make sure the Polygon NTB are compute and also remove degenerated triangle from the render mesh description.
+	FMeshDescriptionOperations::CreatePolygonNTB(RenderMeshDescription, ComparisonThreshold);
 	//OutRenderMeshDescription->ComputePolygonTangentsAndNormals(BuildSettings->bRemoveDegenerates ? SMALL_NUMBER : 0.0f);
 
 	FVertexInstanceArray& VertexInstanceArray = RenderMeshDescription.VertexInstances();
@@ -49,19 +49,65 @@ void FMeshDescriptionHelper::SetupRenderMeshDescription(UObject* Owner, FMeshDes
 	TVertexInstanceAttributesRef<float> BinormalSigns = RenderMeshDescription.VertexInstanceAttributes().GetAttributesRef<float>( MeshAttribute::VertexInstance::BinormalSign );
 
 	// Find overlapping corners to accelerate adjacency.
-	FStaticMeshOperations::FindOverlappingCorners(OverlappingCorners, RenderMeshDescription, ComparisonThreshold);
+	FMeshDescriptionOperations::FindOverlappingCorners(OverlappingCorners, RenderMeshDescription, ComparisonThreshold);
 
 	// Compute any missing normals or tangents.
 	{
 		// Static meshes always blend normals of overlapping corners.
-		EComputeNTBsFlags ComputeNTBsOptions = EComputeNTBsFlags::BlendOverlappingNormals;
-		ComputeNTBsOptions |= BuildSettings->bRemoveDegenerates ? EComputeNTBsFlags::IgnoreDegenerateTriangles : EComputeNTBsFlags::None;
-		ComputeNTBsOptions |= BuildSettings->bComputeWeightedNormals ? EComputeNTBsFlags::WeightedNTBs : EComputeNTBsFlags::None;
-		ComputeNTBsOptions |= BuildSettings->bRecomputeNormals ? EComputeNTBsFlags::Normals : EComputeNTBsFlags::None;
-		ComputeNTBsOptions |= BuildSettings->bRecomputeTangents ? EComputeNTBsFlags::Tangents : EComputeNTBsFlags::None;
-		ComputeNTBsOptions |= BuildSettings->bUseMikkTSpace ? EComputeNTBsFlags::UseMikkTSpace : EComputeNTBsFlags::None;
+		uint32 TangentOptions = FMeshDescriptionOperations::ETangentOptions::BlendOverlappingNormals;
+		if (BuildSettings->bRemoveDegenerates)
+		{
+			// If removing degenerate triangles, ignore them when computing tangents.
+			TangentOptions |= FMeshDescriptionOperations::ETangentOptions::IgnoreDegenerateTriangles;
+		}
+		if (BuildSettings->bComputeWeightedNormals)
+		{
+			// Specify we want to compute weighted normals.
+			TangentOptions |= FMeshDescriptionOperations::ETangentOptions::UseWeightedAreaAndAngle;
+		}
+		
+		//Keep the original mesh description NTBs if we do not rebuild the normals or tangents.
+		bool bComputeTangentLegacy = !BuildSettings->bUseMikkTSpace && (BuildSettings->bRecomputeNormals || BuildSettings->bRecomputeTangents);
+		bool bHasAllNormals = true;
+		bool bHasAllTangents = true;
+		for (const FVertexInstanceID VertexInstanceID : VertexInstanceArray.GetElementIDs())
+		{
+			// Dump normals and tangents if we are recomputing them.
+			if (BuildSettings->bRecomputeTangents)
+			{
+				//Dump the tangents
+				BinormalSigns[VertexInstanceID] = 0.0f;
+				Tangents[VertexInstanceID] = FVector(0.0f);
+			}
+			if (BuildSettings->bRecomputeNormals)
+			{
+				//Dump the normals
+				Normals[VertexInstanceID] = FVector(0.0f);
+			}
+			bHasAllNormals &= !Normals[VertexInstanceID].IsNearlyZero();
+			bHasAllTangents &= !Tangents[VertexInstanceID].IsNearlyZero();
+		}
 
-		FStaticMeshOperations::ComputeTangentsAndNormals(RenderMeshDescription, ComputeNTBsOptions);
+
+		//MikkTSpace should be use only when the user want to recompute the normals or tangents otherwise should always fallback on builtin
+		//We cannot use mikkt space with degenerated normals fallback on buitin.
+		if (BuildSettings->bUseMikkTSpace && (BuildSettings->bRecomputeNormals || BuildSettings->bRecomputeTangents))
+		{
+			if (!bHasAllNormals)
+			{
+				FMeshDescriptionOperations::CreateNormals(RenderMeshDescription, (FMeshDescriptionOperations::ETangentOptions)TangentOptions, false);
+
+				//EComputeNTBsOptions ComputeNTBsOptions = EComputeNTBsOptions::Normals;
+				//OutRenderMeshDescription.ComputeTangentsAndNormals(ComputeNTBsOptions);
+			}
+			FMeshDescriptionOperations::CreateMikktTangents(RenderMeshDescription, (FMeshDescriptionOperations::ETangentOptions)TangentOptions);
+		}
+		else
+		{
+			FMeshDescriptionOperations::CreateNormals(RenderMeshDescription, (FMeshDescriptionOperations::ETangentOptions)TangentOptions, true);
+			//EComputeNTBsOptions ComputeNTBsOptions = (bHasAllNormals ? EComputeNTBsOptions::None : EComputeNTBsOptions::Normals) | (bHasAllTangents ? EComputeNTBsOptions::None : EComputeNTBsOptions::Tangents);
+			//OutRenderMeshDescription.ComputeTangentsAndNormals(ComputeNTBsOptions);
+		}
 	}
 
 	if (BuildSettings->bGenerateLightmapUVs && VertexInstanceArray.Num() > 0)
@@ -86,7 +132,7 @@ void FMeshDescriptionHelper::SetupRenderMeshDescription(UObject* Owner, FMeshDes
 			VertexInstanceUVs.SetNumIndices(BuildSettings->DstLightmapIndex + 1);
 			BuildSettings->DstLightmapIndex = NumIndices;
 		}
-		FStaticMeshOperations::CreateLightMapUVLayout(RenderMeshDescription,
+		FMeshDescriptionOperations::CreateLightMapUVLayout(RenderMeshDescription,
 			BuildSettings->SrcLightmapIndex,
 			BuildSettings->DstLightmapIndex,
 			BuildSettings->MinLightmapResolution,
@@ -114,6 +160,6 @@ void FMeshDescriptionHelper::ReduceLOD(const FMeshDescription& BaseMesh, FMeshDe
 
 void FMeshDescriptionHelper::FindOverlappingCorners(const FMeshDescription& MeshDescription, float ComparisonThreshold)
 {
-	FStaticMeshOperations::FindOverlappingCorners(OverlappingCorners, MeshDescription, ComparisonThreshold);
+	FMeshDescriptionOperations::FindOverlappingCorners(OverlappingCorners, MeshDescription, ComparisonThreshold);
 }
 

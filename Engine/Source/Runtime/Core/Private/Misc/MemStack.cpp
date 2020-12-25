@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Misc/MemStack.h"
 #include "Misc/Parse.h"
@@ -6,26 +6,13 @@
 #include "Stats/Stats.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/CoreDelegates.h"
-#include <atomic>
 
 DECLARE_MEMORY_STAT(TEXT("MemStack Large Block"), STAT_MemStackLargeBLock,STATGROUP_Memory);
 DECLARE_MEMORY_STAT(TEXT("PageAllocator Free"), STAT_PageAllocatorFree, STATGROUP_Memory);
 DECLARE_MEMORY_STAT(TEXT("PageAllocator Used"), STAT_PageAllocatorUsed, STATGROUP_Memory);
 
-FPageAllocator& FPageAllocator::Get()
-{
-	static std::atomic<FPageAllocator*> ThePageAllocator;
+FPageAllocator::TPageAllocator FPageAllocator::TheAllocator;
 
-	FPageAllocator* LocalPageAllocator = ThePageAllocator.load(std::memory_order_acquire);
-	if (!LocalPageAllocator)
-	{
-		static FPageAllocator Instance;
-		LocalPageAllocator = &Instance;
-		ThePageAllocator.store(LocalPageAllocator, std::memory_order_release);
-	}
-
-	return *LocalPageAllocator;
-}
 
 #define USE_MEMSTACK_PUGATORY (0)
 
@@ -256,7 +243,7 @@ void FPageAllocator::LatchProtectedMode()
 {
 	FCoreDelegates::GetMemoryTrimDelegate().AddLambda([]()
 	{
-		Get().TheAllocator.Trim();
+		TheAllocator.Trim();
 	});
 
 #if MEMSTACK_PUGATORY_COMPILED_IN
@@ -295,7 +282,7 @@ int32 FMemStackBase::GetByteCount() const
 		}
 		else
 		{
-			Count += UE_PTRDIFF_TO_INT32(Top - Chunk->Data());
+			Count += Top - Chunk->Data();
 		}
 	}
 	return Count;
@@ -312,7 +299,7 @@ void FMemStackBase::AllocateNewChunk(int32 MinSize)
 		AllocSize = AlignArbitrary<int32>(TotalSize, FPageAllocator::PageSize);
 		if (AllocSize == FPageAllocator::PageSize)
 		{
-			Chunk = (FTaggedMemory*)FPageAllocator::Get().Alloc();
+			Chunk = (FTaggedMemory*)FPageAllocator::Alloc();
 		}
 		else
 		{
@@ -324,7 +311,7 @@ void FMemStackBase::AllocateNewChunk(int32 MinSize)
 	else
 	{
 		AllocSize = FPageAllocator::SmallPageSize;
-		Chunk = (FTaggedMemory*)FPageAllocator::Get().AllocSmall();
+		Chunk = (FTaggedMemory*)FPageAllocator::AllocSmall();
 	}
 	Chunk->DataSize = AllocSize - sizeof(FTaggedMemory);
 
@@ -342,11 +329,11 @@ void FMemStackBase::FreeChunks(FTaggedMemory* NewTopChunk)
 		TopChunk                   = TopChunk->Next;
 		if (RemoveChunk->DataSize + sizeof(FTaggedMemory) == FPageAllocator::PageSize)
 		{
-			FPageAllocator::Get().Free(RemoveChunk);
+			FPageAllocator::Free(RemoveChunk);
 		}
 		else if (RemoveChunk->DataSize + sizeof(FTaggedMemory) == FPageAllocator::SmallPageSize)
 		{
-			FPageAllocator::Get().FreeSmall(RemoveChunk);
+			FPageAllocator::FreeSmall(RemoveChunk);
 		}
 		else
 		{

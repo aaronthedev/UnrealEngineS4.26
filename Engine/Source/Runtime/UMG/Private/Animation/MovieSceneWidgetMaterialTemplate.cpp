@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Animation/MovieSceneWidgetMaterialTemplate.h"
 #include "Animation/WidgetMaterialTrackUtilities.h"
@@ -41,11 +41,6 @@ struct FWidgetMaterialAccessor : FDefaultMaterialAccessor
 			FWidgetMaterialHandle Handle = WidgetMaterialTrackUtilities::GetMaterialHandle(Widget, BrushPropertyNamePath);
 			Handle.SetMaterial(&Material, Widget);
 		}
-	}
-
-	UMaterialInstanceDynamic* CreateMaterialInstanceDynamic(UObject& Object, UMaterialInterface& Material, FName UniqueDynamicName)
-	{
-		return UMaterialInstanceDynamic::Create(&Material, &Object, UniqueDynamicName );
 	}
 
 	FMovieSceneAnimTypeID AnimTypeID;

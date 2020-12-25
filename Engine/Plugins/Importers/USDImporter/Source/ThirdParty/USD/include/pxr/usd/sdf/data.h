@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_DATA_H
-#define PXR_USD_SDF_DATA_H
+#ifndef SDF_DATA_H
+#define SDF_DATA_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/sdf/api.h"
@@ -56,51 +56,38 @@ public:
     /// SdfAbstractData overrides
 
     SDF_API
-    virtual bool StreamsData() const;
-
-    SDF_API
-    virtual void CreateSpec(const SdfPath& path, 
+    virtual void CreateSpec(const SdfAbstractDataSpecId& id, 
                             SdfSpecType specType);
     SDF_API
-    virtual bool HasSpec(const SdfPath& path) const;
+    virtual bool HasSpec(const SdfAbstractDataSpecId& id) const;
     SDF_API
-    virtual void EraseSpec(const SdfPath& path);
+    virtual void EraseSpec(const SdfAbstractDataSpecId& id);
     SDF_API
-    virtual void MoveSpec(const SdfPath& oldPath, 
-                          const SdfPath& newPath);
+    virtual void MoveSpec(const SdfAbstractDataSpecId& oldId, 
+                          const SdfAbstractDataSpecId& newId);
     SDF_API
-    virtual SdfSpecType GetSpecType(const SdfPath& path) const;
+    virtual SdfSpecType GetSpecType(const SdfAbstractDataSpecId& id) const;
 
     SDF_API
-    virtual bool Has(const SdfPath& path, const TfToken &fieldName,
+    virtual bool Has(const SdfAbstractDataSpecId& id, const TfToken &fieldName,
                      SdfAbstractDataValue* value) const;
     SDF_API
-    virtual bool Has(const SdfPath& path, const TfToken& fieldName,
+    virtual bool Has(const SdfAbstractDataSpecId& id, const TfToken& fieldName,
                      VtValue *value = NULL) const;
     SDF_API
-    virtual bool
-    HasSpecAndField(const SdfPath &path, const TfToken &fieldName,
-                    SdfAbstractDataValue *value, SdfSpecType *specType) const;
-
-    SDF_API
-    virtual bool
-    HasSpecAndField(const SdfPath &path, const TfToken &fieldName,
-                    VtValue *value, SdfSpecType *specType) const;
-
-    SDF_API
-    virtual VtValue Get(const SdfPath& path, 
+    virtual VtValue Get(const SdfAbstractDataSpecId& id, 
                         const TfToken& fieldName) const;
     SDF_API
-    virtual void Set(const SdfPath& path, const TfToken& fieldName,
+    virtual void Set(const SdfAbstractDataSpecId& id, const TfToken& fieldName,
                      const VtValue & value);
     SDF_API
-    virtual void Set(const SdfPath& path, const TfToken& fieldName,
+    virtual void Set(const SdfAbstractDataSpecId& id, const TfToken& fieldName,
                      const SdfAbstractDataConstValue& value);
     SDF_API
-    virtual void Erase(const SdfPath& path, 
+    virtual void Erase(const SdfAbstractDataSpecId& id, 
                        const TfToken& fieldName);
     SDF_API
-    virtual std::vector<TfToken> List(const SdfPath& path) const;
+    virtual std::vector<TfToken> List(const SdfAbstractDataSpecId& id) const;
 
     SDF_API
     virtual std::set<double>
@@ -108,7 +95,7 @@ public:
     
     SDF_API
     virtual std::set<double>
-    ListTimeSamplesForPath(const SdfPath& path) const;
+    ListTimeSamplesForPath(const SdfAbstractDataSpecId& id) const;
 
     SDF_API
     virtual bool
@@ -116,31 +103,31 @@ public:
 
     SDF_API
     virtual size_t
-    GetNumTimeSamplesForPath(const SdfPath& path) const;
+    GetNumTimeSamplesForPath(const SdfAbstractDataSpecId& id) const;
 
     SDF_API
     virtual bool
-    GetBracketingTimeSamplesForPath(const SdfPath& path, 
+    GetBracketingTimeSamplesForPath(const SdfAbstractDataSpecId& id, 
                                     double time,
                                     double* tLower, double* tUpper) const;
 
     SDF_API
     virtual bool
-    QueryTimeSample(const SdfPath& path, double time,
+    QueryTimeSample(const SdfAbstractDataSpecId& id, double time,
                     SdfAbstractDataValue *optionalValue) const;
     SDF_API
     virtual bool
-    QueryTimeSample(const SdfPath& path, double time, 
+    QueryTimeSample(const SdfAbstractDataSpecId& id, double time, 
                     VtValue *value) const;
 
     SDF_API
     virtual void
-    SetTimeSample(const SdfPath& path, double time, 
+    SetTimeSample(const SdfAbstractDataSpecId& id, double time, 
                   const VtValue & value);
 
     SDF_API
     virtual void
-    EraseTimeSample(const SdfPath& path, double time);
+    EraseTimeSample(const SdfAbstractDataSpecId& id, double time);
 
 protected:
     // SdfAbstractData overrides
@@ -148,17 +135,13 @@ protected:
     virtual void _VisitSpecs(SdfAbstractDataSpecVisitor* visitor) const;
 
 private:
-    const VtValue* _GetSpecTypeAndFieldValue(const SdfPath& path,
-                                             const TfToken& field,
-                                             SdfSpecType* specType) const;
-
-    const VtValue* _GetFieldValue(const SdfPath& path,
+    const VtValue* _GetFieldValue(const SdfAbstractDataSpecId& id,
                                   const TfToken& field) const;
 
-    VtValue* _GetMutableFieldValue(const SdfPath& path,
+    VtValue* _GetMutableFieldValue(const SdfAbstractDataSpecId& id,
                                    const TfToken& field);
 
-    VtValue* _GetOrCreateFieldValue(const SdfPath& path,
+    VtValue* _GetOrCreateFieldValue(const SdfAbstractDataSpecId& id,
                                     const TfToken& field);
 
 private:
@@ -181,4 +164,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_DATA_H
+#endif // SDF_DATA_H

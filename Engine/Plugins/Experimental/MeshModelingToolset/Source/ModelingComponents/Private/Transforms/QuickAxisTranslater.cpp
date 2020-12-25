@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Transforms/QuickAxisTranslater.h"
@@ -15,7 +15,7 @@ void FQuickAxisTranslater::Initialize()
 	MoveAxisSolver.SnapMetricTolerance = 9999; // ToolSceneQueriesUtil::GetDefaultVisualAngleSnapThreshD();
 	MoveAxisSolver.SnapMetricFunc = [this](const FVector3d& Position1, const FVector3d& Position2) 
 	{
-		return ToolSceneQueriesUtil::CalculateNormalizedViewVisualAngleD(this->CameraState, Position1, Position2);
+		return ToolSceneQueriesUtil::CalculateViewVisualAngleD(this->CameraState, Position1, Position2);
 	};
 
 	QuickAxisRenderer.SetLineParameters(FLinearColor(240, 240, 16), 6);
@@ -178,32 +178,16 @@ void FQuickAxisTranslater::UpdateSnapAxes()
 		}
 	}
 
-	MoveAxisSolver.AddPointTarget(AxisFrameWorld.Origin, TranslateOriginSnapID,
-		FRaySpatialSnapSolver::FCustomMetric::Replace(0.5*ToolSceneQueriesUtil::GetDefaultVisualAngleSnapThreshD()), 50);
+	MoveAxisSolver.AddPointTarget(AxisFrameWorld.Origin, TranslateOriginSnapID, 50, 0.5*ToolSceneQueriesUtil::GetDefaultVisualAngleSnapThreshD());
 }
 
 
 
 
 
-bool FQuickAxisTranslater::UpdateSnap(const FRay3d& Ray, FVector3d& SnapPointOut,
-	TFunction<FVector3d(const FVector3d&)> PositionConstraintFunc)
+bool FQuickAxisTranslater::UpdateSnap(const FRay3d& Ray, FVector3d& SnapPointOut)
 {
-	bool bSetConstraintFunc = false;
-	if (PositionConstraintFunc != nullptr)
-	{
-		check(MoveAxisSolver.PointConstraintFunc == nullptr);
-		MoveAxisSolver.PointConstraintFunc = PositionConstraintFunc;
-		bSetConstraintFunc = true;
-	}
-
 	MoveAxisSolver.UpdateSnappedPoint(Ray);
-
-	if (bSetConstraintFunc)
-	{
-		MoveAxisSolver.PointConstraintFunc = nullptr;
-	}
-
 	if (MoveAxisSolver.HaveActiveSnap())
 	{
 		SnapPointOut = MoveAxisSolver.GetActiveSnapToPoint();

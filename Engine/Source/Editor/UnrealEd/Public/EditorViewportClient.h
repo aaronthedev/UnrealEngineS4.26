@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -267,9 +267,6 @@ private:
 	float OrthoZoom;
 };
 
-/** Delegate for modifying view parameters of an editor viewport. */
-DECLARE_MULTICAST_DELEGATE_OneParam(FEditorViewportViewModifierDelegate, FMinimalViewInfo&);
-
 /** Viewport client for editor viewports. Contains common functionality for camera movement, rendering debug information, etc. */
 class UNREALED_API FEditorViewportClient : public FCommonViewportClient, public FViewElementDrawer, public FGCObject
 {
@@ -295,65 +292,19 @@ public:
 	}
 
 	/**
-	 * Overrides the realtime state of this viewport until RemoveViewportsRealtimeOverride is called.
-	 * The state of this override is not preserved between editor sessions. 
-	 *
-	 * @param bShouldBeRealtime	If true, this viewport will be realtime, if false this viewport will not be realtime
-	 * @param SystemDisplayName	This display name of whatever system is overriding realtime. This name is displayed to users in the viewport options menu	
-	 */
-	void AddRealtimeOverride(bool bShouldBeRealtime, FText SystemDisplayName);
-
-	UE_DEPRECATED(4.26, "SetRealtimeOverride is replaced with AddRealtimeOverride, as multiple overrides can now be added.")
-	void SetRealtimeOverride(bool bShouldBeRealtime, FText SystemDisplayName)
-	{
-		AddRealtimeOverride(bShouldBeRealtime, SystemDisplayName);
-	}
-	
-	/**
-	 * Returns whether there's a realtime override registered with the given system name.
-	 */
-	bool HasRealtimeOverride(FText SystemDisplayName) const;
-
-	/**
-	 * Removes the most recent realtime override registered with the given system name.
-	 *
-	 * @param Whether to assert if no matching realtime override was found.
-	 * @return Whether any matching realtime override was found.
-	 */
-	bool RemoveRealtimeOverride(FText SystemDisplayName, bool bCheckMissingOverride = true);
-
-	UE_DEPRECATED(4.26, "RemoveRealtimeOverride now takes a system display name to help remove the correct override.")
-	void RemoveRealtimeOverride()
-	{
-		PopRealtimeOverride();
-	}
-
-	/**
-	 * Removes the last added realtime override.
-	 * WARNING: it's recommended to use RemoveRealtimeOverride to prevent removing an override that belongs to another systems than yours.
-	 *
-	 * @return   Whether there was any realtime override to be popped.
-	 */
-	bool PopRealtimeOverride();
-
-	/**
 	 * Toggles whether or not the viewport updates in realtime and returns the updated state.
-	 * Note: This value is saved between editor sessions so it should not be used for temporary states.  For that see SetRealtimeOverride
 	 *
 	 * @return		The current state of the realtime flag.
 	 */
 	bool ToggleRealtime();
 
-	/** 
-	 * Sets whether or not the viewport updates in realtime.
-	 * Note: This value is saved between editor sessions so it should not be used for temporary states.  For that see SetRealtimeOverride
-	 */
-	void SetRealtime(bool bInRealtime);
+	/** Sets whether or not the viewport updates in realtime. */
+	void SetRealtime(bool bInRealtime, bool bStoreCurrentValue = false);
 
 	/** @return		True if viewport is in realtime mode, false otherwise. */
 	bool IsRealtime() const
 	{ 
-		return (RealtimeOverrides.Num() > 0 ? RealtimeOverrides.Last().Key : bIsRealtime) || GFrameCounter < RealTimeUntilFrameNumber;
+		return bIsRealtime || GFrameCounter < RealTimeUntilFrameNumber;
 	}
 
 	/**
@@ -368,32 +319,15 @@ public:
 	}
 
 	/**
-	 * Saves the realtime state to a config location.  Does not save any temp overrides
-	 */ 
-	void SaveRealtimeStateToConfig(bool& ConfigVar) const;
-
-	/**
-	 * @return true if there are any temp realtime overrides set
-	 */
-	bool IsRealtimeOverrideSet() const { return RealtimeOverrides.Num() > 0; }
-
-	/**
-	 * @return  If an override is set this returns the message indicating what set it
-	 */
-	FText GetRealtimeOverrideMessage() const;
-
-	UE_DEPRECATED(4.25, "SetRealtime no longer takes in bStoreCurrentValue parameter. For temporary overrides use AddRealtimeOverride")
-	void SetRealtime(bool bInRealtime, bool bStoreCurrentValue);
-
-	/**
 	 * Restores realtime setting to stored value. This will only enable realtime and 
 	 * never disable it (unless bAllowDisable is true)
 	 */
-	UE_DEPRECATED(4.25, "To save and restore realtime state non-permanently use AddRealtimeOverride and RemoveRealtimeOverride")
 	void RestoreRealtime(const bool bAllowDisable = false);
 
+
 	// this set ups camera for both orbit and non orbit control
-	void SetCameraSetup(const FVector& LocationForOrbiting, const FRotator& InOrbitRotation, const FVector& InOrbitZoom, const FVector& InOrbitLookAt, const FVector& InViewLocation, const FRotator &InViewRotation );
+	void SetCameraSetup(const FVector& LocationForOrbiting, const FRotator& InOrbitRotation, const FVector& InOrbitZoom, const FVector& InOrbitLookAt, 
+			const FVector& InViewLocation, const FRotator &InViewRotation );
 
 	/** Callback for toggling the camera lock flag. */
 	virtual void SetCameraLock();
@@ -421,6 +355,9 @@ public:
 
 	/** Callback for checking the collision geometry show flag. */
 	bool IsSetShowCollisionChecked() const;
+
+	/** Callback for toggling the realtime preview flag. */
+	void SetRealtimePreview();
 
 	/** Gets ViewportCameraTransform object for the current viewport type */
 	FViewportCameraTransform& GetViewTransform()
@@ -822,8 +759,6 @@ public:
 	 */
 	virtual bool WantsDrawWhenAppIsHidden() const { return false; }
 
-	/** Should this viewport use app time instead of world time. */
-	virtual bool UseAppTime() const { return IsRealtime() && !IsSimulateInEditorViewport(); }
 public:
 	/** True if the window is maximized or floating */
 	bool IsVisible() const;
@@ -960,14 +895,6 @@ public:
 	 * @param bInstant			Whether or not to focus the viewport instantly or over time
 	 */
 	void FocusViewportOnBox( const FBox& BoundingBox, bool bInstant = false );
-
-	/**
-	 * Translates the viewport so that the given LookAt point is at the center of viewport, while maintaining current Location/LookAt distance
-	 *
-	 * @param NewLookAt			The new NewLookAt point to focus on
-	 * @param bInstant			Whether or not to focus the viewport instantly or over time
-	 */
-	void CenterViewportAtPoint(const FVector& NewLookAt, bool bInstant = false);
 
 	FEditorCameraController* GetCameraController(void) { return CameraController; }
 
@@ -1213,16 +1140,6 @@ public:
 	bool IsBufferVisualizationModeSelected( FName InName ) const;
 
 	/**
-	 * It returns the FText display name associate with CurrentBufferVisualizationMode
-	 */
-	FText GetCurrentBufferVisualizationModeDisplayName() const;
-
-	/**
-	* Returns whether visualize debug material is enabled.
-	*/
-	bool IsVisualizeCalibrationMaterialEnabled() const;
-
-	/**
 	 * Changes the ray tracing debug visualization mode for this viewport
 	 *
 	 * @param InName	The ID of the required ray tracing debug visualization mode
@@ -1263,20 +1180,7 @@ public:
 
 	/** @return True if the camera speed should be scaled by its view distance. */
 	virtual bool ShouldScaleCameraSpeedByDistance() const;
-
-	/**
-	 * Enable customization of the EngineShowFlags for rendering. After calling this function,
-	 * the provided OverrideFunc will be passed a copy of .EngineShowFlags in ::Draw() just before rendering setup.
-	 * Changes made to the ShowFlags will be used for that frame but .EngineShowFlags will not be modified.
-	 * @param OverrideFunc custom override function that will be called every frame until override is disabled.
-	 */
-	void EnableOverrideEngineShowFlags(TUniqueFunction<void(FEngineShowFlags&)> OverrideFunc);
-
-	/** Disable EngineShowFlags override if enabled */
-	void DisableOverrideEngineShowFlags();
-
-	/** @return true if Override EngineShowFlags are currently enabled */
-	bool IsEngineShowFlagsOverrideEnabled() const { return !! OverrideShowFlagsFunc; }
+	
 protected:
 	/** Invalidates the viewport widget (if valid) to register its active timer */
 	void InvalidateViewportWidget();
@@ -1499,8 +1403,6 @@ private:
 	virtual void BeginCameraMovement(bool bHasMovement) {}
 	virtual void EndCameraMovement() {}
 
-	float GetMinimumOrthoZoom() const;
-
 public:
 	static const uint32 MaxCameraSpeeds;
 
@@ -1589,12 +1491,6 @@ public:
 
 	/** If true, draw vertices for selected BSP brushes and static meshes if the large vertices show flag is set. */
 	bool bDrawVertices;
-
-	/** List of view modifiers to apply on view parameters. */
-	FEditorViewportViewModifierDelegate ViewModifiers;
-
-	/** Whether view modifiers should be called and applied. */
-	bool bShouldApplyViewModifiers;
 
 protected:
 	/** Does this viewport client own the mode tools instance pointed at by ModeTools control the lifetime of it? */
@@ -1686,6 +1582,12 @@ protected:
 	/** if the viewport is currently realtime */
 	bool bIsRealtime;
 	
+	/** Cached realtime flag */
+	bool bStoredRealtime;
+	
+	/** Cached show statistics flag */	
+	bool bStoredShowStats;
+
 	/** True if we should draw stats over the viewport */
 	bool bShowStats;
 
@@ -1725,16 +1627,6 @@ protected:
 	FVector DefaultOrbitZoom;
 	FVector DefaultOrbitLookAt;
 
-	/** 
-	 * Temporary realtime overrides and user messages that are not saved between editor sessions.
-	 * If any value has been pushed into the container, this viewport determines realtime from the last item,
-	 * otherwise it reads the real realtime value.
-	 * */
-	TArray<TPair<bool, FText>> RealtimeOverrides;
-	
-	/** Custom override function that will be called every ::Draw() until override is disabled */
-	TUniqueFunction<void(FEngineShowFlags&)> OverrideShowFlagsFunc;
-
 protected:
 	// Used for the display of the current preview light after it has been adjusted
 	FVector2D MovingPreviewLightSavedScreenPos;
@@ -1758,31 +1650,6 @@ protected:
 
 	/** A list of all the stat names which are enabled for this viewport */
 	TArray<FString> EnabledStats;
-
-
-	// Used by the custom temporal upscaler plugin
-public:
-	class UNREALED_API ICustomTemporalUpscalerData
-	{
-	public:
-		virtual ~ICustomTemporalUpscalerData()
-		{
-		}
-	};
-
-	TSharedPtr<ICustomTemporalUpscalerData> GetCustomTemporalUpscalerData() const
-	{
-		return CustomTemporalUpscalerData;
-	}
-
-	void SetCustomTemporalUpscalerData(TSharedPtr<ICustomTemporalUpscalerData> InCustomTemporalUpscalerData)
-	{
-		CustomTemporalUpscalerData = InCustomTemporalUpscalerData;
-	}
-
-private:
-
-	TSharedPtr<ICustomTemporalUpscalerData> CustomTemporalUpscalerData;
 
 private:
 	/** Controles resolution fraction for previewing in editor viewport at different screen percentage. */

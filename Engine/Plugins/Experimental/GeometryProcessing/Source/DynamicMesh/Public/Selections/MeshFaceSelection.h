@@ -1,6 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-// Port of geometry3cpp MeshFaceSelection
+// Port of geometry3cpp MeshBoundaryLoops
 
 #pragma once
 
@@ -86,19 +86,16 @@ public:
 			add(tid);
 		}
 	}
-
-	template<typename EnumerableType, typename E = decltype(DeclVal<EnumerableType>().begin())>
-	void Select(const EnumerableType& Enumerable)
+	void Select(TArrayView<const int> Triangles)
 	{
-		for (int32 tid : Enumerable)
+		for (int tID : Triangles)
 		{
-			if (Mesh->IsTriangle(tid))
+			if (Mesh->IsTriangle(tID))
 			{
-				add(tid);
+				add(tID);
 			}
 		}
 	}
-
 	void Select(TFunctionRef<bool(int)> SelectF)
 	{
 		int NT = Mesh->MaxTriangleID();
@@ -152,15 +149,6 @@ public:
 		}
 	}
 
-	template<typename EnumerableType>
-	void Deselect(const EnumerableType& Enumerable)
-	{
-		for (int32 tid : Enumerable)
-		{
-			remove(tid);
-		}
-	}
-
 	void DeselectAll()
 	{
 		Selected.Empty();
@@ -202,7 +190,7 @@ public:
 		}
 	}
 
-	const TSet<int>& AsSet() const
+	TSet<int> AsSet() const
 	{
 		return Selected;
 	}

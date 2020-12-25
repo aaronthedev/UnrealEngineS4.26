@@ -1,220 +1,161 @@
-// --------------------------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------------------------------------------------------
 //	Network Prediction Plugin
-// --------------------------------------------------------------------------------------------------------------------
+// -------------------------------------------------------------------------------------------------------------------------------------------------
+ 
+High level overview:
+-This is a *WIP* plugin that aims to generalize and improve our player prediction systems.
+-Long term we hope this replaces UCharacterMovementComponent and its networking system (ServerMove, ClientAck*, ClientAdjust*, etc).
+-The GameplayAbility system will be updated to interop with this as well.
+-NetworkPrediction plugin is the core generalized system that you need to enable to use anything.
+	-For now at least, new movement classes built on top of this will live here but could one day be moved out into a dedicated movement system plugin.
+-NetworkPredictionExtras plugin contains some examples that may be helpful in learning the system. It is not inteded to be used directly in shipping games.
+ 
+High level goals:
+-Make working with predicted gameplay systems such as character movement easier.
+-Give predictived gameplay systems the ability to interop with each other (E.g, CharacterMovement and Gameplay Abilities).
+-Provide better tooling to understand what is going on in these complex predicted gameplay systems.
+-This all leads to: ability to develop richer and more interactive gameplay systems that work in multiplayer games.
+ 
+What this is NOT:
+-We are not moving to a global fixed ticking system. Though these systems have huge advantages, we don't think it is a good universal solution for the engine.
+-That said, we recognize that it is the right solution for many things and we want to enable support for that. Our goal is that the user simulation code is independent of ticking being fixed or not.
+-To be clear: widely different, variable, fluctuating tick rates between clients and server is basically the root problems we are fighting here.
+-Related, we are also not all in on a "predict everything: seamlessly and automatically" solution. We still feel player prediction is best kept to a minimum (meaning: predict the minimum amount of stuff you can get away with).
+-But, we are trying to make it way easier to write predictive gameplay systems. Easier to write, to debug and reason about.
+-We do hope the new movement system will be automatic in this sense: if you write a new movement mode within the movement simulation class, things should "just work". (But we are not trying to make your entire game predicted)
+ 
+ 
+Getting Started:
+-Both NetworkPrediction and NetworkPredictionExtras are disabled by default. You will need to enable them for your project (manually edit .uproject or do so through editor plugin screen).
+-Once NetworkPredictionExtras is loaded, /NetworkPredictionExtras/Content/TestMap.umap can be loaded (must enable 'Show Engine Content' AND 'Show Plugin Content' in content browser!).
+-The "MockNetworkSimulation" can be tested anywhere just by typing "mns.Spawn".
+ 
+Code to look at:
+-MockNetworkSimulation.h: Good place to start to see a bare minimum example of a predicted network simulation. Both the simulation and actor component live in this header.
+-NetworkPredictionExtrasFlyingPawn.h: Starting point to see how a pawn using flying movement is setup. In NetworkPredictionExtras.
+-FlyingMovement.h: The actual implementation of the flying movement system. In NetworkPrediction.
+-NetworkSimulationModel.h: this is the lowest level guts of the system. This is what every simulation ultimately uses to stay in sync.
+ 
+Extremely high level technical overview:
+-Concept of "NetworkedSimulationModel": defining a tightly constrained (gameplay) simulation that can be run predictively on clients and authoritatively on server. E.g., a "Movement System" is a NetworkedSimulationModel.
+-The simulation has tightly defined input and output. At the lowest level we have generic buffers of structs that are synchronized:
+	Input Buffer: the data that the controlling client generates
+	Sync Buffer: the data that evolves frame to frame and is produced by ticking the simulation
+	Aux Buffer: additional data that can change, can be predicted, etc but does not necessarily get updated frame to frame (e.g, something else usually updates it).
+-Implicit correction: all prediction and correction logic is now client side. Server just tells clients what the authority state was and it is up to them to reconcile.
+-Single code path: the core network simulation has one "Update" function that does not branch based on authority/prediction/simulated etc. "Write once" is the goal for gameplay code here.
+ 
+UE4 Networking info (How this plugs into UE4 networking)
+-See UNetworkPredictionComponent for the glue.
+-"Replication Proxy" (FReplicationProxy): struct that points to the network simulation and has policies about how it replicates and to who. Custom NetSerialize.
+-E.g, there is a replication proxy for owner, non owners, replays, and debug. All point to the same underlying data.
+-Still using actor replication to determine when to replicate.
+
+Simulated Proxy behavior / "modes"
+-Interpolate: Sync buffer is replicated but there is no ticking of the net sim. Literally do not have to Tick the simulation.
+	-Actual interpolation will happen in some class outside of TNetworkSimulationModel (doesn't exist yet). It will look at sync buffer and interpolate over it.
+-(Sim) Extrapolation: by default if the netsim is ticked, we synthesize command and extrapolate the simulation. With basic reconciliation to absorb fluctuations in latency.
+-Forward Predict (not implemented yet): must be explicitly enabled by outside call, ties simulated proxy sim to an autonomous proxy sim. Sims will be reconciled together in step.
+ 
+ 
+TODO: Major missing elements
+-Aux Buffer is not implemented, but referenced in a few places.
+-"Events" into and out of the system are not in place. That is, something happens in your movement sim that needs to call outside code/generate an event. A system is needed to track this stuff rather than just calling directly into the handler.
+-Interpolation/smoothing layer (visual, non simulation affecting smoothing to help with corrections and simulated proxies)
+-No optimizations (bandwidth, cpu) have been done.
+-[Movement specific]: must lock down SetActorLocation/Rotation API so that movement state can be changed out from underneath the system.
+ 
+High level focus:
+-The focus right now is on the generalized prediction system, rather than actual movement code.
+-We are exploring "forward predicting non autonomous proxies" with the parametric mover. Unclear how deep we will go with this.
+-Then Aux buffer and "events"
+-Then mixing in ability system + other scripting options
+ 
+-Once everything feels solid we will go deeper on movement and build out a more extendable movement system.
+-E.g, We don't intend all users of the engine to write their own network simulation model movement system.
+-We hope to provide a generalized movement system that is easy to extend in itself without knowing all the details of the NetworkPrediction plugin.
+-We intend to support RootMotion (Animation) / RootMotionSources (non anim) in the new movement system.
+
+Road Map:
+-Aux Buffer
+-Event System
+-Ability System integration
+-New Movement System
+ 
+ 
+// ----------------------------------------------------------------------------------------------------------
+// Glossary
+// ----------------------------------------------------------------------------------------------------------
+ 
+Reconcile: When a predicting client receives authoritative data from the server that conflicts with what they previously predicted: sorting this out is called "reconciling". Usually means you will resimulate.
+Synthesize: In general means "making shit up". For example, "synthesizing user commands" would mean "creating user commands that were not generated by a player, but instead guessing what it might be".
+ 
+ 
+Client Prediction: using new, locally created information (input cmd) to evolve the game state ahead of the authoritative server.
+(Client) Extrapolation: Taking the latest received state from the authoritative server and "guessing" how it continues to evolve. The key difference is you are not using new information that the server does not have yet.
+ 
+Forward Predicting: Using Client Prediction to predict ahead N frames, that is proportional to the ping time with the server.
+(Sim) Extrapolation: Using the network sim model to extrapolate frames, by (usually) synthesizing input cmds. Extrapolation is "one frame at a time" rather than "N frames based on ping".
+Interpolation: Interpolating between known states. E.g, you are never guessing at future state.
+	Note: We may technically allow interpolation past "100%", which would technically make it extrapolation (you are guessing at state you don't have yet). 
+	This would still be distinct from the above "Sim" Extrapolation where the network sim is used to generate future data instead of simple "interpolation" algorithms.
+Smoothing: Taking the output of the simulation and applying an additional layer of "ease in/ease out" updates. Smoothing would use things like spring equations and "lag constants" rather than being tied to the actual simulation itself.
+ 
+ 
+// ----------------------------------------------------------------------------------------------------------
+// Release notes
+// ----------------------------------------------------------------------------------------------------------
+
+Update (10-1-19)
+-Forward Predict / Dependent simulation initial check in. This has some limitations and is not final
+	-Dependent Sim can't trigger reconcile yet
+	-Assumptions made about replication frequency. Dependents must replicate as same frequency as parent sim right now.
+	-General lack of precision here when running in variable tick simulation. (Sims tick at different rates on server, so hard to correlate client side).
+
+
+Update (9-26-19)
+-More refactors on general system architecture. UNetworkSimulationGlobalManager is solidifying and most boiler plate is out of the actor components (Not an exciting update but this was overdue!).
+-PostSimTick added and Interpolator refactored to be part of this step, dependent on network role (Eg., simulated proxy only when enabled).
+-Continuing to investigate dependent actor simulations. A few early prototypes did not work out but am going to try a slightly different approach.
+
+Update (8-14-19)
+-Some more cleanup. Cvar fixes and other consolidation. Now time for vacation (2 weeks). 
+TODO still:
+-Improve debugger (has rotted a bit due to refactors)
+-Network fault handling, disable/enable local prediction causes some bad transitions
+-Initialization of system, specifically InitializeForNetworkRole can be much better now.
+	-Consider using templates to inline allocate all memory. Maybe make auto proxy buffers allocated on demant.
+
+Update (8-13-19)
+-Refactor really feeling good, things are falling into place. Still a few things to do and bugs to chase down.
+-Added simulated proxy notes above to detail current plan
+
+Update
+-Refactor on ticking state is taking shape and feeling much better. Some thing may have broke but will get smoothed out.
+-New goal is to support fixed ticking seamlessly. Meaning, when you instantiate or define your network sim you can opt into fix ticking and this won't affect how your simulation code works.
+-(Nice thing is that storing frame time on the user cmds is now an internal detail of the system and transparent to users. So you will not need seperate sets of input cmds for a fix tixed version of your sim)
+
+
+Update (8-9-19)
+-Big refactor underway within the NetworkSimModel. Some files are renamed or moved as well. Still a bit to do but this was a good commit point.
+-Mainly to facilitate clean implementation of interpolation/extrapolation/forward predict option for simulated proxy simulations: this was exposing weaknesses in the templated implementations.
+-Working towards improving "how and when simulation is allowed to advanced" (see TNetworkSimulationTickInfo)
+-Incomplete, but thinking about global management of active simulations: making sure reconcile and Tick are called in the right places. See notes in NetworkSimulationGlobalManager.h
+
+ 
+Update (8-2-19)
+-We want to take a look non player controlled simulations, such as doors, elevators, "pushers" before going deeper on ability system or movement.
+-Basic ParametricMoverment system checked in. This is also in an incomplete state. ("Pushing" the flying movement component does not work and won't be the focus for now until we are looking for closely at movement specifically).
+-The short term goal here is to be able to forward predict these even if they are simulated proxies. When/why/how is very tbd, but we want to see what it looks like.
+ 
+ 
+Current State (7-25-19)
+-Initial public check in. Core simulation model structure is in place. Lots of pieces missing but overall system is roughed in.
+-Two main examples right now: Flying Movement and 'MockNetworkSimulation' (in NetworkPredictionExtras)
+-Flying Movement: a port of FloatingPawnMovement into the new system. Essentially just a basic flying movement system.
+-MockNetworkSimulation: a very basic minimal "simulation" that demonstrates how the system works. Not tied to movement or anything physical: just a running counter/sum.
+ 
+ 
+ 
 
-9-2-2020:
-
-Update for root motion. This improves on the previous implementation:
--UMockRootMotionSource as a base class for "root motion defining thing".
--New source types can be added without modifying the root motion simulation or driver code.
--Sources can have networked internal state and parameters.
--The root motion source is net serialized as a {SourceID, StartTime, Parameters} tuple via TMockRootMotionSourceProxy
--Sources define how their internal state/parameters are encoded into the Parameters blob via UMockRootMotionSource::SerializePayloadParameters
--Encoding SourceID is done through a new 
-
-This pattern is very relevenant for things like custom movement modes or other data-driven extensions of simulations.
-
-Minor updates:
--Trace local frame offset to Insights. 
--Store latest simulation time in FNetworkPredictionStateView
--Fix a couple issues where wrong time/frame was being traced, causing bugs in Insights
-
-
-
-8-10-2020:
-
-Initial mock root motion checked in. This is the begining of root motion networking which will find its way into the new movement system.
-Initial focus is just on having montage-based root motion support back in, plus non animation based sources like curves (more to come here).
-The animation team is planning for other animation based root motion sources.
-
-
-7-31-2020:
-
-Couple notable changes related to physics and UPrimitiveComponents
-
-The system now defaults to "UPrimitiveComponents are always in sync with their physics data when NP SimulationTick functions run".
-If you look at the previous version of FMockPhysicsSimulation::SimulationTick, we had to be very careful to interface directly
-with the underlying PhysicsActorHandle, rather than reading data off of any UPrimitiveComponents. This causes some pretty
-nasty anti-patterns, especially around scene queries.
-
-The cost is that we have to take a seperate pass during rollback for everyone to "RestoreFrame" prior to *anyone* resimulating
-a tick step. So, an extra pass through the registered instances and touching more memory than we did before.
-
-It would be possible to allow users to opt out of this: to say "I know what I'm doing and I am confident I can write all
-of my NP Code to interface directly with the physics engine". 
-
-We will see if this shows up in profiles as the system continues to mature and we build real stuff with it. For now we think
-its wiser to error on the side of being user friendly and less error prone.
-
-
-The specific changes here are:
--PhysicsActorHandle is no longer a side cart of data registered with the Driver/Simulation. 
--We now require FNetworkPredictionDriver<ModelDef>::GetPhysicsPrimitiveComponent() to get to the physics data.
--"RestoreFrame" is a driver-level function similiar to FinalizeFrame but is called only during resims where we want to push
-	the given sync/aux state to the physics scene (Whatever that means for you).	
-	The default implementation is provided for physics and doesn't need the user to implement anything.
-
-
-
-7-24-2020:
-
-Physics issues should be fixed. Still tracking down a few more bugs in the cue and interpolation systems.
-
-7-2-2020: Big Update
-
-This checkin is a large refactor of the NetworkPrediction system. We hope this is the last big set of changes, though
-there is still work to do. User code requires some fixups but should be a straight forward port overall. All existing 
-examples have been updated. See "Upgrade Notes" below.
-
-The primary motivation behind these changes are supporting Group Rollback and Physics. Group Rollback just meaning
-forward predicting multiple actors in step together.
-
-Group rollback and physics are supported only in fixed tick mode. Fix tick mode is now a global/system wide thing
-rather than a per-simulation setting. In other words, previously each simulation could choose its tick settings and
-would effectively be a black box in terms of when it decided to run a sim frame. Now, all fixed ticking happens
-at the system level: in UNetworkPredictionWorldManager.
-
-The system still supports what we are calling Independent Ticking: where a client-controlled simulation is ticked
-on the server at the same timesteps that the controlling client does (e.g, the client's local frame rate). Simulations
-running in independent mode cannot participate in group or physics rollback/resimulates. They are effectively on their
-own. This means that only the client-controlled simulation state is forward-predictable. In independent mode, you do 
-not forward predict other simulations.
-
-To restate this:
--Simulations can either tick A) independently or B) fixed.
--There is one fixed tick "group". There can be N independent ticking simulations (and are all completely independent).
--Independent only allows forward prediction of the client controlled simulation state (E.g, movement, GAS, etc).
--Fixed tick allows multiple actors, including non client-controlled actors to be forward predicted in step with the client.
--Fixed tick is the only mode that supports physics. More notes on physics below.
-
-Fix vs Independent ticking can be set at a few levels:
--The ModelDef itself can define what tick modes it supports via FNetworkPredictionDriver. "Capabilities"
--(By default, simulations that use Physics are only capable of fixed ticking)
--On spawned instances of a simulation, the authority can set fix/ticked (if both are supported). "Archetype".
--For cases where both modes are available, Project Settings -> Network Prediction (DefaultNetworkPrediction.ini) has 
-	default tick mode settings. (E.g, it will eventually fall back to this in most cases).
-
-
-Physics:
-
-*** Currently, this requires the engine to run in fixed tick mode itself. ***
-*** We are looking into expanding our support for fixed tick physics within a variable ticking engine. ***
-*** Engine Fixed tick mode will be enabled by default if you are using physics, via the bForceEngineFixTickForcePhysics 
-	property in Project Settings -> Network Prediction ***
-
-
--Physics support allows physics state to be recorded and resimulated by the physics engine (Chaos) itself.
--Chaos is being optimized to allow fast recording and resimulate steps.
--Physic-only sims are supported: e.g, an actor whose physics state is predicted but has no underlying NP state/tick.
--Physics + NP is also supported: e.g, a vehicle that has physics state and also a NP state/tick.
-
-
-There are additional changes around how the game code binds/interfaces with the NetworkPrediction system. The hope is
-that the new version is simplified and has less confusing boilerplate. Most of this is now done through the 
-FNetworkPredictionProxy struct. Refer to the example to see what has changed.
-
-
-Incomplete Features:
--Simulation Extrapolation has temporarily been removed. We support interpolation and forward prediction right now.
--Network Prediction Insights is due for a pass to better visualize these changes (mainly physics and group reconcile)
--Generalized server-side record/rewind (e.g, "lag compensation"). This will be an important part for independent ticking.
--Aux state is no longer stored sparsely, we intend to fix this.
--Some issues remain around independent ticking and cues. Working on fixing these.
-
-
-// -------------------------------------------------------------
-// Upgrade notes (7-2-2020)
-// -------------------------------------------------------------
-
-* ::Log function on user states has been changed to ::ToString(FAnsiStringBuilder&), you must now build ansi strings.
-	Careful not to use FVector::ToString functions that build TCHARS. This is an inconvenience but makes tracing 
-	state for Network Prediction Insights much more efficient. 
-
-* TNetworkSimBufferTypes renamed --> TNetworkPredictionStateTypes
-
-* FNetSimModelDefBase renamed --> FNetworkPredictionModelDef. There are additional changes to this:
-
-	* NP_MODEL_BODY (in header) and NP_REGISTER_MODELDEF macros are required for registering model defs
-
-	* Simulation, StateTypes (previously BufferTypes), and Driver are now defined in the ModelDef.
-
-	* ::GetName() and ::GetSortPriority() are also defined on the ModelDef.
-
-* The "Driver" is no longer a virtual interface that is inherited by the driving object (actor/component). The driver
-	class is just defined in the ModelDef and functions are called directly on it. This is done through FNetworkPredictionDriver.
-
-* ::InstantiateNetworkedSimulation renamed --> ::InitializeNetworkPredictionProxy 
-
-* Use NetworkPredictionProxy.Init<ModelDef>:: in InitializeNetworkPredictionProxy. You will need to manually include 
-	NetworkPredictionProxyInit.h in the file that does this (do not include that in the header of your actor/component).
-
-* FNetworkSimTime has been removed, we now use int32 for simulation time in the system. The wrapped structure was
-	not adding any real safety and was just getting in the way.
-
-* FinalizeFrame, ProduceInput now take pointers instead of references. This is to accommodate ModelDefs that have void
-	types (e.g, not AuxState. This allow for ::FinalizeFrame(const FSyncState*, const void*).
-
-* GetDebugName, GetVLogOwner, VisualLog are gone. Generic implementations of these for actors/components are now done in
-	FNetworkPredictionDriver. You can customize this behavior for your defs by specializing FNetworkPredictionDriver on your
-	ModelDef type.
-
-* TNetSimInput/TNetSimOutput now have pointers instead of references. Same reason as ProduceInput/FinalizeFrame: to support
-	void* cases.
-
-* TNetSimStateAccessor has been removed. You can now read/write to simulation state through the NetworkPredictionProxy
-	in a similar way. Note that you will need to explicitly include NetworkPredictionProxyWrite.h to any files that does this.
-	
-* You may need to include "Chaos" in your PublicDependencyModuleNames. Looking at a way to not require this but am not sure
-	it will be possible. 
-
-
-// -------------------------------------------------------------
-//	System Overview
-// -------------------------------------------------------------
-
-NetworkPrediction is a generalized system for client-side prediction. The goal here is to separate the gameplay code
-from the networking code: prediction, corrections, resimulates, etc.
-
-The core of the system is user states and a SimulationTick function. User states are divided into three buckets. These
-are implemented as structs:
-
-InputCmd: The state that is generated by a controlling client.
-SyncState: The state that primarily evolves frame-toframe via a SimulationTick function.
-AuxState: Additional state that can change but does .
-
-Given these state types, user then implements a SimulationTick function which takes an input {Inputcmd, Sync, Aux} and
-produces output {Sync, Aux}. These inputs and outputs are what is networked.
-
-An event system, called Cues, is also available for managing non simulation affecting events that are emitted during
-the SimulationTick. Prediction and rollback support is generically provided for these.
-
-NetworkPredictionExtras is a supplementary plugin with sample content.
-
-NetworkPredictionInsights is a tool for debugging the Network Prediction system. Demo can be found here:
-https://www.youtube.com/watch?v=_rdt-v1nFlY
-
-// -------------------------------------------------------------
-//	Getting Started
-// -------------------------------------------------------------
-
-MockNetworkSimulation.h - entry point for simple example use case. See how a simple simulation is defined and how an
-actor component is bound to it at runtime.
-
-NetworkPredictionWorldManager.h - top level entry point for the system. See what happens each frame, how simulations
-are managed and coordinated.
-
-NetworkPredictionPhysicsComponent.h - Example of binding a physics-only sim. 
-
-MockPhysicsSimulation.h - Simple "controllable physics object" example. 
-
-
-// -------------------------------------------------------------
-//	Road Map
-// -------------------------------------------------------------
-
-Network Prediction is still a WIP. We don't foresee any more major changes but until it is officially released and 
-out of beta, there is a risk of API changes.
-
-The plan is to replace the current UCharacterMovementComponent and provide updates to GameplayAbilities so that all
-prediction is unified across these systems, plus is easier to extend/modify on a per project basis.
 

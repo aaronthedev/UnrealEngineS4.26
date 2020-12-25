@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -83,22 +83,27 @@ public:
 		SkeletalControlAlpha = FMath::Clamp<float>(InSkeletalControlAlpha, 0.f, 1.f);
 	}
 
-#if WITH_EDITOR	
+	void SetKey(FSimpleDelegate InOnSetKeyCompleteDelegate)
+	{
+#if WITH_EDITOR
+		bSetKey = true;
+		OnSetKeyCompleteDelegate = InOnSetKeyCompleteDelegate;
+#endif
+	}
+
 	void SetKey()
 	{
+#if WITH_EDITOR
 		bSetKey = true;
-	}
-
-	FDelegateHandle AddKeyCompleteDelegate(FSimpleMulticastDelegate::FDelegate InOnSetKeyCompleteDelegate)
-	{
-		return OnSetKeyCompleteDelegate.Add(InOnSetKeyCompleteDelegate);
-	}
-
-	void RemoveKeyCompleteDelegate(FDelegateHandle InDelegateHandle)
-	{
-		OnSetKeyCompleteDelegate.Remove(InDelegateHandle);
-	}
 #endif
+	}
+
+	void SetKeyCompleteDelegate(FSimpleDelegate InOnSetKeyCompleteDelegate)
+	{
+#if WITH_EDITOR
+		OnSetKeyCompleteDelegate = InOnSetKeyCompleteDelegate;
+#endif
+	}
 
 	void RefreshCurveBoneControllers(UAnimationAsset* AssetToRefreshFrom);
 
@@ -111,8 +116,6 @@ public:
 	{
 		return CurveBoneControllers;
 	}
-
-	virtual void AddImpulseAtLocation(FVector Impulse, FVector Location, FName BoneName = NAME_None) {}
 
 	/** Sets an external debug skeletal mesh component to use to debug */
 	void SetDebugSkeletalMeshComponent(USkeletalMeshComponent* InSkeletalMeshComponent);
@@ -148,7 +151,7 @@ private:
 	/**
 	 * Delegate to call after Key is set
 	 */
-	FSimpleMulticastDelegate OnSetKeyCompleteDelegate;
+	FSimpleDelegate OnSetKeyCompleteDelegate;
 
 	/** Shared parameters for previewing blendspace or animsequence **/
 	float SkeletalControlAlpha;
@@ -261,7 +264,16 @@ public:
 
 	bool GetForceRetargetBasePose() const;
 
-#if WITH_EDITOR	
+	/**
+	 * Convert current modified bone transforms (BoneControllers) to transform curves (CurveControllers)
+	 * it does based on CurrentTime. This function does not set key directly here. 
+	 * It does wait until next update, and it gets the delta of transform before applying curves, and 
+	 * creates curves from it, so you'll need delegate if you'd like to do something after
+	 * 
+	 * @param Delegate To be called once set key is completed
+	 */
+	void SetKey(FSimpleDelegate InOnSetKeyCompleteDelegate);
+
 	/**
 	 * Convert current modified bone transforms (BoneControllers) to transform curves (CurveControllers)
 	 * it does based on CurrentTime. This function does not set key directly here. 
@@ -271,19 +283,11 @@ public:
 	void SetKey();
 
 	/**
-	 * Add the delegate to be called when a key is set.
+	 * Set the delegate to be called when a key is set.
 	 * 
 	 * @param Delegate To be called once set key is completed
 	 */
-	FDelegateHandle AddKeyCompleteDelegate(FSimpleMulticastDelegate::FDelegate InOnSetKeyCompleteDelegate);
-
-	/**
-	 * Add the delegate to be called when a key is set.
-	 * 
-	 * @param Delegate To be called once set key is completed
-	 */
-	void RemoveKeyCompleteDelegate(FDelegateHandle InDelegateHandle);
-#endif
+	void SetKeyCompleteDelegate(FSimpleDelegate InOnSetKeyCompleteDelegate);
 
 	/** 
 	 * Refresh Curve Bone Controllers based on TransformCurves from Animation data
@@ -295,9 +299,6 @@ public:
 	 * This is used by when editing, when controller has to be disabled
 	 */
 	void EnableControllers(bool bEnable);
-
-	/** Preview physics interaction */
-	void AddImpulseAtLocation(FVector Impulse, FVector Location, FName BoneName = NAME_None);
 
 	/** Sets an external debug skeletal mesh component to use to debug */
 	void SetDebugSkeletalMeshComponent(USkeletalMeshComponent* InSkeletalMeshComponent);

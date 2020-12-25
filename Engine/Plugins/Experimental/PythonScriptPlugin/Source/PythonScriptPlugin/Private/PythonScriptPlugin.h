@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,18 +9,9 @@
 #include "Misc/CoreMisc.h"
 #include "HAL/IConsoleManager.h"
 #include "Framework/Commands/InputChord.h"
-#include "Kismet2/EnumEditorUtils.h"
-#include "UObject/StrongObjectPtr.h"
 
 class FPythonScriptPlugin;
 class FPythonScriptRemoteExecution;
-class FPackageReloadedEvent;
-class UContentBrowserFileDataSource;
-class UToolMenu;
-
-struct FAssetData;
-
-enum class EPackageReloadPhase : uint8;
 
 #if WITH_PYTHON
 
@@ -90,10 +81,7 @@ struct IPythonCommandMenu
 };
 #endif	// WITH_PYTHON
 
-class FPythonScriptPlugin 
-	: public IPythonScriptPlugin
-	, public FSelfRegisteringExec
-	, public FEnumEditorUtils::INotifyOnEnumChanged
+class FPythonScriptPlugin : public IPythonScriptPlugin, public FSelfRegisteringExec
 {
 public:
 	FPythonScriptPlugin();
@@ -117,10 +105,6 @@ public:
 
 	//~ FSelfRegisteringExec interface
 	virtual bool Exec(UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar) override;
-
-	//~ FEnumEditorUtils::INotifyOnEnumChanged interface
-	virtual void PreChange(const UUserDefinedEnum* Enum, FEnumEditorUtils::EEnumEditorChangeInfo Info) override;
-	virtual void PostChange(const UUserDefinedEnum* Enum, FEnumEditorUtils::EEnumEditorChangeInfo Info) override;
 
 #if WITH_PYTHON
 
@@ -146,11 +130,6 @@ public:
 
 	/** Run a Python file */
 	bool RunFile(const TCHAR* InFile, const TCHAR* InArgs, FPythonCommandEx& InOutPythonCommand);
-
-	PyObject* GetDefaultGlobalDict() { return PyDefaultGlobalDict.Get(); }
-	PyObject* GetDefaultLocalDict()  { return PyDefaultLocalDict.Get();  }
-	PyObject* GetConsoleGlobalDict() { return PyConsoleGlobalDict.Get(); }
-	PyObject* GetConsoleLocalDict()  { return PyConsoleLocalDict.Get();  }
 #endif	// WITH_PYTHON
 
 private:
@@ -173,22 +152,8 @@ private:
 
 	void OnContentPathDismounted(const FString& InAssetPath, const FString& InFilesystemPath);
 
-	static bool IsDeveloperModeEnabled();
-
-	void OnAssetRenamed(const FAssetData& Data, const FString& OldName);
-
-	void OnAssetRemoved(const FAssetData& Data);
-
-	void OnAssetReload(const EPackageReloadPhase InPackageReloadPhase, FPackageReloadedEvent* InPackageReloadedEvent);
-
-	void OnAssetUpdated(const UObject* InObj);
-
 #if WITH_EDITOR
 	void OnPrepareToCleanseEditorObject(UObject* InObject);
-
-	void PopulatePythonFileContextMenu(UToolMenu* InMenu);
-
-	TStrongObjectPtr<UContentBrowserFileDataSource> PythonFileDataSource;
 #endif	// WITH_EDITOR
 
 	TUniquePtr<FPythonScriptRemoteExecution> RemoteExecution;

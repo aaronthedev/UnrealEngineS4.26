@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcMaterial_MaterialFlatten_h
-#define Alembic_AbcMaterial_MaterialFlatten_h
+#ifndef _Alembic_AbcMaterial_MaterialFlatten_h_
+#define _Alembic_AbcMaterial_MaterialFlatten_h_
 
 #include <Alembic/Util/Export.h>
 #include <Alembic/AbcMaterial/IMaterial.h>

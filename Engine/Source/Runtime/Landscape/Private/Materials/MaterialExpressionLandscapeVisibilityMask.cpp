@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Materials/MaterialExpressionLandscapeVisibilityMask.h"
 #include "Engine/Engine.h"
@@ -74,5 +74,9 @@ void UMaterialExpressionLandscapeVisibilityMask::GetCaption(TArray<FString>& Out
 }
 #endif // WITH_EDITOR
 
+bool UMaterialExpressionLandscapeVisibilityMask::NeedsLoadForClient() const
+{
+	return ParameterName != NAME_None;
+}
 
 #undef LOCTEXT_NAMESPACE

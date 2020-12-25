@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,7 +10,7 @@
 class SWidget;
 
 /**
- *  Metadata to override the navigation behavior or regular SWidget
+ * Simple tagging metadata
  */
 class FNavigationMetaData : public ISlateMetaData
 {
@@ -130,73 +130,3 @@ private:
 	SNavData Rules[(uint8)EUINavigation::Num];
 
 };
-
-#ifndef UE_WITH_SLATE_SIMULATEDNAVIGATIONMETADATA
-#define UE_WITH_SLATE_SIMULATEDNAVIGATIONMETADATA !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-#endif
-
-#if UE_WITH_SLATE_SIMULATEDNAVIGATIONMETADATA
-/**
- * Navigation meta data to used when using the Navigation Event Simulator
- * The OnNavigation function is not call by default on the widget, unless specified with "IsOnNavigationConst".
- */
-class FSimulatedNavigationMetaData : public ISlateMetaData
-{
-public:
-	SLATE_METADATA_TYPE(FSimulatedNavigationMetaData, ISlateMetaData)
-
-	FSimulatedNavigationMetaData() = default;
-
-	FSimulatedNavigationMetaData(const FNavigationMetaData& InSimulatedNavigation)
-	{
-		for (int32 Index = 0; Index < UE_ARRAY_COUNT(Rules); ++Index)
-		{
-			Rules[Index].BoundaryRule = InSimulatedNavigation.GetBoundaryRule((EUINavigation)Index);
-			Rules[Index].FocusRecipient = InSimulatedNavigation.GetFocusRecipient((EUINavigation)Index);
-		}
-	}
-
-	FSimulatedNavigationMetaData(EUINavigationRule InNavigationRule)
-	{
-		for(SNavData& Rule : Rules)
-		{
-			Rule.BoundaryRule = InNavigationRule;
-		}
-	}
-
-	enum EOnNavigationIsConst { OnNavigationIsConst };
-	FSimulatedNavigationMetaData(EOnNavigationIsConst)
-	{
-		for (SNavData& Rule : Rules)
-		{
-			Rule.BoundaryRule = EUINavigationRule::Escape;
-		}
-		bIsOnNavigationConst = true;
-	}
-
-public:
-	/** Get the boundary rule for the provided navigation type. */
-	EUINavigationRule GetBoundaryRule(EUINavigation InNavigation) const
-	{
-		return Rules[(uint8)InNavigation].BoundaryRule;
-	}
-
-	/** Get the focus recipient for the provided navigation type */
-	const TWeakPtr<SWidget>& GetFocusRecipient(EUINavigation InNavigation) const
-	{
-		return Rules[(uint8)InNavigation].FocusRecipient;
-	}
-
-	/** Is the OnNavigation function const and should be called when simulating to determine the navigation rule. */
-	bool IsOnNavigationConst() const { return bIsOnNavigationConst; }
-
-private:
-	struct SNavData
-	{
-		EUINavigationRule BoundaryRule;
-		TWeakPtr<SWidget> FocusRecipient;
-	};
-	SNavData Rules[(uint8)EUINavigation::Num];
-	bool bIsOnNavigationConst = false;
-};
-#endif //UE_WITH_SLATE_SIMULATEDNAVIGATIONMETADATA

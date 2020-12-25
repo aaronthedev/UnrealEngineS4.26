@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TrackEditors/MaterialParameterCollectionTrackEditor.h"
 #include "Tracks/MovieSceneMaterialParameterCollectionTrack.h"
@@ -175,8 +175,11 @@ bool FMaterialParameterCollectionTrackEditor::SupportsType(TSubclassOf<UMovieSce
 
 bool FMaterialParameterCollectionTrackEditor::SupportsSequence(UMovieSceneSequence* InSequence) const
 {
-	ETrackSupport TrackSupported = InSequence ? InSequence->IsTrackSupported(UMovieSceneMaterialParameterCollectionTrack::StaticClass()) : ETrackSupport::NotSupported;
-	return TrackSupported == ETrackSupport::Supported;
+	static UClass* LevelSequenceClass = FindObject<UClass>(ANY_PACKAGE, TEXT("LevelSequence"), true);
+	static UClass* WidgetAnimationClass = FindObject<UClass>(ANY_PACKAGE, TEXT("WidgetAnimation"), true);
+	return InSequence != nullptr &&
+		((LevelSequenceClass != nullptr && InSequence->GetClass()->IsChildOf(LevelSequenceClass)) ||
+		(WidgetAnimationClass != nullptr && InSequence->GetClass()->IsChildOf(WidgetAnimationClass)));
 }
 
 const FSlateBrush* FMaterialParameterCollectionTrackEditor::GetIconBrush() const

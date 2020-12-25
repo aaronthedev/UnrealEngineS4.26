@@ -1,11 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 #include "SequencerKeyEditor.h"
-#include "Channels/MovieSceneStringChannel.h"
+#include "Sections/MovieSceneStringChannel.h"
 
 struct FMovieSceneStringChannel;
 

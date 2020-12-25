@@ -1,10 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 
 #include "UObject/ObjectMacros.h"
-#include "GeometryCollectionProxyData.h"
+#include "GeometryCollection/GeometryDynamicCollection.h"
 #include "GeometryCollection/GeometryCollection.h"
 
 UENUM()

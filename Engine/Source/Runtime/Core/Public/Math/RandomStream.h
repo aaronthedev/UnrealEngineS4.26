@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -62,7 +62,7 @@ public:
 	void Initialize( int32 InSeed )
 	{
 		InitialSeed = InSeed;
-		Seed = uint32(InSeed);
+		Seed = InSeed;
 	}
 
 	/**
@@ -82,7 +82,7 @@ public:
 			InitialSeed = FPlatformTime::Cycles();
 		}
 
-		Seed = uint32(InitialSeed);
+		Seed = InitialSeed;
 	}
 
 	/**
@@ -90,7 +90,7 @@ public:
 	 */
 	void Reset() const
 	{
-		Seed = uint32(InitialSeed);
+		Seed = InitialSeed;
 	}
 
 	int32 GetInitialSeed() const
@@ -107,7 +107,7 @@ public:
 	}
 
 	/**
-	 * Returns a random float number in the range [0, 1).
+	 * Returns a random number between 0 and 1.
 	 *
 	 * @return Random number.
 	 */
@@ -115,11 +115,12 @@ public:
 	{
 		MutateSeed();
 
+		const float SRandTemp = 1.0f;
 		float Result;
 
-		*(uint32*)&Result = 0x3F800000U | (Seed >> 9);
+		*(int32*)&Result = (*(int32*)&SRandTemp & 0xff800000) | (Seed & 0x007fffff);
 
-		return Result - 1.0f; 
+		return FMath::Fractional(Result); 
 	}
 
 	/**
@@ -131,7 +132,7 @@ public:
 	{
 		MutateSeed();
 
-		return Seed;
+		return *(uint32*)&Seed;
 	}
 
 	/**
@@ -164,7 +165,7 @@ public:
 	 */
 	int32 GetCurrentSeed() const
 	{
-		return int32(Seed);
+		return Seed;
 	}
 
 	/**
@@ -184,8 +185,8 @@ public:
 	 */
 	FORCEINLINE int32 RandHelper( int32 A ) const
 	{
-		// GetFraction guarantees a result in the [0,1) range.
-		return ((A > 0) ? FMath::TruncToInt(GetFraction() * float(A)) : 0);
+		// Can't just multiply GetFraction by A, as GetFraction could be == 1.0f
+		return ((A > 0) ? FMath::TruncToInt(GetFraction() * ((float)A - DELTA)) : 0);
 	}
 
 	/**
@@ -334,7 +335,7 @@ public:
 	 */
 	FString ToString() const
 	{
-		return FString::Printf(TEXT("FRandomStream(InitialSeed=%i, Seed=%u)"), InitialSeed, Seed);
+		return FString::Printf(TEXT("FRandomStream(InitialSeed=%i, Seed=%i)"), InitialSeed, Seed);
 	}
 
 protected:
@@ -344,7 +345,7 @@ protected:
 	 */
 	void MutateSeed() const
 	{
-		Seed = (Seed * 196314165U) + 907633515U; 
+		Seed = (Seed * 196314165) + 907633515; 
 	}
 
 private:
@@ -352,7 +353,6 @@ private:
 	// Holds the initial seed.
 	int32 InitialSeed;
 
-	// Holds the current seed. This should be an uint32 so that any shift to obtain top bits
-	// is a logical shift, rather than an arithmetic shift (which smears down the negative bit).
-	mutable uint32 Seed;
+	// Holds the current seed.
+	mutable int32 Seed;
 };

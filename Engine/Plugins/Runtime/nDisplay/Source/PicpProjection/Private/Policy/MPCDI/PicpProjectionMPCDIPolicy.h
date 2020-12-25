@@ -1,7 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
+
+#include "Policy/DisplayClusterProjectionPolicyBase.h"
 #include "Policy/PicpProjectionPolicyBase.h"
 
 #include "IMPCDI.h"
@@ -12,24 +14,19 @@
 #include "RHIResources.h"
 #include "RHIUtilities.h"
 
+
 class FPicpProjectionViewportBase;
 class USceneComponent;
 
 
 /**
- * Adapter for the PICP MPCDI
+ * Adapter for the MPCDI module
  */
 class FPicpProjectionMPCDIPolicy
 	: public FPicpProjectionPolicyBase
 {
 public:
-	enum class EWarpType : uint8
-	{
-		MPCDI= 0,
-		Mesh
-	};
-
-	FPicpProjectionMPCDIPolicy(const FString& ViewportId, const TMap<FString, FString>& Parameters);
+	FPicpProjectionMPCDIPolicy(const FString& ViewportId);
 	virtual ~FPicpProjectionMPCDIPolicy();
 
 	//////////////////////////////////////////////////////////////////////////////////////////////
@@ -48,19 +45,14 @@ public:
 
 	void UpdateOverlayViewportData(FPicpProjectionOverlayFrameData& OverlayFrameData);
 	void SetOverlayData_RenderThread(const FPicpProjectionOverlayViewportData* Source);
-	void GetOverlayData_RenderThread(FPicpProjectionOverlayViewportData& Output);
 
 	void SetWarpTextureCapture(const uint32 ViewIdx, FRHITexture2D* target);
 	IMPCDI::FFrustum GetWarpFrustum(const uint32 ViewIdx, bool bIsCaptureWarpTextureFrustum);
 
-	virtual EWarpType GetWarpType() const
-	{ return EWarpType::MPCDI; }
+protected:	
+	bool InitializeResources_RenderThread();	
 
-protected:
-	bool InitializeResources_RenderThread();
-	bool UpdateCameraTexture_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture, FPicpProjectionOverlayViewportData& ViewportOverlayData);
-
-protected:
+private:
 	FString OriginCompId;
 	FIntPoint ViewportSize;
 
@@ -68,10 +60,8 @@ protected:
 
 	IMPCDI& MPCDIAPI;
 	IMPCDI::FRegionLocator WarpRef;
-	mutable FCriticalSection WarpRefCS;
 
-	FPicpProjectionOverlayViewportData LocalOverlayViewportData;
-	mutable FCriticalSection LocalOverlayViewportDataCS;
+	FPicpProjectionOverlayViewportData OverlayViewportData;
 
 	struct FViewData
 	{

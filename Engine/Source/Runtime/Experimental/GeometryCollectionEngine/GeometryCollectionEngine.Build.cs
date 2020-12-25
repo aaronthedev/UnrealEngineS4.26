@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -9,8 +9,6 @@ namespace UnrealBuildTool.Rules
 			PrivateIncludePaths.Add("Runtime/Experimental/GeometryCollectionEngine/Private");
             PublicIncludePaths.Add(ModuleDirectory + "/Public");
 
-			SetupModulePhysicsSupport(Target);
-
 			PublicDependencyModuleNames.AddRange(
 				new string[]
 				{
@@ -19,11 +17,16 @@ namespace UnrealBuildTool.Rules
                     "Engine",
                     "RenderCore",
                     "RHI",
+                    "Chaos",
+					"ChaosSolvers",
                     "PhysX",
+                    "FieldSystemCore",
                     "FieldSystemEngine",
+                    "GeometryCollectionCore", 
+                    "GeometryCollectionSimulationCore",
 	                "ChaosSolverEngine",
-					"NetCore",
-                    "IntelISPC"
+                    "IntelISPC",
+					"PhysicsSQ"
                 }
                 );
 
@@ -41,10 +44,8 @@ namespace UnrealBuildTool.Rules
 
 			if(Target.bBuildEditor)
             {
-                PublicDependencyModuleNames.Add("UnrealEd");
+                PrivateDependencyModuleNames.Add("UnrealEd");
             }
-
-			PrivateDefinitions.Add("CHAOS_INCLUDE_LEVEL_1=1");
-		}
+        }
 	}
 }

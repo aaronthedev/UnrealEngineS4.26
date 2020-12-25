@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -29,7 +29,6 @@ private:
 	EObjectFlags							ApplyFlags;
 	EInternalObjectFlags InternalFlagMask;
 	EInternalObjectFlags ApplyInternalFlags;
-	bool bAssignExternalPackages;
 
 	/**
 	 * This is used to prevent object & component instancing resulting from the calls to StaticConstructObject(); instancing subobjects and components is pointless,
@@ -42,10 +41,9 @@ private:
 
 	//~ Begin FArchive Interface.
 
-	virtual FArchive& operator<<(FName& N) override;
-	virtual FArchive& operator<<(UObject*& Object) override;
-	virtual FArchive& operator<<(FLazyObjectPtr& LazyObjectPtr) override;
-	virtual FArchive& operator<<(FField*& Field) override;
+	virtual FArchive& operator<<(FName& N);
+	virtual FArchive& operator<<(UObject*& Object);
+	virtual FArchive& operator<<(FLazyObjectPtr& LazyObjectPtr);
 
 	virtual void Serialize(void* Data,int64 Num)
 	{
@@ -130,6 +128,5 @@ public:
 		EInternalObjectFlags InInternalFlagMask,
 		EInternalObjectFlags InApplyInternalFlags,
 		FObjectInstancingGraph* InInstanceGraph,
-		uint32 InPortFlags,
-		bool InAssignExternalPackages);
+		uint32 InPortFlags);
 };

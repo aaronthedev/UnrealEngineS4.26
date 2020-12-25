@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,6 @@
 #include "UObject/Object.h"
 #include "Misc/Attribute.h"
 #include "Layout/Margin.h"
-#include "Fonts/SlateFontInfo.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SWidget.h"
 #include "Widgets/SCompoundWidget.h"
@@ -52,44 +51,6 @@ DECLARE_DELEGATE_ThreeParams(FOnGetPropertyComboBoxStrings, TArray< TSharedPtr<F
 DECLARE_DELEGATE_RetVal(FString, FOnGetPropertyComboBoxValue);
 DECLARE_DELEGATE_OneParam(FOnPropertyComboBoxValueSelected, const FString&);
 DECLARE_DELEGATE_ThreeParams(FOnInstancedPropertyIteration, IDetailCategoryBuilder&, IDetailGroup*, TSharedRef<IPropertyHandle>&);
-DECLARE_DELEGATE_RetVal(bool, FOnIsEnabled);
-
-/** Collects advanced arguments for MakePropertyComboBox */
-struct FPropertyComboBoxArgs
-{
-	/** If set, the combo box will bind to a specific property. If this is null, the following 3 delegates must be set */
-	TSharedPtr<IPropertyHandle> PropertyHandle;
-
-	/** Delegate that is called to generate the list of possible strings inside the combo box list. If not set it will generate using the property handle */
-	FOnGetPropertyComboBoxStrings OnGetStrings;
-
-	/** Delegate that is called to get the current string value to display as the combo box label. If not set it will generate using the property handle */
-	FOnGetPropertyComboBoxValue OnGetValue;
-
-	/** Delegate called when a string is selected. If not set it will modify what is bound to the property handle */
-	FOnPropertyComboBoxValueSelected OnValueSelected;
-
-	/** If number of items in combo box is >= this, it will show a search box to allow filtering. -1 means to never show it */
-	int32 ShowSearchForItemCount = 20;
-
-	/** Font to use for text display. If not set it will use the default property editor font */
-	FSlateFontInfo Font;
-
-	/** Default constructor, the caller will need to fill in values manually */
-	FPropertyComboBoxArgs()
-	{}
-
-	/** Constructor using original function arguments */
-	FPropertyComboBoxArgs(const TSharedPtr<IPropertyHandle>& InPropertyHandle,
-		FOnGetPropertyComboBoxStrings InOnGetStrings = FOnGetPropertyComboBoxStrings(),
-		FOnGetPropertyComboBoxValue InOnGetValue = FOnGetPropertyComboBoxValue(),
-		FOnPropertyComboBoxValueSelected InOnValueSelected = FOnPropertyComboBoxValueSelected())
-		: PropertyHandle(InPropertyHandle)
-		, OnGetStrings(InOnGetStrings)
-		, OnGetValue(InOnGetValue)
-		, OnValueSelected(InOnValueSelected)
-	{}
-};
 
 namespace PropertyCustomizationHelpers
 {
@@ -101,9 +62,9 @@ namespace PropertyCustomizationHelpers
 	PROPERTYEDITOR_API TSharedRef<SWidget> MakeDeleteButton( FSimpleDelegate OnDeleteClicked, TAttribute<FText> OptionalToolTipText = FText(), TAttribute<bool> IsEnabled = true );
 	PROPERTYEDITOR_API TSharedRef<SWidget> MakeClearButton( FSimpleDelegate OnClearClicked, TAttribute<FText> OptionalToolTipText = FText(), TAttribute<bool> IsEnabled = true );
 	PROPERTYEDITOR_API TSharedRef<SWidget> MakeVisibilityButton(FOnClicked OnVisibilityClicked, TAttribute<FText> OptionalToolTipText = FText(), TAttribute<bool> VisibilityDelegate = true);
-	PROPERTYEDITOR_API TSharedRef<SWidget> MakeNewBlueprintButton( FSimpleDelegate OnNewBlueprintClicked, TAttribute<FText> OptionalToolTipText = FText(), TAttribute<bool> IsEnabled = true );
+	PROPERTYEDITOR_API TSharedRef<SWidget> MakeNewBlueprintButton( FSimpleDelegate OnFindClicked, TAttribute<FText> OptionalToolTipText = FText(), TAttribute<bool> IsEnabled = true );
 	PROPERTYEDITOR_API TSharedRef<SWidget> MakeUseSelectedButton( FSimpleDelegate OnUseSelectedClicked, TAttribute<FText> OptionalToolTipText = FText(), TAttribute<bool> IsEnabled = true );
-	PROPERTYEDITOR_API TSharedRef<SWidget> MakeBrowseButton( FSimpleDelegate OnFindClicked, TAttribute<FText> OptionalToolTipText = FText(), TAttribute<bool> IsEnabled = true );
+	PROPERTYEDITOR_API TSharedRef<SWidget> MakeBrowseButton( FSimpleDelegate OnClearClicked, TAttribute<FText> OptionalToolTipText = FText(), TAttribute<bool> IsEnabled = true );
 	PROPERTYEDITOR_API TSharedRef<SWidget> MakeAssetPickerAnchorButton( FOnGetAllowedClasses OnGetAllowedClasses, FOnAssetSelected OnAssetSelectedFromPicker, const TSharedPtr<IPropertyHandle>& PropertyHandle = TSharedPtr<IPropertyHandle>());
 	PROPERTYEDITOR_API TSharedRef<SWidget> MakeAssetPickerWithMenu( const FAssetData& InitialObject, const bool AllowClear, const TArray<const UClass*>& AllowedClasses, const TArray<UFactory*>& NewAssetFactories, FOnShouldFilterAsset OnShouldFilterAsset, FOnAssetSelected OnSet, FSimpleDelegate OnClose, const TSharedPtr<IPropertyHandle>& PropertyHandle = TSharedPtr<IPropertyHandle>(), const TArray<FAssetData>& OwnerAssetArray = TArray<FAssetData>());
 	PROPERTYEDITOR_API TSharedRef<SWidget> MakeAssetPickerWithMenu( const FAssetData& InitialObject, const bool AllowClear, const TArray<const UClass*>& AllowedClasses, const TArray<const UClass*>& DisallowedClasses, const TArray<UFactory*>& NewAssetFactories, FOnShouldFilterAsset OnShouldFilterAsset, FOnAssetSelected OnSet, FSimpleDelegate OnClose, const TSharedPtr<IPropertyHandle>& PropertyHandle = TSharedPtr<IPropertyHandle>(), const TArray<FAssetData>& OwnerAssetArray = TArray<FAssetData>());
@@ -117,8 +78,8 @@ namespace PropertyCustomizationHelpers
 	PROPERTYEDITOR_API TSharedRef<SWidget> MakeEditConfigHierarchyButton(FSimpleDelegate OnEditConfigClicked, TAttribute<FText> OptionalToolTipText = FText(), TAttribute<bool> IsEnabled = true);
 	PROPERTYEDITOR_API TSharedRef<SWidget> MakeDocumentationButton(const TSharedRef<FPropertyEditor>& InPropertyEditor);
 
-	/** @return the FBoolProperty edit condition property if one exists. */
-	PROPERTYEDITOR_API FBoolProperty* GetEditConditionProperty(const FProperty* InProperty, bool& bNegate);
+	/** @return the UBoolProperty edit condition property if one exists. */
+	PROPERTYEDITOR_API UBoolProperty* GetEditConditionProperty(const UProperty* InProperty, bool& bNegate);
 
 	/** Returns a list of factories which can be used to create new assets, based on the supplied class */
 	PROPERTYEDITOR_API TArray<UFactory*> GetNewAssetFactoriesForClasses(const TArray<const UClass*>& Classes);
@@ -126,15 +87,8 @@ namespace PropertyCustomizationHelpers
 	/** Returns a list of factories which can be used to create new assets, based on the supplied classes and respecting the disallowed set */
 	PROPERTYEDITOR_API TArray<UFactory*> GetNewAssetFactoriesForClasses(const TArray<const UClass*>& Classes, const TArray<const UClass*>& DisallowedClasses);
 
-	/**
-	 * Build a combo button that you bind to a Name/String/Enum property or display using general delegates, using an arguments structure
-	 *
-	 * @param InArgs Options used to create combo box
-	 */
-	PROPERTYEDITOR_API TSharedRef<SWidget> MakePropertyComboBox(const FPropertyComboBoxArgs& InArgs);
-
 	/** 
-	 * Build a combo button that you bind to a Name/String/Enum property or display using general delegates
+	 * Build a combo button that you bind to a Name or String property or use general delegates
 	 * 
 	 * @param InPropertyHandle	If set, will bind to a specific property. If this is null, all 3 delegates must be set
 	 * @param OnGetStrings		Delegate that will generate the list of possible strings. If not set will generate using property handle
@@ -164,7 +118,7 @@ DECLARE_DELEGATE_OneParam( FOnSetObject, const FAssetData& );
 
 /**
  * Simulates an object property field 
- * Can be used when a property should act like a FObjectProperty but it isn't one
+ * Can be used when a property should act like a UObjectProperty but it isn't one
  */
 class SObjectPropertyEntryBox : public SCompoundWidget
 {
@@ -196,8 +150,6 @@ public:
 		SLATE_EVENT(FOnSetObject, OnObjectChanged)
 		/** Called to check if an asset is valid to use */
 		SLATE_EVENT(FOnShouldFilterAsset, OnShouldFilterAsset)
-		/** Called to check if the asset should be enabled. */
-		SLATE_EVENT(FOnIsEnabled, OnIsEnabled)
 		/** Whether the asset can be 'None' */
 		SLATE_ARGUMENT(bool, AllowClear)
 		/** Whether to show the 'Use Selected' button */
@@ -229,16 +181,11 @@ private:
 
 	/** @return the object path for the object we are viewing */
 	FString OnGetObjectPath() const;
-
-	bool IsEnabled() const;
-
 private:
 	/** Delegate to call to determine whether the asset should be set */
 	FOnShouldSetAsset OnShouldSetAsset;
 	/** Delegate to call when the object changes */
 	FOnSetObject OnObjectChanged;
-	/** Delegate to call to check if this widget should be enabled. */
-	FOnIsEnabled OnIsEnabled;
 	/** Path to the object */
 	TAttribute<FString> ObjectPath;
 	/** Handle to a property we modify (if any)*/
@@ -254,7 +201,7 @@ DECLARE_DELEGATE_OneParam( FOnSetClass, const UClass* );
 
 /**
  * Simulates a class property field 
- * Can be used when a property should act like a FClassProperty but it isn't one
+ * Can be used when a property should act like a UClassProperty but it isn't one
  */
 class SClassPropertyEntryBox : public SCompoundWidget
 {
@@ -342,10 +289,10 @@ private:
 
 
 /**
- * Represents a widget that can display a FProperty 
+ * Represents a widget that can display a UProperty 
  * With the ability to customize the look of the property                 
  */
-class SProperty
+class PROPERTYEDITOR_VTABLE SProperty
 	: public SCompoundWidget
 {
 public:
@@ -384,7 +331,7 @@ public:
 	PROPERTYEDITOR_API virtual FText GetResetToDefaultLabel() const;
 
 	/**
-	 * Returns whether or not this property is valid.  Sometimes property widgets are created even when their FProperty is not exposed to the user.  In that case the property is invalid
+	 * Returns whether or not this property is valid.  Sometimes property widgets are created even when their UProperty is not exposed to the user.  In that case the property is invalid
 	 * Properties can also become invalid if selection changes in the detail view and this value is stored somewhere.
 	 * @return Whether or not the property is valid.                   
 	 */

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -60,8 +60,6 @@ private:
 	FString TagName;
 
 	void OnTagDoubleClicked();
-	void OnSearchForReferences();
-
 	EVisibility GetVisibilityForTagTextBlockWidget(bool ForTextWidget) const;
 
 	TSharedPtr<class SComboButton> EditButton;
@@ -69,14 +67,3 @@ private:
 	TWeakPtr<class SGameplayTagWidget> LastTagWidget;
 };
 
-/** Customization for FGameplayTagCreationWidgetHelper showing an add tag button */
-class FGameplayTagCreationWidgetHelperDetails : public IPropertyTypeCustomization
-{
-public:
-	static TSharedRef<IPropertyTypeCustomization> MakeInstance();
-
-	/** IPropertyTypeCustomization interface */
-	virtual void CustomizeHeader(TSharedRef<class IPropertyHandle> StructPropertyHandle, class FDetailWidgetRow& HeaderRow, IPropertyTypeCustomizationUtils& StructCustomizationUtils) override;
-	virtual void CustomizeChildren(TSharedRef<class IPropertyHandle> StructPropertyHandle, class IDetailChildrenBuilder& StructBuilder, IPropertyTypeCustomizationUtils& StructCustomizationUtils) override;
-	TSharedPtr<class SGameplayTagWidget> TagWidget;
-};

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -21,7 +21,7 @@ enum class ERigUnitDebugTransformMode : uint8
 	Max UMETA(Hidden),
 };
 
-USTRUCT(meta=(DisplayName="Draw Transform In Place", Deprecated = "4.25.0"))
+USTRUCT(meta=(DisplayName="Draw Transform In Place"))
 struct FRigUnit_DebugTransform : public FRigUnit_DebugBase
 {
 	GENERATED_BODY()
@@ -54,17 +54,17 @@ struct FRigUnit_DebugTransform : public FRigUnit_DebugBase
 	UPROPERTY(meta = (Input))
 	float Scale;
 
-	UPROPERTY(meta = (Input))
+	UPROPERTY(meta = (Input, Constant, BoneName))
 	FName Space;
 
 	UPROPERTY(meta = (Input))
 	FTransform WorldOffset;
 
-	UPROPERTY(meta = (Input, Constant))
+	UPROPERTY(meta = (Input, Constant, BoneName))
 	bool bEnabled;
 };
 
-USTRUCT(meta=(DisplayName="Draw Transform", Deprecated = "4.25"))
+USTRUCT(meta=(DisplayName="Draw Transform"))
 struct FRigUnit_DebugTransformMutable : public FRigUnit_DebugBaseMutable
 {
 	GENERATED_BODY()
@@ -97,60 +97,13 @@ struct FRigUnit_DebugTransformMutable : public FRigUnit_DebugBaseMutable
 	UPROPERTY(meta = (Input))
 	float Scale;
 
-	UPROPERTY(meta = (Input))
+	UPROPERTY(meta = (Input, Constant, BoneName))
 	FName Space;
 
 	UPROPERTY(meta = (Input))
 	FTransform WorldOffset;
 
-	UPROPERTY(meta = (Input, Constant))
-	bool bEnabled;
-};
-
-/**
- * Given a transform, will draw a point, axis, or a box in the viewport
- */
-USTRUCT(meta=(DisplayName="Draw Transform"))
-struct FRigUnit_DebugTransformMutableItemSpace : public FRigUnit_DebugBaseMutable
-{
-	GENERATED_BODY()
-
-	FRigUnit_DebugTransformMutableItemSpace()
-	{
-		Transform = WorldOffset = FTransform::Identity;
-		Mode = ERigUnitDebugTransformMode::Axes;
-		Color = FLinearColor::Red;
-		Thickness = 0.f;
-		Scale = 10.f;
-		Space = FRigElementKey(NAME_None, ERigElementType::Bone);
-		bEnabled = true;
-	}
-
-	RIGVM_METHOD()
-	virtual void Execute(const FRigUnitContext& Context) override;
-
-	UPROPERTY(meta = (Input))
-	FTransform Transform;
-
-	UPROPERTY(meta = (Input))
-	ERigUnitDebugTransformMode Mode;
-
-	UPROPERTY(meta = (Input))
-	FLinearColor Color;
-
-	UPROPERTY(meta = (Input))
-	float Thickness;
-
-	UPROPERTY(meta = (Input))
-	float Scale;
-
-	UPROPERTY(meta = (Input))
-	FRigElementKey Space;
-
-	UPROPERTY(meta = (Input))
-	FTransform WorldOffset;
-
-	UPROPERTY(meta = (Input, Constant))
+	UPROPERTY(meta = (Input, Constant, BoneName))
 	bool bEnabled;
 };
 
@@ -163,7 +116,7 @@ struct FRigUnit_DebugTransformArrayMutable_WorkData
 	TArray<FTransform> DrawTransforms;
 };
 
-USTRUCT(meta=(DisplayName="Draw Transform Array", Deprecated = "4.25.0"))
+USTRUCT(meta=(DisplayName="Draw Transform Array"))
 struct FRigUnit_DebugTransformArrayMutable : public FRigUnit_DebugBaseMutable
 {
  	GENERATED_BODY()
@@ -196,13 +149,13 @@ struct FRigUnit_DebugTransformArrayMutable : public FRigUnit_DebugBaseMutable
 	UPROPERTY(meta = (Input))
 	float Scale;
 
-	UPROPERTY(meta = (Input))
+	UPROPERTY(meta = (Input, Constant, BoneName))
 	FName Space;
 
 	UPROPERTY(meta = (Input))
 	FTransform WorldOffset;
 
-	UPROPERTY(meta = (Input, Constant))
+	UPROPERTY(meta = (Input, Constant, BoneName))
 	bool bEnabled;
 
 	UPROPERTY(transient)

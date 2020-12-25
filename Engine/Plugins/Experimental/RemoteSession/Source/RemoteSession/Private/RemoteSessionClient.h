@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,16 +19,13 @@ public:
 	virtual bool IsConnected() const override;
 
 protected:
-	
-	void 				StartConnection();
-	void 				CheckConnection();
-	
-	virtual void		BindEndpoints(TBackChannelSharedPtr<IBackChannelConnection> InConnection);
-	virtual bool		ProcessStateChange(const ConnectionState NewState, const ConnectionState OldState) override;
 
-	void				OnReceiveChannelList(IBackChannelPacket& Message);
-
-	void				RequestChannel(const FRemoteSessionChannelInfo& Info);
+	virtual void	OnBindEndpoints() override;
+	
+	void 			StartConnection();
+	void 			CheckConnection();
+	
+	void OnChannelSelection(FBackChannelOSCMessage& Message, FBackChannelOSCDispatch& Dispatch) override;
 
 	FString				HostAddress;
 	
@@ -39,6 +36,4 @@ protected:
 	double				TimeConnectionAttemptStarted;
 	
 	FDelegateHandle		ChannelCallbackHandle;
-
-	TArray<FRemoteSessionChannelInfo> AvailableChannels;
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MaterialInstance.h: MaterialInstance definitions.
@@ -31,13 +31,12 @@ void RecacheMaterialInstanceUniformExpressions(const UMaterialInterface* ParentM
 class FMICReentranceGuard
 {
 public:
-#if !WITH_EDITOR
-	FMICReentranceGuard(const UMaterialInstance* InMaterial) {}
-#else
+
 	FMICReentranceGuard(const UMaterialInstance* InMaterial)
 	{
 		Material = const_cast<UMaterialInstance*>(InMaterial);
 
+		check(IsInRenderingThread() || IsInGameThread() || IsAsyncLoading());
 		if (Material->GetReentrantFlag() == true)
 		{
 			UE_LOG(LogMaterial, Warning, TEXT("InMaterial: %s GameThread: %d RenderThread: %d"), *InMaterial->GetFullName(), IsInGameThread(), IsInRenderingThread());
@@ -48,12 +47,12 @@ public:
 
 	~FMICReentranceGuard()
 	{
+		check(IsInRenderingThread() || IsInGameThread() || IsAsyncLoading());
 		Material->SetReentrantFlag(false);
 	}
 
 private:
 	UMaterialInstance* Material;
-#endif // WITH_EDITOR
 };
 
 /**
@@ -67,7 +66,7 @@ public:
 	template <typename ValueType>
 	struct TNamedParameter
 	{
-		FHashedMaterialParameterInfo Info;
+		FMaterialParameterInfo Info;
 		ValueType Value;
 	};
 
@@ -97,24 +96,22 @@ public:
 	virtual FMaterial* GetMaterialNoFallback(ERHIFeatureLevel::Type FeatureLevel) const override;
 	virtual UMaterialInterface* GetMaterialInterface() const override;
 	
-	virtual bool GetVectorValue(const FHashedMaterialParameterInfo& ParameterInfo, FLinearColor* OutValue, const FMaterialRenderContext& Context) const override;
-	virtual bool GetScalarValue(const FHashedMaterialParameterInfo& ParameterInfo, float* OutValue, const FMaterialRenderContext& Context) const override;
-	virtual bool GetTextureValue(const FHashedMaterialParameterInfo& ParameterInfo, const UTexture** OutValue, const FMaterialRenderContext& Context) const override;
-	virtual bool GetTextureValue(const FHashedMaterialParameterInfo& ParameterInfo, const URuntimeVirtualTexture** OutValue, const FMaterialRenderContext& Context) const override;
+	virtual bool GetVectorValue(const FMaterialParameterInfo& ParameterInfo, FLinearColor* OutValue, const FMaterialRenderContext& Context) const override;
+	virtual bool GetScalarValue(const FMaterialParameterInfo& ParameterInfo, float* OutValue, const FMaterialRenderContext& Context) const override;
+	virtual bool GetTextureValue(const FMaterialParameterInfo& ParameterInfo, const UTexture** OutValue, const FMaterialRenderContext& Context) const override;
+	virtual bool GetTextureValue(const FMaterialParameterInfo& ParameterInfo, const URuntimeVirtualTexture** OutValue, const FMaterialRenderContext& Context) const override;
 
 	void GameThread_SetParent(UMaterialInterface* ParentMaterialInterface);
-
-	void InitMIParameters(struct FMaterialInstanceParameterSet& ParameterSet);
 
 	/**
 	 * Clears all parameters set on this material instance.
 	 */
 	void RenderThread_ClearParameters()
 	{
-		VectorParameterArray.Empty();
-		ScalarParameterArray.Empty();
-		TextureParameterArray.Empty();
-		RuntimeVirtualTextureParameterArray.Empty();
+		VectorParameterArray.Reset();
+		ScalarParameterArray.Reset();
+		TextureParameterArray.Reset();
+		RuntimeVirtualTextureParameterArray.Reset();
 		InvalidateUniformExpressionCache(false);
 	}
 
@@ -122,7 +119,7 @@ public:
 	 * Updates a named parameter on the render thread.
 	 */
 	template <typename ValueType>
-	void RenderThread_UpdateParameter(const FHashedMaterialParameterInfo& ParameterInfo, const ValueType& Value )
+	void RenderThread_UpdateParameter(const FMaterialParameterInfo& ParameterInfo, const ValueType& Value )
 	{
 		LLM_SCOPE(ELLMTag::MaterialInstance);
 
@@ -148,7 +145,7 @@ public:
 	 * Retrieves a parameter by name.
 	 */
 	template <typename ValueType>
-	const ValueType* RenderThread_FindParameterByName(const FHashedMaterialParameterInfo& ParameterInfo) const
+	const ValueType* RenderThread_FindParameterByName(const FMaterialParameterInfo& ParameterInfo) const
 	{
 		const TArray<TNamedParameter<ValueType> >& ValueArray = GetValueArray<ValueType>();
 		const int32 ParameterCount = ValueArray.Num();
@@ -198,17 +195,9 @@ template <> FORCEINLINE const TArray<FMaterialInstanceResource::TNamedParameter<
 template <> FORCEINLINE const TArray<FMaterialInstanceResource::TNamedParameter<const UTexture*> >& FMaterialInstanceResource::GetValueArray() const { return TextureParameterArray; }
 template <> FORCEINLINE const TArray<FMaterialInstanceResource::TNamedParameter<const URuntimeVirtualTexture*> >& FMaterialInstanceResource::GetValueArray() const { return RuntimeVirtualTextureParameterArray; }
 
-struct FMaterialInstanceParameterSet
-{
-	TArray<FMaterialInstanceResource::TNamedParameter<float> > ScalarParameters;
-	TArray<FMaterialInstanceResource::TNamedParameter<FLinearColor> > VectorParameters;
-	TArray<FMaterialInstanceResource::TNamedParameter<const UTexture*> > TextureParameters;
-	TArray<FMaterialInstanceResource::TNamedParameter<const URuntimeVirtualTexture*> > RuntimeVirtualTextureParameters;
-};
-	
 /** Finds a parameter by name from the game thread. */
 template <typename ParameterType>
-ParameterType* GameThread_FindParameterByName(TArray<ParameterType>& Parameters, const FHashedMaterialParameterInfo& ParameterInfo)
+ParameterType* GameThread_FindParameterByName(TArray<ParameterType>& Parameters, const FMaterialParameterInfo& ParameterInfo)
 {
 	for (int32 ParameterIndex = 0; ParameterIndex < Parameters.Num(); ParameterIndex++)
 	{
@@ -221,7 +210,7 @@ ParameterType* GameThread_FindParameterByName(TArray<ParameterType>& Parameters,
 	return NULL;
 }
 template <typename ParameterType>
-const ParameterType* GameThread_FindParameterByName(const TArray<ParameterType>& Parameters, const FHashedMaterialParameterInfo& ParameterInfo)
+const ParameterType* GameThread_FindParameterByName(const TArray<ParameterType>& Parameters, const FMaterialParameterInfo& ParameterInfo)
 {
 	for (int32 ParameterIndex = 0; ParameterIndex < Parameters.Num(); ParameterIndex++)
 	{
@@ -235,7 +224,7 @@ const ParameterType* GameThread_FindParameterByName(const TArray<ParameterType>&
 }
 
 template <typename ParameterType>
-int32 GameThread_FindParameterIndexByName(const TArray<ParameterType>& Parameters, const FHashedMaterialParameterInfo& ParameterInfo)
+int32 GameThread_FindParameterIndexByName(const TArray<ParameterType>& Parameters, const FMaterialParameterInfo& ParameterInfo)
 {
 	for (int32 ParameterIndex = 0; ParameterIndex < Parameters.Num(); ++ParameterIndex)
 	{

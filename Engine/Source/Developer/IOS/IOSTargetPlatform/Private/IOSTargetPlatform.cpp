@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	IOSTargetPlatform.cpp: Implements the FIOSTargetPlatform class.
@@ -18,7 +18,6 @@
 #include "Windows/WindowsHWrapper.h"
 #endif
 #if WITH_ENGINE
-#include "Engine/TextureCube.h"
 #include "TextureResource.h"
 #include "AudioCompressionSettings.h"
 #endif
@@ -448,11 +447,6 @@ bool FIOSTargetPlatform::HandleTicker(float DeltaTime)
 
 /* ITargetPlatform interface
  *****************************************************************************/
-static bool UsesVirtualTextures()
-{
-	static auto* CVarMobileVirtualTextures = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.VirtualTextures"));
-	return CVarMobileVirtualTextures->GetValueOnAnyThread() != 0;
-}
 
 static bool SupportsMetal()
 {
@@ -492,14 +486,7 @@ static bool SupportsSoftwareOcclusion()
 	return CVarMobileAllowSoftwareOcclusion->GetValueOnAnyThread() != 0;
 }
 
-static bool SupportsLandscapeMeshLODStreaming()
-{
-	bool bStreamLandscapeMeshLODs = false;
-	GConfig->GetBool(TEXT("/Script/IOSRuntimeSettings.IOSRuntimeSettings"), TEXT("bStreamLandscapeMeshLODs"), bStreamLandscapeMeshLODs, GEngineIni);
-	return bStreamLandscapeMeshLODs;
-}
-
-bool FIOSTargetPlatform::CanSupportRemoteShaderCompile() const
+bool FIOSTargetPlatform::CanSupportXGEShaderCompile() const
 {
 	// for 4.22 we are disabling support for XGE Shader compile on IOS
 	bool bRemoteCompilingEnabled = false;
@@ -526,12 +513,6 @@ bool FIOSTargetPlatform::SupportsFeature( ETargetPlatformFeatures Feature ) cons
 		case ETargetPlatformFeatures::SoftwareOcclusion:
 			return SupportsSoftwareOcclusion();
 
-		case ETargetPlatformFeatures::VirtualTextureStreaming:
-			return UsesVirtualTextures();
-
-		case ETargetPlatformFeatures::LandscapeMeshLODStreaming:
-			return SupportsLandscapeMeshLODStreaming() && SupportsMetal();
-
 		default:
 			break;
 	}
@@ -542,18 +523,6 @@ bool FIOSTargetPlatform::SupportsFeature( ETargetPlatformFeatures Feature ) cons
 
 #if WITH_ENGINE
 
-void FIOSTargetPlatform::GetReflectionCaptureFormats( TArray<FName>& OutFormats ) const
-{
-	static auto* MobileShadingPathCvar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.ShadingPath"));
-	const bool bMobileDeferredShading = (MobileShadingPathCvar->GetValueOnAnyThread() == 1);
-
-	if (SupportsMetalMRT() || bMobileDeferredShading)
-	{
-		OutFormats.Add(FName(TEXT("FullHDR")));
-	}
-
-	OutFormats.Add(FName(TEXT("EncodedHDR")));
-}
 
 void FIOSTargetPlatform::GetAllPossibleShaderFormats( TArray<FName>& OutFormats ) const
 {
@@ -605,8 +574,6 @@ static FName FormatRemap[] =
 	FName(TEXT("BC5")),		FName(TEXT("PVRTCN")),		FName(TEXT("ASTC_NormalRG")),
 	FName(TEXT("AutoDXT")),	FName(TEXT("AutoPVRTC")),	FName(TEXT("ASTC_RGBAuto")),
 	FName(TEXT("BC4")),		FName(TEXT("G8")),			FName(TEXT("G8")),
-	FName(TEXT("BC6H")),	FName(TEXT("PVRTC2")),		FName(TEXT("ASTC_RGB")), 
-	FName(TEXT("BC7")),		FName(TEXT("AutoPVRTC")),	FName(TEXT("ASTC_RGBAuto"))
 };
 static FName NameBGRA8(TEXT("BGRA8"));
 static FName NameG8 = FName(TEXT("G8"));
@@ -649,7 +616,7 @@ void FIOSTargetPlatform::GetTextureFormats( const UTexture* Texture, TArray< TAr
         {
             BlockSize = 1;
         }
-		GetDefaultTextureFormatNamePerLayer(TextureFormatNames, this, Texture, EngineSettings, true, false, BlockSize);
+		GetDefaultTextureFormatNamePerLayer(TextureFormatNames, this, Texture, EngineSettings, false, false, BlockSize);
 	}
 
 	// include the formats we want (use ASTC first so that it is preferred at runtime if they both exist and it's supported)
@@ -697,23 +664,6 @@ void FIOSTargetPlatform::GetTextureFormats( const UTexture* Texture, TArray< TAr
 		}
 		OutFormats.AddUnique(TextureFormatNamesPVRTC);
 	}
-
-	for (FName& TextureFormatName : OutFormats.Last())
-	{
-		if (Texture->IsA(UTextureCube::StaticClass()))
-		{
-			const UTextureCube* Cube = CastChecked<UTextureCube>(Texture);
-			if (Cube != nullptr)
-			{
-				FTextureFormatSettings FormatSettings;
-				Cube->GetDefaultFormatSettings(FormatSettings);
-				if (FormatSettings.CompressionSettings == TC_ReflectionCapture && !FormatSettings.CompressionNone)
-				{
-					TextureFormatName = FName(TEXT("ETC2_RGBA"));
-				}
-			}
-		}
-	}
 }
 
 void FIOSTargetPlatform::GetAllTextureFormats(TArray<FName>& OutFormats) const 
@@ -746,37 +696,6 @@ void FIOSTargetPlatform::GetAllTextureFormats(TArray<FName>& OutFormats) const
 	}
 }
 
-FName FIOSTargetPlatform::FinalizeVirtualTextureLayerFormat(FName Format) const
-{
-#if WITH_EDITOR
-	const static FName NameETC2_RGB(TEXT("ETC2_RGB"));
-	const static FName NameETC2_RGBA(TEXT("ETC2_RGBA"));
-	const static FName NameAutoETC2(TEXT("AutoETC2"));
-
-	// Remap non-ETC variants to ETC
-	const static FName ETCRemap[][2] =
-	{
-		{ { FName(TEXT("ASTC_RGB")) },			{ NameETC2_RGB } },
-		{ { FName(TEXT("ASTC_RGBA")) },			{ NameETC2_RGBA } },
-		{ { FName(TEXT("ASTC_RGBAuto")) },		{ NameAutoETC2 } },
-		{ { FName(TEXT("ASTC_NormalAG")) },		{ NameETC2_RGB } },
-		{ { FName(TEXT("ASTC_NormalRG")) },		{ NameETC2_RGB } },
-		{ { FName(TEXT("PVRTC2")) },			{ NameETC2_RGB } },
-		{ { FName(TEXT("PVRTC4")) },			{ NameETC2_RGBA } },
-		{ { FName(TEXT("PVRTCN")) },			{ NameETC2_RGB } },
-		{ { FName(TEXT("AutoPVRTC")) },			{ NameAutoETC2 } }
-	};
-
-	for (int32 RemapIndex = 0; RemapIndex < UE_ARRAY_COUNT(ETCRemap); RemapIndex++)
-	{
-		if (ETCRemap[RemapIndex][0] == Format)
-		{
-			return ETCRemap[RemapIndex][1];
-		}
-	}
-#endif
-	return Format;
-}
 
 const UTextureLODSettings& FIOSTargetPlatform::GetTextureLODSettings() const
 {
@@ -795,6 +714,145 @@ void FIOSTargetPlatform::GetAllWaveFormats(TArray<FName>& OutFormat) const
 {
 	static FName NAME_ADPCM(TEXT("ADPCM"));
 	OutFormat.Add(NAME_ADPCM);
+}
+
+namespace IOS
+{
+	void CachePlatformAudioCookOverrides(FPlatformAudioCookOverrides& OutOverrides)
+	{
+		const TCHAR* CategoryName = TEXT("/Script/IOSRuntimeSettings.IOSRuntimeSettings");
+
+		int32 SoundCueQualityIndex = INDEX_NONE;
+		if (GConfig->GetInt(CategoryName, TEXT("SoundCueCookQualityIndex"), SoundCueQualityIndex, GEngineIni))
+		{
+			OutOverrides.SoundCueCookQualityIndex = SoundCueQualityIndex;
+		}
+
+		int32 RetrievedChunkSizeKB = 256;
+		GConfig->GetInt(CategoryName, TEXT("ChunkSizeKB"), RetrievedChunkSizeKB, GEngineIni);
+		OutOverrides.StreamChunkSizeKB = RetrievedChunkSizeKB;
+
+		GConfig->GetBool(CategoryName, TEXT("bUseAudioStreamCaching"), OutOverrides.bUseStreamCaching, GEngineIni);
+
+		/** Memory Load On Demand Settings */
+		if (OutOverrides.bUseStreamCaching)
+		{
+			// Cache size:
+			int32 RetrievedCacheSize = 32 * 1024;
+			GConfig->GetInt(CategoryName, TEXT("CacheSizeKB"), RetrievedCacheSize, GEngineIni);
+			OutOverrides.StreamCachingSettings.CacheSizeKB = RetrievedCacheSize;
+		}
+
+		GConfig->GetBool(CategoryName, TEXT("bResampleForDevice"), OutOverrides.bResampleForDevice, GEngineIni);
+
+		GConfig->GetFloat(CategoryName, TEXT("CompressionQualityModifier"), OutOverrides.CompressionQualityModifier, GEngineIni);
+
+		GConfig->GetFloat(CategoryName, TEXT("AutoStreamingThreshold"), OutOverrides.AutoStreamingThreshold, GEngineIni);
+
+		//Cache sample rate map:
+		float RetrievedSampleRate = -1.0f;
+
+		GConfig->GetFloat(CategoryName, TEXT("MaxSampleRate"), RetrievedSampleRate, GEngineIni);
+		float* FoundSampleRate = OutOverrides.PlatformSampleRates.Find(ESoundwaveSampleRateSettings::Max);
+
+		if (FoundSampleRate)
+		{
+			if (!FMath::IsNearlyEqual(*FoundSampleRate, RetrievedSampleRate))
+			{
+				*FoundSampleRate = RetrievedSampleRate;
+			}
+
+		}
+		else
+		{
+			OutOverrides.PlatformSampleRates.Add(ESoundwaveSampleRateSettings::Max, RetrievedSampleRate);
+		}
+
+		RetrievedSampleRate = -1.0f;
+
+		GConfig->GetFloat(CategoryName, TEXT("HighSampleRate"), RetrievedSampleRate, GEngineIni);
+		FoundSampleRate = OutOverrides.PlatformSampleRates.Find(ESoundwaveSampleRateSettings::High);
+
+		if (FoundSampleRate)
+		{
+			if (!FMath::IsNearlyEqual(*FoundSampleRate, RetrievedSampleRate))
+			{
+				*FoundSampleRate = RetrievedSampleRate;
+			}
+
+		}
+		else
+		{
+			OutOverrides.PlatformSampleRates.Add(ESoundwaveSampleRateSettings::High, RetrievedSampleRate);
+		}
+
+
+		RetrievedSampleRate = -1.0f;
+
+		GConfig->GetFloat(CategoryName, TEXT("MedSampleRate"), RetrievedSampleRate, GEngineIni);
+		FoundSampleRate = OutOverrides.PlatformSampleRates.Find(ESoundwaveSampleRateSettings::Medium);
+
+		if (FoundSampleRate)
+		{
+			if (!FMath::IsNearlyEqual(*FoundSampleRate, RetrievedSampleRate))
+			{
+				*FoundSampleRate = RetrievedSampleRate;
+			}
+		}
+		else
+		{
+			OutOverrides.PlatformSampleRates.Add(ESoundwaveSampleRateSettings::Medium, RetrievedSampleRate);
+		}
+
+		RetrievedSampleRate = -1.0f;
+
+		GConfig->GetFloat(CategoryName, TEXT("LowSampleRate"), RetrievedSampleRate, GEngineIni);
+		FoundSampleRate = OutOverrides.PlatformSampleRates.Find(ESoundwaveSampleRateSettings::Low);
+
+		if (FoundSampleRate)
+		{
+			if (!FMath::IsNearlyEqual(*FoundSampleRate, RetrievedSampleRate))
+			{
+				*FoundSampleRate = RetrievedSampleRate;
+			}
+		}
+		else
+		{
+			OutOverrides.PlatformSampleRates.Add(ESoundwaveSampleRateSettings::Low, RetrievedSampleRate);
+		}
+
+		RetrievedSampleRate = -1.0f;
+
+		GConfig->GetFloat(CategoryName, TEXT("MinSampleRate"), RetrievedSampleRate, GEngineIni);
+		FoundSampleRate = OutOverrides.PlatformSampleRates.Find(ESoundwaveSampleRateSettings::Min);
+
+		if (FoundSampleRate)
+		{
+			if (!FMath::IsNearlyEqual(*FoundSampleRate, RetrievedSampleRate))
+			{
+				*FoundSampleRate = RetrievedSampleRate;
+			}
+		}
+		else
+		{
+			OutOverrides.PlatformSampleRates.Add(ESoundwaveSampleRateSettings::Min, RetrievedSampleRate);
+		}
+	}
+}
+
+FPlatformAudioCookOverrides* FIOSTargetPlatform::GetAudioCompressionSettings() const
+{
+	static FPlatformAudioCookOverrides Settings;
+
+	static bool bCachedPlatformSettings = false;
+
+	if (!bCachedPlatformSettings)
+	{
+		IOS::CachePlatformAudioCookOverrides(Settings);
+		bCachedPlatformSettings = true;
+	}
+
+	return &Settings;
 }
 
 #endif // WITH_ENGINE

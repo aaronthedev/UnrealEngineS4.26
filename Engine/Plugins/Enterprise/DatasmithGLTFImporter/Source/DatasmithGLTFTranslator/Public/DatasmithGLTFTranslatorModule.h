@@ -1,11 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
 
-class DATASMITHGLTFTRANSLATOR_API IDatasmithGLTFTranslatorModule : public IModuleInterface
+class IDatasmithGLTFTranslatorModule : public IModuleInterface
 {
 public:
 	static const TCHAR* ModuleName;

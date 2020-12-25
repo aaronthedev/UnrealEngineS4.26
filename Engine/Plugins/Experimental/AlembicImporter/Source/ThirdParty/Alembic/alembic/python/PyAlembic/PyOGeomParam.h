@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef PyAlembic_PyOGeomParam_h
-#define PyAlembic_PyOGeomParam_h
+#ifndef _PyAlembic_PyOGeomParam_h_
+#define _PyAlembic_PyOGeomParam_h_
 
 #include <Foundation.h>
 #include <PyTypeBindingTraits.h>

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,14 +14,17 @@
 
 class AActor;
 class IDetailRootObjectCustomization;
-class FDetailsViewObjectFilter;
 
 class SDetailsView : public SDetailsViewBase
 {
 	friend class FPropertyDetailsUtilities;
 public:
 
-	SLATE_BEGIN_ARGS(SDetailsView){}
+	SLATE_BEGIN_ARGS( SDetailsView )
+		: _DetailsViewArgs()
+		{}
+		/** The user defined args for the details view */
+		SLATE_ARGUMENT( FDetailsViewArgs, DetailsViewArgs )
 	SLATE_END_ARGS()
 
 	virtual ~SDetailsView();
@@ -36,44 +39,42 @@ public:
 	/**
 	 * Constructs the property view widgets                   
 	 */
-	void Construct(const FArguments& InArgs, const FDetailsViewArgs& InDetailsViewArgs);
+	void Construct(const FArguments& InArgs);
 
 	/** IDetailsView interface */
-	virtual void SetObjects(const TArray<UObject*>& InObjects, bool bForceRefresh = false, bool bOverrideLock = false) override;
-	virtual void SetObjects(const TArray<TWeakObjectPtr<UObject>>& InObjects, bool bForceRefresh = false, bool bOverrideLock = false) override;
-	virtual void SetObject(UObject* InObject, bool bForceRefresh = false) override;
-
+	virtual void SetObjects( const TArray<UObject*>& InObjects, bool bForceRefresh = false, bool bOverrideLock = false ) override;
+	virtual void SetObjects( const TArray< TWeakObjectPtr< UObject > >& InObjects, bool bForceRefresh = false, bool bOverrideLock = false ) override;
+	virtual void SetObject( UObject* InObject, bool bForceRefresh = false ) override;
 	virtual void RemoveInvalidObjects() override;
 	virtual void SetObjectPackageOverrides(const TMap<TWeakObjectPtr<UObject>, TWeakObjectPtr<UPackage>>& InMapping) override;
 	virtual void SetRootObjectCustomizationInstance(TSharedPtr<IDetailRootObjectCustomization> InRootObjectCustomization) override;
 	virtual void ClearSearch() override;
-	virtual void SetObjectFilter(TSharedPtr<FDetailsViewObjectFilter> InFilter) override;
 
 	/**
 	 * Replaces objects being observed by the view with new objects
 	 *
 	 * @param OldToNewObjectMap	Mapping from objects to replace to their replacement
 	 */
-	void ReplaceObjects(const TMap<UObject*, UObject*>& OldToNewObjectMap);
+	void ReplaceObjects( const TMap<UObject*, UObject*>& OldToNewObjectMap );
 
 	/**
 	 * Removes objects from the view because they are about to be deleted
 	 *
 	 * @param DeletedObjects	The objects to delete
 	 */
-	void RemoveDeletedObjects(const TArray<UObject*>& DeletedObjects);
+	void RemoveDeletedObjects( const TArray<UObject*>& DeletedObjects );
 
 	/** Sets the callback for when the property view changes */
-	virtual void SetOnObjectArrayChanged(FOnObjectArrayChanged OnObjectArrayChangedDelegate) override;
+	virtual void SetOnObjectArrayChanged( FOnObjectArrayChanged OnObjectArrayChangedDelegate) override;
 
 	/** @return	Returns list of selected objects we're inspecting */
-	virtual const TArray<TWeakObjectPtr<UObject>>& GetSelectedObjects() const override
+	virtual const TArray< TWeakObjectPtr<UObject> >& GetSelectedObjects() const override
 	{
 		return SelectedObjects;
 	} 
 
 	/** @return	Returns list of selected actors we're inspecting */
-	virtual const TArray<TWeakObjectPtr<AActor>>& GetSelectedActors() const override
+	virtual const TArray< TWeakObjectPtr<AActor> >& GetSelectedActors() const override
 	{
 		return SelectedActors;
 	}
@@ -111,7 +112,7 @@ public:
 		return RootObjectCustomization;
 	}
 private:
-	void SetObjectArrayPrivate(const TArray<UObject*>& InObjects);
+	void SetObjectArrayPrivate( const TArray< TWeakObjectPtr< UObject > >& InObjects );
 
 	TSharedRef<SDetailTree> ConstructTreeView( TSharedRef<SScrollBar>& ScrollBar );
 
@@ -122,7 +123,7 @@ private:
 	 * @param InObjects The potential new objects to set
 	 * @return true if the new objects should be set
 	 */
-	bool ShouldSetNewObjects(const TArray<UObject*>& InObjects) const;
+	bool ShouldSetNewObjects( const TArray< TWeakObjectPtr< UObject > >& InObjects ) const;
 
 	/**
 	 * Returns the number of objects being edited by this details panel.
@@ -133,10 +134,13 @@ private:
 	void PreSetObject(int32 InNewNumObjects);
 
 	/** Called at the end of SetObjectArray after we change the objects being observed */
-	void PostSetObject(const TArray<FDetailsViewObjectRoot>& Roots);
+	void PostSetObject();
 	
 	/** Called to get the visibility of the actor name area */
 	EVisibility GetActorNameAreaVisibility() const;
+
+	/** Called to get the visibility of the scrollbar */
+	EVisibility GetScrollBarVisibility() const;
 
 	/** Returns the name of the image used for the icon on the locked button */
 	const FSlateBrush* OnGetLockButtonImageResource() const;
@@ -156,17 +160,10 @@ private:
 	void OnShowHiddenPropertiesWhilePlayingClicked();
 
 private:
-	/** The filter for objects viewed by this details panel */
-	TSharedPtr<FDetailsViewObjectFilter> ObjectFilter;
-
 	/** Information about the current set of selected actors */
 	FSelectedActorInfo SelectedActorInfo;
-
-	/** Set of selected objects for this detail view that were passed in through SetObjects (before the object filter is applied). */
-	TArray<TWeakObjectPtr<UObject>> UnfilteredSelectedObjects;
-
-	/** Final set of selected objects for this detail view after applying the object filter. It may be different from the set passed in through SetObjects. */
-	TArray<TWeakObjectPtr<UObject>> SelectedObjects;
+	/** Selected objects for this detail view.  */
+	TArray< TWeakObjectPtr<UObject> > SelectedObjects;
 
 	/** 
 	 * Selected actors for this detail view.  Note that this is not necessarily the same editor selected actor set.  If this detail view is locked

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "CategoryPropertyNode.h"
@@ -42,8 +42,8 @@ void FCategoryPropertyNode::InitChildNodes()
 	const bool bShowHiddenProperties = !!HasNodeFlags( EPropertyNodeFlags::ShouldShowHiddenProperties );
 	const bool bShouldShowDisableEditOnInstance = !!HasNodeFlags(EPropertyNodeFlags::ShouldShowDisableEditOnInstance);
 
-	TArray<FProperty*> Properties;
-	TSet<FProperty*> SparseProperties;
+	TArray<UProperty*> Properties;
+	TSet<UProperty*> SparseProperties;
 	// The parent of a category window has to be an object window.
 	FComplexPropertyNode* ComplexNode = FindComplexParent();
 	if (ComplexNode)
@@ -54,7 +54,7 @@ void FCategoryPropertyNode::InitChildNodes()
 		for (const UStruct* Structure : ComplexNode->GetAllStructures())
 		{
 			const bool bIsSparseStruct = (ObjectNode && ObjectNode->IsSparseDataStruct(Cast<const UScriptStruct>(Structure)));
-			for (TFieldIterator<FProperty> It(Structure); It; ++It)
+			for (TFieldIterator<UProperty> It(Structure); It; ++It)
 			{
 				bool bMetaDataAllowVisible = true;
 				if (!bShowHiddenProperties)

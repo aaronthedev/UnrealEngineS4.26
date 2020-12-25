@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,8 +11,7 @@ class IStringTableEditor;
 class UStringTable;
 
 /** String Table Editor module */
-class STRINGTABLEEDITOR_API FStringTableEditorModule : public IModuleInterface,
-	public IHasMenuExtensibility, public IHasToolBarExtensibility
+class STRINGTABLEEDITOR_API FStringTableEditorModule : public IModuleInterface, public IHasMenuExtensibility
 {
 public:
 	// IModuleInterface
@@ -33,12 +32,9 @@ public:
 	/** Gets the extensibility managers for outside entities to extend static mesh editor's menus and toolbars */
 	virtual TSharedPtr<FExtensibilityManager> GetMenuExtensibilityManager() override { return MenuExtensibilityManager; }
 
-	virtual TSharedPtr<FExtensibilityManager> GetToolBarExtensibilityManager() override { return ToolBarExtensibilityManager; }
-
 	/** StringTable Editor app identifier string */
 	static const FName StringTableEditorAppIdentifier;
 
 private:
 	TSharedPtr<FExtensibilityManager> MenuExtensibilityManager;
-	TSharedPtr<FExtensibilityManager> ToolBarExtensibilityManager;
 };

@@ -1,13 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/DynamicEntryBoxBase.h"
 #include "UMGPrivate.h"
-#include "Blueprint/WidgetTree.h"
-#include "Blueprint/UserWidget.h"
 #include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Editor/WidgetCompilerLog.h"
-#include "Widgets/Layout/SRadialBox.h"
 
 #define LOCTEXT_NAMESPACE "UMG"
 
@@ -40,11 +37,7 @@ void UDynamicEntryBoxBase::ResetInternal(bool bDeleteWidgets)
 			StaticCastSharedPtr<SBoxPanel>(MyPanelWidget)->ClearChildren();
 			break;
 		case EDynamicBoxType::Wrap:
-		case EDynamicBoxType::VerticalWrap:
 			StaticCastSharedPtr<SWrapBox>(MyPanelWidget)->ClearChildren();
-			break;
-		case EDynamicBoxType::Radial:
-			StaticCastSharedPtr<SRadialBox>(MyPanelWidget)->ClearChildren();
 			break;
 		case EDynamicBoxType::Overlay:
 			StaticCastSharedPtr<SOverlay>(MyPanelWidget)->ClearChildren();
@@ -79,11 +72,7 @@ void UDynamicEntryBoxBase::RemoveEntryInternal(UUserWidget* EntryWidget)
 					StaticCastSharedPtr<SBoxPanel>(MyPanelWidget)->RemoveSlot(CachedEntryWidget.ToSharedRef());
 					break;
 				case EDynamicBoxType::Wrap:
-				case EDynamicBoxType::VerticalWrap:
 					StaticCastSharedPtr<SWrapBox>(MyPanelWidget)->RemoveSlot(CachedEntryWidget.ToSharedRef());
-					break;
-				case EDynamicBoxType::Radial:
-					StaticCastSharedPtr<SRadialBox>(MyPanelWidget)->RemoveSlot(CachedEntryWidget.ToSharedRef());
 					break;
 				case EDynamicBoxType::Overlay:
 					StaticCastSharedPtr<SOverlay>(MyPanelWidget)->RemoveSlot(CachedEntryWidget.ToSharedRef());
@@ -101,7 +90,7 @@ void UDynamicEntryBoxBase::SetEntrySpacing(const FVector2D& InEntrySpacing)
 
 	if (MyPanelWidget.IsValid())
 	{
-		if (EntryBoxType == EDynamicBoxType::Wrap || EntryBoxType == EDynamicBoxType::VerticalWrap)
+		if (EntryBoxType == EDynamicBoxType::Wrap)
 		{
 			// Wrap boxes can change their widget spacing on the fly
 			StaticCastSharedPtr<SWrapBox>(MyPanelWidget)->SetInnerSlotPadding(EntrySpacing);
@@ -165,7 +154,7 @@ void UDynamicEntryBoxBase::SetEntrySpacing(const FVector2D& InEntrySpacing)
 				OverlaySlot.SlotPadding = Padding;
 			}
 		}
-		else if (EntryBoxType == EDynamicBoxType::Horizontal || EntryBoxType == EDynamicBoxType::Vertical)
+		else
 		{
 			// Vertical & Horizontal have to manually update the padding on each slot
 			const bool bIsHBox = EntryBoxType == EDynamicBoxType::Horizontal;
@@ -182,18 +171,6 @@ void UDynamicEntryBoxBase::SetEntrySpacing(const FVector2D& InEntrySpacing)
 				BoxSlot.SlotPadding = Padding;
 			}
 		}
-	}
-}
-
-void UDynamicEntryBoxBase::SetRadialSettings(const FRadialBoxSettings& InSettings)
-{
-	RadialBoxSettings = InSettings;
-
-	if (MyPanelWidget.IsValid() && EntryBoxType == EDynamicBoxType::Radial)
-	{
-		StaticCastSharedPtr<SRadialBox>(MyPanelWidget)->SetStartingAngle(InSettings.StartingAngle);
-		StaticCastSharedPtr<SRadialBox>(MyPanelWidget)->SetDistributeItemsEvenly(InSettings.bDistributeItemsEvenly);
-		StaticCastSharedPtr<SRadialBox>(MyPanelWidget)->SetAngleBetweenItems(InSettings.AngleBetweenItems);
 	}
 }
 
@@ -218,22 +195,8 @@ TSharedRef<SWidget> UDynamicEntryBoxBase::RebuildWidget()
 		break;
 	case EDynamicBoxType::Wrap:
 		EntryBoxWidget = SAssignNew(MyPanelWidget, SWrapBox)
-			.UseAllottedSize(true)
-			.Orientation(EOrientation::Orient_Horizontal)
-			.InnerSlotPadding(EntrySpacing);
-		break;
-	case EDynamicBoxType::VerticalWrap:
-		EntryBoxWidget = SAssignNew(MyPanelWidget, SWrapBox)
-			.UseAllottedSize(true)
-			.Orientation(EOrientation::Orient_Vertical)
-			.InnerSlotPadding(EntrySpacing);
-		break;
-	case EDynamicBoxType::Radial:
-		EntryBoxWidget = SAssignNew(MyPanelWidget, SRadialBox)
 			.UseAllottedWidth(true)
-			.StartingAngle(RadialBoxSettings.StartingAngle)
-			.bDistributeItemsEvenly(RadialBoxSettings.bDistributeItemsEvenly)
-			.AngleBetweenItems(RadialBoxSettings.AngleBetweenItems);
+			.InnerSlotPadding(EntrySpacing);
 		break;
 	case EDynamicBoxType::Overlay:
 		EntryBoxWidget = SAssignNew(MyPanelWidget, SOverlay)
@@ -275,65 +238,18 @@ void UDynamicEntryBoxBase::SynchronizeProperties()
 	if (IsDesignTime())
 	{
 		SetEntrySpacing(EntrySpacing);
-		SetRadialSettings(RadialBoxSettings);
 	}
 #endif
-}
-
-bool UDynamicEntryBoxBase::IsEntryClassValid(TSubclassOf<UUserWidget> InEntryClass) const
-{
-	if (InEntryClass)
-	{
-		// Would InEntryClass create an instance of the same DynamicEntryBox
-		if (UWidgetTree* WidgetTree = Cast<UWidgetTree>(GetOuter()))
-		{
-			if (UUserWidget* UserWidget = Cast<UUserWidget>(WidgetTree->GetOuter()))
-			{
-				if (InEntryClass->IsChildOf(UserWidget->GetClass()))
-				{
-					return false;
-				}
-			}
-		}
-	}
-
-	return true;
-}
-
-namespace DynamicEntryBoxBaseCreateEntryInternal
-{
-	TArray<TSubclassOf<UUserWidget>, TInlineAllocator<4>> RecursiveDetection;
 }
 
 UUserWidget* UDynamicEntryBoxBase::CreateEntryInternal(TSubclassOf<UUserWidget> InEntryClass)
 {
-	const bool bHasResursiveUserWidget = DynamicEntryBoxBaseCreateEntryInternal::RecursiveDetection.ContainsByPredicate([InEntryClass](TSubclassOf<UUserWidget> RecursiveItem)
-		{
-			return InEntryClass->IsChildOf(RecursiveItem);
-		});
-	if (bHasResursiveUserWidget)
-	{
-		UE_LOG(LogSlate, Error, TEXT("'%s' cannot be added to DynamicEntry '%s' because it is already a child and it would create a recurssion.")
-			, *InEntryClass->GetName()
-			, *DynamicEntryBoxBaseCreateEntryInternal::RecursiveDetection.Last()->GetName());
-#if 0
-		for (TSubclassOf<UUserWidget> RecursiveItem : DynamicEntryBoxBaseCreateEntryInternal::RecursiveDetection)
-		{
-			UE_LOG(LogSlate, Log, TEXT("%s"), *RecursiveItem->GetName());
-		}
-#endif
-		return nullptr;
-	}
-	DynamicEntryBoxBaseCreateEntryInternal::RecursiveDetection.Push(InEntryClass);
-
 	UUserWidget* NewEntryWidget = EntryWidgetPool.GetOrCreateInstance(InEntryClass);
 	if (MyPanelWidget.IsValid())
 	{
 		// If we've already been constructed, immediately add the child to our panel widget
 		AddEntryChild(*NewEntryWidget);
 	}
-
-	DynamicEntryBoxBaseCreateEntryInternal::RecursiveDetection.Pop();
 	return NewEntryWidget;
 }
 
@@ -364,16 +280,12 @@ FMargin UDynamicEntryBoxBase::BuildEntryPadding(const FVector2D& DesiredSpacing)
 void UDynamicEntryBoxBase::AddEntryChild(UUserWidget& ChildWidget)
 {
 	FSlotBase* NewSlot = nullptr;
-	if (EntryBoxType == EDynamicBoxType::Wrap || EntryBoxType == EDynamicBoxType::VerticalWrap)
+	if (EntryBoxType == EDynamicBoxType::Wrap)
 	{
 		NewSlot = &StaticCastSharedPtr<SWrapBox>(MyPanelWidget)->AddSlot()
 			.FillEmptySpace(false)
 			.HAlign(EntryHorizontalAlignment)
 			.VAlign(EntryVerticalAlignment);
-	}
-	else if (EntryBoxType == EDynamicBoxType::Radial)
-	{
-		NewSlot = &StaticCastSharedPtr<SRadialBox>(MyPanelWidget)->AddSlot();
 	}
 	else if (EntryBoxType == EDynamicBoxType::Overlay)
 	{

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	WideCustomResolveShaders.usf: Custom wider filter resolve shaders
@@ -6,8 +6,10 @@
 
 #include "Common.ush"
 
-#ifdef OVERRIDE_WIDECUSTOMRESOLVESHADERS_USH
-# include "/Platform/Private/WideCustomResolveShaders.ush"
+#ifdef PLATFORM_WIDECUSTOMRESOLVESHADERS_USH
+# include PLATFORM_WIDECUSTOMRESOLVESHADERS_USH
+#elif PS4_PROFILE
+# include "Platform/PS4/WideCustomResolveShaders.ush"
 #else
 
 float2 ResolveOrigin;
@@ -64,7 +66,7 @@ Texture2DMS<float4,MSAA_SAMPLE_COUNT> Tex; // Input MSAA color
 // Box filter
 float3 resolve_bspline(uint2 pos)
 {
-	return (Tex.Load(pos, 0) + Tex.Load(pos, 1) + Tex.Load(pos, 2) + Tex.Load(pos, 3)).xyz * .25;
+	return (Tex.Load(pos, 0) + Tex.Load(pos, 1) + Tex.Load(pos, 2) + Tex.Load(pos, 3)) * .25;
 }
 # elif WIDE_RESOLVE_WIDTH == 1
 #  include "WideCustomResolve_Wide.ush"

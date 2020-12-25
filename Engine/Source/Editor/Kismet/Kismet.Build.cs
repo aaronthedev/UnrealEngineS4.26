@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -70,13 +70,10 @@ public class Kismet : ModuleRules
 			}
             );
 
-		// Circular references that need to be cleaned up
-		CircularlyReferencedDependentModules.AddRange(
-			new string[] {
-				"BlueprintGraph",
-				"BlueprintNativeCodeGen",
-				"UMGEditor",
-				"Merge"
+        CircularlyReferencedDependentModules.AddRange(
+            new string[] {
+                "BlueprintGraph",
+                "UMGEditor",
             }
         ); 
 	}

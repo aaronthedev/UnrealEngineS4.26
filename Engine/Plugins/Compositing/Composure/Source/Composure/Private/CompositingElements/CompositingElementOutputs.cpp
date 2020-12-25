@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CompositingElements/CompositingElementOutputs.h"
 
@@ -38,7 +38,7 @@ void UColorConverterOutputPass::OnDisabled_Implementation()
 UTexture* UColorConverterOutputPass::ApplyColorTransform(UTexture* Input, UComposurePostProcessingPassProxy* PostProcessProxy, FInheritedTargetPool& TargetPool)
 {
 	UTexture* Result = Input;
-	if (ColorConverter && ColorConverter->IsPassEnabled())
+	if (ColorConverter && ColorConverter->bEnabled)
 	{
 		// @TODO - should outputs have access to the PrePassLookupTable? TargetCamera?
 		Result = ColorConverter->ApplyTransform(Input, /*PrePassLookupTable =*/nullptr, PostProcessProxy, /*TargetCamera =*/nullptr, TargetPool);

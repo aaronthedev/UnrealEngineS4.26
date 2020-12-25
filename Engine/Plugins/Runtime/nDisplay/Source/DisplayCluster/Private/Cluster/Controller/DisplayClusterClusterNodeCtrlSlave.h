@@ -1,13 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
+#include "CoreMinimal.h"
 #include "Cluster/Controller/DisplayClusterClusterNodeCtrlBase.h"
+#include "Network/DisplayClusterMessage.h"
 
 class FDisplayClusterClusterSyncClient;
-class FDisplayClusterRenderSyncClient;
-class FDisplayClusterClusterEventsJsonClient;
-class FDisplayClusterClusterEventsBinaryClient;
+class FDisplayClusterSwapSyncClient;
+class FDisplayClusterClusterEventsClient;
 
 
 /**
@@ -17,49 +18,42 @@ class FDisplayClusterClusterNodeCtrlSlave
 	: public FDisplayClusterClusterNodeCtrlBase
 {
 public:
-	FDisplayClusterClusterNodeCtrlSlave(const FString& CtrlName, const FString& NodeName);
+	FDisplayClusterClusterNodeCtrlSlave(const FString& ctrlName, const FString& nodeName);
 	virtual ~FDisplayClusterClusterNodeCtrlSlave();
 
 public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	// IDisplayClusterNodeController
+	// IPDisplayClusterNodeController
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	virtual bool IsSlave() const override
-	{
-		return true;
-	}
+	{ return true; }
 
 public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	// IDisplayClusterProtocolClusterSync
+	// IPDisplayClusterClusterSyncProtocol
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	virtual void WaitForGameStart(double* ThreadWaitTime, double* BarrierWaitTime) override final;
-	virtual void WaitForFrameStart(double* ThreadWaitTime, double* BarrierWaitTime) override final;
-	virtual void WaitForFrameEnd(double* ThreadWaitTime, double* BarrierWaitTime) override final;
+	virtual void WaitForGameStart()  override final;
+	virtual void WaitForFrameStart() override final;
+	virtual void WaitForFrameEnd()   override final;
+	virtual void WaitForTickEnd()    override final;
 	virtual void GetDeltaTime(float& DeltaSeconds) override;
-	virtual void GetFrameTime(TOptional<FQualifiedFrameTime>& FrameTime) override;
-	virtual void GetSyncData(TMap<FString, FString>& SyncData, EDisplayClusterSyncGroup SyncGroup) override;
-	virtual void GetInputData(TMap<FString, FString>& InputData) override;
-	virtual void GetEventsData(TArray<TSharedPtr<FDisplayClusterClusterEventJson>>& JsonEvents, TArray<TSharedPtr<FDisplayClusterClusterEventBinary>>& BinaryEvents) override;
-	virtual void GetNativeInputData(TMap<FString, FString>& NativeInputData) override;
+	virtual void GetTimecode(FTimecode& Timecode, FFrameRate& FrameRate) override;
+	virtual void GetSyncData(FDisplayClusterMessage::DataType& SyncData, EDisplayClusterSyncGroup SyncGroup) override;
+	virtual void GetInputData(FDisplayClusterMessage::DataType& InputData) override;
+	virtual void GetEventsData(FDisplayClusterMessage::DataType& EventsData) override;
+	virtual void GetNativeInputData(FDisplayClusterMessage::DataType& NativeInputData) override;
 
 public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	// IDisplayClusterProtocolRenderSync
+	// IPDisplayClusterSwapSyncProtocol
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	virtual void WaitForSwapSync(double* ThreadWaitTime, double* BarrierWaitTime) override final;
+	virtual void WaitForSwapSync(double* pThreadWaitTime, double* pBarrierWaitTime) override final;
 
 public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	// IDisplayClusterProtocolEventsJson
+	// IPDisplayClusterClusterEventsProtocol
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	virtual void EmitClusterEventJson(const FDisplayClusterClusterEventJson& Event) override;
-
-public:
-	//////////////////////////////////////////////////////////////////////////////////////////////
-	// IDisplayClusterProtocolEventsBinary
-	//////////////////////////////////////////////////////////////////////////////////////////////
-	virtual void EmitClusterEventBinary(const FDisplayClusterClusterEventBinary& Event) override;
+	virtual void EmitClusterEvent(const FDisplayClusterClusterEvent& Event) override;
 
 protected:
 	//////////////////////////////////////////////////////////////////////////////////////////////
@@ -75,8 +69,7 @@ protected:
 
 private:
 	// Cluster node clients
-	TUniquePtr<FDisplayClusterClusterSyncClient>         ClusterSyncClient;
-	TUniquePtr<FDisplayClusterRenderSyncClient>          RenderSyncClient;
-	TUniquePtr<FDisplayClusterClusterEventsJsonClient>   ClusterEventsJsonClient;
-	TUniquePtr<FDisplayClusterClusterEventsBinaryClient> ClusterEventsBinaryClient;
+	TUniquePtr<FDisplayClusterClusterSyncClient>   ClusterSyncClient;
+	TUniquePtr<FDisplayClusterSwapSyncClient>      SwapSyncClient;
+	TUniquePtr<FDisplayClusterClusterEventsClient> ClusterEventsClient;
 };

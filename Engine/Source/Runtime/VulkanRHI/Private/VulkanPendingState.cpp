@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved..
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved..
 
 /*=============================================================================
 	VulkanPendingState.cpp: Private VulkanPendingState function definitions.
@@ -244,7 +244,12 @@ FVulkanDescriptorPoolSetContainer& FVulkanDescriptorPoolsManager::AcquirePoolSet
 
 	for (auto* PoolSet : PoolSets)
 	{
-		if (PoolSet->IsUnused())
+		if (PoolSet->IsUnused()
+#if VULKAN_HAS_DEBUGGING_ENABLED
+			//todo-rco: Workaround for RenderDoc not supporting resetting descriptor pools
+			&& (!GRenderDocFound || (GFrameNumberRenderThread - PoolSet->GetLastFrameUsed() > NUM_FRAMES_TO_WAIT_BEFORE_RELEASING_TO_OS))
+#endif
+			)
 		{
 			PoolSet->SetUsed(true);
 			return *PoolSet;
@@ -326,8 +331,8 @@ void FVulkanPendingComputeState::SetSRVForUBResource(uint32 DescriptorSet, uint3
 		else
 		{
 			checkf(SRV->TextureView.View != VK_NULL_HANDLE, TEXT("Empty SRV"));
-			const FVulkanImageLayout& Layout = Context.GetLayoutManager().GetFullLayoutChecked(SRV->TextureView.Image);
-			CurrentState->SetSRVTextureView(DescriptorSet, BindingIndex, SRV->TextureView, Layout.GetSubresLayout(SRV->FirstArraySlice, SRV->MipLevel));
+			VkImageLayout Layout = Context.FindLayout(SRV->TextureView.Image);
+			CurrentState->SetSRVTextureView(DescriptorSet, BindingIndex, SRV->TextureView, Layout);
 		}
 	}
 	else
@@ -352,6 +357,14 @@ void FVulkanPendingComputeState::SetUAVForUBResource(uint32 DescriptorSet, uint3
 		}
 		else if (UAV->SourceTexture)
 		{
+			VkImageLayout Layout = Context.FindOrAddLayout(UAV->TextureView.Image, VK_IMAGE_LAYOUT_UNDEFINED);
+			if (Layout != VK_IMAGE_LAYOUT_GENERAL)
+			{
+				FVulkanTextureBase* VulkanTexture = GetVulkanTextureFromRHITexture(UAV->SourceTexture);
+				FVulkanCmdBuffer* CmdBuffer = Context.GetCommandBufferManager()->GetActiveCmdBuffer();
+				ensure(CmdBuffer->IsOutsideRenderPass());
+				Context.GetTransitionAndLayoutManager().TransitionResource(CmdBuffer, VulkanTexture->Surface, VulkanRHI::EImageLayoutBarrier::ComputeGeneralRW);
+			}
 			CurrentState->SetUAVTextureView(DescriptorSet, BindingIndex, UAV->TextureView, VK_IMAGE_LAYOUT_GENERAL);
 		}
 		else
@@ -389,11 +402,15 @@ void FVulkanPendingComputeState::PrepareForDispatch(FVulkanCmdBuffer* InCmdBuffe
 
 FVulkanPendingGfxState::~FVulkanPendingGfxState()
 {
-	TMap<FVulkanRHIGraphicsPipelineState*, FVulkanGraphicsPipelineDescriptorState*> Temp;
-	Swap(Temp, PipelineStates);
-	for (auto& Pair : Temp)
+	TArray<FVulkanGraphicsPipelineDescriptorState*> DescriptorStates;
+
+	for (auto& Pair : PipelineStates)
 	{
 		FVulkanGraphicsPipelineDescriptorState* State = Pair.Value;
+		DescriptorStates.Push(State);
+	}
+	for(FVulkanGraphicsPipelineDescriptorState* State : DescriptorStates)
+	{
 		delete State;
 	}
 }
@@ -409,7 +426,7 @@ void FVulkanPendingGfxState::PrepareForDraw(FVulkanCmdBuffer* CmdBuffer)
 	// TODO: Add 'dirty' flag? Need to rebind only on PSO change
 	if (CurrentPipeline->bHasInputAttachments)
 	{
-		FVulkanFramebuffer* CurrentFramebuffer = Context.GetLayoutManager().CurrentFramebuffer;
+		FVulkanFramebuffer* CurrentFramebuffer = Context.GetTransitionAndLayoutManager().CurrentFramebuffer;
 		UpdateInputAttachments(CurrentFramebuffer);
 	}
 	
@@ -428,7 +445,7 @@ void FVulkanPendingGfxState::PrepareForDraw(FVulkanCmdBuffer* CmdBuffer)
 		SCOPE_CYCLE_COUNTER(STAT_VulkanBindVertexStreamsTime);
 #endif
 		// Its possible to have no vertex buffers
-		const FVulkanVertexInputStateInfo& VertexInputStateInfo = CurrentPipeline->GetVertexInputState();
+		const FVulkanVertexInputStateInfo& VertexInputStateInfo = CurrentPipeline->Pipeline->GetVertexInputState();
 		if (VertexInputStateInfo.AttributesNum == 0)
 		{
 			// However, we need to verify that there are also no bindings
@@ -469,11 +486,15 @@ void FVulkanPendingGfxState::PrepareForDraw(FVulkanCmdBuffer* CmdBuffer)
 				{
 					if (VertexInputStateInfo.Attributes[AttributeIndex].binding == CurrBinding.binding)
 					{
+#if VULKAN_ENABLE_SHADER_DEBUG_NAMES
 						uint64 VertexShaderKey = GetCurrentShaderKey(ShaderStage::Vertex);
 						FVulkanVertexShader* VertexShader = Device->GetShaderFactory().LookupShader<FVulkanVertexShader>(VertexShaderKey);
-						UE_LOG(LogVulkanRHI, Warning, TEXT("Missing input assembly binding on location %d in Vertex shader '%s'"),
+						UE_LOG(LogVulkanRHI, Warning, TEXT("Missing binding on location %d in '%s' vertex shader"),
 							CurrBinding.binding,
 							VertexShader ? *VertexShader->GetDebugName() : TEXT("Null"));
+#else
+						UE_LOG(LogVulkanRHI, Warning, TEXT("Missing binding on location %d in vertex shader"), CurrBinding.binding);
+#endif
 						ensure(0);
 					}
 				}
@@ -507,13 +528,7 @@ void FVulkanPendingGfxState::InternalUpdateDynamicStates(FVulkanCmdBuffer* Cmd)
 	if (bNeedsUpdateViewport)
 	{
 		ensure(Viewport.width > 0 || Viewport.height > 0);
-
-		// Flip viewport on Y-axis to be uniform between HLSLcc and DXC generated SPIR-V shaders (requires VK_KHR_maintenance1 extension)
-		VkViewport FlippedViewport = Viewport;
-		FlippedViewport.y += FlippedViewport.height;
-		FlippedViewport.height = -FlippedViewport.height;
-		VulkanRHI::vkCmdSetViewport(Cmd->GetHandle(), 0, 1, &FlippedViewport);
-
+		VulkanRHI::vkCmdSetViewport(Cmd->GetHandle(), 0, 1, &Viewport);
 		FMemory::Memcpy(Cmd->CurrentViewport, Viewport);
 		Cmd->bHasViewport = true;
 	}
@@ -545,22 +560,11 @@ void FVulkanPendingGfxState::UpdateInputAttachments(FVulkanFramebuffer* Framebuf
 	for (int32 Index = 0; Index < InputAttachmentData.Num(); ++Index)
 	{
 		const FInputAttachmentData& AttachmentData = InputAttachmentData[Index];
-		const uint32 ColorIndex = static_cast<uint32>(AttachmentData.Type);
-		
 		switch (AttachmentData.Type)
 		{
-		case FVulkanShaderHeader::EAttachmentType::Color0:
+		case FVulkanShaderHeader::EAttachmentType::Color:
+			//#todo-rco: Only supports first render target in frame buffer...
 			CurrentState->SetInputAttachment(AttachmentData.DescriptorSet, AttachmentData.BindingIndex, Framebuffer->AttachmentTextureViews[0], VK_IMAGE_LAYOUT_GENERAL);
-			break;
-		case FVulkanShaderHeader::EAttachmentType::Color1:
-		case FVulkanShaderHeader::EAttachmentType::Color2:
-		case FVulkanShaderHeader::EAttachmentType::Color3:
-		case FVulkanShaderHeader::EAttachmentType::Color4:
-		case FVulkanShaderHeader::EAttachmentType::Color5:
-		case FVulkanShaderHeader::EAttachmentType::Color6:
-		case FVulkanShaderHeader::EAttachmentType::Color7:
-			check(ColorIndex < Framebuffer->GetNumColorAttachments());
-			CurrentState->SetInputAttachment(AttachmentData.DescriptorSet, AttachmentData.BindingIndex, Framebuffer->AttachmentTextureViews[ColorIndex], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 			break;
 		case FVulkanShaderHeader::EAttachmentType::Depth:
 			CurrentState->SetInputAttachment(AttachmentData.DescriptorSet, AttachmentData.BindingIndex, Framebuffer->GetPartialDepthTextureView(), VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL);
@@ -591,8 +595,8 @@ void FVulkanPendingGfxState::SetSRVForUBResource(uint8 DescriptorSet, uint32 Bin
 		else
 		{
 			checkf(SRV->TextureView.View != VK_NULL_HANDLE, TEXT("Empty SRV"));
-			const FVulkanImageLayout& Layout = Context.GetLayoutManager().GetFullLayoutChecked(SRV->TextureView.Image);
-			CurrentState->SetSRVTextureView(DescriptorSet, BindingIndex, SRV->TextureView, Layout.GetSubresLayout(SRV->FirstArraySlice, SRV->MipLevel));
+			VkImageLayout Layout = Context.FindLayout(SRV->TextureView.Image);
+			CurrentState->SetSRVTextureView(DescriptorSet, BindingIndex, SRV->TextureView, Layout);
 		}
 	}
 	else
@@ -617,7 +621,7 @@ void FVulkanPendingGfxState::SetUAVForUBResource(uint8 DescriptorSet, uint32 Bin
 		}
 		else if (UAV->SourceTexture)
 		{
-			VkImageLayout Layout = Context.GetLayoutManager().FindLayoutChecked(UAV->TextureView.Image);
+			VkImageLayout Layout = Context.FindLayout(UAV->TextureView.Image);
 			CurrentState->SetUAVTextureView(DescriptorSet, BindingIndex, UAV->TextureView, Layout);
 		}
 		else
@@ -918,34 +922,4 @@ float FVulkanDescriptorSetCache::FCachedPool::CalcAllocRatio() const
 		AllocRatio = MinAllocRatio;
 	}
 	return AllocRatio;
-}
-bool FVulkanPendingGfxState::SetGfxPipeline(FVulkanRHIGraphicsPipelineState* InGfxPipeline, bool bForceReset)
-{
-	bool bChanged = bForceReset;
-
-	if (InGfxPipeline != CurrentPipeline)
-	{
-		CurrentPipeline = InGfxPipeline;
-		FVulkanGraphicsPipelineDescriptorState** Found = PipelineStates.Find(InGfxPipeline);
-		if (Found)
-		{
-			CurrentState = *Found;
-			check(CurrentState->GfxPipeline == InGfxPipeline);
-		}
-		else
-		{
-			CurrentState = new FVulkanGraphicsPipelineDescriptorState(Device, InGfxPipeline);
-			PipelineStates.Add(CurrentPipeline, CurrentState);
-		}
-
-		PrimitiveType = InGfxPipeline->PrimitiveType;
-		bChanged = true;
-	}
-
-	if (bChanged || bForceReset)
-	{
-		CurrentState->Reset();
-	}
-
-	return bChanged;
 }

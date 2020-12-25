@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_REF_PTR_TRACKER_H
-#define PXR_BASE_TF_REF_PTR_TRACKER_H
+#ifndef TF_REFPTRTRACKER_H
+#define TF_REFPTRTRACKER_H
 
 /// \file tf/refPtrTracker.h
 

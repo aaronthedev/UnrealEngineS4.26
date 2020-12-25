@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 //Google Play Services
 
@@ -18,7 +18,6 @@
 #include "OnlineAsyncTaskGooglePlayShowLoginUI.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Async/TaskGraphInterfaces.h"
-#include "Stats/Stats.h"
 
 THIRD_PARTY_INCLUDES_START
 #include <android_native_app_glue.h>
@@ -173,8 +172,6 @@ bool FOnlineSubsystemGooglePlay::Init()
 
 bool FOnlineSubsystemGooglePlay::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FOnlineSubsystemGooglePlay_Tick);
-
 	if (!FOnlineSubsystemImpl::Tick(DeltaTime))
 	{
 		return false;

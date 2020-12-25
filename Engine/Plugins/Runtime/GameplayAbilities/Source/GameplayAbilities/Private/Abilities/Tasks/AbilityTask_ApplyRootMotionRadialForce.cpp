@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Abilities/Tasks/AbilityTask_ApplyRootMotionRadialForce.h"
 #include "GameFramework/RootMotionSource.h"
@@ -53,7 +53,7 @@ void UAbilityTask_ApplyRootMotionRadialForce::SharedInitAndApply()
 		if (MovementComponent)
 		{
 			ForceName = ForceName.IsNone() ? FName("AbilityTaskApplyRootMotionRadialForce") : ForceName;
-			TSharedPtr<FRootMotionSource_RadialForce> RadialForce = MakeShared<FRootMotionSource_RadialForce>();
+			FRootMotionSource_RadialForce* RadialForce = new FRootMotionSource_RadialForce();
 			RadialForce->InstanceName = ForceName;
 			RadialForce->AccumulateMode = bIsAdditive ? ERootMotionAccumulateMode::Additive : ERootMotionAccumulateMode::Override;
 			RadialForce->Priority = 5;

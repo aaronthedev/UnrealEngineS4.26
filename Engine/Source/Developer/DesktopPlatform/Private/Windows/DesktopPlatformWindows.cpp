@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DesktopPlatformWindows.h"
 #include "DesktopPlatformPrivate.h"
@@ -257,7 +257,7 @@ bool FDesktopPlatformWindows::FileDialogShared(bool bSave, const void* ParentWin
 								int32 WildCardIndex = INDEX_NONE;
 								if (CleanExtension.FindChar(TEXT('*'), WildCardIndex))
 								{
-									CleanExtension.RightChopInline(WildCardIndex + 1, false);
+									CleanExtension = CleanExtension.RightChop(WildCardIndex + 1);
 								}
 							}
 
@@ -382,7 +382,7 @@ void FDesktopPlatformWindows::EnumerateEngineInstallations(TMap<FString, FString
 		}
 
 		// Remove all the keys which weren't valid
-		for(const FString& InvalidKey: InvalidKeys)
+		for(const FString InvalidKey: InvalidKeys)
 		{
 			RegDeleteValue(hKey, *InvalidKey);
 		}
@@ -458,10 +458,8 @@ bool FDesktopPlatformWindows::OpenProject(const FString &ProjectFileName)
 	return ::ShellExecuteExW(&Info) != 0;
 }
 
-bool FDesktopPlatformWindows::RunUnrealBuildTool(const FText& Description, const FString& RootDir, const FString& Arguments, FFeedbackContext* Warn, int32& OutExitCode)
+bool FDesktopPlatformWindows::RunUnrealBuildTool(const FText& Description, const FString& RootDir, const FString& Arguments, FFeedbackContext* Warn)
 {
-	OutExitCode = 1;
-
 	// Get the path to UBT
 	FString UnrealBuildToolPath = RootDir / TEXT("Engine/Binaries/DotNET/UnrealBuildTool.exe");
 	if(IFileManager::Get().FileSize(*UnrealBuildToolPath) < 0)
@@ -474,7 +472,8 @@ bool FDesktopPlatformWindows::RunUnrealBuildTool(const FText& Description, const
 	Warn->Logf(TEXT("Running %s %s"), *UnrealBuildToolPath, *Arguments);
 
 	// Spawn UBT
-	return FFeedbackContextMarkup::PipeProcessOutput(Description, UnrealBuildToolPath, Arguments, Warn, &OutExitCode) && OutExitCode == 0;
+	int32 ExitCode = 0;
+	return FFeedbackContextMarkup::PipeProcessOutput(Description, UnrealBuildToolPath, Arguments, Warn, &ExitCode) && ExitCode == 0;
 }
 
 bool FDesktopPlatformWindows::IsUnrealBuildToolRunning()

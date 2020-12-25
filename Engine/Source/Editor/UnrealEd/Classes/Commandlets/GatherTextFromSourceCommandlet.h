@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once 
 
@@ -10,14 +10,6 @@
 #include "GatherTextFromSourceCommandlet.generated.h"
 
 class Error;
-
-enum class EGatherTextSourceFileTypes : uint8
-{
-	None = 0,
-	Cpp = 1 << 0,
-	Ini = 1 << 1,
-};
-ENUM_CLASS_FLAGS(EGatherTextSourceFileTypes);
 
 /**
  *	UGatherTextFromSourceCommandlet: Localization commandlet that collects all text to be localized from the source code.
@@ -109,20 +101,18 @@ private:
 		void AddStringTableEntryMetaData( const FName InTableId, const FString& InKey, const FName InMetaDataId, const FString& InMetaData );
 
 		//Working data
-		EGatherTextSourceFileTypes FileTypes;
 		FString Filename;
 		int32 LineNumber;
 		FName FilePlatformName;
 		FString LineText;
 		FString Namespace;
-		FString RawStringLiteralClosingDelim;
 		bool ExcludedRegion;
 		bool EndParsingCurrentLine;
 		bool WithinBlockComment;
 		bool WithinLineComment;
 		bool WithinStringLiteral;
 		bool WithinNamespaceDefine;
-		const TCHAR* WithinStartingLine;
+		FString WithinStartingLine;
 
 		//Should editor-only data be included in this gather?
 		bool ShouldGatherFromEditorOnlyData;
@@ -131,8 +121,7 @@ private:
 		TMap<FName, FParsedStringTable> ParsedStringTables;
 
 		FSourceFileParseContext(UGatherTextFromSourceCommandlet* InOwnerCommandlet)
-			: FileTypes(EGatherTextSourceFileTypes::None)
-			, Filename()
+			: Filename()
 			, LineNumber(0)
 			, FilePlatformName()
 			, LineText()
@@ -143,7 +132,7 @@ private:
 			, WithinLineComment(false)
 			, WithinStringLiteral(false)
 			, WithinNamespaceDefine(false)
-			, WithinStartingLine(nullptr)
+			, WithinStartingLine()
 			, ShouldGatherFromEditorOnlyData(false)
 			, MacroBlockStack()
 			, CachedEditorOnlyDefineState()
@@ -167,27 +156,21 @@ private:
 	class FParsableDescriptor
 	{
 	public:
-		virtual ~FParsableDescriptor() = default;
+		FParsableDescriptor():bOverridesLongerTokens(false){}
+		FParsableDescriptor(bool bOverride):bOverridesLongerTokens(bOverride){}
+		virtual ~FParsableDescriptor(){}
 		virtual const FString& GetToken() const = 0;
 		virtual void TryParse(const FString& Text, FSourceFileParseContext& Context) const = 0;
 
-		bool MatchesFileTypes(const EGatherTextSourceFileTypes InFileTypes) { return EnumHasAnyFlags(ApplicableFileTypes, InFileTypes); }
-		bool OverridesLongerTokens() { return bOverridesLongerTokens; }
-
+		bool OverridesLongerTokens(){ return bOverridesLongerTokens; }
 	protected:
-		EGatherTextSourceFileTypes ApplicableFileTypes = EGatherTextSourceFileTypes::None;
-		bool bOverridesLongerTokens = false;
+		bool bOverridesLongerTokens;
 	};
 
 	class FPreProcessorDescriptor : public FParsableDescriptor
 	{
 	public:
-		FPreProcessorDescriptor()
-		{
-			ApplicableFileTypes = EGatherTextSourceFileTypes::Cpp;
-			bOverridesLongerTokens = true;
-		}
-
+		FPreProcessorDescriptor():FParsableDescriptor(true){}
 	protected:
 		static const FString DefineString;
 		static const FString UndefString;
@@ -254,11 +237,7 @@ private:
 	public:
 		static const FString TextMacroString;
 
-		FMacroDescriptor(FString InName)
-			: Name(MoveTemp(InName))
-		{
-			ApplicableFileTypes = EGatherTextSourceFileTypes::Cpp;
-		}
+		FMacroDescriptor(FString InName) : Name(MoveTemp(InName)) {}
 
 		virtual const FString& GetToken() const override { return Name; }
 
@@ -274,18 +253,12 @@ private:
 	class FUICommandMacroDescriptor : public FMacroDescriptor
 	{
 	public:
-		FUICommandMacroDescriptor()
-			: FMacroDescriptor(TEXT("UI_COMMAND"))
-		{
-		}
+		FUICommandMacroDescriptor() : FMacroDescriptor(TEXT("UI_COMMAND")) {}
 
 		virtual void TryParse(const FString& Text, FSourceFileParseContext& Context) const override;
 
 	protected:
-		FUICommandMacroDescriptor(FString InName)
-			: FMacroDescriptor(MoveTemp(InName))
-		{
-		}
+		FUICommandMacroDescriptor(FString InName) : FMacroDescriptor(MoveTemp(InName)) {}
 
 		void TryParseArgs(const FString& Text, FSourceFileParseContext& Context, const TArray<FString>& Arguments, const int32 ArgIndexOffset) const;
 	};
@@ -293,10 +266,7 @@ private:
 	class FUICommandExtMacroDescriptor : public FUICommandMacroDescriptor
 	{
 	public:
-		FUICommandExtMacroDescriptor()
-			: FUICommandMacroDescriptor(TEXT("UI_COMMAND_EXT"))
-		{
-		}
+		FUICommandExtMacroDescriptor() : FUICommandMacroDescriptor(TEXT("UI_COMMAND_EXT")) {}
 
 		virtual void TryParse(const FString& Text, FSourceFileParseContext& Context) const override;
 	};
@@ -321,7 +291,6 @@ private:
 
 		FStringMacroDescriptor(FString InName, FMacroArg Arg0, FMacroArg Arg1, FMacroArg Arg2) : FMacroDescriptor(InName)
 		{
-			ApplicableFileTypes = EGatherTextSourceFileTypes::Cpp | EGatherTextSourceFileTypes::Ini;
 			Arguments.Add(Arg0);
 			Arguments.Add(Arg1);
 			Arguments.Add(Arg2);
@@ -329,14 +298,12 @@ private:
 
 		FStringMacroDescriptor(FString InName, FMacroArg Arg0, FMacroArg Arg1) : FMacroDescriptor(InName)
 		{
-			ApplicableFileTypes = EGatherTextSourceFileTypes::Cpp | EGatherTextSourceFileTypes::Ini;
 			Arguments.Add(Arg0);
 			Arguments.Add(Arg1);
 		}
 
 		FStringMacroDescriptor(FString InName, FMacroArg Arg0) : FMacroDescriptor(InName)
 		{
-			ApplicableFileTypes = EGatherTextSourceFileTypes::Cpp | EGatherTextSourceFileTypes::Ini;
 			Arguments.Add(Arg0);
 		}
 
@@ -349,10 +316,7 @@ private:
 	class FStringTableMacroDescriptor : public FMacroDescriptor
 	{
 	public:
-		FStringTableMacroDescriptor()
-			: FMacroDescriptor(TEXT("LOCTABLE_NEW"))
-		{
-		}
+		FStringTableMacroDescriptor() : FMacroDescriptor(TEXT("LOCTABLE_NEW")) {}
 
 		virtual void TryParse(const FString& Text, FSourceFileParseContext& Context) const override;
 	};
@@ -371,10 +335,7 @@ private:
 	class FStringTableEntryMacroDescriptor : public FMacroDescriptor
 	{
 	public:
-		FStringTableEntryMacroDescriptor()
-			: FMacroDescriptor(TEXT("LOCTABLE_SETSTRING"))
-		{
-		}
+		FStringTableEntryMacroDescriptor() : FMacroDescriptor(TEXT("LOCTABLE_SETSTRING")) {}
 
 		virtual void TryParse(const FString& Text, FSourceFileParseContext& Context) const override;
 	};
@@ -382,10 +343,7 @@ private:
 	class FStringTableEntryMetaDataMacroDescriptor : public FMacroDescriptor
 	{
 	public:
-		FStringTableEntryMetaDataMacroDescriptor()
-			: FMacroDescriptor(TEXT("LOCTABLE_SETMETA"))
-		{
-		}
+		FStringTableEntryMetaDataMacroDescriptor() : FMacroDescriptor(TEXT("LOCTABLE_SETMETA")) {}
 
 		virtual void TryParse(const FString& Text, FSourceFileParseContext& Context) const override;
 	};
@@ -393,11 +351,6 @@ private:
 	class FIniNamespaceDescriptor : public FPreProcessorDescriptor
 	{
 	public:
-		FIniNamespaceDescriptor()
-		{
-			ApplicableFileTypes = EGatherTextSourceFileTypes::Ini;
-		}
-
 		virtual const FString& GetToken() const override { return FPreProcessorDescriptor::IniNamespaceString; }
 		virtual void TryParse(const FString& Text, FSourceFileParseContext& Context) const override;
 	};

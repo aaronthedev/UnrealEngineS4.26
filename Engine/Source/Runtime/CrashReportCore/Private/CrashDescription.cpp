@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CrashDescription.h"
 #include "Misc/DateTime.h"
@@ -93,20 +93,6 @@ int64 FCrashProperty::AsInt64() const
 	return Value;
 }
 
-FCrashPropertyXmlNode::FCrashPropertyXmlNode(const FString& InMainCategory, const FString& InSecondCategory, FPrimaryCrashProperties* InOwner)
-	: Owner(InOwner)
-	, MainCategory(InMainCategory)
-	, SecondCategory(InSecondCategory)
-	, bSet(false)
-{ }
-
-FCrashPropertyXmlNode& FCrashPropertyXmlNode::operator=(const FXmlNode* Node)
-{
-	bSet = true;
-	Owner->SetCrashProperty(MainCategory, SecondCategory, Node);
-	return *this;
-}
-
 /*-----------------------------------------------------------------------------
 	FPrimaryCrashProperties
 -----------------------------------------------------------------------------*/
@@ -136,12 +122,8 @@ FPrimaryCrashProperties::FPrimaryCrashProperties()
 	, PlatformCallbackResult(FGenericCrashContext::PlatformPropertiesTag, TEXT("PlatformCallbackResult"), this)
 	, CrashReportClientVersion(FGenericCrashContext::RuntimePropertiesTag, TEXT("CrashReportClientVersion"), this)
 	, CPUBrand(FGenericCrashContext::RuntimePropertiesTag, TEXT("CPUBrand"), this)
-	, Threads(FGenericCrashContext::RuntimePropertiesTag, TEXT("Threads"), this)
-	, PlatformPropertiesExtras(FGenericCrashContext::PlatformPropertiesTag, TEXT(""), this)
 	, bIsOOM(false)
 	, bLowMemoryWarning(false)
-	, bInBackground(false)
-	, bIsRequestingExit(false)
 	, XmlFile( nullptr )
 {
 	CrashVersion = ECrashDescVersions::VER_1_NewCrashFormat;
@@ -150,7 +132,6 @@ FPrimaryCrashProperties::FPrimaryCrashProperties()
 	bHasLogFile = false;
 	bHasPrimaryData = false;
 	NumMinidumpFramesToIgnore = 0;
-	CrashSignal = 0;
 }
 
 void FPrimaryCrashProperties::Shutdown()
@@ -172,8 +153,9 @@ void FPrimaryCrashProperties::UpdateIDs()
 		EpicAccountId = FString();
 	}
 
-	// Only send user name for internal builds
-	if (FEngineBuildSettings::IsInternalBuild())
+	// Add real user name only if log files were allowed since the user name is in the log file and the user consented to sending this information.
+	const bool bSendUserName = FCrashReportCoreConfig::Get().GetSendLogFile() || FEngineBuildSettings::IsInternalBuild();
+	if (bSendUserName)
 	{
 		// Remove periods from user names to match AutoReporter user names
 		// The name prefix is read by CrashRepository.AddNewCrash in the website code
@@ -245,7 +227,6 @@ FString FPrimaryCrashProperties::EncodeArrayStringAsXMLString( const TArray<FStr
  * @EventParam UserActivityHint - Application-specific user activity string, if set in the crashed process. The meaning is game/app-specific.
  * @EventParam GameSessionID - Application-specific session Id, if set in the crashed process.
  * @EventParam PCallStackHash - The hash of the portable callstack
- * @EventParam CrashSignal - The signal that was raised to enter the crash handler
  * @EventParam DeploymentName - Deployment name, also known as EpicApp. (e.g. "DevPlaytest", "PublicTest", "Live", etc)
  */
 void SendPreUploadEnsureAnalytics(const TArray<FAnalyticsEventAttribute>& InCrashAttributes)
@@ -279,7 +260,6 @@ void SendPreUploadEnsureAnalytics(const TArray<FAnalyticsEventAttribute>& InCras
  * @EventParam UserActivityHint - Application-specific user activity string, if set in the crashed process. The meaning is game/app-specific.
  * @EventParam GameSessionID - Application-specific session Id, if set in the crashed process.
  * @EventParam PCallStackHash - The hash of the portable callstack
- * @EventParam CrashSignal - The signal that was raised to enter the crash handler
  * @EventParam DeploymentName - Deployment name, also known as EpicApp. (e.g. "DevPlaytest", "PublicTest", "Live", etc)
  */
 void SendPreUploadCrashAnalytics(const TArray<FAnalyticsEventAttribute>& InCrashAttributes)
@@ -426,12 +406,9 @@ void FPrimaryCrashProperties::MakeCrashEventAttributes(TArray<FAnalyticsEventAtt
 	OutCrashAttributes.Add(FAnalyticsEventAttribute(TEXT("GameSessionID"), GameSessionID.AsString()));
 	OutCrashAttributes.Add(FAnalyticsEventAttribute(TEXT("DeploymentName"), DeploymentName));
 	OutCrashAttributes.Add(FAnalyticsEventAttribute(TEXT("PCallStackHash"), PCallStackHash));
-	OutCrashAttributes.Add(FAnalyticsEventAttribute(TEXT("CrashSignal"), CrashSignal));
 	OutCrashAttributes.Add(FAnalyticsEventAttribute(TEXT("CPUBrand"), CPUBrand.AsString()));
 	OutCrashAttributes.Add(FAnalyticsEventAttribute(TEXT("bIsOOM"), bIsOOM ? TEXT("true") : TEXT("false")));
 	OutCrashAttributes.Add(FAnalyticsEventAttribute(TEXT("bLowMemoryWarning"), bLowMemoryWarning ? TEXT("true") : TEXT("false")));
-	OutCrashAttributes.Add(FAnalyticsEventAttribute(TEXT("bInBackground"), bInBackground ? TEXT("true") : TEXT("false")));
-	OutCrashAttributes.Add(FAnalyticsEventAttribute(TEXT("bIsRequestingExit"), bIsRequestingExit ? TEXT("true") : TEXT("false")));
 
 	// Add arbitrary engine data
 	if (XmlFile->IsValid())
@@ -533,12 +510,9 @@ void FCrashContext::SetupPrimaryCrashProperties()
 		GetCrashProperty( CrashType, FGenericCrashContext::RuntimePropertiesTag, TEXT("CrashType"));
 		GetCrashProperty( NumMinidumpFramesToIgnore, FGenericCrashContext::RuntimePropertiesTag, TEXT("NumMinidumpFramesToIgnore"));
 		GetCrashProperty( PCallStackHash, FGenericCrashContext::RuntimePropertiesTag, TEXT("PCallStackHash"));
-		GetCrashProperty( CrashSignal, FGenericCrashContext::PlatformPropertiesTag, TEXT("CrashSignal"));
 		GetCrashProperty( bIsOOM, FGenericCrashContext::RuntimePropertiesTag, TEXT("MemoryStats.bIsOOM"));
 		GetCrashProperty( bLowMemoryWarning, FGenericCrashContext::GameDataTag, TEXT("bLowMemoryCalled"));
-		GetCrashProperty( bInBackground, FGenericCrashContext::GameDataTag, TEXT("bInBackground"));
-		GetCrashProperty( bIsRequestingExit, FGenericCrashContext::GameDataTag, TEXT("IsRequestingExit"));
-
+		
 		if (CrashDumpMode == ECrashDumpMode::FullDump)
 		{
 			// Set the full dump crash location when we have a full dump.
@@ -609,12 +583,12 @@ FCrashWERContext::FCrashWERContext( const FString& WERXMLFilepath )
 
 			if (ParsedParameters9.Num() > 0)
 			{
-				BranchName = ParsedParameters9[0].Replace( TEXT( "+" ), TEXT( "/" ), ESearchCase::CaseSensitive);
+				BranchName = ParsedParameters9[0].Replace( TEXT( "+" ), TEXT( "/" ) );
 
 				const FString DepotRoot = TEXT( "//depot/" );
 				if (BranchName.StartsWith( DepotRoot ))
 				{
-					BranchName.MidInline( DepotRoot.Len(), MAX_int32, false );
+					BranchName = BranchName.Mid( DepotRoot.Len() );
 				}
 				EngineVersionComponents++;
 			}

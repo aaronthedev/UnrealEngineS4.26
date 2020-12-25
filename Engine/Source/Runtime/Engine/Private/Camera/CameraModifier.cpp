@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Camera/CameraModifier.h"
 #include "Camera/PlayerCameraManager.h"
@@ -22,8 +22,6 @@ bool UCameraModifier::ModifyCamera(float DeltaTime, FMinimalViewInfo& InOutPOV)
 	// Update the alpha
 	UpdateAlpha(DeltaTime);
 
-	// let native do what it wants
-	ModifyCamera(DeltaTime, InOutPOV.Location, InOutPOV.Rotation, InOutPOV.FOV, InOutPOV.Location, InOutPOV.Rotation, InOutPOV.FOV);
 	// let BP do what it wants
 	BlueprintModifyCamera(DeltaTime, InOutPOV.Location, InOutPOV.Rotation, InOutPOV.FOV, InOutPOV.Location, InOutPOV.Rotation, InOutPOV.FOV);
 
@@ -32,20 +30,12 @@ bool UCameraModifier::ModifyCamera(float DeltaTime, FMinimalViewInfo& InOutPOV)
 		// note: pushing these through the cached PP blend system in the camera to get
 		// proper layered blending, rather than letting subsequent mods stomp over each other in the 
 		// InOutPOV struct.
+		float PPBlendWeight = 0.f;
+		FPostProcessSettings PPSettings;
+		BlueprintModifyPostProcess(DeltaTime, PPBlendWeight, PPSettings);
+		if (PPBlendWeight > 0.f)
 		{
-			float PPBlendWeight = 0.f;
-			FPostProcessSettings PPSettings;
-			
-			//  Let native code modify the post process settings.
-			ModifyPostProcess(DeltaTime, PPBlendWeight, PPSettings);
-			
-			// Allow blueprint to modify the post process settings.
-			BlueprintModifyPostProcess(DeltaTime, PPBlendWeight, PPSettings);
-			
-			if (PPBlendWeight > 0.f)
-			{
-				CameraOwner->AddCachedPPBlend(PPSettings, PPBlendWeight);
-			}
+			CameraOwner->AddCachedPPBlend(PPSettings, PPBlendWeight);
 		}
 	}
 
@@ -97,6 +87,7 @@ AActor* UCameraModifier::GetViewTarget() const
 	return CameraOwner ? CameraOwner->GetViewTarget() : nullptr;
 }
 
+
 void UCameraModifier::AddedToCamera( APlayerCameraManager* Camera ) 
 {
 	CameraOwner = Camera;
@@ -118,6 +109,7 @@ void UCameraModifier::DisableModifier(bool bImmediate)
 	{
 		bPendingDisable = true;
 	}
+
 }
 
 void UCameraModifier::EnableModifier()
@@ -143,12 +135,3 @@ bool UCameraModifier::ProcessViewRotation( AActor* ViewTarget, float DeltaTime, 
 	return false;
 }
 
-void UCameraModifier::ModifyCamera(float DeltaTime, FVector ViewLocation, FRotator ViewRotation, float FOV, FVector& NewViewLocation, FRotator& NewViewRotation, float& NewFOV)
-{
-
-}
-
-void UCameraModifier::ModifyPostProcess(float DeltaTime, float& PostProcessBlendWeight, FPostProcessSettings& PostProcessSettings)
-{
-
-}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -503,7 +503,7 @@ namespace MetadataTool
 		/// <returns>Response object</returns>
 		T ParseHttpResponse<T>(HttpWebResponse Response)
 		{
-			using (StreamReader ResponseReader = new StreamReader(Response.GetResponseStream(), Encoding.UTF8))
+			using (StreamReader ResponseReader = new StreamReader(Response.GetResponseStream(), Encoding.Default))
 			{
 				string ResponseContent = ResponseReader.ReadToEnd();
 				return new JavaScriptSerializer().Deserialize<T>(ResponseContent);

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -326,7 +326,7 @@ namespace Gauntlet
 			{
 				Log.Verbose("Cleaning device artifacts");
 
-				string CleanCommand = String.Format("--bundle_id {0} --rmtree {1}", Build.PackageName, DeviceArtifactPath);
+				string CleanCommand = String.Format("--bundle_id {0} --rm_r {1}", Build.PackageName, DeviceArtifactPath);
 				IProcessResult Result = ExecuteIOSDeployCommand(CleanCommand, 120);
 
 				if (Result.ExitCode != 0)
@@ -516,7 +516,7 @@ namespace Gauntlet
 			if (CacheResigned || UseLocalExecutable || !CheckDeployedIPA(Build))
 			{
 				// uninstall will clean all device artifacts
-				ExecuteIOSDeployCommand(String.Format("--uninstall -b \"{0}\"", LocalAppBundle), 20 * 60);
+				ExecuteIOSDeployCommand(String.Format("--uninstall -b \"{0}\"", LocalAppBundle), 10 * 60);
 			}
 			else
 			{
@@ -838,7 +838,7 @@ namespace Gauntlet
 					Log.Verbose("Unzipping IPA {0} to cache at: {1}", Build.SourceIPAPath, GauntletAppCache);
 
 					string Output;
-					if (!IOSBuild.ExecuteIPADittoCommand(String.Format("-x -k {0} {1}", Build.SourceIPAPath, GauntletAppCache), out Output, PayloadDir))
+					if (!IOSBuild.ExecuteIPAZipCommand(String.Format("{0} -d {1}", Build.SourceIPAPath, GauntletAppCache), out Output, PayloadDir))
 					{
 						throw new Exception(String.Format("Unable to extract IPA {0}", Build.SourceIPAPath));
 					}
@@ -1004,29 +1004,20 @@ namespace Gauntlet
 		/// </summary>		
 		public static string GenerateCrashLog(string LogOutput)
 		{
-			try
+			DateTime TimeStamp;
+			int Frame;
+			ThreadInfo Thread = ParseCallstack(LogOutput, out TimeStamp, out Frame);
+			if (Thread == null)
 			{
-				DateTime TimeStamp;
-				int Frame;
-				ThreadInfo Thread = ParseCallstack(LogOutput, out TimeStamp, out Frame);
-				if (Thread == null)
-				{
-					return null;
-				}
-
-				StringBuilder CrashLog = new StringBuilder();
-				CrashLog.Append(string.Format("[{0}:000][{1}]LogCore: === Fatal Error: ===\n", TimeStamp.ToString("yyyy.mm.dd - H.mm.ss"), Frame));
-				CrashLog.Append(string.Format("Error: Thread #{0} {1}\n", Thread.Num, Thread.Status));
-				CrashLog.Append(string.Join("\n", Thread.Frames));
-
-				return CrashLog.ToString();
-			} 
-			catch (Exception Ex)
-			{
-				Log.Warning("Exception parsing LLDB callstack {0}", Ex.Message);
+				return null;
 			}
 
-			return null;
+			StringBuilder CrashLog = new StringBuilder();
+			CrashLog.Append(string.Format("[{0}:000][{1}]LogCore: === Fatal Error: ===\n", TimeStamp.ToString("yyyy.mm.dd - H.mm.ss"), Frame));
+			CrashLog.Append(string.Format("Error: Thread #{0} {1}\n", Thread.Num, Thread.Status));
+			CrashLog.Append(string.Join("\n", Thread.Frames));
+
+			return CrashLog.ToString();
 
 		}
 
@@ -1159,12 +1150,7 @@ namespace Gauntlet
 				LineNode = LineNode.Next;
 			}
 
-			if (Threads.Count(T => T.Current == true) > 1)
-			{
-				Log.Warning("LLDB debug parsed more than one current thread");
-			}
-
-			Thread = Threads.FirstOrDefault(T => T.Current == true);
+			Thread = Threads.SingleOrDefault(T => T.Current == true);
 
 			if (Threads.Count > 0 && Thread == null)
 			{
@@ -1173,7 +1159,7 @@ namespace Gauntlet
 
 
 			// Do not want to surface crashes which happen as a result of requesting exit
-			if (Thread != null && Thread.Frames.FirstOrDefault(F => F.Symbol.Contains("::RequestExit")) != null)
+			if (Thread != null && Thread.Frames.SingleOrDefault(F => F.Symbol.Contains("::RequestExit")) != null)
 			{
 				Thread = null;
 			}

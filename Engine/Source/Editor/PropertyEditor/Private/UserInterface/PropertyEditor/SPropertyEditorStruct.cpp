@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UserInterface/PropertyEditor/SPropertyEditorStruct.h"
 #include "Misc/FeedbackContext.h"
@@ -53,7 +53,7 @@ bool SPropertyEditorStruct::Supports(const TSharedRef< class FPropertyEditor >& 
 	}
 
 	const TSharedRef< FPropertyNode > PropertyNode = InPropertyEditor->GetPropertyNode();
-	const FProperty* Property = InPropertyEditor->GetProperty();
+	const UProperty* Property = InPropertyEditor->GetProperty();
 	int32 ArrayIndex = PropertyNode->GetArrayIndex();
 
 	if (Supports(Property) && ((ArrayIndex == -1 && Property->ArrayDim == 1) || (ArrayIndex > -1 && Property->ArrayDim > 0)))
@@ -64,9 +64,9 @@ bool SPropertyEditorStruct::Supports(const TSharedRef< class FPropertyEditor >& 
 	return false;
 }
 
-bool SPropertyEditorStruct::Supports(const FProperty* InProperty)
+bool SPropertyEditorStruct::Supports(const UProperty* InProperty)
 {
-	const FObjectPropertyBase* ObjectProperty = CastField<FObjectPropertyBase>(InProperty);
+	const UObjectPropertyBase* ObjectProperty = Cast<UObjectPropertyBase>(InProperty);
 	return ObjectProperty && ObjectProperty->PropertyClass && ObjectProperty->PropertyClass->IsChildOf(UScriptStruct::StaticClass());
 }
 
@@ -77,8 +77,8 @@ void SPropertyEditorStruct::Construct(const FArguments& InArgs, const TSharedPtr
 	if (PropertyEditor.IsValid())
 	{
 		const TSharedRef<FPropertyNode> PropertyNode = PropertyEditor->GetPropertyNode();
-		FProperty* const Property = PropertyNode->GetProperty();
-		if (const FObjectPropertyBase* ObjectProperty = CastField<FObjectPropertyBase>(Property))
+		UProperty* const Property = PropertyNode->GetProperty();
+		if (const UObjectPropertyBase* ObjectProperty = Cast<UObjectPropertyBase>(Property))
 		{
 			// Read the MetaStruct from the property meta-data
 			MetaStruct = nullptr;
@@ -155,7 +155,7 @@ FText SPropertyEditorStruct::GetDisplayValue() const
 	// Guard against re-entrancy which can happen if the delegate executed below (SelectedStruct.Get()) forces a slow task dialog to open, thus causing this to lose context and regain focus later starting the loop over again
 	if (!bIsReentrant)
 	{
-		TGuardValue<bool> Guard(bIsReentrant, true);
+		TGuardValue<bool>(bIsReentrant, true);
 
 		if (PropertyEditor.IsValid())
 		{

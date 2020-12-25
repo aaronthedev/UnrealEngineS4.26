@@ -1,18 +1,20 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ViewModels/Stack/NiagaraStackSystemSettingsGroup.h"
 #include "ViewModels/Stack/NiagaraStackModuleItem.h"
+#include "NiagaraScriptViewModel.h"
 #include "NiagaraScriptGraphViewModel.h"
+#include "NiagaraGraph.h"
+#include "NiagaraNodeOutput.h"
 #include "NiagaraNodeFunctionCall.h"
+#include "EdGraphSchema_Niagara.h"
 #include "ViewModels/Stack/NiagaraStackErrorItem.h"
 #include "ViewModels/Stack/NiagaraStackParameterStoreEntry.h"
 #include "Internationalization/Internationalization.h"
 #include "NiagaraStackEditorData.h"
+#include "ScopedTransaction.h"
 #include "ViewModels/Stack/NiagaraStackGraphUtilities.h"
 #include "ViewModels/Stack/NiagaraStackSystemPropertiesItem.h"
-#include "NiagaraConstants.h"
-#include "ViewModels/NiagaraSystemViewModel.h"
-#include "NiagaraEditorUtilities.h"
 
 
 #define LOCTEXT_NAMESPACE "UNiagaraStackParameterStoreGroup"
@@ -32,7 +34,7 @@ public:
 
 	virtual FText GetCategory() const override
 	{
-		return FNiagaraEditorUtilities::GetVariableTypeCategory(GetNewParameterVariable());
+		return LOCTEXT("CreateNewParameterCategory", "Parameter Types");
 	}
 
 	virtual FText GetDisplayName() const override
@@ -70,10 +72,10 @@ public:
 	virtual void GenerateAddActions(TArray<TSharedRef<INiagaraStackItemGroupAddAction>>& OutAddActions, const FNiagaraStackItemGroupAddOptions& AddProperties) const override
 	{
 		TArray<FNiagaraTypeDefinition> AvailableTypes;
-		FNiagaraStackGraphUtilities::GetNewParameterAvailableTypes(AvailableTypes, FNiagaraConstants::UserNamespace);
+		FNiagaraStackGraphUtilities::GetNewParameterAvailableTypes(AvailableTypes, FNiagaraParameterHandle::UserNamespace);
 		for (const FNiagaraTypeDefinition& AvailableType : AvailableTypes)
 		{
-			FNiagaraParameterHandle NewParameterHandle(FNiagaraConstants::UserNamespace, *(TEXT("New") + AvailableType.GetName()));
+			FNiagaraParameterHandle NewParameterHandle(FNiagaraParameterHandle::UserNamespace, *(TEXT("New") + AvailableType.GetName()));
 			FNiagaraVariable NewParameterVariable(AvailableType, NewParameterHandle.GetParameterHandleString());
 			OutAddActions.Add(MakeShared<FParameterStoreGroupAddAction>(NewParameterVariable));
 		}
@@ -83,7 +85,7 @@ public:
 	{
 		TSharedRef<FParameterStoreGroupAddAction> ParameterAddAction = StaticCastSharedRef<FParameterStoreGroupAddAction>(AddAction);
 		FNiagaraVariable NewParameterVariable = ParameterAddAction->GetNewParameterVariable();
-		bool bSuccess = FNiagaraEditorUtilities::AddParameter(NewParameterVariable, ParameterStore, ParameterStoreOwner, &StackEditorData);
+		bool bSuccess = FNiagaraEditorUtilities::AddParameter(NewParameterVariable, ParameterStore, ParameterStoreOwner, StackEditorData);
 		if (bSuccess)
 		{
 			OnItemAdded.ExecuteIfBound(NewParameterVariable);
@@ -154,8 +156,6 @@ void UNiagaraStackParameterStoreItem::Initialize(
 
 	Owner = InOwner;
 	ParameterStore = InParameterStore;
-	ParameterStoreChangedHandle = ParameterStore->AddOnChangedHandler(
-		FNiagaraParameterStore::FOnChanged::FDelegate::CreateUObject(this, &UNiagaraStackParameterStoreItem::ParameterStoreChanged));
 }
 
 FText UNiagaraStackParameterStoreItem::GetDisplayName() const
@@ -170,7 +170,7 @@ FText UNiagaraStackParameterStoreItem::GetTooltipText() const
 
 void UNiagaraStackParameterStoreItem::RefreshChildrenInternal(const TArray<UNiagaraStackEntry*>& CurrentChildren, TArray<UNiagaraStackEntry*>& NewChildren, TArray<FStackIssue>& NewIssues)
 {
-	if (ParameterStore != nullptr && ParameterStore->ReadParameterVariables().Num() > 0)
+	if (ParameterStore != nullptr && ParameterStore->GetNumParameters() > 0)
 	{
 		TArray<FNiagaraVariable> Variables;
 		ParameterStore->GetParameters(Variables);
@@ -188,6 +188,7 @@ void UNiagaraStackParameterStoreItem::RefreshChildrenInternal(const TArray<UNiag
 			{
 				ValueObjectEntry = NewObject<UNiagaraStackParameterStoreEntry>(this);
 				ValueObjectEntry->Initialize(CreateDefaultChildRequiredData(), Owner.Get(), ParameterStore, Var.GetName().ToString(), Var.GetType(), GetStackEditorDataKey());
+				ValueObjectEntry->OnParameterDeleted().AddUObject(this, &UNiagaraStackParameterStoreItem::ParameterDeleted);
 			}
 
 			NewChildren.Add(ValueObjectEntry);
@@ -196,23 +197,9 @@ void UNiagaraStackParameterStoreItem::RefreshChildrenInternal(const TArray<UNiag
 	Super::RefreshChildrenInternal(CurrentChildren, NewChildren, NewIssues);
 }
 
-void UNiagaraStackParameterStoreItem::FinalizeInternal()
+void UNiagaraStackParameterStoreItem::ParameterDeleted()
 {
-	if (Owner.IsValid() && ParameterStore != nullptr)
-	{
-		ParameterStore->RemoveOnChangedHandler(ParameterStoreChangedHandle);
-		Owner.Reset();
-		ParameterStore = nullptr;
-	}
-	Super::FinalizeInternal();
-}
-
-void UNiagaraStackParameterStoreItem::ParameterStoreChanged()
-{
-	if (IsFinalized() == false && Owner.IsValid())
-	{
-		RefreshChildren();
-	}
+	RefreshChildren();
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,8 +9,6 @@
 
 class SAnimCompositeEditor;
 class SBorder;
-class FAnimModel;
-struct FAnimSegment;
 
 //////////////////////////////////////////////////////////////////////////
 // SAnimCompositePanel
@@ -22,11 +20,12 @@ struct FAnimSegment;
 //
 //////////////////////////////////////////////////////////////////////////
 
-class SAnimCompositePanel : public SAnimTrackPanel, public FEditorUndoClient
+class SAnimCompositePanel : public SAnimTrackPanel
 {
 public:
 	SLATE_BEGIN_ARGS( SAnimCompositePanel )
 		: _Composite()
+		, _CompositeEditor()
 		, _ViewInputMin()
 		, _ViewInputMax()
 		, _InputMin()
@@ -35,6 +34,7 @@ public:
 	{}
 
 	SLATE_ARGUMENT( class UAnimComposite*, Composite)
+	SLATE_ARGUMENT( TWeakPtr<class SAnimCompositeEditor>, CompositeEditor)
 	SLATE_ARGUMENT( float, WidgetWidth )
 	SLATE_ATTRIBUTE( float, ViewInputMin )
 	SLATE_ATTRIBUTE( float, ViewInputMax )
@@ -43,9 +43,7 @@ public:
 	SLATE_EVENT( FOnSetInputViewRange, OnSetInputViewRange )
 	SLATE_END_ARGS()
 
-	~SAnimCompositePanel();
-
-	void Construct(const FArguments& InArgs, const TSharedRef<FAnimModel>& InModel);
+	void Construct(const FArguments& InArgs);
 
 	/** Recreates the editor panel to reflect changes to the composite */
 	void Update();
@@ -56,34 +54,9 @@ public:
 	/** Handlers for when the user clicks on a anim sequence node*/
 	void ShowSegmentInDetailsView(int32 SegmentIndex);
 
-	/** Delegate handlers for when the composite is being edited */
-	void PreAnimUpdate();
-	void PostAnimUpdate();
-
-	/** This will sort all components of the composite and update (recreate) the UI */
-	void SortAndUpdateComposite();
-
-	/** Handler for when composite is edited in details view */
-	void OnCompositeChange(class UObject *EditorAnimBaseObj, bool bRebuild);
-
-	/** One-off active timer to trigger a panel rebuild */
-	EActiveTimerReturnType TriggerRebuildPanel(double InCurrentTime, float InDeltaTime);
-
-	/** FEditorUndoClient interface */
-	virtual void PostUndo( bool bSuccess ) override;
-	virtual void PostRedo( bool bSuccess ) override;
-	void PostUndoRedo();
-
-	void CollapseComposite();
-
-	/** Get a color for an anim segment */
-	FLinearColor HandleGetNodeColor(const FAnimSegment& InSegment) const;
-
-	void HandleObjectsSelected(const TArray<UObject*>& InObjects);
-
 private:
-	/** Reference to our editor model */
-	TWeakPtr<FAnimModel> WeakModel;
+	/** Reference to our editor object */
+	TWeakPtr<SAnimCompositeEditor>	CompositeEditor;
 
 	/** The composite we are currently editing */
 	class UAnimComposite*		Composite;
@@ -93,10 +66,4 @@ private:
 
 	/** Passed to the anim segments panel to handle selection */
 	STrackNodeSelectionSet SelectionSet;
-
-	/** Whether the active timer to trigger a panel rebuild is currently registered */
-	bool bIsActiveTimerRegistered;
-
-	/** Recursion guard for selection */
-	bool bIsSelecting;
 };

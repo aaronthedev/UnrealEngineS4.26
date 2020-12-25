@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieScenePropertyRecorder.h"
 #include "MovieScene.h"
@@ -259,7 +259,7 @@ template <>
 void FMovieScenePropertyRecorder<float>::ReduceKeys(UMovieSceneSection* InSection)
 {
 	FKeyDataOptimizationParams Params;
-	UE::MovieScene::Optimize(InSection->GetChannelProxy().GetChannel<FMovieSceneFloatChannel>(0), Params);
+	MovieScene::Optimize(InSection->GetChannelProxy().GetChannel<FMovieSceneFloatChannel>(0), Params);
 }
 
 template <>
@@ -340,10 +340,10 @@ void FMovieScenePropertyRecorder<FColor>::ReduceKeys(UMovieSceneSection* InSecti
 	TArrayView<FMovieSceneFloatChannel*> FloatChannels = InSection->GetChannelProxy().GetChannels<FMovieSceneFloatChannel>();
 
 	FKeyDataOptimizationParams Params;
-	UE::MovieScene::Optimize(FloatChannels[0], Params);
-	UE::MovieScene::Optimize(FloatChannels[1], Params);
-	UE::MovieScene::Optimize(FloatChannels[2], Params);
-	UE::MovieScene::Optimize(FloatChannels[3], Params);
+	MovieScene::Optimize(FloatChannels[0], Params);
+	MovieScene::Optimize(FloatChannels[1], Params);
+	MovieScene::Optimize(FloatChannels[2], Params);
+	MovieScene::Optimize(FloatChannels[3], Params);
 }
 
 template <>
@@ -419,9 +419,9 @@ void FMovieScenePropertyRecorder<FVector>::ReduceKeys(UMovieSceneSection* InSect
 	TArrayView<FMovieSceneFloatChannel*> FloatChannels = InSection->GetChannelProxy().GetChannels<FMovieSceneFloatChannel>();
 
 	FKeyDataOptimizationParams Params;
-	UE::MovieScene::Optimize(FloatChannels[0], Params);
-	UE::MovieScene::Optimize(FloatChannels[1], Params);
-	UE::MovieScene::Optimize(FloatChannels[2], Params);
+	MovieScene::Optimize(FloatChannels[0], Params);
+	MovieScene::Optimize(FloatChannels[1], Params);
+	MovieScene::Optimize(FloatChannels[2], Params);
 }
 
 template class FMovieScenePropertyRecorder<bool>;

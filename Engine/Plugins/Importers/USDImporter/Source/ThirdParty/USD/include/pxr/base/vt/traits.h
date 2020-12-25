@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_VT_TRAITS_H
-#define PXR_BASE_VT_TRAITS_H
+#ifndef VT_TRAITS_H
+#define VT_TRAITS_H
 
 /// \file vt/traits.h
 
@@ -31,14 +31,30 @@
 #include "pxr/base/tf/preprocessorUtils.h"
 
 #include <boost/type_traits/has_trivial_assign.hpp>
-
-#include <type_traits>
+#include <boost/type_traits/is_base_of.hpp>
+#include <boost/mpl/bool.hpp>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
+/// Integral constant base trait type.  TrueType and FalseType are built from
+/// this template.
+template <typename T, T val>
+struct VtIntegralConstant {
+    typedef VtIntegralConstant<T, val> Type;
+    typedef T ValueType;
+    static const ValueType value = val;
+};
+
+
+/// Trait templates may inherit from VtFalseType.
+typedef VtIntegralConstant<bool, false> VtFalseType;
+
+/// Trait templates may inherit from VtTrueType.
+typedef VtIntegralConstant<bool, true> VtTrueType;
+
 /// Array concept. By default, types are not arrays.
 template <typename T>
-struct VtIsArray : public std::false_type {};
+struct VtIsArray : public VtFalseType {};
 
 // We attempt to use local storage if a given type will fit and if it has a
 // cheap copy operation.  By default we only treat types with trivial
@@ -51,101 +67,22 @@ struct VtValueTypeHasCheapCopy : boost::has_trivial_assign<T> {};
 
 #define VT_TYPE_IS_CHEAP_TO_COPY(T)                                            \
     template <> struct VtValueTypeHasCheapCopy<TF_PP_EAT_PARENS(T)>            \
-    : std::true_type {}
+    : boost::mpl::true_ {}
 
-// VtValue supports two kinds of "value proxy":
-//
-// 1. Typed proxies, where given a proxy type P, we can determine the underlying
-// proxied type at compile-time.
-//
-// 2. Erased proxies, where we cannot know the underlying proxied type at
-// compile-time.
-//
-// Typed proxies are mostly useful from a performance standpoint, where you can
-// produce a VtValue that holds an object that is not stored in its own storage
-// area.  That is, you can make a VtValue that points at an object you own
-// rather than copying/swapping/moving it to the VtValue.
-//
-// To implement a Typed proxy, either have it derive VtTypedValueProxyBase or
-// specialize the VtIsTypedValueProxy class template (possibly by way of the
-// VT_TYPE_IS_TYPED_VALUE_PROXY macro).  Then provide an implementation of
-// VtGetProxiedObject that accepts `TypedProxy const &` and returns a const
-// lvalue reference to the underlying proxied type.  That reference must be
-// valid so long as the YourProxyType argument reference is valid.  Like:
-//
-// ProxiedType const &VtGetProxiedObject(TypedProxy const &);
-//
-// Erased proxies are mostly useful to enable producing VtValues holding
-// "deferred" values; values whose types are not yet loaded in the process.  For
-// example, this can be used to produce VtValues holding objects whose types are
-// provided in plugins that are not yet loaded.  When a real object instance is
-// required, VtValue will call `VtGetErasedProxiedVtValue(YourErasedProxy const
-// &)` which must return a pointer to a VtValue holding the underlying proxied
-// type.  This can be manufactured "on-the-fly" (with affordances for
-// thread-safety).
-//
-// To implement an Erased proxy, either have it derive VtErasedValueProxyBase or
-// specialize the VtIsErasedValueProxy class template (possibly by way of the
-// VT_TYPE_IS_ERASED_VALUE_PROXY macro).  Then provide implementations of:
-//
-// bool VtErasedProxyHoldsType(ErasedProxy const &, std::type_info const &);
-// TfType VtGetErasedProxiedTfType(ErasedProxy const &);
-// VtValue const *VtGetErasedProxiedVtValue(ErasedProxy const &);
-//
-// The pointer returned by VtGetErasedProxiedVtValue must be valid as long as
-// the ErasedProxy argument reference is valid.
-//
-// A note on Equality Comparisons.  If a proxy type provides equality
-// comparison, then two VtValues that hold the same proxy types will invoke that
-// equality comparison when compared.  Otherwise, the underlying proxied objects
-// will be compared.  This is beneficial when equality can be checked without
-// having to actually instantiate the proxied object (for proxies that load &
-// construct the proxied object lazily).
+// Clients that implement value proxies for VtValue can either derive
+// VtValueProxyBase or specialize the VtIsValueProxy template so that VtValue
+// recognizes the proxy as a proxy.
+struct VtValueProxyBase {};
 
-// Clients may derive VtTypedValueProxyBase, specialize VtIsTypedValueProxy,
-// or use the VT_TYPE_IS_TYPED_VALUE_PROXY macro to indicate their type is a
-// VtValue proxy type.
-struct VtTypedValueProxyBase {};
+// Metafunction used by VtValue to determine whether a given type T is a proxy.
 template <class T>
-struct VtIsTypedValueProxy : std::is_base_of<VtTypedValueProxyBase, T> {};
-#define VT_TYPE_IS_TYPED_VALUE_PROXY(T)                                        \
-    template <> struct VtIsTypedValueProxy<TF_PP_EAT_PARENS(T)>                \
-    : std::true_type {}
+struct VtIsValueProxy : boost::is_base_of<VtValueProxyBase, T> {};
 
-// Base implementation for VtGetProxiedObject (for non-proxy types).
-template <class T,
-          typename std::enable_if<
-              !VtIsTypedValueProxy<T>::value, int>::type = 0>
-T const &
-VtGetProxiedObject(T const &nonProxy) {
-    return nonProxy;
-}
-
-// Metafunction to determine the proxied type for a typed proxy.
-template <class T>
-struct VtGetProxiedType
-{
-    using type = typename std::decay<
-        decltype(VtGetProxiedObject(std::declval<T>()))>::type;
-};
-
-// Clients may derive VtErasedValueProxyBase, specialize VtIsErasedValueProxy,
-// or use the VT_TYPE_IS_ERASED_VALUE_PROXY macro to indicate their type is a
-// VtValue proxy type.
-struct VtErasedValueProxyBase {};
-template <class T>
-struct VtIsErasedValueProxy : std::is_base_of<VtErasedValueProxyBase, T> {};
-#define VT_TYPE_IS_ERASED_VALUE_PROXY(T)                                     \
-    template <> struct VtIsErasedValueProxy<TF_PP_EAT_PARENS(T)>             \
-    : std::true_type {}
-
-// Metafunction to determine whether or not a given type T is a value proxy
-// (either typed or type-erased).
-template <class T>
-struct VtIsValueProxy :
-    std::integral_constant<
-    bool, VtIsTypedValueProxy<T>::value || VtIsErasedValueProxy<T>::value> {};
+// Clients may use this macro to indicate their type is a VtValue proxy type.
+#define VT_TYPE_IS_VALUE_PROXY(T)                               \
+    template <> struct VtIsValueProxy<TF_PP_EAT_PARENS(T)>      \
+    : boost::mpl::true_ {}
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_VT_TRAITS_H
+#endif // VT_TRAITS_H

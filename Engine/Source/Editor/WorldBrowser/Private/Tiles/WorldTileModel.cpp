@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Tiles/WorldTileModel.h"
 #include "Engine/World.h"
@@ -11,7 +11,6 @@
 #include "EditorLevelUtils.h"
 #include "LevelCollectionModel.h"
 
-#include "Modules/ModuleManager.h"
 #include "Tiles/WorldTileDetails.h"
 #include "Tiles/WorldTileCollectionModel.h"
 #include "Engine/WorldComposition.h"
@@ -229,7 +228,7 @@ bool FWorldTileModel::ShouldBeVisible(FBox EditableArea) const
 	}
 
 	// When this hack is activated level should be visible regardless of current world origin
-	if (LevelCollectionModel.GetWorld()->WorldComposition->bTemporarilyDisableOriginTracking)
+	if (LevelCollectionModel.GetWorld()->WorldComposition->bTemporallyDisableOriginTracking)
 	{
 		return true;
 	}
@@ -337,11 +336,6 @@ bool FWorldTileModel::IsLandscapeBased() const
 
 bool FWorldTileModel::IsTiledLandscapeBased() const
 {
-	return CanReimportHeightmap();
-}
-
-bool FWorldTileModel::CanReimportHeightmap() const
-{
 	if (IsLandscapeBased() && !GetLandscape()->ReimportHeightmapFilePath.IsEmpty())
 	{
 		// Check if single landscape actor resolution matches heightmap file size
@@ -368,11 +362,6 @@ bool FWorldTileModel::CanReimportHeightmap() const
 }
 
 bool FWorldTileModel::IsLandscapeProxy() const
-{
-	return IsLandscapeStreamingProxy();
-}
-
-bool FWorldTileModel::IsLandscapeStreamingProxy() const
 {
 	return (Landscape.IsValid() && Landscape.Get()->IsA(ALandscapeStreamingProxy::StaticClass()));
 }
@@ -1028,11 +1017,6 @@ ALandscapeProxy* FWorldTileModel::ImportLandscapeTile(const FLandscapeImportSett
 	// Create landscape components
 	LandscapeProxy->Import(	Settings.LandscapeGuid, 0, 0, Settings.SizeX - 1, Settings.SizeY - 1, Settings.SectionsPerComponent, Settings.QuadsPerSection, HeightmapDataPerLayers, *Settings.HeightmapFilename,	
 							MaterialLayerDataPerLayer,	Settings.ImportLayerType);
-
-	for (const FLandscapeImportLayerInfo& ImportLayerInfo : Settings.ImportLayers)
-	{
-		LandscapeProxy->EditorLayerSettings.Add(FLandscapeEditorLayerSettings(ImportLayerInfo.LayerInfo, ImportLayerInfo.SourceFilePath));
-	}
 
 	return LandscapeProxy;
 }

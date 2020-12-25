@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineSubsystemUtilsModule.h"
 #include "Modules/ModuleManager.h"
@@ -201,7 +201,6 @@ private:
 		CREATE_HASH(GOOGLEPLAY_SUBSYSTEM);
 		CREATE_HASH(FACEBOOK_SUBSYSTEM);
 		CREATE_HASH(IOS_SUBSYSTEM);
-		CREATE_HASH(APPLE_SUBSYSTEM);
 		CREATE_HASH(TENCENT_SUBSYSTEM);
 		CREATE_HASH(SWITCH_SUBSYSTEM);
 		CREATE_HASH(AMAZON_SUBSYSTEM);

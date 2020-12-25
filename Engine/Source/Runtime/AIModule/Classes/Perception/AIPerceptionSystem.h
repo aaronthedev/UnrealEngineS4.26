@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,7 +18,7 @@
 class UAIPerceptionComponent;
 class UAISenseEvent;
 
-AIMODULE_API DECLARE_LOG_CATEGORY_EXTERN(LogAIPerception, Warning, All);
+DECLARE_LOG_CATEGORY_EXTERN(LogAIPerception, Warning, All);
 
 class APawn;
 
@@ -39,6 +39,12 @@ public:
 	virtual TStatId GetStatId() const override;
 	// FTickableGameObject end
 
+	// UObject begin
+	virtual bool IsDestructionThreadSafe() const
+	{
+		return false;
+	}
+	// UObject end
 protected:	
 	AIPerception::FListenerMap ListenerContainer;
 
@@ -53,10 +59,13 @@ protected:
 	// not a UPROPERTY on purpose so that we have a control over when stuff gets removed from the map
 	TMap<const AActor*, FPerceptionStimuliSource> RegisteredStimuliSources;
 
-#if WITH_EDITORONLY_DATA
-	UE_DEPRECATED(4.25, "This property will be removed in future versions. UnregisterSource is called by AActor.OnEndPlay delegate and will perform the cleanup.")
+	/** gets set to true if as as result of stimuli aging (that's done outside of Tick, on timer)
+	 *	one of listeners requires an update. The update, as usual is tone in Tick where 
+	 *	bSomeListenersNeedUpdateDueToStimuliAging gets reset to false */
+	uint32 bSomeListenersNeedUpdateDueToStimuliAging : 1;
+
+	/** gets set to true when perception system gets notified about a stimuli source's end play */
 	uint32 bStimuliSourcesRefreshRequired : 1;
-#endif
 
 	uint32 bHandlePawnNotification : 1;
 
@@ -152,7 +161,6 @@ public:
 
 	void OnListenerForgetsActor(const UAIPerceptionComponent& Listener, AActor& ActorToForget);
 	void OnListenerForgetsAll(const UAIPerceptionComponent& Listener);
-	void OnListenerConfigUpdated(FAISenseID SenseID, const UAIPerceptionComponent& Listener);
 
 	void RegisterDelayedStimulus(FPerceptionListenerID ListenerId, float Delay, AActor* Instigator, const FAIStimulus& Stimulus);
 
@@ -192,11 +200,6 @@ protected:
 	void OnListenerRemoved(const FPerceptionListener& UpdatedListener);
 	void PerformSourceRegistration();
 
-	/** Returns true if aging resulted in tagging any of the listeners to process 
-	 *	its stimuli (@see MarkForStimulusProcessing)*/
-	bool AgeStimuli(const float Amount);
-
-	UE_DEPRECATED(4.26, "Parameterless AgeStimuli has been deprecated, please use the other AgeStimuli flavor. To get behavior identical to the old one calls AgeStimuli(PerceptionAgingRate).")
 	void AgeStimuli();
 
 	friend class UAISense;
@@ -206,11 +209,11 @@ protected:
 	virtual void OnNewPawn(APawn& Pawn);
 	virtual void StartPlay();
 
-	/** Timestamp of the next stimuli aging */
-	float NextStimuliAgingTick;
 private:
 	/** cached world's timestamp */
 	float CurrentTime;
+
+	FTimerHandle AgeStimuliTimerHandle;
 };
 
 //////////////////////////////////////////////////////////////////////////

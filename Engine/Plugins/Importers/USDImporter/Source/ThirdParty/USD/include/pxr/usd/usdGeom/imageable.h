@@ -61,9 +61,8 @@ class SdfAssetPath;
 /// what geometry should be included for processing by rendering and other
 /// computations.
 /// 
-/// \deprecated Imageable also provides API for accessing primvars, which
-/// has been moved to the UsdGeomPrimvarsAPI schema, because primvars can now
-/// be applied on non-Imageable prim types.  This API is planned
+/// <Deprecated> Imageable also provides API for accessing primvars, which
+/// have been moved to the UsdGeomPrimvarsAPI schema.  This API is planned
 /// to be removed, UsdGeomPrimvarsAPI should be used directly instead.
 ///
 /// For any described attribute \em Fallback \em Value or \em Allowed \em Values below
@@ -126,7 +125,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDGEOM_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -138,7 +137,7 @@ private:
 
     // override SchemaBase virtuals.
     USDGEOM_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -151,12 +150,11 @@ public:
     /// deactivating geometry prims, invisible geometry is still 
     /// available for inspection, for positioning, for defining volumes, etc.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `token visibility = "inherited"` |
-    /// | C++ Type | TfToken |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
-    /// | \ref UsdGeomTokens "Allowed Values" | inherited, invisible |
+    /// \n  C++ Type: TfToken
+    /// \n  Usd Type: SdfValueTypeNames->Token
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: inherited
+    /// \n  \ref UsdGeomTokens "Allowed Values": [inherited, invisible]
     USDGEOM_API
     UsdAttribute GetVisibilityAttr() const;
 
@@ -172,20 +170,47 @@ public:
     // --------------------------------------------------------------------- //
     // PURPOSE 
     // --------------------------------------------------------------------- //
-    /// Purpose is a classification of geometry into categories that 
-    /// can each be independently included or excluded from traversals of prims 
-    /// on a stage, such as rendering or bounding-box computation traversals.
+    /// Purpose is a concept we have found useful in our pipeline for 
+    /// classifying geometry into categories that can each be independently
+    /// included or excluded from traversals of prims on a stage, such as
+    /// rendering or bounding-box computation traversals.  The fallback
+    /// purpose, \em default indicates that a prim has "no special purpose"
+    /// and should generally be included in all traversals.  Subtrees rooted
+    /// at a prim with purpose \em render should generally only be included
+    /// when performing a "final quality" render.  Subtrees rooted at a prim
+    /// with purpose \em proxy should generally only be included when 
+    /// performing a lightweight proxy render (such as openGL).  Finally,
+    /// subtrees rooted at a prim with purpose \em guide should generally
+    /// only be included when an interactive application has been explicitly
+    /// asked to "show guides". 
     /// 
-    /// See \ref UsdGeom_ImageablePurpose for more detail about how 
-    /// \em purpose is computed and used.
+    /// In the previous paragraph, when we say "subtrees rooted at a prim",
+    /// we mean the most ancestral or tallest subtree that has an authored,
+    /// non-default opinion.  If the purpose of </RootPrim> is set to 
+    /// "render", then the effective purpose of </RootPrim/ChildPrim> will
+    /// be "render" even if that prim has a different authored value for
+    /// purpose.  <b>See ComputePurpose() for details of how purpose 
+    /// inherits down namespace</b>.
+    /// 
+    /// As demonstrated in UsdGeomBBoxCache, a traverser should be ready to 
+    /// accept combinations of included purposes as an input.
+    /// 
+    /// Purpose \em render can be useful in creating "light blocker"
+    /// geometry for raytracing interior scenes.  Purposes \em render and
+    /// \em proxy can be used together to partition a complicated model
+    /// into a lightweight proxy representation for interactive use, and a
+    /// fully realized, potentially quite heavy, representation for rendering.
+    /// One can use UsdVariantSets to create proxy representations, but doing
+    /// so requires that we recompose parts of the UsdStage in order to change
+    /// to a different runtime level of detail, and that does not interact
+    /// well with the needs of multithreaded rendering. Purpose provides us with
+    /// a better tool for dynamic, interactive complexity management.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform token purpose = "default"` |
-    /// | C++ Type | TfToken |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
-    /// | \ref UsdGeomTokens "Allowed Values" | default, render, proxy, guide |
+    /// \n  C++ Type: TfToken
+    /// \n  Usd Type: SdfValueTypeNames->Token
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: default
+    /// \n  \ref UsdGeomTokens "Allowed Values": [default, render, proxy, guide]
     USDGEOM_API
     UsdAttribute GetPurposeAttr() const;
 
@@ -248,29 +273,102 @@ public:
     /// @{
     // --------------------------------------------------------------------- //
  
-    /// \deprecated Please use UsdGeomPrimvarsAPI::CreatePrimvar() instead.
+    /// Author scene description to create an attribute on this prim that
+    /// will be recognized as Primvar (i.e. will present as a valid
+    /// UsdGeomPrimvar).
+    ///
+    /// The name of the created attribute may or may not be the specified
+    /// \p attrName, due to the possible need to apply property namespacing
+    /// for primvars.  See \ref Usd_Creating_and_Accessing_Primvars
+    /// for more information.  Creation may fail and return an invalid
+    /// Primvar if \p attrName contains a reserved keyword, such as the 
+    /// "indices" suffix we use for indexed primvars.
+    ///
+    /// The behavior with respect to the provided \p typeName
+    /// is the same as for UsdAttributes::Create(), and
+    /// \p interpolation and \p elementSize are as described in
+    /// UsdGeomPrimvar::GetInterpolation() and UsdGeomPrimvar::GetElementSize().
+    ///
+    /// If \p interpolation and/or \p elementSize are left unspecified, we
+    /// will author no opinions for them, which means any (strongest) opinion
+    /// already authored in any contributing layer for these fields will
+    /// become the Primvar's values, or the fallbacks if no opinions
+    /// have been authored.
+    ///
+    /// \return an invalid UsdGeomPrimvar if we failed to create a valid
+    /// attribute, a valid UsdGeomPrimvar otherwise.  It is not an
+    /// error to create over an existing, compatible attribute.
+    ///
+    /// \sa UsdPrim::CreateAttribute(), UsdGeomPrimvar::IsPrimvar()
     USDGEOM_API
     UsdGeomPrimvar CreatePrimvar(const TfToken& attrName,
                                  const SdfValueTypeName &typeName,
                                  const TfToken& interpolation = TfToken(),
                                  int elementSize = -1) const;
 
-    /// \deprecated Please use UsdGeomPrimvarsAPI::GetPrimvar() instead.
+    /// Return the Primvar attribute named by \p name, which will
+    /// be valid if a Primvar attribute definition already exists.
+    ///
+    /// Name lookup will account for Primvar namespacing, which means
+    /// that this method will succeed in some cases where
+    /// \code
+    /// UsdGeomPrimvar(prim->GetAttribute(name))
+    /// \endcode
+    /// will not, unless \p name is properly namespace prefixed.
+    ///
+    /// \sa HasPrimvar()
     USDGEOM_API
     UsdGeomPrimvar GetPrimvar(const TfToken &name) const;
     
-    /// \deprecated Please use UsdGeomPrimvarsAPI::GetPrimvars() instead.
+    /// Return valid UsdGeomPrimvar objects for all defined Primvars on
+    /// this prim.
+    ///
+    /// Although we hope eventually to make this faster, this is currently
+    /// a fairly expensive operation.  If you know you'll need to process
+    /// other attributes as well, you might do better by fetching all
+    /// the attributes at once, and using the pattern described in 
+    /// \ref UsdGeomPrimvar_Using_Primvar "Using Primvars" to test individual
+    /// attributes.
     USDGEOM_API
     std::vector<UsdGeomPrimvar> GetPrimvars() const;
 
-    /// \deprecated Please use UsdGeomPrimvarsAPI::GetAuthoredPrimvars() instead.
+    /// Like GetPrimvars(), but exclude primvars that have no authored scene
+    /// description.
     USDGEOM_API
     std::vector<UsdGeomPrimvar> GetAuthoredPrimvars() const;
 
-    /// \deprecated Please use UsdGeomPrimvarsAPI::HasPrimvar() instead.
+    /// Like GetPrimvars(), but searches instead for authored
+    /// primvars inherited from ancestor prims.  Primvars are only
+    /// inherited if they do not exist on the prim itself.  The
+    /// returned primvars will be bound to attributes on the corresponding
+    /// ancestor prims.  Only primvars with authored values are inherited;
+    /// fallback values are not inherited.   The order of the returned
+    /// primvars is undefined.
+    USDGEOM_API
+    std::vector<UsdGeomPrimvar> FindInheritedPrimvars() const;
+
+    /// Like GetPrimvar(), but searches instead for the named primvar
+    /// inherited on ancestor prim.  Primvars are only inherited if
+    /// they do not exist on the prim itself.  The returned primvar will
+    /// be bound to the attribute on the corresponding ancestor prim.
+    USDGEOM_API
+    UsdGeomPrimvar FindInheritedPrimvar(const TfToken &name) const;
+
+    /// Is there a defined Primvar \p name on this prim?
+    ///
+    /// Name lookup will account for Primvar namespacing.
+    ///
+    /// \sa GetPrimvar()
     USDGEOM_API
     bool HasPrimvar(const TfToken &name) const;
 
+    /// Is there an inherited Primvar \p name on this prim?
+    /// The name given is the primvar name, not its underlying attribute name.
+    /// \sa FindInheritedPrimvar()
+    USDGEOM_API
+    bool HasInheritedPrimvar(const TfToken &name) const;
+
+    /// @}
 
     /// Returns an ordered list of allowed values of the purpose attribute.
     /// 
@@ -373,57 +471,21 @@ public:
     USDGEOM_API
     TfToken ComputeVisibility(UsdTimeCode const &time = UsdTimeCode::Default()) const;
 
-    /// \overload 
-    /// Calculates the effective visibility of this prim, given the computed 
-    /// visibility of its parent prim at the given \p time.
-    /// 
-    /// \sa GetVisibilityAttr()
-    USDGEOM_API
-    TfToken ComputeVisibility(const TfToken &parentVisibility,
-                              UsdTimeCode const &time = UsdTimeCode::Default()) const;
-
-    /// Value type containing information about a prim's computed effective
-    /// purpose as well as storing whether the prim's purpose value can be
-    /// inherited by namespace children if necessary. This provides the purpose
-    /// information necessary for efficiently computing and caching the purposes
-    /// of a hierarchy of prims.
-    /// \sa GetPurposeAttr(), \ref UsdGeom_ImageablePurpose
-    struct PurposeInfo {
-        constexpr PurposeInfo() = default;
-
-        PurposeInfo(const TfToken &purpose_, bool isInheritable_) :
-            purpose(purpose_), isInheritable(isInheritable_) {}
-
-        /// The computed purpose. An empty purpose indicates that this 
-        /// represents a purpose that hasn't been computed yet.
-        TfToken purpose;
-
-        /// Whether this purpose should be inherited by namespace children 
-        /// that do not have their own authored purpose value.
-        bool isInheritable = false;
-
-        /// Returns true if this represents a purpose that has been computed.
-        explicit operator bool() const { return !purpose.IsEmpty(); }
-
-        bool operator==(const PurposeInfo &rhs) { 
-            return purpose == rhs.purpose && isInheritable == rhs.isInheritable;
-        }
-
-        bool operator!=(const PurposeInfo &rhs) { 
-            return !(*this == rhs);
-        }
-
-        /// Returns the purpose if it's inheritable, returns empty if it is not.
-        const TfToken &GetInheritablePurpose() const {
-            static const TfToken empty;
-            return isInheritable ? purpose : empty;
-        }
-    };
-
-    /// Calculate the effective purpose information about this prim which 
-    /// includes final computed purpose value of the prim as well as whether
-    /// the purpose value should be inherited by namespace children without 
-    /// their own purpose opinions.
+    /// Calculate the effective purpose of this prim, as defined by its
+    /// most ancestral authored non-"default" opinion, if any.
+    ///
+    /// If no opinion for purpose is authored on prim or any of its
+    /// ancestors, its computed purpose is UsdGeomTokens->default_ .
+    /// Otherwise, its computed purpose is that of its highest ancestor
+    /// with an authored purpose of something other than UsdGeomTokens->default_
+    ///
+    /// In other words, all of a stage's root prims inherit the *purpose*
+    /// UsdGeomTokens->default_ from the pseudoroot, and that value will be
+    /// **inherited** by all of their descendants, until a descendant
+    /// </Some/path/to/nonDefault> contains some other, authored value of
+    /// *purpose* . The computed purpose of that prim **and all of its
+    /// descendants** will be that prim's authored value, regardless of what
+    /// *putpose* opinions its own descendant prims may express.
     ///
     /// This function should be considered a reference implementation for
     /// correctness. <b>If called on each prim in the context of a traversal
@@ -433,34 +495,7 @@ public:
     /// your traversal, it will be far more efficient to manage purpose, along
     /// with visibility, on a stack as you traverse.
     ///
-    /// \sa GetPurposeAttr(), \ref UsdGeom_ImageablePurpose
-    USDGEOM_API
-    PurposeInfo ComputePurposeInfo() const;
-
-    /// \overload
-    /// Calculates the effective purpose information about this prim, given the
-    /// computed purpose information of its parent prim. This can be much more 
-    /// efficient than using CommputePurposeInfo() when PurposeInfo values are 
-    /// properly computed and cached for a hierarchy of prims using this 
-    /// function.
-    ///
-    /// \sa GetPurposeAttr(), \ref UsdGeom_ImageablePurpose
-    USDGEOM_API
-    PurposeInfo ComputePurposeInfo(const PurposeInfo &parentPurposeInfo) const;
-
-    /// Calculate the effective purpose information about this prim. This is 
-    /// equivalent to extracting the purpose from the value returned by
-    /// ComputePurposeInfo().
-    ///
-    /// This function should be considered a reference implementation for
-    /// correctness. <b>If called on each prim in the context of a traversal
-    /// we will perform massive overcomputation, because sibling prims share
-    /// sub-problems in the query that can be efficiently cached, but are not
-    /// (cannot be) by this simple implementation.</b> If you have control of
-    /// your traversal, it will be far more efficient to manage purpose, along
-    /// with visibility, on a stack as you traverse.
-    ///
-    /// \sa GetPurposeAttr(), \ref UsdGeom_ImageablePurpose
+    /// \sa GetPurposeAttr()
     USDGEOM_API
     TfToken ComputePurpose() const;
 
@@ -592,6 +627,11 @@ public:
     GfMatrix4d ComputeParentToWorldTransform(UsdTimeCode const &time) const;
 
     /// @}
+
+private:
+    // Helper for Get(Authored)Primvars().
+    std::vector<UsdGeomPrimvar>
+    _MakePrimvars(std::vector<UsdProperty> const &props) const;
 
 };
 

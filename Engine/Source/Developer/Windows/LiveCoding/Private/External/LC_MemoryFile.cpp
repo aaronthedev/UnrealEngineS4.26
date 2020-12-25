@@ -16,9 +16,10 @@ namespace detail
 
 			case file::OpenMode::READ_AND_WRITE:
 				return GENERIC_READ | GENERIC_WRITE;
-		}
 
-		return 0u;
+			default:
+				return 0u;
+		}
 	}
 
 
@@ -31,9 +32,10 @@ namespace detail
 
 			case file::OpenMode::READ_AND_WRITE:
 				return FILE_SHARE_READ | FILE_SHARE_WRITE;
-		}
 
-		return 0u;
+			default:
+				return 0u;
+		}
 	}
 
 
@@ -46,9 +48,10 @@ namespace detail
 
 			case file::OpenMode::READ_AND_WRITE:
 				return PAGE_READWRITE;
-		}
 
-		return 0u;
+			default:
+				return 0u;
+		}
 	}
 
 
@@ -61,9 +64,10 @@ namespace detail
 
 			case file::OpenMode::READ_AND_WRITE:
 				return FILE_MAP_READ | FILE_MAP_WRITE;
-		}
 
-		return 0u;
+			default:
+				return 0u;
+		}
 	}
 }
 

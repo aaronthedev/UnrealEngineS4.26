@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "HttpConnection.h"
 #include "HttpConnectionContext.h"
@@ -17,14 +17,13 @@
 
 DEFINE_LOG_CATEGORY(LogHttpConnection)
 
-FHttpConnection::FHttpConnection(FSocket* InSocket, TSharedPtr<FHttpRouter> InRouter, uint32 InOriginPort, uint32 InConnectionId, FTimespan InSelectWaitTime)
+FHttpConnection::FHttpConnection(FSocket* InSocket, TSharedPtr<FHttpRouter> InRouter, uint32 InOriginPort, uint32 InConnectionId)
 	: Socket(InSocket)
 	,Router(InRouter)
 	,OriginPort(InOriginPort)
 	,ConnectionId(InConnectionId)
 	,ReadContext(InSocket)
 	,WriteContext(InSocket)
-	,SelectWaitTime(InSelectWaitTime)
 {
 	check(nullptr != Socket);
 }
@@ -97,7 +96,7 @@ void FHttpConnection::TransferState(EHttpConnectionState CurrentState, EHttpConn
 void FHttpConnection::BeginRead(float DeltaTime)
 {
 	// Wait should always return true if the connection is valid
-	if (!Socket->Wait(ESocketWaitConditions::WaitForRead, SelectWaitTime))
+	if (!Socket->Wait(ESocketWaitConditions::WaitForRead, FTimespan::Zero()))
 	{
 		Destroy();
 		return;

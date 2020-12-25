@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "FindTurnBasedMatchCallbackProxy.h"
 #include "Serialization/BitReader.h"
@@ -39,7 +39,7 @@ UFindTurnBasedMatchCallbackProxy* UFindTurnBasedMatchCallbackProxy::FindTurnBase
 
 void UFindTurnBasedMatchCallbackProxy::Activate()
 {
-	FOnlineSubsystemBPCallHelper Helper(TEXT("FindTurnBasedMatch"), WorldContextObject);
+	FOnlineSubsystemBPCallHelper Helper(TEXT("ConnectToService"), WorldContextObject);
 	Helper.QueryIDFromPlayerController(PlayerControllerWeakPtr.Get());
 
 	if (Helper.IsValid())

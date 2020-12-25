@@ -1,7 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Animation/MovieSceneMarginSection.h"
-#include "Animation/MovieSceneMarginTrack.h"
 #include "Channels/MovieSceneChannelProxy.h"
 #include "Compilation/MovieSceneTemplateInterrogation.h"
 #include "Evaluation/MovieSceneEvaluationTrack.h"
@@ -81,7 +80,7 @@ struct FMarginSectionEditorData
 		float& OutValue, float& OutWeight)
 	{
 		UMovieSceneTrack* Track = SectionToKey->GetTypedOuter<UMovieSceneTrack>();
-		FMovieSceneEvaluationTrack EvalTrack = CastChecked<UMovieSceneMarginTrack>(Track)->GenerateTrackTemplate(Track);
+		FMovieSceneEvaluationTrack EvalTrack = Track->GenerateTrackTemplate();
 		FMovieSceneInterrogationData InterrogationData;
 		RootTemplate.CopyActuators(InterrogationData.GetAccumulator());
 

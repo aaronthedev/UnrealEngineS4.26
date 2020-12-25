@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/ListViewBase.h"
 #include "UMGPrivate.h"
@@ -14,7 +14,6 @@ UListViewBase::UListViewBase(const FObjectInitializer& ObjectInitializer)
 	, EntryWidgetPool(*this)
 {
 	bIsVariable = true;
-	Clipping = EWidgetClipping::ClipToBounds;
 }
 
 #if WITH_EDITOR
@@ -204,7 +203,7 @@ void UListViewBase::FinishGeneratingEntry(UUserWidget& GeneratedEntry)
 		{
 			if (UWorld* World = GetWorld())
 			{
-				EntryGenAnnouncementTimerHandle = World->GetTimerManager().SetTimerForNextTick(this, &UListViewBase::HandleAnnounceGeneratedEntries);
+				World->GetTimerManager().SetTimerForNextTick(this, &UListViewBase::HandleAnnounceGeneratedEntries);
 			}
 		}
 	}

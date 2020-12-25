@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	SceneCore.h: Core scene definitions.
@@ -57,6 +57,10 @@ public:
 	/** Clears cached shadow maps, if possible */
 	void FlushCachedShadowMapData();
 
+	/** Custom new/delete */
+	void* operator new(size_t Size);
+	void operator delete(void *RawMemory);
+
 private:
 	/** The light which affects the primitive. */
 	FLightSceneInfo* LightSceneInfo;
@@ -103,7 +107,7 @@ private:
 	/** True if the primitive only shadows itself. */
 	uint32 bSelfShadowOnly : 1;
 
-	/** True this is a mobile dynamic point light interaction. */
+	/** True this is an ES2 dynamic point light interaction. */
 	uint32 bMobileDynamicPointLight : 1;
 
 	/** Initialization constructor. */
@@ -129,6 +133,9 @@ public:
 	/** The index of the mesh in the scene's static meshes array. */
 	int32 Id;
 
+	/** Index of the mesh into the scene's StaticMeshBatchVisibility array. */
+	int32 BatchVisibilityId;
+
 	// Constructor/destructor.
 	FStaticMeshBatch(
 		FPrimitiveSceneInfo* InPrimitiveSceneInfo,
@@ -137,7 +144,8 @@ public:
 		):
 		FMeshBatch(InMesh),
 		PrimitiveSceneInfo(InPrimitiveSceneInfo),
-		Id(INDEX_NONE)
+		Id(INDEX_NONE),
+		BatchVisibilityId(INDEX_NONE)
 	{
 		BatchHitProxyId = InHitProxyId;
 	}
@@ -149,7 +157,8 @@ private:
 	FStaticMeshBatch(const FStaticMeshBatch& InStaticMesh):
 		FMeshBatch(InStaticMesh),
 		PrimitiveSceneInfo(InStaticMesh.PrimitiveSceneInfo),
-		Id(InStaticMesh.Id)
+		Id(InStaticMesh.Id),
+		BatchVisibilityId(InStaticMesh.BatchVisibilityId)
 	{}
 };
 
@@ -159,13 +168,14 @@ private:
 class FStaticMeshBatchRelevance
 {
 public:
-	FStaticMeshBatchRelevance(const FStaticMeshBatch& StaticMesh, float InScreenSize, bool InbSupportsCachingMeshDrawCommands, bool InbUseSkyMaterial, bool bInUseSingleLayerWaterMaterial, bool bInUseAnisotropy, ERHIFeatureLevel::Type FeatureLevel)
+	FStaticMeshBatchRelevance(const FStaticMeshBatch& StaticMesh, float InScreenSize, bool InbSupportsCachingMeshDrawCommands, bool InbUseSkyMaterial, bool bInUseSingleLayerWaterMaterial, ERHIFeatureLevel::Type FeatureLevel)
 		: Id(StaticMesh.Id)
 		, ScreenSize(InScreenSize)
-		, NumElements(StaticMesh.Elements.Num())
 		, CommandInfosBase(0)
 		, LODIndex(StaticMesh.LODIndex)
+		, NumElements(StaticMesh.Elements.Num())
 		, bDitheredLODTransition(StaticMesh.bDitheredLODTransition)
+		, bRequiresPerElementVisibility(StaticMesh.bRequiresPerElementVisibility)
 		, bSelectable(StaticMesh.bSelectable)
 		, CastShadow(StaticMesh.CastShadow)
 		, bUseForMaterial(StaticMesh.bUseForMaterial)
@@ -174,15 +184,11 @@ public:
 		, bUseSkyMaterial(InbUseSkyMaterial)
 		, bUseSingleLayerWaterMaterial(bInUseSingleLayerWaterMaterial)
 		, bUseHairStrands(StaticMesh.UseForHairStrands(FeatureLevel))
-		, bUseAnisotropy(bInUseAnisotropy)
 		, bRenderToVirtualTexture(StaticMesh.bRenderToVirtualTexture)
 		, RuntimeVirtualTextureMaterialType(StaticMesh.RuntimeVirtualTextureMaterialType)
 		, bSupportsCachingMeshDrawCommands(InbSupportsCachingMeshDrawCommands)
 	{
 	}
-
-	/** Starting offset into continuous array of command infos for this mesh in FPrimitiveSceneInfo::CachedMeshDrawCommandInfos. */
-	FMeshPassMask CommandInfosMask;
 
 	/** The index of the mesh in the scene's static meshes array. */
 	int32 Id;
@@ -190,8 +196,8 @@ public:
 	/** The screen space size to draw this primitive at */
 	float ScreenSize;
 
-	/** Number of elements in this mesh. */
-	uint16 NumElements;
+	/** Starting offset into continuous array of command infos for this mesh in FPrimitiveSceneInfo::CachedMeshDrawCommandInfos. */
+	FMeshPassMask CommandInfosMask;
 
 	/* Every bit corresponds to one MeshPass. If bit is set, then FPrimitiveSceneInfo::CachedMeshDrawCommandInfos contains this mesh pass. */
 	uint16 CommandInfosBase;
@@ -199,8 +205,14 @@ public:
 	/** LOD index of the mesh, used for fading LOD transitions. */
 	int8 LODIndex;
 
+	/** Number of elements in this mesh. */
+	uint16 NumElements;
+
 	/** Whether the mesh batch should apply dithered LOD. */
 	uint8 bDitheredLODTransition : 1;
+
+	/** Whether the mesh batch needs VertexFactory->GetStaticBatchElementVisibility to be called each frame to determine which elements of the batch are visible. */
+	uint8 bRequiresPerElementVisibility : 1;
 
 	/** Whether the mesh batch can be selected through editor selection, aka hit proxies. */
 	uint8 bSelectable : 1;
@@ -212,7 +224,6 @@ public:
 	uint8 bUseSkyMaterial	: 1; // Whether this batch uses a Sky material or not.
 	uint8 bUseSingleLayerWaterMaterial : 1; // Whether this batch uses a water material or not.
 	uint8 bUseHairStrands	: 1; // Whether it contains hair strands geometry.
-	uint8 bUseAnisotropy	: 1; // Whether material uses anisotropy parameter.
 
 	/** Whether the mesh batch can be used for rendering to a virtual texture. */
 	uint8 bRenderToVirtualTexture : 1;

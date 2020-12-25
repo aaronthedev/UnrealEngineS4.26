@@ -21,11 +21,5 @@
 			"Type" : "Editor",
 			"LoadingPhase" : "Default"
 		}
-	],
-	"Plugins": [ 
-		{ 
-			"Name": "PluginUtils",
-			"Enabled": true 
-		} 
 	]
 }

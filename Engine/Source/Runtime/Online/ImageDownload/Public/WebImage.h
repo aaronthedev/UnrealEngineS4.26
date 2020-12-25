@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,7 +15,7 @@
 class IHttpRequest;
 struct FSlateBrush;
 
-typedef TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> FHttpRequestPtr;
+typedef TSharedPtr<class IHttpRequest> FHttpRequestPtr;
 typedef TSharedPtr<class IHttpResponse, ESPMode::ThreadSafe> FHttpResponsePtr;
 
 /** 
@@ -108,7 +108,7 @@ private:
 	TSharedPtr<FSlateDynamicImageBrush> DownloadedBrush;
 
 	/** Any pending request */
-	TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> PendingRequest;
+	TSharedPtr<IHttpRequest> PendingRequest;
 
 	/** Callback to call upon completion */
 	FOnImageDownloaded PendingCallback;

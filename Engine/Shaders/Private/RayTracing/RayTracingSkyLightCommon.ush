@@ -1,13 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================================
-	RayTracingSkyLightCommon.ush: Common functions for MipTree-based SkyLight visibility ray sampling
+	SkyLightMipTreeCommon.ush: Common utilities for MipTree-based SkyLight sampling
 ===============================================================================================*/
-
-#pragma once
-
-#include "../MonteCarlo.ush"
-#include "SkyLightMipTreeCommon.ush"
 
 #define USE_MIP_PDF_TEXTURE 1
 #define USE_SOLID_ANGLE_TEXTURE 1
@@ -61,16 +56,7 @@ float PdfSkyLightOcclusionRay(
 		// Determine texel choice
 		uint2 MipOffset = (MipCoord.xy >> MipIndex) - MipPixel;
 		uint LinearIndex = MipOffset.y << 1 | MipOffset.x;
-		
-		if (LinearIndex > 0)
-		{
-			MipPdf *= Cdf[LinearIndex] - Cdf[LinearIndex - 1] 
-		}
-		else
-		{
-			MipPdf *= Cdf[LinearIndex];
-		}
-
+		MipPdf *= LinearIndex > 0 ? Cdf[LinearIndex] - Cdf[LinearIndex - 1] : Cdf[LinearIndex];
 		MipPixel += MipOffset;
 
 		MipPixel = MipPixel << 1;

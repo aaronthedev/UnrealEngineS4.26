@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Binding/WidgetBinding.h"
 #include "Components/Widget.h"
@@ -9,16 +9,16 @@ UWidgetBinding::UWidgetBinding()
 {
 }
 
-bool UWidgetBinding::IsSupportedDestination(FProperty* Property) const
+bool UWidgetBinding::IsSupportedDestination(UProperty* Property) const
 {
 	return IsSupportedSource(Property);
 }
 
-bool UWidgetBinding::IsSupportedSource(FProperty* Property) const
+bool UWidgetBinding::IsSupportedSource(UProperty* Property) const
 {
 	if ( IsConcreteTypeCompatibleWithReflectedType<UObject*>(Property) )
 	{
-		if ( FObjectProperty* ObjectProperty = CastField<FObjectProperty>(Property) )
+		if ( UObjectProperty* ObjectProperty = Cast<UObjectProperty>(Property) )
 		{
 			return ObjectProperty->PropertyClass->IsChildOf(UWidget::StaticClass());
 		}

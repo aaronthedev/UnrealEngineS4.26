@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MagicLeapCameraRunnable.h"
 #include "MagicLeapCameraPlugin.h"
@@ -21,6 +21,13 @@ FCameraRunnable::FCameraRunnable()
 {
 	IImageWrapperModule& ImageWrapperModule = FModuleManager::LoadModuleChecked<IImageWrapperModule>(FName("ImageWrapper"));
 	ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::JPEG);
+}
+
+void FCameraRunnable::Exit()
+{
+#if WITH_MLSDK
+	TryDisconnect();
+#endif // WITH_MLSDK
 }
 
 void FCameraRunnable::PushNewCaptureTask(FCameraTask::EType InTaskType)
@@ -104,11 +111,6 @@ bool FCameraRunnable::ProcessCurrentTask()
 	case FCameraTask::EType::StartVideoToFile: bSuccess = StartRecordingVideo(); break;
 	case FCameraTask::EType::StopVideoToFile: bSuccess = StopRecordingVideo(); break;
 	}
-
-	if (bShuttingDown)
-	{
-		TryDisconnect();
-	}
 #endif // WITH_MLSDK
 	return bSuccess;
 }
@@ -122,6 +124,7 @@ void FCameraRunnable::OnPreviewBufferAvailable(MLHandle Output, void *Data)
 
 bool FCameraRunnable::TryConnect()
 {
+	//IncomingTasks.Peek(CurrentTask); // this is purely so that any log messages go to the correct requester
 	if (AppEventHandler.GetPrivilegeStatus(EMagicLeapPrivilege::CameraCapture) != MagicLeap::EPrivilegeState::Granted)
 	{
 		Log(TEXT("Cannot connect to camera due to lack of privilege!"));
@@ -174,52 +177,20 @@ bool FCameraRunnable::TryDisconnect()
 	return !IsConnected();
 }
 
-bool FCameraRunnable::TryPrepareCapture(MLCameraCaptureType InCaptureType, MLHandle& OutHandle)
+bool FCameraRunnable::CaptureImageToFile()
 {
-	MLResult Result = MLCameraPrepareCapture(InCaptureType, &OutHandle);
-	// A failure here is likely the result of the third eye capture system being engaged over the top
-	// of this application.  In such a case we currently have no way of knowing that our connection has
-	// been invalidated by another process.  All we can do is try to disconnect, reconnect and make one
-	// final attempt to prepare the required capture.
-	if (Result != MLResult_Ok)
-	{
-		if (!TryDisconnect())
-		{
-			Log(TEXT("Failed to disconnect after preparation failure"));
-			return false;
-		}
+	if (bPaused) return false;
 
-		if (bPaused) return false;
-
-		if (!TryConnect())
-		{
-			Log(TEXT("Failed to connect after preparation failure"));
-			return false;
-		}
-	}
-
-	Result = MLCameraPrepareCapture(InCaptureType, &OutHandle);
+	Log(TEXT("Beginning capture image to file."));
+	MLHandle Handle = ML_INVALID_HANDLE;
+	MLResult Result = MLCameraPrepareCapture(MLCameraCaptureType_Image, &Handle);
 	if (Result != MLResult_Ok)
 	{
 		Log(FString::Printf(TEXT("MLCameraPrepareCapture failed with error %s!  Camera capture aborted!"), UTF8_TO_TCHAR(MLMediaResultGetString(Result))));
 		return false;
 	}
 
-	return true;
-}
-
-bool FCameraRunnable::CaptureImageToFile()
-{
-	if (bPaused || bShuttingDown) return false;
-
-	Log(TEXT("Beginning capture image to file."));
-	MLHandle Handle = ML_INVALID_HANDLE;
-	if (!TryPrepareCapture(MLCameraCaptureType_Image, Handle))
-	{
-		return false;
-	}
-
-	if (bPaused || bShuttingDown) return false;
+	if (bPaused) return false;
 
 #if PLATFORM_LUMIN
 	IPlatformFile& PlatformFile = IPlatformFile::GetPlatformPhysical();
@@ -227,10 +198,7 @@ bool FCameraRunnable::CaptureImageToFile()
 	FLuminPlatformFile* LuminPlatformFile = static_cast<FLuminPlatformFile*>(&PlatformFile);
 	UniqueFileName = LuminPlatformFile->ConvertToLuminPath(FPaths::CreateTempFilename(*FPaths::ProjectSavedDir(), TEXT("Img_"), *ImgExtension), true);
 #endif
-
-	if (bPaused || bShuttingDown) return false;
-
-	MLResult Result = MLCameraCaptureImage(TCHAR_TO_UTF8(*UniqueFileName));
+	Result = MLCameraCaptureImage(TCHAR_TO_UTF8(*UniqueFileName));
 	if (Result != MLResult_Ok)
 	{
 		Log(FString::Printf(TEXT("MLCameraCaptureImage failed with error %s!  Camera capture aborted!"), UTF8_TO_TCHAR(MLMediaResultGetString(Result))));
@@ -244,26 +212,28 @@ bool FCameraRunnable::CaptureImageToFile()
 
 bool FCameraRunnable::CaptureImageToTexture()
 {
-	if (bPaused || bShuttingDown) return false;
+	if (bPaused) return false;
 
 	Log(TEXT("Beginning capture image to texture."));
 	MLCameraOutput* CameraOutput = nullptr;
 	MLHandle Handle = ML_INVALID_HANDLE;
-	if (!TryPrepareCapture(MLCameraCaptureType_ImageRaw, Handle))
+	MLResult Result = MLCameraPrepareCapture(MLCameraCaptureType_ImageRaw, &Handle);
+	if (Result != MLResult_Ok)
 	{
+		Log(FString::Printf(TEXT("MLCameraPrepareCapture failed with error %s!  Camera capture aborted!"), UTF8_TO_TCHAR(MLMediaResultGetString(Result))));
 		return false;
 	}
 
-	if (bPaused || bShuttingDown) return false;
+	if (bPaused) return false;
 
-	MLResult Result = MLCameraCaptureImageRaw();
+	Result = MLCameraCaptureImageRaw();
 	if (Result != MLResult_Ok)
 	{
 		Log(FString::Printf(TEXT("MLCameraCaptureImageRaw failed with error %s!  Camera capture aborted!"), UTF8_TO_TCHAR(MLMediaResultGetString(Result))));
 		return false;
 	}
 
-	if (bPaused || bShuttingDown) return false;
+	if (bPaused) return false;
 
 	Result = MLCameraGetImageStream(&CameraOutput);
 	if (Result != MLResult_Ok)
@@ -272,7 +242,7 @@ bool FCameraRunnable::CaptureImageToTexture()
 		return false;
 	}
 
-	if (bPaused || bShuttingDown) return false;
+	if (bPaused) return false;
 
 	if (CameraOutput->plane_count == 0)
 	{
@@ -283,15 +253,15 @@ bool FCameraRunnable::CaptureImageToTexture()
 	MLCameraPlaneInfo& ImageInfo = CameraOutput->planes[0];
 	if (ImageWrapper.IsValid() && ImageWrapper->SetCompressed(ImageInfo.data, ImageInfo.size))
 	{
-		TArray<uint8> RawData;
+		const TArray<uint8>* RawData = NULL;
 		if (ImageWrapper->GetRaw(ImageWrapper->GetFormat(), 8, RawData))
 		{
-			Log(FString::Printf(TEXT("ImageWrapper width=%d height=%d size=%" INT64_FMT), ImageWrapper->GetWidth(), ImageWrapper->GetHeight(), RawData.Num()));
+			Log(FString::Printf(TEXT("ImageWrapper width=%d height=%d size=%d"), ImageWrapper->GetWidth(), ImageWrapper->GetHeight(), RawData->Num()));
 			UTexture2D* CaptureTexture = UTexture2D::CreateTransient(ImageWrapper->GetWidth(), ImageWrapper->GetHeight(), EPixelFormat::PF_R8G8B8A8);
 			CaptureTexture->AddToRoot();
 			FTexture2DMipMap& Mip = CaptureTexture->PlatformData->Mips[0];
 			void* Data = Mip.BulkData.Lock(LOCK_READ_WRITE);
-			FMemory::Memcpy(Data, RawData.GetData(), Mip.BulkData.GetBulkDataSize());
+			FMemory::Memcpy(Data, RawData->GetData(), Mip.BulkData.GetBulkDataSize());
 			Mip.BulkData.Unlock();
 			CaptureTexture->UpdateResource();
 			CurrentTask.Texture = CaptureTexture;
@@ -307,8 +277,10 @@ bool FCameraRunnable::StartRecordingVideo()
 
 	Log(TEXT("Beginning capture video to file."));
 	MLHandle Handle = ML_INVALID_HANDLE;
-	if (!TryPrepareCapture(MLCameraCaptureType_Video, Handle))
+	MLResult Result = MLCameraPrepareCapture(MLCameraCaptureType_Video, &Handle);
+	if (Result != MLResult_Ok)
 	{
+		Log(FString::Printf(TEXT("MLCameraPrepareCapture failed with error %s!  Camera capture aborted!"), UTF8_TO_TCHAR(MLMediaResultGetString(Result))));
 		return false;
 	}
 
@@ -336,7 +308,7 @@ bool FCameraRunnable::StartRecordingVideo()
 	FLuminPlatformFile* LuminPlatformFile = static_cast<FLuminPlatformFile*>(&PlatformFile);
 	UniqueFileName = LuminPlatformFile->ConvertToLuminPath(FPaths::CreateTempFilename(*FPaths::ProjectSavedDir(), TEXT("Vid_"), *VidExtension), true);
 #endif
-	MLResult Result = MLCameraCaptureVideoStart(TCHAR_TO_UTF8(*UniqueFileName));
+	Result = MLCameraCaptureVideoStart(TCHAR_TO_UTF8(*UniqueFileName));
 	if (Result != MLResult_Ok)
 	{
 		Log(FString::Printf(TEXT("MLCameraCaptureVideoStart failed with error %s!  Video capture aborted!"), UTF8_TO_TCHAR(MLMediaResultGetString(Result))));
@@ -373,25 +345,12 @@ void FCameraRunnable::Log(const FString& Info)
 }
 #endif //WITH_MLSDK
 
-void FCameraRunnable::SetConnectionStatus(EConnectionStatus InConnectionStatus)
+void FCameraRunnable::SetConnectionStatus(EConnectionStatus ConnectionStatus)
 {
-	ThreadSafeConnectionStatus.Set(static_cast<int32>(InConnectionStatus));
+	ThreadSafeConnectionStatus.Set(static_cast<int32>(ConnectionStatus));
 }
 
 FCameraRunnable::EConnectionStatus FCameraRunnable::GetConnectionStatus() const
 {
 	return static_cast<EConnectionStatus>(ThreadSafeConnectionStatus.GetValue());
-}
-
-const TCHAR* FCameraRunnable::ConnectionStatusToString(EConnectionStatus InConnectionStatus)
-{
-	const TCHAR* ConnectionStatusString = TEXT("Invalid");
-	switch (InConnectionStatus)
-	{
-	case EConnectionStatus::NotConnected: ConnectionStatusString = TEXT("NotConnected"); break;
-	case EConnectionStatus::Connecting: ConnectionStatusString = TEXT("Connecting"); break;
-	case EConnectionStatus::Connected: ConnectionStatusString = TEXT("Connected"); break;
-	}
-
-	return ConnectionStatusString;
 }

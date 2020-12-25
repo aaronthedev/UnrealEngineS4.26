@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Logging/MessageLog.h"
 #include "Internationalization/Internationalization.h"
@@ -218,7 +218,7 @@ ELogVerbosity::Type FMessageLog::GetLogVerbosity( EMessageSeverity::Type InSever
 
 const TCHAR* const FMessageLog::GetLogColor( EMessageSeverity::Type InSeverity )
 {
-#if !PLATFORM_SUPPORTS_COLORIZED_OUTPUT_DEVICE
+#if !PLATFORM_DESKTOP
 	return NULL;
 #else
 	switch(InSeverity)

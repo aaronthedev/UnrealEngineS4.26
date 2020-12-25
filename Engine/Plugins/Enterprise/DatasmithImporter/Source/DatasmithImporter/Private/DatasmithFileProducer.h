@@ -1,19 +1,20 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 
-#include "DataprepContentProducer.h"
+#include "DataPrepContentProducer.h"
 
 #include "DatasmithContentEditorModule.h"
 #include "DatasmithImportContext.h"
 #include "DatasmithImportOptions.h"
 #include "DatasmithScene.h"
-#include "DatasmithTranslatableSource.h"
+#include "Translators/DatasmithTranslatableSource.h"
 
 #include "IDetailCustomization.h"
 #include "Input/Reply.h"
+#include "UObject/StrongObjectPtr.h"
 
 #include "DatasmithFileProducer.generated.h"
 
@@ -27,29 +28,22 @@ class DATASMITHIMPORTER_API UDatasmithFileProducer : public UDataprepContentProd
 public:
 	// UObject interface
 	virtual void PostEditUndo() override;
-	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+	virtual void PostInitProperties() override;
 	// End of UObject interface
 
-	/** Update producer with the desired file */
-	void SetFilePath( const FString& InFilePath );
+	/** Update producer with newly selected filename */
+	void SetFilename( const FString& InFilename );
 
 	const FString& GetFilePath() const { return FilePath; }
 
 	/** Load default settings for file producer in DatasmithImporter.ini */
 	static void LoadDefaultSettings();
 
-	UE_DEPRECATED(4.26, "SetFilename was renamed to SetFilePath")
-	void SetFilename(const FString& InFilename)
-	{
-		SetFilePath( InFilename );
-	}
-
 	// Begin UDataprepContentProducer overrides
 	virtual const FText& GetLabel() const override;
 	virtual const FText& GetDescription() const override;
 	virtual FString GetNamespace() const override;
 	virtual bool Supersede(const UDataprepContentProducer* OtherProducer) const override;
-	virtual bool CanAddToProducersArray(bool bIsAutomated) override;
 
 protected:
 	virtual bool Initialize() override;
@@ -57,10 +51,8 @@ protected:
 	virtual void Reset() override;
 	// End UDataprepContentProducer overrides
 
-	UPROPERTY( EditAnywhere, Category = DatasmithProducer )
+	UPROPERTY( EditAnywhere, Category = DatasmithProducer_Internal )
 	FString FilePath;
-
-	TWeakObjectPtr<ADatasmithSceneActor> ImportSceneActor;
 
 private:
 	/** Fill up world with content of Datasmith scene element */
@@ -68,9 +60,6 @@ private:
 
 	/** Fill up world with content of Datasmith scene element */
 	void PreventNameCollision();
-
-	/** Does what is required after setting a new FilePath */
-	void OnFilePathChanged();
 
 	/** Update the name of the producer based on the filename */
 	void UpdateName();
@@ -80,11 +69,7 @@ private:
 	TUniquePtr< FDatasmithTranslatableSceneSource > TranslatableSourcePtr;
 	TUniquePtr< FDataprepWorkReporter > ProgressTaskPtr;
 
-	UPROPERTY( Transient, DuplicateTransient )
-	UDatasmithScene* DatasmithScene;
-
-	UPROPERTY( Transient, DuplicateTransient )
-	UPackage* TransientPackage = nullptr;
+	TStrongObjectPtr< UDatasmithScene > DatasmithScenePtr;
 
 	TArray< TWeakObjectPtr< UObject > > Assets;
 
@@ -95,21 +80,8 @@ private:
 	friend class UDatasmithDirProducer;
 };
 
-class FDataprepContentProducerDetails : public IDetailCustomization
-{
-public:
-	virtual void CustomizeDetails( IDetailLayoutBuilder& DetailBuilder ) override;
-	FSlateColor GetStatusColorAndOpacity() const;
-	bool IsProducerSuperseded() const;
-
-protected:
-	class UDataprepAssetProducers* AssetProducers = nullptr;
-	UDataprepContentProducer* Producer = nullptr;
-	int32 ProducerIndex = INDEX_NONE; // This index does not change for the lifetime of the property widget
-};
-
 // Customization of the details of the Datasmith Scene for the data prep editor.
-class DATASMITHIMPORTER_API FDatasmithFileProducerDetails : public FDataprepContentProducerDetails
+class DATASMITHIMPORTER_API FDatasmithFileProducerDetails : public IDetailCustomization
 {
 public:
 	static TSharedRef< IDetailCustomization > MakeDetails() { return MakeShared<FDatasmithFileProducerDetails>(); };
@@ -127,33 +99,22 @@ protected:
 	UDatasmithDirProducer();
 
 public:
-	/** Update producer with the selected folder name */
-	void SetFolderPath(const FString& InFolderPath);
-	FString GetFolderPath() const;
-
-	void SetExtensionString(const FString& InExtensionString);
-	FString GetExtensionString() const;
-
-	void SetIsRecursive(bool bInRecursive);
-	bool IsRecursive() const;
 
 	// Begin UObject interface
-	virtual void Serialize(FArchive& Ar) override;
-	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
+	virtual void Serialize( FArchive& Ar ) override;
+	virtual void PostInitProperties() override;
 	// End of UObject interface
 
-	UE_DEPRECATED(4.26, "SetFolderName was renamed to SetFolderPath")
-	void SetFolderName(const FString& InFolderName)
-	{
-		SetFolderPath( InFolderName );
-	}
+	// End UObject interface
+
+	/** Update producer with newly selected folder name */
+	void SetFolderName( const FString& InFolderName );
 
 	// Begin UDataprepContentProducer overrides
 	virtual const FText& GetLabel() const override;
 	virtual const FText& GetDescription() const override;
 	virtual FString GetNamespace() const override;
 	virtual bool Supersede(const UDataprepContentProducer* OtherProducer) const override;
-	virtual bool CanAddToProducersArray(bool bIsAutomated) override;
 
 protected:
 	virtual bool Initialize() override;
@@ -161,22 +122,14 @@ protected:
 	virtual void Reset() override;
 	// End UDataprepContentProducer overrides
 
-private:
-
-	// The folder were datasmith will look for files to import
 	UPROPERTY( EditAnywhere, Category = DatasmithDirProducer_Internal )
 	FString FolderPath;
 
-	// Semi-column separated string containing the extensions to consider. By default, set to * to get all extensions.
-	UPROPERTY( EditAnywhere, Category = DatasmithDirProducer )
+	UPROPERTY( EditAnywhere, Category = DatasmithDirProducer, meta = (ToolTip = "semi-column separated string containing the extensions to consider. By default, set to * to get all extensions") )
 	FString ExtensionString;
 
-	// If true the producer will look for the files in the sub-directories.
 	UPROPERTY( EditAnywhere, Category = DatasmithDirProducer, meta = (ToolTip = "If checked, sub-directories will be traversed") )
 	bool bRecursive;
-
-	/** Called if the folder path has changed */
-	void OnFolderPathChanged();
 
 	/** Called if ExtensionString has changed */
 	void OnExtensionsChanged();
@@ -184,6 +137,7 @@ private:
 	/** Called if bRecursive has changed */
 	void OnRecursivityChanged();
 
+private:
 	/** Helper function to extract set of extensions based on content of ExtensionString and supported formats */
 	void UpdateExtensions();
 
@@ -193,18 +147,7 @@ private:
 	/** Update the name of the producer based on the directory name */
 	void UpdateName();
 
-	/** Try import files in the FolderPath as parts of constructed PLMXML file */
-	bool ImportAsPlmXml(UPackage* RootPackage, TArray< TWeakObjectPtr< UObject > >& OutAssets, TArray<FString>& FilesCouldntBeProcessedWithPlmXml);
-
-	/** 
-	 * Make resulting scene hierarchy look the way it looks when each of files is imported individually
-	 * Which means each separate CAD file should have DatasmithSceneActor as root actor
-	 * In order to have this 
-	 * 1. Root ImportSceneActor is removed 
-	 * 2. Every child of this ImportSceneActor is converted into DatasmithSceneActor, filling RelatedChildren from this child's subtree
-	*/
-	void FixPlmXmlHierarchy();
-
+private:
 	/** Indicates if ExtensionString contains "*.*" */
 	bool bHasWildCardSearch;
 
@@ -214,8 +157,7 @@ private:
 	/** Set of files matching folder and extensions */
 	TSet< FString > FilesToProcess;
 
-	UPROPERTY( Transient, DuplicateTransient )
-	UDatasmithFileProducer* FileProducer;
+	TStrongObjectPtr< UDatasmithFileProducer > FileProducer;
 
 	static TSet< FString > SupportedFormats;
 
@@ -224,7 +166,7 @@ private:
 };
 
 // Customization of the details of the Datasmith Scene for the data prep editor.
-class DATASMITHIMPORTER_API FDatasmithDirProducerDetails : public FDataprepContentProducerDetails
+class DATASMITHIMPORTER_API FDatasmithDirProducerDetails : public IDetailCustomization
 {
 public:
 	static TSharedRef< IDetailCustomization > MakeDetails() { return MakeShared<FDatasmithDirProducerDetails>(); };

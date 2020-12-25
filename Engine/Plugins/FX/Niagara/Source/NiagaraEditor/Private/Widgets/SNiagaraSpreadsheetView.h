@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -40,7 +40,6 @@ public:
 		uint32 IntStartOffset;
 		uint32 GlobalStartOffset;
 		bool bFloat;
-		bool bHalf;
 		bool bBoolean;
 		TWeakObjectPtr<const UEnum> Enum;
 	};

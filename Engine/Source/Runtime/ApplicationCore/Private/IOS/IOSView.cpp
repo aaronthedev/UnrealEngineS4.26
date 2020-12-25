@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IOS/IOSView.h"
 #include "IOS/IOSAppDelegate.h"
@@ -264,6 +264,9 @@ id<MTLDevice> GMetalDevice = nil;
 {
 	[CachedMarkedText release];
 	[markedTextStyle release];
+#if WITH_ACCESSIBILITY
+	[_accessibilityElements release];
+#endif
 	[super dealloc];
 }
 
@@ -287,12 +290,14 @@ id<MTLDevice> GMetalDevice = nil;
 		// 0 means to leave the scale alone, use native
 		if (RequestedContentScaleFactor == 0.0f)
 		{
+#ifdef __IPHONE_8_0
             if ([self.window.screen respondsToSelector:@selector(nativeScale)])
             {
                 self.contentScaleFactor = self.window.screen.nativeScale;
                 UE_LOG(LogIOS, Log, TEXT("Setting contentScaleFactor to nativeScale which is = %f"), self.contentScaleFactor);
             }
             else
+#endif
             {
                 UE_LOG(LogIOS, Log, TEXT("Leaving contentScaleFactor alone, with scale = %f"), NativeScale);
             }
@@ -384,18 +389,24 @@ id<MTLDevice> GMetalDevice = nil;
 
 -(void)SetAccessibilityWindow:(AccessibleWidgetId)WindowId
 {
-	[FIOSAccessibilityCache AccessibilityElementCache].RootWindowId = WindowId;
- 	if (WindowId != IAccessibleWidget::InvalidAccessibleWidgetId)
+	if (_accessibilityElements == nil)
 	{
-		FIOSAccessibilityLeaf* Window = [[FIOSAccessibilityCache AccessibilityElementCache] GetAccessibilityElement: WindowId];
-		// We go ahead and assume the window will have children and add the FIOSAccessibilityContainer
-		// for the Window to enforce accessibility hierarchy
-self.accessibilityElements = @[Window.accessibilityContainer];
+		_accessibilityElements = [[NSMutableArray alloc] init];
 	}
 	else
 	{
-		self.accessibilityElements = Nil;
+		[_accessibilityElements removeAllObjects];
 	}
+
+	if (WindowId != IAccessibleWidget::InvalidAccessibleWidgetId)
+	{
+		[_accessibilityElements addObject : [[FIOSAccessibilityCache AccessibilityElementCache] GetAccessibilityElement:WindowId]];
+	}
+}
+
+-(NSArray*)accessibilityElements
+{
+	return _accessibilityElements;
 }
 
 -(BOOL)isAccessibilityElement
@@ -538,16 +549,6 @@ self.accessibilityElements = @[Window.accessibilityContainer];
 	TArray<TouchInput> TouchesArray;
 	for (UITouch* Touch in Touches)
 	{
-#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 140000
-        // ignore mouse-produced touches, these will be handled by FIOSInputInterface
-        if (@available(iOS 14, *))
-        {
-            if ( Touch.type == UITouchTypeIndirectPointer ) // Requires UIApplicationSupportsIndirectInputEvents:true in plist
-            {
-                continue;
-            }
-        }
-#endif
 		// get info from the touch
 		CGPoint Loc = [Touch locationInView:self];
 		CGPoint PrevLoc = [Touch previousLocationInView:self];
@@ -692,8 +693,6 @@ self.accessibilityElements = @[Window.accessibilityContainer];
 			// Dismiss the existing keyboard, if one exists, so the style can be overridden.
 			[self endEditing:YES];
 			[self becomeFirstResponder];
-            
-            FIOSInputInterface::SetKeyboardInhibited(true);
 		}
 		
 		FPlatformAtomics::InterlockedDecrement(&KeyboardShowCount);
@@ -714,7 +713,6 @@ self.accessibilityElements = @[Window.accessibilityContainer];
 			{
 				// Dismiss the existing keyboard, if one exists.
 				[self endEditing:YES];
-                FIOSInputInterface::SetKeyboardInhibited(false);
 			}
 		}
 	});
@@ -888,18 +886,16 @@ self.accessibilityElements = @[Window.accessibilityContainer];
 	return nil;
 }
 
-// UE 4.25 note: type UITextWritingDirection is deprecated and the new type NSWritingDirection used from Xcode 11 but we need to 
-// continue to use UITextWritingDirection for now in order to maintain compatibility with Xcode 9 and 10.
 
-- (UITextWritingDirection)baseWritingDirectionForPosition:(UITextPosition *)position inDirection:(UITextStorageDirection)direction
+- (NSWritingDirection)baseWritingDirectionForPosition:(UITextPosition *)position inDirection:(UITextStorageDirection)direction
 {
 	REPORT_EVENT;
 	// assume left to right for now
-	return UITextWritingDirectionLeftToRight;
+	return NSWritingDirectionLeftToRight;
 }
 
 
-- (void)setBaseWritingDirection:(UITextWritingDirection)writingDirection forRange:(UITextRange *)range
+- (void)setBaseWritingDirection:(NSWritingDirection)writingDirection forRange:(UITextRange *)range
 {
 	// @todo keyboard: This is called
 }
@@ -1086,20 +1082,6 @@ self.accessibilityElements = @[Window.accessibilityContainer];
  * Tell the OS to hide the status bar (iOS 7 method for hiding)
  */
 - (BOOL)prefersStatusBarHidden
-{
-	return YES;
-}
-
-- (BOOL)prefersPointerLocked
-{
-    UE_LOG(LogIOS, Log, TEXT("IOSViewController prefersPointerLocked"));
-    return YES;
-}
-
-/**
- * Tell the OS to hide the home bar
- */
-- (BOOL)prefersHomeIndicatorAutoHidden
 {
 	return YES;
 }

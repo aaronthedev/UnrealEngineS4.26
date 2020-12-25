@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -54,50 +54,23 @@ public class LuminPlatform : Platform
 		// Potentially this could be replaced with FParse::Value("IconModelPath="(Path="", Value).
 		int startIndex = FilePath.IndexOf('"') + 1;
 		int length = FilePath.LastIndexOf('"') - startIndex;
-		if (length <= 0)
+		if (length > 0)
 		{
-			return "";
+			FilePath = FilePath.Substring(startIndex, length);
 		}
-
-		return FilePath.Substring(startIndex, length).Replace('\\', '/').Replace("//", "/"); 
-	}
-
-	private DirectoryReference GetDefaultIconDirectory(string ConfigPropertyName, DeploymentContext SC)
-	{
-		bool bIsModel = ConfigPropertyName.Contains("Model");
-		string IconPath = Path.GetFullPath(CombinePaths(SC.EngineRoot.ToString(), bIsModel ? "Build/Lumin/Resources/Model" : "Build/Lumin/Resources/Portal"));
-		return new DirectoryReference(IconPath);
+		FilePath = FilePath.Replace('\\', '/').Replace("//", "/");
+		return FilePath;
 	}
 
 	private string StageIconFileToMabu(string ConfigPropertyName, string IconStagePath, DeploymentContext SC)
 	{
 		// Read in any extra assets required to correctly install the application.
-		DirectoryReference IconDir;
 		ConfigHierarchy Ini = ConfigCache.ReadHierarchy(ConfigHierarchyType.Engine, SC.RawProjectPath.Directory, UnrealTargetPlatform.Lumin);
 		string Value;
-		if (!Ini.GetString("/Script/LuminRuntimeSettings.LuminRuntimeSettings", ConfigPropertyName, out Value))
-		{
-			IconDir = GetDefaultIconDirectory(ConfigPropertyName, SC);
-		}
-		else
-		{
-			Value = CleanFilePath(Value);
-			if (Value.Length > 0)
-			{
-				if (Path.HasExtension(Value))
-				{
-					Value = Path.GetDirectoryName(Value);
-				}
-				
-				IconDir = GetFullPathFromRelativePath(Value, SC);
-			}
-			else
-			{
-				IconDir = GetDefaultIconDirectory(ConfigPropertyName, SC);
-			}
-		}
-
+		Ini.GetString("/Script/LuminRuntimeSettings.LuminRuntimeSettings", ConfigPropertyName, out Value);
+		Value = CleanFilePath(Value);
 		// We can have two different kinds of paths in the ini for icons: engine exec relative or project root relative.
+		DirectoryReference IconDir = GetFullPathFromRelativePath(Value, SC);
 		return GenerateMabuPackageLine(EnsureTrailingSlashForDirectoryPath(IconDir.FullName), EnsureTrailingSlashForDirectoryPath(IconStagePath));
 	}
 
@@ -232,9 +205,8 @@ public class LuminPlatform : Platform
 			else
 			{
 				// For relative paths we need to figure out if they are in the engine or project tree.
-				string FromProjectFullPath = Path.GetFullPath(CombinePaths(SC.ProjectRoot.ToString(), RelativePath));
-				string FromEngineFullPath = Path.GetFullPath(CombinePaths(SC.EngineRoot.ToString(), RelativePath));
-
+				string FromProjectFullPath = Path.GetFullPath(CombinePaths(SC.ProjectRoot.ToString(), CleanFilePath(RelativePath)));
+				string FromEngineFullPath = Path.GetFullPath(CombinePaths(SC.EngineRoot.ToString(), CleanFilePath(RelativePath)));
 				if (Directory.Exists(FromProjectFullPath) || File.Exists(FromProjectFullPath))
 				{
 					// Works as a project relative path.. We'll go with that.
@@ -611,7 +583,7 @@ public class LuminPlatform : Platform
 			StringBuilder Builder = new StringBuilder();
 
 			Builder.AppendLine("OPTIONS=\\");
-			Builder.AppendLine("stl/libc++\\");
+			Builder.AppendLine("stl/libgnustl\\");
 			Builder.AppendLine(string.Format("package/debuggable/{0}", Params.Distribution ? "off" : "on"));
 
 			// Use .package file for mpk signing so that the user can override that if needed with the MLCERT env var.
@@ -719,6 +691,9 @@ public class LuminPlatform : Platform
 				{
 					VulkanLayerLibsLookupPaths.Add(Path.GetFullPath(VulkanValdationLayerLibsDir));
 				}
+				// TODO: add path dir in MLSDK which contains these layer libs. Until that is available, use NDKROOT path as a contingency.
+				//  When we do get these libs in the MLSDK, remove the folder selection option from LuminRuntimeSettings.
+				VulkanLayerLibsLookupPaths.Add(Environment.ExpandEnvironmentVariables("%NDKROOT%/sources/third_party/vulkan/src/build-android/jniLibs/arm64-v8a"));
 
 				VulkanValdationLayerLibsDir = string.Empty;
 				foreach (string LookupPath in VulkanLayerLibsLookupPaths)
@@ -979,19 +954,8 @@ public class LuminPlatform : Platform
 					// don't do a clean install, because that would delete the documents directory!
 					RunDeviceCommand(Params, DeviceName, string.Format("terminate \"{0}\"", GetPackageName(Params)), null);
 
-					bool bDeploy = !IsPackageUpToDate(Params, SC);
-					if (!bDeploy)
-					{
-						// Check if package is still installed.
-						IProcessResult ListResult = RunDeviceCommand(Params, DeviceName, " ls -p " + PackageName, null, ERunOptions.AppMustExist);
-						if (ListResult.ExitCode != 0)
-						{
-							LogInformation("{0} is not installed.  Installing.", PackageName);
-							bDeploy = true;
-						}
-					}
-					// install the package only if was (re-)created during the package step, or is no longer installed
-					if (bDeploy)
+					// install the package only if was (re-)created during the package step
+					if (!IsPackageUpToDate(Params, SC))
 					{
 						IProcessResult InstallResult = RunDeviceCommand(Params, DeviceName, string.Format("install -u \"{0}\"", GetFinalMpkName(Params, SC)), null);
 						if (InstallResult.ExitCode != 0)

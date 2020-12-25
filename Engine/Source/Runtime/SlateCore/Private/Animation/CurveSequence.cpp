@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Animation/CurveSequence.h"
 #include "Types/SlateEnums.h"
 #include "Application/SlateApplicationBase.h"
 #include "Widgets/SWidget.h"
-#include "Stats/Stats.h"
 
 
 /* FCurveSequence constructors
@@ -250,7 +249,6 @@ void FCurveSequence::RegisterActiveTimerIfNeeded(TSharedRef<SWidget> InOwnerWidg
 
 bool FCurveSequence::TickPlay(float InDeltaTime, FTickerDelegate InUserDelegate)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FCurveSequence_TickPlay);
 	return (InUserDelegate.IsBound() && InUserDelegate.Execute(InDeltaTime)) && IsPlaying();
 }
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,133 +11,137 @@ LUMIN_THIRD_PARTY_INCLUDES_START
 #include <ml_media_player.h>
 LUMIN_THIRD_PARTY_INCLUDES_END
 
-namespace LUMIN_MLSDK_API
+namespace MLSDK_API
 {
 
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerCreate)
-#define MLMediaPlayerCreate ::LUMIN_MLSDK_API::MLMediaPlayerCreateShim
+#define MLMediaPlayerCreate ::MLSDK_API::MLMediaPlayerCreateShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerDestroy)
-#define MLMediaPlayerDestroy ::LUMIN_MLSDK_API::MLMediaPlayerDestroyShim
+#define MLMediaPlayerDestroy ::MLSDK_API::MLMediaPlayerDestroyShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerSetDataSourceForFD)
-#define MLMediaPlayerSetDataSourceForFD ::LUMIN_MLSDK_API::MLMediaPlayerSetDataSourceForFDShim
+#define MLMediaPlayerSetDataSourceForFD ::MLSDK_API::MLMediaPlayerSetDataSourceForFDShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerSetOffsetDataSourceForFD)
-#define MLMediaPlayerSetOffsetDataSourceForFD ::LUMIN_MLSDK_API::MLMediaPlayerSetOffsetDataSourceForFDShim
+#define MLMediaPlayerSetOffsetDataSourceForFD ::MLSDK_API::MLMediaPlayerSetOffsetDataSourceForFDShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerSetDataSourceForPath)
-#define MLMediaPlayerSetDataSourceForPath ::LUMIN_MLSDK_API::MLMediaPlayerSetDataSourceForPathShim
+#define MLMediaPlayerSetDataSourceForPath ::MLSDK_API::MLMediaPlayerSetDataSourceForPathShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerSetDataSourceForURI)
-#define MLMediaPlayerSetDataSourceForURI ::LUMIN_MLSDK_API::MLMediaPlayerSetDataSourceForURIShim
+#define MLMediaPlayerSetDataSourceForURI ::MLSDK_API::MLMediaPlayerSetDataSourceForURIShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerSetRemoteDataSourceForURI)
-#define MLMediaPlayerSetRemoteDataSourceForURI ::LUMIN_MLSDK_API::MLMediaPlayerSetRemoteDataSourceForURIShim
+#define MLMediaPlayerSetRemoteDataSourceForURI ::MLSDK_API::MLMediaPlayerSetRemoteDataSourceForURIShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerSetMediaDataSource)
-#define MLMediaPlayerSetMediaDataSource ::LUMIN_MLSDK_API::MLMediaPlayerSetMediaDataSourceShim
+#define MLMediaPlayerSetMediaDataSource ::MLSDK_API::MLMediaPlayerSetMediaDataSourceShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerSetMediaStreamSource)
-#define MLMediaPlayerSetMediaStreamSource ::LUMIN_MLSDK_API::MLMediaPlayerSetMediaStreamSourceShim
+#define MLMediaPlayerSetMediaStreamSource ::MLSDK_API::MLMediaPlayerSetMediaStreamSourceShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerAddTimedTextSourceForURI)
-#define MLMediaPlayerAddTimedTextSourceForURI ::LUMIN_MLSDK_API::MLMediaPlayerAddTimedTextSourceForURIShim
+#define MLMediaPlayerAddTimedTextSourceForURI ::MLSDK_API::MLMediaPlayerAddTimedTextSourceForURIShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerAddTimedTextSourceForFD)
-#define MLMediaPlayerAddTimedTextSourceForFD ::LUMIN_MLSDK_API::MLMediaPlayerAddTimedTextSourceForFDShim
+#define MLMediaPlayerAddTimedTextSourceForFD ::MLSDK_API::MLMediaPlayerAddTimedTextSourceForFDShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerSetNextPlayer)
-#define MLMediaPlayerSetNextPlayer ::LUMIN_MLSDK_API::MLMediaPlayerSetNextPlayerShim
+#define MLMediaPlayerSetNextPlayer ::MLSDK_API::MLMediaPlayerSetNextPlayerShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetTrackCount)
-#define MLMediaPlayerGetTrackCount ::LUMIN_MLSDK_API::MLMediaPlayerGetTrackCountShim
+#define MLMediaPlayerGetTrackCount ::MLSDK_API::MLMediaPlayerGetTrackCountShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetTrackType)
-#define MLMediaPlayerGetTrackType ::LUMIN_MLSDK_API::MLMediaPlayerGetTrackTypeShim
+#define MLMediaPlayerGetTrackType ::MLSDK_API::MLMediaPlayerGetTrackTypeShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetTrackLanguage)
-#define MLMediaPlayerGetTrackLanguage ::LUMIN_MLSDK_API::MLMediaPlayerGetTrackLanguageShim
+#define MLMediaPlayerGetTrackLanguage ::MLSDK_API::MLMediaPlayerGetTrackLanguageShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetTrackMediaFormat)
-#define MLMediaPlayerGetTrackMediaFormat ::LUMIN_MLSDK_API::MLMediaPlayerGetTrackMediaFormatShim
+#define MLMediaPlayerGetTrackMediaFormat ::MLSDK_API::MLMediaPlayerGetTrackMediaFormatShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerSelectTrack)
-#define MLMediaPlayerSelectTrack ::LUMIN_MLSDK_API::MLMediaPlayerSelectTrackShim
+#define MLMediaPlayerSelectTrack ::MLSDK_API::MLMediaPlayerSelectTrackShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerUnselectTrack)
-#define MLMediaPlayerUnselectTrack ::LUMIN_MLSDK_API::MLMediaPlayerUnselectTrackShim
+#define MLMediaPlayerUnselectTrack ::MLSDK_API::MLMediaPlayerUnselectTrackShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerPrepare)
-#define MLMediaPlayerPrepare ::LUMIN_MLSDK_API::MLMediaPlayerPrepareShim
+#define MLMediaPlayerPrepare ::MLSDK_API::MLMediaPlayerPrepareShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerPrepareAsync)
-#define MLMediaPlayerPrepareAsync ::LUMIN_MLSDK_API::MLMediaPlayerPrepareAsyncShim
+#define MLMediaPlayerPrepareAsync ::MLSDK_API::MLMediaPlayerPrepareAsyncShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerStart)
-#define MLMediaPlayerStart ::LUMIN_MLSDK_API::MLMediaPlayerStartShim
+#define MLMediaPlayerStart ::MLSDK_API::MLMediaPlayerStartShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerStop)
-#define MLMediaPlayerStop ::LUMIN_MLSDK_API::MLMediaPlayerStopShim
+#define MLMediaPlayerStop ::MLSDK_API::MLMediaPlayerStopShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerPause)
-#define MLMediaPlayerPause ::LUMIN_MLSDK_API::MLMediaPlayerPauseShim
+#define MLMediaPlayerPause ::MLSDK_API::MLMediaPlayerPauseShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerReset)
-#define MLMediaPlayerReset ::LUMIN_MLSDK_API::MLMediaPlayerResetShim
+#define MLMediaPlayerReset ::MLSDK_API::MLMediaPlayerResetShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerSeekTo)
-#define MLMediaPlayerSeekTo ::LUMIN_MLSDK_API::MLMediaPlayerSeekToShim
+#define MLMediaPlayerSeekTo ::MLSDK_API::MLMediaPlayerSeekToShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerSetOnBufferAvailableCallback)
-#define MLMediaPlayerSetOnBufferAvailableCallback ::LUMIN_MLSDK_API::MLMediaPlayerSetOnBufferAvailableCallbackShim
+#define MLMediaPlayerSetOnBufferAvailableCallback ::MLSDK_API::MLMediaPlayerSetOnBufferAvailableCallbackShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerAcquireNextAvailableBuffer)
-#define MLMediaPlayerAcquireNextAvailableBuffer ::LUMIN_MLSDK_API::MLMediaPlayerAcquireNextAvailableBufferShim
+#define MLMediaPlayerAcquireNextAvailableBuffer ::MLSDK_API::MLMediaPlayerAcquireNextAvailableBufferShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerReleaseBuffer)
-#define MLMediaPlayerReleaseBuffer ::LUMIN_MLSDK_API::MLMediaPlayerReleaseBufferShim
+#define MLMediaPlayerReleaseBuffer ::MLSDK_API::MLMediaPlayerReleaseBufferShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetFrameTransformationMatrix)
-#define MLMediaPlayerGetFrameTransformationMatrix ::LUMIN_MLSDK_API::MLMediaPlayerGetFrameTransformationMatrixShim
+#define MLMediaPlayerGetFrameTransformationMatrix ::MLSDK_API::MLMediaPlayerGetFrameTransformationMatrixShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetFrameTimestamp)
-#define MLMediaPlayerGetFrameTimestamp ::LUMIN_MLSDK_API::MLMediaPlayerGetFrameTimestampShim
+#define MLMediaPlayerGetFrameTimestamp ::MLSDK_API::MLMediaPlayerGetFrameTimestampShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetFrameQueueBufferTimestamp)
-#define MLMediaPlayerGetFrameQueueBufferTimestamp ::LUMIN_MLSDK_API::MLMediaPlayerGetFrameQueueBufferTimestampShim
+#define MLMediaPlayerGetFrameQueueBufferTimestamp ::MLSDK_API::MLMediaPlayerGetFrameQueueBufferTimestampShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetFrameNumber)
-#define MLMediaPlayerGetFrameNumber ::LUMIN_MLSDK_API::MLMediaPlayerGetFrameNumberShim
+#define MLMediaPlayerGetFrameNumber ::MLSDK_API::MLMediaPlayerGetFrameNumberShim
 CREATE_DEPRECATED_MSG_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerSetEventCallbacks, "Replaced by MLMediaPlayerSetEventCallbacksEx.")
-#define MLMediaPlayerSetEventCallbacks ::LUMIN_MLSDK_API::MLMediaPlayerSetEventCallbacksShim
+#define MLMediaPlayerSetEventCallbacks ::MLSDK_API::MLMediaPlayerSetEventCallbacksShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerSetEventCallbacksEx)
-#define MLMediaPlayerSetEventCallbacksEx ::LUMIN_MLSDK_API::MLMediaPlayerSetEventCallbacksExShim
+#define MLMediaPlayerSetEventCallbacksEx ::MLSDK_API::MLMediaPlayerSetEventCallbacksExShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetVideoSize)
-#define MLMediaPlayerGetVideoSize ::LUMIN_MLSDK_API::MLMediaPlayerGetVideoSizeShim
+#define MLMediaPlayerGetVideoSize ::MLSDK_API::MLMediaPlayerGetVideoSizeShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetCurrentPosition)
-#define MLMediaPlayerGetCurrentPosition ::LUMIN_MLSDK_API::MLMediaPlayerGetCurrentPositionShim
+#define MLMediaPlayerGetCurrentPosition ::MLSDK_API::MLMediaPlayerGetCurrentPositionShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetDuration)
-#define MLMediaPlayerGetDuration ::LUMIN_MLSDK_API::MLMediaPlayerGetDurationShim
+#define MLMediaPlayerGetDuration ::MLSDK_API::MLMediaPlayerGetDurationShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetBufferingUpdate)
-#define MLMediaPlayerGetBufferingUpdate ::LUMIN_MLSDK_API::MLMediaPlayerGetBufferingUpdateShim
+#define MLMediaPlayerGetBufferingUpdate ::MLSDK_API::MLMediaPlayerGetBufferingUpdateShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetInfo)
-#define MLMediaPlayerGetInfo ::LUMIN_MLSDK_API::MLMediaPlayerGetInfoShim
+#define MLMediaPlayerGetInfo ::MLSDK_API::MLMediaPlayerGetInfoShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetError)
-#define MLMediaPlayerGetError ::LUMIN_MLSDK_API::MLMediaPlayerGetErrorShim
+#define MLMediaPlayerGetError ::MLSDK_API::MLMediaPlayerGetErrorShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetTimedText)
-#define MLMediaPlayerGetTimedText ::LUMIN_MLSDK_API::MLMediaPlayerGetTimedTextShim
+#define MLMediaPlayerGetTimedText ::MLSDK_API::MLMediaPlayerGetTimedTextShim
 CREATE_DEPRECATED_MSG_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetSubtitle, "Replaced by MLMediaPlayerGetSubtitleEx")
-#define MLMediaPlayerGetSubtitle ::LUMIN_MLSDK_API::MLMediaPlayerGetSubtitleShim
+#define MLMediaPlayerGetSubtitle ::MLSDK_API::MLMediaPlayerGetSubtitleShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetSubtitleEx)
-#define MLMediaPlayerGetSubtitleEx ::LUMIN_MLSDK_API::MLMediaPlayerGetSubtitleExShim
+#define MLMediaPlayerGetSubtitleEx ::MLSDK_API::MLMediaPlayerGetSubtitleExShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerReleaseSubtitleEx)
-#define MLMediaPlayerReleaseSubtitleEx ::LUMIN_MLSDK_API::MLMediaPlayerReleaseSubtitleExShim
+#define MLMediaPlayerReleaseSubtitleEx ::MLSDK_API::MLMediaPlayerReleaseSubtitleExShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerSetOnMediaSubtitleUpdateCallback)
-#define MLMediaPlayerSetOnMediaSubtitleUpdateCallback ::LUMIN_MLSDK_API::MLMediaPlayerSetOnMediaSubtitleUpdateCallbackShim
+#define MLMediaPlayerSetOnMediaSubtitleUpdateCallback ::MLSDK_API::MLMediaPlayerSetOnMediaSubtitleUpdateCallbackShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetMetadata)
-#define MLMediaPlayerGetMetadata ::LUMIN_MLSDK_API::MLMediaPlayerGetMetadataShim
+#define MLMediaPlayerGetMetadata ::MLSDK_API::MLMediaPlayerGetMetadataShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerSetVideoScalingMode)
-#define MLMediaPlayerSetVideoScalingMode ::LUMIN_MLSDK_API::MLMediaPlayerSetVideoScalingModeShim
+#define MLMediaPlayerSetVideoScalingMode ::MLSDK_API::MLMediaPlayerSetVideoScalingModeShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerSetLooping)
-#define MLMediaPlayerSetLooping ::LUMIN_MLSDK_API::MLMediaPlayerSetLoopingShim
+#define MLMediaPlayerSetLooping ::MLSDK_API::MLMediaPlayerSetLoopingShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerSetVolume)
-#define MLMediaPlayerSetVolume ::LUMIN_MLSDK_API::MLMediaPlayerSetVolumeShim
+#define MLMediaPlayerSetVolume ::MLSDK_API::MLMediaPlayerSetVolumeShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetAudioHandle)
-#define MLMediaPlayerGetAudioHandle ::LUMIN_MLSDK_API::MLMediaPlayerGetAudioHandleShim
+#define MLMediaPlayerGetAudioHandle ::MLSDK_API::MLMediaPlayerGetAudioHandleShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerPollStates)
-#define MLMediaPlayerPollStates ::LUMIN_MLSDK_API::MLMediaPlayerPollStatesShim
+#define MLMediaPlayerPollStates ::MLSDK_API::MLMediaPlayerPollStatesShim
 CREATE_DEPRECATED_MSG_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetDRMInfo, "Replaced by MLMediaPlayerGetTrackDRMInfo.")
-#define MLMediaPlayerGetDRMInfo ::LUMIN_MLSDK_API::MLMediaPlayerGetDRMInfoShim
+#define MLMediaPlayerGetDRMInfo ::MLSDK_API::MLMediaPlayerGetDRMInfoShim
 CREATE_DEPRECATED_MSG_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerPrepareDRM, "Replaced by MLMediaPlayerPrepareTrackDRM.")
-#define MLMediaPlayerPrepareDRM ::LUMIN_MLSDK_API::MLMediaPlayerPrepareDRMShim
+#define MLMediaPlayerPrepareDRM ::MLSDK_API::MLMediaPlayerPrepareDRMShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetTrackDRMInfo)
-#define MLMediaPlayerGetTrackDRMInfo ::LUMIN_MLSDK_API::MLMediaPlayerGetTrackDRMInfoShim
+#define MLMediaPlayerGetTrackDRMInfo ::MLSDK_API::MLMediaPlayerGetTrackDRMInfoShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerPrepareTrackDRM)
-#define MLMediaPlayerPrepareTrackDRM ::LUMIN_MLSDK_API::MLMediaPlayerPrepareTrackDRMShim
+#define MLMediaPlayerPrepareTrackDRM ::MLSDK_API::MLMediaPlayerPrepareTrackDRMShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerReleaseDRM)
-#define MLMediaPlayerReleaseDRM ::LUMIN_MLSDK_API::MLMediaPlayerReleaseDRMShim
+#define MLMediaPlayerReleaseDRM ::MLSDK_API::MLMediaPlayerReleaseDRMShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetDefaultBufferingSettings)
-#define MLMediaPlayerGetDefaultBufferingSettings ::LUMIN_MLSDK_API::MLMediaPlayerGetDefaultBufferingSettingsShim
+#define MLMediaPlayerGetDefaultBufferingSettings ::MLSDK_API::MLMediaPlayerGetDefaultBufferingSettingsShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetBufferingSettings)
-#define MLMediaPlayerGetBufferingSettings ::LUMIN_MLSDK_API::MLMediaPlayerGetBufferingSettingsShim
+#define MLMediaPlayerGetBufferingSettings ::MLSDK_API::MLMediaPlayerGetBufferingSettingsShim
 CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerSetBufferingSettings)
-#define MLMediaPlayerSetBufferingSettings ::LUMIN_MLSDK_API::MLMediaPlayerSetBufferingSettingsShim
-CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerGetTimedTextEx)
-#define MLMediaPlayerGetTimedTextEx ::LUMIN_MLSDK_API::MLMediaPlayerGetTimedTextExShim
-CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerReleaseTimedTextEx)
-#define MLMediaPlayerReleaseTimedTextEx ::LUMIN_MLSDK_API::MLMediaPlayerReleaseTimedTextExShim
-CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaPlayerSetOnMediaTimedTextUpdateCallback)
-#define MLMediaPlayerSetOnMediaTimedTextUpdateCallback ::LUMIN_MLSDK_API::MLMediaPlayerSetOnMediaTimedTextUpdateCallbackShim
+#define MLMediaPlayerSetBufferingSettings ::MLSDK_API::MLMediaPlayerSetBufferingSettingsShim
+CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaStreamSourceCreate)
+#define MLMediaStreamSourceCreate ::MLSDK_API::MLMediaStreamSourceCreateShim
+CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaStreamSourceDestroy)
+#define MLMediaStreamSourceDestroy ::MLSDK_API::MLMediaStreamSourceDestroyShim
+CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaStreamSourceGetBuffer)
+#define MLMediaStreamSourceGetBuffer ::MLSDK_API::MLMediaStreamSourceGetBufferShim
+CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaStreamSourcePushBuffer)
+#define MLMediaStreamSourcePushBuffer ::MLSDK_API::MLMediaStreamSourcePushBufferShim
+CREATE_FUNCTION_SHIM(ml_mediaplayer, MLResult, MLMediaStreamSourcePushEOS)
+#define MLMediaStreamSourcePushEOS ::MLSDK_API::MLMediaStreamSourcePushEOSShim
 
 }
 

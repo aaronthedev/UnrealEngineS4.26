@@ -76,8 +76,7 @@ class SdfAssetPath;
 /// (i.e. UsdGeomGetStageUpAxis()).</b>  This means that the inverse of 
 /// 'camXform' (the VIEW half of the <A HREF="http://www.glprogramming.com/red/chapter03.html#name2">MODELVIEW transform in OpenGL parlance</A>) 
 /// will transform the world such that the camera is at the origin, looking 
-/// down the -Z axis, with +Y as the up axis, and +X pointing to the right.
-/// This describes a __right handed coordinate system__. 
+/// down the -Z axis, with Y as the up axis.
 /// 
 /// \sa \ref UsdGeom_LinAlgBasics
 /// 
@@ -167,7 +166,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDGEOM_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -179,7 +178,7 @@ private:
 
     // override SchemaBase virtuals.
     USDGEOM_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -187,12 +186,11 @@ public:
     // --------------------------------------------------------------------- //
     /// 
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `token projection = "perspective"` |
-    /// | C++ Type | TfToken |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
-    /// | \ref UsdGeomTokens "Allowed Values" | perspective, orthographic |
+    /// \n  C++ Type: TfToken
+    /// \n  Usd Type: SdfValueTypeNames->Token
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: perspective
+    /// \n  \ref UsdGeomTokens "Allowed Values": [perspective, orthographic]
     USDGEOM_API
     UsdAttribute GetProjectionAttr() const;
 
@@ -212,11 +210,10 @@ public:
     /// of a world unit).
     /// Defaults to the standard 35mm spherical projector aperture.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float horizontalAperture = 20.955` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 20.9549999237
     USDGEOM_API
     UsdAttribute GetHorizontalApertureAttr() const;
 
@@ -236,11 +233,10 @@ public:
     /// a world unit).
     /// Defaults to the standard 35mm spherical projector aperture.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float verticalAperture = 15.2908` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 15.2908000946
     USDGEOM_API
     UsdAttribute GetVerticalApertureAttr() const;
 
@@ -259,11 +255,10 @@ public:
     /// Horizontal aperture offset in the same units as
     /// horizontalAperture. Defaults to 0.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float horizontalApertureOffset = 0` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 0.0
     USDGEOM_API
     UsdAttribute GetHorizontalApertureOffsetAttr() const;
 
@@ -282,11 +277,10 @@ public:
     /// Vertical aperture offset in the same units as
     /// verticalAperture. Defaults to 0.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float verticalApertureOffset = 0` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 0.0
     USDGEOM_API
     UsdAttribute GetVerticalApertureOffsetAttr() const;
 
@@ -305,11 +299,10 @@ public:
     /// Perspective focal length in millimeters (or, more general,
     /// tenths of a world unit).
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float focalLength = 50` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 50.0
     USDGEOM_API
     UsdAttribute GetFocalLengthAttr() const;
 
@@ -328,11 +321,10 @@ public:
     /// Near and far clipping distances in centimeters (or, more
     /// general, world units).
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float2 clippingRange = (1, 1000000)` |
-    /// | C++ Type | GfVec2f |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float2 |
+    /// \n  C++ Type: GfVec2f
+    /// \n  Usd Type: SdfValueTypeNames->Float2
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: (1, 1000000)
     USDGEOM_API
     UsdAttribute GetClippingRangeAttr() const;
 
@@ -353,11 +345,10 @@ public:
     /// (x,y,z) with a * x + b * y + c * z + d * 1 < 0 where (x,y,z)
     /// are the coordinates in the camera's space.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float4[] clippingPlanes = []` |
-    /// | C++ Type | VtArray<GfVec4f> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float4Array |
+    /// \n  C++ Type: VtArray<GfVec4f>
+    /// \n  Usd Type: SdfValueTypeNames->Float4Array
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: []
     USDGEOM_API
     UsdAttribute GetClippingPlanesAttr() const;
 
@@ -375,11 +366,10 @@ public:
     // --------------------------------------------------------------------- //
     /// Lens aperture. Defaults to 0.0, which turns off focusing.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float fStop = 0` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 0.0
     USDGEOM_API
     UsdAttribute GetFStopAttr() const;
 
@@ -398,11 +388,10 @@ public:
     /// Distance from the camera to the focus plane in centimeters (or
     /// more general, world units).
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float focusDistance = 0` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 0.0
     USDGEOM_API
     UsdAttribute GetFocusDistanceAttr() const;
 
@@ -421,13 +410,11 @@ public:
     /// If different from mono, the camera is intended to be the left
     /// or right camera of a stereo setup.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform token stereoRole = "mono"` |
-    /// | C++ Type | TfToken |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
-    /// | \ref UsdGeomTokens "Allowed Values" | mono, left, right |
+    /// \n  C++ Type: TfToken
+    /// \n  Usd Type: SdfValueTypeNames->Token
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: mono
+    /// \n  \ref UsdGeomTokens "Allowed Values": [mono, left, right]
     USDGEOM_API
     UsdAttribute GetStereoRoleAttr() const;
 
@@ -447,11 +434,10 @@ public:
     /// value indicates that the shutter opens before the current
     /// frame time). Used for motion blur.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `double shutter:open = 0` |
-    /// | C++ Type | double |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Double |
+    /// \n  C++ Type: double
+    /// \n  Usd Type: SdfValueTypeNames->Double
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 0.0
     USDGEOM_API
     UsdAttribute GetShutterOpenAttr() const;
 
@@ -472,11 +458,10 @@ public:
     /// should be authored, otherwise there is no exposure and a
     /// renderer should produce a black image.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `double shutter:close = 0` |
-    /// | C++ Type | double |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Double |
+    /// \n  C++ Type: double
+    /// \n  Usd Type: SdfValueTypeNames->Double
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 0.0
     USDGEOM_API
     UsdAttribute GetShutterCloseAttr() const;
 

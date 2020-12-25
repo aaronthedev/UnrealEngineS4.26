@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Framework/Commands/Commands.h"
@@ -36,7 +36,6 @@ class FFractureEditorCommands : public TCommands<FFractureEditorCommands>
 		TSharedPtr< FUICommandInfo > Merge;
 		TSharedPtr< FUICommandInfo > MoveUp;
 		TSharedPtr< FUICommandInfo > GenerateAsset;
-		TSharedPtr< FUICommandInfo > ResetAsset;
 
 		// Fracture Commands
 		TSharedPtr< FUICommandInfo > Uniform;

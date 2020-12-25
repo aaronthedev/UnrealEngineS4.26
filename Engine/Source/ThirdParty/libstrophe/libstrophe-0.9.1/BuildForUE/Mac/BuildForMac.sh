@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Copyright Epic Games, Inc. All Rights Reserved.
+# Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 SCRIPT_DIR=$(cd $(dirname $0) && pwd)
 

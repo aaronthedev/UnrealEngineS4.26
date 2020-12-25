@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	RHIStaticStates.h: RHI static state template definition.
@@ -57,13 +57,49 @@ template<typename InitializerType,typename RHIRefType,typename RHIParamRefType>
 class TStaticStateRHI
 {
 public:
+
+	static void GetRHI_WithNoReturnValue()
+	{
+		GetRHI();
+	}
 	static RHIParamRefType GetRHI()
 	{
-		checkSlow(StaticResource.StateRHI);
-		return StaticResource.StateRHI;
+		// This is super-duper nasty. We rely upon the fact that all compilers will assign uninitialized static, POD data (like StaticResource) to a zero seg and not do any construction on it whatsoever.
+		static FStaticStateResource* StaticResource; // Must be left uninitialized!
+
+		if (!StaticResource)
+		{
+			if (GIsRHIInitialized && GRHISupportsRHIThread)
+			{
+				FStaticStateResource* NewStaticResource = new FStaticStateResource();
+				FStaticStateResource* ValueWas = (FStaticStateResource*)FPlatformAtomics::InterlockedCompareExchangePointer((void**)&StaticResource, NewStaticResource, nullptr);
+				if (ValueWas)
+				{
+					// we made a redundant one...leak it
+				}
+			}
+			else
+			{
+				if (!IsInRenderingThread())
+				{
+					check(IsInParallelRenderingThread());
+					{
+						FScopedEvent Event;
+						TGraphTask<FInitStaticResourceRenderThreadTask>::CreateTask().ConstructAndDispatchWhenReady(&GetRHI_WithNoReturnValue, Event);
+					}
+				}
+				else
+				{
+					StaticResource = new FStaticStateResource();
+				}
+			}
+			CA_ASSUME(StaticResource);
+		}
+		return StaticResource->StateRHI;
 	};
 
 private:
+
 	/** A resource which manages the RHI resource. */
 	class FStaticStateResource : public FRenderResource
 	{
@@ -77,7 +113,8 @@ private:
 			}
 			else
 			{
-				BeginInitResource(this);
+				InitResource();
+
 			}
 		}
 
@@ -99,12 +136,7 @@ private:
 			ReleaseResource();
 		}
 	};
-
-	static FStaticStateResource StaticResource;
 };
-
-template<typename InitializerType, typename RHIRefType, typename RHIParamRefType>
-typename TStaticStateRHI<InitializerType, RHIRefType, RHIParamRefType>::FStaticStateResource TStaticStateRHI<InitializerType, RHIRefType, RHIParamRefType>::StaticResource = TStaticStateRHI<InitializerType, RHIRefType, RHIParamRefType>::FStaticStateResource();
 
 /**
  * A static RHI sampler state resource.
@@ -326,8 +358,7 @@ template<
 	EBlendFactor    RT7ColorDestBlend = BF_Zero,
 	EBlendOperation RT7AlphaBlendOp = BO_Add,
 	EBlendFactor    RT7AlphaSrcBlend = BF_One,
-	EBlendFactor    RT7AlphaDestBlend = BF_Zero,
-	bool			bUseAlphaToCoverage = false
+	EBlendFactor    RT7AlphaDestBlend = BF_Zero
 	>
 class TStaticBlendState : public TStaticStateRHI<
 	TStaticBlendState<
@@ -338,8 +369,7 @@ class TStaticBlendState : public TStaticStateRHI<
 		RT4ColorWriteMask,RT4ColorBlendOp,RT4ColorSrcBlend,RT4ColorDestBlend,RT4AlphaBlendOp,RT4AlphaSrcBlend,RT4AlphaDestBlend,
 		RT5ColorWriteMask,RT5ColorBlendOp,RT5ColorSrcBlend,RT5ColorDestBlend,RT5AlphaBlendOp,RT5AlphaSrcBlend,RT5AlphaDestBlend,
 		RT6ColorWriteMask,RT6ColorBlendOp,RT6ColorSrcBlend,RT6ColorDestBlend,RT6AlphaBlendOp,RT6AlphaSrcBlend,RT6AlphaDestBlend,
-		RT7ColorWriteMask,RT7ColorBlendOp,RT7ColorSrcBlend,RT7ColorDestBlend,RT7AlphaBlendOp,RT7AlphaSrcBlend,RT7AlphaDestBlend,
-		bUseAlphaToCoverage
+		RT7ColorWriteMask,RT7ColorBlendOp,RT7ColorSrcBlend,RT7ColorDestBlend,RT7AlphaBlendOp,RT7AlphaSrcBlend,RT7AlphaDestBlend
 		>,
 	FBlendStateRHIRef,
 	FRHIBlendState*
@@ -358,7 +388,7 @@ public:
 		RenderTargetBlendStates[6] = FBlendStateInitializerRHI::FRenderTarget(RT6ColorBlendOp,RT6ColorSrcBlend,RT6ColorDestBlend,RT6AlphaBlendOp,RT6AlphaSrcBlend,RT6AlphaDestBlend,RT6ColorWriteMask);
 		RenderTargetBlendStates[7] = FBlendStateInitializerRHI::FRenderTarget(RT7ColorBlendOp,RT7ColorSrcBlend,RT7ColorDestBlend,RT7AlphaBlendOp,RT7AlphaSrcBlend,RT7AlphaDestBlend,RT7ColorWriteMask);
 
-		return RHICreateBlendState(FBlendStateInitializerRHI(RenderTargetBlendStates, bUseAlphaToCoverage));
+		return RHICreateBlendState(FBlendStateInitializerRHI(RenderTargetBlendStates));
 	}
 };
 
@@ -374,8 +404,7 @@ template<
 	EColorWriteMask RT4ColorWriteMask = CW_RGBA,
 	EColorWriteMask RT5ColorWriteMask = CW_RGBA,
 	EColorWriteMask RT6ColorWriteMask = CW_RGBA,
-	EColorWriteMask RT7ColorWriteMask = CW_RGBA,
-	bool			bUseAlphaToCoverage = false
+	EColorWriteMask RT7ColorWriteMask = CW_RGBA
 	>
 class TStaticBlendStateWriteMask : public TStaticBlendState<
 	RT0ColorWriteMask,BO_Add,BF_One,BF_Zero,BO_Add,BF_One,BF_Zero,
@@ -385,8 +414,7 @@ class TStaticBlendStateWriteMask : public TStaticBlendState<
 	RT4ColorWriteMask,BO_Add,BF_One,BF_Zero,BO_Add,BF_One,BF_Zero,
 	RT5ColorWriteMask,BO_Add,BF_One,BF_Zero,BO_Add,BF_One,BF_Zero,
 	RT6ColorWriteMask,BO_Add,BF_One,BF_Zero,BO_Add,BF_One,BF_Zero,
-	RT7ColorWriteMask,BO_Add,BF_One,BF_Zero,BO_Add,BF_One,BF_Zero,
-	bUseAlphaToCoverage
+	RT7ColorWriteMask,BO_Add,BF_One,BF_Zero,BO_Add,BF_One,BF_Zero
 	>
 {
 public:
@@ -400,8 +428,7 @@ public:
 			RT4ColorWriteMask,BO_Add,BF_One,BF_Zero,BO_Add,BF_One,BF_Zero,
 			RT5ColorWriteMask,BO_Add,BF_One,BF_Zero,BO_Add,BF_One,BF_Zero,
 			RT6ColorWriteMask,BO_Add,BF_One,BF_Zero,BO_Add,BF_One,BF_Zero,
-			RT7ColorWriteMask,BO_Add,BF_One,BF_Zero,BO_Add,BF_One,BF_Zero,
-			bUseAlphaToCoverage
+			RT7ColorWriteMask,BO_Add,BF_One,BF_Zero,BO_Add,BF_One,BF_Zero
 			>
 			::CreateRHI();
 	}

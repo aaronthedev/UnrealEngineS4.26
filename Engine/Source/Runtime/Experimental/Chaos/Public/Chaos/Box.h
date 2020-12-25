@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Templates/UnrealTemplate.h"
@@ -7,29 +7,21 @@
 #include "Chaos/AABB.h"
 #include "Chaos/Transform.h"
 #include "ChaosArchive.h"
-#include "UObject/ExternalPhysicsCustomObjectVersion.h"
-#include "UObject/ReleaseObjectVersion.h"
 
 namespace Chaos
 {
-	/*
-	 * Axis-aligned box collision geometry. Consists of a core AABB with a margin. The margin should be considered physically part of the
-	 * box - it pads the faces and rounds the corners.
-	 */
 	template<class T, int d>
-	class TBox final : public FImplicitObject
+	class TBox final : public TImplicitObject<T, d>
 	{
 	public:
-		using FImplicitObject::SignedDistance;
-		using FImplicitObject::GetTypeName;
-
-		FORCEINLINE static constexpr EImplicitObjectType StaticType() { return ImplicitObjectType::Box; }
+		using TImplicitObject<T, d>::SignedDistance;
+		using TImplicitObject<T, d>::GetTypeName;
 
 		// This should never be used outside of creating a default for arrays
 		FORCEINLINE TBox()
-		    : FImplicitObject(EImplicitObject::FiniteConvex, ImplicitObjectType::Box){};
+		    : TImplicitObject<T, d>(EImplicitObject::FiniteConvex, ImplicitObjectType::Box){};
 		FORCEINLINE TBox(const TVector<T, d>& Min, const TVector<T, d>& Max)
-		    : FImplicitObject(EImplicitObject::FiniteConvex, ImplicitObjectType::Box)
+		    : TImplicitObject<T, d>(EImplicitObject::FiniteConvex, ImplicitObjectType::Box)
 			, AABB(Min, Max)
 		{
 			//todo: turn back on
@@ -39,56 +31,32 @@ namespace Chaos
 			}*/
 		}
 
-		/**
-		 * Create a box with the specified size and margin (Min and Max is the desired size including the margin). 
-		 * The core geometry will be shrunk by the margin.
-		 * E.g.,
-		 * 	TBox<T, d>(FVec3(-0.5f), FVec3(0.5f), 0.1f);
-		 * will be a box with a bounds of size 1.0f on each axis, but the geometry is actually an AABB
-		 * of size 0.8 with a margin of 0.1 (and rounded corners).
-		 * 
-		 * NOTE: If the margin is larger than the smallest box dimension, the box size will be increased to support the margin.
-		 */ 
-		FORCEINLINE TBox(const TVector<T, d>& InMin, const TVector<T, d>& InMax, FReal InMargin)
-			: FImplicitObject(EImplicitObject::FiniteConvex, ImplicitObjectType::Box)
-		{
-			// Remove Margin from Min and Max
-			FVec3 Min = InMin + FVec3(InMargin);
-			FVec3 Max = InMax - FVec3(InMargin);
-
-			// If we have a negative extent in any direction, fix it
-			const FReal MinDim = KINDA_SMALL_NUMBER;
-			const FVec3 NegExtents = 0.5f * TVector<T, d>::Max(Min - Max + MinDim, FVec3(0));	// +ve for any extents less than MinDim including negative
-			Min -= NegExtents;
-			Max += NegExtents;
-
-			AABB = TAABB<T, d>(Min, Max);
-			SetMargin(InMargin);
-		}
-
 		FORCEINLINE TBox(const TBox<T, d>& Other)
-		    : FImplicitObject(EImplicitObject::FiniteConvex, ImplicitObjectType::Box)
+		    : TImplicitObject<T, d>(EImplicitObject::FiniteConvex, ImplicitObjectType::Box)
 			, AABB(Other.AABB)
 		{
-			SetMargin(Other.GetMargin());
+		}
+
+		FORCEINLINE TBox(const TAABB<T, d>& AABB)
+		    : TImplicitObject<T, d>(EImplicitObject::FiniteConvex, ImplicitObjectType::Box)
+			, AABB(AABB)
+		{
 		}
 
 		FORCEINLINE TBox(TBox<T, d>&& Other)
-		    : FImplicitObject(EImplicitObject::FiniteConvex, ImplicitObjectType::Box)
+		    : TImplicitObject<T, d>(EImplicitObject::FiniteConvex, ImplicitObjectType::Box)
 		    , AABB(MoveTemp(Other.AABB))
 		{
-			SetMargin(Other.GetMargin());
 		}
 
 		FORCEINLINE TBox<T, d>& operator=(const TBox<T, d>& Other)
 		{
 			this->Type = Other.Type;
 			this->bIsConvex = Other.bIsConvex;
-			this->bDoCollide = Other.bDoCollide;
+			this->bIgnoreAnalyticCollisions = Other.bIgnoreAnalyticCollisions;
 			this->bHasBoundingBox = Other.bHasBoundingBox;
 
 			AABB = Other.AABB;
-			SetMargin(Other.GetMargin());
 			return *this;
 		}
 
@@ -96,27 +64,18 @@ namespace Chaos
 		{
 			this->Type = Other.Type;
 			this->bIsConvex = Other.bIsConvex;
-			this->bDoCollide = Other.bDoCollide;
+			this->bIgnoreAnalyticCollisions = Other.bIgnoreAnalyticCollisions;
 			this->bHasBoundingBox = Other.bHasBoundingBox;
 
 			AABB = MoveTemp(Other.AABB);
-			SetMargin(Other.GetMargin());
 			return *this;
 		}
 
 		virtual ~TBox() {}
 
-		virtual TUniquePtr<FImplicitObject> Copy() const override
+		virtual TUniquePtr<TImplicitObject<T, d>> Copy() const override
 		{
-			return TUniquePtr<FImplicitObject>(new TBox<T,d>(*this));
-		}
-
-		/**
-		 * The core shape use for low-level collision detection. This is the box reduce by the margin size.
-		 */
-		const TAABB<T, d>& GetCore() const
-		{
-			return AABB;
+			return TUniquePtr<TImplicitObject<T, d>>(new TBox<T,d>(*this));
 		}
 
 		/**
@@ -124,7 +83,7 @@ namespace Chaos
 		 */
 		TArray<TVector<T, d>> ComputeLocalSamplePoints() const
 		{
-			return BoundingBox().ComputeLocalSamplePoints();
+			return AABB.ComputeLocalSamplePoints();
 		}
 
 		/**
@@ -132,67 +91,64 @@ namespace Chaos
 		 */
 		TArray<TVector<T, d>> ComputeSamplePoints() const
 		{
-			return BoundingBox().ComputeSamplePoints();
+			return AABB.ComputeSamplePoints();
+		}
+
+		template<class TTRANSFORM>
+		TBox<T, d> TransformedBox(const TTRANSFORM& SpaceTransform) const
+		{
+			return TBox<T, d>(AABB.TransformedAABB(SpaceTransform));
+		}
+
+		FORCEINLINE bool Intersects(const TBox<T, d>& Other) const
+		{
+			return AABB.Intersects(Other.AABB);
+		}
+
+		TBox<T, d> GetIntersection(const TBox<T, d>& Other) const
+		{
+			return TBox<T, d>(AABB.GetIntersection(Other.AABB));
 		}
 
 		FORCEINLINE bool Contains(const TVector<T, d>& Point) const
 		{
-			return BoundingBox().Contains(Point);
+			return AABB.Contains(Point);
 		}
 
 		FORCEINLINE bool Contains(const TVector<T, d>& Point, const T Tolerance) const
 		{
-			return BoundingBox().Contains(Point, Tolerance);
+			return AABB.Contains(Point, Tolerance);
 		}
 
-		// Minimum extents, including margin
-		FORCEINLINE const TVector<T, d> Min() const
+		FORCEINLINE static ImplicitObjectType GetType() { return ImplicitObjectType::Box; }
+
+		const TBox<T, d>& BoundingBox() const { return *this; }
+
+		virtual T PhiWithNormal(const TVector<T, d>& x, TVector<T, d>& Normal) const override
 		{
-			return AABB.Min() - TVector<T, d>(GetMargin());
-		}
-		
-		// Maximum extents, including margin
-		FORCEINLINE const TVector<T, d> Max() const
-		{ 
-			return AABB.Max() + TVector<T, d>(GetMargin());
+			return AABB.PhiWithNormal(x, Normal);
 		}
 
-		// Extents, including margin
-		FORCEINLINE const TAABB<T, d> BoundingBox() const
-		{
-			return TAABB<T, d>(Min(), Max());
-		}
 
-		// Return the distance and normal is the closest point on the surface to Pos. Negative for penetration.
-		virtual T PhiWithNormal(const TVector<T, d>& Pos, TVector<T, d>& Normal) const override
+		static FORCEINLINE bool RaycastFast(const TVector<T,d>& Min, const TVector<T,d>& Max, const TVector<T, d>& StartPoint, const TVector<T, d>& Dir, const TVector<T, d>& InvDir, const bool* bParallel, const T Length, const T InvLength, T& OutTime, TVector<T, d>& OutPosition)
 		{
-			return AABB.PhiWithNormal(Pos, Normal) - GetMargin();
-		}
-
-		static FORCEINLINE bool RaycastFast(const TVector<T,d>& InMin, const TVector<T,d>& InMax, const TVector<T, d>& StartPoint, const TVector<T, d>& Dir, const TVector<T, d>& InvDir, const bool* bParallel, const T Length, const T InvLength, T& OutTime, TVector<T, d>& OutPosition)
-		{
-			return TAABB<T, d>(InMin, InMax).RaycastFast(StartPoint, Dir, InvDir, bParallel, Length, InvLength, OutTime, OutPosition);
+			TAABB<T, d> AABB(Min, Max);
+			return AABB.RaycastFast(StartPoint, Dir, InvDir, bParallel, Length, InvLength, OutTime, OutPosition);
 		}
 
 		virtual bool CHAOS_API Raycast(const TVector<T, d>& StartPoint, const TVector<T, d>& Dir, const T Length, const T Thickness, T& OutTime, TVector<T, d>& OutPosition, TVector<T, d>& OutNormal, int32& OutFaceIndex) const override
 		{
-			if (AABB.Raycast(StartPoint, Dir, Length, Thickness + GetMargin(), OutTime, OutPosition, OutNormal, OutFaceIndex))
-			{
-				// The AABB Raycast treats thickness as the ray thickness, so correct the position for the box margin
-				OutPosition += GetMargin() * OutNormal;
-				return true;
-			}
-			return false;
+			return AABB.Raycast(StartPoint, Dir, Length, Thickness, OutTime, OutPosition, OutNormal, OutFaceIndex);
 		}
 
 		TVector<T, d> FindClosestPoint(const TVector<T, d>& StartPoint, const T Thickness = (T)0) const
 		{
-			return AABB.FindClosestPoint(StartPoint, Thickness + GetMargin());
+			return AABB.FindClosestPoint(StartPoint, Thickness);
 		}
 
 		virtual Pair<TVector<T, d>, bool> FindClosestIntersectionImp(const TVector<T, d>& StartPoint, const TVector<T, d>& EndPoint, const T Thickness) const override
 		{
-			return AABB.FindClosestIntersectionImp(StartPoint, EndPoint, Thickness + GetMargin());
+			return AABB.FindClosestIntersectionImp(StartPoint, EndPoint, Thickness);
 		}
 
 		virtual TVector<T, d> FindGeometryOpposingNormal(const TVector<T, d>& DenormDir, int32 FaceIndex, const TVector<T, d>& OriginalNormal) const override
@@ -200,83 +156,60 @@ namespace Chaos
 			return AABB.FindGeometryOpposingNormal(DenormDir, FaceIndex, OriginalNormal);
 		}
 
-		// Get the index of the plane that most opposes the normal
-		int32 GetMostOpposingPlane(const FVec3& Normal) const
+		virtual TVector<T, d> Support(const TVector<T, d>& Direction, const T Thickness) const override
 		{
-			int32 AxisIndex = FVec3(Normal.GetAbs()).MaxAxis();
-			if (Normal[AxisIndex] > 0.0f)
-			{
-				AxisIndex += 3;
-			}
-			return AxisIndex;
+			return AABB.Support(Direction, Thickness);
 		}
 
-		// Get the index of the plane that most opposes the normal (VertexIndex is ignored)
-		int32 GetMostOpposingPlaneWithVertex(int32 VertexIndex, const FVec3& Normal) const
+		FORCEINLINE void GrowToInclude(const TVector<T, d>& V)
 		{
-			return GetMostOpposingPlane(Normal);
+			AABB.GrowToInclude(V);
 		}
 
-		// Get the set of planes that pass through the specified vertex
-		TArrayView<const int32> GetVertexPlanes(int32 VertexIndex) const
+		FORCEINLINE void GrowToInclude(const TBox<T, d>& Other)
 		{
-			return MakeArrayView(SVertexPlanes[VertexIndex]);
+			AABB.GrowToInclude(Other.AABB);
 		}
 
-		// Get the list of vertices that form the boundary of the specified face
-		TArrayView<const int32> GetPlaneVertices(int32 FaceIndex) const
+		FORCEINLINE void ShrinkToInclude(const TBox<T, d>& Other)
 		{
-			return MakeArrayView(SPlaneVertices[FaceIndex]);
+			AABB.ShrinkToInclude(Other.AABB);
 		}
 
-		int32 NumPlanes() const { return 6; }
-
-		int32 NumVertices() const { return 8; }
-
-		// Get the plane at the specified index (e.g., indices from GetVertexPlanes)
-		const TPlaneConcrete<FReal, 3> GetPlane(int32 FaceIndex) const
+		FORCEINLINE void Thicken(const float Thickness)
 		{
-			const FVec3& PlaneN = SNormals[FaceIndex];
-			const FVec3 PlaneX = AABB.Center() + 0.5f * (PlaneN * AABB.Extents());
-			return TPlaneConcrete<FReal, 3>(PlaneX, PlaneN);
+			AABB.Thicken(Thickness);
 		}
 
-		// Get the vertex at the specified index (e.g., indices from GetPlaneVertices)
-		const FVec3 GetVertex(int32 VertexIndex) const
+		//Grows (or shrinks) the box by this vector symmetrically - Changed name because previous Thicken had different semantics which caused several bugs
+		FORCEINLINE void ThickenSymmetrically(const TVector<T,d>& Thickness)
 		{
-			const FVec3& Vertex = SVertices[VertexIndex];
-			return AABB.Center() + 0.5f * (Vertex * AABB.Extents());
+			AABB.ThickenSymmetrically(Thickness);
 		}
 
-		// Returns a position on the outer shape including the margin
-		FORCEINLINE TVector<T, d> Support(const TVector<T, d>& Direction, const T Thickness) const
+		FORCEINLINE void Scale(const TVector<T, d>& InScale)
 		{
-			return AABB.Support(Direction, GetMargin() + Thickness);
-		}
-
-		// Returns a position on the core shape excluding the margin
-		FORCEINLINE TVector<T, d> SupportCore(const TVector<T, d>& Direction) const
-		{
-			return AABB.SupportCore(Direction);
+			AABB.Scale(InScale);
 		}
 
 		FORCEINLINE TVector<T, d> Center() const { return AABB.Center(); }
 		FORCEINLINE TVector<T, d> GetCenter() const { return AABB.GetCenter(); }
 		FORCEINLINE TVector<T, d> GetCenterOfMass() const { return AABB.GetCenterOfMass(); }
-		FORCEINLINE TVector<T, d> Extents() const { return AABB.Extents() + TVector<T, d>(2.0f * GetMargin()); }
+		FORCEINLINE TVector<T, d> Extents() const { return AABB.Extents(); }
 
 		int LargestAxis() const
 		{
 			return AABB.LargestAxis();
 		}
 
-		// Area of the box including margin, but treating corners as square rather than rounded
-		FORCEINLINE T GetArea() const { return BoundingBox().GetArea(); }
+		FORCEINLINE const TVector<T, d>& Min() const { return AABB.Min(); }
+		FORCEINLINE const TVector<T, d>& Max() const { return AABB.Max(); }
 
-		// Volume of the box including margin, but treating corners as square rather than rounded
-		FORCEINLINE T GetVolume() const { return BoundingBox().GetVolume(); }
+		T GetArea() const { return AABB.GetArea(); }
 
-		FORCEINLINE PMatrix<T, d, d> GetInertiaTensor(const T Mass) const { return GetInertiaTensor(Mass, Extents()); }
+		T GetVolume() const { return AABB.GetVolume(); }
+
+		PMatrix<T, d, d> GetInertiaTensor(const T Mass) const { return GetInertiaTensor(Mass, Extents()); }
 		FORCEINLINE static PMatrix<T, 3, 3> GetInertiaTensor(const T Mass, const TVector<T, 3>& Dim)
 		{
 			// https://www.wolframalpha.com/input/?i=cuboid
@@ -290,79 +223,15 @@ namespace Chaos
 
 		FORCEINLINE static TRotation<T, d> GetRotationOfMass()
 		{
-			return TAABB<T, d>::GetRotationOfMass();
+			return TRotation<T, d>::FromElements(TVector<T, d>(0), 1);
 		}
 
-		virtual FString ToString() const { return FString::Printf(TEXT("TAABB Min:%s, Max:%s, Margin:%f"), *Min().ToString(), *Max().ToString(), GetMargin()); }
+		virtual FString ToString() const { return FString::Printf(TEXT("TBox Min:%s, Max:%s"), *Min().ToString(), *Max().ToString()); }
 
 		FORCEINLINE void SerializeImp(FArchive& Ar)
 		{
-			FImplicitObject::SerializeImp(Ar);
+			TImplicitObject<T, d>::SerializeImp(Ar);
 			AABB.Serialize(Ar);
-
-			Ar.UsingCustomVersion(FReleaseObjectVersion::GUID);
-			if (Ar.CustomVer(FReleaseObjectVersion::GUID) >= FReleaseObjectVersion::MarginAddedToConvexAndBox)
-			{
-				Ar << FImplicitObject::Margin;
-			}
-		}
-
-		// Some older classes used to use a TBox as a bounding box, but now use a TAABB. However we still need
-		// to be able to read the older files, so those older classes should use TBox::SerializeAsAABB and not TAABB::Serialize
-		static void SerializeAsAABB(FArchive& Ar, TAABB<T,d>& AABB)
-		{
-			Ar.UsingCustomVersion(FExternalPhysicsCustomObjectVersion::GUID);
-			if (Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) < FExternalPhysicsCustomObjectVersion::TBoxReplacedWithTAABB)
-			{
-				TBox<T, d> Tmp;
-				Ar << Tmp;
-				AABB = Tmp.AABB;
-			}
-			else
-			{
-				AABB.Serialize(Ar);
-			}
-		}
-
-		// See comments on SerializeAsAABB
-		static void SerializeAsAABBs(FArchive& Ar, TArray<TAABB<T, d>>& AABBs)
-		{
-			Ar.UsingCustomVersion(FExternalPhysicsCustomObjectVersion::GUID);
-			if (Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) < FExternalPhysicsCustomObjectVersion::TBoxReplacedWithTAABB)
-			{
-				TArray<TBox<T, d>> Tmp;
-				Ar << Tmp;
-				AABBs.Reserve(Tmp.Num());
-				for (const TBox<T, d>& Box : Tmp)
-				{
-					AABBs.Add(Box.AABB);
-				}
-			}
-			else
-			{
-				Ar << AABBs;
-			}
-		}
-
-		// See comments on SerializeAsAABB
-		template <typename Key>
-		static void SerializeAsAABBs(FArchive& Ar, TMap<Key, TAABB<T, d>>& AABBs)
-		{
-			Ar.UsingCustomVersion(FExternalPhysicsCustomObjectVersion::GUID);
-			if (Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) < FExternalPhysicsCustomObjectVersion::TBoxReplacedWithTAABB)
-			{
-				TMap<Key,TBox<T, d>> Tmp;
-				Ar << Tmp;
-
-				for (const auto& Itr : Tmp)
-				{
-					AABBs.Add(Itr.Key, Itr.Value.AABB);
-				}
-			}
-			else
-			{
-				Ar << AABBs;
-			}
 		}
 
 		virtual void Serialize(FChaosArchive& Ar) override
@@ -373,20 +242,15 @@ namespace Chaos
 
 		virtual void Serialize(FArchive& Ar) override { SerializeImp(Ar); }
 
+		static TBox<T, d> EmptyBox() { return TBox<T, d>(TVector<T, d>(TNumericLimits<T>::Max()), TVector<T, d>(-TNumericLimits<T>::Max())); }
+		static TBox<T, d> ZeroBox() { return TBox<T, d>(TVector<T, d>((T)0), TVector<T, d>((T)0)); }
+
 		virtual uint32 GetTypeHash() const override 
 		{
 			return AABB.GetTypeHash();
 		}
 
-		//const TAABB<T, d>& GetAABB() const { return AABB; }
-
 	private:
 		TAABB<T, d> AABB;
-
-		// Structure data shared by all boxes and used for manifold creation
-		static TArray<TArray<int32>> SVertexPlanes;
-		static TArray<TArray<int32>> SPlaneVertices;
-		static TArray<FVec3> SNormals;
-		static TArray<FVec3> SVertices;
 	};
 }

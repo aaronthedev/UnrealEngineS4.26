@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "VorbisAudioInfo.h"
@@ -25,18 +25,11 @@
 #endif
 
 // Non-windows platform don't load Dlls
-#if !WITH_OGGVORBIS_DLL
+#if !PLATFORM_WINDOWS && !PLATFORM_HOLOLENS
 static FThreadSafeBool bDllLoaded = true;
 #else
 static FThreadSafeBool bDllLoaded;
 #endif
-
-static int32 VorbisReadFailiureTimeoutCVar = 1;
-FAutoConsoleVariableRef CVarVorbisReadFailiureTimeout(
-	TEXT("au.vorbis.ReadFailiureTimeout"),
-	VorbisReadFailiureTimeoutCVar,
-	TEXT("When set to 1, we bail on decoding Ogg Vorbis sounds if we were not able to successfully decode them after several attempts.\n"),
-	ECVF_Default);
 
 /**
  * Channel order expected for a multi-channel ogg vorbis file.
@@ -95,7 +88,6 @@ FVorbisAudioInfo::FVorbisAudioInfo()
 	, SrcBufferDataSize(0)
 	, BufferOffset(0)
 	, CurrentBufferChunkOffset(0)
-	, TimesLoopedWithoutDecompressedAudio(0)
 	, CurrentStreamingChunkData(nullptr)
 	, CurrentStreamingChunkIndex(INDEX_NONE)
 	, NextStreamingChunkIndex(0)
@@ -584,23 +576,19 @@ const uint8* FVorbisAudioInfo::GetLoadedChunk(USoundWave* InSoundWave, uint32 Ch
 {
 	if (!InSoundWave || ChunkIndex >= InSoundWave->GetNumChunks())
 	{
-		if(InSoundWave)
-		{
-			UE_LOG(LogAudio, Verbose, TEXT("Error calling GetLoadedChunk on wave with %d chunks. ChunkIndex: %d. Name: %s"), InSoundWave->GetNumChunks(), ChunkIndex, *InSoundWave->GetFullName());
-		}
-		
+		UE_LOG(LogAudio, Error, TEXT("Error calling GetLoadedChunk for ChunkIndex %d!"), ChunkIndex);
 		OutChunkSize = 0;
 		return nullptr;
 	}
 	else if (ChunkIndex == 0)
 	{
-		TArrayView<const uint8> ZerothChunk = InSoundWave->GetZerothChunk(true);
+		TArrayView<const uint8> ZerothChunk = InSoundWave->GetZerothChunk();
 		OutChunkSize = ZerothChunk.Num();
 		return ZerothChunk.GetData();
 	}
 	else
 	{
-		CurCompressedChunkHandle = IStreamingManager::Get().GetAudioStreamingManager().GetLoadedChunk(InSoundWave, ChunkIndex, false, true);
+		CurCompressedChunkHandle = IStreamingManager::Get().GetAudioStreamingManager().GetLoadedChunk(InSoundWave, ChunkIndex);
 		OutChunkSize = CurCompressedChunkHandle.Num();
 		return CurCompressedChunkHandle.GetData();
 	}
@@ -652,26 +640,20 @@ bool FVorbisAudioInfo::StreamCompressedData(uint8* InDestination, bool bLooping,
 
 			// We've reached the end
 			bLooped = true;
-			TimesLoopedWithoutDecompressedAudio++;
 
 			// Clean up decoder state:
 			BufferOffset = 0;
 			ov_clear(&VFWrapper->vf);
 			FMemory::Memzero(&VFWrapper->vf, sizeof(OggVorbis_File));
 
-			constexpr int32 NumReadFailiuresUntilTimeout = 64;
-			const bool bDidTimeoutOnDecompressionFailiures = (VorbisReadFailiureTimeoutCVar > 0) && (TimesLoopedWithoutDecompressedAudio >= NumReadFailiuresUntilTimeout);
-
-			UE_CLOG(bDidTimeoutOnDecompressionFailiures, LogAudio, Error, TEXT("Timed out trying to decompress a looping sound after %d attempts; aborting."), VorbisReadFailiureTimeoutCVar);
-
 			// If we're looping, then we need to make sure we wrap the stream chunks back to 0
-			if (bLooping && !bDidTimeoutOnDecompressionFailiures)
+			if (bLooping)
 			{
 				NextStreamingChunkIndex = 0;
 			}
 			else
 			{
-				// Here we clear out the remainder of the buffer and bail.
+				// Need to clear out the remainder of the buffer
 				FMemory::Memzero(InDestination, BufferSize);
 				BytesActuallyRead = BufferSize;
 				break;
@@ -693,10 +675,6 @@ bool FVorbisAudioInfo::StreamCompressedData(uint8* InDestination, bool bLooping,
 			// else we start over to get the samples from the start of the compressed audio data
 			continue;
 		}
-		else
-		{
-			TimesLoopedWithoutDecompressedAudio = 0;
-		}
 
 		InDestination += BytesActuallyRead;
 		BufferSize -= BytesActuallyRead;
@@ -711,7 +689,7 @@ void LoadVorbisLibraries()
 	if (!bIsInitialized)
 	{
 		bIsInitialized = true;
-#if WITH_OGGVORBIS_DLL && WITH_OGGVORBIS
+#if (PLATFORM_WINDOWS || PLATFORM_HOLOLENS) && WITH_OGGVORBIS
 		//@todo if ogg is every ported to another platform, then use the platform abstraction to load these DLLs
 		// Load the Ogg dlls
 #  if _MSC_VER >= 1900
@@ -768,7 +746,7 @@ void LoadVorbisLibraries()
 		}
 #elif WITH_OGGVORBIS
 		bDllLoaded = true;
-#endif	//WITH_OGGVORBIS_DLL
+#endif	//(PLATFORM_WINDOWS || PLATFORM_HOLOLENS) && WITH_OGGVORBIS
 	}
 }
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,10 +12,9 @@
 #include "Misc/Guid.h"
 #include "Async/AsyncWork.h"
 #include "Sound/SoundBase.h"
+#include "Sound/SoundClass.h"
 #include "Serialization/BulkData.h"
-#include "Serialization/BulkDataBuffer.h"
 #include "Sound/SoundGroups.h"
-#include "Sound/SoundWaveLoadingBehavior.h"
 #include "AudioMixerTypes.h"
 #include "AudioCompressionSettings.h"
 #include "PerPlatformProperties.h"
@@ -49,8 +48,6 @@ enum class ESoundWavePrecacheState
 	Done
 };
 
-constexpr uint64 InvalidAudioStreamCacheLookupID = TNumericLimits<uint64>::Max();
-
 /**
  * A chunk of streamed audio.
  */
@@ -65,14 +62,8 @@ struct FStreamedAudioChunk
 	/** Bulk data if stored in the package. */
 	FByteBulkData BulkData;
 
-	/** This is set by the audio stream cache to speed up lookup. Maps directly to the location into the cache chunk table that we loaded this chunk into. */
-	uint64 CacheLookupID;
-
 	/** Default constructor. */
 	FStreamedAudioChunk()
-		: DataSize(0)
-		, AudioDataSize(0)
-		, CacheLookupID(InvalidAudioStreamCacheLookupID)
 	{
 	}
 
@@ -87,7 +78,7 @@ struct FStreamedAudioChunk
 	 * Place chunk data in the derived data cache associated with the provided
 	 * key.
 	 */
-	uint32 StoreInDerivedDataCache(const FString& InDerivedDataKey, const FStringView& SoundWaveName);
+	uint32 StoreInDerivedDataCache(const FString& InDerivedDataKey);
 #endif // #if WITH_EDITORONLY_DATA
 };
 
@@ -296,8 +287,7 @@ struct ISoundWaveClient
 	ISoundWaveClient() {}
 	virtual ~ISoundWaveClient() {}
 	
-	// OnBeginDestroy() returns true to unsubscribe as an ISoundWaveClient
-	virtual bool OnBeginDestroy(class USoundWave* Wave) = 0;
+	virtual void OnBeginDestroy(class USoundWave* Wave) = 0;
 	virtual bool OnIsReadyForFinishDestroy(class USoundWave* Wave) const = 0;
 	virtual void OnFinishDestroy(class USoundWave* Wave) = 0;
 };
@@ -315,8 +305,8 @@ public:
 	UPROPERTY(EditAnywhere, Category="Playback|Streaming", meta=(ClampMin=0))
 	int32 StreamingPriority;
 
-	/** Quality of sample rate conversion for platforms that opt into resampling during cook. The sample rate for each enumeration is definable per platform in platform target settings. */
-	UPROPERTY(EditAnywhere, Category = "Format|Quality")
+	/** Quality of sample rate conversion for platforms that opt into resampling during cook. */
+	UPROPERTY(EditAnywhere, Category = "Format|Quality", meta=(DisplayName="Sample Rate"))
 	ESoundwaveSampleRateSettings SampleRateQuality;
 
 	/** Type of buffer this wave uses. Set once on load */
@@ -337,21 +327,15 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Playback|Streaming", meta = (DisplayName = "Seekable", EditCondition = "bStreaming"))
 	uint8 bSeekableStreaming:1;
 
-	/** Specifies how and when compressed audio data is loaded for asset if stream caching is enabled. */
+	/** If stream caching is enabled, this can be used to specify how and when compressed audio data is loaded for this asset. */
 	UPROPERTY(EditAnywhere, Category = "Loading", meta = (DisplayName = "Loading Behavior Override"))
 	ESoundWaveLoadingBehavior LoadingBehavior;
 
-	/** Set to true if LoadingBehavior was inherited from a SoundCue. This is useful for debugging/logging */
-	uint8 bLoadingBehaviorOverridden:1;
-
 	/** Set to true for programmatically generated audio. */
 	uint8 bProcedural:1;
-	
-	/** Set to true if the source is procedural and currently playing */
-	uint8 bPlayingProcedural : 1;
 
 	/** Set to true of this is a bus sound source. This will result in the sound wave not generating audio for itself, but generate audio through instances. Used only in audio mixer. */
-	uint8 bIsSourceBus:1;
+	uint8 bIsBus:1;
 
 	/** Set to true for procedural waves that can be processed asynchronously. */
 	uint8 bCanProcessAsync:1;
@@ -360,15 +344,15 @@ public:
 	uint8 bDynamicResource:1;
 
 	/** If set to true if this sound is considered to contain mature/adult content. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Subtitles, AssetRegistrySearchable)
+	UPROPERTY(EditAnywhere, Category=Subtitles, AssetRegistrySearchable)
 	uint8 bMature:1;
 
 	/** If set to true will disable automatic generation of line breaks - use if the subtitles have been split manually. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Subtitles )
+	UPROPERTY(EditAnywhere, Category=Subtitles )
 	uint8 bManualWordWrap:1;
 
 	/** If set to true the subtitles display as a sequence of single lines as opposed to multiline. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Subtitles )
+	UPROPERTY(EditAnywhere, Category=Subtitles )
 	uint8 bSingleLine:1;
 
 #if WITH_EDITORONLY_DATA
@@ -376,9 +360,7 @@ public:
 	uint8 bVirtualizeWhenSilent_DEPRECATED:1;
 #endif // WITH_EDITORONLY_DATA
 
-	/** Whether or not this source is ambisonics file format. If set, sound always uses the 
-	  * 'Master Ambisonics Submix' as set in the 'Audio' category of Project Settings'
-	  * and ignores submix if provided locally or in the referenced SoundClass. */
+	/** Whether or not this source is ambisonics file format. */
 	UPROPERTY(EditAnywhere, Category = Format)
 	uint8 bIsAmbisonics : 1;
 
@@ -417,7 +399,7 @@ public:
 	using FSoundWaveClientPtr = ISoundWaveClient*;
 
 #if WITH_EDITORONLY_DATA
-	/** Specify a sound to use for the baked analysis. Will default to this USoundWave if not set. */
+	/** Specify a sound to use for the baked analysis. Will default to this USoundWave if not sete. */
 	UPROPERTY(EditAnywhere, Category = "Analysis")
 	USoundWave* OverrideSoundToUseForAnalysis;
 
@@ -484,7 +466,7 @@ public:
 	/** If stream caching is enabled, allows the user to retain a strong handle to the first chunk of audio in the cache. 
 	 *  Please note that this USoundWave is NOT guaranteed to be still alive when OnLoadCompleted is called.
 	 */
-	void GetHandleForChunkOfAudio(TFunction<void(FAudioChunkHandle&&)> OnLoadCompleted, bool bForceSync = false, int32 ChunkIndex = 1, ENamedThreads::Type CallbackThread = ENamedThreads::GameThread);
+	void GetHandleForChunkOfAudio(TFunction<void(FAudioChunkHandle)> OnLoadCompleted, bool bForceSync = false, int32 ChunkIndex = 1, ENamedThreads::Type CallbackThread = ENamedThreads::GameThread);
 
 	/** If stream caching is enabled, set this sound wave to retain a strong handle to its first chunk. 
 	 *  If not called on the game thread, bForceSync must be true.
@@ -493,28 +475,6 @@ public:
 
 	/** If stream caching is enabled and au.streamcache.KeepFirstChunkInMemory is 1, this will release this USoundWave's first chunk, allowing it to be deleted. */
 	void ReleaseCompressedAudio();
-
-	bool IsRetainingAudio();
-
-	/**
-	 * If Stream Caching is enabled, this can be used to override the default loading behavior of this USoundWave.
-	 * This can even be called on USoundWaves that still have the RF_NeedLoad flag, and won't be stomped by serialization.
-	 * NOTE: The new behavior will be ignored if it is less memory-aggressive than existing (even inherited) behavior
-	 */
-	void OverrideLoadingBehavior(ESoundWaveLoadingBehavior InLoadingBehavior);
-
-	/**
-	 * This is called by the audio stream cache once we put a chunk of compressed data in the chunk table. 
-	 * It allows us to look up the chunk directly, rather than searching the cache linearly.
-	 */
-	void SetCacheLookupIDForChunk(uint32 InChunkIndex, uint64 InCacheLookupID);
-
-	/**
-	 * This is called by the audio stream cache when we try to get a chunk of compressed data.
-	 * It allows us to look up the chunk directly, rather than searching the cache linearly.
-	 * Returns InvalidAudioStreamCacheLookupID if the chunk hasn't been added to the cache.
-	 */
-	uint64 GetCacheLookupIDForChunk(uint32 InChunkIndex);
 
 	/** Returns the loading behavior we should use for this sound wave.
 	 *  If this is called within Serialize(), this should be called with bCheckSoundClasses = false,
@@ -551,11 +511,11 @@ private:
 public:
 
 	/** A localized version of the text that is actually spoken phonetically in the audio. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Subtitles )
+	UPROPERTY(EditAnywhere, Category=Subtitles )
 	FString SpokenText;
 
 	/** The priority of the subtitle. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Subtitles)
+	UPROPERTY(EditAnywhere, Category=Subtitles)
 	float SubtitlePriority;
 
 	/** Playback volume of sound 0 to 1 - Default is 1.0. */
@@ -602,7 +562,7 @@ public:
 	 * Subtitle cues.  If empty, use SpokenText as the subtitle.  Will often be empty,
 	 * as the contents of the subtitle is commonly identical to what is spoken.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Subtitles)
+	UPROPERTY(EditAnywhere, Category=Subtitles)
 	TArray<struct FSubtitleCue> Subtitles;
 
 #if WITH_EDITORONLY_DATA
@@ -661,11 +621,11 @@ public:
 	uint8* RawPCMData;
 
 	/** Memory containing the data copied from the compressed bulk data */
-	FOwnedBulkDataPtr* OwnedBulkDataPtr{ nullptr };
-	const uint8* ResourceData{ nullptr };
+	FOwnedBulkDataPtr* OwnedBulkDataPtr;
+	const uint8* ResourceData;
 
 	/** Zeroth Chunk of audio for sources that use Load On Demand. */
-	FBulkDataBuffer<uint8> ZerothChunkData;
+	TArray<uint8> ZerothChunkData;
 
 	/** Uncompressed wav data 16 bit in mono or stereo - stereo not allowed for multichannel data */
 	FByteBulkData RawData;
@@ -766,7 +726,7 @@ public:
 	{
 		SampleRate = InSampleRate;
 #if !WITH_EDITOR
-		// Ensure that we invalidate our cached sample rate if the FProperty sample rate is changed.
+		// Ensure that we invalidate our cached sample rate if the UProperty sample rate is changed.
 		bCachedSampleRateFromPlatformSettings = false;
 		bSampleRateManuallyReset = true;
 #endif //WITH_EDITOR
@@ -850,10 +810,7 @@ public:
 
 #if WITH_EDITOR
 	/** Utility which returns imported PCM data and the parsed header for the file. Returns true if there was data, false if there wasn't. */
-	bool GetImportedSoundWaveData(TArray<uint8>& OutRawPCMData, uint32& OutSampleRate, uint16& OutNumChannels) const;
-
-	/** Utility which returns imported PCM data and the parsed header for the file. Returns true if there was data, false if there wasn't. */
-	bool GetImportedSoundWaveData(TArray<uint8>& OutRawPCMData, uint32& OutSampleRate, TArray<EAudioSpeakers>& OutChannelOrder) const;
+	bool GetImportedSoundWaveData(TArray<uint8>& OutRawPCMData, uint32& OutSampleRate, uint16& OutNumChannels);
 
 	/**
 	 * This function can be called before playing or using a SoundWave to check if any cook settings have been modified since this SoundWave was last cooked.
@@ -921,8 +878,7 @@ public:
 #endif // WITH_EDITOR
 
 	/** Checks whether sound has been categorised as streaming. */
-	bool IsStreaming(const TCHAR* PlatformName = nullptr) const;
-	bool IsStreaming(const FPlatformAudioCookOverrides& Overrides) const;
+	bool IsStreaming(const FPlatformAudioCookOverrides* Overrides = nullptr) const;
 
 	/** Checks whether sound has seekable streaming enabled. */
 	bool IsSeekableStreaming() const;
@@ -934,7 +890,7 @@ public:
 	/**
 	 * This returns the initial chunk of compressed data for streaming data sources.
 	 */
-	TArrayView<const uint8> GetZerothChunk(bool bForImmediatePlayback = false);
+	TArrayView<const uint8> GetZerothChunk();
 
 	/**
 	 * Attempts to update the cached platform data after any changes that might affect it

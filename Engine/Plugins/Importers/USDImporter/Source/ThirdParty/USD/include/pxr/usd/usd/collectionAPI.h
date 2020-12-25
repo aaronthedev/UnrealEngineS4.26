@@ -33,7 +33,6 @@
 #include "pxr/usd/usd/stage.h"
 #include "pxr/usd/usd/tokens.h"
 
-#include "pxr/usd/usd/collectionMembershipQuery.h"
 #include "pxr/usd/usd/primFlags.h"
 #include "pxr/usd/usd/tokens.h"
 
@@ -261,7 +260,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USD_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -273,7 +272,7 @@ private:
 
     // override SchemaBase virtuals.
     USD_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -282,13 +281,10 @@ public:
     /// Specifies how the paths that are included in
     /// the collection must be expanded to determine its members.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform token expansionRule = "expandPrims"` |
-    /// | C++ Type | TfToken |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
-    /// | \ref UsdTokens "Allowed Values" | explicitOnly, expandPrims, expandPrimsAndProperties |
+    /// \n  C++ Type: TfToken
+    /// \n  Usd Type: SdfValueTypeNames->Token
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: No Fallback
     USD_API
     UsdAttribute GetExpansionRuleAttr() const;
 
@@ -309,12 +305,10 @@ public:
     /// paths.  The fallback is false.  This separate attribute is
     /// required because relationships cannot directly target the root.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform bool includeRoot` |
-    /// | C++ Type | bool |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Bool |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+    /// \n  C++ Type: bool
+    /// \n  Usd Type: SdfValueTypeNames->Bool
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: No Fallback
     USD_API
     UsdAttribute GetIncludeRootAttr() const;
 
@@ -415,6 +409,133 @@ public:
     USD_API
     static std::vector<UsdCollectionAPI> GetAllCollections(const UsdPrim &prim);
 
+    /// Represents a flattened view of a collection. An object of this class 
+    /// is computed by calling UsdCollectionAPI::ComputeMembershipQuery() on a 
+    /// collection. It can be used to answer queries about membership of paths 
+    /// in the collection efficiently.
+    class MembershipQuery {
+    public:
+        /// Holds an unordered map describing membership of paths in
+        /// this collection and the associated expansionRule for how the
+        /// paths are to be expanded. If a collection includes another
+        /// collection, the included collection's PathExpansionRuleMap
+        /// is merged into this one. If a path is excluded, its
+        /// expansion rule is set to UsdTokens->exclude.
+        using PathExpansionRuleMap = std::unordered_map<SdfPath, 
+              TfToken, SdfPath::Hash>;
+
+        /// Default Constructor, creates an empty MembershipQuery object for 
+        /// passing into UsdCollectionAPI::ComputeMembershipQuery() via a 
+        /// pointer.
+        MembershipQuery() {}
+        
+        /// \overload
+        /// Returns whether the given path is included in the collection from 
+        /// which this MembershipQuery object was computed. This is the API that 
+        /// clients should use for determining if a given object is a member of 
+        /// the collection. To enumerate all the members of a collection, use 
+        /// \ref UsdCollectionAPI::ComputeIncludedObjects or 
+        /// \ref UsdCollectionAPI::ComputeIncludedPaths.
+        /// 
+        /// If \p expansionRule is not NULL, it is set to the expansion-
+        /// rule value that caused the path to be included in or excluded from 
+        /// the collection. If \p path is not included in the collection, 
+        /// \p expansionRule is set to UsdTokens->exclude. 
+        /// 
+        /// It is useful to specify this parameter and use this overload of 
+        /// IsPathIncluded(), when you're interested in traversing a subtree 
+        /// and want to know whether the root of the subtree is included in a 
+        /// collection. For evaluating membership of descendants of the root, 
+        /// please use the other overload of IsPathIncluded(), that takes both 
+        /// a path and the parent expansionRule.
+        /// 
+        /// The python version of this method only returns the boolean result. 
+        /// It does not return \p expansionRule.
+        USD_API
+        bool IsPathIncluded(const SdfPath &path, 
+                            TfToken *expansionRule=nullptr) const;
+
+        /// \overload
+        /// Returns whether the given path, \p path is included in the 
+        /// collection from which this MembershipQuery object was computed, 
+        /// given the parent-path's inherited expansion rule, 
+        /// \p parentExpansionRule.
+        /// 
+        /// If \p expansionRule is not NULL, it is set to the expansion-
+        /// rule value that caused the path to be included in or excluded from 
+        /// the collection. If \p path is not included in the collection, 
+        /// \p expansionRule is set to UsdTokens->exclude. 
+        /// 
+        /// The python version of this method only returns the boolean result. 
+        /// It does not return \p expansionRule.
+        USD_API
+        bool IsPathIncluded(const SdfPath &path,
+                            const TfToken &parentExpansionRule,
+                            TfToken *expansionRule=nullptr) const;
+
+        /// Returns true if the collection excludes one or more paths below an
+        /// included path.
+        bool HasExcludes() const {
+            return _hasExcludes;
+        }
+
+        /// Equality operator
+        bool operator==(MembershipQuery const& rhs) const {
+            return _hasExcludes == rhs._hasExcludes &&
+                _pathExpansionRuleMap == rhs._pathExpansionRuleMap;
+        }
+
+        /// Inequality operator
+        bool operator!=(MembershipQuery const& rhs) const {
+            return !(*this == rhs);
+        }
+
+        /// Hash functor
+        struct Hash {
+            USD_API
+            size_t operator()(MembershipQuery const& query) const;
+        };
+
+        /// Hash function
+        inline size_t GetHash() const {
+            return Hash()(*this);
+        }
+
+        /// Returns a raw map of the paths included or excluded in the 
+        /// collection along with the expansion rules for the included 
+        /// paths.
+        USD_API
+        PathExpansionRuleMap GetAsPathExpansionRuleMap() const {
+            return _pathExpansionRuleMap;
+        }
+
+    private:
+
+        // Add \p path as an included path in the MembershipQuery with the 
+        // given expansion rule, \p expansionRule.
+        void _AppendIncludedPath(
+            const SdfPath &path,
+            const TfToken &expansionRule);
+
+        // Adds \p path as an excluded path in this MembershipQuery.
+        // Note that this opinion is not pruning (i.e. descendant paths 
+        // beneath the excluded path may be included).
+        void _AppendExcludedPath(const SdfPath &path);
+
+        // Merge the given flattened membership-query object into this one.
+        // Opinions in \p query will be stronger that (i.e. will override) any 
+        // existing opinions for overlapping paths.
+        void _MergeMembershipQuery(const MembershipQuery &query);
+
+        friend class UsdCollectionAPI;
+
+        PathExpansionRuleMap _pathExpansionRuleMap;
+
+        // A cached flag indicating whether _pathExpansionRuleMap contains
+        // any exclude rules.
+        bool _hasExcludes=false;
+    };
+
     /// Returns the canonical path that represents this collection. 
     /// This points to a property named "collection:{collectionName}" on the 
     /// prim defining the collection (which won't really exist as a property 
@@ -433,18 +554,15 @@ public:
         const UsdPrim &prim, 
         const TfToken &collectionName);
 
-    // Convenient alias for UsdCollectionMembershipQuery object
-    using MembershipQuery = UsdCollectionMembershipQuery;
-
-    /// Computes and returns a UsdCollectionMembershipQuery object which can
-    /// be used to query inclusion or exclusion of paths in the collection.
+    /// Computes and returns a MembershipQuery object which can be used to query
+    /// inclusion or exclusion of paths in the collection.
     USD_API
-    UsdCollectionMembershipQuery ComputeMembershipQuery() const;
+    MembershipQuery ComputeMembershipQuery() const; 
 
-    /// Populates the UsdCollectionMembershipQuery object with data from this
-    /// collection, so it can be used to query inclusion or exclusion of paths.
+    /// Populates the MembershipQuery object with data from this collection, so 
+    /// it can be used to query inclusion or exclusion of paths.
     USD_API
-    void ComputeMembershipQuery(UsdCollectionMembershipQuery *query) const;
+    void ComputeMembershipQuery(MembershipQuery *query) const; 
 
     /// Returns true if the collection has nothing included in it.
     /// This requires both that the includes relationship have no
@@ -457,24 +575,22 @@ public:
     bool HasNoIncludedPaths() const;
 
     /// Returns all the usd objects that satisfy the predicate, \p pred in the
-    /// collection represented by the UsdCollectionMembershipQuery object, \p
-    /// query.
+    /// collection represented by the MembershipQuery object, \p query.
     /// 
     /// The results depends on the load state of the UsdStage, \p stage.
     USD_API
     static std::set<UsdObject> ComputeIncludedObjects(
-        const UsdCollectionMembershipQuery &query,
+        const MembershipQuery &query,
         const UsdStageWeakPtr &stage,
         const Usd_PrimFlagsPredicate &pred=UsdPrimDefaultPredicate);
 
     /// Returns all the paths that satisfy the predicate, \p pred in the
-    /// collection represented by the UsdCollectionMembershipQuery object, \p
-    /// query.
+    /// collection represented by the MembershipQuery object, \p query.
     /// 
     /// The result depends on the load state of the UsdStage, \p stage.
     USD_API
     static SdfPathSet ComputeIncludedPaths(
-        const UsdCollectionMembershipQuery &query,
+        const MembershipQuery &query,
         const UsdStageWeakPtr &stage,
         const Usd_PrimFlagsPredicate &pred=UsdPrimDefaultPredicate);
 
@@ -546,25 +662,33 @@ public:
 
 private:
 
-    // Returns the name of the property belonging to this collection, given the
-    // base name of the attribute. Eg, if baseName is 'includes', this
+    // Returns the name of the property belonging to this collection, given the 
+    // base name of the attribute. Eg, if baseName is 'includes', this 
     // returns 'collection:<name>:includes'.
     TfToken _GetCollectionPropertyName(const TfToken &baseName=TfToken()) const;
 
-    // Helper method for computing the UsdCollectionMembershipQuery object for
-    // a collection.
+    // Helper method for computing the MembershipQuery object for a collection. 
     // This makes recursive calls if the collection includes other collections.
     // \p chainedCollectionPaths is used to pass in the set of all seen and
-    // included collections in the dependency chain and is used to detect
+    // included collections in the dependency chain and is used to detect 
     // circular dependencies.
-    // If \p foundCircularDependency is not nullptr, it is set to true if a
+    // If \p foundCircularDependency is not NULL, it is set to true if a 
     // circular dependency is detected amongst the included collections.
-    // If it is nullptr, a warning is issued when a circular dependency is
+    // If it is NULL, a warning is issued when a circular dependency is 
     // detected.
     void _ComputeMembershipQueryImpl(
-        UsdCollectionMembershipQuery *query,
+        MembershipQuery *query,
         const SdfPathSet &chainedCollectionPaths,
-        bool *foundCircularDependency=nullptr) const;
+        bool *foundCircularDependency=nullptr) const; 
+
+    // Helper method used by ComputeIncludedObjects() and 
+    // ComputeIncludedPaths().
+    static void _ComputeIncludedImpl(
+        const MembershipQuery &query,
+        const UsdStageWeakPtr &stage,
+        const Usd_PrimFlagsPredicate &pred,
+        std::set<UsdObject> *includedObjects,
+        SdfPathSet *includedPaths);
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

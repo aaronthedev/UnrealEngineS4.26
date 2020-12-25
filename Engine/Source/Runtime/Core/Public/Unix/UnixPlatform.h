@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*================================================================================
 	UnixPlatform.h: Setup for the linux platform
@@ -41,7 +41,6 @@ typedef FUnixPlatformTypes FPlatformTypes;
 
 // Base defines, defaults are commented out
 
-#define PLATFORM_SEH_EXCEPTIONS_DISABLED				1
 #define PLATFORM_LITTLE_ENDIAN							1
 #define PLATFORM_SUPPORTS_UNALIGNED_LOADS				((!PLATFORM_CPU_ARM_FAMILY) || PLATFORM_64BITS) // 32-bit ARM doesn't support unaligned loads, other arch's do
 #define PLATFORM_COMPILER_DISTINGUISHES_INT_AND_LONG	1
@@ -57,7 +56,6 @@ typedef FUnixPlatformTypes FPlatformTypes;
 #define PLATFORM_USE_PTHREADS							1
 #define PLATFORM_MAX_FILEPATH_LENGTH_DEPRECATED			UNIX_MAX_PATH /* @todo linux: avoid using PATH_MAX as it is known to be broken */
 #define PLATFORM_HAS_NO_EPROCLIM						1
-#define PLATFORM_HAS_BSD_IPV6_SOCKETS					1
 #define PLATFORM_HAS_BSD_SOCKET_FEATURE_IOCTL			1
 #define PLATFORM_HAS_BSD_SOCKET_FEATURE_MSG_DONTWAIT	1
 #define PLATFORM_HAS_BSD_SOCKET_FEATURE_RECVMMSG		1
@@ -66,7 +64,6 @@ typedef FUnixPlatformTypes FPlatformTypes;
 #define PLATFORM_IS_ANSI_MALLOC_THREADSAFE				1
 #define PLATFORM_ALLOW_ALLOCATIONS_IN_FASYNCWRITER_SERIALIZEBUFFERTOARCHIVE 0
 #define PLATFORM_RHITHREAD_DEFAULT_BYPASS				0
-#define PLATFORM_SUPPORTS_VIRTUAL_TEXTURE_STREAMING		1
 
 #if PLATFORM_CPU_X86_FAMILY
 	#define PLATFORM_BREAK()							__asm__ volatile("int $0x03")
@@ -96,20 +93,6 @@ typedef FUnixPlatformTypes FPlatformTypes;
 	#define PLATFORM_ENABLE_VECTORINTRINSICS		0
 #endif // defined(_M_IX86) || defined(__i386__) || defined(_M_X64) || defined(__x86_64__) || defined (__amd64__) 
 
-#if PLATFORM_LINUXAARCH64
-	// Enable NEON intrinsics for ARM64 builds
-	#define PLATFORM_ENABLE_VECTORINTRINSICS_NEON	1
-#endif
-
-// We do not currently compile with -msse4 or higher on Unix or Linux
-#ifndef PLATFORM_MAYBE_HAS_SSE4_1 // May be set from UnrealBuildTool
-	#define PLATFORM_MAYBE_HAS_SSE4_1							0
-#endif
-#ifndef PLATFORM_ALWAYS_HAS_SSE4_1 // May be set from UnrealBuildTool
-	#define PLATFORM_ALWAYS_HAS_SSE4_1							0
-#endif
-
-
 // Function type macros.
 #define VARARGS															/* Functions with variable arguments */
 #define CDECL															/* Standard C function */
@@ -130,6 +113,12 @@ typedef FUnixPlatformTypes FPlatformTypes;
 #endif
 
 #define ABSTRACT abstract
+
+// DLL export and import for types, only supported on clang
+#if defined(__clang__)
+#define DLLEXPORT_VTABLE	__attribute__ ((__type_visibility__("default")))
+#define DLLIMPORT_VTABLE	__attribute__ ((__type_visibility__("default")))
+#endif
 
 // DLL export and import definitions
 #define DLLEXPORT			__attribute__((visibility("default")))

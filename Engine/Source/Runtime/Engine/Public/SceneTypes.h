@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,7 +25,7 @@ struct FCustomPrimitiveData
 {
 	GENERATED_USTRUCT_BODY()
 
-	static constexpr int32 NumCustomPrimitiveDataFloat4s = 9; // Must match NUM_CUSTOM_PRIMITIVE_DATA in SceneData.ush
+	static constexpr int32 NumCustomPrimitiveDataFloat4s = 8; // Must match NUM_CUSTOM_PRIMITIVE_DATA in SceneData.ush
 	static constexpr int32 NumCustomPrimitiveDataFloats = NumCustomPrimitiveDataFloat4s * 4;
 
 	UPROPERTY(EditAnywhere, Category=Rendering)
@@ -65,7 +65,7 @@ public:
  * Class used to reference an FSceneViewStateInterface that allows destruction and recreation of all FSceneViewStateInterface's when needed. 
  * This is used to support reloading the renderer module on the fly.
  */
-class FSceneViewStateReference
+class ENGINE_VTABLE FSceneViewStateReference
 {
 public:
 	FSceneViewStateReference() :
@@ -138,7 +138,6 @@ namespace EMaterialQualityLevel
 		Low,
 		High,
 		Medium,
-		Epic,
 		Num
 	};
 }
@@ -158,9 +157,7 @@ enum EMaterialProperty
 	MP_Metallic UMETA(DisplayName = "Metallic"),
 	MP_Specular UMETA(DisplayName = "Specular"),
 	MP_Roughness UMETA(DisplayName = "Roughness "),
-	MP_Anisotropy UMETA(DisplayName = "Anisotropy"),
 	MP_Normal UMETA(DisplayName = "Normal"),
-	MP_Tangent UMETA(DisplayName = "Tangent"),
 	MP_WorldPositionOffset UMETA(Hidden),
 	MP_WorldDisplacement UMETA(Hidden),
 	MP_TessellationMultiplier UMETA(Hidden),

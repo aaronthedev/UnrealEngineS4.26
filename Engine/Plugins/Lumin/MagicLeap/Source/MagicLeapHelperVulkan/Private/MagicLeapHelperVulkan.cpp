@@ -1,20 +1,20 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MagicLeapHelperVulkan.h"
 #include "IMagicLeapHelperVulkanPlugin.h"
 #include "Engine/Engine.h"
 #include "XRThreadUtils.h"
 
-#include "Lumin/CAPIShims/LuminAPIGraphics.h"
-#include "Lumin/CAPIShims/LuminAPIGraphicsUtils.h"
-
-#if PLATFORM_SUPPORTS_VULKAN
+#if !PLATFORM_MAC
 #include "VulkanRHIPrivate.h"
 #include "ScreenRendering.h"
 #include "VulkanPendingState.h"
 #include "VulkanContext.h"
 #include "VulkanUtil.h"
 #endif
+
+#include "Lumin/CAPIShims/LuminAPIGraphics.h"
+#include "Lumin/CAPIShims/LuminAPIGraphicsUtils.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogMagicLeapHelperVulkan, Display, All);
 
@@ -25,13 +25,15 @@ IMPLEMENT_MODULE(FMagicLeapHelperVulkanPlugin, MagicLeapHelperVulkan);
 
 //////////////////////////////////////////////////////////////////////////
 
-void FMagicLeapHelperVulkan::BlitImage(uint64 SrcName, int32 SrcX, int32 SrcY, int32 SrcZ, int32 SrcWidth, int32 SrcHeight, int32 SrcDepth, uint64 DstName, int32 DstLayer, int32 DstX, int32 DstY, int32 DstZ, int32 DstWidth, int32 DstHeight, int32 DstDepth, bool bIsDepthStencil)
+void FMagicLeapHelperVulkan::BlitImage(uint64 SrcName, int32 SrcX, int32 SrcY, int32 SrcZ, int32 SrcWidth, int32 SrcHeight, int32 SrcDepth, uint64 DstName, int32 DstLayer, int32 DstX, int32 DstY, int32 DstZ, int32 DstWidth, int32 DstHeight, int32 DstDepth)
 {
-#if PLATFORM_SUPPORTS_VULKAN
+#if !PLATFORM_MAC
 	VkImage Src = (VkImage)SrcName;
 	VkImage Dst = (VkImage)DstName;
 
-	FVulkanCommandBufferManager* CmdBufferMgr = GVulkanRHI->GetDevice()->GetImmediateContext().GetCommandBufferManager();
+	FVulkanDynamicRHI* RHI = (FVulkanDynamicRHI*)GDynamicRHI;
+
+	FVulkanCommandBufferManager* CmdBufferMgr = RHI->GetDevice()->GetImmediateContext().GetCommandBufferManager();
 	FVulkanCmdBuffer* CmdBuffer = CmdBufferMgr->GetUploadCmdBuffer();
 
 	/*{
@@ -57,7 +59,7 @@ void FMagicLeapHelperVulkan::BlitImage(uint64 SrcName, int32 SrcX, int32 SrcY, i
 	Region.srcOffsets[1].x = SrcX + SrcWidth;
 	Region.srcOffsets[1].y = SrcY + SrcHeight;
 	Region.srcOffsets[1].z = SrcZ + SrcDepth;
-	Region.srcSubresource.aspectMask = bIsDepthStencil ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+	Region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	Region.srcSubresource.layerCount = 1;
 	Region.dstOffsets[0].x = DstX;
 	// Unreal's viewport is bottom-left, ml_graphics is top-left so we invert the texture here.
@@ -66,57 +68,46 @@ void FMagicLeapHelperVulkan::BlitImage(uint64 SrcName, int32 SrcX, int32 SrcY, i
 	Region.dstOffsets[1].x = DstX + DstWidth;
 	Region.dstOffsets[1].y = DstY;
 	Region.dstOffsets[1].z = DstZ + DstDepth;
-	Region.dstSubresource.aspectMask = bIsDepthStencil ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+	Region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	Region.dstSubresource.baseArrayLayer = DstLayer;
 	Region.dstSubresource.layerCount = 1;
-	VulkanRHI::vkCmdBlitImage(CmdBuffer->GetHandle(), Src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, Dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &Region, bIsDepthStencil ? VK_FILTER_NEAREST : VK_FILTER_LINEAR);
+	VulkanRHI::vkCmdBlitImage(CmdBuffer->GetHandle(), Src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, Dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &Region, VK_FILTER_LINEAR);
 #endif
 }
 
-void FMagicLeapHelperVulkan::ClearImage(uint64 DstName, const FLinearColor& ClearColor, uint32 BaseMipLevel, uint32 LevelCount, uint32 BaseArrayLayer, uint32 LayerCount, bool bIsDepthStencil)
+void FMagicLeapHelperVulkan::ClearImage(uint64 DstName, const FLinearColor& ClearColor, uint32 BaseMipLevel, uint32 LevelCount, uint32 BaseArrayLayer, uint32 LayerCount)
 {
-#if PLATFORM_SUPPORTS_VULKAN
+#if !PLATFORM_MAC
 	VkImage Dst = (VkImage)DstName;
 
-	FVulkanCommandBufferManager* CmdBufferMgr = GVulkanRHI->GetDevice()->GetImmediateContext().GetCommandBufferManager();
+	FVulkanDynamicRHI* RHI = (FVulkanDynamicRHI*)GDynamicRHI;
+
+	FVulkanCommandBufferManager* CmdBufferMgr = RHI->GetDevice()->GetImmediateContext().GetCommandBufferManager();
 	FVulkanCmdBuffer* CmdBuffer = CmdBufferMgr->GetUploadCmdBuffer();
 
+	VkClearColorValue Color;
+	Color.float32[0] = ClearColor.R;
+	Color.float32[1] = ClearColor.G;
+	Color.float32[2] = ClearColor.B;
+	Color.float32[3] = ClearColor.A;
 	VkImageSubresourceRange Range;
-	Range.aspectMask = bIsDepthStencil ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+	Range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	Range.baseMipLevel = BaseMipLevel;
 	Range.levelCount = LevelCount;
 	Range.baseArrayLayer = BaseArrayLayer;
 	Range.layerCount = LayerCount;
-	if (bIsDepthStencil)
-	{
-		VkClearDepthStencilValue Value;
-		Value.depth = FClearValueBinding::DepthFar.Value.DSValue.Depth;
-		Value.stencil = FClearValueBinding::DepthFar.Value.DSValue.Stencil;
-
-		VulkanRHI::vkCmdClearDepthStencilImage(CmdBuffer->GetHandle(), Dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &Value, 1, &Range);
-	}
-	else
-	{
-		VkClearColorValue Color;
-		Color.float32[0] = ClearColor.R;
-		Color.float32[1] = ClearColor.G;
-		Color.float32[2] = ClearColor.B;
-		Color.float32[3] = ClearColor.A;
-
-		VulkanRHI::vkCmdClearColorImage(CmdBuffer->GetHandle(), Dst, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, &Color, 1, &Range);
-	}
+	VulkanRHI::vkCmdClearColorImage(CmdBuffer->GetHandle(), Dst, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, &Color, 1, &Range);
 #endif
 }
 
-void FMagicLeapHelperVulkan::SignalObjects(uint64 SignalObject0, uint64 SignalObject1, uint64 WaitObject)
-{
-#if PLATFORM_SUPPORTS_VULKAN
-	FVulkanCommandBufferManager* CmdBufferMgr = GVulkanRHI->GetDevice()->GetImmediateContext().GetCommandBufferManager();
-	FVulkanCmdBuffer* CmdBuffer = CmdBufferMgr->GetUploadCmdBuffer();
 
-	// VulkanRHI::FSemaphore is self recycling.
-	VulkanRHI::FSemaphore* WaitSemaphore = new VulkanRHI::FSemaphore(*(GVulkanRHI->GetDevice()), (VkSemaphore)WaitObject);
-	CmdBuffer->AddWaitSemaphore(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, WaitSemaphore);
+void FMagicLeapHelperVulkan::SignalObjects(uint64 SignalObject0, uint64 SignalObject1)
+{
+#if !PLATFORM_MAC
+	FVulkanDynamicRHI* RHI = (FVulkanDynamicRHI*)GDynamicRHI;
+
+	FVulkanCommandBufferManager* CmdBufferMgr = RHI->GetDevice()->GetImmediateContext().GetCommandBufferManager();
+	FVulkanCmdBuffer* CmdBuffer = CmdBufferMgr->GetUploadCmdBuffer();
 
 	VkSemaphore Semaphores[2] =
 	{
@@ -130,7 +121,7 @@ void FMagicLeapHelperVulkan::SignalObjects(uint64 SignalObject0, uint64 SignalOb
 
 uint64 FMagicLeapHelperVulkan::AliasImageSRGB(const uint64 Allocation, const uint64 AllocationOffset, const uint32 Width, const uint32 Height)
 {
-#if PLATFORM_SUPPORTS_VULKAN
+#if !PLATFORM_MAC
 	VkImageCreateInfo ImageCreateInfo;
 
 	// This must match the RenderTargetTexture image other than format, which we are aliasing as srgb to match the output of the tonemapper.
@@ -155,25 +146,12 @@ uint64 FMagicLeapHelperVulkan::AliasImageSRGB(const uint64 Allocation, const uin
 	ImageCreateInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 	ImageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
 
-	FVulkanDevice* Device = GVulkanRHI->GetDevice();
+	FVulkanDynamicRHI* RHI = (FVulkanDynamicRHI*)GDynamicRHI;
+	FVulkanDevice* Device = RHI->GetDevice();
 	VkImage Result = VK_NULL_HANDLE;
 	VERIFYVULKANRESULT(VulkanRHI::vkCreateImage(Device->GetInstanceHandle(), &ImageCreateInfo, nullptr, &Result));
 
 	VERIFYVULKANRESULT(VulkanRHI::vkBindImageMemory(Device->GetInstanceHandle(), Result, (VkDeviceMemory)Allocation, AllocationOffset));
-
-	check(Result != VK_NULL_HANDLE);
-
-	FVulkanCommandBufferManager* CmdBufferMgr = GVulkanRHI->GetDevice()->GetImmediateContext().GetCommandBufferManager();
-	FVulkanCmdBuffer* CmdBuffer = CmdBufferMgr->GetUploadCmdBuffer();
-
-	VkImageSubresourceRange Range;
-	Range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	Range.baseMipLevel = 0;
-	Range.levelCount = 1;
-	Range.baseArrayLayer = 0;
-	Range.layerCount = 1;
-
-	GVulkanRHI->VulkanSetImageLayout(CmdBuffer->GetHandle(), Result, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, Range);
 
 	return (uint64)Result;
 #else
@@ -183,10 +161,11 @@ uint64 FMagicLeapHelperVulkan::AliasImageSRGB(const uint64 Allocation, const uin
 
 void FMagicLeapHelperVulkan::DestroyImageSRGB(void* Image)
 {
-#if PLATFORM_SUPPORTS_VULKAN
+#if !PLATFORM_MAC
 	if (Image != VK_NULL_HANDLE)
 	{
-		FVulkanDevice* Device = GVulkanRHI->GetDevice();
+		FVulkanDynamicRHI* RHI = (FVulkanDynamicRHI*)GDynamicRHI;
+		FVulkanDevice* Device = RHI->GetDevice();
 		VulkanRHI::vkDestroyImage(Device->GetInstanceHandle(), reinterpret_cast<VkImage>(Image), nullptr);
 	}
 #endif
@@ -259,7 +238,8 @@ bool FMagicLeapHelperVulkan::GetVulkanDeviceExtensionsRequired(VkPhysicalDevice_
 bool FMagicLeapHelperVulkan::GetMediaTexture(FTextureRHIRef& ResultTexture, FSamplerStateRHIRef& SamplerResult, const uint64 MediaTextureHandle)
 {
 #if PLATFORM_LUMIN
-	FVulkanDevice* const Device = GVulkanRHI->GetDevice();
+	FVulkanDynamicRHI* const RHI = (FVulkanDynamicRHI*)GDynamicRHI;
+	FVulkanDevice* const Device = RHI->GetDevice();
 	MLGraphicsImportedMediaSurface MediaSurface; 
 
 
@@ -319,13 +299,13 @@ bool FMagicLeapHelperVulkan::GetMediaTexture(FTextureRHIRef& ResultTexture, FSam
 	ConversionInitializer.XOffset = MediaSurface.suggested_x_chroma_offset;
 	ConversionInitializer.YOffset = MediaSurface.suggested_y_chroma_offset;
 
-	ResultTexture = GVulkanRHI->RHICreateTexture2DFromResource(PF_B8G8R8A8, 1, 1, 1, 1, MediaSurface.imported_image, ConversionInitializer, TexCreate_None);
+	ResultTexture = RHI->RHICreateTexture2DFromResource(PF_B8G8R8A8, 1, 1, 1, 1, MediaSurface.imported_image, ConversionInitializer, 0);
 
 	// Create a single sampler for the associated media player
 	if (SamplerResult == nullptr)
 	{
 		FSamplerStateInitializerRHI SamplerStateInitializer(SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp);
-		SamplerResult = GVulkanRHI->RHICreateSamplerState(SamplerStateInitializer, ConversionInitializer);
+		SamplerResult = RHI->RHICreateSamplerState(SamplerStateInitializer, ConversionInitializer);
 	}
 
 	// Insert the RHI thread lock fence. This stops any parallel translate tasks running until the command above has completed on the RHI thread.
@@ -340,9 +320,9 @@ bool FMagicLeapHelperVulkan::GetMediaTexture(FTextureRHIRef& ResultTexture, FSam
 	return false;
 }
 
-void FMagicLeapHelperVulkan::AliasMediaTexture(FTextureRHIRef& DestTexture, FTextureRHIRef& SrcTexture)
+void FMagicLeapHelperVulkan::AliasMediaTexture(FRHITexture* DestTexture, FRHITexture* SrcTexture)
 {
 #if PLATFORM_LUMIN
-	GDynamicRHI->RHIAliasTextureResources((FTextureRHIRef&)DestTexture, (FTextureRHIRef&)SrcTexture);
+	GDynamicRHI->RHIAliasTextureResources(DestTexture, SrcTexture);
 #endif
 }

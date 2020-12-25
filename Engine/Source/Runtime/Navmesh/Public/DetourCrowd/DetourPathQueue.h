@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 // Modified version of Recast/Detour's source file
 
 //
@@ -37,7 +37,6 @@ class dtPathQueue
 		/// Path find start and end location.
 		float startPos[3], endPos[3];
 		dtPolyRef startRef, endRef;
-		float costLimit;
 		/// Result.
 		dtPolyRef* path;
 		int npath;
@@ -67,7 +66,7 @@ public:
 	void update(const int maxIters);
 	
 	dtPathQueueRef request(dtPolyRef startRef, dtPolyRef endRef,
-						   const float* startPos, const float* endPos, const float costLimit,
+						   const float* startPos, const float* endPos, 
 						   const dtQueryFilter* filter,
 						   TSharedPtr<dtQuerySpecialLinkFilter> linkFilter);
 	

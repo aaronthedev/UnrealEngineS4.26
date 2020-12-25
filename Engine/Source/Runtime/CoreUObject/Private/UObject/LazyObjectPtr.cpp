@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	LazyObjectPtr.cpp: Guid-based lazy pointer to UObject
@@ -125,7 +125,7 @@ void FLazyObjectPtr::PossiblySerializeObjectGuid(UObject *Object, FStructuredArc
 	else if (UnderlyingArchive.IsLoading())
 	{
 		TOptional<FStructuredArchiveSlot> GuidSlot = Record.TryEnterField(SA_FIELD_NAME(TEXT("Guid")), false);
-		if (GuidSlot.IsSet() && !UnderlyingArchive.IsError())
+		if (GuidSlot.IsSet())
 		{
 			FUniqueObjectGuid Guid;
 			GuidSlot.GetValue() << Guid;

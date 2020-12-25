@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BaseMeshPaintGeometryAdapter.h"
 
@@ -16,7 +16,7 @@ bool FBaseMeshPaintGeometryAdapter::BuildOctree()
 		bValidOctree = true;
 		
 		// First determine bounding box of mesh verts
-		FBox Bounds(ForceInit);
+		FBox Bounds;
 		for (const FVector& Vertex : MeshVertices)
 		{
 			Bounds += Vertex;
@@ -78,14 +78,16 @@ TArray<uint32> FBaseMeshPaintGeometryAdapter::SphereIntersectTriangles(const flo
 	// definitely don't want our brush to be cut off by a hard triangle edge
 	const float SquaredRadiusBias = ComponentSpaceSquaredBrushRadius * 0.025f;
 
-	MeshTriOctree->FindElementsWithBoundsTest(FBoxCenterAndExtent(ComponentSpaceBrushPosition, FVector(FMath::Sqrt(ComponentSpaceSquaredBrushRadius + SquaredRadiusBias))), [bOnlyFrontFacing , &OutTriangles, &ComponentSpaceCameraPosition](const FMeshPaintTriangle& CurrentTri)
+	for (FMeshPaintTriangleOctree::TConstElementBoxIterator<> TriIt(*MeshTriOctree, FBoxCenterAndExtent(ComponentSpaceBrushPosition, FVector(FMath::Sqrt(ComponentSpaceSquaredBrushRadius + SquaredRadiusBias)))); TriIt.HasPendingElements(); TriIt.Advance())
 	{
+		// Check to see if the triangle is front facing
+		const FMeshPaintTriangle & CurrentTri = TriIt.GetCurrentElement();
 		const float SignedPlaneDist = FVector::PointPlaneDist(ComponentSpaceCameraPosition, CurrentTri.Vertices[0], CurrentTri.Normal);
 		if (!bOnlyFrontFacing || SignedPlaneDist < 0.0f)
 		{
 			OutTriangles.Add(CurrentTri.Index);
 		}
-	});
+	}
 
 	return OutTriangles;
 }

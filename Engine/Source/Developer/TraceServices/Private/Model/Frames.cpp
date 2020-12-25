@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TraceServices/Model/Frames.h"
 #include "Model/FramesPrivate.h"
 #include "AnalysisServicePrivate.h"
 #include <limits>
-#include "Algo/BinarySearch.h"
 
 namespace Trace
 {
@@ -41,18 +40,6 @@ void FFrameProvider::EnumerateFrames(ETraceFrameType FrameType, uint64 Start, ui
 	}
 }
 
-bool FFrameProvider::GetFrameFromTime(ETraceFrameType FrameType, double Time, FFrame& OutFrame) const
-{
-	int64 LowerBound = Algo::LowerBound(FrameStartTimes[FrameType], Time);
-	if (LowerBound > 0 && LowerBound - 1 < (int64)Frames[FrameType].Num())
-	{
-		OutFrame = Frames[FrameType][LowerBound - 1];
-		return true;
-	}
-
-	return false;
-}
-
 const FFrame* FFrameProvider::GetFrame(ETraceFrameType FrameType, uint64 Index) const
 {
 	Session.ReadAccessCheck();
@@ -87,11 +74,6 @@ void FFrameProvider::BeginFrame(ETraceFrameType FrameType, double Time)
 void FFrameProvider::EndFrame(ETraceFrameType FrameType, double Time)
 {
 	Session.WriteAccessCheck();
-	// If the EndFrame event is the first event that comes through
-	if (Frames[FrameType].Num() == 0)
-	{
-		return;
-	}
 	FFrame& Frame = Frames[FrameType][Frames[FrameType].Num() - 1];
 	Frame.EndTime = Time;
 	Session.UpdateDurationSeconds(Time);

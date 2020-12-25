@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "HAL/FileManager.h"
@@ -45,7 +45,6 @@
 #include "VRModeSettings.h"
 #include "Editor/EditorPerformanceSettings.h"
 #include "Settings/SkeletalMeshEditorSettings.h"
-#include "ToolMenus.h"
 
 #define LOCTEXT_NAMESPACE "FEditorSettingsViewerModule"
 
@@ -65,7 +64,7 @@ public:
 
 	virtual void ShowSettings( const FName& CategoryName, const FName& SectionName ) override
 	{
-		FGlobalTabmanager::Get()->TryInvokeTab(EditorSettingsTabName);
+		FGlobalTabmanager::Get()->InvokeTab(EditorSettingsTabName);
 		ISettingsEditorModelPtr SettingsEditorModel = SettingsEditorModelPtr.Pin();
 
 		if (SettingsEditorModel.IsValid())
@@ -101,15 +100,10 @@ public:
 			.SetDisplayName(LOCTEXT("EditorSettingsTabTitle", "Editor Preferences"))
 			.SetMenuType(ETabSpawnerMenuType::Hidden)
 			.SetIcon(FSlateIcon(FEditorStyle::GetStyleSetName(), "EditorPreferences.TabIcon"));
-
-		UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateRaw(this, &FEditorSettingsViewerModule::RegisterMenus));
 	}
 
 	virtual void ShutdownModule() override
 	{
-		UToolMenus::UnRegisterStartupCallback(this);
-		UToolMenus::UnregisterOwner(this);
-
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner(EditorSettingsTabName);
 		UnregisterSettings();
 	}
@@ -120,13 +114,6 @@ public:
 	}
 
 protected:
-
-	void RegisterMenus()
-	{
-		FToolMenuOwnerScoped OwnerScoped(this);
-
-		GetMutableDefault<ULevelEditorPlaySettings>()->RegisterCommonResolutionsMenu();
-	}
 
 	/**
 	 * Registers general Editor settings.
@@ -143,7 +130,6 @@ protected:
 		);
 
 		// region & language
-		FModuleManager::Get().LoadModuleChecked("InternationalizationSettings");
 		ISettingsSectionPtr RegionAndLanguageSettings = SettingsModule.RegisterSettings("Editor", "General", "Internationalization",
 			LOCTEXT("InternationalizationSettingsModelName", "Region & Language"),
 			LOCTEXT("InternationalizationSettingsModelDescription", "Configure the editor's behavior to use a language and fit a region's culture."),

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ScreenComparisonModel.h"
 #include "ISourceControlModule.h"
@@ -13,19 +13,13 @@ FScreenComparisonModel::FScreenComparisonModel(const FComparisonReport& InReport
 	: Report(InReport)
 	, bComplete(false)
 {
-	const FImageComparisonResult& ComparisonResult = Report.GetComparisonResult();
+	const FImageComparisonResult& ComparisonResult = Report.Comparison;
 
-	/*
-		Remember that this report may have been loaded from elsewhere so we will not have access to the comparison/delta paths that
-		were used at the time. We need to use the files in the report folder, though we will write to the ideal approved path since
-		that is where a blessed image should be checked in to.
-	*/
+	FString IncomingImage = Report.ReportFolder / ComparisonResult.ReportIncomingFile;
+	FString IncomingMetadata = FPaths::ChangeExtension(IncomingImage, TEXT("json"));
 
-	FString SourceImage = FPaths::Combine(Report.GetReportPath(), Report.GetComparisonResult().ReportIncomingFilePath);
-	FString OutputImage = FPaths::Combine(FPaths::ProjectDir(), Report.GetComparisonResult().IdealApprovedFolderPath, FPaths::GetCleanFilename(Report.GetComparisonResult().IncomingFilePath));
-
-	FileImports.Add(FFileMapping(OutputImage, SourceImage));
-	FileImports.Add(FFileMapping(FPaths::ChangeExtension(OutputImage, TEXT("json")), FPaths::ChangeExtension(SourceImage, TEXT("json"))));
+	FileImports.Add(FFileMapping(IncomingImage, ComparisonResult.IncomingFile));
+	FileImports.Add(FFileMapping(IncomingMetadata, FPaths::ChangeExtension(ComparisonResult.IncomingFile, TEXT("json"))));
 }
 
 bool FScreenComparisonModel::IsComplete() const
@@ -33,16 +27,37 @@ bool FScreenComparisonModel::IsComplete() const
 	return bComplete;
 }
 
-void FScreenComparisonModel::Complete(bool bWasSuccessful)
+void FScreenComparisonModel::Complete()
 {
-	if (bWasSuccessful)
+	FString RelativeReportFolder = Report.ReportFolder;
+	if ( FPaths::MakePathRelativeTo(RelativeReportFolder, *Report.ReportRootDirectory) )
 	{
-		// Delete report folder
-		IFileManager::Get().DeleteDirectory(*Report.GetReportPath(), false, true);
-	}
+		// Find test folder, immediate sub-folder of map
+		// e.g. Map/Test/Platform/RHI -> Map/Test 
+		for (;;)
+		{
+			FString ParentFolder = FPaths::GetPath(RelativeReportFolder);
 
-	bComplete = true;
-	OnComplete.Broadcast();
+			int32 SubfolderPos = INDEX_NONE;
+			bool bContainsSubfolder = false;
+			bContainsSubfolder |= ParentFolder.FindChar('\\', SubfolderPos);
+			bContainsSubfolder |= ParentFolder.FindChar('/', SubfolderPos);
+
+			if (ParentFolder.IsEmpty() || !bContainsSubfolder)
+			{
+				break;
+			}
+			RelativeReportFolder = ParentFolder;
+		}
+
+		// Delete test folder
+		FString ReportTopFolder = Report.ReportRootDirectory / RelativeReportFolder;
+		if ( IFileManager::Get().DeleteDirectory(*ReportTopFolder, false, true) )
+		{
+			bComplete = true;
+			OnComplete.Broadcast();
+		}
+	}
 }
 
 TOptional<FAutomationScreenshotMetadata> FScreenComparisonModel::GetMetadata()
@@ -50,9 +65,7 @@ TOptional<FAutomationScreenshotMetadata> FScreenComparisonModel::GetMetadata()
 	// Load it.
 	if ( !Metadata.IsSet() )
 	{
-		const FImageComparisonResult& Comparison = Report.GetComparisonResult();
-
-		FString IncomingImage = Report.GetReportPath() / Comparison.ReportIncomingFilePath;
+		FString IncomingImage = Report.ReportFolder / Report.Comparison.ReportIncomingFile;
 		FString IncomingMetadata = FPaths::ChangeExtension(IncomingImage, TEXT("json"));
 
 		if ( !IncomingMetadata.IsEmpty() )
@@ -72,52 +85,45 @@ TOptional<FAutomationScreenshotMetadata> FScreenComparisonModel::GetMetadata()
 	return Metadata;
 }
 
-bool FScreenComparisonModel::AddNew()
+bool FScreenComparisonModel::AddNew(IScreenShotManagerPtr ScreenshotManager)
 {
-	bool bSuccess = true;
-
 	// Copy the files from the reports location to the destination location
 	TArray<FString> SourceControlFiles;
-	for ( const FFileMapping& Incoming : FileImports)
+	for ( const FFileMapping& Import : FileImports )
 	{
-		if (IFileManager::Get().Copy(*Incoming.DestinationFile, *Incoming.SourceFile, true, true) != 0)
-		{
-			bSuccess = false;
-		}
+		FString DestFilePath = ScreenshotManager->GetLocalApprovedFolder() / Import.DestinationFile;
+		IFileManager::Get().Copy(*DestFilePath, *Import.SourceFile, true, true);
 
-		SourceControlFiles.Add(Incoming.DestinationFile);
+		SourceControlFiles.Add(DestFilePath);
 	}
 
-	if (bSuccess)
+	// Add the files to source control
+	ISourceControlProvider& SourceControlProvider = ISourceControlModule::Get().GetProvider();
+	if ( SourceControlProvider.Execute(ISourceControlOperation::Create<FMarkForAdd>(), SourceControlFiles) == ECommandResult::Failed )
 	{
-		// Add the files to source control
-		ISourceControlProvider& SourceControlProvider = ISourceControlModule::Get().GetProvider();
-		if (SourceControlProvider.Execute(ISourceControlOperation::Create<FMarkForAdd>(), SourceControlFiles) == ECommandResult::Failed)
-		{
-			// TODO Error
-		}
+		// TODO Error
 	}
 
-	Complete(bSuccess);
+	Complete();
 
-	return bSuccess;
+	return true;
 }
 
-bool FScreenComparisonModel::Replace()
+bool FScreenComparisonModel::Replace(IScreenShotManagerPtr ScreenshotManager)
 {
-	// @todo(agrant): test this
-
 	// Delete all the existing files in this area
-	RemoveExistingApproved();
+	RemoveExistingApproved(ScreenshotManager);
 
 	// Copy files to the approved
-	const FString ImportIncomingRoot = Report.GetReportPath();
+	const FString& LocalApprovedFolder = ScreenshotManager->GetLocalApprovedFolder();
+	const FString ImportIncomingRoot = Report.ReportFolder;
 
 	TArray<FString> SourceControlFiles;
 
-	for ( const FFileMapping& Incoming : FileImports)
+	for ( const FFileMapping& Import : FileImports )
 	{
-		SourceControlFiles.Add(Incoming.DestinationFile);
+		FString DestFilePath = LocalApprovedFolder / Import.DestinationFile;
+		SourceControlFiles.Add(DestFilePath);
 	}
 
 	ISourceControlProvider& SourceControlProvider = ISourceControlModule::Get().GetProvider();
@@ -128,70 +134,72 @@ bool FScreenComparisonModel::Replace()
 
 	SourceControlFiles.Reset();
 
-	// Copy the files from the reports location to the destination location
-	for (const FFileMapping& Incoming : FileImports)
+	for ( const FFileMapping& Import : FileImports )
 	{
-		IFileManager::Get().Copy(*Incoming.DestinationFile, *Incoming.SourceFile, true, true);
-		SourceControlFiles.Add(Incoming.DestinationFile);
+		FString DestFilePath = LocalApprovedFolder / Import.DestinationFile;
+		IFileManager::Get().Copy(*DestFilePath, *Import.SourceFile, true, true);
+
+		SourceControlFiles.Add(DestFilePath);
 	}
 
 	if ( SourceControlProvider.Execute(ISourceControlOperation::Create<FMarkForAdd>(), SourceControlFiles) == ECommandResult::Failed )
 	{
 		//TODO Error
 	}
-
 	if ( SourceControlProvider.Execute(ISourceControlOperation::Create<FCheckOut>(), SourceControlFiles) == ECommandResult::Failed )
 	{
 		//TODO Error
 	}
 
-	Complete(true);
+	Complete();
 
 	return true;
 }
 
-bool FScreenComparisonModel::RemoveExistingApproved()
+bool FScreenComparisonModel::RemoveExistingApproved(IScreenShotManagerPtr ScreenshotManager)
 {
-	FString ApprovedFolder = FPaths::Combine(FPaths::ProjectDir(), Report.GetComparisonResult().ApprovedFilePath);
-
-	TArray<FString> SourceControlFiles;
-
-	bool bSuccess = false;
-
-	IFileManager::Get().FindFilesRecursive(SourceControlFiles, *FPaths::GetPath(ApprovedFolder), TEXT("*.*"), true, false, false);
-
-	if (SourceControlFiles.Num())
+	FString RelativeReportFolder = Report.ReportFolder;
+	if (FPaths::MakePathRelativeTo(RelativeReportFolder, *Report.ReportRootDirectory))
 	{
-		ISourceControlProvider& SourceControlProvider = ISourceControlModule::Get().GetProvider();
-		if (SourceControlProvider.Execute(ISourceControlOperation::Create<FRevert>(), SourceControlFiles) != ECommandResult::Failed)
-		{
-			if (SourceControlProvider.Execute(ISourceControlOperation::Create<FDelete>(), SourceControlFiles) != ECommandResult::Failed)
-			{
-				for (const FString& File : SourceControlFiles)
-				{
-					IFileManager::Get().Delete(*File, false, true, false);
-				}
+		TArray<FString> SourceControlFiles;
 
-				bSuccess = true;
-			}
+		const FString& LocalApprovedFolder = ScreenshotManager->GetLocalApprovedFolder() / RelativeReportFolder;
+		IFileManager::Get().FindFilesRecursive(SourceControlFiles, *LocalApprovedFolder, TEXT("*.*"), true, false, false);
+
+		ISourceControlProvider& SourceControlProvider = ISourceControlModule::Get().GetProvider();
+		if (SourceControlProvider.Execute(ISourceControlOperation::Create<FRevert>(), SourceControlFiles) == ECommandResult::Failed)
+		{
+			//TODO Error
 		}
+
+		if (SourceControlProvider.Execute(ISourceControlOperation::Create<FDelete>(), SourceControlFiles) == ECommandResult::Failed)
+		{
+			//TODO Error
+		}
+
+		for (const FString& File : SourceControlFiles)
+		{
+			IFileManager::Get().Delete(*File, false, true, false);
+		}
+
+		return true;
 	}
 
-	return bSuccess;
+	return false;
 }
 
-bool FScreenComparisonModel::AddAlternative()
+bool FScreenComparisonModel::AddAlternative(IScreenShotManagerPtr ScreenshotManager)
 {
-	// @todo(agrant): test this
-
 	// Copy files to the approved
-	const FString ImportIncomingRoot = Report.GetReportPath();
+	const FString& LocalApprovedFolder = ScreenshotManager->GetLocalApprovedFolder();
+	const FString ImportIncomingRoot = Report.ReportFolder;
 
 	TArray<FString> SourceControlFiles;
 
 	for ( const FFileMapping& Import : FileImports )
 	{
-		SourceControlFiles.Add(Import.DestinationFile);
+		FString DestFilePath = LocalApprovedFolder / Import.DestinationFile;
+		SourceControlFiles.Add(DestFilePath);
 	}
 
 	ISourceControlProvider& SourceControlProvider = ISourceControlModule::Get().GetProvider();
@@ -202,9 +210,10 @@ bool FScreenComparisonModel::AddAlternative()
 
 	for ( const FFileMapping& Import : FileImports )
 	{
-		if ( IFileManager::Get().Copy(*Import.DestinationFile, *Import.SourceFile, false, true) == COPY_OK )
+		FString DestFilePath = LocalApprovedFolder / Import.DestinationFile;
+		if ( IFileManager::Get().Copy(*DestFilePath, *Import.SourceFile, false, true) == COPY_OK )
 		{
-			SourceControlFiles.Add(Import.DestinationFile);
+			SourceControlFiles.Add(DestFilePath);
 		}
 		else
 		{
@@ -221,7 +230,7 @@ bool FScreenComparisonModel::AddAlternative()
 		//TODO Error
 	}
 
-	Complete(true);
+	Complete();
 
 	return true;
 }

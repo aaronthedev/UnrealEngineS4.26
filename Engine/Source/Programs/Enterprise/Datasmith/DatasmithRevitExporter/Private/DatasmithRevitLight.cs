@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System.Collections.Generic;
 using System.IO;
@@ -42,6 +42,12 @@ namespace DatasmithRevitExporter
 				io_datasmithLightActor.SetTemperature(temperature);
 			}            
 
+            var lightParameters = GetLightParameter(in_sourceElement);
+
+            // Set the Datasmith light type.
+            FDatasmithFacadeActorLight.ELightType lightType = GetLightType(lightParameters);
+            io_datasmithLightActor.SetLightType(lightType);
+
 			string iesFileName = GetIesFile(in_lightAsset);
             string iesCacheData = GetIesCacheData(in_lightAsset);
 
@@ -50,61 +56,42 @@ namespace DatasmithRevitExporter
 				// Write a IES definition file and set its file path for the Datasmith light.
 				// Use the user's temporary folder as IES definition file folder path.
 				io_datasmithLightActor.WriteIESFile(Path.GetTempPath(), iesFileName, iesCacheData);
-
-				FamilyInstance LightInstance = in_sourceElement as FamilyInstance;
-
-				// Rotate the IES photometric web to match that of Revit.
-				// Note: if tilt angle is present, it will be exported at part of the family instance transform, 
-				// so no need to process it here.
-				io_datasmithLightActor.SetIesRotation(-90f * (LightInstance.Mirrored ? -1f : 1f) , 0f, -90f);
 			}
 
-			if(io_datasmithLightActor is FDatasmithFacadeSpotLight pointLightActor)
+			// Set the intensity unit of the Datasmith point light and derived types.
+			// All lights in Revit seem to be in candelas by default.
+			io_datasmithLightActor.SetPointIntensityUnit(FDatasmithFacadeActorLight.EPointLightIntensityUnit.Candelas);
+			
+			// Set the Datasmith area light shape.
+			io_datasmithLightActor.SetAreaShape(ConvertLightShape(GetLightShape(in_lightAsset)));
+
+			// Set the Datasmith area light distribution.
+			io_datasmithLightActor.SetAreaType(ConvertLightType(GetLightDistribution(in_lightAsset)));
+
+			float width = GetWidth(in_lightAsset);
+			if (width > 0)
 			{
-				// Set the intensity unit of the Datasmith point light and derived types.
-				// All lights in Revit seem to be in candelas by default.
-				pointLightActor.SetIntensityUnits(FDatasmithFacadePointLight.EPointLightIntensityUnit.Candelas);
+				// Set the Datasmith area light shape size on the Y axis (in world units).
+				io_datasmithLightActor.SetAreaWidth(width);
 			}
 
-			if(io_datasmithLightActor is FDatasmithFacadeAreaLight areaLightActor)
+			float length = GetLength(in_lightAsset);
+			if (length > 0)
 			{
-				// Set the Datasmith area light shape.
-				areaLightActor.SetLightShape(ConvertLightShape(GetLightShape(in_lightAsset)));
-
-				// Set the Datasmith area light distribution.
-				areaLightActor.SetLightType(ConvertLightType(GetLightDistribution(in_lightAsset)));
-
-				float width = GetWidth(in_lightAsset);
-				if (width > 0)
-				{
-					// Set the Datasmith area light shape size on the Y axis (in world units).
-					areaLightActor.SetWidth(width);
-				}
-
-				float length = GetLength(in_lightAsset);
-				if (length > 0)
-				{
-					// Set the Datasmith area light shape size on the X axis (in world units).
-					areaLightActor.SetLength(length);
-				}
+				// Set the Datasmith area light shape size on the X axis (in world units).
+				io_datasmithLightActor.SetAreaLength(length);
 			}
 
-			if(io_datasmithLightActor is FDatasmithFacadeSpotLight spotLightActor)
-			{
-				var lightParameters = GetLightParameter(in_sourceElement);
-				float innerConeAngle = GetInnerConeAngle(lightParameters);
-
-				if (innerConeAngle > 0)
-				{
-					spotLightActor.SetInnerConeAngle(innerConeAngle);
-				}
-				float outerConeAngle = GetOuterConeAngle(lightParameters);
-				if (outerConeAngle > 0)
-				{
-					spotLightActor.SetOuterConeAngle(outerConeAngle);
-				}
-			}
-		} 
+            float innerConeAngle = GetInnerConeAngle(lightParameters);
+            
+            if (innerConeAngle > 0) { 
+                io_datasmithLightActor.SetSpotInnerConeAngle(innerConeAngle);
+            }
+            float outerConeAngle = GetOuterConeAngle(lightParameters);
+            if (outerConeAngle > 0) {
+                io_datasmithLightActor.SetSpotOuterConeAngle(outerConeAngle);
+            }
+        } 
 
 		/* Begin functions for IDatasmithLightActor */
 		static bool IsEnabled(Asset asset)
@@ -285,64 +272,60 @@ namespace DatasmithRevitExporter
 		/* End IDatasmithAreaLightElement functions*/
 		/**********************************************/
 
-		static private FDatasmithFacadeAreaLight.EAreaLightShape ConvertLightShape(
+		static private FDatasmithFacadeActorLight.EAreaLightShape ConvertLightShape(
 			LightShapeStyle lss
 		)
 		{
 			switch (lss)
 			{
 				case LightShapeStyle.Circle:
-					return FDatasmithFacadeAreaLight.EAreaLightShape.Disc;                  
+					return FDatasmithFacadeActorLight.EAreaLightShape.Disc;                  
 				case LightShapeStyle.Line:
-					return FDatasmithFacadeAreaLight.EAreaLightShape.Cylinder;
+					return FDatasmithFacadeActorLight.EAreaLightShape.Cylinder;
 				case LightShapeStyle.Point:
-					return FDatasmithFacadeAreaLight.EAreaLightShape.Sphere;
+					return FDatasmithFacadeActorLight.EAreaLightShape.Sphere;
 				case LightShapeStyle.Rectangle:
-					return FDatasmithFacadeAreaLight.EAreaLightShape.Rectangle;
+					return FDatasmithFacadeActorLight.EAreaLightShape.Rectangle;
 				default:
-					return FDatasmithFacadeAreaLight.EAreaLightShape.Sphere;
+					return FDatasmithFacadeActorLight.EAreaLightShape.Sphere;
 			}
 		}
 
-		static private FDatasmithFacadeAreaLight.EAreaLightType ConvertLightType(
+		static private FDatasmithFacadeActorLight.EAreaLightType ConvertLightType(
 			LightDistributionStyle lds
 		)
 		{
 			switch (lds)
 			{
 				case LightDistributionStyle.Hemispherical:
-					return FDatasmithFacadeAreaLight.EAreaLightType.Point;
+					return FDatasmithFacadeActorLight.EAreaLightType.Point;
 				case LightDistributionStyle.PhotometricWeb:
-					return FDatasmithFacadeAreaLight.EAreaLightType.IES_DEPRECATED;
+					return FDatasmithFacadeActorLight.EAreaLightType.IES_DEPRECATED;
 				case LightDistributionStyle.Spherical:
-					return FDatasmithFacadeAreaLight.EAreaLightType.Point;
+					return FDatasmithFacadeActorLight.EAreaLightType.Point;
 				case LightDistributionStyle.Spot:
-					return FDatasmithFacadeAreaLight.EAreaLightType.Spot;
+					return FDatasmithFacadeActorLight.EAreaLightType.Spot;
 				default:
-					return FDatasmithFacadeAreaLight.EAreaLightType.Point;
+					return FDatasmithFacadeActorLight.EAreaLightType.Point;
 			}
 		}
 
-        static public FDatasmithFacadeActorLight CreateLightActor(
-			Element sourceElement, 
-			string  actorName
-		)
+        static FDatasmithFacadeActorLight.ELightType GetLightType(IDictionary<string, string> parameters)
         {
-			var parameters = GetLightParameter(sourceElement);
-			string key = "Light Source Definition (family)";
+            string key = "Light Source Definition (family)";
 
             if (parameters.ContainsKey(key))
             {
-				if (parameters[key].Contains("Spot"))
-					return new FDatasmithFacadeSpotLight(actorName);
-				else if (parameters[key].Contains("Line") || parameters[key].Contains("Rectangle"))
-					return new FDatasmithFacadeAreaLight(actorName);
+                if (parameters[key].Contains("Spot"))
+                    return FDatasmithFacadeActorLight.ELightType.SpotLight;
+                else if (parameters[key].Contains("Line") || parameters[key].Contains("Rectangle"))
+                    return FDatasmithFacadeActorLight.ELightType.AreaLight;
             }          
 
-            return new FDatasmithFacadePointLight(actorName);
+            return FDatasmithFacadeActorLight.ELightType.PointLight;
         }
 
-        static private IDictionary<string, string> GetLightParameter(
+        static public IDictionary<string, string> GetLightParameter(
 			Element in_sourceElement
 		)
         {

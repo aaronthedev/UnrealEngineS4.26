@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	RenderResource.cpp: Render resource implementation.
@@ -8,8 +8,6 @@
 #include "Misc/ScopedEvent.h"
 #include "Misc/App.h"
 #include "RenderingThread.h"
-#include "ProfilingDebugging/LoadTimeTracker.h"
-#include "CoreGlobals.h"
 
 /** Whether to enable mip-level fading or not: +1.0f if enabled, -1.0f if disabled. */
 float GEnableMipLevelFading = 1.0f;
@@ -28,28 +26,33 @@ FAutoConsoleVariableRef CVarReadBufferNumFramesUnusedThresold(
 	GGlobalBufferNumFramesUnusedThresold ,
 	TEXT("Number of frames after which unused global resource allocations will be discarded. Set 0 to ignore. (default=30)"));
 
-FThreadSafeCounter FRenderResource::ResourceListIterationActive;
-
-TArray<int32>& GetFreeIndicesList()
+TLinkedList<FRenderResource*>*& FRenderResource::GetResourceList()
 {
-	static TArray<int32> FreeIndicesList;
-	return FreeIndicesList;
-}
-
-TArray<FRenderResource*>& FRenderResource::GetResourceList()
-{
-	static TArray<FRenderResource*> RenderResourceList;
-	return RenderResourceList;
+	static TLinkedList<FRenderResource*>* FirstResourceLink = NULL;
+	return FirstResourceLink;
 }
 
 /** Initialize all resources initialized before the RHI was initialized */
 void FRenderResource::InitPreRHIResources()
 {	
 	// Notify all initialized FRenderResources that there's a valid RHI device to create their RHI resources for now.
-	FRenderResource::InitRHIForAllResources();
+	for (TLinkedList<FRenderResource*>::TIterator ResourceIt(FRenderResource::GetResourceList()); ResourceIt; ResourceIt.Next())
+	{
+		ResourceIt->InitRHI();
+	}
+	// Dynamic resources can have dependencies on static resources (with uniform buffers) and must initialized last!
+	for (TLinkedList<FRenderResource*>::TIterator ResourceIt(FRenderResource::GetResourceList()); ResourceIt; ResourceIt.Next())
+	{
+		ResourceIt->InitDynamicRHI();
+	}
 
 #if !PLATFORM_NEEDS_RHIRESOURCELIST
-	FRenderResource::GetResourceList().Empty();
+	while (GetResourceList())
+	{
+		TLinkedList<FRenderResource*>* CurrentHead = GetResourceList();
+		CurrentHead->Unlink();
+		delete CurrentHead;
+	}
 #endif
 }
 
@@ -58,8 +61,10 @@ void FRenderResource::ChangeFeatureLevel(ERHIFeatureLevel::Type NewFeatureLevel)
 	ENQUEUE_RENDER_COMMAND(FRenderResourceChangeFeatureLevel)(
 		[NewFeatureLevel](FRHICommandList& RHICmdList)
 	{
-		FRenderResource::ForAllResources([NewFeatureLevel](FRenderResource* Resource)
+		for (TLinkedList<FRenderResource*>::TIterator It(FRenderResource::GetResourceList()); It; It.Next())
 		{
+			FRenderResource* Resource = *It;
+
 			// Only resources configured for a specific feature level need to be updated
 			if (Resource->HasValidFeatureLevel() && (Resource->FeatureLevel != NewFeatureLevel))
 			{
@@ -69,41 +74,34 @@ void FRenderResource::ChangeFeatureLevel(ERHIFeatureLevel::Type NewFeatureLevel)
 				Resource->InitDynamicRHI();
 				Resource->InitRHI();
 			}
-		});
+		}
 	});
 }
 
 void FRenderResource::InitResource()
 {
 	check(IsInRenderingThread());
-	if (ListIndex == INDEX_NONE)
+	if(!bInitialized)
 	{
-		TArray<FRenderResource*>& ResourceList = GetResourceList();
-		TArray<int32>& FreeIndicesList = GetFreeIndicesList();
-
-		// If resource list is currently being iterated, new resources must be added to the end of the list, to ensure they're processed during the iteration
-		// Otherwise empty slots in the list may be re-used for new resources
-		int32 LocalListIndex = INDEX_NONE;
-		if (FreeIndicesList.Num() > 0 && ResourceListIterationActive.GetValue() == 0)
-		{
-			LocalListIndex = FreeIndicesList.Pop();
-			check(ResourceList[LocalListIndex] == nullptr);
-			ResourceList[LocalListIndex] = this;
-		}
-		else
-		{
-			LocalListIndex = ResourceList.Add(this);
-		}
-
-		if (GIsRHIInitialized)
+#if PLATFORM_NEEDS_RHIRESOURCELIST
+		ResourceLink = TLinkedList<FRenderResource*>(this);
+		ResourceLink.LinkHead(GetResourceList());
+#endif
+		if(GIsRHIInitialized)
 		{
 			CSV_SCOPED_TIMING_STAT_EXCLUSIVE(InitRenderResource);
 			InitDynamicRHI();
 			InitRHI();
 		}
-
-		FPlatformMisc::MemoryBarrier(); // there are some multithreaded reads of ListIndex
-		ListIndex = LocalListIndex;
+		else
+		{
+#if !PLATFORM_NEEDS_RHIRESOURCELIST
+		TLinkedList<FRenderResource*>* ListEntry = new TLinkedList<FRenderResource*>(this);
+		ListEntry->LinkHead(GetResourceList());
+#endif
+		}
+		FPlatformMisc::MemoryBarrier(); // there are some multithreaded reads of bInitialized
+		bInitialized = true;
 	}
 }
 
@@ -112,19 +110,17 @@ void FRenderResource::ReleaseResource()
 	if ( !GIsCriticalError )
 	{
 		check(IsInRenderingThread());
-		if(ListIndex != INDEX_NONE)
+		if(bInitialized)
 		{
 			if(GIsRHIInitialized)
 			{
 				ReleaseRHI();
 				ReleaseDynamicRHI();
 			}
-
-			TArray<FRenderResource*>& ResourceList = GetResourceList();
-			TArray<int32>& FreeIndicesList = GetFreeIndicesList();
-			ResourceList[ListIndex] = nullptr;
-			FreeIndicesList.Add(ListIndex);
-			ListIndex = INDEX_NONE;
+#if PLATFORM_NEEDS_RHIRESOURCELIST
+			ResourceLink.Unlink();
+#endif
+			bInitialized = false;
 		}
 	}
 }
@@ -132,7 +128,7 @@ void FRenderResource::ReleaseResource()
 void FRenderResource::UpdateRHI()
 {
 	check(IsInRenderingThread());
-	if(IsInitialized() && GIsRHIInitialized)
+	if(bInitialized && GIsRHIInitialized)
 	{
 		ReleaseRHI();
 		ReleaseDynamicRHI();
@@ -141,9 +137,57 @@ void FRenderResource::UpdateRHI()
 	}
 }
 
+void FRenderResource::InitResourceFromPossiblyParallelRendering()
+{
+	check(IsInParallelRenderingThread());
+
+	if (IsInRenderingThread())
+	{
+		InitResource();
+	}
+	else
+	{
+		class FInitResourceRenderThreadTask
+		{
+			FRenderResource& Resource;
+			FScopedEvent& Event;
+		public:
+
+			FInitResourceRenderThreadTask(FRenderResource& InResource, FScopedEvent& InEvent)
+				: Resource(InResource)
+				, Event(InEvent)
+			{
+			}
+
+			static FORCEINLINE TStatId GetStatId()
+			{
+				RETURN_QUICK_DECLARE_CYCLE_STAT(FInitResourceRenderThreadTask, STATGROUP_TaskGraphTasks);
+			}
+
+			static FORCEINLINE ENamedThreads::Type GetDesiredThread()
+			{
+				return ENamedThreads::GetRenderThread_Local();
+			}
+
+			static FORCEINLINE ESubsequentsMode::Type GetSubsequentsMode() { return ESubsequentsMode::FireAndForget; }
+
+			void DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
+			{
+				Resource.InitResource();
+				Event.Trigger();
+			}
+		};
+		{
+			FScopedEvent Event;
+			TGraphTask<FInitResourceRenderThreadTask>::CreateTask().ConstructAndDispatchWhenReady(*this, Event);
+		}
+	}
+}
+
+
 FRenderResource::~FRenderResource()
 {
-	if (IsInitialized() && !GIsCriticalError)
+	if (bInitialized && !GIsCriticalError)
 	{
 		// Deleting an initialized FRenderResource will result in a crash later since it is still linked
 		UE_LOG(LogRendererCore, Fatal,TEXT("A FRenderResource was deleted without being released first!"));
@@ -290,7 +334,6 @@ void FTextureReference::InvalidateLastRenderTime()
 
 void FTextureReference::InitRHI()
 {
-	SCOPED_LOADTIMER(FTextureReference_InitRHI);
 	TextureReferenceRHI = RHICreateTextureReference(&LastRenderTimeRHI);
 }
 	
@@ -306,9 +349,6 @@ FString FTextureReference::GetFriendlyName() const
 
 /** The global null color vertex buffer, which is set with a stride of 0 on meshes without a color component. */
 TGlobalResource<FNullColorVertexBuffer> GNullColorVertexBuffer;
-
-/** The global null vertex buffer, which is set with a stride of 0 on meshes */
-TGlobalResource<FNullVertexBuffer> GNullVertexBuffer;
 
 /*------------------------------------------------------------------------------
 	FGlobalDynamicVertexBuffer implementation.
@@ -799,61 +839,3 @@ void FMipBiasFade::SetNewMipCount( float ActualMipCount, float TargetMipCount, d
 		}
 	}
 }
-
-class FTextureSamplerStateCache : public FRenderResource
-{
-public:
-	TMap<FSamplerStateInitializerRHI, FRHISamplerState*> Samplers;
-
-	virtual void ReleaseRHI() override
-	{
-		for (auto Pair : Samplers)
-		{
-			Pair.Value->Release();
-		}
-		Samplers.Empty();
-	}
-};
-
-TGlobalResource<FTextureSamplerStateCache> GTextureSamplerStateCache;
-
-FRHISamplerState* FTexture::GetOrCreateSamplerState(const FSamplerStateInitializerRHI& Initializer)
-{
-	// This sampler cache is supposed to be used only from RT
-	// Add a lock here if it's used from multiple threads
-	check(IsInRenderingThread());
-	
-	FRHISamplerState** Found = GTextureSamplerStateCache.Samplers.Find(Initializer);
-	if (Found)
-	{
-		return *Found;
-	}
-	
-	FSamplerStateRHIRef NewState = RHICreateSamplerState(Initializer);
-	
-	// Add an extra reference so we don't have TRefCountPtr in the maps
-	NewState->AddRef();
-	GTextureSamplerStateCache.Samplers.Add(Initializer, NewState);
-	return NewState;
-}
-
-bool IsRayTracingEnabled()
-{
-	checkf(GIsRHIInitialized, TEXT("IsRayTracingEnabled() may only be called once RHI is initialized."));
-
-#if DO_CHECK && WITH_EDITOR
-	{
-		FString Commandline = FCommandLine::Get();
-		bool bIsCookCommandlet = IsRunningCommandlet() && Commandline.Contains(TEXT("run=cook"));
-		// This function must not be called while cooking
-		if (bIsCookCommandlet)
-		{
-			return false;
-		}
-	}
-#endif // DO_CHECK && WITH_EDITOR
-
-	extern RENDERCORE_API bool GUseRayTracing;
-	return GUseRayTracing;
-}
-

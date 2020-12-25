@@ -33,8 +33,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_Ogawa_OStream_h
-#define Alembic_Ogawa_OStream_h
+#ifndef _Alembic_Ogawa_OStream_h_
+#define _Alembic_Ogawa_OStream_h_
 
 #include <Alembic/Util/Export.h>
 #include <Alembic/Ogawa/Foundation.h>

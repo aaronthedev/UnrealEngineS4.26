@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,80 +14,7 @@
 #define WITH_IMMEDIATE_PHYSX 0
 #endif
 
-#if WITH_CHAOS
-
-#include "ChaosSQTypes.h"
-
-namespace Chaos
-{
-	class FImplicitObject;
-
-	template<class T>
-	class TCapsule;
-
-	template <typename T, int d>
-	class TGeometryParticle;
-
-	template<class T, int d>
-	struct TMassProperties;
-
-	class FPerShapeData;
-
-	class FPhysicalMaterial;
-	class FPhysicalMaterialMask;
-
-	template<typename, uint32, uint32>
-	class THandle;
-
-	struct FMaterialHandle;
-	struct FMaterialMaskHandle;
-
-	class FChaosPhysicsMaterial;
-	class FChaosPhysicsMaterialMask;
-
-	using FShapesArray = TArray<TUniquePtr<FPerShapeData>, TInlineAllocator<1>>;
-}
-
-// Temporary dummy types until SQ implemented
-namespace ChaosInterface
-{
-	struct FDummyPhysType;
-	struct FDummyPhysActor;
-	template<typename T> struct FDummyCallback;
-}
-using FPhysTypeDummy = ChaosInterface::FDummyPhysType;
-using FPhysActorDummy = ChaosInterface::FDummyPhysActor;
-
-template<typename T>
-using FCallbackDummy = ChaosInterface::FDummyCallback<T>;
-
-struct FTransform;
-
-using FHitLocation = ChaosInterface::FLocationHit;
-using FHitSweep = ChaosInterface::FSweepHit;
-using FHitRaycast = ChaosInterface::FRaycastHit;
-using FHitOverlap = ChaosInterface::FOverlapHit;
-using FPhysicsQueryHit = ChaosInterface::FQueryHit;
-
-using FPhysicsTransform = FTransform;
-
-using FPhysicsShape = Chaos::FPerShapeData;
-using FPhysicsGeometry = Chaos::FImplicitObject;
-using FPhysicsCapsuleGeometry = Chaos::TCapsule<float>;
-using FPhysicsMaterial = Chaos::FChaosPhysicsMaterial;
-using FPhysicsMaterialMask = Chaos::FChaosPhysicsMaterialMask; 
-using FPhysicsActor = Chaos::TGeometryParticle<float,3>;
-
-template <typename T>
-using FPhysicsHitCallback = ChaosInterface::FSQHitBuffer<T>;
-
-template <typename T>
-using FSingleHitBuffer = ChaosInterface::FSQSingleHitBuffer<T>;
-
-template <typename T>
-using FDynamicHitBuffer = ChaosInterface::FSQHitBuffer<T>;
-
-#elif PHYSICS_INTERFACE_PHYSX
+#if PHYSICS_INTERFACE_PHYSX
 
 namespace physx
 {
@@ -95,7 +22,6 @@ namespace physx
 	struct PxSweepHit;
 	struct PxRaycastHit;
 	struct PxOverlapHit;
-	struct PxQueryFlag;
 	struct PxQueryHit;
 
 	class PxTransform;
@@ -136,6 +62,63 @@ template <typename T>
 using FPhysicsHitCallback = physx::PxHitCallback<T>;
 
 struct FQueryDebugParams {};
+
+#elif WITH_CHAOS
+
+#include "ChaosSQTypes.h"
+
+namespace Chaos
+{
+	template<class T, int d>
+	class TImplicitObject;
+
+	template<class T>
+	class TCapsule;
+
+	template <typename T, int d>
+	class TGeometryParticle;
+
+	template <typename T, int d>
+	class TPerShapeData;
+}
+
+// Temporary dummy types until SQ implemented
+namespace ChaosInterface
+{
+	struct FDummyPhysType;
+	struct FDummyPhysActor;
+	template<typename T> struct FDummyCallback;
+}
+using FPhysTypeDummy = ChaosInterface::FDummyPhysType;
+using FPhysActorDummy = ChaosInterface::FDummyPhysActor;
+
+template<typename T>
+using FCallbackDummy = ChaosInterface::FDummyCallback<T>;
+
+struct FTransform;
+
+using FHitLocation = ChaosInterface::FLocationHit;
+using FHitSweep = ChaosInterface::FSweepHit;
+using FHitRaycast = ChaosInterface::FRaycastHit;
+using FHitOverlap = ChaosInterface::FOverlapHit;
+using FPhysicsQueryHit = ChaosInterface::FQueryHit;
+
+using FPhysicsTransform = FTransform;
+
+using FPhysicsShape = Chaos::TPerShapeData<float, 3>;
+using FPhysicsGeometry = Chaos::TImplicitObject<float, 3>;
+using FPhysicsCapsuleGeometry = Chaos::TCapsule<float>;
+using FPhysicsMaterial = FPhysTypeDummy;
+using FPhysicsActor = Chaos::TGeometryParticle<float,3>;
+
+template <typename T>
+using FPhysicsHitCallback = ChaosInterface::FSQHitBuffer<T>;
+
+template <typename T>
+using FSingleHitBuffer = ChaosInterface::FSQSingleHitBuffer<T>;
+
+template <typename T>
+using FDynamicHitBuffer = ChaosInterface::FSQHitBuffer<T>;
 
 #else
 
@@ -212,20 +195,19 @@ class FPhysInterface_Chaos;
 class FPhysicsConstraintReference_Chaos;
 class FPhysicsAggregateReference_Chaos;
 class FPhysicsShapeReference_Chaos;
-class FPhysScene_Chaos;
+class FPhysScene_ChaosInterface;
 class FPhysicsShapeAdapter_Chaos;
 struct FPhysicsGeometryCollection_Chaos;
 class FPhysicsUserData_Chaos;
 
 typedef FPhysicsConstraintReference_Chaos	FPhysicsConstraintHandle;
 typedef FPhysInterface_Chaos				FPhysicsInterface;
-typedef FPhysScene_Chaos					FPhysScene;
+typedef FPhysScene_ChaosInterface			FPhysScene;
 typedef FPhysicsAggregateReference_Chaos	FPhysicsAggregateHandle;
 typedef FPhysInterface_Chaos				FPhysicsCommand;
 typedef FPhysicsShapeReference_Chaos		FPhysicsShapeHandle;
 typedef FPhysicsGeometryCollection_Chaos	FPhysicsGeometryCollection;
-typedef Chaos::FMaterialHandle				FPhysicsMaterialHandle;
-typedef Chaos::FMaterialMaskHandle			FPhysicsMaterialMaskHandle;
+typedef void*								FPhysicsMaterialHandle;
 typedef FPhysicsShapeAdapter_Chaos			FPhysicsShapeAdapter;
 typedef FPhysicsUserData_Chaos				FPhysicsUserData;
 

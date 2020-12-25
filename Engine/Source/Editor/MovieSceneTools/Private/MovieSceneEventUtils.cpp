@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieSceneEventUtils.h"
 
@@ -41,8 +41,20 @@ FMovieSceneEventEndpointParameters FMovieSceneEventEndpointParameters::Generate(
 	}
 
 	FMovieSceneEventEndpointParameters Params;
-	Params.SanitizedObjectName = TEXT("None");
-	Params.SanitizedEventName  = TEXT("SequenceEvent");
+
+	if (Track->EventReceivers.Num() != 0)
+	{
+		// By default for master tracks we create a pin (that receives the level blueprint for master event tracks, or the event receivers)
+		Params.BoundObjectPinClass = UObject::StaticClass();
+
+		Params.SanitizedObjectName = TEXT("Event Receiver");
+		Params.SanitizedEventName  = TEXT("SequenceEvent");
+	}
+	else
+	{
+		Params.SanitizedObjectName = TEXT("None");
+		Params.SanitizedEventName  = TEXT("SequenceEvent");
+	}
 
 	return Params;
 }
@@ -163,35 +175,46 @@ UK2Node* FMovieSceneEventUtils::FindEndpoint(FMovieSceneEvent* EntryPoint, UMovi
 	check(OwnerBlueprint);
 	check(EntryPoint);
 
-	if (EntryPoint->WeakEndpoint.IsStale())
-	{
-		return nullptr;
-	}
-	if (UK2Node* Node = Cast<UK2Node>(EntryPoint->WeakEndpoint.Get()))
-	{
-		return Node;
-	}
-
-	if (!EntryPoint->GraphGuid_DEPRECATED.IsValid())
+	if (EntryPoint->WeakCachedEndpoint.IsStale())
 	{
 		return nullptr;
 	}
 
-	if (EntryPoint->NodeGuid_DEPRECATED.IsValid())
+	UK2Node* CachedEndpoint = CastChecked<UK2Node>(EntryPoint->WeakCachedEndpoint.Get(), ECastCheckedType::NullAllowed);
+	if (CachedEndpoint)
+	{
+		if (FBlueprintEditorUtils::FindBlueprintForNode(CachedEndpoint) == OwnerBlueprint)
+		{
+			return CachedEndpoint;
+		}
+
+		CachedEndpoint->OnUserDefinedPinRenamed().RemoveAll(EventSection);
+		EntryPoint->WeakCachedEndpoint = nullptr;
+		return nullptr;
+	}
+
+	// The cached entry point is either null or stale
+	EntryPoint->WeakCachedEndpoint = nullptr;
+	if (!EntryPoint->GraphGuid.IsValid())
+	{
+		return nullptr;
+	}
+
+	if (EntryPoint->NodeGuid.IsValid())
 	{
 		for (UEdGraph* Graph : OwnerBlueprint->UbergraphPages)
 		{
-			if (Graph->GraphGuid == EntryPoint->GraphGuid_DEPRECATED)
+			if (Graph->GraphGuid == EntryPoint->GraphGuid)
 			{
 				for (UEdGraphNode* Node : Graph->Nodes)
 				{
-					if (Node->NodeGuid == EntryPoint->NodeGuid_DEPRECATED)
+					if (Node->NodeGuid == EntryPoint->NodeGuid)
 					{
 						UK2Node_CustomEvent* CustomEvent = Cast<UK2Node_CustomEvent>(Node);
 						if (ensureMsgf(CustomEvent, TEXT("Encountered an event entry point node that is bound to something other than a custom event")))
 						{
 							CustomEvent->OnUserDefinedPinRenamed().AddUObject(EventSection, &UMovieSceneEventSectionBase::OnUserDefinedPinRenamed);
-							EntryPoint->WeakEndpoint = CustomEvent;
+							EntryPoint->WeakCachedEndpoint = CustomEvent;
 							return CustomEvent;
 						}
 					}
@@ -202,14 +225,14 @@ UK2Node* FMovieSceneEventUtils::FindEndpoint(FMovieSceneEvent* EntryPoint, UMovi
 	// If the node guid is invalid, this must be a function graph on the BP
 	else for (UEdGraph* Graph : OwnerBlueprint->FunctionGraphs)
 	{
-		if (Graph->GraphGuid == EntryPoint->GraphGuid_DEPRECATED)
+		if (Graph->GraphGuid == EntryPoint->GraphGuid)
 		{
 			for (UEdGraphNode* Node : Graph->Nodes)
 			{
 				if (UK2Node_FunctionEntry* FunctionEntry = Cast<UK2Node_FunctionEntry>(Node))
 				{
 					FunctionEntry->OnUserDefinedPinRenamed().AddUObject(EventSection, &UMovieSceneEventSectionBase::OnUserDefinedPinRenamed);
-					EntryPoint->WeakEndpoint = FunctionEntry;
+					EntryPoint->WeakCachedEndpoint = FunctionEntry;
 					return FunctionEntry;
 				}
 			}
@@ -241,7 +264,7 @@ void FMovieSceneEventUtils::SetEndpoint(FMovieSceneEvent* EntryPoint, UMovieScen
 {
 	check(EntryPoint);
 
-	UK2Node* ExistingEndpoint = CastChecked<UK2Node>(EntryPoint->WeakEndpoint.Get(), ECastCheckedType::NullAllowed);
+	UK2Node* ExistingEndpoint = CastChecked<UK2Node>(EntryPoint->WeakCachedEndpoint.Get(), ECastCheckedType::NullAllowed);
 	if (ExistingEndpoint)
 	{
 		ExistingEndpoint->OnUserDefinedPinRenamed().RemoveAll(EventSection);
@@ -254,6 +277,16 @@ void FMovieSceneEventUtils::SetEndpoint(FMovieSceneEvent* EntryPoint, UMovieScen
 
 		checkf(bIsFunction || bIsCustomEvent, TEXT("Only functions and custom events are supported as event endpoints"));
 
+		EntryPoint->GraphGuid = InNewEndpoint->GetGraph()->GraphGuid;
+
+		if (bIsCustomEvent)
+		{
+			EntryPoint->NodeGuid = InNewEndpoint->NodeGuid;
+		}
+		else
+		{
+			EntryPoint->NodeGuid = FGuid();
+		}
 
 		if (BoundObjectPin)
 		{
@@ -265,12 +298,15 @@ void FMovieSceneEventUtils::SetEndpoint(FMovieSceneEvent* EntryPoint, UMovieScen
 		}
 
 		InNewEndpoint->OnUserDefinedPinRenamed().AddUObject(EventSection, &UMovieSceneEventSectionBase::OnUserDefinedPinRenamed);
-		EntryPoint->WeakEndpoint = InNewEndpoint;
+		EntryPoint->WeakCachedEndpoint = InNewEndpoint;
 	}
 	else
 	{
-		EntryPoint->WeakEndpoint = nullptr;
+		EntryPoint->NodeGuid = FGuid();
+		EntryPoint->GraphGuid = FGuid();
 		EntryPoint->BoundObjectPinName = NAME_None;
+
+		EntryPoint->WeakCachedEndpoint = nullptr;
 	}
 }
 

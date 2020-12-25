@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LiveLinkBlueprintLibrary.h"
 #include "Features/IModularFeatures.h"
@@ -47,11 +47,11 @@ void ULiveLinkBlueprintLibrary::GetMetadata(UPARAM(ref) FSubjectFrameHandle& Sub
 
 void ULiveLinkBlueprintLibrary::GetBasicData(UPARAM(ref) FSubjectFrameHandle& SubjectFrameHandle, FLiveLinkBasicBlueprintData& BasicBlueprintData)
 {
-	if (const FLiveLinkSkeletonStaticData* StaticData = SubjectFrameHandle.GetSourceSkeletonStaticData())
+	if (FLiveLinkSkeletonStaticData* StaticData = SubjectFrameHandle.GetSourceSkeletonStaticData())
 	{
 		BasicBlueprintData.StaticData = *StaticData;
 	}
-	if (const FLiveLinkAnimationFrameData* FrameData = SubjectFrameHandle.GetSourceAnimationFrameData())
+	if (FLiveLinkAnimationFrameData* FrameData = SubjectFrameHandle.GetSourceAnimationFrameData())
 	{
 		BasicBlueprintData.FrameData = *FrameData;
 	}
@@ -270,8 +270,8 @@ namespace EvaluateLiveLinkFrame
 		SceneTime,
 	};
 
-	bool Generic_Evaluate(const ULiveLinkBlueprintLibrary* InSelf, const struct FFrame& InStack, FStructProperty* InBlueprintDataStructProp
-		, FLiveLinkSubjectRepresentation InSubjectRepresentation, EEvaluateType InEvaluationType, double InWorldTime, const FQualifiedFrameTime& InQualifiedFrameTime, void* OutBlueprintDataPtr)
+	bool Generic_Evaluate(const ULiveLinkBlueprintLibrary* InSelf, const struct FFrame& InStack, UStructProperty* InBlueprintDataStructProp
+		, FLiveLinkSubjectRepresentation InSubjectRepresentation, EEvaluateType InEvaluationType, double InWorldTime, FTimecode& InSceneTime, void* OutBlueprintDataPtr)
 	{
 		bool bSuccess = false;
 
@@ -308,7 +308,7 @@ namespace EvaluateLiveLinkFrame
 							bSuccess = LiveLinkClient.EvaluateFrameAtWorldTime_AnyThread(InSubjectRepresentation.Subject, InWorldTime, InSubjectRepresentation.Role, FrameData);
 							break;
 						case EEvaluateType::SceneTime:
-							bSuccess = LiveLinkClient.EvaluateFrameAtSceneTime_AnyThread(InSubjectRepresentation.Subject, InQualifiedFrameTime, InSubjectRepresentation.Role, FrameData);
+							bSuccess = LiveLinkClient.EvaluateFrameAtSceneTime_AnyThread(InSubjectRepresentation.Subject, InSceneTime, InSubjectRepresentation.Role, FrameData);
 							break;
 						case EEvaluateType::Snapshot:
 						default:
@@ -352,13 +352,13 @@ DEFINE_FUNCTION(ULiveLinkBlueprintLibrary::execEvaluateLiveLinkFrame)
 	P_GET_STRUCT(FLiveLinkSubjectRepresentation, SubjectRepresentation);
 
 	Stack.MostRecentPropertyAddress = nullptr;
-	Stack.StepCompiledIn<FStructProperty>(NULL);
+	Stack.StepCompiledIn<UStructProperty>(NULL);
 	void* OutBlueprintDataPtr = Stack.MostRecentPropertyAddress;
-	FStructProperty* BlueprintDataStructProp = CastField<FStructProperty>(Stack.MostRecentProperty);
+	UStructProperty* BlueprintDataStructProp = Cast<UStructProperty>(Stack.MostRecentProperty);
 	P_FINISH;
 
 	double WorldTime = 0.0;
-	FQualifiedFrameTime SceneTime;
+	FTimecode SceneTime;
 	bool bSuccess = EvaluateLiveLinkFrame::Generic_Evaluate(P_THIS, Stack, BlueprintDataStructProp, SubjectRepresentation, EvaluateLiveLinkFrame::EEvaluateType::Snapshot, WorldTime, SceneTime, OutBlueprintDataPtr);
 	*(bool*)RESULT_PARAM = bSuccess;
 }
@@ -367,17 +367,17 @@ DEFINE_FUNCTION(ULiveLinkBlueprintLibrary::execEvaluateLiveLinkFrameWithSpecific
 {
 	P_GET_STRUCT(FLiveLinkSubjectName, SubjectName);
 	UClass* RoleClass;
-	Stack.StepCompiledIn<FClassProperty>(&RoleClass);
+	Stack.StepCompiledIn<UClassProperty>(&RoleClass);
 
 	Stack.MostRecentPropertyAddress = nullptr;
-	Stack.StepCompiledIn<FStructProperty>(NULL);
+	Stack.StepCompiledIn<UStructProperty>(NULL);
 	void* OutBlueprintDataPtr = Stack.MostRecentPropertyAddress;
-	FStructProperty* BlueprintDataStructProp = CastField<FStructProperty>(Stack.MostRecentProperty);
+	UStructProperty* BlueprintDataStructProp = Cast<UStructProperty>(Stack.MostRecentProperty);
 	P_FINISH;
 
 
 	double WorldTime = 0.0;
-	FQualifiedFrameTime SceneTime;
+	FTimecode SceneTime;
 	bool bSuccess = EvaluateLiveLinkFrame::Generic_Evaluate(P_THIS, Stack, BlueprintDataStructProp, {SubjectName, RoleClass}, EvaluateLiveLinkFrame::EEvaluateType::Snapshot, WorldTime, SceneTime, OutBlueprintDataPtr);
 	*(bool*)RESULT_PARAM = bSuccess;
 }
@@ -387,18 +387,18 @@ DEFINE_FUNCTION(ULiveLinkBlueprintLibrary::execEvaluateLiveLinkFrameAtWorldTimeO
 
 	P_GET_STRUCT(FLiveLinkSubjectName, SubjectName);
 	UClass* RoleClass;
-	Stack.StepCompiledIn<FClassProperty>(&RoleClass);
+	Stack.StepCompiledIn<UClassProperty>(&RoleClass);
 	float WorldTimeOffset = 0.f;
-	Stack.StepCompiledIn<FFloatProperty>(&WorldTimeOffset);
+	Stack.StepCompiledIn<UFloatProperty>(&WorldTimeOffset);
 
 	Stack.MostRecentPropertyAddress = nullptr;
-	Stack.StepCompiledIn<FStructProperty>(NULL);
+	Stack.StepCompiledIn<UStructProperty>(NULL);
 	void* OutBlueprintDataPtr = Stack.MostRecentPropertyAddress;
-	FStructProperty* BlueprintDataStructProp = CastField<FStructProperty>(Stack.MostRecentProperty);
+	UStructProperty* BlueprintDataStructProp = Cast<UStructProperty>(Stack.MostRecentProperty);
 	P_FINISH;
 
 	double WorldTime = FApp::GetCurrentTime() + WorldTimeOffset;
-	FQualifiedFrameTime SceneTime;
+	FTimecode SceneTime;
 	bool bSuccess = EvaluateLiveLinkFrame::Generic_Evaluate(P_THIS, Stack, BlueprintDataStructProp, {SubjectName, RoleClass}, EvaluateLiveLinkFrame::EEvaluateType::WorldTime, WorldTime, SceneTime, OutBlueprintDataPtr);
 	*(bool*)RESULT_PARAM = bSuccess;
 }
@@ -407,16 +407,16 @@ DEFINE_FUNCTION(ULiveLinkBlueprintLibrary::execEvaluateLiveLinkFrameAtSceneTime)
 {
 	P_GET_STRUCT(FLiveLinkSubjectName, SubjectName);
 	UClass* RoleClass;
-	Stack.StepCompiledIn<FClassProperty>(&RoleClass);
+	Stack.StepCompiledIn<UClassProperty>(&RoleClass);
 	P_GET_STRUCT(FTimecode, SceneTime);
 
 	Stack.MostRecentPropertyAddress = nullptr;
-	Stack.StepCompiledIn<FStructProperty>(NULL);
+	Stack.StepCompiledIn<UStructProperty>(NULL);
 	void* OutBlueprintDataPtr = Stack.MostRecentPropertyAddress;
-	FStructProperty* BlueprintDataStructProp = CastField<FStructProperty>(Stack.MostRecentProperty);
+	UStructProperty* BlueprintDataStructProp = Cast<UStructProperty>(Stack.MostRecentProperty);
 	P_FINISH;
 
 	double WorldTime = 0.0;
-	bool bSuccess = EvaluateLiveLinkFrame::Generic_Evaluate(P_THIS, Stack, BlueprintDataStructProp, {SubjectName, RoleClass}, EvaluateLiveLinkFrame::EEvaluateType::SceneTime, WorldTime, FQualifiedFrameTime(SceneTime, FApp::GetTimecodeFrameRate()), OutBlueprintDataPtr);
+	bool bSuccess = EvaluateLiveLinkFrame::Generic_Evaluate(P_THIS, Stack, BlueprintDataStructProp, {SubjectName, RoleClass}, EvaluateLiveLinkFrame::EEvaluateType::SceneTime, WorldTime, SceneTime, OutBlueprintDataPtr);
 	*(bool*)RESULT_PARAM = bSuccess;
 }

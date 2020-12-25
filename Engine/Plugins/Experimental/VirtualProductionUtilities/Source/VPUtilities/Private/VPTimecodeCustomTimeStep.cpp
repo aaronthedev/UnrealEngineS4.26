@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VPTimecodeCustomTimeStep.h"
 #include "VPUtilitiesModule.h"
@@ -16,8 +16,10 @@ bool UVPTimecodeCustomTimeStep::Initialize(UEngine* InEngine)
 {
 	check(InEngine);
 
+	// InitializedTimecodeProvider, will be set in the first update.
 	//The user may initialize the CustomTimeStep and the TimecodeProvider in the same frame and order of operation may break the behaviour.
 	InitializedSeconds = FApp::GetCurrentTime();
+	InitializedTimecodeProvider = nullptr;
 	State = ECustomTimeStepSynchronizationState::Synchronizing;
 
 	return true;
@@ -28,8 +30,7 @@ void UVPTimecodeCustomTimeStep::Shutdown(UEngine* InEngine)
 {
 	check(InEngine);
 
-	InEngine->OnTimecodeProviderChanged().RemoveAll(this);
-
+	InitializedTimecodeProvider = nullptr;
 	State = ECustomTimeStepSynchronizationState::Closed;
 }
 
@@ -50,9 +51,6 @@ bool UVPTimecodeCustomTimeStep::UpdateTimeStep(UEngine* InEngine)
 		return true; // run the engine's default time step code
 	}
 
-	// Updates logical last time to match logical current time from last tick
-	UpdateApplicationLastTime();
-
 	// Loop until we have a new timecode value
 	MaxDeltaTime = FMath::Max(0.f, MaxDeltaTime);
 
@@ -65,8 +63,7 @@ bool UVPTimecodeCustomTimeStep::UpdateTimeStep(UEngine* InEngine)
 		double BeforeSeconds = FPlatformTime::Seconds();
 		while(FPlatformTime::Seconds() - BeforeSeconds < MaxDeltaTime)
 		{
-			UTimecodeProvider* TimecodeProvider = InEngine->GetTimecodeProvider();
-
+			const UTimecodeProvider* TimecodeProvider = InEngine->GetTimecodeProvider();
 			if (TimecodeProvider == nullptr)
 			{
 				UE_LOG(LogVPUtilities, Error, TEXT("There is no Timecode Provider for '%s'."), *GetName());
@@ -81,9 +78,15 @@ bool UVPTimecodeCustomTimeStep::UpdateTimeStep(UEngine* InEngine)
 				return true;
 			}
 
-			TimecodeProvider->FetchAndUpdate();
-			NewTimecode = TimecodeProvider->GetTimecode();
+			// Test if the Timecode provider changed
+			if (bErrorIfTimecodeProviderChanged && TimecodeProvider != InitializedTimecodeProvider)
+			{
+				UE_LOG(LogVPUtilities, Error, TEXT("Timecode Provider changed for '%s'."), *GetName());
+				State = ECustomTimeStepSynchronizationState::Error;
+				return true;
+			}
 
+			NewTimecode = TimecodeProvider->GetTimecode();
 			if (NewTimecode == PreviousTimecode)
 			{
 				FPlatformProcess::SleepNoStats(0.f);
@@ -137,18 +140,29 @@ bool UVPTimecodeCustomTimeStep::InitializeFirstStep(UEngine* InEngine)
 	bool bFirstFrame = true;
 
 	const UTimecodeProvider* TimecodeProvider = InEngine->GetTimecodeProvider();
-	if (TimecodeProvider == nullptr)
+	if (InitializedTimecodeProvider == nullptr)
 	{
-		UE_LOG(LogVPUtilities, Error, TEXT("There is no Timecode Provider for '%s'."), *GetName());
+		InitializedTimecodeProvider = TimecodeProvider;
+		if (InitializedTimecodeProvider == nullptr)
+		{
+			UE_LOG(LogVPUtilities, Error, TEXT("There is no Timecode Provider for '%s'."), *GetName());
+			State = ECustomTimeStepSynchronizationState::Error;
+			return false;
+		}
+	}
+
+	// Test if the Timecode provider changed
+	if (bErrorIfTimecodeProviderChanged && TimecodeProvider != InitializedTimecodeProvider)
+	{
+		UE_LOG(LogVPUtilities, Error, TEXT("Timecode Provider changed for '%s'."), *GetName());
 		State = ECustomTimeStepSynchronizationState::Error;
 		return false;
 	}
 
-	if (TimecodeProvider->GetSynchronizationState() == ETimecodeProviderSynchronizationState::Synchronized)
+	if (InitializedTimecodeProvider->GetSynchronizationState() == ETimecodeProviderSynchronizationState::Synchronized)
 	{
-		PreviousTimecode = TimecodeProvider->GetTimecode();
-		PreviousFrameRate = TimecodeProvider->GetFrameRate();
-		InEngine->OnTimecodeProviderChanged().AddUObject(this, &UVPTimecodeCustomTimeStep::OnTimecodeProviderChanged);
+		PreviousTimecode = InitializedTimecodeProvider->GetTimecode();
+		PreviousFrameRate = InitializedTimecodeProvider->GetFrameRate();
 		State = ECustomTimeStepSynchronizationState::Synchronized;
 		bFirstFrame = true;
 	}
@@ -158,19 +172,10 @@ bool UVPTimecodeCustomTimeStep::InitializeFirstStep(UEngine* InEngine)
 		if ((FApp::GetCurrentTime() - InitializedSeconds) > NumberOfSecondsBeforeWarning)
 		{
 			bWarnAboutSynchronizationState = true;
-			UE_LOG(LogVPUtilities, Warning, TEXT("The TimecodeProvider '%s' is not Synchronized for '%s'."), *TimecodeProvider->GetName(), *GetName());
+			UE_LOG(LogVPUtilities, Warning, TEXT("The TimecodeProvider '%s' is not Synchronized for '%s'."), *InitializedTimecodeProvider->GetName(), *GetName());
 		}
 	}
 
 	return bFirstFrame;
 }
 
-void UVPTimecodeCustomTimeStep::OnTimecodeProviderChanged()
-{
-	// Test if the Timecode provider changed
-	if (bErrorIfTimecodeProviderChanged)
-	{
-		UE_LOG(LogVPUtilities, Error, TEXT("The Timecode Provider changed for '%s'."), *GetName());
-		State = ECustomTimeStepSynchronizationState::Error;
-	}
-}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -47,7 +47,7 @@ namespace Audio
 		uint16 BeatDivision;
 
 		FEventQuantizationSettings()
-			: SampleRate(0.0f)
+			: SampleRate(90.0f)
 			, NumChannels(2)
 			, BeatsPerMinute(90.0f)
 			, BeatsPerBar(4)

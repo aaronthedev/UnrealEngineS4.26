@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -122,7 +122,7 @@ namespace UnrealBuildTool
 		/// <summary>
 		/// List of platforms supported by this plugin. This list will be copied to any plugin reference from a project file, to allow filtering entire plugins from staged builds.
 		/// </summary>
-		public List<UnrealTargetPlatform> SupportedTargetPlatforms;
+		public UnrealTargetPlatform[] SupportedTargetPlatforms;
 
 		/// <summary>
 		/// List of programs supported by this plugin.
@@ -132,7 +132,7 @@ namespace UnrealBuildTool
 		/// <summary>
 		/// List of all modules associated with this plugin
 		/// </summary>
-		public List<ModuleDescriptor> Modules;
+		public ModuleDescriptor[] Modules;
 
 		/// <summary>
 		/// List of all localization targets associated with this plugin
@@ -170,11 +170,6 @@ namespace UnrealBuildTool
 		public bool bRequiresBuildPlatform;
 
 		/// <summary>
-		/// When true, this plugin's modules will not be loaded automatically nor will it's content be mounted automatically. It will load/mount when explicitly requested and LoadingPhases will be ignored
-		/// </summary>
-		public bool bExplicitlyLoaded;
-
-		/// <summary>
 		/// Set of pre-build steps to execute, keyed by host platform name.
 		/// </summary>
 		public CustomBuildSteps PreBuildSteps;
@@ -187,7 +182,7 @@ namespace UnrealBuildTool
 		/// <summary>
 		/// Additional plugins that this plugin depends on
 		/// </summary>
-		public List<PluginReferenceDescriptor> Plugins;
+		public PluginReferenceDescriptor[] Plugins;
 
 		/// <summary>
 		/// Private constructor. This object should not be created directly; read it from disk using FromFile() instead.
@@ -252,7 +247,7 @@ namespace UnrealBuildTool
 				string[] SupportedTargetPlatformNames;
 				if (RawObject.TryGetStringArrayField("SupportedTargetPlatforms", out SupportedTargetPlatformNames))
 				{
-					SupportedTargetPlatforms = Array.ConvertAll(SupportedTargetPlatformNames, x => UnrealTargetPlatform.Parse(x)).ToList();
+					SupportedTargetPlatforms = Array.ConvertAll(SupportedTargetPlatformNames, x => UnrealTargetPlatform.Parse(x));
 				}
 			}
 			catch (BuildException Ex)
@@ -265,7 +260,7 @@ namespace UnrealBuildTool
 			JsonObject[] ModulesArray;
 			if (RawObject.TryGetObjectArrayField("Modules", out ModulesArray))
 			{
-				Modules = Array.ConvertAll(ModulesArray, x => ModuleDescriptor.FromJsonObject(x)).ToList();
+				Modules = Array.ConvertAll(ModulesArray, x => ModuleDescriptor.FromJsonObject(x));
 			}
 
 			JsonObject[] LocalizationTargetsArray;
@@ -293,7 +288,6 @@ namespace UnrealBuildTool
 			}
 
 			RawObject.TryGetBoolField("RequiresBuildPlatform", out bRequiresBuildPlatform);
-			RawObject.TryGetBoolField("ExplicitlyLoaded", out bExplicitlyLoaded);
 
 			CustomBuildSteps.TryRead(RawObject, "PreBuildSteps", out PreBuildSteps);
 			CustomBuildSteps.TryRead(RawObject, "PostBuildSteps", out PostBuildSteps);
@@ -301,7 +295,7 @@ namespace UnrealBuildTool
 			JsonObject[] PluginsArray;
 			if(RawObject.TryGetObjectArrayField("Plugins", out PluginsArray))
 			{
-				Plugins = Array.ConvertAll(PluginsArray, x => PluginReferenceDescriptor.FromJsonObject(x)).ToList();
+				Plugins = Array.ConvertAll(PluginsArray, x => PluginReferenceDescriptor.FromJsonObject(x));
 			}
 		}
 
@@ -389,12 +383,7 @@ namespace UnrealBuildTool
 				Writer.WriteValue("RequiresBuildPlatform", bRequiresBuildPlatform);
 			}
 
-			if (bExplicitlyLoaded)
-			{
-				Writer.WriteValue("ExplicitlyLoaded", bExplicitlyLoaded);
-			}
-
-			if(SupportedTargetPlatforms != null && SupportedTargetPlatforms.Count > 0)
+			if(SupportedTargetPlatforms != null && SupportedTargetPlatforms.Length > 0)
 			{
 				Writer.WriteStringArrayField("SupportedTargetPlatforms", SupportedTargetPlatforms.Select<UnrealTargetPlatform, string>(x => x.ToString()).ToArray());
 			}
@@ -408,10 +397,7 @@ namespace UnrealBuildTool
 				Writer.WriteValue("bIsPluginExtension", bIsPluginExtension);
 			}
 
-			if (Modules != null && Modules.Count > 0)
-			{
-				ModuleDescriptor.WriteArray(Writer, "Modules", Modules.ToArray());
-			}
+			ModuleDescriptor.WriteArray(Writer, "Modules", Modules);
 
 			LocalizationTargetDescriptor.WriteArray(Writer, "LocalizationTargets", LocalizationTargets);
 
@@ -425,10 +411,7 @@ namespace UnrealBuildTool
 				PostBuildSteps.Write(Writer, "PostBuildSteps");
 			}
 
-			if (Plugins != null && Plugins.Count > 0)
-			{
-				PluginReferenceDescriptor.WriteArray(Writer, "Plugins", Plugins.ToArray());
-			}
+			PluginReferenceDescriptor.WriteArray(Writer, "Plugins", Plugins);
 		}
 
 		/// <summary>
@@ -438,7 +421,19 @@ namespace UnrealBuildTool
 		/// <returns>True if the plugin should be enabled</returns>
 		public bool SupportsTargetPlatform(UnrealTargetPlatform Platform)
 		{
-			return SupportedTargetPlatforms == null || SupportedTargetPlatforms.Count == 0 || SupportedTargetPlatforms.Contains(Platform);
+			return SupportedTargetPlatforms == null || SupportedTargetPlatforms.Length == 0 || SupportedTargetPlatforms.Contains(Platform);
+		}
+
+		/// <summary>
+		/// Combines the given target platforms with the current ones, if appropriate
+		/// </summary>
+		/// <param name="AdditionalSupportedTargetPlatforms"></param>
+		internal void MergeSupportedTargetPlatforms(UnrealTargetPlatform[] AdditionalSupportedTargetPlatforms)
+		{
+			if (SupportedTargetPlatforms != null && (SupportedTargetPlatforms.Length > 0) && AdditionalSupportedTargetPlatforms != null && AdditionalSupportedTargetPlatforms.Length > 0)
+			{
+				SupportedTargetPlatforms = SupportedTargetPlatforms.Union(AdditionalSupportedTargetPlatforms).ToArray();
+			}
 		}
 	}
 }

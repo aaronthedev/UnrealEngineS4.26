@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2020 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2019 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -262,22 +262,6 @@ GetHintCtrlClickEmulateRightClick()
 }
 
 static NSUInteger
-GetWindowWindowedStyle(SDL_Window * window)
-{
-    NSUInteger style = 0;
-
-    if (window->flags & SDL_WINDOW_BORDERLESS) {
-        style = NSWindowStyleMaskBorderless;
-    } else {
-        style = (NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|NSWindowStyleMaskMiniaturizable);
-    }
-    if (window->flags & SDL_WINDOW_RESIZABLE) {
-        style |= NSWindowStyleMaskResizable;
-    }
-    return style;
-}
-
-static NSUInteger
 GetWindowStyle(SDL_Window * window)
 {
     NSUInteger style = 0;
@@ -285,7 +269,14 @@ GetWindowStyle(SDL_Window * window)
     if (window->flags & SDL_WINDOW_FULLSCREEN) {
         style = NSWindowStyleMaskBorderless;
     } else {
-        style = GetWindowWindowedStyle(window);
+        if (window->flags & SDL_WINDOW_BORDERLESS) {
+            style = NSWindowStyleMaskBorderless;
+        } else {
+            style = (NSWindowStyleMaskTitled|NSWindowStyleMaskClosable|NSWindowStyleMaskMiniaturizable);
+        }
+        if (window->flags & SDL_WINDOW_RESIZABLE) {
+            style |= NSWindowStyleMaskResizable;
+        }
     }
     return style;
 }
@@ -297,15 +288,15 @@ SetWindowStyle(SDL_Window * window, NSUInteger style)
     NSWindow *nswindow = data->nswindow;
 
     /* The view responder chain gets messed with during setStyleMask */
-    if ([data->sdlContentView nextResponder] == data->listener) {
-        [data->sdlContentView setNextResponder:nil];
+    if ([[nswindow contentView] nextResponder] == data->listener) {
+        [[nswindow contentView] setNextResponder:nil];
     }
 
     [nswindow setStyleMask:style];
 
     /* The view responder chain gets messed with during setStyleMask */
-    if ([data->sdlContentView nextResponder] != data->listener) {
-        [data->sdlContentView setNextResponder:data->listener];
+    if ([[nswindow contentView] nextResponder] != data->listener) {
+        [[nswindow contentView] setNextResponder:data->listener];
     }
 
     return SDL_TRUE;
@@ -318,7 +309,7 @@ SetWindowStyle(SDL_Window * window, NSUInteger style)
 {
     NSNotificationCenter *center;
     NSWindow *window = data->nswindow;
-    NSView *view = data->sdlContentView;
+    NSView *view = [window contentView];
 
     _data = data;
     observingVisible = YES;
@@ -763,15 +754,10 @@ SetWindowStyle(SDL_Window * window, NSUInteger style)
     isFullscreenSpace = NO;
     inFullscreenTransition = YES;
 
-    /* As of macOS 10.11, the window seems to need to be resizable when exiting
+    /* As of OS X 10.11, the window seems to need to be resizable when exiting
        a Space, in order for it to resize back to its windowed-mode size.
-       As of macOS 10.15, the window decorations can go missing sometimes after
-       certain fullscreen-desktop->exlusive-fullscreen->windowed mode flows
-       sometimes. Making sure the style mask always uses the windowed mode style
-       when returning to windowed mode from a space (instead of using a pending
-       fullscreen mode style mask) seems to work around that issue.
      */
-    SetWindowStyle(window, GetWindowWindowedStyle(window) | NSWindowStyleMaskResizable);
+    SetWindowStyle(window, GetWindowStyle(window) | NSWindowStyleMaskResizable);
 }
 
 - (void)windowDidFailToExitFullScreen:(NSNotification *)aNotification
@@ -794,23 +780,12 @@ SetWindowStyle(SDL_Window * window, NSUInteger style)
 {
     SDL_Window *window = _data->window;
     NSWindow *nswindow = _data->nswindow;
-    NSButton *button = nil;
 
     inFullscreenTransition = NO;
 
-    /* As of macOS 10.15, the window decorations can go missing sometimes after
-       certain fullscreen-desktop->exlusive-fullscreen->windowed mode flows
-       sometimes. Making sure the style mask always uses the windowed mode style
-       when returning to windowed mode from a space (instead of using a pending
-       fullscreen mode style mask) seems to work around that issue.
-     */
-    SetWindowStyle(window, GetWindowWindowedStyle(window));
+    SetWindowStyle(window, GetWindowStyle(window));
 
-    if (window->flags & SDL_WINDOW_ALWAYS_ON_TOP) {
-        [nswindow setLevel:NSFloatingWindowLevel];
-    } else {
-        [nswindow setLevel:kCGNormalWindowLevel];
-    }
+    [nswindow setLevel:kCGNormalWindowLevel];
 
     if (pendingWindowOperation == PENDING_OPERATION_ENTER_FULLSCREEN) {
         pendingWindowOperation = PENDING_OPERATION_NONE;
@@ -864,22 +839,6 @@ SetWindowStyle(SDL_Window * window, NSUInteger style)
         /* FIXME: Why does the window get hidden? */
         if (window->flags & SDL_WINDOW_SHOWN) {
             Cocoa_ShowWindow(SDL_GetVideoDevice(), window);
-        }
-    }
-
-    /* There's some state that isn't quite back to normal when
-        windowDidExitFullScreen triggers. For example, the minimize button on
-        the titlebar doesn't actually enable for another 200 milliseconds or
-        so on this MacBook. Camp here and wait for that to happen before
-        going on, in case we're exiting fullscreen to minimize, which need
-        that window state to be normal before it will work. */
-    button = [nswindow standardWindowButton:NSWindowMiniaturizeButton];
-    if (button) {
-        int iterations = 0;
-        while (![button isEnabled] && (iterations < 100)) {
-            SDL_Delay(10);
-            SDL_PumpEvents();
-            iterations++;
         }
     }
 }
@@ -1173,13 +1132,7 @@ SetWindowStyle(SDL_Window * window, NSUInteger style)
         DLog("Reset Lost Fingers: %d", numFingers);
         for (--numFingers; numFingers >= 0; --numFingers) {
             SDL_Finger* finger = SDL_GetTouchFinger(touchID, numFingers);
-            /* trackpad touches have no window. If we really wanted one we could
-             * use the window that has mouse or keyboard focus.
-             * Sending a null window currently also prevents synthetic mouse
-             * events from being generated from touch events.
-             */
-            SDL_Window *window = NULL;
-            SDL_SendTouch(touchID, finger->id, window, SDL_FALSE, 0, 0, 0);
+            SDL_SendTouch(touchID, finger->id, SDL_FALSE, 0, 0, 0);
         }
     }
 
@@ -1214,24 +1167,10 @@ SetWindowStyle(SDL_Window * window, NSUInteger style)
         const SDL_TouchID touchId = istrackpad ? SDL_MOUSE_TOUCHID : (SDL_TouchID)(intptr_t)[touch device];
         SDL_TouchDeviceType devtype = SDL_TOUCH_DEVICE_INDIRECT_ABSOLUTE;
 
-        /* trackpad touches have no window. If we really wanted one we could
-         * use the window that has mouse or keyboard focus.
-         * Sending a null window currently also prevents synthetic mouse events
-         * from being generated from touch events.
-         */
-        SDL_Window *window = NULL;
-
 #if MAC_OS_X_VERSION_MAX_ALLOWED >= 101202 /* Added in the 10.12.2 SDK. */
         if ([touch respondsToSelector:@selector(type)]) {
-            /* TODO: Before implementing direct touch support here, we need to
-             * figure out whether the OS generates mouse events from them on its
-             * own. If it does, we should prevent SendTouch from generating
-             * synthetic mouse events for these touches itself (while also
-             * sending a window.) It will also need to use normalized window-
-             * relative coordinates via [touch locationInView:].
-             */
             if ([touch type] == NSTouchTypeDirect) {
-                continue;
+                devtype = SDL_TOUCH_DEVICE_DIRECT;
             }
         }
 #endif
@@ -1248,14 +1187,14 @@ SetWindowStyle(SDL_Window * window, NSUInteger style)
 
         switch (phase) {
         case NSTouchPhaseBegan:
-            SDL_SendTouch(touchId, fingerId, window, SDL_TRUE, x, y, 1.0f);
+            SDL_SendTouch(touchId, fingerId, SDL_TRUE, x, y, 1.0f);
             break;
         case NSTouchPhaseEnded:
         case NSTouchPhaseCancelled:
-            SDL_SendTouch(touchId, fingerId, window, SDL_FALSE, x, y, 1.0f);
+            SDL_SendTouch(touchId, fingerId, SDL_FALSE, x, y, 1.0f);
             break;
         case NSTouchPhaseMoved:
-            SDL_SendTouchMotion(touchId, fingerId, window, x, y, 1.0f);
+            SDL_SendTouchMotion(touchId, fingerId, x, y, 1.0f);
             break;
         default:
             break;
@@ -1287,32 +1226,23 @@ SetWindowStyle(SDL_Window * window, NSUInteger style)
     _sdlWindow = window;
 }
 
-/* this is used on older macOS revisions, and newer ones which emulate old
-   NSOpenGLContext behaviour while still using a layer under the hood. 10.8 and
-   later use updateLayer, up until 10.14.2 or so, which uses drawRect without
-   a GraphicsContext and with a layer active instead (for OpenGL contexts). */
+/* this is used on older macOS revisions. 10.8 and later use updateLayer. */
 - (void)drawRect:(NSRect)dirtyRect
 {
     /* Force the graphics context to clear to black so we don't get a flash of
        white until the app is ready to draw. In practice on modern macOS, this
        only gets called for window creation and other extraordinary events. */
-    if ([NSGraphicsContext currentContext]) {
-        [[NSColor blackColor] setFill];
-        NSRectFill(dirtyRect);
-    } else if (self.layer) {
-        self.layer.backgroundColor = CGColorGetConstantColor(kCGColorBlack);
-    }
-
+    [[NSColor blackColor] setFill];
+    NSRectFill(dirtyRect);
     SDL_SendWindowEvent(_sdlWindow, SDL_WINDOWEVENT_EXPOSED, 0, 0);
 }
 
-- (BOOL)wantsUpdateLayer
+-(BOOL) wantsUpdateLayer
 {
     return YES;
 }
 
-/* This is also called when a Metal layer is active. */
-- (void)updateLayer
+-(void) updateLayer
 {
     /* Force the graphics context to clear to black so we don't get a flash of
        white until the app is ready to draw. In practice on modern macOS, this
@@ -1360,7 +1290,7 @@ SetWindowStyle(SDL_Window * window, NSUInteger style)
 @end
 
 static int
-SetupWindowData(_THIS, SDL_Window * window, NSWindow *nswindow, NSView *nsview, SDL_bool created)
+SetupWindowData(_THIS, SDL_Window * window, NSWindow *nswindow, SDL_bool created)
 { @autoreleasepool
 {
     SDL_VideoData *videodata = (SDL_VideoData *) _this->driverdata;
@@ -1376,7 +1306,11 @@ SetupWindowData(_THIS, SDL_Window * window, NSWindow *nswindow, NSView *nsview, 
     data->created = created;
     data->videodata = videodata;
     data->nscontexts = [[NSMutableArray alloc] init];
-    data->sdlContentView = nsview;
+
+    /* Only store this for windows created by us since the content view might
+     * get replaced from under us otherwise, and we only need it when the
+     * window is guaranteed to be created by us (OpenGL contexts). */
+    data->sdlContentView = created ? [nswindow contentView] : nil;
 
     /* Create an event listener for the window */
     data->listener = [[Cocoa_WindowListener alloc] init];
@@ -1502,10 +1436,6 @@ Cocoa_CreateWindow(_THIS, SDL_Window * window)
         }
     }
 
-    if (window->flags & SDL_WINDOW_ALWAYS_ON_TOP) {
-        [nswindow setLevel:NSFloatingWindowLevel];
-    }
-
     /* Create a default view for this window */
     rect = [nswindow contentRectForFrameRect:[nswindow frame]];
     SDLView *contentView = [[SDLView alloc] initWithFrame:rect];
@@ -1516,11 +1446,10 @@ Cocoa_CreateWindow(_THIS, SDL_Window * window)
     #pragma clang diagnostic push
     #pragma clang diagnostic ignored "-Wdeprecated-declarations"
     #endif
-    /* Note: as of the macOS 10.15 SDK, this defaults to YES instead of NO when
-     * the NSHighResolutionCapable boolean is set in Info.plist. */
-    if ([contentView respondsToSelector:@selector(setWantsBestResolutionOpenGLSurface:)]) {
-        BOOL highdpi = (window->flags & SDL_WINDOW_ALLOW_HIGHDPI) != 0;
-        [contentView setWantsBestResolutionOpenGLSurface:highdpi];
+    if (window->flags & SDL_WINDOW_ALLOW_HIGHDPI) {
+        if ([contentView respondsToSelector:@selector(setWantsBestResolutionOpenGLSurface:)]) {
+            [contentView setWantsBestResolutionOpenGLSurface:YES];
+        }
     }
     #ifdef __clang__
     #pragma clang diagnostic pop
@@ -1537,7 +1466,7 @@ Cocoa_CreateWindow(_THIS, SDL_Window * window)
     [nswindow setContentView:contentView];
     [contentView release];
 
-    if (SetupWindowData(_this, window, nswindow, contentView, SDL_TRUE) < 0) {
+    if (SetupWindowData(_this, window, nswindow, SDL_TRUE) < 0) {
         [nswindow release];
         return -1;
     }
@@ -1567,19 +1496,7 @@ int
 Cocoa_CreateWindowFrom(_THIS, SDL_Window * window, const void *data)
 { @autoreleasepool
 {
-    NSView* nsview;
-    NSWindow *nswindow;
-
-    if ([(id)data isKindOfClass:[NSWindow class]]) {
-      nswindow = (NSWindow*)data;
-      nsview = [nswindow contentView];
-    } else if ([(id)data isKindOfClass:[NSView class]]) {
-      nsview = (NSView*)data;
-      nswindow = [nsview window];
-    } else {
-      SDL_assert(false);
-    }
-
+    NSWindow *nswindow = (NSWindow *) data;
     NSString *title;
 
     /* Query the title from the existing window */
@@ -1588,7 +1505,7 @@ Cocoa_CreateWindowFrom(_THIS, SDL_Window * window, const void *data)
         window->title = SDL_strdup([title UTF8String]);
     }
 
-    return SetupWindowData(_this, window, nswindow, nsview, SDL_FALSE);
+    return SetupWindowData(_this, window, nswindow, SDL_FALSE);
 }}
 
 void
@@ -1748,6 +1665,7 @@ Cocoa_MinimizeWindow(_THIS, SDL_Window * window)
 {
     SDL_WindowData *data = (SDL_WindowData *) window->driverdata;
     NSWindow *nswindow = data->nswindow;
+
     if ([data->listener isInFullscreenSpaceTransition]) {
         [data->listener addPendingWindowOperation:PENDING_OPERATION_MINIMIZE];
     } else {
@@ -1803,8 +1721,8 @@ Cocoa_SetWindowFullscreen(_THIS, SDL_Window * window, SDL_VideoDisplay * display
     NSRect rect;
 
     /* The view responder chain gets messed with during setStyleMask */
-    if ([data->sdlContentView nextResponder] == data->listener) {
-        [data->sdlContentView setNextResponder:nil];
+    if ([[nswindow contentView] nextResponder] == data->listener) {
+        [[nswindow contentView] setNextResponder:nil];
     }
 
     if (fullscreen) {
@@ -1817,24 +1735,10 @@ Cocoa_SetWindowFullscreen(_THIS, SDL_Window * window, SDL_VideoDisplay * display
         rect.size.height = bounds.h;
         ConvertNSRect([nswindow screen], fullscreen, &rect);
 
-        /* Hack to fix origin on Mac OS X 10.4
-           This is no longer needed as of Mac OS X 10.15, according to bug 4822.
-         */
-        NSProcessInfo *processInfo = [NSProcessInfo processInfo];
-#if MAC_OS_X_VERSION_MAX_ALLOWED < 101000 /* NSOperatingSystemVersion added in the 10.10 SDK */
-        typedef struct {
-            NSInteger majorVersion;
-            NSInteger minorVersion;
-            NSInteger patchVersion;
-        } NSOperatingSystemVersion;
-#endif
-        NSOperatingSystemVersion version = { 10, 15, 0 };
-        if (![processInfo respondsToSelector:@selector(isOperatingSystemAtLeastVersion:)] ||
-            ![processInfo isOperatingSystemAtLeastVersion:version]) {
-            NSRect screenRect = [[nswindow screen] frame];
-            if (screenRect.size.height >= 1.0f) {
-                rect.origin.y += (screenRect.size.height - rect.size.height);
-            }
+        /* Hack to fix origin on Mac OS X 10.4 */
+        NSRect screenRect = [[nswindow screen] frame];
+        if (screenRect.size.height >= 1.0f) {
+            rect.origin.y += (screenRect.size.height - rect.size.height);
         }
 
         [nswindow setStyleMask:NSWindowStyleMaskBorderless];
@@ -1845,13 +1749,7 @@ Cocoa_SetWindowFullscreen(_THIS, SDL_Window * window, SDL_VideoDisplay * display
         rect.size.height = window->windowed.h;
         ConvertNSRect([nswindow screen], fullscreen, &rect);
 
-        /* The window is not meant to be fullscreen, but its flags might have a
-         * fullscreen bit set if it's scheduled to go fullscreen immediately
-         * after. Always using the windowed mode style here works around bugs in
-         * macOS 10.15 where the window doesn't properly restore the windowed
-         * mode decorations after exiting fullscreen-desktop, when the window
-         * was created as fullscreen-desktop. */
-        [nswindow setStyleMask:GetWindowWindowedStyle(window)];
+        [nswindow setStyleMask:GetWindowStyle(window)];
 
         /* Hack to restore window decorations on Mac OS X 10.10 */
         NSRect frameRect = [nswindow frame];
@@ -1860,8 +1758,8 @@ Cocoa_SetWindowFullscreen(_THIS, SDL_Window * window, SDL_VideoDisplay * display
     }
 
     /* The view responder chain gets messed with during setStyleMask */
-    if ([data->sdlContentView nextResponder] != data->listener) {
-        [data->sdlContentView setNextResponder:data->listener];
+    if ([[nswindow contentView] nextResponder] != data->listener) {
+        [[nswindow contentView] setNextResponder:data->listener];
     }
 
     s_moveHack = 0;
@@ -1877,8 +1775,6 @@ Cocoa_SetWindowFullscreen(_THIS, SDL_Window * window, SDL_VideoDisplay * display
     if (SDL_ShouldAllowTopmost() && fullscreen) {
         /* OpenGL is rendering to the window, so make it visible! */
         [nswindow setLevel:CGShieldingWindowLevel()];
-    } else if (window->flags & SDL_WINDOW_ALWAYS_ON_TOP) {
-        [nswindow setLevel:NSFloatingWindowLevel];
     } else {
         [nswindow setLevel:kCGNormalWindowLevel];
     }
@@ -1972,8 +1868,6 @@ Cocoa_SetWindowGrab(_THIS, SDL_Window * window, SDL_bool grabbed)
             /* OpenGL is rendering to the window, so make it visible! */
             /* Doing this in 10.11 while in a Space breaks things (bug #3152) */
             [data->nswindow setLevel:CGShieldingWindowLevel()];
-        } else if (window->flags & SDL_WINDOW_ALWAYS_ON_TOP) {
-            [data->nswindow setLevel:NSFloatingWindowLevel];
         } else {
             [data->nswindow setLevel:kCGNormalWindowLevel];
         }
@@ -2045,11 +1939,6 @@ Cocoa_SetWindowFullscreenSpace(SDL_Window * window, SDL_bool state)
     SDL_bool succeeded = SDL_FALSE;
     SDL_WindowData *data = (SDL_WindowData *) window->driverdata;
 
-    if (data->inWindowFullscreenTransition) {
-        return SDL_FALSE;
-    }
-
-    data->inWindowFullscreenTransition = SDL_TRUE;
     if ([data->listener setFullscreenSpace:(state ? YES : NO)]) {
         const int maxattempts = 3;
         int attempt = 0;
@@ -2076,7 +1965,6 @@ Cocoa_SetWindowFullscreenSpace(SDL_Window * window, SDL_bool state)
         /* Return TRUE to prevent non-space fullscreen logic from running */
         succeeded = SDL_TRUE;
     }
-    data->inWindowFullscreenTransition = SDL_FALSE;
 
     return succeeded;
 }}

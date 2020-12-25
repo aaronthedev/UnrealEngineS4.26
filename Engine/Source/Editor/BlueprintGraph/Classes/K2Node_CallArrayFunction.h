@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -32,7 +32,6 @@ class UK2Node_CallArrayFunction : public UK2Node_CallFunction
 	//~ Begin UK2Node Interface
 	virtual void NotifyPinConnectionListChanged(UEdGraphPin* Pin) override;
 	virtual bool DoesInputWildcardPinAcceptArray(const UEdGraphPin* Pin) const override { return false; }
-	virtual bool DoesOutputWildcardPinAcceptContainer(const UEdGraphPin* Pin) const override { return false; }
 	virtual void ConvertDeprecatedNode(UEdGraph* Graph, bool bOnlySafeChanges) override;
 	//~ End UK2Node Interface
 
@@ -54,16 +53,9 @@ class UK2Node_CallArrayFunction : public UK2Node_CallFunction
 	 *
 	 * @return						TRUE if the property is a wildcard.
 	 */
-	BLUEPRINTGRAPH_API static bool IsWildcardProperty(UFunction* InArrayFunction, const FProperty* InProperty);
+	BLUEPRINTGRAPH_API static bool IsWildcardProperty(UFunction* InArrayFunction, const UProperty* InProperty);
 
-	
-	/**
-	* Gather all pins on this node that are dependent on the array type, including the Array target pin. 
-	* 
-	* @param OutPins		Array of pins to populate
-	*/
 	void GetArrayTypeDependentPins(TArray<UEdGraphPin*>& OutPins) const;
-
 	void PropagateArrayTypeInfo(const UEdGraphPin* SourcePin);
 };
 

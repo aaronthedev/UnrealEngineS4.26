@@ -1,15 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "UObject/Object.h"
-#include "Logging/TokenizedMessage.h"
 
 #if WITH_EDITOR
-
-class UUserWidget;
 
 class IWidgetCompilerLog
 {
@@ -37,8 +34,6 @@ public:
 		InternalLogMessage(Line);
 		return Line;
 	}
-
-	virtual TSubclassOf<UUserWidget> GetContextClass() const = 0;
 	
 protected:
 	virtual void InternalLogMessage(TSharedRef<FTokenizedMessage>& Message) = 0;

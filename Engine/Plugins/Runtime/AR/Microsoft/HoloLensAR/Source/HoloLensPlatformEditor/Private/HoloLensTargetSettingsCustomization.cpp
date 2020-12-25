@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "HoloLensTargetSettingsCustomization.h"
 #include "HoloLensPlatformEditor.h"
@@ -147,7 +147,9 @@ void FHoloLensTargetSettingsCustomization::CustomizeDetails(IDetailLayoutBuilder
 
 	// Load the existing signing certificate (if any)
 	FText SigningCertificateCaption = LOCTEXT("SigningCertificate", "Signing Certificate");
-	FText SigningCertificateTooltip = LOCTEXT("SigningCertificateTooltip", "Pfx file containing a private key used to sign the AppX file created during packaging.  The certificate subject name must exactly match the value of Package/Identity/Publisher.  Signing is required when sideloading packaged builds");
+	FText SigningCertificateTooltip = LOCTEXT("SigningCertificateTooltip",
+		"Pfx file containing a private key used to sign the AppX file created during packaging.  The certificate subject" \
+		"name must exactly match the value of Package/Identity/Publisher.  Signing is required when sideloading packaged builds");
 
 	PackagingCategoryBuilder.AddCustomRow(SigningCertificateCaption)
 	.NameContent()
@@ -201,7 +203,9 @@ void FHoloLensTargetSettingsCustomization::CustomizeDetails(IDetailLayoutBuilder
 	TSharedRef<IPropertyHandle> Win10SDKVersionPropertyHandle = DetailBuilder.GetProperty("Windows10SDKVersion");
 
 	FText AutoDetectSDKCaption = LOCTEXT("AutodetectWin10SDKCaption", "Auto-detect Windows 10 SDK");
-	FText AutoDetectSDKTooltip = LOCTEXT("AutodetectWin10SDKTooltip", "When enabled the project will build against the most recent version of the Windows 10 SDK supported by your compiler. This is typically the recommended behavior.  Uncheck in order to manually select a specific SDK version");
+	FText AutoDetectSDKTooltip = LOCTEXT("AutodetectWin10SDKTooltip",
+		"When enabled the project will build against the most recent version of the Windows 10 SDK supported by your compiler." \
+		"This is typically the recommended behavior.  Uncheck in order to manually select a specific SDK version");
 	TSharedPtr<SCheckBox> AutoDetectSDKCheckbox;
 	ToolchainCategoryBuilder.AddCustomRow(AutoDetectSDKCaption)
 	.NameContent()
@@ -239,7 +243,6 @@ void FHoloLensTargetSettingsCustomization::CustomizeDetails(IDetailLayoutBuilder
 	AddWidgetForCapability(DetailBuilder, DeviceCapabilityList, TEXT("location"), LOCTEXT("LocationCaption", "Location"), LOCTEXT("LocationTooltip", "Provides access to the current location, which is obtained from dedicated hardware like a GPS sensor in the PC or derived from available network information."), true);
 	AddWidgetForCapability(DetailBuilder, DeviceCapabilityList, TEXT("bluetooth"), LOCTEXT("BluetoothCaption", "Bluetooth"), LOCTEXT("BluetoothTooltip", "Allows communication with paired Bluetooth devices over the Generic Attribute (GATT) or Classic Basic Rate (RFCOMM) protocols."), true);
 	AddWidgetForCapability(DetailBuilder, DeviceCapabilityList, TEXT("gazeInput"), LOCTEXT("GazeInputCaption", "Gaze Input"), LOCTEXT("GazeInputTooltip", "Provides access to the input from gaze like eyes tracking. Required for Windows.Perception.People.EyesPose API."), false);
-	AddWidgetForCapability(DetailBuilder, DeviceCapabilityList, TEXT("wiFiControl"), LOCTEXT("WiFiControlCaption", "WiFiControl"), LOCTEXT("WiFiControlTooltip", "Allows apps to scan and connect to Wi-Fi networks."), false);
 
 	TSharedRef<IPropertyHandle> UapCapabilityList = DetailBuilder.GetProperty("UapCapabilityList");
 	DetailBuilder.HideProperty(UapCapabilityList);
@@ -271,6 +274,8 @@ void FHoloLensTargetSettingsCustomization::CustomizeDetails(IDetailLayoutBuilder
 		OnCapabilityStateChanged(ECheckBoxState::Checked, CapabilityList, TEXT("privateNetworkClientServer"));
 		// Our AR apps expect to get spatial mesh updates, so make this opt out for users that know what they are doing
 		OnCapabilityStateChanged(ECheckBoxState::Checked, Uap2CapabilityList, TEXT("spatialPerception"));
+		// Our AR apps expect to get a camera image each frame, so make this opt out for users that know what they are doing
+		OnCapabilityStateChanged(ECheckBoxState::Checked, DeviceCapabilityList, TEXT("webcam"));
 
 		SetDefaultCapabilitiesProperty->NotifyPreChange();
 		SetDefaultCapabilitiesProperty->SetValue(false);

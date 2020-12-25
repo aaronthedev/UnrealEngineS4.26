@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "XCodeSourceCodeAccessor.h"
 #include "DesktopPlatformModule.h"
@@ -93,7 +93,7 @@ FString FXCodeSourceCodeAccessor::GetSolutionPath() const
 		{
 			CachedSolutionPath = FPaths::ProjectDir();
 			
-			if (!FUProjectDictionary::GetDefault().IsForeignProject(CachedSolutionPath))
+			if (!FUProjectDictionary(FPaths::RootDir()).IsForeignProject(CachedSolutionPath))
 			{
 				CachedSolutionPath = FPaths::Combine(FPaths::RootDir(), + TEXT("UE4.xcworkspace/contents.xcworkspacedata"));
 			}

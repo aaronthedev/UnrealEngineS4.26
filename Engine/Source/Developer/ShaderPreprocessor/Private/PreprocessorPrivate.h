@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "ShaderCore.h"
 #include "mcpp.h"
-#include "ShaderCompilerCore.h"
 
 enum class EMessageType
 {

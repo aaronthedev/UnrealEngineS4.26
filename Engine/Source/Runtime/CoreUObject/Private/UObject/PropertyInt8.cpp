@@ -1,10 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "UObject/UnrealType.h"
 
 /*-----------------------------------------------------------------------------
-	FInt8Property.
+	UInt8Property.
 -----------------------------------------------------------------------------*/
 
+IMPLEMENT_CORE_INTRINSIC_CLASS(UInt8Property, UNumericProperty,
+	{
+	}
+);

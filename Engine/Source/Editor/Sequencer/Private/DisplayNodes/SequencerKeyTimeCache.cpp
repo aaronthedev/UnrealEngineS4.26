@@ -1,13 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SequencerKeyTimeCache.h"
 #include "MovieSceneSection.h"
 #include "Algo/Sort.h"
 #include "Algo/BinarySearch.h"
 
-bool FSequencerCachedKeys::Update(FFrameRate SourceResolution)
+void FSequencerCachedKeys::Update(TSharedRef<IKeyArea> InKeyArea, FFrameRate SourceResolution)
 {
-	UMovieSceneSection* Section = KeyArea->GetOwningSection();
+	UMovieSceneSection* Section = InKeyArea->GetOwningSection();
 	if (!Section || !CachedSignature.IsValid() || Section->GetSignature() != CachedSignature || SourceResolution != CachedTickResolution)
 	{
 		CachedSignature = Section ? Section->GetSignature() : FGuid();
@@ -16,7 +16,7 @@ bool FSequencerCachedKeys::Update(FFrameRate SourceResolution)
 		CachedKeyFrames.Reset();
 
 		TArray<FKeyHandle> Handles;
-		KeyArea->GetKeyInfo(&Handles, &CachedKeyFrames);
+		InKeyArea->GetKeyInfo(&Handles, &CachedKeyFrames);
 
 		CachedKeyTimes.Reset(CachedKeyFrames.Num());
 		CachedKeyHandles.Reset(CachedKeyFrames.Num());
@@ -28,10 +28,8 @@ bool FSequencerCachedKeys::Update(FFrameRate SourceResolution)
 			CachedKeyHandles.Add(Handles[Index]);
 		}
 
-		return true;
+		KeyArea = InKeyArea;
 	}
-
-	return false;
 }
 
 void FSequencerCachedKeys::GetKeysInRange(const TRange<double>& Range, TArrayView<const double>* OutTimes, TArrayView<const FFrameNumber>* OutKeyFrames, TArrayView<const FKeyHandle>* OutHandles) const
@@ -57,23 +55,6 @@ void FSequencerCachedKeys::GetKeysInRange(const TRange<double>& Range, TArrayVie
 		if (OutHandles)
 		{
 			*OutHandles = MakeArrayView(&CachedKeyHandles[FirstVisibleIndex], Num);
-		}
-	}
-	else
-	{
-		if (OutTimes)
-		{
-			*OutTimes = TArrayView<const double>();
-		}
-
-		if (OutKeyFrames)
-		{
-			*OutKeyFrames = TArrayView<const FFrameNumber>();
-		}
-
-		if (OutHandles)
-		{
-			*OutHandles = TArrayView<const FKeyHandle>();
 		}
 	}
 }

@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcGeom_Visibility_h
-#define Alembic_AbcGeom_Visibility_h
+#ifndef _Alembic_AbcGeom_Visibility_h_
+#define _Alembic_AbcGeom_Visibility_h_
 
 #include <string.h>
 #include <Alembic/Util/Export.h>

@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "IConcertModule.h"
 #include "ConcertSyncSessionFlags.h"
-class IConcertFileSharingService;
 
 class UConcertServerConfig;
 
@@ -25,7 +24,4 @@ public:
 
 	/** Get the current server */
 	virtual IConcertServerRef GetConcertServer() const = 0;
-
-	/** Set the file sharing service, enabling the server to work with large files. The server sharing service must be compatible with the client one. */
-	virtual void SetFileSharingService(TSharedPtr<IConcertFileSharingService> InFileSharingService) = 0;
 };

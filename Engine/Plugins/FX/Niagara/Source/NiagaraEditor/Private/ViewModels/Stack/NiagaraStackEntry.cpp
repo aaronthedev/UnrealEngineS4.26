@@ -1,13 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ViewModels/Stack/NiagaraStackEntry.h"
 #include "ViewModels/Stack/NiagaraStackErrorItem.h"
+#include "ViewModels/Stack/NiagaraStackGraphUtilities.h"
 #include "ViewModels/NiagaraSystemViewModel.h"
 #include "ViewModels/NiagaraEmitterViewModel.h"
 #include "NiagaraStackEditorData.h"
 #include "NiagaraScriptMergeManager.h"
 #include "Misc/SecureHash.h"
-#include "ScopedTransaction.h"
 
 const FName UNiagaraStackEntry::FExecutionCategoryNames::System = TEXT("System");
 const FName UNiagaraStackEntry::FExecutionCategoryNames::Emitter = TEXT("Emitter");
@@ -18,17 +18,15 @@ const FName UNiagaraStackEntry::FExecutionSubcategoryNames::Settings = TEXT("Set
 const FName UNiagaraStackEntry::FExecutionSubcategoryNames::Spawn = TEXT("Spawn");
 const FName UNiagaraStackEntry::FExecutionSubcategoryNames::Update = TEXT("Update");
 const FName UNiagaraStackEntry::FExecutionSubcategoryNames::Event = TEXT("Event");
-const FName UNiagaraStackEntry::FExecutionSubcategoryNames::SimulationStage = TEXT("Simulation Stage");
 const FName UNiagaraStackEntry::FExecutionSubcategoryNames::Render = TEXT("Render");
 
 UNiagaraStackEntry::FStackIssueFix::FStackIssueFix()
 {
 }
 
-UNiagaraStackEntry::FStackIssueFix::FStackIssueFix(FText InDescription, FStackIssueFixDelegate InFixDelegate, EStackIssueFixStyle InFixStyle)
+UNiagaraStackEntry::FStackIssueFix::FStackIssueFix(FText InDescription, FStackIssueFixDelegate InFixDelegate)
 	: Description(InDescription)
 	, FixDelegate(InFixDelegate)
-	, Style(InFixStyle)
 	, UniqueIdentifier(FMD5::HashAnsiString(*FString::Printf(TEXT("%s"), *InDescription.ToString())))
 {
 	checkf(Description.IsEmptyOrWhitespace() == false, TEXT("Description can not be empty."));
@@ -60,11 +58,6 @@ const UNiagaraStackEntry::FStackIssueFixDelegate& UNiagaraStackEntry::FStackIssu
 	return FixDelegate;
 }
 
-UNiagaraStackEntry::EStackIssueFixStyle UNiagaraStackEntry::FStackIssueFix::GetStyle() const
-{
-	return Style;
-}
-
 UNiagaraStackEntry::FStackIssue::FStackIssue()
 {
 }
@@ -73,16 +66,12 @@ UNiagaraStackEntry::FStackIssue::FStackIssue(EStackIssueSeverity InSeverity, FTe
 	: Severity(InSeverity)
 	, ShortDescription(InShortDescription)
 	, LongDescription(InLongDescription)
-	, UniqueIdentifier(FMD5::HashAnsiString(*FString::Printf(TEXT("%s-%s-%s"), *InStackEditorDataKey, *InShortDescription.ToString(), *InLongDescription.ToString())))
+	, UniqueIdentifier(FMD5::HashAnsiString(*FString::Printf(TEXT("%s-%s"), *InStackEditorDataKey, *InLongDescription.ToString())))
 	, bCanBeDismissed(bInCanBeDismissed)
 	, Fixes(InFixes)
 {
 	checkf(ShortDescription.IsEmptyOrWhitespace() == false, TEXT("Short description can not be empty."));
-	//checkf(LongDescription.IsEmptyOrWhitespace() == false, TEXT("Long description can not be empty."));
-	//if (LongDescription.IsEmptyOrWhitespace())
-	//{
-	//	LongDescription = ShortDescription;
-	//}
+	checkf(LongDescription.IsEmptyOrWhitespace() == false, TEXT("Long description can not be empty."));
 	checkf(InStackEditorDataKey.IsEmpty() == false, TEXT("Stack editor data key can not be empty."));
 }
 
@@ -158,11 +147,6 @@ void UNiagaraStackEntry::Initialize(FRequiredEntryData InRequiredEntryData, FStr
 
 void UNiagaraStackEntry::Finalize()
 {
-	if (ensureMsgf(IsFinalized() == false, TEXT("Can not finalize a stack entry more than once.")) == false)
-	{
-		return;
-	}
-
 	FinalizeInternal();
 	checkf(bIsFinalized, TEXT("Parent FinalizeInternal not called from overriden FinalizeInternal"));
 
@@ -172,10 +156,7 @@ void UNiagaraStackEntry::Finalize()
 
 	for (UNiagaraStackEntry* Child : Children)
 	{
-		if(Child->GetOuter() == this)
-		{
-			Child->Finalize();
-		}
+		Child->Finalize();
 	}
 	Children.Empty();
 
@@ -194,11 +175,6 @@ bool UNiagaraStackEntry::IsFinalized() const
 FText UNiagaraStackEntry::GetDisplayName() const
 {
 	return FText();
-}
-
-TOptional<FText> UNiagaraStackEntry::GetAlternateDisplayName() const
-{
-	return AlternateDisplayName;
 }
 
 UObject* UNiagaraStackEntry::GetDisplayedObject() const
@@ -248,27 +224,10 @@ bool UNiagaraStackEntry::GetIsExpanded() const
 
 void UNiagaraStackEntry::SetIsExpanded(bool bInExpanded)
 {
-	if (StackEditorData && GetCanExpand())
+	if (StackEditorData)
 	{
 		StackEditorData->SetStackEntryIsExpanded(GetStackEditorDataKey(), bInExpanded);
 	}
-	bIsExpandedCache.Reset();
-}
-
-void UNiagaraStackEntry::SetIsExpanded_Recursive(bool bInExpanded)
-{
-	if (StackEditorData && GetCanExpand())
-	{
-		StackEditorData->SetStackEntryIsExpanded(GetStackEditorDataKey(), bInExpanded);
-	}
-
-	TArray<UNiagaraStackEntry*> UnfilteredChildren;
-	GetUnfilteredChildren(UnfilteredChildren);
-	for (UNiagaraStackEntry* Child : UnfilteredChildren)
-	{
-		Child->SetIsExpanded_Recursive(bInExpanded);
-	}
-
 	bIsExpandedCache.Reset();
 }
 
@@ -295,16 +254,6 @@ FName UNiagaraStackEntry::GetExecutionSubcategoryName() const
 UNiagaraStackEntry::EStackRowStyle UNiagaraStackEntry::GetStackRowStyle() const
 {
 	return EStackRowStyle::None;
-}
-
-bool UNiagaraStackEntry::HasFrontDivider() const
-{
-	UNiagaraStackEntry* Outer = Cast<UNiagaraStackEntry>(GetOuter());
-	if (Outer == nullptr)
-	{
-		return false;
-	}
-	return Outer->HasFrontDivider();
 }
 
 bool UNiagaraStackEntry::GetShouldShowInStack() const
@@ -388,11 +337,6 @@ const UNiagaraStackEntry::FOnRequestFullRefresh& UNiagaraStackEntry::OnRequestFu
 UNiagaraStackEntry::FOnRequestFullRefresh& UNiagaraStackEntry::OnRequestFullRefreshDeferred()
 {
 	return RequestFullRefreshDeferredDelegate;
-}
-
-UNiagaraStackEntry::FOnAlternateDisplayNameChanged& UNiagaraStackEntry::OnAlternateDisplayNameChanged()
-{
-	return AlternateDisplayNameChangedDelegate;
 }
 
 int32 UNiagaraStackEntry::GetIndentLevel() const
@@ -525,7 +469,7 @@ TOptional<UNiagaraStackEntry::FDropRequestResponse> UNiagaraStackEntry::ChildReq
 	return TOptional<FDropRequestResponse>();
 }
 
-void UNiagaraStackEntry::ChildStructureChangedInternal()
+void UNiagaraStackEntry::ChlildStructureChangedInternal()
 {
 }
 
@@ -645,21 +589,6 @@ void UNiagaraStackEntry::RefreshChildren()
 		ErrorChild->OnIssueModified().AddUObject(this, &UNiagaraStackEntry::IssueModified);
 	}
 
-	const FText* NewAlternateName = StackEditorData->GetStackEntryDisplayName(StackEditorDataKey);
-	if (NewAlternateName != nullptr && NewAlternateName->IsEmptyOrWhitespace() == false)
-	{
-		if (AlternateDisplayName.IsSet() == false || NewAlternateName->IdenticalTo(AlternateDisplayName.GetValue()) == false)
-		{
-			AlternateDisplayName = *NewAlternateName;
-			AlternateDisplayNameChangedDelegate.Broadcast();
-		}
-	}
-	else if(AlternateDisplayName.IsSet())
-	{
-		AlternateDisplayName.Reset();
-		AlternateDisplayNameChangedDelegate.Broadcast();
-	}
-
 	PostRefreshChildrenInternal();
 
 	StructureChangedDelegate.Broadcast();
@@ -742,7 +671,7 @@ int32 UNiagaraStackEntry::GetChildIndentLevel() const
 
 void UNiagaraStackEntry::ChildStructureChanged()
 {
-	ChildStructureChangedInternal();
+	ChlildStructureChangedInternal();
 	StructureChangedDelegate.Broadcast();
 }
 
@@ -788,43 +717,5 @@ TOptional<UNiagaraStackEntry::FDropRequestResponse> UNiagaraStackEntry::ChildReq
 		return OnRequestDropDelegate.IsBound()
 			? OnRequestDropDelegate.Execute(TargetChild, DropRequest)
 			: TOptional<FDropRequestResponse>();
-	}
-}
-
-bool UNiagaraStackEntry::GetIsRenamePending() const
-{
-	return SupportsRename() && GetStackEditorData().GetStackEntryIsRenamePending(StackEditorDataKey);
-}
-
-void UNiagaraStackEntry::SetIsRenamePending(bool bIsRenamePending)
-{
-	if (SupportsRename())
-	{
-		GetStackEditorData().SetStackEntryIsRenamePending(StackEditorDataKey, bIsRenamePending);
-	}
-}
-
-void UNiagaraStackEntry::OnRenamed(FText NewName)
-{
-	if (SupportsRename())
-	{
-		if (!NewName.EqualTo(AlternateDisplayName.Get(FText::GetEmpty())))
-		{
-			if (NewName.IsEmptyOrWhitespace() || NewName.EqualTo(GetDisplayName()))
-			{
-				AlternateDisplayName.Reset();
-			}
-			else
-			{
-				AlternateDisplayName = NewName;
-			}
-
-			FScopedTransaction ScopedTransaction(NSLOCTEXT("NiagaraStackEntry", "RenameModule", "Rename Module"));
-			
-			GetStackEditorData().Modify();
-			GetStackEditorData().SetStackEntryDisplayName(GetStackEditorDataKey(), AlternateDisplayName.Get(FText::GetEmpty()));
-
-			AlternateDisplayNameChangedDelegate.Broadcast();
-		}
 	}
 }

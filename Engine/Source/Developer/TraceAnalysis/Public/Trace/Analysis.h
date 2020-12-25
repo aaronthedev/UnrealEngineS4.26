@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -32,15 +32,15 @@ public:
 	 * @param bState Pause if true, resume if false. */
 	void Pause(bool bState);
 
-						~FAnalysisProcessor();
-						FAnalysisProcessor() = default;
-						FAnalysisProcessor(FAnalysisProcessor&& Rhs);
-	FAnalysisProcessor&	operator = (FAnalysisProcessor&&);
+	~FAnalysisProcessor();
+	FAnalysisProcessor(FAnalysisProcessor&& Rhs);
 
 private:
 	friend				class FAnalysisContext;
+						FAnalysisProcessor() = default;
 						FAnalysisProcessor(FAnalysisProcessor&) = delete;
-	FAnalysisProcessor&	operator = (const FAnalysisProcessor&) = delete;
+	FAnalysisProcessor&	operator = (FAnalysisProcessor&) = delete;
+	FAnalysisProcessor&	operator = (FAnalysisProcessor&&) = delete;
 	class				FImpl;
 	FImpl*				Impl = nullptr;
 };

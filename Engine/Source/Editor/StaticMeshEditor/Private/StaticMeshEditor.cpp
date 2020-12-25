@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "StaticMeshEditor.h"
 #include "AssetData.h"
@@ -16,7 +16,6 @@
 #include "UnrealEdGlobals.h"
 #include "StaticMeshEditorModule.h"
 #include "AI/Navigation/NavCollisionBase.h"
-#include "ScopedTransaction.h"
 
 #include "SStaticMeshEditorViewport.h"
 #include "PropertyEditorModule.h"
@@ -47,8 +46,6 @@
 #include "ConvexDecompositionNotification.h"
 #include "FbxMeshUtils.h"
 #include "RawMesh.h"
-#include "EditorViewportTabContent.h"
-#include "EditorViewportLayout.h"
 
 #define LOCTEXT_NAMESPACE "StaticMeshEditor"
 
@@ -133,16 +130,6 @@ void FStaticMeshEditor::UnregisterTabSpawners(const TSharedRef<class FTabManager
 
 FStaticMeshEditor::~FStaticMeshEditor()
 {
-	if (StaticMesh)
-	{
-		StaticMesh->GetOnMeshChanged().RemoveAll(this);
-	}
-
- 	if (ViewportTabContent.IsValid())
- 	{
- 		ViewportTabContent->OnViewportTabContentLayoutChanged().RemoveAll(this);
- 	}
-
 	OnStaticMeshEditorClosed().Broadcast();
 
 #if USE_ASYNC_DECOMP
@@ -183,10 +170,9 @@ void FStaticMeshEditor::InitEditorForStaticMesh(UStaticMesh* ObjectToEdit)
 
 	BindCommands();
 
-	// The tab must be created before the viewport layout because the layout needs them
-	TSharedRef< SDockTab > DockableTab =
-		SNew(SDockTab)
-		.Icon(FEditorStyle::GetBrush("LevelEditor.Tabs.Viewports"));
+	Viewport = SNew(SStaticMeshEditorViewport)
+		.StaticMeshEditor(SharedThis(this))
+		.ObjectToEdit(ObjectToEdit);
 
 	FPropertyEditorModule& PropertyEditorModule = FModuleManager::LoadModuleChecked<FPropertyEditorModule>(TEXT("PropertyEditor"));
 
@@ -202,12 +188,19 @@ void FStaticMeshEditor::InitEditorForStaticMesh(UStaticMesh* ObjectToEdit)
 	FOnGetDetailCustomizationInstance LayoutCustomStaticMeshProperties = FOnGetDetailCustomizationInstance::CreateSP( this, &FStaticMeshEditor::MakeStaticMeshDetails );
 	StaticMeshDetailsView->RegisterInstancedCustomPropertyLayout( UStaticMesh::StaticClass(), LayoutCustomStaticMeshProperties );
 
-	StaticMesh = ObjectToEdit;
+	SetEditorMesh(ObjectToEdit);
 }
 
 void FStaticMeshEditor::InitStaticMeshEditor( const EToolkitMode::Type Mode, const TSharedPtr< class IToolkitHost >& InitToolkitHost, UStaticMesh* ObjectToEdit )
 {
-	InitEditorForStaticMesh(ObjectToEdit);
+	if (StaticMesh != ObjectToEdit)
+	{
+		// InitEditorForStaticMesh() should always be called first, otherwise plugins can't register themselved before the editor is built.
+		check(false);
+		InitEditorForStaticMesh(ObjectToEdit);
+	}
+
+	BuildSubTools();
 
 	TSharedRef<FTabManager::FStack> ExtentionTabStack(
 		FTabManager::NewStack()
@@ -325,7 +318,7 @@ void FStaticMeshEditor::GenerateSecondaryToolbar()
 	if (!Tab)
 	{
 		// By default, the tab is closed but we want it to be opened when it is populated
-		Tab = TSharedPtr<SDockTab>(TabManager->TryInvokeTab(SecondaryToolbarTabId));
+		Tab = TSharedPtr<SDockTab>(TabManager->InvokeTab(SecondaryToolbarTabId));
 	}
 
 	// Override the display name if it was set
@@ -335,7 +328,7 @@ void FStaticMeshEditor::GenerateSecondaryToolbar()
 	}
 
 	// But have the focus on the default toolbar
-	TabManager->TryInvokeTab(GetToolbarTabId());
+	TabManager->InvokeTab(GetToolbarTabId());
 }
 
 void FStaticMeshEditor::AddSecondaryToolbarExtender(TSharedPtr<FExtender> Extender)
@@ -413,7 +406,6 @@ void FStaticMeshEditor::ExtendMenu()
 				InMenuBuilder.AddMenuEntry(FStaticMeshEditorCommands::Get().CreateDOP26);
 				InMenuBuilder.AddMenuEntry(FStaticMeshEditorCommands::Get().ConvertBoxesToConvex);
 				InMenuBuilder.AddMenuEntry(FStaticMeshEditorCommands::Get().RemoveCollision);
-				
 				InMenuBuilder.AddMenuEntry(FGenericCommands::Get().Delete, "DeleteCollision", LOCTEXT("DeleteCollision", "Delete Selected Collision"), LOCTEXT("DeleteCollisionToolTip", "Deletes the selected Collision from the mesh."));
 				InMenuBuilder.AddMenuEntry(FGenericCommands::Get().Duplicate, "DuplicateCollision", LOCTEXT("DuplicateCollision", "Duplicate Selected Collision"), LOCTEXT("DuplicateCollisionToolTip", "Duplicates the selected Collision."));
 			}
@@ -476,25 +468,18 @@ void FStaticMeshEditor::AddReferencedObjects( FReferenceCollector& Collector )
 
 TSharedRef<SDockTab> FStaticMeshEditor::SpawnTab_Viewport( const FSpawnTabArgs& Args )
 {
-	TSharedRef< SDockTab > DockableTab =
-		SNew(SDockTab)
-		.Icon(FEditorStyle::GetBrush("LevelEditor.Tabs.Viewports"));
+	check( Args.GetTabId() == ViewportTabId );
 
-	TWeakPtr<IStaticMeshEditor> WeakSharedThis(SharedThis(this));
-	MakeViewportFunc = [WeakSharedThis]()
-	{
-		return SNew(SStaticMeshEditorViewport)
-			.StaticMeshEditor(WeakSharedThis);
-	};
+	TSharedRef<SDockTab> SpawnedTab =
+	 SNew(SDockTab)
+		.Label( LOCTEXT("StaticMeshViewport_TabTitle", "Viewport") )
+		[
+			Viewport.ToSharedRef()
+		];
 
-	// Create a new tab
-	ViewportTabContent = MakeShareable(new FEditorViewportTabContent());
-	ViewportTabContent->OnViewportTabContentLayoutChanged().AddRaw(this, &FStaticMeshEditor::OnEditorLayoutChanged);
+	Viewport->SetParentTab( SpawnedTab );
 
-	const FString LayoutId = FString("StaticMeshEditorViewport");
-	ViewportTabContent->Initialize(MakeViewportFunc, DockableTab, LayoutId);
-
-	return DockableTab;
+	return SpawnedTab;
 }
 
 TSharedRef<SDockTab> FStaticMeshEditor::SpawnTab_Properties( const FSpawnTabArgs& Args )
@@ -565,45 +550,11 @@ TSharedRef<SDockTab> FStaticMeshEditor::SpawnTab_SecondaryToolbar( const FSpawnT
 	return SpawnedTab;
 }
 
-TSharedPtr<SStaticMeshEditorViewport> FStaticMeshEditor::GetStaticMeshViewport() const
-{
-	if (ViewportTabContent.IsValid())
-	{
-		// we can use static cast here b/c we know in this editor we will have a static mesh viewport 
-		return StaticCastSharedPtr<SStaticMeshEditorViewport>(ViewportTabContent->GetFirstViewport());
-	}
-
-	return TSharedPtr<SStaticMeshEditorViewport>();
-}
-
-void FStaticMeshEditor::OnEditorLayoutChanged()
-{
-	SetEditorMesh(StaticMesh);
-
-	BuildSubTools();
-
-	bool LocalDrawGrids = false;
-	TFunction<void(FName, TSharedPtr<IEditorViewportLayoutEntity>)> CheckShowGridFunc =
-		[this, &LocalDrawGrids](FName Name, TSharedPtr<IEditorViewportLayoutEntity> Entity)
-	{
-		TSharedRef<SStaticMeshEditorViewport> StaticMeshEditorViewport = StaticCastSharedRef<SStaticMeshEditorViewport>(Entity->AsWidget());
-		FStaticMeshEditorViewportClient& StaticMeshEditorViewportClient = StaticMeshEditorViewport->GetViewportClient();
-		LocalDrawGrids |= StaticMeshEditorViewportClient.IsSetShowGridChecked();
-	};
-
-	ViewportTabContent->PerformActionOnViewports(CheckShowGridFunc);
-
-	bDrawGrids = LocalDrawGrids;
-
-	OnPreviewSceneChangedDelegate.Broadcast(GetStaticMeshViewport()->GetPreviewScene());
-}
-
 void FStaticMeshEditor::BindCommands()
 {
 	const FStaticMeshEditorCommands& Commands = FStaticMeshEditorCommands::Get();
 
 	const TSharedRef<FUICommandList>& UICommandList = GetToolkitCommands();
-
 
 	UICommandList->MapAction( FGenericCommands::Get().Delete,
 		FExecuteAction::CreateSP( this, &FStaticMeshEditor::DeleteSelected ),
@@ -614,7 +565,6 @@ void FStaticMeshEditor::BindCommands()
 
 	UICommandList->MapAction( FGenericCommands::Get().Redo,
 		FExecuteAction::CreateSP( this, &FStaticMeshEditor::RedoAction ) );
-
 
 	UICommandList->MapAction(
 		FGenericCommands::Get().Duplicate,
@@ -658,66 +608,6 @@ void FStaticMeshEditor::BindCommands()
 		Commands.CreateSphylCollision,
 		FExecuteAction::CreateSP(this, &FStaticMeshEditor::OnCollisionSphyl));
 
-	UICommandList->MapAction(Commands.ToggleShowNormals,
-		FExecuteAction::CreateSP(this, &FStaticMeshEditor::ToggleShowNormals),
-		FCanExecuteAction(),
-		FIsActionChecked::CreateSP(this, &FStaticMeshEditor::IsShowNormalsChecked));
-
-	UICommandList->MapAction(Commands.ToggleShowTangents,
-		FExecuteAction::CreateSP(this, &FStaticMeshEditor::ToggleShowTangents),
-		FCanExecuteAction(),
-		FIsActionChecked::CreateSP(this, &FStaticMeshEditor::IsShowTangentsChecked));
-
-	UICommandList->MapAction(Commands.ToggleShowBinormals,
-		FExecuteAction::CreateSP(this, &FStaticMeshEditor::ToggleShowBinormals),
-		FCanExecuteAction(),
-		FIsActionChecked::CreateSP(this, &FStaticMeshEditor::IsShowBinormalsChecked));
-
-	UICommandList->MapAction(Commands.ToggleShowPivots,
-		FExecuteAction::CreateSP(this, &FStaticMeshEditor::ToggleShowPivots),
-		FCanExecuteAction(),
-		FIsActionChecked::CreateSP(this, &FStaticMeshEditor::IsShowPivotsChecked));
-
-	UICommandList->MapAction(Commands.ToggleShowVertices,
-		FExecuteAction::CreateSP(this, &FStaticMeshEditor::ToggleShowVertices),
-		FCanExecuteAction(),
-		FIsActionChecked::CreateSP(this, &FStaticMeshEditor::IsShowVerticesChecked));
-
-	UICommandList->MapAction(Commands.ToggleShowGrids,
-		FExecuteAction::CreateSP(this, &FStaticMeshEditor::ToggleShowGrids),
-		FCanExecuteAction(),
-		FIsActionChecked::CreateSP(this, &FStaticMeshEditor::IsShowGridsChecked));
-
-	UICommandList->MapAction(Commands.ToggleShowBounds,
-		FExecuteAction::CreateSP(this, &FStaticMeshEditor::ToggleShowBounds),
-		FCanExecuteAction(),
-		FIsActionChecked::CreateSP(this, &FStaticMeshEditor::IsShowBoundsChecked));
-
-	UICommandList->MapAction(Commands.ToggleShowSimpleCollisions,
-		FExecuteAction::CreateSP(this, &FStaticMeshEditor::ToggleShowSimpleCollisions),
-		FCanExecuteAction(),
-		FIsActionChecked::CreateSP(this, &FStaticMeshEditor::IsShowSimpleCollisionsChecked));
-
-	UICommandList->MapAction(Commands.ToggleShowComplexCollisions,
-		FExecuteAction::CreateSP(this, &FStaticMeshEditor::ToggleShowComplexCollisions),
-		FCanExecuteAction(),
-		FIsActionChecked::CreateSP(this, &FStaticMeshEditor::IsShowComplexCollisionsChecked));
-
-	UICommandList->MapAction(Commands.ToggleShowSockets,
-		FExecuteAction::CreateSP(this, &FStaticMeshEditor::ToggleShowSockets),
-		FCanExecuteAction(),
-		FIsActionChecked::CreateSP(this, &FStaticMeshEditor::IsShowSocketsChecked));
-
-	UICommandList->MapAction(Commands.ToggleShowWireframes,
-		FExecuteAction::CreateSP(this, &FStaticMeshEditor::ToggleShowWireframes),
-		FCanExecuteAction(),
-		FIsActionChecked::CreateSP(this, &FStaticMeshEditor::IsShowWireframesChecked));
-
-	UICommandList->MapAction(Commands.ToggleShowVertexColors,
-		FExecuteAction::CreateSP(this, &FStaticMeshEditor::ToggleShowVertexColors),
-		FCanExecuteAction(),
-		FIsActionChecked::CreateSP(this, &FStaticMeshEditor::IsShowVertexColorsChecked));
-
 	UICommandList->MapAction(
 		Commands.RemoveCollision,
 		FExecuteAction::CreateSP(this, &FStaticMeshEditor::OnRemoveCollision),
@@ -751,18 +641,6 @@ void FStaticMeshEditor::BindCommands()
 	UICommandList->MapAction(
 		Commands.CreateAutoConvexCollision,
 		FExecuteAction::CreateSP(this, &FStaticMeshEditor::OnConvexDecomposition));
-
-	// Viewport Camera
-	UICommandList->MapAction(
-		Commands.ResetCamera,
-		FExecuteAction::CreateSP(this, &FStaticMeshEditor::ResetCamera));
-
-	// Draw additional data
-	UICommandList->MapAction(
-		Commands.SetDrawAdditionalData,
-		FExecuteAction::CreateSP(this, &FStaticMeshEditor::ToggleDrawAdditionalData),
-		FCanExecuteAction(),
-		FIsActionChecked::CreateSP(this, &FStaticMeshEditor::IsDrawAdditionalDataChecked));
 }
 
 static TSharedRef< SWidget > GenerateCollisionMenuContent(TSharedPtr<const FUICommandList> InCommandList)
@@ -771,8 +649,8 @@ static TSharedRef< SWidget > GenerateCollisionMenuContent(TSharedPtr<const FUICo
 
 	MenuBuilder.BeginSection("ShowCollision", LOCTEXT("ShowCollision", "Show Collision"));
 	{
-		MenuBuilder.AddMenuEntry(FStaticMeshEditorCommands::Get().ToggleShowSimpleCollisions);
-		MenuBuilder.AddMenuEntry(FStaticMeshEditorCommands::Get().ToggleShowComplexCollisions);
+		MenuBuilder.AddMenuEntry(FStaticMeshEditorCommands::Get().SetShowSimpleCollision);
+		MenuBuilder.AddMenuEntry(FStaticMeshEditorCommands::Get().SetShowComplexCollision);
 	}
 	MenuBuilder.EndSection();
 
@@ -804,7 +682,7 @@ void FStaticMeshEditor::ExtendToolBar()
 				ToolbarBuilder.AddToolBarButton(FEditorViewportCommands::Get().ToggleRealTime);
 			}
 			ToolbarBuilder.EndSection();
-
+			
 			ToolbarBuilder.BeginSection("Mesh");
 			{
 				ToolbarBuilder.AddToolBarButton(FUIAction(FExecuteAction::CreateSP(ThisEditor, &FStaticMeshEditor::HandleReimportMesh)),
@@ -820,14 +698,14 @@ void FStaticMeshEditor::ExtendToolBar()
 				);
 			}
 			ToolbarBuilder.EndSection();
-
+	
 			ToolbarBuilder.BeginSection("Command");
 			{
-				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().ToggleShowSockets);
-				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().ToggleShowWireframes);
-				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().ToggleShowVertexColors);
-				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().ToggleShowGrids);
-				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().ToggleShowBounds);
+				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().SetShowSockets);
+				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().SetShowWireframe);
+				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().SetShowVertexColor);
+				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().SetShowGrid);
+				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().SetShowBounds);
 
 				TSharedPtr<const FUICommandList> CommandList = ToolbarBuilder.GetTopCommandList();
 
@@ -839,11 +717,11 @@ void FStaticMeshEditor::ExtendToolBar()
 					FSlateIcon(FEditorStyle::GetStyleSetName(), "StaticMeshEditor.SetShowCollision")
 				);
 
-				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().ToggleShowPivots);
-				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().ToggleShowNormals);
-				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().ToggleShowTangents);
-				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().ToggleShowBinormals);
-				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().ToggleShowVertices);
+				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().SetShowPivot);
+				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().SetShowNormals);
+				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().SetShowTangents);
+				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().SetShowBinormals);
+				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().SetShowVertices);
 
 				FOnGetContent OnGetUVMenuContent = FOnGetContent::CreateRaw(ThisEditor, &FStaticMeshEditor::GenerateUVChannelComboList);
 
@@ -856,6 +734,7 @@ void FStaticMeshEditor::ExtendToolBar()
 			}
 
 			ToolbarBuilder.EndSection();
+
 			ToolbarBuilder.BeginSection("Camera");
 			{
 				ToolbarBuilder.AddToolBarButton(FStaticMeshEditorCommands::Get().ResetCamera);
@@ -866,29 +745,25 @@ void FStaticMeshEditor::ExtendToolBar()
 		}
 	};
 
-
-	{
 	TSharedPtr<FExtender> ToolbarExtender = MakeShareable(new FExtender);
 
-	FStaticMeshEditorViewportClient& ViewportClient = GetStaticMeshViewport()->GetViewportClient();
+	FStaticMeshEditorViewportClient& ViewportClient = Viewport->GetViewportClient();
 
 	FStaticMeshEditor* ThisEditor = this;
 
 	ToolbarExtender->AddToolBarExtension(
 		"Asset",
 		EExtensionHook::After,
-		GetToolkitCommands(),
+		Viewport->GetCommandList(),
 		FToolBarExtensionDelegate::CreateStatic(&Local::FillToolbar, ThisEditor)
-	);
+		);
 
 	AddToolbarExtender(ToolbarExtender);
 
-	IStaticMeshEditorModule* StaticMeshEditorModule = &FModuleManager::LoadModuleChecked<IStaticMeshEditorModule>("StaticMeshEditor");
+	IStaticMeshEditorModule* StaticMeshEditorModule = &FModuleManager::LoadModuleChecked<IStaticMeshEditorModule>( "StaticMeshEditor" );
 	EditorToolbarExtender = StaticMeshEditorModule->GetToolBarExtensibilityManager()->GetAllExtenders(GetToolkitCommands(), GetEditingObjects());
 	AddToolbarExtender(EditorToolbarExtender);
 	AddSecondaryToolbarExtender(StaticMeshEditorModule->GetSecondaryToolBarExtensibilityManager()->GetAllExtenders(GetToolkitCommands(), GetEditingObjects()));
-	}
-
 }
 
 void FStaticMeshEditor::BuildSubTools()
@@ -901,10 +776,7 @@ void FStaticMeshEditor::BuildSubTools()
 		.StaticMeshEditorPtr(SharedThis(this));
 
 	FAdvancedPreviewSceneModule& AdvancedPreviewSceneModule = FModuleManager::LoadModuleChecked<FAdvancedPreviewSceneModule>("AdvancedPreviewScene");
-
-	TArray<FAdvancedPreviewSceneModule::FDetailDelegates> Delegates;
-	Delegates.Add({ OnPreviewSceneChangedDelegate });
-	AdvancedPreviewSettingsWidget = AdvancedPreviewSceneModule.CreateAdvancedPreviewSceneSettingsWidget(GetStaticMeshViewport()->GetPreviewScene(), nullptr, TArray<FAdvancedPreviewSceneModule::FDetailCustomizationInfo>(),  TArray<FAdvancedPreviewSceneModule::FPropertyTypeCustomizationInfo>(), Delegates);
+	AdvancedPreviewSettingsWidget = AdvancedPreviewSceneModule.CreateAdvancedPreviewSceneSettingsWidget(Viewport->GetPreviewScene());
 }
 
 FName FStaticMeshEditor::GetToolkitFName() const
@@ -929,7 +801,7 @@ FLinearColor FStaticMeshEditor::GetWorldCentricTabColorScale() const
 
 UStaticMeshComponent* FStaticMeshEditor::GetStaticMeshComponent() const
 {
-	return GetStaticMeshViewport().IsValid() ? GetStaticMeshViewport()->GetStaticMeshComponent() : nullptr;
+	return Viewport->GetStaticMeshComponent();
 }
 
 void FStaticMeshEditor::SetSelectedSocket(UStaticMeshSocket* InSelectedSocket)
@@ -983,9 +855,9 @@ void FStaticMeshEditor::AddSelectedPrim(const FPrimData& InPrimData, bool bClear
 	check(IsPrimValid(InPrimData));
 
 	// Enable collision, if not already
-	if( !GetStaticMeshViewport()->GetViewportClient().IsShowSimpleCollisionChecked() )
+	if( !Viewport->GetViewportClient().IsShowSimpleCollisionChecked() )
 	{
-		GetStaticMeshViewport()->GetViewportClient().ToggleShowSimpleCollision();
+		Viewport->GetViewportClient().ToggleShowSimpleCollision();
 	}
 
 	if( bClearSelection )
@@ -1090,7 +962,7 @@ void FStaticMeshEditor::DuplicateSelectedPrims(const FVector* InOffset)
 		StaticMesh->MarkPackageDirty();
 
 		// Update views/property windows
-		GetStaticMeshViewport()->RefreshViewport();
+		Viewport->RefreshViewport();
 
 		StaticMesh->bCustomizedCollision = true;	//mark the static mesh for collision customization
 	}
@@ -1409,10 +1281,7 @@ void FStaticMeshEditor::RefreshTool()
 
 void FStaticMeshEditor::RefreshViewport()
 {
-	if (GetStaticMeshViewport().IsValid())
-	{
-		GetStaticMeshViewport()->RefreshViewport();
-	}
+	Viewport->RefreshViewport();
 }
 
 TSharedRef<SWidget> FStaticMeshEditor::GenerateUVChannelComboList()
@@ -1420,7 +1289,7 @@ TSharedRef<SWidget> FStaticMeshEditor::GenerateUVChannelComboList()
 	FMenuBuilder MenuBuilder(true, nullptr, EditorToolbarExtender);
 	FUIAction DrawUVsAction;
 
-	FStaticMeshEditorViewportClient& ViewportClient = GetStaticMeshViewport()->GetViewportClient();
+	FStaticMeshEditorViewportClient& ViewportClient = Viewport->GetViewportClient();
 
 	DrawUVsAction.ExecuteAction = FExecuteAction::CreateRaw(&ViewportClient, &FStaticMeshEditorViewportClient::SetDrawUVOverlay, false);
 
@@ -1504,7 +1373,7 @@ void FStaticMeshEditor::UpdateLODStats(int32 CurrentLOD)
 
 void FStaticMeshEditor::ComboBoxSelectionChanged( TSharedPtr<FString> NewSelection, ESelectInfo::Type /*SelectInfo*/ )
 {
-	GetStaticMeshViewport()->RefreshViewport();
+	Viewport->RefreshViewport();
 }
 
 void FStaticMeshEditor::HandleReimportMesh()
@@ -1589,10 +1458,6 @@ void FStaticMeshEditor::GenerateKDop(const FVector* Directions, uint32 NumDirect
 
 	GEditor->BeginTransaction(LOCTEXT("FStaticMeshEditor_GenerateKDop", "Create Convex Collision"));
 	const int32 PrimIndex = GenerateKDopAsSimpleCollision(StaticMesh, DirArray);
-	if (PrimIndex != INDEX_NONE)
-	{
-		StaticMesh->BodySetup->AggGeom.ConvexElems[PrimIndex].bIsGenerated = true;
-	}
 	GEditor->EndTransaction();
 	if (PrimIndex != INDEX_NONE)
 	{
@@ -1606,17 +1471,13 @@ void FStaticMeshEditor::GenerateKDop(const FVector* Directions, uint32 NumDirect
 		// Don't 'nudge' KDop prims, as they are fitted specifically around the geometry
 	}
 
-	GetStaticMeshViewport()->RefreshViewport();
+	Viewport->RefreshViewport();
 }
 
 void FStaticMeshEditor::OnCollisionBox()
 {
 	GEditor->BeginTransaction(LOCTEXT("FStaticMeshEditor_OnCollisionBox", "Create Box Collision"));
 	const int32 PrimIndex = GenerateBoxAsSimpleCollision(StaticMesh);
-	if (PrimIndex != INDEX_NONE)
-	{
-		StaticMesh->BodySetup->AggGeom.BoxElems[PrimIndex].bIsGenerated = true;
-	}
 	GEditor->EndTransaction();
 	if (PrimIndex != INDEX_NONE)
 	{
@@ -1633,17 +1494,13 @@ void FStaticMeshEditor::OnCollisionBox()
 		}
 	}
 
-	GetStaticMeshViewport()->RefreshViewport();
+	Viewport->RefreshViewport();
 }
 
 void FStaticMeshEditor::OnCollisionSphere()
 {
 	GEditor->BeginTransaction(LOCTEXT("FStaticMeshEditor_OnCollisionSphere", "Create Sphere Collision"));
 	const int32 PrimIndex = GenerateSphereAsSimpleCollision(StaticMesh);
-	if (PrimIndex != INDEX_NONE)
-	{
-		StaticMesh->BodySetup->AggGeom.SphereElems[PrimIndex].bIsGenerated = true;
-	}
 	GEditor->EndTransaction();
 	if (PrimIndex != INDEX_NONE)
 	{
@@ -1660,17 +1517,13 @@ void FStaticMeshEditor::OnCollisionSphere()
 		}
 	}
 
-	GetStaticMeshViewport()->RefreshViewport();
+	Viewport->RefreshViewport();
 }
 
 void FStaticMeshEditor::OnCollisionSphyl()
 {
 	GEditor->BeginTransaction(LOCTEXT("FStaticMeshEditor_OnCollisionSphyl", "Create Capsule Collision"));
 	const int32 PrimIndex = GenerateSphylAsSimpleCollision(StaticMesh);
-	if (PrimIndex != INDEX_NONE)
-	{
-		StaticMesh->BodySetup->AggGeom.SphylElems[PrimIndex].bIsGenerated = true;
-	}
 	GEditor->EndTransaction();
 	if (PrimIndex != INDEX_NONE)
 	{
@@ -1687,7 +1540,7 @@ void FStaticMeshEditor::OnCollisionSphyl()
 		}
 	}
 
-	GetStaticMeshViewport()->RefreshViewport();
+	Viewport->RefreshViewport();
 }
 
 void FStaticMeshEditor::OnRemoveCollision(void)
@@ -1714,7 +1567,7 @@ void FStaticMeshEditor::OnRemoveCollision(void)
 	StaticMesh->MarkPackageDirty();
 
 	// Update views/property windows
-	GetStaticMeshViewport()->RefreshViewport();
+	Viewport->RefreshViewport();
 
 	StaticMesh->bCustomizedCollision = true;	//mark the static mesh for collision customization
 }
@@ -1802,7 +1655,7 @@ void FStaticMeshEditor::OnConvertBoxToConvexCollision()
 				StaticMesh->MarkPackageDirty();
 
 				// Update views/property windows
-				GetStaticMeshViewport()->RefreshViewport();
+				Viewport->RefreshViewport();
 
 				StaticMesh->bCustomizedCollision = true;	//mark the static mesh for collision customization
 			}
@@ -1829,9 +1682,9 @@ void FStaticMeshEditor::OnCopyCollisionFromSelectedStaticMesh()
 	BodySetup->CopyBodyPropertiesFrom(SelectedMesh->BodySetup);
 
 	// Enable collision, if not already
-	if( !GetStaticMeshViewport()->GetViewportClient().IsShowSimpleCollisionChecked() )
+	if( !Viewport->GetViewportClient().IsShowSimpleCollisionChecked() )
 	{
-		GetStaticMeshViewport()->GetViewportClient().ToggleShowSimpleCollision();
+		Viewport->GetViewportClient().ToggleShowSimpleCollision();
 	}
 
 	// Invalidate physics data and create new meshes
@@ -1849,7 +1702,7 @@ void FStaticMeshEditor::OnCopyCollisionFromSelectedStaticMesh()
 	GUnrealEd->RedrawLevelEditingViewports();
 
 	// Update views/property windows
-	GetStaticMeshViewport()->RefreshViewport();
+	Viewport->RefreshViewport();
 
 	StaticMesh->bCustomizedCollision = true;	//mark the static mesh for collision customization
 }
@@ -1897,11 +1750,6 @@ void FStaticMeshEditor::SetEditorMesh(UStaticMesh* InStaticMesh, bool bResetCame
 {
 	ClearSelectedPrims();
 
-	if (StaticMesh)
-	{
-		StaticMesh->GetOnMeshChanged().RemoveAll(this);
-	}
-
 	StaticMesh = InStaticMesh;
 
 	//Init stat arrays.
@@ -1915,8 +1763,6 @@ void FStaticMeshEditor::SetEditorMesh(UStaticMesh* InStaticMesh, bool bResetCame
 
 	if(StaticMesh)
 	{
-		StaticMesh->GetOnMeshChanged().AddRaw(this, &FStaticMeshEditor::OnMeshChanged);
-
 		int32 NumLODs = StaticMesh->GetNumLODs();
 		for (int32 LODIndex = 0; LODIndex < NumLODs; ++LODIndex)
 		{
@@ -1927,11 +1773,8 @@ void FStaticMeshEditor::SetEditorMesh(UStaticMesh* InStaticMesh, bool bResetCame
 	// Set the details view.
 	StaticMeshDetailsView->SetObject(StaticMesh);
 
-	if (GetStaticMeshViewport().IsValid())
-	{
-		GetStaticMeshViewport()->UpdatePreviewMesh(StaticMesh, bResetCamera);
-		GetStaticMeshViewport()->RefreshViewport();
-	}
+	Viewport->UpdatePreviewMesh(StaticMesh, bResetCamera);
+	Viewport->RefreshViewport();
 }
 
 void FStaticMeshEditor::OnChangeMesh()
@@ -1987,7 +1830,7 @@ void FStaticMeshEditor::OnSaveGeneratedLODs()
 		StaticMeshDetailsView->SetObjects(Selected, true);
 
 		// Update screen
-		GetStaticMeshViewport()->RefreshViewport();
+		Viewport->RefreshViewport();
 	}
 }
 
@@ -2063,9 +1906,9 @@ void FStaticMeshEditor::DoDecomp(uint32 InHullCount, int32 InMaxHullVerts, uint3
 		}
 
 		// Enable collision, if not already
-		if( !GetStaticMeshViewport()->GetViewportClient().IsShowSimpleCollisionChecked() )
+		if( !Viewport->GetViewportClient().IsShowSimpleCollisionChecked() )
 		{
-			GetStaticMeshViewport()->GetViewportClient().ToggleShowSimpleCollision();
+			Viewport->GetViewportClient().ToggleShowSimpleCollision();
 		}
 
 		// refresh collision change back to staticmesh components
@@ -2075,7 +1918,7 @@ void FStaticMeshEditor::DoDecomp(uint32 InHullCount, int32 InMaxHullVerts, uint3
 		StaticMesh->MarkPackageDirty();
 
 		// Update screen.
-		GetStaticMeshViewport()->RefreshViewport();
+		Viewport->RefreshViewport();
 
 		StaticMesh->bCustomizedCollision = true;	//mark the static mesh for collision customization
 	}
@@ -2083,7 +1926,7 @@ void FStaticMeshEditor::DoDecomp(uint32 InHullCount, int32 InMaxHullVerts, uint3
 
 TSet< int32 >& FStaticMeshEditor::GetSelectedEdges()
 {
-	return GetStaticMeshViewport()->GetSelectedEdges();
+	return Viewport->GetSelectedEdges();
 }
 
 int32 FStaticMeshEditor::GetNumTriangles( int32 LODLevel ) const
@@ -2186,7 +2029,7 @@ void FStaticMeshEditor::DeleteSelectedPrims()
 		StaticMesh->MarkPackageDirty();
 
 		// Update views/property windows
-		GetStaticMeshViewport()->RefreshViewport();
+		Viewport->RefreshViewport();
 
 		StaticMesh->bCustomizedCollision = true;	//mark the static mesh for collision customization
 	}
@@ -2252,9 +2095,9 @@ void FStaticMeshEditor::OnObjectReimported(UObject* InObject)
 
 EViewModeIndex FStaticMeshEditor::GetViewMode() const
 {
-	if (GetStaticMeshViewport().IsValid())
+	if (Viewport.IsValid())
 	{
-		const FStaticMeshEditorViewportClient& ViewportClient = GetStaticMeshViewport()->GetViewportClient();
+		const FStaticMeshEditorViewportClient& ViewportClient = Viewport->GetViewportClient();
 		return ViewportClient.GetViewMode();
 	}
 	else
@@ -2265,12 +2108,12 @@ EViewModeIndex FStaticMeshEditor::GetViewMode() const
 
 FEditorViewportClient& FStaticMeshEditor::GetViewportClient()
 {
-	return GetStaticMeshViewport()->GetViewportClient();
+	return Viewport->GetViewportClient();
 }
 
 void FStaticMeshEditor::OnConvexDecomposition()
 {
-	TabManager->TryInvokeTab(CollisionTabId);
+	TabManager->InvokeTab(CollisionTabId);
 }
 
 bool FStaticMeshEditor::OnRequestClose()
@@ -2314,12 +2157,11 @@ void FStaticMeshEditor::UnregisterOnPostUndo( SWidget* Widget )
 	OnPostUndo.RemoveAll( Widget );
 }
 
-void FStaticMeshEditor::NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, FProperty* PropertyThatChanged )
+void FStaticMeshEditor::NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, UProperty* PropertyThatChanged )
 {
 	if(StaticMesh && StaticMesh->BodySetup)
 	{
 		StaticMesh->BodySetup->CreatePhysicsMeshes();
-		RemoveInvalidPrims();
 
 		if (GET_MEMBER_NAME_CHECKED(UStaticMesh, LODGroup) == PropertyChangedEvent.GetPropertyName())
 		{
@@ -2337,10 +2179,7 @@ void FStaticMeshEditor::NotifyPostChange( const FPropertyChangedEvent& PropertyC
 				}
 			}
 		}
-	}
-	else
-	{
-		RemoveInvalidPrims();
+
 	}
 }
 
@@ -2370,11 +2209,6 @@ void FStaticMeshEditor::PostRedo( bool bSuccess )
 	OnPostUndo.Broadcast();
 }
 
-void FStaticMeshEditor::OnMeshChanged()
-{
-	GetStaticMeshViewport()->GetViewportClient().OnMeshChanged();
-}
-
 void FStaticMeshEditor::OnSocketSelectionChanged()
 {
 	UStaticMeshSocket* SelectedSocket = GetSelectedSocket();
@@ -2382,7 +2216,7 @@ void FStaticMeshEditor::OnSocketSelectionChanged()
 	{
 		ClearSelectedPrims();
 	}
-	GetStaticMeshViewport()->GetViewportClient().OnSocketSelectionChanged( SelectedSocket );
+	Viewport->GetViewportClient().OnSocketSelectionChanged( SelectedSocket );
 }
 
 void FStaticMeshEditor::OnPostReimport(UObject* InObject, bool bSuccess)
@@ -2402,12 +2236,12 @@ void FStaticMeshEditor::OnPostReimport(UObject* InObject, bool bSuccess)
 void FStaticMeshEditor::SetCurrentViewedUVChannel(int32 InNewUVChannel)
 {
 	CurrentViewedUVChannel = FMath::Clamp(InNewUVChannel, 0, GetNumUVChannels());
-	GetStaticMeshViewport()->GetViewportClient().SetDrawUVOverlay(true);
+	Viewport->GetViewportClient().SetDrawUVOverlay(true);
 }
 
 ECheckBoxState FStaticMeshEditor::GetUVChannelCheckState(int32 TestUVChannel) const
 {
-	return CurrentViewedUVChannel == TestUVChannel && GetStaticMeshViewport()->GetViewportClient().IsDrawUVOverlayChecked() ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+	return CurrentViewedUVChannel == TestUVChannel && Viewport->GetViewportClient().IsDrawUVOverlayChecked() ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
 }
 
 void FStaticMeshEditor::Tick(float DeltaTime)
@@ -2440,369 +2274,8 @@ bool FStaticMeshEditor::CanRemoveUVChannel()
 {
 	// Can remove UV channel if there's one that is currently being selected and displayed, 
 	// and the current LOD has more than one UV channel
-	return GetStaticMeshViewport()->GetViewportClient().IsDrawUVOverlayChecked() && 
+	return Viewport->GetViewportClient().IsDrawUVOverlayChecked() && 
 		StaticMesh->GetNumUVChannels(GetCurrentLODIndex()) > 1;
-}
-
-void FStaticMeshEditor::ToggleShowNormals()
-{
-	bDrawNormals = !bDrawNormals;
-	TFunction<void(FName, TSharedPtr<IEditorViewportLayoutEntity>)> ToggleShowNormalsFunc = 
-		[this](FName Name, TSharedPtr<IEditorViewportLayoutEntity> Entity)
-	{
-		TSharedRef<SStaticMeshEditorViewport> StaticMeshEditorViewport = StaticCastSharedRef<SStaticMeshEditorViewport>(Entity->AsWidget());
-		FStaticMeshEditorViewportClient& StaticMeshEditorViewportClient  = StaticMeshEditorViewport->GetViewportClient();
-		StaticMeshEditorViewportClient.SetShowNormals(bDrawNormals);
-	};
-
-  	ViewportTabContent->PerformActionOnViewports(ToggleShowNormalsFunc);
-
-	if (FEngineAnalytics::IsAvailable())
-	{
-		FEngineAnalytics::GetProvider().RecordEvent(TEXT("Editor.Usage.StaticMesh.Toolbar"), TEXT("bDrawNormals"), bDrawNormals ? TEXT("True") : TEXT("False"));
-	}
-}
-
-bool FStaticMeshEditor::IsShowNormalsChecked() const
-{
-	return bDrawNormals;
-}
-
-void FStaticMeshEditor::ToggleShowTangents()
-{
-	bDrawTangents = !bDrawTangents;
-	TFunction<void(FName, TSharedPtr<IEditorViewportLayoutEntity>)> ToggleShowTangentsFunc =
-		[this](FName Name, TSharedPtr<IEditorViewportLayoutEntity> Entity)
-	{
-		TSharedRef<SStaticMeshEditorViewport> StaticMeshEditorViewport = StaticCastSharedRef<SStaticMeshEditorViewport>(Entity->AsWidget());
-		FStaticMeshEditorViewportClient& StaticMeshEditorViewportClient = StaticMeshEditorViewport->GetViewportClient();
-		StaticMeshEditorViewportClient.SetShowTangents(bDrawTangents);
-	};
-
-	ViewportTabContent->PerformActionOnViewports(ToggleShowTangentsFunc);
-
-	if (FEngineAnalytics::IsAvailable())
-	{
-		FEngineAnalytics::GetProvider().RecordEvent(TEXT("Editor.Usage.StaticMesh.Toolbar"), TEXT("bDrawTangents"), bDrawTangents ? TEXT("True") : TEXT("False"));
-	}
-}
-
-bool FStaticMeshEditor::IsShowTangentsChecked() const
-{
-	return bDrawTangents;
-}
-
-void FStaticMeshEditor::ToggleShowBinormals()
-{
-	bDrawBinormals= !bDrawBinormals;
-	TFunction<void(FName, TSharedPtr<IEditorViewportLayoutEntity>)> ToggleShowBinormalsFunc =
-		[this](FName Name, TSharedPtr<IEditorViewportLayoutEntity> Entity)
-	{
-		TSharedRef<SStaticMeshEditorViewport> StaticMeshEditorViewport = StaticCastSharedRef<SStaticMeshEditorViewport>(Entity->AsWidget());
-		FStaticMeshEditorViewportClient& StaticMeshEditorViewportClient = StaticMeshEditorViewport->GetViewportClient();
-		StaticMeshEditorViewportClient.SetShowBinormals(bDrawBinormals);
-	};
-
-	ViewportTabContent->PerformActionOnViewports(ToggleShowBinormalsFunc);
-
-	if (FEngineAnalytics::IsAvailable())
-	{
-		FEngineAnalytics::GetProvider().RecordEvent(TEXT("Editor.Usage.StaticMesh.Toolbar"), TEXT("bDrawBinormals"), bDrawBinormals? TEXT("True") : TEXT("False"));
-	}
-}
-
-bool FStaticMeshEditor::IsShowBinormalsChecked() const
-{
-	return bDrawBinormals;
-}
-
-void FStaticMeshEditor::ToggleShowPivots()
-{
-	bDrawPivots = !bDrawPivots;
-	TFunction<void(FName, TSharedPtr<IEditorViewportLayoutEntity>)> ToggleShowPivotsFunc =
-		[this](FName Name, TSharedPtr<IEditorViewportLayoutEntity> Entity)
-	{
-		TSharedRef<SStaticMeshEditorViewport> StaticMeshEditorViewport = StaticCastSharedRef<SStaticMeshEditorViewport>(Entity->AsWidget());
-		FStaticMeshEditorViewportClient& StaticMeshEditorViewportClient = StaticMeshEditorViewport->GetViewportClient();
-		StaticMeshEditorViewportClient.SetShowPivots(bDrawPivots);
-	};
-
-	ViewportTabContent->PerformActionOnViewports(ToggleShowPivotsFunc);
-
-	if (FEngineAnalytics::IsAvailable())
-	{
-		FEngineAnalytics::GetProvider().RecordEvent(TEXT("Editor.Usage.StaticMesh.Toolbar"), TEXT("bDrawPivots"), bDrawPivots ? TEXT("True") : TEXT("False"));
-	}
-}
-
-bool FStaticMeshEditor::IsShowPivotsChecked() const
-{
-	return bDrawPivots;
-}
-
-void FStaticMeshEditor::ToggleShowVertices()
-{
-	bDrawVertices = !bDrawVertices;
-	TFunction<void(FName, TSharedPtr<IEditorViewportLayoutEntity>)> ToggleShowVerticesFunc =
-		[this](FName Name, TSharedPtr<IEditorViewportLayoutEntity> Entity)
-	{
-		TSharedRef<SStaticMeshEditorViewport> StaticMeshEditorViewport = StaticCastSharedRef<SStaticMeshEditorViewport>(Entity->AsWidget());
-		FStaticMeshEditorViewportClient& StaticMeshEditorViewportClient = StaticMeshEditorViewport->GetViewportClient();
-		StaticMeshEditorViewportClient.SetShowVertices(bDrawVertices);
-	};
-
-	ViewportTabContent->PerformActionOnViewports(ToggleShowVerticesFunc);
-
-	if (FEngineAnalytics::IsAvailable())
-	{
-		FEngineAnalytics::GetProvider().RecordEvent(TEXT("Editor.Usage.StaticMesh.Toolbar"), TEXT("bDrawVertices"), bDrawVertices ? TEXT("True") : TEXT("False"));
-	}
-}
-
-bool FStaticMeshEditor::IsShowVerticesChecked() const
-{
-	return bDrawVertices;
-}
-
-void FStaticMeshEditor::ToggleShowGrids()
-{
-	bDrawGrids = !IsShowGridsChecked();
-	TFunction<void(FName, TSharedPtr<IEditorViewportLayoutEntity>)> ToggleShowGridFunc =
-		[this](FName Name, TSharedPtr<IEditorViewportLayoutEntity> Entity)
-	{
-		TSharedRef<SStaticMeshEditorViewport> StaticMeshEditorViewport = StaticCastSharedRef<SStaticMeshEditorViewport>(Entity->AsWidget());
-		FStaticMeshEditorViewportClient& StaticMeshEditorViewportClient = StaticMeshEditorViewport->GetViewportClient();
-		StaticMeshEditorViewportClient.SetShowGrids(bDrawGrids);
-	};
-
-	ViewportTabContent->PerformActionOnViewports(ToggleShowGridFunc);
-
-	if (FEngineAnalytics::IsAvailable())
-	{
-		FEngineAnalytics::GetProvider().RecordEvent(TEXT("Editor.Usage.StaticMesh.Toolbar"), TEXT("bDrawGrids"), bDrawGrids ? TEXT("True") : TEXT("False"));
-	}
-}
-
-bool FStaticMeshEditor::IsShowGridsChecked() const
-{
-	bool LocalDrawGrids = false;
-	TFunction<void(FName, TSharedPtr<IEditorViewportLayoutEntity>)> CheckShowGridFunc =
-		[this, &LocalDrawGrids](FName Name, TSharedPtr<IEditorViewportLayoutEntity> Entity)
-	{
-		TSharedRef<SStaticMeshEditorViewport> StaticMeshEditorViewport = StaticCastSharedRef<SStaticMeshEditorViewport>(Entity->AsWidget());
-		FStaticMeshEditorViewportClient& StaticMeshEditorViewportClient = StaticMeshEditorViewport->GetViewportClient();
-		LocalDrawGrids |= StaticMeshEditorViewportClient.IsSetShowGridChecked();
-	};
-
-	ViewportTabContent->PerformActionOnViewports(CheckShowGridFunc);
-
-	return LocalDrawGrids;
-}
-
-
-void FStaticMeshEditor::ToggleShowBounds()
-{
-	bDrawBounds = !bDrawBounds;
-	TFunction<void(FName, TSharedPtr<IEditorViewportLayoutEntity>)> ToggleShowBoundsFunc =
-		[this](FName Name, TSharedPtr<IEditorViewportLayoutEntity> Entity)
-	{
-		TSharedRef<SStaticMeshEditorViewport> StaticMeshEditorViewport = StaticCastSharedRef<SStaticMeshEditorViewport>(Entity->AsWidget());
-		FStaticMeshEditorViewportClient& StaticMeshEditorViewportClient = StaticMeshEditorViewport->GetViewportClient();
-		StaticMeshEditorViewportClient.SetShowBounds(bDrawBounds);
-	};
-
-	ViewportTabContent->PerformActionOnViewports(ToggleShowBoundsFunc);
-
-	if (FEngineAnalytics::IsAvailable())
-	{
-		FEngineAnalytics::GetProvider().RecordEvent(TEXT("Editor.Usage.StaticMesh.Toolbar"), TEXT("bDrawBounds"), bDrawBounds ? TEXT("True") : TEXT("False"));
-	}
-}
-
-bool FStaticMeshEditor::IsShowBoundsChecked() const
-{
-	return bDrawBounds;
-}
-
-
-void FStaticMeshEditor::ToggleShowSimpleCollisions()
-{
-	bDrawSimpleCollisions = !bDrawSimpleCollisions;
-	TFunction<void(FName, TSharedPtr<IEditorViewportLayoutEntity>)> ToggleShowSimpleCollisionsFunc =
-		[this](FName Name, TSharedPtr<IEditorViewportLayoutEntity> Entity)
-	{
-		TSharedRef<SStaticMeshEditorViewport> StaticMeshEditorViewport = StaticCastSharedRef<SStaticMeshEditorViewport>(Entity->AsWidget());
-		FStaticMeshEditorViewportClient& StaticMeshEditorViewportClient = StaticMeshEditorViewport->GetViewportClient();
-		StaticMeshEditorViewportClient.SetShowSimpleCollisions(bDrawSimpleCollisions);
-	};
-
-	ViewportTabContent->PerformActionOnViewports(ToggleShowSimpleCollisionsFunc);
-
-	if (FEngineAnalytics::IsAvailable())
-	{
-		FEngineAnalytics::GetProvider().RecordEvent(TEXT("Editor.Usage.StaticMesh.Toolbar"), TEXT("bDrawSimpleCollisions"), bDrawSimpleCollisions ? TEXT("True") : TEXT("False"));
-	}
-}
-
-bool FStaticMeshEditor::IsShowSimpleCollisionsChecked() const
-{
-	return bDrawSimpleCollisions;
-}
-
-
-void FStaticMeshEditor::ToggleShowComplexCollisions()
-{
-	bDrawComplexCollisions = !bDrawComplexCollisions;
-	TFunction<void(FName, TSharedPtr<IEditorViewportLayoutEntity>)> ToggleShowComplexCollisionsFunc =
-		[this](FName Name, TSharedPtr<IEditorViewportLayoutEntity> Entity)
-	{
-		TSharedRef<SStaticMeshEditorViewport> StaticMeshEditorViewport = StaticCastSharedRef<SStaticMeshEditorViewport>(Entity->AsWidget());
-		FStaticMeshEditorViewportClient& StaticMeshEditorViewportClient = StaticMeshEditorViewport->GetViewportClient();
-		StaticMeshEditorViewportClient.SetShowComplexCollisions(bDrawComplexCollisions);
-	};
-
-	ViewportTabContent->PerformActionOnViewports(ToggleShowComplexCollisionsFunc);
-
-	if (FEngineAnalytics::IsAvailable())
-	{
-		FEngineAnalytics::GetProvider().RecordEvent(TEXT("Editor.Usage.StaticMesh.Toolbar"), TEXT("bDrawComplexCollisions"), bDrawComplexCollisions ? TEXT("True") : TEXT("False"));
-	}
-}
-
-bool FStaticMeshEditor::IsShowComplexCollisionsChecked() const
-{
-	return bDrawComplexCollisions;
-}
-
-void FStaticMeshEditor::ToggleShowSockets()
-{
-	bDrawSockets = !bDrawSockets;
-	TFunction<void(FName, TSharedPtr<IEditorViewportLayoutEntity>)> ToggleShowSocketsFunc =
-		[this](FName Name, TSharedPtr<IEditorViewportLayoutEntity> Entity)
-	{
-		TSharedRef<SStaticMeshEditorViewport> StaticMeshEditorViewport = StaticCastSharedRef<SStaticMeshEditorViewport>(Entity->AsWidget());
-		FStaticMeshEditorViewportClient& StaticMeshEditorViewportClient = StaticMeshEditorViewport->GetViewportClient();
-		StaticMeshEditorViewportClient.SetShowPivots(bDrawSockets);
-	};
-
-	ViewportTabContent->PerformActionOnViewports(ToggleShowSocketsFunc);
-
-	if (FEngineAnalytics::IsAvailable())
-	{
-		FEngineAnalytics::GetProvider().RecordEvent(TEXT("Editor.Usage.StaticMesh.Toolbar"), TEXT("bDrawSockets"), bDrawSockets ? TEXT("True") : TEXT("False"));
-	}
-}
-
-bool FStaticMeshEditor::IsShowSocketsChecked() const
-{
-	return bDrawSockets;
-}
-
-void FStaticMeshEditor::ToggleShowWireframes()
-{
-	bDrawWireframes = !bDrawWireframes;
-	TFunction<void(FName, TSharedPtr<IEditorViewportLayoutEntity>)> ToggleShowWireframesFunc =
-		[this](FName Name, TSharedPtr<IEditorViewportLayoutEntity> Entity)
-	{
-		TSharedRef<SStaticMeshEditorViewport> StaticMeshEditorViewport = StaticCastSharedRef<SStaticMeshEditorViewport>(Entity->AsWidget());
-		if (StaticMeshEditorViewport->IsInViewModeWireframeChecked() != bDrawWireframes)
-		{
-			StaticMeshEditorViewport->SetViewModeWireframe();
-		}
-	};
-
-	ViewportTabContent->PerformActionOnViewports(ToggleShowWireframesFunc);
-
-	if (FEngineAnalytics::IsAvailable())
-	{
-		FEngineAnalytics::GetProvider().RecordEvent(TEXT("Editor.Usage.StaticMesh.Toolbar"), TEXT("bDrawWireframes"), bDrawWireframes ? TEXT("True") : TEXT("False"));
-	}
-}
-
-bool FStaticMeshEditor::IsShowWireframesChecked() const
-{
-	return bDrawWireframes;
-}
-
-void FStaticMeshEditor::ToggleShowVertexColors()
-{
-	bDrawVertexColors = !bDrawVertexColors;
-
-	TFunction<void(FName, TSharedPtr<IEditorViewportLayoutEntity>)> ToggleShowVertexColorsFunc =
-		[this](FName Name, TSharedPtr<IEditorViewportLayoutEntity> Entity)
-	{
-		TSharedRef<SStaticMeshEditorViewport> StaticMeshEditorViewport = StaticCastSharedRef<SStaticMeshEditorViewport>(Entity->AsWidget());
-		if (StaticMeshEditorViewport->IsInViewModeVertexColorChecked() != bDrawVertexColors)
-		{
- 			FStaticMeshEditorViewportClient& EditorViewportClient = StaticMeshEditorViewport->GetViewportClient();
-
-			EditorViewportClient.EngineShowFlags.SetVertexColors(bDrawVertexColors);
-			EditorViewportClient.EngineShowFlags.SetLighting(!bDrawVertexColors);
-			EditorViewportClient.EngineShowFlags.SetIndirectLightingCache(!bDrawVertexColors);
-			EditorViewportClient.EngineShowFlags.SetPostProcessing(!bDrawVertexColors);
-			EditorViewportClient.SetFloorAndEnvironmentVisibility(!bDrawVertexColors);
-			GetStaticMeshComponent()->bDisplayVertexColors = bDrawVertexColors;
-			GetStaticMeshComponent()->MarkRenderStateDirty();
-			StaticMeshEditorViewport->Invalidate();
-		}
-	};
-
-	ViewportTabContent->PerformActionOnViewports(ToggleShowVertexColorsFunc);
-
-	if (FEngineAnalytics::IsAvailable())
-	{
-		FEngineAnalytics::GetProvider().RecordEvent(TEXT("Editor.Usage.StaticMesh.Toolbar"), TEXT("bDrawVertexColors"), bDrawVertexColors ? TEXT("True") : TEXT("False"));
-	}
-}
-
-bool FStaticMeshEditor::IsShowVertexColorsChecked() const
-{
-	return bDrawVertexColors;
-}
-
-void FStaticMeshEditor::ResetCamera()
-{
-	TFunction<void(FName, TSharedPtr<IEditorViewportLayoutEntity>)> ResetCameraFunc =
-		[this](FName Name, TSharedPtr<IEditorViewportLayoutEntity> Entity)
-	{
-		TSharedRef<SStaticMeshEditorViewport> StaticMeshEditorViewport = StaticCastSharedRef<SStaticMeshEditorViewport>(Entity->AsWidget());
-		StaticMeshEditorViewport->GetViewportClient().FocusViewportOnBox(StaticMeshEditorViewport->GetStaticMeshComponent()->Bounds.GetBox());
-		StaticMeshEditorViewport->Invalidate();
-	};
-
-	ViewportTabContent->PerformActionOnViewports(ResetCameraFunc);
-
-// 	if (FEngineAnalytics::IsAvailable())
-// 	{
-// 		FEngineAnalytics::GetProvider().RecordEvent(TEXT("Editor.Usage.StaticMesh.Toolbar"), TEXT("ResetCamera"));
-// 	}
-}
-
-void FStaticMeshEditor::ToggleDrawAdditionalData()
-{
-	bDrawAdditionalData = !bDrawAdditionalData;
-	TFunction<void(FName, TSharedPtr<IEditorViewportLayoutEntity>)> ToggleDrawAdditionalDataFunc =
-		[this](FName Name, TSharedPtr<IEditorViewportLayoutEntity> Entity)
-	{
-		TSharedRef<SStaticMeshEditorViewport> StaticMeshEditorViewport = StaticCastSharedRef<SStaticMeshEditorViewport>(Entity->AsWidget());
-		FStaticMeshEditorViewportClient& StaticMeshEditorViewportClient = StaticMeshEditorViewport->GetViewportClient();
-		if (StaticMeshEditorViewportClient.IsDrawAdditionalDataChecked() != bDrawAdditionalData)
-		{
-			StaticMeshEditorViewportClient.ToggleDrawAdditionalData();
-		}
-	};
-
-	ViewportTabContent->PerformActionOnViewports(ToggleDrawAdditionalDataFunc);
-
-	if (FEngineAnalytics::IsAvailable())
-	{
-		FEngineAnalytics::GetProvider().RecordEvent(TEXT("Editor.Usage.StaticMesh.Toolbar"), TEXT("bDrawAdditionalData"), bDrawAdditionalData ? TEXT("True") : TEXT("False"));
-	}
-}
-
-bool FStaticMeshEditor::IsDrawAdditionalDataChecked() const
-{
-	return bDrawAdditionalData;
 }
 
 void FStaticMeshEditor::RemoveCurrentUVChannel()
@@ -2839,7 +2312,6 @@ void FStaticMeshEditor::RemoveCurrentUVChannel()
 			}
 		}
 
-		const FScopedTransaction Transaction(LOCTEXT("RemoveUVChannel", "Remove UV Channel"));
 		if (StaticMesh->RemoveUVChannel(LODIndex, UVChannelIndex))
 		{
 			RefreshTool();

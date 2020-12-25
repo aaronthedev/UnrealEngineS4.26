@@ -1,12 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MetalCommandList.cpp: Metal command buffer list wrapper.
 =============================================================================*/
 
 #include "MetalRHIPrivate.h"
-#include "MetalShaderTypes.h"
-#include "MetalGraphicsPipelineState.h"
+
 #include "MetalCommandList.h"
 #include "MetalCommandQueue.h"
 #include "MetalProfiler.h"
@@ -53,8 +52,23 @@ static void ReportMetalCommandBufferFailure(mtlpp::CommandBuffer const& Complete
 	FString FailureString = FailureDesc ? FString(FailureDesc) : FString(TEXT("Unknown"));
 	FString RecoveryString = RecoveryDesc ? FString(RecoveryDesc) : FString(TEXT("Unknown"));
 	
-	NSString* Desc = CompletedBuffer.GetPtr().debugDescription;
-	UE_LOG(LogMetal, Warning, TEXT("%s"), *FString(Desc));
+	if (GetMetalDeviceContext().GetCommandQueue().GetRuntimeDebuggingLevel() >= EMetalDebugLevelLogDebugGroups)
+	{
+		NSMutableString* DescString = [NSMutableString new];
+		[DescString appendFormat:@"Command Buffer %p %@:", CompletedBuffer.GetPtr(), Label ? Label : @"Unknown"];
+
+		for (NSString* String in ((NSObject<MTLCommandBuffer>*)CompletedBuffer.GetPtr()).debugGroups)
+		{
+			[DescString appendFormat:@"\n\tDebugGroup: %@", String];
+		}
+		
+		UE_LOG(LogMetal, Warning, TEXT("Command Buffer %p %s:%s"), CompletedBuffer.GetPtr(), *LabelString, *FString(DescString));
+	}
+	else
+	{
+		NSString* Desc = CompletedBuffer.GetPtr().debugDescription;
+		UE_LOG(LogMetal, Warning, TEXT("%s"), *FString(Desc));
+	}
 	
 #if PLATFORM_IOS
     if (bDoCheck && !GIsSuspended && !GIsRenderingThreadSuspended)
@@ -168,6 +182,8 @@ static void ReportMetalCommandBufferFailure(mtlpp::CommandBuffer const& Complete
                 }
 			}
 		}
+
+        FMetalCommandBufferDebugHelpers::DumpResources(CompletedBuffer.GetPtr());
 		
 #if PLATFORM_IOS
         UE_LOG(LogMetal, Warning, TEXT("Command Buffer %s Failed with %s Error! Error Domain: %s Code: %d Description %s %s %s"), *LabelString, ErrorType, *DomainString, Code, *ErrorString, *FailureString, *RecoveryString);
@@ -303,20 +319,8 @@ void FMetalCommandList::SetParallelIndex(uint32 InIndex, uint32 InNum)
 void FMetalCommandList::Commit(mtlpp::CommandBuffer& Buffer, TArray<ns::Object<mtlpp::CommandBufferHandler>> CompletionHandlers, bool const bWait, bool const bIsLastCommandBuffer)
 {
 	check(Buffer);
-
-	// The lifetime of this array is per frame
-	if (!FrameCommitedBufferTimings.IsValid())
-	{
-		FrameCommitedBufferTimings = MakeShared<TArray<FMetalCommandBufferTiming>, ESPMode::ThreadSafe>();
-	}
-
-	// The lifetime of this should be for the entire game
-	if (!LastCompletedBufferTiming.IsValid())
-	{
-		LastCompletedBufferTiming = MakeShared<FMetalCommandBufferTiming, ESPMode::ThreadSafe>();
-	}
-
-	Buffer.AddCompletedHandler([CompletionHandlers, FrameCommitedBufferTimingsLocal = FrameCommitedBufferTimings, LastCompletedBufferTimingLocal = LastCompletedBufferTiming](mtlpp::CommandBuffer const& CompletedBuffer)
+	
+	Buffer.AddCompletedHandler([CompletionHandlers, bIsLastCommandBuffer](mtlpp::CommandBuffer const& CompletedBuffer)
 	{
 		if (CompletedBuffer.GetStatus() == mtlpp::CommandBufferStatus::Error)
 		{
@@ -329,24 +333,16 @@ void FMetalCommandList::Commit(mtlpp::CommandBuffer& Buffer, TArray<ns::Object<m
 				Handler.GetPtr()(CompletedBuffer);
 			}
 		}
-
-		if (CompletedBuffer.GetStatus() == mtlpp::CommandBufferStatus::Completed)
+		
+		FMetalGPUProfiler::RecordCommandBuffer(CompletedBuffer);
+		
+		// The final command buffer in a frame will publish its frame
+		// stats and reset the counters for the next frame.
+		if(bIsLastCommandBuffer)
 		{
-			FrameCommitedBufferTimingsLocal->Add({CompletedBuffer.GetGpuStartTime(), CompletedBuffer.GetGpuEndTime()});
-		}
-
-		// If this is the last reference, then it is the last command buffer to return, so record the frame
-		if (FrameCommitedBufferTimingsLocal.IsUnique())
-		{
-			FMetalGPUProfiler::RecordFrame(*FrameCommitedBufferTimingsLocal, *LastCompletedBufferTimingLocal);
+			FMetalGPUProfiler::RecordFrame();
 		}
 	});
-
-	// If bIsLastCommandBuffer is set then this is the end of the "frame".
-	if (bIsLastCommandBuffer)
-	{
-		FrameCommitedBufferTimings = MakeShared<TArray<FMetalCommandBufferTiming>, ESPMode::ThreadSafe>();
-	}
 
 	if (bImmediate)
 	{

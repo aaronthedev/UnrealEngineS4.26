@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -16,14 +16,16 @@ namespace UnrealBuildTool.Rules
 				}
 			);
 
-            if (Target.Platform.IsInGroup(UnrealPlatformGroup.Windows) ||
-				Target.Platform == UnrealTargetPlatform.Mac)
+            if (Target.Platform == UnrealTargetPlatform.Win32 ||
+                Target.Platform == UnrealTargetPlatform.Win64 ||
+				Target.Platform == UnrealTargetPlatform.Mac   ||
+                Target.Platform == UnrealTargetPlatform.XboxOne)
             {
                 PrivateDependencyModuleNames.Add("AudioCaptureRtAudio");
             }
             else if (Target.Platform == UnrealTargetPlatform.PS4)
             {
-                PrivateDependencyModuleNames.Add("AudioCaptureSony");
+                PrivateDependencyModuleNames.Add("AudioCapturePS4Voice");
             }
             else if (Target.Platform == UnrealTargetPlatform.IOS)
             {

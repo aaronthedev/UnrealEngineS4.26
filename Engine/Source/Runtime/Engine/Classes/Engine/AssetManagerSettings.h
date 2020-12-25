@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -72,7 +72,7 @@ public:
 	UAssetManagerSettings() : bOnlyCookProductionAssets(false), bShouldGuessTypeAndNameInEditor(true), bShouldAcquireMissingChunksOnLoad(false) {}
 
 	/** List of asset types to scan at startup */
-	UPROPERTY(config, EditAnywhere, Category = "Asset Manager", meta = (TitleProperty = "PrimaryAssetType"))
+	UPROPERTY(config, EditAnywhere, Category = "Asset Manager")
 	TArray<FPrimaryAssetTypeInfo> PrimaryAssetTypesToScan;
 
 	/** List of directories to exclude from scanning for Primary Assets, useful to exclude test assets */
@@ -125,11 +125,11 @@ public:
 	UPROPERTY(config, EditAnywhere, AdvancedDisplay, Category = "Asset Registry", DisplayName = "Metadata Tags For Asset Registry")
 	TSet<FName> MetaDataTagsForAssetRegistry;
 
-	virtual void PostReloadConfig(class FProperty* PropertyThatWasLoaded) override;
+	virtual void PostReloadConfig(class UProperty* PropertyThatWasLoaded) override;
 
 #if WITH_EDITOR
 	virtual void PostInitProperties() override;
-	virtual void PreEditChange(FProperty* PropertyAboutToChange) override;
+	virtual void PreEditChange(UProperty* PropertyAboutToChange) override;
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 
 private:

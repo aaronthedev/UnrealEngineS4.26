@@ -1,8 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Logging/LogMacros.h"
 
-DECLARE_LOG_CATEGORY_EXTERN(LogDatasmithCADWorker, Log, All);

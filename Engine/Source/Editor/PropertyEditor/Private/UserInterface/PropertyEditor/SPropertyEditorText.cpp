@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UserInterface/PropertyEditor/SPropertyEditorText.h"
 #include "UObject/TextProperty.h"
@@ -11,7 +11,7 @@ void SPropertyEditorText::Construct( const FArguments& InArgs, const TSharedRef<
 {
 	PropertyEditor = InPropertyEditor;
 
-	bIsFNameProperty = InPropertyEditor->PropertyIsA(FNameProperty::StaticClass());
+	bIsFNameProperty = InPropertyEditor->PropertyIsA(UNameProperty::StaticClass());
 	bIsMultiLine = InPropertyEditor->GetPropertyHandle()->GetMetaDataProperty()->GetBoolMetaData("MultiLine");
 
 	const bool bIsPassword = InPropertyEditor->GetPropertyHandle()->GetMetaDataProperty()->GetBoolMetaData("PasswordField");
@@ -66,15 +66,10 @@ void SPropertyEditorText::Construct( const FArguments& InArgs, const TSharedRef<
 		PrimaryWidget = SingleLineWidget;
 	}
 
-	if (bIsPassword)
-	{
-		// Passwords should be obfuscated rather than reveal the property value in the tooltip
-		PrimaryWidget->SetToolTipText(LOCTEXT("PasswordToolTip", "<hidden>"));
-	}
-	else if (InPropertyEditor->PropertyIsA(FObjectPropertyBase::StaticClass()))
+	if( InPropertyEditor->PropertyIsA( UObjectPropertyBase::StaticClass() ) )
 	{
 		// Object properties should display their entire text in a tooltip
-		PrimaryWidget->SetToolTipText(TAttribute<FText>(InPropertyEditor, &FPropertyEditor::GetValueAsText));
+		PrimaryWidget->SetToolTipText( TAttribute<FText>( InPropertyEditor, &FPropertyEditor::GetValueAsText ) );
 	}
 }
 
@@ -95,13 +90,13 @@ void SPropertyEditorText::GetDesiredWidth( float& OutMinDesiredWidth, float& Out
 bool SPropertyEditorText::Supports( const TSharedRef< FPropertyEditor >& InPropertyEditor )
 {
 	const TSharedRef< FPropertyNode > PropertyNode = InPropertyEditor->GetPropertyNode();
-	const FProperty* Property = InPropertyEditor->GetProperty();
+	const UProperty* Property = InPropertyEditor->GetProperty();
 
 	if(	!PropertyNode->HasNodeFlags(EPropertyNodeFlags::EditInlineNew)
-		&&	( (Property->IsA(FNameProperty::StaticClass()) && Property->GetFName() != NAME_InitialState)
-		||	Property->IsA(FStrProperty::StaticClass())
-		||	Property->IsA(FTextProperty::StaticClass())
-		||	(Property->IsA(FObjectPropertyBase::StaticClass()) && !Property->HasAnyPropertyFlags(CPF_InstancedReference))
+		&&	( (Property->IsA(UNameProperty::StaticClass()) && Property->GetFName() != NAME_InitialState)
+		||	Property->IsA(UStrProperty::StaticClass())
+		||	Property->IsA(UTextProperty::StaticClass())
+		||	(Property->IsA(UObjectPropertyBase::StaticClass()) && !Property->HasAnyPropertyFlags(CPF_InstancedReference))
 		) )
 	{
 		return true;
@@ -116,8 +111,7 @@ void SPropertyEditorText::OnTextCommitted( const FText& NewText, ETextCommit::Ty
 	const TSharedRef< IPropertyHandle > PropertyHandle = PropertyEditor->GetPropertyHandle();
 
 	FText CurrentText;
-	if( (PropertyHandle->GetValueAsFormattedText( CurrentText ) != FPropertyAccess::MultipleValues || NewText.ToString() != FPropertyEditor::MultipleValuesDisplayName)
-		&& !NewText.ToString().Equals(CurrentText.ToString(), ESearchCase::CaseSensitive))
+	if( PropertyHandle->GetValueAsFormattedText( CurrentText ) != FPropertyAccess::MultipleValues || NewText.ToString() != FPropertyEditor::MultipleValuesDisplayName )
 	{
 		PropertyHandle->SetValueFromFormattedString( NewText.ToString() );
 	}

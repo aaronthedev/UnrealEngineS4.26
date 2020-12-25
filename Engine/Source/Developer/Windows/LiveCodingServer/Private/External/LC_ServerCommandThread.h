@@ -72,7 +72,6 @@ private:
 			}
 
 		DECLARE_ACTION(TriggerRecompile);
-		DECLARE_ACTION(TriggerRestart);
 		DECLARE_ACTION(LogMessage);
 		DECLARE_ACTION(BuildPatch);
 		DECLARE_ACTION(HandleException);

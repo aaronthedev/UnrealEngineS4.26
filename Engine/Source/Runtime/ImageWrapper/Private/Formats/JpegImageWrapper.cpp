@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "JpegImageWrapper.h"
 
@@ -46,15 +46,9 @@ FJpegImageWrapper::FJpegImageWrapper(int32 InNumComponents)
 /* FImageWrapperBase interface
  *****************************************************************************/
 
-bool FJpegImageWrapper::SetCompressed(const void* InCompressedData, int64 InCompressedSize)
+bool FJpegImageWrapper::SetCompressed(const void* InCompressedData, int32 InCompressedSize)
 {
-	// jpgd doesn't support 64-bit sizes.
-	if (InCompressedSize < 0 || InCompressedSize > MAX_uint32)
-	{
-		return false;
-	}
-
-	jpgd::jpeg_decoder_mem_stream jpeg_memStream((uint8*)InCompressedData, (uint32)InCompressedSize);
+	jpgd::jpeg_decoder_mem_stream jpeg_memStream((uint8*)InCompressedData, InCompressedSize);
 
 	jpgd::jpeg_decoder decoder(&jpeg_memStream);
 	if (decoder.get_error_code() != jpgd::JPGD_SUCCESS)
@@ -84,7 +78,7 @@ bool FJpegImageWrapper::SetCompressed(const void* InCompressedData, int64 InComp
 }
 
 
-bool FJpegImageWrapper::SetRaw(const void* InRawData, int64 InRawSize, const int32 InWidth, const int32 InHeight, const ERGBFormat InFormat, const int32 InBitDepth)
+bool FJpegImageWrapper::SetRaw(const void* InRawData, int32 InRawSize, const int32 InWidth, const int32 InHeight, const ERGBFormat InFormat, const int32 InBitDepth)
 {
 	check((InFormat == ERGBFormat::RGBA || InFormat == ERGBFormat::BGRA || InFormat == ERGBFormat::Gray) && InBitDepth == 8);
 
@@ -124,9 +118,7 @@ void FJpegImageWrapper::Compress(int32 Quality)
 		CompressedData.Reset(RawData.Num());
 		CompressedData.AddUninitialized(RawData.Num());
 
-		// Note: OutBufferSize intentionally uses int64_t type as that's what jpge::compress_image_to_jpeg_file_in_memory expects.
-		// UE4 int64 type is not compatible with int64_t on all compilers (int64_t may be `long`, while int64 is `long long`).
-		int64_t OutBufferSize = CompressedData.Num();
+		int OutBufferSize = CompressedData.Num();
 
 		jpge::params Parameters;
 		Parameters.m_quality = Quality;
@@ -135,7 +127,7 @@ void FJpegImageWrapper::Compress(int32 Quality)
 		
 		check(bSuccess);
 
-		CompressedData.RemoveAt((int64)OutBufferSize, CompressedData.Num() - (int64)OutBufferSize);
+		CompressedData.RemoveAt(OutBufferSize, CompressedData.Num() - OutBufferSize);
 	}
 }
 

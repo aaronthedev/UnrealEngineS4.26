@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,7 +8,7 @@
 
 /** Parameters for a raycast request. */
 USTRUCT(BlueprintType, meta = (HasNativeMake = "MagicLeap.MagicLeapRaycastFunctionLibrary.MakeRaycastQueryParams"))
-struct MAGICLEAP_API FMagicLeapRaycastQueryParams
+struct FMagicLeapRaycastQueryParams
 {
 	GENERATED_BODY()
 
@@ -63,7 +63,7 @@ enum class EMagicLeapRaycastResultState : uint8
 
 /** Result of a raycast. */
 USTRUCT(BlueprintType)
-struct MAGICLEAP_API FMagicLeapRaycastHitResult
+struct FMagicLeapRaycastHitResult
 {
 	GENERATED_BODY()
 

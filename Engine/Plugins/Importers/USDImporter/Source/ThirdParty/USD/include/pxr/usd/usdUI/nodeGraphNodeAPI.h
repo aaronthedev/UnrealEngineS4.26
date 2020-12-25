@@ -132,7 +132,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDUI_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -144,7 +144,7 @@ private:
 
     // override SchemaBase virtuals.
     USDUI_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -165,12 +165,10 @@ public:
     /// store for x-position: 1000 * (1.0/300)
     /// 
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform float2 ui:nodegraph:node:pos` |
-    /// | C++ Type | GfVec2f |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float2 |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+    /// \n  C++ Type: GfVec2f
+    /// \n  Usd Type: SdfValueTypeNames->Float2
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: No Fallback
     USDUI_API
     UsdAttribute GetPosAttr() const;
 
@@ -198,12 +196,10 @@ public:
     /// There are no set limits in these values.
     /// 
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform int ui:nodegraph:node:stackingOrder` |
-    /// | C++ Type | int |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Int |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+    /// \n  C++ Type: int
+    /// \n  Usd Type: SdfValueTypeNames->Int
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: No Fallback
     USDUI_API
     UsdAttribute GetStackingOrderAttr() const;
 
@@ -223,12 +219,10 @@ public:
     /// This hint defines what tint the node should have in the node graph.
     /// 
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform color3f ui:nodegraph:node:displayColor` |
-    /// | C++ Type | GfVec3f |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Color3f |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+    /// \n  C++ Type: GfVec3f
+    /// \n  Usd Type: SdfValueTypeNames->Color3f
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: No Fallback
     USDUI_API
     UsdAttribute GetDisplayColorAttr() const;
 
@@ -245,18 +239,13 @@ public:
     // ICON 
     // --------------------------------------------------------------------- //
     /// 
-    /// This points to an image that should be displayed on the node.  It is 
-    /// intended to be useful for summary visual classification of nodes, rather
-    /// than a thumbnail preview of the computed result of the node in some
-    /// computational system.
+    /// This points to an image that should be displayed on the node
     /// 
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform asset ui:nodegraph:node:icon` |
-    /// | C++ Type | SdfAssetPath |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Asset |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+    /// \n  C++ Type: SdfAssetPath
+    /// \n  Usd Type: SdfValueTypeNames->Asset
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: No Fallback
     USDUI_API
     UsdAttribute GetIconAttr() const;
 
@@ -279,13 +268,11 @@ public:
     /// 'minimized' = should take the least space possible
     /// 
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform token ui:nodegraph:node:expansionState` |
-    /// | C++ Type | TfToken |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
-    /// | \ref UsdUITokens "Allowed Values" | open, closed, minimized |
+    /// \n  C++ Type: TfToken
+    /// \n  Usd Type: SdfValueTypeNames->Token
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: No Fallback
+    /// \n  \ref UsdUITokens "Allowed Values": [open, closed, minimized]
     USDUI_API
     UsdAttribute GetExpansionStateAttr() const;
 
@@ -310,12 +297,10 @@ public:
     /// based on the number of in- and outputs of a node.
     /// 
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform float2 ui:nodegraph:node:size` |
-    /// | C++ Type | GfVec2f |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float2 |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+    /// \n  C++ Type: GfVec2f
+    /// \n  Usd Type: SdfValueTypeNames->Float2
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: No Fallback
     USDUI_API
     UsdAttribute GetSizeAttr() const;
 

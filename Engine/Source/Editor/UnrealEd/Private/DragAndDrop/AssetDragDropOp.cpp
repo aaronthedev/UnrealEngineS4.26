@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DragAndDrop/AssetDragDropOp.h"
 #include "Engine/Level.h"
@@ -37,7 +37,15 @@ TSharedRef<FAssetDragDropOp> FAssetDragDropOp::New(TArray<FAssetData> InAssetDat
 {
 	TSharedRef<FAssetDragDropOp> Operation = MakeShared<FAssetDragDropOp>();
 
-	Operation->Init(MoveTemp(InAssetData), MoveTemp(InAssetPaths), ActorFactory);
+	Operation->MouseCursor = EMouseCursor::GrabHandClosed;
+
+	Operation->ThumbnailSize = 64;
+
+	Operation->AssetData = MoveTemp(InAssetData);
+	Operation->AssetPaths = MoveTemp(InAssetPaths);
+	Operation->ActorFactory = ActorFactory;
+
+	Operation->Init();
 
 	Operation->Construct();
 	return Operation;
@@ -50,14 +58,14 @@ FAssetDragDropOp::~FAssetDragDropOp()
 
 TSharedPtr<SWidget> FAssetDragDropOp::GetDefaultDecorator() const
 {
-	const int32 TotalCount = GetTotalCount();
+	const int32 TotalCount = AssetData.Num() + AssetPaths.Num();
 
 	TSharedPtr<SWidget> ThumbnailWidget;
 	if (AssetThumbnail.IsValid())
 	{
 		ThumbnailWidget = AssetThumbnail->MakeThumbnailWidget();
 	}
-	else if (HasFolders())
+	else if (AssetPaths.Num() > 0)
 	{
 		ThumbnailWidget = 
 			SNew(SOverlay)
@@ -84,12 +92,12 @@ TSharedPtr<SWidget> FAssetDragDropOp::GetDefaultDecorator() const
 	
 	const FSlateBrush* SubTypeBrush = FEditorStyle::GetDefaultBrush();
 	FLinearColor SubTypeColor = FLinearColor::White;
-	if (AssetThumbnail.IsValid() && HasFolders())
+	if (AssetThumbnail.IsValid() && AssetPaths.Num() > 0)
 	{
 		SubTypeBrush = FEditorStyle::GetBrush("ContentBrowser.AssetTreeFolderClosed");
 		SubTypeColor = FLinearColor::Gray;
 	}
-	else if (ActorFactory.IsValid() && HasFiles())
+	else if (ActorFactory.IsValid() && AssetData.Num() > 0)
 	{
 		AActor* DefaultActor = ActorFactory->GetDefaultActor(AssetData[0]);
 		SubTypeBrush = FClassIconFinder::FindIconForActor(DefaultActor);
@@ -184,10 +192,10 @@ FText FAssetDragDropOp::GetDecoratorText() const
 {
 	if (CurrentHoverText.IsEmpty())
 	{
-		const int32 TotalCount = GetTotalCount();
+		const int32 TotalCount = AssetData.Num() + AssetPaths.Num();
 		if (TotalCount > 0)
 		{
-			const FText FirstItemText = GetFirstItemText();
+			const FText FirstItemText = AssetData.Num() > 0 ? FText::FromName(AssetData[0].AssetName) : FText::FromString(AssetPaths[0]);
 			return (TotalCount == 1)
 				? FirstItemText
 				: FText::Format(NSLOCTEXT("ContentBrowser", "AssetDragDropOpDescriptionMulti", "'{0}' and {1} {1}|plural(one=other,other=others)"), FirstItemText, TotalCount - 1);
@@ -197,29 +205,17 @@ FText FAssetDragDropOp::GetDecoratorText() const
 	return CurrentHoverText;
 }
 
-void FAssetDragDropOp::Init(TArray<FAssetData> InAssetData, TArray<FString> InAssetPaths, UActorFactory* InActorFactory)
-{
-	MouseCursor = EMouseCursor::GrabHandClosed;
-	ThumbnailSize = 64;
-
-	AssetData = MoveTemp(InAssetData);
-	AssetPaths = MoveTemp(InAssetPaths);
-	ActorFactory = InActorFactory;
-
-	// Load all assets first so that there is no loading going on while attempting to drag
-	// Can cause unsafe frame reentry 
-	for (FAssetData& Data : AssetData)
-	{
-		Data.GetAsset();
-	}
-
-	InitThumbnail();
-}
-
-void FAssetDragDropOp::InitThumbnail()
+void FAssetDragDropOp::Init()
 {
 	if (AssetData.Num() > 0 && ThumbnailSize > 0)
 	{
+		// Load all assets first so that there is no loading going on while attempting to drag
+		// Can cause unsafe frame reentry 
+		for (FAssetData& Data : AssetData)
+		{
+			Data.GetAsset();
+		}
+
 		// Create a thumbnail pool to hold the single thumbnail rendered
 		ThumbnailPool = MakeShared<FAssetThumbnailPool>(1, /*InAreRealTileThumbnailsAllowed=*/false);
 
@@ -230,34 +226,4 @@ void FAssetDragDropOp::InitThumbnail()
 		AssetThumbnail->GetViewportRenderTargetTexture();
 		ThumbnailPool->Tick(0);
 	}
-}
-
-bool FAssetDragDropOp::HasFiles() const
-{
-	return AssetData.Num() > 0;
-}
-
-bool FAssetDragDropOp::HasFolders() const
-{
-	return AssetPaths.Num() > 0;
-}
-
-int32 FAssetDragDropOp::GetTotalCount() const
-{
-	return AssetData.Num() + AssetPaths.Num();
-}
-
-FText FAssetDragDropOp::GetFirstItemText() const
-{
-	if (AssetData.Num() > 0)
-	{
-		return FText::FromName(AssetData[0].AssetName);
-	}
-
-	if (AssetPaths.Num() > 0)
-	{
-		return FText::FromString(AssetPaths[0]);
-	}
-
-	return FText::GetEmpty();
 }

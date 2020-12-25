@@ -38,7 +38,7 @@
 #include <Alembic/AbcCoreAbstract/Tests/Assert.h>
 #include <iostream>
 
-void test(bool iUseMMap)
+void test()
 {
 
 {
@@ -80,7 +80,7 @@ void test(bool iUseMMap)
     bcd->rewrite(1, &nine, 4); // 0 1 2 3 9 5 6 7
 }
 
-    Alembic::Ogawa::IArchive ia("simpleTest.ogawa", 1, iUseMMap);
+    Alembic::Ogawa::IArchive ia("simpleTest.ogawa");
     Alembic::Ogawa::IGroupPtr top = ia.getGroup();
 
     TESTING_ASSERT(top->getNumChildren() == 3);
@@ -189,8 +189,6 @@ void test(bool iUseMMap)
 
 int main ( int argc, char *argv[] )
 {
-    test(true);     // Use mmap
-    test(false);    // Use streams
-
+    test();
     return 0;
 }

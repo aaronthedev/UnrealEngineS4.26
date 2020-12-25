@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,6 +6,7 @@
 #include "OnlineSubsystemIOSTypes.h"
 #include "IOSSaveGameSystem.h"
 
+#ifdef __IPHONE_8_0
 #import <CloudKit/CloudKit.h>
 
 @class IOSCloudStorage;
@@ -28,6 +29,7 @@
 +(IOSCloudStorage*)cloudStorage;
 
 @end
+#endif
 
 /**
 *	FOnlineUserCloudInterfaceIOS - Implementation of user cloud storage for IOS

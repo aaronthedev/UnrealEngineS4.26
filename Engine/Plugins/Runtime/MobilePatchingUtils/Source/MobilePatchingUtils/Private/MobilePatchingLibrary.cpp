@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MobilePatchingLibrary.h"
 #include "HAL/PlatformFilemanager.h"
@@ -333,13 +333,6 @@ static void OnRemoteManifestReady(FHttpRequestPtr Request, FHttpResponsePtr Resp
 			OnFailed.ExecuteIfBound(ErrorText, (int32)ErrorCode);
 		}
 	};
-
-	if (MobilePendingContent)
-	{
-		// We don't need to keep this object alive anymore, 
-		// on Success it will be passed to the User and it's up to him to keep a reference to it
-		MobilePendingContent->RemoveFromRoot();
-	}
 		
 	if (!bSucceeded || !Response.IsValid())
 	{
@@ -439,11 +432,9 @@ void UMobilePatchingLibrary::RequestContent(const FString& RemoteManifestURL, co
 	MobilePendingContent->RemoteManifestURL = RemoteManifestURL;
 	MobilePendingContent->CloudURL = CloudURL;
 	MobilePendingContent->InstalledManifest = GetInstalledManifest(InstallDirectory);
-	// We need to keep this object alive until we pass it to the User
-	MobilePendingContent->AddToRoot();
 
 	// Request remote manifest
-	TSharedRef<class IHttpRequest, ESPMode::ThreadSafe> HttpRequest = FHttpModule::Get().CreateRequest();
+	TSharedRef<class IHttpRequest> HttpRequest = FHttpModule::Get().CreateRequest();
 	HttpRequest->OnProcessRequestComplete().BindStatic(OnRemoteManifestReady, MobilePendingContent, OnSucceeded, OnFailed);
 	HttpRequest->SetURL(*RemoteManifestURL);
 	HttpRequest->SetVerb(TEXT("GET"));

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -30,7 +30,6 @@ private:
 	FEvent*				StopEvent;
 	FEvent*				UnpausedEvent;
 	FRunnableThread*	Thread = nullptr;
-	volatile bool		bComplete = false;
 };
 
 } // namespace Trace

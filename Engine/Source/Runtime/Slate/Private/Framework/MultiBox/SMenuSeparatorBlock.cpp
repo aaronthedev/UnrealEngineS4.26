@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Framework/MultiBox/SMenuSeparatorBlock.h"
 #include "Widgets/SBoxPanel.h"
@@ -9,9 +9,8 @@
  * Constructor
  */
 FMenuSeparatorBlock::FMenuSeparatorBlock(const FName& InExtensionHook, bool bInIsPartOfHeading)
-	: FMultiBlock( nullptr, nullptr, InExtensionHook, EMultiBlockType::Separator, bInIsPartOfHeading )
+	: FMultiBlock( nullptr, nullptr, InExtensionHook, EMultiBlockType::MenuSeparator, bInIsPartOfHeading )
 {
-	SetSearchable(false);
 }
 
 
@@ -63,5 +62,6 @@ void SMenuSeparatorBlock::BuildMultiBlockWidget(const ISlateStyle* StyleSet, con
 	];
 
 	// Add this widget to the search list of the multibox and hide it
-	OwnerMultiBoxWidget.Pin()->AddElement(this->AsWidget(), FText::GetEmpty(), MultiBlock->GetSearchable());
+	if (MultiBlock->GetSearchable())
+		OwnerMultiBoxWidget.Pin()->AddSearchElement(this->AsWidget(), FText::GetEmpty());
 }

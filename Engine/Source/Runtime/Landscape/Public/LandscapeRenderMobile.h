@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 LandscapeRenderMobile.h: Mobile landscape rendering
@@ -46,14 +46,21 @@ public:
 		ReleaseResource();
 	}
 
+	static FVertexFactoryShaderParameters* ConstructShaderParameters(EShaderFrequency ShaderFrequency);
+
 	/**
 	* Should we cache the material's shadertype on this platform with this vertex factory? 
 	*/
-	static bool ShouldCompilePermutation(const FVertexFactoryShaderPermutationParameters& Parameters);
-
-	static void ModifyCompilationEnvironment(const FVertexFactoryShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment )
+	static bool ShouldCompilePermutation(EShaderPlatform Platform, const class FMaterial* Material, const class FShaderType* ShaderType)
 	{
-		FVertexFactory::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		auto FeatureLevel = GetMaxSupportedFeatureLevel(Platform);
+		return (FeatureLevel == ERHIFeatureLevel::ES2 || FeatureLevel == ERHIFeatureLevel::ES3_1) &&
+			(Material->IsUsedWithLandscape() || Material->IsSpecialEngineMaterial());
+	}
+
+	static void ModifyCompilationEnvironment( const FVertexFactoryType* Type, EShaderPlatform Platform, const FMaterial* Material, FShaderCompilerEnvironment& OutEnvironment )
+	{
+		FVertexFactory::ModifyCompilationEnvironment(Type, Platform, Material, OutEnvironment);
 		OutEnvironment.SetDefine(TEXT("NUM_VF_PACKED_INTERPOLANTS"), TEXT("1"));
 	}
 
@@ -104,24 +111,6 @@ public:
 	* Initialize the RHI for this rendering resource 
 	*/
 	virtual void InitRHI() override;
-
-	static LANDSCAPE_API void UpdateMemoryStat(int32 Delta);
-};
-
-/**
- * Container for FLandscapeVertexBufferMobile that we can reference from a thread-safe shared pointer
- * while ensuring the vertex buffer is always destroyed on the render thread.
- **/
-struct FLandscapeMobileRenderData
-{
-	FLandscapeVertexBufferMobile* VertexBuffer = nullptr;
-	struct FLandscapeMobileHoleData* HoleData = nullptr;
-	FOccluderVertexArraySP OccluderVerticesSP;
-	uint8 CurrentFirstLODIdx;
-	bool bReadyForStreaming = false;
-
-	FLandscapeMobileRenderData(const TArray<uint8>& InPlatformData, uint8 InCurFirstLODIdx);
-	~FLandscapeMobileRenderData();
 };
 
 //
@@ -141,26 +130,7 @@ public:
 	virtual void CreateRenderThreadResources() override;
 	virtual int32 CollectOccluderElements(FOccluderElementsCollector& Collector) const override;
 
+	uint8 BlendableLayerMask;
+
 	friend class FLandscapeVertexBufferMobile;
-
-	virtual void ApplyMeshElementModifier(FMeshBatchElement& InOutMeshElement, int32 InLodIndex) const override;
-
-#if PLATFORM_SUPPORTS_LANDSCAPE_VISUAL_MESH_LOD_STREAMING
-	virtual uint8 GetCurrentFirstLODIdx_RenderThread() const override;
-#endif
-};
-
-
-class FLandscapeFixedGridVertexFactoryMobile : public FLandscapeVertexFactoryMobile
-{
-	DECLARE_VERTEX_FACTORY_TYPE(FLandscapeFixedGridVertexFactoryMobile);
-
-public:
-	FLandscapeFixedGridVertexFactoryMobile(ERHIFeatureLevel::Type InFeatureLevel)
-		: FLandscapeVertexFactoryMobile(InFeatureLevel)
-	{
-	}
-
-	static void ModifyCompilationEnvironment(const FVertexFactoryShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment);
-	static bool ShouldCompilePermutation(const FVertexFactoryShaderPermutationParameters& Parameters);
 };

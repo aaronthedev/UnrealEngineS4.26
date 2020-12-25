@@ -1,10 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
 public class GameProjectGeneration : ModuleRules
 {
-	public GameProjectGeneration(ReadOnlyTargetRules Target) : base(Target)
+    public GameProjectGeneration(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PublicDependencyModuleNames.AddRange(
 			new string[] {
@@ -12,8 +12,8 @@ public class GameProjectGeneration : ModuleRules
 			}
 		);
 
-		PrivateIncludePathModuleNames.AddRange(
-			new string[] {
+        PrivateIncludePathModuleNames.AddRange(
+            new string[] {
 				"AssetRegistry",
 				"ContentBrowser",
 				"DesktopPlatform",
@@ -21,7 +21,7 @@ public class GameProjectGeneration : ModuleRules
 				"MainFrame",
 				"AddContentDialog",
 				"HardwareTargeting",
-			}
+            }
 		);
 
 		PrivateDependencyModuleNames.AddRange(
@@ -42,24 +42,23 @@ public class GameProjectGeneration : ModuleRules
 				"EditorStyle",
 				"SourceControl",
  				"TargetPlatform",
-				"EditorSubsystem",
 				"UnrealEd",
 				"DesktopPlatform",
 				"LauncherPlatform",
 				"HardwareTargeting",
 				"AddContentDialog",
-				"AudioMixer",
+                "AudioMixer",
 				"AudioMixerCore"
 			}
 		);
 
-		DynamicallyLoadedModuleNames.AddRange(
-			new string[] {
+        DynamicallyLoadedModuleNames.AddRange(
+            new string[] {
 				"AssetRegistry",
 				"ContentBrowser",
-				"Documentation",
-				"MainFrame",
-			}
+                "Documentation",
+                "MainFrame",
+            }
 		);
 
 		if(Target.bWithLiveCoding)

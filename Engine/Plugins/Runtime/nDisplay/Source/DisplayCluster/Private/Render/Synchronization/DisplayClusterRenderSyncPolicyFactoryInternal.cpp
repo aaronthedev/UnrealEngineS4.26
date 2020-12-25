@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Render/Synchronization/DisplayClusterRenderSyncPolicyFactoryInternal.h"
 #include "Render/Synchronization/DisplayClusterRenderSyncPolicySoftwareGeneric.h"
@@ -8,8 +8,7 @@
 #include "Render/Synchronization/DisplayClusterRenderSyncPolicyNvidiaDX12.h"
 #include "Render/Synchronization/DisplayClusterRenderSyncPolicyNone.h"
 
-#include "Misc/DisplayClusterStrings.h"
-#include "DisplayClusterConfigurationStrings.h"
+#include "DisplayClusterStrings.h"
 
 
 FDisplayClusterRenderSyncPolicyFactoryInternal::FDisplayClusterRenderSyncPolicyFactoryInternal()
@@ -20,32 +19,32 @@ FDisplayClusterRenderSyncPolicyFactoryInternal::~FDisplayClusterRenderSyncPolicy
 {
 }
 
-TSharedPtr<IDisplayClusterRenderSyncPolicy> FDisplayClusterRenderSyncPolicyFactoryInternal::Create(const FString& InPolicyType, const FString& InRHIName, const TMap<FString, FString>& Parameters)
+TSharedPtr<IDisplayClusterRenderSyncPolicy> FDisplayClusterRenderSyncPolicyFactoryInternal::Create(const FString& InPolicyType, const FString& InRHIName)
 {
-	if (InPolicyType.Equals(DisplayClusterConfigurationStrings::config::cluster::render_sync::None, ESearchCase::IgnoreCase))
+	if (InPolicyType.Compare(TEXT("0"), ESearchCase::IgnoreCase) == 0)
 	{
-		return MakeShared<FDisplayClusterRenderSyncPolicyNone>(Parameters);
+		return MakeShareable(new FDisplayClusterRenderSyncPolicyNone);
 	}
-	else if (InPolicyType.Equals(DisplayClusterConfigurationStrings::config::cluster::render_sync::Ethernet, ESearchCase::IgnoreCase))
+	else if (InPolicyType.Compare(TEXT("1"), ESearchCase::IgnoreCase) == 0)
 	{
-		if (InRHIName.Equals(DisplayClusterStrings::rhi::D3D11, ESearchCase::IgnoreCase))
+		if (InRHIName.Compare(DisplayClusterStrings::rhi::D3D11, ESearchCase::IgnoreCase) == 0)
 		{
-			return MakeShared<FDisplayClusterRenderSyncPolicySoftwareDX11>(Parameters);
+			return MakeShareable(new FDisplayClusterRenderSyncPolicySoftwareDX11);
 		}
-		else if (InRHIName.Equals(DisplayClusterStrings::rhi::D3D12, ESearchCase::IgnoreCase))
+		else if (InRHIName.Compare(DisplayClusterStrings::rhi::D3D12, ESearchCase::IgnoreCase) == 0)
 		{
-			return MakeShared<FDisplayClusterRenderSyncPolicySoftwareDX12>(Parameters);
+			return MakeShareable(new FDisplayClusterRenderSyncPolicySoftwareDX12);
 		}
 	}
-	else if (InPolicyType.Equals(DisplayClusterConfigurationStrings::config::cluster::render_sync::Nvidia, ESearchCase::IgnoreCase))
+	else if (InPolicyType.Compare(TEXT("2"), ESearchCase::IgnoreCase) == 0)
 	{
-		if (InRHIName.Equals(DisplayClusterStrings::rhi::D3D11, ESearchCase::IgnoreCase))
+		if (InRHIName.Compare(DisplayClusterStrings::rhi::D3D11, ESearchCase::IgnoreCase) == 0)
 		{
-			return MakeShared<FDisplayClusterRenderSyncPolicyNvidiaDX11>(Parameters);
+			return MakeShareable(new FDisplayClusterRenderSyncPolicyNvidiaDX11);
 		}
-		else if (InRHIName.Equals(DisplayClusterStrings::rhi::D3D12, ESearchCase::IgnoreCase))
+		else if (InRHIName.Compare(DisplayClusterStrings::rhi::D3D12, ESearchCase::IgnoreCase) == 0)
 		{
-			return MakeShared<FDisplayClusterRenderSyncPolicyNvidiaDX12>(Parameters);
+			return MakeShareable(new FDisplayClusterRenderSyncPolicyNvidiaDX12);
 		}
 	}
 

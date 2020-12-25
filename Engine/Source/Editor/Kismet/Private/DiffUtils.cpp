@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DiffUtils.h"
 #include "UObject/PropertyPortFlags.h"
@@ -16,14 +16,14 @@
 
 namespace UE4DiffUtils_Private
 {
-	FProperty* Resolve( const UStruct* Class, FName PropertyName )
+	UProperty* Resolve( const UStruct* Class, FName PropertyName )
 	{
 		if(Class == nullptr )
 		{
 			return nullptr;
 		}
 
-		for (FProperty* Prop : TFieldRange<FProperty>(Class))
+		for (UProperty* Prop : TFieldRange<UProperty>(Class))
 		{
 			if( Prop->GetFName() == PropertyName )
 			{
@@ -51,22 +51,22 @@ FResolvedProperty FPropertySoftPath::Resolve(const UStruct* Struct, const void* 
 	const void* CurrentBlock = StructData;
 	const UStruct* NextClass = Struct;
 	const void* NextBlock = CurrentBlock;
-	const FProperty* Property = nullptr;
+	const UProperty* Property = nullptr;
 
 	for (int32 i = 0; i < PropertyChain.Num(); ++i)
 	{
 		CurrentBlock = NextBlock;
-		const FProperty* NextProperty = UE4DiffUtils_Private::Resolve(NextClass, PropertyChain[i].PropertyName);
+		const UProperty* NextProperty = UE4DiffUtils_Private::Resolve(NextClass, PropertyChain[i].PropertyName);
 		if (NextProperty)
 		{
 			Property = NextProperty;
-			if (const FObjectProperty* ObjectProperty = CastField<FObjectProperty>(Property))
+			if (const UObjectProperty* ObjectProperty = Cast<UObjectProperty>(Property))
 			{
 				const UObject* NextObject = ObjectProperty->GetObjectPropertyValue(Property->ContainerPtrToValuePtr<UObject*>(CurrentBlock));
 				NextBlock = NextObject;
 				NextClass = NextObject ? NextObject->GetClass() : nullptr;
 			}
-			else if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
+			else if (const UStructProperty* StructProperty = Cast<UStructProperty>(Property))
 			{
 				NextBlock = StructProperty->ContainerPtrToValuePtr<void>(CurrentBlock);
 				NextClass = StructProperty->Struct;
@@ -87,11 +87,11 @@ FResolvedProperty FPropertySoftPath::Resolve(const UStruct* Struct, const void* 
 
 FPropertyPath FPropertySoftPath::ResolvePath(const UObject* Object) const
 {
-	auto UpdateContainerAddress = [](const FProperty* Property, const void* Instance, const void*& OutContainerAddress, const UStruct*& OutContainerStruct)
+	auto UpdateContainerAddress = [](const UProperty* Property, const void* Instance, const void*& OutContainerAddress, const UStruct*& OutContainerStruct)
 	{
 		if( ensure(Instance) )
 		{
-			if(const FObjectProperty* ObjectProperty = CastField<FObjectProperty>(Property))
+			if(const UObjectProperty* ObjectProperty = Cast<UObjectProperty>(Property))
 			{
 				const UObject* const* InstanceObject = reinterpret_cast<const UObject* const*>(Instance);
 				if( *InstanceObject)
@@ -100,7 +100,7 @@ FPropertyPath FPropertySoftPath::ResolvePath(const UObject* Object) const
 					OutContainerStruct = (*InstanceObject)->GetClass();
 				}
 			}
-			else if(const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
+			else if(const UStructProperty* StructProperty = Cast<UStructProperty>(Property))
 			{
 				OutContainerAddress = Instance;
 				OutContainerStruct = StructProperty->Struct;
@@ -129,7 +129,7 @@ FPropertyPath FPropertySoftPath::ResolvePath(const UObject* Object) const
 	for( int32 I = 0; I < PropertyChain.Num(); ++I )
 	{
 		FName PropertyIdentifier = PropertyChain[I].PropertyName;
-		FProperty* ResolvedProperty = UE4DiffUtils_Private::Resolve(ContainerStruct, PropertyIdentifier);
+		UProperty* ResolvedProperty = UE4DiffUtils_Private::Resolve(ContainerStruct, PropertyIdentifier);
 
 		FPropertyInfo Info(ResolvedProperty, INDEX_NONE);
 		Ret.AddProperty(Info);
@@ -138,7 +138,7 @@ FPropertyPath FPropertySoftPath::ResolvePath(const UObject* Object) const
 		
 		
 		// calculate offset so we can continue resolving object properties/structproperties:
-		if( const FArrayProperty* ArrayProperty = CastField<FArrayProperty>(ResolvedProperty) )
+		if( const UArrayProperty* ArrayProperty = Cast<UArrayProperty>(ResolvedProperty) )
 		{
 			if(PropertyIndex != INDEX_NONE)
 			{
@@ -150,7 +150,7 @@ FPropertyPath FPropertySoftPath::ResolvePath(const UObject* Object) const
 				Ret.AddProperty(ArrayInfo);
 			}
 		}
-		else if( const FSetProperty* SetProperty = CastField<FSetProperty>(ResolvedProperty) )
+		else if( const USetProperty* SetProperty = Cast<USetProperty>(ResolvedProperty) )
 		{
 			if(PropertyIndex != INDEX_NONE)
 			{
@@ -173,7 +173,7 @@ FPropertyPath FPropertySoftPath::ResolvePath(const UObject* Object) const
 				Ret.AddProperty(SetInfo);
 			}
 		}
-		else if( const FMapProperty* MapProperty = CastField<FMapProperty>(ResolvedProperty) )
+		else if( const UMapProperty* MapProperty = Cast<UMapProperty>(ResolvedProperty) )
 		{
 			if(PropertyIndex != INDEX_NONE)
 			{
@@ -214,7 +214,7 @@ FPropertyPath FPropertySoftPath::ResolvePath(const UObject* Object) const
 				}
 			}
 		}
-		else if (const FObjectProperty* ObjectProperty = CastField<FObjectProperty>(ResolvedProperty))
+		else if (const UObjectProperty* ObjectProperty = Cast<UObjectProperty>(ResolvedProperty))
 		{
 			UpdateContainerAddress( ObjectProperty, ObjectProperty->ContainerPtrToValuePtr<const void*>( ContainerAddress, FMath::Max(PropertyIndex, 0) ), ContainerAddress, ContainerStruct );
 			
@@ -225,7 +225,7 @@ FPropertyPath FPropertySoftPath::ResolvePath(const UObject* Object) const
 				Ret.AddProperty(ObjectInfo);
 			}
 		}
-		else if( const FStructProperty* StructProperty = CastField<FStructProperty>(ResolvedProperty) )
+		else if( const UStructProperty* StructProperty = Cast<UStructProperty>(ResolvedProperty) )
 		{
 			UpdateContainerAddress( StructProperty, StructProperty->ContainerPtrToValuePtr<const void*>( ContainerAddress, FMath::Max(PropertyIndex, 0) ), ContainerAddress, ContainerStruct );
 			
@@ -414,23 +414,21 @@ void DiffUtils::CompareUnrelatedSCS(const UBlueprint* Old, const TArray< FSCSRes
 
 static void AdvanceSetIterator( FScriptSetHelper& SetHelper, int32& Index)
 {
-	do
+	while(Index < SetHelper.GetMaxIndex() && !SetHelper.IsValidIndex(Index))
 	{
 		++Index;
 	}
-	while(Index < SetHelper.GetMaxIndex() && !SetHelper.IsValidIndex(Index));
 }
 
 static void AdvanceMapIterator( FScriptMapHelper& MapHelper, int32& Index)
 {
-	do
+	while(Index < MapHelper.GetMaxIndex() && !MapHelper.IsValidIndex(Index))
 	{
 		++Index;
 	}
-	while(Index < MapHelper.GetMaxIndex() && !MapHelper.IsValidIndex(Index));
 }
 
-static void IdenticalHelper(const FProperty* AProperty, const FProperty* BProperty, const void* AValue, const void* BValue, const FPropertySoftPath& RootPath, TArray<FPropertySoftPath>& DifferingSubProperties, bool bStaticArrayHandled = false)
+static void IdenticalHelper(const UProperty* AProperty, const UProperty* BProperty, const void* AValue, const void* BValue, const FPropertySoftPath& RootPath, TArray<FPropertySoftPath>& DifferingSubProperties, bool bStaticArrayHandled = false)
 {
 	if(AProperty == nullptr || BProperty == nullptr || AProperty->ArrayDim != BProperty->ArrayDim || AProperty->GetClass() != BProperty->GetClass())
 	{
@@ -454,14 +452,14 @@ static void IdenticalHelper(const FProperty* AProperty, const FProperty* BProper
 		return;
 	}
 	
-	const FStructProperty* APropAsStruct = CastField<FStructProperty>(AProperty);
-	const FArrayProperty* APropAsArray = CastField<FArrayProperty>(AProperty);
-	const FSetProperty* APropAsSet = CastField<FSetProperty>(AProperty);
-	const FMapProperty* APropAsMap = CastField<FMapProperty>(AProperty);
-	const FObjectProperty* APropAsObject = CastField<FObjectProperty>(AProperty);
+	const UStructProperty* APropAsStruct = Cast<UStructProperty>(AProperty);
+	const UArrayProperty* APropAsArray = Cast<UArrayProperty>(AProperty);
+	const USetProperty* APropAsSet = Cast<USetProperty>(AProperty);
+	const UMapProperty* APropAsMap = Cast<UMapProperty>(AProperty);
+	const UObjectProperty* APropAsObject = Cast<UObjectProperty>(AProperty);
 	if (APropAsStruct != nullptr)
 	{
-		const FStructProperty* BPropAsStruct = CastFieldChecked<FStructProperty>(const_cast<FProperty*>(BProperty));
+		const UStructProperty* BPropAsStruct = CastChecked<UStructProperty>(BProperty);
 		if (APropAsStruct->Struct->StructFlags & STRUCT_IdenticalNative && BPropAsStruct->Struct != APropAsStruct->Struct)
 		{
 			// If the struct uses CPP identical tests, then we can't dig into it, and we already know it's not identical from the test when we started
@@ -469,16 +467,16 @@ static void IdenticalHelper(const FProperty* AProperty, const FProperty* BProper
 		}
 		else
 		{
-			for (TFieldIterator<FProperty> PropertyIt(APropAsStruct->Struct); PropertyIt; ++PropertyIt)
+			for (TFieldIterator<UProperty> PropertyIt(APropAsStruct->Struct); PropertyIt; ++PropertyIt)
 			{
-				const FProperty* StructProp = *PropertyIt;
+				const UProperty* StructProp = *PropertyIt;
 				IdenticalHelper(StructProp, StructProp, StructProp->ContainerPtrToValuePtr<void>(AValue, 0), StructProp->ContainerPtrToValuePtr<void>(BValue, 0), FPropertySoftPath(RootPath, StructProp), DifferingSubProperties);
 			}
 		}
 	}
 	else if (APropAsArray != nullptr)
 	{
-		const FArrayProperty* BPropAsArray = CastFieldChecked<const FArrayProperty>(BProperty);
+		const UArrayProperty* BPropAsArray = CastChecked<UArrayProperty>(BProperty);
 		if(BPropAsArray->Inner->GetClass() == APropAsArray->Inner->GetClass())
 		{
 			FScriptArrayHelper ArrayHelperA(APropAsArray, AValue);
@@ -503,7 +501,7 @@ static void IdenticalHelper(const FProperty* AProperty, const FProperty* BProper
 	}
 	else if(APropAsSet != nullptr)
 	{
-		const FSetProperty* BPropAsSet = CastFieldChecked<const FSetProperty>(BProperty);
+		const USetProperty* BPropAsSet = CastChecked<USetProperty>(BProperty);
 		if(BPropAsSet->ElementProp->GetClass() == APropAsSet->ElementProp->GetClass())
 		{
 			FScriptSetHelper SetHelperA(APropAsSet, AValue);
@@ -520,8 +518,8 @@ static void IdenticalHelper(const FProperty* AProperty, const FProperty* BProper
 			const int32 SetSizeA = SetHelperA.Num();
 			const int32 SetSizeB = SetHelperB.Num();
 			
-			int32 SetIndexA = -1;
-			int32 SetIndexB = -1;
+			int32 SetIndexA = 0;
+			int32 SetIndexB = 0;
 
 			AdvanceSetIterator(SetHelperA, SetIndexA);
 			AdvanceSetIterator(SetHelperB, SetIndexB);
@@ -542,7 +540,7 @@ static void IdenticalHelper(const FProperty* AProperty, const FProperty* BProper
 	}
 	else if(APropAsMap != nullptr)
 	{
-		const FMapProperty* BPropAsMap = CastFieldChecked<const FMapProperty>(BProperty);
+		const UMapProperty* BPropAsMap = CastChecked<UMapProperty>(BProperty);
 		if(APropAsMap->KeyProp->GetClass() == BPropAsMap->KeyProp->GetClass() && APropAsMap->ValueProp->GetClass() == BPropAsMap->ValueProp->GetClass())
 		{
 			FScriptMapHelper MapHelperA(APropAsMap, AValue);
@@ -558,8 +556,8 @@ static void IdenticalHelper(const FProperty* AProperty, const FProperty* BProper
 			int32 MapSizeA = MapHelperA.Num();
 			int32 MapSizeB = MapHelperB.Num();
 			
-			int32 MapIndexA = -1;
-			int32 MapIndexB = -1;
+			int32 MapIndexA = 0;
+			int32 MapIndexB = 0;
 
 			AdvanceMapIterator(MapHelperA, MapIndexA);
 			AdvanceMapIterator(MapHelperB, MapIndexB);
@@ -586,7 +584,7 @@ static void IdenticalHelper(const FProperty* AProperty, const FProperty* BProper
 			return;
 		}
 
-		const FObjectProperty* BPropAsObject = CastFieldChecked<const FObjectProperty>(BProperty);
+		const UObjectProperty* BPropAsObject = CastChecked<UObjectProperty>(BProperty);
 
 		const UObject* A = *((const UObject* const*)AValue);
 		const UObject* B = *((const UObject* const*)BValue);
@@ -600,9 +598,9 @@ static void IdenticalHelper(const FProperty* AProperty, const FProperty* BProper
 			// Other instanced refs are likely to form a type-specific web so recursion doesn't make sense and won't be displayed properly in the details pane
 			if (AClass->HasAnyClassFlags(CLASS_EditInlineNew) && !AClass->IsChildOf(UActorComponent::StaticClass()))
 			{
-				for (TFieldIterator<FProperty> PropertyIt(AClass); PropertyIt; ++PropertyIt)
+				for (TFieldIterator<UProperty> PropertyIt(AClass); PropertyIt; ++PropertyIt)
 				{
-					const FProperty* ClassProp = *PropertyIt;
+					const UProperty* ClassProp = *PropertyIt;
 					IdenticalHelper(ClassProp, ClassProp, ClassProp->ContainerPtrToValuePtr<void>(A, 0), ClassProp->ContainerPtrToValuePtr<void>(B, 0), FPropertySoftPath(RootPath, ClassProp), DifferingSubProperties);
 				}
 			}
@@ -658,7 +656,7 @@ TArray<FPropertySoftPath> DiffUtils::GetVisiblePropertiesInOrderDeclared(const U
 	if (ForStruct)
 	{
 		TSet<FString> HiddenCategories = FEditorCategoryUtils::GetHiddenCategories(ForStruct);
-		for (TFieldIterator<FProperty> PropertyIt(ForStruct); PropertyIt; ++PropertyIt)
+		for (TFieldIterator<UProperty> PropertyIt(ForStruct); PropertyIt; ++PropertyIt)
 		{
 			FName CategoryName = FObjectEditorUtils::GetCategoryFName(*PropertyIt);
 			if (!HiddenCategories.Contains(CategoryName.ToString()))

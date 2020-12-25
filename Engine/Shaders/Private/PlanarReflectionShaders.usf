@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
  PlanarReflectionShaders.usf
@@ -14,7 +14,7 @@ SamplerState SceneColorInputSampler;
 
 float4 SampleSceneColorInput(float2 UV)
 {
-	return Texture2DSampleLevel(SceneColorInputTexture, SceneColorInputSampler, UV, 0);
+	return Decode32BPPHDR(Texture2DSampleLevel(SceneColorInputTexture, SceneColorInputSampler, UV, 0));
 }
 
 float GaussianWeight1d(float u, float KernelRadius)
@@ -86,20 +86,16 @@ void PrefilterPlanarReflectionPS(
 		float AccumulatedWeight = 0;
 
 		// Two texels at a time with bilinear
+		LOOP
+		for (float y = 0; y < KernelRadiusY; y += 2)
 		{
-			LOOP
-			for (float y = 0; y < KernelRadiusY; y += 2)
-			{
-				VerticalSample(BufferUV, y, KernelRadiusY, CenterDistanceToPlane, CenterReflectionDistance, false, AccumulatedColor, AccumulatedWeight);
-			}
+			VerticalSample(BufferUV, y, KernelRadiusY, CenterDistanceToPlane, CenterReflectionDistance, false, AccumulatedColor, AccumulatedWeight);
 		}
 
+		LOOP
+		for (float y = -2; y > -KernelRadiusY; y -= 2)
 		{
-			LOOP
-			for (float y = -2; y > -KernelRadiusY; y -= 2)
-			{
-				VerticalSample(BufferUV, y, KernelRadiusY, CenterDistanceToPlane, CenterReflectionDistance, true, AccumulatedColor, AccumulatedWeight);
-			}
+			VerticalSample(BufferUV, y, KernelRadiusY, CenterDistanceToPlane, CenterReflectionDistance, true, AccumulatedColor, AccumulatedWeight);
 		}
 
 		AccumulatedColor = AccumulatedColor / max(AccumulatedWeight, .0001f);
@@ -113,7 +109,7 @@ void PrefilterPlanarReflectionPS(
 	{
 		float4 SceneColorValue = SampleSceneColorInput(BufferUV);
 
-		#if (ES3_1_PROFILE)
+		#if (ES2_PROFILE || ES3_1_PROFILE)
 			// when mesh draw command pipline is active mobile scene color contains depth in the alpha channel, any value > 1.0 has been written to.
 			if( SceneColorValue.a > 1.0)
 			{
@@ -126,8 +122,6 @@ void PrefilterPlanarReflectionPS(
 		OutColor = float4(SceneColorValue.xyz, ValidContentMask);
 	}
 }
-
-#if SHADING_PATH_DEFERRED
 
 void PlanarReflectionPS(
 	float2 BufferUV : TEXCOORD0,
@@ -154,5 +148,3 @@ void PlanarReflectionPS(
 	#endif
 	}
 }
-
-#endif

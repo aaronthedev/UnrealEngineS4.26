@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -6,11 +6,13 @@ public class RemoteSession : ModuleRules
 {
 	public RemoteSession(ReadOnlyTargetRules Target) : base(Target)
 	{
-		DefaultBuildSettings = BuildSettingsVersion.V2;
-
+		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
+		
 		PrivateIncludePaths.AddRange(
 			new string[] {
 				"../../../../Source/Runtime/Renderer/Private",
+				"RemoteSession/Private",
+				"RemoteSession"
 				// ... add other private include paths required here ...
 			}
 		);
@@ -20,7 +22,6 @@ public class RemoteSession : ModuleRules
 			{
 				"Core",
 				"MediaIOCore",
-				"BackChannel",
 				// ... add other public dependencies that you statically link with here ...
 			}
 		);
@@ -34,6 +35,7 @@ public class RemoteSession : ModuleRules
 				"SlateCore",
 				"InputDevice",
 				"InputCore",
+				"BackChannel",
 				"RHI",
 				"Renderer",
 				"RenderCore",

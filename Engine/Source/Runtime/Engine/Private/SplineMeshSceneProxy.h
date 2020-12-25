@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -26,10 +26,26 @@ public:
 	}
 
 	/** Should we cache the material's shadertype on this platform with this vertex factory? */
-	static bool ShouldCompilePermutation(const FVertexFactoryShaderPermutationParameters& Parameters);
+	static bool ShouldCompilePermutation(EShaderPlatform Platform, const class FMaterial* Material, const class FShaderType* ShaderType)
+	{
+		return (Material->IsUsedWithSplineMeshes() || Material->IsSpecialEngineMaterial())
+			&& FLocalVertexFactory::ShouldCompilePermutation(Platform, Material, ShaderType);
+	}
 
 	/** Modify compile environment to enable spline deformation */
-	static void ModifyCompilationEnvironment(const FVertexFactoryShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment);
+	static void ModifyCompilationEnvironment(const FVertexFactoryType* Type, EShaderPlatform Platform, const FMaterial* Material, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		const bool ContainsManualVertexFetch = OutEnvironment.GetDefinitions().Contains("MANUAL_VERTEX_FETCH");
+		if (!ContainsManualVertexFetch)
+		{
+			OutEnvironment.SetDefine(TEXT("MANUAL_VERTEX_FETCH"), TEXT("0"));
+		}
+
+		// We don't call this because we don't actually support speed tree wind, and this advertises support for that
+		//FLocalVertexFactory::ModifyCompilationEnvironment(Type, Platform, Material, OutEnvironment);
+
+		OutEnvironment.SetDefine(TEXT("USE_SPLINEDEFORM"), TEXT("1"));
+	}
 
 	/** Copy the data from another vertex factory */
 	void Copy(const FSplineMeshVertexFactory& Other)
@@ -43,6 +59,8 @@ public:
 			});
 		BeginUpdateResourceRHI(this);
 	}
+
+	static FVertexFactoryShaderParameters* ConstructShaderParameters(EShaderFrequency ShaderFrequency);
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -51,11 +69,9 @@ public:
 /** Factory specific params */
 class FSplineMeshVertexFactoryShaderParameters : public FVertexFactoryShaderParameters
 {
-	DECLARE_TYPE_LAYOUT(FSplineMeshVertexFactoryShaderParameters, NonVirtual);
-public:
-	void Bind(const FShaderParameterMap& ParameterMap);
+	void Bind(const FShaderParameterMap& ParameterMap) override;
 
-	void GetElementShaderBindings(
+	virtual void GetElementShaderBindings(
 		const class FSceneInterface* Scene,
 		const FSceneView* View,
 		const class FMeshMaterialShader* Shader,
@@ -65,10 +81,20 @@ public:
 		const FMeshBatchElement& BatchElement,
 		class FMeshDrawSingleShaderBindings& ShaderBindings,
 		FVertexInputStreamArray& VertexStreams
-		) const;
+		) const override;
+
+	void Serialize(FArchive& Ar) override
+	{
+		Ar << SplineMeshParams;
+	}
+
+	virtual uint32 GetSize() const override
+	{
+		return sizeof(*this);
+	}
 
 private:
-	LAYOUT_FIELD(FShaderParameter, SplineMeshParams);
+	FShaderParameter SplineMeshParams;
 };
 
 //////////////////////////////////////////////////////////////////////////

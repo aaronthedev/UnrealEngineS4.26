@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ObjectEditorUtils.h"
 #include "UObject/Package.h"
@@ -10,78 +10,36 @@
 namespace FObjectEditorUtils
 {
 
-	FText GetCategoryText( const FField* InField )
+	FText GetCategoryText( const UProperty* InProperty )
 	{
-		static const FTextKey CategoryLocalizationNamespace = TEXT("UObjectCategory");
-		static const FName CategoryMetaDataKey = TEXT("Category");
-
-		if (InField)
+		static const FName NAME_Category(TEXT("Category"));
+		if (InProperty && InProperty->HasMetaData(NAME_Category))
 		{
-			const FString& NativeCategory = InField->GetMetaData(CategoryMetaDataKey);
-			if (!NativeCategory.IsEmpty())
-			{
-				FText LocalizedCategory;
-				if (!FText::FindText(CategoryLocalizationNamespace, NativeCategory, /*OUT*/LocalizedCategory, &NativeCategory))
-				{
-					LocalizedCategory = FText::AsCultureInvariant(NativeCategory);
-				}
-				return LocalizedCategory;
-			}
+			return InProperty->GetMetaDataText(NAME_Category, TEXT("UObjectCategory"), InProperty->GetFullGroupName(false));
+		}
+		else
+		{
+			return FText::GetEmpty();
+		}
+	}
+
+	FString GetCategory( const UProperty* InProperty )
+	{
+		return GetCategoryText(InProperty).ToString();
+	}
+
+
+	FName GetCategoryFName( const UProperty* InProperty )
+	{
+		FName OutCategoryName( NAME_None );
+
+		static const FName CategoryKey( TEXT("Category") );
+		if( InProperty && InProperty->HasMetaData( CategoryKey ) )
+		{
+			OutCategoryName = FName( *InProperty->GetMetaData( CategoryKey ) );
 		}
 
-		return FText::GetEmpty();
-	}
-
-	FText GetCategoryText( const UField* InField )
-	{
-		static const FTextKey CategoryLocalizationNamespace = TEXT("UObjectCategory");
-		static const FName CategoryMetaDataKey = TEXT("Category");
-
-		if (InField)
-		{
-			const FString& NativeCategory = InField->GetMetaData(CategoryMetaDataKey);
-			if (!NativeCategory.IsEmpty())
-			{
-				FText LocalizedCategory;
-				if (!FText::FindText(CategoryLocalizationNamespace, NativeCategory, /*OUT*/LocalizedCategory, &NativeCategory))
-				{
-					LocalizedCategory = FText::AsCultureInvariant(NativeCategory);
-				}
-				return LocalizedCategory;
-			}
-		}
-
-		return FText::GetEmpty();
-	}
-
-	FString GetCategory( const FField* InField )
-	{
-		return GetCategoryText(InField).ToString();
-	}
-
-	FString GetCategory( const UField* InField )
-	{
-		return GetCategoryText(InField).ToString();
-	}
-
-	FName GetCategoryFName( const FField* InField )
-	{
-		static const FName CategoryKey(TEXT("Category"));
-		if (InField && InField->HasMetaData(CategoryKey))
-		{
-			return FName(*InField->GetMetaData(CategoryKey));
-		}
-		return NAME_None;
-	}
-
-	FName GetCategoryFName( const UField* InField )
-	{
-		static const FName CategoryKey(TEXT("Category"));
-		if (InField && InField->HasMetaData(CategoryKey))
-		{
-			return FName(*InField->GetMetaData(CategoryKey));
-		}
-		return NAME_None;
+		return OutCategoryName;
 	}
 
 	bool IsFunctionHiddenFromClass( const UFunction* InFunction,const UClass* Class )
@@ -101,7 +59,7 @@ namespace FObjectEditorUtils
 		return bResult;
 	}
 
-	bool IsVariableCategoryHiddenFromClass( const FProperty* InVariable,const UClass* Class )
+	bool IsVariableCategoryHiddenFromClass( const UProperty* InVariable,const UClass* Class )
 	{
 		bool bResult = false;
 		if( InVariable && Class )
@@ -137,14 +95,14 @@ namespace FObjectEditorUtils
 		bIsEarlyAccess = DevelopmentStatus == EarlyAccessValue;
 	}
 
-	static void CopySinglePropertyRecursive(UObject* SourceObject, const void* const InSourcePtr, FProperty* InSourceProperty, void* const InTargetPtr, UObject* InDestinationObject, FProperty* InDestinationProperty)
+	static void CopySinglePropertyRecursive(UObject* SourceObject, const void* const InSourcePtr, UProperty* InSourceProperty, void* const InTargetPtr, UObject* InDestinationObject, UProperty* InDestinationProperty)
 	{
 		bool bNeedsShallowCopy = true;
 		bool bNeedsStringCopy = false;
 
-		if (FStructProperty* const DestStructProperty = CastField<FStructProperty>(InDestinationProperty))
+		if (UStructProperty* const DestStructProperty = Cast<UStructProperty>(InDestinationProperty))
 		{
-			FStructProperty* const SrcStructProperty = CastField<FStructProperty>(InSourceProperty);
+			UStructProperty* const SrcStructProperty = Cast<UStructProperty>(InSourceProperty);
 
 			// Ensure that the target struct is initialized before copying fields from the source.
 			DestStructProperty->InitializeValue_InContainer(InTargetPtr);
@@ -155,18 +113,18 @@ namespace FObjectEditorUtils
 				const void* const SourcePtr = SrcStructProperty->ContainerPtrToValuePtr<void>(InSourcePtr, ArrayIndex);
 				void* const TargetPtr = DestStructProperty->ContainerPtrToValuePtr<void>(InTargetPtr, ArrayIndex);
 
-				for (TFieldIterator<FProperty> It(SrcStructProperty->Struct); It; ++It)
+				for (TFieldIterator<UProperty> It(SrcStructProperty->Struct); It; ++It)
 				{
-					FProperty* const InnerProperty = *It;
+					UProperty* const InnerProperty = *It;
 					CopySinglePropertyRecursive(SourceObject, SourcePtr, InnerProperty, TargetPtr, InDestinationObject, InnerProperty);
 				}
 			}
 
 			bNeedsShallowCopy = false;
 		}
-		else if (FArrayProperty* const DestArrayProperty = CastField<FArrayProperty>(InDestinationProperty))
+		else if (UArrayProperty* const DestArrayProperty = Cast<UArrayProperty>(InDestinationProperty))
 		{
-			FArrayProperty* const SrcArrayProperty = CastField<FArrayProperty>(InSourceProperty);
+			UArrayProperty* const SrcArrayProperty = Cast<UArrayProperty>(InSourceProperty);
 
 			check(InDestinationProperty->ArrayDim == 1);
 			FScriptArrayHelper SourceArrayHelper(SrcArrayProperty, SrcArrayProperty->ContainerPtrToValuePtr<void>(InSourcePtr));
@@ -183,9 +141,9 @@ namespace FObjectEditorUtils
 
 			bNeedsShallowCopy = false;
 		}
-		else if ( FMapProperty* const DestMapProperty = CastField<FMapProperty>(InDestinationProperty) )
+		else if ( UMapProperty* const DestMapProperty = Cast<UMapProperty>(InDestinationProperty) )
 		{
-			FMapProperty* const SrcMapProperty = CastField<FMapProperty>(InSourceProperty);
+			UMapProperty* const SrcMapProperty = Cast<UMapProperty>(InSourceProperty);
 
 			check(InDestinationProperty->ArrayDim == 1);
 			FScriptMapHelper SourceMapHelper(SrcMapProperty, SrcMapProperty->ContainerPtrToValuePtr<void>(InSourcePtr));
@@ -217,9 +175,9 @@ namespace FObjectEditorUtils
 			bNeedsShallowCopy = false;
 			bNeedsStringCopy = false;
 		}
-		else if ( FSetProperty* const DestSetProperty = CastField<FSetProperty>(InDestinationProperty) )
+		else if ( USetProperty* const DestSetProperty = Cast<USetProperty>(InDestinationProperty) )
 		{
-			//FSetProperty* const SrcSetProperty = CastField<FSetProperty>(InSourceProperty);
+			//USetProperty* const SrcSetProperty = Cast<USetProperty>(InSourceProperty);
 
 			//check(InDestinationProperty->ArrayDim == 1);
 			//FScriptSetHelper SourceSetHelper(SrcSetProperty, SrcSetProperty->ContainerPtrToValuePtr<void>(InSourcePtr));
@@ -230,7 +188,7 @@ namespace FObjectEditorUtils
 			bNeedsShallowCopy = false;
 			bNeedsStringCopy = true;
 		}
-		else if ( FObjectPropertyBase* SourceObjectProperty = CastField<FObjectPropertyBase>(InSourceProperty) )
+		else if ( UObjectPropertyBase* SourceObjectProperty = Cast<UObjectPropertyBase>(InSourceProperty) )
 		{
 			if ( SourceObjectProperty->HasAllPropertyFlags(CPF_InstancedReference) )
 			{
@@ -251,7 +209,7 @@ namespace FObjectEditorUtils
 
 						UObject* DuplicateValue = StaticDuplicateObject(Value, InDestinationObject, Value->GetFName(), RF_AllFlags, nullptr, EDuplicateMode::Normal, EInternalObjectFlags::AllFlags);
 
-						FObjectPropertyBase* DestObjectProperty = CastFieldChecked<FObjectPropertyBase>(InDestinationProperty);
+						UObjectPropertyBase* DestObjectProperty = CastChecked<UObjectPropertyBase>(InDestinationProperty);
 						DestObjectProperty->SetObjectPropertyValue_InContainer(InTargetPtr, DuplicateValue);
 					}
 
@@ -263,7 +221,7 @@ namespace FObjectEditorUtils
 
 						UObject* DesintationValue = FindObjectFast<UObject>(InDestinationObject->GetOuter(), Value->GetFName());
 
-						FObjectPropertyBase* DestObjectProperty = CastFieldChecked<FObjectPropertyBase>(InDestinationProperty);
+						UObjectPropertyBase* DestObjectProperty = CastChecked<UObjectPropertyBase>(InDestinationProperty);
 						DestObjectProperty->SetObjectPropertyValue_InContainer(InTargetPtr, DesintationValue);
 					}
 				}
@@ -289,7 +247,7 @@ namespace FObjectEditorUtils
 		}
 	}
 
-	bool MigratePropertyValue(UObject* SourceObject, FProperty* SourceProperty, UObject* DestinationObject, FProperty* DestinationProperty)
+	bool MigratePropertyValue(UObject* SourceObject, UProperty* SourceProperty, UObject* DestinationObject, UProperty* DestinationProperty)
 	{
 		if (SourceObject == nullptr || DestinationObject == nullptr)
 		{

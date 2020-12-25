@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,10 +8,9 @@
 
 namespace GranularNetworkMemoryTrackingPrivate
 {
-	struct ENGINE_API FScopeMarker
+	struct ENGINE_API FHelper
 	{
-		FScopeMarker(FArchive& InAr, FString&& InScopeName);
-		~FScopeMarker();
+		FHelper(FArchive& InAr, FString&& InScopeName);
 
 		void BeginWork();
 
@@ -21,34 +20,27 @@ namespace GranularNetworkMemoryTrackingPrivate
 
 		const bool IsEnabled() const
 		{
-			return ScopeStack != nullptr;
-		}
-
-		const FString& GetScopeName()
-		{
-			return ScopeName;
+			return bShouldTrack;
 		}
 
 	private:
-
-		friend struct FNetworkMemoryTrackingScopeStack;
 
 		uint64 PreWorkPos = 0;
 
 		const FArchive& Ar;
 		const FString ScopeName;
-		struct FNetworkMemoryTrackingScopeStack* ScopeStack;
+		const bool bShouldTrack;
 	};
 }
 
-#define GRANULAR_NETWORK_MEMORY_TRACKING_INIT(Archive, ScopeName) GranularNetworkMemoryTrackingPrivate::FScopeMarker GranularNetworkMemoryScope(Archive, ScopeName);
+#define GRANULAR_NETWORK_MEMORY_TRACKING_INIT(Archive, ScopeName) GranularNetworkMemoryTrackingPrivate::FHelper GranularNetworkMemoryHelper(Archive, ScopeName);
 #define GRANULAR_NETWORK_MEMORY_TRACKING_TRACK(Id, Work) \
 	{ \
-		GranularNetworkMemoryScope.BeginWork(); \
+		GranularNetworkMemoryHelper.BeginWork(); \
 		Work; \
-		GranularNetworkMemoryScope.EndWork(Id); \
+		GranularNetworkMemoryHelper.EndWork(Id); \
 	}
-#define GRANULAR_NETWORK_MEMORY_TRACKING_CUSTOM_WORK(Id, Value) GranularNetworkMemoryScope.LogCustomWork(Id, Value);
+#define GRANULAR_NETWORK_MEMORY_TRACKING_CUSTOM_WORK(Id, Value) GranularNetworkMemoryHelper.LogCustomWork(Id, Value);
 
 #else
 

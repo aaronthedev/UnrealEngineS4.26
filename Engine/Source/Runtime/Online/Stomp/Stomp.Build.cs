@@ -1,22 +1,20 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
 public class Stomp : ModuleRules
 {
-	protected virtual bool bPlatformSupportsStomp
-	{
-		get
-		{
-			return Target.Platform == UnrealTargetPlatform.Win32 ||
-				Target.Platform == UnrealTargetPlatform.Win64 ||
-				Target.Platform == UnrealTargetPlatform.Mac ||
-				Target.IsInPlatformGroup(UnrealPlatformGroup.Unix);
-		}
-	}
-	public Stomp(ReadOnlyTargetRules Target) : base(Target)
+    public Stomp(ReadOnlyTargetRules Target) : base(Target)
     {
-		bool bShouldUseModule = bPlatformSupportsStomp;
+        PublicDefinitions.Add("STOMP_PACKAGE=1");
+
+		bool bShouldUseModule = 
+			Target.Platform == UnrealTargetPlatform.Win32 ||
+			Target.Platform == UnrealTargetPlatform.Win64 ||
+			Target.Platform == UnrealTargetPlatform.Mac ||
+			Target.IsInPlatformGroup(UnrealPlatformGroup.Unix) ||
+			Target.Platform == UnrealTargetPlatform.XboxOne ||
+			Target.Platform == UnrealTargetPlatform.PS4;
 
 		PrivateDependencyModuleNames.AddRange(
 			new string[] {
@@ -31,13 +29,13 @@ public class Stomp : ModuleRules
 			PrivateIncludePaths.AddRange(
 				new string[]
 				{
-					"Runtime/Online/Stomp/Private",
+				"Runtime/Online/Stomp/Private",
 				}
 			);
 
 			PrivateDependencyModuleNames.AddRange(
 				new string[] {
-					"WebSockets"
+				"WebSockets"
 				}
 			);
 		}

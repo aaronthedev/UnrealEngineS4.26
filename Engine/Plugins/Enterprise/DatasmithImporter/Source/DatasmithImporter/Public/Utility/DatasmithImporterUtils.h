@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -18,14 +18,7 @@ DECLARE_LOG_CATEGORY_EXTERN( LogDatasmithImport, Log, All );
 class DATASMITHIMPORTER_API FDatasmithImporterUtils
 {
 public:
-	enum class EAssetCreationStatus : uint8
-	{
-		CS_CanCreate,
-		CS_HasRedirector,
-		CS_ClassMismatch,
-	};
-
-		/** Loads an IDatasmithScene from a UDatasmithScene */
+	/** Loads an IDatasmithScene from a UDatasmithScene */
 	static TSharedPtr< IDatasmithScene > LoadDatasmithScene( UDatasmithScene* DatasmithSceneAsset );
 
 	/** Saves an IDatasmithScene into a UDatasmithScene */
@@ -118,25 +111,6 @@ public:
 	static bool CanCreateAsset(const FString& AssetPathName, const UClass* AssetClass, FText& OutFailReason);
 
 	/**
-	 * @param AssetPathName		Full path name of the asset to create
-	 * @param AssetClass		Class of the asset to create
-	 * Returns a state from the creation enumeration, EAssetCreationStatus.
-	 * Given a path and a class, check if an existing asset with a different class
-	 * would not prevent the creation of such asset.
-	 */
-	static EAssetCreationStatus CanCreateAsset(const FString& AssetPathName, const UClass* AssetClass);
-
-	/**
-	 * @param AssetPathName		Full path name of the asset to create
-	 * Calls CanCreateAsset(const FString&, const UClass*) with the instantiating class
-	 */
-	template< class ObjectType >
-	static EAssetCreationStatus CanCreateAsset(const FString& AssetPathName)
-	{
-		return CanCreateAsset(AssetPathName, ObjectType::StaticClass());
-	}
-
-	/**
 	 * Finds the UDatasmithScene for which the Asset belongs to.
 	 */
 	static UDatasmithScene* FindDatasmithSceneForAsset( UObject* Asset );
@@ -158,64 +132,6 @@ public:
 	 * @param SceneElement		DatasmithScene holding the materials.
 	 */
 	static TArray< TSharedPtr< IDatasmithBaseMaterialElement > > GetOrderedListOfMaterialsReferencedByMaterials( TSharedPtr< IDatasmithScene >& SceneElement );
-
-	class FDatasmithMaterialImportIterator
-	{
-	public:
-		explicit FDatasmithMaterialImportIterator(const FDatasmithImportContext& InImportContext);
-
-		/** Advances the iterator to the next element. */
-		FDatasmithMaterialImportIterator& operator++();
-
-		/** conversion to "bool" returning true if the iterator is valid. */
-		explicit operator bool() const;
-
-		/** inverse of the "bool" operator */
-		bool operator !() const
-		{
-			return !(bool)*this;
-		}
-
-		// Const Accessor.
-		const TSharedPtr<IDatasmithBaseMaterialElement>& Value() const;
-
-	private:
-		const FDatasmithImportContext& ImportContext;
-		int32 CurrentIndex;
-		TArray<TSharedPtr<IDatasmithBaseMaterialElement>> SortedMaterials;
-	};
-
-	/**
-	 * Convenience function duplicating an object specifically optimized for datasmith use cases
-	 *
-	 * @param SourceObject the object being copied
-	 * @param Outer the outer to use for the object
-	 * @param Name the optional name of the object
-	 *
-	 * @return the copied object or null if it failed for some reason
-	 */
-	static UObject* StaticDuplicateObject(UObject* SourceObject, UObject* Outer, const FName Name = NAME_None);
-
-	/**
-	 * Specialization of the duplication of a StaticMesh object specifically optimized for datasmith use case.
-	 * This operation invalidate the duplicated SourceStaticMesh and mark it as PendingKill, unless bIgnoreBulkData is True.
-	 *
-	 * @param SourceStaticMesh	the UStaticMesh being copied
-	 * @param Outer				the outer to use for the object
-	 * @param Name				the optional name of the object
-	 * @param bIgnoreBulkData	if True, the SourceStaticMesh's SourceModels BulkDatas won't be copied and SourceStaticMesh will stay valid after the operation.
-	 *
-	 * @return the copied StaticMesh or null if it failed for some reason
-	 */
-	static UStaticMesh* DuplicateStaticMesh(UStaticMesh* SourceStaticMesh, UObject* Outer, const FName Name = NAME_None, bool bIgnoreBulkData = false);
-
-	template< class T >
-	static T* DuplicateObject(T* SourceObject, UObject* Outer, const FName Name = NAME_None)
-	{
-		return (T*)FDatasmithImporterUtils::StaticDuplicateObject(SourceObject, Outer, Name);
-	}
-
-	static bool CreatePlmXmlSceneFromCADFiles(FString PlmXmlFileName, const TSet<FString>& FilesToProcess, TArray<FString>& FilesNotProcessed);
 };
 
 template< typename ObjectType >
@@ -228,7 +144,7 @@ struct FDatasmithFindAssetTypeHelper< UStaticMesh >
 {
 	static const TMap< TSharedRef< IDatasmithMeshElement >, UStaticMesh* >& GetImportedAssetsMap( const FDatasmithAssetsImportContext& AssetsContext )
 	{
-		return AssetsContext.GetParentContext().ImportedStaticMeshes;
+		return AssetsContext.ParentContext.ImportedStaticMeshes;
 	}
 
 	static UPackage* GetFinalPackage( const FDatasmithAssetsImportContext& AssetsContext )
@@ -243,7 +159,7 @@ struct FDatasmithFindAssetTypeHelper< UStaticMesh >
 
 	static const TSharedRef<IDatasmithMeshElement>* GetImportedElementByName( const FDatasmithAssetsImportContext& AssetsContext, const TCHAR* ObjectPathName )
 	{
-		return AssetsContext.GetParentContext().ImportedStaticMeshesByName.Find(ObjectPathName);
+		return AssetsContext.ParentContext.ImportedStaticMeshesByName.Find(ObjectPathName);
 	}
 };
 
@@ -252,7 +168,7 @@ struct FDatasmithFindAssetTypeHelper< UTexture >
 {
 	static const TMap< TSharedRef< IDatasmithTextureElement >, UTexture* >& GetImportedAssetsMap( const FDatasmithAssetsImportContext& AssetsContext )
 	{
-		return AssetsContext.GetParentContext().ImportedTextures;
+		return AssetsContext.ParentContext.ImportedTextures;
 	}
 
 	static UPackage* GetFinalPackage( const FDatasmithAssetsImportContext& AssetsContext )
@@ -276,7 +192,7 @@ struct FDatasmithFindAssetTypeHelper< UMaterialFunction >
 {
 	static const TMap< TSharedRef< IDatasmithBaseMaterialElement >, UMaterialFunction* >& GetImportedAssetsMap(const FDatasmithAssetsImportContext& AssetsContext)
 	{
-		return AssetsContext.GetParentContext().ImportedMaterialFunctions;
+		return AssetsContext.ParentContext.ImportedMaterialFunctions;
 	}
 
 	static UPackage* GetFinalPackage(const FDatasmithAssetsImportContext& AssetsContext)
@@ -291,7 +207,7 @@ struct FDatasmithFindAssetTypeHelper< UMaterialFunction >
 	
 	static const TSharedRef<IDatasmithBaseMaterialElement>* GetImportedElementByName( const FDatasmithAssetsImportContext& AssetsContext, const TCHAR* ObjectPathName )
 	{
-		return AssetsContext.GetParentContext().ImportedMaterialFunctionsByName.Find(ObjectPathName);
+		return AssetsContext.ParentContext.ImportedMaterialFunctionsByName.Find(ObjectPathName);
 	}
 };
 
@@ -300,7 +216,7 @@ struct FDatasmithFindAssetTypeHelper< UMaterialInterface >
 {
 	static const TMap< TSharedRef< IDatasmithBaseMaterialElement >, UMaterialInterface* >& GetImportedAssetsMap( const FDatasmithAssetsImportContext& AssetsContext )
 	{
-		return AssetsContext.GetParentContext().ImportedMaterials;
+		return AssetsContext.ParentContext.ImportedMaterials;
 	}
 
 	static UPackage* GetFinalPackage( const FDatasmithAssetsImportContext& AssetsContext )
@@ -390,7 +306,7 @@ inline ObjectType* FDatasmithImporterUtils::FindAsset( const FDatasmithAssetsImp
 		}
 
 		{
-			const auto* AssetsMap = FDatasmithFindAssetTypeHelper< ObjectType >::GetAssetsMap( AssetsContext.GetParentContext().SceneAsset );
+			const auto* AssetsMap = FDatasmithFindAssetTypeHelper< ObjectType >::GetAssetsMap( AssetsContext.ParentContext.SceneAsset );
 
 			// Check if the AssetsMap is already tracking our asset
 			if ( AssetsMap && AssetsMap->Contains( ObjectPathName ) )

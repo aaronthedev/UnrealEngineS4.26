@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "LevelEditorViewport.h"
@@ -53,6 +53,7 @@
 #include "AssetRegistryModule.h"
 #include "IPlacementModeModule.h"
 #include "Engine/Polys.h"
+#include "Editor/GeometryMode/Public/EditorGeometry.h"
 #include "ActorEditorUtils.h"
 #include "ObjectTools.h"
 #include "PackageTools.h"
@@ -76,7 +77,6 @@
 #include "ActorGroupingUtils.h"
 #include "EditorWorldExtension.h"
 #include "VREditorMode.h"
-#include "Subsystems/BrushEditingSubsystem.h"
 #include "Engine/VolumeTexture.h"
 #include "Materials/MaterialExpressionDivide.h"
 #include "Materials/MaterialExpressionSubtract.h"
@@ -228,38 +228,27 @@ static UDirectionalLightComponent* GetAtmosphericLight(const uint8 DesiredLightI
 	return SelectedAtmosphericLight;
 }
 
-static void NotifyAtmosphericLightHasMoved(UDirectionalLightComponent& SelectedAtmosphericLight, bool bFinished)
-{
-	AActor* LightOwner = SelectedAtmosphericLight.GetOwner();
-	if (LightOwner)
-	{
-		// Now notify the owner about the transform update, e.g. construction script on instance.
-		LightOwner->PostEditMove(bFinished);
-		// No PostEditChangeProperty because not paired with a PreEditChange
-	}
-}
-
 namespace LevelEditorViewportClientHelper
 {
-	FProperty* GetEditTransformProperty(FWidget::EWidgetMode WidgetMode)
+	UProperty* GetEditTransformProperty(FWidget::EWidgetMode WidgetMode)
 	{
-		FProperty* ValueProperty = nullptr;
+		UProperty* ValueProperty = nullptr;
 		switch (WidgetMode)
 		{
 		case FWidget::WM_Translate:
-			ValueProperty = FindFProperty<FProperty>(USceneComponent::StaticClass(), USceneComponent::GetRelativeLocationPropertyName());
+			ValueProperty = FindField<UProperty>(USceneComponent::StaticClass(), USceneComponent::GetRelativeLocationPropertyName());
 			break;
 		case FWidget::WM_Rotate:
-			ValueProperty = FindFProperty<FProperty>(USceneComponent::StaticClass(), USceneComponent::GetRelativeRotationPropertyName());
+			ValueProperty = FindField<UProperty>(USceneComponent::StaticClass(), USceneComponent::GetRelativeRotationPropertyName());
 			break;
 		case FWidget::WM_Scale:
-			ValueProperty = FindFProperty<FProperty>(USceneComponent::StaticClass(), USceneComponent::GetRelativeScale3DPropertyName());
+			ValueProperty = FindField<UProperty>(USceneComponent::StaticClass(), USceneComponent::GetRelativeScale3DPropertyName());
 			break;
 		case FWidget::WM_TranslateRotateZ:
-			ValueProperty = FindFProperty<FProperty>(USceneComponent::StaticClass(), USceneComponent::GetRelativeLocationPropertyName());
+			ValueProperty = FindField<UProperty>(USceneComponent::StaticClass(), USceneComponent::GetRelativeLocationPropertyName());
 			break;
 		case FWidget::WM_2D:
-			ValueProperty = FindFProperty<FProperty>(USceneComponent::StaticClass(), USceneComponent::GetRelativeLocationPropertyName());
+			ValueProperty = FindField<UProperty>(USceneComponent::StaticClass(), USceneComponent::GetRelativeLocationPropertyName());
 			break;
 		default:
 			break;
@@ -554,7 +543,6 @@ static bool TryAndCreateMaterialInput( UMaterial* UnrealMaterial, EMaterialKind:
 		UnrealMaterial->Normal.Expression = UnrealTextureExpression;
 	}
 
-
 	return true;
 }
 
@@ -570,7 +558,7 @@ UObject* FLevelEditorViewportClient::GetOrCreateMaterialFromTexture( UTexture* U
 	FString MaterialFullName = TextureShortName + "_Mat";
 	FString NewPackageName = FPackageName::GetLongPackagePath( UnrealTexture->GetOutermost()->GetName() ) + TEXT( "/" ) + MaterialFullName;
 	NewPackageName = UPackageTools::SanitizePackageName( NewPackageName );
-	UPackage* Package = CreatePackage( *NewPackageName );
+	UPackage* Package = CreatePackage( NULL, *NewPackageName );
 
 	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>( TEXT( "AssetRegistry" ) );
 
@@ -646,9 +634,6 @@ UObject* FLevelEditorViewportClient::GetOrCreateMaterialFromTexture( UTexture* U
 		TryAndCreateMaterialInput( UnrealMaterial, EMaterialKind::Emissive, EmissiveTexture, UnrealMaterial->EmissiveColor, HSpace, VSpace * 1 );
 		TryAndCreateMaterialInput( UnrealMaterial, EMaterialKind::Normal, NormalTexture, UnrealMaterial->Normal, HSpace, VSpace * 2 );
 	}
-
-	UnrealMaterial->PreEditChange(nullptr);
-	UnrealMaterial->PostEditChange();
 
 	// Notify the asset registry
 	FAssetRegistryModule::AssetCreated( UnrealMaterial );
@@ -877,13 +862,7 @@ bool FLevelEditorViewportClient::AttemptApplyObjAsMaterialToSurface( UObject* Ob
 
 
 		UModel* Model = ModelHitProxy->GetModel();
-		
-		// If our model doesn't exist or is part of a level that is being destroyed
-		if( !Model || (Model && Model->GetOuter()->IsPendingKillOrUnreachable()))
-		{
-			return false;
-		}
-
+	
 		TArray<uint32> SelectedSurfaces;
 
 		bool bDropedOntoSelectedSurface = false;
@@ -891,20 +870,20 @@ bool FLevelEditorViewportClient::AttemptApplyObjAsMaterialToSurface( UObject* Ob
 		const int32 DropY = Cursor.GetCursorPos().Y;
 
 		{
-			uint32 SurfaceIndex;
-			ModelHitProxy->ResolveSurface(View, DropX, DropY, SurfaceIndex);
-			if (SurfaceIndex != INDEX_NONE)
+		uint32 SurfaceIndex;
+		ModelHitProxy->ResolveSurface(View, DropX, DropY, SurfaceIndex);
+		if (SurfaceIndex != INDEX_NONE)
+		{
+			if ((Model->Surfs[SurfaceIndex].PolyFlags & PF_Selected) == 0)
 			{
-				if ((Model->Surfs[SurfaceIndex].PolyFlags & PF_Selected) == 0)
-				{
-					// Surface was not selected so only apply to this surface
-					SelectedSurfaces.Add(SurfaceIndex);
-				}
-				else
-				{
-					bDropedOntoSelectedSurface = true;
-				}
+				// Surface was not selected so only apply to this surface
+				SelectedSurfaces.Add(SurfaceIndex);
 			}
+			else
+			{
+				bDropedOntoSelectedSurface = true;
+			}
+		}
 		}
 
 		if( bDropedOntoSelectedSurface )
@@ -926,11 +905,8 @@ bool FLevelEditorViewportClient::AttemptApplyObjAsMaterialToSurface( UObject* Ob
 			// Apply the material to the specified surface
 			FScopedTransaction Transaction(NSLOCTEXT("UnrealEd", "DragDrop_Transaction_ApplyMaterialToSurface", "Apply Material to Surface"));
 
-			if (ModelHitProxy->GetModelComponent())
-			{
-				// Modify the component so that PostEditUndo can reregister the model after undo
-				ModelHitProxy->GetModelComponent()->Modify();
-			}
+			// Modify the component so that PostEditUndo can reregister the model after undo
+			ModelHitProxy->GetModelComponent()->Modify();
 
 			for( int32 SurfListIndex = 0; SurfListIndex < SelectedSurfaces.Num(); ++SurfListIndex )
 			{
@@ -1326,31 +1302,9 @@ FDropQuery FLevelEditorViewportClient::CanDropObjectsAtCoordinates(int32 MouseX,
 {
 	FDropQuery Result;
 
-	UWorld* CurrentWorld = GetWorld();
-	if ( !ObjectTools::IsAssetValidForPlacing(CurrentWorld, AssetData.ObjectPath.ToString() ) )
+	if ( !ObjectTools::IsAssetValidForPlacing( GetWorld(), AssetData.ObjectPath.ToString() ) )
 	{
 		return Result;
-	}
-
-	if (CurrentWorld)
-	{
-		ULevel* CurrentLevel = CurrentWorld->GetCurrentLevel();
-		UWorld* CurrentLevelOuterWorld = CurrentLevel ? Cast<UWorld>(CurrentLevel->GetOuter()) : nullptr;  
-		UWorld* ReferencingWorld = CurrentLevelOuterWorld ? CurrentLevelOuterWorld : CurrentWorld;
-		FAssetReferenceFilterContext AssetReferenceFilterContext;
-		AssetReferenceFilterContext.ReferencingAssets.Add(FAssetData(ReferencingWorld));
-
-		TSharedPtr<IAssetReferenceFilter> AssetReferenceFilter = GEditor->MakeAssetReferenceFilter(AssetReferenceFilterContext);
-		if (AssetReferenceFilter.IsValid())
-		{
-			FText FailureReason;
-			if (!AssetReferenceFilter->PassesFilter(AssetData, &FailureReason))
-			{
-				Result.bCanDrop = false;
-				Result.HintText = FailureReason;
-				return Result;
-			}
-		}
 	}
 
 	UObject* AssetObj = AssetData.GetAsset();
@@ -1469,7 +1423,7 @@ bool FLevelEditorViewportClient::DropObjectsAtCoordinates(int32 MouseX, int32 Mo
 				TargetMaterialSlot = -1;
 			}
 
-			if (TargetActor != nullptr && !TargetActor->GetWorld()->IsPendingKillOrUnreachable())
+			if (TargetActor != NULL)
 			{
 				FNavigationLockContext LockNavigationUpdates(TargetActor->GetWorld(), ENavigationLockReason::SpawnOnDragEnter, bCreateDropPreview);
 
@@ -1824,8 +1778,6 @@ FLevelEditorViewportClient::FLevelEditorViewportClient(const TSharedPtr<SLevelVi
 
 	// Sign up for notifications about users changing settings.
 	GetMutableDefault<ULevelEditorViewportSettings>()->OnSettingChanged().AddRaw(this, &FLevelEditorViewportClient::HandleViewportSettingChanged);
-
-	FModuleManager::LoadModuleChecked<FLevelEditorModule>("LevelEditor").OnMapChanged().AddRaw(this, &FLevelEditorViewportClient::OnMapChanged);
 }
 
 //
@@ -1838,8 +1790,6 @@ FLevelEditorViewportClient::~FLevelEditorViewportClient()
 	FEditorSupportDelegates::CleanseEditor.RemoveAll(this);
 	FEditorDelegates::PreBeginPIE.RemoveAll(this);
 
-	FModuleManager::LoadModuleChecked<FLevelEditorModule>("LevelEditor").OnMapChanged().RemoveAll(this);
-
 	if(GEngine)
 	{
 		// Remove our move delegate
@@ -1850,13 +1800,9 @@ FLevelEditorViewportClient::~FLevelEditorViewportClient()
 		Layers->RemoveViewFromActorViewVisibility(this);
 
 		GEditor->RemoveLevelViewportClients(this);
-		
-		if (FocusTimerHandle.IsValid())
-		{
-			GEditor->GetTimerManager()->ClearTimer(FocusTimerHandle);
-		}
 
 		GetMutableDefault<ULevelEditorViewportSettings>()->OnSettingChanged().RemoveAll(this);
+
 
 		RemoveReferenceToWorldContext(GEditor->GetEditorWorldContext());
 	}
@@ -1890,6 +1836,8 @@ void FLevelEditorViewportClient::InitializeVisibilityFlags()
 FSceneView* FLevelEditorViewportClient::CalcSceneView(FSceneViewFamily* ViewFamily, const EStereoscopicPass StereoPass)
 {
 	bWasControlledByOtherViewport = false;
+
+	UpdateViewForLockedActor();
 
 	// set all other matching viewports to my location, if the LOD locking is enabled,
 	// unless another viewport already set me this frame (otherwise they fight)
@@ -1997,13 +1945,6 @@ void FLevelEditorViewportClient::OverridePostProcessSettings( FSceneView& View )
 
 bool FLevelEditorViewportClient::ShouldLockPitch() const 
 {
-	// If we have somehow gotten out of the locked rotation
-	if ((GetViewRotation().Pitch < -90.f + KINDA_SMALL_NUMBER || GetViewRotation().Pitch > 90.f - KINDA_SMALL_NUMBER)
-		|| FMath::Abs(GetViewRotation().Roll) > (90.f - KINDA_SMALL_NUMBER))
-	{
-		return false;
-	}
-	// Else use the standard rules
 	return FEditorViewportClient::ShouldLockPitch() || !ModeTools->GetActiveMode(FBuiltinEditorModes::EM_InterpEdit) ;
 }
 
@@ -2019,7 +1960,7 @@ void FLevelEditorViewportClient::BeginCameraMovement(bool bHasMovement)
 			{
 				GEditor->BroadcastBeginCameraMovement(*ActorLock);
 				// consider modification from piloting as relative location changes
-				FProperty* TransformProperty = LevelEditorViewportClientHelper::GetEditTransformProperty(FWidget::WM_Translate);
+				UProperty* TransformProperty = LevelEditorViewportClientHelper::GetEditTransformProperty(FWidget::WM_Translate);
 				if (TransformProperty)
 				{
 					// Create edit property event
@@ -2048,7 +1989,7 @@ void FLevelEditorViewportClient::EndCameraMovement()
 		{
 			GEditor->BroadcastEndCameraMovement(*ActorLock);
 			// Create post edit property change event, consider modification from piloting as relative location changes
-			FProperty* TransformProperty = LevelEditorViewportClientHelper::GetEditTransformProperty(FWidget::WM_Translate);
+			UProperty* TransformProperty = LevelEditorViewportClientHelper::GetEditTransformProperty(FWidget::WM_Translate);
 			FPropertyChangedEvent PropertyChangedEvent(TransformProperty, EPropertyChangeType::ValueSet);
 
 			// Broadcast Post Edit change notification, we can't call PostEditChangeProperty directly on Actor or ActorComponent from here since it wasn't pair with a proper PreEditChange
@@ -2152,13 +2093,13 @@ void FLevelEditorViewportClient::ReceivedFocus(FViewport* InViewport)
 		bReceivedFocusRecently = true;
 
 		// A few frames can pass between receiving focus and processing a click, so we use a timer to track whether we have recently received focus.
+		FTimerHandle DummyHandle;
 		FTimerDelegate ResetFocusReceivedTimer;
 		ResetFocusReceivedTimer.BindLambda([&] ()
 		{
 			bReceivedFocusRecently = false;
-			FocusTimerHandle.Invalidate(); // The timer will only execute once, so we can invalidate now.
 		});
-		GEditor->GetTimerManager()->SetTimer(FocusTimerHandle, ResetFocusReceivedTimer, 0.1f, false);	
+		GEditor->GetTimerManager()->SetTimer(DummyHandle, ResetFocusReceivedTimer, 0.1f, false);
 	}
 
 	FEditorViewportClient::ReceivedFocus(InViewport);
@@ -2177,19 +2118,18 @@ void FLevelEditorViewportClient::LostFocus(FViewport* InViewport)
 //
 void FLevelEditorViewportClient::ProcessClick(FSceneView& View, HHitProxy* HitProxy, FKey Key, EInputEvent Event, uint32 HitX, uint32 HitY)
 {
-	UBrushEditingSubsystem* BrushSubsystem = GEditor->GetEditorSubsystem<UBrushEditingSubsystem>();
 
 	const FViewportClick Click(&View,this,Key,Event,HitX,HitY);
 	if (Click.GetKey() == EKeys::MiddleMouseButton && !Click.IsAltDown() && !Click.IsShiftDown())
 	{
-		LevelViewportClickHandlers::ClickViewport(this, Click);
+		ClickHandlers::ClickViewport(this, Click);
 		return;
 	}
 	if (!ModeTools->HandleClick(this, HitProxy,Click))
 	{
 		if (HitProxy == NULL)
 		{
-			LevelViewportClickHandlers::ClickBackdrop(this,Click);
+			ClickHandlers::ClickBackdrop(this,Click);
 		}
 		else if (HitProxy->IsA(HWidgetAxis::StaticGetType()))
 		{
@@ -2258,16 +2198,14 @@ void FLevelEditorViewportClient::ProcessClick(FSceneView& View, HHitProxy* HitPr
 				const bool bWasDoubleClick = (Click.GetEvent() == IE_DoubleClick);
 
 				const bool bSelectComponent = bActorAlreadySelectedExclusively && bActorIsBlueprintable && (bComponentAlreadySelected != bWasDoubleClick);
-				bool bComponentSelected = false;
 
 				if (bSelectComponent)
 				{
-					bComponentSelected = LevelViewportClickHandlers::ClickComponent(this, ActorHitProxy, Click);
+					ClickHandlers::ClickComponent(this, ActorHitProxy, Click);
 				}
-				
-				if (!bComponentSelected)
+				else
 				{
-					LevelViewportClickHandlers::ClickActor(this, ConsideredActor, Click, true);
+					ClickHandlers::ClickActor(this, ConsideredActor, Click, true);
 				}
 
 				// We clicked an actor, allow the pivot to reposition itself.
@@ -2276,19 +2214,56 @@ void FLevelEditorViewportClient::ProcessClick(FSceneView& View, HHitProxy* HitPr
 		}
 		else if (HitProxy->IsA(HInstancedStaticMeshInstance::StaticGetType()))
 		{
-			LevelViewportClickHandlers::ClickActor(this, ((HInstancedStaticMeshInstance*)HitProxy)->Component->GetOwner(), Click, true);
+			ClickHandlers::ClickActor(this, ((HInstancedStaticMeshInstance*)HitProxy)->Component->GetOwner(), Click, true);
 		}
 		else if (HitProxy->IsA(HBSPBrushVert::StaticGetType()) && ((HBSPBrushVert*)HitProxy)->Brush.IsValid())
 		{
-			LevelViewportClickHandlers::ClickBrushVertex(this,((HBSPBrushVert*)HitProxy)->Brush.Get(),((HBSPBrushVert*)HitProxy)->Vertex,Click);
+			ClickHandlers::ClickBrushVertex(this,((HBSPBrushVert*)HitProxy)->Brush.Get(),((HBSPBrushVert*)HitProxy)->Vertex,Click);
 		}
 		else if (HitProxy->IsA(HStaticMeshVert::StaticGetType()))
 		{
-			LevelViewportClickHandlers::ClickStaticMeshVertex(this,((HStaticMeshVert*)HitProxy)->Actor,((HStaticMeshVert*)HitProxy)->Vertex,Click);
+			ClickHandlers::ClickStaticMeshVertex(this,((HStaticMeshVert*)HitProxy)->Actor,((HStaticMeshVert*)HitProxy)->Vertex,Click);
 		}
-		else if (BrushSubsystem && BrushSubsystem->ProcessClickOnBrushGeometry(this, HitProxy, Click))
+		else if (HitProxy->IsA(HGeomPolyProxy::StaticGetType()))
 		{
-			// Handled by the brush subsystem
+			HGeomPolyProxy* GeomHitProxy = (HGeomPolyProxy*)HitProxy;
+
+			if( GeomHitProxy->GetGeomObject() )
+			{
+				FHitResult CheckResult(ForceInit);
+				FCollisionQueryParams BoxParams(SCENE_QUERY_STAT(ProcessClickTrace), false, GeomHitProxy->GetGeomObject()->ActualBrush);
+				bool bHit = GWorld->SweepSingleByObjectType(CheckResult, Click.GetOrigin(), Click.GetOrigin() + Click.GetDirection() * HALF_WORLD_MAX, FQuat::Identity, FCollisionObjectQueryParams(ECC_WorldStatic), FCollisionShape::MakeBox(FVector(1.f)), BoxParams);
+
+				if(bHit)
+				{
+					GEditor->UnsnappedClickLocation = CheckResult.Location;
+					GEditor->ClickLocation = CheckResult.Location;
+					GEditor->ClickPlane = FPlane(CheckResult.Location, CheckResult.Normal);
+				}
+
+				if(!ClickHandlers::ClickActor(this, GeomHitProxy->GetGeomObject()->ActualBrush, Click, false))
+				{
+					ClickHandlers::ClickGeomPoly(this, GeomHitProxy, Click);
+				}
+
+				Invalidate(true, true);
+			}
+		}
+		else if (HitProxy->IsA(HGeomEdgeProxy::StaticGetType()))
+		{
+			HGeomEdgeProxy* GeomHitProxy = (HGeomEdgeProxy*)HitProxy;
+
+			if( GeomHitProxy->GetGeomObject() !=nullptr )
+			{
+				if(!ClickHandlers::ClickGeomEdge(this, GeomHitProxy, Click))
+				{
+					ClickHandlers::ClickActor(this, GeomHitProxy->GetGeomObject()->ActualBrush, Click, true);
+				}
+			}
+		}
+		else if (HitProxy->IsA(HGeomVertexProxy::StaticGetType()))
+		{
+			ClickHandlers::ClickGeomVertex(this,(HGeomVertexProxy*)HitProxy,Click);
 		}
 		else if (HitProxy->IsA(HModel::StaticGetType()))
 		{
@@ -2301,12 +2276,12 @@ void FLevelEditorViewportClient::ProcessClick(FSceneView& View, HHitProxy* HitPr
 			uint32 SurfaceIndex = INDEX_NONE;
 			if(ModelHit->ResolveSurface(SceneView,HitX,HitY,SurfaceIndex))
 			{
-				LevelViewportClickHandlers::ClickSurface(this,ModelHit->GetModel(),SurfaceIndex,Click);
+				ClickHandlers::ClickSurface(this,ModelHit->GetModel(),SurfaceIndex,Click);
 			}
 		}
 		else if (HitProxy->IsA(HLevelSocketProxy::StaticGetType()))
 		{
-			LevelViewportClickHandlers::ClickLevelSocket(this, HitProxy, Click);
+			ClickHandlers::ClickLevelSocket(this, HitProxy, Click);
 		}
 	}
 }
@@ -2663,7 +2638,7 @@ bool FLevelEditorViewportClient::InputWidgetDelta(FViewport* InViewport, EAxisLi
 				}
 				else
 				{
-					FSnappingUtils::SnapDragLocationToNearestVertex( ModeTools->PivotLocation, Drag, this, true );
+					FSnappingUtils::SnapDragLocationToNearestVertex( ModeTools->PivotLocation, Drag, this );
 					GUnrealEd->SetPivotMovedIndependently(true);
 					bOnlyMovedPivot = true;
 				}
@@ -2803,7 +2778,7 @@ bool FLevelEditorViewportClient::InputKey(FViewport* InViewport, int32 Controlle
 	FSceneView* View = CalcSceneView( &ViewFamily );
 
 	// Compute the click location.
-	if ( InputState.IsMouseButtonEvent() && InputState.IsAnyMouseButtonDown() )
+	if ( InputState.IsAnyMouseButtonDown() )
 	{
 		const FViewportCursorLocation Cursor(View, this, HitX, HitY);
 		const FActorPositionTraceResult TraceResult = FActorPositioning::TraceWorldForPositionWithDefault(Cursor, *View);
@@ -2830,7 +2805,7 @@ bool FLevelEditorViewportClient::InputKey(FViewport* InViewport, int32 Controlle
 			{
 				FText TrackingDescription = FText::Format(LOCTEXT("RotatationShortcut", "Rotate Atmosphere Light {0}"), LightIndex);
 				TrackingTransaction.Begin(TrackingDescription, SelectedSunLight->GetOwner());
-				AddRealtimeOverride(true, LOCTEXT("RealtimeOverrideMessage_AtmospherelLight", "Atmosphere Light Control"));// The first time, save that setting for RestoreRealtime
+				SetRealtime(true, true); // The first time, save that setting for RestoreRealtime
 			}
 			bCurrentUserControl = true;
 			UserIsControllingAtmosphericLightTimer = 3.0f; // Keep the widget open for a few seconds even when not tweaking the sun light
@@ -2851,13 +2826,8 @@ bool FLevelEditorViewportClient::InputKey(FViewport* InViewport, int32 Controlle
 	}
 	if (bUserIsControllingAtmosphericLight0 || bUserIsControllingAtmosphericLight1)
 	{
-		UDirectionalLightComponent* SelectedSunLight = GetAtmosphericLight(bUserIsControllingAtmosphericLight0 ? 0 : 1, ViewportWorld);
-		if (SelectedSunLight)
-		{
-			NotifyAtmosphericLightHasMoved(*SelectedSunLight, true);
-		}
 		TrackingTransaction.End();					// End undo/redo translation
-		RemoveRealtimeOverride(LOCTEXT("RealtimeOverrideMessage_AtmospherelLight", "Atmosphere Light Control"));	// Restore previous real-time state
+		RestoreRealtime(true);						// Restore previous real-time state
 	}
 	bUserIsControllingAtmosphericLight0 = false;	// Disable all atmospheric light controls
 	bUserIsControllingAtmosphericLight1 = false;
@@ -2932,7 +2902,7 @@ void FLevelEditorViewportClient::TrackingStarted( const FInputEventState& InInpu
 
 	// Create edit property event
 	FEditPropertyChain PropertyChain;
-	FProperty* TransformProperty = LevelEditorViewportClientHelper::GetEditTransformProperty(GetWidgetMode());
+	UProperty* TransformProperty = LevelEditorViewportClientHelper::GetEditTransformProperty(GetWidgetMode());
 	if (TransformProperty)
 	{
 		PropertyChain.AddHead(TransformProperty);
@@ -2965,7 +2935,8 @@ void FLevelEditorViewportClient::TrackingStarted( const FInputEventState& InInpu
 	{
 		for (FSelectionIterator It(GEditor->GetSelectedActorIterator()); It && !bIsTrackingBrushModification; ++It)
 		{
-			AActor* Actor = CastChecked<AActor>(*It);
+			AActor* Actor = static_cast<AActor*>( *It );
+			checkSlow(Actor->IsA(AActor::StaticClass()));
 
 			if (bIsDraggingWidget)
 			{
@@ -3123,36 +3094,87 @@ void FLevelEditorViewportClient::TrackingStopped()
 	if( bDidAnythingActuallyChange && MouseDeltaTracker->HasReceivedDelta() )
 	{
 		// Create post edit property change event
-		FProperty* TransformProperty = LevelEditorViewportClientHelper::GetEditTransformProperty(GetWidgetMode());
+		UProperty* TransformProperty = LevelEditorViewportClientHelper::GetEditTransformProperty(GetWidgetMode());
 		FPropertyChangedEvent PropertyChangedEvent(TransformProperty, EPropertyChangeType::ValueSet);
-
-		// Move components and actors
-		PRAGMA_DISABLE_DEPRECATION_WARNINGS
-		if (!LegacyTrackingStoppedForSelectedComponentsAndActors(PropertyChangedEvent))
-		PRAGMA_ENABLE_DEPRECATION_WARNINGS
+		
+		for (FSelectionIterator It(GEditor->GetSelectedActorIterator()); It; ++It) 
 		{
-			TArray<USceneComponent*> ComponentsToMove;
-			TArray<AActor*> ActorsToMove;
-			GetSelectedActorsAndComponentsForMove(ActorsToMove, ComponentsToMove);
+			AActor* Actor = static_cast<AActor*>( *It );
+			checkSlow(Actor->IsA(AActor::StaticClass()));
 
-			for (USceneComponent* Component : ComponentsToMove)
+			// Verify that the actor is in the same world as the viewport before moving it.
+			if (GEditor->PlayWorld)
 			{
-				// Broadcast Post Edit change notification, we can't call PostEditChangeProperty directly on Actor or ActorComponent from here since it wasn't pair with a proper PreEditChange
-				FCoreUObjectDelegates::OnObjectPropertyChanged.Broadcast(Component, PropertyChangedEvent);
-				
-				Component->PostEditComponentMove(true);
-				GEditor->BroadcastEndObjectMovement(*Component);
+				if (bIsSimulateInEditorViewport)
+				{
+					// If the Actor's outer (level) outer (world) is not the PlayWorld then it cannot be moved in this viewport.
+					if (!( GEditor->PlayWorld == Actor->GetOuter()->GetOuter() ))
+					{
+						continue;
+					}
+				}
+				else if (!( GEditor->EditorWorld == Actor->GetOuter()->GetOuter() ))
+				{
+					continue;
+				}
 			}
 
-			for (AActor* Actor : ActorsToMove)
+			bool bComponentsMoved = false;
+			if (GEditor->GetSelectedComponentCount() > 0)
+			{
+				USelection* ComponentSelection = GEditor->GetSelectedComponents();
+
+				// Only move the parent-most component(s) that are selected 
+				// Otherwise, if both a parent and child are selected and the delta is applied to both, the child will actually move 2x delta
+				TInlineComponentArray<USceneComponent*> ComponentsToMove;
+				for (FSelectedEditableComponentIterator EditableComponentIt(GEditor->GetSelectedEditableComponentIterator()); EditableComponentIt; ++EditableComponentIt)
+				{
+					USceneComponent* SceneComponent = Cast<USceneComponent>(*EditableComponentIt);
+					if (SceneComponent)
+					{
+						// Check to see if any parent is selected
+						bool bParentAlsoSelected = false;
+						USceneComponent* Parent = SceneComponent->GetAttachParent();
+						while (Parent != nullptr)
+						{
+							if (ComponentSelection->IsSelected(Parent))
+							{
+								bParentAlsoSelected = true;
+								break;
+							}
+
+							Parent = Parent->GetAttachParent();
+						}
+
+						// If no parent of this component is also in the selection set, move it!
+						if (!bParentAlsoSelected)
+						{
+							ComponentsToMove.Add(SceneComponent);
+						}
+					}
+				}
+
+				// Now actually apply the delta to the appropriate component(s)
+				for (USceneComponent* SceneComp : ComponentsToMove)
+				{
+					// Broadcast Post Edit change notification, we can't call PostEditChangeProperty directly on Actor or ActorComponent from here since it wasn't pair with a proper PreEditChange
+					FCoreUObjectDelegates::OnObjectPropertyChanged.Broadcast(SceneComp, PropertyChangedEvent);
+					SceneComp->PostEditComponentMove(true);
+
+					GEditor->BroadcastEndObjectMovement(*SceneComp);
+
+					bComponentsMoved = true;
+				}
+			}
+				
+			if (!bComponentsMoved)
 			{
 				// Broadcast Post Edit change notification, we can't call PostEditChangeProperty directly on Actor or ActorComponent from here since it wasn't pair with a proper PreEditChange
 				FCoreUObjectDelegates::OnObjectPropertyChanged.Broadcast(Actor, PropertyChangedEvent);
 				Actor->PostEditMove(true);
+	
 				GEditor->BroadcastEndObjectMovement(*Actor);
 			}
-
-			GEditor->BroadcastActorsMoved(ActorsToMove);
 		}
 
 		if (!GUnrealEd->IsPivotMovedIndependently())
@@ -3212,341 +3234,10 @@ void FLevelEditorViewportClient::HandleViewportSettingChanged(FName PropertyName
 	}
 }
 
-void FLevelEditorViewportClient::OnMapChanged(UWorld* InWorld, EMapChangeType MapChangeType)
-{
-	if (InWorld != GetWorld())
-	{
-		return;
-	}
-
-	bDisableInput = (MapChangeType == EMapChangeType::TearDownWorld);
-}
-
 void FLevelEditorViewportClient::OnActorMoved(AActor* InActor)
 {
 	// Update the cameras from their locked actor (if any)
 	UpdateLockedActorViewport(InActor, false);
-}
-
-void FLevelEditorViewportClient::GetSelectedActorsAndComponentsForMove(TArray<AActor*>& OutActorsToMove, TArray<USceneComponent*>& OutComponentsToMove) const
-{
-	OutActorsToMove.Reset();
-	OutComponentsToMove.Reset();
-
-	// Get the list of parent-most component(s) that are selected
-	if (GEditor->GetSelectedComponentCount() > 0)
-	{
-		// Otherwise, if both a parent and child are selected and the delta is applied to both, the child will actually move 2x delta
-		for (FSelectedEditableComponentIterator EditableComponentIt(GEditor->GetSelectedEditableComponentIterator()); EditableComponentIt; ++EditableComponentIt)
-		{
-			USceneComponent* SceneComponent = Cast<USceneComponent>(*EditableComponentIt);
-			if (!SceneComponent)
-			{
-				continue;
-			}
-
-			// Check to see if any parent is selected
-			bool bParentAlsoSelected = false;
-			USceneComponent* Parent = SceneComponent->GetAttachParent();
-			while (Parent != nullptr)
-			{
-				if (Parent->IsSelected())
-				{
-					bParentAlsoSelected = true;
-					break;
-				}
-
-				Parent = Parent->GetAttachParent();
-			}
-
-			AActor* ComponentOwner = SceneComponent->GetOwner();
-			if (!CanMoveActorInViewport(ComponentOwner))
-			{
-				continue;
-			}
-
-			const bool bIsRootComponent = (ComponentOwner && (ComponentOwner->GetRootComponent() == SceneComponent));
-			if (bIsRootComponent)
-			{
-				// If it is a root component, use the parent actor instead
-				OutActorsToMove.Add(ComponentOwner);
-			}
-			else if (!bParentAlsoSelected)
-			{
-				// If no parent of this component is also in the selection set, move it
-				OutComponentsToMove.Add(SceneComponent);
-			}
-		}
-	}
-
-	// Skip gathering selected actors if we had a valid component selection
-	if (OutComponentsToMove.Num() || OutActorsToMove.Num())
-	{
-		return;
-	}
-	
-	for (FSelectionIterator It(GEditor->GetSelectedActorIterator()); It; ++It)
-	{
-		AActor* Actor = CastChecked<AActor>(*It);
-
-		// If the root component was selected, this actor is already accounted for
-		USceneComponent* RootComponent = Actor->GetRootComponent();
-		if (RootComponent && RootComponent->IsSelected())
-		{
-			continue;
-		}
-
-		if (!CanMoveActorInViewport(Actor))
-		{
-			continue;
-		}
-
-		OutActorsToMove.Add(Actor);
-	}
-}
-
-bool FLevelEditorViewportClient::CanMoveActorInViewport(const AActor* InActor) const
-{
-	if (!GEditor || !InActor)
-	{
-		return false;
-	}
-
-	// The actor cannot be location locked
-	if (InActor->bLockLocation)
-	{
-		return false;
-	}
-
-	// The actor needs to be in the current viewport world
-	if (GEditor->PlayWorld)
-	{
-		if (bIsSimulateInEditorViewport)
-		{
-			// If the Actor's outer (level) outer (world) is not the PlayWorld then it cannot be moved in this viewport.
-			if (!(GEditor->PlayWorld == InActor->GetOuter()->GetOuter()))
-			{
-				return false;
-			}
-		}
-		else if (!(GEditor->EditorWorld == InActor->GetOuter()->GetOuter()))
-		{
-			return false;
-		}
-	}
-
-	return true;
-}
-
-bool FLevelEditorViewportClient::LegacyTrackingStoppedForSelectedComponentsAndActors(FPropertyChangedEvent& PropertyChangedEvent)
-{
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	if (!GetDefault<ULevelEditorViewportSettings>()->bUseLegacyPostEditBehavior)
-	{
-		return false;
-	}
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
-	TArray<AActor*> MovedActors;
-
-	for (FSelectionIterator It(GEditor->GetSelectedActorIterator()); It; ++It)
-	{
-		AActor* Actor = static_cast<AActor*>(*It);
-		checkSlow(Actor->IsA(AActor::StaticClass()));
-
-		// Verify that the actor is in the same world as the viewport before moving it.
-		if (GEditor->PlayWorld)
-		{
-			if (bIsSimulateInEditorViewport)
-			{
-				// If the Actor's outer (level) outer (world) is not the PlayWorld then it cannot be moved in this viewport.
-				if (!(GEditor->PlayWorld == Actor->GetOuter()->GetOuter()))
-				{
-					continue;
-				}
-			}
-			else if (!(GEditor->EditorWorld == Actor->GetOuter()->GetOuter()))
-			{
-				continue;
-			}
-		}
-
-		bool bComponentsMoved = false;
-		if (GEditor->GetSelectedComponentCount() > 0)
-		{
-			USelection* ComponentSelection = GEditor->GetSelectedComponents();
-
-			// Only move the parent-most component(s) that are selected 
-			// Otherwise, if both a parent and child are selected and the delta is applied to both, the child will actually move 2x delta
-			TInlineComponentArray<USceneComponent*> ComponentsToMove;
-			for (FSelectedEditableComponentIterator EditableComponentIt(GEditor->GetSelectedEditableComponentIterator()); EditableComponentIt; ++EditableComponentIt)
-			{
-				USceneComponent* SceneComponent = Cast<USceneComponent>(*EditableComponentIt);
-				if (SceneComponent)
-				{
-					// Check to see if any parent is selected
-					bool bParentAlsoSelected = false;
-					USceneComponent* Parent = SceneComponent->GetAttachParent();
-					while (Parent != nullptr)
-					{
-						if (ComponentSelection->IsSelected(Parent))
-						{
-							bParentAlsoSelected = true;
-							break;
-						}
-
-						Parent = Parent->GetAttachParent();
-					}
-
-					// If no parent of this component is also in the selection set, move it!
-					if (!bParentAlsoSelected)
-					{
-						ComponentsToMove.Add(SceneComponent);
-					}
-				}
-			}
-
-			// Now actually apply the delta to the appropriate component(s)
-			for (USceneComponent* SceneComp : ComponentsToMove)
-			{
-				// Broadcast Post Edit change notification, we can't call PostEditChangeProperty directly on Actor or ActorComponent from here since it wasn't pair with a proper PreEditChange
-				FCoreUObjectDelegates::OnObjectPropertyChanged.Broadcast(SceneComp, PropertyChangedEvent);
-				SceneComp->PostEditComponentMove(true);
-
-				GEditor->BroadcastEndObjectMovement(*SceneComp);
-
-				bComponentsMoved = true;
-			}
-		}
-
-		if (!bComponentsMoved)
-		{
-			// Broadcast Post Edit change notification, we can't call PostEditChangeProperty directly on Actor or ActorComponent from here since it wasn't pair with a proper PreEditChange
-			FCoreUObjectDelegates::OnObjectPropertyChanged.Broadcast(Actor, PropertyChangedEvent);
-			Actor->PostEditMove(true);
-
-			MovedActors.Add(Actor);
-
-			GEditor->BroadcastEndObjectMovement(*Actor);
-		}
-	}
-
-	GEditor->BroadcastActorsMoved(MovedActors);
-
-	return true;
-}
-
-bool FLevelEditorViewportClient::LegacyApplyDeltasForSelectedComponentsAndActors(const FVector& InDrag, const FRotator& InRot, const FVector& ModifiedScale)
-{
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	if (!GetDefault<ULevelEditorViewportSettings>()->bUseLegacyPostEditBehavior)
-	{
-		return false;
-	}
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
-	TArray<AGroupActor*> ActorGroups;
-
-	// Apply the deltas to any selected actors.
-	for ( FSelectionIterator SelectedActorIt( GEditor->GetSelectedActorIterator() ) ; SelectedActorIt ; ++SelectedActorIt )
-	{
-		AActor* Actor = static_cast<AActor*>( *SelectedActorIt );
-		checkSlow( Actor->IsA(AActor::StaticClass()) );
-
-		// Verify that the actor is in the same world as the viewport before moving it.
-		if(GEditor->PlayWorld)
-		{
-			if(bIsSimulateInEditorViewport)
-			{
-				// If the Actor's outer (level) outer (world) is not the PlayWorld then it cannot be moved in this viewport.
-				if( !(GEditor->PlayWorld == Actor->GetWorld()) )
-				{
-					continue;
-				}
-			}
-			else if( !(GEditor->EditorWorld == Actor->GetWorld()) )
-			{
-				continue;
-			}
-		}
-
-		if ( !Actor->bLockLocation )
-		{
-			if (GEditor->GetSelectedComponentCount() > 0)
-			{
-				USelection* ComponentSelection = GEditor->GetSelectedComponents();
-
-				// Only move the parent-most component(s) that are selected 
-				// Otherwise, if both a parent and child are selected and the delta is applied to both, the child will actually move 2x delta
-				TInlineComponentArray<USceneComponent*> ComponentsToMove;
-				for (FSelectedEditableComponentIterator EditableComponentIt(GEditor->GetSelectedEditableComponentIterator()); EditableComponentIt; ++EditableComponentIt)
-				{
-					USceneComponent* SelectedComponent = Cast<USceneComponent>(*EditableComponentIt);
-					if (SelectedComponent)
-					{
-						// Check to see if any parent is selected
-						bool bParentAlsoSelected = false;
-						USceneComponent* Parent = SelectedComponent->GetAttachParent();
-						while (Parent != nullptr)
-						{
-							if (ComponentSelection->IsSelected(Parent))
-							{
-								bParentAlsoSelected = true;
-								break;
-							}
-
-							Parent = Parent->GetAttachParent();
-						}
-
-						// If no parent of this component is also in the selection set, move it!
-						if (!bParentAlsoSelected)
-						{
-							ComponentsToMove.Add(SelectedComponent);
-						}
-					}	
-				}
-
-				// Now actually apply the delta to the appropriate component(s)
-				for (USceneComponent* SceneComp : ComponentsToMove)
-				{
-					ApplyDeltaToComponent(SceneComp, InDrag, InRot, ModifiedScale);
-				}
-			}
-			else
-			{
-				AGroupActor* ParentGroup = AGroupActor::GetRootForActor(Actor, true, true);
-				if (ParentGroup && UActorGroupingUtils::IsGroupingActive())
-				{
-					ActorGroups.AddUnique(ParentGroup);
-				}
-				else
-				{
-					// Finally, verify that no actor in the parent hierarchy is also selected
-					bool bHasParentInSelection = false;
-					AActor* ParentActor = Actor->GetAttachParentActor();
-					while (ParentActor != NULL && !bHasParentInSelection)
-					{
-						if (ParentActor->IsSelected())
-						{
-							bHasParentInSelection = true;
-						}
-						ParentActor = ParentActor->GetAttachParentActor();
-					}
-					if (!bHasParentInSelection)
-					{
-						ApplyDeltaToActor(Actor, InDrag, InRot, ModifiedScale);
-					}
-				}
-			}
-		}
-	}
-	AGroupActor::RemoveSubGroupsFromArray(ActorGroups);
-	for(int32 ActorGroupsIndex=0; ActorGroupsIndex<ActorGroups.Num(); ++ActorGroupsIndex)
-	{
-		ActorGroups[ActorGroupsIndex]->GroupApplyDelta(this, InDrag, InRot, ModifiedScale);
-	}
-
-	return true;
 }
 
 void FLevelEditorViewportClient::NudgeSelectedObjects( const struct FInputEventState& InputState )
@@ -4049,40 +3740,106 @@ void FLevelEditorViewportClient::ApplyDeltaToActors(const FVector& InDrag,
 
 	// Transact the actors.
 	GEditor->NoteActorMovement();
-		
-	// Move Components and Actors
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	if (!LegacyApplyDeltasForSelectedComponentsAndActors(InDrag, InRot, ModifiedScale))
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-	{
-		TArray<USceneComponent*> ComponentsToMove;
-		TArray<AActor*> ActorsToMove;
-		GetSelectedActorsAndComponentsForMove(ActorsToMove, ComponentsToMove);
 
-		for (USceneComponent* SceneComp : ComponentsToMove)
+	TArray<AGroupActor*> ActorGroups;
+
+	// Apply the deltas to any selected actors.
+	for ( FSelectionIterator SelectedActorIt( GEditor->GetSelectedActorIterator() ) ; SelectedActorIt ; ++SelectedActorIt )
+	{
+		AActor* Actor = static_cast<AActor*>( *SelectedActorIt );
+		checkSlow( Actor->IsA(AActor::StaticClass()) );
+
+		// Verify that the actor is in the same world as the viewport before moving it.
+		if(GEditor->PlayWorld)
 		{
-			ApplyDeltaToComponent(SceneComp, InDrag, InRot, ModifiedScale);
+			if(bIsSimulateInEditorViewport)
+			{
+				// If the Actor's outer (level) outer (world) is not the PlayWorld then it cannot be moved in this viewport.
+				if( !(GEditor->PlayWorld == Actor->GetWorld()) )
+				{
+					continue;
+				}
+			}
+			else if( !(GEditor->EditorWorld == Actor->GetWorld()) )
+			{
+				continue;
+			}
 		}
 
-		TArray<AGroupActor*> ActorGroups;
-		for (AActor* Actor : ActorsToMove)
+		if ( !Actor->bLockLocation )
 		{
-			AGroupActor* ParentGroup = AGroupActor::GetRootForActor(Actor, true, true);
-			if (ParentGroup && UActorGroupingUtils::IsGroupingActive())
+			if (GEditor->GetSelectedComponentCount() > 0)
 			{
-				ActorGroups.AddUnique(ParentGroup);
+				USelection* ComponentSelection = GEditor->GetSelectedComponents();
+
+				// Only move the parent-most component(s) that are selected 
+				// Otherwise, if both a parent and child are selected and the delta is applied to both, the child will actually move 2x delta
+				TInlineComponentArray<USceneComponent*> ComponentsToMove;
+				for (FSelectedEditableComponentIterator EditableComponentIt(GEditor->GetSelectedEditableComponentIterator()); EditableComponentIt; ++EditableComponentIt)
+				{
+					USceneComponent* SelectedComponent = Cast<USceneComponent>(*EditableComponentIt);
+					if (SelectedComponent)
+					{
+						// Check to see if any parent is selected
+						bool bParentAlsoSelected = false;
+						USceneComponent* Parent = SelectedComponent->GetAttachParent();
+						while (Parent != nullptr)
+						{
+							if (ComponentSelection->IsSelected(Parent))
+							{
+								bParentAlsoSelected = true;
+								break;
+							}
+
+							Parent = Parent->GetAttachParent();
+						}
+
+						// If no parent of this component is also in the selection set, move it!
+						if (!bParentAlsoSelected)
+						{
+							ComponentsToMove.Add(SelectedComponent);
+						}
+					}	
+				}
+
+				// Now actually apply the delta to the appropriate component(s)
+				for (USceneComponent* SceneComp : ComponentsToMove)
+				{
+					ApplyDeltaToComponent(SceneComp, InDrag, InRot, ModifiedScale);
+				}
 			}
 			else
 			{
-				ApplyDeltaToActor(Actor, InDrag, InRot, ModifiedScale);
+				AGroupActor* ParentGroup = AGroupActor::GetRootForActor(Actor, true, true);
+				if (ParentGroup && UActorGroupingUtils::IsGroupingActive())
+				{
+					ActorGroups.AddUnique(ParentGroup);
+				}
+				else
+				{
+					// Finally, verify that no actor in the parent hierarchy is also selected
+					bool bHasParentInSelection = false;
+					AActor* ParentActor = Actor->GetAttachParentActor();
+					while (ParentActor != NULL && !bHasParentInSelection)
+					{
+						if (ParentActor->IsSelected())
+						{
+							bHasParentInSelection = true;
+						}
+						ParentActor = ParentActor->GetAttachParentActor();
+					}
+					if (!bHasParentInSelection)
+					{
+						ApplyDeltaToActor(Actor, InDrag, InRot, ModifiedScale);
+					}
+				}
 			}
 		}
-
-		AGroupActor::RemoveSubGroupsFromArray(ActorGroups);
-		for (AGroupActor* ActorGroup : ActorGroups)
-		{
-			ActorGroup->GroupApplyDelta(this, InDrag, InRot, ModifiedScale);
-		}
+	}
+	AGroupActor::RemoveSubGroupsFromArray(ActorGroups);
+	for(int32 ActorGroupsIndex=0; ActorGroupsIndex<ActorGroups.Num(); ++ActorGroupsIndex)
+	{
+		ActorGroups[ActorGroupsIndex]->GroupApplyDelta(this, InDrag, InRot, ModifiedScale);
 	}
 }
 
@@ -4435,16 +4192,11 @@ void FLevelEditorViewportClient::MouseMove(FViewport* InViewport, int32 x, int32
 			LightRotation = FQuat(UpVector, float(mouseDeltaX)*0.01f) * LightRotation;
 			// Light Zenith rotation (pitch)
 			FVector PitchRotationAxis = FVector::CrossProduct(LightRotation.GetForwardVector(), UpVector);
-			if (FMath::Abs(FVector::DotProduct(LightRotation.GetForwardVector(), UpVector)) > (1.0f - KINDA_SMALL_NUMBER))
-			{
-				PitchRotationAxis = FVector::CrossProduct(LightRotation.GetForwardVector(), FVector(1, 0, 0));
-			}
 			PitchRotationAxis.Normalize();
 			LightRotation = FQuat(PitchRotationAxis, float(mouseDeltaY)*0.01f) * LightRotation;
 
 			ComponentTransform.SetRotation(LightRotation);
 			SelectedAtmosphericLight->SetWorldTransform(ComponentTransform);
-			NotifyAtmosphericLightHasMoved(*SelectedAtmosphericLight, false);
 
 			UserControlledAtmosphericLightMatrix = ComponentTransform;
 			UserControlledAtmosphericLightMatrix.NormalizeRotation();
@@ -4887,7 +4639,7 @@ void FLevelEditorViewportClient::DrawBrushDetails(const FSceneView* View, FPrimi
 				PDI->RegisterDynamicResource(MaterialProxy);
 
 				// Flush the mesh triangles.
-				MeshBuilder.Draw(PDI, Brush->ActorToWorld().ToMatrixWithScale(), MaterialProxy, SDPG_World, false, true, FHitProxyId::InvisibleHitProxyId);
+				MeshBuilder.Draw(PDI, Brush->ActorToWorld().ToMatrixWithScale(), MaterialProxy, SDPG_World, 0.f);
 			}
 		}
 	}
@@ -4938,10 +4690,9 @@ void FLevelEditorViewportClient::UpdateAudioListener(const FSceneView& View)
 
 	if (ViewportWorld)
 	{
-		if (FAudioDevice* AudioDevice = ViewportWorld->GetAudioDeviceRaw())
+		if (FAudioDevice* AudioDevice = ViewportWorld->GetAudioDevice())
 		{
 			FVector ViewLocation = GetViewLocation();
-			FRotator ViewRotation = GetViewRotation();
 
 			const bool bStereoRendering = GEngine->XRSystem.IsValid() && GEngine->IsStereoscopic3D( Viewport );
 			if( bStereoRendering && GEngine->XRSystem->IsHeadTrackingAllowed() )
@@ -4953,9 +4704,9 @@ void FLevelEditorViewportClient::UpdateAudioListener(const FSceneView& View)
 				// NOTE: The RoomSpaceHeadLocation has already been adjusted for WorldToMetersScale
 				const FVector WorldSpaceHeadLocation = GetViewLocation() + GetViewRotation().RotateVector( RoomSpaceHeadLocation );
 				ViewLocation = WorldSpaceHeadLocation;
-
-				ViewRotation = (ViewRotation.Quaternion() * RoomSpaceHeadOrientation).Rotator();
 			}
+
+			const FRotator& ViewRotation = GetViewRotation();
 
 			FTransform ListenerTransform(ViewRotation);
 			ListenerTransform.SetLocation(ViewLocation);
@@ -5396,16 +5147,16 @@ bool FLevelEditorViewportClient::GetPivotForOrbit(FVector& Pivot) const
 			}
 			else
 			{
-			// It's possible that it doesn't have a bounding box, so just take its position in that case
-			FBox ComponentBBox = Component->Bounds.GetBox();
-			if (ComponentBBox.GetVolume() != 0)
-			{
-				BoundingBox += ComponentBBox;
-			}
-			else
-			{
-				BoundingBox += Component->GetComponentLocation();
-			}
+				// It's possible that it doesn't have a bounding box, so just take its position in that case
+				FBox ComponentBBox = Component->Bounds.GetBox();
+				if (ComponentBBox.GetVolume() != 0)
+				{
+					BoundingBox += ComponentBBox;
+				}
+				else
+				{
+					BoundingBox += Component->GetComponentLocation();
+				}
 			}
 			++NumValidComponents;
 		}
@@ -5439,7 +5190,7 @@ bool FLevelEditorViewportClient::GetPivotForOrbit(FVector& Pivot) const
 					}
 					else
 					{
-					BoundingBox += PrimitiveComponent->Bounds.GetBox();
+						BoundingBox += PrimitiveComponent->Bounds.GetBox();
 					}
 					++NumSelectedActors;
 				}
@@ -5457,3 +5208,10 @@ bool FLevelEditorViewportClient::GetPivotForOrbit(FVector& Pivot) const
 }
 
 #undef LOCTEXT_NAMESPACE
+
+// Doxygen cannot parse these correctly since the declarations are made in Editor, not UnrealEd
+#if !UE_BUILD_DOCS
+IMPLEMENT_HIT_PROXY(HGeomPolyProxy,HHitProxy);
+IMPLEMENT_HIT_PROXY(HGeomEdgeProxy,HHitProxy);
+IMPLEMENT_HIT_PROXY(HGeomVertexProxy,HHitProxy);
+#endif

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MagicLeapPlanesFunctionLibrary.h"
 #include "MagicLeapPlanesModule.h"
@@ -18,35 +18,14 @@ bool UMagicLeapPlanesFunctionLibrary::IsTrackerValid()
 	return GetMagicLeapPlanesModule().IsTrackerValid();
 }
 
-FGuid UMagicLeapPlanesFunctionLibrary::AddPersistentQuery(EMagicLeapPlaneQueryType PersistentQueryType)
+bool UMagicLeapPlanesFunctionLibrary::PlanesQueryBeginAsync(const FMagicLeapPlanesQuery& InQuery, const FMagicLeapPlanesResultDelegate& InResultDelegate)
 {
-	return GetMagicLeapPlanesModule().AddQuery(PersistentQueryType);
-}
-
-bool UMagicLeapPlanesFunctionLibrary::RemovePersistentQuery(FGuid Handle)
-{
-	return GetMagicLeapPlanesModule().RemoveQuery(Handle);
-}
-
-bool UMagicLeapPlanesFunctionLibrary::PlanesQueryBeginAsync(const FMagicLeapPlanesQuery& Query, const FMagicLeapPlanesResultDelegate& ResultDelegate)
-{
-	FMagicLeapPlanesResultDelegateMulti ResultDelegateMulti;
-	ResultDelegateMulti.Add(ResultDelegate);
+	FMagicLeapPlanesResultDelegateMulti ResultDelegate;
+	ResultDelegate.Add(InResultDelegate);
 
 	return GetMagicLeapPlanesModule().QueryBeginAsync(
-		Query,
-		ResultDelegateMulti);
-}
-
-bool UMagicLeapPlanesFunctionLibrary::PlanesPersistentQueryBeginAsync(const FMagicLeapPlanesQuery& Query, const FGuid& Handle, const FMagicLeapPersistentPlanesResultDelegate& ResultDelegate)
-{
-	FMagicLeapPersistentPlanesResultDelegateMulti ResultDelegateMulti;
-	ResultDelegateMulti.Add(ResultDelegate);
-
-	return GetMagicLeapPlanesModule().PersistentQueryBeginAsync(
-		Query,
-		Handle,
-		ResultDelegateMulti);
+		InQuery,
+		ResultDelegate);
 }
 
 FTransform UMagicLeapPlanesFunctionLibrary::GetContentScale(const AActor* ContentActor, const FMagicLeapPlaneResult& PlaneResult)

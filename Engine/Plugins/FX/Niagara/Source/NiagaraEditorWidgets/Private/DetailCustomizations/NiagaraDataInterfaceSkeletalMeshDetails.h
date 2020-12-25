@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,7 +14,6 @@ class FName;
 class FNiagaraDetailSourcedArrayBuilder;
 class UNiagaraDataInterfaceSkeletalMesh;
 class USkeletalMesh;
-class SNiagaraNamePropertySelector;
 
 /** Details customization for Niagara skeletal mesh data interface. */
 class FNiagaraDataInterfaceSkeletalMeshDetails : public FNiagaraDataInterfaceDetailsBase
@@ -35,7 +34,6 @@ private:
 	TSharedPtr<FNiagaraDetailSourcedArrayBuilder> RegionsBuilder;
 	TSharedPtr<FNiagaraDetailSourcedArrayBuilder> BonesBuilder;
 	TSharedPtr<FNiagaraDetailSourcedArrayBuilder> SocketsBuilder;
-	TSharedPtr<SNiagaraNamePropertySelector> ExcludeBoneWidget;
 	IDetailLayoutBuilder* LayoutBuilder;
 	TWeakObjectPtr<UNiagaraDataInterfaceSkeletalMesh>  MeshInterface;
 	TWeakObjectPtr<USkeletalMesh> MeshObject;

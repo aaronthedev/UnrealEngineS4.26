@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -151,7 +151,7 @@ struct FRigUnit_ChainHarmonics_WorkData
 	FVector Time;
 
 	UPROPERTY()
-	TArray<FCachedRigElement> Items;
+	TArray<int32> Bones;
 
 	UPROPERTY()
 	TArray<float> Ratio;
@@ -175,7 +175,7 @@ struct FRigUnit_ChainHarmonics_WorkData
 	TArray<FVector> VelocityLines;
 };
 
-USTRUCT(meta=(DisplayName="ChainHarmonics", Deprecated = "4.25"))
+USTRUCT(meta=(DisplayName="ChainHarmonics"))
 struct FRigUnit_ChainHarmonics : public FRigUnit_HighlevelBaseMutable
 {
 	GENERATED_BODY()
@@ -200,64 +200,8 @@ struct FRigUnit_ChainHarmonics : public FRigUnit_HighlevelBaseMutable
 	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;
 
-	UPROPERTY(meta = (Input))
+	UPROPERTY(meta = (Input, Constant, BoneName))
 	FName ChainRoot;
-
-	UPROPERTY(meta = (Input))
-	FVector Speed;
-
-	UPROPERTY(meta = (Input))
-	FRigUnit_ChainHarmonics_Reach Reach;
-
-	UPROPERTY(meta = (Input))
-	FRigUnit_ChainHarmonics_Wave Wave;
-
-	UPROPERTY(meta = (Input, Constant))
-	FRuntimeFloatCurve WaveCurve;
-
-	UPROPERTY(meta = (Input))
-	FRigUnit_ChainHarmonics_Pendulum Pendulum;
-
-	UPROPERTY(meta = (Input))
-	bool bDrawDebug;
-
-	UPROPERTY(meta = (Input))
-	FTransform DrawWorldOffset;
-
-	UPROPERTY(transient)
-	FRigUnit_ChainHarmonics_WorkData WorkData;
-};
-
-/**
- * Performs chain based simulation
- */
-USTRUCT(meta=(DisplayName="Chain Harmonics"))
-struct FRigUnit_ChainHarmonicsPerItem : public FRigUnit_HighlevelBaseMutable
-{
-	GENERATED_BODY()
-
-	FRigUnit_ChainHarmonicsPerItem()
-	{
-		ChainRoot = FRigElementKey(NAME_None, ERigElementType::Bone);
-		Speed = FVector::OneVector;
-		
-		Reach.bEnabled = false;
-		Wave.bEnabled = true;
-		Pendulum.bEnabled = false;
-
-		WaveCurve = FRuntimeFloatCurve();
-		WaveCurve.GetRichCurve()->AddKey(0.f, 0.f);
-		WaveCurve.GetRichCurve()->AddKey(1.f, 1.f);
-
-		bDrawDebug = true;
-		DrawWorldOffset = FTransform::Identity;
-	}
-
-	RIGVM_METHOD()
-	virtual void Execute(const FRigUnitContext& Context) override;
-
-	UPROPERTY(meta = (Input, ExpandByDefault))
-	FRigElementKey ChainRoot;
 
 	UPROPERTY(meta = (Input))
 	FVector Speed;

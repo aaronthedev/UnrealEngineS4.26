@@ -248,7 +248,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDLUX_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -260,7 +260,7 @@ private:
 
     // override SchemaBase virtuals.
     USDLUX_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -280,12 +280,11 @@ public:
     /// cache.  This is the fallback behavior.
     /// 
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `token lightList:cacheBehavior` |
-    /// | C++ Type | TfToken |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
-    /// | \ref UsdLuxTokens "Allowed Values" | consumeAndHalt, consumeAndContinue, ignore |
+    /// \n  C++ Type: TfToken
+    /// \n  Usd Type: SdfValueTypeNames->Token
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
+    /// \n  \ref UsdLuxTokens "Allowed Values": [consumeAndHalt, consumeAndContinue, ignore]
     USDLUX_API
     UsdAttribute GetLightListCacheBehaviorAttr() const;
 

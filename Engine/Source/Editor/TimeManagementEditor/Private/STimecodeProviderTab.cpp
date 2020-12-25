@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "STimecodeProviderTab.h"
 
@@ -11,12 +11,9 @@
 #include "Framework/MultiBox/SToolBarComboButtonBlock.h"
 #include "LevelEditor.h"
 #include "Modules/ModuleManager.h"
-#include "ObjectEditorUtils.h"
-#include "ScopedTransaction.h"
 #include "STimecodeProvider.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/Input/SComboButton.h"
-#include "Widgets/Input/SSpinBox.h"
 #include "WorkspaceMenuStructure.h"
 #include "WorkspaceMenuStructureModule.h"
 
@@ -94,7 +91,7 @@ void STimecodeProviderTab::Construct(const FArguments& InArgs)
 		]
 		.OnGetMenuContent(this, &STimecodeProviderTab::OnGetMenuContent);
 
-	ButtonContent->SetEnabled(MakeAttributeLambda([] { return GEngine && GEngine->GetTimecodeProvider() != nullptr; }));
+	ButtonContent->SetEnabled(MakeAttributeLambda([] { return (GEngine && GEngine->GetTimecodeProvider() != nullptr); }));
 
 	ChildSlot
 	[
@@ -149,43 +146,7 @@ TSharedRef<SWidget> STimecodeProviderTab::OnGetMenuContent()
 		MenuBuilder.EndSection();
 	}
 
-	if (GEngine->GetTimecodeProvider())
-	{
-		MenuBuilder.BeginSection("Settings", LOCTEXT("Settings", "Settings"));
-		{
-			TSharedRef<SWidget> RefreshDelay = SNew(SSpinBox<float>)
-				.ToolTipText(LOCTEXT("FrameDelay_ToolTip", "Number of frames to subtract from the original timecode."))
-				.Value(this, &STimecodeProviderTab::GetFrameDelay)
-				.MinValue(TOptional<float>())
-				.MaxValue(TOptional<float>())
-				.OnValueCommitted(this, &STimecodeProviderTab::SetFrameDelay);
-
-			MenuBuilder.AddWidget(RefreshDelay, LOCTEXT("FrameDelay", "Frame Delay"));
-		}
-		MenuBuilder.EndSection();
-	}
-
 	return MenuBuilder.MakeWidget();
-}
-
-float STimecodeProviderTab::GetFrameDelay() const
-{
-	if (UTimecodeProvider* TimecodeProviderPtr = GEngine->GetTimecodeProvider())
-	{
-		return TimecodeProviderPtr->FrameDelay;
-	}
-	return 0.f;
-}
-
-void STimecodeProviderTab::SetFrameDelay(float InNewValue, ETextCommit::Type)
-{
-	if (UTimecodeProvider* TimecodeProviderPtr = GEngine->GetTimecodeProvider())
-	{
-		if (TimecodeProviderPtr->FrameDelay != InNewValue)
-		{
-			FObjectEditorUtils::SetPropertyValue(TimecodeProviderPtr, GET_MEMBER_NAME_CHECKED(UTimecodeProvider, FrameDelay), InNewValue);
-		}
-	}
 }
 
 #undef LOCTEXT_NAMESPACE

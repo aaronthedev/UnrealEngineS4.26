@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Interfaces/IHttpRequest.h"
@@ -20,12 +20,6 @@ namespace BuildPatchServices
 		{
 			MOCK_FUNC_NOT_IMPLEMENTED("FMockHttpRequest::GetURL");
 			return FString();
-		}
-
-		virtual FHttpRequestWillRetryDelegate& OnRequestWillRetry() override
-		{
-			MOCK_FUNC_NOT_IMPLEMENTED("FMockHttpRequest::OnRequestWillRetry");
-			return HttpRequestWillRetryDelegate;
 		}
 
 		virtual FString GetURLParameter(const FString& ParameterName) const override
@@ -86,11 +80,6 @@ namespace BuildPatchServices
 			MOCK_FUNC_NOT_IMPLEMENTED("FMockHttpRequest::SetContent");
 		}
 
-		virtual void SetContent(TArray<uint8>&& ContentPayload) override
-		{
-			MOCK_FUNC_NOT_IMPLEMENTED("FMockHttpRequest::SetContent");
-		}
-
 		virtual void SetContentAsString(const FString& ContentString) override
 		{
 			MOCK_FUNC_NOT_IMPLEMENTED("FMockHttpRequest::SetContentAsString");
@@ -116,22 +105,6 @@ namespace BuildPatchServices
 		virtual void AppendToHeader(const FString& HeaderName, const FString& AdditionalHeaderValue) override
 		{
 			MOCK_FUNC_NOT_IMPLEMENTED("FMockHttpRequest::AppendToHeader");
-		}
-
-		virtual void SetTimeout(float InTimeoutSecs) override
-		{
-			MOCK_FUNC_NOT_IMPLEMENTED("FMockHttpRequest::SetTimeout");
-		}
-
-		virtual void ClearTimeout() override
-		{
-			MOCK_FUNC_NOT_IMPLEMENTED("FMockHttpRequest::ClearTimeout");
-		}
-
-		virtual TOptional<float> GetTimeout() const override
-		{
-			MOCK_FUNC_NOT_IMPLEMENTED("FMockHttpRequest::GetTimeout");
-			return TOptional<float>();
 		}
 
 		virtual bool ProcessRequest() override
@@ -187,7 +160,6 @@ namespace BuildPatchServices
 		FHttpRequestProgressDelegate HttpRequestProgressDelegate;
 		FHttpRequestCompleteDelegate HttpRequestCompleteDelegate;
 		FHttpRequestHeaderReceivedDelegate HttpHeaderReceivedDelegate;
-		FHttpRequestWillRetryDelegate HttpRequestWillRetryDelegate;
 
 		TArray<FRxSetVerb> RxSetVerb;
 		TArray<FRxSetURL> RxSetURL;

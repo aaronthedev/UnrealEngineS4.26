@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ProceduralMeshComponentDetails.h"
 #include "ProceduralMeshConversion.h"
@@ -18,7 +18,8 @@
 #include "IDetailsView.h"
 #include "ProceduralMeshComponent.h"
 #include "StaticMeshAttributes.h"
-#include "PhysicsEngine/BodySetup.h"
+#include "MeshDescriptionOperations.h"
+
 #include "Dialogs/DlgPickAssetPath.h"
 #include "AssetRegistryModule.h"
 
@@ -121,7 +122,7 @@ FReply FProceduralMeshComponentDetails::ClickedOnConvertToStaticMesh()
 			if (MeshDescription.Polygons().Num() > 0)
 			{
 				// Then find/create it.
-				UPackage* Package = CreatePackage(*UserPackageName);
+				UPackage* Package = CreatePackage(NULL, *UserPackageName);
 				check(Package);
 
 				// Create StaticMesh object
@@ -143,20 +144,6 @@ FReply FProceduralMeshComponentDetails::ClickedOnConvertToStaticMesh()
 				StaticMesh->CreateMeshDescription(0, MoveTemp(MeshDescription));
 				StaticMesh->CommitMeshDescription(0);
 
-				//// SIMPLE COLLISION
-				if (!ProcMeshComp->bUseComplexAsSimpleCollision )
-				{
-					StaticMesh->CreateBodySetup();
-					UBodySetup* NewBodySetup = StaticMesh->BodySetup;
-					NewBodySetup->BodySetupGuid = FGuid::NewGuid();
-					NewBodySetup->AggGeom.ConvexElems = ProcMeshComp->ProcMeshBodySetup->AggGeom.ConvexElems;
-					NewBodySetup->bGenerateMirroredCollision = false;
-					NewBodySetup->bDoubleSidedGeometry = true;
-					NewBodySetup->CollisionTraceFlag = CTF_UseDefault;
-					NewBodySetup->CreatePhysicsMeshes();
-				}
-
-				//// MATERIALS
 				TSet<UMaterialInterface*> UniqueMaterials;
 				const int32 NumSections = ProcMeshComp->GetNumSections();
 				for (int32 SectionIdx = 0; SectionIdx < NumSections; SectionIdx++)
@@ -169,7 +156,7 @@ FReply FProceduralMeshComponentDetails::ClickedOnConvertToStaticMesh()
 				// Copy materials to new mesh
 				for (auto* Material : UniqueMaterials)
 				{
-					StaticMesh->StaticMaterials.Add(FStaticMaterial(Material));
+					StaticMesh->StaticMaterials.Add(FStaticMaterial(Material, Material->GetFName(), Material->GetFName()));
 				}
 
 				//Set the Imported version before calling the build

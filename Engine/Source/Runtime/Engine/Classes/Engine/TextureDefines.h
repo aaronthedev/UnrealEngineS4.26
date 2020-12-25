@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -74,11 +74,6 @@ enum TextureGroup
 	TEXTUREGROUP_Project08 UMETA(DisplayName="ini:Project Group 08"),
 	TEXTUREGROUP_Project09 UMETA(DisplayName="ini:Project Group 09"),
 	TEXTUREGROUP_Project10 UMETA(DisplayName="ini:Project Group 10"),
-	TEXTUREGROUP_Project11 UMETA(DisplayName="ini:Project Group 11"),
-	TEXTUREGROUP_Project12 UMETA(DisplayName="ini:Project Group 12"),
-	TEXTUREGROUP_Project13 UMETA(DisplayName="ini:Project Group 13"),
-	TEXTUREGROUP_Project14 UMETA(DisplayName="ini:Project Group 14"),
-	TEXTUREGROUP_Project15 UMETA(DisplayName="ini:Project Group 15"),
 	TEXTUREGROUP_MAX,
 };
 
@@ -170,37 +165,4 @@ enum class ETextureMipLoadOptions : uint8
 	AllMips,
 	// Load only the first mip.
 	OnlyFirstMip,
-};
-
-UENUM()
-enum class ETextureDownscaleOptions : uint8
-{
-	/** Fallback to the "texture group" settings */
-	Default,
-	/** Unfiltered */
-	Unfiltered,
-	/** Average, default for the "texture group" */
-	SimpleAverage,
-	/** 8x8 with sharpening: 0=no sharpening but better quality which is softer, 1=little, 5=medium, 10=extreme. */
-	Sharpen0,
-	/** 8x8 with sharpening: 0=no sharpening but better quality which is softer, 1=little, 5=medium, 10=extreme. */
-	Sharpen1,
-	/** 8x8 with sharpening: 0=no sharpening but better quality which is softer, 1=little, 5=medium, 10=extreme. */
-	Sharpen2,
-	/** 8x8 with sharpening: 0=no sharpening but better quality which is softer, 1=little, 5=medium, 10=extreme. */
-	Sharpen3,
-	/** 8x8 with sharpening: 0=no sharpening but better quality which is softer, 1=little, 5=medium, 10=extreme. */
-	Sharpen4,
-	/** 8x8 with sharpening: 0=no sharpening but better quality which is softer, 1=little, 5=medium, 10=extreme. */
-	Sharpen5,
-	/** 8x8 with sharpening: 0=no sharpening but better quality which is softer, 1=little, 5=medium, 10=extreme. */
-	Sharpen6,
-	/** 8x8 with sharpening: 0=no sharpening but better quality which is softer, 1=little, 5=medium, 10=extreme. */
-	Sharpen7,
-	/** 8x8 with sharpening: 0=no sharpening but better quality which is softer, 1=little, 5=medium, 10=extreme. */
-	Sharpen8,
-	/** 8x8 with sharpening: 0=no sharpening but better quality which is softer, 1=little, 5=medium, 10=extreme. */
-	Sharpen9,
-	/** 8x8 with sharpening: 0=no sharpening but better quality which is softer, 1=little, 5=medium, 10=extreme. */
-	Sharpen10
 };

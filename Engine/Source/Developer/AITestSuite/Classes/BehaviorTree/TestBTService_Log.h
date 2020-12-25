@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -17,15 +17,6 @@ class UTestBTService_Log : public UBTService
 	UPROPERTY()
 	int32 LogDeactivation;
 
-	UPROPERTY()
-	FName KeyNameTick;
-
-	UPROPERTY()
-	int32 LogTick;
-
 	virtual void OnBecomeRelevant(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory) override;
 	virtual void OnCeaseRelevant(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory) override;
-	virtual void TickNode(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, float DeltaSeconds) override;
-
-	void SetFlagOnTick(FName InKeyNameTick, bool bInCallTickOnSearchStart = false);
 };

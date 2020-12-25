@@ -4,15 +4,13 @@
 #include "Modules/ModuleManager.h"
 #include "GameFramework/WorldSettings.h"
 #include "Engine/World.h"
-#include "WindowsMixedRealityInteropLoader.h"
-#include "IXRTrackingSystem.h"
 
 #if WITH_WINDOWS_MIXED_REALITY
 	#include "MixedRealityInterop.h"
 #endif
+#include "IWindowsMixedRealityHMDPlugin.h"
 
 #if WITH_WINDOWS_MIXED_REALITY
-static WindowsMixedReality::MixedRealityInterop* HMD = nullptr;
 
 class FWindowsMixedRealityEyeTracker :
 	public IEyeTracker
@@ -20,19 +18,10 @@ class FWindowsMixedRealityEyeTracker :
 public:
 	FWindowsMixedRealityEyeTracker()
 	{
-		if (!HMD)
-		{
-			HMD = WindowsMixedReality::LoadInteropLibrary();
-			if (!HMD)
-			{
-				return;
-			}
-		}
-
 		// If this was created, then we want to use it, so request user perms
 #if PLATFORM_HOLOLENS
 		// If remoting, delay requesting permissions until after the remoting session is created.
-
+		WindowsMixedReality::MixedRealityInterop* HMD = IWindowsMixedRealityHMDPlugin::Get().GetMixedRealityInterop();
 		if (HMD != nullptr)
 		{
 			HMD->RequestUserPermissionForEyeTracking();
@@ -50,25 +39,15 @@ private:
 	virtual bool GetEyeTrackerGazeData(FEyeTrackerGazeData& OutGazeData) const override
 	{
 		WindowsMixedReality::EyeGazeRay ray;
-		if (!HMD || !HMD->GetEyeGaze(ray))
+		WindowsMixedReality::MixedRealityInterop* HMD = IWindowsMixedRealityHMDPlugin::Get().GetMixedRealityInterop();
+		if (HMD == nullptr || !HMD->GetEyeGaze(ray))
 		{
 			return false;
 		}
 		
-		FTransform t2w = FTransform::Identity;
-		if (GEngine != nullptr)
-		{
-			IXRTrackingSystem* TrackingSys = GEngine->XRSystem.Get();
-			if (TrackingSys)
-			{
-				t2w = TrackingSys->GetTrackingToWorldTransform();
-			}
-		}
-		
-		OutGazeData.GazeDirection = t2w.TransformVector(FromMixedRealityVector(ray.direction));
-		OutGazeData.GazeOrigin = t2w.TransformPosition(FromMixedRealityVector(ray.origin) * GetWorldToMetersScale());
+		OutGazeData.GazeDirection = FromMixedRealityVector(ray.direction);
+		OutGazeData.GazeOrigin = FromMixedRealityVector(ray.origin) * GetWorldToMetersScale();
 		OutGazeData.ConfidenceValue = 1;
-		
 		return true;
 	}
 	virtual bool GetEyeTrackerStereoGazeData(FEyeTrackerStereoGazeData& OutGazeData) const override
@@ -77,7 +56,8 @@ private:
 	}
 	virtual EEyeTrackerStatus GetEyeTrackerStatus() const override
 	{
-		if (!HMD || !HMD->SupportsEyeTracking() || !HMD->IsEyeTrackingAllowed())
+		WindowsMixedReality::MixedRealityInterop* HMD = IWindowsMixedRealityHMDPlugin::Get().GetMixedRealityInterop();
+		if (HMD == nullptr || !HMD->SupportsEyeTracking() || !HMD->IsEyeTrackingAllowed())
 		{
 			return EEyeTrackerStatus::NotConnected;
 		}
@@ -123,6 +103,7 @@ public:
 	virtual bool IsEyeTrackerConnected() const override
 	{
 #if WITH_WINDOWS_MIXED_REALITY
+		WindowsMixedReality::MixedRealityInterop* HMD = IWindowsMixedRealityHMDPlugin::Get().GetMixedRealityInterop();
 		if (HMD != nullptr)
 		{
 			return HMD->SupportsEyeTracking();

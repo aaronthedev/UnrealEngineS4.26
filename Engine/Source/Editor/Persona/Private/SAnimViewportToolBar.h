@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -140,11 +140,6 @@ private:
 	void OnFOVValueChanged( float NewValue );
 	/** Called when a value is entered into the FOV slider/box in the perspective viewport */
 	void OnFOVValueCommitted( float NewValue, ETextCommit::Type CommitInfo );
-
-	/** Called when Camera speed is changed */
-	void OnCamSpeedChanged(int32 NewValue);
-	/** Called when Camera speed scalar is changed */
-	void OnCamSpeedScalarChanged(float NewValue);
 
 	/** Called by the floor offset slider in the perspective viewport to get the offset value */
 	TOptional<float> OnGetFloorOffset() const;

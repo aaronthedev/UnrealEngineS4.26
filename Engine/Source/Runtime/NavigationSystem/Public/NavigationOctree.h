@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -56,9 +56,9 @@ public:
 	 *	If it does then retrieves a copy with meta areas substituted with
 	 *	appropriate non-meta areas, depending on NavAgent
 	 */
-	FORCEINLINE FCompositeNavModifier GetModifierForAgent(const struct FNavAgentProperties* NavAgent = nullptr) const 
+	FORCEINLINE FCompositeNavModifier GetModifierForAgent(const struct FNavAgentProperties* NavAgent = NULL) const 
 	{ 
-		return Data->GetModifierForAgent(NavAgent);
+		return Data->Modifiers.HasMetaAreas() ? Data->Modifiers.GetInstantiatedMetaModifier(NavAgent, Data->SourceObject) : Data->Modifiers;
 	}
 
 	FORCEINLINE bool ShouldUseGeometry(const FNavDataConfig& NavConfig) const
@@ -86,7 +86,7 @@ public:
 
 struct FNavigationOctreeSemantics
 {
-	typedef TOctree2<FNavigationOctreeElement, FNavigationOctreeSemantics> FOctree;
+	typedef TOctree<FNavigationOctreeElement, FNavigationOctreeSemantics> FOctree;
 	enum { MaxElementsPerLeaf = 16 };
 	enum { MinInclusiveElementsPerNode = 7 };
 	enum { MaxNodeDepth = 12 };
@@ -112,10 +112,10 @@ struct FNavigationOctreeSemantics
 #if NAVSYS_DEBUG
 	FORCENOINLINE 
 #endif // NAVSYS_DEBUG
-	static void SetElementId(FOctree& OctreeOwner, const FNavigationOctreeElement& Element, FOctreeElementId2 Id);
+	static void SetElementId(FOctree& OctreeOwner, const FNavigationOctreeElement& Element, FOctreeElementId Id);
 };
 
-class NAVIGATIONSYSTEM_API FNavigationOctree : public TOctree2<FNavigationOctreeElement, FNavigationOctreeSemantics>, public TSharedFromThis<FNavigationOctree, ESPMode::ThreadSafe>
+class NAVIGATIONSYSTEM_API FNavigationOctree : public TOctree<FNavigationOctreeElement, FNavigationOctreeSemantics>, public TSharedFromThis<FNavigationOctree, ESPMode::ThreadSafe>
 {
 public:
 	DECLARE_DELEGATE_TwoParams(FNavigableGeometryComponentExportDelegate, UActorComponent*, FNavigationRelevantData&);
@@ -126,34 +126,6 @@ public:
 		StoreNavGeometry,
 	};
 
-	/**
- * Adds an element to the octree.
- * @param Element - The element to add.
- */
-	inline void AddElement(const FNavigationOctreeElement& Element)
-	{
-		DEC_MEMORY_STAT_BY(STAT_NavigationMemory, OctreeSizeBytes);
-		DEC_MEMORY_STAT_BY(STAT_Navigation_CollisionTreeMemory, OctreeSizeBytes);
-		TOctree2<FNavigationOctreeElement, FNavigationOctreeSemantics>::AddElement(Element);
-		OctreeSizeBytes = GetSizeBytes();
-		INC_MEMORY_STAT_BY(STAT_NavigationMemory, OctreeSizeBytes);
-		INC_MEMORY_STAT_BY(STAT_Navigation_CollisionTreeMemory, OctreeSizeBytes);
-	}
-
-	/**
-	 * Removes an element from the octree.
-	 * @param ElementId - The element to remove from the octree.
-	 */
-	inline void RemoveElement(FOctreeElementId2 ElementId)
-	{
-		DEC_MEMORY_STAT_BY(STAT_NavigationMemory, OctreeSizeBytes);
-		DEC_MEMORY_STAT_BY(STAT_Navigation_CollisionTreeMemory, OctreeSizeBytes);
-		TOctree2<FNavigationOctreeElement, FNavigationOctreeSemantics>::RemoveElement(ElementId);
-		OctreeSizeBytes = GetSizeBytes();
-		INC_MEMORY_STAT_BY(STAT_NavigationMemory, OctreeSizeBytes);
-		INC_MEMORY_STAT_BY(STAT_Navigation_CollisionTreeMemory, OctreeSizeBytes);
-	}
-
 	FNavigationOctree(const FVector& Origin, float Radius);
 	virtual ~FNavigationOctree();
 
@@ -161,17 +133,17 @@ public:
 	void AddNode(UObject* ElementOb, INavRelevantInterface* NavElement, const FBox& Bounds, FNavigationOctreeElement& Data);
 
 	/** Append new data to existing node */
-	void AppendToNode(const FOctreeElementId2& Id, INavRelevantInterface* NavElement, const FBox& Bounds, FNavigationOctreeElement& Data);
+	void AppendToNode(const FOctreeElementId& Id, INavRelevantInterface* NavElement, const FBox& Bounds, FNavigationOctreeElement& Data);
 
 	/** Updates element bounds remove/add operation */
-	void UpdateNode(const FOctreeElementId2& Id, const FBox& NewBounds);
+	void UpdateNode(const FOctreeElementId& Id, const FBox& NewBounds);
 
 	/** Remove node */
-	void RemoveNode(const FOctreeElementId2& Id);
+	void RemoveNode(const FOctreeElementId& Id);
 
 	void SetNavigableGeometryStoringMode(ENavGeometryStoringMode NavGeometryMode);
 
-	const FNavigationRelevantData* GetDataForID(const FOctreeElementId2& Id) const;
+	const FNavigationRelevantData* GetDataForID(const FOctreeElementId& Id) const;
 
 	ENavGeometryStoringMode GetNavGeometryStoringMode() const
 	{
@@ -180,10 +152,10 @@ public:
 
 	void SetDataGatheringMode(ENavDataGatheringModeConfig Mode);
 	
-	// Lazy data gathering methods
-	bool IsLazyGathering(const INavRelevantInterface& ChildNavInterface) const;
+	// @hack! TO BE FIXED
+	void DemandLazyDataGathering(const FNavigationOctreeElement& Element);
 	void DemandLazyDataGathering(FNavigationRelevantData& ElementData);
-	void DemandChildLazyDataGathering(FNavigationRelevantData& ElementData, INavRelevantInterface& ChildNavInterface);
+
 
 	FORCEINLINE static uint32 HashObject(const UObject& Object)
 	{
@@ -194,12 +166,24 @@ protected:
 	friend struct FNavigationOctreeController;
 	friend struct FNavigationOctreeSemantics;
 
-	void SetElementIdImpl(const uint32 OwnerUniqueId, FOctreeElementId2 Id);
+	void SetElementIdImpl(const uint32 OwnerUniqueId, FOctreeElementId Id);
 
-	TMap<uint32, FOctreeElementId2> ObjectToOctreeId;
+	TMap<uint32, FOctreeElementId> ObjectToOctreeId;
 	ENavDataGatheringMode DefaultGeometryGatheringMode;
 	uint32 bGatherGeometry : 1;
 	uint32 NodesMemory;
-private:
-	SIZE_T OctreeSizeBytes = 0;
 };
+
+template<>
+FORCEINLINE_DEBUGGABLE void SetOctreeMemoryUsage(TOctree<FNavigationOctreeElement, FNavigationOctreeSemantics>* Octree, int32 NewSize)
+{
+	{
+		DEC_DWORD_STAT_BY( STAT_NavigationMemory, Octree->TotalSizeBytes );
+		DEC_DWORD_STAT_BY(STAT_Navigation_CollisionTreeMemory, Octree->TotalSizeBytes);
+	}
+	Octree->TotalSizeBytes = NewSize;
+	{
+		INC_DWORD_STAT_BY( STAT_NavigationMemory, NewSize );
+		INC_DWORD_STAT_BY(STAT_Navigation_CollisionTreeMemory, NewSize);
+	}
+}

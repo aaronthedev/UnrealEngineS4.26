@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,8 +19,7 @@ public:
 	// Handles clicking a menu entry.
 	static void HandleOpenTranslationPicker()
 	{
-		FModuleManager::Get().LoadModuleChecked("TranslationEditor");
-		ITranslationEditor::OpenTranslationPicker();
+		FModuleManager::LoadModuleChecked<ITranslationEditor>("TranslationEditor").OpenTranslationPicker();
 	}
 
 };

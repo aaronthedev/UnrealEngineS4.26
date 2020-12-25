@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -206,8 +206,6 @@ public:
 	 */
 	FKeyHandle UpdateOrAddKey(float InTime, const FString& InValue, float KeyTimeTolerance = KINDA_SMALL_NUMBER);
 
-	/** Tries to reduce the number of keys required for accurate evaluation (removing duplicates) */
-	void RemoveRedundantKeys();
 public:
 
 	//~ FIndexedCurve interface

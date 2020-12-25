@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AppFramework.h"
 #include "MagicLeapHMD.h"
@@ -8,6 +8,7 @@
 #include "Engine/Engine.h"
 #include "Misc/CoreDelegates.h"
 #include "RenderingThread.h"
+#include "MagicLeapPluginUtil.h" // for ML_INCLUDES_START/END
 
 #include "Lumin/CAPIShims/LuminAPISnapshot.h"
 
@@ -17,6 +18,7 @@
 
 TArray<MagicLeap::IAppEventHandler*> FAppFramework::EventHandlers;
 FCriticalSection FAppFramework::EventHandlersCriticalSection;
+MagicLeap::FAsyncDestroyer* FAppFramework::AsyncDestroyer = nullptr;
 
 FAppFramework::FAppFramework()
 {}
@@ -36,9 +38,9 @@ void FAppFramework::Startup()
 	FLuminDelegates::DeviceHasReactivatedDelegate.AddRaw(this, &FAppFramework::OnDeviceActive);
 	FLuminDelegates::DeviceWillEnterRealityModeDelegate.AddRaw(this, &FAppFramework::OnDeviceRealityMode);
 	FLuminDelegates::DeviceWillGoInStandbyDelegate.AddRaw(this, &FAppFramework::OnDeviceStandby);
-	FCoreDelegates::VRHeadsetLost.AddRaw(this, &FAppFramework::OnDeviceHeadposeLost);
-	FCoreDelegates::VRHeadsetReconnected.AddRaw(this, &FAppFramework::OnDeviceActive);
 #endif // PLATFORM_LUMIN
+
+	AsyncDestroyer = new MagicLeap::FAsyncDestroyer();
 
 	bInitialized = true;
 
@@ -48,6 +50,9 @@ void FAppFramework::Startup()
 void FAppFramework::Shutdown()
 {
 	bInitialized = false;
+
+	delete AsyncDestroyer;
+	AsyncDestroyer = nullptr;
 
 	FCoreDelegates::ApplicationWillEnterBackgroundDelegate.RemoveAll(this);
 	FCoreDelegates::ApplicationHasEnteredForegroundDelegate.RemoveAll(this);
@@ -125,15 +130,6 @@ void FAppFramework::ApplicationResumeDelegate()
 	}
 }
 
-void FAppFramework::OnApplicationStart()
-{
-	FScopeLock Lock(&EventHandlersCriticalSection);
-	for (auto EventHandler : EventHandlers)
-	{
-		EventHandler->OnAppStart();
-	}
-}
-
 void FAppFramework::OnApplicationShutdown()
 {
 	FScopeLock Lock(&EventHandlersCriticalSection);
@@ -161,15 +157,9 @@ void FAppFramework::OnDeviceStandby()
 	PauseRendering(true);
 }
 
-void FAppFramework::OnDeviceHeadposeLost()
-{
-	UE_LOG(LogMagicLeap, Log, TEXT("+++++++ ML AppFramework DEVICE HEADPOSE LOST ++++++"));
-	PauseRendering(true);
-}
-
 void FAppFramework::PauseRendering(bool bPause)
 {
-	FMagicLeapHMD * const HMD = GEngine ? (GEngine->XRSystem ? static_cast<FMagicLeapHMD*>(GEngine->XRSystem->GetHMDDevice()) : nullptr) : nullptr;
+	FMagicLeapHMD * const HMD = GEngine ? static_cast<FMagicLeapHMD*>(GEngine->XRSystem->GetHMDDevice()) : nullptr;
 	if (HMD)
 	{
 		HMD->PauseRendering(bPause);
@@ -178,13 +168,13 @@ void FAppFramework::PauseRendering(bool bPause)
 
 const FTrackingFrame* FAppFramework::GetCurrentFrame() const
 {
-	FMagicLeapHMD * const hmd = GEngine ? (GEngine->XRSystem ? static_cast<FMagicLeapHMD*>(GEngine->XRSystem->GetHMDDevice()) : nullptr) : nullptr;
+	FMagicLeapHMD* hmd = GEngine ? static_cast<FMagicLeapHMD*>(GEngine->XRSystem->GetHMDDevice()) : nullptr;
 	return hmd ? &(hmd->GetCurrentFrame()) : nullptr;
 }
 
 const FTrackingFrame* FAppFramework::GetOldFrame() const
 {
-	FMagicLeapHMD * const hmd = GEngine ? (GEngine->XRSystem ? static_cast<FMagicLeapHMD*>(GEngine->XRSystem->GetHMDDevice()) : nullptr) : nullptr;
+	FMagicLeapHMD* hmd = GEngine ? static_cast<FMagicLeapHMD*>(GEngine->XRSystem->GetHMDDevice()) : nullptr;
 	return hmd ? &(hmd->GetOldFrame()) : nullptr;
 }
 
@@ -192,7 +182,7 @@ uint32 FAppFramework::GetViewportCount() const
 {
 #if WITH_MLSDK
 	const FTrackingFrame *frame = GetOldFrame();
-	return frame ? frame->FrameInfo.num_virtual_cameras : 2;
+	return frame ? frame->FrameInfo.virtual_camera_info_array.num_virtual_cameras : 2;
 #else
 	return 1;
 #endif //WITH_MLSDK
@@ -270,4 +260,15 @@ void FAppFramework::RemoveEventHandler(MagicLeap::IAppEventHandler* EventHandler
 {
 	FScopeLock Lock(&EventHandlersCriticalSection);
 	EventHandlers.Remove(EventHandler);
+}
+
+bool FAppFramework::AsyncDestroy(MagicLeap::IAppEventHandler* InEventHandler)
+{
+	if (AsyncDestroyer != nullptr)
+	{
+		AsyncDestroyer->AddRaw(InEventHandler);
+		return true;
+	}
+
+	return false;
 }

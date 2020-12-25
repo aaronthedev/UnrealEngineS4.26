@@ -1,15 +1,18 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Serialization/ArchiveLoadCompressedProxy.h"
 #include "Math/UnrealMathUtility.h"
 #include "HAL/UnrealMemory.h"
 #include "Containers/Array.h"
 
-PRAGMA_DISABLE_UNSAFE_TYPECAST_WARNINGS
-
 /*----------------------------------------------------------------------------
 	FArchiveLoadCompressedProxy
 ----------------------------------------------------------------------------*/
+
+FArchiveLoadCompressedProxy::FArchiveLoadCompressedProxy(FArchiveLoadCompressedProxy::EVS2015Redirector, const TArray<uint8>& InCompressedData, ECompressionFlags InCompressionFlags)
+	: FArchiveLoadCompressedProxy(InCompressedData, FCompression::GetCompressionFormatFromDeprecatedFlags(InCompressionFlags))
+{
+}
 
 FArchiveLoadCompressedProxy::FArchiveLoadCompressedProxy(const TArray<uint8>& InCompressedData, FName InCompressionFormat, ECompressionFlags InCompressionFlags)
 	:	CompressedData(InCompressedData)
@@ -121,4 +124,3 @@ int64 FArchiveLoadCompressedProxy::Tell()
 	return RawBytesSerialized;
 }
 
-PRAGMA_ENABLE_UNSAFE_TYPECAST_WARNINGS

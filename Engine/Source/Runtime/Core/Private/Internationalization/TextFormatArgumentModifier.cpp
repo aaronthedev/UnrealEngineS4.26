@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Internationalization/TextFormatArgumentModifier.h"
 #include "Misc/Parse.h"
@@ -26,7 +26,7 @@ bool ITextFormatArgumentModifier::ParseKeyValueArgs(const FTextFormatString& InA
 		{
 			++BufferPtr;
 		}
-		return FTextFormatString::MakeReference(KeyStartPtr, UE_PTRDIFF_TO_INT32(BufferPtr - KeyStartPtr));
+		return FTextFormatString::MakeReference(KeyStartPtr, BufferPtr - KeyStartPtr);
 	};
 
 	auto ParseValue = [&]() -> FTextFormatString
@@ -47,7 +47,7 @@ bool ITextFormatArgumentModifier::ParseKeyValueArgs(const FTextFormatString& InA
 		{
 			++BufferPtr;
 		}
-		return FTextFormatString::MakeReference(ValueStartPtr, UE_PTRDIFF_TO_INT32(BufferPtr - ValueStartPtr));
+		return FTextFormatString::MakeReference(ValueStartPtr, BufferPtr - ValueStartPtr);
 	};
 
 	// Skip leading whitespace in case this string is all whitespace
@@ -130,7 +130,7 @@ bool ITextFormatArgumentModifier::ParseValueArgs(const FTextFormatString& InArgs
 		{
 			++BufferPtr;
 		}
-		return FTextFormatString::MakeReference(ValueStartPtr, UE_PTRDIFF_TO_INT32(BufferPtr - ValueStartPtr));
+		return FTextFormatString::MakeReference(ValueStartPtr, BufferPtr - ValueStartPtr);
 	};
 
 	// Skip leading whitespace in case this string is all whitespace

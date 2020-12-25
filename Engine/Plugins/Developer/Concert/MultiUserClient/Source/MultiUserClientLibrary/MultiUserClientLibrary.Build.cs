@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -19,16 +19,10 @@ namespace UnrealBuildTool.Rules
 			{
 				PrivateDefinitions.Add("WITH_CONCERT=1");
 
-                PrivateDependencyModuleNames.AddRange(
-                    new string[]
-                    {
-                        "Concert"
-                    }
-                );
-
-                PrivateIncludePathModuleNames.AddRange(
+				PrivateIncludePathModuleNames.AddRange(
 					new string[]
 					{
+						"Concert",
 						"ConcertSyncCore",
 						"ConcertSyncClient",
 						"MultiUserClient",

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "EdGraphUtilities.h"
@@ -547,11 +547,6 @@ bool FEdGraphUtilities::IsArrayDependentParam(const UFunction* Function, const F
 	DependentPinMetaData.ParseIntoArray(TypeDependentPinNames, TEXT(","), true);
 
 	return TypeDependentPinNames.Contains(ParameterName.ToString());
-}
-
-bool FEdGraphUtilities::IsDynamicContainerParam(const UFunction* Function, const FName ParameterName)
-{
-	return FEdGraphUtilities::IsArrayDependentParam(Function, ParameterName) || FEdGraphUtilities::IsMapParam(Function, ParameterName) || FEdGraphUtilities::IsSetParam(Function, ParameterName);
 }
 
 UEdGraphPin* FEdGraphUtilities::FindArrayParamPin(const UFunction* Function, const UEdGraphNode* Node)

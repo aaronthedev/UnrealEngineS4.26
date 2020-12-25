@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved. 
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved. 
 
 #include "OctreeDynamicMeshComponent.h"
 #include "RenderingThread.h"
@@ -50,6 +50,7 @@ UOctreeDynamicMeshComponent::UOctreeDynamicMeshComponent(const FObjectInitialize
 void UOctreeDynamicMeshComponent::InitializeMesh(FMeshDescription* MeshDescription)
 {
 	FMeshDescriptionToDynamicMesh Converter;
+	Converter.bPrintDebugMessages = true;
 	Mesh->Clear();
 	Converter.Convert(MeshDescription, *Mesh);
 
@@ -104,7 +105,7 @@ void UOctreeDynamicMeshComponent::ApplyTransform(const FTransform3d& Transform, 
 		MeshTransforms::ApplyTransform(*GetMesh(), Transform);
 	}
 
-	if (GetCurrentSceneProxy() != nullptr)
+	if (CurrentProxy != nullptr)
 	{
 		Octree->ModifiedBounds = FAxisAlignedBox3d(
 			-TNumericLimits<float>::Max()*FVector3d::One(),
@@ -125,13 +126,14 @@ void UOctreeDynamicMeshComponent::ApplyTransform(const FTransform3d& Transform, 
 
 void UOctreeDynamicMeshComponent::Bake(FMeshDescription* MeshDescription, bool bHaveModifiedTopology, const FConversionToMeshDescriptionOptions& ConversionOptions)
 {
-	FDynamicMeshToMeshDescription Converter(ConversionOptions);
-	if (bHaveModifiedTopology == false && Converter.HaveMatchingElementCounts(Mesh.Get(), MeshDescription))
+	if (bHaveModifiedTopology == false && Mesh.Get()->VertexCount() == MeshDescription->Vertices().Num())
 	{
+		FDynamicMeshToMeshDescription Converter(ConversionOptions);
 		Converter.Update(Mesh.Get(), *MeshDescription);
 	}
 	else
 	{
+		FDynamicMeshToMeshDescription Converter(ConversionOptions);
 		Converter.Convert(Mesh.Get(), *MeshDescription);
 
 		//UE_LOG(LogTemp, Warning, TEXT("MeshDescription has %d instances"), MeshDescription->VertexInstances().Num());
@@ -142,7 +144,7 @@ void UOctreeDynamicMeshComponent::Bake(FMeshDescription* MeshDescription, bool b
 
 void UOctreeDynamicMeshComponent::NotifyMeshUpdated()
 {
-	if (GetCurrentSceneProxy() != nullptr)
+	if (CurrentProxy != nullptr)
 	{
 		FAxisAlignedBox3d DirtyBox = Octree->ModifiedBounds;
 		Octree->ResetModifiedBounds();
@@ -225,10 +227,14 @@ void UOctreeDynamicMeshComponent::NotifyMeshUpdated()
 		//UE_LOG(LogTemp, Warning, TEXT("Updating %d of %d decomposition sets, %d tris total, spillcount %d"), SetsToUpdate.Num(), CutCellSetMap.Num(), TotalTriangleCount, SpillTriangleCount);
 		{
 			SCOPE_CYCLE_COUNTER(STAT_SculptToolOctree_UpdateFromDecomp);
-			GetCurrentSceneProxy()->UpdateFromDecomposition(TriangleDecomposition, SetsToUpdate);
+			CurrentProxy->UpdateFromDecomposition(TriangleDecomposition, SetsToUpdate);
 		}
 
 	}
+
+	//MarkRenderStateDirty();
+	//UpdateBounds();
+	//CurrentProxy = nullptr;
 }
 
 
@@ -261,17 +267,15 @@ static void InitializeOctreeCutSet(const FDynamicMesh3& Mesh, const FDynamicMesh
 
 FPrimitiveSceneProxy* UOctreeDynamicMeshComponent::CreateSceneProxy()
 {
-	check(GetCurrentSceneProxy() == nullptr);
-
-	FOctreeDynamicMeshSceneProxy* NewProxy = nullptr;
+	CurrentProxy = nullptr;
 	if (Mesh->TriangleCount() > 0)
 	{
-		NewProxy = new FOctreeDynamicMeshSceneProxy(this);
+		CurrentProxy = new FOctreeDynamicMeshSceneProxy(this);
 
 		if (TriangleColorFunc != nullptr)
 		{
-			NewProxy->bUsePerTriangleColor = true;
-			NewProxy->PerTriangleColorFunc = [this](const FDynamicMesh3* Mesh, int TriangleID) { return GetTriangleColor(TriangleID); };
+			CurrentProxy->bUsePerTriangleColor = true;
+			CurrentProxy->PerTriangleColorFunc = [this](int TriangleID) { return GetTriangleColor(TriangleID); };
 		}
 
 
@@ -308,29 +312,22 @@ FPrimitiveSceneProxy* UOctreeDynamicMeshComponent::CreateSceneProxy()
 			});
 		}
 
-		NewProxy->InitializeFromDecomposition(TriangleDecomposition);
+		CurrentProxy->InitializeFromDecomposition(TriangleDecomposition);
 	}
-	return NewProxy;
+	return CurrentProxy;
 }
 
-
-
-void UOctreeDynamicMeshComponent::NotifyMaterialSetUpdated()
+int32 UOctreeDynamicMeshComponent::GetNumMaterials() const
 {
-	if (GetCurrentSceneProxy() != nullptr)
-	{
-		GetCurrentSceneProxy()->UpdatedReferencedMaterials();
-	}
+	return 1;
 }
-
-
 
 
 FColor UOctreeDynamicMeshComponent::GetTriangleColor(int TriangleID)
 {
 	if (TriangleColorFunc != nullptr)
 	{
-		return TriangleColorFunc(Mesh.Get(), TriangleID);
+		return TriangleColorFunc(TriangleID);
 	}
 	else
 	{
@@ -342,23 +339,35 @@ FColor UOctreeDynamicMeshComponent::GetTriangleColor(int TriangleID)
 
 FBoxSphereBounds UOctreeDynamicMeshComponent::CalcBounds(const FTransform& LocalToWorld) const
 {
-	// Bounds are tighter if the box is generated from transformed vertices.
+	// Bounds are tighter if the box is generated from pre-transformed vertices.
 	FBox BoundingBox(ForceInit);
 	for ( FVector3d Vertex : Mesh->VerticesItr() ) 
 	{
-		BoundingBox += LocalToWorld.TransformPosition((FVector)Vertex);
+		BoundingBox += LocalToWorld.TransformPosition(Vertex);
 	}
-	return FBoxSphereBounds(BoundingBox);
+
+	FBoxSphereBounds NewBounds;
+	NewBounds.BoxExtent = BoundingBox.GetExtent();
+	NewBounds.Origin = BoundingBox.GetCenter();
+	NewBounds.SphereRadius = NewBounds.BoxExtent.Size();
+
+	return NewBounds;
 }
 
 
 
 void UOctreeDynamicMeshComponent::ApplyChange(const FMeshVertexChange* Change, bool bRevert)
 {
+	int NV = Change->Vertices.Num();
+	const TArray<FVector3d>& Positions = (bRevert) ? Change->OldPositions : Change->NewPositions;
+	
 	Octree->ResetModifiedBounds();
 	TSet<int> TrianglesToUpdate;
-	auto NotifyTriVerticesAffected = [&](int32 vid) 
+
+	for (int k = 0; k < NV; ++k)
 	{
+		int vid = Change->Vertices[k];
+
 		for (int tid : Mesh->VtxTrianglesItr(vid))
 		{
 			if (TrianglesToUpdate.Contains(tid) == false)
@@ -367,32 +376,8 @@ void UOctreeDynamicMeshComponent::ApplyChange(const FMeshVertexChange* Change, b
 				TrianglesToUpdate.Add(tid);
 			}
 		}
-	};
 
-	int NV = Change->Vertices.Num();
-	const TArray<FVector3d>& Positions = (bRevert) ? Change->OldPositions : Change->NewPositions;
-	for (int k = 0; k < NV; ++k)
-	{
-		int vid = Change->Vertices[k];
-		NotifyTriVerticesAffected(vid);
 		Mesh->SetVertex(vid, Positions[k]);
-	}
-
-	if (Change->bHaveOverlayNormals && Mesh->HasAttributes() && Mesh->Attributes()->PrimaryNormals())
-	{
-		FDynamicMeshNormalOverlay* Overlay = Mesh->Attributes()->PrimaryNormals();
-		int32 NumNormals = Change->Normals.Num();
-		const TArray<FVector3f>& UseNormals = (bRevert) ? Change->OldNormals : Change->NewNormals;
-		for (int32 k = 0; k < NumNormals; ++k)
-		{
-			int32 elemid = Change->Normals[k];
-			if (Overlay->IsElement(elemid))
-			{
-				Overlay->SetElement(elemid, UseNormals[k]);
-				int32 ParentVID = Overlay->GetParentVertex(elemid);
-				NotifyTriVerticesAffected(ParentVID);
-			}
-		}
 	}
 
 	Octree->ReinsertTriangles(TrianglesToUpdate);
@@ -418,21 +403,6 @@ void UOctreeDynamicMeshComponent::ApplyChange(const FMeshChange* Change, bool bR
 	Change->DynamicMeshChange->Apply(Mesh.Get(), bRevert);
 
 	Octree->InsertTriangles(AddTriangles);
-
-	//NotifyMeshUpdated();
-
-	OnMeshChanged.Broadcast();
-}
-
-
-void UOctreeDynamicMeshComponent::ApplyChange(const FMeshReplacementChange* Change, bool bRevert)
-{
-	// full clear and reset
-	Mesh->Clear();
-	Mesh->Copy(*Change->GetMesh(bRevert));
-	Octree = MakeUnique<FDynamicMeshOctree3>();
-	Octree->Initialize(GetMesh());
-	OctreeCut = MakeUnique<FDynamicMeshOctree3::FTreeCutSet>();
 
 	//NotifyMeshUpdated();
 

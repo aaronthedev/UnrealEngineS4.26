@@ -1,13 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Sound/SoundEffectPreset.h"
 #include "Sound/SoundEffectSource.h"
 #include "Engine/Engine.h"
 #include "AudioDeviceManager.h"
-#include "CoreGlobals.h"
-#include "Audio.h"
-#include "Async/TaskGraphInterfaces.h"
 
 USoundEffectPreset::USoundEffectPreset(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -16,24 +13,46 @@ USoundEffectPreset::USoundEffectPreset(const FObjectInitializer& ObjectInitializ
 
 }
 
-void USoundEffectPreset::Update()
+USoundEffectPreset::~USoundEffectPreset()
 {
-	FScopeLock ScopeLock(&InstancesMutationCriticalSection);
-	for (int32 i = Instances.Num() - 1; i >= 0; --i)
+	for (int32 i = 0; i < Instances.Num(); ++i)
 	{
-		TSoundEffectPtr EffectSharedPtr = Instances[i].Pin();
-		if (!EffectSharedPtr.IsValid() || EffectSharedPtr->GetPreset() == nullptr)
+		if (Instances[i])
 		{
-			Instances.RemoveAtSwap(i, 1);
+			Instances[i]->ClearPreset(false /* bRemoveFromPreset */);
 		}
-		else
+	}
+	Instances.Reset();
+}
+
+
+void USoundEffectPreset::EffectCommand(TFunction<void()> Command)
+{
+	for (int32 i = 0; i < Instances.Num(); ++i)
+	{
+		if (Instances[i])
 		{
-			RegisterInstance(*this, EffectSharedPtr);
+			Instances[i]->EffectCommand(Command);
 		}
 	}
 }
 
-void USoundEffectPreset::AddEffectInstance(TSoundEffectPtr& InEffectPtr)
+void USoundEffectPreset::Update()
+{
+	for (int32 i = Instances.Num() - 1; i >= 0; --i)
+	{
+		if (!Instances[i] || Instances[i]->GetPreset() == nullptr)
+		{
+			Instances.RemoveAtSwap(i, 1, false /* bAllowShrinking */);
+		}
+		else
+		{
+			Instances[i]->SetPreset(this);
+		}
+	}
+}
+
+void USoundEffectPreset::AddEffectInstance(FSoundEffectBase* InSource)
 {
 	if (!bInitialized)
 	{
@@ -44,38 +63,24 @@ void USoundEffectPreset::AddEffectInstance(TSoundEffectPtr& InEffectPtr)
 		OnInit();
 	}
 
-	FScopeLock ScopeLock(&InstancesMutationCriticalSection);
-	Instances.AddUnique(TSoundEffectWeakPtr(InEffectPtr));
+	Instances.AddUnique(InSource);
 }
 
-void USoundEffectPreset::AddReferencedEffects(FReferenceCollector& InCollector)
+void USoundEffectPreset::AddReferencedEffects(FReferenceCollector& Collector)
 {
-	FReferenceCollector* Collector = &InCollector;
-	IterateEffects<FSoundEffectBase>([Collector](FSoundEffectBase& Instance)
+	for (FSoundEffectBase* Effect : Instances)
 	{
-		if (const USoundEffectPreset* EffectPreset = Instance.GetPreset())
+		if (Effect)
 		{
-			Collector->AddReferencedObject(EffectPreset);
+			const USoundEffectPreset* EffectPreset = Effect->GetPreset();
+			Collector.AddReferencedObject(EffectPreset);
 		}
-	});
+	}
 }
 
-void USoundEffectPreset::BeginDestroy()
+void USoundEffectPreset::RemoveEffectInstance(FSoundEffectBase* InSource)
 {
-	FScopeLock ScopeLock(&InstancesMutationCriticalSection);
-	IterateEffects<FSoundEffectBase>([](FSoundEffectBase& Instance)
-	{
-		Instance.ClearPreset();
-	});
-	Instances.Reset();
-
-	Super::BeginDestroy();
-}
-
-void USoundEffectPreset::RemoveEffectInstance(TSoundEffectPtr& InEffectPtr)
-{
-	FScopeLock ScopeLock(&InstancesMutationCriticalSection);
-	Instances.RemoveSwap(TSoundEffectWeakPtr(InEffectPtr));
+	Instances.RemoveSwap(InSource);
 }
 
 #if WITH_EDITORONLY_DATA
@@ -83,7 +88,6 @@ void USoundEffectPreset::PostEditChangeProperty(FPropertyChangedEvent& PropertyC
 {
 	// Copy the settings to the thread safe version
 	Init();
-	OnInit();
 	Update();
 }
 
@@ -107,50 +111,3 @@ void USoundEffectSourcePresetChain::AddReferencedEffects(FReferenceCollector& Co
 		}
 	}
 }
-
-void USoundEffectPreset::UnregisterInstance(TSoundEffectPtr InEffectPtr)
-{
-	if (ensure(IsInAudioThread() || IsInGameThread()))
-	{
-		if (InEffectPtr.IsValid())
-		{
-			if (USoundEffectPreset* Preset = InEffectPtr->GetPreset())
-			{
-				Preset->RemoveEffectInstance(InEffectPtr);
-			}
-
-			InEffectPtr->ClearPreset();
-		}
-	}
-	else
-	{
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-		UE_LOG(LogAudio, Error, TEXT("Attempt to unregister sound effect outside of audio thread. Current thread id: %d. Named thread type: %d. Game Thread Id: %d."), FPlatformTLS::GetCurrentThreadId(), FTaskGraphInterface::Get().GetCurrentThreadIfKnown(), GGameThreadId);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
-	}
-}
-
-void USoundEffectPreset::RegisterInstance(USoundEffectPreset& InPreset, TSoundEffectPtr InEffectPtr)
-{
-	ensure(IsInAudioThread() || IsInGameThread());
-	if (!InEffectPtr.IsValid())
-	{
-		return;
-	}
-
-	if (InEffectPtr->Preset.Get() != &InPreset)
-	{
-		UnregisterInstance(InEffectPtr);
-
-		InEffectPtr->Preset = &InPreset;
-		if (InEffectPtr->Preset.IsValid())
-		{
-			InPreset.AddEffectInstance(InEffectPtr);
-		}
-	}
-
-	// Anytime notification occurs that the preset has been modified,
-	// flag for update.
-	InEffectPtr->bChanged = true;
-}
-

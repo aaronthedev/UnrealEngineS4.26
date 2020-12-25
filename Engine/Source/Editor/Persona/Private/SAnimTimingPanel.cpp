@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SAnimTimingPanel.h"
 #include "Widgets/Input/SCheckBox.h"
@@ -22,10 +22,6 @@
 #include "Modules/ModuleManager.h"
 #include "IEditableSkeleton.h"
 #include "Editor.h"
-#include "AnimModel.h"
-#include "AnimModel_AnimMontage.h"
-#include "Preferences/PersonaOptions.h"
-#include "FrameNumberDisplayFormat.h"
 
 #define LOCTEXT_NAMESPACE "AnimTimingPanel"
 
@@ -35,101 +31,11 @@ namespace AnimTimingConstants
 	static const int32 FontSize = 10;
 }
 
-class SAnimTimingNodeTooltip : public SToolTip
-{
-public:
-	void Construct(const FArguments& InArgs, const TSharedRef<FTimingRelevantElementBase>& InElement)
-	{
-		Element = InElement;
-		DescriptionBox = SNew(SVerticalBox);
-
-		FArguments Args = InArgs;
-		Args._TextMargin = FMargin(1.0f);
-		Args._BorderImage = FEditorStyle::GetBrush("ContentBrowser.TileViewToolTip.ToolTipBorder");
-		Args._Content.Widget =
-			SNew(SBorder)
-			.Padding(3)
-			.BorderImage(FEditorStyle::GetBrush("ContentBrowser.TileViewTooltip.NonContentBorder"))
-			[
-				SNew(SVerticalBox)
-				+ SVerticalBox::Slot()
-				.AutoHeight()
-				.Padding(0, 0, 0, 3)
-				[
-					SNew(SBorder)
-					.Padding(6)
-					.BorderImage(FEditorStyle::GetBrush("ContentBrowser.TileViewTooltip.ContentBorder"))
-					[
-						SNew(SBox)
-						.HAlign(HAlign_Left)
-						[
-							SNew(STextBlock)
-							.Text(FText::FromName(Element->GetTypeName()))
-							.Font(FEditorStyle::GetFontStyle("ContentBrowser.TileViewTooltip.NameFont"))
-						]
-					]
-				]
-
-				+ SVerticalBox::Slot()
-				[
-					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot()
-					.FillWidth(1.0f)
-					[
-						SNew(SBorder)
-						.Padding(3)
-						.BorderImage(FEditorStyle::GetBrush("ContentBrowser.TileViewTooltip.ContentBorder"))
-						[
-							DescriptionBox.ToSharedRef()
-						]
-					]
-				]
-			];
-
-		SToolTip::Construct(Args);
-	}
-
-	virtual void OnOpening() override
-	{
-		DescriptionBox->ClearChildren();
-
-		TMap<FString, FText> DescriptionItems;
-		Element->GetDescriptionItems(DescriptionItems);
-		for(TPair<FString, FText> ItemPair : DescriptionItems)
-		{
-			DescriptionBox->AddSlot()
-				.AutoHeight()
-				.Padding(0, 0, 3, 0)
-				[
-					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					[
-						SNew(STextBlock)
-						.Text(FText::Format(LOCTEXT("Item", "{0}: "), FText::FromString(ItemPair.Key)))
-						.ColorAndOpacity(FSlateColor::UseSubduedForeground())
-					]
-
-					+SHorizontalBox::Slot()
-					.AutoWidth()
-					[
-						SNew(STextBlock)
-						.Text(ItemPair.Value)
-						.ColorAndOpacity(FSlateColor::UseForeground())
-					]
-				];
-		}
-	}
-
-	TSharedPtr<SVerticalBox> DescriptionBox;
-	TSharedPtr<FTimingRelevantElementBase> Element;
-};
-
 void SAnimTimingNode::Construct(const FArguments& InArgs)
 {
 	Element = InArgs._InElement;
 
-	const FSlateBrush* StyleInfo = FEditorStyle::GetBrush(TEXT("SpecialEditableTextImageNormal"));
+	const FSlateBrush* StyleInfo = FEditorStyle::GetBrush("ProgressBar.Background");
 	static FSlateFontInfo LabelFont = FCoreStyle::GetDefaultFontStyle("Regular", AnimTimingConstants::FontSize);
 
 	UPersonaOptions* EditorOptions = UPersonaOptions::StaticClass()->GetDefaultObject<UPersonaOptions>();
@@ -176,7 +82,80 @@ void SAnimTimingNode::Construct(const FArguments& InArgs)
 
 	if(InArgs._bUseTooltip)
 	{
-		SetToolTip(SNew(SAnimTimingNodeTooltip, Element.ToSharedRef()));
+		// Add asset registry tags to a text list; except skeleton as that is implied in Persona
+		TSharedRef<SVerticalBox> DescriptionBox = SNew(SVerticalBox);
+		TMap<FString, FText> DescriptionItems;
+		Element->GetDescriptionItems(DescriptionItems);
+		for(TPair<FString, FText> ItemPair : DescriptionItems)
+		{
+			DescriptionBox->AddSlot()
+				.AutoHeight()
+				.Padding(0, 0, 3, 0)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					[
+						SNew(STextBlock)
+						.Text(FText::Format(LOCTEXT("Item", "{0} :"), FText::FromString(ItemPair.Key)))
+						.ColorAndOpacity(FSlateColor::UseSubduedForeground())
+					]
+
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					[
+						SNew(STextBlock)
+						.Text(ItemPair.Value)
+						.ColorAndOpacity(FSlateColor::UseForeground())
+					]
+				];
+		}
+
+		// Tooltip
+		TSharedRef<SToolTip> NodeToolTip = SNew(SToolTip)
+			.TextMargin(1)
+			.BorderImage(FEditorStyle::GetBrush("ContentBrowser.TileViewToolTip.ToolTipBorder"))
+			[
+				SNew(SBorder)
+				.Padding(3)
+				.BorderImage(FEditorStyle::GetBrush("ContentBrowser.TileViewTooltip.NonContentBorder"))
+				[
+					SNew(SVerticalBox)
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.Padding(0, 0, 0, 3)
+					[
+						SNew(SBorder)
+						.Padding(6)
+						.BorderImage(FEditorStyle::GetBrush("ContentBrowser.TileViewTooltip.ContentBorder"))
+						[
+							SNew(SBox)
+							.HAlign(HAlign_Center)
+							[
+								SNew(STextBlock)
+								.Text(FText::FromName(Element->GetTypeName()))
+								.Font(FEditorStyle::GetFontStyle("ContentBrowser.TileViewTooltip.NameFont"))
+							]
+						]
+					]
+
+					+ SVerticalBox::Slot()
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot()
+						.FillWidth(1.0f)
+						[
+							SNew(SBorder)
+							.Padding(3)
+							.BorderImage(FEditorStyle::GetBrush("ContentBrowser.TileViewTooltip.ContentBorder"))
+							[
+								DescriptionBox
+							]
+						]
+					]
+				]
+			];
+		SetToolTip(NodeToolTip);
 	}
 }
 
@@ -213,10 +192,8 @@ void SAnimTimingTrackNode::Construct(const FArguments& InArgs)
 		);
 }
 
-void SAnimTimingPanel::Construct(const FArguments& InArgs, const TSharedRef<FAnimModel_AnimMontage>& InModel)
+void SAnimTimingPanel::Construct(const FArguments& InArgs, FSimpleMulticastDelegate& OnSectionsChanged)
 {
-	WeakModel = InModel;
-
 	SAnimTrackPanel::Construct(SAnimTrackPanel::FArguments()
 		.WidgetWidth(InArgs._WidgetWidth)
 		.ViewInputMin(InArgs._ViewInputMin)
@@ -230,12 +207,22 @@ void SAnimTimingPanel::Construct(const FArguments& InArgs, const TSharedRef<FAni
 	check(AnimSequence);
 
 	this->ChildSlot
-	[
-		SAssignNew(PanelArea, SBorder)
-		.BorderImage(FEditorStyle::GetBrush("NoBorder"))
-		.Padding(0.0f)
-		.ColorAndOpacity(FLinearColor::White)
-	];
+		[
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot()
+			.FillHeight(1)
+			[
+				SNew(SExpandableArea)
+				.AreaTitle(LOCTEXT("ExpandLabel", "Element Timing"))
+				.BodyContent()
+				[
+					SAssignNew(PanelArea, SBorder)
+					.BorderImage(FEditorStyle::GetBrush("NoBorder"))
+					.Padding(FMargin(2.0f, 2.0f))
+					.ColorAndOpacity(FLinearColor::White)
+				]
+			]
+		];
 
 	Update();
 
@@ -244,7 +231,10 @@ void SAnimTimingPanel::Construct(const FArguments& InArgs, const TSharedRef<FAni
 	TSharedPtr<IEditableSkeleton> EditableSkeleton = SkeletonEditorModule.CreateEditableSkeleton(AnimSequence->GetSkeleton());
 	EditableSkeleton->RegisterOnNotifiesChanged(FSimpleDelegate::CreateSP(this, &SAnimTimingPanel::RefreshTrackNodes));
 
-	InModel->OnTracksChanged().Add(FSimpleDelegate::CreateSP(this, &SAnimTimingPanel::RefreshTrackNodes));
+	OnSectionsChanged.Add(FSimpleDelegate::CreateSP(this, &SAnimTimingPanel::RefreshTrackNodes));
+
+	// Clear display flags
+	FMemory::Memset(bElementNodeDisplayFlags, false, sizeof(bElementNodeDisplayFlags));
 }
 
 void SAnimTimingPanel::Update()
@@ -255,9 +245,12 @@ void SAnimTimingPanel::Update()
 	
 	PanelArea->SetContent(SAssignNew(TimingSlots, SVerticalBox));
 
-	TimingSlots->AddSlot()
+	TSharedRef<S2ColumnWidget> TrackContainer = Create2ColumnWidget(TimingSlots.ToSharedRef());
+	TrackContainer->LeftColumn->ClearChildren();
+	TrackContainer->LeftColumn->AddSlot()
 		.AutoHeight()
 		.VAlign(VAlign_Center)
+		.Padding(FMargin(0.5f, 0.5f))
 		[
 			SAssignNew(Track, STimingTrack)
 			.ViewInputMin(ViewInputMin)
@@ -265,6 +258,27 @@ void SAnimTimingPanel::Update()
 			.TrackMinValue(InputMin)
 			.TrackMaxValue(InputMax)
 			.TrackNumDiscreteValues(AnimSequence->GetNumberOfFrames())
+		];
+
+	TrackContainer->RightColumn->ClearChildren();
+	TrackContainer->RightColumn->AddSlot()
+		.AutoHeight()
+		.VAlign(VAlign_Center)
+		.Padding(FMargin(0.5f, 0.5f))
+		[
+			SNew(SBox)
+			.HAlign(HAlign_Center)
+			[
+				SNew(SButton)
+				.ToolTipText(LOCTEXT("TrackOptionsToolTip", "Display track options menu"))
+				.OnClicked(this, &SAnimTimingPanel::OnContextMenu)
+				.Content()
+				[
+					SNew(SImage)
+					.Image(FEditorStyle::GetBrush("ComboButton.Arrow"))
+					.ColorAndOpacity(FSlateColor::UseForeground())
+				]
+			]
 		];
 
 	RefreshTrackNodes();
@@ -286,40 +300,82 @@ void SAnimTimingPanel::RefreshTrackNodes()
 	for(int32 ElementIdx = 0 ; ElementIdx < NumElements ; ++ElementIdx)
 	{
 		TSharedPtr<FTimingRelevantElementBase> Element = Elements[ElementIdx];
-		if(WeakModel.Pin()->IsTimingElementDisplayEnabled(Element->GetType()))
-		{
-			Track->AddTrackNode(
-				SNew(SAnimTimingTrackNode)
-				.ViewInputMin(ViewInputMin)
-				.ViewInputMax(ViewInputMax)
-				.DataStartPos(Element.ToSharedRef(), &FTimingRelevantElementBase::GetElementTime)
-				.NodeName(FString::FromInt(ElementIdx + 1))
-				.NodeColor(FLinearColor::Yellow)
-				.Element(Element)
-				);
-		}
+
+		Track->AddTrackNode(
+			SNew(SAnimTimingTrackNode)
+			.ViewInputMin(ViewInputMin)
+			.ViewInputMax(ViewInputMax)
+			.DataStartPos(Element.ToSharedRef(), &FTimingRelevantElementBase::GetElementTime)
+			.NodeName(FString::FromInt(ElementIdx + 1))
+			.NodeColor(FLinearColor::Yellow)
+			.Element(Element)
+			);
 	}
+}
+
+FReply SAnimTimingPanel::OnContextMenu()
+{
+	FMenuBuilder Builder(true, nullptr);
+
+	Builder.BeginSection("TimingPanelOptions", LOCTEXT("TimingPanelOptionsHeader", "Options"));
+	{
+		Builder.AddWidget
+		(
+			SNew(SCheckBox)
+			.IsChecked(this, &SAnimTimingPanel::IsElementDisplayChecked, ETimingElementType::Section)
+			.OnCheckStateChanged(this, &SAnimTimingPanel::OnElementDisplayEnabledChanged, ETimingElementType::Section)
+			.ToolTipText(LOCTEXT("ShowSectionTimingNodes", "Show or hide the timing display for sections on the section name track"))
+			.HAlign(HAlign_Left)
+			[
+				SNew(STextBlock)
+				.Text(LOCTEXT("ToggleTimingNodes_Sections", "Show Section Timing Nodes"))
+			],
+			FText()
+		);
+
+		Builder.AddWidget
+		(
+			SNew(SCheckBox)
+			.IsChecked(this, &SAnimTimingPanel::IsElementDisplayChecked, ETimingElementType::QueuedNotify)
+			.OnCheckStateChanged(this, &SAnimTimingPanel::OnElementDisplayEnabledChanged, ETimingElementType::QueuedNotify)
+			.ToolTipText(LOCTEXT("ShowNotifyTimingNodes", "Show or hide the timing display for notifies in the notify panel"))
+			.HAlign(HAlign_Left)
+			[
+				SNew(STextBlock)
+				.Text(LOCTEXT("ToggleTimingNodes_Notifies", "Show Notify Timing Nodes"))
+			],
+			FText()
+		);
+	}
+	Builder.EndSection();
+
+	FSlateApplication::Get().PushMenu(SharedThis(this),
+		FWidgetPath(),
+		Builder.MakeWidget(),
+		FSlateApplication::Get().GetCursorPos(),
+		FPopupTransitionEffect(FPopupTransitionEffect::ContextMenu));
+
+	return FReply::Handled();
 }
 
 bool SAnimTimingPanel::IsElementDisplayEnabled(ETimingElementType::Type ElementType) const
 {
-	return WeakModel.Pin()->IsTimingElementDisplayEnabled(ElementType);
+	return bElementNodeDisplayFlags[ElementType];
 }
 
-void SAnimTimingPanel::OnElementDisplayEnabledChanged(ETimingElementType::Type ElementType)
+void SAnimTimingPanel::OnElementDisplayEnabledChanged(ECheckBoxState State, ETimingElementType::Type ElementType)
 {
-	WeakModel.Pin()->ToggleTimingElementDisplayEnabled(ElementType);
-	Update();
+	bElementNodeDisplayFlags[ElementType] = State == ECheckBoxState::Checked ? true : false;
 }
 
 ECheckBoxState SAnimTimingPanel::IsElementDisplayChecked(ETimingElementType::Type ElementType) const
 {
-	return WeakModel.Pin()->IsTimingElementDisplayEnabled(ElementType) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+	return bElementNodeDisplayFlags[ElementType] ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
 }
 
 EVisibility SAnimTimingPanel::IsElementDisplayVisible(ETimingElementType::Type ElementType) const
 {
-	return WeakModel.Pin()->IsTimingElementDisplayEnabled(ElementType) ? EVisibility::Visible : EVisibility::Hidden;
+	return bElementNodeDisplayFlags[ElementType] ? EVisibility::Visible : EVisibility::Hidden;
 }
 
 void SAnimTimingPanel::GetTimingRelevantElements(UAnimSequenceBase* Sequence, TArray<TSharedPtr<FTimingRelevantElementBase>>& Elements)
@@ -403,17 +459,11 @@ void FTimingRelevantElement_Section::GetDescriptionItems(TMap<FString, FText>& I
 	check(Montage);
 	FCompositeSection& Section = Montage->CompositeSections[SectionIdx];
 
+	FNumberFormattingOptions NumberOptions;
+	NumberOptions.MinimumFractionalDigits = 3;
+
 	Items.Add(LOCTEXT("SectionName", "Name").ToString(), FText::FromName(Section.SectionName));
-	if(GetDefault<UPersonaOptions>()->TimelineDisplayFormat == EFrameNumberDisplayFormats::Frames)
-	{
-		Items.Add(LOCTEXT("SectionTriggerFrame", "Trigger Frame").ToString(), FText::Format(LOCTEXT("SectionTriggerFrameValue", "{0}"), FText::AsNumber(Montage->GetFrameAtTime(Section.GetTime()))));
-	}
-	else
-	{
-		FNumberFormattingOptions NumberOptions;
-		NumberOptions.MinimumFractionalDigits = 3;
-		Items.Add(LOCTEXT("SectionTriggerTime", "Trigger Time").ToString(), FText::Format(LOCTEXT("SectionTriggerTimeValue", "{0}s"), FText::AsNumber(Section.GetTime(), &NumberOptions)));
-	}	
+	Items.Add(LOCTEXT("SectionTriggerTime", "Trigger Time").ToString(), FText::Format(LOCTEXT("SectionTriggerTimeValue", "{0}s"), FText::AsNumber(Section.GetTime(), &NumberOptions)));
 }
 
 FName FTimingRelevantElement_Notify::GetTypeName()
@@ -475,15 +525,7 @@ void FTimingRelevantElement_Notify::GetDescriptionItems(TMap<FString, FText>& It
 	NumberOptions.MinimumFractionalDigits = 3;
 
 	Items.Add(LOCTEXT("NotifyName", "Name").ToString(), FText::FromName(Event.NotifyName));
-
-	if(GetDefault<UPersonaOptions>()->TimelineDisplayFormat == EFrameNumberDisplayFormats::Frames)
-	{
-		Items.Add(LOCTEXT("NotifyTriggerFrame", "Trigger Frame").ToString(), FText::Format(LOCTEXT("NotifyTriggerFrame_Val", "{0}"), FText::AsNumber(Sequence->GetFrameAtTime(Event.GetTime()))));
-	}
-	else
-	{
-		Items.Add(LOCTEXT("NotifyTriggerTime", "Trigger Time").ToString(), FText::Format(LOCTEXT("NotifyTriggerTime_Val", "{0}s"), FText::AsNumber(Event.GetTime(), &NumberOptions)));
-	}	
+	Items.Add(LOCTEXT("NotifyTriggerTime", "Trigger Time").ToString(), FText::Format(LOCTEXT("NotifyTriggerTime_Val", "{0}s"), FText::AsNumber(Event.GetTime(), &NumberOptions)));
 
 	// +1 as we start at 1 when showing tracks to the user
 	Items.Add(LOCTEXT("TrackIdx", "Track").ToString(), FText::AsNumber(Event.TrackIndex + 1));

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	SkeletalMeshMerge.cpp: Unreal skeletal mesh merging implementation.
@@ -40,21 +40,21 @@ FSkeletalMeshMerge::FSkeletalMeshMerge(USkeletalMesh* InMergeMesh,
 }
 
 /** Helper macro to call GenerateLODModel which requires compile time vertex type. */
-#define GENERATE_LOD_MODEL( VertexType, NumUVs ) \
+#define GENERATE_LOD_MODEL( VertexType, NumUVs, bHasExtraBoneInfluences ) \
 {\
 	switch( NumUVs )\
 	{\
 	case 1:\
-		GenerateLODModel< VertexType<1> >( LODIdx + StripTopLODs );\
+		GenerateLODModel< VertexType<1>, TSkinWeightInfo<bHasExtraBoneInfluences> >( LODIdx + StripTopLODs );\
 		break;\
 	case 2:\
-		GenerateLODModel< VertexType<2> >( LODIdx + StripTopLODs );\
+		GenerateLODModel< VertexType<2>, TSkinWeightInfo<bHasExtraBoneInfluences> >( LODIdx + StripTopLODs );\
 		break;\
 	case 3:\
-		GenerateLODModel< VertexType<3> >( LODIdx + StripTopLODs );\
+		GenerateLODModel< VertexType<3>, TSkinWeightInfo<bHasExtraBoneInfluences> >( LODIdx + StripTopLODs );\
 		break;\
 	case 4:\
-		GenerateLODModel< VertexType<4> >( LODIdx + StripTopLODs );\
+		GenerateLODModel< VertexType<4>, TSkinWeightInfo<bHasExtraBoneInfluences> >( LODIdx + StripTopLODs );\
 		break;\
 	default:\
 		checkf(false, TEXT("Invalid number of UV sets.  Must be between 0 and 4") );\
@@ -166,11 +166,9 @@ bool FSkeletalMeshMerge::FinalizeMesh()
 
 		// Array of per-lod number of UV sets
 		TArray<uint32> PerLODNumUVSets;
-		TArray<uint32> PerLODMaxBoneInfluences;
-		TArray<bool> PerLODUse16BitBoneIndex;
+		TArray<bool> PerLODExtraBoneInfluences;
 		PerLODNumUVSets.AddZeroed(MaxNumLODs);
-		PerLODMaxBoneInfluences.AddZeroed(MaxNumLODs);
-		PerLODUse16BitBoneIndex.AddZeroed(MaxNumLODs);
+		PerLODExtraBoneInfluences.AddZeroed(MaxNumLODs);
 
 		// Get the number of UV sets for each LOD.
 		for (int32 MeshIdx = 0; MeshIdx < SrcMeshList.Num(); MeshIdx++)
@@ -185,8 +183,7 @@ bool FSkeletalMeshMerge::FinalizeMesh()
 					uint32& NumUVSets = PerLODNumUVSets[LODIdx];
 					NumUVSets = FMath::Max(NumUVSets, SrcResource->LODRenderData[LODIdx].GetNumTexCoords());
 
-					PerLODMaxBoneInfluences[LODIdx] = FMath::Max(PerLODMaxBoneInfluences[LODIdx], SrcResource->LODRenderData[LODIdx].GetVertexBufferMaxBoneInfluences());
-					PerLODUse16BitBoneIndex[LODIdx] |= SrcResource->LODRenderData[LODIdx].DoesVertexBufferUse16BitBoneIndex();
+					PerLODExtraBoneInfluences[LODIdx] |= SrcResource->LODRenderData[LODIdx].DoesVertexBufferHaveExtraBoneInfluences();
 				}
 			}
 		}
@@ -199,24 +196,31 @@ bool FSkeletalMeshMerge::FinalizeMesh()
 			bool bUseFullPrecisionUVs = LODInfoPtr ? LODInfoPtr->BuildSettings.bUseFullPrecisionUVs : GVertexElementTypeSupport.IsSupported(VET_Half2) ? false : true;
 			if (!bUseFullPrecisionUVs)
 			{
-				GENERATE_LOD_MODEL(TGPUSkinVertexFloat16Uvs, PerLODNumUVSets[LODIdx]);
+				if (PerLODExtraBoneInfluences[LODIdx])
+				{
+					GENERATE_LOD_MODEL(TGPUSkinVertexFloat16Uvs, PerLODNumUVSets[LODIdx], true);
+				}
+				else
+				{
+					GENERATE_LOD_MODEL(TGPUSkinVertexFloat16Uvs, PerLODNumUVSets[LODIdx], false);
+				}
 			}
 			else
 			{
-				GENERATE_LOD_MODEL(TGPUSkinVertexFloat32Uvs, PerLODNumUVSets[LODIdx]);
+				if (PerLODExtraBoneInfluences[LODIdx])
+				{
+					GENERATE_LOD_MODEL(TGPUSkinVertexFloat32Uvs, PerLODNumUVSets[LODIdx], true);
+				}
+				else
+				{
+					GENERATE_LOD_MODEL(TGPUSkinVertexFloat32Uvs, PerLODNumUVSets[LODIdx], false);
+				}
 			}
 		}
 		// update the merge skel mesh entries
 		if (!ProcessMergeMesh())
 		{
 			Result = false;
-		}
-
-		// If in game, streaming must be disabled as there are no files to stream from.
-		// In editor, the engine can stream from the DDC and create the required files on cook.
-		if (!GIsEditor)
-		{
-			MergeMesh->NeverStream = true;
 		}
 
 		// Reinitialize the mesh's render resources.
@@ -303,9 +307,7 @@ void FSkeletalMeshMerge::GenerateNewSectionArray( TArray<FNewSectionInfo>& NewSe
 				{
 					MaterialIndex = FMath::Clamp<int32>( SrcLODInfo.LODMaterialMap[SectionIdx], 0, SrcMesh->Materials.Num() );
 				}
-
-				const FSkeletalMaterial& SkeletalMaterial = SrcMesh->Materials[MaterialIndex];
-				UMaterialInterface* Material = SkeletalMaterial.MaterialInterface;
+				UMaterialInterface* Material = SrcMesh->Materials[MaterialIndex].MaterialInterface;
 
 				// see if there is an existing entry in the array of new sections that matches its material
 				// if there is a match then the source section can be added to its list of sections to merge 
@@ -358,9 +360,8 @@ void FSkeletalMeshMerge::GenerateNewSectionArray( TArray<FNewSectionInfo>& NewSe
 				if( FoundIdx == INDEX_NONE )
 				{
 					// create a new section entry
-					const FName& MaterialSlotName = SkeletalMaterial.MaterialSlotName;
-					const FMeshUVChannelInfo& UVChannelData = SkeletalMaterial.UVChannelData;
-					FNewSectionInfo& NewSectionInfo = *new(NewSectionArray) FNewSectionInfo(Material, MaterialId, MaterialSlotName, UVChannelData);
+					const FMeshUVChannelInfo& UVChannelData = SrcMesh->Materials[MaterialIndex].UVChannelData;
+					FNewSectionInfo& NewSectionInfo = *new(NewSectionArray) FNewSectionInfo(Material,MaterialId,UVChannelData);
 					// initialize the merged bonemap to simply use the original chunk bonemap
 					NewSectionInfo.MergedBoneMap = DestChunkBoneMap;
 
@@ -414,11 +415,24 @@ void FSkeletalMeshMerge::CopyVertexFromSource(VertexDataType& DestVert, const FS
 	}
 }
 
+template<typename SkinWeightType, bool bHasExtraBoneInfluences>
+void FSkeletalMeshMerge::CopyWeightFromSource(SkinWeightType& DestWeight, const FSkeletalMeshLODRenderData& SrcLODData, int32 SourceVertIdx, const FMergeSectionInfo& MergeSectionInfo)
+{
+	const TSkinWeightInfo<bHasExtraBoneInfluences>* SrcSkinWeights = SrcLODData.GetSkinWeightVertexBuffer()->GetSkinWeightPtr<bHasExtraBoneInfluences>(SourceVertIdx);
+
+	// if source doesn't have extra influence, we have to clear the buffer
+	FMemory::Memzero(DestWeight.InfluenceBones);
+	FMemory::Memzero(DestWeight.InfluenceWeights);
+
+	FMemory::Memcpy(DestWeight.InfluenceBones, SrcSkinWeights->InfluenceBones, sizeof(SrcSkinWeights->InfluenceBones));
+	FMemory::Memcpy(DestWeight.InfluenceWeights, SrcSkinWeights->InfluenceWeights, sizeof(SrcSkinWeights->InfluenceWeights));
+}
+
 /**
 * Creates a new LOD model and adds the new merged sections to it. Modifies the MergedMesh.
 * @param LODIdx - current LOD to process
 */
-template<typename VertexDataType>
+template<typename VertexDataType, typename SkinWeightType>
 void FSkeletalMeshMerge::GenerateLODModel( int32 LODIdx )
 {
 	// add the new LOD model entry
@@ -440,7 +454,7 @@ void FSkeletalMeshMerge::GenerateLODModel( int32 LODIdx )
 	// merged vertex buffer
 	TArray< VertexDataType > MergedVertexBuffer;
 	// merged skin weight buffer
-	TArray< FSkinWeightInfo > MergedSkinWeightBuffer;
+	TArray< SkinWeightType > MergedSkinWeightBuffer;
 	// merged vertex color buffer
 	TArray< FColor > MergedColorBuffer;
 	// merged index buffer
@@ -449,8 +463,8 @@ void FSkeletalMeshMerge::GenerateLODModel( int32 LODIdx )
 	// The total number of UV sets for this LOD model
 	uint32 TotalNumUVs = 0;
 
-	uint32 SourceMaxBoneInfluences = 0;
-	bool bSourceUse16BitBoneIndex = false;
+	// true if any extra bone influence exists
+	bool bSourceHasExtraBoneInfluences = false;
 
 	for( int32 CreateIdx=0; CreateIdx < NewSectionArray.Num(); CreateIdx++ )
 	{
@@ -492,7 +506,7 @@ void FSkeletalMeshMerge::GenerateLODModel( int32 LODIdx )
 		// if it doesn't exist, make new entry
 		if(MatIndex == INDEX_NONE)
 		{
-			FSkeletalMaterial SkeletalMaterial(NewSectionInfo.Material, true, false, NewSectionInfo.SlotName);
+			FSkeletalMaterial SkeletalMaterial(NewSectionInfo.Material, true);
 			SkeletalMaterial.UVChannelData = NewSectionInfo.UVChannelData;
 			MergeMesh->Materials.Add(SkeletalMaterial);
 			MaterialIds.Add(NewSectionInfo.MaterialId);
@@ -517,10 +531,10 @@ void FSkeletalMeshMerge::GenerateLODModel( int32 LODIdx )
 			int32 SourceLODIdx = FMath::Min(LODIdx, MergeSectionInfo.SkelMesh->GetResourceForRendering()->LODRenderData.Num()-1);
 
 			// Take the max UV density for each UVChannel between all sections that are being merged.
-			const int32 NewSectionMatId = MergeSectionInfo.Section->MaterialIndex;
-			if(MergeSectionInfo.SkelMesh->Materials.IsValidIndex(NewSectionMatId))
 			{
+				const int32 NewSectionMatId = MergeSectionInfo.Section->MaterialIndex;
 				const FMeshUVChannelInfo& NewSectionUVData = MergeSectionInfo.SkelMesh->Materials[NewSectionMatId].UVChannelData;
+
 				for (int32 i = 0; i < MAX_TEXCOORDS; i++)
 				{
 					const float NewSectionUVDensity = NewSectionUVData.LocalUVDensities[i];
@@ -536,7 +550,7 @@ void FSkeletalMeshMerge::GenerateLODModel( int32 LODIdx )
 			// keep track of the lowest LOD displayfactor and hysteresis
 			MergeLODInfo.ScreenSize.Default = FMath::Min<float>(MergeLODInfo.ScreenSize.Default, SrcLODInfo.ScreenSize.Default);
 #if WITH_EDITORONLY_DATA
-			for(const TPair<FName, float>& PerPlatform : SrcLODInfo.ScreenSize.PerPlatform)
+			for(const TTuple<FName, float>& PerPlatform : SrcLODInfo.ScreenSize.PerPlatform)
 			{
 				float* Value = MergeLODInfo.ScreenSize.PerPlatform.Find(PerPlatform.Key);
 				if(Value)
@@ -586,19 +600,24 @@ void FSkeletalMeshMerge::GenerateLODModel( int32 LODIdx )
 			// keep track of the current base vertex index before adding any new vertices
 			// this will be needed to remap the index buffer values to the new range
 			int32 CurrentBaseVertexIndex = MergedVertexBuffer.Num();
-			const uint32 MaxBoneInfluences = SrcLODData.GetSkinWeightVertexBuffer()->GetMaxBoneInfluences();
-			const bool bUse16BitBoneIndex = SrcLODData.GetSkinWeightVertexBuffer()->Use16BitBoneIndex();
+			const bool bSourceExtraBoneInfluence = SrcLODData.GetSkinWeightVertexBuffer()->HasExtraBoneInfluences();
 			for( int32 VertIdx=MergeSectionInfo.Section->BaseVertexIndex; VertIdx < MaxVertIdx; VertIdx++ )
 			{
 				// add the new vertex
 				VertexDataType& DestVert = MergedVertexBuffer[MergedVertexBuffer.AddUninitialized()];
-				FSkinWeightInfo& DestWeight = MergedSkinWeightBuffer[MergedSkinWeightBuffer.AddUninitialized()];
+				SkinWeightType& DestWeight = MergedSkinWeightBuffer[MergedSkinWeightBuffer.AddUninitialized()];
 
 				CopyVertexFromSource<VertexDataType>(DestVert, SrcLODData, VertIdx, MergeSectionInfo);
 
-				SourceMaxBoneInfluences = FMath::Max(SourceMaxBoneInfluences, MaxBoneInfluences);
-				bSourceUse16BitBoneIndex |= bUse16BitBoneIndex;
-				DestWeight = SrcLODData.GetSkinWeightVertexBuffer()->GetVertexSkinWeights(VertIdx);
+				bSourceHasExtraBoneInfluences |= bSourceExtraBoneInfluence;
+				if (bSourceExtraBoneInfluence)
+				{
+					CopyWeightFromSource<SkinWeightType, true>(DestWeight, SrcLODData, VertIdx, MergeSectionInfo);
+				}
+				else
+				{
+					CopyWeightFromSource<SkinWeightType, false>(DestWeight, SrcLODData, VertIdx, MergeSectionInfo);
+				}
 
 				// if the mesh uses vertex colors, copy the source color if possible or default to white
 				if( MergeMesh->bHasVertexColors )
@@ -622,7 +641,7 @@ void FSkeletalMeshMerge::GenerateLODModel( int32 LODIdx )
 				}
 
 				// remap the bone index used by this vertex to match the mergedbonemap 
-				for( uint32 Idx=0; Idx < MAX_TOTAL_INFLUENCES; Idx++ )
+				for( int32 Idx=0; Idx < SkinWeightType::NumInfluences; Idx++ )
 				{
 					if (DestWeight.InfluenceWeights[Idx] > 0)
 					{
@@ -730,8 +749,7 @@ void FSkeletalMeshMerge::GenerateLODModel( int32 LODIdx )
 		}
 	}
 
-	MergeLODData.SkinWeightVertexBuffer.SetMaxBoneInfluences(SourceMaxBoneInfluences);
-	MergeLODData.SkinWeightVertexBuffer.SetUse16BitBoneIndex(bSourceUse16BitBoneIndex);
+	MergeLODData.SkinWeightVertexBuffer.SetHasExtraBoneInfluences(bSourceHasExtraBoneInfluences);
 	MergeLODData.SkinWeightVertexBuffer.SetNeedsCPUAccess(bNeedsCPUAccess);
 
 	// copy vertex resource arrays

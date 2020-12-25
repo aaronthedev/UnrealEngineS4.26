@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "SAnimCurveViewer.h"
@@ -222,12 +222,6 @@ void SAnimCurveListRow::OnAnimCurveTypeBoxChecked(ECheckBoxState InState, bool b
 	if (!bMorphTarget)
 	{
 		Item->EditableSkeleton.Pin()->SetCurveMetaDataMaterial(Item->SmartName, bNewData);
-
-		UAnimInstance* AnimInstance = PreviewScenePtr.Pin()->GetPreviewMeshComponent()->GetAnimInstance();
-		if (AnimInstance)
-		{		
-			AnimInstance->RecalcRequiredCurves(FCurveEvaluationOption());
-		}
 	}
 }
 

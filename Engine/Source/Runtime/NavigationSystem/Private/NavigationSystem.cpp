@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NavigationSystem.h"
 #include "NavigationDataHandler.h"
@@ -32,6 +32,8 @@
 #if WITH_EDITOR
 #include "EditorModeManager.h"
 #include "EditorModes.h"
+#include "Editor/GeometryMode/Public/GeometryEdMode.h"
+#include "Editor/GeometryMode/Public/EditorGeometry.h"
 #include "Editor/LevelEditor/Public/LevelEditor.h"
 #endif
 
@@ -57,7 +59,6 @@ static const uint32 REGISTRATION_QUEUE_SIZE = 16;	// and we'll not reallocate
 
 DECLARE_CYCLE_STAT(TEXT("Nav Tick: mark dirty"), STAT_Navigation_TickMarkDirty, STATGROUP_Navigation);
 DECLARE_CYCLE_STAT(TEXT("Nav Tick: async build"), STAT_Navigation_TickAsyncBuild, STATGROUP_Navigation);
-DECLARE_CYCLE_STAT(TEXT("Nav Tick: dispatch async pathfinding results"), STAT_Navigation_DispatchAsyncPathfindingResults, STATGROUP_Navigation);
 DECLARE_CYCLE_STAT(TEXT("Nav Tick: async pathfinding"), STAT_Navigation_TickAsyncPathfinding, STATGROUP_Navigation);
 DECLARE_CYCLE_STAT(TEXT("Debug NavOctree Time"), STAT_DebugNavOctree, STATGROUP_Navigation);
 
@@ -83,21 +84,14 @@ DEFINE_STAT(STAT_Navigation_RegisterNavOctreeElement);
 DEFINE_STAT(STAT_Navigation_UnregisterNavOctreeElement);
 DEFINE_STAT(STAT_Navigation_AddingActorsToNavOctree);
 DEFINE_STAT(STAT_Navigation_RecastAddGeneratedTiles);
-DEFINE_STAT(STAT_Navigation_RecastAddGeneratedTileLayer);
 DEFINE_STAT(STAT_Navigation_RecastTick);
 DEFINE_STAT(STAT_Navigation_RecastPathfinding);
 DEFINE_STAT(STAT_Navigation_RecastTestPath);
-DEFINE_STAT(STAT_Navigation_StoringCompressedLayers);
-DEFINE_STAT(STAT_Navigation_CreateTileGenerator);
-DEFINE_STAT(STAT_Navigation_DoWork);
-DEFINE_STAT(STAT_Navigation_RemoveLayers);
 DEFINE_STAT(STAT_Navigation_RecastBuildCompressedLayers);
 DEFINE_STAT(STAT_Navigation_RecastCreateHeightField);
-DEFINE_STAT(STAT_Navigation_RecastComputeRasterizationMasks);
 DEFINE_STAT(STAT_Navigation_RecastRasterizeTriangles);
 DEFINE_STAT(STAT_Navigation_RecastVoxelFilter);
 DEFINE_STAT(STAT_Navigation_RecastFilter);
-DEFINE_STAT(STAT_Navigation_FilterLedgeSpans);
 DEFINE_STAT(STAT_Navigation_RecastBuildCompactHeightField);
 DEFINE_STAT(STAT_Navigation_RecastErodeWalkable);
 DEFINE_STAT(STAT_Navigation_RecastBuildLayers);
@@ -109,7 +103,6 @@ DEFINE_STAT(STAT_Navigation_RecastCreateNavMeshData);
 DEFINE_STAT(STAT_Navigation_RecastMarkAreas);
 DEFINE_STAT(STAT_Navigation_RecastBuildContours);
 DEFINE_STAT(STAT_Navigation_RecastBuildNavigation);
-DEFINE_STAT(STAT_Navigation_GenerateNavigationDataLayer);
 DEFINE_STAT(STAT_Navigation_RecastBuildRegions);
 DEFINE_STAT(STAT_Navigation_UpdateNavOctree);
 DEFINE_STAT(STAT_Navigation_CollisionTreeMemory);
@@ -125,7 +118,6 @@ DEFINE_STAT(STAT_Navigation_ObservedPathsCount);
 DEFINE_STAT(STAT_Navigation_RecastMemory);
 
 CSV_DEFINE_CATEGORY(NavigationSystem, false);
-CSV_DEFINE_CATEGORY(NavTasks, true);
 
 //----------------------------------------------------------------------//
 // consts
@@ -238,120 +230,6 @@ namespace
 	}
 #endif // ENABLE_VISUAL_LOG
 }
-
-void FNavRegenTimeSlicer::SetupTimeSlice(double SliceDuration)
-{
-	RemainingDuration = OriginalDuration = SliceDuration; 
-	StartTime = TimeLastTested = 0.;
-	bTimeSliceFinishedCached = false; 
-}
-
-void FNavRegenTimeSlicer::StartTimeSlice()
-{
-	ensureMsgf(!bTimeSliceFinishedCached, TEXT("Starting a time slice that has already been tested as finished! Call SetupTimeSlice() before calling StartTimeSlice() again!"));
-	ensureMsgf(RemainingDuration > 0., TEXT("Attempting to start a time slice that has zero duration!"));
-
-	TimeLastTested = StartTime = FPlatformTime::Seconds();
-}
- 
-void FNavRegenTimeSlicer::EndTimeSliceAndAdjustDuration()
-{
-	RemainingDuration = FMath::Max(RemainingDuration - (TimeLastTested - StartTime), 0.);
-}
-
-bool FNavRegenTimeSlicer::TestTimeSliceFinished() const
-{
-	ensureMsgf(!bTimeSliceFinishedCached, TEXT("Testing time slice is finished when we have already confirmed that!"));
-
-	TimeLastTested = FPlatformTime::Seconds();
-
-	bTimeSliceFinishedCached = (TimeLastTested - StartTime) >= RemainingDuration;
-	return bTimeSliceFinishedCached;
-}
-
-FNavRegenTimeSliceManager::FNavRegenTimeSliceManager()
-	: MinTimeSliceDuration(0.00075)
-	, MaxTimeSliceDuration(0.004)
-	, FrameNumOld(TNumericLimits<int64>::Max() - 1)
-	, MaxDesiredTileRegenDuration(0.7)
-	, TimeLastCall(-1.f)
-	, NavDataIdx(0)
-#if TIME_SLICE_NAV_REGEN
-	, bDoTimeSlicedUpdate(true)
-#else
-	, bDoTimeSlicedUpdate(false)
-#endif
-{
-}
-
-void FNavRegenTimeSliceManager::CalcAverageDeltaTime(uint64 FrameNum)
-{
-	const double CurTime = FPlatformTime::Seconds();
-
-	if ((FrameNumOld + 1) == FrameNum)
-	{
-		const double DeltaTime = CurTime - TimeLastCall;
-		MovingWindowDeltaTime.PushValue(DeltaTime);
-	}
-	TimeLastCall = CurTime;
-	FrameNumOld = FrameNum;
-}
-
-void FNavRegenTimeSliceManager::CalcTimeSliceDuration(int32 NumTilesToRegen, const TArray<double>& CurrentTileRegenDurations)
-{
-	const float DeltaTimesAverage = (MovingWindowDeltaTime.GetAverage() > 0.f) ? MovingWindowDeltaTime.GetAverage() : (1.f / 30.f); //use default 33 ms
-
-	const double TileRegenTimesAverage = (MovingWindowTileRegenTime.GetAverage() > 0.) ? MovingWindowTileRegenTime.GetAverage() : 0.0025; //use default of 2.5 milli secs to regen a full tile
-
-	//calculate the max desired frames to regen all the tiles in PendingDirtyTiles
-	const float MaxDesiredFramesToRegen = FMath::FloorToFloat(MaxDesiredTileRegenDuration / DeltaTimesAverage);
-
-	//tiles to add to PendingDirtyTiles if the current tiles are taking longer than average to regen
-	//we add 1 tile for however many times longer the current tile is taking compared with the moving window average
-	int32 TilesToAddForLongCurrentTileRegen = 0;
-	for (const double RegenDuration : CurrentTileRegenDurations)
-	{
-		TilesToAddForLongCurrentTileRegen += (RegenDuration > 0.) ? (static_cast<int32>(RegenDuration / TileRegenTimesAverage)) : 0;
-	}
-
-	//calculate the total processing time to regen all the tiles based on the moving window average
-	const double TotalRegenTime = TileRegenTimesAverage * static_cast<double>(NumTilesToRegen + TilesToAddForLongCurrentTileRegen);
-
-	//calculate the time slice per frame required to regen all the tiles clamped between MinTimeSliceDuration and MaxTimeSliceDuration
-	const double NextRegenTimeSliceTime = FMath::Clamp(TotalRegenTime / static_cast<double>(MaxDesiredFramesToRegen), MinTimeSliceDuration, MaxTimeSliceDuration);
-
-	TimeSlicer.SetupTimeSlice(NextRegenTimeSliceTime);
-
-#if !UE_BUILD_SHIPPING
-	CSV_CUSTOM_STAT(NavigationSystem, NavTileRegenTimeSliceTimeMs, static_cast<float>(NextRegenTimeSliceTime * 1000.), ECsvCustomStatOp::Set);
-	CSV_CUSTOM_STAT(NavigationSystem, NavTileNumTilesToRegen, NumTilesToRegen, ECsvCustomStatOp::Set);
-	CSV_CUSTOM_STAT(NavigationSystem, NavTilesToAddForLongCurrentTileRegen, TilesToAddForLongCurrentTileRegen, ECsvCustomStatOp::Set);
-	CSV_CUSTOM_STAT(NavigationSystem, NavTileAvRegenTimeMs, static_cast<float>(MovingWindowTileRegenTime.GetAverage() * 1000.), ECsvCustomStatOp::Set);
-	CSV_CUSTOM_STAT(NavigationSystem, NavTileAvRegenDeltaTimeMs, static_cast<float>(MovingWindowDeltaTime.GetAverage() * 1000.), ECsvCustomStatOp::Set);
-#endif
-}
-
-void FNavRegenTimeSliceManager::SetMinTimeSliceDuration(double NewMinTimeSliceDuration)
-{
-	MinTimeSliceDuration = NewMinTimeSliceDuration;
-
-	UE_LOG(LogNavigationDataBuild, Verbose, TEXT("Navigation System: MinTimeSliceDuration = %f"), MinTimeSliceDuration);
-}
-
-void FNavRegenTimeSliceManager::SetMaxTimeSliceDuration(double NewMaxTimeSliceDuration)
-{
-	MaxTimeSliceDuration = NewMaxTimeSliceDuration;
-
-	UE_LOG(LogNavigationDataBuild, Verbose, TEXT("Navigation System: MaxTimeSliceDuration = %f"), MaxTimeSliceDuration);
-}
-
-void FNavRegenTimeSliceManager::SetMaxDesiredTileRegenDuration(float NewMaxDesiredTileRegenDuration)
-{
-	MaxDesiredTileRegenDuration = NewMaxDesiredTileRegenDuration;
-
-	UE_LOG(LogNavigationDataBuild, Verbose, TEXT("Navigation System: MaxDesiredTileRegenDuration = %f"), MaxDesiredTileRegenDuration);
-}
-
 //----------------------------------------------------------------------//
 // UNavigationSystemV1                                                                
 //----------------------------------------------------------------------//
@@ -377,9 +255,7 @@ UNavigationSystemV1::UNavigationSystemV1(const FObjectInitializer& ObjectInitial
 	, bTickWhilePaused(false)
 	, bWholeWorldNavigable(false)
 	, bSkipAgentHeightCheckWhenPickingNavData(false)
-	, DirtyAreaWarningSizeThreshold(-1.0f)
 	, OperationMode(FNavigationSystemRunMode::InvalidMode)
-	, bAbortAsyncQueriesRequested(false)
 	, NavBuildingLockFlags(0)
 	, InitialNavBuildingLockFlags(0)
 	, bInitialSetupHasBeenPerformed(false)
@@ -532,10 +408,8 @@ UNavigationSystemV1::UNavigationSystemV1(const FObjectInitializer& ObjectInitial
 		AsyncPathFindingQueries.Reserve( INITIAL_ASYNC_QUERIES_SIZE );
 		NavDataRegistrationQueue.Reserve( REGISTRATION_QUEUE_SIZE );
 	
-		FWorldDelegates::OnWorldPostActorTick.AddUObject(this, &UNavigationSystemV1::OnWorldPostActorTick);
 		FWorldDelegates::LevelAddedToWorld.AddUObject(this, &UNavigationSystemV1::OnLevelAddedToWorld);
 		FWorldDelegates::LevelRemovedFromWorld.AddUObject(this, &UNavigationSystemV1::OnLevelRemovedFromWorld);
-		FWorldDelegates::OnWorldBeginTearDown.AddUObject(this, &UNavigationSystemV1::OnBeginTearingDown);
 #if !UE_BUILD_SHIPPING
 		FCoreDelegates::OnGetOnScreenMessages.AddUObject(this, &UNavigationSystemV1::GetOnScreenMessages);
 #endif // !UE_BUILD_SHIPPING
@@ -548,6 +422,14 @@ UNavigationSystemV1::UNavigationSystemV1(const FObjectInitializer& ObjectInitial
 		const FTransform RecastToUnrealTransfrom(Recast2UnrealMatrix());
 		SetCoordTransform(ENavigationCoordSystem::Navigation, ENavigationCoordSystem::Unreal, RecastToUnrealTransfrom);
 	}
+
+#if WITH_EDITOR
+	if (GIsEditor && HasAnyFlags(RF_ClassDefaultObject) == false)
+	{
+		FEditorDelegates::EditorModeIDEnter.AddUObject(this, &UNavigationSystemV1::OnEditorModeIDChanged, true);
+		FEditorDelegates::EditorModeIDExit.AddUObject(this, &UNavigationSystemV1::OnEditorModeIDChanged, false);
+	}
+#endif // WITH_EDITOR
 }
 
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
@@ -555,16 +437,24 @@ UNavigationSystemV1::~UNavigationSystemV1()
 {
 	CleanUp(FNavigationSystem::ECleanupMode::CleanupUnsafe);
 
+#if WITH_EDITOR
+	if (GIsEditor)
+	{
+		FEditorDelegates::EditorModeIDEnter.RemoveAll(this);
+		FEditorDelegates::EditorModeIDExit.RemoveAll(this);
+	}
+#endif // WITH_EDITOR
+
 #if !UE_BUILD_SHIPPING
 	FCoreDelegates::OnGetOnScreenMessages.RemoveAll(this);
 #endif // !UE_BUILD_SHIPPING
 }
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
-void UNavigationSystemV1::ConfigureAsStatic(bool bEnableStatic)
+void UNavigationSystemV1::ConfigureAsStatic()
 {
-	bStaticRuntimeNavigation = bEnableStatic;
-	SetWantsComponentChangeNotifies(!bEnableStatic);
+	bStaticRuntimeNavigation = true;
+	SetWantsComponentChangeNotifies(false);
 }
 
 void UNavigationSystemV1::SetUpdateNavOctreeOnComponentChange(bool bNewUpdateOnComponentChange)
@@ -678,8 +568,6 @@ void UNavigationSystemV1::PostInitProperties()
 			FNavDataConfig& SupportedAgentConfig = SupportedAgents[AgentIndex];
 			SetSupportedAgentsNavigationClass(AgentIndex, SupportedAgentConfig.GetNavDataClass<ANavigationData>());
 		}
-
-		DefaultDirtyAreasController.SetDirtyAreaWarningSizeThreshold(DirtyAreaWarningSizeThreshold);
 	
 		if (bInitialBuildingLocked)
 		{
@@ -833,27 +721,21 @@ void UNavigationSystemV1::OnInitializeActors()
 	
 }
 
-void UNavigationSystemV1::OnBeginTearingDown(UWorld* World)
+void UNavigationSystemV1::OnBeginTearingDown()
 {
-	// If the world being torn down is my world context
-	if (World == GetWorld())
-	{
-		CleanUp(FNavigationSystem::ECleanupMode::CleanupWithWorld);
-	}
+	CleanUp(FNavigationSystem::ECleanupMode::CleanupWithWorld);
 }
 
 void UNavigationSystemV1::OnWorldInitDone(FNavigationSystemRunMode Mode)
 {
+	static const bool bSkipRebuildInEditor = true;
 	OperationMode = Mode;
 	DoInitialSetup();
 	
 	UWorld* World = GetWorld();
 	check(World);
 
-	// process all queued custom link registration requests
-	// (since it's possible navigation system was not ready by the time
-	// those links were serialized-in or spawned)
-	ProcessCustomLinkPendingRegistration();
+	World->OnBeginTearingDown().AddUObject(this, &UNavigationSystemV1::OnBeginTearingDown);
 
 	if (IsThereAnywhereToBuildNavigation() == false
 		// Simulation mode is a special case - better not do it in this case
@@ -873,7 +755,7 @@ void UNavigationSystemV1::OnWorldInitDone(FNavigationSystemRunMode Mode)
 
 		if (OperationMode == FNavigationSystemRunMode::EditorMode)
 		{
-			RemoveNavigationBuildLock(InitialNavBuildingLockFlags, ELockRemovalRebuildAction::RebuildIfNotInEditor);
+			RemoveNavigationBuildLock(InitialNavBuildingLockFlags, bSkipRebuildInEditor);
 		}
 	}
 	else
@@ -903,8 +785,6 @@ void UNavigationSystemV1::OnWorldInitDone(FNavigationSystemRunMode Mode)
 
 			if (GetDefaultNavDataInstance(FNavigationSystem::DontCreate) != NULL)
 			{
-				const bool bIsInGame = World->IsGameWorld();
-
 				// trigger navmesh update
 				for (TActorIterator<ANavigationData> It(World); It; ++It)
 				{
@@ -912,11 +792,10 @@ void UNavigationSystemV1::OnWorldInitDone(FNavigationSystemRunMode Mode)
 					if (NavData != NULL)
 					{
 						const ERegistrationResult Result = RegisterNavData(NavData);
-						LogNavDataRegistrationResult(Result);
 
 						if (Result == RegistrationSuccessful)
 						{
-							if (bAllowRebuild && (!bIsInGame || NavData->SupportsRuntimeGeneration()))
+							if (bAllowRebuild)
 							{
 								NavData->RebuildAll();
 							}
@@ -935,7 +814,7 @@ void UNavigationSystemV1::OnWorldInitDone(FNavigationSystemRunMode Mode)
 		if (OperationMode == FNavigationSystemRunMode::EditorMode)
 		{
 			// don't lock navigation building in editor
-			RemoveNavigationBuildLock(InitialNavBuildingLockFlags, ELockRemovalRebuildAction::RebuildIfNotInEditor);
+			RemoveNavigationBuildLock(InitialNavBuildingLockFlags, bSkipRebuildInEditor);
 		}
 
 		// See if any of registered navigation data needs NavOctree
@@ -992,9 +871,6 @@ void UNavigationSystemV1::OnWorldInitDone(FNavigationSystemRunMode Mode)
 		DefaultDirtyAreasController.DirtyAreas.Empty();
 	}
 
-	// Report oversized dirty areas only in game mode
-	DefaultDirtyAreasController.SetCanReportOversizedDirtyArea(Mode == FNavigationSystemRunMode::GameMode);
-
 	bWorldInitDone = true;
 	OnNavigationInitDone.Broadcast();
 }
@@ -1049,39 +925,6 @@ void UNavigationSystemV1::SetCrowdManager(UCrowdManagerBase* NewCrowdManager)
 	}
 }
 
-void UNavigationSystemV1::CalcTimeSlicedUpdateData(TArray<double>& OutCurrentTimeSlicedBuildTaskDurations, TArray<bool>& OutIsTimeSlicingArray, bool& bOutAnyNonTimeSlicedGenerators, int32& OutNumTimeSlicedRemainingBuildTasks)
-{
-	OutNumTimeSlicedRemainingBuildTasks = 0;
-	OutIsTimeSlicingArray.SetNumZeroed(NavDataSet.Num());
-	bOutAnyNonTimeSlicedGenerators = false;
-	OutCurrentTimeSlicedBuildTaskDurations.Reset(NavDataSet.Num());
-
-	for (int32 NavDataIdx = 0; NavDataIdx < NavDataSet.Num(); ++NavDataIdx)
-	{
-		const ANavigationData* NavData = NavDataSet[NavDataIdx];
-		const FNavDataGenerator* Generator = NavData ? NavData->GetGenerator() : nullptr;
-		if (Generator)
-		{
-			double TimeSlicedBuildTaskDuration = 0.;
-			int32 NumRemainingBuildTasksTemp = 0;
-
-			if (Generator->GetTimeSliceData(NumRemainingBuildTasksTemp, TimeSlicedBuildTaskDuration))
-			{
-				OutIsTimeSlicingArray[NavDataIdx] = true;
-				OutNumTimeSlicedRemainingBuildTasks += NumRemainingBuildTasksTemp;
-				if (TimeSlicedBuildTaskDuration > 0.)
-				{
-					OutCurrentTimeSlicedBuildTaskDurations.Push(TimeSlicedBuildTaskDuration);
-				}
-			}
-			else
-			{
-				bOutAnyNonTimeSlicedGenerators = true;
-			}
-		}
-	}
-}
-
 void UNavigationSystemV1::Tick(float DeltaSeconds)
 {
 	SET_DWORD_STAT(STAT_Navigation_ObservedPathsCount, 0);
@@ -1096,6 +939,11 @@ void UNavigationSystemV1::Tick(float DeltaSeconds)
 		)
 	{
 		return;
+	}
+	
+	if (PendingCustomLinkRegistration.Num())
+	{
+		ProcessCustomLinkPendingRegistration();
 	}
 
 	if (PendingNavBoundsUpdates.Num() > 0)
@@ -1137,115 +985,22 @@ void UNavigationSystemV1::Tick(float DeltaSeconds)
 		{
 			SCOPE_CYCLE_COUNTER(STAT_Navigation_TickAsyncBuild);
 
-			bool bDoStandardTickAsync = true;
-
-			if (NavRegenTimeSliceManager.DoTimeSlicedUpdate())
+			for (ANavigationData* NavData : NavDataSet)
 			{
-				int32 NumTimeSlicedRemainingBuildTasks = 0;
-				TArray<double> CurrentTimeSlicedBuildTaskDurations;
-				TArray<bool> IsTimeSlicingArray;
-				bool bAnyNonTimeSlicedGenerators = false;
-
-				NavRegenTimeSliceManager.CalcAverageDeltaTime(GFrameCounter);
-
-				CalcTimeSlicedUpdateData(CurrentTimeSlicedBuildTaskDurations, IsTimeSlicingArray, bAnyNonTimeSlicedGenerators, NumTimeSlicedRemainingBuildTasks);
-
-				if (NumTimeSlicedRemainingBuildTasks > 0)
+				if (NavData)
 				{
-					NavRegenTimeSliceManager.CalcTimeSliceDuration(NumTimeSlicedRemainingBuildTasks, CurrentTimeSlicedBuildTaskDurations);
-
-					//The general idea here is to tick any non time sliced generators once per frame. Time sliced generators we aim to tick one per frame and move to the next, next frame. In the
-					//case where one time sliced generator doesn't use the whole time slice we move to the next time sliced generator. That generator will only be considered to have a full frames
-					//processing if either it runs out of work or uses a large % of the time slice. Depending we either tick it again next frame or go to the next time sliced generator (next frame).
-					bool bNavDataIdxSet = false;
-					int32 NavDataIdxTemp = NavRegenTimeSliceManager.GetNavDataIdx();
-					const double RemainingFractionConsideredWholeTick = 0.8;
-					const int32 FirstNavDataIdx = NavDataIdxTemp = NavDataIdxTemp % NavDataSet.Num();
-
-					for (int32 NavDataIter = 0; NavDataIter < NavDataSet.Num(); ++NavDataIter)
-					{
-						if (ANavigationData* NavData = NavDataSet[NavDataIdxTemp])
-						{
-							if (IsTimeSlicingArray[NavDataIdxTemp])
-							{
-								if (NavRegenTimeSliceManager.GetTimeSlicer().IsTimeSliceFinishedCached())
-								{
-									//if we haven't set the NavDataIdx then this is the TimeSliced Generator to process next frame
-									if (!bNavDataIdxSet)
-									{
-										NavRegenTimeSliceManager.SetNavDataIdx(NavDataIdxTemp);
-										bNavDataIdxSet = true;
-									}
-
-									//if the time slice is finished and we have no non time sliced generators then stop TickAsyncBuild, otherwise continue
-									if (!bAnyNonTimeSlicedGenerators)
-									{
-										break;
-									}
-									continue;
-								}
-								else if (NavRegenTimeSliceManager.GetTimeSlicer().GetRemainingDurationFraction() < RemainingFractionConsideredWholeTick)
-								{
-									//don't check bNavDataIdxSet here, either this time sliced generator won't get enough time this frame to be considered
-									//a whole tick or it will complete and there is some time sliced left - in the later case next frame we'll process the 
-									//next time sliced generator we process this frame or the first Idx we processed this frame
-									NavRegenTimeSliceManager.SetNavDataIdx(NavDataIdxTemp);
-									bNavDataIdxSet = true;
-								}
-							}
-							NavData->TickAsyncBuild(DeltaSeconds);
-						}
-						//Increment and mod NavDataIdxTemp
-						++NavDataIdxTemp;
-						NavDataIdxTemp %= NavDataSet.Num();
-					}
-
-					//if we processed all the time sliced generators and there is still some time slice left
-					//OR if we haven't SetNavDataIdx() we should start next frame where we started this frame
-					if (!NavRegenTimeSliceManager.GetTimeSlicer().IsTimeSliceFinishedCached() || !bNavDataIdxSet)
-					{
-						NavRegenTimeSliceManager.SetNavDataIdx(FirstNavDataIdx);
-						bNavDataIdxSet = true;
-					}
-					//don't do the standard TickASyncBuild as we have already processed the regen appropriately 
-					bDoStandardTickAsync = false;
-				}
-			}
-
-			//if we aren't time sliced rebuilding and / or if there aren't any time sliced nav data's with work to do just tick all nav data
-			if (bDoStandardTickAsync)
-			{
-				for (ANavigationData* NavData : NavDataSet)
-				{
-					if (NavData)
-					{
-						NavData->TickAsyncBuild(DeltaSeconds);
-					}
+					NavData->TickAsyncBuild(DeltaSeconds);
 				}
 			}
 		}
 	}
 
-	CSV_CUSTOM_STAT(NavTasks, NumRemainingTasks, GetNumRemainingBuildTasks(), ECsvCustomStatOp::Set);
-	CSV_CUSTOM_STAT(NavTasks, NumRunningTasks, GetNumRunningBuildTasks(), ECsvCustomStatOp::Set);
-
-	// In multithreaded configuration we can process async pathfinding queries
-	// in dedicated task while dispatching completed queries results on the main thread.
-	// The created task can start and append new result right away so we transfer
-	// completed queries before to keep the list safe.
-	TArray<FAsyncPathFindingQuery> AsyncPathFindingCompletedQueriesToDispatch;
-	Swap(AsyncPathFindingCompletedQueriesToDispatch, AsyncPathFindingCompletedQueries);
-
-	// Trigger the async pathfinding queries (new ones and those that may have been postponed from last frame)
 	if (AsyncPathFindingQueries.Num() > 0)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_Navigation_TickAsyncPathfinding);
 		TriggerAsyncQueries(AsyncPathFindingQueries);
 		AsyncPathFindingQueries.Reset();
 	}
-
-	// Dispatch async pathfinding queries results from last frame
-	DispatchAsyncQueriesResults(AsyncPathFindingCompletedQueriesToDispatch);
 
 	if (CrowdManager.IsValid())
 	{
@@ -1282,7 +1037,8 @@ void UNavigationSystemV1::SetNavigationAutoUpdateEnabled(bool bNewEnable, UNavig
 
 			if (bCurrentIsEnabled)
 			{
-				NavSystem->RemoveNavigationBuildLock(ENavigationBuildLock::NoUpdateInEditor);
+				const bool bSkipRebuildsInEditor = false;
+				NavSystem->RemoveNavigationBuildLock(ENavigationBuildLock::NoUpdateInEditor, bSkipRebuildsInEditor);
 			}
 			else
 			{
@@ -1436,33 +1192,16 @@ void UNavigationSystemV1::TriggerAsyncQueries(TArray<FAsyncPathFindingQuery>& Pa
 		STAT_FSimpleDelegateGraphTask_NavigationSystemBatchedAsyncQueries,
 		STATGROUP_TaskGraphTasks);
 
-	AsyncPathFindingTask = FSimpleDelegateGraphTask::CreateAndDispatchWhenReady(
+	FSimpleDelegateGraphTask::CreateAndDispatchWhenReady(
 		FSimpleDelegateGraphTask::FDelegate::CreateUObject(this, &UNavigationSystemV1::PerformAsyncQueries, PathFindingQueries),
 		GET_STATID(STAT_FSimpleDelegateGraphTask_NavigationSystemBatchedAsyncQueries), nullptr, CPrio_TriggerAsyncQueries.Get());
 }
 
-void UNavigationSystemV1::PostponeAsyncQueries()
+static void AsyncQueryDone(FAsyncPathFindingQuery Query)
 {
-	if (AsyncPathFindingTask.GetReference() && !AsyncPathFindingTask->IsComplete())
-	{
-		bAbortAsyncQueriesRequested = true;
-		FTaskGraphInterface::Get().WaitUntilTaskCompletes(AsyncPathFindingTask, ENamedThreads::GameThread);
-		bAbortAsyncQueriesRequested = false;
-	}
-}
+	CSV_SCOPED_TIMING_STAT(NavigationSystem, AsyncNavQueryFinished);
 
-void UNavigationSystemV1::DispatchAsyncQueriesResults(const TArray<FAsyncPathFindingQuery>& PathFindingQueries) const
-{
-	if (PathFindingQueries.Num() > 0)
-	{
-		SCOPE_CYCLE_COUNTER(STAT_Navigation_DispatchAsyncPathfindingResults);
-		CSV_SCOPED_TIMING_STAT(NavigationSystem, AsyncNavQueryFinished);
-
-		for (const FAsyncPathFindingQuery& Query : PathFindingQueries)
-		{
-			Query.OnDoneDelegate.ExecuteIfBound(Query.QueryID, Query.Result.Result, Query.Result.Path);
-		}
-	}
+	Query.OnDoneDelegate.ExecuteIfBound(Query.QueryID, Query.Result.Result, Query.Result.Path);
 }
 
 void UNavigationSystemV1::PerformAsyncQueries(TArray<FAsyncPathFindingQuery> PathFindingQueries)
@@ -1474,8 +1213,7 @@ void UNavigationSystemV1::PerformAsyncQueries(TArray<FAsyncPathFindingQuery> Pat
 	{
 		return;
 	}
-
-	int32 NumProcessed = 0;
+	
 	for (FAsyncPathFindingQuery& Query : PathFindingQueries)
 	{
 		// @todo this is not necessarily the safest way to use UObjects outside of main thread. 
@@ -1498,28 +1236,17 @@ void UNavigationSystemV1::PerformAsyncQueries(TArray<FAsyncPathFindingQuery> Pat
 		{
 			Query.Result = ENavigationQueryResult::Error;
 		}
-		++NumProcessed;
 
-		// Check for abort request from the main tread
-		if (bAbortAsyncQueriesRequested)
-		{
-			break;
-		}
+		// @todo make it return more informative results (bResult == false)
+		// trigger calling delegate on main thread - otherwise it may depend too much on stuff being thread safe
+		DECLARE_CYCLE_STAT(TEXT("FSimpleDelegateGraphTask.Async nav query finished"),
+			STAT_FSimpleDelegateGraphTask_AsyncNavQueryFinished,
+			STATGROUP_TaskGraphTasks);
+
+		FSimpleDelegateGraphTask::CreateAndDispatchWhenReady(
+			FSimpleDelegateGraphTask::FDelegate::CreateStatic(AsyncQueryDone, Query),
+			GET_STATID(STAT_FSimpleDelegateGraphTask_AsyncNavQueryFinished), NULL, ENamedThreads::GameThread);
 	}
-
-	const int32 NumQueries = PathFindingQueries.Num();
-	const int32 NumPostponed = NumQueries - NumProcessed;
-
-	// Queue remaining queries for next frame
-	if (bAbortAsyncQueriesRequested)
-	{
-		AsyncPathFindingQueries.Append(PathFindingQueries.GetData() + NumProcessed, NumPostponed);
-	}
-	
-	// Append to list of completed queries to dispatch results in main thread
-	AsyncPathFindingCompletedQueries.Append(PathFindingQueries.GetData(), NumProcessed);
-
-	UE_LOG(LogNavigation, Log, TEXT("Async pathfinding queries: %d completed, %d postponed to next frame"), NumProcessed, NumPostponed);
 }
 
 bool UNavigationSystemV1::GetRandomPoint(FNavLocation& ResultLocation, ANavigationData* NavData, FSharedConstNavQueryFilter QueryFilter)
@@ -1744,7 +1471,8 @@ ANavigationData* UNavigationSystemV1::GetNavDataForProps(const FNavAgentProperti
 
 ANavigationData* UNavigationSystemV1::GetNavDataForProps(const FNavAgentProperties& AgentProperties)
 {
-	return const_cast<ANavigationData*>(AsConst(*this).GetNavDataForProps(AgentProperties));
+	const UNavigationSystemV1* ConstThis = AsConst(this);
+	return const_cast<ANavigationData*>(ConstThis->GetNavDataForProps(AgentProperties));
 }
 
 // @todo could optimize this by having "SupportedAgentIndex" in FNavAgentProperties
@@ -1863,11 +1591,7 @@ ANavigationData* UNavigationSystemV1::GetDefaultNavDataInstance(FNavigationSyste
 #endif // WITH_RECAST
 		// either way make sure it's registered. Registration stores unique
 		// navmeshes, so we have nothing to lose
-		if (MainNavData != nullptr)
-		{
-			const ERegistrationResult Result = RegisterNavData(MainNavData);
-			LogNavDataRegistrationResult(Result);
-		}
+		RegisterNavData(MainNavData);
 	}
 
 	return MainNavData;
@@ -1897,7 +1621,7 @@ bool UNavigationSystemV1::IsNavigationBuilt(const AWorldSettings* Settings) cons
 #if WITH_EDITOR
 				|| GEditor != NULL
 #endif // WITH_EDITOR
-				) && (Generator == NULL || Generator->IsBuildInProgressCheckDirty() == true))
+				) && (Generator == NULL || Generator->IsBuildInProgress(/*bCheckDirtyToo=*/true) == true))
 			{
 				bIsBuilt = false;
 				break;
@@ -2094,7 +1818,6 @@ void UNavigationSystemV1::ProcessRegistrationCandidates()
 		if (OwningLevel && OwningLevel->bIsVisible)
 		{
 			const ERegistrationResult Result = RegisterNavData(NavDataPtr);
-			LogNavDataRegistrationResult(Result);
 
 			if (Result != RegistrationSuccessful && Result != RegistrationFailed_DataPendingKill)
 			{
@@ -2136,17 +1859,7 @@ void UNavigationSystemV1::ProcessCustomLinkPendingRegistration()
 		
 		if (LinkOb.IsValid() && ILink)
 		{
-#if WITH_EDITOR
-			// In Editor multiple NavigationSystems may exist at the same time (i.e. Editor, Client Game, Server Game worlds)
-			// so we want to make sure that any given NavigationSystem instance performs a single flush of the global pending queue
-			// to register the links associated to their outer World.
-			// Following registration requests will be forwarded directly to the NavigationSystem and won't use the queue.
-			// We call RequestCustomLinkRegistering instead of RegisterCustomLink so each link
-			// will register to the navigation system associated to their outer world (if created) or put back in the queue.
-			RequestCustomLinkRegistering(*ILink, LinkOb.Get());
-#else
 			RegisterCustomLink(*ILink);
-#endif // WITH_EDITOR
 		}
 	}
 }
@@ -2207,12 +1920,12 @@ UNavigationSystemV1::ERegistrationResult UNavigationSystemV1::RegisterNavData(AN
 		}
 		else
 		{
-			// check if this kind of agent has already its navigation implemented
-			TWeakObjectPtr<ANavigationData>* NavDataForAgent = AgentToNavDataMap.Find(NavConfig);
-			ANavigationData* NavDataInstanceForAgent = NavDataForAgent ? NavDataForAgent->Get() : nullptr;
+		// check if this kind of agent has already its navigation implemented
+		TWeakObjectPtr<ANavigationData>* NavDataForAgent = AgentToNavDataMap.Find(NavConfig);
+		ANavigationData* NavDataInstanceForAgent = NavDataForAgent ? NavDataForAgent->Get() : nullptr;
 
-			if (NavDataInstanceForAgent == nullptr)
-			{
+		if (NavDataInstanceForAgent == nullptr)
+		{
 				// ok, so this navigation agent doesn't have its navmesh registered yet, but do we want to support it?
 				bool bAgentSupported = false;
 
@@ -2240,18 +1953,18 @@ UNavigationSystemV1::ERegistrationResult UNavigationSystemV1::RegisterNavData(AN
 				}
 				Result = bAgentSupported == true ? RegistrationSuccessful : RegistrationFailed_AgentNotValid;
 			}
-			else if (NavDataInstanceForAgent == NavData)
-			{
-				ensure(NavDataSet.Find(NavData) != INDEX_NONE);
-				// let's treat double registration of the same nav data with the same agent as a success
-				Result = RegistrationSuccessful;
-			}
-			else
-			{
-				// otherwise specified agent type already has its navmesh implemented, fail redundant instance
-				Result = RegistrationFailed_AgentAlreadySupported;
-			}
+		else if (NavDataInstanceForAgent == NavData)
+		{
+			ensure(NavDataSet.Find(NavData) != INDEX_NONE);
+			// let's treat double registration of the same nav data with the same agent as a success
+			Result = RegistrationSuccessful;
 		}
+		else
+		{
+			// otherwise specified agent type already has its navmesh implemented, fail redundant instance
+			Result = RegistrationFailed_AgentAlreadySupported;
+		}
+	}
 	}
 	else
 	{
@@ -2293,9 +2006,6 @@ void UNavigationSystemV1::UnregisterNavData(ANavigationData* NavData)
 
 void UNavigationSystemV1::RegisterCustomLink(INavLinkCustomInterface& CustomLink)
 {
-	ensureMsgf(CustomLink.GetLinkOwner() == nullptr || GetWorld() == CustomLink.GetLinkOwner()->GetWorld(), 
-		TEXT("Registering a link from a world different than the navigation system world should not happen."));
-
 	uint32 LinkId = CustomLink.GetLinkId();
 
 	// if there's already a link with that Id registered, assign new Id and mark dirty area
@@ -2303,7 +2013,6 @@ void UNavigationSystemV1::RegisterCustomLink(INavLinkCustomInterface& CustomLink
 	if (CustomLinksMap.Contains(LinkId))
 	{
 		LinkId = INavLinkCustomInterface::GetUniqueId();
-		UE_LOG(LogNavLink, VeryVerbose, TEXT("%s new navlink id %u."), ANSI_TO_TCHAR(__FUNCTION__), LinkId);
 		CustomLink.UpdateLinkId(LinkId);
 
 		UObject* CustomLinkOb = CustomLink.GetLinkOwner();
@@ -2560,8 +2269,8 @@ void UNavigationSystemV1::DescribeFilterFlags(const TArray<FString>& FlagsDesc) 
 #endif
 
 	// setup properties
-	FStructProperty* StructProp1 = FindFProperty<FStructProperty>(UNavigationQueryFilter::StaticClass(), TEXT("IncludeFlags"));
-	FStructProperty* StructProp2 = FindFProperty<FStructProperty>(UNavigationQueryFilter::StaticClass(), TEXT("ExcludeFlags"));
+	UStructProperty* StructProp1 = FindField<UStructProperty>(UNavigationQueryFilter::StaticClass(), TEXT("IncludeFlags"));
+	UStructProperty* StructProp2 = FindField<UStructProperty>(UNavigationQueryFilter::StaticClass(), TEXT("ExcludeFlags"));
 	check(StructProp1);
 	check(StructProp2);
 
@@ -2573,7 +2282,7 @@ void UNavigationSystemV1::DescribeFilterFlags(const TArray<FString>& FlagsDesc) 
 		for (int32 FlagIndex = 0; FlagIndex < MaxFlags; FlagIndex++)
 		{
 			FString PropName = FString::Printf(TEXT("bNavFlag%d"), FlagIndex);
-			FProperty* Prop = FindFProperty<FProperty>(Structs[StructIndex], *PropName);
+			UProperty* Prop = FindField<UProperty>(Structs[StructIndex], *PropName);
 			check(Prop);
 
 			if (UseDesc[FlagIndex].Len())
@@ -2703,14 +2412,9 @@ void UNavigationSystemV1::UnregisterNavOctreeElement(UObject* ElementOwner, INav
 	}
 }
 
-void UNavigationSystemV1::RemoveNavOctreeElementId(const FOctreeElementId2& ElementId, int32 UpdateFlags)
+void UNavigationSystemV1::RemoveNavOctreeElementId(const FOctreeElementId& ElementId, int32 UpdateFlags)
 {
 	FNavigationDataHandler(DefaultOctreeController, DefaultDirtyAreasController).RemoveNavOctreeElementId(ElementId, UpdateFlags);
-}
-
-void UNavigationSystemV1::DemandLazyDataGathering(FNavigationRelevantData& ElementData)
-{
-	FNavigationDataHandler(DefaultOctreeController, DefaultDirtyAreasController).DemandLazyDataGathering(ElementData);
 }
 
 const FNavigationRelevantData* UNavigationSystemV1::GetDataForObject(const UObject& Object) const
@@ -3065,6 +2769,47 @@ void UNavigationSystemV1::UpdateLevelCollision(ULevel* InLevel)
 		OnLevelAddedToWorld(InLevel, World);
 	}
 }
+
+void UNavigationSystemV1::OnEditorModeChanged(FEdMode* Mode, bool IsEntering)
+{
+	if (Mode == NULL)
+	{
+		return;
+	}
+
+	if (IsEntering == false && Mode->GetID() == FBuiltinEditorModes::EM_Geometry)
+	{
+		// check if any of modified brushes belongs to an ANavMeshBoundsVolume
+		FEdModeGeometry* GeometryMode = (FEdModeGeometry*)Mode;
+		for (auto GeomObjectIt = GeometryMode->GeomObjectItor(); GeomObjectIt; GeomObjectIt++)
+		{
+			ANavMeshBoundsVolume* Volume = Cast<ANavMeshBoundsVolume>((*GeomObjectIt)->GetActualBrush());
+			if (Volume)
+			{
+				OnNavigationBoundsUpdated(Volume);
+			}
+		}
+	}
+}
+
+void UNavigationSystemV1::OnEditorModeIDChanged(const FEditorModeID& ModeID, bool IsEntering)
+{
+	if (IsEntering == false && ModeID == FBuiltinEditorModes::EM_Geometry)
+	{
+		// check if any of modified brushes belongs to an ANavMeshBoundsVolume
+		FEdMode* Mode = GLevelEditorModeTools().GetActiveMode(ModeID);
+		FEdModeGeometry* GeometryMode = (FEdModeGeometry*)Mode;
+		for (auto GeomObjectIt = GeometryMode->GeomObjectItor(); GeomObjectIt; GeomObjectIt++)
+		{
+			ANavMeshBoundsVolume* Volume = Cast<ANavMeshBoundsVolume>((*GeomObjectIt)->GetActualBrush());
+			if (Volume)
+			{
+				OnNavigationBoundsUpdated(Volume);
+			}
+		}
+	}
+}
+
 #endif
 
 void UNavigationSystemV1::OnNavigationBoundsUpdated(ANavMeshBoundsVolume* NavVolume)
@@ -3274,17 +3019,6 @@ void UNavigationSystemV1::GatherNavigationBounds()
 
 void UNavigationSystemV1::Build()
 {
-	UE_LOG(LogNavigationDataBuild, Display, TEXT("UNavigationSystemV1::Build started..."));
-#if PHYSICS_INTERFACE_PHYSX
-	UE_LOG(LogNavigationDataBuild, Display, TEXT("   Building navigation data using PHYSICS_INTERFACE_PHYSX."));
-#endif
-#if WITH_PHYSX
-	UE_LOG(LogNavigationDataBuild, Display, TEXT("   Building navigation data using WITH_PHYSX."));
-#endif
-#if WITH_CHAOS
-	UE_LOG(LogNavigationDataBuild, Display, TEXT("   Building navigation data using WITH_CHAOS."));
-#endif
-
 	UWorld* World = GetWorld();
 	if (!World)
 	{
@@ -3339,8 +3073,7 @@ void UNavigationSystemV1::Build()
 	DefaultDirtyAreasController.bDirtyAreasReportedWhileAccumulationLocked = false;
 #endif // !UE_BUILD_SHIPPING
 
-	UE_LOG(LogNavigationDataBuild, Display, TEXT("UNavigationSystemV1::Build total execution time: %.2fs"), float(FPlatformTime::Seconds() - BuildStartTime));
-	UE_LOG(LogNavigation, Display, TEXT("UNavigationSystemV1::Build total execution time: %.5fs"), float(FPlatformTime::Seconds() - BuildStartTime));
+	UE_LOG(LogNavigation, Display, TEXT("UNavigationSystemV1::Build total execution time: %.5f"), float(FPlatformTime::Seconds() - BuildStartTime));
 }
 
 void UNavigationSystemV1::CancelBuild()
@@ -3371,116 +3104,78 @@ void UNavigationSystemV1::SpawnMissingNavigationData()
 	}
 	
 	// Bit array might be a bit of an overkill here, but this function will be called very rarely
-	TBitArray<> AlreadyInstantiated;
+	TBitArray<> AlreadyInstantiated(false, AllSupportedAgentsCount);
 	uint8 NumberFound = 0;
+	UWorld* NavWorld = GetWorld();
 
 	// 1. check whether any of required navigation data has already been instantiated
-	NumberFound = FillInstantiatedDataMask(AlreadyInstantiated);
+	for (TActorIterator<ANavigationData> It(NavWorld); It && NumberFound < AllSupportedAgentsCount; ++It)
+	{
+		ANavigationData* Nav = (*It);
+		if (Nav != nullptr 
+			&& Nav->IsPendingKill() == false
+			// mz@todo the 'is level in' condition is temporary
+			&& (Nav->GetTypedOuter<UWorld>() == NavWorld || NavWorld->GetLevels().Contains(Nav->GetLevel())))
+		{
+			// find out which one it is
+			for (int32 AgentIndex = 0; AgentIndex < AllSupportedAgentsCount; ++AgentIndex)
+			{
+				if (AlreadyInstantiated[AgentIndex] == false
+					&& Nav->GetClass() == SupportedAgents[AgentIndex].GetNavDataClass<ANavigationData>()
+					&& Nav->DoesSupportAgent(SupportedAgents[AgentIndex]) == true)
+				{
+					AlreadyInstantiated[AgentIndex] = true;
+					++NumberFound;
+					break;
+				}
+			}				
+		}
+	}
 
 	// 2. for any not already instantiated navigation data call creator functions
 	if (NumberFound < ValidSupportedAgentsCount)
 	{
-		SpawnMissingNavigationDataInLevel(AlreadyInstantiated);
-	}
-
-	if (MainNavData == nullptr || MainNavData->IsPendingKillPending())
-	{
-		MainNavData = GetDefaultNavDataInstance(FNavigationSystem::DontCreate);
-	}
-}
-
-uint8 UNavigationSystemV1::FillInstantiatedDataMask(TBitArray<>& OutInstantiatedMask, ULevel* InLevel /*= nullptr*/)
-{
-	int32 AllSupportedAgentsCount = SupportedAgents.Num();
-	OutInstantiatedMask.Init(false, AllSupportedAgentsCount);
-	uint8 NumberFound = 0;
-
-	auto SetMatchingAgentIndexFunc = [&](ANavigationData* Nav) {
 		for (int32 AgentIndex = 0; AgentIndex < AllSupportedAgentsCount; ++AgentIndex)
 		{
-			if (OutInstantiatedMask[AgentIndex] == false
-				&& Nav->GetClass() == SupportedAgents[AgentIndex].GetNavDataClass<ANavigationData>()
-				&& Nav->DoesSupportAgent(SupportedAgents[AgentIndex]) == true)
+			const FNavDataConfig& NavConfig = SupportedAgents[AgentIndex];
+			if (AlreadyInstantiated[AgentIndex] == false 
+				&& SupportedAgentsMask.Contains(AgentIndex)
+				&& NavConfig.GetNavDataClass<ANavigationData>() != nullptr)
 			{
-				OutInstantiatedMask[AgentIndex] = true;
-				++NumberFound;
-				break;
-			}
-		}
-	};
+				bool bHandled = false;
 
-	if (InLevel != nullptr)
-	{
-		for (AActor* Actor: InLevel->Actors)
-		{
-			if (ANavigationData* NavData = Cast<ANavigationData>(Actor))
-			{
-				SetMatchingAgentIndexFunc(NavData);
-				if (NumberFound >= AllSupportedAgentsCount)
+				const ANavigationData* NavDataCDO = NavConfig.GetNavDataClass<ANavigationData>()->GetDefaultObject<ANavigationData>();
+				if (NavDataCDO == nullptr || !NavDataCDO->CanSpawnOnRebuild())
 				{
-					break;
+					continue;
+				}
+
+				if (NavWorld->WorldType != EWorldType::Editor && NavDataCDO->GetRuntimeGenerationMode() == ERuntimeGenerationType::Static)
+				{
+					// if we're not in the editor, and specified navigation class is configured 
+					// to be static, then we don't want to create an instance					
+					UE_LOG(LogNavigation, Log, TEXT("Not spawning navigation data for %s since indivated NavigationData type is not configured for dynamic generation")
+						, *NavConfig.Name.ToString());
+					continue;
+				}
+
+				ANavigationData* Instance = CreateNavigationDataInstanceInLevel(NavConfig, nullptr);
+				if (Instance)
+				{
+					RequestRegistrationDeferred(*Instance);
+				}
+				else
+				{
+					UE_LOG(LogNavigation, Warning, TEXT("Was not able to create navigation data for SupportedAgent[%d]: %s"), AgentIndex, *NavConfig.Name.ToString());
 				}
 			}
 		}
-	} 
-	else
-	{
-		UWorld* NavWorld = GetWorld();	
-		for (TActorIterator<ANavigationData> It(NavWorld); It && NumberFound < AllSupportedAgentsCount; ++It)
-		{
-			ANavigationData* Nav = (*It);
-			if (IsValid(Nav)
-				// mz@todo the 'is level in' condition is temporary
-				&& (Nav->GetTypedOuter<UWorld>() == NavWorld || NavWorld->GetLevels().Contains(Nav->GetLevel())))
-			{
-				// find out which one it is
-				SetMatchingAgentIndexFunc(Nav);
-			}
-		}
 	}
-
-	return NumberFound;
-}
-
-void UNavigationSystemV1::SpawnMissingNavigationDataInLevel(const TBitArray<>& InInstantiatedMask, ULevel* InLevel/*=nullptr*/)
-{
-	UWorld* NavWorld = GetWorld();
-
-	ensure(SupportedAgents.Num() == InInstantiatedMask.Num());
-	int32 AllSupportedAgentsCount = InInstantiatedMask.Num();
-
-	for (int32 AgentIndex = 0; AgentIndex < AllSupportedAgentsCount; ++AgentIndex)
+	
+	if (MainNavData == nullptr || MainNavData->IsPendingKillPending())
 	{
-		const FNavDataConfig& NavConfig = SupportedAgents[AgentIndex];
-		if (InInstantiatedMask[AgentIndex] == false
-			&& SupportedAgentsMask.Contains(AgentIndex)
-			&& NavConfig.GetNavDataClass<ANavigationData>() != nullptr)
-		{
-			const ANavigationData* NavDataCDO = NavConfig.GetNavDataClass<ANavigationData>()->GetDefaultObject<ANavigationData>();
-			if (NavDataCDO == nullptr || !NavDataCDO->CanSpawnOnRebuild())
-			{
-				continue;
-			}
-
-			if (NavWorld->WorldType != EWorldType::Editor && NavDataCDO->GetRuntimeGenerationMode() == ERuntimeGenerationType::Static)
-			{
-				// if we're not in the editor, and specified navigation class is configured 
-				// to be static, then we don't want to create an instance					
-				UE_LOG(LogNavigation, Log, TEXT("Not spawning navigation data for %s since indicated NavigationData type is not configured for dynamic generation")
-					, *NavConfig.Name.ToString());
-				continue;
-			}
-
-			ANavigationData* Instance = CreateNavigationDataInstanceInLevel(NavConfig, InLevel);
-			if (Instance)
-			{
-				RequestRegistrationDeferred(*Instance);
-			}
-			else
-			{
-				UE_LOG(LogNavigation, Warning, TEXT("Was not able to create navigation data for SupportedAgent[%d]: %s"), AgentIndex, *NavConfig.Name.ToString());
-			}
-		}
+		// update 
+		MainNavData = GetDefaultNavDataInstance(FNavigationSystem::DontCreate);
 	}
 }
 
@@ -3569,7 +3264,7 @@ void UNavigationSystemV1::OnPIEStart()
 	if (MyWorld && !MyWorld->IsGameWorld())
 	{
 		bAsyncBuildPaused = true;
-		AddNavigationBuildLock(ENavigationBuildLock::NoUpdateInPIE);
+		AddNavigationBuildLock(ENavigationBuildLock::NoUpdateInEditor);
 	}
 }
 
@@ -3581,59 +3276,26 @@ void UNavigationSystemV1::OnPIEEnd()
 	{
 		bAsyncBuildPaused = false;
 		// there's no need to request while navigation rebuilding just because PIE has ended
-		RemoveNavigationBuildLock(ENavigationBuildLock::NoUpdateInPIE, ELockRemovalRebuildAction::RebuildIfNotInEditor);
+		RemoveNavigationBuildLock(ENavigationBuildLock::NoUpdateInEditor, /*bSkipRebuildInEditor=*/true);
 	}
 }
 
-void UNavigationSystemV1::AddNavigationBuildLock(uint8 Flags)
-{
-	const bool bWasLocked = IsNavigationBuildingLocked();
-
-	NavBuildingLockFlags |= Flags;
-
-	const bool bIsLocked = IsNavigationBuildingLocked();
-	UE_LOG(LogNavigation, Verbose, TEXT("UNavigationSystemV1::AddNavigationBuildLock WasLocked=%s IsLocked=%s"), *LexToString(bWasLocked), *LexToString(bIsLocked));
-	if (!bWasLocked && bIsLocked)
-	{
-		DefaultDirtyAreasController.OnNavigationBuildLocked();
-	}
-}
-
-void UNavigationSystemV1::RemoveNavigationBuildLock(uint8 Flags, const ELockRemovalRebuildAction RebuildAction /*= ELockRemovalRebuildAction::Rebuild*/)
+void UNavigationSystemV1::RemoveNavigationBuildLock(uint8 Flags, bool bSkipRebuildInEditor)
 {
 	const bool bWasLocked = IsNavigationBuildingLocked();
 
 	NavBuildingLockFlags &= ~Flags;
 
 	const bool bIsLocked = IsNavigationBuildingLocked();
-	UE_LOG(LogNavigation, Verbose, TEXT("UNavigationSystemV1::RemoveNavigationBuildLock WasLocked=%s IsLocked=%s"), *LexToString(bWasLocked), *LexToString(bIsLocked));
-	if (bWasLocked && !bIsLocked)
+	const bool bSkipRebuild = (OperationMode == FNavigationSystemRunMode::EditorMode) && bSkipRebuildInEditor;
+	if (bWasLocked && !bIsLocked && !bSkipRebuild)
 	{
-		DefaultDirtyAreasController.OnNavigationBuildUnlocked();
-
-		const bool bRebuild = 
-			(RebuildAction == ELockRemovalRebuildAction::RebuildIfNotInEditor && (OperationMode != FNavigationSystemRunMode::EditorMode)) || 
-			(RebuildAction == ELockRemovalRebuildAction::Rebuild);
-		
-		if (bRebuild)
-		{
-			RebuildAll();
-		}
+		RebuildAll();
 	}
 }
 
-void UNavigationSystemV1::SetNavigationOctreeLock(bool bLock)
-{
-	UE_LOG(LogNavigation, Verbose, TEXT("UNavigationSystemV1::SetNavigationOctreeLock IsLocked=%s"), *LexToString(bLock));
-
-	DefaultOctreeController.SetNavigationOctreeLock(bLock);
-}
-
-
 void UNavigationSystemV1::RebuildAll(bool bIsLoadTime)
 {
-	UE_LOG(LogNavigation, Verbose, TEXT("UNavigationSystemV1::RebuildAll"));
-
 	const bool bIsInGame = GetWorld()->IsGameWorld();
 	
 	GatherNavigationBounds();
@@ -3652,11 +3314,6 @@ void UNavigationSystemV1::RebuildAll(bool bIsLoadTime)
 				
 		if (NavData && (!bIsLoadTime || NavData->NeedsRebuildOnLoad()) && (!bIsInGame || NavData->SupportsRuntimeGeneration()))
 		{
-			UE_LOG(LogNavigationDataBuild, Display, TEXT("   Building NavData:  %s."), *NavData->GetConfig().GetDescription());
-
-#if	WITH_EDITOR
-			NavData->SetIsBuildingOnLoad(bIsLoadTime);
-#endif
 			NavData->RebuildAll();
 		}
 	}
@@ -3670,7 +3327,7 @@ void UNavigationSystemV1::RebuildDirtyAreas(float DeltaSeconds)
 	DefaultDirtyAreasController.Tick(DeltaSeconds, NavDataSet, bForceRebuilding);
 }
 
-bool UNavigationSystemV1::IsNavigationBuildInProgress()
+bool UNavigationSystemV1::IsNavigationBuildInProgress(bool bCheckDirtyToo)
 {
 	bool bRet = false;
 
@@ -3684,8 +3341,8 @@ bool UNavigationSystemV1::IsNavigationBuildInProgress()
 	for (int32 NavDataIndex = 0; NavDataIndex < NavDataSet.Num(); ++NavDataIndex)
 	{
 		ANavigationData* NavData = NavDataSet[NavDataIndex];
-		if (NavData != NULL && NavData->GetGenerator() != NULL
-			&& NavData->GetGenerator()->IsBuildInProgressCheckDirty() == true)
+		if (NavData != NULL && NavData->GetGenerator() != NULL 
+			&& NavData->GetGenerator()->IsBuildInProgress(bCheckDirtyToo) == true)
 		{
 			bRet = true;
 			break;
@@ -3695,25 +3352,9 @@ bool UNavigationSystemV1::IsNavigationBuildInProgress()
 	return bRet;
 }
 
-//deprecated
-bool UNavigationSystemV1::IsNavigationBuildInProgress(bool bCheckDirtyToo)
-{
-	return IsNavigationBuildInProgress();
-}
-
 void UNavigationSystemV1::OnNavigationGenerationFinished(ANavigationData& NavData)
 {
 	OnNavigationGenerationFinishedDelegate.Broadcast(&NavData);
-
-#if WITH_EDITOR
-	if (GetWorld()->IsGameWorld() == false && NavData.IsBuildingOnLoad() == false)
-	{
-		NavData.MarkPackageDirty();
-	}
-
-	// Reset bIsBuildingOnLoad
-	NavData.SetIsBuildingOnLoad(false);
-#endif //WITH_EDITOR
 }
 
 int32 UNavigationSystemV1::GetNumRemainingBuildTasks() const
@@ -3756,15 +3397,15 @@ void UNavigationSystemV1::OnLevelAddedToWorld(ULevel* InLevel, UWorld* InWorld)
 	if ((IsNavigationSystemStatic() == false))
 	{
 		AddLevelCollisionToOctree(InLevel);
-	}
 
-	if (!InLevel->IsPersistentLevel())
-	{
-		for (ANavigationData* NavData : NavDataSet)
+		if (!InLevel->IsPersistentLevel())
 		{
-			if (NavData)
+			for (ANavigationData* NavData : NavDataSet)
 			{
-				NavData->OnStreamingLevelAdded(InLevel, InWorld);
+				if (NavData)
+				{
+					NavData->OnStreamingLevelAdded(InLevel, InWorld);
+				}
 			}
 		}
 	}
@@ -3773,9 +3414,9 @@ void UNavigationSystemV1::OnLevelAddedToWorld(ULevel* InLevel, UWorld* InWorld)
 	if (OperationMode == FNavigationSystemRunMode::EditorMode)
 	{
 		// see if there are any unregistered yet valid nav data instances
-		// In general we register navdata on its PostLoad, but in some cases
-		// levels get removed from world and readded and in that case we might
-		// miss registering them
+			// In general we register navdata on its PostLoad, but in some cases
+			// levels get removed from world and readded and in that case we might
+			// miss registering them
 		for (AActor* Actor : InLevel->Actors)
 		{
 			ANavigationData* NavData = Cast<ANavigationData>(Actor);
@@ -3787,14 +3428,7 @@ void UNavigationSystemV1::OnLevelAddedToWorld(ULevel* InLevel, UWorld* InWorld)
 	}
 	else
 #endif // WITH_EDITOR
-	if (OperationMode == FNavigationSystemRunMode::InvalidMode)
-	{
-		// While streaming multiple levels it is possible that NavigationData and NavMeshBoundsVolume from different levels gets
-		// loaded in different order so we need to wait navigation system initialization to make sure everything is registered properly.
-		// Otherwise the register may fail and discard the navigation data since navbounds are not registered.
-		UE_LOG(LogNavigation, Log, TEXT("%s won't process navigation data registration candidates until OperationMode is set. Waiting for OnWorldInitDone."), ANSI_TO_TCHAR(__FUNCTION__));
-	}
-	else if (NavDataRegistrationQueue.Num() > 0)
+		if (NavDataRegistrationQueue.Num() > 0)
 	{
 		ProcessRegistrationCandidates();
 	}
@@ -3802,12 +3436,9 @@ void UNavigationSystemV1::OnLevelAddedToWorld(ULevel* InLevel, UWorld* InWorld)
 
 void UNavigationSystemV1::OnLevelRemovedFromWorld(ULevel* InLevel, UWorld* InWorld)
 {
-	if ((InWorld == GetWorld()) && (InLevel != nullptr))
+	if ((IsNavigationSystemStatic() == false) && (InWorld == GetWorld()) && (InLevel != nullptr))
 	{
-		if (IsNavigationSystemStatic() == false)
-		{
-			RemoveLevelCollisionFromOctree(InLevel);
-		}
+		RemoveLevelCollisionFromOctree(InLevel);
 
 		if (InLevel && !InLevel->IsPersistentLevel())
 		{
@@ -3907,7 +3538,7 @@ void UNavigationSystemV1::OnHotReload(bool bWasTriggeredAutomatically)
 
 		if (bInitialBuildingLocked)
 		{
-			RemoveNavigationBuildLock(ENavigationBuildLock::InitialLock, ELockRemovalRebuildAction::RebuildIfNotInEditor);
+			RemoveNavigationBuildLock(ENavigationBuildLock::InitialLock, /*bSkipRebuildInEditor=*/true);
 		}
 	}
 }
@@ -3933,7 +3564,6 @@ void UNavigationSystemV1::CleanUp(FNavigationSystem::ECleanupMode Mode)
 	UNavigationSystemV1::NavigationDirtyEvent.RemoveAll(this);
 	FWorldDelegates::LevelAddedToWorld.RemoveAll(this);
 	FWorldDelegates::LevelRemovedFromWorld.RemoveAll(this);
-	FWorldDelegates::OnWorldBeginTearDown.RemoveAll(this);
 
 #if WITH_HOT_RELOAD
 	if (IHotReloadInterface* HotReloadSupport = FModuleManager::GetModulePtr<IHotReloadInterface>("HotReload"))
@@ -3973,10 +3603,10 @@ void UNavigationSystemV1::CleanUp(FNavigationSystem::ECleanupMode Mode)
 	UWorld* MyWorld = (Mode == FNavigationSystem::ECleanupMode::CleanupWithWorld) ? GetWorld() : NULL;
 	if (MyWorld)
 	{
+		MyWorld->OnBeginTearingDown().RemoveAll(this);
 
 		if (MyWorld->WorldType == EWorldType::Game || MyWorld->WorldType == EWorldType::Editor)
 		{
-			UE_LOG(LogNavLink, VeryVerbose, TEXT("Reset navlink id on cleanup."));
 			INavLinkCustomInterface::NextUniqueId = 1;
 		}
 	}
@@ -4033,34 +3663,6 @@ ERuntimeGenerationType UNavigationSystemV1::GetRuntimeGenerationType() const
 	}
 	
 	return RuntimeGenerationType;
-}
-
-void UNavigationSystemV1::LogNavDataRegistrationResult(ERegistrationResult InResult)
-{
-	switch (InResult)
-	{
-	case UNavigationSystemV1::RegistrationError:
-		UE_VLOG_UELOG(this, LogNavigation, Warning, TEXT("NavData RegistrationError, could not be registered."));
-		break;
-	case UNavigationSystemV1::RegistrationFailed_DataPendingKill:
-		UE_VLOG_UELOG(this, LogNavigation, Warning, TEXT("NavData RegistrationFailed_DataPendingKill."));
-		break;
-	case UNavigationSystemV1::RegistrationFailed_AgentAlreadySupported:
-		UE_VLOG_UELOG(this, LogNavigation, Warning, TEXT("NavData RegistrationFailed_AgentAlreadySupported, specified agent type already has its navmesh implemented."));
-		break;
-	case UNavigationSystemV1::RegistrationFailed_AgentNotValid:
-		UE_VLOG_UELOG(this, LogNavigation, Warning, TEXT("NavData RegistrationFailed_AgentNotValid, NavData instance contains navmesh that doesn't support any of expected agent types."));
-		break;
-	case UNavigationSystemV1::RegistrationFailed_NotSuitable:
-		UE_VLOG_UELOG(this, LogNavigation, Warning, TEXT("NavData RegistrationFailed_NotSuitable."));
-		break;
-	case UNavigationSystemV1::RegistrationSuccessful:
-		UE_VLOG_UELOG(this, LogNavigation, Verbose, TEXT("NavData RegistrationSuccessful."));
-		break;
-	default:
-		UE_VLOG_UELOG(this, LogNavigation, Warning, TEXT("Registration not successful default warning."));
-		break;
-	}
 }
 
 //----------------------------------------------------------------------//
@@ -4666,7 +4268,8 @@ INavigationDataInterface* UNavigationSystemV1::GetNavDataForActor(const AActor& 
 		NavData = NavSys->GetDefaultNavDataInstance(FNavigationSystem::DontCreate);
 	}
 
-	return NavData;
+	//  Only RecastNavMesh supported
+	return (INavigationDataInterface*)(Cast<ARecastNavMesh>(NavData));
 }
 
 int UNavigationSystemV1::GetNavigationBoundsForNavData(const ANavigationData& NavData, TArray<FBox>& OutBounds, ULevel* InLevel) const
@@ -4872,9 +4475,7 @@ void UNavigationSystemModuleConfig::UpdateWithNavSysCDO(const UNavigationSystemV
 	UClass* MyClass = NavigationSystemClass.ResolveClass();
 	if (MyClass != nullptr && MyClass->IsChildOf(NavSysCDO.GetClass()))
 	{
-		// note that we're not longer copying bStrictlyStatic due to UE-91171
-		// Copying NavSysCDO.bStaticRuntimeNavigation resulted in copying 'true' 
-		// between unrelated maps
+		bStrictlyStatic = NavSysCDO.bStaticRuntimeNavigation;
 		bCreateOnClient = NavSysCDO.bAllowClientSideNavigation;
 		bAutoSpawnMissingNavData = NavSysCDO.bAutoCreateNavigationData;
 		bSpawnNavDataInNavBoundsLevel = NavSysCDO.bSpawnNavDataInNavBoundsLevel;
@@ -4899,7 +4500,10 @@ UNavigationSystemBase* UNavigationSystemModuleConfig::CreateAndConfigureNavigati
 	{
 		NavSysInstance->bAutoCreateNavigationData = bAutoSpawnMissingNavData;
 		NavSysInstance->bSpawnNavDataInNavBoundsLevel = bSpawnNavDataInNavBoundsLevel;
-		NavSysInstance->ConfigureAsStatic(bStrictlyStatic);
+		if (bStrictlyStatic)
+		{
+			NavSysInstance->ConfigureAsStatic();
+		}
 	}
 
 	return NavSysInstance;

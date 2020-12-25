@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -75,9 +75,9 @@ public:
 		return Buffer.Num();
 	}
 
-	virtual FMediaTimeStamp GetTime() const override
+	virtual FTimespan GetTime() const override
 	{
-		return FMediaTimeStamp(Time);
+		return Time;
 	}
 
 private:

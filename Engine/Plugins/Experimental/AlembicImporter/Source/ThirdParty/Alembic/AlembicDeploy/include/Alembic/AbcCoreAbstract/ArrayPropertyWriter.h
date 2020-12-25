@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcCoreAbstract_ArrayPropertyWriter_h
-#define Alembic_AbcCoreAbstract_ArrayPropertyWriter_h
+#ifndef _Alembic_AbcCoreAbstract_ArrayPropertyWriter_h_
+#define _Alembic_AbcCoreAbstract_ArrayPropertyWriter_h_
 
 #include <Alembic/Util/Export.h>
 #include <Alembic/AbcCoreAbstract/Foundation.h>

@@ -1,14 +1,16 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "PixelStreamingPrivate.h"
 #include "RHIResources.h"
 
+class FPixelStreamingBaseVideoEncoder;
+
 class FVideoCapturer : public cricket::VideoCapturer
 {
 public:
-	explicit FVideoCapturer(FHWEncoderDetails& InHWEncoderDetails);
+	explicit FVideoCapturer(FPixelStreamingBaseVideoEncoder& InHWEncoder);
 
 	void OnFrameReady(const FTexture2DRHIRef& FrameBuffer);
 
@@ -33,8 +35,7 @@ private:
 	}
 	//////////////////////////////////////////////////////////////////////////
 
-	FHWEncoderDetails& HWEncoderDetails;
-	int64 LastTimestampUs = 0;
+	FPixelStreamingBaseVideoEncoder& HWEncoder;
 
 	int32 Width = 1920;
 	int32 Height = 1080;

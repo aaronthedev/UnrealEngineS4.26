@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,6 @@
 #include "Widgets/SWidget.h"
 #include "Developer/Merge/Public/Merge.h"
 #include "ThumbnailRendering/ThumbnailManager.h"
-#include "AssetRegistry/AssetData.h"
 
 class IToolkitHost;
 
@@ -46,7 +45,7 @@ public:
 	/** Returns the name of this type */
 	virtual FText GetName() const = 0;
 
-	/** Get the supported class of this type. */
+	/** Checks to see if the specified object is handled by this type. */
 	virtual UClass* GetSupportedClass() const = 0;
 
 	/** Returns the color associated with this type */
@@ -70,9 +69,6 @@ public:
 	/** Allows overriding asset activation to perform asset type specific activation for the supplied assets. This happens when the user double clicks, presses enter, or presses space. Return true if you have overridden the behavior. */
 	virtual bool AssetsActivatedOverride(const TArray<UObject*>& InObjects, EAssetTypeActivationMethod::Type ActivationType) = 0;
 
-	/** Returns the set of asset data that is valid to load. */
-	virtual TArray<FAssetData> GetValidAssetsForPreviewOrEdit(TArrayView<const FAssetData> InAssetDatas, bool bIsPreview) = 0;
-
 	/** Returns true if this class can be used as a filter in the content browser */
 	virtual bool CanFilter() = 0;
 
@@ -91,9 +87,6 @@ public:
 	/** Returns the categories that this asset type appears in. The return value is one or more flags from EAssetTypeCategories.  */
 	virtual uint32 GetCategories() = 0;
 
-	/** Returns the display name for that object. */
-	virtual FString GetObjectDisplayName(UObject* Object) const = 0;
-
 	/** Returns array of sub-menu names that this asset type is parented under in the Asset Creation Context Menu. */
 	virtual const TArray<FText>& GetSubMenus() const = 0;
 
@@ -110,10 +103,10 @@ public:
 	virtual EThumbnailPrimType GetDefaultThumbnailPrimitiveType(UObject* Asset) const = 0;
 
 	/** Optionally returns a custom widget to overlay on top of this assets' thumbnail */
-	virtual TSharedPtr<class SWidget> GetThumbnailOverlay(const FAssetData& AssetData) const = 0;
+	virtual TSharedPtr<class SWidget> GetThumbnailOverlay(const struct FAssetData& AssetData) const = 0;
 
 	/** Returns additional tooltip information for the specified asset, if it has any (otherwise return the null widget) */
-	virtual FText GetAssetDescription(const FAssetData& AssetData) const = 0;
+	virtual FText GetAssetDescription(const struct FAssetData& AssetData) const = 0;
 
 	/** Returns whether the asset was imported from an external source */
 	virtual bool IsImportedAsset() const = 0;
@@ -126,13 +119,4 @@ public:
 
 	/** Builds the filter for this class*/
 	virtual void BuildBackendFilter(struct FARFilter& InFilter) = 0;
-
-	/** Optionally gets a class display name for this asset (otherwise, returns empty text (e.g. `FText::GetEmpty()`) */
-	virtual FText GetDisplayNameFromAssetData(const FAssetData& AssetData) const = 0;
-
-	/** Sets whether or not this asset type is a supported type for this editor session. */
-	virtual void SetSupported(bool bInSupported) = 0;
-
-	/** Is this asset type supported in the current session? */
-	virtual bool IsSupported() const = 0;
 };

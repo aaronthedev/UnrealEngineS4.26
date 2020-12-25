@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AISystem.h"
 #include "Modules/ModuleManager.h"
@@ -29,7 +29,13 @@ UAISystem::UAISystem(const FObjectInitializer& ObjectInitializer)
 
 	bEnableBTAITasks = false;
 
-	if (HasAnyFlags(RF_ClassDefaultObject))
+	if (HasAnyFlags(RF_ClassDefaultObject) == false)
+	{
+		BehaviorTreeManager = NewObject<UBehaviorTreeManager>(this, TEXT("BehaviorTreeManager"));
+		EnvironmentQueryManager = NewObject<UEnvQueryManager>(this, TEXT("EQSManager"));
+		NavLocalGrids = NewObject<UNavLocalGridManager>(this, TEXT("NavLocalGrids"));
+	}
+	else
 	{
 		// game-wise config
 		if (FParse::Param(FCommandLine::Get(), TEXT("FixedSeed")) == false)
@@ -56,14 +62,7 @@ void UAISystem::PostInitProperties()
 	if (HasAnyFlags(RF_ClassDefaultObject) == false)
 	{
 		UWorld* WorldOuter = GetOuterWorld();
-
-		BehaviorTreeManager = NewObject<UBehaviorTreeManager>(this);
-		ensure(BehaviorTreeManager != nullptr);
-		EnvironmentQueryManager = NewObject<UEnvQueryManager>(this);
-		ensure(EnvironmentQueryManager != nullptr);
-		NavLocalGrids = NewObject<UNavLocalGridManager>(this);
-		ensure(NavLocalGrids != nullptr);
-
+		
 		TSubclassOf<UAIHotSpotManager> HotSpotManagerClass = HotSpotManagerClassName.IsValid() ? LoadClass<UAIHotSpotManager>(NULL, *HotSpotManagerClassName.ToString(), NULL, LOAD_None, NULL) : nullptr;
 		if (HotSpotManagerClass)
 		{
@@ -98,13 +97,8 @@ void UAISystem::StartPlay()
 
 void UAISystem::OnActorSpawned(AActor* SpawnedActor)
 {
-	if (PerceptionSystem == nullptr || PerceptionSystem->bHandlePawnNotification == false)
-	{
-		return;
-	}
-
 	APawn* AsPawn = Cast<APawn>(SpawnedActor);
-	if (AsPawn)
+	if (AsPawn && PerceptionSystem)
 	{
 		PerceptionSystem->OnNewPawn(*AsPawn);
 	}

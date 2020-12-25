@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Misc/EngineVersion.h"
 #include "Misc/Guid.h"
@@ -7,7 +7,14 @@
 #include "Runtime/Launch/Resources/Version.h"
 #include "UObject/ReleaseObjectVersion.h"
 #include "BuildSettings.h"
-#include "CoreGlobals.h"
+
+FEngineVersionBase::FEngineVersionBase()
+: Major(0)
+, Minor(0)
+, Patch(0)
+, Changelist(0)
+{
+}
 
 FEngineVersionBase::FEngineVersionBase(uint16 InMajor, uint16 InMinor, uint16 InPatch, uint32 InChangelist)
 : Major(InMajor)
@@ -82,6 +89,11 @@ uint32 FEngineVersionBase::EncodeLicenseeChangelist(uint32 Changelist)
 }
 
 
+FEngineVersion::FEngineVersion()
+{
+	Empty();
+}
+
 FEngineVersion::FEngineVersion(uint16 InMajor, uint16 InMinor, uint16 InPatch, uint32 InChangelist, const FString &InBranch)
 {
 	Set(InMajor, InMinor, InPatch, InChangelist, InBranch);
@@ -99,11 +111,6 @@ void FEngineVersion::Set(uint16 InMajor, uint16 InMinor, uint16 InPatch, uint32 
 void FEngineVersion::Empty()
 {
 	Set(0, 0, 0, 0, FString());
-}
-
-bool FEngineVersion::ExactMatch(const FEngineVersion& Other) const
-{
-	return Major == Other.Major && Minor == Other.Minor && Patch == Other.Patch && Changelist == Other.Changelist && Branch == Other.Branch;
 }
 
 bool FEngineVersion::IsCompatibleWith(const FEngineVersionBase &Other) const
@@ -174,7 +181,7 @@ bool FEngineVersion::Parse(const FString &Text, FEngineVersion &OutVersion)
 	}
 
 	// Build the output version
-	OutVersion.Set((uint16)Major, (uint16)Minor, (uint16)Patch, (uint32)Changelist, Branch);
+	OutVersion.Set(Major, Minor, Patch, Changelist, Branch);
 	return true;
 }
 
@@ -244,20 +251,8 @@ void operator<<(FStructuredArchive::FSlot Slot, FEngineVersion &Version)
 	}
 }
 
-bool ReleaseObjectVersionValidator(const FCustomVersion& Version, const FCustomVersionArray& AllVersions)
-{
-	// Any asset saved as ReleaseObjectVersion 31 or 32 will be broken in the future due to the
-	// inadvertent changing of release object version in another stream
-	// Asset must be resaved with an appropriate version of the engine to arrange its versions correctly
-	const bool bInvalidReleaseObjectVersion = (Version.Version == FReleaseObjectVersion::ReleaseObjectVersionFixup || Version.Version == FReleaseObjectVersion::PinTypeIncludesUObjectWrapperFlag);
-	if (bInvalidReleaseObjectVersion)
-	{
-		UE_LOG(LogInit, Error, TEXT("Package must be resaved with an appropriate engine version or else future versions will be incorrectly applied."));
-	}
-	return !bInvalidReleaseObjectVersion;
-}
 
 // Unique Release Object version id
 const FGuid FReleaseObjectVersion::GUID(0x9C54D522, 0xA8264FBE, 0x94210746, 0x61B482D0);
 // Register Release custom version with Core
-FCustomVersionRegistration GRegisterReleaseObjectVersion(FReleaseObjectVersion::GUID, FReleaseObjectVersion::LatestVersion, TEXT("Release"), (FPlatformProperties::RequiresCookedData() ? nullptr : &ReleaseObjectVersionValidator));
+FCustomVersionRegistration GRegisterReleaseObjectVersion(FReleaseObjectVersion::GUID, FReleaseObjectVersion::LatestVersion, TEXT("Release"));

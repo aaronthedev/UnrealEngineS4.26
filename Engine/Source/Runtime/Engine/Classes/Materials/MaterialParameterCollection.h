@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  * MaterialParameterCollection.h - defines an asset that has a list of parameters, which can be referenced by any material and updated efficiently at runtime
@@ -9,7 +9,6 @@
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "UObject/Object.h"
-#include "HAL/ThreadSafeBool.h"
 #include "Misc/Guid.h"
 #include "UniformBuffer.h"
 #include "Templates/UniquePtr.h"
@@ -74,7 +73,7 @@ struct FCollectionVectorParameter : public FCollectionParameterBase
  * Asset class that contains a list of parameter names and their default values. 
  * Any number of materials can reference these parameters and get new values when the parameter values are changed.
  */
-UCLASS(hidecategories=object, MinimalAPI, BlueprintType)
+UCLASS(hidecategories=object, MinimalAPI)
 class UMaterialParameterCollection : public UObject
 {
 	GENERATED_UCLASS_BODY()
@@ -83,16 +82,16 @@ class UMaterialParameterCollection : public UObject
 	UPROPERTY(duplicatetransient)
 	FGuid StateId;
 
-	UPROPERTY(EditAnywhere, Category=Material, Meta = (TitleProperty = "ParameterName"))
+	UPROPERTY(EditAnywhere, Category=Material)
 	TArray<FCollectionScalarParameter> ScalarParameters;
 
-	UPROPERTY(EditAnywhere, Category=Material, Meta = (TitleProperty = "ParameterName"))
+	UPROPERTY(EditAnywhere, Category=Material)
 	TArray<FCollectionVectorParameter> VectorParameters;
 
 	//~ Begin UObject Interface.
 #if WITH_EDITOR
 	using Super::PreEditChange;
-	virtual void PreEditChange(FProperty* PropertyThatWillChange) override;
+	virtual void PreEditChange(UProperty* PropertyThatWillChange) override;
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif // WITH_EDITOR
 	virtual void PostInitProperties() override;
@@ -130,8 +129,8 @@ private:
 	virtual ENGINE_API void FinishDestroy() override;
 	virtual ENGINE_API bool IsReadyForFinishDestroy() override;
 
-	/** Flag used to guarantee that the RT is finished using various resources in this UMaterial before cleanup. */
-	FThreadSafeBool ReleasedByRT;
+	/** Fence used to guarantee that the RT is finished using various resources in this UMaterial before cleanup. */
+	FRenderCommandFence ReleaseFence;
 
 	/** Default resource used when no instance is available. */
 	class FMaterialParameterCollectionInstanceResource* DefaultResource;

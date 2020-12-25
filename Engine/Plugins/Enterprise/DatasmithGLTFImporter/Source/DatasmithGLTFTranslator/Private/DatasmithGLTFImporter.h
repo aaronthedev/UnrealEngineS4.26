@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,6 +10,7 @@
 #include "MeshDescription.h"
 
 #include "GLTFLogger.h"
+#include "GLTFMaterialFactory.h"
 
 class UStaticMesh;
 struct FDatasmithImportContext;
@@ -27,7 +28,7 @@ namespace GLTF
 {
 	class FFileReader;
 	struct FAsset;
-	class FMeshFactory;
+	class FStaticMeshFactory;
 	class FMaterialFactory;
 }
 
@@ -92,7 +93,7 @@ private:
 	mutable TArray<GLTF::FLogMessage>           LogMessages;
 	TUniquePtr<GLTF::FFileReader>               GLTFReader;
 	TUniquePtr<GLTF::FAsset>                    GLTFAsset;
-	TUniquePtr<GLTF::FMeshFactory>				MeshFactory;
+	TUniquePtr<GLTF::FStaticMeshFactory>        StaticMeshFactory;
 	TUniquePtr<GLTF::FMaterialFactory>          MaterialFactory;
 	TUniquePtr<FDatasmithGLTFAnimationImporter> AnimationImporter;
 

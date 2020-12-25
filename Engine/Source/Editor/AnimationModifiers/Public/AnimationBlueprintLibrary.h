@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,8 +12,6 @@
 struct FRawAnimSequenceTrack;
 class UAnimCompress;
 class USkeleton;
-class UAnimBoneCompressionSettings;
-class UAnimCurveCompressionSettings;
 
 UENUM()
 enum class ESmartNameContainerType : uint8
@@ -44,10 +42,6 @@ public:
 	UFUNCTION(BlueprintPure, Category = "AnimationBlueprintLibrary|Animation")
 	static void GetAnimationTrackNames(const UAnimSequence* AnimationSequence, TArray<FName>& TrackNames);
 
-	/** Retrieves the Names of the individual float curves for the given Animation Sequence */
-	UFUNCTION(BlueprintPure, Category = "AnimationBlueprintLibrary|Animation")
-	static void GetAnimationCurveNames(const UAnimSequence* AnimationSequence, ERawCurveTrackTypes CurveType, TArray<FName>& CurveNames);
-
 	/** Retrieves the Raw Translation Animation Data for the given Animation Track Name and Animation Sequence */
 	UFUNCTION(BlueprintPure, Category = "AnimationBlueprintLibrary|RawTrackData")
 	static void GetRawTrackPositionData(const UAnimSequence* AnimationSequence, const FName TrackName, TArray<FVector>& PositionData);
@@ -72,21 +66,13 @@ public:
 
 	// Compression
 
-	/** Retrieves the Bone Compression Settings for the given Animation Sequence */
+	/** Retrieves the Compression Scheme for the given Animation Sequence */
 	UFUNCTION(BlueprintPure, Category = "AnimationBlueprintLibrary|Compression")
-	static void GetBoneCompressionSettings(const UAnimSequence* AnimationSequence, UAnimBoneCompressionSettings*& CompressionSettings);
+	static void GetCompressionScheme(const UAnimSequence* AnimationSequence, UAnimCompress*& CompressionScheme);
 
-	/** Sets the Bone Compression Settings for the given Animation Sequence */
+	/** Sets the Compression Scheme for the given Animation Sequence */
 	UFUNCTION(BlueprintCallable, Category = "AnimationBlueprintLibrary|Compression")
-	static void SetBoneCompressionSettings(UAnimSequence* AnimationSequence, UAnimBoneCompressionSettings* CompressionSettings);
-
-	/** Retrieves the Curve Compression Settings for the given Animation Sequence */
-	UFUNCTION(BlueprintPure, Category = "AnimationBlueprintLibrary|Compression")
-	static void GetCurveCompressionSettings(const UAnimSequence* AnimationSequence, UAnimCurveCompressionSettings*& CompressionSettings);
-
-	/** Sets the Curve Compression Settings for the given Animation Sequence */
-	UFUNCTION(BlueprintCallable, Category = "AnimationBlueprintLibrary|Compression")
-	static void SetCurveCompressionSettings(UAnimSequence* AnimationSequence, UAnimCurveCompressionSettings* CompressionSettings);
+	static void SetCompressionScheme(UAnimSequence* AnimationSequence, UAnimCompress* CompressionScheme);
 
 	// Additive 
 	/** Retrieves the Additive Animation type for the given Animation Sequence */

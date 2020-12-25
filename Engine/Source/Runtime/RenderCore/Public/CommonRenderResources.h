@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	DummyRenderResource.h: Frequently used rendering resources
@@ -15,7 +15,6 @@
 /** The vertex data used to filter a texture. */
 struct FFilterVertex
 {
-public:
 	FVector4 Position;
 	FVector2D UV;
 };

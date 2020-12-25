@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -17,7 +17,7 @@
 #include "Toolkits/IToolkitHost.h"
 #include "IPhysicsAssetEditor.h"
 #include "Editor/PhysicsAssetEditor/Private/PhysicsAssetEditorSharedData.h"
-#include "BodySetupEnums.h"
+#include "PhysicsEngine/BodySetupEnums.h"
 #include "Containers/ArrayView.h"
 #include "GraphEditor.h"
 
@@ -158,9 +158,6 @@ private:
 	virtual void PostRedo(bool bSuccess) override;
 	// End of FEditorUndoClient
 	
-	/** Called when an asset has just been imported */
-	void OnAssetReimport(UObject* Object);
-
 	/** Builds the menu for the PhysicsAsset editor */
 	void ExtendMenu();
 
@@ -225,23 +222,13 @@ private:
 	void ToggleRenderOnlySelectedConstraints();
 	bool IsRenderingOnlySelectedConstraints() const;
 	void ToggleRenderOnlySelectedSolid();
-	void ToggleHideSimulatedBodies();
-	void ToggleHideKinematicBodies();
 	bool IsRenderingOnlySelectedSolid() const;
-	bool IsHidingSimulatedBodies() const;
-	bool IsHidingKinematicBodies() const;
 	void OnToggleMassProperties();
 	bool IsToggleMassProperties() const;
 	void OnSetCollision(bool bEnable);
 	bool CanSetCollision(bool bEnable) const;
 	void OnSetCollisionAll(bool bEnable);
 	bool CanSetCollisionAll(bool bEnable) const;
-	void OnSetPrimitiveCollision(ECollisionEnabled::Type CollisionEnabled);
-	bool CanSetPrimitiveCollision(ECollisionEnabled::Type CollisionEnabled) const;
-	bool IsPrimitiveCollisionChecked(ECollisionEnabled::Type CollisionEnabled) const;
-	void OnSetPrimitiveContributeToMass();
-	bool CanSetPrimitiveContributeToMass() const;
-	bool GetPrimitiveContributeToMass() const;
 	void OnWeldToBody();
 	bool CanWeldToBody();
 	void OnAddSphere();
@@ -278,17 +265,8 @@ private:
 
 	//menu commands
 	void OnSelectAllBodies();
-	void OnSelectKinematicBodies();
-	void OnSelectSimulatedBodies();
-	void OnSelectBodies(EPhysicsType PhysicsType = EPhysicsType::PhysType_Simulated);
 	void OnSelectAllConstraints();
 	void OnToggleSelectionType();
-	void OnToggleShowSelected();
-	void OnShowSelected();
-	void OnHideSelected();
-	void OnToggleShowOnlySelected();
-	void OnShowAll();
-	void OnHideAll();
 	void OnDeselectAll();
 
 	FText GetRepeatLastSimulationToolTip() const;
@@ -305,13 +283,9 @@ private:
 
 	/** Filter menu toggles */
 	void HandleToggleShowBodies();
-	void HandleToggleShowSimulatedBodies();
-	void HandleToggleShowKinematicBodies();
 	void HandleToggleShowConstraints();
 	void HandleToggleShowPrimitives();
 	ECheckBoxState GetShowBodiesChecked() const;
-	ECheckBoxState GetShowSimulatedBodiesChecked() const;
-	ECheckBoxState GetShowKinematicBodiesChecked() const;
 	ECheckBoxState GetShowConstraintsChecked() const;
 	ECheckBoxState GetShowPrimitivesChecked() const;
 
@@ -361,17 +335,9 @@ private:
 	/** Command list for viewport operations */
 	TSharedPtr<FUICommandList_Pinnable> ViewportCommandList;
 
-	/** To unregister reimport handler */
-	FDelegateHandle OnAssetReimportDelegateHandle;
-
 	void FixPhysicsState();
 	void ImpToggleSimulation();
 
 	/** Records PhysicsAssetEditor related data - simulating or mode change */
 	void OnAddPhatRecord(const FString& Action, bool bRecordSimulate, bool bRecordMode);
-
-public:
-
-	TArray<int32> HiddenBodies;
-	TArray<int32> HiddenConstraints;
 };

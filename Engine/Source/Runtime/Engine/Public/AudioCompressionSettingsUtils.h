@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -22,19 +22,17 @@ public:
 
 	static void RecacheCookOverrides();
 
-	// null platformname means to use current platform
-	static const FPlatformAudioCookOverrides* GetCookOverrides(const TCHAR* PlatformName=nullptr, bool bForceRecache = false);
+	static const FPlatformAudioCookOverrides* GetCookOverridesForCurrentPlatform(bool bForceRecache = false);
 
 	static bool IsCurrentPlatformUsingStreamCaching();
 
-	// null platformname means to use current platform
 	static const FAudioStreamCachingSettings& GetStreamCachingSettingsForCurrentPlatform();
 
 	/** This is used at runtime to initialize FCachedAudioStreamingManager. */
 	static FCachedAudioStreamingManagerParams BuildCachedStreamingManagerParams();
 
 	/** This is used at runtime in BuildCachedStreamingManagerParams, as well as cooktime in FStreamedAudioCacheDerivedDataWorker::BuildStreamedAudio to split compressed audio.  */
-	static uint32 GetMaxChunkSizeForCookOverrides(const FPlatformAudioCookOverrides* InCompressionOverrides);
+	static uint32 GetMaxChunkSizeForCookOverrides(const FPlatformAudioCookOverrides* InCompressionOverrides, int32 DefaultMaxChunkSizeKB);
 
 private:
 	static const FPlatformRuntimeAudioCompressionOverrides* GetRuntimeCompressionOverridesForCurrentPlatform();

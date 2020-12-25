@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SwitchActorCustomization.h"
 
@@ -64,7 +64,7 @@ void FSwitchActorCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailLay
 	}
 
 	IDetailCategoryBuilder& ActionsCategory = DetailLayoutBuilder.EditCategory(TEXT("SwitchActor"));
-	const FText FilterStr = FText::FromString( SWITCH_ACTOR_SELECTED_OPTION_NAME );
+	const FText FilterStr(LOCTEXT("SelectedOptionRow", "Selected Option"));
 	ActionsCategory.AddCustomRow(FilterStr)
 	.NameContent()
 	[

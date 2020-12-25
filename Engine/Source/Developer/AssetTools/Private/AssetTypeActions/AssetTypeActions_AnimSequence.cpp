@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AssetTypeActions/AssetTypeActions_AnimSequence.h"
 #include "Animation/AnimSequence.h"
@@ -82,8 +82,8 @@ void FAssetTypeActions_AnimSequence::FillCreateMenu(FMenuBuilder& MenuBuilder, c
 			)
 		);
 
-	// Not supported, streamable animation logic will be ported to UAnimSequence
-	/*MenuBuilder.AddMenuEntry(
+	/* Not supported, streamable animation logic will be ported to UAnimSequence
+	MenuBuilder.AddMenuEntry(
 		LOCTEXT("AnimSequence_NewAnimStreamable", "Create AnimStreamable"),
 		LOCTEXT("AnimSequence_NewAnimStreamableTooltip", "Creates an AnimStreamable using the selected anim sequence."),
 		FSlateIcon(FEditorStyle::GetStyleSetName(), "ClassIcon.AnimMontage"),
@@ -117,21 +117,25 @@ void FAssetTypeActions_AnimSequence::ExecuteReimportWithNewSource(TArray<TWeakOb
 {
 	FAssetImportInfo EmptyImportInfo;
 
-
-	TArray<UObject*> ReimportAssets;
 	for (auto ObjIt = Objects.CreateConstIterator(); ObjIt; ++ObjIt)
 	{
-		UObject* Object = (*ObjIt).Get();
+		auto Object = (*ObjIt).Get();
 		if (Object)
 		{
-			ReimportAssets.Add(Object);
+			// Make note of the old import data
+			FAssetImportInfo OldImportData = Object->AssetImportData->SourceData;
+			// And reset the import data
+			Object->AssetImportData->SourceData = EmptyImportInfo;
+
+			bool bSuccess = FReimportManager::Instance()->Reimport(Object, /*bAskForNewFileIfMissing=*/true);
+
+			// restore the old source path in case reimport was not successful
+			if (!bSuccess)
+			{
+				Object->AssetImportData->SourceData = OldImportData;
+			}
 		}
 	}
-	
-	const bool bShowNotification = !FApp::IsUnattended();
-	const bool bReimportWithNewFile = true;
-	const int32 SourceFileIndex = INDEX_NONE;
-	FReimportManager::Instance()->ValidateAllSourceFileAndReimport(ReimportAssets, bShowNotification, SourceFileIndex, bReimportWithNewFile);
 }
 
 void FAssetTypeActions_AnimSequence::ExecuteNewAnimComposite(TArray<TWeakObjectPtr<UAnimSequence>> Objects) const

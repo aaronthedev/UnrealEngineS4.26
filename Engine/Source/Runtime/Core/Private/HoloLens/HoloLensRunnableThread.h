@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,6 @@
 #include "HAL/RunnableThread.h"
 #include "HAL/Runnable.h"
 #include "HAL/Event.h"
-#include "HAL/ThreadManager.h"
 #include "Containers/StringConv.h"
 #include "HoloLens/WindowsHWrapper.h"
 #include "HoloLens/HoloLensPlatformProcess.h"
@@ -81,9 +80,7 @@ class FRunnableThreadHoloLens
 	static DWORD STDCALL _ThreadProc(LPVOID pThis)
 	{
 		check(pThis);
-		auto* ThisThread = (FRunnableThreadHoloLens*)pThis;
-		FThreadManager::Get().AddThread(ThisThread->GetThreadID(), ThisThread);
-		return ThisThread->GuardedRun();
+		return ((FRunnableThreadHoloLens*)pThis)->GuardedRun();
 	}
 
 	/** Guarding works only if debugger is not attached or GAlwaysReportCrash is true. */
@@ -178,14 +175,11 @@ protected:
 
 	virtual bool CreateInternal(FRunnable* InRunnable, const TCHAR* InThreadName,
 		uint32 InStackSize = 0,
-		EThreadPriority InThreadPri = TPri_Normal, uint64 InThreadAffinityMask = 0,
-		EThreadCreateFlags InCreateFlags = EThreadCreateFlags::None) override
+		EThreadPriority InThreadPri = TPri_Normal, uint64 InThreadAffinityMask = 0) override
 	{
 		check(InRunnable);
 		Runnable = InRunnable;
 		ThreadAffintyMask = InThreadAffinityMask;
-		ThreadName = InThreadName ? InThreadName : TEXT("Unnamed UE4");
-		ThreadPriority = InThreadPri;
 
 		// Create a sync event to guarantee the Init() function is called first
 		ThreadInitSyncEvent = FPlatformProcess::CreateSynchEvent(true);
@@ -202,9 +196,8 @@ protected:
 		{
 			// Let the thread start up, then set the name for debug purposes.
 			ThreadInitSyncEvent->Wait(INFINITE);
+			ThreadName = InThreadName ? InThreadName : TEXT("Unnamed UE4");
 			SetThreadName(ThreadID, TCHAR_TO_ANSI(*ThreadName));
-
-			ThreadPriority = TPri_Normal;
 			SetThreadPriority(InThreadPri);
 		}
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -50,7 +50,7 @@ public:
 	 * 
 	 * @param bRestoreEnabled Is the restore enabled, or is it disabled because we've shut-down cleanly, or are running under the debugger?
 	 */
-	virtual void UpdateRestoreFile(const bool bRestoreEnabled) = 0;
+	virtual void UpdateRestoreFile(const bool bRestoreEnabled) const = 0;
 
 	/** @return Does we have any information about packages that can be restored */
 	virtual bool HasPackagesToRestore() const = 0;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -110,8 +110,7 @@ public:
 	const TSet<int>& GetHandleVertices() const { return HandleVertices; }
 	/** @return the set of all vertices that will be modified by the deformation*/
 	const TSet<int>& GetModifiedVertices() const { return ModifiedVertices; }
-	/** @return the set of all overlay normals that will be modified by the deformation*/
-	const TSet<int>& GetModifiedOverlayNormals() const { return ModifiedOverlayNormals; }
+
 
 protected:
 	//
@@ -149,7 +148,6 @@ protected:
 	TSet<int> ROIEdgeVertices;
 	TSet<int> FaceVertsTemp;
 	TSet<int> FaceBoundaryVertsTemp;
-	TSet<int> ModifiedOverlayNormals;
 
 	struct FROIEdge
 	{

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.Collections.Generic;
@@ -14,6 +14,7 @@ public class UnrealInsightsTarget : TargetRules
 		LaunchModuleName = "UnrealInsights";
 		ExtraModuleNames.Add("EditorStyle");
 
+		bBuildDeveloperTools = false;
 		bCompileAgainstEngine = false;
 		bCompileAgainstCoreUObject = true;
 		bForceBuildTargetPlatforms = true;

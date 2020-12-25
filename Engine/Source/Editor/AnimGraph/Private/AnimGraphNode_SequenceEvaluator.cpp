@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimGraphNode_SequenceEvaluator.h"
 #include "ToolMenus.h"
@@ -6,7 +6,6 @@
 #include "Kismet2/CompilerResultsLog.h"
 #include "GraphEditorActions.h"
 #include "Animation/AnimComposite.h"
-#include "Animation/AnimSequence.h"
 #include "AnimGraphNode_SequenceEvaluator.h"
 
 /////////////////////////////////////////////////////
@@ -29,10 +28,8 @@ void UAnimGraphNode_SequenceEvaluator::PreloadRequiredAssets()
 void UAnimGraphNode_SequenceEvaluator::BakeDataDuringCompilation(class FCompilerResultsLog& MessageLog)
 {
 	UAnimBlueprint* AnimBlueprint = GetAnimBlueprint();
-	AnimBlueprint->FindOrAddGroup(SyncGroup.GroupName);
-	Node.GroupName = SyncGroup.GroupName;
+	Node.GroupIndex = AnimBlueprint->FindOrAddGroup(SyncGroup.GroupName);
 	Node.GroupRole = SyncGroup.GroupRole;
-	Node.GroupScope = SyncGroup.GroupScope;
 }
 
 void UAnimGraphNode_SequenceEvaluator::GetAllAnimationSequencesReferred(TArray<UAnimationAsset*>& AnimationAssets) const
@@ -130,18 +127,8 @@ void UAnimGraphNode_SequenceEvaluator::ValidateAnimNodeDuringCompilation(class U
 
 	if (SequenceToCheck == nullptr)
 	{
-		// Check for bindings
-		bool bHasBinding = false;
-		if(SequencePin != nullptr)
-		{
-			if (FAnimGraphNodePropertyBinding* BindingPtr = PropertyBindings.Find(SequencePin->GetFName()))
-			{
-				bHasBinding = true;
-			}
-		}
-
-		// we may have a connected node or binding
-		if (SequencePin == nullptr || (SequencePin->LinkedTo.Num() == 0 && !bHasBinding))
+		// we may have a connected node
+		if (SequencePin == nullptr || SequencePin->LinkedTo.Num() == 0)
 		{
 			MessageLog.Error(TEXT("@@ references an unknown sequence"), this);
 		}

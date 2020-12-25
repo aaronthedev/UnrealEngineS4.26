@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -21,8 +21,6 @@ enum class EReferenceChainSearchMode
 	Longest = 1 << 2,
 	// Returns only the direct referencers
 	Direct = 1 << 3,
-	// Returns complete chains. (Ignoring non GC objects)
-	FullChain = 1 << 4,
 
 	// Print results
 	PrintResults = 1 << 16,
@@ -233,7 +231,7 @@ private:
 	/** Tries to find a node for an object and if it doesn't exists creates a new one and returns it */
 	static FGraphNode* FindOrAddNode(TMap<UObject*, FGraphNode*>& AllNodes, UObject* InObjectToFindNodeFor);
 	/** Builds reference chains */
-	static int32 BuildReferenceChains(FGraphNode* TargetNode, TArray<FReferenceChain*>& ProducedChains, int32 ChainDepth, const int32 VisitCounter, EReferenceChainSearchMode SearchMode);
+	static int32 BuildReferenceChains(FGraphNode* TargetNode, TArray<FReferenceChain*>& ProducedChains, int32 ChainDepth, const int32 VisitCounter);
 	/** Builds reference chains */
 	static void BuildReferenceChains(FGraphNode* TargetNode, TArray<FReferenceChain*>& AllChains, EReferenceChainSearchMode SearchMode);
 	/** Builds reference chains for direct references only */
@@ -250,3 +248,4 @@ private:
 	/** Writes a reference chain to a string */
 	static void WriteChain(FReferenceChain* Chain, FString& OutString);
 };
+

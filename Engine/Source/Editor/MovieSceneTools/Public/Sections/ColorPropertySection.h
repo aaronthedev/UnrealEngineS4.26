@@ -1,12 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "ISequencerSection.h"
 #include "MovieSceneCommonHelpers.h"
 
+struct  FTimeToPixel;
+
 class ISequencer;
 class FSequencerSectionPainter;
+class UMovieSceneColorSection;
 
 /**
 * A color section implementation
@@ -27,8 +30,10 @@ public:
 
 private:
 
-	virtual FReply OnKeyDoubleClicked(const TArray<FKeyHandle>& KeyHandles ) override;
 	virtual int32 OnPaintSection(FSequencerSectionPainter& Painter) const override;
+
+	/** Consolidate color curves for all track sections. */
+	void ConsolidateColorCurves(TArray< TTuple<float, FLinearColor> >& OutColorKeys, const UMovieSceneColorSection* Section, const FTimeToPixel& TimeConverter) const;
 
 	/** Get the current value of the object's property as a linear color */
 	FLinearColor GetPropertyValueAsLinearColor() const;

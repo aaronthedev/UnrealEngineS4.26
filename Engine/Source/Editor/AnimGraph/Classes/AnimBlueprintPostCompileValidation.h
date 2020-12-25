@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,14 +18,14 @@ struct FAnimBPCompileValidationParams
 	const class UAnimInstance* const DefaultAnimInstance;
 	const class UAnimBlueprintGeneratedClass* const NewAnimBlueprintClass;
 	FCompilerResultsLog& MessageLog;
-	const TMap<FProperty*, class UAnimGraphNode_Base*>& AllocatedNodePropertiesToNodes;
+	const TMap<UProperty*, class UAnimGraphNode_Base*>& AllocatedNodePropertiesToNodes;
 
 	FAnimBPCompileValidationParams
 	(
 		const class UAnimInstance* const InDefaultAnimInstance,
 		const class UAnimBlueprintGeneratedClass* const InNewAnimBlueprintClass,
 		FCompilerResultsLog& InMessageLog,
-		const TMap<FProperty*, class UAnimGraphNode_Base*>& InAllocatedNodePropertiesToNodes
+		const TMap<UProperty*, class UAnimGraphNode_Base*>& InAllocatedNodePropertiesToNodes
 	)
 		: DefaultAnimInstance(InDefaultAnimInstance)
 		, NewAnimBlueprintClass(InNewAnimBlueprintClass)
@@ -52,11 +52,10 @@ protected:
 	struct FPCV_GatherParams
 	{
 		bool bFilterBySyncGroup;
-		FName SyncGroupName;
+		int32 SyncGroupIndex;
 		bool bFilterByLoopingCondition;
 		bool bLoopingCondition;
 
-		UE_DEPRECATED(4.26, "Please use the constructor that takes an FName for the sync group")
 		FPCV_GatherParams
 		(
 			bool InbFilterBySyncGroup = false,
@@ -65,20 +64,7 @@ protected:
 			bool InbLoopingCondition = false
 		)
 			: bFilterBySyncGroup(InbFilterBySyncGroup)
-			, SyncGroupName(NAME_None)
-			, bFilterByLoopingCondition(InbFilterByLoopingCondition)
-			, bLoopingCondition(InbLoopingCondition)
-		{}
-
-		FPCV_GatherParams
-		(
-			bool InbFilterBySyncGroup = false,
-			FName InSyncGroupName = NAME_None,
-			bool InbFilterByLoopingCondition = false,
-			bool InbLoopingCondition = false
-		)
-			: bFilterBySyncGroup(InbFilterBySyncGroup)
-			, SyncGroupName(InSyncGroupName)
+			, SyncGroupIndex(InSyncGroupIndex)
 			, bFilterByLoopingCondition(InbFilterByLoopingCondition)
 			, bLoopingCondition(InbLoopingCondition)
 		{}
@@ -104,12 +90,12 @@ protected:
 
 	struct FPCV_PropertyAndValue
 	{
-		const FProperty* Property;
+		const UProperty* Property;
 		const void* Value;
 
 		FPCV_PropertyAndValue
 		(
-			const FProperty* InProperty,
+			const UProperty* InProperty,
 			const void* InValue
 		)
 			: Property(InProperty)
@@ -119,7 +105,7 @@ protected:
 
 	static void PCV_GatherAllReferencedAnimSequences(TArray<FPCV_ReferencedAnimSequence>& OutRefAnimSequences, FAnimBPCompileValidationParams& PCV_Params);
 	static void PCV_GatherAnimSequencesFromStruct(TArray<FPCV_ReferencedAnimSequence>& OutRefAnimSequences, FAnimBPCompileValidationParams& PCV_Params, const UStruct* InStruct, const void* InData, TArray<FPCV_PropertyAndValue> InPropertyCallChain);
-	static void PCV_GatherAnimSequencesFromProperty(TArray<FPCV_ReferencedAnimSequence>& OutRefAnimSequences, FAnimBPCompileValidationParams& PCV_Params, const FProperty* InProperty, const void* InData, TArray<FPCV_PropertyAndValue> InPropertyCallChain);
+	static void PCV_GatherAnimSequencesFromProperty(TArray<FPCV_ReferencedAnimSequence>& OutRefAnimSequences, FAnimBPCompileValidationParams& PCV_Params, const UProperty* InProperty, const void* InData, TArray<FPCV_PropertyAndValue> InPropertyCallChain);
 
 private:
 	virtual bool NeedsLoadForClient() const override { return false; }

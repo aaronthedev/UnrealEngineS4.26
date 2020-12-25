@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 DebugViewModeMaterialProxy.h : Contains definitions the debug view mode material shaders.
@@ -36,7 +36,7 @@ public:
 		, bIsDefaultMaterial(false)
 		, bSynchronousCompilation(true)
 	{
-		SetQualityLevelProperties(GMaxRHIFeatureLevel);
+		SetQualityLevelProperties(EMaterialQualityLevel::High, false, GMaxRHIFeatureLevel);
 	}
 
 	FDebugViewModeMaterialProxy(
@@ -80,7 +80,7 @@ public:
 		return  false;
 	}
 
-	virtual TArrayView<UObject* const> GetReferencedTextures() const override
+	virtual const TArray<UObject*>& GetReferencedTextures() const override
 	{
 		return ReferencedTextures;
 	}
@@ -127,10 +127,10 @@ public:
 	////////////////
 	// FMaterialRenderProxy interface.
 	virtual const FMaterial& GetMaterialWithFallback(ERHIFeatureLevel::Type InFeatureLevel, const FMaterialRenderProxy*& OutFallbackMaterialRenderProxy) const override;
-	virtual bool GetVectorValue(const FHashedMaterialParameterInfo& ParameterInfo, FLinearColor* OutValue, const FMaterialRenderContext& Context) const override;
-	virtual bool GetScalarValue(const FHashedMaterialParameterInfo& ParameterInfo, float* OutValue, const FMaterialRenderContext& Context) const override;
-	virtual bool GetTextureValue(const FHashedMaterialParameterInfo& ParameterInfo,const UTexture** OutValue, const FMaterialRenderContext& Context) const override;
-	virtual bool GetTextureValue(const FHashedMaterialParameterInfo& ParameterInfo, const URuntimeVirtualTexture** OutValue, const FMaterialRenderContext& Context) const override;
+	virtual bool GetVectorValue(const FMaterialParameterInfo& ParameterInfo, FLinearColor* OutValue, const FMaterialRenderContext& Context) const override;
+	virtual bool GetScalarValue(const FMaterialParameterInfo& ParameterInfo, float* OutValue, const FMaterialRenderContext& Context) const override;
+	virtual bool GetTextureValue(const FMaterialParameterInfo& ParameterInfo, const UTexture** OutValue, const FMaterialRenderContext& Context) const override;
+	virtual bool GetTextureValue(const FMaterialParameterInfo& ParameterInfo, const URuntimeVirtualTexture** OutValue, const FMaterialRenderContext& Context) const override;
 
 	virtual EMaterialDomain GetMaterialDomain() const override;
 	virtual bool IsTwoSided() const  override;
@@ -152,7 +152,6 @@ public:
 	virtual bool IsCrackFreeDisplacementEnabled() const override;
 	virtual bool IsAdaptiveTessellationEnabled() const override;
 	virtual float GetMaxDisplacement() const override;
-	virtual void GetStaticParameterSet(EShaderPlatform Platform, FStaticParameterSet& OutSet) const override;
 
 	// Cached material usage.
 	virtual bool IsUsedWithSkeletalMesh() const override { return bIsUsedWithSkeletalMesh; }
@@ -169,11 +168,6 @@ public:
 	virtual bool IsUsedWithInstancedStaticMeshes() const override { return bIsUsedWithInstancedStaticMeshes; }
 	virtual bool IsUsedWithAPEXCloth() const override { return bIsUsedWithAPEXCloth; }
 	virtual bool IsUsedWithWater() const override { return bIsUsedWithWater; }
-	virtual bool IsUsedWithVirtualHeightfieldMesh() const override { return bIsUsedWithVirtualHeightfieldMesh; }
-	virtual bool IsUsedWithGeometryCache() const override { return bIsUsedWithGeometryCache; }
-	virtual bool IsUsedWithHairStrands() const override { return bIsUsedWithHairStrands; }
-	virtual bool IsUsedWithLidarPointCloud() const override { return bIsUsedWithLidarPointCloud; }
-	virtual bool IsUsedWithGeometryCollections() const override { return bIsUsedWithGeometryCollections; }
 
 	virtual EMaterialShaderMapUsage::Type GetMaterialShaderMapUsage() const { return Usage; }
 
@@ -208,11 +202,6 @@ private:
 			uint32 bIsUsedWithInstancedStaticMeshes : 1;
 			uint32 bIsUsedWithAPEXCloth : 1;
 			uint32 bIsUsedWithWater : 1;
-			uint32 bIsUsedWithVirtualHeightfieldMesh : 1;
-			uint32 bIsUsedWithGeometryCache : 1;
-			uint32 bIsUsedWithHairStrands : 1;
-			uint32 bIsUsedWithLidarPointCloud : 1;
-			uint32 bIsUsedWithGeometryCollections : 1;
 		};
 	};
 

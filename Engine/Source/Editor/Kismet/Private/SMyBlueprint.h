@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,7 +25,6 @@ class UUserDefinedStruct;
 struct FEdGraphSchemaAction_K2Struct;
 struct FGraphActionNode;
 struct FGraphActionSort;
-struct FReplaceNodeReferencesHelper;
 
 class FMyBlueprintCommands : public TCommands<FMyBlueprintCommands>
 {
@@ -43,12 +42,7 @@ public:
 	TSharedPtr<FUICommandInfo> FocusNodeInNewTab;
 	TSharedPtr<FUICommandInfo> ImplementFunction;
 	TSharedPtr<FUICommandInfo> DeleteEntry;
-	TSharedPtr<FUICommandInfo> PasteVariable;
-	TSharedPtr<FUICommandInfo> PasteLocalVariable;
-	TSharedPtr<FUICommandInfo> PasteFunction;
-	TSharedPtr<FUICommandInfo> PasteMacro;
 	TSharedPtr<FUICommandInfo> GotoNativeVarDefinition;
-	TSharedPtr<FUICommandInfo> MoveToParent;
 	// Add New Item
 	/** Initialize commands */
 	virtual void RegisterCommands() override;
@@ -67,7 +61,6 @@ public:
 
 	/* SWidget interface */
 	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime);
-	virtual FReply OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent);
 
 	/* Reset the last pin type settings to default. */
 	void ResetLastPinType();
@@ -141,10 +134,6 @@ public:
 
 	/** Move the category before the target category */
 	bool MoveCategoryBeforeCategory( const FText& CategoryToMove, const FText& TargetCategory );
-	
-	/** Callbacks for Paste Commands */
-	void OnPasteGeneric();
-	bool CanPasteGeneric();
 private:
 	/** Creates widgets for the graph schema actions */
 	TSharedRef<SWidget> OnCreateWidgetForAction(struct FCreateWidgetForActionData* const InCreateData);
@@ -199,13 +188,9 @@ private:
 	void OnToggleAlwaysShowInterfacesInOverrides();
 	bool GetAlwaysShowInterfacesInOverrides() const;
 
-	/** Support functions for view options for bShowParentClassInOverrides blueprint editor setting */
+	/** Support functions for view options for bShowParentClassInOverrides blueprint editor setting*/
 	void OnToggleShowParentClassInOverrides();
 	bool GetShowParentClassInOverrides() const;
-
-	/** Support functions for view options for bShowAccessSpecifier blueprint editor setting */
-	void OnToggleShowAccessSpecifier();
-	bool GetShowAccessSpecifier() const;
 
 	/** Helper function to open the selected graph */
 	void OpenGraph(FDocumentTracker::EOpenDocumentCause InCause);
@@ -244,23 +229,6 @@ private:
 	void OnDuplicateAction();
 	void GotoNativeCodeVarDefinition();
 	bool IsNativeVariable() const;
-	void OnMoveToParent();
-	bool CanMoveToParent() const;
-	void OnCopy();
-	bool CanCopy() const;
-	void OnCut();
-	bool CanCut() const;
-	void OnPasteVariable();
-	void OnPasteLocalVariable();
-	bool CanPasteVariable() const;
-	bool CanPasteLocalVariable() const;
-	void OnPasteFunction();
-	bool CanPasteFunction() const;
-	void OnPasteMacro();
-	bool CanPasteMacro() const;
-
-	/** Gets the currently selected Category or returns default category name */
-	FText GetPasteCategory() const;
 
 	/** Callback when the filter is changed, forces the action tree(s) to filter */
 	void OnFilterTextChanged( const FText& InFilterText );
@@ -291,9 +259,6 @@ private:
 	/** Helper function indicating whehter we're in editing mode, and can modify the target blueprint */
 	bool IsEditingMode() const;
 private:
-	/** List of UI Commands for this scope */
-	TSharedPtr<FUICommandList> CommandList;
-
 	/** Pointer back to the blueprint editor that owns us */
 	TWeakPtr<FBlueprintEditor> BlueprintEditorPtr;
 	

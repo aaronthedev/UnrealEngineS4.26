@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  * Import data and options used when importing a static mesh from fbx
@@ -19,9 +19,7 @@ enum class EFbxExportCompatibility : uint8
 	FBX_2013,
 	FBX_2014,
 	FBX_2016,
-	FBX_2018,
-	FBX_2019,
-	FBX_2020,
+	FBX_2018
 };
 
 UCLASS(config = EditorPerProjectUserSettings, MinimalAPI)
@@ -69,12 +67,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, config, category = Animation)
 	uint32 bExportLocalTime : 1;
 
-	/* Set all the FProperty to the CDO value */
+	/* Set all the UProperty to the CDO value */
 	void ResetToDefault();
 
-	/* Save the FProperty to a local ini to retrieve the value the next time we call function LoadOptions() */
+	/* Save the UProperty to a local ini to retrieve the value the next time we call function LoadOptions() */
 	virtual void SaveOptions();
 	
-	/* Load the FProperty data from a local ini which the value was store by the function SaveOptions() */
+	/* Load the UProperty data from a local ini which the value was store by the function SaveOptions() */
 	virtual void LoadOptions();
 };

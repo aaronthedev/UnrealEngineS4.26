@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SCSDiff.h"
 #include "Widgets/Layout/SSplitter.h"
@@ -98,10 +98,10 @@ void FSCSDiff::OnSCSEditorUpdateSelectionFromNodes(const TArray<FSCSEditorTreeNo
 	for (auto NodeIt = SelectedNodes.CreateConstIterator(); NodeIt; ++NodeIt)
 	{
 		auto NodePtr = *NodeIt;
-		if(NodePtr.IsValid() && NodePtr->CanEdit())
+		if(NodePtr.IsValid() && NodePtr->CanEditDefaults())
 		{
 			InspectorTitle = FText::FromString(NodePtr->GetDisplayString());
-			InspectorObjects.Add(NodePtr->GetEditableObjectForBlueprint<UObject>(Blueprint));
+			InspectorObjects.Add(NodePtr->GetOrCreateEditableComponentTemplate(Blueprint));
 		}
 	}
 

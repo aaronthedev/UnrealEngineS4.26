@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Engine/EngineTypes.h"
-#include "UObject/ObjectKey.h"
 
 #define SUBTITLE_SCREEN_DEPTH_FOR_3D 0.1f
 
@@ -119,7 +118,7 @@ public:
 	/**
 	 * Draws a subtitle at the specified pixel location.
 	 */
-	void DisplaySubtitle(FCanvas* Canvas, FActiveSubtitle* Subtitle, FIntRect & Parms, const FLinearColor& Color);
+	void DisplaySubtitle(FCanvas *Canvas, FActiveSubtitle* Subtitle, FIntRect & Parms, const FLinearColor& Color);
 
 	/**
 	 * Display the currently queued subtitles and cleanup after they have finished rendering.
@@ -127,7 +126,7 @@ public:
 	 * @param Canvas Where to render the subtitles.
 	 * @param CurrentTime Current world time.
 	 */
-	ENGINE_API void DisplaySubtitles(FCanvas* InCanvas, FIntRect & SubtitleRegion, float InAudioTimeSeconds);
+	ENGINE_API void DisplaySubtitles(FCanvas *InCanvas, FIntRect & SubtitleRegion, float InAudioTimeSeconds);
 
 	/**
 	 * Whether there are any active subtitles.
@@ -184,8 +183,8 @@ private:
 	TMap<PTRINT, FActiveSubtitle> ActiveSubtitles;
 
 	/** The current height of the subtitles. */
-	float CurrentSubtitleHeight = 0;
+	float CurrentSubtitleHeight;
 
 	/** HACK: The currently active movie subtitle for given object owners. Each owner can have one movie subtitle at a time */
-	TMap<FObjectKey, TSharedPtr<FActiveSubtitle>> ActiveMovieSubtitles;
+	TMap<UObject*, TSharedPtr<FActiveSubtitle>> ActiveMovieSubtitles;
 };

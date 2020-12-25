@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_STRING_UTILS_H
-#define PXR_BASE_TF_STRING_UTILS_H
+#ifndef TF_STRINGUTILS_H
+#define TF_STRINGUTILS_H
 
 /// \file tf/stringUtils.h
 /// \ingroup group_tf_String
@@ -656,20 +656,23 @@ std::string TfStringCatPaths( const std::string &prefix,
 /// that is, it must be at least one character long, must start with a letter
 /// or underscore, and must contain only letters, underscores, and numerals.
 inline bool
-TfIsValidIdentifier(std::string const &identifier)
+TfIsValidIdentifier(const std::string &identifier)
 {
     char const *p = identifier.c_str();
-    auto letter = [](unsigned c) { return ((c-'A') < 26) || ((c-'a') < 26); };
-    auto number = [](unsigned c) { return (c-'0') < 10; };
-    auto under = [](unsigned c) { return c == '_'; };
-    unsigned x = *p;
-    if (!x || number(x)) {
+    if (!*p || (!(('a' <= *p && *p <= 'z') || 
+                  ('A' <= *p && *p <= 'Z') || 
+                  *p == '_')))
         return false;
+
+    for (++p; *p; ++p) {
+        if (!(('a' <= *p && *p <= 'z') || 
+              ('A' <= *p && *p <= 'Z') || 
+              ('0' <= *p && *p <= '9') || 
+              *p == '_')) {
+            return false;
+        }
     }
-    while (letter(x) || number(x) || under(x)) {
-        x = *p++;
-    };
-    return x == 0;
+    return true;
 }
 
 /// Produce a valid identifier (see TfIsValidIdentifier) from \p in by
@@ -689,4 +692,4 @@ std::string TfGetXmlEscapedString(const std::string &in);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_STRING_UTILS_H 
+#endif // TF_STRINGUTILS_H 

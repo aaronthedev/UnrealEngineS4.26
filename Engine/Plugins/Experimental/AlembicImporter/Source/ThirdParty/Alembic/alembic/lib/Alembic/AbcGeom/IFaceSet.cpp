@@ -98,7 +98,7 @@ FaceSetExclusivity IFaceSetSchema::getFaceExclusivity() const
     ALEMBIC_ABC_SAFE_CALL_BEGIN( "IFaceSetSchema::getFaceExclusivity" );
 
     Abc::IUInt32Property facesExclusiveProperty( this->getPtr(),
-        ".facesExclusive", Abc::ErrorHandler::kQuietNoopPolicy);
+        ".facesExclusive");
     if ( facesExclusiveProperty )
     {
         size_t numSamples = facesExclusiveProperty.getNumSamples();

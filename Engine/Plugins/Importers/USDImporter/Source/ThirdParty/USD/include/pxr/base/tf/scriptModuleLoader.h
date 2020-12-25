@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_SCRIPT_MODULE_LOADER_H
-#define PXR_BASE_TF_SCRIPT_MODULE_LOADER_H
+#ifndef TF_SCRIPT_MODULE_LOADER_H
+#define TF_SCRIPT_MODULE_LOADER_H
 
 #include "pxr/pxr.h"
 
@@ -32,9 +32,6 @@
 #include "pxr/base/tf/token.h"
 #include "pxr/base/tf/weakBase.h"
 
-// XXX: This include is a hack to avoid build errors due to
-// incompatible macro definitions in pyport.h on macOS.
-#include <locale>
 #include <boost/python/dict.hpp>
 
 #include <deque>
@@ -145,4 +142,4 @@ TF_API_TEMPLATE_CLASS(TfSingleton<TfScriptModuleLoader>);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_SCRIPT_MODULE_LOADER_H
+#endif // TF_SCRIPT_MODULE_LOADER_H

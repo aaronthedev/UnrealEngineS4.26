@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -17,11 +17,6 @@ class UEdGraphNode;
 class USoundCue;
 struct FPropertyChangedEvent;
 struct Rect;
-
-namespace Audio
-{
-	class FAudioDebugger;
-}
 
 /*-----------------------------------------------------------------------------
    FSoundCueEditor
@@ -142,7 +137,7 @@ protected:
 
 private:
 	/** FNotifyHook interface */
-	virtual void NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, FProperty* PropertyThatChanged) override;
+	virtual void NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, UProperty* PropertyThatChanged) override;
 
 	/** Creates all internal widgets for the tabs to point at */
 	void CreateInternalWidgets();
@@ -216,7 +211,7 @@ private:
 	TSharedPtr<FUICommandList> GraphEditorCommands;
 
 	/** Cache of the Audio debugger instance */
-	Audio::FAudioDebugger* Debugger;
+	class FAudioDebugger* Debugger;
 
 	/**	The tab ids for all the tabs used */
 	static const FName GraphCanvasTabId;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Math/RandomStream.h"
@@ -19,7 +19,7 @@
 /** Emits draw events for a given FMeshBatch and the FPrimitiveSceneProxy corresponding to that mesh element. */
 #if WANTS_DRAW_MESH_EVENTS
 
-void BeginMeshDrawEvent_Inner(FRHICommandList& RHICmdList, const FPrimitiveSceneProxy* PrimitiveSceneProxy, const FMeshBatch& Mesh, FDrawEvent& MeshEvent)
+void BeginMeshDrawEvent_Inner(FRHICommandList& RHICmdList, const FPrimitiveSceneProxy* PrimitiveSceneProxy, const FMeshBatch& Mesh, TDrawEvent<FRHICommandList>& MeshEvent)
 {
 	// Only show material and resource name at the top level
 	if (PrimitiveSceneProxy)
@@ -967,9 +967,9 @@ void DrawWireSphereAutoSides(class FPrimitiveDrawInterface* PDI, const FVector& 
 
 void DrawWireSphere(class FPrimitiveDrawInterface* PDI, const FTransform& Transform, const FLinearColor& Color, float Radius, int32 NumSides, uint8 DepthPriority, float Thickness, float DepthBias, bool bScreenSpace)
 {
-	DrawCircle(PDI, Transform.GetLocation(), Transform.GetScaledAxis(EAxis::X), Transform.GetScaledAxis(EAxis::Y), Color, Radius, NumSides, DepthPriority, Thickness, DepthBias, bScreenSpace);
-	DrawCircle(PDI, Transform.GetLocation(), Transform.GetScaledAxis(EAxis::X), Transform.GetScaledAxis(EAxis::Z), Color, Radius, NumSides, DepthPriority, Thickness, DepthBias, bScreenSpace);
-	DrawCircle(PDI, Transform.GetLocation(), Transform.GetScaledAxis(EAxis::Y), Transform.GetScaledAxis(EAxis::Z), Color, Radius, NumSides, DepthPriority, Thickness, DepthBias, bScreenSpace);
+	DrawCircle(PDI, Transform.GetLocation(), Transform.GetScaledAxis(EAxis::X), Transform.GetScaledAxis(EAxis::Y), Color, Radius, NumSides, SDPG_World, Thickness, DepthBias, bScreenSpace);
+	DrawCircle(PDI, Transform.GetLocation(), Transform.GetScaledAxis(EAxis::X), Transform.GetScaledAxis(EAxis::Z), Color, Radius, NumSides, SDPG_World, Thickness, DepthBias, bScreenSpace);
+	DrawCircle(PDI, Transform.GetLocation(), Transform.GetScaledAxis(EAxis::Y), Transform.GetScaledAxis(EAxis::Z), Color, Radius, NumSides, SDPG_World, Thickness, DepthBias, bScreenSpace);
 }
 
 
@@ -1199,20 +1199,6 @@ void DrawCoordinateSystem(FPrimitiveDrawInterface* PDI, FVector const& AxisLoc, 
 	PDI->DrawLine(AxisLoc, AxisLoc + Y*Scale, FLinearColor::Green, DepthPriority, Thickness );
 	PDI->DrawLine(AxisLoc, AxisLoc + Z*Scale, FLinearColor::Blue, DepthPriority, Thickness );
 }
-
-
-void DrawCoordinateSystem(FPrimitiveDrawInterface* PDI, FVector const& AxisLoc, FRotator const& AxisRot, float Scale, const FLinearColor& InColor, uint8 DepthPriority, float Thickness)
-{
-	FRotationMatrix R(AxisRot);
-	FVector const X = R.GetScaledAxis(EAxis::X);
-	FVector const Y = R.GetScaledAxis(EAxis::Y);
-	FVector const Z = R.GetScaledAxis(EAxis::Z);
-
-	PDI->DrawLine(AxisLoc, AxisLoc + X * Scale, InColor, DepthPriority, Thickness);
-	PDI->DrawLine(AxisLoc, AxisLoc + Y * Scale, InColor, DepthPriority, Thickness);
-	PDI->DrawLine(AxisLoc, AxisLoc + Z * Scale, InColor, DepthPriority, Thickness);
-}
-
 
 void DrawDirectionalArrow(FPrimitiveDrawInterface* PDI,const FMatrix& ArrowToWorld,const FLinearColor& InColor,float Length,float ArrowSize,uint8 DepthPriority,float Thickness)
 {
@@ -1445,6 +1431,42 @@ void ApplyViewModeOverrides(
 			Collector.RegisterOneFrameMaterialProxy(WireframeMaterialInstance);
 		}
 	}
+	else if (EngineShowFlags.LODColoration)
+	{
+		if (!Mesh.IsTranslucent(FeatureLevel) && GEngine->LODColorationColors.Num()  > 0)
+		{
+			int32 lodColorationIndex = FMath::Clamp((int32)Mesh.VisualizeLODIndex, 0, GEngine->LODColorationColors.Num() - 1);
+	
+			bool bLit = Mesh.MaterialRenderProxy->GetMaterial(FeatureLevel)->GetShadingModels().IsLit();
+			const UMaterial* LODColorationMaterial = (bLit && EngineShowFlags.Lighting) ? GEngine->LevelColorationLitMaterial : GEngine->LevelColorationUnlitMaterial;
+
+			auto LODColorationMaterialInstance = new FColoredMaterialRenderProxy(
+				LODColorationMaterial->GetRenderProxy(),
+				GetSelectionColor(GEngine->LODColorationColors[lodColorationIndex], bSelected, PrimitiveSceneProxy->IsHovered() )
+				);
+
+			Mesh.MaterialRenderProxy = LODColorationMaterialInstance;
+			Collector.RegisterOneFrameMaterialProxy(LODColorationMaterialInstance);
+		}
+	}
+	else if (EngineShowFlags.HLODColoration)
+	{
+		if (!Mesh.IsTranslucent(FeatureLevel) && GEngine->HLODColorationColors.Num() > 0)
+		{
+			int32 hlodColorationIndex = FMath::Clamp((int32)Mesh.VisualizeHLODIndex, 0, GEngine->HLODColorationColors.Num() - 1);
+
+			bool bLit = Mesh.MaterialRenderProxy->GetMaterial(FeatureLevel)->GetShadingModels().IsLit();
+			const UMaterial* HLODColorationMaterial = (bLit && EngineShowFlags.Lighting) ? GEngine->LevelColorationLitMaterial : GEngine->LevelColorationUnlitMaterial;
+
+			auto HLODColorationMaterialInstance = new FColoredMaterialRenderProxy(
+				HLODColorationMaterial->GetRenderProxy(),
+				GetSelectionColor(GEngine->HLODColorationColors[hlodColorationIndex], bSelected, PrimitiveSceneProxy->IsHovered())
+				);
+
+			Mesh.MaterialRenderProxy = HLODColorationMaterialInstance;
+			Collector.RegisterOneFrameMaterialProxy(HLODColorationMaterialInstance);
+		}
+	}
 	else if (!EngineShowFlags.Materials)
 	{
 		// Don't render unlit translucency when in 'lighting only' viewmode.
@@ -1504,42 +1526,25 @@ void ApplyViewModeOverrides(
 	{	
 		if (EngineShowFlags.PropertyColoration)
 		{
-			const FLinearColor SelectionColor = GetSelectionColor(PrimitiveSceneProxy->GetPropertyColor(), bSelected, PrimitiveSceneProxy->IsHovered());
-			FMaterialRenderProxy* PropertyColorationMaterialInstance = nullptr;
+			// In property coloration mode, override the mesh's material with a color that was chosen based on property value.
+			const UMaterial* PropertyColorationMaterial = EngineShowFlags.Lighting ? GEngine->LevelColorationLitMaterial : GEngine->LevelColorationUnlitMaterial;
 
-			if (bMaterialModifiesMeshPosition)
-			{
-				// If the material is mesh-modifying, we cannot rely on substitution.
-				PropertyColorationMaterialInstance = new FOverrideSelectionColorMaterialRenderProxy(Mesh.MaterialRenderProxy, SelectionColor);
-			}
-			else
-			{
-				// In property coloration mode, override the mesh's material with a color that was chosen based on property value.
-				const UMaterial* PropertyColorationMaterial = EngineShowFlags.Lighting ? GEngine->LevelColorationLitMaterial : GEngine->LevelColorationUnlitMaterial;
-
-				PropertyColorationMaterialInstance = new FColoredMaterialRenderProxy(PropertyColorationMaterial->GetRenderProxy(), SelectionColor);
-			}
+			auto PropertyColorationMaterialInstance = new FColoredMaterialRenderProxy(
+				PropertyColorationMaterial->GetRenderProxy(),
+				GetSelectionColor(PrimitiveSceneProxy->GetPropertyColor(),bSelected,PrimitiveSceneProxy->IsHovered())
+				);
 
 			Mesh.MaterialRenderProxy = PropertyColorationMaterialInstance;
 			Collector.RegisterOneFrameMaterialProxy(PropertyColorationMaterialInstance);
 		}
 		else if (EngineShowFlags.LevelColoration)
 		{
-			const FLinearColor SelectionColor = GetSelectionColor(PrimitiveSceneProxy->GetLevelColor(), bSelected, PrimitiveSceneProxy->IsHovered());
-			FMaterialRenderProxy* LevelColorationMaterialInstance = nullptr;
-
-			if (bMaterialModifiesMeshPosition)
-			{
-				// If the material is mesh-modifying, we cannot rely on substitution.
-				LevelColorationMaterialInstance = new FOverrideSelectionColorMaterialRenderProxy(Mesh.MaterialRenderProxy, SelectionColor);
-			}
-			else
-			{
-				const UMaterial* LevelColorationMaterial = EngineShowFlags.Lighting ? GEngine->LevelColorationLitMaterial : GEngine->LevelColorationUnlitMaterial;
-				// Draw the mesh with level coloration.
-				LevelColorationMaterialInstance = new FColoredMaterialRenderProxy(LevelColorationMaterial->GetRenderProxy(), SelectionColor);
-			}
-
+			const UMaterial* LevelColorationMaterial = EngineShowFlags.Lighting ? GEngine->LevelColorationLitMaterial : GEngine->LevelColorationUnlitMaterial;
+			// Draw the mesh with level coloration.
+			auto LevelColorationMaterialInstance = new FColoredMaterialRenderProxy(
+				LevelColorationMaterial->GetRenderProxy(),
+				GetSelectionColor(PrimitiveSceneProxy->GetLevelColor(),bSelected,PrimitiveSceneProxy->IsHovered())
+				);
 			Mesh.MaterialRenderProxy = LevelColorationMaterialInstance;
 			Collector.RegisterOneFrameMaterialProxy(LevelColorationMaterialInstance);
 		}

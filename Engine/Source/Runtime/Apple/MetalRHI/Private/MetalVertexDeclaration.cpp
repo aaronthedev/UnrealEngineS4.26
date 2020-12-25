@@ -1,28 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MetalVertexDeclaration.cpp: Metal vertex declaration RHI implementation.
 =============================================================================*/
 
-
 #include "MetalRHIPrivate.h"
-#include "MetalHashedVertexDescriptor.h"
-#include "MetalVertexDeclaration.h"
 #include "MetalProfiler.h"
 
-
-//------------------------------------------------------------------------------
-
-#pragma mark - Metal Vertex Declaration Globals
-
-
 mtlpp::VertexFormat GMetalFColorVertexFormat = mtlpp::VertexFormat::UChar4Normalized;
-
-
-//------------------------------------------------------------------------------
-
-#pragma mark - Metal Vertex Declaration Support Routines
-
 
 static mtlpp::VertexFormat TranslateElementTypeToMTLType(EVertexElementType Type)
 {
@@ -50,9 +35,10 @@ static mtlpp::VertexFormat TranslateElementTypeToMTLType(EVertexElementType Type
 		case VET_UInt:			return mtlpp::VertexFormat::UInt;
         default:				METAL_FATAL_ERROR(TEXT("Unknown vertex element type %d!"), (uint32)Type); return mtlpp::VertexFormat::Float;
     };
+
 }
 
-static uint32 TranslateElementTypeToSize(EVertexElementType Type)
+uint32 TranslateElementTypeToSize(EVertexElementType Type)
 {
 	switch (Type)
 	{
@@ -80,11 +66,91 @@ static uint32 TranslateElementTypeToSize(EVertexElementType Type)
 	};
 }
 
+FMetalHashedVertexDescriptor::FMetalHashedVertexDescriptor()
+: VertexDescHash(0)
+, VertexDesc(nil)
+{
+}
 
-//------------------------------------------------------------------------------
+FMetalHashedVertexDescriptor::FMetalHashedVertexDescriptor(mtlpp::VertexDescriptor Desc, uint32 Hash)
+: VertexDescHash(Hash)
+, VertexDesc(Desc)
+{
+}
 
-#pragma mark - Metal Vertex Declaration Class Implementation
+FMetalHashedVertexDescriptor::FMetalHashedVertexDescriptor(FMetalHashedVertexDescriptor const& Other)
+: VertexDescHash(0)
+, VertexDesc(nil)
+{
+	operator=(Other);
+}
 
+FMetalHashedVertexDescriptor::~FMetalHashedVertexDescriptor()
+{
+}
+
+FMetalHashedVertexDescriptor& FMetalHashedVertexDescriptor::operator=(FMetalHashedVertexDescriptor const& Other)
+{
+	if (this != &Other)
+	{
+		VertexDescHash = Other.VertexDescHash;
+		VertexDesc = Other.VertexDesc;
+	}
+	return *this;
+}
+
+bool FMetalHashedVertexDescriptor::operator==(FMetalHashedVertexDescriptor const& Other) const
+{
+	bool bEqual = false;
+	if (this != &Other)
+	{
+		if (VertexDescHash == Other.VertexDescHash)
+		{
+			bEqual = true;
+			if (VertexDesc.GetPtr() != Other.VertexDesc.GetPtr())
+			{
+				ns::Array<mtlpp::VertexBufferLayoutDescriptor> Layouts = VertexDesc.GetLayouts();
+				ns::Array<mtlpp::VertexAttributeDescriptor> Attributes = VertexDesc.GetAttributes();
+				
+				ns::Array<mtlpp::VertexBufferLayoutDescriptor> OtherLayouts = Other.VertexDesc.GetLayouts();
+				ns::Array<mtlpp::VertexAttributeDescriptor> OtherAttributes = Other.VertexDesc.GetAttributes();
+				check(Layouts && Attributes && OtherLayouts && OtherAttributes);
+				
+				for (uint32 i = 0; bEqual && i < MaxVertexElementCount; i++)
+				{
+					mtlpp::VertexBufferLayoutDescriptor LayoutDesc = Layouts[(NSUInteger)i];
+					mtlpp::VertexBufferLayoutDescriptor OtherLayoutDesc = OtherLayouts[(NSUInteger)i];
+					
+					bEqual &= ((LayoutDesc != nil) == (OtherLayoutDesc != nil));
+					
+					if (LayoutDesc && OtherLayoutDesc)
+					{
+						bEqual &= (LayoutDesc.GetStride() == OtherLayoutDesc.GetStride());
+						bEqual &= (LayoutDesc.GetStepFunction() == OtherLayoutDesc.GetStepFunction());
+						bEqual &= (LayoutDesc.GetStepRate() == OtherLayoutDesc.GetStepRate());
+					}
+					
+					mtlpp::VertexAttributeDescriptor AttrDesc = Attributes[(NSUInteger)i];
+					mtlpp::VertexAttributeDescriptor OtherAttrDesc = OtherAttributes[(NSUInteger)i];
+					
+					bEqual &= ((AttrDesc != nil) == (OtherAttrDesc != nil));
+					
+					if (AttrDesc && OtherAttrDesc)
+					{
+						bEqual &= (AttrDesc.GetFormat() == OtherAttrDesc.GetFormat());
+						bEqual &= (AttrDesc.GetOffset() == OtherAttrDesc.GetOffset());
+						bEqual &= (AttrDesc.GetBufferIndex() == OtherAttrDesc.GetBufferIndex());
+					}
+				}
+			}
+		}
+	}
+	else
+	{
+		bEqual = true;
+	}
+	return bEqual;
+}
 
 FMetalVertexDeclaration::FMetalVertexDeclaration(const FVertexDeclarationElementList& InElements)
 	: Elements(InElements)
@@ -95,19 +161,30 @@ FMetalVertexDeclaration::FMetalVertexDeclaration(const FVertexDeclarationElement
 
 FMetalVertexDeclaration::~FMetalVertexDeclaration()
 {
-	// void
 }
 
-bool FMetalVertexDeclaration::GetInitializer(FVertexDeclarationElementList& Init)
+FVertexDeclarationRHIRef FMetalDynamicRHI::RHICreateVertexDeclaration(const FVertexDeclarationElementList& Elements)
 {
-	Init = Elements;
-	return true;
+	@autoreleasepool {
+	uint32 Key = FCrc::MemCrc32(Elements.GetData(), Elements.Num() * sizeof(FVertexElement));
+	// look up an existing declaration
+	FVertexDeclarationRHIRef* VertexDeclarationRefPtr = VertexDeclarationCache.Find(Key);
+	if (VertexDeclarationRefPtr == NULL)
+	{
+//		NSLog(@"VertDecl Key: %x", Key);
+
+		// create and add to the cache if it doesn't exist.
+		VertexDeclarationRefPtr = &VertexDeclarationCache.Add(Key, new FMetalVertexDeclaration(Elements));
+	}
+
+	return *VertexDeclarationRefPtr;
+	}
 }
 
 void FMetalVertexDeclaration::GenerateLayout(const FVertexDeclarationElementList& InElements)
 {
 	mtlpp::VertexDescriptor NewLayout;
-
+	
 	ns::Array<mtlpp::VertexBufferLayoutDescriptor> Layouts = NewLayout.GetLayouts();
 	ns::Array<mtlpp::VertexAttributeDescriptor> Attributes = NewLayout.GetAttributes();
 
@@ -118,15 +195,15 @@ void FMetalVertexDeclaration::GenerateLayout(const FVertexDeclarationElementList
 	for (uint32 ElementIndex = 0; ElementIndex < InElements.Num(); ElementIndex++)
 	{
 		const FVertexElement& Element = InElements[ElementIndex];
-
-		checkf(Element.Stride == 0 || Element.Offset + TranslateElementTypeToSize(Element.Type) <= Element.Stride,
+		
+		checkf(Element.Stride == 0 || Element.Offset + TranslateElementTypeToSize(Element.Type) <= Element.Stride, 
 			TEXT("Stream component is bigger than stride: Offset: %d, Size: %d [Type %d], Stride: %d"), Element.Offset, TranslateElementTypeToSize(Element.Type), (uint32)Element.Type, Element.Stride);
 
 		BaseHash = FCrc::MemCrc32(&Element.StreamIndex, sizeof(Element.StreamIndex), BaseHash);
 		BaseHash = FCrc::MemCrc32(&Element.Offset, sizeof(Element.Offset), BaseHash);
 		BaseHash = FCrc::MemCrc32(&Element.Type, sizeof(Element.Type), BaseHash);
 		BaseHash = FCrc::MemCrc32(&Element.AttributeIndex, sizeof(Element.AttributeIndex), BaseHash);
-
+		
 		uint32 Stride = Element.Stride;
 		StrideHash = FCrc::MemCrc32(&Stride, sizeof(Stride), StrideHash);
 
@@ -146,7 +223,7 @@ void FMetalVertexDeclaration::GenerateLayout(const FVertexDeclarationElementList
 			{
 				Stride = TranslateElementTypeToSize(Element.Type);
 			}
-
+						
 			// look for any unset strides coming from UE4 (this can be removed when all are fixed)
 			if (Element.Stride == 0xFFFF)
 			{
@@ -175,6 +252,6 @@ void FMetalVertexDeclaration::GenerateLayout(const FVertexDeclarationElementList
 		Attrib.SetOffset(Element.Offset);
 		Attrib.SetBufferIndex(ShaderBufferIndex);
 	}
-
+	
 	Layout = FMetalHashedVertexDescriptor(NewLayout, HashCombine(BaseHash, StrideHash));
 }

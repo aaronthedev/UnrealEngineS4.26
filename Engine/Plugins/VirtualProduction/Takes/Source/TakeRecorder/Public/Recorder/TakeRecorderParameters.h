@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,6 +7,12 @@
 #include "TrackRecorders/IMovieSceneTrackRecorderHost.h"
 #include "TakeRecorderParameters.generated.h"
 
+
+UCLASS(Abstract)
+class TAKERECORDER_API UTakeRecorderClock : public UObject
+{
+	GENERATED_BODY()
+};
 
 USTRUCT(BlueprintType)
 struct FTakeRecorderUserParameters
@@ -27,13 +33,13 @@ struct FTakeRecorderUserParameters
 	UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category="User Settings", meta=(Units=Multiplier, ClampMin="0.00001", UIMin="0.00001"))
 	float EngineTimeDilation;
 
+	/** The clock source to use */
+	UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category="User Settings", meta=(ShowDisplayNames))
+	TSoftClassPtr<UTakeRecorderClock> SampleClock;
+
 	/** Recommended for use with recorded spawnables. Beware that changes to actor instances in the map after recording may alter the recording when played back */
 	UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category="User Settings")
 	bool bRemoveRedundantTracks;
-
-	/** Tolerance to use when reducing keys */
-	UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category="User Settings")
-	float ReduceKeysTolerance;
 
 	/** Whether to save recorded level sequences and assets when done recording */
 	UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "User Settings")
@@ -78,17 +84,6 @@ struct FTakeRecorderProjectParameters
 	UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Take Recorder")
 	FString DefaultSlate;
 
-	/**
-	 * If enabled, track sections will start at the current timecode. Otherwise, 0.
-	 */
-	UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Take Recorder")
-	bool bStartAtCurrentTimecode;
-
-	/**
-	 * If enabled, timecode will be recorded into each actor track
-	 */
-	UPROPERTY(config, EditAnywhere, BlueprintReadWrite, Category = "Take Recorder")
-	bool bRecordTimecode;
 
 	/**
 	* If enabled, each Source will be recorded into a separate Sequence and embedded in the Master Sequence will link to them via Subscenes track.

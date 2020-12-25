@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -57,24 +57,21 @@ private:
 	class FOnlineSubsystemSteam* SteamSubsystem;
 
 	/** Hidden on purpose */
-	FOnlineExternalUISteam() = delete;
+	FOnlineExternalUISteam() :
+		SteamSubsystem(NULL)
+	{
+	}
 
 PACKAGE_SCOPE:
 
 	FOnlineExternalUISteam(class FOnlineSubsystemSteam* InSteamSubsystem) :
-		SteamSubsystem(InSteamSubsystem),
-		bMessageSent(false)
+		SteamSubsystem(InSteamSubsystem)
 	{
 	}
-
-	/** If a message was successfully sent via the Steam UI */
-	bool bMessageSent;
 
 	/** Triggered when the steam overlay is closed if it was opened via ShowProfileUI. Delegate will be unbound after it is executed. */
 	FOnProfileUIClosedDelegate ProfileUIClosedDelegate;
 	FOnShowWebUrlClosedDelegate ShowWebUrlClosedDelegate;
-	FOnShowSendMessageUIClosedDelegate ShowMessageClosedDelegate;
-	FOnShowStoreUIClosedDelegate ShowStoreClosedDelegate;
 
 public:
 
@@ -84,7 +81,7 @@ public:
 
 	// IOnlineExternalUI
 	virtual bool ShowLoginUI(const int ControllerIndex, bool bShowOnlineOnly, bool bShowSkipButton, const FOnLoginUIClosedDelegate& Delegate = FOnLoginUIClosedDelegate()) override;
-	virtual bool ShowAccountCreationUI(const int ControllerIndex, const FOnAccountCreationUIClosedDelegate& Delegate = FOnAccountCreationUIClosedDelegate()) override;
+	virtual bool ShowAccountCreationUI(const int ControllerIndex, const FOnAccountCreationUIClosedDelegate& Delegate = FOnAccountCreationUIClosedDelegate()) override { /** NYI */ return false; }
 	virtual bool ShowFriendsUI(int32 LocalUserNum) override;
 	virtual bool ShowInviteUI(int32 LocalUserNum, FName SessionName = NAME_GameSession) override;
 	virtual bool ShowAchievementsUI(int32 LocalUserNum) override;
@@ -95,7 +92,6 @@ public:
 	virtual bool ShowAccountUpgradeUI(const FUniqueNetId& UniqueId) override;
 	virtual bool ShowStoreUI(int32 LocalUserNum, const FShowStoreParams& ShowParams, const FOnShowStoreUIClosedDelegate& Delegate = FOnShowStoreUIClosedDelegate()) override;
 	virtual bool ShowSendMessageUI(int32 LocalUserNum, const FShowSendMessageParams& ShowParams, const FOnShowSendMessageUIClosedDelegate& Delegate = FOnShowSendMessageUIClosedDelegate()) override;
-	virtual bool ShowSendMessageToUserUI(int32 LocalUserNum, const FUniqueNetId& Recipient, const FShowSendMessageParams& ShowParams, const FOnShowSendMessageUIClosedDelegate& Delegate = FOnShowSendMessageUIClosedDelegate()) override;
 };
 
 typedef TSharedPtr<FOnlineExternalUISteam, ESPMode::ThreadSafe> FOnlineExternalUISteamPtr;

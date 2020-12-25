@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PersistentObjectPtr.h: Template that is a base class for Lazy and Asset pointers
@@ -8,7 +8,6 @@
 
 #include "CoreMinimal.h"
 #include "UObject/WeakObjectPtr.h"
-#include "UObject/FastReferenceCollectorOptions.h"
 
 /**
  * TPersistentObjectPtr is a template base class for FLazyObjectPtr and FSoftObjectPtr
@@ -17,9 +16,6 @@ template<class TObjectID>
 struct TPersistentObjectPtr
 {
 public:	
-
-	template <typename ReferenceProcessorType, typename CollectorType, typename ArrayPoolType, EFastReferenceCollectorOptions Options>
-	friend class TFastReferenceCollector;
 
 	/** Default constructor, will be null */
 	FORCEINLINE TPersistentObjectPtr()

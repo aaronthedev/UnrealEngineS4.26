@@ -1,16 +1,16 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Misc/EnumClassFlags.h"
 #include "UObject/ObjectMacros.h"
+#include "IMovieSceneTrackInstance.h"
 #include "Misc/Guid.h"
 #include "MovieSceneSignedObject.h"
 #include "MovieSceneSection.h"
 #include "Misc/InlineValue.h"
 #include "Compilation/MovieSceneSegmentCompiler.h"
-#include "MovieSceneTrackEvaluationField.h"
 #include "MovieSceneTrack.generated.h"
 
 struct FMovieSceneEvaluationTrack;
@@ -18,7 +18,34 @@ struct FMovieSceneTrackSegmentBlender;
 struct FMovieSceneTrackRowSegmentBlender;
 struct IMovieSceneTemplateGenerator;
 
-template<typename> struct TMovieSceneEvaluationTree;
+/** Flags used to perform cook-time optimization of movie scene data */
+enum class ECookOptimizationFlags
+{
+	/** Perform no cook optimization */
+	None 			= 0,
+	/** Remove this track since its of no consequence to runtime */
+	RemoveTrack		= 1 << 0,
+	/** Remove this track's object since its of no consequence to runtime */
+	RemoveObject	= 1 << 1,
+};
+ENUM_CLASS_FLAGS(ECookOptimizationFlags)
+
+/** Track compiler arguments */
+struct FMovieSceneTrackCompilerArgs
+{
+	FMovieSceneTrackCompilerArgs(IMovieSceneTemplateGenerator& InGenerator)
+		: Generator(InGenerator)
+	{
+	}
+
+	/** The object binding ID that this track belongs to. */
+	FGuid ObjectBindingId;
+
+	EMovieSceneCompletionMode DefaultCompletionMode;
+
+	/** The generator responsible for generating the template */
+	IMovieSceneTemplateGenerator& Generator;
+};
 
 /** Generic evaluation options for any track */
 USTRUCT()
@@ -54,6 +81,16 @@ struct FMovieSceneTrackEvalOptions
 	uint32 bEvaluateNearestSection_DEPRECATED : 1;
 };
 
+/** Enumeration specifying the result of a compilation */
+enum class EMovieSceneCompileResult : uint8
+{
+	/** The compilation was successful */
+	Success,
+	/** The compilation was not successful */
+	Failure,
+	/** No compilation routine was implemented */
+	Unimplemented
+};
 
 /** Generic display options for any track */
 USTRUCT()
@@ -70,45 +107,11 @@ struct FMovieSceneTrackDisplayOptions
 	uint32 bShowVerticalFrames : 1;
 };
 
-/** Returns what kind of section easing we support in the editor */
-enum class EMovieSceneTrackEasingSupportFlags
-{
-	None = 0,
-	AutomaticEaseIn = 1 << 0,
-	AutomaticEaseOut = 1 << 1,
-	ManualEaseIn = 1 << 2,
-	ManualEaseOut = 1 << 3,
-	AutomaticEasing = AutomaticEaseIn | AutomaticEaseOut,
-	ManualEasing = ManualEaseIn | ManualEaseOut,
-	All = AutomaticEasing | ManualEasing
-};
-ENUM_CLASS_FLAGS(EMovieSceneTrackEasingSupportFlags)
-
-/** Parameters for the `SupportsEasing` method */
-struct FMovieSceneSupportsEasingParams
-{
-	// Non-null if we are asking for a specific section.
-	const UMovieSceneSection* ForSection;
-
-	FMovieSceneSupportsEasingParams() : ForSection(nullptr) {}
-	FMovieSceneSupportsEasingParams(const UMovieSceneSection* InSection) : ForSection(InSection) {}
-};
-
-#if WITH_EDITOR
-/** Parameters for sections moving in the editor */
-struct FMovieSceneSectionMovedParams
-{
-	EPropertyChangeType::Type MoveType;
-
-	FMovieSceneSectionMovedParams(EPropertyChangeType::Type InMoveType) : MoveType(InMoveType) {}
-};
-#endif
-
 /**
  * Base class for a track in a Movie Scene
  */
 UCLASS(abstract, DefaultToInstanced, MinimalAPI, BlueprintType)
-class UMovieSceneTrack
+class MOVIESCENE_VTABLE UMovieSceneTrack
 	: public UMovieSceneSignedObject
 {
 	GENERATED_BODY()
@@ -137,6 +140,15 @@ public:
 		return SupportedBlendTypes;
 	}
 
+	/**
+	 * Update all auto-generated easing curves for all sections in this track
+	 */
+	MOVIESCENE_API void UpdateEasing();
+
+public:
+
+	//~ Methods relating to compilation 
+
 	/** 
 	 * Get compiler rules to use when compiling sections that overlap on the same row.
 	 * These define how to deal with overlapping sections and empty space on a row
@@ -150,9 +162,54 @@ public:
 	MOVIESCENE_API virtual FMovieSceneTrackSegmentBlenderPtr GetTrackSegmentBlender() const;
 
 	/**
-	 * Update all auto-generated easing curves for all sections in this track
+	 * Generate a template for this track
+	 *
+	 * @param Args 			Compilation arguments
 	 */
-	MOVIESCENE_API virtual void UpdateEasing();
+	MOVIESCENE_API virtual void GenerateTemplate(const FMovieSceneTrackCompilerArgs& Args) const;
+
+	/**
+	 * Get a raw compiled copy of this track with no additional shared tracks or compiler parameters
+	 */
+	MOVIESCENE_API FMovieSceneEvaluationTrack GenerateTrackTemplate() const;
+
+protected:
+
+	/**
+	 * Overridable user defined custom compilation method
+	 *
+	 * @param Track 		Destination track to compile into
+	 * @param Args 			Compilation arguments
+	 * @return Compilation result
+	 */
+	virtual EMovieSceneCompileResult CustomCompile(FMovieSceneEvaluationTrack& Track, const FMovieSceneTrackCompilerArgs& Args) const { return EMovieSceneCompileResult::Unimplemented; }
+
+	/**
+	 * Called after this track has been compiled, regardless of whether it was compiled through CustomCompile, or the default logic
+	 *
+	 * @param Track 		Destination track to compile into
+	 * @param Args 			Compilation arguments
+	 */
+	virtual void PostCompile(FMovieSceneEvaluationTrack& Track, const FMovieSceneTrackCompilerArgs& Args) const {}
+
+protected:
+
+	/**
+	 * Create a movie scene eval template for the specified section
+	 *
+	 * @param InSection		The section to create a template for
+	 * @return A template, or null
+	 */
+	MOVIESCENE_API virtual FMovieSceneEvalTemplatePtr CreateTemplateForSection(const UMovieSceneSection& InSection) const;
+
+	/**
+	 * Compile this movie scene track into an efficient runtime structure
+	 *
+	 * @param Track 		Destination track to compile into
+	 * @param Args 			Compilation arguments
+	 * @return Compilation result
+	 */
+	MOVIESCENE_API EMovieSceneCompileResult Compile(FMovieSceneEvaluationTrack& Track, const FMovieSceneTrackCompilerArgs& Args) const;
 
 protected:
 
@@ -167,73 +224,6 @@ protected:
 	/** Whether evaluation of this track has been disabled via mute/solo */
 	UPROPERTY()
 	bool bIsEvalDisabled;
-
-public:
-
-	/**
-	 * Run the pre-compilation step for this track.
-	 * This method is called by the sequence compiler and is not meant to be called by 3rd party code.
-	 */
-	void PreCompile();
-
-	/**
-	 * Retrieve a fully up-to-date evaluation field for this track.
-	 */
-	MOVIESCENE_API const FMovieSceneTrackEvaluationField& GetEvaluationField();
-
-	/**
-	 * Retrieve a version number for the logic implemented in PopulateEvaluationTree.
-	 *
-	 * The evaluation field is cached with the data and is invalidated if the data signature changes, or
-	 * if this version number changes. You should bump this version number if you start/stop overriding,
-	 * or otherwise change the logic, of PopulateEvaluationTree.
-	 */
-	virtual int8 GetEvaluationFieldVersion() const { return 0; }
-
-	MOVIESCENE_API FGuid FindObjectBindingGuid() const;
-
-protected:
-
-	enum class ETreePopulationMode : uint8
-	{
-		None,
-		Blended,
-		HighPass,
-		HighPassPerRow,
-	};
-
-	ETreePopulationMode BuiltInTreePopulationMode;
-
-private:
-
-	/** Sub-classes can override this method to perforum custom evaluation tree population logic. */
-	virtual bool PopulateEvaluationTree(TMovieSceneEvaluationTree<FMovieSceneTrackEvaluationData>& OutData) const
-	{
-		return false;
-	}
-
-	/** Sub-classes can override this method to perform custom pre-compilation logic. */
-	virtual void PreCompileImpl() {}
-
-private:
-
-	void UpdateEvaluationTree();
-	void AddSectionRangesToTree(TArrayView<UMovieSceneSection* const> Sections, TMovieSceneEvaluationTree<FMovieSceneTrackEvaluationData>& OutData);
-	void AddSectionPrePostRollRangesToTree(TArrayView<UMovieSceneSection* const> Sections, TMovieSceneEvaluationTree<FMovieSceneTrackEvaluationData>& OutData);
-
-	/** The guid of the object signature that the EvaluationField member relates to */
-	UPROPERTY()
-	FGuid EvaluationFieldGuid;
-
-#if WITH_EDITORONLY_DATA
-	/** The version of the logic in PopulateEvaluationTree when the EvaluationField was cached */
-	UPROPERTY()
-	int8 EvaluationFieldVersion;
-#endif
-
-	/** An array of entries that define when specific sections should be evaluated on this track */
-	UPROPERTY()
-	FMovieSceneTrackEvaluationField EvaluationField;
 
 public:
 
@@ -258,11 +248,6 @@ public:
 	virtual bool SupportsMultipleRows() const
 	{
 		return SupportedBlendTypes.Num() != 0;
-	}
-
-	virtual EMovieSceneTrackEasingSupportFlags SupportsEasing(FMovieSceneSupportsEasingParams& Params) const
-	{
-		return SupportedBlendTypes.Num() > 0 ? EMovieSceneTrackEasingSupportFlags::All : EMovieSceneTrackEasingSupportFlags::None;
 	}
 
 	/** Set This Section as the one to key. If track doesn't support layered blends then don't implement
@@ -347,6 +332,16 @@ public:
 	 */
 	virtual void RemoveSectionAt(int32 SectionIndex) PURE_VIRTUAL(UMovieSceneSection::RemoveSectionAt, );
 
+#if WITH_EDITOR
+
+	/**
+	 * Called when this track's movie scene is being cooked to determine if/how this track should be cooked.
+	 * @return ECookOptimizationFlags detailing how to optimize this track
+	 */
+	virtual ECookOptimizationFlags GetCookOptimizationFlags() const { return ECookOptimizationFlags::None; }
+
+#endif
+
 #if WITH_EDITORONLY_DATA
 
 	/**
@@ -404,10 +399,6 @@ public:
 
 protected:
 
-	/** The object binding that this track resides within */
-	UPROPERTY()
-	FGuid ObjectBindingID;
-
 	/** This track's tint color */
 	UPROPERTY(EditAnywhere, Category=General, DisplayName=Color)
 	FColor TrackTint;
@@ -429,7 +420,7 @@ public:
 	 *
 	 * @param Section The section that moved.
 	 */
-	virtual void OnSectionMoved(UMovieSceneSection& Section, const FMovieSceneSectionMovedParams& Params) {}
+	virtual void OnSectionMoved(UMovieSceneSection& Section) { }
 
-	#endif
+#endif
 };

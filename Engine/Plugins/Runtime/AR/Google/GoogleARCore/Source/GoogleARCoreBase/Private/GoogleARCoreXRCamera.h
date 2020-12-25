@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,10 +6,10 @@
 
 class FGoogleARCoreXRTrackingSystem;
 class FGoogleARCorePassthroughCameraRenderer;
-class UTexture;
 
 class FGoogleARCoreXRCamera : public FDefaultXRCamera
 {
+
 public:
 	FGoogleARCoreXRCamera(const FAutoRegister&, FGoogleARCoreXRTrackingSystem& InARCoreSystem, int32 InDeviceID);
 
@@ -24,9 +24,6 @@ public:
 	//~ FDefaultXRCamera
 
 	void ConfigXRCamera(bool bInMatchDeviceCameraFOV, bool bInEnablePassthroughCameraRendering);
-	
-	void UpdateCameraTextures(UTexture* NewCameraTexture, UTexture* DepthTexture, bool bEnableOcclusion);
-
 private:
 	FGoogleARCoreXRTrackingSystem& GoogleARCoreTrackingSystem;
 	FGoogleARCorePassthroughCameraRenderer* PassthroughRenderer;

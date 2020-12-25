@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -20,7 +20,7 @@ public:
 		ProcessingExports,
 	};
 
-	FAsyncArchive(const TCHAR* InFileName, FLinkerLoad* InOwner, TFunction<void()>&& InSummaryReadyCallback);
+	FAsyncArchive(const TCHAR* InFileName, TFunction<void()>&& InSummaryReadyCallback);
 	virtual ~FAsyncArchive ();
 
 	/** Archive overrides */
@@ -126,5 +126,4 @@ private:
 	TFunction<void()> SummaryReadyCallback;
 	FAsyncFileCallBack ReadCallbackFunctionForLinkerLoad;
 
-	FLinkerLoad* OwnerLinker;
 };

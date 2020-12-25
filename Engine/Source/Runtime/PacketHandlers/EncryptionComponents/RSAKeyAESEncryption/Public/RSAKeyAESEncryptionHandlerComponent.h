@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -59,6 +59,14 @@ public:
 
 	virtual void Incoming(FBitReader& Packet) override;
 	virtual void Outgoing(FBitWriter& Packet) override, FOutPacketTraits& Traits;
+
+	virtual void IncomingConnectionless(const TSharedPtr<const FInternetAddr>& Address, FBitReader& Packet) override
+	{
+	}
+
+	virtual void OutgoingConnectionless(const TSharedPtr<const FInternetAddr>& Address, FBitWriter& Packet, FOutPacketTraits& Traits) override
+	{
+	}
 
 	virtual int32 GetReservedPacketBits() const override;
 

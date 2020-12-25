@@ -436,12 +436,6 @@ public:
 		g_JVM->AttachCurrentThread( &env, NULL );
 		pthread_setspecific( g_ThreadKey, (void*)env );
 
-		if ( !g_HIDDeviceManagerCallbackHandler )
-		{
-			LOGV( "Device open without callback handler" );
-			return false;
-		}
-
 		m_bIsWaitingForOpen = false;
 		m_bOpenResult = env->CallBooleanMethod( g_HIDDeviceManagerCallbackHandler, g_midHIDDeviceManagerOpen, m_nId );
 		ExceptionCheck( env, "BOpen" );
@@ -551,18 +545,11 @@ public:
 		g_JVM->AttachCurrentThread( &env, NULL );
 		pthread_setspecific( g_ThreadKey, (void*)env );
 
-		int nRet = -1;
-		if ( g_HIDDeviceManagerCallbackHandler )
-		{
-			jbyteArray pBuf = NewByteArray( env, pData, nDataLen );
-			nRet = env->CallIntMethod( g_HIDDeviceManagerCallbackHandler, g_midHIDDeviceManagerSendOutputReport, m_nId, pBuf );
-			ExceptionCheck( env, "SendOutputReport" );
-			env->DeleteLocalRef( pBuf );
-		}
-		else
-		{
-			LOGV( "SendOutputReport without callback handler" );
-		}
+		jbyteArray pBuf = NewByteArray( env, pData, nDataLen );
+		int nRet = env->CallIntMethod( g_HIDDeviceManagerCallbackHandler, g_midHIDDeviceManagerSendOutputReport, m_nId, pBuf );
+		ExceptionCheck( env, "SendOutputReport" );
+
+		env->DeleteLocalRef( pBuf );
 		return nRet;
 	}
 
@@ -573,18 +560,10 @@ public:
 		g_JVM->AttachCurrentThread( &env, NULL );
 		pthread_setspecific( g_ThreadKey, (void*)env );
 
-		int nRet = -1;
-		if ( g_HIDDeviceManagerCallbackHandler )
-		{
-			jbyteArray pBuf = NewByteArray( env, pData, nDataLen );
-			nRet = env->CallIntMethod( g_HIDDeviceManagerCallbackHandler, g_midHIDDeviceManagerSendFeatureReport, m_nId, pBuf );
-			ExceptionCheck( env, "SendFeatureReport" );
-			env->DeleteLocalRef( pBuf );
-		}
-		else
-		{
-			LOGV( "SendFeatureReport without callback handler" );
-		}
+		jbyteArray pBuf = NewByteArray( env, pData, nDataLen );
+		int nRet = env->CallIntMethod( g_HIDDeviceManagerCallbackHandler, g_midHIDDeviceManagerSendFeatureReport, m_nId, pBuf );
+		ExceptionCheck( env, "SendFeatureReport" );
+		env->DeleteLocalRef( pBuf );
 		return nRet;
 	}
 
@@ -607,12 +586,6 @@ public:
 		JNIEnv *env;
 		g_JVM->AttachCurrentThread( &env, NULL );
 		pthread_setspecific( g_ThreadKey, (void*)env );
-
-		if ( !g_HIDDeviceManagerCallbackHandler )
-		{
-			LOGV( "GetFeatureReport without callback handler" );
-			return -1;
-		}
 
 		{
 			hid_mutex_guard cvl( &m_cvLock );
@@ -684,11 +657,8 @@ public:
 		g_JVM->AttachCurrentThread( &env, NULL );
 		pthread_setspecific( g_ThreadKey, (void*)env );
 
-		if ( g_HIDDeviceManagerCallbackHandler )
-		{
-			env->CallVoidMethod( g_HIDDeviceManagerCallbackHandler, g_midHIDDeviceManagerClose, m_nId );
-			ExceptionCheck( env, "Close" );
-		}
+		env->CallVoidMethod( g_HIDDeviceManagerCallbackHandler, g_midHIDDeviceManagerClose, m_nId );
+		ExceptionCheck( env, "Close" );
 	
 		hid_mutex_guard dataLock( &m_dataLock );
 		m_vecData.clear();
@@ -769,7 +739,7 @@ extern "C"
 JNIEXPORT void JNICALL HID_DEVICE_MANAGER_JAVA_INTERFACE(HIDDeviceReleaseCallback)(JNIEnv *env, jobject thiz);
 
 extern "C"
-JNIEXPORT void JNICALL HID_DEVICE_MANAGER_JAVA_INTERFACE(HIDDeviceConnected)(JNIEnv *env, jobject thiz, int nDeviceID, jstring sIdentifier, int nVendorId, int nProductId, jstring sSerialNumber, int nReleaseNumber, jstring sManufacturer, jstring sProduct, int nInterface, int nInterfaceClass, int nInterfaceSubclass, int nInterfaceProtocol );
+JNIEXPORT void JNICALL HID_DEVICE_MANAGER_JAVA_INTERFACE(HIDDeviceConnected)(JNIEnv *env, jobject thiz, int nDeviceID, jstring sIdentifier, int nVendorId, int nProductId, jstring sSerialNumber, int nReleaseNumber, jstring sManufacturer, jstring sProduct, int nInterface );
 
 extern "C"
 JNIEXPORT void JNICALL HID_DEVICE_MANAGER_JAVA_INTERFACE(HIDDeviceOpenPending)(JNIEnv *env, jobject thiz, int nDeviceID);
@@ -858,7 +828,7 @@ JNIEXPORT void JNICALL HID_DEVICE_MANAGER_JAVA_INTERFACE(HIDDeviceReleaseCallbac
 }
 
 extern "C"
-JNIEXPORT void JNICALL HID_DEVICE_MANAGER_JAVA_INTERFACE(HIDDeviceConnected)(JNIEnv *env, jobject thiz, int nDeviceID, jstring sIdentifier, int nVendorId, int nProductId, jstring sSerialNumber, int nReleaseNumber, jstring sManufacturer, jstring sProduct, int nInterface, int nInterfaceClass, int nInterfaceSubclass, int nInterfaceProtocol )
+JNIEXPORT void JNICALL HID_DEVICE_MANAGER_JAVA_INTERFACE(HIDDeviceConnected)(JNIEnv *env, jobject thiz, int nDeviceID, jstring sIdentifier, int nVendorId, int nProductId, jstring sSerialNumber, int nReleaseNumber, jstring sManufacturer, jstring sProduct, int nInterface )
 {
 	LOGV( "HIDDeviceConnected() id=%d VID/PID = %.4x/%.4x, interface %d\n", nDeviceID, nVendorId, nProductId, nInterface );
 
@@ -872,9 +842,6 @@ JNIEXPORT void JNICALL HID_DEVICE_MANAGER_JAVA_INTERFACE(HIDDeviceConnected)(JNI
 	pInfo->manufacturer_string = CreateWStringFromJString( env, sManufacturer );
 	pInfo->product_string = CreateWStringFromJString( env, sProduct );
 	pInfo->interface_number = nInterface;
-	pInfo->interface_class = nInterfaceClass;
-	pInfo->interface_subclass = nInterfaceSubclass;
-	pInfo->interface_protocol = nInterfaceProtocol;
 
 	hid_device_ref<CHIDDevice> pDevice( new CHIDDevice( nDeviceID, pInfo ) );
 

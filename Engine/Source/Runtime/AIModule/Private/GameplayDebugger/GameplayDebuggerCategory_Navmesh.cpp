@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayDebugger/GameplayDebuggerCategory_Navmesh.h"
 
@@ -8,35 +8,18 @@
 #include "GameFramework/PlayerController.h"
 #include "NavMesh/RecastNavMesh.h"
 
-namespace FGameplayDebuggerCategoryNavmeshTweakables
-{
-	int32 bDrawExcludedFlags = 0;
-	int32 DisplaySize = 3;
-	float RefreshInterval = 5.0f;
-}
-
 namespace
 {
-	FAutoConsoleVariableRef CVars_GameplayDebuggerCategory_Navmesh[] = {
-		FAutoConsoleVariableRef(TEXT("ai.debug.nav.DrawExcludedFlags"), 
-			FGameplayDebuggerCategoryNavmeshTweakables::bDrawExcludedFlags,
-			TEXT("If we want to mark \"forbidden\" nav polys while debug-drawing.")),
-
-		FAutoConsoleVariableRef(TEXT("ai.debug.nav.DisplaySize"), 
-			FGameplayDebuggerCategoryNavmeshTweakables::DisplaySize,
-			TEXT("Area we want to display in tiles (DisplaySize x DisplaySize). Note that size will round up to an odd number of tiles")),
-
-		FAutoConsoleVariableRef(TEXT("ai.debug.nav.RefreshInterval"),
-			FGameplayDebuggerCategoryNavmeshTweakables::RefreshInterval,
-			TEXT("Interval (in seconds) at which data will be collected."))
-	};
+	int32 bDrawExcludedFlags = 0;
+	FAutoConsoleVariableRef CVar(TEXT("ai.debug.nav.DrawExcludedFlags"), bDrawExcludedFlags, TEXT("If we want to mark \"forbidden\" nav polys while debug-drawing."), ECVF_Default);
 }
+
 
 FGameplayDebuggerCategory_Navmesh::FGameplayDebuggerCategory_Navmesh()
 {
 	bShowOnlyWithDebugActor = false;
 	bShowDataPackReplication = true;
-	CollectDataInterval = FGameplayDebuggerCategoryNavmeshTweakables::RefreshInterval;
+	CollectDataInterval = 5.0f;
 	SetDataPackReplication<FNavMeshSceneProxyData>(&NavmeshRenderData);
 	SetDataPackReplication<FRepData>(&DataPack);
 
@@ -179,33 +162,19 @@ void FGameplayDebuggerCategory_Navmesh::CollectData(APlayerController* OwnerPC, 
 			DataPack.NavDataName = RecastNavMesh->GetFName().ToString();
 		}
 
-		// add NxN neighborhood of target (where N is the number of tiles)
-		// Note that we round up to the next odd number to keep the reference position in the middle tile
+		// add 3x3 neighborhood of target
 		const FVector TargetLocation = RefPawn->GetActorLocation();
 
-		int32 NumTilesPerSide = FMath::Max(FGameplayDebuggerCategoryNavmeshTweakables::DisplaySize, 1);
-		NumTilesPerSide += (NumTilesPerSide % 2 == 0) ? 1 : 0;
-
-		const int32 NumTilesToDisplay = NumTilesPerSide * NumTilesPerSide;
-
-		TArray<int32> DeltaX;
-		TArray<int32> DeltaY;
-		DeltaX.AddUninitialized(NumTilesToDisplay);
-		DeltaY.AddUninitialized(NumTilesToDisplay);
-
-		const int32 MinIdx = -(NumTilesPerSide >> 1);
-		for (int32 i=0; i < NumTilesToDisplay; ++i)
-		{
-			DeltaX[i] = MinIdx + (i % NumTilesPerSide);
-			DeltaY[i] = MinIdx + (i / NumTilesPerSide);
-		}
+		TArray<int32> TileSet;
+		int32 TileX = 0;
+		int32 TileY = 0;
+		const int32 DeltaX[] = { 0, 1, 1, 0, -1, -1, -1, 0, 1 };
+		const int32 DeltaY[] = { 0, 0, 1, 1, 1, 0, -1, -1, -1 };
 
 		int32 TargetTileX = 0;
 		int32 TargetTileY = 0;
 		RecastNavMesh->GetNavMeshTileXY(TargetLocation, TargetTileX, TargetTileY);
-
-		TArray<int32> TileSet;
-		for (int32 Idx = 0; Idx < NumTilesToDisplay; Idx++)
+		for (int32 Idx = 0; Idx < UE_ARRAY_COUNT(DeltaX); Idx++)
 		{
 			const int32 NeiX = TargetTileX + DeltaX[Idx];
 			const int32 NeiY = TargetTileY + DeltaY[Idx];
@@ -216,7 +185,7 @@ void FGameplayDebuggerCategory_Navmesh::CollectData(APlayerController* OwnerPC, 
 			(1 << static_cast<int32>(ENavMeshDetailFlags::PolyEdges)) |
 			(1 << static_cast<int32>(ENavMeshDetailFlags::FilledPolys)) |
 			(1 << static_cast<int32>(ENavMeshDetailFlags::NavLinks)) |
-			(FGameplayDebuggerCategoryNavmeshTweakables::bDrawExcludedFlags ? (1 << static_cast<int32>(ENavMeshDetailFlags::MarkForbiddenPolys)) : 0);
+			(bDrawExcludedFlags ? (1 << static_cast<int32>(ENavMeshDetailFlags::MarkForbiddenPolys)) : 0);
 
 		// Do not attempt to gather render data when TileSet is empty otherwise the whole nav mesh will be displayed
 		DataPack.bReferenceTooFarFromNavData = (TileSet.Num() == 0);

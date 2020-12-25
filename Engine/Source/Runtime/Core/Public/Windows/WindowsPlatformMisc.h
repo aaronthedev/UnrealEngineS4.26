@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -85,12 +85,10 @@ struct CORE_API FWindowsPlatformMisc
 	static FString GetDefaultLocale();
 
 	static uint32 GetLastError();
-	static void SetLastError(uint32 ErrorCode);
 	static void RaiseException( uint32 ExceptionCode );
 	static bool SetStoredValue(const FString& InStoreId, const FString& InSectionName, const FString& InKeyName, const FString& InValue);
 	static bool GetStoredValue(const FString& InStoreId, const FString& InSectionName, const FString& InKeyName, FString& OutValue);
 	static bool DeleteStoredValue(const FString& InStoreId, const FString& InSectionName, const FString& InKeyName);
-	static bool DeleteStoredSection(const FString& InStoreId, const FString& InSectionName);
 
 	static bool CoInitialize();
 	static void CoUninitialize();
@@ -125,7 +123,7 @@ struct CORE_API FWindowsPlatformMisc
 	 *
 	 * @return	Returns true if the current Windows version if equal or newer than MajorVersion
 	 */
-	static bool VerifyWindowsVersion(uint32 MajorVersion, uint32 MinorVersion, uint32 BuildNumber = 0);
+	static bool VerifyWindowsVersion(uint32 MajorVersion, uint32 MinorVersion);
 
 #if !UE_BUILD_SHIPPING
 	static void PromptForRemoteDebugging(bool bIsEnsure);
@@ -260,6 +258,4 @@ struct CORE_API FWindowsPlatformMisc
 };
 
 
-#if WINDOWS_USE_FEATURE_PLATFORMMISC_CLASS
 typedef FWindowsPlatformMisc FPlatformMisc;
-#endif

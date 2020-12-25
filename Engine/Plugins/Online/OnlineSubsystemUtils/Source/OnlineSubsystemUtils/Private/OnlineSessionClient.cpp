@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	OnlineSessionClient.cpp: Online session related implementations 
@@ -46,14 +46,12 @@ void UOnlineSessionClient::RegisterOnlineDelegates()
 	OnDestroyForJoinSessionCompleteDelegate = FOnDestroySessionCompleteDelegate::CreateUObject(this, &ThisClass::OnDestroyForJoinSessionComplete);
 	OnDestroyForMainMenuCompleteDelegate	= FOnDestroySessionCompleteDelegate::CreateUObject(this, &ThisClass::OnDestroyForMainMenuComplete);
 	OnSessionUserInviteAcceptedDelegate     = FOnSessionUserInviteAcceptedDelegate::CreateUObject(this, &ThisClass::OnSessionUserInviteAccepted);
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	OnPlayTogetherEventReceivedDelegate		= FOnPlayTogetherEventReceivedDelegate::CreateUObject(this, &ThisClass::OnPlayTogetherEventReceived);
 
 	if (IOnlineSubsystem* const OnlineSubsystem = IOnlineSubsystem::Get())
 	{
 		OnPlayTogetherEventReceivedDelegateHandle = OnlineSubsystem->AddOnPlayTogetherEventReceivedDelegate_Handle(OnPlayTogetherEventReceivedDelegate);
 	}
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	IOnlineSessionPtr SessionInt = GetSessionInt();
 	if (SessionInt.IsValid())
@@ -72,9 +70,7 @@ void UOnlineSessionClient::ClearOnlineDelegates()
 
 	if (IOnlineSubsystem* const OnlineSubsystem = IOnlineSubsystem::Get())
 	{
-		PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		OnlineSubsystem->ClearOnPlayTogetherEventReceivedDelegate_Handle(OnPlayTogetherEventReceivedDelegateHandle);
-		PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	}
 }
 

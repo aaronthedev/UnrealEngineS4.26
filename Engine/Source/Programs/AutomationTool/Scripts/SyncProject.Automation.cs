@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -8,83 +8,6 @@ using AutomationTool;
 using UnrealBuildTool;
 using Tools.DotNETCommon;
 using System.Text.RegularExpressions;
-using System.Threading;
-
-abstract class SyncProjectBase : BuildCommand
-{
-	protected bool FindProjectFileAndP4Path(string InProjectArgument, out FileReference OutProjectFile, out string OutP4ProjectPath)
-	{
-		OutProjectFile = null;
-		OutP4ProjectPath = null;
-
-		OutProjectFile = ProjectUtils.FindProjectFileFromName(InProjectArgument);
-
-		if (OutProjectFile != null)
-		{
-			// get the path in P4
-			P4WhereRecord Record = GetP4RecordForPath(OutProjectFile.FullName);
-			OutP4ProjectPath = Record.ClientFile;
-		}
-		else
-		{
-			// if they provided a name and not a path then find the file (requires that it's synced).
-			string RelativePath = InProjectArgument;
-
-			if (Path.GetExtension(RelativePath).Length == 0)
-			{
-				RelativePath = Path.ChangeExtension(RelativePath, "uproject");
-			}
-
-			if (!RelativePath.Contains(Path.DirectorySeparatorChar) && !RelativePath.Contains(Path.AltDirectorySeparatorChar))
-			{
-				RelativePath = CommandUtils.CombinePaths(PathSeparator.Slash, Path.GetFileNameWithoutExtension(RelativePath), RelativePath);
-			}
-
-			Log.TraceInformation("{0} not on disk. Searching P4 for {1}", InProjectArgument, RelativePath);
-
-			List<string> SearchPaths = new List<string>();
-			SearchPaths.Add("");
-			string ProjectDirsFile = Directory.EnumerateFiles(CommandUtils.CombinePaths(CmdEnv.LocalRoot), "*.uprojectdirs").FirstOrDefault();
-			if (ProjectDirsFile != null)
-			{
-				foreach (string FilePath in File.ReadAllLines(ProjectDirsFile))
-				{
-					string Trimmed = FilePath.Trim();
-					if (!Trimmed.StartsWith("./", StringComparison.OrdinalIgnoreCase) &&
-						!Trimmed.StartsWith(";", StringComparison.OrdinalIgnoreCase) &&
-						Trimmed.IndexOfAny(Path.GetInvalidPathChars()) < 0)
-					{
-						SearchPaths.Add(Trimmed);
-					}
-				}
-			}
-
-			// Get the root of the branch containing the selected file
-			foreach (string SearchPath in SearchPaths)
-			{
-				string P4Path = CommandUtils.CombinePaths(PathSeparator.Slash, P4Env.ClientRoot, SearchPath, RelativePath);
-
-				if (P4.FileExistsInDepot(P4Path))
-				{
-					P4WhereRecord Record = GetP4RecordForPath(P4Path);
-					// make sure to sync with //workspace/path as it cleans up files if the user has stream switched
-					OutP4ProjectPath = Record.ClientFile;
-					Log.TraceInformation("Found project at {0}", OutP4ProjectPath);
-					break;
-				}
-			}
-		}
-
-		Log.TraceVerbose("Resolved {0} to P4 Path {1}", InProjectArgument, OutP4ProjectPath);
-
-		return OutP4ProjectPath != null && OutProjectFile != null;
-	}
-
-	protected P4WhereRecord GetP4RecordForPath(string FilePath)
-	{
-		return P4.Where(FilePath, AllowSpew: false).FirstOrDefault(x => x.DepotFile != null && !x.bUnmap);
-	}
-}
 
 [Help("Syncs and builds all the binaries required for a project")]
 [Help("project=<FortniteGame>", "Project to sync. Will search current path and paths in ueprojectdirs. If omitted will sync projectdirs")]
@@ -103,7 +26,7 @@ abstract class SyncProjectBase : BuildCommand
 [Help("path", "Only sync files that match this path. Can be comma-separated list.")]
 [RequireP4]
 [DoesNotNeedP4CL]
-class SyncProject : SyncProjectBase
+class SyncProject : BuildCommand
 {
 	public override ExitCode Execute()
 	{
@@ -176,14 +99,75 @@ class SyncProject : SyncProjectBase
 		// If we're syncing a project find where it is in P4
 		if (!EngineOnly)
 		{
-			if (!FindProjectFileAndP4Path(ProjectArg, out ProjectFile, out P4ProjectPath))
+			ProjectFile = ProjectUtils.FindProjectFileFromName(ProjectArg);
+
+			if (ProjectFile != null)
+			{
+				// get the path in P4
+				P4WhereRecord Record = P4.Where(ProjectFile.FullName, AllowSpew: false).FirstOrDefault(x => x.DepotFile != null && !x.bUnmap);
+				P4ProjectPath = Record.ClientFile;
+			}
+			else
+			{
+				// if they provided a name and not a path then find the file (requires that it's synced).
+				string RelativePath = ProjectArg;
+
+				if (Path.GetExtension(RelativePath).Length == 0)
+				{
+					RelativePath = Path.ChangeExtension(RelativePath, "uproject");
+				}
+
+				if (!RelativePath.Contains(Path.DirectorySeparatorChar) && !RelativePath.Contains(Path.AltDirectorySeparatorChar))
+				{
+					RelativePath = CommandUtils.CombinePaths(PathSeparator.Slash, Path.GetFileNameWithoutExtension(RelativePath), RelativePath);
+				}
+
+				Log.TraceInformation("{0} not on disk. Searching P4 for {1}", ProjectArg, RelativePath);
+
+				List<string> SearchPaths = new List<string>();
+				SearchPaths.Add("");
+				string ProjectDirsFile = Directory.EnumerateFiles(CommandUtils.CombinePaths(CmdEnv.LocalRoot), "*.uprojectdirs").FirstOrDefault();
+				if (ProjectDirsFile != null)
+				{
+					foreach (string FilePath in File.ReadAllLines(ProjectDirsFile))
+					{
+						string Trimmed = FilePath.Trim();
+						if (!Trimmed.StartsWith("./", StringComparison.OrdinalIgnoreCase) &&
+							!Trimmed.StartsWith(";", StringComparison.OrdinalIgnoreCase) &&
+							Trimmed.IndexOfAny(Path.GetInvalidPathChars()) < 0)
+						{
+							SearchPaths.Add(Trimmed);
+						}
+					}
+				}
+
+				// Get the root of the branch containing the selected file
+				foreach (string SearchPath in SearchPaths)
+				{
+					string P4Path = CommandUtils.CombinePaths(PathSeparator.Slash, P4Env.ClientRoot, SearchPath, RelativePath);
+
+					if (P4.FileExistsInDepot(P4Path))
+					{
+						P4WhereRecord Record = P4.Where(P4Path, AllowSpew: false).FirstOrDefault(x => x.DepotFile != null && !x.bUnmap);
+						// make sure to sync with //workspace/path as it cleans up files if the user has stream switched
+						P4ProjectPath = Record.ClientFile;
+						Log.TraceInformation("Found project at {0}", P4ProjectPath);
+						break;
+					}
+				}
+			}
+
+			if (string.IsNullOrEmpty(P4ProjectPath))
 			{
 				throw new AutomationException("Could not find project file for {0} locally or in P4. Provide a full path or check the subdirectory is listed in UE4Games.uprojectdirs", ProjectArg);
-			}			
+			}
+
+			Log.TraceVerbose("Resolved {0} to P4 Path {1}", ProjectArg, P4ProjectPath);
 		}
 
 		// Build the list of paths that need syncing
 		List<string> SyncPaths = new List<string>();
+
 		
 		// 
 		if (ExplicitPaths.Any())
@@ -194,18 +178,15 @@ class SyncProject : SyncProjectBase
 		else
 		{
 			// See if the engine is in P4 too by checking the p4 location of a local file
-			if (!ProjectOnly)
-			{
-				string LocalEngineFile = CommandUtils.CombinePaths(CmdEnv.LocalRoot, "Engine", "Source", "UE4Editor.target.cs");
-				P4WhereRecord EngineRecord = GetP4RecordForPath(LocalEngineFile);
+			string LocalEngineFile = CommandUtils.CombinePaths(CmdEnv.LocalRoot, "Engine", "Source", "UE4Editor.target.cs");
+			P4WhereRecord EngineRecord = P4.Where(LocalEngineFile, AllowSpew: false).FirstOrDefault(x => x.DepotFile != null && !x.bUnmap);
 
-				if (P4.FileExistsInDepot(EngineRecord.DepotFile))
-				{
-					// make sure to sync with //workspace/path as it cleans up files if the user has stream switched
-					P4EnginePath = EngineRecord.ClientFile.Replace("Engine/Source/UE4Editor.target.cs", "");
-					SyncPaths.Add(CommandUtils.CombinePaths(PathSeparator.Slash, P4EnginePath + "*"));
-					SyncPaths.Add(CommandUtils.CombinePaths(PathSeparator.Slash, P4EnginePath, "Engine", "..."));
-				}
+			if (!ProjectOnly && P4.FileExistsInDepot(EngineRecord.DepotFile))
+			{
+				// make sure to sync with //workspace/path as it cleans up files if the user has stream switched
+				P4EnginePath = EngineRecord.ClientFile.Replace("Engine/Source/UE4Editor.target.cs", "");
+				SyncPaths.Add(CommandUtils.CombinePaths(PathSeparator.Slash, P4EnginePath + "*"));
+				SyncPaths.Add(CommandUtils.CombinePaths(PathSeparator.Slash, P4EnginePath, "Engine", "..."));
 			}
 
 			if (!string.IsNullOrEmpty(P4ProjectPath))
@@ -298,7 +279,6 @@ class SyncProject : SyncProjectBase
 			UE4Build Build = new UE4Build(this);
 			if (!Unversioned && !ProjectOnly)
 			{
-				LogInformation("Updating Version files to CL: {0}", CL);
 				Build.UpdateVersionFiles(ActuallyUpdateVersionFiles: true, ChangelistNumberOverride: CL, IsPromotedOverride: false);
 			}
 
@@ -306,13 +286,6 @@ class SyncProject : SyncProjectBase
 			if (BuildProject && ExitStatus == ExitCode.Success)
 			{
 				Log.TraceVerbose("Building Editor for {0}", ProjectArgForEditor);
-
-				// Invalidate the location of the Target.cs files incase they were synced
-				if (ProjectFile != null)
-				{
-					string TargetSourceDir = CommandUtils.CombinePaths(Path.GetDirectoryName(ProjectFile.FullName), "Source");
-					RulesCompiler.InvalidateRulesFileCache(TargetSourceDir);
-				}
 
 				BuildEditor BuildCmd = new BuildEditor();
 				BuildCmd.Clean = ParseParam("clean");
@@ -332,5 +305,5 @@ class SyncProject : SyncProjectBase
 		}
 
 		return ExitCode.Success;
-	}	
+	}
 }

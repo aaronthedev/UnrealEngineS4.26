@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 InstancedFoliage.cpp: Instanced foliage implementation.
@@ -47,7 +47,6 @@ InstancedFoliage.cpp: Instanced foliage implementation.
 #include "FoliageActor.h"
 #include "LevelUtils.h"
 #include "FoliageHelper.h"
-#include "Algo/Transform.h"
 
 #define LOCTEXT_NAMESPACE "InstancedFoliage"
 
@@ -64,7 +63,7 @@ DECLARE_CYCLE_STAT(TEXT("FoliageMeshInfo_CreateComponent"), STAT_FoliageCreateCo
 static TAutoConsoleVariable<int32> CVarFoliageDiscardDataOnLoad(
 	TEXT("foliage.DiscardDataOnLoad"),
 	0,
-	TEXT("1: Discard foliage data on load if the foliage type has it enabled; 0: Keep foliage data regardless of whether the foliage type has it enabled or not (requires reloading level)"),
+	TEXT("1: Discard scalable foliage data on load (disables all scalable foliage types); 0: Keep scalable foliage data (requires reloading level)"),
 	ECVF_Scalability);
 
 const FGuid FFoliageCustomVersion::GUID(0x430C4D19, 0x71544970, 0x87699B69, 0xDF90B0E5);
@@ -464,7 +463,6 @@ UFoliageType::UFoliageType(const FObjectInitializer& ObjectInitializer)
 	HiddenEditorViews = 0;
 #endif
 	bEnableDensityScaling = false;
-	bEnableDiscardOnLoad = false;
 
 #if WITH_EDITORONLY_DATA
 	// Deprecated since FFoliageCustomVersion::FoliageTypeCustomization
@@ -824,7 +822,7 @@ void UFoliageType::PostEditChangeProperty(struct FPropertyChangedEvent& Property
 	}
 }
 
-void UFoliageType::PreEditChange(FProperty* PropertyAboutToChange)
+void UFoliageType::PreEditChange(UProperty* PropertyAboutToChange)
 {
 	Super::PreEditChange(PropertyAboutToChange);
 
@@ -979,7 +977,6 @@ void FFoliageStaticMesh::AddInstance(AInstancedFoliageActor* IFA, const FFoliage
 {
 	check(Component);
 	Component->AddInstanceWorldSpace(NewInstance.GetInstanceWorldTransform());
-	bInvalidateLightingCache = true;
 }
 
 void FFoliageStaticMesh::RemoveInstance(int32 InstanceIndex)
@@ -1001,7 +998,6 @@ void FFoliageStaticMesh::SetInstanceWorldTransform(int32 InstanceIndex, const FT
 {
 	check(Component);
 	Component->UpdateInstanceTransform(InstanceIndex, Transform, true, true, bTeleport);
-	bInvalidateLightingCache = true;
 }
 
 FTransform FFoliageStaticMesh::GetInstanceWorldTransform(int32 InstanceIndex) const
@@ -1443,12 +1439,6 @@ void FFoliageStaticMesh::UpdateComponentSettings(const UFoliageType_InstancedSta
 			bNeedsMarkRenderStateDirty = true;
 		}
 
-		if (Component->CustomDepthStencilWriteMask != FoliageType->CustomDepthStencilWriteMask)
-		{
-			Component->CustomDepthStencilWriteMask = FoliageType->CustomDepthStencilWriteMask;
-			bNeedsMarkRenderStateDirty = true;
-		}
-
 		if (Component->CustomDepthStencilValue != FoliageType->CustomDepthStencilValue)
 		{
 			Component->CustomDepthStencilValue = FoliageType->CustomDepthStencilValue;
@@ -1735,7 +1725,7 @@ void FFoliageInfo::SetInstanceWorldTransform(int32 InstanceIndex, const FTransfo
 	Implementation->SetInstanceWorldTransform(InstanceIndex, Transform, bTeleport);
 }
 
-void FFoliageInfo::AddInstanceImpl(AInstancedFoliageActor* InIFA, const FFoliageInstance& InNewInstance, FFoliageInfo::FAddImplementationFunc ImplementationFunc)
+void FFoliageInfo::AddInstanceImpl(AInstancedFoliageActor* InIFA, const FFoliageInstance& InNewInstance)
 {
 	// Add the instance taking either a free slot or adding a new item.
 	int32 InstanceIndex = Instances.Add(InNewInstance);
@@ -1752,21 +1742,10 @@ void FFoliageInfo::AddInstanceImpl(AInstancedFoliageActor* InIFA, const FFoliage
 	InstanceHash->InsertInstance(AddedInstance.Location, InstanceIndex);
 
 	// Add the instance to the component
-	ImplementationFunc(Implementation.Get(), InIFA, AddedInstance);
+	Implementation->AddInstance(InIFA, AddedInstance);
 }
 
-void FFoliageInfo::AddInstances(AInstancedFoliageActor* InIFA, const UFoliageType* InSettings, const TArray<const FFoliageInstance*>& InNewInstances)
-{
-	AddInstancesImpl(InIFA, InSettings, InNewInstances, [](FFoliageImpl* Impl, AInstancedFoliageActor* LocalIFA, const FFoliageInstance& LocalInstance) { Impl->AddInstance(LocalIFA, LocalInstance); });
-}
-
-void FFoliageInfo::ReserveAdditionalInstances(AInstancedFoliageActor* InIFA, const UFoliageType* InSettings, uint32 ReserveNum)
-{
-	Instances.Reserve(Instances.Num() + ReserveNum);
-	Implementation->PreAddInstances(InIFA, InSettings, ReserveNum);
-}
-
-void FFoliageInfo::AddInstancesImpl(AInstancedFoliageActor* InIFA, const UFoliageType* InSettings, const TArray<const FFoliageInstance*>& InNewInstances, FFoliageInfo::FAddImplementationFunc ImplementationFunc)
+void FFoliageInfo::AddInstances(AInstancedFoliageActor* InIFA, const UFoliageType* InSettings, const TSet<const FFoliageInstance*>& InNewInstances)
 {
 	SCOPE_CYCLE_COUNTER(STAT_FoliageAddInstance);
 
@@ -1777,10 +1756,10 @@ void FFoliageInfo::AddInstancesImpl(AInstancedFoliageActor* InIFA, const UFoliag
 	Implementation->BeginUpdate();
 
 	Instances.Reserve(Instances.Num() + InNewInstances.Num());
-
+			
 	for (const FFoliageInstance* Instance : InNewInstances)
 	{
-		AddInstanceImpl(InIFA, *Instance, ImplementationFunc);
+		AddInstanceImpl(InIFA, *Instance);
 	}
 
 	CheckValid();
@@ -1801,80 +1780,22 @@ void FFoliageInfo::AddInstance(AInstancedFoliageActor* InIFA, const UFoliageType
 
 void FFoliageInfo::AddInstance(AInstancedFoliageActor* InIFA, const UFoliageType* InSettings, const FFoliageInstance& InNewInstance)
 {
-	AddInstances(InIFA, InSettings, { &InNewInstance });
-}
+	SCOPE_CYCLE_COUNTER(STAT_FoliageAddInstance);
 
-void FFoliageInfo::MoveInstances(AInstancedFoliageActor* InFromIFA, AInstancedFoliageActor* InToIFA, const TSet<int32>& InInstancesToMove, bool bKeepSelection)
-{
-	const UFoliageType* FoliageType = InFromIFA->FindFoliageType(this);
-	check(FoliageType);
+	InIFA->Modify();
 
-	InFromIFA->Modify();
-	InToIFA->Modify();
-	
-	FFoliageInfo* OutFoliageInfo = nullptr;
-	UFoliageType* ToFoliageType = InToIFA->AddFoliageType(FoliageType, &OutFoliageInfo);
+	Implementation->PreAddInstances(InIFA, InSettings, 1);
 
-	TArray<int32> NewSelectedIndices;
-	
-	struct FFoliageMoveInstance : FFoliageInstance
-	{
-		FFoliageMoveInstance(const FFoliageInstance& InInstance, UActorComponent* InBaseComponent)
-			: FFoliageInstance(InInstance)
-		{
-			BaseComponent = InBaseComponent;
-		}
-		UObject* InstanceImplementation = nullptr;
-	};
+	Implementation->BeginUpdate();
 
-	TArray<int32> InstancesToMove = InInstancesToMove.Array();
-	TMap<int32, FFoliageMoveInstance> MoveData;
-	MoveData.Reserve(InInstancesToMove.Num());
-	
-	for (int32 InstanceIndex : InInstancesToMove)
-	{
-		MoveData.Add(InstanceIndex, FFoliageMoveInstance(Instances[InstanceIndex], InFromIFA->GetBaseComponentFromBaseId(Instances[InstanceIndex].BaseId)));
-		if (bKeepSelection && SelectedIndices.Contains(InstanceIndex))
-		{
-			NewSelectedIndices.Add(OutFoliageInfo->Instances.Num() + MoveData.Num() - 1);
-		}
-	}
+	AddInstanceImpl(InIFA, InNewInstance);
 
-	RemoveInstancesImpl(InFromIFA, InstancesToMove, true, [&MoveData](FFoliageImpl* Impl, int32 Index)
-	{
-		Impl->MoveInstance(Index, MoveData[Index].InstanceImplementation);
-	});
+	CheckValid();
 
-	TArray<const FFoliageInstance*> NewInstances;
-	NewInstances.Reserve(MoveData.Num());
-	Algo::Transform(MoveData, NewInstances, [](const TPair<int32, FFoliageMoveInstance>& Pair)
-	{
-		return &Pair.Value;
-	});
-	
-	int32 AddedIndex = 0;
-	OutFoliageInfo->AddInstancesImpl(InToIFA, ToFoliageType, NewInstances, [&](FFoliageImpl* Impl, AInstancedFoliageActor* LocalIFA, const FFoliageInstance& LocalInstance)
-	{
-		const FFoliageMoveInstance* MoveInstance = StaticCast<const FFoliageMoveInstance*>(NewInstances[AddedIndex]);
-		Impl->AddExistingInstance(LocalIFA, LocalInstance, MoveInstance->InstanceImplementation);
-		AddedIndex++;
-	});
-			
-	OutFoliageInfo->Refresh(InToIFA, true, true);
-
-	// Select if needed
-	if (NewSelectedIndices.Num())
-	{
-		OutFoliageInfo->SelectInstances(InToIFA, true, NewSelectedIndices);
-	}
+	Implementation->EndUpdate();
 }
 
 void FFoliageInfo::RemoveInstances(AInstancedFoliageActor* InIFA, const TArray<int32>& InInstancesToRemove, bool RebuildFoliageTree)
-{
-	RemoveInstancesImpl(InIFA, InInstancesToRemove, RebuildFoliageTree, [](FFoliageImpl* Impl, int32 Index) { Impl->RemoveInstance(Index); });
-}
-
-void FFoliageInfo::RemoveInstancesImpl(AInstancedFoliageActor* InIFA, const TArray<int32>& InInstancesToRemove, bool RebuildFoliageTree, FFoliageInfo::FRemoveImplementationFunc ImplementationFunc)
 {
 	SCOPE_CYCLE_COUNTER(STAT_FoliageRemoveInstance);
 
@@ -1905,7 +1826,7 @@ void FFoliageInfo::RemoveInstancesImpl(AInstancedFoliageActor* InIFA, const TArr
 		InstanceHash->RemoveInstance(Instance.Location, InstanceIndex);
 
 		// remove from the component
-		ImplementationFunc(Implementation.Get(), InstanceIndex);
+		Implementation->RemoveInstance(InstanceIndex);
 
 		// Remove it from the selection.
 		SelectedIndices.Remove(InstanceIndex);
@@ -1972,8 +1893,6 @@ void FFoliageInfo::PreMoveInstances(AInstancedFoliageActor* InIFA, const TArray<
 		const FFoliageInstance& Instance = Instances[InstanceIndex];
 		InstanceHash->RemoveInstance(Instance.Location, InstanceIndex);
 	}
-
-	Implementation->PreMoveInstances(InIFA, InInstancesToMove);
 }
 
 
@@ -2014,10 +1933,10 @@ void FFoliageInfo::PostUpdateInstances(AInstancedFoliageActor* InIFA, const TArr
 	}
 }
 
-void FFoliageInfo::PostMoveInstances(AInstancedFoliageActor* InIFA, const TArray<int32>& InInstancesMoved, bool bFinished)
+void FFoliageInfo::PostMoveInstances(AInstancedFoliageActor* InIFA, const TArray<int32>& InInstancesMoved)
 {
 	PostUpdateInstances(InIFA, InInstancesMoved, true, true);
-	Implementation->PostMoveInstances(InIFA, InInstancesMoved, bFinished);
+
 	bMovingInstances = false;
 }
 
@@ -2689,23 +2608,17 @@ bool AInstancedFoliageActor::ContainsInstancesFromProceduralFoliageComponent(con
 
 void AInstancedFoliageActor::MoveInstancesForComponentToCurrentLevel(UActorComponent* InComponent)
 {
-	UWorld* InWorld = InComponent->GetWorld();
-	MoveInstancesForComponentToLevel(InComponent, InWorld->GetCurrentLevel());
-}
-
-void AInstancedFoliageActor::MoveInstancesForComponentToLevel(UActorComponent* InComponent, ULevel* TargetLevel)
-{
 	if (!HasFoliageAttached(InComponent))
 	{
 		// Quit early if there are no foliage instances painted on this component
 		return;
 	}
 
-	
-	AInstancedFoliageActor* NewIFA = AInstancedFoliageActor::GetInstancedFoliageActorForLevel(TargetLevel, true);
+	UWorld* InWorld = InComponent->GetWorld();
+	AInstancedFoliageActor* NewIFA = AInstancedFoliageActor::GetInstancedFoliageActorForCurrentLevel(InWorld, true);
 	NewIFA->Modify();
 
-	for (TActorIterator<AInstancedFoliageActor> It(InComponent->GetWorld()); It; ++It)
+	for (TActorIterator<AInstancedFoliageActor> It(InWorld); It; ++It)
 	{
 		AInstancedFoliageActor* IFA = (*It);
 
@@ -2751,7 +2664,7 @@ void AInstancedFoliageActor::MoveInstancesToNewComponent(UPrimitiveComponent* In
 		return;
 	}
 
-	AInstancedFoliageActor* TargetIFA = AInstancedFoliageActor::GetInstancedFoliageActorForLevel(InNewComponent->GetOwner()->GetLevel(), true);
+	AInstancedFoliageActor* TargetIFA = AInstancedFoliageActor::GetInstancedFoliageActorForLevel(InNewComponent->GetTypedOuter<ULevel>(), true);
 	TArray<int32> InstancesToMove;
 
 	for (auto& Pair : FoliageInfos)
@@ -2784,7 +2697,7 @@ void AInstancedFoliageActor::MoveInstancesToNewComponent(UPrimitiveComponent* In
 
 void AInstancedFoliageActor::MoveInstancesToNewComponent(UPrimitiveComponent* InOldComponent, UPrimitiveComponent* InNewComponent)
 {
-	AInstancedFoliageActor* TargetIFA = AInstancedFoliageActor::GetInstancedFoliageActorForLevel(InNewComponent->GetOwner()->GetLevel(), true);
+	AInstancedFoliageActor* TargetIFA = AInstancedFoliageActor::GetInstancedFoliageActorForLevel(InNewComponent->GetTypedOuter<ULevel>(), true);
 
 	const auto OldBaseId = this->InstanceBaseCache.GetInstanceBaseId(InOldComponent);
 	if (OldBaseId == FFoliageInstanceBaseCache::InvalidBaseId)
@@ -2854,7 +2767,7 @@ void AInstancedFoliageActor::MoveInstancesToNewComponent(UWorld* InWorld, UPrimi
 	}
 }
 
-void AInstancedFoliageActor::MoveInstancesToLevel(ULevel* InTargetLevel, TSet<int32>& InInstanceList, FFoliageInfo* InCurrentMeshInfo, UFoliageType* InFoliageType, bool bSelect)
+void AInstancedFoliageActor::MoveInstancesToLevel(ULevel* InTargetLevel, TSet<int32>& InInstanceList, FFoliageInfo* InCurrentMeshInfo, UFoliageType* InFoliageType)
 {
 	if (InTargetLevel == GetLevel())
 	{
@@ -2862,7 +2775,25 @@ void AInstancedFoliageActor::MoveInstancesToLevel(ULevel* InTargetLevel, TSet<in
 	}
 
 	AInstancedFoliageActor* TargetIFA = GetInstancedFoliageActorForLevel(InTargetLevel, /*bCreateIfNone*/ true);
-	InCurrentMeshInfo->MoveInstances(this, TargetIFA, InInstanceList, bSelect);
+
+	Modify();
+	TargetIFA->Modify();
+
+	// Do move
+	FFoliageInfo* TargetMeshInfo = nullptr;
+	UFoliageType* TargetFoliageType = TargetIFA->AddFoliageType(InFoliageType, &TargetMeshInfo);
+
+	// Add selected instances to the target actor
+	for (int32 InstanceIndex : InInstanceList)
+	{
+		FFoliageInstance& Instance = InCurrentMeshInfo->Instances[InstanceIndex];
+		TargetMeshInfo->AddInstance(TargetIFA, TargetFoliageType, Instance, InstanceBaseCache.GetInstanceBasePtr(Instance.BaseId).Get());
+	}
+
+	TargetMeshInfo->Refresh(TargetIFA, true, true);
+
+	// Remove selected instances from this actor
+	InCurrentMeshInfo->RemoveInstances(this, InInstanceList.Array(), true);
 }
 
 void AInstancedFoliageActor::MoveSelectedInstancesToLevel(ULevel* InTargetLevel)
@@ -3215,19 +3146,6 @@ bool AInstancedFoliageActor::HasSelectedInstances() const
 	return false;
 }
 
-const UFoliageType* AInstancedFoliageActor::FindFoliageType(const FFoliageInfo* InFoliageInfo) const
-{
-	for (auto& Pair : FoliageInfos)
-	{
-		if (&Pair.Value.Get() == InFoliageInfo)
-		{
-			return Pair.Key;
-		}
-	}
-
-	return nullptr;
-}
-
 TMap<UFoliageType*, FFoliageInfo*> AInstancedFoliageActor::GetAllInstancesFoliageType()
 {
 	TMap<UFoliageType*, FFoliageInfo*> InstanceFoliageTypes;
@@ -3337,21 +3255,19 @@ void AInstancedFoliageActor::ApplySelection(bool bApply)
 	}
 }
 
-bool AInstancedFoliageActor::GetSelectionLocation(FBox& OutBox) const
+bool AInstancedFoliageActor::GetSelectionLocation(FVector& OutLocation) const
 {
-	// Could probably be cached instead of recalculated always.
-	bool bHasSelection = false;
 	for (const auto& Pair : FoliageInfos)
 	{
 		const FFoliageInfo& Info = Pair.Value.Get();
-		for(int32 InstanceIdx : Info.SelectedIndices)
+		if (Info.SelectedIndices.Num())
 		{
-			OutBox += Info.Instances[InstanceIdx].Location;
-			bHasSelection = true;
+			const int32 InstanceIdx = (*Info.SelectedIndices.CreateConstIterator());
+			OutLocation = Info.Instances[InstanceIdx].Location;
+			return true;
 		}
 	}
-		
-	return bHasSelection;
+	return false;
 }
 
 bool AInstancedFoliageActor::HasFoliageAttached(UActorComponent* InComponent)
@@ -3374,8 +3290,6 @@ void AInstancedFoliageActor::MapRebuild()
 	// Map rebuild may have modified the BSP's ModelComponents and thrown the previous ones away.
 	// Most BSP-painted foliage is attached to a Brush's UModelComponent which persist across rebuilds,
 	// but any foliage attached directly to the level BSP's ModelComponents will need to try to find a new base.
-
-	CleanupDeletedFoliageType();
 
 	TMap<UFoliageType*, TArray<FFoliageInstance>> NewInstances;
 	TArray<UModelComponent*> RemovedModelComponents;
@@ -3549,11 +3463,6 @@ void AInstancedFoliageActor::Serialize(FArchive& Ar)
 }
 
 #if WITH_EDITOR
-UActorComponent* AInstancedFoliageActor::GetBaseComponentFromBaseId(const FFoliageInstanceBaseId& BaseId) const
-{
-	return InstanceBaseCache.GetInstanceBasePtr(BaseId).Get();
-}
-
 AInstancedFoliageActor::FOnSelectionChanged AInstancedFoliageActor::SelectionChanged;
 AInstancedFoliageActor::FOnInstanceCoundChanged AInstancedFoliageActor::InstanceCountChanged;
 
@@ -3574,9 +3483,6 @@ void AInstancedFoliageActor::PostInitProperties()
 			OnApplyLevelTransformDelegateHandle = GetLevel()->OnApplyLevelTransform.AddUObject(this, &AInstancedFoliageActor::OnApplyLevelTransform);
 		}
 
-		GEngine->OnLevelActorOuterChanged().Remove(OnLevelActorOuterChangedDelegateHandle);
-		OnLevelActorOuterChangedDelegateHandle = GEngine->OnLevelActorOuterChanged().AddUObject(this, &AInstancedFoliageActor::OnLevelActorOuterChanged);
-
 		FWorldDelegates::PostApplyLevelOffset.Remove(OnPostApplyLevelOffsetDelegateHandle);
 		OnPostApplyLevelOffsetDelegateHandle = FWorldDelegates::PostApplyLevelOffset.AddUObject(this, &AInstancedFoliageActor::OnPostApplyLevelOffset);
 
@@ -3593,8 +3499,7 @@ void AInstancedFoliageActor::BeginDestroy()
 	{
 		GEngine->OnActorMoved().Remove(OnLevelActorMovedDelegateHandle);
 		GEngine->OnLevelActorDeleted().Remove(OnLevelActorDeletedDelegateHandle);
-		GEngine->OnLevelActorOuterChanged().Remove(OnLevelActorOuterChangedDelegateHandle);
-
+		
 		if (GetLevel())
 		{
 			GetLevel()->OnApplyLevelTransform.Remove(OnApplyLevelTransformDelegateHandle);
@@ -3820,31 +3725,6 @@ void AInstancedFoliageActor::PostLoad()
 					}
 				}
 			}
-
-			// Discard scalable Foliage data on load
-			if (GetLinkerCustomVersion(FFoliageCustomVersion::GUID) < FFoliageCustomVersion::FoliageDiscardOnLoad)
-			{
-				FoliageType->bEnableDiscardOnLoad = FoliageType->bEnableDensityScaling;
-			}
-
-			// Fixup corrupted data
-			if (Info.Type == EFoliageImplType::StaticMesh)
-			{
-				UFoliageType_InstancedStaticMesh* FoliageType_InstancedStaticMesh = Cast<UFoliageType_InstancedStaticMesh>(FoliageType);
-				if (UStaticMesh* FoliageTypeStaticMesh = FoliageType_InstancedStaticMesh->GetStaticMesh())
-				{
-					FFoliageStaticMesh* FoliageStaticMesh = StaticCast<FFoliageStaticMesh*>(Info.Implementation.Get());
-					if (UHierarchicalInstancedStaticMeshComponent* HISMComponent = FoliageStaticMesh->Component)
-					{
-						HISMComponent->ConditionalPostLoad();
-						UStaticMesh* ComponentStaticMesh = HISMComponent->GetStaticMesh();
-						if (ComponentStaticMesh != FoliageTypeStaticMesh)
-						{
-							HISMComponent->SetStaticMesh(FoliageTypeStaticMesh);
-						}
-					}
-				}
-			}
 		}
 
 		UWorld* World = GetWorld();
@@ -3928,7 +3808,7 @@ void AInstancedFoliageActor::PostLoad()
 	{
 		for (auto& Pair : FoliageInfos)
 		{
-			if (!Pair.Key || Pair.Key->bEnableDiscardOnLoad)
+			if (!Pair.Key || Pair.Key->bEnableDensityScaling)
 			{
 				if (Pair.Value->Type == EFoliageImplType::StaticMesh)
 				{
@@ -4039,56 +3919,6 @@ void AInstancedFoliageActor::OnLevelActorMoved(AActor* InActor)
 		if (FFoliageHelper::IsOwnedByFoliage(InActor))
 		{
 			MoveInstancesForMovedOwnedActors(InActor);
-		}
-	}
-}
-
-void AInstancedFoliageActor::OnLevelActorOuterChanged(AActor* InActor, UObject* OldOuter)
-{
-	if (GIsTransacting)
-	{
-		return;
-	}
-
-	ULevel* OldLevel = Cast<ULevel>(OldOuter);
-
-	if (InActor->GetLevel() == OldLevel)
-	{
-		return;
-	}
-
-	if (!FFoliageHelper::IsOwnedByFoliage(InActor))
-	{
-		return;
-	}
-
-	if (OldLevel)
-	{
-		AInstancedFoliageActor* OldIFA = AInstancedFoliageActor::GetInstancedFoliageActorForLevel(OldLevel, false);
-		check(OldIFA);
-		TSet<int32> InstanceToMove;
-		FFoliageInfo* OldFoliageInfo = nullptr;
-		UFoliageType* FoliageType = nullptr;
-
-		for (auto& Pair : OldIFA->FoliageInfos)
-		{
-			if (Pair.Value->Type == EFoliageImplType::Actor)
-			{
-				FFoliageActor* FoliageActor = StaticCast<FFoliageActor*>(Pair.Value->Implementation.Get());
-				int32 Index = FoliageActor->FindIndex(InActor);
-				if (Index != INDEX_NONE)
-				{
-					InstanceToMove.Add(Index);
-					OldFoliageInfo = &Pair.Value.Get();
-					FoliageType = Pair.Key;
-					break;
-				}
-			}
-		}
-
-		if (InstanceToMove.Num() > 0)
-		{
-			OldIFA->MoveInstancesToLevel(InActor->GetLevel(), InstanceToMove, OldFoliageInfo, FoliageType, true);
 		}
 	}
 }
@@ -4252,11 +4082,11 @@ void AInstancedFoliageActor::OnPostApplyLevelOffset(ULevel* InLevel, UWorld* InW
 
 void AInstancedFoliageActor::CleanupDeletedFoliageType()
 {
-	for (auto It = FoliageInfos.CreateIterator(); It; ++It)
+	for (auto& Pair : FoliageInfos)
 	{
-		if (It->Key == nullptr)
+		if (Pair.Key == nullptr)
 		{
-			FFoliageInfo& Info = *It->Value;
+			FFoliageInfo& Info = *Pair.Value;
 			TArray<int32> InstancesToRemove;
 			for (int32 InstanceIdx = 0; InstanceIdx < Info.Instances.Num(); InstanceIdx++)
 			{
@@ -4267,10 +4097,12 @@ void AInstancedFoliageActor::CleanupDeletedFoliageType()
 			{
 				Info.RemoveInstances(this, InstancesToRemove, true);
 			}
-
-			It.RemoveCurrent();
 		}
+
 	}
+
+	while (FoliageInfos.Remove(nullptr)) {}	//remove entries from the map
+
 }
 
 

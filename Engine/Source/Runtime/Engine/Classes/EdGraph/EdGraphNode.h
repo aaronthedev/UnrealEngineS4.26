@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -43,7 +43,6 @@ struct ENGINE_API FEdGraphTerminalType
 		, TerminalSubCategoryObject(nullptr)
 		, bTerminalIsConst(false)
 		, bTerminalIsWeakPointer(false)
-		, bTerminalIsUObjectWrapper(false)
 	{
 	}
 
@@ -67,10 +66,6 @@ struct ENGINE_API FEdGraphTerminalType
 	UPROPERTY()
 	bool bTerminalIsWeakPointer;
 
-	/** Whether or not this is a "wrapped" Unreal object ptr type (e.g. TSubclassOf<T> instead of UClass*) */
-	UPROPERTY()
-	bool bTerminalIsUObjectWrapper;
-
 	/** Creates a TerminalType from the primary portion of the PinType */
 	static FEdGraphTerminalType FromPinType(const FEdGraphPinType& PinType);
 
@@ -85,22 +80,6 @@ enum EEdGraphPinDirection
 	EGPD_Output,
 	EGPD_MAX,
 };
-
-inline const TCHAR* const LexToString(const EEdGraphPinDirection State)
-{
-	switch (State)
-	{
-	case EEdGraphPinDirection::EGPD_Input:
-		return TEXT("Input");
-	case EEdGraphPinDirection::EGPD_Output:
-		return TEXT("Output");
-	default:
-		break;
-	}
-
-	checkf(false, TEXT("Missing EEdGraphPinDirection Type: %d"), static_cast<const int32>(State));
-	return TEXT("");
-}
 
 /** Enum used to define what container type a pin represents. */
 UENUM()
@@ -157,24 +136,6 @@ enum class ENodeEnabledState : uint8
 	/** Node is enabled for development only. */
 	DevelopmentOnly
 };
-
-inline const TCHAR* const LexToString(const ENodeEnabledState State)
-{
-	switch (State)
-	{
-	case ENodeEnabledState::Enabled:
-		return TEXT("Enabled");
-	case ENodeEnabledState::Disabled:
-		return TEXT("Disabled");
-	case ENodeEnabledState::DevelopmentOnly:
-		return TEXT("DevelopmentOnly");
-	default:
-		break;
-	}
-
-	checkf(false, TEXT("Missing ENodeEnabledState Type: %d"), static_cast<const int32>(State));
-	return TEXT("");
-}
 
 /** Enum that defines what kind of orphaned pins should be retained. */
 enum class ESaveOrphanPinMode : uint8
@@ -885,9 +846,6 @@ public:
 	// called to replace this nodes comment text
 	virtual void OnUpdateCommentText( const FString& NewComment );
 
-	// returns true if this node supports comment bubbles
-	virtual bool SupportsCommentBubble() const { return true; }
-
 	// called when the node's comment bubble is toggled
 	virtual void OnCommentBubbleToggled( bool bInCommentBubbleVisible ) {}
 
@@ -998,7 +956,7 @@ protected:
 	virtual void DiffProperties(UStruct* StructA, UStruct* StructB, uint8* DataA, uint8* DataB, FDiffResults& Results, FDiffSingleResult& Diff) const;
 
 	// Returns a human-friendly description of the property in the form "PropertyName: Value"
-	virtual FString GetPropertyNameAndValueForDiff(const FProperty* Prop, const uint8* PropertyAddr) const;
+	virtual FString GetPropertyNameAndValueForDiff(const UProperty* Prop, const uint8* PropertyAddr) const;
 
 #endif // WITH_EDITOR
 

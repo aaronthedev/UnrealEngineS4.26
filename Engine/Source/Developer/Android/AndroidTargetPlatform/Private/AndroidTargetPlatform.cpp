@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AndroidTargetPlatform.inl: Implements the FAndroidTargetPlatform class.
@@ -216,10 +216,14 @@ FAndroidTargetDevicePtr FAndroidTargetPlatform::CreateTargetDevice(const ITarget
 	return MakeShareable(new FAndroidTargetDevice(InTargetPlatform, InSerialNumber, InAndroidVariant));
 }
 
-static bool UsesVirtualTextures()
+bool FAndroidTargetPlatform::SupportsES2() const
 {
-	static auto* CVarMobileVirtualTextures = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.VirtualTextures"));
-	return CVarMobileVirtualTextures->GetValueOnAnyThread() != 0;
+	// default to support ES2
+	bool bBuildForES2 = true;
+#if WITH_ENGINE
+	GConfig->GetBool(TEXT("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings"), TEXT("bBuildForES2"), bBuildForES2, GEngineIni);
+#endif
+	return bBuildForES2;
 }
 
 bool FAndroidTargetPlatform::SupportsES31() const
@@ -232,6 +236,11 @@ bool FAndroidTargetPlatform::SupportsES31() const
 	return bBuildForES31;
 }
 
+bool FAndroidTargetPlatform::SupportsAEP() const
+{
+	return false;
+}
+
 bool FAndroidTargetPlatform::SupportsVulkan() const
 {
 	// default to not supporting Vulkan
@@ -242,29 +251,10 @@ bool FAndroidTargetPlatform::SupportsVulkan() const
 	return bSupportsVulkan;
 }
 
-bool FAndroidTargetPlatform::SupportsVulkanSM5() const
-{
-	// default to no support for VulkanSM5
-	bool bSupportsMobileVulkanSM5 = false;
-#if WITH_ENGINE
-	GConfig->GetBool(TEXT("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings"), TEXT("bSupportsVulkanSM5"), bSupportsMobileVulkanSM5, GEngineIni);
-#endif
-	return bSupportsMobileVulkanSM5;
-}
-
 bool FAndroidTargetPlatform::SupportsSoftwareOcclusion() const
 {
 	static auto* CVarMobileAllowSoftwareOcclusion = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.AllowSoftwareOcclusion"));
 	return CVarMobileAllowSoftwareOcclusion->GetValueOnAnyThread() != 0;
-}
-
-bool FAndroidTargetPlatform::SupportsLandscapeMeshLODStreaming() const
-{
-	bool bStreamLandscapeMeshLODs = false;
-#if WITH_ENGINE
-	GConfig->GetBool(TEXT("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings"), TEXT("bStreamLandscapeMeshLODs"), bStreamLandscapeMeshLODs, GEngineIni);
-#endif
-	return bStreamLandscapeMeshLODs;
 }
 
 /* ITargetPlatform overrides
@@ -354,23 +344,15 @@ bool FAndroidTargetPlatform::SupportsFeature( ETargetPlatformFeatures Feature ) 
 
 		case ETargetPlatformFeatures::LowQualityLightmaps:
 		case ETargetPlatformFeatures::MobileRendering:
-			return SupportsES31() || SupportsVulkan();
+			return SupportsES31() || SupportsES2() || SupportsVulkan();
 
 		case ETargetPlatformFeatures::HighQualityLightmaps:
-		case ETargetPlatformFeatures::DeferredRendering:
-			return SupportsVulkanSM5();
-
 		case ETargetPlatformFeatures::Tessellation:
-			return false;
+		case ETargetPlatformFeatures::DeferredRendering:
+			return SupportsAEP();
 
 		case ETargetPlatformFeatures::SoftwareOcclusion:
 			return SupportsSoftwareOcclusion();
-
-		case ETargetPlatformFeatures::VirtualTextureStreaming:
-			return UsesVirtualTextures();
-
-		case ETargetPlatformFeatures::LandscapeMeshLODStreaming:
-			return SupportsLandscapeMeshLODStreaming();
 
 		default:
 			break;
@@ -384,22 +366,29 @@ bool FAndroidTargetPlatform::SupportsFeature( ETargetPlatformFeatures Feature ) 
 
 void FAndroidTargetPlatform::GetAllPossibleShaderFormats( TArray<FName>& OutFormats ) const
 {
+	static FName NAME_OPENGL_ES2(TEXT("GLSL_ES2"));
+	static FName NAME_GLSL_310_ES_EXT(TEXT("GLSL_310_ES_EXT"));
 	static FName NAME_SF_VULKAN_ES31_ANDROID(TEXT("SF_VULKAN_ES31_ANDROID_NOUB"));
 	static FName NAME_GLSL_ES3_1_ANDROID(TEXT("GLSL_ES3_1_ANDROID"));
-	static FName NAME_SF_VULKAN_SM5_ANDROID(TEXT("SF_VULKAN_SM5_ANDROID"));
 
 	if (SupportsVulkan())
 	{
 		OutFormats.AddUnique(NAME_SF_VULKAN_ES31_ANDROID);
-		if (SupportsVulkanSM5())
-		{
-			OutFormats.AddUnique(NAME_SF_VULKAN_SM5_ANDROID);
-		}
+	}
+
+	if (SupportsES2())
+	{
+		OutFormats.AddUnique(NAME_OPENGL_ES2);
 	}
 
 	if (SupportsES31())
 	{
 		OutFormats.AddUnique(NAME_GLSL_ES3_1_ANDROID);
+	}
+
+	if (SupportsAEP())
+	{
+		OutFormats.AddUnique(NAME_GLSL_310_ES_EXT);
 	}
 }
 
@@ -464,10 +453,6 @@ void FAndroidTargetPlatform::GetTextureFormats( const UTexture* InTexture, TArra
 			{
 				FormatPerLayer[LayerIndex] = AndroidTexFormat::NameBGRA8;
 			}
-			else if (LayerFormatSettings.CompressionSettings == TC_ReflectionCapture && !LayerFormatSettings.CompressionNone)
-			{
-				FormatPerLayer[LayerIndex] = AndroidTexFormat::NameETC2_RGBA;
-			}
 			else if (LayerFormatSettings.CompressionSettings == TC_HDR || LayerFormatSettings.CompressionSettings == TC_HDR_Compressed)
 			{
 				FormatPerLayer[LayerIndex] = AndroidTexFormat::NameRGBA16F;
@@ -475,8 +460,12 @@ void FAndroidTargetPlatform::GetTextureFormats( const UTexture* InTexture, TArra
 			else if (LayerFormatSettings.CompressionSettings == TC_Normalmap)
 			{
 				if(!bIsCompressionValid) FormatPerLayer[LayerIndex] = AndroidTexFormat::NamePOTERROR;
+				else if(FormatCategory == EAndroidTextureFormatCategory::PVRTC) FormatPerLayer[LayerIndex] = AndroidTexFormat::NamePVRTC4;
 				else if (FormatCategory == EAndroidTextureFormatCategory::DXT) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameDXT5;
+				else if (FormatCategory == EAndroidTextureFormatCategory::ATC) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameATC_RGBA_I;
 				else if (FormatCategory == EAndroidTextureFormatCategory::ETC2) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameETC2_RGB;
+				else if (FormatCategory == EAndroidTextureFormatCategory::ETC1a) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameAutoETC1a;
+				else if (FormatCategory == EAndroidTextureFormatCategory::ETC1) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameAutoETC1;
 				else bValidFormat = false;
 			}
 			else if (LayerFormatSettings.CompressionSettings == TC_Displacementmap)
@@ -499,36 +488,48 @@ void FAndroidTargetPlatform::GetTextureFormats( const UTexture* InTexture, TArra
 			{
 				FormatPerLayer[LayerIndex] = AndroidTexFormat::NameG8;
 			}
-			else if (LayerFormatSettings.CompressionSettings == TC_HalfFloat)
-			{
-				FormatPerLayer[LayerIndex] = AndroidTexFormat::NameR16F;
-			}
-			else if (LayerFormatSettings.CompressionSettings == TC_BC7)
+			else if (InTexture->bForcePVRTC4 || LayerFormatSettings.CompressionSettings == TC_BC7)
 			{
 				if (!bIsCompressionValid) FormatPerLayer[LayerIndex] = AndroidTexFormat::NamePOTERROR;
+				else if (FormatCategory == EAndroidTextureFormatCategory::PVRTC) FormatPerLayer[LayerIndex] = AndroidTexFormat::NamePVRTC4;
 				else if (FormatCategory == EAndroidTextureFormatCategory::DXT) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameDXT5;
+				else if (FormatCategory == EAndroidTextureFormatCategory::ATC) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameATC_RGBA_I;
 				else if (FormatCategory == EAndroidTextureFormatCategory::ETC2) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameAutoETC2;
+				else if (FormatCategory == EAndroidTextureFormatCategory::ETC1a) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameAutoETC1a;
+				else if (FormatCategory == EAndroidTextureFormatCategory::ETC1) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameAutoETC1;
 				else bValidFormat = false;
 			}
 			else if (LayerFormatSettings.CompressionNoAlpha)
 			{
 				if (!bIsCompressionValid) FormatPerLayer[LayerIndex] = AndroidTexFormat::NamePOTERROR;
+				else if (FormatCategory == EAndroidTextureFormatCategory::PVRTC) FormatPerLayer[LayerIndex] = AndroidTexFormat::NamePVRTC2;
 				else if (FormatCategory == EAndroidTextureFormatCategory::DXT) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameDXT1;
+				else if (FormatCategory == EAndroidTextureFormatCategory::ATC) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameATC_RGB;
 				else if (FormatCategory == EAndroidTextureFormatCategory::ETC2) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameETC2_RGB;
+				else if (FormatCategory == EAndroidTextureFormatCategory::ETC1a) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameAutoETC1a;
+				else if (FormatCategory == EAndroidTextureFormatCategory::ETC1) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameETC1;
 				else bValidFormat = false;
 			}
 			else if (InTexture->bDitherMipMapAlpha)
 			{
 				if (!bIsCompressionValid) FormatPerLayer[LayerIndex] = AndroidTexFormat::NamePOTERROR;
+				else if (FormatCategory == EAndroidTextureFormatCategory::PVRTC) FormatPerLayer[LayerIndex] = AndroidTexFormat::NamePVRTC4;
 				else if (FormatCategory == EAndroidTextureFormatCategory::DXT) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameDXT5;
+				else if (FormatCategory == EAndroidTextureFormatCategory::ATC) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameATC_RGBA_I;
 				else if (FormatCategory == EAndroidTextureFormatCategory::ETC2) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameAutoETC2;
+				else if (FormatCategory == EAndroidTextureFormatCategory::ETC1a) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameAutoETC1a;
+				else if (FormatCategory == EAndroidTextureFormatCategory::ETC1) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameAutoETC1;
 				else bValidFormat = false;
 			}
 			else
 			{
 				if (!bIsCompressionValid) FormatPerLayer[LayerIndex] = AndroidTexFormat::NamePOTERROR;
+				else if (FormatCategory == EAndroidTextureFormatCategory::PVRTC) FormatPerLayer[LayerIndex] = AndroidTexFormat::NamePVRTC4;
 				else if (FormatCategory == EAndroidTextureFormatCategory::DXT) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameAutoDXT;
+				else if (FormatCategory == EAndroidTextureFormatCategory::ATC) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameAutoATC;
 				else if (FormatCategory == EAndroidTextureFormatCategory::ETC2) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameAutoETC2;
+				else if (FormatCategory == EAndroidTextureFormatCategory::ETC1a) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameAutoETC1a;
+				else if (FormatCategory == EAndroidTextureFormatCategory::ETC1) FormatPerLayer[LayerIndex] = AndroidTexFormat::NameAutoETC1;
 				else bValidFormat = false;
 			}
 		}
@@ -541,32 +542,7 @@ void FAndroidTargetPlatform::GetTextureFormats( const UTexture* InTexture, TArra
 #endif // WITH_EDITOR
 }
 
-FName FAndroidTargetPlatform::FinalizeVirtualTextureLayerFormat(FName Format) const
-{
-#if WITH_EDITOR
-	// Remap non-ETC variants to ETC
-	const static FName ETCRemap[][2] =
-	{
-		{ { FName(TEXT("ASTC_RGB")) },			{ AndroidTexFormat::NameETC2_RGB } },
-		{ { FName(TEXT("ASTC_RGBA")) },			{ AndroidTexFormat::NameETC2_RGBA } },
-		{ { FName(TEXT("ASTC_RGBAuto")) },		{ AndroidTexFormat::NameAutoETC2 } },
-		{ { FName(TEXT("ASTC_NormalAG")) },		{ AndroidTexFormat::NameETC2_RGB } },
-		{ { FName(TEXT("ASTC_NormalRG")) },		{ AndroidTexFormat::NameETC2_RGB } },
-		{ { AndroidTexFormat::NameDXT1 },		{ AndroidTexFormat::NameETC2_RGB } },
-		{ { AndroidTexFormat::NameDXT5 },		{ AndroidTexFormat::NameAutoETC2 } },
-		{ { AndroidTexFormat::NameAutoDXT },	{ AndroidTexFormat::NameAutoETC2 } }
-	};
 
-	for (int32 RemapIndex = 0; RemapIndex < UE_ARRAY_COUNT(ETCRemap); RemapIndex++)
-	{
-		if (ETCRemap[RemapIndex][0] == Format)
-		{
-			return ETCRemap[RemapIndex][1];
-		}
-	}
-#endif
-	return Format;
-}
 
 void FAndroidTargetPlatform::GetAllTextureFormats(TArray<FName>& OutFormats) const
 {
@@ -579,14 +555,25 @@ void FAndroidTargetPlatform::GetAllTextureFormats(TArray<FName>& OutFormats) con
 	OutFormats.Add(AndroidTexFormat::NameG8);
 	OutFormats.Add(AndroidTexFormat::NameG8);
 	OutFormats.Add(AndroidTexFormat::NameG8);
-	OutFormats.Add(AndroidTexFormat::NameR16F);
 
 	auto AddAllTextureFormatIfSupports = [=, &OutFormats](bool bIsNonPOT)
 	{
+		AddTextureFormatIfSupports(AndroidTexFormat::NameAutoPVRTC, OutFormats, bIsNonPOT);
+		AddTextureFormatIfSupports(AndroidTexFormat::NamePVRTC2, OutFormats, bIsNonPOT);
+		AddTextureFormatIfSupports(AndroidTexFormat::NamePVRTC4, OutFormats, bIsNonPOT);
+
 		AddTextureFormatIfSupports(AndroidTexFormat::NameAutoDXT, OutFormats, bIsNonPOT);
 		AddTextureFormatIfSupports(AndroidTexFormat::NameDXT1, OutFormats, bIsNonPOT);
 		AddTextureFormatIfSupports(AndroidTexFormat::NameDXT5, OutFormats, bIsNonPOT);
+
+		AddTextureFormatIfSupports(AndroidTexFormat::NameATC_RGB, OutFormats, bIsNonPOT);
+		AddTextureFormatIfSupports(AndroidTexFormat::NameATC_RGBA_I, OutFormats, bIsNonPOT);
+
+		AddTextureFormatIfSupports(AndroidTexFormat::NameAutoETC1, OutFormats, bIsNonPOT);
+		AddTextureFormatIfSupports(AndroidTexFormat::NameAutoETC1a, OutFormats, bIsNonPOT);
 		AddTextureFormatIfSupports(AndroidTexFormat::NameAutoETC2, OutFormats, bIsNonPOT);
+
+		AddTextureFormatIfSupports(AndroidTexFormat::NameAutoATC, OutFormats, bIsNonPOT);
 	};
 
 	AddAllTextureFormatIfSupports(true);
@@ -596,12 +583,9 @@ void FAndroidTargetPlatform::GetAllTextureFormats(TArray<FName>& OutFormats) con
 
 void FAndroidTargetPlatform::GetReflectionCaptureFormats( TArray<FName>& OutFormats ) const
 {
-	static auto* MobileShadingPathCvar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.ShadingPath"));
-	const bool bMobileDeferredShading = (MobileShadingPathCvar->GetValueOnAnyThread() == 1);
-	
-	if (SupportsVulkanSM5() || (SupportsVulkan() && bMobileDeferredShading))
+	if (SupportsAEP())
 	{
-		// use Full HDR with SM5 and Mobile Deferred
+		// use Full HDR with AEP
 		OutFormats.Add(FName(TEXT("FullHDR")));
 	}
 
@@ -672,6 +656,145 @@ void FAndroidTargetPlatform::GetAllWaveFormats(TArray<FName>& OutFormats) const
 	OutFormats.Add(NAME_ADPCM);
 }
 
+namespace Android
+{
+	void CachePlatformAudioCookOverrides(FPlatformAudioCookOverrides& OutOverrides)
+	{
+		const TCHAR* CategoryName = TEXT("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings");
+
+		int32 SoundCueQualityIndex = INDEX_NONE;
+		if (GConfig->GetInt(CategoryName, TEXT("SoundCueCookQualityIndex"), SoundCueQualityIndex, GEngineIni))
+		{
+			OutOverrides.SoundCueCookQualityIndex = SoundCueQualityIndex;
+		}
+
+		int32 RetrievedChunkSizeKB = 256;
+		GConfig->GetInt(CategoryName, TEXT("ChunkSizeKB"), RetrievedChunkSizeKB, GEngineIni);
+		OutOverrides.StreamChunkSizeKB = RetrievedChunkSizeKB;
+
+		GConfig->GetBool(CategoryName, TEXT("bUseAudioStreamCaching"), OutOverrides.bUseStreamCaching, GEngineIni);
+
+		/** Memory Load On Demand Settings */
+		if (OutOverrides.bUseStreamCaching)
+		{
+			// Cache size:
+			int32 RetrievedCacheSize = 32 * 1024;
+			GConfig->GetInt(CategoryName, TEXT("CacheSizeKB"), RetrievedCacheSize, GEngineIni);
+			OutOverrides.StreamCachingSettings.CacheSizeKB = RetrievedCacheSize;
+		}
+
+		GConfig->GetBool(CategoryName, TEXT("bResampleForDevice"), OutOverrides.bResampleForDevice, GEngineIni);
+
+		GConfig->GetFloat(CategoryName, TEXT("CompressionQualityModifier"), OutOverrides.CompressionQualityModifier, GEngineIni);
+
+		GConfig->GetFloat(CategoryName, TEXT("AutoStreamingThreshold"), OutOverrides.AutoStreamingThreshold, GEngineIni);
+
+		//Cache sample rate map:
+		float RetrievedSampleRate = -1.0f;
+
+		GConfig->GetFloat(CategoryName, TEXT("MaxSampleRate"), RetrievedSampleRate, GEngineIni);
+		float* FoundSampleRate = OutOverrides.PlatformSampleRates.Find(ESoundwaveSampleRateSettings::Max);
+
+		if (FoundSampleRate)
+		{
+			if (!FMath::IsNearlyEqual(*FoundSampleRate, RetrievedSampleRate))
+			{
+				*FoundSampleRate = RetrievedSampleRate;
+			}
+
+		}
+		else
+		{
+			OutOverrides.PlatformSampleRates.Add(ESoundwaveSampleRateSettings::Max, RetrievedSampleRate);
+		}
+
+		RetrievedSampleRate = -1.0f;
+
+		GConfig->GetFloat(CategoryName, TEXT("HighSampleRate"), RetrievedSampleRate, GEngineIni);
+		FoundSampleRate = OutOverrides.PlatformSampleRates.Find(ESoundwaveSampleRateSettings::High);
+
+		if (FoundSampleRate)
+		{
+			if (!FMath::IsNearlyEqual(*FoundSampleRate, RetrievedSampleRate))
+			{
+				*FoundSampleRate = RetrievedSampleRate;
+			}
+
+		}
+		else
+		{
+			OutOverrides.PlatformSampleRates.Add(ESoundwaveSampleRateSettings::High, RetrievedSampleRate);
+		}
+
+
+		RetrievedSampleRate = -1.0f;
+
+		GConfig->GetFloat(CategoryName, TEXT("MedSampleRate"), RetrievedSampleRate, GEngineIni);
+		FoundSampleRate = OutOverrides.PlatformSampleRates.Find(ESoundwaveSampleRateSettings::Medium);
+
+		if (FoundSampleRate)
+		{
+			if (!FMath::IsNearlyEqual(*FoundSampleRate, RetrievedSampleRate))
+			{
+				*FoundSampleRate = RetrievedSampleRate;
+			}
+		}
+		else
+		{
+			OutOverrides.PlatformSampleRates.Add(ESoundwaveSampleRateSettings::Medium, RetrievedSampleRate);
+		}
+
+		RetrievedSampleRate = -1.0f;
+
+		GConfig->GetFloat(CategoryName, TEXT("LowSampleRate"), RetrievedSampleRate, GEngineIni);
+		FoundSampleRate = OutOverrides.PlatformSampleRates.Find(ESoundwaveSampleRateSettings::Low);
+
+		if (FoundSampleRate)
+		{
+			if (!FMath::IsNearlyEqual(*FoundSampleRate, RetrievedSampleRate))
+			{
+				*FoundSampleRate = RetrievedSampleRate;
+			}
+		}
+		else
+		{
+			OutOverrides.PlatformSampleRates.Add(ESoundwaveSampleRateSettings::Low, RetrievedSampleRate);
+		}
+
+		RetrievedSampleRate = -1.0f;
+
+		GConfig->GetFloat(CategoryName, TEXT("MinSampleRate"), RetrievedSampleRate, GEngineIni);
+		FoundSampleRate = OutOverrides.PlatformSampleRates.Find(ESoundwaveSampleRateSettings::Min);
+
+		if (FoundSampleRate)
+		{
+			if (!FMath::IsNearlyEqual(*FoundSampleRate, RetrievedSampleRate))
+			{
+				*FoundSampleRate = RetrievedSampleRate;
+			}
+		}
+		else
+		{
+			OutOverrides.PlatformSampleRates.Add(ESoundwaveSampleRateSettings::Min, RetrievedSampleRate);
+		}
+	}
+}
+
+FPlatformAudioCookOverrides* FAndroidTargetPlatform::GetAudioCompressionSettings() const
+{
+	static FPlatformAudioCookOverrides Settings;
+
+	static bool bCachedPlatformSettings = false;
+
+	if (!bCachedPlatformSettings)
+	{
+		Android::CachePlatformAudioCookOverrides(Settings);
+		bCachedPlatformSettings = true;
+	}
+
+	return &Settings;
+}
+
 #endif //WITH_ENGINE
 
 bool FAndroidTargetPlatform::SupportsVariants() const
@@ -713,28 +836,6 @@ void FAndroidTargetPlatform::InitializeDeviceDetection()
 #endif
 		TEXT("shell getprop"), true);
 }
-
-bool FAndroidTargetPlatform::ShouldExpandTo32Bit(const uint16* Indices, const int32 NumIndices) const
-{
-	bool bIsMaliBugIndex = false;
-	const uint16 MaliBugIndexMaxDiff = 16;
-	uint16 LastIndex = Indices[0];
-	for (int32 i = 1; i < NumIndices; ++i)
-	{
-		uint16 CurrentIndex = Indices[i];
-		if ((FMath::Abs(LastIndex - CurrentIndex) > MaliBugIndexMaxDiff))
-		{
-			bIsMaliBugIndex = true;
-			break;
-		}
-		else
-		{
-			LastIndex = CurrentIndex;
-		}
-	}
-	return bIsMaliBugIndex;
-}
-
 /* FAndroidTargetPlatform callbacks
  *****************************************************************************/
 

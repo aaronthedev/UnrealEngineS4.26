@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PostProcessPassThrough.h: Post processing pass through implementation.
@@ -27,13 +27,13 @@ class FPostProcessPassThroughPS : public FGlobalShader
 	FPostProcessPassThroughPS() {}
 
 public:
-	LAYOUT_FIELD(FPostProcessPassParameters, PostprocessParameter)
+	FPostProcessPassParameters PostprocessParameter;
 
 	/** Initialization constructor. */
 	FPostProcessPassThroughPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer);
 
 	// FShader interface.
-	//virtual bool Serialize(FArchive& Ar) override;
+	virtual bool Serialize(FArchive& Ar) override;
 
 	template <typename TRHICmdList>
 	void SetParameters(TRHICmdList& RHICmdList, const FRenderingCompositePassContext& Context);

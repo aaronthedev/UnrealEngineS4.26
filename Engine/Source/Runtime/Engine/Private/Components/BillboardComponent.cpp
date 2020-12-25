@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/BillboardComponent.h"
 #include "UObject/ConstructorHelpers.h"
@@ -227,7 +227,7 @@ public:
 #endif
 		FPrimitiveViewRelevance Result;
 		Result.bDrawRelevance = IsShown(View) && bVisible;
-		Result.bOpaque = true;
+		Result.bOpaqueRelevance = true;
 		Result.bDynamicRelevance = true;
 		Result.bShadowRelevance = IsShadowCast(View);
 		Result.bEditorPrimitiveRelevance = UseEditorCompositing(View);
@@ -295,7 +295,6 @@ UBillboardComponent::UBillboardComponent(const FObjectInitializer& ObjectInitial
 	bHiddenInGame = true;
 	SetGenerateOverlapEvents(false);
 	bUseEditorCompositing = true;
-	bExcludeFromLightAttachmentGroup = true;
 
 #if WITH_EDITORONLY_DATA
 	SpriteInfo.Category = ConstructorStatics.ID_Misc;

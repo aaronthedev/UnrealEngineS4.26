@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  * UI to pick options when importing a data table
@@ -14,13 +14,6 @@
 #include "Widgets/SWidget.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Input/SComboBox.h"
-
-enum class ECSVImportOptionDlgResponse : uint8
-{
-	Import,
-	ImportAll,
-	Cancel
-};
 
 class UNREALED_API SCSVImportOptions : public SCompoundWidget
 {
@@ -41,7 +34,7 @@ public:
 	SLATE_END_ARGS()
 
 	SCSVImportOptions()
-		: UserDlgResponse(ECSVImportOptionDlgResponse::Cancel)
+		: bImport(false)
 		, SelectedImportType(ECSVImportType::ECSV_DataTable)
 		, SelectedStruct(nullptr)
 		, TempImportDataTable(nullptr)
@@ -51,9 +44,6 @@ public:
 
 	/** If we should import */
 	bool ShouldImport();
-
-	/** If the current settings should be applied to all items being imported */
-	bool ShouldImportAll();
 
 	/** Get the row struct we selected */
 	UScriptStruct* GetSelectedRowStruct();
@@ -89,7 +79,7 @@ public:
 	/** Called to create a widget for each curve interpolation enum */
 	TSharedRef<SWidget> MakeCurveTypeWidget(CurveInterpModePtr InterpMode);
 
-	/** Called when 'Apply' button is pressed */
+	/** Called when 'OK' button is pressed */
 	FReply OnImport();
 
 	/** Do we have all of the data we need to import this asset? */
@@ -103,11 +93,8 @@ public:
 	FText GetSelectedCurveTypeText() const;
 
 private:
-	FReply HandleImport();
-	FReply OnImportAll();
-
 	/** Whether we should go ahead with import */
-	ECSVImportOptionDlgResponse					UserDlgResponse;
+	uint8										bImport : 1;
 
 	/** Window that owns us */
 	TWeakPtr< SWindow >							WidgetWindow;

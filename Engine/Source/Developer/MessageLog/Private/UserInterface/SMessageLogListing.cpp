@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UserInterface/SMessageLogListing.h"
 #include "Widgets/Images/SImage.h"
@@ -69,7 +69,6 @@ void SMessageLogListing::Construct( const FArguments& InArgs, const TSharedRef< 
 										.OnSelectionChanged(this, &SMessageLogListing::OnLineSelectionChanged)
 										.ExternalScrollbar(ScrollBar)
 										.ItemHeight(24.0f)
-										.ConsumeMouseWheel(EConsumeMouseWheel::Always)
 									]
 								]
 								+SHorizontalBox::Slot()

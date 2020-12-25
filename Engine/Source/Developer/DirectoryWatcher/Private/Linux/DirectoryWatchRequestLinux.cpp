@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Linux/DirectoryWatchRequestLinux.h"
 #include "HAL/FileManager.h"
@@ -138,14 +138,7 @@ void FDirectoryWatchRequestLinux::WatchDirectoryTree(const FString & RootAbsolut
 	TArray<FString> AllFiles;
 	if (bWatchSubtree)
 	{
-		IPlatformFile::GetPlatformPhysical().IterateDirectoryRecursively(*RootAbsolutePath, [&AllFiles](const TCHAR* Name, bool bIsDirectory)
-			{
-				if (bIsDirectory)
-				{
-					AllFiles.Add(Name);
-				}
-				return true;
-			});
+		IFileManager::Get().FindFilesRecursive(AllFiles, *RootAbsolutePath, TEXT("*"), false, true);
 	}
 	// add the path as well
 	AllFiles.Add(RootAbsolutePath);
@@ -153,25 +146,23 @@ void FDirectoryWatchRequestLinux::WatchDirectoryTree(const FString & RootAbsolut
 	for (int32 FileIdx = 0, NumTotal = AllFiles.Num(); FileIdx < NumTotal; ++FileIdx)
 	{
 		const FString& FolderName = AllFiles[FileIdx];
+		checkf(PathsToWatchDescriptors.Find(FolderName) == nullptr, TEXT("Adding a duplicate watch for directory '%s'"), *FolderName);
 
-		if (PathsToWatchDescriptors.Find(FolderName) == nullptr)
+		int32 WatchDescriptor = inotify_add_watch(FileDescriptor, TCHAR_TO_UTF8(*FolderName), NotifyFilter);
+		if (WatchDescriptor == -1)
 		{
-			int32 WatchDescriptor = inotify_add_watch(FileDescriptor, TCHAR_TO_UTF8(*FolderName), NotifyFilter);
-			if (WatchDescriptor == -1)
-			{
-				int ErrNo = errno;
-				UE_LOG(LogDirectoryWatcher, Warning, TEXT("inotify_add_watch cannot watch folder %s (errno = %d, %s)"), *FolderName,
-					ErrNo,
-					(ErrNo == ENOSPC) ? TEXT("Out of inotify watches, increase user.max_inotify_watches") : UTF8_TO_TCHAR(strerror(ErrNo))
+			int ErrNo = errno;
+			UE_LOG(LogDirectoryWatcher, Warning, TEXT("inotify_add_watch cannot watch folder %s (errno = %d, %s)"), *FolderName,
+				ErrNo,
+				(ErrNo == ENOSPC) ? TEXT("Out of inotify watches, increase user.max_inotify_watches") : UTF8_TO_TCHAR(strerror(ErrNo))
 				);
 			// proceed further
-			}
-
-			UE_LOG(LogDirectoryWatcher, VeryVerbose, TEXT("+ Added a watch %d for '%s'"), WatchDescriptor, *FolderName);
-			// update the mapping
-			WatchDescriptorsToPaths.Add(WatchDescriptor, FolderName);
-			PathsToWatchDescriptors.Add(FolderName, WatchDescriptor);
 		}
+
+		UE_LOG(LogDirectoryWatcher, VeryVerbose, TEXT("+ Added a watch %d for '%s'"), WatchDescriptor, *FolderName);
+		// update the mapping
+		WatchDescriptorsToPaths.Add(WatchDescriptor, FolderName);
+		PathsToWatchDescriptors.Add(FolderName, WatchDescriptor);
 	}
 }
 

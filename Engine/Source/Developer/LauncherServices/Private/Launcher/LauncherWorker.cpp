@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Launcher/LauncherWorker.h"
 #include "HAL/PlatformTime.h"
@@ -17,8 +17,6 @@
 #include "Launcher/LauncherUATTask.h"
 #include "Launcher/LauncherVerifyProfileTask.h"
 #include "PlatformInfo.h"
-#include "Misc/ConfigCacheIni.h"
-#include "Profiles/LauncherProfile.h"
 
 
 #define LOCTEXT_NAMESPACE "LauncherWorker"
@@ -60,7 +58,7 @@ uint32 FLauncherWorker::Run( )
 	// wait for tasks to be completed
 	while (Status == ELauncherWorkerStatus::Busy)
 	{
-		FPlatformProcess::Sleep(0.01f);
+		FPlatformProcess::Sleep(0.0f);
 
 		FString NewLine = FPlatformProcess::ReadPipe(ReadPipe);
 		if (NewLine.Len() > 0)
@@ -261,60 +259,7 @@ static void AddDeviceToLaunchCommand(const FString& DeviceId, TSharedPtr<ITarget
 
 	if (FParse::Param(FCommandLine::Get(), TEXT("vulkan")))
 	{
-		FName Variant = DeviceProxy->GetTargetDeviceVariant(DeviceId);
-		FString Platform = DeviceProxy->GetTargetPlatformName(Variant);
-
-		bool bCookedVulkan = false;
-		bool bCheckTargetedRHIs = false;
-		TArray<FString> TargetedShaderFormats;
-
-		if (Platform.StartsWith(TEXT("Windows")))
-		{
-			FConfigFile WindowsEngineSettings;
-			FConfigCacheIni::LoadLocalIniFile(WindowsEngineSettings, TEXT("Engine"), true, TEXT("Windows"));
-
-			bCheckTargetedRHIs = true;
-			WindowsEngineSettings.GetArray(TEXT("/Script/WindowsTargetPlatform.WindowsTargetSettings"), TEXT("TargetedRHIs"), TargetedShaderFormats);
-		}
-		else if (Platform.StartsWith(TEXT("Linux")))
-		{
-			FConfigFile LinuxEngineSettings;
-			FConfigCacheIni::LoadLocalIniFile(LinuxEngineSettings, TEXT("Engine"), true, TEXT("Linux"));
-
-			bCheckTargetedRHIs = true;
-			LinuxEngineSettings.GetArray(TEXT("/Script/LinuxTargetPlatform.LinuxTargetSettings"), TEXT("TargetedRHIs"), TargetedShaderFormats);
-		}
-		else if (Platform.StartsWith(TEXT("Android")))
-		{
-			FConfigFile AndroidEngineSettings;
-			FConfigCacheIni::LoadLocalIniFile(AndroidEngineSettings, TEXT("Engine"), true, TEXT("Android"));
-
-			bool bAndroidSupportsVulkan, bAndroidSupportsVulkanSM5;
-			AndroidEngineSettings.GetBool(TEXT("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings"), TEXT("bSupportsVulkan"), bAndroidSupportsVulkan);
-			AndroidEngineSettings.GetBool(TEXT("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings"), TEXT("bSupportsVulkanSM5"), bAndroidSupportsVulkanSM5);
-			bCookedVulkan = bAndroidSupportsVulkan || bAndroidSupportsVulkanSM5;
-			bCheckTargetedRHIs = false;
-		}
-
-		if (bCheckTargetedRHIs)
-		{
-			for (const FString& ShaderFormat : TargetedShaderFormats)
-			{
-				if (ShaderFormat.StartsWith(TEXT("SF_VULKAN_")))
-				{
-					bCookedVulkan = true;
-				}
-			}
-		}
-
-		if (bCookedVulkan)
-		{
-			RoleCommands += TEXT(" -vulkan");
-		}
-		else
-		{
-			UE_LOG(LogLauncherProfile, Warning, TEXT("The editor is running on Vulkan, but Vulkan is not enabled for launch platform '%s'. Launching process with the default RHI."), *Platform);
-		}
+		RoleCommands += TEXT(" -vulkan");
 	}
 }
 
@@ -391,27 +336,7 @@ FString FLauncherWorker::CreateUATCommand( const ILauncherProfileRef& InProfile,
 			{
 				Platforms += TEXT("+LinuxAArch64");
 			}
-			else if (PlatformInfo->TargetPlatformName == FName("WindowsNoEditor"))
-			{
-				// find out if the project is targeting 32bit
-				FConfigFile ProjectEngineConfig;
-				FString ProjectDir = FPaths::GetPath(InProfile->GetProjectPath());
-				FConfigCacheIni::LoadExternalIniFile(ProjectEngineConfig, TEXT("Engine"), *FPaths::EngineConfigDir(), *FPaths::Combine(ProjectDir, TEXT("Config/")), true, TEXT("Windows"));
-				bool bTarget32Bit = false;
-				ProjectEngineConfig.GetBool(TEXT("/Script/WindowsTargetPlatform.WindowsTargetSettings"), TEXT("bTarget32Bit"), bTarget32Bit);
-
-				// normally this would get the 64bit one, so if we need the 32-bit one, swap it out
-				if (bTarget32Bit)
-				{
-					PlatformInfo = PlatformInfo::FindPlatformInfo(TEXT("WindowsNoEditorWin32"));
-					check(PlatformInfo != nullptr);
-				}
-			
-				// if target wants 32-bit, use 32-bit
-				Platforms += TEXT("+");
-				Platforms += PlatformInfo->UBTTargetId.ToString();
-			}
-			else if (PlatformInfo->TargetPlatformName == FName("Windows") || PlatformInfo->TargetPlatformName == FName("WindowsClient"))
+			else if (PlatformInfo->TargetPlatformName == FName("WindowsNoEditor") || PlatformInfo->TargetPlatformName == FName("Windows") || PlatformInfo->TargetPlatformName == FName("WindowsClient"))
 			{
 				Platforms += TEXT("+Win64");
 			}
@@ -499,37 +424,30 @@ FString FLauncherWorker::CreateUATCommand( const ILauncherProfileRef& InProfile,
 
 	if (DeviceGroup.IsValid())
 	{
-		const TArray<FString>& Devices = DeviceGroup->GetDeviceIDs();
+		const TArray<FString>& Devices = DeviceGroup->GetDeviceIDs();		
 
-		if (Devices.Num() > 0)
+		// for each deployed device...
+		for (int32 DeviceIndex = 0; DeviceIndex < Devices.Num(); ++DeviceIndex)
 		{
-			// for each deployed device...
-			for (int32 DeviceIndex = 0; DeviceIndex < Devices.Num(); ++DeviceIndex)
+			const FString& DeviceId = Devices[DeviceIndex];
+			TSharedPtr<ITargetDeviceProxy> DeviceProxy = DeviceProxyManager->FindProxyDeviceForTargetDevice(DeviceId);
+			if (DeviceProxy.IsValid())
 			{
-				const FString& DeviceId = Devices[DeviceIndex];
-				TSharedPtr<ITargetDeviceProxy> DeviceProxy = DeviceProxyManager->FindProxyDeviceForTargetDevice(DeviceId);
-				if (DeviceProxy.IsValid())
+				AddDeviceToLaunchCommand(DeviceId, DeviceProxy, InProfile, DeviceNames, RoleCommands, bVsyncAdded);
+
+				// also add the credentials, if necessary
+				FString DeviceUser = DeviceProxy->GetDeviceUser();
+				if (DeviceUser.Len() > 0)
 				{
-					AddDeviceToLaunchCommand(DeviceId, DeviceProxy, InProfile, DeviceNames, RoleCommands, bVsyncAdded);
+					DeviceCommand += FString::Printf(TEXT(" -deviceuser=%s"), *DeviceUser);
+				}
 
-					// also add the credentials, if necessary
-					FString DeviceUser = DeviceProxy->GetDeviceUser();
-					if (DeviceUser.Len() > 0)
-					{
-						DeviceCommand += FString::Printf(TEXT(" -deviceuser=%s"), *DeviceUser);
-					}
-
-					FString DeviceUserPassword = DeviceProxy->GetDeviceUserPassword();
-					if (DeviceUserPassword.Len() > 0)
-					{
-						DeviceCommand += FString::Printf(TEXT(" -devicepass=%s"), *DeviceUserPassword);
-					}
+				FString DeviceUserPassword = DeviceProxy->GetDeviceUserPassword();
+				if (DeviceUserPassword.Len() > 0)
+				{
+					DeviceCommand += FString::Printf(TEXT(" -devicepass=%s"), *DeviceUserPassword);
 				}
 			}
-		}
-		else
-		{
-			RoleCommands = InProfile->GetDefaultLaunchRole()->GetUATCommandLine();
 		}
 	}
 
@@ -591,19 +509,17 @@ FString FLauncherWorker::CreateUATCommand( const ILauncherProfileRef& InProfile,
 		MapList = TEXT(" -map=") + InitialMap;
 	}
 
-	bool bIsBuilding = InProfile->ShouldBuild();
-
 	// Override the Blueprint nativization method for anything other than "cook by the book" mode. Nativized assets
 	// won't get regenerated otherwise, and we don't want UBT to include generated code assets from a previous cook.
 	// Also disable Blueprint nativization if the profile is not configured to also build code. Otherwise nativized
 	// assets generated at cook time will not be linked into the game's executable prior to stage/deployment phases.
-	if (InProfile->GetCookMode() != ELauncherProfileCookModes::ByTheBook || !bIsBuilding)
+	if (InProfile->GetCookMode() != ELauncherProfileCookModes::ByTheBook || !InProfile->IsBuilding())
 	{
 		UATCommand += TEXT(" -ini:Game:[/Script/UnrealEd.ProjectPackagingSettings]:BlueprintNativizationMethod=Disabled");
 	}
 
 	// build
-	if (bIsBuilding)
+	if (InProfile->IsBuilding())
 	{
 		UATCommand += TEXT(" -build");
 
@@ -662,11 +578,6 @@ FString FLauncherWorker::CreateUATCommand( const ILauncherProfileRef& InProfile,
 			if (InProfile->IsPackingWithUnrealPak())
 			{
 				UATCommand += TEXT(" -pak");
-			}
-
-			if (InProfile->IsUsingIoStore())
-			{
-				UATCommand += TEXT(" -iostore");
 			}
 
 			if ( InProfile->IsCreatingReleaseVersion() )
@@ -841,6 +752,17 @@ FString FLauncherWorker::CreateUATCommand( const ILauncherProfileRef& InProfile,
 				if (Profile->IsDeployingIncrementally())
 				{
 					UATCommand += " -iterativedeploy";
+					// @todo Lumin hack maybe? Can we always skip the automation script compiling here when going for fast-as-possible?
+					// we will always compile the automation scripts once, then we stop due to time waste
+					static bool bHasCompiledOnce = false;
+					if (bHasCompiledOnce)
+					{
+						UATCommand += " -nocompile";
+					}
+					else
+					{
+						bHasCompiledOnce = true;
+					}
 				}
 			}
 		case ELauncherProfileDeploymentModes::FileServer:
@@ -941,12 +863,25 @@ FString FLauncherWorker::CreateUATCommand( const ILauncherProfileRef& InProfile,
 
 void FLauncherWorker::CreateAndExecuteTasks( const ILauncherProfileRef& InProfile )
 {
+	// check to see if we need to build by default
+	if (!InProfile->HasProjectSpecified())
+	{
+		FString ProjectPath = FPaths::GetPath(InProfile->GetProjectPath());
+		TArray<FString> OutProjectCodeFilenames;
+		IFileManager::Get().FindFilesRecursive(OutProjectCodeFilenames, *(ProjectPath / TEXT("Source")), TEXT("*.h"), true, false, false);
+		IFileManager::Get().FindFilesRecursive(OutProjectCodeFilenames, *(ProjectPath / TEXT("Source")), TEXT("*.cpp"), true, false, false);
+		ISourceCodeAccessModule& SourceCodeAccessModule = FModuleManager::LoadModuleChecked<ISourceCodeAccessModule>("SourceCodeAccess");
+		if (OutProjectCodeFilenames.Num() > 0 && SourceCodeAccessModule.GetAccessor().CanAccessSourceCode())
+		{
+			InProfile->SetBuildGame(true);
+		}
+	}
 	FPlatformProcess::CreatePipe(ReadPipe, WritePipe);
 
 	// create task chains
 	TaskChain = MakeShareable(new FLauncherVerifyProfileTask());
 	TArray<FString> Platforms;
-	if (InProfile->GetCookMode() == ELauncherProfileCookModes::ByTheBook || InProfile->ShouldBuild())
+	if (InProfile->GetCookMode() == ELauncherProfileCookModes::ByTheBook || InProfile->IsBuilding())
 	{
 		Platforms = InProfile->GetCookedPlatforms();
 	}
@@ -1156,10 +1091,10 @@ bool FLauncherWorker::TerminateLaunchedProcess()
 				FString TargetDeviceId = DeviceId;
 				
 				// remove the variant prefix (eg. Android_ETC@deviceId)
-				int32 InPos = TargetDeviceId.Find("@", ESearchCase::CaseSensitive);
+				int32 InPos = TargetDeviceId.Find("@");
 				if (InPos > 0) 
 				{ 
-					TargetDeviceId.RightInline(TargetDeviceId.Len() -  InPos - 1, false);
+					TargetDeviceId = TargetDeviceId.Right(TargetDeviceId.Len() -  InPos - 1);
 
 				}
 

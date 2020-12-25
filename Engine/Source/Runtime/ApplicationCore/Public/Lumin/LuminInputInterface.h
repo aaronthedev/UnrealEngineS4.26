@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -38,7 +38,6 @@ public:
 	virtual void ResetLightColor(int32 ControllerId) override {};
 
 	void SetGamepadsAllowed(bool bAllowed) {}
-	void SetGamepadsBlockDeviceFeedback(bool bBlock) { }
 	virtual void AddExternalInputDevice(TSharedPtr<class IInputDevice>& InputDevice);
 	virtual bool IsGamepadAttached() const;
 

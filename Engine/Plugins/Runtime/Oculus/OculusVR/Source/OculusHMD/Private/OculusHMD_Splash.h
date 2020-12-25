@@ -1,12 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "OculusHMDPrivate.h"
 #include "IXRLoadingScreen.h"
-
-#if WITH_EDITOR
-#include "Editor.h"
-#endif
 
 #if OCULUS_HMD_SUPPORTED_PLATFORMS
 #include "OculusHMD_GameFrame.h"
@@ -67,10 +63,6 @@ public:
 	void Shutdown();
 
 	void OnPreLoadMap(const FString&);
-	void OnPostLoadMap(UWorld* LoadedWorld);
-#if WITH_EDITOR
-	void OnPieBegin(bool bIsSimulating);
-#endif
 
 	// Called from FOculusHMD
 	void UpdateLoadingScreen_GameThread();
@@ -123,11 +115,7 @@ protected:
 
 	float SystemDisplayInterval;
 	double LastTimeInSeconds;
-	FDelegateHandle PreLoadLevelDelegate;
-	FDelegateHandle PostLoadLevelDelegate;
-#if WITH_EDITOR
-	FDelegateHandle PieBeginDelegateHandle;
-#endif
+	FDelegateHandle LoadLevelDelegate;
 };
 
 typedef TSharedPtr<FSplash> FSplashPtr;

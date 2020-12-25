@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -24,6 +24,9 @@ class ENGINE_API AGameState : public AGameStateBase
 
 	/** Returns true if we're in progress */
 	virtual bool IsMatchInProgress() const;
+
+	/** Returns true if match is WaitingPostMatch or later */
+	virtual bool HasMatchEnded() const;
 
 	/** Updates the match state and calls the appropriate transition functions, only valid on server */
 	void SetMatchState(FName NewState);
@@ -77,8 +80,6 @@ public:
 	//~ Begin AGameStateBase Interface
 	virtual void ReceivedGameModeClass() override;
 	virtual bool HasMatchStarted() const override;
-	/** Returns true if match is WaitingPostMatch or later */
-	virtual bool HasMatchEnded() const override;
 	virtual void HandleBeginPlay() override;
 	virtual float GetPlayerStartTime(class AController* Controller) const override;
 	virtual float GetPlayerRespawnDelay(class AController* Controller) const override;

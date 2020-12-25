@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	RendererSupport.cpp: Central place for various rendering functionality that exists in Engine
@@ -38,9 +38,9 @@ static void ClearReferencesToRendererModuleClasses(
 	TMap<UWorld*, bool>& WorldsToUpdate, 
 	TMap<FMaterialShaderMap*, TUniquePtr<TArray<uint8> > >& ShaderMapToSerializedShaderData,
 	FGlobalShaderBackupData& GlobalShaderBackup,
-	TMap<FShaderType*, FHashedName>& ShaderTypeNames,
-	TMap<const FShaderPipelineType*, FHashedName>& ShaderPipelineTypeNames,
-	TMap<FVertexFactoryType*, FHashedName>& VertexFactoryTypeNames)
+	TMap<FShaderType*, FString>& ShaderTypeNames,
+	TMap<const FShaderPipelineType*, FString>& ShaderPipelineTypeNames,
+	TMap<FVertexFactoryType*, FString>& VertexFactoryTypeNames)
 {
 	// Destroy all renderer scenes
 	for (TObjectIterator<UWorld> WorldIt; WorldIt; ++WorldIt)
@@ -77,19 +77,19 @@ static void ClearReferencesToRendererModuleClasses(
 	{
 		FShaderType* ShaderType = *It;
 		check(ShaderType->GetNumShaders() == 0);
-		ShaderTypeNames.Add(ShaderType, ShaderType->GetHashedName());
+		ShaderTypeNames.Add(ShaderType, ShaderType->GetName());
 	}
 
 	for (TLinkedList<FShaderPipelineType*>::TIterator It(FShaderPipelineType::GetTypeList()); It; It.Next())
 	{
 		const FShaderPipelineType* ShaderPipelineType = *It;
-		ShaderPipelineTypeNames.Add(ShaderPipelineType, ShaderPipelineType->GetHashedName());
+		ShaderPipelineTypeNames.Add(ShaderPipelineType, ShaderPipelineType->GetName());
 	}
 
 	for(TLinkedList<FVertexFactoryType*>::TIterator It(FVertexFactoryType::GetTypeList()); It; It.Next())
 	{
 		FVertexFactoryType* VertexFactoryType = *It;
-		VertexFactoryTypeNames.Add(VertexFactoryType, VertexFactoryType->GetHashedName());
+		VertexFactoryTypeNames.Add(VertexFactoryType, VertexFactoryType->GetName());
 	}
 
 	// Destroy misc renderer module classes and remove references
@@ -142,9 +142,9 @@ static void RestoreReferencesToRendererModuleClasses(
 	const TMap<UWorld*, bool>& WorldsToUpdate, 
 	const TMap<FMaterialShaderMap*, TUniquePtr<TArray<uint8> > >& ShaderMapToSerializedShaderData,
 	const FGlobalShaderBackupData& GlobalShaderBackup,
-	const TMap<FShaderType*, FHashedName>& ShaderTypeNames,
-	const TMap<const FShaderPipelineType*, FHashedName>& ShaderPipelineTypeNames,
-	const TMap<FVertexFactoryType*, FHashedName>& VertexFactoryTypeNames)
+	const TMap<FShaderType*, FString>& ShaderTypeNames,
+	const TMap<const FShaderPipelineType*, FString>& ShaderPipelineTypeNames,
+	const TMap<FVertexFactoryType*, FString>& VertexFactoryTypeNames)
 {
 	FlushShaderFileCache();
 
@@ -174,19 +174,20 @@ static void RestoreReferencesToRendererModuleClasses(
 	RestoreGlobalShaderMap(GlobalShaderBackup);
 	UMaterial::RestoreMaterialShadersFromMemory(ShaderMapToSerializedShaderData);
 
-	for (int32 i = (int32)ERHIFeatureLevel::ES3_1; i < (int32)ERHIFeatureLevel::Num; ++i)
+	for (int32 i = (int32)ERHIFeatureLevel::ES2; i < (int32)ERHIFeatureLevel::Num; ++i)
 	{
 		if (GlobalShaderBackup.FeatureLevelShaderData[i] != nullptr)
 		{
 			EShaderPlatform ShaderPlatform = GetFeatureLevelShaderPlatform((ERHIFeatureLevel::Type)i);
 			check(ShaderPlatform < EShaderPlatform::SP_NumPlatforms);
+			FMaterialShaderMap::FixupShaderTypes(ShaderPlatform, ShaderTypeNames, ShaderPipelineTypeNames, VertexFactoryTypeNames);
 		}
 	}
 
-	TArray<const FShaderType*> OutdatedShaderTypes;
+	TArray<FShaderType*> OutdatedShaderTypes;
 	TArray<const FVertexFactoryType*> OutdatedFactoryTypes;
 	TArray<const FShaderPipelineType*> OutdatedShaderPipelineTypes;
-	GetOutdatedShaderTypes(OutdatedShaderTypes, OutdatedShaderPipelineTypes, OutdatedFactoryTypes);
+	FShaderType::GetOutdatedTypes(OutdatedShaderTypes, OutdatedFactoryTypes);
 
 	// Recompile any missing shaders
 	UMaterialInterface::IterateOverActiveFeatureLevels([&](ERHIFeatureLevel::Type FeatureLevel) 
@@ -224,9 +225,9 @@ void RecompileRenderer(const TArray<FString>& Args)
 		TMap<UWorld*, bool> WorldsToUpdate;
 		TMap<FMaterialShaderMap*, TUniquePtr<TArray<uint8> > > ShaderMapToSerializedShaderData;
 		FGlobalShaderBackupData GlobalShaderBackup;
-		TMap<FShaderType*, FHashedName> ShaderTypeNames;
-		TMap<const FShaderPipelineType*, FHashedName> ShaderPipelineTypeNames;
-		TMap<FVertexFactoryType*, FHashedName> VertexFactoryTypeNames;
+		TMap<FShaderType*, FString> ShaderTypeNames;
+		TMap<const FShaderPipelineType*, FString> ShaderPipelineTypeNames;
+		TMap<FVertexFactoryType*, FString> VertexFactoryTypeNames;
 
 		ClearReferencesToRendererModuleClasses(WorldsToUpdate, ShaderMapToSerializedShaderData, GlobalShaderBackup, ShaderTypeNames, ShaderPipelineTypeNames, VertexFactoryTypeNames);
 

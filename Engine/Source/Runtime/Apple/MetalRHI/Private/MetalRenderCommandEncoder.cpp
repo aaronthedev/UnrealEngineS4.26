@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MetalRenderCommandEncoder.cpp: Metal command encoder wrapper.
@@ -344,7 +344,7 @@ void FMetalRenderCommandEncoderDebugging::SetTexture(EMetalShaderFrequency Freq,
 		case EMetalDebugLevelValidation:
 		{
 			((FMetalDebugRenderCommandEncoder*)m_ptr)->ShaderTextures[Freq].Textures[index] = texture;
-			((FMetalDebugRenderCommandEncoder*)m_ptr)->ResourceMask[Freq].TextureMask = texture ? (((FMetalDebugRenderCommandEncoder*)m_ptr)->ResourceMask[Freq].TextureMask | (FMetalTextureMask(1) << index)) : (((FMetalDebugRenderCommandEncoder*)m_ptr)->ResourceMask[Freq].TextureMask & ~(FMetalTextureMask(1) << index));
+			((FMetalDebugRenderCommandEncoder*)m_ptr)->ResourceMask[Freq].TextureMask = texture ? (((FMetalDebugRenderCommandEncoder*)m_ptr)->ResourceMask[Freq].TextureMask | (1 << (index))) : (((FMetalDebugRenderCommandEncoder*)m_ptr)->ResourceMask[Freq].TextureMask & ~(1 << (index)));
 		}
 		default:
 		{

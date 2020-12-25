@@ -110,13 +110,13 @@ static DxilModule* ExtractDxil(LLVMContext& context, IDxcBlob* pContainer)
 }
 
 
-static void saveModuleToAsmFile(const llvm::Module* mod, const std::string& filename)
+static void saveModuleToAsmFile(const llvm::Module* module, const std::string& filename)
 {
   std::error_code EC;
   raw_fd_ostream out(filename, EC, sys::fs::F_Text);
   if (!out.has_error())
   {
-    mod->print(out, nullptr);
+    module->print(out, nullptr);
     out.close();
   }
   if (out.has_error())
@@ -324,10 +324,13 @@ HRESULT STDMETHODCALLTYPE DxcDxrFallbackCompiler::RenameAndLink(
             outStream.flush();
 
             // Validation.
-            dxcutil::AssembleInputs inputs(
+            dxcutil::AssembleToContainer(
                 std::move(M), pResultBlob, TM.GetInstalledAllocator(), SerializeDxilFlags::None,
-                pOutputStream);
-            dxcutil::AssembleToContainer(inputs);
+                pOutputStream
+#if !DISABLE_GET_CUSTOM_DIAG_ID
+                , Diag
+#endif
+            );
         }
 
         DiagStream.flush();
@@ -405,13 +408,12 @@ HRESULT STDMETHODCALLTYPE DxcDxrFallbackCompiler::PatchShaderBindingTables(
             raw_stream_ostream outStream(pOutputStream.p);
             WriteBitcodeToFile(M.get(), outStream);
             outStream.flush();
-            dxcutil::AssembleInputs inputs(
+            dxcutil::AssembleToContainer(
                 std::move(M),
                 pResultBlob,
                 TM.GetInstalledAllocator(),
                 SerializeDxilFlags::None,
                 pOutputStream);
-            dxcutil::AssembleToContainer(inputs);
         }
 
         DiagStream.flush();
@@ -562,12 +564,14 @@ HRESULT STDMETHODCALLTYPE DxcDxrFallbackCompiler::Link(
             outStream.flush();
 
             // Validation.
-            dxcutil::AssembleInputs inputs(
+            HRESULT valHR = dxcutil::ValidateAndAssembleToContainer(
                 std::move(M), pResultBlob, TM.GetInstalledAllocator(), SerializeDxilFlags::None,
                 pOutputStream,
                 /*bDebugInfo*/ false
+#if !DISABLE_GET_CUSTOM_DIAG_ID
+                , Diag
+#endif
             );
-            HRESULT valHR = dxcutil::ValidateAndAssembleToContainer(inputs);
 
             if (FAILED(valHR))
                 hasErrors = true;
@@ -719,13 +723,12 @@ HRESULT STDMETHODCALLTYPE DxcDxrFallbackCompiler::Compile(
       raw_stream_ostream outStream(pOutputStream.p);
       WriteBitcodeToFile(M.get(), outStream);
       outStream.flush();
-      dxcutil::AssembleInputs inputs(
+      dxcutil::AssembleToContainer(
           std::move(M), 
           pResultBlob, 
           TM.GetInstalledAllocator(),
           SerializeDxilFlags::None,
           pOutputStream);
-      dxcutil::AssembleToContainer(inputs);
     }
 
     DiagStream.flush();

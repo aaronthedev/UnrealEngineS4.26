@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Tests/AutomationEditorCommon.h"
 #include "UObject/UnrealType.h"
@@ -36,7 +36,6 @@
 #include "CookOnTheSide/CookOnTheFlyServer.h"
 #include "LightingBuildOptions.h"
 #include "Subsystems/AssetEditorSubsystem.h"
-#include "Bookmarks/IBookmarkTypeTools.h"
 
 
 #define COOK_TIMEOUT 3600
@@ -85,7 +84,7 @@ UObject* FAutomationEditorCommonUtils::ImportAssetUsingFactory(UFactory* ImportF
 {
 	UObject* ImportedAsset = NULL;
 
-	UPackage* Pkg = CreatePackage( *PackagePath);
+	UPackage* Pkg = CreatePackage(NULL, *PackagePath);
 	if (Pkg)
 	{
 		// Make sure the destination package is loaded
@@ -137,7 +136,7 @@ void FAutomationEditorCommonUtils::NullReferencesToObject(UObject* InObject)
 	ReplacementMap.GenerateKeyArray(ReplaceableObjects);
 
 	// Find all the properties (and their corresponding objects) that refer to any of the objects to be replaced
-	TMap< UObject*, TArray<FProperty*> > ReferencingPropertiesMap;
+	TMap< UObject*, TArray<UProperty*> > ReferencingPropertiesMap;
 	for (FObjectIterator ObjIter; ObjIter; ++ObjIter)
 	{
 		UObject* CurObject = *ObjIter;
@@ -149,13 +148,13 @@ void FAutomationEditorCommonUtils::NullReferencesToObject(UObject* InObject)
 		// changed, and store both the object doing the referencing as well as the properties that were changed in a map (so that
 		// we can correctly call PostEditChange later)
 		TMap<UObject*, int32> CurNumReferencesMap;
-		TMultiMap<UObject*, FProperty*> CurReferencingPropertiesMMap;
+		TMultiMap<UObject*, UProperty*> CurReferencingPropertiesMMap;
 		if (FindRefsArchive.GetReferenceCounts(CurNumReferencesMap, CurReferencingPropertiesMMap) > 0)
 		{
-			TArray<FProperty*> CurReferencedProperties;
+			TArray<UProperty*> CurReferencedProperties;
 			CurReferencingPropertiesMMap.GenerateValueArray(CurReferencedProperties);
 			ReferencingPropertiesMap.Add(CurObject, CurReferencedProperties);
-			for (TArray<FProperty*>::TConstIterator RefPropIter(CurReferencedProperties); RefPropIter; ++RefPropIter)
+			for (TArray<UProperty*>::TConstIterator RefPropIter(CurReferencedProperties); RefPropIter; ++RefPropIter)
 			{
 				CurObject->PreEditChange(*RefPropIter);
 			}
@@ -166,16 +165,16 @@ void FAutomationEditorCommonUtils::NullReferencesToObject(UObject* InObject)
 	// Iterate over the map of referencing objects/changed properties, forcefully replacing the references and then
 	// alerting the referencing objects the change has completed via PostEditChange
 	int32 NumObjsReplaced = 0;
-	for (TMap< UObject*, TArray<FProperty*> >::TConstIterator MapIter(ReferencingPropertiesMap); MapIter; ++MapIter)
+	for (TMap< UObject*, TArray<UProperty*> >::TConstIterator MapIter(ReferencingPropertiesMap); MapIter; ++MapIter)
 	{
 		++NumObjsReplaced;
 
 		UObject* CurReplaceObj = MapIter.Key();
-		const TArray<FProperty*>& RefPropArray = MapIter.Value();
+		const TArray<UProperty*>& RefPropArray = MapIter.Value();
 
 		FArchiveReplaceObjectRef<UObject> ReplaceAr(CurReplaceObj, ReplacementMap, false, true, false);
 
-		for (TArray<FProperty*>::TConstIterator RefPropIter(RefPropArray); RefPropIter; ++RefPropIter)
+		for (TArray<UProperty*>::TConstIterator RefPropIter(RefPropArray); RefPropIter; ++RefPropIter)
 		{
 			FPropertyChangedEvent PropertyEvent(*RefPropIter);
 			CurReplaceObj->PostEditChangeProperty(PropertyEvent);
@@ -225,7 +224,7 @@ UClass* FAutomationEditorCommonUtils::GetFactoryClassForType(const FString& Asse
 * Applies settings to an object by finding UProperties by name and calling ImportText
 *
 * @param InObject - The object to search for matching properties
-* @param PropertyChain - The list FProperty names recursively to search through
+* @param PropertyChain - The list UProperty names recursively to search through
 * @param Value - The value to import on the found property
 */
 void FAutomationEditorCommonUtils::ApplyCustomFactorySetting(UObject* InObject, TArray<FString>& PropertyChain, const FString& Value)
@@ -233,7 +232,7 @@ void FAutomationEditorCommonUtils::ApplyCustomFactorySetting(UObject* InObject, 
 	const FString PropertyName = PropertyChain[0];
 	PropertyChain.RemoveAt(0);
 
-	FProperty* TargetProperty = FindFProperty<FProperty>(InObject->GetClass(), *PropertyName);
+	UProperty* TargetProperty = FindField<UProperty>(InObject->GetClass(), *PropertyName);
 	if (TargetProperty)
 	{
 		if (PropertyChain.Num() == 0)
@@ -242,8 +241,8 @@ void FAutomationEditorCommonUtils::ApplyCustomFactorySetting(UObject* InObject, 
 		}
 		else
 		{
-			FStructProperty* StructProperty = CastField<FStructProperty>(TargetProperty);
-			FObjectProperty* ObjectProperty = CastField<FObjectProperty>(TargetProperty);
+			UStructProperty* StructProperty = Cast<UStructProperty>(TargetProperty);
+			UObjectProperty* ObjectProperty = Cast<UObjectProperty>(TargetProperty);
 
 			UObject* SubObject = NULL;
 			bool bValidPropertyType = true;
@@ -633,12 +632,12 @@ void FAutomationEditorCommonUtils::LoadMap(const FString& MapName)
 	FEditorFileUtils::LoadMap(MapName, bLoadAsTemplate, bShowProgress);
 }
 
-void FAutomationEditorCommonUtils::RunPIE(float PIEDuration)
+void FAutomationEditorCommonUtils::RunPIE()
 {
 	bool bInSimulateInEditor = true;
 	//once in the editor
 	ADD_LATENT_AUTOMATION_COMMAND(FStartPIECommand(true));
-	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(PIEDuration));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(3.0f));
 	ADD_LATENT_AUTOMATION_COMMAND(FEndPlayMapCommand());
 
 	//wait between tests
@@ -646,7 +645,7 @@ void FAutomationEditorCommonUtils::RunPIE(float PIEDuration)
 
 	//once not in the editor
 	ADD_LATENT_AUTOMATION_COMMAND(FStartPIECommand(false));
-	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(PIEDuration));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(3.0f));
 	ADD_LATENT_AUTOMATION_COMMAND(FEndPlayMapCommand());
 }
 
@@ -774,15 +773,9 @@ bool FCloseAllAssetEditorsCommand::Update()
 bool FStartPIECommand::Update()
 {
 	FLevelEditorModule& LevelEditorModule = FModuleManager::Get().GetModuleChecked<FLevelEditorModule>(TEXT("LevelEditor"));
+	TSharedPtr<class IAssetViewport> ActiveLevelViewport = LevelEditorModule.GetFirstActiveViewport();
 
-	FRequestPlaySessionParams Params;
-	Params.DestinationSlateViewport = LevelEditorModule.GetFirstActiveViewport();
-	if (bSimulateInEditor)
-	{
-		Params.WorldType = EPlaySessionWorldType::SimulateInEditor;
-	}
-
-	GUnrealEd->RequestPlaySession(Params);
+	GUnrealEd->RequestPlaySession(false, ActiveLevelViewport, bSimulateInEditor, NULL, NULL, -1, false);
 	return true;
 }
 
@@ -842,6 +835,7 @@ bool FWaitForShadersToFinishCompiling::Update()
 */
 bool FChangeViewportToFirstAvailableBookmarkCommand::Update()
 {
+	FEditorModeTools EditorModeTools;
 	uint32 ViewportIndex = 0;
 
 	UE_LOG(LogEditorAutomationTests, Log, TEXT("Attempting to change the editor viewports view to the first set bookmark."));
@@ -849,13 +843,13 @@ bool FChangeViewportToFirstAvailableBookmarkCommand::Update()
 	//Move the perspective viewport view to show the test.
 	for (FLevelEditorViewportClient* ViewportClient : GEditor->GetLevelViewportClients())
 	{
-		const uint32 NumberOfBookmarks = IBookmarkTypeTools::Get().GetMaxNumberOfBookmarks(ViewportClient);
+		const uint32 NumberOfBookmarks = EditorModeTools.GetMaxNumberOfBookmarks(ViewportClient);
 		for ( ViewportIndex = 0; ViewportIndex <= NumberOfBookmarks; ViewportIndex++ )
 		{
-			if (IBookmarkTypeTools::Get().CheckBookmark(ViewportIndex, ViewportClient) )
+			if ( EditorModeTools.CheckBookmark(ViewportIndex, ViewportClient) )
 			{
 				UE_LOG(LogEditorAutomationTests, VeryVerbose, TEXT("Changing a viewport view to the set bookmark %i"), ViewportIndex);
-				IBookmarkTypeTools::Get().JumpToBookmark(ViewportIndex, TSharedPtr<struct FBookmarkBaseJumpToSettings>(), ViewportClient);
+				EditorModeTools.JumpToBookmark(ViewportIndex, TSharedPtr<struct FBookmarkBaseJumpToSettings>(), ViewportClient);
 				break;
 			}
 		}
@@ -939,18 +933,7 @@ bool FSaveLevelCommand::Update()
 
 bool FLaunchOnCommand::Update()
 {
-	FRequestPlaySessionParams::FLauncherDeviceInfo LaunchedDeviceInfo;
-	LaunchedDeviceInfo.DeviceId = InLauncherDeviceID;
-	LaunchedDeviceInfo.DeviceName = InLauncherDeviceID.Right(InLauncherDeviceID.Find(TEXT("@")));
-
-	FRequestPlaySessionParams Params;
-	Params.LauncherTargetDevice = LaunchedDeviceInfo;
-
-	GUnrealEd->RequestPlaySession(Params);
-
-	// Immediately start our requested play session
-	GUnrealEd->StartQueuedPlaySessionRequest();
-
+	GUnrealEd->AutomationPlayUsingLauncher(InLauncherDeviceID);
 	return true;
 }
 

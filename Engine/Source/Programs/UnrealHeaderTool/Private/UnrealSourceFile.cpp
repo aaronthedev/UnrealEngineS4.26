@@ -1,67 +1,57 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UnrealSourceFile.h"
 #include "UnrealHeaderTool.h"
 #include "Misc/PackageName.h"
 #include "HeaderParser.h"
 
-void FUnrealSourceFile::AddDefinedClass(UClass* Class, FSimplifiedParsingClassInfo&& ParsingInfo)
+void FUnrealSourceFile::AddDefinedClass(UClass* Class, FSimplifiedParsingClassInfo ParsingInfo)
 {
 	DefinedClasses.Add(Class, MoveTemp(ParsingInfo));
 }
 
-const FString& FUnrealSourceFile::GetFileId() const
+FString FUnrealSourceFile::GetFileId() const
 {
-	if (FileId.Len() == 0)
+	FString StdFilename = Filename;
+
+	FPaths::MakeStandardFilename(StdFilename);
+
+	bool RelativePath = FPaths::IsRelative(StdFilename);
+
+	if (!RelativePath)
 	{
-		FString StdFilename = Filename;
-
-		FPaths::MakeStandardFilename(StdFilename);
-
-		bool bRelativePath = FPaths::IsRelative(StdFilename);
-
-		if (!bRelativePath)
-		{
-			// If path is still absolute that means MakeStandardFilename has failed
-			// In this case make it relative to the current project. 
-			bRelativePath = FPaths::MakePathRelativeTo(StdFilename, *FPaths::GetPath(FPaths::GetProjectFilePath()));
-		}
-
-		// If the path has passed either MakeStandardFilename or MakePathRelativeTo it should be using internal path seperators
-		if (bRelativePath)
-		{
-			// Remove any preceding parent directory paths
-			while (StdFilename.RemoveFromStart(TEXT("../")));
-		}
-
-		FStringOutputDevice Out;
-
-		for (TCHAR Char : StdFilename)
-		{
-			if (FChar::IsAlnum(Char))
-			{
-				Out.AppendChar(Char);
-			}
-			else
-			{
-				Out.AppendChar('_');
-			}
-		}
-
-		FileId = MoveTemp(Out);
+		// If path is still absolute that means MakeStandardFilename has failed
+		// In this case make it relative to the current project. 
+		RelativePath = FPaths::MakePathRelativeTo(StdFilename, *FPaths::GetPath(FPaths::GetProjectFilePath()));
 	}
 
-	return FileId;
+	// If the path has passed either MakeStandardFilename or MakePathRelativeTo it should be using internal path seperators
+	if (RelativePath)
+	{
+		// Remove any preceding parent directory paths
+		while (StdFilename.RemoveFromStart(TEXT("../")));
+	}
+
+	FStringOutputDevice Out;
+
+	for (auto Char : StdFilename)
+	{
+		if (FChar::IsAlnum(Char))
+		{
+			Out.AppendChar(Char);
+		}
+		else
+		{
+			Out.AppendChar('_');
+		}
+	}
+
+	return MoveTemp(Out);
 }
 
-const FString& FUnrealSourceFile::GetStrippedFilename() const
+FString FUnrealSourceFile::GetStrippedFilename() const
 {
-	if (StrippedFilename.Len() == 0)
-	{
-		StrippedFilename = FPaths::GetBaseFilename(Filename);
-	}
-
-	return StrippedFilename;
+	return FPaths::GetBaseFilename(Filename);
 }
 
 FString FUnrealSourceFile::GetGeneratedMacroName(FClassMetaData* ClassData, const TCHAR* Suffix) const
@@ -84,7 +74,7 @@ FString FUnrealSourceFile::GetGeneratedBodyMacroName(int32 LineNumber, bool bLeg
 	return GetGeneratedMacroName(LineNumber, *FString::Printf(TEXT("%s%s"), TEXT("_GENERATED_BODY"), bLegacy ? TEXT("_LEGACY") : TEXT("")));
 }
 
-void FUnrealSourceFile::SetGeneratedFilename(FString&& InGeneratedFilename)
+void FUnrealSourceFile::SetGeneratedFilename(FString InGeneratedFilename)
 {
 	GeneratedFilename = MoveTemp(InGeneratedFilename);
 }
@@ -94,12 +84,12 @@ void FUnrealSourceFile::SetHasChanged(bool bInHasChanged)
 	bHasChanged = bInHasChanged;
 }
 
-void FUnrealSourceFile::SetModuleRelativePath(FString&& InModuleRelativePath)
+void FUnrealSourceFile::SetModuleRelativePath(FString InModuleRelativePath)
 {
 	ModuleRelativePath = MoveTemp(InModuleRelativePath);
 }
 
-void FUnrealSourceFile::SetIncludePath(FString&& InIncludePath)
+void FUnrealSourceFile::SetIncludePath(FString InIncludePath)
 {
 	IncludePath = MoveTemp(InIncludePath);
 }
@@ -157,8 +147,12 @@ bool FUnrealSourceFile::HasChanged() const
 	return bHasChanged;
 }
 
+FString FUnrealSourceFile::GetAPI() const
+{
+	return FPackageName::GetShortName(Package).ToUpper();
+}
+
 FString FUnrealSourceFile::GetFileDefineName() const
 {
-	const FString API = FPackageName::GetShortName(Package).ToUpper();
-	return FString::Printf(TEXT("%s_%s_generated_h"), *API, *GetStrippedFilename());
+	return FString::Printf(TEXT("%s_%s_generated_h"), *GetAPI(), *GetStrippedFilename());
 }

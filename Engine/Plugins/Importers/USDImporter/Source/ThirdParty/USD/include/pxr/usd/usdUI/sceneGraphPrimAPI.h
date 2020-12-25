@@ -132,7 +132,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDUI_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -144,7 +144,7 @@ private:
 
     // override SchemaBase virtuals.
     USDUI_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -154,12 +154,10 @@ public:
     /// provide an optional display name, for readability.
     /// 
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform token ui:displayName` |
-    /// | C++ Type | TfToken |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+    /// \n  C++ Type: TfToken
+    /// \n  Usd Type: SdfValueTypeNames->Token
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: No Fallback
     USDUI_API
     UsdAttribute GetDisplayNameAttr() const;
 
@@ -181,12 +179,10 @@ public:
     /// flat while we want to display it in organized groups.
     /// 
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform token ui:displayGroup` |
-    /// | C++ Type | TfToken |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+    /// \n  C++ Type: TfToken
+    /// \n  Usd Type: SdfValueTypeNames->Token
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: No Fallback
     USDUI_API
     UsdAttribute GetDisplayGroupAttr() const;
 

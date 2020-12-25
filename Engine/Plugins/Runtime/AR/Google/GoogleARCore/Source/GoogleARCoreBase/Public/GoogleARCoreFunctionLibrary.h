@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -29,8 +29,7 @@ public:
 	 * @param LatentInfo			Unreal internal type required for all latent actions.
 	 * @param OutAvailability		The availability result as a EGoogleARCoreAvailability.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use CheckARServiceAvailability from UARDependencyHandler.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|Availability", meta = (Latent, LatentInfo = "LatentInfo", WorldContext = "WorldContextObject", Keywords = "googlear arcore availability", DeprecatedFunction, DeprecationMessage="This function is deprecated, use CheckARServiceAvailability from UARDependencyHandler."))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|Availability", meta = (Latent, LatentInfo = "LatentInfo", WorldContext = "WorldContextObject", Keywords = "googlear arcore availability"))
 	static void CheckARCoreAvailability(UObject* WorldContextObject, struct FLatentActionInfo LatentInfo, EGoogleARCoreAvailability& OutAvailability);
 
 	/**
@@ -41,8 +40,7 @@ public:
 	 * @param LatentInfo			Unreal internal type required for all latent actions.
 	 * @param OutInstallResult		The install request result as a EGoogleARCoreInstallRequestResult.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use InstallARService from UARDependencyHandler.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|Availability", meta = (Latent, LatentInfo = "LatentInfo", WorldContext = "WorldContextObject", Keywords = "googlear arcore availability", DeprecatedFunction, DeprecationMessage="This function is deprecated, use InstallARService from UARDependencyHandler."))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|Availability", meta = (Latent, LatentInfo = "LatentInfo", WorldContext = "WorldContextObject", Keywords = "googlear arcore availability"))
 	static void InstallARCoreService(UObject* WorldContextObject, struct FLatentActionInfo LatentInfo, EGoogleARCoreInstallRequestResult& OutInstallResult);
 
 	/**
@@ -51,7 +49,6 @@ public:
 	 *
 	 * @return	The availability result as a EGoogleARCoreAvailability.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use CheckARServiceAvailability from UARDependencyHandler.")
 	static EGoogleARCoreAvailability CheckARCoreAvailableStatus();
 
 	/**
@@ -60,7 +57,6 @@ public:
 	 *
 	 * @return EGoogleARCoreInstallStatus::Requrested if it started a install request.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use InstallARService from UARDependencyHandler.")
 	static EGoogleARCoreInstallStatus RequestInstallARCoreAPK();
 
 	/**
@@ -69,14 +65,12 @@ public:
 	 *
 	 * @return The install request result as a EGoogleARCoreInstallRequestResult.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use CheckARServiceAvailability from UARDependencyHandler.")
 	static EGoogleARCoreInstallRequestResult GetARCoreAPKInstallResult();
 
 	/**
 	 * Get the UGoogleARCoreEventManager to bind BP events or c++ delegate in GoogleARCore plugins.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use GetSupportedVideoFormats.")
-	UFUNCTION(BlueprintPure, Category = "GoogleARCore|Session", meta = (Keywords = "googlear arcore event manager", DeprecatedFunction, DeprecationMessage="This function is deprecated, use GetSupportedVideoFormats."))
+	UFUNCTION(BlueprintPure, Category = "GoogleARCore|Session", meta = (Keywords = "googlear arcore event manager"))
 	static UGoogleARCoreEventManager* GetARCoreEventManager();
 
 	/**
@@ -88,8 +82,7 @@ public:
 	 * @param LatentInfo			Unreal internal type required for all latent actions.
 	 * @param Configuration			The ARCoreSession configuration to start the session.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use StartARSession.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|Session", meta = (Latent, LatentInfo = "LatentInfo", WorldContext = "WorldContextObject", Keywords = "googlear arcore session start config", DeprecatedFunction, DeprecationMessage="This function is deprecated, use StartARSession."))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|Session", meta = (Latent, LatentInfo = "LatentInfo", WorldContext = "WorldContextObject", Keywords = "googlear arcore session start config"))
 	static void StartARCoreSession(UObject* WorldContextObject, struct FLatentActionInfo LatentInfo, UGoogleARCoreSessionConfig* Configuration);
 
 	/**
@@ -98,8 +91,7 @@ public:
 	 *
 	 * This function should be called when UGoogleARCoreEventManager::OnCameraConfig delegate got triggered.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use UARSessionConfig::SetDesiredVideoFormat.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|Session", meta = (Keywords = "googlear arcore camera config", DeprecatedFunction, DeprecationMessage="This function is deprecated, use UARSessionConfig::SetDesiredVideoFormat."))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|Session", meta = (Keywords = "googlear arcore camera config"))
 	static bool SetARCoreCameraConfig(FGoogleARCoreCameraConfig TargetCameraConfig);
 
 	/**
@@ -109,8 +101,7 @@ public:
 	 * @return  True if there is a valid ARCore session and the current camera config is returned.
 	 *          False if ARCore session hasn't been started or it is already stopped.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use GetSupportedVideoFormats.")
-	UFUNCTION(BlueprintPure, Category = "GoogleARCore|Session", meta = (Keywords = "googlear arcore camera config", DeprecatedFunction, DeprecationMessage="This function is deprecated, use GetSupportedVideoFormats."))
+	UFUNCTION(BlueprintPure, Category = "GoogleARCore|Session", meta = (Keywords = "googlear arcore camera config"))
 	static bool GetARCoreCameraConfig(FGoogleARCoreCameraConfig& OutCurrentCameraConfig);
 
 	//-----------------PassthroughCamera---------------------
@@ -119,8 +110,7 @@ public:
 	 *
 	 * @return	True if the passthrough camera rendering is enabled.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use UARSessionConfig::ShouldRenderCameraOverlay.")
-	UFUNCTION(BlueprintPure, Category = "GoogleARCore|PassthroughCamera", meta = (Keywords = "googlear arcore passthrough camera", DeprecatedFunction, DeprecationMessage="This function is deprecated, use UARSessionConfig::ShouldRenderCameraOverlay."))
+	UFUNCTION(BlueprintPure, Category = "GoogleARCore|PassthroughCamera", meta = (Keywords = "googlear arcore passthrough camera"))
 	static bool IsPassthroughCameraRenderingEnabled();
 
 	/**
@@ -128,8 +118,7 @@ public:
 	 * Note that when passthrough camera rendering is enabled, the camera FOV will be forced
 	 * to match FOV of the physical camera on the device.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use UARSessionConfig::bEnableAutomaticCameraOverlay.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|PassthroughCamera", meta = (Keywords = "googlear arcore passthrough camera", DeprecatedFunction, DeprecationMessage="This function is deprecated, use UARSessionConfig::bEnableAutomaticCameraOverlay."))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|PassthroughCamera", meta = (Keywords = "googlear arcore passthrough camera"))
 	static void SetPassthroughCameraRenderingEnabled(bool bEnable);
 
 	/**
@@ -150,8 +139,7 @@ public:
 	 *
 	 * @param OutPlaneList		An array that contains all the valid planes detected by ARCore.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated. Use \"GetAllGeometriesByClass\" instead.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|TrackablePlane", meta = (DeprecatedFunction, DeprecationMessage = "GetAllPlanes is deprecated. Use GetAllGeometriesByClass.", Keywords = "googlear arcore all plane"))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|TrackablePlane", meta = (Keywords = "googlear arcore all plane"))
 	static void GetAllPlanes(TArray<UARPlaneGeometry*>& OutPlaneList);
 
 	/**
@@ -160,8 +148,7 @@ public:
 	 *
 	 * @param OutTrackablePointList		An array that contains all the valid trackable points detected by ARCore.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated. Use \"GetAllGeometriesByClass\" instead.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|TrackablePoint", meta = (DeprecatedFunction, DeprecationMessage = "GetAllTrackablePoints is deprecated. Use GetAllGeometriesByClass.", Keywords = "googlear arcore pose transform"))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|TrackablePoint", meta = (Keywords = "googlear arcore pose transform"))
 	static void GetAllTrackablePoints(TArray<UARTrackedPoint*>& OutTrackablePointList);
 
 	/**
@@ -170,8 +157,7 @@ public:
 	 *
 	 * @param OutAugmentedImageList		An array that contains all the valid augmented images detected by ARCore.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated. Use \"GetAllGeometriesByClass\" instead.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|AugmentedImage", meta = (DeprecatedFunction, DeprecationMessage = "GetAllAugmentedImages is deprecated. Use GetAllGeometriesByClass.", Keywords = "googlear arcore all augmented image"))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|AugmentedImage", meta = (Keywords = "googlear arcore all augmented image"))
 	static void GetAllAugmentedImages(TArray<UGoogleARCoreAugmentedImage*>& OutAugmentedImageList);
 
 	/**
@@ -180,8 +166,7 @@ public:
 	 *
 	 * @param OutAugmentedFaceList		An array that contains all the valid augmented faces detected by ARCore.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use GetAllGeometriesByClass.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|AugmentedFace", meta = (Keywords = "googlear arcore all augmented face", DeprecatedFunction, DeprecationMessage = "This function is deprecated, use GetAllGeometriesByClass."))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|AugmentedFace", meta = (Keywords = "googlear arcore all augmented face"))
 	static void GetAllAugmentedFaces(TArray<UGoogleARCoreAugmentedFace*>& OutAugmentedFaceList);
 
 	/** Template function to get all trackables from a given type. */
@@ -216,8 +201,7 @@ public:
 	 *
 	 * @return	A EARSessionStatus enum that describes the session status.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated. Use \"GetTrackingQuality\" instead.")
-	UFUNCTION(BlueprintPure, Category = "GoogleARCore|MotionTracking", meta = (DeprecatedFunction, DeprecationMessage = "GetTrackingState is deprecated. Use GetTrackingQuality.", Keywords = "googlear arcore session"))
+	UFUNCTION(BlueprintPure, Category = "GoogleARCore|MotionTracking", meta = (Keywords = "googlear arcore session"))
 	static EGoogleARCoreTrackingState GetTrackingState();
 
 	/**
@@ -228,8 +212,7 @@ public:
 	 *
 	 * @return	A EGoogleARCoreTrackingFailureReason enum that describes the tracking failure reason.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated. Use \"GetTrackingQualityReason\" instead.")
-	UFUNCTION(BlueprintPure, Category = "GoogleARCore|MotionTracking", meta = (DeprecatedFunction, DeprecationMessage = "GetTrackingFailureReason is deprecated. Use GetTrackingQualityReason.", Keywords = "googlear arcore session"))
+	UFUNCTION(BlueprintPure, Category = "GoogleARCore|MotionTracking", meta = (Keywords = "googlear arcore session"))
 	static EGoogleARCoreTrackingFailureReason GetTrackingFailureReason();
 
 	/**
@@ -241,8 +224,7 @@ public:
 	 * @param OutPose		The latest device pose.
 	 * @return				True if the pose is updated successfully for this frame.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use GetOrientationAndPosition.")
-	UFUNCTION(BlueprintPure, Category = "GoogleARCore|MotionTracking", meta = (Keywords = "googlear arcore pose transform", DeprecatedFunction, DeprecationMessage = "This function is deprecated, use GetOrientationAndPosition."))
+	UFUNCTION(BlueprintPure, Category = "GoogleARCore|MotionTracking", meta = (Keywords = "googlear arcore pose transform"))
 	static void GetPose(FTransform& OutPose);
 
 	/**
@@ -256,8 +238,7 @@ public:
 	 * @param OutHitResults			The list of hit results sorted by distance.
 	 * @return						True if there is a hit detected.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use LineTraceTrackedObjects.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|LineTrace", meta = (WorldContext = "WorldContextObject", Keywords = "googlear arcore raycast hit", DeprecatedFunction, DeprecationMessage = "This function is deprecated, use LineTraceTrackedObjects."))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|LineTrace", meta = (WorldContext = "WorldContextObject", Keywords = "googlear arcore raycast hit"))
 	static bool ARCoreLineTrace(UObject* WorldContextObject, const FVector2D& ScreenPosition, TSet<EGoogleARCoreLineTraceChannel> TraceChannels, TArray<FARTraceResult>& OutHitResults);
 
 	/**
@@ -271,8 +252,7 @@ public:
 	* @param OutHitResults			The list of hit results sorted by distance.
 	* @return						True if there is a hit detected.
 	*/
-	UE_DEPRECATED(4.26, "This function is deprecated, use LineTraceTrackedObjects3D.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|LineTrace", meta = (WorldContext = "WorldContextObject", Keywords = "googlear arcore raycast hit", DeprecatedFunction, DeprecationMessage = "This function is deprecated, use LineTraceTrackedObjects3D."))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|LineTrace", meta = (WorldContext = "WorldContextObject", Keywords = "googlear arcore raycast hit"))
 	static bool ARCoreLineTraceRay(UObject* WorldContextObject, const FVector& Start, const FVector& End, TSet<EGoogleARCoreLineTraceChannel> TraceChannels, TArray<FARTraceResult>& OutHitResults);
 
 	/**
@@ -280,8 +260,7 @@ public:
 	 *
 	 * @param OutAnchorList		An array that contains the updated UARPin.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use GetAllPins.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|ARAnchor", meta = (Keywords = "googlear arcore Anchor", DeprecatedFunction, DeprecationMessage="This function is deprecated, use GetAllPins."))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|ARAnchor", meta = (Keywords = "googlear arcore Anchor"))
 	static void GetUpdatedARPins(TArray<UARPin*>& OutAnchorList);
 
 	/**
@@ -289,8 +268,7 @@ public:
 	 *
 	 * @param OutPlaneList	An array that contains the updated UARPlaneGeometry.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use GetAllGeometriesByClass.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|TrackablePlane", meta = (Keywords = "googlear arcore pose transform", DeprecatedFunction, DeprecationMessage="This function is deprecated, use GetAllGeometriesByClass."))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|TrackablePlane", meta = (Keywords = "googlear arcore pose transform"))
 	static void GetUpdatedPlanes(TArray<UARPlaneGeometry*>& OutPlaneList);
 
 	/**
@@ -298,8 +276,7 @@ public:
 	 *
 	 * @param OutTrackablePointList	An array that contains the updated UARTrackedPoint.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use GetAllGeometriesByClass.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|TrackablePoint", meta = (Keywords = "googlear arcore pose transform", DeprecatedFunction, DeprecationMessage="This function is deprecated, use GetAllGeometriesByClass."))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|TrackablePoint", meta = (Keywords = "googlear arcore pose transform"))
 	static void GetUpdatedTrackablePoints(TArray<UARTrackedPoint*>& OutTrackablePointList);
 
 	/**
@@ -307,8 +284,7 @@ public:
 	 *
 	 * @param OutImageList	An array that contains the updated UGoogleARCoreAugmentedImage.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use GetAllGeometriesByClass.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|AugmentedImage", meta = (Keywords = "googlear arcore augmented image updated", DeprecatedFunction, DeprecationMessage="This function is deprecated, use GetAllGeometriesByClass."))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|AugmentedImage", meta = (Keywords = "googlear arcore augmented image updated"))
 	static void GetUpdatedAugmentedImages(TArray<UGoogleARCoreAugmentedImage*>& OutImageList);
 
 	/**
@@ -316,8 +292,7 @@ public:
 	*
 	* @param OutFaceList	An array that contains the updated UGoogleARCoreAugmentedFace.
 	*/
-	UE_DEPRECATED(4.26, "This function is deprecated, use GetAllGeometriesByClass.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|AugmentedFace", meta = (Keywords = "googlear arcore augmented face updated", DeprecatedFunction, DeprecationMessage="This function is deprecated, use GetAllGeometriesByClass."))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|AugmentedFace", meta = (Keywords = "googlear arcore augmented face updated"))
 	static void GetUpdatedAugmentedFaces(TArray<UGoogleARCoreAugmentedFace*>& OutFaceList);
 
 	/** Template function to get the updated trackables in this frame a given trackable type. */
@@ -328,8 +303,7 @@ public:
 	 *
 	 * @param OutLightEstimate		The struct that describes the latest light estimation.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use GetCurrentLightEstimate.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|LightEstimation", meta = (Keywords = "googlear arcore light ambient", DeprecatedFunction, DeprecationMessage="This function is deprecated, use GetCurrentLightEstimate."))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|LightEstimation", meta = (Keywords = "googlear arcore light ambient"))
 	static void GetLightEstimation(FGoogleARCoreLightEstimate& OutLightEstimate);
 
 	/**
@@ -340,8 +314,7 @@ public:
 	 * @param OutLatestPointCloud		A pointer point to the latest point cloud.
 	 * @return  An EGoogleARCoreFunctionStatus. Possible value: Success, SessionPaused, ResourceExhausted.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use GetPointCloud.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|PointCloud", meta = (Keywords = "googlear arcore pointcloud", DeprecatedFunction, DeprecationMessage="This function is deprecated, use GetPointCloud."))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|PointCloud", meta = (Keywords = "googlear arcore pointcloud"))
 	static EGoogleARCoreFunctionStatus GetPointCloud(UGoogleARCorePointCloud*& OutLatestPointCloud);
 
 	/**
@@ -351,8 +324,7 @@ public:
 	 * @param OutLatestPointCloud		A pointer point to the latest point cloud.
 	 * @return  An EGoogleARCoreFunctionStatus. Possible value: Success, SessionPaused, ResourceExhausted.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use GetPointCloud.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|PointCloud", meta = (Keywords = "googlear arcore pointcloud", DeprecatedFunction, DeprecationMessage="This function is deprecated, use GetPointCloud."))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|PointCloud", meta = (Keywords = "googlear arcore pointcloud"))
 	static EGoogleARCoreFunctionStatus AcquirePointCloud(UGoogleARCorePointCloud*& OutLatestPointCloud);
 
 #if PLATFORM_ANDROID
@@ -373,8 +345,7 @@ public:
 	 *
 	 * @return A pointer to the UTexture that will be used to render the passthrough camera background.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated. Use \"GoogleARCore Passthrough Camera\" expression in your material instead.")
-	UFUNCTION(BlueprintPure, Category = "GoogleARCore|PassthroughCamera", meta = (DeprecatedFunction, DeprecationMessage = "GetCameraTexture is deprecated. Currently, use GoogleARCore Passthrough Camera expression.", Keywords = "googlear arcore passthroughcamera"))
+	UFUNCTION(BlueprintPure, Category = "GoogleARCore|PassthroughCamera", meta = (Keywords = "googlear arcore passthroughcamera"))
 	static UTexture* GetCameraTexture();
 
 	/**
@@ -383,8 +354,7 @@ public:
 	 * @param OutLatestCameraImage    A place to store the pointer to a new UGoogleARCoreCameraImage instance.
 	 * @return An EGoogleARCoreFunctionStatus. Possible value: Success, ResourceExhausted, NotAvailable.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use GetARTexture.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|PassthroughCamera", meta = (Keywords = "googlear arcore passthroughcamera", DeprecatedFunction, DeprecationMessage = "This function is deprecated, use GetARTexture."))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|PassthroughCamera", meta = (Keywords = "googlear arcore passthroughcamera"))
 	static EGoogleARCoreFunctionStatus AcquireCameraImage(UGoogleARCoreCameraImage *&OutLatestCameraImage);
 
 	/**
@@ -400,8 +370,7 @@ public:
 	 * @param OutputCoordinatesType		The coordinate system to transform to.
 	 * @param OutputCoordinates			The output 2d coordinates.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use the standard materials from ARUtilities plugin for passthrough rendering.")
-	UFUNCTION(BlueprintPure, Category = "GoogleARCore|PassthroughCamera", meta = (Keywords = "googlear arcore passthrough camera uv", DeprecatedFunction, DeprecationMessage = "This function is deprecated, use the standard materials from ARUtilities plugin for passthrough rendering."))
+	UFUNCTION(BlueprintPure, Category = "GoogleARCore|PassthroughCamera", meta = (Keywords = "googlear arcore passthrough camera uv"))
 	static void TransformARCoordinates2D(EGoogleARCoreCoordinates2DType InputCoordinatesType, const TArray<FVector2D>& InputCoordinates,
 		EGoogleARCoreCoordinates2DType OutputCoordinatesType, TArray<FVector2D>& OutputCoordinates);
 
@@ -410,8 +379,7 @@ public:
 	 *
 	 * @param OutCameraIntrinsics  The output intrinsics object.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use GetCameraIntrinsics.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|CameraIntrinsics", meta = (Keywords = "googlear arcore camera", DeprecatedFunction, DeprecationMessage = "This function is deprecated, use GetCameraIntrinsics."))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|CameraIntrinsics", meta = (Keywords = "googlear arcore camera"))
 	static EGoogleARCoreFunctionStatus GetCameraImageIntrinsics(UGoogleARCoreCameraIntrinsics *&OutCameraIntrinsics);
 
 	/**
@@ -419,7 +387,9 @@ public:
 	 *
 	 * @param OutCameraIntrinsics  The output intrinsics object.
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated, use GetCameraIntrinsics.")
-	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|CameraIntrinsics", meta = (Keywords = "googlear arcore camera", DeprecatedFunction, DeprecationMessage = "This function is deprecated, use GetCameraIntrinsics."))
+	UFUNCTION(BlueprintCallable, Category = "GoogleARCore|CameraIntrinsics", meta = (Keywords = "googlear arcore camera"))
 	static EGoogleARCoreFunctionStatus GetCameraTextureIntrinsics(UGoogleARCoreCameraIntrinsics *&OutCameraIntrinsics);
+
+
+
 };

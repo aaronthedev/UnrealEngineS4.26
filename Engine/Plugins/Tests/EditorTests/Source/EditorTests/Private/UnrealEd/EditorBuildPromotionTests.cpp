@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "HAL/PlatformFilemanager.h"
@@ -46,6 +46,7 @@
 #include "Factories/BlueprintFactory.h"
 #include "Factories/FbxFactory.h"
 #include "Factories/SoundFactory.h"
+#include "Factories/SoundSurroundFactory.h"
 #include "Factories/TextureFactory.h"
 #include "Factories/FbxImportUI.h"
 #include "Settings/LevelEditorMiscSettings.h"
@@ -376,7 +377,7 @@ namespace EditorBuildPromotionTestUtils
 	*/
 	static FString GetPropertyByName(UObject* TargetObject, const FString& InVariableName)
 	{
-		FProperty* FoundProperty = FindFProperty<FProperty>(TargetObject->GetClass(), *InVariableName);
+		UProperty* FoundProperty = FindField<UProperty>(TargetObject->GetClass(), *InVariableName);
 		if (FoundProperty)
 		{
 			FString ValueString;
@@ -394,15 +395,8 @@ namespace EditorBuildPromotionTestUtils
 	{
 		FLevelEditorModule& LevelEditorModule = FModuleManager::Get().GetModuleChecked<FLevelEditorModule>(TEXT("LevelEditor"));
 		TSharedPtr<class IAssetViewport> ActiveLevelViewport = LevelEditorModule.GetFirstActiveViewport();
-		
-		FRequestPlaySessionParams SessionParams;
-		SessionParams.DestinationSlateViewport = ActiveLevelViewport;
-		if (bSimulateInEditor)
-		{
-			SessionParams.WorldType = EPlaySessionWorldType::SimulateInEditor;
-		}
 
-		GUnrealEd->RequestPlaySession(SessionParams);
+		GUnrealEd->RequestPlaySession(false, ActiveLevelViewport, bSimulateInEditor, NULL, NULL, -1, false);
 	}
 
 	/**
@@ -1288,7 +1282,7 @@ namespace BuildPromotionTestHelper
 			{
 				const FString BaseFileName = FPaths::GetPath(SurroundFilePath) / FPaths::GetBaseFilename(SurroundFilePath).LeftChop(3);
 
-				USoundFactory* FactoryInst = NewObject<USoundFactory>();
+				USoundSurroundFactory* FactoryInst = NewObject<USoundSurroundFactory>();
 				FAutomationEditorCommonUtils::ApplyCustomFactorySettings(FactoryInst, AutomationTestSettings->BuildPromotionTest.ImportWorkflow.SurroundSound.FactorySettings);
 
 				const FString SurroundChannels[] = { TEXT("_fl"), TEXT("_fr"), TEXT("_fc"), TEXT("_lf"), TEXT("_sl"), TEXT("_sr"), TEXT("_bl"), TEXT("_br") };
@@ -1840,7 +1834,7 @@ namespace BuildPromotionTestHelper
 			// Create blueprint asset
 			UBlueprintFactory* Factory = NewObject<UBlueprintFactory>();
 			Factory->ParentClass = AActor::StaticClass();
-			BlueprintPackage = CreatePackage(*PackageName);
+			BlueprintPackage = CreatePackage(NULL, *PackageName);
 			EObjectFlags Flags = RF_Public | RF_Standalone;
 
 			// Check that conflicting asset doesn't already exist
@@ -2387,7 +2381,7 @@ bool FBuildPromotionPIETest::RunTest(const FString& Parameters)
 	}
 
 	WindowScreenshotParameters ScreenshotParams;
-	ScreenshotParams.ScreenshotName = AutomationCommon::GetScreenshotName(TEXT("EditorBuildPromotion/RunMap"));
+	AutomationCommon::GetScreenshotPath(TEXT("EditorBuildPromotion/RunMap"), ScreenshotParams.ScreenshotName);
 	ScreenshotParams.CurrentWindow = AllWindows[0];
 	//Wait for the play world to come up
 	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(1.f));

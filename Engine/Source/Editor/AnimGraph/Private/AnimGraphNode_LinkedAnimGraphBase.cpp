@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimGraphNode_LinkedAnimGraphBase.h"
 #include "Widgets/Text/STextBlock.h"
@@ -22,29 +22,6 @@
 namespace LinkedAnimGraphGraphNodeConstants
 {
 	FLinearColor TitleColor(0.2f, 0.2f, 0.8f);
-}
-
-void UAnimGraphNode_LinkedAnimGraphBase::AllocatePoseLinks()
-{
-	FAnimNode_LinkedAnimGraph& RuntimeNode = *GetLinkedAnimGraphNode();
-
-	RuntimeNode.InputPoses.Empty();
-	RuntimeNode.InputPoseNames.Empty();
-
-	for(UEdGraphPin* Pin : Pins)
-	{
-		if(!Pin->bOrphanedPin)
-		{
-			if (UAnimationGraphSchema::IsPosePin(Pin->PinType))
-			{
-				if(Pin->Direction == EGPD_Input)
-				{
-					RuntimeNode.InputPoses.AddDefaulted();
-					RuntimeNode.InputPoseNames.Add(Pin->GetFName());
-				}
-			}
-		}
-	}
 }
 
 FLinearColor UAnimGraphNode_LinkedAnimGraphBase::GetNodeTitleColor() const
@@ -188,7 +165,7 @@ void UAnimGraphNode_LinkedAnimGraphBase::PostEditChangeProperty(FPropertyChanged
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
 	bool bRequiresNodeReconstruct = false;
-	FProperty* ChangedProperty = PropertyChangedEvent.Property;
+	UProperty* ChangedProperty = PropertyChangedEvent.Property;
 
 	if(ChangedProperty)
 	{
@@ -293,7 +270,7 @@ void UAnimGraphNode_LinkedAnimGraphBase::GenerateExposedPinsDetails(IDetailLayou
 		return;
 	}
 
-	TArray<FProperty*> ExposableProperties;
+	TArray<UProperty*> ExposableProperties;
 	GetExposableProperties(ExposableProperties);
 
 	if(ExposableProperties.Num() > 0)
@@ -331,7 +308,7 @@ void UAnimGraphNode_LinkedAnimGraphBase::GenerateExposedPinsDetails(IDetailLayou
 			]
 		];
 
-		for(FProperty* Property : ExposableProperties)
+		for(UProperty* Property : ExposableProperties)
 		{
 			FDetailWidgetRow& PropertyWidgetRow = CategoryBuilder.AddCustomRow(FText::FromString(Property->GetName()));
 
@@ -377,7 +354,7 @@ void UAnimGraphNode_LinkedAnimGraphBase::GenerateExposedPinsDetails(IDetailLayou
 	}
 }
 
-bool UAnimGraphNode_LinkedAnimGraphBase::IsStructuralProperty(FProperty* InProperty) const
+bool UAnimGraphNode_LinkedAnimGraphBase::IsStructuralProperty(UProperty* InProperty) const
 {
 	return InProperty->GetFName() == GET_MEMBER_NAME_CHECKED(FAnimNode_LinkedAnimGraph, InstanceClass);
 }
@@ -457,7 +434,7 @@ FPoseLinkMappingRecord UAnimGraphNode_LinkedAnimGraphBase::GetLinkIDLocation(con
 		// perform name-based logic for input pose pins
 		if (UAnimGraphNode_Base* LinkedNode = Cast<UAnimGraphNode_Base>(FBlueprintEditorUtils::FindFirstCompilerRelevantNode(SourcePin->LinkedTo[0])))
 		{
-			FArrayProperty* ArrayProperty = FindFieldChecked<FArrayProperty>(NodeType, GET_MEMBER_NAME_CHECKED(FAnimNode_LinkedAnimGraph, InputPoses));
+			UArrayProperty* ArrayProperty = FindFieldChecked<UArrayProperty>(NodeType, GET_MEMBER_NAME_CHECKED(FAnimNode_LinkedAnimGraph, InputPoses));
 			int32 ArrayIndex = INDEX_NONE;
 			if(Node.InputPoseNames.Find(SourcePin->GetFName(), ArrayIndex))
 			{

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -46,17 +46,15 @@ class ENGINE_API UNetworkSettings : public UDeveloperSettings
 	uint32 bEnableMultiplayerWorldOriginRebasing : 1;
 
 	//! Maximum allowable size for replicated dynamic arrays (in number of elements)
-	UE_DEPRECATED(4.26, "This property is no longer used.")
 	UPROPERTY(config, EditAnywhere, Category = replication, meta = (
-		DisplayName = "Max Array Size",
+		ConsoleVariable = "net.MaxRepArraySize", DisplayName = "Max Array Size",
 		ToolTip = "Maximum allowable size for replicated dynamic arrays (in number of elements). Must be between 1 and 65535.",
 		ClampMin = "1", ClampMax = "65535", UIMin = "1", UIMax = "65535"))
 	int32 MaxRepArraySize = DefaultMaxRepArraySize;
 
 	//! Maximum allowable size for replicated dynamic arrays (in bytes)
-	UE_DEPRECATED(4.26, "This property is no longer used.")
 	UPROPERTY(config, EditAnywhere, Category = replication, meta = (
-		DisplayName = "Max Array Memory",
+		ConsoleVariable = "net.MaxRepArrayMemory", DisplayName = "Max Array Memory",
 		ToolTip = "Maximum allowable size for replicated dynamic arrays (in bytes).  Must be between 1 and 65535.",
 		ClampMin = "1", ClampMax = "65535", UIMin = "1", UIMax = "65535"))
 	int32 MaxRepArrayMemory = DefaultMaxRepArrayMemory;

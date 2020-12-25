@@ -1,17 +1,20 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Misc/DisplayClusterObjectRef.h"
+
 #include "Game/IPDisplayClusterGameManager.h"
+
 
 class AActor;
 class ADisplayClusterRootActor;
 class USceneComponent;
 class UDisplayClusterCameraComponent;
+class UDisplayClusterRootComponent;
 class UDisplayClusterSceneComponent;
 class UDisplayClusterScreenComponent;
+
 
 
 /**
@@ -30,16 +33,30 @@ public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	virtual bool Init(EDisplayClusterOperationMode OperationMode) override;
 	virtual void Release() override;
-	virtual bool StartSession(const UDisplayClusterConfigurationData* InConfigData, const FString& InNodeId) override;
+	virtual bool StartSession(const FString& configPath, const FString& nodeId) override;
 	virtual void EndSession() override;
-	virtual bool StartScene(UWorld* World) override;
+	virtual bool StartScene(UWorld* pWorld) override;
 	virtual void EndScene() override;
 
 public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	// IDisplayClusterGameManager
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	virtual ADisplayClusterRootActor*     GetRootActor() const override;
+	virtual ADisplayClusterRootActor*               GetRootActor() const override;
+	virtual UDisplayClusterRootComponent*           GetRootComponent() const override;
+
+	virtual TArray<UDisplayClusterScreenComponent*> GetAllScreens() const override;
+	virtual UDisplayClusterScreenComponent*         GetScreenById(const FString& id) const override;
+	virtual int32                                   GetScreensAmount() const override;
+
+	virtual TArray<UDisplayClusterCameraComponent*> GetAllCameras() const override;
+	virtual UDisplayClusterCameraComponent*         GetCameraById(const FString& id) const override;
+	virtual int32                                   GetCamerasAmount() const override;
+	virtual UDisplayClusterCameraComponent*         GetDefaultCamera() const override;
+	virtual void                                    SetDefaultCamera(const FString& id) override;
+
+	virtual TArray<UDisplayClusterSceneComponent*>  GetAllNodes() const override;
+	virtual UDisplayClusterSceneComponent*          GetNodeById(const FString& id) const override;
 
 	virtual UWorld* GetWorld() const override
 	{ return CurrentWorld; }
@@ -56,9 +73,10 @@ private:
 
 private:
 	// Active DisplayCluster root
-	FDisplayClusterActorRef DisplayClusterRootActorRef;
+	ADisplayClusterRootActor* DisplayClusterRootActor = nullptr;
 
 	EDisplayClusterOperationMode CurrentOperationMode;
+	FString ConfigPath;
 	FString ClusterNodeId;
 	UWorld* CurrentWorld;
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -60,12 +60,5 @@ public class GraphEditor : ModuleRules
 				"StructViewer",
 			}
 		);
-
-		// Circular references that need to be cleaned up
-		CircularlyReferencedDependentModules.AddRange(
-		   new string[] {
-				"Kismet"
-		   }
-	   );
 	}
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,7 +12,6 @@
 #include "AdvancedPreviewScene.h"
 #include "SEditorViewport.h"
 #include "SCommonEditorViewportToolbarBase.h"
-#include "SAssetEditorViewport.h"
 
 class IStaticMeshEditor;
 class SVerticalBox;
@@ -22,11 +21,12 @@ class UStaticMeshComponent;
 /**
  * StaticMesh Editor Preview viewport widget
  */
-class SStaticMeshEditorViewport : public SAssetEditorViewport, public FGCObject, public ICommonEditorViewportToolbarInfoProvider
+class SStaticMeshEditorViewport : public SEditorViewport, public FGCObject, public ICommonEditorViewportToolbarInfoProvider
 {
 public:
 	SLATE_BEGIN_ARGS( SStaticMeshEditorViewport ){}
 		SLATE_ARGUMENT(TWeakPtr<IStaticMeshEditor>, StaticMeshEditor)
+		SLATE_ARGUMENT(UStaticMesh*, ObjectToEdit)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
@@ -75,7 +75,7 @@ public:
 	/** Retrieves the static mesh component. */
 	UStaticMeshComponent* GetStaticMeshComponent() const;
 
-	/**
+	/** 
 	 *	Sets up the static mesh that the Static Mesh editor is viewing.
 	 *
 	 *	@param	InStaticMesh		The static mesh being viewed in the editor.
@@ -129,42 +129,27 @@ protected:
 	virtual TSharedPtr<SWidget> MakeViewportToolbar() override;
 	virtual void PopulateViewportOverlays(TSharedRef<SOverlay> Overlay) override;
 
-public:
+private:
+	/** Determines the visibility of the viewport. */
+	bool IsVisible() const override;
+
+	/** Callback for toggling the wireframe mode flag. */
+	void SetViewModeWireframe();
+	
+	/** Callback for checking the wireframe mode flag. */
+	bool IsInViewModeWireframeChecked() const;
 
 	/** Callback for toggling the vertex color show flag. */
 	void SetViewModeVertexColor();
 
+	/** Implementation of the SetViewModeVertexColor, used to apply the vertex color show flag. */
+	void SetViewModeVertexColorImplemetation(bool bValue);
+
 	/** Callback for checking the vertex color show flag. */
 	bool IsInViewModeVertexColorChecked() const;
 
-	/** Callback for toggling the wireframe mode. */
-	void SetViewModeWireframe();
-
-	/** Callback for checking the wireframe flag. */
-	bool IsInViewModeWireframeChecked() const;
-
-private:
-
-	/** Determines the visibility of the viewport. */
-	bool IsVisible() const override;
-
-	/** Implementation of the SetViewModeVertexColor, used to apply the vertex color show flag. */
-	void SetViewModeVertexColorImplementation(bool bValue);
-
-	/** Applies the vertex color show flag only. */
-	void SetViewModeVertexColorSubImplementation(bool bValue);
-
-	/** Callback for toggling the physical material mask show flag. */
-	void SetViewModePhysicalMaterialMasks();
-
-	/** Implementation of the SetViewModeVertexColor, used to apply the physical material mask show flag. */
-	void SetViewModePhysicalMaterialMasksImplementation(bool bValue);
-
-	/** Applies the physical material mask show flag only. */
-	void SetViewModePhysicalMaterialMasksSubImplementation(bool bValue);
-
-	/** Callback for checking the physical material mask show flag. */
-	bool IsInViewModePhysicalMaterialMasksChecked() const;
+	/** Callback for toggling the realtime preview flag. */
+	void SetRealtimePreview();
 
 	/** Callback for updating preview socket meshes if the static mesh or socket has been modified. */
 	void OnObjectPropertyChanged(UObject* ObjectBeingModified, FPropertyChangedEvent& PropertyChangedEvent);

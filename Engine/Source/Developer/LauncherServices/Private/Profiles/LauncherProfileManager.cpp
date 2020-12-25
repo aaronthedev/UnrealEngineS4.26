@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Profiles/LauncherProfileManager.h"
 #include "HAL/FileManager.h"
@@ -10,44 +10,6 @@
 #include "Profiles/LauncherDeviceGroup.h"
 #include "Profiles/LauncherProfile.h"
 
-LAUNCHERSERVICES_API bool HasPromotedTarget(const TCHAR* BaseDir, const TCHAR* TargetName, const TCHAR* Platform, EBuildConfiguration Configuration, const TCHAR* Architecture)
-{
-	// Get the path to the receipt, and check it exists
-	FString ReceiptPath = FTargetReceipt::GetDefaultPath(BaseDir, TargetName, Platform, Configuration, Architecture);
-	if (!FPaths::FileExists(*ReceiptPath))
-	{
-		UE_LOG(LogLauncherProfile, Log, TEXT("Unable to use promoted target - %s does not exist."), *ReceiptPath);
-		return false;
-	}
-
-	// Read the receipt for this target
-	FTargetReceipt Receipt;
-	if (!Receipt.Read(ReceiptPath))
-	{
-		UE_LOG(LogLauncherProfile, Log, TEXT("Unable to use promoted target - cannot read %s"), *ReceiptPath);
-		return false;
-	}
-
-	// Check the receipt is for a promoted build
-	if (!Receipt.Version.IsPromotedBuild)
-	{
-		UE_LOG(LogLauncherProfile, Log, TEXT("Unable to use promoted target - receipt %s is not for a promoted target"), *ReceiptPath);
-		return false;
-	}
-
-	// Make sure it matches the current build info
-	FEngineVersion ReceiptVersion = Receipt.Version.GetEngineVersion();
-	FEngineVersion CurrentVersion = FEngineVersion::Current();
-	if (!ReceiptVersion.ExactMatch(CurrentVersion))
-	{
-		UE_LOG(LogLauncherProfile, Log, TEXT("Unable to use promoted target - receipt version (%s) is not exact match with current engine version (%s)"), *ReceiptVersion.ToString(), *CurrentVersion.ToString());
-		return false;
-	}
-
-	// Print the matching target info
-	UE_LOG(LogLauncherProfile, Log, TEXT("Found promoted target with matching version at %s"), *ReceiptPath);
-	return true;
-}
 
 /* ILauncherProfileManager structors
  *****************************************************************************/
@@ -332,7 +294,7 @@ void FLauncherProfileManager::RemoveSimpleProfile(const ILauncherSimpleProfileRe
 	if (SimpleProfiles.Remove(SimpleProfile) > 0)
 	{
 		// delete the persisted simple profile on disk
-		FString SimpleProfileFileName = FLauncherProfile::GetProfileFolder(false) / SimpleProfile->GetDeviceName() + TEXT(".uslp");
+		FString SimpleProfileFileName = FLauncherProfile::GetProfileFolder() / SimpleProfile->GetDeviceName() + TEXT(".uslp");
 		IFileManager::Get().Delete(*SimpleProfileFileName);
 	}
 }
@@ -515,11 +477,9 @@ void FLauncherProfileManager::LoadProfiles( )
 		}
 	}
 
-	// 0 = normal, 1 = NotForLicensees
-	for (int32 Pass = 0; Pass < 2; Pass++)
+	//load and re-save legacy profiles
 	{
-		//load and re-save legacy profiles
-		IFileManager::Get().FindFilesRecursive(ProfileFileNames, *FLauncherProfile::GetProfileFolder(Pass == 1), TEXT("*.ulp"), true, false);
+		IFileManager::Get().FindFilesRecursive(ProfileFileNames, *FLauncherProfile::GetProfileFolder(), TEXT("*.ulp"), true, false);
 		for (TArray<FString>::TConstIterator It(ProfileFileNames); It; ++It)
 		{
 			FString ProfileFilePath = *It;
@@ -533,7 +493,7 @@ void FLauncherProfileManager::LoadProfiles( )
 				//re-save profile to the new format
 				if (LoadedProfile.IsValid())
 				{
-					if (Pass == 1)
+					if (ProfileFilePath.Contains("NotForLicensees"))
 					{
 						LoadedProfile->SetNotForLicensees();
 					}
@@ -546,29 +506,25 @@ void FLauncherProfileManager::LoadProfiles( )
 		}
 	}
 
-	// 0 = normal, 1 = NotForLicensees
-	for (int32 Pass = 0; Pass < 2; Pass++)
+	ProfileFileNames.Reset();
+	IFileManager::Get().FindFilesRecursive(ProfileFileNames, *FLauncherProfile::GetProfileFolder(), TEXT("*.ulp2"), true, false);
+	
+	for (TArray<FString>::TConstIterator It(ProfileFileNames); It; ++It)
 	{
-		ProfileFileNames.Reset();
-		IFileManager::Get().FindFilesRecursive(ProfileFileNames, *FLauncherProfile::GetProfileFolder(Pass == 1), TEXT("*.ulp2"), true, false);
+		FString ProfileFilePath = *It;
+		ILauncherProfilePtr LoadedProfile = LoadJSONProfile(*ProfileFilePath);
 
-		for (TArray<FString>::TConstIterator It(ProfileFileNames); It; ++It)
+		if (LoadedProfile.IsValid())
 		{
-			FString ProfileFilePath = *It;
-			ILauncherProfilePtr LoadedProfile = LoadJSONProfile(*ProfileFilePath);
-
-			if (LoadedProfile.IsValid())
+			if (ProfileFilePath.Contains("NotForLicensees"))
 			{
-				if (Pass == 1)
-				{
-					LoadedProfile->SetNotForLicensees();
-				}
-				AddProfile(LoadedProfile.ToSharedRef());
+				LoadedProfile->SetNotForLicensees();
 			}
-			else
-			{
-				IFileManager::Get().Delete(*ProfileFilePath);
-			}
+			AddProfile(LoadedProfile.ToSharedRef());
+		}
+		else
+		{
+			IFileManager::Get().Delete(*ProfileFilePath);
 		}
 	}
 }
@@ -652,7 +608,7 @@ void FLauncherProfileManager::SaveSimpleProfiles()
 {
 	for (TArray<ILauncherSimpleProfilePtr>::TIterator It(SimpleProfiles); It; ++It)
 	{
-		FString SimpleProfileFileName = FLauncherProfile::GetProfileFolder(false) / (*It)->GetDeviceName() + TEXT(".uslp");
+		FString SimpleProfileFileName = FLauncherProfile::GetProfileFolder() / (*It)->GetDeviceName() + TEXT(".uslp");
 		FString Text;
 		TSharedRef< TJsonWriter<> > Writer = TJsonWriterFactory<>::Create(&Text);
 		(*It)->Save(Writer.Get());

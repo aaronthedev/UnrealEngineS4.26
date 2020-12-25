@@ -13,7 +13,7 @@
 
 #include <boost/config.hpp>
 #include <boost/detail/workaround.hpp>
-#include <cstddef> // size_t
+#include <cstddef>
 
 namespace boost {
 
@@ -28,11 +28,6 @@ namespace boost {
 #endif
 #endif
 
-#if !defined(BOOST_NO_CXX11_TEMPLATE_ALIASES)
-
-   template <class T> using remove_volatile_t = typename remove_volatile<T>::type;
-
-#endif
 
 } // namespace boost
 

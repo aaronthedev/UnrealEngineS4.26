@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -96,6 +96,7 @@
 #include "Delegates/DelegateBase.h"
 #include "Delegates/IntegerSequence.h"
 #include "Templates/Tuple.h"
+#include "Templates/TypeWrapper.h"
 #include "UObject/ScriptDelegates.h"
 #include "CoreMinimal.h"
 #include "Math/UnrealMath.h"
@@ -444,6 +445,7 @@
 #include "BatchedElements.h"
 #include "GameFramework/Volume.h"
 #include "EngineGlobals.h"
+#include "Sound/SoundClass.h"
 #include "Audio.h"
 #include "Sound/SoundAttenuation.h"
 #include "IAudioExtensionPlugin.h"
@@ -479,7 +481,7 @@
 #include "Components/InputComponent.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/OnlineReplStructs.h"
-#include "BodySetupEnums.h"
+#include "PhysicsEngine/BodySetupEnums.h"
 #include "Animation/AnimSequenceBase.h"
 #include "Math/GenericOctreePublic.h"
 #include "Camera/PlayerCameraManager.h"

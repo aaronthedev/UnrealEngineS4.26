@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Abilities/Tasks/AbilityTask_ApplyRootMotionJumpForce.h"
 #include "GameFramework/RootMotionSource.h"
@@ -94,7 +94,7 @@ void UAbilityTask_ApplyRootMotionJumpForce::SharedInitAndApply()
 		if (MovementComponent)
 		{
 			ForceName = ForceName.IsNone() ? FName("AbilityTaskApplyRootMotionJumpForce") : ForceName;
-			TSharedPtr<FRootMotionSource_JumpForce> JumpForce = MakeShared<FRootMotionSource_JumpForce>();
+			FRootMotionSource_JumpForce* JumpForce = new FRootMotionSource_JumpForce();
 			JumpForce->InstanceName = ForceName;
 			JumpForce->AccumulateMode = ERootMotionAccumulateMode::Override;
 			JumpForce->Priority = 500;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Misc/CoreMisc.h"
@@ -20,9 +20,6 @@
 #include "Engine/SCS_Node.h"
 #include "Engine/InheritableComponentHandler.h"
 #include "Misc/ScopeLock.h"
-#include "UObject/CoreObjectVersion.h"
-#include "Net/Core/PushModel/PushModel.h"
-#include "UObject/CoreObjectVersion.h"
 
 #if WITH_EDITOR
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -77,7 +74,7 @@ void UBlueprintGeneratedClass::PostInitProperties()
 
 void UBlueprintGeneratedClass::PostLoad()
 {
-	Super::PostLoad();	
+	Super::PostLoad();
 
 #if WITH_EDITORONLY_DATA
 	UPackage* Package = GetOutermost();
@@ -185,18 +182,10 @@ FPrimaryAssetId UBlueprintGeneratedClass::GetPrimaryAssetId() const
 
 UClass* UBlueprintGeneratedClass::GetAuthoritativeClass()
 {
- 	if (nullptr == ClassGeneratedBy) // to track UE-11597 and UE-11595
- 	{
-		// If this is a cooked blueprint, the generatedby class will have been discarded so we'll just have to assume we're authoritative!
-		if (bCooked)
-		{ 
-			return this;
-		}
-		else
-		{
-			UE_LOG(LogBlueprint, Fatal, TEXT("UBlueprintGeneratedClass::GetAuthoritativeClass: ClassGeneratedBy is null. class '%s'"), *GetPathName());
-		}
- 	}
+	if (nullptr == ClassGeneratedBy) // to track UE-11597 and UE-11595
+	{
+		UE_LOG(LogBlueprint, Fatal, TEXT("UBlueprintGeneratedClass::GetAuthoritativeClass: ClassGeneratedBy is null. class '%s'"), *GetPathName());
+	}
 
 	UBlueprint* GeneratingBP = CastChecked<UBlueprint>(ClassGeneratedBy);
 
@@ -207,7 +196,7 @@ UClass* UBlueprintGeneratedClass::GetAuthoritativeClass()
 
 struct FConditionalRecompileClassHepler
 {
-	enum class ENeededAction : uint8
+	enum ENeededAction
 	{
 		None,
 		StaticLink,
@@ -292,7 +281,7 @@ void UBlueprintGeneratedClass::SerializeDefaultObject(UObject* Object, FStructur
 	if (UnderlyingArchive.IsLoading() && !UnderlyingArchive.IsObjectReferenceCollector() && Object == ClassDefaultObject)
 	{
 		// On load, build the custom property list used in post-construct initialization logic. Note that in the editor, this will be refreshed during compile-on-load.
-		// @TODO - Potentially make this serializable (or cooked data) to eliminate the slight load time cost we'll incur below to generate this list in a cooked build. For now, it's not serialized since the raw FProperty references cannot be saved out.
+		// @TODO - Potentially make this serializable (or cooked data) to eliminate the slight load time cost we'll incur below to generate this list in a cooked build. For now, it's not serialized since the raw UProperty references cannot be saved out.
 		UpdateCustomPropertyListForPostConstruction();
 
 		const FString BPGCName = GetName();
@@ -417,7 +406,7 @@ bool UBlueprintGeneratedClass::BuildCustomPropertyListForPostConstruction(FCusto
 	const UClass* OwnerClass = Cast<UClass>(InStruct);
 	FCustomPropertyListNode** CurrentNodePtr = &InPropertyList;
 
-	for (FProperty* Property = InStruct->PropertyLink; Property; Property = Property->PropertyLinkNext)
+	for (UProperty* Property = InStruct->PropertyLink; Property; Property = Property->PropertyLinkNext)
 	{
 		const bool bIsConfigProperty = Property->HasAnyPropertyFlags(CPF_Config) && !(OwnerClass && OwnerClass->HasAnyClassFlags(CLASS_PerObjectConfig));
 		const bool bIsTransientProperty = Property->HasAnyPropertyFlags(CPF_Transient | CPF_DuplicateTransient | CPF_NonPIEDuplicateTransient);
@@ -431,28 +420,14 @@ bool UBlueprintGeneratedClass::BuildCustomPropertyListForPostConstruction(FCusto
 				const uint8* DefaultPropertyValue = Property->ContainerPtrToValuePtrForDefaults<uint8>(InStruct, DefaultDataPtr, Idx);
 
 				// If this is a struct property, recurse to pull out any fields that differ from the native CDO.
-				if (FStructProperty* StructProperty = CastField<FStructProperty>(Property))
+				if (UStructProperty* StructProperty = Cast<UStructProperty>(Property))
 				{
 					// Create a new node for the struct property.
 					*CurrentNodePtr = new FCustomPropertyListNode(Property, Idx);
 					CustomPropertyListForPostConstruction.Add(*CurrentNodePtr);
 
-					UScriptStruct::ICppStructOps* CppStructOps = nullptr;
-					if (StructProperty->Struct)
-					{
-						CppStructOps = StructProperty->Struct->GetCppStructOps();
-					}
-
-					// Check if we should initialize using the full value (e.g. a USTRUCT with one or more non-reflected fields).
-					bool bIsIdentical = false;
-					const uint32 PortFlags = 0;
-					if(!CppStructOps || !CppStructOps->HasIdentical() || !CppStructOps->Identical(PropertyValue, DefaultPropertyValue, PortFlags, bIsIdentical))
-					{
-						// Recursively gather up all struct fields that differ and assign to the current node's sub property list.
-						bIsIdentical = !BuildCustomPropertyListForPostConstruction((*CurrentNodePtr)->SubPropertyList, StructProperty->Struct, PropertyValue, DefaultPropertyValue);
-					}
-
-					if (!bIsIdentical)
+					// Recursively gather up all struct fields that differ and assign to the current node's sub property list.
+					if (BuildCustomPropertyListForPostConstruction((*CurrentNodePtr)->SubPropertyList, StructProperty->Struct, PropertyValue, DefaultPropertyValue))
 					{
 						// Advance to the next node in the list.
 						CurrentNodePtr = &(*CurrentNodePtr)->PropertyListNext;
@@ -466,7 +441,7 @@ bool UBlueprintGeneratedClass::BuildCustomPropertyListForPostConstruction(FCusto
 						*CurrentNodePtr = nullptr;
 					}
 				}
-				else if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Property))
+				else if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(Property))
 				{
 					// Create a new node for the array property.
 					*CurrentNodePtr = new FCustomPropertyListNode(Property, Idx);
@@ -504,7 +479,7 @@ bool UBlueprintGeneratedClass::BuildCustomPropertyListForPostConstruction(FCusto
 	return (InPropertyList != nullptr);
 }
 
-bool UBlueprintGeneratedClass::BuildCustomArrayPropertyListForPostConstruction(FArrayProperty* ArrayProperty, FCustomPropertyListNode*& InPropertyList, const uint8* DataPtr, const uint8* DefaultDataPtr, int32 StartIndex)
+bool UBlueprintGeneratedClass::BuildCustomArrayPropertyListForPostConstruction(UArrayProperty* ArrayProperty, FCustomPropertyListNode*& InPropertyList, const uint8* DataPtr, const uint8* DefaultDataPtr, int32 StartIndex)
 {
 	FCustomPropertyListNode** CurrentArrayNodePtr = &InPropertyList;
 
@@ -519,7 +494,7 @@ bool UBlueprintGeneratedClass::BuildCustomArrayPropertyListForPostConstruction(F
 			const uint8* ArrayPropertyValue = ArrayValueHelper.GetRawPtr(ArrayValueIndex);
 			const uint8* DefaultArrayPropertyValue = DefaultArrayValueHelper.GetRawPtr(DefaultArrayValueIndex);
 
-			if (FStructProperty* InnerStructProperty = CastField<FStructProperty>(ArrayProperty->Inner))
+			if (UStructProperty* InnerStructProperty = Cast<UStructProperty>(ArrayProperty->Inner))
 			{
 				// Create a new node for the item value at this index.
 				*CurrentArrayNodePtr = new FCustomPropertyListNode(ArrayProperty, ArrayValueIndex);
@@ -540,7 +515,7 @@ bool UBlueprintGeneratedClass::BuildCustomArrayPropertyListForPostConstruction(F
 					*CurrentArrayNodePtr = nullptr;
 				}
 			}
-			else if (FArrayProperty* InnerArrayProperty = CastField<FArrayProperty>(ArrayProperty->Inner))
+			else if (UArrayProperty* InnerArrayProperty = Cast<UArrayProperty>(ArrayProperty->Inner))
 			{
 				// Create a new node for the item value at this index.
 				*CurrentArrayNodePtr = new FCustomPropertyListNode(ArrayProperty, ArrayValueIndex);
@@ -655,19 +630,15 @@ void UBlueprintGeneratedClass::InitPropertiesFromCustomList(const FCustomPropert
 		uint8* PropertyValue = CustomPropertyListNode->Property->ContainerPtrToValuePtr<uint8>(DataPtr, CustomPropertyListNode->ArrayIndex);
 		const uint8* DefaultPropertyValue = CustomPropertyListNode->Property->ContainerPtrToValuePtr<uint8>(DefaultDataPtr, CustomPropertyListNode->ArrayIndex);
 
-		if (const FStructProperty* StructProperty = CastField<FStructProperty>(CustomPropertyListNode->Property))
+		if (const UStructProperty* StructProperty = Cast<UStructProperty>(CustomPropertyListNode->Property))
 		{
-			if (CustomPropertyListNode->SubPropertyList != nullptr)
+			// This should never be NULL; we should not be recording the StructProperty without at least one sub property, but we'll verify just to be sure.
+			if (ensure(CustomPropertyListNode->SubPropertyList != nullptr))
 			{
 				InitPropertiesFromCustomList(CustomPropertyListNode->SubPropertyList, StructProperty->Struct, PropertyValue, DefaultPropertyValue);
 			}
-			else
-			{
-				// A NULL sub-property list indicates that we should copy the entire default value (e.g. a struct with one or more non-reflected fields).
-				StructProperty->CopySingleValue(PropertyValue, DefaultPropertyValue);
-			}
 		}
-		else if (const FArrayProperty* ArrayProperty = CastField<FArrayProperty>(CustomPropertyListNode->Property))
+		else if (const UArrayProperty* ArrayProperty = Cast<UArrayProperty>(CustomPropertyListNode->Property))
 		{
 			// Note: The sub-property list can be NULL here; in that case only the array size will differ from the default value, but the elements themselves will simply be initialized to defaults.
 			InitArrayPropertyFromCustomList(ArrayProperty, CustomPropertyListNode->SubPropertyList, PropertyValue, DefaultPropertyValue);
@@ -679,7 +650,7 @@ void UBlueprintGeneratedClass::InitPropertiesFromCustomList(const FCustomPropert
 	}
 }
 
-void UBlueprintGeneratedClass::InitArrayPropertyFromCustomList(const FArrayProperty* ArrayProperty, const FCustomPropertyListNode* InPropertyList, uint8* DataPtr, const uint8* DefaultDataPtr)
+void UBlueprintGeneratedClass::InitArrayPropertyFromCustomList(const UArrayProperty* ArrayProperty, const FCustomPropertyListNode* InPropertyList, uint8* DataPtr, const uint8* DefaultDataPtr)
 {
 	FScriptArrayHelper DstArrayValueHelper(ArrayProperty, DataPtr);
 	FScriptArrayHelper SrcArrayValueHelper(ArrayProperty, DefaultDataPtr);
@@ -703,16 +674,11 @@ void UBlueprintGeneratedClass::InitArrayPropertyFromCustomList(const FArrayPrope
 		uint8* DstArrayItemValue = DstArrayValueHelper.GetRawPtr(ArrayIndex);
 		const uint8* SrcArrayItemValue = SrcArrayValueHelper.GetRawPtr(ArrayIndex);
 
-		if (DstArrayItemValue == nullptr && SrcArrayItemValue == nullptr)
-		{
-			continue;
-		}
-
-		if (const FStructProperty* InnerStructProperty = CastField<FStructProperty>(ArrayProperty->Inner))
+		if (const UStructProperty* InnerStructProperty = Cast<UStructProperty>(ArrayProperty->Inner))
 		{
 			InitPropertiesFromCustomList(CustomArrayPropertyListNode->SubPropertyList, InnerStructProperty->Struct, DstArrayItemValue, SrcArrayItemValue);
 		}
-		else if (const FArrayProperty* InnerArrayProperty = CastField<FArrayProperty>(ArrayProperty->Inner))
+		else if (const UArrayProperty* InnerArrayProperty = Cast<UArrayProperty>(ArrayProperty->Inner))
 		{
 			InitArrayPropertyFromCustomList(InnerArrayProperty, CustomArrayPropertyListNode->SubPropertyList, DstArrayItemValue, SrcArrayItemValue);
 		}
@@ -997,7 +963,7 @@ void UBlueprintGeneratedClass::UnbindDynamicDelegates(const UClass* ThisClass, U
 	}
 }
 
-void UBlueprintGeneratedClass::UnbindDynamicDelegatesForProperty(UObject* InInstance, const FObjectProperty* InObjectProperty)
+void UBlueprintGeneratedClass::UnbindDynamicDelegatesForProperty(UObject* InInstance, const UObjectProperty* InObjectProperty)
 {
 	for (int32 Index = 0; Index < DynamicBindingObjects.Num(); ++Index)
 	{
@@ -1016,12 +982,8 @@ bool UBlueprintGeneratedClass::GetGeneratedClassesHierarchy(const UClass* InClas
 	while(const UBlueprintGeneratedClass* BPGClass = Cast<const UBlueprintGeneratedClass>(InClass))
 	{
 #if WITH_EDITORONLY_DATA
-		// A cooked class has already been validated and will not have a source Blueprint asset.
-		if(!BPGClass->bCooked)
-		{
-			const UBlueprint* BP = Cast<const UBlueprint>(BPGClass->ClassGeneratedBy);
-			bNoErrors &= (NULL != BP) && (BP->Status != BS_Error);
-		}
+		const UBlueprint* BP = Cast<const UBlueprint>(BPGClass->ClassGeneratedBy);
+		bNoErrors &= (NULL != BP) && (BP->Status != BS_Error);
 #endif
 		OutBPGClasses.Add(BPGClass);
 		InClass = BPGClass->GetSuperClass();
@@ -1067,7 +1029,7 @@ void UBlueprintGeneratedClass::CreateTimelineComponent(AActor* Actor, const UTim
 
 	// Find property with the same name as the template and assign the new Timeline to it
 	UClass* ActorClass = Actor->GetClass();
-	FObjectPropertyBase* Prop = FindFProperty<FObjectPropertyBase>(ActorClass, TimelineTemplate->GetVariableName());
+	UObjectPropertyBase* Prop = FindField<UObjectPropertyBase>(ActorClass, TimelineTemplate->GetVariableName());
 	if (Prop)
 	{
 		Prop->SetObjectPropertyValue_InContainer(Actor, NewTimeline);
@@ -1329,7 +1291,7 @@ void UBlueprintGeneratedClass::CreatePersistentUberGraphFrame(UObject* Obj, bool
 				FrameMemory = (uint8*)FMemory::Malloc(UberGraphFunction->GetStructureSize());
 
 				FMemory::Memzero(FrameMemory, UberGraphFunction->GetStructureSize());
-				for (FProperty* Property = UberGraphFunction->PropertyLink; Property; Property = Property->PropertyLinkNext)
+				for (UProperty* Property = UberGraphFunction->PropertyLink; Property; Property = Property->PropertyLinkNext)
 				{
 					Property->InitializeValue_InContainer(FrameMemory);
 				}
@@ -1367,7 +1329,7 @@ void UBlueprintGeneratedClass::DestroyPersistentUberGraphFrame(UObject* Obj, boo
 		PointerToUberGraphFrame->RawPointer = NULL;
 		if (FrameMemory)
 		{
-			for (FProperty* Property = UberGraphFunction->PropertyLink; Property; Property = Property->PropertyLinkNext)
+			for (UProperty* Property = UberGraphFunction->PropertyLink; Property; Property = Property->PropertyLinkNext)
 			{
 				Property->DestroyValue_InContainer(FrameMemory);
 			}
@@ -1539,62 +1501,18 @@ bool UBlueprintGeneratedClass::CanBeClusterRoot() const
 	return GBlueprintClusteringEnabled && !GetOutermost()->ContainsMap();
 }
 
-#if WITH_EDITOR
-UClass* UBlueprintGeneratedClass::RegenerateClass(UClass* ClassToRegenerate, UObject* PreviousCDO)
-{
-	if (HasAnyFlags(RF_BeingRegenerated))
-	{
-		if (ensure(ClassDefaultObject))
-		{
-			UBlueprint::ForceLoadMembers(this);
-			UBlueprint::ForceLoadMembers(ClassDefaultObject);
-		}
-
-		if (SimpleConstructionScript)
-		{
-			FBlueprintEditorUtils::PreloadConstructionScript(SimpleConstructionScript);
-		}
-
-		if (InheritableComponentHandler)
-		{
-			InheritableComponentHandler->PreloadAll();
-		}
-
-		// If this is a cooked class, warn about any uncooked classes appearing above it in the inheritance hierarchy.
-		if(bCooked)
-		{
-			const UBlueprintGeneratedClass* CurrentBPGC = this;
-			while (const UBlueprintGeneratedClass* ParentBPGC = Cast<const UBlueprintGeneratedClass>(CurrentBPGC->GetSuperClass()))
-			{
-				if (!ParentBPGC->bCooked)
-				{
-					UE_LOG(LogBlueprint, Warning, TEXT("%s: found an uncooked class (%s) as an ancestor of a cooked class (%s) in the hierarchy."),
-						*this->GetPathName(),
-						*ParentBPGC->GetPathName(),
-						*CurrentBPGC->GetPathName());
-				}
-
-				CurrentBPGC = ParentBPGC;
-			}
-		}
-	}
-
-	return this;
-}
-#endif
-
 void UBlueprintGeneratedClass::Link(FArchive& Ar, bool bRelinkExistingProperties)
 {
 	Super::Link(Ar, bRelinkExistingProperties);
 
 #if USE_UBER_GRAPH_PERSISTENT_FRAME
-	if (UsePersistentUberGraphFrame())
+	if(UsePersistentUberGraphFrame())
 	{
 		if (UberGraphFunction)
 		{
 			Ar.Preload(UberGraphFunction);
 
-			for (FStructProperty* Property : TFieldRange<FStructProperty>(this, EFieldIteratorFlags::ExcludeSuper))
+			for (UStructProperty* Property : TFieldRange<UStructProperty>(this, EFieldIteratorFlags::ExcludeSuper))
 			{
 				if (Property->GetFName() == GetUberGraphFrameName())
 				{
@@ -1733,27 +1651,20 @@ void UBlueprintGeneratedClass::Serialize(FArchive& Ar)
 			ClassFlags |= CLASS_Deprecated;
 		}
 	}
-
-#if WITH_EDITORONLY_DATA
-	if (Ar.IsLoading())
-	{
-		UberGraphFramePointerProperty_DEPRECATED = nullptr;
-	}
-#endif
 }
 
 void UBlueprintGeneratedClass::GetLifetimeBlueprintReplicationList(TArray<FLifetimeProperty>& OutLifetimeProps) const
 {
 	uint32 PropertiesLeft = NumReplicatedProperties;
 
-	for (TFieldIterator<FProperty> It(this, EFieldIteratorFlags::ExcludeSuper); It && PropertiesLeft > 0; ++It)
+	for (TFieldIterator<UProperty> It(this, EFieldIteratorFlags::ExcludeSuper); It && PropertiesLeft > 0; ++It)
 	{
-		FProperty * Prop = *It;
+		UProperty * Prop = *It;
 		if (Prop != NULL && Prop->GetPropertyFlags() & CPF_Net)
 		{
 			PropertiesLeft--;
 			
-			OutLifetimeProps.AddUnique(FLifetimeProperty(Prop->RepIndex, Prop->GetBlueprintReplicationCondition(), REPNOTIFY_OnChanged, PUSH_MAKE_BP_PROPERTIES_PUSH_MODEL()));
+			OutLifetimeProps.AddUnique(FLifetimeProperty(Prop->RepIndex, Prop->GetBlueprintReplicationCondition()));
 		}
 	}
 
@@ -1784,11 +1695,11 @@ void FBlueprintCookedComponentInstancingData::BuildCachedPropertyList(FCustomPro
 	{
 		// Find changed property by name/scope.
 		const FBlueprintComponentChangedPropertyInfo& ChangedPropertyInfo = ChangedPropertyList[(*CurrentSourceIdx)++];
-		FProperty* Property = nullptr;
+		UProperty* Property = nullptr;
 		const UStruct* PropertyScope = CurrentScope;
 		while (!Property && PropertyScope)
 		{
-			Property = FindFProperty<FProperty>(PropertyScope, ChangedPropertyInfo.PropertyName);
+			Property = FindField<UProperty>(PropertyScope, ChangedPropertyInfo.PropertyName);
 			PropertyScope = PropertyScope->GetSuperStruct();
 		}
 
@@ -1803,11 +1714,11 @@ void FBlueprintCookedComponentInstancingData::BuildCachedPropertyList(FCustomPro
 		}
 
 		// If this is a UStruct property, recursively build a sub-property list.
-		if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
+		if (const UStructProperty* StructProperty = Cast<UStructProperty>(Property))
 		{
 			BuildCachedPropertyList(&NewNode->SubPropertyList, StructProperty->Struct, CurrentSourceIdx);
 		}
-		else if (const FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Property))
+		else if (const UArrayProperty* ArrayProperty = Cast<UArrayProperty>(Property))
 		{
 			// If this is an array property, recursively build a sub-property list.
 			BuildCachedArrayPropertyList(ArrayProperty, &NewNode->SubPropertyList, CurrentSourceIdx);
@@ -1818,7 +1729,7 @@ void FBlueprintCookedComponentInstancingData::BuildCachedPropertyList(FCustomPro
 	}
 }
 
-void FBlueprintCookedComponentInstancingData::BuildCachedArrayPropertyList(const FArrayProperty* ArrayProperty, FCustomPropertyListNode** ArraySubPropertyNode, int32* CurrentSourceIdx) const
+void FBlueprintCookedComponentInstancingData::BuildCachedArrayPropertyList(const UArrayProperty* ArrayProperty, FCustomPropertyListNode** ArraySubPropertyNode, int32* CurrentSourceIdx) const
 {
 	// Build the array property's sub-property list. An empty name field signals the end of the changed array property list.
 	while (*CurrentSourceIdx < ChangedPropertyList.Num() &&
@@ -1826,17 +1737,17 @@ void FBlueprintCookedComponentInstancingData::BuildCachedArrayPropertyList(const
 			|| ChangedPropertyList[*CurrentSourceIdx].PropertyName == ArrayProperty->GetFName()))
 	{
 		const FBlueprintComponentChangedPropertyInfo& ChangedArrayPropertyInfo = ChangedPropertyList[(*CurrentSourceIdx)++];
-		FProperty* InnerProperty = ChangedArrayPropertyInfo.PropertyName != NAME_None ? ArrayProperty->Inner : nullptr;
+		UProperty* InnerProperty = ChangedArrayPropertyInfo.PropertyName != NAME_None ? ArrayProperty->Inner : nullptr;
 
 		*ArraySubPropertyNode = new FCustomPropertyListNode(InnerProperty, ChangedArrayPropertyInfo.ArrayIndex);
 		CachedPropertyListForSerialization.Add(*ArraySubPropertyNode);
 
 		// If this is a UStruct property, recursively build a sub-property list.
-		if (const FStructProperty* InnerStructProperty = CastField<FStructProperty>(InnerProperty))
+		if (const UStructProperty* InnerStructProperty = Cast<UStructProperty>(InnerProperty))
 		{
 			BuildCachedPropertyList(&(*ArraySubPropertyNode)->SubPropertyList, InnerStructProperty->Struct, CurrentSourceIdx);
 		}
-		else if (const FArrayProperty* InnerArrayProperty = CastField<FArrayProperty>(InnerProperty))
+		else if (const UArrayProperty* InnerArrayProperty = Cast<UArrayProperty>(InnerProperty))
 		{
 			// If this is an array property, recursively build a sub-property list.
 			BuildCachedArrayPropertyList(InnerArrayProperty, &(*ArraySubPropertyNode)->SubPropertyList, CurrentSourceIdx);

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -83,32 +83,8 @@ struct TFrame3
 	/** Construct a Frame from an FTransform */
 	explicit TFrame3(const FTransform& Transform)
 	{
-		Origin = FVector3<RealType>(Transform.GetTranslation());
-		Rotation = TQuaternion<RealType>(Transform.GetRotation());
-	}
-
-	/** Construct a Frame from an FPlane */
-	explicit TFrame3(const FPlane& Plane)
-	{
-		FVector Normal(Plane.X, Plane.Y, Plane.Z);
-		Origin = (RealType)Plane.W * FVector3<RealType>(Normal);
-		Rotation.SetFromTo(FVector3<RealType>::UnitZ(), Normal);
-	}
-
-
-	/** Construct a Frame from an FVector and FQuat */
-	explicit TFrame3(const FVector& OriginIn, const FQuat& RotationIn)
-	{
-		Origin = FVector3<RealType>(OriginIn);
-		Rotation = TQuaternion<RealType>(RotationIn);
-	}
-
-	/** Convert between TFrame of different types */
-	template<typename RealType2>
-	explicit TFrame3(const TFrame3<RealType2>& OtherFrame)
-	{
-		Origin = static_cast<FVector3<RealType>>(OtherFrame.Origin);
-		Rotation = static_cast<TQuaternion<RealType>>(OtherFrame.Rotation);
+		Origin = Transform.GetTranslation();
+		Rotation = Transform.GetRotation();
 	}
 
 	
@@ -132,14 +108,6 @@ struct TFrame3
 		}
 	}
 
-	/**
-	 * @return X/Y/Z axes of frame. This is more efficient than calculating each axis separately.
-	 */
-	void GetAxes(FVector3<RealType>& X, FVector3<RealType>& Y, FVector3<RealType>& Z) const
-	{
-		Rotation.GetAxes(X, Y, Z);
-	}
-
 	/** @return X axis of frame (axis 0) */
 	FVector3<RealType> X() const
 	{
@@ -161,13 +129,7 @@ struct TFrame3
 	/** @return conversion of this Frame to FTransform */
 	FTransform ToFTransform() const
 	{
-		return FTransform((FQuat)Rotation, (FVector)Origin);
-	}
-
-	/** @return conversion of this Frame to FPlane */
-	FPlane ToFPlane() const
-	{
-		return FPlane((FVector)Origin, (FVector)Z());
+		return FTransform(Rotation, Origin);
 	}
 
 	/** @return conversion of this Frame to TTransform */
@@ -232,7 +194,7 @@ struct TFrame3
 	/** @return input Ray transformed from local coordinate system of Frame into "World" coordinate system */
 	TRay3<RealType> FromFrame(const TRay3<RealType>& Ray) const
 	{
-		return TRay3<RealType>(FromFramePoint(Ray.Origin), FromFrameVector(Ray.Direction));
+		return TRay3<RealType>(ToFramePoint(Ray.Origin), ToFrameVector(Ray.Direction));
 	}
 
 
@@ -244,7 +206,7 @@ struct TFrame3
 	/** @return input Frame transformed from local coordinate system of this Frame into "World" coordinate system */
 	TFrame3<RealType> FromFrame(const TFrame3<RealType>& Frame) const
 	{
-		return TFrame3<RealType>(FromFramePoint(Frame.Origin), FromFrame(Frame.Rotation));
+		return TFrame3<RealType>(ToFramePoint(Frame.Origin), FromFrame(Frame.Rotation));
 	}
 
 
@@ -328,18 +290,8 @@ struct TFrame3
 	 */
 	void Transform(const FTransform& XForm)
 	{
-		Origin = FVector3<RealType>(XForm.TransformPosition((FVector)Origin));
+		Origin = (FVector3<RealType>)XForm.TransformPosition((FVector3f)Origin);
 		Rotation = TQuaternion<RealType>(XForm.GetRotation()) * Rotation;
-	}
-
-
-	/**
-	 * transform this frame by the given transform
-	 */
-	void Transform(const TTransform3<RealType>& XForm)
-	{
-		Origin = XForm.TransformPosition(Origin);
-		Rotation = XForm.GetRotation() * Rotation;
 	}
 
 
@@ -421,13 +373,13 @@ struct TFrame3
 		RealType NormalDot = RayDirection.Dot(Normal);
 		if (VectorUtil::EpsilonEqual(NormalDot, (RealType)0, TMathUtil<RealType>::ZeroTolerance))
 		{
-			HitPointOut = FVector3<RealType>::MaxVector();
+			HitPointOut = FVector3<RealType>::Max();
 			return false;
 		}
 		RealType t = -( RayOrigin.Dot(Normal) + PlaneD) / NormalDot;
 		if (t < 0)
 		{
-			HitPointOut = FVector3<RealType>::MaxVector();
+			HitPointOut = FVector3<RealType>::Max();
 			return false;
 		}
 		HitPointOut = RayOrigin + t * RayDirection;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SCSEditorViewportClient.h"
 #include "Components/StaticMeshComponent.h"
@@ -248,7 +248,7 @@ void FSCSEditorViewportClient::DrawCanvas( FViewport& InViewport, FSceneView& Vi
 			{
 				FSCSEditorTreeNodePtrType SelectedNode = SelectedNodes[SelectionIndex];
 
-				UActorComponent* Comp = SelectedNode->FindComponentInstanceInActor(PreviewActor);
+				UActorComponent* Comp = Cast<USceneComponent>(SelectedNode->FindComponentInstanceInActor(PreviewActor));
 				if (Comp != NULL && Comp->IsRegistered())
 				{
 					// Try and find a visualizer
@@ -266,7 +266,7 @@ void FSCSEditorViewportClient::DrawCanvas( FViewport& InViewport, FSceneView& Vi
 		const int32 HalfX = 0.5f * Viewport->GetSizeXY().X;
 		const int32 HalfY = 0.5f * Viewport->GetSizeXY().Y;
 
-		TArray<TSharedPtr<FSCSEditorTreeNode>> SelectedNodes = BlueprintEditorPtr.Pin()->GetSelectedSCSEditorTreeNodes();
+		auto SelectedNodes = BlueprintEditorPtr.Pin()->GetSelectedSCSEditorTreeNodes();
 		if(bIsManipulating && SelectedNodes.Num() > 0)
 		{
 			USceneComponent* SceneComp = Cast<USceneComponent>(SelectedNodes[0]->FindComponentInstanceInActor(PreviewActor));
@@ -409,7 +409,7 @@ bool FSCSEditorViewportClient::InputWidgetDelta( FViewport* InViewport, EAxisLis
 	{
 		bHandled = true;
 		AActor* PreviewActor = GetPreviewActor();
-		TSharedPtr<FBlueprintEditor> BlueprintEditor = BlueprintEditorPtr.Pin();
+		auto BlueprintEditor = BlueprintEditorPtr.Pin();
 		if (PreviewActor && BlueprintEditor.IsValid())
 		{
 			TArray<FSCSEditorTreeNodePtrType> SelectedNodes = BlueprintEditor->GetSelectedSCSEditorTreeNodes();
@@ -430,8 +430,9 @@ bool FSCSEditorViewportClient::InputWidgetDelta( FViewport* InViewport, EAxisLis
 					ModifiedScale = FVector::ZeroVector;
 				}
 
-				for (const FSCSEditorTreeNodePtrType& SelectedNodePtr : SelectedNodes)
+				for(auto It(SelectedNodes.CreateIterator());It;++It)
 				{
+					FSCSEditorTreeNodePtrType SelectedNodePtr = *It;
 					// Don't allow editing of a root node, inherited SCS node or child node that also has a movable (non-root) parent node selected
 					const bool bCanEdit = GUnrealEd->ComponentVisManager.IsActive() ||
 						(!SelectedNodePtr->IsRootComponent() && !IsMovableParentNodeSelected(SelectedNodePtr, SelectedNodes));
@@ -606,9 +607,9 @@ FWidget::EWidgetMode FSCSEditorViewportClient::GetWidgetMode() const
 						FSCSEditorTreeNodePtrType CurrentNodePtr = SelectedNodes[CurrentNodeIndex];
 						if ((CurrentNodePtr.IsValid() &&
 							((!RootNodes.Contains(CurrentNodePtr) && !CurrentNodePtr->IsRootComponent()) ||
-							(CurrentNodePtr->GetObject<UInstancedStaticMeshComponent>() && // show widget if we are editing individual instances even if it is the root component
+							(Cast<UInstancedStaticMeshComponent>(CurrentNodePtr->GetComponentTemplate()) && // show widget if we are editing individual instances even if it is the root component
 								CastChecked<UInstancedStaticMeshComponent>(CurrentNodePtr->FindComponentInstanceInActor(GetPreviewActor()))->SelectedInstances.Contains(true))) &&
-							CurrentNodePtr->CanEdit() &&
+							CurrentNodePtr->CanEditDefaults() &&
 							CurrentNodePtr->FindComponentInstanceInActor(PreviewActor)))
 						{
 							// a non-NULL, non-root item is selected, draw the widget
@@ -686,13 +687,13 @@ FMatrix FSCSEditorViewportClient::GetWidgetCoordSystem() const
 	if( GetWidgetCoordSystemSpace() == COORD_Local )
 	{
 		AActor* PreviewActor = GetPreviewActor();
-		TSharedPtr<FBlueprintEditor> BlueprintEditor = BlueprintEditorPtr.Pin();
+		auto BlueprintEditor = BlueprintEditorPtr.Pin();
 		if (PreviewActor && BlueprintEditor.IsValid())
 		{
 			TArray<FSCSEditorTreeNodePtrType> SelectedNodes = BlueprintEditor->GetSelectedSCSEditorTreeNodes();
 			if(SelectedNodes.Num() > 0)
 			{
-				const FSCSEditorTreeNodePtrType SelectedNode = SelectedNodes.Last();
+				const auto SelectedNode = SelectedNodes.Last();
 				USceneComponent* SceneComp = SelectedNode.IsValid() ? Cast<USceneComponent>(SelectedNode->FindComponentInstanceInActor(PreviewActor)) : NULL;
 				if( SceneComp )
 				{
@@ -760,16 +761,16 @@ void FSCSEditorViewportClient::ResetCamera()
 
 	// For now, loosely base default camera positioning on thumbnail preview settings
 	USceneThumbnailInfo* ThumbnailInfo = Cast<USceneThumbnailInfo>(Blueprint->ThumbnailInfo);
-	if(ThumbnailInfo == nullptr)
+	if(ThumbnailInfo)
+	{
+		if(PreviewActorBounds.SphereRadius + ThumbnailInfo->OrbitZoom < 0)
+		{
+			ThumbnailInfo->OrbitZoom = -PreviewActorBounds.SphereRadius;
+		}
+	}
+	else
 	{
 		ThumbnailInfo = USceneThumbnailInfo::StaticClass()->GetDefaultObject<USceneThumbnailInfo>();
-	}
-
-	// Clamp zoom to the actor's bounding sphere radius
-	float OrbitZoom = ThumbnailInfo->OrbitZoom;
-	if (PreviewActorBounds.SphereRadius + OrbitZoom < 0)
-	{
-		OrbitZoom = -PreviewActorBounds.SphereRadius;
 	}
 
 	ToggleOrbitCamera(true);
@@ -783,8 +784,9 @@ void FSCSEditorViewportClient::ResetCamera()
 		FRotator ThumbnailAngle(ThumbnailInfo->OrbitPitch, ThumbnailInfo->OrbitYaw, 0.0f);
 
 		SetViewLocationForOrbiting(PreviewActorBounds.Origin);
-		SetViewLocation( GetViewLocation() + FVector(0.0f, TargetDistance * 1.5f + OrbitZoom - AutoViewportOrbitCameraTranslate, 0.0f) );
+		SetViewLocation( GetViewLocation() + FVector(0.0f, TargetDistance * 1.5f + ThumbnailInfo->OrbitZoom - AutoViewportOrbitCameraTranslate, 0.0f) );
 		SetViewRotation( ThumbnailAngle );
+	
 	}
 
 	Invalidate();
@@ -860,7 +862,7 @@ bool FSCSEditorViewportClient::GetShowFloor()
 
 void FSCSEditorViewportClient::ToggleShowFloor() 
 {
-	UEditorPerProjectUserSettings* Settings = GetMutableDefault<UEditorPerProjectUserSettings>();
+	auto* Settings = GetMutableDefault<UEditorPerProjectUserSettings>();
 
 	bool bShowFloor = Settings->bSCSEditorShowFloor;
 	bShowFloor = !bShowFloor;
@@ -881,7 +883,7 @@ bool FSCSEditorViewportClient::GetShowGrid()
 
 void FSCSEditorViewportClient::ToggleShowGrid() 
 {
-	UEditorPerProjectUserSettings* Settings = GetMutableDefault<UEditorPerProjectUserSettings>();
+	auto* Settings = GetMutableDefault<UEditorPerProjectUserSettings>();
 
 	bool bShowGrid = Settings->bSCSEditorShowGrid;
 	bShowGrid = !bShowGrid;
@@ -902,7 +904,7 @@ void FSCSEditorViewportClient::BeginTransaction(const FText& Description)
 	{
 		ScopedTransaction = new FScopedTransaction(Description);
 
-		TSharedPtr<FBlueprintEditor> BlueprintEditor = BlueprintEditorPtr.Pin();
+		auto BlueprintEditor = BlueprintEditorPtr.Pin();
 		if (BlueprintEditor.IsValid())
 		{
 			UBlueprint* PreviewBlueprint = BlueprintEditor->GetBlueprintObj();
@@ -912,8 +914,9 @@ void FSCSEditorViewportClient::BeginTransaction(const FText& Description)
 			}
 
 			TArray<FSCSEditorTreeNodePtrType> SelectedNodes = BlueprintEditor->GetSelectedSCSEditorTreeNodes();
-			for (const FSCSEditorTreeNodePtrType& Node : SelectedNodes)
+			for(auto SelectedSCSNodeIter(SelectedNodes.CreateIterator()); SelectedSCSNodeIter; ++SelectedSCSNodeIter)
 			{
+				FSCSEditorTreeNodePtrType Node = *SelectedSCSNodeIter;
 				if(Node.IsValid())
 				{
 					if(USCS_Node* SCS_Node = Node->GetSCSNode())

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 /*=============================================================================================
@@ -9,8 +9,6 @@
 #include "GenericPlatform/GenericPlatformMemory.h"
 #include <libkern/OSAtomic.h>
 #include <Foundation/NSObject.h>
-
-#include <mach/mach.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -71,10 +69,6 @@ struct CORE_API FApplePlatformMemory : public FGenericPlatformMemory
 	static bool PageProtect(void* const Ptr, const SIZE_T Size, const bool bCanRead, const bool bCanWrite);
 	static void* BinnedAllocFromOS(SIZE_T Size);
 	static void BinnedFreeToOS(void* Ptr, SIZE_T Size);
-	static bool PtrIsOSMalloc( void* Ptr);
-	static bool PtrIsFromNanoMalloc( void* Ptr);
-	static bool IsNanoMallocAvailable();
-	static void NanoMallocInit();
 
 	class FPlatformVirtualMemoryBlock : public FBasicVirtualMemoryBlock
 	{
@@ -130,9 +124,6 @@ struct CORE_API FApplePlatformMemory : public FGenericPlatformMemory
 	
 	/** Setup the current default CFAllocator to use our malloc functions. */
 	static void ConfigureDefaultCFAllocator(void);
-	
-	static vm_address_t NanoRegionStart;
-	static vm_address_t NanoRegionEnd;
 };
 
 NS_ASSUME_NONNULL_END

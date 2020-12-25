@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -27,12 +27,13 @@ class UK2Node_FunctionResult : public UK2Node_FunctionTerminator
 	virtual bool DrawNodeAsExit() const override { return true; }
 	virtual bool ShouldShowNodeProperties() const override { return true; }
 	virtual class FNodeHandlingFunctor* CreateNodeHandler(class FKismetCompilerContext& CompilerContext) const override;
+
 	virtual void GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const override;
 	virtual bool IsCompatibleWithGraph(UEdGraph const* Graph) const;
 	virtual void PostPlacedNewNode();
+	virtual bool CanDuplicateNode() const { return true; }
 	virtual void PostPasteNode() override;
 	virtual bool CanUserDeleteNode() const override;
-	virtual void FixupPinStringDataReferences(FArchive* SavingArchive) override;
 	//~ End UK2Node Interface
 
 	//~ Begin UK2Node_EditablePinBase Interface
@@ -49,6 +50,5 @@ class UK2Node_FunctionResult : public UK2Node_FunctionTerminator
 protected:
 	void SyncWithEntryNode();
 	void SyncWithPrimaryResultNode();
-	void MakePinsEditable();
 };
 

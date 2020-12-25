@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,7 +18,6 @@ public:
 	virtual bool GetNativeCultureName(const ELocalizedTextSourceCategory InCategory, FString& OutNativeCultureName) override;
 	virtual void GetLocalizedCultureNames(const ELocalizationLoadFlags InLoadFlags, TSet<FString>& OutLocalizedCultureNames) override;
 	virtual void LoadLocalizedResources(const ELocalizationLoadFlags InLoadFlags, TArrayView<const FString> InPrioritizedCultures, FTextLocalizationResource& InOutNativeResource, FTextLocalizationResource& InOutLocalizedResource) override;
-	virtual EQueryLocalizedResourceResult QueryLocalizedResource(const ELocalizationLoadFlags InLoadFlags, TArrayView<const FString> InPrioritizedCultures, const FTextId InTextId, FTextLocalizationResource& InOutNativeResource, FTextLocalizationResource& InOutLocalizedResource) override;
 
 	/**
 	 * Register a polyglot text data with this localized text source.
@@ -36,11 +35,6 @@ private:
 	 */
 	void UnregisterCultureNames(const FPolyglotTextData& InPolyglotTextData);
 
-	/**
-	 * Add the given polyglot data to the output localization resources (common logic to LoadLocalizedResources and QueryLocalizedResource).
-	 */
-	void AddPolyglotDataToResource(const FPolyglotTextData& InPolyglotTextData, const ELocalizationLoadFlags InLoadFlags, TArrayView<const FString> InPrioritizedCultures, FTextLocalizationResource& InOutNativeResource, FTextLocalizationResource& InOutLocalizedResource) const;
-
 	struct FCultureInfo
 	{
 		TMap<FString, int32> NativeCultures;
@@ -55,5 +49,5 @@ private:
 	/**
 	 * Mapping from a "{Namespace}::{Key}" string to a polyglot text data instance.
 	 */
-	TMap<FTextId, FPolyglotTextData> PolyglotTextDataMap;
+	TMap<FLocKey, FPolyglotTextData> PolyglotTextDataMap;
 };

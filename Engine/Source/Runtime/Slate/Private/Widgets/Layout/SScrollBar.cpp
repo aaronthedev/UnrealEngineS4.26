@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
  
 #include "Widgets/Layout/SScrollBar.h"
 #include "Widgets/Layout/SScrollBarTrack.h"
@@ -110,7 +110,7 @@ FReply SScrollBar::OnMouseButtonDown( const FGeometry& MyGeometry, const FPointe
 	{
 		FGeometry ThumbGeometry = FindChildGeometry(MyGeometry, DragThumb.ToSharedRef());
 
-		if (DragThumb->IsDirectlyHovered())
+		if (DragThumb->IsHovered())
 		{
 			// Clicking on the scrollbar drag thumb
 			if( Orientation == Orient_Horizontal )
@@ -277,7 +277,7 @@ const FSlateBrush* SScrollBar::GetDragThumbImage() const
 	{
 		return DraggedThumbImage;
 	}
-	else if (DragThumb->IsDirectlyHovered())
+	else if (DragThumb->IsHovered())
 	{
 		return HoveredThumbImage;
 	}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -31,9 +31,7 @@ struct FNetworkObjectInfo
 
 	/** Last time this actor was updated for replication via NextUpdateTime
 	* @warning: internal net driver time, not related to WorldSettings.TimeSeconds */
-	UE_DEPRECATED(4.25, "Please use LastNetUpdateTimestamp instead.")
 	float LastNetUpdateTime;
-	double LastNetUpdateTimestamp;
 
 	/** List of connections that this actor is dormant on */
 	TSet<TWeakObjectPtr<UNetConnection>> DormantConnections;
@@ -54,9 +52,6 @@ struct FNetworkObjectInfo
 	/** Should this object be considered for replay checkpoint writes */
 	uint8 bDirtyForReplay : 1;
 
-	/** Should channel swap roles while calling ReplicateActor */
-	uint8 bSwapRolesOnReplicate : 1;
-
 	/** Force this object to be considered relevant for at least one update */
 	uint32 ForceRelevantFrame = 0;
 
@@ -66,11 +61,9 @@ struct FNetworkObjectInfo
 		, LastNetReplicateTime(0.0)
 		, OptimalNetUpdateDelta(0.0f)
 		, LastNetUpdateTime(0.0f)
-		, LastNetUpdateTimestamp(0.0)
 		, bPendingNetUpdate(false)
 		, bForceRelevantNextUpdate(false)
-		, bDirtyForReplay(false)
-		, bSwapRolesOnReplicate(false) {}
+		, bDirtyForReplay(false) {}
 
 	FNetworkObjectInfo(AActor* InActor)
 		: Actor(InActor)
@@ -79,11 +72,9 @@ struct FNetworkObjectInfo
 		, LastNetReplicateTime(0.0)
 		, OptimalNetUpdateDelta(0.0f) 
 		, LastNetUpdateTime(0.0f)
-		, LastNetUpdateTimestamp(0.0)
 		, bPendingNetUpdate(false)
 		, bForceRelevantNextUpdate(false)
-		, bDirtyForReplay(false)
-		, bSwapRolesOnReplicate(false) {}
+		, bDirtyForReplay(false) {}
 
 	void CountBytes(FArchive& Ar) const;
 };

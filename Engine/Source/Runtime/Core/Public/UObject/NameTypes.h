@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,10 +10,8 @@
 #include "Containers/UnrealString.h"
 #include "HAL/CriticalSection.h"
 #include "Containers/StringConv.h"
-#include "Containers/StringFwd.h"
 #include "UObject/UnrealNames.h"
 #include "Templates/Atomic.h"
-#include "Serialization/MemoryLayout.h"
 
 /*----------------------------------------------------------------------------
 	Definitions.
@@ -21,7 +19,7 @@
 
 /** 
  * Do we want to support case-variants for FName?
- * This will add an extra NAME_INDEX variable to FName, but means that ToString() will return you the exact same 
+ * This will add an extra NAME_INunrealDEX variable to FName, but means that ToString() will return you the exact same 
  * string that FName::Init was called with (which is useful if your FNames are shown to the end user)
  * Currently this is enabled for the Editor and any Programs (such as UHT), but not the Runtime
  */
@@ -225,17 +223,8 @@ public:
 	/** Copy name to a dynamically allocated FString. */
 	CORE_API FString GetPlainNameString() const;
 
-	/** Copy name to a FStringBuilderBase. */
-	CORE_API void GetPlainNameString(FStringBuilderBase& OutString) const;
-
 	/** Appends name to string. May allocate. */
 	CORE_API void AppendNameToString(FString& OutString) const;
-
-	/** Appends name to string builder. */
-	CORE_API void AppendNameToString(FStringBuilderBase& OutString) const;
-
-	/** Appends name to string builder. Entry must not be wide. */
-	CORE_API void AppendAnsiNameToString(FAnsiStringBuilderBase& OutString) const;
 
 	/** Appends name to string with path separator using FString::PathAppend(). */
 	CORE_API void AppendNameToPathString(FString& OutString) const;
@@ -380,13 +369,6 @@ struct FScriptName
 	{
 	}
 
-	FORCEINLINE bool IsNone() const
-	{
-		return !ComparisonIndex && Number == NAME_NO_NUMBER_INTERNAL;
-	}
-
-	CORE_API FString ToString() const;
-
 	/** Index into the Names array (used to find String portion of the string/number pair used for comparison) */
 	FNameEntryId	ComparisonIndex;
 	/** Index into the Names array (used to find String portion of the string/number pair used for display) */
@@ -456,13 +438,6 @@ public:
 	void ToString(FString& Out) const;
 
 	/**
-	 * Converts an FName to a readable format, in place
-	 * 
-	 * @param Out StringBuilder to fill with the string representation of the name
-	 */
-	void ToString(FStringBuilderBase& Out) const;
-
-	/**
 	 * Get the number of characters, excluding null-terminator, that ToString() would yield
 	 */
 	uint32 GetStringLength() const;
@@ -495,22 +470,6 @@ public:
 	void AppendString(FString& Out) const;
 
 	/**
-	 * Converts an FName to a readable format, in place, appending to an existing string (ala GetFullName)
-	 * 
-	 * @param Out StringBuilder to append with the string representation of the name
-	 */
-	void AppendString(FStringBuilderBase& Out) const;
-
-	/**
-	 * Converts an ANSI FName to a readable format appended to the string builder.
-	 *
-	 * @param Out A string builder to write the readable representation of the name into.
-	 *
-	 * @return Whether the string is ANSI. A return of false indicates that the string was wide and was not written.
-	 */
-	bool TryAppendAnsiString(FAnsiStringBuilderBase& Out) const;
-
-	/**
 	 * Check to see if this FName matches the other FName, potentially also checking for any case variations
 	 */
 	FORCEINLINE bool IsEqual(const FName& Other, const ENameCase CompareMethod = ENameCase::IgnoreCase, const bool bCompareNumber = true ) const
@@ -519,16 +478,12 @@ public:
 			&& (!bCompareNumber || GetNumber() == Other.GetNumber());
 	}
 
-	FORCEINLINE bool operator==(FName Other) const
+	FORCEINLINE bool operator==(const FName& Other) const
 	{
-#if PLATFORM_64BITS && !WITH_CASE_PRESERVING_NAME
-		return ToComparableInt() == Other.ToComparableInt();
-#else
 		return (ComparisonIndex == Other.ComparisonIndex) & (GetNumber() == Other.GetNumber());
-#endif
 	}
 
-	FORCEINLINE bool operator!=(FName Other) const
+	FORCEINLINE bool operator!=(const FName& Other) const
 	{
 		return !(*this == Other);
 	}
@@ -571,11 +526,7 @@ public:
 	/** True for FName(), FName(NAME_None) and FName("None") */
 	FORCEINLINE bool IsNone() const
 	{
-#if PLATFORM_64BITS && !WITH_CASE_PRESERVING_NAME
-		return ToComparableInt() == 0;
-#else
 		return !ComparisonIndex && GetNumber() == NAME_NO_NUMBER_INTERNAL;
-#endif
 	}
 
 	/**
@@ -600,10 +551,7 @@ public:
 	 *
 	 * @return	true if the name is valid
 	 */
-	static bool IsValidXName( const FName InName, const FString& InInvalidChars, FText* OutReason = nullptr, const FText* InErrorCtx = nullptr );
-	static bool IsValidXName( const TCHAR* InName, const FString& InInvalidChars, FText* OutReason = nullptr, const FText* InErrorCtx = nullptr );
 	static bool IsValidXName( const FString& InName, const FString& InInvalidChars, FText* OutReason = nullptr, const FText* InErrorCtx = nullptr );
-	static bool IsValidXName( const FStringView& InName, const FString& InInvalidChars, FText* OutReason = nullptr, const FText* InErrorCtx = nullptr );
 
 	/**
 	 * Checks to see that a FName follows the rules that Unreal requires.
@@ -616,7 +564,7 @@ public:
 	 */
 	bool IsValidXName( const FString& InInvalidChars = INVALID_NAME_CHARACTERS, FText* OutReason = nullptr, const FText* InErrorCtx = nullptr ) const
 	{
-		return IsValidXName(*this, InInvalidChars, OutReason, InErrorCtx);
+		return IsValidXName(ToString(), InInvalidChars, OutReason, InErrorCtx);
 	}
 
 	/**
@@ -629,7 +577,7 @@ public:
 	 */
 	bool IsValidXName( FText& OutReason, const FString& InInvalidChars = INVALID_NAME_CHARACTERS ) const
 	{
-		return IsValidXName(*this, InInvalidChars, &OutReason);
+		return IsValidXName(ToString(), InInvalidChars, &OutReason);
 	}
 
 	/**
@@ -641,7 +589,7 @@ public:
 	 */
 	bool IsValidObjectName( FText& OutReason ) const
 	{
-		return IsValidXName(*this, INVALID_OBJECTNAME_CHARACTERS, &OutReason);
+		return IsValidXName(ToString(), INVALID_OBJECTNAME_CHARACTERS, &OutReason);
 	}
 
 	/**
@@ -654,7 +602,7 @@ public:
 	 */
 	bool IsValidGroupName( FText& OutReason, bool bIsGroupName=false ) const
 	{
-		return IsValidXName(*this, INVALID_LONGPACKAGE_CHARACTERS, &OutReason);
+		return IsValidXName(ToString(), INVALID_LONGPACKAGE_CHARACTERS, &OutReason);
 	}
 
 	/**
@@ -778,16 +726,6 @@ public:
 	FName(int32 Len, const WIDECHAR* Name, EFindName FindType=FNAME_Add);
 	FName(int32 Len, const ANSICHAR* Name, EFindName FindType=FNAME_Add);
 
-	template <typename CharRangeType,
-		typename CharType = typename TRemoveCV<typename TRemovePointer<decltype(GetData(DeclVal<CharRangeType>()))>::Type>::Type,
-		typename = decltype(ImplicitConv<TStringView<CharType>>(DeclVal<CharRangeType>()))>
-	inline explicit FName(CharRangeType&& Name, EFindName FindType = FNAME_Add)
-		: FName(NoInit)
-	{
-		TStringView<CharType> View = Forward<CharRangeType>(Name);
-		*this = FName(View.Len(), View.GetData());
-	}
-
 	/**
 	 * Create an FName. If FindType is FNAME_Find, and the string part of the name 
 	 * doesn't already exist, then the name will be NAME_None
@@ -801,16 +739,6 @@ public:
 	FName(const ANSICHAR* Name, int32 InNumber, EFindName FindType = FNAME_Add);
 	FName(int32 Len, const WIDECHAR* Name, int32 Number, EFindName FindType = FNAME_Add);
 	FName(int32 Len, const ANSICHAR* Name, int32 InNumber, EFindName FindType = FNAME_Add);
-
-	template <typename CharRangeType,
-		typename CharType = typename TRemoveCV<typename TRemovePointer<decltype(GetData(DeclVal<CharRangeType>()))>::Type>::Type,
-		typename = decltype(ImplicitConv<TStringView<CharType>>(DeclVal<CharRangeType>()))>
-	inline FName(CharRangeType&& Name, int32 InNumber, EFindName FindType = FNAME_Add)
-		: FName(NoInit)
-	{
-		TStringView<CharType> View = Forward<CharRangeType>(Name);
-		*this = FName(View.Len(), View.GetData(), InNumber);
-	}
 
 	/**
 	 * Create an FName. If FindType is FNAME_Find, and the string part of the name 
@@ -916,15 +844,6 @@ private:
 	/** Number portion of the string/number pair (stored internally as 1 more than actual, so zero'd memory will be the default, no-instance case) */
 	uint32			Number;
 
-#if PLATFORM_64BITS && !WITH_CASE_PRESERVING_NAME
-	FORCEINLINE uint64 ToComparableInt() const
-	{
-		static_assert(sizeof(*this) == sizeof(uint64), "");
-		alignas(uint64) FName AlignedCopy = *this;
-		return reinterpret_cast<uint64&>(AlignedCopy);
-	}
-#endif
-
 	friend const TCHAR* DebugFName(int32);
 	friend const TCHAR* DebugFName(int32, int32);
 	friend const TCHAR* DebugFName(FName&);
@@ -938,41 +857,16 @@ private:
 #endif
 	}
 
-
-
-
-
 	static bool IsWithinBounds(FNameEntryId Id);
 };
 
 template<> struct TIsZeroConstructType<class FName> { enum { Value = true }; };
 Expose_TNameOf(FName)
 
-namespace Freeze
-{
-	CORE_API void IntrinsicWriteMemoryImage(FMemoryImageWriter& Writer, const FName& Object, const FTypeLayoutDesc&);
-	CORE_API uint32 IntrinsicAppendHash(const FName* DummyObject, const FTypeLayoutDesc& TypeDesc, const FPlatformTypeLayoutParameters& LayoutParams, FSHA1& Hasher);
-	CORE_API void IntrinsicWriteMemoryImage(FMemoryImageWriter& Writer, const FMinimalName& Object, const FTypeLayoutDesc&);
-	CORE_API void IntrinsicWriteMemoryImage(FMemoryImageWriter& Writer, const FScriptName& Object, const FTypeLayoutDesc&);
-}
-
-DECLARE_INTRINSIC_TYPE_LAYOUT(FName);
-DECLARE_INTRINSIC_TYPE_LAYOUT(FMinimalName);
-DECLARE_INTRINSIC_TYPE_LAYOUT(FScriptName);
 
 FORCEINLINE uint32 GetTypeHash(FName Name)
 {
 	return GetTypeHash(Name.GetComparisonIndex()) + Name.GetNumber();
-}
-
-FORCEINLINE uint32 GetTypeHash(FMinimalName Name)
-{
-	return GetTypeHash(Name.Index) + Name.Number;
-}
-
-FORCEINLINE uint32 GetTypeHash(FScriptName Name)
-{
-	return GetTypeHash(Name.ComparisonIndex) + Name.Number;
 }
 
 FORCEINLINE FString LexToString(const FName& Name)
@@ -1005,13 +899,6 @@ FORCEINLINE FName ScriptNameToName(const FScriptName& InName)
 	return FName(InName.ComparisonIndex, InName.DisplayIndex, InName.Number);
 }
 
-inline FStringBuilderBase& operator<<(FStringBuilderBase& Builder, const FName& Name)
-{
-	Name.AppendString(Builder);
-	return Builder;
-}
-
-CORE_API FStringBuilderBase& operator<<(FStringBuilderBase& Builder, FNameEntryId Id);
 
 /**
  * Equality operator with CharType* on left hand side and FName on right hand side
@@ -1072,66 +959,6 @@ struct FNameLexicalLess
 		return A.LexicalLess(B);
 	}
 };
-
-FORCEINLINE bool operator==(const FMinimalName& Lhs, const FMinimalName& Rhs)
-{
-	return Lhs.Number == Rhs.Number && Lhs.Index == Rhs.Index;
-}
-
-FORCEINLINE bool operator!=(const FMinimalName& Lhs, const FMinimalName& Rhs)
-{
-	return !operator==(Lhs, Rhs);
-}
-
-FORCEINLINE bool operator==(const FScriptName& Lhs, const FScriptName& Rhs)
-{
-	return Lhs.Number == Rhs.Number && Lhs.ComparisonIndex == Rhs.ComparisonIndex;
-}
-
-FORCEINLINE bool operator!=(const FScriptName& Lhs, const FScriptName& Rhs)
-{
-	return !operator==(Lhs, Rhs);
-}
-
-FORCEINLINE bool operator==(const FName& Lhs, const FMinimalName& Rhs)
-{
-	return Lhs.GetNumber() == Rhs.Number && Lhs.GetComparisonIndex() == Rhs.Index;
-}
-
-FORCEINLINE bool operator!=(const FName& Lhs, const FMinimalName& Rhs)
-{
-	return !operator==(Lhs, Rhs);
-}
-
-FORCEINLINE bool operator==(const FMinimalName& Lhs, const FName& Rhs)
-{
-	return Lhs.Number == Rhs.GetNumber() && Lhs.Index == Rhs.GetComparisonIndex();
-}
-
-FORCEINLINE bool operator!=(const FMinimalName& Lhs, const FName& Rhs)
-{
-	return !operator==(Lhs, Rhs);
-}
-
-FORCEINLINE bool operator==(const FName& Lhs, const FScriptName& Rhs)
-{
-	return Lhs.GetNumber() == Rhs.Number && Lhs.GetComparisonIndex() == Rhs.ComparisonIndex;
-}
-
-FORCEINLINE bool operator!=(const FName& Lhs, const FScriptName& Rhs)
-{
-	return !operator==(Lhs, Rhs);
-}
-
-FORCEINLINE bool operator==(const FScriptName& Lhs, const FName& Rhs)
-{
-	return Lhs.Number == Rhs.GetNumber() && Lhs.ComparisonIndex == Rhs.GetComparisonIndex();
-}
-
-FORCEINLINE bool operator!=(const FScriptName& Lhs, const FName& Rhs)
-{
-	return !operator==(Lhs, Rhs);
-}
 
 #ifndef WITH_CUSTOM_NAME_ENCODING
 inline void FNameEntry::Encode(ANSICHAR*, uint32) {}

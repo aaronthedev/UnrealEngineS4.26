@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineStoreInterfaceGooglePlay.h"
 #include "OnlinePurchaseGooglePlay.h"
@@ -9,9 +9,7 @@
 #include "OnlineSubsystemGooglePlay.h"
 #include <jni.h>
 #include "Android/AndroidJavaEnv.h"
-#include "Internationalization/Internationalization.h"
-#include "Internationalization/Culture.h"
-#include "Internationalization/FastDecimalFormat.h"
+
 
 ////////////////////////////////////////////////////////////////////
 /// FOnlineStoreGooglePlay implementation
@@ -81,7 +79,6 @@ bool FOnlineStoreGooglePlay::QueryForAvailablePurchases(const TArray<FString>& P
 	return true;
 }
 
-#if OSSGOOGLEPLAY_WITH_AIDL
 
 JNI_METHOD void Java_com_epicgames_ue4_GooglePlayStoreHelper_nativeQueryComplete(JNIEnv* jenv, jobject thiz, jsize responseCode, jobjectArray productIDs, jobjectArray titles, jobjectArray descriptions, jobjectArray prices, jfloatArray pricesRaw, jobjectArray currencyCodes)
 {
@@ -170,56 +167,6 @@ void FOnlineStoreGooglePlay::OnGooglePlayAvailableIAPQueryComplete(EGooglePlayBi
 	CurrentQueryTask = nullptr;
 }
 
-#else
-
-TSharedRef<FInAppPurchaseProductInfo> ConvertStoreOfferToProduct(const FOnlineStoreOffer& Offer)
-{
-	TSharedRef<FInAppPurchaseProductInfo> NewProductInfo = MakeShareable(new FInAppPurchaseProductInfo());
-
-	NewProductInfo->Identifier = Offer.OfferId;
-	NewProductInfo->DisplayName = Offer.Title.ToString();
-
-	NewProductInfo->DisplayDescription = Offer.Description.ToString(); // Google has only one description, map it to (short) description to match iOS
-	NewProductInfo->DisplayPrice = Offer.PriceText.ToString();
-	NewProductInfo->CurrencyCode = Offer.CurrencyCode;
-
-	// Convert the backend stated price into its base units
-	FInternationalization& I18N = FInternationalization::Get();
-	const FCulture& Culture = *I18N.GetCurrentCulture();
-
-	const FDecimalNumberFormattingRules& FormattingRules = Culture.GetCurrencyFormattingRules(NewProductInfo->CurrencyCode);
-	const FNumberFormattingOptions& FormattingOptions = FormattingRules.CultureDefaultFormattingOptions;
-	double Val = static_cast<double>(Offer.NumericPrice) / static_cast<double>(FMath::Pow(10.0f, FormattingOptions.MaximumFractionalDigits));
-
-	NewProductInfo->RawPrice = Val;
-
-	return NewProductInfo;
-}
-
-void FOnlineStoreGooglePlay::OnGooglePlayAvailableIAPQueryComplete(EGooglePlayBillingResponseCode InResponseCode, const TArray<FOnlineStoreOffer>& AvailablePurchases)
-{
-	UE_LOG_ONLINE_STORE(Display, TEXT("FOnlineStoreGooglePlay::OnGooglePlayAvailableIAPQueryComplete"));
-
-	TArray<FInAppPurchaseProductInfo> TempInfos;
-	for (const FOnlineStoreOffer& AvailablePurchase : AvailablePurchases)
-	{
-		TempInfos.Add(*ConvertStoreOfferToProduct(AvailablePurchase));
-	}
-
-	if (ReadObject.IsValid())
-	{
-		ReadObject->ReadState = (InResponseCode == EGooglePlayBillingResponseCode::Ok) ? EOnlineAsyncTaskState::Done : EOnlineAsyncTaskState::Failed;
-		ReadObject->ProvidedProductInformation.Insert(TempInfos, 0);
-	}
-
-	CurrentQueryTask->ProcessQueryAvailablePurchasesResults(InResponseCode == EGooglePlayBillingResponseCode::Ok);
-
-	// clear the pointer, it will be destroyed by the async task manager
-	CurrentQueryTask = nullptr;
-}
-
-#endif
-
 bool FOnlineStoreGooglePlay::BeginPurchase(const FInAppPurchaseProductRequest& ProductRequest, FOnlineInAppPurchaseTransactionRef& InPurchaseStateObject)
 {
 	UE_LOG_ONLINE_STORE(Display, TEXT( "FOnlineStoreGooglePlay::BeginPurchase" ));
@@ -231,8 +178,8 @@ bool FOnlineStoreGooglePlay::BeginPurchase(const FInAppPurchaseProductRequest& P
 		CachedPurchaseStateObject = InPurchaseStateObject;
 		CachedPurchaseStateObject->bIsConsumable = ProductRequest.bIsConsumable;
 
-		extern bool AndroidThunkCpp_Iap_BeginPurchase(const FString&, const FString&);
-		bCreatedNewTransaction = AndroidThunkCpp_Iap_BeginPurchase(ProductRequest.ProductIdentifier, FString());
+		extern bool AndroidThunkCpp_Iap_BeginPurchase(const FString&);
+		bCreatedNewTransaction = AndroidThunkCpp_Iap_BeginPurchase(ProductRequest.ProductIdentifier);
 		UE_LOG_ONLINE_STORE(Display, TEXT("Created Transaction? - %s"), 
 			bCreatedNewTransaction ? TEXT("Created a transaction.") : TEXT("Failed to create a transaction."));
 
@@ -258,7 +205,7 @@ bool FOnlineStoreGooglePlay::BeginPurchase(const FInAppPurchaseProductRequest& P
 	return bCreatedNewTransaction;
 }
 
-#if OSSGOOGLEPLAY_WITH_AIDL
+
 JNI_METHOD void Java_com_epicgames_ue4_GooglePlayStoreHelper_nativePurchaseComplete(JNIEnv* jenv, jobject thiz, jsize responseCode, jstring productId, jstring productToken, jstring receiptData, jstring signature)
 {
 	FString ProductId, ProductToken, ReceiptData, Signature;
@@ -298,7 +245,7 @@ JNI_METHOD void Java_com_epicgames_ue4_GooglePlayStoreHelper_nativePurchaseCompl
 		ENamedThreads::GameThread
 		);
 }
-#endif
+
 
 void FOnlineStoreGooglePlay::OnProcessPurchaseResult(EGooglePlayBillingResponseCode InResponseCode, const FGoogleTransactionData& InTransactionData)
 {
@@ -361,7 +308,6 @@ bool FOnlineStoreGooglePlay::RestorePurchases(const TArray<FInAppPurchaseProduct
 	return bSentAQueryRequest;
 }
 
-#if OSSGOOGLEPLAY_WITH_AIDL
 JNI_METHOD void Java_com_epicgames_ue4_GooglePlayStoreHelper_nativeRestorePurchasesComplete(JNIEnv* jenv, jobject thiz, jsize responseCode, jobjectArray ProductIDs, jobjectArray ProductTokens, jobjectArray ReceiptsData, jobjectArray Signatures)
 {
 	TArray<FGoogleTransactionData> RestoredPurchaseInfo;
@@ -416,7 +362,6 @@ JNI_METHOD void Java_com_epicgames_ue4_GooglePlayStoreHelper_nativeRestorePurcha
 		ENamedThreads::GameThread
 		);
 }
-#endif
 
 void FOnlineStoreGooglePlay::OnRestorePurchasesComplete(EGooglePlayBillingResponseCode InResponseCode, const TArray<FGoogleTransactionData>& InRestoredPurchases)
 {
@@ -445,7 +390,6 @@ void FOnlineStoreGooglePlay::OnRestorePurchasesComplete(EGooglePlayBillingRespon
 	TriggerOnInAppPurchaseRestoreCompleteDelegates(IAPState);
 }
 
-#if OSSGOOGLEPLAY_WITH_AIDL
 JNI_METHOD void Java_com_epicgames_ue4_GooglePlayStoreHelper_nativeQueryExistingPurchasesComplete(JNIEnv* jenv, jobject thiz, jsize responseCode, jobjectArray ProductIDs, jobjectArray ProductTokens, jobjectArray ReceiptsData, jobjectArray Signatures)
 {
 	TArray<FGoogleTransactionData> ExistingPurchaseInfo;
@@ -497,4 +441,3 @@ JNI_METHOD void Java_com_epicgames_ue4_GooglePlayStoreHelper_nativeQueryExisting
 		ENamedThreads::GameThread
 		);
 }
-#endif

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	RHISurfaceDataConversion.h: RHI surface data conversions.
@@ -70,24 +70,14 @@ static inline void ConvertRawR8G8B8A8DataToFColor(uint32 Width, uint32 Height, u
 
 static inline void ConvertRawB8G8R8A8DataToFColor(uint32 Width, uint32 Height, uint8 *In, uint32 SrcPitch, FColor* Out)
 {
-	const uint32 DstPitch = Width * sizeof(FColor);
-
-	// If source & dest pitch matches, perform a single memcpy.
-	if (DstPitch == SrcPitch)
+	// todo: check if the source and dst pitch is the same to avoid loop below.
+	for (uint32 Y = 0; Y < Height; Y++)
 	{
-		FPlatformMemory::Memcpy(Out, In, Width * Height * sizeof(FColor));
-	}
-	else
-	{
-		check(SrcPitch > DstPitch);
+		FColor* SrcPtr = (FColor*)(In + Y * SrcPitch);
+		FColor* DestPtr = Out + Y * Width;
 
-		// Need to copy row wise since the Pitch does not match the Width.
-		for (uint32 Y = 0; Y < Height; Y++)
-		{
-			FColor* SrcPtr = (FColor*)(In + Y * SrcPitch);
-			FColor* DestPtr = Out + Y * Width;
-			FMemory::Memcpy(DestPtr, SrcPtr, DstPitch);
-		}
+		// Need to copy row wise since the Pitch might not match the Width.
+		FMemory::Memcpy(DestPtr, SrcPtr, sizeof(FColor) * Width);
 	}
 }
 

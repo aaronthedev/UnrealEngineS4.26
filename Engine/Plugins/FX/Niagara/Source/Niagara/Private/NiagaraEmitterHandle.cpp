@@ -1,11 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraEmitterHandle.h"
 #include "NiagaraSystem.h"
 #include "NiagaraEmitter.h"
 #include "NiagaraScriptSourceBase.h"
 #include "NiagaraCommon.h"
-#include "NiagaraCustomVersion.h"
+#include "NiagaraDataInterface.h"
+#include "NiagaraModule.h"
+
+#include "Modules/ModuleManager.h"
 
 const FNiagaraEmitterHandle FNiagaraEmitterHandle::InvalidHandle;
 
@@ -56,11 +59,16 @@ FName FNiagaraEmitterHandle::GetName() const
 
 void FNiagaraEmitterHandle::SetName(FName InName, UNiagaraSystem& InOwnerSystem)
 {
-	FName SanitizedName = *FNiagaraUtilities::SanitizeNameForObjectsAndPackages(InName.ToString());
-	if (SanitizedName.IsEqual(Name, ENameCase::CaseSensitive, false))
+	if (InName == Name)
 	{
 		return;
 	}
+
+	FString TempNameString = InName.ToString();
+	TempNameString.ReplaceInline(TEXT(" "), TEXT("_"));
+	TempNameString.ReplaceInline(TEXT("\t"), TEXT("_"));
+	TempNameString.ReplaceInline(TEXT("."), TEXT("_"));
+	InName = *TempNameString;
 
 	TSet<FName> OtherEmitterNames;
 	for (const FNiagaraEmitterHandle& OtherEmitterHandle : InOwnerSystem.GetEmitterHandles())
@@ -70,17 +78,17 @@ void FNiagaraEmitterHandle::SetName(FName InName, UNiagaraSystem& InOwnerSystem)
 			OtherEmitterNames.Add(OtherEmitterHandle.GetName());
 		}
 	}
-	FName UniqueName = FNiagaraUtilities::GetUniqueName(SanitizedName, OtherEmitterNames);
+	FName UniqueName = FNiagaraUtilities::GetUniqueName(InName, OtherEmitterNames);
 
 	Name = UniqueName;
 	if (Instance->SetUniqueEmitterName(Name.ToString()))
 	{
- #if WITH_EDITOR
+#if WITH_EDITOR
 		if (InOwnerSystem.GetSystemSpawnScript() && InOwnerSystem.GetSystemSpawnScript()->GetSource())
 		{
 			// Just invalidate the system scripts here. The emitter scripts have their important variables 
 			// changed in the SetUniqueEmitterName method above.
-			InOwnerSystem.GetSystemSpawnScript()->GetSource()->MarkNotSynchronized(TEXT("EmitterHandleRenamed"));
+			InOwnerSystem.GetSystemSpawnScript()->GetSource()->InvalidateCachedCompileIds();
 		}
 #endif
 	}
@@ -104,9 +112,8 @@ bool FNiagaraEmitterHandle::SetIsEnabled(bool bInIsEnabled, UNiagaraSystem& InOw
 			InOwnerSystem.GetSystemSpawnScript()->GetSource()->RefreshFromExternalChanges();
 
 			// Need to cause us to recompile in the future if necessary...
-			FString InvalidateReason = TEXT("Emitter enabled changed.");
-			InOwnerSystem.GetSystemSpawnScript()->InvalidateCompileResults(InvalidateReason);
-			InOwnerSystem.GetSystemUpdateScript()->InvalidateCompileResults(InvalidateReason);
+			InOwnerSystem.GetSystemSpawnScript()->InvalidateCompileResults();
+			InOwnerSystem.GetSystemUpdateScript()->InvalidateCompileResults();
 
 			// Clean out the emitter's compile results for cleanliness.
 			if (Instance)
@@ -183,17 +190,6 @@ void FNiagaraEmitterHandle::ConditionalPostLoad(int32 NiagaraCustomVersion)
 			if (Instance->IsSynchronizedWithParent() == false)
 			{
 				Instance->MergeChangesFromParent();
-			}
-		}
-
-		FText Reason;
-		if (Instance->GetFName().IsValidObjectName(Reason) == false)
-		{
-			UNiagaraSystem* OwningSystem = Instance->GetTypedOuter<UNiagaraSystem>();
-			if (OwningSystem != nullptr)
-			{
-				// If the name isn't a valid object name, set the name again so that it will be properly sanitized.
-				SetName(Name, *OwningSystem);
 			}
 		}
 	}

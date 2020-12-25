@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	XeAudioDevice.cpp: Unreal XAudio2 Audio interface object.
@@ -16,10 +16,11 @@
 #include "AudioPluginUtilities.h"
 #include "OpusAudioInfo.h"
 #include "VorbisAudioInfo.h"
+#include "ADPCMAudioInfo.h"
 #include "XAudio2Effects.h"
 #include "Interfaces/IAudioFormat.h"
 #include "HAL/PlatformAffinity.h"
-#if PLATFORM_MICROSOFT
+#if PLATFORM_WINDOWS || PLATFORM_HOLOLENS || PLATFORM_XBOXONE
 #include "Windows/WindowsHWrapper.h"
 #include "Windows/AllowWindowsPlatformTypes.h"
 #include "Windows/AllowWindowsPlatformAtomics.h"
@@ -37,8 +38,6 @@ THIRD_PARTY_INCLUDES_END
 #if WITH_XMA2
 #include "XMAAudioInfo.h"
 #endif
-
-#include "ADPCMAudioInfo.h"
 
 DEFINE_LOG_CATEGORY(LogXAudio2);
 
@@ -128,11 +127,7 @@ bool FXAudio2Device::InitializeHardware()
 	{
 		UE_LOG(LogInit, Verbose, TEXT("Loading XAudio2 dll"));
 
-#if defined(XAUDIO2_DLL_A) //is this ref counting fix still necessary on post- XAudio2_7 ?
-		FXAudioDeviceProperties::XAudio2Dll = LoadLibraryA(XAUDIO2_DLL_A);
-#else
 		FXAudioDeviceProperties::XAudio2Dll = LoadLibraryA("XAudio2_7.dll");
-#endif
 
 		// returning null means we failed to load XAudio2, which means everything will fail
 		if (FXAudioDeviceProperties::XAudio2Dll == nullptr)
@@ -274,7 +269,7 @@ bool FXAudio2Device::InitializeHardware()
 	bIsAudioDeviceHardwareInitialized = true;
 
 #if WITH_XMA2
-	XMA2_INFO_CALL(FXMAAudioInfo::Initialize());
+	FXMAAudioInfo::Initialize();
 #endif
 
 	return true;
@@ -289,7 +284,7 @@ void FXAudio2Device::TeardownHardware()
 	}
 
 #if WITH_XMA2
-	XMA2_INFO_CALL(FXMAAudioInfo::Shutdown());
+	FXMAAudioInfo::Shutdown();
 #endif
 
 #if PLATFORM_WINDOWS
@@ -303,10 +298,6 @@ void FXAudio2Device::TeardownHardware()
 
 void FXAudio2Device::UpdateHardware()
 {
-#if WITH_XMA2
-		XMA2_INFO_CALL(FXMAAudioInfo::Tick());
-#endif //WITH_XMA2
-
 	// If the audio device changed, we need to tear down and restart the audio engine state
 	if (DeviceProperties && DeviceProperties->DidAudioDeviceChange())
 	{
@@ -365,7 +356,7 @@ class ICompressedAudioInfo* FXAudio2Device::CreateCompressedAudioInfo(USoundWave
 {
 	check(SoundWave);
 
-	if (SoundWave->IsStreaming(nullptr))
+	if (SoundWave->IsStreaming())
 	{
 		if (SoundWave->IsSeekableStreaming())
 		{
@@ -375,8 +366,7 @@ class ICompressedAudioInfo* FXAudio2Device::CreateCompressedAudioInfo(USoundWave
 #if WITH_XMA2 && USE_XMA2_FOR_STREAMING
 		if (SoundWave->NumChannels <= 2 )
 		{
-			ICompressedAudioInfo* CompressedInfo = XMA2_INFO_NEW();
-		
+			ICompressedAudioInfo* CompressedInfo = new FXMAAudioInfo();
 			if (!CompressedInfo)
 			{
 				UE_LOG(LogAudio, Error, TEXT("Failed to create new FXMAAudioInfo for streaming SoundWave %s: out of memory."), *SoundWave->GetName());
@@ -411,7 +401,7 @@ class ICompressedAudioInfo* FXAudio2Device::CreateCompressedAudioInfo(USoundWave
 	static const FName NAME_XMA(TEXT("XMA"));
 	if (FPlatformProperties::RequiresCookedData() ? SoundWave->HasCompressedData(NAME_XMA) : (SoundWave->GetCompressedData(NAME_XMA) != nullptr))
 	{
-		ICompressedAudioInfo* CompressedInfo = XMA2_INFO_NEW();			
+		ICompressedAudioInfo* CompressedInfo = new FXMAAudioInfo();
 		if (!CompressedInfo)
 		{
 			UE_LOG(LogAudio, Error, TEXT("Failed to create new FXMAAudioInfo for SoundWave %s: out of memory."), *SoundWave->GetName());

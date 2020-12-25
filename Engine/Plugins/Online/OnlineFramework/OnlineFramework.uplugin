@@ -24,10 +24,6 @@
 			"Type": "Runtime"
 		},
 		{
-			"Name": "PatchCheck",
-			"Type": "Runtime"
-		},
-		{
 			"Name": "Hotfix",
 			"Type": "Runtime"
 		},
@@ -58,11 +54,6 @@
 		{
 			"Name": "OnlineSubsystemUtils",
 			"Enabled": true
-		},
-		{
-			"Name": "OnlineTracing",
-			"Enabled": true,
-			"Optional": true
 		}
 	]
 }

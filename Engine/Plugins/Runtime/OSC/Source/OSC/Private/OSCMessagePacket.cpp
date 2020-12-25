@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "OSCMessagePacket.h"
 
 #include "OSCBundle.h"
@@ -62,44 +62,44 @@ void FOSCMessagePacket::WriteData(FOSCStream& Stream)
 	{
 		switch (OSCType.GetTypeTag())
 		{
-		case EOSCTypeTag::OSC_CHAR:
+		case EOSCTypeTag::CHAR:
 			Stream.WriteChar(OSCType.GetChar());
 			break;
-		case EOSCTypeTag::OSC_INT32:
+		case EOSCTypeTag::INT32:
 			Stream.WriteInt32(OSCType.GetInt32());
 			break;
-		case EOSCTypeTag::OSC_FLOAT:
+		case EOSCTypeTag::FLOAT:
 			Stream.WriteFloat(OSCType.GetFloat());
 			break;
-		case EOSCTypeTag::OSC_DOUBLE:
+		case EOSCTypeTag::DOUBLE:
 			Stream.WriteDouble(OSCType.GetDouble());
 			break;
-		case EOSCTypeTag::OSC_INT64:
+		case EOSCTypeTag::INT64:
 			Stream.WriteInt64(OSCType.GetInt64());
 			break;
-		case EOSCTypeTag::OSC_TIME:
+		case EOSCTypeTag::TIME:
 			Stream.WriteUInt64(OSCType.GetTimeTag());
 			break;
-		case EOSCTypeTag::OSC_STRING:
+		case EOSCTypeTag::STRING:
 			Stream.WriteString(OSCType.GetString());
 			break;
-		case EOSCTypeTag::OSC_BLOB:
+		case EOSCTypeTag::BLOB:
 		{
 			TArray<uint8> blob = OSCType.GetBlob();
 			Stream.WriteBlob(blob);
 		}
 		break;
-		case EOSCTypeTag::OSC_COLOR:
+		case EOSCTypeTag::COLOR:
 #if PLATFORM_LITTLE_ENDIAN
 			Stream.WriteInt32(OSCType.GetColor().ToPackedABGR());
 #else
 			Stream.WriteInt32(OSCType.GetColor().ToPackedRGBA());
 #endif
 			break;
-		case EOSCTypeTag::OSC_TRUE:
-		case EOSCTypeTag::OSC_FALSE:
-		case EOSCTypeTag::OSC_NIL:
-		case EOSCTypeTag::OSC_INFINITUM:
+		case EOSCTypeTag::TRUE:
+		case EOSCTypeTag::FALSE:
+		case EOSCTypeTag::NIL:
+		case EOSCTypeTag::INFINITUM:
 			// No values are written for these types
 			break;
 		default:
@@ -117,13 +117,7 @@ void FOSCMessagePacket::ReadData(FOSCStream& Stream)
 
 	// Read string of tags
 	const FString StreamString = Stream.ReadString();
-
 	const TArray<TCHAR>& TagTypes = StreamString.GetCharArray();
-	if(TagTypes.Num() == 0)
-	{
-		UE_LOG(LogOSC, Error, TEXT("Failed to read message packet with address '%s' from stream: Invalid (Empty) Type Tag"), *Address.GetFullPath());
-		return;
-	}
 
 	// Skip the first argument which is ','
 	for (int32 i = 1; i < TagTypes.Num(); i++)
@@ -131,49 +125,48 @@ void FOSCMessagePacket::ReadData(FOSCStream& Stream)
 		const EOSCTypeTag Tag = static_cast<EOSCTypeTag>(TagTypes[i]);
 		switch (Tag)
 		{
-		case EOSCTypeTag::OSC_CHAR:
+		case EOSCTypeTag::CHAR:
 			Arguments.Add(FOSCType(Stream.ReadChar()));
 			break;
-		case EOSCTypeTag::OSC_INT32:
+		case EOSCTypeTag::INT32:
 			Arguments.Add(FOSCType(Stream.ReadInt32()));
 			break;
-		case EOSCTypeTag::OSC_FLOAT:
+		case EOSCTypeTag::FLOAT:
 			Arguments.Add(FOSCType(Stream.ReadFloat()));
 			break;
-		case EOSCTypeTag::OSC_DOUBLE:
+		case EOSCTypeTag::DOUBLE:
 			Arguments.Add(FOSCType(Stream.ReadDouble()));
 			break;
-		case EOSCTypeTag::OSC_INT64:
+		case EOSCTypeTag::INT64:
 			Arguments.Add(FOSCType(Stream.ReadInt64()));
 			break;
-		case EOSCTypeTag::OSC_TRUE:
+		case EOSCTypeTag::TRUE:
 			Arguments.Add(FOSCType(true));
 			break;
-		case EOSCTypeTag::OSC_FALSE:
+		case EOSCTypeTag::FALSE:
 			Arguments.Add(FOSCType(false));
 			break;
-		case EOSCTypeTag::OSC_NIL:
-			Arguments.Add(FOSCType(EOSCTypeTag::OSC_NIL));
+		case EOSCTypeTag::NIL:
+			Arguments.Add(FOSCType(EOSCTypeTag::NIL));
 			break;
-		case EOSCTypeTag::OSC_INFINITUM:
-			Arguments.Add(FOSCType(EOSCTypeTag::OSC_INFINITUM));
+		case EOSCTypeTag::INFINITUM:
+			Arguments.Add(FOSCType(EOSCTypeTag::INFINITUM));
 			break;
-		case EOSCTypeTag::OSC_TIME:
+		case EOSCTypeTag::TIME:
 			Arguments.Add(FOSCType(Stream.ReadUInt64()));
 			break;
-		case EOSCTypeTag::OSC_STRING:
+		case EOSCTypeTag::STRING:
 			Arguments.Add(FOSCType(Stream.ReadString()));
 			break;
-		case EOSCTypeTag::OSC_BLOB:
+		case EOSCTypeTag::BLOB:
 			Arguments.Add(FOSCType(Stream.ReadBlob()));
 			break;
-		case EOSCTypeTag::OSC_COLOR:
+		case EOSCTypeTag::COLOR:
 			Arguments.Add(FOSCType(FColor(Stream.ReadInt32())));
 			break;
-		case EOSCTypeTag::OSC_TERMINATE:
-			// Return on first terminate found. FString GetCharArray can return
-			// an array with multiple terminators.
-			return;
+		case EOSCTypeTag::TERMINATE:
+			Stream.ReadChar();
+			break;
 
 		default:
 			// Argument is not supported 

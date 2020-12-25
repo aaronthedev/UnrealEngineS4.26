@@ -124,7 +124,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USD_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -136,7 +136,7 @@ private:
 
     // override SchemaBase virtuals.
     USD_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // ===================================================================== //

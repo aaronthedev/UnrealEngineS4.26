@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -42,14 +42,14 @@ namespace Audio
 
 	private:
 
+		// The number of bands in the equalizer
+		int32 NumBands;
+
 		// The number of channels in the equalizer
 		int32 NumChannels;
 
 		// The array of biquad filters
-		TArray<FBiquadFilter> FilterBands;
-		
-		// Temporary array for processing audio.
-		TArray<float> WorkBuffer;
+		FBiquadFilter* FilterBands;
 	};
 
 }

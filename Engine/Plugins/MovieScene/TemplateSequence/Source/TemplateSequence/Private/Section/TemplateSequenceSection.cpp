@@ -1,12 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Sections/TemplateSequenceSection.h"
 #include "TemplateSequence.h"
-#include "Systems/TemplateSequenceSystem.h"
+#include "Evaluation/TemplateSequenceInstanceData.h"
+#include "Evaluation/TemplateSequenceSectionTemplate.h"
+#include "UObject/SequencerObjectVersion.h"
+
 
 UTemplateSequenceSection::UTemplateSequenceSection()
 {
-	SetBlendType(EMovieSceneBlendType::Absolute);
 }
 
 void UTemplateSequenceSection::OnDilated(float DilationFactor, FFrameNumber Origin)
@@ -15,32 +17,23 @@ void UTemplateSequenceSection::OnDilated(float DilationFactor, FFrameNumber Orig
 	Parameters.TimeScale /= DilationFactor;
 }
 
-void UTemplateSequenceSection::ImportEntityImpl(UMovieSceneEntitySystemLinker* EntityLinker, const FEntityImportParams& Params, FImportedEntity* OutImportedEntity)
+FMovieSceneSubSequenceData UTemplateSequenceSection::GenerateSubSequenceData(const FSubSequenceInstanceDataParams& Params) const
 {
-	using namespace UE::MovieScene;
+	FMovieSceneSubSequenceData SubData(*this);
 
-	FTemplateSequenceComponentData ComponentData;
+	FTemplateSequenceInstanceData InstanceData;
+	InstanceData.Operand = Params.Operand;
+	SubData.InstanceData = FMovieSceneSequenceInstanceDataPtr(InstanceData);
 
-	if (UTemplateSequence* TemplateSubSequence = Cast<UTemplateSequence>(GetSequence()))
-	{
-		const FMovieSceneObjectBindingID InnerObjectBindingID(
-				TemplateSubSequence->GetRootObjectBindingID(), GetSequenceID(), EMovieSceneObjectBindingSpace::Local);
-
-		const FSequenceInstance& SequenceInstance = EntityLinker->GetInstanceRegistry()->GetInstance(Params.Sequence.InstanceHandle);
-		const FMovieSceneObjectBindingID AbsoluteInnerObjectBindingID(
-				InnerObjectBindingID.ResolveLocalToRoot(SequenceInstance.GetSequenceID(), *SequenceInstance.GetPlayer()));
-
-		ComponentData.InnerOperand = FMovieSceneEvaluationOperand(
-				AbsoluteInnerObjectBindingID.GetSequenceID(), AbsoluteInnerObjectBindingID.GetGuid());
-	}
-
-	FGuid ObjectBindingID = Params.GetObjectBindingID();
-
-	OutImportedEntity->AddBuilder(
-		FEntityBuilder()
-		.AddConditional(FBuiltInComponentTypes::Get()->GenericObjectBinding, ObjectBindingID, ObjectBindingID.IsValid())
-		.Add(FTemplateSequenceComponentTypes::Get()->TemplateSequence, ComponentData)
-	);
-
-	BuildDefaultSubSectionComponents(EntityLinker, Params, OutImportedEntity);
+	return SubData;
 }
+
+FMovieSceneEvalTemplatePtr UTemplateSequenceSection::GenerateTemplate() const
+{
+	if (SubSequence != nullptr)
+	{
+		return FTemplateSequenceSectionTemplate(*this);
+	}
+	return FMovieSceneEvalTemplatePtr();
+}
+

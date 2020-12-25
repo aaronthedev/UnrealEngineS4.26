@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -45,11 +45,8 @@ class UUserDefinedEnum;
 class UUserDefinedStruct;
 class UBlueprintEditorOptions;
 struct Rect;
-class UToolMenu;
-struct FToolMenuContext;
 class UK2Node_FunctionEntry;
 class UK2Node_Event;
-class UToolMenu;
 
 /* Enums to use when grouping the blueprint members in the list panel. The order here will determine the order in the list */
 namespace NodeSectionID
@@ -241,9 +238,6 @@ public:
 
 	virtual ~FBlueprintEditor();
 
-	/** Add context objects for menus and toolbars */
-	virtual void InitToolMenuContext(FToolMenuContext& MenuContext) override;
-
 	/** Check the Node Title is visible */
 	bool IsNodeTitleVisible(const UEdGraphNode* Node, bool bRequestRename);
 
@@ -317,7 +311,7 @@ public:
 	bool InDebuggingMode() const;
 
 	/** Get the currently selected set of nodes */
-	FGraphPanelSelectionSet GetSelectedNodes() const;
+	TSet<UObject*> GetSelectedNodes() const;
 
 	/** Returns the currently selected node if there is a single node selected (if there are multiple nodes selected or none selected, it will return nullptr) */
 	UEdGraphNode* GetSingleSelectedNode() const;
@@ -400,22 +394,9 @@ public:
 	 * @param VarScope			Scope to find the variable in
 	 * @param VarName			Name of variable
 	 * @param IconColorOut		The resulting color for the glyph
-	 * @param SecondaryBrushOut The resulting secondary glyph brush (used for Map types)
-	 * @param SecondaryColorOut The resulting secondary color for the glyph (used for Map types)
 	 * @return					The resulting glyph brush
 	 */
 	static FSlateBrush const* GetVarIconAndColor(const UStruct* VarScope, FName VarName, FSlateColor& IconColorOut, FSlateBrush const*& SecondaryBrushOut, FSlateColor& SecondaryColorOut);
-
-	/**
-	 * Util for finding a glyph and color for a variable.
-	 *
-	 * @param Property       The variable's property
-	 * @param IconColorOut      The resulting color for the glyph
-	 * @param SecondaryBrushOut The resulting secondary glyph brush (used for Map types)
-	 * @param SecondaryColorOut The resulting secondary color for the glyph (used for Map types)
-	 * @return					The resulting glyph brush
-	 */
-	static FSlateBrush const* GetVarIconAndColorFromProperty(const FProperty* Property, FSlateColor& IconColorOut, FSlateBrush const*& SecondaryBrushOut, FSlateColor& SecondaryColorOut);
 
 	/** Overridable function for determining if the current mode can script */
 	virtual bool IsInAScriptingMode() const;
@@ -454,7 +435,7 @@ public:
 	void EnsureBlueprintIsUpToDate(UBlueprint* BlueprintObj);
 
 	// Should be called when initializing any editor built off this foundation
-	void CommonInitialization(const TArray<UBlueprint*>& InitBlueprints, bool bShouldOpenInDefaultsMode);
+	void CommonInitialization(const TArray<UBlueprint*>& InitBlueprints);
 
 	// Should be called when initializing an editor that has a blueprint, after layout (tab spawning) is done
 	void PostLayoutBlueprintEditorInitialization();
@@ -562,12 +543,6 @@ public:
 	/** Update Node Creation mechanisms for analytics */
 	void UpdateNodeCreationStats(const ENodeCreateAction::Type CreateAction);
 
-	/** Sets customizations for the BP editor details panel. */
-	void SetDetailsCustomization(TSharedPtr<class FDetailsViewObjectFilter> DetailsObjectFilter, TSharedPtr<class IDetailRootObjectCustomization> DetailsRootCustomization);
-
-	/** Sets SCS editor UI customization */
-	void SetSCSEditorUICustomization(TSharedPtr<class ISCSEditorUICustomization> SCSEditorUICustomization);
-
 	/**
 	 * Register a customization for interacting with the SCS editor
 	 * @param	InComponentName			The name of the component to customize behavior for
@@ -593,12 +568,6 @@ public:
 
 	/** Can generate native code for current blueprint */
 	bool CanGenerateNativeCode() const;
-
-	/** Dumps the current blueprint search index to a JSON file for debugging purposes */
-	void OnGenerateSearchIndexForDebugging();
-
-	/** Dumps the currently-cached index data for the blueprint to a file for debugging */
-	void OnDumpCachedIndexDataForBlueprint();
 
 	/**
 	 * Check to see if we can customize the SCS editor for the passed-in scene component
@@ -648,12 +617,8 @@ public:
 	/** Removes the bookmark node with the given ID. */
 	void RemoveBookmark(const FGuid& BookmarkNodeId, bool bRefreshUI = true);
 
-	/** Gets the default schema for this editor */
-	TSubclassOf<UEdGraphSchema> GetDefaultSchema() const { return GetDefaultSchemaClass(); }
-
 protected:
-	UE_DEPRECATED(4.26, "Please do any validation inside the UBlueprint class during compilation, extra errors during compiling only supplied by the designer can lead to design time only errors being reported and being missed during cooks/content validation.")
-	virtual void AppendExtraCompilerResults(TSharedPtr<class IMessageLogListing> ResultsListing) {}
+	virtual void AppendExtraCompilerResults(TSharedPtr<class IMessageLogListing> ResultsListing);
 
 	/** Called during initialization of the blueprint editor to register commands and extenders. */
 	virtual void InitalizeExtenders();
@@ -818,9 +783,6 @@ protected:
 
 	void OnAddParentNode();
 	bool CanAddParentNode() const;
-	
-	void OnCreateMatchingFunction();
-	bool CanCreateMatchingFunction() const;
 
 	void OnEnableBreakpoint();
 	bool CanEnableBreakpoint() const;
@@ -865,19 +827,6 @@ protected:
 	void MoveNodesToAveragePos(TSet<UEdGraphNode*>& AverageNodes, FVector2D SourcePos, bool bExpandedNodesNeedUniqueGuid = false) const;
 
 	void OnConvertFunctionToEvent();
-
-public:
-	/** Converts the given function entry node to an event if it passes validation */
-	bool ConvertFunctionIfValid(UK2Node_FunctionEntry* FuncEntryNode);
-
-	/** Converts the given event node to a function graph on this blueprint if it passes validation */
-	bool ConvertEventIfValid(UK2Node_Event* EventToConv);
-
-protected:
-	/** 
-	* Callback function for the context menu on a node to determine if a function 
-	* could possibly be converted to an event
-	*/
 	bool CanConvertFunctionToEvent() const;
 
 	/*
@@ -916,7 +865,7 @@ protected:
 	bool CanSelectAllNodes() const;
 
 	virtual void DeleteSelectedNodes();
-	virtual bool CanDeleteNodes() const;
+	bool CanDeleteNodes() const;
 
 	/**
 	* Given a node, make connections from anything connected to it's input pin to
@@ -928,20 +877,16 @@ protected:
 
 	void DeleteSelectedDuplicatableNodes();
 
-	virtual void CutSelectedNodes();
-	virtual bool CanCutNodes() const;
+	void CutSelectedNodes();
+	bool CanCutNodes() const;
 
-	virtual void CopySelectedNodes();
-	virtual bool CanCopyNodes() const;
+	void CopySelectedNodes();
+	bool CanCopyNodes() const;
 
 	/** Paste on graph at specific location */
 	virtual void PasteNodesHere(class UEdGraph* DestinationGraph, const FVector2D& GraphLocation) override;
 
-	/** Paste Variable Definition or Nodes */
-	virtual void PasteGeneric();
-	virtual bool CanPasteGeneric() const;
-
-	virtual void PasteNodes();
+	void PasteNodes();
 	virtual bool CanPasteNodes() const override;
 
 	void DuplicateNodes();
@@ -953,11 +898,11 @@ protected:
 	void OnAssignReferencedActor();
 	bool CanAssignReferencedActor() const;
 
-	virtual void OnStartWatchingPin();
-	virtual bool CanStartWatchingPin() const;
+	void OnStartWatchingPin();
+	bool CanStartWatchingPin() const;
 
-	virtual void OnStopWatchingPin();
-	virtual bool CanStopWatchingPin() const;
+	void OnStopWatchingPin();
+	bool CanStopWatchingPin() const;
 
 	/**  BEGIN PERSONA related callback functions */
 	virtual void OnSelectBone() {};
@@ -1082,8 +1027,8 @@ protected:
 	void FindInBlueprints_OnClicked();
 
 	//~ Begin FNotifyHook Interface
-	virtual void NotifyPreChange( FProperty* PropertyAboutToChange ) override;
-	virtual void NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, FProperty* PropertyThatChanged) override;
+	virtual void NotifyPreChange( UProperty* PropertyAboutToChange ) override;
+	virtual void NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, UProperty* PropertyThatChanged) override;
 	//~ End FNotifyHook Interface
 
 	/** Callback when properties have finished being handled */
@@ -1140,7 +1085,7 @@ private:
 	void OnEditTunnel();
 
 	/* Create comment node on graph */
-	virtual void OnCreateComment();
+	void OnCreateComment();
 
 	// Create new graph editor widget for the supplied document container
 	TSharedRef<SGraphEditor> CreateGraphEditorWidget(TSharedRef<class FTabInfo> InTabInfo, class UEdGraph* InGraph);
@@ -1200,6 +1145,9 @@ private:
 	/** Returns the appropriate check box state representing whether or not the selected nodes are enabled */
 	ECheckBoxState GetEnabledCheckBoxStateForSelectedNodes();
 
+	/** Configuration class used to store editor settings across sessions. */
+	UBlueprintEditorOptions* EditorOptions;
+
 	/**
 	 * Load editor settings from disk (docking state, window pos/size, option state, etc).
 	 */
@@ -1217,9 +1165,6 @@ private:
 	void HandleUndoTransaction(const class FTransaction* Transaction);
 
 public://@TODO
-
-	virtual bool TransactionObjectAffectsBlueprint(UObject* InTransactedObject);
-
 	TSharedPtr<FDocumentTracker> DocumentManager;
 	
 	/** Update all nodes' unrelated states when the graph has changed */
@@ -1342,14 +1287,10 @@ protected:
 	void CollectPureUpstreamNodes(UEdGraphNode* CurrentNode, TArray<UEdGraphNode*>& CollectedNodes);
 	void HideUnrelatedNodes();
 
-	/** Register Menus */
-	void RegisterMenus();
-
 public:
 	/** Make nodes which are unrelated to the selected nodes fade out */
 	void ToggleHideUnrelatedNodes();
 	bool IsToggleHideUnrelatedNodesChecked() const;
-	bool ShouldShowToggleHideUnrelatedNodes(bool bIsToolbar) const;
 
 	/** Make a drop down menu to control the opacity of unrelated nodes */
 	TSharedRef<SWidget> MakeHideUnrelatedNodesOptionsMenu();

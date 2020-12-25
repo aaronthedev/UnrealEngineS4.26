@@ -1,4 +1,4 @@
-﻿// Copyright (C) 2020, Entropy Game Global Limited.
+﻿// Copyright (c) 2016, Entropy Game Global Limited.
 // All rights reserved.
 
 #ifndef RAIL_SDK_RAIL_SYSTEM_STATE_DEFINE_H
@@ -19,9 +19,6 @@ enum RailSystemState {
 
     kSystemStatePlayerOwnershipExpired = 20,
     kSystemStatePlayerOwnershipActivated = 21,
-    kSystemStatePlayerOwnershipBanned = 22,
-
-    kSystemStateGameExitByAntiAddiction = 40,
 };
 
 namespace rail_event {
@@ -45,9 +42,10 @@ struct RailPlatformNotifyEventJoinGameByGameServer
 struct RailPlatformNotifyEventJoinGameByRoom
     : public RailEvent<kRailPlatformNotifyEventJoinGameByRoom> {
     RailPlatformNotifyEventJoinGameByRoom() {
+        zone_id = 0;
         room_id = 0;
     }
-
+    uint64_t zone_id;
     uint64_t room_id;
     RailString commandline_info;
 };

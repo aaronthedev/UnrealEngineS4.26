@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -39,44 +39,21 @@ struct FLiveLinkSourceBufferManagementSettings
 {
 	GENERATED_BODY()
 
-	/** Enabled the ValidEngineTime setting. */
-	UPROPERTY(EditAnywhere, Category = "Settings", meta=(InlineEditConditionToggle=true))
-	bool bValidEngineTimeEnabled = false;
-
 	/** If the frame is older than ValidTime, remove it from the buffer list (in seconds). */
-	UPROPERTY(EditAnywhere, Category = "Settings", meta=(ForceUnits=s, ClampMin=0.5, EditCondition="bValidEngineTimeEnabled"))
+	UPROPERTY(EditAnywhere, Category = "Settings", meta=(ForceUnits=s, ClampMin=0.5))
 	float ValidEngineTime = 1.0f;
 
 	/** When evaluating with time: how far back from current time should we read the buffer (in seconds) */
 	UPROPERTY(EditAnywhere, Category = "Settings", meta=(ForceUnits=s))
 	float EngineTimeOffset = 0.0f;
-	
-	/** Continuously updated clock offset estimator between source clock and engine clock (in seconds) */
-	UPROPERTY(VisibleAnywhere, Category = "Settings", AdvancedDisplay, meta = (ForceUnits = s))
-	double EngineTimeClockOffset = 0.0;
 
-#if WITH_EDITORONLY_DATA
-	/** DEPRECATED: TimecodeFrameRate is now read from each individual subject from FQualifiedFrameTime. 
-	 * It is expected that all subjects under a source have the same and it will be readable in DetectedFrameRate variable
-	 */
-	UPROPERTY()
-	FFrameRate TimecodeFrameRate_DEPRECATED = {24, 1};
-#endif
+	/** When evaluating with timecode: what is the expected frame rate of the timecode */
+	UPROPERTY(EditAnywhere, Category = "Settings")
+	FFrameRate TimecodeFrameRate = {24, 1};
 
 	UPROPERTY(EditAnywhere, Category = "Settings")
 	bool bGenerateSubFrame = false;
 
-	/** FrameRate taken from one of the subjects. It's expected that all subjects have the same FrameRate */
-	UPROPERTY(VisibleAnywhere, Category = "Settings")
-	FFrameRate DetectedFrameRate = { 24, 1 };
-
-	/** When evaluating with timecode, align source timecode using a continuous clock offset to do a smooth latest 
-	 * This means that even if engine Timecode and source Timecode are not aligned, the offset between both clocks
-	 * will be tracked to keep them aligned. With an additionnal offset, 1.5 is a good number, you can evaluate
-	 * your subject using the latest frame by keeping just enough margin to have a smooth playback and avoid starving.
-	 */
-	UPROPERTY(EditAnywhere, Category = "Settings")
-	bool bUseTimecodeSmoothLatest = false;
 	/**
 	 * What is the source frame rate.
 	 * When the refresh rate of the source is bigger than the timecode frame rate, LiveLink will try to generate sub frame numbers.
@@ -87,20 +64,12 @@ struct FLiveLinkSourceBufferManagementSettings
 	FFrameRate SourceTimecodeFrameRate = { 24, 1 };
 
 	/** If the frame timecode is older than ValidTimecodeFrame, remove it from the buffer list (in TimecodeFrameRate). */
-	UPROPERTY(EditAnywhere, Category = "Settings", meta=(InlineEditConditionToggle=true))
-	bool bValidTimecodeFrameEnabled = false;
-
-	/** If the frame timecode is older than ValidTimecodeFrame, remove it from the buffer list (in TimecodeFrameRate). */
-	UPROPERTY(EditAnywhere, Category = "Settings", meta=(ClampMin=1, EditCondition="bValidTimecodeFrameEnabled"))
+	UPROPERTY(EditAnywhere, Category = "Settings", meta=(ClampMin=1))
 	int32 ValidTimecodeFrame = 30;
 
 	/** When evaluating with timecode: how far back from current timecode should we read the buffer (in TimecodeFrameRate). */
 	UPROPERTY(EditAnywhere, Category = "Settings")
-	float TimecodeFrameOffset = 0.f;
-
-	/** Continuously updated clock offset estimator between source timecode clock and engine timecode provider clock (in seconds) */
-	UPROPERTY(VisibleAnywhere, Category = "Settings", AdvancedDisplay, meta = (ForceUnits = s))
-	double TimecodeClockOffset = 0.0;
+	int32 TimecodeFrameOffset = 0;
 
 	/** When evaluating with latest: how far back from latest frame should we read the buffer */
 	UPROPERTY(EditAnywhere, Category = "Settings")
@@ -157,14 +126,14 @@ public:
 	TSubclassOf<ULiveLinkSourceFactory> Factory;
 
 #if WITH_EDITORONLY_DATA
-	UPROPERTY()
-	TArray<FLiveLinkSourceDebugInfo> SourceDebugInfos_DEPRECATED;
+	UPROPERTY(VisibleAnywhere, Category = "Debug", meta=(ShowOnlyInnerProperties))
+	TArray<FLiveLinkSourceDebugInfo> SourceDebugInfos;
 #endif
 
 	virtual void Serialize(FArchive& Ar) override;
 
 #if WITH_EDITOR
-	virtual bool CanEditChange(const FProperty* InProperty) const override;
+	virtual bool CanEditChange(const UProperty* InProperty) const override;
 #endif
 };
 

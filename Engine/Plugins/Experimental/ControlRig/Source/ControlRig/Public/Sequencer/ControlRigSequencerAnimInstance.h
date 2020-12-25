@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "AnimSequencerInstance.h"
-#include "AnimNode_ControlRigBase.h"
 #include "ControlRigSequencerAnimInstance.generated.h"
 
 class UControlRig;
@@ -16,7 +15,7 @@ class CONTROLRIG_API UControlRigSequencerAnimInstance : public UAnimSequencerIns
 
 public:
 	/** Update an animation ControlRig in this sequence */
-	bool UpdateControlRig(UControlRig* InControlRig, uint32 SequenceId, bool bAdditive, bool bApplyBoneFilter, const FInputBlendPose& BoneFilter, float Weight, const FControlRigIOSettings& InputSettings, bool bExecute);
+	bool UpdateControlRig(UControlRig* InControlRig, uint32 SequenceId, bool bAdditive, bool bApplyBoneFilter, const FInputBlendPose& BoneFilter, float Weight, bool bUpdateInput, bool bExecute);
 
 	virtual bool SetAnimationAsset(class UAnimationAsset* NewAsset);
 

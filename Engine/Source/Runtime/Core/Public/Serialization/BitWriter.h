@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -133,8 +133,6 @@ public:
 
 	FORCEINLINE bool AllowAppend(int64 LengthBits)
 	{
-		//@TODO: FLOATPRECISION: This class pretends it is 64-bit aware, e.g., in the type of LengthBits and the Num/Max members, but it is not as the inner Buffer is a 32 bit TArray, etc...
-
 		if (Num+LengthBits > Max)
 		{
 			if (bAllowResize)
@@ -145,8 +143,8 @@ public:
 				// in chunks).
 
 				Max = FMath::Max<int64>(Max<<1,Num+LengthBits);
-				int64 ByteMax = (Max+7)>>3;
-				Buffer.AddZeroed((int32)(ByteMax - Buffer.Num()));
+				int32 ByteMax = (Max+7)>>3;
+				Buffer.AddZeroed(ByteMax - Buffer.Num());
 				check((Max+7)>>3== Buffer.Num());
 				return true;
 			}
@@ -212,13 +210,7 @@ public:
 	FORCEINLINE_DEBUGGABLE void Init( FBitWriter& Writer)
 	{
 		Num = Writer.Num;
-		Overflowed = Writer.IsError();
-	}
-
-	void Reset()
-	{
-		Overflowed = false;
-		Num = 0;		
+		Overflowed = Writer.ArIsError;
 	}
 
 	void Pop( FBitWriter& Writer );

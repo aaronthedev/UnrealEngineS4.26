@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "Chaos/ChaosArchive.h"
 #include "Chaos/Serializable.h"
 #include "Chaos/ImplicitObject.h"
@@ -6,9 +6,9 @@
 namespace Chaos
 {
 
-void FChaosArchive::SerializeLegacy(TUniquePtr<FImplicitObject>& Obj)
+void FChaosArchive::SerializeLegacy(TUniquePtr<TImplicitObject<float, 3>>& Obj)
 {
-	FImplicitObject::SerializeLegacyHelper(InnerArchive, Obj);
+	TImplicitObject<float, 3>::SerializeLegacyHelper(InnerArchive, Obj);
 }
 
 #if CHAOS_MEMORY_TRACKING

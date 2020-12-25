@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,8 +6,6 @@
 #include "Types/PaintArgs.h"
 #include "Styling/WidgetStyle.h"
 #include "Misc/MemStack.h"
-#include "FastUpdate/SlateInvalidationRootHandle.h"
-#include "FastUpdate/WidgetUpdateFlags.h"
 #include "Layout/Clipping.h"
 #include "Layout/FlowDirection.h"
 #include "Rendering/DrawElements.h"
@@ -19,12 +17,35 @@ struct FSlateWidgetPersistentState;
 struct FWidgetUpdateList;
 class FSlateInvalidationRoot;
 
+
+/** Widget update flags for fast path.  Work in progress, do not modify */
+enum class EWidgetUpdateFlags : uint8
+{
+	None = 0,
+
+	/** Widget has a tick function */
+	NeedsTick = 1 << 2,
+
+	/** Widget has an active timer that needs to update */
+	NeedsActiveTimerUpdate = 1 << 3,
+
+	/** Needs repaint because the widget is dirty */
+	NeedsRepaint = 1 << 4,
+
+	/** Needs repaint because the widget is volatile */
+	NeedsVolatilePaint = 1 << 6,
+	
+	AnyUpdate = 0xff,
+};
+
+ENUM_CLASS_FLAGS(EWidgetUpdateFlags)
+
 enum class EInvalidateWidgetReason : uint8;
 
 class FWidgetProxy
 {
 public:
-	FWidgetProxy(SWidget& InWidget);
+	FWidgetProxy(SWidget* InWidget);
 
 	int32 Update(
 		const FPaintArgs& PaintArgs,
@@ -33,11 +54,10 @@ public:
 
 	bool ProcessInvalidation(FWidgetUpdateList& UpdateList, TArray<FWidgetProxy>& FastPathWidgetList, FSlateInvalidationRoot& Root);
 
-	void MarkProxyUpdatedThisFrame(FWidgetUpdateList& UpdateList);
+	static void MarkProxyUpdatedThisFrame(FWidgetProxy& Proxy, FWidgetUpdateList& UpdateList);
 
 private:
 	int32 Repaint(const FPaintArgs& PaintArgs, int32 MyIndex, FSlateWindowElementList& OutDrawElements) const;
-
 public:
 	SWidget* Widget;
 	int32 Index;
@@ -48,9 +68,7 @@ public:
 	EInvalidateWidgetReason CurrentInvalidateReason;
 	/** The widgets own visibility */
 	EVisibility Visibility;
-	/** Used to make sure we don't double process a widget that is invalidated.  (a widget can invalidate itself but an ancestor can end up painting that widget first thus rendering the child's own invalidate unnecessary */
 	uint8 bUpdatedSinceLastInvalidate : 1;
-	/** Is the widget already in a pending update list.  If it already is in an update list we don't bother adding it again */
 	uint8 bInUpdateList : 1;
 	uint8 bInvisibleDueToParentOrSelfVisibility : 1;
 	uint8 bChildOrderInvalid : 1;
@@ -117,10 +135,9 @@ private:
 struct FSlateWidgetPersistentState
 {
 	FSlateWidgetPersistentState()
-		: CachedElementHandle()
+		: CachedElementListNode(nullptr)
 		, LayerId(0)
 		, OutgoingLayerId(0)
-		, IncomingUserIndex(INDEX_NONE)
 		, IncomingFlowDirection(EFlowDirection::LeftToRight)
 		, bParentEnabled(true)
 		, bInheritedHittestability(false)
@@ -132,17 +149,17 @@ struct FSlateWidgetPersistentState
 	FGeometry DesktopGeometry;
 	FSlateRect CullingBounds;
 	FWidgetStyle WidgetStyle;
-	FSlateCachedElementsHandle CachedElementHandle;
+	FSlateCachedElementListNode* CachedElementListNode;
 	/** Starting layer id for drawing children **/
 	int32 LayerId;
 	int32 OutgoingLayerId;
-	int8 IncomingUserIndex;
 	EFlowDirection IncomingFlowDirection;
 	uint8 bParentEnabled : 1;
 	uint8 bInheritedHittestability : 1;
 
 	static const FSlateWidgetPersistentState NoState;
 };
+template <> struct TIsPODType<FSlateWidgetPersistentState> { enum { Value = true }; };
 
 struct FWidgetStackData
 {
@@ -175,16 +192,15 @@ class FWidgetProxyHandle
 	friend class FSlateInvalidationRoot;
 public:
 	FWidgetProxyHandle()
-		: MyIndex(INDEX_NONE)
+		: InvalidationRoot(nullptr)
+		, MyIndex(INDEX_NONE)
 		, GenerationNumber(INDEX_NONE)
 
 	{}
 
 	SLATECORE_API bool IsValid() const;
 
-	FSlateInvalidationRootHandle GetInvalidationRootHandle() const { return InvalidationRootHandle; }
-	FSlateInvalidationRoot* GetInvalidationRoot() const { return InvalidationRootHandle.Advanced_GetInvalidationRootNoCheck(); }
-
+	FSlateInvalidationRoot* GetInvalidationRoot() const { return InvalidationRoot; }
 	FWidgetProxy& GetProxy();
 	const FWidgetProxy& GetProxy() const;
 
@@ -199,13 +215,11 @@ public:
 	
 	void MarkWidgetDirty(EInvalidateWidgetReason InvalidateReason);
 	SLATECORE_API void UpdateWidgetFlags(EWidgetUpdateFlags NewFlags);
-
 private:
 	FWidgetProxyHandle(FSlateInvalidationRoot& InInvalidationRoot, int32 InIndex);
-
 private:
 	/** The root of invalidation tree this proxy belongs to */
-	FSlateInvalidationRootHandle InvalidationRootHandle;
+	FSlateInvalidationRoot* InvalidationRoot;
 	/** Index to myself in the fast path list */
 	int32 MyIndex;
 	/** This serves as an efficient way to test for validity which does not require invalidating all handles directly*/

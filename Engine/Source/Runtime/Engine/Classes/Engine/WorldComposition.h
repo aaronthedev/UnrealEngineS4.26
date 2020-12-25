@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -199,16 +199,13 @@ private:
 	bool IsDistanceDependentLevel(int32 TileIdx) const;
 
 	/** Attempts to set new streaming state for a particular tile, could be rejected if state change on 'cooldown' */
-	bool CommitTileStreamingState(UWorld* PersistentWorld, int32 TileIdx, bool bShouldBeLoaded, bool bShouldBeVisible, bool bShouldBlock, int32 LODIdx);
+	bool CommitTileStreamingState(UWorld* PersistenWorld, int32 TileIdx, bool bShouldBeLoaded, bool bShouldBeVisible, bool bShouldBlock, int32 LODIdx);
 
 public:
 #if WITH_EDITOR
-	UE_DEPRECATED(4.26, "No longer used; use bTemporarilyDisableOriginTracking instead.")
+	// Hack for a World Browser to be able to temporally show hidden levels 
+	// regardless of current world origin and without offsetting them temporally 
 	bool						bTemporallyDisableOriginTracking;
-
-	// Hack for a World Browser to be able to temporarily show hidden levels 
-	// regardless of current world origin and without offsetting them temporarily 
-	bool						bTemporarilyDisableOriginTracking;
 #endif //WITH_EDITOR
 
 private:

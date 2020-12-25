@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MaterialEditorUtilities.h"
 #include "UObject/UObjectHash.h"
@@ -487,7 +487,6 @@ void FMaterialEditorUtilities::GetVisibleMaterialParametersFromExpression(
 			}
 
 			TUniquePtr<FGetVisibleMaterialParametersFunctionState> NewFunctionState = MakeUnique<FGetVisibleMaterialParametersFunctionState>(FunctionCallExpression);
-			NewFunctionState->StackParameterInfo = ParameterInfo; // Don't change back to Global parameter association when stepping into a function called from a blend/layer function
 			FunctionStack.Push(NewFunctionState.Get());
 		
 			GetVisibleMaterialParametersFromExpression(FMaterialExpressionKey(FunctionCallExpression->FunctionOutputs[MaterialExpressionKey.OutputIndex].ExpressionOutput, 0), MaterialInstance, VisibleExpressions, FunctionStack);
@@ -719,26 +718,26 @@ void FMaterialEditorUtilities::BuildTextureStreamingData(UMaterialInterface* Upd
 }
 
 
-void FMaterialEditorUtilities::OnOpenMaterial(const FAssetData InMaterial)
+void FMaterialEditorUtilities::OnOpenMaterial(FAssetData InMaterial)
 {
 	UMaterialInterface* MaterialInterface = Cast<UMaterialInterface>(InMaterial.GetAsset());
 	OpenSelectedParentEditor(MaterialInterface);
 }
 
-void FMaterialEditorUtilities::OnOpenFunction(const FAssetData InFunction)
+void FMaterialEditorUtilities::OnOpenFunction(FAssetData InFunction)
 {
 	UMaterialFunctionInterface* MaterialFunctionInterface = Cast<UMaterialFunctionInterface>(InFunction.GetAsset());
 	OpenSelectedParentEditor(MaterialFunctionInterface);
 }
 
-void FMaterialEditorUtilities::OnShowMaterialInContentBrowser(const FAssetData InMaterial)
+void FMaterialEditorUtilities::OnShowMaterialInContentBrowser(FAssetData InMaterial)
 {
 	TArray<UObject*> SyncedObject;
 	SyncedObject.Add(InMaterial.GetAsset());
 	GEditor->SyncBrowserToObjects(SyncedObject);
 }
 
-void FMaterialEditorUtilities::OnShowFunctionInContentBrowser(const FAssetData InFunction)
+void FMaterialEditorUtilities::OnShowFunctionInContentBrowser(FAssetData InFunction)
 {
 	TArray<UObject*> SyncedObject;
 	SyncedObject.Add(InFunction.GetAsset());

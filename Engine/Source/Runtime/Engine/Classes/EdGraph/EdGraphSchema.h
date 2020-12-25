@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -418,7 +418,7 @@ private:
 
 
 // This object is a base class helper used when building a list of actions for some menu or palette
-struct FGraphActionListBuilderBase
+struct ENGINE_VTABLE FGraphActionListBuilderBase
 {
 public:
 	/** A single entry in the list - can contain multiple actions */
@@ -545,7 +545,7 @@ public:
 };
 
 /** Used to nest all added action under one root category */
-struct FCategorizedGraphActionListBuilder : public FGraphActionListBuilderBase
+struct ENGINE_VTABLE FCategorizedGraphActionListBuilder : public FGraphActionListBuilderBase
 {
 public:
 	ENGINE_API FCategorizedGraphActionListBuilder(FString Category = FString());
@@ -1026,46 +1026,6 @@ class ENGINE_API UEdGraphSchema : public UObject
 	virtual FPinConnectionResponse CanCreateNewNodes(UEdGraphPin* InSourcePin) const { return FPinConnectionResponse(); }
 
 	/**
-	 * Check whether variables can be dropped onto the graph
-	 * @param	InGraph The graph the drop is subject of
-	 * @param	InVariableToDrop The variable we want to drop
-	 * @return the response to rejection or allowing the drop
-	 */
-	virtual bool CanVariableBeDropped(UEdGraph* InGraph, FProperty* InVariableToDrop) const { return false; }
-
-	/**
-	 * Request to drop a variable on a panel
-	 * @param	InGraph The graph the drop is subject of
-	 * @param	InVariableToDrop The variable we want to drop
-	 * @param	InDropPosition The position inside of the graph
-	 * @param	InScreenPosition The position inside of the screen
-	 * @return the response to rejection or performing the drop
-	 */
-	virtual bool RequestVariableDropOnPanel(UEdGraph* InGraph, FProperty* InVariableToDrop, const FVector2D& InDropPosition, const FVector2D& InScreenPosition) { return false; }
-
-	/**
-	 * Request to drop a variable on a node
-	 * @param	InGraph The graph the drop is subject of
-	 * @param	InVariableToDrop The variable we want to drop
-	 * @param	InNode The node we want to drop onto
-	 * @param	InDropPosition The position inside of the graph
-	 * @param	InScreenPosition The position inside of the screen
-	 * @return the response to rejection or performing the drop
-	 */
-	virtual bool RequestVariableDropOnNode(UEdGraph* InGraph, FProperty* InVariableToDrop, UEdGraphNode* InNode, const FVector2D& InDropPosition, const FVector2D& InScreenPosition) { return false; }
-
-	/**
-	 * Request to drop a variable on a pin
-	 * @param	InGraph The graph the drop is subject of
-	 * @param	InVariableToDrop The variable we want to drop
-	 * @param	InPin The pin we want to drop onto
-	 * @param	InDropPosition The position inside of the graph
-	 * @param	InScreenPosition The position inside of the screen
-	 * @return the response to rejection or performing the drop
-	 */
-	virtual bool RequestVariableDropOnPin(UEdGraph* InGraph, FProperty* InVariableToDrop, UEdGraphPin* InPin, const FVector2D& InDropPosition, const FVector2D& InScreenPosition) { return false; }
-
-	/**
 	 * Returns true if the types and directions of two pins are schema compatible. Handles
 	 * outputting a more derived type to an input pin expecting a less derived type.
 	 *
@@ -1077,14 +1037,4 @@ class ENGINE_API UEdGraphSchema : public UObject
 	 * @return	true if the pin types and directions are compatible.
 	 */
 	virtual bool ArePinsCompatible(const UEdGraphPin* PinA, const UEdGraphPin* PinB, const UClass* CallingContext = NULL, bool bIgnoreArray = false) const { return true; }
-
-	/**
-	 * Returns true if the schema wants to overdrive the behaviour of dirtying the blueprint on new node creation.
-	 *
-	 * @param   InBlueprint    The blueprint to dirty or not
-	 * @param   InEdGraphNode  The node that was just added and caused the request
-	 * 
-	 * @return  true if the blueprint marking has been taken care off.
-	 */
-	virtual bool MarkBlueprintDirtyFromNewNode(UBlueprint* InBlueprint, UEdGraphNode* InEdGraphNode) const { return false; }
 };

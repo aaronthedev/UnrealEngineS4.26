@@ -1,8 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
-#include "BackChannel/Transport/IBackChannelSocketConnection.h"
+#include "BackChannel/Transport/IBackChannelConnection.h"
 #include "HAL/ThreadSafeBool.h"
 
 class FSocket;
@@ -11,7 +11,7 @@ class FSocket;
 * BackChannelClient implementation.
 *
 */
-class BACKCHANNEL_API FBackChannelConnection : public IBackChannelSocketConnection, public TSharedFromThis<FBackChannelConnection>
+class BACKCHANNEL_API FBackChannelConnection : public IBackChannelConnection, public TSharedFromThis<FBackChannelConnection>
 {
 public:
 
@@ -28,7 +28,7 @@ public:
 	virtual void Close() override;
 
 	/* Waits for an icoming or outgoing connection to be made */
-	virtual bool WaitForConnection(double InTimeout, TFunction<bool(TSharedRef<IBackChannelSocketConnection>)> InDelegate) override;
+	virtual bool WaitForConnection(double InTimeout, TFunction<bool(TSharedRef<IBackChannelConnection>)> InDelegate) override;
 
 	/* Attach this connection to the provided socket */
 	bool Attach(FSocket* InSocket);
@@ -52,19 +52,13 @@ public:
 	virtual FSocket* GetSocket() override { return Socket; }
 
 	/* Todo - Proper stats */
-	virtual uint32	GetPacketsReceived() const override;
-
-	/* Set the specified send and receive buffer sizes, if supported */
-	virtual void SetBufferSizes(int32 DesiredSendSize, int32 DesiredReceiveSize) override;
-
-	const FConnectionStats& GetConnectionStats() const override { return ConnectionStats; }
+	uint32	GetPacketsReceived() const override;
 
 private:
 	static int32 SendBufferSize;
 	static int32 ReceiveBufferSize;
 
 	void					CloseWithError(const TCHAR* Error, FSocket* InSocket=nullptr);
-	void					ResetStatsIfTime();
 	
 	/* Attempts to set the specified buffer size on our socket, will drop by 50% each time until success */
 	void					SetSocketBufferSizes(FSocket* NewSocket, int32 DesiredSendSize, int32 DesiredReceiveSize);
@@ -73,8 +67,5 @@ private:
 	FCriticalSection		SocketMutex;
 	FSocket*				Socket;
 	bool					IsListener;
-
-	FConnectionStats		ConnectionStats;
-	FConnectionStats		LastStats;
-	double					TimeSinceStatsSet;
+	uint32					PacketsReceived;
 };

@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Delegates/Delegate.h"
 #include "Misc/OutputDeviceRedirector.h"
 #include "Widgets/SWidget.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
@@ -21,8 +20,6 @@ struct FTargetDeviceEntry
 };
 
 typedef TSharedPtr<FTargetDeviceEntry> FTargetDeviceEntryPtr;
-
-DECLARE_DELEGATE_OneParam(FSelectedTargetDeviceChangedDelegate, ITargetDevicePtr);
 
 class SDeviceOutputLog : public SOutputLog
 {
@@ -43,7 +40,6 @@ public:
 	 */
 	void Construct( const FArguments& InArgs );
 
-	FSelectedTargetDeviceChangedDelegate& OnSelectedDeviceChanged() { return OnSelectedDeviceChangedDelegate; }
 	ITargetDevicePtr GetSelectedTargetDevice() const;
 
 protected:
@@ -84,8 +80,6 @@ private:
 	/** Synchronization object for access to buffered lines */
 	FCriticalSection		BufferedLinesSynch;
 	TArray<FBufferedLine>	BufferedLines;
-
-	FSelectedTargetDeviceChangedDelegate OnSelectedDeviceChangedDelegate;
 
 	bool bAutoSelectDevice;
 };

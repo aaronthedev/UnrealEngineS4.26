@@ -1,8 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NetworkPredictionExtrasFlyingPawn.h"
 #include "Components/InputComponent.h"
-#include "FlyingMovementComponent.h"
+#include "Movement/FlyingMovement.h"
 #include "GameFramework/Controller.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerInput.h"
@@ -13,12 +13,6 @@
 #include "Engine/LocalPlayer.h"
 #include "Components/CapsuleComponent.h"
 #include "DrawDebugHelpers.h"
-#include "NetworkPredictionLog.h"
-
-#include "Misc/AssertionMacros.h"
-#include "HAL/PlatformStackWalk.h"
-#include "HAL/ThreadHeartBeat.h"
-#include "MockAbilitySimulation.h"
 
 namespace FlyingPawnCVars
 {
@@ -35,65 +29,26 @@ static FAutoConsoleVariableRef CVarBindAutomatically(TEXT("NetworkPredictionExtr
 	BindAutomatically, TEXT("Binds local input and mispredict commands to 5 and 6 respectively"), ECVF_Default);
 }
 
-const FName Name_FlyingMovementComponent(TEXT("FlyingMovementComponent"));
-
-ANetworkPredictionExtrasFlyingPawn::ANetworkPredictionExtrasFlyingPawn(const FObjectInitializer& ObjectInitializer)
+ANetworkPredictionExtrasFlyingPawn::ANetworkPredictionExtrasFlyingPawn()
 {
-	FlyingMovementComponent = CreateDefaultSubobject<UFlyingMovementComponent>(Name_FlyingMovementComponent);
-	ensure(FlyingMovementComponent);
-}
-
-void ANetworkPredictionExtrasFlyingPawn::BeginPlay()
-{
-	Super::BeginPlay();
-
-	if (UWorld* World = GetWorld())
+	FlyingMovementComponent = CreateDefaultSubobject<UFlyingMovementComponent>(TEXT("FlyingMovementComponent"));
+	
+	if (HasAnyFlags(RF_ClassDefaultObject) == false)
 	{
-		if (ensure(FlyingMovementComponent))
-		{
-			FlyingMovementComponent->ProduceInputDelegate.BindUObject(this, &ANetworkPredictionExtrasFlyingPawn::ProduceInput);
-		}
+		FlyingMovementComponent->ProduceInputDelegate.BindUObject(this, &ANetworkPredictionExtrasFlyingPawn::ProduceInput);
 
 		// Binds 0 and 9 to the debug hud commands. This is just a convenience for the extras plugin. Real projects should bind this themselves
 		if (FlyingPawnCVars::BindAutomatically > 0)
 		{
-			if (ULocalPlayer* LocalPlayer = World->GetFirstLocalPlayerFromController())
+			if (ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController())
 			{
-				LocalPlayer->Exec(World, TEXT("setbind Nine nms.Debug.LocallyControlledPawn"), *GLog);
-				LocalPlayer->Exec(World, TEXT("setbind Zero nms.Debug.ToggleContinous"), *GLog);
+				LocalPlayer->Exec(GetWorld(), TEXT("setbind Nine nms.Debug.LocallyControlledPawn"), *GLog);
+				LocalPlayer->Exec(GetWorld(), TEXT("setbind Zero nms.Debug.ToggleContinous"), *GLog);
 			}
 		}
 	}
-}
 
-UNetConnection* ANetworkPredictionExtrasFlyingPawn::GetNetConnection() const
-{
-	UNetConnection* SuperNetConnection = Super::GetNetConnection();
-	if (SuperNetConnection)
-	{
-		return SuperNetConnection;
-	}
 
-	if (bFakeAutonomousProxy)
-	{
-		if (GetLocalRole() == ROLE_Authority)
-		{
-			for (FConstPlayerControllerIterator Iterator = GetWorld()->GetPlayerControllerIterator(); Iterator; ++Iterator)
-			{
-				APlayerController* PC = Iterator->Get();
-				if (PC->GetNetConnection() && PC->GetPawn())
-				{
-					return PC->GetNetConnection();
-				}
-			}
-		}
-		if (GetLocalRole() == ROLE_AutonomousProxy && GetWorld()->GetFirstPlayerController() && GetWorld()->GetFirstPlayerController()->GetPawn())
-		{
-			return GetWorld()->GetFirstPlayerController()->GetNetConnection();
-		}
-	}
-
-	return nullptr;
 }
 
 void ANetworkPredictionExtrasFlyingPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -122,8 +77,8 @@ void ANetworkPredictionExtrasFlyingPawn::SetupPlayerInputComponent(UInputCompone
 			PC->PlayerInput->AddAxisMapping(FInputAxisKeyMapping(TEXT("MoveRight"), EKeys::A, -1.f));
 			PC->PlayerInput->AddAxisMapping(FInputAxisKeyMapping(TEXT("MoveForward"), EKeys::W, 1.f));
 			PC->PlayerInput->AddAxisMapping(FInputAxisKeyMapping(TEXT("MoveForward"), EKeys::S, -1.f));
-			PC->PlayerInput->AddAxisMapping(FInputAxisKeyMapping(TEXT("LeftTriggerAxis"), EKeys::C, 1.f));
-			PC->PlayerInput->AddAxisMapping(FInputAxisKeyMapping(TEXT("RightTriggerAxis"), EKeys::LeftControl, 1.f));
+			PC->PlayerInput->AddAxisMapping(FInputAxisKeyMapping(TEXT("LeftTriggerAxis"), EKeys::LeftControl, 1.f));
+			PC->PlayerInput->AddAxisMapping(FInputAxisKeyMapping(TEXT("RightTriggerAxis"), EKeys::LeftShift, 1.f));
 
 			// Mouse
 			PC->PlayerInput->AddAxisMapping(FInputAxisKeyMapping(TEXT("LookYaw"), EKeys::MouseX));
@@ -178,55 +133,9 @@ void ANetworkPredictionExtrasFlyingPawn::Tick( float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 	// Do whatever you want here. By now we have the latest movement state and latest input processed.
-
-	if (bFakeAutonomousProxy && GetLocalRole() == ROLE_Authority)
-	{
-		if (GetRemoteRole() != ROLE_AutonomousProxy)
-		{
-			SetAutonomousProxy(true);
-		}
-	}
-
-	// ForceNetUpdate(); // DNC
 }
 
-void ANetworkPredictionExtrasFlyingPawn::PrintDebug()
-{
-	UE_LOG(LogNetworkPrediction, Warning, TEXT("======== ANetworkPredictionExtrasFlyingPawn::PrintDebug ========"));
-
-	FSlowHeartBeatScope SuspendHeartBeat;
-	FDisableHitchDetectorScope SuspendGameThreadHitch;
-
-	PrintScriptCallstack();
-
-	const SIZE_T StackTraceSize = 65535;
-	ANSICHAR* StackTrace = (ANSICHAR*)FMemory::SystemMalloc(StackTraceSize);
-	if (StackTrace != nullptr)
-	{
-		StackTrace[0] = 0;
-		// Walk the stack and dump it to the allocated memory.
-		FPlatformStackWalk::StackWalkAndDump(StackTrace, StackTraceSize, 1);
-		UE_LOG(LogNetworkPrediction, Log, TEXT("Call Stack:\n%s"), ANSI_TO_TCHAR(StackTrace));
-		FMemory::SystemFree(StackTrace);
-	}
-}
-
-float ANetworkPredictionExtrasFlyingPawn::GetMaxMoveSpeed() const
-{
-	return FlyingMovementComponent->GetMaxMoveSpeed();
-}
-
-void ANetworkPredictionExtrasFlyingPawn::SetMaxMoveSpeed(float NewMaxMoveSpeed)
-{
-	FlyingMovementComponent->SetMaxMoveSpeed(NewMaxMoveSpeed);
-}
-
-void ANetworkPredictionExtrasFlyingPawn::AddMaxMoveSpeed(float AdditiveMaxMoveSpeed)
-{
-	FlyingMovementComponent->AddMaxMoveSpeed(AdditiveMaxMoveSpeed);
-}
-
-void ANetworkPredictionExtrasFlyingPawn::ProduceInput(const int32 DeltaMS, FFlyingMovementInputCmd& Cmd)
+void ANetworkPredictionExtrasFlyingPawn::ProduceInput(const FNetworkSimTime SimTime, FlyingMovement::FInputCmd& Cmd)
 {
 	// Generate user commands. Called right before the flying movement simulation will tick (for a locally controlled pawn)
 	// This isn't meant to be the best way of doing a camera system. It is just meant to show a couple of ways it may be done
@@ -239,14 +148,6 @@ void ANetworkPredictionExtrasFlyingPawn::ProduceInput(const int32 DeltaMS, FFlyi
 	// decisions about where something should go (such as aim assist, lock on targeting systems, etc): it is hard to give absolute
 	// answers and will depend on the game and its specific needs. In general, at this time, I'd recommend aim assist and lock on 
 	// targeting systems to happen /outside/ of the system, i.e, here. But I can think of scenarios where that may not be ideal too.
-
-	if (InputPreset == ENetworkPredictionExtrasFlyingInputPreset::Forward)
-	{
-		Cmd.MovementInput = FVector(1.f, 0.f, 0.f);
-		Cmd.RotationInput = FRotator::ZeroRotator;
-		return;
-	}
-
 
 	if (Controller == nullptr)
 	{
@@ -271,7 +172,7 @@ void ANetworkPredictionExtrasFlyingPawn::ProduceInput(const int32 DeltaMS, FFlyi
 	Cmd.MovementInput = FVector::ZeroVector;
 	Cmd.RotationInput = FRotator::ZeroRotator;
 
-	const float DeltaTimeSeconds = (float)DeltaMS / 1000.f;
+	const float DeltaTimeSeconds = SimTime.ToRealTimeSeconds();
 
 	switch (FlyingPawnCVars::CameraStyle)
 	{
@@ -413,180 +314,4 @@ void ANetworkPredictionExtrasFlyingPawn::ProduceInput(const int32 DeltaMS, FFlyi
 
 	CachedMoveInput = FVector::ZeroVector;
 	CachedLookInput = FVector2D::ZeroVector;
-}
-
-// ------------------------------------------------------------------------
-
-ANetworkPredictionExtrasFlyingPawn_MockAbility::ANetworkPredictionExtrasFlyingPawn_MockAbility(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer.SetDefaultSubobjectClass<UMockFlyingAbilityComponent>(Name_FlyingMovementComponent))
-{
-
-}
-
-UMockFlyingAbilityComponent* ANetworkPredictionExtrasFlyingPawn_MockAbility::GetMockFlyingAbilityComponent()
-{
-	return Cast<UMockFlyingAbilityComponent>(FlyingMovementComponent);
-}
-
-const UMockFlyingAbilityComponent* ANetworkPredictionExtrasFlyingPawn_MockAbility::GetMockFlyingAbilityComponent() const
-{
-	return Cast<UMockFlyingAbilityComponent>(FlyingMovementComponent);
-}
-
-void ANetworkPredictionExtrasFlyingPawn_MockAbility::ProduceInput(const int32 SimTimeMS, FMockAbilityInputCmd& Cmd)
-{
-	Super::ProduceInput(SimTimeMS, Cmd);
-
-	switch(AbilityInputPreset)
-	{
-	case ENetworkPredictionExtrasMockAbilityInputPreset::None:
-		Cmd.bSprintPressed = bSprintPressed;
-		Cmd.bDashPressed = bDashPressed;
-		Cmd.bBlinkPressed = bBlinkPressed;
-		Cmd.bPrimaryPressed = bPrimaryPressed;
-		Cmd.bSecondaryPressed = bSecondaryPressed;
-		break;
-	case ENetworkPredictionExtrasMockAbilityInputPreset::Sprint:
-		Cmd.bSprintPressed = true;
-		Cmd.bDashPressed = false;
-		Cmd.bBlinkPressed = false;
-		Cmd.bPrimaryPressed = false;
-		Cmd.bSecondaryPressed = false;
-		break;
-	case ENetworkPredictionExtrasMockAbilityInputPreset::Dash:
-		Cmd.bSprintPressed = false;
-		Cmd.bDashPressed = true;
-		Cmd.bBlinkPressed = false;
-		Cmd.bPrimaryPressed = false;
-		Cmd.bSecondaryPressed = false;
-		break;
-	case ENetworkPredictionExtrasMockAbilityInputPreset::Blink:
-		Cmd.bSprintPressed = false;
-		Cmd.bDashPressed = false;
-		Cmd.bBlinkPressed = true;
-		Cmd.bPrimaryPressed = false;
-		Cmd.bSecondaryPressed = false;
-		break;
-	};
-}
-
-void ANetworkPredictionExtrasFlyingPawn_MockAbility::BeginPlay()
-{
-	Super::BeginPlay();
-
-	if (UWorld* World = GetWorld())
-	{
-		if (UMockFlyingAbilityComponent* FlyingAbilityComponent = GetMockFlyingAbilityComponent())
-		{
-			FlyingAbilityComponent->ProduceInputDelegate.BindUObject(this, &ANetworkPredictionExtrasFlyingPawn_MockAbility::ProduceInput);
-		}
-	}
-}
-
-float ANetworkPredictionExtrasFlyingPawn_MockAbility::GetStamina() const
-{
-	if (const UMockFlyingAbilityComponent* FlyingAbilityComponent = GetMockFlyingAbilityComponent())
-	{
-		return FlyingAbilityComponent->GetStamina();
-	}
-	return 0.f;
-}
-
-float ANetworkPredictionExtrasFlyingPawn_MockAbility::GetMaxStamina() const
-{
-	if (const UMockFlyingAbilityComponent* FlyingAbilityComponent = GetMockFlyingAbilityComponent())
-	{
-		return FlyingAbilityComponent->GetMaxStamina();
-	}
-	return 0.f;
-}
-
-void ANetworkPredictionExtrasFlyingPawn_MockAbility::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
-{
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
-
-	if (APlayerController* PC = Cast<APlayerController>(Controller))
-	{
-		if (PC->PlayerInput)
-		{
-			//Gamepad
-			PC->PlayerInput->AddActionMapping(FInputActionKeyMapping(TEXT("Sprint"), EKeys::Gamepad_LeftThumbstick));
-			PC->PlayerInput->AddActionMapping(FInputActionKeyMapping(TEXT("Dash"), EKeys::Gamepad_FaceButton_Left));
-			PC->PlayerInput->AddActionMapping(FInputActionKeyMapping(TEXT("Blink"), EKeys::Gamepad_FaceButton_Top));
-			PC->PlayerInput->AddActionMapping(FInputActionKeyMapping(TEXT("Primary"), EKeys::Gamepad_RightShoulder));
-			PC->PlayerInput->AddActionMapping(FInputActionKeyMapping(TEXT("Secondary"), EKeys::Gamepad_LeftShoulder));
-
-			// Keyboard
-			PC->PlayerInput->AddActionMapping(FInputActionKeyMapping(TEXT("Sprint"), EKeys::LeftShift));
-			PC->PlayerInput->AddActionMapping(FInputActionKeyMapping(TEXT("Dash"), EKeys::Q));
-			PC->PlayerInput->AddActionMapping(FInputActionKeyMapping(TEXT("Blink"), EKeys::E));
-			PC->PlayerInput->AddActionMapping(FInputActionKeyMapping(TEXT("Primary"), EKeys::LeftMouseButton));
-			PC->PlayerInput->AddActionMapping(FInputActionKeyMapping(TEXT("Secondary"), EKeys::RightMouseButton));
-		}
-	}
-
-	PlayerInputComponent->BindAction(TEXT("Sprint"), IE_Pressed, this, &ThisClass::Action_Sprint_Pressed);
-	PlayerInputComponent->BindAction(TEXT("Sprint"), IE_Released, this, &ThisClass::Action_Sprint_Released);
-
-	PlayerInputComponent->BindAction(TEXT("Dash"), IE_Pressed, this, &ThisClass::Action_Dash_Pressed);
-	PlayerInputComponent->BindAction(TEXT("Dash"), IE_Released, this, &ThisClass::Action_Dash_Released);
-
-	PlayerInputComponent->BindAction(TEXT("Blink"), IE_Pressed, this, &ThisClass::Action_Blink_Pressed);
-	PlayerInputComponent->BindAction(TEXT("Blink"), IE_Released, this, &ThisClass::Action_Blink_Released);
-
-	PlayerInputComponent->BindAction(TEXT("Primary"), IE_Pressed, this, &ThisClass::Action_Primary_Pressed);
-	PlayerInputComponent->BindAction(TEXT("Primary"), IE_Released, this, &ThisClass::Action_Primary_Released);
-
-	PlayerInputComponent->BindAction(TEXT("Secondary"), IE_Pressed, this, &ThisClass::Action_Secondary_Pressed);
-	PlayerInputComponent->BindAction(TEXT("Secondary"), IE_Released, this, &ThisClass::Action_Secondary_Released);
-}
-
-void ANetworkPredictionExtrasFlyingPawn_MockAbility::Action_Sprint_Pressed()
-{
-	bSprintPressed = true;
-}
-
-void ANetworkPredictionExtrasFlyingPawn_MockAbility::Action_Sprint_Released()
-{
-	bSprintPressed = false;
-}
-
-void ANetworkPredictionExtrasFlyingPawn_MockAbility::Action_Dash_Pressed()
-{
-	bDashPressed = true;
-}
-
-void ANetworkPredictionExtrasFlyingPawn_MockAbility::Action_Dash_Released()
-{
-	bDashPressed = false;
-}
-
-void ANetworkPredictionExtrasFlyingPawn_MockAbility::Action_Blink_Pressed()
-{
-	bBlinkPressed = true;
-}
-
-void ANetworkPredictionExtrasFlyingPawn_MockAbility::Action_Blink_Released()
-{
-	bBlinkPressed = false;
-}
-
-void ANetworkPredictionExtrasFlyingPawn_MockAbility::Action_Primary_Pressed()
-{
-	bPrimaryPressed = true;
-}
-
-void ANetworkPredictionExtrasFlyingPawn_MockAbility::Action_Primary_Released()
-{
-	bPrimaryPressed = false;
-}
-
-void ANetworkPredictionExtrasFlyingPawn_MockAbility::Action_Secondary_Pressed()
-{
-	bSecondaryPressed = true;
-}
-
-void ANetworkPredictionExtrasFlyingPawn_MockAbility::Action_Secondary_Released()
-{
-	bSecondaryPressed = false;
 }

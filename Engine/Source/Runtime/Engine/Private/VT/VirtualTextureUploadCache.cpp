@@ -1,15 +1,26 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VirtualTextureUploadCache.h"
 #include "VirtualTextureChunkManager.h"
 #include "RHI.h"
 
+// Stage to persist mapped GPU buffer then GPU copy into texture
+// this is fast where supported
+#if PLATFORM_PS4
+static const bool ALLOW_COPY_FROM_BUFFER = true;
+#else
+static const bool ALLOW_COPY_FROM_BUFFER = false;
+#endif
+
 // allow uploading CPU buffer directly to GPU texture
 // this is slow under D3D11
 // Should be pretty decent on D3D12X...UpdateTexture does make an extra copy of the data, but Lock/Unlock texture also buffers an extra copy of texture on this platform
 // Might also be worth enabling this path on PC D3D12, need to measure
-#if !defined(ALLOW_UPDATE_TEXTURE)
-	#define ALLOW_UPDATE_TEXTURE 0
+// 'ALLOW_COPY_FROM_BUFFER' would still be better, but involves more Xbox-specific RHI work
+#if PLATFORM_XBOXONE
+static const bool ALLOW_UPDATE_TEXTURE = true;
+#else
+static const bool ALLOW_UPDATE_TEXTURE = false;
 #endif
 
 DECLARE_MEMORY_STAT_POOL(TEXT("Total GPU Upload Memory"), STAT_TotalGPUUploadSize, STATGROUP_VirtualTextureMemory, FPlatformMemory::MCR_GPU);
@@ -60,9 +71,6 @@ void FVirtualTextureUploadCache::Finalize(FRHICommandListImmediate& RHICmdList)
 
 	check(IsInRenderingThread());
 
-	// Multi-GPU support : May be ineffecient for AFR.
-	SCOPED_GPU_MASK(RHICmdList, FRHIGPUMask::All());
-
 	for (int PoolIndex = 0; PoolIndex < Pools.Num(); ++PoolIndex)
 	{
 		FPoolEntry& PoolEntry = Pools[PoolIndex];
@@ -104,7 +112,7 @@ void FVirtualTextureUploadCache::Finalize(FRHICommandListImmediate& RHICmdList)
 			}
 
 			FRHIResourceCreateInfo CreateInfo;
-			StagingTexture.RHITexture = RHICreateTexture2D(TileSize * WidthInTiles, TileSize * HeightInTiles, PoolEntry.Format, 1, 1, bIsCpuWritable ? TexCreate_CPUWritable : TexCreate_None, CreateInfo);
+			StagingTexture.RHITexture = RHICmdList.CreateTexture2D(TileSize * WidthInTiles, TileSize * HeightInTiles, PoolEntry.Format, 1, 1, bIsCpuWritable ? TexCreate_CPUWritable : TexCreate_None, CreateInfo);
 			StagingTexture.WidthInTiles = WidthInTiles;
 			StagingTexture.BatchCapacity = WidthInTiles * HeightInTiles;
 			StagingTexture.bIsCPUWritable = bIsCpuWritable;
@@ -137,7 +145,6 @@ void FVirtualTextureUploadCache::Finalize(FRHICommandListImmediate& RHICmdList)
 		}
 
 		RHICmdList.UnlockTexture2D(StagingTexture.RHITexture, 0u, false, false);
-		RHICmdList.Transition(FRHITransitionInfo(StagingTexture.RHITexture, ERHIAccess::SRVMask, ERHIAccess::CopySrc));
 
 		// upload each tile from staging texture to physical texture
 		Index = Tiles[SubmitListHead].NextIndex;
@@ -153,15 +160,11 @@ void FVirtualTextureUploadCache::Finalize(FRHICommandListImmediate& RHICmdList)
 			const FIntVector SourceBoxStart(SrcTileX * TileSize + SkipBorderSize, SrcTileY * TileSize + SkipBorderSize, 0);
 			const FIntVector DestinationBoxStart(Entry.SubmitDestX * SubmitTileSize, Entry.SubmitDestY * SubmitTileSize, 0);
 
-			RHICmdList.Transition(FRHITransitionInfo(Entry.RHISubmitTexture, ERHIAccess::Unknown, ERHIAccess::CopyDest));
-
 			FRHICopyTextureInfo CopyInfo;
 			CopyInfo.Size = FIntVector(SubmitTileSize, SubmitTileSize, 1);
 			CopyInfo.SourcePosition = SourceBoxStart;
 			CopyInfo.DestPosition = DestinationBoxStart;
 			RHICmdList.CopyTexture(StagingTexture.RHITexture, Entry.RHISubmitTexture, CopyInfo);
-
-			RHICmdList.Transition(FRHITransitionInfo(Entry.RHISubmitTexture, ERHIAccess::CopyDest, ERHIAccess::SRVMask));
 
 			Entry.RHISubmitTexture = nullptr;
 			Entry.SubmitBatchIndex = 0u;
@@ -174,16 +177,8 @@ void FVirtualTextureUploadCache::Finalize(FRHICommandListImmediate& RHICmdList)
 			Index = NextIndex;
 		}
 
-		RHICmdList.Transition(FRHITransitionInfo(StagingTexture.RHITexture, ERHIAccess::CopySrc, ERHIAccess::SRVMask));
-
 		PoolEntry.BatchCount = 0u;
 	}
-}
-
-void FVirtualTextureUploadCache::ReleaseRHI()
-{
-	Pools.Empty();
-	Tiles.Empty();
 }
 
 FVTUploadTileHandle FVirtualTextureUploadCache::PrepareTileForUpload(FVTUploadTileBuffer& OutBuffer, EPixelFormat InFormat, uint32 InTileSize)
@@ -214,10 +209,7 @@ FVTUploadTileHandle FVirtualTextureUploadCache::PrepareTileForUpload(FVTUploadTi
 		// Can potentially write each tile to a separate staging texture, but this has too much lock/unlock overhead
 		NewEntry.Stride = Stride;
 		NewEntry.MemorySize = MemorySize;
-
-		// Stage to persist mapped GPU buffer then GPU copy into texture
-		// this is fast where supported
-		if (GRHISupportsDirectGPUMemoryLock)
+		if (ALLOW_COPY_FROM_BUFFER)
 		{
 			FRHIResourceCreateInfo CreateInfo;
 			NewEntry.RHIStagingBuffer = RHICreateStructuredBuffer(FormatInfo.BlockBytes, MemorySize, BUF_ShaderResource | BUF_Static | BUF_KeepCPUAccessible, CreateInfo);
@@ -271,8 +263,7 @@ void FVirtualTextureUploadCache::SubmitTile(FRHICommandListImmediate& RHICmdList
 		// (we're using persist mapped buffer here, so this is the only synchronization method in place...without this delay we'd get corrupt textures)
 		AddToList(LIST_SUBMITTED, Index);
 	}
-	else
-#if ALLOW_UPDATE_TEXTURE	
+	else if(ALLOW_UPDATE_TEXTURE)
 	{
 		const FUpdateTextureRegion2D UpdateRegion(InDestX * TileSize, InDestY * TileSize, InSkipBorderSize, InSkipBorderSize, TileSize, TileSize);
 		RHICmdList.UpdateTexture2D(InDestTexture, 0u, UpdateRegion, Entry.Stride, (uint8*)Entry.Memory);
@@ -280,7 +271,7 @@ void FVirtualTextureUploadCache::SubmitTile(FRHICommandListImmediate& RHICmdList
 		// UpdateTexture2D makes internal copy of data, no need to wait before re-using tile
 		AddToList(PoolEntry.FreeTileListHead, Index);
 	}
-#else
+	else
 	{
 		Entry.RHISubmitTexture = InDestTexture;
 		Entry.SubmitDestX = InDestX;
@@ -291,7 +282,6 @@ void FVirtualTextureUploadCache::SubmitTile(FRHICommandListImmediate& RHICmdList
 		// move to list of batched updates for the current pool
 		AddToList(PoolEntry.SubmitTileListHead, Index);
 	}
-#endif
 }
 
 void FVirtualTextureUploadCache::CancelTile(const FVTUploadTileHandle& InHandle)

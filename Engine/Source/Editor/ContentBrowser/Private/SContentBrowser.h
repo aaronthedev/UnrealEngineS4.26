@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,7 +11,6 @@
 #include "AssetData.h"
 #include "SAssetSearchBox.h"
 #include "Framework/MultiBox/MultiBoxExtender.h"
-#include "ContentBrowserDataMenuContexts.h"
 #include "CollectionManagerTypes.h"
 #include "IContentBrowserSingleton.h"
 #include "Editor/ContentBrowser/Private/HistoryManager.h"
@@ -29,15 +28,6 @@ class SFilterList;
 class SPathView;
 class SSplitter;
 class UFactory;
-
-struct FToolMenuContext;
-
-enum class EContentBrowserViewContext : uint8
-{
-	AssetView,
-	PathView,
-	FavoriteView,
-};
 
 /**
  * A widget to display and work with all game and engine content
@@ -75,7 +65,7 @@ public:
 	 *	@param bAllowImplicitSync	- true to allow the view to sync to parent folders if they are already selected,
 	 *								  false to force the view to select the explicit Parent folders of each asset 
 	 */
-	void SyncToAssets( TArrayView<const FAssetData> AssetDataList, const bool bAllowImplicitSync = false, const bool bDisableFiltersThatHideAssets = true );
+	void SyncToAssets( const TArray<FAssetData>& AssetDataList, const bool bAllowImplicitSync = false, const bool bDisableFiltersThatHideAssets = true );
 
 	/**
 	 * Changes sources to show the specified folders and selects them in the asset view
@@ -85,38 +75,7 @@ public:
 	 *	@param bAllowImplicitSync	- true to allow the view to sync to parent folders if they are already selected,
 	 *								  false to force the view to select the explicit Parent folders of each asset 
 	 */
-	void SyncToFolders( TArrayView<const FString> FolderList, const bool bAllowImplicitSync = false );
-
-	/**
-	 * Changes sources to show the specified items and selects them in the asset view
-	 *
-	 *	@param ItemsToSync			- A list of items to sync the view to
-	 *
-	 *	@param bAllowImplicitSync	- true to allow the view to sync to parent folders if they are already selected,
-	 *								  false to force the view to select the explicit Parent folders of each asset
-	 */
-	void SyncToItems( TArrayView<const FContentBrowserItem> ItemsToSync, const bool bAllowImplicitSync = false, const bool bDisableFiltersThatHideAssets = true );
-
-	/**
-	 * Changes sources to show the specified items and selects them in the asset view
-	 *
-	 *	@param VirtualPathsToSync	- A list of virtual paths to sync the view to
-	 *
-	 *	@param bAllowImplicitSync	- true to allow the view to sync to parent folders if they are already selected,
-	 *								  false to force the view to select the explicit Parent folders of each asset
-	 */
-	void SyncToVirtualPaths( TArrayView<const FName> VirtualPathsToSync, const bool bAllowImplicitSync = false, const bool bDisableFiltersThatHideAssets = true );
-
-	/**
-	 * Changes sources to show the specified assets and folders and selects them in the asset view
-	 *
-	 *	@param AssetDataList		- A list of assets to sync the view to
-	 *	@param FolderList			- A list of folders to sync the view to
-	 *
-	 *	@param bAllowImplicitSync	- true to allow the view to sync to parent folders if they are already selected,
-	 *								  false to force the view to select the explicit Parent folders of each asset
-	 */
-	void SyncToLegacy( TArrayView<const FAssetData> AssetDataList, TArrayView<const FString> FolderList, const bool bAllowImplicitSync = false, const bool bDisableFiltersThatHideAssets = true );
+	void SyncToFolders( const TArray<FString>& FolderList, const bool bAllowImplicitSync = false );
 
 	/**
 	 * Changes sources to show the specified items and selects them in the asset view
@@ -155,9 +114,6 @@ public:
 	/** Sets the content browser to show the specified paths */
 	void SetSelectedPaths(const TArray<FString>& FolderPaths, bool bNeedsRefresh = false);
 
-	/** Gets the current path if one exists, otherwise returns empty string. */
-	FString GetCurrentPath() const;
-
 	/**
 	 * Forces the content browser to show plugin content
 	 *
@@ -182,16 +138,16 @@ public:
 private:
 
 	/** Called prior to syncing the selection in this Content Browser */
-	void PrepareToSyncItems(TArrayView<const FContentBrowserItem> ItemsToSync, const bool bDisableFiltersThatHideAssets);
-
-	/** Called prior to syncing the selection in this Content Browser */
-	void PrepareToSyncVirtualPaths(TArrayView<const FName> VirtualPathsToSync, const bool bDisableFiltersThatHideAssets);
-
-	/** Called prior to syncing the selection in this Content Browser */
-	void PrepareToSyncLegacy(TArrayView<const FAssetData> AssetDataList, TArrayView<const FString> FolderPaths, const bool bDisableFiltersThatHideAssets);
+	void PrepareToSync( const TArray<FAssetData>& AssetDataList, const TArray<FString>& FolderPaths, const bool bDisableFiltersThatHideAssets );
 
 	/** Called to retrieve the text that should be highlighted on assets */
 	FText GetHighlightedText() const;
+
+	/** Called to work out whether the import button should be enabled */
+	bool IsImportEnabled() const;
+
+	/** Called to retrieve the text that should be in the import tooltip */
+	FText GetImportTooltipText() const;
 
 	/** Called when a containing tab is closing, if there is one */
 	void OnContainingTabSavingVisualState() const;
@@ -217,6 +173,9 @@ private:
 	/** Handler for when a path has been selected in the favorite path view */
 	void FavoritePathSelected(const FString& FolderPath);
 
+	/** Gets the current path if one exists, otherwise returns empty string. */
+	FString GetCurrentPath() const;
+
 	/** Get the asset tree context menu */
 	TSharedRef<FExtender> GetPathContextMenuExtender(const TArray<FString>& SelectedPaths) const;
 
@@ -235,11 +194,14 @@ private:
 	/** Updates the supplied history data with current information */
 	void OnUpdateHistoryData(FHistoryData& History) const;
 
+	/** Handler for when the path view requests an asset creation */
+	void NewAssetRequested(const FString& SelectedPath, TWeakObjectPtr<UClass> FactoryClass);
+
+	/** Handler for when the path view requests a class creation */
+	void NewClassRequested(const FString& SelectedPath);
+
 	/** Handler for when the path context menu requests a folder creation */
 	void NewFolderRequested(const FString& SelectedPath);
-
-	/** Handler for when a data source requests file item creation */
-	void NewFileItemRequested(const FContentBrowserItemDataTemporaryContext& NewItemContext);
 
 	/** Called when the editable text needs to be set or cleared */
 	void SetSearchBoxText(const FText& InSearchText);
@@ -276,14 +238,8 @@ private:
 	/** Gets the content for the path picker combo button */
 	TSharedRef<SWidget> GetPathPickerContent();
 
-	/** Register the context objects needed for the "Add New" menu */
-	void AppendNewMenuContextObjects(const EContentBrowserDataMenuContext_AddNewMenuDomain InDomain, const TArray<FName>& InSelectedPaths, FToolMenuContext& InOutMenuContext);
-
 	/** Handle creating a context menu for the "Add New" button */
-	TSharedRef<SWidget> MakeAddNewContextMenu(const EContentBrowserDataMenuContext_AddNewMenuDomain InDomain);
-
-	/** Handle populating a context menu for the "Add New" button */
-	void PopulateAddNewContextMenu(class UToolMenu* Menu);
+	TSharedRef<SWidget> MakeAddNewContextMenu(bool bShowGetContent, bool bShowImport);
 
 	/** Called to work out whether the import button should be enabled */
 	bool IsAddNewEnabled() const;
@@ -297,20 +253,26 @@ private:
 	/** Builds the context menu for the filter list area. */
 	TSharedPtr<SWidget> GetFilterContextMenu();
 
+	/** Imports a new piece of content. */
+	FReply HandleImportClicked();
+
+	/** Imports a new piece of content to a specific path. */
+	void ImportAsset(const FString& InPath);
+
 	/** Saves dirty content. */
 	FReply OnSaveClicked();
 
 	/** Opens the add content dialog. */
 	void OnAddContentRequested();
 
-	/** Handler for when a new item is requested in the asset view */
-	void OnNewItemRequested(const FContentBrowserItem& NewItem);
+	/** Handler for when the selection set in the asset view has changed. */
+	void OnAssetSelectionChanged(const FAssetData& SelectedAsset);
 
-	/** Handler for when the selection set in any view has changed. */
-	void OnItemSelectionChanged(const FContentBrowserItem& SelectedItem, ESelectInfo::Type SelectInfo, EContentBrowserViewContext ViewContext);
+	/** Handler for when the user double clicks, presses enter, or presses space on an asset */
+	void OnAssetsActivated(const TArray<FAssetData>& ActivatedAssets, EAssetTypeActivationMethod::Type ActivationMethod);
 
-	/** Handler for when the user double clicks, presses enter, or presses space on a Content Browser item */
-	void OnItemsActivated(TArrayView<const FContentBrowserItem> ActivatedItems, EAssetTypeActivationMethod::Type ActivationMethod);
+	/** Handler for when an asset context menu has been requested. */
+	TSharedPtr<SWidget> OnGetAssetContextMenu(const TArray<FAssetData>& SelectedAssets);
 
 	/** Handler for clicking the lock button */
 	FReply ToggleLockClicked();
@@ -330,9 +292,6 @@ private:
 	/** Gets the visibility of the path expander button */
 	EVisibility GetPathExpanderVisibility() const;
 
-	/** Gets the visibility of the source switch button */
-	EVisibility GetSourcesSwitcherVisibility() const;
-
 	/** Gets the icon used on the source switch button */
 	const FSlateBrush* GetSourcesSwitcherIcon() const;
 
@@ -344,9 +303,6 @@ private:
 
 	/** Gets the source search hint text */
 	FText GetSourcesSearchHintText() const;
-
-	/** Called to handle the Content Browser settings changing */
-	void OnContentBrowserSettingsChanged(FName PropertyName);
 
 	/** Handler for clicking the history back button */
 	FReply BackClicked();
@@ -387,17 +343,29 @@ private:
 	/** Handler for creating new folder */
 	void HandleCreateNewFolderCommandExecute();
 
+	/** Handler for clicking the directory up button */
+	void HandleDirectoryUpCommandExecute();
+
 	/** True if the user may use the history back button */
 	bool IsBackEnabled() const;
 
 	/** True if the user may use the history forward button */
 	bool IsForwardEnabled() const;
 
+	/** True if the user may use the directory up button */
+	bool CanExecuteDirectoryUp() const;
+
 	/** Gets the tool tip text for the history back button */
 	FText GetHistoryBackTooltip() const;
 
 	/** Gets the tool tip text for the history forward button */
 	FText GetHistoryForwardTooltip() const;
+
+	/** Gets the tool tip text for the directory up button */
+	FText GetDirectoryUpTooltip() const;
+
+	/** Gets the Visibility for the directory up buttons tooltip (hidden if empty) */
+	EVisibility GetDirectoryUpToolTipVisibility() const;
 
 	/** Sets the global selection set to the asset view's selected items */
 	void SyncGlobalSelectionSet();
@@ -414,23 +382,23 @@ private:
 	/** Returns true if currently filtering by a source */
 	bool IsFilteredBySource() const;
 
-	/** Handler for when the context menu or asset view requests to find items in the paths view */
-	void OnShowInPathsViewRequested(TArrayView<const FContentBrowserItem> ItemsToFind);
+	/** Handler for when the context menu or asset view requests to find assets in the asset tree */
+	void OnFindInAssetTreeRequested(const TArray<FAssetData>& AssetsToFind);
 
-	/** Handler for when the user has committed a rename of an item */
-	void OnItemRenameCommitted(TArrayView<const FContentBrowserItem> Items);
+	/** Handler for when the user has committed a rename of an asset */
+	void OnAssetRenameCommitted(const TArray<FAssetData>& Assets);
 
-	/** Handler for when the asset context menu requests to rename an item */
-	void OnRenameRequested(const FContentBrowserItem& Item, EContentBrowserViewContext ViewContext);
+	/** Handler for when the asset context menu requests to rename an asset */
+	void OnRenameRequested(const FAssetData& AssetData);
+
+	/** Handler for when the asset context menu requests to rename a folder */
+	void OnRenameFolderRequested(const FString& FolderToRename);
 
 	/** Handler for when the path context menu has successfully deleted a folder */
 	void OnOpenedFolderDeleted();
 
-	/** Handler for when the asset context menu requests to duplicate an item */
-	void OnDuplicateRequested(TArrayView<const FContentBrowserItem> OriginalItems);
-
-	/** Handler for when the asset context menu requests to edit an item */
-	void OnEditRequested(TArrayView<const FContentBrowserItem> Items);
+	/** Handler for when the asset context menu requests to duplicate an asset */
+	void OnDuplicateRequested(const TWeakObjectPtr<UObject>& OriginalObject);
 
 	/** Handler for when the asset context menu requests to refresh the asset view */
 	void OnAssetViewRefreshRequested();
@@ -445,10 +413,7 @@ private:
 	void HandleCollectionUpdated(const FCollectionNameType& Collection);
 
 	/** Handles a path removed event */
-	void HandlePathRemoved(const FName Path);
-
-	/** Handles content items being updated */
-	void HandleItemDataUpdated(TArrayView<const FContentBrowserItemDataUpdate> InUpdatedItems);
+	void HandlePathRemoved(const FString& Path);
 
 	/** Gets all suggestions for the asset search box */
 	void OnAssetSearchSuggestionFilter(const FText& SearchText, TArray<FAssetSearchBoxSuggestion>& PossibleSuggestions, FText& SuggestionHighlightText) const;
@@ -459,11 +424,8 @@ private:
 	/** Gets the dynamic hint text for the "Search Assets" search text box */
 	FText GetSearchAssetsHintText() const;
 
-	/** Delegate called when generating the context menu for an item */
-	TSharedPtr<SWidget> GetItemContextMenu(TArrayView<const FContentBrowserItem> SelectedItems, EContentBrowserViewContext ViewContext);
-
-	/** Populate the context menu for a folder */
-	void PopulateFolderContextMenu(UToolMenu* Menu);
+	/** Delegate called when generating the context menu for a folder */
+	TSharedPtr<SWidget> GetFolderContextMenu(const TArray<FString>& SelectedPaths, FContentBrowserMenuExtender_SelectedPaths InMenuExtender, FOnCreateNewFolder OnCreateNewFolder, bool bPathView);
 
 	/** Delegate called to get the current selection state */
 	void GetSelectionState(TArray<FAssetData>& SelectedAssets, TArray<FString>& SelectedPaths);
@@ -479,9 +441,6 @@ private:
 
 	/** Gets the visibility of the favorites view */
 	EVisibility GetFavoriteFolderVisibility() const;
-
-	/** Get the visibility of the docked collections view */
-	EVisibility GetDockedCollectionsVisibility() const;
 
 	/** Toggles the favorite status of an array of folders*/
 	void ToggleFolderFavorite(const TArray<FString>& FolderPaths);

@@ -1,13 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Sections/MovieSceneColorSection.h"
-#include "Tracks/MovieSceneColorTrack.h"
 #include "UObject/StructOnScope.h"
 #include "UObject/SequencerObjectVersion.h"
 #include "Channels/MovieSceneChannelProxy.h"
 #include "Styling/SlateColor.h"
 #include "Evaluation/MovieScenePropertyTemplate.h"
-#include "Evaluation/MovieSceneEvaluationTrack.h"
 
 #if WITH_EDITOR
 struct FColorSectionEditorData
@@ -48,7 +46,7 @@ struct FColorSectionEditorData
 	{
 		const FName SlateColorName("SlateColor");
 
-		FStructProperty* ColorStructProperty = CastField<FStructProperty>(Bindings.GetProperty(InObject));
+		UStructProperty* ColorStructProperty = Cast<UStructProperty>(Bindings.GetProperty(InObject));
 		if (ColorStructProperty != nullptr)
 		{
 			if (ColorStructProperty->Struct->GetFName() == SlateColorName)
@@ -117,7 +115,7 @@ struct FColorSectionEditorData
 
 		if (Track)
 		{
-			FMovieSceneEvaluationTrack EvalTrack = CastChecked<UMovieSceneColorTrack>(Track)->GenerateTrackTemplate(Track);
+			FMovieSceneEvaluationTrack EvalTrack = Track->GenerateTrackTemplate();
 			FMovieSceneInterrogationData InterrogationData;
 			RootTemplate.CopyActuators(InterrogationData.GetAccumulator());
 

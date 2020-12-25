@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/PanelWidget.h"
 
@@ -21,7 +21,7 @@ void UPanelWidget::ReleaseSlateResources(bool bReleaseChildren)
 	{
 		for ( int32 SlotIndex = 0; SlotIndex < Slots.Num(); SlotIndex++ )
 		{
-			if ( Slots[SlotIndex] && Slots[SlotIndex]->Content != nullptr )
+			if ( Slots[SlotIndex]->Content != nullptr )
 			{
 				Slots[SlotIndex]->ReleaseSlateResources(bReleaseChildren);
 			}
@@ -228,9 +228,10 @@ bool UPanelWidget::HasAnyChildren() const
 
 void UPanelWidget::ClearChildren()
 {
-	for ( int32 ChildIndex = GetChildrenCount() - 1; ChildIndex >= 0; ChildIndex-- )
+	int32 Children = GetChildrenCount();
+	for ( int32 ChildIndex = 0; ChildIndex < Children; ChildIndex++ )
 	{
-		RemoveChildAt(ChildIndex);
+		RemoveChildAt(0);
 	}
 }
 

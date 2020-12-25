@@ -252,7 +252,7 @@ namespace jpgd
 
     void free_all_blocks();
     // BEGIN EPIC MOD
-    UE_NORETURN void stop_decoding(jpgd_status status);
+    FUNCTION_NO_RETURN_START void stop_decoding(jpgd_status status) FUNCTION_NO_RETURN_END;
     // END EPIC MOD
     void *alloc(size_t n, bool zero = false);
     void word_clear(void *p, uint16 c, uint n);

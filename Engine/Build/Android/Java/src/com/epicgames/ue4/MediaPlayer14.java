@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 package com.epicgames.ue4;
 
@@ -2073,14 +2073,9 @@ public class MediaPlayer14
 				}
 			}
 
-			// If we found any video tracks, return them
-			if (VideoTracks.length > 0)
-			{
-				return VideoTracks;
-			}
+			return VideoTracks;
 		}
 
-		// if we have a non-zero width/height, create a fallback video track entry
 		if (Width > 0 && Height > 0)
 		{
 			VideoTrackInfo[] VideoTracks = new VideoTrackInfo[1];

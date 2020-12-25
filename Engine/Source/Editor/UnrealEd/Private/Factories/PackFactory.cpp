@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PackFactory.cpp: Factory for importing asset and feature packs
@@ -186,8 +186,8 @@ namespace PackFactoryHelper
 		PackConfig.ProcessInputFileContents(ConfigString);
 
 		// Input Settings
-		static FArrayProperty* ActionMappingsProp = FindFieldChecked<FArrayProperty>(UInputSettings::StaticClass(), UInputSettings::GetActionMappingsPropertyName());
-		static FArrayProperty* AxisMappingsProp = FindFieldChecked<FArrayProperty>(UInputSettings::StaticClass(), UInputSettings::GetAxisMappingsPropertyName());
+		static UArrayProperty* ActionMappingsProp = FindFieldChecked<UArrayProperty>(UInputSettings::StaticClass(), UInputSettings::GetActionMappingsPropertyName());
+		static UArrayProperty* AxisMappingsProp = FindFieldChecked<UArrayProperty>(UInputSettings::StaticClass(), UInputSettings::GetAxisMappingsPropertyName());
 
 		UInputSettings* InputSettingsCDO = GetMutableDefault<UInputSettings>();
 		bool bCheckedOut = false;
@@ -334,7 +334,7 @@ UObject* UPackFactory::FactoryCreateBinary
 
 	UObject* ReturnAsset = nullptr;
 
-	if (PakFile.IsValid() && PakFile.HasFilenames())
+	if (PakFile.IsValid())
 	{
 		static FString ContentFolder(TEXT("/Content/"));
 		FString ContentDestinationRoot = FPaths::ProjectContentDir();
@@ -358,18 +358,16 @@ UObject* UPackFactory::FactoryCreateBinary
 		TArray<FString> WrittenSourceFiles;
 
 		// Process the config files and identify if we have source files
-		for (FPakFile::FPakEntryIterator It(PakFile); It; ++It, ++FileCount)
+		for (FPakFile::FFileIterator It(PakFile); It; ++It, ++FileCount)
 		{
-			const FString* EntryFilename = It.TryGetFilename();
-			check(EntryFilename);
-			if (EntryFilename->StartsWith(TEXT("Config/")) || EntryFilename->Contains(TEXT("/Config/")))
+			if (It.Filename().StartsWith(TEXT("Config/")) || It.Filename().Contains(TEXT("/Config/")))
 			{
 				const FPakEntry& Entry = It.Info();
 				PakReader.Seek(Entry.Offset);
 				FPakEntry EntryInfo;
 				EntryInfo.Serialize(PakReader, PakFile.GetInfo().Version);
 
-				if (EntryInfo.IndexDataEquals(Entry))
+				if (EntryInfo == Entry)
 				{
 					FString ConfigString;
 					PackFactoryHelper::ExtractFileToString(Entry, PakReader, CopyBuffer, PersistentCompressionBuffer, ConfigString, PakFile);
@@ -377,11 +375,11 @@ UObject* UPackFactory::FactoryCreateBinary
 				}
 				else
 				{
-					UE_LOG(LogPackFactory, Error, TEXT("Index data mismatch for entry: \"%s\"."), **EntryFilename);
+					UE_LOG(LogPackFactory, Error, TEXT("Serialized hash mismatch for \"%s\"."), *It.Filename());
 					ErrorCount++;
 				}
 			}
-			else if (!ConfigParameters.bContainsSource && (EntryFilename ->StartsWith(TEXT("Source/")) || EntryFilename->Contains(TEXT("/Source/"))))
+			else if (!ConfigParameters.bContainsSource && (It.Filename().StartsWith(TEXT("Source/")) || It.Filename().Contains(TEXT("/Source/"))))
 			{
 				ConfigParameters.bContainsSource = true;
 			}
@@ -459,18 +457,16 @@ UObject* UPackFactory::FactoryCreateBinary
 		}
 
 		// Process everything else and copy out to disk
-		for (FPakFile::FPakEntryIterator It(PakFile); It; ++It, ++FileCount)
+		for (FPakFile::FFileIterator It(PakFile); It; ++It, ++FileCount)
 		{
-			const FString* EntryFilename = It.TryGetFilename();
-			check(EntryFilename);
 			// config files already handled
-			if (EntryFilename->StartsWith(TEXT("Config/")) || EntryFilename->Contains(TEXT("/Config/")))
+			if (It.Filename().StartsWith(TEXT("Config/")) || It.Filename().Contains(TEXT("/Config/")))
 			{
 				continue;
 			}
 
 			// Media and manifest files don't get written out as part of the install
-			if (EntryFilename->Contains(TEXT("manifest.json")) || EntryFilename->StartsWith(TEXT("Media/")) || EntryFilename->Contains(TEXT("/Media/")))
+			if (It.Filename().Contains(TEXT("manifest.json")) || It.Filename().StartsWith(TEXT("Media/")) || It.Filename().Contains(TEXT("/Media/")))
 			{
 				continue;
 			}
@@ -480,26 +476,26 @@ UObject* UPackFactory::FactoryCreateBinary
 			FPakEntry EntryInfo;
 			EntryInfo.Serialize(PakReader, PakFile.GetInfo().Version);
 
-			if (EntryInfo.IndexDataEquals(Entry))
+			if (EntryInfo == Entry)
 			{
-				if (EntryFilename->StartsWith(TEXT("Source/")) || EntryFilename->Contains(TEXT("/Source/")))
+				if (It.Filename().StartsWith(TEXT("Source/")) || It.Filename().Contains(TEXT("/Source/")))
 				{
-					FString DestFilename = *EntryFilename;
+					FString DestFilename = It.Filename();
 					if (DestFilename.StartsWith(TEXT("Source/")))
 					{
-						DestFilename.RightChopInline(7, false);
+						DestFilename = DestFilename.RightChop(7);
 					}
 					else 
 					{
 						const int32 SourceIndex = DestFilename.Find(TEXT("/Source/"));
 						if (SourceIndex != INDEX_NONE)
 						{
-							DestFilename.RightChopInline(SourceIndex + 8, false);
+							DestFilename = DestFilename.RightChop(SourceIndex + 8);
 						}
 					}
 
 					DestFilename = SourceModuleInfo.ModuleSourcePath / DestFilename;
-					UE_LOG(LogPackFactory, Log, TEXT("%s (%ld) -> %s"), **EntryFilename, Entry.Size, *DestFilename);
+					UE_LOG(LogPackFactory, Log, TEXT("%s (%ld) -> %s"), *It.Filename(), Entry.Size, *DestFilename);
 
 					FString SourceContents;
 					PackFactoryHelper::ExtractFileToString(Entry, PakReader, CopyBuffer, PersistentCompressionBuffer, SourceContents, PakFile);
@@ -526,21 +522,21 @@ UObject* UPackFactory::FactoryCreateBinary
 				}
 				else
 				{
-					FString DestFilename = *EntryFilename;
+					FString DestFilename = It.Filename();
 					if (DestFilename.StartsWith(TEXT("Content/")))
 					{
-						DestFilename.RightChopInline(8, false);
+						DestFilename = DestFilename.RightChop(8);
 					}
 					else
 					{
 						const int32 ContentIndex = DestFilename.Find(ContentFolder);
 						if (ContentIndex != INDEX_NONE)
 						{
-							DestFilename.RightChopInline(ContentIndex + 9, false);
+							DestFilename = DestFilename.RightChop(ContentIndex + 9);
 						}
 					}
 					DestFilename = ContentDestinationRoot / DestFilename;
-					UE_LOG(LogPackFactory, Log, TEXT("%s (%ld) -> %s"), **EntryFilename, Entry.Size, *DestFilename);
+					UE_LOG(LogPackFactory, Log, TEXT("%s (%ld) -> %s"), *It.Filename(), Entry.Size, *DestFilename);
 
 					TUniquePtr<FArchive> FileHandle(IFileManager::Get().CreateFileWriter(*DestFilename));
 
@@ -558,7 +554,7 @@ UObject* UPackFactory::FactoryCreateBinary
 			}
 			else
 			{
-				UE_LOG(LogPackFactory, Error, TEXT("Index data mismatch for entry: \"%s\"."), **EntryFilename);
+				UE_LOG(LogPackFactory, Error, TEXT("Serialized hash mismatch for \"%s\"."), *It.Filename());
 				ErrorCount++;
 			}
 		}
@@ -576,14 +572,14 @@ UObject* UPackFactory::FactoryCreateBinary
 					FString DestFilename = FileToCopy;
 					if (DestFilename.StartsWith(TEXT("Source/")))
 					{
-						DestFilename.RightChopInline(7, false);
+						DestFilename = DestFilename.RightChop(7);
 					}
 					else 
 					{
 						const int32 SourceIndex = DestFilename.Find(TEXT("/Source/"));
 						if (SourceIndex != INDEX_NONE)
 						{
-							DestFilename.RightChopInline(SourceIndex + 8, false);
+							DestFilename = DestFilename.RightChop(SourceIndex + 8);
 						}
 					}
 					DestFilename = SourceModuleInfo.ModuleSourcePath / DestFilename;
@@ -628,14 +624,14 @@ UObject* UPackFactory::FactoryCreateBinary
 					FString DestFilename = FileToCopy;
 					if (DestFilename.StartsWith(TEXT("Content/")))
 					{
-						DestFilename.RightChopInline(8, false);
+						DestFilename = DestFilename.RightChop(8);
 					}
 					else
 					{
 						const int32 ContentIndex = DestFilename.Find(ContentFolder);
 						if (ContentIndex != INDEX_NONE)
 						{
-							DestFilename.RightChopInline(ContentIndex + 9, false);
+							DestFilename = DestFilename.RightChop(ContentIndex + 9);
 						}
 					}
 					DestFilename = ContentDestinationRoot / DestFilename;
@@ -701,10 +697,6 @@ UObject* UPackFactory::FactoryCreateBinary
 					}
 					else
 					{
-						// We didn't previously have source, so the UBT target name will be UE4Editor, and attempts to recompile will end up building the wrong target. Now that we have source,
-						// we need to change the UBT target to be the newly created editor module
-						FPlatformMisc::SetUBTTargetName(*(FString(FApp::GetProjectName()) + TEXT("Editor")));
-
 						if (!HotReloadSupport.RecompileModule(FApp::GetProjectName(), *GWarn, ERecompileModuleFlags::ReloadAfterRecompile | ERecompileModuleFlags::ForceCodeProject))
 						{
 							FMessageDialog::Open(EAppMsgType::Ok, NSLOCTEXT("PackFactory", "FailedToCompileNewGameModule", "Failed to compile newly created game module."));
@@ -770,14 +762,7 @@ UObject* UPackFactory::FactoryCreateBinary
 	}
 	else
 	{
-		if (!PakFile.IsValid())
-		{
-			UE_LOG(LogPackFactory, Warning, TEXT("Invalid pak file."));
-		}
-		else
-		{
-			UE_LOG(LogPakFile, Error, TEXT("Pakfiles were loaded without Filenames, creation aborted."));
-		}
+		UE_LOG(LogPackFactory, Warning, TEXT("Invalid pak file."));
 	}
 
 	return ReturnAsset;

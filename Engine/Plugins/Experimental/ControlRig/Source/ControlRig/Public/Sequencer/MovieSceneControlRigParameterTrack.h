@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,19 +7,17 @@
 #include "Sections/MovieSceneParameterSection.h"
 #include "MovieSceneNameableTrack.h"
 #include "ControlRig.h"
-#include "Compilation/IMovieSceneTrackTemplateProducer.h"
-#include "INodeAndChannelMappings.h"
 #include "MovieSceneControlRigParameterTrack.generated.h"
 
 /**
  * Handles animation of skeletal mesh actors using animation ControlRigs
  */
 
+class IControlRigManipulatable;
+
 UCLASS(MinimalAPI)
 class UMovieSceneControlRigParameterTrack
 	: public UMovieSceneNameableTrack
-	, public IMovieSceneTrackTemplateProducer
-	, public INodeAndChannelMappings
 {
 	GENERATED_UCLASS_BODY()
 
@@ -37,21 +35,15 @@ public:
 	virtual bool IsEmpty() const override;
 	virtual const TArray<UMovieSceneSection*>& GetAllSections() const override;
 	virtual FName GetTrackName() const override { return TrackName; }
-	// UObject
-	virtual void PostLoad() override;
+
 #if WITH_EDITORONLY_DATA
 	virtual FText GetDefaultDisplayName() const override;
 #endif
-
-	//INodeAndMappingsInterface
-	virtual TArray<FFBXNodeAndChannels>* GetNodeAndChannelMappings()  override;
-	virtual void GetSelectedNodes(TArray<FName>& OutSelectedNodes) override;
-
 public:
 	/** Add a section at that start time*/
-	CONTROLRIG_API UMovieSceneSection* CreateControlRigSection(FFrameNumber StartTime, UControlRig* InControlRig, bool bInOwnsControlRig);
+	CONTROLRIG_API UMovieSceneSection* CreateControlRigSection(FFrameNumber StartTime, UControlRig* InControlRig);
 
-	CONTROLRIG_API void ReplaceControlRig(UControlRig* NewControlRig, bool RecreateChannels);
+	IControlRigManipulatable* GetManipulatableFromBinding(UMovieScene* MovieScene);
 
 public:
 	CONTROLRIG_API UControlRig* GetControlRig() const { return ControlRig; }

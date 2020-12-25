@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithVREDImporterAuxFiles.h"
 
@@ -69,13 +69,9 @@ void StringToFloatArray(const FString& InString, TArray<float>& OutArray)
 	}
 }
 
-bool FloatArrayToTransform(const TArray<float>& Floats, FTransform& Transform)
+void FloatArrayToTransform(const TArray<float>& Floats, FTransform& Transform)
 {
-	if ( Floats.Num() != 16 )
-	{
-		Transform.SetIdentity();
-		return false;
-	}
+	check(Floats.Num() == 16)
 
 	FMatrix matrix = FMatrix();
 	float (*matrixData)[4] = matrix.M;
@@ -88,8 +84,6 @@ bool FloatArrayToTransform(const TArray<float>& Floats, FTransform& Transform)
 	FMemory::Memcpy(matrixData[3], &floatsData[12], 4 * sizeof(float));
 
 	Transform.SetFromMatrix(matrix);
-
-	return true;
 }
 
 void FixVREDXml(TArray<FString>& FileContentLines)
@@ -747,11 +741,7 @@ bool LoadVarFile(const TCHAR* InFilePath, FDatasmithVREDImportVariantsResult& Ou
 
 					TArray<float> TransformFloats;
 					StringToFloatArray(TransformData, TransformFloats);
-					bool bSuccess = FloatArrayToTransform(TransformFloats, TransVariant->Transform);
-					if ( !bSuccess )
-					{
-						UE_LOG(LogDatasmithVREDImport, Warning, TEXT("Transform variant '%s' state '%s' has invalid transform value '%s'. Transform will be set to identity."), *TargetNodeName, *StateName, *TransformData);
-					}
+					FloatArrayToTransform(TransformFloats, TransVariant->Transform);
 				}
 			}
 		}

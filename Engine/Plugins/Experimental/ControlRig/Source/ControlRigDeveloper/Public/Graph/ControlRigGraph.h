@@ -1,21 +1,17 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "EdGraph/EdGraph.h"
 #include "Graph/ControlRigGraphNode.h"
 #include "Rigs/RigHierarchyContainer.h"
-#include "RigVMModel/RigVMGraph.h"
-#include "Drawing/ControlRigDrawContainer.h"
+#include "ControlRigModel.h"
 #include "ControlRigGraph.generated.h"
 
 class UControlRigBlueprint;
 class UControlRigGraphSchema;
 class UControlRig;
-class URigVMController;
 struct FRigCurveContainer;
-
-DECLARE_MULTICAST_DELEGATE_OneParam(FControlRigGraphNodeClicked, UControlRigGraphNode*);
 
 UCLASS()
 class CONTROLRIGDEVELOPER_API UControlRigGraph : public UEdGraph
@@ -37,33 +33,33 @@ public:
 #endif
 #if WITH_EDITOR
 
+	virtual void PostLoad() override;
+	void OnBlueprintCompiledPostLoad(UBlueprint*);
+	FDelegateHandle BlueprintOnCompiledHandle;
 
-	void CacheNameLists(const FRigHierarchyContainer* HierarchyContainer, const FControlRigDrawContainer* DrawContainer);
+	void CacheNameLists(const FRigHierarchyContainer* Container);
 
-	const TArray<TSharedPtr<FString>>& GetBoneNameList(URigVMPin* InPin = nullptr) const;
-	const TArray<TSharedPtr<FString>>& GetControlNameList(URigVMPin* InPin = nullptr) const;
-	const TArray<TSharedPtr<FString>>& GetSpaceNameList(URigVMPin* InPin = nullptr) const;
-	const TArray<TSharedPtr<FString>>& GetCurveNameList(URigVMPin* InPin = nullptr) const;
-	const TArray<TSharedPtr<FString>>& GetElementNameList(URigVMPin* InPin = nullptr) const;
-	const TArray<TSharedPtr<FString>>& GetElementNameList(ERigElementType InElementType) const;
-	const TArray<TSharedPtr<FString>>& GetDrawingNameList(URigVMPin* InPin = nullptr) const;
+	const TArray<TSharedPtr<FString>>& GetBoneNameList() const;
+	const TArray<TSharedPtr<FString>>& GetControlNameList() const;
+	const TArray<TSharedPtr<FString>>& GetSpaceNameList() const;
+	const TArray<TSharedPtr<FString>>& GetCurveNameList() const;
 
 	bool bSuspendModelNotifications;
 	bool bIsTemporaryGraphForCopyPaste;
 
-	UEdGraphNode* FindNodeForModelNodeName(const FName& InModelNodeName);
+	UEdGraphNode* FindNodeFromPropertyName(const FName& InPropertyName);
 
 private:
 
-	void HandleModifiedEvent(ERigVMGraphNotifType InNotifType, URigVMGraph* InGraph, UObject* InSubject);
+	void HandleModelModified(const UControlRigModel* InModel, EControlRigModelNotifType InType, const void* InPayload);
 
 	template<class T>
-	void CacheNameList(const T& ElementList, TArray<TSharedPtr<FString>>& OutNameList)
+	void CacheNameList(const T& Hierarchy, TArray<TSharedPtr<FString>>& OutNameList)
 	{
 		DECLARE_SCOPE_HIERARCHICAL_COUNTER_FUNC()
 
 		TArray<FString> Names;
-		for (auto Element : ElementList)
+		for (auto Element : Hierarchy)
 		{
 			Names.Add(Element.Name.ToString());
 		}
@@ -77,43 +73,14 @@ private:
 		}
 	}
 
+	TArray<UControlRigGraphNode*> FoundHierarchyRefVariableNodes;
+	TArray<UControlRigGraphNode*> FoundHierarchyRefMutableNodes;
+	TMap<UControlRigGraphNode*, TArray<UControlRigGraphNode*>> FoundHierarchyRefConnections;
 
 	TArray<TSharedPtr<FString>> BoneNameList;
 	TArray<TSharedPtr<FString>> ControlNameList;
 	TArray<TSharedPtr<FString>> SpaceNameList;
 	TArray<TSharedPtr<FString>> CurveNameList;
-	TArray<TSharedPtr<FString>> DrawingNameList;
-
-	bool bIsSelecting;
-
-	FControlRigGraphNodeClicked OnGraphNodeClicked;
-
 #endif
-#if WITH_EDITORONLY_DATA
-
-	UPROPERTY(transient)
-	URigVMGraph* TemplateModel;
-
-	UPROPERTY(transient)
-	URigVMController* TemplateController;
-
-#endif
-#if WITH_EDITOR
-
-	URigVMController* GetTemplateController();
-
-	friend class UControlRigUnitNodeSpawner;
-	friend class UControlRigVariableNodeSpawner;
-	friend class UControlRigParameterNodeSpawner;
-	friend class UControlRigRerouteNodeSpawner;
-	friend class UControlRigBranchNodeSpawner;
-	friend class UControlRigIfNodeSpawner;
-	friend class UControlRigSelectNodeSpawner;
-	friend class UControlRigPrototypeNodeSpawner;
-	friend class UControlRigEnumNodeSpawner;
-#endif
-	friend class UControlRigGraphNode;
-	friend class FControlRigEditor;
-	friend class SControlRigGraphNode;
 };
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ClassViewerNode.h"
 #include "Engine/Blueprint.h"
@@ -72,7 +72,6 @@ FClassViewerNode::FClassViewerNode( const FClassViewerNode& InCopyObject)
 void FClassViewerNode::AddChild( TSharedPtr<FClassViewerNode> Child )
 {
 	check(Child.IsValid());
-	Child->ParentNode = AsShared();
 	ChildrenList.Add(Child);
 }
 

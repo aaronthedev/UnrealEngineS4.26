@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PostProcessMaterialShaders.usf: Shaders for rendering post process materials
@@ -30,7 +30,7 @@
 #define PPI_PostProcessInput3 17
 #define PPI_PostProcessInput4 18
 
-SCREEN_PASS_TEXTURE_VIEWPORT(PostProcessInput_0) 
+SCREEN_PASS_TEXTURE_VIEWPORT(PostProcessInput_0)
 SCREEN_PASS_TEXTURE_VIEWPORT(PostProcessInput_1)
 SCREEN_PASS_TEXTURE_VIEWPORT(PostProcessInput_2)
 SCREEN_PASS_TEXTURE_VIEWPORT(PostProcessInput_3)
@@ -63,8 +63,6 @@ SamplerState PostProcessInput_BilinearSampler;
 	#define PostProcessInput_3_SharedSampler PostProcessInput_3_Sampler
 	#define PostProcessInput_4_SharedSampler PostProcessInput_4_Sampler
 #endif
-
-#define EYE_ADAPTATION_LOOSE_PARAMETERS 1
 
 #include "/Engine/Generated/Material.ush"
 
@@ -135,19 +133,15 @@ void MainVS(
 	GetMaterialCustomizedUVs(VertexParameters, CustomizedUVs);
 	GetCustomInterpolators(VertexParameters, CustomizedUVs);
 	
+	UNROLL
+	for (int CoordinateIndex = 0; CoordinateIndex < NUM_MATERIAL_TEXCOORDS; CoordinateIndex++)
 	{
-		UNROLL
-		for (int CoordinateIndex = 0; CoordinateIndex < NUM_MATERIAL_TEXCOORDS; CoordinateIndex++)
-		{
-			SetUV(Output, CoordinateIndex, InPosition.xy);
-		}
+		SetUV(Output, CoordinateIndex, InPosition.xy);
 	}
+	UNROLL
+	for (int CoordinateIndex = NUM_MATERIAL_TEXCOORDS; CoordinateIndex < NUM_TEX_COORD_INTERPOLATORS; CoordinateIndex++)
 	{
-		UNROLL
-		for (int CoordinateIndex = NUM_MATERIAL_TEXCOORDS; CoordinateIndex < NUM_TEX_COORD_INTERPOLATORS; CoordinateIndex++)
-		{
-			SetUV(Output, CoordinateIndex, CustomizedUVs[CoordinateIndex]);
-		}
+		SetUV(Output, CoordinateIndex, CustomizedUVs[CoordinateIndex]);
 	}
 #endif
 }
@@ -175,22 +169,18 @@ void MainPS(
 
 	// can be optimized
 	float4 SvPosition = Input.Position;
-	float2 ViewportUV = (SvPosition.xy - PostProcessOutput_ViewportMin.xy) * PostProcessOutput_ViewportSizeInverse.xy;
+	float2 ViewportUV = (SvPosition - PostProcessOutput_ViewportMin) * PostProcessOutput_ViewportSizeInverse;
 
 #if NUM_TEX_COORD_INTERPOLATORS
+	UNROLL
+	for (int CoordinateIndex = 0; CoordinateIndex < NUM_MATERIAL_TEXCOORDS; CoordinateIndex++)
 	{
-		UNROLL
-		for (int CoordinateIndex = 0; CoordinateIndex < NUM_MATERIAL_TEXCOORDS; CoordinateIndex++)
-		{
-			Parameters.TexCoords[CoordinateIndex] = ViewportUV;
-		}
+		Parameters.TexCoords[CoordinateIndex] = ViewportUV;
 	}
+	UNROLL
+	for (int CoordinateIndex = NUM_MATERIAL_TEXCOORDS; CoordinateIndex < NUM_TEX_COORD_INTERPOLATORS; CoordinateIndex++)
 	{
-		UNROLL
-		for (int CoordinateIndex = NUM_MATERIAL_TEXCOORDS; CoordinateIndex < NUM_TEX_COORD_INTERPOLATORS; CoordinateIndex++)
-		{
-			Parameters.TexCoords[CoordinateIndex] = GetUV(Input, CoordinateIndex);
-		}
+		Parameters.TexCoords[CoordinateIndex] = GetUV(Input, CoordinateIndex);
 	}
 #endif
 
@@ -258,11 +248,6 @@ void MainPS_VideoOverlay(
 
 #else // FEATURE_LEVEL_ES3_1
 
-Texture2D MobileCustomStencilTexture;
-SamplerState MobileCustomStencilTextureSampler;
-
-int MobileStencilValueRef; // Use integer cause it has to be negative to make the less function to pass the test as always
-
 uint bFlipYAxis;
 
 //
@@ -271,15 +256,18 @@ uint bFlipYAxis;
 void MainVS(
 	in float4 InPosition : ATTRIBUTE0,
 	in float2 InTexCoord : ATTRIBUTE1,
-	out FPostProcessMaterialVSToPS Output
+	out FPostProcessMaterialVSToPS Output,
+	out float2 OutViewportUV : TEXCOORD8
 	)
 {
 	Output = (FPostProcessMaterialVSToPS)0;
 	float2 OutUV;
 	DrawRectangle(InPosition, InTexCoord, Output.Position, OutUV);
-			
+
+	OutViewportUV = InPosition.xy;
+	
 #if NUM_TEX_COORD_INTERPOLATORS
-	FMaterialVertexParameters VertexParameters = GetPostProcessMaterialVSParameters(InPosition.xy);
+	FMaterialVertexParameters VertexParameters = GetPostProcessMaterialVSParameters(OutUV);
 
 	float2 CustomizedUVs[NUM_TEX_COORD_INTERPOLATORS];
 	GetMaterialCustomizedUVs(VertexParameters, CustomizedUVs);
@@ -288,11 +276,11 @@ void MainVS(
 	UNROLL
 	for (int CoordinateIndex = 0; CoordinateIndex < NUM_MATERIAL_TEXCOORDS; CoordinateIndex++)
 	{
-	#if POST_PROCESS_AR_PASSTHROUGH
+#if POST_PROCESS_AR_PASSTHROUGH
 		SetUV(Output, CoordinateIndex, OutUV);
-	#else
+#else
 		SetUV(Output, CoordinateIndex, InPosition.xy);
-	#endif
+#endif
 	}
 	UNROLL
 	for (int CoordinateIndex = NUM_MATERIAL_TEXCOORDS; CoordinateIndex < NUM_TEX_COORD_INTERPOLATORS; CoordinateIndex++)
@@ -302,21 +290,9 @@ void MainVS(
 #endif
 }
 
-#define MOBILE_STENCIL_COMPARE_LESS				0
-#define MOBILE_STENCIL_COMPARE_LESSEQUAL		1
-#define MOBILE_STENCIL_COMPARE_GREATE			2
-#define MOBILE_STENCIL_COMPARE_GREATEEQUAL		3
-#define MOBILE_STENCIL_COMPARE_EQUAL			4
-#define MOBILE_STENCIL_COMPARE_NOTEQUAL			5
-#define MOBILE_STENCIL_COMPARE_NEVER			6
-#define MOBILE_STENCIL_COMPARE_ALWAYS			7
-
-#ifndef MOBILE_STENCIL_COMPARE_FUNCTION
-#define MOBILE_STENCIL_COMPARE_FUNCTION MOBILE_STENCIL_COMPARE_NEVER
-#endif
-
 void MainPS(
 	in FPostProcessMaterialVSToPS Input,
+	in float2 InViewportUV : TEXCOORD8,
 	out half4 OutColor : SV_Target0
 	)
 {
@@ -324,61 +300,25 @@ void MainPS(
 	FMaterialPixelParameters Parameters = MakeInitializedMaterialPixelParameters();
 	FPixelMaterialInputs PixelMaterialInputs;
 
-	// can be optimized
+#if NUM_TEX_COORD_INTERPOLATORS
+	UNROLL
+	for (int CoordinateIndex = 0; CoordinateIndex < NUM_TEX_COORD_INTERPOLATORS; CoordinateIndex++)
+	{
+		Parameters.TexCoords[CoordinateIndex] = GetUV(Input, CoordinateIndex);
+	}
+#endif
+
+	Parameters.VertexColor = 1;
+	
 	float4 SvPosition = Input.Position;
 	if (bFlipYAxis)
 	{
 		SvPosition.y = PostProcessOutput_ViewportSize.y - SvPosition.y;
 	}
-	float2 ViewportUV = (SvPosition - PostProcessOutput_ViewportMin) * PostProcessOutput_ViewportSizeInverse;
-	float2 BufferUV = ViewportUVToBufferUV(ViewportUV);
-	
-#if NUM_TEX_COORD_INTERPOLATORS
-	UNROLL
-	for (int CoordinateIndex = 0; CoordinateIndex < NUM_MATERIAL_TEXCOORDS; CoordinateIndex++)
-	{
-	#if POST_PROCESS_AR_PASSTHROUGH
-		Parameters.TexCoords[CoordinateIndex] = GetUV(Input, CoordinateIndex);
-	#else
-		Parameters.TexCoords[CoordinateIndex] = ViewportUV;
-	#endif
-	}
-	UNROLL
-	for (int CoordinateIndex = NUM_MATERIAL_TEXCOORDS; CoordinateIndex < NUM_TEX_COORD_INTERPOLATORS; CoordinateIndex++)
-	{
-		Parameters.TexCoords[CoordinateIndex] = GetUV(Input, CoordinateIndex);
-	}
-#endif
-	Parameters.VertexColor = 1;
-		
-	float ClipValue = 1.0f;
-
-#if MOBILE_STENCIL_COMPARE_FUNCTION != MOBILE_STENCIL_COMPARE_NEVER && MOBILE_STENCIL_COMPARE_FUNCTION != MOBILE_STENCIL_COMPARE_ALWAYS
-	int MobileStencilValue = floor(Texture2DSample(MobileCustomStencilTexture, MobileCustomStencilTextureSampler, BufferUV).r*255.0f + 0.5f);
-#endif
-
-#if MOBILE_STENCIL_COMPARE_FUNCTION == MOBILE_STENCIL_COMPARE_LESS
-	ClipValue = MobileStencilValueRef < MobileStencilValue ? 1.0f : -1.0f;
-#elif MOBILE_STENCIL_COMPARE_FUNCTION == MOBILE_STENCIL_COMPARE_LESSEQUAL
-	ClipValue = MobileStencilValueRef <= MobileStencilValue ? 1.0f : -1.0f;
-#elif MOBILE_STENCIL_COMPARE_FUNCTION == MOBILE_STENCIL_COMPARE_GREATE
-	ClipValue = MobileStencilValueRef > MobileStencilValue ? 1.0f : -1.0f;
-#elif MOBILE_STENCIL_COMPARE_FUNCTION == MOBILE_STENCIL_COMPARE_GREATEEQUAL
-	ClipValue = MobileStencilValueRef >= MobileStencilValue ? 1.0f : -1.0f;
-#elif MOBILE_STENCIL_COMPARE_FUNCTION == MOBILE_STENCIL_COMPARE_EQUAL
-	ClipValue = MobileStencilValueRef == MobileStencilValue ? 1.0f : -1.0f;
-#elif MOBILE_STENCIL_COMPARE_FUNCTION == MOBILE_STENCIL_COMPARE_NOTEQUAL
-	ClipValue = MobileStencilValueRef != MobileStencilValue ? 1.0f : -1.0f;
-#elif MOBILE_STENCIL_COMPARE_FUNCTION == MOBILE_STENCIL_COMPARE_NEVER
-#elif MOBILE_STENCIL_COMPARE_FUNCTION == MOBILE_STENCIL_COMPARE_ALWAYS
-	ClipValue = MobileStencilValueRef == 256 ? 1.0f : -1.0f;
-#endif
-
-#if MOBILE_STENCIL_COMPARE_FUNCTION != MOBILE_STENCIL_COMPARE_NEVER
-	clip(ClipValue);
-#endif
-
-	float DeviceZ = LookupDeviceZ(BufferUV);
+	// SceneDepth texture is not accessible during post-processing as we discard it at the end of mobile BasePass
+    // instead fetch depth from SceneColor.A 
+	float Depth = Texture2DSample(MobileSceneTextures.SceneColorTexture, MobileSceneTextures.SceneColorTextureSampler, InViewportUV).a;
+	float DeviceZ = ConvertToDeviceZ(Depth);
 	SvPosition.z = DeviceZ;
 	SvPosition.z = max(SvPosition.z, 1e-18);
 	// fill out other related material parameters
@@ -397,10 +337,8 @@ void MainPS(
 #if POST_PROCESS_MATERIAL_BEFORE_TONEMAP
 #if OUTPUT_GAMMA_SPACE
 	FullSceneColor.rgb = sqrt(FullSceneColor.rgb);
-#endif
-
-#if !MATERIALBLENDING_MODULATE && USE_PREEXPOSURE
-	FullSceneColor.xyz *= View.PreExposure;
+#elif OUTPUT_MOBILE_HDR
+	FullSceneColor = Encode32BPPHDR(FullSceneColor, SvPosition);
 #endif
 #endif
 	OutColor = FullSceneColor;

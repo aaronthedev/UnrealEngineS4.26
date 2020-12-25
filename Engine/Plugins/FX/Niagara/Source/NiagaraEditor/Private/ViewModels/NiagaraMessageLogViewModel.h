@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,12 +15,13 @@ public:
 
 	~FNiagaraMessageLogViewModel();
 
-	void RefreshMessageLog(const TArray<TSharedRef<const INiagaraMessage>>& InNewMessages);
+	void UpdateMessageLog(const FGuid& InMessageJobBatchAssetKey, const TArray<TSharedRef<const INiagaraMessage>> InNewMessages);
 
 	void SetMessageLogGuidKey(const FGuid& InMessageLogGuidKey);
 
 private:
 	TSharedPtr<IMessageLogListing> MessageLogListing;
 	FGuid MessageLogGuidKey;
-	FGuid MessageManagerRegistrationKey;
+
+	FDelegateHandle OnMessageManagerRequestRefreshHandle;
 };

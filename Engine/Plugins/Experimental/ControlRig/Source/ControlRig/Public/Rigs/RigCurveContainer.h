@@ -1,15 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Stats/StatsHierarchical.h"
 #include "RigHierarchyDefines.h"
-#include "RigHierarchyPose.h"
 #include "RigCurveContainer.generated.h"
 
 class UControlRig;
-class USkeleton;
 
 USTRUCT(BlueprintType)
 struct FRigCurve : public FRigElement
@@ -23,7 +21,7 @@ struct FRigCurve : public FRigElement
 	}
 	virtual ~FRigCurve() {}
 
-	UPROPERTY(BlueprintReadWrite, VisibleAnywhere, Category = FRigElement)
+	UPROPERTY(VisibleAnywhere, Category = FRigElement)
 	float Value;
 
 	FORCEINLINE virtual ERigElementType GetElementType() const override
@@ -32,7 +30,7 @@ struct FRigCurve : public FRigElement
 	}
 };
 
-USTRUCT(BlueprintType)
+USTRUCT()
 struct CONTROLRIG_API FRigCurveContainer
 {
 	GENERATED_BODY()
@@ -100,28 +98,19 @@ public:
 	// resets all of the transforms back to the initial transform
 	void ResetValues();
 
-	// returns the current pose
-	FRigPose GetPose() const;
-
-	// sets the current values from the given pose
-	void SetPose(FRigPose& InPose);
-
 	FRigHierarchyContainer* Container;
+
+#if WITH_EDITOR
 
 	bool Select(const FName& InName, bool bSelect = true);
 	bool ClearSelection();
 	TArray<FName> CurrentSelection() const;
 	bool IsSelected(const FName& InName) const;
 
-	FRigElementSelected OnCurveSelected;
-
-#if WITH_EDITOR
-
 	FRigElementAdded OnCurveAdded;
 	FRigElementRemoved OnCurveRemoved;
 	FRigElementRenamed OnCurveRenamed;
-
-	TArray<FRigElementKey> ImportCurvesFromSkeleton(const USkeleton* InSkeleton, const FName& InNameSpace, bool bRemoveObsoleteCurves, bool bSelectCurves, bool bNotify);
+	FRigElementSelected OnCurveSelected;
 
 #endif
 
@@ -136,19 +125,15 @@ private:
 	UPROPERTY()
 	TMap<FName, int32> NameToIndexMapping;
 
+#if WITH_EDITORONLY_DATA
 	UPROPERTY(transient)
 	TArray<FName> Selection;
+#endif
 
 	int32 GetIndexSlow(const FName& InName) const;
 
 	void RefreshMapping();
 
-	void AppendToPose(FRigPose& InOutPose) const;
-
-	bool bSuspendNotifications;
-
 	friend struct FRigHierarchyContainer;
-	friend struct FCachedRigElement;
-	friend class UControlRigHierarchyModifier;
 };
 

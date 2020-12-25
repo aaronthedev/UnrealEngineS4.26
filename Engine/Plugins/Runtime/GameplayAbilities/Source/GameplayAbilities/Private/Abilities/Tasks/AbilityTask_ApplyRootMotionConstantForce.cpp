@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Abilities/Tasks/AbilityTask_ApplyRootMotionConstantForce.h"
 #include "GameFramework/RootMotionSource.h"
@@ -24,8 +24,7 @@ UAbilityTask_ApplyRootMotionConstantForce* UAbilityTask_ApplyRootMotionConstantF
 	UCurveFloat* StrengthOverTime,
 	ERootMotionFinishVelocityMode VelocityOnFinishMode, 
 	FVector SetVelocityOnFinish, 
-	float ClampVelocityOnFinish,
-	bool bEnableGravity
+	float ClampVelocityOnFinish
 )
 {
 	UAbilitySystemGlobals::NonShipping_ApplyGlobalAbilityScaler_Duration(Duration);
@@ -41,7 +40,6 @@ UAbilityTask_ApplyRootMotionConstantForce* UAbilityTask_ApplyRootMotionConstantF
 	MyTask->FinishVelocityMode = VelocityOnFinishMode;
 	MyTask->FinishSetVelocity = SetVelocityOnFinish;
 	MyTask->FinishClampVelocity = ClampVelocityOnFinish;
-	MyTask->bEnableGravity = bEnableGravity;
 	MyTask->SharedInitAndApply();
 
 	return MyTask;
@@ -58,7 +56,7 @@ void UAbilityTask_ApplyRootMotionConstantForce::SharedInitAndApply()
 		if (MovementComponent)
 		{
 			ForceName = ForceName.IsNone() ? FName("AbilityTaskApplyRootMotionConstantForce"): ForceName;
-			TSharedPtr<FRootMotionSource_ConstantForce> ConstantForce = MakeShared<FRootMotionSource_ConstantForce>();
+			FRootMotionSource_ConstantForce* ConstantForce = new FRootMotionSource_ConstantForce();
 			ConstantForce->InstanceName = ForceName;
 			ConstantForce->AccumulateMode = bIsAdditive ? ERootMotionAccumulateMode::Additive : ERootMotionAccumulateMode::Override;
 			ConstantForce->Priority = 5;
@@ -68,10 +66,6 @@ void UAbilityTask_ApplyRootMotionConstantForce::SharedInitAndApply()
 			ConstantForce->FinishVelocityParams.Mode = FinishVelocityMode;
 			ConstantForce->FinishVelocityParams.SetVelocity = FinishSetVelocity;
 			ConstantForce->FinishVelocityParams.ClampVelocity = FinishClampVelocity;
-			if (bEnableGravity)
-			{
-				ConstantForce->Settings.SetFlag(ERootMotionSourceSettingsFlags::IgnoreZAccumulate);
-			}
 			RootMotionSourceID = MovementComponent->ApplyRootMotionSource(ConstantForce);
 
 			if (Ability)
@@ -134,7 +128,6 @@ void UAbilityTask_ApplyRootMotionConstantForce::GetLifetimeReplicatedProps(TArra
 	DOREPLIFETIME(UAbilityTask_ApplyRootMotionConstantForce, Duration);
 	DOREPLIFETIME(UAbilityTask_ApplyRootMotionConstantForce, bIsAdditive);
 	DOREPLIFETIME(UAbilityTask_ApplyRootMotionConstantForce, StrengthOverTime);
-	DOREPLIFETIME(UAbilityTask_ApplyRootMotionConstantForce, bEnableGravity);
 }
 
 void UAbilityTask_ApplyRootMotionConstantForce::PreDestroyFromReplication()
@@ -147,13 +140,6 @@ void UAbilityTask_ApplyRootMotionConstantForce::OnDestroy(bool AbilityIsEnding)
 {
 	if (MovementComponent)
 	{
-		TSharedPtr<FRootMotionSource> RootMotionSource = MovementComponent->GetRootMotionSourceByID(RootMotionSourceID);
-		TSharedPtr<FRootMotionSource_ConstantForce> ConstantForce = StaticCastSharedPtr<FRootMotionSource_ConstantForce>(RootMotionSource);
-		if (ConstantForce.IsValid())
-		{
-			ConstantForce->StrengthOverTime = nullptr; // Manually clear to fix race condition with GC & root motion removal.
-		}
-
 		MovementComponent->RemoveRootMotionSourceByID(RootMotionSourceID);
 	}
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Misc/MediaTextureResource.h"
 #include "MediaAssetsPrivate.h"
@@ -20,16 +20,12 @@
 #include "StaticBoundShaderState.h"
 #include "RenderUtils.h"
 #include "RHIStaticStates.h"
-#include "GenerateMips.h"
-#include "ProfilingDebugging/CsvProfiler.h"
-#include "Async/Async.h"
-#include "RenderGraphUtils.h"
 
 #include "MediaTexture.h"
 
-#if PLATFORM_ANDROID
-# include "Android/AndroidPlatformMisc.h"
-#endif
+
+#define MEDIATEXTURERESOURCE_TRACE_RENDER 0
+
 
 /** Time spent in media player facade closing media. */
 DECLARE_CYCLE_STAT(TEXT("MediaAssets MediaTextureResource Render"), STAT_MediaAssets_MediaTextureResourceRender, STATGROUP_Media);
@@ -37,14 +33,10 @@ DECLARE_CYCLE_STAT(TEXT("MediaAssets MediaTextureResource Render"), STAT_MediaAs
 /** Sample time of texture last rendered. */
 DECLARE_FLOAT_COUNTER_STAT(TEXT("MediaAssets MediaTextureResource Sample"), STAT_MediaUtils_TextureSampleTime, STATGROUP_Media);
 
-CSV_DECLARE_CATEGORY_MODULE_EXTERN(MEDIA_API, MediaStreaming);
-
-DECLARE_GPU_STAT_NAMED(MediaTextureResource, TEXT("MediaTextureResource"));
-
 /* Local helpers
  *****************************************************************************/
 
-namespace MediaTextureResourceHelpers
+namespace MediaTextureResource
 {
 	/**
 	 * Get the pixel format for a given sample.
@@ -66,7 +58,7 @@ namespace MediaTextureResourceHelpers
 
 		case EMediaTextureSampleFormat::CharNV12:
 		case EMediaTextureSampleFormat::CharNV21:
-			return PF_G8; // note: right now this case will be encountered only if CPU-side data in NV12/21 format is in sample -> in this case we cannot create a true NV12 texture OR the platforms view it as U8s anyway 
+			return PF_G8;
 
 		case EMediaTextureSampleFormat::FloatRGB:
 			return PF_FloatRGB;
@@ -103,6 +95,44 @@ namespace MediaTextureResourceHelpers
 		}
 	}
 
+
+	/**
+	 * Check whether the given sample requires a conversion shader.
+	 *
+	 * @param Sample The sample to check.
+	 * @param SrgbOutput Whether the output is expected in sRGB color space.
+	 * @return true if conversion is required, false otherwise.
+	 * @see RequiresOutputResource
+	 */
+	bool RequiresConversion(const TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& Sample, bool SrgbOutput)
+	{
+		// If the output color space is expected to be sRGB, but the
+		// sample is not, a color space conversion on the GPU is required.
+
+		if (Sample->IsOutputSrgb() != SrgbOutput)
+		{
+			return true;
+		}
+
+		// If the output dimensions are not the same as the sample's
+		// dimensions, a resizing conversion on the GPU is required.
+
+		if (Sample->GetDim() != Sample->GetOutputDim())
+		{
+			return true;
+		}
+
+		// Only the following pixel formats are supported natively.
+		// All other formats require a conversion on the GPU.
+
+		const EMediaTextureSampleFormat Format = Sample->GetFormat();
+
+		return ((Format != EMediaTextureSampleFormat::CharBGRA) &&
+				(Format != EMediaTextureSampleFormat::FloatRGB) &&
+				(Format != EMediaTextureSampleFormat::FloatRGBA));
+	}
+
+
 	/**
 	 * Check whether the given sample requires an sRGB texture.
 	 *
@@ -129,30 +159,16 @@ namespace MediaTextureResourceHelpers
 /* FMediaTextureResource structors
  *****************************************************************************/
 
-FMediaTextureResource::FMediaTextureResource(UMediaTexture& InOwner, FIntPoint& InOwnerDim, SIZE_T& InOwnerSize, FLinearColor InClearColor, FGuid InTextureGuid, bool InEnableGenMips, uint8 InNumMips)
+FMediaTextureResource::FMediaTextureResource(UMediaTexture& InOwner, FIntPoint& InOwnerDim, SIZE_T& InOwnerSize, FLinearColor InClearColor, FGuid InTextureGuid)
 	: Cleared(false)
 	, CurrentClearColor(InClearColor)
 	, InitialTextureGuid(InTextureGuid)
 	, Owner(InOwner)
 	, OwnerDim(InOwnerDim)
 	, OwnerSize(InOwnerSize)
-	, bEnableGenMips(InEnableGenMips)
-	, CurrentNumMips(InEnableGenMips ? InNumMips : 1)
-	, CurrentSamplerFilter(ESamplerFilter_Num)
-	, PriorSamples(MakeShared<FPriorSamples, ESPMode::ThreadSafe>())
 {
-#if PLATFORM_ANDROID
-	bUsesImageExternal = !Owner.NewStyleOutput && (!FAndroidMisc::ShouldUseVulkan() && GSupportsImageExternal);
-#else
-	bUsesImageExternal = !Owner.NewStyleOutput && GSupportsImageExternal;
-#endif
 }
 
-
-void FMediaTextureResource::FlushPendingData()
-{
-	PriorSamples = MakeShared<FPriorSamples, ESPMode::ThreadSafe>();
-}
 
 /* FMediaTextureResource interface
  *****************************************************************************/
@@ -161,34 +177,23 @@ void FMediaTextureResource::Render(const FRenderParams& Params)
 {
 	check(IsInRenderingThread());
 
-	LLM_SCOPE(ELLMTag::MediaStreaming);
 	SCOPE_CYCLE_COUNTER(STAT_MediaAssets_MediaTextureResourceRender);
-	CSV_SCOPED_TIMING_STAT(MediaStreaming, FMediaTextureResource_Render);
-
-	PriorSamples->Update();
 
 	FLinearColor Rotation(1, 0, 0, 1);
 	FLinearColor Offset(0, 0, 0, 0);
 
 	TSharedPtr<FMediaTextureSampleSource, ESPMode::ThreadSafe> SampleSource = Params.SampleSource.Pin();
 
-	// Do we either have a classic sample source (queue) or a single, explicit sample to display?
-	if (SampleSource.IsValid() || Params.TextureSample.IsValid())
-	{
-		TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe> Sample;
-		bool UseSample;
-
-		// Yes, it it a queue?
 	if (SampleSource.IsValid())
 	{
-		// Yes, find out what we will display...
-		UseSample = false;
-
 		// get the most current sample to be rendered
 		TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe> TestSample;
+		TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe> Sample;
+		bool UseSample = false;
+		
 		while (SampleSource->Peek(TestSample) && TestSample.IsValid())
 		{
-				const FTimespan StartTime = TestSample->GetTime().Time;
+			const FTimespan StartTime = TestSample->GetTime();
 			const FTimespan EndTime = StartTime + TestSample->GetDuration();
 
 			if ((Params.Rate >= 0.0f) && (Params.Time < StartTime))
@@ -209,203 +214,139 @@ void FMediaTextureResource::Render(const FRenderParams& Params)
 #endif
 
 			UseSample = SampleSource->Dequeue(Sample);
+
+#if MEDIATEXTURERESOURCE_TRACE_RENDER
+			if (!UseSample && Sample.IsValid())
+			{
+				UE_LOG(LogMediaAssets, VeryVerbose, TEXT("TextureResource %p: Sample with time %s got flushed at time %s"),
+					this,
+					*Sample->GetTime().ToString(TEXT("%h:%m:%s.%t")),
+					*Params.Time.ToString(TEXT("%h:%m:%s.%t"))
+				);
 			}
-		}
-		else
-		{
-			// We do have an explicit sample to display...
-			// (or nothing)
-			Sample = Params.TextureSample;
-			UseSample = Sample.IsValid();
+#endif
 		}
 
 #if UE_MEDIAUTILS_DEVELOPMENT_DELEGATE
 		FMediaDelegates::OnPreSampleRender_RenderThread.Broadcast(&Owner, UseSample, Sample);
 #endif
-		// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-		// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
-		const uint8 NumMips = bEnableGenMips ? Params.NumMips : 1;
-
-		// If real "external texture" support is in place and no mips are used the image will "bypass" any of this processing via the GUID-based lookup for "ExternalTextures" and will
-		// reach the reading material shader without any processing here...
-		// (note that if "new style output" is enabled we will ALWAYS see bUsesImageExternal as FALSE)
-		if (UseSample && !(bUsesImageExternal && !bEnableGenMips))
+		if (UseSample)
 		{
-			//
-			// Valid sample & Sample should be shown
-			//
-
-			bool ConvertOrCopyNeeded = false;
-
+			// render the sample
 			if (Sample->GetOutputDim().GetMin() <= 0)
 			{
-				//
-				// Sample dimensions are invalid
-				//
+#if MEDIATEXTURERESOURCE_TRACE_RENDER
+				UE_LOG(LogMediaAssets, VeryVerbose, TEXT("TextureResource %p: Corrupt sample with time %s at time %s"),
+					this,
+					*Sample->GetTime().ToString(TEXT("%h:%m:%s.%t")),
+					*Params.Time.ToString(TEXT("%h:%m:%s.%t"))
+				);
+#endif
+
 				ClearTexture(FLinearColor::Red, Params.SrgbOutput); // mark corrupt sample
 			}
-			else if (IMediaTextureSampleConverter *Converter = Sample->GetMediaTextureSampleConverter())
+			else if (Sample->GetMediaTextureSampleConverter())
 			{
-				//
-				// Sample brings its own converter
-				//
+				CreateOutputRenderTarget(Sample, Params);
+				Sample->GetMediaTextureSampleConverter()->Convert(RenderTargetTextureRHI);
+			}
+			else if (MediaTextureResource::RequiresConversion(Sample, Params.SrgbOutput))
+			{
+#if MEDIATEXTURERESOURCE_TRACE_RENDER
+				UE_LOG(LogMediaAssets, VeryVerbose, TEXT("TextureResource %p: Converting sample with time %s at time %s"),
+					this,
+					*Sample->GetTime().ToString(TEXT("%h:%m:%s.%t")),
+					*Params.Time.ToString(TEXT("%h:%m:%s.%t"))
+				);
+#endif
 
-				IMediaTextureSampleConverter::FConversionHints Hints;
-				Hints.bOutputSRGB = Params.SrgbOutput;
-				Hints.NumMips = NumMips;
-
-				// Does the conversion create its own output texture?
-				if ((Converter->GetConverterInfoFlags() & IMediaTextureSampleConverter::ConverterInfoFlags_WillCreateOutputTexture) == 0)
-				{
-					// No. Does it actually do the conversion or just a pre-process step not yielding real output?
-					if (Converter->GetConverterInfoFlags() & IMediaTextureSampleConverter::ConverterInfoFlags_PreprocessOnly)
-					{
-						// Preprocess...
-						FTexture2DRHIRef DummyTexture;
-						if (Converter->Convert(DummyTexture, Hints))
-						{
-							// ...followed by the built in conversion code as needed...
-							ConvertOrCopyNeeded = true;
-						}
-					}
-					else
-					{
-						// Conversion is fully handled by converter
-						CreateOutputRenderTarget(Sample->GetOutputDim(), MediaTextureResourceHelpers::GetConvertedPixelFormat(Sample), Params.SrgbOutput, Params.ClearColor, NumMips);
-						Converter->Convert(RenderTargetTextureRHI, Hints);
-					}
-				}
-				else
-				{
-					// The converter will create its own output texture for us to use
-					FTexture2DRHIRef OutTexture;
-					if (Converter->Convert(OutTexture, Hints))
-					{
-						// As the converter created the texture, we might need to convert it even more to make it fit our needs. Check...
-						if (RequiresConversion(OutTexture, Sample->GetOutputDim(), Params.SrgbOutput, NumMips))
-						{
-							CreateOutputRenderTarget(Sample->GetOutputDim(), MediaTextureResourceHelpers::GetConvertedPixelFormat(Sample), Params.SrgbOutput, Params.ClearColor, NumMips);
-							ConvertTextureToOutput(OutTexture.GetReference(), Sample, Params.SrgbOutput);
-						}
-						else
-						{
-							UpdateTextureReference(OutTexture);
-						}
-					}
-				}
-
-				Cleared = false;
+				ConvertSample(Sample, Params.ClearColor, Params.SrgbOutput);
 			}
 			else
 			{
-				ConvertOrCopyNeeded = true;
-			}
+#if MEDIATEXTURERESOURCE_TRACE_RENDER
+				UE_LOG(LogMediaAssets, VeryVerbose, TEXT("TextureResource %p: Copying sample with time %s at time %s"),
+					this,
+					*Sample->GetTime().ToString(TEXT("%h:%m:%s.%t")),
+					*Params.Time.ToString(TEXT("%h:%m:%s.%t"))
+				);
+#endif
 
-			if (ConvertOrCopyNeeded)
-			{
-				if (RequiresConversion(Sample, Params.SrgbOutput, NumMips))
-				{
-					//
-					// Sample needs to be converted by built in converter code
-					//
-					ConvertSample(Sample, Params.ClearColor, Params.SrgbOutput, NumMips);
-				}
-				else
-				{
-					//
-					// Sample can be used directly or is a simple copy
-					//
-					CopySample(Sample, Params.ClearColor, Params.SrgbOutput, NumMips, Params.CurrentGuid);
-				}
+				CopySample(Sample, Params.ClearColor, Params.SrgbOutput);
 			}
 
 			Rotation = Sample->GetScaleRotation();
 			Offset = Sample->GetOffset();
 
-			if (CurrentSample)
-			{
-				// If we had a current sample (directly used as output), we can now schedule its retirement
-				PriorSamples->Retire(CurrentSample);
-				CurrentSample = nullptr;
-			}
+			/*
+				We need to keep any sample used for display around to avoid any player reusing it before any async tasks are done.
 
-			// Do we use a local copy as our output?
-			if (OutputTarget == RenderTargetTextureRHI)
+				Two cases are to be considered:
+				a) we directly use the textures in the sample -> we need to keep it as long as the sample is visible
+				b) we copy (e.g. as part of a conversion) the sample into a local texture -> we only need it for the current rendering interval
+
+				In both cases the FTextureSampleKeeper will make sure that it is kept for the current rendering interval per FRHIResource rules
+				for delayed deletion.
+			*/
+			TRefCountPtr<FTextureSampleKeeper> NewCurrentSample = TRefCountPtr<FTextureSampleKeeper>(new FTextureSampleKeeper(Sample));
+			check(NewCurrentSample);
+//TODO: using normal sample retention at all times for now to avoid issues on some platforms
+			if (1) //RenderTargetTextureRHI != OutputTarget)
 			{
-				// Yes, we can schedule the actual sample for retirement right away
-				PriorSamples->Retire(Sample);
+				// We use the texture data in the sample
+				CurrentSample = NewCurrentSample;
 			}
 			else
 			{
-				// No, we need to hold on to the sample
-				CurrentSample = Sample;
+				// We use the internal copy, no need to hold on to the new one or keep any older one
+				CurrentSample = nullptr;
 			}
 
-			// Generate mips as needed
-			if (CurrentNumMips > 1 && !Cleared)
-			{
-				check(OutputTarget);
-
-#if PLATFORM_ANDROID
-				const EGenerateMipsPass GenerateMipsPass = EGenerateMipsPass::Raster;
-#else
-				const EGenerateMipsPass GenerateMipsPass = EGenerateMipsPass::Compute;
-#endif
-
-				CacheRenderTarget(OutputTarget, TEXT("MipGeneration"), MipGenerationCache);
-
-				FMemMark MemMark(FMemStack::Get());
-				FRDGBuilder GraphBuilder(FRHICommandListExecutor::GetImmediateCommandList());
-				FRDGTextureRef MipOutputTexture = GraphBuilder.RegisterExternalTexture(MipGenerationCache);
-				FGenerateMips::Execute(GraphBuilder, MipOutputTexture, FGenerateMipsParams{ SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp }, GenerateMipsPass);
-				GraphBuilder.Execute();
-			}
-
-			SET_FLOAT_STAT(STAT_MediaUtils_TextureSampleTime, Sample->GetTime().Time.GetTotalMilliseconds());
+			SET_FLOAT_STAT(STAT_MediaUtils_TextureSampleTime, Sample->GetTime().GetTotalMilliseconds());
+		}
+#if MEDIATEXTURERESOURCE_TRACE_RENDER
+		else if (Sample.IsValid())
+		{
+			UE_LOG(LogMediaAssets, VeryVerbose, TEXT("TextureResource %p: Sample with time %s cannot be used at time %s"),
+				this,
+				*Sample->GetTime().ToString(TEXT("%h:%m:%s.%t")),
+				*Params.Time.ToString(TEXT("%h:%m:%s.%t"))
+			);
 		}
 		else
 		{
-			//
-			// Last sample is still valid
-			//
-
-			// nothing to do for now
+			UE_LOG(LogMediaAssets, VeryVerbose, TEXT("TextureResource %p: No valid sample available at time %s"),
+				this,
+				*Params.Time.ToString(TEXT("%h:%m:%s.%t"))
+			);
 		}
+#endif
 	}
 	else if (Params.CanClear)
 	{
-		//
-		// No valid sample source & we should clear
-		//
-
-		// Need to clear the output?
 		if (!Cleared || (Params.ClearColor != CurrentClearColor))
 		{
-			// Yes...
+#if MEDIATEXTURERESOURCE_TRACE_RENDER
+			UE_LOG(LogMediaAssets, VeryVerbose, TEXT("TextureResource %p: Clearing texture at time %s"),
+				this,
+				*Params.Time.ToString(TEXT("%h:%m:%s.%t"))
+			);
+#endif
+
 			ClearTexture(Params.ClearColor, Params.SrgbOutput);
 
-			if (CurrentSample)
-			{
-				// If we had a current sample (directly used as output), we can now schedule its retirement
-				PriorSamples->Retire(CurrentSample);
-				CurrentSample = nullptr;
-			}
+			// Also get rid of any sample from previous rendering...
+			CurrentSample = nullptr;
 		}
 	}
-
-	// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-	// - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-
-	// Cache next available sample time in the MediaTexture owner since we're the only one that can consume from the queue
+	
+	//Cache next available sample time in the MediaTexture owner since we're the only one that can consume from the queue
 	CacheNextAvailableSampleTime(SampleSource);
 
-	// Update external texture registration in case we have no native support
-	// (in that case there is support, the player will do this - but it is used all the time)
-	if (!Owner.NewStyleOutput && !bUsesImageExternal)
+	// update external texture registration
+	if (!GSupportsImageExternal)
 	{
-		SetupSampler();
-
 		if (Params.CurrentGuid.IsValid())
 		{
 			FTextureRHIRef VideoTexture = (FTextureRHIRef)Owner.TextureReference.TextureReferenceRHI;
@@ -418,7 +359,7 @@ void FMediaTextureResource::Render(const FRenderParams& Params)
 		}
 	}
 	
-	// Update usable Guid for the RenderThread
+	//Update usable Guid for the RenderThread
 	Owner.SetRenderedExternalTextureGuid(Params.CurrentGuid);
 }
 
@@ -453,31 +394,18 @@ uint32 FMediaTextureResource::GetSizeY() const
 }
 
 
-void FMediaTextureResource::SetupSampler()
-{
-	ESamplerFilter OwnerFilter = bEnableGenMips ? (ESamplerFilter)UDeviceProfileManager::Get().GetActiveProfile()->GetTextureLODSettings()->GetSamplerFilter(&Owner) : SF_Bilinear;
-
-	if (CurrentSamplerFilter != OwnerFilter)
-	{
-		CurrentSamplerFilter = OwnerFilter;
-
-		// create the sampler state
-		FSamplerStateInitializerRHI SamplerStateInitializer(
-			CurrentSamplerFilter,
-			(Owner.AddressX == TA_Wrap) ? AM_Wrap : ((Owner.AddressX == TA_Clamp) ? AM_Clamp : AM_Mirror),
-			(Owner.AddressY == TA_Wrap) ? AM_Wrap : ((Owner.AddressY == TA_Clamp) ? AM_Clamp : AM_Mirror),
-			AM_Wrap
-		);
-
-		SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
-	}
-}
-
-
 void FMediaTextureResource::InitDynamicRHI()
 {
-	SetupSampler();
-	
+	// create the sampler state
+	FSamplerStateInitializerRHI SamplerStateInitializer(
+		(ESamplerFilter)UDeviceProfileManager::Get().GetActiveProfile()->GetTextureLODSettings()->GetSamplerFilter(&Owner),
+		(Owner.AddressX == TA_Wrap) ? AM_Wrap : ((Owner.AddressX == TA_Clamp) ? AM_Clamp : AM_Mirror),
+		(Owner.AddressY == TA_Wrap) ? AM_Wrap : ((Owner.AddressY == TA_Clamp) ? AM_Clamp : AM_Mirror),
+		AM_Wrap
+	);
+
+	SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
+
 	// Note: set up default texture, or we can get sampler bind errors on render
 	// we can't leave here without having a valid bindable resource for some RHIs.
 
@@ -488,8 +416,7 @@ void FMediaTextureResource::InitDynamicRHI()
 	check(RenderTargetTextureRHI.IsValid());
 	check(OutputTarget.IsValid());
 
-	// Register "external texture" parameters if the platform does not support them (and hence the player does not set them)
-	if (!bUsesImageExternal)
+	if (!GSupportsImageExternal)
 	{
 		FTextureRHIRef VideoTexture = (FTextureRHIRef)Owner.TextureReference.TextureReferenceRHI;
 		FExternalTextureRegistry::Get().RegisterExternalTexture(InitialTextureGuid, VideoTexture, SamplerStateRHI);
@@ -500,8 +427,6 @@ void FMediaTextureResource::InitDynamicRHI()
 void FMediaTextureResource::ReleaseDynamicRHI()
 {
 	Cleared = false;
-
-	MipGenerationCache.SafeRelease();
 
 	InputTarget.SafeRelease();
 	OutputTarget.SafeRelease();
@@ -515,135 +440,61 @@ void FMediaTextureResource::ReleaseDynamicRHI()
 /* FMediaTextureResource implementation
  *****************************************************************************/
 
- void FMediaTextureResource::ClearTexture(const FLinearColor& ClearColor, bool SrgbOutput)
+void FMediaTextureResource::ClearTexture(const FLinearColor& ClearColor, bool SrgbOutput)
 {
 	// create output render target if we don't have one yet
-	CreateOutputRenderTarget(FIntPoint(2, 2), PF_B8G8R8A8, SrgbOutput, ClearColor, 1);
+	const uint32 OutputCreateFlags = TexCreate_Dynamic | (SrgbOutput ? TexCreate_SRGB : 0);
+	const EPixelFormat OutputPixelFormat = PF_B8G8R8A8;
+
+	if ((ClearColor != CurrentClearColor) || !OutputTarget.IsValid() || (OutputTarget->GetFormat() != OutputPixelFormat) || ((OutputTarget->GetFlags() & OutputCreateFlags) != OutputCreateFlags))
+	{
+		FString DebugName = Owner.GetName();
+
+		FRHIResourceCreateInfo CreateInfo;
+		CreateInfo.ClearValueBinding = FClearValueBinding(ClearColor);
+		CreateInfo.DebugName = *DebugName;
+
+		TRefCountPtr<FRHITexture2D> DummyTexture2DRHI;
+
+		RHICreateTargetableShaderResource2D(
+			2,
+			2,
+			OutputPixelFormat,
+			1,
+			OutputCreateFlags,
+			TexCreate_RenderTargetable,
+			false,
+			CreateInfo,
+			OutputTarget,
+			DummyTexture2DRHI
+		);
+
+		CurrentClearColor = ClearColor;
+		UpdateResourceSize();
+	}
+
+	if (RenderTargetTextureRHI != OutputTarget)
+	{
+		UpdateTextureReference(OutputTarget);
+	}
 
 	// draw the clear color
 	FRHICommandListImmediate& CommandList = FRHICommandListExecutor::GetImmediateCommandList();
 	{
-		SCOPED_DRAW_EVENT(CommandList, FMediaTextureResource_ClearTexture);
-		SCOPED_GPU_STAT(CommandList, MediaTextureResource);
-
-		CommandList.Transition(FRHITransitionInfo(RenderTargetTextureRHI, ERHIAccess::SRVMask, ERHIAccess::RTV));
-
 		FRHIRenderPassInfo RPInfo(RenderTargetTextureRHI, ERenderTargetActions::Clear_Store);
 		CommandList.BeginRenderPass(RPInfo, TEXT("ClearTexture"));
 		CommandList.EndRenderPass();
-		CommandList.Transition(FRHITransitionInfo(RenderTargetTextureRHI, ERHIAccess::RTV, ERHIAccess::SRVMask));
+		CommandList.SetViewport(0, 0, 0.0f, RenderTargetTextureRHI->GetSizeX(), RenderTargetTextureRHI->GetSizeY(), 1.0f);
+		CommandList.TransitionResource(EResourceTransitionAccess::EReadable, RenderTargetTextureRHI);
 	}
 
 	Cleared = true;
 }
 
 
- bool FMediaTextureResource::RequiresConversion(const FTexture2DRHIRef& SampleTexture, const FIntPoint & OutputDim, bool SrgbOutput, uint8 InNumMips) const
- {
-	 if (!Owner.NewStyleOutput)
-	 {
-		 //
-		 // Old Style
-		 //
-
-		 if (((SampleTexture->GetFlags() & TexCreate_SRGB) != 0) != SrgbOutput)
-		 {
-			 return true;
-		 }
-	 }
-	 else
-	 {
-		 //
-		 // New Style
-		 // 
-
-		 // For now we only allow this, single SRGB-style output format
-		 check(Owner.OutputFormat == MTOF_SRGB_LINOUT || Owner.OutputFormat == MTOF_Default);
-
-		 if ((SampleTexture->GetFlags() & TexCreate_SRGB) == 0)
-		 {
-			 return true;
-		 }
-
-		 if (SampleTexture->GetNumMips() != InNumMips)
-		 {
-			 return true;
-		 }
-	 }
-
-	 if (SampleTexture->GetSizeXY() != OutputDim)
-	 {
-		 return true;
-	 }
-
-	 // Only the following pixel formats are supported natively.
-	 // All other formats require a conversion on the GPU.
-
-	 const EPixelFormat Format = SampleTexture->GetFormat();
-
-	 return ((Format != PF_B8G8R8A8) &&
-		 (Format != PF_FloatRGB) &&
-		 (Format != PF_FloatRGBA));
- }
-
-
- bool FMediaTextureResource::RequiresConversion(const TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& Sample, bool SrgbOutput, uint8 InNumMips) const
- {
-	 if (!Owner.NewStyleOutput)
-	 {
-		 //
-		 // Old Style
-		 //
-
-		 if (Sample->IsOutputSrgb() != SrgbOutput)
-		 {
-			 return true;
-		 }
-	 }
-	 else
-	 {
-		 //
-		 // New Style
-		 // 
-
-		 // For now we only allow this, single SRGB-style output format
-		 check(Owner.OutputFormat == MTOF_SRGB_LINOUT || Owner.OutputFormat == MTOF_Default);
-
-		 if (!Sample->IsOutputSrgb())
-		 {
-			 return true;
-		 }
-
-		 FRHITexture *Texture = Sample->GetTexture();
-
-		 if (Texture && Texture->GetNumMips() != InNumMips)
-		 {
-			 return true;
-		 }
-	 }
-
-	 // If the output dimensions are not the same as the sample's
-	 // dimensions, a resizing conversion on the GPU is required.
-
-	 if (Sample->GetDim() != Sample->GetOutputDim())
-	 {
-		 return true;
-	 }
-
-	 // Only the following pixel formats are supported natively.
-	 // All other formats require a conversion on the GPU.
-
-	 const EMediaTextureSampleFormat Format = Sample->GetFormat();
-
-	 return ((Format != EMediaTextureSampleFormat::CharBGRA) &&
-		 (Format != EMediaTextureSampleFormat::FloatRGB) &&
-		 (Format != EMediaTextureSampleFormat::FloatRGBA));
- }
-
-
-void FMediaTextureResource::ConvertSample(const TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& Sample, const FLinearColor& ClearColor, bool SrgbOutput, uint8 InNumMips)
+void FMediaTextureResource::ConvertSample(const TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& Sample, const FLinearColor& ClearColor, bool SrgbOutput)
 {
-	const EPixelFormat InputPixelFormat = MediaTextureResourceHelpers::GetPixelFormat(Sample);
+	const EPixelFormat InputPixelFormat = MediaTextureResource::GetPixelFormat(Sample);
 
 	// get input texture
 	FRHITexture2D* InputTexture = nullptr;
@@ -655,34 +506,37 @@ void FMediaTextureResource::ConvertSample(const TSharedPtr<IMediaTextureSample, 
 		FRHITexture* SampleTexture = Sample->GetTexture();
 		FRHITexture2D* SampleTexture2D = (SampleTexture != nullptr) ? SampleTexture->GetTexture2D() : nullptr;
 
-		if (SampleTexture2D)
+		if (SampleTexture2D != nullptr)
 		{
-			// Use the sample as source texture...
-
 			InputTexture = SampleTexture2D;
+
+			InputTarget.SafeRelease();
 			UpdateResourceSize();
-			InputTarget = nullptr;
 		}
 		else
 		{
-			// Make a source texture so we can convert from it...
-
-			const bool SrgbTexture = MediaTextureResourceHelpers::RequiresSrgbTexture(Sample);
-			 const ETextureCreateFlags InputCreateFlags = TexCreate_Dynamic | (SrgbTexture ? TexCreate_SRGB : TexCreate_None);  //<<< FILTER SRGB AWAY FOR G8 AND SUCH? (or will the RHI code kindly do this?)
+			const bool SrgbTexture = MediaTextureResource::RequiresSrgbTexture(Sample);
+			const uint32 InputCreateFlags = TexCreate_Dynamic | (SrgbTexture ? TexCreate_SRGB : 0);
 			const FIntPoint SampleDim = Sample->GetDim();
 
-			// create a new temp input render target if necessary
+			// create a new input render target if necessary
 			if (!InputTarget.IsValid() || (InputTarget->GetSizeXY() != SampleDim) || (InputTarget->GetFormat() != InputPixelFormat) || ((InputTarget->GetFlags() & InputCreateFlags) != InputCreateFlags))
 			{
+				TRefCountPtr<FRHITexture2D> DummyTexture2DRHI;
 				FRHIResourceCreateInfo CreateInfo;
-				InputTarget = RHICreateTexture2D(
+
+				RHICreateTargetableShaderResource2D(
 					SampleDim.X,
 					SampleDim.Y,
 					InputPixelFormat,
 					1,
-					1,
 					InputCreateFlags,
-					CreateInfo);
+					TexCreate_RenderTargetable,
+					false,
+					CreateInfo,
+					InputTarget,
+					DummyTexture2DRHI
+				);
 
 				UpdateResourceSize();
 			}
@@ -695,33 +549,50 @@ void FMediaTextureResource::ConvertSample(const TSharedPtr<IMediaTextureSample, 
 		}
 	}
 
-	// create the output texture
+	// create output render target if necessary
+	const uint32 OutputCreateFlags = TexCreate_Dynamic | (SrgbOutput ? TexCreate_SRGB : 0);
 	const FIntPoint OutputDim = Sample->GetOutputDim();
-	CreateOutputRenderTarget(OutputDim, MediaTextureResourceHelpers::GetConvertedPixelFormat(Sample), SrgbOutput, ClearColor, InNumMips);
+	const EPixelFormat OutputPixelFormat = MediaTextureResource::GetConvertedPixelFormat(Sample);
 
-	ConvertTextureToOutput(InputTexture, Sample, SrgbOutput);
-}
+	if ((ClearColor != CurrentClearColor) || !OutputTarget.IsValid() || (OutputTarget->GetSizeXY() != OutputDim) || (OutputTarget->GetFormat() != OutputPixelFormat) || ((OutputTarget->GetFlags() & OutputCreateFlags) != OutputCreateFlags))
+	{
+		TRefCountPtr<FRHITexture2D> DummyTexture2DRHI;
+		
+		FRHIResourceCreateInfo CreateInfo = {
+			FClearValueBinding(ClearColor)
+		};
 
+		RHICreateTargetableShaderResource2D(
+			OutputDim.X,
+			OutputDim.Y,
+			OutputPixelFormat,
+			1,
+			OutputCreateFlags,
+			TexCreate_RenderTargetable,
+			false,
+			CreateInfo,
+			OutputTarget,
+			DummyTexture2DRHI
+		);
 
- void FMediaTextureResource::ConvertTextureToOutput(FRHITexture2D* InputTexture, const TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& Sample, bool SrgbOutput)
- {
+		CurrentClearColor = ClearColor;
+		UpdateResourceSize();
+	}
+
+	if (RenderTargetTextureRHI != OutputTarget)
+	{
+		UpdateTextureReference(OutputTarget);
+	}
+
 	// perform the conversion
 	FRHICommandListImmediate& CommandList = FRHICommandListExecutor::GetImmediateCommandList();
 	{
-		SCOPED_DRAW_EVENT(CommandList, FMediaTextureResource_Convert);
-		SCOPED_GPU_STAT(CommandList, MediaTextureResource);
+		SCOPED_DRAW_EVENT(CommandList, MediaTextureConvertResource);
 
 		FGraphicsPipelineStateInitializer GraphicsPSOInit;
 		FRHITexture* RenderTarget = RenderTargetTextureRHI.GetReference();
-		CommandList.Transition(FRHITransitionInfo(RenderTarget, ERHIAccess::Unknown, ERHIAccess::RTV));
 
-		FIntPoint OutputDim(RenderTarget->GetSizeXYZ().X, RenderTarget->GetSizeXYZ().Y);
-
-		// note: we are not explicitly transitioning the input texture to be readable here
-		// (we assume this to be the case already - main as some platforms may fail to orderly transition the resource due to special cases regarding their internal setup)
-		CommandList.Transition(FRHITransitionInfo(RenderTargetTextureRHI, ERHIAccess::Unknown, ERHIAccess::RTV));
-
-		FRHIRenderPassInfo RPInfo(RenderTarget, ERenderTargetActions::DontLoad_Store);
+		FRHIRenderPassInfo RPInfo(RenderTarget, ERenderTargetActions::Load_Store);
 		CommandList.BeginRenderPass(RPInfo, TEXT("ConvertMedia"));
 		{
 			CommandList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -737,7 +608,7 @@ void FMediaTextureResource::ConvertSample(const TSharedPtr<IMediaTextureSample, 
 			TShaderMapRef<FMediaShadersVS> VertexShader(ShaderMap);
 
 			GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GMediaVertexDeclaration.VertexDeclarationRHI;
-			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
 
 			FMatrix YUVToRGBMatrix = Sample->GetYUVToRGBMatrix();
 			FVector YUVOffset(MediaShaders::YUVOffset8bits);
@@ -748,14 +619,20 @@ void FMediaTextureResource::ConvertSample(const TSharedPtr<IMediaTextureSample, 
 			}
 
 			bool bIsSampleOutputSrgb = Sample->IsOutputSrgb();
+			if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES2 && IsSimulatedPlatform(GMaxRHIShaderPlatform) )
+			{
+				// simulated ES2 has no HW support for sRGB, all external textures are assumed to be in sRGB form. 
+				// see FHLSLMaterialTranslator::TextureSample(), SAMPLERTYPE_External case.
+				// We must not convert to linear for the ES2 case.
+				bIsSampleOutputSrgb = false;
+			}
 
-			// Use the sample format to choose the conversion path
 			switch (Sample->GetFormat())
 			{
 			case EMediaTextureSampleFormat::CharAYUV:
 			{
 				TShaderMapRef<FAYUVConvertPS> ConvertShader(ShaderMap);
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ConvertShader);
 				SetGraphicsPipelineState(CommandList, GraphicsPSOInit);
 				ConvertShader->SetParameters(CommandList, InputTexture, YUVToRGBMatrix, YUVOffset, bIsSampleOutputSrgb);
 			}
@@ -764,7 +641,7 @@ void FMediaTextureResource::ConvertSample(const TSharedPtr<IMediaTextureSample, 
 			case EMediaTextureSampleFormat::CharBMP:
 			{
 				TShaderMapRef<FBMPConvertPS> ConvertShader(ShaderMap);
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ConvertShader);
 				SetGraphicsPipelineState(CommandList, GraphicsPSOInit);
 				ConvertShader->SetParameters(CommandList, InputTexture, OutputDim, bIsSampleOutputSrgb && !SrgbOutput);
 			}
@@ -772,28 +649,17 @@ void FMediaTextureResource::ConvertSample(const TSharedPtr<IMediaTextureSample, 
 
 			case EMediaTextureSampleFormat::CharNV12:
 			{
-				if (InputTexture->GetFormat() == PF_NV12)
-				{
-					TShaderMapRef<FNV12ConvertPS> ConvertShader(ShaderMap);
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
-					SetGraphicsPipelineState(CommandList, GraphicsPSOInit);
-					ConvertShader->SetParameters(CommandList, InputTexture, OutputDim, YUVToRGBMatrix, YUVOffset, bIsSampleOutputSrgb);
-				}
-			else
-				{
-					TShaderMapRef<FNV12ConvertAsBytesPS> ConvertShader(ShaderMap);
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
-					SetGraphicsPipelineState(CommandList, GraphicsPSOInit);
-					ConvertShader->SetParameters(CommandList, InputTexture, OutputDim, YUVToRGBMatrix, YUVOffset, bIsSampleOutputSrgb);
-				}
+				TShaderMapRef<FNV12ConvertPS> ConvertShader(ShaderMap);
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ConvertShader);
+				SetGraphicsPipelineState(CommandList, GraphicsPSOInit);
+				ConvertShader->SetParameters(CommandList, InputTexture, OutputDim, YUVToRGBMatrix, YUVOffset, bIsSampleOutputSrgb);
 			}
 			break;
 
 			case EMediaTextureSampleFormat::CharNV21:
 			{
-				// source texture might be NV12 or G8...
 				TShaderMapRef<FNV21ConvertPS> ConvertShader(ShaderMap);
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ConvertShader);
 				SetGraphicsPipelineState(CommandList, GraphicsPSOInit);
 				ConvertShader->SetParameters(CommandList, InputTexture, OutputDim, YUVToRGBMatrix, YUVOffset, bIsSampleOutputSrgb);
 			}
@@ -802,7 +668,7 @@ void FMediaTextureResource::ConvertSample(const TSharedPtr<IMediaTextureSample, 
 			case EMediaTextureSampleFormat::CharUYVY:
 			{
 				TShaderMapRef<FUYVYConvertPS> ConvertShader(ShaderMap);
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ConvertShader);
 				SetGraphicsPipelineState(CommandList, GraphicsPSOInit);
 				ConvertShader->SetParameters(CommandList, InputTexture, YUVToRGBMatrix, YUVOffset, bIsSampleOutputSrgb);
 			}
@@ -811,7 +677,7 @@ void FMediaTextureResource::ConvertSample(const TSharedPtr<IMediaTextureSample, 
 			case EMediaTextureSampleFormat::CharYUY2:
 			{
 				TShaderMapRef<FYUY2ConvertPS> ConvertShader(ShaderMap);
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ConvertShader);
 				SetGraphicsPipelineState(CommandList, GraphicsPSOInit);
 				ConvertShader->SetParameters(CommandList, InputTexture, OutputDim, YUVToRGBMatrix, YUVOffset, bIsSampleOutputSrgb);
 			}
@@ -820,7 +686,7 @@ void FMediaTextureResource::ConvertSample(const TSharedPtr<IMediaTextureSample, 
 			case EMediaTextureSampleFormat::CharYVYU:
 			{
 				TShaderMapRef<FYVYUConvertPS> ConvertShader(ShaderMap);
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ConvertShader);
 				SetGraphicsPipelineState(CommandList, GraphicsPSOInit);
 				ConvertShader->SetParameters(CommandList, InputTexture, YUVToRGBMatrix, YUVOffset, bIsSampleOutputSrgb);
 			}
@@ -829,7 +695,7 @@ void FMediaTextureResource::ConvertSample(const TSharedPtr<IMediaTextureSample, 
 			case EMediaTextureSampleFormat::YUVv210:
 			{
 				TShaderMapRef<FYUVv210ConvertPS> ConvertShader(ShaderMap);
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ConvertShader);
 				SetGraphicsPipelineState(CommandList, GraphicsPSOInit);
 				ConvertShader->SetParameters(CommandList, InputTexture, OutputDim, YUVToRGBMatrix, YUVOffset, bIsSampleOutputSrgb);
 			}
@@ -838,7 +704,7 @@ void FMediaTextureResource::ConvertSample(const TSharedPtr<IMediaTextureSample, 
 			case EMediaTextureSampleFormat::CharBGR10A2:
 			{
 				TShaderMapRef<FRGBConvertPS> ConvertShader(ShaderMap);
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ConvertShader);
 				SetGraphicsPipelineState(CommandList, GraphicsPSOInit);
 				ConvertShader->SetParameters(CommandList, InputTexture, OutputDim, bIsSampleOutputSrgb);
 			}
@@ -848,20 +714,15 @@ void FMediaTextureResource::ConvertSample(const TSharedPtr<IMediaTextureSample, 
 			case EMediaTextureSampleFormat::FloatRGB:
 			case EMediaTextureSampleFormat::FloatRGBA:
 			{
-				// Simple 1:1 copy (but using normal texture sampler: sRGB conversions may occur depending on setup; any manuao sRGB/linear conversion is disabled)
 				TShaderMapRef<FRGBConvertPS> ConvertShader(ShaderMap);
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ConvertShader);
 				SetGraphicsPipelineState(CommandList, GraphicsPSOInit);
 				ConvertShader->SetParameters(CommandList, InputTexture, OutputDim, false);
 			}
 			break;
 
 			default:
-				{
-					// This should not happen in normal use: still - end the render pass to avoid any trouble with RHI
-					CommandList.EndRenderPass();
-					return; // unsupported format
-				}
+				return; // unsupported format
 			}
 
 			// draw full size quad into render target
@@ -873,14 +734,14 @@ void FMediaTextureResource::ConvertSample(const TSharedPtr<IMediaTextureSample, 
 			CommandList.DrawPrimitive(0, 2, 1);
 		}
 		CommandList.EndRenderPass();
-		CommandList.Transition(FRHITransitionInfo(RenderTarget, ERHIAccess::RTV, ERHIAccess::SRVGraphics));
+		CommandList.TransitionResource(EResourceTransitionAccess::EReadable, RenderTargetTextureRHI);
 	}
 
 	Cleared = false;
 }
 
 
-void FMediaTextureResource::CopySample(const TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& Sample, const FLinearColor& ClearColor, bool SrgbOutput, uint8 InNumMips, const FGuid & TextureGUID)
+void FMediaTextureResource::CopySample(const TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& Sample, const FLinearColor& ClearColor, bool SrgbOutput)
 {
 	FRHITexture* SampleTexture = Sample->GetTexture();
 	FRHITexture2D* SampleTexture2D = (SampleTexture != nullptr) ? SampleTexture->GetTexture2D() : nullptr;
@@ -891,123 +752,58 @@ void FMediaTextureResource::CopySample(const TSharedPtr<IMediaTextureSample, ESP
 
 	if (SampleTexture2D != nullptr)
 	{
-		// Use sample's texture as the new render target - no copy
+		// use sample's texture as the new render target.
 		if (TextureRHI != SampleTexture2D)
 		{
 			UpdateTextureReference(SampleTexture2D);
 
-			MipGenerationCache.SafeRelease();
 			OutputTarget.SafeRelease();
-		}
-		else
-		{
-			// Texture to receive texture from sample
-			CreateOutputRenderTarget(Sample->GetOutputDim(), MediaTextureResourceHelpers::GetPixelFormat(Sample), SrgbOutput, ClearColor, InNumMips);
-
-			// Copy data into the output texture to able to add mips later on
-			FRHICommandListExecutor::GetImmediateCommandList().CopyTexture(SampleTexture2D, OutputTarget, FRHICopyTextureInfo());
+			UpdateResourceSize();
 		}
 	}
 	else
 	{
-		// Texture to receive precisely only output pixels via CPU copy
-		CreateOutputRenderTarget(Sample->GetDim(), MediaTextureResourceHelpers::GetPixelFormat(Sample), SrgbOutput, ClearColor, InNumMips);
+		// create a new output render target if necessary
+		const uint32 OutputCreateFlags = TexCreate_Dynamic | (SrgbOutput ? TexCreate_SRGB : 0);
+		const EPixelFormat SampleFormat = MediaTextureResource::GetPixelFormat(Sample);
+		const FIntPoint SampleDim = Sample->GetDim();
 
-		// If we also have no source buffer and the platform generally would allow for use of external textures, we assume it is just that...
-		// (as long as the player actually produces (dummy) samples, this will enable mips support as well as auto conversion for "new style output" mode)
-		if (!Sample->GetBuffer())
+		if ((ClearColor != CurrentClearColor) || !OutputTarget.IsValid() || (OutputTarget->GetSizeXY() != SampleDim) || (OutputTarget->GetFormat() != SampleFormat) || ((OutputTarget->GetFlags() & OutputCreateFlags) != OutputCreateFlags))
 		{
-			if (GSupportsImageExternal)
-			{
-				CopyFromExternalTexture(Sample, TextureGUID);
-			}
-			else
-			{
-				// We never should get here, but could should a player pass us a "valid" sample with neither texture or buffer based data in it (and we don't have ExternalTexture support)
+			TRefCountPtr<FRHITexture2D> DummyTexture2DRHI;
 
-				// Just clear the texture so we don't show any random memory contents...
-				FRHICommandListImmediate& CommandList = FRHICommandListExecutor::GetImmediateCommandList();
-				CommandList.Transition(FRHITransitionInfo(RenderTargetTextureRHI, ERHIAccess::Unknown, ERHIAccess::RTV));
-				FRHIRenderPassInfo RPInfo(RenderTargetTextureRHI, ERenderTargetActions::Clear_Store);
-				CommandList.BeginRenderPass(RPInfo, TEXT("ClearTexture"));
-				CommandList.EndRenderPass();
-				CommandList.Transition(FRHITransitionInfo(RenderTargetTextureRHI, ERHIAccess::RTV, ERHIAccess::SRVMask));
-			}
+			FRHIResourceCreateInfo CreateInfo = {
+				FClearValueBinding(ClearColor)
+			};
+
+			RHICreateTargetableShaderResource2D(
+				SampleDim.X,
+				SampleDim.Y,
+				SampleFormat,
+				1,
+				OutputCreateFlags,
+				TexCreate_RenderTargetable,
+				false,
+				CreateInfo,
+				OutputTarget,
+				DummyTexture2DRHI
+			);
+
+			CurrentClearColor = ClearColor;
+			UpdateResourceSize();
 		}
-		else
+
+		if (RenderTargetTextureRHI != OutputTarget)
 		{
-			// Copy sample data (from CPU mem) to output render target
-			FUpdateTextureRegion2D Region(0, 0, 0, 0, Sample->GetDim().X, Sample->GetDim().Y);
-			RHIUpdateTexture2D(RenderTargetTextureRHI.GetReference(), 0, Region, Sample->GetStride(), (uint8*)Sample->GetBuffer());
+			UpdateTextureReference(OutputTarget);
 		}
+
+		// copy sample data to output render target
+		FUpdateTextureRegion2D Region(0, 0, 0, 0, SampleDim.X, SampleDim.Y);
+		RHIUpdateTexture2D(RenderTargetTextureRHI.GetReference(), 0, Region, Sample->GetStride(), (uint8*)Sample->GetBuffer());
 	}
 
 	Cleared = false;
-}
-
-
-void FMediaTextureResource::CopyFromExternalTexture(const TSharedPtr <IMediaTextureSample, ESPMode::ThreadSafe>& Sample, const FGuid & TextureGUID)
-{
-	FRHICommandListImmediate& CommandList = FRHICommandListExecutor::GetImmediateCommandList();
-	{
-		FTextureRHIRef SampleTexture;
-		FSamplerStateRHIRef SamplerState;
-		if (!FExternalTextureRegistry::Get().GetExternalTexture(nullptr, TextureGUID, SampleTexture, SamplerState))
-		{
-			// This should never happen: we could not find the external texture data. Still, if it does we clear the output...
-			FRHIRenderPassInfo RPInfo(RenderTargetTextureRHI, ERenderTargetActions::Clear_Store);
-			CommandList.BeginRenderPass(RPInfo, TEXT("ClearTexture"));
-			CommandList.EndRenderPass();
-			CommandList.Transition(FRHITransitionInfo(RenderTargetTextureRHI, ERHIAccess::Unknown, ERHIAccess::SRVMask));
-			return;
-		}
-
-		FLinearColor Offset, ScaleRotation;
-		FExternalTextureRegistry::Get().GetExternalTextureCoordinateOffset(TextureGUID, Offset);
-		FExternalTextureRegistry::Get().GetExternalTextureCoordinateScaleRotation(TextureGUID, ScaleRotation);
-
-		SCOPED_DRAW_EVENT(CommandList, FMediaTextureResource_ConvertExternalTexture);
-		SCOPED_GPU_STAT(CommandList, MediaTextureResource);
-
-		FGraphicsPipelineStateInitializer GraphicsPSOInit;
-		FRHITexture* RenderTarget = RenderTargetTextureRHI.GetReference();
-
-		FRHIRenderPassInfo RPInfo(RenderTarget, ERenderTargetActions::DontLoad_Store);
-		CommandList.BeginRenderPass(RPInfo, TEXT("ConvertMedia_ExternalTexture"));
-		{
-			const FIntPoint OutputDim = Sample->GetOutputDim();
-
-			CommandList.ApplyCachedRenderTargets(GraphicsPSOInit);
-			CommandList.SetViewport(0, 0, 0.0f, OutputDim.X, OutputDim.Y, 1.0f);
-			
-			GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
-			GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
-			GraphicsPSOInit.BlendState = TStaticBlendStateWriteMask<CW_RGBA, CW_NONE, CW_NONE, CW_NONE, CW_NONE, CW_NONE, CW_NONE, CW_NONE>::GetRHI();
-			GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
-
-			// configure media shaders
-			auto ShaderMap = GetGlobalShaderMap(GMaxRHIFeatureLevel);
-			TShaderMapRef<FMediaShadersVS> VertexShader(ShaderMap);
-
-			GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GMediaVertexDeclaration.VertexDeclarationRHI;
-			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-
-			TShaderMapRef<FReadTextureExternalPS> CopyShader(ShaderMap);
-			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = CopyShader.GetPixelShader();
-			SetGraphicsPipelineState(CommandList, GraphicsPSOInit);
-			CopyShader->SetParameters(CommandList, SampleTexture, SamplerState, ScaleRotation, Offset);
-
-			// draw full size quad into render target
-			FVertexBufferRHIRef VertexBuffer = CreateTempMediaVertexBuffer();
-			CommandList.SetStreamSource(0, VertexBuffer, 0);
-			// set viewport to RT size
-			CommandList.SetViewport(0, 0, 0.0f, OutputDim.X, OutputDim.Y, 1.0f);
-
-			CommandList.DrawPrimitive(0, 2, 1);
-		}
-		CommandList.EndRenderPass();
-		CommandList.Transition(FRHITransitionInfo(RenderTargetTextureRHI, ERHIAccess::Unknown, ERHIAccess::SRVMask));
-	}
 }
 
 
@@ -1046,36 +842,26 @@ void FMediaTextureResource::UpdateTextureReference(FRHITexture2D* NewTexture)
 	}
 }
 
-
-void FMediaTextureResource::CreateOutputRenderTarget(const FIntPoint & InDim, EPixelFormat InPixelFormat, bool bInSRGB, const FLinearColor & InClearColor, uint8 InNumMips)
+void FMediaTextureResource::CreateOutputRenderTarget(const TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& InSample, const FRenderParams& InParams)
 {
 	// create output render target if necessary
-	ETextureCreateFlags OutputCreateFlags = TexCreate_Dynamic | (bInSRGB ? TexCreate_SRGB : TexCreate_None);
-	if (InNumMips > 1)
-	{
-		// Make sure can have mips & the mip generator has what it needs to work
-		OutputCreateFlags |= (TexCreate_GenerateMipCapable | TexCreate_UAV);
+	const uint32 OutputCreateFlags = TexCreate_Dynamic | (InParams.SrgbOutput ? TexCreate_SRGB : 0);
+	const FIntPoint OutputDim = InSample->GetOutputDim();
+	const EPixelFormat OutputPixelFormat = MediaTextureResource::GetConvertedPixelFormat(InSample);
 
-		// Make sure we only set a number of mips that actually makes sense, given the sample size
-		uint8 MaxMips = FGenericPlatformMath::FloorToInt(FGenericPlatformMath::Log2(FGenericPlatformMath::Min(InDim.X, InDim.Y)));
-		InNumMips = FMath::Min(InNumMips, MaxMips);
-	}
-
-	if ((InClearColor != CurrentClearColor) || !OutputTarget.IsValid() || (OutputTarget->GetSizeXY() != InDim) || (OutputTarget->GetFormat() != InPixelFormat) || ((OutputTarget->GetFlags() & OutputCreateFlags) != OutputCreateFlags) || CurrentNumMips != InNumMips)
+	if ((InParams.ClearColor != CurrentClearColor) || !OutputTarget.IsValid() || (OutputTarget->GetSizeXY() != OutputDim) || (OutputTarget->GetFormat() != OutputPixelFormat) || ((OutputTarget->GetFlags() & OutputCreateFlags) != OutputCreateFlags))
 	{
 		TRefCountPtr<FRHITexture2D> DummyTexture2DRHI;
 
-		MipGenerationCache.SafeRelease();
-
 		FRHIResourceCreateInfo CreateInfo = {
-			FClearValueBinding(InClearColor)
+			FClearValueBinding(InParams.ClearColor)
 		};
 
 		RHICreateTargetableShaderResource2D(
-			InDim.X,
-			InDim.Y,
-			InPixelFormat,
-			InNumMips,
+			OutputDim.X,
+			OutputDim.Y,
+			OutputPixelFormat,
+			1,
 			OutputCreateFlags,
 			TexCreate_RenderTargetable,
 			false,
@@ -1084,13 +870,8 @@ void FMediaTextureResource::CreateOutputRenderTarget(const FIntPoint & InDim, EP
 			DummyTexture2DRHI
 		);
 
-		OutputTarget->SetName(TEXT("MediaTextureResourceOutput"));
-
-		CurrentClearColor = InClearColor;
-		CurrentNumMips = InNumMips;
+		CurrentClearColor = InParams.ClearColor;
 		UpdateResourceSize();
-
-		Cleared = false;
 	}
 
 	if (RenderTargetTextureRHI != OutputTarget)
@@ -1098,7 +879,6 @@ void FMediaTextureResource::CreateOutputRenderTarget(const FIntPoint & InDim, EP
 		UpdateTextureReference(OutputTarget);
 	}
 }
-
 
 void FMediaTextureResource::CacheNextAvailableSampleTime(const TSharedPtr<FMediaTextureSampleSource, ESPMode::ThreadSafe>& InSampleQueue) const
 {
@@ -1109,7 +889,7 @@ void FMediaTextureResource::CacheNextAvailableSampleTime(const TSharedPtr<FMedia
 		TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe> Sample;
 		if (InSampleQueue->Peek(Sample))
 		{
-			SampleTime = Sample->GetTime().Time;
+			SampleTime = Sample->GetTime();
 		}
 	}
 

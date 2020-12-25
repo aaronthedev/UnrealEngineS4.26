@@ -28,6 +28,9 @@ public:
 	void SetSettings(UResonanceAudioSpatializationSourceSettings* InSettings) { Settings = InSettings; };
 	UResonanceAudioSpatializationSourceSettings* GetSettings() const { return Settings; };
 
+
+	virtual void BeginDestroy() override;
+
 private:
 	// Controls the smoothness of mesh visualization.
 	const int CIRCLE_SECTIONS = 128;

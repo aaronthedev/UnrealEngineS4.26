@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -39,7 +39,6 @@ private:
 
 	TSharedPtr<IPropertyHandle> MaxTextureSizePropertyHandle;
 	TSharedPtr<IPropertyHandle> PowerOfTwoModePropertyHandle;
-	TSharedPtr<IPropertyHandle> VirtualTextureStreamingPropertyHandle;
 	TArray<TSharedPtr<FString>> PowerOfTwoModeComboBoxList;
 	TWeakObjectPtr<UObject> TextureBeingCustomized;
 	TSharedPtr<STextComboBox> TextComboBox;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "MagicLeapCameraPreviewPlayer.h"
 #include "IMagicLeapCameraPlugin.h"
 #include "MagicLeapCameraPreviewModule.h"
@@ -13,7 +13,6 @@
 #include "ExternalTexture.h"
 #include "ExternalTextureRendererGL.h"
 #include "MagicLeapHelperVulkan.h"
-#include "Lumin/CAPIShims/LuminAPI.h"
 
 struct FMagicLeapVideoTextureData
 {
@@ -168,10 +167,10 @@ FString FMagicLeapCameraPreviewPlayer::GetInfo() const
 	return FString();
 }
 
-FGuid FMagicLeapCameraPreviewPlayer::GetPlayerPluginGUID() const
+FName FMagicLeapCameraPreviewPlayer::GetPlayerName() const
 {
-	static FGuid PlayerPluginGUID(0x6b44ddae, 0x35784afb, 0x891e074e, 0xad4db8de);
-	return PlayerPluginGUID;
+	static FName PlayerName(TEXT("MagicLeapCameraPreview"));
+	return PlayerName;
 }
 
 IMediaSamples& FMagicLeapCameraPreviewPlayer::GetSamples()
@@ -396,7 +395,7 @@ void FMagicLeapCameraPreviewPlayer::TickFetch(FTimespan DeltaTime, FTimespan Tim
 						if (TextureDataPtr->VideoTexture == nullptr)
 						{
 							FRHIResourceCreateInfo CreateInfo;
-							TextureDataPtr->VideoTexture = RHICreateTextureExternal2D(1, 1, PF_R8G8B8A8, 1, 1, TexCreate_None, CreateInfo);
+							TextureDataPtr->VideoTexture = RHICmdList.CreateTextureExternal2D(1, 1, PF_R8G8B8A8, 1, 1, 0, CreateInfo);
 						}
 
 						FMagicLeapHelperVulkan::AliasMediaTexture(TextureDataPtr->VideoTexture, NewMediaTexture);
@@ -437,7 +436,7 @@ void FMagicLeapCameraPreviewPlayer::TickFetch(FTimespan DeltaTime, FTimespan Tim
 					if (MediaVideoTexture == nullptr)
 					{
 						FRHIResourceCreateInfo CreateInfo;
-						MediaVideoTexture = RHICreateTextureExternal2D(1, 1, PF_R8G8B8A8, 1, 1, TexCreate_None, CreateInfo);
+						MediaVideoTexture = RHICmdList.CreateTextureExternal2D(1, 1, PF_R8G8B8A8, 1, 1, 0, CreateInfo);
 						TextureDataPtr->VideoTexture = MediaVideoTexture;
 
 						if (MediaVideoTexture == nullptr)

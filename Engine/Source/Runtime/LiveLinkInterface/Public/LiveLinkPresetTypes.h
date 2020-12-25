@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,15 +19,11 @@ struct FLiveLinkSourcePreset
 {
 	GENERATED_BODY()
 
-	UPROPERTY(VisibleAnywhere, Category="LiveLinkSourcePresets")
+	UPROPERTY()
 	FGuid Guid;
 
-	UPROPERTY(VisibleAnywhere, Category = "LiveLinkSourcePresets")
+	UPROPERTY()
 	ULiveLinkSourceSettings* Settings = nullptr;
-
-	/** The SourceType when the source was saved to a Preset. */
-	UPROPERTY(VisibleAnywhere, Category = "LiveLinkSourcePresets")
-	FText SourceType;
 };
 
 
@@ -36,18 +32,18 @@ struct FLiveLinkSubjectPreset
 {
 	GENERATED_BODY()
 
-	UPROPERTY(VisibleAnywhere, Category = "LiveLinkSubjectPresets")
+	UPROPERTY()
 	FLiveLinkSubjectKey Key;
 
-	UPROPERTY(VisibleAnywhere, Category = "LiveLinkSubjectPresets")
+	UPROPERTY()
 	TSubclassOf<ULiveLinkRole> Role;
 
-	UPROPERTY(VisibleAnywhere, Category = "LiveLinkSubjectPresets")
+	UPROPERTY()
 	ULiveLinkSubjectSettings* Settings = nullptr;
 
-	UPROPERTY(VisibleAnywhere, Category = "LiveLinkSubjectPresets")
+	UPROPERTY()
 	ULiveLinkVirtualSubject* VirtualSubject = nullptr;
 
-	UPROPERTY(VisibleAnywhere, Category = "LiveLinkSubjectPresets")
+	UPROPERTY()
 	bool bEnabled = false;
 };

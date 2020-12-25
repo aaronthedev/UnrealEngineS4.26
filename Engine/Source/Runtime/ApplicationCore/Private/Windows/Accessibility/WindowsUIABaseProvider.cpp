@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #if WITH_ACCESSIBILITY
 
@@ -6,7 +6,7 @@
 
 #include "Misc/AssertionMacros.h"
 #include "Windows/Accessibility/WindowsUIAManager.h"
-#include "GenericPlatform/Accessibility/GenericAccessibleInterfaces.h"
+#include "GenericPlatform/GenericAccessibleInterfaces.h"
 
 FWindowsUIABaseProvider::FWindowsUIABaseProvider(FWindowsUIAManager& InManager, TSharedRef<IAccessibleWidget> InWidget)
 	: UIAManager(&InManager)

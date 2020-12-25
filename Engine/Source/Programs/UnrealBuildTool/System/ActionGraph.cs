@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -85,78 +85,27 @@ namespace UnrealBuildTool
 		/// <summary>
 		/// Builds a list of actions that need to be executed to produce the specified output items.
 		/// </summary>
-		public static List<Action> GetActionsToExecute(List<Action> Actions, CppDependencyCache CppDependencies, ActionHistory History, bool bIgnoreOutdatedImportLibraries)
+		public static HashSet<Action> GetActionsToExecute(List<Action> Actions, List<Action> PrerequisiteActions, CppDependencyCache CppDependencies, ActionHistory History, bool bIgnoreOutdatedImportLibraries)
 		{
-			using (Timeline.ScopeEvent("ActionGraph.GetActionsToExecute()"))
+			ITimelineEvent GetActionsToExecuteTimer = Timeline.ScopeEvent("ActionGraph.GetActionsToExecute()");
+
+			// Build a set of all actions needed for this target.
+			Dictionary<Action, bool> IsActionOutdatedMap = new Dictionary<Action, bool>();
+			foreach (Action Action in PrerequisiteActions)
 			{
-				// For all targets, build a set of all actions that are outdated.
-				Dictionary<Action, bool> OutdatedActionDictionary = new Dictionary<Action, bool>();
-				GatherAllOutdatedActions(Actions, History, OutdatedActionDictionary, CppDependencies, bIgnoreOutdatedImportLibraries);
-
-				// Build a list of actions that are both needed for this target and outdated.
-				return Actions.Where(Action => Action.CommandPath != null && OutdatedActionDictionary[Action]).ToList();
+				IsActionOutdatedMap.Add(Action, true);
 			}
-		}
 
-		/// <summary>
-		/// Checks that there aren't any intermediate files longer than the max allowed path length
-		/// </summary>
-		/// <param name="BuildConfiguration">The build configuration</param>
-		/// <param name="Actions">List of actions in the graph</param>
-		public static void CheckPathLengths(BuildConfiguration BuildConfiguration, IEnumerable<Action> Actions)
-		{
-			if (BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Win64)
-			{
-				const int MAX_PATH = 260;
+			// For all targets, build a set of all actions that are outdated.
+			Dictionary<Action, bool> OutdatedActionDictionary = new Dictionary<Action, bool>();
+			GatherAllOutdatedActions(Actions, History, OutdatedActionDictionary, CppDependencies, bIgnoreOutdatedImportLibraries);
 
-				List<FileReference> FailPaths = new List<FileReference>();
-				List<FileReference> WarnPaths = new List<FileReference>();
-				foreach (Action Action in Actions)
-				{
-					foreach (FileItem PrerequisiteItem in Action.PrerequisiteItems)
-					{
-						if (PrerequisiteItem.Location.FullName.Length >= MAX_PATH)
-						{
-							FailPaths.Add(PrerequisiteItem.Location);
-						}
-					}
-					foreach (FileItem ProducedItem in Action.ProducedItems)
-					{
-						if (ProducedItem.Location.FullName.Length >= MAX_PATH)
-						{
-							FailPaths.Add(ProducedItem.Location);
-						}
-						if (ProducedItem.Location.FullName.Length > UnrealBuildTool.RootDirectory.FullName.Length + BuildConfiguration.MaxNestedPathLength && ProducedItem.Location.IsUnderDirectory(UnrealBuildTool.RootDirectory))
-						{
-							WarnPaths.Add(ProducedItem.Location);
-						}
-					}
-				}
+			// Build a list of actions that are both needed for this target and outdated.
+			HashSet<Action> ActionsToExecute = new HashSet<Action>(Actions.Where(Action => Action.CommandPath != null && IsActionOutdatedMap.ContainsKey(Action) && OutdatedActionDictionary[Action]));
 
-				if (FailPaths.Count > 0)
-				{
-					StringBuilder Message = new StringBuilder();
-					Message.AppendFormat("The following output paths are longer than {0} characters. Please move the engine to a directory with a shorter path.", MAX_PATH);
-					foreach (FileReference Path in FailPaths)
-					{
-						Message.AppendFormat("\n[{0} characters] {1}", Path.FullName.Length, Path);
-					}
-					throw new BuildException(Message.ToString());
-				}
+			GetActionsToExecuteTimer.Finish();
 
-				if (WarnPaths.Count > 0)
-				{
-					StringBuilder Message = new StringBuilder();
-					Message.AppendFormat("Detected paths more than {0} characters below UE root directory. This may cause portability issues due to the {1} character maximum path length on Windows:\n", BuildConfiguration.MaxNestedPathLength, MAX_PATH);
-					foreach (FileReference Path in WarnPaths)
-					{
-						string RelativePath = Path.MakeRelativeTo(UnrealBuildTool.RootDirectory);
-						Message.AppendFormat("\n[{0} characters] {1}", RelativePath.Length, RelativePath);
-					}
-					Message.AppendFormat("\n\nConsider setting {0} = ... in module *.Build.cs files to use alternative names for intermediate paths.", nameof(ModuleRules.ShortName));
-					Log.TraceWarning(Message.ToString());
-				}
-			}
+			return ActionsToExecute;
 		}
 
 		/// <summary>
@@ -174,17 +123,13 @@ namespace UnrealBuildTool
 				ActionExecutor Executor;
 				if (BuildConfiguration.bAllowHybridExecutor && HybridExecutor.IsAvailable())
 				{
-					Executor = new HybridExecutor(BuildConfiguration.MaxParallelActions);
+					Executor = new HybridExecutor();
 				}
 				else if (BuildConfiguration.bAllowXGE && XGE.IsAvailable())
 				{
 					Executor = new XGE();
 				}
-				else if (BuildConfiguration.bAllowFASTBuild && FASTBuild.IsAvailable())
-				{
-					Executor = new FASTBuild();
-				}
-				else if (BuildConfiguration.bAllowDistcc)
+				else if(BuildConfiguration.bAllowDistcc)
 				{
 					Executor = new Distcc();
 				}
@@ -194,11 +139,11 @@ namespace UnrealBuildTool
 				}
 				else if(BuildConfiguration.bAllowParallelExecutor && ParallelExecutor.IsAvailable())
 				{
-					Executor = new ParallelExecutor(BuildConfiguration.MaxParallelActions);
+					Executor = new ParallelExecutor();
 				}
 				else
 				{
-					Executor = new LocalExecutor(BuildConfiguration.MaxParallelActions);
+					Executor = new LocalExecutor();
 				}
 
 				// Execute the build
@@ -611,7 +556,7 @@ namespace UnrealBuildTool
 		/// Builds a dictionary containing the actions from AllActions that are outdated by calling
 		/// IsActionOutdated.
 		/// </summary>
-		public static void GatherAllOutdatedActions(IEnumerable<Action> Actions, ActionHistory ActionHistory, Dictionary<Action, bool> OutdatedActions, CppDependencyCache CppDependencies, bool bIgnoreOutdatedImportLibraries)
+		static void GatherAllOutdatedActions(List<Action> Actions, ActionHistory ActionHistory, Dictionary<Action, bool> OutdatedActions, CppDependencyCache CppDependencies, bool bIgnoreOutdatedImportLibraries)
 		{
 			using(Timeline.ScopeEvent("Prefetching include dependencies"))
 			{

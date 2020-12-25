@@ -21,14 +21,13 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_AR_THREAD_LOCAL_SCOPED_CACHE_H
-#define PXR_USD_AR_THREAD_LOCAL_SCOPED_CACHE_H
+#ifndef AR_THREAD_LOCAL_SCOPED_CACHE_H
+#define AR_THREAD_LOCAL_SCOPED_CACHE_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/ar/api.h"
 
 #include "pxr/base/vt/value.h"
-#include "pxr/base/tf/diagnostic.h"
 
 #include <tbb/enumerable_thread_specific.h>
 #include <memory>
@@ -118,4 +117,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_AR_THREAD_LOCAL_SCOPED_CACHE_H
+#endif // AR_THREAD_LOCAL_SCOPED_CACHE_H

@@ -351,7 +351,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDGEOM_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -363,7 +363,7 @@ private:
 
     // override SchemaBase virtuals.
     USDGEOM_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -374,11 +374,10 @@ public:
     /// drawn for each instance.  <b>Topology attribute</b> - can be animated, 
     /// but at a potential performance impact for streaming.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `int[] protoIndices` |
-    /// | C++ Type | VtArray<int> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->IntArray |
+    /// \n  C++ Type: VtArray<int>
+    /// \n  Usd Type: SdfValueTypeNames->IntArray
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDGEOM_API
     UsdAttribute GetProtoIndicesAttr() const;
 
@@ -401,11 +400,10 @@ public:
     /// binary state on Id'd instances without adding a separate primvar.
     /// See also \ref UsdGeomPointInstancer_varyingTopo
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `int64[] ids` |
-    /// | C++ Type | VtArray<int64_t> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Int64Array |
+    /// \n  C++ Type: VtArray<int64_t>
+    /// \n  Usd Type: SdfValueTypeNames->Int64Array
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDGEOM_API
     UsdAttribute GetIdsAttr() const;
 
@@ -424,11 +422,10 @@ public:
     /// <b>Required property</b>. Per-instance position.  See also 
     /// \ref UsdGeomPointInstancer_transform .
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `point3f[] positions` |
-    /// | C++ Type | VtArray<GfVec3f> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Point3fArray |
+    /// \n  C++ Type: VtArray<GfVec3f>
+    /// \n  Usd Type: SdfValueTypeNames->Point3fArray
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDGEOM_API
     UsdAttribute GetPositionsAttr() const;
 
@@ -457,11 +454,10 @@ public:
     /// 
     /// See also \ref UsdGeomPointInstancer_transform .
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `quath[] orientations` |
-    /// | C++ Type | VtArray<GfQuath> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->QuathArray |
+    /// \n  C++ Type: VtArray<GfQuath>
+    /// \n  Usd Type: SdfValueTypeNames->QuathArray
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDGEOM_API
     UsdAttribute GetOrientationsAttr() const;
 
@@ -482,11 +478,10 @@ public:
     /// 
     /// See also \ref UsdGeomPointInstancer_transform .
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float3[] scales` |
-    /// | C++ Type | VtArray<GfVec3f> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float3Array |
+    /// \n  C++ Type: VtArray<GfVec3f>
+    /// \n  Usd Type: SdfValueTypeNames->Float3Array
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDGEOM_API
     UsdAttribute GetScalesAttr() const;
 
@@ -514,11 +509,10 @@ public:
     /// See also \ref UsdGeomPointInstancer_transform, 
     /// \ref UsdGeom_VelocityInterpolation .
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `vector3f[] velocities` |
-    /// | C++ Type | VtArray<GfVec3f> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Vector3fArray |
+    /// \n  C++ Type: VtArray<GfVec3f>
+    /// \n  Usd Type: SdfValueTypeNames->Vector3fArray
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDGEOM_API
     UsdAttribute GetVelocitiesAttr() const;
 
@@ -529,33 +523,6 @@ public:
     /// the default for \p writeSparsely is \c false.
     USDGEOM_API
     UsdAttribute CreateVelocitiesAttr(VtValue const &defaultValue = VtValue(), bool writeSparsely=false) const;
-
-public:
-    // --------------------------------------------------------------------- //
-    // ACCELERATIONS 
-    // --------------------------------------------------------------------- //
-    /// If authored, per-instance 'accelerations' will be used with
-    /// velocities to compute positions between samples for the 'positions'
-    /// attribute rather than interpolating between neighboring 'positions'
-    /// samples. Acceleration is measured in position units per second-squared.
-    /// To convert to position units per squared UsdTimeCode, divide by the
-    /// square of UsdStage::GetTimeCodesPerSecond().
-    ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `vector3f[] accelerations` |
-    /// | C++ Type | VtArray<GfVec3f> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Vector3fArray |
-    USDGEOM_API
-    UsdAttribute GetAccelerationsAttr() const;
-
-    /// See GetAccelerationsAttr(), and also 
-    /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
-    /// If specified, author \p defaultValue as the attribute's default,
-    /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
-    /// the default for \p writeSparsely is \c false.
-    USDGEOM_API
-    UsdAttribute CreateAccelerationsAttr(VtValue const &defaultValue = VtValue(), bool writeSparsely=false) const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -570,11 +537,10 @@ public:
     /// 
     /// See also \ref UsdGeomPointInstancer_transform .
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `vector3f[] angularVelocities` |
-    /// | C++ Type | VtArray<GfVec3f> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Vector3fArray |
+    /// \n  C++ Type: VtArray<GfVec3f>
+    /// \n  Usd Type: SdfValueTypeNames->Vector3fArray
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDGEOM_API
     UsdAttribute GetAngularVelocitiesAttr() const;
 
@@ -593,11 +559,10 @@ public:
     /// A list of id's to make invisible at the evaluation time.
     /// See \ref UsdGeomPointInstancer_invisibleIds .
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `int64[] invisibleIds = []` |
-    /// | C++ Type | VtArray<int64_t> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Int64Array |
+    /// \n  C++ Type: VtArray<int64_t>
+    /// \n  Usd Type: SdfValueTypeNames->Int64Array
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: []
     USDGEOM_API
     UsdAttribute GetInvisibleIdsAttr() const;
 
@@ -910,11 +875,6 @@ public:
     ///                     all velocities were zero in all dimensions.
     /// \param velocitiesSampleTime - time at which the samples from
     ///                               \p velocities were taken.
-    /// \param accelerations - array containing all instance accelerations. 
-    ///                     This array must be either the same size as 
-    ///                     \p protoIndicesor empty. If it is empty, transforms 
-    ///                     are computed as if all accelerations were zero in 
-    ///                     all dimensions.
     /// \param scales - array containing all instance scales. This array must be
     ///                 either the same size as \p protoIndices or empty. If it
     ///                 is empty, transforms are computed with no change in
@@ -952,7 +912,6 @@ public:
         const VtVec3fArray& positions,
         const VtVec3fArray& velocities,
         UsdTimeCode velocitiesSampleTime,
-        const VtVec3fArray& accelerations,
         const VtVec3fArray& scales,
         const VtQuathArray& orientations,
         const VtVec3fArray& angularVelocities,
@@ -963,28 +922,111 @@ public:
 
 private:
 
-    // Get the authored prototype paths. Fail if there are no authored prototype
-    // paths or the prototype indices are out of bounds.
-    bool _GetPrototypePathsForInstanceTransforms(
-        const VtIntArray& protoIndices,
-        SdfPathVector* protoPaths) const;
-
     // Get the authored prototype indices for instance transform computation.
     // Fail if prototype indices are not authored.
     bool _GetProtoIndicesForInstanceTransforms(
         UsdTimeCode baseTime,
         VtIntArray* protoIndices) const;
 
-    // Fetches data from attributes specific to UsdGeomPointInstancer
-    // required for instance transform calculations; this includes
-    // protoIndices, protoPaths, and the mask. 
-    bool _ComputePointInstancerAttributesPreamble(
+    // Get the authored positions for instance transform computation. Fail if
+    // there are no authored positions or the number of positions doesn't match
+    // the number of instances.
+    bool _GetPositionsForInstanceTransforms(
+        UsdTimeCode baseTime,
+        size_t numInstances,
+        UsdTimeCode* positionsSampleTime,
+        bool* positionsHasSamples,
+        VtVec3fArray* positions) const;
+
+    // Get the authored velocities for instance transform computation. Fail if
+    // there are no authored velocities, the number of velocities doesn't match
+    // the number of instances, or the velocity timesample does not align with
+    // the position timesample.
+    bool _GetVelocitiesForInstanceTransforms(
+        UsdTimeCode baseTime,
+        size_t numInstances,
+        UsdTimeCode positionsSampleTime,
+        UsdTimeCode* velocitiesSampleTime,
+        VtVec3fArray* velocities) const;
+
+    // Get the authored positions and velocities for instance transform
+    // computation. This method fails if the positions can't be fetched (see
+    // _GetPositionsForInstanceTransforms). If velocities can't be fetched (see
+    // _GetVelocitiesForInstanceTransforms) or positions are not time-varying,
+    // then \p velocities is cleared and \p velocitiesSampleTime is not changed.
+    bool _GetPositionsAndVelocitiesForInstanceTransforms(
+        UsdTimeCode baseTime,
+        size_t numInstances,
+        VtVec3fArray* positions,
+        VtVec3fArray* velocities,
+        UsdTimeCode* velocitiesSampleTime) const;
+
+    // Get the authored scales for instance transform computation. Fail if there
+    // are no authored scales or the number of scales doesn't match the number
+    // of instances.
+    bool _GetScalesForInstanceTransforms(
+        UsdTimeCode baseTime,
+        size_t numInstances,
+        VtVec3fArray* scales) const;
+
+    // Get the authored orientations for instance transform computation. Fail if
+    // there are no authored orientations or the number of orientations doesn't
+    // match the number of instances.
+    bool _GetOrientationsForInstanceTransforms(
+        UsdTimeCode baseTime,
+        size_t numInstances,
+        UsdTimeCode* orientationsSampleTime,
+        bool* orientationsHasSamples,
+        VtQuathArray* orientations) const;
+
+    // Get the authored angular velocities for instance transform computation.
+    // Fail if there are no authored angular velocities, the number of angular
+    // velocities doesn't match the number of instances, or the angular velocity
+    // timesample does not align with the orientation timesample.
+    bool _GetAngularVelocitiesForInstanceTransforms(
+        UsdTimeCode baseTime,
+        size_t numInstances,
+        UsdTimeCode orientationsSampleTime,
+        UsdTimeCode* angularVelocitiesSampleTime,
+        VtVec3fArray* angularVelocities) const;
+
+    // Get the authored orientations and angular velocities for instance
+    // transform computation. This method fails if the orientations can't be
+    // fetched (see _GetOrientationsForInstanceTransforms). If angular
+    // velocities can't be fetched (see
+    // _GetAngularVelocitiesForInstanceTransforms) or orientations are not time-
+    // varying, then \p angularVelocities is cleared and
+    // \p angularVelocitiesSampleTime is not changed.
+    bool _GetOrientationsAndAngularVelocitiesForInstanceTransforms(
+        UsdTimeCode baseTime,
+        size_t numInstances,
+        VtQuathArray* orientations,
+        VtVec3fArray* angularVelocities,
+        UsdTimeCode* angularVelocitiesSampleTime) const;
+
+    // Get the authored prototype paths. Fail if there are no authored prototype
+    // paths or the prototype indices are out of bounds.
+    bool _GetPrototypePathsForInstanceTransforms(
+        const VtIntArray& protoIndices,
+        SdfPathVector* protoPaths) const;
+
+    // Fetches data from attributes on a UsdGeomPointInstancer required for
+    // instance transform calculations.
+    bool _ComputeInstanceTransformsAtTimePreamble(
         const UsdTimeCode baseTime,
         const ProtoXformInclusion doProtoXforms,
         const MaskApplication applyMask,
         VtIntArray* protoIndices,
+        VtVec3fArray* positions,
+        VtVec3fArray* velocities,
+        UsdTimeCode* velocitiesSampleTime,
+        VtVec3fArray* scales,
+        VtQuathArray* orientations,
+        VtVec3fArray* angularVelocities,
+        UsdTimeCode* angularVelocitiesSampleTime,
         SdfPathVector* protoPaths,
-        std::vector<bool>* mask) const;
+        std::vector<bool>* mask,
+        float* velocityScale) const;
 
 public:
 
@@ -1110,7 +1152,7 @@ UsdGeomPointInstancer::ApplyMaskToArray(std::vector<bool> const &mask,
         return false;
     }
     size_t maskSize = mask.size();
-    if (maskSize == 0 || dataArray->size() == (size_t)elementSize){
+    if (maskSize == 0 || dataArray->size() == elementSize){
         return true;
     }
     else if ((maskSize * elementSize) != dataArray->size()){
@@ -1126,7 +1168,7 @@ UsdGeomPointInstancer::ApplyMaskToArray(std::vector<bool> const &mask,
     for (size_t i = 0; i < maskSize; ++i) {
         // XXX Could add a fast-path for elementSize == 1 ?
         if (mask[i]) {
-            for (int j = 0; j < elementSize; ++j) {
+            for (size_t j = 0; j < elementSize; ++j) {
                 *currData = beginData[i + j];
                 ++currData;
             }

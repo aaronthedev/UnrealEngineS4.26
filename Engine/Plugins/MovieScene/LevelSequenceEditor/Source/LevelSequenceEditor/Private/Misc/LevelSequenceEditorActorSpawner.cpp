@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LevelSequenceEditorActorSpawner.h"
 #include "MovieScene.h"
@@ -106,19 +106,13 @@ TValueOrError<FNewSpawnable, FText> FLevelSequenceEditorActorSpawner::CreateNewS
 				}
 			}
 
-			UWorld* World = GCurrentLevelEditingViewportClient ? GCurrentLevelEditingViewportClient->GetWorld() : nullptr;
-			if (World)
-			{
-				const FName ActorName = MakeUniqueObjectName(World->PersistentLevel, FactoryToUse->NewActorClass->StaticClass(), TemplateName);
+			AActor* Instance = FactoryToUse->CreateActor(&SourceObject, GWorld->PersistentLevel, FTransform(), RF_Transient | RF_Transactional, TemplateName );
+			Instance->bIsEditorPreviewActor = false;
+			NewSpawnable.ObjectTemplate = StaticDuplicateObject(Instance, &OwnerMovieScene, TemplateName, RF_AllFlags & ~RF_Transient);
 
-				AActor* Instance = FactoryToUse->CreateActor(&SourceObject, World->PersistentLevel, FTransform(), RF_Transient | RF_Transactional, ActorName );
-				Instance->bIsEditorPreviewActor = false;
-				NewSpawnable.ObjectTemplate = StaticDuplicateObject(Instance, &OwnerMovieScene, TemplateName, RF_AllFlags & ~RF_Transient);
-
-				const bool bNetForce = false;
-				const bool bShouldModifyLevel = false;
-				World->DestroyActor(Instance, bNetForce, bShouldModifyLevel);
-			}
+			const bool bNetForce = false;
+			const bool bShouldModifyLevel = false;
+			GWorld->DestroyActor(Instance, bNetForce, bShouldModifyLevel);
 		}
 	}
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SClassPropertyRecorderSettings.h"
 #include "Templates/SubclassOf.h"
@@ -104,12 +104,12 @@ FReply SClassPropertyRecorderSettings::HandleChoosePropertiesButtonClicked()
 	return FReply::Handled();
 }
 
-bool ShouldShowProperty_Recursive(const FProperty* InProperty)
+bool ShouldShowProperty_Recursive(const UProperty* InProperty)
 {
-	if (InProperty->IsA<FStructProperty>())
+	if (InProperty->IsA<UStructProperty>())
 	{
-		const FStructProperty* StructProperty = CastFieldChecked<const FStructProperty>(InProperty);
-		for (const FProperty* Property = StructProperty->Struct->PropertyLink; Property; Property = Property->PropertyLinkNext)
+		const UStructProperty* StructProperty = CastChecked<const UStructProperty>(InProperty);
+		for (const UProperty* Property = StructProperty->Struct->PropertyLink; Property; Property = Property->PropertyLinkNext)
 		{
 			if (Property->HasAnyPropertyFlags(CPF_Interp) && FMovieSceneMultiPropertyRecorder::CanPropertyBeRecorded(*Property))
 			{

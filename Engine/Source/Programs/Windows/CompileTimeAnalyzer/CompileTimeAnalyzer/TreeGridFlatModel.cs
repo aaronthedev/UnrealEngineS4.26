@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -114,29 +114,17 @@ namespace Timing_Data_Investigator
 			Modification = true;
 
 			// Iterate through all of the children within the items
-			IEnumerable<TreeGridElement> SortedItems;
-			switch (CurrentSortDirection)
+			IEnumerable<TreeGridElement> SortedItems = Items;
+			if (CurrentSortDirection == ListSortDirection.Ascending)
 			{
-				case ListSortDirection.Ascending:
-					{
-						SortedItems = Items.OrderBy(i => CurrentSortProperty.GetValue(i));
-						break;
-					}
-
-				case ListSortDirection.Descending:
-					{
-						SortedItems = Items.OrderByDescending(i => CurrentSortProperty.GetValue(i));
-						break;
-					}
-
-				default:
-					{
-						SortedItems = Items;
-						break;
-					}
+				Items.OrderBy(i => CurrentSortProperty.GetValue(i));
+			}
+			else if (CurrentSortDirection == ListSortDirection.Descending)
+			{
+				Items.OrderByDescending(i => CurrentSortProperty.GetValue(i));
 			}
 
-			foreach (TreeGridElement child in SortedItems)
+			foreach (TreeGridElement child in Items)
 			{
 				// Add the child to the model
 				Insert(Index++, child);

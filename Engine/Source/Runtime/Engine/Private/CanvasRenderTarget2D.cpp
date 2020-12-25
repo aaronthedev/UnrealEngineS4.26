@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/CanvasRenderTarget2D.h"
 #include "Misc/App.h"
@@ -81,7 +81,7 @@ void UCanvasRenderTarget2D::RepaintCanvas()
 		ENQUEUE_RENDER_COMMAND(CanvasRenderTargetMakeCurrentCommand)(
 			[TextureRenderTarget, bClearRenderTarget](FRHICommandListImmediate& RHICmdList)
 		{
-			RHICmdList.Transition(FRHITransitionInfo(TextureRenderTarget->GetRenderTargetTexture(), ERHIAccess::Unknown, ERHIAccess::RTV));
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, TextureRenderTarget->GetRenderTargetTexture());
 
 			if (bClearRenderTarget)
 			{

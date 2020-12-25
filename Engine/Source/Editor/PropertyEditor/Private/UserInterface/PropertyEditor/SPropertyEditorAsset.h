@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -81,7 +81,7 @@ public:
 	SLATE_END_ARGS()
 
 	static bool Supports( const TSharedRef< class FPropertyEditor >& InPropertyEditor );
-	static bool Supports( const FProperty* NodeProperty );
+	static bool Supports( const UProperty* NodeProperty );
 
 	/**
 	 * Construct the widget.
@@ -268,10 +268,9 @@ private:
 	/** 
 	 * Delegate used to check whether we can drop an object on this widget.
 	 * @param	InObject	The object we are dragging
-	 * @param	OutReason	When returning false, the reason it was not allowed
 	 * @returns true if the object can be dropped
 	 */
-	bool OnAssetDraggedOver( const UObject* InObject, FText& OutReason ) const;
+	bool OnAssetDraggedOver( const UObject* InObject ) const;
 
 	/** 
 	 * Delegate handling dropping an object on this widget
@@ -318,23 +317,15 @@ private:
 	 * @param	Property	The supplied property for the widget
 	 * @return	The class of the property. Asserts if this tries to return null.
 	 */
-	static UClass* GetObjectPropertyClass(const FProperty* Property);
+	static UClass* GetObjectPropertyClass(const UProperty* Property);
 
 	/**
 	 * Initialize the AllowedClasses and DisallowedClasses arrays based on the property metadata.
 	 */
-	void InitializeClassFilters(const FProperty* Property);
+	void InitializeClassFilters(const UProperty* Property);
 
 	/** Check if the given class is allowed by the AllowedClasses and DisallowedClasses as defined in the property metadata. */
 	bool IsClassAllowed(const UClass* InClass) const;
-
-	/**
-	 * Initialize DisallowedAssetDataTags based on the property metadata.
-	 */
-	void InitializeAssetDataTags(const FProperty* Property);
-
-	/** @return Returns true if the asset is relevant for this property*/
-	bool IsAssetAllowed(const FAssetData& InAssetData);
 
 private:
 
@@ -364,12 +355,6 @@ private:
 
 	/** A list of the factories we can use to create new assets */
 	TArray<UFactory*> NewAssetFactories;
-
-	/** Tags (and eventually values) that can NOT be used with this property */
-	TSharedPtr<FAssetDataTagMap> DisallowedAssetDataTags;
-
-	/** Tags and values that must be present for an asset to be used with this property */
-	TSharedPtr<FAssetDataTagMap> RequiredAssetDataTags;
 
 	/** Whether the asset can be 'None' in this case */
 	bool bAllowClear;

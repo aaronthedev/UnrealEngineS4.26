@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Factories/SoundSourceEffectFactory.h"
 #include "Sound/SoundSubmix.h"
@@ -62,7 +62,7 @@ UObject* USoundSourceEffectFactory::FactoryCreateNew(UClass* InClass, UObject* I
 
 bool USoundSourceEffectFactory::CanCreateNew() const
 {
-	return true;
+	return GetDefault<UAudioSettings>()->IsAudioMixerEnabled();
 }
 
 USoundSourceEffectChainFactory::USoundSourceEffectChainFactory(const FObjectInitializer& ObjectInitializer)
@@ -81,7 +81,7 @@ UObject* USoundSourceEffectChainFactory::FactoryCreateNew(UClass* Class, UObject
 
 bool USoundSourceEffectChainFactory::CanCreateNew() const
 {
-	return true;
+	return GetDefault<UAudioSettings>()->IsAudioMixerEnabled();
 }
 
 #undef LOCTEXT_NAMESPACE

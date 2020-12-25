@@ -29,14 +29,12 @@
 
 #pragma once
 
-#if defined(_M_ARM) || defined(_M_ARM64)
-#if PX_P64_FAMILY && !defined(__clang__)
-	#include <arm64_neon.h>
-#else
-	#include <arm_neon.h>
+#ifdef _M_ARM
+#include <arm_neon.h>
 #endif
-#endif // ARM
-
+#ifdef _M_ARM64
+#include <arm64_neon.h>
+#endif
 
 namespace nv
 {

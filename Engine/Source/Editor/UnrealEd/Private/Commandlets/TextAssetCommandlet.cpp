@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	TextAssetCommandlet.cpp: Commandlet for batch conversion and testing of
@@ -88,171 +88,6 @@ static void RepairDamagedFiles()
 	IFileManager::Get().IterateDirectoryRecursively(*FPaths::EngineContentDir(), RepairVisitor);
 }
 
-typedef TFunction<void(FStructuredArchiveRecord, TArray<FString>&)> FSimpleSchemaFieldPropertyGenerator;
-
-namespace StringConstants
-{
-	static FString Object(TEXT("object"));
-	static FString String(TEXT("string"));
-	static FString Number(TEXT("number"));
-	static FString Array(TEXT("array"));
-	static FString Boolean(TEXT("boolean"));
-	static FString Properties(TEXT("properties"));
-	static FString Type(TEXT("type"));
-}
-
-inline void WriteSimpleSchemaField(FStructuredArchiveRecord Record, const TCHAR* FieldName, FString& Type, FSimpleSchemaFieldPropertyGenerator PropertiesCallback = FSimpleSchemaFieldPropertyGenerator())
-{
-	FStructuredArchiveRecord FieldRecord = Record.EnterField(SA_FIELD_NAME(FieldName)).EnterRecord();
-	FieldRecord << SA_VALUE(TEXT("type"), Type);
-
-	if (PropertiesCallback)
-	{
-		FStructuredArchiveRecord PropertiesRecord = FieldRecord.EnterField(SA_FIELD_NAME(TEXT("properties"))).EnterRecord();
-		TArray<FString> Required;
-		PropertiesCallback(PropertiesRecord, Required);
-		if (Required.Num() > 0)
-		{
-			int32 NumRequired = Required.Num();
-			FStructuredArchiveArray RequiredArray = FieldRecord.EnterField(SA_FIELD_NAME(TEXT("required"))).EnterArray(NumRequired);
-			for (FString& RequiredProperty : Required)
-			{
-				RequiredArray.EnterElement() << RequiredProperty;
-			}
-		}
-	}
-}
-
-TSet<FName> GMissingThings;
-
-void GeneratePropertySchema(FProperty* Property, FStructuredArchiveRecord Record, TArray<FString>& Required)
-{
-	static const FName NAME_ClassProperty(TEXT("ClassProperty"));
-	static const FName NAME_WeakObjectProperty(TEXT("WeakObjectProperty"));
-
-	const FFieldClass* PropertyClass = Property->GetClass();
-	const FName PropertyClassName = PropertyClass->GetFName();
-
-	if (PropertyClassName == NAME_ArrayProperty)
-	{
-		WriteSimpleSchemaField(Record, TEXT("__Type"), StringConstants::String);
-		WriteSimpleSchemaField(Record, TEXT("__InnerType"), StringConstants::String);
-		WriteSimpleSchemaField(Record, TEXT("__InnerStructName"), StringConstants::String);
-		WriteSimpleSchemaField(Record, TEXT("__Value"), StringConstants::Array);
-
-		FStructuredArchiveRecord ItemsRecord = Record.EnterRecord(SA_FIELD_NAME(TEXT("items")));
-	}
-	else
-	{
-		WriteSimpleSchemaField(Record, TEXT("__Type"), StringConstants::String);
-		
-		// We need to describe the data that this property writes out, which only the derived property class knows. We'll have to add something to the FProperty API to do that
-		// but for now I'm just going to hardcode things here
-		if (PropertyClassName == NAME_StrProperty
- 		||  PropertyClassName == NAME_ObjectProperty
-		||  PropertyClassName == NAME_NameProperty)
-		{
-			WriteSimpleSchemaField(Record, TEXT("__Value"), StringConstants::String);
-		}
-		else if (PropertyClassName == NAME_EnumProperty || (PropertyClassName == NAME_ByteProperty && ((const FByteProperty*)(Property))->Enum != nullptr))
-		{
-			WriteSimpleSchemaField(Record, TEXT("__EnumName"), StringConstants::String);
-			WriteSimpleSchemaField(Record, TEXT("__Value"), StringConstants::String);
-		}
-		else if (PropertyClass->IsChildOf(FNumericProperty::StaticClass()))
-		{
-			WriteSimpleSchemaField(Record, TEXT("__Value"), StringConstants::Number);
-		}
-		else if (PropertyClassName == NAME_StructProperty || PropertyClassName == NAME_ClassProperty)
-		{
-			WriteSimpleSchemaField(Record, TEXT("__StructName"), StringConstants::String);
-			WriteSimpleSchemaField(Record, TEXT("__Value"), StringConstants::Object);
-		}
-		else if (PropertyClassName == NAME_TextProperty)
-		{
-			WriteSimpleSchemaField(Record, TEXT("__Value"), StringConstants::Object);
-		}
-		else if (PropertyClassName == NAME_BoolProperty)
-		{
-			WriteSimpleSchemaField(Record, TEXT("__Value"), StringConstants::Boolean);
-		}
-		else if (PropertyClassName == NAME_SetProperty)
-		{
-			WriteSimpleSchemaField(Record, TEXT("__InnerType"), StringConstants::String);
-			WriteSimpleSchemaField(Record, TEXT("__Value"), StringConstants::Object);
-		}
-		else if (PropertyClassName == NAME_InterfaceProperty)
-		{
-			WriteSimpleSchemaField(Record, TEXT("__Value"), StringConstants::Object);
-		}
-		else if (PropertyClassName == NAME_WeakObjectProperty)
-		{
-			WriteSimpleSchemaField(Record, TEXT("__Value"), StringConstants::Object);
-		}
-		else if (PropertyClassName == NAME_MapProperty)
-		{
-			WriteSimpleSchemaField(Record, TEXT("__InnerType"), StringConstants::String);
-			WriteSimpleSchemaField(Record, TEXT("__ValueType"), StringConstants::String);
-			WriteSimpleSchemaField(Record, TEXT("__Value"), StringConstants::Object);
-		}
-		else
-		{
-			if (!GMissingThings.Contains(PropertyClassName))
-			{
-				UE_LOG(LogTextAsset, Warning, TEXT("Unhandled property type: %s"), *PropertyClassName.ToString());
-				GMissingThings.Add(PropertyClassName);
-			}
-		}
-	}
-}
-
-void GenerateClassSchema(UClass* Class, FStructuredArchiveRecord Record, TArray<FString>& Required)
-{
-	FProperty* CurProperty = Class->PropertyLink;
-	while (CurProperty != nullptr)
-	{
-		WriteSimpleSchemaField(Record, *CurProperty->GetName(), StringConstants::Object, [CurProperty](FStructuredArchiveRecord InRecord, TArray<FString>& InRequired) { GeneratePropertySchema(CurProperty, InRecord, InRequired); });
-		CurProperty = CurProperty->PropertyLinkNext;
-	}
-}
-
-void GenerateSchema()
-{
-	//static const FName NAME_SpecificClass(TEXT("TextAssetTestObject"));
-	static const FName NAME_SpecificClass(NAME_None);
-
-	FString OutputFilename;
-	if (!FParse::Value(FCommandLine::Get(), TEXT("-schemaoutput="), OutputFilename))
-	{
-		OutputFilename = FPaths::ProjectConfigDir() / TEXT("Schemas/TextAssetExports.json");
-	}
-
-	TUniquePtr<FArchive> OutputAr(IFileManager::Get().CreateFileWriter(*OutputFilename));
-	FJsonArchiveOutputFormatter JsonFormatter(*OutputAr.Get());
-	FStructuredArchive StructuredArchive(JsonFormatter);
-	FStructuredArchiveRecord RootRecord = StructuredArchive.Open().EnterRecord();
-
-	for (FObjectIterator It(UClass::StaticClass()); It; ++It)
-	{
-		UClass* Class = Cast<UClass>(*It);
-		if (Class)
-		{
-			if (NAME_SpecificClass == NAME_None || Class->GetFName() == NAME_SpecificClass)
-			{
-				FStructuredArchiveRecord ClassRecord = RootRecord.EnterRecord(SA_FIELD_NAME(*Class->GetFullName()));
-				ClassRecord << SA_VALUE(*StringConstants::Type, StringConstants::Object);
-
-				WriteSimpleSchemaField(ClassRecord, TEXT("__Class"), StringConstants::Object);
-				WriteSimpleSchemaField(ClassRecord, TEXT("__Outer"), StringConstants::String);
-				WriteSimpleSchemaField(ClassRecord, TEXT("__bNotAlwaysLoadedForEditorGame"), StringConstants::Boolean);
-				WriteSimpleSchemaField(ClassRecord, TEXT("__Value"), StringConstants::Object, [Class](FStructuredArchiveRecord Record, TArray<FString>& Required) { GenerateClassSchema(Class, Record, Required); });
-			}
-		}
-	}
-
-	StructuredArchive.Close();
-}
-
 bool UTextAssetCommandlet::DoTextAssetProcessing(const FString& InCommandLine)
 {
 	FProcessingArgs Args;
@@ -290,7 +125,17 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FString& InCommandLine)
 	}
 
 	Args.bVerifyJson = !FParse::Param(*InCommandLine, TEXT("noverifyjson"));
-	Args.ProcessingMode = (ETextAssetCommandletMode)StaticEnum<ETextAssetCommandletMode>()->GetValueByNameString(ModeString);
+
+	TMap<FString, EProcessingMode> Modes;
+	Modes.Add(TEXT("ResaveText"), EProcessingMode::ResaveText);
+	Modes.Add(TEXT("ResaveBinary"), EProcessingMode::ResaveBinary);
+	Modes.Add(TEXT("RoundTrip"), EProcessingMode::RoundTrip);
+	Modes.Add(TEXT("LoadText"), EProcessingMode::LoadText);
+	Modes.Add(TEXT("LoadBinary"), EProcessingMode::LoadBinary);
+	Modes.Add(TEXT("FindMismatchedSerializers"), EProcessingMode::FindMismatchedSerializers);
+
+	check(Modes.Contains(ModeString));
+	Args.ProcessingMode = Modes[ModeString];
 
 	FParse::Value(*InCommandLine, TEXT("iterations="), Args.NumSaveIterations);
 
@@ -307,18 +152,10 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 
 	TArray<FString> Blacklist;
 
-	switch (InArgs.ProcessingMode)
+	if (InArgs.ProcessingMode == EProcessingMode::FindMismatchedSerializers)
 	{
-	case ETextAssetCommandletMode::FindMismatchedSerializers:
 		FindMismatchedSerializers();
 		return true;
-
-	case ETextAssetCommandletMode::GenerateSchema:
-		GenerateSchema();
-		break;
-
-	default:
-		break;
 	}
 
 	TArray<UObject*> Objects;		
@@ -330,9 +167,9 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 
 	switch (InArgs.ProcessingMode)
 	{
-	case ETextAssetCommandletMode::ResaveBinary:
-	case ETextAssetCommandletMode::ResaveText:
-	case ETextAssetCommandletMode::RoundTrip:
+	case EProcessingMode::ResaveBinary:
+	case EProcessingMode::ResaveText:
+	case EProcessingMode::RoundTrip:
 	{
 		IFileManager::Get().FindFilesRecursive(InputAssetFilenames, *ProjectContentDir, *(Wildcard + FPackageName::GetAssetPackageExtension()), true, false, true);
 		IFileManager::Get().FindFilesRecursive(InputAssetFilenames, *ProjectContentDir, *(Wildcard + FPackageName::GetMapPackageExtension()), true, false, false);
@@ -346,14 +183,14 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 		break;
 	}
 
-	case ETextAssetCommandletMode::LoadText:
+	case EProcessingMode::LoadText:
 	{
 		IFileManager::Get().FindFilesRecursive(InputAssetFilenames, *ProjectContentDir, *(Wildcard + FPackageName::GetTextAssetPackageExtension()), true, false, true);
 		//IFileManager::Get().FindFilesRecursive(InputAssetFilenames, *BasePath, *(Wildcard + FPackageName::GetTextMapPackageExtension()), true, false, false);
 		break;
 	}
 
-	case ETextAssetCommandletMode::LoadBinary:
+	case EProcessingMode::LoadBinary:
 	{
 		IFileManager::Get().FindFilesRecursive(InputAssetFilenames, *ProjectContentDir, *(Wildcard + FPackageName::GetAssetPackageExtension()), true, false, true);
 		//IFileManager::Get().FindFilesRecursive(InputAssetFilenames, *BasePath, *(Wildcard + FPackageName::GetTextMapPackageExtension()), true, false, false);
@@ -413,13 +250,13 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 
 		switch (InArgs.ProcessingMode)
 		{
-		case ETextAssetCommandletMode::ResaveBinary:
+		case EProcessingMode::ResaveBinary:
 		{
 			DestinationFilename = InputAssetFilename + TEXT(".tmp");
 			break;
 		}
 
-		case ETextAssetCommandletMode::ResaveText:
+		case EProcessingMode::ResaveText:
 		{
 			if (InputAssetFilename.EndsWith(FPackageName::GetAssetPackageExtension())) DestinationFilename = FPaths::ChangeExtension(InputAssetFilename, FPackageName::GetTextAssetPackageExtension());;
 			if (InputAssetFilename.EndsWith(FPackageName::GetMapPackageExtension())) DestinationFilename = FPaths::ChangeExtension(InputAssetFilename, FPackageName::GetTextMapPackageExtension());;
@@ -427,8 +264,8 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 			break;
 		}
 
-		case ETextAssetCommandletMode::LoadText:
-		case ETextAssetCommandletMode::LoadBinary:
+		case EProcessingMode::LoadText:
+		case EProcessingMode::LoadBinary:
 		{
 			break;
 		}
@@ -440,7 +277,6 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 		}
 	}
 
-	const FString TempFailedDiffsPath = FPaths::ProjectSavedDir() / TEXT(".roundtrip");
 	const FString FailedDiffsPath = FPaths::ProjectSavedDir() / TEXT("FailedDiffs");
 	IFileManager::Get().DeleteDirectory(*FailedDiffsPath, false, true);
 
@@ -495,11 +331,8 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 
 			switch (InArgs.ProcessingMode)
 			{
-			case ETextAssetCommandletMode::RoundTrip:
+			case EProcessingMode::RoundTrip:
 			{
-				UE_LOG(LogTextAsset, Display, TEXT("Starting roundtrip test for '%s' [%d/%d]"), *SourceLongPackageName, NumFiles + 1, FilesToProcess.Num());
-				UE_LOG(LogTextAsset, Display, TEXT("-----------------------------------------------------------------------------------------"));
-
 				const FString WorkingFilenames[2] = { SourceFilename, FPaths::ChangeExtension(SourceFilename, FPackageName::GetTextAssetPackageExtension()) };
 				
 
@@ -529,31 +362,18 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 				static const int32 NumPhases = 3;
 				static const int32 NumTests = 3;
 
-				static const TCHAR* PhaseNames[] = { TEXT("Binary Only"), TEXT("Text Only"), TEXT("Alternating Binary/Text") };
+				static const TCHAR* PhaseNames[NumPhases] = { TEXT("Binary Only"), TEXT("Text Only"), TEXT("Alternating Binary/Text") };
 
-				#if CPUPROFILERTRACE_ENABLED
-				static const TCHAR* PhaseEventTypes[3] = {
-						TEXT("BinaryOnly"),
-						TEXT("TextOnly"),
-						TEXT("Alternating"),
-				};
-
-				static const TCHAR* TestEventTypes[6] = {
-						TEXT("Test1"),
-						TEXT("Test2"),
-						TEXT("Test3"),
-						TEXT("Test4"),
-						TEXT("Test5"),
-						TEXT("Test6"),
-				};
-				#endif // CPUPROFILERTRACE_ENABLED
 
 				TArray<TArray<FSHAHash>> Hashes;
 
 				CollectGarbage(RF_NoFlags, true);
 
+				UE_LOG(LogTextAsset, Display, TEXT("Starting roundtrip test for '%s' [%d/%d]"), *SourceLongPackageName, NumFiles + 1, FilesToProcess.Num());
+				UE_LOG(LogTextAsset, Display, TEXT("-----------------------------------------------------------------------------------------"));
+
 				bool bPhasesMatched[NumPhases] = { true, true, true };
-				TArray<TPair<FString,FString>> DiffFilenames;
+				TArray<FString> DiffFilenames;
 
 				for (int32 Phase = 0; Phase < NumPhases; ++Phase)
 				{
@@ -561,18 +381,10 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 					IFileManager::Get().Copy(*SourceFilename, *BaseBinaryPackageBackup, true);
 
 					TArray<FSHAHash> PhaseHashes = Hashes[Hashes.AddDefaulted()];
-					
-					#if CPUPROFILERTRACE_ENABLED
-					TRACE_CPUPROFILER_EVENT_SCOPE_TEXT(PhaseEventTypes[Phase]);
-					#endif
 
 					for (int32 i = 0; i < ((Phase == 2) ? NumTests * 2 : NumTests); ++i)
 					{
 						int32 Bucket;
-
-						#if CPUPROFILERTRACE_ENABLED
-						TRACE_CPUPROFILER_EVENT_SCOPE_TEXT(TestEventTypes[i]);
-						#endif
 
 						switch (Phase)
 						{
@@ -614,44 +426,22 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 						}
 						};
 
-						UPackage* Package = nullptr;
-						
-						{
-							TRACE_CPUPROFILER_EVENT_SCOPE(LoadPackage);
-							Package = LoadPackage(nullptr, *SourceLongPackageName, LOAD_None);
-						}
-						
-						{
-							TRACE_CPUPROFILER_EVENT_SCOPE(SavePackage); 
-							SavePackageHelper(Package, *WorkingFilenames[Bucket], RF_Standalone, GWarn, nullptr, SAVE_KeepGUID);
-						}
-						
-						{
-							TRACE_CPUPROFILER_EVENT_SCOPE(ResetLoaders); 
-							ResetLoaders(Package);
-						}
+						UPackage* Package = LoadPackage(nullptr, *SourceLongPackageName, LOAD_None);
+						SavePackageHelper(Package, *WorkingFilenames[Bucket], RF_Standalone, GWarn, nullptr, SAVE_KeepGUID);
+						ResetLoaders(Package);
+						CollectGarbage(RF_NoFlags, true);
 
-						{
-							TRACE_CPUPROFILER_EVENT_SCOPE(CollectGarbage);
-							CollectGarbage(RF_NoFlags, true);
-						}
+						FSHAHash& Hash = PhaseHashes[PhaseHashes.AddDefaulted()];
+						HashFile(*WorkingFilenames[Bucket], Hash);
 
-						{
-							TRACE_CPUPROFILER_EVENT_SCOPE(RoundtripTestCleanup);
-							FSHAHash& Hash = PhaseHashes[PhaseHashes.AddDefaulted()];
-							HashFile(*WorkingFilenames[Bucket], Hash);
+						FString TargetPath = WorkingFilenames[Bucket];
+						FPaths::MakePathRelativeTo(TargetPath, *FPaths::ProjectContentDir());
+						TargetPath = FailedDiffsPath / TargetPath;
 
-							FString TargetPath = WorkingFilenames[Bucket];
-							FPaths::MakePathRelativeTo(TargetPath, *FPaths::ProjectContentDir());
-							FString IntermediateTargetPath = TempFailedDiffsPath / TargetPath;
-							FString FinalTargetPath = FailedDiffsPath / TargetPath;
+						FString IntermediateFilename = FString::Printf(TEXT("%s_Phase%i_%03i%s"), *FPaths::ChangeExtension(TargetPath, TEXT("")), Phase, i + 1, *FPaths::GetExtension(WorkingFilenames[Bucket], true));
+						IFileManager::Get().Copy(*IntermediateFilename, *WorkingFilenames[Bucket]);
 
-							FString IntermediateFilename = FString::Printf(TEXT("%s_Phase%i_%03i%s"), *FPaths::ChangeExtension(IntermediateTargetPath, TEXT("")), Phase, i + 1, *FPaths::GetExtension(WorkingFilenames[Bucket], true));
-							FString FinalFilename = FString::Printf(TEXT("%s_Phase%i_%03i%s"), *FPaths::ChangeExtension(FinalTargetPath, TEXT("")), Phase, i + 1, *FPaths::GetExtension(WorkingFilenames[Bucket], true));
-							IFileManager::Get().Copy(*IntermediateFilename, *WorkingFilenames[Bucket]);
-
-							DiffFilenames.Add(TPair<FString, FString>(IntermediateFilename, FinalFilename));
-						}
+						DiffFilenames.Add(IntermediateFilename);
 					}
 
 					UE_LOG(LogTextAsset, Display, TEXT("Phase %i (%s) Results"), Phase + 1, PhaseNames[Phase]);
@@ -683,18 +473,6 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 					{
 						IFileManager::Get().Delete(*WorkingFilenames[1], false, false, true);
 					}
-
-					if (!bTotalSuccess)
-					{
-						for (const TPair<FString, FString>& DiffPair : DiffFilenames)
-						{
-							IFileManager::Get().MakeDirectory(*FPaths::GetPath(DiffPair.Value));
-							IFileManager::Get().Move(*DiffPair.Value, *DiffPair.Key);
-						}
-					}
-
-					DiffFilenames.Empty();
-					IFileManager::Get().DeleteDirectory(*TempFailedDiffsPath, false, true);
 				}
 
 				static const bool bDisableCleanup = FParse::Param(FCommandLine::Get(), TEXT("disablecleanup"));
@@ -712,6 +490,7 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 					}
 				}
 
+				bool bDeleteDiffs = true;
 				if (!bPhasesMatched[0])
 				{
 					UE_LOG(LogTextAsset, Display, TEXT("-----------------------------------------------------------------------------------------"));
@@ -721,9 +500,30 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 				{
 					UE_LOG(LogTextAsset, Display, TEXT("-----------------------------------------------------------------------------------------"));
 					UE_LOG(LogTextAsset, Error, TEXT("Binary determinism tests succeeded, but text and/or alternating tests failed for asset '%s'"), *SourceLongPackageName);
+					bDeleteDiffs = false;
 				}
 
-					bool bSuccess = true;
+				if (bDeleteDiffs)
+				{
+					FString Directory;
+					for (const FString& DiffFilename : DiffFilenames)
+					{
+						IFileManager::Get().Delete(*DiffFilename, false, false, true);
+
+						if (Directory.Len() == 0)
+						{
+							Directory = FPaths::GetPath(DiffFilename) + TEXT("/");
+						}
+					}
+					TArray<FString> Found;
+					IFileManager::Get().FindFiles(Found, *Directory, true, true);
+					if (Found.Num() == 0)
+					{
+						IFileManager::Get().DeleteDirectory(*Directory, true, false);
+					}
+				}
+
+				bool bSuccess = true;
 				for (int32 PhaseIndex = 0; PhaseIndex < NumPhases; ++PhaseIndex)
 				{
 					if (!bPhasesMatched[PhaseIndex])
@@ -745,18 +545,16 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 				break;
 			}
 
-			case ETextAssetCommandletMode::ResaveBinary:
-			case ETextAssetCommandletMode::ResaveText:
+			case EProcessingMode::ResaveBinary:
+			case EProcessingMode::ResaveText:
 			{
 				UPackage* Package = nullptr;
 
 				UE_LOG(LogTextAsset, Display, TEXT("Resaving asset %s"), *SourceFilename);
-				TRACE_CPUPROFILER_EVENT_SCOPE(UTextAssetCommandlet::Resave);
 
 				double Timer = 0.0;
 				{
 					SCOPE_SECONDS_COUNTER(Timer);
-					TRACE_CPUPROFILER_EVENT_SCOPE(UTextAssetCommandlet::LoadPackage);
 					Package = LoadPackage(nullptr, *SourceFilename, 0);
 				}
 				IterationPackageLoadTime += Timer;
@@ -768,7 +566,7 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 				{
 					{
 						SCOPE_SECONDS_COUNTER(Timer);
-						TRACE_CPUPROFILER_EVENT_SCOPE(UTextAssetCommandlet::SavePackage);
+
 						IFileManager::Get().Delete(*DestinationFilename, false, true, true);
 						bSaveSuccessful = SavePackageHelper(Package, *DestinationFilename, RF_Standalone, GWarn, nullptr, SAVE_KeepGUID);
 					}
@@ -778,9 +576,8 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 
 				if (bSaveSuccessful)
 				{
-					if (InArgs.bVerifyJson && InArgs.ProcessingMode == ETextAssetCommandletMode::ResaveText)
+					if (InArgs.bVerifyJson && InArgs.ProcessingMode == EProcessingMode::ResaveText)
 					{
-						TRACE_CPUPROFILER_EVENT_SCOPE(UTextAssetCommandlet::VerifyJson);
 						FArchive* File = IFileManager::Get().CreateFileReader(*DestinationFilename);
 						TSharedPtr< FJsonObject > RootObject;
 						TSharedRef< TJsonReader<char> > Reader = TJsonReaderFactory<char>::Create(File);
@@ -790,7 +587,6 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 
 					if (InArgs.OutputPath.Len() > 0)
 					{
-						TRACE_CPUPROFILER_EVENT_SCOPE(UTextAssetCommandlet::CopyToExternalOutput);
 						FString CopyFilename = DestinationFilename;
 						FPaths::MakePathRelativeTo(CopyFilename, *FPaths::RootDir());
 						CopyFilename = InArgs.OutputPath / CopyFilename;
@@ -803,7 +599,7 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 				break;
 			}
 
-			case ETextAssetCommandletMode::LoadText:
+			case EProcessingMode::LoadText:
 			{
 				UPackage* Package = nullptr;
 				UE_LOG(LogTextAsset, Display, TEXT("Loading Text Asset '%s'"), *SourceFilename);
@@ -823,7 +619,7 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 				break;
 			}
 
-			case ETextAssetCommandletMode::LoadBinary:
+			case EProcessingMode::LoadBinary:
 			{
 				UPackage* Package = nullptr;
 				UE_LOG(LogTextAsset, Display, TEXT("Loading Binary Asset '%s'"), *SourceFilename);
@@ -847,7 +643,7 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 			double EndTime = FPlatformTime::Seconds();
 			double Time = EndTime - StartTime;
 
-			if (InArgs.ProcessingMode == ETextAssetCommandletMode::LoadBinary || InArgs.ProcessingMode == ETextAssetCommandletMode::LoadText)
+			if (InArgs.ProcessingMode == EProcessingMode::LoadBinary || InArgs.ProcessingMode == EProcessingMode::LoadText)
 			{
 				if (ThisPackageLoadTime > MaxTime)
 				{
@@ -880,7 +676,7 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 			NumFiles++;
 		}
 
-		if (InArgs.ProcessingMode == ETextAssetCommandletMode::RoundTrip)
+		if (InArgs.ProcessingMode == EProcessingMode::RoundTrip)
 		{
 			UE_LOG(LogTextAsset, Display, TEXT("\t-----------------------------------------------------"));
 			UE_LOG(LogTextAsset, Display, TEXT("\tRoundTrip Results"));
@@ -910,7 +706,7 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 
 		double AvgFileTime, MinFileTime, MaxFileTime;
 
-		if (InArgs.ProcessingMode == ETextAssetCommandletMode::LoadBinary || InArgs.ProcessingMode == ETextAssetCommandletMode::LoadText)
+		if (InArgs.ProcessingMode == EProcessingMode::LoadBinary || InArgs.ProcessingMode == EProcessingMode::LoadText)
 		{
 			AvgFileTime = IterationPackageLoadTime;
 		}
@@ -936,7 +732,7 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 			CSVWriter->Serialize(TCHAR_TO_ANSI(*CSVLine), CSVLine.Len());
 		}
 
-		if (InArgs.ProcessingMode != ETextAssetCommandletMode::LoadText && InArgs.ProcessingMode != ETextAssetCommandletMode::ResaveText)
+		if (InArgs.ProcessingMode != EProcessingMode::LoadText && InArgs.ProcessingMode != EProcessingMode::ResaveText)
 		{
 			UE_LOG(LogTextAsset, Display, TEXT("\tTotal Package Save Time:  \t%.2fs"), IterationPackageSaveTime);
 		}
@@ -954,7 +750,7 @@ bool UTextAssetCommandlet::DoTextAssetProcessing(const FProcessingArgs& InArgs)
 		delete CSVWriter;
 	}
 
-	if (InArgs.ProcessingMode != ETextAssetCommandletMode::LoadText)
+	if (InArgs.ProcessingMode != EProcessingMode::LoadText)
 	{
 		UE_LOG(LogTextAsset, Display, TEXT("\tAvg Iteration Save Time:  \t%.2fs"), TotalPackageSaveTime / (float)InArgs.NumSaveIterations);
 	}

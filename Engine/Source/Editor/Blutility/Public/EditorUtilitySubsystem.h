@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,13 +6,11 @@
 
 #include "UObject/ObjectMacros.h"
 #include "UObject/UObjectGlobals.h"
-#include "Templates/SubclassOf.h"
 
 #include "EditorUtilitySubsystem.generated.h"
 
 class SWindow;
 class UEditorUtilityWidget;
-class UEditorUtilityTask;
 
 UCLASS(config = EditorPerProjectUserSettings)
 class BLUTILITY_API UEditorUtilitySubsystem : public UEditorSubsystem
@@ -42,54 +40,10 @@ public:
 	bool TryRun(UObject* Asset);
 
 	UFUNCTION(BlueprintCallable, Category = "Development|Editor")
-	UEditorUtilityWidget* SpawnAndRegisterTabAndGetID(class UEditorUtilityWidgetBlueprint* InBlueprint, FName& NewTabID);
-
-	UFUNCTION(BlueprintCallable, Category = "Development|Editor")
 	UEditorUtilityWidget* SpawnAndRegisterTab(class UEditorUtilityWidgetBlueprint* InBlueprint);
 
-	UFUNCTION(BlueprintCallable, Category = "Development|Editor")
-	void RegisterTabAndGetID(class UEditorUtilityWidgetBlueprint* InBlueprint, FName& NewTabID);
-
-	/** Given an ID for a tab, try to find a tab spawner that matches, and then spawn a tab. Returns true if it was able to find a matching tab spawner */
-	UFUNCTION(BlueprintCallable, Category = "Development|Editor")
-	bool SpawnRegisteredTabByID(FName NewTabID);
-
-	/** Given an ID for a tab, try to find an existing tab. Returns true if it found a tab. */
-	UFUNCTION(BlueprintCallable, Category = "Development|Editor")
-	bool DoesTabExist(FName NewTabID);
-
-	/** Given an ID for a tab, try to find and close an existing tab. Returns true if it found a tab to close. */
-	UFUNCTION(BlueprintCallable, Category = "Development|Editor")
-	bool CloseTabByID(FName NewTabID);
-
-	/** Given an editor utility widget blueprint, get the widget it creates. This will return a null pointer if the widget is not currently in a tab.*/
-	UFUNCTION(BlueprintCallable, Category = "Development|Editor")
-	UEditorUtilityWidget* FindUtilityWidgetFromBlueprint(class UEditorUtilityWidgetBlueprint* InBlueprint);
-
-	UFUNCTION(BlueprintCallable, Category = "Development|Editor")
-	void RegisterAndExecuteTask(UEditorUtilityTask* NewTask);
-
-	void RemoveTaskFromActiveList(UEditorUtilityTask* Task);
-
-protected:
-	bool Tick(float DeltaTime);
-
-	void RunTaskCommand(const TArray<FString>& Params, UWorld* InWorld, FOutputDevice& Ar);
-
-	UClass* FindClassByName(const FString& RawTargetName);
-	UClass* FindBlueprintClass(const FString& TargetNameRaw);
-
 private:
-	IConsoleObject* RunTaskCommandObject = nullptr;
 	
 	UPROPERTY()
-	TMap<UObject* /*Asset*/, UObject* /*Instance*/> ObjectInstances;
-
-	UPROPERTY(Transient)
-	TArray<UEditorUtilityTask*> PendingTasks;
-
-	UPROPERTY(Transient)
-	UEditorUtilityTask* ActiveTask;
-
-	FDelegateHandle TickerHandle;
+	TMap<UObject*, UObject*> ObjectInstances;
 };

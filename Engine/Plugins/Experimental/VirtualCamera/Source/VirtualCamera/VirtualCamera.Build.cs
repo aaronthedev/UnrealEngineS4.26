@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -6,7 +6,7 @@ public class VirtualCamera : ModuleRules
 {
 	public VirtualCamera(ReadOnlyTargetRules Target) : base(Target)
 	{
-		DefaultBuildSettings = BuildSettingsVersion.V2;
+		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
 		PublicDependencyModuleNames.AddRange(
 			new string[]
@@ -22,19 +22,13 @@ public class VirtualCamera : ModuleRules
 				"MovieScene",
 				"RemoteSession",
 				"TimeManagement",
-				"UMG",
-				"VCamCore",
 				"VPUtilities",
-				"VPUtilitiesEditor",
-				"TakesCore",
-				"AssetRegistry",
 			}
 		);
 
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"MediaIOCore",
 				"Slate",
 			}
 		);
@@ -63,9 +57,7 @@ public class VirtualCamera : ModuleRules
 			PublicDependencyModuleNames.Add("Sequencer");
 			PublicDependencyModuleNames.Add("SlateCore");
 			PublicDependencyModuleNames.Add("TakeRecorder");
-			PrivateDependencyModuleNames.Add("LevelEditor");
 			PrivateDependencyModuleNames.Add("UnrealEd");
-			PrivateDependencyModuleNames.Add("EditorScriptingUtilities");
 		}
 	}
 }

@@ -1,101 +1,94 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
-#include "Util.h"
-#include "Glyph.h"
+
+#include "Bevel/Mesh.h"
 #include "CoreMinimal.h"
+#include "DynamicMeshBuilder.h"
+
+struct FPart;
+
 
 /** Used to add vertices and triangles from different classes */
 class FData final
 {
 public:
 	/**
-	 * Constructor.
-	 * @param GlyphIn - Glyph that is being created.
+	 * Contructor.
+	 * @param MeshesIn - Vertices and indices to which bevel should be added (contains front cap).
+	 * @param ExpandTotalIn - Total expand value (for all ArcSegments from Bevel.cpp).
+	 * @param FontInverseScaleIn - Documented in Bevel.h.
+	 * @param ScaleIn - Documented in Bevel.h.
 	 */
-	FData(TSharedPtr<FText3DGlyph> GlyphIn);
+	FData(TSharedPtr<TText3DMeshList> MeshesIn, const float ExpandTotalIn, const float FontInverseScaleIn, const FVector& ScaleIn);
+
+
+	void SetHorizontalOffset(const float HorizontalOffsetIn);
+	void SetVerticalOffset(const float VertricalOffsetIn);
 
 	/**
-	 * Set group that is being created.
-	 * @param Type - Group type.
-	 * @param GroupExpandIn - Total expand of group (not needed now because intersections are not ready).
+	 * Set offset once instead of specifying it for every vertex.
+	 * @param ExpandTargetIn - Offset value.
 	 */
-	void SetCurrentGroup(const EText3DGroupType Type, const float GroupExpandIn);
-	/**
-	 * Set data needed for bevelling one segment.
-	 * @param PlannedExtrudeIn - Extrude.
-	 * @param PlannedExpandIn - Expand.
-	 * @param NormalStartIn - Normal in the start of segment.
-	 * @param NormalEndIn - Normal in the end of segment.
-	 */
-	void PrepareSegment(const float PlannedExtrudeIn, const float PlannedExpandIn, const FVector2D NormalStartIn, const FVector2D NormalEndIn);
-	/**
-	 * Set data for single bevelling in segment (needed for intersections).
-	 * @param ExtrudeTargetIn - Extrude.
-	 * @param ExpandTargetIn - Expand.
-	 */
-	void SetTarget(const float ExtrudeTargetIn, const float ExpandTargetIn);
+	void SetExpandTarget(const float ExpandTargetIn);
+	void SetMinBevelTarget();
+	void SetMaxBevelTarget();
 
 	int32 AddVertices(const int32 Count);
-	int32 AddVertex(const FPartConstPtr& Point, const FVector2D TangentX, const FVector& TangentZ, const FVector2D TextureCoordinates = {0.f, 0.f});
-	int32 AddVertex(const FVector2D Position, const FVector2D TangentX, const FVector& TangentZ, const FVector2D TextureCoordinates = {0.f, 0.f});
-	int32 AddVertex(const FVector& Position, const FVector& TangentX, const FVector& TangentZ, const FVector2D TextureCoordinates);
+	void AddVertex(const FPart* const Point, const FVector2D TangentX, const FVector& TangentZ, const FVector2D TextureCoordinates = {0, 0});
+	void AddVertex(const FVector2D Position, const FVector2D TangentX, const FVector& TangentZ, const FVector2D TextureCoordinates = {0, 0});
 
 	void AddTriangles(const int32 Count);
 	void AddTriangle(const int32 A, const int32 B, const int32 C);
 
-	float GetGroupExpand() const;
 
-	float GetPlannedExtrude() const;
-	float GetPlannedExpand() const;
+	float GetExpandTotal() const;
 
-	/**
-	 * Executed after segment was beveled.
-	 */
+	float GetExtrude() const;
+	void SetExtrude(const float ExtrudeIn);
+
+	float GetExpand() const;
+	void SetExpand(const float ExpandIn);
+
+	float GetFontInverseScale() const;
+
+	float GetExpandTarget() const;
+
+	void ResetDoneExtrude();
 	void IncreaseDoneExtrude();
 
-	FVector ComputeTangentZ(const FPartConstPtr& Edge, const float DoneExpand);
-
-
-	/**
-	 * FPart::Expanded for total expand value Data::ExpandTarget.
-	 * @param Point - Point for which position should be computed.
-	 * @return Computed position.
-	 */
-	FVector2D Expanded(const FPartConstPtr& Point) const;
-
-	/**
-	 * Make triangulation of edge along paths of it's vertices (from end of previous triangulation to result of points' expansion). Removes covered points' indices from paths.
-	 * @param Edge - Edge that has to be filled.
-	 * @param bSkipLastTriangle - Do not create last triangle (furthest from end of previous triangulation).
-	 */
-	void FillEdge(const FPartPtr& Edge, const bool bSkipLastTriangle);
+	void SetNormals(FVector2D Start, FVector2D End);
+	FVector ComputeTangentZ(const FPart* const Edge, const float DoneExpand);
+	void SetCurrentMesh(EText3DMeshType Type);
 
 private:
-	TSharedPtr<FText3DGlyph> Glyph;
+	TSharedPtr<TText3DMeshList> Meshes;
+	FText3DDynamicData* CurrentMesh;
 
-	EText3DGroupType CurrentGroup;
-	float GroupExpand;
+	const float ExpandTotal;
 
-	float PlannedExtrude;
-	float PlannedExpand;
+	float Extrude;
+	float Expand;
 
-	FVector2D NormalStart;
-	FVector2D NormalEnd;
+	float HorizontalOffset;
+	float VerticalOffset;
 
-	float ExtrudeTarget;
-	float ExpandTarget;
-
-	float DoneExtrude;
-
+	const float FontInverseScale;
+	const FVector Scale;
 
 	int32 VertexCountBeforeAdd;
 	int32 AddVertexIndex;
+	float CurrentExtrudeHeight;
+	float ExpandTarget;
 
-	int32 TriangleCountBeforeAdd;
+	int32 IndicesCountBeforeAdd;
 	int32 AddTriangleIndex;
 
+	float DoneExtrude;
+
+	FVector2D NormalStart;
+	FVector2D NormalEnd;
 
 
 	/**
@@ -105,12 +98,4 @@ private:
 	 * @return 3d coordinate.
 	 */
 	FVector GetVector(const FVector2D Position, const float Height) const;
-	/**
-	 * Make triangle fan, called from FData::FillEdge.
-	 * @param Cap - Cap of triangle fan.
-	 * @param Normal - Point, fan will be created along it's normal.
-	 * @param bNormalIsCapNext - Normal is next point after cap or vice versa.
-	 * @param bSkipLastTriangle - See FData::FillEdge.
-	 */
-	void MakeTriangleFanAlongNormal(const FPartConstPtr& Cap, const FPartPtr& Normal, const bool bNormalIsCapNext, const bool bSkipLastTriangle);
 };

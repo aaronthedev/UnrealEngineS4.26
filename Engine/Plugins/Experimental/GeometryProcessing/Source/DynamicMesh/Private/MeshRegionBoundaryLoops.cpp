@@ -1,28 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "MeshRegionBoundaryLoops.h"
-
-#include "Algo/ForEach.h"
-#include "DynamicMeshAttributeSet.h"
 #include "MeshBoundaryLoops.h"   // has a set of internal static functions we re-use
 #include "VectorUtil.h"
 #include "Util/SparseIndexCollectionTypes.h"
 
 
 FMeshRegionBoundaryLoops::FMeshRegionBoundaryLoops(const FDynamicMesh3* MeshIn, const TArray<int>& RegionTris, bool bAutoCompute)
-{
-	SetMesh(MeshIn, RegionTris);
-
-	if (bAutoCompute)
-	{
-		Compute();
-	}
-}
-
-
-
-void FMeshRegionBoundaryLoops::SetMesh(const FDynamicMesh3* MeshIn, const TArray<int>& RegionTris)
 {
 	this->Mesh = MeshIn;
 
@@ -55,6 +40,11 @@ void FMeshRegionBoundaryLoops::SetMesh(const FDynamicMesh3* MeshIn, const TArray
 			}
 		}
 	}
+
+	if (bAutoCompute)
+	{
+		Compute();
+	}
 }
 
 
@@ -76,8 +66,6 @@ int FMeshRegionBoundaryLoops::GetMaxVerticesLoopIndex() const
 
 bool FMeshRegionBoundaryLoops::Compute()
 {
-	bFailed = false; // reset
-
 	// This algorithm assumes that triangles are oriented consistently, 
 	// so closed boundary-loop can be followed by walking edges in-order
 	Loops.SetNum(0);
@@ -114,7 +102,6 @@ bool FMeshRegionBoundaryLoops::Compute()
 		loop_edges.Add(eStart);
 
 		int eCur = eid;
-		int eFirstVert = -1; // the first vertex on eCur, in terms of our walking order
 
 		// follow the chain : order of oriented edges
 		bool bClosed = false;
@@ -125,32 +112,14 @@ bool FMeshRegionBoundaryLoops::Compute()
 			int tid_in = IndexConstants::InvalidID, tid_out = IndexConstants::InvalidID;
 			IsEdgeOnBoundary(eCur, tid_in, tid_out);
 
-			int cure_a, cure_b;
-			if (eFirstVert == -1)
-			{
-				FIndex2i ev = GetOrientedEdgeVerts(eCur, tid_in);
-				cure_a = ev.A;
-				cure_b = ev.B;
-			}
-			else
-			{
-				// once we've walked on at least one edge, no longer need to rely on triangle orientation to know which way we were walking
-				FIndex2i edgev = Mesh->GetEdgeV(eCur);
-				checkSlow(edgev.Contains(eFirstVert));
-				cure_a = eFirstVert;
-				cure_b = edgev.A == cure_a ? edgev.B : edgev.A;
-			}
+			FIndex2i ev = GetOrientedEdgeVerts(eCur, tid_in, tid_out);
+			int cure_a = ev.A, cure_b = ev.B;
 			loop_verts.Add(cure_a);
 
 			int e0 = -1, e1 = 1;
 			int bdry_nbrs = GetVertexBoundaryEdges(cure_b, e0, e1);
 
-			if (bdry_nbrs < 2)
-			{
-				// found broken neighbourhood at vertex cure_b -- unrecoverable failure (unclosed loop)
-				bFailed = true;
-				return false;
-			}
+			check(bdry_nbrs >= 2); //  if (bdry_nbrs < 2) throw new MeshBoundaryLoopsException("MeshRegionBoundaryLoops.Compute: found broken neighbourhood at vertex " + cure_b){ UnclosedLoop = true };
 
 			int eNext = -1;
 			if (bdry_nbrs > 2)
@@ -177,12 +146,7 @@ bool FMeshRegionBoundaryLoops::Compute()
 					// Try to pick the best "turn left" vertex.
 					eNext = FindLeftTurnEdge(eCur, cure_b, all_e, num_be, used_edge);
 
-					if (eNext == -1)
-					{
-						// Cannot find valid outgoing edge at bowtie vertex cure_b -- unrecoverable failure
-						bFailed = true;
-						return false;
-					}
+					check(eNext != -1); // throw new MeshBoundaryLoopsException("MeshRegionBoundaryLoops.Compute: cannot find valid outgoing edge at bowtie vertex " + cure_b){ BowtieFailure = true };
 				}
 
 				if (bowties.Contains(cure_b) == false)
@@ -216,27 +180,16 @@ bool FMeshRegionBoundaryLoops::Compute()
 				eCur = eNext;
 				used_edge.Add(eCur);
 			}
-
-			eFirstVert = cure_b;
 		}
 
 		// if we saw a bowtie vertex, we might need to break up this loop,
 		// so call ExtractSubloops
 		if (bowties.Num() > 0)
 		{
-			TArray<FEdgeLoop> subloops;
-			bool bExtractedLoops = TryExtractSubloops(loop_verts, loop_edges, bowties, subloops);
-			if (!bExtractedLoops)
+			TArray<FEdgeLoop> subloops = ExtractSubloops(loop_verts, loop_edges, bowties);
+			for (int i = 0; i < subloops.Num(); ++i)
 			{
-				// skip adding subloops and mark as failure (but go on computing the rest of the boundary loops)
-				bFailed = true;
-			}
-			else
-			{
-				for (int i = 0; i < subloops.Num(); ++i)
-				{
-					Loops.Add(subloops[i]);
-				}
+				Loops.Add(subloops[i]);
 			}
 		}
 		else
@@ -254,7 +207,7 @@ bool FMeshRegionBoundaryLoops::Compute()
 		bowties.SetNum(0);
 	}
 
-	return !bFailed;
+	return true;
 }
 
 
@@ -294,7 +247,7 @@ bool FMeshRegionBoundaryLoops::IsEdgeOnBoundary(int eid, int& tid_in, int& tid_o
 
 
 // return same indices as GetEdgeV, but oriented based on attached triangle
-FIndex2i FMeshRegionBoundaryLoops::GetOrientedEdgeVerts(int eID, int tid_in)
+FIndex2i FMeshRegionBoundaryLoops::GetOrientedEdgeVerts(int eID, int tid_in, int tid_out)
 {
 	FIndex2i edgev = Mesh->GetEdgeV(eID);
 	int a = edgev.A, b = edgev.B;
@@ -384,7 +337,7 @@ int FMeshRegionBoundaryLoops::FindLeftTurnEdge(int incoming_e, int bowtie_v, TAr
 		// [TODO] can do this more efficiently?
 		int tid_in = IndexConstants::InvalidID, tid_out = IndexConstants::InvalidID;
 		IsEdgeOnBoundary(bdry_eid, tid_in, tid_out);
-		FIndex2i bdry_ev = GetOrientedEdgeVerts(bdry_eid, tid_in);
+		FIndex2i bdry_ev = GetOrientedEdgeVerts(bdry_eid, tid_in, tid_out);
 		//FIndex2i bdry_ev = Mesh.GetOrientedBoundaryEdgeV(bdry_eid);
 
 		if (bdry_ev.A != bowtie_v) {
@@ -393,7 +346,7 @@ int FMeshRegionBoundaryLoops::FindLeftTurnEdge(int incoming_e, int bowtie_v, TAr
 
 		// compute projected angle
 		FVector3d bc = Mesh->GetVertex(bdry_ev.B) - Mesh->GetVertex(bowtie_v);
-		double fAngleS = -VectorUtil::PlaneAngleSignedD(ab, bc, n);
+		double fAngleS = VectorUtil::PlaneAngleSignedD(ab, bc, n);
 
 		// turn left!
 		if (best_angle == TNumericLimits<double>::Max() || fAngleS < best_angle)
@@ -402,6 +355,7 @@ int FMeshRegionBoundaryLoops::FindLeftTurnEdge(int incoming_e, int bowtie_v, TAr
 			best_e = bdry_eid;
 		}
 	}
+	check(best_e != -1);
 
 	return best_e;
 }
@@ -418,9 +372,9 @@ int FMeshRegionBoundaryLoops::FindLeftTurnEdge(int incoming_e, int bowtie_v, TAr
 //
 // Currently loopE is not used, and the returned FEdgeLoop objects do not have their Edges
 // arrays initialized. Perhaps to improve : future.
-bool FMeshRegionBoundaryLoops::TryExtractSubloops(TArray<int>& loopV, const TArray<int>& loopE, const TArray<int>& bowties, TArray<FEdgeLoop>& SubLoopsOut)
+TArray<FEdgeLoop> FMeshRegionBoundaryLoops::ExtractSubloops(TArray<int>& loopV, const TArray<int>& loopE, const TArray<int>& bowties)
 {
-	SubLoopsOut.Reset();
+	TArray<FEdgeLoop> subs;
 
 	// figure out which bowties we saw are actually duplicated : loopV
 	TArray<int> dupes;
@@ -439,8 +393,8 @@ bool FMeshRegionBoundaryLoops::TryExtractSubloops(TArray<int>& loopV, const TArr
 		NewLoop.Vertices = loopV;
 		NewLoop.Edges = loopE;
 		NewLoop.BowtieVertices = bowties;
-		SubLoopsOut.Add(NewLoop);
-		return true;
+		subs.Add(NewLoop);
+		return subs;
 	}
 
 	// This loop extracts subloops until we have dealt with all the
@@ -467,12 +421,7 @@ bool FMeshRegionBoundaryLoops::TryExtractSubloops(TArray<int>& loopV, const TArr
 				}
 			}
 		}
-		if (bv_shortest == -1)
-		{
-			// Cannot find a valid simple loop -- unrecoverable failure
-			return false;
-		}
-
+		check(bv_shortest != -1); //  throw new MeshBoundaryLoopsException("MeshRegionBoundaryLoops.Compute: Cannot find a valid simple loop");
 		if (bv != bv_shortest)
 		{
 			bv = bv_shortest;
@@ -486,7 +435,7 @@ bool FMeshRegionBoundaryLoops::TryExtractSubloops(TArray<int>& loopV, const TArr
 		FMeshBoundaryLoops::ExtractSpan(loopV, start_i, end_i, true, loop.Vertices);
 		FEdgeLoop::VertexLoopToEdgeLoop(Mesh, loop.Vertices, loop.Edges);
 		loop.BowtieVertices = bowties;
-		SubLoopsOut.Add(loop);
+		subs.Add(loop);
 
 		// If there are no more duplicates of this bowtie, we can treat
 		// it like a regular vertex now
@@ -520,150 +469,8 @@ bool FMeshRegionBoundaryLoops::TryExtractSubloops(TArray<int>& loopV, const TArr
 		}
 		FEdgeLoop::VertexLoopToEdgeLoop(Mesh, loop.Vertices, loop.Edges);
 		loop.BowtieVertices = bowties;
-		SubLoopsOut.Add(loop);
+		subs.Add(loop);
 	}
 
-	return true;
+	return subs;
 }
-
-template<typename StorageType, int ElementSize, typename ElementType>
-bool FMeshRegionBoundaryLoops::GetLoopOverlayMap(const FEdgeLoop& LoopIn,
-	const TDynamicMeshOverlay<StorageType, ElementSize>& Overlay,
-	VidOverlayMap<ElementType>& LoopVidsToOverlayElementsOut)
-{
-	for (int32 i = 0; i < LoopIn.Vertices.Num(); ++i)
-	{
-		int32 Vid = LoopIn.Vertices[i];
-
-		// Get the inner triangle associated with the edges going forward from this vertex
-		int32 TidInside, TidOutside;
-		IsEdgeOnBoundary(LoopIn.Edges[i], TidInside, TidOutside);
-		check(TidInside != IndexConstants::InvalidID);
-
-		// Find the overlay element associated with the vertex
-		FIndex3i TriangleVerts = Mesh->GetTriangle(TidInside);
-		int32 VidTriIndex = TriangleVerts.IndexOf(Vid);
-		check(VidTriIndex >= 0);
-
-		FIndex3i TriangleElements = Overlay.GetTriangle(TidInside);
-		int32 UVElementID = TriangleElements[VidTriIndex];
-		if (!Overlay.IsElement(UVElementID))
-		{
-			return false;
-		}
-
-		ElementType Element; 
-		Overlay.GetElement(UVElementID, Element);
-		LoopVidsToOverlayElementsOut.Add(Vid,
-			ElementIDAndValue<ElementType>(UVElementID, Element));
-	}
-
-	return true;
-}
-
-template<typename StorageType, int ElementSize, typename ElementType>
-void FMeshRegionBoundaryLoops::UpdateLoopOverlayMapValidity(
-	VidOverlayMap<ElementType>& LoopVidsToOverlayElements, 
-	const TDynamicMeshOverlay<StorageType, ElementSize>& Overlay)
-{
-	// Go through all the overlay element ids's and see if they are still an element
-	// in the overlay. If not, make that id an invalid ID.
-	Algo::ForEachIf(LoopVidsToOverlayElements,
-		[&Overlay](const auto& Entry) { return !Overlay.IsElement(Entry.Value.Key); },
-		[](auto& Entry) { Entry.Value.Key = IndexConstants::InvalidID; });
-}
-
-// Right now we use our templated functions just for UV layers. If we need other overlay layers,
-// we'll need to add instantiations here.
-template DYNAMICMESH_API bool FMeshRegionBoundaryLoops::GetLoopOverlayMap<float, 2, FVector2f>(
-	const FEdgeLoop& LoopIn, const TDynamicMeshOverlay<float, 2>& Overlay,
-	VidOverlayMap<FVector2f>& LoopVidsToOverlayElementsOut);
-template DYNAMICMESH_API void FMeshRegionBoundaryLoops::UpdateLoopOverlayMapValidity<float, 2, FVector2f>(
-	VidOverlayMap<FVector2f>& LoopVidsToOverlayElements, const TDynamicMeshOverlay<float, 2>& Overlay);
-
-
-bool FMeshRegionBoundaryLoops::GetTriangleSetBoundaryLoop(const FDynamicMesh3& Mesh, const TArray<int32>& Tris, FEdgeLoop& Loop)
-{
-	// todo: special-case single triangle
-	// collect list of border edges
-	TArray<int32> Edges;
-	for (int32 tid : Tris)
-	{
-		FIndex3i TriEdges = Mesh.GetTriEdges(tid);
-		for (int32 j = 0; j < 3; ++j)
-		{
-			FIndex2i EdgeT = Mesh.GetEdgeT(TriEdges[j]);
-			int32 OtherT = (EdgeT.A == tid) ? EdgeT.B : EdgeT.A;
-			if (OtherT == FDynamicMesh3::InvalidID || Tris.Contains(OtherT) == false)
-			{
-				Edges.AddUnique(TriEdges[j]);
-			}
-		}
-	}
-
-	if (Edges.Num() == 0)
-	{
-		return false;
-	}
-
-	Loop.Mesh = &Mesh;
-
-	// Start at first edge and walk around loop, adding one vertex and edge each time.
-	// Abort if we encounter any nonmanifold configuration 
-	int32 NumEdges = Edges.Num();
-	int32 StartEdge = Edges[0];
-	FIndex2i StartEdgeT = Mesh.GetEdgeT(StartEdge);
-	int32 InTri = Tris.Contains(StartEdgeT.A) ? StartEdgeT.A : StartEdgeT.B;
-	FIndex2i StartEdgeV = Mesh.GetEdgeV(StartEdge);
-	IndexUtil::OrientTriEdge(StartEdgeV.A, StartEdgeV.B, Mesh.GetTriangle(InTri));
-	Loop.Vertices.Reset();
-	Loop.Vertices.Add(StartEdgeV.A);
-	Loop.Vertices.Add(StartEdgeV.B);
-	int32 CurEndVert = Loop.Vertices.Last();
-	int32 PrevEdge = StartEdge;
-	Loop.Edges.Reset();
-	Loop.Edges.Add(StartEdge);
-	int32 NumEdgesUsed = 1;
-	bool bContinue = true;
-	do 
-	{
-		bContinue = false;
-		for (int32 eid : Mesh.VtxEdgesItr(CurEndVert))
-		{
-			if (eid != PrevEdge && Edges.Contains(eid) && Loop.Edges.Contains(eid) == false)
-			{
-				FIndex2i EdgeV = Mesh.GetEdgeV(eid);
-				int32 NextV = (EdgeV.A == CurEndVert) ? EdgeV.B : EdgeV.A;
-				if (NextV == Loop.Vertices[0])		// closed loop
-				{
-					Loop.Edges.Add(eid);
-					NumEdgesUsed++;
-					bContinue = false;
-					break;
-				}
-				else
-				{
-					if (Loop.Vertices.Contains(NextV))
-					{
-						return false;		// hit a middle vertex, we have nonmanifold set of edges, abort
-					}
-					Loop.Edges.Add(eid);
-					PrevEdge = eid;
-					Loop.Vertices.Add(NextV);
-					NumEdgesUsed++;
-					CurEndVert = NextV;
-					bContinue = true;
-					break;
-				}
-			}
-		}
-	} while (bContinue);
-
-	if (NumEdgesUsed != Edges.Num())	// closed loop but we still have edges? must have nonmanifold configuration, abort.
-	{
-		return false;
-	}
-
-	return true;
-}
-

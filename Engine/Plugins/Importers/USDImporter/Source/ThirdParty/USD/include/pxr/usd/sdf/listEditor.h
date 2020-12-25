@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_LIST_EDITOR_H
-#define PXR_USD_SDF_LIST_EDITOR_H
+#ifndef SDF_LIST_EDITOR_H
+#define SDF_LIST_EDITOR_H
 
 #include "pxr/pxr.h"
 #include "pxr/base/tf/token.h"
@@ -33,10 +33,16 @@
 #include "pxr/usd/sdf/schema.h"
 #include "pxr/usd/sdf/spec.h"
 
+// XXX: Including this here may not be great, as this header leaks out
+//      of Sdf and causes downstream code to pick up the trace
+//      versions of TRACE_FUNCTION and TRACE_SCOPE instead of the
+//      versions in Common/Trace. Functionally, they should be equivalent,
+//      but could there be unwanted overhead involved?
+// #include "pxr/base/trace/trace.h"
+
+#include <boost/function.hpp>
 #include <boost/noncopyable.hpp>
 #include <boost/optional.hpp>
-
-#include <functional>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -71,12 +77,17 @@ public:
 
     bool IsValid() const
     {
-        return !IsExpired();
+        return (!IsExpired() && !IsNullEditor());
     }
 
-    bool IsExpired() const
+    virtual bool IsExpired() const
     {
         return !_owner;
+    }
+
+    virtual bool IsNullEditor() const
+    {
+        return false;
     }
 
     bool HasKeys() const
@@ -116,7 +127,7 @@ public:
     virtual bool ClearEdits() = 0;
     virtual bool ClearEditsAndMakeExplicit() = 0;
 
-    typedef std::function<
+    typedef boost::function<
                 boost::optional<value_type>(const value_type&)
             >
         ModifyCallback;
@@ -127,7 +138,7 @@ public:
     /// returned key.
     virtual void ModifyItemEdits(const ModifyCallback& cb) = 0;
 
-    typedef std::function<
+    typedef boost::function<
                 boost::optional<value_type>(SdfListOpType, const value_type&)
             >
         ApplyCallback;
@@ -139,9 +150,8 @@ public:
     /// the returned key is applied, allowing callbacks to perform key
     /// translation.  Note that this means list editors can't meaningfully
     /// hold the empty key.
-    virtual void ApplyEditsToList(
-        value_vector_type* vec, 
-        const ApplyCallback& cb = ApplyCallback()) = 0;
+    virtual void ApplyEdits(value_vector_type* vec, 
+                            const ApplyCallback& cb = ApplyCallback()) = 0;
 
     /// Returns the number of elements in the specified list of operations.
     size_t GetSize(SdfListOpType op) const
@@ -226,6 +236,9 @@ protected:
                                const value_vector_type& oldValues,
                                const value_vector_type& newValues) const
     {
+        // See XXX comment for pxr/base/trace above.
+        // TRACE_FUNCTION();
+
         // Disallow duplicate items from being stored in the new list
         // editor values. This is O(n^2), but we expect the number of elements
         // stored to be small enough that this won't matter.
@@ -234,29 +247,12 @@ protected:
         // We assume that duplicate data items are never allowed to be
         // authored. For full generality, this information ought to come from
         // the layer schema.
-
-        // We also assume that the `oldValues` are already valid and do not
-        // contain duplicates.  With this assumption, we can accelerate the
-        // common case of appending new items at the end and skip over a common
-        // prefix of oldValues and newValues.  Then we can only check for dupes
-        // in the tail of newValues.
-
-        typename value_vector_type::const_iterator
-            oldValuesTail = oldValues.begin(),
-            newValuesTail = newValues.begin(); 
-        auto oldEnd = oldValues.end(), newEnd = newValues.end();
-        while (oldValuesTail != oldEnd && newValuesTail != newEnd &&
-               *oldValuesTail == *newValuesTail) {
-            ++oldValuesTail, ++newValuesTail;
-        }
-
-        for (auto i = newValuesTail; i != newEnd; ++i) {
-            // Have to check unmatched new items for dupes.
-            for (auto j = newValues.begin(); j != i; ++j) {
-                if (*i == *j) {
+        for (int i = 0; i < newValues.size(); ++i) {
+            for (int j = i + 1; j < newValues.size(); ++j) {
+                if (newValues[i] == newValues[j]) {
                     TF_CODING_ERROR("Duplicate item '%s' not allowed for "
                                     "field '%s' on <%s>",
-                                    TfStringify(*i).c_str(),
+                                    TfStringify(newValues[i]).c_str(),
                                     _field.GetText(),
                                     this->GetPath().GetText());
                     return false;
@@ -272,15 +268,15 @@ protected:
                             _field.GetText());
         }
         else {
-            for (auto i = newValuesTail; i != newEnd; ++i) {
-                if (SdfAllowed isValid = fieldDef->IsValidListValue(*i)) { }
+            TF_FOR_ALL(v, newValues) {
+                if (SdfAllowed isValid = fieldDef->IsValidListValue(*v)) { }
                 else {
                     TF_CODING_ERROR("%s", isValid.GetWhyNot().c_str());
                     return false;
                 }
             }
         }
-        
+
         return true;
     }
 
@@ -348,4 +344,4 @@ operator<<(std::ostream& s, const Sdf_ListEditor<TypePolicy>& x)
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_LIST_EDITOR_H
+#endif // SDF_LIST_EDITOR_H

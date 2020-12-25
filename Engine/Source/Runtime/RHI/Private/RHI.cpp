@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	RHI.cpp: Render Hardware Interface implementation.
@@ -10,20 +10,12 @@
 #include "Misc/MessageDialog.h"
 #include "RHIShaderFormatDefinitions.inl"
 #include "ProfilingDebugging/CsvProfiler.h"
-#include "String/LexFromString.h"
-#include "String/ParseTokens.h"
 
 IMPLEMENT_MODULE(FDefaultModuleImpl, RHI);
 
 /** RHI Logging. */
 DEFINE_LOG_CATEGORY(LogRHI);
 CSV_DEFINE_CATEGORY(RHI, true);
-
-#if UE_BUILD_SHIPPING
-CSV_DEFINE_CATEGORY(DrawCall, false);
-#else
-CSV_DEFINE_CATEGORY(DrawCall, true);
-#endif
 
 // Define counter stats.
 DEFINE_STAT(STAT_RHIDrawPrimitiveCalls);
@@ -42,13 +34,6 @@ DEFINE_STAT(STAT_IndexBufferMemory);
 DEFINE_STAT(STAT_VertexBufferMemory);
 DEFINE_STAT(STAT_StructuredBufferMemory);
 DEFINE_STAT(STAT_PixelBufferMemory);
-
-IMPLEMENT_TYPE_LAYOUT(FRHIUniformBufferLayout);
-IMPLEMENT_TYPE_LAYOUT(FRHIUniformBufferLayout::FResourceParameter);
-
-#if !defined(RHIRESOURCE_NUM_FRAMES_TO_EXPIRE)
-	#define RHIRESOURCE_NUM_FRAMES_TO_EXPIRE 3
-#endif
 
 static FAutoConsoleVariable CVarUseVulkanRealUBs(
 	TEXT("r.Vulkan.UseRealUBs"),
@@ -77,104 +62,17 @@ static TAutoConsoleVariable<int32> CVarGraphicsAdapter(
 	TEXT("  1: Adapter #1, ..."),
 	ECVF_ReadOnly | ECVF_RenderThreadSafe);
 
-template<typename EnumType>
-inline FString BuildEnumNameBitList(EnumType Value, const TCHAR*(*GetEnumName)(EnumType))
+
+const FString FResourceTransitionUtility::ResourceTransitionAccessStrings[(int32)EResourceTransitionAccess::EMaxAccess + 1] =
 {
-	if (Value == EnumType(0))
-	{
-		return GetEnumName(Value);
-	}
-
-	using T = __underlying_type(EnumType);
-	T StateValue = (T)Value;
-
-	FString Name;
-
-	int32 BitIndex = 0;
-	while (StateValue)
-	{
-		if (StateValue & 1)
-		{
-			if (Name.Len() > 0 && StateValue > 0)
-			{
-				Name += TEXT("|");
-			}
-
-			Name += GetEnumName(EnumType(T(1) << BitIndex));
-		}
-
-		BitIndex++;
-		StateValue >>= 1;
-	}
-
-	return MoveTemp(Name);
-}
-
-FString GetRHIAccessName(ERHIAccess Access)
-{
-	switch (Access)
-	{
-		// Cases for legacy resource state, to make the huge bit combinations easier to read...
-	case ERHIAccess::EReadable:  return TEXT("EReadable");
-	case ERHIAccess::EWritable:  return TEXT("EWritable");
-	case ERHIAccess::ERWBarrier: return TEXT("ERWBarrier");
-
-		// All other states are built as a logic OR of state bits.
-	default:
-		return BuildEnumNameBitList<ERHIAccess>(Access, [](ERHIAccess AccessBit)
-		{
-			switch (AccessBit)
-			{
-			default: checkNoEntry(); // fall through
-			case ERHIAccess::Unknown:             return TEXT("Unknown");
-			case ERHIAccess::CPURead:             return TEXT("CPURead");
-			case ERHIAccess::Present:             return TEXT("Present");
-			case ERHIAccess::IndirectArgs:        return TEXT("IndirectArgs");
-			case ERHIAccess::VertexOrIndexBuffer: return TEXT("VertexOrIndexBuffer");
-			case ERHIAccess::SRVCompute:          return TEXT("SRVCompute");
-			case ERHIAccess::SRVGraphics:         return TEXT("SRVGraphics");
-			case ERHIAccess::CopySrc:             return TEXT("CopySrc");
-			case ERHIAccess::ResolveSrc:          return TEXT("ResolveSrc");
-			case ERHIAccess::DSVRead:             return TEXT("DSVRead");
-			case ERHIAccess::UAVCompute:          return TEXT("UAVCompute");
-			case ERHIAccess::UAVGraphics:         return TEXT("UAVGraphics");
-			case ERHIAccess::RTV:                 return TEXT("RTV");
-			case ERHIAccess::CopyDest:            return TEXT("CopyDest");
-			case ERHIAccess::ResolveDst:          return TEXT("ResolveDst");
-			case ERHIAccess::DSVWrite:            return TEXT("DSVWrite");
-			}
-		});
-	}
-}
-
-FString GetResourceTransitionFlagsName(EResourceTransitionFlags Flags)
-{
-	return BuildEnumNameBitList<EResourceTransitionFlags>(Flags, [](EResourceTransitionFlags Value)
-	{
-		switch (Value)
-		{
-		default: checkNoEntry(); // fall through
-		case EResourceTransitionFlags::None:                return TEXT("None");
-		case EResourceTransitionFlags::MaintainCompression: return TEXT("MaintainCompression");
-		}
-	});
-}
-
-FString GetRHIPipelineName(ERHIPipeline Pipeline)
-{
-	return BuildEnumNameBitList<ERHIPipeline>(Pipeline, [](ERHIPipeline Value)
-	{
-		if (Value == ERHIPipeline(0)) { return TEXT("None"); }
-
-		switch (Value)
-		{
-		default: checkNoEntry(); // fall through
-		case ERHIPipeline::Graphics:     return TEXT("Graphics");
-		case ERHIPipeline::AsyncCompute: return TEXT("AsyncCompute");
-		}
-	});
-}
-
+	FString(TEXT("EReadable")),
+	FString(TEXT("EWritable")),	
+	FString(TEXT("ERWBarrier")),
+	FString(TEXT("ERWNoBarrier")),
+	FString(TEXT("ERWSubResBarrier")),
+	FString(TEXT("EMetaData")),
+	FString(TEXT("EMaxAccess")),
+};
 
 #if STATS
 #include "Stats/StatsData.h"
@@ -225,9 +123,6 @@ TLockFreePointerListUnordered<FRHIResource, PLATFORM_CACHE_LINE_SIZE> FRHIResour
 FRHIResource* FRHIResource::CurrentlyDeleting = nullptr;
 TArray<FRHIResource::ResourcesToDelete> FRHIResource::DeferredDeletionQueue;
 uint32 FRHIResource::CurrentFrame = 0;
-RHI_API FDrawCallCategoryName* FDrawCallCategoryName::Array[FDrawCallCategoryName::MAX_DRAWCALL_CATEGORY];
-RHI_API int32 FDrawCallCategoryName::DisplayCounts[FDrawCallCategoryName::MAX_DRAWCALL_CATEGORY];
-RHI_API int32 FDrawCallCategoryName::NumCategory = 0;
 
 FString FVertexElement::ToString() const
 {
@@ -243,119 +138,22 @@ FString FVertexElement::ToString() const
 
 void FVertexElement::FromString(const FString& InSrc)
 {
-	FromString(FStringView(InSrc));
-}
+	FString Src = InSrc;
+	Src.ReplaceInline(TEXT("\r"), TEXT(" "));
+	Src.ReplaceInline(TEXT("\n"), TEXT(" "));
+	Src.ReplaceInline(TEXT("\t"), TEXT(" "));
+	Src.ReplaceInline(TEXT("<"), TEXT(" "));
+	Src.ReplaceInline(TEXT(">"), TEXT(" "));
+	TArray<FString> Parts;
+	Src.TrimStartAndEnd().ParseIntoArray(Parts, TEXT(" "));
 
-void FVertexElement::FromString(const FStringView& InSrc)
-{
-	constexpr int32 PartCount = 6;
-
-	TArray<FStringView, TInlineAllocator<PartCount>> Parts;
-	UE::String::ParseTokensMultiple(InSrc.TrimStartAndEnd(), {TEXT('\r'), TEXT('\n'), TEXT('\t'), TEXT('<'), TEXT('>'), TEXT(' ')},
-		[&Parts](FStringView Part) { if (!Part.IsEmpty()) { Parts.Add(Part); } });
-
-	check(Parts.Num() == PartCount && sizeof(Type) == 1); //not a very robust parser
-	const FStringView* PartIt = Parts.GetData();
-	LexFromString(StreamIndex, *PartIt++);
-	LexFromString(Offset, *PartIt++);
-	LexFromString((uint8&)Type, *PartIt++);
-	LexFromString(AttributeIndex, *PartIt++);
-	LexFromString(Stride, *PartIt++);
-	LexFromString(bUseInstanceIndex, *PartIt++);
-	check(Parts.GetData() + PartCount == PartIt);
-}
-
-uint32 GetTypeHash(const FSamplerStateInitializerRHI& Initializer)
-{
-	uint32 Hash = GetTypeHash(Initializer.Filter);
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.AddressU));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.AddressV));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.AddressW));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.MipBias));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.MinMipLevel));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.MaxMipLevel));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.MaxAnisotropy));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.BorderColor));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.SamplerComparisonFunction));
-	return Hash;
-}
-
-bool operator== (const FSamplerStateInitializerRHI& A, const FSamplerStateInitializerRHI& B)
-{
-	bool bSame = 
-		A.Filter == B.Filter &&
-		A.AddressU == B.AddressU &&
-		A.AddressV == B.AddressV &&
-		A.AddressW == B.AddressW &&
-		A.MipBias == B.MipBias &&
-		A.MinMipLevel == B.MinMipLevel &&
-		A.MaxMipLevel == B.MaxMipLevel &&
-		A.MaxAnisotropy == B.MaxAnisotropy &&
-		A.BorderColor == B.BorderColor &&
-		A.SamplerComparisonFunction == B.SamplerComparisonFunction;
-	return bSame;
-}
-
-uint32 GetTypeHash(const FRasterizerStateInitializerRHI& Initializer)
-{
-	uint32 Hash = GetTypeHash(Initializer.FillMode);
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.CullMode));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.DepthBias));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.SlopeScaleDepthBias));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.bAllowMSAA));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.bEnableLineAA));
-	return Hash;
-}
-	
-bool operator== (const FRasterizerStateInitializerRHI& A, const FRasterizerStateInitializerRHI& B)
-{
-	bool bSame = 
-		A.FillMode == B.FillMode && 
-		A.CullMode == B.CullMode && 
-		A.DepthBias == B.DepthBias && 
-		A.SlopeScaleDepthBias == B.SlopeScaleDepthBias && 
-		A.bAllowMSAA == B.bAllowMSAA && 
-		A.bEnableLineAA == B.bEnableLineAA;
-	return bSame;
-}
-
-uint32 GetTypeHash(const FDepthStencilStateInitializerRHI& Initializer)
-{
-	uint32 Hash = GetTypeHash(Initializer.bEnableDepthWrite);
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.DepthTest));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.bEnableFrontFaceStencil));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.FrontFaceStencilTest));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.FrontFaceStencilFailStencilOp));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.FrontFaceDepthFailStencilOp));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.FrontFacePassStencilOp));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.bEnableBackFaceStencil));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.BackFaceStencilTest));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.BackFaceStencilFailStencilOp));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.BackFaceDepthFailStencilOp));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.BackFacePassStencilOp));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.StencilReadMask));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.StencilWriteMask));
-	return Hash;
-}
-
-bool operator== (const FDepthStencilStateInitializerRHI& A, const FDepthStencilStateInitializerRHI& B)
-{
-	bool bSame = 
-		A.bEnableDepthWrite == B.bEnableDepthWrite && 
-		A.DepthTest == B.DepthTest && 
-		A.bEnableFrontFaceStencil == B.bEnableFrontFaceStencil && 
-		A.FrontFaceStencilTest == B.FrontFaceStencilTest && 
-		A.FrontFaceStencilFailStencilOp == B.FrontFaceStencilFailStencilOp && 
-		A.FrontFaceDepthFailStencilOp == B.FrontFaceDepthFailStencilOp && 
-		A.FrontFacePassStencilOp == B.FrontFacePassStencilOp && 
-		A.bEnableBackFaceStencil == B.bEnableBackFaceStencil && 
-		A.BackFaceStencilTest == B.BackFaceStencilTest && 
-		A.BackFaceStencilFailStencilOp == B.BackFaceStencilFailStencilOp && 
-		A.BackFaceDepthFailStencilOp == B.BackFaceDepthFailStencilOp && 
-		A.BackFacePassStencilOp == B.BackFacePassStencilOp && 
-		A.StencilReadMask == B.StencilReadMask && 
-		A.StencilWriteMask == B.StencilWriteMask;
-	return bSame;
+	check(Parts.Num() == 6 && sizeof(Type) == 1); //not a very robust parser
+	LexFromString(StreamIndex, *Parts[0]);
+	LexFromString(Offset, *Parts[1]);
+	LexFromString((uint8&)Type, *Parts[2]);
+	LexFromString(AttributeIndex, *Parts[3]);
+	LexFromString(Stride, *Parts[4]);
+	LexFromString(bUseInstanceIndex, *Parts[5]);
 }
 
 FString FDepthStencilStateInitializerRHI::ToString() const
@@ -384,43 +182,36 @@ FString FDepthStencilStateInitializerRHI::ToString() const
 			, uint32(StencilWriteMask)
 		);
 }
-
 void FDepthStencilStateInitializerRHI::FromString(const FString& InSrc)
 {
-	FromString(FStringView(InSrc));
-}
+	FString Src = InSrc;
+	Src.ReplaceInline(TEXT("\r"), TEXT(" "));
+	Src.ReplaceInline(TEXT("\n"), TEXT(" "));
+	Src.ReplaceInline(TEXT("\t"), TEXT(" "));
+	Src.ReplaceInline(TEXT("<"), TEXT(" "));
+	Src.ReplaceInline(TEXT(">"), TEXT(" "));
+	TArray<FString> Parts;
+	Src.TrimStartAndEnd().ParseIntoArray(Parts, TEXT(" "));
 
-void FDepthStencilStateInitializerRHI::FromString(const FStringView& InSrc)
-{
-	constexpr int32 PartCount = 14;
+	check(Parts.Num() == 14 && sizeof(bool) == 1 && sizeof(FrontFaceStencilFailStencilOp) == 1 && sizeof(BackFaceStencilTest) == 1 && sizeof(BackFaceDepthFailStencilOp) == 1); //not a very robust parser
 
-	TArray<FStringView, TInlineAllocator<PartCount>> Parts;
-	UE::String::ParseTokensMultiple(InSrc.TrimStartAndEnd(), {TEXT('\r'), TEXT('\n'), TEXT('\t'), TEXT('<'), TEXT('>'), TEXT(' ')},
-		[&Parts](FStringView Part) { if (!Part.IsEmpty()) { Parts.Add(Part); } });
+	LexFromString((uint8&)bEnableDepthWrite, *Parts[0]);
+	LexFromString((uint8&)DepthTest, *Parts[1]);
 
-	check(Parts.Num() == PartCount && sizeof(bool) == 1 && sizeof(FrontFaceStencilFailStencilOp) == 1 && sizeof(BackFaceStencilTest) == 1 && sizeof(BackFaceDepthFailStencilOp) == 1); //not a very robust parser
+	LexFromString((uint8&)bEnableFrontFaceStencil, *Parts[2]);
+	LexFromString((uint8&)FrontFaceStencilTest, *Parts[3]);
+	LexFromString((uint8&)FrontFaceStencilFailStencilOp, *Parts[4]);
+	LexFromString((uint8&)FrontFaceDepthFailStencilOp, *Parts[5]);
+	LexFromString((uint8&)FrontFacePassStencilOp, *Parts[6]);
 
-	const FStringView* PartIt = Parts.GetData();
+	LexFromString((uint8&)bEnableBackFaceStencil, *Parts[7]);
+	LexFromString((uint8&)BackFaceStencilTest, *Parts[8]);
+	LexFromString((uint8&)BackFaceStencilFailStencilOp, *Parts[9]);
+	LexFromString((uint8&)BackFaceDepthFailStencilOp, *Parts[10]);
+	LexFromString((uint8&)BackFacePassStencilOp, *Parts[11]);
 
-	LexFromString((uint8&)bEnableDepthWrite, *PartIt++);
-	LexFromString((uint8&)DepthTest, *PartIt++);
-
-	LexFromString((uint8&)bEnableFrontFaceStencil, *PartIt++);
-	LexFromString((uint8&)FrontFaceStencilTest, *PartIt++);
-	LexFromString((uint8&)FrontFaceStencilFailStencilOp, *PartIt++);
-	LexFromString((uint8&)FrontFaceDepthFailStencilOp, *PartIt++);
-	LexFromString((uint8&)FrontFacePassStencilOp, *PartIt++);
-
-	LexFromString((uint8&)bEnableBackFaceStencil, *PartIt++);
-	LexFromString((uint8&)BackFaceStencilTest, *PartIt++);
-	LexFromString((uint8&)BackFaceStencilFailStencilOp, *PartIt++);
-	LexFromString((uint8&)BackFaceDepthFailStencilOp, *PartIt++);
-	LexFromString((uint8&)BackFacePassStencilOp, *PartIt++);
-
-	LexFromString(StencilReadMask, *PartIt++);
-	LexFromString(StencilWriteMask, *PartIt++);
-
-	check(Parts.GetData() + PartCount == PartIt);
+	LexFromString(StencilReadMask, *Parts[12]);
+	LexFromString(StencilWriteMask, *Parts[13]);
 }
 
 FString FBlendStateInitializerRHI::ToString() const
@@ -430,67 +221,28 @@ FString FBlendStateInitializerRHI::ToString() const
 	{
 		Result += RenderTargets[Index].ToString();
 	}
-	Result += FString::Printf(TEXT("%d %d>"), uint32(!!bUseIndependentRenderTargetBlendStates), uint32(!!bUseAlphaToCoverage));
+	Result += FString::Printf(TEXT("%d>"), uint32(!!bUseIndependentRenderTargetBlendStates));
 	return Result;
 }
 
 void FBlendStateInitializerRHI::FromString(const FString& InSrc)
 {
-	FromString(FStringView(InSrc));
-}
+	FString Src = InSrc;
+	Src.ReplaceInline(TEXT("\r"), TEXT(" "));
+	Src.ReplaceInline(TEXT("\n"), TEXT(" "));
+	Src.ReplaceInline(TEXT("\t"), TEXT(" "));
+	Src.ReplaceInline(TEXT("<"), TEXT(" "));
+	Src.ReplaceInline(TEXT(">"), TEXT(" "));
+	TArray<FString> Parts;
+	Src.TrimStartAndEnd().ParseIntoArray(Parts, TEXT(" "));
 
-void FBlendStateInitializerRHI::FromString(const FStringView& InSrc)
-{
-	// files written before bUseAlphaToCoverage change (added in CL 13846572) have one less part
-	constexpr int32 BackwardCompatiblePartCount = MaxSimultaneousRenderTargets * FRenderTarget::NUM_STRING_FIELDS + 1;
-	constexpr int32 PartCount = BackwardCompatiblePartCount + 1;
 
-	TArray<FStringView, TInlineAllocator<PartCount>> Parts;
-	UE::String::ParseTokensMultiple(InSrc.TrimStartAndEnd(), {TEXT('\r'), TEXT('\n'), TEXT('\t'), TEXT('<'), TEXT('>'), TEXT(' ')},
-		[&Parts](FStringView Part) { if (!Part.IsEmpty()) { Parts.Add(Part); } });
-
-	checkf((Parts.Num() == PartCount || Parts.Num() == BackwardCompatiblePartCount) && sizeof(bool) == 1, 
-		TEXT("Expecting %d (or %d, for an older format) parts in the blendstate string, got %d"), PartCount, BackwardCompatiblePartCount, Parts.Num()); //not a very robust parser
-	bool bHasAlphaToCoverageField = Parts.Num() == PartCount;
-
-	const FStringView* PartIt = Parts.GetData();
+	check(Parts.Num() == MaxSimultaneousRenderTargets * FRenderTarget::NUM_STRING_FIELDS + 1 && sizeof(bool) == 1); //not a very robust parser
 	for (int32 Index = 0; Index < MaxSimultaneousRenderTargets; Index++)
 	{
-		RenderTargets[Index].FromString(MakeArrayView(PartIt, FRenderTarget::NUM_STRING_FIELDS));
-		PartIt += FRenderTarget::NUM_STRING_FIELDS;
+		RenderTargets[Index].FromString(Parts, FRenderTarget::NUM_STRING_FIELDS * Index);
 	}
-	LexFromString((int8&)bUseIndependentRenderTargetBlendStates, *PartIt++);
-	if (bHasAlphaToCoverageField)
-	{
-		LexFromString((int8&)bUseAlphaToCoverage, *PartIt++);
-		check(Parts.GetData() + PartCount == PartIt);
-	}
-	else
-	{
-		bUseAlphaToCoverage = false;
-		check(Parts.GetData() + BackwardCompatiblePartCount == PartIt);
-	}
-}
-
-uint32 GetTypeHash(const FBlendStateInitializerRHI& Initializer)
-{
-	uint32 Hash = GetTypeHash(Initializer.bUseIndependentRenderTargetBlendStates);
-	for (int32 i = 0; i < MaxSimultaneousRenderTargets; ++i)
-	{
-		Hash = HashCombine(Hash, GetTypeHash(Initializer.RenderTargets[i]));
-	}
-	
-	return Hash;
-}
-
-bool operator== (const FBlendStateInitializerRHI& A, const FBlendStateInitializerRHI& B)
-{
-	bool bSame = A.bUseIndependentRenderTargetBlendStates == B.bUseIndependentRenderTargetBlendStates;
-	for (int32 i = 0; i < MaxSimultaneousRenderTargets && bSame; ++i)
-	{
-		bSame = bSame && A.RenderTargets[i] == B.RenderTargets[i];
-	}
-	return bSame;
+	LexFromString((int8&)bUseIndependentRenderTargetBlendStates, *Parts[MaxSimultaneousRenderTargets * FRenderTarget::NUM_STRING_FIELDS]);
 }
 
 
@@ -519,44 +271,6 @@ void FBlendStateInitializerRHI::FRenderTarget::FromString(const TArray<FString>&
 	LexFromString((uint8&)ColorWriteMask, *Parts[Index++]);
 }
 
-void FBlendStateInitializerRHI::FRenderTarget::FromString(TArrayView<const FStringView> Parts)
-{
-	check(Parts.Num() == NUM_STRING_FIELDS);
-	const FStringView* PartIt = Parts.GetData();
-	LexFromString((uint8&)ColorBlendOp, *PartIt++);
-	LexFromString((uint8&)ColorSrcBlend, *PartIt++);
-	LexFromString((uint8&)ColorDestBlend, *PartIt++);
-	LexFromString((uint8&)AlphaBlendOp, *PartIt++);
-	LexFromString((uint8&)AlphaSrcBlend, *PartIt++);
-	LexFromString((uint8&)AlphaDestBlend, *PartIt++);
-	LexFromString((uint8&)ColorWriteMask, *PartIt++);
-}
-
-uint32 GetTypeHash(const FBlendStateInitializerRHI::FRenderTarget& Initializer)
-{
-	uint32 Hash = GetTypeHash(Initializer.ColorBlendOp);
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.ColorDestBlend));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.ColorSrcBlend));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.AlphaBlendOp));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.AlphaDestBlend));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.AlphaSrcBlend));
-	Hash = HashCombine(Hash, GetTypeHash(Initializer.ColorWriteMask));
-	return Hash;
-}
-
-bool operator==(const FBlendStateInitializerRHI::FRenderTarget& A, const FBlendStateInitializerRHI::FRenderTarget& B)
-{
-	bool bSame = 
-		A.ColorBlendOp == B.ColorBlendOp && 
-		A.ColorDestBlend == B.ColorDestBlend && 
-		A.ColorSrcBlend == B.ColorSrcBlend && 
-		A.AlphaBlendOp == B.AlphaBlendOp && 
-		A.AlphaDestBlend == B.AlphaDestBlend && 
-		A.AlphaSrcBlend == B.AlphaSrcBlend && 
-		A.ColorWriteMask == B.ColorWriteMask;
-	return bSame;
-}
-
 bool FRHIResource::Bypass()
 {
 	return GRHICommandList.Bypass();
@@ -569,17 +283,7 @@ void FRHIResource::FlushPendingDeletes(bool bFlushDeferredDeletes)
 	SCOPE_CYCLE_COUNTER(STAT_DeleteResources);
 
 	check(IsInRenderingThread());
-
-	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
-#if ENABLE_RHI_VALIDATION
-	if (GDynamicRHI)
-	{
-		// Submit all remaining work to the GPU. This also ensures that validation RHI barrier tracking
-		// operations have been flushed before we delete any resources they could be referring to.
-		RHICmdList.SubmitCommandsHint();
-	}
-#endif
-	RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThread);
+	FRHICommandListExecutor::GetImmediateCommandList().ImmediateFlush(EImmediateFlushType::FlushRHIThread);
 	FRHICommandListExecutor::CheckNoOutstandingCmdLists();
 	if (GDynamicRHI)
 	{
@@ -629,7 +333,12 @@ void FRHIResource::FlushPendingDeletes(bool bFlushDeferredDeletes)
 		}
 	}
 
-	const uint32 NumFramesToExpire = RHIRESOURCE_NUM_FRAMES_TO_EXPIRE;
+#if PLATFORM_XBOXONE
+	// Adding another frame of latency on Xbox. Speculative GPU crash fix.
+	const uint32 NumFramesToExpire = 4;
+#else
+	const uint32 NumFramesToExpire = 3;
+#endif
 
 	if (DeferredDeletionQueue.Num())
 	{
@@ -716,6 +425,7 @@ static TAutoConsoleVariable<int32> CVarGPUCrashDebugging(
 	ECVF_ReadOnly
 	);
 
+
 namespace RHIConfig
 {
 	bool ShouldSaveScreenshotAfterProfilingGPU()
@@ -762,11 +472,9 @@ bool GHardwareHiddenSurfaceRemoval = false;
 bool GRHISupportsAsyncTextureCreation = false;
 bool GRHISupportsQuadTopology = false;
 bool GRHISupportsRectTopology = false;
-bool GRHISupportsPrimitiveShaders = false;
 bool GRHISupportsAtomicUInt64 = false;
 bool GRHISupportsResummarizeHTile = false;
 bool GRHISupportsExplicitHTile = false;
-bool GRHISupportsExplicitFMask = false;
 bool GRHISupportsDepthUAV = false;
 bool GSupportsParallelRenderingTasksWithSeparateRHIThread = true;
 bool GRHIThreadNeedsKicking = false;
@@ -780,8 +488,6 @@ bool GSupportsTexture3D = true;
 bool GSupportsMobileMultiView = false;
 bool GSupportsImageExternal = false;
 bool GSupportsResourceView = true;
-bool GRHISupportsDrawIndirect = true;
-bool GRHISupportsMultithreading = false;
 TRHIGlobal<bool> GSupportsMultipleRenderTargets(true);
 bool GSupportsWideMRT = true;
 float GMinClipZ = 0.0f;
@@ -794,12 +500,8 @@ bool GRHISupportsLazyShaderCodeLoading = false;
 TRHIGlobal<int32> GMaxShadowDepthBufferSizeX(2048);
 TRHIGlobal<int32> GMaxShadowDepthBufferSizeY(2048);
 TRHIGlobal<int32> GMaxTextureDimensions(2048);
-TRHIGlobal<int64> GMaxBufferDimensions(2<<27);
-TRHIGlobal<int64> GMaxComputeSharedMemory(1<<15);
 TRHIGlobal<int32> GMaxVolumeTextureDimensions(2048);
 TRHIGlobal<int32> GMaxCubeTextureDimensions(2048);
-TRHIGlobal<int32> GMaxWorkGroupInvocations(1024);
-bool GRHISupportsRWTextureBuffers = true;
 int32 GMaxTextureArrayLayers = 256;
 int32 GMaxTextureSamplers = 16;
 bool GUsingNullRHI = false;
@@ -811,22 +513,19 @@ bool GRHISupportsTextureStreaming = false;
 bool GSupportsDepthBoundsTest = false;
 bool GSupportsEfficientAsyncCompute = false;
 bool GRHISupportsBaseVertexIndex = true;
+TRHIGlobal<bool> GRHISupportsInstancing(true);
 bool GRHISupportsFirstInstance = false;
 bool GRHISupportsDynamicResolution = false;
 bool GRHISupportsRayTracing = false;
-bool GRHISupportsRayTracingPSOAdditions = false;
-bool GRHISupportsRayTracingAsyncBuildAccelerationStructure = false;
 bool GRHISupportsWaveOperations = false;
-int32 GRHIMinimumWaveSize = 4; // Minimum supported value in SM 6.0
-int32 GRHIMaximumWaveSize = 128; // Maximum supported value in SM 6.0
 bool GRHISupportsRHIThread = false;
 bool GRHISupportsRHIOnTaskThread = false;
 bool GRHISupportsParallelRHIExecute = false;
+bool GSupportsHDR32bppEncodeModeIntrinsic = false;
 bool GSupportsParallelOcclusionQueries = false;
 bool GSupportsTransientResourceAliasing = false;
 bool GRHIRequiresRenderTargetForPixelShaderUAVs = false;
 bool GRHISupportsUAVFormatAliasing = false;
-bool GRHISupportsDirectGPUMemoryLock = false;
 
 bool GRHISupportsMSAADepthSampleAccess = false;
 bool GRHISupportsResolveCubemapFaces = false;
@@ -835,16 +534,9 @@ bool GRHISupportsBackBufferWithCustomDepthStencil = true;
 
 bool GRHIIsHDREnabled = false;
 bool GRHISupportsHDROutput = false;
-
-bool GRHISupportsVariableRateShading = false;
-int32 GVariableRateShadingImageTileSize = 0;
-int32 GVariableRateShadingTier = 0;
-
 EPixelFormat GRHIHDRDisplayOutputFormat = PF_FloatRGBA;
 
 uint64 GRHIPresentCounter = 1;
-
-bool GRHISupportsArrayIndexFromAnyShader = false;
 
 /** Whether we are profiling GPU hitches. */
 bool GTriggerGPUHitchProfile = false;
@@ -854,54 +546,22 @@ FVertexElementTypeSupportInfo GVertexElementTypeSupport;
 RHI_API int32 volatile GCurrentTextureMemorySize = 0;
 RHI_API int32 volatile GCurrentRendertargetMemorySize = 0;
 RHI_API int64 GTexturePoolSize = 0 * 1024 * 1024;
+RHI_API int64 GMaxTextureBufferSize = 0;
 RHI_API int32 GPoolSizeVRAMPercentage = 0;
 
 RHI_API EShaderPlatform GShaderPlatformForFeatureLevel[ERHIFeatureLevel::Num] = {SP_NumPlatforms,SP_NumPlatforms,SP_NumPlatforms,SP_NumPlatforms};
 
 // simple stats about draw calls. GNum is the previous frame and 
 // GCurrent is the current frame.
-// GCurrentNumDrawCallsRHIPtr points to the drawcall counter to increment
 RHI_API int32 GCurrentNumDrawCallsRHI = 0;
 RHI_API int32 GNumDrawCallsRHI = 0;
-RHI_API int32* GCurrentNumDrawCallsRHIPtr = &GCurrentNumDrawCallsRHI;
 RHI_API int32 GCurrentNumPrimitivesDrawnRHI = 0;
 RHI_API int32 GNumPrimitivesDrawnRHI = 0;
-
-RHI_API uint64 GRHITransitionPrivateData_SizeInBytes = 0;
-RHI_API uint64 GRHITransitionPrivateData_AlignInBytes = 0;
-
-ERHIAccess GRHITextureReadAccessMask = ERHIAccess::ReadOnlyMask;
 
 /** Called once per frame only from within an RHI. */
 void RHIPrivateBeginFrame()
 {
 	GNumDrawCallsRHI = GCurrentNumDrawCallsRHI;
-	
-#if CSV_PROFILER
-	// Only copy the display counters every so many frames to keep things more stable.
-	const int32 FramesUntilDisplayCopy = 30;
-	static int32 FrameCount = 0;
-	bool bCopyDisplayFrames = false;
-	++FrameCount;
-	if (FrameCount >= FramesUntilDisplayCopy)
-	{
-		bCopyDisplayFrames = true;
-		FrameCount = 0;
-	}
-
-	for (int32 Index=0; Index<FDrawCallCategoryName::NumCategory; ++Index)
-	{
-		FDrawCallCategoryName* CategoryName = FDrawCallCategoryName::Array[Index];
-		if (bCopyDisplayFrames)
-		{
-			FDrawCallCategoryName::DisplayCounts[Index] = CategoryName->Counter;
-		}
-		GNumDrawCallsRHI += CategoryName->Counter;
-		FCsvProfiler::RecordCustomStat(CategoryName->Name, CSV_CATEGORY_INDEX(DrawCall), CategoryName->Counter, ECsvCustomStatOp::Set);
-		CategoryName->Counter = 0;
-	}
-#endif
-
 	GNumPrimitivesDrawnRHI = GCurrentNumPrimitivesDrawnRHI;
 	CSV_CUSTOM_STAT(RHI, DrawCalls, GNumDrawCallsRHI, ECsvCustomStatOp::Set);
 	CSV_CUSTOM_STAT(RHI, PrimitivesDrawn, GNumPrimitivesDrawnRHI, ECsvCustomStatOp::Set);
@@ -1043,6 +703,10 @@ FName ShaderPlatformToPlatformName(EShaderPlatform Platform)
 	switch (Platform)
 	{
 	case SP_PCD3D_SM5:
+	case SP_OPENGL_SM4:
+	case SP_OPENGL_PCES2:
+	case SP_OPENGL_SM5:
+	case SP_PCD3D_ES2:
 	case SP_PCD3D_ES3_1:
 	case SP_OPENGL_PCES3_1:
 	case SP_VULKAN_PCES3_1:
@@ -1052,16 +716,20 @@ FName ShaderPlatformToPlatformName(EShaderPlatform Platform)
 		return NAME_PLATFORM_PS4;
 	case SP_XBOXONE_D3D12:
 		return NAME_PLATFORM_XBOXONE;
+	case SP_OPENGL_ES2_ANDROID:
+	case SP_OPENGL_ES31_EXT:
 	case SP_VULKAN_ES3_1_ANDROID:
-	case SP_VULKAN_SM5_ANDROID:
 	case SP_OPENGL_ES3_1_ANDROID:
 		return NAME_PLATFORM_ANDROID;
+	case SP_OPENGL_ES2_WEBGL:
+		return FName(TEXT(PREPROCESSOR_TO_STRING(PLATFORM_HEADER_NAME))); // WIP: platform extension magic
 	case SP_METAL:
 	case SP_METAL_MRT:
 		return NAME_PLATFORM_IOS;
 	case SP_METAL_SM5:
 	case SP_METAL_SM5_NOTESS:
 	case SP_METAL_MACES3_1:
+	case SP_METAL_MACES2:
 	case SP_METAL_MRT_MAC:
 		return NAME_PLATFORM_MAC;
 	case SP_SWITCH:
@@ -1150,7 +818,7 @@ RHI_API const TCHAR* RHIVendorIdToString(EGpuVendorId VendorId)
 	return TEXT("Unknown");
 }
 
-RHI_API uint32 RHIGetShaderLanguageVersion(const FStaticShaderPlatform Platform)
+RHI_API uint32 RHIGetShaderLanguageVersion(const EShaderPlatform Platform)
 {
 	uint32 Version = 0;
 	if (IsMetalPlatform(Platform))
@@ -1164,7 +832,7 @@ RHI_API uint32 RHIGetShaderLanguageVersion(const FStaticShaderPlatform Platform)
 				int32 MinShaderVersion = 3;
 				if(!GConfig->GetInt(TEXT("/Script/MacTargetPlatform.MacTargetSettings"), TEXT("MaxShaderLanguageVersion"), MaxShaderVersion, GEngineIni))
 				{
-					MaxShaderVersion = 4;
+					MaxShaderVersion = 3;
 				}
 				MaxShaderVersion = FMath::Max(MinShaderVersion, MaxShaderVersion);
 			}
@@ -1189,16 +857,16 @@ RHI_API uint32 RHIGetShaderLanguageVersion(const FStaticShaderPlatform Platform)
 	return Version;
 }
 
-RHI_API bool RHISupportsTessellation(const FStaticShaderPlatform Platform)
+RHI_API bool RHISupportsTessellation(const EShaderPlatform Platform)
 {
 	if (IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5))
 	{
-		return (Platform == SP_PCD3D_SM5) || (Platform == SP_XBOXONE_D3D12) || (Platform == SP_METAL_SM5) || (IsVulkanSM5Platform(Platform));
+		return (Platform == SP_PCD3D_SM5) || (Platform == SP_XBOXONE_D3D12) || (Platform == SP_OPENGL_SM5) || (Platform == SP_OPENGL_ES31_EXT) || (Platform == SP_METAL_SM5) || (IsVulkanSM5Platform(Platform));
 	}
 	return false;
 }
 
-RHI_API bool RHISupportsPixelShaderUAVs(const FStaticShaderPlatform Platform)
+RHI_API bool RHISupportsPixelShaderUAVs(const EShaderPlatform Platform)
 {
 	if (IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5))
 	{
@@ -1207,10 +875,10 @@ RHI_API bool RHISupportsPixelShaderUAVs(const FStaticShaderPlatform Platform)
 	return false;
 }
 
-RHI_API bool RHISupportsIndexBufferUAVs(const FStaticShaderPlatform Platform)
+RHI_API bool RHISupportsIndexBufferUAVs(const EShaderPlatform Platform)
 {
 	return Platform == SP_PCD3D_SM5 || IsVulkanPlatform(Platform) || IsMetalSM5Platform(Platform) || Platform == SP_XBOXONE_D3D12 || Platform == SP_PS4 
-		|| FDataDrivenShaderPlatformInfo::GetSupportsIndexBufferUAVs(Platform);
+		|| FDataDrivenShaderPlatformInfo::GetInfo(Platform).bSupportsIndexBufferUAVs;
 }
 
 
@@ -1224,9 +892,19 @@ RHI_API void RHISetMobilePreviewFeatureLevel(ERHIFeatureLevel::Type MobilePrevie
 
 bool RHIGetPreviewFeatureLevel(ERHIFeatureLevel::Type& PreviewFeatureLevelOUT)
 {
+	static bool bForceFeatureLevelES2 = !GIsEditor && FParse::Param(FCommandLine::Get(), TEXT("FeatureLevelES2"));
 	static bool bForceFeatureLevelES3_1 = !GIsEditor && (FParse::Param(FCommandLine::Get(), TEXT("FeatureLevelES31")) || FParse::Param(FCommandLine::Get(), TEXT("FeatureLevelES3_1")));
 
-	if (bForceFeatureLevelES3_1)
+	if (bForceFeatureLevelES2)
+	{
+		if (!UE_BUILD_SHIPPING)
+		{
+			FMessageDialog::Open(EAppMsgType::Ok, NSLOCTEXT("RHI", "ES2Deprecated", "Warning: FeatureLevel ES2 is deprecated, please use FeatureLevel ES3.1."));
+		}
+
+		PreviewFeatureLevelOUT = ERHIFeatureLevel::ES2;
+	}
+	else if (bForceFeatureLevelES3_1)
 	{
 		PreviewFeatureLevelOUT = ERHIFeatureLevel::ES3_1;
 	}
@@ -1248,19 +926,6 @@ bool RHIGetPreviewFeatureLevel(ERHIFeatureLevel::Type& PreviewFeatureLevelOUT)
 		return GDynamicRHI->RHIPreferredPixelFormatHint(PreferredPixelFormat);
 	}
 	return PreferredPixelFormat;
-}
-
-RHI_API int32 RHIGetPreferredClearUAVRectPSResourceType(const FStaticShaderPlatform Platform)
-{
-	if (IsMetalPlatform(Platform))
-	{
-		static constexpr uint32 METAL_TEXTUREBUFFER_SHADER_LANGUAGE_VERSION = 4;
-		if (METAL_TEXTUREBUFFER_SHADER_LANGUAGE_VERSION <= RHIGetShaderLanguageVersion(Platform))
-		{
-			return 0; // BUFFER
-		}
-	}
-	return 1; // TEXTURE_2D
 }
 
 void FRHIRenderPassInfo::ConvertToRenderTargetsInfo(FRHISetRenderTargetsInfo& OutRTInfo) const
@@ -1308,7 +973,19 @@ void FRHIRenderPassInfo::ConvertToRenderTargetsInfo(FRHISetRenderTargetsInfo& Ou
 	OutRTInfo.bClearStencil = (StencilLoadAction == ERenderTargetLoadAction::EClear);
 
 	OutRTInfo.FoveationTexture = FoveationTexture;
-	OutRTInfo.MultiViewCount = MultiViewCount;
+
+	if (NumUAVs > 0)
+	{
+		check(UAVIndex != -1);
+		int32 StartingUAVIndex = FMath::Max(UAVIndex, OutRTInfo.NumColorRenderTargets);
+		check((StartingUAVIndex+NumUAVs) <= MaxSimultaneousUAVs);
+		OutRTInfo.NumColorRenderTargets = StartingUAVIndex;
+		for (int32 Index = 0; Index < NumUAVs; ++Index)
+		{
+			OutRTInfo.UnorderedAccessView[Index] = UAVs[Index];
+		}
+		OutRTInfo.NumUAVs = NumUAVs;
+	}
 }
 
 void FRHIRenderPassInfo::OnVerifyNumUAVsFailed(int32 InNumUAVs)
@@ -1361,6 +1038,19 @@ void FRHIRenderPassInfo::Validate() const
 	{
 		// Gap in the sequence of valid render targets (ie RT0, null, RT2, ...)
 		ensureMsgf(!ColorRenderTargets[ColorIndex].RenderTarget, TEXT("Missing color render target on slot %d"), ColorIndex - 1);
+	}
+
+	if (bGeneratingMips)
+	{
+		if (NumColorRenderTargets == 0)
+		{
+			ensureMsgf(0, TEXT("Missing color render target for which to generate mips!"));
+		}
+
+		for (int32 Index = 1; Index < NumColorRenderTargets; ++Index)
+		{
+			ensureMsgf(ColorRenderTargets[0].RenderTarget->GetSizeXYZ() == ColorRenderTargets[Index].RenderTarget->GetSizeXYZ(), TEXT("Color Render Targets must all have the same dimensions for generating mips!"));
+		}		
 	}
 
 	if (DepthStencilRenderTarget.DepthStencilTarget)
@@ -1426,6 +1116,10 @@ FRHIPanicEvent& RHIGetPanicDelegate()
 	return RHIPanicEvent;
 }
 
+
+
+
+
 #include "Misc/DataDrivenPlatformInfoRegistry.h"
 
 FString LexToString(EShaderPlatform Platform)
@@ -1434,7 +1128,14 @@ FString LexToString(EShaderPlatform Platform)
 	{
 	case SP_PCD3D_SM5: return TEXT("PCD3D_SM5");
 	case SP_PCD3D_ES3_1: return TEXT("PCD3D_ES3_1");
+	case SP_PCD3D_ES2: return TEXT("PCD3D_ES2");
+	case SP_OPENGL_SM4: return TEXT("OPENGL_SM4");
+	case SP_OPENGL_SM5: return TEXT("OPENGL_SM5");
+	case SP_OPENGL_PCES2: return TEXT("OPENGL_PCES2");
 	case SP_OPENGL_PCES3_1: return TEXT("OPENGL_PCES3_1");
+	case SP_OPENGL_ES2_ANDROID: return TEXT("OPENGL_ES2_ANDROID");
+	case SP_OPENGL_ES2_WEBGL: return TEXT("OPENGL_ES2_WEBGL");
+	case SP_OPENGL_ES31_EXT: return TEXT("OPENGL_ES31_EXT");
 	case SP_OPENGL_ES3_1_ANDROID: return TEXT("OPENGL_ES3_1_ANDROID");
 	case SP_PS4: return TEXT("PS4");
 	case SP_XBOXONE_D3D12: return TEXT("XBOXONE_D3D12");
@@ -1448,28 +1149,20 @@ FString LexToString(EShaderPlatform Platform)
 	case SP_METAL_SM5: return TEXT("METAL_SM5");
 	case SP_METAL_SM5_NOTESS: return TEXT("METAL_SM5_NOTESS");
 	case SP_METAL_MACES3_1: return TEXT("METAL_MACES3_1");
+	case SP_METAL_MACES2: return TEXT("METAL_MACES2");
 	case SP_VULKAN_ES3_1_ANDROID: return TEXT("VULKAN_ES3_1_ANDROID");
 	case SP_VULKAN_ES3_1_LUMIN: return TEXT("VULKAN_ES3_1_LUMIN");
 	case SP_VULKAN_PCES3_1: return TEXT("VULKAN_PCES3_1");
 	case SP_VULKAN_SM5: return TEXT("VULKAN_SM5");
 	case SP_VULKAN_SM5_LUMIN: return TEXT("VULKAN_SM5_LUMIN");
-	case SP_VULKAN_SM5_ANDROID: return TEXT("VULKAN_SM5_ANDROID");
 
-	case SP_OPENGL_ES2_ANDROID_REMOVED:
-	case SP_OPENGL_ES2_WEBGL_REMOVED:
-	case SP_OPENGL_ES2_IOS_REMOVED:
-	case SP_VULKAN_SM4_REMOVED:
-	case SP_PCD3D_SM4_REMOVED:
-	case SP_OPENGL_SM4_REMOVED:
-	case SP_PCD3D_ES2_REMOVED:
-	case SP_OPENGL_PCES2_REMOVED:
-	case SP_METAL_MACES2_REMOVED:
-	case SP_OPENGL_SM5_REMOVED:
-	case SP_OPENGL_ES31_EXT_REMOVED:
+	case SP_OPENGL_ES2_IOS_DEPRECATED:
+	case SP_VULKAN_SM4_DEPRECATED:
+	case SP_PCD3D_SM4_DEPRECATED:
 		return TEXT("");
 
 	default:
-		if (FStaticShaderPlatformNames::IsStaticPlatform(Platform))
+		if (Platform >= SP_StaticPlatform_First && Platform <= SP_StaticPlatform_Last)
 		{
 			return FStaticShaderPlatformNames::Get().GetShaderPlatform(Platform).ToString();
 		}
@@ -1496,14 +1189,14 @@ void LexFromString(EShaderPlatform& Value, const TCHAR* String)
 }
 
 
-const FName LANGUAGE_D3D("D3D");
-const FName LANGUAGE_Metal("Metal");
-const FName LANGUAGE_OpenGL("OpenGL");
-const FName LANGUAGE_Vulkan("Vulkan");
-const FName LANGUAGE_Sony("Sony");
-const FName LANGUAGE_Nintendo("Nintendo");
+FName LANGUAGE_D3D("D3D");
+FName LANGUAGE_Metal("Metal");
+FName LANGUAGE_OpenGL("OpenGL");
+FName LANGUAGE_Vulkan("Vulkan");
+FName LANGUAGE_Sony("Sony");
+FName LANGUAGE_Nintendo("Nintendo");
 
-RHI_API FGenericDataDrivenShaderPlatformInfo FGenericDataDrivenShaderPlatformInfo::Infos[SP_NumPlatforms];
+RHI_API FDataDrivenShaderPlatformInfo FDataDrivenShaderPlatformInfo::Infos[SP_NumPlatforms];
 
 // Gets a string from a section, or empty string if it didn't exist
 FString GetSectionString(const FConfigSection& Section, FName Key)
@@ -1517,7 +1210,7 @@ bool GetSectionBool(const FConfigSection& Section, FName Key)
 	return FCString::ToBool(*GetSectionString(Section, Key));
 }
 
-void FGenericDataDrivenShaderPlatformInfo::ParseDataDrivenShaderInfo(const FConfigSection& Section, FGenericDataDrivenShaderPlatformInfo& Info)
+inline void ParseDataDrivenShaderInfo(const FConfigSection& Section, FDataDrivenShaderPlatformInfo& Info)
 {
 	Info.Language = *GetSectionString(Section, "Language");
 	GetFeatureLevelFromName(*GetSectionString(Section, "MaxFeatureLevel"), Info.MaxFeatureLevel);
@@ -1527,6 +1220,7 @@ void FGenericDataDrivenShaderPlatformInfo::ParseDataDrivenShaderInfo(const FConf
 	Info.bIsPC = GetSectionBool(Section, "bIsPC");
 	Info.bIsConsole = GetSectionBool(Section, "bIsConsole");
 	Info.bIsAndroidOpenGLES = GetSectionBool(Section, "bIsAndroidOpenGLES");
+	Info.bSupportsDrawIndirect = GetSectionBool(Section, "bSupportsDrawIndirect");
 	Info.bSupportsMobileMultiView = GetSectionBool(Section, "bSupportsMobileMultiView");
 	Info.bSupportsVolumeTextureCompression = GetSectionBool(Section, "bSupportsVolumeTextureCompression");
 	Info.bSupportsDistanceFields = GetSectionBool(Section, "bSupportsDistanceFields");
@@ -1541,22 +1235,13 @@ void FGenericDataDrivenShaderPlatformInfo::ParseDataDrivenShaderInfo(const FConf
 	Info.bSupports4ComponentUAVReadWrite = GetSectionBool(Section, "bSupports4ComponentUAVReadWrite");
 	Info.bSupportsRenderTargetWriteMask = GetSectionBool(Section, "bSupportsRenderTargetWriteMask");
 	Info.bSupportsRayTracing = GetSectionBool(Section, "bSupportsRayTracing");
-	Info.bSupportsRayTracingIndirectInstanceData = GetSectionBool(Section, "bSupportsRayTracingIndirectInstanceData");
 	Info.bSupportsGPUSkinCache = GetSectionBool(Section, "bSupportsGPUSkinCache");
-	Info.bSupportsByteBufferComputeShaders = GetSectionBool(Section, "bSupportsByteBufferComputeShaders");
-	Info.bSupportsGPUScene = GetSectionBool(Section, "bSupportsGPUScene");
-	Info.bSupportsPrimitiveShaders = GetSectionBool(Section, "bSupportsPrimitiveShaders");
-	Info.bSupportsUInt64ImageAtomics = GetSectionBool(Section, "bSupportsUInt64ImageAtomics");
-	Info.bSupportsTemporalHistoryUpscale = GetSectionBool(Section, "bSupportsTemporalHistoryUpscale");
-	Info.bSupportsRTIndexFromVS = GetSectionBool(Section, "bSupportsRTIndexFromVS");
-	Info.bSupportsWaveOperations = GetSectionBool(Section, "bSupportsWaveOperations");
-	Info.bRequiresExplicit128bitRT = GetSectionBool(Section, "bRequiresExplicit128bitRT");
-	Info.bSupportsGen5TemporalAA = GetSectionBool(Section, "bSupportsGen5TemporalAA");
+
 	Info.bTargetsTiledGPU = GetSectionBool(Section, "bTargetsTiledGPU");
 	Info.bNeedsOfflineCompiler = GetSectionBool(Section, "bNeedsOfflineCompiler");
 }
 
-void FGenericDataDrivenShaderPlatformInfo::Initialize()
+void FDataDrivenShaderPlatformInfo::Initialize()
 {
 	// look for the standard DataDriven ini files
 	int32 NumDDInfoFiles = FDataDrivenPlatformInfoRegistry::GetNumDataDrivenIniFiles();
@@ -1585,138 +1270,7 @@ void FGenericDataDrivenShaderPlatformInfo::Initialize()
 				
 				// at this point, we can start pulling information out
 				ParseDataDrivenShaderInfo(Section.Value, Infos[ShaderPlatform]);	
-				Infos[ShaderPlatform].bContainsValidPlatformInfo = true;
 			}
 		}
-	}
-}
-
-//
-//	Pixel format information.
-//
-
-FPixelFormatInfo	GPixelFormats[PF_MAX] =
-{
-	// Name						BlockSizeX	BlockSizeY	BlockSizeZ	BlockBytes	NumComponents	PlatformFormat	Supported		UnrealFormat
-
-	{ TEXT("unknown"),			0,			0,			0,			0,			0,				0,				0,				PF_Unknown			},
-	{ TEXT("A32B32G32R32F"),	1,			1,			1,			16,			4,				0,				1,				PF_A32B32G32R32F	},
-	{ TEXT("B8G8R8A8"),			1,			1,			1,			4,			4,				0,				1,				PF_B8G8R8A8			},
-	{ TEXT("G8"),				1,			1,			1,			1,			1,				0,				1,				PF_G8				},
-	{ TEXT("G16"),				1,			1,			1,			2,			1,				0,				1,				PF_G16				},
-	{ TEXT("DXT1"),				4,			4,			1,			8,			3,				0,				1,				PF_DXT1				},
-	{ TEXT("DXT3"),				4,			4,			1,			16,			4,				0,				1,				PF_DXT3				},
-	{ TEXT("DXT5"),				4,			4,			1,			16,			4,				0,				1,				PF_DXT5				},
-	{ TEXT("UYVY"),				2,			1,			1,			4,			4,				0,				0,				PF_UYVY				},
-	{ TEXT("FloatRGB"),			1,			1,			1,			4,			3,				0,				1,				PF_FloatRGB			},
-	{ TEXT("FloatRGBA"),		1,			1,			1,			8,			4,				0,				1,				PF_FloatRGBA		},
-	{ TEXT("DepthStencil"),		1,			1,			1,			4,			1,				0,				0,				PF_DepthStencil		},
-	{ TEXT("ShadowDepth"),		1,			1,			1,			4,			1,				0,				0,				PF_ShadowDepth		},
-	{ TEXT("R32_FLOAT"),		1,			1,			1,			4,			1,				0,				1,				PF_R32_FLOAT		},
-	{ TEXT("G16R16"),			1,			1,			1,			4,			2,				0,				1,				PF_G16R16			},
-	{ TEXT("G16R16F"),			1,			1,			1,			4,			2,				0,				1,				PF_G16R16F			},
-	{ TEXT("G16R16F_FILTER"),	1,			1,			1,			4,			2,				0,				1,				PF_G16R16F_FILTER	},
-	{ TEXT("G32R32F"),			1,			1,			1,			8,			2,				0,				1,				PF_G32R32F			},
-	{ TEXT("A2B10G10R10"),      1,          1,          1,          4,          4,              0,              1,				PF_A2B10G10R10		},
-	{ TEXT("A16B16G16R16"),		1,			1,			1,			8,			4,				0,				1,				PF_A16B16G16R16		},
-	{ TEXT("D24"),				1,			1,			1,			4,			1,				0,				1,				PF_D24				},
-	{ TEXT("PF_R16F"),			1,			1,			1,			2,			1,				0,				1,				PF_R16F				},
-	{ TEXT("PF_R16F_FILTER"),	1,			1,			1,			2,			1,				0,				1,				PF_R16F_FILTER		},
-	{ TEXT("BC5"),				4,			4,			1,			16,			2,				0,				1,				PF_BC5				},
-	{ TEXT("V8U8"),				1,			1,			1,			2,			2,				0,				1,				PF_V8U8				},
-	{ TEXT("A1"),				1,			1,			1,			1,			1,				0,				0,				PF_A1				},
-	{ TEXT("FloatR11G11B10"),	1,			1,			1,			4,			3,				0,				0,				PF_FloatR11G11B10	},
-	{ TEXT("A8"),				1,			1,			1,			1,			1,				0,				1,				PF_A8				},	
-	{ TEXT("R32_UINT"),			1,			1,			1,			4,			1,				0,				1,				PF_R32_UINT			},
-	{ TEXT("R32_SINT"),			1,			1,			1,			4,			1,				0,				1,				PF_R32_SINT			},
-
-	// IOS Support
-	{ TEXT("PVRTC2"),			8,			4,			1,			8,			4,				0,				0,				PF_PVRTC2			},
-	{ TEXT("PVRTC4"),			4,			4,			1,			8,			4,				0,				0,				PF_PVRTC4			},
-
-	{ TEXT("R16_UINT"),			1,			1,			1,			2,			1,				0,				1,				PF_R16_UINT			},
-	{ TEXT("R16_SINT"),			1,			1,			1,			2,			1,				0,				1,				PF_R16_SINT			},
-	{ TEXT("R16G16B16A16_UINT"),1,			1,			1,			8,			4,				0,				1,				PF_R16G16B16A16_UINT},
-	{ TEXT("R16G16B16A16_SINT"),1,			1,			1,			8,			4,				0,				1,				PF_R16G16B16A16_SINT},
-	{ TEXT("R5G6B5_UNORM"),     1,          1,          1,          2,          3,              0,              1,              PF_R5G6B5_UNORM		},
-	{ TEXT("R8G8B8A8"),			1,			1,			1,			4,			4,				0,				1,				PF_R8G8B8A8			},
-	{ TEXT("A8R8G8B8"),			1,			1,			1,			4,			4,				0,				1,				PF_A8R8G8B8			},
-	{ TEXT("BC4"),				4,			4,			1,			8,			1,				0,				1,				PF_BC4				},
-	{ TEXT("R8G8"),				1,			1,			1,			2,			2,				0,				1,				PF_R8G8				},
-
-	{ TEXT("ATC_RGB"),			4,			4,			1,			8,			3,				0,				0,				PF_ATC_RGB			},
-	{ TEXT("ATC_RGBA_E"),		4,			4,			1,			16,			4,				0,				0,				PF_ATC_RGBA_E		},
-	{ TEXT("ATC_RGBA_I"),		4,			4,			1,			16,			4,				0,				0,				PF_ATC_RGBA_I		},
-	{ TEXT("X24_G8"),			1,			1,			1,			1,			1,				0,				0,				PF_X24_G8			},
-	{ TEXT("ETC1"),				4,			4,			1,			8,			3,				0,				0,				PF_ETC1				},
-	{ TEXT("ETC2_RGB"),			4,			4,			1,			8,			3,				0,				0,				PF_ETC2_RGB			},
-	{ TEXT("ETC2_RGBA"),		4,			4,			1,			16,			4,				0,				0,				PF_ETC2_RGBA		},
-	{ TEXT("PF_R32G32B32A32_UINT"),1,		1,			1,			16,			4,				0,				1,				PF_R32G32B32A32_UINT},
-	{ TEXT("PF_R16G16_UINT"),	1,			1,			1,			4,			4,				0,				1,				PF_R16G16_UINT},
-
-	// ASTC support
-	{ TEXT("ASTC_4x4"),			4,			4,			1,			16,			4,				0,				0,				PF_ASTC_4x4			},
-	{ TEXT("ASTC_6x6"),			6,			6,			1,			16,			4,				0,				0,				PF_ASTC_6x6			},
-	{ TEXT("ASTC_8x8"),			8,			8,			1,			16,			4,				0,				0,				PF_ASTC_8x8			},
-	{ TEXT("ASTC_10x10"),		10,			10,			1,			16,			4,				0,				0,				PF_ASTC_10x10		},
-	{ TEXT("ASTC_12x12"),		12,			12,			1,			16,			4,				0,				0,				PF_ASTC_12x12		},
-
-	{ TEXT("BC6H"),				4,			4,			1,			16,			3,				0,				1,				PF_BC6H				},
-	{ TEXT("BC7"),				4,			4,			1,			16,			4,				0,				1,				PF_BC7				},
-	{ TEXT("R8_UINT"),			1,			1,			1,			1,			1,				0,				1,				PF_R8_UINT			},
-	{ TEXT("L8"),				1,			1,			1,			1,			1,				0,				0,				PF_L8				},
-	{ TEXT("XGXR8"),			1,			1,			1,			4,			4,				0,				1,				PF_XGXR8 			},
-	{ TEXT("R8G8B8A8_UINT"),	1,			1,			1,			4,			4,				0,				1,				PF_R8G8B8A8_UINT	},
-	{ TEXT("R8G8B8A8_SNORM"),	1,			1,			1,			4,			4,				0,				1,				PF_R8G8B8A8_SNORM	},
-
-	{ TEXT("R16G16B16A16_UINT"),1,			1,			1,			8,			4,				0,				1,				PF_R16G16B16A16_UNORM },
-	{ TEXT("R16G16B16A16_SINT"),1,			1,			1,			8,			4,				0,				1,				PF_R16G16B16A16_SNORM },
-	{ TEXT("PLATFORM_HDR_0"),	0,			0,			0,			0,			0,				0,				0,				PF_PLATFORM_HDR_0   },
-	{ TEXT("PLATFORM_HDR_1"),	0,			0,			0,			0,			0,				0,				0,				PF_PLATFORM_HDR_1   },
-	{ TEXT("PLATFORM_HDR_2"),	0,			0,			0,			0,			0,				0,				0,				PF_PLATFORM_HDR_2   },
-
-	// NV12 contains 2 textures: R8 luminance plane followed by R8G8 1/4 size chrominance plane.
-	// BlockSize/BlockBytes/NumComponents values don't make much sense for this format, so set them all to one.
-	{ TEXT("NV12"),				1,			1,			1,			1,			1,				0,				0,				PF_NV12             },
-
-	{ TEXT("PF_R32G32_UINT"),   1,   		1,			1,			8,			2,				0,				1,				PF_R32G32_UINT      },
-
-	{ TEXT("PF_ETC2_R11_EAC"),  4,   		4,			1,			8,			1,				0,				0,				PF_ETC2_R11_EAC     },
-	{ TEXT("PF_ETC2_RG11_EAC"), 4,   		4,			1,			16,			2,				0,				0,				PF_ETC2_RG11_EAC    },
-	{ TEXT("R8"),				1,			1,			1,			1,			1,				0,				1,				PF_R8				},
-};
-
-static struct FValidatePixelFormats
-{
-	FValidatePixelFormats()
-	{
-		for (int32 Index = 0; Index < UE_ARRAY_COUNT(GPixelFormats); ++Index)
-		{
-			// Make sure GPixelFormats has an entry for every unreal format
-			checkf((EPixelFormat)Index == GPixelFormats[Index].UnrealFormat, TEXT("Missing entry for EPixelFormat %d"), (int32)Index);
-		}
-	}
-} ValidatePixelFormats;
-
-//
-//	CalculateImageBytes
-//
-
-SIZE_T CalculateImageBytes(uint32 SizeX,uint32 SizeY,uint32 SizeZ,uint8 Format)
-{
-	if ( Format == PF_A1 )
-	{
-		// The number of bytes needed to store all 1 bit pixels in a line is the width of the image divided by the number of bits in a byte
-		uint32 BytesPerLine = SizeX / 8;
-		// The number of actual bytes in a 1 bit image is the bytes per line of pixels times the number of lines
-		return sizeof(uint8) * BytesPerLine * SizeY;
-	}
-	else if( SizeZ > 0 )
-	{
-		return static_cast<SIZE_T>(SizeX / GPixelFormats[Format].BlockSizeX) * (SizeY / GPixelFormats[Format].BlockSizeY) * (SizeZ / GPixelFormats[Format].BlockSizeZ) * GPixelFormats[Format].BlockBytes;
-	}
-	else
-	{
-		return static_cast<SIZE_T>(SizeX / GPixelFormats[Format].BlockSizeX) * (SizeY / GPixelFormats[Format].BlockSizeY) * GPixelFormats[Format].BlockBytes;
 	}
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShaderFormatVectorVM.h"
 #include "CoreMinimal.h"
@@ -393,10 +393,9 @@ class ir_scalarize_visitor2 : public ir_hierarchical_visitor
 		write_mask = assign->write_mask == 0 ? 0xFFFFFFFF : assign->write_mask;
 		ir_assignment* comp_assign = NULL;
 
-		unsigned comp_idx = 0;
-		for (unsigned write_index = 0; write_index < num_components; ++write_index)
+		for (unsigned comp_idx = 0; comp_idx < num_components; ++comp_idx)
 		{
-			if (is_struct || (write_mask & (1 << write_index)))
+			if (is_struct || (write_mask & 0x1))
 			{
 				if (comp_assign)
 				{
@@ -420,7 +419,7 @@ class ir_scalarize_visitor2 : public ir_hierarchical_visitor
 				}
 				else
 				{
-					comp_assign->write_mask = 1 << write_index;
+					comp_assign->write_mask = 1 << dest_component;
 				}
 
 				curr_rval = nullptr;
@@ -429,9 +428,8 @@ class ir_scalarize_visitor2 : public ir_hierarchical_visitor
 				{
 					comp_assign->rhs = curr_rval;
 				}
-
-				++comp_idx;
 			}
+			write_mask = write_mask >> 1;
 		}
 
 		if (comp_assign)

@@ -1,5 +1,5 @@
 ﻿// Copyright (C) Microsoft. All rights reserved.
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -10,7 +10,6 @@ using System.Drawing;
 using System.IO;
 using System.Globalization;
 using System.Diagnostics;
-using System.Security.Cryptography;
 using CSVStats;
 
 // 2.1 TODO
@@ -25,7 +24,7 @@ namespace CSVTools
 {
     class Version
     {
-        private static string VersionString = "2.32";
+        private static string VersionString = "2.18";
         
         public static string Get() { return VersionString; }
     };
@@ -155,31 +154,7 @@ namespace CSVTools
         public Colour[] GraphColours;
     };
 
-	class CsvCache
-	{
-		public CsvStats ReadCSVFile(string csvFilename, string[] statNames, int numRowsToSkip)
-		{
-			lock (readLock)
-			{
-				if (csvFilename != filename || skipRows != numRowsToSkip)
-				{
-					csvStats = CsvStats.ReadCSVFile(csvFilename, null, numRowsToSkip);
-					filename = csvFilename;
-					skipRows = numRowsToSkip;
-				}
-				// Copy just the stats we're interested in from the cached file
-				CsvStats outStats = new CsvStats(csvStats, statNames);
-				return outStats;
-			}
-		}
-		public CsvStats csvStats;
-		public string filename;
-		public int skipRows;
-		private readonly object readLock = new object();
-	};
-
-
-	class Program : CSVStats.CommandLineTool
+    class Program : CSVStats.CommandLineTool
     {
         System.IO.StreamWriter svgFile;
         Rect dimensions = new Rect(0, 0, 1000, 500);
@@ -194,20 +169,17 @@ namespace CSVTools
         int maxHierarchyDepth = -1;
         char hierarchySeparator = '/';
         int colourOffset = 0;
-        int frameOffset = 0;
+        string UniqueID = Guid.NewGuid().ToString().Substring(26);
 
-		static string formatString =
+        static string formatString =
             "Format: \n" +
             "       -csvs <list> OR -csv <list> OR -csvDir <path>\n" +
             "       [ -o <svgFilename> ]\n" +
             "       -stats <stat names> (can include wildcards)\n" +
-			"     OR \n" +
-			"       -batchCommands <response file with commandlines>\n" +
-			"       -mt <number of threads> \n" +
-			"     OR \n" +
-			"       -updatesvg <svgFilename>\n" +
-			"       NOTE: this updates an svg by regenerating it with the original commandline parameters - requires original data\n\n" +
-			"\nOptional Args: \n" +
+            "     OR \n" +
+            "       -updatesvg <svgFilename>\n" +
+            "       NOTE: this updates an svg by regenerating it with the original commandline parameters - requires original data\n\n" +
+            "\nOptional Args: \n" +
 			"       -averageThreshold <value>\n" +
 			"       -budget <ms>\n" +
 			"       -colourOffset <value>\n" +
@@ -219,7 +191,7 @@ namespace CSVTools
 			"       -hideStatPrefix <list>\n" +
 			"       -hierarchySeparator <character>\n" +
 			"       -highlightEventRegions <startEventName,endEventName>\n" +
-			"       -ignoreStats <list> (can include wildcards. Separate states with stat1;stat2;etc)\n" +
+			"       -ignoreStats <list> (can include wildcards)\n" +
 			"       -interactive\n" +
 			"       -legend <list> \n" +
 			"       -maxHierarchyDepth <depth>\n" +
@@ -250,78 +222,54 @@ namespace CSVTools
             "       -percentile \n" +
             "       -percentile90 \n" +
             "       -percentile99 \n" +
-			"       -uniqueId <string> : unique ID for JS (needed if this is getting embedded in HTML alongside other graphs)\n" +
-			"       -nocommandlineEmbed : don't embed the commandline in the SVG" +
-			"       -lineDecimalPlaces <N> (default 3)" +
-			"       -frameOffset <N> : offset used for frame display name (default 0)" +
             "";
 
-		void Run(string[] args)
-		{
-			if (args.Length < 2)
-			{
-				WriteLine("CsvToSVG " + Version.Get());
-				WriteLine(formatString);
-				return;
-			}
 
-			// Read the command line
-			ReadCommandLine(args);
+        void Run( string[] args )
+        {
+            if (args.Length < 2)
+            {
+                WriteLine("CsvToSVG " + Version.Get() );
+                WriteLine(formatString);
+                return;
+            }
 
-			string svgToUpdate = GetArg("updatesvg");
-			if (svgToUpdate.Length > 0)
-			{
-				if (args.Length > 2)
-				{
-					WriteLine("-UpdateSVG <svgFilename> must be the only argument!");
-					return;
-				}
-				string newCommandLine = "";
-				string[] svgLines = ReadLinesFromFile(svgToUpdate);
-				for (int i = 0; i < svgLines.Length - 2; i++)
-				{
-					if (svgLines[i].StartsWith("<![CDATA[") && svgLines[i + 1].StartsWith("Created with CSVtoSVG ") && svgLines[i + 1].EndsWith(" with commandline:"))
-					{
-						newCommandLine = svgLines[i + 2];
-						break;
-					}
-				}
+            // Read the command line
+            ReadCommandLine(args);
 
-				ReadCommandLine(MakeArgsArray(newCommandLine));
-			}
+            string svgToUpdate = GetArg("updatesvg");
+            if (svgToUpdate.Length > 0)
+            {
+                if (args.Length > 2)
+                {
+                    WriteLine("-UpdateSVG <svgFilename> must be the only argument!");
+                    return;
+                }
+                string newCommandLine = "";
+                string [] svgLines = ReadLinesFromFile(svgToUpdate);
+                for ( int i=0; i<svgLines.Length-2; i++)
+                {
+                    if (svgLines[i].StartsWith("<![CDATA[") && svgLines[i+1].StartsWith("Created with CSVtoSVG ") && svgLines[i+1].EndsWith(" with commandline:"))
+                    {
+                        newCommandLine = svgLines[i + 2];
+                        break;
+                    }
+                }
+               
+                ReadCommandLine(MakeArgsArray(newCommandLine));
+            }
 
-			MakeGraph();
-		}
-
-		string GenerateIDFromString(string str)
-		{
-			string id = "";
-			HashAlgorithm algorithm = SHA256.Create();
-			byte[] hash = algorithm.ComputeHash(Encoding.UTF8.GetBytes(commandLine.GetCommandLine()));
-			for ( int i=24; i<32; i++ )
-			{
-				id += hash[i].ToString("x2");
-			}
-			return id;
-		}
-
-
-		void MakeGraph()
-		{
-			// Read CSV filenames from a directory or list
-			string[] csvFilenames;
+            // Read CSV filenames from a directory or list
+            string[] csvFilenames;
             string csvDir = GetArg("csvDir"); 
             if (csvDir.Length > 0)
             {
                 DirectoryInfo di = new DirectoryInfo(csvDir);
                 bool recurse = GetBoolArg("recurse");
-                FileInfo[] csvFiles = di.GetFiles("*.csv", recurse ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly);
-				FileInfo[] binFiles = di.GetFiles("*.csv.bin", recurse ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly);
-				List<FileInfo> allFiles = new List<FileInfo>(csvFiles);
-				allFiles.AddRange(binFiles);
-				csvFilenames = new string[allFiles.Count];
+                var files = di.GetFiles("*.csv", recurse ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly);
+                csvFilenames = new string[files.Length];
                 int i = 0;
-                foreach (FileInfo csvFile in allFiles)
+                foreach (FileInfo csvFile in files)
                 {
                     csvFilenames[i] = csvFile.FullName;
                     i++;
@@ -355,9 +303,14 @@ namespace CSVTools
                 WriteLine("Can't display multiple stats and multiple CSVs");
                 return;
             }
+            //if ( csvFilenames.Length > 1 && GetBoolArg("stacked"))
+            //{
+            //    WriteLine("Can't stack multiple CSVs");
+            //    return;
+            //}
 
-			// Figure out the filename, if it wasn't provided
-			string svgFilename = GetArg("o", false);
+            // Figure out the filename, if it wasn't provided
+            string svgFilename = GetArg("o", false);
             if (svgFilename.Length == 0)
             {
                 if (csvFilenames.Length == 1)
@@ -387,8 +340,8 @@ namespace CSVTools
                 WriteLine("Couldn't figure out an appropriate filename, and no filename was provided with -o");
             }
 
-			// Generate a unique ID based on the commandline. This is needed in order to embed in HTML alongside other graphs
-			dimensions.width = GetIntArg("width", 1800);
+
+            dimensions.width = GetIntArg("width", 1800);
             dimensions.height = GetIntArg("height", 550);
 
             svgFile = new System.IO.StreamWriter(svgFilename);
@@ -399,16 +352,9 @@ namespace CSVTools
             }
             SvgWriteLine(">");
 
-			if (GetBoolArg("nocommandlineEmbed"))
-			{
-				SvgWriteLine("<![CDATA[ \nCreated with CSVtoSVG " + Version.Get() );
-			}
-			else
-			{
-				SvgWriteLine("<![CDATA[ \nCreated with CSVtoSVG " + Version.Get() + " with commandline:");
-				SvgWriteLine(commandLine.GetCommandLine());
-			}
-			SvgWriteLine("]]>");
+            SvgWriteLine("<![CDATA[ \nCreated with CSVtoSVG " + Version.Get() + " with commandline:");
+            SvgWriteLine(commandLine);
+            SvgWriteLine("]]>");
 
             bool writeErrorsToSVG = GetIntArg("writeErrorsToSVG",1) == 1;
             try
@@ -443,16 +389,11 @@ namespace CSVTools
             }
         }
 
-		string GetGraphUniqueId()
-		{
-			return GetArg("uniqueID", "ID");
-		}
-
         void SvgWrite(string str, bool replaceUniqueNames=true)
         {
             if (replaceUniqueNames)
             {
-                svgFile.Write(str.Replace("<UNIQUE>", "_" + GetGraphUniqueId()));
+                svgFile.Write(str.Replace("<UNIQUE>", "_" + UniqueID));
             }
             else
             {
@@ -463,7 +404,7 @@ namespace CSVTools
         {
             if (replaceUniqueNames)
             {
-                svgFile.WriteLine(str.Replace("<UNIQUE>", "_" + GetGraphUniqueId()));
+                svgFile.WriteLine(str.Replace("<UNIQUE>", "_" + UniqueID));
             }
             else
             {
@@ -620,9 +561,8 @@ namespace CSVTools
             csvStats = new List<CsvStats>();
 
             bool bDiscardLastFrame = ( GetIntArg("discardLastFrame", 1) == 1 );
-			int frameOffset = GetIntArg("frameOffset", 0);
 
-			int firstFileNumSamples = -1;
+            int firstFileNumSamples = -1;
             foreach (string csvFilename in csvFilenames)
             {
                 CsvStats csv = ProcessCSV(csvFilename, statNames, bDiscardLastFrame);
@@ -717,13 +657,8 @@ namespace CSVTools
             if (graphTitle.Length == 0 && statNames.Length == 1 && csvStats.Count > 0 && !statNames[0].EndsWith("*"))
             {
                 StatSamples stat = csvStats[0].GetStat(statNames[0]);
-                if (stat == null)
-				{
-                    Console.Out.WriteLine("Warning: Could not find stat {0}", statNames[0]);
-                    graphTitle = string.Format("UnknownStat {0}", statNames[0]);
-                }
-                else
-                { 
+                if (graphTitle.Length == 0)
+                {
                     graphTitle = stat.Name;
                 }
             }
@@ -760,7 +695,7 @@ namespace CSVTools
             {
                 range.MinX = percentileTop99 ? 99 : (percentileTop90 ? 90 : 0);
                 range.MaxX = 100;
-                DrawGridLines(graphRect, range, graphOnly, 1.0f, true, frameOffset);
+                DrawGridLines(graphRect, range, graphOnly, 1.0f, true);
                 csvIndex = 0;
                 foreach (CsvStats csvStat in csvStats)
                 {
@@ -775,7 +710,7 @@ namespace CSVTools
             }
             else
             {
-                DrawGridLines(graphRect, range, graphOnly, 1.0f, stacked, frameOffset);
+                DrawGridLines(graphRect, range, graphOnly, 1.0f, stacked);
                 csvIndex = 0;
                 foreach (CsvStats csvStat in csvStats)
                 {
@@ -792,7 +727,7 @@ namespace CSVTools
                     if (hideEventNames == 0)
                     {
                         Colour eventColour = theme.EventTextColour;
-                        DrawEventText(csvStat.Events, eventColour, graphRect, range );
+                        DrawEventText(csvStat.Events, eventColour, graphRect, range);
                     }
 
                     csvIndex++;
@@ -804,7 +739,7 @@ namespace CSVTools
             // If we're stacked, we need to redraw the grid lines
             if (stacked)
             {
-                DrawGridLines(graphRect, range, true, 0.75f, false, frameOffset);
+                DrawGridLines(graphRect, range, true, 0.75f, false);
             }
 
             // Draw legend, metadata and title
@@ -919,7 +854,7 @@ namespace CSVTools
             return false;
         }
 
-		CsvStats ProcessCSV(string csvFilename, string[] statNames, bool bDiscardLastFrame )
+        CsvStats ProcessCSV(string csvFilename, string[] statNames, bool bDiscardLastFrame )
         {
             int numRowsToSkip = 0;
             numRowsToSkip = GetIntArg("skipRows",0);
@@ -927,18 +862,10 @@ namespace CSVTools
             bool filterOutZeros = false;
             filterOutZeros = GetBoolArg("filterOutZeros");
 
-			CsvStats csvStats = null;
-			if (csvCache != null)
-			{
-				// Copy the data from the source CSV
-				csvStats = csvCache.ReadCSVFile(csvFilename, statNames, numRowsToSkip);
-			}
-			else
-			{
-				csvStats = CsvStats.ReadCSVFile(csvFilename, statNames, numRowsToSkip);
-			}
-			// Sometimes the last frame is garbage. We might want to remove it
-			if (bDiscardLastFrame)
+            CsvStats csvStats = CsvStats.ReadCSVFile(csvFilename, statNames, numRowsToSkip );
+
+            // Sometimes the last frame is garbage. We might want to remove it
+            if (bDiscardLastFrame)
             {
                 foreach (StatSamples stat in csvStats.Stats.Values.ToArray())
                 {
@@ -1195,7 +1122,7 @@ namespace CSVTools
             CsvStats smoothStats = new CsvStats();
             foreach( StatSamples srcStatSamples in stats.Stats.Values )
             {
-                StatSamples NewStatSamples = new StatSamples(srcStatSamples,false);
+                StatSamples NewStatSamples = new StatSamples(srcStatSamples);
                 smoothStats.AddStat(NewStatSamples);
             }
             StatSamples[] SmoothSamplesArray = smoothStats.Stats.Values.ToArray();
@@ -1327,7 +1254,7 @@ namespace CSVTools
                 StatSamplesSorted.Add(OtherStat);
                 foreach (float value in totalStat.samples)
                     OtherStat.samples.Add(value);
-                OtherUnstacked = new StatSamples(OtherStat,false);
+                OtherUnstacked = new StatSamples(OtherStat);
                 rangeEnd = Math.Min(OtherStat.samples.Count, (int)range.MaxX);
             }
 
@@ -1335,7 +1262,7 @@ namespace CSVTools
             List<StatSamples> StatSamplesList = new List<StatSamples>();
             foreach (StatSamples srcStatSamples in StatSamplesSorted)
             {
-                StatSamples destStatSamples = new StatSamples(srcStatSamples,false);
+                StatSamples destStatSamples = new StatSamples(srcStatSamples);
                 for (int j = 0; j < srcStatSamples.samples.Count; j++)
                 {
                     float value=srcStatSamples.samples[j]; 
@@ -1427,7 +1354,7 @@ namespace CSVTools
             return yIncrement;
         }
 
-        void DrawGridLines(Rect rect, Range range, bool graphOnly, float alpha=1.0f, bool extendLines = false, int frameOffset = 0)
+        void DrawGridLines(Rect rect, Range range, bool graphOnly, float alpha=1.0f, bool extendLines = false)
         {
             float xIncrement = GetXAxisIncrement(rect, range);
             float yIncrement = GetYAxisIncrement(rect, range);
@@ -1468,9 +1395,8 @@ namespace CSVTools
                 for (int i = 0; i < 2000; i++)
                 {
                     float x = range.MinX + i * xIncrement;
-                    if (x > (range.MaxX)) break;
-					int displayFrame = (int) Math.Floor(x) + frameOffset;
-                    DrawHorizontalAxisText(displayFrame.ToString(), x, theme.TextColour, rect, range);
+                    if (x > range.MaxX) break;
+                    DrawHorizontalAxisText(x.ToString(), x, theme.TextColour, rect, range);
                 }
                 SvgWriteLine("</g>");
 
@@ -1502,7 +1428,7 @@ namespace CSVTools
             DrawHorizLine(budget, budgetLineColour, rect, range, true, budgetLineThickness, dropShadow);
         }
 
-		void DrawText(string text, float x, float y, float size, Rect rect, Colour colour, string anchor = "start", string font="Helvetica", string id="", bool dropShadow = false)
+        void DrawText(string text, float x, float y, float size, Rect rect, Colour colour, string anchor = "start", string font="Helvetica", string id="", bool dropShadow = false)
         {
 
             SvgWriteLine("<text x='" + (rect.x + x) + "' y='"+ (rect.y + y) +"' fill="+colour.SVGString()+
@@ -1725,8 +1651,6 @@ namespace CSVTools
             int n = Math.Min(samples.Count,(int)(range.MaxX+0.5));
             int start = (int)(range.MinX+0.5);
 
-			int numDecimalPlaces = GetIntArg("lineDecimalPlaces", 3);
-
             if (start + 1 < n)
             {
                 List<Vec2> RawPoints = new List<Vec2>();
@@ -1744,22 +1668,14 @@ namespace CSVTools
                     RawPoints = CompressPoints(RawPoints, compression, rect, range);
                 }
 
-				string formatStr = "0";
-				if (numDecimalPlaces>0)
-				{
-					formatStr += ".";
-					for (int i=0; i<numDecimalPlaces;i++)
-					{
-						formatStr += "0";
-					}
-				}
                 string idString = id.Length > 0 ? "id='" + id + "'" : "";
                 SvgWriteLine("<polyline "+idString+" points='");
                 foreach (Vec2 point in RawPoints)
                 {
-                    float x = point.X;
-                    float y = point.Y;
-                    SvgWrite(" " + x.ToString(formatStr) + "," + y.ToString(formatStr), false);
+                    float x = point.X;//ToSvgX((float)i, rect, range);
+                    float y = point.Y;//ToSvgY(sample, rect, range);
+
+                    SvgWrite(" " + x + "," + y,false);
                 }
 
                 string fillString = "none";
@@ -1817,106 +1733,47 @@ namespace CSVTools
         }
 
 
-		class CsvEventWithCount : CsvEvent
-		{
-			public CsvEventWithCount(CsvEvent ev)
-			{
-				base.Frame = ev.Frame;
-				base.Name = ev.Name;
-				count = 1;
-			}
-			public int count;
-		};
 
-		void DrawEventText(List<CsvEvent> events, Colour colour, Rect rect, Range range)
+        void DrawEventText(List<CsvEvent> events, Colour colour, Rect rect, Range range )
         {
-			float LastEventX = -100000.0f;
-			int lastFrame = 0;
-
-			// Make a filtered list of events to display, grouping duplicates which are close together
-			List<CsvEventWithCount> filteredEvents = new List<CsvEventWithCount>();
-			CsvEventWithCount currentDisplayEvent = null;
-			CsvEvent lastEvent = null;
-			foreach (CsvEvent ev in events)
-			{
-				// Only draw events which are in the range
-				if (ev.Frame >= range.MinX && ev.Frame <= range.MaxX)
-				{
-					// Merge with the current display event?
-					bool bMerge = false;
-					if (currentDisplayEvent != null && lastEvent != null && ev.Name == currentDisplayEvent.Name)
-					{
-						float DistToLastEvent = ToSvgX(ev.Frame, rect, range) - ToSvgX(lastEvent.Frame, rect, range);
-						if (DistToLastEvent <= 8.5)
-						{
-							bMerge = true;
-						}
-					}
-
-					if (bMerge)
-					{
-						currentDisplayEvent.count++;
-					}
-					else
-					{
-						currentDisplayEvent = new CsvEventWithCount(ev);
-						filteredEvents.Add(currentDisplayEvent);
-					}
-					lastEvent = ev;
-				}
-			}
-
-			foreach (CsvEventWithCount ev in filteredEvents)
+            float LastEventX = -100000.0f;
+            int lastFrame = 0;
+            foreach (CsvEvent ev in events)
             {
-				float eventX = ToSvgX(ev.Frame, rect, range);
-                string name = ev.Name;
-
-				if ( ev.count > 1 )
-				{
-					name += " &#x00D7; " + ev.count;
-				}
-
-                // Space out the events (allow at least 8 pixels between them)
-                if (eventX - LastEventX <= 8.5f)
+                // Only draw events which are in the range
+                if (ev.Frame >= range.MinX && ev.Frame <= range.MaxX)
                 {
-					// Add an arrow to indicate events were spaced out 
-					name = "&#x21b7; " + name;
-					if ( ev.count == 1 )
-					{
-						name += " (+" + (ev.Frame - lastFrame) + ")";
-					}
-					eventX = LastEventX + 9.0f;
-                }
-                float csvTextX = ToCsvX(eventX + 7, rect, range);
+                    float eventX = ToSvgX(ev.Frame, rect, range);
+                    float DistToLastEvent = Math.Abs(eventX - LastEventX);
 
-                DrawHorizontalAxisText(name, csvTextX, colour, rect, range, 10, true);
-                LastEventX = eventX;
-                lastFrame = ev.Frame;
+                    string name = ev.Name;
+
+                    // Space out the events (allow at least 8 pixels between them)
+                    if (eventX - LastEventX <= 8.5f)
+                    {
+                        // Add an arrow to indicate events were spaced out 
+						name = "&#x21b7; " + name + " (+" + (ev.Frame - lastFrame) + ")";
+						eventX = LastEventX + 9.0f;
+                    }
+                    float csvTextX = ToCsvX(eventX + 7, rect, range);
+
+                    DrawHorizontalAxisText(name, csvTextX, colour, rect, range, 10, true);
+                    LastEventX = eventX;
+                    lastFrame = ev.Frame;
+                }
             }
         }
 
         void DrawEventLines(List<CsvEvent> events, Rect rect, Range range)
         {
-			float LastEventX = -100000.0f;
-			float LastDisplayedEventX = -100000.0f;
-			int i = 0;
-			foreach (CsvEvent ev in events)
+            foreach (CsvEvent ev in events)
             {
                 // Only draw events which are in the range
                 if (ev.Frame >= range.MinX && ev.Frame <= range.MaxX)
                 {
-					float eventX = ToSvgX(ev.Frame, rect, range);
-					// Space out the events (allow at least 2 pixels between them)
-					if (eventX - LastDisplayedEventX > 3)
-					{
-						float alpha = (eventX - LastEventX < 1.0f) ? 0.5f : 1.0f;
-						DrawVerticalLine(ev.Frame, theme.MajorGridlineColour, rect, range, alpha, true, true);
-						LastDisplayedEventX = eventX;
-					}
-					LastEventX = eventX;
-				}
-				i++;
-			}
+                    DrawVerticalLine(ev.Frame, theme.MajorGridlineColour, rect, range, 1.0f, true, true);
+                }
+            }
         }
 
 
@@ -2082,7 +1939,7 @@ namespace CSVTools
 
 					if (showAverages || showTotals)
 					{
-						float legendValue = showTotals ? (float)stat.total : stat.average;
+						float legendValue = showTotals ? stat.total : stat.average;
 						string formatString = "0.00";
 						if (showTotals && legendValueIsWholeNumber)
 						{
@@ -2189,7 +2046,7 @@ namespace CSVTools
                     statInfo.jsTextElementId = "csvStatText__" + i + GetJSStatName(stat.Name) + "<UNIQUE>";
                     statInfo.jsGroupElementId = "csvStatGroup__" + i + GetJSStatName(stat.Name) + "<UNIQUE>";
                     statInfo.originalStatSamples = stat;
-                    statInfo.statSamples = new StatSamples(stat,false);
+                    statInfo.statSamples = new StatSamples(stat);
                     interactiveStats.Add(statInfo);
                 }
             }
@@ -2518,57 +2375,24 @@ namespace CSVTools
             SvgWriteLine("<text x='" + 10 + "' y='" + y + "' fill=" + colour.SVGString() + " font-size='9' font-family='Courier New' >" + Commandline  + "</text>");
         }
 
-
-		static CsvCache csvCache = null;
-
-		static void Main(string[] args)
+        static void Main(string[] args)
         {
-			CommandLine commandline = new CommandLine(args);
-			string batchCommandsFilename = commandline.GetArg("batchCommands");
-
-			if (batchCommandsFilename.Length > 0)
-			{
-				// In batch mode, just output a list of commandlines
-				string[] commandlines = System.IO.File.ReadAllLines(batchCommandsFilename);
-				if (commandlines.Length > 1)
-				{
-					// Enable caching
-					csvCache = new CsvCache();
-				}
-				int numThreads = commandline.GetIntArg("mt", 4);
-				if (numThreads>1)
-				{
-					var result = Parallel.For(0, commandlines.Length, new ParallelOptions { MaxDegreeOfParallelism = numThreads }, i =>
-					{
-						Program program = new Program();
-						program.Run(MakeArgsArray(commandlines[i]));
-					});
-				}
-				else
-				{
-					foreach (string cmdLine in commandlines)
-					{
-						Program program = new Program();
-						program.Run(MakeArgsArray(cmdLine));
-					}
-				}
-			}
-			else
-			{
-				Program program = new Program();
-				try
-				{
-					program.Run(args);
-				}
-				catch (System.Exception e)
-				{
-					Console.WriteLine("[ERROR] " + e.Message);
-					if (Debugger.IsAttached)
-					{
-						throw e;
-					}
-				}
-			}
+            Program program = new Program();
+            if (Debugger.IsAttached)
+            {
+                program.Run(args);
+            }
+            else
+            {
+                try
+                {
+                    program.Run(args);
+                }
+                catch (System.Exception e)
+                {
+                    Console.WriteLine("[ERROR] " + e.Message);
+                }
+            }
         }
      }
 }

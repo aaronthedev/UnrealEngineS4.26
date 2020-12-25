@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -21,7 +21,7 @@ struct FRigUnit_MathFloatConstant : public FRigUnit_MathFloatBase
 		Value = 0.f;
 	}
 
-	UPROPERTY(meta=(Output))
+	UPROPERTY(meta=(Output, Constant))
 	float Value;
 };
 
@@ -70,8 +70,10 @@ struct FRigUnit_MathFloatConstPi : public FRigUnit_MathFloatConstant
 {
 	GENERATED_BODY()
 	
-	RIGVM_METHOD()
-	virtual void Execute(const FRigUnitContext& Context) override;
+	FRigUnit_MathFloatConstPi()
+	{
+		Value = PI;
+	}
 };
 
 /**
@@ -82,8 +84,10 @@ struct FRigUnit_MathFloatConstHalfPi : public FRigUnit_MathFloatConstant
 {
 	GENERATED_BODY()
 
-	RIGVM_METHOD()
-	virtual void Execute(const FRigUnitContext& Context) override;
+	FRigUnit_MathFloatConstHalfPi()
+	{
+		Value = HALF_PI;
+	}
 };
 
 /**
@@ -93,9 +97,11 @@ USTRUCT(meta=(DisplayName="Two Pi"))
 struct FRigUnit_MathFloatConstTwoPi : public FRigUnit_MathFloatConstant
 {
 	GENERATED_BODY()
-
-	RIGVM_METHOD()
-	virtual void Execute(const FRigUnitContext& Context) override;
+	
+	FRigUnit_MathFloatConstTwoPi()
+	{
+		Value = PI * 2.f;
+	}
 };
 
 /**
@@ -257,105 +263,36 @@ struct FRigUnit_MathFloatAbs : public FRigUnit_MathFloatUnaryOp
  * Returns the closest lower full number (integer) of the value
  */
 USTRUCT(meta=(DisplayName="Floor", PrototypeName="Floor", Keywords="Round"))
-struct FRigUnit_MathFloatFloor : public FRigUnit_MathFloatBase
+struct FRigUnit_MathFloatFloor : public FRigUnit_MathFloatUnaryOp
 {
 	GENERATED_BODY()
 
-	FRigUnit_MathFloatFloor()
-	{
-		Value = Result = 0.f;
-		Int = 0;
-	}
-
 	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;
-
-	UPROPERTY(meta=(Input))
-	float Value;
-
-	UPROPERTY(meta=(Output))
-	float Result;
-
-	UPROPERTY(meta=(Output))
-	int32 Int;
 };
 
 /**
  * Returns the closest higher full number (integer) of the value
  */
 USTRUCT(meta=(DisplayName="Ceiling", PrototypeName="Ceiling", Keywords="Round"))
-struct FRigUnit_MathFloatCeil : public FRigUnit_MathFloatBase
+struct FRigUnit_MathFloatCeil : public FRigUnit_MathFloatUnaryOp
 {
 	GENERATED_BODY()
 
-	FRigUnit_MathFloatCeil()
-	{
-		Value = Result = 0.f;
-		Int = 0;
-	}
-
 	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;
-
-	UPROPERTY(meta=(Input))
-	float Value;
-
-	UPROPERTY(meta=(Output))
-	float Result;
-
-	UPROPERTY(meta=(Output))
-	int32 Int;
 };
 
 /**
  * Returns the closest higher full number (integer) of the value
  */
 USTRUCT(meta=(DisplayName="Round", PrototypeName="Round"))
-struct FRigUnit_MathFloatRound : public FRigUnit_MathFloatBase
+struct FRigUnit_MathFloatRound : public FRigUnit_MathFloatUnaryOp
 {
 	GENERATED_BODY()
 
-	FRigUnit_MathFloatRound()
-	{
-		Value = Result = 0.f;
-		Int = 0;
-	}
-
 	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;
-
-	UPROPERTY(meta=(Input))
-	float Value;
-
-	UPROPERTY(meta=(Output))
-	float Result;
-
-	UPROPERTY(meta=(Output))
-	int32 Int;
-};
-
-/**
- * Returns the float cast to an int (this uses floor)
- */
-USTRUCT(meta=(DisplayName="To Int", PrototypeName="Convert"))
-struct FRigUnit_MathFloatToInt : public FRigUnit_MathFloatBase
-{
-	GENERATED_BODY()
-
-	FRigUnit_MathFloatToInt()
-	{
-		Value = 0.f;
-		Result = 0;
-	}
-
-	RIGVM_METHOD()
-	virtual void Execute(const FRigUnitContext& Context) override;
-
-	UPROPERTY(meta=(Input))
-	float Value;
-
-	UPROPERTY(meta=(Output))
-	int32 Result;
 };
 
 /**
@@ -690,7 +627,7 @@ struct FRigUnit_MathFloatIsNearlyEqual : public FRigUnit_MathFloatBase
 /**
  * Return one of the two values based on the condition
  */
-USTRUCT(meta=(DisplayName="Select", PrototypeName="Select", Keywords="Pick,If", Deprecated = "4.26.0"))
+USTRUCT(meta=(DisplayName="Select", PrototypeName="Select", Keywords="Pick,If"))
 struct FRigUnit_MathFloatSelectBool : public FRigUnit_MathFloatBase
 {
 	GENERATED_BODY()

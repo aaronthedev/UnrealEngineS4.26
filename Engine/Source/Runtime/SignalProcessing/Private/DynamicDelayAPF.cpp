@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DSP/DynamicDelayAPF.h"
 #include "DSP/BufferVectorOperations.h"
@@ -6,14 +6,13 @@
 using namespace Audio;
 
 FDynamicDelayAPF::FDynamicDelayAPF(float InG, int32 InMinDelay, int32 InMaxDelay, int32 InMaxNumInternalBufferSamples, float InSampleRate)
-:	EaseTimeInSec(1.f)
-,	MinDelay(InMinDelay)
+:	MinDelay(InMinDelay)
 ,	MaxDelay(InMaxDelay)
 ,	NumDelaySamples(InMinDelay - 1)
 ,	NumInternalBufferSamples(InMaxNumInternalBufferSamples)
 {
+	G.SetValueInterrupt(InG);
 	G.Init(InSampleRate);
-	G.SetValue(InG);
 
 	checkf(NumDelaySamples >= 0, TEXT("Minimum delay must be atleast 1"));
 	// NumInternalBufferSamples must be less than the length of the delay to support buffer indexing logic.

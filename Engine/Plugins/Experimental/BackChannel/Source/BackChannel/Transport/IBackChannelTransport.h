@@ -1,8 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
-#include "IBackChannelSocketConnection.h"
+#include "IBackChannelConnection.h"
 #include "Modules/ModuleManager.h"
 
 /**
@@ -22,7 +22,7 @@ public:
 		return FModuleManager::LoadModulePtr<IBackChannelTransport>("BackChannel");
 	}
 
-	virtual TSharedPtr<IBackChannelSocketConnection> CreateConnection(const int32 Type) = 0;
+	virtual TSharedPtr<IBackChannelConnection> CreateConnection(const int32 Type) = 0;
 
 public:
 

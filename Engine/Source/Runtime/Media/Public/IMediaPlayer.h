@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -75,12 +75,12 @@ public:
 	virtual FString GetInfo() const = 0;
 
 	/**
-	 * Get the GUID for this player plugin.
+	 * Get the name of this player.
 	 *
-	 * @return Media player GUID (usually corresponds to a player name)
-	 * @see GetPlayerName
+	 * @return Media player name, i.e. 'AndroidMedia' or 'WmfMedia'.
+	 * @see GetMediaName
 	 */
-	virtual FGuid GetPlayerPluginGUID() const = 0;
+	virtual FName GetPlayerName() const = 0;
 
 	/**
 	 * Get the player's sample queue.
@@ -165,6 +165,22 @@ public:
 	 * @see Close, IsReady, OnOpen, OnOpenFailed
 	 */
 	virtual bool Open(const TSharedRef<FArchive, ESPMode::ThreadSafe>& Archive, const FString& OriginalUrl, const IMediaOptions* Options) = 0;
+
+	/**
+	* Specifies how audio starving should be handled
+	* 
+	* This affects the starving behavior of the used UMediaSoundComponent component.
+	* When true, it will skip audio to keep the time as if no starving occurred.
+	* If false, it will simply wait and continue without skipping when it gets more audio.
+	*/
+	virtual bool RequiresAudioSyncAfterDropouts() const
+	{
+#if PLATFORM_PS4 || PLATFORM_XBOXONE
+		return true;
+#else
+		return false;
+#endif
+	}
 
 public:
 
@@ -303,19 +319,6 @@ public:
 	virtual void ProcessVideoSamples()
 	{
 		// Override in child class if needed.
-	}
-
-	enum class EFeatureFlag {
-		AllowShutdownOnClose = 0,	//!< Allow player to be shutdown right after 'close' event is received from it
-		UsePlaybackTimingV2,		//!< Use v2 playback timing and AV sync
-		UseRealtimeWithVideoOnly,	//!< Use realtime rather then game deltatime to control video playback if no audio is present
-		AlwaysPullNewestVideoFrame,	//!< Mediaframework will not gate video frame output with its own timing, but assumes "ASAP" as output time for every sample
-	};
-	
-	virtual bool GetPlayerFeatureFlag(EFeatureFlag /*flag*/) const
-	{
-		// Override in child class if needed.
-		return false;
 	}
 
 public:

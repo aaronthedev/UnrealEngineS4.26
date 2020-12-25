@@ -59,8 +59,6 @@ Pass::Status GenerateWebGPUInitializersPass::Process() {
     changed = true;
 
     auto* constant_inst = GetNullConstantForVariable(inst);
-    if (!constant_inst) return Status::Failure;
-
     if (seen_null_constants_.find(constant_inst) ==
         seen_null_constants_.end()) {
       constant_inst->InsertBefore(inst);
@@ -80,8 +78,6 @@ Pass::Status GenerateWebGPUInitializersPass::Process() {
 
       changed = true;
       auto* constant_inst = GetNullConstantForVariable(inst);
-      if (!constant_inst) return Status::Failure;
-
       AddNullInitializerToVariable(constant_inst, inst);
     }
   }

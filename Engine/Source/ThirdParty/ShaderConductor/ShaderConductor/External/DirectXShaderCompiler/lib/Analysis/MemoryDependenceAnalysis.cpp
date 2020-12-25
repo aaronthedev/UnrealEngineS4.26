@@ -49,7 +49,7 @@ STATISTIC(NumCacheCompleteNonLocalPtr,
           "Number of block queries that were completely cached");
 
 // Limit for the number of instructions to scan in a block.
-static const unsigned int BlockScanLimit = 500;
+static const unsigned int BlockScanLimit = 100;
 
 // Limit on the number of memdep results to process.
 static const unsigned int NumResultsLimit = 100;
@@ -376,15 +376,12 @@ static bool isVolatile(Instruction *Inst) {
 /// annotated to the query instruction to refine the result.
 MemDepResult MemoryDependenceAnalysis::getPointerDependencyFrom(
     const MemoryLocation &MemLoc, bool isLoad, BasicBlock::iterator ScanIt,
-    BasicBlock *BB, Instruction *QueryInst, unsigned Limit) {
+    BasicBlock *BB, Instruction *QueryInst) {
 
   const Value *MemLocBase = nullptr;
   int64_t MemLocOffset = 0;
+  unsigned Limit = BlockScanLimit;
   bool isInvariantLoad = false;
-
-  unsigned DefaultLimit = BlockScanLimit;
-  if (Limit == 0)
-    Limit = DefaultLimit;
 
   // We must be careful with atomic accesses, as they may allow another thread
   //   to touch this location, cloberring it. We are conservative: if the
@@ -656,7 +653,7 @@ MemDepResult MemoryDependenceAnalysis::getPointerDependencyFrom(
 
 /// getDependency - Return the instruction on which a memory operation
 /// depends.
-MemDepResult MemoryDependenceAnalysis::getDependency(Instruction *QueryInst, unsigned ScanLimit) {
+MemDepResult MemoryDependenceAnalysis::getDependency(Instruction *QueryInst) {
   Instruction *ScanPos = QueryInst;
 
   // Check for a cached result
@@ -693,8 +690,9 @@ MemDepResult MemoryDependenceAnalysis::getDependency(Instruction *QueryInst, uns
       bool isLoad = !(MR & AliasAnalysis::Mod);
       if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(QueryInst))
         isLoad |= II->getIntrinsicID() == Intrinsic::lifetime_start;
+
       LocalCache = getPointerDependencyFrom(MemLoc, isLoad, ScanPos,
-                                            QueryParent, QueryInst, ScanLimit);
+                                            QueryParent, QueryInst);
     } else if (isa<CallInst>(QueryInst) || isa<InvokeInst>(QueryInst)) {
       CallSite QueryCS(QueryInst);
       bool isReadOnly = AA->onlyReadsMemory(QueryCS);

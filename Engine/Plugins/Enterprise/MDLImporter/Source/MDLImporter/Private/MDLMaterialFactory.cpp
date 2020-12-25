@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MDLMaterialFactory.h"
 
@@ -67,10 +67,8 @@ namespace MDLImporterImpl
 		}
 		if (MdlMaterial.Displacement.WasProcessed())
 		{
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			Material.bEnableAdaptiveTessellation = true;
 			Material.D3D11TessellationMode       = EMaterialTessellationMode::MTM_FlatTessellation;
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		}
 
 		if (Material.GetShadingModels().HasShadingModel(EMaterialShadingModel::MSM_ClearCoat))
@@ -188,7 +186,7 @@ bool FMDLMaterialFactory::CreateMaterials(const FString& Filename, UObject* Pare
 	CleanUp();
 
 	FString  MaterialPackageName = UPackageTools::SanitizePackageName(*(ParentPackage->GetName() / Materials.Name));
-	UObject* MaterialPackage     = CreatePackage(*MaterialPackageName);
+	UObject* MaterialPackage     = CreatePackage(nullptr, *MaterialPackageName);
 
 	for (const Mdl::FMaterial& MdlMaterial : Materials)
 	{

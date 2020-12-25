@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 /*=============================================================================================
@@ -24,8 +24,7 @@ enum EAsyncIOPriorityAndFlags
 	AIOP_PRIORITY_MASK = 0x000000ff,
 
 	// Flags - combine with priorities if needed
-	AIOP_FLAG_PRECACHE	=	0x00000100,
-	AIOP_FLAG_DONTCACHE	=	0x00000200,
+	AIOP_FLAG_PRECACHE = 0x00000100,
 
 	// Priorities
 	AIOP_MIN = 0,
@@ -63,17 +62,6 @@ enum class EPlatformFileWrite : uint8
 };
 
 ENUM_CLASS_FLAGS(EPlatformFileWrite);
-
-/**
- * Enum for the DirectoryVisitor flags
- */
-enum class EDirectoryVisitorFlags : uint8
-{
-	None = 0x0,
-	ThreadSafe = 0x01	// should be set when the Visit function can be called from multiple threads at once.
-};
-
-ENUM_CLASS_FLAGS(EDirectoryVisitorFlags);
 
 /** 
  * File handle interface. 
@@ -248,7 +236,7 @@ public:
 	/**
 	 * Build an in memory unique pak file from a subset of files in this pak file
 	 */
-	virtual void		MakeUniquePakFilesForTheseFiles(const TArray<TArray<FString>>& InFiles) { }
+	virtual void		MakeUniquePakFilesForTheseFiles(TArray<TArray<FString>> InFiles) { }
 
 	/**
 	* Performs initialization of the platform file after the new async IO has been enabled
@@ -335,11 +323,6 @@ public:
 	class FDirectoryVisitor
 	{
 	public:
-		FDirectoryVisitor(EDirectoryVisitorFlags InDirectoryVisitorFlags = EDirectoryVisitorFlags::None)
-			: DirectoryVisitorFlags(InDirectoryVisitorFlags)
-		{
-		}
-
 		virtual ~FDirectoryVisitor() { }
 
 		/** 
@@ -349,14 +332,6 @@ public:
 		 * @return							true if the iteration should continue.
 		**/
 		virtual bool Visit(const TCHAR* FilenameOrDirectory, bool bIsDirectory) = 0;
-
-		/** True if the Visit function can be called from multiple threads at once. **/
-		FORCEINLINE bool IsThreadSafe() const
-		{
-			return (DirectoryVisitorFlags & EDirectoryVisitorFlags::ThreadSafe) != EDirectoryVisitorFlags::None;
-		}
-
-		EDirectoryVisitorFlags DirectoryVisitorFlags;
 	};
 
 	/** File and directory visitor function that takes only the name */
@@ -622,25 +597,4 @@ public:
 		return IPlatformFile::GetPhysicalTypeName();
 	}
 	//~ End IPlatformFile Interface
-};
-
-/* Interface class for FPakFile to allow usage from modules that cannot have a compile dependency on FPakFile */
-class CORE_API IPakFile
-{
-public:
-	virtual const FString& PakGetPakFilename() const = 0;
-	/**
-	  * Return whether the Pak has an entry for the given FileName.  Not necessarily exclusive; other Patch Paks may have their own copy of the same File.
-	  * @param Filename The full LongPackageName path to the file, as returned from FPackageName::LongPackageNameToFilename + extension.  Comparison is case-insensitive.
-	  */
-	virtual bool PakContains(const FString& Filename) const = 0;
-	virtual int32 PakGetPakchunkIndex() const = 0;
-	/**
-	 * Calls the given Visitor on every FileName in the Pruned Directory Index. FileNames passed to the Vistory are the RelativePath from the Mount of the PakFile
-	 * The Pruned Directory Index at Runtime contains only the DirectoryIndexKeepFiles-specified subset of FilesNames and DirectoryNames that exist in the PakFile
-	 */
-	virtual void PakVisitPrunedFilenames(IPlatformFile::FDirectoryVisitor& Visitor) const = 0;
-	virtual const FString& PakGetMountPoint() const = 0;
-
-	virtual int32 GetNumFiles() const = 0;
 };

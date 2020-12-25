@@ -1,28 +1,25 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DisplayNodes/VariantManagerVariantNode.h"
 
-#include "SVariantManager.h"
-#include "ThumbnailGenerator.h"
-#include "Variant.h"
-#include "VariantManagerDragDropOp.h"
-#include "VariantManagerEditorCommands.h"
-#include "VariantManagerNodeTree.h"
-#include "VariantManagerSelection.h"
-#include "VariantObjectBinding.h"
-#include "VariantSet.h"
-
-#include "AssetThumbnail.h"
-#include "Brushes/SlateImageBrush.h"
 #include "DragAndDrop/ActorDragDropGraphEdOp.h"
 #include "Editor.h"
-#include "Framework/Application/SlateApplication.h"
-#include "Framework/Commands/UIAction.h"
-#include "Framework/MultiBox/MultiBoxBuilder.h"
-#include "Framework/Notifications/NotificationManager.h"
-#include "ObjectTools.h"
-#include "ScopedTransaction.h"
 #include "Textures/SlateIcon.h"
+#include "Framework/Commands/UIAction.h"
+#include "Variant.h"
+#include "VariantSet.h"
+#include "VariantObjectBinding.h"
+#include "VariantManagerDragDropOp.h"
+#include "VariantManagerNodeTree.h"
+#include "VariantManagerEditorCommands.h"
+#include "AssetThumbnail.h"
+#include "ScopedTransaction.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "SVariantManager.h"
+#include "VariantManagerSelection.h"
+#include "DragAndDrop/ActorDragDropGraphEdOp.h"
+#include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
 
 #define LOCTEXT_NAMESPACE "VariantManagerVariantNode"
@@ -82,7 +79,7 @@ TSharedRef<SWidget> FVariantManagerVariantNode::GetCustomOutlinerContent(TShared
 		.HAlign(HAlign_Fill)
 		.BorderImage(this, &FVariantManagerDisplayNode::GetNodeBorderImage)
 		.BorderBackgroundColor(this, &FVariantManagerDisplayNode::GetNodeBackgroundTint)
-		.Padding(FMargin(20.0f, 0.0f, 2.0f, 0.0f))
+		.Padding(FMargin(2.0f, 0.0f, 2.0f, 0.0f))
 		[
 			SNew(SHorizontalBox)
 
@@ -203,7 +200,7 @@ TOptional<EItemDropZone> FVariantManagerVariantNode::CanDrop(const FDragDropEven
 
 		if (NumActorsWeCanAdd > 0)
 		{
-			FText NewHoverText = FText::Format( LOCTEXT("CanDrop_BindActors", "Bind {0} {0}|plural(one=actor,other=actors) to variant '{1}'"),
+			FText NewHoverText = FText::Format( LOCTEXT("CanDrop_BindActors", "Bind {0} {0}|plural(one=actor,other=actors) to variant '{2}'"),
 				NumActorsWeCanAdd,
 				GetVariant().GetDisplayText());
 
@@ -469,14 +466,11 @@ void FVariantManagerVariantNode::BuildContextMenu(FMenuBuilder& MenuBuilder)
 {
 	FVariantManagerDisplayNode::BuildContextMenu(MenuBuilder);
 
-	MenuBuilder.BeginSection(TEXT("Variant"), LOCTEXT("VariantSectionText", "Variant"));
+	MenuBuilder.BeginSection("Variant", LOCTEXT("VariantSectionText", "Variant"));
 	MenuBuilder.AddMenuEntry(FVariantManagerEditorCommands::Get().AddSelectedActorsCommand);
 	MenuBuilder.AddMenuEntry(FVariantManagerEditorCommands::Get().SwitchOnSelectedVariantCommand);
-	MenuBuilder.EndSection();
-	MenuBuilder.BeginSection(TEXT("Thumbnail"), LOCTEXT("ThumbnailSectionText", "Thumbnail"));
-	MenuBuilder.AddMenuEntry(FVariantManagerEditorCommands::Get().CreateThumbnailCommand);
-	MenuBuilder.AddMenuEntry(FVariantManagerEditorCommands::Get().LoadThumbnailCommand);
-	MenuBuilder.AddMenuEntry(FVariantManagerEditorCommands::Get().ClearThumbnailCommand);
+	MenuBuilder.AddMenuEntry(FVariantManagerEditorCommands::Get().CreateThumbnailVariantCommand);
+	MenuBuilder.AddMenuEntry(FVariantManagerEditorCommands::Get().ClearThumbnailVariantCommand);
 	MenuBuilder.EndSection();
 }
 
@@ -487,37 +481,24 @@ UVariant& FVariantManagerVariantNode::GetVariant() const
 
 TSharedRef<SWidget> FVariantManagerVariantNode::GetThumbnailWidget()
 {
-	TSharedPtr<SWidget> ThumbnailWidget = nullptr;
+	FAssetData AssetData(&Variant);
 
-	// Try using texture2d thumbnails
-	if (UTexture2D* CreatedThumbnail = Variant.GetThumbnail())
-	{
-		if (!ImageBrush.IsValid() || ImageBrush->GetResourceObject() != CreatedThumbnail)
-		{
-			ImageBrush = MakeShareable(
-				new FSlateImageBrush((UObject*)CreatedThumbnail, FVector2D(CreatedThumbnail->GetSizeX(), CreatedThumbnail->GetSizeY())));
-		}
+	// Create a thumbnail pool to hold the single thumbnail rendered
+	ThumbnailPool = MakeShared<FAssetThumbnailPool>(1, /*InAreRealTileThumbnailsAllowed=*/false);
 
-		if (ImageBrush.IsValid())
-		{
-			ThumbnailWidget = SNew(SImage).Image(ImageBrush.Get());
-		}
-	}
+	TArray<FAssetData> AssetDatas;
+	AssetDatas.Emplace(&Variant);
 
-	// Use default thumbnail graphic for Variants as a fallback
-	if(!ThumbnailWidget.IsValid())
-	{
-		ThumbnailPool = MakeShared<FAssetThumbnailPool>(1, false);
-
-		TSharedRef<FAssetThumbnail> AssetThumbnail = MakeShared<FAssetThumbnail>(&Variant, VARIANT_MANAGER_THUMBNAIL_SIZE, VARIANT_MANAGER_THUMBNAIL_SIZE, ThumbnailPool);
-		ThumbnailWidget = AssetThumbnail->MakeThumbnailWidget();
-	}
+	// Create the thumbnail handle
+	int32 ThumbnailSizeX = 64;
+	int32 ThumbnailSizeY = 64;
+	TSharedRef<FAssetThumbnail> AssetThumbnail = MakeShared<FAssetThumbnail>(AssetDatas[0], ThumbnailSizeX, ThumbnailSizeY, ThumbnailPool);
 
 	return SNew(SBox)
-		.WidthOverride(64)
-		.HeightOverride(64)
+		.WidthOverride(ThumbnailSizeX)
+		.HeightOverride(ThumbnailSizeY)
 		[
-			ThumbnailWidget.IsValid() ? ThumbnailWidget.ToSharedRef() : SNullWidget::NullWidget
+			AssetThumbnail->MakeThumbnailWidget()
 		];
 }
 

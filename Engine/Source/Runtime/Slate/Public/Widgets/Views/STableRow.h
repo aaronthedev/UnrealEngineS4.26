@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -26,12 +26,6 @@
 #include "Widgets/Views/SExpanderArrow.h"
 #include "Widgets/Views/SHeaderRow.h"
 #include "Framework/Views/TableViewTypeTraits.h"
-#if WITH_ACCESSIBILITY
-#include "GenericPlatform/Accessibility/GenericAccessibleInterfaces.h"
-#include "Widgets/Accessibility/SlateCoreAccessibleWidgets.h"
-#include "Widgets/Accessibility/SlateAccessibleWidgetCache.h"
-#include "Widgets/Accessibility/SlateAccessibleMessageHandler.h"
-#endif
 
 template <typename ItemType> class SListView;
 
@@ -132,7 +126,7 @@ DECLARE_DELEGATE_RetVal_OneParam(FReply, FOnTableRowDrop, FDragDropEvent const&)
 
 /**
  * The ListView is populated by Selectable widgets.
- * A Selectable widget is a way of the ListView containing it (OwnerTable) and holds arbitrary Content (Content).
+ * A Selectable widget is a way of the ListView containing it (OwnerWidget) and holds arbitrary Content (Content).
  * A Selectable works with its corresponding ListView to provide selection functionality.
  */
 template<typename ItemType>
@@ -271,116 +265,21 @@ public:
 		}
 	}
 
-#if WITH_ACCESSIBILITY
-	protected:
-	friend class FSlateAccessibleTableRow;
-	/**
-	* An accessible implementation of STableRow exposed to platform accessibility APIs.
-	* For subclasses of STableRow, inherit from this class and override any functions
-	* to give the desired behavior.
-	*/
-	class FSlateAccessibleTableRow
-		: public FSlateAccessibleWidget
-		, public IAccessibleTableRow
-	{
-	public:
-		FSlateAccessibleTableRow(TWeakPtr<SWidget> InWidget, EAccessibleWidgetType InWidgetType)
-			: FSlateAccessibleWidget(InWidget, InWidgetType)
-		{}
-
-		// IAccessibleWidget
-		virtual IAccessibleTableRow* AsTableRow() 
-		{ 
-			return this; 
-		}
-		// ~
-		// IAccessibleTableRow
-		virtual void Select() override
-		{
-			if (Widget.IsValid())
-			{
-				TSharedPtr<STableRow<ItemType>> TableRow = StaticCastSharedPtr<STableRow<ItemType>>(Widget.Pin());
-				if(TableRow->OwnerTablePtr.IsValid())
-				{
-					TSharedRef< ITypedTableView<ItemType> > OwnerTable = TableRow->OwnerTablePtr.Pin().ToSharedRef();
-					const bool bIsActive = OwnerTable->AsWidget()->HasKeyboardFocus();
-
-					if (const ItemType* MyItemPtr = TableRow->GetItemForThis(OwnerTable))
-					{
-						const ItemType& MyItem = *MyItemPtr;
-						const bool bIsSelected = OwnerTable->Private_IsItemSelected(MyItem);
-						OwnerTable->Private_ClearSelection();
-						OwnerTable->Private_SetItemSelection(MyItem, true, true);
-						// @TODOAccessibility: Not sure if  irnoring  the signal selection mode will affect anything 
-						OwnerTable->Private_SignalSelectionChanged(ESelectInfo::Direct);
-					}
-				}
-			}
-		}
-
-		virtual void AddToSelection() override
-		{
-			// @TODOAccessibility: When multiselection is supported 
-		}
-
-		virtual void RemoveFromSelection() override
-		{
-			// @TODOAccessibility: When multiselection is supported 
-		}
-
-		virtual bool IsSelected() const override
-		{
-			if (Widget.IsValid())
-			{
-				TSharedPtr<STableRow<ItemType>> TableRow = StaticCastSharedPtr<STableRow<ItemType>>(Widget.Pin());
-				return TableRow->IsItemSelected();
-			}
-			return false; 
-		}
-
-		virtual TSharedPtr<IAccessibleWidget> GetOwningTable() const override
-		{
-			if (Widget.IsValid())
-			{
-				TSharedPtr<STableRow<ItemType>> TableRow = StaticCastSharedPtr<STableRow<ItemType>>(Widget.Pin());
-				if (TableRow->OwnerTablePtr.IsValid())
-				{
-					TSharedRef<SWidget> OwningTableWidget = TableRow->OwnerTablePtr.Pin()->AsWidget();
-					return FSlateAccessibleWidgetCache::GetAccessibleWidgetChecked(OwningTableWidget);
-				}
-			}
-			return nullptr;
-		}
-		// ~
-	};
-	public: 
-	virtual TSharedRef<FSlateAccessibleWidget> CreateAccessibleWidget() override
-	{
-		// @TODOAccessibility: Add support for tile table rows and tree table rows etc 
-		// The widget type passed in should be based on the table type of the owning tabel
-		EAccessibleWidgetType WidgetType = EAccessibleWidgetType::ListItem;
-		return MakeShareable<FSlateAccessibleWidget>(new STableRow<ItemType>::FSlateAccessibleTableRow(SharedThis(this), WidgetType));
-	}
-#endif
-
 	virtual int32 OnPaint( const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled ) const override
 	{
-		TSharedRef< ITypedTableView<ItemType> > OwnerTable = OwnerTablePtr.Pin().ToSharedRef();
-		const bool bIsActive = OwnerTable->AsWidget()->HasKeyboardFocus();
-
-		if (const ItemType* MyItemPtr = GetItemForThis(OwnerTable))
+		TSharedRef< ITypedTableView<ItemType> > OwnerWidget = OwnerTablePtr.Pin().ToSharedRef();
+		const bool bIsActive = OwnerWidget->AsWidget()->HasKeyboardFocus();
+		const ItemType* MyItem = OwnerWidget->Private_ItemFromWidget( this );
+		if ( bIsActive && OwnerWidget->Private_UsesSelectorFocus() && OwnerWidget->Private_HasSelectorFocus( *MyItem ) )
 		{
-			if (bIsActive && OwnerTable->Private_UsesSelectorFocus() && OwnerTable->Private_HasSelectorFocus(*MyItemPtr))
-			{
-				FSlateDrawElement::MakeBox(
-					OutDrawElements,
-					LayerId,
-					AllottedGeometry.ToPaintGeometry(),
-					&Style->SelectorFocusedBrush,
-					ESlateDrawEffect::None,
-					Style->SelectorFocusedBrush.GetTint(InWidgetStyle) * InWidgetStyle.GetColorAndOpacityTint()
+			FSlateDrawElement::MakeBox(
+				OutDrawElements,
+				LayerId,
+				AllottedGeometry.ToPaintGeometry(),
+				&Style->SelectorFocusedBrush,
+				ESlateDrawEffect::None,
+				Style->SelectorFocusedBrush.GetTint( InWidgetStyle ) * InWidgetStyle.GetColorAndOpacityTint()
 				);
-			}
 		}
 
 		LayerId = SBorder::OnPaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
@@ -399,38 +298,15 @@ public:
 				};
 			}();
 
-			if (OwnerTable->Private_GetOrientation() == Orient_Vertical)
-			{
-				FSlateDrawElement::MakeBox
-				(
-					OutDrawElements,
-					LayerId++,
-					AllottedGeometry.ToPaintGeometry(),
-					DropIndicatorBrush,
-					ESlateDrawEffect::None,
-					DropIndicatorBrush->GetTint(InWidgetStyle) * InWidgetStyle.GetColorAndOpacityTint()
-				);
-			}
-			else
-			{
-				// Reuse the drop indicator asset for horizontal, by rotating the drawn box 90 degrees.
-				const FVector2D LocalSize(AllottedGeometry.GetLocalSize());
-				const FVector2D Pivot(LocalSize * 0.5f);
-				const FVector2D RotatedLocalSize(LocalSize.Y, LocalSize.X);
-				FSlateLayoutTransform RotatedTransform(Pivot - RotatedLocalSize * 0.5f);	// Make the box centered to the alloted geometry, so that it can be rotated around the center.
-
-				FSlateDrawElement::MakeRotatedBox(
-					OutDrawElements,
-					LayerId++,
-					AllottedGeometry.ToPaintGeometry(RotatedLocalSize, RotatedTransform),
-					DropIndicatorBrush,
-					ESlateDrawEffect::None,
-					-HALF_PI,	// 90 deg CCW
-					RotatedLocalSize * 0.5f,	// Relative center to the flipped
-					FSlateDrawElement::RelativeToElement,
-					DropIndicatorBrush->GetTint(InWidgetStyle) * InWidgetStyle.GetColorAndOpacityTint()
-				);
-			}
+			FSlateDrawElement::MakeBox
+			(
+				OutDrawElements,
+				LayerId++,
+				AllottedGeometry.ToPaintGeometry(),
+				DropIndicatorBrush,
+				ESlateDrawEffect::None,
+				DropIndicatorBrush->GetTint(InWidgetStyle) * InWidgetStyle.GetColorAndOpacityTint()
+			);
 		}
 
 		return LayerId;
@@ -443,25 +319,24 @@ public:
 	 * @param  InMouseEvent  Mouse button event.
 	 * @return  Returns whether the event was handled, along with other possible actions.
 	 */
-	virtual FReply OnMouseButtonDoubleClick(const FGeometry& InMyGeometry, const FPointerEvent& InMouseEvent) override
+	virtual FReply OnMouseButtonDoubleClick( const FGeometry& InMyGeometry, const FPointerEvent& InMouseEvent ) override
 	{
-		if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+		if( InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton )
 		{
-			TSharedRef< ITypedTableView<ItemType> > OwnerTable = OwnerTablePtr.Pin().ToSharedRef();
+			TSharedRef< ITypedTableView<ItemType> > OwnerWidget = OwnerTablePtr.Pin().ToSharedRef();
 
 			// Only one item can be double-clicked
-			if (const ItemType* MyItemPtr = GetItemForThis(OwnerTable))
-			{
-				// If we're configured to route double-click messages to the owner of the table, then
-				// do that here.  Otherwise, we'll toggle expansion.
-				const bool bWasHandled = OwnerTable->Private_OnItemDoubleClicked(*MyItemPtr);
-				if (!bWasHandled)
-				{
-					ToggleExpansion();
-				}
+			const ItemType* MyItem = OwnerWidget->Private_ItemFromWidget( this );
 
-				return FReply::Handled();
+			// If we're configured to route double-click messages to the owner of the table, then
+			// do that here.  Otherwise, we'll toggle expansion.
+			const bool bWasHandled = OwnerWidget->Private_OnItemDoubleClicked( *MyItem );
+			if( !bWasHandled )
+			{
+				ToggleExpansion();
 			}
+
+			return FReply::Handled();
 		}
 
 		return FReply::Unhandled();
@@ -476,58 +351,57 @@ public:
 	 */	
 	virtual FReply OnMouseButtonDown( const FGeometry& MyGeometry, const FPointerEvent& MouseEvent ) override
 	{
-		TSharedRef< ITypedTableView<ItemType> > OwnerTable = OwnerTablePtr.Pin().ToSharedRef();
+		TSharedPtr< ITypedTableView<ItemType> > OwnerWidget = OwnerTablePtr.Pin();
 		bChangedSelectionOnMouseDown = false;
 		bDragWasDetected = false;
+
+		check(OwnerWidget.IsValid());
 
 		if ( MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton )
 		{
 			const ESelectionMode::Type SelectionMode = GetSelectionMode();
 			if (SelectionMode != ESelectionMode::None)
 			{
-				if (const ItemType* MyItemPtr = GetItemForThis(OwnerTable))
+				const ItemType& MyItem = *OwnerWidget->Private_ItemFromWidget(this);
+				const bool bIsSelected = OwnerWidget->Private_IsItemSelected(MyItem);
+
+				if (SelectionMode == ESelectionMode::Multi)
 				{
-					const ItemType& MyItem = *MyItemPtr;
-					const bool bIsSelected = OwnerTable->Private_IsItemSelected(MyItem);
-
-					if (SelectionMode == ESelectionMode::Multi)
+					if (MouseEvent.IsControlDown())
 					{
-						if (MouseEvent.IsControlDown())
-						{
-							OwnerTable->Private_SetItemSelection(MyItem, !bIsSelected, true);
-							bChangedSelectionOnMouseDown = true;
-							if (SignalSelectionMode == ETableRowSignalSelectionMode::Instantaneous)
-							{
-								OwnerTable->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
-							}
-						}
-						else if (MouseEvent.IsShiftDown())
-						{
-							OwnerTable->Private_SelectRangeFromCurrentTo(MyItem);
-							bChangedSelectionOnMouseDown = true;
-							if (SignalSelectionMode == ETableRowSignalSelectionMode::Instantaneous)
-							{
-								OwnerTable->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
-							}
-						}
-					}
-
-					if (!bIsSelected && !bChangedSelectionOnMouseDown)
-					{
-						OwnerTable->Private_ClearSelection();
-						OwnerTable->Private_SetItemSelection(MyItem, true, true);
+						OwnerWidget->Private_SetItemSelection(MyItem, !bIsSelected, true);
 						bChangedSelectionOnMouseDown = true;
 						if (SignalSelectionMode == ETableRowSignalSelectionMode::Instantaneous)
 						{
-							OwnerTable->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
+							OwnerWidget->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
 						}
 					}
-
-					return FReply::Handled()
-						.DetectDrag(SharedThis(this), EKeys::LeftMouseButton)
-						.SetUserFocus(OwnerTable->AsWidget(), EFocusCause::Mouse)
-						.CaptureMouse(SharedThis(this));
+					else if (MouseEvent.IsShiftDown())
+					{
+						OwnerWidget->Private_SelectRangeFromCurrentTo(MyItem);
+						bChangedSelectionOnMouseDown = true;
+						if (SignalSelectionMode == ETableRowSignalSelectionMode::Instantaneous)
+						{
+							OwnerWidget->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
+						}
+					}
 				}
+				
+				if (!bIsSelected && !bChangedSelectionOnMouseDown)
+				{
+					OwnerWidget->Private_ClearSelection();
+					OwnerWidget->Private_SetItemSelection(MyItem, true, true);
+					bChangedSelectionOnMouseDown = true;
+					if (SignalSelectionMode == ETableRowSignalSelectionMode::Instantaneous)
+					{
+						OwnerWidget->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
+					}
+				}
+
+				return FReply::Handled()
+					.DetectDrag(SharedThis(this), EKeys::LeftMouseButton)
+					.SetUserFocus(OwnerWidget->AsWidget(), EFocusCause::Mouse)
+					.CaptureMouse(SharedThis(this));
 			}
 		}
 
@@ -543,10 +417,11 @@ public:
 	 */
 	virtual FReply OnMouseButtonUp( const FGeometry& MyGeometry, const FPointerEvent& MouseEvent ) override
 	{
-		TSharedRef< ITypedTableView<ItemType> > OwnerTable = OwnerTablePtr.Pin().ToSharedRef();
+		TSharedPtr< ITypedTableView<ItemType> > OwnerWidget = OwnerTablePtr.Pin();
+		check(OwnerWidget.IsValid());
 
-		// Requires #include "Widgets/Views/SListView.h" in your header (not done in STableRow.h to avoid circular reference).
-		TSharedRef< STableViewBase > OwnerTableViewBase = StaticCastSharedRef< SListView<ItemType> >(OwnerTable);
+		// Requires #include "Widgets/Views/STableViewBase.h"
+		TSharedRef< STableViewBase > OwnerTableViewBase = StaticCastSharedPtr< SListView<ItemType> >( OwnerWidget ).ToSharedRef();
 
 		if ( MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton )
 		{
@@ -568,8 +443,8 @@ public:
 						{
 							if ( !bChangedSelectionOnMouseDown )
 							{
-								OwnerTable->Private_ClearSelection();
-								OwnerTable->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
+								OwnerWidget->Private_ClearSelection();
+								OwnerWidget->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
 							}
 
 							Reply = FReply::Handled().ReleaseMouseCapture();
@@ -580,20 +455,20 @@ public:
 						{
 							if ( !bChangedSelectionOnMouseDown && !MouseEvent.IsControlDown() && !MouseEvent.IsShiftDown() )
 							{
-								if (const ItemType* MyItemPtr = GetItemForThis(OwnerTable))
+								const ItemType* MyItem = OwnerWidget->Private_ItemFromWidget( this );
+								check(MyItem != nullptr);
+
+								const bool bIsSelected = OwnerWidget->Private_IsItemSelected( *MyItem );
+								if ( bIsSelected && OwnerWidget->Private_GetNumSelectedItems() > 1 )
 								{
-									const bool bIsSelected = OwnerTable->Private_IsItemSelected(*MyItemPtr);
-									if (bIsSelected && OwnerTable->Private_GetNumSelectedItems() > 1)
-									{
-										// We are mousing up on a previous selected item;
-										// deselect everything but this item.
+									// We are mousing up on a previous selected item;
+									// deselect everything but this item.
 
-										OwnerTable->Private_ClearSelection();
-										OwnerTable->Private_SetItemSelection(*MyItemPtr, true, true);
-										OwnerTable->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
+									OwnerWidget->Private_ClearSelection();
+									OwnerWidget->Private_SetItemSelection( *MyItem, true, true );
+									OwnerWidget->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
 
-										Reply = FReply::Handled().ReleaseMouseCapture();
-									}
+									Reply = FReply::Handled().ReleaseMouseCapture();
 								}
 							}
 						}
@@ -601,17 +476,15 @@ public:
 					}
 				}
 
-				if (const ItemType* MyItemPtr = GetItemForThis(OwnerTable))
+				const ItemType* MyItem = OwnerWidget->Private_ItemFromWidget(this);
+				if (MyItem && OwnerWidget->Private_OnItemClicked(*MyItem))
 				{
-					if (OwnerTable->Private_OnItemClicked(*MyItemPtr))
-					{
-						Reply = FReply::Handled().ReleaseMouseCapture();
-					}
+					Reply = FReply::Handled().ReleaseMouseCapture();
 				}
 
 				if (bChangedSelectionOnMouseDown && !bDragWasDetected && (SignalSelectionMode == ETableRowSignalSelectionMode::Deferred))
 				{
-					OwnerTable->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
+					OwnerWidget->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
 				}
 
 				return Reply;
@@ -629,22 +502,20 @@ public:
 			case ESelectionMode::Multi:
 				{
 					// Only one item can be selected at a time
-					if (const ItemType* MyItemPtr = GetItemForThis(OwnerTable))
+					const ItemType* MyItem = OwnerWidget->Private_ItemFromWidget( this );
+					const bool bIsSelected = OwnerWidget->Private_IsItemSelected( *MyItem );
+
+					// Select the item under the cursor
+					if( !bIsSelected )
 					{
-						const bool bIsSelected = OwnerTable->Private_IsItemSelected(*MyItemPtr);
-
-						// Select the item under the cursor
-						if (!bIsSelected)
-						{
-							OwnerTable->Private_ClearSelection();
-							OwnerTable->Private_SetItemSelection(*MyItemPtr, true, true);
-							OwnerTable->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
-						}
-
-						OwnerTable->Private_OnItemRightClicked(*MyItemPtr, MouseEvent);
-
-						return FReply::Handled();
+						OwnerWidget->Private_ClearSelection();
+						OwnerWidget->Private_SetItemSelection( *MyItem, true, true );
+						OwnerWidget->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
 					}
+
+					OwnerWidget->Private_OnItemRightClicked( *MyItem, MouseEvent );
+
+					return FReply::Handled();
 				}
 				break;
 			}
@@ -671,34 +542,34 @@ public:
 		if (bProcessingSelectionTouch)
 		{
 			bProcessingSelectionTouch = false;
-			const TSharedRef<ITypedTableView<ItemType>> OwnerTable = OwnerTablePtr.Pin().ToSharedRef();
-			if (const ItemType* MyItemPtr = GetItemForThis(OwnerTable))
+			const TSharedPtr<ITypedTableView<ItemType>> OwnerWidget = OwnerTablePtr.Pin();
+			if (const ItemType* MyItem = OwnerWidget->Private_ItemFromWidget(this))
 			{
 				ESelectionMode::Type SelectionMode = GetSelectionMode();
 				if (SelectionMode != ESelectionMode::None)
 				{
-					const bool bIsSelected = OwnerTable->Private_IsItemSelected(*MyItemPtr);
+					const bool bIsSelected = OwnerWidget->Private_IsItemSelected(*MyItem);
 					if (!bIsSelected)
 					{
 						if (SelectionMode != ESelectionMode::Multi)
 						{
-							OwnerTable->Private_ClearSelection();
+							OwnerWidget->Private_ClearSelection();
 						}
-						OwnerTable->Private_SetItemSelection(*MyItemPtr, true, true);
-						OwnerTable->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
+						OwnerWidget->Private_SetItemSelection(*MyItem, true, true);
+						OwnerWidget->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
 
 						Reply = FReply::Handled();
 					}
 					else if (SelectionMode == ESelectionMode::SingleToggle || SelectionMode == ESelectionMode::Multi)
 					{
-						OwnerTable->Private_SetItemSelection(*MyItemPtr, true, true);
-						OwnerTable->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
+						OwnerWidget->Private_SetItemSelection(*MyItem, true, true);
+						OwnerWidget->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
 
 						Reply = FReply::Handled();
 					}
 				}
 
-				if (OwnerTable->Private_OnItemClicked(*MyItemPtr))
+				if (OwnerWidget->Private_OnItemClicked(*MyItem))
 				{
 					Reply = FReply::Handled();
 				}
@@ -724,8 +595,8 @@ public:
 
 			if ( bChangedSelectionOnMouseDown && SignalSelectionMode == ETableRowSignalSelectionMode::Deferred )
 			{
-				TSharedPtr< ITypedTableView<ItemType> > OwnerTable = OwnerTablePtr.Pin();
-				OwnerTable->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
+				TSharedPtr< ITypedTableView<ItemType> > OwnerWidget = OwnerTablePtr.Pin();
+				OwnerWidget->Private_SignalSelectionChanged(ESelectInfo::OnMouseClick);
 			}
 		}
 
@@ -758,17 +629,14 @@ public:
 	}
 
 	/** @return the zone (above, onto, below) based on where the user is hovering over within the row */
-	EItemDropZone ZoneFromPointerPosition(FVector2D LocalPointerPos, FVector2D LocalSize, EOrientation Orientation)
+	EItemDropZone ZoneFromPointerPosition(FVector2D LocalPointerPos, float RowHeight)
 	{
-		const float PointerPos = Orientation == EOrientation::Orient_Horizontal ? LocalPointerPos.X : LocalPointerPos.Y;
-		const float Size = Orientation == EOrientation::Orient_Horizontal ? LocalSize.X : LocalSize.Y;
-
-		const float ZoneBoundarySu = FMath::Clamp(Size * 0.25f, 3.0f, 10.0f);
-		if (PointerPos < ZoneBoundarySu)
+		const float VecticalZoneBoundarySu = FMath::Clamp(RowHeight * 0.25f, 3.0f, 10.0f);
+		if (LocalPointerPos.Y < VecticalZoneBoundarySu)
 		{
 			return EItemDropZone::AboveItem;
 		}
-		else if (PointerPos > Size - ZoneBoundarySu)
+		else if (LocalPointerPos.Y > RowHeight - VecticalZoneBoundarySu)
 		{
 			return EItemDropZone::BelowItem;
 		}
@@ -782,19 +650,14 @@ public:
 	{
 		if ( OnCanAcceptDrop.IsBound() )
 		{
-			const TSharedRef< ITypedTableView<ItemType> > OwnerTable = OwnerTablePtr.Pin().ToSharedRef();
 			const FVector2D LocalPointerPos = MyGeometry.AbsoluteToLocal(DragDropEvent.GetScreenSpacePosition());
-			const EItemDropZone ItemHoverZone = ZoneFromPointerPosition(LocalPointerPos, MyGeometry.GetLocalSize(), OwnerTable->Private_GetOrientation());
+			const EItemDropZone ItemHoverZone = ZoneFromPointerPosition(LocalPointerPos, MyGeometry.GetLocalSize().Y);
 
-			ItemDropZone = [ItemHoverZone, DragDropEvent, this]()
+			ItemDropZone = [&]()
 			{
-				TSharedRef< ITypedTableView<ItemType> > OwnerTable = OwnerTablePtr.Pin().ToSharedRef();
-				if (const ItemType* MyItemPtr = GetItemForThis(OwnerTable))
-				{
-					return OnCanAcceptDrop.Execute(DragDropEvent, ItemHoverZone, *MyItemPtr);
-				}
-
-				return TOptional<EItemDropZone>();
+				TSharedPtr< ITypedTableView<ItemType> > OwnerWidget = OwnerTablePtr.Pin();
+				const ItemType* MyItem = OwnerWidget->Private_ItemFromWidget(this);
+				return OnCanAcceptDrop.Execute(DragDropEvent, ItemHoverZone, *MyItem);
 			}();
 
 			return FReply::Handled();
@@ -812,34 +675,33 @@ public:
 		{
 			if (OnAcceptDrop.IsBound())
 			{
-				const TSharedRef< ITypedTableView<ItemType> > OwnerTable = OwnerTablePtr.Pin().ToSharedRef();
+				const TSharedRef< ITypedTableView<ItemType> > OwnerWidget = OwnerTablePtr.Pin().ToSharedRef();
 
 				// A drop finishes the drag/drop operation, so we are no longer providing any feedback.
 				ItemDropZone = TOptional<EItemDropZone>();
 
 				// Find item associated with this widget.
-				if (const ItemType* MyItemPtr = GetItemForThis(OwnerTable))
+				const ItemType* MyItem = OwnerWidget->Private_ItemFromWidget(this);
+				
+				// Which physical drop zone is the drop about to be performed onto?
+				const FVector2D LocalPointerPos = MyGeometry.AbsoluteToLocal(DragDropEvent.GetScreenSpacePosition());
+				const EItemDropZone HoveredZone = ZoneFromPointerPosition(LocalPointerPos, MyGeometry.GetLocalSize().Y);
+
+				// The row gets final say over which zone to drop onto regardless of physical location.
+				const TOptional<EItemDropZone> ReportedZone = OnCanAcceptDrop.IsBound()
+					? OnCanAcceptDrop.Execute(DragDropEvent, HoveredZone, *MyItem)
+					: HoveredZone;
+
+				if (ReportedZone.IsSet())
 				{
-					// Which physical drop zone is the drop about to be performed onto?
-					const FVector2D LocalPointerPos = MyGeometry.AbsoluteToLocal(DragDropEvent.GetScreenSpacePosition());
-					const EItemDropZone HoveredZone = ZoneFromPointerPosition(LocalPointerPos, MyGeometry.GetLocalSize(), OwnerTable->Private_GetOrientation());
-
-					// The row gets final say over which zone to drop onto regardless of physical location.
-					const TOptional<EItemDropZone> ReportedZone = OnCanAcceptDrop.IsBound()
-						? OnCanAcceptDrop.Execute(DragDropEvent, HoveredZone, *MyItemPtr)
-						: HoveredZone;
-
-					if (ReportedZone.IsSet())
+					FReply DropReply = OnAcceptDrop.Execute(DragDropEvent, ReportedZone.GetValue(), *MyItem);
+					if (DropReply.IsEventHandled() && ReportedZone.GetValue() == EItemDropZone::OntoItem)
 					{
-						FReply DropReply = OnAcceptDrop.Execute(DragDropEvent, ReportedZone.GetValue(), *MyItemPtr);
-						if (DropReply.IsEventHandled() && ReportedZone.GetValue() == EItemDropZone::OntoItem)
-						{
-							// Expand the drop target just in case, so that what we dropped is visible.
-							OwnerTable->Private_SetItemExpansion(*MyItemPtr, true);
-						}
-
-						return DropReply;
+						// Expand the drop target just in case, so that what we dropped is visible.
+						OwnerWidget->Private_SetItemExpansion(*MyItem, true);
 					}
+
+					return DropReply;
 				}
 			}
 
@@ -865,40 +727,31 @@ public:
 
 	virtual bool IsItemExpanded() const override
 	{
-		TSharedRef< ITypedTableView<ItemType> > OwnerTable = OwnerTablePtr.Pin().ToSharedRef();
-		if (const ItemType* MyItemPtr = GetItemForThis(OwnerTable))
-		{
-			return OwnerTable->Private_IsItemExpanded(*MyItemPtr);
-		}
-		
-		return false;
+		TSharedPtr< ITypedTableView<ItemType> > OwnerWidget = OwnerTablePtr.Pin();
+		const ItemType* MyItem = OwnerWidget->Private_ItemFromWidget( this );
+		const bool bIsItemExpanded = OwnerWidget->Private_IsItemExpanded( *MyItem );
+		return bIsItemExpanded;
 	}
 
 	virtual void ToggleExpansion() override
 	{
-		TSharedRef< ITypedTableView<ItemType> > OwnerTable = OwnerTablePtr.Pin().ToSharedRef();
+		TSharedPtr< ITypedTableView<ItemType> > OwnerWidget = OwnerTablePtr.Pin();
 
-		const bool bItemHasChildren = OwnerTable->Private_DoesItemHaveChildren( IndexInList );
+		const bool bItemHasChildren = OwnerWidget->Private_DoesItemHaveChildren( IndexInList );
 		// Nothing to expand if row being clicked on doesn't have children
 		if( bItemHasChildren )
 		{
-			if (const ItemType* MyItemPtr = GetItemForThis(OwnerTable))
-			{
-				const bool bIsItemExpanded = bItemHasChildren && OwnerTable->Private_IsItemExpanded(*MyItemPtr);
-				OwnerTable->Private_SetItemExpansion(*MyItemPtr, !bIsItemExpanded);
-			}
+			ItemType MyItem = *(OwnerWidget->Private_ItemFromWidget( this ));
+			const bool bIsItemExpanded = bItemHasChildren && OwnerWidget->Private_IsItemExpanded( MyItem );
+			OwnerWidget->Private_SetItemExpansion( MyItem, !bIsItemExpanded);
 		}
 	}
 
 	virtual bool IsItemSelected() const override
 	{
-		TSharedRef<ITypedTableView<ItemType>> OwnerTable = OwnerTablePtr.Pin().ToSharedRef();
-		if (const ItemType* MyItemPtr = GetItemForThis(OwnerTable))
-		{
-			return OwnerTable->Private_IsItemSelected(*MyItemPtr);
-		}
-
-		return false;
+		TSharedPtr<ITypedTableView<ItemType>> OwnerTable = OwnerTablePtr.Pin();
+		const ItemType& MyItem = *OwnerTable->Private_ItemFromWidget(this);
+		return OwnerTable->Private_IsItemSelected(MyItem);
 	}
 
 	virtual int32 GetIndentLevel() const override
@@ -964,91 +817,88 @@ public:
 
 	virtual void Private_OnExpanderArrowShiftClicked() override
 	{
-		TSharedRef< ITypedTableView<ItemType> > OwnerTable = OwnerTablePtr.Pin().ToSharedRef();
+		TSharedPtr< ITypedTableView<ItemType> > OwnerWidget = OwnerTablePtr.Pin();
 
-		const bool bItemHasChildren = OwnerTable->Private_DoesItemHaveChildren( IndexInList );
+		const bool bItemHasChildren = OwnerWidget->Private_DoesItemHaveChildren( IndexInList );
 		// Nothing to expand if row being clicked on doesn't have children
 		if( bItemHasChildren )
 		{
-			if (const ItemType* MyItemPtr = GetItemForThis(OwnerTable))
-			{
-				const bool IsItemExpanded = bItemHasChildren && OwnerTable->Private_IsItemExpanded(*MyItemPtr);
-				OwnerTable->Private_OnExpanderArrowShiftClicked(*MyItemPtr, !IsItemExpanded);
-			}
+			ItemType MyItem = *(OwnerWidget->Private_ItemFromWidget( this ));
+			const bool IsItemExpanded = bItemHasChildren && OwnerWidget->Private_IsItemExpanded( MyItem );
+			OwnerWidget->Private_OnExpanderArrowShiftClicked( MyItem, !IsItemExpanded );
 		}
 	}
 
 	/** @return The border to be drawn around this list item */
 	virtual const FSlateBrush* GetBorder() const 
 	{
-		TSharedRef< ITypedTableView<ItemType> > OwnerTable = OwnerTablePtr.Pin().ToSharedRef();
+		TSharedPtr< ITypedTableView<ItemType> > OwnerWidget = OwnerTablePtr.Pin();
 
-		const bool bIsActive = OwnerTable->AsWidget()->HasKeyboardFocus();
+		const bool bIsActive = OwnerWidget->AsWidget()->HasKeyboardFocus();
 
 		static FName GenericWhiteBoxBrush("GenericWhiteBox");
 
 		// @todo: Slate Style - make this part of the widget style
 		const FSlateBrush* WhiteBox = FCoreStyle::Get().GetBrush(GenericWhiteBoxBrush);
 
-		if (const ItemType* MyItemPtr = GetItemForThis(OwnerTable))
+		const ItemType* MyItem = OwnerWidget->Private_ItemFromWidget( this );
+
+		check(MyItem);
+
+		const bool bIsSelected = OwnerWidget->Private_IsItemSelected( *MyItem );
+		const bool bIsHighlighted = OwnerWidget->Private_IsItemHighlighted( *MyItem );
+
+		const bool bAllowSelection = GetSelectionMode() != ESelectionMode::None;
+		const bool bEvenEntryIndex = (IndexInList % 2 == 0);
+
+		if (bIsSelected && bShowSelection)
 		{
-			const bool bIsSelected = OwnerTable->Private_IsItemSelected(*MyItemPtr);
-			const bool bIsHighlighted = OwnerTable->Private_IsItemHighlighted(*MyItemPtr);
-
-			const bool bAllowSelection = GetSelectionMode() != ESelectionMode::None;
-			const bool bEvenEntryIndex = (IndexInList % 2 == 0);
-
-			if (bIsSelected && bShowSelection)
+			if( bIsActive )
 			{
-				if (bIsActive)
-				{
-					return IsHovered()
-						? &Style->ActiveHoveredBrush
-						: &Style->ActiveBrush;
-				}
-				else
-				{
-					return IsHovered()
-						? &Style->InactiveHoveredBrush
-						: &Style->InactiveBrush;
-				}
-			}
-			else if (!bIsSelected && bIsHighlighted)
-			{
-				if (bIsActive)
-				{
-					return IsHovered()
-						? (bEvenEntryIndex ? &Style->EvenRowBackgroundHoveredBrush : &Style->OddRowBackgroundHoveredBrush)
-						: &Style->ActiveHighlightedBrush;
-				}
-				else
-				{
-					return IsHovered()
-						? (bEvenEntryIndex ? &Style->EvenRowBackgroundHoveredBrush : &Style->OddRowBackgroundHoveredBrush)
-						: &Style->InactiveHighlightedBrush;
-				}
+				return IsHovered()
+					? &Style->ActiveHoveredBrush
+					: &Style->ActiveBrush;
 			}
 			else
 			{
-				// Add a slightly lighter background for even rows
-				if (bEvenEntryIndex)
-				{
-					return (IsHovered() && bAllowSelection)
-						? &Style->EvenRowBackgroundHoveredBrush
-						: &Style->EvenRowBackgroundBrush;
-
-				}
-				else
-				{
-					return (IsHovered() && bAllowSelection)
-						? &Style->OddRowBackgroundHoveredBrush
-						: &Style->OddRowBackgroundBrush;
-
-				}
+				return IsHovered()
+					? &Style->InactiveHoveredBrush
+					: &Style->InactiveBrush;
 			}
 		}
+		else if (!bIsSelected && bIsHighlighted)
+		{
+			if (bIsActive)
+			{
+				return IsHovered()
+					? (bEvenEntryIndex ? &Style->EvenRowBackgroundHoveredBrush : &Style->OddRowBackgroundHoveredBrush)
+					: &Style->ActiveHighlightedBrush;
+			}
+			else
+			{
+				return IsHovered()
+					? (bEvenEntryIndex ? &Style->EvenRowBackgroundHoveredBrush : &Style->OddRowBackgroundHoveredBrush)
+					: &Style->InactiveHighlightedBrush;
+			}
+		}
+		else
+		{
+			// Add a slightly lighter background for even rows
+			if(bEvenEntryIndex)
+			{
+				return ( IsHovered() && bAllowSelection )
+					? &Style->EvenRowBackgroundHoveredBrush
+					: &Style->EvenRowBackgroundBrush;
 
-		return nullptr;
+			}
+			else
+			{
+				return ( IsHovered() && bAllowSelection )
+					? &Style->OddRowBackgroundHoveredBrush
+					: &Style->OddRowBackgroundBrush;
+
+			}
+		}
 	}
 
 	/** 
@@ -1058,19 +908,15 @@ public:
 	 */
 	bool IsSelectedExclusively() const
 	{
-		TSharedRef< ITypedTableView< ItemType > > OwnerTable = OwnerTablePtr.Pin().ToSharedRef();
+		TSharedPtr< ITypedTableView< ItemType > > OwnerWidget = OwnerTablePtr.Pin();
 
-		if (!OwnerTable->AsWidget()->HasKeyboardFocus() || OwnerTable->Private_GetNumSelectedItems() > 1)
+		if(!OwnerWidget->AsWidget()->HasKeyboardFocus() || OwnerWidget->Private_GetNumSelectedItems() > 1)
 		{
 			return false;
 		}
 
-		if (const ItemType* MyItemPtr = GetItemForThis(OwnerTable))
-		{
-			return OwnerTable->Private_IsItemSelected(*MyItemPtr);
-		}
-
-		return false;
+		const ItemType* MyItem = OwnerWidget->Private_ItemFromWidget( this );
+		return OwnerWidget->Private_IsItemSelected( *MyItem );
 	}
 
 	/**
@@ -1080,14 +926,10 @@ public:
 	 */
 	bool IsSelected() const
 	{
-		TSharedRef< ITypedTableView< ItemType > > OwnerTable = OwnerTablePtr.Pin().ToSharedRef();
+		TSharedPtr< ITypedTableView< ItemType > > OwnerWidget = OwnerTablePtr.Pin();
 
-		if (const ItemType* MyItemPtr = GetItemForThis(OwnerTable))
-		{
-			return OwnerTable->Private_IsItemSelected(*MyItemPtr);
-		}
-
-		return false;
+		const ItemType* MyItem = OwnerWidget->Private_ItemFromWidget(this);
+		return OwnerWidget->Private_IsItemSelected(*MyItem);
 	}
 
 	/** By default, this function does nothing, it should be implemented by derived class */
@@ -1101,16 +943,7 @@ public:
 		: IndexInList(0)
 		, bShowSelection(true)
 		, SignalSelectionMode( ETableRowSignalSelectionMode::Deferred )
-	{ 
-#if WITH_ACCESSIBILITY
-		// As the contents of table rows could be anything,
-		// Ideally, somebody would assign a custom label to each table row with non-accessible content.
-		// However, that's not always feasible so we want the screen reader to read out the concatenated contents of children.
-		// E.g If ItemType == FString, then the screen reader can just read out the contents of the text box.
-		AccessibleBehavior = EAccessibleBehavior::Summary;
-		bCanChildrenBeAccessible = true;
-#endif
-	}
+	{ }
 
 protected:
 
@@ -1162,46 +995,27 @@ protected:
 
 	FSlateColor GetForegroundBasedOnSelection() const
 	{
-		const TSharedPtr< ITypedTableView<ItemType> > OwnerTable = OwnerTablePtr.Pin();
+		const TSharedPtr< ITypedTableView<ItemType> > OwnerWidget = OwnerTablePtr.Pin();
 		const FSlateColor& NonSelectedForeground = Style->TextColor; 
 		const FSlateColor& SelectedForeground = Style->SelectedTextColor;
 
-		if ( !bShowSelection || !OwnerTable.IsValid() )
+		if ( !bShowSelection || !OwnerWidget.IsValid() )
 		{
 			return NonSelectedForeground;
 		}
 
-		if (const ItemType* MyItemPtr = GetItemForThis(OwnerTable.ToSharedRef()))
-		{
-			const bool bIsSelected = OwnerTable->Private_IsItemSelected(*MyItemPtr);
+		const ItemType* MyItem = OwnerWidget->Private_ItemFromWidget( this );
+		const bool bIsSelected = OwnerWidget->Private_IsItemSelected( *MyItem );
 
-			return bIsSelected
-				? SelectedForeground
-				: NonSelectedForeground;
-		}
-
-		return NonSelectedForeground;
+		return bIsSelected
+			? SelectedForeground
+			: NonSelectedForeground;
 	}
 
 	virtual ESelectionMode::Type GetSelectionMode() const override
 	{
-		const TSharedPtr< ITypedTableView<ItemType> > OwnerTable = OwnerTablePtr.Pin();
-		return OwnerTable->Private_GetSelectionMode();
-	}
-
-	const ItemType* GetItemForThis(const TSharedRef<ITypedTableView<ItemType>>& OwnerTable) const
-	{
-		const ItemType* MyItemPtr = OwnerTable->Private_ItemFromWidget(this);
-		if (MyItemPtr)
-		{
-			return MyItemPtr;
-		}
-		else
-		{
-			checkf(OwnerTable->Private_IsPendingRefresh(), TEXT("We were unable to find the item for this widget.  If it was removed from the source collection, the list should be pending a refresh."));
-		}
-
-		return nullptr;
+		const TSharedPtr< ITypedTableView<ItemType> > OwnerWidget = OwnerTablePtr.Pin();
+		return OwnerWidget->Private_GetSelectionMode();
 	}
 
 protected:
@@ -1335,7 +1149,7 @@ protected:
 		for( int32 ColumnIndex = 0; ColumnIndex < NumColumns; ++ColumnIndex )
 		{
 			const SHeaderRow::FColumn& Column = Columns[ColumnIndex];
-			if (InColumnHeaders->ShouldGeneratedColumn(Column.ColumnId))
+			if (Column.ShouldGenerateWidget.Get(true))
 			{
 				TSharedRef< SWidget >* ExistingWidget = ColumnIdToSlotContents.Find(Column.ColumnId);
 				TSharedRef< SWidget > CellContents = SNullWidget::NullWidget;

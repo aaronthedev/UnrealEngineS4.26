@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BaseWidgetBlueprint.h"
 #include "Components/Widget.h"
@@ -9,15 +9,7 @@ UBaseWidgetBlueprint::UBaseWidgetBlueprint(const FObjectInitializer& ObjectIniti
 	: Super(ObjectInitializer)
 {
 	WidgetTree = CreateDefaultSubobject<UWidgetTree>(TEXT("WidgetTree"));
-	WidgetTree->SetFlags(RF_Transactional | RF_ArchetypeObject);
-}
-
-void UBaseWidgetBlueprint::PostLoad()
-{
-	Super::PostLoad();
-
-	// Update any older widget trees that don't have the same flags.
-	WidgetTree->SetFlags(RF_Transactional | RF_ArchetypeObject);
+	WidgetTree->SetFlags(RF_Transactional);
 }
 
 TArray<UWidget*> UBaseWidgetBlueprint::GetAllSourceWidgets()

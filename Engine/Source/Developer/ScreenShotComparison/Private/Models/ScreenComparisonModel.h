@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -7,6 +7,7 @@
 #include "Misc/FileHelper.h"
 #include "JsonObjectConverter.h"
 #include "AutomationWorkerMessages.h"
+#include "Interfaces/IScreenShotManager.h"
 
 class FScreenComparisonModel
 {
@@ -20,17 +21,16 @@ public:
 
 	bool IsComplete() const;
 
-	void Complete(bool WasSuccessful);
+	void Complete();
 
-	bool AddNew();
-	bool Replace();
-	bool AddAlternative();
+	bool AddNew(IScreenShotManagerPtr ScreenshotManager);
+	bool Replace(IScreenShotManagerPtr ScreenshotManager);
+	bool AddAlternative(IScreenShotManagerPtr ScreenshotManager);
 
 	TOptional<FAutomationScreenshotMetadata> GetMetadata();
 
 private:
-
-	bool RemoveExistingApproved();
+	bool RemoveExistingApproved(IScreenShotManagerPtr ScreenshotManager);
 
 private:
 	bool bComplete;
@@ -39,17 +39,14 @@ private:
 
 	struct FFileMapping
 	{
-		FFileMapping(const FString& InDestFile, const FString& InSourceFile)
-			: DestinationFile(InDestFile)
-			, SourceFile(InSourceFile)
+		FFileMapping(const FString& InSourceFile, const FString& InDestinationFile)
+			: SourceFile(InSourceFile)
+			, DestinationFile(InDestinationFile)
 		{
 		}
 
-		// local file we'd write to on disk
+		FString SourceFile;
 		FString DestinationFile;
-
-		// input file from the report
-		FString SourceFile;		
 	};
 
 	// 

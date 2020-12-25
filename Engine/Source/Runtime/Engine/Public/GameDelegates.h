@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once 
 
@@ -88,13 +88,7 @@ public:
 
 	// DEPRECATED, switch to subclassing AssetManager instead
 	DEFINE_GAME_DELEGATE(CookModificationDelegate);
-public:
-	UE_DEPRECATED(4.26, "Switch to subclassing AssetManager instead")
-	FAssignStreamingChunkDelegate& GetAssignStreamingChunkDelegate() { return AssignStreamingChunkDelegate; }
-	UE_DEPRECATED(4.26, "Switch to subclassing AssetManager instead")
-	FGetPackageDependenciesForManifestGeneratorDelegate& GetGetPackageDependenciesForManifestGeneratorDelegate() { return GetPackageDependenciesForManifestGeneratorDelegate; }
+	DEFINE_GAME_DELEGATE(AssignStreamingChunkDelegate);
+	DEFINE_GAME_DELEGATE(GetPackageDependenciesForManifestGeneratorDelegate);
 
-private:
-	FAssignStreamingChunkDelegate AssignStreamingChunkDelegate;
-	FGetPackageDependenciesForManifestGeneratorDelegate GetPackageDependenciesForManifestGeneratorDelegate;
 };

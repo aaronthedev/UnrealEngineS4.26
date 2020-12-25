@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -49,9 +49,6 @@ private:
 
 	void HandleIncludePrerequisitesCheckStateChanged(ECheckBoxState NewState);
 	ECheckBoxState HandleIncludePrerequisitesCheckBoxIsChecked() const;
-
-	void HandleUseIoStoreCheckStateChanged(ECheckBoxState NewState);
-	ECheckBoxState HandleUseIoStoreCheckBoxIsChecked() const;
 
 	// Callback for getting the content text of the 'Directory' label.
 	FText HandleDirectoryTitleText() const;

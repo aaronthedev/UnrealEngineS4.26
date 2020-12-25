@@ -57,13 +57,21 @@
 
    #include <boost/move/detail/type_traits.hpp>
 
-   #define BOOST_MOVE_TO_RV_CAST(RV_TYPE, ARG) reinterpret_cast<RV_TYPE>(ARG)
+   #if defined(BOOST_MOVE_ADDRESS_SANITIZER_ON)
+      #define BOOST_MOVE_TO_RV_CAST(RV_TYPE, ARG) reinterpret_cast<RV_TYPE>(ARG)
+   #else
+      #define BOOST_MOVE_TO_RV_CAST(RV_TYPE, ARG) static_cast<RV_TYPE>(ARG)
+   #endif
 
    //Move emulation rv breaks standard aliasing rules so add workarounds for some compilers
-   #if defined(BOOST_GCC) && (BOOST_GCC >= 40400) && (BOOST_GCC < 40500)
-   #define BOOST_RV_ATTRIBUTE_MAY_ALIAS BOOST_MAY_ALIAS
+   #if defined(__GNUC__) && (__GNUC__ >= 4) && \
+      (\
+         defined(BOOST_GCC) ||   \
+         (defined(BOOST_INTEL) && (BOOST_INTEL_CXX_VERSION >= 1300)) \
+      )
+      #define BOOST_MOVE_ATTRIBUTE_MAY_ALIAS __attribute__((__may_alias__))
    #else
-   #define BOOST_RV_ATTRIBUTE_MAY_ALIAS 
+      #define BOOST_MOVE_ATTRIBUTE_MAY_ALIAS
    #endif
 
    namespace boost {
@@ -74,7 +82,7 @@
    //
    //////////////////////////////////////////////////////////////////////////////
    template <class T>
-   class BOOST_RV_ATTRIBUTE_MAY_ALIAS rv
+   class rv
       : public ::boost::move_detail::if_c
          < ::boost::move_detail::is_class<T>::value
          , T
@@ -85,7 +93,7 @@
       ~rv() throw();
       rv(rv const&);
       void operator=(rv const&);
-   };
+   } BOOST_MOVE_ATTRIBUTE_MAY_ALIAS;
 
 
    //////////////////////////////////////////////////////////////////////////////
@@ -252,8 +260,8 @@
 
    #define BOOST_COPYABLE_AND_MOVABLE(TYPE)\
       public:\
-      BOOST_MOVE_FORCEINLINE TYPE& operator=(TYPE &t)\
-      {  this->operator=(const_cast<const TYPE&>(t)); return *this;}\
+      TYPE& operator=(TYPE &t)\
+      {  this->operator=(const_cast<const TYPE &>(t)); return *this;}\
       public:\
       BOOST_MOVE_FORCEINLINE operator ::boost::rv<TYPE>&() \
       {  return *BOOST_MOVE_TO_RV_CAST(::boost::rv<TYPE>*, this);  }\

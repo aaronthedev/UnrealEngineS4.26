@@ -21,18 +21,8 @@
 			"LoadingPhase": "Default"
 		},
 		{
-			"Name": "DatasmithTranslator",
-			"Type": "Runtime",
-			"LoadingPhase": "Default"
-		},
-		{
 			"Name": "DatasmithNativeTranslator",
-			"Type": "Runtime",
-			"LoadingPhase": "Default"
-		},
-		{
-			"Name": "DirectLinkTest",
-			"Type": "Runtime",
+			"Type": "Editor",
 			"LoadingPhase": "Default"
 		}
 	],

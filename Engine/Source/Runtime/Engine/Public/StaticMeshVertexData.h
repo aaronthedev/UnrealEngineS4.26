@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,8 +11,8 @@ template<typename VertexDataType>
 class TStaticMeshVertexData :
 	public FStaticMeshVertexDataInterface
 {
-	using FVertexResourceArray = TResourceArray<VertexDataType, VERTEXBUFFER_ALIGNMENT>;
-	FVertexResourceArray Data;
+	TResourceArray<VertexDataType, VERTEXBUFFER_ALIGNMENT> Data;
+
 public:
 
 	/**
@@ -94,9 +94,9 @@ public:
 	* @param Ar - archive to serialize to
 	* @param B - data to serialize
 	*/
-	void Serialize(FArchive& Ar, bool bForcePerElementSerialization = false) override
+	void Serialize(FArchive& Ar) override
 	{
-		Data.FVertexResourceArray::BulkSerialize(Ar, bForcePerElementSerialization);
+		Data.TResourceArray<VertexDataType, VERTEXBUFFER_ALIGNMENT>::BulkSerialize(Ar);
 	}
 	/**
 	* Assignment. This is currently the only method which allows for 
@@ -136,10 +136,5 @@ public:
 	bool GetAllowCPUAccess() const override
 	{
 		return Data.GetAllowCPUAccess();
-	}
-
-	void OverrideFreezeSizeAndAlignment(int64& Size, int32& Alignment) const override
-	{
-		Size = sizeof(*this);
 	}
 };

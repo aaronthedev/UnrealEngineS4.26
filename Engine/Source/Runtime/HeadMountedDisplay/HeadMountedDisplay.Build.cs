@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -36,16 +36,9 @@ public class HeadMountedDisplay : ModuleRules
 
         PublicDependencyModuleNames.AddRange(
             new string[] {
-                "AugmentedReality",
+                "AugmentedReality"
             }
         );
-
-        PublicIncludePathModuleNames.AddRange(
-            new string[]
-            {
-            }
-       );
-
 
         if (Target.bBuildEditor == true)
 		{

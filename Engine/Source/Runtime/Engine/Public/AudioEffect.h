@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AudioEffect.h: Unreal base audio.
@@ -6,62 +6,44 @@
 
 #pragma once
 
-//#include "AudioDevice.h"
 #include "CoreMinimal.h"
-#include "Sound/AudioVolume.h"
-#include "Sound/ReverbSettings.h"
 #include "Sound/SoundMix.h"
-#include "UObject/Object.h"
-#include "UObject/ObjectMacros.h"
-
-#include "AudioEffect.generated.h"
+#include "AudioDevice.h"
 
 class FAudioDevice;
 class FSoundSource;
 class UReverbEffect;
+struct FReverbSettings;
 
-
-USTRUCT()
-struct ENGINE_API FAudioReverbEffect : public FAudioEffectParameters
+class ENGINE_API FAudioReverbEffect
 {
-	GENERATED_BODY()
-
 public:
 	/** Sets the default values for a reverb effect */
-	FAudioReverbEffect();
-
+	FAudioReverbEffect( void );
 	/** Sets the platform agnostic parameters */
-	FAudioReverbEffect
-	(
-		float InRoom,
-		float InRoomHF,
-		float InRoomRolloffFactor,
-		float InDecayTime,
-		float InDecayHFRatio,
-		float InReflections,
-		float InReflectionsDelay,
-		float InReverb,
-		float InReverbDelay,
-		float InDiffusion,
-		float InDensity,
-		float InAirAbsorption,
-		bool bInBypassEarlyReflections,
-		bool bInBypassLateReflections
-	);
+	FAudioReverbEffect( float InRoom, 
+						float InRoomHF, 
+						float InRoomRolloffFactor, 
+						float InDecayTime, 
+						float InDecayHFRatio, 
+						float InReflections, 
+						float InReflectionsDelay, 
+						float InReverb, 
+						float InReverbDelay, 
+						float InDiffusion, 
+						float InDensity, 
+						float InAirAbsorption );
 
 	FAudioReverbEffect& operator=(class UReverbEffect* InReverbEffect);
 
-	/** Interpolates between Start and End reverb effect settings, storing results locally and returning if interpolation is complete */
-	bool Interpolate(const FAudioEffectParameters& InStart, const FAudioEffectParameters& InEnd);
-
-	void PrintSettings() const override;
+	/** Interpolates between Start and End reverb effect settings */
+	void Interpolate( float InterpValue, const FAudioReverbEffect& Start, const FAudioReverbEffect& End );
 
 	/** Time when this reverb was initiated or completed faded in */
 	double		Time;
 
 	/** Overall volume of effect */
 	float		Volume;					// 0.0 to 1.0
-
 
 	/** Platform agnostic parameters that define a reverb effect. Min < Default < Max */
 	float		Density;				// 0.0 < 1.0 < 1.0
@@ -76,21 +58,18 @@ public:
 	float		LateDelay;				// 0.0 < 0.011 < 0.1	Seconds
 	float		AirAbsorptionGainHF;	// 0.892 < 0.994 < 1.0
 	float		RoomRolloffFactor;		// 0.0 < 0.0 < 10.0
-
-	bool bBypassEarlyReflections;
-	bool bBypassLateReflections;
 };
 
 /**
  * Used to store and manipulate parameters related to a radio effect. 
  */
-class FAudioRadioEffect : public FAudioEffectParameters
+class FAudioRadioEffect
 {
 public:
 	/**
 	 * Constructor (default).
 	 */
-	FAudioRadioEffect(void)
+	FAudioRadioEffect( void )
 	{
 	}
 };
@@ -135,23 +114,23 @@ public:
 	/** 
 	 * Calls the platform specific code to set the parameters that define reverb
 	 */
-	virtual void SetReverbEffectParameters(const FAudioEffectParameters& InEffectParameters)
+	virtual void SetReverbEffectParameters( const FAudioReverbEffect& ReverbEffectParameters )
 	{
 	}
 
 	/** 
 	 * Calls the platform specific code to set the parameters that define EQ
 	 */
-	virtual void SetEQEffectParameters(const FAudioEffectParameters& InEffectParameters)
+	virtual void SetEQEffectParameters( const FAudioEQEffect& EQEffectParameters ) 
 	{
 	}
 
 	/** 
 	 * Calls the platform-specific code to set the parameters that define a radio effect.
 	 * 
-	 * @param	InEffectParameters	The new parameters for the radio distortion effect. 
+	 * @param	RadioEffectParameters	The new parameters for the radio distortion effect. 
 	 */
-	virtual void SetRadioEffectParameters(const FAudioEffectParameters& InEffectParameters)
+	virtual void SetRadioEffectParameters( const FAudioRadioEffect& RadioEffectParameters ) 
 	{
 	}
 
@@ -213,15 +192,21 @@ protected:
 	 */
 	void InitAudioEffects( void );
 
+	/** 
+	 * Helper function to interpolate between different effects
+	 */
+	bool Interpolate( FAudioReverbEffect& Current, const FAudioReverbEffect& Start, const FAudioReverbEffect& End );
+	bool Interpolate( FAudioEQEffect& Current, const FAudioEQEffect& Start, const FAudioEQEffect& End );
+
 	FAudioDevice*			AudioDevice;
 	bool					bEffectsInitialised;
 
 	UReverbEffect*			CurrentReverbAsset;
 
-	FAudioReverbEffect	SourceReverbEffect;
-	FAudioReverbEffect	CurrentReverbEffect;
-	FAudioReverbEffect	PrevReverbEffect;
-	FAudioReverbEffect	DestinationReverbEffect;
+	FAudioReverbEffect		SourceReverbEffect;
+	FAudioReverbEffect		CurrentReverbEffect;
+	FAudioReverbEffect		PrevReverbEffect;
+	FAudioReverbEffect		DestinationReverbEffect;
 
 	FReverbSettings 		CurrentReverbSettings;
 
@@ -235,6 +220,7 @@ protected:
 	bool bEQActive;
 	bool bReverbChanged;
 	bool bEQChanged;
+	bool bUseLegacyReverb;
 };
 
 // end 

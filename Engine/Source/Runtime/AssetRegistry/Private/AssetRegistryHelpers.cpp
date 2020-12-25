@@ -1,8 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-#include "AssetRegistry/AssetRegistryHelpers.h"
+#include "AssetRegistryHelpers.h"
 #include "Modules/ModuleManager.h"
-#include "AssetRegistry/IAssetRegistry.h"
+#include "AssetRegistryModule.h"
 #include "AssetRegistry.h"
 
 TScriptInterface<IAssetRegistry> UAssetRegistryHelpers::GetAssetRegistry()
@@ -83,13 +83,3 @@ FARFilter UAssetRegistryHelpers::SetFilterTagsAndValues(const FARFilter& InFilte
 	return FilterCopy;
 }
 
-UAssetRegistryHelpers::FTemporaryCachingModeScope::FTemporaryCachingModeScope(bool InTempCachingMode)
-{
-	PreviousCachingMode = UAssetRegistryHelpers::GetAssetRegistry()->GetTemporaryCachingMode();
-	UAssetRegistryHelpers::GetAssetRegistry()->SetTemporaryCachingMode(InTempCachingMode);
-}
-
-UAssetRegistryHelpers::FTemporaryCachingModeScope::~FTemporaryCachingModeScope()
-{
-	UAssetRegistryHelpers::GetAssetRegistry()->SetTemporaryCachingMode(PreviousCachingMode);
-}

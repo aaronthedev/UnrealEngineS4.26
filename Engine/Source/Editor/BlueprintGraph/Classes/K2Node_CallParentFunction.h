@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -21,11 +21,5 @@ class UK2Node_CallParentFunction : public UK2Node_CallFunction
 	//~ End EdGraphNode Interface
 
 	virtual void SetFromFunction(const UFunction* Function) override;
-
-protected:
-
-	//~ Begin K2Node_CallFunction Interface
-	virtual void FixupSelfMemberContext() override;
-	//~ End K2Node_CallFunction Interface
 };
 

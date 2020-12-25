@@ -1,7 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AudioMixerPlatformAudioUnit.h"
-#include "AudioMixerPlatformAudioUnitUtils.h"
 #include "Modules/ModuleManager.h"
 #include "AudioMixer.h"
 #include "AudioMixerDevice.h"
@@ -25,8 +24,6 @@
 #include <AudioUnit/AudioUnit.h>
 #include <AVFoundation/AVAudioSession.h>
 
-static int32 SuspendCounter = 0;
-
 DECLARE_LOG_CATEGORY_EXTERN(LogAudioMixerAudioUnit, Log, All);
 DEFINE_LOG_CATEGORY(LogAudioMixerAudioUnit);
 
@@ -35,20 +32,11 @@ namespace Audio
 	static const int32 DefaultBufferSize = 512;
 
 	static const double DefaultSampleRate = 48000.0;
-    
-    void AUDIOMIXERAUDIOUNIT_API IncrementIOSAudioMixerPlatformSuspendCounter()
-    {
-        FMixerPlatformAudioUnit::IncrementSuspendCounter();
-    }
-    
-    void AUDIOMIXERAUDIOUNIT_API DecrementIOSAudioMixerPlatformSuspendCounter()
-    {
-        FMixerPlatformAudioUnit::DecrementSuspendCounter();
-    }
+	
+	static int32 SuspendCounter = 0;
 	
 	FMixerPlatformAudioUnit::FMixerPlatformAudioUnit()
-	: bSuspended(false)
-    , bInitialized(false)
+	: bInitialized(false)
 	, bInCallback(false)
 	, SubmittedBufferPtr(nullptr)
 	, RemainingBytesInCurrentSubmittedBuffer(0)
@@ -443,49 +431,17 @@ namespace Audio
 		{
 			NumFrames = (int32)(SampleRate * BufferSizeInSec);
 		}
-
-		if (FMath::IsNearlyZero(SampleRate))
-		{
-			SampleRate = DefaultSampleRate;
-		}
-
 		InternalPlatformSettings.SampleRate = SampleRate;
 
 		return InternalPlatformSettings;
 	}
-    
-    void FMixerPlatformAudioUnit::IncrementSuspendCounter()
-    {
-        if(SuspendCounter == 0)
-        {
-            FPlatformAtomics::InterlockedIncrement(&SuspendCounter);
-        }
-    }
-    
-    void FMixerPlatformAudioUnit::DecrementSuspendCounter()
-    {
-        if(SuspendCounter > 0)
-        {
-            FPlatformAtomics::InterlockedDecrement(&SuspendCounter);
-        }
-    }
 	
 	void FMixerPlatformAudioUnit::ResumeContext()
 	{
 		if (SuspendCounter > 0)
 		{
 			FPlatformAtomics::InterlockedDecrement(&SuspendCounter);
-            
-            if (AudioUnitGraph != NULL)
-            {
-                AUGraphStart(AudioUnitGraph);
-            }
-            
-            if (OutputUnit != NULL)
-            {
-                AudioOutputUnitStart(OutputUnit);
-            }
-			
+			AUGraphStart(AudioUnitGraph);
 			UE_LOG(LogAudioMixerAudioUnit, Display, TEXT("Resuming Audio"));
 			bSuspended = false;
 		}
@@ -496,17 +452,7 @@ namespace Audio
 		if (SuspendCounter == 0)
 		{
 			FPlatformAtomics::InterlockedIncrement(&SuspendCounter);
-            
-            if(AudioUnitGraph != NULL)
-            {
-                AUGraphStop(AudioUnitGraph);
-            }
-            
-            if (OutputUnit != NULL)
-            {
-                AudioOutputUnitStop(OutputUnit);
-            }
-			
+			AUGraphStop(AudioUnitGraph);
 			UE_LOG(LogAudioMixerAudioUnit, Display, TEXT("Suspending Audio"));
 			bSuspended = true;
 		}

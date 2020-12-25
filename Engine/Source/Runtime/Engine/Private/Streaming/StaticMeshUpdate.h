@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 StaticMeshUpdate.h: Helpers to stream in and out static mesh LODs.
@@ -19,9 +19,14 @@ struct FStaticMeshUpdateContext
 {
 	typedef int32 EThreadType;
 
-	FStaticMeshUpdateContext(const UStaticMesh* InMesh, EThreadType InCurrentThread);
+	FStaticMeshUpdateContext(UStaticMesh* InMesh, EThreadType InCurrentThread);
 
-	FStaticMeshUpdateContext(const UStreamableRenderAsset* InMesh, EThreadType InCurrentThread);
+	FStaticMeshUpdateContext(UStreamableRenderAsset* InMesh, EThreadType InCurrentThread);
+
+	UStreamableRenderAsset* GetRenderAsset() const
+	{
+		return Mesh;
+	}
 
 	EThreadType GetCurrentThread() const
 	{
@@ -29,12 +34,9 @@ struct FStaticMeshUpdateContext
 	}
 
 	/** The mesh to update, this must be the same one as the one used when creating the FStaticMeshUpdate object. */
-	const UStaticMesh* Mesh;
+	UStaticMesh* Mesh;
 	/** The current render data of this mesh. */
 	FStaticMeshRenderData* RenderData;
-	/** The array view of streamable LODs from the asset. Takes into account FStreamableRenderResourceState::AssetLODBias and FStreamableRenderResourceState::MaxNumLODs. */
-	TArrayView<FStaticMeshLODResources*> LODResourcesView;
-
 	/** The thread on which the context was created. */
 	EThreadType CurrentThread;
 };
@@ -50,7 +52,7 @@ extern template class TRenderAssetUpdate<FStaticMeshUpdateContext>;
 class FStaticMeshUpdate : public TRenderAssetUpdate<FStaticMeshUpdateContext>
 {
 public:
-	FStaticMeshUpdate(const UStaticMesh* InMesh);
+	FStaticMeshUpdate(UStaticMesh* InMesh, int32 InRequestedMips);
 
 	virtual void Abort()
 	{
@@ -60,12 +62,15 @@ public:
 protected:
 
 	virtual ~FStaticMeshUpdate() {}
+
+	/** Cached index of current first LOD that will be replaced by PendingFirstMip */
+	int32 CurrentFirstLODIdx;
 };
 
 class FStaticMeshStreamIn : public FStaticMeshUpdate
 {
 public:
-	FStaticMeshStreamIn(const UStaticMesh* InMesh);
+	FStaticMeshStreamIn(UStaticMesh* InMesh, int32 InRequestedMips);
 
 	virtual ~FStaticMeshStreamIn();
 
@@ -84,8 +89,8 @@ protected:
 		FIndexBufferRHIRef WireframeIndexBuffer;
 		FIndexBufferRHIRef AdjacencyIndexBuffer;
 
-		void CreateFromCPUData_RenderThread(FStaticMeshLODResources& LODResource);
-		void CreateFromCPUData_Async(FStaticMeshLODResources& LODResource);
+		void CreateFromCPUData_RenderThread(UStaticMesh* Mesh, FStaticMeshLODResources& LODResource);
+		void CreateFromCPUData_Async(UStaticMesh* Mesh, FStaticMeshLODResources& LODResource);
 
 		void SafeRelease();
 
@@ -117,28 +122,22 @@ private:
 	void CreateBuffers_Internal(const FContext& Context);
 };
 
-/** A streamout that doesn't actually touches the CPU data. Required because DDC stream in doesn't reset. */
 class FStaticMeshStreamOut : public FStaticMeshUpdate
 {
 public:
-	FStaticMeshStreamOut(const UStaticMesh* InMesh, bool InDiscardCPUData);
+	FStaticMeshStreamOut(UStaticMesh* InMesh, int32 InRequestedMips);
+
+	virtual ~FStaticMeshStreamOut() {}
 
 private:
-
-	void CheckReferencesAndDiscardCPUData(const FContext& Context);
-	void ReleaseRHIBuffers(const FContext& Context);
-	/** Restore */
-	void Cancel(const FContext& Context);
-
-	bool bDiscardCPUData = false;
-	int32 NumReferenceChecks = 0;
-	uint32 PreviousNumberOfExternalReferences = 0;
+	/** Release RHI buffers and update SRVs */
+	void DoReleaseBuffers(const FContext& Context);
 };
 
 class FStaticMeshStreamIn_IO : public FStaticMeshStreamIn
 {
 public:
-	FStaticMeshStreamIn_IO(const UStaticMesh* InMesh, bool bHighPrio);
+	FStaticMeshStreamIn_IO(UStaticMesh* InMesh, int32 InRequestedMips, bool bHighPrio);
 
 	virtual ~FStaticMeshStreamIn_IO() {}
 
@@ -166,40 +165,34 @@ protected:
 	typedef FAutoDeleteAsyncTask<FCancelIORequestsTask> FAsyncCancelIORequestsTask;
 	friend class FCancelIORequestsTask;
 
-		/** Set a callback called when IORequest is completed or cancelled */
+	/** Figure out the full name of the .bulk file */
+	FString GetIOFilename(const FContext& Context);
+
+	/** Set a callback called when IORequest is completed or cancelled */
 	void SetAsyncFileCallback(const FContext& Context);
 
 	/** Create a new async IO request to read in LOD data */
-	void SetIORequest(const FContext& Context);
+	void SetIORequest(const FContext& Context, const FString& IOFilename);
 
 	/** Release IORequest and IOFileHandle. IORequest will be cancelled if still inflight */
 	void ClearIORequest(const FContext& Context);
 
-	/** Report IO errors if any. */
-	void ReportIOError(const FContext& Context);
-
 	/** Serialize data of new LODs to corresponding FStaticMeshLODResources */
 	void SerializeLODData(const FContext& Context);
-
-	/** Cancel and report IO error */
-	void Cancel(const FContext& Context);
 
 	/** Called by FAsyncCancelIORequestsTask to cancel inflight IO request if any */
 	void CancelIORequest();
 
-	class IBulkDataIORequest* IORequest;
-	FBulkDataIORequestCallBack AsyncFileCallback;
+	struct FBulkDataIORequest* IORequest;
+	FAsyncFileCallBack AsyncFileCallback;
 	bool bHighPrioIORequest;
-
-	// Whether an IO error was detected (when files do not exists).
-	bool bFailedOnIOError = false;
 };
 
 template <bool bRenderThread>
 class TStaticMeshStreamIn_IO : public FStaticMeshStreamIn_IO
 {
 public:
-	TStaticMeshStreamIn_IO(const UStaticMesh* InMesh, bool bHighPrio);
+	TStaticMeshStreamIn_IO(UStaticMesh* InMesh, int32 InRequestedMips, bool bHighPrio);
 
 	virtual ~TStaticMeshStreamIn_IO() {}
 
@@ -220,19 +213,23 @@ typedef TStaticMeshStreamIn_IO<false> FStaticMeshStreamIn_IO_Async;
 class FStaticMeshStreamIn_DDC : public FStaticMeshStreamIn
 {
 public:
-	FStaticMeshStreamIn_DDC(const UStaticMesh* InMesh);
+	FStaticMeshStreamIn_DDC(UStaticMesh* InMesh, int32 InRequestedMips);
 
 	virtual ~FStaticMeshStreamIn_DDC() {}
 
+	bool DDCIsInvalid() const override { return bDerivedDataInvalid; }
+
 protected:
 	void LoadNewLODsFromDDC(const FContext& Context);
+
+	bool bDerivedDataInvalid;
 };
 
 template <bool bRenderThread>
 class TStaticMeshStreamIn_DDC : public FStaticMeshStreamIn_DDC
 {
 public:
-	TStaticMeshStreamIn_DDC(const UStaticMesh* InMesh);
+	TStaticMeshStreamIn_DDC(UStaticMesh* InMesh, int32 InRequestedMips);
 
 	virtual ~TStaticMeshStreamIn_DDC() {}
 

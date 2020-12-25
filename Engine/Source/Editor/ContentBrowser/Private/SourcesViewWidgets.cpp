@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SourcesViewWidgets.h"
 #include "Widgets/Images/SImage.h"
@@ -13,8 +13,6 @@
 #include "ContentBrowserUtils.h"
 #include "CollectionViewUtils.h"
 
-#include "ContentBrowserDataSource.h"
-
 #define LOCTEXT_NAMESPACE "ContentBrowser"
 
 //////////////////////////
@@ -26,6 +24,8 @@ void SAssetTreeItem::Construct( const FArguments& InArgs )
 	TreeItem = InArgs._TreeItem;
 	OnNameChanged = InArgs._OnNameChanged;
 	OnVerifyNameChanged = InArgs._OnVerifyNameChanged;
+	OnAssetsOrPathsDragDropped = InArgs._OnAssetsOrPathsDragDropped;
+	OnFilesDragDropped = InArgs._OnFilesDragDropped;
 	IsItemExpanded = InArgs._IsItemExpanded;
 	bDraggedOver = false;
 
@@ -34,13 +34,13 @@ void SAssetTreeItem::Construct( const FArguments& InArgs )
 	FolderOpenCodeBrush = FEditorStyle::GetBrush("ContentBrowser.AssetTreeFolderOpenCode");
 	FolderClosedCodeBrush = FEditorStyle::GetBrush("ContentBrowser.AssetTreeFolderClosedCode");
 	FolderDeveloperBrush = FEditorStyle::GetBrush("ContentBrowser.AssetTreeFolderDeveloper");
-	
+		
 	FolderType = EFolderType::Normal;
-	if (ContentBrowserUtils::IsItemDeveloperContent(InArgs._TreeItem->GetItem()))
+	if( ContentBrowserUtils::IsDevelopersFolder(InArgs._TreeItem->FolderPath) )
 	{
 		FolderType = EFolderType::Developer;
 	}
-	else if (EnumHasAnyFlags(InArgs._TreeItem->GetItem().GetItemCategory(), EContentBrowserItemFlags::Category_Class))
+	else if( ContentBrowserUtils::IsClassPath/*IsClassRootDir*/(InArgs._TreeItem->FolderPath) )
 	{
 		FolderType = EFolderType::Code;
 	}
@@ -85,7 +85,7 @@ void SAssetTreeItem::Construct( const FArguments& InArgs )
 
 	if( InlineRenameWidget.IsValid() )
 	{
-		EnterEditingModeDelegateHandle = TreeItem.Pin()->OnRenameRequested().AddSP( InlineRenameWidget.Get(), &SInlineEditableTextBlock::EnterEditingMode );
+		EnterEditingModeDelegateHandle = TreeItem.Pin()->OnRenamedRequestEvent.AddSP( InlineRenameWidget.Get(), &SInlineEditableTextBlock::EnterEditingMode );
 	}
 }
 
@@ -93,39 +93,71 @@ SAssetTreeItem::~SAssetTreeItem()
 {
 	if( InlineRenameWidget.IsValid() )
 	{
-		TreeItem.Pin()->OnRenameRequested().Remove( EnterEditingModeDelegateHandle );
+		TreeItem.Pin()->OnRenamedRequestEvent.Remove( EnterEditingModeDelegateHandle );
 	}
+}
+
+bool SAssetTreeItem::ValidateDragDrop( const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent, bool& OutIsKnownDragOperation ) const
+{
+	OutIsKnownDragOperation = false;
+
+	TSharedPtr<FTreeItem> TreeItemPinned = TreeItem.Pin();
+	return TreeItemPinned.IsValid() && DragDropHandler::ValidateDragDropOnAssetFolder(MyGeometry, DragDropEvent, TreeItemPinned->FolderPath, OutIsKnownDragOperation);
 }
 
 void SAssetTreeItem::OnDragEnter( const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent )
 {
-	TSharedPtr<FTreeItem> TreeItemPinned = TreeItem.Pin();
-	bDraggedOver = TreeItemPinned && DragDropHandler::HandleDragEnterItem(TreeItemPinned->GetItem(), DragDropEvent);
+	ValidateDragDrop(MyGeometry, DragDropEvent, bDraggedOver); // updates bDraggedOver
 }
 
 void SAssetTreeItem::OnDragLeave( const FDragDropEvent& DragDropEvent )
 {
-	if (TSharedPtr<FTreeItem> TreeItemPinned = TreeItem.Pin())
+	TSharedPtr<FDragDropOperation> Operation = DragDropEvent.GetOperation();
+	if (Operation.IsValid())
 	{
-		DragDropHandler::HandleDragLeaveItem(TreeItemPinned->GetItem(), DragDropEvent);
+		Operation->SetCursorOverride(TOptional<EMouseCursor::Type>());
+
+		if (Operation->IsOfType<FAssetDragDropOp>())
+		{
+			TSharedPtr<FAssetDragDropOp> DragDropOp = StaticCastSharedPtr<FAssetDragDropOp>(Operation);
+			DragDropOp->ResetToDefaultToolTip();
+		}
 	}
+
 	bDraggedOver = false;
 }
 
 FReply SAssetTreeItem::OnDragOver( const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent )
 {
-	TSharedPtr<FTreeItem> TreeItemPinned = TreeItem.Pin();
-	bDraggedOver = TreeItemPinned && DragDropHandler::HandleDragOverItem(TreeItemPinned->GetItem(), DragDropEvent);
+	ValidateDragDrop(MyGeometry, DragDropEvent, bDraggedOver); // updates bDraggedOver
 	return (bDraggedOver) ? FReply::Handled() : FReply::Unhandled();
 }
 
 FReply SAssetTreeItem::OnDrop( const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent )
 {
-	TSharedPtr<FTreeItem> TreeItemPinned = TreeItem.Pin();
-	if (TreeItemPinned && DragDropHandler::HandleDragDropOnItem(TreeItemPinned->GetItem(), DragDropEvent, AsShared()))
+	if (ValidateDragDrop(MyGeometry, DragDropEvent, bDraggedOver)) // updates bDraggedOver
 	{
 		bDraggedOver = false;
-		return FReply::Handled();
+
+		TSharedPtr<FDragDropOperation> Operation = DragDropEvent.GetOperation();
+		if (!Operation.IsValid())
+		{
+			return FReply::Unhandled();
+		}
+
+		if (Operation->IsOfType<FAssetDragDropOp>())
+		{
+			TSharedPtr<FAssetDragDropOp> DragDropOp = StaticCastSharedPtr<FAssetDragDropOp>( DragDropEvent.GetOperation() );
+			OnAssetsOrPathsDragDropped.ExecuteIfBound(DragDropOp->GetAssets(), DragDropOp->GetAssetPaths(), TreeItem.Pin());
+			return FReply::Handled();
+		}
+		
+		if (Operation->IsOfType<FExternalDragOperation>())
+		{
+			TSharedPtr<FExternalDragOperation> DragDropOp = StaticCastSharedPtr<FExternalDragOperation>( DragDropEvent.GetOperation() );
+			OnFilesDragDropped.ExecuteIfBound(DragDropOp->GetFiles(), TreeItem.Pin());
+			return FReply::Handled();
+		}
 	}
 
 	if (bDraggedOver)
@@ -150,7 +182,7 @@ bool SAssetTreeItem::VerifyNameChanged(const FText& InName, FText& OutError) con
 		TSharedPtr<FTreeItem> TreeItemPtr = TreeItem.Pin();
 		if(OnVerifyNameChanged.IsBound())
 		{
-			return OnVerifyNameChanged.Execute(TreeItemPtr, InName.ToString(), OutError);
+			return OnVerifyNameChanged.Execute(InName.ToString(), OutError, TreeItemPtr->FolderPath);
 		}
 	}
 
@@ -163,15 +195,22 @@ void SAssetTreeItem::HandleNameCommitted( const FText& NewText, ETextCommit::Typ
 	{
 		TSharedPtr<FTreeItem> TreeItemPtr = TreeItem.Pin();
 
-		if ( TreeItemPtr->IsNamingFolder() )
+		if ( TreeItemPtr->bNamingFolder )
 		{
-			TreeItemPtr->SetNamingFolder(false);
-		
+			TreeItemPtr->bNamingFolder = false;
+
+			const FString OldPath = TreeItemPtr->FolderPath;
+			FString Path;
+			TreeItemPtr->FolderPath.Split(TEXT("/"), &Path, NULL, ESearchCase::CaseSensitive, ESearchDir::FromEnd);
+			TreeItemPtr->DisplayName = NewText;
+			TreeItemPtr->FolderName = NewText.ToString();
+			TreeItemPtr->FolderPath = Path + TEXT("/") + NewText.ToString();
+
 			FVector2D MessageLoc;
 			MessageLoc.X = LastGeometry.AbsolutePosition.X;
 			MessageLoc.Y = LastGeometry.AbsolutePosition.Y + LastGeometry.Size.Y * LastGeometry.Scale;
-		
-			OnNameChanged.ExecuteIfBound(TreeItemPtr, NewText.ToString(), MessageLoc, CommitInfo);
+
+			OnNameChanged.ExecuteIfBound(TreeItemPtr, OldPath, MessageLoc, CommitInfo);
 		}
 	}
 }
@@ -180,11 +219,24 @@ bool SAssetTreeItem::IsReadOnly() const
 {
 	if ( TreeItem.IsValid() )
 	{
-		return !TreeItem.Pin()->IsNamingFolder();
+		return !TreeItem.Pin()->bNamingFolder;
 	}
 	else
 	{
 		return true;
+	}
+}
+
+bool SAssetTreeItem::IsValidAssetPath() const
+{
+	if ( TreeItem.IsValid() )
+	{
+		// The classes folder is not a real path
+		return !ContentBrowserUtils::IsClassPath(TreeItem.Pin()->FolderPath);
+	}
+	else
+	{
+		return false;
 	}
 }
 
@@ -205,25 +257,12 @@ const FSlateBrush* SAssetTreeItem::GetFolderIcon() const
 
 FSlateColor SAssetTreeItem::GetFolderColor() const
 {
-	if (TSharedPtr<FTreeItem> TreeItemPin = TreeItem.Pin())
+	if ( TreeItem.IsValid() )
 	{
-		FContentBrowserItemDataAttributeValue ColorAttributeValue = TreeItemPin->GetItem().GetItemAttribute(ContentBrowserItemAttributes::ItemColor);
-		if (ColorAttributeValue.IsValid())
+		const TSharedPtr<FLinearColor> Color = ContentBrowserUtils::LoadColor( TreeItem.Pin()->FolderPath );
+		if ( Color.IsValid() )
 		{
-			const FString ColorStr = ColorAttributeValue.GetValue<FString>();
-
-			FLinearColor Color;
-			if (Color.InitFromString(ColorStr))
-			{
-				return Color;
-			}
-		}
-		else
-		{
-			if (TSharedPtr<FLinearColor> Color = ContentBrowserUtils::LoadColor(TreeItemPin->GetItem().GetVirtualPath().ToString()))
-			{
-				return *Color;
-			}
+			return *Color.Get();
 		}
 	}
 	return ContentBrowserUtils::GetDefaultColor();
@@ -231,20 +270,28 @@ FSlateColor SAssetTreeItem::GetFolderColor() const
 
 FText SAssetTreeItem::GetNameText() const
 {
-	if (TSharedPtr<FTreeItem> TreeItemPin = TreeItem.Pin())
+	TSharedPtr<FTreeItem> TreeItemPin = TreeItem.Pin();
+	if ( TreeItemPin.IsValid() )
 	{
-		return TreeItemPin->GetItem().GetDisplayName();
+		return TreeItemPin->DisplayName;
 	}
-	return FText();
+	else
+	{
+		return FText();
+	}
 }
 
 FText SAssetTreeItem::GetToolTipText() const
 {
-	if (TSharedPtr<FTreeItem> TreeItemPin = TreeItem.Pin())
+	TSharedPtr<FTreeItem> TreeItemPin = TreeItem.Pin();
+	if ( TreeItemPin.IsValid() )
 	{
-		return FText::FromName(TreeItemPin->GetItem().GetVirtualPath());
+		return FText::FromString(TreeItemPin->FolderPath);
 	}
-	return FText();
+	else
+	{
+		return FText();
+	}
 }
 
 const FSlateBrush* SAssetTreeItem::GetBorderImage() const

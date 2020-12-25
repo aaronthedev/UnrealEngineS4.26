@@ -1,9 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
-
-#include "CoreTypes.h"
-#include "Traits/IsContiguousContainer.h"
 
 /// @cond DOXYGEN_WARNINGS
 template<int IndexSize> class TSizedDefaultAllocator;
@@ -13,14 +10,8 @@ class FDefaultSetAllocator;
 
 class FString;
 
-template<> struct TIsContiguousContainer<FString> { static constexpr bool Value = true; };
-
 template<typename T, typename Allocator = FDefaultAllocator> class TArray;
 template<typename T> using TArray64 = TArray<T, FDefaultAllocator64>;
-template<typename T, typename SizeType = int32> class TArrayView;
-template<typename T> using TArrayView64 = TArrayView<T, int64>;
-template<typename T, typename SizeType = int32> using TConstArrayView = TArrayView<const T, SizeType>;
-template<typename T> using TConstArrayView64 = TConstArrayView<T, int64>;
 template<typename T> class TTransArray;
 template<typename KeyType, typename ValueType, bool bInAllowDuplicateKeys> struct TDefaultMapHashableKeyFuncs;
 template<typename KeyType, typename ValueType, typename SetAllocator = FDefaultSetAllocator, typename KeyFuncs = TDefaultMapHashableKeyFuncs<KeyType, ValueType, false> > class TMap;

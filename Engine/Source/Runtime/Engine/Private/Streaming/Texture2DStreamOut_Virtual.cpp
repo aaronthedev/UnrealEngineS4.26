@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 Texture2DStreamOut_Virtual.cpp: Definitions of classes used for texture.
@@ -7,13 +7,10 @@ Texture2DStreamOut_Virtual.cpp: Definitions of classes used for texture.
 #include "Streaming/Texture2DStreamOut_Virtual.h"
 #include "RenderUtils.h"
 
-FTexture2DStreamOut_Virtual::FTexture2DStreamOut_Virtual(UTexture2D* InTexture)
-	: FTexture2DUpdate(InTexture) 
+FTexture2DStreamOut_Virtual::FTexture2DStreamOut_Virtual(UTexture2D* InTexture, int32 InRequestedMips)
+	: FTexture2DUpdate(InTexture, InRequestedMips) 
 {
-	if (!ensure(ResourceState.NumRequestedLODs <ResourceState.NumResidentLODs))
-	{
-		bIsCancelled = true;
-	}
+	ensure(InRequestedMips < InTexture->GetNumResidentMips());
 	
 	PushTask(FContext(InTexture, TT_None), TT_Render, SRA_UPDATE_CALLBACK(Finalize), TT_None, nullptr);
 }
@@ -27,14 +24,14 @@ void FTexture2DStreamOut_Virtual::Finalize(const FContext& Context)
 	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("FTexture2DStreamOut_Virtual::Finalize"), STAT_Texture2DStreamOutVirtual_Finalize, STATGROUP_StreamingDetails);
 	check(Context.CurrentThread == TT_Render);
 
-	static TConsoleVariableData<int32>* CVarReducedMode = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.VirtualTextureReducedMemory"));
-	check(CVarReducedMode);
+	static auto CVarVirtualTextureReducedMemoryEnabled = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.VirtualTextureReducedMemory"));
+	check(CVarVirtualTextureReducedMemoryEnabled);
 
-	if (!CVarReducedMode->GetValueOnRenderThread() || ResourceState.NumRequestedLODs > ResourceState.NumNonStreamingLODs)
+	if (CVarVirtualTextureReducedMemoryEnabled->GetValueOnRenderThread() == 0 || RequestedMips > Context.Texture->GetMinTextureResidentMipCount())
 	{
 		IntermediateTextureRHI = Context.Resource->GetTexture2DRHI();
-		RHIVirtualTextureSetFirstMipVisible(IntermediateTextureRHI, PendingFirstLODIdx);
-		RHIVirtualTextureSetFirstMipInMemory(IntermediateTextureRHI, PendingFirstLODIdx);
+		RHIVirtualTextureSetFirstMipVisible(IntermediateTextureRHI, PendingFirstMip);
+		RHIVirtualTextureSetFirstMipInMemory(IntermediateTextureRHI, PendingFirstMip);
 	}
 	else
 	{

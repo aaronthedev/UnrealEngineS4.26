@@ -1,13 +1,26 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Modules/ModuleManager.h"
 #include "UObject/ObjectMacros.h"
-#include "MagicLeapDispatchTypes.h"
 #if PLATFORM_LUMIN
 #include "Lumin/LuminPlatformFile.h"
 #endif // PLATFORM_LUMIN
+
+UENUM(BlueprintType)
+enum class EMagicLeapDispatchResult : uint8
+{
+	Ok,
+	CannotStartApp,
+	InvalidPacket,
+	NoAppFound,
+	AppPickerDialogFailure,
+	AllocFailed,
+	InvalidParam,
+	UnspecifiedFailure,
+	NotImplemented
+};
 
 /**
  * The public interface to this module.  In most cases, this interface is only public to sibling modules
@@ -47,6 +60,4 @@ public:
 	 */
 	virtual EMagicLeapDispatchResult TryOpenApplication(const TArray<FLuminFileInfo>& DispatchFileList) = 0;
 #endif // PLATFORM_LUMIN
-	virtual EMagicLeapDispatchResult OpenOAuthWindow(const FString& OAuthURL, const FString& RedirectURI, const FString& CancelURI,
-		const FMagicLeapOAuthSchemaHandler& RedirectUriCb, const FMagicLeapOAuthSchemaHandler CancelUriCb) = 0;
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VulkanWindowsPlatform.h"
 #include "../VulkanRHIPrivate.h"
@@ -28,11 +28,8 @@ bool FVulkanWindowsPlatform::LoadVulkanLibrary()
 #if VULKAN_HAS_DEBUGGING_ENABLED
 	if (GValidationCvar->GetInt() > 0)
 	{
-		const FString VulkanSDK = FPlatformMisc::GetEnvironmentVariable(TEXT("VULKAN_SDK"));
-		const bool bHasVulkanSDK = !VulkanSDK.IsEmpty();
-		// Only editor builds can use the redist libs currently
-		//#todo-rco: Package the DLLs next to the exe; if so then change this check
-		if (!bHasVulkanSDK && GIsEditor)
+		const bool bUseSDK = FParse::Param(FCommandLine::Get(), TEXT("vulkansdk"));
+		if (!bUseSDK)
 		{
 			const FString PreviousEnvVar = FPlatformMisc::GetEnvironmentVariable(TEXT("VK_LAYER_PATH"));
 			if (PreviousEnvVar.IsEmpty())
@@ -50,7 +47,7 @@ bool FVulkanWindowsPlatform::LoadVulkanLibrary()
 	}
 #endif // VULKAN_HAS_DEBUGGING_ENABLED
 
-	// The vulkan dll must exist, otherwise the driver doesn't support Vulkan
+	// Try to load the vulkan dll, as not everyone has the sdk installed
 	GVulkanDLLModule = ::LoadLibraryW(TEXT("vulkan-1.dll"));
 
 	if (GVulkanDLLModule)
@@ -144,18 +141,11 @@ void FVulkanWindowsPlatform::GetInstanceExtensions(TArray<const ANSICHAR*>& OutE
 	// windows surface extension
 	OutExtensions.Add(VK_KHR_SURFACE_EXTENSION_NAME);
 	OutExtensions.Add(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
-
-#if VULKAN_SUPPORTS_FULLSCREEN_EXCLUSIVE
-	// Required by Fullscreen
-	OutExtensions.Add(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
-#endif
 }
 
 
 void FVulkanWindowsPlatform::GetDeviceExtensions(EGpuVendorId VendorId, TArray<const ANSICHAR*>& OutExtensions)
 {
-	const bool bAllowVendorDevice = !FParse::Param(FCommandLine::Get(), TEXT("novendordevice"));
-
 #if VULKAN_SUPPORTS_DRIVER_PROPERTIES
 	OutExtensions.Add(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME);
 #endif
@@ -167,21 +157,15 @@ void FVulkanWindowsPlatform::GetDeviceExtensions(EGpuVendorId VendorId, TArray<c
 	if (GGPUCrashDebuggingEnabled)
 	{
 #if VULKAN_SUPPORTS_AMD_BUFFER_MARKER
-		if (VendorId == EGpuVendorId::Amd && bAllowVendorDevice)
+		if (VendorId == EGpuVendorId::Amd)
 		{
 			OutExtensions.Add(VK_AMD_BUFFER_MARKER_EXTENSION_NAME);
 		}
 #endif
 #if VULKAN_SUPPORTS_NV_DIAGNOSTIC_CHECKPOINT
-		if (VendorId == EGpuVendorId::Nvidia && bAllowVendorDevice)
+		if (VendorId == EGpuVendorId::Nvidia)
 		{
 			OutExtensions.Add(VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME);
-		}
-#endif
-#if VULKAN_SUPPORTS_NV_DIAGNOSTIC_CHECKPOINT
-		if (VendorId == EGpuVendorId::Nvidia && bAllowVendorDevice)
-		{
-			OutExtensions.Add(VK_NV_DEVICE_DIAGNOSTICS_CONFIG_EXTENSION_NAME);
 		}
 #endif
 	}
@@ -191,11 +175,6 @@ void FVulkanWindowsPlatform::GetDeviceExtensions(EGpuVendorId VendorId, TArray<c
 	OutExtensions.Add(VK_KHR_BIND_MEMORY_2_EXTENSION_NAME);
 	OutExtensions.Add(VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
 	OutExtensions.Add(VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME);
-#endif
-
-#if VULKAN_SUPPORTS_FULLSCREEN_EXCLUSIVE
-	// Fullscreen requires Instance capabilities2
-	OutExtensions.Add(VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME);
 #endif
 }
 
@@ -210,7 +189,7 @@ void FVulkanWindowsPlatform::CreateSurface(void* WindowHandle, VkInstance Instan
 
 bool FVulkanWindowsPlatform::SupportsDeviceLocalHostVisibleWithNoPenalty(EGpuVendorId VendorId)
 {
-	static bool bIsWin10 = FPlatformMisc::VerifyWindowsVersion(10, 0) /*Win10*/;
+	static bool bIsWin10 = FWindowsPlatformMisc::VerifyWindowsVersion(10, 0) /*Win10*/;
 	return (VendorId == EGpuVendorId::Amd && bIsWin10);
 }
 
@@ -254,8 +233,8 @@ void FVulkanWindowsPlatform::CheckDeviceDriver(uint32 DeviceIndex, EGpuVendorId 
 			if (DeviceIndex < (uint32)AmdGpuInfo.numDevices && Version && *Version)
 			{
 				auto& DeviceInfo = AmdGpuInfo.devices[DeviceIndex];
-				bool bIsPreGCN = DeviceInfo.asicFamily == AGSDeviceInfo::AsicFamily_PreGCN;
-				if (DeviceInfo.asicFamily != AGSDeviceInfo::AsicFamily_Unknown)
+				bool bIsPreGCN = DeviceInfo.architectureVersion == AGSDeviceInfo::ArchitectureVersion_PreGCN;
+				if (DeviceInfo.architectureVersion == AGSDeviceInfo::ArchitectureVersion_GCN || bIsPreGCN)
 				{
 					// "Major.Minor.Revision"
 					do

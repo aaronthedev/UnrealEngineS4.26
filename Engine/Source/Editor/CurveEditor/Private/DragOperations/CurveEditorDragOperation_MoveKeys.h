@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -24,7 +24,6 @@ private:
 
 	/** Ptr back to the curve editor */
 	FCurveEditor* CurveEditor;
-	TOptional<FCurvePointHandle> CardinalPoint;
 
 private:
 
@@ -40,8 +39,6 @@ private:
 		TArray<FKeyHandle> Handles;
 		/** The extended key info for each of the above handles */
 		TArray<FKeyPosition> StartKeyPositions;
-		/** Used in OnEndDrag to send final key updates */
-		TArray<FKeyPosition> LastDraggedKeyPositions;
 	};
 
 	/** Key dragging data stored per-curve */

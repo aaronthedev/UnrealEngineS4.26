@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,6 @@
 #include "Math/Range.h"
 #include "Misc/Timespan.h"
 #include "Templates/SharedPointer.h"
-#include "IMediaTimeSource.h"
 
 class IMediaAudioSample;
 class IMediaBinarySample;
@@ -50,10 +49,6 @@ public:
 	{
 		return false; // override in child classes, if supported
 	}
-	virtual bool FetchCaption(TRange<FMediaTimeStamp> TimeRange, TSharedPtr<IMediaOverlaySample, ESPMode::ThreadSafe>& OutSample)
-	{
-		return false; // override in child classes, if supported
-	}
 
 	/**
 	 * Fetch the next metadata sample.
@@ -80,10 +75,6 @@ public:
 	{
 		return false; // override in child classes, if supported
 	}
-	virtual bool FetchSubtitle(TRange<FMediaTimeStamp> TimeRange, TSharedPtr<IMediaOverlaySample, ESPMode::ThreadSafe>& OutSample)
-	{
-		return false; // override in child classes, if supported
-	}
 
 	/**
 	 * Fetch the next video sample.
@@ -97,40 +88,12 @@ public:
 	{
 		return false; // override in child classes, if supported
 	}
-	virtual bool FetchVideo(TRange<FMediaTimeStamp> TimeRange, TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& OutSample)
-	{
-		return false; // override in child classes, if supported
-	}
 
 	/** Discard any outstanding media samples. */
 	virtual void FlushSamples()
 	{
 		// override in child classes, if supported
 	}
-
-	enum class EFetchBestSampleResult
-	{
-		Ok = 0,
-		NoSample,
-		NotSupported,
-	};
-	virtual EFetchBestSampleResult FetchBestVideoSampleForTimeRange(const TRange<FMediaTimeStamp> & TimeRange, TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& OutSample, bool bReverse)
-	{
-		return EFetchBestSampleResult::NotSupported;
-	}
-
-	virtual bool PeekVideoSampleTime(FMediaTimeStamp & TimeStamp) = 0;
-
-	virtual uint32 PurgeOutdatedVideoSamples(const FMediaTimeStamp & ReferenceTime, bool bReversed) { return 0; };
-
-	virtual bool CanReceiveVideoSamples(uint32 Num) const { return true; }
-	virtual bool CanReceiveAudioSamples(uint32 Num) const { return true; }
-
-	virtual int32 NumAudio() const { return -1; }
-	virtual int32 NumCaption() const { return -1; }
-	virtual int32 NumMetadataSamples() const { return -1; }
-	virtual int32 NumSubtitleSamples() const { return -1; }
-	virtual int32 NumVideoSamples() const { return -1; }
 
 public:
 

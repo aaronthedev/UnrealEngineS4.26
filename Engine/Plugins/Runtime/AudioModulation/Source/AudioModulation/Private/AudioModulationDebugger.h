@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -7,8 +7,8 @@
 #if !UE_BUILD_SHIPPING
 #include "SoundControlBus.h"
 #include "SoundControlBusMix.h"
-#include "SoundModulationGenerator.h"
 #include "SoundModulationProxy.h"
+#include "SoundModulatorLFO.h"
 
 
 namespace AudioModulation
@@ -16,7 +16,7 @@ namespace AudioModulation
 	// Forward Declarations
 	struct FReferencedProxies;
 
-	struct FControlBusMixStageDebugInfo
+	struct FControlBusMixChannelDebugInfo
 	{
 		float TargetValue;
 		float CurrentValue;
@@ -28,46 +28,26 @@ namespace AudioModulation
 		uint32 Id;
 		uint32 RefCount;
 
-		TMap<uint32, FControlBusMixStageDebugInfo> Stages;
+		TMap<uint32, FControlBusMixChannelDebugInfo> Channels;
 	};
 
 	struct FControlBusDebugInfo
 	{
 		FString Name;
 		float DefaultValue;
-		float GeneratorValue;
+		float LFOValue;
 		float MixValue;
 		float Value;
+		FVector2D Range;
 		uint32 Id;
 		uint32 RefCount;
 	};
 
-	struct FGeneratorSort
+	struct FLFODebugInfo
 	{
-		FORCEINLINE bool operator()(const FString& A, const FString& B) const
-		{
-			return A < B;
-		}
-	};
-
-	struct FGeneratorDebugInfo
-	{
-		FGeneratorDebugInfo()
-		{
-		}
-
-		FGeneratorDebugInfo(const TArray<FString>& InCategories)
-			: Categories(InCategories)
-		{
-		}
-
-		bool bEnabled = false;
-		TArray<FString> Categories;
-
-		FString NameFilter;
-
-		using FInstanceValues = TArray<FString>;
-		TArray<FInstanceValues> FilteredInstances;
+		FString Name;
+		float Value;
+		uint32 RefCount;
 	};
 
 	class FAudioModulationDebugger
@@ -75,40 +55,24 @@ namespace AudioModulation
 	public:
 		FAudioModulationDebugger();
 
-		void UpdateDebugData(double InElapsed, const FReferencedProxies& InRefProxies);
-		void SetDebugBusFilter(const FString* InNameFilter);
-		void SetDebugMatrixEnabled(bool bInIsEnabled);
-		void SetDebugMixFilter(const FString* InNameFilter);
-		void SetDebugGeneratorsEnabled(bool bInIsEnabled);
-		void SetDebugGeneratorFilter(const FString* InFilter);
-		void SetDebugGeneratorTypeFilter(const FString* InFilter, bool bInIsEnabled);
+		void UpdateDebugData(const FReferencedProxies& RefProxies);
 		bool OnPostHelp(FCommonViewportClient& ViewportClient, const TCHAR* Stream);
 		int32 OnRenderStat(FCanvas& Canvas, int32 X, int32 Y, const UFont& Font);
 		bool OnToggleStat(FCommonViewportClient& ViewportClient, const TCHAR* Stream);
 
-		void ResetGeneratorStats();
-
 	private:
 		uint8 bActive : 1;
+		uint8 bShowRenderStatLFO : 1;
 		uint8 bShowRenderStatMix : 1;
-		uint8 bShowGenerators : 1;
-		uint8 bEnableAllGenerators : 1;
 
-		TArray<FControlBusDebugInfo> FilteredBuses;
+		TArray<FControlBusDebugInfo>    FilteredBuses;
+		TArray<FLFODebugInfo>           FilteredLFOs;
 		TArray<FControlBusMixDebugInfo> FilteredMixes;
 
-		using FGeneratorSortMap = TSortedMap<FString, FGeneratorDebugInfo, FDefaultAllocator, FGeneratorSort>;
-		FGeneratorSortMap FilteredGeneratorsMap;
-
-		TMap<FString, bool> RequestedGeneratorUpdate;
-
 		FString BusStringFilter;
-		FString GeneratorStringFilter;
+		FString LFOStringFilter;
 		FString MixStringFilter;
-
-		float ElapsedSinceLastUpdate;
 	};
-
 } // namespace AudioModulation
 #endif // !UE_BUILD_SHIPPING
 #endif // WITH_AUDIOMODULATION

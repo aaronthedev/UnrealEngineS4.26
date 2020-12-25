@@ -6,11 +6,8 @@
 #####################
 # This unzips the tar.gz and applies any patches stored in the google-test-source-patches directory
 # uncompress_and_patch.bat
-archive=${1}
 
-unzip $archive
-
-mv ${archive%.*} "google-test-source"
+tar zxvf google-test-source.tar.gz
 
 #cp google-test-source-patches/* google-test-source/
 

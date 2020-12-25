@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LuminTargetSettingsDetails.h"
 #include "LuminRuntimeSettings.h"
@@ -15,7 +15,6 @@
 #include "Interfaces/IAndroidDeviceDetectionModule.h"
 #include "PropertyEditorModule.h"
 #include "ShaderPlatformQualitySettings.h"
-#include "Interfaces/ITargetPlatformManagerModule.h"
 
 #define LOCTEXT_NAMESPACE "FLuminPlatformEditorModule"
 

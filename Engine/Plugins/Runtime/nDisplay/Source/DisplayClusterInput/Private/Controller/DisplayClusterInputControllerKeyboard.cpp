@@ -1,46 +1,26 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DisplayClusterInputControllerKeyboard.h"
 #include "IDisplayClusterInputModule.h"
 
 #include "IDisplayCluster.h"
+#include "DisplayClusterInputStrings.h"
 #include "Config/IDisplayClusterConfigManager.h"
 #include "Input/IDisplayClusterInputManager.h"
-
-#include "Misc/DisplayClusterHelpers.h"
 #include "Misc/DisplayClusterInputHelpers.h"
 #include "Misc/DisplayClusterInputLog.h"
-#include "Misc/DisplayClusterStrings.h"
 
-#include "DisplayClusterConfigurationTypes.h"
+#include "IDisplayClusterInputModule.h"
 
 #define LOCTEXT_NAMESPACE "DisplayClusterInput"
 
-
-namespace
-{
-	static EDisplayClusterInputKeyboardReflectionMode GetReflectionMode(EDisplayClusterConfigurationKeyboardReflectionType From)
-	{
-		switch (From)
-		{
-		case EDisplayClusterConfigurationKeyboardReflectionType::None:
-			return EDisplayClusterInputKeyboardReflectionMode::None;
-		case EDisplayClusterConfigurationKeyboardReflectionType::Core:
-			return EDisplayClusterInputKeyboardReflectionMode::Core;
-		case EDisplayClusterConfigurationKeyboardReflectionType::nDisplay:
-			return EDisplayClusterInputKeyboardReflectionMode::nDisplay;
-		case EDisplayClusterConfigurationKeyboardReflectionType::All:
-			return EDisplayClusterInputKeyboardReflectionMode::All;
-		}
-
-		return EDisplayClusterInputKeyboardReflectionMode::None;
-	}
-}
 
 
 
 void FKeyboardController::Initialize()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputKeyboard);
+
 	static const FName nDisplayKeyboardCategoryName(TEXT("nDisplayKeyboard"));
 	EKeys::AddMenuCategoryDisplayInfo(nDisplayKeyboardCategoryName, LOCTEXT("nDisplayKeyboardSubCateogry", "nDisplayKeyboard"), TEXT("GraphEditor.KeyEvent_16x"));
 
@@ -182,39 +162,40 @@ void FKeyboardController::Initialize()
 
 void FKeyboardController::ProcessStartSession()
 {
-	// Clear old bindings
-	ResetAllBindings();
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputKeyboard);
 
+	// Clear old binds
+	ResetAllBindings();
+	// Read config from cluster & create user binds:
+	IDisplayClusterInputManager& DisplayClusterInputManager = *IDisplayCluster::Get().GetInputMgr();
+
+	// Clear old setup
+	IDisplayClusterInputManager&  InputMgr = *IDisplayCluster::Get().GetInputMgr();
 	IDisplayClusterConfigManager& ConfigMgr = *IDisplayCluster::Get().GetConfigMgr();
 
-	const UDisplayClusterConfigurationData* ConfigData = ConfigMgr.GetConfig();
-	if (!ConfigData)
+	TArray<FString> DeviceNames;
+	InputMgr.GetKeyboardDeviceIds(DeviceNames);
+	for (const FString& DeviceName : DeviceNames)
 	{
-		return;
-	}
+		AddDevice(DeviceName);
 
-	TArray<FString> DeviceIds;
-	IDisplayCluster::Get().GetInputMgr()->GetKeyboardDeviceIds(DeviceIds);
-	for (const FString& DeviceId : DeviceIds)
-	{
-		AddDevice(DeviceId);
-
-		if (ConfigData->Input->KeyboardDevices.Contains(DeviceId))
+		FDisplayClusterConfigInput CfgInput;
+		if (ConfigMgr.GetInputDevice(DeviceName, CfgInput))
 		{
-			UDisplayClusterConfigurationInputDeviceKeyboard* CfgKeyboard = Cast<UDisplayClusterConfigurationInputDeviceKeyboard>(ConfigData->Input->KeyboardDevices[DeviceId]);
-			if (CfgKeyboard)
+			FString ReflectionParam;
+			if (FParse::Value(*CfgInput.Params, DisplayClusterInputStrings::cfg::input::keyboard::TokenReflect, ReflectionParam))
 			{
-				const EDisplayClusterInputKeyboardReflectionMode ReflectionMode = GetReflectionMode(CfgKeyboard->ReflectionType);
-				ReflectKeyboard(DeviceId, ReflectionMode);
+				const EDisplayClusterInputKeyboardReflectMode ReflectionType = ParseReflectionType(ReflectionParam, EDisplayClusterInputKeyboardReflectMode::Refl_None);
+				ReflectKeyboard(DeviceName, ReflectionType);
 			}
 		}
 
-		for (auto& it : ConfigData->Input->InputBinding)
+		TArray<FDisplayClusterConfigInputSetup> Records = ConfigMgr.GetInputSetupRecords();
+		for (const FDisplayClusterConfigInputSetup& Record : Records)
 		{
-			if (DeviceId.Equals(it.DeviceId, ESearchCase::IgnoreCase))
+			if (DeviceName.Compare(Record.Id, ESearchCase::IgnoreCase) == 0)
 			{
-				UE_LOG(LogDisplayClusterInputAnalog, Verbose, TEXT("Binding %s:%d to %s..."), *DeviceId, it.Channel, *it.BindTo);
-				BindChannel(DeviceId, it.Channel, it.BindTo);
+				BindChannel(DeviceName, Record.Channel, Record.BindName);
 			}
 		}
 	}
@@ -222,6 +203,8 @@ void FKeyboardController::ProcessStartSession()
 
 void FKeyboardController::ProcessEndSession()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputKeyboard);
+
 	UE_LOG(LogDisplayClusterInputKeyboard, Verbose, TEXT("Removing all keyboard bindings..."));
 
 	ResetAllBindings();
@@ -229,6 +212,8 @@ void FKeyboardController::ProcessEndSession()
 
 void FKeyboardController::ProcessPreTick()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputKeyboard);
+
 	IDisplayClusterInputManager& InputMgr = *IDisplayCluster::Get().GetInputMgr();
 	for (auto& DeviceIt : BindMap)
 	{
@@ -244,8 +229,37 @@ void FKeyboardController::ProcessPreTick()
 	}
 }
 
+EDisplayClusterInputKeyboardReflectMode FKeyboardController::ParseReflectionType(const FString& Text, EDisplayClusterInputKeyboardReflectMode DefaultValue) const
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputKeyboard);
+
+	FString CleanStr = Text;
+	CleanStr = CleanStr.TrimStartAndEnd().TrimQuotes().TrimStartAndEnd();
+
+	if (CleanStr.Compare(DisplayClusterInputStrings::cfg::input::keyboard::ReflectNdisplay, ESearchCase::IgnoreCase) == 0)
+	{
+		return EDisplayClusterInputKeyboardReflectMode::Refl_nDisplay;
+	}
+	else if (CleanStr.Compare(DisplayClusterInputStrings::cfg::input::keyboard::ReflectUE4, ESearchCase::IgnoreCase) == 0)
+	{
+		return EDisplayClusterInputKeyboardReflectMode::Refl_UECore;
+	}
+	else if (CleanStr.Compare(DisplayClusterInputStrings::cfg::input::keyboard::ReflectBoth, ESearchCase::IgnoreCase) == 0)
+	{
+		return EDisplayClusterInputKeyboardReflectMode::Refl_Both;
+	}
+	else if (CleanStr.Compare(DisplayClusterInputStrings::cfg::input::keyboard::ReflectNone, ESearchCase::IgnoreCase) == 0)
+	{
+		return EDisplayClusterInputKeyboardReflectMode::Refl_None;
+	}
+
+	return DefaultValue;
+}
+
 void FKeyboardController::ConnectKey(FChannelBinds& KeyboardData, uint32 VrpnChannel, const TCHAR* KeyName)
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputKeyboard);
+
 	// Generate channel for this Key:
 	if (!KeyboardData.Contains(VrpnChannel))
 	{
@@ -278,29 +292,34 @@ void FKeyboardController::ConnectKey(FChannelBinds& KeyboardData, uint32 VrpnCha
 	}
 }
 
-
 #if PLATFORM_WINDOWS
 #include "Windows/AllowWindowsPlatformTypes.h"
 
 // Support reflect vrpn to ue4\nDisplay:
-void FKeyboardController::ReflectKeyboard(const FString& VrpnDeviceId, EDisplayClusterInputKeyboardReflectionMode ReflectionMode)
+void FKeyboardController::ReflectKeyboard(const FString& VrpnDeviceId, EDisplayClusterInputKeyboardReflectMode ReflectMode)
 {
-	switch (ReflectionMode)
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputKeyboard);
+
+	switch (ReflectMode)
 	{
-	case EDisplayClusterInputKeyboardReflectionMode::nDisplay:
-		bReflectToNDisplayCluster = true;
-		break;
-
-	case EDisplayClusterInputKeyboardReflectionMode::Core:
-		bReflectToUE4 = true;
-		break;
-
-	case EDisplayClusterInputKeyboardReflectionMode::All:
+	case EDisplayClusterInputKeyboardReflectMode::Refl_Both:
 		bReflectToNDisplayCluster = true;
 		bReflectToUE4 = true;
 		break;
+	
+	case EDisplayClusterInputKeyboardReflectMode::Refl_nDisplay:
+		bReflectToNDisplayCluster = true;
+		break;
 
-	case EDisplayClusterInputKeyboardReflectionMode::None:
+	case EDisplayClusterInputKeyboardReflectMode::Refl_UECore:
+		bReflectToUE4 = true;
+		break;
+
+	case EDisplayClusterInputKeyboardReflectMode::Refl_None:
+		bReflectToUE4 = false;
+		bReflectToNDisplayCluster = false;
+		break;
+
 	default:
 		bReflectToUE4 = false;
 		bReflectToNDisplayCluster = false;

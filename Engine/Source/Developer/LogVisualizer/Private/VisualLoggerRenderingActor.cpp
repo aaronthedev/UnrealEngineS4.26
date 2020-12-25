@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VisualLoggerRenderingActor.h"
 #include "AI/NavigationSystemBase.h"
@@ -41,7 +41,7 @@ public:
 		Result.bDrawRelevance = IsShown(View);
 		Result.bDynamicRelevance = true;
 		// ideally the TranslucencyRelevance should be filled out by the material, here we do it conservative
-		Result.bSeparateTranslucency = Result.bNormalTranslucency = IsShown(View) && GIsEditor;
+		Result.bSeparateTranslucencyRelevance = Result.bNormalTranslucencyRelevance = IsShown(View) && GIsEditor;
 		return Result;
 	}
 
@@ -114,9 +114,9 @@ FBoxSphereBounds UVisualLoggerRenderingComponent::CalcBounds(const FTransform& L
 	return MyBounds;
 }
 
-void UVisualLoggerRenderingComponent::CreateRenderState_Concurrent(FRegisterComponentContext* Context)
+void UVisualLoggerRenderingComponent::CreateRenderState_Concurrent()
 {
-	Super::CreateRenderState_Concurrent(Context);
+	Super::CreateRenderState_Concurrent();
 
 #if WITH_EDITOR
 	DebugDrawDelegateHelper.RegisterDebugDrawDelgate();
@@ -411,17 +411,27 @@ void AVisualLoggerRenderingActor::GetDebugShapes(const FVisualLogDevice::FVisual
 		case EVisualLoggerShapeElement::SinglePoint:
 		{
 			const float Radius = float(ElementToDraw->Radius);
-			const bool bDrawLabel = (ElementToDraw->Description.IsEmpty() == false);
-			const int32 NumPoints = ElementToDraw->Points.Num();
-
-			for (int32 Index = 0; Index < NumPoints; ++Index)
+			const bool bDrawLabel = ElementToDraw->Description.IsEmpty() == false;
+			if (ElementToDraw->Points.Num() == 1)
 			{
-				const FVector& Point = ElementToDraw->Points[Index];
+				const FVector& Point = ElementToDraw->Points[0];
 				DebugShapes.Points.Add(FDebugRenderSceneProxy::FSphere(Radius, Point, Color));
 				if (bDrawLabel)
 				{
-					const FString PrintString = NumPoints == 1 ? ElementToDraw->Description : FString::Printf(TEXT("%s_%d"), *ElementToDraw->Description, Index);
-					DebugShapes.Texts.Add(FDebugRenderSceneProxy::FText3d(PrintString, Point, Color));
+					DebugShapes.Texts.Add(FDebugRenderSceneProxy::FText3d(ElementToDraw->Description, Point, Color));
+				}
+			}
+			else
+			{
+				for (int32 Index = 0; Index < ElementToDraw->Points.Num(); ++Index)
+				{
+					const FVector& Point = ElementToDraw->Points[Index];
+					DebugShapes.Points.Add(FDebugRenderSceneProxy::FSphere(Radius, Point, Color));
+					if (bDrawLabel)
+					{
+						const FString PrintString = FString::Printf(TEXT("%s_%d"), *ElementToDraw->Description, Index);
+						DebugShapes.Texts.Add(FDebugRenderSceneProxy::FText3d(PrintString, Point, Color));
+					}
 				}
 			}
 		}
@@ -477,19 +487,35 @@ void AVisualLoggerRenderingActor::GetDebugShapes(const FVisualLogDevice::FVisual
 		case EVisualLoggerShapeElement::Segment:
 		{
 			const float Thickness = float(ElementToDraw->Thicknes);
-			const bool bDrawLabel = (ElementToDraw->Description.IsEmpty() == false);
+			const bool bDrawLabel = ElementToDraw->Description.IsEmpty() == false && ElementToDraw->Points.Num() > 2;
 			const FVector* Location = ElementToDraw->Points.GetData();
-			const int32 NumPoints = ElementToDraw->Points.Num();
-
-			for (int32 Index = 0; Index + 1 < NumPoints; Index += 2, Location += 2)
+			
+			if (ElementToDraw->Points.Num() == 1)
 			{
 				DebugShapes.Lines.Add(FDebugRenderSceneProxy::FDebugLine(*Location, *(Location + 1), Color, Thickness));
 
 				if (bDrawLabel)
 				{
-					const FString PrintString = NumPoints == 2 ? ElementToDraw->Description : FString::Printf(TEXT("%s_%d"), *ElementToDraw->Description, Index / 2);
-					DebugShapes.Texts.Add(FDebugRenderSceneProxy::FText3d(PrintString, (*Location + (*(Location + 1) - *Location) / 2), Color));
+					DebugShapes.Texts.Add(FDebugRenderSceneProxy::FText3d(ElementToDraw->Description, (*Location + (*(Location + 1) - *Location) / 2), Color));
 				}
+			}
+			else
+			{
+				for (int32 Index = 0; Index + 1 < ElementToDraw->Points.Num(); Index += 2, Location += 2)
+				{
+					DebugShapes.Lines.Add(FDebugRenderSceneProxy::FDebugLine(*Location, *(Location + 1), Color, Thickness));
+
+					if (bDrawLabel)
+					{
+						const FString PrintString = FString::Printf(TEXT("%s_%d"), *ElementToDraw->Description, Index);
+						DebugShapes.Texts.Add(FDebugRenderSceneProxy::FText3d(PrintString, (*Location + (*(Location + 1) - *Location) / 2), Color));
+					}
+				}
+			}
+
+			if (ElementToDraw->Description.IsEmpty() == false)
+			{
+				DebugShapes.Texts.Add(FDebugRenderSceneProxy::FText3d(ElementToDraw->Description, ElementToDraw->Points[0] + (ElementToDraw->Points[1] - ElementToDraw->Points[0]) / 2, Color));
 			}
 		}
 			break;
@@ -508,20 +534,37 @@ void AVisualLoggerRenderingActor::GetDebugShapes(const FVisualLogDevice::FVisual
 		case EVisualLoggerShapeElement::Box:
 		{
 			const float Thickness = float(ElementToDraw->Thicknes);
-			const bool bDrawLabel = (ElementToDraw->Description.IsEmpty() == false);
+			const bool bDrawLabel = ElementToDraw->Description.IsEmpty() == false && ElementToDraw->Points.Num() > 2;
 			const FVector* BoxExtent = ElementToDraw->Points.GetData();
-			const int32 NumPoints = ElementToDraw->Points.Num();
-
-			for (int32 Index = 0; Index + 1 < NumPoints; Index += 2, BoxExtent += 2)
+			
+			if (ElementToDraw->Points.Num() == 2)
 			{
 				const FBox Box = FBox(*BoxExtent, *(BoxExtent + 1));
 				DebugShapes.Boxes.Add(FDebugRenderSceneProxy::FDebugBox(Box, Color, FTransform(ElementToDraw->TransformationMatrix)));
 
 				if (bDrawLabel)
 				{
-					const FString PrintString = NumPoints == 2 ? ElementToDraw->Description : FString::Printf(TEXT("%s_%d"), *ElementToDraw->Description, Index / 2);
-					DebugShapes.Texts.Add(FDebugRenderSceneProxy::FText3d(PrintString, Box.GetCenter(), Color));
+					DebugShapes.Texts.Add(FDebugRenderSceneProxy::FText3d(ElementToDraw->Description, Box.GetCenter(), Color));
 				}
+			}
+			else
+			{
+				for (int32 Index = 0; Index + 1 < ElementToDraw->Points.Num(); Index += 2, BoxExtent += 2)
+				{
+					const FBox Box = FBox(*BoxExtent, *(BoxExtent + 1));
+					DebugShapes.Boxes.Add(FDebugRenderSceneProxy::FDebugBox(Box, Color, FTransform(ElementToDraw->TransformationMatrix)));
+
+					if (bDrawLabel)
+					{
+						const FString PrintString = FString::Printf(TEXT("%s_%d"), *ElementToDraw->Description, Index);
+						DebugShapes.Texts.Add(FDebugRenderSceneProxy::FText3d(PrintString, Box.GetCenter(), Color));
+					}
+				}
+			}
+
+			if (ElementToDraw->Description.IsEmpty() == false)
+			{
+				DebugShapes.Texts.Add(FDebugRenderSceneProxy::FText3d(ElementToDraw->Description, ElementToDraw->Points[0] + (ElementToDraw->Points[1] - ElementToDraw->Points[0]) / 2, Color));
 			}
 		}
 			break;
@@ -661,18 +704,23 @@ void AVisualLoggerRenderingActor::GetDebugShapes(const FVisualLogDevice::FVisual
 
 		case EVisualLoggerShapeElement::Arrow:
 		{
-			const bool bDrawLabel = (ElementToDraw->Description.IsEmpty() == false);
+			const bool bDrawLabels = ElementToDraw->Description.IsEmpty() == false && ElementToDraw->Points.Num() > 2;
 			const FVector* Location = ElementToDraw->Points.GetData();
-			const int32 NumPoints = ElementToDraw->Points.Num();
 
-			for (int32 Index = 0; Index + 1 < NumPoints; Index += 2, Location += 2)
+			if (bDrawLabels)
 			{
-				DebugShapes.Arrows.Add(FDebugRenderSceneProxy::FArrowLine(*Location, *(Location + 1), Color));
-
-				if (bDrawLabel)
+				for (int32 Index = 0; Index + 1 < ElementToDraw->Points.Num(); Index += 2, Location += 2)
 				{
-					const FString PrintString = NumPoints == 2 ? ElementToDraw->Description : FString::Printf(TEXT("%s_%d"), *ElementToDraw->Description, Index / 2);
+					DebugShapes.Arrows.Add(FDebugRenderSceneProxy::FArrowLine(*Location, *(Location + 1), Color));
+					const FString PrintString = FString::Printf(TEXT("%s_%d"), *ElementToDraw->Description, Index);
 					DebugShapes.Texts.Add(FDebugRenderSceneProxy::FText3d(PrintString, (*Location + (*(Location + 1) - *Location) / 2), Color));
+				}
+			}
+			else
+			{
+				for (int32 Index = 0; Index + 1 < ElementToDraw->Points.Num(); Index += 2, Location += 2)
+				{
+					DebugShapes.Arrows.Add(FDebugRenderSceneProxy::FArrowLine(*Location, *(Location + 1), Color));
 				}
 			}
 		}

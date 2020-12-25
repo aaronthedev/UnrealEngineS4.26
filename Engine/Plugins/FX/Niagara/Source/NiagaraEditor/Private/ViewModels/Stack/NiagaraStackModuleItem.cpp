@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ViewModels/Stack/NiagaraStackModuleItem.h"
 #include "NiagaraEditorModule.h"
@@ -10,8 +10,6 @@
 #include "ViewModels/Stack/NiagaraStackFunctionInput.h"
 #include "ViewModels/Stack/NiagaraStackInputCategory.h"
 #include "ViewModels/Stack/NiagaraStackModuleItemOutputCollection.h"
-#include "ViewModels/NiagaraScratchPadViewModel.h"
-#include "ViewModels/NiagaraScratchPadScriptViewModel.h"
 #include "NiagaraNodeFunctionCall.h"
 #include "NiagaraNodeParameterMapSet.h"
 #include "NiagaraNodeOutput.h"
@@ -33,12 +31,6 @@
 #include "NiagaraConstants.h"
 #include "Widgets/SWidget.h"
 #include "NiagaraActions.h"
-#include "NiagaraClipboard.h"
-#include "NiagaraConvertInPlaceUtilityBase.h"
-#include "Framework/Notifications/NotificationManager.h"
-#include "NiagaraMessageManager.h"
-#include "NiagaraMessages.h"
-#include "NiagaraMessageUtilities.h"
 
 #include "ScopedTransaction.h"
 #include "NiagaraScriptVariable.h"
@@ -56,6 +48,64 @@ TArray<ENiagaraScriptUsage> UsagePriority = { // Ordered such as the highest pri
 	ENiagaraScriptUsage::EmitterSpawnScript,
 	ENiagaraScriptUsage::SystemUpdateScript,
 	ENiagaraScriptUsage::SystemSpawnScript };
+
+UNiagaraNodeOutput* GetOutputNodeForModuleDependency(ENiagaraScriptUsage DependantUsage, UNiagaraScript* DependencyScript, UNiagaraSystem& System, const FNiagaraEmitterHandle* EmitterHandle, FNiagaraModuleDependency Dependency)
+{
+	UNiagaraNodeOutput* TargetOutputNode = nullptr;
+	if (DependencyScript)
+	{
+		UNiagaraScript* OutputScript = nullptr;
+		TArray<ENiagaraScriptUsage> SupportedUsages = UNiagaraScript::GetSupportedUsageContextsForBitmask(DependencyScript->ModuleUsageBitmask);
+
+		if (Dependency.ScriptConstraint == ENiagaraModuleDependencyScriptConstraint::AllScripts)
+		{
+			int32 ClosestDistance = MAX_int32;
+			int32 DependantIndex = UsagePriority.IndexOfByPredicate(
+				[&](const ENiagaraScriptUsage CurrentUsage)
+			{
+				return UNiagaraScript::IsEquivalentUsage(DependantUsage, CurrentUsage);
+			});
+
+			for (ENiagaraScriptUsage PossibleUsage : SupportedUsages)
+			{
+				int32 PossibleIndex = UsagePriority.IndexOfByPredicate(
+					[&](const ENiagaraScriptUsage CurrentUsage)
+				{
+					return UNiagaraScript::IsEquivalentUsage(PossibleUsage, CurrentUsage);
+				});
+
+				if (PossibleIndex == INDEX_NONE)
+				{
+					// This usage isn't in the execution flow so check the next one.
+					continue;
+				}
+
+				int32 Distance = PossibleIndex - DependantIndex;
+				bool bCorrectOrder = (Dependency.Type == ENiagaraModuleDependencyType::PreDependency && Distance >= 0) || (Dependency.Type == ENiagaraModuleDependencyType::PostDependency && Distance <= 0);
+				if ((FMath::Abs(Distance) < ClosestDistance) && bCorrectOrder)
+				{
+					ClosestDistance = Distance;
+					FGuid EmitterHandleId = EmitterHandle != nullptr ? EmitterHandle->GetId() : FGuid();
+					OutputScript = FNiagaraEditorUtilities::GetScriptFromSystem(System, EmitterHandleId, PossibleUsage, FGuid());
+				}
+			}
+		}
+		else if (Dependency.ScriptConstraint == ENiagaraModuleDependencyScriptConstraint::SameScript)
+		{
+			if (SupportedUsages.Contains(DependantUsage))
+			{
+				FGuid EmitterHandleId = EmitterHandle != nullptr ? EmitterHandle->GetId() : FGuid();
+				OutputScript = FNiagaraEditorUtilities::GetScriptFromSystem(System, EmitterHandleId, DependantUsage, FGuid());
+			}
+		}
+
+		if (OutputScript != nullptr)
+		{
+			TargetOutputNode = FNiagaraEditorUtilities::GetScriptOutputNode(*OutputScript);
+		}
+	}
+	return TargetOutputNode;
+}
 
 UNiagaraStackModuleItem::UNiagaraStackModuleItem()
 	: FunctionCallNode(nullptr)
@@ -85,20 +135,18 @@ void UNiagaraStackModuleItem::Initialize(FRequiredEntryData InRequiredEntryData,
 		AddChildFilter(FOnFilterChild::CreateUObject(this, &UNiagaraStackModuleItem::FilterOutputCollection));
 		AddChildFilter(FOnFilterChild::CreateUObject(this, &UNiagaraStackModuleItem::FilterLinkedInputCollection));
 	}
-
-	MessageLogGuid = GetSystemViewModel()->GetMessageLogGuid();
-
-	FNiagaraMessageManager::Get()->SubscribeToAssetMessagesByObject(
-		  FText::FromString("StackModuleItem")
-		, MessageLogGuid
-		, FObjectKey(FunctionCallNode)
-		, MessageManagerRegistrationKey
-	).BindUObject(this, &UNiagaraStackModuleItem::OnMessageManagerRefresh);
 }
 
 FText UNiagaraStackModuleItem::GetDisplayName() const
 {
-	return FunctionCallNode->GetNodeTitle(ENodeTitleType::ListView);
+	if (FunctionCallNode != nullptr)
+	{
+		return FunctionCallNode->GetNodeTitle(ENodeTitleType::ListView);
+	}
+	else
+	{
+		return FText::FromName(NAME_None);
+	}
 }
 
 UObject* UNiagaraStackModuleItem::GetDisplayedObject() const
@@ -123,20 +171,10 @@ INiagaraStackItemGroupAddUtilities* UNiagaraStackModuleItem::GetGroupAddUtilitie
 	return GroupAddUtilities;
 }
 
-void UNiagaraStackModuleItem::FinalizeInternal()
-{
-	if (MessageManagerRegistrationKey.IsValid())
-	{
-		FNiagaraMessageManager::Get()->Unsubscribe(FText::FromString("StackModuleItem"), MessageLogGuid, MessageManagerRegistrationKey);
-	}
-	Super::FinalizeInternal();
-}
-
 void UNiagaraStackModuleItem::RefreshChildrenInternal(const TArray<UNiagaraStackEntry*>& CurrentChildren, TArray<UNiagaraStackEntry*>& NewChildren, TArray<FStackIssue>& NewIssues)
 {
 	bCanRefresh = false;
 	bCanMoveAndDeleteCache.Reset();
-	bIsScratchModuleCache.Reset();
 
 	if (FunctionCallNode != nullptr && FunctionCallNode->ScriptIsValid())
 	{
@@ -194,8 +232,8 @@ void UNiagaraStackModuleItem::RefreshChildrenInternal(const TArray<UNiagaraStack
 
 			InputCollection->SetShouldShowInStack(GetStackEditorData().GetShowOutputs() || GetStackEditorData().GetShowLinkedInputs());
 
-			NewChildren.Add(InputCollection);
 			NewChildren.Add(LinkedInputCollection);
+			NewChildren.Add(InputCollection);
 			NewChildren.Add(OutputCollection);
 		
 		}
@@ -205,21 +243,6 @@ void UNiagaraStackModuleItem::RefreshChildrenInternal(const TArray<UNiagaraStack
 			InputCollection->SetShouldShowInStack(false);
 
 			NewChildren.Add(InputCollection);
-
-			UNiagaraNodeAssignment* AssignmentNode = CastChecked<UNiagaraNodeAssignment>(FunctionCallNode);
-			if (AssignmentNode->GetAssignmentTargets().Num() == 0)
-			{
-				FText EmptyAssignmentNodeMessageText = LOCTEXT("EmptyAssignmentNodeMessage", "No Parameters\n\nTo add a parameter use the add button in the header, or drag a parameter from the parameters tab to the header.");
-				UNiagaraStackItemTextContent* EmptyAssignmentNodeMessage = FindCurrentChildOfTypeByPredicate<UNiagaraStackItemTextContent>(NewChildren,
-					[&](UNiagaraStackItemTextContent* CurrentStackItemTextContent) { return CurrentStackItemTextContent->GetDisplayName().IdenticalTo(EmptyAssignmentNodeMessageText); });
-
-				if (EmptyAssignmentNodeMessage == nullptr)
-				{
-					EmptyAssignmentNodeMessage = NewObject<UNiagaraStackItemTextContent>(this);
-					EmptyAssignmentNodeMessage->Initialize(CreateDefaultChildRequiredData(), EmptyAssignmentNodeMessageText, false, GetStackEditorDataKey());
-				}
-				NewChildren.Add(EmptyAssignmentNodeMessage);
-			}
 		}
 	}
 
@@ -230,26 +253,19 @@ void UNiagaraStackModuleItem::RefreshChildrenInternal(const TArray<UNiagaraStack
 
 TOptional<UNiagaraStackEntry::FDropRequestResponse> UNiagaraStackModuleItem::CanDropInternal(const FDropRequest& DropRequest)
 {
-	if ((DropRequest.DropOptions != UNiagaraStackEntry::EDropOptions::Overview || DropRequest.DropZone == EItemDropZone::OntoItem) &&
-		DropRequest.DragDropOperation->IsOfType<FNiagaraParameterDragOperation>() &&
-		FunctionCallNode->IsA<UNiagaraNodeAssignment>())
+	if (DropRequest.DragDropOperation->IsOfType<FNiagaraParameterDragOperation>() && DropRequest.DropOptions != UNiagaraStackEntry::EDropOptions::Overview && FunctionCallNode->IsA<UNiagaraNodeAssignment>())
 	{
 		TSharedRef<const FNiagaraParameterDragOperation> ParameterDragDropOp = StaticCastSharedRef<const FNiagaraParameterDragOperation>(DropRequest.DragDropOperation);
-		UNiagaraNodeAssignment* AssignmentNode = CastChecked<UNiagaraNodeAssignment>(FunctionCallNode);
 		TSharedPtr<const FNiagaraParameterAction> ParameterAction = StaticCastSharedPtr<const FNiagaraParameterAction>(ParameterDragDropOp->GetSourceAction());
 		if (ParameterAction.IsValid())
 		{
-			if (AssignmentNode->GetAssignmentTargets().Contains(ParameterAction->GetParameter()))
+			if (FNiagaraStackGraphUtilities::ParameterIsCompatibleWithScriptUsage(ParameterAction->GetParameter(), OutputNode->GetUsage()))
 			{
-				return FDropRequestResponse(TOptional<EItemDropZone>(), LOCTEXT("CantDropDuplicateParameter", "Can not drop this parameter here because\nit's already set by this module."));
-			}
-			else if (FNiagaraStackGraphUtilities::CanWriteParameterFromUsageViaOutput(ParameterAction->GetParameter(), OutputNode) == false)
-			{
-				return FDropRequestResponse(TOptional<EItemDropZone>(), LOCTEXT("CantDropParameterByUsage", "Can not drop this parameter here because\nit can't be written in this usage context."));
+				return FDropRequestResponse(EItemDropZone::OntoItem, LOCTEXT("DropParameterToAdd", "Add this parameter to this 'Set Variables' node."));
 			}
 			else
 			{
-				return FDropRequestResponse(EItemDropZone::OntoItem, LOCTEXT("DropParameterToAdd", "Add this parameter to this 'Set Parameters' node."));
+				return FDropRequestResponse(TOptional<EItemDropZone>(), LOCTEXT("CantDropParameterByUsage", "Can not drop this parameter here because\nit's not valid for this usage context."));
 			}
 		}
 	}
@@ -258,432 +274,13 @@ TOptional<UNiagaraStackEntry::FDropRequestResponse> UNiagaraStackModuleItem::Can
 
 TOptional<UNiagaraStackEntry::FDropRequestResponse> UNiagaraStackModuleItem::DropInternal(const FDropRequest& DropRequest)
 {
-	if ((DropRequest.DropOptions != UNiagaraStackEntry::EDropOptions::Overview || DropRequest.DropZone == EItemDropZone::OntoItem) &&
-		DropRequest.DragDropOperation->IsOfType<FNiagaraParameterDragOperation>() &&
-		FunctionCallNode->IsA<UNiagaraNodeAssignment>())
+	// If the drop was allowed from the can drop just return the drop zone here since it will be handled by the drop target in the stack control.
+	// TODO: Unify the drop target dropping with the existing drag/drop code.
+	if (DropRequest.DropOptions != UNiagaraStackEntry::EDropOptions::Overview)
 	{
-		TSharedRef<const FNiagaraParameterDragOperation> ParameterDragDropOp = StaticCastSharedRef<const FNiagaraParameterDragOperation>(DropRequest.DragDropOperation);
-		UNiagaraNodeAssignment* AssignmentNode = CastChecked<UNiagaraNodeAssignment>(FunctionCallNode);
-		TSharedPtr<const FNiagaraParameterAction> ParameterAction = StaticCastSharedPtr<const FNiagaraParameterAction>(ParameterDragDropOp->GetSourceAction());
-		if (ParameterAction.IsValid() && 
-			AssignmentNode->GetAssignmentTargets().Contains(ParameterAction->GetParameter()) == false &&
-			FNiagaraStackGraphUtilities::CanWriteParameterFromUsage(ParameterAction->GetParameter(), OutputNode->GetUsage()))
-		{
-			AddInput(ParameterAction->GetParameter());
-			return FDropRequestResponse(DropRequest.DropZone);
-		}
+		return FDropRequestResponse(DropRequest.DropZone);
 	}
 	return TOptional<FDropRequestResponse>();
-}
-
-int32 GetIndexOfLastDependentModuleData(
-	const TArray<FNiagaraStackModuleData>& StackModuleData,
-	int32 StartIndex,
-	int32 EndIndex,
-	int32 NextIndexOffset,
-	ENiagaraScriptUsage DependentScriptUsage,
-	FGuid DependentScriptUsageId,
-	FNiagaraModuleDependency& RequiredDependency)
-{
-	int LastModuleDataIndexRequiringDependency = INDEX_NONE;
-	for (int32 StackModuleDataIndex = StartIndex; StackModuleDataIndex != EndIndex; StackModuleDataIndex += NextIndexOffset)
-	{
-		const FNiagaraStackModuleData& CurrentStackModuleData = StackModuleData[StackModuleDataIndex];
-		if (RequiredDependency.ScriptConstraint == ENiagaraModuleDependencyScriptConstraint::SameScript &&
-			(UNiagaraScript::IsEquivalentUsage(CurrentStackModuleData.Usage, DependentScriptUsage) == false || CurrentStackModuleData.UsageId != DependentScriptUsageId))
-		{
-			break;
-		}
-
-		if (CurrentStackModuleData.ModuleNode->FunctionScript != nullptr &&
-			CurrentStackModuleData.ModuleNode->FunctionScript->RequiredDependencies.ContainsByPredicate(
-				[&RequiredDependency](const FNiagaraModuleDependency& CurrentRequiredDependency) { return CurrentRequiredDependency.Id == RequiredDependency.Id; }))
-		{
-			LastModuleDataIndexRequiringDependency = StackModuleDataIndex;
-		}
-	}
-	return LastModuleDataIndexRequiringDependency;
-}
-
-UNiagaraNodeOutput* GetCompatibleTargetOutputNodeFromOrderedScripts(const TArray<ENiagaraScriptUsage>& CompatibleUsages, const TArray<UNiagaraScript*>& OrderedScripts, int32 DependentScriptIndex, int32 LastScriptIndex, int32 NextScriptOffset)
-{
-	for (int32 CurrentScriptIndex = DependentScriptIndex + NextScriptOffset; CurrentScriptIndex != LastScriptIndex; CurrentScriptIndex += NextScriptOffset)
-	{
-		UNiagaraScript* CurrentScript = OrderedScripts[CurrentScriptIndex];
-		if (UNiagaraScript::ContainsEquivilentUsage(CompatibleUsages, CurrentScript->GetUsage()))
-		{
-			UNiagaraScriptSource* CurrentScriptSource = CastChecked<UNiagaraScriptSource>(CurrentScript->GetSource());
-			UNiagaraNodeOutput* CurrentOutputNode = CurrentScriptSource->NodeGraph->FindOutputNode(CurrentScript->GetUsage(), CurrentScript->GetUsageId());
-			if (CurrentOutputNode != nullptr)
-			{
-				return CurrentOutputNode;
-			}
-		}
-	}
-	return nullptr;
-}
-
-void GetCompatibleOutputNodeAndIndex(TSharedRef<FNiagaraSystemViewModel> DependentSystemViewModel, FGuid EmitterHandleId, UNiagaraScript& DependencyProviderScript, const FNiagaraStackModuleData& LastDependentModuleData, FNiagaraModuleDependency RequiredDependency, UNiagaraNodeOutput*& OutTargetOutputNode, TOptional<int32>& OutTargetIndex)
-{
-	TArray<ENiagaraScriptUsage> CompatibleUsages = UNiagaraScript::GetSupportedUsageContextsForBitmask(DependencyProviderScript.ModuleUsageBitmask);
-	if (UNiagaraScript::ContainsEquivilentUsage(CompatibleUsages, LastDependentModuleData.Usage))
-	{
-		// If the dependency provider is compatible with the last dependent usage it can be added directly before or after the last dependent.
-		OutTargetOutputNode = FNiagaraStackGraphUtilities::GetEmitterOutputNodeForStackNode(*LastDependentModuleData.ModuleNode);
-		OutTargetIndex = LastDependentModuleData.Index + (RequiredDependency.Type == ENiagaraModuleDependencyType::PostDependency ? 1 : 0);
-	}
-	else
-	{
-		// Otherwise we need to search for a compatible script to insert the module into.
-		TArray<UNiagaraScript*> OrderedScripts;
-		DependentSystemViewModel->GetOrderedScriptsForEmitterHandleId(EmitterHandleId, OrderedScripts);
-		int32 DependentScriptIndex = OrderedScripts.IndexOfByPredicate([&LastDependentModuleData](UNiagaraScript* Script)
-			{ return UNiagaraScript::IsEquivalentUsage(Script->GetUsage(), LastDependentModuleData.Usage) && Script->GetUsageId() == LastDependentModuleData.UsageId; });
-
-		if (DependentScriptIndex != INDEX_NONE)
-		{
-			if (RequiredDependency.Type == ENiagaraModuleDependencyType::PreDependency)
-			{
-				UNiagaraNodeOutput* CompatibleOutputNode = GetCompatibleTargetOutputNodeFromOrderedScripts(CompatibleUsages, OrderedScripts, DependentScriptIndex, -1, -1);
-				if (CompatibleOutputNode != nullptr)
-				{
-					OutTargetOutputNode = CompatibleOutputNode;
-					OutTargetIndex = INDEX_NONE;
-				}
-			}
-			else if (RequiredDependency.Type == ENiagaraModuleDependencyType::PostDependency)
-			{
-				UNiagaraNodeOutput* CompatibleOutputNode = GetCompatibleTargetOutputNodeFromOrderedScripts(CompatibleUsages, OrderedScripts, DependentScriptIndex, OrderedScripts.Num(), 1);
-				if (CompatibleOutputNode != nullptr)
-				{
-					OutTargetOutputNode = CompatibleOutputNode;
-					OutTargetIndex = 0;
-				}
-			}
-		}
-	}
-}
-
-void AddModuleToFixDependencyIssue(
-	TWeakPtr<FNiagaraSystemViewModel> DependentSystemViewModelWeak,
-	FGuid DependentEmitterHandleId,
-	TWeakObjectPtr<UNiagaraNodeFunctionCall> DependentModuleNodeWeak,
-	FNiagaraModuleDependency RequiredDependency,
-	FAssetData DependencyProviderModuleAsset)
-{
-	TSharedPtr<FNiagaraSystemViewModel> DependentSystemViewModel = DependentSystemViewModelWeak.Pin();
-	UNiagaraNodeFunctionCall* DependentModuleNode = DependentModuleNodeWeak.Get();
-	if (DependentSystemViewModel.IsValid() == false || DependentModuleNode == nullptr)
-	{
-		FNiagaraEditorUtilities::WarnWithToastAndLog(LOCTEXT("AddDependencyModuleFailedInvalidSourceData", "Failed to add a dependency module because the fix source data was no longer valid."));
-		return;
-	}
-
-	UNiagaraNodeOutput* SourceOutputNode = FNiagaraStackGraphUtilities::GetEmitterOutputNodeForStackNode(*DependentModuleNode);
-	if (SourceOutputNode == nullptr)
-	{
-		FNiagaraEditorUtilities::WarnWithToastAndLog(LOCTEXT("AddDependencyModuleFailedInvalidSourceOutputData", "Failed to add a dependency module because the fix source data was no longer valid."));
-		return;
-	}
-
-	UNiagaraScript* DependencyProviderScript = Cast<UNiagaraScript>(DependencyProviderModuleAsset.GetAsset());
-	if (DependencyProviderScript == nullptr)
-	{
-		FNiagaraEditorUtilities::WarnWithToastAndLog(LOCTEXT("AddDependencyModuleFailedInvalidScriptData", "Failed to add a dependency module because the script asset was not valid."));
-		return;
-	}
-
-	const TArray<FNiagaraStackModuleData>& StackModuleData = DependentSystemViewModel->GetStackModuleDataByEmitterHandleId(DependentEmitterHandleId);
-	int32 DependentModuleIndex = StackModuleData.IndexOfByPredicate([DependentModuleNode](const FNiagaraStackModuleData& StackModuleDataItem) { return StackModuleDataItem.ModuleNode == DependentModuleNode; });
-	
-	UNiagaraNodeOutput* TargetOutputNode = nullptr;
-	TOptional<int32> TargetIndex;
-
-	int32 LastDependentModuleDataIndex = INDEX_NONE;
-	if (RequiredDependency.Type == ENiagaraModuleDependencyType::PreDependency)
-	{
-		LastDependentModuleDataIndex = GetIndexOfLastDependentModuleData(StackModuleData, DependentModuleIndex, -1, -1,
-			SourceOutputNode->GetUsage(), SourceOutputNode->GetUsageId(), RequiredDependency);
-	}
-	else if (RequiredDependency.Type == ENiagaraModuleDependencyType::PostDependency)
-	{
-		LastDependentModuleDataIndex = GetIndexOfLastDependentModuleData(StackModuleData, DependentModuleIndex, StackModuleData.Num(), 1,
-			SourceOutputNode->GetUsage(), SourceOutputNode->GetUsageId(), RequiredDependency);
-	}
-
-	if (LastDependentModuleDataIndex != INDEX_NONE)
-	{
-		GetCompatibleOutputNodeAndIndex(DependentSystemViewModel.ToSharedRef(), DependentEmitterHandleId, *DependencyProviderScript,
-			StackModuleData[LastDependentModuleDataIndex], RequiredDependency, TargetOutputNode, TargetIndex);
-	}
-
-	if (TargetOutputNode == nullptr || TargetIndex.IsSet() == false)
-	{
-		FNiagaraEditorUtilities::WarnWithToastAndLog(LOCTEXT("AddDependencyModuleFailedNoValidLocation", "Failed to add a dependency module because an acceptable location could not be found."));
-		return;
-	}
-
-	FScopedTransaction ScopedTransaction(LOCTEXT("AddDependencyFixTransaction", "Add a module to fix a dependency"));
-	FNiagaraStackGraphUtilities::AddScriptModuleToStack(DependencyProviderScript, *TargetOutputNode, TargetIndex.GetValue());
-}
-
-void GenerateFixesForAddingDependencyProviders(
-	TSharedRef<FNiagaraSystemViewModel> DependentSystemViewModel,
-	FGuid DependentEmitterHandleId,
-	UNiagaraNodeFunctionCall& DependentModuleNode,
-	ENiagaraScriptUsage DependentUsage,
-	const FNiagaraModuleDependency& RequiredDependency,
-	TArray<UNiagaraStackEntry::FStackIssueFix>& OutFixes)
-{
-	TOptional<ENiagaraScriptUsage> RequiredUsage = RequiredDependency.ScriptConstraint == ENiagaraModuleDependencyScriptConstraint::SameScript
-		? DependentUsage
-		: TOptional<ENiagaraScriptUsage>();
-	TArray<FAssetData> ModuleAssetsForDependency;
-	FNiagaraStackGraphUtilities::GetModuleScriptAssetsByDependencyProvided(RequiredDependency.Id, RequiredUsage, ModuleAssetsForDependency);
-
-	// Gather duplicate module names so their fixes can be disambiguated.
-	TSet<FName> ModuleNames;
-	TSet<FName> DuplicateModuleNames;
-	for (FAssetData ModuleAsset : ModuleAssetsForDependency)
-	{
-		bool bIsDuplicate;
-		ModuleNames.Add(ModuleAsset.AssetName, &bIsDuplicate);
-		if (bIsDuplicate)
-		{
-			DuplicateModuleNames.Add(ModuleAsset.AssetName);
-		}
-	}
-
-	for (const FAssetData& ModuleAsset : ModuleAssetsForDependency)
-	{
-		FText DependencyAssetDisplayName = DuplicateModuleNames.Contains(ModuleAsset.AssetName) ? FText::FromName(ModuleAsset.PackageName) : FText::FromName(ModuleAsset.AssetName);
-		FText FixDescription = FText::Format(LOCTEXT("AddDependencyFixDescription", "Add new dependency module {0}"), DependencyAssetDisplayName);
-		OutFixes.Add(UNiagaraStackEntry::FStackIssueFix(FixDescription, UNiagaraStackEntry::FStackIssueFixDelegate::CreateStatic(&AddModuleToFixDependencyIssue, 
-			TWeakPtr<FNiagaraSystemViewModel>(DependentSystemViewModel),
-			DependentEmitterHandleId,
-			TWeakObjectPtr<UNiagaraNodeFunctionCall>(&DependentModuleNode),
-			RequiredDependency,
-			ModuleAsset)));
-	}
-}
-
-void MoveModuleToFixDependencyIssue(
-	TWeakObjectPtr<UNiagaraSystem> DependentSystemWeak,
-	FGuid DependentEmitterHandleId,
-	TWeakObjectPtr<UNiagaraScript> DependentScriptWeak,
-	TWeakObjectPtr<UNiagaraNodeFunctionCall> DependentModuleWeak,
-	ENiagaraScriptUsage TargetUsage,
-	FGuid TargetUsageId,
-	int32 TargetMoveIndex)
-{
-	UNiagaraSystem* TargetSystem = DependentSystemWeak.Get();
-	if (TargetSystem == nullptr)
-	{
-		FNiagaraEditorUtilities::WarnWithToastAndLog(LOCTEXT("MoveDependentModuleFailedInvalidSystem", "Failed to move a dependent module because the owning system was no longer valid."));
-		return;
-	}
-
-	UNiagaraScript* SourceScript = DependentScriptWeak.Get();
-	if (SourceScript == nullptr)
-	{
-		FNiagaraEditorUtilities::WarnWithToastAndLog(LOCTEXT("MoveDependentModuleFailedInvalidScript", "Failed to move a dependent module because the owning script was no longer valid."));
-		return;
-	}
-
-	UNiagaraNodeFunctionCall* ModuleToMove = DependentModuleWeak.Get();
-	if (ModuleToMove == nullptr)
-	{
-		FNiagaraEditorUtilities::WarnWithToastAndLog(LOCTEXT("MoveDependentModuleFailedInvalidModule", "Failed to move a dependent module because the module to move was no longer valid."));
-		return;
-	}
-
-	FScopedTransaction ScopedTransaction(LOCTEXT("MoveDependentFixTransaction", "Move a dependent module to fix a dependency"));
-	UNiagaraNodeFunctionCall* MovedNode;
-	FNiagaraStackGraphUtilities::MoveModule(*SourceScript, *ModuleToMove, *TargetSystem, DependentEmitterHandleId, TargetUsage, TargetUsageId, TargetMoveIndex, false, MovedNode);
-}
-
-void GenerateFixesForReorderingModules(
-	TSharedRef<FNiagaraSystemViewModel> DependentSystemViewModel,
-	FGuid DependentEmitterHandleId,
-	UNiagaraScript& DependentScript,
-	UNiagaraNodeFunctionCall& DependentModuleNode,
-	FNiagaraModuleDependency RequiredDependency,
-	const TArray<FNiagaraStackModuleData>& StackModuleData,
-	const TArray<int32>& WrongOrderDependencyProviderIndices,
-	TArray<UNiagaraStackEntry::FStackIssueFix>& OutFixes)
-{
-	for (int32 WrongOrderDependencyProviderIndex : WrongOrderDependencyProviderIndices)
-	{
-		const FNiagaraStackModuleData& CurrentStackModuleData = StackModuleData[WrongOrderDependencyProviderIndex];
-
-		FText LocationText;
-		int32 TargetIndex = INDEX_NONE;
-		if (RequiredDependency.Type == ENiagaraModuleDependencyType::PreDependency)
-		{
-			LocationText = LOCTEXT("MoveLocationAfter", "After");
-			TargetIndex = CurrentStackModuleData.Index + 1;
-		}
-		else if (RequiredDependency.Type == ENiagaraModuleDependencyType::PostDependency)
-		{
-			LocationText = LOCTEXT("MoveLocationBefore", "Before");
-			TargetIndex = CurrentStackModuleData.Index;
-		}
-
-		if (TargetIndex != INDEX_NONE)
-		{
-			FText FixDescription = FText::Format(LOCTEXT("MoveDependentFixDescriptionFormat", "Move module {0} {1} {2}"), FText::FromString(DependentModuleNode.GetFunctionName()), LocationText, FText::FromString(CurrentStackModuleData.ModuleNode->GetFunctionName()));
-			OutFixes.Add(UNiagaraStackEntry::FStackIssueFix(FixDescription, UNiagaraStackEntry::FStackIssueFixDelegate::CreateStatic(&MoveModuleToFixDependencyIssue,
-				TWeakObjectPtr<UNiagaraSystem>(&DependentSystemViewModel->GetSystem()), DependentEmitterHandleId, TWeakObjectPtr<UNiagaraScript>(&DependentScript), TWeakObjectPtr<UNiagaraNodeFunctionCall>(&DependentModuleNode),
-				CurrentStackModuleData.Usage, CurrentStackModuleData.UsageId, TargetIndex)));
-		}
-	}
-}
-
-void EnableModuleToFixDependencyIssue(TWeakObjectPtr<UNiagaraNodeFunctionCall> DependencyProviderModuleNodeWeak)
-{
-	UNiagaraNodeFunctionCall* ModuleToEnable = DependencyProviderModuleNodeWeak.Get();
-	if (ModuleToEnable == nullptr)
-	{
-		FNiagaraEditorUtilities::WarnWithToastAndLog(LOCTEXT("EnableDependencyProviderModuleFailedInvalidNode", "Failed to a dependency providing module because it was no longer valid."));
-		return;
-	}
-
-	FScopedTransaction ScopedTransaction(LOCTEXT("EnableModuleFixTransaction", "Enable a dependency providing module to fix a dependency"));
-	FNiagaraStackGraphUtilities::SetModuleIsEnabled(*ModuleToEnable, true);
-}
-
-void GenerateFixesForEnablingModules(
-	const TArray<FNiagaraStackModuleData>& StackModuleData,
-	const TArray<int32>& DisabledDependencyProviderIndices,
-	TArray<UNiagaraStackEntry::FStackIssueFix>& OutFixes)
-{
-	for (int32 DisabledDependencyProviderIndex : DisabledDependencyProviderIndices)
-	{
-		const FNiagaraStackModuleData& CurrentStackModuleData = StackModuleData[DisabledDependencyProviderIndex];
-		FText FixDescription = FText::Format(LOCTEXT("EnableDependencyProviderFixDescriptionFormat", "Enable module {0} which provides the dependency."),
-			FText::FromString(CurrentStackModuleData.ModuleNode->GetFunctionName()));
-		OutFixes.Add(UNiagaraStackEntry::FStackIssueFix(FixDescription, UNiagaraStackEntry::FStackIssueFixDelegate::CreateStatic(&EnableModuleToFixDependencyIssue,
-			TWeakObjectPtr<UNiagaraNodeFunctionCall>(CurrentStackModuleData.ModuleNode))));
-	}
-}
-
-bool DoesStackModuleProvideDependency(const FNiagaraStackModuleData& StackModuleData, const FNiagaraModuleDependency& SourceModuleRequiredDependency, const UNiagaraNodeOutput& SourceOutputNode)
-{
-	if (StackModuleData.ModuleNode != nullptr &&
-		StackModuleData.ModuleNode->FunctionScript != nullptr &&
-		StackModuleData.ModuleNode->FunctionScript->ProvidedDependencies.Contains(SourceModuleRequiredDependency.Id))
-	{
-		if (SourceModuleRequiredDependency.ScriptConstraint == ENiagaraModuleDependencyScriptConstraint::AllScripts)
-		{
-			return true;
-		}
-
-		if (SourceModuleRequiredDependency.ScriptConstraint == ENiagaraModuleDependencyScriptConstraint::SameScript)
-		{
-			UNiagaraNodeOutput* OutputNode = FNiagaraStackGraphUtilities::GetEmitterOutputNodeForStackNode(*StackModuleData.ModuleNode);
-			return OutputNode != nullptr && UNiagaraScript::IsEquivalentUsage(OutputNode->GetUsage(), SourceOutputNode.GetUsage()) && OutputNode->GetUsageId() == SourceOutputNode.GetUsageId();
-		}
-	}
-	return false;
-}
-
-void GenerateDependencyIssues(
-	TSharedRef<FNiagaraSystemViewModel> SourceSystemViewModel,
-	FGuid SourceEmitterHandleId,
-	UNiagaraScript& SourceScript,
-	UNiagaraNodeFunctionCall& SourceModuleNode,
-	FString SourceStackEditorDataKey,
-	UNiagaraNodeOutput& SourceOutputNode,
-	const TArray<FNiagaraStackModuleData>& SourceStackModuleData,
-	TArray<UNiagaraStackEntry::FStackIssue>& NewIssues)
-{
-	if (SourceModuleNode.FunctionScript == nullptr || SourceModuleNode.FunctionScript->RequiredDependencies.Num() == 0)
-	{
-		return;
-	}
-
-	int32 ModuleIndex = SourceStackModuleData.IndexOfByPredicate([&SourceModuleNode](const FNiagaraStackModuleData& ModuleData) { return ModuleData.ModuleNode == &SourceModuleNode; });
-	if (ensureMsgf(ModuleIndex != INDEX_NONE, TEXT("In system %s, module %s (%s) did not exist in the stack module data."),
-		*SourceSystemViewModel->GetSystem().GetPathName(), *SourceModuleNode.GetFunctionName(), *SourceModuleNode.GetName()))
-	{
-		for (const FNiagaraModuleDependency& SourceRequiredDependency : SourceModuleNode.FunctionScript->RequiredDependencies)
-		{
-			TArray<int32> DependencyProviderIndices;
-			for (int32 StackModuleDataIndex = 0; StackModuleDataIndex < SourceStackModuleData.Num(); StackModuleDataIndex++)
-			{
-				if (DoesStackModuleProvideDependency(SourceStackModuleData[StackModuleDataIndex], SourceRequiredDependency, SourceOutputNode))
-				{
-					DependencyProviderIndices.Add(StackModuleDataIndex);
-				}
-			}
-
-			// Validate that dependency providers are enabled and in the correct direction.
-			bool bDependencyProviderFound = false;
-			TArray<int32> WrongOrderDependencyProviderIndices;
-			TArray<int32> DisabledDependencyProviderIndices;
-			TArray<ENiagaraScriptUsage> SupportedUsages = UNiagaraScript::GetSupportedUsageContextsForBitmask(SourceModuleNode.FunctionScript->ModuleUsageBitmask);
-			for (int32 DependencyProviderIndex : DependencyProviderIndices)
-			{
-				const FNiagaraStackModuleData& DependencyProviderData = SourceStackModuleData[DependencyProviderIndex];
-				bool bCorrectOrder =
-					(SourceRequiredDependency.Type == ENiagaraModuleDependencyType::PreDependency && DependencyProviderIndex < ModuleIndex) ||
-					(SourceRequiredDependency.Type == ENiagaraModuleDependencyType::PostDependency && DependencyProviderIndex > ModuleIndex);
-				bool bEnabled = DependencyProviderData.ModuleNode->GetDesiredEnabledState() == ENodeEnabledState::Enabled;
-				bool bUsageIsSupported = UNiagaraScript::ContainsEquivilentUsage(SupportedUsages, DependencyProviderData.Usage);
-
-				if (bEnabled && bCorrectOrder)
-				{
-					bDependencyProviderFound = true;
-					break;
-				}
-				else
-				{
-					if (bCorrectOrder == false)
-					{
-						// We can only reorder a module if it supports being moved to the usage of the target module.
-						if (bUsageIsSupported)
-						{
-							WrongOrderDependencyProviderIndices.Add(DependencyProviderIndex);
-						}
-					}
-					else if (bEnabled == false)
-					{
-						DisabledDependencyProviderIndices.Add(DependencyProviderIndex);
-					}
-				}
-			}
-
-			if (bDependencyProviderFound == false)
-			{
-				TArray<UNiagaraStackEntry::FStackIssueFix> Fixes;
-				if (WrongOrderDependencyProviderIndices.Num() == 0 && DisabledDependencyProviderIndices.Num() == 0)
-				{
-					// No valid dependency providers found so add fixes for new providers to add.
-					GenerateFixesForAddingDependencyProviders(SourceSystemViewModel, SourceEmitterHandleId, SourceModuleNode, SourceOutputNode.GetUsage(), SourceRequiredDependency, Fixes);
-				}
-				else
-				{
-					if (WrongOrderDependencyProviderIndices.Num() > 0)
-					{
-						GenerateFixesForReorderingModules(SourceSystemViewModel, SourceEmitterHandleId, SourceScript, SourceModuleNode, SourceRequiredDependency, SourceStackModuleData, WrongOrderDependencyProviderIndices, Fixes);
-					}
-					if (DisabledDependencyProviderIndices.Num() > 0)
-					{
-						GenerateFixesForEnablingModules(SourceStackModuleData, DisabledDependencyProviderIndices, Fixes);
-					}
-				}
-
-				FText DependencyTypeString = SourceRequiredDependency.Type == ENiagaraModuleDependencyType::PreDependency ? LOCTEXT("PreDependency", "pre-dependency") : LOCTEXT("PostDependency", "post-dependency");
-				NewIssues.Add(UNiagaraStackEntry::FStackIssue(
-					EStackIssueSeverity::Error,
-					LOCTEXT("DependencyWarning", "The module has unmet dependencies."),
-					FText::Format(LOCTEXT("DependencyWarningLong", "The following {0} is not met: {1}; {2}"), DependencyTypeString, FText::FromName(SourceRequiredDependency.Id), SourceRequiredDependency.Description),
-					FString::Printf(TEXT("%s-dependency-%s"), *SourceStackEditorDataKey, *SourceRequiredDependency.Id.ToString()),
-					true,
-					Fixes));
-			}
-		}
-	}
 }
 
 void UNiagaraStackModuleItem::RefreshIssues(TArray<FStackIssue>& NewIssues)
@@ -693,115 +290,52 @@ void UNiagaraStackModuleItem::RefreshIssues(TArray<FStackIssue>& NewIssues)
 		NewIssues.Empty();
 		return;
 	}
-
 	if (FunctionCallNode != nullptr)
 	{
-		if (FunctionCallNode->FunctionScript != nullptr)
+		if (FunctionCallNode->FunctionScript != nullptr && FunctionCallNode->FunctionScript->bDeprecated)
 		{
-			if (FunctionCallNode->FunctionScript->bDeprecated)
+			FText ModuleScriptDeprecationShort = LOCTEXT("ModuleScriptDeprecationShort", "Deprecated module");
+			if (CanMoveAndDelete())
 			{
-				FText ModuleScriptDeprecationShort = LOCTEXT("ModuleScriptDeprecationShort", "Deprecated module");
-				if (CanMoveAndDelete())
+				FText LongMessage = FunctionCallNode->FunctionScript->DeprecationRecommendation != nullptr ?
+					FText::Format(LOCTEXT("ModuleScriptDeprecationLong", "The script asset for the assigned module {0} has been deprecated. Suggested replacement: {1}"), FText::FromString(FunctionCallNode->GetFunctionName()), FText::FromString(FunctionCallNode->FunctionScript->DeprecationRecommendation->GetPathName())) :
+					FText::Format(LOCTEXT("ModuleScriptDeprecationUnknownLong", "The script asset for the assigned module {0} has been deprecated."), FText::FromString(FunctionCallNode->GetFunctionName()));
+
+				int32 AddIdx = NewIssues.Add(FStackIssue(
+					EStackIssueSeverity::Warning,
+					ModuleScriptDeprecationShort,
+					LongMessage,
+					GetStackEditorDataKey(),
+					false,
+					{
+						FStackIssueFix(
+							LOCTEXT("SelectNewModuleScriptFix", "Select a new module script"),
+							FStackIssueFixDelegate::CreateLambda([this]() { this->bIsModuleScriptReassignmentPending = true; })),
+						FStackIssueFix(
+							LOCTEXT("DeleteFix", "Delete this module"),
+							FStackIssueFixDelegate::CreateLambda([this]() { this->Delete(); }))
+					}));
+
+				if (FunctionCallNode->FunctionScript->DeprecationRecommendation != nullptr)
 				{
-					FFormatNamedArguments Args;
-					Args.Add(TEXT("ScriptName"), FText::FromString(FunctionCallNode->GetFunctionName()));
-
-					if (FunctionCallNode->FunctionScript->DeprecationRecommendation != nullptr)
-					{
-						Args.Add(TEXT("Recommendation"), FText::FromString(FunctionCallNode->FunctionScript->DeprecationRecommendation->GetPathName()));
-					}
-
-					if (FunctionCallNode->FunctionScript->DeprecationMessage.IsEmptyOrWhitespace() == false)
-					{
-						Args.Add(TEXT("Message"), FunctionCallNode->FunctionScript->DeprecationMessage);
-					}
-
-					FText FormatString = LOCTEXT("ModuleScriptDeprecationUnknownLong", "The script asset for the assigned module {ScriptName} has been deprecated.");
-
-					if (FunctionCallNode->FunctionScript->DeprecationRecommendation != nullptr &&
-						FunctionCallNode->FunctionScript->DeprecationMessage.IsEmptyOrWhitespace() == false)
-					{
-						FormatString = LOCTEXT("ModuleScriptDeprecationMessageAndRecommendationLong", "The script asset for the assigned module {ScriptName} has been deprecated. Reason:\n{Message}.\nSuggested replacement: {Recommendation}");
-					}
-					else if (FunctionCallNode->FunctionScript->DeprecationRecommendation != nullptr)
-					{
-						FormatString = LOCTEXT("ModuleScriptDeprecationLong", "The script asset for the assigned module {ScriptName} has been deprecated. Suggested replacement: {Recommendation}");
-					}
-					else if (FunctionCallNode->FunctionScript->DeprecationMessage.IsEmptyOrWhitespace() == false)
-					{
-						FormatString = LOCTEXT("ModuleScriptDeprecationMessageLong", "The script asset for the assigned module {ScriptName} has been deprecated. Reason:\n{Message}");
-					}
-
-					FText LongMessage = FText::Format(FormatString, Args);
-
-					int32 AddIdx = NewIssues.Add(FStackIssue(
-						EStackIssueSeverity::Warning,
-						ModuleScriptDeprecationShort,
-						LongMessage,
-						GetStackEditorDataKey(),
-						false,
-						{
-							FStackIssueFix(
-								LOCTEXT("SelectNewModuleScriptFix", "Select a new module script"),
-								FStackIssueFixDelegate::CreateLambda([this]() { this->bIsModuleScriptReassignmentPending = true; })),
-							FStackIssueFix(
-								LOCTEXT("DeleteFix", "Delete this module"),
-								FStackIssueFixDelegate::CreateLambda([this]() { this->Delete(); }))
-						}));
-
-					if (FunctionCallNode->FunctionScript->DeprecationRecommendation != nullptr)
-					{
-						NewIssues[AddIdx].InsertFix(0,
-							FStackIssueFix(
-							LOCTEXT("SelectNewModuleScriptFixUseRecommended", "Use recommended replacement and keep a disabled backup"),
-							FStackIssueFixDelegate::CreateLambda([this]() 
-							{
-									if (DeprecationDelegate.IsBound())
-									{
-										DeprecationDelegate.Execute(this);
-									}
-							})));
-					}
-				}
-				else
-				{
-					NewIssues.Add(FStackIssue(
-						EStackIssueSeverity::Warning,
-						ModuleScriptDeprecationShort,
-						FText::Format(LOCTEXT("ModuleScriptDeprecationFixParentLong", "The script asset for the assigned module {0} has been deprecated.\nThis module is inherited and this issue must be fixed in the parent emitter.\nYou will need to touch up this instance once that is done."),
-						FText::FromString(FunctionCallNode->GetFunctionName())),
-						GetStackEditorDataKey(),
-						false));
+					NewIssues[AddIdx].InsertFix(0,
+						FStackIssueFix(
+							LOCTEXT("SelectNewModuleScriptFixUseRecommended", "Use recommended replacement"),
+							FStackIssueFixDelegate::CreateLambda([this]() { ReassignModuleScript(FunctionCallNode->FunctionScript->DeprecationRecommendation); })));
 				}
 			}
-
-			if (FunctionCallNode->FunctionScript->bExperimental)
+			else
 			{
-				FText ErrorMessage;
-				if (FunctionCallNode->FunctionScript->ExperimentalMessage.IsEmptyOrWhitespace())
-				{
-					ErrorMessage = FText::Format(LOCTEXT("ModuleScriptExperimental", "The script asset for this module is experimental, use with care!"), FText::FromString(FunctionCallNode->GetFunctionName()));
-				}
-				else
-				{
-					FFormatNamedArguments Args;
-					Args.Add(TEXT("Module"), FText::FromString(FunctionCallNode->GetFunctionName()));
-					Args.Add(TEXT("Message"), FunctionCallNode->FunctionScript->ExperimentalMessage);
-					ErrorMessage = FText::Format(LOCTEXT("ModuleScriptExperimentalReason", "The script asset for this module is marked as experimental, reason:\n{Message}."), Args);
-				}
-
 				NewIssues.Add(FStackIssue(
-					EStackIssueSeverity::Info,
-					LOCTEXT("ModuleScriptExperimentalShort", "Experimental module"),
-					ErrorMessage,
+					EStackIssueSeverity::Warning,
+					ModuleScriptDeprecationShort,
+					FText::Format(LOCTEXT("ModuleScriptDeprecationFixParentLong", "The script asset for the assigned module {0} has been deprecated.  This module is inherited and this issue must be fixed in the parent emitter."),
+						FText::FromString(FunctionCallNode->GetFunctionName())),
 					GetStackEditorDataKey(),
-					true));
+					false));
 			}
 		}
-
-		NewIssues.Append(MessageManagerIssues);
-
-		if (FunctionCallNode->FunctionScript == nullptr && FunctionCallNode->GetClass() == UNiagaraNodeFunctionCall::StaticClass())
+		if(FunctionCallNode->FunctionScript == nullptr && FunctionCallNode->GetClass() == UNiagaraNodeFunctionCall::StaticClass())
 		{
 			FText ModuleScriptMissingShort = LOCTEXT("ModuleScriptMissingShort", "Missing module script");
 			if (CanMoveAndDelete())
@@ -858,8 +392,8 @@ void UNiagaraStackModuleItem::RefreshIssues(TArray<FStackIssue>& NewIssues)
 			}));
 			FStackIssue InconsistentEnabledError(
 				EStackIssueSeverity::Error,
-				LOCTEXT("InconsistentEnabledErrorSummary", "The enabled state for this module is inconsistent."),
-				LOCTEXT("InconsistentEnabledError", "This module is using multiple functions and their enabled states are inconsistent.\nClick \"Fix issue\" to make all of the functions for this module enabled."),
+				LOCTEXT("InconsistentEnabledErrorSummary", "The enabled state for module is inconsistent."),
+				LOCTEXT("InconsistentEnabledError", "This module is using multiple functions and their enabled state is inconsistent.\nClick fix to make all of the functions for this module enabled."),
 				GetStackEditorDataKey(),
 				false,
 				EnableFix);
@@ -883,7 +417,7 @@ void UNiagaraStackModuleItem::RefreshIssues(TArray<FStackIssue>& NewIssues)
 					FStackIssue DuplicateAssignmentTargetError(
 						EStackIssueSeverity::Error,
 						LOCTEXT("DuplicateAssignmentTargetErrorSummary", "Duplicate variables detected."),
-						LOCTEXT("DuplicateAssignmentTargetError", "This 'Set Parameters' module is attempting to set the same variable more than once, which is unsupported."),
+						LOCTEXT("DuplicateAssignmentTargetError", "This 'Set Variables' module is attempting to set the same variable more than once, which is unsupported."),
 						GetStackEditorDataKey(),
 						false,
 						RemoveDuplicateFix);
@@ -893,44 +427,287 @@ void UNiagaraStackModuleItem::RefreshIssues(TArray<FStackIssue>& NewIssues)
 				FoundAssignmentTargets.Add(AssignmentTarget);
 			}
 		}
+	}
+	// Generate dependency errors with their fixes
+	TArray<UNiagaraNodeFunctionCall*> FoundCalls;
+	TArray<FNiagaraModuleDependency> DependenciesNeeded;
+	TArray<FNiagaraStackModuleData> SystemModuleData = GetSystemViewModel()->GetStackModuleData(this);
+	int32 ModuleIndex = INDEX_NONE;
 
-		// Generate dependency errors with their fixes
-		FGuid EmitterHandleId = FGuid();
-		if (GetEmitterViewModel().IsValid())
+	for (int i = 0; i < SystemModuleData.Num(); i++)
+	{
+		auto ModuleData = SystemModuleData[i];
+		if (ModuleData.ModuleNode == FunctionCallNode)
 		{
-			TSharedPtr<FNiagaraEmitterHandleViewModel> EmitterHandleViewModel = GetSystemViewModel()->GetEmitterHandleViewModelForEmitter(GetEmitterViewModel()->GetEmitter());
-			if (EmitterHandleViewModel.IsValid())
-			{
-				EmitterHandleId = EmitterHandleViewModel->GetId();
-			}
+			ModuleIndex = i;
+			break;
 		}
-		const TArray<FNiagaraStackModuleData>& StackModuleData = GetSystemViewModel()->GetStackModuleDataByModuleEntry(this);
-		UNiagaraScript* OwningScript = FNiagaraEditorUtilities::GetScriptFromSystem(GetSystemViewModel()->GetSystem(), EmitterHandleId, OutputNode->GetUsage(), OutputNode->GetUsageId());
-		if (OwningScript != nullptr)
+	}
+
+	if (ModuleIndex != INDEX_NONE && FunctionCallNode && FunctionCallNode->FunctionScript)
+	{
+		for (FNiagaraModuleDependency Dependency : FunctionCallNode->FunctionScript->RequiredDependencies)
 		{
-			GenerateDependencyIssues(
-				GetSystemViewModel(),
-				EmitterHandleId,
-				*OwningScript,
-				*FunctionCallNode,
-				GetStackEditorDataKey(),
-				*OutputNode,
-				StackModuleData,
-				NewIssues);
+			if (Dependency.Id == NAME_None)
+			{
+				continue;
+			}
+			bool bDependencyMet = false;
+			UNiagaraNodeFunctionCall* FunctionNode = nullptr;
+			TArray <UNiagaraNodeFunctionCall*> DisabledDependencies;
+			TArray <FNiagaraStackModuleData> DisorderedDependencies;
+
+			int32 DependencyModuleIndex = INDEX_NONE;
+			for (FNiagaraStackModuleData ModuleData : SystemModuleData)
+			{
+				FunctionNode = ModuleData.ModuleNode;
+				DependencyModuleIndex++;
+				if (FunctionNode != nullptr && FunctionNode->FunctionScript != nullptr && FunctionNode->FunctionScript->ProvidedDependencies.Contains(Dependency.Id))
+				{
+					auto DependencyOutputUsage = ModuleData.Usage;
+					int32 PossibleIndex = UsagePriority.IndexOfByPredicate(
+						[&](const ENiagaraScriptUsage CurrentUsage)
+					{
+						return UNiagaraScript::IsEquivalentUsage(DependencyOutputUsage, CurrentUsage);
+					});
+					int32 DependantIndex = UsagePriority.IndexOfByPredicate(
+						[&](const ENiagaraScriptUsage CurrentUsage)
+					{
+						return UNiagaraScript::IsEquivalentUsage(OutputNode->GetUsage(), CurrentUsage);
+					});
+					int32 Distance = PossibleIndex - DependantIndex;
+
+					bool bIncorrectOrder = Distance == 0 ? ((Dependency.Type == ENiagaraModuleDependencyType::PreDependency && ModuleIndex < DependencyModuleIndex)
+						|| (Dependency.Type == ENiagaraModuleDependencyType::PostDependency && ModuleIndex > DependencyModuleIndex))
+						: ((Dependency.Type == ENiagaraModuleDependencyType::PreDependency && Distance < 0)
+							|| (Dependency.Type == ENiagaraModuleDependencyType::PostDependency && Distance > 0));
+
+					bool bSameScriptDependencyConstraint = Dependency.ScriptConstraint == ENiagaraModuleDependencyScriptConstraint::SameScript;
+					bool bEquivalentScriptUsage = UNiagaraScript::IsEquivalentUsage(OutputNode->GetUsage(), ModuleData.Usage);
+
+					// If the dependency is for modules in the same script, the two modules are only incorrectly ordered if they share equivalent script usages
+					if (bSameScriptDependencyConstraint)
+					{
+						bIncorrectOrder = bEquivalentScriptUsage && bIncorrectOrder;
+					}
+
+					if (bIncorrectOrder)
+					{
+						DisorderedDependencies.Add(ModuleData);
+					}
+					else if (FunctionNode->IsNodeEnabled() == false)
+					{
+						DisabledDependencies.Add(FunctionNode);
+					}
+					else if (Dependency.ScriptConstraint == ENiagaraModuleDependencyScriptConstraint::AllScripts || 
+						(bSameScriptDependencyConstraint && bEquivalentScriptUsage && OutputNode->GetUsageId() == ModuleData.UsageId))
+					{
+						bDependencyMet = true;
+						break;
+					}
+				}
+			}
+			if (bDependencyMet == false)
+			{
+				TArray<FStackIssueFix> Fixes;
+				DependenciesNeeded.Add(Dependency);
+
+				FText DependencyTypeString = Dependency.Type == ENiagaraModuleDependencyType::PreDependency ? LOCTEXT("PreDependency", "pre-dependency") : LOCTEXT("PostDependency", "post-dependency");
+
+				for (UNiagaraNodeFunctionCall* DisabledNode : DisabledDependencies) // module exists but disabled
+				{
+					UNiagaraStackEntry::FStackIssueFix Fix(
+						FText::Format(LOCTEXT("EnableDependency", "Enable dependency module {0}"), FText::FromString(DisabledNode->GetFunctionName())),
+						FStackIssueFixDelegate::CreateLambda([this, DisabledNode]()
+					{
+						FScopedTransaction ScopedTransaction(LOCTEXT("EnableDependencyModule", "Enable dependency module"));
+						FNiagaraStackGraphUtilities::SetModuleIsEnabled(*DisabledNode, true);
+						OnRequestFullRefreshDeferred().Broadcast();
+
+					}));
+					Fixes.Add(Fix);
+				}
+
+				for (FNiagaraStackModuleData DisorderedNode : DisorderedDependencies) // module exists but is not in the correct order (and possibly also disabled)
+				{
+					bool bNeedsEnable = !DisorderedNode.ModuleNode->IsNodeEnabled();
+					FText AndEnableModule = bNeedsEnable ? FText::Format(LOCTEXT("AndEnableDependency", "And enable dependency module {0}"), FText::FromString(DisorderedNode.ModuleNode->GetFunctionName())) : FText();
+					UNiagaraStackEntry::FStackIssueFix Fix(
+						FText::Format(LOCTEXT("ReorderDependency", "Reposition this module in the correct order related to {0} {1}"), FText::FromString(DisorderedNode.ModuleNode->GetFunctionName()), AndEnableModule),
+						FStackIssueFixDelegate::CreateLambda([this, bNeedsEnable, DisorderedNode, SystemModuleData, Dependency, ModuleIndex]()
+					{
+						FScopedTransaction ScopedTransaction(LOCTEXT("ReorderDependencyModule", "Reorder dependency module"));
+
+						FunctionCallNode->Modify();
+						// reorder node
+						int32 CorrectIndex = Dependency.Type == ENiagaraModuleDependencyType::PostDependency ? DisorderedNode.Index : DisorderedNode.Index + 1;
+						checkf(ModuleIndex != INDEX_NONE, TEXT("Module data wasn't found in system for current module!"));
+						UNiagaraScript& OwningScript = *FNiagaraEditorUtilities::GetScriptFromSystem(GetSystemViewModel()->GetSystem(), SystemModuleData[ModuleIndex].EmitterHandleId, SystemModuleData[ModuleIndex].Usage, SystemModuleData[ModuleIndex].UsageId);
+						UNiagaraNodeFunctionCall* MovedNode;
+						FNiagaraStackGraphUtilities::MoveModule(OwningScript, *FunctionCallNode, GetSystemViewModel()->GetSystem(), DisorderedNode.EmitterHandleId, DisorderedNode.Usage, DisorderedNode.UsageId, CorrectIndex, false, MovedNode);
+						// enable if needed
+						if (bNeedsEnable)
+						{
+							FNiagaraStackGraphUtilities::SetModuleIsEnabled(*DisorderedNode.ModuleNode, true);
+						}
+						FNiagaraStackGraphUtilities::RelayoutGraph(*OutputNode->GetGraph());
+						OnRequestFullRefreshDeferred().Broadcast();
+					}));
+					Fixes.Add(Fix);
+				}
+				if (DisorderedDependencies.Num() == 0 && DisabledDependencies.Num() == 0)
+				{
+					TArray<FAssetData> ModuleAssets;
+					FNiagaraStackGraphUtilities::GetScriptAssetsByDependencyProvided(ENiagaraScriptUsage::Module, Dependency.Id, ModuleAssets);
+
+					// Find duplicate module names in the fixes so that unique fix descriptions can be generated.
+					TArray<FName> ModuleNames;
+					TArray<FName> DuplicateModuleNames;
+					for (FAssetData ModuleAsset : ModuleAssets)
+					{
+						if (ModuleNames.Contains(ModuleAsset.AssetName))
+						{
+							DuplicateModuleNames.Add(ModuleAsset.AssetName);
+						}
+						else
+						{
+							ModuleNames.Add(ModuleAsset.AssetName);
+						}
+					}
+					for (FAssetData ModuleAsset : ModuleAssets)
+					{
+						UNiagaraScript* DependencyScript = Cast<UNiagaraScript>(ModuleAsset.GetAsset());
+						if (Dependency.ScriptConstraint == ENiagaraModuleDependencyScriptConstraint::SameScript)
+						{
+							TArray<ENiagaraScriptUsage> SupportedUsages = UNiagaraScript::GetSupportedUsageContextsForBitmask(DependencyScript->ModuleUsageBitmask);
+							if (SupportedUsages.Contains(OutputNode->GetUsage()) == false)
+							{
+								// If the dependency requires the provider be in the same script and the usage of this module doesn't support that usage, skip it.
+								continue;
+							}
+						}
+						
+						FText AssetNameText = DuplicateModuleNames.Contains(ModuleAsset.AssetName) ? FText::FromName(ModuleAsset.PackageName) : FText::FromName(ModuleAsset.AssetName);
+						FText FixDescription = FText::Format(LOCTEXT("AddDependency", "Add new dependency module {0}"), AssetNameText);
+						UNiagaraStackEntry::FStackIssueFix Fix(
+							FixDescription,
+							FStackIssueFixDelegate::CreateLambda([=]()
+						{
+							FScopedTransaction ScopedTransaction(FixDescription);
+							UNiagaraNodeFunctionCall* NewModuleNode = nullptr;
+							int32 TargetIndex = 0;
+							checkf(DependencyScript != nullptr, TEXT("Add module action failed"));
+							// Determine the output node for the group where the added dependency module belongs
+							UNiagaraNodeOutput* TargetOutputNode = nullptr;
+							for (int i = ModuleIndex; i < SystemModuleData.Num() && i >= 0; i = Dependency.Type == ENiagaraModuleDependencyType::PostDependency ? i + 1 : i - 1) // moving up or down depending on type
+							// starting at current module, which is a dependent
+							{
+								bool bRequiredDependencyFound = SystemModuleData[i].ModuleNode->FunctionScript->RequiredDependencies.ContainsByPredicate(
+									[&Dependency](const FNiagaraModuleDependency& RequiredDependency)
+								{
+									return RequiredDependency.Id == Dependency.Id;
+								});
+								if (bRequiredDependencyFound && 
+									(Dependency.ScriptConstraint != ENiagaraModuleDependencyScriptConstraint::SameScript ||
+									SystemModuleData[ModuleIndex].Usage == SystemModuleData[i].Usage)) // check for multiple dependents along the way, and stop adjacent to the last one
+								{
+									ENiagaraScriptUsage DependencyUsage = SystemModuleData[i].Usage;
+									const FNiagaraEmitterHandle* EmitterHandle = GetEmitterViewModel().IsValid()
+										? FNiagaraEditorUtilities::GetEmitterHandleForEmitter(GetSystemViewModel()->GetSystem(), *GetEmitterViewModel()->GetEmitter())
+										: nullptr;
+									UNiagaraNodeOutput* FoundTargetOutputNode = GetOutputNodeForModuleDependency(DependencyUsage, DependencyScript, GetSystemViewModel()->GetSystem(), EmitterHandle, Dependency);
+									if (FoundTargetOutputNode != nullptr)
+									{
+										TargetOutputNode = FoundTargetOutputNode;
+										UNiagaraNodeOutput* CurrentOutputNode = FNiagaraStackGraphUtilities::GetEmitterOutputNodeForStackNode(*SystemModuleData[i].ModuleNode);
+										if (TargetOutputNode == CurrentOutputNode)
+										{
+											TargetIndex = Dependency.Type == ENiagaraModuleDependencyType::PostDependency ? SystemModuleData[i].Index + 1 : SystemModuleData[i].Index;
+										}
+										else
+										{
+											TargetIndex = Dependency.Type == ENiagaraModuleDependencyType::PostDependency ? 0 : INDEX_NONE;
+										}
+									}
+								}
+							}
+
+							if (TargetOutputNode == nullptr)
+							{
+								// If no output node was found than the dependency can't be resolved and it most likely misconfigured in data.
+								// TODO: Don't show this toast here, change the fix delegate to return a fix result with whether or not the fix succeeded and any error message for the user.
+								FNotificationInfo Error(LOCTEXT("FixFailedToast", "Failed to fix the dependency since\nwe could not find a compatible place to insert the module.\nPlease check the configuration of the dependency.\nSee the log for more details."));
+								Error.ExpireDuration = 5.0f;
+								Error.bFireAndForget = true;
+								Error.Image = FCoreStyle::Get().GetBrush(TEXT("MessageLog.Error"));
+								FSlateNotificationManager::Get().AddNotification(Error);
+								FString ModuleAssetFullName;
+								ModuleAsset.GetFullName(ModuleAssetFullName);
+								UE_LOG(LogNiagaraEditor, Error, TEXT("Dependency fix failed, could not find a compatible place to insert the module.\nModule requiring dependency: %s\nModule providing dependency: %s\nDependency name: %s\nDependency type: %s"),
+									*FunctionCallNode->FunctionScript->GetFullName(), *ModuleAssetFullName, *Dependency.Id.ToString(), Dependency.Type == ENiagaraModuleDependencyType::PreDependency ? TEXT("Pre-dependency") : TEXT("Post-dependency"));
+								return;
+							}
+
+							TArray<FNiagaraStackModuleData> ScriptModuleData = SystemModuleData.FilterByPredicate([&](FNiagaraStackModuleData CurrentData) {return CurrentData.Usage == DependencyScript->GetUsage(); });
+							int32 PreIndex = INDEX_NONE; // index of last pre dependency
+							int32 PostIndex = INDEX_NONE; // index of fist post dependency, the module will have to be placed between these indexes
+							// for now, we skip the case where the dependencies are fulfilled in other script groups as well as here, because that's extremely unlikely
+							if (TargetIndex == INDEX_NONE)
+							{
+								TargetIndex = 0; //start at the beginning to look for potential dependencies of this dependency
+							}
+							for (int32 i = TargetIndex; i < ScriptModuleData.Num() && i >= 0; i = Dependency.Type == ENiagaraModuleDependencyType::PostDependency ? i + 1 : i - 1)
+							{
+								UNiagaraNodeFunctionCall * CurrentNode = ScriptModuleData[i].ModuleNode;
+								for (FNiagaraModuleDependency Requirement : DependencyScript->RequiredDependencies)
+								{
+									if (Requirement.Id == NAME_None)
+									{
+										continue;
+									}
+
+									if (CurrentNode->FunctionScript->ProvidedDependencies.Contains(Requirement.Id))
+									{
+										if (Requirement.Type == ENiagaraModuleDependencyType::PreDependency)
+										{
+											PostIndex = i;
+										}
+										else if (PreIndex == INDEX_NONE) // only record the first post-dependency
+										{
+											PreIndex = i;
+										}
+									}
+								}
+							}
+							if (PostIndex != INDEX_NONE)
+							{
+								TargetIndex = 0; // if it has post dependencies place it at the top
+								if (PreIndex != INDEX_NONE)
+								{
+									TargetIndex = PostIndex; // if it also has post dependencies just add it before its first post dependency
+								}
+							}
+							NewModuleNode = FNiagaraStackGraphUtilities::AddScriptModuleToStack(ModuleAsset, *TargetOutputNode, TargetIndex);
+							checkf(NewModuleNode != nullptr, TEXT("Add module action failed"));
+							FNiagaraStackGraphUtilities::InitializeStackFunctionInputs(GetSystemViewModel(), GetEmitterViewModel(), GetStackEditorData(), *NewModuleNode, *NewModuleNode);
+							FNiagaraStackGraphUtilities::RelayoutGraph(*TargetOutputNode->GetGraph());
+							OnRequestFullRefreshDeferred().Broadcast();
+						}));
+						Fixes.Add(Fix);
+					}
+				}
+				UNiagaraStackEntry::FStackIssue Error(
+					EStackIssueSeverity::Error,
+					LOCTEXT("DependencyWarning", "The module has unmet dependencies."),
+					FText::Format(LOCTEXT("DependencyWarningLong", "The following {0} is not met: {1}; {2}"), DependencyTypeString, FText::FromName(Dependency.Id), Dependency.Description),
+					FString::Printf(TEXT("%s-dependency-%s"), *GetStackEditorDataKey(), *Dependency.Id.ToString()),
+					true,
+					Fixes);
+				NewIssues.Add(Error);
+			}
 		}
 	}
 }
-
-/*
-TSharedRef<FNiagaraSystemViewModel> SourceSystemViewModel,
-FGuid SourceEmitterHandleId,
-UNiagaraScript& SourceScript,
-UNiagaraNodeFunctionCall& SourceModuleNode,
-FString SourceStackEditorDataKey,
-UNiagaraNodeOutput& SourceOutputNode,
-const TArray<FNiagaraStackModuleData>& SourceStackModuleData,
-TArray<UNiagaraStackEntry::FStackIssue>& NewIssues)
-*/
 
 bool UNiagaraStackModuleItem::FilterOutputCollection(const UNiagaraStackEntry& Child) const
 {
@@ -997,23 +774,6 @@ void UNiagaraStackModuleItem::RefreshIsEnabled()
 	}
 }
 
-void UNiagaraStackModuleItem::OnMessageManagerRefresh(const TArray<TSharedRef<const INiagaraMessage>>& NewMessages)
-{
-	MessageManagerIssues.Reset();
-	for (TSharedRef<const INiagaraMessage> Message : NewMessages)
-	{
-		// Sometimes compile errors with the same info are generated, so guard against duplicates here.
-		FStackIssue Issue = FNiagaraMessageUtilities::MessageToStackIssue(Message, GetStackEditorDataKey());
-		if (MessageManagerIssues.ContainsByPredicate([&Issue](const FStackIssue& NewIssue)
-			{ return NewIssue.GetUniqueIdentifier() == Issue.GetUniqueIdentifier(); }) == false)
-		{
-			MessageManagerIssues.Add(Issue);
-		}
-	}
-
-	RefreshChildren();
-}
-
 bool UNiagaraStackModuleItem::CanMoveAndDelete() const
 {
 	if (bCanMoveAndDeleteCache.IsSet() == false)
@@ -1069,14 +829,53 @@ void UNiagaraStackModuleItem::SetIsEnabledInternal(bool bInIsEnabled)
 	OnRequestFullRefreshDeferred().Broadcast();
 }
 
-bool UNiagaraStackModuleItem::SupportsHighlights() const
+bool UNiagaraStackModuleItem::TestCanDeleteWithMessage(FText& OutCanDeleteMessage) const
 {
-	return FunctionCallNode != nullptr && FunctionCallNode->FunctionScript != nullptr;
+	if (GetOwnerIsEnabled() == false)
+	{
+		OutCanDeleteMessage = LOCTEXT("CantDeleteOwnerDisabledToolTip", "This module can not be deleted because its owner is disabled.");
+		return false;
+	}
+	else if (CanMoveAndDelete())
+	{
+		OutCanDeleteMessage = LOCTEXT("DeleteToolTip", "Delete this module.");
+		return true;
+	}
+	else
+	{
+		OutCanDeleteMessage = LOCTEXT("CantDeleteToolTip", "This module can not be deleted becaue it is inherited.");
+		return false;
+	}
 }
 
-const TArray<FNiagaraScriptHighlight>& UNiagaraStackModuleItem::GetHighlights() const
+void UNiagaraStackModuleItem::DeleteInternal()
 {
-	return FunctionCallNode->FunctionScript->Highlights;
+	checkf(CanMoveAndDelete(), TEXT("This module can't be deleted"));
+
+	FScopedTransaction ScopedTransaction(LOCTEXT("RemoveAModuleFromTheStack", "Remove a module from the stack"));
+
+	const FNiagaraEmitterHandle* EmitterHandle = GetEmitterViewModel().IsValid()
+		? FNiagaraEditorUtilities::GetEmitterHandleForEmitter(GetSystemViewModel()->GetSystem(), *GetEmitterViewModel()->GetEmitter())
+		: nullptr;
+	FGuid EmitterHandleId = EmitterHandle != nullptr ? EmitterHandle->GetId() : FGuid();
+
+	TArray<TWeakObjectPtr<UNiagaraNodeInput>> RemovedNodes;
+	bool bRemoved = FNiagaraStackGraphUtilities::RemoveModuleFromStack(GetSystemViewModel()->GetSystem(), EmitterHandleId, *FunctionCallNode, RemovedNodes);
+	if (bRemoved)
+	{
+		UNiagaraGraph* Graph = FunctionCallNode->GetNiagaraGraph();
+		Graph->NotifyGraphNeedsRecompile();
+		FNiagaraStackGraphUtilities::RelayoutGraph(*FunctionCallNode->GetGraph());
+		for (auto InputNode: RemovedNodes)
+		{
+			if (InputNode != nullptr && InputNode->Usage == ENiagaraInputNodeUsage::Parameter)
+			{
+				GetSystemViewModel()->NotifyDataObjectChanged(InputNode->GetDataInterface());
+			}
+		}
+		Finalize();
+		ModifiedGroupItemsDelegate.Broadcast();
+	}
 }
 
 int32 UNiagaraStackModuleItem::GetModuleIndex() const
@@ -1108,7 +907,7 @@ bool UNiagaraStackModuleItem::CanAddInput(FNiagaraVariable InputParameter) const
 	UNiagaraNodeAssignment* AssignmentModule = Cast<UNiagaraNodeAssignment>(FunctionCallNode);
 	return AssignmentModule != nullptr &&
 		AssignmentModule->GetAssignmentTargets().Contains(InputParameter) == false &&
-		FNiagaraStackGraphUtilities::CanWriteParameterFromUsage(InputParameter, OutputNode->GetUsage());
+		FNiagaraStackGraphUtilities::ParameterIsCompatibleWithScriptUsage(InputParameter, OutputNode->GetUsage());
 }
 
 void UNiagaraStackModuleItem::AddInput(FNiagaraVariable InputParameter)
@@ -1137,233 +936,12 @@ void UNiagaraStackModuleItem::ReassignModuleScript(UNiagaraScript* ModuleScript)
 		TEXT("Can not reassign the module script when the module isn't a valid function call module.")))
 	{
 		FScopedTransaction ScopedTransaction(LOCTEXT("ReassignModuleTransaction", "Reassign module script"));
-
-		const FString OldName = FunctionCallNode->GetFunctionName();
-		UNiagaraScript* OldScript = FunctionCallNode->FunctionScript;
-
 		FunctionCallNode->Modify();
-		UNiagaraClipboardContent* OldClipboardContent = nullptr;
-		if (ModuleScript->ConversionUtility != nullptr)
-		{
-			OldClipboardContent = UNiagaraClipboardContent::Create();
-			Copy(OldClipboardContent);
-		}
 		FunctionCallNode->FunctionScript = ModuleScript;
-		
-		// intermediate refresh to purge any rapid iteration parameters that have been removed in the new script
+		FunctionCallNode->RefreshFromExternalChanges();
+		FunctionCallNode->MarkNodeRequiresSynchronization(TEXT("Module script reassigned."), true);
 		RefreshChildren();
-
-		FunctionCallNode->SuggestName(FString());
-		const FString NewName = FunctionCallNode->GetFunctionName();
-		if (NewName != OldName)
-		{
-			UNiagaraSystem& System = GetSystemViewModel()->GetSystem();
-			UNiagaraEmitter* Emitter = GetEmitterViewModel().IsValid() ? GetEmitterViewModel()->GetEmitter() : nullptr;
-			FNiagaraStackGraphUtilities::RenameReferencingParameters(&System, Emitter, *FunctionCallNode, OldName, NewName);
-			FunctionCallNode->RefreshFromExternalChanges();
-			FunctionCallNode->MarkNodeRequiresSynchronization(TEXT("Module script reassigned."), true);
-			RefreshChildren();
-		}
-		
-		if (ModuleScript->ConversionUtility != nullptr && OldClipboardContent != nullptr)
-		{
-			UNiagaraConvertInPlaceUtilityBase* ConversionUtility = NewObject< UNiagaraConvertInPlaceUtilityBase>(GetTransientPackage(), ModuleScript->ConversionUtility);
-			FText ConvertMessage;
-
-			UNiagaraClipboardContent* NewClipboardContent = UNiagaraClipboardContent::Create();
-			Copy(NewClipboardContent);
-
-			if (ConversionUtility )
-			{
-				bool bConverted = ConversionUtility->Convert(OldScript, OldClipboardContent, ModuleScript, InputCollection, NewClipboardContent, FunctionCallNode, ConvertMessage);
-				if (!ConvertMessage.IsEmptyOrWhitespace())
-				{
-					// Notify the end-user about the convert message, but continue the process as they could always undo.
-					FNotificationInfo Msg(FText::Format(LOCTEXT("FixConvertInPlace", "Conversion Note: {0}"), ConvertMessage));
-					Msg.ExpireDuration = 5.0f;
-					Msg.bFireAndForget = true;
-					Msg.Image = FCoreStyle::Get().GetBrush(TEXT("MessageLog.Note"));
-					FSlateNotificationManager::Get().AddNotification(Msg);
-				}
-			}
-		}
 	}
-}
-
-void UNiagaraStackModuleItem::SetInputValuesFromClipboardFunctionInputs(const TArray<const UNiagaraClipboardFunctionInput*>& ClipboardFunctionInputs)
-{
-	InputCollection->SetValuesFromClipboardFunctionInputs(ClipboardFunctionInputs);
-}
-
-bool UNiagaraStackModuleItem::TestCanCutWithMessage(FText& OutMessage) const
-{
-	FText CanCopyMessage;
-	if (TestCanCopyWithMessage(CanCopyMessage) == false)
-	{
-		OutMessage = FText::Format(LOCTEXT("CantCutBecauseCantCopyFormat", "This module can not be cut because it can't be copied.  {0}"), CanCopyMessage);
-		return false;
-	}
-
-	FText CanDeleteMessage;
-	if (TestCanDeleteWithMessage(CanDeleteMessage) == false)
-	{
-		OutMessage = FText::Format(LOCTEXT("CantCutBecauseCantDeleteFormat", "This module can't be cut because it can't be deleted.  {0}"), CanDeleteMessage);
-		return false;
-	}
-
-	OutMessage = LOCTEXT("CanCut", "Cut this module.");
-	return true;
-}
-
-FText UNiagaraStackModuleItem::GetCutTransactionText() const
-{
-	return LOCTEXT("CutModuleTransactionText", "Cut modules");
-}
-
-void UNiagaraStackModuleItem::CopyForCut(UNiagaraClipboardContent* ClipboardContent) const
-{
-	Copy(ClipboardContent);
-}
-
-void UNiagaraStackModuleItem::RemoveForCut()
-{
-	Delete();
-}
-
-bool UNiagaraStackModuleItem::TestCanCopyWithMessage(FText& OutMessage) const
-{
-	if (FunctionCallNode->GetClass() == UNiagaraNodeFunctionCall::StaticClass())
-	{
-		if (FunctionCallNode->FunctionScript == nullptr)
-		{
-			OutMessage = LOCTEXT("CantCopyInvalidModule", "This module can't be copied because it's referenced script is not valid.");
-			return false;
-		}
-	}
-	OutMessage = LOCTEXT("CopyModule", "Copy this module.");
-	return true;
-}
-
-void UNiagaraStackModuleItem::Copy(UNiagaraClipboardContent* ClipboardContent) const
-{
-	UNiagaraClipboardFunction* ClipboardFunction;
-	UNiagaraNodeAssignment* AssignmentNode = Cast<UNiagaraNodeAssignment>(FunctionCallNode);
-	if (AssignmentNode != nullptr)
-	{
-		ClipboardFunction = UNiagaraClipboardFunction::CreateAssignmentFunction(ClipboardContent, AssignmentNode->GetFunctionName(), AssignmentNode->GetAssignmentTargets(), AssignmentNode->GetAssignmentDefaults());
-	}
-	else
-	{
-		checkf(FunctionCallNode->FunctionScript != nullptr, TEXT("Can't copy this module because it's script is invalid.  Call TestCanCopyWithMessage to check this."));
-		ClipboardFunction = UNiagaraClipboardFunction::CreateScriptFunction(ClipboardContent, FunctionCallNode->GetFunctionName(), FunctionCallNode->FunctionScript);
-	}
-
-	ClipboardFunction->DisplayName = GetAlternateDisplayName().Get(FText::GetEmpty());
-
-	InputCollection->ToClipboardFunctionInputs(ClipboardFunction, ClipboardFunction->Inputs);
-	ClipboardContent->Functions.Add(ClipboardFunction);
-}
-
-bool UNiagaraStackModuleItem::TestCanPasteWithMessage(const UNiagaraClipboardContent* ClipboardContent, FText& OutMessage) const
-{
-	if (ClipboardContent->FunctionInputs.Num() > 0)
-	{
-		OutMessage = LOCTEXT("PasteInputs", "Paste inputs from the clipboard which match inputs on this module by name and type.");
-		return true;
-	}
-
-	if (RequestCanPasteDelegete.IsBound())
-	{
-		return RequestCanPasteDelegete.Execute(ClipboardContent, OutMessage);
-	}
-
-	OutMessage = FText();
-	return false;
-}
-
-FText UNiagaraStackModuleItem::GetPasteTransactionText(const UNiagaraClipboardContent* ClipboardContent) const
-{
-	if (ClipboardContent->FunctionInputs.Num() > 0)
-	{
-		return LOCTEXT("PasteInputsTransactionText", "Paste inputs to module.");
-	}
-	else
-	{
-		return LOCTEXT("PasteModuleTransactionText", "Paste niagara modules");
-	}
-}
-
-void UNiagaraStackModuleItem::Paste(const UNiagaraClipboardContent* ClipboardContent, FText& OutPasteWarning)
-{
-	if (ClipboardContent->FunctionInputs.Num() > 0)
-	{
-		SetInputValuesFromClipboardFunctionInputs(ClipboardContent->FunctionInputs);
-	}
-	else if (RequestCanPasteDelegete.IsBound())
-	{
-		// Pasted modules should go after this module, so add 1 to the index.
-		int32 PasteIndex = GetModuleIndex() + 1;
-		RequestPasteDelegate.Execute(ClipboardContent, PasteIndex, OutPasteWarning);
-	}
-}
-
-bool UNiagaraStackModuleItem::TestCanDeleteWithMessage(FText& OutCanDeleteMessage) const
-{
-	if (GetOwnerIsEnabled() == false)
-	{
-		OutCanDeleteMessage = LOCTEXT("CantDeleteOwnerDisabledToolTip", "This module can not be deleted because its owner is disabled.");
-		return false;
-	}
-	else if (CanMoveAndDelete())
-	{
-		OutCanDeleteMessage = LOCTEXT("DeleteToolTip", "Delete this module.");
-		return true;
-	}
-	else
-	{
-		OutCanDeleteMessage = LOCTEXT("CantDeleteToolTip", "This module can not be deleted becaue it is inherited.");
-		return false;
-	}
-}
-
-FText UNiagaraStackModuleItem::GetDeleteTransactionText() const
-{
-	return LOCTEXT("DeleteModuleTransaction", "Delete modules");
-}
-
-void UNiagaraStackModuleItem::Delete()
-{
-	checkf(CanMoveAndDelete(), TEXT("This module can't be deleted"));
-	const FNiagaraEmitterHandle* EmitterHandle = GetEmitterViewModel().IsValid()
-		? FNiagaraEditorUtilities::GetEmitterHandleForEmitter(GetSystemViewModel()->GetSystem(), *GetEmitterViewModel()->GetEmitter())
-		: nullptr;
-	FGuid EmitterHandleId = EmitterHandle != nullptr ? EmitterHandle->GetId() : FGuid();
-
-	TArray<TWeakObjectPtr<UNiagaraNodeInput>> RemovedNodes;
-	bool bRemoved = FNiagaraStackGraphUtilities::RemoveModuleFromStack(GetSystemViewModel()->GetSystem(), EmitterHandleId, *FunctionCallNode, RemovedNodes);
-	if (bRemoved)
-	{
-		UNiagaraGraph* Graph = FunctionCallNode->GetNiagaraGraph();
-		Graph->NotifyGraphNeedsRecompile();
-		FNiagaraStackGraphUtilities::RelayoutGraph(*FunctionCallNode->GetGraph());
-		for (auto InputNode : RemovedNodes)
-		{
-			if (InputNode != nullptr && InputNode->Usage == ENiagaraInputNodeUsage::Parameter)
-			{
-				GetSystemViewModel()->NotifyDataObjectChanged(InputNode->GetDataInterface());
-			}
-		}
-		ModifiedGroupItemsDelegate.Broadcast();
-	}
-}
-
-bool UNiagaraStackModuleItem::IsScratchModule() const
-{
-	if (bIsScratchModuleCache.IsSet() == false)
-	{
-		bIsScratchModuleCache = GetSystemViewModel()->GetScriptScratchPadViewModel()->GetViewModelForScript(FunctionCallNode->FunctionScript).IsValid();
-	}
-	return bIsScratchModuleCache.GetValue();
 }
 
 UObject* UNiagaraStackModuleItem::GetExternalAsset() const

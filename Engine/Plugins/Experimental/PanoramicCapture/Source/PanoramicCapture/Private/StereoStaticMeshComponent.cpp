@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "StereoStaticMeshComponent.h"
 #include "StaticMeshResources.h"
@@ -54,10 +54,12 @@ public:
 
 FPrimitiveSceneProxy* UStereoStaticMeshComponent::CreateSceneProxy()
 {
+	const auto FeatureLevel = GetScene()->GetFeatureLevel();
+
     if ((GetStaticMesh() == nullptr) ||
 		(GetStaticMesh()->RenderData == nullptr) ||
 		(GetStaticMesh()->RenderData->LODResources.Num() == 0) ||
-		(GetStaticMesh()->RenderData->LODResources[GetStaticMesh()->MinLOD.GetValue()].VertexBuffers.PositionVertexBuffer.GetNumVertices() == 0))
+		(GetStaticMesh()->RenderData->LODResources[GetStaticMesh()->MinLOD.GetValueForFeatureLevel(FeatureLevel)].VertexBuffers.PositionVertexBuffer.GetNumVertices() == 0))
     {
         return nullptr;
     }

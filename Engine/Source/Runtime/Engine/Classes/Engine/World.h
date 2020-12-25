@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,7 +9,6 @@
 #include "UObject/Object.h"
 #include "Misc/Guid.h"
 #include "UObject/Class.h"
-#include "Delegates/IDelegateInstance.h"
 #include "Engine/EngineTypes.h"
 #include "Engine/EngineBaseTypes.h"
 #include "CollisionQueryParams.h"
@@ -23,7 +22,7 @@
 #include "Physics/PhysicsInterfaceDeclares.h"
 #include "Particles/WorldPSCPool.h"
 #include "Containers/SortedMap.h"
-#include "AudioDeviceManager.h"
+
 #include "Subsystems/WorldSubsystem.h"
 #include "Subsystems/SubsystemCollection.h"
 
@@ -63,7 +62,7 @@ class FSceneView;
 struct FUniqueNetIdRepl;
 struct FEncryptionKeyResponse;
 
-template<typename,typename> class TOctree2;
+template<typename,typename> class TOctree;
 
 /**
  * Misc. Iterator types
@@ -142,7 +141,6 @@ DECLARE_LOG_CATEGORY_EXTERN(LogSpawn, Warning, All);
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnActorSpawned, AActor*);
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnFeatureLevelChanged, ERHIFeatureLevel::Type);
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnMovieSceneSequenceTick, float);
 
 /** Proxy class that allows verification on GWorld accesses. */
 class UWorldProxy
@@ -211,23 +209,6 @@ public:
 private:
 
 	UWorld* World;
-};
-
-// List of delegates for the world being registered to an audio device.
-class ENGINE_API FAudioDeviceWorldDelegates
-{
-public:
-	// Called whenever a world is registered to an audio device. UWorlds are not guaranteed to be registered to the same
-	// audio device throughout their lifecycle, and there is no guarantee on the lifespan of both the UWorld and the Audio
-	// Device registered in this callback.
-	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnWorldRegisteredToAudioDevice, const UWorld* /*InWorld */, Audio::FDeviceId /* AudioDeviceId*/);
-	static FOnWorldRegisteredToAudioDevice OnWorldRegisteredToAudioDevice;
-
-	// Called whenever a world is unregistered from an audio device. UWorlds are not guaranteed to be registered to the same
-	// audio device throughout their lifecycle, and there is no guarantee on the lifespan of both the UWorld and the Audio
-	// Device registered in this callback.
-	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnWorldUnregisteredWithAudioDevice, const UWorld* /*InWorld */, Audio::FDeviceId /* AudioDeviceId*/);
-	static FOnWorldUnregisteredWithAudioDevice OnWorldUnregisteredWithAudioDevice;
 };
 
 /** class that encapsulates seamless world traveling */
@@ -526,17 +507,6 @@ struct ENGINE_API FActorSpawnParameters
 	/* The ULevel to spawn the Actor in, i.e. the Outer of the Actor. If left as NULL the Outer of the Owner is used. If the Owner is NULL the persistent level is used. */
 	class	ULevel* OverrideLevel;
 
-#if WITH_EDITOR
-	/* The UPackage to set the Actor in. If left as NULL the Package will not be set and the actor will be saved in the same package as the persistent level. */
-	class	UPackage* OverridePackage;
-
-	/* The parent component to set the Actor in. */
-	class   UChildActorComponent* OverrideParentComponent;
-
-	/** The Guid to set to this actor. Should only be set when reinstancing blueprint actors. */
-	FGuid	OverrideActorGuid;
-#endif
-
 	/** Method for resolving collisions at the spawn point. Undefined means no override, use the actor's setting. */
 	ESpawnActorCollisionHandlingMethod SpawnCollisionHandlingOverride;
 
@@ -561,35 +531,13 @@ public:
 	uint8	bAllowDuringConstructionScript:1;
 
 #if WITH_EDITOR
-	/* Determines whether the begin play cycle will run on the spawned actor when in the editor. */
+	/** Determines whether the begin play cycle will run on the spawned actor when in the editor. */
 	uint8	bTemporaryEditorActor:1;
 
-	/* Determines whether or not the actor should be hidden from the Scene Outliner */
+	/* Determines wether or not the actor should be hidden from the Scene Outliner */
 	uint8	bHideFromSceneOutliner:1;
-
-	/** Determines whether to create a new package for the actor or not. */
-	uint16	bCreateActorPackage:1;
 #endif
-
-	/* Modes that SpawnActor can use the supplied name when it is not None. */
-	enum class ESpawnActorNameMode : uint8
-	{
-		/* Fatal if unavailable, application will assert */
-		Required_Fatal,
-
-		/* Report an error return null if unavailable */
-		Required_ErrorAndReturnNull,
-
-		/* Return null if unavailable */
-		Required_ReturnNull,
-
-		/* If the supplied Name is already in use the generate an unused one using the supplied version as a base */
-		Requested
-	};
-
-	/* In which way should SpawnActor should treat the supplied Name if not none. */
-	ESpawnActorNameMode NameMode;
-
+	
 	/* Flags used to describe the spawned actor/object instance. */
 	EObjectFlags ObjectFlags;		
 };
@@ -809,6 +757,31 @@ private:
 };
 
 USTRUCT()
+struct FLevelStreamingWrapper
+{
+	GENERATED_BODY()
+
+	FLevelStreamingWrapper()
+		: StreamingLevel(nullptr)
+	{}
+
+	FLevelStreamingWrapper(ULevelStreaming* InStreamingLevel)
+		: StreamingLevel(InStreamingLevel)
+	{}
+
+	ULevelStreaming*& Get() { return StreamingLevel; }
+	ULevelStreaming* Get() const { return StreamingLevel; }
+
+
+	bool operator<(const FLevelStreamingWrapper& Other) const;
+	bool operator==(const FLevelStreamingWrapper& Other) const { return StreamingLevel == Other.StreamingLevel; }
+
+private:
+	UPROPERTY()
+	ULevelStreaming* StreamingLevel;
+};
+
+USTRUCT()
 struct FStreamingLevelsToConsider
 {
 	GENERATED_BODY()
@@ -817,20 +790,20 @@ struct FStreamingLevelsToConsider
 		: bStreamingLevelsBeingConsidered(false)
 	{}
 
-private:
-
 	/** Priority sorted array of streaming levels actively being considered. */
 	UPROPERTY()
-	TArray<ULevelStreaming*> StreamingLevels;
+	TArray<FLevelStreamingWrapper> StreamingLevels;
 
-	enum class EProcessReason : uint8
+private:
+
+	enum class EProcessReason
 	{
 		Add,
 		Reevaluate
 	};
 
 	/** Streaming levels that had their priority changed or were added to the container while consideration was underway. */
-	TSortedMap<ULevelStreaming*, EProcessReason> LevelsToProcess;
+	TSortedMap<FLevelStreamingWrapper, EProcessReason> LevelsToProcess;
 
 	/** Whether the streaming levels are under active consideration or not */
 	bool bStreamingLevelsBeingConsidered;
@@ -843,8 +816,6 @@ private:
 
 public:
 
-	const TArray<ULevelStreaming*>& GetStreamingLevels() const { return StreamingLevels; }
-
 	void AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector);
 
 	void BeginConsideration();
@@ -855,9 +826,6 @@ public:
 
 	/* Remove an element from the container. */
 	bool Remove(ULevelStreaming* StreamingLevel);
-
-	/* Remove the element at a given index from the container. */
-	void RemoveAt(int32 Index);
 
 	/* Returns if an element is in the container. */
 	bool Contains(ULevelStreaming* StreamingLevel) const;
@@ -893,7 +861,7 @@ class ENGINE_API UWorld final : public UObject, public FNetworkNotify
 	TArray< class ULayer* > Layers; 
 
 	// Group actors currently "active"
-	UPROPERTY(Transient)
+	UPROPERTY(transient)
 	TArray<AActor*> ActiveGroupActors;
 
 	/** Information for thumbnail rendering */
@@ -940,6 +908,10 @@ class ENGINE_API UWorld final : public UObject, public FNetworkNotify
 	 */
 	UPROPERTY(Transient)
 	TArray<UObject*>							PerModuleDataObjects;
+
+	// Level sequence actors to tick first
+	UPROPERTY(transient)
+	TArray<AActor*>								LevelSequenceActors;
 
 private:
 	/** Level collection. ULevels are referenced by FName (Package name) to avoid serialized references. Also contains offsets in world units */
@@ -1022,18 +994,9 @@ private:
 	class ULevel*								CurrentLevelPendingInvisibility;
 
 public:
-	/** NetDriver for capturing network traffic to record demos */
-	UE_DEPRECATED(4.26, "DemoNetDriver will be made private in a future release.  Please use GetDemoNetDriver/SetDemoNetDriver instead.")
+	/** Fake NetDriver for capturing network traffic to record demos */
 	UPROPERTY()
 	class UDemoNetDriver*						DemoNetDriver;
-
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	/** Gets the demo net driver for this world. */
-	UDemoNetDriver* GetDemoNetDriver() const { return DemoNetDriver; }
-
-	/** Sets the demo net driver for this world. */
-	void SetDemoNetDriver(UDemoNetDriver* const InDemoNetDriver) { DemoNetDriver = InDemoNetDriver; }
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	/** Particle event manager **/
 	UPROPERTY()
@@ -1041,7 +1004,7 @@ public:
 
 private:
 	/** DefaultPhysicsVolume used for whole game **/
-	UPROPERTY(Transient)
+	UPROPERTY()
 	APhysicsVolume*								DefaultPhysicsVolume;
 
 public:
@@ -1101,7 +1064,7 @@ public:
 
 #if !UE_BUILD_SHIPPING
 	/** If TRUE, 'hidden' components will still create render proxy, so can draw info (see USceneComponent::ShouldRender) */
-	uint8 bCreateRenderStateForHiddenComponentsWithCollsion:1;
+	uint8 bCreateRenderStateForHiddenComponents:1;
 #endif // !UE_BUILD_SHIPPING
 
 #if WITH_EDITOR
@@ -1208,7 +1171,7 @@ private:
 	UPROPERTY(Transient)
 	class UAvoidanceManager*					AvoidanceManager;
 
-	/** Array of levels currently in this world. Not serialized to disk to avoid hard references. */
+	/** Array of levels currently in this world. Not serialized to disk to avoid hard references.								*/
 	UPROPERTY(Transient)
 	TArray<class ULevel*>						Levels;
 
@@ -1225,7 +1188,7 @@ private:
 public:
 
 	/** Handle to the active audio device for this world. */
-	FAudioDeviceHandle AudioDeviceHandle;
+	uint32 AudioDeviceHandle;
 
 #if WITH_EDITOR
 	/** Hierarchical LOD System. Used when WorldSetting.bEnableHierarchicalLODSystem is true */
@@ -1238,11 +1201,8 @@ public:
 
 private:
 
-	/** Handle to delegate in case audio device is destroyed. */
-	FDelegateHandle AudioDeviceDestroyedHandle;
-
 #if WITH_EDITORONLY_DATA
-	/** Pointer to the current level being edited. Level has to be in the Levels array and == PersistentLevel in the game. */
+	/** Pointer to the current level being edited. Level has to be in the Levels array and == PersistentLevel in the game.		*/
 	UPROPERTY(Transient)
 	class ULevel*								CurrentLevel;
 #endif
@@ -1352,10 +1312,6 @@ public:
 #endif
 private:
 
-	/** Array of components that need to wait on tasks before end of frame updates */
-	UPROPERTY(Transient, NonTransactional)
-	TSet<UActorComponent*> ComponentsThatNeedPreEndOfFrameSync;
-
 	/** Array of components that need updates at the end of the frame */
 	UPROPERTY(Transient, NonTransactional)
 	TArray<UActorComponent*> ComponentsThatNeedEndOfFrameUpdate;
@@ -1375,9 +1331,6 @@ private:
 	/** a delegate that broadcasts a notification whenever an actor is spawned */
 	FOnActorSpawned OnActorSpawned;
 
-	/** a delegate that broadcasts a notification before a newly spawned actor is initialized */
-	FOnActorSpawned OnActorPreSpawnInitialization;
-
 	/** Reset Async Trace Buffer **/
 	void ResetAsyncTrace();
 
@@ -1389,9 +1342,6 @@ private:
 
 	/** Utility function that is used to ensure that a World has the correct WorldSettings */
 	void RepairWorldSettings();
-
-	/** Utility function to cleanup streaming levels that point to invalid level packages */
-	void RepairStreamingLevels();
 	
 #if INCLUDE_CHAOS
 	/** Utility function that is used to ensure that a World has the correct ChaosActor */
@@ -1476,10 +1426,8 @@ private:
 
 	/** a delegate that broadcasts a notification whenever the current feautre level is changed */
 	FOnFeatureLevelChanged OnFeatureLevelChanged;
+
 #endif //WITH_EDITORONLY_DATA
-
-	FOnMovieSceneSequenceTick MovieSceneSequenceTick;
-
 public:
 	/** The URL that was used when loading this World.																			*/
 	FURL										URL;
@@ -1521,7 +1469,7 @@ public:
 #endif
 
 	/** Called when the world computes how post process volumes contribute to the scene. */
-	DECLARE_EVENT_TwoParams(UWorld, FOnBeginPostProcessSettings, FVector, FSceneView*);
+	DECLARE_EVENT_OneParam(UWorld, FOnBeginPostProcessSettings, FVector);
 	FOnBeginPostProcessSettings OnBeginPostProcessSettings;
 
 	/** Inserts a post process volume into the world in priority order */
@@ -2061,7 +2009,7 @@ public:
 	 * 
 	 *	@param	UserData		UserData
 	 */ 
-	FTraceHandle	AsyncSweepByChannel(EAsyncTraceType InTraceType, const FVector& Start, const FVector& End, const FQuat& Rot, ECollisionChannel TraceChannel, const FCollisionShape& CollisionShape, const FCollisionQueryParams& Params = FCollisionQueryParams::DefaultQueryParam, const FCollisionResponseParams& ResponseParam = FCollisionResponseParams::DefaultResponseParam, FTraceDelegate * InDelegate = NULL, uint32 UserData = 0);
+	FTraceHandle	AsyncSweepByChannel(EAsyncTraceType InTraceType, const FVector& Start, const FVector& End, ECollisionChannel TraceChannel, const FCollisionShape& CollisionShape, const FCollisionQueryParams& Params = FCollisionQueryParams::DefaultQueryParam, const FCollisionResponseParams& ResponseParam = FCollisionResponseParams::DefaultResponseParam, FTraceDelegate * InDelegate = NULL, uint32 UserData = 0);
 
 	/**
 	 * Interface for Async trace
@@ -2084,7 +2032,7 @@ public:
 	 * 
 	 *	@param	UserData		UserData
 	 */ 
-	FTraceHandle	AsyncSweepByObjectType(EAsyncTraceType InTraceType, const FVector& Start, const FVector& End, const FQuat& Rot, const FCollisionObjectQueryParams& ObjectQueryParams, const FCollisionShape& CollisionShape, const FCollisionQueryParams& Params = FCollisionQueryParams::DefaultQueryParam, FTraceDelegate * InDelegate = NULL, uint32 UserData = 0);
+	FTraceHandle	AsyncSweepByObjectType(EAsyncTraceType InTraceType, const FVector& Start, const FVector& End, const FCollisionObjectQueryParams& ObjectQueryParams, const FCollisionShape& CollisionShape, const FCollisionQueryParams& Params = FCollisionQueryParams::DefaultQueryParam, FTraceDelegate * InDelegate = NULL, uint32 UserData = 0);
 
 	// overlap functions
 
@@ -2181,9 +2129,6 @@ public:
 	/** Returns an iterator for the controller list. */
 	FConstControllerIterator GetControllerIterator() const;
 
-	/** @return Returns the number of Controllers. */
-	int32 GetNumControllers() const;
-	
 	/** @return Returns an iterator for the pawn list. */
 	UE_DEPRECATED(4.24, "The PawnIterator is an inefficient mechanism for iterating pawns. Please use TActorIterator<PawnType> instead.")
 	FConstPawnIterator GetPawnIterator() const;
@@ -2261,9 +2206,6 @@ public:
 
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnWorldInitializedActors, const FActorsInitializedParams&);
 	FOnWorldInitializedActors OnActorsInitialized;
-
-	DECLARE_MULTICAST_DELEGATE(FOnWorldBeginPlay);
-	FOnWorldBeginPlay OnWorldBeginPlay;
 
 	/** Returns true if gameplay has already started, false otherwise. */
 	bool HasBegunPlay() const;
@@ -2435,12 +2377,6 @@ public:
 	/** Remove a listener for OnActorSpawned events */
 	void RemoveOnActorSpawnedHandler( FDelegateHandle InHandle );
 
-	/** Add a listener for OnActorPreSpawnInitialization events */
-	FDelegateHandle AddOnActorPreSpawnInitialization(const FOnActorSpawned::FDelegate& InHandler);
-
-	/** Remove a listener for OnActorPreSpawnInitialization events */
-	void RemoveOnActorPreSpawnInitialization(FDelegateHandle InHandle);	
-
 	/**
 	 * Returns whether the passed in actor is part of any of the loaded levels actors array.
 	 * Warning: Will return true for pending kill actors!
@@ -2458,17 +2394,11 @@ public:
 	 */
 	bool AllowAudioPlayback() const;
 
-	/** Adds a tick handler for sequences. These handlers get ticked before pre-physics */
-	FDelegateHandle AddMovieSceneSequenceTickHandler(const FOnMovieSceneSequenceTick::FDelegate& InHandler);
-	/** Removes a tick handler for sequences */
-	void RemoveMovieSceneSequenceTickHandler(FDelegateHandle InHandle);
-
 	//~ Begin UObject Interface
 	virtual void Serialize( FArchive& Ar ) override;
 	virtual void BeginDestroy() override;
 	virtual void FinishDestroy() override;
 	virtual void PostLoad() override;
-	virtual void PreDuplicate(FObjectDuplicationParameters& DupParams) override;
 	virtual bool PreSaveRoot(const TCHAR* Filename) override;
 	virtual void PostSaveRoot( bool bCleanupIsRequired ) override;
 	virtual UWorld* GetWorld() const override;
@@ -2492,7 +2422,7 @@ public:
 	 * @param	bRerunConstructionScripts	If we should rerun construction scripts on actors
 	 * @param	bCurrentLevelOnly			If true, affect only the current level.
 	 */
-	void UpdateWorldComponents(bool bRerunConstructionScripts, bool bCurrentLevelOnly, FRegisterComponentContext* Context = nullptr);
+	void UpdateWorldComponents(bool bRerunConstructionScripts, bool bCurrentLevelOnly);
 
 	/**
 	 * Updates cull distance volumes for a specified component or a specified actor or all actors
@@ -2992,17 +2922,8 @@ public:
 	// Destroys the current demo net driver
 	void DestroyDemoNetDriver();
 
-	// Remove internal references to pending demo net driver when starting a replay, but do not destroy it
-	void ClearDemoNetDriver();
-
-	// Remove all internal references to this net driver, but do not destroy it. Called by the engine when destroying the driver.
-	void ClearNetDriver(UNetDriver* Driver);
-
 	/** Returns true if we are currently playing a replay */
 	bool IsPlayingReplay() const;
-
-	/** Returns true if we are currently recording a replay */
-	bool IsRecordingReplay() const;
 
 	// Start listening for connections.
 	bool Listen( FURL& InURL );
@@ -3242,7 +3163,7 @@ public:
 	 * @param InURL commandline URL
 	 * @param bResetTime (optional) whether the WorldSettings's TimeSeconds should be reset to zero
 	 */
-	void InitializeActorsForPlay(const FURL& InURL, bool bResetTime = true, FRegisterComponentContext* Context = nullptr);
+	void InitializeActorsForPlay(const FURL& InURL, bool bResetTime = true);
 
 	/**
 	 * Start gameplay. This will cause the game mode to transition to the correct state and call BeginPlay on all actors
@@ -3294,22 +3215,15 @@ private:
 	/** Private version without inlining that does *not* check Dedicated server build flags (which should already have been done). */
 	ENetMode InternalGetNetMode() const;
 
+#if WITH_EDITOR
+	/** Attempts to derive the net mode from PlayInSettings for PIE*/
+	ENetMode AttemptDeriveFromPlayInSettings() const;
+#endif
+
 	/** Attempts to derive the net mode from URL */
 	ENetMode AttemptDeriveFromURL() const;
 
 	APhysicsVolume* InternalGetDefaultPhysicsVolume() const;
-
-#if WITH_EDITOR
-public:
-	void SetPlayInEditorInitialNetMode(ENetMode InNetMode)
-	{
-		PlayInEditorNetMode = InNetMode;
-	}
-
-private:
-	/** In PIE, what Net Mode was this world started in? Fallback for not having a NetDriver */
-	ENetMode PlayInEditorNetMode;
-#endif
 
 public:
 
@@ -3361,7 +3275,6 @@ public:
 	FOnLevelsChangedEvent& OnLevelsChanged() { return LevelsChangedEvent; }
 
 	/** Returns the BeginTearingDownEvent member. */
-	UE_DEPRECATED(4.26, "OnBeginTearingDown has been replaced by FWorldDelegates::OnWorldBeginTearDown")
 	FOnBeginTearingDownEvent& OnBeginTearingDown() { return BeginTearingDownEvent; }
 
 	/** Returns the actor count. */
@@ -3383,20 +3296,18 @@ public:
 	 */
 	class AAudioVolume* GetAudioSettings( const FVector& ViewLocation, struct FReverbSettings* OutReverbSettings, struct FInteriorSettings* OutInteriorSettings );
 
-	void SetAudioDevice(const FAudioDeviceHandle& InHandle);
+	/** Returns the audio device handle for this world.*/
+	uint32 GetAudioDeviceHandle() const { return AudioDeviceHandle; }
+
+	/** Sets the audio device handle to the active audio device for this world.*/
+	void SetAudioDeviceHandle(const uint32 InAudioDeviceHandle);
 
 	/**
-	 * Get the audio device used by this world.
-	 */
-	FAudioDeviceHandle GetAudioDevice();
-
-	/**
-	* Returns the audio device associated with this world.
-	* Lifecycle of the audio device is not guaranteed unless you used GetAudioDevice().
+	* Returns the audio device associated with this world, or returns the main audio device if there is none.
 	*
 	* @return Audio device to use with this world.
 	*/
-	class FAudioDevice* GetAudioDeviceRaw();
+	class FAudioDevice* GetAudioDevice();
 
 	/** Return the URL of this level on the local machine. */
 	virtual FString GetLocalURL() const;
@@ -3660,9 +3571,6 @@ public:
 	/** Return the prefix for PIE packages given a PIE Instance ID */
 	static FString BuildPIEPackagePrefix(int32 PIEInstanceID);
 
-	/** Duplicate the editor world to create the PIE world. */
-	static UWorld* GetDuplicatedWorldForPIE(UWorld* InWorld, UPackage* InPIEackage, int32 PIEInstanceID);
-
 	/** Given a loaded editor UWorld, duplicate it for play in editor purposes with OwningWorld as the world with the persistent level. */
 	static UWorld* DuplicateWorldForPIE(const FString& PackageName, UWorld* OwningWorld);
 
@@ -3781,16 +3689,6 @@ public:
 	static UWorld::FOnWorldInitializedActors OnWorldInitializedActors;
 
 	static FWorldEvent OnWorldBeginTearDown;
-
-	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnSeamlessTravelStart, UWorld*, const FString&);
-	static FOnSeamlessTravelStart OnSeamlessTravelStart;
-
-	DECLARE_MULTICAST_DELEGATE_OneParam(FOnSeamlessTravelTransition, UWorld*);
-	static FOnSeamlessTravelTransition OnSeamlessTravelTransition;
-
-	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnCopyWorldData, UWorld*, UWorld*);
-	static FOnCopyWorldData OnCopyWorldData;
-
 private:
 	FWorldDelegates() {}
 };

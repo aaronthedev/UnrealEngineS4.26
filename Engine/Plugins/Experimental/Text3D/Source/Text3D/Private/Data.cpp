@@ -1,218 +1,175 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
+
 
 #include "Data.h"
-#include "Part.h"
-#include "Text3DPrivate.h"
+#include "Bevel/Part.h"
 
-FData::FData(TSharedPtr<FText3DGlyph> GlyphIn) :
-	Glyph(GlyphIn)
+
+FData::FData(TSharedPtr<TText3DMeshList> MeshesIn, const float ExpandTotalIn, const float FontInverseScaleIn, const FVector& ScaleIn)
+	: Meshes(MeshesIn)
+
+	, ExpandTotal(ExpandTotalIn / FontInverseScaleIn)
+
+	, FontInverseScale(FontInverseScaleIn)
+	, Scale(ScaleIn)
 {
-	CurrentGroup = EText3DGroupType::Front;
-	GroupExpand = 0.0f;
+	check(Meshes.Get());
+	CurrentMesh = nullptr;
+	Extrude = 0.0f;
+	Expand = 0.0f;
+	HorizontalOffset = 0.0f;
+	VerticalOffset = 0.0f;
 
-	PlannedExtrude = 0.0f;
-	PlannedExpand = 0.0f;
-
-	NormalStart = {0.f, 0.f};
-	NormalEnd = {0.f, 0.f};
-
-	ExtrudeTarget = 0.0f;
+	CurrentExtrudeHeight = 0.0f;
 	ExpandTarget = 0.0f;
-
 	DoneExtrude = 0.0f;
 
 	VertexCountBeforeAdd = 0;
 	AddVertexIndex = 0;
 
-	TriangleCountBeforeAdd = 0;
+	IndicesCountBeforeAdd = 0;
 	AddTriangleIndex = 0;
 }
 
-void FData::SetCurrentGroup(const EText3DGroupType Type, const float GroupExpandIn)
+void FData::SetHorizontalOffset(const float HorizontalOffsetIn)
 {
-	CurrentGroup = Type;
-	check(Glyph.Get());
-
-	FText3DPolygonGroup& Group = Glyph->GetGroups()[static_cast<int32>(Type)];
-	const FMeshDescription& MeshDescription = Glyph->GetMeshDescription();
-
-	Group.FirstVertex = MeshDescription.Vertices().Num();
-	Group.FirstTriangle = MeshDescription.Triangles().Num();
-
-	GroupExpand = GroupExpandIn / FontInverseScale;
+	HorizontalOffset = HorizontalOffsetIn;
 }
 
-void FData::PrepareSegment(const float PlannedExtrudeIn, const float PlannedExpandIn, const FVector2D NormalStartIn, const FVector2D NormalEndIn)
+void FData::SetVerticalOffset(const float VerticalOffsetIn)
 {
-	PlannedExtrude = PlannedExtrudeIn;
-	PlannedExpand = PlannedExpandIn / FontInverseScale;
-
-	NormalStart = NormalStartIn;
-	NormalEnd = NormalEndIn;
+	VerticalOffset = VerticalOffsetIn;
 }
 
-void FData::SetTarget(const float ExtrudeTargetIn, const float ExpandTargetIn)
+void FData::SetExpandTarget(const float ExpandTargetIn)
 {
-	ExtrudeTarget = ExtrudeTargetIn;
 	ExpandTarget = ExpandTargetIn;
+	CurrentExtrudeHeight = Extrude * ExpandTarget / Expand;
+}
+
+void FData::SetMinBevelTarget()
+{
+	ExpandTarget = 0;
+	CurrentExtrudeHeight = 0;
+}
+
+void FData::SetMaxBevelTarget()
+{
+	ExpandTarget = Expand;
+	CurrentExtrudeHeight = Extrude;
 }
 
 int32 FData::AddVertices(const int32 Count)
 {
-	check(Glyph.Get());
-	if (Count <= 0)
-	{
-		return 0;
-	}
+	check(CurrentMesh);
 
-	FMeshDescription& MeshDescription = Glyph->GetMeshDescription();
-	FStaticMeshAttributes& MeshAttributes = Glyph->GetStaticMeshAttributes();
-	VertexCountBeforeAdd = MeshDescription.Vertices().Num();
-
-	MeshDescription.ReserveNewVertices(Count);
-	MeshDescription.ReserveNewVertexInstances(Count);
-
-	for (int32 Index = 0; Index < Count; Index++)
-	{
-		const FVertexID Vertex = MeshDescription.CreateVertex();
-		const FVertexInstanceID VertexInstance = MeshDescription.CreateVertexInstance(Vertex);
-		MeshAttributes.GetVertexInstanceColors()[VertexInstance] = FVector4(1.f, 1.f, 1.f, 1.f);
-	}
-
+	VertexCountBeforeAdd = CurrentMesh->Vertices.AddUninitialized(Count);
 	AddVertexIndex = 0;
 	return VertexCountBeforeAdd;
 }
 
-int32 FData::AddVertex(const FPartConstPtr& Point, const FVector2D TangentX, const FVector& TangentZ, const FVector2D TextureCoordinates)
+void FData::AddVertex(const FPart* const Point, const FVector2D TangentX, const FVector& TangentZ, const FVector2D TextureCoordinates)
 {
-	return AddVertex(Point->Position, TangentX, TangentZ, TextureCoordinates);
+	AddVertex(Point->Position, TangentX, TangentZ, TextureCoordinates);
 }
 
-int32 FData::AddVertex(const FVector2D Position, const FVector2D TangentX, const FVector& TangentZ, const FVector2D TextureCoordinates)
+void FData::AddVertex(const FVector2D Position, const FVector2D TangentX, const FVector& TangentZ, const FVector2D TextureCoordinates)
 {
-	return AddVertex(GetVector(Position, DoneExtrude + ExtrudeTarget), {0.f, TangentX.X, TangentX.Y}, TangentZ, TextureCoordinates);
-}
+	check(CurrentMesh);
 
-int32 FData::AddVertex(const FVector& Position, const FVector& TangentX, const FVector& TangentZ, const FVector2D TextureCoordinates)
-{
-	check(Glyph.Get());
-	FStaticMeshAttributes& StaticMeshAttributes = Glyph->GetStaticMeshAttributes();
-	const int32 VertexIndex = VertexCountBeforeAdd + AddVertexIndex++;
-	StaticMeshAttributes.GetVertexPositions()[FVertexID(VertexIndex)] = Position;
-	const FVertexInstanceID Instance(static_cast<uint32>(VertexIndex));
-
-	StaticMeshAttributes.GetVertexInstanceUVs()[Instance] = TextureCoordinates;
-	StaticMeshAttributes.GetVertexInstanceNormals()[Instance] = TangentZ;
-	StaticMeshAttributes.GetVertexInstanceTangents()[Instance] = TangentX;
-
-	return VertexIndex;
+	CurrentMesh->Vertices[VertexCountBeforeAdd + AddVertexIndex++] = { GetVector(Position, DoneExtrude + CurrentExtrudeHeight), FVector(0, TangentX.X, TangentX.Y), FVector(TangentZ.Z, TangentZ.X, TangentZ.Y), TextureCoordinates, FColor(255, 255, 255) };
 }
 
 void FData::AddTriangles(const int32 Count)
 {
-	check(Glyph.Get());
-	if (Count <= 0)
-	{
-		return;
-	}
+	check(CurrentMesh);
 
-	FMeshDescription& MeshDescription = Glyph->GetMeshDescription();
-	TriangleCountBeforeAdd = MeshDescription.Triangles().Num();
-	MeshDescription.ReserveNewTriangles(Count);
-	AddTriangleIndex = 0;
+	if (Count > 0)
+	{
+		IndicesCountBeforeAdd = CurrentMesh->Indices.AddUninitialized(Count * 3);
+		AddTriangleIndex = 0;
+	}
 }
 
 void FData::AddTriangle(const int32 A, const int32 B, const int32 C)
 {
-	check(Glyph.Get());
-	Glyph->GetMeshDescription().CreateTriangle(FPolygonGroupID(static_cast<int32>(CurrentGroup)), TArray<FVertexInstanceID>({FVertexInstanceID(A), FVertexInstanceID(B), FVertexInstanceID(C)}));
-	AddTriangleIndex++;
+	check(CurrentMesh);
+
+	CurrentMesh->Indices[IndicesCountBeforeAdd + AddTriangleIndex++] = A;
+	CurrentMesh->Indices[IndicesCountBeforeAdd + AddTriangleIndex++] = B;
+	CurrentMesh->Indices[IndicesCountBeforeAdd + AddTriangleIndex++] = C;
 }
 
-float FData::GetGroupExpand() const
+float FData::GetExpandTotal() const
 {
-	return GroupExpand;
+	return ExpandTotal;
 }
 
-float FData::GetPlannedExtrude() const
+float FData::GetExtrude() const
 {
-	return PlannedExtrude;
+	return Extrude;
 }
 
-float FData::GetPlannedExpand() const
+void FData::SetExtrude(const float ExtrudeIn)
 {
-	return PlannedExpand;
+	Extrude = ExtrudeIn;
+}
+
+float FData::GetExpand() const
+{
+	return Expand;
+}
+
+void FData::SetExpand(const float ExpandIn)
+{
+	Expand = ExpandIn / FontInverseScale;
+}
+
+float FData::GetFontInverseScale() const
+{
+	return FontInverseScale;
+}
+
+float FData::GetExpandTarget() const
+{
+	return ExpandTarget;
+}
+
+void FData::ResetDoneExtrude()
+{
+	DoneExtrude = 0;
 }
 
 void FData::IncreaseDoneExtrude()
 {
-	DoneExtrude += PlannedExtrude;
+	DoneExtrude += Extrude;
 }
 
-FVector FData::ComputeTangentZ(const FPartConstPtr& Edge, const float DoneExpand)
+void FData::SetNormals(FVector2D Start, FVector2D End)
+{
+	NormalStart = Start;
+	NormalEnd = End;
+}
+
+FVector FData::ComputeTangentZ(const FPart* const Edge, const float DoneExpand)
 {
 	const FVector2D TangentX = Edge->TangentX;
 
-	const float T = FMath::IsNearlyZero(PlannedExpand) ? 0.0f : DoneExpand / PlannedExpand;
-	const FVector2D Normal = NormalStart * (1.f - T) + NormalEnd * T;
+	const float t = Expand == 0 ? 0 : DoneExpand / Expand;
+	const FVector2D Normal = NormalStart * (1 - t) + NormalEnd * t;
 
-	const FVector2D TangentZ_YZ = FVector2D(TangentX.Y, -TangentX.X) * Normal.X;
-	return FVector(Normal.Y, TangentZ_YZ.X, TangentZ_YZ.Y);
+	return FVector(FVector2D(TangentX.Y, -TangentX.X) * Normal.X, Normal.Y);
 }
 
-FVector2D FData::Expanded(const FPartConstPtr& Point) const
+void FData::SetCurrentMesh(EText3DMeshType Type)
 {
-	// Needed expand value is difference of total expand and point's done expand
-	return Point->Expanded(ExpandTarget - Point->DoneExpand);
-}
+	CurrentMesh = &((*Meshes.Get())[static_cast<int32>(Type)]);
 
-void FData::FillEdge(const FPartPtr& Edge, const bool bSkipLastTriangle)
-{
-	const FPartPtr EdgeA = Edge;
-	const FPartPtr EdgeB = Edge->Next;
-
-	MakeTriangleFanAlongNormal(EdgeB, EdgeA, false, true);
-	MakeTriangleFanAlongNormal(EdgeA, EdgeB, true, false);
-
-	if (!bSkipLastTriangle)
-	{
-		MakeTriangleFanAlongNormal(EdgeB, EdgeA, false, false);
-	}
-	else
-	{
-		// Index has to be removed despite last triangle being skipped.
-		// For example when normals intersect and result of expansion of EdgeA and EdgeB is one point -
-		// this point was already covered with last MakeTriangleFanAlongNormal call,
-		// no need to keep it in neighbour point's path.
-		EdgeA->PathNext.RemoveAt(0);
-	}
-
-	// Write done expand
-	EdgeA->DoneExpand = ExpandTarget;
-	EdgeB->DoneExpand = ExpandTarget;
+	check(CurrentMesh);
+	CurrentMesh->GlyphStartVertices.Add(CurrentMesh->Vertices.Num());
 }
 
 FVector FData::GetVector(const FVector2D Position, const float Height) const
 {
-	return (FVector(0.f, Position.X, Position.Y) * FontInverseScale + FVector(Height, 0.0f, 0.0f));
-}
-
-void FData::MakeTriangleFanAlongNormal(const FPartConstPtr& Cap, const FPartPtr& Normal, const bool bNormalIsCapNext, const bool bSkipLastTriangle)
-{
-	TArray<int32>& Path = bNormalIsCapNext ? Normal->PathPrev : Normal->PathNext;
-	const int32 Count = Path.Num() - (bSkipLastTriangle ? 2 : 1);
-
-	// Create triangles
-	AddTriangles(Count);
-
-	for (int32 Index = 0; Index < Count; Index++)
-	{
-		AddTriangle((bNormalIsCapNext ? Cap->PathNext : Cap->PathPrev)[0],
-				Path[bNormalIsCapNext ? Index + 1 : Index],
-				Path[bNormalIsCapNext ? Index : Index + 1]
-			);
-	}
-
-	// Remove covered vertices from path
-	Path.RemoveAt(0, Count);
+	return (FVector(0, Position.X, Position.Y) * FontInverseScale + FVector(Height, HorizontalOffset, VerticalOffset)) * Scale;
 }

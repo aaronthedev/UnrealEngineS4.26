@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ComponentVisualizer.h"
 #include "GameFramework/Actor.h"
@@ -11,12 +11,12 @@ static FPropertyNameAndIndex GetActorPropertyNameAndIndexForComponent(const AAct
 {
 	if (Actor != nullptr && Component != nullptr)
 	{
-			// Iterate over UObject* fields of this actor
+		// Iterate over UObject* fields of this actor
 		UClass* ActorClass = Actor->GetClass();
-		for (TFieldIterator<FObjectProperty> It(ActorClass); It; ++It)
+		for (TFieldIterator<UObjectProperty> It(ActorClass); It; ++It)
 		{
 			// See if this property points to the component in question
-			FObjectProperty* ObjectProp = *It;
+			UObjectProperty* ObjectProp = *It;
 			for (int32 Index = 0; Index < ObjectProp->ArrayDim; ++Index)
 			{
 				UObject* Object = ObjectProp->GetObjectPropertyValue(ObjectProp->ContainerPtrToValuePtr<void>(Actor, Index));
@@ -29,10 +29,10 @@ static FPropertyNameAndIndex GetActorPropertyNameAndIndexForComponent(const AAct
 		}
 
 		// If nothing found, look in TArray<UObject*> fields
-		for (TFieldIterator<FArrayProperty> It(ActorClass); It; ++It)
+		for (TFieldIterator<UArrayProperty> It(ActorClass); It; ++It)
 		{
-			FArrayProperty* ArrayProp = *It;
-			if (FObjectProperty* InnerProp = CastField<FObjectProperty>(It->Inner))
+			UArrayProperty* ArrayProp = *It;
+			if (UObjectProperty* InnerProp = Cast<UObjectProperty>(It->Inner))
 			{
 				FScriptArrayHelper ArrayHelper(ArrayProp, ArrayProp->ContainerPtrToValuePtr<void>(Actor));
 				for (int32 Index = 0; Index < ArrayHelper.Num(); ++Index)
@@ -120,17 +120,16 @@ UActorComponent* FComponentPropertyPath::GetComponent() const
 				int32 PropertyIndex = PropertyNameAndIndex.Index;
 
 				UClass* ActorClass = Actor->GetClass();
-				check(ActorClass);
-				FProperty* Prop = FindFProperty<FProperty>(ActorClass, PropertyName);
+				UProperty* Prop = FindField<UProperty>(ActorClass, PropertyName);
 
-				if (FObjectProperty* ObjectProp = CastField<FObjectProperty>(Prop))
+				if (UObjectProperty* ObjectProp = Cast<UObjectProperty>(Prop))
 				{
 					UObject* Object = ObjectProp->GetObjectPropertyValue(ObjectProp->ContainerPtrToValuePtr<void>(Actor, PropertyIndex));
 					Result = Cast<UActorComponent>(Object);
 				}
-				else if (FArrayProperty* ArrayProp = CastField<FArrayProperty>(Prop))
+				else if (UArrayProperty* ArrayProp = Cast<UArrayProperty>(Prop))
 				{
-					if (FObjectProperty* InnerProp = CastField<FObjectProperty>(ArrayProp->Inner))
+					if (UObjectProperty* InnerProp = Cast<UObjectProperty>(ArrayProp->Inner))
 					{
 						FScriptArrayHelper ArrayHelper(ArrayProp, ArrayProp->ContainerPtrToValuePtr<void>(Actor));
 						if (ArrayHelper.IsValidIndex(PropertyIndex))
@@ -153,10 +152,6 @@ UActorComponent* FComponentPropertyPath::GetComponent() const
 				}
 
 				Actor = ChildActorComponent->GetChildActor();
-				if (Actor == nullptr)
-				{
-					break;
-				}
 			}
 		}
 	}
@@ -207,15 +202,15 @@ UActorComponent* FComponentVisualizer::GetComponentFromPropertyName(const AActor
 	if(CompOwner && Property.IsValid())
 	{
 		UClass* ActorClass = CompOwner->GetClass();
-		FProperty* Prop = FindFProperty<FProperty>(ActorClass, Property.Name);
-		if (FObjectProperty* ObjectProp = CastField<FObjectProperty>(Prop))
+		UProperty* Prop = FindField<UProperty>(ActorClass, Property.Name);
+		if (UObjectProperty* ObjectProp = Cast<UObjectProperty>(Prop))
 		{
 			UObject* Object = ObjectProp->GetObjectPropertyValue(ObjectProp->ContainerPtrToValuePtr<void>(CompOwner, Property.Index));
 			ResultComp = Cast<UActorComponent>(Object);
 		}
-		else if (FArrayProperty* ArrayProp = CastField<FArrayProperty>(Prop))
+		else if (UArrayProperty* ArrayProp = Cast<UArrayProperty>(Prop))
 		{
-			if (FObjectProperty* InnerProp = CastField<FObjectProperty>(ArrayProp->Inner))
+			if (UObjectProperty* InnerProp = Cast<UObjectProperty>(ArrayProp->Inner))
 			{
 				FScriptArrayHelper ArrayHelper(ArrayProp, ArrayProp->ContainerPtrToValuePtr<void>(CompOwner));
 				UObject* Object = InnerProp->GetObjectPropertyValue(ArrayHelper.GetRawPtr(Property.Index));
@@ -227,21 +222,21 @@ UActorComponent* FComponentVisualizer::GetComponentFromPropertyName(const AActor
 	return ResultComp;
 }
 
-void FComponentVisualizer::NotifyPropertyModified(UActorComponent* Component, FProperty* Property)
+void FComponentVisualizer::NotifyPropertyModified(UActorComponent* Component, UProperty* Property)
 {
-	TArray<FProperty*> Properties;
+	TArray<UProperty*> Properties;
 	Properties.Add(Property);
 	NotifyPropertiesModified(Component, Properties);
 }
 
-void FComponentVisualizer::NotifyPropertiesModified(UActorComponent* Component, const TArray<FProperty*>& Properties)
+void FComponentVisualizer::NotifyPropertiesModified(UActorComponent* Component, const TArray<UProperty*>& Properties)
 {
 	if (Component == nullptr)
 	{
 		return;
 	}
 
-	for (FProperty* Property : Properties)
+	for (UProperty* Property : Properties)
 	{
 		FPropertyChangedEvent PropertyChangedEvent(Property);
 		Component->PostEditChangeProperty(PropertyChangedEvent);
@@ -269,7 +264,7 @@ void FComponentVisualizer::NotifyPropertiesModified(UActorComponent* Component, 
 		struct FInstanceDefaultProperties
 		{
 			UActorComponent* ArchetypeInstance;
-			TArray<FProperty*, TInlineAllocator<8>> Properties;
+			TArray<UProperty*, TInlineAllocator<8>> Properties;
 		};
 
 		TArray<FInstanceDefaultProperties> InstanceDefaultProperties;
@@ -281,7 +276,7 @@ void FComponentVisualizer::NotifyPropertiesModified(UActorComponent* Component, 
 			if (InstanceComp != Component)
 			{
 				FInstanceDefaultProperties Entry;
-				for (FProperty* Property : Properties)
+				for (UProperty* Property : Properties)
 				{
 					uint8* ArchetypePtr = Property->ContainerPtrToValuePtr<uint8>(Archetype);
 					uint8* InstancePtr = Property->ContainerPtrToValuePtr<uint8>(InstanceComp);
@@ -308,7 +303,7 @@ void FComponentVisualizer::NotifyPropertiesModified(UActorComponent* Component, 
 			Archetype->GetOwner()->Modify();
 		}
 
-		for (FProperty* Property : Properties)
+		for (UProperty* Property : Properties)
 		{
 			uint8* ArchetypePtr = Property->ContainerPtrToValuePtr<uint8>(Archetype);
 			uint8* PreviewPtr = Property->ContainerPtrToValuePtr<uint8>(Component);
@@ -331,7 +326,7 @@ void FComponentVisualizer::NotifyPropertiesModified(UActorComponent* Component, 
 				InstanceOwner->Modify();
 			}
 
-			for (FProperty* Property : Instance.Properties)
+			for (UProperty* Property : Instance.Properties)
 			{
 				uint8* InstancePtr = Property->ContainerPtrToValuePtr<uint8>(Instance.ArchetypeInstance);
 				uint8* PreviewPtr = Property->ContainerPtrToValuePtr<uint8>(Component);
@@ -350,8 +345,5 @@ void FComponentVisualizer::NotifyPropertiesModified(UActorComponent* Component, 
 	}
 
 	// Rerun construction script on preview actor
-	if (Owner)
-	{
-		Owner->PostEditMove(false);
-	}
+	Owner->PostEditMove(false);
 }

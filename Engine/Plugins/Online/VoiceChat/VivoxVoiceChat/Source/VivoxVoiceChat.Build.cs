@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System.IO;
 
@@ -21,7 +21,7 @@ namespace UnrealBuildTool.Rules
 			PublicIncludePathModuleNames.AddRange(
 				new string[]
 				{
-					"VoiceChat"
+					"Voice"
 				}
 			);
 
@@ -40,6 +40,15 @@ namespace UnrealBuildTool.Rules
 					{
 						"ApplicationCore",
 						"Launch"
+					}
+				);
+			}
+			else if (Target.Platform == UnrealTargetPlatform.XboxOne)
+			{
+				PrivateDependencyModuleNames.AddRange(
+					new string[]
+					{
+						"ApplicationCore"
 					}
 				);
 			}

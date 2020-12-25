@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MaterialInterface.cpp: UMaterialInterface implementation.
@@ -35,39 +35,28 @@ UEnum* UMaterialInterface::SamplerTypeEnum = nullptr;
 
 //////////////////////////////////////////////////////////////////////////
 
-bool IsHairStrandsGeometrySupported(const EShaderPlatform Platform)
-{
-	check(Platform != SP_NumPlatforms);
-	return
-		(
-			((IsD3DPlatform(Platform, false) || IsVulkanSM5Platform(Platform)) && IsPCPlatform(Platform) && !IsMobilePlatform(Platform)) || (IsConsolePlatform(Platform) && !IsSwitchPlatform(Platform))
-		)
-		&&
-		GetMaxSupportedFeatureLevel(Platform) == ERHIFeatureLevel::SM5;
-}
-
-bool IsCompatibleWithHairStrands(const FMaterial* Material, const ERHIFeatureLevel::Type FeatureLevel)
-{
-	return
-		ERHIFeatureLevel::SM5 == FeatureLevel &&
-		Material && Material->IsUsedWithHairStrands() && 
-		(Material->GetBlendMode() == BLEND_Opaque || Material->GetBlendMode() == BLEND_Masked);
-}
-
-bool IsCompatibleWithHairStrands(EShaderPlatform Platform, const FMaterialShaderParameters& Parameters)
-{
-	return
-		IsHairStrandsGeometrySupported(Platform) &&
-		Parameters.bIsUsedWithHairStrands &&
-		(Parameters.BlendMode == BLEND_Opaque || Parameters.BlendMode == BLEND_Masked);
-}
-
-//////////////////////////////////////////////////////////////////////////
-
 /** Copies the material's relevance flags to a primitive's view relevance flags. */
 void FMaterialRelevance::SetPrimitiveViewRelevance(FPrimitiveViewRelevance& OutViewRelevance) const
 {
-	OutViewRelevance.Raw = Raw;
+	OutViewRelevance.bOpaqueRelevance = bOpaque;
+	OutViewRelevance.bMaskedRelevance = bMasked;
+	OutViewRelevance.bTranslucentVelocityRelevance = bOutputsTranslucentVelocity;
+	OutViewRelevance.bDistortionRelevance = bDistortion;
+	OutViewRelevance.bHairStrandsRelevance = bHairStrands;
+	OutViewRelevance.bSeparateTranslucencyRelevance = bSeparateTranslucency;
+	OutViewRelevance.bNormalTranslucencyRelevance = bNormalTranslucency;
+	OutViewRelevance.bUsesSceneColorCopy = bUsesSceneColorCopy;
+	OutViewRelevance.bDisableOffscreenRendering = bDisableOffscreenRendering;
+	OutViewRelevance.ShadingModelMaskRelevance = ShadingModelMask;
+	OutViewRelevance.bUsesGlobalDistanceField = bUsesGlobalDistanceField;
+	OutViewRelevance.bUsesWorldPositionOffset = bUsesWorldPositionOffset;
+	OutViewRelevance.bDecal = bDecal;
+	OutViewRelevance.bTranslucentSurfaceLighting = bTranslucentSurfaceLighting;
+	OutViewRelevance.bUsesSceneDepth = bUsesSceneDepth;
+	OutViewRelevance.bUsesSkyMaterial = bUsesSkyMaterial;
+	OutViewRelevance.bUsesSingleLayerWaterMaterial = bUsesSingleLayerWaterMaterial;
+	OutViewRelevance.bHasVolumeMaterialDomain = bHasVolumeMaterialDomain;
+	OutViewRelevance.bUsesCustomDepthStencil = bUsesCustomDepthStencil;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -120,49 +109,6 @@ void UMaterialInterface::GetUsedTexturesAndIndices(TArray<UTexture*>& OutTexture
 	OutIndices.AddDefaulted(OutTextures.Num());
 }
 
-#if WITH_EDITORONLY_DATA
-bool UMaterialInterface::GetStaticSwitchParameterValue(const FHashedMaterialParameterInfo& ParameterInfo, bool& OutValue, FGuid& OutExpressionGuid, bool bOveriddenOnly /*= false*/, bool bCheckParent /*= true*/) const
-{
-	TBitArray<> Output(false, 1); // Relying on the default allocator to be inline to avoid allocation here.
-	FStaticParamEvaluationContext EvalContext(1, &ParameterInfo);
-	if (!GetStaticSwitchParameterValues(EvalContext, Output, &OutExpressionGuid, bCheckParent))
-	{
-		return false;
-	}
-
-	if (bOveriddenOnly && !EvalContext.IsResolvedByOverride(0))
-	{
-		return false;
-	}
-
-	OutValue = Output[0];
-
-	return true;
-}
-
-bool UMaterialInterface::GetStaticComponentMaskParameterValue(const FHashedMaterialParameterInfo& ParameterInfo, bool& R, bool& G, bool& B, bool& A, FGuid& OutExpressionGuid, bool bOveriddenOnly /*= false*/, bool bCheckParent /*= true*/) const
-{
-	TBitArray<> Output(false, 4); // Relying on the default allocator to be inline to avoid allocation here.
-	FStaticParamEvaluationContext EvalContext(1, &ParameterInfo);
-	if (!GetStaticComponentMaskParameterValues(EvalContext, Output, &OutExpressionGuid, bCheckParent))
-	{
-		return false;
-	}
-	
-	if (bOveriddenOnly && !EvalContext.IsResolvedByOverride(0))
-	{
-		return false;
-	}
-
-	R = Output[0];
-	G = Output[1];
-	B = Output[2];
-	A = Output[3];
-
-	return true;
-}
-#endif
-
 FMaterialRelevance UMaterialInterface::GetRelevance_Internal(const UMaterial* Material, ERHIFeatureLevel::Type InFeatureLevel) const
 {
 	if(Material)
@@ -183,16 +129,9 @@ FMaterialRelevance UMaterialInterface::GetRelevance_Internal(const UMaterial* Ma
 		const bool bIsMobile = InFeatureLevel <= ERHIFeatureLevel::ES3_1;
 		const bool bUsesSingleLayerWaterMaterial = MaterialResource->GetShadingModels().HasShadingModel(MSM_SingleLayerWater);
 		const bool IsSinglePassWaterTranslucent = bIsMobile && bUsesSingleLayerWaterMaterial;
-		const bool bIsMobilePixelProjectedTranslucent = MaterialResource->IsUsingPlanarForwardReflections() 
-														&& IsUsingMobilePixelProjectedReflection(GetFeatureLevelShaderPlatform(InFeatureLevel));
-
-		// Note that even though XX_GameThread() api is called, this function can be called on non game thread via 
-		// GetRelevance_Concurrent()
-		bool bUsesAnisotropy = MaterialResource->GetShadingModels().HasAnyShadingModel({ MSM_DefaultLit, MSM_ClearCoat }) && 
-			MaterialResource->MaterialUsesAnisotropy_GameThread();
 
 		const EBlendMode BlendMode = (EBlendMode)GetBlendMode();
-		const bool bIsTranslucent = IsTranslucentBlendMode(BlendMode) || IsSinglePassWaterTranslucent || bIsMobilePixelProjectedTranslucent; // We want meshes with water materials to be scheduled for translucent pass on mobile. And we also have to render the meshes used for mobile pixel projection reflection in translucent pass.
+		const bool bIsTranslucent = IsTranslucentBlendMode(BlendMode) || IsSinglePassWaterTranslucent; // We want meshes with water materials to be scheduled for translucent pass on mobile.
 
 		EMaterialDomain Domain = (EMaterialDomain)MaterialResource->GetMaterialDomain();
 		bool bDecal = (Domain == MD_DeferredDecal);
@@ -210,24 +149,18 @@ FMaterialRelevance UMaterialInterface::GetRelevance_Internal(const UMaterial* Ma
 		else
 		{
 			// Check whether the material can be drawn in the separate translucency pass as per FMaterialResource::IsTranslucencyAfterDOFEnabled and IsMobileSeparateTranslucencyEnabled
-			bool bSupportsSeparateTranslucency = Material->MaterialDomain != MD_UI && Material->MaterialDomain != MD_DeferredDecal;
-			bool bMaterialSeparateTranslucency = bSupportsSeparateTranslucency && (bIsMobile ? Material->bEnableMobileSeparateTranslucency : Material->bEnableSeparateTranslucency);
-
-			// If dual blending is supported, and we are rendering separate translucency, then we also need to render a second pass to the modulation buffer.
-			// The modulation buffer can also be used for regular modulation shaders after DoF.
-			bool bMaterialSeparateModulation =
-				(MaterialResource->IsDualBlendingEnabled(GShaderPlatformForFeatureLevel[InFeatureLevel]) || BlendMode == BLEND_Modulate)
-				&& bMaterialSeparateTranslucency;
-
+			bool bSupportsSeparateTranclucency = Material->MaterialDomain != MD_UI && Material->MaterialDomain != MD_DeferredDecal;
+			bool bMaterialSeparateTranclucency = bSupportsSeparateTranclucency && (bIsMobile ? Material->bEnableMobileSeparateTranslucency : Material->bEnableSeparateTranslucency );
+			
 			MaterialRelevance.bOpaque = !bIsTranslucent;
 			MaterialRelevance.bMasked = IsMasked();
 			MaterialRelevance.bDistortion = MaterialResource->IsDistorted();
 			MaterialRelevance.bHairStrands = IsCompatibleWithHairStrands(MaterialResource, InFeatureLevel);
-			MaterialRelevance.bSeparateTranslucency = bIsTranslucent && bMaterialSeparateTranslucency;
-			MaterialRelevance.bSeparateTranslucencyModulate = bIsTranslucent && bMaterialSeparateModulation;
-			MaterialRelevance.bNormalTranslucency = bIsTranslucent && !bMaterialSeparateTranslucency;
+			MaterialRelevance.bSeparateTranslucency = bIsTranslucent && bMaterialSeparateTranclucency;
+			MaterialRelevance.bNormalTranslucency = bIsTranslucent && !bMaterialSeparateTranclucency;
 			MaterialRelevance.bDisableDepthTest = bIsTranslucent && Material->bDisableDepthTest;		
 			MaterialRelevance.bUsesSceneColorCopy = bIsTranslucent && MaterialResource->RequiresSceneColorCopy_GameThread();
+			MaterialRelevance.bDisableOffscreenRendering = BlendMode == BLEND_Modulate; // Blend Modulate must be rendered directly in the scene color.
 			MaterialRelevance.bOutputsTranslucentVelocity = Material->IsTranslucencyWritingVelocity();
 			MaterialRelevance.bUsesGlobalDistanceField = MaterialResource->UsesGlobalDistanceField_GameThread();
 			MaterialRelevance.bUsesWorldPositionOffset = MaterialResource->UsesWorldPositionOffset_GameThread();
@@ -239,7 +172,6 @@ FMaterialRelevance UMaterialInterface::GetRelevance_Internal(const UMaterial* Ma
 			MaterialRelevance.bUsesCustomDepthStencil = MaterialResource->UsesCustomDepthStencil_GameThread();
 			MaterialRelevance.bUsesSkyMaterial = Material->bIsSky;
 			MaterialRelevance.bUsesSingleLayerWaterMaterial = bUsesSingleLayerWaterMaterial;
-			MaterialRelevance.bUsesAnisotropy = bUsesAnisotropy;
 		}
 		return MaterialRelevance;
 	}
@@ -247,21 +179,6 @@ FMaterialRelevance UMaterialInterface::GetRelevance_Internal(const UMaterial* Ma
 	{
 		return FMaterialRelevance();
 	}
-}
-
-FMaterialParameterInfo UMaterialInterface::GetParameterInfo(EMaterialParameterAssociation Association, FName ParameterName, UMaterialFunctionInterface* LayerFunction) const
-{
-	int32 Index = 0;
-	if (Association != GlobalParameter)
-	{
-		Index = LayerFunction ? GetLayerParameterIndex(Association, LayerFunction) : INDEX_NONE;
-		if (Index == INDEX_NONE)
-		{
-			return FMaterialParameterInfo();
-		}
-	}
-
-	return FMaterialParameterInfo(ParameterName, Association, Index);
 }
 
 FMaterialRelevance UMaterialInterface::GetRelevance(ERHIFeatureLevel::Type InFeatureLevel) const
@@ -274,7 +191,8 @@ FMaterialRelevance UMaterialInterface::GetRelevance(ERHIFeatureLevel::Type InFea
 FMaterialRelevance UMaterialInterface::GetRelevance_Concurrent(ERHIFeatureLevel::Type InFeatureLevel) const
 {
 	// Find the interface's concrete material.
-	const UMaterial* Material = GetMaterial_Concurrent();
+	TMicRecursionGuard RecursionGuard;
+	const UMaterial* Material = GetMaterial_Concurrent(RecursionGuard);
 	return GetRelevance_Internal(Material, InFeatureLevel);
 }
 
@@ -310,10 +228,7 @@ void UMaterialInterface::SetForceMipLevelsToBeResident( bool OverrideForceMiplev
 				static IConsoleVariable* CVarAllowFastForceResident = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Streaming.AllowFastForceResident"));
 
 				Texture->bIgnoreStreamingMipBias = CVarAllowFastForceResident && CVarAllowFastForceResident->GetInt();
-				if (Texture->IsStreamable())
-				{
-					IStreamingManager::Get().GetRenderAssetStreamingManager().FastForceFullyResident(Texture);
-				}
+				IStreamingManager::Get().GetRenderAssetStreamingManager().FastForceFullyResident(Texture);
 			}
 		}
 	}
@@ -392,80 +307,78 @@ void UMaterialInterface::GetLightingGuidChain(bool bIncludeTextures, TArray<FGui
 #endif // WITH_EDITORONLY_DATA
 }
 
-bool UMaterialInterface::GetVectorParameterValue(const FHashedMaterialParameterInfo& ParameterInfo, FLinearColor& OutValue, bool bOveriddenOnly) const
+bool UMaterialInterface::GetVectorParameterValue(const FMaterialParameterInfo& ParameterInfo, FLinearColor& OutValue, bool bOveriddenOnly) const
 {
 	// is never called but because our system wants a UMaterialInterface instance we cannot use "virtual =0"
 	return false;
 }
 
-#if WITH_EDITOR
-bool UMaterialInterface::IsVectorParameterUsedAsChannelMask(const FHashedMaterialParameterInfo& ParameterInfo, bool& OutValue) const
-{
-	return false;
-}
-
-bool UMaterialInterface::GetVectorParameterChannelNames(const FHashedMaterialParameterInfo& ParameterInfo, FParameterChannelNames& OutValue) const
-{
-	return false;
-}
-
-bool UMaterialInterface::GetScalarParameterSliderMinMax(const FHashedMaterialParameterInfo& ParameterInfo, float& OutSliderMin, float& OutSliderMax) const
-{
-	return false;
-}
-#endif // WITH_EDITOR
-
-bool UMaterialInterface::GetScalarParameterValue(const FHashedMaterialParameterInfo& ParameterInfo, float& OutValue, bool bOveriddenOnly) const
-{
-	// is never called but because our system wants a UMaterialInterface instance we cannot use "virtual =0"
-	return false;
-}
-
-#if WITH_EDITOR
-bool UMaterialInterface::IsScalarParameterUsedAsAtlasPosition(const FHashedMaterialParameterInfo& ParameterInfo, bool& OutValue, TSoftObjectPtr<class UCurveLinearColor>& Curve, TSoftObjectPtr<class UCurveLinearColorAtlas>& Atlas) const
-{
-	return false;
-}
-#endif // WITH_EDITOR
-
-bool UMaterialInterface::GetScalarCurveParameterValue(const FHashedMaterialParameterInfo& ParameterInfo, FInterpCurveFloat& OutValue) const
-{
-	return false;
-}
-
-bool UMaterialInterface::GetVectorCurveParameterValue(const FHashedMaterialParameterInfo& ParameterInfo, FInterpCurveVector& OutValue) const
-{
-	return false;
-}
-
-bool UMaterialInterface::GetLinearColorParameterValue(const FHashedMaterialParameterInfo& ParameterInfo, FLinearColor& OutValue) const
-{
-	return false;
-}
-
-bool UMaterialInterface::GetLinearColorCurveParameterValue(const FHashedMaterialParameterInfo& ParameterInfo, FInterpCurveLinearColor& OutValue) const
-{
-	return false;
-}
-
-bool UMaterialInterface::GetTextureParameterValue(const FHashedMaterialParameterInfo& ParameterInfo, UTexture*& OutValue, bool bOveriddenOnly) const
-{
-	return false;
-}
-
-bool UMaterialInterface::GetRuntimeVirtualTextureParameterValue(const FHashedMaterialParameterInfo& ParameterInfo, URuntimeVirtualTexture*& OutValue, bool bOveriddenOnly) const
+bool UMaterialInterface::IsVectorParameterUsedAsChannelMask(const FMaterialParameterInfo& ParameterInfo, bool& OutValue) const
 {
 	return false;
 }
 
 #if WITH_EDITOR
-bool UMaterialInterface::GetTextureParameterChannelNames(const FHashedMaterialParameterInfo& ParameterInfo, FParameterChannelNames& OutValue) const
+bool UMaterialInterface::GetVectorParameterChannelNames(const FMaterialParameterInfo& ParameterInfo, FParameterChannelNames& OutValue) const
+{
+	return false;
+}
+
+bool UMaterialInterface::GetScalarParameterSliderMinMax(const FMaterialParameterInfo& ParameterInfo, float& OutSliderMin, float& OutSliderMax) const
 {
 	return false;
 }
 #endif
 
-bool UMaterialInterface::GetFontParameterValue(const FHashedMaterialParameterInfo& ParameterInfo, class UFont*& OutFontValue, int32& OutFontPage, bool bOveriddenOnly) const
+bool UMaterialInterface::GetScalarParameterValue(const FMaterialParameterInfo& ParameterInfo, float& OutValue, bool bOveriddenOnly) const
+{
+	// is never called but because our system wants a UMaterialInterface instance we cannot use "virtual =0"
+	return false;
+}
+
+bool UMaterialInterface::IsScalarParameterUsedAsAtlasPosition(const FMaterialParameterInfo& ParameterInfo, bool& OutValue, TSoftObjectPtr<class UCurveLinearColor>& Curve, TSoftObjectPtr<class UCurveLinearColorAtlas>& Atlas) const
+{
+	return false;
+}
+
+bool UMaterialInterface::GetScalarCurveParameterValue(const FMaterialParameterInfo& ParameterInfo, FInterpCurveFloat& OutValue) const
+{
+	return false;
+}
+
+bool UMaterialInterface::GetVectorCurveParameterValue(const FMaterialParameterInfo& ParameterInfo, FInterpCurveVector& OutValue) const
+{
+	return false;
+}
+
+bool UMaterialInterface::GetLinearColorParameterValue(const FMaterialParameterInfo& ParameterInfo, FLinearColor& OutValue) const
+{
+	return false;
+}
+
+bool UMaterialInterface::GetLinearColorCurveParameterValue(const FMaterialParameterInfo& ParameterInfo, FInterpCurveLinearColor& OutValue) const
+{
+	return false;
+}
+
+bool UMaterialInterface::GetTextureParameterValue(const FMaterialParameterInfo& ParameterInfo, UTexture*& OutValue, bool bOveriddenOnly) const
+{
+	return false;
+}
+
+bool UMaterialInterface::GetRuntimeVirtualTextureParameterValue(const FMaterialParameterInfo& ParameterInfo, URuntimeVirtualTexture*& OutValue, bool bOveriddenOnly) const
+{
+	return false;
+}
+
+#if WITH_EDITOR
+bool UMaterialInterface::GetTextureParameterChannelNames(const FMaterialParameterInfo& ParameterInfo, FParameterChannelNames& OutValue) const
+{
+	return false;
+}
+#endif
+
+bool UMaterialInterface::GetFontParameterValue(const FMaterialParameterInfo& ParameterInfo, class UFont*& OutFontValue, int32& OutFontPage, bool bOveriddenOnly) const
 {
 	return false;
 }
@@ -476,12 +389,12 @@ bool UMaterialInterface::GetRefractionSettings(float& OutBiasValue) const
 }
 
 #if WITH_EDITOR
-bool UMaterialInterface::GetParameterDesc(const FHashedMaterialParameterInfo& ParameterInfo, FString& OutDesc, const TArray<struct FStaticMaterialLayersParameter>* MaterialLayersParameters) const
+bool UMaterialInterface::GetParameterDesc(const FMaterialParameterInfo& ParameterInfo, FString& OutDesc, const TArray<struct FStaticMaterialLayersParameter>* MaterialLayersParameters) const
 {
 	return false;
 }
 
-bool UMaterialInterface::GetGroupName(const FHashedMaterialParameterInfo& ParameterInfo, FName& OutDesc) const
+bool UMaterialInterface::GetGroupName(const FMaterialParameterInfo& ParameterInfo, FName& OutDesc) const
 {
 	return false;
 }
@@ -660,23 +573,23 @@ bool FMaterialTextureInfo::IsValid(bool bCheckTextureIndex) const
 
 void UMaterialInterface::SortTextureStreamingData(bool bForceSort, bool bFinalSort)
 {
-#if WITH_EDITOR
+#if WITH_EDITORONLY_DATA
 	// In cook that was already done in the save.
 	if (!bTextureStreamingDataSorted || bForceSort)
 	{
-		TSet<const UTexture*> UsedTextures;
+		TArray<UObject*> UsedTextures;
 		if (bFinalSort)
 		{
-			TSet<const UTexture*> UnfilteredUsedTextures;
-			GetReferencedTexturesAndOverrides(UnfilteredUsedTextures);
-
-			// Sort some of the conditions that could make the texture unstreamable, to make the data leaner.
-			// Note that because we are cooking, UStreamableRenderAsset::bIsStreamable is not reliable here.
-			for (const UTexture* UnfilteredTexture : UnfilteredUsedTextures)
+			AppendReferencedTextures(UsedTextures);
+			for (int32 TextureIndex = 0; TextureIndex < UsedTextures.Num(); ++TextureIndex)
 			{
-				if (UnfilteredTexture && !UnfilteredTexture->NeverStream && UnfilteredTexture->LODGroup != TEXTUREGROUP_UI && UnfilteredTexture->MipGenSettings != TMGS_NoMipmaps)
+				UTexture* UsedTexture = Cast<UTexture>(UsedTextures[TextureIndex]);
+				// Sort some of the conditions that could make the texture unstreamable, to make the data leaner.
+				// Note that because we are cooking, UStreamableRenderAsset::bIsStreamable is not reliable here.
+				if (!UsedTexture || UsedTexture->NeverStream || UsedTexture->LODGroup == TEXTUREGROUP_UI || UsedTexture->MipGenSettings == TMGS_NoMipmaps)
 				{
-					UsedTextures.Add(UnfilteredTexture);
+					UsedTextures.RemoveAtSwap(TextureIndex);
+					--TextureIndex;
 				}
 			}
 		}
@@ -706,17 +619,19 @@ void UMaterialInterface::SortTextureStreamingData(bool bForceSort, bool bFinalSo
 		// Sort by name to be compatible with FindTextureStreamingDataIndexRange
 		TextureStreamingData.Sort([](const FMaterialTextureInfo& Lhs, const FMaterialTextureInfo& Rhs) 
 		{ 
+#if WITH_EDITORONLY_DATA
 			// Sort by register indices when the name are the same, as when initially added in the streaming data.
 			if (Lhs.TextureName == Rhs.TextureName)
 			{
 				return Lhs.TextureIndex < Rhs.TextureIndex;
 
 			}
+#endif
 			return Lhs.TextureName.LexicalLess(Rhs.TextureName); 
 		});
 		bTextureStreamingDataSorted = true;
 	}
-#endif // WITH_EDITOR
+#endif
 }
 
 extern 	TAutoConsoleVariable<int32> CVarStreamingUseMaterialData;
@@ -792,7 +707,7 @@ bool UMaterialInterface::UseAnyStreamingTexture() const
 
 	for (UTexture* Texture : Textures)
 	{
-		if (Texture && Texture->IsStreamable())
+		if (IsStreamingRenderAsset(Texture))
 		{
 			return true;
 		}
@@ -847,27 +762,3 @@ void UMaterialInterface::RemoveUserDataOfClass(TSubclassOf<UAssetUserData> InUse
 		}
 	}
 }
-
-#if WITH_EDITORONLY_DATA
-void UMaterialInterface::FStaticParamEvaluationContext::MarkParameterResolved(int32 ParamIndex, bool bIsOverride)
-{
-	FBitReference BitRef = PendingParameters[ParamIndex];
-	check(BitRef);
-	BitRef = false;
-	ResolvedByOverride[ParamIndex] = bIsOverride;
-	--PendingParameterNum;
-}
-
-void UMaterialInterface::FStaticParamEvaluationContext::ForEachPendingParameter(TFunctionRef<bool(int32, const FHashedMaterialParameterInfo&)> Op)
-{
-	for (TConstSetBitIterator<> It(PendingParameters); It; ++It)
-	{
-		int32 ParamIndex = It.GetIndex();
-		if (!Op(ParamIndex, ParameterInfos[ParamIndex]))
-		{
-			break;
-		}
-	}
-}
-
-#endif

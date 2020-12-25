@@ -1,17 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VT/RuntimeVirtualTexture.h"
 
-#include "DeviceProfiles/DeviceProfile.h"
-#include "DeviceProfiles/DeviceProfileManager.h"
 #include "EngineModule.h"
-#include "Engine/TextureLODSettings.h"
-#include "Interfaces/ITargetPlatform.h"
 #include "RendererInterface.h"
+#include "VT/VirtualTextureBuildSettings.h"
 #include "VT/RuntimeVirtualTextureNotify.h"
-#include "VT/UploadingVirtualTexture.h"
-#include "VT/VirtualTexture.h"
+#include "VT/RuntimeVirtualTextureStreamingProxy.h"
 #include "VT/VirtualTextureLevelRedirector.h"
+#include "VT/VirtualTextureScalability.h"
+#include "VT/UploadingVirtualTexture.h"
 
 namespace
 {
@@ -40,7 +38,7 @@ namespace
 			const FVirtualTextureProducerHandle& ProducerHandle,
 			uint8 LayerMask,
 			uint8 vLevel,
-			uint64 vAddress,
+			uint32 vAddress,
 			EVTRequestPagePriority Priority
 		) override
 		{
@@ -54,7 +52,7 @@ namespace
 			const FVirtualTextureProducerHandle& ProducerHandle,
 			uint8 LayerMask,
 			uint8 vLevel,
-			uint64 vAddress,
+			uint32 vAddress,
 			uint64 RequestHandle,
 			const FVTProduceTargetLayer* TargetLayers
 		) override 
@@ -66,38 +64,6 @@ namespace
 }
 
 
-/**
- * Helpers for setting up adaptive virtual texture PageTable and AdaptiveGrid sizes.
- * We could expose these values directly to the user but it would require detailed knowledge of the underlying system to choose good settings.
- */
-namespace
-{
-	/* First TileCount at which we start using adaptive virtual texture. */
-	static const int32 GMinAdaptiveSize = 11;
-	/* Maximum TileCount for adaptive virtual texture. */
-	static const int32 GMaxAdaptiveSize = 20;
-
-	/** Convert TileCount to PageTable size. This setup could be tweaked in future if necessary. */
-	static int32 GetPageTableTileCountLog2(int32 TileCountLog2)
-	{
-		check(TileCountLog2 <= GMaxAdaptiveSize);
-		if (TileCountLog2 < GMinAdaptiveSize) return TileCountLog2;
-
-		if (TileCountLog2 <= 14) return 10;
-		if (TileCountLog2 <= 17) return 11;
-		return 12;
-	}
-
-	/** Convert TileCount to Adaptive Grid size. This setup could be tweaked in future if necessary. */
-	static int32 GetAdaptiveGridSizeLog2(int32 TileCountLog2)
-	{
-		const int32 AdaptiveLevels = TileCountLog2 - GetPageTableTileCountLog2(TileCountLog2);
-		const int32 BaseAdaptiveLevels = 2; // Base value ensures that each allocated virtual texture takes a maximum of 1/16 of the full adaptive page table.
-		return AdaptiveLevels + BaseAdaptiveLevels;
-	}
-};
-
-
 /** 
  * Container for render thread resources created for a URuntimeVirtualTexture object. 
  * Any access to the resources should be on the render thread only so that access is serialized with the Init()/Release() render thread tasks.
@@ -107,7 +73,6 @@ class FRuntimeVirtualTextureRenderResource
 public:
 	FRuntimeVirtualTextureRenderResource()
 		: AllocatedVirtualTexture(nullptr)
-		, AdaptiveVirtualTexture(nullptr)
 	{
 	}
 
@@ -122,38 +87,21 @@ public:
 	IAllocatedVirtualTexture* GetAllocatedVirtualTexture() const 
 	{
 		checkSlow(IsInRenderingThread());
-		return AdaptiveVirtualTexture != nullptr ? AdaptiveVirtualTexture->GetAllocatedVirtualTexture() : AllocatedVirtualTexture;
+		return AllocatedVirtualTexture;
 	}
 
-	/** Structure for passing data to Init() that isn't in the producer description. */
-	struct FResourceInitDesc
-	{
-		bool bSinglePhysicalSpace = false;
-		bool bPrivateSpace = false;
-		bool bAdaptive = false;
-	};
-
 	/** Queues up render thread work to create resources and also releases any old resources. */
-	void Init(IVirtualTexture* InProducer, FVTProducerDescription const& InProducerDesc, FResourceInitDesc const& InInitDesc)
+	void Init(FVTProducerDescription const& InDesc, IVirtualTexture* InVirtualTextureProducer, bool InPrivateSpace)
 	{
 		FRuntimeVirtualTextureRenderResource* Resource = this;
 		
 		ENQUEUE_RENDER_COMMAND(FRuntimeVirtualTextureRenderResource_Init)(
-			[Resource, InProducer, InProducerDesc, InInitDesc](FRHICommandList& RHICmdList)
+			[Resource, InDesc, InVirtualTextureProducer, InPrivateSpace](FRHICommandList& RHICmdList)
 		{
 			FVirtualTextureProducerHandle OldProducerHandle = Resource->ProducerHandle;
 			ReleaseVirtualTexture(Resource->AllocatedVirtualTexture);
-			ReleaseVirtualTexture(Resource->AdaptiveVirtualTexture);
-			Resource->ProducerHandle = GetRendererModule().RegisterVirtualTextureProducer(InProducerDesc, InProducer);
-			
-			FAllocatedVTDescription AllocatedVTDesc;
-			FAdaptiveVTDescription AdaptiveVTDesc;
-			const bool bAdaptive = FillVTDescriptions(Resource->ProducerHandle, InProducerDesc, InInitDesc, AllocatedVTDesc, AdaptiveVTDesc);
-
-			// Only one or none of these should be allocated...
-			Resource->AllocatedVirtualTexture = !bAdaptive ? AllocateVirtualTexture(AllocatedVTDesc) : nullptr;
-			Resource->AdaptiveVirtualTexture = bAdaptive ? AllocateAdaptiveVirtualTexture(AllocatedVTDesc, AdaptiveVTDesc) : nullptr;
-
+			Resource->ProducerHandle = GetRendererModule().RegisterVirtualTextureProducer(InDesc, InVirtualTextureProducer);
+			Resource->AllocatedVirtualTexture = AllocateVirtualTexture(InDesc, Resource->ProducerHandle, InPrivateSpace);
 			// Release old producer after new one is created so that any destroy callbacks can access the new producer
 			GetRendererModule().ReleaseVirtualTextureProducer(OldProducerHandle);
 		});
@@ -164,68 +112,47 @@ public:
 	{
 		FVirtualTextureProducerHandle ProducerHandleToRelease = ProducerHandle;
 		ProducerHandle = FVirtualTextureProducerHandle();
-		IAdaptiveVirtualTexture* AdaptiveVirtualTextureToRelease = AdaptiveVirtualTexture;
-		AdaptiveVirtualTexture = nullptr;
 		IAllocatedVirtualTexture* AllocatedVirtualTextureToRelease = AllocatedVirtualTexture;
 		AllocatedVirtualTexture = nullptr;
 
 		ENQUEUE_RENDER_COMMAND(FRuntimeVirtualTextureRenderResource_Release)(
-			[ProducerHandleToRelease, AdaptiveVirtualTextureToRelease, AllocatedVirtualTextureToRelease](FRHICommandList& RHICmdList)
+			[ProducerHandleToRelease, AllocatedVirtualTextureToRelease](FRHICommandList& RHICmdList)
 		{
 			ReleaseVirtualTexture(AllocatedVirtualTextureToRelease);
-			ReleaseVirtualTexture(AdaptiveVirtualTextureToRelease);
 			GetRendererModule().ReleaseVirtualTextureProducer(ProducerHandleToRelease);
 		});
 	}
 
 protected:
-	/** Fill the allocated VT descriptions from the producer description. Returns true if this should be allocated as an adaptive virtual texture. */
-	static bool FillVTDescriptions(
-		FVirtualTextureProducerHandle const& InProducerHandle, FVTProducerDescription const& InProducerDesc, FResourceInitDesc const& InInitDesc, 
-		FAllocatedVTDescription& OutAllocatedVTDesc, FAdaptiveVTDescription& OutAdaptiveVTDesc)
+	/** Allocate in the global virtual texture system. */
+	static IAllocatedVirtualTexture* AllocateVirtualTexture(FVTProducerDescription const& InDesc, FVirtualTextureProducerHandle const& InProducerHandle, bool InPrivateSpace)
 	{
-		const int32 MinTileCountLog2 = FMath::CeilLogTwo(FMath::Min(InProducerDesc.BlockWidthInTiles, InProducerDesc.BlockHeightInTiles));
-		const int32 MaxTileCountLog2 = FMath::CeilLogTwo(FMath::Max(InProducerDesc.BlockWidthInTiles, InProducerDesc.BlockHeightInTiles));
-		const bool bAdaptive = InInitDesc.bAdaptive && MaxTileCountLog2 >= GMinAdaptiveSize;
-		const int32 PageTableSizeLog2 = bAdaptive ? GetPageTableTileCountLog2(MaxTileCountLog2) : MaxTileCountLog2;
-		const int32 AdaptiveGridSizeLog2 = bAdaptive ? GetAdaptiveGridSizeLog2(MaxTileCountLog2) : 0;
-		const int32 MaxPrivateSpaceSize = FMath::Clamp<int32>(1 << PageTableSizeLog2, VIRTUALTEXTURE_MIN_PAGETABLE_SIZE, VIRTUALTEXTURE_MAX_PAGETABLE_SIZE);
-		const bool bPrivateSpace = bAdaptive || InInitDesc.bPrivateSpace;
-
-		OutAllocatedVTDesc.Dimensions = InProducerDesc.Dimensions;
-		OutAllocatedVTDesc.TileSize = InProducerDesc.TileSize;
-		OutAllocatedVTDesc.TileBorderSize = InProducerDesc.TileBorderSize;
-		OutAllocatedVTDesc.NumTextureLayers = InProducerDesc.NumTextureLayers;
-		OutAllocatedVTDesc.bPrivateSpace = bPrivateSpace;
-		OutAllocatedVTDesc.bShareDuplicateLayers = InInitDesc.bSinglePhysicalSpace;
-		OutAllocatedVTDesc.MaxSpaceSize = bPrivateSpace ? MaxPrivateSpaceSize : 0;
-
-		for (uint32 LayerIndex = 0u; LayerIndex < InProducerDesc.NumTextureLayers; ++LayerIndex)
-		{
-			OutAllocatedVTDesc.ProducerHandle[LayerIndex] = InProducerHandle;
-			OutAllocatedVTDesc.ProducerLayerIndex[LayerIndex] = LayerIndex;
-		}
-
-		OutAdaptiveVTDesc.TileCountX = InProducerDesc.BlockWidthInTiles;
-		OutAdaptiveVTDesc.TileCountY = InProducerDesc.BlockHeightInTiles;
-		OutAdaptiveVTDesc.MaxAdaptiveLevel = FMath::Max(MaxTileCountLog2 - AdaptiveGridSizeLog2, 0);
-
-		return bAdaptive;
-	}
-
-	/** Allocate in the virtual texture system. */
-	static IAllocatedVirtualTexture* AllocateVirtualTexture(FAllocatedVTDescription const& InAllocatedVTDesc)
-	{
-		// Check for NumLayers avoids allocating for the null producer
 		IAllocatedVirtualTexture* OutAllocatedVirtualTexture = nullptr;
-		if (InAllocatedVTDesc.NumTextureLayers > 0)
-		{ 
-			OutAllocatedVirtualTexture = GetRendererModule().AllocateVirtualTexture(InAllocatedVTDesc);
+
+		// Check for NumLayers avoids allocating for the null producer
+		if (InDesc.NumTextureLayers > 0)
+		{
+			FAllocatedVTDescription VTDesc;
+			VTDesc.Dimensions = InDesc.Dimensions;
+			VTDesc.TileSize = InDesc.TileSize;
+			VTDesc.TileBorderSize = InDesc.TileBorderSize;
+			VTDesc.NumTextureLayers = InDesc.NumTextureLayers;
+			VTDesc.bPrivateSpace = InPrivateSpace;
+			VTDesc.bShareDuplicateLayers = true;
+
+			for (uint32 LayerIndex = 0u; LayerIndex < VTDesc.NumTextureLayers; ++LayerIndex)
+			{
+				VTDesc.ProducerHandle[LayerIndex] = InProducerHandle;
+				VTDesc.ProducerLayerIndex[LayerIndex] = LayerIndex;
+			}
+
+			OutAllocatedVirtualTexture = GetRendererModule().AllocateVirtualTexture(VTDesc);
 		}
+
 		return OutAllocatedVirtualTexture;
 	}
 
-	/** Release our virtual texture allocation. */
+	/** Release our virtual texture allocations  */
 	static void ReleaseVirtualTexture(IAllocatedVirtualTexture* InAllocatedVirtualTexture)
 	{
 		if (InAllocatedVirtualTexture != nullptr)
@@ -234,32 +161,39 @@ protected:
 		}
 	}
 
-	/** Allocate an adaptive virtual texture in the virtual texture system. */
-	static IAdaptiveVirtualTexture* AllocateAdaptiveVirtualTexture(FAllocatedVTDescription const& InAllocatedVTDesc, FAdaptiveVTDescription const& InAdaptiveVTDesc)
-	{
-		// Check for NumLayers avoids allocating for the null producer
-		IAdaptiveVirtualTexture* OutAdaptiveVirtualTexture = nullptr;
-		if (InAllocatedVTDesc.NumTextureLayers > 0)
-		{
-			OutAdaptiveVirtualTexture = GetRendererModule().AllocateAdaptiveVirtualTexture(InAdaptiveVTDesc, InAllocatedVTDesc);
-		}
-		return OutAdaptiveVirtualTexture;
-	}
-
-	/** Release our adaptive virtual texture allocation. */
-	static void ReleaseVirtualTexture(IAdaptiveVirtualTexture* InAdaptiveVirtualTexture)
-	{
-		if (InAdaptiveVirtualTexture != nullptr)
-		{
-			GetRendererModule().DestroyAdaptiveVirtualTexture(InAdaptiveVirtualTexture);
-		}
-	}
-
 private:
 	FVirtualTextureProducerHandle ProducerHandle;
 	IAllocatedVirtualTexture* AllocatedVirtualTexture;
-	IAdaptiveVirtualTexture* AdaptiveVirtualTexture;
 };
+
+
+URuntimeVirtualTextureStreamingProxy::URuntimeVirtualTextureStreamingProxy(const FObjectInitializer& ObjectInitializer)
+	: UTexture2D(ObjectInitializer)
+	, BuildHash(0)
+{
+}
+
+void URuntimeVirtualTextureStreamingProxy::GetVirtualTextureBuildSettings(FVirtualTextureBuildSettings& OutSettings) const
+{
+	OutSettings = Settings;
+}
+
+#if WITH_EDITOR
+
+void URuntimeVirtualTextureStreamingProxy::BeginCacheForCookedPlatformData(const ITargetPlatform* TargetPlatform)
+{
+	// Even though we skip the cook of this object for non VT platforms in URuntimeVirtualTexture::Serialize()
+	// we still load the object at cook time and kick off the DDC build. This will trigger an error in the texture DDC code.
+	// Either we need to make the DDC code more robust for non VT platforms or we can skip the process here...
+	if (!UseVirtualTexturing(GMaxRHIFeatureLevel, TargetPlatform))
+	{
+		return;
+	}
+
+	Super::BeginCacheForCookedPlatformData(TargetPlatform);
+}
+
+#endif
 
 
 URuntimeVirtualTexture::URuntimeVirtualTexture(const FObjectInitializer& ObjectInitializer)
@@ -276,35 +210,21 @@ URuntimeVirtualTexture::~URuntimeVirtualTexture()
 	delete Resource;
 }
 
-int32 URuntimeVirtualTexture::GetMaxTileCountLog2(bool InAdaptive) 
-{
-	return InAdaptive ? GMaxAdaptiveSize : VIRTUALTEXTURE_LOG2_MAX_PAGETABLE_SIZE;
-}
-
-int32 URuntimeVirtualTexture::GetPageTableSize() const
-{
-	return 1 << GetPageTableTileCountLog2(FMath::Clamp(TileCount, 0, GetMaxTileCountLog2(bAdaptive)));
-}
-
-void URuntimeVirtualTexture::GetProducerDescription(FVTProducerDescription& OutDesc, FInitSettings const& InitSettings, FTransform const& VolumeToWorld) const
+void URuntimeVirtualTexture::GetProducerDescription(FVTProducerDescription& OutDesc, FTransform const& VolumeToWorld) const
 {
 	OutDesc.Name = GetFName();
 	OutDesc.Dimensions = 2;
+	OutDesc.TileSize = GetTileSize();
+	OutDesc.TileBorderSize = GetTileBorderSize();
 	OutDesc.DepthInTiles = 1;
 	OutDesc.WidthInBlocks = 1;
 	OutDesc.HeightInBlocks = 1;
 
-	// Apply LODGroup TileSize bias here.
-	const int32 TileSizeBias = UDeviceProfileManager::Get().GetActiveProfile()->GetTextureLODSettings()->GetTextureLODGroup(LODGroup).VirtualTextureTileSizeBias;
-	OutDesc.TileSize = GetClampedTileSize(TileSize + TileSizeBias);
+	// Apply TileCount modifier here to allow size scalability option
+	const int32 TileCountBias = VirtualTextureScalability::GetRuntimeVirtualTextureSizeBias();
+	const int32 MaxSizeInTiles = GetTileCount(TileCount + TileCountBias);
 
-	OutDesc.TileBorderSize = GetTileBorderSize();
-
-	// Apply TileCount bias here.
-	const int32 TileCountBiasFromLodGroup = UDeviceProfileManager::Get().GetActiveProfile()->GetTextureLODSettings()->GetTextureLODGroup(LODGroup).VirtualTextureTileCountBias;
-	const int32 MaxSizeInTiles = GetClampedTileCount(TileCount + TileCountBiasFromLodGroup + InitSettings.TileCountBias, bAdaptive);
-
-	// Set width and height to best match the runtime virtual texture volume's aspect ratio.
+	// Set width and height to best match the runtime virtual texture volume's aspect ratio
 	const FVector VolumeSize = VolumeToWorld.GetScale3D();
 	const float VolumeSizeX = FMath::Max(FMath::Abs(VolumeSize.X), 0.0001f);
 	const float VolumeSizeY = FMath::Max(FMath::Abs(VolumeSize.Y), 0.0001f);
@@ -326,8 +246,6 @@ void URuntimeVirtualTexture::GetProducerDescription(FVTProducerDescription& OutD
 	OutDesc.BlockHeightInTiles = HeightInTiles;
 	OutDesc.MaxLevel = FMath::Max((int32)FMath::CeilLogTwo(FMath::Max(OutDesc.BlockWidthInTiles, OutDesc.BlockHeightInTiles)) - GetRemoveLowMips(), 0);
 
-	OutDesc.bContinuousUpdate = bContinuousUpdate;
-
 	OutDesc.NumTextureLayers = GetLayerCount();
 	OutDesc.NumPhysicalGroups = bSinglePhysicalSpace ? 1 : GetLayerCount();
 
@@ -348,7 +266,6 @@ int32 URuntimeVirtualTexture::GetLayerCount(ERuntimeVirtualTextureMaterialType I
 	case ERuntimeVirtualTextureMaterialType::BaseColor_Normal_Specular:
 		return 2;
 	case ERuntimeVirtualTextureMaterialType::BaseColor_Normal_Specular_YCoCg:
-	case ERuntimeVirtualTextureMaterialType::BaseColor_Normal_Specular_Mask_YCoCg:
 		return 3;
 	default:
 		break;
@@ -364,33 +281,6 @@ int32 URuntimeVirtualTexture::GetLayerCount() const
 	return GetLayerCount(MaterialType);
 }
 
-static EPixelFormat PlatformCompressedRVTFormat(EPixelFormat Format)
-{
-	if (GPixelFormats[Format].Supported)
-	{
-		return Format;
-	}
-	else if (GPixelFormats[PF_ETC2_RGB].Supported)
-	{
-		switch(Format)
-		{
-		case PF_DXT1:
-			Format = PF_ETC2_RGB;
-			break;
-		case PF_DXT5:
-			Format = PF_ETC2_RGBA;
-			break;
-		case PF_BC5:
-			Format = PF_ETC2_RG11_EAC;
-			break;
-		default:
-			check(false);
-		};
-	}
-
-	return Format;
-}
-
 EPixelFormat URuntimeVirtualTexture::GetLayerFormat(int32 LayerIndex) const
 {
 	if (LayerIndex == 0)
@@ -398,11 +288,10 @@ EPixelFormat URuntimeVirtualTexture::GetLayerFormat(int32 LayerIndex) const
 		switch (MaterialType)
 		{
 		case ERuntimeVirtualTextureMaterialType::BaseColor:
-			return bCompressTextures ? PlatformCompressedRVTFormat(PF_DXT1) : PF_B8G8R8A8;
+			return bCompressTextures ? PF_DXT1 : PF_B8G8R8A8;
 		case ERuntimeVirtualTextureMaterialType::BaseColor_Normal_Specular:
 		case ERuntimeVirtualTextureMaterialType::BaseColor_Normal_Specular_YCoCg:
-		case ERuntimeVirtualTextureMaterialType::BaseColor_Normal_Specular_Mask_YCoCg:
-			return bCompressTextures ? PlatformCompressedRVTFormat(PF_DXT5) : PF_B8G8R8A8;
+			return bCompressTextures ? PF_DXT5 : PF_B8G8R8A8;
 		case ERuntimeVirtualTextureMaterialType::WorldHeight:
 			return PF_G16;
 		default:
@@ -414,10 +303,9 @@ EPixelFormat URuntimeVirtualTexture::GetLayerFormat(int32 LayerIndex) const
 		switch (MaterialType)
 		{
 		case ERuntimeVirtualTextureMaterialType::BaseColor_Normal_Specular:
-			return bCompressTextures ? PlatformCompressedRVTFormat(PF_DXT5) : PF_B8G8R8A8;
+			return bCompressTextures ? PF_DXT5 : PF_B8G8R8A8;
 		case ERuntimeVirtualTextureMaterialType::BaseColor_Normal_Specular_YCoCg:
-		case ERuntimeVirtualTextureMaterialType::BaseColor_Normal_Specular_Mask_YCoCg:
-			return bCompressTextures ? PlatformCompressedRVTFormat(PF_BC5) : PF_B8G8R8A8;
+			return bCompressTextures ? PF_BC5 : PF_B8G8R8A8;
 		default:
 			break;
 		}
@@ -427,9 +315,7 @@ EPixelFormat URuntimeVirtualTexture::GetLayerFormat(int32 LayerIndex) const
 		switch (MaterialType)
 		{
 		case ERuntimeVirtualTextureMaterialType::BaseColor_Normal_Specular_YCoCg:
-			return bCompressTextures ? PlatformCompressedRVTFormat(PF_DXT1) : PF_B8G8R8A8;
-		case ERuntimeVirtualTextureMaterialType::BaseColor_Normal_Specular_Mask_YCoCg:
-			return bCompressTextures ? PlatformCompressedRVTFormat(PF_DXT5) : PF_B8G8R8A8;
+			return bCompressTextures ? PF_DXT1 : PF_B8G8R8A8;
 		default:
 			break;
 		}
@@ -449,7 +335,6 @@ bool URuntimeVirtualTexture::IsLayerSRGB(int32 LayerIndex) const
 		// Only BaseColor layer is sRGB
 		return LayerIndex == 0;
 	case ERuntimeVirtualTextureMaterialType::BaseColor_Normal_Specular_YCoCg:
-	case ERuntimeVirtualTextureMaterialType::BaseColor_Normal_Specular_Mask_YCoCg:
 	case ERuntimeVirtualTextureMaterialType::WorldHeight:
 		return false;
 	default:
@@ -463,15 +348,19 @@ bool URuntimeVirtualTexture::IsLayerSRGB(int32 LayerIndex) const
 
 bool URuntimeVirtualTexture::IsLayerYCoCg(int32 LayerIndex) const
 {
-	switch (MaterialType)
-	{
-	case ERuntimeVirtualTextureMaterialType::BaseColor_Normal_Specular_YCoCg:
-	case ERuntimeVirtualTextureMaterialType::BaseColor_Normal_Specular_Mask_YCoCg:
-		return LayerIndex == 0;
-	default:
-		break;
-	}
-	return false;
+	return MaterialType == ERuntimeVirtualTextureMaterialType::BaseColor_Normal_Specular_YCoCg && LayerIndex == 0;
+}
+
+int32 URuntimeVirtualTexture::GetEstimatedPageTableTextureMemoryKb() const
+{
+	//todo[vt]: Estimate memory usage
+	return 0;
+}
+
+int32 URuntimeVirtualTexture::GetEstimatedPhysicalTextureMemoryKb() const
+{
+	//todo[vt]: Estimate memory usage
+	return 0;
 }
 
 FVirtualTextureProducerHandle URuntimeVirtualTexture::GetProducerHandle() const
@@ -486,31 +375,19 @@ IAllocatedVirtualTexture* URuntimeVirtualTexture::GetAllocatedVirtualTexture() c
 
 FVector4 URuntimeVirtualTexture::GetUniformParameter(int32 Index) const
 {
-	switch (Index)
-	{
-	case ERuntimeVirtualTextureShaderUniform_WorldToUVTransform0: return WorldToUVTransformParameters[0];
-	case ERuntimeVirtualTextureShaderUniform_WorldToUVTransform1: return WorldToUVTransformParameters[1];
-	case ERuntimeVirtualTextureShaderUniform_WorldToUVTransform2: return WorldToUVTransformParameters[2];
-	case ERuntimeVirtualTextureShaderUniform_WorldHeightUnpack: return WorldHeightUnpackParameter;
-	default:
-		break;
-	}
+	check(Index >= 0 && Index < sizeof(WorldToUVTransformParameters)/sizeof(WorldToUVTransformParameters[0]));
 	
-	check(0);
-	return FVector4(ForceInitToZero);
+	return WorldToUVTransformParameters[Index];
 }
 
-void URuntimeVirtualTexture::Initialize(IVirtualTexture* InProducer, FVTProducerDescription const& InProducerDesc, FTransform const& InVolumeToWorld, FBox const& InWorldBounds)
+void URuntimeVirtualTexture::Initialize(IVirtualTexture* InProducer, FTransform const& VolumeToWorld)
 {
 	//todo[vt]: possible issues with precision in large worlds here it might be better to calculate/upload camera space relative transform per frame?
-	WorldToUVTransformParameters[0] = InVolumeToWorld.GetTranslation();
-	WorldToUVTransformParameters[1] = InVolumeToWorld.GetUnitAxis(EAxis::X) * 1.f / InVolumeToWorld.GetScale3D().X;
-	WorldToUVTransformParameters[2] = InVolumeToWorld.GetUnitAxis(EAxis::Y) * 1.f / InVolumeToWorld.GetScale3D().Y;
+	WorldToUVTransformParameters[0] = VolumeToWorld.GetTranslation();
+	WorldToUVTransformParameters[1] = VolumeToWorld.GetUnitAxis(EAxis::X) * 1.f / VolumeToWorld.GetScale3D().X;
+	WorldToUVTransformParameters[2] = VolumeToWorld.GetUnitAxis(EAxis::Y) * 1.f / VolumeToWorld.GetScale3D().Y;
 
-	const float HeightRange = FMath::Max(InWorldBounds.Max.Z - InWorldBounds.Min.Z, 1.f);
-	WorldHeightUnpackParameter = FVector4(HeightRange, InWorldBounds.Min.Z, 0.f, 0.f);
-
-	InitResource(InProducer, InProducerDesc);
+	InitResource(InProducer, VolumeToWorld);
 }
 
 void URuntimeVirtualTexture::Release()
@@ -518,23 +395,19 @@ void URuntimeVirtualTexture::Release()
 	InitNullResource();
 }
 
-void URuntimeVirtualTexture::InitResource(IVirtualTexture* InProducer, FVTProducerDescription const& InProducerDesc)
+void URuntimeVirtualTexture::InitResource(IVirtualTexture* InProducer, FTransform const& VolumeToWorld)
 {
-	FRuntimeVirtualTextureRenderResource::FResourceInitDesc InitDesc;
-	InitDesc.bSinglePhysicalSpace = bSinglePhysicalSpace;
-	InitDesc.bPrivateSpace = bPrivateSpace;
-	InitDesc.bAdaptive = bAdaptive;
-
-	Resource->Init(InProducer, InProducerDesc, InitDesc);
+	FVTProducerDescription Desc;
+	GetProducerDescription(Desc, VolumeToWorld);
+	Resource->Init(Desc, InProducer, bPrivateSpace);
 }
 
 void URuntimeVirtualTexture::InitNullResource()
 {
+	FVTProducerDescription Desc;
+	FNullVirtualTextureProducer::GetNullProducerDescription(Desc);
 	FNullVirtualTextureProducer* Producer = new FNullVirtualTextureProducer;
-	FVTProducerDescription ProducerDesc;
-	FNullVirtualTextureProducer::GetNullProducerDescription(ProducerDesc);
-	FRuntimeVirtualTextureRenderResource::FResourceInitDesc InitDesc;
-	Resource->Init(Producer, ProducerDesc, InitDesc);
+	Resource->Init(Desc, Producer, false);
 }
 
 void URuntimeVirtualTexture::GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const
@@ -545,6 +418,22 @@ void URuntimeVirtualTexture::GetAssetRegistryTags(TArray<FAssetRegistryTag>& Out
 	OutTags.Add(FAssetRegistryTag("TileCount", FString::FromInt(GetTileCount()), FAssetRegistryTag::TT_Numerical));
 	OutTags.Add(FAssetRegistryTag("TileSize", FString::FromInt(GetTileSize()), FAssetRegistryTag::TT_Numerical));
 	OutTags.Add(FAssetRegistryTag("TileBorderSize", FString::FromInt(GetTileBorderSize()), FAssetRegistryTag::TT_Numerical));
+}
+
+void URuntimeVirtualTexture::Serialize(FArchive& Ar)
+{
+	if (Ar.IsCooking() && Ar.IsSaving() && !UseVirtualTexturing(GMaxRHIFeatureLevel, Ar.CookingTarget()))
+	{
+		// Clear StreamingTexture during cook for platforms that don't support virtual texturing
+		URuntimeVirtualTextureStreamingProxy* StreamingTextureBackup = StreamingTexture;
+		StreamingTexture = nullptr;
+		Super::Serialize(Ar);
+		StreamingTexture = StreamingTextureBackup;
+	}
+	else
+	{
+		Super::Serialize(Ar);
+	}
 }
 
 void URuntimeVirtualTexture::PostLoad()
@@ -564,9 +453,6 @@ void URuntimeVirtualTexture::PostLoad()
 		MaterialType = ERuntimeVirtualTextureMaterialType::BaseColor_Normal_Specular;
 	}
 
-	// Remove StreamingTexture_DEPRECATED
-	StreamingTexture_DEPRECATED = nullptr;
-
 	Super::PostLoad();
 }
 
@@ -576,57 +462,106 @@ void URuntimeVirtualTexture::PostEditChangeProperty(FPropertyChangedEvent& Prope
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
-	// Adjust TileCount when adaptive setting is toggled
-	if (PropertyChangedEvent.Property && PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(URuntimeVirtualTexture, bAdaptive))
+	// Invalidate StreamingTexture if it is no longer compatible with this object
+	if (StreamingTexture != nullptr && StreamingTexture->BuildHash != GetStreamingTextureBuildHash())
 	{
-		TileCount = FMath::Min(TileCount, GetMaxTileCountLog2(bAdaptive));
+		StreamingTexture = nullptr;
 	}
 
 	RuntimeVirtualTexture::NotifyComponents(this);
 	RuntimeVirtualTexture::NotifyPrimitives(this);
 }
 
+uint32 URuntimeVirtualTexture::GetStreamingTextureBuildHash() const
+{
+	union FPackedSettings
+	{
+		uint32 PackedValue;
+		struct
+		{
+			uint32 MaterialType : 3;
+			uint32 CompressTextures : 1;
+			uint32 SinglePhysicalSpace : 1;
+			uint32 TileSize : 4;
+			uint32 TileBorderSize : 4;
+			uint32 StreamLowMips : 4;
+		};
+	};
+
+	FPackedSettings Settings;
+	Settings.PackedValue = 0;
+	Settings.MaterialType = (uint32)MaterialType;
+	Settings.CompressTextures = (uint32)bCompressTextures;
+	Settings.SinglePhysicalSpace = (uint32)bSinglePhysicalSpace;
+	Settings.TileSize = (uint32)TileSize;
+	Settings.TileBorderSize = (uint32)TileBorderSize;
+	Settings.StreamLowMips = (uint32)GetStreamLowMips();
+
+	return Settings.PackedValue;
+}
+
+void URuntimeVirtualTexture::InitializeStreamingTexture(uint32 InSizeX, uint32 InSizeY, uint8* InData)
+{
+	// Release current producer. 
+	// It may reference data inside StreamingTexture which could be garbage collected any time from now.
+	InitNullResource();
+
+	StreamingTexture = NewObject<URuntimeVirtualTextureStreamingProxy>(GetOutermost(), TEXT("StreamingTexture"));
+	StreamingTexture->VirtualTextureStreaming = true;
+	StreamingTexture->bSinglePhysicalSpace = bSinglePhysicalSpace;
+
+	StreamingTexture->Settings.Init();
+	StreamingTexture->Settings.TileSize = GetTileSize();
+	StreamingTexture->Settings.TileBorderSize = GetTileBorderSize();
+
+	StreamingTexture->BuildHash = GetStreamingTextureBuildHash();
+
+	const int32 LayerCount = GetLayerCount();
+	check(LayerCount <= RuntimeVirtualTexture::MaxTextureLayers);
+	ETextureSourceFormat LayerFormats[RuntimeVirtualTexture::MaxTextureLayers];
+
+	for (int32 Layer = 0; Layer < LayerCount; Layer++)
+	{
+		EPixelFormat LayerFormat = GetLayerFormat(Layer);
+		LayerFormats[Layer] = LayerFormat == PF_G16 ? TSF_G16 : TSF_BGRA8;
+
+		FTextureFormatSettings FormatSettings;
+		FormatSettings.CompressionSettings = LayerFormat == PF_BC5 ? TC_Normalmap : TC_Default;
+		FormatSettings.CompressionNone = LayerFormat == PF_B8G8R8A8 || LayerFormat == PF_G16;
+		FormatSettings.CompressionNoAlpha = LayerFormat == PF_DXT1 || LayerFormat == PF_BC5;
+		FormatSettings.CompressionYCoCg = IsLayerYCoCg(Layer);
+		FormatSettings.SRGB = IsLayerSRGB(Layer);
+		
+		StreamingTexture->SetLayerFormatSettings(Layer, FormatSettings);
+	}
+
+	StreamingTexture->Source.InitLayered(InSizeX, InSizeY, 1, LayerCount, 1, LayerFormats, InData);
+
+	StreamingTexture->PostEditChange();
+}
+
 #endif
 
-namespace RuntimeVirtualTexture
+IVirtualTexture* URuntimeVirtualTexture::CreateStreamingTextureProducer(IVirtualTexture* InProducer, int32 InMaxLevel, int32& OutTransitionLevel) const
 {
-	IVirtualTexture* CreateStreamingTextureProducer(
-		IVirtualTexture* InProducer,
-		FVTProducerDescription const& InProducerDesc,
-		UVirtualTexture2D* InStreamingTexture,
-		int32 InMaxLevel,
-		int32& OutTransitionLevel)
+	if (StreamingTexture != nullptr)
 	{
-		if (InProducer != nullptr && InStreamingTexture != nullptr)
+		FTexturePlatformData** StreamingTextureData = StreamingTexture->GetRunningPlatformData();
+		if (StreamingTextureData != nullptr && *StreamingTextureData != nullptr)
 		{
-			FTexturePlatformData** StreamingTextureData = InStreamingTexture->GetRunningPlatformData();
-			if (StreamingTextureData != nullptr && *StreamingTextureData != nullptr)
-			{
-				FVirtualTextureBuiltData* VTData = (*StreamingTextureData)->VTData;
+			FVirtualTextureBuiltData* VTData = (*StreamingTextureData)->VTData;
+			check(GetTileSize() == VTData->TileSize);
+			check(GetTileBorderSize() == VTData->TileBorderSize);
 
-				ensure(InProducerDesc.TileSize == VTData->TileSize);
-				ensure(InProducerDesc.TileBorderSize == VTData->TileBorderSize);
-				if (InProducerDesc.TileSize == VTData->TileSize && InProducerDesc.TileBorderSize == VTData->TileBorderSize)
-				{
-					// Note that streaming data may have mips added/removed during cook.
-					const uint32 Size = FMath::Max(VTData->Width, VTData->Height);
-					const uint32 NumTiles = FMath::DivideAndRoundUp(Size, VTData->TileSize);
-					const uint32 NumMips = FMath::CeilLogTwo(NumTiles) + 1;
+			// Streaming data may have mips removed during cook
+			const int32 NumStreamMips = FMath::Min(GetStreamLowMips(), (*StreamingTextureData)->GetNumVTMips());
 
-					// If the streaming texture is bigger then the runtime virtual texture then offset the first mip.
-					const int32 TransitionLevel = InMaxLevel - (int32)NumMips + 1;
-					const int32 FirstStreamingMip = TransitionLevel < 0 ? -TransitionLevel : 0;
-					const int32 AdjustedTransitionLevel = TransitionLevel + FirstStreamingMip;
-					OutTransitionLevel = TransitionLevel;
-
-					IVirtualTexture* StreamingProducer = new FUploadingVirtualTexture(VTData, FirstStreamingMip);
-					return new FVirtualTextureLevelRedirector(InProducer, StreamingProducer, AdjustedTransitionLevel);
-				}
-			}
+			OutTransitionLevel = FMath::Max(InMaxLevel - NumStreamMips + 1, 0);
+			IVirtualTexture* StreamingProducer = new FUploadingVirtualTexture(VTData, 0);
+			return new FVirtualTextureLevelRedirector(InProducer, StreamingProducer, OutTransitionLevel);
 		}
-
-		// Can't create a streaming producer so return original producer.
-		OutTransitionLevel = InMaxLevel;
-		return InProducer;
 	}
+	// Can't create a streaming producer so return original producer.
+	OutTransitionLevel = InMaxLevel;
+	return InProducer;
 }

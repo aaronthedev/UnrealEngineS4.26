@@ -17,7 +17,6 @@
 #define VHACD_VOLUME_H
 #include "vhacdMesh.h"
 #include "vhacdVector.h"
-#include "../public/VHACD.h"
 #include <assert.h>
 
 #ifdef _MSC_VER
@@ -29,10 +28,9 @@ namespace VHACD {
 
 enum VOXEL_VALUE {
     PRIMITIVE_UNDEFINED = 0,
-    PRIMITIVE_OUTSIDE_SURFACE_TOWALK = 1,
-    PRIMITIVE_OUTSIDE_SURFACE = 2,
-    PRIMITIVE_INSIDE_SURFACE = 3,
-    PRIMITIVE_ON_SURFACE = 4
+    PRIMITIVE_OUTSIDE_SURFACE = 1,
+    PRIMITIVE_INSIDE_SURFACE = 2,
+    PRIMITIVE_ON_SURFACE = 3
 };
 
 struct Voxel {
@@ -216,29 +214,26 @@ public:
     ~Volume(void);
 
     //! Constructor.
-    Volume(const IVHACD::Parameters& params);
+    Volume();
 
     //! Voxelize
     template <class T>
     void Voxelize(const T* const points, const uint32_t stridePoints, const uint32_t nPoints,
         const int32_t* const triangles, const uint32_t strideTriangles, const uint32_t nTriangles,
         const size_t dim, const Vec3<double>& barycenter, const double (&rot)[3][3]);
-
-    // Voxel data memory ordering is cache friendly when iterating on (i,j,k) in that order which
-    // is the most typical usage in the whole library.
     unsigned char& GetVoxel(const size_t i, const size_t j, const size_t k)
     {
         assert(i < m_dim[0] || i >= 0);
         assert(j < m_dim[0] || j >= 0);
         assert(k < m_dim[0] || k >= 0);
-        return m_data[k + j * m_dim[2] + i * m_dim[1] * m_dim[2]];
+        return m_data[i + j * m_dim[0] + k * m_dim[0] * m_dim[1]];
     }
     const unsigned char& GetVoxel(const size_t i, const size_t j, const size_t k) const
     {
         assert(i < m_dim[0] || i >= 0);
         assert(j < m_dim[0] || j >= 0);
         assert(k < m_dim[0] || k >= 0);
-        return m_data[k + j * m_dim[2] + i * m_dim[1] * m_dim[2]];
+        return m_data[i + j * m_dim[0] + k * m_dim[0] * m_dim[1]];
     }
     const size_t GetNPrimitivesOnSurf() const { return m_numVoxelsOnSurface; }
     const size_t GetNPrimitivesInsideSurf() const { return m_numVoxelsInsideSurface; }
@@ -248,9 +243,8 @@ public:
     void AlignToPrincipalAxes(double (&rot)[3][3]) const;
 
 private:
-    void MarkOutsideSurface(const size_t i0, const size_t j0, const size_t k0, const size_t i1,
+    void FillOutsideSurface(const size_t i0, const size_t j0, const size_t k0, const size_t i1,
         const size_t j1, const size_t k1);
-    void FillOutsideSurface();
     void FillInsideSurface();
     template <class T>
     void ComputeBB(const T* const points, const uint32_t stridePoints, const uint32_t nPoints,
@@ -258,7 +252,6 @@ private:
     void Allocate();
     void Free();
 
-    const IVHACD::Parameters& m_params;
     Vec3<double> m_minBB;
     Vec3<double> m_maxBB;
     double m_scale;
@@ -323,16 +316,13 @@ void Volume::Voxelize(const T* const points, const uint32_t stridePoints, const 
 
     double d[3] = { m_maxBB[0] - m_minBB[0], m_maxBB[1] - m_minBB[1], m_maxBB[2] - m_minBB[2] };
     double r;
-    // Equal comparison is important here to avoid taking the last branch when d[0] == d[1] with d[2] being the smallest dimension.
-    // That would lead to dimensions in i and j to be a lot bigger than expected and make the
-    // amount of voxels in the volume totally unmanageable.
-    if (d[0] >= d[1] && d[0] >= d[2]) {
+    if (d[0] > d[1] && d[0] > d[2]) {
         r = d[0];
         m_dim[0] = dim;
         m_dim[1] = 2 + static_cast<size_t>(dim * d[1] / d[0]);
         m_dim[2] = 2 + static_cast<size_t>(dim * d[2] / d[0]);
     }
-    else if (d[1] >= d[0] && d[1] >= d[2]) {
+    else if (d[1] > d[0] && d[1] > d[2]) {
         r = d[1];
         m_dim[1] = dim;
         m_dim[0] = 2 + static_cast<size_t>(dim * d[0] / d[1]);
@@ -422,14 +412,12 @@ void Volume::Voxelize(const T* const points, const uint32_t stridePoints, const 
             }
         }
     }
-
-    MarkOutsideSurface(0, 0, 0, m_dim[0], m_dim[1], 1);
-    MarkOutsideSurface(0, 0, m_dim[2] - 1, m_dim[0], m_dim[1], m_dim[2]);
-    MarkOutsideSurface(0, 0, 0, m_dim[0], 1, m_dim[2]);
-    MarkOutsideSurface(0, m_dim[1] - 1, 0, m_dim[0], m_dim[1], m_dim[2]);
-    MarkOutsideSurface(0, 0, 0, 1, m_dim[1], m_dim[2]);
-    MarkOutsideSurface(m_dim[0] - 1, 0, 0, m_dim[0], m_dim[1], m_dim[2]);
-    FillOutsideSurface();
+    FillOutsideSurface(0, 0, 0, m_dim[0], m_dim[1], 1);
+    FillOutsideSurface(0, 0, m_dim[2] - 1, m_dim[0], m_dim[1], m_dim[2]);
+    FillOutsideSurface(0, 0, 0, m_dim[0], 1, m_dim[2]);
+    FillOutsideSurface(0, m_dim[1] - 1, 0, m_dim[0], m_dim[1], m_dim[2]);
+    FillOutsideSurface(0, 0, 0, 1, m_dim[1], m_dim[2]);
+    FillOutsideSurface(m_dim[0] - 1, 0, 0, m_dim[0], m_dim[1], m_dim[2]);
     FillInsideSurface();
 }
 }

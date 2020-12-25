@@ -1,22 +1,20 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LoadingTimingTrack.h"
 
 #include "Fonts/FontMeasure.h"
-#include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Styling/SlateBrush.h"
 #include "TraceServices/AnalysisService.h"
+#include "TraceServices/SessionService.h"
 
 // Insights
+#include "Insights/InsightsManager.h"
 #include "Insights/Common/PaintUtils.h"
 #include "Insights/Common/TimeUtils.h"
-#include "Insights/InsightsManager.h"
-#include "Insights/ITimingViewSession.h"
 #include "Insights/ViewModels/TimingEvent.h"
 #include "Insights/ViewModels/TimingTrackViewport.h"
+#include "Insights/ViewModels/TimingViewDrawHelper.h"
 #include "Insights/ViewModels/TooltipDrawState.h"
-#include "Insights/ViewModels/TimingEventSearch.h"
-#include "Insights/Widgets/STimingView.h"
 
 #define LOCTEXT_NAMESPACE "LoadingTimingTrack"
 
@@ -24,139 +22,60 @@
 // FLoadingSharedState
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void FLoadingSharedState::OnBeginSession(Insights::ITimingViewSession& InSession)
+void FLoadingSharedState::Reset()
 {
-	if (&InSession != TimingView)
-	{
-		return;
-	}
-
-	if (TimingView && TimingView->IsAssetLoadingModeEnabled())
-	{
-		bShowHideAllLoadingTracks = true;
-	}
-	else
-	{
-		bShowHideAllLoadingTracks = false;
-	}
-
-	LoadingTracks.Reset();
-
-	LoadTimeProfilerTimelineCount = 0;
-
-	SetColorSchema(3);
+	LoadingGetEventNameFn = FLoadingTrackGetEventNameDelegate::CreateRaw(this, &FLoadingSharedState::GetEventName);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void FLoadingSharedState::OnEndSession(Insights::ITimingViewSession& InSession)
+const TCHAR* GetName(ELoadTimeProfilerPackageEventType Type)
 {
-	if (&InSession != TimingView)
+	switch (Type)
 	{
-		return;
-	}
-
-	bShowHideAllLoadingTracks = false;
-
-	LoadingTracks.Reset();
-
-	LoadTimeProfilerTimelineCount = 0;
-
-	GetEventNameDelegate = nullptr;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void FLoadingSharedState::Tick(Insights::ITimingViewSession& InSession, const Trace::IAnalysisSession& InAnalysisSession)
-{
-	if (&InSession != TimingView)
-	{
-		return;
-	}
-
-	const Trace::ILoadTimeProfilerProvider* LoadTimeProfilerProvider = Trace::ReadLoadTimeProfilerProvider(InAnalysisSession);
-	if (LoadTimeProfilerProvider)
-	{
-		Trace::FAnalysisSessionReadScope SessionReadScope(InAnalysisSession);
-
-		const uint64 CurrentLoadTimeProfilerTimelineCount = LoadTimeProfilerProvider->GetTimelineCount();
-		if (CurrentLoadTimeProfilerTimelineCount != LoadTimeProfilerTimelineCount)
-		{
-			LoadTimeProfilerTimelineCount = CurrentLoadTimeProfilerTimelineCount;
-
-			// Iterate through threads.
-			const Trace::IThreadProvider& ThreadProvider = Trace::ReadThreadProvider(InAnalysisSession);
-			ThreadProvider.EnumerateThreads([this, &InSession, LoadTimeProfilerProvider](const Trace::FThreadInfo& ThreadInfo)
-			{
-				// Check available Asset Loading tracks.
-				uint32 LoadingTimelineIndex;
-				if (LoadTimeProfilerProvider->GetCpuThreadTimelineIndex(ThreadInfo.Id, LoadingTimelineIndex))
-				{
-					if (!LoadingTracks.Contains(LoadingTimelineIndex))
-					{
-						//const TCHAR* const GroupName = ThreadInfo.GroupName ? ThreadInfo.GroupName : ThreadInfo.Name;
-						const FString TrackName(ThreadInfo.Name && *ThreadInfo.Name ? FString::Printf(TEXT("Loading - %s"), ThreadInfo.Name) : FString::Printf(TEXT("Loading - Thread %u"), ThreadInfo.Id));
-						TSharedRef<FLoadingTimingTrack> LoadingThreadTrack = MakeShared<FLoadingTimingTrack>(*this, LoadingTimelineIndex, TrackName);
-						static_assert(FTimingTrackOrder::GroupRange > 1000, "Order group range too small");
-						LoadingThreadTrack->SetOrder(FTimingTrackOrder::Cpu - 1000 + LoadingTracks.Num() * 10);
-						LoadingThreadTrack->SetVisibilityFlag(bShowHideAllLoadingTracks);
-						InSession.AddScrollableTrack(LoadingThreadTrack);
-						LoadingTracks.Add(LoadingTimelineIndex, LoadingThreadTrack);
-					}
-				}
-			});
-		}
+	case LoadTimeProfilerPackageEventType_CreateLinker:				return TEXT("CreateLinker");
+	case LoadTimeProfilerPackageEventType_FinishLinker:				return TEXT("FinishLinker");
+	case LoadTimeProfilerPackageEventType_StartImportPackages:		return TEXT("StartImportPackages");
+	case LoadTimeProfilerPackageEventType_SetupImports:				return TEXT("SetupImports");
+	case LoadTimeProfilerPackageEventType_SetupExports:				return TEXT("SetupExports");
+	case LoadTimeProfilerPackageEventType_ProcessImportsAndExports:	return TEXT("ProcessImportsAndExports");
+	case LoadTimeProfilerPackageEventType_ExportsDone:				return TEXT("ExportsDone");
+	case LoadTimeProfilerPackageEventType_PostLoadWait:				return TEXT("PostLoadWait");
+	case LoadTimeProfilerPackageEventType_StartPostLoad:			return TEXT("StartPostLoad");
+	case LoadTimeProfilerPackageEventType_Tick:						return TEXT("Tick");
+	case LoadTimeProfilerPackageEventType_Finish:					return TEXT("Finish");
+	case LoadTimeProfilerPackageEventType_DeferredPostLoad:			return TEXT("DeferredPostLoad");
+	case LoadTimeProfilerPackageEventType_None:						return TEXT("None");
+	default:														return TEXT("");
 	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void FLoadingSharedState::ExtendFilterMenu(Insights::ITimingViewSession& InSession, FMenuBuilder& InOutMenuBuilder)
+const TCHAR* GetName(ELoadTimeProfilerObjectEventType Type)
 {
-	if (&InSession != TimingView)
+	switch (Type)
 	{
-		return;
-	}
-
-	InOutMenuBuilder.BeginSection("Asset Loading", LOCTEXT("AssetLoadingHeading", "Asset Loading"));
-	{
-		InOutMenuBuilder.AddMenuEntry(
-			LOCTEXT("ShowAllLoadingTracks", "Asset Loading Tracks - L"),
-			LOCTEXT("ShowAllLoadingTracks_Tooltip", "Show/hide the Asset Loading tracks"),
-			FSlateIcon(),
-			FUIAction(FExecuteAction::CreateSP(this, &FLoadingSharedState::ShowHideAllLoadingTracks),
-					  FCanExecuteAction(),
-					  FIsActionChecked::CreateSP(this, &FLoadingSharedState::IsAllLoadingTracksToggleOn)),
-			NAME_None, //"QuickFilterSeparator",
-			EUserInterfaceActionType::ToggleButton
-		);
-	}
-	InOutMenuBuilder.EndSection();
+	case LoadTimeProfilerObjectEventType_Create:	return TEXT("Create");
+	case LoadTimeProfilerObjectEventType_Serialize:	return TEXT("Serialize");
+	case LoadTimeProfilerObjectEventType_PostLoad:	return TEXT("PostLoad");
+	case LoadTimeProfilerObjectEventType_None:		return TEXT("None");
+	default:										return TEXT("");
+	};
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void FLoadingSharedState::SetAllLoadingTracksToggle(bool bOnOff)
+const TCHAR* FLoadingSharedState::GetEventNameByPackageEventType(uint32 Depth, const Trace::FLoadTimeProfilerCpuEvent& Event) const
 {
-	bShowHideAllLoadingTracks = bOnOff;
-
-	for (const auto& KV : LoadingTracks)
-	{
-		FLoadingTimingTrack& Track = *KV.Value;
-		Track.SetVisibilityFlag(bShowHideAllLoadingTracks);
-	}
-
-	if (TimingView)
-	{
-		TimingView->OnTrackVisibilityChanged();
-	}
+	return GetName(Event.PackageEventType);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-const TCHAR* FLoadingSharedState::GetEventNameByEventType(uint32 Depth, const Trace::FLoadTimeProfilerCpuEvent& Event) const
+const TCHAR* FLoadingSharedState::GetEventNameByExportEventType(uint32 Depth, const Trace::FLoadTimeProfilerCpuEvent& Event) const
 {
-	return Trace::GetLoadTimeProfilerObjectEventTypeString(Event.EventType);
+	return GetName(Event.ExportEventType);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -175,7 +94,7 @@ const TCHAR* FLoadingSharedState::GetEventNameByExportClassName(uint32 Depth, co
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-const TCHAR* FLoadingSharedState::GetEventNameByPackageAndExportClassName(uint32 Depth, const Trace::FLoadTimeProfilerCpuEvent& Event) const
+const TCHAR* FLoadingSharedState::GetEventName(uint32 Depth, const Trace::FLoadTimeProfilerCpuEvent& Event) const
 {
 	if (Depth == 0)
 	{
@@ -195,9 +114,9 @@ const TCHAR* FLoadingSharedState::GetEventNameByPackageAndExportClassName(uint32
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-const TCHAR* FLoadingSharedState::GetEventName(uint32 Depth, const Trace::FLoadTimeProfilerCpuEvent& Event) const
+const TCHAR* FLoadingSharedState::GetEventNameEx(uint32 Depth, const Trace::FLoadTimeProfilerCpuEvent& Event) const
 {
-	return GetEventNameDelegate.Execute(Depth, Event);
+	return LoadingGetEventNameFn.Execute(Depth, Event);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -206,163 +125,255 @@ void FLoadingSharedState::SetColorSchema(int32 Schema)
 {
 	switch (Schema)
 	{
-		case 0: GetEventNameDelegate = FLoadingTrackGetEventNameDelegate::CreateRaw(this, &FLoadingSharedState::GetEventNameByEventType); break;
-		case 1: GetEventNameDelegate = FLoadingTrackGetEventNameDelegate::CreateRaw(this, &FLoadingSharedState::GetEventNameByPackageName); break;
-		case 2: GetEventNameDelegate = FLoadingTrackGetEventNameDelegate::CreateRaw(this, &FLoadingSharedState::GetEventNameByExportClassName); break;
-		case 3: GetEventNameDelegate = FLoadingTrackGetEventNameDelegate::CreateRaw(this, &FLoadingSharedState::GetEventNameByPackageAndExportClassName); break;
+		case 0: LoadingGetEventNameFn = FLoadingTrackGetEventNameDelegate::CreateRaw(this, &FLoadingSharedState::GetEventNameByPackageEventType); break;
+		case 1: LoadingGetEventNameFn = FLoadingTrackGetEventNameDelegate::CreateRaw(this, &FLoadingSharedState::GetEventNameByExportEventType); break;
+		case 2: LoadingGetEventNameFn = FLoadingTrackGetEventNameDelegate::CreateRaw(this, &FLoadingSharedState::GetEventNameByPackageName); break;
+		case 3: LoadingGetEventNameFn = FLoadingTrackGetEventNameDelegate::CreateRaw(this, &FLoadingSharedState::GetEventNameByExportClassName); break;
+		case 4: LoadingGetEventNameFn = FLoadingTrackGetEventNameDelegate::CreateRaw(this, &FLoadingSharedState::GetEventName); break;
 	};
-
-	for (const auto& KV : LoadingTracks)
-	{
-		FLoadingTimingTrack& Track = *KV.Value;
-		Track.SetDirtyFlag();
-	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // FLoadingTimingTrack
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-INSIGHTS_IMPLEMENT_RTTI(FLoadingTimingTrack)
+void FLoadingTimingTrack::InitTooltip(FTooltipDrawState& Tooltip, const FTimingEvent& HoveredTimingEvent) const
+{
+	Tooltip.ResetContent();
+
+	Tooltip.AddTitle(State->GetEventNameEx(HoveredTimingEvent.Depth, HoveredTimingEvent.LoadingInfo));
+
+	const Trace::FPackageInfo* Package = HoveredTimingEvent.LoadingInfo.Package;
+	const Trace::FPackageExportInfo* Export = HoveredTimingEvent.LoadingInfo.Export;
+
+	Tooltip.AddNameValueTextLine(TEXT("Duration:"), TimeUtils::FormatTimeAuto(HoveredTimingEvent.Duration()));
+	Tooltip.AddNameValueTextLine(TEXT("Depth:"), FString::Printf(TEXT("%d"), HoveredTimingEvent.Depth));
+	Tooltip.AddNameValueTextLine(TEXT("Package Event:"), ::GetName(HoveredTimingEvent.LoadingInfo.PackageEventType));
+
+	if (Package)
+	{
+		Tooltip.AddNameValueTextLine(TEXT("Package Name:"), Package->Name);
+		Tooltip.AddNameValueTextLine(TEXT("Header Size:"), FString::Printf(TEXT("%s bytes"), *FText::AsNumber(Package->Summary.TotalHeaderSize).ToString()));
+		Tooltip.AddNameValueTextLine(TEXT("Package Summary:"), FString::Printf(TEXT("%d names, %d imports, %d exports"), Package->Summary.NameCount, Package->Summary.ImportCount, Package->Summary.ExportCount));
+	}
+
+	Tooltip.AddNameValueTextLine(TEXT("Export Event:"), FString::Printf(TEXT("%s%s"), ::GetName(HoveredTimingEvent.LoadingInfo.ExportEventType), Export && Export->IsAsset ? TEXT(" [asset]") : TEXT("")));
+
+	if (Export)
+	{
+		Tooltip.AddNameValueTextLine(TEXT("Export Class:"), Export->Class ? Export->Class->Name : TEXT("N/A"));
+		Tooltip.AddNameValueTextLine(TEXT("Serial Offset:"), FString::Printf(TEXT("%s bytes"), *FText::AsNumber(Export->SerialOffset).ToString()));
+		Tooltip.AddNameValueTextLine(TEXT("Serial Size:"), FString::Printf(TEXT("%s bytes"), *FText::AsNumber(Export->SerialSize).ToString()));
+	}
+
+	Tooltip.UpdateLayout();
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// FSearchLoadTimeProfilerCpuEvent
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+struct FSearchLoadTimeProfilerCpuEvent
+{
+	const double StartTime;
+	const double EndTime;
+	TFunctionRef<bool(double, double, uint32)> Predicate;
+	FTimingEvent& TimingEvent;
+	const bool bStopAtFirstMatch;
+	const bool bSearchForLargestEvent;
+	mutable bool bFound;
+	mutable bool bContinueSearching;
+	mutable double LargestDuration;
+
+	FSearchLoadTimeProfilerCpuEvent(const double InStartTime, const double InEndTime, TFunctionRef<bool(double, double, uint32)> InPredicate, FTimingEvent& InOutTimingEvent, bool bInStopAtFirstMatch, bool bInSearchForLargestEvent)
+		: StartTime(InStartTime)
+		, EndTime(InEndTime)
+		, Predicate(InPredicate)
+		, TimingEvent(InOutTimingEvent)
+		, bStopAtFirstMatch(bInStopAtFirstMatch)
+		, bSearchForLargestEvent(bInSearchForLargestEvent)
+		, bFound(false)
+		, bContinueSearching(true)
+		, LargestDuration(-1.0)
+	{
+	}
+
+	void CheckEvent(double EventStartTime, double EventEndTime, uint32 EventDepth, const Trace::FLoadTimeProfilerCpuEvent& Event)
+	{
+		if (bContinueSearching && Predicate(EventStartTime, EventEndTime, EventDepth))
+		{
+			if (!bSearchForLargestEvent || EventEndTime - EventStartTime > LargestDuration)
+			{
+				LargestDuration = EventEndTime - EventStartTime;
+
+				TimingEvent.TypeId = 0;
+				TimingEvent.Depth = EventDepth;
+				TimingEvent.StartTime = EventStartTime;
+				TimingEvent.EndTime = EventEndTime;
+
+				TimingEvent.LoadingInfo = Event;
+
+				bFound = true;
+				bContinueSearching = !bStopAtFirstMatch || bSearchForLargestEvent;
+			}
+		}
+	}
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// FLoadingMainThreadTimingTrack
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void FLoadingMainThreadTimingTrack::Draw(FTimingViewDrawHelper& Helper) const
+{
+	FTimingEventsTrack& Track = *const_cast<FLoadingMainThreadTimingTrack*>(this);
+
+	if (Helper.BeginTimeline(Track))
+	{
+		TSharedPtr<const Trace::IAnalysisSession> Session = FInsightsManager::Get()->GetSession();
+		if (Session.IsValid() && Trace::ReadLoadTimeProfilerProvider(*Session.Get()))
+		{
+			Trace::FAnalysisSessionReadScope SessionReadScope(*Session.Get());
+
+			const Trace::ILoadTimeProfilerProvider& LoadTimeProfilerProvider = *Trace::ReadLoadTimeProfilerProvider(*Session.Get());
+
+			LoadTimeProfilerProvider.ReadMainThreadCpuTimeline([this, &Helper](const Trace::ILoadTimeProfilerProvider::CpuTimeline& Timeline)
+			{
+				if (FTimingEventsTrack::bUseDownSampling)
+				{
+					const double SecondsPerPixel = 1.0 / Helper.GetViewport().GetScaleX();
+					Timeline.EnumerateEventsDownSampled(Helper.GetViewport().GetStartTime(), Helper.GetViewport().GetEndTime(), SecondsPerPixel, [this, &Helper](double StartTime, double EndTime, uint32 Depth, const Trace::FLoadTimeProfilerCpuEvent& Event)
+					{
+						const TCHAR* Name = State->GetEventNameEx(Depth, Event);
+						Helper.AddEvent(StartTime, EndTime, Depth, Name);
+					});
+				}
+				else
+				{
+					Timeline.EnumerateEvents(Helper.GetViewport().GetStartTime(), Helper.GetViewport().GetEndTime(), [this, &Helper](double StartTime, double EndTime, uint32 Depth, const Trace::FLoadTimeProfilerCpuEvent& Event)
+					{
+						const TCHAR* Name = State->GetEventNameEx(Depth, Event);
+						Helper.AddEvent(StartTime, EndTime, Depth, Name);
+					});
+				}
+			});
+		}
+
+		Helper.EndTimeline(Track);
+	}
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void FLoadingTimingTrack::BuildDrawState(ITimingEventsTrackDrawStateBuilder& Builder, const ITimingTrackUpdateContext& Context)
+bool FLoadingMainThreadTimingTrack::SearchTimingEvent(const double InStartTime,
+	const double InEndTime,
+	TFunctionRef<bool(double, double, uint32)> InPredicate,
+	FTimingEvent& InOutTimingEvent,
+	bool bInStopAtFirstMatch,
+	bool bInSearchForLargestEvent) const
 {
+	FSearchLoadTimeProfilerCpuEvent Ctx(InStartTime, InEndTime, InPredicate, InOutTimingEvent, bInStopAtFirstMatch, bInSearchForLargestEvent);
+
 	TSharedPtr<const Trace::IAnalysisSession> Session = FInsightsManager::Get()->GetSession();
-	if (Session.IsValid() && Trace::ReadLoadTimeProfilerProvider(*Session.Get()))
+	if (Session.IsValid())
 	{
 		Trace::FAnalysisSessionReadScope SessionReadScope(*Session.Get());
 
-		const Trace::ILoadTimeProfilerProvider& LoadTimeProfilerProvider = *Trace::ReadLoadTimeProfilerProvider(*Session.Get());
+		const FTimingEventsTrack* Track = Ctx.TimingEvent.Track;
 
-		const FTimingTrackViewport& Viewport = Context.GetViewport();
-
-		LoadTimeProfilerProvider.ReadTimeline(TimelineIndex, [this, &Builder, &Viewport](const Trace::ILoadTimeProfilerProvider::CpuTimeline& Timeline)
+		if (Trace::ReadLoadTimeProfilerProvider(*Session.Get()))
 		{
-			if (FTimingEventsTrack::bUseDownSampling)
+			const Trace::ILoadTimeProfilerProvider& LoadTimeProfilerProvider = *Trace::ReadLoadTimeProfilerProvider(*Session.Get());
+
+			LoadTimeProfilerProvider.ReadMainThreadCpuTimeline([&Ctx](const Trace::ILoadTimeProfilerProvider::CpuTimeline& Timeline)
 			{
-				const double SecondsPerPixel = 1.0 / Viewport.GetScaleX();
-				Timeline.EnumerateEventsDownSampled(Viewport.GetStartTime(), Viewport.GetEndTime(), SecondsPerPixel, [this, &Builder](double StartTime, double EndTime, uint32 Depth, const Trace::FLoadTimeProfilerCpuEvent& Event)
+				Timeline.EnumerateEvents(Ctx.StartTime, Ctx.EndTime, [&Ctx](double EventStartTime, double EventEndTime, uint32 EventDepth, const Trace::FLoadTimeProfilerCpuEvent& Event)
 				{
-					const TCHAR* Name = SharedState.GetEventName(Depth, Event);
-					const uint64 Type = static_cast<uint64>(Event.EventType);
-					const uint32 Color = 0;
-					Builder.AddEvent(StartTime, EndTime, Depth, Name, Type, Color);
-					return Trace::EEventEnumerate::Continue;
+					Ctx.CheckEvent(EventStartTime, EventEndTime, EventDepth, Event);
 				});
-			}
-			else
-			{
-				Timeline.EnumerateEvents(Viewport.GetStartTime(), Viewport.GetEndTime(), [this, &Builder](double StartTime, double EndTime, uint32 Depth, const Trace::FLoadTimeProfilerCpuEvent& Event)
-				{
-					const TCHAR* Name = SharedState.GetEventName(Depth, Event);
-					const uint64 Type = static_cast<uint64>(Event.EventType);
-					const uint32 Color = 0;
-					Builder.AddEvent(StartTime, EndTime, Depth, Name, Type, Color);
-					return Trace::EEventEnumerate::Continue;
-				});
-			}
-		});
+			});
+		}
 	}
+
+	return Ctx.bFound;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+// FLoadingAsyncThreadTimingTrack
+////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void FLoadingTimingTrack::InitTooltip(FTooltipDrawState& InOutTooltip, const ITimingEvent& InTooltipEvent) const
+void FLoadingAsyncThreadTimingTrack::Draw(FTimingViewDrawHelper& Helper) const
 {
-	if (InTooltipEvent.CheckTrack(this) && InTooltipEvent.Is<FTimingEvent>())
+	FTimingEventsTrack& Track = *const_cast<FLoadingAsyncThreadTimingTrack*>(this);
+
+	if (Helper.BeginTimeline(Track))
 	{
-		const FTimingEvent& TooltipEvent = InTooltipEvent.As<FTimingEvent>();
-
-		auto MatchEvent = [&TooltipEvent](double InStartTime, double InEndTime, uint32 InDepth)
+		TSharedPtr<const Trace::IAnalysisSession> Session = FInsightsManager::Get()->GetSession();
+		if (Session.IsValid() && Trace::ReadLoadTimeProfilerProvider(*Session.Get()))
 		{
-			return InDepth == TooltipEvent.GetDepth()
-				&& InStartTime == TooltipEvent.GetStartTime()
-				&& InEndTime == TooltipEvent.GetEndTime();
-		};
+			Trace::FAnalysisSessionReadScope SessionReadScope(*Session.Get());
 
-		FTimingEventSearchParameters SearchParameters(TooltipEvent.GetStartTime(), TooltipEvent.GetEndTime(), ETimingEventSearchFlags::StopAtFirstMatch, MatchEvent);
-		FindLoadTimeProfilerCpuEvent(SearchParameters, [this, &InOutTooltip, &TooltipEvent](double InFoundStartTime, double InFoundEndTime, uint32 InFoundDepth, const Trace::FLoadTimeProfilerCpuEvent& InFoundEvent)
-		{
-			InOutTooltip.ResetContent();
+			const Trace::ILoadTimeProfilerProvider& LoadTimeProfilerProvider = *Trace::ReadLoadTimeProfilerProvider(*Session.Get());
 
-			InOutTooltip.AddTitle(SharedState.GetEventName(TooltipEvent.GetDepth(), InFoundEvent));
-
-			const Trace::FPackageInfo* Package = InFoundEvent.Package;
-			const Trace::FPackageExportInfo* Export = InFoundEvent.Export;
-
-			InOutTooltip.AddNameValueTextLine(TEXT("Duration:"), TimeUtils::FormatTimeAuto(TooltipEvent.GetDuration()));
-			InOutTooltip.AddNameValueTextLine(TEXT("Depth:"), FString::Printf(TEXT("%d"), TooltipEvent.GetDepth()));
-
-			if (Package)
+			LoadTimeProfilerProvider.ReadAsyncLoadingThreadCpuTimeline([this, &Helper](const Trace::ILoadTimeProfilerProvider::CpuTimeline& Timeline)
 			{
-				InOutTooltip.AddNameValueTextLine(TEXT("Package Name:"), Package->Name);
-				InOutTooltip.AddNameValueTextLine(TEXT("Header Size:"), FString::Printf(TEXT("%s bytes"), *FText::AsNumber(Package->Summary.TotalHeaderSize).ToString()));
-				InOutTooltip.AddNameValueTextLine(TEXT("Package Summary:"), FString::Printf(TEXT("%d imports, %d exports"), Package->Summary.ImportCount, Package->Summary.ExportCount));
-			}
-
-			InOutTooltip.AddNameValueTextLine(TEXT("Export Event:"), FString::Printf(TEXT("%s"), Trace::GetLoadTimeProfilerObjectEventTypeString(InFoundEvent.EventType)));
-
-			if (Export)
-			{
-				InOutTooltip.AddNameValueTextLine(TEXT("Export Class:"), Export->Class ? Export->Class->Name : TEXT("N/A"));
-				InOutTooltip.AddNameValueTextLine(TEXT("Serial Size:"), FString::Printf(TEXT("%s bytes"), *FText::AsNumber(Export->SerialSize).ToString()));
-			}
-
-			InOutTooltip.UpdateLayout();
-		});
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-const TSharedPtr<const ITimingEvent> FLoadingTimingTrack::SearchEvent(const FTimingEventSearchParameters& InSearchParameters) const
-{
-	TSharedPtr<const ITimingEvent> FoundEvent;
-
-	FindLoadTimeProfilerCpuEvent(InSearchParameters, [this, &FoundEvent](double InFoundStartTime, double InFoundEndTime, uint32 InFoundDepth, const Trace::FLoadTimeProfilerCpuEvent& InFoundEvent)
-	{
-		FoundEvent = MakeShared<FTimingEvent>(SharedThis(this), InFoundStartTime, InFoundEndTime, InFoundDepth);
-	});
-
-	return FoundEvent;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool FLoadingTimingTrack::FindLoadTimeProfilerCpuEvent(const FTimingEventSearchParameters& InParameters, TFunctionRef<void(double, double, uint32, const Trace::FLoadTimeProfilerCpuEvent&)> InFoundPredicate) const
-{
-	return TTimingEventSearch<Trace::FLoadTimeProfilerCpuEvent>::Search(
-		InParameters,
-
-		[this](TTimingEventSearch<Trace::FLoadTimeProfilerCpuEvent>::FContext& InContext)
-		{
-			TSharedPtr<const Trace::IAnalysisSession> Session = FInsightsManager::Get()->GetSession();
-			if (Session.IsValid())
-			{
-				Trace::FAnalysisSessionReadScope SessionReadScope(*Session.Get());
-
-				if (Trace::ReadLoadTimeProfilerProvider(*Session.Get()))
+				if (FTimingEventsTrack::bUseDownSampling)
 				{
-					const Trace::ILoadTimeProfilerProvider& LoadTimeProfilerProvider = *Trace::ReadLoadTimeProfilerProvider(*Session.Get());
-
-					LoadTimeProfilerProvider.ReadTimeline(TimelineIndex, [&InContext](const Trace::ILoadTimeProfilerProvider::CpuTimeline& Timeline)
+					const double SecondsPerPixel = 1.0 / Helper.GetViewport().GetScaleX();
+					Timeline.EnumerateEventsDownSampled(Helper.GetViewport().GetStartTime(), Helper.GetViewport().GetEndTime(), SecondsPerPixel, [this, &Helper](double StartTime, double EndTime, uint32 Depth, const Trace::FLoadTimeProfilerCpuEvent& Event)
 					{
-						Timeline.EnumerateEvents(InContext.GetParameters().StartTime, InContext.GetParameters().EndTime, [&InContext](double EventStartTime, double EventEndTime, uint32 EventDepth, const Trace::FLoadTimeProfilerCpuEvent& Event)
-						{
-							InContext.Check(EventStartTime, EventEndTime, EventDepth, Event);
-							return InContext.ShouldContinueSearching() ? Trace::EEventEnumerate::Continue : Trace::EEventEnumerate::Stop;
-						});
+						const TCHAR* Name = State->GetEventNameEx(Depth, Event);
+						Helper.AddEvent(StartTime, EndTime, Depth, Name);
 					});
 				}
-			}
-		},
+				else
+				{
+					Timeline.EnumerateEvents(Helper.GetViewport().GetStartTime(), Helper.GetViewport().GetEndTime(), [this, &Helper](double StartTime, double EndTime, uint32 Depth, const Trace::FLoadTimeProfilerCpuEvent& Event)
+					{
+						const TCHAR* Name = State->GetEventNameEx(Depth, Event);
+						Helper.AddEvent(StartTime, EndTime, Depth, Name);
+					});
+				}
+			});
+		}
 
-		[&InFoundPredicate](double InFoundStartTime, double InFoundEndTime, uint32 InFoundDepth, const Trace::FLoadTimeProfilerCpuEvent& InEvent)
+		Helper.EndTimeline(Track);
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+bool FLoadingAsyncThreadTimingTrack::SearchTimingEvent(const double InStartTime,
+													   const double InEndTime,
+													   TFunctionRef<bool(double, double, uint32)> InPredicate,
+													   FTimingEvent& InOutTimingEvent,
+													   bool bInStopAtFirstMatch,
+													   bool bInSearchForLargestEvent) const
+{
+	FSearchLoadTimeProfilerCpuEvent Ctx(InStartTime, InEndTime, InPredicate, InOutTimingEvent, bInStopAtFirstMatch, bInSearchForLargestEvent);
+
+	TSharedPtr<const Trace::IAnalysisSession> Session = FInsightsManager::Get()->GetSession();
+	if (Session.IsValid())
+	{
+		Trace::FAnalysisSessionReadScope SessionReadScope(*Session.Get());
+
+		const FTimingEventsTrack* Track = Ctx.TimingEvent.Track;
+
+		if (Trace::ReadLoadTimeProfilerProvider(*Session.Get()))
 		{
-			InFoundPredicate(InFoundStartTime, InFoundEndTime, InFoundDepth, InEvent);
-		});
+			const Trace::ILoadTimeProfilerProvider& LoadTimeProfilerProvider = *Trace::ReadLoadTimeProfilerProvider(*Session.Get());
+
+			LoadTimeProfilerProvider.ReadAsyncLoadingThreadCpuTimeline([&Ctx](const Trace::ILoadTimeProfilerProvider::CpuTimeline& Timeline)
+			{
+				Timeline.EnumerateEvents(Ctx.StartTime, Ctx.EndTime, [&Ctx](double EventStartTime, double EventEndTime, uint32 EventDepth, const Trace::FLoadTimeProfilerCpuEvent& Event)
+				{
+					Ctx.CheckEvent(EventStartTime, EventEndTime, EventDepth, Event);
+				});
+			});
+		}
+	}
+
+	return Ctx.bFound;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,24 +7,14 @@
 
 // Insights
 #include "Insights/Table/ViewModels/BaseTreeNode.h"
+#include "Insights/Table/ViewModels/Table.h" // for FTableRowId
 #include "Insights/Table/ViewModels/TableCellValue.h"
 
 namespace Insights
 {
 
-class FTable;
-
-struct FTableRowId
-{
-	static constexpr int32 InvalidRowIndex = -1;
-
-	FTableRowId(int32 InRowIndex) : RowIndex(InRowIndex), Flags(0) {}
-
-	bool HasValidIndex() const { return RowIndex >= 0; }
-
-	int32 RowIndex;
-	uint32 Flags;
-};
+//class FTable;
+//class FTableColumn;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -54,8 +44,8 @@ public:
 
 public:
 	/** Initialization constructor for a table record node. */
-	FTableTreeNode(const FName InName, TWeakPtr<FTable> InParentTable, int32 InRowIndex)
-		: FBaseTreeNode(InName, false)
+	FTableTreeNode(uint64 InId, const FName InName, TWeakPtr<FTable> InParentTable, int32 InRowIndex)
+		: FBaseTreeNode(InId, InName, false)
 		, ParentTable(InParentTable)
 		, RowId(InRowIndex)
 	{
@@ -63,7 +53,7 @@ public:
 
 	/** Initialization constructor for a group node. */
 	FTableTreeNode(const FName InGroupName, TWeakPtr<FTable> InParentTable)
-		: FBaseTreeNode(InGroupName, true)
+		: FBaseTreeNode(0, InGroupName, true)
 		, ParentTable(InParentTable)
 		, RowId(FTableRowId::InvalidRowIndex)
 	{

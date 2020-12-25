@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -77,7 +77,6 @@ public:
 	}
 
 	virtual void SetContentWidget(const TSharedRef<SWidget>& InContentWidget) override;
-	virtual void ResetContentWidget () override;
 
 	virtual bool IsEmpty( ) const override;
 	virtual bool IsInteractive( ) const override;

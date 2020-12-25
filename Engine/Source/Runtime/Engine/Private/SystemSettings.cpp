@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ScalabilityOptions.cpp: Unreal engine HW compat scalability system.
@@ -145,12 +145,6 @@ void FSystemSettings::RegisterShowFlagConsoleVariables()
 				ECVF_Cheat);
 
 			return true;
-		}
-
-		bool OnCustomShowFlag(uint32 InIndex, const FString& InName)
-		{
-			// FEngineShowFlags registers its own integer console variables for custom show flags as they are registered by modules loading
-			return false;
 		}
 
 		FSystemSettings& This;

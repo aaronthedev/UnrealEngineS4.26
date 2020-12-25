@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -145,7 +145,7 @@ namespace WriteBadgeStatus
 			{
 				if (Method == "POST")
 				{
-					byte[] bytes = Encoding.UTF8.GetBytes(RequestBody);
+					byte[] bytes = Encoding.ASCII.GetBytes(RequestBody);
 					using (Stream RequestStream = Request.GetRequestStream())
 					{
 						RequestStream.Write(bytes, 0, bytes.Length);
@@ -157,11 +157,11 @@ namespace WriteBadgeStatus
 				using (HttpWebResponse Response = (HttpWebResponse)Request.GetResponse())
 				{
 					string ResponseContent = null;
-					using (StreamReader ResponseReader = new System.IO.StreamReader(Response.GetResponseStream(), Encoding.UTF8))
+					using (StreamReader ResponseReader = new System.IO.StreamReader(Response.GetResponseStream(), Encoding.Default))
 					{
 						ResponseContent = ResponseReader.ReadToEnd();
 						Console.WriteLine(ResponseContent);
-						return ((int)Response.StatusCode >= 200 && (int)Response.StatusCode <= 299) ? 0 : 1;
+						return Response.StatusCode == HttpStatusCode.NoContent ? 0 : 1;
 					}
 				}
 				

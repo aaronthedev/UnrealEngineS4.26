@@ -1,14 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 #include "CoreMinimal.h"
 #include "HttpServerRequest.h"
 
 struct FHttpRouteHandleInternal
 {
-	FHttpRouteHandleInternal(FString InPath, EHttpServerRequestVerbs InVerbs, FHttpRequestHandler InHandler)
-		: Path(MoveTemp(InPath))
+	FHttpRouteHandleInternal(const FString& InPath, const EHttpServerRequestVerbs& InVerbs, const FHttpRequestHandler& InHandler)
+		: Path(InPath)
 		, Verbs(InVerbs)
-		, Handler(MoveTemp(InHandler))
+		, Handler(InHandler)
 	{ };
 
 	/** The respective bound http path */

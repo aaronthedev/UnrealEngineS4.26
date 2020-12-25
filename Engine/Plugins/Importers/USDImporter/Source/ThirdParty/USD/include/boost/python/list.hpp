@@ -73,7 +73,7 @@ class list : public detail::list_base
     }
 
     template <class T>
-    ssize_t count(T const& value) const
+    long count(T const& value) const
     {
         return base::count(object(value));
     }

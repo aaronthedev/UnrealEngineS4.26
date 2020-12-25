@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieSceneNiagaraSystemTrackTemplate.h"
 #include "MovieSceneExecutionToken.h"
@@ -77,16 +77,10 @@ struct FPreAnimatedNiagaraComponentTokenProducer : IMovieScenePreAnimatedTokenPr
 
 struct FNiagaraSystemUpdateDesiredAgeExecutionToken : IMovieSceneExecutionToken
 {
-	FNiagaraSystemUpdateDesiredAgeExecutionToken(
-		FFrameNumber InSpawnSectionStartFrame, FFrameNumber InSpawnSectionEndFrame,
-		ENiagaraSystemSpawnSectionStartBehavior InSpawnSectionStartBehavior, ENiagaraSystemSpawnSectionEvaluateBehavior InSpawnSectionEvaluateBehavior,
-		ENiagaraSystemSpawnSectionEndBehavior InSpawnSectionEndBehavior, ENiagaraAgeUpdateMode InAgeUpdateMode)
+	FNiagaraSystemUpdateDesiredAgeExecutionToken(FFrameNumber InSpawnSectionStartFrame, FFrameNumber InSpawnSectionEndFrame)
 		: SpawnSectionStartFrame(InSpawnSectionStartFrame)
 		, SpawnSectionEndFrame(InSpawnSectionEndFrame)
-		, SpawnSectionStartBehavior(InSpawnSectionStartBehavior)
-		, SpawnSectionEvaluateBehavior(InSpawnSectionEvaluateBehavior)
-		, SpawnSectionEndBehavior(InSpawnSectionEndBehavior)
-		, AgeUpdateMode(InAgeUpdateMode)
+		
 	{}
 
 	virtual void Execute(const FMovieSceneContext& Context, const FMovieSceneEvaluationOperand& Operand, FPersistentEvaluationData& PersistentData, IMovieScenePlayer& Player) override
@@ -100,7 +94,7 @@ struct FNiagaraSystemUpdateDesiredAgeExecutionToken : IMovieSceneExecutionToken
 			Player.SavePreAnimatedState(*NiagaraComponent, TypeID, FPreAnimatedNiagaraComponentTokenProducer(), PersistentData.GetTrackKey());
 
 			NiagaraComponent->SetForceSolo(true);
-			NiagaraComponent->SetAgeUpdateMode(AgeUpdateMode);
+			NiagaraComponent->SetAgeUpdateMode(ENiagaraAgeUpdateMode::DesiredAge);
 
 			UMovieSceneSequence* MovieSceneSequence = Player.GetEvaluationTemplate().GetSequence(Operand.SequenceID);
 			if (MovieSceneSequence != nullptr)
@@ -116,67 +110,28 @@ struct FNiagaraSystemUpdateDesiredAgeExecutionToken : IMovieSceneExecutionToken
 
 			if (Context.GetTime() < SpawnSectionStartFrame)
 			{
-				if (SpawnSectionStartBehavior == ENiagaraSystemSpawnSectionStartBehavior::Activate)
+				if (NiagaraComponent->IsActive() && SystemInstance != nullptr)
 				{
-					if (NiagaraComponent->IsActive())
-					{
-						NiagaraComponent->DeactivateImmediate();
-						if (NiagaraComponent->GetSystemInstance() != nullptr)
-						{
-							NiagaraComponent->GetSystemInstance()->Reset(FNiagaraSystemInstance::EResetMode::ResetAll);
-						}
-					}
-				}
-			}
-			else if (Context.GetRange().Overlaps(TRange<FFrameTime>(FFrameTime(SpawnSectionStartFrame))))
-			{
-				if (SpawnSectionStartBehavior == ENiagaraSystemSpawnSectionStartBehavior::Activate)
-				{
-					if (NiagaraComponent->IsActive())
-					{
-						NiagaraComponent->DeactivateImmediate();
-						if (NiagaraComponent->GetSystemInstance() != nullptr)
-						{
-							NiagaraComponent->GetSystemInstance()->Reset(FNiagaraSystemInstance::EResetMode::ResetAll);
-						}
-					}
-					NiagaraComponent->Activate();
+					SystemInstance->SetRequestedExecutionState(ENiagaraExecutionState::Complete);
 				}
 			}
 			else if (Context.GetTime() < SpawnSectionEndFrame)
 			{
-				if (SpawnSectionEvaluateBehavior == ENiagaraSystemSpawnSectionEvaluateBehavior::ActivateIfInactive)
+				if (NiagaraComponent->IsActive() == false)
 				{
-					if (NiagaraComponent->IsActive() == false)
-					{
-						NiagaraComponent->Activate();
-					}
-
-					if (SystemInstance != nullptr)
-					{
-						SystemInstance->SetRequestedExecutionState(ENiagaraExecutionState::Active);
-					}
+					NiagaraComponent->Activate();
+				}
+				
+				if (SystemInstance != nullptr)
+				{
+					SystemInstance->SetRequestedExecutionState(ENiagaraExecutionState::Active);
 				}
 			}
 			else
 			{
-				if (SpawnSectionEndBehavior == ENiagaraSystemSpawnSectionEndBehavior::SetSystemInactive)
+				if (SystemInstance != nullptr)
 				{
-					if (SystemInstance != nullptr)
-					{
-						SystemInstance->SetRequestedExecutionState(ENiagaraExecutionState::Inactive);
-					}
-				}
-				else if (SpawnSectionEndBehavior == ENiagaraSystemSpawnSectionEndBehavior::Deactivate)
-				{
-					if (NiagaraComponent->IsActive())
-					{
-						NiagaraComponent->DeactivateImmediate();
-						if (NiagaraComponent->GetSystemInstance() != nullptr)
-						{
-							NiagaraComponent->GetSystemInstance()->Reset(FNiagaraSystemInstance::EResetMode::ResetAll);
-						}
-					}
+					SystemInstance->SetRequestedExecutionState(ENiagaraExecutionState::Inactive);
 				}
 			}
 
@@ -200,41 +155,15 @@ struct FNiagaraSystemUpdateDesiredAgeExecutionToken : IMovieSceneExecutionToken
 
 	FFrameNumber SpawnSectionStartFrame;
 	FFrameNumber SpawnSectionEndFrame;
-	ENiagaraSystemSpawnSectionStartBehavior SpawnSectionStartBehavior;
-	ENiagaraSystemSpawnSectionEvaluateBehavior SpawnSectionEvaluateBehavior;
-	ENiagaraSystemSpawnSectionEndBehavior SpawnSectionEndBehavior;
-	ENiagaraAgeUpdateMode AgeUpdateMode;
 };
 
-FMovieSceneNiagaraSystemTrackImplementation::FMovieSceneNiagaraSystemTrackImplementation(
-	FFrameNumber InSpawnSectionStartFrame, FFrameNumber InSpawnSectionEndFrame,
-	ENiagaraSystemSpawnSectionStartBehavior InSpawnSectionStartBehavior, ENiagaraSystemSpawnSectionEvaluateBehavior InSpawnSectionEvaluateBehavior,
-	ENiagaraSystemSpawnSectionEndBehavior InSpawnSectionEndBehavior, ENiagaraAgeUpdateMode InAgeUpdateMode)
+FMovieSceneNiagaraSystemTrackImplementation::FMovieSceneNiagaraSystemTrackImplementation(FFrameNumber InSpawnSectionStartFrame, FFrameNumber InSpawnSectionEndFrame)
 	: SpawnSectionStartFrame(InSpawnSectionStartFrame)
 	, SpawnSectionEndFrame(InSpawnSectionEndFrame)
-	, SpawnSectionStartBehavior(InSpawnSectionStartBehavior)
-	, SpawnSectionEvaluateBehavior(InSpawnSectionEvaluateBehavior)
-	, SpawnSectionEndBehavior(InSpawnSectionEndBehavior)
-	, AgeUpdateMode(InAgeUpdateMode)
-	
-{
-}
+{}
 
-FMovieSceneNiagaraSystemTrackImplementation::FMovieSceneNiagaraSystemTrackImplementation()
-	: SpawnSectionStartFrame(FFrameNumber())
-	, SpawnSectionEndFrame(FFrameNumber())
-	, SpawnSectionStartBehavior(ENiagaraSystemSpawnSectionStartBehavior::Activate)
-	, SpawnSectionEvaluateBehavior(ENiagaraSystemSpawnSectionEvaluateBehavior::None)
-	, SpawnSectionEndBehavior(ENiagaraSystemSpawnSectionEndBehavior::SetSystemInactive)
-	, AgeUpdateMode(ENiagaraAgeUpdateMode::TickDeltaTime)
-{
-}
-
-void FMovieSceneNiagaraSystemTrackImplementation::Evaluate(const FMovieSceneEvaluationTrack& Track, TArrayView<const FMovieSceneFieldEntry_ChildTemplate> Children, const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const
+void FMovieSceneNiagaraSystemTrackImplementation::Evaluate(const FMovieSceneEvaluationTrack& Track, FMovieSceneSegmentIdentifier SegmentID, const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const
 {
 	ExecutionTokens.SetContext(Context);
-	ExecutionTokens.Add(FNiagaraSystemUpdateDesiredAgeExecutionToken(
-		SpawnSectionStartFrame, SpawnSectionEndFrame,
-		SpawnSectionStartBehavior, SpawnSectionEvaluateBehavior,
-		SpawnSectionEndBehavior, AgeUpdateMode));
+	ExecutionTokens.Add(FNiagaraSystemUpdateDesiredAgeExecutionToken(SpawnSectionStartFrame, SpawnSectionEndFrame));
 }

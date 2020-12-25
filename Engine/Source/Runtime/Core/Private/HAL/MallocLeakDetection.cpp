@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MallocLeakDetection.cpp: Helper class to track memory allocations
@@ -319,10 +319,10 @@ int32 FMallocLeakDetection::DumpOpenCallstacks(const TCHAR* FileName, const FMal
 	ReportAr->Logf(TEXT("Current Time: %s, Current Frame %d"), *FDateTime::Now().ToString(TEXT("%m.%d-%H.%M.%S")), GFrameCounter);
 
 	ReportAr->Logf(TEXT("Current Memory: %.02fMB (Peak: %.02fMB)."),
-		(float)MemoryStats.UsedPhysical * InvToMb,
-		(float)MemoryStats.PeakUsedPhysical * InvToMb);
+		MemoryStats.UsedPhysical * InvToMb,
+		MemoryStats.PeakUsedPhysical * InvToMb);
 
-	ReportAr->Logf(TEXT("Tracking %d callstacks that hold %.02fMB"), UniqueCallstacks.Num(), (float)TotalTracked * InvToMb);
+	ReportAr->Logf(TEXT("Tracking %d callstacks that hold %.02fMB"), UniqueCallstacks.Num(), TotalTracked * InvToMb);
 
 	ReportAr->Logf(TEXT("Allocation filter: %dKB"), MinAllocationSize / 1024);
 	ReportAr->Logf(TEXT("Report filter: %dKB"), Options.SizeFilter / 1024);
@@ -449,8 +449,8 @@ void FMallocLeakDetection::Malloc(void* Ptr, SIZE_T Size)
 				bRecursive = true;
 				FCallstackTrack Callstack;
 				FPlatformStackWalk::CaptureStackBackTrace(Callstack.CallStack, FCallstackTrack::Depth);
-				Callstack.FirstFrame = (uint32)GFrameCounter;
-				Callstack.LastFrame = (uint32)GFrameCounter;
+				Callstack.FirstFrame = GFrameCounter;
+				Callstack.LastFrame = GFrameCounter;
 				Callstack.Size = Size;
 				AddCallstack(Callstack);
 				OpenPointers.Add(Ptr, Callstack);

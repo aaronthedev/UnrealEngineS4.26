@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "FractureToolPlaneCut.h"
 #include "FractureEditorStyle.h"
@@ -39,12 +39,12 @@ UFractureToolPlaneCut::UFractureToolPlaneCut(const FObjectInitializer& ObjInit)
 
 FText UFractureToolPlaneCut::GetDisplayText() const
 {
-	return FText(NSLOCTEXT("Fracture", "FractureToolPlaneCut", "Plane Cut Fracture")); 
+	return FText(NSLOCTEXT("Fracture", "FractureToolPlaneCut", "PlaneCut")); 
 }
 
 FText UFractureToolPlaneCut::GetTooltipText() const 
 {
-	return FText(NSLOCTEXT("Fracture", "FractureToolPlaneCutTooltip", "Planar fracture can be used to make cuts along a plane in your Geometry Collection. You can apply noise to planar cuts for more organic results.  Click the Fracture Button to commit the fracture to the geometry collection."));
+	return FText(NSLOCTEXT("Fracture", "FractureToolPlaneCutTooltip", "PlaneCut Mesh")); 
 }
 
 FSlateIcon UFractureToolPlaneCut::GetToolIcon() const 

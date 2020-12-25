@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GeometryCollectionTrackEditor.h"
 #include "Rendering/DrawElements.h"
@@ -28,7 +28,6 @@
 #include "Widgets/Notifications/SNotificationList.h"
 #include "GeometryCollection/GeometryCollectionComponent.h"
 #include "Styling/SlateIconFinder.h"
-#include "LevelSequence.h"
 
 namespace GeometryCollectionEditorConstants
 {
@@ -252,15 +251,6 @@ void FGeometryCollectionTrackSection::SlipSection(FFrameNumber SlipTime)
 	ISequencerSection::SlipSection(SlipTime);
 }
 
-void FGeometryCollectionTrackSection::BeginDilateSection()
-{
-	Section.PreviousPlayRate = Section.Params.PlayRate; //make sure to cache the play rate
-}
-void FGeometryCollectionTrackSection::DilateSection(const TRange<FFrameNumber>& NewRange, float DilationFactor)
-{
-	Section.Params.PlayRate = Section.PreviousPlayRate / DilationFactor;
-	Section.SetRange(NewRange);
-}
 
 FGeometryCollectionTrackEditor::FGeometryCollectionTrackEditor( TSharedRef<ISequencer> InSequencer )
 	: FMovieSceneTrackEditor( InSequencer ) 
@@ -272,10 +262,6 @@ TSharedRef<ISequencerTrackEditor> FGeometryCollectionTrackEditor::CreateTrackEdi
 	return MakeShareable( new FGeometryCollectionTrackEditor( InSequencer ) );
 }
 
-bool FGeometryCollectionTrackEditor::SupportsSequence(UMovieSceneSequence* InSequence) const
-{
-	return InSequence && InSequence->IsA(ULevelSequence::StaticClass());
-}
 
 bool FGeometryCollectionTrackEditor::SupportsType( TSubclassOf<UMovieSceneTrack> Type ) const
 {
@@ -351,7 +337,6 @@ FKeyPropertyResult FGeometryCollectionTrackEditor::AddKeyInternal( FFrameNumber 
 
 			UMovieSceneSection* NewSection = Cast<UMovieSceneGeometryCollectionTrack>(Track)->AddNewAnimation( KeyTime, GeometryCollectionComponent );
 			KeyPropertyResult.bTrackModified = true;
-			KeyPropertyResult.SectionsCreated.Add(NewSection);
 
 			GetSequencer()->EmptySelection();
 			GetSequencer()->SelectSection(NewSection);

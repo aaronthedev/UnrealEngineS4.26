@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -148,44 +148,15 @@
 			Serializer.Serialize(TEXT(JsonName), UnixTimestampValue); \
 		}
 
-#define JSON_SERIALIZE_DATETIME_UNIX_TIMESTAMP_MILLISECONDS(JsonName, JsonDateTime) \
-if (Serializer.IsLoading()) \
-{ \
-	int64 UnixTimestampValueInMilliseconds; \
-	Serializer.Serialize(TEXT(JsonName), UnixTimestampValueInMilliseconds); \
-	JsonDateTime = FDateTime::FromUnixTimestamp(UnixTimestampValueInMilliseconds / 1000); \
-} \
-else \
-{ \
-	int64 UnixTimestampValueInMilliseconds = JsonDateTime.ToUnixTimestamp() * 1000; \
-	Serializer.Serialize(TEXT(JsonName), UnixTimestampValueInMilliseconds); \
-}
-
-#define JSON_SERIALIZE_ENUM(JsonName, JsonEnum) \
-if (Serializer.IsLoading()) \
-{ \
-	FString JsonTextValue; \
-	Serializer.Serialize(TEXT(JsonName), JsonTextValue); \
-	LexFromString(JsonEnum, *JsonTextValue); \
-} \
-else \
-{ \
-	FString JsonTextValue = LexToString(JsonEnum); \
-	Serializer.Serialize(TEXT(JsonName), JsonTextValue); \
-}
-
-
 struct FJsonSerializerBase;
 
-/** Array of data */
+/** Array of string data */
 typedef TArray<FString> FJsonSerializableArray;
-typedef TArray<int32> FJsonSerializableArrayInt;
 
 /** Maps a key to a value */
 typedef TMap<FString, FString> FJsonSerializableKeyValueMap;
 typedef TMap<FString, int32> FJsonSerializableKeyValueMapInt;
 typedef TMap<FString, int64> FJsonSerializableKeyValueMapInt64;
-typedef TMap<FString, float> FJsonSerializableKeyValueMapFloat;
 
 /**
  * Base interface used to serialize to/from JSON. Hides the fact there are separate read/write classes
@@ -211,11 +182,9 @@ struct FJsonSerializerBase
 	virtual void Serialize(const TCHAR* Name, FDateTime& Value) = 0;
 	virtual void SerializeArray(FJsonSerializableArray& Array) = 0;
 	virtual void SerializeArray(const TCHAR* Name, FJsonSerializableArray& Value) = 0;
-	virtual void SerializeArray(const TCHAR* Name, FJsonSerializableArrayInt& Value) = 0;
 	virtual void SerializeMap(const TCHAR* Name, FJsonSerializableKeyValueMap& Map) = 0;
 	virtual void SerializeMap(const TCHAR* Name, FJsonSerializableKeyValueMapInt& Map) = 0;
 	virtual void SerializeMap(const TCHAR* Name, FJsonSerializableKeyValueMapInt64& Map) = 0;
-	virtual void SerializeMap(const TCHAR* Name, FJsonSerializableKeyValueMapFloat& Map) = 0;
 	virtual void SerializeSimpleMap(FJsonSerializableKeyValueMap& Map) = 0;
 	virtual void SerializeMapSafe(const TCHAR* Name, FJsonSerializableKeyValueMap& Map) = 0;
 	virtual TSharedPtr<FJsonObject> GetObject() = 0;
@@ -418,22 +387,6 @@ public:
 		}
 		JsonWriter->WriteArrayEnd();
 	}
-	/**
-	 * Serializes an array of values with an identifier
-	 *
-	 * @param Name the name of the property to serialize
-	 * @param Array the array to serialize
-	 */
-	virtual void SerializeArray(const TCHAR* Name, FJsonSerializableArrayInt& Array) override
-	{
-		JsonWriter->WriteArrayStart(Name);
-		// Iterate all of values
-		for (FJsonSerializableArrayInt::ElementType& Item : Array)
-		{
-			JsonWriter->WriteValue(Item);
-		}
-		JsonWriter->WriteArrayEnd();
-	}
 
 	/**
 	 * Serializes the keys & values for map
@@ -480,23 +433,6 @@ public:
 		JsonWriter->WriteObjectStart(Name);
 		// Iterate all of the keys and their values
 		for (FJsonSerializableKeyValueMapInt64::ElementType& Pair : Map)
-		{
-			Serialize(*Pair.Key, Pair.Value);
-		}
-		JsonWriter->WriteObjectEnd();
-	}
-
-	/**
-	 * Serializes the keys & values for map
-	 *
-	 * @param Name the name of the property to serialize
-	 * @param Map the map to serialize
-	 */
-	virtual void SerializeMap(const TCHAR* Name, FJsonSerializableKeyValueMapFloat& Map) override
-	{
-		JsonWriter->WriteObjectStart(Name);
-		// Iterate all of the keys and their values
-		for (FJsonSerializableKeyValueMapFloat::ElementType& Pair : Map)
 		{
 			Serialize(*Pair.Key, Pair.Value);
 		}
@@ -680,7 +616,7 @@ public:
 	{
 		if (JsonObject->HasTypedField<EJson::Number>(Name))
 		{
-			Value = (float)JsonObject->GetNumberField(Name);
+			Value = JsonObject->GetNumberField(Name);
 		}
 	}
 	/**
@@ -739,24 +675,6 @@ public:
 		}
 	}
 	/**
-	 * Serializes an array of values with an identifier
-	 *
-	 * @param Name the name of the property to serialize
-	 * @param Array the array to serialize
-	 */
-	virtual void SerializeArray(const TCHAR* Name, FJsonSerializableArrayInt& Array) override
-	{
-		if (JsonObject->HasTypedField<EJson::Array>(Name))
-		{
-			TArray< TSharedPtr<FJsonValue> > JsonArray = JsonObject->GetArrayField(Name);
-			// Iterate all of the keys and their values
-			for (TSharedPtr<FJsonValue>& Value : JsonArray)
-			{
-				Array.Add(Value->AsNumber());
-			}
-		}
-	}
-	/**
 	 * Serializes the keys & values for map
 	 *
 	 * @param Name the name of the property to serialize
@@ -789,7 +707,7 @@ public:
 			// Iterate all of the keys and their values
 			for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : JsonMap->Values)
 			{
-				const int32 Value = (int32)Pair.Value->AsNumber();
+				const int32 Value = Pair.Value->AsNumber();
 				Map.Add(Pair.Key, Value);
 			}
 		}
@@ -809,27 +727,7 @@ public:
 			// Iterate all of the keys and their values
 			for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : JsonMap->Values)
 			{
-				const int64 Value = (int64)Pair.Value->AsNumber();
-				Map.Add(Pair.Key, Value);
-			}
-		}
-	}
-
-	/**
-	 * Serializes the keys & values for map
-	 *
-	 * @param Name the name of the property to serialize
-	 * @param Map the map to serialize
-	 */
-	virtual void SerializeMap(const TCHAR* Name, FJsonSerializableKeyValueMapFloat& Map) override
-	{
-		if (JsonObject->HasTypedField<EJson::Object>(Name))
-		{
-			TSharedPtr<FJsonObject> JsonMap = JsonObject->GetObjectField(Name);
-			// Iterate all of the keys and their values
-			for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : JsonMap->Values)
-			{
-				const float Value = (float)Pair.Value->AsNumber();
+				const int64 Value = Pair.Value->AsNumber();
 				Map.Add(Pair.Key, Value);
 			}
 		}
@@ -1038,15 +936,6 @@ struct FJsonDataBag
 								break;
 							}
 							case EJson::Array:
-							{
-								// if we have an array, serialize to string and write raw
-								FString JsonStr;
-								auto Writer = TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&JsonStr);
-								FJsonSerializer::Serialize(JsonValue->AsArray(), Writer);
-								Serializer.WriteIdentifierPrefix(*It.Key);
-								Serializer.WriteRawJSONValue(*JsonStr);
-								break;
-							}
 							case EJson::Object:
 							{
 								// if we have an object, serialize to string and write raw

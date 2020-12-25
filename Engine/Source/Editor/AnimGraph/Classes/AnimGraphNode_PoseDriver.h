@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,12 +11,12 @@
 
 class FCompilerResultsLog;
 
-UCLASS(Experimental, BlueprintType)
+UCLASS(Experimental)
 class ANIMGRAPH_API UAnimGraphNode_PoseDriver : public UAnimGraphNode_PoseHandler
 {
 	GENERATED_UCLASS_BODY()
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Settings)
+	UPROPERTY(EditAnywhere, Category = Settings)
 	FAnimNode_PoseDriver Node;
 
 	/** Length of axis in world units used for debug drawing */
@@ -69,7 +69,6 @@ public:
 	virtual FText GetNodeTitle(ENodeTitleType::Type TitleType) const override;
 	virtual FText GetTooltipText() const override;
 	virtual FText GetMenuCategory() const override;
-	virtual FLinearColor GetNodeBodyTintColor() const override;
 	// End of UEdGraphNode interface
 
 	// UAnimGraphNode_Base interface

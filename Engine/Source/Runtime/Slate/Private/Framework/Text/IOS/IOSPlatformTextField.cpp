@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Framework/Text/IOS/IOSPlatformTextField.h"
 #include "IOS/IOSAppDelegate.h"
@@ -57,10 +57,7 @@ FIOSPlatformTextField::~FIOSPlatformTextField()
 		dispatch_async(dispatch_get_main_queue(), ^{
             NSLog(@"Finally releasing text field %@", LocalTextField);
 #if !PLATFORM_TVOS
-			if (LocalTextField != nullptr && [LocalTextField respondsToSelector:@selector(hide:)])
-			{
-            	[LocalTextField hide];
-			}
+            [LocalTextField hide];
 #endif
 		});
 	}
@@ -128,191 +125,97 @@ void FIOSPlatformTextField::ShowVirtualKeyboard(bool bShow, int32 UserIndex, TSh
 
 @implementation SlateTextField
 
--(id)init
-{
-	self = [super init];
-	
-	if (self)
-	{
-		self->AlertController = nil;
-		self->bTransitioning = false;
-	}
-	
-	return self;
-}
-
 -(void)hide
 {
-	bWantsToShow = false;
-	if(CachedTextContents != nil)
-	{
-		[CachedTextContents release];
-		CachedTextContents = nil;
-	}
-	if(CachedPlaceholderContents != nil)
-	{
-		[CachedPlaceholderContents release];
-		CachedPlaceholderContents = nil;
-	}
-	
-	if(!bTransitioning)
-	{
-		if(AlertController != nil)
-		{
-			if ([AlertController respondsToSelector:@selector(dismissViewControllerAnimated: completion:)])
-			{
-				bTransitioning = true;
-				[AlertController dismissViewControllerAnimated: YES completion : ^(){
-					bTransitioning = false;
-					[self updateToDesiredState];
-				}];
-				AlertController = nil;
-			}
-			else
-			{
-				UE_LOG(LogTemp, Log, TEXT("AlertController didn't support needed selector"));
-			}
-		}
-
-		TextWidget = nullptr;
-	}
+    if(!TextWidget.IsValid())
+    {
+        return;
+    }
+    
+    if(AlertController != nil)
+    {
+        [AlertController dismissViewControllerAnimated: YES completion: nil];
+    }
+    
+    TextWidget = nullptr;
 }
 
 -(bool)hasTextWidget
 {
-	return TextWidget.IsValid();
+    return TextWidget.IsValid();
 }
 
 -(void)show:(TSharedPtr<IVirtualKeyboardEntry>)InTextWidget text:(NSString*)TextContents placeholder:(NSString*)PlaceholderContents keyboardConfig:(FKeyboardConfig)KeyboardConfig
 {
 	TextWidget = InTextWidget;
 	TextEntry = FText::FromString(TEXT(""));
-	if(CachedTextContents != nil)
-	{
-		[CachedTextContents release];
-	}
-	if(CachedPlaceholderContents != nil)
-	{
-		[CachedPlaceholderContents release];
-	}
-	CachedTextContents = [TextContents copy];
-	CachedPlaceholderContents = [PlaceholderContents copy];
-	CachedKeyboardConfig = KeyboardConfig;
-	bWantsToShow = true;
 
-	if(AlertController == nil && !bTransitioning)
-	{
-		AlertController = [UIAlertController alertControllerWithTitle : @"" message:@"" preferredStyle:UIAlertControllerStyleAlert];
-		UIAlertAction* okAction = [UIAlertAction
-										actionWithTitle:NSLocalizedString(@"OK", nil)
-										style:UIAlertActionStyleDefault
-										handler:^(UIAlertAction* action)
+	AlertController = [UIAlertController alertControllerWithTitle : @"" message:@"" preferredStyle:UIAlertControllerStyleAlert];
+	UIAlertAction* okAction = [UIAlertAction
+									actionWithTitle:NSLocalizedString(@"OK", nil)
+									style:UIAlertActionStyleDefault
+									handler:^(UIAlertAction* action)
+									{
+										[AlertController dismissViewControllerAnimated : YES completion : nil];
+
+										UITextField* AlertTextField = AlertController.textFields.firstObject;
+										TextEntry = FText::FromString(AlertTextField.text);
+										AlertController = nil;
+										
+										FIOSAsyncTask* AsyncTask = [[FIOSAsyncTask alloc] init];
+										AsyncTask.GameThreadCallback = ^ bool(void)
 										{
-											if ([AlertController respondsToSelector:@selector(dismissViewControllerAnimated: completion:)])
+											if(TextWidget.IsValid())
 											{
-												bTransitioning = true;
-												[AlertController dismissViewControllerAnimated : YES completion : ^(){
-													bTransitioning = false;
-													[self updateToDesiredState];
-												}];
-
-												UITextField* AlertTextField = AlertController.textFields.firstObject;
-												TextEntry = FText::FromString(AlertTextField.text);
-												AlertController = nil;
-											
-												FIOSAsyncTask* AsyncTask = [[FIOSAsyncTask alloc] init];
-												AsyncTask.GameThreadCallback = ^ bool(void)
-												{
-													if(TextWidget.IsValid())
-													{
-														TSharedPtr<IVirtualKeyboardEntry> TextEntryWidgetPin = TextWidget.Pin();
-														TextEntryWidgetPin->SetTextFromVirtualKeyboard(TextEntry, ETextEntryType::TextEntryAccepted);
-													}
-
-													// clear the TextWidget
-													TextWidget = nullptr;
-													return true;
-												};
-												[AsyncTask FinishedTask];
+												TSharedPtr<IVirtualKeyboardEntry> TextEntryWidgetPin = TextWidget.Pin();
+												TextEntryWidgetPin->SetTextFromVirtualKeyboard(TextEntry, ETextEntryType::TextEntryAccepted);
 											}
-											else
-											{
-												TextWidget = nullptr;
-												UE_LOG(LogTemp, Log, TEXT("AlertController didn't support needed selector"));
-											}
-										}
-		];
-		UIAlertAction* cancelAction = [UIAlertAction
-										actionWithTitle: NSLocalizedString(@"Cancel", nil)
-										style:UIAlertActionStyleDefault
-										handler:^(UIAlertAction* action)
+
+											// clear the TextWidget
+											TextWidget = nullptr;
+											return true;
+										};
+										[AsyncTask FinishedTask];
+									}
+	];
+	UIAlertAction* cancelAction = [UIAlertAction
+									actionWithTitle: NSLocalizedString(@"Cancel", nil)
+									style:UIAlertActionStyleDefault
+									handler:^(UIAlertAction* action)
+									{
+										[AlertController dismissViewControllerAnimated : YES completion : nil];
+										AlertController = nil;
+										
+										FIOSAsyncTask* AsyncTask = [[FIOSAsyncTask alloc] init];
+										AsyncTask.GameThreadCallback = ^ bool(void)
 										{
-											if ([AlertController respondsToSelector:@selector(dismissViewControllerAnimated: completion:)])
-											{
-												bTransitioning = true;
-												[AlertController dismissViewControllerAnimated : YES completion : ^(){
-													bTransitioning = false;
-													[self updateToDesiredState];
-												}];
-												AlertController = nil;
-											
-												FIOSAsyncTask* AsyncTask = [[FIOSAsyncTask alloc] init];
-												AsyncTask.GameThreadCallback = ^ bool(void)
-												{
-													// clear the TextWidget
-													TextWidget = nullptr;
-													return true;
-												};
-												[AsyncTask FinishedTask];
-											}
-											else
-											{
-												TextWidget = nullptr;
-												UE_LOG(LogTemp, Log, TEXT("AlertController didn't support needed selector"));
-											}
-										}
-		];
+											// clear the TextWidget
+											TextWidget = nullptr;
+											return true;
+										};
+										[AsyncTask FinishedTask];
+									}
+	];
 
-		[AlertController addAction: okAction];
-		[AlertController addAction: cancelAction];
-		[AlertController
-						addTextFieldWithConfigurationHandler:^(UITextField* AlertTextField)
+	[AlertController addAction: okAction];
+	[AlertController addAction: cancelAction];
+	[AlertController
+					addTextFieldWithConfigurationHandler:^(UITextField* AlertTextField)
+					{
+						AlertTextField.clearsOnBeginEditing = NO;
+						AlertTextField.clearsOnInsertion = NO;
+						if (TextWidget.IsValid())
 						{
-							AlertTextField.clearsOnBeginEditing = NO;
-							AlertTextField.clearsOnInsertion = NO;
-							if (TextWidget.IsValid())
-							{
-								AlertTextField.text = TextContents;
-								AlertTextField.placeholder = PlaceholderContents;
-								AlertTextField.keyboardType = KeyboardConfig.KeyboardType;
-								AlertTextField.autocorrectionType = KeyboardConfig.AutocorrectionType;
-								AlertTextField.autocapitalizationType = KeyboardConfig.AutocapitalizationType;
-								AlertTextField.secureTextEntry = KeyboardConfig.bSecureTextEntry;
-							}
+							AlertTextField.text = TextContents;
+							AlertTextField.placeholder = PlaceholderContents;
+							AlertTextField.keyboardType = KeyboardConfig.KeyboardType;
+							AlertTextField.autocorrectionType = KeyboardConfig.AutocorrectionType;
+							AlertTextField.autocapitalizationType = KeyboardConfig.AutocapitalizationType;
+							AlertTextField.secureTextEntry = KeyboardConfig.bSecureTextEntry;
 						}
-		];
-		
-		bTransitioning = true;
-		[[IOSAppDelegate GetDelegate].IOSController presentViewController : AlertController animated : YES completion : ^(){
-			bTransitioning = false;
-			[self updateToDesiredState];
-		}];
-	}
-}
-
--(void)updateToDesiredState
-{
-	if(bWantsToShow)
-	{
-		if(TextWidget.IsValid())
-		{
-			[self show:TextWidget.Pin() text:CachedTextContents placeholder:CachedPlaceholderContents keyboardConfig:CachedKeyboardConfig];
-		}
-	}
-	else
-	{
-		[self hide];
-	}
+					}
+	];
+	[[IOSAppDelegate GetDelegate].IOSController presentViewController : AlertController animated : YES completion : nil];
 }
 
 @end

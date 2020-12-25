@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_GF_RAY_H
-#define PXR_BASE_GF_RAY_H
+#ifndef GF_RAY_H
+#define GF_RAY_H
 
 /// \file gf/ray.h
 /// \ingroup group_gf_BasicGeometry
@@ -37,7 +37,6 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-class GfBBox3d;
 class GfLine;
 class GfLineSeg;
 class GfPlane;
@@ -178,15 +177,6 @@ class GfRay {
                           double *enterDistance = NULL,
                           double *exitDistance = NULL) const;
 
-    /// Intersects the ray with an oriented box, returning \c true if the
-    /// ray intersects it at all within bounds. If there is an intersection,
-    /// this also returns the parametric distances to the two intersection
-    /// points in \p enterDistance and \p exitDistance.
-    GF_API
-    bool        Intersect(const GfBBox3d &box,
-                          double *enterDistance = NULL,
-                          double *exitDistance = NULL) const;
-
     /// Intersects the ray with a sphere, returning \c true if the ray
     /// intersects it at all within bounds.  If there is an intersection,
     /// returns the parametric distance to the two intersection points in \p
@@ -288,4 +278,4 @@ GF_API std::ostream& operator<<(std::ostream&, const GfRay&);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_GF_RAY_H
+#endif // GF_RAY_H

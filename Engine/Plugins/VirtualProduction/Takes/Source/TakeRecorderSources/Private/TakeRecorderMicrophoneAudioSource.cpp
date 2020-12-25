@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TakeRecorderMicrophoneAudioSource.h"
 #include "TakeRecorderSources.h"
@@ -20,7 +20,6 @@
 #include "Misc/PackageName.h"
 #include "AssetData.h"
 #include "AssetRegistryModule.h"
-#include "UObject/UObjectBaseUtility.h"
 
 UTakeRecorderMicrophoneAudioSourceSettings::UTakeRecorderMicrophoneAudioSourceSettings(const FObjectInitializer& ObjInit)
 	: Super(ObjInit)
@@ -170,16 +169,11 @@ void UTakeRecorderMicrophoneAudioSource::StopRecording(class ULevelSequence* InS
 
 	for (auto RecordedSoundWave : RecordedSoundWaves)
 	{
-		RecordedSoundWave->MarkPackageDirty();
-		
 		FAssetRegistryModule::AssetCreated(RecordedSoundWave);
 	}
 
 	UMovieScene* MovieScene = InSequence->GetMovieScene();
 	check(CachedAudioTrack.IsValid());
-
-	FFrameRate TickResolution = MovieScene->GetTickResolution();
-	FFrameRate DisplayRate = MovieScene->GetDisplayRate();
 
 	if (bReplaceRecordedAudio)
 	{
@@ -200,11 +194,11 @@ void UTakeRecorderMicrophoneAudioSource::StopRecording(class ULevelSequence* InS
 
 		UMovieSceneAudioSection* NewAudioSection = NewObject<UMovieSceneAudioSection>(CachedAudioTrack.Get(), UMovieSceneAudioSection::StaticClass());
 
-		FFrameNumber RecordStartFrame = Parameters.Project.bStartAtCurrentTimecode ? FFrameRate::TransformTime(FFrameTime(TimecodeSource.ToFrameNumber(DisplayRate)), DisplayRate, TickResolution).FloorToFrame() : MovieScene->GetPlaybackRange().GetLowerBoundValue();
+		FFrameRate TickResolution = CachedAudioTrack->GetTypedOuter<UMovieScene>()->GetTickResolution();
 
+		NewAudioSection->SetRowIndex(RowIndex + 1);
 		NewAudioSection->SetSound(RecordedAudio);
-		NewAudioSection->SetRange(TRange<FFrameNumber>(RecordStartFrame, RecordStartFrame + (RecordedAudio->GetDuration() * TickResolution).CeilToFrame()));
-		NewAudioSection->TimecodeSource = TimecodeSource;
+		NewAudioSection->SetRange(TRange<FFrameNumber>(FFrameNumber(0), (RecordedAudio->GetDuration() * TickResolution).CeilToFrame()));
 
 		CachedAudioTrack->AddSection(*NewAudioSection);
 

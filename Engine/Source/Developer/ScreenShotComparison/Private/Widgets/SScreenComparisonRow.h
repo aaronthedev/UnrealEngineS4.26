@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -49,7 +49,6 @@ private:
 	TSharedRef<SWidget> BuildAddedView();
 	TSharedRef<SWidget> BuildComparisonPreview();
 
-	FText GetAddNewButtonTooltip() const;
 	bool CanAddNew() const;
 	FReply AddNew();
 
@@ -61,8 +60,6 @@ private:
 
 	bool CanAddAsAlternative() const;
 	FReply AddAlternative();
-
-	FReply Remove();
 
 	FReply OnCompareImages(const FGeometry& InGeometry, const FPointerEvent& InEvent);
 	FReply OnCompareNewImage(const FGeometry& InGeometry, const FPointerEvent& InEvent);

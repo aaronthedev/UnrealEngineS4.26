@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PhysicsEngine/PhysicsHandleComponent.h"
 #include "EngineDefines.h"
@@ -7,28 +7,12 @@
 #include "PhysicsPublic.h"
 #include "Physics/PhysicsInterfaceCore.h"
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 	#include "PhysXPublic.h"
-#elif WITH_CHAOS
-	#include "Chaos/ParticleHandle.h"
-	#include "Chaos/KinematicGeometryParticles.h"
-	#include "Chaos/PBDJointConstraintTypes.h"
-	#include "Chaos/PBDJointConstraintData.h"
-	#include "Chaos/Sphere.h"
-#endif
-
-#include "ChaosCheck.h"
+#endif // WITH_PHYSX
 
 UPhysicsHandleComponent::UPhysicsHandleComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-#if WITH_CHAOS
-	, bPendingConstraint(false)
-	, PhysicsUserData(&ConstraintInstance)
-	, GrabbedHandle(nullptr)
-	, KinematicHandle(nullptr)
-	, ConstraintLocalPosition(FVector::ZeroVector)
-	, ConstraintLocalRotation(FRotator::ZeroRotator)
-#endif
 {
 	bAutoActivate = true;
 	PrimaryComponentTick.bCanEverTick = true;
@@ -50,7 +34,7 @@ void UPhysicsHandleComponent::OnUnregister()
 		ReleaseComponent();
 	}
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 	if(HandleData)
 	{
 		check(KinActorData);
@@ -77,7 +61,7 @@ void UPhysicsHandleComponent::OnUnregister()
 	Super::OnUnregister();
 }
 
-void UPhysicsHandleComponent::GrabComponent(class UPrimitiveComponent* InComponent, FName InBoneName, FVector GrabLocation, bool bInConstrainRotation)
+void UPhysicsHandleComponent::GrabComponent(class UPrimitiveComponent* InComponent, FName InBoneName, FVector GrabLocation, bool bConstrainRotation)
 {
 	//Old behavior was automatically using grabbed body's orientation. This is an edge case that we'd rather not support automatically. We do it here for backwards compat
 
@@ -95,6 +79,7 @@ void UPhysicsHandleComponent::GrabComponent(class UPrimitiveComponent* InCompone
 
 	FRotator GrabbedRotation = FRotator::ZeroRotator;
 
+#if WITH_PHYSX
 	if(FPhysicsInterface::IsValid(BodyInstance->ActorHandle))
 	{
 		FPhysicsCommand::ExecuteRead(BodyInstance->ActorHandle, [&](const FPhysicsActorHandle& Actor)
@@ -102,8 +87,10 @@ void UPhysicsHandleComponent::GrabComponent(class UPrimitiveComponent* InCompone
 			GrabbedRotation = FPhysicsInterface::GetGlobalPose_AssumesLocked(Actor).Rotator();
 		});
 	}
+#endif
 
-	GrabComponentImp(InComponent, InBoneName, GrabLocation, GrabbedRotation, bInConstrainRotation);
+
+	GrabComponentImp(InComponent, InBoneName, GrabLocation, GrabbedRotation, bConstrainRotation);
 }
 
 void UPhysicsHandleComponent::GrabComponentAtLocation(class UPrimitiveComponent* Component, FName InBoneName, FVector GrabLocation)
@@ -116,7 +103,7 @@ void UPhysicsHandleComponent::GrabComponentAtLocationWithRotation(class UPrimiti
 	GrabComponentImp(Component, InBoneName, GrabLocation, Rotation, true);
 }
 
-void UPhysicsHandleComponent::GrabComponentImp(UPrimitiveComponent* InComponent, FName InBoneName, const FVector& Location, const FRotator& Rotation, bool bInConstrainRotation)
+void UPhysicsHandleComponent::GrabComponentImp(UPrimitiveComponent* InComponent, FName InBoneName, const FVector& Location, const FRotator& Rotation, bool bConstrainRotation)
 {
 	// If we are already holding something - drop it first.
 	if(GrabbedComponent != NULL)
@@ -129,14 +116,13 @@ void UPhysicsHandleComponent::GrabComponentImp(UPrimitiveComponent* InComponent,
 		return;
 	}
 
+#if WITH_PHYSX && PHYSICS_INTERFACE_PHYSX
 	// Get the PxRigidDynamic that we want to grab.
 	FBodyInstance* BodyInstance = InComponent->GetBodyInstance(InBoneName);
 	if (!BodyInstance)
 	{
 		return;
 	}
-
-#if WITH_PHYSX && PHYSICS_INTERFACE_PHYSX
 
 	FPhysicsCommand::ExecuteWrite(BodyInstance->ActorHandle, [&](const FPhysicsActorHandle& Actor)
 	{
@@ -190,7 +176,7 @@ void UPhysicsHandleComponent::GrabComponentImp(UPrimitiveComponent* InComponent,
 					// Setting up the joint
 
 					PxD6Motion::Enum const LocationMotionType = bSoftLinearConstraint ? PxD6Motion::eFREE : PxD6Motion::eLOCKED;
-					PxD6Motion::Enum const RotationMotionType = (bSoftAngularConstraint || !bInConstrainRotation) ? PxD6Motion::eFREE : PxD6Motion::eLOCKED;
+					PxD6Motion::Enum const RotationMotionType = (bSoftAngularConstraint || !bConstrainRotation) ? PxD6Motion::eFREE : PxD6Motion::eLOCKED;
 
 					NewJoint->setMotion(PxD6Axis::eX, LocationMotionType);
 					NewJoint->setMotion(PxD6Axis::eY, LocationMotionType);
@@ -201,7 +187,7 @@ void UPhysicsHandleComponent::GrabComponentImp(UPrimitiveComponent* InComponent,
 					NewJoint->setMotion(PxD6Axis::eSWING1, RotationMotionType);
 					NewJoint->setMotion(PxD6Axis::eSWING2, RotationMotionType);
 
-					bRotationConstrained = bInConstrainRotation;
+					bRotationConstrained = bConstrainRotation;
 
 					UpdateDriveSettings();
 				}
@@ -209,48 +195,7 @@ void UPhysicsHandleComponent::GrabComponentImp(UPrimitiveComponent* InComponent,
 		}
 	});
 	
-#elif WITH_CHAOS
-	// simulatable bodies should have handles.
-	FPhysicsActorHandle& InHandle = BodyInstance->GetPhysicsActorHandle();
-	if (!InHandle)
-	{
-		return;
-	}
-
-	// the kinematic rigid body needs to be created before the constraint. 
-	if (!KinematicHandle)
-	{
-		using namespace Chaos;
-
-		FActorCreationParams Params;
-		Params.InitialTM = FTransform(Rotation, Location);
-		FPhysicsInterface::CreateActor(Params, KinematicHandle);
-
-		KinematicHandle->SetGeometry(TUniquePtr<FImplicitObject>(new TSphere<FReal, 3>(TVector<FReal, 3>(0.f), 1000.f)));
-		KinematicHandle->SetObjectState(EObjectStateType::Kinematic);
-
-		if (FPhysScene* Scene = BodyInstance->GetPhysicsScene())
-		{
-			FPhysicsInterface::AddActorToSolver(KinematicHandle, Scene->GetSolver());
-			ConstraintInstance.PhysScene = Scene;
-		}
-	}
-
-	FTransform KinematicTransform(Rotation, Location);
-
-	// set target and current, so we don't need another "Tick" call to have it right
-	TargetTransform = CurrentTransform = KinematicTransform;
-
-	KinematicHandle->SetX(KinematicTransform.GetLocation());
-	KinematicHandle->SetR(KinematicTransform.GetRotation());	
-	
-	FTransform GrabbedTransform(InHandle->R(), InHandle->X());
-	ConstraintLocalPosition = GrabbedTransform.InverseTransformPosition(Location);
-	ConstraintLocalRotation = FRotator(GrabbedTransform.InverseTransformRotation(FQuat(Rotation)));
-
-	bRotationConstrained = bInConstrainRotation;
-	GrabbedHandle = InHandle; 
-#endif
+#endif // WITH_PHYSX
 
 	GrabbedComponent = InComponent;
 	GrabbedBoneName = InBoneName;
@@ -258,7 +203,7 @@ void UPhysicsHandleComponent::GrabComponentImp(UPrimitiveComponent* InComponent,
 
 void UPhysicsHandleComponent::UpdateDriveSettings()
 {
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 	if(HandleData != nullptr)
 	{
 		if (bSoftLinearConstraint)
@@ -276,52 +221,12 @@ void UPhysicsHandleComponent::UpdateDriveSettings()
 			//NewJoint->setDrive(PxD6Drive::eSWING, PxD6JointDrive(AngularStiffness, AngularDamping, PX_MAX_F32, PxD6JointDriveFlag::eACCELERATION));
 		}
 	}
-#elif WITH_CHAOS
-
-	if (ConstraintHandle.IsValid() && ConstraintHandle.Constraint->IsType(Chaos::EConstraintType::JointConstraintType))
-	{
-		FPhysicsCommand::ExecuteWrite(ConstraintHandle, [&](const FPhysicsConstraintHandle& InConstraintHandle)
-			{
-				if (Chaos::FJointConstraint* Constraint = static_cast<Chaos::FJointConstraint*>(ConstraintHandle.Constraint))
-				{
-					Chaos::EJointMotionType LocationMotionType = bSoftLinearConstraint ? Chaos::EJointMotionType::Free : Chaos::EJointMotionType::Locked;
-					Chaos::EJointMotionType RotationMotionType = (bSoftAngularConstraint || !bRotationConstrained) ? Chaos::EJointMotionType::Free : Chaos::EJointMotionType::Locked;
-
-					Constraint->SetCollisionEnabled(false);
-					Constraint->SetLinearVelocityDriveEnabled(Chaos::TVector<bool, 3>(LocationMotionType != Chaos::EJointMotionType::Locked));
-					Constraint->SetLinearPositionDriveEnabled(Chaos::TVector<bool, 3>(LocationMotionType != Chaos::EJointMotionType::Locked));
-					Constraint->SetLinearMotionTypesX(LocationMotionType);
-					Constraint->SetLinearMotionTypesY(LocationMotionType);
-					Constraint->SetLinearMotionTypesZ(LocationMotionType);
-
-					Constraint->SetAngularSLerpPositionDriveEnabled(bRotationConstrained && RotationMotionType != Chaos::EJointMotionType::Locked);
-					Constraint->SetAngularSLerpVelocityDriveEnabled(bRotationConstrained && RotationMotionType != Chaos::EJointMotionType::Locked);
-					Constraint->SetAngularMotionTypesX(RotationMotionType);
-					Constraint->SetAngularMotionTypesY(RotationMotionType);
-					Constraint->SetAngularMotionTypesZ(RotationMotionType);
-					FTransform GrabConstraintLocalTransform(ConstraintLocalRotation, ConstraintLocalPosition);
-					Constraint->SetJointTransforms({ FTransform::Identity , GrabConstraintLocalTransform });
-
-					if (LocationMotionType != Chaos::EJointMotionType::Locked)
-					{
-						Constraint->SetLinearDriveStiffness(LinearStiffness);
-						Constraint->SetLinearDriveDamping(LinearDamping);
-					}
-
-					if (bRotationConstrained && RotationMotionType != Chaos::EJointMotionType::Locked)
-					{
-						Constraint->SetAngularDriveStiffness(AngularStiffness);
-						Constraint->SetAngularDriveDamping(AngularDamping);
-					}
-				}
-			});
-	}
 #endif // WITH_PHYSX
 }
 
 void UPhysicsHandleComponent::ReleaseComponent()
 {
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 	if(GrabbedComponent)
 	{
 		if(HandleData)
@@ -351,28 +256,7 @@ void UPhysicsHandleComponent::ReleaseComponent()
 		GrabbedComponent = NULL;
 		GrabbedBoneName = NAME_None;
 	}
-#elif WITH_CHAOS
-	if (ConstraintHandle.IsValid())
-	{
-		FPhysicsInterface::ReleaseConstraint(ConstraintHandle);
-		bPendingConstraint = false;
-	}
-
-	if (GrabbedComponent)
-	{
-		GrabbedComponent = NULL;
-		GrabbedBoneName = NAME_None;
-		GrabbedHandle = nullptr;
-	}
-
-	if (KinematicHandle)
-	{
-		FChaosEngineInterface::ReleaseActor(KinematicHandle, ConstraintInstance.GetPhysicsScene());
-	}
-
-	ConstraintInstance.Reset();
-
-#endif
+#endif // WITH_PHYSX
 }
 
 UPrimitiveComponent* UPhysicsHandleComponent::GetGrabbedComponent() const
@@ -398,12 +282,12 @@ void UPhysicsHandleComponent::SetTargetLocationAndRotation(FVector NewLocation, 
 
 void UPhysicsHandleComponent::UpdateHandleTransform(const FTransform& NewTransform)
 {
-#if PHYSICS_INTERFACE_PHYSX
-	if (!KinActorData)
+	if(!KinActorData)
 	{
 		return;
 	}
 
+#if WITH_PHYSX
 	bool bChangedPosition = true;
 	bool bChangedRotation = true;
 
@@ -445,75 +329,28 @@ void UPhysicsHandleComponent::UpdateHandleTransform(const FTransform& NewTransfo
 		//	//Joint->setDriveVelocity(PxVec3(0), PxVec3(0));
 		//}
 	}
-#elif WITH_CHAOS
-	if (!CurrentTransform.Equals(PreviousTransform))
-	{
-		FPhysicsCommand::ExecuteWrite(KinematicHandle, [&](const FPhysicsActorHandle& InKinematicHandle)
-			{
-				KinematicHandle->SetX(CurrentTransform.GetTranslation());
-				KinematicHandle->SetR(CurrentTransform.GetRotation());
-			});
-
-		PreviousTransform = CurrentTransform;
-	}
-#endif
+#endif // WITH_PHYSX
 }
 
 void UPhysicsHandleComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-
-#if WITH_CHAOS
-	if (bPendingConstraint)
+	if (bInterpolateTarget)
 	{
-		if (!ConstraintHandle.IsValid())
-			return;
-		bPendingConstraint = false;
+	const float Alpha = FMath::Clamp(DeltaTime * InterpolationSpeed, 0.f, 1.f);
+	FTransform C = CurrentTransform;
+	FTransform T = TargetTransform;
+	C.NormalizeRotation();
+	T.NormalizeRotation();
+	CurrentTransform.Blend(C, T, Alpha);
+	}
+	else
+	{
+		CurrentTransform = TargetTransform;
 	}
 
-	if (ConstraintHandle.IsValid())
-	{
-#endif
-		if (bInterpolateTarget)
-		{
-			const float Alpha = FMath::Clamp(DeltaTime * InterpolationSpeed, 0.f, 1.f);
-			FTransform C = CurrentTransform;
-			FTransform T = TargetTransform;
-			C.NormalizeRotation();
-			T.NormalizeRotation();
-			CurrentTransform.Blend(C, T, Alpha);
-		}
-		else
-		{
-			CurrentTransform = TargetTransform;
-		}
-
-		UpdateHandleTransform(CurrentTransform);
-#if WITH_CHAOS
-	}
-	else if (KinematicHandle && GrabbedHandle)
-	{
-		if (KinematicHandle->GetProxy())
-		{
-			using namespace Chaos;
-
-			ConstraintHandle = FChaosEngineInterface::CreateConstraint(KinematicHandle, GrabbedHandle, FTransform::Identity, FTransform::Identity); // Correct transforms will be set in the update
-			if (ConstraintHandle.IsValid() && ConstraintHandle.Constraint->IsType(Chaos::EConstraintType::JointConstraintType))
-			{
-				if (Chaos::FJointConstraint* Constraint = static_cast<Chaos::FJointConstraint*>(ConstraintHandle.Constraint))
-				{
-					// need to tie together the instance and the handle for scene read/write locks
-					Constraint->SetUserData(&PhysicsUserData/*has a (void*)FConstraintInstanceBase*/);
-					ConstraintInstance.ConstraintHandle = ConstraintHandle;
-
-					UpdateDriveSettings();
-				}
-			}
-			bPendingConstraint = true;
-		}
-	}
-#endif
+	UpdateHandleTransform(CurrentTransform);
 }
 
 void UPhysicsHandleComponent::GetTargetLocationAndRotation(FVector& OutLocation, FRotator& OutRotation) const 

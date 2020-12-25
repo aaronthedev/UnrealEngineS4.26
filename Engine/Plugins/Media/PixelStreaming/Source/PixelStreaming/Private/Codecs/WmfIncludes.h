@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Windows/AllowWindowsPlatformTypes.h"
@@ -80,6 +80,7 @@ inline const FString GetComErrorDescription(HRESULT Res)
 		}\
 	}
 
+// #AMF(Andriy) : Rename these to DX , instead of DX9 ?
 #define CHECK_HR_DX9(DX9_call)\
 	{\
 		HRESULT Res = DX9_call;\

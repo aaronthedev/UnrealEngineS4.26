@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Units/Math/RigUnit_MathVector.h"
 #include "Units/RigUnitContext.h"
@@ -479,14 +479,4 @@ FRigUnit_MathVectorClampSpatially_Execute()
 
 		}
 	}
-}
-
-FRigUnit_MathIntersectPlane_Execute()
-{
-	DECLARE_SCOPE_HIERARCHICAL_COUNTER_RIGUNIT()
-
-	FPlane Plane(PlanePoint, PlaneNormal);
-
-	Result = FMath::RayPlaneIntersection(Start, Direction, Plane);
-	Distance = (Start - Result).Size();
 }

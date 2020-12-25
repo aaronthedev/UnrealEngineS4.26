@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -12,8 +12,6 @@ public class AnimGraph : ModuleRules
                 "Editor/AnimGraph/Private",
             }
         );
-		
-		OverridePackageType = PackageOverrideType.EngineDeveloper;
 
         PublicDependencyModuleNames.AddRange(
 			new string[] { 
@@ -37,9 +35,7 @@ public class AnimGraph : ModuleRules
                 "ContentBrowser",
 				"KismetWidgets",
 				"ToolMenus",
-				"KismetCompiler",
-				"Kismet",
-			}
+            }
 		);
 
         CircularlyReferencedDependentModules.AddRange(
@@ -57,5 +53,5 @@ public class AnimGraph : ModuleRules
                 "AnimationBlueprintEditor",
             }
         );
-	}
+    }
 }

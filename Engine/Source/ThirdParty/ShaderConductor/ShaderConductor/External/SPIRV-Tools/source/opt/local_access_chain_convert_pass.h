@@ -82,16 +82,16 @@ class LocalAccessChainConvertPass : public MemPass {
 
   // Create a load/insert/store equivalent to a store of
   // |valId| through (constant index) access chaing |ptrInst|.
-  // Append to |newInsts|.  Returns true if successful.
-  bool GenAccessChainStoreReplacement(
+  // Append to |newInsts|.
+  void GenAccessChainStoreReplacement(
       const Instruction* ptrInst, uint32_t valId,
       std::vector<std::unique_ptr<Instruction>>* newInsts);
 
   // For the (constant index) access chain |address_inst|, create an
   // equivalent load and extract that replaces |original_load|.  The result id
   // of the extract will be the same as the original result id of
-  // |original_load|.  Returns true if successful.
-  bool ReplaceAccessChainLoad(const Instruction* address_inst,
+  // |original_load|.
+  void ReplaceAccessChainLoad(const Instruction* address_inst,
                               Instruction* original_load);
 
   // Return true if all indices of access chain |acp| are OpConstant integers
@@ -106,9 +106,7 @@ class LocalAccessChainConvertPass : public MemPass {
   //
   // Nested access chains and pointer access chains are not currently
   // converted.
-  //
-  // Returns a status to indicate success or failure, and change or no change.
-  Status ConvertLocalAccessChains(Function* func);
+  bool ConvertLocalAccessChains(Function* func);
 
   // Initialize extensions whitelist
   void InitExtensions();

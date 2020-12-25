@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_WEAK_PTR_FACADE_H
-#define PXR_BASE_TF_WEAK_PTR_FACADE_H
+#ifndef TF_WEAKPTRFACADE_H
+#define TF_WEAKPTRFACADE_H
 
 #include "pxr/pxr.h"
 
@@ -190,7 +190,16 @@ public:
     /// must either be the same as or a base class of \a DataType or DataType
     /// must be polymorphic.
     template <class T>
-    bool PointsToA() const {
+    typename boost::enable_if<boost::is_base_of<T, DataType> >::type
+    PointsToA() const {
+        return _FetchPointer();  // points to a T if not null.
+    }
+
+    template <class T>
+    typename boost::disable_if<boost::is_base_of<T, DataType>, bool>::type
+    PointsToA() const {
+        static_assert(std::is_polymorphic<DataType>::value,
+                      "DataType must be polymorphic.");
         return dynamic_cast<T *>(_FetchPointer());
     }
 
@@ -435,4 +444,4 @@ hash_value(TfWeakPtrFacade<X, T> const &ptr)
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_WEAK_PTR_FACADE_H
+#endif // TF_WEAKPTRFACADE_H

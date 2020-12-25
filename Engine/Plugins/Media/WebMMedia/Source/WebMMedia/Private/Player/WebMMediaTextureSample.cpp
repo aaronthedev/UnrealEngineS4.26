@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WebMMediaTextureSample.h"
 #include "RHI.h"
@@ -20,7 +20,7 @@ void FWebMMediaTextureSample::CreateTexture()
 {
 	check(IsInRenderingThread());
 
-	const ETextureCreateFlags CreateFlags = TexCreate_Dynamic | TexCreate_SRGB;
+	const uint32 CreateFlags = TexCreate_Dynamic | TexCreate_SRGB;
 
 	TRefCountPtr<FRHITexture2D> DummyTexture2DRHI;
 	FRHIResourceCreateInfo CreateInfo;
@@ -79,9 +79,9 @@ FRHITexture* FWebMMediaTextureSample::GetTexture() const
 	return Texture.GetReference();
 }
 
-FMediaTimeStamp FWebMMediaTextureSample::GetTime() const
+FTimespan FWebMMediaTextureSample::GetTime() const
 {
-	return FMediaTimeStamp(Time);
+	return Time;
 }
 
 bool FWebMMediaTextureSample::IsCacheable() const

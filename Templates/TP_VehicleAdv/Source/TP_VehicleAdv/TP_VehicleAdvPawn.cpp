@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TP_VehicleAdvPawn.h"
 #include "TP_VehicleAdvWheelFront.h"
@@ -34,8 +34,6 @@ const FName ATP_VehicleAdvPawn::LookRightBinding("LookRight");
 const FName ATP_VehicleAdvPawn::EngineAudioRPM("RPM");
 
 #define LOCTEXT_NAMESPACE "VehiclePawn"
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 ATP_VehicleAdvPawn::ATP_VehicleAdvPawn()
 {
@@ -377,5 +375,3 @@ void ATP_VehicleAdvPawn::UpdatePhysicsMaterial()
 }
 
 #undef LOCTEXT_NAMESPACE
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

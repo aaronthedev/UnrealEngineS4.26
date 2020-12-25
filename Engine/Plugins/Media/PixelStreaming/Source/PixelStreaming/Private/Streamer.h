@@ -1,14 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "PixelStreamingPrivate.h"
+#include "Codecs/PixelStreamingBaseVideoEncoder.h"
 #include "SignallingServerConnection.h"
 #include "ProtocolDefs.h"
-#include "Utils.h"
 
 #include "HAL/ThreadSafeBool.h"
-#include "HAL/CriticalSection.h"
 
 class FRenderTarget;
 class IFileHandle;
@@ -34,7 +33,7 @@ public:
 
 	void SendPlayerMessage(PixelStreamingProtocol::EToPlayerMsg Type, const FString& Descriptor);
 
-	void SendFreezeFrame(const TArray64<uint8>& JpegBytes);
+	void SendFreezeFrame(const TArray<uint8>& JpegBytes);
 	void SendUnfreezeFrame();
 
 private:
@@ -54,7 +53,6 @@ private:
 	void CreatePlayerSession(FPlayerId PlayerId);
 	void DeletePlayerSession(FPlayerId PlayerId);
 	void DeleteAllPlayerSessions();
-	// calling code should lock `PlayersCS` for this call and entire lifetime of returned reference
 	FPlayerSession* GetPlayerSession(FPlayerId PlayerId);
 
 	void AddStreams(FPlayerId PlayerId);
@@ -75,7 +73,7 @@ private:
 
 	// a single instance of the actual hardware encoder is used for multiple streams/players to provide multicasting functionality
 	// for multi-session unicast implementation each instance of `FVideoEncoder` will have own instance of hardware encoder.
-	FHWEncoderDetails HWEncoderDetails;
+	TUniquePtr<FPixelStreamingBaseVideoEncoder> HWEncoder;
 
 	TUniquePtr<FThread> WebRtcSignallingThread;
 	DWORD WebRtcSignallingThreadId = 0;
@@ -84,9 +82,6 @@ private:
 	double LastSignallingServerConnectionAttemptTimestamp = 0;
 
 	TMap<FPlayerId, TUniquePtr<FPlayerSession>> Players;
-	// `Players` is modified only in WebRTC signalling thread, but can be accessed (along with contained `FPlayerSession` instances) 
-	// from other threads. All `Players` modifications in WebRTC thread and all accesses in other threads should be locked.
-	FCriticalSection PlayersCS;
 	rtc::scoped_refptr<webrtc::PeerConnectionFactoryInterface> PeerConnectionFactory;
 	webrtc::PeerConnectionInterface::RTCConfiguration PeerConnectionConfig;
 
@@ -100,15 +95,8 @@ private:
 
 	// When we send a freeze frame we retain the data to handle connection
 	// scenarios.
-	TArray64<uint8> CachedJpegBytes;
+	TArray<uint8> CachedJpegBytes;
 
 	FThreadSafeBool bStreamingStarted = false;
-
-	// reporting of video encoder QP to clients
-private:
-	void SendVideoEncoderQP();
-
-	double LastVideoEncoderQPReportTime = 0;
-	FSmoothedValue<60> VideoEncoderAvgQP;
 };
 

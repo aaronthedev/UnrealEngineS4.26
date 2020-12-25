@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UserInterface/PropertyEditor/SPropertyEditorMap.h"
 #include "UObject/UnrealType.h"
@@ -30,10 +30,10 @@ void SPropertyEditorMap::Construct(const FArguments& InArgs, const TSharedRef< c
 bool SPropertyEditorMap::Supports(const TSharedRef< FPropertyEditor >& InPropertyEditor)
 {
 	const TSharedRef< FPropertyNode > PropertyNode = InPropertyEditor->GetPropertyNode();
-	const FProperty* Property = InPropertyEditor->GetProperty();
+	const UProperty* Property = InPropertyEditor->GetProperty();
 
 	if (!PropertyNode->HasNodeFlags(EPropertyNodeFlags::EditInlineNew)
-		&& Property->IsA<FMapProperty>())
+		&& Property->IsA<UMapProperty>())
 	{
 		return true;
 	}
@@ -43,8 +43,8 @@ bool SPropertyEditorMap::Supports(const TSharedRef< FPropertyEditor >& InPropert
 
 void SPropertyEditorMap::GetDesiredWidth(float& OutMinDesiredWidth, float& OutMaxDesiredWidth)
 {
-	OutMinDesiredWidth = 170.0f;
-	OutMaxDesiredWidth = 170.0f;
+	OutMinDesiredWidth = 190.0f;
+	OutMaxDesiredWidth = 190.0f;
 }
 
 FText SPropertyEditorMap::GetMapTextValue() const

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Channels/MovieSceneBoolChannel.h"
 #include "Channels/MovieSceneChannelProxy.h"
@@ -122,7 +122,7 @@ void FMovieSceneBoolChannel::Reset()
 
 void FMovieSceneBoolChannel::Optimize(const FKeyDataOptimizationParams& InParameters)
 {
-	UE::MovieScene::Optimize(this, InParameters);
+	MovieScene::Optimize(this, InParameters);
 }
 
 void FMovieSceneBoolChannel::Offset(FFrameNumber DeltaPosition)

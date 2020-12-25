@@ -1,8 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
-#include "Camera/CameraShakeBase.h"
+#include "CoreMinimal.h"
+#include "UObject/ObjectMacros.h"
+#include "UObject/Object.h"
+#include "UObject/ScriptMacros.h"
+#include "Camera/CameraTypes.h"
 #include "CameraShake.generated.h"
 
 class AActor;
@@ -109,19 +113,38 @@ struct FVOscillator
 	/** Oscillation in the Z axis. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = VOscillator)
 	struct FFOscillator Z;
+
 };
 
 
 /**
- * Legacy camera shake which can do either oscillation or run camera anims.
+ * A CameraShake is an asset that defines how to shake the camera in 
+ * a particular way. CameraShakes can be authored as either oscillating shakes, 
+ * animated shakes, or both.
+ *
+ * An oscillating shake will sinusoidally vibrate various camera parameters over time. Each location
+ * and rotation axis can be oscillated independently with different parameters to create complex and
+ * random-feeling shakes. These are easier to author and tweak, but can still feel mechanical and are
+ * limited to vibration-style shakes, such as earthquakes.
+ *
+ * Animated shakes play keyframed camera animations.  These can take more effort to author, but enable
+ * more natural-feeling results and things like directional shakes.  For instance, you can have an explosion
+ * to the camera's right push it primarily to the left.
  */
 
-UCLASS(Blueprintable)
-class ENGINE_API UMatineeCameraShake : public UCameraShakeBase
+UCLASS(Blueprintable, editinlinenew)
+class ENGINE_API UCameraShake : public UObject
 {
 	GENERATED_UCLASS_BODY()
 
 public:
+	/** 
+	 *  If true to only allow a single instance of this shake class to play at any given time.
+	 *  Subsequent attempts to play this shake will simply restart the timer.
+	 */
+	UPROPERTY(EditAnywhere, Category=CameraShake)
+	uint32 bSingleInstance:1;
+
 	/** Duration in seconds of current screen shake. Less than 0 means indefinite, 0 means no oscillation. */
 	UPROPERTY(EditAnywhere, Category=Oscillation)
 	float OscillationDuration;
@@ -181,51 +204,27 @@ public:
 	UPROPERTY(EditAnywhere, Category = AnimShake)
 	uint32 bRandomAnimSegment : 1;
 
-public:
-
-	/** Time remaining for oscillation shakes. Less than 0.f means shake infinitely. */
-	UPROPERTY(transient, BlueprintReadOnly, Category = CameraShake)
-	float OscillatorTimeRemaining;
-
-	/** The playing instance of the CameraAnim-based shake, if any. */
-	UPROPERTY(transient, BlueprintReadOnly, Category = CameraShake)
-	class UCameraAnimInst* AnimInst;
-
-public:
-
-	// Blueprint API
-
-	/** Called when the shake starts playing */
-	UFUNCTION(BlueprintImplementableEvent, Category = CameraShake)
-	void ReceivePlayShake(float Scale);
-
-	/** Called every tick to let the shake modify the point of view */
-	UFUNCTION(BlueprintImplementableEvent, Category = CameraShake)
-	void BlueprintUpdateCameraShake(float DeltaTime, float Alpha, const FMinimalViewInfo& POV, FMinimalViewInfo& ModifiedPOV);
-
-	/** Called to allow a shake to decide when it's finished playing. */
-	UFUNCTION(BlueprintNativeEvent, Category = CameraShake)
-	bool ReceiveIsFinished() const;
-
-	/**
-	 * Called when the shake is explicitly stopped.
-	 * @param bImmediatly		If true, shake stops right away regardless of blend out settings. If false, shake may blend out according to its settings.
-	 */
-	UFUNCTION(BlueprintImplementableEvent, Category = CameraShake)
-	void ReceiveStopShake(bool bImmediately);
-
-public:
-
-	/** Returns true if this camera shake will loop forever */
-	bool IsLooping() const;
-
-	/** Sets current playback time and applies the shake (both oscillation and cameraanim) to the given POV. */
-	void SetCurrentTimeAndApplyShake(float NewTime, FMinimalViewInfo& POV);
-	
-	/** Sets actor for playing camera anims */
-	void SetTempCameraAnimActor(AActor* Actor) { TempCameraActorForCameraAnims = Actor; }
-
 protected:
+
+	// INSTANCE DATA
+	
+	/** True if this shake is currently blending in. */
+	uint16 bBlendingIn:1;
+
+	/** True if this shake is currently blending out. */
+	uint16 bBlendingOut:1;
+
+	/** What space to play the shake in before applying to the camera.  Affects both Anim and Oscillation shakes. */
+	ECameraAnimPlaySpace::Type PlaySpace;
+
+	/** How long this instance has been blending in. */
+	float CurrentBlendInTime;
+
+	/** How long this instance has been blending out. */
+	float CurrentBlendOutTime;
+
+	UPROPERTY(transient, BlueprintReadOnly, Category = CameraShake)
+	class APlayerCameraManager* CameraOwner;
 
 	/** Current location sinusoidal offset. */
 	FVector LocSinOffset;
@@ -245,26 +244,66 @@ protected:
 	/** Initial offset (could have been assigned at random). */
 	float InitialFOVSinOffset;
 
+	/** Matrix defining the playspace, used when PlaySpace == CAPS_UserDefined */
+	FMatrix UserPlaySpaceMatrix;
+
 	/** Temp actor to use for playing camera anims. Used when playing a camera anim in non-gameplay context, e.g. in the editor */
 	AActor* TempCameraActorForCameraAnims;
 
-private:
+public:
+	/** Overall intensity scale for this shake instance. */
+	UPROPERTY(transient, BlueprintReadWrite, Category = CameraShake)
+	float ShakeScale;
 
-	// UCameraShakeBase interface
-	virtual void GetShakeInfoImpl(FCameraShakeInfo& OutInfo) const override;
-	virtual void StartShakeImpl() override;
-	virtual void UpdateShakeImpl(const FCameraShakeUpdateParams& Params, FCameraShakeUpdateResult& OutResult) override;
-	virtual bool IsFinishedImpl() const override;
-	virtual void StopShakeImpl(bool bImmediately) override;
+	/** Time remaining for oscillation shakes. Less than 0.f means shake infinitely. */
+	UPROPERTY(transient, BlueprintReadOnly, Category = CameraShake)
+	float OscillatorTimeRemaining;
 
-private:
+	/** The playing instance of the CameraAnim-based shake, if any. */
+	UPROPERTY(transient, BlueprintReadOnly, Category = CameraShake)
+	class UCameraAnimInst* AnimInst;
 
-	float CurrentBlendInTime;
-	float CurrentBlendOutTime;
-	bool bBlendingIn : 1;
-	bool bBlendingOut : 1;
+public:
+	// Blueprint API
+
+	/** Called every tick to let the shake modify the point of view */
+	UFUNCTION(BlueprintImplementableEvent, Category=CameraShake)
+	void BlueprintUpdateCameraShake(float DeltaTime, float Alpha, const FMinimalViewInfo& POV, FMinimalViewInfo& ModifiedPOV);
+
+	/** Called when the shake starts playing */
+	UFUNCTION(BlueprintImplementableEvent, Category = CameraShake)
+	void ReceivePlayShake(float Scale);
+
+	/** Called to allow a shake to decide when it's finished playing. */
+	UFUNCTION(BlueprintNativeEvent, Category = CameraShake)
+	bool ReceiveIsFinished() const;
+
+	/** 
+	 * Called when the shake is explicitly stopped. 
+	 * @param bImmediatly		If true, shake stops right away regardless of blend out settings. If false, shake may blend out according to its settings.
+	 */
+	UFUNCTION(BlueprintImplementableEvent, Category = CameraShake)
+	void ReceiveStopShake(bool bImmediately);
+
+	// Native API
+	virtual void UpdateAndApplyCameraShake(float DeltaTime, float Alpha, FMinimalViewInfo& InOutPOV);
+	virtual void PlayShake(class APlayerCameraManager* Camera, float Scale, ECameraAnimPlaySpace::Type InPlaySpace, FRotator UserPlaySpaceRot = FRotator::ZeroRotator);
+	virtual bool IsFinished() const;
+
+	/** 
+	 * Stops this shake from playing. 
+	 * @param bImmediatly		If true, shake stops right away regardless of blend out settings. If false, shake may blend out according to its settings.
+	 */
+	virtual void StopShake(bool bImmediately = true);
+
+	// Returns true if this camera shake will loop forever
+	bool IsLooping() const;
+
+	/** Sets current playback time and applies the shake (both oscillation and cameraanim) to the given POV. */
+	void SetCurrentTimeAndApplyShake(float NewTime, FMinimalViewInfo& POV);
+
+	void SetTempCameraAnimActor(AActor* Actor) { TempCameraActorForCameraAnims = Actor; }
 };
-/** Backwards compatible name for the Matinee camera shake, for C++ code. */
-UE_DEPRECATED(4.26, "Please use UMatineeCameraShake")
-typedef UMatineeCameraShake UCameraShake;
+
+
 

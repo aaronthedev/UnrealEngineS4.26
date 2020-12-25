@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Customizations/UMGDetailCustomizations.h"
 #include "Widgets/Images/SImage.h"
@@ -23,13 +23,10 @@
 #include "ScopedTransaction.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Components/PanelSlot.h"
-#include "IPropertyAccessEditor.h"
+#include "Details/SPropertyBinding.h"
 #include "Widgets/Layout/SWidgetSwitcher.h"
 #include "IDetailsView.h"
 #include "IDetailPropertyExtensionHandler.h"
-#include "Binding/PropertyBinding.h"
-#include "Components/WidgetComponent.h"
-#include "Algo/Transform.h"
 
 #define LOCTEXT_NAMESPACE "UMG"
 
@@ -93,387 +90,9 @@ private:
 	TSharedPtr<FEdGraphSchemaAction> Action;
 };
 
-TSharedRef<SWidget> FBlueprintWidgetCustomization::MakePropertyBindingWidget(TWeakPtr<FWidgetBlueprintEditor> InEditor, FDelegateProperty* InDelegateProperty, TSharedRef<IPropertyHandle> InPropertyHandle, bool bInGeneratePureBindings)
+void FBlueprintWidgetCustomization::CreateEventCustomization( IDetailLayoutBuilder& DetailLayout, UDelegateProperty* Property, UWidget* Widget )
 {
-	const FName PropertyName = InPropertyHandle->GetProperty()->GetFName();
-
-	TArray<UObject*> Objects;
-	InPropertyHandle->GetOuterObjects(Objects);
-
-	UWidget* Widget = CastChecked<UWidget>(Objects[0]);
-
-	FString WidgetName;
-	if ( Widget && !Widget->IsGeneratedName() )
-	{
-		WidgetName = TEXT("_") + Widget->GetName() + TEXT("_");
-	}
-
-	if(IModularFeatures::Get().IsModularFeatureAvailable("PropertyAccessEditor"))
-	{
-		FPropertyBindingWidgetArgs Args;
-		Args.Property = InPropertyHandle->GetProperty();
-		Args.BindableSignature = InDelegateProperty->SignatureFunction;
-		Args.OnGenerateBindingName = FOnGenerateBindingName::CreateLambda([WidgetName]()
-		{
-			return WidgetName;
-		});
-
-		Args.OnGotoBinding = FOnGotoBinding::CreateLambda([InEditor, Objects](FName InPropertyName)
-		{
-			UWidgetBlueprint* ThisBlueprint = InEditor.Pin()->GetWidgetBlueprintObj();
-
-			//TODO UMG O(N) Isn't good for this, needs to be map, but map isn't serialized, need cached runtime map for fast lookups.
-
-			for ( int32 ObjectIndex = 0; ObjectIndex < Objects.Num(); ObjectIndex++ )
-			{
-				// Ignore null outer objects
-				if ( Objects[ObjectIndex] == nullptr )
-				{
-					continue;
-				}
-
-				for ( const FDelegateEditorBinding& Binding : ThisBlueprint->Bindings )
-				{
-					if ( Binding.ObjectName == Objects[ObjectIndex]->GetName() && Binding.PropertyName == InPropertyName )
-					{
-						if ( Binding.Kind == EBindingKind::Function )
-						{
-							TArray<UEdGraph*> AllGraphs;
-							ThisBlueprint->GetAllGraphs(AllGraphs);
-
-							FGuid SearchForGuid = Binding.MemberGuid;
-							if ( !Binding.SourcePath.IsEmpty() )
-							{
-								SearchForGuid = Binding.SourcePath.Segments.Last().GetMemberGuid();
-							}
-
-							for ( UEdGraph* Graph : AllGraphs )
-							{
-								if ( Graph->GraphGuid == SearchForGuid )
-								{
-									InEditor.Pin()->SetCurrentMode(FWidgetBlueprintApplicationModes::GraphMode);
-									InEditor.Pin()->OpenDocument(Graph, FDocumentTracker::OpenNewDocument);
-								}
-							}
-
-							// Either way return
-							return true;
-						}
-					}
-				}
-			}
-
-			return false;
-		});
-
-		Args.OnCanGotoBinding = FOnCanGotoBinding::CreateLambda([InEditor, Objects](FName InPropertyName)
-		{
-			UWidgetBlueprint* ThisBlueprint = InEditor.Pin()->GetWidgetBlueprintObj();
-
-			for ( int32 ObjectIndex = 0; ObjectIndex < Objects.Num(); ObjectIndex++ )
-			{
-				// Ignore null outer objects
-				if ( Objects[ObjectIndex] == nullptr )
-				{
-					continue;
-				}
-
-				for ( const FDelegateEditorBinding& Binding : ThisBlueprint->Bindings )
-				{
-					if ( Binding.ObjectName == Objects[ObjectIndex]->GetName() && Binding.PropertyName == InPropertyName )
-					{
-						if ( Binding.Kind == EBindingKind::Function )
-						{
-							return true;
-						}
-					}
-				}
-			}
-
-			return false;
-		});
-
-		Args.OnCanBindProperty = FOnCanBindProperty::CreateLambda([InDelegateProperty](FProperty* InProperty)
-		{
-			if ( FProperty* ReturnProperty = InDelegateProperty->SignatureFunction->GetReturnProperty() )
-			{
-				// Find the binder that can handle the delegate return type.
-				TSubclassOf<UPropertyBinding> Binder = UWidget::FindBinderClassForDestination(ReturnProperty);
-				if ( Binder != nullptr )
-				{
-					// Ensure that the binder also can handle binding from the property we care about.
-					return ( Binder->GetDefaultObject<UPropertyBinding>()->IsSupportedSource(InProperty) );
-				}
-			}
-
-			return false;
-		});
-	
-		Args.OnCanBindFunction = FOnCanBindFunction::CreateLambda([InDelegateProperty](UFunction* InFunction)
-		{
-			auto HasFunctionBinder = [InFunction](UFunction* InBindableSignature)
-			{
-				if ( InFunction->NumParms == 1 && InBindableSignature->NumParms == 1 )
-				{
-					if ( FProperty* FunctionReturn = InFunction->GetReturnProperty() )
-					{
-						if ( FProperty* DelegateReturn = InBindableSignature->GetReturnProperty() )
-						{
-							// Find the binder that can handle the delegate return type.
-							TSubclassOf<UPropertyBinding> Binder = UWidget::FindBinderClassForDestination(DelegateReturn);
-							if ( Binder != nullptr )
-							{
-								// Ensure that the binder also can handle binding from the property we care about.
-								if ( Binder->GetDefaultObject<UPropertyBinding>()->IsSupportedSource(FunctionReturn) )
-								{
-									return true;
-								}
-							}
-						}
-					}
-				}
-
-				return false;
-			};
-
-			// We ignore CPF_ReturnParm because all that matters for binding to script functions is that the number of out parameters match.
-			return ( InFunction->IsSignatureCompatibleWith(InDelegateProperty->SignatureFunction, UFunction::GetDefaultIgnoredSignatureCompatibilityFlags() | CPF_ReturnParm) ||
-				 HasFunctionBinder(InDelegateProperty->SignatureFunction) );
-		});
-
-		Args.OnCanBindToClass = FOnCanBindToClass::CreateLambda([](UClass* InClass)
-		{
-			if (InClass == UUserWidget::StaticClass() ||
-				InClass == AActor::StaticClass() ||
-				InClass == APawn::StaticClass() ||
-				InClass == UObject::StaticClass() ||
-				InClass == UPrimitiveComponent::StaticClass() ||
-				InClass == USceneComponent::StaticClass() ||
-				InClass == UActorComponent::StaticClass() ||
-				InClass == UWidgetComponent::StaticClass() ||
-				InClass == UStaticMeshComponent::StaticClass() ||
-				InClass == UWidgetAnimation::StaticClass() )
-			{
-				return false;
-			}
-		
-			return true;
-		});
-
-		Args.OnCanBindToSubObjectClass = FOnCanBindToSubObjectClass::CreateLambda([](UClass* InClass)
-		{
-			// Ignore any properties that are widgets, we don't want users binding widgets to other widgets.
-			return InClass->IsChildOf(UWidget::StaticClass());
-		});
-
-		Args.OnAddBinding = FOnAddBinding::CreateLambda([InEditor, Objects](FName InPropertyName, const TArray<FBindingChainElement>& InBindingChain)
-		{
-			UWidgetBlueprint* ThisBlueprint = InEditor.Pin()->GetWidgetBlueprintObj();
-			UBlueprintGeneratedClass* SkeletonClass = Cast<UBlueprintGeneratedClass>(ThisBlueprint->SkeletonGeneratedClass);
-
-			ThisBlueprint->Modify();
-
-			TArray<FFieldVariant> FieldChain;
-			Algo::Transform(InBindingChain, FieldChain, [](const FBindingChainElement& InElement)
-			{
-				return InElement.Field;
-			});
-
-			UFunction* Function = FieldChain.Last().Get<UFunction>();
-			FProperty* Property = FieldChain.Last().Get<FProperty>();
-
-			check(Function != nullptr || Property != nullptr);
-
-			for ( UObject* SelectedObject : Objects )
-			{
-				FDelegateEditorBinding Binding;
-				Binding.ObjectName = SelectedObject->GetName();
-				Binding.PropertyName = InPropertyName;
-				Binding.SourcePath = FEditorPropertyPath(FieldChain);
-
-				if ( Function != nullptr)
-				{
-					Binding.FunctionName = Function->GetFName();
-
-					UBlueprint::GetGuidFromClassByFieldName<UFunction>(
-						Function->GetOwnerClass(),
-						Function->GetFName(),
-						Binding.MemberGuid);
-
-					Binding.Kind = EBindingKind::Function;
-				}
-				else if( Property != nullptr )
-				{
-					Binding.SourceProperty = Property->GetFName();
-
-					UBlueprint::GetGuidFromClassByFieldName<FProperty>(
-						SkeletonClass,
-						Property->GetFName(),
-						Binding.MemberGuid);
-
-					Binding.Kind = EBindingKind::Property;
-				}
-
-				ThisBlueprint->Bindings.Remove(Binding);
-				ThisBlueprint->Bindings.AddUnique(Binding);
-			}
-
-			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(ThisBlueprint);	
-		});
-
-		Args.OnRemoveBinding = FOnRemoveBinding::CreateLambda([InEditor, Objects](FName InPropertyName)
-		{
-			UWidgetBlueprint* ThisBlueprint = InEditor.Pin()->GetWidgetBlueprintObj();
-
-			ThisBlueprint->Modify();
-
-			for ( UObject* SelectedObject : Objects )
-			{
-				FDelegateEditorBinding Binding;
-				Binding.ObjectName = SelectedObject->GetName();
-				Binding.PropertyName = InPropertyName;
-
-				ThisBlueprint->Bindings.Remove(Binding);
-			}
-
-			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(ThisBlueprint);
-		});
-
-		Args.OnCanRemoveBinding = FOnCanRemoveBinding::CreateLambda([InEditor, Objects](FName InPropertyName)
-		{
-			UWidgetBlueprint* ThisBlueprint = InEditor.Pin()->GetWidgetBlueprintObj();
-
-			for ( UObject* SelectedObject : Objects )
-			{
-				for ( const FDelegateEditorBinding& Binding : ThisBlueprint->Bindings )
-				{
-					if ( Binding.ObjectName == SelectedObject->GetName() && Binding.PropertyName == InPropertyName )
-					{
-						return true;
-					}
-				}
-			}
-
-			return false;
-		});
-
-		Args.CurrentBindingText = MakeAttributeLambda([InEditor, Objects, PropertyName]()
-		{
-			UWidgetBlueprint* ThisBlueprint = InEditor.Pin()->GetWidgetBlueprintObj();
-
-			//TODO UMG O(N) Isn't good for this, needs to be map, but map isn't serialized, need cached runtime map for fast lookups.
-
-			for ( int32 ObjectIndex = 0; ObjectIndex < Objects.Num(); ObjectIndex++ )
-			{
-				// Ignore null outer objects
-				if ( Objects[ObjectIndex] == nullptr )
-				{
-					continue;
-				}
-
-				//TODO UMG handle multiple things selected
-
-				for ( const FDelegateEditorBinding& Binding : ThisBlueprint->Bindings )
-				{
-					if ( Binding.ObjectName == Objects[ObjectIndex]->GetName() && Binding.PropertyName == PropertyName )
-					{
-						if ( !Binding.SourcePath.IsEmpty() )
-						{
-							return Binding.SourcePath.GetDisplayText();
-						}
-						else
-						{
-							if ( Binding.Kind == EBindingKind::Function )
-							{
-								if ( Binding.MemberGuid.IsValid() )
-								{
-									// Graph function, look up by Guid
-									FName FoundName = ThisBlueprint->GetFieldNameFromClassByGuid<UFunction>(ThisBlueprint->GeneratedClass, Binding.MemberGuid);
-									return FText::FromString(FName::NameToDisplayString(FoundName.ToString(), false));
-								}
-								else
-								{
-									// No GUID, native function, return function name.
-									return FText::FromName(Binding.FunctionName);
-								}
-							}
-							else // Property
-							{
-								if ( Binding.MemberGuid.IsValid() )
-								{
-									FName FoundName = ThisBlueprint->GetFieldNameFromClassByGuid<FProperty>(ThisBlueprint->GeneratedClass, Binding.MemberGuid);
-									return FText::FromString(FName::NameToDisplayString(FoundName.ToString(), false));
-								}
-								else
-								{
-									// No GUID, native property, return source property.
-									return FText::FromName(Binding.SourceProperty);
-								}
-							}
-						}
-					}
-				}
-
-				//TODO UMG Do something about missing functions, little exclamation points if they're missing and such.
-
-				break;
-			}
-
-			return LOCTEXT("Bind", "Bind");
-		});
-
-		Args.CurrentBindingImage = MakeAttributeLambda([InEditor, Objects, PropertyName]() -> const FSlateBrush*
-		{
-			static FName PropertyIcon(TEXT("Kismet.Tabs.Variables"));
-			static FName FunctionIcon(TEXT("GraphEditor.Function_16x"));
-
-			UWidgetBlueprint* ThisBlueprint = InEditor.Pin()->GetWidgetBlueprintObj();
-
-			//TODO UMG O(N) Isn't good for this, needs to be map, but map isn't serialized, need cached runtime map for fast lookups.
-
-			for ( int32 ObjectIndex = 0; ObjectIndex < Objects.Num(); ObjectIndex++ )
-			{
-				// Ignore null outer objects
-				if ( Objects[ObjectIndex] == NULL )
-				{
-					continue;
-				}
-
-				//TODO UMG handle multiple things selected
-
-				for ( const FDelegateEditorBinding& Binding : ThisBlueprint->Bindings )
-				{
-					if ( Binding.ObjectName == Objects[ObjectIndex]->GetName() && Binding.PropertyName == PropertyName )
-					{
-						if ( Binding.Kind == EBindingKind::Function )
-						{
-							return FEditorStyle::GetBrush(FunctionIcon);
-						}
-						else // Property
-						{
-							return FEditorStyle::GetBrush(PropertyIcon);
-						}
-					}
-				}
-			}
-
-			return nullptr;
-		});
-
-		Args.bGeneratePureBindings = bInGeneratePureBindings;
-
-		IPropertyAccessEditor& PropertyAccessEditor = IModularFeatures::Get().GetModularFeature<IPropertyAccessEditor>("PropertyAccessEditor");
-		return PropertyAccessEditor.MakePropertyBindingWidget(InEditor.Pin()->GetBlueprintObj(), Args);
-	}
-	else
-	{
-		return SNullWidget::NullWidget;
-	}
-}
-
-void FBlueprintWidgetCustomization::CreateEventCustomization( IDetailLayoutBuilder& DetailLayout, FDelegateProperty* Property, UWidget* Widget )
-{
-	TSharedRef<IPropertyHandle> DelegatePropertyHandle = DetailLayout.GetProperty(Property->GetFName(), Property->GetOwnerChecked<UClass>());
+	TSharedRef<IPropertyHandle> DelegatePropertyHandle = DetailLayout.GetProperty(Property->GetFName(), CastChecked<UClass>(Property->GetOuter()));
 
 	const bool bHasValidHandle = DelegatePropertyHandle->IsValidHandle();
 	if(!bHasValidHandle)
@@ -517,7 +136,8 @@ void FBlueprintWidgetCustomization::CreateEventCustomization( IDetailLayoutBuild
 		.MinDesiredWidth(200)
 		.MaxDesiredWidth(250)
 		[
-			MakePropertyBindingWidget(Editor.Pin(), Property, DelegatePropertyHandle, false)
+			SNew(SPropertyBinding, Editor.Pin().ToSharedRef(), Property, DelegatePropertyHandle)
+			.GeneratePureBindings(false)
 		];
 }
 
@@ -547,7 +167,7 @@ FReply FBlueprintWidgetCustomization::HandleAddOrViewEventForVariable(const FNam
 	UBlueprint* BlueprintObj = Blueprint;
 
 	// Find the corresponding variable property in the Blueprint
-	FObjectProperty* VariableProperty = FindFProperty<FObjectProperty>(BlueprintObj->SkeletonGeneratedClass, PropertyName);
+	UObjectProperty* VariableProperty = FindField<UObjectProperty>(BlueprintObj->SkeletonGeneratedClass, PropertyName);
 
 	if (VariableProperty)
 	{
@@ -580,7 +200,7 @@ int32 FBlueprintWidgetCustomization::HandleAddOrViewIndexForButton(const FName E
 	return 1; // Add
 }
 
-void FBlueprintWidgetCustomization::CreateMulticastEventCustomization(IDetailLayoutBuilder& DetailLayout, FName ThisComponentName, UClass* PropertyClass, FMulticastDelegateProperty* DelegateProperty)
+void FBlueprintWidgetCustomization::CreateMulticastEventCustomization(IDetailLayoutBuilder& DetailLayout, FName ThisComponentName, UClass* PropertyClass, UMulticastDelegateProperty* DelegateProperty)
 {
 	const FString AddString = FString(TEXT("Add "));
 	const FString ViewString = FString(TEXT("View "));
@@ -598,7 +218,7 @@ void FBlueprintWidgetCustomization::CreateMulticastEventCustomization(IDetailLay
 		PropertyTooltip = FText::FromString(DelegateProperty->GetName());
 	}
 
-	FObjectProperty* ComponentProperty = FindFProperty<FObjectProperty>(Blueprint->SkeletonGeneratedClass, ThisComponentName);
+	UObjectProperty* ComponentProperty = FindField<UObjectProperty>(Blueprint->SkeletonGeneratedClass, ThisComponentName);
 
 	if ( !ComponentProperty )
 	{
@@ -670,45 +290,23 @@ void FBlueprintWidgetCustomization::CustomizeDetails( IDetailLayoutBuilder& Deta
 	TArray< TWeakObjectPtr<UObject> > OutObjects;
 	DetailLayout.GetObjectsBeingCustomized(OutObjects);
 	
-	UClass* SlotBaseClasses = nullptr;
-	for (const TWeakObjectPtr<UObject>& Obj : OutObjects)
+	if ( OutObjects.Num() == 1 )
 	{
-		if (UWidget* Widget = Cast<UWidget>(Obj.Get()))
+		if ( UWidget* Widget = Cast<UWidget>(OutObjects[0].Get()) )
 		{
-			if (Widget->Slot)
+			if ( Widget->Slot )
 			{
 				UClass* SlotClass = Widget->Slot->GetClass();
-				if (!SlotBaseClasses)
-				{
-					SlotBaseClasses = SlotClass;
-				}
-				else if (SlotBaseClasses != SlotClass)
-				{
-					SlotBaseClasses = nullptr;
-					break;
-				}
+				FText LayoutCatName = FText::Format(LOCTEXT("SlotNameFmt", "Slot ({0})"), SlotClass->GetDisplayNameText());
+
+				DetailLayout.EditCategory(LayoutCategoryKey, LayoutCatName, ECategoryPriority::TypeSpecific);
 			}
 			else
 			{
-				SlotBaseClasses = nullptr;
-				break;
+				auto& Category = DetailLayout.EditCategory(LayoutCategoryKey);
+				// TODO UMG Hide Category
 			}
 		}
-		else
-		{
-			SlotBaseClasses = nullptr;
-			break;
-		}
-	}
-	
-	if (SlotBaseClasses)
-	{
-		FText LayoutCatName = FText::Format(LOCTEXT("SlotNameFmt", "Slot ({0})"), SlotBaseClasses->GetDisplayNameText());
-		DetailLayout.EditCategory(LayoutCategoryKey, LayoutCatName, ECategoryPriority::TypeSpecific);
-	}
-	else
-	{
-		DetailLayout.EditCategory(LayoutCategoryKey, FText(), ECategoryPriority::TypeSpecific);
 	}
 
 	PerformAccessibilityCustomization(DetailLayout);
@@ -727,11 +325,11 @@ void FBlueprintWidgetCustomization::PerformBindingCustomization(IDetailLayoutBui
 		UWidget* Widget = Cast<UWidget>(OutObjects[0].Get());
 		UClass* PropertyClass = OutObjects[0].Get()->GetClass();
 
-		for ( TFieldIterator<FProperty> PropertyIt(PropertyClass, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt )
+		for ( TFieldIterator<UProperty> PropertyIt(PropertyClass, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt )
 		{
-			FProperty* Property = *PropertyIt;
+			UProperty* Property = *PropertyIt;
 
-			if ( FDelegateProperty* DelegateProperty = CastField<FDelegateProperty>(*PropertyIt) )
+			if ( UDelegateProperty* DelegateProperty = Cast<UDelegateProperty>(*PropertyIt) )
 			{
 				//TODO Remove the code to use ones that end with "Event".  Prefer metadata flag.
 				if ( DelegateProperty->HasMetaData(IsBindableEventName) || DelegateProperty->GetName().EndsWith(TEXT("Event")) )
@@ -739,7 +337,7 @@ void FBlueprintWidgetCustomization::PerformBindingCustomization(IDetailLayoutBui
 					CreateEventCustomization(DetailLayout, DelegateProperty, Widget);
 				}
 			}
-			else if ( FMulticastDelegateProperty* MulticastDelegateProperty = CastField<FMulticastDelegateProperty>(Property) )
+			else if ( UMulticastDelegateProperty* MulticastDelegateProperty = Cast<UMulticastDelegateProperty>(Property) )
 			{
 				CreateMulticastEventCustomization(DetailLayout, OutObjects[0].Get()->GetFName(), PropertyClass, MulticastDelegateProperty);
 			}
@@ -764,11 +362,11 @@ void FBlueprintWidgetCustomization::CustomizeAccessibilityProperty(IDetailLayout
 
 	TSharedRef<IPropertyHandle> AccessibleTextPropertyHandle = DetailLayout.GetProperty(TextPropertyName);
 	const FName DelegateName(*(TextPropertyName.ToString() + "Delegate"));
-	FDelegateProperty* AccessibleTextDelegateProperty = FindFieldChecked<FDelegateProperty>(CastChecked<UClass>(AccessibleTextPropertyHandle->GetProperty()->GetOwner<UObject>()), DelegateName);
+	UDelegateProperty* AccessibleTextDelegateProperty = FindFieldChecked<UDelegateProperty>(CastChecked<UClass>(AccessibleTextPropertyHandle->GetProperty()->GetOuter()), DelegateName);
 	// Make sure the old AccessibleText properties are hidden so we don't get duplicate widgets
 	DetailLayout.HideProperty(AccessibleTextPropertyHandle);
 
-	TSharedRef<SWidget> BindingWidget = MakePropertyBindingWidget(Editor, AccessibleTextDelegateProperty, AccessibleTextPropertyHandle, false);
+	TSharedRef<SWidget> BindingWidget = SNew(SPropertyBinding, Editor.Pin().ToSharedRef(), AccessibleTextDelegateProperty, AccessibleTextPropertyHandle).GeneratePureBindings(false);
 	TSharedRef<SHorizontalBox> CustomTextLayout = SNew(SHorizontalBox)
 	.Visibility(TAttribute<EVisibility>::Create([AccessibleBehaviorPropertyHandle]() -> EVisibility
 	{

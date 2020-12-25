@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,7 +19,6 @@ class UEdGraph;
 struct FNotificationInfo;
 struct Rect;
 class FMenuBuilder;
-class FAssetEditorToolkit;
 
 DECLARE_DELEGATE_ThreeParams( FOnNodeTextCommitted, const FText&, ETextCommit::Type, UEdGraphNode* );
 DECLARE_DELEGATE_RetVal_ThreeParams( bool, FOnNodeVerifyTextCommit, const FText&, UEdGraphNode*, FText& );
@@ -148,7 +147,6 @@ public:
 		SLATE_ARGUMENT( UEdGraph*, GraphToDiff )
 		SLATE_ARGUMENT( FGraphEditorEvents, GraphEvents)
 		SLATE_ARGUMENT( bool, AutoExpandActionMenu )
-		SLATE_ARGUMENT( TWeakPtr<FAssetEditorToolkit>, AssetEditorToolkit)
 		SLATE_EVENT(FSimpleDelegate, OnNavigateHistoryBack)
 		SLATE_EVENT(FSimpleDelegate, OnNavigateHistoryForward)
 
@@ -292,9 +290,9 @@ public:
 	}
 
 	/** @return a reference to the list of selected graph nodes */
-	virtual const FGraphPanelSelectionSet& GetSelectedNodes() const
+	virtual const TSet<class UObject*>& GetSelectedNodes() const
 	{
-		static FGraphPanelSelectionSet NoSelection;
+		static TSet<class UObject*> NoSelection;
 
 		if (Implementation.IsValid())
 		{
@@ -394,7 +392,7 @@ public:
 		}
 	}
 
-	virtual void StraightenConnections(UEdGraphPin* SourcePin, UEdGraphPin* PinToAlign = nullptr) const
+	virtual void StraightenConnections(UEdGraphPin* SourcePin, UEdGraphPin* PinToAlign = nullptr)
 	{
 		if (Implementation.IsValid())
 		{
@@ -585,8 +583,6 @@ private:
 protected:
 	/** The Graph we are currently editing */
 	UEdGraph* EdGraphObj;
-
-	TWeakPtr<FAssetEditorToolkit> AssetEditorToolkit;
 private:
 	/** The actual implementation of the GraphEditor */
 	TSharedPtr<SGraphEditor> Implementation;

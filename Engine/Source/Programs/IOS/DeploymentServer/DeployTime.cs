@@ -1,5 +1,5 @@
 /**
- * Copyright Epic Games, Inc. All Rights Reserved.
+ * Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
  */
 
 using System;
@@ -160,6 +160,22 @@ namespace DeploymentServer
                 OutName = DeviceType;
             }
             return OutName;
+        }
+
+        /// <summary>
+        /// Tries to determine if the device will not be able to run a UE3 application
+        /// </summary>
+        bool CanRunUE3Applications(string DeviceType)
+        {
+            // Not perfect, but it will give it a go
+            if (DeviceType.StartsWith("iPhone1,") || DeviceType.StartsWith("iPod1,") || DeviceType.StartsWith("iPod2,"))
+            {
+                return false;
+            }
+            else
+            {
+                return true;
+            }
         }
 
         void MobileDeviceConnected(object sender, Manzana.ConnectEventArgs args)
@@ -458,23 +474,16 @@ namespace DeploymentServer
                 string UDID = Device.DeviceId;
                 string DeviceType = Device.ProductType;
 
-                if (!string.IsNullOrEmpty(DeviceId))
+                // Check to see what kind of device it is
+                if (!CanRunUE3Applications(DeviceType))
                 {
-                    Console.WriteLine("Checking '{0}' with id {1} of type {2} against -device '{3}'.", DeviceName, UDID, DeviceType, DeviceId);
+                    ReportIF.Warning(String.Format("Device '{0}' is a {1} model, which does not support OpenGL ES2.0.  The installation is likely to fail.", DeviceName, GetPrettyDeviceType(DeviceType)));
                 }
 
-                bool IsIOS = DeviceType.Contains("iPhone") || DeviceType.Contains("iPad");
-                bool IsTV = DeviceType.Contains("TV");
-
-                // Match anything if no device was specifie
-                bool IsMatch = string.IsNullOrEmpty(DeviceId)
-                            || (DeviceId.IndexOf("All_tvOS", StringComparison.CurrentCultureIgnoreCase) >= 0 && IsTV)
-                            || (DeviceId.IndexOf("All_iOS", StringComparison.CurrentCultureIgnoreCase) >= 0 && IsIOS)
-                            || Device.DeviceId.IndexOf(DeviceId, StringComparison.CurrentCultureIgnoreCase) >= 0
-                            || Device.DeviceName.IndexOf(DeviceId, StringComparison.CurrentCultureIgnoreCase) >= 0
-                            ;
-
-                if (IsMatch)
+				Console.WriteLine("Device '{0}' with id {1} of type {3} is being checked against {2}.", Device.DeviceName, Device.DeviceId, DeviceId, Device.ProductType);
+				if (String.IsNullOrEmpty(DeviceId) || Device.DeviceId == DeviceId ||
+                    (DeviceId.Contains("All_tvOS_On") && DeviceType.Contains("TV")) ||
+                    (DeviceId.Contains("All_iOS_On") && !DeviceType.Contains("TV")))
 				{
 					ReportIF.Log(String.Format("Transferring IPA to device '{0}' ... ", DeviceName));
 					Device.CopyFileToPublicStaging(IPAPath);
@@ -491,10 +500,6 @@ namespace DeploymentServer
 
 					return bResult;
 				}
-                else
-				{
-                    Console.WriteLine(String.Format("Ignoring device '{0}' ... ", DeviceName));
-                }
 
 				return true;
             });

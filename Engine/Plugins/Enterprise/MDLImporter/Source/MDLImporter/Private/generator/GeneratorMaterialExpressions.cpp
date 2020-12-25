@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MaterialExpressions.h"
 
@@ -410,9 +410,9 @@ namespace Generator
 				}
 				else if (Input.ExpressionData.Expression->IsA<UMaterialExpressionAdd>())
 				{
-					UMaterialExpressionAdd* Add = Cast<UMaterialExpressionAdd>(Input.ExpressionData.Expression);
-					const uint32 ACount = Add->A.Expression ? ComponentCount({Add->A.Expression, Add->A.OutputIndex}) : 1;
-					const uint32 BCount = Add->B.Expression ? ComponentCount({Add->B.Expression, Add->B.OutputIndex}) : 1;
+					UMaterialExpressionAdd* Add    = Cast<UMaterialExpressionAdd>(Input.ExpressionData.Expression);
+					uint32                  ACount = Add->A.Expression ? ComponentCount({Add->A.Expression, Add->A.OutputIndex}) : 1;
+					uint32                  BCount = Add->B.Expression ? ComponentCount({Add->B.Expression, Add->B.OutputIndex}) : 1;
 					check((ACount == 1) || (BCount == 1) || (ACount == BCount));
 					return FMath::Max(ACount, BCount);
 				}
@@ -520,16 +520,16 @@ namespace Generator
 				else if (Input.ExpressionData.Expression->IsA<UMaterialExpressionDistance>())
 				{
 					UMaterialExpressionDistance* Distance = Cast<UMaterialExpressionDistance>(Input.ExpressionData.Expression);
-					const uint32 ACount = ComponentCount({Distance->A.Expression, Distance->A.OutputIndex});
-					const uint32 BCount = ComponentCount({Distance->B.Expression, Distance->B.OutputIndex});
+					uint32                       ACount   = ComponentCount({Distance->A.Expression, Distance->A.OutputIndex});
+					uint32                       BCount   = ComponentCount({Distance->B.Expression, Distance->B.OutputIndex});
 					check((1 == ACount) || (1 == BCount) || (ACount == BCount));
 					return 1;
 				}
 				else if (Input.ExpressionData.Expression->IsA<UMaterialExpressionDivide>())
 				{
 					UMaterialExpressionDivide* Divide = Cast<UMaterialExpressionDivide>(Input.ExpressionData.Expression);
-					const uint32 ACount = Divide->A.Expression ? ComponentCount({Divide->A.Expression, Divide->A.OutputIndex}) : 1;
-					const uint32 BCount = Divide->B.Expression ? ComponentCount({Divide->B.Expression, Divide->B.OutputIndex}) : 1;
+					uint32                     ACount = Divide->A.Expression ? ComponentCount({Divide->A.Expression, Divide->A.OutputIndex}) : 1;
+					uint32                     BCount = Divide->B.Expression ? ComponentCount({Divide->B.Expression, Divide->B.OutputIndex}) : 1;
 					check((1 == ACount) || (1 == BCount) || (ACount == BCount));
 					return FMath::Max(ACount, BCount);
 				}
@@ -544,8 +544,8 @@ namespace Generator
 				}
 				else if (Input.ExpressionData.Expression->IsA<UMaterialExpressionFmod>())
 				{
-					UMaterialExpressionFmod* Fmod = Cast<UMaterialExpressionFmod>(Input.ExpressionData.Expression);
-					const uint32 ACount = ComponentCount({Fmod->A.Expression, Fmod->A.OutputIndex});
+					UMaterialExpressionFmod* Fmod   = Cast<UMaterialExpressionFmod>(Input.ExpressionData.Expression);
+					uint32                   ACount = ComponentCount({Fmod->A.Expression, Fmod->A.OutputIndex});
 					check(ACount == ComponentCount({Fmod->B.Expression, Fmod->B.OutputIndex}));
 					return ACount;
 				}
@@ -581,8 +581,8 @@ namespace Generator
 				}
 				else if (Input.ExpressionData.Expression->IsA<UMaterialExpressionIf>())
 				{
-					UMaterialExpressionIf* If = Cast<UMaterialExpressionIf>(Input.ExpressionData.Expression);
-					const uint32 ALessThanBCount = ComponentCount({If->ALessThanB.Expression, If->ALessThanB.OutputIndex});
+					UMaterialExpressionIf* If              = Cast<UMaterialExpressionIf>(Input.ExpressionData.Expression);
+					uint32                 ALessThanBCount = ComponentCount({If->ALessThanB.Expression, If->ALessThanB.OutputIndex});
 					check((!If->AEqualsB.Expression || (ALessThanBCount == ComponentCount({If->AEqualsB.Expression, If->AEqualsB.OutputIndex}))) &&
 					      (ALessThanBCount == ComponentCount({If->AGreaterThanB.Expression, If->AGreaterThanB.OutputIndex})));
 					return ALessThanBCount;
@@ -591,11 +591,11 @@ namespace Generator
 				{
 					UMaterialExpressionLinearInterpolate* LinearInterpolate =
 					    Cast<UMaterialExpressionLinearInterpolate>(Input.ExpressionData.Expression);
-					const uint32 ACount =
+					uint32 ACount =
 					    LinearInterpolate->A.Expression ? ComponentCount({LinearInterpolate->A.Expression, LinearInterpolate->A.OutputIndex}) : 1;
-					const uint32 BCount =
-						LinearInterpolate->B.Expression ? ComponentCount({LinearInterpolate->B.Expression, LinearInterpolate->B.OutputIndex}) : 1;
-					check(ACount == BCount);
+					check(
+					    ACount ==
+					    (LinearInterpolate->B.Expression ? ComponentCount({LinearInterpolate->B.Expression, LinearInterpolate->B.OutputIndex}) : 1));
 					return ACount;
 				}
 				else if (Input.ExpressionData.Expression->IsA<UMaterialExpressionLogarithm2>())
@@ -613,23 +613,23 @@ namespace Generator
 				}
 				else if (Input.ExpressionData.Expression->IsA<UMaterialExpressionMax>())
 				{
-					UMaterialExpressionMax* Max = Cast<UMaterialExpressionMax>(Input.ExpressionData.Expression);
-					const uint32 ACount = Max->A.Expression ? ComponentCount({Max->A.Expression, Max->A.OutputIndex}) : 1;
+					UMaterialExpressionMax* Max    = Cast<UMaterialExpressionMax>(Input.ExpressionData.Expression);
+					uint32                  ACount = Max->A.Expression ? ComponentCount({Max->A.Expression, Max->A.OutputIndex}) : 1;
 					check(ACount == (Max->B.Expression ? ComponentCount({Max->B.Expression, Max->B.OutputIndex}) : 1));
 					return ACount;
 				}
 				else if (Input.ExpressionData.Expression->IsA<UMaterialExpressionMin>())
 				{
-					UMaterialExpressionMin* Min = Cast<UMaterialExpressionMin>(Input.ExpressionData.Expression);
-					const uint32 ACount = Min->A.Expression ? ComponentCount({Min->A.Expression, Min->A.OutputIndex}) : 1;
+					UMaterialExpressionMin* Min    = Cast<UMaterialExpressionMin>(Input.ExpressionData.Expression);
+					uint32                  ACount = Min->A.Expression ? ComponentCount({Min->A.Expression, Min->A.OutputIndex}) : 1;
 					check(ACount == (Min->B.Expression ? ComponentCount({Min->B.Expression, Min->B.OutputIndex}) : 1));
 					return ACount;
 				}
 				else if (Input.ExpressionData.Expression->IsA<UMaterialExpressionMultiply>())
 				{
 					UMaterialExpressionMultiply* Multiply = Cast<UMaterialExpressionMultiply>(Input.ExpressionData.Expression);
-					const uint32 ACount = Multiply->A.Expression ? ComponentCount({Multiply->A.Expression, Multiply->A.OutputIndex}) : 1;
-					const uint32 BCount = Multiply->B.Expression ? ComponentCount({Multiply->B.Expression, Multiply->B.OutputIndex}) : 1;
+					uint32 ACount = Multiply->A.Expression ? ComponentCount({Multiply->A.Expression, Multiply->A.OutputIndex}) : 1;
+					uint32 BCount = Multiply->B.Expression ? ComponentCount({Multiply->B.Expression, Multiply->B.OutputIndex}) : 1;
 					check((ACount == 1) || (BCount == 1) || (ACount == BCount));
 					return FMath::Max(ACount, BCount);
 				}
@@ -678,16 +678,16 @@ namespace Generator
 				else if (Input.ExpressionData.Expression->IsA<UMaterialExpressionStaticSwitch>())
 				{
 					UMaterialExpressionStaticSwitch* StaticSwitch = Cast<UMaterialExpressionStaticSwitch>(Input.ExpressionData.Expression);
-					const uint32 ACount = ComponentCount({StaticSwitch->A.Expression, StaticSwitch->A.OutputIndex});
-					const uint32 BCount = ComponentCount({StaticSwitch->B.Expression, StaticSwitch->B.OutputIndex});
+					uint32                           ACount       = ComponentCount({StaticSwitch->A.Expression, StaticSwitch->A.OutputIndex});
+					uint32                           BCount       = ComponentCount({StaticSwitch->B.Expression, StaticSwitch->B.OutputIndex});
 					check(ACount == BCount);
 					return ACount;
 				}
 				else if (Input.ExpressionData.Expression->IsA<UMaterialExpressionSubtract>())
 				{
 					UMaterialExpressionSubtract* Subtract = Cast<UMaterialExpressionSubtract>(Input.ExpressionData.Expression);
-					const uint32 ACount = Subtract->A.Expression ? ComponentCount({Subtract->A.Expression, Subtract->A.OutputIndex}) : 1;
-					const uint32 BCount = Subtract->B.Expression ? ComponentCount({Subtract->B.Expression, Subtract->B.OutputIndex}) : 1;
+					uint32 ACount = Subtract->A.Expression ? ComponentCount({Subtract->A.Expression, Subtract->A.OutputIndex}) : 1;
+					uint32 BCount = Subtract->B.Expression ? ComponentCount({Subtract->B.Expression, Subtract->B.OutputIndex}) : 1;
 					check((ACount == 1) || (BCount == 1) || (ACount == BCount));
 					return FMath::Max(ACount, BCount);
 				}
@@ -741,7 +741,7 @@ namespace Generator
 					UMaterialExpressionDesaturation* Desaturate = Cast<UMaterialExpressionDesaturation>(Input.ExpressionData.Expression);
 					return ComponentCount(Desaturate->Input.Expression);
 				}
-				ensure(false);
+				check(false);
 				return 0;
 			case Boolean:
 			case Float:
@@ -1336,14 +1336,11 @@ namespace Generator
 	{
 		uint32 ACount = ComponentCount(A);
 		uint32 BCount = ComponentCount(B);
-		UMaterialExpressionMultiply* Expression = NewMaterialExpression<UMaterialExpressionMultiply>(Parent);
-		
-		if (ensure((ACount == 1) || (BCount == 1) || (ACount == BCount)))
-		{
-			CheckedConnect(Parent, A, Expression->A, Expression->ConstA);
-			CheckedConnect(Parent, B, Expression->B, Expression->ConstB);
-		}
+		check((ACount == 1) || (BCount == 1) || (ACount == BCount));
 
+		UMaterialExpressionMultiply* Expression = NewMaterialExpression<UMaterialExpressionMultiply>(Parent);
+		CheckedConnect(Parent, A, Expression->A, Expression->ConstA);
+		CheckedConnect(Parent, B, Expression->B, Expression->ConstB);
 		return Expression;
 	}
 

@@ -188,7 +188,7 @@
                     }
                 }
             }, 
-            "LibraryPath": "../../../../../Binaries/Win64/usdRi.dll", 
+            "LibraryPath": "../../../../../Binaries/Win64/libusdRi.dll", 
             "Name": "usdRi", 
             "ResourcePath": "resources", 
             "Root": "..", 

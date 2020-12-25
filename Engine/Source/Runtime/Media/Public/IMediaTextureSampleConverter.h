@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,25 +11,5 @@
 class IMediaTextureSampleConverter
 {
 public:
-	virtual ~IMediaTextureSampleConverter() {}
-
-	enum EConverterInfoFlags
-	{
-		ConverterInfoFlags_Default = 0,
-		ConverterInfoFlags_WillCreateOutputTexture = 1 << 0,
-		ConverterInfoFlags_PreprocessOnly = 1 << 1,
-	};
-
-	struct FConversionHints
-	{
-		bool bOutputSRGB;
-		uint8 NumMips;
-	};
-
-	virtual uint32 GetConverterInfoFlags() const
-	{
-		return ConverterInfoFlags_Default;
-	}
-
-	virtual bool Convert(FTexture2DRHIRef & InDstTexture, const FConversionHints & Hints) = 0;
+	virtual void Convert(FTexture2DRHIRef InDstTexture) = 0;
 };

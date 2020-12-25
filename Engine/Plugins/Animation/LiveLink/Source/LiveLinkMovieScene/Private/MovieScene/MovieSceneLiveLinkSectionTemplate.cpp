@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieScene/MovieSceneLiveLinkSectionTemplate.h"
 
@@ -13,7 +13,6 @@
 #include "MovieScene/MovieSceneLiveLinkSubSection.h"
 #include "MovieScene/MovieSceneLiveLinkTrack.h"
 #include "Roles/LiveLinkAnimationTypes.h"
-#include "Misc/App.h"
 
 static TAutoConsoleVariable<int32> CVarSequencerAlwaysSendInterpolatedLiveLink(
 	TEXT("Sequencer.AlwaysSendInterpolatedLiveLink"),
@@ -42,42 +41,15 @@ struct FMovieSceneLiveLinkSectionTemplatePersistentData : IPersistentEvaluationD
 	TSharedPtr<FMovieSceneLiveLinkSource> LiveLinkSource;
 };
 
-namespace LiveLinkSectionTemplateUtils
-{
-	//Initial LiveLink Track Recorder was not writing out default values in each recorded channel
-	//When there is no Keys (either none recorded or everything erased), channel must have a default value to be used
-	//Or we could end up with garbage causing NaN behavior down the road.
-	template<class ChannelType>
-	bool AreChannelsUsable(const TArray<ChannelType>& Channels)
-	{
-		//If no channels, consider this valid. It will never be used to build the frame data
-		if (Channels.Num() <= 0)
-		{
-			return true;
-		}
-
-		for (const ChannelType& Channel : Channels)
-		{
-			if (Channel.GetTimes().Num() > 0 || Channel.GetDefault().IsSet())
-			{
-				return true;
-			}
-		}
-	
-		return false;
-	}
-}
-
 
 FMovieSceneLiveLinkSectionTemplate::FMovieSceneLiveLinkSectionTemplate()
 {
 	//If we want to use direct frames, all channels must have the same amount of keys.
 	bMustDoInterpolation = AreChannelKeyCountEqual() == false;
-	bIsSectionUsable = CacheIsSectionUsable();
 }
 
 FMovieSceneLiveLinkSectionTemplate::FMovieSceneLiveLinkSectionTemplate(const UMovieSceneLiveLinkSection& Section, const UMovieScenePropertyTrack& Track)
-	: FMovieScenePropertySectionTemplate(Track.GetPropertyName(), Track.GetPropertyPath().ToString())
+	: FMovieScenePropertySectionTemplate(Track.GetPropertyName(), Track.GetPropertyPath())
 	, SubjectPreset(Section.SubjectPreset)
 	, ChannelMask(Section.ChannelMask)
 	, StaticData(Section.StaticData)
@@ -89,13 +61,6 @@ FMovieSceneLiveLinkSectionTemplate::FMovieSceneLiveLinkSectionTemplate(const UMo
 
 	//If we want to use direct frames, all channels must have the same amount of keys.
 	bMustDoInterpolation = AreChannelKeyCountEqual() == false;
-	
-	//Cache whether or not this section is usable. No keys AND no default values would cause this.
-	bIsSectionUsable = CacheIsSectionUsable();
-	if (SubjectPreset.Key.SubjectName.Name != NAME_None && !bIsSectionUsable)
-	{
-		UE_LOG(LogLiveLinkMovieScene, Verbose, TEXT("Subject '%s' LiveLinkSection isn't usable. No samples were recorded."), *SubjectPreset.Key.SubjectName.ToString());
-	}
 
 	InitializePropertyHandlers();
 }
@@ -106,7 +71,6 @@ FMovieSceneLiveLinkSectionTemplate::FMovieSceneLiveLinkSectionTemplate(const FMo
 	, ChannelMask(InOther.ChannelMask)
 	, SubSectionsData(InOther.SubSectionsData)
 	, bMustDoInterpolation(InOther.bMustDoInterpolation)
-	, bIsSectionUsable(InOther.bIsSectionUsable)
 	, StaticData(InOther.StaticData)
 {
 	InitializePropertyHandlers();
@@ -158,7 +122,15 @@ bool FMovieSceneLiveLinkSectionTemplate::GetLiveLinkFrameArray(const FFrameTime&
 {
 	//See if we have a valid time code time. 
 	//If so we may can possible send raw data if not asked to only send interpolated.
-	TOptional<FQualifiedFrameTime> TimeCodeFrameTime = FApp::GetCurrentFrameTime();
+	TOptional<FQualifiedFrameTime> TimeCodeFrameTime;
+	if (GEngine && GEngine->GetTimecodeProvider() && GEngine->GetTimecodeProvider()->GetSynchronizationState() == ETimecodeProviderSynchronizationState::Synchronized)
+	{
+		const UTimecodeProvider* TimeCodeProvider = GEngine->GetTimecodeProvider();
+		FFrameRate TCFrameRate = TimeCodeProvider->GetFrameRate();
+		FTimecode TimeCode = TimeCodeProvider->GetTimecode(); //Same as FApp::GetTimecode();
+		FFrameNumber FrameNumber = TimeCode.ToFrameNumber(TCFrameRate);
+		TimeCodeFrameTime = FQualifiedFrameTime(FFrameTime(FrameNumber), TCFrameRate);
+	}
 
 	//Send interpolated if told to or no valid timecode synced.
 	const bool bAlwaysSendInterpolated = CVarSequencerAlwaysSendInterpolatedLiveLink->GetInt() == 0 ? false : true;
@@ -283,7 +255,7 @@ void FMovieSceneLiveLinkSectionTemplate::FillFrameInterpolated(const FFrameTime&
 void FMovieSceneLiveLinkSectionTemplate::EvaluateSwept(const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, const TRange<FFrameNumber>& SweptRange, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const
 {
 	FMovieSceneLiveLinkSectionTemplatePersistentData* Data = PersistentData.FindSectionData<FMovieSceneLiveLinkSectionTemplatePersistentData>();
-	if (bIsSectionUsable && Data && Data->LiveLinkSource.IsValid() && Data->LiveLinkSource->IsSourceStillValid() && SubjectPreset.Role)
+	if (Data && Data->LiveLinkSource.IsValid() && Data->LiveLinkSource->IsSourceStillValid() && SubjectPreset.Role)
 	{
 		TArray<FLiveLinkFrameDataStruct>  LiveLinkFrameDataArray;
 		GetLiveLinkFrameArray(Context.GetTime(), SweptRange.GetLowerBoundValue(), SweptRange.GetUpperBoundValue(), LiveLinkFrameDataArray, Context.GetFrameRate());
@@ -295,7 +267,7 @@ void FMovieSceneLiveLinkSectionTemplate::EvaluateSwept(const FMovieSceneEvaluati
 void FMovieSceneLiveLinkSectionTemplate::Evaluate(const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const
 {
 	FMovieSceneLiveLinkSectionTemplatePersistentData* Data = PersistentData.FindSectionData<FMovieSceneLiveLinkSectionTemplatePersistentData>();
-	if (bIsSectionUsable && Data && Data->LiveLinkSource.IsValid() && Data->LiveLinkSource->IsSourceStillValid() && SubjectPreset.Role)
+	if (Data && Data->LiveLinkSource.IsValid() && Data->LiveLinkSource->IsSourceStillValid() && SubjectPreset.Role)
 	{
 		TArray<FLiveLinkFrameDataStruct>  LiveLinkFrameDataArray;
 		FFrameTime FrameTime = Context.GetTime();
@@ -413,42 +385,6 @@ bool FMovieSceneLiveLinkSectionTemplate::AreChannelKeyCountEqual() const
 				{
 					return false;
 				}
-			}
-		}
-	}
-
-	return true;
-}
-
-bool FMovieSceneLiveLinkSectionTemplate::CacheIsSectionUsable() const
-{
-	for (const FLiveLinkSubSectionData& SubSectionData : SubSectionsData)
-	{
-		for (const FLiveLinkPropertyData& SubSectionProperties : SubSectionData.Properties)
-		{
-			if (!LiveLinkSectionTemplateUtils::AreChannelsUsable(SubSectionProperties.FloatChannel))
-			{
-				return false;
-			}
-
-			if (!LiveLinkSectionTemplateUtils::AreChannelsUsable(SubSectionProperties.StringChannel))
-			{
-				return false;
-			}
-
-			if (!LiveLinkSectionTemplateUtils::AreChannelsUsable(SubSectionProperties.IntegerChannel))
-			{
-				return false;
-			}
-
-			if (!LiveLinkSectionTemplateUtils::AreChannelsUsable(SubSectionProperties.BoolChannel))
-			{
-				return false;
-			}
-
-			if (!LiveLinkSectionTemplateUtils::AreChannelsUsable(SubSectionProperties.ByteChannel))
-			{
-				return false;
 			}
 		}
 	}

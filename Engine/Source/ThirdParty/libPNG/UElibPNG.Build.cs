@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -12,12 +12,7 @@ public class UElibPNG : ModuleRules
 	{
 		get
 		{
-			if (Target.IsInPlatformGroup(UnrealPlatformGroup.Android))
-			{
-				return "libPNG-1.6.37";
-			}
-			else if (Target.Platform == UnrealTargetPlatform.Mac ||
-				Target.Platform == UnrealTargetPlatform.Mac ||
+			if (Target.IsInPlatformGroup(UnrealPlatformGroup.Android) ||
 				Target.Architecture.StartsWith("aarch64") ||
 				Target.Architecture.StartsWith("i686"))
 			{
@@ -39,20 +34,7 @@ public class UElibPNG : ModuleRules
 
 		string LibDir;
 
-		PublicDefinitions.Add("WITH_LIBPNG_1_6=" + (LibPNGVersion.Contains("-1.6.") ? "1" : "0"));
-
-		// On Windows x64, use the LLVM compiled version with changes made by us to improve performance
-		// due to better vectorization and FMV support that will take advantage of the different instruction
-		// sets depending on CPU supported features.
-		// Please, take care of bringing those changes over if you upgrade the library
-		if (Target.Platform == UnrealTargetPlatform.Win64 &&
-		    Target.WindowsPlatform.Architecture == WindowsArchitecture.x64)
-		{
-			string LibFileName = string.Format("libpng15_static{0}.lib", Target.Configuration != UnrealTargetConfiguration.Debug ? "" : "d");
-			LibDir = Path.Combine(LibPNGPath, "Win64-llvm", Target.Configuration != UnrealTargetConfiguration.Debug ? "Release" : "Debug");
-			PublicAdditionalLibraries.Add(Path.Combine(LibDir, LibFileName));
-		}
-		else if (Target.Platform == UnrealTargetPlatform.Win64)
+		if (Target.Platform == UnrealTargetPlatform.Win64)
 		{
 			LibDir = Path.Combine(LibPNGPath, "Win64", "VS" + Target.WindowsPlatform.GetVisualStudioCompilerVersionName());
 
@@ -116,6 +98,20 @@ public class UElibPNG : ModuleRules
 		else if (Target.IsInPlatformGroup(UnrealPlatformGroup.Unix))
 		{
 			PublicAdditionalLibraries.Add(Path.Combine(LibPNGPath, "Linux", Target.Architecture, "libpng.a"));
+		}
+		else if (Target.Platform == UnrealTargetPlatform.XboxOne)
+		{
+			// Use reflection to allow type not to exist if console code is not present
+			System.Type XboxOnePlatformType = System.Type.GetType("UnrealBuildTool.XboxOnePlatform,UnrealBuildTool");
+			if (XboxOnePlatformType != null)
+			{
+				System.Object VersionName = XboxOnePlatformType.GetMethod("GetVisualStudioCompilerVersionName").Invoke(null, null);
+				PublicAdditionalLibraries.Add(Path.Combine(LibPNGPath, "XboxOne", "VS" + VersionName.ToString(), "libpng125_XboxOne.lib"));
+			}
+		}
+		else if (Target.Platform == UnrealTargetPlatform.Switch)
+		{
+			PublicAdditionalLibraries.Add(Path.Combine(LibPNGPath, "Switch", "libPNG.a"));
 		}
 
 		PublicIncludePaths.Add(IncPNGPath);

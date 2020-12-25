@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SequencerTimeSliderController.h"
 #include "Fonts/SlateFontInfo.h"
@@ -23,8 +23,6 @@
 #include "Modules/ModuleManager.h"
 #include "MovieSceneSequence.h"
 #include "MovieScene.h"
-#include "Compilation/MovieSceneCompiledDataManager.h"
-#include "Evaluation/MovieSceneSequenceHierarchy.h"
 
 #include "IDetailsView.h"
 #include "PropertyEditorModule.h"
@@ -69,18 +67,13 @@ FFrameTime FSequencerTimeSliderController::ComputeScrubTimeFromMouse(const FGeom
 	double              MouseSeconds  = RangeToScreen.LocalXToInput( CursorPos.X );
 	FFrameTime          ScrubTime     = MouseSeconds * GetTickResolution();
 
-	TSharedPtr<FSequencer> Sequencer = WeakSequencer.Pin();
-	if (!Sequencer.IsValid())
+	if ( TimeSliderArgs.Settings->GetIsSnapEnabled() )
 	{
-		return ScrubTime;
-	}
-	
-	if ( Sequencer->GetSequencerSettings()->GetIsSnapEnabled() )
-	{
-		if (Sequencer->GetSequencerSettings()->GetSnapPlayTimeToInterval())
+		if (TimeSliderArgs.Settings->GetSnapPlayTimeToInterval())
 		{
 			// Set the style of the scrub handle
-			if (Sequencer->GetScrubStyle() == ESequencerScrubberStyle::FrameBlock)
+			TSharedPtr<FSequencer> Sequencer = WeakSequencer.Pin();
+			if (Sequencer.IsValid() && Sequencer->GetScrubStyle() == ESequencerScrubberStyle::FrameBlock)
 			{
 				// Floor to the display frame
 				ScrubTime = ConvertFrameTime(ConvertFrameTime(ScrubTime, GetTickResolution(), GetDisplayRate()).FloorToFrame(), GetDisplayRate(), GetTickResolution());
@@ -92,16 +85,16 @@ FFrameTime FSequencerTimeSliderController::ComputeScrubTimeFromMouse(const FGeom
 			}
 		}
 
-		if (Sequencer->GetSequencerSettings()->GetSnapPlayTimeToKeys())
+		if (TimeSliderArgs.Settings->GetSnapPlayTimeToKeys())
 		{
 			// SnapTimeToNearestKey will return ScrubTime unmodified if there is no key within range.
 			ScrubTime = SnapTimeToNearestKey(RangeToScreen, CursorPos.X, ScrubTime);
 		}
 	}
 
-	if (Sequencer->GetSequencerSettings()->ShouldKeepCursorInPlayRangeWhileScrubbing())
+	if (TimeSliderArgs.Settings->ShouldKeepCursorInPlayRangeWhileScrubbing())
 	{
-		ScrubTime = UE::MovieScene::ClampToDiscreteRange(ScrubTime, TimeSliderArgs.PlaybackRange.Get());
+		ScrubTime = MovieScene::ClampToDiscreteRange(ScrubTime, TimeSliderArgs.PlaybackRange.Get());
 	}
 
 	return ScrubTime;
@@ -112,13 +105,7 @@ FFrameTime FSequencerTimeSliderController::ComputeFrameTimeFromMouse(const FGeom
 	FVector2D CursorPos  = Geometry.AbsoluteToLocal( ScreenSpacePosition );
 	double    MouseValue = RangeToScreen.LocalXToInput( CursorPos.X );
 
-	TSharedPtr<FSequencer> Sequencer = WeakSequencer.Pin();
-	if (!Sequencer.IsValid())
-	{
-		return MouseValue * GetTickResolution();
-	}
-
-	if (CheckSnapping && Sequencer->GetSequencerSettings()->GetIsSnapEnabled())
+	if (CheckSnapping && TimeSliderArgs.Settings->GetIsSnapEnabled())
 	{
 		FFrameNumber        SnappedFrameNumber = (MouseValue * GetDisplayRate()).FloorToFrame();
 		FQualifiedFrameTime RoundedPlayFrame   = FQualifiedFrameTime(SnappedFrameNumber, GetDisplayRate());
@@ -302,8 +289,7 @@ void FSequencerTimeSliderController::DrawTicks( FSlateWindowElementList& OutDraw
 int32 FSequencerTimeSliderController::DrawMarkedFrames( const FGeometry& AllottedGeometry, const FScrubRangeToScreen& RangeToScreen, FSlateWindowElementList& OutDrawElements, int32 LayerId, const ESlateDrawEffect& DrawEffects, bool bDrawLabels ) const
 {
 	const TArray<FMovieSceneMarkedFrame> & MarkedFrames = TimeSliderArgs.MarkedFrames.Get();
-	const TArray<FMovieSceneMarkedFrame> & GlobalMarkedFrames = TimeSliderArgs.GlobalMarkedFrames.Get();
-	if (MarkedFrames.Num() < 1 && GlobalMarkedFrames.Num() < 1)
+	if (MarkedFrames.Num() < 1)
 	{
 		return LayerId;
 	}
@@ -313,57 +299,50 @@ int32 FSequencerTimeSliderController::DrawMarkedFrames( const FGeometry& Allotte
 
 	FQualifiedFrameTime ScrubPosition = FQualifiedFrameTime(TimeSliderArgs.ScrubPosition.Get(), GetTickResolution());
 	FScrubberMetrics    ScrubMetrics = GetScrubPixelMetrics(ScrubPosition, RangeToScreen);
-	auto DrawFrameMarkers = ([=](const TArray<FMovieSceneMarkedFrame> & InMarkedFrames, FSlateWindowElementList& DrawElements, bool bFade) {
 
-		for (const FMovieSceneMarkedFrame& MarkedFrame : InMarkedFrames)
+	for (const FMovieSceneMarkedFrame& MarkedFrame : MarkedFrames)
+	{
+		double Seconds = MarkedFrame.FrameNumber / GetTickResolution();
+
+		const float  LinePos = RangeToScreen.InputToLocalX( Seconds );
+		TArray<FVector2D> LinePoints;
+		LinePoints.AddUninitialized(2);
+		LinePoints[0] = FVector2D( LinePos, 0.0f );
+		LinePoints[1] = FVector2D( LinePos, FMath::FloorToFloat( AllottedGeometry.Size.Y ) );
+
+		FSlateDrawElement::MakeLines(
+			OutDrawElements,
+			LayerId+1,
+			AllottedGeometry.ToPaintGeometry(),
+			LinePoints,
+			DrawEffects,
+			MarkedFrame.Color,
+			false
+		);
+
+		FString LabelString = MarkedFrame.Label;
+		if (bDrawLabels && !LabelString.IsEmpty())
 		{
-			double Seconds = MarkedFrame.FrameNumber / GetTickResolution();
+			// Draw the label next to the marked frame line
+			FVector2D TextSize = FontMeasureService->Measure(LabelString, SmallLayoutFont);
 
-			FLinearColor DrawColor = bFade ? MarkedFrame.Color.Desaturate(0.25f) : MarkedFrame.Color;
-			const float  LinePos = RangeToScreen.InputToLocalX(Seconds);
-			TArray<FVector2D> LinePoints;
-			LinePoints.AddUninitialized(2);
-			LinePoints[0] = FVector2D(LinePos, 0.0f);
-			LinePoints[1] = FVector2D(LinePos, FMath::FloorToFloat(AllottedGeometry.Size.Y));
+			// Flip the text position if getting near the end of the view range
+			static const float TextOffsetPx = 2.f;
+			bool  bDrawLeft = (AllottedGeometry.Size.X - LinePos) < (TextSize.X + 14.f) - TextOffsetPx;
+			float TextPosition = bDrawLeft ? LinePos - TextSize.X - TextOffsetPx : LinePos + TextOffsetPx;
 
-			FSlateDrawElement::MakeLines(
-				DrawElements,
+			FSlateDrawElement::MakeText(
+				OutDrawElements,
 				LayerId + 1,
-				AllottedGeometry.ToPaintGeometry(),
-				LinePoints,
+				AllottedGeometry.ToPaintGeometry(FVector2D(TextPosition, 0.f), TextSize),
+				LabelString,
+				SmallLayoutFont,
 				DrawEffects,
-				DrawColor,
-				false
+				MarkedFrame.Color
 			);
-
-			FString LabelString = MarkedFrame.Label;
-			if (bDrawLabels && !LabelString.IsEmpty())
-			{
-				// Draw the label next to the marked frame line
-				FVector2D TextSize = FontMeasureService->Measure(LabelString, SmallLayoutFont);
-
-				// Flip the text position if getting near the end of the view range
-				static const float TextOffsetPx = 2.f;
-				bool  bDrawLeft = (AllottedGeometry.Size.X - LinePos) < (TextSize.X + 14.f) - TextOffsetPx;
-				float TextPosition = bDrawLeft ? LinePos - TextSize.X - TextOffsetPx : LinePos + TextOffsetPx;
-
-				FSlateDrawElement::MakeText(
-					DrawElements,
-					LayerId + 1,
-					AllottedGeometry.ToPaintGeometry(FVector2D(TextPosition, 0.f), TextSize),
-					LabelString,
-					SmallLayoutFont,
-					DrawEffects,
-					DrawColor
-				);
-			}
 		}
+	}
 
-	});
-	
-	DrawFrameMarkers(GlobalMarkedFrames, OutDrawElements, true);
-	DrawFrameMarkers(MarkedFrames, OutDrawElements, false);
-	
 	return LayerId + 1;
 }
 
@@ -485,20 +464,8 @@ int32 FSequencerTimeSliderController::OnPaintTimeSlider( bool bMirrorLabels, con
 		{
 			// Draw the current time next to the scrub handle
 			FString FrameString;
-			FLinearColor TextColor = Args.TickColor;
-			if (TimeSliderArgs.ScrubPositionText.IsSet())
-			{
-				FrameString = TimeSliderArgs.ScrubPositionText.Get();
-			}
-			else
-			{
-				FrameString = TimeSliderArgs.NumericTypeInterface->ToString(TimeSliderArgs.ScrubPosition.Get().GetFrame().Value);
-			}
 
-			if (TimeSliderArgs.ScrubPositionParent.Get() != MovieSceneSequenceID::Invalid)
-			{
-				TextColor = FLinearColor::Yellow;
-			}
+			FrameString = TimeSliderArgs.NumericTypeInterface->ToString(TimeSliderArgs.ScrubPosition.Get().GetFrame().Value);
 
 			FSlateFontInfo SmallLayoutFont = FCoreStyle::GetDefaultFontStyle("Regular", 10);
 
@@ -519,7 +486,7 @@ int32 FSequencerTimeSliderController::OnPaintTimeSlider( bool bMirrorLabels, con
 				FrameString, 
 				SmallLayoutFont,
 				Args.DrawEffects,
-				TextColor 
+				Args.TickColor 
 			);
 		}
 		
@@ -871,13 +838,11 @@ FReply FSequencerTimeSliderController::OnMouseButtonUp( SWidget& WidgetOwner, co
 			FFrameTime ScrubTime = MouseTime;
 			FVector2D CursorPos  = MouseEvent.GetScreenSpacePosition();
 
-			TSharedPtr<FSequencer> Sequencer = WeakSequencer.Pin();
-
 			if (MouseDragType == DRAG_SCRUBBING_TIME)
 			{
 				ScrubTime = ComputeScrubTimeFromMouse(MyGeometry, CursorPos, RangeToScreen);
 			}
-			else if (Sequencer.IsValid() && Sequencer->GetSequencerSettings()->GetSnapPlayTimeToKeys())
+			else if (TimeSliderArgs.Settings->GetSnapPlayTimeToKeys())
 			{
 				ScrubTime = SnapTimeToNearestKey(RangeToScreen, CursorPos.X, ScrubTime);
 			}
@@ -1087,10 +1052,8 @@ FReply FSequencerTimeSliderController::OnMouseWheel( SWidget& WidgetOwner, const
 	{
 		float MouseFractionX = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition()).X / MyGeometry.GetLocalSize().X;
 
-		TSharedPtr<FSequencer> Sequencer = WeakSequencer.Pin();
-			
 		// If zooming on the current time, adjust mouse fractionX
-		if (Sequencer.IsValid() && Sequencer->GetSequencerSettings()->GetZoomPosition() == ESequencerZoomPosition::SZP_CurrentTime)
+		if (TimeSliderArgs.Settings->GetZoomPosition() == ESequencerZoomPosition::SZP_CurrentTime)
 		{
 			const double ScrubPosition = TimeSliderArgs.ScrubPosition.Get() / GetTickResolution();
 			if (GetViewRange().Contains(ScrubPosition))
@@ -1278,7 +1241,7 @@ TSharedRef<SWidget> FSequencerTimeSliderController::OpenSetPlaybackRangeMenu(con
 			FSlateIcon(),
 			FUIAction(
 				FExecuteAction::CreateLambda([=]{ SetPlaybackRangeStart(FrameNumber); }),
-				FCanExecuteAction::CreateLambda([=]{ return !TimeSliderArgs.IsPlaybackRangeLocked.Get() && FrameNumber < UE::MovieScene::DiscreteExclusiveUpper(PlaybackRange); })
+				FCanExecuteAction::CreateLambda([=]{ return !TimeSliderArgs.IsPlaybackRangeLocked.Get() && FrameNumber < MovieScene::DiscreteExclusiveUpper(PlaybackRange); })
 			)
 		);
 
@@ -1288,7 +1251,7 @@ TSharedRef<SWidget> FSequencerTimeSliderController::OpenSetPlaybackRangeMenu(con
 			FSlateIcon(),
 			FUIAction(
 				FExecuteAction::CreateLambda([=]{ SetPlaybackRangeEnd(FrameNumber); }),
-				FCanExecuteAction::CreateLambda([=]{ return !TimeSliderArgs.IsPlaybackRangeLocked.Get() && FrameNumber >= UE::MovieScene::DiscreteInclusiveLower(PlaybackRange); })
+				FCanExecuteAction::CreateLambda([=]{ return !TimeSliderArgs.IsPlaybackRangeLocked.Get() && FrameNumber >= MovieScene::DiscreteInclusiveLower(PlaybackRange); })
 			)
 		);
 
@@ -1316,7 +1279,7 @@ TSharedRef<SWidget> FSequencerTimeSliderController::OpenSetPlaybackRangeMenu(con
 			FSlateIcon(),
 			FUIAction(
 				FExecuteAction::CreateLambda([=]{ SetSelectionRangeStart(FrameNumber); }),
-				FCanExecuteAction::CreateLambda([=]{ return SelectionRange.IsEmpty() || FrameNumber < UE::MovieScene::DiscreteExclusiveUpper(SelectionRange); })
+				FCanExecuteAction::CreateLambda([=]{ return SelectionRange.IsEmpty() || FrameNumber < MovieScene::DiscreteExclusiveUpper(SelectionRange); })
 			)
 		);
 
@@ -1326,7 +1289,7 @@ TSharedRef<SWidget> FSequencerTimeSliderController::OpenSetPlaybackRangeMenu(con
 			FSlateIcon(),
 			FUIAction(
 				FExecuteAction::CreateLambda([=]{ SetSelectionRangeEnd(FrameNumber); }),
-				FCanExecuteAction::CreateLambda([=]{ return SelectionRange.IsEmpty() || FrameNumber >= UE::MovieScene::DiscreteInclusiveLower(SelectionRange); })
+				FCanExecuteAction::CreateLambda([=]{ return SelectionRange.IsEmpty() || FrameNumber >= MovieScene::DiscreteInclusiveLower(SelectionRange); })
 			)
 		);
 
@@ -1341,44 +1304,6 @@ TSharedRef<SWidget> FSequencerTimeSliderController::OpenSetPlaybackRangeMenu(con
 		);
 	}
 	MenuBuilder.EndSection(); // SequencerPlaybackRangeMenu
-
-	UMovieSceneCompiledDataManager* CompiledDataManager = WeakSequencer.Pin()->GetEvaluationTemplate().GetCompiledDataManager();
-	const FMovieSceneSequenceHierarchy* Hierarchy = CompiledDataManager->FindHierarchy(WeakSequencer.Pin()->GetEvaluationTemplate().GetCompiledDataID());
-
-	if (TimeSliderArgs.ScrubPositionParentChain.IsSet() && Hierarchy)
-	{
-		MenuBuilder.BeginSection("SequencerParentChainMenu");
-		{
-			TArray<FMovieSceneSequenceID> ParentChain = TimeSliderArgs.ScrubPositionParentChain.Get();
-			for (FMovieSceneSequenceID ParentID : ParentChain)
-			{
-				FText ParentText = WeakSequencer.Pin()->GetRootMovieSceneSequence()->GetDisplayName();
-
-				for (const TTuple<FMovieSceneSequenceID, FMovieSceneSubSequenceData>& Pair : Hierarchy->AllSubSequenceData())
-				{
-					if (Pair.Key == ParentID && Pair.Value.GetSequence())
-					{
-						ParentText = Pair.Value.GetSequence()->GetDisplayName();
-						break;
-					}
-				}
-
-				MenuBuilder.AddMenuEntry(
-					ParentText,
-					FText::Format(LOCTEXT("DisplayTimeSpace", "Display time in the space of {0}"), ParentText),
-					FSlateIcon(),
-					FUIAction(
-						FExecuteAction::CreateLambda([=] { TimeSliderArgs.OnScrubPositionParentChanged.ExecuteIfBound(ParentID); }),
-						FCanExecuteAction(),
-						FIsActionChecked::CreateLambda([=] { return TimeSliderArgs.ScrubPositionParent.Get() == MovieSceneSequenceID::Invalid ? ParentID == TimeSliderArgs.ScrubPositionParentChain.Get().Last() : TimeSliderArgs.ScrubPositionParent.Get() == ParentID; })
-					),
-					NAME_None,
-					EUserInterfaceActionType::RadioButton
-				);
-			}
-		}
-		MenuBuilder.EndSection(); // Sequencer Parent Chain
-	}
 
 	MenuBuilder.BeginSection("SequencerMarkMenu", FText::Format(LOCTEXT("MarkTextFormat", "Mark ({0}):"), CurrentTimeText));
 	{
@@ -1425,19 +1350,19 @@ TSharedRef<SWidget> FSequencerTimeSliderController::OpenSetPlaybackRangeMenu(con
 		else 
 		{
 			MenuBuilder.AddMenuEntry( 
-				LOCTEXT("DeleteMark", "Delete Mark"),
+				LOCTEXT("ClearMark", "Clear Mark"),
 				FText(),
 				FSlateIcon(),
-				FUIAction(FExecuteAction::CreateLambda([=]{ DeleteMarkAtIndex(MarkedIndex); }))
+				FUIAction(FExecuteAction::CreateLambda([=]{ ClearMarkAtFrame(FrameNumber); }))
 			);
 		}
 
 		MenuBuilder.AddMenuEntry( 
-			LOCTEXT("Delete All Marks", "Delete All Marks"),
+			LOCTEXT("Clear All Marks", "Clear All Marks"),
 			FText(),
 			FSlateIcon(),
 			FUIAction(
-				FExecuteAction::CreateLambda([=]{ DeleteAllMarks(); }),
+				FExecuteAction::CreateLambda([=]{ ClearAllMarks(); }),
 				FCanExecuteAction::CreateLambda([=]{ return bHasMarks; })
 			)
 		);
@@ -1656,7 +1581,7 @@ void FSequencerTimeSliderController::SetPlaybackRangeStart(FFrameNumber NewStart
 {
 	TRange<FFrameNumber> PlaybackRange = TimeSliderArgs.PlaybackRange.Get();
 
-	if (NewStart <= UE::MovieScene::DiscreteExclusiveUpper(PlaybackRange))
+	if (NewStart <= MovieScene::DiscreteExclusiveUpper(PlaybackRange))
 	{
 		TimeSliderArgs.OnPlaybackRangeChanged.ExecuteIfBound(TRange<FFrameNumber>(NewStart, PlaybackRange.GetUpperBound()));
 	}
@@ -1666,7 +1591,7 @@ void FSequencerTimeSliderController::SetPlaybackRangeEnd(FFrameNumber NewEnd)
 {
 	TRange<FFrameNumber> PlaybackRange = TimeSliderArgs.PlaybackRange.Get();
 
-	if (NewEnd >= UE::MovieScene::DiscreteInclusiveLower(PlaybackRange))
+	if (NewEnd >= MovieScene::DiscreteInclusiveLower(PlaybackRange))
 	{
 		TimeSliderArgs.OnPlaybackRangeChanged.ExecuteIfBound(TRange<FFrameNumber>(PlaybackRange.GetLowerBound(), TRangeBound<FFrameNumber>::Exclusive(NewEnd)));
 	}
@@ -1680,7 +1605,7 @@ void FSequencerTimeSliderController::SetSelectionRangeStart(FFrameNumber NewStar
 	{
 		TimeSliderArgs.OnSelectionRangeChanged.ExecuteIfBound(TRange<FFrameNumber>(NewStart, NewStart + 1));
 	}
-	else if (NewStart <= UE::MovieScene::DiscreteExclusiveUpper(SelectionRange))
+	else if (NewStart <= MovieScene::DiscreteExclusiveUpper(SelectionRange))
 	{
 		TimeSliderArgs.OnSelectionRangeChanged.ExecuteIfBound(TRange<FFrameNumber>(NewStart, SelectionRange.GetUpperBound()));
 	}
@@ -1694,7 +1619,7 @@ void FSequencerTimeSliderController::SetSelectionRangeEnd(FFrameNumber NewEnd)
 	{
 		TimeSliderArgs.OnSelectionRangeChanged.ExecuteIfBound(TRange<FFrameNumber>(NewEnd - 1, NewEnd));
 	}
-	else if (NewEnd >= UE::MovieScene::DiscreteInclusiveLower(SelectionRange))
+	else if (NewEnd >= MovieScene::DiscreteInclusiveLower(SelectionRange))
 	{
 		TimeSliderArgs.OnSelectionRangeChanged.ExecuteIfBound(TRange<FFrameNumber>(SelectionRange.GetLowerBound(), NewEnd));
 	}
@@ -1707,17 +1632,17 @@ void FSequencerTimeSliderController::SetMark(int32 InMarkIndex, FFrameNumber Fra
 
 void FSequencerTimeSliderController::AddMarkAtFrame(FFrameNumber FrameNumber)
 {
-	TimeSliderArgs.OnAddMarkedFrame.ExecuteIfBound(FrameNumber);
+	TimeSliderArgs.OnMarkedFrameChanged.ExecuteIfBound(FrameNumber, true);
 }
 
-void FSequencerTimeSliderController::DeleteMarkAtIndex(int32 InMarkIndex)
+void FSequencerTimeSliderController::ClearMarkAtFrame(FFrameNumber FrameNumber)
 {
-	TimeSliderArgs.OnDeleteMarkedFrame.ExecuteIfBound(InMarkIndex);
+	TimeSliderArgs.OnMarkedFrameChanged.ExecuteIfBound(FrameNumber, false);
 }
 
-void FSequencerTimeSliderController::DeleteAllMarks()
+void FSequencerTimeSliderController::ClearAllMarks()
 {
-	TimeSliderArgs.OnDeleteAllMarkedFrames.ExecuteIfBound();
+	TimeSliderArgs.OnClearAllMarkedFrames.ExecuteIfBound();
 }
 	
 

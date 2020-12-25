@@ -1,12 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AnimComposite.cpp: Composite classes that contains sequence for each section
 =============================================================================*/ 
 
 #include "Animation/AnimComposite.h"
-#include "Animation/AnimationPoseData.h"
-#include "Animation/CustomAttributesRuntime.h"
 
 UAnimComposite::UAnimComposite(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -70,11 +68,9 @@ void UAnimComposite::HandleAssetPlayerTickedInternal(FAnimAssetTickContext &Cont
 	ExtractRootMotionFromTrack(AnimationTrack, PreviousTime, PreviousTime + MoveDelta, Context.RootMotionMovementParams);
 }
 
-void UAnimComposite::GetAnimationPose(FAnimationPoseData& OutAnimationPoseData, const FAnimExtractContext& ExtractionContext) const
+void UAnimComposite::GetAnimationPose(FCompactPose& OutPose, FBlendedCurve& OutCurve, const FAnimExtractContext& ExtractionContext) const
 {
-	AnimationTrack.GetAnimationPose(OutAnimationPoseData, ExtractionContext);
-
-	FBlendedCurve& OutCurve = OutAnimationPoseData.GetCurve();
+	AnimationTrack.GetAnimationPose(OutPose, OutCurve, ExtractionContext);
 
 	FBlendedCurve CompositeCurve;
 	CompositeCurve.InitFrom(OutCurve);

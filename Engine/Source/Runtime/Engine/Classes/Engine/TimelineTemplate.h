@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,17 +13,8 @@
 class UTimelineTemplate;
 
 USTRUCT()
-struct FTTTrackBase
+struct ENGINE_VTABLE FTTTrackBase
 {
-	/** Enum to indicate whether this is an event track, a float interp track or a vector interp track */
-	enum ETrackType
-	{
-		TT_Event,
-		TT_FloatInterp,
-		TT_VectorInterp,
-		TT_LinearColorInterp,
-	};
-
 	GENERATED_USTRUCT_BODY()
 
 private:
@@ -35,14 +26,6 @@ public:
 	/** Flag to identify internal/external curve*/
 	UPROPERTY()
 	bool bIsExternalCurve;
-#if WITH_EDITORONLY_DATA
-	/** Whether or not this track is expanded in the UI. */
-	UPROPERTY()
-	bool bIsExpanded;
-	/** Whether or not this track has its curve's view synchronized with the other curve views. */
-	UPROPERTY()
-	bool bIsCurveViewSynchronized;
-#endif
 
 	/** Determine if Tracks are the same */
 	ENGINE_API bool operator == (const FTTTrackBase& T2) const;
@@ -50,10 +33,6 @@ public:
 	FTTTrackBase()
 		: TrackName(NAME_None)
 		, bIsExternalCurve(false)
-#if WITH_EDITORONLY_DATA
-		, bIsExpanded(true)
-		, bIsCurveViewSynchronized(true)
-#endif
 	{}
 
 	virtual ~FTTTrackBase() = default;
@@ -62,29 +41,9 @@ public:
 	ENGINE_API virtual void SetTrackName(FName NewTrackName, UTimelineTemplate* OwningTimeline);
 };
 
-USTRUCT()
-struct ENGINE_API FTTTrackId
-{
-	GENERATED_USTRUCT_BODY()
-
-	FTTTrackId (int32 InType, int32 InIndex)
-		: TrackType(InType)
-		, TrackIndex(InIndex)
-	{}
-
-	FTTTrackId()
-		: FTTTrackId(0, 0)
-	{}
-
-	UPROPERTY()
-	int32 TrackType;
-	UPROPERTY()
-	int32 TrackIndex;
-};
-
 /** Structure storing information about one event track */
 USTRUCT()
-struct FTTEventTrack : public FTTTrackBase
+struct ENGINE_VTABLE FTTEventTrack : public FTTTrackBase
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -110,7 +69,7 @@ public:
 };
 
 USTRUCT()
-struct FTTPropertyTrack : public FTTTrackBase
+struct ENGINE_VTABLE FTTPropertyTrack : public FTTTrackBase
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -284,13 +243,6 @@ class UTimelineTemplate : public UObject
 
 	ENGINE_API void GetAllCurves(TSet<class UCurveBase*>& InOutCurves) const;
 
-	ENGINE_API FTTTrackId GetDisplayTrackId(int32 DisplayTrackIndex);
-	ENGINE_API int32 GetNumDisplayTracks() const;
-	ENGINE_API void RemoveDisplayTrack(int32 DisplayTrackIndex);
-	ENGINE_API void MoveDisplayTrack(int32 DisplayTrackIndex, int32 DirectionDelta);
-	ENGINE_API void AddDisplayTrack(FTTTrackId NewTrackId);
-
-
 	//~ Begin UObject Interface
 	virtual void PostDuplicate(bool bDuplicateForPIE) override;
 	virtual void PostEditImport() override;
@@ -317,13 +269,6 @@ private:
 
 	UPROPERTY()
 	FName FinishedFunctionName;
-
-#if WITH_EDITORONLY_DATA
-	/** Whether or not this track is expanded in the UI. */
-	UPROPERTY()
-	TArray <FTTTrackId> TrackDisplayOrder;
-#endif
-
 
 public:
 	static const FString TemplatePostfix;

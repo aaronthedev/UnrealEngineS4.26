@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  * Import data and options used when importing a static mesh from fbx
@@ -13,7 +13,7 @@
 
 class UStaticMesh;
 
-UCLASS(BlueprintType, config=EditorPerProjectUserSettings, AutoExpandCategories=(Options), MinimalAPI)
+UCLASS(config=EditorPerProjectUserSettings, AutoExpandCategories=(Options), MinimalAPI)
 class UFbxStaticMeshImportData : public UFbxMeshImportData
 {
 	GENERATED_UCLASS_BODY()
@@ -49,7 +49,7 @@ class UFbxStaticMeshImportData : public UFbxMeshImportData
 	uint32 bOneConvexHullPerUCX:1;
 
 	/** If checked, collision will automatically be generated (ignored if custom collision is imported or used). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, config, Category = Mesh, meta=(OBJRestrict="true", ImportType="StaticMesh", DisplayName="Generate Missing Collision"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, config, Category = Mesh, meta=(OBJRestrict="true", ImportType="StaticMesh"))
 	uint32 bAutoGenerateCollision : 1;
 
 	/** For static meshes, enabling this option will combine all meshes in the FBX into a single monolithic mesh in Unreal */
@@ -59,7 +59,7 @@ class UFbxStaticMeshImportData : public UFbxMeshImportData
 	/** Gets or creates fbx import data for the specified static mesh */
 	static UFbxStaticMeshImportData* GetImportDataForStaticMesh(UStaticMesh* StaticMesh, UFbxStaticMeshImportData* TemplateForCreation);
 
-	bool CanEditChange( const FProperty* InProperty ) const override;
+	bool CanEditChange( const UProperty* InProperty ) const override;
 };
 
 

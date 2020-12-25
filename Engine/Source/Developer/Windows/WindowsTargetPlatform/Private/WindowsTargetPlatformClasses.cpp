@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WindowsTargetSettings.h"
 
@@ -9,7 +9,6 @@ UWindowsTargetSettings::UWindowsTargetSettings( const FObjectInitializer& Object
 	: Super(ObjectInitializer)
 {
 	MinimumOSVersion = EMinimumSupportedOS::MSOS_Vista;
-	bTarget32Bit = false;
 
 	// Default windows settings
 	AudioSampleRate = 48000;

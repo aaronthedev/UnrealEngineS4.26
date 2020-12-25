@@ -30,11 +30,8 @@ public:
 
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
-	virtual bool CanEditChange(const FProperty* InProperty) const override;
+	virtual bool CanEditChange(const UProperty* InProperty) const override;
 #endif
-
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = General, meta = (AllowedClasses = "SoundSubmix"))
-	FSoftObjectPath OutputSubmix;
 
 	// Which audio engine to use.
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = General)

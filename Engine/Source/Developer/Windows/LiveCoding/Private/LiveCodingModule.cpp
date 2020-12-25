@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LiveCodingModule.h"
 #include "Modules/ModuleManager.h"
@@ -102,7 +102,7 @@ void FLiveCodingModule::StartupModule()
 		);
 	}
 
-	LppStartup(hInstance);
+	Startup(hInstance);
 
 	if (Settings->bEnabled && !FApp::IsUnattended())
 	{
@@ -128,7 +128,7 @@ void FLiveCodingModule::StartupModule()
 
 void FLiveCodingModule::ShutdownModule()
 {
-	LppShutdown();
+	Shutdown();
 
 	FCoreDelegates::OnEndFrame.Remove(EndFrameDelegateHandle);
 
@@ -303,19 +303,14 @@ bool FLiveCodingModule::StartLiveCoding()
 		LppUseExternalBuildSystem();
 
 		// Enable the server
-		FString ProjectPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir()).ToLower();
-		FString ProcessGroup = FString::Printf(TEXT("UE4_%s_0x%08x"), FApp::GetProjectName(), GetTypeHash(ProjectPath));
+		FString ProcessGroup = FString::Printf(TEXT("UE4_%s_0x%08x"), FApp::GetProjectName(), GetTypeHash(FPaths::ProjectDir()));
 		LppRegisterProcessGroup(TCHAR_TO_ANSI(*ProcessGroup));
 
 		// Build the command line
-		FString KnownTargetName = FPlatformMisc::GetUBTTargetName();
-		FString Arguments = FString::Printf(TEXT("%s %s %s"),
-			*KnownTargetName,
-			FPlatformMisc::GetUBTPlatform(),
-			LexToString(FApp::GetBuildConfiguration()));
-
-		UE_LOG(LogLiveCoding, Display, TEXT("LiveCodingConsole Arguments: %s"), *Arguments);
-
+		FString Arguments;
+		Arguments += FString::Printf(TEXT("%s"), FPlatformMisc::GetUBTPlatform());
+		Arguments += FString::Printf(TEXT(" %s"), LexToString(FApp::GetBuildConfiguration()));
+		Arguments += FString::Printf(TEXT(" -TargetType=%s"), FPlatformMisc::GetUBTTarget());
 		if(SourceProject.Len() > 0)
 		{
 			Arguments += FString::Printf(TEXT(" -Project=\"%s\""), *FPaths::ConvertRelativePathToFull(SourceProject));

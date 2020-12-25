@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -20,7 +20,6 @@ public class ExtractPaks : BuildCommand
 		var TargetDirectory = ParseParamValue("targetdirectory", null);
 		var CryptoKeysFile = ParseParamValue("cryptokeysjson", null);
 		var Compressor = ParseParamValue("customcompressor", null);
-		var Project = ParseParamValue("project", null);
 
 		string ExtraArgs = "";
 
@@ -56,17 +55,6 @@ public class ExtractPaks : BuildCommand
 
 		LogInformation("Extracting paks from {0} to {1}", SourceDirectory, TargetDirectory);
 
-		FileReference ProjectFile = null;
-		if (!string.IsNullOrEmpty(Project))
-		{
-			ProjectFile = ProjectUtils.FindProjectFileFromName(Project);
-
-			if (ProjectFile == null)
-			{
-				throw new AutomationException("Could not find project file based on {0}", Project);
-			}
-		}
-
-		PackageUtils.ExtractPakFiles(SourceDirectoryInfo, TargetDirectory, CryptoKeysFile, ExtraArgs, bLayered, ProjectFile);
+		PackageUtils.ExtractPakFiles(SourceDirectoryInfo, TargetDirectory, CryptoKeysFile, ExtraArgs, bLayered);
 	}
 }

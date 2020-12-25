@@ -17,7 +17,6 @@
 
 #include "gmock/gmock.h"
 #include "source/instruction.h"
-#include "source/util/string_utils.h"
 #include "test/unit_spirv.h"
 
 namespace spvtools {
@@ -41,8 +40,9 @@ TEST_P(EncodeStringTest, Sample) {
   ASSERT_EQ(SPV_SUCCESS,
             context.binaryEncodeString(GetParam().str.c_str(), &inst));
   // We already trust MakeVector
-  EXPECT_THAT(inst.words, Eq(Concatenate({GetParam().initial_contents,
-                                          utils::MakeVector(GetParam().str)})));
+  EXPECT_THAT(inst.words,
+              Eq(Concatenate({GetParam().initial_contents,
+                              spvtest::MakeVector(GetParam().str)})));
 }
 
 // clang-format off

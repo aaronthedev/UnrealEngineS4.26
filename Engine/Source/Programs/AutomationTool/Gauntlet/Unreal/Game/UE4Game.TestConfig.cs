@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -36,7 +36,7 @@ namespace UE4Game
 				|| (AppConfig.ProcessType.IsClient() && RoleCount(UnrealTargetRole.Server) == 0))
 				{
 					// must be the first argument!
-					AppConfig.CommandLineParams.GameMap = ConfigRole.MapOverride;
+					AppConfig.CommandLine = ConfigRole.MapOverride + " " + AppConfig.CommandLine;
 				}
 			}
 			else if (string.IsNullOrEmpty(Map) == false)
@@ -45,7 +45,8 @@ namespace UE4Game
 				if (AppConfig.ProcessType.IsServer()
 				|| (AppConfig.ProcessType.IsClient() && RoleCount(UnrealTargetRole.Server) == 0))
 				{
-					AppConfig.CommandLineParams.GameMap = Map;
+					// must be the first argument!
+					AppConfig.CommandLine = Map + " " + AppConfig.CommandLine;
 				}
 			}			
 		}

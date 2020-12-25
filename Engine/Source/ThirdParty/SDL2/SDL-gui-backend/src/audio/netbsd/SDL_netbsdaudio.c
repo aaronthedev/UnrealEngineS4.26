@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2020 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2019 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -24,7 +24,7 @@
 
 /*
  * Driver for native NetBSD audio(4).
- * nia@NetBSD.org
+ * vedge@vedge.com.ar.
  */
 
 #include <errno.h>
@@ -260,14 +260,6 @@ NETBSDAUDIO_OpenDevice(_THIS, void *handle, const char *devname, int iscapture)
         case AUDIO_U16MSB:
             prinfo->encoding = AUDIO_ENCODING_ULINEAR_BE;
             prinfo->precision = 16;
-            break;
-        case AUDIO_S32LSB:
-            prinfo->encoding = AUDIO_ENCODING_SLINEAR_LE;
-            prinfo->precision = 32;
-            break;
-        case AUDIO_S32MSB:
-            prinfo->encoding = AUDIO_ENCODING_SLINEAR_BE;
-            prinfo->precision = 32;
             break;
         }
         if (prinfo->encoding != AUDIO_ENCODING_NONE) {

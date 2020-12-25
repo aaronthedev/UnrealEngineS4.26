@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
@@ -47,9 +47,6 @@ public:
 		.ShowWorkingRange(!!(InArgs.ShowRanges & EShowRange::WorkingRange))
 		.ShowViewRange(!!(InArgs.ShowRanges & EShowRange::ViewRange))
 		.ShowPlaybackRange(!!(InArgs.ShowRanges & EShowRange::PlaybackRange))
-		.EnableWorkingRange(!!(InArgs.EnableRanges & EShowRange::WorkingRange))
-		.EnableViewRange(!!(InArgs.EnableRanges & EShowRange::ViewRange))
-		.EnablePlaybackRange(!!(InArgs.EnableRanges & EShowRange::PlaybackRange))
 		[
 			Content
 		];

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -72,16 +72,28 @@ protected:
 
 /**
 	Info stored per sample that is always resident in memory and does not require parsing the chunks.
-	Needed to keep support for serialization of FGeometryCacheTrackStreamableSampleInfo
 */
-struct FGeometryCacheTrackStreamableSampleInfo : public FGeometryCacheTrackSampleInfo
+struct FGeometryCacheTrackStreamableSampleInfo
 {
-	FGeometryCacheTrackStreamableSampleInfo() : FGeometryCacheTrackSampleInfo() {}
+	float SampleTime;
+	FBox BoundingBox;
+	int32 NumVertices;
+	int32 NumIndices;
+
+	FGeometryCacheTrackStreamableSampleInfo() : SampleTime(0.0f), NumVertices(0), NumIndices(0) {}
 
 	FGeometryCacheTrackStreamableSampleInfo(float SetSampleTime, FBox SetBoundingBox, int32 SetNumVertices, int32 SetNumIndices) :
-		FGeometryCacheTrackSampleInfo(SetSampleTime, SetBoundingBox, SetNumVertices, SetNumIndices) {}
+		SampleTime(SetSampleTime), BoundingBox(SetBoundingBox), NumVertices(SetNumVertices), NumIndices(SetNumIndices) {}
 
 	friend FArchive& operator<<(FArchive& Ar, FGeometryCacheTrackStreamableSampleInfo& Info);
+};
+
+struct FVisibilitySample
+{
+	TRange<float> Range;
+	bool bVisibilityState;
+
+	friend FArchive& operator<<(FArchive& Ar, FVisibilitySample& Range);
 };
 
 /** 
@@ -113,7 +125,6 @@ class GEOMETRYCACHE_API UGeometryCacheTrackStreamable : public UGeometryCacheTra
 	virtual const bool UpdateBoundsData(const float Time, const bool bLooping, const bool bIsPlayingBackward, int32& InOutBoundsSampleIndex, FBox& OutBounds) override;
 	virtual const float GetMaxSampleTime() const override;
 	virtual void SetDuration(float NewDuration) override;
-	virtual const FGeometryCacheTrackSampleInfo& GetSampleInfo(float Time, const bool bLooping) override;
 	//~ End UGeometryCacheTrack Interface.
 
 #if WITH_EDITORONLY_DATA
@@ -196,6 +207,12 @@ class GEOMETRYCACHE_API UGeometryCacheTrackStreamable : public UGeometryCacheTra
 	*/
 	const FGeometryCacheTrackStreamableSampleInfo& GetSampleInfo(int32 SampleID) const;
 
+
+	/**
+		Get the info for the sample displayed at the given time.
+	*/
+	const FGeometryCacheTrackStreamableSampleInfo& GetSampleInfo(float Time, const bool bLooping) const;
+
 	const FVisibilitySample& GetVisibilitySample(float Time, const bool bLooping) const;
 
 	friend class FCodecGeometryCachePreprocessor;
@@ -215,6 +232,7 @@ private:
 #if WITH_EDITOR
 	TArray<TPair<float, bool>> ImportVisibilitySamples;
 #endif // WITH_EDITOR
+	FGeometryCacheMeshData returnedMeshData;
 
 	FGeometryCacheTrackStreamableRenderResource RenderResource;
 	FRenderCommandFence ReleaseResourcesFence;

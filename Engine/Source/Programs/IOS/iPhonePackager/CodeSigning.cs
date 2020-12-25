@@ -1,5 +1,5 @@
-/**
- * Copyright Epic Games, Inc. All Rights Reserved.
+﻿/**
+ * Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
  */
 
 using System;
@@ -11,7 +11,6 @@ using System.IO;
 using MachObjectHandling;
 using System.Diagnostics;
 using System.Xml;
-using System.Linq;
 
 namespace iPhonePackager
 {
@@ -221,40 +220,39 @@ namespace iPhonePackager
 		/// </summary>
 		public static void FindCertificates()
 		{
-			string[] ValidCertificatePrefixes = {"iPhone Developer", "iPhone Distribution", "Apple Development", "Apple Distribution"};
-			
-			X509Certificate2Collection FoundCerts = new X509Certificate2Collection();
-
 			if (Environment.OSVersion.Platform == PlatformID.Unix || Environment.OSVersion.Platform == PlatformID.MacOSX)
 			{
-				foreach(string SearchPrefix in ValidCertificatePrefixes)
-				{ 
-					// run certtool y to get the currently installed certificates
-					CertToolData = "";
-					Process CertTool = new Process();
-					CertTool.StartInfo.FileName = "/usr/bin/security";
-					CertTool.StartInfo.UseShellExecute = false;
-					CertTool.StartInfo.Arguments = string.Format("find-certificate -a -c \"{0}\" -p", SearchPrefix);
-					CertTool.StartInfo.RedirectStandardOutput = true;
-					CertTool.OutputDataReceived += new DataReceivedEventHandler(OutputReceivedCertToolProcessCall);
-					CertTool.Start();
-					CertTool.BeginOutputReadLine();
-					CertTool.WaitForExit();
-					if (CertTool.ExitCode == 0)
+				// run certtool y to get the currently installed certificates
+				CertToolData = "";
+				Process CertTool = new Process();
+				CertTool.StartInfo.FileName = "/usr/bin/security";
+				CertTool.StartInfo.UseShellExecute = false;
+				CertTool.StartInfo.Arguments = "find-certificate -a -c \"iPhone\" -p";
+				CertTool.StartInfo.RedirectStandardOutput = true;
+				CertTool.OutputDataReceived += new DataReceivedEventHandler(OutputReceivedCertToolProcessCall);
+				CertTool.Start();
+				CertTool.BeginOutputReadLine();
+				CertTool.WaitForExit();
+				if (CertTool.ExitCode == 0)
+				{
+					string header = "-----BEGIN CERTIFICATE-----\n";
+					string footer = "-----END CERTIFICATE-----";
+					int start = CertToolData.IndexOf(header);
+					while (start != -1)
 					{
-						string header = "-----BEGIN CERTIFICATE-----\n";
-						string footer = "-----END CERTIFICATE-----";
-						int start = CertToolData.IndexOf(header);
-						while (start != -1)
-						{
-							start += header.Length;
-							int end = CertToolData.IndexOf(footer, start);
-							string base64 = CertToolData.Substring(start, (end - start));
-							byte[] certData = Convert.FromBase64String(base64);
-							X509Certificate2 cert = new X509Certificate2(certData);
-							FoundCerts.Add(cert);
-							start = CertToolData.IndexOf(header, start);
-						}
+						start += header.Length;
+						int end = CertToolData.IndexOf(footer, start);
+						string base64 = CertToolData.Substring(start, (end - start));
+						byte[] certData = Convert.FromBase64String(base64);
+						X509Certificate2 cert = new X509Certificate2(certData);
+						DateTime EffectiveDate = cert.NotBefore.ToUniversalTime();
+						DateTime ExpirationDate = cert.NotAfter.ToUniversalTime();
+						DateTime Now = DateTime.UtcNow;
+
+						bool bCertTimeIsValid = (EffectiveDate < Now) && (ExpirationDate > Now);
+						Program.LogVerbose("CERTIFICATE-Name:{0},Validity:{1},StartDate:{2},EndDate:{3}", CryptoAdapter.GetFriendlyNameFromCert(cert), bCertTimeIsValid ? "VALID" : "EXPIRED", EffectiveDate.ToString("o"), ExpirationDate.ToString("o"));
+
+						start = CertToolData.IndexOf(header, start);
 					}
 				}
 			}
@@ -264,22 +262,32 @@ namespace iPhonePackager
 				X509Store Store = new X509Store();
 				Store.Open(OpenFlags.ReadOnly);
 
-				foreach (string SearchPrefix in ValidCertificatePrefixes)
+				// Try finding all certificates that match either iPhone Developer or iPhone Distribution
+				X509Certificate2Collection FoundCerts = Store.Certificates.Find(X509FindType.FindBySubjectName, "iPhone Developer", false);
+
+				foreach (X509Certificate2 TestCert in FoundCerts)
 				{
-					FoundCerts.AddRange(Store.Certificates.Find(X509FindType.FindBySubjectName, SearchPrefix, false));
+					DateTime EffectiveDate = TestCert.NotBefore.ToUniversalTime();
+					DateTime ExpirationDate = TestCert.NotAfter.ToUniversalTime();
+					DateTime Now = DateTime.UtcNow;
+
+					bool bCertTimeIsValid = (EffectiveDate < Now) && (ExpirationDate > Now);
+					Program.LogVerbose("CERTIFICATE-Name:{0},Validity:{1},StartDate:{2},EndDate:{3}", CryptoAdapter.GetFriendlyNameFromCert(TestCert), bCertTimeIsValid ? "VALID" : "EXPIRED", EffectiveDate.ToString("o"), ExpirationDate.ToString("o"));
+				}
+
+				FoundCerts = Store.Certificates.Find(X509FindType.FindBySubjectName, "iPhone Distribution", false);
+
+				foreach (X509Certificate2 TestCert in FoundCerts)
+				{
+					DateTime EffectiveDate = TestCert.NotBefore.ToUniversalTime();
+					DateTime ExpirationDate = TestCert.NotAfter.ToUniversalTime();
+					DateTime Now = DateTime.UtcNow;
+
+					bool bCertTimeIsValid = (EffectiveDate < Now) && (ExpirationDate > Now);
+					Program.LogVerbose("CERTIFICATE-Name:{0},Validity:{1},StartDate:{2},EndDate:{3}", CryptoAdapter.GetFriendlyNameFromCert(TestCert), bCertTimeIsValid ? "VALID" : "EXPIRED", EffectiveDate.ToString("o"), ExpirationDate.ToString("o"));
 				}
 
 				Store.Close();
-			}
-
-			foreach (X509Certificate2 TestCert in FoundCerts)
-			{
-				DateTime EffectiveDate = TestCert.NotBefore.ToUniversalTime();
-				DateTime ExpirationDate = TestCert.NotAfter.ToUniversalTime();
-				DateTime Now = DateTime.UtcNow;
-
-				bool bCertTimeIsValid = (EffectiveDate < Now) && (ExpirationDate > Now);
-				Program.LogVerbose("CERTIFICATE-Name:{0},Validity:{1},StartDate:{2},EndDate:{3}", CryptoAdapter.GetFriendlyNameFromCert(TestCert), bCertTimeIsValid ? "VALID" : "EXPIRED", EffectiveDate.ToString("o"), ExpirationDate.ToString("o"));
 			}
 		}
 
@@ -299,27 +307,10 @@ namespace iPhonePackager
 			string SelectedCert = "";
 			string SelectedFile = "";
 			int FoundName = -1;
-
 			Dictionary<string, MobileProvision> ProvisionLibrary = new Dictionary<string, MobileProvision>();
-
-			foreach (string ProvisionFile in Directory.EnumerateFiles(Config.ProvisionDirectory, "*.mobileprovision"))
+			foreach (string Provision in Directory.EnumerateFiles(Config.ProvisionDirectory, "*.mobileprovision"))
 			{
-				MobileProvision Provision = MobileProvisionParser.ParseFile(ProvisionFile);
-				ProvisionLibrary.Add(ProvisionFile, Provision);
-			}
-
-			// first sort all profiles so we look at newer ones first.
-			IEnumerable<string> ProfileKeys = ProvisionLibrary.Select(KV => KV.Key)
-				.OrderByDescending(K => ProvisionLibrary[K].CreationDate)
-				.ToArray();
-
-			// note - all of this is a near duplicate of code in MobileProvisionUtilities, which other functions
-			// in this class call to do similar work! 
-			// @todo - unify all of this.
-
-			foreach (string ProvisionFile in ProfileKeys)
-			{
-				MobileProvision p = ProvisionLibrary[ProvisionFile];
+				MobileProvision p = MobileProvisionParser.ParseFile(Provision);
 
 				DateTime EffectiveDate = p.CreationDate;
 				DateTime ExpirationDate = p.ExpirationDate;
@@ -389,11 +380,11 @@ namespace iPhonePackager
 					if (FoundName != Prev)
 					{
 						SelectedProvision = p.ProvisionName;
-						SelectedFile = Path.GetFileName(ProvisionFile);
+						SelectedFile = Path.GetFileName(Provision);
 						SelectedCert = CryptoAdapter.GetFriendlyNameFromCert(Cert);
 					}
 				}
-				Program.LogVerbose("PROVISION-File:{0},Name:{1},Validity:{2},StartDate:{3},EndDate:{4},Type:{5}", Path.GetFileName(ProvisionFile), p.ProvisionName, Validity, EffectiveDate.ToString(), ExpirationDate.ToString(), bDistribution ? "DISTRIBUTION" : "DEVELOPMENT");
+				Program.LogVerbose("PROVISION-File:{0},Name:{1},Validity:{2},StartDate:{3},EndDate:{4},Type:{5}", Path.GetFileName(Provision), p.ProvisionName, Validity, EffectiveDate.ToString(), ExpirationDate.ToString(), bDistribution ? "DISTRIBUTION" : "DEVELOPMENT");
 			}
 
 			Program.LogVerbose("MATCHED-Provision:{0},File:{1},Cert:{2}", SelectedProvision, SelectedFile, SelectedCert);

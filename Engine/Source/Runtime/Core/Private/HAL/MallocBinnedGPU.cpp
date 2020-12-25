@@ -1,8 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
+
+/*=============================================================================
+	MallocBinned.cpp: Binned memory allocator
+=============================================================================*/
 
 #include "HAL/MallocBinnedGPU.h"
-
-PRAGMA_DISABLE_UNSAFE_TYPECAST_WARNINGS
 
 #if PLATFORM_64BITS && PLATFORM_HAS_FPlatformVirtualMemoryBlock
 #include "Logging/LogMacros.h"
@@ -425,7 +427,7 @@ struct FMallocBinnedGPU::Private
 					NodePool->SetCanary(FPoolInfoSmall::ECanary::SmallUnassigned, true, false);
 					Table.BlockOfBlockAllocationBits.FreeBit(OutBlockOfBlocksIndex);
 
-					uint64 AllocSize = static_cast<uint64>(Allocator.SmallPoolTables[InPoolIndex].PagesPlatformForBlockOfBlocks) * Allocator.ArenaParams.AllocationGranularity;
+					uint64 AllocSize = Allocator.SmallPoolTables[InPoolIndex].PagesPlatformForBlockOfBlocks * Allocator.ArenaParams.AllocationGranularity;
 
 					if (!bWasExhaused)
 					{
@@ -1038,8 +1040,8 @@ void FMallocBinnedGPU::FlushCurrentThreadCache()
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_FMallocBinnedGPU_FlushCurrentThreadCache);
 	FPerThreadFreeBlockLists* Lists = FPerThreadFreeBlockLists::Get(BinnedGPUTlsSlot);
 
-	double WaitForMutexTime = 0.0;
-	double WaitForMutexAndTrimTime = 0.0;
+	float WaitForMutexTime = 0.0f;
+	float WaitForMutexAndTrimTime = 0.0f;
 
 	if (Lists)
 	{
@@ -1294,5 +1296,3 @@ void FMallocBinnedGPU::DumpAllocatorStats(class FOutputDevice& Ar)
 	}
 }
 #endif
-
-PRAGMA_ENABLE_UNSAFE_TYPECAST_WARNINGS

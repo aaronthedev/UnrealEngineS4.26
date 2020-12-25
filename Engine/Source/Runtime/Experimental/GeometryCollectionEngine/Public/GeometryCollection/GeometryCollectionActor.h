@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,14 +6,16 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "GeometryCollection/GeometryCollection.h"
+#include "GeometryCollection/GeometryCollectionComponent.h"
+#include "GeometryCollection/GeometryCollectionDebugDrawComponent.h"
+#include "Physics/Experimental/PhysScene_Chaos.h"
+#include "Physics/ImmediatePhysics/ImmediatePhysicsActorHandle.h"
 #include "UObject/ObjectMacros.h"
 
 #include "GeometryCollectionActor.generated.h"
 
 
-class UGeometryCollectionComponent;
-class UGeometryCollectionDebugDrawComponent;
-struct FHitResult;
 
 UCLASS()
 class GEOMETRYCOLLECTIONENGINE_API AGeometryCollectionActor: public AActor

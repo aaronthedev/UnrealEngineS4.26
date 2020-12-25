@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -95,6 +95,7 @@
 #include "Delegates/DelegateBase.h"
 #include "Delegates/IntegerSequence.h"
 #include "Templates/Tuple.h"
+#include "Templates/TypeWrapper.h"
 #include "UObject/ScriptDelegates.h"
 #include "Misc/Optional.h"
 #include "CoreMinimal.h"
@@ -573,7 +574,8 @@
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionMaterialFunctionCall.h"
 #include "Materials/MaterialFunction.h"
-#include "PhysicsSettingsEnums.h"
+#include "PhysicsEngine/PhysicsSettingsEnums.h"
+#include "Sound/SoundClass.h"
 #include "Sound/SoundAttenuation.h"
 #include "Engine/CurveTable.h"
 #include "Audio.h"

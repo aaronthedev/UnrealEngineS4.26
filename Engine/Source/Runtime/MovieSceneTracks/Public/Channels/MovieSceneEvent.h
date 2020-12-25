@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -38,7 +38,7 @@ struct FMovieSceneEventPtrs
 	UFunction* Function;
 
 	UPROPERTY()
-	TFieldPath<FProperty> BoundObjectProperty;
+	UProperty* BoundObjectProperty;
 };
 
 USTRUCT(BlueprintType)
@@ -67,19 +67,19 @@ public:
 	UPROPERTY()
 	FName BoundObjectPinName;
 
-	/** Serialized weak pointer to the function entry (UK2Node_FunctionEntry) or custom event node (UK2Node_CustomEvent) within the blueprint graph for this event. Stored as an editor-only UObject so UHT can parse it when building for non-editor. */
+	/** The UEdGraph::GraphGuid property that relates the graph within which our endpoint lives. */
 	UPROPERTY()
-	TWeakObjectPtr<UObject> WeakEndpoint;
+	FGuid GraphGuid;
 
-	/** (deprecated) The UEdGraph::GraphGuid property that relates the graph within which our endpoint lives. */
+	/** When valid, relates to the The UEdGraphNode::NodeGuid for a custom event node that defines our event endpoint. When invalid, we must be bound to a UBlueprint::FunctionGraphs graph. */
 	UPROPERTY()
-	FGuid GraphGuid_DEPRECATED;
+	FGuid NodeGuid;
 
-	/** (deprecated) When valid, relates to the The UEdGraphNode::NodeGuid for a custom event node that defines our event endpoint. When invalid, we must be bound to a UBlueprint::FunctionGraphs graph. */
-	UPROPERTY()
-	FGuid NodeGuid_DEPRECATED;
+	/** Non-serialized weak pointer to the function entry within the blueprint graph for this event. Stored as an editor-only UObject so UHT can parse it when building for non-editor. */
+	UPROPERTY(transient)
+	TWeakObjectPtr<UObject> WeakCachedEndpoint;
 
-	/** Deprecated weak pointer to the function entry to call - no longer serialized but cached on load. Predates GraphGuid and NodeGuid */
+	/** Deprecated weak pointer to the function entry to call - no longer serialized but cached on load. */
 	UPROPERTY()
 	TWeakObjectPtr<UObject> FunctionEntry_DEPRECATED;
 

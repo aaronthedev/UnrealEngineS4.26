@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -49,8 +49,6 @@ class UK2Node_FunctionEntry : public UK2Node_FunctionTerminator
 	virtual FEdGraphNodeDeprecationResponse GetDeprecationResponse(EEdGraphNodeDeprecationType DeprecationType) const override;
 	virtual FText GetTooltipText() const override;
 	virtual void FindDiffs(UEdGraphNode* OtherNode, struct FDiffResults& Results) override;
-	virtual bool IsCompatibleWithGraph(const UEdGraph* InGraph) const override;
-	virtual void PostPasteNode() override;
 	//~ End UEdGraphNode Interface
 
 	//~ Begin UK2Node Interface

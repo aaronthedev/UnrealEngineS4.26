@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TurnBasedEventListener.h"
 
@@ -15,14 +15,24 @@
 {
     if (self = [super init]) {
         _owner = &owner;
-        [[GKLocalPlayer localPlayer] registerListener:self];
+#if __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_7_0
+        if ([GKLocalPlayer instancesRespondToSelector : @selector(registerListener:)] == YES)
+#endif
+		{
+			[[GKLocalPlayer localPlayer] registerListener:self];
+		}
     }
     return self;
 }
 
 - (void)dealloc
 {
-    [[GKLocalPlayer localPlayer] unregisterListener:self];
+#if __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_7_0
+	if ([GKLocalPlayer instancesRespondToSelector : @selector(unregisterListener:)] == YES)
+#endif
+	{
+		[[GKLocalPlayer localPlayer] unregisterListener:self];
+	}
     [super dealloc];
 }
 

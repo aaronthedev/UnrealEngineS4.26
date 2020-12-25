@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ContentStreaming.h: Definitions of classes used for content streaming.
@@ -32,7 +32,6 @@ class AActor;
 class UTexture2D;
 class UStaticMesh;
 class USkeletalMesh;
-class ULandscapeLODStreamingProxy;
 class UStreamableRenderAsset;
 class FSoundSource;
 class USoundWave;
@@ -94,10 +93,8 @@ class ENGINE_API FAudioChunkHandle
 public:
 	FAudioChunkHandle();
 	FAudioChunkHandle(const FAudioChunkHandle& Other);
-	FAudioChunkHandle(FAudioChunkHandle&& Other);
 
 	FAudioChunkHandle& operator=(const FAudioChunkHandle& Other);
-	FAudioChunkHandle& operator=(FAudioChunkHandle&& Other);
 
 	~FAudioChunkHandle();
 
@@ -117,20 +114,14 @@ public:
 
 private:
 	// This constructor should only be called by an implementation of IAudioStreamingManager.
-	FAudioChunkHandle(const uint8* InData, uint32 NumBytes, const USoundWave* InSoundWave, const FName& SoundWaveName, uint32 InChunkIndex, uint64 InCacheLookupID);
+	FAudioChunkHandle(const uint8* InData, uint32 NumBytes, const USoundWave* InSoundWave, const FName& SoundWaveName, uint32 InChunkIndex);
 
 	const uint8*  CachedData;
 	int32 CachedDataNumBytes;
 
 	const USoundWave* CorrespondingWave;
 	FName CorrespondingWaveName;
-
-	// The index of this chunk in the sound wave's full set of chunks of compressed audio.
 	int32 ChunkIndex;
-
-	// This ID can be used to access the element this handle is for directly,
-	// rather than linearly searching the cache. This should only be used by the stream cache itself.
-	uint64 CacheLookupID;
 
 #if WITH_EDITOR
 	uint32 ChunkGeneration;
@@ -143,7 +134,7 @@ private:
 /**
  * Pure virtual base class of a streaming manager.
  */
-struct IStreamingManager
+struct ENGINE_VTABLE IStreamingManager
 {
 	IStreamingManager()
 		: NumWantingResources(0)
@@ -433,7 +424,9 @@ struct IRenderAssetStreamingManager : public IStreamingManager
 	virtual bool StreamOutRenderAssetData(int64 RequiredMemorySize) = 0;
 
 	/** Adds a new texture/mesh to the streaming manager. */
-	virtual void AddStreamingRenderAsset(UStreamableRenderAsset* RenderAsset) = 0;
+	virtual void AddStreamingRenderAsset(UTexture2D* Texture) = 0;
+	virtual void AddStreamingRenderAsset(UStaticMesh* StaticMesh) = 0;
+	virtual void AddStreamingRenderAsset(USkeletalMesh* SkeletalMesh) = 0;
 
 	/** Removes a texture/mesh from the streaming manager. */
 	virtual void RemoveStreamingRenderAsset(UStreamableRenderAsset* RenderAsset) = 0;
@@ -468,9 +461,6 @@ struct IRenderAssetStreamingManager : public IStreamingManager
 	ENGINE_API void RemoveStreamingTexture(UTexture2D* Texture);
 	ENGINE_API void PauseTextureStreaming(bool bInShouldPause);
 	//END: APIs for backward compatibility
-
-	/** Notify the streamer that the mounted state of a file needs to be re-evaluated. */
-	virtual void MarkMountedStateDirty(FIoFilenameHash FilenameHash) = 0;
 };
 
 enum class EAudioChunkLoadResult : uint8
@@ -522,20 +512,17 @@ struct IAudioStreamingManager : public IStreamingManager
 	 * @param ChunkIndex the index of that soundwave we'd like to request a chunk of.
 	 * @param OnLoadCompleted optional callback when the load completes.
 	 * @param ThreadToCallOnLoadCompleteOn. Optional specifier for which thread OnLoadCompleted should be called on.
-	 * @param bForImmediatePlaybac if true, this will optionally reprioritize this chunk's load request.
 	 */
-	virtual bool RequestChunk(USoundWave* SoundWave, uint32 ChunkIndex, TFunction<void(EAudioChunkLoadResult)> OnLoadCompleted = [](EAudioChunkLoadResult) {}, ENamedThreads::Type ThreadToCallOnLoadCompletedOn = ENamedThreads::AnyThread, bool bForImmediatePlayback = false) = 0;
+	virtual bool RequestChunk(USoundWave* SoundWave, uint32 ChunkIndex, TFunction<void(EAudioChunkLoadResult)> OnLoadCompleted = [](EAudioChunkLoadResult) {}, ENamedThreads::Type ThreadToCallOnLoadCompletedOn = ENamedThreads::AnyThread) = 0;
 
 	/**
 	 * Gets a pointer to a chunk of audio data
 	 *
 	 * @param SoundWave		SoundWave we want a chunk from
 	 * @param ChunkIndex	Index of the chunk we want
-	 * @param bBlockForLoad if true, will block this thread until we finish loading this chunk.
-	 * @param bForImmediatePlayback if true, will optionally reprioritize this chunk's load request. See au.streamcaching.PlaybackRequestPriority.
 	 * @return a handle to the loaded chunk. Can return a default constructed FAudioChunkHandle if the chunk is not loaded yet.
 	 */
-	virtual FAudioChunkHandle GetLoadedChunk(const USoundWave* SoundWave, uint32 ChunkIndex,  bool bBlockForLoad = false, bool bForImmediatePlayback = false) const = 0;
+	virtual FAudioChunkHandle GetLoadedChunk(const USoundWave* SoundWave, uint32 ChunkIndex,  bool bBlockForLoad = false) const = 0;
 
 	/**
 	 * This will start evicting elements from the cache until either hit our target of bytes or run out of chunks we can free.
@@ -550,21 +537,11 @@ struct IAudioStreamingManager : public IStreamingManager
 	 */
 	virtual int32 RenderStatAudioStreaming(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation) = 0;
 
-	/**
-	 * Generate a memory report as a formatted string for this streaming manager.
-	 */
-	virtual FString GenerateMemoryReport() = 0;
-
-	/**
-	 * Whether to toggle a performance intensive profiling mode the streaming manager.
-	 */
-	virtual void SetProfilingMode(bool bEnabled) = 0;
-
 protected:
 	friend FAudioChunkHandle;
 
 	/** This can be called by implementers of IAudioStreamingManager to construct an FAudioChunkHandle using an otherwise inaccessible constructor. */
-	static FAudioChunkHandle BuildChunkHandle(const uint8* InData, uint32 NumBytes, const USoundWave* InSoundWave, const FName& SoundWaveName, uint32 InChunkIndex, uint64 CacheLookupID);
+	static FAudioChunkHandle BuildChunkHandle(const uint8* InData, uint32 NumBytes, const USoundWave* InSoundWave, const FName& SoundWaveName, uint32 InChunkIndex);
 
 	/**
 	 * This can be used to increment reference counted handles to audio chunks. Called by the copy constructor of FAudioChunkHandle.
@@ -605,11 +582,10 @@ struct IAnimationStreamingManager : public IStreamingManager
  * Streaming manager collection, routing function calls to streaming managers that have been added
  * via AddStreamingManager.
  */
-struct FStreamingManagerCollection : public IStreamingManager
+struct ENGINE_VTABLE FStreamingManagerCollection : public IStreamingManager
 {
 	/** Default constructor, initializing all member variables. */
 	ENGINE_API FStreamingManagerCollection();
-	ENGINE_API ~FStreamingManagerCollection();
 
 	/**
 	 * Calls UpdateResourceStreaming(), and does per-frame cleaning. Call once per frame.
@@ -671,14 +647,14 @@ struct FStreamingManagerCollection : public IStreamingManager
 	ENGINE_API bool IsStreamingEnabled() const;
 
 	/**
-	 * Checks whether texture streaming is enabled. 
+	 * Checks whether texture streaming is active
 	 */
-	FORCEINLINE bool IsTextureStreamingEnabled() const { return IsRenderAssetStreamingEnabled(EStreamableRenderAssetType::Texture); }
+	ENGINE_API bool IsTextureStreamingEnabled() const;
 
 	/**
-	 * Checks whether texture/mesh streaming is enabled
+	 * Checks whether texture/mesh streaming is active
 	 */
-	ENGINE_API bool IsRenderAssetStreamingEnabled(EStreamableRenderAssetType FilteredAssetType = EStreamableRenderAssetType::None) const;
+	virtual bool IsRenderAssetStreamingEnabled() const;
 
 	/**
 	 * Gets a reference to the Texture Streaming Manager interface
@@ -699,11 +675,6 @@ struct FStreamingManagerCollection : public IStreamingManager
 	 * Gets a reference to the Animation Streaming Manager interface
 	 */
 	ENGINE_API IAnimationStreamingManager& GetAnimationStreamingManager() const;
-
-	/**
-	 * Gets a reference to the Virtual Texture Streaming Manager
-	*/
-	ENGINE_API struct FVirtualTextureChunkStreamingManager& GetVirtualTextureStreamingManager() const;
 
 	/**
 	 * Adds a streaming manager to the array of managers to route function calls to.
@@ -795,16 +766,13 @@ protected:
 	float LoadMapTimeLimit;
 
 	/** The currently added texture streaming manager. Can be NULL*/
-	FRenderAssetStreamingManager* RenderAssetStreamingManager;
+	FRenderAssetStreamingManager* TextureStreamingManager;
 
 	/** The audio streaming manager, should always exist */
 	IAudioStreamingManager* AudioStreamingManager;
 
 	/** The animation streaming manager, should always exist */
 	IAnimationStreamingManager* AnimationStreamingManager;
-
-	/** The virtual texture streaming manager, should always exist */
-	FVirtualTextureChunkStreamingManager* VirtualTextureStreamingManager;
 
 #if WITH_EDITOR
 	// Locks out any audio streaming manager call when we are re-initializing the audio streaming manager.

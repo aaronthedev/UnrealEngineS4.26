@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,23 +12,23 @@ LUMIN_THIRD_PARTY_INCLUDES_START
 #include <ml_privileges.h>
 LUMIN_THIRD_PARTY_INCLUDES_END
 
-namespace LUMIN_MLSDK_API
+namespace MLSDK_API
 {
 
 CREATE_FUNCTION_SHIM(ml_privileges, MLResult, MLPrivilegesStartup)
-#define MLPrivilegesStartup ::LUMIN_MLSDK_API::MLPrivilegesStartupShim
+#define MLPrivilegesStartup ::MLSDK_API::MLPrivilegesStartupShim
 CREATE_FUNCTION_SHIM(ml_privileges, MLResult, MLPrivilegesShutdown)
-#define MLPrivilegesShutdown ::LUMIN_MLSDK_API::MLPrivilegesShutdownShim
+#define MLPrivilegesShutdown ::MLSDK_API::MLPrivilegesShutdownShim
 CREATE_FUNCTION_SHIM(ml_privileges, MLResult, MLPrivilegesCheckPrivilege)
-#define MLPrivilegesCheckPrivilege ::LUMIN_MLSDK_API::MLPrivilegesCheckPrivilegeShim
+#define MLPrivilegesCheckPrivilege ::MLSDK_API::MLPrivilegesCheckPrivilegeShim
 CREATE_FUNCTION_SHIM(ml_privileges, MLResult, MLPrivilegesRequestPrivilege)
-#define MLPrivilegesRequestPrivilege ::LUMIN_MLSDK_API::MLPrivilegesRequestPrivilegeShim
+#define MLPrivilegesRequestPrivilege ::MLSDK_API::MLPrivilegesRequestPrivilegeShim
 CREATE_FUNCTION_SHIM(ml_privileges, MLResult, MLPrivilegesRequestPrivilegeAsync)
-#define MLPrivilegesRequestPrivilegeAsync ::LUMIN_MLSDK_API::MLPrivilegesRequestPrivilegeAsyncShim
+#define MLPrivilegesRequestPrivilegeAsync ::MLSDK_API::MLPrivilegesRequestPrivilegeAsyncShim
 CREATE_FUNCTION_SHIM(ml_privileges, MLResult, MLPrivilegesRequestPrivilegeTryGet)
-#define MLPrivilegesRequestPrivilegeTryGet ::LUMIN_MLSDK_API::MLPrivilegesRequestPrivilegeTryGetShim
+#define MLPrivilegesRequestPrivilegeTryGet ::MLSDK_API::MLPrivilegesRequestPrivilegeTryGetShim
 CREATE_FUNCTION_SHIM(ml_privileges, const char*, MLPrivilegesGetResultString)
-#define MLPrivilegesGetResultString ::LUMIN_MLSDK_API::MLPrivilegesGetResultStringShim
+#define MLPrivilegesGetResultString ::MLSDK_API::MLPrivilegesGetResultStringShim
 
 }
 

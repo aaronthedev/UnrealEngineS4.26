@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 /*=============================================================================
 	DistortApplyScreenPixelShader.usf: Pixel shader for rendering screen distortion pass
 =============================================================================*/
@@ -83,15 +83,12 @@ void Merge(
 #endif
 }
 
-Texture2D		DistortionAccumulateTexture;
-SamplerState	DistortionAccumulateSampler;
-
-void Merge_Mobile(
+void Merge_ES2(
 	in noperspective float4 TexCoord: TEXCOORD0,
 	out half4 OutColor : SV_Target0
 )
 {
-	half4 AccumDist = DistortionAccumulateTexture.Sample(DistortionAccumulateSampler, TexCoord.xy);
+	half4 AccumDist = PostprocessInput1.Sample(PostprocessInput1Sampler, TexCoord.xy);
 	// apply inverse scale
 	// offset = [R-B,G-A] 
 	half2 DistBufferUVOffset = (AccumDist.rg - AccumDist.ba);
@@ -105,6 +102,6 @@ void Merge_Mobile(
 		NewBufferUV = TexCoord.xy;
 	}
 
-	OutColor = SceneColorTexture.Sample(SceneColorTextureSampler, NewBufferUV.xy);
+	OutColor = PostprocessInput0.Sample(PostprocessInput0Sampler, NewBufferUV.xy);
 }
 

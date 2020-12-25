@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -30,7 +30,7 @@ class MEDIAUTILS_API FMediaSampleCache
 	{
 		static FORCEINLINE FTimespan GetSetKey(const TSharedPtr<SampleType, ESPMode::ThreadSafe>& Element)
 		{
-			return Element->GetTime().Time;
+			return Element->GetTime();
 		}
 
 		static FORCEINLINE bool Matches(FTimespan A, FTimespan B)

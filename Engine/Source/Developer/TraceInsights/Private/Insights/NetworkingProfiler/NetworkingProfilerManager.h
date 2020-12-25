@@ -1,57 +1,75 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Containers/Ticker.h"
 #include "CoreMinimal.h"
 #include "Framework/Commands/UICommandList.h"
-#include "Logging/LogMacros.h"
 
 // Insights
 #include "Insights/InsightsManager.h"
-#include "Insights/IUnrealInsightsModule.h"
 #include "Insights/NetworkingProfiler/NetworkingProfilerCommands.h"
 
 class SNetworkingProfilerWindow;
 
-DECLARE_LOG_CATEGORY_EXTERN(NetworkingProfiler, Log, All);
+namespace Trace
+{
+	class ISessionService;
+	class IAnalysisService;
+	class IAnalysisSession;
+}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 /**
- * This class manages the Networking Profiler (Networking Insights) state and settings.
+ * This class manages the Networking Profiler state and settings.
  */
-class FNetworkingProfilerManager : public TSharedFromThis<FNetworkingProfilerManager>, public IInsightsComponent
+class FNetworkingProfilerManager : public TSharedFromThis<FNetworkingProfilerManager>
 {
 	friend class FNetworkingProfilerActionManager;
 
 public:
-	/** Creates the Networking Profiler manager, only one instance can exist. */
+	/** Creates the Networking Profiler (Networking Insights) manager, only one instance can exist. */
 	FNetworkingProfilerManager(TSharedRef<FUICommandList> InCommandList);
 
 	/** Virtual destructor. */
 	virtual ~FNetworkingProfilerManager();
 
-	/** Creates an instance of the Networking Profiler manager. */
-	static TSharedPtr<FNetworkingProfilerManager> CreateInstance();
+	/** Creates an instance of the profiler manager. */
+	static TSharedPtr<FNetworkingProfilerManager> Initialize()
+	{
+		if (FNetworkingProfilerManager::Instance.IsValid())
+		{
+			FNetworkingProfilerManager::Instance.Reset();
+		}
 
+		FNetworkingProfilerManager::Instance = MakeShareable(new FNetworkingProfilerManager(FInsightsManager::Get()->GetCommandList()));
+		FNetworkingProfilerManager::Instance->PostConstructor();
+
+		return FNetworkingProfilerManager::Instance;
+	}
+
+	/** Shutdowns the Networking Profiler manager. */
+	void Shutdown()
+	{
+		FNetworkingProfilerManager::Instance.Reset();
+	}
+
+protected:
+	/** Finishes initialization of the profiler manager. */
+	void PostConstructor();
+
+	/** Binds our UI commands to delegates. */
+	void BindCommands();
+
+public:
 	/**
-	 * @return the global instance of the Networking Profiler manager.
-	 * This is an internal singleton and cannot be used outside TraceInsights.
+	 * @return the global instance of the Networking Profiler (Networking Insights) manager.
+	 * This is an internal singleton and cannot be used outside ProfilerModule.
 	 * For external use:
-	 *     IUnrealInsightsModule& Module = FModuleManager::Get().LoadModuleChecked<IUnrealInsightsModule>("TraceInsights");
-	 *     Module.GetNetworkingProfilerManager();
+	 *     IProfilerModule& ProfilerModule = FModuleManager::Get().LoadModuleChecked<IProfilerModule>("Profiler");
+	 *     ProfilerModule.GetProfilerManager();
 	 */
 	static TSharedPtr<FNetworkingProfilerManager> Get();
-
-	//////////////////////////////////////////////////
-	// IInsightsComponent
-
-	virtual void Initialize(IUnrealInsightsModule& InsightsModule) override;
-	virtual void Shutdown() override;
-	virtual void RegisterMajorTabs(IUnrealInsightsModule& InsightsModule) override;
-	virtual void UnregisterMajorTabs() override;
-
-	//////////////////////////////////////////////////
 
 	/** @returns UI command list for the Networking Profiler manager. */
 	const TSharedRef<FUICommandList> GetCommandList() const;
@@ -81,28 +99,15 @@ public:
 		return ProfilerWindows[Index].Pin();
 	}
 
+	////////////////////////////////////////////////////////////////////////////////////////////////////
+
 	void OnSessionChanged();
 
-private:
-	/** Binds our UI commands to delegates. */
-	void BindCommands();
-
-	/** Called to spawn the Networking Profiler major tab. */
-	TSharedRef<SDockTab> SpawnTab(const FSpawnTabArgs& Args);
-
-	bool CanSpawnTab(const FSpawnTabArgs& Args) const;
-
-	/** Callback called when the Networking Profiler major tab is closed. */
-	void OnTabClosed(TSharedRef<SDockTab> TabBeingClosed);
-
+protected:
 	/** Updates this manager, done through FCoreTicker. */
 	bool Tick(float DeltaTime);
 
-private:
-	bool bIsInitialized;
-	bool bIsAvailable;
-	FAvailabilityCheck AvailabilityCheck;
-
+protected:
 	/** The delegate to be invoked when this manager ticks. */
 	FTickerDelegate OnTick;
 
@@ -118,6 +123,6 @@ private:
 	/** A list of weak pointers to the Networking Profiler windows. */
 	TArray<TWeakPtr<class SNetworkingProfilerWindow>> ProfilerWindows;
 
-	/** A shared pointer to the global instance of the NetworkingProfiler manager. */
+	/** A shared pointer to the global instance of the profiler manager. */
 	static TSharedPtr<FNetworkingProfilerManager> Instance;
 };

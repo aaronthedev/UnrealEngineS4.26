@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Factories/FbxSceneImportFactory.h"
 #include "Misc/MessageDialog.h"
@@ -168,13 +168,6 @@ bool GetFbxSceneImportOptions(UnFbx::FFbxImporter* FbxImporter
 		{
 			return false;
 		}
-	}
-	else
-	{
-		//Copy static and skeletalmesh options
-		SFbxSceneOptionWindow::CopyStaticMeshOptionsToFbxOptions(GlobalImportSettings, StaticMeshImportData);
-		SFbxSceneOptionWindow::CopySkeletalMeshOptionsToFbxOptions(GlobalImportSettings, SkeletalMeshImportData);
-		NameOptionsMap.Add(UFbxSceneImportFactory::DefaultOptionName, GlobalImportSettings);
 	}
 
 	//setup all options
@@ -561,7 +554,7 @@ TSharedPtr<FFbxSceneInfo> UFbxSceneImportFactory::ConvertSceneInfo(void* VoidFbx
 
 	
 
-	for (const UnFbx::FbxMeshInfo& MeshInfo : SceneInfo.MeshInfo)
+	for (const UnFbx::FbxMeshInfo MeshInfo : SceneInfo.MeshInfo)
 	{
 		//Add the skeletal mesh if its a valid one
 		if (MeshInfo.bIsSkelMesh && !ValidSkeletalMesh.Contains(MeshInfo.UniqueId))
@@ -829,7 +822,7 @@ UFbxSceneImportData* CreateReImportAsset(const FString &PackagePath, const FStri
 	FbxReImportPkgName = UPackageTools::SanitizePackageName(FbxReImportPkgName);
 	FString AssetName = FilenameBase;
 	AssetName = UPackageTools::SanitizePackageName(AssetName);
-	UPackage* Pkg = CreatePackage( *FbxReImportPkgName);
+	UPackage* Pkg = CreatePackage(nullptr, *FbxReImportPkgName);
 	if (!ensure(Pkg))
 	{
 		//TODO log an import warning stipulate that there is no re-import asset created
@@ -856,7 +849,7 @@ UFbxSceneImportData* CreateReImportAsset(const FString &PackagePath, const FStri
 	ReImportAsset->SourceFbxFile = FPaths::ConvertRelativePathToFull(FbxImportFileName);
 	ReImportAsset->bCreateFolderHierarchy = SceneImportOptions->bCreateContentFolderHierarchy;
 	ReImportAsset->bForceFrontXAxis = SceneImportOptions->bForceFrontXAxis;
-	ReImportAsset->HierarchyType = (int32)SceneImportOptions->HierarchyType;
+	ReImportAsset->HierarchyType = SceneImportOptions->HierarchyType.GetValue();
 	return ReImportAsset;
 }
 
@@ -1213,11 +1206,8 @@ FFeedbackContext*	Warn
 				//This force load everything.
 				GEditor->IsImportingT3D = 0;
 				GIsImportingT3D = false;
-				//Create the blueprint from the actor and replace the actor with an instance of the created blueprint
-				FKismetEditorUtilities::FCreateBlueprintFromActorParams Params;
-				Params.bReplaceActor = true;
-				Params.bKeepMobility = true;
-				UBlueprint* SceneBlueprint = FKismetEditorUtilities::CreateBlueprintFromActor(Pkg->GetName(), HierarchyActor, Params);
+				//Create the blueprint from the actor and replace the actor with a blueprintactor that point on the blueprint
+				UBlueprint* SceneBlueprint = FKismetEditorUtilities::CreateBlueprintFromActor(Pkg->GetName(), HierarchyActor, true, true);
 				//Put back the T3D state
 				GEditor->IsImportingT3D = 1;
 				GIsImportingT3D = GEditor->IsImportingT3D;
@@ -1303,7 +1293,7 @@ USceneComponent *CreateCameraComponent(AActor *ParentActor, TSharedPtr<FFbxCamer
 	CameraComponent->Filmback.SensorHeight = FUnitConversion::Convert(CameraInfo->ApertureHeight, EUnit::Inches, EUnit::Millimeters);
 	CameraComponent->LensSettings.MaxFocalLength = CameraInfo->FocalLength;
 	CameraComponent->LensSettings.MinFocalLength = CameraInfo->FocalLength;
-	CameraComponent->FocusSettings.FocusMethod = ECameraFocusMethod::DoNotOverride;
+	CameraComponent->FocusSettings.FocusMethod = ECameraFocusMethod::None;
 
 	return CameraComponent;
 }
@@ -1967,10 +1957,14 @@ UObject* UFbxSceneImportFactory::ImportOneSkeletalMesh(void* VoidRootNodeToImpor
 			RootNodeInfo->AttributeInfo->SetOriginalImportPath(PackageName);
 			FName SkeletalMeshFName = FName(*SkeletalMeshName);
 
+			TArray<FbxNode*> SkeletonNodeArray;
+			FbxImporter->FillFbxSkeletonArray(RootNodeToImport, SkeletonNodeArray);
+
 			//Import the skeletal mesh
 			UnFbx::FFbxImporter::FImportSkeletalMeshArgs ImportSkeletalMeshArgs;
 			ImportSkeletalMeshArgs.InParent = Pkg;
 			ImportSkeletalMeshArgs.NodeArray = bUseSkelMeshNodePivotArray ? SkelMeshNodePivotArray : SkelMeshNodeArray;
+			ImportSkeletalMeshArgs.BoneNodeArray = SkeletonNodeArray;
 			ImportSkeletalMeshArgs.Name = SkeletalMeshFName;
 			ImportSkeletalMeshArgs.Flags = Flags;
 			ImportSkeletalMeshArgs.TemplateImportData = SkeletalMeshImportData;
@@ -2362,7 +2356,6 @@ UObject* UFbxSceneImportFactory::ImportANode(void* VoidFbxImporter, TArray<void*
 	}
 	else
 	{
-		Pkg->SetDirtyFlag(false);
 		Pkg->RemoveFromRoot();
 		Pkg->ConditionalBeginDestroy();
 	}
@@ -2429,7 +2422,7 @@ UPackage *UFbxSceneImportFactory::CreatePackageForNode(FString PackageName, FStr
 			IsPkgExist = FindObject<UPackage>(nullptr, *PackageNameOfficial) != nullptr;
 		}
 	}
-	UPackage* Pkg = CreatePackage( *PackageNameOfficial);
+	UPackage* Pkg = CreatePackage(nullptr, *PackageNameOfficial);
 	if (!ensure(Pkg))
 	{
 		return nullptr;

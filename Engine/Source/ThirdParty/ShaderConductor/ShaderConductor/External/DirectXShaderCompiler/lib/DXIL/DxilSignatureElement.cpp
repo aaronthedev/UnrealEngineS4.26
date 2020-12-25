@@ -37,8 +37,7 @@ DxilSignatureElement::DxilSignatureElement(DXIL::SigPointKind sigPointKind)
 , m_Cols(0)
 , m_StartRow(Semantic::kUndefinedRow)
 , m_StartCol(Semantic::kUndefinedCol)
-, m_DynIdxCompMask(0)
-, m_UsageMask(0) {
+, m_DynIdxCompMask(0) {
 }
 
 DxilSignatureElement::~DxilSignatureElement() {
@@ -89,8 +88,8 @@ bool DxilSignatureElement::IsOutput() const {
   return SigPoint::GetSigPoint(m_sigPointKind)->IsOutput();
 }
 
-bool DxilSignatureElement::IsPatchConstOrPrim() const {
-  return SigPoint::GetSigPoint(m_sigPointKind)->IsPatchConstOrPrim();
+bool DxilSignatureElement::IsPatchConstant() const {
+  return SigPoint::GetSigPoint(m_sigPointKind)->IsPatchConstant();
 }
 
 const char *DxilSignatureElement::GetName() const {
@@ -276,15 +275,6 @@ unsigned DxilSignatureElement::GetDynIdxCompMask() const {
 void DxilSignatureElement::SetDynIdxCompMask(unsigned DynIdxCompMask) {
   DXASSERT_NOMSG(DynIdxCompMask <= 0xF);
   m_DynIdxCompMask = DynIdxCompMask;
-}
-
-uint8_t DxilSignatureElement::GetUsageMask() const {
-  DXASSERT_NOMSG(m_UsageMask <= 0xF);
-  return (uint8_t)m_UsageMask;
-}
-void DxilSignatureElement::SetUsageMask(unsigned UsageMask) {
-  DXASSERT_NOMSG(UsageMask <= 0xF);
-  m_UsageMask = UsageMask;
 }
 
 } // namespace hlsl

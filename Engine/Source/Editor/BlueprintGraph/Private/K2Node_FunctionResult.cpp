@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "K2Node_FunctionResult.h"
 #include "Misc/CoreMisc.h"
@@ -194,15 +194,6 @@ UEdGraphPin* UK2Node_FunctionResult::CreatePinFromUserDefinition(const TSharedPt
 	return Pin;
 }
 
-void UK2Node_FunctionResult::FixupPinStringDataReferences(FArchive* SavingArchive)
-{
-	Super::FixupPinStringDataReferences(SavingArchive);
-	if (SavingArchive)
-	{
-		UpdateUserDefinedPinDefaultValues();
-	}
-}
-
 FNodeHandlingFunctor* UK2Node_FunctionResult::CreateNodeHandler(FKismetCompilerContext& CompilerContext) const
 {
 	return new FKCHandler_FunctionResult(CompilerContext);
@@ -269,8 +260,6 @@ void UK2Node_FunctionResult::PostPasteNode()
 	SyncWithEntryNode();
 	// reflect any user added outputs (tracked by pre-existing result nodes)
 	SyncWithPrimaryResultNode();
-	// reflect editability of node in pins
-	MakePinsEditable();
 }
 
 bool UK2Node_FunctionResult::CanUserDeleteNode() const
@@ -404,23 +393,6 @@ void UK2Node_FunctionResult::SyncWithPrimaryResultNode()
 		}
 
 		ReconstructNode();
-	}
-}
-
-void UK2Node_FunctionResult::MakePinsEditable()
-{
-	// only do this step if this node is editable
-	if (IsEditable())
-	{
-		// for each pin, excluding the 'exec' pin
-		for (int PinIdx = 1; PinIdx < Pins.Num(); ++PinIdx)
-		{
-			UEdGraphPin* Pin = Pins[PinIdx];
-			if (!UserDefinedPinExists(Pin->GetFName()))
-			{
-				UserDefinedPins.Add(MakeShared<FUserPinInfo>(*Pin));
-			}
-		}
 	}
 }
 

@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_SPEC_TYPE_H
-#define PXR_USD_SDF_SPEC_TYPE_H
+#ifndef SDF_SPECTYPE_H
+#define SDF_SPECTYPE_H
 
 /// \file sdf/specType.h
 
@@ -57,17 +57,18 @@ class SdfSpecTypeRegistration
 {
 public:
     /// Registers the C++ type T as a concrete spec class.
-    template <class SchemaType, class SpecType>
-    static void RegisterSpecType(SdfSpecType specTypeEnum)
+    template <class T>
+    static void RegisterSpecType()
     {
-        _RegisterSpecType(typeid(SpecType), specTypeEnum, typeid(SchemaType));
+        _RegisterSpecType(typeid(T), T::GetStaticSpecType(),
+                          T::GetSchemaType());
     }
 
     /// Registers the C++ type T as an abstract spec class.
-    template <class SchemaType, class SpecType>
+    template <class T>
     static void RegisterAbstractSpecType()
     {
-        _RegisterAbstractSpecType(typeid(SpecType), typeid(SchemaType));
+        _RegisterAbstractSpecType(typeid(T), T::GetSchemaType());
     }
 
 private:
@@ -100,4 +101,4 @@ public:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_SPEC_TYPE_H
+#endif // SDF_SPECTYPE_H

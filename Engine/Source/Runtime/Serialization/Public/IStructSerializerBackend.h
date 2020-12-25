@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Misc/EnumClassFlags.h"
-#include "UObject/Field.h"
 
 /**
  * Flags controlling the behavior of struct serializer backends.
@@ -23,45 +22,17 @@ enum class EStructSerializerBackendFlags
 	WriteTextAsComplexString = 1<<0,
 
 	/**
-	 * Write TArray<uint8>/TArray<int> as byte string if possible (CBOR), starting at 4.25.
-	 */
-	WriteByteArrayAsByteStream = 1<<1,
-
-	/**
-	 * Force the CBOR backend to write CBOR data in big endian (CBOR compliant endianness), available from 4.25. Caller must be opt-in.
-	 * By default, the CBOR backend uses the endianness of the platform.
-	 */
-	WriteCborStandardEndianness = 1 << 2,
-
-	/**
 	 * Legacy settings for backwards compatibility with code compiled prior to 4.22.
 	 */
 	Legacy = None,
 
 	/**
-	 * Default settings for code compiled for 4.25 onwards.
+	 * Default settings for code compiled for 4.22 onwards.
 	 */
-	Default = WriteTextAsComplexString | WriteByteArrayAsByteStream,
+	Default = WriteTextAsComplexString,
 };
 ENUM_CLASS_FLAGS(EStructSerializerBackendFlags);
 
-
-/**
- * Flags related to the current state being serialized.
- */
-enum class EStructSerializerStateFlags
-{
-	/**
-	 * Nothing special.
-	 */
-	None = 0,
-
-	/**
-	 * Whether its serializing a single element from a container (array, set, map)
-	 */
-	 WritingContainerElement = 1 << 0,
-};
-ENUM_CLASS_FLAGS(EStructSerializerStateFlags);
 
 /**
  * Structure for the write state stack.
@@ -75,25 +46,16 @@ struct FStructSerializerState
 	const void* KeyData = nullptr;
 
 	/** Holds the key property's meta data (only used for TMap). */
-	FProperty* KeyProperty = nullptr;
+	UProperty* KeyProperty = nullptr;
 
 	/** Holds a pointer to the property value's data. */
 	const void* ValueData = nullptr;
 
 	/** Holds the property value's meta data. */
-	FProperty* ValueProperty = nullptr;
+	UProperty* ValueProperty = nullptr;
 
 	/** Holds a pointer to the UStruct describing the data. */
 	UStruct* ValueType = nullptr;
-
-	/** Holds a pointer to the field type describing the data. */
-	FFieldClass* FieldType = nullptr;
-
-	/** Holds the element index that is targeted if an array/set/map */
-	int32 ElementIndex = INDEX_NONE;
-
-	/** Flags related for the current state */
-	EStructSerializerStateFlags StateFlags = EStructSerializerStateFlags::None;
 };
 
 

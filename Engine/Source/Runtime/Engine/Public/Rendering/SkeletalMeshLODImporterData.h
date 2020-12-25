@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -105,7 +105,7 @@ namespace SkeletalMeshImportData
 		// Point to three vertices in the vertex list.
 		uint32   WedgeIndex[3];
 		// Materials can be anything.
-		uint16    MatIndex;
+		uint8    MatIndex;
 		// Second material from exporter (unused)
 		uint8    AuxMatIndex;
 		// 32-bit flag for smoothing groups.
@@ -141,18 +141,7 @@ namespace SkeletalMeshImportData
 
 		friend FArchive &operator<<(FArchive& Ar, FTriangle& F)
 		{
-			Ar.UsingCustomVersion(FEditorObjectVersion::GUID);
-
-			if (Ar.IsLoading() && Ar.CustomVer(FEditorObjectVersion::GUID) < FEditorObjectVersion::SkeletalMeshSourceDataSupport16bitOfMaterialNumber)
-			{
-				uint8 TempMatIndex = 0;
-				Ar << TempMatIndex;
-				F.MatIndex = TempMatIndex;
-			}
-			else
-			{
-				Ar << F.MatIndex;
-			}
+			Ar << F.MatIndex;
 			Ar << F.AuxMatIndex;
 			Ar << F.SmoothingGroups;
 			
@@ -438,9 +427,7 @@ public:
 	/** Default constructor. */
 	ENGINE_API FReductionBaseSkeletalMeshBulkData();
 
-	/*Static function helper to serialize an array of reduction data. */
 	ENGINE_API static void Serialize(FArchive& Ar, TArray<FReductionBaseSkeletalMeshBulkData*>& ReductionBaseSkeletalMeshDatas, UObject* Owner);
-
 	/** Serialization. */
 	ENGINE_API void Serialize(class FArchive& Ar, class UObject* Owner);
 
@@ -493,9 +480,6 @@ public:
 	/** Default constructor. */
 	ENGINE_API FRawSkeletalMeshBulkData();
 
-	/*Static function helper to serialize an array of Raw source data. */
-	ENGINE_API static void Serialize(FArchive& Ar, TArray<TSharedRef<FRawSkeletalMeshBulkData>>& RawSkeltalMeshBulkDatas, UObject* Owner);
-	
 	/** Serialization. */
 	ENGINE_API void Serialize(class FArchive& Ar, class UObject* Owner);
 
@@ -513,20 +497,8 @@ public:
 
 	ENGINE_API FByteBulkData& GetBulkData();
 	
-	ENGINE_API const FByteBulkData& GetBulkData() const;
-	
 	/** Empty the bulk data. */
-	ENGINE_API void EmptyBulkData()
-	{
-		//Clear all the data
-		BulkData.RemoveBulkData();
-		Guid.Invalidate();
-		bGuidIsHash = false;
-		SerializeLoadingCustomVersionContainer.Empty();
-		bUseSerializeLoadingCustomVersion = false;
-		GeoImportVersion = ESkeletalMeshGeoImportVersions::Before_Versionning;
-		SkinningImportVersion = ESkeletalMeshSkinningImportVersions::Before_Versionning;
-	}
+	ENGINE_API void EmptyBulkData() { BulkData.RemoveBulkData(); }
 
 	/** Returns true if no bulk data is available for this mesh. */
 	FORCEINLINE bool IsEmpty() const { return BulkData.GetBulkDataSize() == 0; }
@@ -618,11 +590,11 @@ struct FWedgeInfoOctreeSemantics
 	}
 
 	/** Ignored for this implementation */
-	FORCEINLINE static void SetElementId(const FWedgeInfo& Element, FOctreeElementId2 Id)
+	FORCEINLINE static void SetElementId(const FWedgeInfo& Element, FOctreeElementId Id)
 	{
 	}
 };
-typedef TOctree2<FWedgeInfo, FWedgeInfoOctreeSemantics> TWedgeInfoPosOctree;
+typedef TOctree<FWedgeInfo, FWedgeInfoOctreeSemantics> TWedgeInfoPosOctree;
 
 class FOctreeQueryHelper
 {

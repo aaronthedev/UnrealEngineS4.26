@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SoftClassPathCustomization.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
@@ -23,7 +23,7 @@ void FSoftClassPathCustomization::CustomizeHeader(TSharedRef<IPropertyHandle> In
 	
 	const UClass* const MetaClass = !MetaClassName.IsEmpty()
 		? FEditorClassUtils::GetClassFromString(MetaClassName)
-		: UObject::StaticClass();
+		: UClass::StaticClass();
 	const UClass* const RequiredInterface = !RequiredInterfaceName.IsEmpty()
 		? FEditorClassUtils::GetClassFromString(RequiredInterfaceName)
 		: FEditorClassUtils::GetClassFromString(MustImplementName);

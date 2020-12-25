@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "HAPMediaModule.h"
 
@@ -39,13 +39,7 @@ public:
 			return;
 		}
 
-		if (IWmfMediaModule* Module = IWmfMediaModule::Get())
-		{
-			if (Module->IsInitialized())
-			{
-				Module->GetCodecManager()->AddCodec(MakeUnique<WmfMediaCodecGenerator<WmfMediaHAPDecoder>>(true));
-			}
-		}
+		IWmfMediaModule::Get()->GetCodecManager()->AddCodec(MakeUnique<WmfMediaCodecGenerator<WmfMediaHAPDecoder>>(true));
 
 #endif //WMFMEDIA_SUPPORTED_PLATFORM
 

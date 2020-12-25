@@ -13,21 +13,19 @@ namespace ResonanceAudio
 {
 	FResonanceAudioPluginListener::FResonanceAudioPluginListener()
 		: ResonanceAudioApi(nullptr)
-		, OwningAudioDevice(nullptr)
 		, ResonanceAudioModule(nullptr)
 		, ReverbPtr(nullptr)
 		, SpatializationPtr(nullptr)
+		, AmbisonicsPtr(nullptr)
 	{
 	}
 
 	FResonanceAudioPluginListener::~FResonanceAudioPluginListener()
 	{
-		if (ResonanceAudioApi.IsValid())
+		if (ResonanceAudioApi != nullptr)
 		{
-			check(OwningAudioDevice);
-
-			FScopeLock ScopeLock(&ResonanceApiMapCriticalSection);
-			ResonanceApiMap.Remove(OwningAudioDevice);
+			delete ResonanceAudioApi;
+			ResonanceAudioApi = nullptr;
 		}
 	}
 
@@ -42,25 +40,16 @@ namespace ResonanceAudio
 		const size_t FramesPerBuffer = static_cast<size_t>(AudioDevice->GetBufferLength());
 		const int SampleRate = static_cast<int>(AudioDevice->GetSampleRate());
 
-		vraudio::ResonanceAudioApi* Api = CreateResonanceAudioApi(ResonanceAudioModule->GetResonanceAudioDynamicLibraryHandle(), 2 /* num channels */, FramesPerBuffer, SampleRate);
-
-		ResonanceAudioApi = TSharedPtr<vraudio::ResonanceAudioApi, ESPMode::ThreadSafe>(Api);
-
-		if (!ResonanceAudioApi.IsValid())
+		ResonanceAudioApi = CreateResonanceAudioApi(ResonanceAudioModule->GetResonanceAudioDynamicLibraryHandle(), 2 /* num channels */, FramesPerBuffer, SampleRate);
+		if (ResonanceAudioApi == nullptr)
 		{
 			UE_LOG(LogResonanceAudio, Error, TEXT("Failed to initialize Resonance Audio API"));
 			return;
 		}
-		else
-		{
-			FScopeLock ScopeLock(&ResonanceApiMapCriticalSection);
-			check(AudioDevice);
-			ResonanceApiMap.FindOrAdd(AudioDevice, ResonanceAudioApi);
-			OwningAudioDevice = AudioDevice;
-		}
 
 		ReverbPtr = (FResonanceAudioReverb*)AudioDevice->ReverbPluginInterface.Get();
 		SpatializationPtr = (FResonanceAudioSpatialization*)AudioDevice->SpatializationPluginInterface.Get();
+		AmbisonicsPtr = (FResonanceAudioAmbisonicsMixer*)AudioDevice->GetAmbisonicsMixer().Get();
 
 		// Make sure that Reverb *AND* spatialization plugins are enabled.
 		if (ReverbPtr == nullptr || SpatializationPtr == nullptr)
@@ -69,16 +58,24 @@ namespace ResonanceAudio
 			return;
 		}
 
-		ReverbPtr->SetResonanceAudioApi(ResonanceAudioApi.Get());
-		SpatializationPtr->SetResonanceAudioApi(ResonanceAudioApi.Get());
+		ReverbPtr->SetResonanceAudioApi(ResonanceAudioApi);
+		SpatializationPtr->SetResonanceAudioApi(ResonanceAudioApi);
+
+		if (AmbisonicsPtr == nullptr)
+		{
+			UE_LOG(LogResonanceAudio, Warning, TEXT("Resonance Audio Ambisonics plugin not found. Ambisonics files will not play correctly."));
+		}
+		else
+		{
+			AmbisonicsPtr->SetResonanceAudioApi(ResonanceAudioApi);
+		}
 
 		UE_LOG(LogResonanceAudio, Display, TEXT("Resonance Audio Listener is initialized"));
 	}
 
 	void FResonanceAudioPluginListener::OnListenerUpdated(FAudioDevice* AudioDevice, const int32 ViewportIndex, const FTransform& ListenerTransform, const float InDeltaSeconds)
 	{
-		if (!ResonanceAudioApi.IsValid())
-		{
+		if (ResonanceAudioApi == nullptr) {
 			UE_LOG(LogResonanceAudio, Error, TEXT("Resonance Audio API not loaded"));
 			return;
 		}
@@ -108,7 +105,7 @@ namespace ResonanceAudio
 			AAudioVolume* CurrentVolume = InWorld->GetAudioSettings(ListenerTransform.GetLocation(), nullptr, nullptr);
 			if (CurrentVolume != nullptr)
 			{
-				UResonanceAudioReverbPluginPreset* Preset = Cast<UResonanceAudioReverbPluginPreset>(CurrentVolume->GetReverbSettings().ReverbPluginEffect);
+				UResonanceAudioReverbPluginPreset* Preset = static_cast<UResonanceAudioReverbPluginPreset*>(CurrentVolume->GetReverbSettings().ReverbPluginEffect);
 				if (Preset != nullptr && Preset->UseAudioVolumeTransform())
 				{
 					// Obtain Resonance Audio room transform from the Unreal Audio Volume transform.
@@ -132,54 +129,5 @@ namespace ResonanceAudio
 			}
 		}
 	}
-
-	FResonanceAudioApiSharedPtr FResonanceAudioPluginListener::GetResonanceAPIForAudioDevice(const FAudioDevice* InAudioDevice)
-	{
-		FScopeLock ScopeLock(&ResonanceApiMapCriticalSection);
-
-		check(InAudioDevice);
-		if (FResonanceAudioApiSharedPtr* ResonanceApiPtr = ResonanceApiMap.Find(InAudioDevice))
-		{
-			return *ResonanceApiPtr;
-		}
-		else
-		{
-			return FResonanceAudioApiSharedPtr(nullptr);
-		}
-	}
-
-	void FResonanceAudioPluginListener::SetResonanceAPIForAudioDevice(const FAudioDevice* InAudioDevice, FResonanceAudioApiSharedPtr InResonanceSystem)
-	{
-		FScopeLock ScopeLock(&ResonanceApiMapCriticalSection);
-		ResonanceApiMap.Add(InAudioDevice, InResonanceSystem);
-	}
-
-	void FResonanceAudioPluginListener::RemoveResonanceAPIForAudioDevice(const FAudioDevice* InAudioDevice)
-	{
-		FScopeLock ScopeLock(&ResonanceApiMapCriticalSection);
-		ResonanceApiMap.Remove(InAudioDevice);
-	}
-
-	void FResonanceAudioPluginListener::RemoveResonanceAPIForAudioDevice(const vraudio::ResonanceAudioApi* InResonanceSystem)
-	{
-		FScopeLock ScopeLock(&ResonanceApiMapCriticalSection);
-
-		const FAudioDevice* AudioDeviceKey = nullptr;
-		for (auto& Pair : ResonanceApiMap)
-		{
-			if (Pair.Value.Get() == InResonanceSystem)
-			{
-				AudioDeviceKey = Pair.Key;
-				break;
-			}
-		}
-
-		checkf(AudioDeviceKey, TEXT("RemoveResonanceAPIForAudioDevice was called for a resonance system that wasn't registered using SetResonanceAPIForAudioDevice!"));
-		ResonanceApiMap.Remove(AudioDeviceKey);
-	}
-
-	TMap<const FAudioDevice*, FResonanceAudioApiSharedPtr> FResonanceAudioPluginListener::ResonanceApiMap;
-
-	FCriticalSection FResonanceAudioPluginListener::ResonanceApiMapCriticalSection;
 
 }  // namespace ResonanceAudio

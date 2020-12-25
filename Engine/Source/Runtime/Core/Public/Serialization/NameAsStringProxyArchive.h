@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,7 +8,7 @@
 /**
  * Implements a proxy archive that serializes FNames as string data.
  */
-struct FNameAsStringProxyArchive : public FArchiveProxy
+struct CORE_VTABLE FNameAsStringProxyArchive : public FArchiveProxy
 {
 	/**
 	 * Creates and initializes a new instance.

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Net/ReplayPlaylistTracker.h"
 #include "Engine/DemoNetDriver.h"
@@ -46,14 +46,12 @@ FReplayPlaylistTracker::FReplayPlaylistTracker(const FReplayPlaylistParams& Para
 
 void FReplayPlaylistTracker::Reset()
 {
-	if (UDemoNetDriver* LocalDemoNetDriver = DemoNetDriver.Get())
+	if (UDemoNetDriver * LocalDemoNetDriver = DemoNetDriver.Get())
 	{
 		DemoNetDriver.Reset();
-
-		FNetworkReplayDelegates::OnReplayStartFailure.Remove(OnDemoFailedToStartHandle);
-		FNetworkReplayDelegates::OnReplayPlaybackComplete.Remove(OnDemoPlaybackFinishedHandle);
-		FNetworkReplayDelegates::OnReplayRecordingComplete.Remove(OnDemoStoppedHandle);
-
+		LocalDemoNetDriver->OnDemoFailedToStart.Remove(OnDemoFailedToStartHandle);
+		LocalDemoNetDriver->OnDemoFinishPlaybackDelegate.Remove(OnDemoPlaybackFinishedHandle);
+		LocalDemoNetDriver->OnDemoFinishRecordingDelegate.Remove(OnDemoStoppedHandle);
 		LocalDemoNetDriver->SetPlayingPlaylist(nullptr);
 	}
 
@@ -89,14 +87,12 @@ bool FReplayPlaylistTracker::Start()
 		{
 			TSharedRef<ThisClass> This = AsShared();
 
-			if (UDemoNetDriver * LocalDemoNetDriver = World->GetDemoNetDriver())
+			if (UDemoNetDriver * LocalDemoNetDriver = World->DemoNetDriver)
 			{
 				DemoNetDriver = LocalDemoNetDriver;
-
-				OnDemoFailedToStartHandle = FNetworkReplayDelegates::OnReplayStartFailure.AddSP(AsShared(), &ThisClass::OnDemoFailedToStart);
-				OnDemoPlaybackFinishedHandle = FNetworkReplayDelegates::OnReplayPlaybackComplete.AddSP(AsShared() , &ThisClass::OnDemoPlaybackFinished);
-				OnDemoStoppedHandle = FNetworkReplayDelegates::OnReplayRecordingComplete.AddSP(AsShared(), &ThisClass::OnDemoStopped);
-
+				OnDemoFailedToStartHandle = LocalDemoNetDriver->OnDemoFailedToStart.AddStatic(&ThisClass::OnDemoFailedToStart, This);
+				OnDemoPlaybackFinishedHandle = LocalDemoNetDriver->OnDemoFinishPlaybackDelegate.AddStatic(&ThisClass::OnDemoPlaybackFinished, This);
+				OnDemoPlaybackFinishedHandle = LocalDemoNetDriver->OnDemoFinishRecordingDelegate.AddStatic(&ThisClass::OnDemoStopped, This);
 				LocalDemoNetDriver->SetPlayingPlaylist(This);
 
 				UE_LOG(LogDemo, Log, TEXT("FReplayPlaylistTracker::Start: Successfully started Replay=%s, CurrentReplayIdx=%d"), *Playlist[CurrentReplay], CurrentReplay);
@@ -122,26 +118,14 @@ bool FReplayPlaylistTracker::Restart()
 	return Start();
 }
 
-void FReplayPlaylistTracker::OnDemoFailedToStart(UWorld* InWorld, EDemoPlayFailure::Type FailureType)
+void FReplayPlaylistTracker::OnDemoFailedToStart(UDemoNetDriver* DemoNetDriver, EDemoPlayFailure::Type FailureType, TSharedRef<ThisClass> This)
 {
-	UWorld* World = WorldOverride.Get();
-	World = World ? World : GameInstance->GetWorld();
-
-	if (World == InWorld)
-	{
-		Quit();
-	}
+	This->Quit();
 }
 
-void FReplayPlaylistTracker::OnDemoStopped(UWorld* InWorld)
+void FReplayPlaylistTracker::OnDemoStopped(TSharedRef<FReplayPlaylistTracker> Tracker)
 {
-	UWorld* World = WorldOverride.Get();
-	World = World ? World : GameInstance->GetWorld();
-
-	if (World == InWorld)
-	{
-		Quit();
-	}
+	Tracker->Quit();
 }
 
 void FReplayPlaylistTracker::Quit()
@@ -149,15 +133,9 @@ void FReplayPlaylistTracker::Quit()
 	Reset();
 }
 
-void FReplayPlaylistTracker::OnDemoPlaybackFinished(UWorld* InWorld)
+void FReplayPlaylistTracker::OnDemoPlaybackFinished(TSharedRef<FReplayPlaylistTracker> Tracker)
 {
-	UWorld* World = WorldOverride.Get();
-	World = World ? World : GameInstance->GetWorld();
-
-	if (World == InWorld)
-	{
-		PlayNextReplay();
-	}
+	Tracker->PlayNextReplay();
 }
 
 void FReplayPlaylistTracker::PlayNextReplay()

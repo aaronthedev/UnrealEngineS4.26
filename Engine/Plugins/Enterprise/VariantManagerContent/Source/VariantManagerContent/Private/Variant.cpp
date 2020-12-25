@@ -1,65 +1,20 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Variant.h"
 
-#include "LevelVariantSets.h"
 #include "PropertyValue.h"
-#include "ThumbnailGenerator.h"
-#include "VariantManagerContentLog.h"
-#include "VariantManagerObjectVersion.h"
-#include "VariantObjectBinding.h"
 #include "VariantSet.h"
-
+#include "VariantObjectBinding.h"
 #include "CoreMinimal.h"
-#include "Engine/Texture2D.h"
 #include "GameFramework/Actor.h"
+#include "VariantManagerObjectVersion.h"
 
 #define LOCTEXT_NAMESPACE "Variant"
-
-UVariant::FOnVariantChanged UVariant::OnThumbnailUpdated;
-
-UVariant::FOnVariantChanged UVariant::OnDependenciesUpdated;
-
-struct FVariantImpl
-{
-	static bool IsValidDependencyRecursive(const UVariant* This, const UVariant* Other, TSet<const UVariant*>& ParentStack)
-	{
-		if (!Other || Other == This || ParentStack.Contains(Other))
-		{
-			return false;
-		}
-
-		ParentStack.Add(Other);
-
-		for (const FVariantDependency& Dependency : Other->Dependencies)
-		{
-			const UVariant* OtherDependency = Dependency.Variant.Get();
-			if ( OtherDependency == nullptr )
-			{
-				// If the dependency has no variant picked yet it won't really do anything when triggered anyway,
-				// so there's no reason we need to block this.
-				continue;
-			}
-
-			if (!FVariantImpl::IsValidDependencyRecursive(This, OtherDependency, ParentStack))
-			{
-				return false;
-			}
-		}
-
-		ParentStack.Remove(Other);
-
-		return true;
-	}
-};
 
 UVariant::UVariant(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	DisplayText = FText::FromString(TEXT("Variant"));
-#if WITH_EDITOR
-	bTriedRestoringOldThumbnail = false;
-#endif
 }
 
 UVariantSet* UVariant::GetParent()
@@ -250,24 +205,6 @@ UVariantObjectBinding* UVariant::GetBindingByName(const FString& ActorName)
 
 void UVariant::SwitchOn()
 {
-	if (GetPackage() == GetTransientPackage())
-	{
-		return;
-	}
-
-	for ( const FVariantDependency& Dependency : Dependencies )
-	{
-		if ( !Dependency.bEnabled )
-		{
-			continue;
-		}
-
-		if ( UVariant* Variant = Dependency.Variant.Get() )
-		{
-			Variant->SwitchOn();
-		}
-	}
-
 	for (UVariantObjectBinding* Binding : ObjectBindings)
 	{
 		for (UPropertyValue* PropCapture : Binding->GetCapturedProperties())
@@ -298,177 +235,6 @@ bool UVariant::IsActive()
 	}
 
 	return true;
-}
-
-void UVariant::SetThumbnailFromTexture(UTexture2D* Texture)
-{
-	if (Texture == nullptr)
-	{
-		SetThumbnailInternal(nullptr);
-	}
-	else
-	{
-		if (UTexture2D* NewThumbnail = ThumbnailGenerator::GenerateThumbnailFromTexture(Texture))
-		{
-			SetThumbnailInternal(NewThumbnail);
-		}
-	}
-}
-
-void UVariant::SetThumbnailFromFile(FString FilePath)
-{
-	if (UTexture2D* NewThumbnail = ThumbnailGenerator::GenerateThumbnailFromFile(FilePath))
-	{
-		SetThumbnailInternal(NewThumbnail);
-	}
-}
-
-void UVariant::SetThumbnailFromCamera(UObject* WorldContextObject, const FTransform& CameraTransform, float FOVDegrees, float MinZ, float Gamma)
-{
-	if (UTexture2D* NewThumbnail = ThumbnailGenerator::GenerateThumbnailFromCamera(WorldContextObject, CameraTransform, FOVDegrees, MinZ, Gamma))
-	{
-		SetThumbnailInternal(NewThumbnail);
-	}
-}
-
-void UVariant::SetThumbnailFromEditorViewport()
-{
-	if (UTexture2D* NewThumbnail = ThumbnailGenerator::GenerateThumbnailFromEditorViewport())
-	{
-		SetThumbnailInternal(NewThumbnail);
-	}
-}
-
-UTexture2D* UVariant::GetThumbnail()
-{
-#if WITH_EDITOR
-	if (Thumbnail == nullptr && !bTriedRestoringOldThumbnail)
-	{
-		Thumbnail = ThumbnailGenerator::GenerateThumbnailFromObjectThumbnail(this);
-		bTriedRestoringOldThumbnail = true;
-	}
-#endif
-
-	return Thumbnail;
-}
-
-void UVariant::SetThumbnailInternal(UTexture2D* NewThumbnail)
-{
-	Modify();
-	Thumbnail = NewThumbnail;
-
-	if (NewThumbnail)
-	{
-		// This variant will now fully own this texture. It cannot be standalone or else we won't be able to delete it
-		NewThumbnail->Rename(nullptr, this);
-		NewThumbnail->ClearFlags( RF_Transient | RF_Standalone );
-	}
-
-	UVariant::OnThumbnailUpdated.Broadcast(this);
-}
-
-TArray<UVariant*> UVariant::GetDependents(ULevelVariantSets* LevelVariantSets, bool bOnlyEnabledDependencies )
-{
-	TArray<UVariant*> Result;
-	if ( !LevelVariantSets )
-	{
-		return Result;
-	}
-
-	for ( UVariantSet* VariantSet : LevelVariantSets->GetVariantSets() )
-	{
-		if ( !VariantSet )
-		{
-			continue;
-		}
-
-		for ( UVariant* Variant : VariantSet->GetVariants() )
-		{
-			if ( !Variant )
-			{
-				continue;
-			}
-
-			for ( FVariantDependency& Dependency : Variant->Dependencies )
-			{
-				UVariant* TargetVariant = Dependency.Variant.Get();
-				if ( (Dependency.bEnabled || !bOnlyEnabledDependencies) && TargetVariant == this )
-				{
-					Result.Add(Variant);
-				}
-			}
-		}
-	}
-
-	return Result;
-}
-
-bool UVariant::IsValidDependency(const UVariant* Other) const
-{
-	TSet<const UVariant*> ParentStack;
-	return FVariantImpl::IsValidDependencyRecursive(this, Other, ParentStack);
-}
-
-int32 UVariant::AddDependency(FVariantDependency& Dependency)
-{
-	UVariant* Variant = Dependency.Variant.Get();
-	if (Variant && !IsValidDependency(Variant))
-	{
-		UE_LOG(LogVariantContent, Error, TEXT("Cannot add variant '%s' as a dependency of '%s'! Cycles were detected!"), *Variant->GetDisplayText().ToString(), *GetDisplayText().ToString());
-		return INDEX_NONE;
-	}
-
-	Modify();
-	int32 NewIndex = Dependencies.Add(Dependency);
-	UVariant::OnDependenciesUpdated.Broadcast(this);
-	return NewIndex;
-}
-
-FVariantDependency& UVariant::GetDependency(int32 Index)
-{
-	return Dependencies[Index];
-}
-
-void UVariant::SetDependency(int32 Index, FVariantDependency& Dependency)
-{
-	if (Dependencies.IsValidIndex(Index))
-	{
-		UVariant* Variant = Dependency.Variant.Get();
-		if (Variant && !IsValidDependency(Variant))
-		{
-			UE_LOG(LogVariantContent, Error, TEXT("Cannot set variant '%s' as a dependency of '%s'! Cycles were detected!"),
-				*Variant->GetDisplayText().ToString(),
-				*GetDisplayText().ToString());
-			return;
-		}
-
-		Modify();
-		Dependencies[Index] = Dependency;
-		UVariant::OnDependenciesUpdated.Broadcast(this);
-	}
-	else
-	{
-		UE_LOG(LogVariantContent, Error, TEXT("Invalid dependency index '%d'! Note: Variant '%s' has '%d' dependencies"), Index, *GetDisplayText().ToString(), GetNumDependencies());
-	}
-}
-
-void UVariant::DeleteDependency(int32 Index)
-{
-	if (Dependencies.IsValidIndex(Index))
-	{
-		Modify();
-		Dependencies.RemoveAt(Index);
-		UVariant::OnDependenciesUpdated.Broadcast(this);
-	}
-	else
-	{
-		UE_LOG(LogVariantContent, Error, TEXT("Invalid dependency index '%d'! Note: Variant '%s' has '%d' dependencies"), Index, *GetDisplayText().ToString(), GetNumDependencies());
-	}
-}
-
-int32 UVariant::GetNumDependencies()
-{
-	return Dependencies.Num();
 }
 
 #undef LOCTEXT_NAMESPACE

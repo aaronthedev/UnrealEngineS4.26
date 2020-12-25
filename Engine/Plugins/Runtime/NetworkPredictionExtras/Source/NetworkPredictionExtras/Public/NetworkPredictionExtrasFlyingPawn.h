@@ -1,10 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "GameFramework/Pawn.h"
-#include "FlyingMovementComponent.h"
-#include "FlyingMovementSimulation.h"
-#include "MockAbilitySimulation.h"
+#include "Movement/FlyingMovement.h"
 #include "NetworkPredictionExtrasFlyingPawn.generated.h"
 
 class UInputComponent;
@@ -19,7 +17,7 @@ class UFlyingMovementComponent;
 //	that are used by the flying movement simulation. This includes some basic camera/aiming code.
 //
 //	Highlights:
-//		FlyingMovement::FMovementSystem::SimulationTick				The "core update" function of the flying movement simulation.
+//		FlyingMovement::FMovementSystem::Update						The "core update" function of the flying movement simulation.
 //		ANetworkPredictionExtrasFlyingPawn::GenerateLocalInput		Function that generates local input commands that are fed into the movement system.
 //
 //	Usage:
@@ -33,58 +31,21 @@ class UFlyingMovementComponent;
 //
 // -------------------------------------------------------------------------------------------------------------------------------
 
-UENUM()
-enum class ENetworkPredictionExtrasFlyingInputPreset: uint8
-{
-	/** No input */
-	None,
-	/** Just moves forward */
-	Forward
-};
 
 /** Sample pawn that uses UFlyingMovementComponent. The main thing this provides is actually producing user input for the component/simulation to consume. */
-UCLASS()
+UCLASS(config = Game)
 class NETWORKPREDICTIONEXTRAS_API ANetworkPredictionExtrasFlyingPawn : public APawn
 {
 	GENERATED_BODY()
 
-public:
+	ANetworkPredictionExtrasFlyingPawn();
 
-	ANetworkPredictionExtrasFlyingPawn(const FObjectInitializer& ObjectInitializer);
-
-	virtual void BeginPlay() override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 	virtual void Tick( float DeltaSeconds) override;
-	virtual UNetConnection* GetNetConnection() const override; // For bFakeAutonomousProxy only
-
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Automation")
-	ENetworkPredictionExtrasFlyingInputPreset InputPreset;
-
-	/** Actor will behave like autonomous proxy even though not posessed by an APlayercontroller. To be used in conjuction with InputPreset. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Automation")
-	bool bFakeAutonomousProxy = false;
-
-	UFUNCTION(BlueprintCallable, Category="Debug")
-	void PrintDebug();
-
-	UFUNCTION(BlueprintCallable, Category="Gameplay")
-	float GetMaxMoveSpeed() const;
-
-	UFUNCTION(BlueprintCallable, Category="Gameplay")
-	void SetMaxMoveSpeed(float NewMaxMoveSpeed);
-
-	UFUNCTION(BlueprintCallable, Category="Gameplay")
-	void AddMaxMoveSpeed(float AdditiveMaxMoveSpeed);
-
-protected:
-
-	void ProduceInput(const int32 DeltaMS, FFlyingMovementInputCmd& Cmd);
-
-	UPROPERTY(Category=Movement, VisibleAnywhere)
-	UFlyingMovementComponent* FlyingMovementComponent;
 
 private:
+
+	void ProduceInput(const FNetworkSimTime SimTime, FlyingMovement::FInputCmd& Cmd);
 
 	FVector CachedMoveInput;
 	FVector2D CachedLookInput;
@@ -100,67 +61,7 @@ private:
 	void Action_LeftShoulder_Released() { }
 	void Action_RightShoulder_Pressed() { }
 	void Action_RightShoulder_Released() { }
+
+	UPROPERTY()
+	UFlyingMovementComponent* FlyingMovementComponent;
 };
-
-UENUM()
-enum class ENetworkPredictionExtrasMockAbilityInputPreset: uint8
-{
-	/** No input */
-	None,
-	Sprint,
-	Dash,
-	Blink
-};
-
-
-// Example subclass of ANetworkPredictionExtrasFlyingPawn that uses the MockAbility simulation
-UCLASS()
-class NETWORKPREDICTIONEXTRAS_API ANetworkPredictionExtrasFlyingPawn_MockAbility : public ANetworkPredictionExtrasFlyingPawn
-{
-	GENERATED_BODY()
-
-public:
-
-	ANetworkPredictionExtrasFlyingPawn_MockAbility(const FObjectInitializer& ObjectInitializer);
-	virtual void BeginPlay() override;
-	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
-
-	
-	UFUNCTION(BlueprintPure, Category="Ability")
-	UMockFlyingAbilityComponent* GetMockFlyingAbilityComponent();
-
-	const UMockFlyingAbilityComponent* GetMockFlyingAbilityComponent() const;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Automation")
-	ENetworkPredictionExtrasMockAbilityInputPreset AbilityInputPreset = ENetworkPredictionExtrasMockAbilityInputPreset::None;
-
-	UFUNCTION(BlueprintCallable, Category="Ability")
-	float GetStamina() const;
-
-	UFUNCTION(BlueprintCallable, Category="Ability")
-	float GetMaxStamina() const;
-	
-protected:
-	using ANetworkPredictionExtrasFlyingPawn::ProduceInput;
-	void ProduceInput(const int32 SimTimeMS, FMockAbilityInputCmd& Cmd);
-
-	void Action_Sprint_Pressed();
-	void Action_Sprint_Released();
-	void Action_Dash_Pressed();
-	void Action_Dash_Released();
-	void Action_Blink_Pressed();
-	void Action_Blink_Released();
-
-	void Action_Primary_Pressed();
-	void Action_Primary_Released();
-
-	void Action_Secondary_Pressed();
-	void Action_Secondary_Released();
-
-	bool bSprintPressed = false;
-	bool bDashPressed = false;
-	bool bBlinkPressed = false;
-	bool bPrimaryPressed = false;
-	bool bSecondaryPressed = false;
-};
-

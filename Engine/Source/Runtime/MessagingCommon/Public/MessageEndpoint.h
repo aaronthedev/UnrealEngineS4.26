@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -928,11 +928,8 @@ public:
 	 */
 	static void SafeRelease(TSharedPtr<FMessageEndpoint, ESPMode::ThreadSafe>& Endpoint)
 	{
-		if (Endpoint.IsValid())
-		{
-			Endpoint->ClearHandlers();
-			Endpoint.Reset();
-		}
+		Endpoint->ClearHandlers();
+		Endpoint.Reset();
 	}
 
 protected:

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -84,7 +84,7 @@ private:
 	*/
 	static void OpenProjectLauncher()
 	{
-		FGlobalTabmanager::Get()->TryInvokeTab(FName(TEXT("ProjectLauncher")));
+		FGlobalTabmanager::Get()->InvokeTab(FName(TEXT("ProjectLauncher")));
 	}
 
 	/**
@@ -103,6 +103,6 @@ private:
 	static void OpenVisualLogger()
 	{
 		FModuleManager::Get().LoadModuleChecked<IModuleInterface>("LogVisualizer");
-		FGlobalTabmanager::Get()->TryInvokeTab(FName(TEXT("VisualLogger")));
+		FGlobalTabmanager::Get()->InvokeTab(FName(TEXT("VisualLogger")));
 	}
 };

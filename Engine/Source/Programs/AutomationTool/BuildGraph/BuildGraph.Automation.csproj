@@ -67,9 +67,7 @@
     <Compile Include="Agent.cs" />
     <Compile Include="Badge.cs" />
     <Compile Include="BuildGraph.cs" />
-    <Compile Include="Aggregate.cs" />
     <Compile Include="Graph.cs" />
-    <Compile Include="Label.cs" />
     <Compile Include="Node.cs" />
     <Compile Include="Report.cs" />
     <Compile Include="Task.cs" />
@@ -102,7 +100,6 @@
     <Compile Include="Tasks\StripTask.cs" />
     <Compile Include="Tasks\SetVersionTask.cs" />
     <Compile Include="Tasks\UnzipTask.cs" />
-    <Compile Include="Tasks\WriteTextFileTask.cs" />
     <Compile Include="Tasks\ZipTask.cs" />
     <Compile Include="TempStorage.cs" />
     <Compile Include="Tasks\ModifyConfigTask.cs" />

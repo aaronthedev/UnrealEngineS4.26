@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "LiveLinkMessageBusSourceFactory.h"
 
 #include "ILiveLinkClient.h"
@@ -38,12 +38,6 @@ TSharedPtr<ILiveLinkSource> ULiveLinkMessageBusSourceFactory::CreateSource(const
 	return MakeShared<FLiveLinkMessageBusSource>(FText::FromString(Name), FText::GetEmpty(), FMessageAddress(), TimeOffset);
 }
 
-
-FString ULiveLinkMessageBusSourceFactory::CreateConnectionString(const FProviderPollResult& Result)
-{
-	return FString::Printf(TEXT("Name=\"%s\""), *Result.Name);
-}
-
 void ULiveLinkMessageBusSourceFactory::OnSourceSelected(FProviderPollResultPtr SelectedSource, FOnLiveLinkSourceCreated InOnLiveLinkSourceCreated) const
 {
 	if (SelectedSource.IsValid())
@@ -73,7 +67,7 @@ void ULiveLinkMessageBusSourceFactory::OnSourceSelected(FProviderPollResultPtr S
 #endif
 
 		TSharedPtr<FLiveLinkMessageBusSource> SharedPtr = MakeShared<FLiveLinkMessageBusSource>(FText::FromString(SelectedSource->Name), FText::FromString(SelectedSource->MachineName), SelectedSource->Address, SelectedSource->MachineTimeOffset);
-		FString ConnectionString = CreateConnectionString(*SelectedSource.Get());
+		FString ConnectionString = FString::Printf(TEXT("Name=\"%s\""), *SelectedSource->Name);
 		InOnLiveLinkSourceCreated.ExecuteIfBound(SharedPtr, MoveTemp(ConnectionString));
 	}
 }

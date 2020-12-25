@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IMeshPaintMode.h"
 #include "SceneView.h"
@@ -36,7 +36,6 @@
 
 #include "IMeshPainter.h"
 #include "MeshPaintSettings.h"
-#include "AssetData.h"
 
 #define LOCTEXT_NAMESPACE "IMeshPaint_Mode"
 
@@ -52,10 +51,7 @@ IMeshPaintEdMode::IMeshPaintEdMode()
 
 IMeshPaintEdMode::~IMeshPaintEdMode()
 {
-	if (GEditor)
-	{
-		GEditor->OnEditorClose().RemoveAll(this);
-	}
+	GEditor->OnEditorClose().RemoveAll(this);
 }
 
 /** FGCObject interface */

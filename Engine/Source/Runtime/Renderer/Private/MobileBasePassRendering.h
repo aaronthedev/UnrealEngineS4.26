@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MobileBasePassRendering.h: base pass rendering definitions.
@@ -25,30 +25,21 @@
 #include "SkyAtmosphereRendering.h"
 
 BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileBasePassUniformParameters, )
-	SHADER_PARAMETER(int32, UseCSM)
-	SHADER_PARAMETER(float, AmbientOcclusionStaticFraction)
 	SHADER_PARAMETER_STRUCT(FFogUniformParameters, Fog)
 	SHADER_PARAMETER_STRUCT(FPlanarReflectionUniformParameters, PlanarReflection) // Single global planar reflection for the forward pass.
 	SHADER_PARAMETER_STRUCT(FMobileSceneTextureUniformParameters, SceneTextures)
-	SHADER_PARAMETER_TEXTURE(Texture2D, PreIntegratedGFTexture)
-	SHADER_PARAMETER_SAMPLER(SamplerState, PreIntegratedGFSampler)
-	SHADER_PARAMETER_SRV(Buffer<float4>, EyeAdaptationBuffer)
-	SHADER_PARAMETER_TEXTURE(Texture2D, AmbientOcclusionTexture)
-	SHADER_PARAMETER_SAMPLER(SamplerState, AmbientOcclusionSampler)
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 extern void SetupMobileBasePassUniformParameters(
 	FRHICommandListImmediate& RHICmdList,
 	const FViewInfo& View,
 	bool bTranslucentPass,
-	bool bCanUseCSM,
 	FMobileBasePassUniformParameters& BasePassParameters);
 
 extern void CreateMobileBasePassUniformBuffer(
 	FRHICommandListImmediate& RHICmdList,
 	const FViewInfo& View,
 	bool bTranslucentPass,
-	bool bCanUseCSM,
 	TUniformBufferRef<FMobileBasePassUniformParameters>& BasePassUniformBuffer);
 
 extern void SetupMobileDirectionalLightUniformParameters(
@@ -83,7 +74,10 @@ public:
 	FMobileBasePassMovableLightInfo(const FPrimitiveSceneProxy* InSceneProxy);
 
 	int32 NumMovablePointLights;
-	FRHIUniformBuffer* MovablePointLightUniformBuffer[MAX_BASEPASS_DYNAMIC_POINT_LIGHTS];
+	FVector4 LightPositionAndInvRadius[MAX_BASEPASS_DYNAMIC_POINT_LIGHTS];
+	FVector4 LightColorAndFalloffExponent[MAX_BASEPASS_DYNAMIC_POINT_LIGHTS];
+	FVector4 SpotLightDirectionAndSpecularScale[MAX_BASEPASS_DYNAMIC_POINT_LIGHTS];
+	FVector4 SpotLightAngles[MAX_BASEPASS_DYNAMIC_POINT_LIGHTS];
 };
 
 static bool ShouldCacheShaderByPlatformAndOutputFormat(EShaderPlatform Platform, EOutputFormat OutputFormat)
@@ -114,7 +108,6 @@ public:
 template<typename LightMapPolicyType>
 class TMobileBasePassVSPolicyParamType : public FMeshMaterialShader, public LightMapPolicyType::VertexParametersType
 {
-	DECLARE_INLINE_TYPE_LAYOUT_EXPLICIT_BASES(TMobileBasePassVSPolicyParamType, NonVirtual, FMeshMaterialShader, typename LightMapPolicyType::VertexParametersType);
 protected:
 
 	TMobileBasePassVSPolicyParamType() {}
@@ -132,6 +125,13 @@ public:
 	static void ModifyCompilationEnvironment(const FMaterialShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FMeshMaterialShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+	}
+
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FMeshMaterialShader::Serialize(Ar);
+		LightMapPolicyType::VertexParametersType::Serialize(Ar);
+		return bShaderHasOutdatedParameters;
 	}
 
 	void GetShaderBindings(
@@ -158,7 +158,7 @@ template<typename LightMapPolicyType>
 class TMobileBasePassVSBaseType : public TMobileBasePassVSPolicyParamType<LightMapPolicyType>
 {
 	typedef TMobileBasePassVSPolicyParamType<LightMapPolicyType> Super;
-	DECLARE_INLINE_TYPE_LAYOUT(TMobileBasePassVSBaseType, NonVirtual);
+
 protected:
 
 	TMobileBasePassVSBaseType() {}
@@ -176,9 +176,6 @@ public:
 		LightMapPolicyType::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 		Super::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 	}
-
-	
-	
 };
 
 template< typename LightMapPolicyType, EOutputFormat OutputFormat >
@@ -218,7 +215,6 @@ public:
 template<typename LightMapPolicyType>
 class TMobileBasePassPSPolicyParamType : public FMeshMaterialShader, public LightMapPolicyType::PixelParametersType
 {
-	DECLARE_INLINE_TYPE_LAYOUT_EXPLICIT_BASES(TMobileBasePassPSPolicyParamType, NonVirtual, FMeshMaterialShader, typename LightMapPolicyType::PixelParametersType);
 public:
 
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
@@ -230,7 +226,7 @@ public:
 	{
 		FMeshMaterialShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 		// Modify compilation environment depending upon material shader quality level settings.
-		ModifyCompilationEnvironmentForQualityLevel(Parameters.Platform, Parameters.MaterialParameters.QualityLevel, OutEnvironment);
+		ModifyCompilationEnvironmentForQualityLevel(Parameters.Platform, Parameters.Material->GetQualityLevel(), OutEnvironment);
 	}
 
 	/** Initialization constructor. */
@@ -250,35 +246,65 @@ public:
 		HQReflectionCubemaps[2].Bind(Initializer.ParameterMap, TEXT("ReflectionCubemap2"));
 		HQReflectionSamplers[2].Bind(Initializer.ParameterMap, TEXT("ReflectionCubemapSampler2"));
 		HQReflectionInvAverageBrigtnessParams.Bind(Initializer.ParameterMap, TEXT("ReflectionAverageBrigtness"));
-		HQReflectanceMaxValueRGBMParams.Bind(Initializer.ParameterMap, TEXT("ReflectanceMaxValueRGBM"));
 		HQReflectionPositionsAndRadii.Bind(Initializer.ParameterMap, TEXT("ReflectionPositionsAndRadii"));
-		HQReflectionCaptureBoxTransformArray.Bind(Initializer.ParameterMap, TEXT("CaptureBoxTransformArray"));
-		HQReflectionCaptureBoxScalesArray.Bind(Initializer.ParameterMap, TEXT("CaptureBoxScalesArray"));
 
+		LightPositionAndInvRadiusParameter.Bind(Initializer.ParameterMap, TEXT("LightPositionAndInvRadius"));
+		LightColorAndFalloffExponentParameter.Bind(Initializer.ParameterMap, TEXT("LightColorAndFalloffExponent"));
 		NumDynamicPointLightsParameter.Bind(Initializer.ParameterMap, TEXT("NumDynamicPointLights"));
+		SpotLightAnglesParameter.Bind(Initializer.ParameterMap, TEXT("SpotLightAngles"));
+		SpotLightDirectionAndSpecularScaleParameter.Bind(Initializer.ParameterMap, TEXT("SpotLightDirectionAndSpecularScale"));
 						
 		CSMDebugHintParams.Bind(Initializer.ParameterMap, TEXT("CSMDebugHint"));
 	}
 
 	TMobileBasePassPSPolicyParamType() {}
 
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FMeshMaterialShader::Serialize(Ar);
+		LightMapPolicyType::PixelParametersType::Serialize(Ar);
+
+		Ar << MobileDirectionLightBufferParam;
+		Ar << ReflectionParameter;
+
+		Ar << HQReflectionCubemaps[0];
+		Ar << HQReflectionCubemaps[1];
+		Ar << HQReflectionCubemaps[2];
+		Ar << HQReflectionSamplers[0];
+		Ar << HQReflectionSamplers[1];
+		Ar << HQReflectionSamplers[2];
+		Ar << HQReflectionInvAverageBrigtnessParams;
+		Ar << HQReflectionPositionsAndRadii;
+		
+		Ar << LightPositionAndInvRadiusParameter;
+		Ar << LightColorAndFalloffExponentParameter;
+		Ar << NumDynamicPointLightsParameter;
+		Ar << SpotLightAnglesParameter;
+		Ar << SpotLightDirectionAndSpecularScaleParameter;
+			
+		Ar << CSMDebugHintParams;
+
+		return bShaderHasOutdatedParameters;
+	}
+
 private:
-	LAYOUT_FIELD(FShaderUniformBufferParameter, MobileDirectionLightBufferParam);
-	LAYOUT_FIELD(FShaderUniformBufferParameter, ReflectionParameter);
+	FShaderUniformBufferParameter MobileDirectionLightBufferParam;
+	FShaderUniformBufferParameter ReflectionParameter;
 
 	// HQ reflection bound as loose params
-	LAYOUT_ARRAY(FShaderResourceParameter, HQReflectionCubemaps, 3);
-	LAYOUT_ARRAY(FShaderResourceParameter, HQReflectionSamplers, 3);
-	LAYOUT_FIELD(FShaderParameter, HQReflectionInvAverageBrigtnessParams);
-	LAYOUT_FIELD(FShaderParameter, HQReflectanceMaxValueRGBMParams);
-	LAYOUT_FIELD(FShaderParameter, HQReflectionPositionsAndRadii);
-	LAYOUT_FIELD(FShaderParameter, HQReflectionCaptureBoxTransformArray);
-	LAYOUT_FIELD(FShaderParameter, HQReflectionCaptureBoxScalesArray);
-
-	LAYOUT_FIELD(FShaderParameter, NumDynamicPointLightsParameter);
-
-	LAYOUT_FIELD(FShaderParameter, CSMDebugHintParams);
+	FShaderResourceParameter HQReflectionCubemaps[3];
+	FShaderResourceParameter HQReflectionSamplers[3];
+	FShaderParameter HQReflectionInvAverageBrigtnessParams;
+	FShaderParameter HQReflectionPositionsAndRadii;
 	
+	FShaderParameter LightPositionAndInvRadiusParameter;
+	FShaderParameter LightColorAndFalloffExponentParameter;
+	FShaderParameter NumDynamicPointLightsParameter;
+	FShaderParameter SpotLightDirectionAndSpecularScaleParameter;
+	FShaderParameter SpotLightAnglesParameter;
+
+	FShaderParameter CSMDebugHintParams;
+
 public:
 	void GetShaderBindings(
 		const FScene* Scene,
@@ -298,8 +324,9 @@ template<typename LightMapPolicyType>
 class TMobileBasePassPSBaseType : public TMobileBasePassPSPolicyParamType<LightMapPolicyType>
 {
 	typedef TMobileBasePassPSPolicyParamType<LightMapPolicyType> Super;
-	DECLARE_INLINE_TYPE_LAYOUT(TMobileBasePassPSBaseType, NonVirtual);
+
 public:
+
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
 		return LightMapPolicyType::ShouldCompilePermutation(Parameters)
@@ -315,9 +342,6 @@ public:
 	/** Initialization constructor. */
 	TMobileBasePassPSBaseType(const FMeshMaterialShaderType::CompiledShaderInitializerType& Initializer) : Super(Initializer) {}
 	TMobileBasePassPSBaseType() {}
-
-	
-	
 };
 
 
@@ -330,9 +354,7 @@ namespace MobileBasePass
 		const FLightSceneInfo* MobileDirectionalLight, 
 		FMaterialShadingModelField ShadingModels, 
 		bool bPrimReceivesCSM, 
-		bool bUsedDeferredShading,
-		ERHIFeatureLevel::Type FeatureLevel,
-		EBlendMode BlendMode);
+		ERHIFeatureLevel::Type FeatureLevel);
 
 	void GetShaders(
 		ELightMapPolicyType LightMapPolicyType,
@@ -340,15 +362,15 @@ namespace MobileBasePass
 		const FMaterial& MaterialResource,
 		FVertexFactoryType* VertexFactoryType,
 		bool bEnableSkyLight, 
-		TShaderRef<TMobileBasePassVSPolicyParamType<FUniformLightMapPolicy>>& VertexShader,
-		TShaderRef<TMobileBasePassPSPolicyParamType<FUniformLightMapPolicy>>& PixelShader);
+		TMobileBasePassVSPolicyParamType<FUniformLightMapPolicy>*& VertexShader,
+		TMobileBasePassPSPolicyParamType<FUniformLightMapPolicy>*& PixelShader);
 
 	const FLightSceneInfo* GetDirectionalLightInfo(const FScene* Scene, const FPrimitiveSceneProxy* PrimitiveSceneProxy);
 	int32 CalcNumMovablePointLights(const FMaterial& InMaterial, const FPrimitiveSceneProxy* InPrimitiveSceneProxy);
 
 	bool StaticCanReceiveCSM(const FLightSceneInfo* LightSceneInfo, const FPrimitiveSceneProxy* PrimitiveSceneProxy);
 
-	void SetOpaqueRenderState(FMeshPassProcessorRenderState& DrawRenderState, const FPrimitiveSceneProxy* PrimitiveSceneProxy, const FMaterial& Material, bool bEnableReceiveDecalOutput, bool bUsesDeferredShading);
+	void SetOpaqueRenderState(FMeshPassProcessorRenderState& DrawRenderState, const FPrimitiveSceneProxy* PrimitiveSceneProxy, const FMaterial& Material, bool bEnableReceiveDecalOutput);
 	void SetTranslucentRenderState(FMeshPassProcessorRenderState& DrawRenderState, const FMaterial& Material);
 };
 
@@ -380,9 +402,9 @@ public:
 		const bool bMobileDynamicPointLightsUseStaticBranch = (MobileDynamicPointLightsUseStaticBranchCVar->GetValueOnAnyThread() == 1);
 		const int32 MobileNumDynamicPointLights = MobileNumDynamicPointLightsCVar->GetValueOnAnyThread();
 		const int32 MobileSkyLightPermutationOptions = MobileSkyLightPermutationCVar->GetValueOnAnyThread();
-		const bool bIsUnlit = Parameters.MaterialParameters.ShadingModels.IsUnlit();
+		const bool bIsUnlit = Parameters.Material->GetShadingModels().IsUnlit();
 
-		// Only compile skylight version for lit materials on mobile (Metal) or higher
+		// Only compile skylight version for lit materials on ES2 (Metal) or higher
 		const bool bShouldCacheBySkylight = !bEnableSkyLight || !bIsUnlit;
 
 		// Only compile skylight permutations when they are enabled
@@ -419,8 +441,6 @@ public:
 			OutEnvironment.SetDefine(TEXT("VARIABLE_NUM_DYNAMIC_POINT_LIGHTS"), (uint32)0);
 			OutEnvironment.SetDefine(TEXT("NUM_DYNAMIC_POINT_LIGHTS"), (uint32)NumMovablePointLights);
 		}
-
-		OutEnvironment.SetDefine(TEXT("ENABLE_AMBIENT_OCCLUSION"), IsMobileAmbientOcclusionEnabled(Parameters.Platform) ? 1u : 0u);
 	}
 	
 	/** Initialization constructor. */
@@ -443,10 +463,7 @@ public:
 		CanUseDepthStencil = (1 << 0),
 
 		// Informs the processor whether primitives can receive shadows from cascade shadow maps.
-		CanReceiveCSM = (1 << 1),
-
-		// Informs the processor to use PassDrawRenderState for all mesh commands
-		ForcePassDrawRenderState = (1 << 2)
+		CanReceiveCSM = (1 << 1)
 	};
 
 	FMobileBasePassMeshProcessor(
@@ -476,9 +493,9 @@ private:
 		const FUniformLightMapPolicy::ElementDataType& RESTRICT LightMapElementData);
 
 	const ETranslucencyPass::Type TranslucencyPassType;
-	const EFlags Flags;
 	const bool bTranslucentBasePass;
-	const bool bUsesDeferredShading;
+	const bool bCanReceiveCSM;
+	const bool bEnableReceiveDecalOutput;
 };
 
 ENUM_CLASS_FLAGS(FMobileBasePassMeshProcessor::EFlags);

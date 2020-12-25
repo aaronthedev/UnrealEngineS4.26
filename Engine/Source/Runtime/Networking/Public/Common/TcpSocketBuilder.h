@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -74,20 +74,6 @@ public:
 	FTcpSocketBuilder AsReusable()
 	{
 		Reusable = true;
-
-		return *this;
-	}
-
-	/**
-	* Sets re-usability of the bound address by other sockets.
-	*
-	* @param bInReusable Whether to enable or disable re-usability of the bound address.
-	* @return This instance (for method chaining).
-	* @see AsNonBlocking, AsNonBlocking
-	*/
-	FTcpSocketBuilder AsReusable(bool bInReusable)
-	{
-		Reusable = bInReusable;
 
 		return *this;
 	}

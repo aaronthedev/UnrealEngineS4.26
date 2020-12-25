@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -30,14 +30,27 @@ enum class EPowerUsageFrameRateLock : uint8
 UENUM()
 	enum class EIOSVersion : uint8
 {
-    /** iOS 12 */
+	/** iOS 6.1 */
+	IOS_61 = 6 UMETA(Hidden),
+
+	/** iOS 7 */
+	IOS_7 = 7 UMETA(Hidden),
+
+	/** iOS 8 */
+	IOS_8 = 8 UMETA(Hidden),
+
+	/** iOS 9 */
+	IOS_9 = 9 UMETA(Hidden),
+
+	/** iOS 10 */
+	IOS_10 = 10 UMETA(Hidden),
+
+	/** iOS 11 */
+	IOS_11 = 11 UMETA(DisplayName = "11.0"),
+
+	/** iOS 12 */
 	IOS_12 = 12 UMETA(DisplayName = "12.0"),
 
-	/** iOS 13 */
-	IOS_13 = 13 UMETA(DisplayName = "13.0"),
-
-    /** iOS 14 */
-    IOS_14 = 14 UMETA(DisplayName = "14.0"),
 };
 
 UENUM()
@@ -231,8 +244,9 @@ public:
     UPROPERTY(GlobalConfig, EditAnywhere, Category = Build, meta = (DisplayName = "Build project as a framework (Experimental)"))
     bool bBuildAsFramework;
 
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = Build, meta = (DisplayName = "Override location of Metal toolchain"))
-	FIOSBuildResourceDirectory WindowsMetalToolchainOverride;
+	// Remotely compile shaders offline
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = Build)
+	bool EnableRemoteShaderCompile;
 
 	// Enable generation of dSYM file
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = Build, meta = (DisplayName = "Generate dSYM file for code debugging and profiling"))
@@ -250,6 +264,30 @@ public:
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = Build, meta = (DisplayName = "Generate xcode archive package"))
 	bool bGenerateXCArchive;	
 	
+	// Enable ArmV7 support? (this will be used if all type are unchecked)
+	UPROPERTY(GlobalConfig)
+	bool bDevForArmV7;
+
+	// Enable Arm64 support?
+	UPROPERTY(GlobalConfig)
+	bool bDevForArm64;
+
+	// Enable ArmV7s support?
+	UPROPERTY(GlobalConfig)
+	bool bDevForArmV7S;
+
+	// Enable ArmV7 support? (this will be used if all type are unchecked)
+	UPROPERTY(GlobalConfig)
+	bool bShipForArmV7;
+
+	// Enable Arm64 support?
+	UPROPERTY(GlobalConfig)
+	bool bShipForArm64;
+
+	// Enable ArmV7s support?
+	UPROPERTY(GlobalConfig)
+	bool bShipForArmV7S;
+
 	// Enable bitcode compiling?
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = Build, meta = (DisplayName = "Support bitcode in Shipping"))
 	bool bShipForBitcode;
@@ -289,22 +327,18 @@ public:
 	// The path of the ssh permissions key to be used when connecting to the remote server.
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Build", meta = (EditCondition = "bUseRSync", DisplayName = "Override existing SSH permissions file", ConfigHierarchyEditable))
 	FIOSBuildResourceFilePath SSHPrivateKeyOverridePath;
-    
-    // Should the app be compatible with Multi-User feature on tvOS ?　If checked, the game will will shutdown with the typical exit flow.
-    UPROPERTY(GlobalConfig, EditAnywhere, Category = "Build", meta = (DisplayName = "Support user switching on tvOS."))
-    bool bRunAsCurrentUser;
 
-	// If checked, the game will be able to handle multiple gamepads at the same time (the Siri Remote is a gamepad)
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = Input, meta = (DisplayName = "Can the Game have multiple gamepads connected at a single time"))
-	bool bGameSupportsMultipleActiveControllers;
+	// If checked, the Siri Remote will act as a separate controller Id from any connected controllers. If unchecked, the remote and the first connected controller will share an ID (and control the same player)
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = Input, meta = (DisplayName = "Treat AppleTV Remote as separate controller"))
+	bool bTreatRemoteAsSeparateController;
 
 	// If checked, the Siri Remote can be rotated to landscape view
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = Input, meta = (DisplayName = "Allow AppleTV Remote landscape mode"))
 	bool bAllowRemoteRotation;
 	
 	// If checked, the trackpad is a virtual joystick (acts like the left stick of a controller). If unchecked, the trackpad will send touch events
-	UPROPERTY(config, meta = (Deprecated, DeprecationMessage = "Use AppleTV trackpad as virtual joystick. Deprecated. Siri Remote shouls always behave as a joystick"))
-	bool bUseRemoteAsVirtualJoystick_DEPRECATED;
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = Input, meta = (DisplayName = "Use AppleTV trackpad as virtual joystick"))
+	bool bUseRemoteAsVirtualJoystick;
 	
 	// If checked, the center of the trackpad is 0,0 (center) for the virtual joystick. If unchecked, the location the user taps becomes 0,0
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = Input, meta = (DisplayName = "Use AppleTV Remote absolute trackpad values"))
@@ -313,10 +347,6 @@ public:
 	// If checked, Bluetooth connected controllers will send input
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = Input, meta = (DisplayName = "Allow MFi (Bluetooth) controllers"))
 	bool bAllowControllers;
-
-	// Block force feedback on the device when controllers are attached.
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = Input, meta = (DisplayName = "Block force feedback on the device when controllers are attached"))
-	bool bControllersBlockDeviceFeedback;
 
 	// Disables usage of device motion data. If application does not use motion data disabling it will improve battery life
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = Input, meta = (DisplayName = "Disable Motion Controls"))
@@ -338,13 +368,8 @@ public:
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = DeviceOrientations)
 	uint32 bSupportsLandscapeRightOrientation : 1;
 
-	// Whether files created by the app will be accessible from the iTunes File Sharing feature
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = FileSystem, meta = (DisplayName = "Support iTunes File Sharing"))
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = FileSystem)
 	uint32 bSupportsITunesFileSharing : 1;
-	
-	// Whether files created by the app will be accessible from within the device's Files app (requires iTunes File Sharing)
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = FileSystem, meta = (DisplayName = "Support Files App", EditCondition = "bSupportsITunesFileSharing"))
-	uint32 bSupportsFilesApp : 1;
 	
 	// The Preferred Orientation will be used as the initial orientation at launch when both Landscape Left and Landscape Right orientations are to be supported.
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = DeviceOrientations, meta = (DisplayName = "Preferred Landscape Orientation"))
@@ -370,10 +395,6 @@ public:
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = PowerUsage, meta = (ConfigHierarchyEditable))
 	EPowerUsageFrameRateLock FrameRateLock;
 
-	//Whether or not to allow taking the MaxRefreshRate from the device instead of a constant (60fps) in IOSPlatformFramePacer
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = PowerUsage, meta = (ConfigHierarchyEditable))
-	bool bEnableDynamicMaxFPS;
-
 	// Minimum iOS version this game supports
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = OSInfo, meta = (DisplayName = "Minimum iOS Version"))
 	EIOSVersion MinimumiOSVersion;
@@ -389,15 +410,6 @@ public:
 	// Any additional plist key/value data utilizing \n for a new line
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = ExtraData)
 	FString AdditionalPlistData;
-
-	/**
-	 * Choose whether to use a custom LaunchScreen.Storyboard as a Launchscreen. To use this option, create a storyboard in Xcode and 
-	 * copy it named LaunchScreen.storyboard in Build/IOS/Resources/Interface under your Project folder. This will be compiled and 
-	 * copied to the bundle app and the Launch screen image above will not be included in the app.
-	 * When using assets in your custom LaunchScreen.storyboard, add them in Build/IOS/Resources/Interface/Assets and they will be included.
-	 */
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = LaunchScreen, meta = (DisplayName = "Custom Launchscreen Storyboard (experimental)"))
-	bool bCustomLaunchscreenStoryboard;
 
 	// Whether the app supports Facebook
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = Online)
@@ -503,6 +515,10 @@ public:
 	UPROPERTY(config, EditAnywhere, Category = "Audio")
 	FPlatformRuntimeAudioCompressionOverrides CompressionOverrides;
 
+	/** This determines how we split compressed audio into chunks for this platform. The smaller this value is the more granular our chunking is. */
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Audio|CookOverrides", meta = (DisplayName = "Max Size Per Streaming Chunk (KB)"))
+	int32 ChunkSizeKB;
+
 	/** When this is enabled, Actual compressed data will be separated from the USoundWave, and loaded into a cache. */
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Audio|CookOverrides", meta = (DisplayName = "Use Stream Caching (Experimental)"))
 	bool bUseAudioStreamCaching;
@@ -510,10 +526,6 @@ public:
 	/** This determines the max amount of memory that should be used for the cache at any given time. If set low (<= 8 MB), it lowers the size of individual chunks of audio during cook. */
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Audio|CookOverrides|Stream Caching", meta = (DisplayName = "Max Cache Size (KB)"))
 	int32 CacheSizeKB;
-
-	/** This overrides the default max chunk size used when chunking audio for stream caching (ignored if < 0) */
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Audio|CookOverrides|Stream Caching", meta = (DisplayName = "Max Chunk Size Override (KB)"))
-	int32 MaxChunkSizeOverrideKB;
 
 	UPROPERTY(config, EditAnywhere, Category = "Audio|CookOverrides")
 	bool bResampleForDevice;
@@ -547,11 +559,7 @@ public:
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Audio|CookOverrides", meta = (DisplayName = "Stream All Soundwaves Longer Than: "))
 	float AutoStreamingThreshold;
 
-	/** Whether to enable LOD streaming for landscape visual meshes. Requires Metal support. */
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Misc", Meta = (DisplayName = "Stream landscape visual mesh LODs"))
-	bool bStreamLandscapeMeshLODs;
-
-	virtual void PostReloadConfig(class FProperty* PropertyThatWasLoaded) override;
+	virtual void PostReloadConfig(class UProperty* PropertyThatWasLoaded) override;
 
 #if WITH_EDITOR
 	// UObject interface

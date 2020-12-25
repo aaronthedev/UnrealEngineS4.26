@@ -1,7 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
-RenderAssetUpdate.inl: Base class of helpers to stream in and out texture/mesh LODs
+RenderAssetUpdate.h: Base class of helpers to stream in and out texture/mesh LODs
 =============================================================================*/
 
 #pragma once
@@ -9,8 +9,8 @@ RenderAssetUpdate.inl: Base class of helpers to stream in and out texture/mesh L
 #include "RenderAssetUpdate.h"
 
 template <typename TContext>
-TRenderAssetUpdate<TContext>::TRenderAssetUpdate(const UStreamableRenderAsset* InAsset)
-	: FRenderAssetUpdate(InAsset)
+TRenderAssetUpdate<TContext>::TRenderAssetUpdate(UStreamableRenderAsset* InAsset, int32 InRequestedMips)
+	: FRenderAssetUpdate(InAsset, InRequestedMips)
 	, TaskThread(TT_None)
 	, TaskCallback(nullptr)
 	, CancelationThread(TT_None)
@@ -42,7 +42,7 @@ FRenderAssetUpdate::ETaskState TRenderAssetUpdate<TContext>::TickInternal(EThrea
 	// Thread, callback and asset must be coherent because Abort() could be called while this is executing.
 	EThreadType RelevantThread = TaskThread;
 	FCallback RelevantCallback = TaskCallback;
-	const UStreamableRenderAsset* RelevantAsset = StreamableAsset;
+	UStreamableRenderAsset* RelevantAsset = StreamableAsset;
 	if (bIsCancelled || !RelevantAsset)
 	{
 		RelevantThread = CancelationThread;
@@ -71,8 +71,7 @@ FRenderAssetUpdate::ETaskState TRenderAssetUpdate<TContext>::TickInternal(EThrea
 	else if (RelevantThread == InCurrentThread)
 	{
 		ClearCallbacks();
-		FContext Context(RelevantAsset, InCurrentThread);
-		RelevantCallback(Context);
+		RelevantCallback(FContext(RelevantAsset, InCurrentThread));
 		return TS_Locked;
 	} 
 	else if (RelevantThread == FRenderAssetUpdate::TT_GameThread && !ScheduledGTTasks)

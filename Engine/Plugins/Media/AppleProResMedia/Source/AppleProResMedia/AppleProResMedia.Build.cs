@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -12,8 +12,6 @@ namespace UnrealBuildTool.Rules
 					"ProResToolbox",
                     "WmfMediaFactory",
                     "WmfMedia",
-					"ImageWriteQueue",
-					"MovieRenderPipelineCore",
                 });
 
 			PrivateDependencyModuleNames.AddRange(

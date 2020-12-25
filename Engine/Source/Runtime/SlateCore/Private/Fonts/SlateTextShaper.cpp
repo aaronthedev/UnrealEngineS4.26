@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Fonts/SlateTextShaper.h"
 #include "Fonts/FontCacheCompositeFont.h"
@@ -256,7 +256,7 @@ FShapedGlyphSequenceRef FSlateTextShaper::FinalizeTextShaping(TArray<FShapedGlyp
 		const FFontData& FontData = CompositeFontCache->GetDefaultFontData(InFontInfo);
 		const FFreeTypeFaceGlyphData FaceGlyphData = FontRenderer->GetFontFaceForCodepoint(FontData, Char, InFontInfo.FontFallback);
 
-		if (FaceGlyphData.FaceAndMemory.IsValid() && FaceGlyphData.FaceAndMemory->IsFaceValid())
+		if (FaceGlyphData.FaceAndMemory.IsValid())
 		{
 			FreeTypeUtils::ApplySizeAndScale(FaceGlyphData.FaceAndMemory->GetFace(), InFontInfo.Size, InFontScale);
 			
@@ -314,9 +314,7 @@ void FSlateTextShaper::PerformKerningOnlyTextShaping(const TCHAR* InText, const 
 			const FFontData* FontDataPtr = &CompositeFontCache->GetFontDataForCodepoint(InFontInfo, CurrentChar, SubFontScalingFactor);
 			FFreeTypeFaceGlyphData FaceGlyphData = FontRenderer->GetFontFaceForCodepoint(*FontDataPtr, CurrentChar, bShouldRenderAsWhitespace ? EFontFallback::FF_NoFallback : InFontInfo.FontFallback);
 
-			// If none of our fonts can render that character (as the fallback font may be missing), 
-			// try again with the fallback character, or a normal space if this character was supposed to 
-			// be whitespace (as we don't render whitespace anyway)
+			// If none of our fonts can render that character (as the fallback font may be missing), try again with the fallback character, or a normal space if this character was supposed to be whitespace (as we don't render whitespace anyway)
 			if (!FaceGlyphData.FaceAndMemory.IsValid())
 			{
 				const TCHAR FallbackChar = bShouldRenderAsWhitespace ? TEXT(' ') : SlateFontRendererUtils::InvalidSubChar;
@@ -354,10 +352,7 @@ void FSlateTextShaper::PerformKerningOnlyTextShaping(const TCHAR* InText, const 
 				continue;
 			}
 
-			const bool bHasKerning = FT_HAS_KERNING(KerningOnlyTextSequenceEntry.FaceAndMemory->GetFace()) != 0 || InFontInfo.LetterSpacing != 0;
-
-			// Letter spacing should scale proportional to font size / 1000 (to roughly mimic Photoshop tracking)
-			const float LetterSpacingScaled = InFontInfo.LetterSpacing != 0 ? InFontInfo.LetterSpacing * InFontInfo.Size / 1000 : 0;
+			const bool bHasKerning = FT_HAS_KERNING(KerningOnlyTextSequenceEntry.FaceAndMemory->GetFace()) != 0;
 
 			uint32 GlyphFlags = 0;
 			SlateFontRendererUtils::AppendGlyphFlags(*KerningOnlyTextSequenceEntry.FaceAndMemory, *KerningOnlyTextSequenceEntry.FontDataPtr, GlyphFlags);
@@ -371,7 +366,7 @@ void FSlateTextShaper::PerformKerningOnlyTextShaping(const TCHAR* InText, const 
 				const int32 CurrentCharIndex = KerningOnlyTextSequenceEntry.TextStartIndex + SequenceCharIndex;
 				const TCHAR CurrentChar = InText[CurrentCharIndex];
 
-				if (!InsertSubstituteGlyphs(InText, CurrentCharIndex, ShapedGlyphFaceData, OutGlyphsToRender, LetterSpacingScaled))
+				if (!InsertSubstituteGlyphs(InText, CurrentCharIndex, ShapedGlyphFaceData, OutGlyphsToRender))
 				{
 					uint32 GlyphIndex = FT_Get_Char_Index(KerningOnlyTextSequenceEntry.FaceAndMemory->GetFace(), CurrentChar);
 
@@ -405,25 +400,17 @@ void FSlateTextShaper::PerformKerningOnlyTextShaping(const TCHAR* InText, const 
 					ShapedGlyphEntry.TextDirection = TextBiDi::ETextDirection::LeftToRight;
 					ShapedGlyphEntry.bIsVisible = !RenderCodepointAsWhitespace(CurrentChar);
 
-					// Apply the letter spacing and font kerning against the previous entry
-					if (CurrentGlyphEntryIndex > 0 && bHasKerning)
+					// Apply the kerning against the previous entry
+					if (CurrentGlyphEntryIndex > 0 && bHasKerning && ShapedGlyphEntry.bIsVisible)
 					{
 						FShapedGlyphEntry& PreviousShapedGlyphEntry = OutGlyphsToRender[CurrentGlyphEntryIndex - 1];
 
-						if (LetterSpacingScaled != 0)
+						FT_Vector KerningVector;
+						if (FTKerningPairCache->FindOrCache(KerningOnlyTextSequenceEntry.FaceAndMemory->GetFace(), FFreeTypeKerningPairCache::FKerningPair(PreviousShapedGlyphEntry.GlyphIndex, ShapedGlyphEntry.GlyphIndex), FT_KERNING_DEFAULT, InFontInfo.Size, FinalFontScale, KerningVector))
 						{
-							PreviousShapedGlyphEntry.XAdvance += LetterSpacingScaled;
-						}
-
-						if (ShapedGlyphEntry.bIsVisible)
-						{
-							FT_Vector KerningVector;
-							if (FTKerningPairCache->FindOrCache(KerningOnlyTextSequenceEntry.FaceAndMemory->GetFace(), FFreeTypeKerningPairCache::FKerningPair(PreviousShapedGlyphEntry.GlyphIndex, ShapedGlyphEntry.GlyphIndex), FT_KERNING_DEFAULT, InFontInfo.Size, FinalFontScale, KerningVector))
-							{
-								const int8 Kerning = FreeTypeUtils::Convert26Dot6ToRoundedPixel<int8>(KerningVector.x);
-								PreviousShapedGlyphEntry.XAdvance += Kerning;
-								PreviousShapedGlyphEntry.Kerning = Kerning;
-							}
+							const int8 Kerning = FreeTypeUtils::Convert26Dot6ToRoundedPixel<int8>(KerningVector.x);
+							PreviousShapedGlyphEntry.XAdvance += Kerning;
+							PreviousShapedGlyphEntry.Kerning = Kerning;
 						}
 					}
 				}
@@ -443,9 +430,6 @@ void FSlateTextShaper::PerformHarfBuzzTextShaping(const TCHAR* InText, const int
 	hb_unicode_funcs_t* HarfBuzzUnicodeFuncs = hb_unicode_funcs_get_default();
 
 	GraphemeBreakIterator->SetString(InText + InTextStart, InTextLen);
-
-	// HarfBuzz does not currently support letter spacing/tracking in conjunction with certain combinations of grapheme clusters, so we will bypass letter spacing under certain conditions (such as with Arabic script).
-	bool bBypassLetterSpacing = false;
 
 	// Step 1) Split the text into sections that are using the same font face (composite fonts may contain different faces for different character ranges)
 	{
@@ -488,10 +472,6 @@ void FSlateTextShaper::PerformHarfBuzzTextShaping(const TCHAR* InText, const int
 				if (StringConv::IsHighSurrogate(InText[RunningTextIndex]) && StringConv::IsLowSurrogate(InText[NextTextIndex]))
 				{
 					CurrentCodepoint = StringConv::EncodeSurrogate(InText[RunningTextIndex], InText[NextTextIndex]);
-				}
-				else
-				{
-					bBypassLetterSpacing = true;
 				}
 			}
 #endif	// !PLATFORM_TCHAR_IS_4_BYTES
@@ -604,13 +584,13 @@ void FSlateTextShaper::PerformHarfBuzzTextShaping(const TCHAR* InText, const int
 	{
 		// Need to flip the sequence here to mimic what HarfBuzz would do if the text had been a single sequence of right-to-left text
 		Algo::Reverse(HarfBuzzTextSequence);
-		bBypassLetterSpacing = true;
 	}
+
+	const int32 InitialNumGlyphsToRender = OutGlyphsToRender.Num();
 
 	// Step 3) Now we use HarfBuzz to shape each font data sequence using its FreeType glyph
 	{
 		hb_buffer_t* HarfBuzzTextBuffer = hb_buffer_create();
-		const FStringView InTextView = InText; // This will do a strlen, so do it once at the start
 
 		for (const FHarfBuzzTextSequenceEntry& HarfBuzzTextSequenceEntry : HarfBuzzTextSequence)
 		{
@@ -620,17 +600,12 @@ void FSlateTextShaper::PerformHarfBuzzTextShaping(const TCHAR* InText, const int
 			}
 
 #if WITH_FREETYPE
-			const bool bHasKerning = FT_HAS_KERNING(HarfBuzzTextSequenceEntry.FaceAndMemory->GetFace()) != 0 || (!bBypassLetterSpacing && InFontInfo.LetterSpacing != 0);
+			const bool bHasKerning = FT_HAS_KERNING(HarfBuzzTextSequenceEntry.FaceAndMemory->GetFace()) != 0;
 #else  // WITH_FREETYPE
 			const bool bHasKerning = false;
 #endif // WITH_FREETYPE
-
-			// Letter spacing should scale proportional to font size / 1000 (to roughly mimic Photoshop tracking)
-			const float LetterSpacingScaled = (!bBypassLetterSpacing && InFontInfo.LetterSpacing != 0) ? InFontInfo.LetterSpacing * InFontInfo.Size / 1000 : 0;
-
 			const hb_feature_t HarfBuzzFeatures[] = {
-				{ HB_TAG('k','e','r','n'), bHasKerning, 0, uint32(-1) },
-				{ HB_TAG('l','i','g','a'), LetterSpacingScaled == 0, 0, uint32(-1) } // Disable standard ligatures if we have non-zero letter spacing to allow the individual characters to flow freely
+				{ HB_TAG('k','e','r','n'), bHasKerning, 0, uint32(-1) }
 			};
 			const int32 HarfBuzzFeaturesCount = UE_ARRAY_COUNT(HarfBuzzFeatures);
 
@@ -643,13 +618,11 @@ void FSlateTextShaper::PerformHarfBuzzTextShaping(const TCHAR* InText, const int
 
 			for (const FHarfBuzzTextSequenceEntry::FSubSequenceEntry& HarfBuzzTextSubSequenceEntry : HarfBuzzTextSequenceEntry.SubSequence)
 			{
-				const int32 InitialNumGlyphsToRender = OutGlyphsToRender.Num();
-
 				hb_buffer_set_cluster_level(HarfBuzzTextBuffer, HB_BUFFER_CLUSTER_LEVEL_MONOTONE_GRAPHEMES);
 				hb_buffer_set_direction(HarfBuzzTextBuffer, (InTextDirection == TextBiDi::ETextDirection::LeftToRight) ? HB_DIRECTION_LTR : HB_DIRECTION_RTL);
 				hb_buffer_set_script(HarfBuzzTextBuffer, HarfBuzzTextSubSequenceEntry.HarfBuzzScript);
 
-				HarfBuzzUtils::AppendStringToBuffer(InTextView, HarfBuzzTextSubSequenceEntry.StartIndex, HarfBuzzTextSubSequenceEntry.Length, HarfBuzzTextBuffer);
+				HarfBuzzUtils::AppendStringToBuffer(InText, HarfBuzzTextSubSequenceEntry.StartIndex, HarfBuzzTextSubSequenceEntry.Length, HarfBuzzTextBuffer);
 				hb_shape(HarfBuzzFont, HarfBuzzTextBuffer, HarfBuzzFeatures, HarfBuzzFeaturesCount);
 
 				uint32 HarfBuzzGlyphCount = 0;
@@ -664,7 +637,7 @@ void FSlateTextShaper::PerformHarfBuzzTextShaping(const TCHAR* InText, const int
 
 					const int32 CurrentCharIndex = static_cast<int32>(HarfBuzzGlyphInfo.cluster);
 					const TCHAR CurrentChar = InText[CurrentCharIndex];
-					if (!InsertSubstituteGlyphs(InText, CurrentCharIndex, ShapedGlyphFaceData, OutGlyphsToRender, LetterSpacingScaled))
+					if (!InsertSubstituteGlyphs(InText, CurrentCharIndex, ShapedGlyphFaceData, OutGlyphsToRender))
 					{
 						const int32 CurrentGlyphEntryIndex = OutGlyphsToRender.AddDefaulted();
 						FShapedGlyphEntry& ShapedGlyphEntry = OutGlyphsToRender[CurrentGlyphEntryIndex];
@@ -681,23 +654,16 @@ void FSlateTextShaper::PerformHarfBuzzTextShaping(const TCHAR* InText, const int
 						ShapedGlyphEntry.TextDirection = InTextDirection;
 						ShapedGlyphEntry.bIsVisible = !RenderCodepointAsWhitespace(CurrentChar);
 
-						// Apply the letter spacing and font kerning against the previous entry
-						if (CurrentGlyphEntryIndex > 0 && bHasKerning)
+						// Apply the kerning against the previous entry
+						if (CurrentGlyphEntryIndex > 0 && bHasKerning && ShapedGlyphEntry.bIsVisible)
 						{
 							FShapedGlyphEntry& PreviousShapedGlyphEntry = OutGlyphsToRender[CurrentGlyphEntryIndex - 1];
 
-							if (LetterSpacingScaled != 0)
-							{
-								PreviousShapedGlyphEntry.XAdvance += LetterSpacingScaled;
-							}
 #if WITH_FREETYPE
-							if (ShapedGlyphEntry.bIsVisible)
+							FT_Vector KerningVector;
+							if (FTKerningPairCache->FindOrCache(HarfBuzzTextSequenceEntry.FaceAndMemory->GetFace(), FFreeTypeKerningPairCache::FKerningPair(PreviousShapedGlyphEntry.GlyphIndex, ShapedGlyphEntry.GlyphIndex), FT_KERNING_DEFAULT, InFontInfo.Size, FinalFontScale, KerningVector))
 							{
-								FT_Vector KerningVector;
-								if (FTKerningPairCache->FindOrCache(HarfBuzzTextSequenceEntry.FaceAndMemory->GetFace(), FFreeTypeKerningPairCache::FKerningPair(PreviousShapedGlyphEntry.GlyphIndex, ShapedGlyphEntry.GlyphIndex), FT_KERNING_DEFAULT, InFontInfo.Size, FinalFontScale, KerningVector))
-								{
-									PreviousShapedGlyphEntry.Kerning = FreeTypeUtils::Convert26Dot6ToRoundedPixel<int8>(KerningVector.x);
-								}
+								PreviousShapedGlyphEntry.Kerning = FreeTypeUtils::Convert26Dot6ToRoundedPixel<int8>(KerningVector.x);
 							}
 #endif // WITH_FREETYPE
 						}
@@ -705,110 +671,6 @@ void FSlateTextShaper::PerformHarfBuzzTextShaping(const TCHAR* InText, const int
 				}
 
 				hb_buffer_clear_contents(HarfBuzzTextBuffer);
-
-				// Count the characters and grapheme clusters that belong to each glyph in this sub-sequence (if they haven't already been set)
-				{
-					const int32 NumGlyphsRendered = OutGlyphsToRender.Num() - InitialNumGlyphsToRender;
-					if (NumGlyphsRendered > 0)
-					{
-						auto ConditionalUpdateGlyphCountsForRange = [this, InTextStart](FShapedGlyphEntry& ShapedGlyphEntry, const int32 TextStartIndex, const int32 TextEndIndex)
-						{
-							check(TextStartIndex <= TextEndIndex);
-
-							if (ShapedGlyphEntry.NumCharactersInGlyph == 0 && ShapedGlyphEntry.NumGraphemeClustersInGlyph == 0)
-							{
-								ShapedGlyphEntry.NumCharactersInGlyph = TextEndIndex - TextStartIndex;
-
-								if (ShapedGlyphEntry.NumCharactersInGlyph > 0)
-								{
-									const int32 FirstCharacterIndex = TextStartIndex - InTextStart;
-									const int32 LastCharacterIndex = TextEndIndex - InTextStart;
-
-									// Only count grapheme clusters if this glyph starts on a grapheme boundary
-									int32 PreviousBreak = FirstCharacterIndex;
-									{
-										GraphemeBreakIterator->MoveToCandidateAfter(FirstCharacterIndex);
-										PreviousBreak = GraphemeBreakIterator->MoveToPrevious();
-									}
-
-									if (PreviousBreak == FirstCharacterIndex)
-									{
-										int32 CurrentBreak = LastCharacterIndex;
-										for (CurrentBreak = GraphemeBreakIterator->MoveToCandidateAfter(FirstCharacterIndex);
-											CurrentBreak != INDEX_NONE;
-											CurrentBreak = GraphemeBreakIterator->MoveToNext()
-											)
-										{
-											++ShapedGlyphEntry.NumGraphemeClustersInGlyph;
-											if (CurrentBreak >= LastCharacterIndex)
-											{
-												break;
-											}
-										}
-
-										// Only count grapheme clusters if this glyph ends on a grapheme boundary
-										if (CurrentBreak != LastCharacterIndex)
-										{
-											ShapedGlyphEntry.NumGraphemeClustersInGlyph = 0;
-										}
-									}
-								}
-							}
-						};
-
-						auto GetNextGlyphToRenderIndex = [&OutGlyphsToRender](const int32 GlyphToRenderIndex) -> int32
-						{
-							FShapedGlyphEntry& ShapedGlyphEntry = OutGlyphsToRender[GlyphToRenderIndex];
-							int32 NextGlyphToRenderIndex = GlyphToRenderIndex + 1;
-
-							// Walk forward to find the first glyph in the next cluster; the number of characters in this glyph is the difference between their two source indices
-							for (; NextGlyphToRenderIndex < OutGlyphsToRender.Num(); ++NextGlyphToRenderIndex)
-							{
-								const FShapedGlyphEntry& NextShapedGlyphEntry = OutGlyphsToRender[NextGlyphToRenderIndex];
-								if (ShapedGlyphEntry.SourceIndex != NextShapedGlyphEntry.SourceIndex)
-								{
-									break;
-								}
-							}
-
-							return NextGlyphToRenderIndex;
-						};
-
-						// The glyphs in the array are in render order, so LTR and RTL text use different start and end points in the source string
-						if (InTextDirection == TextBiDi::ETextDirection::LeftToRight)
-						{
-							for (int32 GlyphToRenderIndex = InitialNumGlyphsToRender; GlyphToRenderIndex < OutGlyphsToRender.Num();)
-							{
-								FShapedGlyphEntry& ShapedGlyphEntry = OutGlyphsToRender[GlyphToRenderIndex];
-
-								const int32 NextGlyphToRenderIndex = GetNextGlyphToRenderIndex(GlyphToRenderIndex);
-								if (NextGlyphToRenderIndex < OutGlyphsToRender.Num())
-								{
-									const FShapedGlyphEntry& NextShapedGlyphEntry = OutGlyphsToRender[NextGlyphToRenderIndex];
-									ConditionalUpdateGlyphCountsForRange(ShapedGlyphEntry, ShapedGlyphEntry.SourceIndex, NextShapedGlyphEntry.SourceIndex);
-								}
-								else
-								{
-									ConditionalUpdateGlyphCountsForRange(ShapedGlyphEntry, ShapedGlyphEntry.SourceIndex, HarfBuzzTextSubSequenceEntry.StartIndex + HarfBuzzTextSubSequenceEntry.Length);
-								}
-
-								GlyphToRenderIndex = NextGlyphToRenderIndex;
-							}
-						}
-						else
-						{
-							int32 PreviousSourceIndex = HarfBuzzTextSubSequenceEntry.StartIndex + HarfBuzzTextSubSequenceEntry.Length;
-							for (int32 GlyphToRenderIndex = InitialNumGlyphsToRender; GlyphToRenderIndex < OutGlyphsToRender.Num();)
-							{
-								FShapedGlyphEntry& ShapedGlyphEntry = OutGlyphsToRender[GlyphToRenderIndex];
-
-								ConditionalUpdateGlyphCountsForRange(ShapedGlyphEntry, ShapedGlyphEntry.SourceIndex, PreviousSourceIndex);
-								GlyphToRenderIndex = GetNextGlyphToRenderIndex(GlyphToRenderIndex);
-								PreviousSourceIndex = ShapedGlyphEntry.SourceIndex;
-							}
-						}
-					}
-				}
 			}
 
 			hb_font_destroy(HarfBuzzFont);
@@ -817,12 +679,116 @@ void FSlateTextShaper::PerformHarfBuzzTextShaping(const TCHAR* InText, const int
 		hb_buffer_destroy(HarfBuzzTextBuffer);
 	}
 
+	// Step 4) Count the characters and grapheme clusters that belong to each glyph if they haven't already been set
+	{
+		const int32 NumGlyphsRendered = OutGlyphsToRender.Num() - InitialNumGlyphsToRender;
+		if (NumGlyphsRendered > 0)
+		{
+			auto ConditionalUpdateGlyphCountsForRange = [this, InTextStart](FShapedGlyphEntry& ShapedGlyphEntry, const int32 TextStartIndex, const int32 TextEndIndex)
+			{
+				check(TextStartIndex <= TextEndIndex);
+
+				if (ShapedGlyphEntry.NumCharactersInGlyph == 0 && ShapedGlyphEntry.NumGraphemeClustersInGlyph == 0)
+				{
+					ShapedGlyphEntry.NumCharactersInGlyph = TextEndIndex - TextStartIndex;
+
+					if (ShapedGlyphEntry.NumCharactersInGlyph > 0)
+					{
+						const int32 FirstCharacterIndex = TextStartIndex - InTextStart;
+						const int32 LastCharacterIndex = TextEndIndex - InTextStart;
+
+						// Only count grapheme clusters if this glyph starts on a grapheme boundary
+						int32 PreviousBreak = FirstCharacterIndex;
+						{
+							GraphemeBreakIterator->MoveToCandidateAfter(FirstCharacterIndex);
+							PreviousBreak = GraphemeBreakIterator->MoveToPrevious();
+						}
+
+						if (PreviousBreak == FirstCharacterIndex)
+						{
+							int32 CurrentBreak = LastCharacterIndex;
+							for (CurrentBreak = GraphemeBreakIterator->MoveToCandidateAfter(FirstCharacterIndex);
+								CurrentBreak != INDEX_NONE;
+								CurrentBreak = GraphemeBreakIterator->MoveToNext()
+								)
+							{
+								++ShapedGlyphEntry.NumGraphemeClustersInGlyph;
+								if (CurrentBreak >= LastCharacterIndex)
+								{
+									break;
+								}
+							}
+
+							// Only count grapheme clusters if this glyph ends on a grapheme boundary
+							if (CurrentBreak != LastCharacterIndex)
+							{
+								ShapedGlyphEntry.NumGraphemeClustersInGlyph = 0;
+							}
+						}
+					}
+				}
+			};
+
+			auto GetNextGlyphToRenderIndex = [&OutGlyphsToRender](const int32 GlyphToRenderIndex) -> int32
+			{
+				FShapedGlyphEntry& ShapedGlyphEntry = OutGlyphsToRender[GlyphToRenderIndex];
+				int32 NextGlyphToRenderIndex = GlyphToRenderIndex + 1;
+
+				// Walk forward to find the first glyph in the next cluster; the number of characters in this glyph is the difference between their two source indices
+				for (; NextGlyphToRenderIndex < OutGlyphsToRender.Num(); ++NextGlyphToRenderIndex)
+				{
+					const FShapedGlyphEntry& NextShapedGlyphEntry = OutGlyphsToRender[NextGlyphToRenderIndex];
+					if (ShapedGlyphEntry.SourceIndex != NextShapedGlyphEntry.SourceIndex)
+					{
+						break;
+					}
+				}
+
+				return NextGlyphToRenderIndex;
+			};
+
+			// The glyphs in the array are in render order, so LTR and RTL text use different start and end points in the source string
+			if (InTextDirection == TextBiDi::ETextDirection::LeftToRight)
+			{
+				for (int32 GlyphToRenderIndex = InitialNumGlyphsToRender; GlyphToRenderIndex < OutGlyphsToRender.Num();)
+				{
+					FShapedGlyphEntry& ShapedGlyphEntry = OutGlyphsToRender[GlyphToRenderIndex];
+
+					const int32 NextGlyphToRenderIndex = GetNextGlyphToRenderIndex(GlyphToRenderIndex);
+					if (NextGlyphToRenderIndex < OutGlyphsToRender.Num())
+					{
+						const FShapedGlyphEntry& NextShapedGlyphEntry = OutGlyphsToRender[NextGlyphToRenderIndex];
+						ConditionalUpdateGlyphCountsForRange(ShapedGlyphEntry, ShapedGlyphEntry.SourceIndex, NextShapedGlyphEntry.SourceIndex);
+					}
+					else
+					{
+						ConditionalUpdateGlyphCountsForRange(ShapedGlyphEntry, ShapedGlyphEntry.SourceIndex, InTextStart + InTextLen);
+					}
+
+					GlyphToRenderIndex = NextGlyphToRenderIndex;
+				}
+			}
+			else
+			{
+				int32 PreviousSourceIndex = InTextStart + InTextLen;
+				for (int32 GlyphToRenderIndex = InitialNumGlyphsToRender; GlyphToRenderIndex < OutGlyphsToRender.Num();)
+				{
+					FShapedGlyphEntry& ShapedGlyphEntry = OutGlyphsToRender[GlyphToRenderIndex];
+
+					ConditionalUpdateGlyphCountsForRange(ShapedGlyphEntry, ShapedGlyphEntry.SourceIndex, PreviousSourceIndex);
+					GlyphToRenderIndex = GetNextGlyphToRenderIndex(GlyphToRenderIndex);
+					PreviousSourceIndex = ShapedGlyphEntry.SourceIndex;
+				}
+			}
+		}
+	}
+
 	GraphemeBreakIterator->ClearString();
 }
 
 #endif // WITH_HARFBUZZ
 
-bool FSlateTextShaper::InsertSubstituteGlyphs(const TCHAR* InText, const int32 InCharIndex, const TSharedRef<FShapedGlyphFaceData>& InShapedGlyphFaceData, TArray<FShapedGlyphEntry>& OutGlyphsToRender, const float InLetterSpacingScaled) const
+bool FSlateTextShaper::InsertSubstituteGlyphs(const TCHAR* InText, const int32 InCharIndex, const TSharedRef<FShapedGlyphFaceData>& InShapedGlyphFaceData, TArray<FShapedGlyphEntry>& OutGlyphsToRender) const
 {
 	auto GetSpaceGlyphIndexAndAdvance = [this, &InShapedGlyphFaceData](uint32& OutSpaceGlyphIndex, int16& OutSpaceXAdvance)
 	{
@@ -880,7 +846,7 @@ bool FSlateTextShaper::InsertSubstituteGlyphs(const TCHAR* InText, const int32 I
 			ShapedGlyphEntry.FontFaceData = InShapedGlyphFaceData;
 			ShapedGlyphEntry.GlyphIndex = SpaceGlyphIndex;
 			ShapedGlyphEntry.SourceIndex = InCharIndex;
-			ShapedGlyphEntry.XAdvance = (SpaceXAdvance + InLetterSpacingScaled) * NumSpacesToInsert;
+			ShapedGlyphEntry.XAdvance = SpaceXAdvance * NumSpacesToInsert;
 			ShapedGlyphEntry.YAdvance = 0;
 			ShapedGlyphEntry.XOffset = 0;
 			ShapedGlyphEntry.YOffset = 0;
@@ -923,7 +889,7 @@ bool FSlateTextShaper::InsertSubstituteGlyphs(const TCHAR* InText, const int32 I
 		ShapedGlyphEntry.FontFaceData = InShapedGlyphFaceData;
 		ShapedGlyphEntry.GlyphIndex = SpaceGlyphIndex;
 		ShapedGlyphEntry.SourceIndex = InCharIndex;
-		ShapedGlyphEntry.XAdvance = ((SpaceXAdvance + InLetterSpacingScaled) * 2) / 3;
+		ShapedGlyphEntry.XAdvance = (SpaceXAdvance * 2) / 3;
 		ShapedGlyphEntry.YAdvance = 0;
 		ShapedGlyphEntry.XOffset = 0;
 		ShapedGlyphEntry.YOffset = 0;

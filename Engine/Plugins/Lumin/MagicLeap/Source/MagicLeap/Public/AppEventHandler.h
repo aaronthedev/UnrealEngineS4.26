@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -17,20 +17,17 @@ namespace MagicLeap
 		Error
 	};
 
-	struct MAGICLEAP_API FRequiredPrivilege
+	struct FRequiredPrivilege
 	{
-		typedef TFunction<void(const FRequiredPrivilege& RequiredPrivilege)> FPrivilegeEventHandler;
-
 		FRequiredPrivilege(EMagicLeapPrivilege InPrivilegeID)
-			: PrivilegeID(InPrivilegeID)
-			, PrivilegeRequest(nullptr)
-			, State(NotYetRequested)
+		: PrivilegeID(InPrivilegeID)
+		, PrivilegeRequest(nullptr)
+		, State(NotYetRequested)
 		{}
 
 		EMagicLeapPrivilege PrivilegeID;
 		void* PrivilegeRequest;
 		EPrivilegeState State;
-		FPrivilegeEventHandler EventHandler;
 	};
 
 	/**
@@ -41,8 +38,9 @@ namespace MagicLeap
 	{
 	public:
 		typedef TFunction<void()> FEventHandler;
+		typedef TFunction<void(const FRequiredPrivilege& RequiredPrivilege)> FPrivilegeEventHandler;
 
-		/**
+		/** 
 			Adds the IAppEventHandler instance to the application's list of IAppEventHandler instances.
 			Populates a RequiredPrivileges list based on the privilge ids passed via InRequiredPrivileges;
 			@param InRequiredPrivileges The list of privilge ids required by the calling system.
@@ -53,11 +51,6 @@ namespace MagicLeap
 
 		/** Removes the IAppEventHandler instance from the application's list of IAppEventHandler instances.*/
 		virtual ~IAppEventHandler();
-
-		/**
-			Perform any operations that must occur when an application begins
-		*/
-		virtual void OnAppStart();
 
 		/**
 			Can be overridden by inheriting class that needs to destroy certain api interfaces before the perception stack is
@@ -102,22 +95,22 @@ namespace MagicLeap
 		const TCHAR* PrivilegeStateToString(EPrivilegeState PrivilegeState);
 
 		/**
-			Triggered when a privilege request changes state.
+			Pushes this object onto a worker thread so that it's blocking destructor can be called without locking up the update thread.
+			@note This should only be called by objects that have a blocking destructor and are no longer referenced.
 		*/
-		bool AddPrivilegeEventHandler(EMagicLeapPrivilege PrivilegeID, FRequiredPrivilege::FPrivilegeEventHandler&& InOnPrivilegeEvent);
+		bool AsyncDestroy();
 
 		/**
-			Use this as an alternative to overriding the OnAppStart function.  This allows you to use IAppEventHandler
-			as and aggregate class rather than an ancestor.
+			Triggered when a privilege request changes state.
 		*/
-		void SetOnAppStartHandler(FEventHandler&& InOnAppStartHandler)
+		void SetPrivilegeEventHandler(FPrivilegeEventHandler&& InOnPrivilegeEvent)
 		{
-			OnAppStartHandler = MoveTemp(InOnAppStartHandler);
+			OnPrivilegeEvent = MoveTemp(InOnPrivilegeEvent);
 		}
 
 		/**
 			Use this as an alternative to overriding the OnAppShutDown function.  This allows you to use IAppEventHandler
-			as and aggregate class rather than an ancestor.
+			as and aggregate class rather than an ancestor. 
 		*/
 		void SetOnAppShutDownHandler(FEventHandler&& InOnAppShutDownHandler)
 		{
@@ -163,7 +156,7 @@ namespace MagicLeap
 
 	protected:
 		TMap<EMagicLeapPrivilege, FRequiredPrivilege> RequiredPrivileges;
-		FEventHandler OnAppStartHandler;
+		FPrivilegeEventHandler OnPrivilegeEvent;
 		FEventHandler OnAppShutDownHandler;
 		FEventHandler OnAppTickHandler;
 		FEventHandler OnAppPauseHandler;

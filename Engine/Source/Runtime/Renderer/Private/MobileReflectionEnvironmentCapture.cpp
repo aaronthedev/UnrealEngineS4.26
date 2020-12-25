@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
  
@@ -40,30 +40,40 @@ public:
 	{
 		CubeFace.Bind(Initializer.ParameterMap, TEXT("CubeFace"));
 		SourceMipIndex.Bind(Initializer.ParameterMap, TEXT("SourceMipIndex"));
-		SourceCubemapTexture.Bind(Initializer.ParameterMap, TEXT("SourceCubemapTexture"));
-		SourceCubemapSampler.Bind(Initializer.ParameterMap, TEXT("SourceCubemapSampler"));
+		SourceTexture.Bind(Initializer.ParameterMap, TEXT("SourceTexture"));
+		SourceTextureSampler.Bind(Initializer.ParameterMap, TEXT("SourceTextureSampler"));
 	}
 	FMobileDownsamplePS() {}
 
 	void SetParameters(FRHICommandList& RHICmdList, int32 CubeFaceValue, int32 SourceMipIndexValue, FSceneRenderTargetItem& SourceTextureValue)
 	{
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), CubeFace, CubeFaceValue);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), SourceMipIndex, SourceMipIndexValue);
+		SetShaderValue(RHICmdList, GetPixelShader(), CubeFace, CubeFaceValue);
+		SetShaderValue(RHICmdList, GetPixelShader(), SourceMipIndex, SourceMipIndexValue);
 
 		SetTextureParameter(
 			RHICmdList,
-			RHICmdList.GetBoundPixelShader(),
-			SourceCubemapTexture,
-			SourceCubemapSampler,
+			GetPixelShader(),
+			SourceTexture,
+			SourceTextureSampler,
 			TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(),
 			SourceTextureValue.ShaderResourceTexture);
 	}
 
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << CubeFace;
+		Ar << SourceMipIndex;
+		Ar << SourceTexture;
+		Ar << SourceTextureSampler;
+		return bShaderHasOutdatedParameters;
+	}
+
 private:
-	LAYOUT_FIELD(FShaderParameter, CubeFace)
-	LAYOUT_FIELD(FShaderParameter, SourceMipIndex)
-	LAYOUT_FIELD(FShaderResourceParameter, SourceCubemapTexture)
-	LAYOUT_FIELD(FShaderResourceParameter, SourceCubemapSampler)
+	FShaderParameter CubeFace;
+	FShaderParameter SourceMipIndex;
+	FShaderResourceParameter SourceTexture;
+	FShaderResourceParameter SourceTextureSampler;
 };
 
 IMPLEMENT_SHADER_TYPE(, FMobileDownsamplePS, TEXT("/Engine/Private/ReflectionEnvironmentShaders.usf"), TEXT("DownsamplePS_Mobile"), SF_Pixel);
@@ -143,8 +153,8 @@ namespace MobileReflectionEnvironmentCapture
 						TShaderMapRef<FMobileDownsamplePS> PixelShader(ShaderMap);
 
 						GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-						GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-						GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+						GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+						GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 						GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 						SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
@@ -158,14 +168,10 @@ namespace MobileReflectionEnvironmentCapture
 							ViewRect.Width(), ViewRect.Height(),
 							FIntPoint(ViewRect.Width(), ViewRect.Height()),
 							FIntPoint(MipSize, MipSize),
-							VertexShader);
+							*VertexShader);
 					}
 					RHICmdList.EndRenderPass();
-
-					FResolveParams ResolveParams(FResolveRect(), (ECubeFace)CubeFace, MipIndex);
-					ResolveParams.SourceAccessFinal = ERHIAccess::SRVMask;
-					ResolveParams.DestAccessFinal = ERHIAccess::SRVMask;
-					RHICmdList.CopyToResolveTarget(EffectiveRT.TargetableTexture, EffectiveRT.ShaderResourceTexture, ResolveParams);
+					RHICmdList.CopyToResolveTarget(EffectiveRT.TargetableTexture, EffectiveRT.ShaderResourceTexture, FResolveParams(FResolveRect(), (ECubeFace)CubeFace, MipIndex));
 				}
 			}
 		}
@@ -183,7 +189,7 @@ namespace MobileReflectionEnvironmentCapture
 			const int32 NumMips = FMath::CeilLogTwo(EffectiveTopMipSize) + 1;
 			FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 
-			RHICmdList.Transition(FRHITransitionInfo(ProcessedTexture->TextureRHI, ERHIAccess::Unknown, ERHIAccess::CopyDest));
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, ProcessedTexture->TextureRHI);
 
 			FRHICopyTextureInfo CopyInfo;
 			CopyInfo.Size = FIntVector(ProcessedTexture->GetSizeX(), ProcessedTexture->GetSizeY(), 1);
@@ -195,7 +201,7 @@ namespace MobileReflectionEnvironmentCapture
 				// For simple mobile bilin filtering the source for this copy is the dest from the filtering pass.
 				// In the HQ case, the full image is contained in GetEffectiveRenderTarget(.., false,0).
 				FSceneRenderTargetItem& EffectiveSource = GetEffectiveRenderTarget(SceneContext, false, bUseHQFiltering ? 0 : MipIndex);
-				RHICmdList.Transition(FRHITransitionInfo(EffectiveSource.ShaderResourceTexture, ERHIAccess::Unknown, ERHIAccess::CopySrc));
+				RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EffectiveSource.ShaderResourceTexture);
 				RHICmdList.CopyTexture(EffectiveSource.ShaderResourceTexture, ProcessedTexture->TextureRHI, CopyInfo);
 
 				++CopyInfo.SourceMipIndex;
@@ -203,8 +209,6 @@ namespace MobileReflectionEnvironmentCapture
 				CopyInfo.Size.X = FMath::Max(1, CopyInfo.Size.X / 2);
 				CopyInfo.Size.Y = FMath::Max(1, CopyInfo.Size.Y / 2);
 			}
-
-			RHICmdList.Transition(FRHITransitionInfo(ProcessedTexture->TextureRHI, ERHIAccess::CopyDest, ERHIAccess::SRVMask));
 		}
 	}
 
@@ -242,8 +246,8 @@ namespace MobileReflectionEnvironmentCapture
 					TShaderMapRef<FOneColorPS> PixelShader(GetGlobalShaderMap(FeatureLevel));
 
 					GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 					GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -259,14 +263,10 @@ namespace MobileReflectionEnvironmentCapture
 						SourceDimensions.X, SourceDimensions.Y,
 						FIntPoint(ViewRect.Width(), ViewRect.Height()),
 						SourceDimensions,
-						VertexShader);
+						*VertexShader);
 				}
 				RHICmdList.EndRenderPass();
-
-				FResolveParams ResolveParams(FResolveRect(), (ECubeFace)CubeFace);
-				ResolveParams.SourceAccessFinal = ERHIAccess::SRVMask;
-				ResolveParams.DestAccessFinal = ERHIAccess::SRVMask;
-				RHICmdList.CopyToResolveTarget(EffectiveColorRT.TargetableTexture, EffectiveColorRT.ShaderResourceTexture, ResolveParams);
+				RHICmdList.CopyToResolveTarget(EffectiveColorRT.TargetableTexture, EffectiveColorRT.ShaderResourceTexture, FResolveParams(FResolveRect(), (ECubeFace)CubeFace));
 			} // end for
 		}
 
@@ -312,8 +312,8 @@ namespace MobileReflectionEnvironmentCapture
 						TShaderMapRef<FMobileDownsamplePS> PixelShader(ShaderMap);
 
 						GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-						GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-						GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+						GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+						GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 						GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 						SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -328,17 +328,13 @@ namespace MobileReflectionEnvironmentCapture
 							ViewRect.Width(), ViewRect.Height(),
 							FIntPoint(ViewRect.Width(), ViewRect.Height()),
 							FIntPoint(MipSize, MipSize),
-							VertexShader);
+							*VertexShader);
 					}
 					RHICmdList.EndRenderPass();
-
-					FResolveParams ResolveParams(FResolveRect(), (ECubeFace)CubeFace, MipIndex);
-					ResolveParams.SourceAccessFinal = ERHIAccess::SRVMask;
-					ResolveParams.DestAccessFinal = ERHIAccess::SRVMask;
-					RHICmdList.CopyToResolveTarget(EffectiveRT.TargetableTexture, EffectiveRT.ShaderResourceTexture, ResolveParams);
+					RHICmdList.CopyToResolveTarget(EffectiveRT.TargetableTexture, EffectiveRT.ShaderResourceTexture, FResolveParams(FResolveRect(), (ECubeFace)CubeFace, MipIndex));
 				}
 
-				if (DiffuseConvolutionSource == NULL && MipSize <= GDiffuseIrradianceCubemapSize)
+				if (MipSize == GDiffuseIrradianceCubemapSize)
 				{
 					DiffuseConvolutionSourceMip = MipIndex;
 					DiffuseConvolutionSource = &EffectiveRT;
@@ -363,31 +359,10 @@ namespace MobileReflectionEnvironmentCapture
 				FSceneRenderTargetItem& SourceTarget = GetEffectiveRenderTarget(SceneContext, true, MipIndex);
 				FSceneRenderTargetItem& DestTarget = GetEffectiveSourceTexture(SceneContext, true, MipIndex);
 				check(DestTarget.TargetableTexture != SourceTarget.ShaderResourceTexture);
-
-				// Transition the textures once, so CopyToResolveTarget doesn't ping-pong uselessly between the copy and SRV states.
-				FRHITransitionInfo TransitionsBefore[] = {
-					FRHITransitionInfo(SourceTarget.ShaderResourceTexture, ERHIAccess::SRVMask, ERHIAccess::CopySrc),
-					FRHITransitionInfo(DestTarget.ShaderResourceTexture, ERHIAccess::SRVMask, ERHIAccess::CopyDest)
-				};
-				RHICmdList.Transition(MakeArrayView(TransitionsBefore, UE_ARRAY_COUNT(TransitionsBefore)));
-
-				// Tell CopyToResolveTarget to leave the textures in the copy state, because we'll transition them only once when we're done.
-				FResolveParams ResolveParams(FResolveRect(), CubeFace_PosX, MipIndex);
-				ResolveParams.SourceAccessFinal = ERHIAccess::CopySrc;
-				ResolveParams.DestAccessFinal = ERHIAccess::CopyDest;
-
 				for (int32 CubeFace = 0; CubeFace < CubeFace_MAX; CubeFace++)
 				{
-					ResolveParams.CubeFace = (ECubeFace)CubeFace;
-					RHICmdList.CopyToResolveTarget(SourceTarget.ShaderResourceTexture, DestTarget.ShaderResourceTexture, ResolveParams);
+					RHICmdList.CopyToResolveTarget(SourceTarget.ShaderResourceTexture, DestTarget.ShaderResourceTexture, FResolveParams(FResolveRect(), (ECubeFace)CubeFace, MipIndex));
 				}
-
-				// We're done copying, transition the textures back to SRV.
-				FRHITransitionInfo TransitionsAfter[] = {
-					FRHITransitionInfo(SourceTarget.ShaderResourceTexture, ERHIAccess::CopySrc, ERHIAccess::SRVMask),
-					FRHITransitionInfo(DestTarget.ShaderResourceTexture, ERHIAccess::CopyDest, ERHIAccess::SRVMask)
-				};
-				RHICmdList.Transition(MakeArrayView(TransitionsAfter, UE_ARRAY_COUNT(TransitionsAfter)));
 			}
 		}
 
@@ -424,12 +399,13 @@ namespace MobileReflectionEnvironmentCapture
 
 						TShaderMapRef<FScreenVS> VertexShader(GetGlobalShaderMap(FeatureLevel));
 
-						TShaderMapRef<TCubeFilterPS<0>> HQFilterPixelShader(ShaderMap);
+						FCubeFilterPS* HQFilterPixelShader = *TShaderMapRef< TCubeFilterPS<0> >(ShaderMap);
+						check(HQFilterPixelShader);
 						TShaderMapRef<FMobileDownsamplePS> BilinFilterPixelShader(ShaderMap);
-						FRHIPixelShader* PixelShaderRHI = bUseHQFiltering ? HQFilterPixelShader.GetPixelShader() : BilinFilterPixelShader.GetPixelShader();
+						FRHIPixelShader* PixelShaderRHI = bUseHQFiltering ? HQFilterPixelShader->GetPixelShader() : BilinFilterPixelShader->GetPixelShader();
 
 						GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-						GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+						GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
 						GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShaderRHI;
 						GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
@@ -443,8 +419,8 @@ namespace MobileReflectionEnvironmentCapture
 							SetTextureParameter(
 								RHICmdList,
 								PixelShaderRHI,
-								HQFilterPixelShader->SourceCubemapTexture,
-								HQFilterPixelShader->SourceCubemapSampler,
+								HQFilterPixelShader->SourceTexture,
+								HQFilterPixelShader->SourceTextureSampler,
 								TStaticSamplerState<SF_Trilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(),
 								EffectiveSource.ShaderResourceTexture);
 						}
@@ -461,14 +437,10 @@ namespace MobileReflectionEnvironmentCapture
 							ViewRect.Width(), ViewRect.Height(),
 							FIntPoint(ViewRect.Width(), ViewRect.Height()),
 							FIntPoint(MipSize, MipSize),
-							VertexShader);
+							*VertexShader);
 					}
 					RHICmdList.EndRenderPass();
-
-					FResolveParams ResolveParams(FResolveRect(), (ECubeFace)CubeFace, MipIndex);
-					ResolveParams.SourceAccessFinal = ERHIAccess::SRVMask;
-					ResolveParams.DestAccessFinal = ERHIAccess::SRVMask;
-					RHICmdList.CopyToResolveTarget(EffectiveRT.TargetableTexture, EffectiveRT.ShaderResourceTexture, ResolveParams);
+					RHICmdList.CopyToResolveTarget(EffectiveRT.TargetableTexture, EffectiveRT.ShaderResourceTexture, FResolveParams(FResolveRect(), (ECubeFace)CubeFace, MipIndex));
 				}
 			}
 		}

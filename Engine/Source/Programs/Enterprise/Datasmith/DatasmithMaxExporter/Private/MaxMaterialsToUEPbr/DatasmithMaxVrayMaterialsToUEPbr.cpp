@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MaxMaterialsToUEPbr/DatasmithMaxVrayMaterialsToUEPbr.h"
 
@@ -27,7 +27,6 @@ namespace DatasmithMaxVRayMaterialsToUEPbrImpl
 			, bLockReflectionIORToRefractionIOR( false )
 			, ReflectionIOR( 0.f )
 			, RefractionIOR( 0.f )
-			, FogMultiplier( 0.f )
 		{
 		}
 
@@ -65,11 +64,6 @@ namespace DatasmithMaxVRayMaterialsToUEPbrImpl
 
 		// Displacement
 		DatasmithMaxTexmapParser::FMapParameter DisplacementMap;
-
-		// Fog
-		DatasmithMaxTexmapParser::FWeightedColorParameter FogColor;
-		DatasmithMaxTexmapParser::FMapParameter FogColorMap;
-		float FogMultiplier;
 	};
 
 	FMaxVRayMaterial ParseVRayMaterialProperties( Mtl& Material )
@@ -249,28 +243,6 @@ namespace DatasmithMaxVRayMaterialsToUEPbrImpl
 				else if (FCString::Stricmp(ParamDefinition.int_name, TEXT("texmap_displacement_on")) == 0)
 				{
 					VRayMaterialProperties.DisplacementMap.bEnabled = ( ParamBlock2->GetInt( ParamDefinition.ID, CurrentTime ) != 0 );
-				}
-
-				// Fog
-				else if (FCString::Stricmp(ParamDefinition.int_name, TEXT("refraction_fogColor")) == 0)
-				{
-					VRayMaterialProperties.FogColor.Value = FDatasmithMaxMatHelper::MaxLinearColorToFLinearColor( (BMM_Color_fl)ParamBlock2->GetColor( ParamDefinition.ID, CurrentTime ) );
-				}
-				else if (FCString::Stricmp(ParamDefinition.int_name, TEXT("texmap_refraction_fog")) == 0)
-				{
-					VRayMaterialProperties.FogColorMap.Map = ParamBlock2->GetTexmap( ParamDefinition.ID, CurrentTime );
-				}
-				else if (FCString::Stricmp(ParamDefinition.int_name, TEXT("texmap_refraction_fog_on")) == 0)
-				{
-					VRayMaterialProperties.FogColorMap.bEnabled = ( ParamBlock2->GetInt( ParamDefinition.ID, CurrentTime ) != 0 );
-				}
-				else if (FCString::Stricmp(ParamDefinition.int_name, TEXT("texmap_refraction_fog_multiplier")) == 0)
-				{
-					VRayMaterialProperties.FogColorMap.Weight = ParamBlock2->GetFloat( ParamDefinition.ID, CurrentTime ) / 100.f;
-				}
-				else if ( FCString::Stricmp(ParamDefinition.int_name, TEXT("refraction_fogMult")) == 0 )
-				{
-					VRayMaterialProperties.FogMultiplier = ParamBlock2->GetFloat( ParamDefinition.ID, CurrentTime );
 				}
 			}
 			ParamBlock2->ReleaseDesc();
@@ -527,16 +499,6 @@ void FDatasmithMaxVRayMaterialsToUEPbr::Convert( TSharedRef< IDatasmithScene > D
 		if ( GlossinessExpression )
 		{
 			GlossinessExpression->SetName( TEXT("Reflection Glossiness") );
-
-			if ( VRayMaterialProperties.bUseRoughness )
-			{
-				IDatasmithMaterialExpressionGeneric* InverseGlossinessExpression = PbrMaterialElement->AddMaterialExpression< IDatasmithMaterialExpressionGeneric >();
-				InverseGlossinessExpression->SetExpressionName( TEXT("OneMinus") );
-
-				GlossinessExpression->ConnectExpression( *InverseGlossinessExpression->GetInput(0) );
-
-				GlossinessExpression = InverseGlossinessExpression;
-			}
 		}
 	}
 
@@ -616,24 +578,27 @@ void FDatasmithMaxVRayMaterialsToUEPbr::Convert( TSharedRef< IDatasmithScene > D
 
 		IDatasmithMaterialExpression* RoughnessOutput = MultiplyGlossiness;
 
-		IDatasmithMaterialExpressionGeneric* OneMinusRougnessExpression = PbrMaterialElement->AddMaterialExpression< IDatasmithMaterialExpressionGeneric >();
-		OneMinusRougnessExpression->SetExpressionName( TEXT("OneMinus") );
+		if ( !VRayMaterialProperties.bUseRoughness )
+		{
+			IDatasmithMaterialExpressionGeneric* OneMinusRougnessExpression = PbrMaterialElement->AddMaterialExpression< IDatasmithMaterialExpressionGeneric >();
+			OneMinusRougnessExpression->SetExpressionName( TEXT("OneMinus") );
 
-		MultiplyGlossiness->ConnectExpression( *OneMinusRougnessExpression->GetInput(0) );
+			MultiplyGlossiness->ConnectExpression( *OneMinusRougnessExpression->GetInput(0) );
 
-		RoughnessOutput = OneMinusRougnessExpression;
+			RoughnessOutput = OneMinusRougnessExpression;
+		}
 
-		IDatasmithMaterialExpressionGeneric* PowRoughnessExpression = PbrMaterialElement->AddMaterialExpression< IDatasmithMaterialExpressionGeneric >();
-		PowRoughnessExpression->SetExpressionName( TEXT("Power") );
+		IDatasmithMaterialExpressionGeneric* PowRougnessExpression = PbrMaterialElement->AddMaterialExpression< IDatasmithMaterialExpressionGeneric >();
+		PowRougnessExpression->SetExpressionName( TEXT("Power") );
 
 		TSharedRef< IDatasmithKeyValueProperty > PowRoughnessValue = FDatasmithSceneFactory::CreateKeyValueProperty( TEXT("ConstExponent") );
 		PowRoughnessValue->SetPropertyType( EDatasmithKeyValuePropertyType::Float );
 		PowRoughnessValue->SetValue( *LexToString( 1.5f ) );
 
-		PowRoughnessExpression->AddProperty( PowRoughnessValue );
+		PowRougnessExpression->AddProperty( PowRoughnessValue );
 
-		RoughnessOutput->ConnectExpression( *PowRoughnessExpression->GetInput(0) );
-		PowRoughnessExpression->ConnectExpression( PbrMaterialElement->GetRoughness() );
+		RoughnessOutput->ConnectExpression( *PowRougnessExpression->GetInput(0) );
+		PowRougnessExpression->ConnectExpression( PbrMaterialElement->GetRoughness() );
 	}
 
 	IDatasmithMaterialExpressionGeneric* ReflectionFresnelExpression = nullptr;
@@ -813,33 +778,6 @@ void FDatasmithMaxVRayMaterialsToUEPbr::Convert( TSharedRef< IDatasmithScene > D
 		if ( UEOpacityExpression )
 		{
 			UEOpacityExpression->ConnectExpression( PbrMaterialElement->GetOpacity() );
-
-			IDatasmithMaterialExpressionGeneric* ThinTranslucencyMaterialOutput = PbrMaterialElement->AddMaterialExpression< IDatasmithMaterialExpressionGeneric >();
-			ThinTranslucencyMaterialOutput->SetExpressionName( TEXT("ThinTranslucentMaterialOutput") );
-
-			// Fog
-			IDatasmithMaterialExpression* FogExpression = FDatasmithMaxTexmapToUEPbrUtils::MapOrValue( this, VRayMaterialProperties.FogColorMap, TEXT("Fog"), VRayMaterialProperties.FogColor.Value, TOptional< float >() );
-
-			if ( FogExpression )
-			{
-				FogExpression->SetName( TEXT("Fog") );
-
-				IDatasmithMaterialExpressionScalar* FogMultiplier = PbrMaterialElement->AddMaterialExpression< IDatasmithMaterialExpressionScalar >();
-				FogMultiplier->SetName( TEXT("Fog Multiplier") );
-				FogMultiplier->GetScalar() = VRayMaterialProperties.FogMultiplier;
-
-				IDatasmithMaterialExpressionGeneric* MultiplyFog = PbrMaterialElement->AddMaterialExpression< IDatasmithMaterialExpressionGeneric >();
-				MultiplyFog->SetExpressionName( TEXT("Multiply") );
-
-				FogExpression->ConnectExpression( *MultiplyFog->GetInput(0) );
-				FogMultiplier->ConnectExpression( *MultiplyFog->GetInput(1) );
-
-				FogExpression = MultiplyFog;
-
-				FogExpression->ConnectExpression( *ThinTranslucencyMaterialOutput->GetInput(0) );
-			}
-
-			PbrMaterialElement->SetShadingModel( EDatasmithShadingModel::ThinTranslucent );
 		}
 
 		if ( RefractionIOR )

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -44,17 +44,11 @@ public:
 	virtual void ApplyBlurPostProcess(UTextureRenderTarget2D* InOutRenderTarget, UTextureRenderTarget2D* TemporaryRenderTarget, int KernelRadius, float KernelScale, EPicpBlurPostProcessShaderType BlurType) override;
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Setup Overlay Captures"), Category = "PICP")
-	virtual void SetupOverlayCaptures(const TArray<struct FPicpCameraBlendingParameters>& CameraCaptures, const TArray<struct FPicpOverlayFrameBlendingPair>& OverlayCaptures) override;
+	virtual void SetupOverlayCaptures(const TArray<struct FPicpOverlayFrameBlendingParameters>& captures) override;
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Capture Final Warped Frame"), Category = "PICP")
 	virtual void SetWarpTextureCaptureState(UTextureRenderTarget2D* dstTexture, const FString& ViewportId, const int ViewIdx, bool bCaptureNow) override;
 
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Enable mips for Texture Render Target"), Category = "PICP")
 	virtual void EnableTextureRenderTargetMips(UTextureRenderTarget2D* Texture) override;
-
-	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Assign Warp Mesh To Viewport"), Category = "PICP")
-	virtual void AssignWarpMeshToViewport(const FString& ViewportId, UStaticMeshComponent* MeshComponent, USceneComponent* OriginComponent) override;
-
-	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Get default backbuffer render target format"), Category = "PICP")
-	virtual ETextureRenderTargetFormat GetDefaultBackBufferRenderTargetFormat() const override;
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UObject/PackageFileSummary.h"
 #include "UObject/Linker.h"
@@ -28,21 +28,6 @@ static ECustomVersionSerializationFormat::Type GetCustomVersionFormatForArchive(
 	}
 	check(CustomVersionFormat != ECustomVersionSerializationFormat::Unknown);
 	return CustomVersionFormat;
-}
-
-static void FixCorruptEngineVersion(int ObjectVersion, FEngineVersion& Version)
-{
-	// The move of EpicInternal.txt in CL 12740027 broke checks for non-licensee builds in UGS. resulted in checks for Epic internal builds in UGS breaking, and assets being saved out with the licensee flag set.
-	// Detect such assets and clear the licensee bit.
-	if (ObjectVersion < VER_UE4_CORRECT_LICENSEE_FLAG
-		&& Version.GetMajor() == 4
-		&& Version.GetMinor() == 26
-		&& Version.GetPatch() == 0
-		&& Version.GetChangelist() >= 12740027
-		&& Version.IsLicenseeVersion())
-	{
-		Version.Set(4, 26, 0, Version.GetChangelist(), Version.GetBranch());
-	}
 }
 
 void operator<<(FStructuredArchive::FSlot Slot, FPackageFileSummary& Sum)
@@ -228,25 +213,24 @@ void operator<<(FStructuredArchive::FSlot Slot, FPackageFileSummary& Sum)
 
 		Record << SA_VALUE(TEXT("Guid"), Sum.Guid);
 
-#if WITH_EDITORONLY_DATA
-		if (!BaseArchive.IsFilterEditorOnly())
+		if (BaseArchive.IsSaving() || Sum.FileVersionUE4 >= VER_UE4_ADDED_PACKAGE_OWNER)
 		{
-			if (BaseArchive.IsSaving() || Sum.FileVersionUE4 >= VER_UE4_ADDED_PACKAGE_OWNER)
+			if (!BaseArchive.IsFilterEditorOnly())
 			{
-				Record << SA_VALUE(TEXT("PersistentGuid"), Sum.PersistentGuid);
-			}
-			else
-			{
-				// By assigning the current package guid, we maintain a stable persistent guid, so we can reference this package even if it wasn't resaved.
-				Sum.PersistentGuid = Sum.Guid;
-			}
-
-			// The owner persistent guid was added in VER_UE4_ADDED_PACKAGE_OWNER but removed in the next version VER_UE4_NON_OUTER_PACKAGE_IMPORT
-			if (BaseArchive.IsLoading() && Sum.FileVersionUE4 >= VER_UE4_ADDED_PACKAGE_OWNER && Sum.FileVersionUE4 < VER_UE4_NON_OUTER_PACKAGE_IMPORT)
-			{
+#if WITH_EDITORONLY_DATA
+				Record << SA_VALUE(TEXT("PersistentGuid"), Sum.PersistentGuid) << SA_VALUE(TEXT("OwnerPersistentGuid"), Sum.OwnerPersistentGuid);
+#else
+				FGuid PersistentGuid;
 				FGuid OwnerPersistentGuid;
-				Record << SA_VALUE(TEXT("OwnerPersistentGuid"), OwnerPersistentGuid);
+				Record << SA_VALUE(TEXT("PersistentGuid"), PersistentGuid) << SA_VALUE(TEXT("OwnerPersistentGuid"), OwnerPersistentGuid);
+#endif
 			}
+		}
+#if WITH_EDITORONLY_DATA
+		else
+		{
+			// By assigning the current package guid, we maintain a stable persistent guid, so we can reference this package even if it wasn't resaved.
+			Sum.PersistentGuid = Sum.Guid;
 		}
 #endif
 
@@ -278,7 +262,6 @@ void operator<<(FStructuredArchive::FSlot Slot, FPackageFileSummary& Sum)
 			else
 			{
 				Record << SA_VALUE(TEXT("SavedByEngineVersion"), Sum.SavedByEngineVersion);
-				FixCorruptEngineVersion(Sum.GetFileVersionUE4(), Sum.SavedByEngineVersion);
 			}
 		}
 		else
@@ -302,7 +285,6 @@ void operator<<(FStructuredArchive::FSlot Slot, FPackageFileSummary& Sum)
 			else
 			{
 				Record << SA_VALUE(TEXT("CompatibleWithEngineVersion"), Sum.CompatibleWithEngineVersion);
-				FixCorruptEngineVersion(Sum.GetFileVersionUE4(), Sum.CompatibleWithEngineVersion);
 			}
 		}
 		else

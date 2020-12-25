@@ -1,35 +1,21 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OpenXRHMD_RenderBridge.h"
 #include "OpenXRHMD.h"
+#include "OpenXRHMDPrivate.h"
+#include "OpenXRHMDPrivateRHI.h"
 #include "OpenXRHMD_Swapchain.h"
-#include "OpenXRCore.h"
-#include "OpenXRPlatformRHI.h"
-
-void FOpenXRRenderBridge::BeginDrawing()
-{
-	if (OpenXRHMD)
-	{
-		OpenXRHMD->OnBeginRendering_RHIThread();
-	}
-}
 
 bool FOpenXRRenderBridge::Present(int32& InOutSyncInterval)
 {
 	if (OpenXRHMD)
 	{
-		OpenXRHMD->OnFinishRendering_RHIThread();
+		OpenXRHMD->FinishRendering();
 	}
 
 	InOutSyncInterval = 0; // VSync off
 
-#if PLATFORM_HOLOLENS
-	bool bNeedsNativePresent = false;
-#else
-	bool bNeedsNativePresent = !FPlatformMisc::IsStandaloneStereoOnlyDevice();
-#endif
-
-	return bNeedsNativePresent;
+	return true;
 }
 
 #ifdef XR_USE_GRAPHICS_API_D3D11
@@ -39,31 +25,26 @@ public:
 	FD3D11RenderBridge(XrInstance InInstance, XrSystemId InSystem)
 		: Binding()
 	{
-		PFN_xrGetD3D11GraphicsRequirementsKHR GetD3D11GraphicsRequirementsKHR;
-		XR_ENSURE(xrGetInstanceProcAddr(InInstance, "xrGetD3D11GraphicsRequirementsKHR", (PFN_xrVoidFunction*)&GetD3D11GraphicsRequirementsKHR));
-
 		XrGraphicsRequirementsD3D11KHR Requirements;
 		Requirements.type = XR_TYPE_GRAPHICS_REQUIREMENTS_D3D11_KHR;
 		Requirements.next = nullptr;
-		if (XR_ENSURE(GetD3D11GraphicsRequirementsKHR(InInstance, InSystem, &Requirements)))
+		if (XR_ENSURE(xrGetD3D11GraphicsRequirementsKHR(InInstance, InSystem, &Requirements)))
 		{
 			AdapterLuid = reinterpret_cast<uint64&>(Requirements.adapterLuid);
 		}
 	}
 
-	virtual void* GetGraphicsBinding() override
+	virtual void* GetGraphicsBinding_RenderThread() override
 	{
-		FD3D11Device* Device = GD3D11RHI->GetDevice();
-
 		Binding.type = XR_TYPE_GRAPHICS_BINDING_D3D11_KHR;
 		Binding.next = nullptr;
-		Binding.device = Device;
+		Binding.device = (ID3D11Device*)RHIGetNativeDevice();
 		return &Binding;
 	}
 
-	virtual FXRSwapChainPtr CreateSwapchain(XrSession InSession, uint8 Format, uint32 SizeX, uint32 SizeY, uint32 ArraySize, uint32 NumMips, uint32 NumSamples, ETextureCreateFlags Flags, ETextureCreateFlags TargetableTextureFlags, const FClearValueBinding& ClearValueBinding) override final
+	virtual FXRSwapChainPtr CreateSwapchain(XrSession InSession, uint8 Format, uint32 SizeX, uint32 SizeY, uint32 NumMips, uint32 NumSamples, uint32 Flags, uint32 TargetableTextureFlags)
 	{
-		return CreateSwapchain_D3D11(InSession, Format, SizeX, SizeY, ArraySize, NumMips, NumSamples, Flags, TargetableTextureFlags, ClearValueBinding);
+		return CreateSwapchain_D3D11(InSession, Format, SizeX, SizeY, NumMips, NumSamples, Flags, TargetableTextureFlags);
 	}
 
 private:
@@ -80,34 +61,26 @@ public:
 	FD3D12RenderBridge(XrInstance InInstance, XrSystemId InSystem)
 		: Binding()
 	{
-		PFN_xrGetD3D12GraphicsRequirementsKHR GetD3D12GraphicsRequirementsKHR;
-		XR_ENSURE(xrGetInstanceProcAddr(InInstance, "xrGetD3D12GraphicsRequirementsKHR", (PFN_xrVoidFunction*)&GetD3D12GraphicsRequirementsKHR));
-
 		XrGraphicsRequirementsD3D12KHR Requirements;
 		Requirements.type = XR_TYPE_GRAPHICS_REQUIREMENTS_D3D12_KHR;
 		Requirements.next = nullptr;
-		if (XR_ENSURE(GetD3D12GraphicsRequirementsKHR(InInstance, InSystem, &Requirements)))
+		if (XR_ENSURE(xrGetD3D12GraphicsRequirementsKHR(InInstance, InSystem, &Requirements)))
 		{
 			AdapterLuid = reinterpret_cast<uint64&>(Requirements.adapterLuid);
 		}
 	}
 
-	virtual void* GetGraphicsBinding() override
+	virtual void* GetGraphicsBinding_RenderThread() override
 	{
-		FD3D12DynamicRHI* DynamicRHI = FD3D12DynamicRHI::GetD3DRHI();
-		ID3D12Device* Device = DynamicRHI->GetAdapter().GetD3DDevice();
-		ID3D12CommandQueue* Queue = DynamicRHI->RHIGetD3DCommandQueue();
-
 		Binding.type = XR_TYPE_GRAPHICS_BINDING_D3D12_KHR;
 		Binding.next = nullptr;
-		Binding.device = Device;
-		Binding.queue = Queue;
+		Binding.device = (ID3D12Device*)RHIGetNativeDevice();
 		return &Binding;
 	}
 
-	virtual FXRSwapChainPtr CreateSwapchain(XrSession InSession, uint8 Format, uint32 SizeX, uint32 SizeY, uint32 ArraySize, uint32 NumMips, uint32 NumSamples, ETextureCreateFlags Flags, ETextureCreateFlags TargetableTextureFlags, const FClearValueBinding& ClearValueBinding) override final
+	virtual FXRSwapChainPtr CreateSwapchain(XrSession InSession, uint8 Format, uint32 SizeX, uint32 SizeY, uint32 NumMips, uint32 NumSamples, uint32 Flags, uint32 TargetableTextureFlags)
 	{
-		return CreateSwapchain_D3D12(InSession, Format, SizeX, SizeY, ArraySize, NumMips, NumSamples, Flags, TargetableTextureFlags, ClearValueBinding);
+		return CreateSwapchain_D3D12(InSession, Format, SizeX, SizeY, NumMips, NumSamples, Flags, TargetableTextureFlags);
 	}
 
 private:
@@ -124,15 +97,12 @@ public:
 	FOpenGLRenderBridge(XrInstance InInstance, XrSystemId InSystem)
 		: Binding()
 	{
-		PFN_xrGetOpenGLGraphicsRequirementsKHR GetOpenGLGraphicsRequirementsKHR;
-		XR_ENSURE(xrGetInstanceProcAddr(InInstance, "xrGetOpenGLGraphicsRequirementsKHR", (PFN_xrVoidFunction*)&GetOpenGLGraphicsRequirementsKHR));
-
 		XrGraphicsRequirementsOpenGLKHR Requirements;
 		Requirements.type = XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_KHR;
 		Requirements.next = nullptr;
 		Requirements.minApiVersionSupported = 0;
 		Requirements.maxApiVersionSupported = 0;
-		XR_ENSURE(GetOpenGLGraphicsRequirementsKHR(InInstance, InSystem, &Requirements));
+		XR_ENSURE(xrGetOpenGLGraphicsRequirementsKHR(InInstance, InSystem, &Requirements));
 
 		XrVersion RHIVersion = XR_MAKE_VERSION(FOpenGL::GetMajorVersion(), FOpenGL::GetMinorVersion(), 0);
 		if (RHIVersion < Requirements.minApiVersionSupported) //-V547
@@ -146,7 +116,7 @@ public:
 		}
 	}
 
-	virtual void* GetGraphicsBinding() override
+	virtual void* GetGraphicsBinding_RenderThread() override
 	{
 #if PLATFORM_WINDOWS
 		Binding.type = XR_TYPE_GRAPHICS_BINDING_OPENGL_WIN32_KHR;
@@ -158,9 +128,9 @@ public:
 		return nullptr;
 	}
 
-	virtual FXRSwapChainPtr CreateSwapchain(XrSession InSession, uint8 Format, uint32 SizeX, uint32 SizeY, uint32 ArraySize, uint32 NumMips, uint32 NumSamples, ETextureCreateFlags Flags, ETextureCreateFlags TargetableTextureFlags, const FClearValueBinding& ClearValueBinding) override final
+	virtual FXRSwapChainPtr CreateSwapchain(XrSession InSession, uint8 Format, uint32 SizeX, uint32 SizeY, uint32 NumMips, uint32 NumSamples, uint32 Flags, uint32 TargetableTextureFlags)
 	{
-		return CreateSwapchain_OpenGL(InSession, Format, SizeX, SizeY, ArraySize, NumMips, NumSamples, Flags, TargetableTextureFlags, ClearValueBinding);
+		return CreateSwapchain_OpenGL(InSession, Format, SizeX, SizeY, NumMips, NumSamples, Flags, TargetableTextureFlags);
 	}
 
 private:
@@ -181,15 +151,12 @@ public:
 		, Instance(InInstance)
 		, System(InSystem)
 	{
-		PFN_xrGetVulkanGraphicsRequirementsKHR GetVulkanGraphicsRequirementsKHR;
-		XR_ENSURE(xrGetInstanceProcAddr(InInstance, "xrGetVulkanGraphicsRequirementsKHR", (PFN_xrVoidFunction*)&GetVulkanGraphicsRequirementsKHR));
-
 		XrGraphicsRequirementsVulkanKHR Requirements;
 		Requirements.type = XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN_KHR;
 		Requirements.next = nullptr;
 		Requirements.minApiVersionSupported = 0;
 		Requirements.maxApiVersionSupported = 0;
-		XR_ENSURE(GetVulkanGraphicsRequirementsKHR(InInstance, InSystem, &Requirements));
+		XR_ENSURE(xrGetVulkanGraphicsRequirementsKHR(InInstance, InSystem, &Requirements));
 
 		// The extension uses the OpenXR version format instead of the Vulkan one
 		XrVersion RHIVersion = XR_MAKE_VERSION(
@@ -206,20 +173,17 @@ public:
 		{
 			UE_LOG(LogHMD, Warning, TEXT("The Vulkan API version has not been tested with the OpenXR runtime"));
 		}
-
-		PFN_xrGetVulkanGraphicsDeviceKHR GetVulkanGraphicsDeviceKHR;
-		XR_ENSURE(xrGetInstanceProcAddr(Instance, "xrGetVulkanGraphicsDeviceKHR", (PFN_xrVoidFunction*)&GetVulkanGraphicsDeviceKHR));
-		XR_ENSURE(GetVulkanGraphicsDeviceKHR(Instance, System, GVulkanRHI->GetInstance(), &Gpu));
 	}
 
-	virtual void* GetGraphicsBinding() override
+	virtual void* GetGraphicsBinding_RenderThread() override
 	{
-		FVulkanDevice* Device = GVulkanRHI->GetDevice();
+		FVulkanDynamicRHI* DynamicRHI = static_cast<FVulkanDynamicRHI*>(GDynamicRHI);
+		FVulkanDevice* Device = DynamicRHI->GetDevice();
 		FVulkanQueue* Queue = Device->GetGraphicsQueue();
 
 		Binding.type = XR_TYPE_GRAPHICS_BINDING_VULKAN_KHR;
 		Binding.next = nullptr;
-		Binding.instance = GVulkanRHI->GetInstance();
+		Binding.instance = DynamicRHI->GetInstance();
 		Binding.physicalDevice = Device->GetPhysicalHandle();
 		Binding.device = Device->GetInstanceHandle();
 		Binding.queueFamilyIndex = Queue->GetFamilyIndex();
@@ -229,26 +193,26 @@ public:
 
 	virtual uint64 GetGraphicsAdapterLuid() override
 	{
-#if VULKAN_SUPPORTS_DRIVER_PROPERTIES
-		if (!AdapterLuid && GVulkanRHI->GetOptionalExtensions().HasKHRGetPhysicalDeviceProperties2)
+		if (!AdapterLuid)
 		{
+			FVulkanDynamicRHI* DynamicRHI = static_cast<FVulkanDynamicRHI*>(GDynamicRHI);
+			XR_ENSURE(xrGetVulkanGraphicsDeviceKHR(Instance, System, DynamicRHI->GetInstance(), &Gpu));
+
 			VkPhysicalDeviceIDPropertiesKHR GpuIdProps;
 			VkPhysicalDeviceProperties2KHR GpuProps2;
 			ZeroVulkanStruct(GpuProps2, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR);
 			GpuProps2.pNext = &GpuIdProps;
 			ZeroVulkanStruct(GpuIdProps, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES_KHR);
-
 			VulkanRHI::vkGetPhysicalDeviceProperties2KHR(Gpu, &GpuProps2);
-			check(GpuIdProps.deviceLUIDValid);
+
 			AdapterLuid = reinterpret_cast<const uint64&>(GpuIdProps.deviceLUID);
 		}
-#endif
 		return AdapterLuid;
 	}
 
-	virtual FXRSwapChainPtr CreateSwapchain(XrSession InSession, uint8 Format, uint32 SizeX, uint32 SizeY, uint32 ArraySize, uint32 NumMips, uint32 NumSamples, ETextureCreateFlags Flags, ETextureCreateFlags TargetableTextureFlags, const FClearValueBinding& ClearValueBinding) override final
+	virtual FXRSwapChainPtr CreateSwapchain(XrSession InSession, uint8 Format, uint32 SizeX, uint32 SizeY, uint32 NumMips, uint32 NumSamples, uint32 Flags, uint32 TargetableTextureFlags)
 	{
-		return CreateSwapchain_Vulkan(InSession, Format, SizeX, SizeY, ArraySize, NumMips, NumSamples, Flags, TargetableTextureFlags, ClearValueBinding);
+		return CreateSwapchain_Vulkan(InSession, Format, SizeX, SizeY, NumMips, NumSamples, Flags, TargetableTextureFlags);
 	}
 
 private:

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System.IO;
 
 namespace UnrealBuildTool.Rules
@@ -6,9 +6,9 @@ namespace UnrealBuildTool.Rules
 	public class DatasmithExporter : ModuleRules
 	{
 		public DatasmithExporter(ReadOnlyTargetRules Target)
-			: base(Target)
+            : base(Target)
 		{
-			PublicDependencyModuleNames.AddRange(
+            PublicDependencyModuleNames.AddRange(
 				new string[]
 				{
 					"Core",
@@ -21,19 +21,14 @@ namespace UnrealBuildTool.Rules
 				{
 					"ApplicationCore",
 					"CoreUObject",
-					"DirectLink",
 					"FreeImage",
-					"MeshDescription",
-					"MessagingCommon",
 					"Projects",
-					"RawMesh",
-					"StaticMeshDescription",
-					"Slate",
-					"InputCore",
-					"SlateCore",
-					"StandaloneRenderer",
-				}
-			);
+                    "RawMesh",
+                    "MeshDescription",
+					"MeshDescriptionOperations",
+					"StaticMeshDescription"
+                }
+            );
 
 			PrivateIncludePaths.AddRange(
 				new string[]
@@ -42,7 +37,7 @@ namespace UnrealBuildTool.Rules
 				}
 			);
 
-			// PrecompileForTargets = PrecompileTargetsType.Any;
-		}
+// 			PrecompileForTargets = PrecompileTargetsType.Any;
+        }
 	}
 }

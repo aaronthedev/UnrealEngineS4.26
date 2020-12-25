@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,7 +19,6 @@ public:
 	virtual const FProjectDescriptor *GetCurrentProject() const override;
 	virtual bool LoadProjectFile( const FString& ProjectFile ) override;
 	virtual bool LoadModulesForProject( const ELoadingPhase::Type LoadingPhase ) override;
-	virtual FLoadingModulesForPhaseEvent& OnLoadingPhaseComplete() override { return OnLoadingPhaseCompleteEvent; }
 #if !IS_MONOLITHIC
 	virtual bool CheckModuleCompatibility( TArray<FString>& OutIncompatibleModules ) override;
 #endif
@@ -35,22 +34,18 @@ public:
 	virtual bool HasDefaultPluginSettings() const override;
 	virtual bool SetPluginEnabled(const FString& PluginName, bool bEnabled, FText& OutFailReason) override;
 	virtual bool RemovePluginReference(const FString& PluginName, FText& OutFailReason) override;
-	virtual bool UpdateAdditionalPluginDirectory(const FString& Dir, const bool bAddOrRemove) override;
-	virtual const TArray<FString>& GetAdditionalPluginDirectories() const override;
+	virtual void UpdateAdditionalPluginDirectory(const FString& Dir, const bool bAddOrRemove) override;
 	virtual bool IsCurrentProjectDirty() const override;
 	virtual bool SaveCurrentProjectToDisk(FText& OutFailReason) override;
 	virtual bool IsEnterpriseProject() override;
 	virtual void SetIsEnterpriseProject(bool bValue) override;
 	virtual TArray<FModuleContextInfo>& GetCurrentProjectModuleContextInfos() override;
-	virtual bool IsSuppressingProjectFileWrite() const override;
-	virtual void AddSuppressProjectFileWrite(const FName InName) override;
-	virtual void RemoveSuppressProjectFileWrite(const FName InName) override;
 
 private:
 	static void QueryStatusForProjectImpl(const FProjectDescriptor& Project, const FString& FilePath, FProjectStatus& OutProjectStatus);
 
 	/** Gets the list of plugins enabled by default, excluding the project overrides */
-	static void GetDefaultEnabledPlugins(TArray<FString>& PluginNames, bool bIncludeInstalledPlugins, bool bAllowEnginePluginsEnabledByDefault);
+	static void GetDefaultEnabledPlugins(TArray<FString>& PluginNames, bool bIncludeInstalledPlugins);
 
 	/** The project that is currently loaded in the editor */
 	TSharedPtr< FProjectDescriptor > CurrentProject;
@@ -63,12 +58,6 @@ private:
 
 	/** Delegate called when the target platforms for the current project are changed */
 	FOnTargetPlatformsForCurrentProjectChangedEvent OnTargetPlatformsForCurrentProjectChangedEvent;
-
-	/** Delegate called when LoadModulesForProject() completes for a particular phase */
-	FLoadingModulesForPhaseEvent OnLoadingPhaseCompleteEvent;
-
-	/** Array of names that have disabled project file writes */
-	TArray<FName> SuppressProjectFileWriteList;
 };
 
 

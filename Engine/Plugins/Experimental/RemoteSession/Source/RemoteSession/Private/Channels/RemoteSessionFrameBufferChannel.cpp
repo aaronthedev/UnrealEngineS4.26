@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Channels/RemoteSessionFrameBufferChannel.h"
 #include "ImageProviders/RemoteSessionFrameBufferImageProvider.h"
@@ -6,45 +6,36 @@
 #include "Misc/ConfigCacheIni.h"
 #include "RemoteSessionUtils.h"
 
-
-// FRemoteSessionFrameBufferChannel is deprecated. Please use FRemoteSessionImageChannel.
-// FRemoteSessionFrameBufferChannelFactoryWorker was created for backward compatibility with older app
-
-class FRemoteSessionFrameBufferChannelFactoryWorker : public IRemoteSessionChannelFactoryWorker
+TSharedPtr<IRemoteSessionChannel> FRemoteSessionFrameBufferChannelFactoryWorker::Construct(ERemoteSessionChannelMode InMode, TSharedPtr<FBackChannelOSCConnection, ESPMode::ThreadSafe> InConnection) const
 {
-public:
-	TSharedPtr<IRemoteSessionChannel> Construct(ERemoteSessionChannelMode InMode, TSharedPtr<IBackChannelConnection, ESPMode::ThreadSafe> InConnection) const
+	TSharedPtr<FRemoteSessionImageChannel> Channel = MakeShared<FRemoteSessionImageChannel>(InMode, InConnection);
+
+	if (InMode == ERemoteSessionChannelMode::Write)
 	{
-		TSharedPtr<FRemoteSessionImageChannel> Channel = MakeShared<FRemoteSessionImageChannel>(InMode, InConnection);
+		TSharedPtr<FRemoteSessionFrameBufferImageProvider> ImageProvider = MakeShared<FRemoteSessionFrameBufferImageProvider>(Channel->GetImageSender());
 
-		if (InMode == ERemoteSessionChannelMode::Write)
 		{
-			TSharedPtr<FRemoteSessionFrameBufferImageProvider> ImageProvider = MakeShared<FRemoteSessionFrameBufferImageProvider>(Channel->GetImageSender());
+			int32 Quality = 85;
+			int32 Framerate = 30;
+			GConfig->GetInt(TEXT("RemoteSession"), TEXT("Quality"), Quality, GEngineIni);
+			GConfig->GetInt(TEXT("RemoteSession"), TEXT("Framerate"), Framerate, GEngineIni);
 
-			{
-				const URemoteSessionSettings* Settings = URemoteSessionSettings::StaticClass()->GetDefaultObject<URemoteSessionSettings>();
-
-				ImageProvider->SetCaptureFrameRate(Settings->FrameRate);
-				Channel->SetCompressQuality(Settings->ImageQuality);
-			}
-
-			{
-				TWeakPtr<SWindow> InputWindow;
-				TWeakPtr<FSceneViewport> SceneViewport;
-				FRemoteSessionUtils::FindSceneViewport(InputWindow, SceneViewport);
-
-				if (TSharedPtr<FSceneViewport> SceneViewPortPinned = SceneViewport.Pin())
-				{
-					ImageProvider->SetCaptureViewport(SceneViewPortPinned.ToSharedRef());
-				}
-			}
-
-			Channel->SetImageProvider(ImageProvider);
+			ImageProvider->SetCaptureFrameRate(Framerate);
+			Channel->SetCompressQuality(Quality);
 		}
-		return Channel;
+
+		{
+			TWeakPtr<SWindow> InputWindow;
+			TWeakPtr<FSceneViewport> SceneViewport;
+			FRemoteSessionUtils::FindSceneViewport(InputWindow, SceneViewport);
+
+			if (TSharedPtr<FSceneViewport> SceneViewPortPinned = SceneViewport.Pin())
+			{
+				ImageProvider->SetCaptureViewport(SceneViewPortPinned.ToSharedRef());
+			}
+		}
+
+		Channel->SetImageProvider(ImageProvider);
 	}
-};
-
-REGISTER_CHANNEL_FACTORY(FRemoteSessionFrameBufferChannel, FRemoteSessionFrameBufferChannelFactoryWorker, ERemoteSessionChannelMode::Write);
-REGISTER_CHANNEL_FACTORY(FRemoteSessionFrameBufferChannel_DEPRECATED, FRemoteSessionFrameBufferChannelFactoryWorker, ERemoteSessionChannelMode::Write);
-
+	return Channel;
+}

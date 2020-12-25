@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_PRIM_H
-#define PXR_USD_USD_PRIM_H
+#ifndef USD_PRIM_H
+#define USD_PRIM_H
 
 /// \file usd/prim.h
 
@@ -52,13 +52,11 @@
 PXR_NAMESPACE_OPEN_SCOPE
 
 class UsdPrim;
-class UsdPrimDefinition;
 class UsdPrimRange;
 class Usd_PrimData;
 
 class UsdAttribute;
 class UsdRelationship;
-class UsdPayloads;
 class UsdReferences;
 class UsdSchemaBase;
 class UsdAPISchemaBase;
@@ -141,14 +139,12 @@ public:
     typedef UsdPrimSubtreeRange SubtreeRange;
 
     /// Construct an invalid prim.
-    UsdPrim() : UsdObject(_Null<UsdPrim>()) {}
+    UsdPrim() : UsdObject() {}
 
-    /// Return this prim's definition based on the prim's type if the type
-    /// is a registered prim type. Returns an empty prim definition if it is 
-    /// not.
-    const UsdPrimDefinition &GetPrimDefinition() const {
-        return _Prim()->GetPrimDefinition();
-    }
+    /// Return this prim's definition from the UsdSchemaRegistry based on the
+    /// prim's type if one exists, otherwise return null.
+    USD_API
+    SdfPrimSpecHandle GetPrimDefinition() const;
 
     /// Return this prim's composed specifier.
     SdfSpecifier GetSpecifier() const { return _Prim()->GetSpecifier(); };
@@ -193,31 +189,21 @@ public:
 
     /// Return true if this prim is active, meaning neither it nor any of its
     /// ancestors have active=false.  Return false otherwise.
-    ///
-    /// See \ref Usd_ActiveInactive for what it means for a prim to be active.
     bool IsActive() const { return _Prim()->IsActive(); }
 
     /// Author 'active' metadata for this prim at the current EditTarget.
-    ///
-    /// See \ref Usd_ActiveInactive for the effects of activating or deactivating
-    /// a prim.
     bool SetActive(bool active) const {
         return SetMetadata(SdfFieldKeys->Active, active);
     }
 
     /// Remove the authored 'active' opinion at the current EditTarget.  Do
     /// nothing if there is no authored opinion.
-    ///
-    /// See \ref Usd_ActiveInactive for the effects of activating or deactivating
-    /// a prim.
     bool ClearActive() const {
         return ClearMetadata(SdfFieldKeys->Active);
     }
 
     /// Return true if this prim has an authored opinion for 'active', false
     /// otherwise.
-    ///
-    /// See \ref Usd_ActiveInactive for what it means for a prim to be active.
     bool HasAuthoredActive() const {
         return HasAuthoredMetadata(SdfFieldKeys->Active);
     }
@@ -680,46 +666,6 @@ public:
     USD_API
     bool IsPseudoRoot() const;
 
-    /// Returns the prim at \p path on the same stage as this prim.
-    /// If path is is relative, it will be anchored to the path of this prim.
-    /// \sa UsdStage::GetPrimAtPath(const SdfPath&) const
-    USD_API UsdPrim GetPrimAtPath(const SdfPath& path) const;
-
-    /// Returns the object at \p path on the same stage as this prim.
-    /// If path is is relative, it will be anchored to the path of this prim.
-    /// \sa UsdStage::GetObjectAtPath(const SdfPath&) const
-    USD_API UsdObject GetObjectAtPath(const SdfPath& path) const;
-
-    /// Returns the property at \p path on the same stage as this prim.
-    /// If path is relative, it will be anchored to the path of this prim.
-    ///
-    /// \note There is no guarantee that this method returns a property on
-    /// this prim. This is only guaranteed if path is a purely relative
-    /// property path.
-    /// \sa GetProperty(const TfToken&) const
-    /// \sa UsdStage::GetPropertyAtPath(const SdfPath&) const
-    USD_API UsdProperty GetPropertyAtPath(const SdfPath& path) const;
-    
-    /// Returns the attribute at \p path on the same stage as this prim.
-    /// If path is relative, it will be anchored to the path of this prim.
-    ///
-    /// \note There is no guarantee that this method returns an attribute on
-    /// this prim. This is only guaranteed if path is a purely relative
-    /// property path.
-    /// \sa GetAttribute(const TfToken&) const
-    /// \sa UsdStage::GetAttributeAtPath(const SdfPath&) const
-    USD_API UsdAttribute GetAttributeAtPath(const SdfPath& path) const;
-
-    /// Returns the relationship at \p path on the same stage as this prim.
-    /// If path is relative, it will be anchored to the path of this prim.
-    ///
-    /// \note There is no guarantee that this method returns a relationship on
-    /// this prim. This is only guaranteed if path is a purely relative
-    /// property path.
-    /// \sa GetRelationship(const TfToken&) const
-    /// \sa UsdStage::GetRelationshipAtPath(const SdfPath&) const
-    USD_API UsdRelationship GetRelationshipAtPath(const SdfPath& path) const;
-
     // --------------------------------------------------------------------- //
     /// \name Variants 
     // --------------------------------------------------------------------- //
@@ -961,28 +907,20 @@ public:
         bool recurseOnTargets = false) const;
 
     // --------------------------------------------------------------------- //
-    /// \name Payload Authoring 
-    /// \deprecated 
-    /// This API is now deprecated. Please use the HasAuthoredPayloads and the
-    /// UsdPayloads API returned from GetPayloads() to query and author payloads 
-    /// instead. 
-    /// @{ 
+    /// \name Payloads, Load and Unload 
     // --------------------------------------------------------------------- //
 
-    /// \deprecated 
-    /// Clears the payload at the current EditTarget for this prim. Return false 
-    /// if the payload could not be cleared. 
+    /// Clears the payload at the current EditTarget for this prim. 
+    /// Return false if the payload could not be cleared.
     USD_API
     bool ClearPayload() const;
 
-    /// \deprecated 
     /// Return true if a payload is present on this prim.
     ///
     /// \sa \ref Usd_Payloads
     USD_API
     bool HasPayload() const;
 
-    /// \deprecated 
     /// Author payload metadata for this prim at the current edit
     /// target. Return true on success, false if the value could not be set. 
     ///
@@ -990,36 +928,15 @@ public:
     USD_API
     bool SetPayload(const SdfPayload& payload) const;
 
-    /// \deprecated 
     /// Shorthand for SetPayload(SdfPayload(assetPath, primPath)).
     USD_API
     bool SetPayload(
         const std::string& assetPath, const SdfPath& primPath) const;
     
-    /// \deprecated 
     /// Shorthand for SetPayload(SdfPayload(layer->GetIdentifier(),
     /// primPath)).
     USD_API
     bool SetPayload(const SdfLayerHandle& layer, const SdfPath& primPath) const;
-
-    /// @}
-
-    // --------------------------------------------------------------------- //
-    /// \name Payloads, Load and Unload 
-    // --------------------------------------------------------------------- //
-
-    /// Return a UsdPayloads object that allows one to add, remove, or
-    /// mutate payloads <em>at the currently set UsdEditTarget</em>.
-    ///
-    /// There is currently no facility for \em listing the currently authored
-    /// payloads on a prim... the problem is somewhat ill-defined, and
-    /// requires some thought.
-    USD_API
-    UsdPayloads GetPayloads() const;
-
-    /// Return true if this prim has any authored payloads.
-    USD_API
-    bool HasAuthoredPayloads() const;
 
     /// Load this prim, all its ancestors, and by default all its descendants.
     /// If \p loadPolicy is UsdLoadWithoutDescendants, then load only this prim
@@ -1164,13 +1081,6 @@ public:
         return UsdPrim();
     }
 
-    /// If this prim is a master prim, returns all prims that are instances of 
-    /// this master. Otherwise, returns an empty vector.
-    ///
-    /// Note that this function will return prims in masters for instances that 
-    /// are nested beneath other instances.
-    USD_API
-    std::vector<UsdPrim> GetInstances() const;
     /// @}
 
     // --------------------------------------------------------------------- //
@@ -1698,5 +1608,5 @@ UsdObject::GetPrim() const
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_USD_PRIM_H
+#endif // USD_PRIM_H
 

@@ -133,7 +133,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDRI_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -145,7 +145,7 @@ private:
 
     // override SchemaBase virtuals.
     USDRI_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -153,11 +153,10 @@ public:
     // --------------------------------------------------------------------- //
     /// 
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `asset info:sloPath` |
-    /// | C++ Type | SdfAssetPath |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Asset |
+    /// \n  C++ Type: SdfAssetPath
+    /// \n  Usd Type: SdfValueTypeNames->Asset
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDRI_API
     UsdAttribute GetSloPathAttr() const;
 

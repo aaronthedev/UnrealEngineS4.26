@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,16 +6,7 @@
 #include "TraceServices/Model/Frames.h"
 #include "TraceServices/Model/AnalysisSession.h"
 #include "Templates/SharedPointer.h"
-
-// We need to test data pattern and measure performance for more trace sessions
-// before completly switching to variable paged array.
-#define USE_VARIABLE_PAGED_ARRAY 1
-
-#if USE_VARIABLE_PAGED_ARRAY
-#include "Common/VariablePagedArray.h"
-#else
 #include "Common/PagedArray.h"
-#endif
 
 namespace Trace
 {
@@ -33,7 +24,7 @@ template<typename ValueType>
 class TCounterDataIterator
 {
 public:
-	TCounterDataIterator(const TCounterData<ValueType>& Outer, const TArray64<double>& FrameStartTimes)
+	TCounterDataIterator(const TCounterData<ValueType>& Outer, const TArray<double>& FrameStartTimes)
 		: FrameStartTimesIterator(FrameStartTimes.CreateConstIterator())
 		, TimestampsIterator(Outer.Timestamps.GetIterator())
 		, OpTypesIterator(Outer.OpTypes.GetIterator())
@@ -101,16 +92,10 @@ private:
 		}
 	}
 
-	TArray64<double>::TConstIterator FrameStartTimesIterator;
-#if USE_VARIABLE_PAGED_ARRAY
-	TVariablePagedArray<double>::TIterator TimestampsIterator;
-	TVariablePagedArray<ECounterOpType>::TIterator OpTypesIterator;
-	typename TVariablePagedArray<ValueType>::TIterator OpArgumentsIterator;
-#else
+	TArray<double>::TConstIterator FrameStartTimesIterator;
 	TPagedArray<double>::TIterator TimestampsIterator;
 	TPagedArray<ECounterOpType>::TIterator OpTypesIterator;
 	typename TPagedArray<ValueType>::TIterator OpArgumentsIterator;
-#endif
 	TTuple<double, ValueType> Current;
 };
 
@@ -131,11 +116,11 @@ public:
 	void InsertOp(double Timestamp, ECounterOpType OpType, ValueType OpArgument)
 	{
 		uint64 InsertionIndex;
-		if (Timestamps.Num() == 0 || Timestamps.Last() <= Timestamp)
+		if (Timestamps.Num() == 0 || Timestamps[Timestamps.Num() - 1] <= Timestamp)
 		{
 			InsertionIndex = Timestamps.Num();
 		}
-		else if (Timestamps.First() >= Timestamp)
+		else if (Timestamps[0] >= Timestamp)
 		{
 			InsertionIndex = 0;
 		}
@@ -148,11 +133,7 @@ public:
 				CurrentPage = TimestampIterator.PrevPage();
 			}
 			uint64 PageInsertionIndex = Algo::LowerBound(*CurrentPage, Timestamp);
-#if USE_VARIABLE_PAGED_ARRAY
-			InsertionIndex = TimestampIterator.GetCurrentItemIndex() + PageInsertionIndex;
-#else
 			InsertionIndex = TimestampIterator.GetCurrentPageIndex() * Timestamps.GetPageSize() + PageInsertionIndex;
-#endif
 		}
 		Timestamps.Insert(InsertionIndex) = Timestamp;
 		OpTypes.Insert(InsertionIndex) = OpType;
@@ -164,34 +145,26 @@ public:
 		return Timestamps.Num();
 	}
 
-	TIterator GetIterator(const TArray64<double>& FrameStartTimes) const
+	TIterator GetIterator(TArray<double> FrameStartTimes) const
 	{
 		return TIterator(*this, FrameStartTimes);
 	}
-
-	double GetFirstTimestamp() const { return Timestamps.First(); }
-	double GetLastTimestamp() const { return Timestamps.Last(); }
 
 private:
 	template<typename IteratorValueType>
 	friend class TCounterDataIterator;
 
-#if USE_VARIABLE_PAGED_ARRAY
-	TVariablePagedArray<double> Timestamps;
-	TVariablePagedArray<ECounterOpType> OpTypes;
-	TVariablePagedArray<ValueType> OpArguments;
-#else
 	TPagedArray<double> Timestamps;
 	TPagedArray<ECounterOpType> OpTypes;
 	TPagedArray<ValueType> OpArguments;
-#endif
 };
 
 class FCounter
-	: public IEditableCounter
+	: public ICounter
 {
 public:
-	FCounter(ILinearAllocator& Allocator, const TArray64<double>& FrameStartTimes);
+	FCounter(ILinearAllocator& Allocator, const TArray<double>& FrameStartTimes, uint32 Id);
+	virtual uint32 GetId() const override { return Id; }
 	virtual const TCHAR* GetName() const override { return Name; }
 	virtual void SetName(const TCHAR* InName) override { Name = InName; }
 	virtual const TCHAR* GetDescription() const override { return Description; }
@@ -201,20 +174,21 @@ public:
 	virtual ECounterDisplayHint GetDisplayHint() const { return DisplayHint; }
 	virtual void SetDisplayHint(ECounterDisplayHint InDisplayHint) override { DisplayHint = InDisplayHint; }
 	virtual void SetIsResetEveryFrame(bool bInIsResetEveryFrame) override { bIsResetEveryFrame = bInIsResetEveryFrame; }
-	virtual void EnumerateValues(double IntervalStart, double IntervalEnd, bool bIncludeExternalBounds, TFunctionRef<void(double, int64)> Callback) const override;
-	virtual void EnumerateFloatValues(double IntervalStart, double IntervalEnd, bool bIncludeExternalBounds, TFunctionRef<void(double, double)> Callback) const override;
+	virtual void EnumerateValues(double IntervalStart, double IntervalEnd, TFunctionRef<void(double, int64)> Callback) const override;
+	virtual void EnumerateFloatValues(double IntervalStart, double IntervalEnd, TFunctionRef<void(double, double)> Callback) const override;
 	virtual void AddValue(double Time, int64 Value) override;
 	virtual void AddValue(double Time, double Value) override;
 	virtual void SetValue(double Time, int64 Value) override;
 	virtual void SetValue(double Time, double Value) override;
 
 private:
-	const TArray64<double>& FrameStartTimes;
+	const TArray<double>& FrameStartTimes;
 	TCounterData<int64> IntCounterData;
 	TCounterData<double> DoubleCounterData;
 	const TCHAR* Name = nullptr;
 	const TCHAR* Description = nullptr;
 	uint64 ModCount = 0;
+	uint32 Id;
 	ECounterDisplayHint DisplayHint = CounterDisplayHint_None;
 	bool bIsFloatingPoint = false;
 	bool bIsResetEveryFrame = false;
@@ -229,15 +203,14 @@ public:
 	FCounterProvider(IAnalysisSession& Session, IFrameProvider& FrameProvider);
 	virtual ~FCounterProvider();
 	virtual uint64 GetCounterCount() const override { return Counters.Num(); }
-	virtual void EnumerateCounters(TFunctionRef<void(uint32, const ICounter&)> Callback) const override;
+	virtual void EnumerateCounters(TFunctionRef<void(const ICounter&)> Callback) const override;
 	virtual bool ReadCounter(uint32 CounterId, TFunctionRef<void(const ICounter&)> Callback) const override;
-	virtual IEditableCounter* CreateCounter() override;
-	virtual void AddCounter(const ICounter* Counter) override;
+	virtual ICounter* CreateCounter() override;
 
 private:
 	IAnalysisSession& Session;
 	IFrameProvider& FrameProvider;
-	TArray<const ICounter*> Counters;
+	TArray<FCounter*> Counters;
 };
 
 }

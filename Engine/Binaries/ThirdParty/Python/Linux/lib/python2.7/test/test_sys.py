@@ -748,10 +748,7 @@ class SizeofTest(unittest.TestCase):
         # tupleiterator
         check(iter(()), size('lP'))
         # type
-        fmt = 'P2P15Pl4PP9PP11PI'
-        if hasattr(sys, 'getcounts'):
-            fmt += '3P2P'
-        s = vsize(fmt +                 # PyTypeObject
+        s = vsize('P2P15Pl4PP9PP11PI'   # PyTypeObject
                   '39P'                 # PyNumberMethods
                   '3P'                  # PyMappingMethods
                   '10P'                 # PySequenceMethods

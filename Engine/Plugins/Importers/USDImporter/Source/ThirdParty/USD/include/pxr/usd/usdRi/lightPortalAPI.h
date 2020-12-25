@@ -125,7 +125,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDRI_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -137,7 +137,7 @@ private:
 
     // override SchemaBase virtuals.
     USDRI_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -146,11 +146,10 @@ public:
     /// Intensity adjustment relative to the light intensity.
     /// This gets multiplied by the light's intensity and power
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float ri:portal:intensity` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDRI_API
     UsdAttribute GetRiPortalIntensityAttr() const;
 
@@ -168,11 +167,10 @@ public:
     // --------------------------------------------------------------------- //
     /// tint: This parameter tints the color from the dome texture.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `color3f ri:portal:tint` |
-    /// | C++ Type | GfVec3f |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Color3f |
+    /// \n  C++ Type: GfVec3f
+    /// \n  Usd Type: SdfValueTypeNames->Color3f
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDRI_API
     UsdAttribute GetRiPortalTintAttr() const;
 

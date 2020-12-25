@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "AnimationBlueprintEditor.h"
@@ -67,7 +67,6 @@
 #include "Widgets/Input/SButton.h"
 #include "EditorFontGlyphs.h"
 #include "AnimationBlueprintInterfaceEditorMode.h"
-#include "ToolMenus.h"
 
 // Hide related nodes feature
 #include "Preferences/AnimationBlueprintEditorOptions.h"
@@ -161,8 +160,7 @@ public:
 // FAnimationBlueprintEditor
 
 FAnimationBlueprintEditor::FAnimationBlueprintEditor()
-	: PersonaMeshDetailLayout(nullptr)
-	, DebuggedMeshComponent(nullptr)
+	: PersonaMeshDetailLayout(NULL)
 {
 	GEditor->OnBlueprintPreCompile().AddRaw(this, &FAnimationBlueprintEditor::OnBlueprintPreCompile);
 	LastGraphPinType.ResetToDefaults();
@@ -195,16 +193,20 @@ void FAnimationBlueprintEditor::ExtendMenu()
 	}
 
 	MenuExtender = MakeShareable(new FExtender);
+
+	UAnimBlueprint* AnimBlueprint = GetAnimBlueprint();
+	if(AnimBlueprint)
+	{
+		TSharedPtr<FExtender> AnimBPMenuExtender = MakeShareable(new FExtender);
+		FKismet2Menu::SetupBlueprintEditorMenu(AnimBPMenuExtender, *this);
+		AddMenuExtender(AnimBPMenuExtender);
+	}
+
 	AddMenuExtender(MenuExtender);
 
 	// add extensible menu if exists
 	FAnimationBlueprintEditorModule& AnimationBlueprintEditorModule = FModuleManager::LoadModuleChecked<FAnimationBlueprintEditorModule>("AnimationBlueprintEditor");
 	AddMenuExtender(AnimationBlueprintEditorModule.GetMenuExtensibilityManager()->GetAllExtenders(GetToolkitCommands(), GetEditingObjects()));
-}
-
-void FAnimationBlueprintEditor::RegisterMenus()
-{
-	FBlueprintEditor::RegisterMenus();
 }
 
 void FAnimationBlueprintEditor::InitAnimationBlueprintEditor(const EToolkitMode::Type Mode, const TSharedPtr< class IToolkitHost >& InitToolkitHost, UAnimBlueprint* InAnimBlueprint)
@@ -243,28 +245,22 @@ void FAnimationBlueprintEditor::InitAnimationBlueprintEditor(const EToolkitMode:
 		SkeletonTree = SkeletonEditorModule.CreateSkeletonTree(PersonaToolkit->GetSkeleton(), SkeletonTreeArgs);
 	}
 
-	// Register for compilation events
-	InAnimBlueprint->OnCompiled().AddSP(this, &FAnimationBlueprintEditor::OnBlueprintPostCompile);
-
 	// Build up a list of objects being edited in this asset editor
 	TArray<UObject*> ObjectsBeingEdited;
 	ObjectsBeingEdited.Add(InAnimBlueprint);
 
-	CreateDefaultCommands();
-
-	BindCommands();
-
-	RegisterMenus();
-
 	// Initialize the asset editor and spawn tabs
+	const TSharedRef<FTabManager::FLayout> DummyLayout = FTabManager::NewLayout("NullLayout")->AddArea(FTabManager::NewPrimaryArea());
 	const bool bCreateDefaultStandaloneMenu = true;
 	const bool bCreateDefaultToolbar = true;
-	InitAssetEditor(Mode, InitToolkitHost, AnimationBlueprintEditorAppName, FTabManager::FLayout::NullLayout, bCreateDefaultStandaloneMenu, bCreateDefaultToolbar, ObjectsBeingEdited);
+	InitAssetEditor(Mode, InitToolkitHost, AnimationBlueprintEditorAppName, DummyLayout, bCreateDefaultStandaloneMenu, bCreateDefaultToolbar, ObjectsBeingEdited);
 
 	TArray<UBlueprint*> AnimBlueprints;
 	AnimBlueprints.Add(InAnimBlueprint);
 
-	CommonInitialization(AnimBlueprints, /*bShouldOpenInDefaultsMode=*/ false);
+	CommonInitialization(AnimBlueprints);
+
+	BindCommands();
 
 	if(InAnimBlueprint->BlueprintType == BPTYPE_Interface)
 	{
@@ -373,6 +369,39 @@ void FAnimationBlueprintEditor::ExtendToolbar()
 			}
 		));
 	}
+
+	struct Local
+	{
+		static void FillToolbar(FToolBarBuilder& ToolbarBuilder, const TSharedRef< FUICommandList > ToolkitCommands, FAnimationBlueprintEditor* BlueprintEditor)
+		{
+			ToolbarBuilder.BeginSection("Graph");
+			{
+				ToolbarBuilder.AddToolBarButton(
+					FAnimGraphCommands::Get().ToggleHideUnrelatedNodes,
+					NAME_None,
+					TAttribute<FText>(),
+					TAttribute<FText>(),
+					FSlateIcon(FEditorStyle::GetStyleSetName(), "GraphEditor.ToggleHideUnrelatedNodes")
+				);
+				ToolbarBuilder.AddComboButton(
+					FUIAction(),
+					FOnGetContent::CreateSP(BlueprintEditor, &FBlueprintEditor::MakeHideUnrelatedNodesOptionsMenu),
+					LOCTEXT("HideUnrelatedNodesOptions", "Hide Unrelated Nodes Options"),
+					LOCTEXT("HideUnrelatedNodesOptionsMenu", "Hide Unrelated Nodes options menu"),
+					TAttribute<FSlateIcon>(),
+					true
+				);
+			}
+			ToolbarBuilder.EndSection();
+		}
+	};
+
+	ToolbarExtender->AddToolBarExtension(
+		"Asset",
+		EExtensionHook::After,
+		GetToolkitCommands(),
+		FToolBarExtensionDelegate::CreateStatic( &Local::FillToolbar, GetToolkitCommands(), this )
+	);
 }
 
 UBlueprint* FAnimationBlueprintEditor::GetBlueprintObj() const
@@ -433,8 +462,22 @@ void FAnimationBlueprintEditor::OnGraphEditorBackgrounded(const TSharedRef<SGrap
 /** Create Default Tabs **/
 void FAnimationBlueprintEditor::CreateDefaultCommands() 
 {
+	if (GetBlueprintObj())
 	{
 		FBlueprintEditor::CreateDefaultCommands();
+
+		ToolkitCommands->MapAction(
+			FAnimGraphCommands::Get().ToggleHideUnrelatedNodes,
+			FExecuteAction::CreateSP(this, &FBlueprintEditor::ToggleHideUnrelatedNodes),
+			FCanExecuteAction(),
+			FIsActionChecked::CreateSP(this, &FBlueprintEditor::IsToggleHideUnrelatedNodesChecked));
+	}
+	else
+	{
+		ToolkitCommands->MapAction( FGenericCommands::Get().Undo, 
+			FExecuteAction::CreateSP( this, &FAnimationBlueprintEditor::UndoAction ));
+		ToolkitCommands->MapAction( FGenericCommands::Get().Redo, 
+			FExecuteAction::CreateSP( this, &FAnimationBlueprintEditor::RedoAction ));
 	}
 }
 
@@ -1092,6 +1135,56 @@ void FAnimationBlueprintEditor::RecompileAnimBlueprintIfDirty()
 	}
 }
 
+void FAnimationBlueprintEditor::Compile()
+{
+	// Grab the currently debugged object, so we can re-set it below
+	USkeletalMeshComponent* DebuggedMeshComponent = nullptr;
+	
+	if (UBlueprint* Blueprint = GetBlueprintObj())
+	{
+		UAnimInstance* CurrentDebugObject = Cast<UAnimInstance>(Blueprint->GetObjectBeingDebugged());
+		if(CurrentDebugObject)
+		{
+			// Force close any asset editors that are using the AnimScriptInstance (such as the Property Matrix), the class will be garbage collected
+			GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->CloseOtherEditors(CurrentDebugObject, nullptr);
+			DebuggedMeshComponent = CurrentDebugObject->GetSkelMeshComponent();
+		}
+	}
+
+	// Compile the blueprint
+	FBlueprintEditor::Compile();
+
+	if (DebuggedMeshComponent != nullptr)
+	{
+		if (DebuggedMeshComponent->GetAnimInstance() == nullptr)
+		{
+			// try reinitialize animation if it doesn't exist
+			DebuggedMeshComponent->InitAnim(true);
+		}
+
+		// re-apply preview anim bp if needed
+		UAnimBlueprint* AnimBlueprint = GetAnimBlueprint();
+		UAnimBlueprint* PreviewAnimBlueprint = AnimBlueprint ? AnimBlueprint->GetPreviewAnimationBlueprint() : nullptr;
+		
+		if (PreviewAnimBlueprint)
+		{
+			PersonaToolkit->GetPreviewScene()->SetPreviewAnimationBlueprint(PreviewAnimBlueprint, AnimBlueprint);
+		}
+
+		UAnimInstance* NewInstance = DebuggedMeshComponent->GetAnimInstance();
+		if ((AnimBlueprint && NewInstance->IsA(AnimBlueprint->GeneratedClass)) || (PreviewAnimBlueprint && NewInstance->IsA(PreviewAnimBlueprint->GeneratedClass)))
+		{
+			PersonaUtils::SetObjectBeingDebugged(AnimBlueprint, NewInstance);
+		}
+	}
+
+	// reset the selected skeletal control node
+	SelectedAnimGraphNode.Reset();
+
+	// if the user manipulated Pin values directly from the node, then should copy updated values to the internal node to retain data consistency
+	OnPostCompile();
+}
+
 FName FAnimationBlueprintEditor::GetToolkitFName() const
 {
 	return FName("AnimationBlueprintEditor");
@@ -1192,7 +1285,7 @@ void FAnimationBlueprintEditor::ClearupPreviewMeshAnimNotifyStates()
 	}
 }
 
-UAnimInstance* FAnimationBlueprintEditor::GetPreviewInstance() const
+void FAnimationBlueprintEditor::GetCustomDebugObjects(TArray<FCustomDebugObject>& DebugList) const
 {
 	UDebugSkelMeshComponent* PreviewMeshComponent = PersonaToolkit->GetPreviewMeshComponent();
 	if (PreviewMeshComponent->IsAnimBlueprintInstanced())
@@ -1213,22 +1306,8 @@ UAnimInstance* FAnimationBlueprintEditor::GetPreviewInstance() const
 			}
 		}
 
-		return PreviewInstance;
-	}
-
-	return nullptr;
-}
-
-void FAnimationBlueprintEditor::GetCustomDebugObjects(TArray<FCustomDebugObject>& DebugList) const
-{
-	UAnimInstance* PreviewInstance = GetPreviewInstance();
-	if (PreviewInstance)
-	{
 		new (DebugList) FCustomDebugObject(PreviewInstance, LOCTEXT("PreviewObjectLabel", "Preview Instance").ToString());
 	}
-
-	FAnimationBlueprintEditorModule& AnimationBlueprintEditorModule = FModuleManager::GetModuleChecked<FAnimationBlueprintEditorModule>("AnimationBlueprintEditor");
-	AnimationBlueprintEditorModule.OnGetCustomDebugObjects().Broadcast(*this, DebugList);
 }
 
 void FAnimationBlueprintEditor::CreateDefaultTabContents(const TArray<UBlueprint*>& InBlueprints)
@@ -1296,7 +1375,7 @@ void FAnimationBlueprintEditor::RedoAction()
 	GEditor->RedoTransaction();
 }
 
-void FAnimationBlueprintEditor::NotifyPostChange(const FPropertyChangedEvent& PropertyChangedEvent, FProperty* PropertyThatChanged)
+void FAnimationBlueprintEditor::NotifyPostChange(const FPropertyChangedEvent& PropertyChangedEvent, UProperty* PropertyThatChanged)
 {
 	FBlueprintEditor::NotifyPostChange(PropertyChangedEvent, PropertyThatChanged);
 
@@ -1364,61 +1443,6 @@ void FAnimationBlueprintEditor::OnBlueprintPreCompile(UBlueprint* BlueprintToCom
 				}
 			}
 		}
-	}
-
-	if(GetObjectsCurrentlyBeingEdited()->Num() > 0 && BlueprintToCompile == GetBlueprintObj())
-	{
-		// Grab the currently debugged object, so we can re-set it below in OnBlueprintPostCompile
-		DebuggedMeshComponent = nullptr;
-
-		UAnimInstance* CurrentDebugObject = Cast<UAnimInstance>(BlueprintToCompile->GetObjectBeingDebugged());
-		if(CurrentDebugObject)
-		{
-			// Force close any asset editors that are using the AnimScriptInstance (such as the Property Matrix), the class will be garbage collected
-			GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->CloseOtherEditors(CurrentDebugObject, nullptr);
-			DebuggedMeshComponent = CurrentDebugObject->GetSkelMeshComponent();
-		}
-	}
-}
-
-void FAnimationBlueprintEditor::OnBlueprintPostCompile(UBlueprint* InBlueprint)
-{
-	if(InBlueprint == GetBlueprintObj())
-	{
-		if (DebuggedMeshComponent != nullptr)
-		{
-			if (DebuggedMeshComponent->GetAnimInstance() == nullptr)
-			{
-				// try reinitialize animation if it doesn't exist
-				DebuggedMeshComponent->InitAnim(true);
-			}
-
-			// re-apply preview anim bp if needed
-			UAnimBlueprint* AnimBlueprint = GetAnimBlueprint();
-			UAnimBlueprint* PreviewAnimBlueprint = AnimBlueprint ? AnimBlueprint->GetPreviewAnimationBlueprint() : nullptr;
-		
-			if (PreviewAnimBlueprint)
-			{
-				PersonaToolkit->GetPreviewScene()->SetPreviewAnimationBlueprint(PreviewAnimBlueprint, AnimBlueprint);
-			}
-
-			if(UAnimInstance* NewInstance = DebuggedMeshComponent->GetAnimInstance())
-			{
-				if ((AnimBlueprint && NewInstance->IsA(AnimBlueprint->GeneratedClass)) || (PreviewAnimBlueprint && NewInstance->IsA(PreviewAnimBlueprint->GeneratedClass)))
-				{
-					PersonaUtils::SetObjectBeingDebugged(AnimBlueprint, NewInstance);
-				}
-			}
-		}
-
-		// reset the selected skeletal control node
-		SelectedAnimGraphNode.Reset();
-
-		// if the user manipulated Pin values directly from the node, then should copy updated values to the internal node to retain data consistency
-		OnPostCompile();
-
-		// We dont cache this persistently, only during a pre/post compile bracket
-		DebuggedMeshComponent = nullptr;
 	}
 }
 
@@ -1600,7 +1624,7 @@ void FAnimationBlueprintEditor::HandleSetObjectBeingDebugged(UObject* InObject)
 			}
 			else
 			{
-				// Otherwise set us to display the debugged instance via copy-pose
+				// Otherwise eet us to display the debugged instance via copy-pose
 				GetPreviewScene()->GetPreviewMeshComponent()->EnablePreview(true, nullptr);
 				GetPreviewScene()->GetPreviewMeshComponent()->PreviewInstance->SetDebugSkeletalMeshComponent(SkeletalMeshComponent);
 			}

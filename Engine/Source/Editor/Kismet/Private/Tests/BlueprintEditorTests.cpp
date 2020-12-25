@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "HAL/FileManager.h"
@@ -862,7 +862,7 @@ namespace BlueprintEditorPromotionTestHelper
 			Factory->ParentClass = AActor::StaticClass();
 
 			const FString PackageName = FEditorPromotionTestUtilities::GetGamePath() + TEXT("/") + BlueprintEditorPromotionUtils::BlueprintNameString;
-			BlueprintPackage = CreatePackage( *PackageName);
+			BlueprintPackage = CreatePackage(NULL, *PackageName);
 			EObjectFlags Flags = RF_Public | RF_Standalone;
 
 			UObject* ExistingBlueprint = FindObject<UBlueprint>(BlueprintPackage, *BlueprintEditorPromotionUtils::BlueprintNameString);

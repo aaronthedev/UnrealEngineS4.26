@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 TextureStreamingHelpers.h: Definitions of classes used for texture streaming.
@@ -84,7 +84,6 @@ struct FRenderAssetStreamingSettings
 	float MaxHiddenPrimitiveViewBoost;
 	int32 GlobalMipBias;
 	int32 PoolSize;
-	int32 MeshPoolSize;
 	bool bLimitPoolSizeToVRAM;
 	bool bUseNewMetrics;
 	bool bFullyLoadUsedTextures;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SoundSubmixGraph/SoundSubmixGraphSchema.h"
 
@@ -8,10 +8,7 @@
 #include "EdGraphUtilities.h"
 #include "Framework/Commands/GenericCommands.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
-#include "ToolMenus.h"
-
 #include "ScopedTransaction.h"
-#include "Sound/AudioSettings.h"
 #include "Sound/SoundSubmix.h"
 #include "SoundSubmixGraph/SoundSubmixGraphNode.h"
 #include "SoundSubmixGraph/SoundSubmixGraph.h"
@@ -19,9 +16,16 @@
 #include "SoundSubmixEditorUtilities.h"
 #include "Toolkits/AssetEditorManager.h"
 #include "ToolMenus.h"
-#include "SoundSubmixDefaultColorPalette.h"
+
 
 #define LOCTEXT_NAMESPACE "SoundSubmixSchema"
+
+
+namespace
+{
+	static const FLinearColor SubmixGraphColor = FColor(175, 255, 0);
+} // namespace <>
+
 
 FConnectionDrawingPolicy* FSoundSubmixGraphConnectionDrawingPolicyFactory::CreateConnectionPolicy(
 	const UEdGraphSchema* Schema,
@@ -50,10 +54,8 @@ FSoundSubmixGraphConnectionDrawingPolicy::FSoundSubmixGraphConnectionDrawingPoli
 // Give specific editor modes a chance to highlight this connection or darken non-interesting connections
 void FSoundSubmixGraphConnectionDrawingPolicy::DetermineWiringStyle(UEdGraphPin* OutputPin, UEdGraphPin* InputPin, FConnectionParams& OutParams)
 {
-	if (!(OutputPin && InputPin && GraphObj))
-	{
-		return;
-	}
+	check(GraphObj);
+	check(OutputPin);
 
 	OutParams.AssociatedPin1 = InputPin;
 	OutParams.AssociatedPin2 = OutputPin;
@@ -65,9 +67,6 @@ void FSoundSubmixGraphConnectionDrawingPolicy::DetermineWiringStyle(UEdGraphPin*
 
 	bool bExecuted = false;
 
-	USoundSubmixBase* InputSubmix = OutputPin ? CastChecked<USoundSubmixGraphNode>(OutputPin->GetOwningNode())->SoundSubmix : nullptr;
-	USoundSubmixBase* OutputSubmix = InputPin ? CastChecked<USoundSubmixGraphNode>(InputPin->GetOwningNode())->SoundSubmix : nullptr;
-
 	// Run through the predecessors, and on
 	if (FExecPairingMap* PredecessorMap = PredecessorNodes.Find(OutputPin->GetOwningNode()))
 	{
@@ -76,14 +75,14 @@ void FSoundSubmixGraphConnectionDrawingPolicy::DetermineWiringStyle(UEdGraphPin*
 			bExecuted = true;
 
 			OutParams.WireThickness = ActiveWireThickness;
-			OutParams.WireColor = Audio::GetColorForSubmixType(OutputSubmix);
-			OutParams.bDrawBubbles = Audio::IsConnectionPerformingSoundfieldConversion(InputSubmix, OutputSubmix);
+			OutParams.WireColor = SubmixGraphColor;
+			OutParams.bDrawBubbles = true;
 		}
 	}
 
 	if (!bExecuted)
 	{
-		OutParams.WireColor = Audio::GetColorForSubmixType(InputSubmix);
+		OutParams.WireColor = SubmixGraphColor;
 		OutParams.WireThickness = InactiveWireThickness;
 	}
 }
@@ -104,24 +103,53 @@ bool USoundSubmixGraphSchema::ConnectionCausesLoop(const UEdGraphPin* InputPin, 
 	USoundSubmixGraphNode* InputNode = CastChecked<USoundSubmixGraphNode>(InputPin->GetOwningNode());
 	USoundSubmixGraphNode* OutputNode = CastChecked<USoundSubmixGraphNode>(OutputPin->GetOwningNode());
 
-	// Master Submix cannot be an input as it would create an inferred loop for submixes without an explicit parent
-	if (const UAudioSettings* Settings = GetDefault<UAudioSettings>())
-	{
-		if (USoundSubmix* MasterSubmix = Cast<USoundSubmix>(Settings->MasterSubmix.TryLoad()))
-		{
-			if (OutputNode->SoundSubmix == MasterSubmix)
-			{
-				return true;
-			}
-
-			if (OutputNode->SoundSubmix->RecurseCheckChild(MasterSubmix))
-			{
-				return true;
-			}
-		}
-	}
-
 	return OutputNode->SoundSubmix->RecurseCheckChild(InputNode->SoundSubmix);
+}
+
+void USoundSubmixGraphSchema::GetBreakLinkToSubMenuActions(UToolMenu* Menu, const FName SectionName, UEdGraphPin* InGraphPin)
+{
+	FToolMenuSection& Section = Menu->FindOrAddSection(SectionName);
+
+	// Make sure we have a unique name for every entry in the list
+	TMap<FString, uint32> LinkTitleCount;
+
+	// Add all the links we could break from
+	for (TArray<UEdGraphPin*>::TConstIterator Links(InGraphPin->LinkedTo); Links; ++Links)
+	{
+		UEdGraphPin* Pin = *Links;
+		FString TitleString = Pin->GetOwningNode()->GetNodeTitle(ENodeTitleType::ListView).ToString();
+		FText Title = FText::FromString(TitleString);
+		if (Pin->PinName != TEXT(""))
+		{
+			TitleString = FString::Printf(TEXT("%s (%s)"), *TitleString, *Pin->PinName.ToString());
+
+			// Add name of connection if possible
+			FFormatNamedArguments Args;
+			Args.Add(TEXT("NodeTitle"), Title);
+			Args.Add(TEXT("PinName"), Pin->GetDisplayName());
+			Title = FText::Format(LOCTEXT("BreakDescPin", "{NodeTitle} ({PinName})"), Args);
+		}
+
+		uint32 &Count = LinkTitleCount.FindOrAdd(TitleString);
+
+		FText Description;
+		FFormatNamedArguments Args;
+		Args.Add(TEXT("NodeTitle"), Title);
+		Args.Add(TEXT("NumberOfNodes"), Count);
+
+		if (Count == 0)
+		{
+			Description = FText::Format(LOCTEXT("BreakDesc", "Break link to {NodeTitle}"), Args);
+		}
+		else
+		{
+			Description = FText::Format(LOCTEXT("BreakDescMulti", "Break link to {NodeTitle} ({NumberOfNodes})"), Args);
+		}
+		++Count;
+
+		Section.AddMenuEntry(NAME_None, Description, Description, FSlateIcon(), FUIAction(
+			FExecuteAction::CreateUObject((USoundSubmixGraphSchema*const)this, &USoundSubmixGraphSchema::BreakSinglePinLink, const_cast< UEdGraphPin* >(InGraphPin), *Links)));
+	}
 }
 
 void USoundSubmixGraphSchema::GetGraphContextActions(FGraphContextMenuBuilder& ContextMenuBuilder) const
@@ -136,7 +164,34 @@ void USoundSubmixGraphSchema::GetGraphContextActions(FGraphContextMenuBuilder& C
 
 void USoundSubmixGraphSchema::GetContextMenuActions(UToolMenu* Menu, UGraphNodeContextMenuContext* Context) const
 {
-	if (Context->Node)
+	if (Context->Pin)
+	{
+		const UEdGraphPin* InGraphPin = Context->Pin;
+		{
+			const static FName SectionName = "SoundSubmixGraphSchemaPinActions";
+			FToolMenuSection& Section = Menu->AddSection(SectionName, LOCTEXT("PinActionsMenuHeader", "Pin Actions"));
+			// Only display the 'Break Links' option if there is a link to break!
+			if (InGraphPin->LinkedTo.Num() > 0)
+			{
+				Section.AddMenuEntry(FGraphEditorCommands::Get().BreakPinLinks);
+
+				// add sub menu for break link to
+				if(InGraphPin->LinkedTo.Num() > 1)
+				{
+					Section.AddSubMenu(
+						"BreakLinkTo",
+						LOCTEXT("BreakLinkTo", "Break Link To..." ),
+						LOCTEXT("BreakSpecificLinks", "Break a specific link..." ),
+						FNewToolMenuDelegate::CreateUObject((USoundSubmixGraphSchema*const)this, &USoundSubmixGraphSchema::GetBreakLinkToSubMenuActions, SectionName, const_cast<UEdGraphPin*>(InGraphPin)));
+				}
+				else
+				{
+					((USoundSubmixGraphSchema*const)this)->GetBreakLinkToSubMenuActions(Menu, SectionName, const_cast<UEdGraphPin*>(InGraphPin));
+				}
+			}
+		}
+	}
+	else if (Context->Node)
 	{
 		const USoundSubmixGraphNode* SoundGraphNode = Cast<const USoundSubmixGraphNode>(Context->Node);
 		{
@@ -164,85 +219,6 @@ const FPinConnectionResponse USoundSubmixGraphSchema::CanCreateConnection(const 
 	if (!CategorizePinsByDirection(PinA, PinB, /*out*/ InputPin, /*out*/ OutputPin))
 	{
 		return FPinConnectionResponse(CONNECT_RESPONSE_DISALLOW, LOCTEXT("ConnectionIncompatible", "Directions are not compatible"));
-	}
-
-	// Note- are input pin and output pin swapped here? Am I losing it?
-	USoundSubmixBase* InputSubmix = CastChecked<USoundSubmixGraphNode>(OutputPin->GetOwningNode())->SoundSubmix;
-	USoundSubmixBase* OutputSubmix = CastChecked<USoundSubmixGraphNode>(InputPin->GetOwningNode())->SoundSubmix;
-
-	// Check to see if this is an endpoint submix.
-	if (!InputSubmix->IsA<USoundSubmixWithParentBase>())
-	{
-		return FPinConnectionResponse(CONNECT_RESPONSE_DISALLOW, LOCTEXT("SubmixIsEndpoint", "Submix you are trying to connect from is an endpoint."));
-	}
-
-	// If we're trying to make a connection between two soundfield submixes, ensure that we can transcode between the two.
-	if (InputSubmix->IsA<USoundfieldSubmix>() && (OutputSubmix->IsA<USoundfieldSubmix>() || OutputSubmix->IsA<USoundfieldEndpointSubmix>()))
-	{
-		USoundfieldSubmix* InputSoundfieldSubmix = Cast<USoundfieldSubmix>(InputSubmix);
-		USoundfieldSubmix* OutputSoundfieldSubmix = Cast<USoundfieldSubmix>(OutputSubmix);
-
-		ISoundfieldFactory* InputFactory = InputSoundfieldSubmix->GetSoundfieldFactoryForSubmix();
-		ISoundfieldFactory* OutputFactory = nullptr;
-
-		const USoundfieldEncodingSettingsBase* InputEncodingSettings = InputSoundfieldSubmix->GetEncodingSettings();
-		const USoundfieldEncodingSettingsBase* OutputEncodingSettings = nullptr;
-
-		if (!OutputSoundfieldSubmix)
-		{
-			USoundfieldEndpointSubmix* SoundfieldEndpointSubmixB = CastChecked<USoundfieldEndpointSubmix>(OutputSubmix);
-			OutputFactory = SoundfieldEndpointSubmixB->GetSoundfieldEndpointForSubmix();
-			OutputEncodingSettings = SoundfieldEndpointSubmixB->GetEncodingSettings();
-		}
-		else
-		{
-			OutputFactory = OutputSoundfieldSubmix->GetSoundfieldFactoryForSubmix();
-			OutputEncodingSettings = OutputSoundfieldSubmix->GetEncodingSettings();
-		}
-
-		if (InputFactory && OutputFactory)
-		{
-			if (!InputEncodingSettings)
-			{
-				InputEncodingSettings = InputFactory->GetDefaultEncodingSettings();
-			}
-
-			if (!InputEncodingSettings)
-			{
-				return FPinConnectionResponse(CONNECT_RESPONSE_DISALLOW, LOCTEXT("SoundfieldSubmixSourceIsInvalid", "Submix you are trying to connect from does not specify default settings. Please implement ISoundfieldFactory::GetDefaultEncodingSettings."));
-			}
-
-			TUniquePtr<ISoundfieldEncodingSettingsProxy> InputEncodingSettingsProxy = InputEncodingSettings->GetProxy();
-
-			if (!InputEncodingSettingsProxy)
-			{
-				return FPinConnectionResponse(CONNECT_RESPONSE_DISALLOW, LOCTEXT("SourceSoundfieldEncodingSettingsAreInvalid", "Submix you are trying to connect from failed to generate a proxy of it's settings. Please check USoundfieldEncodingSettingsBase::GetProxy()."));
-			}
-
-
-			if (!OutputEncodingSettings)
-			{
-				OutputEncodingSettings = OutputFactory->GetDefaultEncodingSettings();
-			}
-
-			if (!OutputEncodingSettings)
-			{
-				return FPinConnectionResponse(CONNECT_RESPONSE_DISALLOW, LOCTEXT("SoundfieldSubmixDestIsInvalid", "Submix you are trying to connect to does not specify default settings. Please implement ISoundfieldFactory::GetDefaultEncodingSettings."));
-			}
-
-			TUniquePtr<ISoundfieldEncodingSettingsProxy> OutputEncodingSettingsProxy = OutputEncodingSettings->GetProxy();
-
-			if (!OutputEncodingSettingsProxy)
-			{
-				return FPinConnectionResponse(CONNECT_RESPONSE_DISALLOW, LOCTEXT("DestSoundfieldEncodingSettingsAreInvalid", "Submix you are trying to connect to failed to generate a proxy of it's settings. Please check USoundfieldEncodingSettingsBase::GetProxy()."));
-			}
-
-			const bool bAreSoundfieldsCompatible = InputFactory->CanTranscodeToSoundfieldFormat(OutputFactory->GetSoundfieldFormatName(), *OutputEncodingSettingsProxy) || OutputFactory->CanTranscodeFromSoundfieldFormat(InputFactory->GetSoundfieldFormatName(), *InputEncodingSettingsProxy);
-			if (!bAreSoundfieldsCompatible)
-			{
-				return FPinConnectionResponse(CONNECT_RESPONSE_DISALLOW, LOCTEXT("SoundfieldSubmixesAreIncompatible", "These two submixes have incompatible types."));
-			}
-		}
 	}
 
 	if (ConnectionCausesLoop(InputPin, OutputPin))
@@ -280,20 +256,32 @@ bool USoundSubmixGraphSchema::TryCreateConnection(UEdGraphPin* PinA, UEdGraphPin
 		USoundSubmixGraph* Graph = CastChecked<USoundSubmixGraph>(PinA->GetOwningNode()->GetGraph());
 		Graph->LinkSoundSubmixes();
 
-		USoundSubmixBase* SubmixA = CastChecked<USoundSubmixGraphNode>(PinA->GetOwningNode())->SoundSubmix;
-		USoundSubmixBase* SubmixB = CastChecked<USoundSubmixGraphNode>(PinB->GetOwningNode())->SoundSubmix;
+		USoundSubmix* SubmixA = CastChecked<USoundSubmixGraphNode>(PinA->GetOwningNode())->SoundSubmix;
+		USoundSubmix* SubmixB = CastChecked<USoundSubmixGraphNode>(PinB->GetOwningNode())->SoundSubmix;
 
-		USoundSubmixWithParentBase* SubmixWithParentA = Cast<USoundSubmixWithParentBase>(SubmixA);
-		USoundSubmixWithParentBase* SubmixWithParentB = Cast<USoundSubmixWithParentBase>(SubmixA);
+		bool bReopenEditors = false;
 
 		// If re-basing root, re-open editor.  This will force the root to be the primary edited node
-		if (Graph->GetRootSoundSubmix() == SubmixA && SubmixWithParentA && SubmixWithParentA->ParentSubmix != nullptr)
+		if (Graph->GetRootSoundSubmix() == SubmixA && SubmixA->ParentSubmix != nullptr)
 		{
-			Graph->SetRootSoundSubmix(SubmixWithParentA->ParentSubmix);
+			bReopenEditors = true;
 		}
-		else if (Graph->GetRootSoundSubmix() == SubmixB && SubmixWithParentB && SubmixWithParentB->ParentSubmix != nullptr)
+		else if (Graph->GetRootSoundSubmix() == SubmixB && SubmixB->ParentSubmix != nullptr)
 		{
-			Graph->SetRootSoundSubmix(SubmixWithParentB->ParentSubmix);
+			bReopenEditors = true;
+		}
+
+		if (bReopenEditors)
+		{
+			check(GEditor);
+			UAssetEditorSubsystem* EditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
+			TArray<IAssetEditorInstance*> SubmixEditors = EditorSubsystem->FindEditorsForAsset(SubmixA);
+			for (IAssetEditorInstance* Editor : SubmixEditors)
+			{
+				Editor->CloseWindow();
+			}
+
+			EditorSubsystem->OpenEditorForAsset(SubmixA);
 		}
 	}
 
@@ -307,7 +295,7 @@ bool USoundSubmixGraphSchema::ShouldHidePinDefaultValue(UEdGraphPin* Pin) const
 
 FLinearColor USoundSubmixGraphSchema::GetPinTypeColor(const FEdGraphPinType& PinType) const
 {
-	return Audio::GetColorForSubmixType(PinType.PinCategory);
+	return SubmixGraphColor;
 }
 
 void USoundSubmixGraphSchema::BreakNodeLinks(UEdGraphNode& TargetNode) const
@@ -326,42 +314,6 @@ void USoundSubmixGraphSchema::BreakPinLinks(UEdGraphPin& TargetPin, bool bSendsN
 	// if this would notify the node then we need to re-link sound classes
 	if (bSendsNodeNotifcation)
 	{
-		if (USoundSubmixGraphNode* GraphNode = Cast<USoundSubmixGraphNode>(TargetPin.GetOwningNode()))
-		{
-			// If TargetPin is an input, We should break links to all child submixes of the submix that owns this pin.
-			if (TargetPin.Direction == EEdGraphPinDirection::EGPD_Input)
-			{
-				// Iterate through all child submixes
-				USoundSubmixBase* OutputSubmix = GraphNode->SoundSubmix;
-
-				// Note: If we ever support multiple parents for submixes, this will need to be modified.
-				for (USoundSubmixBase* InputSubmix : OutputSubmix->ChildSubmixes)
-				{
-					if (USoundSubmixWithParentBase* SubmixWithParent = Cast<USoundSubmixWithParentBase>(InputSubmix))
-					{
-						SubmixWithParent->ParentSubmix = nullptr;
-						SubmixWithParent->PostEditChange();
-					}
-				}
-
-				OutputSubmix->ChildSubmixes.Reset();
-				OutputSubmix->PostEditChange();
-			}
-			else if (TargetPin.Direction == EEdGraphPinDirection::EGPD_Output)
-			{
-				// If this is an output pin, break the connection between this submix and it's parent.
-				USoundSubmixWithParentBase* InputSubmix = CastChecked<USoundSubmixWithParentBase>(GraphNode->SoundSubmix);
-				USoundSubmixBase* OutputSubmix = InputSubmix->ParentSubmix;
-				check(OutputSubmix);
-
-				OutputSubmix->ChildSubmixes.Remove(InputSubmix);
-				InputSubmix->ParentSubmix = nullptr;
-
-				OutputSubmix->PostEditChange();
-				InputSubmix->PostEditChange();
-			}
-		}
-
 		CastChecked<USoundSubmixGraph>(TargetPin.GetOwningNode()->GetGraph())->LinkSoundSubmixes();
 	}
 }
@@ -370,25 +322,6 @@ void USoundSubmixGraphSchema::BreakSinglePinLink(UEdGraphPin* SourcePin, UEdGrap
 {
 	const FScopedTransaction Transaction( NSLOCTEXT("UnrealEd", "GraphEd_BreakSinglePinLink", "Break Pin Link") );
 	Super::BreakSinglePinLink(SourcePin, TargetPin);
-
-	// Compare the directions
-	UEdGraphPin* InputPin = nullptr;
-	UEdGraphPin* OutputPin = nullptr;
-
-	if (!CategorizePinsByDirection(SourcePin, TargetPin, /*out*/ InputPin, /*out*/ OutputPin))
-	{
-		return;
-	}
-
-	// Note- are input pin and output pin swapped here? Am I losing it?
-	USoundSubmixBase* InputSubmix = CastChecked<USoundSubmixGraphNode>(OutputPin->GetOwningNode())->SoundSubmix;
-	USoundSubmixBase* OutputSubmix = CastChecked<USoundSubmixGraphNode>(InputPin->GetOwningNode())->SoundSubmix;
-
-	if (USoundSubmixWithParentBase* SubmixWithParent = CastChecked<USoundSubmixWithParentBase>(InputSubmix))
-	{
-		SubmixWithParent->ParentSubmix = nullptr;
-		SubmixWithParent->PostEditChange();
-	}
 
 	CastChecked<USoundSubmixGraph>(SourcePin->GetOwningNode()->GetGraph())->LinkSoundSubmixes();
 }
@@ -400,17 +333,15 @@ void USoundSubmixGraphSchema::DroppedAssetsOnGraph(const TArray<FAssetData>& Ass
 
 	USoundSubmixGraph* SoundSubmixGraph = CastChecked<USoundSubmixGraph>(Graph);
 	TSet<IAssetEditorInstance*> Editors;
-	TSet<USoundSubmixBase*> UndisplayedSubmixes;
+	TSet<USoundSubmix*> UndisplayedSubmixes;
 	for (const FAssetData& Asset : Assets)
 	{
-		if (USoundSubmixBase* SoundSubmix = Cast<USoundSubmixBase>(Asset.GetAsset()))
+		// Walk to the root submix
+		if (USoundSubmix* SoundSubmix = Cast<USoundSubmix>(Asset.GetAsset()))
 		{
-			// Walk to the root submix
-			USoundSubmixWithParentBase* SubmixWithParent = Cast<USoundSubmixWithParentBase>(SoundSubmix);
-			while (SubmixWithParent && SubmixWithParent->ParentSubmix != nullptr)
+			while (SoundSubmix->ParentSubmix != nullptr)
 			{
-				SoundSubmix = SubmixWithParent->ParentSubmix;
-				SubmixWithParent = Cast<USoundSubmixWithParentBase>(SoundSubmix);
+				SoundSubmix = SoundSubmix->ParentSubmix;
 			}
 
 			if (!SoundSubmixGraph->IsSubmixDisplayed(SoundSubmix))
@@ -447,7 +378,7 @@ void USoundSubmixGraphSchema::DroppedAssetsOnGraph(const TArray<FAssetData>& Ass
 		}
 
 		// If editor is this graph's editor, update editable objects and select dropped submixes.
-		if (USoundSubmixBase* RootSubmix = SoundSubmixGraph->GetRootSoundSubmix())
+		if (USoundSubmix* RootSubmix = SoundSubmixGraph->GetRootSoundSubmix())
 		{
 			UAssetEditorSubsystem* EditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
 			if (IAssetEditorInstance* EditorInstance = EditorSubsystem->FindEditorForAsset(RootSubmix, false /* bFocusIfOpen */))

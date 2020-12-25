@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MfMediaSourceReaderCallback.h"
 #include "MfMediaPrivate.h"
@@ -14,7 +14,7 @@
 	#include "Windows/WindowsHWrapper.h"
 	#include "Windows/AllowWindowsPlatformTypes.h"
 #else
-	#include "XboxCommonAllowPlatformTypes.h"
+	#include "XboxOne/XboxOneAllowPlatformTypes.h"
 #endif
 
 #define MFMEDIASOURCEREADERCALLBACK_TRACE_SAMPLES 0
@@ -147,7 +147,7 @@ STDMETHODIMP_(ULONG) FMfMediaSourceReaderCallback::Release()
 #if PLATFORM_WINDOWS || PLATFORM_HOLOLENS
 	#include "Windows/HideWindowsPlatformTypes.h"
 #else
-	#include "XboxCommonHidePlatformTypes.h"
+	#include "XboxOne/XboxOneHidePlatformTypes.h"
 #endif
 
 #endif //MFMEDIA_SUPPORTED_PLATFORM

@@ -1,22 +1,22 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
-#include "UObject/Field.h"
 
 #include "PropertyValue.generated.h"
 
 #define PATH_DELIMITER TEXT(" / ")
 #define ATTACH_CHILDREN_NAME TEXT("Children")
 
+VARIANTMANAGERCONTENT_API DECLARE_LOG_CATEGORY_EXTERN(LogVariantContent, Log, All);
+
 DECLARE_MULTICAST_DELEGATE(FOnPropertyRecorded);
 DECLARE_MULTICAST_DELEGATE(FOnPropertyApplied);
 
 class UVariantObjectBinding;
 class USCS_Node;
-class FProperty;
 
 UENUM()
 enum class EPropertyValueCategory : uint8
@@ -40,7 +40,7 @@ ENUM_CLASS_FLAGS(EPropertyValueCategory)
 // is important for handling component reordering and transient components (e.g.
 // runtime billboard components, etc)
 USTRUCT()
-struct VARIANTMANAGERCONTENT_API FCapturedPropSegment
+struct FCapturedPropSegment
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -61,7 +61,7 @@ class VARIANTMANAGERCONTENT_API UPropertyValue : public UObject
 
 public:
 
-	void Init(const TArray<FCapturedPropSegment>& InCapturedPropSegments, FFieldClass* InLeafPropertyClass, const FString& InFullDisplayString, const FName& InPropertySetterName, EPropertyValueCategory InCategory = EPropertyValueCategory::Generic);
+	void Init(const TArray<FCapturedPropSegment>& InCapturedPropSegments, UClass* InLeafPropertyClass, const FString& InFullDisplayString, const FName& InPropertySetterName, EPropertyValueCategory InCategory = EPropertyValueCategory::Generic);
 
 	class UVariantObjectBinding* GetParent() const;
 
@@ -92,18 +92,15 @@ public:
 	// Applies our recorded data to the PropertyValuePtr for the resolved object
 	virtual void ApplyDataToResolvedObject();
 
-	// Returns the type of FProperty (FObjectProperty, FFloatProperty, etc)
+	// Returns the type of UProperty (UObjectProperty, UFloatProperty, etc)
 	// If checking for Enums, prefer checking if GetEnumPropertyEnum() != nullptr, as it may be that
-	// we received a FNumericProperty that actually represents an enum, which wouldn't be reflected here
-	virtual FFieldClass* GetPropertyClass() const;
+	// we received a UNumericProperty that actually represents an enum, which wouldn't be reflected here
+	virtual UClass* GetPropertyClass() const;
 	EPropertyValueCategory GetPropCategory() const;
 	virtual UScriptStruct* GetStructPropertyStruct() const;
 	virtual UClass* GetObjectPropertyObjectClass() const;
 	UEnum* GetEnumPropertyEnum() const;
-	virtual bool ContainsProperty(const FProperty* Prop) const;
-
-	// Returns an array of link segments that together describe the full property path
-	const TArray<FCapturedPropSegment>& GetCapturedPropSegments() const;
+	virtual bool ContainsProperty(const UProperty* Prop) const;
 
 	// Utility functions for UEnumProperties
 	TArray<FName> GetValidEnumsFromPropertyOverride();
@@ -135,7 +132,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category="PropertyValue")
 	bool HasRecordedData() const;
 	const TArray<uint8>& GetRecordedData();
-	virtual void SetRecordedData(const uint8* NewDataBytes, int32 NumBytes, int32 Offset = 0);
+	void SetRecordedData(const uint8* NewDataBytes, int32 NumBytes, int32 Offset = 0);
 	virtual const TArray<uint8>& GetDefaultValue();
 	void ClearDefaultValue();
 	// Returns true if our recorded data would remain the same if we called
@@ -145,27 +142,17 @@ public:
 	FOnPropertyApplied& GetOnPropertyApplied();
 	FOnPropertyRecorded& GetOnPropertyRecorded();
 
-#if WITH_EDITORONLY_DATA
-	/**
-	 * Get the order with which the VariantManager should display this in a property list. Lower values will be shown higher up
-	 */
-	uint32 GetDisplayOrder() const;
-
-	/**
-	 * Set the order with which the VariantManager should display this in a property list. Lower values will be shown higher up
-	 */
-	void SetDisplayOrder(uint32 InDisplayOrder);
-#endif //WITH_EDITORONLY_DATA
-
-protected:
+private:
 
 	void SetRecordedDataInternal(const uint8* NewDataBytes, int32 NumBytes, int32 Offset = 0);
 
-	FProperty* GetProperty() const;
+protected:
+
+	UProperty* GetProperty() const;
 
 	// Applies the recorded data to the TargetObject via the PropertySetter function
 	// (e.g. SetIntensity instead of setting the Intensity UPROPERTY directly)
-	virtual void ApplyViaFunctionSetter(UObject* TargetObject);
+	void ApplyViaFunctionSetter(UObject* TargetObject);
 
 	// Recursively navigate the component/USCS_Node hierarchy trying to resolve our property path
 	bool ResolveUSCSNodeRecursive(const USCS_Node* Node, int32 SegmentIndex);
@@ -175,18 +162,17 @@ protected:
 	FOnPropertyRecorded OnPropertyRecorded;
 
 	// Temp data cached from last resolve
-	FProperty* LeafProperty;
+	UProperty* LeafProperty;
 	UStruct* ParentContainerClass;
 	void* ParentContainerAddress;
-	UObject* ParentContainerObject; // Leafmost UObject* in the property path. Required as ParentContainerAddress
-	uint8* PropertyValuePtr;        // may be pointing at a C++ struct
+	uint8* PropertyValuePtr;
 	UFunction* PropertySetter;
 
 	// Properties were previously stored like this. Use CapturedPropSegments from now on, which stores
 	// properties by name instead. It is much safer, as we can't guarantee these pointers will be valid
 	// if they point at other packages (will depend on package load order, etc).
 	UPROPERTY()
-	TArray<TFieldPath<FProperty>> Properties_DEPRECATED;
+	TArray<UProperty*> Properties_DEPRECATED;
 	UPROPERTY()
 	TArray<int32> PropertyIndices_DEPRECATED;
 
@@ -208,8 +194,7 @@ protected:
 	// We use these mainly to know how to serialize/deserialize the values of properties that need special care
 	// (e.g. UObjectProperties, name properties, text properties, etc)
 	UPROPERTY()
-	UClass* LeafPropertyClass_DEPRECATED;
-	FFieldClass* LeafPropertyClass;
+	UClass* LeafPropertyClass;
 
 	UPROPERTY()
 	TArray<uint8> ValueBytes;
@@ -223,11 +208,6 @@ protected:
 	FName TempName;
 	FString TempStr;
 	FText TempText;
-
-#if WITH_EDITORONLY_DATA
-	UPROPERTY()
-	uint32 DisplayOrder;
-#endif //WITH_EDITORONLY_DATA
 };
 
 // Deprecated: Only here for backwards compatibility with 4.21

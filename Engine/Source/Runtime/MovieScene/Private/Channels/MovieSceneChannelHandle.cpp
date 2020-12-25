@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Channels/MovieSceneChannelHandle.h"
 #include "Channels/MovieSceneChannelProxy.h"
@@ -36,11 +36,6 @@ FMovieSceneChannel* FMovieSceneChannelHandle::Get() const
 FName FMovieSceneChannelHandle::GetChannelTypeName() const
 {
 	return ChannelTypeName;
-}
-
-int32 FMovieSceneChannelHandle::GetChannelIndex() const
-{
-	return ChannelIndex;
 }
 
 #if WITH_EDITOR

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,21 +13,14 @@ public:
 	FFindPolygonsAlgorithm(FDynamicMesh3* MeshIn);
 
 	FDynamicMesh3* Mesh = nullptr;
+	TArray<int> PolygonGroupIDs;
 	TArray<TArray<int>> FoundPolygons;
 	TArray<int> PolygonTags;
-	TArray<FVector3d> PolygonNormals;
+	TArray<FVector> PolygonNormals;
 
 	TArray<int> PolygonEdges;
 
-	bool FindPolygonsFromFaceNormals(double DotTolerance = 0.0001);
-	bool FindPolygonsFromUVIslands();
+	bool FindPolygons(double DotTolerance = 0.0001);
 
 	bool FindPolygonEdges();
-
-
-protected:
-
-	TArray<int> PolygonGroupIDs;
-
-	void SetGroupsFromPolygons();
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Transforms/QuickAxisRotator.h"
@@ -15,7 +15,7 @@ void FQuickAxisRotator::Initialize()
 	MoveAxisSolver.SnapMetricTolerance = ToolSceneQueriesUtil::GetDefaultVisualAngleSnapThreshD();
 	MoveAxisSolver.SnapMetricFunc = [this](const FVector3d& Position1, const FVector3d& Position2) 
 	{
-		return ToolSceneQueriesUtil::CalculateNormalizedViewVisualAngleD(this->CameraState, Position1, Position2);
+		return ToolSceneQueriesUtil::CalculateViewVisualAngleD(this->CameraState, Position1, Position2);
 	};
 
 	QuickAxisRenderer.SetLineParameters(FLinearColor(240, 240, 16), 6);
@@ -98,8 +98,7 @@ void FQuickAxisRotator::UpdateSnapAxes()
 	FFrame3d RotZFrame(AxisFrameWorld.Origin, AxisFrameWorld.GetAxis(2));
 	MoveAxisSolver.AddCircleTarget(FCircle3d(RotZFrame, UseRadius), RotateZSnapID, 100);
 
-	MoveAxisSolver.AddPointTarget(AxisFrameWorld.Origin, RotateOriginSnapID,
-		FRaySpatialSnapSolver::FCustomMetric::Replace(0.5*ToolSceneQueriesUtil::GetDefaultVisualAngleSnapThreshD()), 50);
+	MoveAxisSolver.AddPointTarget(AxisFrameWorld.Origin, RotateOriginSnapID, 50, 0.5*ToolSceneQueriesUtil::GetDefaultVisualAngleSnapThreshD());
 }
 
 

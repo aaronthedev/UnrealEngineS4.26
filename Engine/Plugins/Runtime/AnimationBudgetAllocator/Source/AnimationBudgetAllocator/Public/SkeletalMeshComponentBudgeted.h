@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -50,14 +50,10 @@ public:
 	bool GetShouldUseActorRenderedFlag() const { return bShouldUseActorRenderedFlag; };
 
 	void SetShouldUseActorRenderedFlag(bool value) { bShouldUseActorRenderedFlag = value; };
-
-protected:
-
+private:
 	// UActorComponent interface
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-
-private:
 
 	// USkeletalMeshComponent interface
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction) override;

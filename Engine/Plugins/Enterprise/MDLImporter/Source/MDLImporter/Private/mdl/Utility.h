@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -57,6 +57,11 @@ namespace Mdl
 		 */
 		mi::neuraylib::ICanvas* CreateCanvas(
 		    int Channels, int Width, int Height, const void* Src, bool bFlipY, mi::neuraylib::INeuray* Neuray, float Gamma = 1.f);
+
+		/**
+		 * Exports a canvas to a file, the extension gives the file format(i.e. png or jpeg).
+		 */
+		void ExportCanvas(const mi::neuraylib::ICanvas* Canvas, const FString& FilePath, mi::neuraylib::INeuray* Neuray);
 
 		/**
 		 * Creates a texture in the database with the given canvas.

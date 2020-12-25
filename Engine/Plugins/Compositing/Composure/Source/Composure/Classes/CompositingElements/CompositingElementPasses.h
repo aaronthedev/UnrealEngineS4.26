@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -20,14 +20,13 @@ class COMPOSURE_API UCompositingElementPass : public UObject
 {
 	GENERATED_BODY()
 
-protected:
-	UPROPERTY(EditAnywhere, BlueprintGetter = IsPassEnabled, BlueprintSetter = SetPassEnabled, Category = "Compositing Pass")
-	bool bEnabled = true;
-	
 public:
 	UCompositingElementPass();
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Compositing Pass", meta = (EditCondition = "bEnabled"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, BlueprintSetter = SetPassEnabled, Category = "Compositing Pass")
+	bool bEnabled = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Compositing Pass", meta = (EditCondition = "bEnabled"))
 	FName PassName;
 
 #if WITH_EDITOR
@@ -44,11 +43,8 @@ public:
 	UFUNCTION(BlueprintNativeEvent, Category = "Composure|Compositing Pass", meta=(CallInEditor = "true"))
 	void Reset();
 
-	UFUNCTION(BlueprintGetter)
-	bool IsPassEnabled() const { return bEnabled; }
-
 	UFUNCTION(BlueprintSetter)
-	void SetPassEnabled(bool bSetEnabledTo = true);
+	void SetPassEnabled(bool bEnabledIn = true);
 
 public: 
 	//~ Begin UObject interface

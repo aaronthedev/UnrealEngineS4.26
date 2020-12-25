@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,6 +6,9 @@
 #include "Kismet2/CompilerResultsLog.h"
 #include "NiagaraScript.h"
 #include "NiagaraParameterMapHistory.h"
+#include "EdGraphUtilities.h"
+#include "UObject/UObjectHash.h"
+#include "ComponentReregisterContext.h"
 #include "NiagaraShaderCompilationManager.h"
 #include "NiagaraDataInterface.h"
 #include "TickableEditorObject.h"
@@ -19,7 +22,6 @@ class UNiagaraNodeCustomHlsl;
 class UNiagaraNodeOutput;
 class UNiagaraScriptSource;
 class UNiagaraNodeEmitter;
-class UNiagaraScriptVariable;
 
 
 // handles finished shader compile jobs, applying of the shaders to their scripts, and some error handling
@@ -33,6 +35,7 @@ class FNiagaraShaderProcessorTickable : FTickableEditorObject
 
 	virtual void Tick(float DeltaSeconds) override
 	{
+		GNiagaraShaderCompilationManager.Tick(DeltaSeconds);
 		GNiagaraShaderCompilationManager.ProcessAsyncResults();
 	}
 
@@ -79,7 +82,7 @@ struct FNiagaraTranslateResults
 class FNiagaraCompileRequestData : public FNiagaraCompileRequestDataBase
 {
 public:
-	FNiagaraCompileRequestData()
+	FNiagaraCompileRequestData() : bUseRapidIterationParams(true), DetailLevelMask(FNiagaraCompileRequestDataBase::CookForAllDetailLevelMask)
 	{
 
 	}
@@ -93,11 +96,12 @@ public:
 
 	TArray<FNiagaraParameterMapHistory>& GetPrecomputedHistories() { return PrecompiledHistories; }
 	const TArray<FNiagaraParameterMapHistory>& GetPrecomputedHistories() const { return PrecompiledHistories; }
-	virtual const class UNiagaraGraph* GetPrecomputedNodeGraph() const { return NodeGraphDeepCopy; }
+	class UNiagaraGraph* GetPrecomputedNodeGraph() { return NodeGraphDeepCopy; }
+	const class UNiagaraGraph* GetPrecomputedNodeGraph() const { return NodeGraphDeepCopy; }
 	const FString& GetUniqueEmitterName() const { return EmitterUniqueName; }
-	void VisitReferencedGraphs(UNiagaraGraph* InSrcGraph, UNiagaraGraph* InDupeGraph, ENiagaraScriptUsage InUsage, FCompileConstantResolver ConstantResolver, bool bNeedsCompilation);
-	void DeepCopyGraphs(UNiagaraScriptSource* ScriptSource, ENiagaraScriptUsage InUsage, FCompileConstantResolver ConstantResolver, bool bNeedsCompilation);
-	void FinishPrecompile(UNiagaraScriptSource* ScriptSource, const TArray<FNiagaraVariable>& EncounterableVariables, ENiagaraScriptUsage InUsage, FCompileConstantResolver ConstantResolver, const TArray<class UNiagaraSimulationStageBase*>* SimStages);
+	void VisitReferencedGraphs(UNiagaraGraph* InSrcGraph, UNiagaraGraph* InDupeGraph, ENiagaraScriptUsage InUsage, FCompileConstantResolver ConstantResolver);
+	void DeepCopyGraphs(UNiagaraScriptSource* ScriptSource, ENiagaraScriptUsage InUsage, FCompileConstantResolver ConstantResolver);
+	void FinishPrecompile(UNiagaraScriptSource* ScriptSource, const TArray<FNiagaraVariable>& EncounterableVariables, ENiagaraScriptUsage InUsage, FCompileConstantResolver ConstantResolver);
 	virtual int32 GetDependentRequestCount() const override {
 		return EmitterData.Num();
 	};
@@ -105,15 +109,10 @@ public:
 		return EmitterData[Index];
 	}
 	void AddRapidIterationParameters(const FNiagaraParameterStore& InParamStore, FCompileConstantResolver InResolver);
+	virtual uint32 GetDetailLevelMask(void) const override {
+		return DetailLevelMask;
+	};
 	virtual bool GetUseRapidIterationParams() const override { return bUseRapidIterationParams; }
-
-	// Simulation Stage Variables. Sim stage of 0 is always Spawn/Update
-	TArray<uint32> NumIterationsPerStage;
-	TArray<FName> IterationSourcePerStage;
-	TArray<bool> SpawnOnlyPerStage;
-	mutable TArray<bool> PartialParticleUpdatePerStage;		//-TODO: Remove mutable and communicate that we can do a partial write in another way
-	TArray<FGuid> StageGuids;
-	TArray<FName> StageNames;
 
 	// If this is being held onto for any length of time, make sure to hold onto it in a gc-aware object. Right now in this information-passing struct,
 	// we could have a leaked garbage collected pointer if not held onto by someone capable of registering a reference.
@@ -127,6 +126,7 @@ public:
 	UNiagaraScriptSource* Source;
 	FString SourceName;
 	bool bUseRapidIterationParams = true;
+	uint32 DetailLevelMask = 0xFFFFFFFF;
 
 	UEnum* ENiagaraScriptCompileStatusEnum;
 	UEnum* ENiagaraScriptUsageEnum;
@@ -144,12 +144,8 @@ public:
 	};
 	TMap<const UNiagaraGraph*, TArray<FunctionData>> PreprocessedFunctions;
 	TArray<UNiagaraGraph*> ClonedGraphs;
-
-	// Copy of the variables that are required by Renderers if this is a compile request for an Emitter. 
-	TArray<FNiagaraVariable> RequiredRendererVariables;
-
 protected:
-	void VisitReferencedGraphsRecursive(UNiagaraGraph* InGraph, const FCompileConstantResolver& ConstantResolver, bool bNeedsCompile);
+	void VisitReferencedGraphsRecursive(UNiagaraGraph* InGraph, const FCompileConstantResolver& ConstantResolver);
 };
 
 
@@ -186,18 +182,12 @@ struct FCompiledPin
 
 enum class ENiagaraCodeChunkMode : uint8
 {
-	GlobalConstant,
-	SystemConstant,
-	OwnerConstant,
-	EmitterConstant,
 	Uniform,
 	Source,
 	Body,
 	SpawnBody,
 	UpdateBody,
 	InitializerBody,
-	SimulationStageBody,
-	SimulationStageBodyMax = SimulationStageBody + 100,
 	Num,
 };
 
@@ -213,8 +203,6 @@ FORCEINLINE uint32 GetTypeHash(const FNiagaraFunctionSignature& Sig)
 		Hash = HashCombine(Hash, GetTypeHash(Var));
 	}
 	Hash = HashCombine(Hash, GetTypeHash(Sig.OwnerName));
-	Hash = HashCombine(Hash, GetTypeHash(Sig.ContextStageMinIndex));
-	Hash = HashCombine(Hash, GetTypeHash(Sig.ContextStageMaxIndex));
 	return Hash;
 }
 
@@ -303,39 +291,15 @@ public:
 class NIAGARAEDITOR_API FHlslNiagaraTranslationStage
 {
 public:
-	FHlslNiagaraTranslationStage(ENiagaraScriptUsage InScriptUsage, FGuid InUsageId)
-		: ScriptUsage(InScriptUsage)
-		, UsageId(InUsageId)
-	{
-	}
-		
+	FHlslNiagaraTranslationStage(ENiagaraScriptUsage InScriptUsage, FGuid InUsageId) : ScriptUsage(InScriptUsage), UsageId(InUsageId), OutputNode(nullptr), bInterpolatePreviousParams(false), bCopyPreviousParams(true), ChunkModeIndex((ENiagaraCodeChunkMode)-1){}
+
 	ENiagaraScriptUsage ScriptUsage;
 	FGuid UsageId;
-	UNiagaraNodeOutput* OutputNode = nullptr;
-	FString PassNamespace ;
-	bool bInterpolatePreviousParams = false;
-	bool bCopyPreviousParams = true;
-	ENiagaraCodeChunkMode ChunkModeIndex = (ENiagaraCodeChunkMode)-1;
-	FName IterationSource;
-	int32 SimulationStageIndexMin = -1;
-	int32 SimulationStageIndexMax = -1;
-	int32 NumIterationsThisStage = 1;
-	int32 SourceSimStage = -1;
-	bool bSpawnOnly = false;
-	bool bUsesAlive = false;
-	bool bWritesAlive = false;
-	bool bWritesParticles = false;
-	bool bPartialParticleUpdate = false;
-	TArray<FNiagaraVariable> SetParticleAttributes;
-	FString CustomReadFunction;
-	FString CustomWriteFunction;
-
-	bool ShouldDoSpawnOnlyLogic() const;
-	bool IsRelevantToSpawnForStage(const FNiagaraParameterMapHistory& InHistory, const FNiagaraVariable& InAliasedVar, const FNiagaraVariable& InVar) const;
-
-	bool IsExternalConstantNamespace(const FNiagaraVariable& InVar, ENiagaraScriptUsage InTargetUsage, uint32 InTargetBitmask);
-	int32 CurrentCallID = 0;
-	bool bCallIDInitialized = false;
+	UNiagaraNodeOutput* OutputNode;
+	FString PassNamespace;
+	bool bInterpolatePreviousParams;
+	bool bCopyPreviousParams;
+	ENiagaraCodeChunkMode ChunkModeIndex;
 };
 
 class NIAGARAEDITOR_API FHlslNiagaraTranslator
@@ -348,12 +312,6 @@ public:
 		TArray<FNiagaraVariable> Variables;
 		/** Code chunks relating to this access. */
 		TArray<int32> CodeChunks;
-	};
-
-	struct FNiagaraConstantBuffer
-	{
-		TArray<FNiagaraVariable> Variables;
-		FString StructName;
 	};
 
 protected:
@@ -401,22 +359,13 @@ protected:
 	FORCEINLINE FNiagaraDataSetID GetSystemConstantDataSetID()const { return FNiagaraDataSetID(TEXT("Constant"), ENiagaraDataSetType::ParticleData); }
 
 	/** All functions called in the script. */
-	struct FNiagaraFunctionBody
-	{
-		FString Body;
-		TArray<int32> StageIndices;
-	};
-
-	TMap<FNiagaraFunctionSignature, FNiagaraFunctionBody> Functions;
-	TMap<FNiagaraFunctionSignature, TArray<FName> > FunctionStageWriteTargets;
-	TArray<TArray<FName>> ActiveStageWriteTargets;
-
+	TMap<FNiagaraFunctionSignature, FString> Functions;
 	/** Map of function graphs we've seen before and already pre-processed. */
 	TMap<const UNiagaraGraph*, UNiagaraGraph*> PreprocessedFunctions;
 
-	void RegisterFunctionCall(ENiagaraScriptUsage ScriptUsage, const FString& InName, const FString& InFullName, const FGuid& CallNodeId, UNiagaraScriptSource* Source, FNiagaraFunctionSignature& InSignature, bool bIsCustomHlsl, const FString& InCustomHlsl, TArray<int32>& Inputs, TArrayView<UEdGraphPin* const> CallInputs, TArrayView<UEdGraphPin* const> CallOutputs,
+	void RegisterFunctionCall(ENiagaraScriptUsage ScriptUsage, const FString& InName, const FString& InFullName, const FGuid& CallNodeId, UNiagaraScriptSource* Source, FNiagaraFunctionSignature& InSignature, bool bIsCustomHlsl, const FString& InCustomHlsl, TArray<int32>& Inputs, const TArray<UEdGraphPin*>& CallInputs, const TArray<UEdGraphPin*>& CallOutputs,
 		FNiagaraFunctionSignature& OutSignature);
-	void GenerateFunctionCall(ENiagaraScriptUsage ScriptUsage, FNiagaraFunctionSignature& FunctionSignature, TArrayView<const int32> Inputs, TArray<int32>& Outputs);
+	void GenerateFunctionCall(ENiagaraScriptUsage ScriptUsage, FNiagaraFunctionSignature& FunctionSignature, TArray<int32>& Inputs, TArray<int32>& Outputs);
 	FString GetFunctionSignature(const FNiagaraFunctionSignature& Sig);
 
 	/** Compiles an output Pin on a graph node. Caches the result for any future inputs connected to it. */
@@ -433,9 +382,9 @@ protected:
 	{
 		FString Name;
 		FNiagaraFunctionSignature& Signature;
-		TArrayView<const int32> Inputs;
+		TArray<int32>& Inputs;
 		FGuid Id;
-		FFunctionContext(const FString& InName, FNiagaraFunctionSignature& InSig, TArrayView<const int32> InInputs, const FGuid& InId)
+		FFunctionContext(const FString& InName, FNiagaraFunctionSignature& InSig, TArray<int32>& InInputs, const FGuid& InId)
 			: Name(InName)
 			, Signature(InSig)
 			, Inputs(InInputs)
@@ -444,7 +393,7 @@ protected:
 	};
 	TArray<FFunctionContext> FunctionContextStack;
 	const FFunctionContext* FunctionCtx()const { return FunctionContextStack.Num() > 0 ? &FunctionContextStack.Last() : nullptr; }
-	void EnterFunction(const FString& Name, FNiagaraFunctionSignature& Signature, TArrayView<const int32> Inputs, const FGuid& InGuid);
+	void EnterFunction(const FString& Name, FNiagaraFunctionSignature& Signature, TArray<int32>& Inputs, const FGuid& InGuid);
 	void ExitFunction();
 	FString GetCallstack();
 	TArray<FGuid> GetCallstackGuids();
@@ -461,7 +410,7 @@ protected:
 	int32 AddSourceChunk(FString SymbolName, const FNiagaraTypeDefinition& Type, bool bSanitize = true);
 
 	/** Add a chunk defining a uniform value. */
-	int32 AddUniformChunk(FString SymbolName, const FNiagaraVariable& InVariable, ENiagaraCodeChunkMode ChunkMode, bool AddPadding);
+	int32 AddUniformChunk(FString SymbolName, const FNiagaraTypeDefinition& Type);
 
 	/* Add a chunk that is written to the body of the shader code. */
 	int32 AddBodyChunk(FString SymbolName, FString Definition, const FNiagaraTypeDefinition& Type, TArray<int32>& SourceChunks, bool bDecl = true, bool bIsTerminated = true);
@@ -474,9 +423,6 @@ protected:
 	FString GetFunctionDefinitions();
 
 	FString GetUniqueEmitterName() const;
-
-	void HandleDataInterfaceCall(FNiagaraScriptDataInterfaceCompileInfo& Info, const FNiagaraFunctionSignature& InMatchingSignature);
-	void ConvertCompileInfoToParamInfo(const FNiagaraScriptDataInterfaceCompileInfo& InCompileInfo, FNiagaraDataInterfaceGPUParamInfo& OutGPUParamInfo);
 public:
 
 	FHlslNiagaraTranslator();
@@ -497,7 +443,6 @@ public:
 	virtual int32 GetParameter(const FNiagaraVariable& Parameter);
 	virtual int32 GetRapidIterationParameter(const FNiagaraVariable& Parameter);
 
-	bool IsCompileOptionDefined(const TCHAR* InDefineStr);
 
 	virtual int32 GetAttribute(const FNiagaraVariable& Attribute);
 
@@ -505,8 +450,8 @@ public:
 	
 	virtual void ReadDataSet(const FNiagaraDataSetID DataSet, const TArray<FNiagaraVariable>& Variable, ENiagaraDataSetAccessMode AccessMode, int32 InputChunk, TArray<int32>& Outputs);
 	virtual void WriteDataSet(const FNiagaraDataSetID DataSet, const TArray<FNiagaraVariable>& Variable, ENiagaraDataSetAccessMode AccessMode, const TArray<int32>& Inputs, TArray<int32>& Outputs);
-	virtual void ParameterMapSet(class UNiagaraNodeParameterMapSet* SetNode, TArrayView<const FCompiledPin> Inputs, TArray<int32>& Outputs);
-	virtual void ParameterMapGet(class UNiagaraNodeParameterMapGet* GetNode, TArrayView<const int32> Inputs, TArray<int32>& Outputs);
+	virtual void ParameterMapSet(class UNiagaraNodeParameterMapSet* SetNode, TArray<FCompiledPin>& Inputs, TArray<int32>& Outputs);
+	virtual void ParameterMapGet(class UNiagaraNodeParameterMapGet* GetNode, TArray<int32>& Inputs, TArray<int32>& Outputs);
 	virtual void Emitter(class UNiagaraNodeEmitter* GetNode, TArray<int32>& Inputs, TArray<int32>& Outputs);
 
 	virtual void ParameterMapForBegin(class UNiagaraNodeParameterMapFor* ForNode, int32 IterationCount);
@@ -516,16 +461,14 @@ public:
 	void DefineDataSetReadFunction(FString &HlslOutput, TArray<FNiagaraDataSetID> &ReadDataSets);
 	void DefineDataSetWriteFunction(FString &HlslOutput, TArray<FNiagaraDataSetProperties> &WriteDataSets, TArray<int32>& WriteConditionVarIndices);
 	void DefineMain(FString &HLSLOutput, const TArray<TArray<FNiagaraVariable>>& DataSetVariables, const TMap<FNiagaraDataSetID, int32>& DataSetReads, const TMap<FNiagaraDataSetID, int32>& DataSetWrites);
-	void DefineMainGPUFunctions(const TArray<TArray<FNiagaraVariable>>& DataSetVariables, const TMap<FNiagaraDataSetID, int32>& DataSetReads, const TMap<FNiagaraDataSetID, int32>& DataSetWrites);
 
 	void DefineDataSetVariableReads(FString &HLSLOutput, const FNiagaraDataSetID& Id, int32 DataSetIndex, const TArray<FNiagaraVariable>& ReadVars);
 	void DefineDataSetVariableWrites(FString &HlslOutput, const FNiagaraDataSetID& Id, int32 DataSetIndex, const TArray<FNiagaraVariable>& WriteVars);
 	void DefineDataInterfaceHLSL(FString &HlslOutput);
-	void DefineExternalFunctionsHLSL(FString &HlslOutput);
 	TArray<FNiagaraDataInterfaceGPUParamInfo>& GetDataInterfaceParameters() { return DIParamInfo; }
 
 	// Format string should have up to 5 entries, {{0} = Computed Variable Suffix, {1} = Float or Int, {2} = Data Set Index, {3} = Register Index, {4} Default value for that type.
-	void GatherVariableForDataSetAccess(const FNiagaraVariable& Variable, FString Format, int32& RegisterIdxInt, int32& RegisterIdxFloat, int32& RegisterIdxHalf, int32 DataSetIndex, FString InstanceIdxSymbol, FString &HlslOutput, bool bWriteHLSL = true);
+	void GatherVariableForDataSetAccess(const FNiagaraVariable& Variable, FString Format, int32& RegisterIdxInt, int32& RegisterIdxFloat, int32 DataSetIndex, FString InstanceIdxSymbol, FString &HlslOutput);
 	void GatherComponentsForDataSetAccess(UScriptStruct* Struct, FString VariableSymbol, bool bMatrixRoot, TArray<FString>& Components, TArray<ENiagaraBaseTypes>& Types);
 
 	FString CompileDataInterfaceFunction(UNiagaraDataInterface* DataInterface, FNiagaraFunctionSignature& Signature);
@@ -535,15 +478,13 @@ public:
 	void ExitFunctionCallNode();
 	bool IsFunctionVariableCulledFromCompilation(const FName& InputName) const;
 
-	virtual void Convert(class UNiagaraNodeConvert* Convert, TArrayView<const int32> Inputs, TArray<int32>& Outputs);
+	virtual void Convert(class UNiagaraNodeConvert* Convert, TArray <int32>& Inputs, TArray<int32>& Outputs);
 	virtual void If(class UNiagaraNodeIf* IfNode, TArray<FNiagaraVariable>& Vars, int32 Condition, TArray<int32>& PathA, TArray<int32>& PathB, TArray<int32>& Outputs);
 
-	void Message(FNiagaraCompileEventSeverity Severity, FText MessageText, const UNiagaraNode* Node, const UEdGraphPin* Pin);
 	virtual void Error(FText ErrorText, const UNiagaraNode* Node, const UEdGraphPin* Pin);
 	virtual void Warning(FText WarningText, const UNiagaraNode* Node, const UEdGraphPin* Pin);
 
 	virtual bool GetFunctionParameter(const FNiagaraVariable& Parameter, int32& OutParam)const;
-	int32 GetUniqueCallerID();
 
 	virtual bool CanReadAttributes()const;
 	virtual ENiagaraScriptUsage GetTargetUsage() const;
@@ -553,19 +494,17 @@ public:
 	{
 		return CompilationTarget;
 	}
-	bool GetUsesSimulationStages() const;
 
-	static bool IsBuiltInHlslType(const FNiagaraTypeDefinition& Type);
-	static FString GetStructHlslTypeName(const FNiagaraTypeDefinition& Type);
-	static FString GetPropertyHlslTypeName(const FProperty* Property);
-	static FString BuildHLSLStructDecl(const FNiagaraTypeDefinition& Type, FText& OutErrorMessage);
-	static FString GetHlslDefaultForType(const FNiagaraTypeDefinition& Type);
-	static bool IsHlslBuiltinVector(const FNiagaraTypeDefinition& Type);
+	static bool IsBuiltInHlslType(FNiagaraTypeDefinition Type);
+	static FString GetStructHlslTypeName(FNiagaraTypeDefinition Type);
+	static FString GetPropertyHlslTypeName(const UProperty* Property);
+	static FString BuildHLSLStructDecl(FNiagaraTypeDefinition Type, FText& OutErrorMessage);
+	static FString GetHlslDefaultForType(FNiagaraTypeDefinition Type);
+	static bool IsHlslBuiltinVector(FNiagaraTypeDefinition Type);
 	static TArray<FName> ConditionPropertyPath(const FNiagaraTypeDefinition& Type, const TArray<FName>& InPath);
 
 
 	static FString GetSanitizedSymbolName(FString SymbolName, bool bCollapseNamespaces=false);
-	static FString GetSanitizedDIFunctionName(const FString& FunctionName);
 	static FString GetSanitizedFunctionNameSuffix(FString Name);
 
 	/** Replaces all non-ascii characters with a "ASCXXX" string, where XXX is their int value */
@@ -580,16 +519,12 @@ public:
 
 	static FString GetFunctionSignatureSymbol(const FNiagaraFunctionSignature& Sig);
 
-	static FName GetDataInterfaceName(FName BaseName, const FString& UniqueEmitterName, bool bIsParameterMapDataInterface);
-
 	/** If OutVar can be replaced by a literal constant, it's data is initialized with the correct value and we return true. Returns false otherwise. */
 	bool GetLiteralConstantVariable(FNiagaraVariable& OutVar) const;
 
 private:
-	bool GetUsesOldShaderStages() const;
-
 	void InitializeParameterMapDefaults(int32 ParamMapHistoryIdx);
-	void HandleParameterRead(int32 ParamMapHistoryIdx, const FNiagaraVariable& Var, const UEdGraphPin* DefaultPin, UNiagaraNode* ErrorNode, int32& OutputChunkId, UNiagaraScriptVariable* Variable, bool bTreatAsUnknownParameterMap = false);
+	void HandleParameterRead(int32 ParamMapHistoryIdx, const FNiagaraVariable& Var, const UEdGraphPin* DefaultPin, UNiagaraNode* ErrorNode, int32& OutputChunkId,  bool bTreatAsUnknownParameterMap = false);
 	bool ShouldConsiderTargetParameterMap(ENiagaraScriptUsage InUsage) const;
 	FString BuildParameterMapHlslDefinitions(TArray<FNiagaraVariable>& PrimaryDataSetOutputEntries);
 	void BuildMissingDefaults();
@@ -603,11 +538,8 @@ private:
 	FString ComputeMatrixColumnAccess(const FString& Name);
 	FString ComputeMatrixRowAccess(const FString& Name);
 
-	bool ParseDIFunctionSpecifiers(UNiagaraNode* NodeForErrorReporting, FNiagaraFunctionSignature& Sig, TArray<FString>& Tokens, int32& TokenIdx);
 	void HandleCustomHlslNode(UNiagaraNodeCustomHlsl* CustomFunctionHlsl, ENiagaraScriptUsage& OutScriptUsage, FString& OutName, FString& OutFullName, bool& bOutCustomHlsl, FString& OutCustomHlsl,
 		FNiagaraFunctionSignature& OutSignature, TArray<int32>& Inputs);
-	void ProcessCustomHlsl(const FString& InCustomHlsl, ENiagaraScriptUsage InUsage, const FNiagaraFunctionSignature& InSignature, const TArray<int32>& Inputs, UNiagaraNode* NodeForErrorReporting, FString& OutCustomHlsl, FNiagaraFunctionSignature& OutSignature);
-	void HandleSimStageSetupAndTeardown(int32 InWhichStage, FString& OutHlsl);
 	
 	// Add a raw float constant chunk
 	int32 GetConstantDirect(float InValue);
@@ -653,11 +585,6 @@ private:
 	bool IsSpawnScript() const;
 	bool RequiresInterpolation() const;
 
-	template<typename T>
-	void BuildConstantBuffer(ENiagaraCodeChunkMode ChunkMode);
-
-	void TrimAttributes(const FNiagaraCompileOptions& InCompileOptions, TArray<FNiagaraVariable>& Attributes);
-	
 	/** Map of symbol names to count of times it's been used. Used for generating unique symbol names. */
 	TMap<FName, uint32> SymbolCounts;
 
@@ -671,9 +598,6 @@ private:
 	// create any variables that are needed downstream.
 	TArray<FNiagaraParameterMapHistory> OtherOutputParamMapHistories;
 
-	// All of the variables arrays in the other histories converted to sanitized HLSL format. Used in parsing custom hlsl nodes.
-	TArray< TArray<FNiagaraVariable> > OtherOutputParamMapHistoriesSanitizedVariables;
-
 	// Make sure that the function call names match up on the second traversal.
 	FNiagaraParameterMapHistoryBuilder ActiveHistoryForFunctionCalls;
 
@@ -684,14 +608,8 @@ private:
 	TArray<TSet<FName>> FunctionNodeStack;
 
 	// Synced to the System uniforms encountered for parameter maps thus far.
-	struct UniformVariableInfo
-	{
-		FNiagaraVariable Variable;
-		int32 ChunkIndex;
-		int32 ChunkMode;
-	};
-
-	TMap<FName, UniformVariableInfo> ParamMapDefinedSystemVars; // Map from the defined constants to the uniform chunk expressing them (i.e. have we encountered before in this graph?)
+	TMap<FName, int32> ParamMapDefinedSystemVarsToUniformChunks; // Map from the defined constants to the uniform chunk expressing them (i.e. have we encountered before in this graph?)
+	TMap<FName, FNiagaraVariable> ParamMapDefinedSystemToNamespaceVars; // Map from defined constants to the Namespaced variable expressing it.
 
 	// Synced to the EmitterParameter uniforms encountered for parameter maps thus far.
 	TMap<FName, int32> ParamMapDefinedEmitterParameterVarsToUniformChunks; // Map from the variable name exposed by the emitter as a parameter to the uniform chunk expressing it (i.e. have we encountered before in this graph?)
@@ -706,10 +624,7 @@ private:
 
 	// List of primary output variables encountered that need to be properly handled in spawn scripts.
 	TArray<FNiagaraVariable> UniqueVars;
-
-	// List of variables for interpolated spawning
-	TArray<FNiagaraVariable> InterpSpawnVariables;
-
+	
 	// Map of primary ouput variable description to its default value pin
 	TMap<FNiagaraVariable, const UEdGraphPin*> UniqueVarToDefaultPin;
 	
@@ -720,7 +635,7 @@ private:
 	TMap<FNiagaraVariable, int32> UniqueVarToChunk;
 
 	// Strings to be inserted within the main function
-	TArray<TArray<FString>> PerStageMainPreSimulateChunks;
+	TArray<FString> MainPreSimulateChunks;
 
 	// read and write data set indices
 	int32 ReadIdx;
@@ -751,4 +666,6 @@ private:
 	TArray<FNiagaraVariable> InitialNamespaceVariablesMissingDefault;
 	// Variables that need to be initialized in the body or at the end of spawn.
 	TArray<FNiagaraVariable> DeferredVariablesMissingDefault;
+
+	TMap<FName, TSet<FNiagaraFunctionSignature>> DataInterfaceRegisteredFunctions;
 };

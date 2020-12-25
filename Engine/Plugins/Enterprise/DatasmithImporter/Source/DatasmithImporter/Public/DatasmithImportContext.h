@@ -1,18 +1,18 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
-#include "Containers/Map.h"
 #include "CoreMinimal.h"
-#include "Engine/EngineTypes.h"
-#include "Logging/TokenizedMessage.h"
-#include "MaterialShared.h"
-#include "Misc/SecureHash.h"
 #include "UObject/ObjectMacros.h"
+#include "Engine/EngineTypes.h"
 #include "UObject/StrongObjectPtr.h"
 
+#include "Containers/Map.h"
+#include "Logging/TokenizedMessage.h"
+#include "Misc/SecureHash.h"
+#include "MaterialShared.h"
+
 #include "DatasmithUtils.h"
-#include "DatasmithImportOptions.h"
 
 class AActor;
 class ADatasmithSceneActor;
@@ -129,10 +129,7 @@ struct DATASMITHIMPORTER_API FDatasmithAssetsImportContext
 	void ReInit(const FString& NewRootFolder);
 
 	/** The parent context that this context is a part of */
-	FDatasmithImportContext* ParentContext;
-	const FDatasmithImportContext& GetParentContext() const { return *ParentContext;  }
-	FDatasmithImportContext& GetParentContext() { return *ParentContext; }
-
+	FDatasmithImportContext& ParentContext;
 
 	/** Root folder path, used to derive the other paths */
 	FString RootFolderPath;
@@ -225,7 +222,7 @@ struct DATASMITHIMPORTER_API FDatasmithImportContext
 	TStrongObjectPtr<UDatasmithImportOptions> Options;
 
 	/** Per-Translator settings related to the import of a Datasmith scene */
-	TArray<TStrongObjectPtr<UDatasmithOptionsBase>> AdditionalImportOptions;
+	TArray<TStrongObjectPtr<UObject>> AdditionalImportOptions;
 
 	/** Root blueprint which will be used if user requires every components of the scene under one blueprint */
 	UBlueprint* RootBlueprint;
@@ -279,7 +276,7 @@ struct DATASMITHIMPORTER_API FDatasmithImportContext
 	TMap< TSharedRef< IDatasmithLevelVariantSetsElement >, ULevelVariantSets* > ImportedLevelVariantSets;
 
 	/** Feedback context provided by ImportFactory. Used to display import progress */
-	FFeedbackContext* FeedbackContext;
+	FFeedbackContext* Warn;
 
 	/** Actors specific import context */
 	FDatasmithActorImportContext ActorsContext;
@@ -298,36 +295,16 @@ public:
 	 * @param InParent	The package in which we are
 	 * @param bSilent	Doesn't display the options dialog and skips other user input requests
 	 */
-	bool Init(TSharedRef< IDatasmithScene > InScene, const FString& InImportPath, EObjectFlags InFlags, FFeedbackContext* InWarn, const TSharedPtr<FJsonObject>& ImportSettingsJson, bool bSilent);
+	bool Init(TSharedRef< IDatasmithScene > Scene, const FString& InImportPath, EObjectFlags InFlags, FFeedbackContext* InWarn, const TSharedPtr<FJsonObject>& ImportSettingsJson, bool bSilent);
+	bool Init(const FString& FileName, TSharedRef< IDatasmithScene > Scene, const FString& InImportPath, EObjectFlags InFlags, FFeedbackContext* InWarn, const TSharedPtr<FJsonObject>& ImportSettingsJson, bool bSilent);
 
 	/**
-	 * First part of the Init process, replaces Init, and requires a call to SetupDestination after that.
-	 * Displays the options to the end-user (blocking call), and updates translator accordingly.
-	 * When silent, Json options are parsed instead.
+	 * Add option to the list of options used by the import process
 	 *
-	 * @param InScene              Scene that the context will use for the translation and import
-	 * @param ImportSettingsJson   When bSilent, options as json
-	 * @param bSilent              Flag that prevents options to be displayed and edited
-	 * @return false if the user canceled -> import should not occurs in that case.
+	 * @param Option		The option to be added to the array
+	 * @param bLoadConfig	Overwrite properties of input option with those saved by the user
 	 */
-	bool InitOptions(TSharedRef< IDatasmithScene > InScene, const TSharedPtr<FJsonObject>& ImportSettingsJson, bool bSilent);
-
-	/**
-	 * Second part of the Init process, replaces Init, and requires a call to InitOptions before that.
-	 * Setup destination packages
-	 *
-	 * @param InImportPath   Destination package's name
-	 * @param InFlags        Flags applyed to all generated objects durring the following import
-	 * @param InWarn         Feedback context for the following import
-	 * @param bSilent        When false, prompt the user to save dirty packages
-	 * @return false if the user canceled -> import should not occurs in that case.
-	 */
-	bool SetupDestination(const FString& InImportPath, EObjectFlags InFlags, FFeedbackContext* InWarn, bool bSilent);
-
-	/**
-	 * Replace or add options based on it's UClass.
-	 */
-	void UpdateImportOption(UDatasmithOptionsBase* Option);
+	void AddOption(UObject* InOption, bool bLoadConfig);
 
 	/** Push messages for display to the end-user */
 	TSharedRef<FTokenizedMessage> LogError(const FText& InErrorMessage);
@@ -348,6 +325,8 @@ public:
 	void DisplayMessages();
 
 private:
+	void SetFileName(const FString& FileName);
+
 	void SetupBaseOptionsVisibility();
 	void ResetBaseOptionsVisibility();
 
@@ -361,6 +340,9 @@ private:
 
 	/** Map of SceneComponent objects added to the World at import */
 	TMap<FString, USceneComponent*> ImportedSceneComponentMap;
+
+	/** Array of options used by the calling factory */
+	TArray<UObject*> ImportOptions;
 
 	int32 CurrentSceneActorIndex;
 

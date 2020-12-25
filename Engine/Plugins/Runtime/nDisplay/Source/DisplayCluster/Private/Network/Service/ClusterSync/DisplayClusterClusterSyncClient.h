@@ -1,18 +1,18 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Network/DisplayClusterClient.h"
-#include "Network/Packet/DisplayClusterPacketInternal.h"
-#include "Network/Protocol/IDisplayClusterProtocolClusterSync.h"
+#include "Network/DisplayClusterMessage.h"
+#include "Network/Protocol/IPDisplayClusterClusterSyncProtocol.h"
 
 
 /**
- * Cluster synchronization TCP client
+ * Cluster synchronization client
  */
 class FDisplayClusterClusterSyncClient
-	: public FDisplayClusterClient<FDisplayClusterPacketInternal, true>
-	, public IDisplayClusterProtocolClusterSync
+	: public FDisplayClusterClient
+	, public IPDisplayClusterClusterSyncProtocol
 {
 public:
 	FDisplayClusterClusterSyncClient();
@@ -20,15 +20,16 @@ public:
 
 public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	// IDisplayClusterProtocolClusterSync
+	// IPDisplayClusterClusterSyncProtocol
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	virtual void WaitForGameStart(double* ThreadWaitTime, double* BarrierWaitTime) override;
-	virtual void WaitForFrameStart(double* ThreadWaitTime, double* BarrierWaitTime) override;
-	virtual void WaitForFrameEnd(double* ThreadWaitTime, double* BarrierWaitTime) override;
+	virtual void WaitForGameStart() override;
+	virtual void WaitForFrameStart() override;
+	virtual void WaitForFrameEnd() override;
+	virtual void WaitForTickEnd() override;
 	virtual void GetDeltaTime(float& DeltaSeconds) override;
-	virtual void GetFrameTime(TOptional<FQualifiedFrameTime>& FrameTime) override;
-	virtual void GetSyncData(TMap<FString, FString>& SyncData, EDisplayClusterSyncGroup SyncGroup) override;
-	virtual void GetInputData(TMap<FString, FString>& InputData) override;
-	virtual void GetEventsData(TArray<TSharedPtr<FDisplayClusterClusterEventJson>>& JsonEvents, TArray<TSharedPtr<FDisplayClusterClusterEventBinary>>& BinaryEvents) override;
-	virtual void GetNativeInputData(TMap<FString, FString>& NativeInputData) override;
+	virtual void GetTimecode(FTimecode& Timecode, FFrameRate& FrameRate) override;
+	virtual void GetSyncData(FDisplayClusterMessage::DataType& SyncData, EDisplayClusterSyncGroup SyncGroup) override;
+	virtual void GetInputData(FDisplayClusterMessage::DataType& InputData) override;
+	virtual void GetEventsData(FDisplayClusterMessage::DataType& EventsData) override;
+	virtual void GetNativeInputData(FDisplayClusterMessage::DataType& NativeInputData) override;
 };

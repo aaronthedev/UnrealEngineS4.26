@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "XmppJingle/XmppConnectionJingle.h"
 #include "Containers/BackgroundableTicker.h"
@@ -176,7 +176,6 @@ public:
 				// allow xmpp pump to process
 				const int32 DefaultTimeoutMs = 100;
 				XmppThread->ProcessMessages(DefaultTimeoutMs);
-
 			}
 
 			// If the loop is not exiting, sleep to control the desired tick rate.
@@ -477,8 +476,6 @@ IXmppChatPtr FXmppConnectionJingle::PrivateChat()
 
 bool FXmppConnectionJingle::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FXmppConnectionJingle_Tick);
-
 	EXmppLoginStatus::Type LocalLastLoginState, LocalLoginState;
 	{
 		FScopeLock Lock(&LoginStateLock);
@@ -808,9 +805,9 @@ EXmppLoginStatus::Type FXmppConnectionJingle::GetLoginStatus() const
 {
 	FScopeLock Lock(&LoginStateLock);
 
-	if (LoginState == EXmppLoginStatus::LoggedIn || LoginState == EXmppLoginStatus::ProcessingLogin)
+	if (LoginState == EXmppLoginStatus::LoggedIn)
 	{
-		return LoginState;
+		return EXmppLoginStatus::LoggedIn;
 	}
 	else
 	{

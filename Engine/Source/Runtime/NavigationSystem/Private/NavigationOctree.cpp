@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NavigationOctree.h"
 #include "AI/Navigation/NavRelevantInterface.h"
@@ -9,7 +9,7 @@
 // FNavigationOctree
 //----------------------------------------------------------------------//
 FNavigationOctree::FNavigationOctree(const FVector& Origin, float Radius)
-	: TOctree2<FNavigationOctreeElement, FNavigationOctreeSemantics>(Origin, Radius)
+	: TOctree<FNavigationOctreeElement, FNavigationOctreeSemantics>(Origin, Radius)
 	, DefaultGeometryGatheringMode(ENavDataGatheringMode::Instant)
 	, bGatherGeometry(false)
 	, NodesMemory(0)
@@ -82,22 +82,10 @@ void FNavigationOctree::DemandLazyDataGathering(FNavigationRelevantData& Element
 	INC_MEMORY_STAT_BY(STAT_Navigation_CollisionTreeMemory, ElementMemoryChange);
 }
 
-void FNavigationOctree::DemandChildLazyDataGathering(FNavigationRelevantData& ElementData, INavRelevantInterface& ChildNavInterface)
+void FNavigationOctree::DemandLazyDataGathering(const FNavigationOctreeElement& Element)
 {
-	if (IsLazyGathering(ChildNavInterface))
-	{
-		ChildNavInterface.GetNavigationData(ElementData);
-		ElementData.ValidateAndShrink();
-	}
-}
-
-bool FNavigationOctree::IsLazyGathering(const INavRelevantInterface& ChildNavInterface) const
-{
-	const ENavDataGatheringMode GatheringMode = ChildNavInterface.GetGeometryGatheringMode();
-	const bool bDoInstantGathering = ((GatheringMode == ENavDataGatheringMode::Default && DefaultGeometryGatheringMode == ENavDataGatheringMode::Instant)
-		|| GatheringMode == ENavDataGatheringMode::Instant);
-
-	return !bDoInstantGathering;
+	FNavigationRelevantData& MutableData = const_cast<FNavigationRelevantData&>(*Element.Data);
+	DemandLazyDataGathering(MutableData);
 }
 
 void FNavigationOctree::AddNode(UObject* ElementOb, INavRelevantInterface* NavElement, const FBox& Bounds, FNavigationOctreeElement& Element)
@@ -107,7 +95,9 @@ void FNavigationOctree::AddNode(UObject* ElementOb, INavRelevantInterface* NavEl
 
 	if (NavElement)
 	{
-		const bool bDoInstantGathering = !IsLazyGathering(*NavElement);
+		const ENavDataGatheringMode GatheringMode = NavElement->GetGeometryGatheringMode();
+		bool bDoInstantGathering = ((GatheringMode == ENavDataGatheringMode::Default && DefaultGeometryGatheringMode == ENavDataGatheringMode::Instant) 
+			|| GatheringMode == ENavDataGatheringMode::Instant);
 
 		if (bGatherGeometry)
 		{
@@ -149,7 +139,7 @@ void FNavigationOctree::AddNode(UObject* ElementOb, INavRelevantInterface* NavEl
 	AddElement(Element);
 }
 
-void FNavigationOctree::AppendToNode(const FOctreeElementId2& Id, INavRelevantInterface* NavElement, const FBox& Bounds, FNavigationOctreeElement& Element)
+void FNavigationOctree::AppendToNode(const FOctreeElementId& Id, INavRelevantInterface* NavElement, const FBox& Bounds, FNavigationOctreeElement& Element)
 {
 	FNavigationOctreeElement OrgData = GetElementById(Id);
 
@@ -159,16 +149,7 @@ void FNavigationOctree::AppendToNode(const FOctreeElementId2& Id, INavRelevantIn
 	if (NavElement)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_Navigation_GatheringNavigationModifiersSync);
-		const bool bDoInstantGathering = !IsLazyGathering(*NavElement);
-
-		if (bDoInstantGathering)
-		{
-			NavElement->GetNavigationData(*Element.Data);
-		}
-		else
-		{
-			Element.Data->bPendingChildLazyModifiersGathering = true;
-		}
+		NavElement->GetNavigationData(*Element.Data);
 	}
 
 	// validate exported data
@@ -187,7 +168,7 @@ void FNavigationOctree::AppendToNode(const FOctreeElementId2& Id, INavRelevantIn
 	AddElement(Element);
 }
 
-void FNavigationOctree::UpdateNode(const FOctreeElementId2& Id, const FBox& NewBounds)
+void FNavigationOctree::UpdateNode(const FOctreeElementId& Id, const FBox& NewBounds)
 {
 	FNavigationOctreeElement ElementCopy = GetElementById(Id);
 	RemoveElement(Id);
@@ -195,7 +176,7 @@ void FNavigationOctree::UpdateNode(const FOctreeElementId2& Id, const FBox& NewB
 	AddElement(ElementCopy);
 }
 
-void FNavigationOctree::RemoveNode(const FOctreeElementId2& Id)
+void FNavigationOctree::RemoveNode(const FOctreeElementId& Id)
 {
 	const FNavigationOctreeElement& Element = GetElementById(Id);
 	const int32 ElementMemory = Element.GetAllocatedSize();
@@ -205,7 +186,7 @@ void FNavigationOctree::RemoveNode(const FOctreeElementId2& Id)
 	RemoveElement(Id);
 }
 
-const FNavigationRelevantData* FNavigationOctree::GetDataForID(const FOctreeElementId2& Id) const
+const FNavigationRelevantData* FNavigationOctree::GetDataForID(const FOctreeElementId& Id) const
 {
 	if (Id.IsValidId() == false)
 	{
@@ -217,7 +198,7 @@ const FNavigationRelevantData* FNavigationOctree::GetDataForID(const FOctreeElem
 	return &*OctreeElement.Data;
 }
 
-void FNavigationOctree::SetElementIdImpl(const uint32 OwnerUniqueId, FOctreeElementId2 Id)
+void FNavigationOctree::SetElementIdImpl(const uint32 OwnerUniqueId, FOctreeElementId Id)
 {
 	ObjectToOctreeId.Add(OwnerUniqueId, Id);
 }
@@ -228,7 +209,7 @@ void FNavigationOctree::SetElementIdImpl(const uint32 OwnerUniqueId, FOctreeElem
 #if NAVSYS_DEBUG
 FORCENOINLINE
 #endif // NAVSYS_DEBUG
-void FNavigationOctreeSemantics::SetElementId(FNavigationOctreeSemantics::FOctree& OctreeOwner, const FNavigationOctreeElement& Element, FOctreeElementId2 Id)
+void FNavigationOctreeSemantics::SetElementId(FNavigationOctreeSemantics::FOctree& OctreeOwner, const FNavigationOctreeElement& Element, FOctreeElementId Id)
 {
 	((FNavigationOctree&)OctreeOwner).SetElementIdImpl(Element.OwnerUniqueId, Id);
 }

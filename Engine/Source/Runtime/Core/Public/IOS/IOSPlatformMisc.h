@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================================
 	IOSPlatformMisc.h: iOS platform misc functions
@@ -39,15 +39,11 @@ struct CORE_API FIOSPlatformMisc : public FApplePlatformMisc
 	static bool SetStoredValue(const FString& InStoreId, const FString& InSectionName, const FString& InKeyName, const FString& InValue);
 	static bool GetStoredValue(const FString& InStoreId, const FString& InSectionName, const FString& InKeyName, FString& OutValue);
 	static bool DeleteStoredValue(const FString& InStoreId, const FString& InSectionName, const FString& InKeyName);
-	static bool DeleteStoredSection(const FString& InStoreId, const FString& InSectionName);
 	static void GetValidTargetPlatforms(class TArray<class FString>& TargetPlatformNames);
 	static ENetworkConnectionType GetNetworkConnectionType();
 	static bool HasActiveWiFiConnection();
 	static const TCHAR* GamePersistentDownloadDir();
     static bool HasSeparateChannelForDebugOutput();
-
-	static void RequestExit(bool Force);
-	static void RequestExitWithStatus(bool Force, uint8 ReturnCode);
 
 	UE_DEPRECATED(4.21, "Use GetDeviceVolume, it is now callable on all platforms.")
 	static int GetAudioVolume();
@@ -92,6 +88,8 @@ struct CORE_API FIOSPlatformMisc : public FApplePlatformMisc
 	static int GetDefaultStackSize();
 	static void HandleLowMemoryWarning();
 	static bool IsPackagedForDistribution();
+	UE_DEPRECATED(4.14, "GetUniqueDeviceId is deprecated. Use GetDeviceId instead.")
+	static FString GetUniqueDeviceId();
 	/**
 	 * Implemented using UIDevice::identifierForVendor,
 	 * so all the caveats that apply to that API call apply here.
@@ -103,9 +101,7 @@ struct CORE_API FIOSPlatformMisc : public FApplePlatformMisc
 	
 	static void RequestStoreReview();
 
-	static bool IsUpdateAvailable();
-	
-	// GetIOSDeviceType is deprecated in 4.26 and is no longer updated. See below.
+	// Possible iOS devices
 	enum EIOSDevice
 	{
 		// add new devices to the top, and add to IOSDeviceNames below!
@@ -154,35 +150,73 @@ struct CORE_API FIOSPlatformMisc : public FApplePlatformMisc
         IOS_IPadMini5,
 		IOS_IPodTouch7,
 		IOS_IPad7,
-		IOS_IPhoneSE2,
-		IOS_IPadPro2_11,
-		IOS_IPadPro4_129,
-
-		// We can use the entries below for any iOS devices released during the hotfix cycle
-		// They should be moved to real device enum above these values in the next full release.
-		IOS_NewDevice1,
-		IOS_NewDevice2,
-		IOS_NewDevice3,
-		IOS_NewDevice4,
-		IOS_NewDevice5,
-		IOS_NewDevice6,
-		IOS_NewDevice7,
-		IOS_NewDevice8,
-
 		IOS_Unknown,
 	};
 
-	UE_DEPRECATED(4.26, "Use GetDefaultDeviceProfileName() which uses the [IOSDeviceMappings] entries in BaseDeviceProfiles.ini and can be updated to support newly released devices.")
 	static EIOSDevice GetIOSDeviceType();
 
-	static const TCHAR* GetDefaultDeviceProfileName();
+	static FORCENOINLINE const TCHAR* GetDefaultDeviceProfileName()
+	{
+		static const TCHAR* IOSDeviceNames[] = 
+		{
+			TEXT("IPhone4"),
+			TEXT("IPhone4S"),
+			TEXT("IPhone5"),
+			TEXT("IPhone5S"),
+			TEXT("IPodTouch5"),
+			TEXT("IPodTouch6"),
+			TEXT("IPad2"),
+			TEXT("IPad3"),
+			TEXT("IPad4"),
+			TEXT("IPadMini"),
+			TEXT("IPadMini2"),
+			TEXT("IPadMini4"),
+			TEXT("IPadAir"),
+			TEXT("IPadAir2"),
+			TEXT("IPhone6"),
+			TEXT("IPhone6Plus"),
+			TEXT("IPhone6S"),
+			TEXT("IPhone6SPlus"),
+			TEXT("IPhone7"),
+			TEXT("IPhone7Plus"),
+			TEXT("IPhone8"),
+			TEXT("IPhone8Plus"),
+			TEXT("IPhoneX"),
+			TEXT("IPadPro"),
+			TEXT("AppleTV"),
+			TEXT("AppleTV4K"),
+			TEXT("IPhoneSE"),
+			TEXT("IPadPro129"),
+			TEXT("IPadPro97"),
+			TEXT("IPadPro105"),
+			TEXT("IPadPro2_129"),
+			TEXT("IPad5"),
+            TEXT("IPhoneXS"),
+            TEXT("IPhoneXSMax"),
+            TEXT("IPhoneXR"),
+			TEXT("IPhone11"),
+			TEXT("IPhone11Pro"),
+			TEXT("IPhone11ProMax"),
+			TEXT("IPad6"),
+			TEXT("IPadPro11"),
+			TEXT("IPadPro3_129"),
+            TEXT("IPadAir3"),
+            TEXT("IPadMini5"),
+			TEXT("IPodTouch7"),
+			TEXT("IPad7"),
+			TEXT("Unknown"),
+		};
+		static_assert((sizeof(IOSDeviceNames) / sizeof(IOSDeviceNames[0])) == ((int32)IOS_Unknown + 1), "Mismatched IOSDeviceNames and EIOSDevice.");
+		
+		// look up into the string array by the enum
+		return IOSDeviceNames[(int32)GetIOSDeviceType()];
+	}
 
 	static FString GetCPUVendor();
 	static FString GetCPUBrand();
 	static void GetOSVersions(FString& out_OSVersionLabel, FString& out_OSSubVersionLabel);
 	static int32 IOSVersionCompare(uint8 Major, uint8 Minor, uint8 Revision);
 	static FString GetProjectVersion();
-	static FString GetBuildNumber();
 
 	static void SetGracefulTerminationHandler();
 	static void SetCrashHandler(void(*CrashHandler)(const FGenericCrashContext& Context));
@@ -200,8 +234,6 @@ struct CORE_API FIOSPlatformMisc : public FApplePlatformMisc
 		OutputDevice = 7;
 		ColorGamut = 0;
 	}
-
-	static int32 GetMaxRefreshRate();
 
     // added these for now because Crashlytics doesn't properly break up different callstacks all ending in UE_LOG(LogXXX, Fatal, ...)
     static FORCENOINLINE CA_NO_RETURN void GPUAssert();

@@ -1,10 +1,18 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Policy/Camera/DisplayClusterProjectionCameraPolicyFactory.h"
 #include "Policy/Camera/DisplayClusterProjectionCameraPolicy.h"
 
 #include "DisplayClusterProjectionLog.h"
 
+
+FDisplayClusterProjectionCameraPolicyFactory::FDisplayClusterProjectionCameraPolicyFactory()
+{
+}
+
+FDisplayClusterProjectionCameraPolicyFactory ::~FDisplayClusterProjectionCameraPolicyFactory()
+{
+}
 
 TSharedPtr<IDisplayClusterProjectionPolicy> FDisplayClusterProjectionCameraPolicyFactory::GetPolicyInstance(const FString& ViewportId)
 {
@@ -20,10 +28,10 @@ TSharedPtr<IDisplayClusterProjectionPolicy> FDisplayClusterProjectionCameraPolic
 //////////////////////////////////////////////////////////////////////////////////////////////
 // IDisplayClusterProjectionPolicyFactory
 //////////////////////////////////////////////////////////////////////////////////////////////
-TSharedPtr<IDisplayClusterProjectionPolicy> FDisplayClusterProjectionCameraPolicyFactory::Create(const FString& PolicyType, const FString& RHIName, const FString& ViewportId, const TMap<FString, FString>& Parameters)
+TSharedPtr<IDisplayClusterProjectionPolicy> FDisplayClusterProjectionCameraPolicyFactory::Create(const FString& PolicyType, const FString& RHIName, const FString& ViewportId)
 {
 	UE_LOG(LogDisplayClusterProjectionCamera, Log, TEXT("Instantiating projection policy <%s>..."), *PolicyType);
-	TSharedPtr<IDisplayClusterProjectionPolicy> NewPolicy = MakeShared<FDisplayClusterProjectionCameraPolicy>(ViewportId, Parameters);
+	TSharedPtr<IDisplayClusterProjectionPolicy> NewPolicy = MakeShareable(new FDisplayClusterProjectionCameraPolicy(ViewportId));
 	PolicyInstances.Emplace(ViewportId, NewPolicy);
 	return NewPolicy;
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AnimStateTransitionNode.cpp
@@ -598,34 +598,31 @@ void UAnimStateTransitionNode::ValidateNodeDuringCompilation(class FCompilerResu
 		UAnimGraphNode_TransitionResult* ResultNode = TransGraph->GetResultNode();
 		check(ResultNode);
 
-		if(ResultNode->Pins.Num() > 0)
+		UEdGraphPin* BoolResultPin = ResultNode->Pins[0];
+		if ((BoolResultPin->LinkedTo.Num() == 0) && (BoolResultPin->DefaultValue.ToBool() == false))
 		{
-			UEdGraphPin* BoolResultPin = ResultNode->Pins[0];
-			if (BoolResultPin && (BoolResultPin->LinkedTo.Num() == 0) && (BoolResultPin->DefaultValue.ToBool() == false))
+			// check for native transition rule before warning
+			bool bHasNative = false;
+			UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForNodeChecked(this);
+			if(Blueprint && Blueprint->ParentClass)
 			{
-				// check for native transition rule before warning
-				bool bHasNative = false;
-				UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForNodeChecked(this);
-				if(Blueprint && Blueprint->ParentClass)
+				UAnimInstance* AnimInstance = CastChecked<UAnimInstance>(Blueprint->ParentClass->GetDefaultObject());
+				if(AnimInstance)
 				{
-					UAnimInstance* AnimInstance = CastChecked<UAnimInstance>(Blueprint->ParentClass->GetDefaultObject());
-					if(AnimInstance)
+					UEdGraph* ParentGraph = GetGraph();
+					UAnimStateNodeBase* PrevState = GetPreviousState();
+					UAnimStateNodeBase* NextState = GetNextState();
+					if(PrevState != nullptr && NextState != nullptr && ParentGraph != nullptr)
 					{
-						UEdGraph* ParentGraph = GetGraph();
-						UAnimStateNodeBase* PrevState = GetPreviousState();
-						UAnimStateNodeBase* NextState = GetNextState();
-						if(PrevState != nullptr && NextState != nullptr && ParentGraph != nullptr)
-						{
-							FName FunctionName;
-							bHasNative = AnimInstance->HasNativeTransitionBinding(ParentGraph->GetFName(), FName(*PrevState->GetStateName()), FName(*NextState->GetStateName()), FunctionName);
-						}
+						FName FunctionName;
+						bHasNative = AnimInstance->HasNativeTransitionBinding(ParentGraph->GetFName(), FName(*PrevState->GetStateName()), FName(*NextState->GetStateName()), FunctionName);
 					}
 				}
+			}
 
-				if (!bHasNative && !bAutomaticRuleBasedOnSequencePlayerInState)
-				{
-					MessageLog.Warning(TEXT("@@ will never be taken, please connect something to @@"), this, BoolResultPin);
-				}
+			if (!bHasNative && !bAutomaticRuleBasedOnSequencePlayerInState)
+			{
+				MessageLog.Warning(TEXT("@@ will never be taken, please connect something to @@"), this, BoolResultPin);
 			}
 		}
 	}

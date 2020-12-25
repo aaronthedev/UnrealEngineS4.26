@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameFramework/WorldSettings.h"
 #include "Algo/Partition.h"
@@ -37,7 +37,6 @@
 #include "MeshMergeModule.h"
 #include "Settings/EditorExperimentalSettings.h"
 #include "Landscape.h"
-#include "Rendering/StaticLightingSystemInterface.h"
 #endif 
 
 #define LOCTEXT_NAMESPACE "ErrorChecking"
@@ -195,7 +194,7 @@ void AWorldSettings::PostRegisterAllComponents()
 	Super::PostRegisterAllComponents();
 
 	UWorld* World = GetWorld();
-	if (FAudioDeviceHandle AudioDevice = World->GetAudioDevice())
+	if (FAudioDevice* AudioDevice = World->GetAudioDevice())
 	{
 		AudioDevice->SetDefaultAudioSettings(World, DefaultReverbSettings, DefaultAmbientZoneSettings);
 	}
@@ -246,7 +245,6 @@ void AWorldSettings::NotifyBeginPlay()
 			const bool bFromLevelLoad = true;
 			It->DispatchBeginPlay(bFromLevelLoad);
 		}
-
 		World->bBegunPlay = true;
 	}
 }
@@ -441,7 +439,7 @@ void AWorldSettings::PostLoad()
 	for (FHierarchicalSimplification& Entry : HierarchicalLODSetup)
 	{
 		Entry.ProxySetting.PostLoadDeprecated();
-		Entry.MergeSetting.PostLoadDeprecated();
+		Entry.MergeSetting.LODSelectionType = EMeshLODSelectionType::CalculateLOD;
 	}
 
 #endif// WITH_EDITOR
@@ -455,7 +453,7 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		{
 			TSubclassOf<UNavigationSystemConfig> NavSystemConfigClass = UNavigationSystemConfig::GetDefaultConfigClass();
 			if (*NavSystemConfigClass)
-		{
+			{
 				NavigationSystemConfig = NewObject<UNavigationSystemConfig>(this, NavSystemConfigClass);
 			}
 			bEnableNavigationSystem = false;
@@ -521,14 +519,14 @@ void AWorldSettings::CheckForErrors()
 	}
 }
 
-bool AWorldSettings::CanEditChange(const FProperty* InProperty) const
+bool AWorldSettings::CanEditChange(const UProperty* InProperty) const
 {
 	if (InProperty)
 	{
 		FString PropertyName = InProperty->GetName();
 
-		if (InProperty->GetOwner<UObject>() &&
-			  InProperty->GetOwner<UObject>()->GetName() == TEXT("LightmassWorldInfoSettings"))
+		if (InProperty->GetOuter()
+			&& InProperty->GetOuter()->GetName() == TEXT("LightmassWorldInfoSettings"))
 		{
 			if (PropertyName == GET_MEMBER_NAME_STRING_CHECKED(FLightmassWorldInfoSettings, bGenerateAmbientOcclusionMaterialMask)
 				|| PropertyName == GET_MEMBER_NAME_STRING_CHECKED(FLightmassWorldInfoSettings, DirectIlluminationOcclusionFraction)
@@ -558,6 +556,12 @@ bool AWorldSettings::CanEditChange(const FProperty* InProperty) const
 				return LightmassSettings.EnvironmentIntensity > 0;
 			}
 		}
+
+		if (PropertyName == GET_MEMBER_NAME_STRING_CHECKED(AWorldSettings, OverrideBaseMaterial) ||
+			PropertyName == GET_MEMBER_NAME_STRING_CHECKED(AWorldSettings, HierarchicalLODSetup))
+		{
+			return bEnableHierarchicalLODSystem && HLODSetupAsset.IsNull();
+		}
 	}
 
 	return Super::CanEditChange(InProperty);
@@ -565,7 +569,7 @@ bool AWorldSettings::CanEditChange(const FProperty* InProperty) const
 
 void AWorldSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
-	FProperty* PropertyThatChanged = PropertyChangedEvent.Property;
+	UProperty* PropertyThatChanged = PropertyChangedEvent.Property;
 	if (PropertyThatChanged)
 {
 		InternalPostPropertyChanged(PropertyThatChanged->GetFName());
@@ -586,13 +590,6 @@ void AWorldSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChang
 	LightmassSettings.FullyOccludedSamplesFraction = FMath::Clamp(LightmassSettings.FullyOccludedSamplesFraction, 0.0f, 1.0f);
 	LightmassSettings.MaxOcclusionDistance = FMath::Max(LightmassSettings.MaxOcclusionDistance, 0.0f);
 	LightmassSettings.EnvironmentIntensity = FMath::Max(LightmassSettings.EnvironmentIntensity, 0.0f);
-
-#if WITH_EDITOR
-	if (PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(FLightmassWorldInfoSettings, VolumetricLightmapDetailCellSize))
-	{
-		FStaticLightingSystemInterface::OnLightmassImportanceVolumeModified.Broadcast();
-	}
-#endif
 
 	// Ensure texture size is power of two between 512 and 4096.
 	PackedLightAndShadowMapTextureSize = FMath::Clamp<uint32>( FMath::RoundUpToPowerOfTwo( PackedLightAndShadowMapTextureSize ), 512, 4096 );
@@ -630,7 +627,7 @@ void AWorldSettings::InternalPostPropertyChanged(FName PropertyName)
 	if (PropertyName == GET_MEMBER_NAME_CHECKED(AWorldSettings, DefaultReverbSettings) || PropertyName == GET_MEMBER_NAME_CHECKED(AWorldSettings, DefaultAmbientZoneSettings))
 {
 		UWorld* World = GetWorld();
-		if (FAudioDeviceHandle AudioDevice = World->GetAudioDevice())
+		if (FAudioDevice* AudioDevice = World->GetAudioDevice())
 	{
 			AudioDevice->SetDefaultAudioSettings(World, DefaultReverbSettings, DefaultAmbientZoneSettings);
 		}
@@ -669,7 +666,7 @@ void AWorldSettings::InternalPostPropertyChanged(FName PropertyName)
 		else if (PropertyName == GET_MEMBER_NAME_CHECKED(AWorldSettings, DefaultBookmarkClass))
 		{
 			UpdateBookmarkClass();
-	}
+		}
 
 	if (GetWorld() != nullptr && GetWorld()->PersistentLevel && GetWorld()->PersistentLevel->GetWorldSettings() == this)
 	{

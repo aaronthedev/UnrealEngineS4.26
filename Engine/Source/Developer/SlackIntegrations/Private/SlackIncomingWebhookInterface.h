@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -31,7 +31,7 @@ public:
 
 private:
 	/** Helper used to make http requests by SendMessage() */
-	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> CreateHttpRequest() const;
+	TSharedRef<IHttpRequest> CreateHttpRequest() const;
 
 	/**
 	 * Callback from HTTP library when a request has completed

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,7 +11,7 @@
 struct FConcertSessionContext;
 class IConcertSyncClient;
 class IConcertClientSession;
-class ALevelSequenceActor;
+class ULevelSequencePlayer;
 
 #if WITH_EDITOR
 
@@ -242,7 +242,7 @@ private:
 	TArray<FOpenSequencerData> OpenSequencers;
 
 	/** Map of opened sequence players, if not in editor mode. */
-	TMap<FName, ALevelSequenceActor*> SequencePlayers;
+	TMap<FName, ULevelSequencePlayer*> SequencePlayers;
 
 	/** Boolean that is set when we are handling any transport event to prevent re-entrancy */
 	bool bRespondingToTransportEvent;

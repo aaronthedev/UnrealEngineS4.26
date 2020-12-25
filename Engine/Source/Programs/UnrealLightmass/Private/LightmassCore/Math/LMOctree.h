@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,6 @@
 #include "LMMath.h"
 #include "LMMathSSE.h"
 #include "UnrealLightmass.h"
-#include "Misc/MemStack.h"
 
 namespace Lightmass
 {
@@ -280,10 +279,7 @@ public:
 		{
 			FOREACH_OCTREE_CHILD_NODE(ChildRef)
 			{
-				if (HasChild(ChildRef.Index))
-				{
-					Children[ChildRef.Index]->~FNode();
-				}
+				delete Children[ChildRef.Index];
 			}
 		}
 
@@ -616,8 +612,6 @@ public:
 	}
 
 private:
-	/** Lightmass octree is grow-only. Use a stack allocator to coalesce allocations for better allocation performance. */
-	FMemStackBase NodeAllocator;
 
 	/** The octree's root node. */
 	FNode RootNode;
@@ -771,8 +765,7 @@ void TOctree<ElementType,OctreeSemantics>::AddElementToNode(
 				// Create the child node if it hasn't been created yet.
 				if(!Node.Children[ChildRef.Index])
 				{
-					uint8* NodeAddr = NodeAllocator.PushBytes(sizeof(typename TOctree<ElementType, OctreeSemantics>::FNode), alignof(typename TOctree<ElementType, OctreeSemantics>::FNode));
-					Node.Children[ChildRef.Index] = new (NodeAddr) typename TOctree<ElementType,OctreeSemantics>::FNode(&Node);
+					Node.Children[ChildRef.Index] = new typename TOctree<ElementType,OctreeSemantics>::FNode(&Node);
 				}
 
 				// Push the node onto the stack to visit.

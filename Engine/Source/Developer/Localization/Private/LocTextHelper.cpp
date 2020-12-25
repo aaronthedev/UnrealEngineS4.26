@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LocTextHelper.h"
 #include "PlatformInfo.h"
@@ -27,21 +27,30 @@ const TArray<FString>& FLocTextPlatformSplitUtils::GetPlatformsToSplit(const ELo
 {
 	switch (InSplitMode)
 	{
-	case ELocTextPlatformSplitMode::Confidential:
+	case ELocTextPlatformSplitMode::Restricted:
 		{
-			static const TArray<FString> ConfidentialPlatformNames = []()
+			static TArray<FString> RestrictedPlatformNames = []()
 			{
-				TArray<FString> TmpArray = FDataDrivenPlatformInfoRegistry::GetConfidentialPlatforms();
+				TArray<FString> TmpArray;
+				for (const FString& PlatformName : FDataDrivenPlatformInfoRegistry::GetConfidentialPlatforms())
+				{
+					const FDataDrivenPlatformInfoRegistry::FPlatformInfo& PlatformInfo = FDataDrivenPlatformInfoRegistry::GetPlatformInfo(PlatformName);
+					check(PlatformInfo.bIsConfidential);
+					if (PlatformInfo.bRestrictLocalization)
+					{
+						TmpArray.Add(PlatformName);
+					}
+				}
 				TmpArray.Sort();
 				return TmpArray;
 			}();
-			return ConfidentialPlatformNames;
+			return RestrictedPlatformNames;
 		}
 		break;
 
 	case ELocTextPlatformSplitMode::All:
 		{
-			static const TArray<FString> AllPlatformNames = []()
+			static TArray<FString> AllPlatformNames = []()
 			{
 				TArray<FString> TmpArray;
 				for (const PlatformInfo::FPlatformInfo& Info : PlatformInfo::GetPlatformInfoArray())
@@ -1584,7 +1593,7 @@ bool FLocTextHelper::SaveManifestImpl(const TSharedRef<const FInternationalizati
 		}
 
 		bSavedAll &= SaveSingleManifest(PlatformAgnosticManifest, InManifestFilePath);
-		for (const auto& PerPlatformManifestPair : PerPlatformManifests)
+		for (const auto PerPlatformManifestPair : PerPlatformManifests)
 		{
 			const FString PlatformManifestFilePath = PlatformLocalizationPath / PerPlatformManifestPair.Key.ToString() / PlatformManifestName;
 			bSavedAll &= SaveSingleManifest(PerPlatformManifestPair.Value, PlatformManifestFilePath);
@@ -1765,7 +1774,7 @@ bool FLocTextHelper::SaveArchiveImpl(const TSharedRef<const FInternationalizatio
 		}
 
 		bSavedAll &= SaveSingleArchive(PlatformAgnosticArchive, InArchiveFilePath);
-		for (const auto& PerPlatformArchivePair : PerPlatformArchives)
+		for (const auto PerPlatformArchivePair : PerPlatformArchives)
 		{
 			const FString PlatformArchiveFilePath = PlatformLocalizationPath / PerPlatformArchivePair.Key.ToString() / PlatformArchiveCulture / PlatformArchiveName;
 			bSavedAll &= SaveSingleArchive(PerPlatformArchivePair.Value, PlatformArchiveFilePath);

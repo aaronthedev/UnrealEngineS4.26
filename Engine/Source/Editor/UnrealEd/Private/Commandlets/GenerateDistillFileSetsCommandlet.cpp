@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Commandlets/GenerateDistillFileSetsCommandlet.h"
@@ -279,13 +279,20 @@ int32 UGenerateDistillFileSetsCommandlet::Main( const FString& InParams )
 	}
 
 	// Add assets from additional directories to always cook
+	const FString AbsoluteGameContentDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectContentDir());
 	for (const auto& DirToCook : PackagingSettings->DirectoriesToAlwaysCook)
 	{
 		FString DirectoryPath;
-		if (!FPackageName::TryConvertGameRelativePackagePathToLocalPath(DirToCook.Path, DirectoryPath))
+		if (DirToCook.Path.StartsWith(TEXT("/"), ESearchCase::CaseSensitive))
 		{
-			UE_LOG(LogGenerateDistillFileSetsCommandlet, Warning, TEXT("'ProjectSettings -> Project -> Packaging -> Directories to always cook' has invalid element '%s'"), *DirToCook.Path);
-			continue;
+			// If this starts with /, this includes a root like /engine
+			FString RelativePath = FPackageName::LongPackageNameToFilename(DirToCook.Path / TEXT(""));
+			DirectoryPath = FPaths::ConvertRelativePathToFull(RelativePath);
+		}
+		else
+		{
+			// This is relative to /game
+			DirectoryPath = AbsoluteGameContentDir / DirToCook.Path;
 		}
 
 		UE_LOG(LogGenerateDistillFileSetsCommandlet, Log, TEXT( "Examining directory to always cook: %s..." ), *DirToCook.Path );
@@ -338,7 +345,6 @@ int32 UGenerateDistillFileSetsCommandlet::Main( const FString& InParams )
 	TArray<FString> AdditionalFilesToDistill;
 	GConfig->GetArray(TEXT("DistillSettings"), TEXT("FilesToAlwaysDistill"), AdditionalFilesToDistill, GEngineIni);
 
-	const FString AbsoluteGameContentDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectContentDir());
 	TArray<FString> AdditionalFilesToDistillFullPath;
 	for (const FString& File : AdditionalFilesToDistill)
 	{

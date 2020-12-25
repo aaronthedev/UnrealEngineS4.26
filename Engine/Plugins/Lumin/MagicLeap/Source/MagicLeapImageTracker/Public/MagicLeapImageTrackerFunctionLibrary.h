@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -31,7 +31,7 @@ public:
 		Gets the maximum number of Image Targets that can be tracked at any given time.
 		@return The maximum number of Image Targets that can be tracked at any given time.
 	*/
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "ImageTracking|MagicLeap")
+	UFUNCTION(BlueprintCallable, Category = "ImageTracking|MagicLeap")
 	static int32 GetMaxSimultaneousTargets();
 
 	/**
@@ -54,6 +54,6 @@ public:
 		Gets the active state of the image tracking system.
 		@return True if image tracking is enabled, false otherwise.
 	*/
-	UFUNCTION(BlueprintCallable, BlueprintPure, Category = "ImageTracking|MagicLeap")
+	UFUNCTION(BlueprintCallable, Category = "ImageTracking|MagicLeap")
 	static bool IsImageTrackingEnabled();
 };

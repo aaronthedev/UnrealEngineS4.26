@@ -1,19 +1,18 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
+#include "CoreMinimal.h"
 #include "DisplayNodes/VariantManagerDisplayNode.h"
 
-#include "CoreMinimal.h"
-
-class FAssetThumbnailPool;
-class FDragDropEvent;
 class FMenuBuilder;
-class SCheckBox;
+class FAssetThumbnailPool;
+enum class EItemDropZone;
+class FDragDropEvent;
 class SVariantManagerTableRow;
 class UVariant;
-enum class EItemDropZone;
-struct FSlateImageBrush;
+class SCheckBox;
+
 
 /** A variant manager display node representing a variant in the outliner. */
 class FVariantManagerVariantNode : public FVariantManagerDisplayNode
@@ -50,7 +49,4 @@ private:
 	TSharedPtr<SCheckBox> RadioButton;
 
 	TSharedPtr<FAssetThumbnailPool> ThumbnailPool;
-
-	// We need to keep the brush alive while the thumbnail is rendered
-	TSharedPtr<FSlateImageBrush> ImageBrush;
 };

@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimNodes/AnimNode_SequenceEvaluator.h"
 #include "Animation/AnimInstanceProxy.h"
-#include "Animation/AnimTrace.h"
 
 float FAnimNode_SequenceEvaluator::GetCurrentAssetTime()
 {
@@ -38,7 +37,7 @@ void FAnimNode_SequenceEvaluator::UpdateAssetPlayer(const FAnimationUpdateContex
 		// Clamp input to a valid position on this sequence's time line.
 		ExplicitTime = FMath::Clamp(ExplicitTime, 0.f, Sequence->SequenceLength);
 
-		if ((!bTeleportToExplicitTime || (GroupName != NAME_None)) && (Context.AnimInstanceProxy->IsSkeletonCompatible(Sequence->GetSkeleton())))
+		if ((!bTeleportToExplicitTime || (GroupIndex != INDEX_NONE)) && (Context.AnimInstanceProxy->IsSkeletonCompatible(Sequence->GetSkeleton())))
 		{
 			if (bReinitialized)
 			{
@@ -69,10 +68,10 @@ void FAnimNode_SequenceEvaluator::UpdateAssetPlayer(const FAnimationUpdateContex
 
 			// if you jump from front to end or end to front, your time jump is 0.f, so nothing moves
 			// to prevent that from happening, we set current accumulator to explicit time
-			if (TimeJump == 0.f)
-			{
-				InternalTimeAccumulator = ExplicitTime;
-			}
+ 			if (TimeJump == 0.f)
+ 			{
+ 				InternalTimeAccumulator = ExplicitTime;
+ 			}
 			
 			const float DeltaTime = Context.GetDeltaTime();
 			const float RateScale = Sequence->RateScale;
@@ -86,11 +85,6 @@ void FAnimNode_SequenceEvaluator::UpdateAssetPlayer(const FAnimationUpdateContex
 	}
 
 	bReinitialized = false;
-
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Name"), Sequence != nullptr ? Sequence->GetFName() : NAME_None);
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Sequence"), Sequence);
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("InputTime"), ExplicitTime);
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Time"), InternalTimeAccumulator);
 }
 
 void FAnimNode_SequenceEvaluator::Evaluate_AnyThread(FPoseContext& Output)
@@ -99,8 +93,7 @@ void FAnimNode_SequenceEvaluator::Evaluate_AnyThread(FPoseContext& Output)
 	check(Output.AnimInstanceProxy != nullptr);
 	if ((Sequence != nullptr) && (Output.AnimInstanceProxy->IsSkeletonCompatible(Sequence->GetSkeleton())))
 	{
-		FAnimationPoseData AnimationPoseData(Output);
-		Sequence->GetAnimationPose(AnimationPoseData, FAnimExtractContext(InternalTimeAccumulator, Output.AnimInstanceProxy->ShouldExtractRootMotion()));
+		Sequence->GetAnimationPose(Output.Pose, Output.Curve, FAnimExtractContext(InternalTimeAccumulator, Output.AnimInstanceProxy->ShouldExtractRootMotion()));
 	}
 	else
 	{

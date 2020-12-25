@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ViewModels/Stack/NiagaraStackErrorItem.h"
 #include "NiagaraStackEditorData.h"
@@ -23,11 +23,6 @@ void UNiagaraStackErrorItem::SetStackIssue(const FStackIssue& InStackIssue)
 FText UNiagaraStackErrorItem::GetDisplayName() const
 {
 	return StackIssue.GetShortDescription();
-}
-
-EStackIssueSeverity UNiagaraStackErrorItem::GetIssueSeverity() const
-{
-	return StackIssue.GetSeverity();
 }
 
 UNiagaraStackEntry::EStackRowStyle UNiagaraStackErrorItem::GetStackRowStyle() const
@@ -56,21 +51,15 @@ void UNiagaraStackErrorItem::RefreshChildrenInternal(const TArray<UNiagaraStackE
 			FixChild->OnIssueFixed().RemoveAll(this);
 		}
 	}
-	
-	if (!StackIssue.GetLongDescription().IsEmptyOrWhitespace())
+	// long description
+	UNiagaraStackErrorItemLongDescription* ErrorEntryLongDescription = FindCurrentChildOfTypeByPredicate<UNiagaraStackErrorItemLongDescription>(CurrentChildren,
+		[&](UNiagaraStackErrorItemLongDescription* CurrentChild) { return true; });
+	if (ErrorEntryLongDescription == nullptr)
 	{
-		// long description
-		UNiagaraStackErrorItemLongDescription* ErrorEntryLongDescription = FindCurrentChildOfTypeByPredicate<UNiagaraStackErrorItemLongDescription>(CurrentChildren,
-			[&](UNiagaraStackErrorItemLongDescription* CurrentChild) { return true; });
-		if (ErrorEntryLongDescription == nullptr)
-		{
-			ErrorEntryLongDescription = NewObject<UNiagaraStackErrorItemLongDescription>(this);
-			ErrorEntryLongDescription->Initialize(CreateDefaultChildRequiredData(), StackIssue, GetStackEditorDataKey());
-		}
-
-
-		NewChildren.Add(ErrorEntryLongDescription);
+		ErrorEntryLongDescription = NewObject<UNiagaraStackErrorItemLongDescription>(this);
+		ErrorEntryLongDescription->Initialize(CreateDefaultChildRequiredData(), StackIssue, GetStackEditorDataKey());
 	}
+	NewChildren.Add(ErrorEntryLongDescription);
 
 	// fixes
 	for (int i = 0; i < StackIssue.GetFixes().Num(); i++)
@@ -88,7 +77,7 @@ void UNiagaraStackErrorItem::RefreshChildrenInternal(const TArray<UNiagaraStackE
 			ErrorEntryFix->SetFixDelegate(CurrentFix.GetFixDelegate());
 		}
 		if (ensureMsgf(NewChildren.Contains(ErrorEntryFix) == false,
-			TEXT("Duplicate stack issue fix rows detected. This is caused by two different issue fixes with the same description which is used to generate their unique ID. Issue Fix description: %s.  This issue fix will not be shown in the UI."),
+			TEXT("Duplicate stack issue fix rows detected, This is caused by two different issue fixes with the same description which is used to generate their unique id. Issue Fix description: %s.  This issue fix will not be shown in the UI."),
 			*CurrentFix.GetDescription().ToString()))
 		{
 			ErrorEntryFix->OnIssueFixed().AddUObject(this, &UNiagaraStackErrorItem::IssueFixed);
@@ -128,11 +117,6 @@ FText UNiagaraStackErrorItemLongDescription::GetDisplayName() const
 	return StackIssue.GetLongDescription();
 }
 
-EStackIssueSeverity UNiagaraStackErrorItemLongDescription::GetIssueSeverity() const
-{
-	return StackIssue.GetSeverity();
-}
-
 UNiagaraStackEntry::EStackRowStyle UNiagaraStackErrorItemLongDescription::GetStackRowStyle() const
 {
 	return EStackRowStyle::StackIssue;
@@ -150,8 +134,6 @@ void UNiagaraStackErrorItemFix::Initialize(FRequiredEntryData InRequiredEntryDat
 
 FReply UNiagaraStackErrorItemFix::OnTryFixError()
 {
-	// Request a deferred refresh before running the fix since this entry might be finalized during the fix and it's delegate will be lost.
-	OnRequestFullRefreshDeferred().Broadcast();
 	IssueFix.GetFixDelegate().ExecuteIfBound();
 	OnIssueFixed().Broadcast();
 	return FReply::Handled();
@@ -160,11 +142,6 @@ FReply UNiagaraStackErrorItemFix::OnTryFixError()
 FText UNiagaraStackErrorItemFix::GetDisplayName() const
 {
 	return IssueFix.GetDescription();
-}
-
-EStackIssueSeverity UNiagaraStackErrorItemFix::GetIssueSeverity() const
-{
-	return StackIssue.GetSeverity();
 }
 
 UNiagaraStackEntry::EStackRowStyle UNiagaraStackErrorItemFix::GetStackRowStyle() const
@@ -195,7 +172,7 @@ void UNiagaraStackErrorItemDismiss::Initialize(FRequiredEntryData InRequiredEntr
 	UNiagaraStackEntry::Initialize(InRequiredEntryData, ErrorStackEditorDataKey);
 	StackIssue = InStackIssue;
 	IssueFix = FStackIssueFix(
-		LOCTEXT("DismissError", "Dismiss the issue without fixing (I know what I'm doing)"),
+		LOCTEXT("DismissError", "Dismiss the issue without fixing (I know what I'm doing)."),
 		FStackIssueFixDelegate::CreateUObject(this, &UNiagaraStackErrorItemDismiss::DismissIssue));
 }
 

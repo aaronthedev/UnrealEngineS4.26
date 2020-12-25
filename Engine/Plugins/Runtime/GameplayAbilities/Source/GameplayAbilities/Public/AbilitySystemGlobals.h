@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -161,19 +161,6 @@ class GAMEPLAYABILITIES_API UAbilitySystemGlobals : public UObject
 	/** Returns true if ability costs are ignored, returns false otherwise. Always returns false in shipping builds. */
 	bool ShouldIgnoreCosts() const;
 
-	/** Show all abilities currently assigned to the local player */
-	UFUNCTION(exec)
-	void ListPlayerAbilities();
-	/** Force server activation of a specific player ability (useful for cheat testing) */
-	UFUNCTION(exec)
-	void ServerActivatePlayerAbility(FString AbilityNameMatch);
-	/** Force server deactivation of a specific player ability (useful for cheat testing) */
-	UFUNCTION(exec)
-	void ServerEndPlayerAbility(FString AbilityNameMatch);
-	/** Force server cancellation of a specific player ability (useful for cheat testing) */
-	UFUNCTION(exec)
-	void ServerCancelPlayerAbility(FString AbilityNameMatch);
-
 	/** Called when debug strings are available, to write them to the display */
 	DECLARE_MULTICAST_DELEGATE(FOnClientServerDebugAvailable);
 	FOnClientServerDebugAvailable OnClientServerDebugAvailable;
@@ -261,8 +248,6 @@ class GAMEPLAYABILITIES_API UAbilitySystemGlobals : public UObject
 		}
 	}
 
-	void InitTargetDataScriptStructCache();
-
 	/** Initialize GameplayCue Parameters */
 	virtual void InitGameplayCueParameters(FGameplayCueParameters& CueParameters, const FGameplayEffectSpecForRPC &Spec);
 	virtual void InitGameplayCueParameters_GESpec(FGameplayCueParameters& CueParameters, const FGameplayEffectSpec &Spec);
@@ -302,8 +287,7 @@ protected:
 	virtual void ReloadAttributeDefaults();
 	virtual void AllocAttributeSetInitter();
 
-#define WITH_ABILITY_CHEATS		(!(UE_BUILD_SHIPPING || UE_BUILD_TEST))
-#if WITH_ABILITY_CHEATS
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	// data used for ability system cheat commands
 
 	/** If we should ignore the cooldowns when activating abilities in the ability system. Set with ToggleIgnoreAbilitySystemCooldowns() */
@@ -311,7 +295,7 @@ protected:
 
 	/** If we should ignore the costs when activating abilities in the ability system. Set with ToggleIgnoreAbilitySystemCosts() */
 	bool bIgnoreAbilitySystemCosts;
-#endif // WITH_ABILITY_CHEATS
+#endif // #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 
 	/** Whether the game should allow the usage of gameplay mod evaluation channels or not */
 	UPROPERTY(config)

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -47,7 +47,7 @@ public:
 		FVector2D GraphPosition;
 		UEdGraph* Graph;
 		bool bSelfContext;
-		const FProperty* Property;
+		const UProperty* Property;
 		FNodeCreationAnalytic AnalyticCallback;
 	};
 

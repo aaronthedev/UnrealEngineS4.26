@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BlueprintEditorTabFactories.h"
 #include "Widgets/Text/STextBlock.h"
@@ -247,7 +247,7 @@ TSharedRef<SWidget> FDefaultsEditorSummoner::CreateOptionalDataOnlyMessage() con
 				.BorderImage(FEditorStyle::GetBrush("ToolPanel.GroupBorder"))
 				[
 					SNew(SWrapBox)
-					.UseAllottedSize(true)
+					.UseAllottedWidth(true)
 
 					+ SWrapBox::Slot()
 					[

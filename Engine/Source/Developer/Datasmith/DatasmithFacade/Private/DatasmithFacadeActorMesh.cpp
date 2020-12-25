@@ -1,75 +1,50 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithFacadeActorMesh.h"
 
-#include "DatasmithFacadeMaterialID.h"
-#include "DatasmithFacadeScene.h"
-
 
 FDatasmithFacadeActorMesh::FDatasmithFacadeActorMesh(
-	const TCHAR* InElementName
-)
-	: FDatasmithFacadeActor(FDatasmithSceneFactory::CreateMeshActor(InElementName))
-{}
-
-FDatasmithFacadeActorMesh::FDatasmithFacadeActorMesh(
-	const TSharedRef<IDatasmithMeshActorElement>& InInternalElement
-)
-	: FDatasmithFacadeActor(InInternalElement)
-{}
+	const TCHAR* InElementName,
+	const TCHAR* InElementLabel
+) :
+	FDatasmithFacadeActor(InElementName, InElementLabel)
+{
+}
 
 void FDatasmithFacadeActorMesh::SetMesh(
 	const TCHAR* InMeshName
 )
 {
-	GetDatasmithMeshActorElement()->SetStaticMeshPathName(InMeshName);
+	MeshName = InMeshName;
+
+	// Prevent the Datasmith mesh actor from being removed by optimization.
+	KeepActor();
 }
 
-const TCHAR* FDatasmithFacadeActorMesh::GetMeshName() const
+TSharedPtr<IDatasmithActorElement> FDatasmithFacadeActorMesh::CreateActorHierarchy(
+	TSharedRef<IDatasmithScene> IOSceneRef
+) const
 {
-	return GetDatasmithMeshActorElement()->GetStaticMeshPathName();
-}
-
-void FDatasmithFacadeActorMesh::AddMaterialOverride(
-	const TCHAR* MaterialName,
-	int32 Id
-)
-{
-	GetDatasmithMeshActorElement()->AddMaterialOverride(MaterialName, Id);
-}
-
-void FDatasmithFacadeActorMesh::AddMaterialOverride(
-	FDatasmithFacadeMaterialID& Material
-)
-{
-	GetDatasmithMeshActorElement()->AddMaterialOverride(Material.GetMaterialIDElement());
-}
-
-int32 FDatasmithFacadeActorMesh::GetMaterialOverridesCount() const
-{
-	return GetDatasmithMeshActorElement()->GetMaterialOverridesCount();
-}
-
-FDatasmithFacadeMaterialID* FDatasmithFacadeActorMesh::GetNewMaterialOverride(
-	int32 MaterialOverrideIndex
-)
-{
-	if (TSharedPtr<IDatasmithMaterialIDElement> MaterialID = GetDatasmithMeshActorElement()->GetMaterialOverride(MaterialOverrideIndex))
+	if (MeshName.IsEmpty())
 	{
-		return new FDatasmithFacadeMaterialID(MaterialID.ToSharedRef());
+		// Create and initialize a Datasmith actor hierarchy.
+		return FDatasmithFacadeActor::CreateActorHierarchy(IOSceneRef);
 	}
+	else
+	{
+		// Create a Datasmith mesh actor element.
+		TSharedPtr<IDatasmithMeshActorElement> MeshActorPtr = FDatasmithSceneFactory::CreateMeshActor(*ElementName);
 
-	return nullptr;
+		// Set the Datasmith mesh actor base properties.
+		SetActorProperties(IOSceneRef, MeshActorPtr);
+
+		// Set the static mesh used by the Datasmith mesh actor.
+		MeshActorPtr->SetStaticMeshPathName(*MeshName);
+
+		// Add the hierarchy of children to the Datasmith actor.
+		AddActorChildren(IOSceneRef, MeshActorPtr);
+
+		return MeshActorPtr;
+	}
 }
 
-void FDatasmithFacadeActorMesh::RemoveMaterialOverride(
-	FDatasmithFacadeMaterialID& Material
-)
-{
-	GetDatasmithMeshActorElement()->RemoveMaterialOverride(Material.GetMaterialIDElement());
-}
-
-TSharedRef<IDatasmithMeshActorElement> FDatasmithFacadeActorMesh::GetDatasmithMeshActorElement() const
-{
-	return StaticCastSharedRef<IDatasmithMeshActorElement>(InternalDatasmithElement);
-}

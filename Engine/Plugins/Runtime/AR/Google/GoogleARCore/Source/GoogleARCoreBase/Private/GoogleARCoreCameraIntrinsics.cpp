@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GoogleARCoreCameraIntrinsics.h"
 
@@ -8,25 +8,51 @@
 
 #include "GoogleARCoreAPI.h"
 
+UGoogleARCoreCameraIntrinsics::~UGoogleARCoreCameraIntrinsics()
+{
+#if PLATFORM_ANDROID
+	if (NativeCameraIntrinsics)
+	{
+		ArCameraIntrinsics_destroy(NativeCameraIntrinsics);
+	}
+#endif
+}
+
 void UGoogleARCoreCameraIntrinsics::GetFocalLength(float &OutFX, float &OutFY)
 {
-	OutFX = CameraIntrinsics.FocalLength.X;
-	OutFY = CameraIntrinsics.FocalLength.Y;
+#if PLATFORM_ANDROID
+	TSharedPtr<FGoogleARCoreSession> SessionPtr = Session.Pin();
+	if (NativeCameraIntrinsics && SessionPtr.IsValid())
+	{
+		ArCameraIntrinsics_getFocalLength(
+			SessionPtr->GetHandle(), NativeCameraIntrinsics,
+			&OutFX, &OutFY);
+	}
+#endif
 }
 
 void UGoogleARCoreCameraIntrinsics::GetPrincipalPoint(float &OutCX, float &OutCY)
 {
-	OutCX = CameraIntrinsics.PrincipalPoint.X;
-	OutCY = CameraIntrinsics.PrincipalPoint.Y;
+#if PLATFORM_ANDROID
+	TSharedPtr<FGoogleARCoreSession> SessionPtr = Session.Pin();
+	if (NativeCameraIntrinsics && SessionPtr.IsValid())
+	{
+		ArCameraIntrinsics_getPrincipalPoint(
+			SessionPtr->GetHandle(), NativeCameraIntrinsics,
+			&OutCX, &OutCY);
+	}
+#endif
 }
 
 void UGoogleARCoreCameraIntrinsics::GetImageDimensions(int32 &OutWidth, int32 &OutHeight)
 {
-	OutWidth = CameraIntrinsics.ImageResolution.X;
-	OutHeight = CameraIntrinsics.ImageResolution.Y;
-}
-
-void UGoogleARCoreCameraIntrinsics::SetCameraIntrinsics(const FARCameraIntrinsics& InCameraIntrinsics)
-{
-	CameraIntrinsics = InCameraIntrinsics;
+#if PLATFORM_ANDROID
+	TSharedPtr<FGoogleARCoreSession> SessionPtr = Session.Pin();
+	if (NativeCameraIntrinsics && SessionPtr.IsValid())
+	{
+		ArCameraIntrinsics_getImageDimensions(
+			SessionPtr->GetHandle(), NativeCameraIntrinsics,
+			&OutWidth, &OutHeight);
+	}
+#endif
 }

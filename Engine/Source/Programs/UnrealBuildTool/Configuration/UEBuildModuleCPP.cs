@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -33,6 +33,11 @@ namespace UnrealBuildTool
 		}
 
 		/// <summary>
+		/// The directory for this module's object files
+		/// </summary>
+		public readonly DirectoryReference IntermediateDirectory;
+
+		/// <summary>
 		/// The directory for this module's generated code
 		/// </summary>
 		public readonly DirectoryReference GeneratedCodeDirectory;
@@ -43,9 +48,9 @@ namespace UnrealBuildTool
 		public bool bAddGeneratedCodeIncludePath;
 
 		/// <summary>
-		/// Paths containing *.gen.cpp files for this module.  If this is null then this module doesn't have any generated code.
+		/// Wildcard matching the *.gen.cpp files for this module.  If this is null then this module doesn't have any UHT-produced code.
 		/// </summary>
-		public List<string> GeneratedCppDirectories;
+		public string GeneratedCodeWildcard;
 
 		/// <summary>
 		/// List of invalid include directives. These are buffered up and output before we start compiling.
@@ -76,85 +81,66 @@ namespace UnrealBuildTool
 		/// </summary>
 		static readonly KeyValuePair<string, string>[] WhitelistedCircularDependencies =
 		{
-			new KeyValuePair<string, string>("AIModule", "AITestSuite"),
-			new KeyValuePair<string, string>("AnimGraph", "UnrealEd"),
-			new KeyValuePair<string, string>("AnimGraph", "GraphEditor"),
-			new KeyValuePair<string, string>("AudioMixer", "NonRealtimeAudioRenderer"),
-			new KeyValuePair<string, string>("AudioMixer", "SoundFieldRendering"),
-			new KeyValuePair<string, string>("AudioEditor", "DetailCustomizations"),
-			new KeyValuePair<string, string>("BlueprintGraph", "KismetCompiler"),
-			new KeyValuePair<string, string>("BlueprintGraph", "UnrealEd"),
-			new KeyValuePair<string, string>("BlueprintGraph", "GraphEditor"),
-			new KeyValuePair<string, string>("BlueprintGraph", "Kismet"),
-			new KeyValuePair<string, string>("BlueprintGraph", "CinematicCamera"),
-			new KeyValuePair<string, string>("ConfigEditor", "PropertyEditor"),
-			new KeyValuePair<string, string>("Documentation", "SourceControl"),
 			new KeyValuePair<string, string>("Engine", "Landscape"),
 			new KeyValuePair<string, string>("Engine", "UMG"),
 			new KeyValuePair<string, string>("Engine", "GameplayTags"),
 			new KeyValuePair<string, string>("Engine", "MaterialShaderQualitySettings"),
 			new KeyValuePair<string, string>("Engine", "UnrealEd"),
 			new KeyValuePair<string, string>("Engine", "AudioMixer"),
+			new KeyValuePair<string, string>("PacketHandler", "ReliabilityHandlerComponent"),
+			new KeyValuePair<string, string>("GameplayDebugger", "AIModule"),
+			new KeyValuePair<string, string>("GameplayDebugger", "GameplayTasks"),
 			new KeyValuePair<string, string>("Engine", "CinematicCamera"),
 			new KeyValuePair<string, string>("Engine", "CollisionAnalyzer"),
 			new KeyValuePair<string, string>("Engine", "LogVisualizer"),
 			new KeyValuePair<string, string>("Engine", "Kismet"),
-			new KeyValuePair<string, string>("FoliageEdit", "ViewportInteraction"),
-			new KeyValuePair<string, string>("FoliageEdit", "VREditor"),
-			new KeyValuePair<string, string>("FunctionalTesting", "UnrealEd"),
-			new KeyValuePair<string, string>("GameplayAbilitiesEditor", "BlueprintGraph"),
-			new KeyValuePair<string, string>("GameplayDebugger", "AIModule"),
-			new KeyValuePair<string, string>("GameplayDebugger", "GameplayTasks"),
-			new KeyValuePair<string, string>("GameplayTasks", "UnrealEd"),
-			new KeyValuePair<string, string>("GraphEditor", "Kismet"),
-			new KeyValuePair<string, string>("HierarchicalLODOutliner", "UnrealEd"),
-			new KeyValuePair<string, string>("Kismet", "BlueprintGraph"),
-			new KeyValuePair<string, string>("Kismet", "BlueprintNativeCodeGen"),
-			new KeyValuePair<string, string>("Kismet", "UMGEditor"),
-			new KeyValuePair<string, string>("Kismet", "Merge"),
-			new KeyValuePair<string, string>("KismetWidgets", "BlueprintGraph"),
 			new KeyValuePair<string, string>("Landscape", "UnrealEd"),
 			new KeyValuePair<string, string>("Landscape", "MaterialUtilities"),
-			new KeyValuePair<string, string>("LandscapeEditor", "ViewportInteraction"),
-			new KeyValuePair<string, string>("LandscapeEditor", "VREditor"),
 			new KeyValuePair<string, string>("LocalizationDashboard", "LocalizationService"),
 			new KeyValuePair<string, string>("LocalizationDashboard", "MainFrame"),
 			new KeyValuePair<string, string>("LocalizationDashboard", "TranslationEditor"),
-			new KeyValuePair<string, string>("MaterialUtilities", "Landscape"),
-			new KeyValuePair<string, string>("MeshPaint", "ViewportInteraction"),
-			new KeyValuePair<string, string>("MeshPaint", "VREditor"),
-			new KeyValuePair<string, string>("MeshPaintMode", "ViewportInteraction"),
-			new KeyValuePair<string, string>("MeshPaintMode", "VREditor"),
-			new KeyValuePair<string, string>("MovieSceneTools", "Sequencer"),
-			new KeyValuePair<string, string>("NavigationSystem", "UnrealEd"),
-			new KeyValuePair<string, string>("PacketHandler", "ReliabilityHandlerComponent"),
-			new KeyValuePair<string, string>("PIEPreviewDeviceProfileSelector", "UnrealEd"),
-			new KeyValuePair<string, string>("PixelInspectorModule", "UnrealEd"),
-			new KeyValuePair<string, string>("Sequencer", "MovieSceneTools"),
-			new KeyValuePair<string, string>("Sequencer", "ViewportInteraction"),
-			new KeyValuePair<string, string>("SourceControl", "UnrealEd"),
-			new KeyValuePair<string, string>("UnrealEd", "AudioEditor"),
-			new KeyValuePair<string, string>("UnrealEd", "ClothingSystemEditor"),
-			new KeyValuePair<string, string>("UnrealEd", "Documentation"),
-			new KeyValuePair<string, string>("UnrealEd", "EditorInteractiveToolsFramework"),
+			new KeyValuePair<string, string>("Documentation", "SourceControl"),
 			new KeyValuePair<string, string>("UnrealEd", "GraphEditor"),
-			new KeyValuePair<string, string>("UnrealEd", "InputBindingEditor"),
 			new KeyValuePair<string, string>("UnrealEd", "Kismet"),
-			new KeyValuePair<string, string>("UnrealEd", "MeshPaint"),
-			new KeyValuePair<string, string>("UnrealEd", "MeshPaintMode"),
-			new KeyValuePair<string, string>("UnrealEd", "PluginWarden"),
-			new KeyValuePair<string, string>("UnrealEd", "PropertyEditor"),
-			new KeyValuePair<string, string>("UnrealEd", "ToolMenusEditor"),
-			new KeyValuePair<string, string>("UnrealEd", "ViewportInteraction"),
-			new KeyValuePair<string, string>("UnrealEd", "VREditor"),
-			new KeyValuePair<string, string>("WebBrowser", "WebBrowserTexture"),
-			new KeyValuePair<string, string>("WindowsMixedRealityHMD", "WindowsMixedRealityHandTracking"),
-		};
+			new KeyValuePair<string, string>("UnrealEd", "AudioEditor"),
+			new KeyValuePair<string, string>("BlueprintGraph", "KismetCompiler"),
+			new KeyValuePair<string, string>("BlueprintGraph", "UnrealEd"),
+			new KeyValuePair<string, string>("BlueprintGraph", "GraphEditor"),
+			new KeyValuePair<string, string>("BlueprintGraph", "Kismet"),
+			new KeyValuePair<string, string>("BlueprintGraph", "CinematicCamera"),
+			new KeyValuePair<string, string>("ConfigEditor", "PropertyEditor"),
+			new KeyValuePair<string, string>("SourceControl", "UnrealEd"),
+			new KeyValuePair<string, string>("Kismet", "BlueprintGraph"),
+			new KeyValuePair<string, string>("Kismet", "UMGEditor"),
+			new KeyValuePair<string, string>("MovieSceneTools", "Sequencer"),
+			new KeyValuePair<string, string>("Sequencer", "MovieSceneTools"),
+			new KeyValuePair<string, string>("AIModule", "AITestSuite"),
+			new KeyValuePair<string, string>("GameplayTasks", "UnrealEd"),
+			new KeyValuePair<string, string>("AnimGraph", "UnrealEd"),
+			new KeyValuePair<string, string>("AnimGraph", "GraphEditor"),
+			new KeyValuePair<string, string>("MaterialUtilities", "Landscape"),
+			new KeyValuePair<string, string>("HierarchicalLODOutliner", "UnrealEd"),
+			new KeyValuePair<string, string>("PixelInspectorModule", "UnrealEd"),
+			new KeyValuePair<string, string>("GameplayAbilitiesEditor", "BlueprintGraph"),
+            new KeyValuePair<string, string>("UnrealEd", "ViewportInteraction"),
+            new KeyValuePair<string, string>("UnrealEd", "VREditor"),
+            new KeyValuePair<string, string>("LandscapeEditor", "ViewportInteraction"),
+            new KeyValuePair<string, string>("LandscapeEditor", "VREditor"),
+            new KeyValuePair<string, string>("FoliageEdit", "ViewportInteraction"),
+            new KeyValuePair<string, string>("FoliageEdit", "VREditor"),
+            new KeyValuePair<string, string>("MeshPaint", "ViewportInteraction"),
+            new KeyValuePair<string, string>("MeshPaint", "VREditor"),
+            new KeyValuePair<string, string>("MeshPaintMode", "ViewportInteraction"),
+            new KeyValuePair<string, string>("MeshPaintMode", "VREditor"),
+            new KeyValuePair<string, string>("Sequencer", "ViewportInteraction"),
+            new KeyValuePair<string, string>("NavigationSystem", "UnrealEd"),
+        };
 
 
 		public UEBuildModuleCPP(ModuleRules Rules, DirectoryReference IntermediateDirectory, DirectoryReference GeneratedCodeDirectory)
-			: base(Rules, IntermediateDirectory)
+			: base(Rules)
 		{
+			this.IntermediateDirectory = IntermediateDirectory;
 			this.GeneratedCodeDirectory = GeneratedCodeDirectory;
 
 			foreach (string Def in PublicDefinitions)
@@ -176,24 +162,6 @@ namespace UnrealBuildTool
 			}
 
 			AddDefaultIncludePaths();
-		}
-
-		/// <summary>
-		/// Determines if a file is part of the given module
-		/// </summary>
-		/// <param name="Location">Path to the file</param>
-		/// <returns>True if the file is part of this module</returns>
-		public override bool ContainsFile(FileReference Location)
-		{
-			if (base.ContainsFile(Location))
-			{
-				return true;
-			}
-			if (GeneratedCodeDirectory != null && Location.IsUnderDirectory(GeneratedCodeDirectory))
-			{
-				return true;
-			}
-			return false;
 		}
 
 		/// <summary>
@@ -270,7 +238,6 @@ namespace UnrealBuildTool
 			HashSet<DirectoryReference> SystemIncludePaths,
 			List<string> Definitions,
 			List<UEBuildFramework> AdditionalFrameworks,
-			List<FileItem> AdditionalPrerequisites,
 			bool bLegacyPublicIncludePaths
 			)
 		{
@@ -279,28 +246,17 @@ namespace UnrealBuildTool
 			if(bAddGeneratedCodeIncludePath || (ProjectFileGenerator.bGenerateProjectFiles && GeneratedCodeDirectory != null))
 			{
 				IncludePaths.Add(GeneratedCodeDirectory);
-
-				if (Rules.AdditionalCodeGenDirectories != null)
-				{
-					foreach (string CodeGenDir in Rules.AdditionalCodeGenDirectories)
-					{
-						if (Directory.Exists(CodeGenDir))
-						{
-							IncludePaths.Add(new DirectoryReference(CodeGenDir));
-						}
-					}
-				}
 			}
 
-			base.AddModuleToCompileEnvironment(SourceBinary, IncludePaths, SystemIncludePaths, Definitions, AdditionalFrameworks, AdditionalPrerequisites, bLegacyPublicIncludePaths);
+			base.AddModuleToCompileEnvironment(SourceBinary, IncludePaths, SystemIncludePaths, Definitions, AdditionalFrameworks, bLegacyPublicIncludePaths);
 		}
 
 		// UEBuildModule interface.
-		public override List<FileItem> Compile(ReadOnlyTargetRules Target, UEToolChain ToolChain, CppCompileEnvironment BinaryCompileEnvironment, List<FileReference> SpecificFilesToCompile, ISourceFileWorkingSet WorkingSet, IActionGraphBuilder Graph)
+		public override List<FileItem> Compile(ReadOnlyTargetRules Target, UEToolChain ToolChain, CppCompileEnvironment BinaryCompileEnvironment, FileReference SingleFileToCompile, ISourceFileWorkingSet WorkingSet, TargetMakefile Makefile)
 		{
-			//UEBuildPlatform BuildPlatform = UEBuildPlatform.GetBuildPlatform(BinaryCompileEnvironment.Platform);
+			UEBuildPlatform BuildPlatform = UEBuildPlatform.GetBuildPlatform(BinaryCompileEnvironment.Platform);
 
-			List<FileItem> LinkInputFiles = base.Compile(Target, ToolChain, BinaryCompileEnvironment, SpecificFilesToCompile, WorkingSet, Graph);
+			List<FileItem> LinkInputFiles = new List<FileItem>();
 
 			CppCompileEnvironment ModuleCompileEnvironment = CreateModuleCompileEnvironment(Target, BinaryCompileEnvironment);
 
@@ -329,28 +285,21 @@ namespace UnrealBuildTool
 			foreach (DirectoryReference ModuleDirectory in ModuleDirectories)
 			{
 				DirectoryItem ModuleDirectoryItem = DirectoryItem.GetItemByDirectoryReference(ModuleDirectory);
-				Graph.AddSourceDir(ModuleDirectoryItem);
+				Makefile.SourceDirectories.Add(ModuleDirectoryItem);
 			}
 
 			// Find all the input files
-			Dictionary<DirectoryItem, FileItem[]> DirectoryToSourceFiles = new Dictionary<DirectoryItem, FileItem[]>();
-			InputFileCollection InputFiles = FindInputFiles(Target.Platform, DirectoryToSourceFiles);
+			InputFileCollection InputFiles = FindInputFiles(Target.Platform, Makefile.DirectoryToSourceFiles);
 
-			foreach (KeyValuePair<DirectoryItem, FileItem[]> Pair in DirectoryToSourceFiles)
-			{
-				Graph.AddSourceFiles(Pair.Key, Pair.Value);
-			}
-
-			// If we're compiling only specific files, strip out anything else. This prevents us clobbering response files for anything we're 
+			// If we're compiling a single file, strip out anything else. This prevents us clobbering response files for anything we're 
 			// not going to build, triggering a larger build than necessary when we do a regular build again.
-			if(SpecificFilesToCompile.Count > 0)
+			if(SingleFileToCompile != null)
 			{
-				InputFiles.CPPFiles.RemoveAll(x => !SpecificFilesToCompile.Contains(x.Location));
-				InputFiles.CCFiles.RemoveAll(x => !SpecificFilesToCompile.Contains(x.Location));
-				InputFiles.CFiles.RemoveAll(x => !SpecificFilesToCompile.Contains(x.Location));
+				InputFiles.CPPFiles.RemoveAll(x => x.Location != SingleFileToCompile);
+				InputFiles.CCFiles.RemoveAll(x => x.Location != SingleFileToCompile);
+				InputFiles.CFiles.RemoveAll(x => x.Location != SingleFileToCompile);
 
-				if (InputFiles.CPPFiles.Count == 0 && InputFiles.CCFiles.Count == 0 && InputFiles.CFiles.Count == 0 &&
-					!SpecificFilesToCompile.Any(x => ContainsFile(x)))
+				if(InputFiles.CPPFiles.Count == 0 && InputFiles.CCFiles.Count == 0 && InputFiles.CFiles.Count == 0)
 				{
 					return new List<FileItem>();
 				}
@@ -428,14 +377,75 @@ namespace UnrealBuildTool
 			// Generate ISPC headers first so C++ can consume them
 			if (InputFiles.ISPCFiles.Count > 0)
 			{
-				CreateHeadersForISPC(ToolChain, CompileEnvironment, InputFiles.ISPCFiles, IntermediateDirectory, Graph);
+				CreateHeadersForISPC(ToolChain, CompileEnvironment, InputFiles.ISPCFiles, IntermediateDirectory, Makefile.Actions);
 			}
 
-			// Configure the precompiled headers for this module
-			CompileEnvironment = SetupPrecompiledHeaders(Target, ToolChain, CompileEnvironment, LinkInputFiles, Graph);
+			if (Target.bUsePCHFiles && Rules.PCHUsage != ModuleRules.PCHUsageMode.NoPCHs)
+			{
+				// If this module doesn't need a shared PCH, configure that
+				if(Rules.PrivatePCHHeaderFile != null && (Rules.PCHUsage == ModuleRules.PCHUsageMode.NoSharedPCHs || Rules.PCHUsage == ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs))
+				{
+					PrecompiledHeaderInstance Instance = CreatePrivatePCH(ToolChain, FileItem.GetItemByFileReference(FileReference.Combine(ModuleDirectory, Rules.PrivatePCHHeaderFile)), CompileEnvironment, Makefile.Actions);
+
+					CompileEnvironment = new CppCompileEnvironment(CompileEnvironment);
+					CompileEnvironment.Definitions.Clear();
+					CompileEnvironment.PrecompiledHeaderAction = PrecompiledHeaderAction.Include;
+					CompileEnvironment.PrecompiledHeaderIncludeFilename = Instance.HeaderFile.Location;
+					CompileEnvironment.PrecompiledHeaderFile = Instance.Output.PrecompiledHeaderFile;
+
+					LinkInputFiles.AddRange(Instance.Output.ObjectFiles);
+				}
+
+				// Try to find a suitable shared PCH for this module
+				if (CompileEnvironment.PrecompiledHeaderFile == null && CompileEnvironment.SharedPCHs.Count > 0 && !CompileEnvironment.bIsBuildingLibrary && Rules.PCHUsage != ModuleRules.PCHUsageMode.NoSharedPCHs)
+				{
+					// Find all the dependencies of this module
+					HashSet<UEBuildModule> ReferencedModules = new HashSet<UEBuildModule>();
+					GetAllDependencyModules(new List<UEBuildModule>(), ReferencedModules, bIncludeDynamicallyLoaded: false, bForceCircular: false, bOnlyDirectDependencies: true);
+
+					// Find the first shared PCH module we can use
+					PrecompiledHeaderTemplate Template = CompileEnvironment.SharedPCHs.FirstOrDefault(x => ReferencedModules.Contains(x.Module));
+					if(Template != null && Template.IsValidFor(CompileEnvironment))
+					{
+						PrecompiledHeaderInstance Instance = FindOrCreateSharedPCH(ToolChain, Template, ModuleCompileEnvironment, Makefile.Actions);
+
+						FileReference PrivateDefinitionsFile = FileReference.Combine(IntermediateDirectory, String.Format("Definitions.{0}.h", Name));
+
+						FileItem PrivateDefinitionsFileItem;
+						using (StringWriter Writer = new StringWriter())
+						{
+							// Remove the module _API definition for cases where there are circular dependencies between the shared PCH module and modules using it
+							Writer.WriteLine("#undef {0}", ModuleApiDefine);
+							Writer.WriteLine("#undef {0}", ModuleVTableDefine);
+
+							// Games may choose to use shared PCHs from the engine, so allow them to change the value of these macros
+							if(!Rules.bTreatAsEngineModule)
+							{
+								Writer.WriteLine("#undef UE_IS_ENGINE_MODULE");
+								Writer.WriteLine("#undef DEPRECATED_FORGAME");
+								Writer.WriteLine("#define DEPRECATED_FORGAME DEPRECATED");
+								Writer.WriteLine("#undef UE_DEPRECATED_FORGAME");
+								Writer.WriteLine("#define UE_DEPRECATED_FORGAME UE_DEPRECATED");
+							}
+
+							WriteDefinitions(CompileEnvironment.Definitions, Writer);
+							PrivateDefinitionsFileItem = FileItem.CreateIntermediateTextFile(PrivateDefinitionsFile, Writer.ToString());
+						}
+
+						CompileEnvironment = new CppCompileEnvironment(CompileEnvironment);
+						CompileEnvironment.Definitions.Clear();
+						CompileEnvironment.ForceIncludeFiles.Add(PrivateDefinitionsFileItem);
+						CompileEnvironment.PrecompiledHeaderAction = PrecompiledHeaderAction.Include;
+						CompileEnvironment.PrecompiledHeaderIncludeFilename = Instance.HeaderFile.Location;
+						CompileEnvironment.PrecompiledHeaderFile = Instance.Output.PrecompiledHeaderFile;
+
+						LinkInputFiles.AddRange(Instance.Output.ObjectFiles);
+					}
+				}
+			}
 
 			// Write all the definitions to a separate file
-			CreateHeaderForDefinitions(CompileEnvironment, IntermediateDirectory, null, Graph);
+			CreateHeaderForDefinitions(CompileEnvironment, IntermediateDirectory, null);
 
 			// Mapping of source file to unity file. We output this to intermediate directories for other tools (eg. live coding) to use.
 			Dictionary<FileItem, FileItem> SourceFileToUnityFile = new Dictionary<FileItem, FileItem>();
@@ -444,24 +454,19 @@ namespace UnrealBuildTool
 			List<FileItem> CPPFilesToCompile = InputFiles.CPPFiles;
 			if (bModuleUsesUnityBuild)
 			{
-				CPPFilesToCompile = Unity.GenerateUnityCPPs(Target, CPPFilesToCompile, CompileEnvironment, WorkingSet, Rules.ShortName ?? Name, IntermediateDirectory, Graph, SourceFileToUnityFile);
-				LinkInputFiles.AddRange(CompileUnityFilesWithToolChain(Target, ToolChain, CompileEnvironment, ModuleCompileEnvironment, CPPFilesToCompile, Graph).ObjectFiles);
+				CPPFilesToCompile = Unity.GenerateUnityCPPs(Target, CPPFilesToCompile, CompileEnvironment, WorkingSet, Rules.ShortName ?? Name, IntermediateDirectory, Makefile, SourceFileToUnityFile);
+				LinkInputFiles.AddRange(CompileUnityFilesWithToolChain(Target, ToolChain, CompileEnvironment, ModuleCompileEnvironment, CPPFilesToCompile, Makefile.Actions).ObjectFiles);
 			}
 			else
 			{
-				LinkInputFiles.AddRange(ToolChain.CompileCPPFiles(CompileEnvironment, CPPFilesToCompile, IntermediateDirectory, Name, Graph).ObjectFiles);
+				LinkInputFiles.AddRange(ToolChain.CompileCPPFiles(CompileEnvironment, CPPFilesToCompile, IntermediateDirectory, Name, Makefile.Actions).ObjectFiles);
 			}
 
 			// Compile all the generated CPP files
-			if (GeneratedCppDirectories != null && !CompileEnvironment.bHackHeaderGenerator && SpecificFilesToCompile.Count == 0)
+			if (GeneratedCodeWildcard != null && !CompileEnvironment.bHackHeaderGenerator && SingleFileToCompile == null)
 			{
-				List<string> GeneratedFiles = new List<string>();
-				foreach (string GeneratedDir in GeneratedCppDirectories)
-				{
-					GeneratedFiles.AddRange(Directory.GetFiles(GeneratedDir, "*.gen.cpp"));
-				}
-
-				if(GeneratedFiles.Count > 0)
+				string[] GeneratedFiles = Directory.GetFiles(Path.GetDirectoryName(GeneratedCodeWildcard), Path.GetFileName(GeneratedCodeWildcard));
+				if(GeneratedFiles.Length > 0)
 				{
 					// Create a compile environment for the generated files. We can disable creating debug info here to improve link times.
 					CppCompileEnvironment GeneratedCPPCompileEnvironment = CompileEnvironment;
@@ -489,20 +494,19 @@ namespace UnrealBuildTool
 					foreach (string GeneratedFilename in GeneratedFiles)
 					{
 						FileItem GeneratedCppFileItem = FileItem.GetItemByPath(GeneratedFilename);
-						if (SpecificFilesToCompile.Count == 0 || SpecificFilesToCompile.Contains(GeneratedCppFileItem.Location))
-						{
-							GeneratedFileItems.Add(GeneratedCppFileItem);
-						}
+
+						// @todo ubtmake: Check for ALL other places where we might be injecting .cpp or .rc files for compiling without caching CachedCPPIncludeInfo first (anything platform specific?)
+						GeneratedFileItems.Add(GeneratedCppFileItem);
 					}
 
 					if (bModuleUsesUnityBuild)
 					{
-						GeneratedFileItems = Unity.GenerateUnityCPPs(Target, GeneratedFileItems, GeneratedCPPCompileEnvironment, WorkingSet, (Rules.ShortName ?? Name) + ".gen", IntermediateDirectory, Graph, SourceFileToUnityFile);
-						LinkInputFiles.AddRange(CompileUnityFilesWithToolChain(Target, ToolChain, GeneratedCPPCompileEnvironment, ModuleCompileEnvironment, GeneratedFileItems, Graph).ObjectFiles);
+						GeneratedFileItems = Unity.GenerateUnityCPPs(Target, GeneratedFileItems, GeneratedCPPCompileEnvironment, WorkingSet, (Rules.ShortName ?? Name) + ".gen", IntermediateDirectory, Makefile, SourceFileToUnityFile);
+						LinkInputFiles.AddRange(CompileUnityFilesWithToolChain(Target, ToolChain, GeneratedCPPCompileEnvironment, ModuleCompileEnvironment, GeneratedFileItems, Makefile.Actions).ObjectFiles);
 					}
 					else
 					{
-						LinkInputFiles.AddRange(ToolChain.CompileCPPFiles(GeneratedCPPCompileEnvironment, GeneratedFileItems, IntermediateDirectory, Name, Graph).ObjectFiles);
+						LinkInputFiles.AddRange(ToolChain.CompileCPPFiles(GeneratedCPPCompileEnvironment, GeneratedFileItems, IntermediateDirectory, Name, Makefile.Actions).ObjectFiles);
 					}
 				}
 			}
@@ -510,25 +514,25 @@ namespace UnrealBuildTool
 			// Compile ISPC files directly
 			if (InputFiles.ISPCFiles.Count > 0)
 			{
-				LinkInputFiles.AddRange(ToolChain.CompileISPCFiles(CompileEnvironment, InputFiles.ISPCFiles, IntermediateDirectory, Graph).ObjectFiles);
+				LinkInputFiles.AddRange(ToolChain.CompileISPCFiles(CompileEnvironment, InputFiles.ISPCFiles, IntermediateDirectory, Makefile.Actions).ObjectFiles);
 			}
 
 			// Compile C files directly. Do not use a PCH here, because a C++ PCH is not compatible with C source files.
 			if(InputFiles.CFiles.Count > 0)
 			{
-				LinkInputFiles.AddRange(ToolChain.CompileCPPFiles(ModuleCompileEnvironment, InputFiles.CFiles, IntermediateDirectory, Name, Graph).ObjectFiles);
+				LinkInputFiles.AddRange(ToolChain.CompileCPPFiles(ModuleCompileEnvironment, InputFiles.CFiles, IntermediateDirectory, Name, Makefile.Actions).ObjectFiles);
 			}
 
 			// Compile CC files directly.
 			if(InputFiles.CCFiles.Count > 0)
 			{
-				LinkInputFiles.AddRange(ToolChain.CompileCPPFiles(CompileEnvironment, InputFiles.CCFiles, IntermediateDirectory, Name, Graph).ObjectFiles);
+				LinkInputFiles.AddRange(ToolChain.CompileCPPFiles(CompileEnvironment, InputFiles.CCFiles, IntermediateDirectory, Name, Makefile.Actions).ObjectFiles);
 			}
 
 			// Compile MM files directly.
 			if(InputFiles.MMFiles.Count > 0)
 			{
-				LinkInputFiles.AddRange(ToolChain.CompileCPPFiles(CompileEnvironment, InputFiles.MMFiles, IntermediateDirectory, Name, Graph).ObjectFiles);
+				LinkInputFiles.AddRange(ToolChain.CompileCPPFiles(CompileEnvironment, InputFiles.MMFiles, IntermediateDirectory, Name, Makefile.Actions).ObjectFiles);
 			}
 
 			// Compile RC files. The resource compiler does not work with response files, and using the regular compile environment can easily result in the 
@@ -542,7 +546,7 @@ namespace UnrealBuildTool
 					// @todo: This should be in some Windows code somewhere...
 					ResourceCompileEnvironment.Definitions.Add("ORIGINAL_FILE_NAME=\"" + Binary.OutputFilePaths[0].GetFileName() + "\"");
 				}
-				LinkInputFiles.AddRange(ToolChain.CompileRCFiles(ResourceCompileEnvironment, InputFiles.RCFiles, IntermediateDirectory, Graph).ObjectFiles);
+				LinkInputFiles.AddRange(ToolChain.CompileRCFiles(ResourceCompileEnvironment, InputFiles.RCFiles, IntermediateDirectory, Makefile.Actions).ObjectFiles);
 			}
 
 			// Write the compiled manifest
@@ -610,13 +614,13 @@ namespace UnrealBuildTool
 		/// <param name="ToolChain">The toolchain to generate the PCH</param>
 		/// <param name="HeaderFile"></param>
 		/// <param name="ModuleCompileEnvironment"></param>
-		/// <param name="Graph">List of actions to be executed. Additional actions will be added to this list.</param>
+		/// <param name="Actions">List of actions to be executed. Additional actions will be added to this list.</param>
 		/// <returns>The created PCH instance.</returns>
-		private PrecompiledHeaderInstance CreatePrivatePCH(UEToolChain ToolChain, FileItem HeaderFile, CppCompileEnvironment ModuleCompileEnvironment, IActionGraphBuilder Graph)
+		private PrecompiledHeaderInstance CreatePrivatePCH(UEToolChain ToolChain, FileItem HeaderFile, CppCompileEnvironment ModuleCompileEnvironment, List<Action> Actions)
 		{
 			// Create the wrapper file, which sets all the definitions needed to compile it
 			FileReference WrapperLocation = FileReference.Combine(IntermediateDirectory, String.Format("PCH.{0}.h", Name));
-			FileItem WrapperFile = CreatePCHWrapperFile(WrapperLocation, ModuleCompileEnvironment.Definitions, HeaderFile, Graph);
+			FileItem WrapperFile = CreatePCHWrapperFile(WrapperLocation, ModuleCompileEnvironment.Definitions, HeaderFile);
 
 			// Create a new C++ environment that is used to create the PCH.
 			CppCompileEnvironment CompileEnvironment = new CppCompileEnvironment(ModuleCompileEnvironment);
@@ -626,15 +630,7 @@ namespace UnrealBuildTool
 			CompileEnvironment.bOptimizeCode = ModuleCompileEnvironment.bOptimizeCode;
 
 			// Create the action to compile the PCH file.
-			CPPOutput Output;
-			if (ToolChain == null)
-			{
-				Output = new CPPOutput();
-			}
-			else
-			{
-				Output = ToolChain.CompileCPPFiles(CompileEnvironment, new List<FileItem>() { WrapperFile }, IntermediateDirectory, Name, Graph);
-			}
+			CPPOutput Output = ToolChain.CompileCPPFiles(CompileEnvironment, new List<FileItem>() { WrapperFile }, IntermediateDirectory, Name, Actions);
 			return new PrecompiledHeaderInstance(WrapperFile, CompileEnvironment, Output);
 		}
 
@@ -644,9 +640,9 @@ namespace UnrealBuildTool
 		/// <param name="ToolChain">The toolchain being used to build this module</param>
 		/// <param name="Template">The PCH template</param>
 		/// <param name="ModuleCompileEnvironment">Compile environment for the current module</param>
-		/// <param name="Graph">List of actions to be executed. Additional actions will be added to this list.</param>
+		/// <param name="Actions">List of actions to be executed. Additional actions will be added to this list.</param>
 		/// <returns>Instance of a PCH</returns>
-		public PrecompiledHeaderInstance FindOrCreateSharedPCH(UEToolChain ToolChain, PrecompiledHeaderTemplate Template, CppCompileEnvironment ModuleCompileEnvironment, IActionGraphBuilder Graph)
+		public PrecompiledHeaderInstance FindOrCreateSharedPCH(UEToolChain ToolChain, PrecompiledHeaderTemplate Template, CppCompileEnvironment ModuleCompileEnvironment, List<Action> Actions)
 		{
 			PrecompiledHeaderInstance Instance = Template.Instances.Find(x => IsCompatibleForSharedPCH(x.CompileEnvironment, ModuleCompileEnvironment));
 			if(Instance == null)
@@ -656,7 +652,7 @@ namespace UnrealBuildTool
 
 				// Create the wrapper file, which sets all the definitions needed to compile it
 				FileReference WrapperLocation = FileReference.Combine(Template.OutputDir, String.Format("SharedPCH.{0}{1}.h", Template.Module.Name, Variant));
-				FileItem WrapperFile = CreatePCHWrapperFile(WrapperLocation, Template.BaseCompileEnvironment.Definitions, Template.HeaderFile, Graph);
+				FileItem WrapperFile = CreatePCHWrapperFile(WrapperLocation, Template.BaseCompileEnvironment.Definitions, Template.HeaderFile);
 
 				// Create the compile environment for this PCH
 				CppCompileEnvironment CompileEnvironment = new CppCompileEnvironment(Template.BaseCompileEnvironment);
@@ -666,15 +662,7 @@ namespace UnrealBuildTool
 				CopySettingsForSharedPCH(ModuleCompileEnvironment, CompileEnvironment);
 
 				// Create the PCH
-				CPPOutput Output;
-				if (ToolChain == null)
-				{
-					Output = new CPPOutput();
-				}
-				else
-				{
-					Output = ToolChain.CompileCPPFiles(CompileEnvironment, new List<FileItem>() { WrapperFile }, Template.OutputDir, "Shared", Graph);
-				}
+				CPPOutput Output = ToolChain.CompileCPPFiles(CompileEnvironment, new List<FileItem>() { WrapperFile }, Template.OutputDir, "Shared", Actions);
 				Instance = new PrecompiledHeaderInstance(WrapperFile, CompileEnvironment, Output);
 				Template.Instances.Add(Instance);
 			}
@@ -705,15 +693,7 @@ namespace UnrealBuildTool
 			{
 				return false;
 			}
-			if(ModuleCompileEnvironment.UnsafeTypeCastWarningLevel != CompileEnvironment.UnsafeTypeCastWarningLevel)
-			{
-				return false;
-			}
 			if(ModuleCompileEnvironment.bEnableUndefinedIdentifierWarnings != CompileEnvironment.bEnableUndefinedIdentifierWarnings)
-			{
-				return false;
-			}
-			if (ModuleCompileEnvironment.CppStandard != CompileEnvironment.CppStandard)
 			{
 				return false;
 			}
@@ -777,23 +757,6 @@ namespace UnrealBuildTool
 					Variant += ".NoShadow";
 				}
 			}
-
-			if (CompileEnvironment.UnsafeTypeCastWarningLevel != BaseCompileEnvironment.UnsafeTypeCastWarningLevel)
-			{
-				if (CompileEnvironment.UnsafeTypeCastWarningLevel == WarningLevel.Error)
-				{
-					Variant += ".TypeCastErrors";
-				}
-				else if (CompileEnvironment.UnsafeTypeCastWarningLevel == WarningLevel.Warning)
-				{
-					Variant += ".TypeCastWarnings";
-				}
-				else
-				{
-					Variant += ".NoTypeCast";
-				}
-			}
-			
 			if (CompileEnvironment.bEnableUndefinedIdentifierWarnings != BaseCompileEnvironment.bEnableUndefinedIdentifierWarnings)
 			{
 				if (CompileEnvironment.bEnableUndefinedIdentifierWarnings)
@@ -805,12 +768,6 @@ namespace UnrealBuildTool
 					Variant += ".NoUndef";
 				}
 			}
-
-			if (CompileEnvironment.CppStandard != BaseCompileEnvironment.CppStandard)
-			{
-				Variant += String.Format(".{0}", CompileEnvironment.CppStandard);
-			}
-
 			return Variant;
 		}
 
@@ -825,15 +782,13 @@ namespace UnrealBuildTool
 			CompileEnvironment.bUseRTTI = ModuleCompileEnvironment.bUseRTTI;
 			CompileEnvironment.bEnableExceptions = ModuleCompileEnvironment.bEnableExceptions;
 			CompileEnvironment.ShadowVariableWarningLevel = ModuleCompileEnvironment.ShadowVariableWarningLevel;
-			CompileEnvironment.UnsafeTypeCastWarningLevel = ModuleCompileEnvironment.UnsafeTypeCastWarningLevel;
 			CompileEnvironment.bEnableUndefinedIdentifierWarnings = ModuleCompileEnvironment.bEnableUndefinedIdentifierWarnings;
-			CompileEnvironment.CppStandard = ModuleCompileEnvironment.CppStandard;
 		}
 
 		/// <summary>
 		/// Compiles the provided CPP unity files. Will
 		/// </summary>
-		private CPPOutput CompileUnityFilesWithToolChain(ReadOnlyTargetRules Target, UEToolChain ToolChain, CppCompileEnvironment CompileEnvironment, CppCompileEnvironment ModuleCompileEnvironment, List<FileItem> SourceFiles, IActionGraphBuilder Graph)
+		private CPPOutput CompileUnityFilesWithToolChain(ReadOnlyTargetRules Target, UEToolChain ToolChain, CppCompileEnvironment CompileEnvironment, CppCompileEnvironment ModuleCompileEnvironment, List<FileItem> SourceFiles, List<Action> Actions)
 		{
 			List<FileItem> NormalFiles = new List<FileItem>();
 			List<FileItem> AdaptiveFiles = new List<FileItem>();
@@ -875,7 +830,7 @@ namespace UnrealBuildTool
 
 			if (NormalFiles.Count > 0)
 			{
-				OutputFiles = ToolChain.CompileCPPFiles(CompileEnvironment, NormalFiles, IntermediateDirectory, Name, Graph);
+				OutputFiles = ToolChain.CompileCPPFiles(CompileEnvironment, NormalFiles, IntermediateDirectory, Name, Actions);
 			}
 
 			if (AdaptiveFiles.Count > 0)
@@ -895,19 +850,19 @@ namespace UnrealBuildTool
 				CPPOutput AdaptiveOutput;
 				if(Target.bAdaptiveUnityCreatesDedicatedPCH)
 				{
-					AdaptiveOutput = CompileAdaptiveNonUnityFilesWithDedicatedPCH(ToolChain, AdaptiveUnityEnvironment, AdaptiveFiles, IntermediateDirectory, Name, Graph);
+					AdaptiveOutput = CompileAdaptiveNonUnityFilesWithDedicatedPCH(ToolChain, AdaptiveUnityEnvironment, AdaptiveFiles, IntermediateDirectory, Name, Actions);
 				}
 				else if(bAdaptiveUnityDisablesPCH)
 				{
-					AdaptiveOutput = CompileAdaptiveNonUnityFilesWithoutPCH(ToolChain, AdaptiveUnityEnvironment, AdaptiveFiles, IntermediateDirectory, Name, Graph);
+					AdaptiveOutput = CompileAdaptiveNonUnityFilesWithoutPCH(ToolChain, AdaptiveUnityEnvironment, AdaptiveFiles, IntermediateDirectory, Name, Actions);
 				}
 				else if(AdaptiveUnityEnvironment.bOptimizeCode != CompileEnvironment.bOptimizeCode || AdaptiveUnityEnvironment.bSupportEditAndContinue != CompileEnvironment.bSupportEditAndContinue)
 				{
-					AdaptiveOutput = CompileAdaptiveNonUnityFiles(ToolChain, AdaptiveUnityEnvironment, AdaptiveFiles, IntermediateDirectory, Name, Graph);
+					AdaptiveOutput = CompileAdaptiveNonUnityFiles(ToolChain, AdaptiveUnityEnvironment, AdaptiveFiles, IntermediateDirectory, Name, Actions);
 				}
 				else
 				{
-					AdaptiveOutput = CompileAdaptiveNonUnityFiles(ToolChain, CompileEnvironment, AdaptiveFiles, IntermediateDirectory, Name, Graph);
+					AdaptiveOutput = CompileAdaptiveNonUnityFiles(ToolChain, CompileEnvironment, AdaptiveFiles, IntermediateDirectory, Name, Actions);
 				}
 
 				// Merge output
@@ -918,28 +873,28 @@ namespace UnrealBuildTool
 			return OutputFiles;
 		}
 
-		static CPPOutput CompileAdaptiveNonUnityFiles(UEToolChain ToolChain, CppCompileEnvironment CompileEnvironment, List<FileItem> Files, DirectoryReference IntermediateDirectory, string ModuleName, IActionGraphBuilder Graph)
+		static CPPOutput CompileAdaptiveNonUnityFiles(UEToolChain ToolChain, CppCompileEnvironment CompileEnvironment, List<FileItem> Files, DirectoryReference IntermediateDirectory, string ModuleName, List<Action> Actions)
 		{
 			// Write all the definitions out to a separate file
-			CreateHeaderForDefinitions(CompileEnvironment, IntermediateDirectory, "Adaptive", Graph);
+			CreateHeaderForDefinitions(CompileEnvironment, IntermediateDirectory, "Adaptive");
 
 			// Compile the files
-			return ToolChain.CompileCPPFiles(CompileEnvironment, Files, IntermediateDirectory, ModuleName, Graph);
+			return ToolChain.CompileCPPFiles(CompileEnvironment, Files, IntermediateDirectory, ModuleName, Actions);
 		}
 
-		static CPPOutput CompileAdaptiveNonUnityFilesWithoutPCH(UEToolChain ToolChain, CppCompileEnvironment CompileEnvironment, List<FileItem> Files, DirectoryReference IntermediateDirectory, string ModuleName, IActionGraphBuilder Graph)
+		static CPPOutput CompileAdaptiveNonUnityFilesWithoutPCH(UEToolChain ToolChain, CppCompileEnvironment CompileEnvironment, List<FileItem> Files, DirectoryReference IntermediateDirectory, string ModuleName, List<Action> Actions)
 		{
 			// Disable precompiled headers
 			CompileEnvironment.PrecompiledHeaderAction = PrecompiledHeaderAction.None;
 
 			// Write all the definitions out to a separate file
-			CreateHeaderForDefinitions(CompileEnvironment, IntermediateDirectory, "Adaptive", Graph);
+			CreateHeaderForDefinitions(CompileEnvironment, IntermediateDirectory, "Adaptive");
 
 			// Compile the files
-			return ToolChain.CompileCPPFiles(CompileEnvironment, Files, IntermediateDirectory, ModuleName, Graph);
+			return ToolChain.CompileCPPFiles(CompileEnvironment, Files, IntermediateDirectory, ModuleName, Actions);
 		}
 
-		static CPPOutput CompileAdaptiveNonUnityFilesWithDedicatedPCH(UEToolChain ToolChain, CppCompileEnvironment CompileEnvironment, List<FileItem> Files, DirectoryReference IntermediateDirectory, string ModuleName, IActionGraphBuilder Graph)
+		static CPPOutput CompileAdaptiveNonUnityFilesWithDedicatedPCH(UEToolChain ToolChain, CppCompileEnvironment CompileEnvironment, List<FileItem> Files, DirectoryReference IntermediateDirectory, string ModuleName, List<Action> Actions)
 		{
 			CPPOutput Output = new CPPOutput();
 			foreach(FileItem File in Files)
@@ -960,7 +915,7 @@ namespace UnrealBuildTool
 
 				// Write the PCH header
 				FileReference DedicatedPchLocation = FileReference.Combine(IntermediateDirectory, String.Format("PCH.Dedicated.{0}.h", File.Location.GetFileNameWithoutExtension()));
-				FileItem DedicatedPchFile = Graph.CreateIntermediateTextFile(DedicatedPchLocation, WrapperContents.ToString());
+				FileItem DedicatedPchFile = FileItem.CreateIntermediateTextFile(DedicatedPchLocation, WrapperContents.ToString());
 
 				// Create a new C++ environment to compile the PCH
 				CppCompileEnvironment PchEnvironment = new CppCompileEnvironment(CompileEnvironment);
@@ -970,7 +925,7 @@ namespace UnrealBuildTool
 				PchEnvironment.PrecompiledHeaderIncludeFilename = DedicatedPchFile.Location;
 
 				// Create the action to compile the PCH file.
-				CPPOutput PchOutput = ToolChain.CompileCPPFiles(PchEnvironment, new List<FileItem>() { DedicatedPchFile }, IntermediateDirectory, ModuleName, Graph);
+				CPPOutput PchOutput = ToolChain.CompileCPPFiles(PchEnvironment, new List<FileItem>() { DedicatedPchFile }, IntermediateDirectory, ModuleName, Actions);
 				Output.ObjectFiles.AddRange(PchOutput.ObjectFiles);
 
 				// Create a new C++ environment to compile the original file
@@ -981,85 +936,10 @@ namespace UnrealBuildTool
 				FileEnvironment.PrecompiledHeaderFile = PchOutput.PrecompiledHeaderFile;
 
 				// Create the action to compile the PCH file.
-				CPPOutput FileOutput = ToolChain.CompileCPPFiles(FileEnvironment, new List<FileItem>() { File }, IntermediateDirectory, ModuleName, Graph);
+				CPPOutput FileOutput = ToolChain.CompileCPPFiles(FileEnvironment, new List<FileItem>() { File }, IntermediateDirectory, ModuleName, Actions);
 				Output.ObjectFiles.AddRange(FileOutput.ObjectFiles);
 			}
 			return Output;
-		}
-
-		/// <summary>
-		/// Configure precompiled headers for this module
-		/// </summary>
-		/// <param name="Target">The target being built</param>
-		/// <param name="ToolChain">The toolchain to build with</param>
-		/// <param name="CompileEnvironment">The current compile environment</param>
-		/// <param name="LinkInputFiles">List of files that will be linked for the target</param>
-		/// <param name="Graph">List of build actions</param>
-		CppCompileEnvironment SetupPrecompiledHeaders(ReadOnlyTargetRules Target, UEToolChain ToolChain, CppCompileEnvironment CompileEnvironment, List<FileItem> LinkInputFiles, IActionGraphBuilder Graph)
-		{
-			if (Target.bUsePCHFiles && Rules.PCHUsage != ModuleRules.PCHUsageMode.NoPCHs)
-			{
-				// If this module doesn't need a shared PCH, configure that
-				if(Rules.PrivatePCHHeaderFile != null && (Rules.PCHUsage == ModuleRules.PCHUsageMode.NoSharedPCHs || Rules.PCHUsage == ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs))
-				{
-					PrecompiledHeaderInstance Instance = CreatePrivatePCH(ToolChain, FileItem.GetItemByFileReference(FileReference.Combine(ModuleDirectory, Rules.PrivatePCHHeaderFile)), CompileEnvironment, Graph);
-
-					CompileEnvironment = new CppCompileEnvironment(CompileEnvironment);
-					CompileEnvironment.Definitions.Clear();
-					CompileEnvironment.PrecompiledHeaderAction = PrecompiledHeaderAction.Include;
-					CompileEnvironment.PrecompiledHeaderIncludeFilename = Instance.HeaderFile.Location;
-					CompileEnvironment.PrecompiledHeaderFile = Instance.Output.PrecompiledHeaderFile;
-
-					LinkInputFiles.AddRange(Instance.Output.ObjectFiles);
-				}
-
-				// Try to find a suitable shared PCH for this module
-				if (CompileEnvironment.PrecompiledHeaderIncludeFilename == null && CompileEnvironment.SharedPCHs.Count > 0 && !CompileEnvironment.bIsBuildingLibrary && Rules.PCHUsage != ModuleRules.PCHUsageMode.NoSharedPCHs)
-				{
-					// Find all the dependencies of this module
-					HashSet<UEBuildModule> ReferencedModules = new HashSet<UEBuildModule>();
-					GetAllDependencyModules(new List<UEBuildModule>(), ReferencedModules, bIncludeDynamicallyLoaded: false, bForceCircular: false, bOnlyDirectDependencies: true);
-
-					// Find the first shared PCH module we can use
-					PrecompiledHeaderTemplate Template = CompileEnvironment.SharedPCHs.FirstOrDefault(x => ReferencedModules.Contains(x.Module));
-					if(Template != null && Template.IsValidFor(CompileEnvironment))
-					{
-						PrecompiledHeaderInstance Instance = FindOrCreateSharedPCH(ToolChain, Template, CompileEnvironment, Graph);
-
-						FileReference PrivateDefinitionsFile = FileReference.Combine(IntermediateDirectory, String.Format("Definitions.{0}.h", Name));
-
-						FileItem PrivateDefinitionsFileItem;
-						using (StringWriter Writer = new StringWriter())
-						{
-							// Remove the module _API definition for cases where there are circular dependencies between the shared PCH module and modules using it
-							Writer.WriteLine("#undef {0}", ModuleApiDefine);
-
-							// Games may choose to use shared PCHs from the engine, so allow them to change the value of these macros
-							if(!Rules.bTreatAsEngineModule)
-							{
-								Writer.WriteLine("#undef UE_IS_ENGINE_MODULE");
-								Writer.WriteLine("#undef DEPRECATED_FORGAME");
-								Writer.WriteLine("#define DEPRECATED_FORGAME DEPRECATED");
-								Writer.WriteLine("#undef UE_DEPRECATED_FORGAME");
-								Writer.WriteLine("#define UE_DEPRECATED_FORGAME UE_DEPRECATED");
-							}
-
-							WriteDefinitions(CompileEnvironment.Definitions, Writer);
-							PrivateDefinitionsFileItem = Graph.CreateIntermediateTextFile(PrivateDefinitionsFile, Writer.ToString());
-						}
-
-						CompileEnvironment = new CppCompileEnvironment(CompileEnvironment);
-						CompileEnvironment.Definitions.Clear();
-						CompileEnvironment.ForceIncludeFiles.Add(PrivateDefinitionsFileItem);
-						CompileEnvironment.PrecompiledHeaderAction = PrecompiledHeaderAction.Include;
-						CompileEnvironment.PrecompiledHeaderIncludeFilename = Instance.HeaderFile.Location;
-						CompileEnvironment.PrecompiledHeaderFile = Instance.Output.PrecompiledHeaderFile;
-
-						LinkInputFiles.AddRange(Instance.Output.ObjectFiles);
-					}
-				}
-			}
-			return CompileEnvironment;
 		}
 
 		/// <summary>
@@ -1070,8 +950,7 @@ namespace UnrealBuildTool
 		/// <param name="CompileEnvironment">The compile environment</param>
 		/// <param name="IntermediateDirectory">Directory to create the intermediate file</param>
 		/// <param name="HeaderSuffix">Suffix for the included file</param>
-		/// <param name="Graph">The action graph being built</param>
-		static void CreateHeaderForDefinitions(CppCompileEnvironment CompileEnvironment, DirectoryReference IntermediateDirectory, string HeaderSuffix, IActionGraphBuilder Graph)
+		static void CreateHeaderForDefinitions(CppCompileEnvironment CompileEnvironment, DirectoryReference IntermediateDirectory, string HeaderSuffix)
 		{
 			if(CompileEnvironment.Definitions.Count > 0)
 			{
@@ -1089,7 +968,7 @@ namespace UnrealBuildTool
 					WriteDefinitions(CompileEnvironment.Definitions, Writer);
 					CompileEnvironment.Definitions.Clear();
 
-					FileItem PrivateDefinitionsFileItem = Graph.CreateIntermediateTextFile(PrivateDefinitionsFile, Writer.ToString());
+					FileItem PrivateDefinitionsFileItem = FileItem.CreateIntermediateTextFile(PrivateDefinitionsFile, Writer.ToString());
 					CompileEnvironment.ForceIncludeFiles.Add(PrivateDefinitionsFileItem);
 				}
 			}
@@ -1102,10 +981,10 @@ namespace UnrealBuildTool
 		/// <param name="CompileEnvironment">Compile environment</param>
 		/// <param name="InputFiles">List of ISPC source files</param>
 		/// <param name="IntermediateDirectory">Directory to create the intermediate file</param>
-		/// <param name="Graph">List of actions to be executed. Additional actions will be added to this list.</param>
-		static void CreateHeadersForISPC(UEToolChain ToolChain, CppCompileEnvironment CompileEnvironment, List<FileItem> InputFiles, DirectoryReference IntermediateDirectory, IActionGraphBuilder Graph)
+		/// <param name="Actions">List of actions to be executed. Additional actions will be added to this list.</param>
+		static void CreateHeadersForISPC(UEToolChain ToolChain, CppCompileEnvironment CompileEnvironment, List<FileItem> InputFiles, DirectoryReference IntermediateDirectory, List<Action> Actions)
 		{
-			CPPOutput Output = ToolChain.GenerateISPCHeaders(CompileEnvironment, InputFiles, IntermediateDirectory, Graph);
+			CPPOutput Output = ToolChain.GenerateISPCHeaders(CompileEnvironment, InputFiles, IntermediateDirectory, Actions);
 
 			CompileEnvironment.AdditionalPrerequisites.AddRange(Output.GeneratedHeaderFiles);
 			CompileEnvironment.UserIncludePaths.Add(IntermediateDirectory);
@@ -1119,9 +998,8 @@ namespace UnrealBuildTool
 		/// <param name="OutputFile">The output file to create</param>
 		/// <param name="Definitions">Definitions required by the PCH</param>
 		/// <param name="IncludedFile">The PCH file to include</param>
-		/// <param name="Graph">The action graph builder</param>
 		/// <returns>FileItem for the created file</returns>
-		static FileItem CreatePCHWrapperFile(FileReference OutputFile, IEnumerable<string> Definitions, FileItem IncludedFile, IActionGraphBuilder Graph)
+		static FileItem CreatePCHWrapperFile(FileReference OutputFile, IEnumerable<string> Definitions, FileItem IncludedFile)
 		{
 			// Build the contents of the wrapper file
 			StringBuilder WrapperContents = new StringBuilder();
@@ -1133,7 +1011,7 @@ namespace UnrealBuildTool
 			}
 
 			// Create the item
-			FileItem WrapperFile = Graph.CreateIntermediateTextFile(OutputFile, WrapperContents.ToString());
+			FileItem WrapperFile = FileItem.CreateIntermediateTextFile(OutputFile, WrapperContents.ToString());
 
 			// Touch it if the included file is newer, to make sure our timestamp dependency checking is accurate.
 			if (IncludedFile.LastWriteTimeUtc > WrapperFile.LastWriteTimeUtc)
@@ -1227,6 +1105,8 @@ namespace UnrealBuildTool
 				case "VulkanRHI":
 				case "OpenGLDrv":
 				case "MetalRHI":
+				case "PS4RHI":
+                case "Gnmx":
 					return true;
 			}
 			return false;
@@ -1255,14 +1135,6 @@ namespace UnrealBuildTool
 			}
 		}
 
-		public CppCompileEnvironment CreateCompileEnvironmentForIntellisense(ReadOnlyTargetRules Target, CppCompileEnvironment BaseCompileEnvironment)
-		{
-			CppCompileEnvironment CompileEnvironment = CreateModuleCompileEnvironment(Target, BaseCompileEnvironment);
-			CompileEnvironment = SetupPrecompiledHeaders(Target, null, CompileEnvironment, new List<FileItem>(), new NullActionGraphBuilder());
-			CreateHeaderForDefinitions(CompileEnvironment, IntermediateDirectory, null, new NullActionGraphBuilder());
-			return CompileEnvironment;
-		}
-
 		/// <summary>
 		/// Creates a compile environment from a base environment based on the module settings.
 		/// </summary>
@@ -1285,7 +1157,6 @@ namespace UnrealBuildTool
 			Result.bEnableExceptions |= Rules.bEnableExceptions;
 			Result.bEnableObjCExceptions |= Rules.bEnableObjCExceptions;
 			Result.ShadowVariableWarningLevel = Rules.ShadowVariableWarningLevel;
-			Result.UnsafeTypeCastWarningLevel = Rules.UnsafeTypeCastWarningLevel;
 			Result.bEnableUndefinedIdentifierWarnings = Rules.bEnableUndefinedIdentifierWarnings;
 
 			// If the module overrides the C++ language version, override it on the compile environment
@@ -1310,7 +1181,7 @@ namespace UnrealBuildTool
 				Result.Definitions.Add("UE_IS_ENGINE_MODULE=0");
 			}
 
-			// For game modules, set the define for the project and target names, which will be used by the IMPLEMENT_PRIMARY_GAME_MODULE macro.
+			// For game modules, set the define for the project name. This will be used by the IMPLEMENT_PRIMARY_GAME_MODULE macro.
 			if (!Rules.bTreatAsEngineModule)
 			{
 				// Make sure we don't set any define for a non-engine module that's under the engine directory (eg. UE4Game)
@@ -1318,7 +1189,6 @@ namespace UnrealBuildTool
 				{
 					string ProjectName = Target.ProjectFile.GetFileNameWithoutExtension();
 					Result.Definitions.Add(String.Format("UE_PROJECT_NAME={0}", ProjectName));
-					Result.Definitions.Add(String.Format("UE_TARGET_NAME={0}", Target.Name));
 				}
 			}
 
@@ -1333,7 +1203,7 @@ namespace UnrealBuildTool
 			}
 
 			// Setup the compile environment for the module.
-			SetupPrivateCompileEnvironment(Result.UserIncludePaths, Result.SystemIncludePaths, Result.Definitions, Result.AdditionalFrameworks, Result.AdditionalPrerequisites, Rules.bLegacyPublicIncludePaths);
+			SetupPrivateCompileEnvironment(Result.UserIncludePaths, Result.SystemIncludePaths, Result.Definitions, Result.AdditionalFrameworks, Rules.bLegacyPublicIncludePaths);
 
 			return Result;
 		}
@@ -1375,7 +1245,7 @@ namespace UnrealBuildTool
 			// Now set up the compile environment for the modules in the original order that we encountered them
 			foreach (UEBuildModule Module in ModuleToIncludePathsOnlyFlag.Keys)
 			{
-				Module.AddModuleToCompileEnvironment(null, CompileEnvironment.UserIncludePaths, CompileEnvironment.SystemIncludePaths, CompileEnvironment.Definitions, CompileEnvironment.AdditionalFrameworks, CompileEnvironment.AdditionalPrerequisites, Rules.bLegacyPublicIncludePaths);
+				Module.AddModuleToCompileEnvironment(null, CompileEnvironment.UserIncludePaths, CompileEnvironment.SystemIncludePaths, CompileEnvironment.Definitions, CompileEnvironment.AdditionalFrameworks, Rules.bLegacyPublicIncludePaths);
 			}
 			return CompileEnvironment;
 		}

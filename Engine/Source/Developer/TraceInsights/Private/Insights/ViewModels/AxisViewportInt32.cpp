@@ -1,6 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-#include "Insights/ViewModels/AxisViewportInt32.h"
+#include "AxisViewportInt32.h"
 
 #include "Widgets/Layout/SScrollBar.h"
 
@@ -102,60 +102,48 @@ bool FAxisViewportInt32::RelativeZoomWithFixedOffset(const float Delta, const fl
 bool FAxisViewportInt32::UpdatePosWithinLimits()
 {
 	float MinPos, MaxPos;
-	GetScrollLimits(MinPos, MaxPos);
-	return EnforceScrollLimits(MinPos, MaxPos, 0.5);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void FAxisViewportInt32::GetScrollLimits(float& OutMinPos, float& OutMaxPos)
-{
 	if (MaxPosition - MinPosition < Size)
 	{
-		OutMinPos = MaxPosition - Size;
-		OutMaxPos = MinPosition;
+		MinPos = MaxPosition - Size;
+		MaxPos = MinPosition;
 	}
 	else
 	{
 		constexpr float ExtraSizeFactor = 0.15f; // allow extra 15% on sides
-		OutMinPos = MinPosition - ExtraSizeFactor * Size;
-		OutMaxPos = MaxPosition - (1.0f - ExtraSizeFactor) * Size;
+		MinPos = MinPosition - ExtraSizeFactor * Size;
+		MaxPos = MaxPosition - (1.0f - ExtraSizeFactor) * Size;
 	}
-}
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
+	constexpr float U = 0.5f; // interpolation factor --> animation speed
 
-bool FAxisViewportInt32::EnforceScrollLimits(const float InMinPos, const float InMaxPos, const float InterpolationFactor)
-{
 	float Pos = Position;
-
-	if (Pos < InMinPos)
+	if (Pos < MinPos)
 	{
-		Pos = InterpolationFactor * Pos + (1.0f - InterpolationFactor) * InMinPos;
-
-		if (FMath::IsNearlyEqual(Pos, InMinPos, 0.5f))
+		Pos = Pos * U + (1.0f - U) * MinPos;
+		if (FMath::IsNearlyEqual(Pos, MinPos, 0.5f))
 		{
-			Pos = InMinPos;
+			Pos = MinPos;
 		}
 	}
-	else if (Pos > InMaxPos)
+	else if (Pos > MaxPos)
 	{
-		Pos = InterpolationFactor * Pos + (1.0f - InterpolationFactor) * InMaxPos;
-
-		if (FMath::IsNearlyEqual(Pos, InMaxPos, 0.5f))
+		Pos = Pos * U + (1.0f - U) * MaxPos;
+		if (FMath::IsNearlyEqual(Pos, MaxPos, 0.5f))
 		{
-			Pos = InMaxPos;
+			Pos = MaxPos;
 		}
 
-		if (Pos < InMinPos)
+		if (Pos < MinPos)
 		{
-			Pos = InMinPos;
+			Pos = MinPos;
 		}
 	}
 
 	if (Position != Pos)
 	{
-		return ScrollAtValue(GetValueAtPos(Pos)); // snap to sample
+		//ScrollAtPos(Pos);
+		ScrollAtValue(GetValueAtPos(Pos)); // snap to sample
+		return true;
 	}
 
 	return false;

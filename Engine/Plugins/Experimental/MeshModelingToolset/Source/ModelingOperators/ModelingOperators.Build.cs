@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -30,6 +30,7 @@ public class ModelingOperators : ModuleRules
 				// dependent modules, please confirm by "launching" or packaging that you are not introducing
 				// editor dependencies
 				//
+				//"MeshSolverUtilities",
                 //"ProxyLODMeshReduction", // currently required to be public due to IVoxelBasedCSG API
                 //"MeshDescription",
 
@@ -39,6 +40,7 @@ public class ModelingOperators : ModuleRules
 				"DynamicMesh",
 				"MeshConversion",
                 "GeometryAlgorithms", // required for constrained Delaunay triangulation
+                "MeshSolverUtilities", // required by the smoothing operators
 				// ... add other public dependencies that you statically link with here ...
 			}
             );

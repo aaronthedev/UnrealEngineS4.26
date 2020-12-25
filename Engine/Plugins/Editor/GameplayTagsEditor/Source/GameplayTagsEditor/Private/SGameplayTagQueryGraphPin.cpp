@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SGameplayTagQueryGraphPin.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Layout/SScaleBox.h"
-#include "ScopedTransaction.h"
 
 #define LOCTEXT_NAMESPACE "GameplayTagQueryGraphPin"
 
@@ -44,7 +43,7 @@ void SGameplayTagQueryGraphPin::ParseDefaultValueData()
 {
 	FString const TagQueryString = GraphPinObj->GetDefaultAsString();
 
-	FProperty* const TQProperty = FindFProperty<FProperty>(UEditableGameplayTagQuery::StaticClass(), TEXT("TagQueryExportText_Helper"));
+	UProperty* const TQProperty = FindField<UProperty>(UEditableGameplayTagQuery::StaticClass(), TEXT("TagQueryExportText_Helper"));
 	if (TQProperty)
 	{
 		FGameplayTagQuery* const TQ = TagQuery.Get();
@@ -79,13 +78,8 @@ TSharedRef<SWidget> SGameplayTagQueryGraphPin::GetListContent()
 
 void SGameplayTagQueryGraphPin::OnQueryChanged()
 {
-	if (TagQueryExportText != GraphPinObj->GetDefaultAsString())
-	{
-		// Set Pin Data
-		const FScopedTransaction Transaction(NSLOCTEXT("GraphEditor", "ChangePinValue", "Change Pin Value"));
-		GraphPinObj->Modify();
-		GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, TagQueryExportText);
-	}
+	// Set Pin Data
+	GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, TagQueryExportText);
 	QueryDescription = TagQuery->GetDescription();
 }
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
  #include "Widgets/SOverlay.h"
  #include "Types/PaintArgs.h"
@@ -151,7 +151,7 @@ SOverlay::FOverlaySlot& SOverlay::AddSlot( int32 ZOrder )
 		this->Children.Insert( &NewSlot, CurSlotIndex );
 	}
 
-	Invalidate(EInvalidateWidgetReason::Layout);
+	Invalidate(EInvalidateWidget::Layout);
 
 	NewSlot.ZOrder = ZOrder;
 	return NewSlot;
@@ -166,7 +166,7 @@ void SOverlay::RemoveSlot( int32 ZOrder )
 			if ( Children[ChildIndex].ZOrder == ZOrder )
 			{
 				Children.RemoveAt( ChildIndex );
-				Invalidate(EInvalidateWidgetReason::Layout);
+				Invalidate(EInvalidateWidget::Layout);
 				return;
 			}
 		}
@@ -176,7 +176,7 @@ void SOverlay::RemoveSlot( int32 ZOrder )
 	else if (Children.Num() > 0)
 	{
 		Children.RemoveAt( Children.Num() - 1 );
-		Invalidate(EInvalidateWidgetReason::Layout);
+		Invalidate(EInvalidateWidget::Layout);
 	}
 	else
 	{
@@ -187,7 +187,7 @@ void SOverlay::RemoveSlot( int32 ZOrder )
 void SOverlay::ClearChildren()
 {
 	Children.Empty();
-	Invalidate(EInvalidateWidgetReason::Layout);
+	Invalidate(EInvalidateWidget::Layout);
 }
 
 int32 SOverlay::GetNumWidgets() const
@@ -204,7 +204,7 @@ bool SOverlay::RemoveSlot( TSharedRef< SWidget > Widget )
 		if( CurSlot.GetWidget() == Widget )
 		{
 			Children.RemoveAt( CurSlotIndex );
-			Invalidate(EInvalidateWidgetReason::Layout);
+			Invalidate(EInvalidateWidget::Layout);
 			return true;
 		}
 	}

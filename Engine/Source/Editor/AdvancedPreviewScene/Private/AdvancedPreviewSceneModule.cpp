@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AdvancedPreviewSceneModule.h"
 #include "SAdvancedPreviewDetailsTab.h"
@@ -14,14 +14,12 @@ void FAdvancedPreviewSceneModule::ShutdownModule()
 {
 }
 
-TSharedRef<SWidget> FAdvancedPreviewSceneModule::CreateAdvancedPreviewSceneSettingsWidget(const TSharedRef<FAdvancedPreviewScene>& InPreviewScene, UObject* InAdditionalSettings, const TArray<FDetailCustomizationInfo>& InDetailCustomizations, const TArray<FPropertyTypeCustomizationInfo>& InPropertyTypeCustomizations, const TArray<FDetailDelegates>& InDelegates)
+TSharedRef<SWidget> FAdvancedPreviewSceneModule::CreateAdvancedPreviewSceneSettingsWidget(const TSharedRef<FAdvancedPreviewScene>& InPreviewScene, UObject* InAdditionalSettings, const TArray<FDetailCustomizationInfo>& InDetailCustomizations, const TArray<FPropertyTypeCustomizationInfo>& InPropertyTypeCustomizations)
 {
 	return SNew(SAdvancedPreviewDetailsTab, InPreviewScene)
 		.AdditionalSettings(InAdditionalSettings)
 		.DetailCustomizations(InDetailCustomizations)
-		.PropertyTypeCustomizations(InPropertyTypeCustomizations)
-		.Delegates(InDelegates);
-
+		.PropertyTypeCustomizations(InPropertyTypeCustomizations);
 }
 
 IMPLEMENT_MODULE(FAdvancedPreviewSceneModule, AdvancedPreviewScene);

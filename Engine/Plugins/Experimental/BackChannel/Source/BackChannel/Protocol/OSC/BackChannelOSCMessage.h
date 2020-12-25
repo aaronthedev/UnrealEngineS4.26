@@ -1,10 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "BackChannel/Protocol/OSC/BackChannelOSCPacket.h"
-#include "BackChannel/IBackChannelPacket.h"
-
 
 /**
  *	Representation of an OSC message. Data can be read/written using the explicit
@@ -14,7 +12,7 @@
  *	Any failed Reads() will result in the default value of the type (e.g. 0, 0.0, false, "")
  *	being returned.
  */
-class BACKCHANNEL_API FBackChannelOSCMessage : public FBackChannelOSCPacket, public IBackChannelPacket
+class BACKCHANNEL_API FBackChannelOSCMessage : public FBackChannelOSCPacket
 {
 public:
 
@@ -49,7 +47,7 @@ public:
 	bool IsReading() const { return Mode == OSCPacketMode::Read; }
 
 	/* Returns the address of this packet */
-	FString GetPath() const
+	const FString& GetAddress() const
 	{
 		return Address;
 	}
@@ -79,176 +77,85 @@ public:
 	}
 
 	/* Set our destination address */
-	int SetPath(const TCHAR* Address);
+	void	SetAddress(const TCHAR* Address);
 
 	/* Reset us for reading. The next argument read will be our first argument */
 	void	ResetRead();
 
-	virtual FBackChannelPacketType GetProtocolID() const { return FBackChannelPacketType('B','O','S','C'); }
-
-	virtual FString GetProtocolName() const { return TEXT("BackChannelOSC"); }
-
-	virtual bool IsWritable() const { return IsWriting(); }
-
-	virtual bool IsReadable() const { return IsReading(); }
-
 	//! Int32 read/write
 
 	/* Write an int32 into our arguments */
-	virtual int Write(const TCHAR* InName, const int32 Value) override
+	void Write(const int32 Value)
 	{
 		check(IsWriting());
-		int32 SwappedValue = !IsLegacyConnection() ? ByteSwap(Value) : Value;
-		WriteTagAndData(TEXT('i'), &SwappedValue, sizeof(SwappedValue));
-		return 0;
-	}
-
-	/* Write a float to our arguments */
-	virtual int Write(const TCHAR* InName, const float Value) override
-	{
-		check(IsWriting());
-		float SwappedValue = !IsLegacyConnection() ? ByteSwap(Value) : Value;
-		return WriteTagAndData(TEXT('f'), &SwappedValue, sizeof(SwappedValue));
-	}
-
-	/* Write a bool to our arguments */
-	virtual int Write(const TCHAR* InName, const bool Value) override
-	{
-		if (Value == true)
-		{
-			WriteTag(TEXT('T'));
-		}
-		else
-		{
-			WriteTag(TEXT('F'));
-		}
-
-		return 0;
-	}
-
-	/* Write a string to our arguments */
-	virtual int Write(const TCHAR* InName, const TCHAR* Value) override
-	{
-		return WriteTagAndData(TEXT('s'), TCHAR_TO_ANSI(Value), FCString::Strlen(Value) + 1);
-	}
-
-	/* Write a string to our arguments */
-	virtual int Write(const TCHAR* InName, const FString& Value) override
-	{
-		return Write(InName, *Value);
-	}
-
-	/* Write a blob of data to our arguments */
-	virtual int Write(const TCHAR* InName, const void* InBlob, int32 BlobSize) override
-	{
-		check(IsWriting());
-		if (IsLegacyConnection())
-		{
-			// with the legacy format it's just a fixed size
-			return WriteTagAndData(TEXT('b'), InBlob, BlobSize);
-		}
-		else
-		{
-			// OSC blobs contain and int with the size before the data
-			WriteTag(TEXT('b'));
-			WriteData(&BlobSize, sizeof(int32));
-			return WriteData(InBlob, BlobSize);
-		}
-	}
-
-	/*
-		Read data from the message into a TArray. It must have been serialized by the Read form for TArray(!).
-		Note - data will be appended to the array.
-	*/
-	virtual int Write(const TCHAR* InName, const TArrayView<const uint8> InValues) override
-	{
-		return Write<uint8>(InName, InValues);
-	}
-
-	/* Write a TArrayView into the message */
-	template<typename T>
-	int Write(const TCHAR* InName, const TArrayView<const T> InValues)
-	{
-		if (IsLegacyConnection())
-		{
-			// contrary to the OSC spec, with the legacy format the size of a blob has an explicit tag for rather than simply being the first
-			// four bytes of the blob data. See also Reading of arrays
-			Write(TEXT("Size"), InValues.Num());
-			int32 BlobSize = InValues.Num() * sizeof(T);
-			return WriteTagAndData(TEXT('b'), InValues.GetData(), BlobSize);
-		}
-		else
-		{
-			return Write(InName, InValues.GetData(), InValues.Num());
-		}
+		SerializeWrite(TEXT('i'), &Value, sizeof(Value));
 	}
 
 	/* Read an int32 from our arguments */
-	virtual int Read(const TCHAR* InName, int32& Value) override
+	void Read(int32& Value)
 	{
 		check(IsReading());
-		int Err = ReadTagAndData(TEXT('i'), &Value, sizeof(Value));
-
-		if (!Err && !IsLegacyConnection())
-		{
-			Value = ByteSwap(Value);
-		}
-
-		return Err;
-	}	
-
-	/* Read a float from our arguments */
-	virtual int Read(const TCHAR* InName, float& OutValue) override
-	{
-		check(IsReading());
-		int Err = ReadTagAndData(TEXT('f'), &OutValue, sizeof(OutValue));
-
-		if (!Err && !IsLegacyConnection())
-		{
-			OutValue = ByteSwap(OutValue);
-		}
-
-		return Err;
+		SerializeRead(TEXT('i'), &Value, sizeof(Value));
 	}
 
-	/* Read a bool from our arguments */
-	virtual int Read(const TCHAR* InName, bool& Value) override
+	//! Float read/write
+
+	/* Write a float to our arguments */
+	void Write(const float Value)
 	{
-		// try to read both tagd and see which was present
-		TCHAR TrueTag = ReadTag(TEXT('T'), true);
+		check(IsWriting());
+		SerializeWrite(TEXT('f'), &Value, sizeof(Value));
+	}
 
-		if (TrueTag != 0)
-		{
-			Value = true;
-			return 0;
-		}
+	/* Read a foat from our arguments */
+	void Read(float& OutValue)
+	{
+		check(IsReading());
+		SerializeRead(TEXT('f'), &OutValue, sizeof(OutValue));
+	}
 
-		TCHAR FalseTag = ReadTag(TEXT('F'), true);
+	//! String read/write (multiple forms of write for TCHAR*'s
 
-		if (FalseTag != 0)
-		{
-			Value = false;
-			return 0;
-		}
+	/* Write a string to our arguments */
+	void Write(const FString& Value)
+	{
+		Write(*Value);
+	}
 
-		return 1;
+	/* Write a string to our arguments */
+	void Write(const TCHAR* Value)
+	{
+		SerializeWrite(TEXT('s'), TCHAR_TO_ANSI(Value), FCString::Strlen(Value) + 1);
 	}
 
 	/* Read a string from our arguments.  */
-	virtual int Read(const TCHAR* InName, FString& OutValue) override;
+	void Read(FString& OutValue);
 
 	//! Raw data blobs
 
-	/* Read a blob of data from our arguments */
-	virtual int Read(const TCHAR* InName, void* InBlob, int32 MaxBlobSize, int32& OutBlobSize) override;	
-
-	/* 
-		Read data from the message into a TArray. It must have been serialized by the Read form for TArray(!). 
-		Note - data will be appended to the array.
-	*/
-	virtual int Read(const TCHAR* InName, TArray<uint8>& DataArray) override
+	/* Write a blob of data to our arguments */
+	void Write(const void* InBlob, int32 BlobSize)
 	{
-		return Read<uint8>(InName, DataArray);
+		check(IsWriting());
+		SerializeWrite(TEXT('b'), InBlob, BlobSize);
+	}
+
+	/* Read a blob of data from our arguments */
+	void Read(void* InBlob, int32 BlobSize)
+	{
+		check(IsReading());
+		SerializeRead(TEXT('b'), InBlob, BlobSize);
+	}
+
+	/*
+	*	Write a TArray of type T to our arguments. This is a helper that write an int
+	*	for the size, then a blob of sizeof(t) * NumItems
+	*/
+	template<typename T>
+	void Write(const TArray<T>& Value)
+	{
+		Write(Value.Num());
+		Write(Value.GetData(), Value.Num() * sizeof(T));
 	}
 
 	/*
@@ -256,65 +163,41 @@ public:
 	*	for the size, then allocated and reads a blob of sizeof(t) * NumItems
 	 */
 	template<typename T>
-	int Read(const TCHAR* InName, TArray<T>& DataArray)
+	void Read(TArray<T>& Value)
 	{
-		int32 BlobSize = 0;
-		int32 NumNewElements = 0;
+		int32 ArraySize(0);
+		Read(ArraySize);
 
-		if (IsLegacyConnection())
-		{
-			// contrary to the OSC spec, with the legacy format the size of a blob has an explicit tag for rather than simply being the first
-			// four bytes of the blob data. See also reading of arrays
-			Read(TEXT("Size"), NumNewElements);
-			BlobSize = NumNewElements * sizeof(T);
-
-			// Add enough space
-			int NumCurrentElements = DataArray.Num();
-			DataArray.AddUninitialized(NumNewElements);
-
-			// read the tag and data directly, don't use the blob read
-			return ReadTagAndData(TEXT('b'), DataArray.GetData() + NumCurrentElements, BlobSize);
-		}
-		else
-		{
-			// Read the size of the blob and covert to element count
-			Read(InName, nullptr, 0, BlobSize);
-			NumNewElements = BlobSize / sizeof(T);
-
-			// Add enough space
-			int NumCurrentElements = DataArray.Num();
-			DataArray.AddUninitialized(NumNewElements);
-
-			return Read(InName, DataArray.GetData() + NumCurrentElements, BlobSize, BlobSize);
-		}
+		Value.Empty();
+		Value.AddUninitialized(ArraySize);
+		Read(Value.GetData(), Value.Num() * sizeof(T));
 	}
 	
 
 	/* Serialize helper that will read/write based on the open mode of this message */
 	template<typename T>
-	void Serialize(const TCHAR* Name, T& Value)
+	void Serialize(T& Value)
 	{
 		if (IsWriting())
 		{
-			Write(Name, Value);
+			Write(Value);
 		}
 		else
 		{
-			Read(Name, Value);
+			Read(Value);
 		}
 	}
 
 	/* Serialize helper that will read/write based on the open mode of this message */
-	void Serialize(const TCHAR* Name, void* InBlob, int32 BlobSize)
+	void Serialize(void* InBlob, int32 BlobSize)
 	{
 		if (IsReading())
 		{
-			int32 OutSize(0);
-			Read(Name, InBlob, BlobSize, OutSize);
+			Read(InBlob, BlobSize);
 		}
 		else
 		{
-			Write(Name, InBlob, BlobSize);
+			Write(InBlob, BlobSize);
 		}
 	}
 
@@ -325,23 +208,12 @@ public:
 
 	static TSharedPtr<FBackChannelOSCMessage> CreateFromBuffer(const void* Data, int32 DataLength);
 
-	static void SetLegacyMode(const bool bEnable) { bIsLegacyConnection  = bEnable; }
-	static bool IsLegacyConnection() { return bIsLegacyConnection; }
-
 protected:
 
-	/* Return our sizes for each item (plus any necessary padding) */
-	void GetComponentSizes(int32& OutAddressSize, int32& OutTagSize, int32& OutBufferSize) const;
+	void Serialize(const TCHAR Code, void* InData, int32 InSize);
 
-	int Serialize(const TCHAR Code, void* InData, int32 InSize);
-
-	TCHAR ReadTag(const TCHAR ExpectedTag, bool SuppressWarning=false);
-	int ReadData(void* InData, int32 InSize);
-	int ReadTagAndData(const TCHAR ExpectedTag, void* InData, int32 InSize);
-
-	int WriteTag(const TCHAR Code);
-	int WriteTagAndData(const TCHAR Code, const void* InData, int32 InSize);
-	int WriteData(const void* InData, int32 InSize);
+	void SerializeRead(const TCHAR Code, void* InData, int32 InSize);
+	void SerializeWrite(const TCHAR Code, const void* InData, int32 InSize);
 
 protected:
 
@@ -351,11 +223,8 @@ protected:
 	int					TagIndex;
 	int					BufferIndex;
 	TArray<uint8>		Buffer;
-
-	static bool bIsLegacyConnection;
 };
 
-/*
 BACKCHANNEL_API FBackChannelOSCMessage& operator << (FBackChannelOSCMessage& Msg, int32& Value);
 
 BACKCHANNEL_API FBackChannelOSCMessage& operator << (FBackChannelOSCMessage& Msg, float& Value);
@@ -371,16 +240,15 @@ FBackChannelOSCMessage& operator << (FBackChannelOSCMessage& Msg, TArray<T>& Val
 {
 	if (Msg.IsWriting())
 	{
-		Msg.Write(nullptr, Value);
+		Msg.Write(Value);
 	}
 	else
 	{
-		Msg.Read(nullptr, Value);
+		Msg.Read(Value);
 	}
 
 	return Msg;
 }
-
 
 template <typename T>
 FBackChannelOSCMessage& SerializeOut(FBackChannelOSCMessage& Msg, const T& Value)
@@ -389,4 +257,3 @@ FBackChannelOSCMessage& SerializeOut(FBackChannelOSCMessage& Msg, const T& Value
 	Msg << Tmp;
 	return Msg;
 }
-*/

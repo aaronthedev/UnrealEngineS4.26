@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,6 +11,26 @@
 
 class FUICommandList;
 
+/**
+ * Unreal editor main frame actions related to the Layout section
+ */
+class FMainFrameLayoutCommands
+{
+public:
+	// Load-based commands
+	TArray<TSharedPtr<FUICommandInfo>> LoadLayoutCommands;
+	TArray<TSharedPtr<FUICommandInfo>> LoadUserLayoutCommands;
+	TSharedPtr< FUICommandInfo > ImportLayout;
+	// Save-based commands
+	TArray<TSharedPtr<FUICommandInfo>> OverrideLayoutCommands;
+	TArray<TSharedPtr<FUICommandInfo>> OverrideUserLayoutCommands;
+	TSharedPtr< FUICommandInfo > SaveLayoutAs;
+	TSharedPtr< FUICommandInfo > ExportLayout;
+	// Remove-based commands
+	TArray<TSharedPtr<FUICommandInfo>> RemoveLayoutCommands;
+	TArray<TSharedPtr<FUICommandInfo>> RemoveUserLayoutCommands;
+	TSharedPtr< FUICommandInfo > RemoveUserLayouts;
+};
 
 /**
  * Unreal editor main frame actions
@@ -51,7 +71,7 @@ public:
 	TSharedPtr< FUICommandInfo > OpenClassViewer;
 	TSharedPtr< FUICommandInfo > OpenWidgetReflector;
 
-	TSharedPtr< FUICommandInfo > VisitOnlineLearning;
+	TSharedPtr< FUICommandInfo > VisitWiki;
 	TSharedPtr< FUICommandInfo > VisitForums;
 	TSharedPtr< FUICommandInfo > VisitAskAQuestionPage;
 	TSharedPtr< FUICommandInfo > VisitSearchForAnswersPage;
@@ -63,10 +83,7 @@ public:
 	TSharedPtr< FUICommandInfo > CreditsUnrealEd;
 
 	// Layout
-	TSharedPtr< FUICommandInfo > ImportLayout;
-	TSharedPtr< FUICommandInfo > SaveLayoutAs;
-	TSharedPtr< FUICommandInfo > ExportLayout;
-	TSharedPtr< FUICommandInfo > RemoveUserLayouts;
+	FMainFrameLayoutCommands MainFrameLayoutCommands;
 
 	TSharedPtr< FUICommandInfo > ToggleFullscreen;
 
@@ -158,8 +175,7 @@ public:
 	/** Visits EpicGames.com */
 	static void VisitEpicGamesDotCom();
 
-	/** Visits The Unreal Online Learning page*/
-	static void VisitOnlineLearning();
+	static void VisitWiki();
 
 	static void VisitForums();
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -33,10 +33,10 @@
  * template<> MYMODULE_API FMovieSceneAnimTypeID GetBlendingDataType<FMyStruct>();
  *
  * // Inform the blending code to use a maksed blendable of 3 floats for my struct
- * template<> struct TBlendableTokenTraits<FMyStruct> 	{ typedef UE::MovieScene::TMaskedBlendable<float, 3> WorkingDataType; };
+ * template<> struct TBlendableTokenTraits<FMyStruct> 	{ typedef MovieScene::TMaskedBlendable<float, 3> WorkingDataType; };
  *
  * // To inject a blendable token into the accumulator for an FMyStruct:
- * UE::MovieScene::TMultiChannelValue<float, 3> AnimatedData;
+ * MovieScene::TMultiChannelValue<float, 3> AnimatedData;
  * 
  * // Set the X and Z channels
  * AnimatedData.Set(0, 100.f);
@@ -55,8 +55,6 @@
  * ExecutionTokens.BlendToken(ActuatorTypeID, TBlendableToken<FMyStruct>(AnimatedData, EMovieSceneBlendType::Absolute, Weight));
  */
 
-namespace UE
-{
 namespace MovieScene
 {
 	/**
@@ -339,8 +337,7 @@ namespace MovieScene
 	{
 		Out = FLinearColor(In[0], In[1], In[2], In[3]);
 	}
-} // namespace MovieScene
-} // namespace UE
+}
 
 /** Define runtime type identifiers for the built-in C++ data types */
 template<> MOVIESCENE_API FMovieSceneAnimTypeID GetBlendingDataType<int32>();
@@ -353,11 +350,11 @@ template<> MOVIESCENE_API FMovieSceneAnimTypeID GetBlendingDataType<FEulerTransf
 template<> MOVIESCENE_API FMovieSceneAnimTypeID GetBlendingDataType<FLinearColor>();
 
 /** Define working data types for blending calculations */
-template<> struct TBlendableTokenTraits<int32> 			{ typedef UE::MovieScene::TMaskedBlendable<double,1> 	WorkingDataType; };
-template<> struct TBlendableTokenTraits<float> 			{ typedef UE::MovieScene::TMaskedBlendable<float, 1> 	WorkingDataType; };
-template<> struct TBlendableTokenTraits<FVector2D> 		{ typedef UE::MovieScene::TMaskedBlendable<float, 2> 	WorkingDataType; };
-template<> struct TBlendableTokenTraits<FVector> 		{ typedef UE::MovieScene::TMaskedBlendable<float, 3> 	WorkingDataType; };
-template<> struct TBlendableTokenTraits<FVector4> 		{ typedef UE::MovieScene::TMaskedBlendable<float, 4> 	WorkingDataType; };
-template<> struct TBlendableTokenTraits<FTransform> 	{ typedef UE::MovieScene::TMaskedBlendable<float, 9> 	WorkingDataType; };
-template<> struct TBlendableTokenTraits<FEulerTransform>{ typedef UE::MovieScene::TMaskedBlendable<float, 9> 	WorkingDataType; };
-template<> struct TBlendableTokenTraits<FLinearColor>   { typedef UE::MovieScene::TMaskedBlendable<float, 4>    WorkingDataType; };
+template<> struct TBlendableTokenTraits<int32> 			{ typedef MovieScene::TMaskedBlendable<double,1> 	WorkingDataType; };
+template<> struct TBlendableTokenTraits<float> 			{ typedef MovieScene::TMaskedBlendable<float, 1> 	WorkingDataType; };
+template<> struct TBlendableTokenTraits<FVector2D> 		{ typedef MovieScene::TMaskedBlendable<float, 2> 	WorkingDataType; };
+template<> struct TBlendableTokenTraits<FVector> 		{ typedef MovieScene::TMaskedBlendable<float, 3> 	WorkingDataType; };
+template<> struct TBlendableTokenTraits<FVector4> 		{ typedef MovieScene::TMaskedBlendable<float, 4> 	WorkingDataType; };
+template<> struct TBlendableTokenTraits<FTransform> 	{ typedef MovieScene::TMaskedBlendable<float, 9> 	WorkingDataType; };
+template<> struct TBlendableTokenTraits<FEulerTransform>{ typedef MovieScene::TMaskedBlendable<float, 9> 	WorkingDataType; };
+template<> struct TBlendableTokenTraits<FLinearColor>   { typedef MovieScene::TMaskedBlendable<float, 4>    WorkingDataType; };

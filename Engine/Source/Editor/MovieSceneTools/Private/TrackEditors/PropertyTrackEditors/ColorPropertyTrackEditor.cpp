@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TrackEditors/PropertyTrackEditors/ColorPropertyTrackEditor.h"
 #include "Editor/UnrealEdEngine.h"
@@ -29,15 +29,15 @@ TSharedRef<ISequencerSection> FColorPropertyTrackEditor::MakeSectionInterface(UM
 }
 
 
-void FColorPropertyTrackEditor::GenerateKeysFromPropertyChanged( const FPropertyChangedParams& PropertyChangedParams, UMovieSceneSection* SectionToKey, FGeneratedTrackKeys& OutGeneratedKeys )
+void FColorPropertyTrackEditor::GenerateKeysFromPropertyChanged( const FPropertyChangedParams& PropertyChangedParams, FGeneratedTrackKeys& OutGeneratedKeys )
 {
-	FProperty* Property = PropertyChangedParams.PropertyPath.GetLeafMostProperty().Property.Get();
+	UProperty* Property = PropertyChangedParams.PropertyPath.GetLeafMostProperty().Property.Get();
 	if (!Property)
 	{
 		return;
 	}
 
-	const FStructProperty* StructProp = CastField<const FStructProperty>( Property );
+	const UStructProperty* StructProp = Cast<const UStructProperty>( Property );
 	if (!StructProp)
 	{
 		return;
@@ -128,11 +128,10 @@ bool FColorPropertyTrackEditor::ModifyGeneratedKeysByCurrentAndWeight(UObject *O
 	FFrameRate TickResolution = GetSequencer()->GetFocusedTickResolution();
 
 	UMovieSceneColorTrack* ColorTrack = Cast<UMovieSceneColorTrack>(Track);
+	FMovieSceneEvaluationTrack EvalTrack = Track->GenerateTrackTemplate();
 
 	if (ColorTrack)
 	{
-		FMovieSceneEvaluationTrack EvalTrack = ColorTrack->GenerateTrackTemplate(ColorTrack);
-
 		FMovieSceneInterrogationData InterrogationData;
 		GetSequencer()->GetEvaluationTemplate().CopyActuators(InterrogationData.GetAccumulator());
 

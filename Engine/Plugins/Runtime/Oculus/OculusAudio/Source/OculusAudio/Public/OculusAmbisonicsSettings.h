@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,13 +8,23 @@
 
 
 UENUM()
-enum class EOculusAudioAmbisonicsMode : uint8
+enum class EAmbisonicMode : uint8
 {
 	// High quality ambisonic spatialization method
 	SphericalHarmonics,
 
 	// Alternative ambisonic spatialization method
 	VirtualSpeakers,
+};
+
+UENUM()
+enum class EAmbisonicFormat : uint8
+{
+	// Standard B-Format, WXYZ
+	FuMa UMETA(DisplayName = "FuMa (B-Format, WXYZ)"),
+
+	// ACN/SN3D Standard, WYZX
+	AmbiX UMETA(DisplayName = "AmbiX (ACN/SN3D, WYZX)"),
 };
 
 USTRUCT(BlueprintType)
@@ -24,49 +34,25 @@ struct OCULUSAUDIO_API FSubmixEffectOculusAmbisonicSpatializerSettings
 
 		// Ambisonic spatialization mode
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Realtime)
-	EOculusAudioAmbisonicsMode AmbisonicMode;
+	EAmbisonicMode AmbisonicMode;
 
 	FSubmixEffectOculusAmbisonicSpatializerSettings()
-		: AmbisonicMode(EOculusAudioAmbisonicsMode::SphericalHarmonics)
+		: AmbisonicMode(EAmbisonicMode::SphericalHarmonics)
 	{
 	}
-};
-
-class FOculusAudioSoundfieldSettingsProxy : public ISoundfieldEncodingSettingsProxy
-{
-
-public:
-	const EOculusAudioAmbisonicsMode SpatailizationMode;
-
-	FOculusAudioSoundfieldSettingsProxy(EOculusAudioAmbisonicsMode InSpatializationMode)
-		: SpatailizationMode(InSpatializationMode)
-	{}
-
-	virtual uint32 GetUniqueId() const override
-	{
-		return (uint32)SpatailizationMode;
-	}
-
-
-	virtual TUniquePtr<ISoundfieldEncodingSettingsProxy> Duplicate() const override
-	{
-		return TUniquePtr<ISoundfieldEncodingSettingsProxy>(new FOculusAudioSoundfieldSettingsProxy(SpatailizationMode));
-	}
-
 };
 
 UCLASS()
-class OCULUSAUDIO_API UOculusAudioSoundfieldSettings : public USoundfieldEncodingSettingsBase
+class OCULUSAUDIO_API UOculusAmbisonicsSettings : public UAmbisonicsSubmixSettingsBase
 {
 	GENERATED_BODY()
 
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Ambisonics)
-	EOculusAudioAmbisonicsMode SpatializationMode;
+	EAmbisonicMode SpatializationMode;
 
-	virtual TUniquePtr<ISoundfieldEncodingSettingsProxy> GetProxy() const override
-	{
-		return TUniquePtr<ISoundfieldEncodingSettingsProxy>(new FOculusAudioSoundfieldSettingsProxy(SpatializationMode));
-	}
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Ambisonics)
+	EAmbisonicFormat ChannelOrder;
+
 };
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,7 +15,7 @@
 class SWindow;
 
 UCLASS()
-class BLUTILITY_API UEditorUtilityBlueprintFactory : public UFactory
+class UEditorUtilityBlueprintFactory : public UFactory
 {
 	GENERATED_UCLASS_BODY()
 

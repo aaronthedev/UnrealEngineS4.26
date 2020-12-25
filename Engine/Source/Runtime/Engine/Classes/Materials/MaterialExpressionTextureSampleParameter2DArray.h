@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -19,9 +19,7 @@ class UMaterialExpressionTextureSampleParameter2DArray : public UMaterialExpress
 #endif
 
 	// Begin UMaterialExpressionTextureSampleParameter Interface
-#if WITH_EDITOR
 	virtual bool TextureIsValid( UTexture* InTexture, FString& OutMessage) override;
-#endif
 	virtual const TCHAR* GetRequirements();
 	// End UMaterialExpressionTextureSampleParameter Interface
 };

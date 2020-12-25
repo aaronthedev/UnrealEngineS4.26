@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,61 +11,59 @@ LUMIN_THIRD_PARTY_INCLUDES_START
 #include <ml_media_codec.h>
 LUMIN_THIRD_PARTY_INCLUDES_END
 
-namespace LUMIN_MLSDK_API
+namespace MLSDK_API
 {
 
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecCreateCodec)
-#define MLMediaCodecCreateCodec ::LUMIN_MLSDK_API::MLMediaCodecCreateCodecShim
+#define MLMediaCodecCreateCodec ::MLSDK_API::MLMediaCodecCreateCodecShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecDestroy)
-#define MLMediaCodecDestroy ::LUMIN_MLSDK_API::MLMediaCodecDestroyShim
+#define MLMediaCodecDestroy ::MLSDK_API::MLMediaCodecDestroyShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecSetCallbacks)
-#define MLMediaCodecSetCallbacks ::LUMIN_MLSDK_API::MLMediaCodecSetCallbacksShim
+#define MLMediaCodecSetCallbacks ::MLSDK_API::MLMediaCodecSetCallbacksShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecGetName)
-#define MLMediaCodecGetName ::LUMIN_MLSDK_API::MLMediaCodecGetNameShim
+#define MLMediaCodecGetName ::MLSDK_API::MLMediaCodecGetNameShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecSetSurfaceHint)
-#define MLMediaCodecSetSurfaceHint ::LUMIN_MLSDK_API::MLMediaCodecSetSurfaceHintShim
+#define MLMediaCodecSetSurfaceHint ::MLSDK_API::MLMediaCodecSetSurfaceHintShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecConfigure)
-#define MLMediaCodecConfigure ::LUMIN_MLSDK_API::MLMediaCodecConfigureShim
-CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecConfigureWithSurface)
-#define MLMediaCodecConfigureWithSurface ::LUMIN_MLSDK_API::MLMediaCodecConfigureWithSurfaceShim
+#define MLMediaCodecConfigure ::MLSDK_API::MLMediaCodecConfigureShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecStart)
-#define MLMediaCodecStart ::LUMIN_MLSDK_API::MLMediaCodecStartShim
+#define MLMediaCodecStart ::MLSDK_API::MLMediaCodecStartShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecStop)
-#define MLMediaCodecStop ::LUMIN_MLSDK_API::MLMediaCodecStopShim
+#define MLMediaCodecStop ::MLSDK_API::MLMediaCodecStopShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecFlush)
-#define MLMediaCodecFlush ::LUMIN_MLSDK_API::MLMediaCodecFlushShim
+#define MLMediaCodecFlush ::MLSDK_API::MLMediaCodecFlushShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecGetInputBufferPointer)
-#define MLMediaCodecGetInputBufferPointer ::LUMIN_MLSDK_API::MLMediaCodecGetInputBufferPointerShim
+#define MLMediaCodecGetInputBufferPointer ::MLSDK_API::MLMediaCodecGetInputBufferPointerShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecGetOutputBufferPointer)
-#define MLMediaCodecGetOutputBufferPointer ::LUMIN_MLSDK_API::MLMediaCodecGetOutputBufferPointerShim
+#define MLMediaCodecGetOutputBufferPointer ::MLSDK_API::MLMediaCodecGetOutputBufferPointerShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecQueueInputBuffer)
-#define MLMediaCodecQueueInputBuffer ::LUMIN_MLSDK_API::MLMediaCodecQueueInputBufferShim
+#define MLMediaCodecQueueInputBuffer ::MLSDK_API::MLMediaCodecQueueInputBufferShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecQueueSecureInputBuffer)
-#define MLMediaCodecQueueSecureInputBuffer ::LUMIN_MLSDK_API::MLMediaCodecQueueSecureInputBufferShim
+#define MLMediaCodecQueueSecureInputBuffer ::MLSDK_API::MLMediaCodecQueueSecureInputBufferShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecDequeueInputBuffer)
-#define MLMediaCodecDequeueInputBuffer ::LUMIN_MLSDK_API::MLMediaCodecDequeueInputBufferShim
+#define MLMediaCodecDequeueInputBuffer ::MLSDK_API::MLMediaCodecDequeueInputBufferShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecDequeueOutputBuffer)
-#define MLMediaCodecDequeueOutputBuffer ::LUMIN_MLSDK_API::MLMediaCodecDequeueOutputBufferShim
+#define MLMediaCodecDequeueOutputBuffer ::MLSDK_API::MLMediaCodecDequeueOutputBufferShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecGetInputFormat)
-#define MLMediaCodecGetInputFormat ::LUMIN_MLSDK_API::MLMediaCodecGetInputFormatShim
+#define MLMediaCodecGetInputFormat ::MLSDK_API::MLMediaCodecGetInputFormatShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecGetOutputFormat)
-#define MLMediaCodecGetOutputFormat ::LUMIN_MLSDK_API::MLMediaCodecGetOutputFormatShim
+#define MLMediaCodecGetOutputFormat ::MLSDK_API::MLMediaCodecGetOutputFormatShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecReleaseOutputBuffer)
-#define MLMediaCodecReleaseOutputBuffer ::LUMIN_MLSDK_API::MLMediaCodecReleaseOutputBufferShim
+#define MLMediaCodecReleaseOutputBuffer ::MLSDK_API::MLMediaCodecReleaseOutputBufferShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecReleaseOutputBufferAtTime)
-#define MLMediaCodecReleaseOutputBufferAtTime ::LUMIN_MLSDK_API::MLMediaCodecReleaseOutputBufferAtTimeShim
+#define MLMediaCodecReleaseOutputBufferAtTime ::MLSDK_API::MLMediaCodecReleaseOutputBufferAtTimeShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecAcquireNextAvailableFrame)
-#define MLMediaCodecAcquireNextAvailableFrame ::LUMIN_MLSDK_API::MLMediaCodecAcquireNextAvailableFrameShim
+#define MLMediaCodecAcquireNextAvailableFrame ::MLSDK_API::MLMediaCodecAcquireNextAvailableFrameShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecReleaseFrame)
-#define MLMediaCodecReleaseFrame ::LUMIN_MLSDK_API::MLMediaCodecReleaseFrameShim
+#define MLMediaCodecReleaseFrame ::MLSDK_API::MLMediaCodecReleaseFrameShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecGetFrameTransformationMatrix)
-#define MLMediaCodecGetFrameTransformationMatrix ::LUMIN_MLSDK_API::MLMediaCodecGetFrameTransformationMatrixShim
+#define MLMediaCodecGetFrameTransformationMatrix ::MLSDK_API::MLMediaCodecGetFrameTransformationMatrixShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecGetFrameTimestamp)
-#define MLMediaCodecGetFrameTimestamp ::LUMIN_MLSDK_API::MLMediaCodecGetFrameTimestampShim
+#define MLMediaCodecGetFrameTimestamp ::MLSDK_API::MLMediaCodecGetFrameTimestampShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecGetFrameQueueBufferTimestamp)
-#define MLMediaCodecGetFrameQueueBufferTimestamp ::LUMIN_MLSDK_API::MLMediaCodecGetFrameQueueBufferTimestampShim
+#define MLMediaCodecGetFrameQueueBufferTimestamp ::MLSDK_API::MLMediaCodecGetFrameQueueBufferTimestampShim
 CREATE_FUNCTION_SHIM(ml_mediacodec, MLResult, MLMediaCodecGetFrameNumber)
-#define MLMediaCodecGetFrameNumber ::LUMIN_MLSDK_API::MLMediaCodecGetFrameNumberShim
+#define MLMediaCodecGetFrameNumber ::MLSDK_API::MLMediaCodecGetFrameNumberShim
 
 }
 

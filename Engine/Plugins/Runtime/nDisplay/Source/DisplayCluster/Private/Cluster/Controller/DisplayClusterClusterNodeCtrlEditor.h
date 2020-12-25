@@ -1,8 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Cluster/Controller/DisplayClusterClusterNodeCtrlMaster.h"
+
+#include "Network/DisplayClusterMessage.h"
+
+class FDisplayClusterClusterEventsClient;
+class FDisplayClusterClusterEventsService;
 
 
 /**
@@ -12,7 +17,7 @@ class FDisplayClusterClusterNodeCtrlEditor
 	: public FDisplayClusterClusterNodeCtrlMaster
 {
 public:
-	FDisplayClusterClusterNodeCtrlEditor(const FString& CtrlName, const FString& NodeName);
+	FDisplayClusterClusterNodeCtrlEditor(const FString& ctrlName, const FString& nodeName);
 	virtual ~FDisplayClusterClusterNodeCtrlEditor();
 
 protected:

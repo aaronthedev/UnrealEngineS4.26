@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ObjectTemplates/DatasmithSceneComponentTemplate.h"
 
@@ -37,11 +37,6 @@ UObject* UDatasmithSceneComponentTemplate::UpdateObject( UObject* Destination, b
 		}
 
 		SceneComponent->SetMobility( TargetMobility );
-	}
-
-	if ( !PreviousTemplate || PreviousTemplate->bVisible == SceneComponent->GetVisibleFlag() )
-	{
-		SceneComponent->SetVisibility( bVisible );
 	}
 
 	const ULevel* SceneComponentLevel = SceneComponent->GetComponentLevel();
@@ -122,7 +117,6 @@ void UDatasmithSceneComponentTemplate::Load( const UObject* Source )
 
 	RelativeTransform = SceneComponent->GetRelativeTransform();
 	Mobility = SceneComponent->Mobility;
-	bVisible = SceneComponent->GetVisibleFlag();
 	AttachParent = SceneComponent->GetAttachParent();
 	Tags = TSet<FName>(SceneComponent->ComponentTags);
 
@@ -140,7 +134,6 @@ bool UDatasmithSceneComponentTemplate::Equals( const UDatasmithObjectTemplate* O
 
 	bool bEquals = AreTransformsEqual( RelativeTransform, TypedOther->RelativeTransform );
 	bEquals = bEquals && ( Mobility == TypedOther->Mobility );
-	bEquals = bEquals && ( bVisible == TypedOther->bVisible );
 	bEquals = bEquals && ( AttachParent == TypedOther->AttachParent );
 	bEquals = bEquals && FDatasmithObjectTemplateUtils::SetsEquals(Tags, TypedOther->Tags);
 

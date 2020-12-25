@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Serialization/StructuredArchive.h"
 #include "Serialization/ArchiveUObject.h"
-#include "Serialization/FileRegions.h"
 #include "UObject/ObjectResource.h"
 
 #include "UObject/SoftObjectPath.h"
@@ -31,13 +30,7 @@ public:
 	virtual FArchive& operator<<(FWeakObjectPtr& Value) override;
 	//~ End FArchive Interface
 
-	virtual void PushFileRegionType(EFileRegionType Type) override;
-	virtual void PopFileRegionType() override;
-
 private:
-
-	int64 FileRegionStart = 0;
-	EFileRegionType CurrentFileRegionType = EFileRegionType::None;
 
 	TArray<FLazyObjectPtr> LazyObjectPtrs;
 	TArray<FWeakObjectPtr> WeakObjectPtrs;

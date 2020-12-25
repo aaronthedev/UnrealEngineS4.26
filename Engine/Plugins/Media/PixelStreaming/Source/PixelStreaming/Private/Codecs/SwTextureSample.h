@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "PixelStreamingPrivate.h"
@@ -125,9 +125,9 @@ public:
 	}
 #endif //WITH_ENGINE
 
-	FMediaTimeStamp GetTime() const override
+	FTimespan GetTime() const override
 	{
-		return FMediaTimeStamp(Time);
+		return Time;
 	}
 
 	bool IsCacheable() const override

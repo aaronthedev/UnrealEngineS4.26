@@ -1,29 +1,21 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PropertyValue.h"
 
-#include "VariantManagerContentLog.h"
-#include "VariantManagerObjectVersion.h"
-#include "VariantObjectBinding.h"
-
-#include "Components/ActorComponent.h"
 #include "CoreMinimal.h"
-#include "Engine/BlueprintGeneratedClass.h"
-#include "Engine/SCS_Node.h"
+#include "Components/ActorComponent.h"
 #include "HAL/UnrealMemory.h"
 #include "UObject/Package.h"
+#include "UObject/TextProperty.h"
+#include "VariantObjectBinding.h"
+#include "VariantManagerObjectVersion.h"
 #include "UObject/PropertyPortFlags.h"
 #include "UObject/Script.h"
-#include "UObject/TextProperty.h"
-#include "UObject/CoreObjectVersion.h"
-#include "UObject/UnrealTypePrivate.h" // Only for converting deprecated UProperties!
-
+#include "Engine/SCS_Node.h"
+#include "Engine/BlueprintGeneratedClass.h"
 #if WITH_EDITOR
 #include "EdGraphSchema_K2.h"
 #endif
-
-// WARNING: This should always be the last include in any file that needs it (except .generated.h)
-#include "UObject/UndefineUPropertyMacros.h"
 
 #define LOCTEXT_NAMESPACE "PropertyValue"
 
@@ -216,11 +208,10 @@ TArray<uint8> EnumIndexToValueBytes(UEnum* Enum, int32 Index, int32 Size, bool b
 
 UPropertyValue::UPropertyValue(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-	, LeafPropertyClass(nullptr)
 {
 }
 
-void UPropertyValue::Init(const TArray<FCapturedPropSegment>& InCapturedPropSegments, FFieldClass* InLeafPropertyClass, const FString& InFullDisplayString, const FName& InPropertySetterName, EPropertyValueCategory InCategory)
+void UPropertyValue::Init(const TArray<FCapturedPropSegment>& InCapturedPropSegments, UClass* InLeafPropertyClass, const FString& InFullDisplayString, const FName& InPropertySetterName, EPropertyValueCategory InCategory)
 {
 	CapturedPropSegments = InCapturedPropSegments;
 	LeafPropertyClass = InLeafPropertyClass;
@@ -261,17 +252,7 @@ void UPropertyValue::Serialize(FArchive& Ar)
 	Super::Serialize(Ar);
 
 	Ar.UsingCustomVersion(FVariantManagerObjectVersion::GUID);
-	Ar.UsingCustomVersion(FCoreObjectVersion::GUID);
 	int32 CustomVersion = Ar.CustomVer(FVariantManagerObjectVersion::GUID);
-
-	if (Ar.CustomVer(FCoreObjectVersion::GUID) >= FCoreObjectVersion::FProperties)
-	{
-		Ar << LeafPropertyClass;
-	}
-	else if (Ar.IsLoading() && LeafPropertyClass_DEPRECATED)
-	{
-		LeafPropertyClass = FFieldClass::GetNameToFieldClassMap().FindRef(LeafPropertyClass_DEPRECATED->GetFName());
-	}
 
 	if (Ar.IsSaving())
 	{
@@ -281,8 +262,8 @@ void UPropertyValue::Serialize(FArchive& Ar)
 		// read our pointer at some point (or just created this propertyvalue), so we need to create it
 		if (TempObjPtr.IsNull())
 		{
-			FFieldClass* PropClass = GetPropertyClass();
-			if (PropClass && PropClass->IsChildOf(FObjectPropertyBase::StaticClass()) && HasRecordedData())
+			UClass* PropClass = GetPropertyClass();
+			if (PropClass && PropClass->IsChildOf(UObjectProperty::StaticClass()) && HasRecordedData())
 			{
 				UObject* Obj = *((UObject**)ValueBytes.GetData());
 				if (Obj && Obj->IsValidLowLevel())
@@ -308,9 +289,9 @@ void UPropertyValue::Serialize(FArchive& Ar)
 		else if (CustomVersion >= FVariantManagerObjectVersion::CorrectSerializationOfFNameBytes)
 		{
 			FName Name;
-			if (FFieldClass* PropClass = GetPropertyClass())
+			if (UClass* PropClass = GetPropertyClass())
 			{
-				if (PropClass->IsChildOf(FNameProperty::StaticClass()))
+				if (PropClass->IsChildOf(UNameProperty::StaticClass()))
 				{
 					Name = *((FName*)ValueBytes.GetData());
 				}
@@ -330,7 +311,7 @@ void UPropertyValue::Serialize(FArchive& Ar)
 
 		Ar << TempObjPtr;
 
-		// Before this version, properties were stored an array of FProperty*. Convert them to
+		// Before this version, properties were stored an array of UProperty*. Convert them to
 		// CapturedPropSegment and clear the deprecated arrays
 		if (CustomVersion < FVariantManagerObjectVersion::SerializePropertiesAsNames)
 		{
@@ -341,14 +322,17 @@ void UPropertyValue::Serialize(FArchive& Ar)
 			{
 				// Back then we didn't store the class directly, and just fetched it from the leaf-most property
 				// Try to do that again as it might help decode ValueBytes if those properties were string types
-				TFieldPath<FProperty> LastProp = Properties_DEPRECATED.Last();
-				LeafPropertyClass = FFieldClass::GetNameToFieldClassMap().FindRef(LastProp->GetClass()->GetFName());
+				UProperty* LastProp = Properties_DEPRECATED[Properties_DEPRECATED.Num() -1];
+				if (LastProp && LastProp->IsValidLowLevel())
+				{
+					LeafPropertyClass = LastProp->GetClass();
+				}
 
 				CapturedPropSegments.Reserve(NumDeprecatedProps);
 				int32 Index = 0;
 				for (Index = 0; Index < NumDeprecatedProps; Index++)
 				{
-					TFieldPath<FProperty> Prop = Properties_DEPRECATED[Index];
+					UProperty* Prop = Properties_DEPRECATED[Index];
 					if (Prop == nullptr || !Prop->IsValidLowLevel() || !PropertyIndices_DEPRECATED.IsValidIndex(Index))
 					{
 						break;
@@ -379,17 +363,17 @@ void UPropertyValue::Serialize(FArchive& Ar)
 			Ar << TempStr;
 			Ar << TempText;
 
-			if (FFieldClass* PropClass = GetPropertyClass())
+			if (UClass* PropClass = GetPropertyClass())
 			{
-				if (PropClass->IsChildOf(FNameProperty::StaticClass()))
+				if (PropClass->IsChildOf(UNameProperty::StaticClass()))
 				{
 					SetRecordedDataInternal((uint8*)&TempName, sizeof(FName));
 				}
-				else if (PropClass->IsChildOf(FStrProperty::StaticClass()))
+				else if (PropClass->IsChildOf(UStrProperty::StaticClass()))
 				{
 					SetRecordedDataInternal((uint8*)&TempStr, sizeof(FString));
 				}
-				else if (PropClass->IsChildOf(FTextProperty::StaticClass()))
+				else if (PropClass->IsChildOf(UTextProperty::StaticClass()))
 				{
 					SetRecordedDataInternal((uint8*)&TempText, sizeof(FText));
 				}
@@ -405,9 +389,9 @@ void UPropertyValue::Serialize(FArchive& Ar)
 			FName Name;
 			Ar << Name;
 
-			if (FFieldClass* PropClass = GetPropertyClass())
+			if (UClass* PropClass = GetPropertyClass())
 			{
-				if (PropClass == FNameProperty::StaticClass())
+				if (PropClass == UNameProperty::StaticClass())
 				{
 					SetRecordedDataInternal((uint8*)&Name, sizeof(FName));
 				}
@@ -447,7 +431,6 @@ bool UPropertyValue::Resolve(UObject* Object)
 		return false;
 	}
 
-	ParentContainerObject = Object;
 	if (!ResolvePropertiesRecursive(Object->GetClass(), Object, 0))
 	{
 		return false;
@@ -467,12 +450,12 @@ bool UPropertyValue::Resolve(UObject* Object)
 			PropertySetter = Class->FindFunctionByName(PropertySetterName);
 			if (PropertySetter)
 			{
-				FFieldClass* ThisClass = GetPropertyClass();
+				UClass* ThisClass = GetPropertyClass();
 				bool bFoundParameterWithClassType = false;
 
-				for (TFieldIterator<FProperty> It(PropertySetter); It; ++It)
+				for (TFieldIterator<UProperty> It(PropertySetter); It; ++It)
 				{
-					FProperty* Prop = *It;
+					UProperty* Prop = *It;
 
 					if (ThisClass == Prop->GetClass())
 					{
@@ -553,7 +536,7 @@ TArray<uint8> UPropertyValue::GetDataFromResolvedObject() const
 		return CurrentData;
 	}
 
-	if (FBoolProperty* PropAsBool = CastField<FBoolProperty>(LeafProperty))
+	if (UBoolProperty* PropAsBool = Cast<UBoolProperty>(LeafProperty))
 	{
 		bool* BytesAddress = (bool*)CurrentData.GetData();
 		*BytesAddress = PropAsBool->GetPropertyValue(PropertyValuePtr);
@@ -580,9 +563,9 @@ void UPropertyValue::RecordDataFromResolvedObject()
 #if WITH_EDITOR
 	if (PropertySetter && PropertySetterParameterDefaults.Num() == 0)
 	{
-		for (TFieldIterator<FProperty> It(PropertySetter); It; ++It)
+		for (TFieldIterator<UProperty> It(PropertySetter); It; ++It)
 		{
-			FProperty* Prop = *It;
+			UProperty* Prop = *It;
 			FString Defaults;
 
 			// Store property setter parameter defaults, as this is kept in metadata which is not available at runtime
@@ -620,11 +603,14 @@ void UPropertyValue::ApplyDataToResolvedObject()
 
 	// Modify container component
 	UObject* ContainerObject = nullptr;
-	if (ParentContainerObject && ParentContainerObject->IsA(UActorComponent::StaticClass()))
+	if (UObject* Component = (UObject*)ParentContainerAddress)
+	{
+		if(Component->IsA(UActorComponent::StaticClass()))
 		{
-		ParentContainerObject->SetFlags(RF_Transactional);
-		ParentContainerObject->Modify();
-		ContainerObject = ParentContainerObject;
+			Component->SetFlags(RF_Transactional);
+			Component->Modify();
+			ContainerObject = Component;
+		}
 	}
 
 	if (PropertySetter)
@@ -634,37 +620,37 @@ void UPropertyValue::ApplyDataToResolvedObject()
 	}
 	// Bool properties need to be set in a particular way since they hold internal private
 	// masks and offsets
-	else if (FBoolProperty* PropAsBool = CastField<FBoolProperty>(LeafProperty))
+	else if (UBoolProperty* PropAsBool = Cast<UBoolProperty>(LeafProperty))
 	{
 		bool* ValueBytesAsBool = (bool*)ValueBytes.GetData();
 		PropAsBool->SetPropertyValue(PropertyValuePtr, *ValueBytesAsBool);
 	}
-	else if (FEnumProperty* PropAsEnum = CastField<FEnumProperty>(LeafProperty))
+	else if (UEnumProperty* PropAsEnum = Cast<UEnumProperty>(LeafProperty))
 	{
-		FNumericProperty* UnderlyingProp = PropAsEnum->GetUnderlyingProperty();
+		UNumericProperty* UnderlyingProp = PropAsEnum->GetUnderlyingProperty();
 		int32 PropertySizeBytes = UnderlyingProp->ElementSize;
 
 		ValueBytes.SetNum(PropertySizeBytes);
 		FMemory::Memcpy(PropertyValuePtr, ValueBytes.GetData(), PropertySizeBytes);
 	}
-	else if (FNameProperty* PropAsName = CastField<FNameProperty>(LeafProperty))
+	else if (UNameProperty* PropAsName = Cast<UNameProperty>(LeafProperty))
 	{
 		FName Value = GetNamePropertyName();
 		PropAsName->SetPropertyValue(PropertyValuePtr, Value);
 	}
-	else if (FStrProperty* PropAsStr = CastField<FStrProperty>(LeafProperty))
+	else if (UStrProperty* PropAsStr = Cast<UStrProperty>(LeafProperty))
 	{
 		FString Value = GetStrPropertyString();
 		PropAsStr->SetPropertyValue(PropertyValuePtr, Value);
 	}
-	else if (FTextProperty* PropAsText = CastField<FTextProperty>(LeafProperty))
+	else if (UTextProperty* PropAsText = Cast<UTextProperty>(LeafProperty))
 	{
 		FText Value = GetTextPropertyText();
 		PropAsText->SetPropertyValue(PropertyValuePtr, Value);
 	}
 	else
 	{
-		// Never access ValueBytes directly as we might need to fixup FObjectProperty values
+		// Never access ValueBytes directly as we might need to fixup UObjectProperty values
 		const TArray<uint8>& RecordedData = GetRecordedData();
 		FMemory::Memcpy(PropertyValuePtr, RecordedData.GetData(), GetValueSizeInBytes());
 	}
@@ -682,7 +668,7 @@ void UPropertyValue::ApplyDataToResolvedObject()
 	OnPropertyApplied.Broadcast();
 }
 
-FFieldClass* UPropertyValue::GetPropertyClass() const
+UClass* UPropertyValue::GetPropertyClass() const
 {
 	return LeafPropertyClass;
 }
@@ -694,8 +680,8 @@ EPropertyValueCategory UPropertyValue::GetPropCategory() const
 
 UScriptStruct* UPropertyValue::GetStructPropertyStruct() const
 {
-	FProperty* Prop = GetProperty();
-	if (FStructProperty* StructProp = CastField<FStructProperty>(Prop))
+	UProperty* Prop = GetProperty();
+	if (UStructProperty* StructProp = Cast<UStructProperty>(Prop))
 	{
 		return StructProp->Struct;
 	}
@@ -705,7 +691,7 @@ UScriptStruct* UPropertyValue::GetStructPropertyStruct() const
 
 UClass* UPropertyValue::GetObjectPropertyObjectClass() const
 {
-	if (FObjectPropertyBase* ObjProp = CastField<FObjectPropertyBase>(GetProperty()))
+	if (UObjectProperty* ObjProp = Cast<UObjectProperty>(GetProperty()))
 	{
 		return ObjProp->PropertyClass;
 	}
@@ -715,12 +701,12 @@ UClass* UPropertyValue::GetObjectPropertyObjectClass() const
 
 UEnum* UPropertyValue::GetEnumPropertyEnum() const
 {
-	FProperty* Property = GetProperty();
-	if (FEnumProperty* EnumProp = CastField<FEnumProperty>(Property))
+	UProperty* Property = GetProperty();
+	if (UEnumProperty* EnumProp = Cast<UEnumProperty>(Property))
 	{
 		return EnumProp->GetEnum();
 	}
-	else if (FNumericProperty* NumProp = CastField<FNumericProperty>(Property))
+	else if (UNumericProperty* NumProp = Cast<UNumericProperty>(Property))
 	{
 		return NumProp->GetIntPropertyEnum();
 	}
@@ -728,14 +714,9 @@ UEnum* UPropertyValue::GetEnumPropertyEnum() const
 	return nullptr;
 }
 
-bool UPropertyValue::ContainsProperty(const FProperty* Prop) const
+bool UPropertyValue::ContainsProperty(const UProperty* Prop) const
 {
 	return LeafProperty && LeafProperty == Prop;
-}
-
-const TArray<FCapturedPropSegment>& UPropertyValue::GetCapturedPropSegments() const
-{
-	return CapturedPropSegments;
 }
 
 // @Copypaste from PropertyEditorHelpers
@@ -773,9 +754,9 @@ FString UPropertyValue::GetEnumDocumentationLink()
 #if WITH_EDITOR
 	if(LeafProperty != nullptr)
 	{
-		const FByteProperty* ByteProperty = CastField<FByteProperty>(LeafProperty);
-		const FEnumProperty* EnumProperty = CastField<FEnumProperty>(LeafProperty);
-		if(ByteProperty || EnumProperty || (LeafProperty->IsA(FStrProperty::StaticClass()) && LeafProperty->HasMetaData(TEXT("Enum"))))
+		const UByteProperty* ByteProperty = Cast<UByteProperty>(LeafProperty);
+		const UEnumProperty* EnumProperty = Cast<UEnumProperty>(LeafProperty);
+		if(ByteProperty || EnumProperty || (LeafProperty->IsA(UStrProperty::StaticClass()) && LeafProperty->HasMetaData(TEXT("Enum"))))
 		{
 			UEnum* Enum = nullptr;
 			if(ByteProperty)
@@ -884,19 +865,17 @@ void UPropertyValue::SetRecordedDataFromEnumIndex(int32 Index)
 
 	ensure(NewValueBytes.Num() == Size);
 
-	Modify();
-
 	SetRecordedDataInternal(NewValueBytes.GetData(), Size);
 }
 
 bool UPropertyValue::IsNumericPropertySigned()
 {
-	FProperty* Prop = GetProperty();
-	if (FNumericProperty* NumericProp = CastField<FNumericProperty>(Prop))
+	UProperty* Prop = GetProperty();
+	if (UNumericProperty* NumericProp = Cast<UNumericProperty>(Prop))
 	{
 		return NumericProp->IsInteger() && NumericProp->CanHoldValue(-1);
 	}
-	else if (FEnumProperty* EnumProp = CastField<FEnumProperty>(Prop))
+	else if (UEnumProperty* EnumProp = Cast<UEnumProperty>(Prop))
 	{
 		NumericProp = EnumProp->GetUnderlyingProperty();
 		return NumericProp->IsInteger() && NumericProp->CanHoldValue(-1);
@@ -907,12 +886,12 @@ bool UPropertyValue::IsNumericPropertySigned()
 
 bool UPropertyValue::IsNumericPropertyUnsigned()
 {
-	FProperty* Prop = GetProperty();
-	if (FNumericProperty* NumericProp = CastField<FNumericProperty>(Prop))
+	UProperty* Prop = GetProperty();
+	if (UNumericProperty* NumericProp = Cast<UNumericProperty>(Prop))
 	{
 		return NumericProp->IsInteger() && !NumericProp->CanHoldValue(-1);
 	}
-	else if (FEnumProperty* EnumProp = CastField<FEnumProperty>(Prop))
+	else if (UEnumProperty* EnumProp = Cast<UEnumProperty>(Prop))
 	{
 		NumericProp = EnumProp->GetUnderlyingProperty();
 		return NumericProp->IsInteger() && !NumericProp->CanHoldValue(-1);
@@ -923,12 +902,12 @@ bool UPropertyValue::IsNumericPropertyUnsigned()
 
 bool UPropertyValue::IsNumericPropertyFloatingPoint()
 {
-	FProperty* Prop = GetProperty();
-	if (FNumericProperty* NumericProp = CastField<FNumericProperty>(Prop))
+	UProperty* Prop = GetProperty();
+	if (UNumericProperty* NumericProp = Cast<UNumericProperty>(Prop))
 	{
 		return NumericProp->IsFloatingPoint();
 	}
-	else if (FEnumProperty* EnumProp = CastField<FEnumProperty>(Prop))
+	else if (UEnumProperty* EnumProp = Cast<UEnumProperty>(Prop))
 	{
 		NumericProp = EnumProp->GetUnderlyingProperty();
 		return NumericProp->IsFloatingPoint();
@@ -954,7 +933,7 @@ const FText& UPropertyValue::GetTextPropertyText() const
 
 FName UPropertyValue::GetPropertyName() const
 {
-	FProperty* Prop = GetProperty();
+	UProperty* Prop = GetProperty();
 	if (Prop)
 	{
 		return Prop->GetFName();
@@ -966,7 +945,7 @@ FName UPropertyValue::GetPropertyName() const
 FText UPropertyValue::GetPropertyTooltip() const
 {
 #if WITH_EDITOR
-	FProperty* Prop = GetProperty();
+	UProperty* Prop = GetProperty();
 	if (Prop)
 	{
 		return Prop->GetToolTipText();
@@ -996,8 +975,8 @@ FString UPropertyValue::GetLeafDisplayString() const
 
 int32 UPropertyValue::GetValueSizeInBytes() const
 {
-	FProperty* Prop = GetProperty();
-	if (FEnumProperty* PropAsEnumProp = CastField<FEnumProperty>(Prop))
+	UProperty* Prop = GetProperty();
+	if (UEnumProperty* PropAsEnumProp = Cast<UEnumProperty>(Prop))
 	{
 		return PropAsEnumProp->GetUnderlyingProperty()->ElementSize;
 	}
@@ -1012,7 +991,7 @@ int32 UPropertyValue::GetValueSizeInBytes() const
 
 int32 UPropertyValue::GetPropertyOffsetInBytes() const
 {
-	FProperty* Prop = GetProperty();
+	UProperty* Prop = GetProperty();
 	if (Prop)
 	{
 		return Prop->GetOffset_ForInternal();
@@ -1033,8 +1012,8 @@ const TArray<uint8>& UPropertyValue::GetRecordedData()
 	ValueBytes.SetNum(GetValueSizeInBytes());
 
 	// We need to resolve our softpath still
-	FFieldClass* PropClass = GetPropertyClass();
-	if (bHasRecordedData && PropClass && PropClass->IsChildOf(FObjectPropertyBase::StaticClass()) && !TempObjPtr.IsNull())
+	UClass* PropClass = GetPropertyClass();
+	if (bHasRecordedData && PropClass && PropClass->IsChildOf(UObjectProperty::StaticClass()) && !TempObjPtr.IsNull())
 	{
 		// Force resolve of our soft object pointer
 		UObject* Obj = TempObjPtr.LoadSynchronous();
@@ -1063,17 +1042,17 @@ void UPropertyValue::SetRecordedData(const uint8* NewDataBytes, int32 NumBytes, 
 		// Because the string types are all handles into arrays/data, we need to reinterpret NewDataBytes
 		// first, then copy that object into our Temps and have our ValueBytes refer to it instead.
 		// This ensures we own the FString that we're pointing at (and so its internal data array)
-		if (NumBytes == sizeof(FName) && GetPropertyClass()->IsChildOf(FNameProperty::StaticClass()))
+		if (NumBytes == sizeof(FName) && GetPropertyClass()->IsChildOf(UNameProperty::StaticClass()))
 		{
 			TempName = *((FName*)NewDataBytes);
 			SetRecordedDataInternal((uint8*)&TempName, NumBytes, Offset);
 		}
-		else if (NumBytes == sizeof(FString) && GetPropertyClass()->IsChildOf(FStrProperty::StaticClass()))
+		else if (NumBytes == sizeof(FString) && GetPropertyClass()->IsChildOf(UStrProperty::StaticClass()))
 		{
 			TempStr = *((FString*)NewDataBytes);
 			SetRecordedDataInternal((uint8*)&TempStr, NumBytes, Offset);
 		}
-		else if (NumBytes == sizeof(FText) && GetPropertyClass()->IsChildOf(FTextProperty::StaticClass()))
+		else if (NumBytes == sizeof(FText) && GetPropertyClass()->IsChildOf(UTextProperty::StaticClass()))
 		{
 			TempText = *((FText*)NewDataBytes);
 			SetRecordedDataInternal((uint8*)&TempText, NumBytes, Offset);
@@ -1084,8 +1063,8 @@ void UPropertyValue::SetRecordedData(const uint8* NewDataBytes, int32 NumBytes, 
 
 			// Don't need to actually update the pointer, as that will be done when serializing
 			// But we do need to reset it or else GetRecordedData will read its data instead of ValueBytes
-			FFieldClass* PropClass = GetPropertyClass();
-			if (PropClass && PropClass->IsChildOf(FObjectPropertyBase::StaticClass()))
+			UClass* PropClass = GetPropertyClass();
+			if (PropClass && PropClass->IsChildOf(UObjectProperty::StaticClass()))
 			{
 				TempObjPtr.Reset();
 			}
@@ -1097,25 +1076,6 @@ void UPropertyValue::SetRecordedData(const uint8* NewDataBytes, int32 NumBytes, 
 		}
 	}
 }
-
-#if WITH_EDITORONLY_DATA
-uint32 UPropertyValue::GetDisplayOrder() const
-{
-	return DisplayOrder;
-}
-
-void UPropertyValue::SetDisplayOrder(uint32 InDisplayOrder)
-{
-	if (InDisplayOrder == DisplayOrder)
-	{
-		return;
-	}
-
-	Modify();
-
-	DisplayOrder = InDisplayOrder;
-}
-#endif
 
 void UPropertyValue::SetRecordedDataInternal(const uint8* NewDataBytes, int32 NumBytes, int32 Offset)
 {
@@ -1146,32 +1106,23 @@ const TArray<uint8>& UPropertyValue::GetDefaultValue()
 
 				if (Resolve(Object->GetClass()->GetDefaultObject()))
 				{
-					if (FBoolProperty* PropAsBool = CastField<FBoolProperty>(LeafProperty))
+					if (UBoolProperty* PropAsBool = Cast<UBoolProperty>(LeafProperty))
 					{
 						bool* DefaultValueAsBoolPtr = (bool*)DefaultValue.GetData();
 						*DefaultValueAsBoolPtr = PropAsBool->GetPropertyValue(PropertyValuePtr);
 					}
 					else
 					{
-						if (FEnumProperty* PropAsEnum = CastField<FEnumProperty>(LeafProperty))
+						if (UEnumProperty* PropAsEnum = Cast<UEnumProperty>(LeafProperty))
 						{
-							FNumericProperty* UnderlyingProp = PropAsEnum->GetUnderlyingProperty();
+							UNumericProperty* UnderlyingProp = PropAsEnum->GetUnderlyingProperty();
 							NumBytes = UnderlyingProp->ElementSize;
 						}
 
 						// If we're a material property value we won't have PropertyValuePtr
 						if (PropertyValuePtr)
 						{
-							if (FSoftObjectProperty* PropAsSoft = CastField<FSoftObjectProperty>(LeafProperty))
-							{
-								UObject* DefaultObj = PropAsSoft->LoadObjectPropertyValue(PropertyValuePtr);
-								FMemory::Memcpy(DefaultValue.GetData(), (uint8*)&DefaultObj, NumBytes);
-							}
-							else
-							{
 							FMemory::Memcpy(DefaultValue.GetData(), PropertyValuePtr, NumBytes);
-						}
-
 						}
 
 						// If a valid enum value hasn't been specified as default, the default will be the _MAX value
@@ -1237,22 +1188,22 @@ bool UPropertyValue::IsRecordedDataCurrent()
 	const TArray<uint8>& RecordedData = GetRecordedData();
 	TArray<uint8> CurrentData = GetDataFromResolvedObject();
 
-	FFieldClass* PropClass = GetPropertyClass();
+	UClass* PropClass = GetPropertyClass();
 	if (PropClass)
 	{
 		// All string types are pointer/reference types, and need to be
 		// compared carefully
-		if (PropClass->IsChildOf(FNameProperty::StaticClass()))
+		if (PropClass->IsChildOf(UNameProperty::StaticClass()))
 		{
 			FName CurrentFName = *((FName*)CurrentData.GetData());
 			return TempName.IsEqual(CurrentFName);
 		}
-		else if (PropClass->IsChildOf(FStrProperty::StaticClass()))
+		else if (PropClass->IsChildOf(UStrProperty::StaticClass()))
 		{
 			FString CurrentFString = *((FString*)CurrentData.GetData());
 			return TempStr.Equals(CurrentFString);
 		}
-		else if (PropClass->IsChildOf(FTextProperty::StaticClass()))
+		else if (PropClass->IsChildOf(UTextProperty::StaticClass()))
 		{
 			FText CurrentFText = *((FText*)CurrentData.GetData());
 			return TempText.EqualTo(CurrentFText);
@@ -1293,7 +1244,7 @@ FOnPropertyRecorded& UPropertyValue::GetOnPropertyRecorded()
 	return OnPropertyRecorded;
 }
 
-FProperty* UPropertyValue::GetProperty() const
+UProperty* UPropertyValue::GetProperty() const
 {
 	return LeafProperty;
 }
@@ -1313,10 +1264,10 @@ void UPropertyValue::ApplyViaFunctionSetter(UObject* TargetObject)
 		return;
 	}
 
-	FProperty* LastParameter = nullptr;
+	UProperty* LastParameter = nullptr;
 
 	// find the last parameter
-	for ( TFieldIterator<FProperty> It(PropertySetter); It && (It->PropertyFlags&(CPF_Parm|CPF_ReturnParm)) == CPF_Parm; ++It )
+	for ( TFieldIterator<UProperty> It(PropertySetter); It && (It->PropertyFlags&(CPF_Parm|CPF_ReturnParm)) == CPF_Parm; ++It )
 	{
 		LastParameter = *It;
 	}
@@ -1325,9 +1276,9 @@ void UPropertyValue::ApplyViaFunctionSetter(UObject* TargetObject)
 	uint8* Parms = (uint8*)FMemory_Alloca(PropertySetter->ParmsSize);
 	FMemory::Memzero( Parms, PropertySetter->ParmsSize );
 
-	for (TFieldIterator<FProperty> It(PropertySetter); It && It->HasAnyPropertyFlags(CPF_Parm); ++It)
+	for (TFieldIterator<UProperty> It(PropertySetter); It && It->HasAnyPropertyFlags(CPF_Parm); ++It)
 	{
-		FProperty* LocalProp = *It;
+		UProperty* LocalProp = *It;
 		checkSlow(LocalProp);
 		if (!LocalProp->HasAnyPropertyFlags(CPF_ZeroConstructor))
 		{
@@ -1339,13 +1290,13 @@ void UPropertyValue::ApplyViaFunctionSetter(UObject* TargetObject)
 	int32 NumParamsEvaluated = 0;
 	bool bAppliedRecordedData = false;
 
-	FFieldClass* ThisValueClass = GetPropertyClass();
+	UClass* ThisValueClass = GetPropertyClass();
 	int32 ThisValueSize = GetValueSizeInBytes();
 	const TArray<uint8>& RecordedData = GetRecordedData();
 
-	for( TFieldIterator<FProperty> It(PropertySetter); It && It->HasAnyPropertyFlags(CPF_Parm) && !It->HasAnyPropertyFlags(CPF_OutParm|CPF_ReturnParm); ++It, NumParamsEvaluated++ )
+	for( TFieldIterator<UProperty> It(PropertySetter); It && It->HasAnyPropertyFlags(CPF_Parm) && !It->HasAnyPropertyFlags(CPF_OutParm|CPF_ReturnParm); ++It, NumParamsEvaluated++ )
 	{
-		FProperty* PropertyParam = *It;
+		UProperty* PropertyParam = *It;
 		checkSlow(PropertyParam); // Fix static analysis warning
 
 		// Check for a default value
@@ -1364,10 +1315,10 @@ void UPropertyValue::ApplyViaFunctionSetter(UObject* TargetObject)
 		{
 			bool bParamMatchesThisProperty = true;
 
-			if (ThisValueClass->IsChildOf(FStructProperty::StaticClass()))
+			if (ThisValueClass->IsChildOf(UStructProperty::StaticClass()))
 			{
 				UScriptStruct* ThisStruct = GetStructPropertyStruct();
-				UScriptStruct* PropStruct = CastField<FStructProperty>(PropertyParam)->Struct;
+				UScriptStruct* PropStruct = Cast<UStructProperty>(PropertyParam)->Struct;
 
 				bParamMatchesThisProperty = (ThisStruct == PropStruct);
 			}
@@ -1400,7 +1351,7 @@ void UPropertyValue::ApplyViaFunctionSetter(UObject* TargetObject)
 	}
 
 	// Destroy our params
-	for( TFieldIterator<FProperty> It(PropertySetter); It && It->HasAnyPropertyFlags(CPF_Parm); ++It )
+	for( TFieldIterator<UProperty> It(PropertySetter); It && It->HasAnyPropertyFlags(CPF_Parm); ++It )
 	{
 		It->DestroyValue_InContainer(Parms);
 	}
@@ -1444,14 +1395,14 @@ bool UPropertyValue::ResolvePropertiesRecursive(UStruct* ContainerClass, void* C
 		ParentContainerAddress = ContainerAddress;
 	}
 
-	FProperty* Property = FindFProperty<FProperty>(ContainerClass, *Seg.PropertyName);
+	UProperty* Property = FindField<UProperty>(ContainerClass, *Seg.PropertyName);
 	if (Property)
 	{
 		// Not the last link in the chain --> Dig down deeper updating our class/address if we jump an UObjectProp/UStructProp
 		if (SegmentIndex < (CapturedPropSegments.Num()-1))
 		{
 			// Check first to see if this is a simple object (eg. not an array of objects)
-			if (FObjectProperty* ObjectProperty = CastField<FObjectProperty>(Property))
+			if (UObjectProperty* ObjectProperty = Cast<UObjectProperty>(Property))
 			{
 				// If it's an object we need to get the value of the property in the container first before we
 				// can continue, if the object is null we safely stop processing the chain of properties.
@@ -1459,7 +1410,6 @@ bool UPropertyValue::ResolvePropertiesRecursive(UStruct* ContainerClass, void* C
 				{
 					ParentContainerClass = CurrentObject->GetClass();
 					ParentContainerAddress = CurrentObject;
-					ParentContainerObject = CurrentObject;
 
 					return ResolvePropertiesRecursive(CurrentObject->GetClass(), CurrentObject, SegmentIndex + 1);
 				}
@@ -1483,7 +1433,6 @@ bool UPropertyValue::ResolvePropertiesRecursive(UStruct* ContainerClass, void* C
 							{
 								ParentContainerClass = BPNode->ComponentClass;
 								ParentContainerAddress = BPNode->ComponentTemplate;
-								ParentContainerObject = BPNode->ComponentTemplate;
 
 								return ResolvePropertiesRecursive(BPNode->ComponentClass, BPNode->ComponentTemplate, SegmentIndex + 1);
 							}
@@ -1492,7 +1441,7 @@ bool UPropertyValue::ResolvePropertiesRecursive(UStruct* ContainerClass, void* C
 				}
 			}
 			// Check to see if this is a simple weak object property (eg. not an array of weak objects).
-			else if (FWeakObjectProperty* WeakObjectProperty = CastField<FWeakObjectProperty>(Property))
+			else if (UWeakObjectProperty* WeakObjectProperty = Cast<UWeakObjectProperty>(Property))
 			{
 				FWeakObjectPtr WeakObject = WeakObjectProperty->GetPropertyValue_InContainer(ContainerAddress, ArrayIndex);
 
@@ -1502,13 +1451,12 @@ bool UPropertyValue::ResolvePropertiesRecursive(UStruct* ContainerClass, void* C
 				{
 					ParentContainerClass = CurrentObject->GetClass();
 					ParentContainerAddress = CurrentObject;
-					ParentContainerObject = CurrentObject;
 
 					return ResolvePropertiesRecursive(CurrentObject->GetClass(), CurrentObject, SegmentIndex + 1);
 				}
 			}
 			// Check to see if this is a simple soft object property (eg. not an array of soft objects).
-			else if (FSoftObjectProperty* SoftObjectProperty = CastField<FSoftObjectProperty>(Property))
+			else if (USoftObjectProperty* SoftObjectProperty = Cast<USoftObjectProperty>(Property))
 			{
 				FSoftObjectPtr SoftObject = SoftObjectProperty->GetPropertyValue_InContainer(ContainerAddress, ArrayIndex);
 
@@ -1518,7 +1466,6 @@ bool UPropertyValue::ResolvePropertiesRecursive(UStruct* ContainerClass, void* C
 				{
 					ParentContainerClass = CurrentObject->GetClass();
 					ParentContainerAddress = CurrentObject;
-					ParentContainerObject = CurrentObject;
 
 					return ResolvePropertiesRecursive(CurrentObject->GetClass(), CurrentObject, SegmentIndex + 1);
 				}
@@ -1526,7 +1473,7 @@ bool UPropertyValue::ResolvePropertiesRecursive(UStruct* ContainerClass, void* C
 			// Check to see if this is a simple structure (eg. not an array of structures)
 			// Note: We don't actually capture properties *inside* UStructProperties, so this path won't be taken. It is here
 			// if we ever wish to change that in the future
-			else if (FStructProperty* StructProp = CastField<FStructProperty>(Property))
+			else if (UStructProperty* StructProp = Cast<UStructProperty>(Property))
 			{
 				void* StructAddress = StructProp->ContainerPtrToValuePtr<void>(ContainerAddress, ArrayIndex);
 
@@ -1535,7 +1482,7 @@ bool UPropertyValue::ResolvePropertiesRecursive(UStruct* ContainerClass, void* C
 
 				return ResolvePropertiesRecursive(StructProp->Struct, StructAddress, SegmentIndex + 1);
 			}
-			else if (FArrayProperty* ArrayProp = CastField<FArrayProperty>(Property))
+			else if (UArrayProperty* ArrayProp = Cast<UArrayProperty>(Property))
 			{
 				// We have to replicate these cases in here because we need to access the inner properties
 				// with the FScriptArrayHelper. If we do another recursive call and try parsing the inner
@@ -1568,7 +1515,7 @@ bool UPropertyValue::ResolvePropertiesRecursive(UStruct* ContainerClass, void* C
 					return true;
 				}
 
-				if ( FStructProperty* ArrayOfStructsProp = CastField<FStructProperty>(ArrayProp->Inner) )
+				if ( UStructProperty* ArrayOfStructsProp = Cast<UStructProperty>(ArrayProp->Inner) )
 				{
 					void* StructAddress = static_cast<void*>(ArrayHelper.GetRawPtr(InnerArrayIndex));
 
@@ -1578,7 +1525,7 @@ bool UPropertyValue::ResolvePropertiesRecursive(UStruct* ContainerClass, void* C
 					// The next link in the chain is just this array's inner. Let's just skip it instead
 					return ResolvePropertiesRecursive(ArrayOfStructsProp->Struct, StructAddress, SegmentIndex + 2);
 				}
-				if ( FObjectProperty* InnerObjectProperty = CastField<FObjectProperty>(ArrayProp->Inner) )
+				if ( UObjectProperty* InnerObjectProperty = Cast<UObjectProperty>(ArrayProp->Inner) )
 				{
 					// If we make it in here we know it's a property inside a component as we don't
 					// step into generic UObject properties. We also know its a component of our actor
@@ -1598,7 +1545,6 @@ bool UPropertyValue::ResolvePropertiesRecursive(UStruct* ContainerClass, void* C
 							{
 								ParentContainerClass = CurrentObject->GetClass();
 								ParentContainerAddress =  CurrentObject;
-								ParentContainerObject = CurrentObject;
 
 								// The next link in the chain is just this array's inner. Let's just skip it instead
 								return ResolvePropertiesRecursive(CurrentObject->GetClass(), CurrentObject, SegmentIndex + 2);
@@ -1622,7 +1568,6 @@ bool UPropertyValue::ResolvePropertiesRecursive(UStruct* ContainerClass, void* C
 								{
 									ParentContainerClass = CurrentObject->GetClass();
 									ParentContainerAddress =  CurrentObject;
-									ParentContainerObject = CurrentObject;
 									NextSeg.ComponentName = CurrentObject->GetName();
 									return true;
 								}
@@ -1646,7 +1591,6 @@ bool UPropertyValue::ResolvePropertiesRecursive(UStruct* ContainerClass, void* C
 								{
 									ParentContainerClass = CurrentObject->GetClass();
 									ParentContainerAddress =  CurrentObject;
-									ParentContainerObject = CurrentObject;
 									NextSeg.ComponentName = CurrentObject->GetName();
 									return true;
 								}
@@ -1655,11 +1599,11 @@ bool UPropertyValue::ResolvePropertiesRecursive(UStruct* ContainerClass, void* C
 					}
 				}
 			}
-			else if( FSetProperty* SetProperty = CastField<FSetProperty>(Property) )
+			else if( USetProperty* SetProperty = Cast<USetProperty>(Property) )
 			{
 				// TODO: we dont support set properties yet
 			}
-			else if( FMapProperty* MapProperty = CastField<FMapProperty>(Property) )
+			else if( UMapProperty* MapProperty = Cast<UMapProperty>(Property) )
 			{
 				// TODO: we dont support map properties yet
 			}
@@ -1737,5 +1681,3 @@ void UPropertyValueVisibility::Serialize(FArchive& Ar)
 }
 
 #undef LOCTEXT_NAMESPACE
-
-#include "UObject/DefineUPropertyMacros.h"

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -32,11 +32,6 @@ public:
 	 * @param InContentWidget The new content widget to set.
 	 */
 	virtual void SetContentWidget( const TSharedRef<SWidget>& InContentWidget ) = 0;
-
-	/**
-	* Resets the tooltip to its default without a content widget.
-	*/
-	virtual void ResetContentWidget () { }
 
 	/**
 	 * Checks whether this tool tip has no content to display right now.

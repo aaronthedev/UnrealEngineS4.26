@@ -1,18 +1,16 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MagicLeapCameraPlugin.h"
 #include "Async/Async.h"
 #include "Lumin/CAPIShims/LuminAPI.h"
-#include "Stats/Stats.h"
 
 DEFINE_LOG_CATEGORY(LogMagicLeapCamera);
 
 FMagicLeapCameraPlugin::FMagicLeapCameraPlugin()
 : UserCount(0)
-, CaptureState(ECaptureState::Idle)
-, MinVidCaptureTimer(0.0f)
-, AppEventHandler({ EMagicLeapPrivilege::CameraCapture, EMagicLeapPrivilege::AudioCaptureMic, EMagicLeapPrivilege::VoiceInput })
 , Runnable(nullptr)
+, CurrentTaskType(FCameraTask::EType::None)
+, PrevTaskType(FCameraTask::EType::None)
 {
 }
 
@@ -43,9 +41,6 @@ void FMagicLeapCameraPlugin::ShutdownModule()
 
 bool FMagicLeapCameraPlugin::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FMagicLeapCameraPlugin_Tick);
-
-	MinVidCaptureTimer -= DeltaTime;
 	FCameraTask CompletedTask;
 	if (Runnable->TryGetCompletedTask(CompletedTask))
 	{
@@ -56,10 +51,11 @@ bool FMagicLeapCameraPlugin::Tick(float DeltaTime)
 			if (OnCameraConnect.IsBound())
 			{
 				OnCameraConnect.ExecuteIfBound(CompletedTask.bSuccess);
-				// Only clear CaptureState if connect was manually called
+				// Only clear CurrentTaskType if connect was manually called
 				// (otherwise it was auto-called from within the runnable and the actual
 				// current task is still in progress).
-				CaptureState = ECaptureState::Idle;
+				PrevTaskType = CurrentTaskType;
+				CurrentTaskType = FCameraTask::EType::None;
 			}
 		}
 		break;
@@ -67,36 +63,36 @@ bool FMagicLeapCameraPlugin::Tick(float DeltaTime)
 		case FCameraTask::EType::Disconnect:
 		{
 			OnCameraDisconnect.ExecuteIfBound(CompletedTask.bSuccess);
-			CaptureState = ECaptureState::Idle;
+			PrevTaskType = CurrentTaskType;
+			CurrentTaskType = FCameraTask::EType::None;
 		}
 		break;
 
 		case FCameraTask::EType::ImageToFile:
 		{
 			OnCaptureImgToFile.Broadcast(CompletedTask.bSuccess, CompletedTask.FilePath);
-			CaptureState = ECaptureState::Idle;
+			PrevTaskType = CurrentTaskType;
+			CurrentTaskType = FCameraTask::EType::None;
 		}
 		break;
 
 		case FCameraTask::EType::ImageToTexture:
 		{
 			OnCaptureImgToTexture.Broadcast(CompletedTask.bSuccess, CompletedTask.Texture);
-			CaptureState = ECaptureState::Idle;
+			PrevTaskType = CurrentTaskType;
+			CurrentTaskType = FCameraTask::EType::None;
 		}
 		break;
 
 		case FCameraTask::EType::StartVideoToFile:
 		{
 			OnStartRecording.Broadcast(CompletedTask.bSuccess);
-			// do not reset CaptureState if start recording is successful
+			PrevTaskType = CurrentTaskType;
+			// do not reset CurrentTaskType if start recording is successful
 			// as this constitutes an ongoing capture state
 			if (!CompletedTask.bSuccess)
 			{
-				CaptureState = ECaptureState::Idle;
-			}
-			else
-			{
-				CaptureState = ECaptureState::Capturing;
+				CurrentTaskType = FCameraTask::EType::None;
 			}
 		}
 		break;
@@ -104,12 +100,14 @@ bool FMagicLeapCameraPlugin::Tick(float DeltaTime)
 		case FCameraTask::EType::StopVideoToFile:
 		{
 			OnStopRecording.Broadcast(CompletedTask.bSuccess, CompletedTask.FilePath);
-			CaptureState = ECaptureState::Idle;
+			PrevTaskType = CurrentTaskType;
+			CurrentTaskType = FCameraTask::EType::None;
 		}
 		break;
 
 		case FCameraTask::EType::Log:
 		{
+			UE_LOG(LogMagicLeapCamera, Log, TEXT("%s"), *CompletedTask.Log);
 			OnLogMessage.Broadcast(FString::Printf(TEXT("<br>%s"), *CompletedTask.Log));
 		}
 		break;
@@ -187,9 +185,6 @@ bool FMagicLeapCameraPlugin::StartRecordingAsync(const FMagicLeapCameraStartReco
 {
 	if (TryPushNewCaptureTask(FCameraTask::EType::StartVideoToFile))
 	{
-		static constexpr float MinVidCaptureDuration = 2.0f;
-		MinVidCaptureTimer = MinVidCaptureDuration;
-		CaptureState = ECaptureState::BeginningCapture;
 		OnStartRecording = ResultDelegate;
 		return true;
 	}
@@ -199,9 +194,8 @@ bool FMagicLeapCameraPlugin::StartRecordingAsync(const FMagicLeapCameraStartReco
 
 bool FMagicLeapCameraPlugin::StopRecordingAsync(const FMagicLeapCameraStopRecordingMulti& ResultDelegate)
 {
-	if (MinVidCaptureTimer < 0.0f && TryPushNewCaptureTask(FCameraTask::EType::StopVideoToFile))
+	if (TryPushNewCaptureTask(FCameraTask::EType::StopVideoToFile))
 	{
-		CaptureState = ECaptureState::EndingCapture;
 		OnStopRecording = ResultDelegate;
 		return true;
 	}
@@ -217,7 +211,7 @@ bool FMagicLeapCameraPlugin::SetLogDelegate(const FMagicLeapCameraLogMessageMult
 
 bool FMagicLeapCameraPlugin::IsCapturing() const
 {
-	return CaptureState != ECaptureState::Idle;
+	return CurrentTaskType != FCameraTask::EType::None;
 }
 
 bool FMagicLeapCameraPlugin::TryPushNewCaptureTask(FCameraTask::EType InTaskType)
@@ -234,27 +228,38 @@ bool FMagicLeapCameraPlugin::TryPushNewCaptureTask(FCameraTask::EType InTaskType
 
 	case FCameraTask::EType::Connect:
 	{
-		bCanPushTask = CaptureState == ECaptureState::Idle || CaptureState == ECaptureState::Disconnecting;
+		bCanPushTask = CurrentTaskType == FCameraTask::EType::None || CurrentTaskType == FCameraTask::EType::Disconnect;
 	}
 	break;
 
 	case FCameraTask::EType::Disconnect:
 	{
-		bCanPushTask = CaptureState != ECaptureState::Disconnecting;
+		bCanPushTask = CurrentTaskType != FCameraTask::EType::Disconnect;
 	}
 	break;
 
 	case FCameraTask::EType::ImageToFile:
+	{
+		bCanPushTask = CurrentTaskType == FCameraTask::EType::None;
+	}
+	break;
+
 	case FCameraTask::EType::ImageToTexture:
+	{
+		bCanPushTask = CurrentTaskType == FCameraTask::EType::None;
+	}
+	break;
+
 	case FCameraTask::EType::StartVideoToFile:
 	{
-		bCanPushTask = CaptureState == ECaptureState::Idle;
+		bCanPushTask = CurrentTaskType == FCameraTask::EType::None && PrevTaskType != FCameraTask::EType::StartVideoToFile;
 	}
 	break;
 
 	case FCameraTask::EType::StopVideoToFile:
 	{
-		bCanPushTask = CaptureState == ECaptureState::Capturing;
+		bCanPushTask = PrevTaskType != FCameraTask::EType::StopVideoToFile &&
+			(CurrentTaskType == FCameraTask::EType::None || CurrentTaskType == FCameraTask::EType::StartVideoToFile);
 	}
 	break;
 
@@ -267,6 +272,11 @@ bool FMagicLeapCameraPlugin::TryPushNewCaptureTask(FCameraTask::EType InTaskType
 
 	if (bCanPushTask)
 	{
+		if (InTaskType != FCameraTask::EType::Log)
+		{
+			CurrentTaskType = InTaskType;
+		}
+
 		Runnable->PushNewCaptureTask(InTaskType);
 		return true;
 	}
@@ -277,25 +287,10 @@ bool FMagicLeapCameraPlugin::TryPushNewCaptureTask(FCameraTask::EType InTaskType
 void FMagicLeapCameraPlugin::OnAppPause()
 {
 	// Cancel the current video recording (if one is active).
-	if (CaptureState == ECaptureState::BeginningCapture || CaptureState == ECaptureState::Capturing)
+	if (CurrentTaskType == FCameraTask::EType::StartVideoToFile)
 	{
-		CaptureState = ECaptureState::Idle;
+		PrevTaskType = CurrentTaskType;
+		CurrentTaskType = FCameraTask::EType::StopVideoToFile;
 		// The runnable will take care of terminating the video on it's own.
 	}
-}
-
-const TCHAR* FMagicLeapCameraPlugin::CaptureStateToString(ECaptureState InCaptureState)
-{
-	const TCHAR* CaptureStateString = TEXT("Invalid");
-	switch (InCaptureState)
-	{
-		case ECaptureState::Idle: CaptureStateString = TEXT("Idle"); break;
-		case ECaptureState::Connecting: CaptureStateString = TEXT("Connecting"); break;
-		case ECaptureState::Disconnecting: CaptureStateString = TEXT("Disconnecting"); break;
-		case ECaptureState::BeginningCapture: CaptureStateString = TEXT("BeginningCapture"); break;
-		case ECaptureState::Capturing: CaptureStateString = TEXT("Capturing"); break;
-		case ECaptureState::EndingCapture: CaptureStateString = TEXT("EndingCapture"); break;
-	}
-
-	return CaptureStateString;
 }

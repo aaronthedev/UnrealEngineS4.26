@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,7 +7,7 @@
 #include "Misc/Optional.h"
 #include "Misc/Timecode.h"
 #include "Misc/Timespan.h"
-#include "IMediaTimeSource.h"
+
 
 /**
  * Type of text overlay samples.
@@ -62,7 +62,7 @@ public:
 	 *
 	 * @return Sample time.
 	 */
-	virtual FMediaTimeStamp GetTime() const = 0;
+	virtual FTimespan GetTime() const = 0;
 
 	/**
 	 * Get the sample timecode if available.

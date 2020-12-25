@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System;
@@ -47,7 +47,8 @@ public class Core : ModuleRules
 			DynamicallyLoadedModuleNames.Add("DirectoryWatcher");
 		}
 
-		if (Target.Platform.IsInGroup(UnrealPlatformGroup.Windows))
+		if ((Target.Platform == UnrealTargetPlatform.Win64) ||
+			(Target.Platform == UnrealTargetPlatform.Win32))
 		{
 			AddEngineThirdPartyPrivateStaticDependencies(Target,
 				"zlib");
@@ -57,10 +58,7 @@ public class Core : ModuleRules
 				"IntelVTune"
 				);
 
-			AddEngineThirdPartyPrivateStaticDependencies(Target,
-				"mimalloc");
-
-			if(Target.Platform != UnrealTargetPlatform.Win32 && Target.WindowsPlatform.bUseBundledDbgHelp)
+			if(Target.Platform == UnrealTargetPlatform.Win64 && Target.WindowsPlatform.bUseBundledDbgHelp)
 			{
 				PublicDelayLoadDLLs.Add("DBGHELP.DLL");
 				PrivateDefinitions.Add("USE_BUNDLED_DBGHELP=1");
@@ -70,7 +68,6 @@ public class Core : ModuleRules
 			{
 				PrivateDefinitions.Add("USE_BUNDLED_DBGHELP=0");
 			}
-			PrivateDefinitions.Add("YIELD_BETWEEN_TASKS=1");
 		}
 		else if ((Target.Platform == UnrealTargetPlatform.HoloLens))
 		{
@@ -95,8 +92,7 @@ public class Core : ModuleRules
 			
 			if (Target.bBuildEditor == true)
 			{
-				string SDKROOT = Utils.RunLocalProcessAndReturnStdOut("/usr/bin/xcrun", "--sdk macosx --show-sdk-path");
-				PublicAdditionalLibraries.Add(SDKROOT + "/System/Library/PrivateFrameworks/MultitouchSupport.framework/Versions/Current/MultitouchSupport.tbd");
+				PublicAdditionalLibraries.Add("/System/Library/PrivateFrameworks/MultitouchSupport.framework/Versions/Current/MultitouchSupport");
 			}
 		}
 		else if (Target.Platform == UnrealTargetPlatform.IOS || Target.Platform == UnrealTargetPlatform.TVOS)
@@ -128,8 +124,7 @@ public class Core : ModuleRules
 		{
 			AddEngineThirdPartyPrivateStaticDependencies(Target,
 				"cxademangle",
-				"zlib",
-				"libunwind"
+				"zlib"
 				);
 		}
 		else if (Target.IsInPlatformGroup(UnrealPlatformGroup.Unix))
@@ -160,10 +155,10 @@ public class Core : ModuleRules
 
 		
 		// On Windows platform, VSPerfExternalProfiler.cpp needs access to "VSPerf.h".  This header is included with Visual Studio, but it's not in a standard include path.
-		if(Target.Platform.IsInGroup(UnrealPlatformGroup.Windows))
+		if( Target.Platform == UnrealTargetPlatform.Win32 || Target.Platform == UnrealTargetPlatform.Win64 )
 		{
 			var VisualStudioVersionNumber = "11.0";
-			var SubFolderName = ( Target.Platform == UnrealTargetPlatform.Win32 ) ? "PerfSDK" : "x64/PerfSDK";
+			var SubFolderName = ( Target.Platform == UnrealTargetPlatform.Win64 ) ? "x64/PerfSDK" : "PerfSDK";
 
 			string PerfIncludeDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), String.Format("Microsoft Visual Studio {0}/Team Tools/Performance Tools/{1}", VisualStudioVersionNumber, SubFolderName));
 
@@ -183,7 +178,10 @@ public class Core : ModuleRules
 			PublicDefinitions.Add("WITH_VS_PERF_PROFILER=0");
 		}
 
-        if (Target.bWithDirectXMath && (Target.Platform == UnrealTargetPlatform.Win64 || Target.Platform == UnrealTargetPlatform.Win32))
+		WhitelistRestrictedFolders.Add("Private/NoRedist");
+
+        if (Target.Platform == UnrealTargetPlatform.XboxOne ||
+            (Target.bWithDirectXMath && (Target.Platform == UnrealTargetPlatform.Win64 || Target.Platform == UnrealTargetPlatform.Win32)))
         {
             PublicDefinitions.Add("WITH_DIRECTXMATH=1");
         }
@@ -224,7 +222,5 @@ public class Core : ModuleRules
 		PrivateDefinitions.Add("PLATFORM_COMPILER_OPTIMIZATION_LTCG=" + (Target.bAllowLTCG ? "1" : "0"));
 		PrivateDefinitions.Add("PLATFORM_COMPILER_OPTIMIZATION_PG=" + (Target.bPGOOptimize ? "1" : "0"));
 		PrivateDefinitions.Add("PLATFORM_COMPILER_OPTIMIZATION_PG_PROFILING=" + (Target.bPGOProfile ? "1" : "0"));
-
-		UnsafeTypeCastWarningLevel = WarningLevel.Warning;
-	}
+    }
 }

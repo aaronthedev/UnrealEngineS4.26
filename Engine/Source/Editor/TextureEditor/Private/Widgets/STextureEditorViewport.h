@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -103,12 +103,6 @@ private:
 
 	// Callback for clicking an item in the 'Zoom' menu.
 	void HandleZoomMenuEntryClicked( double ZoomValue );
-
-	// Callback for clicking the 'Fill' item in the 'Zoom' menu.
-	void HandleZoomMenuFillClicked();
-
-	// Callback for setting the checked state of the 'Fill' item in the 'Zoom' menu.
-	bool IsZoomMenuFillChecked() const;
 
 	// Callback for clicking the 'Fit' item in the 'Zoom' menu.
 	void HandleZoomMenuFitClicked();

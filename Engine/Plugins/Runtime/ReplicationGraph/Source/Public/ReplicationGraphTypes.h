@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,10 +12,8 @@
 #include "UObject/UObjectHash.h"
 #include "ProfilingDebugging/CsvProfiler.h"
 #include "Engine/NetConnection.h"
-#include "ReplicationGraphTypes.generated.h"
 
 class AActor;
-class AController;
 class UNetConnection;
 class UNetReplicationGraphConnection;
 class UReplicationGraph;
@@ -73,7 +71,6 @@ enum class EActorRepListTypeFlags : uint8
 {
 	Default = 0,
 	FastShared = 1,
-	Max, // Always keep last
 };
 
 // Tests if an actor is valid for replication: not pending kill, etc. Says nothing about wanting to replicate or should replicate, etc.
@@ -297,17 +294,6 @@ struct REPLICATIONGRAPH_API FActorRepListRefView : public TActorRepListViewBase<
 		return false;
 	}
 
-	bool RemoveFast(const FActorRepListType& ElementToRemove)
-	{
-		int32 idx = IndexOf(ElementToRemove);
-		if (idx >= 0)
-		{
-			RemoveAtSwap(idx);
-			return true;
-		}
-		return false;
-	}
-
 	void RemoveAtSwap(int32 idx)
 	{
 		repCheck(RepList && Num() > idx);
@@ -371,24 +357,16 @@ REPLICATIONGRAPH_API void PreAllocateRepList(int32 ListSize, int32 NumLists);
 // --------------------------------------------------------------------------------------------------------------------------------------------
 
 /** Per-Class actor data about how the actor replicates */
-USTRUCT()
 struct FClassReplicationInfo
 {
-	GENERATED_BODY()
-
-	UPROPERTY()
+	FClassReplicationInfo() { }
 	float DistancePriorityScale = 1.f;
-	UPROPERTY()
 	float StarvationPriorityScale = 1.f;
-	UPROPERTY()
 	float AccumulatedNetPriorityBias = 0.f;
 	
-	UPROPERTY()
-	uint16 ReplicationPeriodFrame = 1;
-	UPROPERTY()
-	uint16 FastPath_ReplicationPeriodFrame = 1;
-	UPROPERTY()
-	uint16 ActorChannelFrameTimeout = 4;
+	uint8 ReplicationPeriodFrame = 1;
+	uint8 FastPath_ReplicationPeriodFrame = 1;
+	uint8 ActorChannelFrameTimeout = 4;
 
 	TFunction<bool(AActor*)> FastSharedReplicationFunc = nullptr;
 	FName FastSharedReplicationFuncName = NAME_None;
@@ -440,9 +418,7 @@ struct FClassReplicationInfo
 
 private:
 
-	UPROPERTY()
 	float CullDistance = 0.0f;
-	UPROPERTY()
 	float CullDistanceSquared = 0.f;
 
 };
@@ -451,6 +427,7 @@ struct FGlobalActorReplicationInfo;
 
 struct FFastSharedReplicationInfo
 {
+	// LastBuiltFrameNum = 0;
 	uint32 LastAttemptBuildFrameNum = 0; // the last frame we called FastSharedReplicationFunc on
 	uint32 LastBunchBuildFrameNum = 0;	// the last frame a new bunch was actually created
 	FOutBunch Bunch;
@@ -494,9 +471,6 @@ struct FGlobalActorReplicationInfo
 	/** Mirrors AActor::NetDormancy > DORM_Awake */
 	bool bWantsToBeDormant = false;
 
-	/** True if we should swap the actor role and remote role before calling ReplicateActor() */
-	bool bSwapRolesOnReplicate = false;
-
 	/** Class default mirrors: state that is initialized directly from class defaults (and can be later changed on a per-actor basis) */
 	FClassReplicationInfo Settings;
 	
@@ -523,17 +497,16 @@ struct FGlobalActorReplicationInfo
 		}
 	}
 
-	typedef TArray<FActorRepListType> FDependantListType;
-	const FGlobalActorReplicationInfo::FDependantListType& GetDependentActorList() { return DependentActorList; }
+	const FActorRepListRefView& GetDependentActorList() { return DependentActorList; }
 
 	friend struct FGlobalActorReplicationInfoMap;
 
 private:
 	/** When this actor replicates, we replicate these actors immediately afterwards (they are not gathered/prioritized/etc) */
-	FDependantListType DependentActorList;
+	FActorRepListRefView DependentActorList;
 
 	/** When this actor is added to the dependent list of a parent, track the parent here */
-	FDependantListType ParentActorList;
+	FActorRepListRefView ParentActorList;
 };
 
 /** Templatd struct for mapping UClasses to some data type. The main things this provides is that if a UClass* was not explicitly added, it will climb the class heirachy and find the best match (and then store this for faster lookup next time) */
@@ -670,8 +643,6 @@ struct FGlobalActorReplicationInfoMap
 			return *Ptr->Get();
 		}
 
-		ensureMsgf(IsActorValidForReplication(Actor), TEXT("This obj %s is pending to kill, storing this data will generate stale data in the map."), *GetPathNameSafe(Actor));
-
 		// We need to add data for this actor
 		FClassReplicationInfo& ClassInfo = GetClassInfo( GetActorRepListTypeClass(Actor) );
 
@@ -689,8 +660,6 @@ struct FGlobalActorReplicationInfoMap
 		{
 			return *Ptr->Get();
 		}
-
-		ensureMsgf(IsActorValidForReplication(Actor), TEXT("This obj %s is pending to kill, storing this data will generate stale data in the map."), *GetPathNameSafe(Actor));
 
 		bWasCreated = true;
 
@@ -720,34 +689,28 @@ struct FGlobalActorReplicationInfoMap
 	}
 
 	/** Removes actor data from map */
-	int32 Remove(const FActorRepListType& RemovedActor)
+	int32 Remove(const FActorRepListType& Actor)
 	{
-		// Clean the references to the removed actor from his dependency chain.
-		if (FGlobalActorReplicationInfo* RemovedActorInfo = Find(RemovedActor))
+		if (FGlobalActorReplicationInfo* ActorInfo = Find(Actor))
 		{
-			// Remove child dependents
-			for (AActor* ChildActor : RemovedActorInfo->DependentActorList)
+			if (ActorInfo->DependentActorList.IsValid())
 			{
-				if (FGlobalActorReplicationInfo* ChildInfo = Find(ChildActor))
+				for (AActor* ChildActor : ActorInfo->DependentActorList)
 				{
-					ChildInfo->ParentActorList.RemoveSingleSwap(RemovedActor);
+					RemoveDependentActor(Actor, ChildActor);
 				}
 			}
 
-			// Remove parent dependents
-			for (AActor* ParentActor : RemovedActorInfo->ParentActorList)
+			if (ActorInfo->ParentActorList.IsValid())
 			{
-				if (FGlobalActorReplicationInfo* ParentInfo = Find(ParentActor))
+				for (AActor* ParentActor : ActorInfo->ParentActorList)
 				{
-					ParentInfo->DependentActorList.RemoveSingleSwap(RemovedActor);
+					RemoveDependentActor(ParentActor, Actor);
 				}
 			}
-
-			RemovedActorInfo->DependentActorList.Reset();
-			RemovedActorInfo->ParentActorList.Reset();
 		}
 
-		return ActorMap.Remove(RemovedActor);
+		return ActorMap.Remove(Actor);
 	}
 
 	/** Returns ClassInfo for a given class. */
@@ -793,12 +756,14 @@ struct FGlobalActorReplicationInfoMap
 		{
 			if (FGlobalActorReplicationInfo* ParentInfo = Find(Parent))
 			{
-				ParentInfo->DependentActorList.RemoveSingleSwap(Child);
+				ParentInfo->DependentActorList.PrepareForWrite();
+				ParentInfo->DependentActorList.Remove(Child);
 			}
 
 			if (FGlobalActorReplicationInfo* ChildInfo = Find(Child))
 			{
-				ChildInfo->ParentActorList.RemoveSingleSwap(Parent);
+				ChildInfo->ParentActorList.PrepareForWrite();
+				ChildInfo->ParentActorList.Remove(Parent);
 			}
 		}
 	}
@@ -811,25 +776,33 @@ struct FGlobalActorReplicationInfoMap
 			return;
 		}
 		
-		// Remove this actor from all his parents
-		for (FActorRepListType ParentActor : MainActorInfo->ParentActorList)
+		if (MainActorInfo->ParentActorList.IsValid())
 		{
-			if (FGlobalActorReplicationInfo* ParentInfo = Find(ParentActor))
+			// Remove this actor from all his parents
+			for (FActorRepListType ParentActor : MainActorInfo->ParentActorList)
 			{
-				ParentInfo->DependentActorList.RemoveSingleSwap(MainActor);
+				if (FGlobalActorReplicationInfo* ParentInfo = Find(ParentActor))
+				{
+					ParentInfo->DependentActorList.PrepareForWrite();
+					ParentInfo->DependentActorList.Remove(MainActor);
+				}
 			}
+			MainActorInfo->ParentActorList.Reset();
 		}
-		MainActorInfo->ParentActorList.Reset();
 
-        // Remove all dependant childs from this actor
-		for (FActorRepListType ChildActor : MainActorInfo->DependentActorList)
+		if (MainActorInfo->DependentActorList.IsValid())
 		{
-			if (FGlobalActorReplicationInfo* ChildInfo = Find(ChildActor))
+            // Remove all dependant childs from this actor
+			for (FActorRepListType ChildActor : MainActorInfo->DependentActorList)
 			{
-				ChildInfo->ParentActorList.RemoveSingleSwap(MainActor);
+				if (FGlobalActorReplicationInfo* ChildInfo = Find(ChildActor))
+				{
+					ChildInfo->ParentActorList.PrepareForWrite();
+					ChildInfo->ParentActorList.Remove(MainActor);
+				}
 			}
+			MainActorInfo->DependentActorList.Reset();
 		}
-		MainActorInfo->DependentActorList.Reset();
 	}
 
 private:
@@ -889,15 +862,12 @@ public:
 	/** Default replication */
 	uint32	NextReplicationFrameNum = 0;	/** The next frame we are allowed to replicate on */
 	uint32	LastRepFrameNum = 0;			/** The last frame that this actor replicated on to this connection */
+	uint8	ReplicationPeriodFrame = 1;		/** Min frames that have to pass between subsequent calls to ReplicateActor */
 
 	/** FastPath versions of the above */
 	uint32	FastPath_NextReplicationFrameNum = 0;
 	uint32	FastPath_LastRepFrameNum = 0;
-
-	/** Min frames that have to pass between subsequent calls to ReplicateActor */
-	uint16	ReplicationPeriodFrame = 1;		
-	uint16	FastPath_ReplicationPeriodFrame = 1;
-	
+	uint8	FastPath_ReplicationPeriodFrame = 1;
 
 	/** The frame num that we will close the actor channel. This will get updated/pushed anytime the actor replicates based on FGlobalActorReplicationInfo::ActorChannelFrameTimeout  */
 	uint32 ActorChannelCloseFrameNum = 0;
@@ -977,12 +947,6 @@ struct FPerConnectionActorInfoMap
 	FORCEINLINE TMap<UActorChannel*, TSharedPtr<FConnectionReplicationActorInfo>>::TIterator CreateChannelIterator()
 	{
 		return ChannelMap.CreateIterator();
-	}
-
-	void ResetActorMap()
-	{
-		ActorMap.Reset();
-		ChannelMap.Reset();
 	}
 
 	int32 Num() const { return ActorMap.Num(); }
@@ -1164,36 +1128,21 @@ struct REPLICATIONGRAPH_API FGatheredReplicationActorLists
 		repCheck(List.IsValid());
 		if (List.Num() > 0)
 		{
-			ReplicationLists[(uint32)Flags].Emplace(FActorRepListRawView(List));
+
+			OutReplicationLists.FindOrAdd(Flags).Emplace(FActorRepListRawView(List)); 
 			CachedNum++;
 		}
 	}
 
-	FORCEINLINE void Reset()
-	{ 
-		for (uint32 i = (uint32)EActorRepListTypeFlags::Default; i < (uint32)EActorRepListTypeFlags::Max; ++i)
-		{
-			ReplicationLists[i].Reset();
-		}
-		CachedNum=0; 
-	}
-	FORCEINLINE int32 NumLists() const 
-	{ 
-		return CachedNum; 
-	}
+	FORCEINLINE void Reset() { OutReplicationLists.Reset(); CachedNum =0; }
+	FORCEINLINE int32 NumLists() const { return CachedNum; }
 	
-	FORCEINLINE TArray< FActorRepListRawView>& GetLists(EActorRepListTypeFlags ListFlags)
-	{ 
-		return ReplicationLists[(uint32)ListFlags];
-	}
-	FORCEINLINE bool ContainsLists(EActorRepListTypeFlags Flags) 
-	{ 
-		return ReplicationLists[(uint32)Flags].Num() > 0;
-	}
+	FORCEINLINE TArray< FActorRepListRawView>& GetLists(EActorRepListTypeFlags ListFlags) { return OutReplicationLists.FindOrAdd(ListFlags); }
+	FORCEINLINE bool ContainsLists(EActorRepListTypeFlags Flags) { return OutReplicationLists.Contains(Flags); }
 	
 private:
 
-	TStaticArray< TArray<FActorRepListRawView>, (uint32)EActorRepListTypeFlags::Max > ReplicationLists;
+	TMap<EActorRepListTypeFlags, TArray< FActorRepListRawView> > OutReplicationLists;
 	int32 CachedNum = 0;
 };
 
@@ -1213,17 +1162,21 @@ typedef TArray<FNetViewer, FReplicationGraphConnectionsAllocator> FNetViewerArra
 // Parameter structure for what we actually pass down during the Gather phase.
 struct FConnectionGatherActorListParameters
 {
-	UE_DEPRECATED(4.26, "Please use the constructor that takes a viewer array.")
 	FConnectionGatherActorListParameters(FNetViewer& InViewer, UNetReplicationGraphConnection& InConnectionManager, TSet<FName>& InClientVisibleLevelNamesRef, uint32 InReplicationFrameNum, FGatheredReplicationActorLists& InOutGatheredReplicationLists)
-		: ConnectionManager(InConnectionManager), ReplicationFrameNum(InReplicationFrameNum), OutGatheredReplicationLists(InOutGatheredReplicationLists), ClientVisibleLevelNamesRef(InClientVisibleLevelNamesRef)
+		: Viewer(InViewer), ConnectionManager(InConnectionManager), ReplicationFrameNum(InReplicationFrameNum), OutGatheredReplicationLists(InOutGatheredReplicationLists), ClientVisibleLevelNamesRef(InClientVisibleLevelNamesRef)
 	{
-		Viewers.Emplace(InViewer);
+		Viewers.Add(InViewer);
 	}
 
 	FConnectionGatherActorListParameters(FNetViewerArray& InViewers, UNetReplicationGraphConnection& InConnectionManager, TSet<FName>& InClientVisibleLevelNamesRef, uint32 InReplicationFrameNum, FGatheredReplicationActorLists& InOutGatheredReplicationLists)
-		: Viewers(InViewers), ConnectionManager(InConnectionManager), ReplicationFrameNum(InReplicationFrameNum), OutGatheredReplicationLists(InOutGatheredReplicationLists), ClientVisibleLevelNamesRef(InClientVisibleLevelNamesRef)
+		: Viewer(InViewers[0]), Viewers(InViewers), ConnectionManager(InConnectionManager), ReplicationFrameNum(InReplicationFrameNum), OutGatheredReplicationLists(InOutGatheredReplicationLists), ClientVisibleLevelNamesRef(InClientVisibleLevelNamesRef)
 	{
 	}
+
+
+	/** In: The Data the nodes have to work with */
+	UE_DEPRECATED(4.23, "Use the viewer arrays for support for subconnections")
+	FNetViewer& Viewer;
 
 	FNetViewerArray Viewers;
 	UNetReplicationGraphConnection& ConnectionManager;
@@ -1326,7 +1279,7 @@ struct FReplicationGraphDebugInfo
 	void Log(const FString& Str) { Ar.Logf(TEXT("%s%s"), *CurrentIndentString, *Str); }
 
 	void PushIndent() { CurrentIndentString += IndentString; }
-	void PopIndent() { CurrentIndentString.LeftChopInline(IndentString.Len(), false); }
+	void PopIndent() { CurrentIndentString = CurrentIndentString.LeftChop(IndentString.Len()); }
 };
 
 REPLICATIONGRAPH_API void LogActorRepList(FReplicationGraphDebugInfo& DebugInfo, FString Prefix, const FActorRepListRefView& List);
@@ -1440,15 +1393,13 @@ struct FReplicationGraphCSVTracker
 		ImplicitClassTracker.Set(BaseActorClass, NewData);
 	}
 
-	/** Returns true when the level data is created for the first time */
-	bool VisibleLevelConnectionAdded(FName LevelName)
+	void VisibleLevelConnectionAdded(FName LevelName)
 	{
 #if REPGRAPH_CSV_TRACKER
 		FVisibleLevelData* LevelData = VisibleLevelConnectionTracker.FindByKey(LevelName);
 		if (LevelData)
 		{
 			LevelData->NbConnections++;
-			return false;
 		}
 		else
 		{
@@ -1456,10 +1407,8 @@ struct FReplicationGraphCSVTracker
 			VisibleLevelData.LevelName = LevelName;
 			VisibleLevelData.NbConnections = 1;
 			VisibleLevelConnectionTracker.Add(VisibleLevelData);
-			return true;
 		}
 #endif
-		return false;
 	}
 
 	void VisibleLevelConnectionRemoved(FName LevelName)
@@ -1497,6 +1446,7 @@ struct FReplicationGraphCSVTracker
 		}
 #endif //REPGRAPH_CSV_TRACKER
 	}
+
 
 	void PostReplicateActor(UClass* ActorClass, const double Time, const int64 Bits, const bool bIsActorDiscovery)
 	{
@@ -1648,21 +1598,6 @@ struct FReplicationGraphCSVTracker
 		ExplicitClassTracker_FastPath.CountBytes(Ar);
 	}
 
-public:
-
-	struct FVisibleLevelData
-	{
-		FName LevelName;
-		int32 NbConnections;
-		FName CustomReadableName;
-
-		bool operator==(const FVisibleLevelData& Other) const { return LevelName == Other.LevelName; }
-		bool operator==(const FName& InLevelName) const { return LevelName == InLevelName; }
-	};
-
-	/** */
-	const TArray<FReplicationGraphCSVTracker::FVisibleLevelData>& GetVisibleLevelsData() const { return VisibleLevelConnectionTracker; }
-
 private:
 
 	struct FTrackedData
@@ -1696,6 +1631,16 @@ private:
 		bool operator==(const UClass* InClass) const { return Class == InClass; }
 		UClass* Class;
 		FTrackedData Data;
+	};
+
+	struct FVisibleLevelData
+	{
+		FName LevelName;
+		int32 NbConnections;
+		FName CustomReadableName;
+
+		bool operator==(const FVisibleLevelData& Other) const { return LevelName == Other.LevelName; }
+		bool operator==(const FName& InLevelName) const { return LevelName == InLevelName; }
 	};
 
 	TArray<FTrackerItem, TInlineAllocator<1>> ExplicitClassTracker;

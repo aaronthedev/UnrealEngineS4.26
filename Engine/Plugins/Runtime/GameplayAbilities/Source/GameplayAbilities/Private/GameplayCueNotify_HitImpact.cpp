@@ -1,9 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayCueNotify_HitImpact.h"
 #include "Kismet/GameplayStatics.h"
-#include "GameplayCueManager.h"
-#include "AbilitySystemGlobals.h"
 
 UGameplayCueNotify_HitImpact::UGameplayCueNotify_HitImpact(const FObjectInitializer& PCIP)
 : Super(PCIP)
@@ -19,35 +17,21 @@ bool UGameplayCueNotify_HitImpact::HandlesEvent(EGameplayCueEvent::Type EventTyp
 void UGameplayCueNotify_HitImpact::HandleGameplayCue(AActor* Self, EGameplayCueEvent::Type EventType, const FGameplayCueParameters& Parameters)
 {
 	check(EventType == EGameplayCueEvent::Executed);
+	check(Self);
 	
-	const UObject* WorldContextObject = Self;
-	if (!WorldContextObject)
+	const FHitResult* HitResult = Parameters.EffectContext.GetHitResult();
+	if (HitResult)
 	{
-		WorldContextObject = UAbilitySystemGlobals::Get().GetGameplayCueManager();
-	}
-
-	if (ParticleSystem && WorldContextObject)
-	{
-		const FHitResult* HitResult = Parameters.EffectContext.GetHitResult();
-		if (HitResult)
+		if (ParticleSystem)
 		{
-			UGameplayStatics::SpawnEmitterAtLocation(WorldContextObject, ParticleSystem, HitResult->ImpactPoint, HitResult->ImpactNormal.Rotation(), true);
+			UGameplayStatics::SpawnEmitterAtLocation(Self, ParticleSystem, HitResult->ImpactPoint, HitResult->ImpactNormal.Rotation(), true);
 		}
-		else
+	}
+	else
+	{
+		if (ParticleSystem)
 		{
-			FVector Location = FVector::ZeroVector;
-			FRotator Rotation = FRotator::ZeroRotator;
-			if (Self)
-			{
-				Location = Self->GetActorLocation();
-				Rotation = Self->GetActorRotation();
-			}
-			else
-			{
-				Location = Parameters.Location;
-				Rotation = Parameters.Normal.Rotation();
-			}
-			UGameplayStatics::SpawnEmitterAtLocation(WorldContextObject, ParticleSystem, Location, Rotation, true);
+			UGameplayStatics::SpawnEmitterAtLocation(Self, ParticleSystem, Self->GetActorLocation(), Self->GetActorRotation(), true);
 		}
 	}
 }

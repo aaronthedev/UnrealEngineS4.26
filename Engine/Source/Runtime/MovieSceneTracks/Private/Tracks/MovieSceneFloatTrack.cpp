@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Tracks/MovieSceneFloatTrack.h"
 #include "MovieSceneCommonHelpers.h"
@@ -22,3 +22,7 @@ UMovieSceneSection* UMovieSceneFloatTrack::CreateNewSection()
 	return NewObject<UMovieSceneFloatSection>(this, NAME_None, RF_Transactional);
 }
 
+FMovieSceneEvalTemplatePtr UMovieSceneFloatTrack::CreateTemplateForSection(const UMovieSceneSection& InSection) const
+{
+	return FMovieSceneFloatPropertySectionTemplate(*CastChecked<const UMovieSceneFloatSection>(&InSection), *this);
+}

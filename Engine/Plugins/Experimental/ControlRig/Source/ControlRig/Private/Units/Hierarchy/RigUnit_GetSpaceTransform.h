@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,23 +8,24 @@
 /**
  * GetSpaceTransform is used to retrieve a single transform from a hierarchy.
  */
-USTRUCT(meta=(DisplayName="Get Space Transform", Category="Spaces", DocumentationPolicy = "Strict", Keywords="GetSpaceTransform", Varying, Deprecated = "4.25"))
+USTRUCT(meta=(DisplayName="Get Space Transform", Category="Spaces", DocumentationPolicy = "Strict", Keywords="GetSpaceTransform"))
 struct FRigUnit_GetSpaceTransform : public FRigUnit
 {
 	GENERATED_BODY()
 
 	FRigUnit_GetSpaceTransform()
-		: SpaceType(EBoneGetterSetterMode::GlobalSpace)
-		, CachedSpaceIndex(FCachedRigElement())
+		: SpaceType(EBoneGetterSetterMode::LocalSpace)
+		, CachedSpaceIndex(INDEX_NONE)
 	{}
 
+	virtual FString GetUnitLabel() const override;
 	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;
 
 	/**
 	 * The name of the Space to retrieve the transform for.
 	 */
-	UPROPERTY(meta = (Input))
+	UPROPERTY(meta = (Input, SpaceName, Constant))
 	FName Space;
 
 	/**
@@ -40,5 +41,5 @@ struct FRigUnit_GetSpaceTransform : public FRigUnit
 
 	// Used to cache the internally used bone index
 	UPROPERTY()
-	FCachedRigElement CachedSpaceIndex;
+	int32 CachedSpaceIndex;
 };

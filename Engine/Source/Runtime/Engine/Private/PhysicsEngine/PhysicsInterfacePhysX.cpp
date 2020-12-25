@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #if !WITH_CHAOS && !WITH_IMMEDIATE_PHYSX
 
@@ -972,6 +972,16 @@ bool FPhysicsInterface_PhysX::IsQueryShape(const FPhysicsShapeHandle_PhysX& InSh
 	return false;
 }
 
+bool FPhysicsInterface_PhysX::IsShapeType(const FPhysicsShapeHandle_PhysX& InShape, ECollisionShapeType InType)
+{
+	if(InShape.IsValid())
+	{
+		return InShape.Shape->getGeometryType() == U2PCollisionShapeType(InType);
+	}
+
+	return false;
+}
+
 ECollisionShapeType FPhysicsInterface_PhysX::GetShapeType(const FPhysicsShapeHandle_PhysX& InShape)
 {
 	if(InShape.IsValid())
@@ -1112,6 +1122,58 @@ void FPhysicsInterface_PhysX::SetMaterials(const FPhysicsShapeHandle_PhysX& InSh
 		}
 
 		InShape.Shape->setMaterials(PhysXMaterials.GetData(), PhysXMaterials.Num());
+	}
+}
+
+FPhysicsMaterialHandle FPhysicsInterface_PhysX::CreateMaterial(const UPhysicalMaterial* InMaterial)
+{
+	check(GPhysXSDK);
+
+	FPhysicsMaterialHandle_PhysX NewRef;
+
+	const float Friction = InMaterial->Friction;
+	const float Restitution = InMaterial->Restitution;
+
+	NewRef.Material = GPhysXSDK->createMaterial(Friction, Friction, Restitution);
+
+	return NewRef;
+}
+
+void FPhysicsInterface_PhysX::ReleaseMaterial(FPhysicsMaterialHandle_PhysX& InHandle)
+{
+	if(InHandle.IsValid())
+	{
+		InHandle.Material->userData = nullptr;
+		GPhysXPendingKillMaterial.Add(InHandle.Material);
+		InHandle.Material = nullptr;
+	}
+}
+
+void FPhysicsInterface_PhysX::UpdateMaterial(const FPhysicsMaterialHandle_PhysX& InHandle, UPhysicalMaterial* InMaterial)
+{
+	if(InHandle.IsValid())
+	{
+		PxMaterial* PMaterial = InHandle.Material;
+
+		PMaterial->setStaticFriction(InMaterial->Friction);
+		PMaterial->setDynamicFriction(InMaterial->Friction);
+		PMaterial->setRestitution(InMaterial->Restitution);
+
+		const uint32 UseFrictionCombineMode = (InMaterial->bOverrideFrictionCombineMode ? InMaterial->FrictionCombineMode.GetValue() : UPhysicsSettings::Get()->FrictionCombineMode.GetValue());
+		PMaterial->setFrictionCombineMode(static_cast<physx::PxCombineMode::Enum>(UseFrictionCombineMode));
+
+		const uint32 UseRestitutionCombineMode = (InMaterial->bOverrideRestitutionCombineMode ? InMaterial->RestitutionCombineMode.GetValue() : UPhysicsSettings::Get()->RestitutionCombineMode.GetValue());
+		PMaterial->setRestitutionCombineMode(static_cast<physx::PxCombineMode::Enum>(UseRestitutionCombineMode));
+
+		FPhysicsDelegates::OnUpdatePhysXMaterial.Broadcast(InMaterial);
+	}
+}
+
+void FPhysicsInterface_PhysX::SetUserData(const FPhysicsMaterialHandle_PhysX& InHandle, void* InUserData)
+{
+	if(InHandle.IsValid())
+	{
+		InHandle.Material->userData = InUserData;
 	}
 }
 

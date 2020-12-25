@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -65,10 +65,6 @@ class ENGINE_API ALevelScriptActor : public AActor
 	//~ Begin AActor Interface
 	virtual void EnableInput(class APlayerController* PlayerController) override;
 	virtual void DisableInput(class APlayerController* PlayerController) override;
-
-#if WITH_EDITOR
-	virtual bool SupportsExternalPackaging() const override { return false; }
-#endif
 	//~ End AActor Interface
 
 	bool InputEnabled() const { return bInputEnabled; }

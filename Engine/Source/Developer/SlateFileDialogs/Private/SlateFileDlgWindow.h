@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -183,7 +183,7 @@ private:
 	/** Collects the output files. */
 	void SetOutputFiles();
 
-	bool GetFilterExtensions(TArray< FString >& OutExtensions);
+	bool GetFilterExtension(FString &OutString);
 	void ParseFilters();
 	/** @return true if the extension filter contains a wildcard or not */
 	bool IsWildcardExtension(const FString& Extension);

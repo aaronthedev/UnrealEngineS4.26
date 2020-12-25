@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Particles/ParticleSystemManager.h"
 #include "Particles/ParticleSystemComponent.h"
@@ -126,6 +126,7 @@ public:
 		}
 
 		FGraphEventRef FinalizeTask = TGraphTask<FParticleManagerFinalizeTask>::CreateTask(nullptr, CurrentThread).ConstructAndDispatchWhenReady(Owner, PSCsToTick);
+		MyCompletionGraphEvent->SetGatherThreadForDontCompleteUntil(ENamedThreads::GameThread);
 		MyCompletionGraphEvent->DontCompleteUntil(FinalizeTask);
 	}
 };
@@ -145,9 +146,6 @@ void FParticleSystemWorldManager::OnStartup()
 	FWorldDelegates::OnPostWorldCleanup.AddStatic(&OnWorldCleanup);
 	FWorldDelegates::OnPreWorldFinishDestroy.AddStatic(&OnPreWorldFinishDestroy);
 	FWorldDelegates::OnWorldBeginTearDown.AddStatic(&OnWorldBeginTearDown);
-#if WITH_PARTICLE_PERF_STATS
-	FParticlePerfStats::OnStartup();
-#endif
 }
 
 void FParticleSystemWorldManager::OnShutdown()
@@ -160,9 +158,6 @@ void FParticleSystemWorldManager::OnShutdown()
 		}
 	}
 	WorldManagers.Empty();
-#if WITH_PARTICLE_PERF_STATS
-	FParticlePerfStats::OnShutdown();
-#endif
 }
 
 void FParticleSystemWorldManager::OnWorldInit(UWorld* World, const UWorld::InitializationValues IVS)
@@ -227,7 +222,6 @@ FParticleSystemWorldManager::FParticleSystemWorldManager(UWorld* InWorld)
 		TickFunc.EndTickGroup = TickFunc.TickGroup;
 		TickFunc.bCanEverTick = true;
 		TickFunc.bStartWithTickEnabled = true;
-		TickFunc.bAllowTickOnDedicatedServer = false;
 		TickFunc.bHighPriority = true;
 		TickFunc.Owner = this;
 		TickFunc.RegisterTickFunction(InWorld->PersistentLevel);
@@ -340,19 +334,10 @@ bool FParticleSystemWorldManager::RegisterComponent(UParticleSystemComponent* PS
 	else if(!PSC->IsPendingManagerAdd())
 	{
 		FPSCTickData& TickData = PSCTickData[Handle];
-		if(TickData.bPendingUnregister)
-		{
-			//If we're already set to unregister we must flag that we want to be re-registered immediately.
-			//We have to re-register rather than just clear this flag so that all tick group checks etc are performed correctly.
-			TickData.bPendingReregister = true;
-
-			UE_LOG(LogParticles, Verbose, TEXT("| Re-Register Pending Unregister PSC: %p | Man: %p | %d | %s"), PSC, this, Handle, *PSC->Template->GetName());
-		}
-		else
-		{
-
-			UE_LOG(LogParticles, Verbose, TEXT("| Register Existing PSC: %p | Man: %p | %d | %s"), PSC, this, Handle, *PSC->Template->GetName());
-		}
+		//Ensure we're not set to unregister if we were.
+		TickData.bPendingUnregister = false;
+		PSC->SetPendingManagerRemove(false);
+		UE_LOG(LogParticles, Verbose, TEXT("| Register Existing PSC: %p | Man: %p | %d | %s"), PSC, this, Handle, *PSC->Template->GetName());
 
 		return true;
 	}
@@ -391,7 +376,6 @@ void FParticleSystemWorldManager::UnregisterComponent(UParticleSystemComponent* 
 			//Don't remove us immediately from the arrays as this can occur mid tick. Just mark us for removal next frame.
 			TickData.bPendingUnregister = true;
 			PSC->SetPendingManagerRemove(true);
-			TickData.bPendingReregister = false;//Clear if we were due for re register.
 			UE_LOG(LogParticles, Verbose, TEXT("| UnRegister PSC: %p | Man: %p | %d | %s"), PSC, this, Handle, *PSC->Template->GetName());
 		}
 	}
@@ -426,7 +410,6 @@ void FParticleSystemWorldManager::AddPSC(UParticleSystemComponent* PSC)
 		}
 
 		TickData.bPendingUnregister = false;//Ensure we're not set to unregister if we were.
-		TickData.bPendingReregister = false;
 	   	TickData.TickGroup = TickGroup;
 		TickData.bCanTickConcurrent = bCanTickConcurrent;
 		TickData.PrereqComponent = Prereq;
@@ -443,18 +426,13 @@ void FParticleSystemWorldManager::AddPSC(UParticleSystemComponent* PSC)
 void FParticleSystemWorldManager::RemovePSC(int32 PSCIndex)
 {
 	UParticleSystemComponent* PSC = ManagedPSCs[PSCIndex];
-	FPSCTickData& TickData = PSCTickData[PSCIndex];
-
-	//Should re-register after we remove?
-	//This is needed if we register again while the PSC is in the pending unregister state.
-	bool bReRegister = TickData.bPendingReregister;
-
 	if (PSC)
 	{
 		PSC->SetManagerHandle(INDEX_NONE);
 		PSC->SetPendingManagerRemove(false);
 	}
 
+	FPSCTickData& TickData = PSCTickData[PSCIndex];
 
 	UE_LOG(LogParticles, Verbose, TEXT("| Remove PSC - PSC: %p | Man: %p | %d |Num: %d |"), ManagedPSCs[PSCIndex], this, PSCIndex, ManagedPSCs.Num());
 
@@ -493,11 +471,6 @@ void FParticleSystemWorldManager::RemovePSC(int32 PSCIndex)
 		}
 	}
 #endif
-
-	if (bReRegister)
-	{
-		AddPSC(PSC);
-	}
 }
 
 FORCEINLINE void FParticleSystemWorldManager::FlushAsyncTicks(const FGraphEventRef& TickGroupCompletionGraphEvent)
@@ -508,6 +481,7 @@ FORCEINLINE void FParticleSystemWorldManager::FlushAsyncTicks(const FGraphEventR
 		FGraphEventRef AsyncTask = TGraphTask<FParticleManagerAsyncTask>::CreateTask(nullptr, ENamedThreads::GameThread).ConstructAndDispatchWhenReady(this, AsyncTickBatch);
 
 #if PSC_MAN_TG_WAIT_FOR_ASYNC
+		TickGroupCompletionGraphEvent->SetGatherThreadForDontCompleteUntil(ENamedThreads::GameThread);
 		TickGroupCompletionGraphEvent->DontCompleteUntil(AsyncTask);
 #endif
 
@@ -586,20 +560,17 @@ void FParticleSystemWorldManager::ProcessTickList(float DeltaTime, ELevelTick Ti
 				{
 					continue;
 				}
-				
-				AActor* PSCOwner = PSC->GetOwner();
-				const float TimeDilation = (PSCOwner ? PSCOwner->CustomTimeDilation : 1.f);
 
 				//TODO: Replace call to TickComponent with new call that allows us to pull duplicated work up to share across all ticks.
 				if (bAsync)
 				{
-					PSC->TickComponent(DeltaTime * TimeDilation, TickType, nullptr);
+					PSC->TickComponent(DeltaTime, TickType, nullptr);
 					PSC->MarshalParamsForAsyncTick();
 					QueueAsyncTick(Handle, TickGroupCompletionGraphEvent);
 				}
 				else
 				{
-					PSC->TickComponent(DeltaTime * TimeDilation, TickType, nullptr);
+					PSC->TickComponent(DeltaTime, TickType, nullptr);
 					PSC->ComputeTickComponent_Concurrent();
 					PSC->FinalizeTickComponent();
 				}
@@ -827,7 +798,6 @@ FPSCTickData::FPSCTickData()
 	, TickGroup(TG_PrePhysics)
 	, bCanTickConcurrent(0)
 	, bPendingUnregister(0)
-	, bPendingReregister(0)
 {
 
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -8,8 +8,7 @@ public class BackChannel : ModuleRules
 	{
 		PublicIncludePaths.AddRange(
 			new string[] {
-				System.IO.Path.Combine(ModuleDirectory, ".."),
-				System.IO.Path.Combine(ModuleDirectory, "Public")
+				System.IO.Path.Combine(ModuleDirectory, "..")
 			}
 		);
 

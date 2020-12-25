@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BehaviorTree/BTCompositeNode.h"
 #include "GameFramework/Actor.h"
@@ -411,7 +411,7 @@ static bool UpdateOperationStack(const UBehaviorTreeComponent& OwnerComp, FStrin
 		UE_VLOG(OwnerComp.GetOwner(), LogBehaviorTree, Verbose, TEXT("%s%s finished: %s"), *Indent,
 			*DescribeLogicOp(CurrentOp.Op),
 			bTestResult ? TEXT("allowed") : TEXT("forbidden"));
-		Indent.LeftChopInline(2, false);
+		Indent = Indent.LeftChop(2);
 
 		Stack.RemoveAt(Stack.Num() - 1);
 		return UpdateOperationStack(OwnerComp, Indent, Stack, bTestResult, FailedDecoratorIdx, NodeDecoratorIdx, bShouldStoreNodeIndex);
@@ -449,20 +449,18 @@ bool UBTCompositeNode::DoDecoratorsAllowExecution(UBehaviorTreeComponent& OwnerC
 			const bool bIsAllowed = TestDecorator ? TestDecorator->WrappedCanExecute(OwnerComp, TestDecorator->GetNodeMemory<uint8>(MyInstance)) : false;
 			OwnerComp.StoreDebuggerSearchStep(TestDecorator, InstanceIdx, bIsAllowed);
 
-			const UBTNode* ChildNode = GetChildNode(ChildIdx);
-
 			if (!bIsAllowed)
 			{
-				UE_VLOG(OwnerComp.GetOwner(), LogBehaviorTree, Verbose, TEXT("Child[%d] \"%s\" execution forbidden by %s"),
-					ChildIdx, *UBehaviorTreeTypes::DescribeNodeHelper(ChildNode), *UBehaviorTreeTypes::DescribeNodeHelper(TestDecorator));
+				UE_VLOG(OwnerComp.GetOwner(), LogBehaviorTree, Verbose, TEXT("Child[%d] execution forbidden by %s"),
+					ChildIdx, *UBehaviorTreeTypes::DescribeNodeHelper(TestDecorator));
 
 				bResult = false;
 				break;
 			}
 			else
 			{
-				UE_VLOG(OwnerComp.GetOwner(), LogBehaviorTree, Verbose, TEXT("Child[%d] \"%s\" execution allowed by %s"),
-					ChildIdx, *UBehaviorTreeTypes::DescribeNodeHelper(ChildNode), *UBehaviorTreeTypes::DescribeNodeHelper(TestDecorator));
+				UE_VLOG(OwnerComp.GetOwner(), LogBehaviorTree, Verbose, TEXT("Child[%d] execution allowed by %s"),
+					ChildIdx, *UBehaviorTreeTypes::DescribeNodeHelper(TestDecorator));
 			}
 		}
 	}
@@ -622,23 +620,10 @@ uint16 UBTCompositeNode::GetChildExecutionIndex(int32 Index, EBTChildIndex Child
 	const UBTNode* ChildNode = GetChildNode(Index);
 	if (ChildNode)
 	{
-		int32 Offset = 0;
-
-		// When getting execution index of the first node we need to consider auxiliary nodes
-		if (ChildMode == EBTChildIndex::FirstNode)
-		{
-			Offset += Children[Index].Decorators.Num();
-
-			// Task nodes may also have service nodes to consider
-			if (UBTTaskNode* ChildTask = Children[Index].ChildTask)
-			{
-				Offset += ChildTask->Services.Num();
-			}
-		}
-
+		const int32 Offset = (ChildMode == EBTChildIndex::FirstNode) ? Children[Index].Decorators.Num() : 0;
 		return ChildNode->GetExecutionIndex() - Offset;
 	}
-
+	
 	return (LastExecutionIndex + 1);
 }
 

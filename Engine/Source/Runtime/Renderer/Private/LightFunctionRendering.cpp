@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	LightFunctionRendering.cpp: Implementation for rendering light functions.
@@ -22,7 +22,6 @@
 #include "ScenePrivate.h"
 #include "LightRendering.h"
 #include "PipelineStateCache.h"
-#include "ClearQuad.h"
 
 /**
  * A vertex shader for projecting a light function onto the scene.
@@ -39,7 +38,7 @@ public:
 	  */
 	static bool ShouldCompilePermutation(const FMaterialShaderPermutationParameters& Parameters)
 	{
-		return Parameters.MaterialParameters.MaterialDomain == MD_LightFunction && IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+		return Parameters.Material->IsLightFunction() && IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
 	FLightFunctionVS( )	{ }
@@ -51,7 +50,7 @@ public:
 
 	void SetParameters(FRHICommandList& RHICmdList, const FSceneView& View, const FLightSceneInfo* LightSceneInfo )
 	{
-		FMaterialShader::SetViewParameters(RHICmdList, RHICmdList.GetBoundVertexShader(), View, View.ViewUniformBuffer);
+		FMaterialShader::SetViewParameters(RHICmdList, GetVertexShader(), View, View.ViewUniformBuffer);
 		
 		// Light functions are projected using a bounding sphere.
 		// Calculate transform for bounding stencil sphere.
@@ -66,8 +65,17 @@ public:
 		StencilingGeometryParameters.Set(RHICmdList, this, StencilingSpherePosAndScale);
 	}
 
+	// Begin FShader interface
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FMaterialShader::Serialize(Ar);
+		Ar << StencilingGeometryParameters;
+		return bShaderHasOutdatedParameters;
+	}
+	//  End FShader interface 
+
 private:
-	LAYOUT_FIELD(FStencilingGeometryShaderParameters, StencilingGeometryParameters);
+	FStencilingGeometryShaderParameters StencilingGeometryParameters;
 };
 
 IMPLEMENT_MATERIAL_SHADER_TYPE(,FLightFunctionVS,TEXT("/Engine/Private/LightFunctionVertexShader.usf"),TEXT("Main"),SF_Vertex);
@@ -79,6 +87,7 @@ class FLightFunctionPS : public FMaterialShader
 {
 	DECLARE_SHADER_TYPE(FLightFunctionPS,Material);
 public:
+
 	/**
 	  * Makes sure only shaders for materials that are explicitly flagged
 	  * as 'UsedAsLightFunction' in the Material Editor gets compiled into
@@ -86,7 +95,7 @@ public:
 	  */
 	static bool ShouldCompilePermutation(const FMaterialShaderPermutationParameters& Parameters)
 	{
-		return Parameters.MaterialParameters.MaterialDomain == MD_LightFunction && IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
+		return Parameters.Material->IsLightFunction() && IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
 	FLightFunctionPS() {}
@@ -96,13 +105,14 @@ public:
 		SvPositionToLight.Bind(Initializer.ParameterMap,TEXT("SvPositionToLight"));
 		LightFunctionParameters.Bind(Initializer.ParameterMap);
 		LightFunctionParameters2.Bind(Initializer.ParameterMap,TEXT("LightFunctionParameters2"));
+		SceneTextureParameters.Bind(Initializer);
 	}
 
 	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View, const FLightSceneInfo* LightSceneInfo, const FMaterialRenderProxy* MaterialProxy, bool bRenderingPreviewShadowIndicator, float ShadowFadeFraction )
 	{
-		FRHIPixelShader* ShaderRHI = RHICmdList.GetBoundPixelShader();
-		FMaterialShader::SetViewParameters(RHICmdList, ShaderRHI, View, View.ViewUniformBuffer);
-		FMaterialShader::SetParameters(RHICmdList, ShaderRHI, MaterialProxy, *MaterialProxy->GetMaterial(View.GetFeatureLevel()), View);
+		FRHIPixelShader* ShaderRHI = GetPixelShader();
+
+		FMaterialShader::SetParameters(RHICmdList, ShaderRHI, MaterialProxy, *MaterialProxy->GetMaterial(View.GetFeatureLevel()), View, View.ViewUniformBuffer, ESceneTextureSetupMode::All);
 
 		// Set the transform from screen space to light space.
 		if ( SvPositionToLight.IsBound() )
@@ -144,6 +154,8 @@ public:
 			LightSceneInfo->Proxy->GetLightFunctionDisabledBrightness(),
 			bRenderingPreviewShadowIndicator ? 1.0f : 0.0f));
 
+		SceneTextureParameters.Set(RHICmdList, ShaderRHI, View.FeatureLevel, ESceneTextureSetupMode::All);
+
 		auto DeferredLightParameter = GetUniformBufferParameter<FDeferredLightUniformStruct>();
 
 		if (DeferredLightParameter.IsBound())
@@ -152,10 +164,21 @@ public:
 		}
 	}
 
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FMaterialShader::Serialize(Ar);
+		Ar << SvPositionToLight;
+		Ar << LightFunctionParameters;
+		Ar << LightFunctionParameters2;
+		Ar << SceneTextureParameters;
+		return bShaderHasOutdatedParameters;
+	}
+
 private:
-	LAYOUT_FIELD(FShaderParameter, SvPositionToLight);
-	LAYOUT_FIELD(FLightFunctionSharedParameters, LightFunctionParameters);
-	LAYOUT_FIELD(FShaderParameter, LightFunctionParameters2);
+	FShaderParameter SvPositionToLight;
+	FLightFunctionSharedParameters LightFunctionParameters;
+	FShaderParameter LightFunctionParameters2;
+	FSceneTextureShaderParameters SceneTextureParameters;
 };
 
 IMPLEMENT_MATERIAL_SHADER_TYPE(,FLightFunctionPS,TEXT("/Engine/Private/LightFunctionPixelShader.usf"),TEXT("Main"),SF_Pixel);
@@ -195,7 +218,7 @@ static float GetLightFunctionFadeFraction(const FViewInfo& View, FSphere LightBo
 * @param LightSceneInfo Represents the current light
 * @return true if anything got rendered
 */
-bool FSceneRenderer::CheckForLightFunction( const FLightSceneInfo* LightSceneInfo ) const
+bool FDeferredShadingSceneRenderer::CheckForLightFunction( const FLightSceneInfo* LightSceneInfo ) const
 {
 	// NOTE: The extra check is necessary because there could be something wrong with the material.
 	if( LightSceneInfo->Proxy->GetLightFunctionMaterial() && 
@@ -227,178 +250,165 @@ bool FSceneRenderer::CheckForLightFunction( const FLightSceneInfo* LightSceneInf
  *
  * @param LightSceneInfo Represents the current light
  */
-bool FDeferredShadingSceneRenderer::RenderLightFunction(
-	FRDGBuilder& GraphBuilder,
-	FRDGTextureRef SceneDepthTexture,
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
-	const FLightSceneInfo* LightSceneInfo,
-	FRDGTextureRef ScreenShadowMaskTexture,
-	bool bLightAttenuationCleared,
-	bool bProjectingForForwardShading)
+bool FDeferredShadingSceneRenderer::RenderLightFunction(FRHICommandListImmediate& RHICmdList, const FLightSceneInfo* LightSceneInfo, IPooledRenderTarget* ScreenShadowMaskTexture, bool bLightAttenuationCleared, bool bProjectingForForwardShading)
 {
 	if (ViewFamily.EngineShowFlags.LightFunctions)
 	{
-		return RenderLightFunctionForMaterial(GraphBuilder, SceneDepthTexture, SceneTexturesUniformBuffer, LightSceneInfo, ScreenShadowMaskTexture, LightSceneInfo->Proxy->GetLightFunctionMaterial(), bLightAttenuationCleared, bProjectingForForwardShading, false);
+		return RenderLightFunctionForMaterial(RHICmdList, LightSceneInfo, ScreenShadowMaskTexture, LightSceneInfo->Proxy->GetLightFunctionMaterial(), bLightAttenuationCleared, bProjectingForForwardShading, false);
 	}
 	
 	return false;
 }
 
-bool FDeferredShadingSceneRenderer::RenderPreviewShadowsIndicator(
-	FRDGBuilder& GraphBuilder,
-	FRDGTextureRef SceneDepthTexture,
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
-	const FLightSceneInfo* LightSceneInfo,
-	FRDGTextureRef ScreenShadowMaskTexture,
-	bool bLightAttenuationCleared)
+bool FDeferredShadingSceneRenderer::RenderPreviewShadowsIndicator(FRHICommandListImmediate& RHICmdList, const FLightSceneInfo* LightSceneInfo, IPooledRenderTarget* ScreenShadowMaskTexture, bool bLightAttenuationCleared)
 {
 	if (GEngine->PreviewShadowsIndicatorMaterial)
 	{
-		return RenderLightFunctionForMaterial(GraphBuilder, SceneDepthTexture, SceneTexturesUniformBuffer, LightSceneInfo, ScreenShadowMaskTexture, GEngine->PreviewShadowsIndicatorMaterial->GetRenderProxy(), bLightAttenuationCleared, false, true);
+		return RenderLightFunctionForMaterial(RHICmdList, LightSceneInfo, ScreenShadowMaskTexture, GEngine->PreviewShadowsIndicatorMaterial->GetRenderProxy(), bLightAttenuationCleared, false, true);
 	}
 
 	return false;
 }
 
-BEGIN_SHADER_PARAMETER_STRUCT(FRenderLightFunctionForMaterialParameters, )
-	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneTextureUniformParameters, SceneTextures)
-	RENDER_TARGET_BINDING_SLOTS()
-END_SHADER_PARAMETER_STRUCT()
-
 bool FDeferredShadingSceneRenderer::RenderLightFunctionForMaterial(
-	FRDGBuilder& GraphBuilder,
-	FRDGTextureRef SceneDepthTexture,
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
-	const FLightSceneInfo* LightSceneInfo,
-	FRDGTextureRef ScreenShadowMaskTexture,
-	const FMaterialRenderProxy* MaterialProxy,
-	bool bLightAttenuationCleared,
-	bool bProjectingForForwardShading,
+	FRHICommandListImmediate& RHICmdList, 
+	const FLightSceneInfo* LightSceneInfo, 
+	IPooledRenderTarget* ScreenShadowMaskTexture,
+	const FMaterialRenderProxy* MaterialProxy, 
+	bool bLightAttenuationCleared, 
+	bool bProjectingForForwardShading, 
 	bool bRenderingPreviewShadowsIndicator)
 {
+	bool bRenderedLightFunction = false;
+
+	check(RHICmdList.IsOutsideRenderPass());
 	check(ScreenShadowMaskTexture);
-	check(LightSceneInfo);
-
-	if (!MaterialProxy)
+	if (MaterialProxy && MaterialProxy->GetMaterial(Scene->GetFeatureLevel())->IsLightFunction())
 	{
-		return false;
-	}
-
-	const FMaterial* Material = MaterialProxy->GetMaterial(Scene->GetFeatureLevel());
-
-	if (!Material->IsLightFunction())
-	{
-		return false;
-	}
-
-	const FLightSceneProxy* LightSceneProxy = LightSceneInfo->Proxy;
-	const FMaterialShaderMap* MaterialShaderMap = Material->GetRenderingThreadShaderMap();
-
-	// Render to the light attenuation buffer for all views.
-	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
-	{
-		const FViewInfo& View = Views[ViewIndex];
-
-		RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
-		RDG_EVENT_SCOPE_CONDITIONAL(GraphBuilder, Views.Num() > 1, "View%d", ViewIndex);
-
-		if (View.VisibleLightInfos[LightSceneInfo->Id].bInViewFrustum)
 		{
-			FRenderLightFunctionForMaterialParameters* PassParameters = GraphBuilder.AllocParameters<FRenderLightFunctionForMaterialParameters>();
-			PassParameters->SceneTextures = SceneTexturesUniformBuffer;
-			PassParameters->RenderTargets[0] = FRenderTargetBinding(ScreenShadowMaskTexture, bLightAttenuationCleared ? ERenderTargetLoadAction::ELoad : ERenderTargetLoadAction::ENoAction);
-			PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(SceneDepthTexture, ERenderTargetLoadAction::ELoad, ERenderTargetLoadAction::ELoad, FExclusiveDepthStencil::DepthRead_StencilWrite);
+			// Scope out this FRHIRenderPassInfo so we don't pollute ourselves elsewhere.
+			FRHIRenderPassInfo RPInfo(ScreenShadowMaskTexture->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Load_Store);
+			RPInfo.DepthStencilRenderTarget.Action = MakeDepthStencilTargetActions(ERenderTargetActions::Load_DontStore, ERenderTargetActions::Load_Store);
+			RPInfo.DepthStencilRenderTarget.DepthStencilTarget = FSceneRenderTargets::Get(RHICmdList).GetSceneDepthSurface();
+			RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = FExclusiveDepthStencil::DepthRead_StencilWrite;
 
-			GraphBuilder.AddPass(
-				RDG_EVENT_NAME("LightFunction Material=%s", *Material->GetFriendlyName()),
-				PassParameters,
-				ERDGPassFlags::Raster,
-				[&View, LightSceneInfo, LightSceneProxy, MaterialProxy, MaterialShaderMap, bLightAttenuationCleared, bProjectingForForwardShading, bRenderingPreviewShadowsIndicator](FRHICommandList& RHICmdList)
+			TransitionRenderPassTargets(RHICmdList, RPInfo);
+			RHICmdList.BeginRenderPass(RPInfo, TEXT("RenderLightFunctionForMaterial"));
+		}
+		{
+			bRenderedLightFunction = true;
+
+			const FMaterial* Material = MaterialProxy->GetMaterial(Scene->GetFeatureLevel());
+			SCOPED_DRAW_EVENTF(RHICmdList, LightFunction, TEXT("LightFunction Material=%s"), *Material->GetFriendlyName());
+
+			const FMaterialShaderMap* MaterialShaderMap = Material->GetRenderingThreadShaderMap();
+			FLightFunctionVS* VertexShader = MaterialShaderMap->GetShader<FLightFunctionVS>();
+			FLightFunctionPS* PixelShader = MaterialShaderMap->GetShader<FLightFunctionPS>();
+
+			FGraphicsPipelineStateInitializer GraphicsPSOInit;
+			RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+
+			GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GetVertexDeclarationFVector4();
+			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader->GetVertexShader();
+			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader->GetPixelShader();
+
+			FSphere LightBounds = LightSceneInfo->Proxy->GetBoundingSphere();
+
+			// Render to the light attenuation buffer for all views.
+			for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 			{
-				FSphere LightBounds = LightSceneProxy->GetBoundingSphere();
+				SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
 
-				if (LightSceneProxy->GetLightType() == LightType_Directional)
+				const FViewInfo& View = Views[ViewIndex];
+
+				if (View.VisibleLightInfos[LightSceneInfo->Id].bInViewFrustum)
 				{
-					LightBounds.Center = View.ViewMatrices.GetViewOrigin();
-				}
-				const float FadeAlpha = GetLightFunctionFadeFraction(View, LightBounds);
-				// Don't draw the light function if it has completely faded out
-				if (FadeAlpha < 1.0f / 256.0f)
-				{
-					if (!bLightAttenuationCleared)
+					if (LightSceneInfo->Proxy->GetLightType() == LightType_Directional)
 					{
-						LightSceneProxy->SetScissorRect(RHICmdList, View, View.ViewRect);
-						DrawClearQuad(RHICmdList, FLinearColor::White);
+						LightBounds.Center = View.ViewMatrices.GetViewOrigin();
 					}
-				}
-				else
-				{
-					// Set the device viewport for the view.
-					RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
 
-					// Set the states to modulate the light function with the render target.
-					TShaderRef<FLightFunctionVS> VertexShader = MaterialShaderMap->GetShader<FLightFunctionVS>();
-					TShaderRef<FLightFunctionPS> PixelShader = MaterialShaderMap->GetShader<FLightFunctionPS>();
-
-					FGraphicsPipelineStateInitializer GraphicsPSOInit;
-					RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
-
-					GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GetVertexDeclarationFVector4();
-					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
-					GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
-					GraphicsPSOInit.PrimitiveType = PT_TriangleList;
-
-					if (bLightAttenuationCleared)
+					const float FadeAlpha = GetLightFunctionFadeFraction(View, LightBounds);
+					// Don't draw the light function if it has completely faded out
+					if (FadeAlpha < 1.0f / 256.0f)
 					{
-						if (bRenderingPreviewShadowsIndicator)
+						if (!bLightAttenuationCleared)
 						{
-							GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGBA, BO_Max, BF_One, BF_One, BO_Max, BF_One, BF_One>::GetRHI();
+							LightSceneInfo->Proxy->SetScissorRect(RHICmdList, View, View.ViewRect);
+
+							// #todo-renderpasses This is extremely gross with renderpasses. Should refactor this whole thing.
+							RHICmdList.EndRenderPass();
+							FRHIRenderPassInfo RPInfoClear(ScreenShadowMaskTexture->GetRenderTargetItem().TargetableTexture, ERenderTargetActions::Clear_Store);
+							RPInfoClear.DepthStencilRenderTarget.Action = MakeDepthStencilTargetActions(ERenderTargetActions::Load_DontStore, ERenderTargetActions::Load_Store);
+							RPInfoClear.DepthStencilRenderTarget.DepthStencilTarget = FSceneRenderTargets::Get(RHICmdList).GetSceneDepthSurface();
+							RPInfoClear.DepthStencilRenderTarget.ExclusiveDepthStencil = FExclusiveDepthStencil::DepthRead_StencilWrite;
+
+							TransitionRenderPassTargets(RHICmdList, RPInfoClear);
+							RHICmdList.BeginRenderPass(RPInfoClear, TEXT("RenderLightFunction_PlusClearAttenuation"));
+						}
+					}
+					else
+					{
+						// Set the device viewport for the view.
+						RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
+
+						// Set the states to modulate the light function with the render target.
+						GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+						GraphicsPSOInit.PrimitiveType = PT_TriangleList;
+
+						if (bLightAttenuationCleared)
+						{
+							if (bRenderingPreviewShadowsIndicator)
+							{
+								GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGBA, BO_Max, BF_One, BF_One, BO_Max, BF_One, BF_One>::GetRHI();
+							}
+							else
+							{
+								FProjectedShadowInfo::SetBlendStateForProjection(
+									GraphicsPSOInit,
+									LightSceneInfo->GetDynamicShadowMapChannel(),
+									false,
+									false,
+									bProjectingForForwardShading,
+									false);
+							}
 						}
 						else
 						{
-							GraphicsPSOInit.BlendState = FProjectedShadowInfo::GetBlendStateForProjection(
-								LightSceneInfo->GetDynamicShadowMapChannel(),
-								false,
-								false,
-								bProjectingForForwardShading,
-								false);
+							GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGBA>::GetRHI();
 						}
-					}
-					else
-					{
-						GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGBA>::GetRHI();
-					}
 
-					if (((FVector)View.ViewMatrices.GetViewOrigin() - LightBounds.Center).SizeSquared() < FMath::Square(LightBounds.W * 1.05f + View.NearClippingDistance * 2.0f))
-					{
-						// Render backfaces with depth tests disabled since the camera is inside (or close to inside) the light function geometry
-						GraphicsPSOInit.RasterizerState = View.bReverseCulling ? TStaticRasterizerState<FM_Solid, CM_CW>::GetRHI() : TStaticRasterizerState<FM_Solid, CM_CCW>::GetRHI();
+						if (((FVector)View.ViewMatrices.GetViewOrigin() - LightBounds.Center).SizeSquared() < FMath::Square(LightBounds.W * 1.05f + View.NearClippingDistance * 2.0f))
+						{
+							// Render backfaces with depth tests disabled since the camera is inside (or close to inside) the light function geometry
+							GraphicsPSOInit.RasterizerState = View.bReverseCulling ? TStaticRasterizerState<FM_Solid, CM_CW>::GetRHI() : TStaticRasterizerState<FM_Solid, CM_CCW>::GetRHI();
+						}
+						else
+						{
+							// Render frontfaces with depth tests on to get the speedup from HiZ since the camera is outside the light function geometry
+							GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI();
+							GraphicsPSOInit.RasterizerState = View.bReverseCulling ? TStaticRasterizerState<FM_Solid, CM_CCW>::GetRHI() : TStaticRasterizerState<FM_Solid, CM_CW>::GetRHI();
+						}
+
+						// Set the light's scissor rectangle.
+						LightSceneInfo->Proxy->SetScissorRect(RHICmdList, View, View.ViewRect);
+
+						// Render a bounding light sphere.
+						SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+						VertexShader->SetParameters(RHICmdList, View, LightSceneInfo);
+						PixelShader->SetParameters(RHICmdList, View, LightSceneInfo, MaterialProxy, bRenderingPreviewShadowsIndicator, FadeAlpha);
+
+						// Project the light function using a sphere around the light
+						//@todo - could use a cone for spotlights
+						StencilingGeometry::DrawSphere(RHICmdList);
 					}
-					else
-					{
-						// Render frontfaces with depth tests on to get the speedup from HiZ since the camera is outside the light function geometry
-						GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI();
-						GraphicsPSOInit.RasterizerState = View.bReverseCulling ? TStaticRasterizerState<FM_Solid, CM_CCW>::GetRHI() : TStaticRasterizerState<FM_Solid, CM_CW>::GetRHI();
-					}
-
-					// Set the light's scissor rectangle.
-					LightSceneProxy->SetScissorRect(RHICmdList, View, View.ViewRect);
-
-					// Render a bounding light sphere.
-					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
-					VertexShader->SetParameters(RHICmdList, View, LightSceneInfo);
-					PixelShader->SetParameters(RHICmdList, View, LightSceneInfo, MaterialProxy, bRenderingPreviewShadowsIndicator, FadeAlpha);
-
-					// Project the light function using a sphere around the light
-					//@todo - could use a cone for spotlights
-					StencilingGeometry::DrawSphere(RHICmdList);
 				}
-
-				RHICmdList.SetScissorRect(false, 0, 0, 0, 0);
-			});
+			}
 		}
-	}
+		RHICmdList.EndRenderPass();
 
-	return true;
+		// Restore states.
+		RHICmdList.SetScissorRect(false, 0, 0, 0, 0);
+	}
+	return bRenderedLightFunction;
 }

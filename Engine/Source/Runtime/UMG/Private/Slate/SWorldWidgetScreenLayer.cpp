@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Slate/SWorldWidgetScreenLayer.h"
 #include "Widgets/Layout/SBox.h"
@@ -8,16 +8,6 @@
 #include "Engine/GameViewportClient.h"
 #include "Widgets/SViewport.h"
 #include "Slate/SGameLayerManager.h"
-
-static int32 GSlateWorldWidgetZOrder = 1;
-static FAutoConsoleVariableRef CVarSlateWorldWidgetZOrder(
-	TEXT("Slate.WorldWidgetZOrder"),
-	GSlateWorldWidgetZOrder,
-	TEXT("Whether to re-order world widgets projected to screen by their view point distance\n")
-	TEXT(" 0: Disable re-ordering\n")
-	TEXT(" 1: Re-order by distance (default, less batching, less artifacts when widgets overlap)"),
-	ECVF_Default
-	);
 
 SWorldWidgetScreenLayer::FComponentEntry::FComponentEntry()
 	: Slot(nullptr)
@@ -142,8 +132,6 @@ void SWorldWidgetScreenLayer::Tick(const FGeometry& AllottedGeometry, const doub
 
 							if ( Entry.WidgetComponent )
 							{
-								LocalPosition = Entry.WidgetComponent->ModifyProjectedLocalPosition(ViewportGeometry, LocalPosition);
-
 								FVector2D ComponentDrawSize = Entry.WidgetComponent->GetDrawSize();
 								FVector2D ComponentPivot = Entry.WidgetComponent->GetPivot();
 								
@@ -151,11 +139,7 @@ void SWorldWidgetScreenLayer::Tick(const FGeometry& AllottedGeometry, const doub
 								CanvasSlot->Offset(FMargin(LocalPosition.X, LocalPosition.Y, ComponentDrawSize.X, ComponentDrawSize.Y));
 								CanvasSlot->Anchors(FAnchors(0, 0, 0, 0));
 								CanvasSlot->Alignment(ComponentPivot);
-								
-								if (GSlateWorldWidgetZOrder != 0)
-								{
-									CanvasSlot->ZOrder(-ViewportPosition.Z);
-								}
+								CanvasSlot->ZOrder(-ViewportPosition.Z);
 							}
 							else
 							{
@@ -163,11 +147,7 @@ void SWorldWidgetScreenLayer::Tick(const FGeometry& AllottedGeometry, const doub
 								CanvasSlot->Offset(FMargin(LocalPosition.X, LocalPosition.Y, DrawSize.X, DrawSize.Y));
 								CanvasSlot->Anchors(FAnchors(0, 0, 0, 0));
 								CanvasSlot->Alignment(Pivot);
-
-								if (GSlateWorldWidgetZOrder != 0)
-								{
-									CanvasSlot->ZOrder(-ViewportPosition.Z);
-								}
+								CanvasSlot->ZOrder(-ViewportPosition.Z);
 							}
 						}
 					}

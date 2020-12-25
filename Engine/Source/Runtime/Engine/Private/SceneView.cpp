@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	SceneView.cpp: SceneView implementation.
@@ -17,7 +17,6 @@
 #include "Interfaces/Interface_PostProcessVolume.h"
 #include "Engine/TextureCube.h"
 #include "StereoRendering.h"
-#include "StereoRenderTargetManager.h"
 #include "IHeadMountedDisplay.h"
 #include "IXRTrackingSystem.h"
 #include "Engine/RendererSettings.h"
@@ -28,7 +27,6 @@
 #include "RenderUtils.h"
 
 DEFINE_LOG_CATEGORY(LogBufferVisualization);
-DEFINE_LOG_CATEGORY(LogMultiView);
 
 DECLARE_CYCLE_STAT(TEXT("StartFinalPostprocessSettings"), STAT_StartFinalPostprocessSettings, STATGROUP_Engine);
 DECLARE_CYCLE_STAT(TEXT("OverridePostProcessSettings"), STAT_OverridePostProcessSettings, STATGROUP_Engine);
@@ -37,10 +35,6 @@ IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FPrimitiveUniformShaderParameters, "Pri
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FViewUniformShaderParameters, "View");
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FInstancedViewUniformShaderParameters, "InstancedView");
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileDirectionalLightShaderParameters, "MobileDirectionalLight");
-IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FMobileMovablePointLightUniformShaderParameters, "MobileMovablePointLight0");
-IMPLEMENT_GLOBAL_SHADER_PARAMETER_ALIAS_STRUCT(FMobileMovablePointLightUniformShaderParameters, MobileMovablePointLight1);
-IMPLEMENT_GLOBAL_SHADER_PARAMETER_ALIAS_STRUCT(FMobileMovablePointLightUniformShaderParameters, MobileMovablePointLight2);
-IMPLEMENT_GLOBAL_SHADER_PARAMETER_ALIAS_STRUCT(FMobileMovablePointLightUniformShaderParameters, MobileMovablePointLight3);
 
 
 static TAutoConsoleVariable<float> CVarSSRMaxRoughness(
@@ -168,11 +162,6 @@ static TAutoConsoleVariable<int32> CVarDefaultAutoExposureMethod(
 	TEXT("Engine default (project setting) for AutoExposure Method (postprocess volume/camera/game setting still can override)\n")
 	TEXT(" 0: Histogram based (requires compute shader, default)\n")
 	TEXT(" 1: Basic AutoExposure"));
-
-static TAutoConsoleVariable<float> CVarDefaultAutoExposureBias(
-	TEXT("r.DefaultFeature.AutoExposure.Bias"),
-	1.0f,
-	TEXT("Engine default (project setting) for AutoExposure Exposure Bias (postprocess volume/camera/game setting still can override)\n"));
 
 static TAutoConsoleVariable<int32> CVarDefaultAutoExposureExtendDefaultLuminanceRange(
 	TEXT("r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange"),
@@ -334,9 +323,6 @@ EVertexColorViewMode::Type GVertexColorViewMode = EVertexColorViewMode::Color;
 /** Global primitive uniform buffer resource containing identity transformations. */
 ENGINE_API TGlobalResource<FIdentityPrimitiveUniformBuffer> GIdentityPrimitiveUniformBuffer;
 
-/** Global primitive uniform buffer resource containing identity transformations. */
-ENGINE_API TGlobalResource<FDummyMovablePointLightUniformBuffer> GDummyMovablePointLightUniformBuffer;
-
 FSceneViewStateReference::~FSceneViewStateReference()
 {
 	Destroy();
@@ -472,14 +458,13 @@ FVector4 CreateInvDeviceZToWorldZTransform(const FMatrix& ProjMatrix)
 	}
 }
 
-
-void FViewMatrices::Init(const FMinimalInitializer& Initializer)
+FViewMatrices::FViewMatrices(const FSceneViewInitOptions& InitOptions) : FViewMatrices()
 {
-	//check(Initializer.ViewRotationMatrix.GetOrigin().IsNearlyZero());
-	check(FVector::Distance(Initializer.ViewRotationMatrix.GetScaleVector(), FVector::OneVector) < KINDA_SMALL_NUMBER);
+	//check(InitOptions.ViewRotationMatrix.GetOrigin().IsNearlyZero());
+	check(FVector::Distance(InitOptions.ViewRotationMatrix.GetScaleVector(), FVector::OneVector) < KINDA_SMALL_NUMBER);
 
-	FVector LocalViewOrigin = Initializer.ViewOrigin;
-	FMatrix ViewRotationMatrix = Initializer.ViewRotationMatrix;
+	FVector LocalViewOrigin = InitOptions.ViewOrigin;
+	FMatrix ViewRotationMatrix = InitOptions.ViewRotationMatrix;
 	if (!ViewRotationMatrix.GetOrigin().IsNearlyZero(0.0f))
 	{
 		LocalViewOrigin += ViewRotationMatrix.InverseTransformPosition(FVector::ZeroVector);
@@ -487,10 +472,10 @@ void FViewMatrices::Init(const FMinimalInitializer& Initializer)
 	}
 
 	ViewMatrix = FTranslationMatrix(-LocalViewOrigin) * ViewRotationMatrix;
-	HMDViewMatrixNoRoll = Initializer.ViewRotationMatrix;
+	HMDViewMatrixNoRoll = InitOptions.ViewRotationMatrix;
 
 	// Adjust the projection matrix for the current RHI.
-	ProjectionMatrix = AdjustProjectionMatrixForRHI(Initializer.ProjectionMatrix);
+	ProjectionMatrix = AdjustProjectionMatrixForRHI(InitOptions.ProjectionMatrix);
 	InvProjectionMatrix = InvertProjectionMatrix(ProjectionMatrix);
 
 	// Compute the view projection matrix and its inverse.
@@ -509,10 +494,10 @@ void FViewMatrices::Init(const FMinimalInitializer& Initializer)
 		this->ViewOrigin = LocalViewOrigin;
 	}
 #if WITH_EDITOR
-	else if (Initializer.bUseFauxOrthoViewPos)
+	else if (InitOptions.bUseFauxOrthoViewPos)
 	{
 		float DistanceToViewOrigin = WORLD_MAX;
-		ViewOrigin = FVector4(InvViewMatrix.TransformVector(FVector(0, 0, -1)).GetSafeNormal() * DistanceToViewOrigin, 1) + LocalViewOrigin;
+		ViewOrigin = FVector4(InvViewMatrix.TransformVector(FVector(0, 0, -1)).GetSafeNormal()*DistanceToViewOrigin, 1) + LocalViewOrigin;
 		bViewOriginIsFudged = true;
 	}
 #endif
@@ -580,37 +565,15 @@ void FViewMatrices::Init(const FMinimalInitializer& Initializer)
 
 	// Compute screen scale factors.
 	// Stereo renders at half horizontal resolution, but compute shadow resolution based on full resolution.
-	const bool bStereo = IStereoRendering::IsStereoEyePass(Initializer.StereoPass);
+	const bool bStereo = IStereoRendering::IsStereoEyePass(InitOptions.StereoPass);
 	const float ScreenXScale = bStereo ? 2.0f : 1.0f;
 	ProjectionScale.X = ScreenXScale * FMath::Abs(ProjectionMatrix.M[0][0]);
 	ProjectionScale.Y = FMath::Abs(ProjectionMatrix.M[1][1]);
 	ScreenScale = FMath::Max(
-		Initializer.ConstrainedViewRect.Size().X * 0.5f * ProjectionScale.X,
-		Initializer.ConstrainedViewRect.Size().Y * 0.5f * ProjectionScale.Y
+		InitOptions.GetConstrainedViewRect().Size().X * 0.5f * ProjectionScale.X,
+		InitOptions.GetConstrainedViewRect().Size().Y * 0.5f * ProjectionScale.Y
 	);
-}
-
-FViewMatrices::FViewMatrices(const FSceneViewInitOptions& InitOptions) : FViewMatrices()
-{
-	FMinimalInitializer Initializer;
-
-	Initializer.ViewRotationMatrix   = InitOptions.ViewRotationMatrix;
-	Initializer.ProjectionMatrix     = InitOptions.ProjectionMatrix;
-	Initializer.ViewOrigin           = InitOptions.ViewOrigin;
-	Initializer.ConstrainedViewRect  = InitOptions.GetConstrainedViewRect();
-	Initializer.StereoPass           = InitOptions.StereoPass;
-#if WITH_EDITOR
-	Initializer.bUseFauxOrthoViewPos = InitOptions.bUseFauxOrthoViewPos;
-#endif
-
-	Init(Initializer);
-}
-
-FViewMatrices::FViewMatrices(const FMinimalInitializer& Initializer) : FViewMatrices()
-{
-	Init(Initializer);
-}
-
+};
 
 static void SetupViewFrustum(FSceneView& View)
 {
@@ -666,40 +629,33 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 	, ColorScale(InitOptions.ColorScale)
 	, StereoPass(InitOptions.StereoPass)
 	, StereoIPD(InitOptions.StereoIPD)
-	, bAllowCrossGPUTransfer(true)
-	, bOverrideGPUMask(false)
 	, GPUMask(FRHIGPUMask::GPU0())
 	, bRenderFirstInstanceOnly(false)
 	, DiffuseOverrideParameter(FVector4(0,0,0,1))
 	, SpecularOverrideParameter(FVector4(0,0,0,1))
 	, NormalOverrideParameter(FVector4(0,0,0,1))
 	, RoughnessOverrideParameter(FVector2D(0,1))
-	, MaterialTextureMipBias(0.f)
 	, HiddenPrimitives(InitOptions.HiddenPrimitives)
 	, ShowOnlyPrimitives(InitOptions.ShowOnlyPrimitives)
 	, OriginOffsetThisFrame(InitOptions.OriginOffsetThisFrame)
 	, LODDistanceFactor(InitOptions.LODDistanceFactor)
+	, LODDistanceFactorSquared(InitOptions.LODDistanceFactor*InitOptions.LODDistanceFactor)
 	, bCameraCut(InitOptions.bInCameraCut)
 	, CursorPos(InitOptions.CursorPos)
 	, bIsGameView(false)
 	, bIsViewInfo(false)
 	, bIsSceneCapture(false)
-	, bSceneCaptureUsesRayTracing(false)
 	, bIsReflectionCapture(false)
 	, bIsPlanarReflection(false)
-	, bIsVirtualTexture(false)
-	, bIsOfflineRender(false)
 	, bRenderSceneTwoSided(false)
 	, bIsLocked(false)
 	, bStaticSceneOnly(false)
 	, bIsInstancedStereoEnabled(false)
 	, bIsMultiViewEnabled(false)
 	, bIsMobileMultiViewEnabled(false)
+	, bIsMobileMultiViewDirectEnabled(false)
 	, bShouldBindInstancedViewUB(false)
-	, UnderwaterDepth(-1.0f)
-	, bForceCameraVisibilityReset(false)
 	, GlobalClippingPlane(FPlane(0, 0, 0, 0))
-	, LensPrincipalPointOffsetScale(0.0f, 0.0f, 1.0f, 1.0f)
 #if WITH_EDITOR
 	, OverrideLODViewOrigin(InitOptions.OverrideLODViewOrigin)
 	, bAllowTranslucentPrimitivesInHitProxy( true )
@@ -751,8 +707,7 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 	bool bPlatformRequiresReverseCulling = ((IsOpenGLPlatform(ShaderPlatform) || IsSwitchPlatform(ShaderPlatform)) && bUsingMobileRenderer && !IsPCPlatform(ShaderPlatform) && !IsVulkanMobilePlatform(ShaderPlatform));
 	static auto* MobileHDRCvar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileHDR"));
 	check(MobileHDRCvar);
-	const bool bSkipPostprocessing = MobileHDRCvar->GetValueOnAnyThread() == 0;
-	bReverseCulling = (bPlatformRequiresReverseCulling && bSkipPostprocessing) ? !bReverseCulling : bReverseCulling;
+	bReverseCulling = (bPlatformRequiresReverseCulling && MobileHDRCvar->GetValueOnAnyThread() == 0) ? !bReverseCulling : bReverseCulling;
 
 	// Setup transformation constants to be used by the graphics hardware to transform device normalized depth samples
 	// into world oriented z.
@@ -787,46 +742,31 @@ FSceneView::FSceneView(const FSceneViewInitOptions& InitOptions)
 
 	// Query instanced stereo and multi-view state
 	static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.InstancedStereo"));
-	bIsInstancedStereoEnabled = !bUsingMobileRenderer && RHISupportsInstancedStereo(ShaderPlatform) && (CVar && CVar->GetValueOnAnyThread() != 0);
+	bIsInstancedStereoEnabled = RHISupportsInstancedStereo(ShaderPlatform) ? (CVar ? (CVar->GetValueOnAnyThread() != false) : false) : false;
 
-	// TODO: Should be renamed to multi-viewport
-	bIsMultiViewEnabled = RHISupportsMultiView(ShaderPlatform) && bIsInstancedStereoEnabled;
+	static const auto MultiViewCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.MultiView"));
+	bIsMultiViewEnabled = RHISupportsMultiView(ShaderPlatform) && (MultiViewCVar && MultiViewCVar->GetValueOnAnyThread() != 0);
 
-	bIsMobileMultiViewEnabled = Family && Family->bRequireMultiView;
-	if (bIsMobileMultiViewEnabled && !RHISupportsMobileMultiView(ShaderPlatform))
-	{
-		// Native mobile multi-view is not supported, attempt to fall back to instancing on compatible RHIs
-		if (RHISupportsInstancedStereo(ShaderPlatform) && !GRHISupportsArrayIndexFromAnyShader)
-		{
-			UE_LOG(LogMultiView, Fatal, TEXT("Mobile Multi-View not supported by the RHI and no fallback is available."));
-		}
-		bIsMobileMultiViewEnabled = bIsInstancedStereoEnabled = RHISupportsInstancedStereo(ShaderPlatform);
-	}
+#if PLATFORM_ANDROID
+	static const auto MobileMultiViewCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.MobileMultiView"));
+	bIsMobileMultiViewEnabled = RHISupportsMobileMultiView(ShaderPlatform) && (MobileMultiViewCVar && MobileMultiViewCVar->GetValueOnAnyThread() != 0);
+
+	// TODO: Test platform support for direct
+	static const auto MobileMultiViewDirectCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.MobileMultiView.Direct"));
+	bIsMobileMultiViewDirectEnabled = (MobileMultiViewDirectCVar && MobileMultiViewDirectCVar->GetValueOnAnyThread() != 0);
+#endif
 
 	bShouldBindInstancedViewUB = bIsInstancedStereoEnabled || bIsMobileMultiViewEnabled;
 
+	// If the device doesn't support mobile multi-view, disable it.
+	bIsMobileMultiViewEnabled = bIsMobileMultiViewEnabled && GSupportsMobileMultiView && IStereoRendering::IsStereoEyePass(StereoPass);
+
 	SetupAntiAliasingMethod();
 
-	if ((AntiAliasingMethod == AAM_TemporalAA && GetFeatureLevel() >= ERHIFeatureLevel::SM5) &&
-		(CVarEnableTemporalUpsample.GetValueOnAnyThread() || (Family && Family->GetTemporalUpscalerInterface() != nullptr)))
+	if (CVarEnableTemporalUpsample.GetValueOnAnyThread() && AntiAliasingMethod == AAM_TemporalAA)
 	{
+		// The renderer will automatically fallback to SpatialUpscale if not using TemporalAA anti aliasing method.
 		PrimaryScreenPercentageMethod = EPrimaryScreenPercentageMethod::TemporalUpscale;
-	}
-
-	if (Family && Family->bResolveScene && Family->EngineShowFlags.PostProcessing)
-	{
-		EyeAdaptationViewState = State;
-
-		// When rendering in stereo we want to use the same exposure for both eyes.
-		if (IStereoRendering::IsASecondaryView(*this))
-		{
-			check(Family->Views.Num() >= 1);
-			const FSceneView* PrimaryView = Family->Views[0];
-			if (IStereoRendering::IsAPrimaryView(*PrimaryView))
-			{
-				EyeAdaptationViewState = PrimaryView->State;
-			}
-		}
 	}
 
 	check(VerifyMembersChecks());
@@ -887,7 +827,7 @@ void FSceneView::SetupAntiAliasingMethod()
 		static const auto PostProcessAAQualityCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.PostProcessAAQuality"));
 		static auto* MobileHDRCvar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileHDR"));
 		static auto* MobileMSAACvar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileMSAA"));
-		uint32 MobileMSAAValue = MobileMSAACvar->GetValueOnAnyThread();
+		static uint32 MobileMSAAValue = MobileMSAACvar->GetValueOnAnyThread();
 
 		int32 Quality = FMath::Clamp(PostProcessAAQualityCVar->GetValueOnAnyThread(), 0, 6);
 		const bool bWillApplyTemporalAA = Family->EngineShowFlags.PostProcessing || bIsPlanarReflection;
@@ -907,12 +847,6 @@ void FSceneView::SetupAntiAliasingMethod()
 				AntiAliasingMethod = AAM_FXAA;
 			}
 		}
-
-		// Overides the anti aliasing method to temporal AA when using a custom temporal upscaler.
-		if (GetFeatureLevel() >= ERHIFeatureLevel::SM5 && Family->GetTemporalUpscalerInterface() != nullptr)
-		{
-			AntiAliasingMethod = AAM_TemporalAA;
-		}
 	}
 
     // TemporalAA requires view state for history.
@@ -920,6 +854,23 @@ void FSceneView::SetupAntiAliasingMethod()
 	{
 		AntiAliasingMethod = AAM_None;
 	}
+}
+
+static TAutoConsoleVariable<int32> CVarCompensateForFOV(
+	TEXT("lod.CompensateForFOV"),
+	1,
+	TEXT("When not 0 account for FOV in LOD calculations."));
+
+float FSceneView::GetLODDistanceFactor() const
+{
+	bool bCompensateForFOV = bUseFieldOfViewForLOD && CVarCompensateForFOV.GetValueOnAnyThread() != 0;
+	float ScreenScaleX = bCompensateForFOV ? ViewMatrices.GetProjectionMatrix().M[0][0] : 1.0f;
+	float ScreenScaleY = bCompensateForFOV ? ViewMatrices.GetProjectionMatrix().M[1][1] : (float(UnscaledViewRect.Width()) / UnscaledViewRect.Height());
+
+	const float ScreenMultiple = FMath::Max(UnscaledViewRect.Width() / 2.0f * ScreenScaleX,
+		UnscaledViewRect.Height() / 2.0f * ScreenScaleY);
+	float Fac = PI * ScreenMultiple * ScreenMultiple / UnscaledViewRect.Area();
+	return Fac;
 }
 
 FVector FSceneView::GetTemporalLODOrigin(int32 Index, bool bUseLaggedLODTransition) const
@@ -1339,7 +1290,6 @@ void FSceneView::OverridePostProcessSettings(const FPostProcessSettings& Src, fl
 
 		LERP_PP(BlueCorrection);
 		LERP_PP(ExpandGamut);
-		LERP_PP(ToneCurveAmount);
 
 		LERP_PP(FilmWhitePoint);
 		LERP_PP(FilmSaturation);
@@ -1393,6 +1343,7 @@ void FSceneView::OverridePostProcessSettings(const FPostProcessSettings& Src, fl
 		LERP_PP(AutoExposureHighPercent);
 		LERP_PP(AutoExposureMinBrightness);
 		LERP_PP(AutoExposureMaxBrightness);
+		LERP_PP(AutoExposureCalibrationConstant);
 		LERP_PP(AutoExposureSpeedUp);
 		LERP_PP(AutoExposureSpeedDown);
 		LERP_PP(AutoExposureBias);
@@ -1417,7 +1368,6 @@ void FSceneView::OverridePostProcessSettings(const FPostProcessSettings& Src, fl
 		LERP_PP(AmbientOcclusionMipBlend);
 		LERP_PP(AmbientOcclusionMipScale);
 		LERP_PP(AmbientOcclusionMipThreshold);
-		LERP_PP(AmbientOcclusionTemporalBlendWeight);
 		LERP_PP(IndirectLightingColor);
 		LERP_PP(IndirectLightingIntensity);
 		LERP_PP(DepthOfFieldFocalDistance);
@@ -1529,16 +1479,6 @@ void FSceneView::OverridePostProcessSettings(const FPostProcessSettings& Src, fl
 			Dest.RayTracingAOSamplesPerPixel = Src.RayTracingAOSamplesPerPixel;
 		}
 
-		if (Src.bOverride_RayTracingAOIntensity)
-		{
-			Dest.RayTracingAOIntensity = Src.RayTracingAOIntensity;
-		}
-
-		if (Src.bOverride_RayTracingAORadius)
-		{
-			Dest.RayTracingAORadius = Src.RayTracingAORadius;
-		}
-
 		if (Src.bOverride_PathTracingMaxBounces)
 		{
 			Dest.PathTracingMaxBounces = Src.PathTracingMaxBounces;
@@ -1583,7 +1523,7 @@ void FSceneView::OverridePostProcessSettings(const FPostProcessSettings& Src, fl
 			Dest.BloomDirtMask = Src.BloomDirtMask;
 		}
 
-		if (Src.bOverride_BloomMethod)
+		IF_PP(BloomMethod)
 		{
 			Dest.BloomMethod = Src.BloomMethod;
 		}
@@ -1604,12 +1544,6 @@ void FSceneView::OverridePostProcessSettings(const FPostProcessSettings& Src, fl
 		IF_PP(AutoExposureBiasCurve)
 		{
 			Dest.AutoExposureBiasCurve = Src.AutoExposureBiasCurve;
-		}
-
-		// Texture asset isn't blended
-		IF_PP(AutoExposureMeterMask)
-		{
-			Dest.AutoExposureMeterMask = Src.AutoExposureMeterMask;
 		}
 
 		// actual texture cannot be blended but the intensity can be blended
@@ -1644,11 +1578,6 @@ void FSceneView::OverridePostProcessSettings(const FPostProcessSettings& Src, fl
 		if (Src.bOverride_MotionBlurTargetFPS)
 		{
 			Dest.MotionBlurTargetFPS = Src.MotionBlurTargetFPS;
-		}
-
-		if (Src.bOverride_AutoExposureApplyPhysicalCameraExposure)
-		{
-			Dest.AutoExposureApplyPhysicalCameraExposure = Src.AutoExposureApplyPhysicalCameraExposure;
 		}
 	}
 
@@ -1917,11 +1846,6 @@ void FSceneView::EndFinalPostprocessSettings(const FSceneViewInitOptions& ViewIn
 		FinalPostProcessSettings.LensFlareIntensity = 0;
 	}
 
-	if (!Family->EngineShowFlags.ToneCurve)
-	{
-		FinalPostProcessSettings.ToneCurveAmount = 0;
-	}
-
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	{
 		float Value = CVarExposureOffset.GetValueOnGameThread();
@@ -2061,13 +1985,6 @@ void FSceneView::EndFinalPostprocessSettings(const FSceneViewInitOptions& ViewIn
 		ConfigureBufferVisualizationSettings();
 	}
 
-#if !(UE_BUILD_SHIPPING)
-	if (Family->EngineShowFlags.IsVisualizeCalibrationEnabled())
-	{
-		ConfigureVisualizeCalibrationSettings();
-	}
-#endif
-
 #if WITH_EDITOR
 	FHighResScreenshotConfig& Config = GetHighResScreenshotConfig();
 
@@ -2156,7 +2073,7 @@ void FSceneView::ConfigureBufferVisualizationSettings()
 
 				// Lookup this material from the list that was parsed out of the global ini file
 				Left.TrimStartInline();
-				UMaterialInterface* Material = BufferVisualizationData.GetMaterial(*Left);
+				UMaterial* Material = BufferVisualizationData.GetMaterial(*Left);
 
 				if (Material == NULL && Left.Len() > 0)
 				{
@@ -2172,53 +2089,12 @@ void FSceneView::ConfigureBufferVisualizationSettings()
 		}
 
 		// Copy current material list into settings material list
-		for (TArray<UMaterialInterface*>::TConstIterator It = BufferVisualizationData.GetOverviewMaterials().CreateConstIterator(); It; ++It)
+		for (TArray<UMaterial*>::TConstIterator It = BufferVisualizationData.GetOverviewMaterials().CreateConstIterator(); It; ++It)
 		{
 			FinalPostProcessSettings.BufferVisualizationOverviewMaterials.Add(*It);
 		}
 	}
 }
-
-#if !(UE_BUILD_SHIPPING)
-
-void FSceneView::ConfigureVisualizeCalibrationSettings()
-{
-	const URendererSettings* Settings = GetDefault<URendererSettings>();
-	check(Settings);
-	
-	auto ConfigureCalibrationSettings = [](const FSoftObjectPath& InPath, UMaterialInterface*& OutMaterialInterface, FName& OutMaterialName)
-	{
-		if (InPath.IsValid())
-		{
-			if (UMaterial* Material = Cast<UMaterial>(InPath.TryLoad()))
-			{
-				OutMaterialInterface = Material;
-				OutMaterialName = *Material->GetPathName();
-			}
-			else
-			{
-				UE_LOG(LogBufferVisualization, Warning, TEXT("Error loading material '%s'"), *InPath.ToString());
-				OutMaterialInterface = nullptr;
-				OutMaterialName = NAME_None;
-			}
-		}
-	};
-
-	if (Family->EngineShowFlags.VisualizeCalibrationColor)
-	{
-		ConfigureCalibrationSettings(Settings->VisualizeCalibrationColorMaterialPath, FinalPostProcessSettings.VisualizeCalibrationColorMaterial, CurrentVisualizeCalibrationColorMaterialName);
-	}
-	else if (Family->EngineShowFlags.VisualizeCalibrationGrayscale)
-	{
-		ConfigureCalibrationSettings(Settings->VisualizeCalibrationGrayscaleMaterialPath, FinalPostProcessSettings.VisualizeCalibrationGrayscaleMaterial, CurrentVisualizeCalibrationGrayscaleMaterialName);
-	}
-	else if (Family->EngineShowFlags.VisualizeCalibrationCustom)
-	{
-		ConfigureCalibrationSettings(Settings->VisualizeCalibrationCustomMaterialPath, FinalPostProcessSettings.VisualizeCalibrationCustomMaterial, CurrentVisualizeCalibrationCustomMaterialName);
-	}
-}
-
-#endif // #if !(UE_BUILD_SHIPPING)
 
 EShaderPlatform FSceneView::GetShaderPlatform() const
 {
@@ -2241,9 +2117,6 @@ void FSceneView::SetupViewRectUniformBufferParameters(FViewUniformShaderParamete
 
 	ViewUniformShaderParameters.ViewRectMin = FVector4(EffectiveViewRect.Min.X, EffectiveViewRect.Min.Y, 0.0f, 0.0f);
 	ViewUniformShaderParameters.ViewSizeAndInvSize = FVector4(EffectiveViewRect.Width(), EffectiveViewRect.Height(), 1.0f / float(EffectiveViewRect.Width()), 1.0f / float(EffectiveViewRect.Height()));
-
-	// The light probe ratio is only different during separate forward translucency when r.SeparateTranslucencyScreenPercentage != 100
-	ViewUniformShaderParameters.LightProbeSizeRatioAndInvSizeRatio = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
 
 	// Calculate the vector used by shaders to convert clip space coordinates to texture space.
 	const float InvBufferSizeX = 1.0f / BufferSize.X;
@@ -2452,7 +2325,6 @@ void FSceneView::SetupCommonViewUniformBufferParameters(
 		InViewMatrices.GetTemporalAAJitter().X,		InViewMatrices.GetTemporalAAJitter().Y,
 		InPrevViewMatrices.GetTemporalAAJitter().X, InPrevViewMatrices.GetTemporalAAJitter().Y );
 
-	ViewUniformShaderParameters.DebugViewModeMask = Family->UseDebugViewPS() ? 1 : 0;
 	ViewUniformShaderParameters.UnlitViewmodeMask = !Family->EngineShowFlags.Lighting ? 1 : 0;
 	ViewUniformShaderParameters.OutOfBoundsMask = Family->EngineShowFlags.VisualizeOutOfBoundsPixels ? 1 : 0;
 
@@ -2474,48 +2346,11 @@ void FSceneView::SetupCommonViewUniformBufferParameters(
 
 	ViewUniformShaderParameters.CameraCut = bCameraCut ? 1 : 0;
 
+	ViewUniformShaderParameters.VirtualTextureParams = FVector4(ForceInitToZero);
 	ViewUniformShaderParameters.MinRoughness = FMath::Clamp(CVarGlobalMinRoughnessOverride.GetValueOnRenderThread(), 0.02f, 1.0f);
 
 	//to tail call keep the order and number of parameters of the caller function
 	SetupViewRectUniformBufferParameters(ViewUniformShaderParameters, BufferSize, EffectiveViewRect, InViewMatrices, InPrevViewMatrices);
-}
-
-bool FSceneView::HasValidEyeAdaptationTexture() const
-{
-	if (EyeAdaptationViewState)
-	{
-		return EyeAdaptationViewState->HasValidEyeAdaptationTexture();
-	}
-	return false;
-}
-
-bool FSceneView::HasValidEyeAdaptationBuffer() const
-{
-	if (EyeAdaptationViewState)
-	{
-		return EyeAdaptationViewState->HasValidEyeAdaptationBuffer();
-	}
-	return false;
-}
-
-IPooledRenderTarget* FSceneView::GetEyeAdaptationTexture() const
-{
-	checkf(FeatureLevel > ERHIFeatureLevel::ES3_1, TEXT("SM5 and above use RenderTarget for read back"));
-	if (EyeAdaptationViewState)
-	{
-		return EyeAdaptationViewState->GetCurrentEyeAdaptationTexture();
-	}
-	return nullptr;
-}
-
-const FExposureBufferData* FSceneView::GetEyeAdaptationBuffer() const
-{
-	checkf(FeatureLevel == ERHIFeatureLevel::ES3_1, TEXT("ES3_1 use RWBuffer for read back"));
-	if (EyeAdaptationViewState)
-	{
-		return EyeAdaptationViewState->GetCurrentEyeAdaptationBuffer();
-	}
-	return nullptr;
 }
 
 FSceneViewFamily::FSceneViewFamily(const ConstructionValues& CVS)
@@ -2537,12 +2372,10 @@ FSceneViewFamily::FSceneViewFamily(const ConstructionValues& CVS)
 	SceneCaptureCompositeMode(SCCM_Overwrite),
 	bWorldIsPaused(false),
 	bIsHDR(false),
-	bRequireMultiView(false),
 	GammaCorrection(CVS.GammaCorrection),
 	SecondaryViewFraction(1.0f),
 	SecondaryScreenPercentageMethod(ESecondaryScreenPercentageMethod::LowerPixelDensitySimulation),
-	ScreenPercentageInterface(nullptr),
-	TemporalUpscalerInterface(nullptr)
+	ScreenPercentageInterface(nullptr)
 {
 	// If we do not pass a valid scene pointer then SetWorldTimes must be called to initialized with valid times.
 	ensure(CVS.bTimesSet);
@@ -2592,19 +2425,11 @@ FSceneViewFamily::FSceneViewFamily(const ConstructionValues& CVS)
 	bNullifyWorldSpacePosition = false;
 #endif
 
-	// ScreenPercentage is not supported in ES 3.1 with MobileHDR = false. Disable show flag so to have it respected.
+	// ScreenPercentage is not supported in ES2/3.1 with MobileHDR = false. Disable show flag so to have it respected.
 	const bool bIsMobileLDR = (GetFeatureLevel() <= ERHIFeatureLevel::ES3_1 && !IsMobileHDR());
 	if (bIsMobileLDR)
 	{
 		EngineShowFlags.ScreenPercentage = false;
-	}
-
-	if (GEngine && GEngine->IsStereoscopic3D())
-	{
-		static const auto MobileMultiViewCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.MobileMultiView"));
-		const bool bSkipPostprocessing = !IsMobileHDR();
-		const bool bUsingMobileRenderer = FSceneInterface::GetShadingPath(GetFeatureLevel()) == EShadingPath::Mobile;
-		bRequireMultiView = (GSupportsMobileMultiView || GRHISupportsArrayIndexFromAnyShader) && bUsingMobileRenderer && bSkipPostprocessing && (MobileMultiViewCVar && MobileMultiViewCVar->GetValueOnAnyThread() != 0);
 	}
 }
 
@@ -2659,7 +2484,7 @@ bool FSceneViewFamily::SupportsScreenPercentage() const
 	}
 
 	// Mobile renderer does not support screen percentage with LDR.
-	if ((GetFeatureLevel() <= ERHIFeatureLevel::ES3_1 && !IsMobileHDR()))
+	if ((GetFeatureLevel() <= ERHIFeatureLevel::ES3_1 && !IsMobileHDR()) || (GetShaderPlatform() == SP_OPENGL_ES2_WEBGL))
 	{
 		return false;
 	}
@@ -2755,10 +2580,7 @@ EDebugViewShaderMode FSceneViewFamily::ChooseDebugViewShaderMode() const
 	{
 		return DVSM_RayTracingDebug;
 	}
-	else if (EngineShowFlags.LODColoration || EngineShowFlags.HLODColoration)
-	{
-		return DVSM_LODColoration;
-	}
+
 	return DVSM_None;
 }
 

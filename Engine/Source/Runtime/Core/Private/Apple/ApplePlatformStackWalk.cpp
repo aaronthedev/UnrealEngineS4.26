@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ApplePlatformStackWalk.mm: Apple implementations of stack walk functions
@@ -185,7 +185,7 @@ uint32 FApplePlatformStackWalk::CaptureStackBackTrace( uint64* BackTrace, uint32
 		return 0;
 	}
 
-#if PLATFORM_MAC && !defined(USE_UNTESTED_PL_CRASHREPORTER)
+#if PLATFORM_MAC
 	if(Context)
 	{
 		return plcrashreporter_backtrace((void**)BackTrace, MaxDepth);

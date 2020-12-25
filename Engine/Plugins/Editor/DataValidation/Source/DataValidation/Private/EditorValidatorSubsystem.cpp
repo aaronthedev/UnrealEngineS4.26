@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EditorValidatorSubsystem.h"
 
@@ -19,17 +19,11 @@
 
 DEFINE_LOG_CATEGORY(LogContentValidation);
 
-
-UDataValidationSettings::UDataValidationSettings()
-	: bValidateOnSave(true)
-{
-
-}
-
 UEditorValidatorSubsystem::UEditorValidatorSubsystem()
 	: UEditorSubsystem()
 {
 	bAllowBlueprintValidators = true;
+	bValidateOnSave = true;
 }
 
 void UEditorValidatorSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -135,7 +129,7 @@ void UEditorValidatorSubsystem::CleanupValidators()
 	Validators.Empty();
 }
 
-EDataValidationResult UEditorValidatorSubsystem::IsObjectValid(UObject* InObject, TArray<FText>& ValidationErrors, TArray<FText>& ValidationWarnings) const
+EDataValidationResult UEditorValidatorSubsystem::IsObjectValid(UObject* InObject, TArray<FText>& ValidationErrors) const
 {
 	EDataValidationResult Result = EDataValidationResult::NotValidated;
 	
@@ -159,8 +153,6 @@ EDataValidationResult UEditorValidatorSubsystem::IsObjectValid(UObject* InObject
 						Result = NewResult;
 					}
 
-					ValidationWarnings.Append(ValidatorPair.Value->GetAllWarnings());
-
 					ensureMsgf(ValidatorPair.Value->IsValidationStateSet(), TEXT("Validator %s did not include a pass or fail state."), *ValidatorPair.Value->GetClass()->GetName());
 				}
 			}
@@ -170,14 +162,14 @@ EDataValidationResult UEditorValidatorSubsystem::IsObjectValid(UObject* InObject
 	return Result;
 }
 
-EDataValidationResult UEditorValidatorSubsystem::IsAssetValid(FAssetData& AssetData, TArray<FText>& ValidationErrors, TArray<FText>& ValidationWarnings) const
+EDataValidationResult UEditorValidatorSubsystem::IsAssetValid(FAssetData& AssetData, TArray<FText>& ValidationErrors) const
 {
 	if (AssetData.IsValid())
 	{
 		UObject* Obj = AssetData.GetAsset();
 		if (Obj)
 		{
-			return IsObjectValid(Obj, ValidationErrors, ValidationWarnings);
+			return IsObjectValid(Obj, ValidationErrors);
 		}
 		return EDataValidationResult::NotValidated;
 	}
@@ -203,37 +195,8 @@ int32 UEditorValidatorSubsystem::ValidateAssets(TArray<FAssetData> AssetDataList
 	int32 NumInvalidFiles = 0;
 	int32 NumFilesSkipped = 0;
 	int32 NumFilesUnableToValidate = 0;
-	int32 NumFilesWithWarnings = 0;
 
 	int32 NumFilesToValidate = AssetDataList.Num();
-
-	auto AddAssetLogTokens = [&DataValidationLog](EMessageSeverity::Type Severity, const TArray<FText>& TextMessages, FName PackageName)
-	{
-		const FString PackageNameString = PackageName.ToString();
-		for (const FText& Msg : TextMessages)
-		{
-			const FString AssetLogString = FAssetMsg::GetAssetLogString(*PackageNameString, Msg.ToString());
-			FString BeforeAsset;
-			FString AfterAsset;
-			TSharedRef<FTokenizedMessage> TokenizedMessage = DataValidationLog.Message(Severity);
-			if (AssetLogString.Split(PackageNameString, &BeforeAsset, &AfterAsset))
-			{
-				if (!BeforeAsset.IsEmpty())
-				{
-					TokenizedMessage->AddToken(FTextToken::Create(FText::FromString(BeforeAsset)));
-				}
-				TokenizedMessage->AddToken(FAssetNameToken::Create(PackageNameString));
-				if (!AfterAsset.IsEmpty())
-				{
-					TokenizedMessage->AddToken(FTextToken::Create(FText::FromString(AfterAsset)));
-				}
-			}
-			else
-			{
-				TokenizedMessage->AddToken(FTextToken::Create(FText::FromString(AssetLogString)));
-			}
-		}
-	};
 
 	// Now add to map or update as needed
 	for (FAssetData& Data : AssetDataList)
@@ -251,26 +214,16 @@ int32 UEditorValidatorSubsystem::ValidateAssets(TArray<FAssetData> AssetDataList
 		UE_LOG(LogContentValidation, Display, TEXT("%s"), *ValidatingMessage.ToString());
 
 		TArray<FText> ValidationErrors;
-		TArray<FText> ValidationWarnings;
-		EDataValidationResult Result = IsAssetValid(Data, ValidationErrors, ValidationWarnings);
+		EDataValidationResult Result = IsAssetValid(Data, ValidationErrors);
 		++NumFilesChecked;
 
-		AddAssetLogTokens(EMessageSeverity::Error, ValidationErrors, Data.PackageName);
-
-		if (ValidationWarnings.Num() > 0)
+		for (const FText& ErrorMsg : ValidationErrors)
 		{
-			++NumFilesWithWarnings;
-
-			AddAssetLogTokens(EMessageSeverity::Warning, ValidationWarnings, Data.PackageName);
+			DataValidationLog.Error()->AddToken(FTextToken::Create(ErrorMsg));
 		}
 
 		if (Result == EDataValidationResult::Valid)
 		{
-			if (ValidationWarnings.Num() > 0)
-			{
-				DataValidationLog.Info()->AddToken(FAssetNameToken::Create(Data.PackageName.ToString()))
-					->AddToken(FTextToken::Create(LOCTEXT("ContainsWarningsResult", "contains valid data, but has warnings.")));
-			}
 			++NumValidFiles;
 		}
 		else
@@ -294,9 +247,8 @@ int32 UEditorValidatorSubsystem::ValidateAssets(TArray<FAssetData> AssetDataList
 	}
 
 	const bool bFailed = (NumInvalidFiles > 0);
-	const bool bAtLeastOneWarning = (NumFilesWithWarnings > 0);
 
-	if (bFailed || bAtLeastOneWarning || bShowIfNoFailures)
+	if (bFailed || bShowIfNoFailures)
 	{
 		FFormatNamedArguments Arguments;
 		Arguments.Add(TEXT("Result"), bFailed ? LOCTEXT("Failed", "FAILED") : LOCTEXT("Succeeded", "SUCCEEDED"));
@@ -312,13 +264,13 @@ int32 UEditorValidatorSubsystem::ValidateAssets(TArray<FAssetData> AssetDataList
 		DataValidationLog.Open(EMessageSeverity::Info, true);
 	}
 
-	return NumInvalidFiles + NumFilesWithWarnings;
+	return NumInvalidFiles;
 }
 
 void UEditorValidatorSubsystem::ValidateOnSave(TArray<FAssetData> AssetDataList) const
 {
 	// Only validate if enabled and not auto saving
-	if (!GetDefault<UDataValidationSettings>()->bValidateOnSave || GEditor->IsAutosaving())
+	if (!bValidateOnSave || GEditor->IsAutosaving())
 	{
 		return;
 	}
@@ -332,7 +284,7 @@ void UEditorValidatorSubsystem::ValidateOnSave(TArray<FAssetData> AssetDataList)
 	FMessageLog DataValidationLog("AssetCheck");
 	FText SavedAsset = AssetDataList.Num() == 1 ? FText::FromName(AssetDataList[0].AssetName) : LOCTEXT("MultipleErrors", "multiple assets");
 	DataValidationLog.NewPage(FText::Format(LOCTEXT("DataValidationLogPage", "Asset Save: {0}"), SavedAsset));
-	if (ValidateAssets(MoveTemp(AssetDataList), true, false) > 0)
+	if (ValidateAssets(AssetDataList, true, false) > 0)
 	{
 		const FText ErrorMessageNotification = FText::Format(
 			LOCTEXT("ValidationFailureNotification", "Validation failed when saving {0}, check Data Validation log"), SavedAsset);
@@ -343,7 +295,7 @@ void UEditorValidatorSubsystem::ValidateOnSave(TArray<FAssetData> AssetDataList)
 void UEditorValidatorSubsystem::ValidateSavedPackage(FName PackageName)
 {
 	// Only validate if enabled and not auto saving
-	if (!GetDefault<UDataValidationSettings>()->bValidateOnSave || GEditor->IsAutosaving())
+	if (!bValidateOnSave || GEditor->IsAutosaving())
 	{
 		return;
 	}
@@ -378,8 +330,6 @@ bool UEditorValidatorSubsystem::IsPathExcludedFromValidation(const FString& Path
 
 void UEditorValidatorSubsystem::ValidateAllSavedPackages()
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(UEditorValidatorSubsystem::ValidateAllSavedPackages);
-
 	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
 
@@ -403,15 +353,14 @@ void UEditorValidatorSubsystem::ValidateAllSavedPackages()
 		}
 	}
 
-	// We need to query the in-memory data as the disk cache may not be accurate
-	FARFilter Filter;
-	Filter.PackageNames = SavedPackagesToValidate;
-	Filter.bIncludeOnlyOnDiskAssets = false;
-
 	TArray<FAssetData> Assets;
-	AssetRegistry.GetAssets(Filter, Assets);
+	for (FName PackageName : SavedPackagesToValidate)
+	{
+		// We need to query the in-memory data as the disk cache may not be accurate
+		AssetRegistry.GetAssetsByPackageName(PackageName, Assets);
+	}
 
-	ValidateOnSave(MoveTemp(Assets));
+	ValidateOnSave(Assets);
 
 	SavedPackagesToValidate.Empty();
 }

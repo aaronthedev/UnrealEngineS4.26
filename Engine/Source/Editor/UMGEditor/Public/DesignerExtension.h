@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -104,13 +104,10 @@ class UMGEDITOR_API FDesignerExtension : public TSharedFromThis<FDesignerExtensi
 public:
 	/** Constructor */
 	FDesignerExtension();
-	virtual ~FDesignerExtension();
+	virtual ~FDesignerExtension() { }
 
 	/** Initializes the designer extension, this is called the first time a designer extension is registered */
 	virtual void Initialize(IUMGDesigner* InDesigner, UWidgetBlueprint* InBlueprint);
-
-	/** Uninitializes the designer extension, this is called when the designer is removed. */
-	virtual void Uninitialize();
 
 	/** Returns true if the designer extension can extend the current selection. */
 	virtual bool CanExtendSelection(const TArray< FWidgetReference >& Selection) const
@@ -120,11 +117,6 @@ public:
 
 	/** Called every time a element the designer can extend is selected. */
 	virtual void ExtendSelection(const TArray< FWidgetReference >& Selection, TArray< TSharedRef<FDesignerSurfaceElement> >& SurfaceElements)
-	{
-	}
-
-	/** Called every time the content of the designer changed. */
-	virtual void PreviewContentChanged(TSharedRef<SWidget> NewContent)
 	{
 	}
 
@@ -153,7 +145,7 @@ protected:
 
 protected:
 	FName ExtensionId;
-	TWeakObjectPtr<UWidgetBlueprint> Blueprint;
+	UWidgetBlueprint* Blueprint;
 	IUMGDesigner* Designer;
 
 	TArray< FWidgetReference > SelectionCache;

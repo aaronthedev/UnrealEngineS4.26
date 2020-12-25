@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	CrossCompilerCommon.h: Common functionality between compiler & runtime.
@@ -8,7 +8,6 @@
 
 #include "CoreMinimal.h"
 #include "ShaderCore.h"
-#include "ShaderCompilerCore.h"
 
 namespace CrossCompiler
 {
@@ -24,16 +23,13 @@ namespace CrossCompiler
 		NUM_SHADER_STAGES,
 	};
 
-	// Make sure these enums match hlslcc EArray on Engine\Source\ThirdParty\hlslcc\hlslcc\src\hlslcc_lib\glsl_parser_extras.h
 	enum class EPackedTypeName : int8
 	{
-		HighP	= 'h',
+		HighP	= 'h',	// Make sure these enums match hlslcc
 		MediumP	= 'm',
 		LowP	= 'l',
 		Int		= 'i',
 		Uint	= 'u',
-		Sampler	= 's',
-		Image	= 'g',
 
 		Invalid = ' ',
 	};
@@ -45,10 +41,8 @@ namespace CrossCompiler
 		LowP	= 2,
 		Int		= 3,
 		Uint	= 4,
-		Sampler	= 5,
-		Image	= 6,
 
-		Max		= 7,
+		Max		= 5,
 		Invalid = -1,
 	};
 
@@ -59,16 +53,14 @@ namespace CrossCompiler
 		PACKED_TYPENAME_LOWP	= (int32)EPackedTypeName::LowP,
 		PACKED_TYPENAME_INT		= (int32)EPackedTypeName::Int,
 		PACKED_TYPENAME_UINT	= (int32)EPackedTypeName::Uint,
-		PACKED_TYPENAME_SAMPLER	= (int32)EPackedTypeName::Sampler,
-		PACKED_TYPENAME_IMAGE	= (int32)EPackedTypeName::Image,
+		PACKED_TYPENAME_SAMPLER	= 's',
+		PACKED_TYPENAME_IMAGE	= 'g',
 
 		PACKED_TYPEINDEX_HIGHP		= (int32)EPackedTypeIndex::HighP,
 		PACKED_TYPEINDEX_MEDIUMP	= (int32)EPackedTypeIndex::MediumP,
 		PACKED_TYPEINDEX_LOWP		= (int32)EPackedTypeIndex::LowP,
 		PACKED_TYPEINDEX_INT		= (int32)EPackedTypeIndex::Int,
 		PACKED_TYPEINDEX_UINT		= (int32)EPackedTypeIndex::Uint,
-		PACKED_TYPEINDEX_SAMPLER	= (int32)EPackedTypeIndex::Sampler,
-		PACKED_TYPEINDEX_IMAGE		= (int32)EPackedTypeIndex::Image,
 		PACKED_TYPEINDEX_MAX		= (int32)EPackedTypeIndex::Max,
 	};
 
@@ -97,8 +89,6 @@ namespace CrossCompiler
 		case PACKED_TYPEINDEX_LOWP:		return PACKED_TYPENAME_LOWP;
 		case PACKED_TYPEINDEX_INT:		return PACKED_TYPENAME_INT;
 		case PACKED_TYPEINDEX_UINT:		return PACKED_TYPENAME_UINT;
-		case PACKED_TYPEINDEX_SAMPLER:	return PACKED_TYPENAME_SAMPLER;
-		case PACKED_TYPEINDEX_IMAGE:	return PACKED_TYPENAME_IMAGE;
 		default: break;
 		}
 		check(0);
@@ -114,8 +104,6 @@ namespace CrossCompiler
 		case PACKED_TYPENAME_LOWP:		return PACKED_TYPEINDEX_LOWP;
 		case PACKED_TYPENAME_INT:		return PACKED_TYPEINDEX_INT;
 		case PACKED_TYPENAME_UINT:		return PACKED_TYPEINDEX_UINT;
-		case PACKED_TYPENAME_SAMPLER:	return PACKED_TYPEINDEX_SAMPLER;
-		case PACKED_TYPENAME_IMAGE:		return PACKED_TYPEINDEX_IMAGE;
 		default: break;
 		}
 		check(0);
@@ -131,8 +119,6 @@ namespace CrossCompiler
 		case EPackedTypeName::LowP:
 		case EPackedTypeName::Int:
 		case EPackedTypeName::Uint:
-		case EPackedTypeName::Sampler:
-		case EPackedTypeName::Image:
 			return true;
 		default: break;
 		}
@@ -149,8 +135,6 @@ namespace CrossCompiler
 		case EPackedTypeIndex::LowP:	return EPackedTypeName::LowP;
 		case EPackedTypeIndex::Int:		return EPackedTypeName::Int;
 		case EPackedTypeIndex::Uint:	return EPackedTypeName::Uint;
-		case EPackedTypeIndex::Sampler:	return EPackedTypeName::Sampler;
-		case EPackedTypeIndex::Image:	return EPackedTypeName::Image;
 		default: break;
 		}
 
@@ -166,8 +150,6 @@ namespace CrossCompiler
 		case EPackedTypeName::LowP:		return EPackedTypeIndex::LowP;
 		case EPackedTypeName::Int:		return EPackedTypeIndex::Int;
 		case EPackedTypeName::Uint:		return EPackedTypeIndex::Uint;
-		case EPackedTypeName::Sampler:	return EPackedTypeIndex::Sampler;
-		case EPackedTypeName::Image:	return EPackedTypeIndex::Image;
 		default: break;
 		}
 

@@ -1,41 +1,43 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
-
-#include "Tools/Modes.h"
+#include "CoreMinimal.h"
 #include "InputCoreTypes.h"
 #include "UnrealWidget.h"
 #include "EditorComponents.h"
+#include "EngineGlobals.h"
+#include "EditorModeRegistry.h"
 #include "Templates/SharedPointer.h"
 #include "UObject/Object.h"
-#include "InputState.h"
 #include "Math/Ray.h"
-#include "UObject/SoftObjectPtr.h"
-#include "Engine/EngineBaseTypes.h"
-
+#include "InputState.h"
 #include "UEdMode.generated.h"
 
 
 class FCanvas;
 class FEditorModeTools;
 class FEditorViewportClient;
+class FModeTool;
 class FModeToolkit;
 class FPrimitiveDrawInterface;
 class FSceneView;
 class FViewport;
 class UTexture2D;
-class UEdModeInteractiveToolsContext;
+struct FConvexVolume;
+struct FViewportClick;
+class UInteractiveToolsContext;
 class UInteractiveToolManager;
-class UInteractiveTool;
+class IToolsContextQueriesAPI;
+class IToolsContextTransactionsAPI;
+class IToolsContextAssetAPI;
 
+enum EModeTools : int8;
 class FEditorViewportClient;
 class HHitProxy;
 struct FViewportClick;
+class FModeTool;
 class FEditorViewportClient;
-class UInteractiveToolBuilder;
-class FUICommandInfo;
-class FUICommandList;
-class FEdMode;
+struct FViewportClick;
 
 
 /** Outcomes when determining whether it's possible to perform an action on the edit modes*/
@@ -55,18 +57,18 @@ namespace EEditAction
 /**
  * Base class for all editor modes.
  */
-UCLASS(Abstract)
+UCLASS()
 class UNREALED_API UEdMode : public UObject, public FEditorCommonDrawHelper
 {
 	GENERATED_BODY()
 
 public:
 	/** Friends so it can access mode's internals on construction */
-	friend class UAssetEditorSubsystem;
+	friend class FEditorModeRegistry;
 
 	UEdMode();
 
-	virtual void Initialize();
+	virtual void Initialize() {};
 
 	virtual bool MouseEnter(FEditorViewportClient* ViewportClient, FViewport* Viewport, int32 x, int32 y);
 
@@ -115,7 +117,7 @@ public:
 	virtual bool IsCompatibleWith(FEditorModeID OtherModeID) const { return false; }
 	virtual void ActorMoveNotify() {}
 	virtual void ActorsDuplicatedNotify(TArray<AActor*>& PreDuplicateSelection, TArray<AActor*>& PostDuplicateSelection, bool bOffsetLocations) {}
-	virtual void ActorSelectionChangeNotify() {};
+	virtual void ActorSelectionChangeNotify();
 	virtual void ActorPropChangeNotify() {}
 	virtual void MapChangeNotify() {}
 
@@ -149,6 +151,8 @@ public:
 	/** If Rotation Snap should be enabled for this mode*/
 	virtual bool IsSnapRotationEnabled();
 
+	void PostInvalidation();
+	void RestoreEditorState();
 	/** If this mode should override the snap rotation
 	* @param	Rotation		The Rotation Override
 	*
@@ -160,12 +164,8 @@ public:
 	virtual void UpdateInternalData() {}
 
 	virtual void Enter();
-
-	virtual void RegisterTool(TSharedPtr<FUICommandInfo> UICommand, FString ToolIdentifier, UInteractiveToolBuilder* Builder);
-
-
 	virtual void Exit();
-	virtual UTexture2D* GetVertexTexture();
+	virtual UTexture2D* GetVertexTexture() { return GEngine->DefaultBSPVertexTexture; }
 
 	virtual void PostUndo() {}
 
@@ -230,13 +230,14 @@ public:
 	UWorld* GetWorld() const;
 
 	/** Returns the owning mode manager for this mode */
-	FEditorModeTools* GetModeManager() const;
+	class FEditorModeTools* GetModeManager() const;
 
 	/**
-	 * For use by the EditorModeTools class to get the legacy FEdMode type from a legacy FEdMode wrapper
-	 * You should not need to override this function in your UEdMode implementation.
-	*/
-	virtual FEdMode* AsLegacyMode() { return nullptr; }
+	 * Called when the editor mode should rebuild its toolbar
+	 *
+	 * @param ToolbarBuilder	The builder which should be used to add toolbar widgets
+	 */
+	virtual void BuildModeToolbar(class FToolBarBuilder& ToolbarBuilder) {}
 
 public:
 
@@ -246,20 +247,36 @@ public:
 	/** returns true if this mode is to be deleted at the next convenient opportunity (FEditorModeTools::Tick) */
 	bool IsPendingDeletion() const { return bPendingDeletion; }
 
-protected:
+private:
 	/** true if this mode is pending removal from its owner */
 	bool bPendingDeletion;
-	
+
+	/** Called whenever a mode type is unregistered */
+	void OnModeUnregistered(FEditorModeID ModeID);
+
+	// default behavior is to accept active tool
+	virtual void TerminateActiveToolsOnPIEStart();
+
+	// default behavior is to accept active tool
+	virtual void TerminateActiveToolsOnSaveWorld();
+
+	FRay GetRayFromMousePos(FEditorViewportClient* ViewportClient, FViewport* Viewport, int MouseX, int MouseY);
 protected:
 
-	/** Information pertaining to this mode. Should be assigned in the constructor. */
+	/** Information pertaining to this mode. Assigned by FEditorModeRegistry. */
 	FEditorModeInfo Info;
 
 	/** Editor Mode Toolkit that is associated with this toolkit mode */
-	TSharedPtr<FModeToolkit> Toolkit;
+	TSharedPtr<class FModeToolkit> Toolkit;
 
 	/** Pointer back to the mode tools that we are registered with */
 	FEditorModeTools* Owner;
+
+	// Property Widgets
+public:
+
+	UPROPERTY()
+	UMaterialInterface* StandardVertexColorMaterial;
 
 protected:
 	/**
@@ -267,8 +284,13 @@ protected:
 	 */
 	AActor* GetFirstSelectedActorInstance() const;
 
+	void DeactivateAllActiveTools();
+
 	bool bHaveSavedEditorState;
 	bool bSavedAntiAliasingState;
+
+	/** Input event instance used to keep track of various button states, etc, that we cannot directly query on-demand */
+	FInputDeviceState CurrentMouseState;
 
 public:
 
@@ -277,43 +299,19 @@ public:
 	 */
 	virtual UInteractiveToolManager* GetToolManager() const;
 
-	virtual TMap<FName, TArray<TSharedPtr<FUICommandInfo>>> GetModeCommands() const
-	{
-		return TMap<FName, TArray<TSharedPtr<FUICommandInfo>>>();
-	};
-
-	void SetCurrentPaletteName(FName InName)
-	{
-		CurrentPaletteName = InName;
-		UpdateOnPaletteChange();
-	};
-
-	FName GetCurrentPaletteName() const
-	{
-		return CurrentPaletteName;
-	}
-
-protected:
-	virtual void CreateToolkit();
-	virtual void OnToolStarted(UInteractiveToolManager* Manager, UInteractiveTool* Tool) {};
-	virtual void OnToolEnded(UInteractiveToolManager* Manager, UInteractiveTool* Tool) {};
-	virtual void ActivateDefaultTool() {};
-	virtual void UpdateOnPaletteChange() {};
-
 protected:
 
-	UPROPERTY()
-	UEdModeInteractiveToolsContext* ToolsContext;
-	TSoftClassPtr<UEdModeInteractiveToolsContext> ToolsContextClass;
-	/** Command list lives here so that the key bindings on the commands can be processed in the viewport. */
-	TSharedPtr<FUICommandList> ToolCommandList;
+	UInteractiveToolsContext* ToolsContext;
 
-	UPROPERTY()
-	TSoftClassPtr<UObject> SettingsClass;
+	bool bInvalidationPending;
+	IToolsContextQueriesAPI* QueriesAPI;
+	IToolsContextTransactionsAPI* TransactionAPI;
+	IToolsContextAssetAPI* AssetAPI;
 
-	UPROPERTY(Transient)
-	UObject* SettingsObject;
+	// called when PIE is about to start, shuts down active tools
+	FDelegateHandle BeginPIEDelegateHandle;
+	// called before a Save starts. This currently shuts down active tools.
+	FDelegateHandle PreSaveWorldDelegateHandle;
 
-	FName CurrentPaletteName;
 };
 

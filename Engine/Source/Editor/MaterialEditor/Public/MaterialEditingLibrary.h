@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -140,18 +140,6 @@ public:
 	UFUNCTION(BlueprintPure, Category = "MaterialEditing")
 	static TSet<UObject*> GetMaterialSelectedNodes(UMaterial* Material);
 
-	/** Get the node providing the output for a given material property from an active material editor */
-	UFUNCTION(BlueprintPure, Category = "MaterialEditing")
-	static UMaterialExpression* GetMaterialPropertyInputNode(UMaterial* Material, EMaterialProperty Property);
-
-	/** Get the set of nodes acting as inputs to a node from an active material editor */
-	UFUNCTION(BlueprintPure, Category = "MaterialEditing")
-	static TArray<UMaterialExpression*> GetInputsForMaterialExpression(UMaterial* Material, UMaterialExpression* MaterialExpression);
-
-	/** Get the list of textures used by a material */
-	UFUNCTION(BlueprintPure, Category = "MaterialEditing")
-	static TArray<UTexture*> GetUsedTextures(UMaterial* Material);
-	
 	//////// MATERIAL FUNCTION EDITING
 
 	/** Returns number of material expressions in the supplied material */
@@ -262,7 +250,7 @@ public:
 	*	@return	Whether or not the parameter was found in this material
 	*/
 	UFUNCTION(BlueprintCallable, Category = "MaterialEditing")
-	static bool GetScalarParameterSource(UMaterialInterface* Material, const FName ParameterName, FSoftObjectPath& ParameterSource);
+	bool GetScalarParameterSource(UMaterialInterface* Material, const FName ParameterName, FSoftObjectPath& ParameterSource);
 
 	/**
 	*	Returns the path of the asset where the parameter originated, as well as true/false if it was found
@@ -272,7 +260,7 @@ public:
 	*	@return	Whether or not the parameter was found in this material
 	*/
 	UFUNCTION(BlueprintCallable, Category = "MaterialEditing")
-	static bool GetVectorParameterSource(UMaterialInterface* Material, const FName ParameterName, FSoftObjectPath& ParameterSource);
+	bool GetVectorParameterSource(UMaterialInterface* Material, const FName ParameterName, FSoftObjectPath& ParameterSource);
 
 	/**
 	*	Returns the path of the asset where the parameter originated, as well as true/false if it was found
@@ -282,7 +270,7 @@ public:
 	*	@return	Whether or not the parameter was found in this material
 	*/
 	UFUNCTION(BlueprintCallable, Category = "MaterialEditing")
-	static bool GetTextureParameterSource(UMaterialInterface* Material, const FName ParameterName, FSoftObjectPath& ParameterSource);
+	bool GetTextureParameterSource(UMaterialInterface* Material, const FName ParameterName, FSoftObjectPath& ParameterSource);
 
 	/**
 	*	Returns the path of the asset where the parameter originated, as well as true/false if it was found
@@ -292,5 +280,5 @@ public:
 	*	@return	Whether or not the parameter was found in this material
 	*/
 	UFUNCTION(BlueprintCallable, Category = "MaterialEditing")
-	static bool GetStaticSwitchParameterSource(UMaterialInterface* Material, const FName ParameterName, FSoftObjectPath& ParameterSource);
+	bool GetStaticSwitchParameterSource(UMaterialInterface* Material, const FName ParameterName, FSoftObjectPath& ParameterSource);
 };

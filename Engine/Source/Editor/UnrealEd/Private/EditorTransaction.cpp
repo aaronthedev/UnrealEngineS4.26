@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "CoreMinimal.h"
@@ -317,7 +317,7 @@ void FTransaction::FObjectRecord::Finalize( FTransaction* Owner, TSharedPtr<ITra
 	}
 }
 
-void FTransaction::FObjectRecord::Snapshot( FTransaction* Owner, TArrayView<const FProperty*> Properties )
+void FTransaction::FObjectRecord::Snapshot( FTransaction* Owner, TArrayView<const UProperty*> Properties )
 {
 	if (Array)
 	{
@@ -356,13 +356,7 @@ void FTransaction::FObjectRecord::Snapshot( FTransaction* Owner, TArrayView<cons
 		// Notify any listeners of this change
 		if (SnapshotDeltaChange.HasChanged() || ChangedObjectTransactionAnnotation.IsValid())
 		{
-			CurrentObject->PostTransacted(FTransactionObjectEvent(Owner->GetId(), Owner->GetOperationId(), ETransactionObjectEventType::Snapshot, SnapshotDeltaChange, ChangedObjectTransactionAnnotation
-				, InitialSerializedObject.ObjectPackageName
-				, InitialSerializedObject.ObjectName
-				, InitialSerializedObject.ObjectPathName
-				, InitialSerializedObject.ObjectOuterPathName
-				, InitialSerializedObject.ObjectExternalPackageName
-				, InitialSerializedObject.ObjectClassPathName));
+			CurrentObject->PostTransacted(FTransactionObjectEvent(Owner->GetId(), Owner->GetOperationId(), ETransactionObjectEventType::Snapshot, SnapshotDeltaChange, ChangedObjectTransactionAnnotation, InitialSerializedObject.ObjectName, InitialSerializedObject.ObjectPathName, InitialSerializedObject.ObjectOuterPathName, InitialSerializedObject.ObjectClassPathName));
 		}
 	}
 }
@@ -415,7 +409,6 @@ void FTransaction::FObjectRecord::Diff( const FTransaction* Owner, const FSerial
 	{
 		OutDeltaChange.bHasNameChange |= OldSerializedObject.ObjectName != NewSerializedObject.ObjectName;
 		OutDeltaChange.bHasOuterChange |= OldSerializedObject.ObjectOuterPathName != NewSerializedObject.ObjectOuterPathName;
-		OutDeltaChange.bHasExternalPackageChange |= OldSerializedObject.ObjectExternalPackageName != NewSerializedObject.ObjectExternalPackageName;
 		OutDeltaChange.bHasPendingKillChange |= OldSerializedObject.bIsPendingKill != NewSerializedObject.bIsPendingKill;
 
 		if (!AreObjectPointersIdentical(NAME_None))
@@ -847,7 +840,7 @@ void FTransaction::SetPrimaryObject(UObject* InObject)
 	}
 }
 
-void FTransaction::SnapshotObject( UObject* InObject, TArrayView<const FProperty*> Properties )
+void FTransaction::SnapshotObject( UObject* InObject, TArrayView<const UProperty*> Properties )
 {
 	if (InObject && ObjectMap.Contains(InObject))
 	{
@@ -968,13 +961,7 @@ void FTransaction::Apply()
 		if (DeltaChange.HasChanged() || ChangedObjectTransactionAnnotation.IsValid())
 		{
 			const FObjectRecord::FSerializedObject& InitialSerializedObject = ChangedObjectRecord.SerializedObject;
-			ChangedObject->PostTransacted(FTransactionObjectEvent(Id, OperationId, ETransactionObjectEventType::UndoRedo, DeltaChange, ChangedObjectTransactionAnnotation
-				, InitialSerializedObject.ObjectPackageName
-				, InitialSerializedObject.ObjectName
-				, InitialSerializedObject.ObjectPathName
-				, InitialSerializedObject.ObjectOuterPathName
-				, InitialSerializedObject.ObjectExternalPackageName
-				, InitialSerializedObject.ObjectClassPathName));
+			ChangedObject->PostTransacted(FTransactionObjectEvent(Id, OperationId, ETransactionObjectEventType::UndoRedo, DeltaChange, ChangedObjectTransactionAnnotation, InitialSerializedObject.ObjectName, InitialSerializedObject.ObjectPathName, InitialSerializedObject.ObjectOuterPathName, InitialSerializedObject.ObjectClassPathName));
 		}
 	}
 
@@ -1035,13 +1022,7 @@ void FTransaction::Finalize()
 			UObject* ChangedObject = ChangedObjectIt.Key;
 			
 			const FObjectRecord::FSerializedObject& InitialSerializedObject = ChangedObjectRecord.SerializedObject;
-			ChangedObject->PostTransacted(FTransactionObjectEvent(Id, OperationId, ETransactionObjectEventType::Finalized, DeltaChange, ChangedObjectTransactionAnnotation
-				, InitialSerializedObject.ObjectPackageName
-				, InitialSerializedObject.ObjectName
-				, InitialSerializedObject.ObjectPathName
-				, InitialSerializedObject.ObjectOuterPathName
-				, InitialSerializedObject.ObjectExternalPackageName
-				, InitialSerializedObject.ObjectClassPathName));
+			ChangedObject->PostTransacted(FTransactionObjectEvent(Id, OperationId, ETransactionObjectEventType::Finalized, DeltaChange, ChangedObjectTransactionAnnotation, InitialSerializedObject.ObjectName, InitialSerializedObject.ObjectPathName, InitialSerializedObject.ObjectOuterPathName, InitialSerializedObject.ObjectClassPathName));
 		}
 	}
 	ChangedObjects.Reset();
@@ -1097,13 +1078,7 @@ FTransactionDiff FTransaction::GenerateDiff() const
 				{
 					// Since this transaction is not currently in an undo operation, generate a valid Guid.
 					FGuid Guid = FGuid::NewGuid();
-					TransactionDiff.DiffMap.Emplace(FName(*TransactedObject->GetPathName()), MakeShared<FTransactionObjectEvent>(this->GetId(), Guid, ETransactionObjectEventType::Finalized, RecordDeltaChange, ObjectRecord.SerializedObject.ObjectAnnotation
-						, ObjectRecord.SerializedObject.ObjectPackageName
-						, ObjectRecord.SerializedObject.ObjectName
-						, ObjectRecord.SerializedObject.ObjectPathName
-						, ObjectRecord.SerializedObject.ObjectOuterPathName
-						, ObjectRecord.SerializedObject.ObjectExternalPackageName
-						, ObjectRecord.SerializedObject.ObjectClassPathName));
+					TransactionDiff.DiffMap.Emplace(FName(*TransactedObject->GetPathName()), MakeShared<FTransactionObjectEvent>(this->GetId(), Guid, ETransactionObjectEventType::Finalized, RecordDeltaChange, ObjectRecord.SerializedObject.ObjectAnnotation, ObjectRecord.SerializedObject.ObjectName, ObjectRecord.SerializedObject.ObjectPathName, ObjectRecord.SerializedObject.ObjectOuterPathName, ObjectRecord.SerializedObject.ObjectClassPathName));
 				}
 			}
 		}
@@ -1190,10 +1165,6 @@ int32 UTransBuffer::Begin( const TCHAR* SessionContext, const FText& Description
 	return BeginInternal<FTransaction>(SessionContext, Description);
 }
 
-namespace TransBuffer
-{
-	static FAutoConsoleVariable DumpTransBufferObjectMap(TEXT("TransBuffer.DumpObjectMap"), false, TEXT("Whether to dump the object map each time a transaction is written for debugging purposes."));
-}
 
 int32 UTransBuffer::End()
 {
@@ -1205,15 +1176,16 @@ int32 UTransBuffer::End()
 	{
 		if( --ActiveCount==0 )
 		{
+#if 0 // @todo DB: please don't remove this code -- thanks! :)
+			// End the current transaction.
+			if ( GUndo && GLog )
+			{
+				// @todo DB: Fix this potentially unsafe downcast.
+				static_cast<FTransaction*>(GUndo)->DumpObjectMap( *GLog );
+			}
+#endif
 			if (GUndo)
 			{
-				if (GLog && TransBuffer::DumpTransBufferObjectMap->GetBool())
-				{
-					// @todo DB: Fix this potentially unsafe downcast.
-					static_cast<FTransaction*>(GUndo)->DumpObjectMap( *GLog );
-				}
-
-				// End the current transaction.
 				GUndo->Finalize();
 				TransactionStateChangedDelegate.Broadcast(GUndo->GetContext(), ETransactionStateEventType::TransactionFinalized);
 				GUndo->EndOperation();
@@ -1281,15 +1253,7 @@ void UTransBuffer::Cancel( int32 StartIndex /*=0*/ )
 	// if we don't have any active actions, we shouldn't have an active transaction at all
 	if ( ActiveCount > 0 )
 	{
-		// Canceling partial transaction isn't supported properly at this time, just cancel the transaction entirely
-		if (StartIndex != 0)
-		{
-			FString TransactionTitle = GUndo ? GUndo->GetContext().Title.ToString() : FString(TEXT("Unknown"));
-			UE_LOG(LogEditorTransaction, Warning, TEXT("Canceling transaction partially is unsupported. Canceling %s entirely."), *TransactionTitle);
-			StartIndex = 0;
-		}
-
-		// StartIndex needs to be 0 when cancelling
+		if ( StartIndex == 0 )
 		{
 			if (GUndo)
 			{
@@ -1317,6 +1281,17 @@ void UTransBuffer::Cancel( int32 StartIndex /*=0*/ )
 			UndoCount = PreviousUndoCount;
 			PreviousUndoCount = INDEX_NONE;
 			UndoBufferChangedDelegate.Broadcast();
+		}
+		else
+		{
+			int32 RecordsToKeep = 0;
+			for (int32 ActiveIndex = 0; ActiveIndex <= StartIndex; ++ActiveIndex)
+			{
+				RecordsToKeep += ActiveRecordCounts[ActiveIndex];
+			}
+
+			FTransaction& Transaction = UndoBuffer.Last().Get();
+			Transaction.RemoveRecords(Transaction.GetRecordCount() - RecordsToKeep);
 		}
 
 		// reset the active count

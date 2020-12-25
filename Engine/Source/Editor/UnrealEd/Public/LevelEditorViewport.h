@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -10,10 +10,8 @@
 #include "UnrealWidget.h"
 #include "EditorViewportClient.h"
 #include "UObject/ObjectKey.h"
-#include "UnrealEdMisc.h"
 
 struct FAssetData;
-struct FMinimalViewInfo;
 class FCanvas;
 class FDragTool;
 class HModel;
@@ -121,6 +119,7 @@ private:
 	TMap<UPackage*, bool> InitialPackageDirtyStates;
 	
 };
+
 
 /** */
 class UNREALED_API FLevelEditorViewportClient : public FEditorViewportClient
@@ -540,8 +539,6 @@ public:
 	 */
 	static UObject* GetOrCreateMaterialFromTexture( UTexture* UnrealTexture );
 
-	virtual bool UseAppTime() const override { return false; }
-
 protected:
 	/**
 	* Sets the state of creating a preview actor in the viewport.
@@ -569,34 +566,10 @@ protected:
 	/** Callback for when an editor user setting has changed */
 	void HandleViewportSettingChanged(FName PropertyName);
 
-	/** Callback for when a map is created or destroyed */
-	void OnMapChanged(UWorld* InWorld, EMapChangeType MapChangeType);
-
 	/** Delegate handler for ActorMoved events */
 	void OnActorMoved(AActor* InActor);
 
 	/** FEditorViewportClient Interface*/
-
-	/**
-	 * Collects the set of components and actors on which to apply move operations during or after drag operations.
-	 */
-	void GetSelectedActorsAndComponentsForMove(TArray<AActor*>& OutActorsToMove, TArray<USceneComponent*>& OutComponentsToMove) const;
-
-	/**
-	 * Determines if it is valid to move an actor in this viewport.
-	 *
-	 * @param InActor - the actor that the viewport may be interested in moving.
-	 * @returns true if it is valid for this viewport to update the given actor's transform.
-	 */
-	bool CanMoveActorInViewport(const AActor* InActor) const;
-
-	/** Performs the legacy behavior for calling post edit move and updating transforms from ApplyDeltaToActors function. */
-	UE_DEPRECATED(4.26, "This functions is meant to be used for ease of rollback if too many post edit move calls degrade performance during drag operations. See ULevelEditorSettings::bUseLegacyPostEditBehavior to toggle legacy behavior.")
-	bool LegacyApplyDeltasForSelectedComponentsAndActors(const FVector& InDrag, const FRotator& InRot, const FVector& ModifiedScale);
-
-	/** Performs the legacy behavior for applying transforms and calling post edit move and property changed events from TrackingStopped function. */
-	UE_DEPRECATED(4.26, "This functions is meant to be used for ease of rollback if too many post edit move calls degrade performance during drag operations. See ULevelEditorSettings::bUseLegacyPostEditBehavior to toggle legacy behavior.")
-	bool LegacyTrackingStoppedForSelectedComponentsAndActors(FPropertyChangedEvent& PropertyChangedEvent);
 
 public:
 
@@ -775,7 +748,6 @@ public:
 
 	/** When enabled, the Unreal transform widget will become visible after an actor is selected, even if it was turned off via a show flag */
 	bool bAlwaysShowModeWidgetAfterSelectionChanges;
-
 private:
 	/** The actors that are currently being placed in the viewport via dragging */
 	static TArray< TWeakObjectPtr< AActor > > DropPreviewActors;
@@ -817,8 +789,5 @@ private:
 	/** Stores the previous frame's value of bEditorCameraCut in order to reset it back to false on the next frame */
 	bool					bWasEditorCameraCut;
 
-	bool					bApplyCameraSpeedScaleByDistance;
-
-	/** Handle to a timer event raised in ::ReceivedFocus*/
-	FTimerHandle			FocusTimerHandle;
+	bool bApplyCameraSpeedScaleByDistance;
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -11,7 +11,7 @@
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FInAppPurchaseRestoreResult, EInAppPurchaseState::Type, CompletionStatus, const TArray<FInAppPurchaseRestoreInfo>&, InAppRestorePurchaseInformation);
 
 UCLASS(MinimalAPI)
-class UE_DEPRECATED(4.26, "UInAppPurchaseRestoreCallbackProxy is deprecated, please use UInAppPurchaseRestoreCallbackProxy2 instead.") UInAppPurchaseRestoreCallbackProxy : public UObject
+class UInAppPurchaseRestoreCallbackProxy : public UObject
 {
 	GENERATED_UCLASS_BODY()
 

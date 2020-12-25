@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	VulkanVertexBuffer.cpp: Vulkan vertex buffer RHI implementation.
@@ -19,7 +19,7 @@ void FVulkanVertexBuffer::Swap(FVulkanVertexBuffer& Other)
 	FVulkanResourceMultiBuffer::Swap(Other);
 }
 
-FVertexBufferRHIRef FVulkanDynamicRHI::RHICreateVertexBuffer(uint32 Size, uint32 InUsage, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo)
+FVertexBufferRHIRef FVulkanDynamicRHI::RHICreateVertexBuffer(uint32 Size, uint32 InUsage, FRHIResourceCreateInfo& CreateInfo)
 {
 	LLM_SCOPE_VULKAN(ELLMTagVulkan::VulkanVertexBuffers);
 	if (CreateInfo.bWithoutNativeResource)

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ConcertWorkspaceUI.h"
 
@@ -365,7 +365,7 @@ public:
 		WorkspaceFrontend = MoveTemp(InWorkspaceFrontend);	
 		SetVisibility(MakeAttributeSP(this, &SConcertWorkspaceSequencerToolbarExtension::GetVisibility));
 
-		FToolBarBuilder ToolbarBuilder(TSharedPtr<const FUICommandList>(), FMultiBoxCustomization::None, TSharedPtr<FExtender>(), true);
+		FToolBarBuilder ToolbarBuilder(TSharedPtr<const FUICommandList>(), FMultiBoxCustomization::None, TSharedPtr<FExtender>(), Orient_Horizontal, true);
 
 		ToolbarBuilder.BeginSection("Concert Sequencer");
 		{
@@ -848,8 +848,8 @@ void FConcertWorkspaceUI::OnMarkPackageDirty(UPackage* InPackage, bool /*bWasDir
 {
 	TSharedPtr<IConcertClientWorkspace> ClientWorkspacePin = ClientWorkspace.Pin();
 	if (ClientWorkspacePin.IsValid()
-		&& !ClientWorkspacePin->HasLiveTransactionSupport(InPackage)
-		&& !ClientWorkspacePin->ShouldIgnorePackageDirtyEvent(InPackage))
+		&& !ClientWorkspacePin->ShouldIgnorePackageDirtyEvent(InPackage)
+		&& !ClientWorkspacePin->HasLiveTransactionSupport(InPackage))
 	{
 		FGuid ResourceLockId = ClientWorkspacePin->GetResourceLockId(InPackage->GetFName());
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -111,9 +111,7 @@ protected:
 
 	void UpdateDrawing();
 
-#if WITH_EDITOR
 	static void OnEditorSelectionChanged(UObject* NewSelection);
-#endif // WITH_EDITOR
 
 public:
 #if WITH_EDITORONLY_DATA

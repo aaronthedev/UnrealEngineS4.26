@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SequencerKeyStructGenerator.h"
 #include "Channels/MovieSceneChannelData.h"
-#include "UObject/CoreObjectVersion.h"
 
 UMovieSceneKeyStructType::UMovieSceneKeyStructType(const FObjectInitializer& ObjInit)
 	: Super(ObjInit)
@@ -31,8 +30,8 @@ UMovieSceneKeyStructType* FSequencerKeyStructGenerator::AllocateNewKeyStruct(USc
 	static const FName TimesMetaDataTag("KeyTimes");
 	static const FName ValuesMetaDataTag("KeyValues");
 
-	FArrayProperty* SourceTimes  = FindArrayPropertyWithTag(ChannelType, TimesMetaDataTag);
-	FArrayProperty* SourceValues = FindArrayPropertyWithTag(ChannelType, ValuesMetaDataTag);
+	UArrayProperty* SourceTimes  = FindArrayPropertyWithTag(ChannelType, TimesMetaDataTag);
+	UArrayProperty* SourceValues = FindArrayPropertyWithTag(ChannelType, ValuesMetaDataTag);
 
 	if (!ensureMsgf(SourceTimes, TEXT("No times property could be found for channel type %s. Please add KeyTimes meta data to the array containing the channel's key time."), *ChannelType->GetName()))
 	{
@@ -66,7 +65,7 @@ UMovieSceneKeyStructType* FSequencerKeyStructGenerator::DefaultInstanceGenerated
 			return nullptr;
 		}
 
-		FProperty* NewValueProperty = CastField<FProperty>(FField::Duplicate(NewStruct->SourceValuesProperty->Inner, NewStruct, "Value"));
+		UProperty* NewValueProperty = DuplicateObject(NewStruct->SourceValuesProperty->Inner, NewStruct, "Value");
 		NewValueProperty->SetPropertyFlags(CPF_Edit);
 		NewValueProperty->SetMetaData("Category", TEXT("Key"));
 		NewValueProperty->SetMetaData("ShowOnlyInnerProperties", TEXT("true"));
@@ -87,7 +86,7 @@ void FSequencerKeyStructGenerator::FinalizeNewKeyStruct(UMovieSceneKeyStructType
 	check(InStruct);
 
 	// Add the time property to the head of the property linked list (so it shows first)
-	FStructProperty* NewTimeProperty = new FStructProperty(InStruct, "Time", RF_NoFlags);
+	UStructProperty* NewTimeProperty = NewObject<UStructProperty>(InStruct, "Time");
 	NewTimeProperty->SetPropertyFlags(CPF_Edit);
 	NewTimeProperty->SetMetaData("Category", TEXT("Key"));
 	NewTimeProperty->ArrayDim = 1;
@@ -121,9 +120,9 @@ UMovieSceneKeyStructType* FSequencerKeyStructGenerator::FindGeneratedStruct(FNam
 	return InstanceNameToGeneratedStruct.FindRef(InstancedStructName);
 }
 
-FArrayProperty* FSequencerKeyStructGenerator::FindArrayPropertyWithTag(UScriptStruct* ChannelStruct, FName MetaDataTag)
+UArrayProperty* FSequencerKeyStructGenerator::FindArrayPropertyWithTag(UScriptStruct* ChannelStruct, FName MetaDataTag)
 {
-	for (FArrayProperty* ArrayProperty : TFieldRange<FArrayProperty>(ChannelStruct))
+	for (UArrayProperty* ArrayProperty : TFieldRange<UArrayProperty>(ChannelStruct))
 	{
 		if (ArrayProperty->HasMetaData(MetaDataTag))
 		{
@@ -147,7 +146,7 @@ TSharedPtr<FStructOnScope> FSequencerKeyStructGenerator::CreateInitialStructInst
 		const uint8* SrcTimeData  = GeneratedStructType->SourceTimesProperty->ContainerPtrToValuePtr<uint8>(SourceChannel);
 		uint8*       DestTimeData = GeneratedStructType->DestTimeProperty->ContainerPtrToValuePtr<uint8>(StructPtr);
 
-		FScriptArrayHelper SourceTimesArray(GeneratedStructType->SourceTimesProperty.Get(), SrcTimeData);
+		FScriptArrayHelper SourceTimesArray(GeneratedStructType->SourceTimesProperty, SrcTimeData);
 		GeneratedStructType->SourceTimesProperty->Inner->CopyCompleteValue(DestTimeData, SourceTimesArray.GetRawPtr(InitialKeyIndex));
 	}
 
@@ -156,7 +155,7 @@ TSharedPtr<FStructOnScope> FSequencerKeyStructGenerator::CreateInitialStructInst
 		const uint8* SrcValueData  = GeneratedStructType->SourceValuesProperty->ContainerPtrToValuePtr<uint8>(SourceChannel);
 		uint8*       DestValueData = GeneratedStructType->DestValueProperty->ContainerPtrToValuePtr<uint8>(StructPtr);
 
-		FScriptArrayHelper SourceValuesArray(GeneratedStructType->SourceValuesProperty.Get(), SrcValueData);
+		FScriptArrayHelper SourceValuesArray(GeneratedStructType->SourceValuesProperty, SrcValueData);
 		GeneratedStructType->SourceValuesProperty->Inner->CopyCompleteValue(DestValueData, SourceValuesArray.GetRawPtr(InitialKeyIndex));
 	}
 

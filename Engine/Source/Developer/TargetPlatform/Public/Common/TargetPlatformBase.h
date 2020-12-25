@@ -1,18 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Interfaces/ITargetPlatform.h"
 #include "PlatformInfo.h"
-#include "HAL/PlatformFilemanager.h"
-#include "GenericPlatform/GenericPlatformFile.h"
-#include "Misc/Paths.h"
 
 /**
  * Base class for target platforms.
  */
-class FTargetPlatformBase
+class TARGETPLATFORM_VTABLE FTargetPlatformBase
 	: public ITargetPlatform
 {
 public:
@@ -22,11 +19,6 @@ public:
 	virtual bool AddDevice( const FString& DeviceName, bool bDefault ) override
 	{
 		return false;
-	}
-
-	virtual bool AddDevice(const FString& DeviceId, const FString& DeviceUserFriendlyName, const FString& Username, const FString& Password, bool bDefault) override
-	{
-		return AddDevice(DeviceId, bDefault);
 	}
 
 	virtual FText DisplayName() const override
@@ -49,23 +41,12 @@ public:
 	
 	TARGETPLATFORM_API virtual bool UsesDistanceFields() const override;
 
-	TARGETPLATFORM_API virtual bool UsesRayTracing() const override;
-
-	TARGETPLATFORM_API virtual bool ForcesSimpleSkyDiffuse() const override;
-
 	TARGETPLATFORM_API virtual float GetDownSampleMeshDistanceFieldDivider() const override;
-
-	TARGETPLATFORM_API virtual int32 GetHeightFogModeForOpaque() const override;
 
 #if WITH_ENGINE
 	virtual void GetReflectionCaptureFormats( TArray<FName>& OutFormats ) const override
 	{
 		OutFormats.Add(FName(TEXT("FullHDR")));
-	}
-
-	virtual FName FinalizeVirtualTextureLayerFormat(FName Format) const override
-	{
-		return Format;
 	}
 
 	virtual FName GetVirtualTextureLayerFormat(
@@ -82,22 +63,9 @@ public:
 		return true;
 	}
 
-	virtual bool CanSupportRemoteShaderCompile() const override
+	virtual bool CanSupportXGEShaderCompile() const override
 	{
 		return true;
-	}
-	
-	virtual void GetShaderCompilerDependencies(TArray<FString>& OutDependencies) const override
-	{
-	}
-
-	/** Helper method to fill a dependencies array for the shader compiler with absolute paths, passing a relative path to the Engine as the parameter. */
-	static void AddDependencySCArrayHelper(TArray<FString>& OutDependencies, const FString& DependencyRelativePath)
-	{
-		IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-		FString DependencyAbsolutePath = PlatformFile.ConvertToAbsolutePathForExternalAppForRead(*(FPaths::EngineDir() / DependencyRelativePath));
-		FPaths::NormalizeDirectoryName(DependencyAbsolutePath);
-		OutDependencies.AddUnique(DependencyAbsolutePath);
 	}
 
 	virtual bool IsSdkInstalled(bool bProjectHasCode, FString& OutDocumentationPath) const override
@@ -171,25 +139,6 @@ public:
 	}
 
 	TARGETPLATFORM_API virtual TSharedPtr<IDeviceManagerCustomPlatformWidgetCreator> GetCustomWidgetCreator() const override;
-
-	virtual bool ShouldExpandTo32Bit(const uint16* Indices, const int32 NumIndices) const override
-	{
-		return false;
-	}
-
-#if WITH_ENGINE
-	virtual FName GetMeshBuilderModuleName() const override
-	{
-		// MeshBuilder is the default module. Platforms may override this to provide platform specific mesh data.
-		static const FName NAME_MeshBuilder(TEXT("MeshBuilder"));
-		return NAME_MeshBuilder;
-	}
-#endif
-
-	virtual bool CopyFileToTarget(const FString& TargetAddress, const FString& HostFilename, const FString& TargetFilename, const TMap<FString,FString>& CustomPlatformData) override
-	{
-		return false; 
-	}
 
 protected:
 
@@ -283,16 +232,9 @@ public:
 		return TPlatformProperties::HasSecurePackageFormat();
 	}
 
-	virtual EPlatformAuthentication RequiresUserCredentials() const override
+	virtual bool RequiresUserCredentials() const override
 	{
-		if (TPlatformProperties::RequiresUserCredentials())
-		{
-			return EPlatformAuthentication::Always;
-		}
-		else
-		{
-			return EPlatformAuthentication::Never;
-		}
+		return TPlatformProperties::RequiresUserCredentials();
 	}
 
 	virtual bool SupportsBuildTarget( EBuildTargetType TargetType ) const override
@@ -340,8 +282,6 @@ public:
 			return TPlatformProperties::SupportsTextureStreaming();
 		case ETargetPlatformFeatures::MeshLODStreaming:
 			return TPlatformProperties::SupportsMeshLODStreaming();
-		case ETargetPlatformFeatures::LandscapeMeshLODStreaming:
-			return false;
 
 		case ETargetPlatformFeatures::MemoryMappedFiles:
 			return TPlatformProperties::SupportsMemoryMappedFiles();

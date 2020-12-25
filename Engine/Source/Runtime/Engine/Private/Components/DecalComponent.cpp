@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	DecalComponent.cpp: Decal component implementation.
@@ -280,9 +280,9 @@ void UDecalComponent::BeginPlay()
 	SetLifeSpan(FadeStartDelay + FadeDuration);
 }
 
-void UDecalComponent::CreateRenderState_Concurrent(FRegisterComponentContext* Context)
+void UDecalComponent::CreateRenderState_Concurrent()
 {
-	Super::CreateRenderState_Concurrent(Context);
+	Super::CreateRenderState_Concurrent();
 
 	// Mimics UPrimitiveComponent's visibility logic, although without the UPrimitiveCompoent visibility flags
 	if ( ShouldComponentAddToScene() && ShouldRender() )

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PrimaryAssetIdCustomization.h"
 #include "AssetManagerEditorModule.h"
@@ -12,7 +12,6 @@
 #include "PropertyCustomizationHelpers.h"
 #include "Editor.h"
 #include "AssetThumbnail.h"
-#include "ScopedTransaction.h"
 
 #define LOCTEXT_NAMESPACE "PrimaryAssetIdCustomization"
 
@@ -273,13 +272,7 @@ FSlateColor SPrimaryAssetIdGraphPin::OnGetWidgetBackground() const
 void SPrimaryAssetIdGraphPin::OnIdSelected(FPrimaryAssetId AssetId)
 {
 	CurrentId = AssetId;
-
-	if (CurrentId.ToString() != GraphPinObj->GetDefaultAsString())
-	{
-		const FScopedTransaction Transaction(NSLOCTEXT("GraphEditor", "ChangePinValue", "Change Pin Value"));
-		GraphPinObj->Modify();
-		GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, CurrentId.ToString());
-	}
+	GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, CurrentId.ToString());
 }
 
 FText SPrimaryAssetIdGraphPin::GetDisplayText() const

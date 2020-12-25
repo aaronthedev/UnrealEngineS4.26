@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SoundCueEditor.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
@@ -105,41 +105,36 @@ void FSoundCueEditor::InitSoundCueEditor(const EToolkitMode::Type Mode, const TS
 
 	CreateInternalWidgets();
 
-	const TSharedRef<FTabManager::FLayout> StandaloneDefaultLayout = FTabManager::NewLayout("Standalone_SoundCueEditor_Layout_v4")
+	const TSharedRef<FTabManager::FLayout> StandaloneDefaultLayout = FTabManager::NewLayout("Standalone_SoundCueEditor_Layout_v3")
 	->AddArea
 	(
-		FTabManager::NewPrimaryArea()
-		->SetOrientation(Orient_Vertical)
+		FTabManager::NewPrimaryArea() ->SetOrientation(Orient_Vertical)
 		->Split
 		(
 			FTabManager::NewStack()
 			->SetSizeCoefficient(0.1f)
-			->SetHideTabWell(true)
-			->AddTab(GetToolbarTabId(), ETabState::OpenedTab)
+			->AddTab(GetToolbarTabId(), ETabState::OpenedTab) ->SetHideTabWell( true )
 		)
-		->Split(FTabManager::NewSplitter()
-			->SetOrientation(Orient_Horizontal)
-			->SetSizeCoefficient(0.9f)
+		->Split
+		(
+			FTabManager::NewSplitter() ->SetOrientation(Orient_Horizontal) ->SetSizeCoefficient(0.9f)
 			->Split
 			(
 				FTabManager::NewStack()
 				->SetSizeCoefficient(0.225f)
-				->SetHideTabWell(true)
 				->AddTab(PropertiesTabId, ETabState::OpenedTab)
 			)
 			->Split
 			(
 				FTabManager::NewStack()
 				->SetSizeCoefficient(0.65f)
-				->SetHideTabWell(true)
-				->AddTab(GraphCanvasTabId, ETabState::OpenedTab)
+				->AddTab(GraphCanvasTabId, ETabState::OpenedTab) ->SetHideTabWell( true )
 			)
 			->Split
 			(
-				FTabManager::NewStack()
-				->SetSizeCoefficient(0.125f)
-				->SetHideTabWell(true)
-				->AddTab(PaletteTabId, ETabState::OpenedTab)
+			FTabManager::NewStack()
+			->SetSizeCoefficient(0.125f)
+			->AddTab(PaletteTabId, ETabState::OpenedTab)
 			)
 		)
 	);
@@ -261,12 +256,11 @@ void FSoundCueEditor::PostUndo(bool bSuccess)
 	{
 		SoundCueGraphEditor->ClearSelectionSet();
 		SoundCueGraphEditor->NotifyGraphChanged();
-		FSlateApplication::Get().DismissAllMenus();
 	}
 
 }
 
-void FSoundCueEditor::NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, class FProperty* PropertyThatChanged)
+void FSoundCueEditor::NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, class UProperty* PropertyThatChanged)
 {
 	if (SoundCueGraphEditor.IsValid() && PropertyChangedEvent.ChangeType != EPropertyChangeType::Interactive)
 	{

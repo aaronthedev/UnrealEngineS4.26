@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -89,7 +89,7 @@ public:
 
 /**
  * Settings for the media profile in the editor or standalone.
- * @note Cooked games don't use this media profile setting.
+ * @note For cook games always use the startup media profile
  */
 UCLASS(config=EditorPerProjectUserSettings)
 class MEDIAFRAMEWORKUTILITIES_API UMediaProfileEditorSettings

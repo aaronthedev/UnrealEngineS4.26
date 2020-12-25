@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,10 +10,15 @@
 #include "Interfaces/VoiceCodec.h"
 #include "Net/VoiceConfig.h"
 
+/** Name of default capture device */
+#define DEFAULT_DEVICE_NAME TEXT("Default Device")
+
 /** Default voice chat sample rate */
 #define DEFAULT_VOICE_SAMPLE_RATE 16000
 /** Deprecated value, use DEFAULT_VOICE_SAMPLE_RATE */
 #define VOICE_SAMPLE_RATE DEFAULT_VOICE_SAMPLE_RATE
+/** Default voice chat number of channels (mono) */
+#define DEFAULT_NUM_VOICE_CHANNELS 1
 
 class IVoiceCapture;
 class IVoiceEncoder;
@@ -71,7 +76,7 @@ public:
 	 *
 	 * @return new voice capture object, possibly NULL
 	 */
-	virtual TSharedPtr<IVoiceCapture> CreateVoiceCapture(const FString& DeviceName, int32 SampleRate = UVOIPStatics::GetVoiceSampleRate(), int32 NumChannels = UVOIPStatics::GetVoiceNumChannels());
+	virtual TSharedPtr<IVoiceCapture> CreateVoiceCapture(const FString& DeviceName = DEFAULT_DEVICE_NAME, int32 SampleRate = UVOIPStatics::GetVoiceSampleRate(), int32 NumChannels = DEFAULT_NUM_VOICE_CHANNELS);
 
 	/**
 	 * Instantiates a new voice encoder object
@@ -82,7 +87,7 @@ public:
 	 *
 	 * @return new voice encoder object, possibly NULL
 	 */
-	virtual TSharedPtr<IVoiceEncoder> CreateVoiceEncoder(int32 SampleRate = UVOIPStatics::GetVoiceSampleRate(), int32 NumChannels = UVOIPStatics::GetVoiceNumChannels(), EAudioEncodeHint EncodeHint = UVOIPStatics::GetAudioEncodingHint());
+	virtual TSharedPtr<IVoiceEncoder> CreateVoiceEncoder(int32 SampleRate = UVOIPStatics::GetVoiceSampleRate(), int32 NumChannels = DEFAULT_NUM_VOICE_CHANNELS, EAudioEncodeHint EncodeHint = UVOIPStatics::GetAudioEncodingHint());
 
 	/**
 	 * Instantiates a new voice decoder object
@@ -92,7 +97,7 @@ public:
 	 *
 	 * @return new voice decoder object, possibly NULL
 	 */
-	virtual TSharedPtr<IVoiceDecoder> CreateVoiceDecoder(int32 SampleRate = UVOIPStatics::GetVoiceSampleRate(), int32 NumChannels = UVOIPStatics::GetVoiceNumChannels());
+	virtual TSharedPtr<IVoiceDecoder> CreateVoiceDecoder(int32 SampleRate = UVOIPStatics::GetVoiceSampleRate(), int32 NumChannels = DEFAULT_NUM_VOICE_CHANNELS);
 
 	/**
 	* Checks to see if the current platform supports voice capture.

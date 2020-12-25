@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Stack/SNiagaraStackParameterStoreEntryValue.h"
 #include "NiagaraEditorModule.h"
@@ -93,6 +93,7 @@ void SNiagaraStackParameterStoreEntryValue::Construct(const FArguments& InArgs, 
 			.IsFocusable(false)
 			.ForegroundColor(FSlateColor::UseForeground())
 			.ToolTipText(LOCTEXT("DeleteToolTip", "Delete this parameter"))
+			.Visibility(this, &SNiagaraStackParameterStoreEntryValue::GetDeleteButtonVisibility)
 			.OnClicked(this, &SNiagaraStackParameterStoreEntryValue::DeleteClicked)
 			.Content()
 			[
@@ -110,7 +111,7 @@ FReply SNiagaraStackParameterStoreEntryValue::DeleteClicked()
 	FNotificationInfo Info(FText::Format(LOCTEXT("NiagaraDeletedUserParameter", "System exposed parameter was deleted.\n{0}\n(All links to inner variables were invalidated in the process.)"), StackEntry->GetDisplayName()));
 	Info.ExpireDuration = 5.0f;
 	Info.bFireAndForget = true;
-	Info.Image = FCoreStyle::Get().GetBrush(TEXT("MessageLog.Note"));
+	Info.Image = FCoreStyle::Get().GetBrush(TEXT("MessageLog.Info"));
 	FSlateNotificationManager::Get().AddNotification(Info);
 
 	// Delete after the notification is posted to prevent the entry from becoming invalidated before generating the message.
@@ -119,10 +120,10 @@ FReply SNiagaraStackParameterStoreEntryValue::DeleteClicked()
 	return FReply::Handled();
 }
 
-void SNiagaraStackParameterStoreEntryValue::OnAssetSelectedFromPicker(const FAssetData& InAssetData, UClass* InClass)
+void SNiagaraStackParameterStoreEntryValue::OnAssetSelectedFromPicker(const FAssetData& InAssetData)
 {	
-	if ( !InAssetData.GetAsset() || (InAssetData.GetAsset() && InAssetData.GetAsset()->IsA(InClass)))
-		StackEntry->ReplaceValueObject(InAssetData.GetAsset());
+	UMaterialInterface* Mat = Cast<UMaterialInterface>(InAssetData.GetAsset());
+	StackEntry->ReplaceValueObject(Mat);
 }
 
 FString SNiagaraStackParameterStoreEntryValue::GetCurrentAssetPath() const
@@ -186,23 +187,7 @@ TSharedRef<SWidget> SNiagaraStackParameterStoreEntryValue::ConstructValueStructW
 			return SNew(SObjectPropertyEntryBox)
 				.ObjectPath_Raw(this, &SNiagaraStackParameterStoreEntryValue::GetCurrentAssetPath)
 				.AllowedClass(UMaterialInterface::StaticClass())
-				.OnObjectChanged_Raw(this, &SNiagaraStackParameterStoreEntryValue::OnAssetSelectedFromPicker, UMaterialInterface::StaticClass())
-				.AllowClear(false)
-				.DisplayUseSelected(true)
-				.DisplayBrowse(true)
-				.DisplayThumbnail(true)
-				.NewAssetFactories(TArray<UFactory*>());
-
-		}
-		else if (StackEntry->GetInputType().GetClass()->IsChildOf(UTexture::StaticClass()))
-		{
-			TArray<const UClass*> AllowedClasses;
-			AllowedClasses.Add(UTexture::StaticClass());
-
-			return SNew(SObjectPropertyEntryBox)
-				.ObjectPath_Raw(this, &SNiagaraStackParameterStoreEntryValue::GetCurrentAssetPath)
-				.AllowedClass(UTexture::StaticClass())
-				.OnObjectChanged_Raw(this, &SNiagaraStackParameterStoreEntryValue::OnAssetSelectedFromPicker, UTexture::StaticClass())
+				.OnObjectChanged_Raw(this, &SNiagaraStackParameterStoreEntryValue::OnAssetSelectedFromPicker)
 				.AllowClear(false)
 				.DisplayUseSelected(true)
 				.DisplayBrowse(true)
@@ -263,6 +248,11 @@ void SNiagaraStackParameterStoreEntryValue::ParameterValueChanged(TSharedRef<SNi
 void SNiagaraStackParameterStoreEntryValue::ParameterPropertyValueChanged(const FPropertyChangedEvent& PropertyChangedEvent)
 {
 	StackEntry->NotifyValueChanged();
+}
+
+EVisibility SNiagaraStackParameterStoreEntryValue::GetDeleteButtonVisibility() const
+{
+	return StackEntry->CanRenameInput() ? EVisibility::Visible : EVisibility::Collapsed;
 }
 
 EVisibility SNiagaraStackParameterStoreEntryValue::GetReferenceVisibility() const

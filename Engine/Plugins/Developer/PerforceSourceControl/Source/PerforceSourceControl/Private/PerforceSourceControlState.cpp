@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PerforceSourceControlState.h"
 #include "PerforceSourceControlRevision.h"
@@ -273,11 +273,7 @@ const FDateTime& FPerforceSourceControlState::GetTimeStamp() const
 
 bool FPerforceSourceControlState::CanCheckIn() const
 {
-	return ( (State == EPerforceState::CheckedOut) 
-			|| (State == EPerforceState::OpenForAdd) 
-			|| (State == EPerforceState::MarkedForDelete)
-			|| (State == EPerforceState::Branched) )
-		&& !IsConflicted() && IsCurrent();
+	return ( (State == EPerforceState::CheckedOut) || (State == EPerforceState::OpenForAdd) || (State == EPerforceState::Branched) ) && !IsConflicted() && IsCurrent();
 }
 
 bool FPerforceSourceControlState::CanCheckout() const

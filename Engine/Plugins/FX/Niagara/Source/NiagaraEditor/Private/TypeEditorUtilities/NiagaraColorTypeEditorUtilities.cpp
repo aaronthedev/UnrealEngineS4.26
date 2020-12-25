@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraColorTypeEditorUtilities.h"
 #include "SNiagaraParameterEditor.h"
@@ -234,10 +234,4 @@ bool FNiagaraEditorColorTypeUtilities::SetValueFromPinDefaultString(const FStrin
 FText FNiagaraEditorColorTypeUtilities::GetSearchTextFromValue(const FNiagaraVariable& AllocatedVariable) const
 {
 	return FText::FromString(GetPinDefaultStringFromValue(AllocatedVariable));
-}
-
-FText FNiagaraEditorColorTypeUtilities::GetStackDisplayText(FNiagaraVariable& Variable) const
-{
-	FLinearColor Value = Variable.GetValue<FLinearColor>();
-	return FText::Format(FText::FromString("({0}, {1}, {2}, {3})"), Value.R, Value.G, Value.B, Value.A);
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VisualLogger/VisualLogger.h"
 #include "Misc/CoreMisc.h"
@@ -182,7 +182,7 @@ FVisualLogEntry* FVisualLogger::GetEntryToWrite(const UObject* Object, float Tim
 	{
 		// It's first and only one usage of LogOwner as regular object to get names. We assume once that LogOwner is correct here and only here.
 		CurrentEntry = &CurrentEntryPerObject.Add(LogOwner);
-		ObjectToNameMap.Add(LogOwner, FName(*FString::Printf(TEXT("%s [%d]"), *LogOwner->GetName(), LogOwner->GetUniqueID())));
+		ObjectToNameMap.Add(LogOwner, LogOwner->GetFName());
 		ObjectToClassNameMap.Add(LogOwner, *(LogOwner->GetClass()->GetName()));
 		ObjectToPointerMap.Add(LogOwner, LogOwner);
 		ObjectToWorldMap.Add(LogOwner, World);
@@ -200,12 +200,6 @@ FVisualLogEntry* FVisualLogger::GetEntryToWrite(const UObject* Object, float Tim
 	{
 		CurrentEntry->Reset();
 		CurrentEntry->TimeStamp = TimeStamp;
-
-		const AActor* ObjectAsActor = Cast<AActor>(LogOwner);
-		if (ObjectAsActor)
-		{
-			CurrentEntry->Location = ObjectAsActor->GetActorLocation();
-		}
 
 		auto& RedirectionMap = GetRedirectionMap(LogOwner);
 		if (RedirectionMap.Contains(LogOwner))
@@ -232,6 +226,11 @@ FVisualLogEntry* FVisualLogger::GetEntryToWrite(const UObject* Object, float Tim
 		}
 		else
 		{
+			const AActor* ObjectAsActor = Cast<AActor>(LogOwner);
+			if (ObjectAsActor)
+			{
+				CurrentEntry->Location = ObjectAsActor->GetActorLocation();
+			}
 			const IVisualLoggerDebugSnapshotInterface* DebugSnapshotInterface = Cast<const IVisualLoggerDebugSnapshotInterface>(LogOwner);
 			if (DebugSnapshotInterface)
 			{
@@ -371,7 +370,7 @@ void FVisualLogger::Shutdown()
 	SetIsRecording(false);
 	SetIsRecordingToFile(false);
 
-	if (bUseBinaryFileDevice)
+	if (UseBinaryFileDevice)
 	{
 		RemoveDevice(&FVisualLoggerBinaryFileDevice::Get());
 	}
@@ -651,7 +650,7 @@ public:
 #if WITH_EDITOR
 				else
 				{
-					FGlobalTabmanager::Get()->TryInvokeTab(FName(TEXT("VisualLogger")));
+					FGlobalTabmanager::Get()->InvokeTab(FName(TEXT("VisualLogger")));
 					return true;
 				}
 #endif

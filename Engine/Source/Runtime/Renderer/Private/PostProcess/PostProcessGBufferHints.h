@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,7 +19,7 @@ struct FVisualizeGBufferHintsInputs
 	FScreenPassTexture OriginalSceneColor;
 
 	// [Required] The scene textures used to visualize gbuffer hints.
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures = nullptr;
+	const FSceneTextureParameters* SceneTextures = nullptr;
 };
 
 FScreenPassTexture AddVisualizeGBufferHintsPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FVisualizeGBufferHintsInputs& Inputs);

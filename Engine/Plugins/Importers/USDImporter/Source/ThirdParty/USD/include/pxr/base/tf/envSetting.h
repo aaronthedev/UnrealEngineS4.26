@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_ENV_SETTING_H
-#define PXR_BASE_TF_ENV_SETTING_H
+#ifndef TF_ENVSETTING_H
+#define TF_ENVSETTING_H
 
 /// \file tf/envSetting.h
 /// Environment setting variable.
@@ -115,6 +115,7 @@
 /// if the file is malformed, errors are printed to stderr.
 
 #include "pxr/pxr.h"
+#include "pxr/base/arch/attributes.h"
 #include "pxr/base/arch/hints.h"
 #include "pxr/base/tf/registryManager.h"
 
@@ -190,4 +191,4 @@ class Tf_EnvSettingRegistry;
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_ENV_SETTING_H
+#endif // TF_ENVSETTING_H

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Filters/CurveEditorBakeFilter.h"
 #include "CoreMinimal.h"
@@ -108,7 +108,7 @@ void UCurveEditorBakeFilter::ApplyFilter_Impl(TSharedRef<FCurveEditor> InCurveEd
 			Curve->RemoveKeys(KeyHandles);
 			Curve->AddKeys(NewKeyPositions, NewKeyAttributes, &NewKeyHandlesView);
 
-			for (const TOptional<FKeyHandle>& Handle : NewKeyHandlesView)
+			for (const TOptional<FKeyHandle> Handle : NewKeyHandlesView)
 			{
 				if (Handle.IsSet())
 				{

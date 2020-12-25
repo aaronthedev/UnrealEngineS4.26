@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -24,7 +24,7 @@ namespace UnrealBuildTool
 			return "TVOS";
 		}
 
-		public static bool GenerateTVOSPList(string ProjectDirectory, bool bIsUE4Game, string GameName, bool bIsClient, string ProjectName, string InEngineDir, string AppDirectory, UnrealPluginLanguage UPL, string BundleID)
+		public static bool GenerateTVOSPList(string ProjectDirectory, bool bIsUE4Game, string GameName, string ProjectName, string InEngineDir, string AppDirectory, UnrealPluginLanguage UPL, string BundleID)
 		{
 			// @todo tvos: THIS!
 
@@ -40,6 +40,13 @@ namespace UnrealBuildTool
 
 			// read the old file
 			string OldPListData = File.Exists(PListFile) ? File.ReadAllText(PListFile) : "";
+
+			// determine if there is a launch.xib
+			string LaunchXib = InEngineDir + "/Build/IOS/Resources/Interface/LaunchScreen.xib";
+			if (File.Exists(BuildDirectory + "/Resources/Interface/LaunchScreen.xib"))
+			{
+				LaunchXib = BuildDirectory + "/Resources/Interface/LaunchScreen.xib";
+			}
 
 			// get the settings from the ini file
 			// plist replacements
@@ -109,10 +116,7 @@ namespace UnrealBuildTool
 			Text.AppendLine("\t<key>CFBundleDisplayName</key>");
 			Text.AppendLine(string.Format("\t<string>{0}</string>", EncodeBundleName(BundleDisplayName, ProjectName)));
 			Text.AppendLine("\t<key>CFBundleExecutable</key>");
-			string BundleExecutable = bIsUE4Game ?
-				(bIsClient ? "UE4Client" : "UE4Game") :
-				(bIsClient ? GameName + "Client" : GameName);
-			Text.AppendLine(string.Format("\t<string>{0}</string>", BundleExecutable));
+			Text.AppendLine(string.Format("\t<string>{0}</string>", bIsUE4Game ? "UE4Game" : GameName));
 			Text.AppendLine("\t<key>CFBundleIdentifier</key>");
 			Text.AppendLine(string.Format("\t<string>{0}</string>", BundleIdentifier.Replace("[PROJECT_NAME]", ProjectName).Replace("_","")));
 			Text.AppendLine("\t<key>CFBundleInfoDictionaryVersion</key>");
@@ -147,14 +151,146 @@ namespace UnrealBuildTool
 			Text.AppendLine("\t\t<key>TVTopShelfPrimaryImageWide</key>");
 			Text.AppendLine("\t\t<string>Top Shelf Image Wide</string>");
 			Text.AppendLine("\t</dict>");
-			Text.AppendLine("\t<key>CFBundleIcons</key>");
+            Text.AppendLine("\t<key>UILaunchImages</key>");
+            Text.AppendLine("\t<array>");
+            Text.AppendLine("\t\t<dict>");
+            Text.AppendLine("\t\t\t<key>UILaunchImageSize</key>");
+            Text.AppendLine("\t\t\t<string>{1920, 1080}</string>");
+            Text.AppendLine("\t\t\t<key>UILaunchImageName</key>");
+            Text.AppendLine("\t\t\t<string>Launch Image</string>");
+            Text.AppendLine("\t\t\t<key>UILaunchImageMinimumOSVersion</key>");
+            Text.AppendLine("\t\t\t<string>9.0</string>");
+            Text.AppendLine("\t\t\t<key>UILaunchImageOrientation</key>");
+            Text.AppendLine("\t\t\t<string>Landscape</string>");
+            Text.AppendLine("\t\t</dict>");
+            Text.AppendLine("\t</array>");
+            Text.AppendLine("\t<key>CFBundleIcons</key>");
             Text.AppendLine("\t<dict>");
             Text.AppendLine("\t\t<key>CFBundlePrimaryIcon</key>");
             Text.AppendLine("\t\t<string>App Icon</string>");
             Text.AppendLine("\t</dict>");
-			Text.AppendLine("\t<key>UILaunchStoryboardName</key>");
-			Text.AppendLine("\t<string>LaunchScreen</string>");
 
+            /*			Text.AppendLine("\t<key>CFBundleIcons</key>");
+                        Text.AppendLine("\t<dict>");
+                        Text.AppendLine("\t\t<key>CFBundlePrimaryIcon</key>");
+                        Text.AppendLine("\t\t<dict>");
+                        Text.AppendLine("\t\t\t<key>CFBundleIconFiles</key>");
+                        Text.AppendLine("\t\t\t<array>");
+                        Text.AppendLine("\t\t\t\t<string>Icon29.png</string>");
+                        Text.AppendLine("\t\t\t\t<string>Icon29@2x.png</string>");
+                        Text.AppendLine("\t\t\t\t<string>Icon40.png</string>");
+                        Text.AppendLine("\t\t\t\t<string>Icon40@2x.png</string>");
+                        Text.AppendLine("\t\t\t\t<string>Icon57.png</string>");
+                        Text.AppendLine("\t\t\t\t<string>Icon57@2x.png</string>");
+                        Text.AppendLine("\t\t\t\t<string>Icon60@2x.png</string>");
+                        Text.AppendLine("\t\t\t</array>");
+                        Text.AppendLine("\t\t\t<key>UIPrerenderedIcon</key>");
+                        Text.AppendLine("\t\t\t<true/>");
+                        Text.AppendLine("\t\t</dict>");
+                        Text.AppendLine("\t</dict>");
+                        Text.AppendLine("\t<key>CFBundleIcons~ipad</key>");
+                        Text.AppendLine("\t<dict>");
+                        Text.AppendLine("\t\t<key>CFBundlePrimaryIcon</key>");
+                        Text.AppendLine("\t\t<dict>");
+                        Text.AppendLine("\t\t\t<key>CFBundleIconFiles</key>");
+                        Text.AppendLine("\t\t\t<array>");
+                        Text.AppendLine("\t\t\t\t<string>Icon29.png</string>");
+                        Text.AppendLine("\t\t\t\t<string>Icon29@2x.png</string>");
+                        Text.AppendLine("\t\t\t\t<string>Icon40.png</string>");
+                        Text.AppendLine("\t\t\t\t<string>Icon40@2x.png</string>");
+                        Text.AppendLine("\t\t\t\t<string>Icon50.png</string>");
+                        Text.AppendLine("\t\t\t\t<string>Icon50@2x.png</string>");
+                        Text.AppendLine("\t\t\t\t<string>Icon72.png</string>");
+                        Text.AppendLine("\t\t\t\t<string>Icon72@2x.png</string>");
+                        Text.AppendLine("\t\t\t\t<string>Icon76.png</string>");
+                        Text.AppendLine("\t\t\t\t<string>Icon76@2x.png</string>");
+                        Text.AppendLine("\t\t\t</array>");
+                        Text.AppendLine("\t\t\t<key>UIPrerenderedIcon</key>");
+                        Text.AppendLine("\t\t\t<true/>");
+                        Text.AppendLine("\t\t</dict>");
+                        Text.AppendLine("\t</dict>");
+                        if (File.Exists(LaunchXib))
+                        {
+                            // TODO: compile the xib via remote tool
+                            Text.AppendLine("\t<key>UILaunchStoryboardName</key>");
+                            Text.AppendLine("\t<string>LaunchScreen</string>");
+                            bSkipDefaultPNGs = true;
+                        }
+                        else
+                        {
+                            // this is a temp way to inject the iphone 6 images without needing to upgrade everyone's plist
+                            // eventually we want to generate this based on what the user has set in the project settings
+                            string[] IPhoneConfigs =  
+                                { 
+                                    "Default-IPhone6", "Landscape", "{375, 667}", 
+                                    "Default-IPhone6", "Portrait", "{375, 667}", 
+                                    "Default-IPhone6Plus-Landscape", "Landscape", "{414, 736}", 
+                                    "Default-IPhone6Plus-Portrait", "Portrait", "{414, 736}", 
+                                    "Default", "Landscape", "{320, 480}",
+                                    "Default", "Portrait", "{320, 480}",
+                                    "Default-568h", "Landscape", "{320, 568}",
+                                    "Default-568h", "Portrait", "{320, 568}",
+                                };
+
+                            Text.AppendLine("\t<key>UILaunchImages~iphone</key>");
+                            Text.AppendLine("\t<array>");
+                            for (int ConfigIndex = 0; ConfigIndex < IPhoneConfigs.Length; ConfigIndex += 3)
+                            {
+                                Text.AppendLine("\t\t<dict>");
+                                Text.AppendLine("\t\t\t<key>UILaunchImageMinimumOSVersion</key>");
+                                Text.AppendLine("\t\t\t<string>8.0</string>");
+                                Text.AppendLine("\t\t\t<key>UILaunchImageName</key>");
+                                Text.AppendLine(string.Format("\t\t\t<string>{0}</string>", IPhoneConfigs[ConfigIndex + 0]));
+                                Text.AppendLine("\t\t\t<key>UILaunchImageOrientation</key>");
+                                Text.AppendLine(string.Format("\t\t\t<string>{0}</string>", IPhoneConfigs[ConfigIndex + 1]));
+                                Text.AppendLine("\t\t\t<key>UILaunchImageSize</key>");
+                                Text.AppendLine(string.Format("\t\t\t<string>{0}</string>", IPhoneConfigs[ConfigIndex + 2]));
+                                Text.AppendLine("\t\t</dict>");
+                            }
+
+                            // close it out
+                            Text.AppendLine("\t</array>");
+                        }
+                        Text.AppendLine("\t<key>UILaunchImages~ipad</key>");
+                        Text.AppendLine("\t<array>");
+                        Text.AppendLine("\t\t<dict>");
+                        Text.AppendLine("\t\t\t<key>UILaunchImageMinimumOSVersion</key>");
+                        Text.AppendLine("\t\t\t<string>7.0</string>");
+                        Text.AppendLine("\t\t\t<key>UILaunchImageName</key>");
+                        Text.AppendLine("\t\t\t<string>Default-Landscape</string>");
+                        Text.AppendLine("\t\t\t<key>UILaunchImageOrientation</key>");
+                        Text.AppendLine("\t\t\t<string>Landscape</string>");
+                        Text.AppendLine("\t\t\t<key>UILaunchImageSize</key>");
+                        Text.AppendLine("\t\t\t<string>{768, 1024}</string>");
+                        Text.AppendLine("\t\t</dict>");
+                        Text.AppendLine("\t\t<dict>");
+                        Text.AppendLine("\t\t\t<key>UILaunchImageMinimumOSVersion</key>");
+                        Text.AppendLine("\t\t\t<string>7.0</string>");
+                        Text.AppendLine("\t\t\t<key>UILaunchImageName</key>");
+                        Text.AppendLine("\t\t\t<string>Default-Portrait</string>");
+                        Text.AppendLine("\t\t\t<key>UILaunchImageOrientation</key>");
+                        Text.AppendLine("\t\t\t<string>Portrait</string>");
+                        Text.AppendLine("\t\t\t<key>UILaunchImageSize</key>");
+                        Text.AppendLine("\t\t\t<string>{768, 1024}</string>");
+                        Text.AppendLine("\t\t</dict>");
+                        Text.AppendLine("\t</array>");
+                        Text.AppendLine("\t<key>CFBundleSupportedPlatforms</key>");
+                        Text.AppendLine("\t<array>");
+                        Text.AppendLine("\t\t<string>iPhoneOS</string>");
+                        Text.AppendLine("\t</array>");
+                        Text.AppendLine("\t<key>MinimumOSVersion</key>");
+                        Text.AppendLine(string.Format("\t<string>{0}</string>", MinVersion));
+                        if (!string.IsNullOrEmpty(ExtraData))
+                        {
+                            ExtraData = ExtraData.Replace("\\n", "\n");
+                            foreach (string Line in ExtraData.Split("\r\n".ToCharArray()))
+                            {
+                                if (!string.IsNullOrWhiteSpace(Line))
+                                {
+                                    Text.AppendLine("\t" + Line);
+                                }
+                            }
+                        }*/
 			// write the iCloud container identifier, if present in the old file
 			if (!string.IsNullOrEmpty(OldPListData))
 			{
@@ -213,16 +349,16 @@ namespace UnrealBuildTool
 			return bSkipDefaultPNGs;
 		}
 
-		public override bool GeneratePList(FileReference ProjectFile, UnrealTargetConfiguration Config, string ProjectDirectory, bool bIsUE4Game, string GameName, bool bIsClient, string ProjectName, string InEngineDir, string AppDirectory, List<string> UPLScripts, VersionNumber SdkVersion, string BundleID, bool bBuildAsFramework, out bool bSupportsPortrait, out bool bSupportsLandscape, out bool bSkipIcons)
+		public override bool GeneratePList(FileReference ProjectFile, UnrealTargetConfiguration Config, string ProjectDirectory, bool bIsUE4Game, string GameName, string ProjectName, string InEngineDir, string AppDirectory, List<string> UPLScripts, VersionNumber SdkVersion, string BundleID, out bool bSupportsPortrait, out bool bSupportsLandscape, out bool bSkipIcons)
 		{
 			bSupportsLandscape = bSupportsPortrait = true;
             bSkipIcons = true;
-			return GenerateTVOSPList(ProjectDirectory, bIsUE4Game, GameName, bIsClient, ProjectName, InEngineDir, AppDirectory, null, BundleID);
+			return GenerateTVOSPList(ProjectDirectory, bIsUE4Game, GameName, ProjectName, InEngineDir, AppDirectory, null, BundleID);
 		}
 
-		protected override void CopyIconResources(string InEngineDir, string AppDirectory, string BuildDirectory)
-		{
-			// do nothing on TVOS
-		}
-	}
+        protected override void CopyGraphicsResources(bool bSkipDefaultPNGs, bool bSkipIcons, string InEngineDir, string AppDirectory, string BuildDirectory, string IntermediateDir, bool bSupportsPortrait, bool bSupportsLandscape)
+        {
+            // do nothing on TVOS
+        }
+    }
 }

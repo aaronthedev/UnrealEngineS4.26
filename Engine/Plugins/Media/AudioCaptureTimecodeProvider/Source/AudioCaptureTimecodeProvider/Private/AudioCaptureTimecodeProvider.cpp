@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AudioCaptureTimecodeProvider.h"
 #include "AudioCaptureTimecodeProviderModule.h"
@@ -8,7 +8,6 @@
 #include "LinearTimecodeDecoder.h"
 #include "Stats/StatsMisc.h"
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 /* FLinearTimecodeAudioCaptureCustomTimeStepImplementation implementation
 *****************************************************************************/
@@ -36,7 +35,7 @@ public:
 		//We want a fast timecode detection but we don't want to be called too often.
 		const int32 NumberCaptureFrames = 64;
 
-		Audio::FOnCaptureFunction OnCapture = [this](const float* AudioData, int32 NumFrames, int32 NumChannels, int32 SampleRate, double StreamTime, bool bOverFlow)
+		Audio::FOnCaptureFunction OnCapture = [this](const float* AudioData, int32 NumFrames, int32 NumChannels, double StreamTime, bool bOverFlow)
 		{
 			OnAudioCapture(AudioData, NumFrames, NumChannels, StreamTime, bOverFlow);
 		};
@@ -47,16 +46,6 @@ public:
 		{
 			UE_LOG(LogAudioCaptureTimecodeProvider, Error, TEXT("Can't open the default capture stream for %s."), *Owner->GetName());
 			return false;
-		}
-
-		// set limits to help decoder
-		{
-			constexpr int32 MinFps = 20;
-			constexpr int32 MaxFps = 34;
-			constexpr int32 NumLtcBits = 80;
-			constexpr int32 NumLtcHalfBits = NumLtcBits * 2;
-			TimecodeDecoder.MinSamplesPerEdge = AudioCapture.GetSampleRate() / (MaxFps * NumLtcHalfBits);
-			TimecodeDecoder.MaxSamplesPerEdge = AudioCapture.GetSampleRate() / (MinFps * NumLtcBits);
 		}
 
 		check(AudioCapture.IsStreamOpen());
@@ -80,7 +69,7 @@ public:
 		{
 			return;
 		}
-		
+
 		int32 AudioChannelIndex = FMath::Clamp(Owner->AudioChannel-1, 0, NumChannels-1);
 		if (!bWarnedAboutTheInvalidAudioChannel && AudioChannelIndex != Owner->AudioChannel-1)
 		{
@@ -168,13 +157,7 @@ UAudioCaptureTimecodeProvider::UAudioCaptureTimecodeProvider(const FObjectInitia
 
 /* UTimecodeProvider interface implementation
 *****************************************************************************/
-bool UAudioCaptureTimecodeProvider::FetchTimecode(FQualifiedFrameTime& OutFrameTime)
-{
-	OutFrameTime = FQualifiedFrameTime(GetTimecodeInternal(), GetFrameRateInternal());
-	return true;
-}
-
-FTimecode UAudioCaptureTimecodeProvider::GetTimecodeInternal() const
+FTimecode UAudioCaptureTimecodeProvider::GetTimecode() const
 {
 	FTimecode Result;
 	{
@@ -191,13 +174,13 @@ FTimecode UAudioCaptureTimecodeProvider::GetTimecodeInternal() const
 	}
 	else
 	{
-		Result.bDropFrameFormat = FTimecode::IsDropFormatTimecodeSupported(GetFrameRateInternal());
+		Result.bDropFrameFormat = FTimecode::IsDropFormatTimecodeSupported(GetFrameRate());
 	}
 
 	return Result;
 }
 
-FFrameRate UAudioCaptureTimecodeProvider::GetFrameRateInternal() const
+FFrameRate UAudioCaptureTimecodeProvider::GetFrameRate() const
 {
 	FFrameRate Result = FrameRate;
 	if (bDetectFrameRate)
@@ -265,5 +248,3 @@ void UAudioCaptureTimecodeProvider::BeginDestroy()
 	delete Implementation;
 	Super::BeginDestroy();
 }
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

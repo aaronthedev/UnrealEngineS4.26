@@ -1,15 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreTypes.h"
 #include "Containers/UnrealString.h"
-#include "GenericPlatform/GenericPlatform.h"
-#include "Templates/UniquePtr.h"
 
 class FOutputDeviceConsole;
 class FOutputDeviceError;
-class FOutputDeviceFile;
 
 /**
  * Generic implementation for most platforms
@@ -30,9 +27,6 @@ struct CORE_API FGenericPlatformOutputDevices
 	static FFeedbackContext*            GetFeedbackContext();
 
 protected:
-	static void InitDefaultOutputDeviceFile();
-
 	static const SIZE_T AbsoluteFileNameMaxLength = 1024;
 	static TCHAR CachedAbsoluteFilename[AbsoluteFileNameMaxLength];
-	static TUniquePtr<FOutputDeviceFile> DefaultOutputDeviceFileTempHolder;
 };

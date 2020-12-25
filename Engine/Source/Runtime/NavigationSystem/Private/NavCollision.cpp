@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NavCollision.h"
 #include "Serialization/MemoryWriter.h"
@@ -36,11 +36,7 @@ namespace NavCollisionCookStats
 }
 #endif
 
-#if WITH_PHYSX && PHYSICS_INTERFACE_PHYSX
 static const FName NAVCOLLISION_FORMAT = TEXT("NavCollision_X");
-#elif WITH_CHAOS
-static const FName NAVCOLLISION_FORMAT = TEXT("NavCollision_Chaos");
-#endif
 
 class FNavCollisionDataReader
 {
@@ -94,12 +90,12 @@ public:
 
 	virtual const TCHAR* GetVersionString() const override
 	{
-		return TEXT("2983273BE5D6425391E8C0B3D1C0A55D");
+		return TEXT("B89838347A4348138EE337A847529C5C");
 	}
 
 	virtual FString GetPluginSpecificCacheKeySuffix() const override
 	{
-		const uint16 Version = 14;
+		const uint16 Version = 13;
 
 		return FString::Printf( TEXT("%s_%s_%s_%hu")
 			, *Format.ToString()

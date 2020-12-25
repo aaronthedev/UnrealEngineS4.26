@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -7,33 +7,6 @@
 #include "RHI.h"
 #include "PackedNormal.h"
 #include "RenderResource.h"
-#include "RHIDefinitions.h"
-
-class FTextureWithRDG;
-class FRDGTexture;
-class FRDGBuilder;
-struct IPooledRenderTarget;
-
-/** An FTexture variant that includes more efficient support for registering with RDG. */
-class RENDERCORE_API FTextureWithRDG : public FTexture
-{
-public:
-	FTextureWithRDG();
-	FTextureWithRDG(const FTextureWithRDG& Other);
-	FTextureWithRDG& operator=(const FTextureWithRDG& Other);
-	~FTextureWithRDG() override;
-
-	FRDGTexture* GetRDG(FRDGBuilder& GraphBuilder) const;
-	FRDGTexture* GetPassthroughRDG() const;
-
-	void ReleaseRHI() override;
-
-protected:
-	void InitRDG(const TCHAR* Name);
-
-private:
-	TRefCountPtr<IPooledRenderTarget> RenderTarget;
-};
 
 extern RENDERCORE_API void RenderUtilsInit();
 
@@ -85,6 +58,24 @@ FORCEINLINE FVector GenerateYAxis(const VectorType& XAxis, const VectorType& ZAx
 	return (FVector(z) ^ x) * z.W;
 }
 
+/** Information about a pixel format. */
+struct FPixelFormatInfo
+{
+	const TCHAR*	Name;
+	int32				BlockSizeX,
+					BlockSizeY,
+					BlockSizeZ,
+					BlockBytes,
+					NumComponents;
+	/** Platform specific token, e.g. D3DFORMAT with D3DDrv										*/
+	uint32			PlatformFormat;
+	/** Whether the texture format is supported on the current platform/ rendering combination	*/
+	bool			Supported;
+	EPixelFormat	UnrealFormat;
+};
+
+extern RENDERCORE_API FPixelFormatInfo GPixelFormats[PF_MAX];		// Maps members of EPixelFormat to a FPixelFormatInfo describing the format.
+
 #define NUM_DEBUG_UTIL_COLORS (32)
 static const FColor DebugUtilColor[NUM_DEBUG_UTIL_COLORS] = 
 {
@@ -122,6 +113,12 @@ static const FColor DebugUtilColor[NUM_DEBUG_UTIL_COLORS] =
 	FColor(19,25,126)
 };
 
+//
+//	CalculateImageBytes
+//
+
+extern RENDERCORE_API SIZE_T CalculateImageBytes(uint32 SizeX,uint32 SizeY,uint32 SizeZ,uint8 Format);
+
 /** A global white texture. */
 extern RENDERCORE_API class FTexture* GWhiteTexture;
 extern RENDERCORE_API class FTextureWithSRV* GWhiteTextureWithSRV;
@@ -129,29 +126,18 @@ extern RENDERCORE_API class FTextureWithSRV* GWhiteTextureWithSRV;
 /** A global black texture. */
 extern RENDERCORE_API class FTexture* GBlackTexture;
 extern RENDERCORE_API class FTextureWithSRV* GBlackTextureWithSRV;
-extern RENDERCORE_API class FTextureWithSRV* GBlackTextureWithUAV;
-
-extern RENDERCORE_API class FTexture* GTransparentBlackTexture;
-extern RENDERCORE_API class FTextureWithSRV* GTransparentBlackTextureWithSRV;
-
-extern RENDERCORE_API class FVertexBufferWithSRV* GEmptyVertexBufferWithUAV;
-
-extern RENDERCORE_API class FVertexBufferWithSRV* GWhiteVertexBufferWithSRV;
 
 /** A global black array texture. */
 extern RENDERCORE_API class FTexture* GBlackArrayTexture;
 
 /** A global black volume texture. */
-extern RENDERCORE_API class FTextureWithRDG* GBlackVolumeTexture;
+extern RENDERCORE_API class FTexture* GBlackVolumeTexture;
 
 /** A global black volume texture, with alpha=1. */
-extern RENDERCORE_API class FTextureWithRDG* GBlackAlpha1VolumeTexture;
-
-/** A global black texture<uint> */
-extern RENDERCORE_API class FTexture* GBlackUintTexture;
+extern RENDERCORE_API class FTexture* GBlackAlpha1VolumeTexture;
 
 /** A global black volume texture<uint>  */
-extern RENDERCORE_API class FTextureWithRDG* GBlackUintVolumeTexture;
+extern RENDERCORE_API class FTexture* GBlackUintVolumeTexture;
 
 /** A global white cube texture. */
 extern RENDERCORE_API class FTexture* GWhiteTextureCube;
@@ -238,32 +224,7 @@ public:
 		RHIUnlockVertexBuffer(VertexBufferRHI);
 	}
 };
-
 extern RENDERCORE_API TGlobalResource<FScreenSpaceVertexBuffer> GScreenSpaceVertexBuffer;
-
-class FTileVertexDeclaration : public FRenderResource
-{
-public:
-	FVertexDeclarationRHIRef VertexDeclarationRHI;
-
-	/** Destructor. */
-	virtual ~FTileVertexDeclaration() {}
-
-	virtual void InitRHI()
-	{
-		FVertexDeclarationElementList Elements;
-		uint32 Stride = sizeof(FVector2D);
-		Elements.Add(FVertexElement(0, 0, VET_Float2, 0, Stride, false));
-		VertexDeclarationRHI = RHICreateVertexDeclaration(Elements);
-	}
-
-	virtual void ReleaseRHI()
-	{
-		VertexDeclarationRHI.SafeRelease();
-	}
-};
-
-extern RENDERCORE_API TGlobalResource<FTileVertexDeclaration> GTileVertexDeclaration;
 
 /**
  * Maps from an X,Y,Z cube vertex coordinate to the corresponding vertex index.
@@ -468,24 +429,18 @@ RENDERCORE_API FVertexDeclarationRHIRef& GetVertexDeclarationFVector3();
 
 RENDERCORE_API FVertexDeclarationRHIRef& GetVertexDeclarationFVector2();
 
-RENDERCORE_API bool PlatformSupportsSimpleForwardShading(const FStaticShaderPlatform Platform);
+RENDERCORE_API bool PlatformSupportsSimpleForwardShading(EShaderPlatform Platform);
 
-RENDERCORE_API bool IsSimpleForwardShadingEnabled(const FStaticShaderPlatform Platform);
+RENDERCORE_API bool IsSimpleForwardShadingEnabled(EShaderPlatform Platform);
 
-RENDERCORE_API bool MobileSupportsGPUScene(const FStaticShaderPlatform Platform);
+RENDERCORE_API bool MobileSupportsGPUScene(EShaderPlatform Platform);
 
-RENDERCORE_API bool IsMobileDeferredShadingEnabled(const FStaticShaderPlatform Platform);
+RENDERCORE_API bool GPUSceneUseTexture2D(EShaderPlatform Platform);
 
-RENDERCORE_API bool SupportsTextureCubeArray(ERHIFeatureLevel::Type FeatureLevel);
-
-RENDERCORE_API bool GPUSceneUseTexture2D(const FStaticShaderPlatform Platform);
-
-RENDERCORE_API bool MaskedInEarlyPass(const FStaticShaderPlatform Platform);
-
-RENDERCORE_API bool AllowPixelDepthOffset(const FStaticShaderPlatform Platform);
+RENDERCORE_API bool AllowPixelDepthOffset(EShaderPlatform Platform);
 
 /** Returns if ForwardShading is enabled. Only valid for the current platform (otherwise call ITargetPlatform::UsesForwardShading()). */
-inline bool IsForwardShadingEnabled(const FStaticShaderPlatform Platform)
+inline bool IsForwardShadingEnabled(EShaderPlatform Platform)
 {
 	extern RENDERCORE_API uint64 GForwardShadingPlatformMask;
 	return !!(GForwardShadingPlatformMask & (1ull << Platform))
@@ -494,46 +449,46 @@ inline bool IsForwardShadingEnabled(const FStaticShaderPlatform Platform)
 }
 
 /** Returns if ForwardShading or SimpleForwardShading is enabled. Only valid for the current platform. */
-inline bool IsAnyForwardShadingEnabled(const FStaticShaderPlatform Platform)
+inline bool IsAnyForwardShadingEnabled(EShaderPlatform Platform)
 {
 	return IsForwardShadingEnabled(Platform) || IsSimpleForwardShadingEnabled(Platform);
 }
 
 /** Returns if the GBuffer is used. Only valid for the current platform. */
-inline bool IsUsingGBuffers(const FStaticShaderPlatform Platform)
+inline bool IsUsingGBuffers(EShaderPlatform Platform)
 {
 	return !IsAnyForwardShadingEnabled(Platform);
 }
 
 /** Returns whether DBuffer decals are enabled for a given shader platform */
-inline bool IsUsingDBuffers(const FStaticShaderPlatform Platform)
+inline bool IsUsingDBuffers(EShaderPlatform Platform)
 {
 	extern RENDERCORE_API uint64 GDBufferPlatformMask;
 	return !!(GDBufferPlatformMask & (1ull << Platform));
 }
 
 /** Returns whether the base pass should output to the velocity buffer is enabled for a given shader platform */
-inline bool IsUsingBasePassVelocity(const FStaticShaderPlatform Platform)
+inline bool IsUsingBasePassVelocity(EShaderPlatform Platform)
 {
 	extern RENDERCORE_API uint64 GBasePassVelocityPlatformMask;
 	return !!(GBasePassVelocityPlatformMask & (1ull << Platform));
 }
 
 /** Returns whether the base pass should use selective outputs for a given shader platform */
-inline bool IsUsingSelectiveBasePassOutputs(const FStaticShaderPlatform Platform)
+inline bool IsUsingSelectiveBasePassOutputs(EShaderPlatform Platform)
 {
 	extern RENDERCORE_API uint64 GSelectiveBasePassOutputsPlatformMask;
 	return !!(GSelectiveBasePassOutputsPlatformMask & (1ull << Platform));
 }
 
 /** Returns whether distance fields are enabled for a given shader platform */
-inline bool IsUsingDistanceFields(const FStaticShaderPlatform Platform)
+inline bool IsUsingDistanceFields(EShaderPlatform Platform)
 {
 	extern RENDERCORE_API uint64 GDistanceFieldsPlatformMask;
 	return !!(GDistanceFieldsPlatformMask & (1ull << Platform));
 }
 
-inline bool IsUsingPerPixelDBufferMask(const FStaticShaderPlatform Platform)
+inline bool IsUsingPerPixelDBufferMask(EShaderPlatform Platform)
 {
 	switch (Platform)
 	{
@@ -546,7 +501,7 @@ inline bool IsUsingPerPixelDBufferMask(const FStaticShaderPlatform Platform)
 	}
 }
 
-inline bool UseGPUScene(const FStaticShaderPlatform Platform, const FStaticFeatureLevel FeatureLevel)
+inline bool UseGPUScene(EShaderPlatform Platform, ERHIFeatureLevel::Type FeatureLevel)
 {
 	if (FeatureLevel == ERHIFeatureLevel::ES3_1)
 	{
@@ -557,16 +512,7 @@ inline bool UseGPUScene(const FStaticShaderPlatform Platform, const FStaticFeatu
 	return FeatureLevel >= ERHIFeatureLevel::SM5 
 		//@todo - support GPU Scene management compute shaders on these platforms to get dynamic instancing speedups on the Rendering Thread and RHI Thread
 		&& !IsOpenGLPlatform(Platform)
-		&& !IsSwitchPlatform(Platform)
-		&& !IsVulkanMobileSM5Platform(Platform)
-		// we only check DDSPI for platforms that have been read in - IsValid() can go away once ALL platforms are converted over to this system
-		&& (!FDataDrivenShaderPlatformInfo::IsValid(Platform) || FDataDrivenShaderPlatformInfo::GetSupportsGPUScene(Platform));
-}
-
-inline bool ForceSimpleSkyDiffuse(const FStaticShaderPlatform Platform)
-{
-	extern RENDERCORE_API uint64 GSimpleSkyDiffusePlatformMask;
-	return !!(GSimpleSkyDiffusePlatformMask & (1ull << Platform));
+		&& !IsSwitchPlatform(Platform);
 }
 
 /** Unit cube vertex buffer (VertexDeclarationFVector4) */
@@ -585,4 +531,4 @@ RENDERCORE_API void QuantizeSceneBufferSize(const FIntPoint& InBufferSize, FIntP
 /**
 *	Checks if virtual texturing enabled and supported
 */
-RENDERCORE_API bool UseVirtualTexturing(const FStaticFeatureLevel InFeatureLevel, const class ITargetPlatform* TargetPlatform = nullptr);
+RENDERCORE_API bool UseVirtualTexturing(ERHIFeatureLevel::Type InFeatureLevel, const class ITargetPlatform* TargetPlatform = nullptr);

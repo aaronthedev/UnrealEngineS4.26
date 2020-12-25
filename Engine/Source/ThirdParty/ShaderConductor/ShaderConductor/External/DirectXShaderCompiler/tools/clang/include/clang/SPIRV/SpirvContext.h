@@ -202,6 +202,9 @@ public:
 
   const HybridPointerType *getPointerType(QualType pointee, spv::StorageClass);
 
+  HybridFunctionType *getFunctionType(QualType ret,
+                                      llvm::ArrayRef<QualType> param);
+
   /// Functions to get/set current entry point ShaderModelKind.
   ShaderModelKind getCurrentShaderModelKind() { return curShaderModelKind; }
   void setCurrentShaderModelKind(ShaderModelKind smk) {
@@ -224,10 +227,6 @@ public:
   bool isRay() const {
     return curShaderModelKind >= ShaderModelKind::RayGeneration &&
            curShaderModelKind <= ShaderModelKind::Callable;
-  }
-  bool isMS() const { return curShaderModelKind == ShaderModelKind::Mesh; }
-  bool isAS() const {
-    return curShaderModelKind == ShaderModelKind::Amplification;
   }
 
 private:

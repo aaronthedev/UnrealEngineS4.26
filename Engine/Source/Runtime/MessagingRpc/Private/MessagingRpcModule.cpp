@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IMessagingRpcModule.h"
 #include "Modules/ModuleManager.h"
@@ -18,24 +18,14 @@ public:
 
 	virtual TSharedRef<IMessageRpcClient> CreateRpcClient() override
 	{
-		return MakeShared<FMessageRpcClient>();
-	}
-
-	virtual TSharedRef<IMessageRpcClient> CreateRpcClient(const FString& DebugName, const TSharedRef<IMessageBus, ESPMode::ThreadSafe>& MessageBus) override
-	{
-		return MakeShared<FMessageRpcClient>(DebugName, MessageBus);
+		return MakeShareable(new FMessageRpcClient);
 	}
 
 	virtual TSharedRef<IMessageRpcServer> CreateRpcServer() override
 	{
-		return MakeShared<FMessageRpcServer>();
+		return MakeShareable(new FMessageRpcServer);
 	}
 
-	virtual TSharedRef<IMessageRpcServer> CreateRpcServer(const FString& DebugName, const TSharedRef<IMessageBus, ESPMode::ThreadSafe>& MessageBus) override
-	{
-		return MakeShared<FMessageRpcServer>(DebugName, MessageBus);
-	}
-	
 public:
 
 	//~ IModuleInterface interface

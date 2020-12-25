@@ -34,9 +34,9 @@ void operator+=(std::vector<const char*>& lhs,
 
 std::vector<const char*> header = {
     "OpCapability Shader",
-    "OpCapability VulkanMemoryModel",
+    "OpCapability VulkanMemoryModelKHR",
     "OpExtension \"SPV_KHR_vulkan_memory_model\"",
-    "OpMemoryModel Logical Vulkan",
+    "OpMemoryModel Logical VulkanKHR",
     "OpEntryPoint Vertex %1 \"shader\"",
     "%uint = OpTypeInt 32 0",
     "%v3uint = OpTypeVector %uint 3"};

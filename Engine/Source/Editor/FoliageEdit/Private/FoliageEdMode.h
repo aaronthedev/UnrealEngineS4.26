@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -27,7 +27,6 @@ struct FViewportClick;
 // Forward declarations.
 //
 class UStaticMesh;
-struct FAssetData;
 
 /** View modes supported by the foliage palette */
 namespace EFoliagePaletteViewMode
@@ -75,8 +74,6 @@ struct FFoliageUISettings
 	void SetPaintBucketToolSelected(bool InbPaintBucketToolSelected) { bPaintBucketToolSelected = InbPaintBucketToolSelected; }
 	bool GetReapplyPaintBucketToolSelected() const { return bReapplyPaintBucketToolSelected ? true : false; }
 	void SetReapplyPaintBucketToolSelected(bool InbReapplyPaintBucketToolSelected) { bReapplyPaintBucketToolSelected = InbReapplyPaintBucketToolSelected; }
-	bool GetEraseToolSelected() const { return bEraseToolSelected ? true : false; }
-	void SetEraseToolSelected(bool InbEraseToolSelected) { bEraseToolSelected = InbEraseToolSelected; }
 
 	float GetRadius() const { return (IsInAnySingleInstantiationMode()) ? SingleInstanceModeBrushSize : Radius; }
 	void SetRadius(float InRadius) { if (!IsInAnySingleInstantiationMode()) Radius = InRadius; }
@@ -102,10 +99,6 @@ struct FFoliageUISettings
 
 	bool GetIsInQuickSingleInstantiationMode() const { return IsInQuickSingleInstantiationMode; }
 	void SetIsInQuickSingleInstantiationMode(bool InIsInQuickSingleInstantiationMode) { IsInQuickSingleInstantiationMode = InIsInQuickSingleInstantiationMode; }
-
-	bool IsInAnyEraseMode() const { return GetEraseToolSelected() || GetIsInQuickEraseMode(); }
-	bool GetIsInQuickEraseMode() const { return IsInQuickEraseMode; }
-	void SetIsInQuickEraseMode(bool InIsInQuickEraseMode) { IsInQuickEraseMode = InIsInQuickEraseMode; }
 
 	EFoliageSingleInstantiationPlacementMode::Type GetSingleInstantiationPlacementMode() const { return SingleInstantiationPlacementMode; }
 	void SetSingleInstantiationPlacementMode(EFoliageSingleInstantiationPlacementMode::Type InSingleInstantiationPlacementMode) { SingleInstantiationPlacementMode = InSingleInstantiationPlacementMode; }
@@ -136,7 +129,6 @@ struct FFoliageUISettings
 		, bLassoSelectToolSelected(false)
 		, bPaintBucketToolSelected(false)
 		, bReapplyPaintBucketToolSelected(false)
-		, bEraseToolSelected(false)
 		, bShowPaletteItemDetails(true)
 		, bShowPaletteItemTooltips(true)
 		, ActivePaletteViewMode(EFoliagePaletteViewMode::Thumbnail)
@@ -146,7 +138,6 @@ struct FFoliageUISettings
 		, UnpaintDensity(0.f)
 		, IsInSingleInstantiationMode(false)
 		, IsInQuickSingleInstantiationMode(false)
-		, IsInQuickEraseMode(false)
 		, SingleInstantiationPlacementMode(EFoliageSingleInstantiationPlacementMode::Type::All)
 		, SingleInstantiationCycleThroughIndex(0)
 		, IsInSpawnInCurrentLevelMode(false)
@@ -174,7 +165,6 @@ private:
 	bool bLassoSelectToolSelected;
 	bool bPaintBucketToolSelected;
 	bool bReapplyPaintBucketToolSelected;
-	bool bEraseToolSelected;
 
 	bool bShowPaletteItemDetails;
 	bool bShowPaletteItemTooltips;
@@ -187,7 +177,6 @@ private:
 
 	bool IsInSingleInstantiationMode;
 	bool IsInQuickSingleInstantiationMode;
-	bool IsInQuickEraseMode;
 	EFoliageSingleInstantiationPlacementMode::Type SingleInstantiationPlacementMode;
 	int32 SingleInstantiationCycleThroughIndex;
 	bool IsInSpawnInCurrentLevelMode;
@@ -326,8 +315,6 @@ public:
 	/** FEdMode: Called after an Undo operation */
 	virtual void PostUndo() override;
 
-	virtual bool UsesToolkits() const override { return true; }
-
 	/** Called when the current level changes */
 	void NotifyNewCurrentLevel();
 	void NotifyLevelAddedToWorld(ULevel* InLevel, UWorld* InWorld);
@@ -402,9 +389,6 @@ public:
 	/** Tell us if we can moves selected foliage instances to the target level. */
 	bool CanMoveSelectedFoliageToLevel(ULevel* InTargetLevel) const;
 
-	/** Ends tracking and end potential transaction */
-	bool EndTracking();
-
 	/** FEdMode: widget handling */
 	virtual FVector GetWidgetLocation() const override;
 	virtual bool AllowWidgetMove() override;
@@ -418,7 +402,7 @@ public:
 	void OnObjectsReplaced(const TMap<UObject*, UObject*>& ReplacementMap);
 
 	/** Forces real-time perspective viewports */
-	void ForceRealTimeViewports(const bool bEnable);
+	void ForceRealTimeViewports(const bool bEnable, const bool bStoreCurrentState);
 
 	/** Start foliage tracing */
 	void StartFoliageBrushTrace(FEditorViewportClient* ViewportClient, class UViewportInteractor* Interactor = nullptr);
@@ -545,6 +529,16 @@ public:
 	typedef TMap<FName, TMap<ULandscapeComponent*, TArray<uint8> > > LandscapeLayerCacheData;
 
 	FSimpleMulticastDelegate OnToolChanged;
+private:
+
+	void BindCommands();
+	bool CurrentToolUsesBrush() const;
+
+	/** Called when the user changes the current tool in the UI */
+	void HandleToolChanged();
+
+	/** Deselects all tools */
+	void ClearAllToolSelection();
 
 	/** Sets the tool mode to Paint. */
 	void OnSetPaint();
@@ -560,26 +554,6 @@ public:
 
 	/** Sets the tool mode to Paint Bucket. */
 	void OnSetPaintFill();
-
-	/** Sets the tool mode to Erase */
-	void OnSetErase();
-
-	/** Sets the tool mode to Place Single Instance*/
-	void OnSetPlace();
-
-	/** Remove currently selected instances*/
-	void RemoveSelectedInstances(UWorld* InWorld);
-			
-private:
-
-	void BindCommands();
-	bool CurrentToolUsesBrush() const;
-
-	/** Called when the user changes the current tool in the UI */
-	void HandleToolChanged();
-
-	/** Deselects all tools */
-	void ClearAllToolSelection();
 
 	/** Add instances inside the brush to match DesiredInstanceCount */
 	void AddInstancesForBrush(UWorld* InWorld, const UFoliageType* Settings, const FSphere& BrushSphere, int32 DesiredInstanceCount, float Pressure);
@@ -616,21 +590,18 @@ private:
 	/**  Propagate the selected foliage instances to the actual render foliage */
 	void ApplySelection(UWorld* InWorld, bool bApply);
 
-	/**  Update Instances so that they are in the right partitioning level */
-	void UpdateInstancePartitioning(UWorld* InWorld);
-
-	/** Called when transform transaction is done */
-	void PostTransformSelectedInstances(UWorld* InWorld);
-
 	/**  Applies relative transformation to selected instances */
 	void TransformSelectedInstances(UWorld* InWorld, const FVector& InDrag, const FRotator& InRot, const FVector& InScale, bool bDuplicate);
 
-	/**  Return true if OutLocation is valid */
-	bool GetSelectionLocation(UWorld* InWorld, FVector& OutLocation) const;
+	/**  Return selected actor and instance location */
+	AInstancedFoliageActor* GetSelectionLocation(UWorld* InWorld, FVector& OutLocation) const;
 	
 	/**  Updates ed mode widget location to currently selected instance */
 	void UpdateWidgetLocationToInstanceSelection();
 
+	/** Remove currently selected instances*/
+	void RemoveSelectedInstances(UWorld* InWorld);
+			
 	/** Snap instance to the ground   */
 	bool SnapInstanceToGround(AInstancedFoliageActor* InIFA, float AlignMaxAngle, FFoliageInfo& Mesh, int32 InstanceIdx);
 	void SnapSelectedInstancesToGround(UWorld* InWorld);
@@ -708,11 +679,5 @@ private:
 	int32 UpdateSelectionCounter;
 	bool bHasDeferredSelectionNotification;
 	friend class FEdModeFoliageSelectionUpdate;
-
-	/** When transforming instances */
-	bool bMoving;
-
-	/** Flag to know when we are tracking a transaction in mouse delta */
-	bool bTracking;
 };
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "FP_FirstPersonCharacter.h"
 #include "Animation/AnimInstance.h"
@@ -91,17 +91,17 @@ void AFP_FirstPersonCharacter::SetupPlayerInputComponent(class UInputComponent* 
 void AFP_FirstPersonCharacter::OnFire()
 {
 	// Play a sound if there is one
-	if (FireSound != nullptr)
+	if (FireSound != NULL)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, FireSound, GetActorLocation());
 	}
 
 	// Try and play a firing animation if specified
-	if (FireAnimation != nullptr)
+	if (FireAnimation != NULL)
 	{
 		// Get the animation object for the arms mesh
 		UAnimInstance* AnimInstance = Mesh1P->GetAnimInstance();
-		if (AnimInstance != nullptr)
+		if (AnimInstance != NULL)
 		{
 			AnimInstance->Montage_Play(FireAnimation, 1.f);
 		}
@@ -135,7 +135,7 @@ void AFP_FirstPersonCharacter::OnFire()
 	UPrimitiveComponent* DamagedComponent = Impact.GetComponent();
 
 	// If we hit an actor, with a component that is simulating physics, apply an impulse
-	if ((DamagedActor != nullptr) && (DamagedActor != this) && (DamagedComponent != nullptr) && DamagedComponent->IsSimulatingPhysics())
+	if ((DamagedActor != NULL) && (DamagedActor != this) && (DamagedComponent != NULL) && DamagedComponent->IsSimulatingPhysics())
 	{
 		DamagedComponent->AddImpulseAtLocation(ShootDir * WeaponDamage, Impact.Location);
 	}

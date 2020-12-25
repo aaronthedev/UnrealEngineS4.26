@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Misc/Parse.h"
 #include "Misc/DateTime.h"
@@ -9,10 +9,8 @@
 #include "Misc/Paths.h"
 #include "Containers/Set.h"
 #include "Internationalization/Text.h"
-#include "Misc/AsciiSet.h"
 #include "Misc/Guid.h"
 #include "Misc/OutputDeviceNull.h"
-#include "Misc/StringBuilder.h"
 #include "HAL/IConsoleManager.h"
 #include "Containers/LazyPrintf.h"
 
@@ -319,15 +317,24 @@ bool FParse::Value( const TCHAR* Stream, const TCHAR* Match, FString& Value, boo
 	}
 
 	int32 StreamLen = FCString::Strlen(Stream);
-	if (StreamLen > 0)
+	if (StreamLen < 4096)
 	{
-		TArray<TCHAR, TInlineAllocator<4096>> ValueCharArray;
-		ValueCharArray.AddUninitialized(StreamLen + 1);
-		ValueCharArray[0] = 0;
-
-		if( FParse::Value(Stream, Match, ValueCharArray.GetData(), ValueCharArray.Num(), bShouldStopOnSeparator) )
+		TCHAR Temp[4096]=TEXT("");
+		if (FParse::Value(Stream, Match, Temp, UE_ARRAY_COUNT(Temp), bShouldStopOnSeparator))
 		{
-			Value = FString(ValueCharArray.GetData());
+			Value = Temp;
+			return true;
+		}
+	}
+	else
+	{
+		FString TempValue;
+		TArray<TCHAR>& ValueCharArray = TempValue.GetCharArray();
+		ValueCharArray.AddUninitialized(StreamLen + 1);
+		if( FParse::Value( Stream, Match, ValueCharArray.GetData(), StreamLen + 1, bShouldStopOnSeparator) )
+		{
+			TempValue.Shrink();
+			Value = MoveTemp(TempValue);
 			return true;
 		}
 	}
@@ -335,8 +342,10 @@ bool FParse::Value( const TCHAR* Stream, const TCHAR* Match, FString& Value, boo
 	return false;
 }
 
-template<class T>
-bool ParseQuotedString( const TCHAR* Buffer, T& Value, int32* OutNumCharsRead)
+// 
+// Parse a quoted string.
+//
+bool FParse::QuotedString( const TCHAR* Buffer, FString& Value, int32* OutNumCharsRead )
 {
 	if (OutNumCharsRead)
 	{
@@ -353,8 +362,7 @@ bool ParseQuotedString( const TCHAR* Buffer, T& Value, int32* OutNumCharsRead)
 
 	auto ShouldParse = [](const TCHAR Ch)
 	{
-		constexpr FAsciiSet StopCharacters = FAsciiSet("\"\n\r") + '\0';
-		return StopCharacters.Test(Ch) == 0;
+		return Ch != 0 && Ch != TCHAR('"') && Ch != TCHAR('\n') && Ch != TCHAR('\r');
 	};
 
 	while (ShouldParse(*Buffer))
@@ -395,7 +403,7 @@ bool ParseQuotedString( const TCHAR* Buffer, T& Value, int32* OutNumCharsRead)
 		}
 		else if (FChar::IsOctDigit(*Buffer)) // octal sequence (\012)
 		{
-			TStringBuilder<16> OctSequence;
+			FString OctSequence;
 			while (ShouldParse(*Buffer) && FChar::IsOctDigit(*Buffer) && OctSequence.Len() < 3) // Octal sequences can only be up-to 3 digits long
 			{
 				OctSequence += *Buffer++;
@@ -407,7 +415,7 @@ bool ParseQuotedString( const TCHAR* Buffer, T& Value, int32* OutNumCharsRead)
 		{
 			++Buffer;
 
-			TStringBuilder<16> HexSequence;
+			FString HexSequence;
 			while (ShouldParse(*Buffer) && FChar::IsHexDigit(*Buffer))
 			{
 				HexSequence += *Buffer++;
@@ -419,29 +427,37 @@ bool ParseQuotedString( const TCHAR* Buffer, T& Value, int32* OutNumCharsRead)
 		{
 			++Buffer;
 
-			TStringBuilder<4> UnicodeSequence;
+			FString UnicodeSequence;
 			while (ShouldParse(*Buffer) && FChar::IsHexDigit(*Buffer) && UnicodeSequence.Len() < 4) // UTF-16 sequences can only be up-to 4 digits long
 			{
 				UnicodeSequence += *Buffer++;
 			}
 
-			const UTF16CHAR Utf16Char = static_cast<UTF16CHAR>(FCString::Strtoi(*UnicodeSequence, nullptr, 16));
-			const FUTF16ToTCHAR Utf16Str(&Utf16Char, /* Len */ 1);
-			Value += FStringView(Utf16Str.Get(), Utf16Str.Length());
+			const uint32 UnicodeCodepoint = (uint32)FCString::Strtoi(*UnicodeSequence, nullptr, 16);
+
+			FString UnicodeString;
+			if (FUnicodeChar::CodepointToString(UnicodeCodepoint, UnicodeString))
+			{
+				Value += MoveTemp(UnicodeString);
+			}
 		}
 		else if (*Buffer == TCHAR('U') && FChar::IsHexDigit(*(Buffer + 1))) // UTF-32 sequence (\U12345678)
 		{
 			++Buffer;
 
-			TStringBuilder<8> UnicodeSequence;
+			FString UnicodeSequence;
 			while (ShouldParse(*Buffer) && FChar::IsHexDigit(*Buffer) && UnicodeSequence.Len() < 8) // UTF-32 sequences can only be up-to 8 digits long
 			{
 				UnicodeSequence += *Buffer++;
 			}
 
-			const UTF32CHAR Utf32Char = static_cast<UTF32CHAR>(FCString::Strtoi(*UnicodeSequence, nullptr, 16));
-			const FUTF32ToTCHAR Utf32Str(&Utf32Char, /* Len */ 1);
-			Value += FStringView(Utf32Str.Get(), Utf32Str.Length());
+			const uint32 UnicodeCodepoint = (uint32)FCString::Strtoi(*UnicodeSequence, nullptr, 16);
+
+			FString UnicodeString;
+			if (FUnicodeChar::CodepointToString(UnicodeCodepoint, UnicodeString))
+			{
+				Value += MoveTemp(UnicodeString);
+			}
 		}
 		else // unhandled escape sequence
 		{
@@ -458,20 +474,10 @@ bool ParseQuotedString( const TCHAR* Buffer, T& Value, int32* OutNumCharsRead)
 
 	if (OutNumCharsRead)
 	{
-		*OutNumCharsRead = UE_PTRDIFF_TO_INT32(Buffer - Start);
+		*OutNumCharsRead = (Buffer - Start);
 	}
 
 	return true;
-}
-
-bool FParse::QuotedString( const TCHAR* Buffer, FString& Value, int32* OutNumCharsRead )
-{
-	return ParseQuotedString(Buffer, Value, OutNumCharsRead);
-}
-
-bool FParse::QuotedString( const TCHAR* Buffer, FStringBuilderBase& Value, int32* OutNumCharsRead )
-{
-	return ParseQuotedString(Buffer, Value, OutNumCharsRead);
 }
 
 // 
@@ -584,7 +590,7 @@ bool FParse::Value( const TCHAR* Stream, const TCHAR* Match, int8& Value )
 	if( Temp==NULL )
 		return false;
 	Temp += FCString::Strlen( Match );
-	Value = (int8)FCString::Atoi( Temp );
+	Value = FCString::Atoi( Temp );
 	return Value!=0 || FChar::IsDigit(Temp[0]);
 }
 
@@ -910,14 +916,10 @@ bool FParse::Token( const TCHAR*& Str, FString& Arg, bool UseEscape )
 FString FParse::Token( const TCHAR*& Str, bool UseEscape )
 {
 	TCHAR Buffer[1024];
-	if (FParse::Token(Str, Buffer, UE_ARRAY_COUNT(Buffer), UseEscape))
-	{
+	if( FParse::Token( Str, Buffer, UE_ARRAY_COUNT(Buffer), UseEscape ) )
 		return Buffer;
-	}
 	else
-	{
 		return TEXT("");
-	}
 }
 
 bool FParse::AlnumToken(const TCHAR*& Str, FString& Arg)
@@ -1011,7 +1013,7 @@ bool FParse::Line(const TCHAR** Stream, FString& Result, bool bExact)
 	bool bIsQuoted = false;
 	bool bIgnore = false;
 
-	Result.Reset();
+	Result = TEXT("");
 
 	while (**Stream != TEXT('\0') && **Stream != TEXT('\n') && **Stream != TEXT('\r'))
 	{
@@ -1073,7 +1075,7 @@ bool FParse::LineExtended(const TCHAR** Stream, FString& Result, int32& LinesCon
 	bool bIgnore = false;
 	int32 BracketDepth = 0;
 
-	Result.Reset();
+	Result = TEXT("");
 	LinesConsumed = 0;
 
 	while (**Stream != TEXT('\0') && ((**Stream != TEXT('\n') && **Stream != TEXT('\r')) || BracketDepth > 0))

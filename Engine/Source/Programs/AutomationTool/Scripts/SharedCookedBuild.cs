@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -331,7 +331,7 @@ public class SharedCookedBuild
 
 			FileReference PreviousManifest = FileReference.Combine(PlatformInstallPath, ".build", "Current.manifest");
 
-			FileReference BPTI = FileReference.Combine(CommandUtils.RootDirectory, "Engine", "Restricted", "NotForLicensees", "Binaries", "Win64", "BuildPatchToolInstaller.exe");
+			FileReference BPTI = FileReference.Combine(CommandUtils.RootDirectory, "Engine", "Binaries", "Win64", "NotForLicensees", "BuildPatchToolInstaller.exe");
 			if (!FileReference.Exists(BPTI))
 			{
 				CommandUtils.LogInformation("Could not locate BuildPatchToolInstaller.exe");

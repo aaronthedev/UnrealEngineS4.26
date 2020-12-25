@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -109,7 +109,7 @@ enum class EMagicLeapGestureTransformSpace : uint8
 };
 
 /** List of input key names for all left and right hand gestures. */
-struct MAGICLEAPHANDTRACKING_API FMagicLeapGestureKeyNames
+struct FMagicLeapGestureKeyNames
 {
 	static const FName Left_Finger_Name;
 	static const FName Left_Fist_Name;

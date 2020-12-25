@@ -37,7 +37,6 @@ bool ReadFile(const char* filename, const char* mode, std::vector<T>* data) {
     if (ftell(fp) == -1L) {
       if (ferror(fp)) {
         fprintf(stderr, "error: error reading file '%s'\n", filename);
-        if (use_file) fclose(fp);
         return false;
       }
     } else {
@@ -46,7 +45,6 @@ bool ReadFile(const char* filename, const char* mode, std::vector<T>* data) {
             stderr,
             "error: file size should be a multiple of %zd; file '%s' corrupt\n",
             sizeof(T), filename);
-        if (use_file) fclose(fp);
         return false;
       }
     }
@@ -71,7 +69,6 @@ bool WriteFile(const char* filename, const char* mode, const T* data,
     size_t written = fwrite(data, sizeof(T), count, fp);
     if (count != written) {
       fprintf(stderr, "error: could not write to file '%s'\n", filename);
-      if (!use_stdout) fclose(fp);
       return false;
     }
     if (!use_stdout) fclose(fp);

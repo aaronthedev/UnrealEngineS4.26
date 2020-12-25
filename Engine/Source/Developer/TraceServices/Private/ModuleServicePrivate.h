@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -21,8 +21,7 @@ public:
 	virtual void SetModuleEnabled(const FName& ModuleName, bool bEnabled) override;
 	virtual void GenerateReports(const IAnalysisSession& Session, const TCHAR* CmdLine, const TCHAR* OutputDirectory) override;
 	void OnAnalysisBegin(IAnalysisSession& Session);
-	TArray<const TCHAR*> GetModuleLoggers(const FName& ModuleName);
-	TSet<FName> GetEnabledModulesFromCommandLine(const TCHAR* CommandLine);
+	bool GetModuleLoggers(const FName& ModuleName, TArray<const TCHAR*>& OutLoggers);
 
 private:
 	void Initialize();

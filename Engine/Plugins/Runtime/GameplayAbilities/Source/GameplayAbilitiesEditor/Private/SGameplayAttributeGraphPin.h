@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,13 +19,10 @@ public:
 	virtual TSharedRef<SWidget>	GetDefaultValueWidget() override;
 	//~ End SGraphPin Interface
 
-	void OnAttributeChanged(FProperty* SelectedAttribute);
+	void OnAttributeChanged(UProperty* SelectedAttribute);
 
-	FProperty* LastSelectedProperty;
+	UProperty* LastSelectedProperty;
 
 private:
-	bool GetDefaultValueIsEnabled() const
-	{
-		return !GraphPinObj->bDefaultValueIsReadOnly;
-	}
+
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,6 @@
 #include "UObject/ObjectMacros.h"
 #include "Misc/Guid.h"
 #include "AnimGraphNode_CustomProperty.h"
-#include "IClassVariableCreator.h"
 
 #include "AnimGraphNode_LinkedAnimGraphBase.generated.h"
 
@@ -22,6 +21,7 @@ class UAnimGraphNode_LinkedAnimGraphBase : public UAnimGraphNode_CustomProperty
 	GENERATED_BODY()
 
 public:
+
 	//~ Begin UEdGraphNode Interface.
 	virtual FLinearColor GetNodeTitleColor() const override;
 	virtual FText GetTooltipText() const override;
@@ -36,18 +36,13 @@ public:
 	virtual FPoseLinkMappingRecord GetLinkIDLocation(const UScriptStruct* NodeType, UEdGraphPin* SourcePin) override;
 
 	// UAnimGraphNode_CustomProperty interface
-	virtual bool IsStructuralProperty(FProperty* InProperty) const override;
+	virtual bool IsStructuralProperty(UProperty* InProperty) const override;
 
 	// Node accessor
 	virtual FAnimNode_LinkedAnimGraph* GetLinkedAnimGraphNode() PURE_VIRTUAL(UAnimGraphNode_LinkedAnimGraphBase::GetLinkedAnimGraphNode, return nullptr;);
 	virtual const FAnimNode_LinkedAnimGraph* GetLinkedAnimGraphNode() const PURE_VIRTUAL(UAnimGraphNode_LinkedAnimGraphBase::GetLinkedAnimGraphNode, return nullptr;);
 
 protected:
-	friend class FAnimBlueprintCompilerHandler_LinkedAnimGraph;
-
-	// Called pre-compilation to allocate pose links
-	void AllocatePoseLinks();
-
 	// Finds out whether there is a loop in the graph formed by linked instances from this node
 	bool HasInstanceLoop();
 	

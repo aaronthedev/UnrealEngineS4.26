@@ -1,35 +1,38 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SUSDStageInfo.h"
 
-#include "USDConversionUtils.h"
 #include "USDStageActor.h"
 #include "USDStageModule.h"
 #include "USDTypesConversion.h"
 
-#include "UsdWrappers/SdfLayer.h"
-
 #include "EditorDirectories.h"
 #include "EditorStyleSet.h"
-#include "ScopedTransaction.h"
-#include "Widgets/Input/SEditableTextBox.h"
-#include "Widgets/Input/STextComboBox.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/Input/STextComboBox.h"
 #include "Widgets/Text/STextBlock.h"
 
 #if USE_USD_SDK
 
+#include "USDIncludesStart.h"
+
+#include "pxr/pxr.h"
+#include "pxr/usd/usd/stage.h"
+
+#include "USDIncludesEnd.h"
+
 
 #define LOCTEXT_NAMESPACE "UsdStageInfo"
 
-void SUsdStageInfo::Construct( const FArguments& InArgs, AUsdStageActor* InUsdStageActor )
+void SUsdStageInfo::Construct( const FArguments& InArgs, AUsdStageActor* UsdStageActor )
 {
-	RefreshStageInfos( InUsdStageActor );
+	OnInitialLoadSetChanged = InArgs._OnInitialLoadSetChanged;
 
-	if ( InUsdStageActor )
-	{
-		InUsdStageActor->GetUsdListener().GetOnStageInfoChanged().AddSP(this, &SUsdStageInfo::OnStageInfoChanged );
-	}
+	InitialLoadSetStrings.Reset();
+	InitialLoadSetStrings.Add( MakeShared< FString >( TEXT("Load All") ) );
+	InitialLoadSetStrings.Add( MakeShared< FString >( TEXT("Load None") ) );
+
+	RefreshStageInfos( UsdStageActor );
 
 	ChildSlot
 	[
@@ -46,108 +49,56 @@ void SUsdStageInfo::Construct( const FArguments& InArgs, AUsdStageActor* InUsdSt
 			.Text( this, &SUsdStageInfo::GetRootLayerDisplayName )
 			.Font( FEditorStyle::GetFontStyle( "ContentBrowser.SourceTreeItemFont" ) )
 		]
+
 		+SVerticalBox::Slot()
 		.AutoHeight()
+		.VAlign(VAlign_Center)
 		.HAlign(HAlign_Left)
+		.Padding(2.f, 2.f)
 		[
 			SNew( SHorizontalBox )
 
 			+SHorizontalBox::Slot()
 			.AutoWidth()
-			.VAlign(VAlign_Bottom)
-			.Padding(2.f, 2.f)
+			.HAlign( HAlign_Left )
+			.Padding( 2.f, 2.f )
 			[
-				SNew( STextBlock )
-				.Text( LOCTEXT( "MetersPerUnit", "Meters per unit" ) )
-			]
-			+SHorizontalBox::Slot()
-			.Padding(2.f, 2.f)
-			[
-				SNew( SEditableTextBox )
-				.HintText( LOCTEXT( "Unset", "Unset" ) )
-				.Text( this, &SUsdStageInfo::GetMetersPerUnit )
-				.IsReadOnly_Lambda([this]()
-				{
-					if ( AUsdStageActor* StageActor = UsdStageActor.Get() )
-					{
-						return !( bool ) UsdStageActor->GetUsdStage();
-					}
-					return true;
-				})
-				.OnTextCommitted( this, &SUsdStageInfo::OnMetersPerUnitCommitted )
+				SAssignNew( InitialLoadSetWidget, STextComboBox )
+				.OptionsSource( &InitialLoadSetStrings )
+				.InitiallySelectedItem( InitialLoadSetStrings[ (int32)StageInfos.InitialLoadSet ] )
+				.OnSelectionChanged( this, &SUsdStageInfo::OnInitialLoadSetSelectionChanged )
 			]
 		]
 	];
 }
 
-void SUsdStageInfo::RefreshStageInfos( AUsdStageActor* InUsdStageActor )
+void SUsdStageInfo::RefreshStageInfos( AUsdStageActor* UsdStageActor )
 {
-	UsdStageActor = InUsdStageActor;
-
-	if ( InUsdStageActor )
-	{
-		if ( const UE::FUsdStage& UsdStage = UsdStageActor->GetUsdStage() )
-		{
-			StageInfos.RootLayerDisplayName = FText::FromString( UsdStage.GetRootLayer().GetDisplayName() );
-			StageInfos.MetersPerUnit = UsdUtils::GetUsdStageMetersPerUnit( UsdStage );
-			return;
-		}
-	}
-
 	StageInfos.RootLayerDisplayName = LOCTEXT( "NoUsdStage", "No Stage Available" );
-	StageInfos.MetersPerUnit.Reset();
-}
 
-SUsdStageInfo::~SUsdStageInfo()
-{
-	if ( AUsdStageActor* StageActor = UsdStageActor.Get() )
-	{
-		StageActor->GetUsdListener().GetOnStageInfoChanged().RemoveAll( this );
-	}
-}
-
-FText SUsdStageInfo::GetMetersPerUnit() const
-{
-	if ( StageInfos.MetersPerUnit )
-	{
-		return FText::FromString( LexToSanitizedString( StageInfos.MetersPerUnit.GetValue() ) );
-	}
-	else
-	{
-		return FText();
-	}
-}
-
-void SUsdStageInfo::OnStageInfoChanged( const TArray<FString>& ChangedFields )
-{
-	if ( AUsdStageActor* StageActor = UsdStageActor.Get() )
-	{
-		RefreshStageInfos( StageActor );
-	}
-}
-
-void SUsdStageInfo::OnMetersPerUnitCommitted( const FText& InUnitsPerMeterText, ETextCommit::Type InCommitInfo )
-{
-	if ( !UsdStageActor.IsValid() )
+	if ( !UsdStageActor )
 	{
 		return;
 	}
 
-	float MetersPerUnit = 0.01f;
-	LexFromString( MetersPerUnit, *InUnitsPerMeterText.ToString() );
+	StageInfos.InitialLoadSet = UsdStageActor->InitialLoadSet;
 
-	MetersPerUnit = FMath::Clamp( MetersPerUnit, 0.001f, 1000.f );
+	if ( InitialLoadSetWidget && InitialLoadSetStrings.IsValidIndex( (int32)StageInfos.InitialLoadSet ) )
+	{
+		InitialLoadSetWidget->SetSelectedItem( InitialLoadSetStrings[ (int32)StageInfos.InitialLoadSet ] );
+	}
 
-	// Need a transaction here as this change may trigger actor/component spawning, which need to be in the undo buffer
-	// Sadly undoing these transactions won't undo the actual stage changes yet though, so the metersPerUnit display and the
-	// state of the stage will be desynced...
-	FScopedTransaction Transaction( FText::Format(
-		LOCTEXT( "SetMetersPerUnitTransaction", "Set USD stage metersPerUnit to '{0}'" ),
-		MetersPerUnit
-	) );
+	if ( const pxr::UsdStageRefPtr& UsdStage = UsdStageActor->GetUsdStage() )
+	{
+		TUsdStore< std::string > UsdDisplayName = UsdStage->GetRootLayer()->GetDisplayName();
+		StageInfos.RootLayerDisplayName = FText::FromString( UsdToUnreal::ConvertString( UsdDisplayName.Get() ) );
+	}
+}
 
-	UsdUtils::SetUsdStageMetersPerUnit( UsdStageActor->GetUsdStage(), MetersPerUnit );
-	RefreshStageInfos( UsdStageActor.Get() );
+void SUsdStageInfo::OnInitialLoadSetSelectionChanged( TSharedPtr< FString > NewValue, ESelectInfo::Type SelectInfo )
+{
+	StageInfos.InitialLoadSet = (EUsdInitialLoadSet)InitialLoadSetStrings.Find( NewValue );
+	OnInitialLoadSetChanged.ExecuteIfBound( StageInfos.InitialLoadSet );
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -289,14 +289,10 @@ struct GAMEPLAYABILITIES_API FPredictionKey
 	typedef int16 KeyType;
 
 	FPredictionKey()
-	: PredictiveConnection(nullptr), Current(0), Base(0), bIsStale(false), bIsServerInitiated(false)
+	: Current(0), Base(0), PredictiveConnection(nullptr), bIsStale(false), bIsServerInitiated(false)
 	{
 
 	}
-
-	/** On the server, what network connection this was serialized on. */
-	UPROPERTY(NotReplicated)
-	UPackageMap* PredictiveConnection;
 
 	/** The unique ID of this prediction key */
 	UPROPERTY()
@@ -305,6 +301,10 @@ struct GAMEPLAYABILITIES_API FPredictionKey
 	/** If non 0, the prediction key this was created from */
 	UPROPERTY()
 	int16	Base;
+
+	/** On the server, what network connection this was serialized on. */
+	UPROPERTY(NotReplicated)
+	UPackageMap*	PredictiveConnection;
 
 	/** If stale, this key cannot be used for more prediction */
 	UPROPERTY(NotReplicated)
@@ -395,13 +395,13 @@ private:
 	void GenerateNewPredictionKey();
 
 	FPredictionKey(int32 Key)
-		: PredictiveConnection(nullptr), Current(Key), Base(0), bIsStale(false), bIsServerInitiated(false)
+		: Current(Key), Base(0), PredictiveConnection(nullptr), bIsStale(false), bIsServerInitiated(false)
 	{
 
 	}
 
 	FPredictionKey(int16 InKey, int16 PreviousKey)
-		: PredictiveConnection(nullptr), Current(InKey), Base(PreviousKey), bIsStale(false), bIsServerInitiated(false)
+		: Current(InKey), Base(PreviousKey), PredictiveConnection(nullptr), bIsStale(false), bIsServerInitiated(false)
 	{
 
 	}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Application/SlateApplicationBase.h"
 #include "Widgets/SWindow.h"
@@ -19,9 +19,9 @@ TSharedPtr<GenericApplication> FSlateApplicationBase::PlatformApplication = null
 const uint32 FSlateApplicationBase::CursorPointerIndex = ETouchIndex::CursorPointerIndex;
 const uint32 FSlateApplicationBase::CursorUserIndex = 0;
 
-FWidgetPath FHitTesting::LocateWidgetInWindow(FVector2D ScreenspaceMouseCoordinate, const TSharedRef<SWindow>& Window, bool bIgnoreEnabledStatus, int32 UserIndex) const
+FWidgetPath FHitTesting::LocateWidgetInWindow(FVector2D ScreenspaceMouseCoordinate, const TSharedRef<SWindow>& Window, bool bIgnoreEnabledStatus) const
 {
-	return SlateApp->LocateWidgetInWindow(ScreenspaceMouseCoordinate, Window, bIgnoreEnabledStatus, UserIndex);
+	return SlateApp->LocateWidgetInWindow(ScreenspaceMouseCoordinate, Window, bIgnoreEnabledStatus);
 }
 
 
@@ -98,16 +98,6 @@ const FHitTesting& FSlateApplicationBase::GetHitTesting() const
 	return HitTesting;
 }
 
-TSharedRef<SWidget> FSlateApplicationBase::MakeWindowTitleBar(const TSharedRef<SWindow>& Window, const TSharedPtr<SWidget>& CenterContent, EHorizontalAlignment CenterContentAlignment, TSharedPtr<IWindowTitleBar>& OutTitleBar) const
-{
-	FWindowTitleBarArgs Args(Window);
-
-	Args.CenterContent = CenterContent;
-	Args.CenterContentAlignment = CenterContentAlignment;
-	
-	return MakeWindowTitleBar(Args, OutTitleBar);
-}
-
 void FSlateApplicationBase::RegisterActiveTimer( const TSharedRef<FActiveTimerHandle>& ActiveTimerHandle )
 {
 	FScopeLock ActiveTimerLock(&ActiveTimerCS);
@@ -164,20 +154,16 @@ bool FSlateApplicationBase::IsSlateAsleep()
 
 void FSlateApplicationBase::ToggleGlobalInvalidation(bool bIsGlobalInvalidationEnabled)
 {
-	if (GSlateEnableGlobalInvalidation != bIsGlobalInvalidationEnabled)
+	if ((!!GSlateEnableGlobalInvalidation) != bIsGlobalInvalidationEnabled)
 	{
-		GSlateEnableGlobalInvalidation = bIsGlobalInvalidationEnabled;
+		GSlateEnableGlobalInvalidation = bIsGlobalInvalidationEnabled ? 1 : 0;
 		OnGlobalInvalidationToggledEvent.Broadcast(bIsGlobalInvalidationEnabled);
 	}
 }
 
 void FSlateApplicationBase::InvalidateAllWidgets(bool bClearResourcesImmediately) const
 {
-	// Only invalidate things if the thread triggering the invalidate owns slate rendering
-	if (DoesThreadOwnSlateRendering())
-	{
-		SCOPED_NAMED_EVENT(Slate_GlobalInvalidate, FColor::Red);
-		UE_LOG(LogSlate, Log, TEXT("InvalidateAllWidgets triggered.  All widgets were invalidated"));
-		OnInvalidateAllWidgetsEvent.Broadcast(bClearResourcesImmediately);
-	}
+	SCOPED_NAMED_EVENT(Slate_GlobalInvalidate, FColor::Red);
+	UE_LOG(LogSlate, Log, TEXT("InvalidateAllWidgets triggered.  All widgets were invalidated"));
+	OnInvalidateAllWidgetsEvent.Broadcast(bClearResourcesImmediately);
 }

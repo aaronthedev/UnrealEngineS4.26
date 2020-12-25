@@ -1,8 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RigUnit_SetSpaceTransform.h"
 #include "Units/RigUnitContext.h"
-#include "Math/ControlRigMathLibrary.h"
+
+FString FRigUnit_SetSpaceTransform::GetUnitLabel() const
+{
+	return FString::Printf(TEXT("Set Space %s"), *Space.ToString());
+}
 
 FRigUnit_SetSpaceTransform_Execute()
 {
@@ -14,39 +18,23 @@ FRigUnit_SetSpaceTransform_Execute()
 		{
 			case EControlRigState::Init:
 			{
-				CachedSpaceIndex.Reset();
+				CachedSpaceIndex = Hierarchy->GetIndex(Space);
 				break;
 			}
 			case EControlRigState::Update:
 			{
-				if (CachedSpaceIndex.UpdateCache(Space, Hierarchy))
+				if (CachedSpaceIndex != INDEX_NONE)
 				{
 					switch (SpaceType)
 					{
 						case EBoneGetterSetterMode::GlobalSpace:
 						{
-							if(FMath::IsNearlyEqual(Weight, 1.f))
-							{
-								Hierarchy->SetGlobalTransform(CachedSpaceIndex, Transform);
-							}
-							else
-							{
-								FTransform PreviousTransform = Hierarchy->GetGlobalTransform(CachedSpaceIndex);
-								Hierarchy->SetGlobalTransform(CachedSpaceIndex, FControlRigMathLibrary::LerpTransform(PreviousTransform, Transform, FMath::Clamp<float>(Weight, 0.f, 1.f)));
-							}
+							Hierarchy->SetGlobalTransform(CachedSpaceIndex, Transform);
 							break;
 						}
 						case EBoneGetterSetterMode::LocalSpace:
 						{
-							if(FMath::IsNearlyEqual(Weight, 1.f))
-							{
-								Hierarchy->SetLocalTransform(CachedSpaceIndex, Transform);
-							}
-							else
-							{
-								FTransform PreviousTransform = Hierarchy->GetLocalTransform(CachedSpaceIndex);
-								Hierarchy->SetLocalTransform(CachedSpaceIndex, FControlRigMathLibrary::LerpTransform(PreviousTransform, Transform, FMath::Clamp<float>(Weight, 0.f, 1.f)));
-							}
+							Hierarchy->SetLocalTransform(CachedSpaceIndex, Transform);
 							break;
 						}
 						default:

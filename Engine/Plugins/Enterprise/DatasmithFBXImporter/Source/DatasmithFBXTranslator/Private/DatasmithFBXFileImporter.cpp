@@ -1,12 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithFBXFileImporter.h"
 #include "DatasmithFBXImporterLog.h"
 #include "DatasmithFBXImportOptions.h"
 #include "DatasmithFBXScene.h"
 #include "DatasmithImportOptions.h"
+#include "DatasmithMeshHelper.h"
 #include "DatasmithUtils.h"
-#include "Utility/DatasmithMeshHelper.h"
 
 #include "Async/Async.h"
 #include "Curves/RichCurve.h"
@@ -245,21 +245,10 @@ void FDatasmithFBXFileImporter::TraverseHierarchyNodeRecursively(FbxNode* Parent
 		FVector4 Scale = FBXFileImporterImpl::ConvertScale(LocalScale);
 		FQuat Rotation = FBXFileImporterImpl::ConvertRotToQuat(LocalRotQuat);
 
-		FVector RotEuler = Rotation.Euler();
-
-		// Avoid singularity around 90 degree pitch, as UE4 doesn't seem to support it very well
-		// See UE-75467 and UE-83049
-		if (FMath::IsNearlyEqual(abs(RotEuler.Y), 90.0f))
-		{
-			Rotation.W += 1e-3;
-			Rotation.Normalize();
-		}
-
 		// Converting exactly 180.0 degree quaternions into Euler is unreliable, so add some
 		// small noise so that it produces the correct actor transform
-		if (abs(RotEuler.X) == 180.0f ||
-			abs(RotEuler.Y) == 180.0f ||
-			abs(RotEuler.Z) == 180.0f)
+		FVector RotEuler = Rotation.Euler();
+		if (abs(RotEuler.X) == 180.0000f || abs(RotEuler.Y) == 180.0000f || abs(RotEuler.Z) == 180.0000f)
 		{
 			Rotation.W += 1.e-7;
 			Rotation.Normalize();
@@ -1021,10 +1010,7 @@ void FDatasmithFBXFileImporter::DoImportMesh(FbxMesh* InMesh, FDatasmithFBXScene
 	int32 PolygonOffset = 0;        // MeshDescription.Polygons().Num();
 
 	FMeshDescription MeshDescription;
-
-	FStaticMeshAttributes StaticMeshAttributes{ MeshDescription };
-	StaticMeshAttributes.Register();
-	StaticMeshAttributes.RegisterPolygonNormalAndTangentAttributes();
+	DatasmithMeshHelper::PrepareAttributeForStaticMesh(MeshDescription);
 
 	TVertexAttributesRef<FVector> VertexPositions = MeshDescription.VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
 	TVertexInstanceAttributesRef<FVector> VertexInstanceNormals = MeshDescription.VertexInstanceAttributes().GetAttributesRef<FVector>(MeshAttribute::VertexInstance::Normal);
@@ -1384,7 +1370,6 @@ TSharedPtr<FDatasmithFBXSceneMaterial> FDatasmithFBXFileImporter::ImportMaterial
 			FetchFbxTexture(InMaterial, TEXT("ReflectionColor"), *Material, PathStr);
 			FetchFbxTexture(InMaterial, TEXT("TransparentColor"), *Material, PathStr);
 			FetchFbxTexture(InMaterial, TEXT("EmissiveColor"), *Material, PathStr);
-			FetchFbxTexture(InMaterial, TEXT("Shininess"), *Material, PathStr);
 		}
 	}
 

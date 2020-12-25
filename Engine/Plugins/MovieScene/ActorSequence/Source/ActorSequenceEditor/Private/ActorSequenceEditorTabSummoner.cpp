@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ActorSequenceEditorTabSummoner.h"
 
@@ -103,7 +103,7 @@ private:
 			ComponentIcon = FSlateIconFinder::FindIconBrushForClass( InNodePtr->GetComponentTemplate()->GetClass(), TEXT("SCS.Component") );
 		}
 
-		FText Label = InNodePtr->IsInheritedComponent() && !bIsInEditMode
+		FText Label = InNodePtr->IsInherited() && !bIsInEditMode
 			? FText::Format(LOCTEXT("NativeComponentFormatString","{0} (Inherited)"), FText::FromString(InNodePtr->GetDisplayString()))
 			: FText::FromString(InNodePtr->GetDisplayString());
 

@@ -1,16 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "IDetailCustomization.h"
+#include "Widgets/Text/STextBlock.h"
 #include "Input/Reply.h"
-#include "Layout/Visibility.h"
-
-class IPropertyHandle;
-class STextBlock;
-class URuntimeVirtualTexture;
-class URuntimeVirtualTextureComponent;
 
 /** UI customization for URuntimeVirtualTexture */
 class FRuntimeVirtualTextureDetailsCustomization : public IDetailCustomization
@@ -21,26 +16,23 @@ public:
 protected:
 	FRuntimeVirtualTextureDetailsCustomization();
 
-	/** Callback for updating text values after an edit. */
-	void RefreshTextDetails();
-	/** Callback for full update of details view after an edit. */
-	void RefreshDetailsView();
+	/** Callback for updating values after and edit. */
+	void RefreshDetails();
 
 	//~ Begin IDetailCustomization Interface.
 	virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
 	//~ End IDetailCustomization Interface.
 
 private:
-	URuntimeVirtualTexture* VirtualTexture = nullptr;
+	class URuntimeVirtualTexture* VirtualTexture;
 
-	IDetailLayoutBuilder* CachedDetailBuilder = nullptr;
+	TSharedPtr<class STextBlock> TileCountText;
+	TSharedPtr<class STextBlock> TileSizeText;
+	TSharedPtr<class STextBlock> TileBorderSizeText;
 
-	TSharedPtr<STextBlock> TileCountText;
-	TSharedPtr<STextBlock> TileSizeText;
-	TSharedPtr<STextBlock> TileBorderSizeText;
-
-	TSharedPtr<STextBlock> SizeText;
-	TSharedPtr<STextBlock> PageTableSizeText;
+	TSharedPtr<class STextBlock> SizeText;
+	TSharedPtr<class STextBlock> PageTableTextureMemoryText;
+	TSharedPtr<class STextBlock> PhysicalTextureMemoryText;
 };
 
 
@@ -53,20 +45,19 @@ public:
 protected:
 	FRuntimeVirtualTextureComponentDetailsCustomization();
 
-	/** Returns true if SetBounds button is enabled */
-	bool IsSetBoundsEnabled() const;
-	/** Callback for Set Bounds button */
-	FReply SetBounds();
-
-	/** Do we need to show warning icon to indicate out of date streaming texture */
-	EVisibility IsBuildWarningIconVisible() const;
+	/** Callback for Copy Rotation button */
+	FReply SetRotation();
+	/** Callback for Copy Bounds button */
+	FReply SetTransformToBounds();
 	/** Callback for Build button */
 	FReply BuildStreamedMips();
+	/** Callback for Build Debug button */
+	FReply BuildLowMipsDebug();
 
 	//~ Begin IDetailCustomization Interface.
 	virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
 	//~ End IDetailCustomization Interface.
 
 private:
-	URuntimeVirtualTextureComponent* RuntimeVirtualTextureComponent;
+	class URuntimeVirtualTextureComponent* RuntimeVirtualTextureComponent;
 };

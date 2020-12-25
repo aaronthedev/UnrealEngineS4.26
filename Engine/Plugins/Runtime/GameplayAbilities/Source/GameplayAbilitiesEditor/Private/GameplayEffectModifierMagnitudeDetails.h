@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -29,7 +29,7 @@ private:
 	void OnCalculationTypeChanged();
 
 	/** Visibility delegate for the various methods of calculating magnitude */
-	EVisibility GetMagnitudeCalculationPropertyVisibility(FProperty* InProperty) const;
+	EVisibility GetMagnitudeCalculationPropertyVisibility(UProperty* InProperty) const;
 
 	/** Property handle of the enumeration of the magnitude calculation type */
 	TSharedPtr<IPropertyHandle> MagnitudeCalculationTypePropertyHandle;
@@ -38,5 +38,5 @@ private:
 	EGameplayEffectMagnitudeCalculation VisibleCalculationType;
 
 	/** Acceleration map for determining whether to show a magnitude property or not */
-	TMap<FProperty*, EGameplayEffectMagnitudeCalculation> PropertyToCalcEnumMap;
+	TMap<UProperty*, EGameplayEffectMagnitudeCalculation> PropertyToCalcEnumMap;
 };

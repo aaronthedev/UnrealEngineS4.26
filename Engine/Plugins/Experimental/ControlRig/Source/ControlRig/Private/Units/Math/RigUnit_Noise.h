@@ -1,13 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Units/Math/RigUnit_MathBase.h"
 #include "RigUnit_Noise.generated.h"
 
-/**
- * Generates a float through a noise fluctuation process between a min and a max through speed
- */
 USTRUCT(meta=(DisplayName="Noise (Float)", Category="Math|Noise", PrototypeName="Noise"))
 struct FRigUnit_NoiseFloat : public FRigUnit_MathBase
 {
@@ -45,9 +42,6 @@ struct FRigUnit_NoiseFloat : public FRigUnit_MathBase
 	float Time;
 };
 
-/**
- * Generates a vector through a noise fluctuation process between a min and a max through speed
- */
 USTRUCT(meta = (DisplayName = "Noise (Vector)", Category = "Math|Noise", PrototypeName = "Noise"))
 struct FRigUnit_NoiseVector : public FRigUnit_MathBase
 {

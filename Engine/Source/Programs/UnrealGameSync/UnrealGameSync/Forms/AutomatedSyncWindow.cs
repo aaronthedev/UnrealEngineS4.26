@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -53,9 +53,9 @@ namespace UnrealGameSync
 					}
 				}
 
-				if(CandidateClients.Count >= 1)
+				if(CandidateClients.Count == 1)
 				{
-					WorkspaceName = CandidateClients.OrderByDescending(x => x.Access).First().Name;
+					WorkspaceName = CandidateClients[0].Name;
 				}
 
 				ErrorMessage = null;
@@ -148,21 +148,14 @@ namespace UnrealGameSync
 			get { return Utility.OverridePerforceSettings(DefaultConnection, ServerAndPortOverride, UserNameOverride); }
 		}
 
-		public static string FindDefaultWorkspace(IWin32Window Owner, PerforceConnection DefaultConnection, string StreamName, TextWriter Log)
+		public static bool ShowModal(IWin32Window Owner, PerforceConnection DefaultConnection, string StreamName, string ProjectPath, out WorkspaceInfo WorkspaceInfo, TextWriter Log)
 		{
 			FindDefaultWorkspaceTask FindWorkspace = new FindDefaultWorkspaceTask(StreamName);
 
 			string ErrorMessage;
 			PerforceModalTask.Execute(Owner, DefaultConnection, FindWorkspace, "Finding workspace", "Finding default workspace, please wait...", Log, out ErrorMessage);
 
-			return FindWorkspace.WorkspaceName;
-		}
-
-		public static bool ShowModal(IWin32Window Owner, PerforceConnection DefaultConnection, string StreamName, string ProjectPath, out WorkspaceInfo WorkspaceInfo, TextWriter Log)
-		{
-			string WorkspaceName = FindDefaultWorkspace(Owner, DefaultConnection, StreamName, Log);
-
-			AutomatedSyncWindow Window = new AutomatedSyncWindow(StreamName, ProjectPath, WorkspaceName, DefaultConnection, Log);
+			AutomatedSyncWindow Window = new AutomatedSyncWindow(StreamName, ProjectPath, FindWorkspace.WorkspaceName, DefaultConnection, Log);
 			if(Window.ShowDialog() == DialogResult.OK)
 			{
 				WorkspaceInfo = Window.SelectedWorkspaceInfo;
@@ -214,22 +207,22 @@ namespace UnrealGameSync
 			OkBtn.Enabled = (WorkspaceNameTextBox.Text.Length > 0);
 		}
 
-		public static bool ValidateWorkspace(IWin32Window Owner, PerforceConnection Perforce, string WorkspaceName, string StreamName, TextWriter Log, out WorkspaceInfo SelectedWorkspaceInfo)
+		private void OkBtn_Click(object sender, EventArgs e)
 		{
-			ValidateWorkspaceTask ValidateWorkspace = new ValidateWorkspaceTask(WorkspaceName, StreamName);
+			ValidateWorkspaceTask ValidateWorkspace = new ValidateWorkspaceTask(WorkspaceNameTextBox.Text, StreamName);
 
 			string ErrorMessage;
 			ModalTaskResult Result = PerforceModalTask.Execute(Owner, Perforce, ValidateWorkspace, "Checking workspace", "Checking workspace, please wait...", Log, out ErrorMessage);
-			if (Result == ModalTaskResult.Failed)
+			if(Result == ModalTaskResult.Failed)
 			{
 				MessageBox.Show(ErrorMessage);
 			}
-			else if (Result == ModalTaskResult.Succeeded)
+			else if(Result == ModalTaskResult.Succeeded)
 			{
-				if (ValidateWorkspace.bRequiresStreamSwitch)
+				if(ValidateWorkspace.bRequiresStreamSwitch)
 				{
 					string Message;
-					if (ValidateWorkspace.bHasOpenFiles)
+					if(ValidateWorkspace.bHasOpenFiles)
 					{
 						Message = String.Format("You have files open for edit in this workspace. If you switch this workspace to {0}, you will not be able to submit them until you switch back.\n\nContinue switching streams?", StreamName);
 					}
@@ -237,25 +230,14 @@ namespace UnrealGameSync
 					{
 						Message = String.Format("Switch this workspace to {0}?", StreamName);
 					}
-					if (MessageBox.Show(Message, "Switch Streams", MessageBoxButtons.YesNo) != DialogResult.Yes)
+					if(MessageBox.Show(Message, "Switch Streams", MessageBoxButtons.YesNo) != DialogResult.Yes)
 					{
-						SelectedWorkspaceInfo = null;
-						return false;
+						return;
 					}
 				}
 
-				SelectedWorkspaceInfo = new WorkspaceInfo() { ServerAndPort = ValidateWorkspace.ServerAndPort, UserName = ValidateWorkspace.UserName, WorkspaceName = ValidateWorkspace.WorkspaceName, bRequiresStreamSwitch = ValidateWorkspace.bRequiresStreamSwitch };
-				return true;
-			}
+				SelectedWorkspaceInfo = new WorkspaceInfo(){ ServerAndPort = ValidateWorkspace.ServerAndPort, UserName = ValidateWorkspace.UserName, WorkspaceName = ValidateWorkspace.WorkspaceName, bRequiresStreamSwitch = ValidateWorkspace.bRequiresStreamSwitch };
 
-			SelectedWorkspaceInfo = null;
-			return false;
-		}
-
-		private void OkBtn_Click(object sender, EventArgs e)
-		{
-			if(ValidateWorkspace(this, Perforce, WorkspaceNameTextBox.Text, StreamName, Log, out SelectedWorkspaceInfo))
-			{
 				DialogResult = DialogResult.OK;
 				Close();
 			}

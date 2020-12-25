@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ToolMenuContext.h"
 #include "ToolMenus.h"
@@ -119,7 +119,7 @@ void FToolMenuContext::AddExtender(const TSharedPtr<FExtender>& InExtender)
 	Extenders.AddUnique(InExtender);
 }
 
-TSharedPtr<FExtender> FToolMenuContext::GetAllExtenders() const
+TSharedPtr<FExtender> FToolMenuContext::GetAllExtenders()
 {
 	return FExtender::Combine(Extenders);
 }
@@ -140,12 +140,4 @@ void FToolMenuContext::AppendObjects(const TArray<UObject*>& InObjects)
 void FToolMenuContext::AddObject(UObject* InObject)
 {
 	ContextObjects.AddUnique(InObject);
-}
-
-void FToolMenuContext::Empty()
-{
-	ContextObjects.Empty();
-	CommandLists.Empty();
-	CommandList.Reset();
-	Extenders.Empty();
 }

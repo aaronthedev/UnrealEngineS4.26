@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "IOculusHMDModule.h"
@@ -26,7 +26,23 @@
 //-------------------------------------------------------------------------------------------------
 
 #if OCULUS_HMD_SUPPORTED_PLATFORMS
-#include "OculusPluginWrapper.h"
+#if PLATFORM_SUPPORTS_PRAGMA_PACK
+#pragma pack (push,8)
+#endif
+
+#if PLATFORM_WINDOWS
+#include "Windows/AllowWindowsPlatformTypes.h"
+#endif
+
+#include "OVR_Plugin.h"
+
+#if PLATFORM_WINDOWS
+#include "Windows/HideWindowsPlatformTypes.h"
+#endif
+
+#if PLATFORM_SUPPORTS_PRAGMA_PACK
+#pragma pack (pop)
+#endif
 #endif // OCULUS_HMD_SUPPORTED_PLATFORMS
 
 //-------------------------------------------------------------------------------------------------
@@ -206,8 +222,6 @@ namespace OculusHMD
 	bool ConvertPose_Internal(const FPose& InPose, FPose& OutPose, const FQuat BaseOrientation, const FVector BaseOffset, float WorldToMetersScale);
 
 	bool ConvertPose_Internal(const ovrpPosef& InPose, FPose& OutPose, const FQuat BaseOrientation, const FVector BaseOffset, float WorldToMetersScale);
-
-	bool ConvertPose_Internal(const FPose& InPose, ovrpPosef& OutPose, const FQuat BaseOrientation, const FVector BaseOffset, float WorldToMetersScale);
 
 #endif // OCULUS_HMD_SUPPORTED_PLATFORMS
 

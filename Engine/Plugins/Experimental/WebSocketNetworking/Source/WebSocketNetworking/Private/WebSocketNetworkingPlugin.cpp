@@ -1,31 +1,25 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-#include "IWebSocketNetworkingModule.h"
 #include "WebSocketNetworkingPrivate.h"
-#include "WebSocketServer.h"
 
 
-class FWebSocketNetworkingPlugin : public IWebSocketNetworkingModule
+class FWebSocketNetworkingPlugin : public IModuleInterface
 {
 	/** IModuleInterface implementation */
-	virtual void StartupModule() override
-	{
-	}
-
-	virtual void ShutdownModule() override
-	{
-	}
-
-
-public:
-	TUniquePtr<IWebSocketServer> CreateServer() override
-	{
-		return MakeUnique<FWebSocketServer>();
-	}
-
+	virtual void StartupModule() override;
+	virtual void ShutdownModule() override;
 };
 
 IMPLEMENT_MODULE(FWebSocketNetworkingPlugin, WebSocketNetworking)
+
+void FWebSocketNetworkingPlugin::StartupModule()
+{
+}
+
+
+void FWebSocketNetworkingPlugin::ShutdownModule()
+{
+}
 
 DEFINE_LOG_CATEGORY(LogWebSocketNetworking);
 

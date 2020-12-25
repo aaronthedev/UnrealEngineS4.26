@@ -118,24 +118,13 @@ unsigned DxilSignature::NumVectorsUsed(unsigned streamIndex) const {
   return NumVectors;
 }
 
-unsigned DxilSignature::GetRowCount() const {
-  unsigned maxRow = 0;
-  for (auto &E : GetElements()) {
-    unsigned endRow = E->GetStartRow() + E->GetRows();
-    if (maxRow < endRow) {
-      maxRow = endRow;
-    }
-  }
-  return maxRow;
-}
-
 //------------------------------------------------------------------------------
 //
 // EntrySingnature methods.
 //
 DxilEntrySignature::DxilEntrySignature(const DxilEntrySignature &src)
     : InputSignature(src.InputSignature), OutputSignature(src.OutputSignature),
-      PatchConstOrPrimSignature(src.PatchConstOrPrimSignature) {}
+      PatchConstantSignature(src.PatchConstantSignature) {}
 
 } // namespace hlsl
 

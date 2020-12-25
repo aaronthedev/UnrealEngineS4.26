@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ConcertClientTransactionBridge.h"
 #include "ConcertLogGlobal.h"
@@ -139,20 +139,13 @@ struct FEditorTransactionNotification
 				FTransactionObjectDeltaChange DeltaChange;
 				DeltaChange.bHasNameChange = !InObjectUpdate.ObjectData.NewName.IsNone();
 				DeltaChange.bHasOuterChange = !InObjectUpdate.ObjectData.NewOuterPathName.IsNone();
-				DeltaChange.bHasExternalPackageChange = !InObjectUpdate.ObjectData.NewExternalPackageName.IsNone();
 				DeltaChange.bHasPendingKillChange = InObjectUpdate.ObjectData.bIsPendingKill != InTransactionObject->IsPendingKill();
 				DeltaChange.bHasNonPropertyChanges = InObjectUpdate.ObjectData.SerializedData.Num() > 0;
 				for (const FConcertSerializedPropertyData& PropertyData : InObjectUpdate.PropertyDatas)
 				{
 					DeltaChange.ChangedProperties.Add(PropertyData.PropertyName);
 				}
-				TransactionObjectEvent = FTransactionObjectEvent(TransactionContext.TransactionId, TransactionContext.OperationId, ETransactionObjectEventType::UndoRedo, DeltaChange, InTransactionAnnotation
-					, InObjectUpdate.ObjectId.ObjectPackageName
-					, InTransactionObject->GetFName()
-					, *InTransactionObject->GetPathName()
-					, InObjectUpdate.ObjectId.ObjectOuterPathName
-					, InObjectUpdate.ObjectId.ObjectExternalPackageName
-					, FName(*InTransactionObject->GetClass()->GetPathName()));
+				TransactionObjectEvent = FTransactionObjectEvent(TransactionContext.TransactionId, TransactionContext.OperationId, ETransactionObjectEventType::UndoRedo, DeltaChange, InTransactionAnnotation, InTransactionObject->GetFName(), *InTransactionObject->GetPathName(), InObjectUpdate.ObjectId.ObjectOuterPathName, FName(*InTransactionObject->GetClass()->GetPathName()));
 			}
 			GUnrealEd->HandleObjectTransacted(InTransactionObject, TransactionObjectEvent);
 		}
@@ -206,8 +199,8 @@ void ProcessTransactionEvent(const FConcertTransactionEventBase& InEvent, const 
 			// Is this object excluded? We exclude certain packages when re-applying live transactions on a package load
 			if (InPackagesToProcess.Num() > 0)
 			{
-				// if we have an assigned package, use that to validate package, or should we?
-				FName ObjectPackageName = ObjectUpdate.ObjectData.NewPackageName.IsNone() ? ObjectUpdate.ObjectId.ObjectPackageName : ObjectUpdate.ObjectData.NewPackageName;
+				const FName ObjectOuterPathName = ObjectUpdate.ObjectData.NewOuterPathName.IsNone() ? ObjectUpdate.ObjectId.ObjectOuterPathName : ObjectUpdate.ObjectData.NewOuterPathName;
+				const FName ObjectPackageName = *FPackageName::ObjectPathToPackageName(ObjectOuterPathName.ToString());
 				if (!InPackagesToProcess.Contains(ObjectPackageName))
 				{
 					continue;
@@ -215,13 +208,13 @@ void ProcessTransactionEvent(const FConcertTransactionEventBase& InEvent, const 
 			}
 
 			// Find or create the object
-			TransactionObjectRef = ConcertSyncClientUtil::GetObject(ObjectUpdate.ObjectId, ObjectUpdate.ObjectData.NewName, ObjectUpdate.ObjectData.NewOuterPathName, ObjectUpdate.ObjectData.NewExternalPackageName, ObjectUpdate.ObjectData.bAllowCreate);
+			TransactionObjectRef = ConcertSyncClientUtil::GetObject(ObjectUpdate.ObjectId, ObjectUpdate.ObjectData.NewName, ObjectUpdate.ObjectData.NewOuterPathName, ObjectUpdate.ObjectData.bAllowCreate);
 			bObjectsDeleted |= (ObjectUpdate.ObjectData.bIsPendingKill || TransactionObjectRef.NeedsGC());
 		}
 	}
 
 #if WITH_EDITOR
-	UObject* PrimaryObject = InEvent.PrimaryObjectId.ObjectName.IsNone() ? nullptr : ConcertSyncClientUtil::GetObject(InEvent.PrimaryObjectId, FName(), FName(), FName(), /*bAllowCreate*/false).Obj;
+	UObject* PrimaryObject = InEvent.PrimaryObjectId.ObjectName.IsNone() ? nullptr : ConcertSyncClientUtil::GetObject(InEvent.PrimaryObjectId, FName(), FName(), /*bAllowCreate*/false).Obj;
 	FEditorTransactionNotification EditorTransactionNotification(FTransactionContext(InEvent.TransactionId, InEvent.OperationId, LOCTEXT("ConcertTransactionEvent", "Concert Transaction Event"), TEXT("Concert Transaction Event"), PrimaryObject));
 	if (!bIsSnapshot)
 	{
@@ -266,7 +259,7 @@ void ProcessTransactionEvent(const FConcertTransactionEventBase& InEvent, const 
 		// For snapshot events this also triggers PreEditChange directly since we can skip the call to PreEditUndo
 		for (const FConcertSerializedPropertyData& PropertyData : ObjectUpdate.PropertyDatas)
 		{
-			FProperty* TransactionProp = FindFProperty<FProperty>(TransactionObject->GetClass(), PropertyData.PropertyName);
+			UProperty* TransactionProp = FindField<UProperty>(TransactionObject->GetClass(), PropertyData.PropertyName);
 			if (TransactionProp)
 			{
 				if (bIsSnapshot)
@@ -309,7 +302,7 @@ void ProcessTransactionEvent(const FConcertTransactionEventBase& InEvent, const 
 		{
 			for (const FConcertSerializedPropertyData& PropertyData : ObjectUpdate.PropertyDatas)
 			{
-				FProperty* TransactionProp = FindFProperty<FProperty>(TransactionObject->GetClass(), PropertyData.PropertyName);
+				UProperty* TransactionProp = FindField<UProperty>(TransactionObject->GetClass(), PropertyData.PropertyName);
 				if (TransactionProp)
 				{
 					FConcertSyncObjectReader ObjectReader(InLocalIdentifierTablePtr, FConcertSyncWorldRemapper(), InVersionInfo, TransactionObject, PropertyData.SerializedData);
@@ -345,7 +338,7 @@ void ProcessTransactionEvent(const FConcertTransactionEventBase& InEvent, const 
 		// For snapshot events this also triggers PostEditChange directly since we can skip the call to PostEditUndo
 		for (const FConcertSerializedPropertyData& PropertyData : ObjectUpdate.PropertyDatas)
 		{
-			FProperty* TransactionProp = FindFProperty<FProperty>(TransactionObject->GetClass(), PropertyData.PropertyName);
+			UProperty* TransactionProp = FindField<UProperty>(TransactionObject->GetClass(), PropertyData.PropertyName);
 			if (TransactionProp)
 			{
 				if (bIsSnapshot)
@@ -569,7 +562,7 @@ void FConcertClientTransactionBridge::HandleObjectTransacted(UObject* InObject, 
 		return;
 	}
 
-	const FConcertObjectId ObjectId = FConcertObjectId(*InObject->GetClass()->GetPathName(), InTransactionEvent.GetOriginalObjectPackageName(), InTransactionEvent.GetOriginalObjectName(), InTransactionEvent.GetOriginalObjectOuterPathName(), InTransactionEvent.GetOriginalObjectExternalPackageName(), InObject->GetFlags());
+	const FConcertObjectId ObjectId = FConcertObjectId(*InObject->GetClass()->GetPathName(), InTransactionEvent.GetOriginalObjectOuterPathName(), InTransactionEvent.GetOriginalObjectName(), InObject->GetFlags());
 	FOngoingTransaction& OngoingTransaction = *TrackedTransaction;
 
 	// If the object is excluded or exclude the whole transaction add it to the excluded list
@@ -580,29 +573,13 @@ void FConcertClientTransactionBridge::HandleObjectTransacted(UObject* InObject, 
 		return;
 	}
 
-	const FName NewObjectPackageName = InTransactionEvent.HasOuterChange() || InTransactionEvent.HasExternalPackageChange() ? InObject->GetPackage()->GetFName() : FName();
 	const FName NewObjectName = InTransactionEvent.HasNameChange() ? InObject->GetFName() : FName();
 	const FName NewObjectOuterPathName = (InTransactionEvent.HasOuterChange() && InObject->GetOuter()) ? FName(*InObject->GetOuter()->GetPathName()) : FName();
-	const FName NewObjectExternalPackageName = (InTransactionEvent.HasExternalPackageChange() && InObject->GetExternalPackage()) ? InObject->GetExternalPackage()->GetFName() : FName();
 	const TArray<FName> RootPropertyNames = ConcertSyncClientUtil::GetRootProperties(InTransactionEvent.GetChangedProperties());
 	TSharedPtr<ITransactionObjectAnnotation> TransactionAnnotation = InTransactionEvent.GetAnnotation();
 
 	// Track which packages were changed
 	OngoingTransaction.CommonData.ModifiedPackages.AddUnique(ChangedPackage->GetFName());
-
-	// if there was an outer change, track that outer package
-	if (InTransactionEvent.HasOuterChange())
-	{
-		FName OriginalOuterPackageName = *FPackageName::ObjectPathToPackageName(InTransactionEvent.GetOriginalObjectOuterPathName().ToString());
-		OngoingTransaction.CommonData.ModifiedPackages.AddUnique(OriginalOuterPackageName);
-	}
-
-	// if there was an package change, track that package
-	if (InTransactionEvent.HasExternalPackageChange())
-	{
-		FName OriginalPackageName = InTransactionEvent.GetOriginalObjectPackageName().IsNone() ? *FPackageName::ObjectPathToPackageName(InTransactionEvent.GetOriginalObjectOuterPathName().ToString()) : InTransactionEvent.GetOriginalObjectPackageName();
-		OngoingTransaction.CommonData.ModifiedPackages.AddUnique(OriginalPackageName);
-	}
 
 	// Add this object change to its pending transaction
 	if (InTransactionEvent.GetEventType() == ETransactionObjectEventType::Snapshot)
@@ -634,7 +611,7 @@ void FConcertClientTransactionBridge::HandleObjectTransacted(UObject* InObject, 
 			// Find or add an update for each property
 			for (const FName& RootPropertyName : RootPropertyNames)
 			{
-				FProperty* RootProperty = ConcertSyncClientUtil::GetExportedProperty(InObject->GetClass(), RootPropertyName, bIncludeEditorOnlyProperties);
+				UProperty* RootProperty = ConcertSyncClientUtil::GetExportedProperty(InObject->GetClass(), RootPropertyName, bIncludeEditorOnlyProperties);
 				if (!RootProperty)
 				{
 					continue;
@@ -662,10 +639,8 @@ void FConcertClientTransactionBridge::HandleObjectTransacted(UObject* InObject, 
 		ObjectUpdate.ObjectPathDepth = ConcertSyncClientUtil::GetObjectPathDepth(InObject);
 		ObjectUpdate.ObjectData.bAllowCreate = InTransactionEvent.HasPendingKillChange() && !InObject->IsPendingKill();
 		ObjectUpdate.ObjectData.bIsPendingKill = InObject->IsPendingKill();
-		ObjectUpdate.ObjectData.NewPackageName = NewObjectPackageName;
 		ObjectUpdate.ObjectData.NewName = NewObjectName;
 		ObjectUpdate.ObjectData.NewOuterPathName = NewObjectOuterPathName;
-		ObjectUpdate.ObjectData.NewExternalPackageName = NewObjectExternalPackageName;
 
 		if (TransactionAnnotation.IsValid())
 		{
@@ -690,7 +665,7 @@ void FConcertClientTransactionBridge::HandleObjectTransacted(UObject* InObject, 
 			// to be able to display, in the transaction detail view, which 'properties' changed in the transaction as transaction data is otherwise opaque to UI.
 			for (const FName& RootPropertyName : RootPropertyNames)
 			{
-				if (FProperty* RootProperty = ConcertSyncClientUtil::GetExportedProperty(InObject->GetClass(), RootPropertyName, bIncludeEditorOnlyProperties))
+				if (UProperty* RootProperty = ConcertSyncClientUtil::GetExportedProperty(InObject->GetClass(), RootPropertyName, bIncludeEditorOnlyProperties))
 				{
 					FConcertSerializedPropertyData& PropertyData = ObjectUpdate.PropertyDatas.AddDefaulted_GetRef();
 					PropertyData.PropertyName = RootPropertyName;
@@ -702,7 +677,7 @@ void FConcertClientTransactionBridge::HandleObjectTransacted(UObject* InObject, 
 			// Only send properties that changed. The receiving side will 'patch' the object using the reflection system. The specific object serialization function will NOT be called.
 			for (const FName& RootPropertyName : RootPropertyNames)
 			{
-				if (FProperty* RootProperty = ConcertSyncClientUtil::GetExportedProperty(InObject->GetClass(), RootPropertyName, bIncludeEditorOnlyProperties))
+				if (UProperty* RootProperty = ConcertSyncClientUtil::GetExportedProperty(InObject->GetClass(), RootPropertyName, bIncludeEditorOnlyProperties))
 				{
 					FConcertSerializedPropertyData& PropertyData = ObjectUpdate.PropertyDatas.AddDefaulted_GetRef();
 					PropertyData.PropertyName = RootPropertyName;

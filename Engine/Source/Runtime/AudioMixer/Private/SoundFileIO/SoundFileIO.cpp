@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SoundFileIO/SoundFileIO.h"
 
@@ -62,7 +62,7 @@ namespace Audio
 		}
 
 		// Create a buffer to do the processing 
-		SoundFileCount ProcessBufferSamples = static_cast<SoundFileCount>(1024) * NewSoundFileDescription.NumChannels;
+		SoundFileCount ProcessBufferSamples = 1024 * NewSoundFileDescription.NumChannels;
 		TArray<float> ProcessBuffer;
 		ProcessBuffer.Init(0.0f, ProcessBufferSamples);
 

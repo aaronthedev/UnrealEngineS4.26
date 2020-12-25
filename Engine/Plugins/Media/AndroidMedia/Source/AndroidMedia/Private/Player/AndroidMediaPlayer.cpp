@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AndroidMediaPlayer.h"
 #include "AndroidMediaPrivate.h"
@@ -197,10 +197,10 @@ FString FAndroidMediaPlayer::GetInfo() const
 }
 
 
-FGuid FAndroidMediaPlayer::GetPlayerPluginGUID() const
+FName FAndroidMediaPlayer::GetPlayerName() const
 {
-	static FGuid PlayerPluginGUID(0x894a9ab3, 0xb44d4373, 0x87a7dd0c, 0x9cbd9613);
-	return PlayerPluginGUID;
+	static FName PlayerName(TEXT("AndroidMedia"));
+	return PlayerName;
 }
 
 
@@ -270,7 +270,7 @@ bool FAndroidMediaPlayer::Open(const FString& Url, const IMediaOptions* /*Option
 
 			FPakFile* PakFile = NULL;
 			FPakEntry FileEntry;
-			if (PakPlatformFile == nullptr || !PakPlatformFile->FindFileInPakFiles(*FilePath, &PakFile, &FileEntry))
+			if (!PakPlatformFile->FindFileInPakFiles(*FilePath, &PakFile, &FileEntry))
 			{
 				UE_LOG(LogAndroidMedia, Warning, TEXT("File doesn't exist %s."), *FilePath);
 				return false;
@@ -462,7 +462,7 @@ static void DoUpdateExternalMediaSampleExecute(TWeakPtr<FJavaAndroidMediaPlayer,
 	if (VideoTexture == nullptr)
 	{
 		FRHIResourceCreateInfo CreateInfo;
-		VideoTexture = GDynamicRHI->RHICreateTextureExternal2D(1, 1, PF_R8G8B8A8, 1, 1, TexCreate_None, ERHIAccess::SRVGraphics, CreateInfo);
+		VideoTexture = GDynamicRHI->RHICreateTextureExternal2D(1, 1, PF_R8G8B8A8, 1, 1, 0, CreateInfo);
 		PinnedJavaMediaPlayer->SetVideoTexture(VideoTexture);
 
 		if (VideoTexture == nullptr)
@@ -715,18 +715,9 @@ void FAndroidMediaPlayer::TickFetch(FTimespan DeltaTime, FTimespan /*Timecode*/)
 		{
 			TWeakPtr<FJavaAndroidMediaPlayer, ESPMode::ThreadSafe> JavaMediaPlayerPtr;
 			FGuid PlayerGuid;
-			TSharedRef<FAndroidMediaTextureSample, ESPMode::ThreadSafe> VideoSample;
-			TWeakPtr<FMediaSamples, ESPMode::ThreadSafe> Samples;
 		};
 
-		auto VideoSample = VideoSamplePool->AcquireShared();
-		const FJavaAndroidMediaPlayer::FVideoTrack VideoTrack = VideoTracks[SelectedVideoTrack];
-		if (!VideoSample->Initialize(VideoTrack.Dimensions, FTimespan::FromSeconds(1.0 / VideoTrack.FrameRate), FTimespan::FromMilliseconds(JavaMediaPlayer->GetCurrentPosition())))
-		{
-			return;
-		}
-			
-		FWriteVideoSampleParams Params = { JavaMediaPlayer, PlayerGuid, VideoSample, Samples };
+		FWriteVideoSampleParams Params = { JavaMediaPlayer, PlayerGuid };
 
 		ENQUEUE_RENDER_COMMAND(AndroidMediaPlayerWriteVideoSample)(
 			[Params](FRHICommandListImmediate& RHICmdList)
@@ -743,9 +734,8 @@ void FAndroidMediaPlayer::TickFetch(FTimespan DeltaTime, FTimespan /*Timecode*/)
 				}
 
 				auto PinnedJavaMediaPlayer = Params.JavaMediaPlayerPtr.Pin();
-				auto PinnedSamples = Params.Samples.Pin();
 
-				if (!PinnedJavaMediaPlayer.IsValid() || ! PinnedSamples.IsValid())
+				if (!PinnedJavaMediaPlayer.IsValid())
 				{
 					return;
 				}
@@ -762,11 +752,7 @@ void FAndroidMediaPlayer::TickFetch(FTimespan DeltaTime, FTimespan /*Timecode*/)
 
 					PinnedJavaMediaPlayer->SetVideoTextureValid(true);
 				}
-
-				// Add a dummy video sample
-				// (actual data flows "on the side" via external texture mechanism)
-				PinnedSamples->AddVideo(Params.VideoSample);
-		});
+			});
 	}
 #endif // ANDROIDMEDIAPLAYER_USE_EXTERNALTEXTURE
 	else

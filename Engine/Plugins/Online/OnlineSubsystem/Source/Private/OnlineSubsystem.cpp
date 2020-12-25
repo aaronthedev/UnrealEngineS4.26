@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineSubsystem.h"
 #include "Misc/CommandLine.h"
@@ -61,27 +61,6 @@ ONLINESUBSYSTEM_API DEFINE_STAT(STAT_Session_Interface);
 ONLINESUBSYSTEM_API DEFINE_STAT(STAT_Voice_Interface);
 #endif
 
-/** The default key that will update presence text in the platform's UI */
-const FString DefaultPresenceKey = TEXT("RichPresence");
-
-/** Custom presence data that is not seen by users but can be polled */
-const FString CustomPresenceDataKey = TEXT("CustomData");
-
-/** Name of the client that sent the presence update */
-const FString DefaultAppIdKey = TEXT("AppId");
-
-/** Platform of the client that sent the presence update */
-const FString DefaultPlatformKey = TEXT("Platform");
-
-/** Override Id of the client to set the presence state to */
-const FString OverrideAppIdKey = TEXT("OverrideAppId");
-
-/** Id of the session for the presence update. @todo samz - SessionId on presence data should be FUniqueNetId not uint64 */
-const FString DefaultSessionIdKey = TEXT("SessionId");
-
-/** Resource the client is logged in with */
-const FString PresenceResourceKey = TEXT("ResourceKey");
-
 namespace OnlineIdentity
 {
 	namespace Errors
@@ -101,28 +80,20 @@ namespace OnlineIdentity
 /** Workaround, please avoid using this */
 TSharedPtr<const FUniqueNetId> GetFirstSignedInUser(IOnlineIdentityPtr IdentityInt)
 {
+	TSharedPtr<const FUniqueNetId> UserId = nullptr;
 	if (IdentityInt.IsValid())
 	{
-		// find an entry for a fully logged in user
 		for (int32 i = 0; i < MAX_LOCAL_PLAYERS; i++)
 		{
-			TSharedPtr<const FUniqueNetId> UserId = IdentityInt->GetUniquePlayerId(i);
-			if (UserId.IsValid() && UserId->IsValid() && IdentityInt->GetLoginStatus(*UserId) == ELoginStatus::LoggedIn)
-			{
-				return UserId;
-			}
-		}
-		// find an entry for a locally logged in user
-		for (int32 i = 0; i < MAX_LOCAL_PLAYERS; i++)
-		{
-			TSharedPtr<const FUniqueNetId> UserId = IdentityInt->GetUniquePlayerId(i);
+			UserId = IdentityInt->GetUniquePlayerId(i);
 			if (UserId.IsValid() && UserId->IsValid())
 			{
-				return UserId;
+				break;
 			}
 		}
 	}
-	return nullptr;
+
+	return UserId;
 }
 
 int32 GetBuildUniqueId()
@@ -184,22 +155,54 @@ FString IOnlineSubsystem::GetLocalPlatformName()
 {
 	FString OnlinePlatform;
 
-	// Priority: CVar -> Command line -> INI, defaults to OTHER
 	OnlinePlatform = CVarPlatformOverride.GetValueOnAnyThread();
-#if !UE_BUILD_SHIPPING
-	if (OnlinePlatform.IsEmpty())
-	{
-		FParse::Value(FCommandLine::Get(), TEXT("PLATFORMTEST="), OnlinePlatform);
-	}
-#endif
-	if (OnlinePlatform.IsEmpty())
-	{
-		GConfig->GetString(TEXT("OnlineSubsystem"), TEXT("LocalPlatformName"), OnlinePlatform, GEngineIni);
-	}
-
 	if (!OnlinePlatform.IsEmpty())
 	{
-		OnlinePlatform.ToUpperInline();
+		return OnlinePlatform.ToUpper();
+	}
+#if !UE_BUILD_SHIPPING
+	FParse::Value(FCommandLine::Get(), TEXT("PLATFORMTEST="), OnlinePlatform);
+	if (!OnlinePlatform.IsEmpty())
+	{
+		return OnlinePlatform.ToUpper();
+	}
+#endif
+	GConfig->GetString(TEXT("OnlineSubsystem"), TEXT("LocalPlatformName"), OnlinePlatform, GEngineIni);
+	if (!OnlinePlatform.IsEmpty())
+	{
+		return OnlinePlatform.ToUpper();
+	}
+	if (PLATFORM_PS4)
+	{
+		OnlinePlatform = OSS_PLATFORM_NAME_PS4;
+	}
+	else if (PLATFORM_XBOXONE)
+	{
+		OnlinePlatform = OSS_PLATFORM_NAME_XBOX;
+	}
+	else if (PLATFORM_WINDOWS)
+	{
+		OnlinePlatform = OSS_PLATFORM_NAME_WINDOWS;
+	}
+	else if (PLATFORM_MAC)
+	{
+		OnlinePlatform = OSS_PLATFORM_NAME_MAC;
+	}
+	else if (PLATFORM_LINUX)
+	{
+		OnlinePlatform = OSS_PLATFORM_NAME_LINUX;
+	}
+	else if (PLATFORM_IOS)
+	{
+		OnlinePlatform = OSS_PLATFORM_NAME_IOS;
+	}
+	else if (PLATFORM_ANDROID)
+	{
+		OnlinePlatform = OSS_PLATFORM_NAME_ANDROID;
+	}
+	else if (PLATFORM_SWITCH)
+	{
+		OnlinePlatform = OSS_PLATFORM_NAME_SWITCH;
 	}
 	else
 	{

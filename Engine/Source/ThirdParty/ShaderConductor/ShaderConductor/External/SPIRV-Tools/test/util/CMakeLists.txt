@@ -15,7 +15,6 @@
 add_spvtools_unittest(TARGET utils
   SRCS ilist_test.cpp
        bit_vector_test.cpp
-       bitutils_test.cpp
        small_vector_test.cpp
   LIBS SPIRV-Tools-opt
 )

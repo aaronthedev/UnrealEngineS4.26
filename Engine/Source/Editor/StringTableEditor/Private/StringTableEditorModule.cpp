@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "StringTableEditorModule.h"
 #include "Modules/ModuleManager.h"
@@ -13,7 +13,6 @@ const FName FStringTableEditorModule::StringTableEditorAppIdentifier("StringTabl
 void FStringTableEditorModule::StartupModule()
 {
 	MenuExtensibilityManager = MakeShareable(new FExtensibilityManager);
-	ToolBarExtensibilityManager = MakeShareable(new FExtensibilityManager);
 
 	IAssetTools& AssetTools = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools").Get();
 	AssetTools.RegisterAssetTypeActions(MakeShareable(new FAssetTypeActions_StringTable()));
@@ -22,7 +21,6 @@ void FStringTableEditorModule::StartupModule()
 void FStringTableEditorModule::ShutdownModule()
 {
 	MenuExtensibilityManager.Reset();
-	ToolBarExtensibilityManager.Reset();
 }
 
 TSharedRef<IStringTableEditor> FStringTableEditorModule::CreateStringTableEditor(const EToolkitMode::Type Mode, const TSharedPtr<IToolkitHost>& InitToolkitHost, UStringTable* StringTable)

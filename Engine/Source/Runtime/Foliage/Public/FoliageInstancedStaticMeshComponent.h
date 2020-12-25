@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "Engine/EngineTypes.h"
-#include "Misc/Guid.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "FoliageInstancedStaticMeshComponent.generated.h"
 
@@ -23,14 +22,14 @@ class FOLIAGE_API UFoliageInstancedStaticMeshComponent : public UHierarchicalIns
 public:
 
 	UPROPERTY(BlueprintAssignable, Category = "Game|Damage")
-		FInstancePointDamageSignature OnInstanceTakePointDamage;
+	FInstancePointDamageSignature OnInstanceTakePointDamage;
 
 	UPROPERTY(BlueprintAssignable, Category = "Game|Damage")
-		FInstanceRadialDamageSignature OnInstanceTakeRadialDamage;
+	FInstanceRadialDamageSignature OnInstanceTakeRadialDamage;
 
 #if WITH_EDITORONLY_DATA
 	UPROPERTY(transient)
-		uint64 FoliageHiddenEditorViews;
+	uint64 FoliageHiddenEditorViews;
 #endif// WITH_EDITOR
 
 	virtual void ReceiveComponentDamage(float DamageAmount, FDamageEvent const& DamageEvent, AController* EventInstigator, AActor* DamageCauser) override;
@@ -39,14 +38,5 @@ public:
 #if WITH_EDITOR
 	virtual uint64 GetHiddenEditorViews() const override;
 #endif// WITH_EDITOR
-
-	/** Used by procedural generation to link generated component with its creator */
-	void SetGenerationGuid(const FGuid& InGuid) { GenerationGuid = InGuid; }
-	const FGuid& GetGenerationGuid() const { return GenerationGuid; }
-
-private:
-
-	UPROPERTY()
-		FGuid GenerationGuid;
 };
 

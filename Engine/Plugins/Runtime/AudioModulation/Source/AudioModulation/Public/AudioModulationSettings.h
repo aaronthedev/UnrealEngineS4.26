@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -10,13 +10,16 @@
 #include "AudioModulationSettings.generated.h"
 
 
-UCLASS(config=AudioModulation, defaultconfig, meta = (DisplayName = "Audio Modulation"))
+UCLASS(config = Game, defaultconfig, meta = (DisplayName = "Sound Modulation"))
 class AUDIOMODULATION_API UAudioModulationSettings : public UDeveloperSettings
 {
-	GENERATED_BODY()
+	GENERATED_UCLASS_BODY()
 
-public:
-	// Array of loaded Modulation Parameters
-	UPROPERTY(config, EditAnywhere, Category = "Parameters", meta = (AllowedClasses = "SoundModulationParameter"))
-	TArray<FSoftObjectPath> Parameters;
+#if WITH_EDITORONLY_DATA
+	// Names of all controls provided for modulation beyond standard types (Volume, Pitch, HPF, LPF)
+	// Properties hidden as Generic Control Modulation is still in development
+	// UPROPERTY(config, EditAnywhere, Category = "Controls")
+	UPROPERTY()
+	TArray<FName> ControlNames;
+#endif // WITH_EDITORONLY_DATA
 };

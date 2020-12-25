@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,9 +10,6 @@
 #include "UObject/NameTypes.h"
 #include "Misc/Guid.h"
 #include "Serialization/StructuredArchive.h"
-
-class FCustomVersionContainer;
-struct FCustomVersion;
 
 struct ECustomVersionSerializationFormat
 {
@@ -29,8 +26,6 @@ struct ECustomVersionSerializationFormat
 	};
 };
 
-typedef TArray<FCustomVersion> FCustomVersionArray;
-typedef bool (*CustomVersionValidatorFunc)(const FCustomVersion& Version, const FCustomVersionArray& AllVersions);
 
 /**
  * Structure to hold unique custom key with its version.
@@ -48,21 +43,16 @@ struct CORE_API FCustomVersion
 	/** Number of times this GUID has been registered */
 	int32 ReferenceCount;
 
-	/** An optional validator that will be called if a package has a given version that can prevent it from loading */
-	CustomVersionValidatorFunc Validator;
-
 	/** Constructor. */
 	FORCEINLINE FCustomVersion()
-	: Validator(nullptr)
 	{
 	}
 
 	/** Helper constructor. */
-	FORCEINLINE FCustomVersion(FGuid InKey, int32 InVersion, FName InFriendlyName, CustomVersionValidatorFunc InValidatorFunc = nullptr)
+	FORCEINLINE FCustomVersion(FGuid InKey, int32 InVersion, FName InFriendlyName)
 	: Key           (InKey)
 	, Version       (InVersion)
 	, ReferenceCount(1)
-	, Validator     (InValidatorFunc)
 	, FriendlyName  (InFriendlyName)
 	{
 	}
@@ -91,7 +81,13 @@ private:
 	mutable FName FriendlyName;
 };
 
+typedef TArray<FCustomVersion> FCustomVersionArray;
+
+UE_DEPRECATED(4.19, "FCustomVersionSet renamed to FCustomVersionArray")
+typedef FCustomVersionArray FCustomVersionSet;
+
 class CORE_API FCustomVersionRegistration;
+
 
 /**
  * Container for all available/serialized custom versions.
@@ -164,7 +160,7 @@ private:
 
 };
 
-enum class ECustomVersionDifference { Missing, Newer, Older, Invalid };
+enum class ECustomVersionDifference { Missing, Newer, Older };
 
 struct FCustomVersionDifference
 {
@@ -188,7 +184,7 @@ public:
 private:
 	friend class FCustomVersionRegistration;
 
-	static void Register(const FGuid& Key, int32 Version, const TCHAR* FriendlyName, CustomVersionValidatorFunc ValidatorFunc);
+	static void Register(const FGuid& Key, int32 Version, const TCHAR* FriendlyName);
 	static void Unregister(const FGuid& Key);
 };
 
@@ -203,10 +199,10 @@ class FCustomVersionRegistration : FNoncopyable
 public:
 	/** @param InFriendlyName must be a string literal */
 	template<int N>
-	FCustomVersionRegistration(FGuid InKey, int32 Version, const TCHAR(&InFriendlyName)[N], CustomVersionValidatorFunc InValidatorFunc = nullptr)
+	FCustomVersionRegistration(FGuid InKey, int32 Version, const TCHAR(&InFriendlyName)[N])
 	: Key(InKey)
 	{
-		FCurrentCustomVersions::Register(InKey, Version, InFriendlyName, InValidatorFunc);
+		FCurrentCustomVersions::Register(InKey, Version, InFriendlyName);
 	}
 
 	~FCustomVersionRegistration()

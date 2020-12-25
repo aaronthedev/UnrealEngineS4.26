@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Containers/Array.h"
@@ -6,7 +6,6 @@
 #include "UObject/ObjectMacros.h"
 
 class IDatasmithBaseMaterialElement;
-class IDatasmithDecalMaterialElement;
 class IDatasmithMaterialElement;
 class IDatasmithMasterMaterialElement;
 struct FDatasmithImportContext;
@@ -36,5 +35,4 @@ public:
 
 private:
 	static UMaterialInterface* ImportMasterMaterial( FDatasmithImportContext& ImportContext, const TSharedRef< IDatasmithMasterMaterialElement >& MaterialElement, UMaterialInterface* ExistingMaterial );
-	static UMaterialInterface* ImportDecalMaterial( FDatasmithImportContext& ImportContext, const TSharedRef< IDatasmithDecalMaterialElement >& MaterialElement, UMaterialInterface* ExistingMaterial );
 };

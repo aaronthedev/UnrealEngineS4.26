@@ -27,8 +27,8 @@
 //todo: simply syntax, we should get rid of braces for each array element and
 //      each element
 
-#ifndef PXR_BASE_TF_STATIC_TOKENS_H
-#define PXR_BASE_TF_STATIC_TOKENS_H
+#ifndef TF_STATIC_TOKENS_H
+#define TF_STATIC_TOKENS_H
 
 /// \file tf/staticTokens.h
 ///
@@ -77,7 +77,6 @@
 
 #include "pxr/pxr.h"
 #include "pxr/base/tf/preprocessorUtils.h"
-#include "pxr/base/tf/preprocessorUtilsLite.h"
 #include "pxr/base/tf/staticData.h"
 #include "pxr/base/tf/token.h"
 
@@ -94,6 +93,7 @@
 #include <boost/preprocessor/seq/for_each_i.hpp>
 #include <boost/preprocessor/seq/size.hpp>
 #include <boost/preprocessor/seq/push_back.hpp>
+#include <boost/preprocessor/stringize.hpp>
 #include <boost/preprocessor/tuple/elem.hpp>
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -195,14 +195,12 @@ PXR_NAMESPACE_OPEN_SCOPE
 #define _TF_DECLARE_TOKENS3(key, seq, eiapi)                                \
     struct _TF_TOKENS_STRUCT_NAME(key) {                                    \
         eiapi _TF_TOKENS_STRUCT_NAME(key)();                                \
-        eiapi ~_TF_TOKENS_STRUCT_NAME(key)();                               \
         _TF_TOKENS_DECLARE_MEMBERS(seq)                                     \
     };
 
 #define _TF_DECLARE_TOKENS2(key, seq)                                       \
     struct _TF_TOKENS_STRUCT_NAME(key) {                                    \
         _TF_TOKENS_STRUCT_NAME(key)();                                      \
-        ~_TF_TOKENS_STRUCT_NAME(key)();                                     \
         _TF_TOKENS_DECLARE_MEMBERS(seq)                                     \
     };
 
@@ -222,7 +220,7 @@ PXR_NAMESPACE_OPEN_SCOPE
                                         TfToken::Immortal)                  \
 
 #define _TF_TOKENS_INITIALIZE_MEMBER(elem)                                  \
-    elem(TF_PP_STRINGIZE(elem), TfToken::Immortal)
+    elem(BOOST_PP_STRINGIZE(elem), TfToken::Immortal)
 
 #define _TF_TOKENS_DEFINE_ARRAY_MEMBER(r, data, i, elem)                    \
     data[i] = BOOST_PP_IIF(TF_PP_IS_TUPLE(elem),                            \
@@ -280,7 +278,6 @@ PXR_NAMESPACE_OPEN_SCOPE
 // a neat shortcut.
 //
 #define _TF_DEFINE_TOKENS(key, seq)                                         \
-    _TF_TOKENS_STRUCT_NAME(key)::~_TF_TOKENS_STRUCT_NAME(key)() = default;  \
     _TF_TOKENS_STRUCT_NAME(key)::_TF_TOKENS_STRUCT_NAME(key)() :            \
         _TF_TOKENS_INITIALIZE_SEQ(                                          \
             BOOST_PP_SEQ_FILTER(_TF_TOKENS_IS_NOT_ARRAY, ~, seq)            \
@@ -295,4 +292,4 @@ PXR_NAMESPACE_OPEN_SCOPE
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_STATIC_TOKENS_H
+#endif // TF_STATIC_TOKENS_H

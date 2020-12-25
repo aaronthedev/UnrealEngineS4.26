@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -67,8 +67,7 @@ TOptional<NumericType> TNumericUnitTypeInterface<NumericType>::FromString(const 
 			// Use the default supplied input units
 			SourceUnits = FixedDisplayUnits.GetValue();
 		}
-		double ConvertedValue = FUnitConversion::Convert(NewValue.GetValue().Value, SourceUnits, UnderlyingUnits);
-		return FMath::Clamp((NumericType)ConvertedValue, TNumericLimits<NumericType>::Lowest(), TNumericLimits<NumericType>::Max());
+		return FUnitConversion::Convert(NewValue.GetValue().Value, SourceUnits, UnderlyingUnits);
 	}
 
 	return TOptional<NumericType>();

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 RenderAssetUpdate.h: Base class of helpers to stream in and out texture/mesh LODs
@@ -9,13 +9,14 @@ RenderAssetUpdate.h: Base class of helpers to stream in and out texture/mesh LOD
 #include "CoreMinimal.h"
 #include "HAL/ThreadSafeCounter.h"
 #include "Async/AsyncWork.h"
+#include "Engine/StreamableRenderAsset.h"
 #include "RenderingThread.h"
-#include "Streaming/StreamableRenderResourceState.h"
-
-class UStreamableRenderAsset;
 
 /** SRA stands for StreamableRenderAsset */
 #define SRA_UPDATE_CALLBACK(FunctionName) [this](const FContext& C){ FunctionName(C); }
+
+ // Allows yield to lower priority threads
+#define RENDER_ASSET_STREAMING_SLEEP_DT (0.010f)
 
 ENGINE_API bool IsAssetStreamingSuspended();
 
@@ -48,7 +49,7 @@ public:
 		TS_Init			// The object is in initialization
 	};
 
-	FRenderAssetUpdate(const UStreamableRenderAsset* InAsset);
+	FRenderAssetUpdate(UStreamableRenderAsset* InAsset, int32 InRequestedMips);
 
 	/**
 	* Do or schedule any pending work for a given texture.
@@ -56,7 +57,7 @@ public:
 	* @param InAsset - the texture/mesh being updated, this must be the same texture/mesh as the texture/mesh used to create this object.
 	* @param InCurrentThread - the thread from which the tick is being called. Using TT_None ensures that no work will be immediately performed.
 	*/
-	ENGINE_API void Tick(EThreadType InCurrentThread);
+	void Tick(EThreadType InCurrentThread);
 
 	/** Returns whether the task has finished executing and there is no other thread possibly accessing it. */
 	bool IsCompleted() const
@@ -90,6 +91,17 @@ public:
 		return TaskState == TS_Locked;
 	}
 
+	/** Get the number of requested mips for this update, ignoring cancellation attempts. */
+	int32 GetNumRequestedMips() const
+	{
+		return RequestedMips;
+	}
+
+#if WITH_EDITORONLY_DATA
+	/** Returns whether DDC of this texture needs to be regenerated.  */
+	virtual bool DDCIsInvalid() const { return false; }
+#endif
+
 	/** Return the thread relevant to the next step of execution. */
 	virtual EThreadType GetRelevantThread() const = 0;
 
@@ -100,7 +112,7 @@ public:
 		return (uint32)NumRefs.Increment(); 
 	}
 
-	ENGINE_API uint32 Release() const final override;
+	uint32 Release() const final override;
 
 	uint32 GetRefCount() const final override
 	{
@@ -146,13 +158,11 @@ protected:
 	/** The async task to update this object, only one can be active at anytime. It just calls Tick(). */
 	typedef FAutoDeleteAsyncTask<FMipUpdateTask> FAsyncMipUpdateTask;
 
-	/** The streamable state requested. */
-	const FStreamableRenderResourceState ResourceState;
-	// The resident first LOD resource index. With domain = [0, ResourceState.NumLODs[. NOT THE ASSET LOD INDEX!
-	const int32 CurrentFirstLODIdx = INDEX_NONE;
-	// The requested first LOD resource index. With domain = [0, ResourceState.NumLODs[. NOT THE ASSET LOD INDEX!
-	const int32 PendingFirstLODIdx = INDEX_NONE;
-	
+	/** The index of mip that will end as being the first mip of the intermediate (future) texture/mesh. */
+	int32 PendingFirstMip;
+	/** The total number of mips of the intermediate (future) texture/mesh. */
+	int32 RequestedMips;
+
 	/** Critical Section. */
 	FCriticalSection CS;
 
@@ -166,7 +176,7 @@ protected:
 	int32 ScheduledAsyncTasks;
 
 	/** The asset updated **/
-	const UStreamableRenderAsset* StreamableAsset = nullptr;
+	UStreamableRenderAsset* StreamableAsset;
 
 	/** Synchronization used for trigger the task next step execution. */
 	FThreadSafeCounter	TaskSynchronization;
@@ -201,7 +211,7 @@ public:
 	/** A callback used to perform a task in the update process. Each task must be executed on a specific thread. */
 	typedef TFunction<void(const FContext& Context)> FCallback;
 
-	TRenderAssetUpdate(const UStreamableRenderAsset* InAsset);
+	TRenderAssetUpdate(UStreamableRenderAsset* InAsset, int32 InRequestedMips);
 
 	/**
 	* Defines the next step to be executed. The next step will be executed by calling the callback on the specified thread.

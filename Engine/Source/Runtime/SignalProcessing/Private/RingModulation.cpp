@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DSP/RingModulation.h"
 #include "DSP/Dsp.h"
-#include "DSP/BufferVectorOperations.h"
 
 namespace Audio
 {
@@ -11,10 +10,9 @@ namespace Audio
 		, ModulationDepth(0.5f)
 		, DryLevel(0.0f)
 		, WetLevel(1.0f)
-		, Scale(1.0f)
 		, NumChannels(0)
 	{
-		UpdateScale();
+
 	}
 
 	FRingModulation::~FRingModulation()
@@ -32,22 +30,6 @@ namespace Audio
 		NumChannels = InNumChannels;
 	}
 
-	void FRingModulation::UpdateScale()
-	{
-		Scale = WetLevel * ModulationDepth;
-	}
-
-	void FRingModulation::SetExternalPatchSource(Audio::FPatchOutputStrongPtr InPatch)
-	{
-		Patch = InPatch;
-	}
-
-	void FRingModulation::SetWetLevel(const float InWetLevel)
-	{
-		WetLevel = InWetLevel;
-		UpdateScale();
-	}
-
 	void FRingModulation::SetModulatorWaveType(const EOsc::Type InType)
 	{
 		Osc.SetType(InType);
@@ -62,37 +44,23 @@ namespace Audio
 	void FRingModulation::SetModulationDepth(const float InModulationDepth)
 	{
 		ModulationDepth = FMath::Clamp(InModulationDepth, -1.0f, 1.0f);
-		UpdateScale();
+	}
+
+	void FRingModulation::ProcessAudioFrame(const float* InFrame, float* OutFrame)
+	{
+		float OscOut = Osc.Generate();
+		for (int32 Channel = 0; Channel < NumChannels; ++Channel)
+		{
+			OutFrame[Channel] = DryLevel * InFrame[Channel] + WetLevel * InFrame[Channel] * OscOut * ModulationDepth;
+		}
 	}
 
 	void FRingModulation::ProcessAudio(const float* InBuffer, const int32 InNumSamples, float* OutBuffer)
 	{
-		if (ModulationBuffer.Num() != InNumSamples * NumChannels)
+		for (int32 SampleIndex = 0; SampleIndex < InNumSamples; SampleIndex += NumChannels)
 		{
-			ModulationBuffer.Reset();
-			ModulationBuffer.AddZeroed(InNumSamples * NumChannels);
+			ProcessAudioFrame(&InBuffer[SampleIndex], &OutBuffer[SampleIndex]);
 		}
-
-		// If we have an external patch source to modulate against, copy that data into the modulation buffer
-		if (Patch.IsValid())
-		{
-			Patch->PopAudio(ModulationBuffer.GetData(), ModulationBuffer.Num(), true);
-		}
-		else
-		{
-			// Write the oscillator data into the modulation buffer
-			float* ModulationBufferPtr = ModulationBuffer.GetData();
-			for (int32 SampleIndex = 0; SampleIndex < InNumSamples; ++SampleIndex)
-			{
-				ModulationBufferPtr[SampleIndex] = Osc.Generate();
-			}
-		}
-
-		// Multiply the input buffer by the modulation buffer in-place
-		Audio::MultiplyBuffersInPlace(InBuffer, ModulationBuffer.GetData(), InNumSamples);
-
-		// Perform a buffer weighted sum of the modulation buffer with the Scale value and the dry level as weights
-		Audio::BufferWeightedSumFast(InBuffer, DryLevel, ModulationBuffer.GetData(), Scale, OutBuffer, InNumSamples);
 	}
 
 

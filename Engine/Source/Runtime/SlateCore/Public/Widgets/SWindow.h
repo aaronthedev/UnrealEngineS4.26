@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -339,9 +339,9 @@ public:
 	 */
 	void SetTitle( const FText& InTitle )
 	{
-		Title = InTitle;
 		if (NativeWindow.IsValid())
 		{
+			Title = InTitle;
 			NativeWindow->SetText( *InTitle.ToString() );
 		}
 	}

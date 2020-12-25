@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -34,10 +34,10 @@ namespace UnrealBuildTool
 		public HashSet<string> OnlyModuleNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
 		/// <summary>
-		/// Individual file(s) to compile
+		/// Single file to compile
 		/// </summary>
 		[CommandLine("-SingleFile=")]
-		public List<FileReference> SpecificFilesToCompile = new List<FileReference>();
+		public FileReference SingleFileToCompile = null;
 
 		/// <summary>
 		/// Whether to perform hot reload for this target
@@ -130,11 +130,6 @@ namespace UnrealBuildTool
 				}
 			}
 			this.AdditionalArguments = new CommandLineArguments(AdditionalArguments.ToArray());
-		}
-
-		public static TargetDescriptor FromTargetInfo(TargetInfo Info)
-		{
-			return new TargetDescriptor(Info.ProjectFile, Info.Name, Info.Platform, Info.Configuration, Info.Architecture, Info.Arguments);
 		}
 
 		/// <summary>
@@ -434,30 +429,6 @@ namespace UnrealBuildTool
 				Result.AppendFormat(" {0}", AdditionalArguments);
 			}
 			return Result.ToString();
-		}
-
-		public override int GetHashCode()
-		{
-			return ProjectFile.GetHashCode() + 
-				Name.GetHashCode() + 
-				Platform.GetHashCode() + 
-				Configuration.GetHashCode() + 
-				Architecture.GetHashCode();
-		}
-
-		public override bool Equals(object Obj) 
-		{
-			TargetDescriptor Other = Obj as TargetDescriptor;
-			if (Other != null)
-			{
-				return
-					ProjectFile == Other.ProjectFile &&
-					Name == Other.Name &&
-					Platform == Other.Platform &&
-					Configuration == Other.Configuration &&
-					Architecture == Other.Architecture;
-			}
-			return false;
 		}
 	}
 }

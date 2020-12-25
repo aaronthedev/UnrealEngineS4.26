@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -30,7 +30,6 @@ struct FRigUnit_ApplyFK : public FRigUnitMutable
 {
 	GENERATED_BODY()
 
-	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;
 
 	UPROPERTY(EditAnywhere, Category = "ApplyFK", meta = (Input))
@@ -56,4 +55,7 @@ struct FRigUnit_ApplyFK : public FRigUnitMutable
 	// Transform op option. Use if ETransformSpace is BaseJoint
 	UPROPERTY(EditAnywhere, Category = "ApplyFK", meta = (Input))
 	FName BaseJoint;
+
+private:
+	FTransform GetBaseTransform(int32 JointIndex, const FRigBoneHierarchy* CurrentHierarchy) const;
 };

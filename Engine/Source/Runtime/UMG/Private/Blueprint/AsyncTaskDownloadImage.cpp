@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Blueprint/AsyncTaskDownloadImage.h"
 #include "Modules/ModuleManager.h"
@@ -16,39 +16,34 @@
 
 #if !UE_SERVER
 
-static void WriteRawToTexture_RenderThread(FTexture2DDynamicResource* TextureResource, TArray64<uint8>* RawData, bool bUseSRGB = true)
+static void WriteRawToTexture_RenderThread(FTexture2DDynamicResource* TextureResource, const TArray<uint8>& RawData, bool bUseSRGB = true)
 {
 	check(IsInRenderingThread());
 
-	if (TextureResource)
+	FRHITexture2D* TextureRHI = TextureResource->GetTexture2DRHI();
+
+	int32 Width = TextureRHI->GetSizeX();
+	int32 Height = TextureRHI->GetSizeY();
+
+	uint32 DestStride = 0;
+	uint8* DestData = reinterpret_cast<uint8*>(RHILockTexture2D(TextureRHI, 0, RLM_WriteOnly, DestStride, false, false));
+
+	for (int32 y = 0; y < Height; y++)
 	{
-		FRHITexture2D* TextureRHI = TextureResource->GetTexture2DRHI();
+		uint8* DestPtr = &DestData[(Height - 1 - y) * DestStride];
 
-		int32 Width = TextureRHI->GetSizeX();
-		int32 Height = TextureRHI->GetSizeY();
-
-		uint32 DestStride = 0;
-		uint8* DestData = reinterpret_cast<uint8*>(RHILockTexture2D(TextureRHI, 0, RLM_WriteOnly, DestStride, false, false));
-
-		for (int32 y = 0; y < Height; y++)
+		const FColor* SrcPtr = &((FColor*)(RawData.GetData()))[(Height - 1 - y) * Width];
+		for (int32 x = 0; x < Width; x++)
 		{
-			uint8* DestPtr = &DestData[((int64)Height - 1 - y) * DestStride];
-
-			const FColor* SrcPtr = &((FColor*)(RawData->GetData()))[((int64)Height - 1 - y) * Width];
-			for (int32 x = 0; x < Width; x++)
-			{
-				*DestPtr++ = SrcPtr->B;
-				*DestPtr++ = SrcPtr->G;
-				*DestPtr++ = SrcPtr->R;
-				*DestPtr++ = SrcPtr->A;
-				SrcPtr++;
-			}
+			*DestPtr++ = SrcPtr->B;
+			*DestPtr++ = SrcPtr->G;
+			*DestPtr++ = SrcPtr->R;
+			*DestPtr++ = SrcPtr->A;
+			SrcPtr++;
 		}
-
-		RHIUnlockTexture2D(TextureRHI, 0, false, false);
 	}
 
-	delete RawData;
+	RHIUnlockTexture2D(TextureRHI, 0, false, false);
 }
 
 #endif
@@ -74,7 +69,7 @@ void UAsyncTaskDownloadImage::Start(FString URL)
 {
 #if !UE_SERVER
 	// Create the Http request and add to pending request list
-	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> HttpRequest = FHttpModule::Get().CreateRequest();
+	TSharedRef<IHttpRequest> HttpRequest = FHttpModule::Get().CreateRequest();
 
 	HttpRequest->OnProcessRequestComplete().BindUObject(this, &UAsyncTaskDownloadImage::HandleImageRequest);
 	HttpRequest->SetURL(URL);
@@ -106,9 +101,9 @@ void UAsyncTaskDownloadImage::HandleImageRequest(FHttpRequestPtr HttpRequest, FH
 		{
 			if ( ImageWrapper.IsValid() && ImageWrapper->SetCompressed(HttpResponse->GetContent().GetData(), HttpResponse->GetContentLength()) )
 			{
-				TArray64<uint8>* RawData = new TArray64<uint8>();
-				const ERGBFormat InFormat = ERGBFormat::BGRA;
-				if ( ImageWrapper->GetRaw(InFormat, 8, *RawData) )
+				const TArray<uint8>* RawData = NULL;
+				const ERGBFormat InFormat = (GShaderPlatformForFeatureLevel[GMaxRHIFeatureLevel] == SP_OPENGL_ES2_WEBGL) ? ERGBFormat::RGBA : ERGBFormat::BGRA;
+				if ( ImageWrapper->GetRaw(InFormat, 8, RawData) )
 				{
 					if ( UTexture2DDynamic* Texture = UTexture2DDynamic::Create(ImageWrapper->GetWidth(), ImageWrapper->GetHeight()) )
 					{
@@ -116,19 +111,14 @@ void UAsyncTaskDownloadImage::HandleImageRequest(FHttpRequestPtr HttpRequest, FH
 						Texture->UpdateResource();
 
 						FTexture2DDynamicResource* TextureResource = static_cast<FTexture2DDynamicResource*>(Texture->Resource);
-						if (TextureResource)
-						{
-							ENQUEUE_RENDER_COMMAND(FWriteRawDataToTexture)(
-								[TextureResource, RawData](FRHICommandListImmediate& RHICmdList)
-								{
-									WriteRawToTexture_RenderThread(TextureResource, RawData);
-								});
-						}
-						else
-						{
-							delete RawData;
-						}
-						OnSuccess.Broadcast(Texture);						
+						TArray<uint8> RawDataCopy = *RawData;
+						ENQUEUE_RENDER_COMMAND(FWriteRawDataToTexture)(
+							[TextureResource, RawDataCopy](FRHICommandListImmediate& RHICmdList)
+							{
+								WriteRawToTexture_RenderThread(TextureResource, RawDataCopy);
+							});
+						
+						OnSuccess.Broadcast(Texture);
 						return;
 					}
 				}

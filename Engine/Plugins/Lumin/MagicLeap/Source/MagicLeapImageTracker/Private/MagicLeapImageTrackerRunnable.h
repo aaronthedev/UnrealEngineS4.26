@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -22,14 +22,7 @@ struct FMagicLeapImageTrackerTask : public FMagicLeapTask
 	};
 
 	EType Type;
-	FMagicLeapImageTargetSettings Target;
-	FString TargetName;
-
-	FMagicLeapSetImageTargetCompletedStaticDelegate SuccessStaticDelegate;
-	FMagicLeapSetImageTargetCompletedStaticDelegate FailureStaticDelegate;
-
-	FMagicLeapSetImageTargetSucceededMulti SuccessDynamicDelegate;
-	FMagicLeapSetImageTargetFailedMulti FailureDynamicDelegate;
+	FMagicLeapImageTrackerTarget Target;
 
 	FMagicLeapImageTrackerTask()
 	: Type(EType::None)
@@ -41,44 +34,33 @@ class FMagicLeapImageTrackerRunnable : public FMagicLeapRunnable<FMagicLeapImage
 public:
 	FMagicLeapImageTrackerRunnable();
 
-	void Stop() override;
+	void Exit() override;
 	void Pause() override;
 	void Resume() override;
 	bool ProcessCurrentTask() override;
 
-	void SetTargetAsync(const FMagicLeapImageTargetSettings& ImageTarget, const FMagicLeapSetImageTargetCompletedStaticDelegate& SucceededDelegate, const FMagicLeapSetImageTargetCompletedStaticDelegate& FailedDelegate);
-	void SetTargetAsync(const FMagicLeapImageTargetSettings& ImageTarget, const FMagicLeapSetImageTargetSucceededMulti& SucceededDelegate, const FMagicLeapSetImageTargetFailedMulti& FailedDelegate);
-	bool RemoveTargetAsync(const FString& TargetName);
-
+	void SetTargetAsync(const FMagicLeapImageTrackerTarget& ImageTarget);
+	bool RemoveTargetAsync(const FString& InName);
 	uint32 GetMaxSimultaneousTargets() const;
 	void SetMaxSimultaneousTargets(uint32 NewNumTargets);
 	bool GetImageTrackerEnabled() const;
 	void SetImageTrackerEnabled(bool bEnabled);
-
-	void GetTargetState(const FString& TargetName, bool bProvideTransformInTrackingSpace, FMagicLeapImageTargetState& TargetState) const;
-	FGuid GetTargetHandle(const FString& TargetName) const;
+	void UpdateTargetsMainThread();
+	bool TryGetRelativeTransformMainThread(const FString& TargetName, FVector& OutLocation, FRotator& OutRotation);
 
 private:
-
-	mutable FCriticalSection TargetsMutex;
+	TMap<FString, FMagicLeapImageTrackerTarget> TrackedImageTargets;
+	FCriticalSection TargetsMutex;
 	mutable FCriticalSection TrackerMutex;
 	TArray<uint8> RBGAPixelData;
 #if WITH_MLSDK
-	struct FImageTargetData
-	{
-		MLHandle TargetHandle;
-		MLImageTrackerTargetStaticData TargetData;
-	};
-
-	TMap<FString, FImageTargetData> TrackedImageTargets;
-
-	MLImageTrackerSettings TrackerSettings;
+	MLImageTrackerSettings Settings;
 	MLHandle ImageTracker;
 
 	bool CreateTracker();
 	void DestroyTracker();
 	void SetTarget();
-	void RemoveTarget(const FString& TargetName, bool bCanDestroyTracker = false);
+	void RemoveTarget(const FMagicLeapImageTrackerTarget& Target, bool bCanDestroyTracker = false);
 	MLHandle GetHandle() const;
 #endif // WITH_MLSDK
 };

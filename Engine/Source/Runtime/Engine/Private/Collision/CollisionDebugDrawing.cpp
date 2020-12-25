@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Collision/CollisionDebugDrawing.h"
 #include "Components/PrimitiveComponent.h"
@@ -6,10 +6,9 @@
 #include "DrawDebugHelpers.h"
 #include "PhysXPublic.h"
 
+#include "Chaos/Sphere.h"
 #include "Chaos/Box.h"
 #include "Chaos/Capsule.h"
-#include "Chaos/ImplicitObject.h"
-#include "Chaos/Sphere.h"
 
 
 #if ENABLE_DRAW_DEBUG
@@ -202,7 +201,7 @@ ENGINE_API void DrawCapsuleOverlap(const UWorld* InWorld,const FVector& Pos, con
 	}
 }
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 
 
 void DrawGeomOverlaps(const UWorld* InWorld, const PxGeometry& PGeom, const PxTransform& PGeomPose, TArray<struct FOverlapResult>& Overlaps, float Lifetime)
@@ -251,7 +250,7 @@ void DrawGeomSweeps(const UWorld* InWorld, const FVector& Start, const FVector& 
 
 #endif // WITH_PHYSX
 
-void DrawGeomOverlaps(const UWorld* InWorld, const Chaos::FImplicitObject& Geom, const FTransform& GeomPose, TArray<struct FOverlapResult>& Overlaps, float Lifetime)
+void DrawGeomOverlaps(const UWorld* InWorld, const Chaos::TImplicitObject<float, 3>& Geom, const FTransform& GeomPose, TArray<struct FOverlapResult>& Overlaps, float Lifetime)
 {
 	using namespace Chaos;
 	FVector Pos = GeomPose.GetLocation();
@@ -272,7 +271,7 @@ void DrawGeomOverlaps(const UWorld* InWorld, const Chaos::FImplicitObject& Geom,
 	}
 }
 
-void DrawGeomSweeps(const UWorld* InWorld, const FVector& Start, const FVector& End, const Chaos::FImplicitObject& Geom, const FQuat& Rotation, const TArray<FHitResult>& Hits, float Lifetime)
+void DrawGeomSweeps(const UWorld* InWorld, const FVector& Start, const FVector& End, const Chaos::TImplicitObject<float, 3>& Geom, const FQuat& Rotation, const TArray<FHitResult>& Hits, float Lifetime)
 {
 	using namespace Chaos;
 	if (const auto Box = Geom.template GetObject<TBox<float, 3>>())

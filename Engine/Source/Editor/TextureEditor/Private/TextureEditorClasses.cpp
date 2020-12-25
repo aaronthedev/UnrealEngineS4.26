@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "TextureEditorSettings.h"
@@ -12,7 +12,6 @@ UTextureEditorSettings::UTextureEditorSettings( const FObjectInitializer& Object
 	, CheckerColorTwo(FColor(64, 64, 64))
 	, CheckerSize(32)
 	, FitToViewport(true)
-	, ZoomMode(ETextureEditorZoomMode::Fit)
 	, TextureBorderColor(FColor::White)
 	, TextureBorderEnabled(true)
 { }

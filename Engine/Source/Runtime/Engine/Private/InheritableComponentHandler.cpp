@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/InheritableComponentHandler.h"
 #include "Components/ActorComponent.h"
@@ -47,7 +47,7 @@ void UInheritableComponentHandler::PostLoad()
 				
 				// Fix up component template name on load, if it doesn't match the original template name. Otherwise, archetype lookups will fail for this template.
 				// For example, this can occur after a component variable rename in a parent BP class, but before a child BP class with an override template is loaded.
-				if (UActorComponent* OriginalTemplate = Record.ComponentKey.GetOriginalTemplate(Record.ComponentTemplate->GetFName()))
+				if (UActorComponent* OriginalTemplate = Record.ComponentKey.GetOriginalTemplate())
 				{
 					FString ExpectedTemplateName = OriginalTemplate->GetName();
 					if (USCS_Node* SCSNode = Record.ComponentKey.FindSCSNode())
@@ -297,7 +297,7 @@ bool UInheritableComponentHandler::IsRecordValid(const FComponentOverrideRecord&
 	}
 
 	// Note: If the original template is missing, we consider the record to be unnecessary, but not invalid.
-	UActorComponent* OriginalTemplate = Record.ComponentKey.GetOriginalTemplate(Record.ComponentTemplate->GetFName());
+	UActorComponent* OriginalTemplate = Record.ComponentKey.GetOriginalTemplate();
 	if (OriginalTemplate != nullptr && OriginalTemplate->GetClass() != Record.ComponentTemplate->GetClass())
 	{
 		return false;
@@ -316,7 +316,7 @@ struct FComponentComparisonHelper
 		}
 
 		bool Result = true;
-		for (FProperty* Prop = ObjectA->GetClass()->PropertyLink; Prop && Result; Prop = Prop->PropertyLinkNext)
+		for (UProperty* Prop = ObjectA->GetClass()->PropertyLink; Prop && Result; Prop = Prop->PropertyLinkNext)
 		{
 			bool bConsiderProperty = Prop->ShouldDuplicateValue(); //Should the property be compared at all?
 			if (bConsiderProperty)
@@ -359,23 +359,21 @@ bool UInheritableComponentHandler::IsRecordNecessary(const FComponentOverrideRec
 	}
 	else
 	{
-		const FName TemplateName = Record.ComponentTemplate->GetFName();
-
 		// Consider the record to be unnecessary if the original template no longer exists.
-		UActorComponent* OriginalTemplate = Record.ComponentKey.GetOriginalTemplate(TemplateName);
+		UActorComponent* OriginalTemplate = Record.ComponentKey.GetOriginalTemplate();
 		if (OriginalTemplate == nullptr)
 		{
 			return false;
 		}
 	
 		UActorComponent* ChildComponentTemplate = Record.ComponentTemplate;
-		UActorComponent* ParentComponentTemplate = FindBestArchetype(Record.ComponentKey, TemplateName);
+		UActorComponent* ParentComponentTemplate = FindBestArchetype(Record.ComponentKey);
 		check(ChildComponentTemplate && ParentComponentTemplate && (ParentComponentTemplate != ChildComponentTemplate));
 		return !FComponentComparisonHelper::AreIdentical(ChildComponentTemplate, ParentComponentTemplate);
 	}
 }
 
-UActorComponent* UInheritableComponentHandler::FindBestArchetype(const FComponentKey& Key, const FName& TemplateName) const
+UActorComponent* UInheritableComponentHandler::FindBestArchetype(const FComponentKey& Key) const
 {
 	UActorComponent* ClosestArchetype = nullptr;
 
@@ -394,7 +392,7 @@ UActorComponent* UInheritableComponentHandler::FindBestArchetype(const FComponen
 
 		if (!ClosestArchetype)
 		{
-			ClosestArchetype = Key.GetOriginalTemplate(TemplateName);
+			ClosestArchetype = Key.GetOriginalTemplate();
 		}
 	}
 
@@ -428,7 +426,7 @@ FComponentKey UInheritableComponentHandler::FindKey(UActorComponent* ComponentTe
 
 #endif
 
-void UInheritableComponentHandler::PreloadAllTemplates()
+void UInheritableComponentHandler::PreloadAllTempates()
 {
 	for (const FComponentOverrideRecord& Record : Records)
 	{
@@ -437,17 +435,6 @@ void UInheritableComponentHandler::PreloadAllTemplates()
 			if (FLinkerLoad* Linker = Record.ComponentTemplate->GetLinker())
 			{
 				Linker->Preload(Record.ComponentTemplate);
-
-				ForEachObjectWithOuter(Record.ComponentTemplate, [](UObject* SubObj)
-				{
-					if (SubObj->HasAllFlags(RF_NeedLoad))
-					{
-						if (FLinkerLoad* SubObjLinker = SubObj->GetLinker())
-						{
-							SubObjLinker->Preload(SubObj);
-						}
-					}
-				});
 			}
 		}
 	}
@@ -462,7 +449,7 @@ void UInheritableComponentHandler::PreloadAll()
 			Linker->Preload(this);
 		}
 	}
-	PreloadAllTemplates();
+	PreloadAllTempates();
 }
 
 FComponentKey UInheritableComponentHandler::FindKey(const FName VariableName) const
@@ -509,9 +496,8 @@ void UInheritableComponentHandler::FixComponentTemplateName(UActorComponent* Com
 	{
 		if (Record.ComponentTemplate && Record.ComponentTemplate != ComponentTemplate && Record.ComponentTemplate->GetName() == NewName)
 		{
-			const FName OverrideTemplateName = ComponentTemplate->GetFName();
-			const UActorComponent* OriginalTemplate = Record.ComponentKey.GetOriginalTemplate(OverrideTemplateName);
-			return ensureMsgf(OriginalTemplate && OriginalTemplate->GetFName() != OverrideTemplateName,
+			const UActorComponent* OriginalTemplate = Record.ComponentKey.GetOriginalTemplate();
+			return ensureMsgf(OriginalTemplate && OriginalTemplate->GetFName() != Record.ComponentTemplate->GetFName(),
 				TEXT("Found a collision with an existing override record, but its associated template object is either invalid or already matches its inherited template's name (%s). This is unexpected."), *NewName);
 		}
 
@@ -562,7 +548,7 @@ USCS_Node* FComponentKey::FindSCSNode() const
 	return ParentSCS ? ParentSCS->FindSCSNodeByGuid(AssociatedGuid) : nullptr;
 }
 
-UActorComponent* FComponentKey::GetOriginalTemplate(const FName& TemplateName) const
+UActorComponent* FComponentKey::GetOriginalTemplate() const
 {
 	UActorComponent* ComponentTemplate = nullptr;
 	if (IsSCSKey())
@@ -575,7 +561,7 @@ UActorComponent* FComponentKey::GetOriginalTemplate(const FName& TemplateName) c
 #if WITH_EDITOR
 	else if (IsUCSKey())
 	{
-		ComponentTemplate = FBlueprintEditorUtils::FindUCSComponentTemplate(*this, TemplateName);
+		ComponentTemplate = FBlueprintEditorUtils::FindUCSComponentTemplate(*this);
 	}
 #endif // WITH_EDITOR
 	return ComponentTemplate;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -24,7 +24,7 @@ class USkeleton;
 class IEditableSkeleton;
 struct FAnimParentNodeAssetOverride;
 
-class FAnimGraphNodeBindingExtension : public IDetailPropertyExtensionHandler
+class FAnimGraphNodeShowAsPinExtension : public IDetailPropertyExtensionHandler
 {
 public:
 	// IDetailPropertyExtensionHandler interface
@@ -50,7 +50,7 @@ public:
 
 protected:
 	// Creates a widget for the supplied property
-	TSharedRef<SWidget> CreatePropertyWidget(FProperty* TargetProperty, TSharedRef<IPropertyHandle> TargetPropertyHandle, UClass* NodeClass);
+	TSharedRef<SWidget> CreatePropertyWidget(UProperty* TargetProperty, TSharedRef<IPropertyHandle> TargetPropertyHandle, UClass* NodeClass);
 
 	// Creates the 'as pin' toggle widget for a property
 	TSharedRef<SWidget> CreateAsPinWidget(TSharedRef<IPropertyHandle> InPropertyHandle);
@@ -111,8 +111,6 @@ protected:
 
 	// Target Skeleton this widget is referencing
 	TSharedPtr<IEditableSkeleton> TargetEditableSkeleton;
-
-	bool bEnsureOnInvalidSkeleton = true;
 private:
 
 	// Bone tree widget delegates

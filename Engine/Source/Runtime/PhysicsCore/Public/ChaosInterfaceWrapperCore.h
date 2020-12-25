@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,7 +14,8 @@ class UPhysicalMaterial;
 
 namespace Chaos
 {
-	class FImplicitObject;
+	template <class T, int d>
+	class TImplicitObject;
 
 	template <class T>
 	class TCapsule;
@@ -28,10 +29,10 @@ struct FDummyPhysActor {};
 template<typename DummyT>
 struct FDummyCallback {};
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 using FQueryFilterData = PxQueryFilterData;
-#elif WITH_CHAOS
-using FQueryFilterData = FChaosQueryFilterData;
+#else
+using FQueryFilterData = FDummyPhysType;
 #endif
 
 /** We use this struct so that if no conversion is needed in another API, we can avoid the copy (if we think that's critical) */
@@ -81,28 +82,24 @@ struct FQueryDebugParams
 {
 #if !(UE_BUILD_TEST || UE_BUILD_SHIPPING) 
 	FQueryDebugParams()
-		: bDebugQuery(false)
-		, bExternalQuery(true) { }
+		: bDebugQuery(false) { }
 	bool bDebugQuery;
-	bool bExternalQuery;
 	bool IsDebugQuery() const { return bDebugQuery; }
-	bool IsExternalQuery() const { return bExternalQuery; }
 #else
 	// In test or shipping builds, this struct must be left empty
 	FQueryDebugParams() { }
 	constexpr bool IsDebugQuery() const { return false; }
-	constexpr bool IsExternalQuery() const { return true; }
 #endif
 };
 #endif
 
-extern PHYSICSCORE_API FCollisionFilterData GetQueryFilterData(const Chaos::FPerShapeData& Shape);
-extern PHYSICSCORE_API FCollisionFilterData GetSimulationFilterData(const Chaos::FPerShapeData& Shape);
+extern PHYSICSCORE_API FCollisionFilterData GetQueryFilterData(const Chaos::TPerShapeData<float, 3>& Shape);
+extern PHYSICSCORE_API FCollisionFilterData GetSimulationFilterData(const Chaos::TPerShapeData<float, 3>& Shape);
 
 
-PHYSICSCORE_API ECollisionShapeType GetImplicitType(const Chaos::FImplicitObject& InGeometry);
+PHYSICSCORE_API ECollisionShapeType GetImplicitType(const Chaos::TImplicitObject<float, 3>& InGeometry);
 
-FORCEINLINE ECollisionShapeType GetType(const Chaos::FImplicitObject& InGeometry)
+FORCEINLINE ECollisionShapeType GetType(const Chaos::TImplicitObject<float, 3>& InGeometry)
 {
 	return GetImplicitType(InGeometry);
 }
@@ -117,7 +114,7 @@ inline bool HadInitialOverlap(const FLocationHit& Hit)
 	return Hit.Distance <= 0.f;
 }
 
-inline const Chaos::FPerShapeData* GetShape(const FActorShape& Hit)
+inline const Chaos::TPerShapeData<float, 3>* GetShape(const FActorShape& Hit)
 {
 	return Hit.Shape;
 }
@@ -140,6 +137,11 @@ inline FVector GetPosition(const FLocationHit& Hit)
 inline FVector GetNormal(const FLocationHit& Hit)
 {
 	return Hit.WorldNormal;
+}
+
+inline FDummyPhysType* GetMaterialFromInternalFaceIndex(const FDummyPhysType& Shape, uint32 InternalFaceIndex)
+{
+	return nullptr;
 }
 
 inline FHitFlags GetFlags(const FLocationHit& Hit)
@@ -183,7 +185,7 @@ inline uint32 GetNumShapes(const FDummyPhysActor& RigidActor)
 	return 0;
 }
 
-inline void GetShapes(const FDummyPhysActor& RigidActor, Chaos::FImplicitObject** ShapesBuffer, uint32 NumShapes)
+inline void GetShapes(const FDummyPhysActor& RigidActor, Chaos::TImplicitObject<float, 3>** ShapesBuffer, uint32 NumShapes)
 {
 
 }
@@ -193,7 +195,7 @@ inline void SetActor(FDummyPhysType& Hit, FDummyPhysActor* Actor)
 
 }
 
-inline void SetShape(FDummyPhysType& Hit, Chaos::FImplicitObject* Shape)
+inline void SetShape(FDummyPhysType& Hit, Chaos::TImplicitObject<float, 3>* Shape)
 {
 
 }

@@ -1,13 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ARSessionConfig.h"
-#include "UObject/ConstructorHelpers.h"
 #include "UObject/VRObjectVersion.h"
 #include "Containers/StringConv.h"
 #include "Misc/CoreMisc.h"
 #include "ARSessionConfigCookSupport.h"
-#include "Materials/Material.h"
-#include "Materials/MaterialInterface.h"
 
 UARSessionConfig::UARSessionConfig()
 	: bTrackSceneObjects(true)
@@ -18,25 +15,13 @@ UARSessionConfig::UARSessionConfig()
 	, bVerticalPlaneDetection(true)
 	, bEnableAutoFocus(true)
 	, LightEstimationMode(EARLightEstimationMode::AmbientLightEstimate)
-	, FrameSyncMode(EARFrameSyncMode::SyncTickWithCameraImage)
+	, FrameSyncMode(EARFrameSyncMode::SyncTickWithoutCameraImage)
 	, bEnableAutomaticCameraOverlay(true)
 	, bEnableAutomaticCameraTracking(true)
 	, bResetCameraTracking(true)
 	, bResetTrackedObjects(true)
 	, MaxNumSimultaneousImagesTracked(1)
-	, PlaneComponentClass(UARPlaneComponent::StaticClass())
-	, PointComponentClass(UARPointComponent::StaticClass())
-	, FaceComponentClass(UARFaceComponent::StaticClass())
-	, ImageComponentClass(UARImageComponent::StaticClass())
-	, QRCodeComponentClass(UARTrackedQRCode::StaticClass())
-	, PoseComponentClass(UARPoseComponent::StaticClass())
-	, EnvironmentProbeComponentClass(UAREnvironmentProbeComponent::StaticClass())
-	, ObjectComponentClass(UARObjectComponent::StaticClass())
-	, MeshComponentClass(UARMeshComponent::StaticClass())
-	, GeoAnchorComponentClass(UARGeoAnchorComponent::StaticClass())
 {
-	DefaultMeshMaterial = UMaterial::GetDefaultMaterial(MD_Surface);
-	DefaultWireframeMeshMaterial = UMaterial::GetDefaultMaterial(MD_Surface);
 }
 
 EARWorldAlignment UARSessionConfig::GetWorldAlignment() const
@@ -159,50 +144,6 @@ const TArray<uint8>& UARSessionConfig::GetSerializedARCandidateImageDatabase() c
 	return SerializedARCandidateImageDatabase;
 }
 
-UClass* UARSessionConfig::GetPlaneComponentClass(void) const
-{
-	return PlaneComponentClass.Get() ? PlaneComponentClass.Get() : UARPlaneComponent::StaticClass();
-}
-
-UClass* UARSessionConfig::GetPointComponentClass(void) const
-{
-	return PointComponentClass.Get() ? PointComponentClass.Get() : UARPointComponent::StaticClass();
-}
-UClass* UARSessionConfig::GetFaceComponentClass(void) const
-{
-	return FaceComponentClass.Get() ? FaceComponentClass.Get() : UARFaceComponent::StaticClass();
-}
-UClass* UARSessionConfig::GetImageComponentClass(void) const
-{
-	return ImageComponentClass.Get() ? ImageComponentClass.Get() : UARImageComponent::StaticClass();
-}
-UClass* UARSessionConfig::GetQRCodeComponentClass(void) const
-{
-	return QRCodeComponentClass.Get() ? QRCodeComponentClass.Get() : UARQRCodeComponent::StaticClass();
-}
-UClass* UARSessionConfig::GetPoseComponentClass(void) const
-{
-	return PoseComponentClass.Get() ? PoseComponentClass.Get() : UARPoseComponent::StaticClass();
-}
-UClass* UARSessionConfig::GetEnvironmentProbeComponentClass(void) const
-{
-	return EnvironmentProbeComponentClass.Get() ? EnvironmentProbeComponentClass.Get() : UAREnvironmentProbeComponent::StaticClass();
-}
-UClass* UARSessionConfig::GetObjectComponentClass(void) const
-{
-	return ObjectComponentClass.Get() ? ObjectComponentClass.Get() : UARObjectComponent::StaticClass();
-}
-
-UClass* UARSessionConfig::GetMeshComponentClass(void) const
-{
-	return MeshComponentClass.Get() ? MeshComponentClass.Get() : UARMeshComponent::StaticClass();
-}
-
-UClass* UARSessionConfig::GetGeoAnchorComponentClass(void) const
-{
-	return GeoAnchorComponentClass.Get() ? GeoAnchorComponentClass.Get() : UARGeoAnchorComponent::StaticClass();
-}
-
 FARVideoFormat UARSessionConfig::GetDesiredVideoFormat() const
 {
 	return DesiredVideoFormat;
@@ -268,19 +209,4 @@ EARSessionTrackingFeature UARSessionConfig::GetEnabledSessionTrackingFeature() c
 void UARSessionConfig::SetSessionTrackingFeatureToEnable(EARSessionTrackingFeature InSessionTrackingFeature)
 {
 	EnabledSessionTrackingFeature = InSessionTrackingFeature;
-}
-
-EARSceneReconstruction UARSessionConfig::GetSceneReconstructionMethod() const
-{
-	return SceneReconstructionMethod;
-}
-
-void UARSessionConfig::SetSceneReconstructionMethod(EARSceneReconstruction InSceneReconstructionMethod)
-{
-	SceneReconstructionMethod = InSceneReconstructionMethod;
-}
-
-bool UARSessionConfig::ShouldUseOptimalVideoFormat() const
-{
-	return bUseOptimalVideoFormat;
 }

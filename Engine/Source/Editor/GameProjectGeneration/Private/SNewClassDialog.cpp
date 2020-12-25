@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "SNewClassDialog.h"
@@ -24,7 +24,7 @@
 #include "ClassViewerFilter.h"
 #include "IContentBrowserSingleton.h"
 #include "ContentBrowserModule.h"
-#include "SClassViewer.h"
+#include "Editor/ClassViewer/Private/SClassViewer.h"
 #include "DesktopPlatformModule.h"
 #include "IDocumentation.h"
 #include "EditorClassUtils.h"
@@ -1197,7 +1197,7 @@ void SNewClassDialog::FinishClicked()
 		}
 		else if (!NewClassPath.IsEmpty() && !NewClassName.IsEmpty())
 		{
-			UPackage* Package = CreatePackage( *PackagePath);
+			UPackage* Package = CreatePackage(NULL, *PackagePath);
 			if (Package)
 			{
 				// Create and init a new Blueprint
@@ -1336,7 +1336,7 @@ void SNewClassDialog::FinishClicked()
 				, FText::FromString(NewClassName), FText::FromString(SelectedModuleInfo->ModuleName), FailReason );
 			if( FMessageDialog::Open(EAppMsgType::YesNo, Message) == EAppReturnType::Yes )
 			{
-				FGlobalTabmanager::Get()->TryInvokeTab(FName("OutputLog"));
+				FGlobalTabmanager::Get()->InvokeTab(FName("OutputLog"));
 			}
 
 			// We did manage to add the code itself, so we can close the dialog.

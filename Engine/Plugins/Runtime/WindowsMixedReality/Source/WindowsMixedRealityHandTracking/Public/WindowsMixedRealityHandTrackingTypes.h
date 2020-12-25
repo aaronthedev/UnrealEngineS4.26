@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,7 +10,7 @@
  * Transforms that are tracked on the hand.
  * Matches the enums from Windows.Perception.People.h to make it a direct mapping
  */
-UENUM()
+UENUM(BlueprintType)
 enum class EWMRHandKeypoint : uint8
 {
 	Palm,

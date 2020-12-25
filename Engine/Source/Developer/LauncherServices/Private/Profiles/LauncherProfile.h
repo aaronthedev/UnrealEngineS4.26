@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,10 +19,6 @@
 #include "GameProjectHelper.h"
 #include "Profiles/LauncherProfileLaunchRole.h"
 #include "PlatformInfo.h"
-#include "TargetReceipt.h"
-#include "DesktopPlatformModule.h"
-
-DEFINE_LOG_CATEGORY_STATIC(LogLauncherProfile, Log, All);
 
 class Error;
 
@@ -46,7 +42,6 @@ enum ELauncherVersion
 	LAUNCHERSERVICES_ADDEDMULTILEVELPATCHING = 25,
 	LAUNCHERSERVICES_ADDEDADDITIONALCOMMANDLINE = 26,
 	LAUNCHERSERVICES_ADDEDINCLUDEPREREQUISITES = 27,
-	LAUNCHERSERVICES_ADDEDBUILDMODE = 28,
 
 	//ADD NEW STUFF HERE
 
@@ -60,22 +55,6 @@ enum ESimpleLauncherVersion
 	LAUNCHERSERVICES_SIMPLEPROFILEVERSION=1,
 	LAUNCHERSERVICES_SIMPLEFILEFORMATCHANGE = 2,
 };
-
-LAUNCHERSERVICES_API bool HasPromotedTarget(const TCHAR* BaseDir, const TCHAR* TargetName, const TCHAR* Platform, EBuildConfiguration Configuration, const TCHAR* Architecture);
-
-inline bool TryGetDefaultTargetName(const FString& ProjectFile, EBuildTargetType TargetType, FString& OutTargetName)
-{
-	const TArray<FTargetInfo>& Targets = FDesktopPlatformModule::Get()->GetTargetsForProject(ProjectFile);
-	for (const FTargetInfo& Target : Targets)
-	{
-		if (Target.Type == TargetType)
-		{
-			OutTargetName = Target.Name;
-			return true;
-		}
-	}
-	return false;
-}
 
 /**
 * Implements a simple profile which controls the desired output of the Launcher for simple
@@ -226,12 +205,8 @@ public:
 	*
 	* @return The folder path.
 	*/
-	static FString GetProfileFolder(bool bNotForLicensees)
+	static FString GetProfileFolder()
 	{
-		if (bNotForLicensees)
-		{
-			return FPaths::EngineDir() / TEXT("Restricted/NotForLicensees/Programs/UnrealFrontend/Profiles");
-		}
 		return FPaths::EngineDir() / TEXT("Programs/UnrealFrontend/Profiles");
 	}
 
@@ -554,7 +529,11 @@ public:
 
 	virtual FString GetFilePath() const override
 	{
-		return GetProfileFolder(bNotForLicensees) / GetFileName();
+		if (bNotForLicensees)
+		{
+			return GetProfileFolder() / "NotForLicensees" / GetFileName();			
+		}
+		return GetProfileFolder() / GetFileName();
 	}
 
 	virtual ELauncherProfileLaunchModes::Type GetLaunchMode( ) const override
@@ -674,66 +653,9 @@ public:
 		return InvalidPlatform;
 	}
 
-	virtual ELauncherProfileBuildModes::Type GetBuildMode() const override
+	virtual bool IsBuilding() const override
 	{
-		return BuildMode;
-	}
-
-	virtual bool ShouldBuild() override
-	{
-		bool bBuild = true;
-		if (BuildMode == ELauncherProfileBuildModes::DoNotBuild)
-		{
-			bBuild = false;
-		}
-		else if (BuildMode == ELauncherProfileBuildModes::Auto)
-		{
-			if (FApp::GetEngineIsPromotedBuild())
-			{
-				TArray<FString> TargetPlatformNames = FindPlatforms();
-				for (const FString& TargetPlatformName : TargetPlatformNames)
-				{
-					// Get the target we're building for
-					const ITargetPlatform* TargetPlatform = GetTargetPlatformManager()->FindTargetPlatform(TargetPlatformName);
-					const PlatformInfo::FPlatformInfo& PlatformInfo = TargetPlatform->GetPlatformInfo();
-
-					// Figure out which target we're building
-					FString ReceiptDir;
-					FString TargetName;
-					if (TryGetDefaultTargetName(FPaths::GetProjectFilePath(), PlatformInfo.PlatformType, TargetName))
-					{
-						ReceiptDir = FPaths::GetPath(FPaths::GetProjectFilePath());
-					}
-					else if (TryGetDefaultTargetName(FString(), PlatformInfo.PlatformType, TargetName))
-					{
-						FText Reason;
-						if (TargetPlatform->RequiresTempTarget(false, BuildConfiguration, false, Reason))
-						{
-							UE_LOG(LogLauncherProfile, Log, TEXT("Project requires temp target (%s)"), *Reason.ToString());
-							ReceiptDir = FPaths::GetPath(FPaths::GetProjectFilePath());
-						}
-						else
-						{
-							UE_LOG(LogLauncherProfile, Log, TEXT("Project does not require temp target"));
-							ReceiptDir = FPaths::EngineDir();
-						}
-					}
-					else
-					{
-						UE_LOG(LogLauncherProfile, Log, TEXT("Unable to find any targets for platform %s - forcing build"), *TargetPlatformName);
-						break;
-					}
-
-					// Check if the existing target is valid
-					FString BuildPlatform = PlatformInfo.UBTTargetId.ToString();
-					if (!HasPromotedTarget(*ReceiptDir, *TargetName, *BuildPlatform, BuildConfiguration, nullptr))
-					{
-						break;
-					}
-				}
-			}
-		}
-		return bBuild;
+		return BuildGame;
 	}
 
 	virtual bool IsBuildingUAT() const override
@@ -901,7 +823,6 @@ public:
 		}
 
 		// IMPORTANT: make sure to bump LAUNCHERSERVICES_PROFILEVERSION when modifying this!
-		bool BuildGame = false;
 		Archive << Id
 				<< Name
 				<< Description
@@ -1007,15 +928,6 @@ public:
 		if (Version >= LAUNCHERSERVICES_ADDEDINCLUDEPREREQUISITES)
 		{
 			Archive << IncludePrerequisites;
-		}
-
-		if (Version >= LAUNCHERSERVICES_ADDEDBUILDMODE)
-		{
-			Archive << BuildMode;
-		}
-		else if(Archive.IsLoading())
-		{
-			BuildMode = BuildGame ? ELauncherProfileBuildModes::Build : ELauncherProfileBuildModes::DoNotBuild;
 		}
 		
 		DefaultLaunchRole->Serialize(Archive);
@@ -1126,7 +1038,7 @@ public:
 		Writer.WriteValue("LaunchMode", LaunchMode);
 		Writer.WriteValue("PackagingMode", PackagingMode);
 		Writer.WriteValue("PackageDir", PackageDir);
-		Writer.WriteValue("BuildMode", BuildMode);
+		Writer.WriteValue("BuildGame", BuildGame);
 		Writer.WriteValue("ForceClose", ForceClose);
 		Writer.WriteValue("Timeout", (int32)Timeout);
 		Writer.WriteValue("Compressed", Compressed);
@@ -1329,7 +1241,7 @@ public:
 		}
 
 		// build
-		Writer.WriteValue("build", ShouldBuild());
+		Writer.WriteValue("build", IsBuilding());
 
 		// cook
 		switch (GetCookMode())
@@ -1600,7 +1512,7 @@ public:
 	TArray<FString> FindPlatforms()
 	{
 		TArray<FString> Platforms;
-		if (GetCookMode() == ELauncherProfileCookModes::ByTheBook)
+		if (GetCookMode() == ELauncherProfileCookModes::ByTheBook || IsBuilding())
 		{
 			Platforms = GetCookedPlatforms();
 		}
@@ -1756,17 +1668,7 @@ public:
 		LaunchMode = (TEnumAsByte<ELauncherProfileLaunchModes::Type>)((int32)Object.GetNumberField("LaunchMode"));
 		PackagingMode = (TEnumAsByte<ELauncherProfilePackagingModes::Type>)((int32)Object.GetNumberField("PackagingMode"));
 		PackageDir = Object.GetStringField("PackageDir");
-
-		int64 BuildModeValue;
-		if (Object.TryGetNumberField("BuildMode", BuildModeValue))
-		{
-			BuildMode = (TEnumAsByte<ELauncherProfileBuildModes::Type>)(int32)BuildModeValue;
-		}
-		else
-		{
-			BuildMode = Object.GetBoolField("BuildGame") ? ELauncherProfileBuildModes::Build : ELauncherProfileBuildModes::DoNotBuild;
-		}
-
+		BuildGame = Object.GetBoolField("BuildGame");
 		ForceClose = Object.GetBoolField("ForceClose");
 		Timeout = (uint32)Object.GetNumberField("Timeout");
 		Compressed = Object.GetBoolField("Compressed");
@@ -1895,7 +1797,7 @@ public:
 		FInternationalization& I18N = FInternationalization::Get();
 
 		// default build settings
-		BuildMode = ELauncherProfileBuildModes::Auto;
+		BuildGame = !FApp::GetEngineIsPromotedBuild() && !FApp::IsEngineInstalled();
 		BuildUAT = !FApp::GetEngineIsPromotedBuild() && !FApp::IsEngineInstalled();
 
 		// default cook settings
@@ -1966,16 +1868,15 @@ public:
 		EditorExe = LauncherServicesModule.GetExecutableForCommandlets();
 
 		bNotForLicensees = false;
-		bUseIoStore = false;
 
 		Validate();
 	}
 
-	virtual void SetBuildMode(ELauncherProfileBuildModes::Type Mode) override
+	virtual void SetBuildGame(bool Build) override
 	{
-		if (BuildMode != Mode)
+		if (BuildGame != Build)
 		{
-			BuildMode = Mode;
+			BuildGame = Build;
 
 			Validate();
 		}
@@ -2431,21 +2332,6 @@ public:
 		return EditorExe;
 	}
 
-	virtual void SetUseIoStore(bool bInUseIoStore) override
-	{
-		bUseIoStore = bInUseIoStore;
-
-		if (bUseIoStore)
-		{
-			SetDeployWithUnrealPak(true);
-		}
-	}
-
-	virtual bool IsUsingIoStore() const override
-	{
-		return bUseIoStore;
-	}
-
 	//~ End ILauncherProfile Interface
 
 protected:
@@ -2580,6 +2466,8 @@ protected:
 
 		}
 
+		
+
 		if (CookMode == ELauncherProfileCookModes::OnTheFly)
 		{
 
@@ -2597,11 +2485,6 @@ protected:
 		if (bArchive && ArchiveDir.IsEmpty())
 		{
 			ValidationErrors.Add(ELauncherProfileValidationErrors::NoArchiveDirectorySpecified);
-		}
-
-		if (bUseIoStore && !DeployWithUnrealPak)
-		{
-			ValidationErrors.Add(ELauncherProfileValidationErrors::IoStoreRequiresPakFiles);
 		}
 
 		ValidatePlatformSDKs();
@@ -2730,8 +2613,8 @@ private:
 	// Holds the cooking mode.
 	TEnumAsByte<ELauncherProfileCookModes::Type> CookMode;
 
-	// Holds the build mode
-	TEnumAsByte<ELauncherProfileBuildModes::Type> BuildMode;
+	// Holds a flag indicating whether the game should be built
+	bool BuildGame;
 
 	// Holds a flag indicating whether UAT should be built
 	bool BuildUAT;
@@ -2896,9 +2779,6 @@ private:
 
 	// Additional command line parameters to set for the application when it launches
 	FString AdditionalCommandLineParameters;
-
-	// Use I/O store.
-	bool bUseIoStore;
 
 private:
 

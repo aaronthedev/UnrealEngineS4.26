@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -16,9 +16,6 @@ struct FUserPinInfo
 	FUserPinInfo()
 		: DesiredPinDirection(EGPD_MAX)
 	{}
-
-	/** Constructs a FUserPinInfo to match an existing Pin */
-	explicit FUserPinInfo(const UEdGraphPin& InPin);
 
 	/** The name of the pin, as defined by the user */
 	UPROPERTY()
@@ -86,7 +83,7 @@ public:
 };
 
 UCLASS(abstract, MinimalAPI)
-class UK2Node_EditablePinBase : public UK2Node
+class BLUEPRINTGRAPH_VTABLE UK2Node_EditablePinBase : public UK2Node
 {
 	GENERATED_UCLASS_BODY()
 
@@ -165,9 +162,6 @@ class UK2Node_EditablePinBase : public UK2Node
 
 	/** Modifies the default value of an existing pin on the node, this will update both the UserPinInfo and the linked editor pin */
 	BLUEPRINTGRAPH_API virtual bool ModifyUserDefinedPinDefaultValue(TSharedPtr<FUserPinInfo> PinInfo, const FString& NewDefaultValue);
-
-	/** Copies default value data from the graph pins to the user pins, returns true if any were modified */
-	BLUEPRINTGRAPH_API virtual bool UpdateUserDefinedPinDefaultValues();
 
 	/**
 	 * Creates function pins that are user defined based on a function signature.

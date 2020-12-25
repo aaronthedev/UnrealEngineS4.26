@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimNodes/AnimNode_PoseByName.h"
 #include "Animation/AnimInstanceProxy.h"
-#include "Animation/AnimTrace.h"
 
 /////////////////////////////////////////////////////
 // FAnimPoseByNameNode
@@ -36,9 +35,6 @@ void FAnimNode_PoseByName::UpdateAssetPlayer(const FAnimationUpdateContext& Cont
 		RebuildPoseList(Context.AnimInstanceProxy->GetRequiredBones(), PoseAsset);
 		CurrentPoseName = PoseName;
 	}
-
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Pose Asset"), CurrentPoseAsset.IsValid() ? *CurrentPoseAsset.Get()->GetName() : TEXT("None"));
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Pose"), *PoseName.ToString());
 }
 
 void FAnimNode_PoseByName::Evaluate_AnyThread(FPoseContext& Output)
@@ -50,9 +46,7 @@ void FAnimNode_PoseByName::Evaluate_AnyThread(FPoseContext& Output)
 		// we only have one 
 		PoseExtractContext.PoseCurves[0].Value = PoseWeight;
 		// only give pose curve, we don't set any more curve here
-
-		FAnimationPoseData OutputAnimationPoseData(Output);
-		CurrentPoseAsset->GetAnimationPose(OutputAnimationPoseData, PoseExtractContext);
+		CurrentPoseAsset->GetAnimationPose(Output.Pose, Output.Curve, PoseExtractContext);
 	}
 	else
 	{

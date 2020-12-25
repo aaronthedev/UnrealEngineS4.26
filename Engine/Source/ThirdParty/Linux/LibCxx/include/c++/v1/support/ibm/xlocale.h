@@ -1,9 +1,10 @@
 // -*- C++ -*-
 //===--------------------- support/ibm/xlocale.h -------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -87,7 +88,7 @@ int isxdigit_l(int c, locale_t locale)
 static inline
 int iswalnum_l(wchar_t wc, locale_t locale)
 {
-  return __xiswalnum(locale, wc);
+  return __xiswalnum(locale, wc); 
 }
 
 static inline
@@ -159,7 +160,7 @@ int iswxdigit_l(wchar_t wc, locale_t locale)
 static inline
 int iswctype_l(wint_t wc, wctype_t desc, locale_t locale)
 {
-  return __xiswctype(locale, wc, desc);
+  return __xiswctype(locale, wc, desc); 
 }
 
 static inline
@@ -261,7 +262,7 @@ int vasprintf(char **strp, const char *fmt, va_list ap)
     str_size = vsnprintf(*strp, str_size + 1, fmt,  ap);
   }
   return str_size;
-}
+}  
 
 #ifdef __cplusplus
 }

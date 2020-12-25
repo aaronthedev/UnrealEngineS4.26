@@ -1,22 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #if WITH_EDITOR
 
 #include "PostProcess/PostProcessBufferInspector.h"
 #include "SceneTextureParameters.h"
-#include "ScenePrivate.h"
 
 BEGIN_SHADER_PARAMETER_STRUCT(FPixelInspectorParameters, )
-	RDG_TEXTURE_ACCESS(GBufferA, ERHIAccess::CopySrc)
-	RDG_TEXTURE_ACCESS(GBufferB, ERHIAccess::CopySrc)
-	RDG_TEXTURE_ACCESS(GBufferC, ERHIAccess::CopySrc)
-	RDG_TEXTURE_ACCESS(GBufferD, ERHIAccess::CopySrc)
-	RDG_TEXTURE_ACCESS(GBufferE, ERHIAccess::CopySrc)
-	RDG_TEXTURE_ACCESS(GBufferF, ERHIAccess::CopySrc)
-	RDG_TEXTURE_ACCESS(SceneColor, ERHIAccess::CopySrc)
-	RDG_TEXTURE_ACCESS(SceneColorBeforeTonemap, ERHIAccess::CopySrc)
-	RDG_TEXTURE_ACCESS(SceneDepth, ERHIAccess::CopySrc)
-	RDG_TEXTURE_ACCESS(OriginalSceneColor, ERHIAccess::CopySrc)
+	SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
+	SHADER_PARAMETER_RDG_TEXTURE(, SceneColor)
+	SHADER_PARAMETER_RDG_TEXTURE(, SceneColorBeforeTonemap)
+	SHADER_PARAMETER_RDG_TEXTURE(, OriginalSceneColor)
 END_SHADER_PARAMETER_STRUCT()
 
 void ProcessPixelInspectorRequests(
@@ -25,6 +18,7 @@ void ProcessPixelInspectorRequests(
 	const FPixelInspectorParameters& Parameters,
 	const FIntRect SceneColorViewRect)
 {
+	const FSceneTextureParameters& SceneTextures = Parameters.SceneTextures;
 	const FSceneViewFamily& ViewFamily = *(View.Family);
 	const int32 ViewUniqueId = View.State->GetViewKey();
 
@@ -58,7 +52,7 @@ void ProcessPixelInspectorRequests(
 				const FTexture2DRHIRef &DestinationBufferDepth = PixelInspectorData.RenderTargetBufferDepth[PixelInspectorRequest->BufferIndex]->GetRenderTargetTexture();
 				if (DestinationBufferDepth.IsValid())
 				{
-					FRHITexture* SourceBufferSceneDepth = Parameters.SceneDepth->GetRHI();
+					FRHITexture* SourceBufferSceneDepth = SceneTextures.SceneDepthBuffer->GetRHI();
 					if (DestinationBufferDepth->GetFormat() == SourceBufferSceneDepth->GetFormat())
 					{
 						FRHICopyTextureInfo CopyInfo;
@@ -166,9 +160,9 @@ void ProcessPixelInspectorRequests(
 				);
 
 				const FTexture2DRHIRef &DestinationBufferA = PixelInspectorData.RenderTargetBufferA[PixelInspectorRequest->BufferIndex]->GetRenderTargetTexture();
-				if (DestinationBufferA.IsValid() && Parameters.GBufferA)
+				if (DestinationBufferA.IsValid() && SceneTextures.SceneGBufferA)
 				{
-					FRHITexture* SourceBufferA = Parameters.GBufferA->GetRHI();
+					FRHITexture* SourceBufferA = SceneTextures.SceneGBufferA->GetRHI();
 					if (DestinationBufferA->GetFormat() == SourceBufferA->GetFormat())
 					{
 						FRHICopyTextureInfo CopyInfo;
@@ -180,9 +174,9 @@ void ProcessPixelInspectorRequests(
 			}
 
 			//////////////////////////////////////////////////////////////////////////
-			// GBuffer BCDEF
-			const FTexture2DRHIRef &DestinationBufferBCDEF = PixelInspectorData.RenderTargetBufferBCDEF[PixelInspectorRequest->BufferIndex]->GetRenderTargetTexture();
-			if (DestinationBufferBCDEF.IsValid())
+			// GBuffer BCDE
+			const FTexture2DRHIRef &DestinationBufferBCDE = PixelInspectorData.RenderTargetBufferBCDE[PixelInspectorRequest->BufferIndex]->GetRenderTargetTexture();
+			if (DestinationBufferBCDE.IsValid())
 			{
 				const FIntVector SourcePoint(
 					FMath::FloorToInt(SourceViewportUV.X * View.ViewRect.Width()),
@@ -190,66 +184,54 @@ void ProcessPixelInspectorRequests(
 					0
 				);
 
-				if (Parameters.GBufferB)
+				if (SceneTextures.SceneGBufferB)
 				{
-					FRHITexture* SourceBufferB = Parameters.GBufferB->GetRHI();
-					if (DestinationBufferBCDEF->GetFormat() == SourceBufferB->GetFormat())
+					FRHITexture* SourceBufferB = SceneTextures.SceneGBufferB->GetRHI();
+					if (DestinationBufferBCDE->GetFormat() == SourceBufferB->GetFormat())
 					{
 						FRHICopyTextureInfo CopyInfo;
 						CopyInfo.SourcePosition = SourcePoint;
 						CopyInfo.Size = FIntVector(1, 1, 1);
-						RHICmdList.CopyTexture(SourceBufferB, DestinationBufferBCDEF, CopyInfo);
+						RHICmdList.CopyTexture(SourceBufferB, DestinationBufferBCDE, CopyInfo);
 					}
 				}
 
-				if (Parameters.GBufferC)
+				if (SceneTextures.SceneGBufferC)
 				{
-					FRHITexture* SourceBufferC = Parameters.GBufferC->GetRHI();
-					if (DestinationBufferBCDEF->GetFormat() == SourceBufferC->GetFormat())
+					FRHITexture* SourceBufferC = SceneTextures.SceneGBufferC->GetRHI();
+					if (DestinationBufferBCDE->GetFormat() == SourceBufferC->GetFormat())
 					{
 						FRHICopyTextureInfo CopyInfo;
 						CopyInfo.SourcePosition = SourcePoint;
 						CopyInfo.DestPosition = FIntVector(1, 0, 0);
 						CopyInfo.Size = FIntVector(1, 1, 1);
-						RHICmdList.CopyTexture(SourceBufferC, DestinationBufferBCDEF, CopyInfo);
+						RHICmdList.CopyTexture(SourceBufferC, DestinationBufferBCDE, CopyInfo);
 					}
 				}
 
-				if (Parameters.GBufferD)
+				if (SceneTextures.SceneGBufferD)
 				{
-					FRHITexture* SourceBufferD = Parameters.GBufferD->GetRHI();
-					if (DestinationBufferBCDEF->GetFormat() == SourceBufferD->GetFormat())
+					FRHITexture* SourceBufferD = SceneTextures.SceneGBufferD->GetRHI();
+					if (DestinationBufferBCDE->GetFormat() == SourceBufferD->GetFormat())
 					{
 						FRHICopyTextureInfo CopyInfo;
 						CopyInfo.SourcePosition = SourcePoint;
 						CopyInfo.DestPosition = FIntVector(2, 0, 0);
 						CopyInfo.Size = FIntVector(1, 1, 1);
-						RHICmdList.CopyTexture(SourceBufferD, DestinationBufferBCDEF, CopyInfo);
+						RHICmdList.CopyTexture(SourceBufferD, DestinationBufferBCDE, CopyInfo);
 					}
 				}
 
-				if (Parameters.GBufferE)
+				if (SceneTextures.SceneGBufferE)
 				{
-					FRHITexture* SourceBufferE = Parameters.GBufferE->GetRHI();
-					if (DestinationBufferBCDEF->GetFormat() == SourceBufferE->GetFormat())
+					FRHITexture* SourceBufferE = SceneTextures.SceneGBufferE->GetRHI();
+					if (DestinationBufferBCDE->GetFormat() == SourceBufferE->GetFormat())
 					{
 						FRHICopyTextureInfo CopyInfo;
 						CopyInfo.SourcePosition = SourcePoint;
 						CopyInfo.DestPosition = FIntVector(3, 0, 0);
 						CopyInfo.Size = FIntVector(1, 1, 1);
-						RHICmdList.CopyTexture(SourceBufferE, DestinationBufferBCDEF, CopyInfo);
-					}
-				}
-
-				if (Parameters.GBufferF)
-				{
-					FRHITexture* SourceBufferF = Parameters.GBufferF->GetRHI();
-					if (DestinationBufferBCDEF->GetFormat() == SourceBufferF->GetFormat())
-					{
-						FRHICopyTextureInfo CopyInfo;
-						CopyInfo.SourcePosition = SourcePoint;
-						CopyInfo.Size = FIntVector(1, 1, 1);
-						RHICmdList.CopyTexture(SourceBufferF, DestinationBufferBCDEF, CopyInfo);
+						RHICmdList.CopyTexture(SourceBufferE, DestinationBufferBCDE, CopyInfo);
 					}
 				}
 			}
@@ -272,30 +254,17 @@ FScreenPassTexture AddPixelInspectorPass(FRDGBuilder& GraphBuilder, const FViewI
 	check(Inputs.SceneColor.ViewRect == Inputs.SceneColorBeforeTonemap.ViewRect);
 	check(Inputs.OriginalSceneColor.IsValid());
 	check(Inputs.OriginalSceneColor.ViewRect == View.ViewRect);
+	check(Inputs.SceneTextures);
 	check(View.bUsePixelInspector);
 
 	RDG_EVENT_SCOPE(GraphBuilder, "PixelInspector");
 
 	// Perform copies of scene textures data into staging resources for visualization.
 	{
-		FSceneTextureParameters SceneTextures = GetSceneTextureParameters(GraphBuilder);
-
-		// GBufferF is optional, so it may be a dummy texture. Revert it to null if so.
-		if (SceneTextures.GBufferFTexture->Desc.Extent != Inputs.OriginalSceneColor.Texture->Desc.Extent)
-		{
-			SceneTextures.GBufferFTexture = nullptr;
-		}
-
 		FPixelInspectorParameters* PassParameters = GraphBuilder.AllocParameters<FPixelInspectorParameters>();
-		PassParameters->GBufferA = SceneTextures.GBufferATexture;
-		PassParameters->GBufferB = SceneTextures.GBufferBTexture;
-		PassParameters->GBufferC = SceneTextures.GBufferCTexture;
-		PassParameters->GBufferD = SceneTextures.GBufferDTexture;
-		PassParameters->GBufferE = SceneTextures.GBufferETexture;
-		PassParameters->GBufferF = SceneTextures.GBufferFTexture;
+		PassParameters->SceneTextures = *Inputs.SceneTextures;
 		PassParameters->SceneColor = Inputs.SceneColor.Texture;
 		PassParameters->SceneColorBeforeTonemap = Inputs.SceneColorBeforeTonemap.Texture;
-		PassParameters->SceneDepth = SceneTextures.SceneDepthTexture;
 		PassParameters->OriginalSceneColor = Inputs.OriginalSceneColor.Texture;
 
 		const FIntRect SceneColorViewRect(Inputs.SceneColor.ViewRect);
@@ -303,7 +272,7 @@ FScreenPassTexture AddPixelInspectorPass(FRDGBuilder& GraphBuilder, const FViewI
 		GraphBuilder.AddPass(
 			RDG_EVENT_NAME("Copy"),
 			PassParameters,
-			ERDGPassFlags::Copy | ERDGPassFlags::NeverCull,
+			ERDGPassFlags::Copy,
 			[PassParameters, &View, SceneColorViewRect](FRHICommandListImmediate& RHICmdList)
 		{
 			ProcessPixelInspectorRequests(RHICmdList, View, *PassParameters, SceneColorViewRect);

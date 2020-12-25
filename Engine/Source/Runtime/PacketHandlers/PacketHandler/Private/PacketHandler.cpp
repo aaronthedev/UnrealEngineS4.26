@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PacketHandler.h"
 #include "Net/Core/Misc/PacketAudit.h"
@@ -427,18 +427,20 @@ void HandlerComponent::CountBytes(FArchive& Ar) const
 	Ar.CountBytes(sizeof(*this), sizeof(*this));
 }
 
-EIncomingResult PacketHandler::Incoming_Internal(FReceivedPacketView& PacketView)
+
+const ProcessedPacket PacketHandler::Incoming_Internal(uint8* Packet, int32 CountBytes, bool bConnectionless, const TSharedPtr<const FInternetAddr>& Address)
 {
 	SCOPE_CYCLE_COUNTER(Stat_PacketHandler_Incoming_Internal);
 
-	EIncomingResult ReturnVal = EIncomingResult::Success;
-	FPacketDataView& DataView = PacketView.DataView;
-	int32 CountBits = DataView.NumBits();
+	// @todo #JohnB: Try to optimize this function more, seeing as it will be a common codepath DoS attacks pass through
+	// @todo #JohnB: Clean up returns.
+
+	int32 CountBits = CountBytes * 8;
+	bool bError = false;
 
 	if (HandlerComponents.Num() > 0)
 	{
-		const uint8* DataPtr = DataView.GetData();
-		uint8 LastByte = (UNLIKELY(DataPtr == nullptr)) ? 0 : DataPtr[DataView.NumBytes() - 1];
+		uint8 LastByte = Packet[CountBytes - 1];
 
 		if (LastByte != 0)
 		{
@@ -452,8 +454,7 @@ EIncomingResult PacketHandler::Incoming_Internal(FReceivedPacketView& PacketView
 		}
 		else
 		{
-			PacketView.DataView = {nullptr, 0, ECountUnits::Bits};
-			ReturnVal = EIncomingResult::Error;
+			bError = true;
 
 #if !UE_BUILD_SHIPPING
 			UE_CLOG((DDoS == nullptr || !DDoS->CheckLogRestrictions()), PacketHandlerLog, Error,
@@ -463,10 +464,9 @@ EIncomingResult PacketHandler::Incoming_Internal(FReceivedPacketView& PacketView
 	}
 
 
-	if (ReturnVal == EIncomingResult::Success)
+	if (!bError)
 	{
-		FBitReader ProcessedPacketReader(DataView.GetMutableData(), CountBits);
-		FIncomingPacketRef PacketRef = {ProcessedPacketReader, PacketView.Address, PacketView.Traits};
+		FBitReader ProcessedPacketReader(Packet, CountBits);
 
 		FPacketAudit::CheckStage(TEXT("PostPacketHandler"), ProcessedPacketReader);
 
@@ -488,9 +488,9 @@ EIncomingResult PacketHandler::Incoming_Internal(FReceivedPacketView& PacketView
 					RealignPacket(ProcessedPacketReader);
 				}
 
-				if (PacketView.Traits.bConnectionlessPacket)
+				if (bConnectionless)
 				{
-					CurComponent.IncomingConnectionless(PacketRef);
+					CurComponent.IncomingConnectionless(Address, ProcessedPacketReader);
 				}
 				else
 				{
@@ -508,16 +508,17 @@ EIncomingResult PacketHandler::Incoming_Internal(FReceivedPacketView& PacketView
 				FPacketAudit::CheckStage(TEXT("PrePacketHandler"), IncomingPacket, true);
 			}
 
-			PacketView.DataView = {IncomingPacket.GetData(), (int32)IncomingPacket.GetBitsLeft(), ECountUnits::Bits};
+			return ProcessedPacket(IncomingPacket.GetData(), IncomingPacket.GetBitsLeft());
 		}
 		else
 		{
-			PacketView.DataView = {nullptr, 0, ECountUnits::Bits};
-			ReturnVal = EIncomingResult::Error;
+			return ProcessedPacket(nullptr, 0, true);
 		}
 	}
-
-	return ReturnVal;
+	else
+	{
+		return ProcessedPacket(nullptr, 0, true);
+	}
 }
 
 const ProcessedPacket PacketHandler::Outgoing_Internal(uint8* Packet, int32 CountBits, FOutPacketTraits& Traits, bool bConnectionless, const TSharedPtr<const FInternetAddr>& Address)

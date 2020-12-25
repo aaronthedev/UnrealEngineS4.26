@@ -408,7 +408,7 @@ OpFunctionEnd
 
 TEST_F(IRBuilderTest, AccelerationStructureNV) {
   const std::string text = R"(
-; CHECK: OpTypeAccelerationStructureKHR
+; CHECK: OpTypeAccelerationStructureNV
 OpCapability Shader
 OpCapability RayTracingNV
 OpExtension "SPV_NV_ray_tracing"

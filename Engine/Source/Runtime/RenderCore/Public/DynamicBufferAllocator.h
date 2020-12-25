@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*==============================================================================
 DynamicBufferAllocator.h: Classes for allocating transient rendering data.
@@ -15,14 +15,6 @@ struct FDynamicAllocReadBuffer : public FDynamicReadBuffer
 	int32 AllocatedByteCount = 0;
 	/** Number of successive frames for which AllocatedByteCount == 0. Used as a metric to decide when to free the allocation. */
 	int32 NumFramesUnused = 0;
-
-	TArray<FShaderResourceViewRHIRef> SubAllocations;
-
-	void Lock()
-	{
-		SubAllocations.Reset();
-		FDynamicReadBuffer::Lock();
-	}
 
 	/**
 	* Unocks the buffer so the GPU may read from it.
@@ -53,13 +45,14 @@ public:
 		uint8* Buffer;
 		/** The read buffer to bind for draw calls. */
 		FDynamicAllocReadBuffer* ReadBuffer;
-
-		FRHIShaderResourceView* SRV;
+		/** The offset in to the read buffer. */
+		uint32 FirstIndex;
 
 		/** Default constructor. */
 		FAllocation()
 			: Buffer(NULL)
 			, ReadBuffer(NULL)
+			, FirstIndex(0)
 		{
 		}
 
@@ -73,7 +66,6 @@ public:
 	FGlobalDynamicReadBuffer();
 	~FGlobalDynamicReadBuffer();
 	
-	FAllocation AllocateHalf(uint32 Num);
 	FAllocation AllocateFloat(uint32 Num);
 	FAllocation AllocateInt32(uint32 Num);
 
@@ -92,10 +84,8 @@ protected:
 	virtual void InitRHI() override;
 	virtual void ReleaseRHI() override;
 	void Cleanup();
-	void IncrementTotalAllocations(uint32 Num);
 
 	/** The pools of read buffers from which allocations are made. */
-	FDynamicReadBufferPool* HalfBufferPool;
 	FDynamicReadBufferPool* FloatBufferPool;
 	FDynamicReadBufferPool* Int32BufferPool;
 

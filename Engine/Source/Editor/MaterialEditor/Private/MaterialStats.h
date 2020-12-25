@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -512,7 +512,7 @@ void FMaterialStats::SetMaterial(TMaterial *MaterialPtr)
 	{
 		MaterialInterface = MaterialPtr;
 
-		for (const auto& Entry : ShaderPlatformStatsDB)
+		for (const auto Entry : ShaderPlatformStatsDB)
 		{
 			auto Platform = Entry.Value;
 			Platform->SetMaterial(MaterialPtr);

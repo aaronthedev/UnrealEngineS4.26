@@ -19,7 +19,7 @@
 		{
 			"Name" : "AndroidDeviceProfileSelector",
 			"Type": "Editor",
-			"LoadingPhase" : "None"
+			"LoadingPhase" : "PostConfigInit"
 		},
 		{
 			"Name" : "AndroidDeviceProfileSelectorRuntime",

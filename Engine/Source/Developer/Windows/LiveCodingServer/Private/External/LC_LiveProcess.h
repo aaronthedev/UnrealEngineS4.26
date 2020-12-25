@@ -39,7 +39,6 @@ public:
 
 
 	bool PrepareForRestart(void);
-	void WaitForExitBeforeRestart(void);
 	void Restart(void* restartJob);
 	bool WasSuccessfulRestart(void) const;
 
@@ -138,8 +137,7 @@ private:
 			DEFAULT,
 			FAILED_PREPARE,
 			SUCCESSFUL_PREPARE,
-			SUCCESSFUL_EXIT,
-			SUCCESSFUL_RESTART
+			SUCCESSFUL
 		};
 	};
 

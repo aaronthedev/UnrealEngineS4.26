@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ParameterCollection.h: 
@@ -51,9 +51,9 @@ public:
 	}
 
 	FMaterialParameterCollectionInstanceResource();
+	~FMaterialParameterCollectionInstanceResource();
 
 private:
-	~FMaterialParameterCollectionInstanceResource();
 
 	/** Unique identifier for the UMaterialParameterCollection that material shaders were compiled with. */
 	FGuid Id;
@@ -69,4 +69,4 @@ private:
 };
 
 // Default instance resources used when rendering a material using a parameter collection but there's no FScene present to get a FMaterialParameterCollectionInstanceResource
-extern ENGINE_API TMultiMap<FGuid, FMaterialParameterCollectionInstanceResource*> GDefaultMaterialParameterCollectionInstances;
+extern ENGINE_API TMap<FGuid, FMaterialParameterCollectionInstanceResource*> GDefaultMaterialParameterCollectionInstances;

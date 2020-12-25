@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
@@ -93,7 +93,7 @@ namespace LightingTestHelpers
 	*/
 	void SetPropertyByName(UObject* TargetObject, const FString& InVariableName, const FString& NewValueString)
 	{
-		FProperty* FoundProperty = FindFProperty<FProperty>(TargetObject->GetClass(), *InVariableName);
+		UProperty* FoundProperty = FindField<UProperty>(TargetObject->GetClass(), *InVariableName);
 		if (FoundProperty)
 		{
 			const FScopedTransaction PropertyChanged(LOCTEXT("PropertyChanged", "Object Property Change"));

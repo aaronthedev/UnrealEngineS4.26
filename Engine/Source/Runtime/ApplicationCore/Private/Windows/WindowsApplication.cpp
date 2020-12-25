@@ -1,7 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Windows/WindowsApplication.h"
-
 #include "Containers/StringConv.h"
 #include "CoreGlobals.h"
 #include "Internationalization/Text.h"
@@ -18,7 +17,6 @@
 #include "HAL/ThreadHeartBeat.h"
 #include "Templates/UniquePtr.h"
 #include "Windows/WindowsPlatformApplicationMisc.h"
-#include "Stats/Stats.h"
 
 #if WITH_EDITOR
 #include "Modules/ModuleManager.h"
@@ -71,34 +69,9 @@ FAutoConsoleVariableRef	CVarPreventDuplicateMouseEventsForTouch(
 	TEXT("Hack to get around multiple mouse events being triggered for touch events on Windows 7 and lower.  Enabling this will prevent pen tablets from working on windows 7 since until we switch to the windows 8 sdk (and can use WM_POINTER* events) we cannot detect the difference")
 );
 
-
-#if !UE_BUILD_SHIPPING
-static int32 EnableRawInputSimulationOverRDP = true;
-FAutoConsoleVariableRef	CVarEnableRawInputSimulationOverRDP(
-	TEXT("Slate.EnableRawInputSimulationOverRDP"),
-	EnableRawInputSimulationOverRDP,
-	TEXT("")
-);
-
-static int32 ForceRawInputSimulation = false;
-FAutoConsoleVariableRef	CVarForceRawInputSimulation(
-	TEXT("Slate.ForceRawInputSimulation"),
-	ForceRawInputSimulation,
-	TEXT("")
-);
-#else
-static int32 ForceRawInputSimulation = false;
-static int32 EnableRawInputSimulationOverRDP = false;
-#endif
-
 const FIntPoint FWindowsApplication::MinimizedWindowPosition(-32000,-32000);
 
 FWindowsApplication* WindowsApplication = nullptr;
-
-static bool ShouldSimulateRawInput()
-{
-	return ForceRawInputSimulation || (EnableRawInputSimulationOverRDP && FPlatformMisc::IsRemoteSession());
-}
 
 FWindowsApplication* FWindowsApplication::CreateWindowsApplication( const HINSTANCE InstanceHandle, const HICON IconHandle )
 {
@@ -127,12 +100,6 @@ FWindowsApplication::FWindowsApplication( const HINSTANCE HInstance, const HICON
 #if WITH_ACCESSIBILITY
 	, UIAManager(new FWindowsUIAManager(*this))
 #endif
-	, bSimulatingHighPrecisionMouseInputForRDP(false)
-	, CachedPreHighPrecisionMousePosForRDP(FIntPoint::ZeroValue)
-	, LastCursorPoint(FIntPoint::ZeroValue)
-	, LastCursorPointPreWrap(FIntPoint::ZeroValue)
-	, NumPreWrapMsgsToRespect(0)
-	, ClipCursorRect()
 
 {
 	FMemory::Memzero(ModifierKeyState, EModifierKey::Count);
@@ -424,8 +391,6 @@ static TSharedPtr< FWindowsWindow > FindWindowByHWND(const TArray< TSharedRef< F
 
 bool FWindowsApplication::IsCursorDirectlyOverSlateWindow() const
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_STAT_IsCursorDirectlyOverSlateWindow);
-
 	POINT CursorPos;
 	BOOL bGotPoint = ::GetCursorPos(&CursorPos);
 	if (bGotPoint)
@@ -458,67 +423,36 @@ void* FWindowsApplication::GetCapture( void ) const
 
 void FWindowsApplication::SetHighPrecisionMouseMode( const bool Enable, const TSharedPtr< FGenericWindow >& InWindow )
 {
-	if (ShouldSimulateRawInput())
+	HWND hwnd = NULL;
+	DWORD flags = RIDEV_REMOVE;
+	bUsingHighPrecisionMouseInput = Enable;
+
+	if ( Enable )
 	{
-		if(Enable)
+		flags = 0;
+
+		if ( InWindow.IsValid() )
 		{
-			bUsingHighPrecisionMouseInput = true;
-			bSimulatingHighPrecisionMouseInputForRDP = true;
-
-			POINT CursorPos;
-			BOOL bGotPoint = ::GetCursorPos(&CursorPos);
-
-			::GetClipCursor(&ClipCursorRect);
-
-			//UE_LOG(LogWindowsDesktop, Log, TEXT("Entering High Precision to Top: %d Bottom: %d Left: %d Right: %d ---- Starting x: %d y: %d"), ClipCursorRect.top, ClipCursorRect.bottom, ClipCursorRect.left, ClipCursorRect.right, CursorPos.x, CursorPos.y);
-		
-			CachedPreHighPrecisionMousePosForRDP = FIntPoint(CursorPos.x, CursorPos.y);
-			
-			LastCursorPoint = FIntPoint(CursorPos.x, CursorPos.y);
-			
-			LastCursorPointPreWrap = FIntPoint::ZeroValue;
-			NumPreWrapMsgsToRespect = 0;
-		}
-		else
-		{
-			CachedPreHighPrecisionMousePosForRDP = FIntPoint(INT_MAX, INT_MAX);
-			bSimulatingHighPrecisionMouseInputForRDP = false;
+			hwnd = (HWND)InWindow->GetOSWindowHandle(); 
 		}
 	}
 
-	{
-		
-		HWND hwnd = NULL;
-		DWORD flags = RIDEV_REMOVE;
-		bUsingHighPrecisionMouseInput = Enable;
+	// NOTE: Currently has to be created every time due to conflicts with Direct8 Input used by the wx unrealed
+	RAWINPUTDEVICE RawInputDevice;
 
-		if (Enable)
-		{
-			flags = 0;
+	//The HID standard for mouse
+	const uint16 StandardMouse = 0x02;
 
-			if (InWindow.IsValid())
-			{
-				hwnd = (HWND)InWindow->GetOSWindowHandle();
-			}
-		}
+	RawInputDevice.usUsagePage = 0x01; 
+	RawInputDevice.usUsage = StandardMouse;
+	RawInputDevice.dwFlags = flags;
 
-		// NOTE: Currently has to be created every time due to conflicts with Direct8 Input used by the wx unrealed
-		RAWINPUTDEVICE RawInputDevice;
+	// Process input for just the window that requested it.  NOTE: If we pass NULL here events are routed to the window with keyboard focus
+	// which is not always known at the HWND level with Slate
+	RawInputDevice.hwndTarget = hwnd; 
 
-		//The HID standard for mouse
-		const uint16 StandardMouse = 0x02;
-
-		RawInputDevice.usUsagePage = 0x01;
-		RawInputDevice.usUsage = StandardMouse;
-		RawInputDevice.dwFlags = flags;
-
-		// Process input for just the window that requested it.  NOTE: If we pass NULL here events are routed to the window with keyboard focus
-		// which is not always known at the HWND level with Slate
-		RawInputDevice.hwndTarget = hwnd;
-
-		// Register the raw input device
-		::RegisterRawInputDevices(&RawInputDevice, 1, sizeof(RAWINPUTDEVICE));
-	}
+	// Register the raw input device
+	::RegisterRawInputDevices( &RawInputDevice, 1, sizeof( RAWINPUTDEVICE ) );
 }
 
 FPlatformRect FWindowsApplication::GetWorkArea( const FPlatformRect& CurrentWindow ) const
@@ -651,7 +585,7 @@ inline bool GetSizeForDevID(const FString& TargetDevID, int32& Width, int32& Hei
 			if (CM_Get_Device_ID(DevInfoData.DevInst, Buffer, MAX_DEVICE_ID_LEN, 0) == CR_SUCCESS)
 			{
 				FString DevID(Buffer);
-				DevID.MidInline(8, DevID.Find(TEXT("\\"), ESearchCase::CaseSensitive, ESearchDir::FromStart, 9) - 8, false);
+				DevID = DevID.Mid(8, DevID.Find(TEXT("\\"), ESearchCase::CaseSensitive, ESearchDir::FromStart, 9) - 8);
 				if (DevID == TargetDevID)
 				{
 					HKEY hDevRegKey = SetupDiOpenDevRegKey(DevInfo, &DevInfoData, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
@@ -700,29 +634,6 @@ static BOOL CALLBACK MonitorEnumProc(HMONITOR Monitor, HDC MonitorDC, LPRECT Rec
 	return TRUE;
 }
 
-static FIntPoint GetMaxResolutionForDisplay(const DISPLAY_DEVICE& DisplayDevice, int32 NativeWidth, int32 NativeHeight)
-{
-	uint32 MaxWidth = NativeWidth;
-	uint32 MaxHeight = NativeHeight;
-
-	uint32 ModeIndex = 0;
-	DEVMODE DisplayMode;
-	FMemory::Memzero(DisplayMode);
-
-	while (EnumDisplaySettings(DisplayDevice.DeviceName, ModeIndex++, &DisplayMode))
-	{
-		if (DisplayMode.dmPelsWidth > MaxWidth && DisplayMode.dmPelsHeight > MaxHeight)
-		{
-			MaxWidth = DisplayMode.dmPelsWidth;
-			MaxHeight = DisplayMode.dmPelsHeight;
-		}
-
-		FMemory::Memzero(DisplayMode);
-	}
-
-	return FIntPoint(MaxWidth, MaxHeight);
-}
-
 /**
  * Extract hardware information about connect monitors
  * @param OutMonitorInfo - Reference to an array for holding records about each detected monitor
@@ -733,6 +644,7 @@ static void GetMonitorsInfo(TArray<FMonitorInfo>& OutMonitorInfo)
 	DisplayDevice.cb = sizeof(DisplayDevice);
 	DWORD DeviceIndex = 0; // device index
 
+	FMonitorInfo* PrimaryDevice = nullptr;
 	OutMonitorInfo.Empty(2); // Reserve two slots, as that will be the most common maximum
 
 	FString DeviceID;
@@ -778,9 +690,12 @@ static void GetMonitorsInfo(TArray<FMonitorInfo>& OutMonitorInfo)
 							Info.DPI *= DPIScaleFactor;
 						}
 
-						Info.MaxResolution = GetMaxResolutionForDisplay(DisplayDevice, Info.NativeWidth, Info.NativeHeight);
-
 						OutMonitorInfo.Add(Info);
+
+						if (PrimaryDevice == nullptr && Info.bIsPrimary)
+						{
+							PrimaryDevice = &OutMonitorInfo.Last();
+						}
 					}
 				}
 				MonitorIndex++;
@@ -1075,119 +990,11 @@ int32 FWindowsApplication::ProcessMessage( HWND hwnd, uint32 msg, WPARAM wParam,
 					if (Raw->header.dwType == RIM_TYPEMOUSE) 
 					{
 						const bool IsAbsoluteInput = (Raw->data.mouse.usFlags & MOUSE_MOVE_ABSOLUTE) == MOUSE_MOVE_ABSOLUTE;
-						if (IsAbsoluteInput)
+						if( IsAbsoluteInput )
 						{
-							if (bSimulatingHighPrecisionMouseInputForRDP)
-							{	
-								const bool IsVirtualScreen = (Raw->data.mouse.usFlags & MOUSE_VIRTUAL_DESKTOP) == MOUSE_VIRTUAL_DESKTOP;
-
-								// Get the new cursor position
-								POINT CursorPoint;
-								const int32 Left = IsVirtualScreen ? GetSystemMetrics(SM_XVIRTUALSCREEN) : 0;
-								const int32 Top = IsVirtualScreen ? GetSystemMetrics(SM_YVIRTUALSCREEN) : 0;
-								const int32 Width = GetSystemMetrics(IsVirtualScreen ? SM_CXVIRTUALSCREEN : SM_CXSCREEN);
-								const int32 Height = GetSystemMetrics(IsVirtualScreen ? SM_CYVIRTUALSCREEN : SM_CYSCREEN);
-
-								CursorPoint.x = static_cast<int>((float(Raw->data.mouse.lLastX) / 65535.0f) * Width) + Left;
-								CursorPoint.y = static_cast<int>((float(Raw->data.mouse.lLastY) / 65535.0f) * Height) + Top;
-
-								const int32 ClipWidth = ClipCursorRect.right - ClipCursorRect.left;
-								const int32 ClipHeight = ClipCursorRect.bottom - ClipCursorRect.top;
-
-								const int32 DeltaWidthMax = (int32)((float)ClipWidth * 0.4f);
-								const int32 DeltaHeightMax = (int32)((float)ClipHeight * 0.4f);
-
-								const POINT CursorPointNoWrap = CursorPoint;
-
-								const bool bCanAcceptPreWrapMsg = NumPreWrapMsgsToRespect > 0;
-								NumPreWrapMsgsToRespect--;
-
-								// Calculate the cursor delta from the last position
-								// We do this prior to and wrapping for continuous input as that would mean an incorrect delta we'd just ignore
-								int32 DeltaX = CursorPoint.x - LastCursorPoint.X;
-								int32 DeltaY = CursorPoint.y - LastCursorPoint.Y;
-
-								bool bAcceptingPreWrapDelta = false;
-								if (bCanAcceptPreWrapMsg)
-								{
-									const int32 DeltaXPreWrap = CursorPoint.x - LastCursorPointPreWrap.X;
-									const int32 DeltaYPreWrap = CursorPoint.y - LastCursorPointPreWrap.Y;
-
-									const int32 DeltaLen = (DeltaX * DeltaX) + (DeltaY * DeltaY);
-									const int32 DeltaPreWrapLen = (DeltaXPreWrap * DeltaXPreWrap) + (DeltaYPreWrap * DeltaYPreWrap);
-
-									if (DeltaPreWrapLen < DeltaLen)
-									{
-										bAcceptingPreWrapDelta = true;
-
-										DeltaX = DeltaXPreWrap;
-										DeltaY = DeltaYPreWrap;
-										LastCursorPointPreWrap.X = CursorPoint.x;
-										LastCursorPointPreWrap.Y = CursorPoint.y;
-
-										//UE_LOG(LogWindowsDesktop, Log, TEXT("Accept PreWrap Delta X: %d Y: %d  ---- Last X: %d Y: %d ---- Cur X: %d Y: %d ---- Width: %d Height: %d"), DeltaX, DeltaY, LastCursorPointPreWrap.X, LastCursorPointPreWrap.Y, CursorPoint.x, CursorPoint.y, (int32)Width, (int32)Height);
-									}
-								}
-
-								if (!bAcceptingPreWrapDelta)
-								{
-									// Wrap and set cursor position in necessary
-									const int32 WrapLeeway = 50; // We add some leeway on the wrap so that if the user is doing small movements hear the border we don't wrap back and fourth constantly
-									const int32 TopEdge = ClipCursorRect.top + int32(0.1f * float(ClipHeight));
-									const int32 BottomEdge = ClipCursorRect.top + int32(0.9f * float(ClipHeight));
-									const int32 LeftEdge = ClipCursorRect.left + int32(0.1f * float(ClipWidth));
-									const int32 RightEdge = ClipCursorRect.left + int32(0.9f * float(ClipWidth));
-
-									bool bSet = false;
-									if (CursorPoint.y < TopEdge) { CursorPoint.y = BottomEdge - WrapLeeway;	bSet = true; }
-									else if (CursorPoint.y > BottomEdge) { CursorPoint.y = TopEdge + WrapLeeway; bSet = true; }
-
-									if (CursorPoint.x < LeftEdge) { CursorPoint.x = RightEdge - WrapLeeway;	bSet = true; }
-									else if (CursorPoint.x > RightEdge) { CursorPoint.x = LeftEdge + WrapLeeway; bSet = true; }
-
-									if (bSet)
-									{
-										//UE_LOG(LogWindowsDesktop, Log, TEXT("Wrapping Cursor to X: %d Y: %d ---- TopEdge: %d BottomEdge: %d LeftEdge: %d RightEdge: %d "), CursorPoint.x, CursorPoint.y, TopEdge, BottomEdge, LeftEdge, RightEdge);
-
-										MessageHandler->SetCursorPos(FVector2D(CursorPoint.x,CursorPoint.y));
-										LastCursorPoint.X = CursorPoint.x;
-										LastCursorPoint.Y = CursorPoint.y;
-
-										NumPreWrapMsgsToRespect = 10;
-										LastCursorPointPreWrap.X = CursorPointNoWrap.x;
-										LastCursorPointPreWrap.Y = CursorPointNoWrap.y;
-									}
-									
-									/*
-									if (DeltaX != 0 || DeltaY != 0)
-									{
-										if (FMath::Abs(DeltaX) < DeltaWidthMax && FMath::Abs(DeltaY) < DeltaHeightMax)
-										{
-											UE_LOG(LogWindowsDesktop, Log, TEXT("Accept Delta X: %d Y: %d  ---- Last X: %d Y: %d ---- Cur X: %d Y: %d ---- Width: %d Height: %d"), DeltaX, DeltaY, LastCursorPoint.X, LastCursorPoint.Y, CursorPoint.x, CursorPoint.y, (int32)Width, (int32)Height);
-										}
-										else
-										{
-											UE_LOG(LogWindowsDesktop, Log, TEXT("IGNORE Delta X: %d Y: %d  ---- Last X: %d Y: %d ---- Cur X: %d Y: %d ---- Width: %d Height: %d"), DeltaX, DeltaY, LastCursorPoint.X, LastCursorPoint.Y, CursorPoint.x, CursorPoint.y, (int32)Width, (int32)Height);
-										}
-									}*/
-
-									LastCursorPoint.X = CursorPoint.x;
-									LastCursorPoint.Y = CursorPoint.y;
-								}
-
-								// Send a delta assuming it's not zero or beyond our max delta 
-								if ((DeltaX != 0 || DeltaY != 0) && FMath::Abs(DeltaX) < DeltaWidthMax && FMath::Abs(DeltaY) < DeltaHeightMax)
-								{
-									DeferMessage(CurrentNativeEventWindowPtr, hwnd, msg, wParam, lParam, DeltaX, DeltaY, MOUSE_MOVE_RELATIVE);
-								}
-								return 1;
-							}
-							else
-							{
-								// Since the raw input is coming in as absolute it is likely the user is using a tablet
-								// or perhaps is interacting through a virtual desktop
-								DeferMessage(CurrentNativeEventWindowPtr, hwnd, msg, wParam, lParam, 0, 0, MOUSE_MOVE_ABSOLUTE);
-							}
+							// Since the raw input is coming in as absolute it is likely the user is using a tablet
+							// or perhaps is interacting through a virtual desktop
+							DeferMessage( CurrentNativeEventWindowPtr, hwnd, msg, wParam, lParam, 0, 0, MOUSE_MOVE_ABSOLUTE );
 							return 1;
 						}
 
@@ -1296,16 +1103,9 @@ int32 FWindowsApplication::ProcessMessage( HWND hwnd, uint32 msg, WPARAM wParam,
 						}
 
 						int64 WaitTime = TimeToVSync - (Period * FrameAdjustMultiplier);
-						if (WaitTime == Period)
-						{
-							// this can happen when TimeToVSync is negative and a multiple of Period. 
-							// It means that the Vsync is about to happen in the next 1 ms.
-							// In this case, we wait 0 instead of waiting for the next Vsync after that one
-							WaitTime = 0;
-						}
 
 						check(WaitTime >= 0);
-						check(WaitTime < Period); 
+						check(WaitTime < Period);
 
 						// Wait for the indicated time using a waitable timer as it 
 						// is more accurate than a simple sleep.
@@ -1667,18 +1467,6 @@ int32 FWindowsApplication::ProcessMessage( HWND hwnd, uint32 msg, WPARAM wParam,
 			}
 			break;
 
-#if WITH_EDITOR // WM_ENDSESSION was added for Editor analytics purpose to detect when the Editor dies unexpectedly because it gets killed by a logoff/shutdown.
-		case WM_ENDSESSION:
-			{
-				// wParam is true if the user session is going away. Note that WM_SESSION is a follow up for WM_QUERYENDSESSION, so wParam can be false if the user (from UI)
-				// or another application (from WM_QUERYENDSESSION) canceled the shutdown.
-				if (wParam == TRUE) // Shutdown/Reboot/Logoff
-				{
-					FCoreDelegates::OnUserLoginChangedEvent.Broadcast(false, 0, 0);
-				}
-				return DefWindowProc(hwnd, msg, wParam, lParam);
-			}
-#endif
 		case WM_SYSCOMMAND:
 			{
 				switch( wParam & 0xfff0 )
@@ -1709,8 +1497,8 @@ int32 FWindowsApplication::ProcessMessage( HWND hwnd, uint32 msg, WPARAM wParam,
 					break;
 				case SC_CLOSE:
 					{
-						// Do not allow Alt-f4 during slow tasks, or slate's loading thread.  This causes entry into the shutdown sequence at abnormal times which causes crashes.
-						if (!GIsSlowTask && GSlateLoadingThreadId == 0)
+						// do not allow Alt-f4 during slow tasks.  This causes entry into the shutdown sequence at abonrmal times which causes crashes.
+						if (!GIsSlowTask)
 						{
 							DeferMessage(CurrentNativeEventWindowPtr, hwnd, WM_CLOSE, 0, 0);
 						}
@@ -1906,10 +1694,6 @@ int32 FWindowsApplication::ProcessDeferredMessage( const FDeferredWindowsMessage
 				if(TextInputMethodSystem.IsValid())
 				{
 					TextInputMethodSystem->ProcessMessage(hwnd, msg, wParam, lParam);
-				}
-				if (msg == WM_INPUTLANGCHANGE)
-				{
-					MessageHandler->OnInputLanguageChanged();
 				}
 				return 0;
 			}
@@ -2190,7 +1974,7 @@ int32 FWindowsApplication::ProcessDeferredMessage( const FDeferredWindowsMessage
 			{
 				if( DeferredMessage.RawInputFlags == MOUSE_MOVE_RELATIVE )
 				{
-					MessageHandler->OnRawMouseMove(DeferredMessage.X, DeferredMessage.Y);
+					MessageHandler->OnRawMouseMove( DeferredMessage.X, DeferredMessage.Y );
 				}
 				else
 				{
@@ -2207,7 +1991,7 @@ int32 FWindowsApplication::ProcessDeferredMessage( const FDeferredWindowsMessage
 		case WM_MOUSEMOVE:
 			{
 				BOOL Result = false;
-				if (!bUsingHighPrecisionMouseInput)
+				if( !bUsingHighPrecisionMouseInput )
 				{
 					Result = MessageHandler->OnMouseMove();
 				}
@@ -2235,20 +2019,8 @@ int32 FWindowsApplication::ProcessDeferredMessage( const FDeferredWindowsMessage
 			// Mouse Cursor
 		case WM_SETCURSOR:
 			{
-				// WM_SETCURSOR - Sent to a window if the mouse causes the cursor to move within a window and mouse input is not captured.						
-
-				// When we use the OSWindowBorder the only zone that "belongs" to Slate for cursor purposes is the Client Zone
-				if (CurrentNativeEventWindowPtr->GetDefinition().HasOSWindowBorder)
-				{
-					const UINT MouseWindowMessage = HIWORD(lParam);
-					const UINT CursorHitTestResult = LOWORD(lParam);
-
-					if (MouseWindowMessage == WM_MOUSEMOVE && CursorHitTestResult != HTCLIENT)
-					{
-						return 0;
-					}
-				}
-				return  MessageHandler->OnCursorSet() ? 1 : 0;
+				// WM_SETCURSOR - Sent to a window if the mouse causes the cursor to move within a window and mouse input is not captured.
+				return MessageHandler->OnCursorSet() ? 0 : 1;
 			}
 			break;
 
@@ -2413,7 +2185,7 @@ int32 FWindowsApplication::ProcessDeferredMessage( const FDeferredWindowsMessage
 						break;
 					case SW_PARENTOPENING:
 						CurrentNativeEventWindowPtr->OnParentWindowRestored();
-						bMinimized = false;
+						bMinimized = true;
 						break;
 					default:
 						break;
@@ -2691,7 +2463,7 @@ void FWindowsApplication::PollGameDeviceState( const float TimeDelta )
 	}
 
 	// initialize any externally-implemented input devices (we delay load initialize the array so any plugins have had time to load)
-	if (!bHasLoadedInputPlugins && GIsRunning )
+	if (!bHasLoadedInputPlugins)
 	{
 		TArray<IInputDeviceModule*> PluginImplementations = IModularFeatures::Get().GetModularFeatureImplementations<IInputDeviceModule>( IInputDeviceModule::GetModularFeatureName() );
 		for( auto InputPluginIt = PluginImplementations.CreateIterator(); InputPluginIt; ++InputPluginIt )
@@ -2779,11 +2551,6 @@ void FWindowsApplication::AddExternalInputDevice(TSharedPtr<IInputDevice> InputD
 	{
 		ExternalInputDevices.Add(InputDevice);
 	}
-}
-
-void FWindowsApplication::FinishedInputThisFrame()
-{
-
 }
 
 TSharedPtr<FTaskbarList> FWindowsApplication::GetTaskbarList()
@@ -3048,4 +2815,3 @@ TSharedRef<FTaskbarList> FTaskbarList::Create()
 #pragma pop_macro("IsMaximized")
 
 #include "Windows/HideWindowsPlatformTypes.h"
-

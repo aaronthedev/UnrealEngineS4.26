@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -6,7 +6,6 @@ using System.Data.SqlClient;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -23,24 +22,15 @@ namespace UnrealGameSync
 		[STAThread]
 		static void Main(string[] Args)
 		{
+			Application.EnableVisualStyles();
+			Application.SetCompatibleTextRenderingDefault(false);
+
 			bool bFirstInstance;
-			using (Mutex InstanceMutex = new Mutex(true, "UnrealGameSyncRunning", out bFirstInstance))
+			using(Mutex InstanceMutex = new Mutex(true, "UnrealGameSyncRunning", out bFirstInstance))
 			{
-				if (bFirstInstance)
+				using(EventWaitHandle ActivateEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "ActivateUnrealGameSync"))
 				{
-					Application.EnableVisualStyles();
-					Application.SetCompatibleTextRenderingDefault(false);
-				}
-
-				using (EventWaitHandle ActivateEvent = new EventWaitHandle(false, EventResetMode.AutoReset, "ActivateUnrealGameSync"))
-				{
-					// handle any url passed in, possibly exiting
-					if (UriHandler.ProcessCommandLine(Args, bFirstInstance, ActivateEvent))
-					{
-						return;
-					}
-
-					if (bFirstInstance)
+					if(bFirstInstance)
 					{
 						InnerMain(InstanceMutex, ActivateEvent, Args);
 					}
@@ -56,16 +46,13 @@ namespace UnrealGameSync
 		{
 			string ServerAndPort = null;
 			string UserName = null;
-			string BaseUpdatePath = null;
-			Utility.ReadGlobalPerforceSettings(ref ServerAndPort, ref UserName, ref BaseUpdatePath);
+			string UpdatePath = null;
+			Utility.ReadGlobalPerforceSettings(ref ServerAndPort, ref UserName, ref UpdatePath);
 
 			List<string> RemainingArgs = new List<string>(Args);
 
 			string UpdateSpawn;
 			ParseArgument(RemainingArgs, "-updatespawn=", out UpdateSpawn);
-
-			string UpdatePath;
-			ParseArgument(RemainingArgs, "-updatepath=", out UpdatePath);
 
 			bool bRestoreState;
 			ParseOption(RemainingArgs, "-restorestate", out bRestoreState);
@@ -75,9 +62,6 @@ namespace UnrealGameSync
 
             string ProjectFileName;
             ParseArgument(RemainingArgs, "-project=", out ProjectFileName);
-
-			string Uri;
-			ParseArgument(RemainingArgs, "-uri=", out Uri);
 
 			string UpdateConfigFile = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "AutoUpdate.ini");
 			MergeUpdateSettings(UpdateConfigFile, ref UpdatePath, ref UpdateSpawn);
@@ -98,53 +82,36 @@ namespace UnrealGameSync
 			string DataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "UnrealGameSync");
 			Directory.CreateDirectory(DataFolder);
 
-			// Enable TLS 1.1 and 1.2. TLS 1.0 is now deprecated and not allowed by default in NET Core servers.
-			ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12;
-
-			// Create the log file
-			using (TimestampLogWriter Log = new TimestampLogWriter(new BoundedLogWriter(Path.Combine(DataFolder, "UnrealGameSync.log"))))
+			using(TelemetryWriter Telemetry = new TelemetryWriter(DeploymentSettings.ApiUrl, Path.Combine(DataFolder, "Telemetry.log")))
 			{
-				Log.WriteLine("Application version: {0}", Assembly.GetExecutingAssembly().GetName().Version);
-				Log.WriteLine("Started at {0}", DateTime.Now.ToString());
+				AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
 
-				string SessionId = Guid.NewGuid().ToString();
-				Log.WriteLine("SessionId: {0}", SessionId);
-
-				if (ServerAndPort == null || UserName == null)
+				// Create the log file
+				using (TimestampLogWriter Log = new TimestampLogWriter(new BoundedLogWriter(Path.Combine(DataFolder, "UnrealGameSync.log"))))
 				{
-					Log.WriteLine("Missing server settings; finding defaults.");
-					GetDefaultServerSettings(ref ServerAndPort, ref UserName, Log);
-					Utility.SaveGlobalPerforceSettings(ServerAndPort, UserName, BaseUpdatePath);
-				}
+					Log.WriteLine("Application version: {0}", Assembly.GetExecutingAssembly().GetName().Version);
+					Log.WriteLine("Started at {0}", DateTime.Now.ToString());
 
-				using (BoundedLogWriter TelemetryLog = new BoundedLogWriter(Path.Combine(DataFolder, "Telemetry.log")))
-				{
-					TelemetryLog.WriteLine("Creating telemetry sink for session {0}", SessionId);
-
-					ITelemetrySink PrevTelemetrySink = Telemetry.ActiveSink;
-					using (ITelemetrySink TelemetrySink = DeploymentSettings.CreateTelemetrySink(UserName, SessionId, TelemetryLog))
+					if (ServerAndPort == null || UserName == null)
 					{
-						Telemetry.ActiveSink = TelemetrySink;
+						Log.WriteLine("Missing server settings; finding defaults.");
+						GetDefaultServerSettings(ref ServerAndPort, ref UserName, Log);
+						Utility.SaveGlobalPerforceSettings(ServerAndPort, UserName, UpdatePath);
+					}
 
-						Telemetry.SendEvent("Startup", new { User = Environment.UserName, Machine = Environment.MachineName });
+					PerforceConnection DefaultConnection = new PerforceConnection(UserName, null, ServerAndPort);
+					using (UpdateMonitor UpdateMonitor = new UpdateMonitor(DefaultConnection, UpdatePath))
+					{
+						ProgramApplicationContext Context = new ProgramApplicationContext(DefaultConnection, UpdateMonitor, DeploymentSettings.ApiUrl, DataFolder, ActivateEvent, bRestoreState, UpdateSpawn, ProjectFileName, bUnstable, Log);
+						Application.Run(Context);
 
-						AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
-
-						PerforceConnection DefaultConnection = new PerforceConnection(UserName, null, ServerAndPort);
-						using (UpdateMonitor UpdateMonitor = new UpdateMonitor(DefaultConnection, UpdatePath))
+						if(UpdateMonitor.IsUpdateAvailable && UpdateSpawn != null)
 						{
-							ProgramApplicationContext Context = new ProgramApplicationContext(DefaultConnection, UpdateMonitor, DeploymentSettings.ApiUrl, DataFolder, ActivateEvent, bRestoreState, UpdateSpawn, ProjectFileName, bUnstable, Log, Uri);
-							Application.Run(Context);
-
-							if (UpdateMonitor.IsUpdateAvailable && UpdateSpawn != null)
-							{
-								InstanceMutex.Close();
-								bool bLaunchUnstable = UpdateMonitor.RelaunchUnstable ?? bUnstable;
-								Utility.SpawnProcess(UpdateSpawn, "-restorestate" + (bLaunchUnstable ? " -unstable" : ""));
-							}
+							InstanceMutex.Close();
+							bool bLaunchUnstable = UpdateMonitor.RelaunchUnstable ?? bUnstable;
+							Utility.SpawnProcess(UpdateSpawn, "-restorestate" + (bLaunchUnstable? " -unstable" : ""));
 						}
 					}
-					Telemetry.ActiveSink = PrevTelemetrySink;
 				}
 			}
 		}
@@ -195,7 +162,7 @@ namespace UnrealGameSync
 					ExceptionTrace.Append("\nInner Exception:\n");
 					ExceptionTrace.Append(InnerEx.ToString());
 				}
-				Telemetry.SendEvent("Crash", new { Exception = Ex });
+				TelemetryWriter.Enqueue(TelemetryErrorType.Crash, ExceptionTrace.ToString(), null, DateTime.Now);
 			}
 		}
 

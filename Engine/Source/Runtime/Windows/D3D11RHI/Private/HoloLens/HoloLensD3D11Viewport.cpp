@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "D3D11RHIPrivate.h"
 #include "RenderCore.h"
@@ -14,7 +14,12 @@ using namespace Windows::Foundation;
 using namespace Windows::ApplicationModel::Core;
 using namespace Windows::UI::Core;
 
-uint32 FD3D11Viewport::GSwapChainFlags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+static uint32 GSwapChainFlags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+
+uint32 D3D11GetSwapChainFlags()
+{
+	return GSwapChainFlags;
+}
 
 DXGI_FORMAT GetSupportedSwapChainBufferFormat(DXGI_FORMAT InPreferredDXGIFormat)
 {
@@ -49,11 +54,9 @@ FD3D11Viewport::FD3D11Viewport(FD3D11DynamicRHI* InD3DRHI,HWND InWindowHandle,ui
 	WindowHandle(InWindowHandle),
 	SizeX(InSizeX),
 	SizeY(InSizeY),
-	PresentFailCount(0),
-	ValidState(0),
-	PixelFormat(InPreferredPixelFormat),
 	bIsFullscreen(bInIsFullscreen),
-	bAllowTearing(false),
+	PixelFormat(InPreferredPixelFormat),
+	bIsValid(true),
 	FrameSyncEvent(InD3DRHI)
 {
 	D3DRHI->Viewports.Add(this);
@@ -199,13 +202,12 @@ void FD3D11Viewport::CheckHDRMonitorStatus()
 
 void FD3D11Viewport::ConditionalResetSwapChain(bool bIgnoreFocus)
 {
-	uint32 Valid = ValidState;
-	if (0 != (Valid & VIEWPORT_INVALID))
+	if (!bIsValid)
 	{
-		if (0 != (Valid & VIEWPORT_FULLSCREEN_LOST))
+		if (bFullscreenLost)
 		{
 			FlushRenderingCommands();
-			ValidState &= ~(VIEWPORT_FULLSCREEN_LOST);
+			bFullscreenLost = false;
 			Resize(SizeX, SizeY, false, PixelFormat);
 		}
 		else
@@ -217,7 +219,7 @@ void FD3D11Viewport::ConditionalResetSwapChain(bool bIgnoreFocus)
 
 void FD3D11Viewport::ResetSwapChainInternal(bool bIgnoreFocus)
 {
-	if (0 != (ValidState & VIEWPORT_INVALID))
+	if(!bIsValid)
 	{
 		const bool bIsFocused = true;
 		const bool bIsIconic = false;
@@ -228,7 +230,7 @@ void FD3D11Viewport::ResetSwapChainInternal(bool bIgnoreFocus)
 			HRESULT Result = SwapChain->SetFullscreenState(bIsFullscreen,NULL);
 			if(SUCCEEDED(Result))
 			{
-				ValidState &= ~(VIEWPORT_INVALID);
+				bIsValid = true;
 			}
 			else
 			{

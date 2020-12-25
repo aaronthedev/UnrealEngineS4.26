@@ -1,31 +1,30 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "HAL/ThreadSafeBool.h"
 #include "UObject/ObjectMacros.h"
 #include "UObject/Object.h"
 #include "NiagaraCommon.h"
-#include "NiagaraScriptBase.h"
 #include "NiagaraShared.h"
 #include "NiagaraShader.h"
 #include "NiagaraParameters.h"
 #include "NiagaraDataSet.h"
+#include "NiagaraShared.h"
 #include "NiagaraScriptExecutionParameterStore.h"
-#include "NiagaraScriptHighlight.h"
+#include "NiagaraCustomVersion.h"
 
 #include "NiagaraScript.generated.h"
 
 class UNiagaraDataInterface;
 class FNiagaraCompileRequestDataBase;
-class UNiagaraConvertInPlaceUtilityBase;
+
+void SerializeNiagaraShaderMaps(const TMap<const ITargetPlatform*, TArray<FNiagaraShaderScript*>>* PlatformScriptResourcesToSave, FArchive& Ar, TArray<FNiagaraShaderScript>& OutLoadedResources);
+void ProcessSerializedShaderMaps(UNiagaraScript* Owner, TArray<FNiagaraShaderScript>& LoadedResources, FNiagaraShaderScript& OutResourceForCurrentPlatform, FNiagaraShaderScript* (&OutScriptResourcesLoaded)[ERHIFeatureLevel::Num]);
 
 #define NIAGARA_INVALID_MEMORY (0xBA)
 
 #define NIAGARA_SCRIPT_COMPILE_LOGGING_MEDIUM
-
-DECLARE_STATS_GROUP(TEXT("Niagara Detailed"), STATGROUP_NiagaraDetailed, STATCAT_Advanced);
 
 /** Defines what will happen to unused attributes when a script is run. */
 UENUM()
@@ -61,21 +60,6 @@ enum class ENiagaraModuleDependencyScriptConstraint : uint8
 	AllScripts
 };
 
-UENUM()
-enum class ENiagaraScriptLibraryVisibility : uint8
-{
-	Invalid = 0 UMETA(Hidden),
-	
-	/** The script is not visible by default to the user, but can be made visible by disabling the "Library only" filter option. */
-	Unexposed UMETA(DisplayName = "Unexposed"),
-
-	/** The script is exposed to the asset library and always visible to the user. */
-	Library UMETA(DisplayName = "Exposed"),
-
-	/** The script is never visible to the user. This is useful to "soft deprecate" assets that should not be shown to a user, but should also not generate errors for existing usages. */
-	Hidden UMETA(DisplayName = "Hidden")
-};
-
 USTRUCT()
 struct FNiagaraModuleDependency
 {
@@ -89,7 +73,7 @@ public:
 	UPROPERTY(AssetRegistrySearchable, EditAnywhere, Category = Script)
 	ENiagaraModuleDependencyType Type; // e.g. PreDependency
 
-	/** Specifies constraints related to the source script a modules provides as dependency. */
+	/** Specifies constraints related to the source script a modules provising a depency. */
 	UPROPERTY(AssetRegistrySearchable, EditAnywhere, Category = Script)
 	ENiagaraModuleDependencyScriptConstraint ScriptConstraint;
 	
@@ -126,6 +110,7 @@ struct FNiagaraScriptDebuggerInfo
 	TAtomic<bool> bWritten;
 };
 
+
 /** Struct containing all of the data necessary to look up a NiagaraScript's VM executable results from the Derived Data Cache.*/
 USTRUCT()
 struct NIAGARA_API FNiagaraVMExecutableDataId
@@ -144,52 +129,45 @@ public:
 	UPROPERTY()
 	FGuid ScriptUsageTypeID;
 
-#if WITH_EDITORONLY_DATA
 	/** Configuration options*/
 	UPROPERTY()
 	TArray<FString> AdditionalDefines;
-#endif
+
+	/** Bitfield of supported detail levels in this compile.*/
+	UPROPERTY()
+	uint32 DetailLevelMask;
 
 	/** Whether or not we need to bake Rapid Iteration params. True to keep params, false to bake.*/
 	UPROPERTY()
-	uint32 bUsesRapidIterationParams : 1;
-
-	/** Do we require interpolated spawning */
-	UPROPERTY()
-	uint32 bInterpolatedSpawn : 1;
-
-	/** Do we require persistent IDs */
-	UPROPERTY()
-	uint32 bRequiresPersistentIDs : 1;
+	bool bUsesRapidIterationParams;
 
 	/**
 	* The GUID of the subgraph this shader primarily represents.
 	*/
 	UPROPERTY()
-	FGuid BaseScriptID_DEPRECATED;
+	FGuid BaseScriptID;
 
+#if WITH_EDITORONLY_DATA
 	/**
 	* The hash of the subgraph this shader primarily represents.
 	*/
 	UPROPERTY()
 	FNiagaraCompileHash BaseScriptCompileHash;
 
-#if WITH_EDITORONLY_DATA
 	/** Compile hashes of any top level scripts the script was dependent on that might trigger a recompile if they change. */
 	UPROPERTY()
 	TArray<FNiagaraCompileHash> ReferencedCompileHashes;
 
 	/** Temp storage while generating the Id. This is NOT serialized and shouldn't be used in any comparisons*/
-	TArray<FString> DebugReferencedObjects;
+	TArray<UObject*> ReferencedObjects;
 #endif
 
 	FNiagaraVMExecutableDataId()
 		: CompilerVersionID()
 		, ScriptUsageType(ENiagaraScriptUsage::Function)
+		, DetailLevelMask(0xFFFFFFFF)
 		, bUsesRapidIterationParams(true)
-		, bInterpolatedSpawn(false)
-		, bRequiresPersistentIDs(false)
-		, BaseScriptID_DEPRECATED(0, 0, 0, 0)
+		, BaseScriptID(0, 0, 0, 0)
 	{ }
 
 
@@ -201,7 +179,7 @@ public:
 	
 	friend uint32 GetTypeHash(const FNiagaraVMExecutableDataId& Ref)
 	{
-		return Ref.BaseScriptCompileHash.GetTypeHash();
+		return Ref.BaseScriptID.A;
 	}
 
 	SIZE_T GetSizeBytes() const
@@ -216,6 +194,7 @@ public:
 	void GetScriptHash(FSHAHash& OutHash) const;
 #endif
 
+#if WITH_EDITORONLY_DATA
 	/**
 	* Tests this set against another for equality, disregarding override settings.
 	*
@@ -229,10 +208,8 @@ public:
 		return !(*this == ReferenceSet);
 	}
 
-#if WITH_EDITORONLY_DATA
 	/** Appends string representations of this Id to a key string. */
-	void AppendKeyString(FString& KeyString, const FString& Delimiter = TEXT("_"), bool bAppendObjectForDebugging = false) const;
-
+	void AppendKeyString(FString& KeyString) const;
 #endif
 };
 
@@ -248,10 +225,6 @@ public:
 	UPROPERTY()
 	TArray<uint8> ByteCode;
 
-	/** Runtime optimized byte code, specific to the system we are running on, currently can not be serialized */
-	UPROPERTY(transient)
-	TArray<uint8> OptimizedByteCode;
-
 	/** Number of temp registers used by this script. */
 	UPROPERTY()
 	int32 NumTempRegisters;
@@ -260,18 +233,15 @@ public:
 	UPROPERTY()
 	int32 NumUserPtrs;
 
-#if WITH_EDITORONLY_DATA
 	/** All the data for using external constants in the script, laid out in the order they are expected in the uniform table.*/
 	UPROPERTY()
 	FNiagaraParameters Parameters;
 
-	/** All the data for using external constants in the script, laid out in the order they are expected in the uniform table.*/
 	UPROPERTY()
 	FNiagaraParameters InternalParameters;
-#endif
 
 	UPROPERTY()
-	TArray<uint8> ScriptLiterals;
+	TMap<FName, FNiagaraParameters> DataSetToParameters;
 
 	/** Attributes used by this script. */
 	UPROPERTY()
@@ -281,13 +251,8 @@ public:
 	UPROPERTY()
 	FNiagaraScriptDataUsageInfo DataUsage;
 
-#if WITH_EDITORONLY_DATA
-	UPROPERTY()
-	TMap<FName, FNiagaraParameters> DataSetToParameters;
-
 	UPROPERTY()
 	TArray<FNiagaraFunctionSignature> AdditionalExternalFunctions;
-#endif
 
 	/** Information about all data interfaces used by this script. */
 	UPROPERTY()
@@ -296,8 +261,6 @@ public:
 	/** Array of ordered vm external functions to place in the function table. */
 	UPROPERTY()
 	TArray<FVMExternalFunctionBindingInfo> CalledVMExternalFunctions;
-
-	TArray<FVMExternalFunction> CalledVMExternalFunctionBindings;
 
 	UPROPERTY()
 	TArray<FNiagaraDataSetID> ReadDataSets;
@@ -336,9 +299,6 @@ public:
 	UPROPERTY()
 	ENiagaraScriptCompileStatus LastCompileStatus;
 
-	UPROPERTY()
-	TArray<FSimulationStageMetaData> SimulationStageMetaData;
-
 #if WITH_EDITORONLY_DATA
 	UPROPERTY()
 	bool bReadsAttributeData;
@@ -354,23 +314,16 @@ public:
 	TArray<FNiagaraCompileEvent> LastCompileEvents;
 #endif
 
-	UPROPERTY()
-	uint32 bReadsSignificanceIndex : 1;
-
 	void SerializeData(FArchive& Ar, bool bDDCData);
 	
 	bool IsValid() const;
 
 	void Reset();
-
-#if WITH_EDITORONLY_DATA
-	void BakeScriptLiterals(TArray<uint8>& OutLiterals) const;
-#endif
 };
 
 /** Runtime script for a Niagara system */
 UCLASS(MinimalAPI)
-class UNiagaraScript : public UNiagaraScriptBase
+class UNiagaraScript : public UObject
 {
 	GENERATED_UCLASS_BODY()
 public:
@@ -384,7 +337,6 @@ public:
 
 #if WITH_EDITOR
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnScriptCompiled, UNiagaraScript*);
-	DECLARE_MULTICAST_DELEGATE_OneParam(FOnPropertyChanged, FPropertyChangedEvent& /* PropertyChangedEvent */)
 #endif
 
 private:
@@ -414,33 +366,13 @@ public:
 	UPROPERTY(AssetRegistrySearchable, EditAnywhere, Category = Script)
 	uint32 bDeprecated : 1;
 
-	/* Message to display when the script is deprecated. */
-	UPROPERTY(EditAnywhere, Category = Script, meta = (EditCondition = "bDeprecated", MultiLine = true))
-	FText DeprecationMessage;
-
 	/* Which script to use if this is deprecated.*/
 	UPROPERTY(EditAnywhere, Category = Script, meta = (EditCondition = "bDeprecated"))
 	UNiagaraScript* DeprecationRecommendation;
 
-	/* Custom logic to convert the contents of an existing script assignment to this script.*/
-	UPROPERTY(EditAnywhere, Category = Script)
-	TSubclassOf<UNiagaraConvertInPlaceUtilityBase> ConversionUtility;
-
-	/** Is this script experimental and less supported? */
-	UPROPERTY(EditAnywhere, Category = Script)
-	uint32 bExperimental : 1;
-
-	/** The message to display when a function is marked experimental. */
-	UPROPERTY(EditAnywhere, Category = Script, meta = (EditCondition = "bExperimental", MultiLine = true))
-	FText ExperimentalMessage;
-
-	/* Deprecated, use LibraryVisibility instead. */
-	UPROPERTY(AssetRegistrySearchable, meta = (DeprecatedProperty))
-	uint32 bExposeToLibrary_DEPRECATED : 1;
-	
-	/* Defines if this script is visible to the user when searching for modules to add to an emitter.  */
+	/* If this script is exposed to the library. */
 	UPROPERTY(AssetRegistrySearchable, EditAnywhere, Category = Script)
-	ENiagaraScriptLibraryVisibility LibraryVisibility;
+	uint32 bExposeToLibrary : 1;
 #endif
 
 	/** Contains all of the top-level values that are iterated on in the UI. These are usually "Module" variables in the graph. They don't necessarily have to be in the order that they are expected in the uniform table.*/
@@ -459,31 +391,12 @@ public:
 	UPROPERTY(AssetRegistrySearchable, EditAnywhere, Category = Script)
 	FText Keywords;
 
-	/** The format for the text to display in the stack if the value is collapsed.
-	 *  This supports formatting placeholders for the function inputs, for example "myfunc({0}, {1})" will be converted to "myfunc(1.23, Particles.Position)". */
-	UPROPERTY(EditAnywhere, Category = Script, meta = (EditCondition = "Usage == ENiagaraScriptUsage::DynamicInput"))
-	FText CollapsedViewFormat;
-
-	UPROPERTY(EditAnywhere, Category = Script)
-	TArray<FNiagaraScriptHighlight> Highlights;
-
 	UPROPERTY(EditAnywhere, Category = Script, DisplayName = "Script Metadata", meta = (ToolTip = "Script Metadata"))
 	TMap<FName, FString> ScriptMetaData;
-
-	NIAGARA_API static const FName NiagaraCustomVersionTagName;
 #endif
 
 	NIAGARA_API void ComputeVMCompilationId(FNiagaraVMExecutableDataId& Id) const;
-	NIAGARA_API const FNiagaraVMExecutableDataId& GetComputedVMCompilationId() const
-	{
-#if WITH_EDITORONLY_DATA
-		if (!IsCooked)
-		{
-			return LastGeneratedVMId;
-		}
-#endif
-		return CachedScriptVMId;
-	}
+	NIAGARA_API const FNiagaraVMExecutableDataId& GetComputedVMCompilationId() const { return LastGeneratedVMId; }
 
 	void SetUsage(ENiagaraScriptUsage InUsage) { Usage = InUsage; }
 	ENiagaraScriptUsage GetUsage() const { return Usage; }
@@ -545,16 +458,13 @@ public:
 	static bool NIAGARA_API ConvertUsageToGroup(ENiagaraScriptUsage InUsage, ENiagaraScriptGroup& OutGroup);
 
 #if WITH_EDITORONLY_DATA
-	NIAGARA_API TArray<ENiagaraParameterScope> GetUnsupportedParameterScopes() const;
 	NIAGARA_API TArray<ENiagaraScriptUsage> GetSupportedUsageContexts() const;
-	static NIAGARA_API TArray<ENiagaraScriptUsage> GetSupportedUsageContextsForBitmask(int32 InModuleUsageBitmask, bool bIncludeHiddenUsages = false);
-	static NIAGARA_API bool IsSupportedUsageContextForBitmask(int32 InModuleUsageBitmask, ENiagaraScriptUsage InUsageContext, bool bIncludeHiddenUsages = false);
-	static NIAGARA_API bool ContainsEquivilentUsage(const TArray<ENiagaraScriptUsage>& Usages, ENiagaraScriptUsage InUsage);
+	static NIAGARA_API TArray<ENiagaraScriptUsage> GetSupportedUsageContextsForBitmask(int32 InModuleUsageBitmask);
 #endif
 
 	NIAGARA_API bool CanBeRunOnGpu() const;
 	NIAGARA_API bool IsReadyToRun(ENiagaraSimTarget SimTarget) const;
-	NIAGARA_API bool ShouldCacheShadersForCooking(const ITargetPlatform* TargetPlatform) const;
+	NIAGARA_API bool ShouldCacheShadersForCooking() const;
 
 #if WITH_EDITORONLY_DATA
 	class UNiagaraScriptSourceBase *GetSource() { return Source; }
@@ -563,7 +473,7 @@ public:
 
 	NIAGARA_API FGuid GetBaseChangeID() const;
 	NIAGARA_API ENiagaraScriptCompileStatus GetLastCompileStatus() const;
-	void ForceGraphToRecompileOnNextCheck();
+	void InvalidateCachedCompileIds();
 
 	NIAGARA_API bool HandleVariableRenames(const TMap<FNiagaraVariable, FNiagaraVariable>& OldToNewVars, const FString& UniqueEmitterName);
 #endif
@@ -572,57 +482,56 @@ public:
 	void PreSave(const class ITargetPlatform* TargetPlatform) override;
 	void Serialize(FArchive& Ar)override;
 	virtual void PostLoad() override;
+	virtual bool IsDestructionThreadSafe() const override { return false; }
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 	virtual void GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const override;
-
-	virtual bool IsEditorOnly() const override;
-
-	virtual NIAGARA_API void BeginDestroy() override;
-	virtual NIAGARA_API bool IsReadyForFinishDestroy() override;
 	//~ End UObject interface
-
-	//~ Begin UNiagaraScriptBase interface
-	virtual TConstArrayView<FSimulationStageMetaData> GetSimulationStageMetaData() const override { return MakeArrayView(CachedScriptVM.SimulationStageMetaData); }
-	//~ End UNiagaraScriptBase interface
 
 	// Infrastructure for GPU compute Shaders
 #if WITH_EDITOR
-	NIAGARA_API void CacheResourceShadersForCooking(EShaderPlatform ShaderPlatform, TArray<FNiagaraShaderScript*>& InOutCachedResources, const ITargetPlatform* TargetPlatform = nullptr);
+	NIAGARA_API void CacheResourceShadersForCooking(EShaderPlatform ShaderPlatform, TArray<FNiagaraShaderScript*>& InOutCachedResources);
 
 	NIAGARA_API void CacheResourceShadersForRendering(bool bRegenerateId, bool bForceRecompile=false);
 	void BeginCacheForCookedPlatformData(const ITargetPlatform *TargetPlatform);
 	virtual bool IsCachedCookedPlatformDataLoaded(const ITargetPlatform* TargetPlatform) override;
-	void CacheShadersForResources(FNiagaraShaderScript* ResourceToCache, bool bApplyCompletedShaderMapForRendering, bool bForceRecompile = false, bool bCooking=false, const ITargetPlatform* TargetPlatform = nullptr);
+	void CacheShadersForResources(EShaderPlatform ShaderPlatform, FNiagaraShaderScript *ResourceToCache, bool bApplyCompletedShaderMapForRendering, bool bForceRecompile = false, bool bCooking=false);
 #endif // WITH_EDITOR
 	FNiagaraShaderScript* AllocateResource();
-	FNiagaraShaderScript* GetRenderThreadScript()
+	FNiagaraShaderScript *GetRenderThreadScript()
 	{
-		return ScriptResource.Get();
+		return &ScriptResource;
 	}
 
-	const FNiagaraShaderScript* GetRenderThreadScript() const
+	FComputeShaderRHIRef GetScriptShader() 
 	{
-		return ScriptResource.Get();
+		if (!ScriptShader)
+		{
+			ScriptShader = ScriptResource.GetShader()->GetComputeShader();	// NIAGARATODO: need to put this caching somewhere else, as it wont' know when we update the resource
+		}
+		return ScriptShader; 
 	}
 
-	NIAGARA_API void GenerateStatIDs();
+	FComputeShaderRHIRef GetScriptShaderGameThread()
+	{
+		if (!ScriptShader)
+		{
+			ScriptShader = ScriptResource.GetShaderGameThread()->GetComputeShader();	// NIAGARATODO: need to put this caching somewhere else, as it wont' know when we update the resource
+		}
+		return ScriptShader;
+	}
+
+	void SetFeatureLevel(ERHIFeatureLevel::Type InFeatureLevel)		{ FeatureLevel = InFeatureLevel; }
+
+	NIAGARA_API void GenerateStatScopeIDs();
 
 	NIAGARA_API bool IsScriptCompilationPending(bool bGPUScript) const;
 	NIAGARA_API bool DidScriptCompilationSucceed(bool bGPUScript) const;
 
 #if WITH_EDITORONLY_DATA
-	NIAGARA_API void InvalidateCompileResults(const FString& Reason);
+	NIAGARA_API void InvalidateCompileResults();
 	FText GetDescription() { return Description.IsEmpty() ? FText::FromString(GetName()) : Description; }
-
-	/** Helper to convert the struct from its binary data out of the DDC to it's actual in-memory version.
-		Do not call this on anything other than the game thread as it depends on the FObjectAndNameAsStringProxyArchive,
-		which calls FindStaticObject which can fail when used in any other thread!*/
-	static bool BinaryToExecData(const UNiagaraScript* Script, const TArray<uint8>& InBinaryData, FNiagaraVMExecutableData& OutExecData);
-
-	/** Reverse of the BinaryToExecData() function */
-	static bool ExecToBinaryData(const UNiagaraScript* Script, TArray<uint8>& OutBinaryData, FNiagaraVMExecutableData& InExecData);
 
 	/** Makes a deep copy of any script dependencies, including itself.*/
 	NIAGARA_API virtual UNiagaraScript* MakeRecursiveDeepCopy(UObject* DestOuter, TMap<const UObject*, UObject*>& ExistingConversions) const;
@@ -640,24 +549,13 @@ public:
 	NIAGARA_API void RequestCompile(bool bForceCompile = false);
 
 	/** Request an asynchronous compile for the script, possibly forcing it to compile. The output values are the compilation id of the data as well as the async handle to 
-		gather up the results with. The function returns whether or not any compiles were actually issued. */
-	NIAGARA_API bool RequestExternallyManagedAsyncCompile(const TSharedPtr<FNiagaraCompileRequestDataBase, ESPMode::ThreadSafe>& RequestData, FNiagaraVMExecutableDataId& OutCompileId, uint32& OutAsyncHandle);
+		gather up the results with. bTrulyAsync tells the system whether or not the compile task must be completed on the main thread (mostly used for debugging). The
+		overall function returns whether or not any compiles were actually issued. They will be skipped if none of the data is dirty.*/
+	NIAGARA_API bool RequestExternallyManagedAsyncCompile(const TSharedPtr<FNiagaraCompileRequestDataBase, ESPMode::ThreadSafe>& RequestData, FNiagaraVMExecutableDataId& OutCompileId, uint32& OutAsyncHandle, bool bTrulyAsync);
 
-	/** Builds the DDC string for the derived data cache using the supplied CompiledId */
-	static FString BuildNiagaraDDCKeyString(const FNiagaraVMExecutableDataId& CompileId);
-
-	/** Creates a string key for the derived data cache */
-	FString GetNiagaraDDCKeyString();
-
-	/** Callback issued whenever a VM script compilation successfully happened (even if the results are a script that cannot be executed due to errors)*/
+	/** Callback issued whenever a compilation successfully happened (even if the results are a script that cannot be executed due to errors)*/
 	NIAGARA_API FOnScriptCompiled& OnVMScriptCompiled();
-
-	/** Callback issued whenever a GPU script compilation successfully happened (even if the results are a script that cannot be executed due to errors)*/
-	NIAGARA_API FOnScriptCompiled& OnGPUScriptCompiled();
-
-	/** Callback issues whenever post edit changed is called on this script. */
-	NIAGARA_API FOnPropertyChanged& OnPropertyChanged();
-
+	
 	/** External call used to identify the values for a successful VM script compilation. OnVMScriptCompiled will be issued in this case.*/
 	void SetVMCompilationResults(const FNiagaraVMExecutableDataId& InCompileId, FNiagaraVMExecutableData& InScriptVM, FNiagaraCompileRequestDataBase* InRequestData);
 
@@ -666,62 +564,36 @@ public:
 		false if not.*/
 	NIAGARA_API bool SynchronizeExecutablesWithMaster(const UNiagaraScript* Script, const TMap<FString, FString>& RenameMap);
 
-	NIAGARA_API FString GetFriendlyName() const;
-
 	NIAGARA_API void SyncAliases(const TMap<FString, FString>& RenameMap);
 #endif
 	
 	UFUNCTION()
-	void RaiseOnGPUCompilationComplete();
+	void OnCompilationComplete();
 
-
-	NIAGARA_API FORCEINLINE FNiagaraVMExecutableData& GetVMExecutableData() { return CachedScriptVM; }
-	NIAGARA_API FORCEINLINE const FNiagaraVMExecutableData& GetVMExecutableData() const { return CachedScriptVM; }
-	NIAGARA_API FORCEINLINE const FNiagaraVMExecutableDataId& GetVMExecutableDataCompilationId() const { return CachedScriptVMId; }
+	NIAGARA_API FNiagaraVMExecutableData& GetVMExecutableData() { return CachedScriptVM; }
+	NIAGARA_API const FNiagaraVMExecutableData& GetVMExecutableData() const { return CachedScriptVM; }
+	NIAGARA_API const FNiagaraVMExecutableDataId& GetVMExecutableDataCompilationId() const { return CachedScriptVMId; }
 
 	TArray<UNiagaraParameterCollection*>& GetCachedParameterCollectionReferences() { return CachedParameterCollectionReferences; }
 	TArray<FNiagaraScriptDataInterfaceInfo>& GetCachedDefaultDataInterfaces() { return CachedDefaultDataInterfaces; }
 
 #if STATS
-	TArrayView<const TStatId> GetStatScopeIDs() const { return MakeArrayView(StatScopesIDs); }
-#elif ENABLE_STATNAMEDEVENTS
-	TArrayView<const FString> GetStatNamedEvents() const { return MakeArrayView(StatNamedEvents); }
+	const TArray<TStatId>& GetStatScopeIDs()const { return StatScopesIDs; }
 #endif
 
 	bool UsesCollection(const class UNiagaraParameterCollection* Collection)const;
 	
 	virtual ~UNiagaraScript();
 
-	const FNiagaraScriptExecutionParameterStore* GetExecutionReadyParameterStore(ENiagaraSimTarget SimTarget);
+	FNiagaraScriptExecutionParameterStore* GetExecutionReadyParameterStore(ENiagaraSimTarget SimTarget);
 	void InvalidateExecutionReadyParameterStores();
 
-	bool IsScriptCooked() const
-	{
-#if WITH_EDITORONLY_DATA
-		return IsCooked;
-#else
-		return true;
-#endif
-	}
-
 private:
-	bool OwnerCanBeRunOnGpu() const;
-	bool LegacyCanBeRunOnGpu()const;
 
-	void ProcessSerializedShaderMaps();
-	void SerializeNiagaraShaderMaps(FArchive& Ar, int32 NiagaraVer, bool IsValidShaderScript);
+	bool LegacyCanBeRunOnGpu()const;
 
 	/** Return the expected SimTarget for this script. Only returns a valid target if there is valid data to run with. */
 	TOptional<ENiagaraSimTarget> GetSimTarget() const;
-
-	/** Kicks off an async job to convert the ByteCode into an optimized version for the platform we are running on. */
-	void AsyncOptimizeByteCode();
-
-	/** Generates all of the function bindings for DI that don't require user data */
-	void GenerateDefaultFunctionBindings();
-
-	/** Returns whether the parameter store bindings are valid */
-	bool HasValidParameterBindings() const;
 
 #if WITH_EDITORONLY_DATA
 	UPROPERTY(Transient)
@@ -741,38 +613,32 @@ private:
 #if WITH_EDITORONLY_DATA
 	class UNiagaraSystem* FindRootSystem();
 
-	bool HasIdsRequiredForShaderCaching() const;
-
 	/** 'Source' data/graphs for this script */
 	UPROPERTY()
 	class UNiagaraScriptSourceBase*	Source;
 	
 	/** A multicast delegate which is called whenever the script has been compiled (successfully or not). */
 	FOnScriptCompiled OnVMScriptCompiledDelegate;
-	FOnScriptCompiled OnGPUScriptCompiledDelegate;
-	FOnPropertyChanged OnPropertyChangedDelegate;
 
 	mutable FNiagaraVMExecutableDataId LastReportedVMId;
-
-	mutable TOptional<TMap<FName, FString>> CustomAssetRegistryTagCache;
 #endif
 
 	/** Adjusted every time that we compile this script. Lets us know that we might differ from any cached versions.*/
 	UPROPERTY()
 	FNiagaraVMExecutableDataId CachedScriptVMId;
 
-#if WITH_EDITORONLY_DATA
 	/** Adjusted every time ComputeVMCompilationId is called.*/
 	UPROPERTY()
 	mutable FNiagaraVMExecutableDataId LastGeneratedVMId;
-#endif
 
-	TUniquePtr<FNiagaraShaderScript> ScriptResource;
-
-#if WITH_EDITORONLY_DATA
 	TArray<FNiagaraShaderScript> LoadedScriptResources;
+
+	FNiagaraShaderScript ScriptResource;
+
 	FNiagaraShaderScript* ScriptResourcesByFeatureLevel[ERHIFeatureLevel::Num];
-#endif
+
+	/** Feature level that the shader map is going to be compiled for. */
+	ERHIFeatureLevel::Type FeatureLevel;
 
 	/** Compute shader compiled for this script */
 	FComputeShaderRHIRef ScriptShader;
@@ -780,8 +646,6 @@ private:
 	/** Runtime stat IDs generated from StatScopes. */
 #if STATS
 	TArray<TStatId> StatScopesIDs;
-#elif ENABLE_STATNAMEDEVENTS
-	TArray<FString> StatNamedEvents;
 #endif
 
 #if WITH_EDITORONLY_DATA
@@ -790,9 +654,6 @@ private:
 
 	UPROPERTY(Transient)
 	TArray<UObject*> ActiveCompileRoots;
-
-	/* Flag set on load based on whether the serialized data includes editor only data */
-	bool IsCooked;
 #endif
 
 	/** Compiled VM bytecode and data necessary to run this script.*/
@@ -806,7 +667,4 @@ private:
 	TArray<FNiagaraScriptDataInterfaceInfo> CachedDefaultDataInterfaces;
 
 	static UNiagaraDataInterface* CopyDataInterface(UNiagaraDataInterface* Src, UObject* Owner);
-
-	/** Flag used to guarantee that the RT isn't accessing the FNiagaraScriptResource before cleanup. */
-	FThreadSafeBool ReleasedByRT;
 };

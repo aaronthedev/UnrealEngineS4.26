@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,7 +14,7 @@ class FDisplayClusterRenderSyncPolicySoftwareDX11
 	: public FDisplayClusterRenderSyncPolicySoftwareBase
 {
 public:
-	FDisplayClusterRenderSyncPolicySoftwareDX11(const TMap<FString, FString>& Parameters);
+	FDisplayClusterRenderSyncPolicySoftwareDX11();
 	virtual ~FDisplayClusterRenderSyncPolicySoftwareDX11();
 
 public:

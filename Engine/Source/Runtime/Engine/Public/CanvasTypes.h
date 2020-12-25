@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Canvas.h: Unreal canvas definition.
@@ -494,11 +494,6 @@ public:
 	 * @return true if the canvas has any element to render
 	 */
 	bool HasBatchesToRender() const;
-
-	/**
-	 * Clear the list of dirty batches that need to be rendered by the canvas
-	 */
-	void ClearBatchesToRender();
 
 	/**
 	* Access current feature level
@@ -1075,8 +1070,7 @@ private:
 			FMeshPassProcessorRenderState& DrawRenderState,
 			const FSceneView& View,
 			bool bIsHitTesting,
-			bool bNeedsToSwitchVerticalAxis,
-			bool bUse128bitRT = false);
+			bool bNeedsToSwitchVerticalAxis);
 
 		const FMaterialRenderProxy* const MaterialRenderProxy;
 		const FCanvas::FTransformEntry Transform;

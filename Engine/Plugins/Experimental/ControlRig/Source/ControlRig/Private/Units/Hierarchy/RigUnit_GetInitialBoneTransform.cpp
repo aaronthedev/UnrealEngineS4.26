@@ -1,7 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RigUnit_GetInitialBoneTransform.h"
 #include "Units/RigUnitContext.h"
+
+FString FRigUnit_GetInitialBoneTransform::GetUnitLabel() const
+{
+	return FString::Printf(TEXT("Get Initial Transform %s"), *Bone.ToString());
+}
 
 FRigUnit_GetInitialBoneTransform_Execute()
 {
@@ -13,26 +18,28 @@ FRigUnit_GetInitialBoneTransform_Execute()
 		{
 			case EControlRigState::Init:
 			{
-				CachedBone.Reset();
+				CachedBoneIndex = Hierarchy->GetIndex(Bone);
 			}
 			case EControlRigState::Update:
 			{
-				if (!CachedBone.UpdateCache(Bone, Hierarchy))
-				{
-					UE_CONTROLRIG_RIGUNIT_REPORT_WARNING(TEXT("Bone '%s' is not valid."), *Bone.ToString());
-				}
-				else
+				if (CachedBoneIndex != INDEX_NONE)
 				{
 					switch (Space)
 					{
 						case EBoneGetterSetterMode::GlobalSpace:
 						{
-							Transform = Hierarchy->GetInitialGlobalTransform(CachedBone);
+							Transform = Hierarchy->GetInitialTransform(CachedBoneIndex);
 							break;
 						}
 						case EBoneGetterSetterMode::LocalSpace:
 						{
-							Transform = Hierarchy->GetInitialLocalTransform(CachedBone);
+							Transform = Hierarchy->GetInitialTransform(CachedBoneIndex);
+							int32 ParentBoneIndex = (*Hierarchy)[CachedBoneIndex].ParentIndex;
+							if (ParentBoneIndex != INDEX_NONE)
+							{
+								FTransform ParentTransform = Hierarchy->GetInitialTransform(ParentBoneIndex);
+								Transform.SetToRelativeTransform(ParentTransform);
+							}
 							break;
 						}
 						default:

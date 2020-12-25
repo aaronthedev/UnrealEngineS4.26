@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithGLTFTranslator.h"
 
@@ -11,13 +11,11 @@
 #include "GenericPlatform/GenericPlatformProcess.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
+#include "IMessageLogListing.h"
 #include "Logging/LogMacros.h"
 #include "Logging/TokenizedMessage.h"
-#include "Templates/TypeHash.h"
-#if WITH_EDITOR
-#include "IMessageLogListing.h"
 #include "MessageLogModule.h"
-#endif //WITH_EDITOR
+#include "Templates/TypeHash.h"
 
 #include "GLTFAsset.h"
 #include "GLTFNode.h"
@@ -27,7 +25,6 @@ void ShowLogMessages(const TArray<GLTF::FLogMessage>& Errors)
 {
 	if (Errors.Num() > 0)
 	{
-#if WITH_EDITOR
 		FMessageLogModule&             MessageLogModule = FModuleManager::LoadModuleChecked<FMessageLogModule>("MessageLog");
 		TSharedRef<IMessageLogListing> LogListing       = MessageLogModule.GetLogListing("LoadErrors");
 		LogListing->ClearMessages();
@@ -38,19 +35,6 @@ void ShowLogMessages(const TArray<GLTF::FLogMessage>& Errors)
 			LogListing->AddMessage(FTokenizedMessage::Create(Severity, FText::FromString(Error.Get<1>())));
 		}
 		MessageLogModule.OpenMessageLog("LoadErrors");
-#else
-		for (const GLTF::FLogMessage& LogError : Errors)
-		{
-			if (LogError.Get<0>() == GLTF::EMessageSeverity::Error)
-			{
-				UE_LOG(LogDatasmithGLTFImport, Error, TEXT("%s"), *LogError.Get<1>());
-			}
-			else
-			{
-				UE_LOG(LogDatasmithGLTFImport, Warning, TEXT("%s"), *LogError.Get<1>());
-			}
-		}
-#endif //!WITH_EDIOR
 	}
 }
 
@@ -67,7 +51,7 @@ bool FDatasmithGLTFTranslator::LoadScene(TSharedRef<IDatasmithScene> OutScene)
 {
 	OutScene->SetHost(TEXT("GLTFTranslator"));
 
-    Importer = MakeShared<FDatasmithGLTFImporter>(OutScene, GetOrCreateGLTFImportOptions().Get());
+    Importer = MakeShared<FDatasmithGLTFImporter>(OutScene, ImportOptions.Get());
 
 	const FString& FilePath = GetSource().GetSourceFile();
 	if(!Importer->OpenFile(FilePath))
@@ -124,12 +108,12 @@ bool FDatasmithGLTFTranslator::LoadScene(TSharedRef<IDatasmithScene> OutScene)
 	}
 
 	bool bSuccess = Importer->SendSceneToDatasmith();
+	ShowLogMessages(Importer->GetLogMessages());
 	return bSuccess;
 }
 
 void FDatasmithGLTFTranslator::UnloadScene()
 {
-	ShowLogMessages(Importer->GetLogMessages());
 	Importer->UnloadScene();
 }
 
@@ -165,16 +149,22 @@ bool FDatasmithGLTFTranslator::LoadLevelSequence(const TSharedRef<IDatasmithLeve
 	return false;
 }
 
-void FDatasmithGLTFTranslator::GetSceneImportOptions(TArray<TStrongObjectPtr<UDatasmithOptionsBase>>& Options)
+void FDatasmithGLTFTranslator::GetSceneImportOptions(TArray<TStrongObjectPtr<UObject>>& Options)
 {
-	Options.Add(GetOrCreateGLTFImportOptions());
+	if (!ImportOptions.IsValid())
+	{
+		ImportOptions = Datasmith::MakeOptions<UDatasmithGLTFImportOptions>();
+	}
+
+	Options.Add(ImportOptions);
 }
 
-void FDatasmithGLTFTranslator::SetSceneImportOptions(TArray<TStrongObjectPtr<UDatasmithOptionsBase>>& Options)
+void FDatasmithGLTFTranslator::SetSceneImportOptions(TArray<TStrongObjectPtr<UObject>>& Options)
 {
-	for (const TStrongObjectPtr<UDatasmithOptionsBase>& OptionPtr : Options)
+	for (TStrongObjectPtr<UObject>& OptionPtr : Options)
 	{
-		if (UDatasmithGLTFImportOptions* InImportOptions = Cast<UDatasmithGLTFImportOptions>(OptionPtr.Get()))
+		UObject* Option = OptionPtr.Get();
+		if (UDatasmithGLTFImportOptions* InImportOptions = Cast<UDatasmithGLTFImportOptions>(Option))
 		{
 			ImportOptions.Reset(InImportOptions);
 		}
@@ -182,15 +172,6 @@ void FDatasmithGLTFTranslator::SetSceneImportOptions(TArray<TStrongObjectPtr<UDa
 
 	if (Importer.IsValid())
 	{
-		Importer->SetImportOptions(GetOrCreateGLTFImportOptions().Get());
+		Importer->SetImportOptions(ImportOptions.Get());
 	}
-}
-
-TStrongObjectPtr<UDatasmithGLTFImportOptions>& FDatasmithGLTFTranslator::GetOrCreateGLTFImportOptions()
-{
-	if (!ImportOptions.IsValid())
-	{
-		ImportOptions = Datasmith::MakeOptions<UDatasmithGLTFImportOptions>();
-	}
-	return ImportOptions;
 }

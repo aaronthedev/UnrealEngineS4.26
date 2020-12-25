@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	GlobalDistanceField.usf
@@ -113,7 +113,6 @@ uint ClipmapIndex;
 float3 VolumeTexelSize;
 float3 UpdateRegionVolumeMin;
 float UpdateRegionVolumeStep;
-float HeightfieldThickness;
 uint3 CullGridDimension;
 
 RWBuffer<uint> RWCullGridObjectNum;
@@ -142,6 +141,14 @@ void CullObjectsToGridCS(
 {
 	uint ThreadIndex = GroupThreadId.x;
 	uint CullTileIndex = ComputeCullTileIndex(GroupId);
+
+	if (ThreadIndex == 0 && all(GroupId < CullGridDimension))
+	{
+		// Clear array num to 0 for all cull grid cells
+		RWCullGridObjectNum[CullTileIndex] = 0;
+	}
+
+	GroupMemoryBarrierWithGroupSync();
 
 	if (all(GroupId < CullGridDimension))
 	{
@@ -230,28 +237,26 @@ void CompositeObjectDistanceFieldsCS(
 	NumCulledObjects = NumGridCulledObjects;
 #endif
 
+	for (uint ListObjectIndex = ThreadIndex; ListObjectIndex < NumCulledObjects; ListObjectIndex += COMPOSITE_THREADGORUP_TOTALSIZE)
 	{
-		for (uint ListObjectIndex = ThreadIndex; ListObjectIndex < NumCulledObjects; ListObjectIndex += COMPOSITE_THREADGORUP_TOTALSIZE)
+		#if USE_CULL_GRID
+		uint ObjectIndex = CullGridObjectArray[CullTileIndex * MAX_GRID_CULLED_DF_OBJECTS + ListObjectIndex];
+		#else
+			uint ObjectIndex = ListObjectIndex;
+		#endif
+
+		float4 ObjectPositionAndRadius = LoadObjectPositionAndRadius(ObjectIndex);
+		//float BoxDistance = ComputeDistanceFromBoxToPoint(TileBoxCenter - TileBoxExtent, TileBoxCenter + TileBoxExtent, ObjectPositionAndRadius.xyz);
+
+		// ComputeSquaredDistanceFromBoxToPoint is correct but adds a lot to the final cost
+		float BoxDistanceSq = ComputeSquaredDistanceFromBoxToPoint(TileBoxCenter, TileBoxExtent, ObjectPositionAndRadius.xyz);
+		float CombinedDistance = ObjectPositionAndRadius.w + AOGlobalMaxSphereQueryRadius;
+
+		if (BoxDistanceSq < CombinedDistance * CombinedDistance)
 		{
-			#if USE_CULL_GRID
-			uint ObjectIndex = CullGridObjectArray[CullTileIndex * MAX_GRID_CULLED_DF_OBJECTS + ListObjectIndex];
-			#else
-				uint ObjectIndex = ListObjectIndex;
-			#endif
-
-			float4 ObjectPositionAndRadius = LoadObjectPositionAndRadius(ObjectIndex);
-			//float BoxDistance = ComputeDistanceFromBoxToPoint(TileBoxCenter - TileBoxExtent, TileBoxCenter + TileBoxExtent, ObjectPositionAndRadius.xyz);
-
-			// ComputeSquaredDistanceFromBoxToPoint is correct but adds a lot to the final cost
-			float BoxDistanceSq = ComputeSquaredDistanceFromBoxToPoint(TileBoxCenter, TileBoxExtent, ObjectPositionAndRadius.xyz);
-			float CombinedDistance = ObjectPositionAndRadius.w + AOGlobalMaxSphereQueryRadius;
-
-			if (BoxDistanceSq < CombinedDistance * CombinedDistance)
-			{
-				uint DestIndex;
-				InterlockedAdd(NumTileCulledObjects, 1U, DestIndex);
-				SharedCulledObjectList[DestIndex] = ObjectIndex;
-			}
+			uint DestIndex;
+			InterlockedAdd(NumTileCulledObjects, 1U, DestIndex);
+			SharedCulledObjectList[DestIndex] = ObjectIndex;
 		}
 	}
 
@@ -271,37 +276,35 @@ void CompositeObjectDistanceFieldsCS(
 	MinDistance = ParentGlobalDistanceFieldTexture[IntCoordinate].r;
 #endif
 
+	LOOP 
+	for (uint ListObjectIndex = 0; ListObjectIndex < NumCulledObjects; ListObjectIndex++)
 	{
-		LOOP
-		for (uint ListObjectIndex = 0; ListObjectIndex < NumCulledObjects; ListObjectIndex++)
+		#if USE_OBJECT_COMPOSITING_TILE_CULLING
+			uint ObjectIndex = SharedCulledObjectList[ListObjectIndex];
+		#else
+			uint ObjectIndex = ListObjectIndex;
+		#endif
+
+		float3 LocalPositionExtent = LoadObjectLocalPositionExtent(ObjectIndex);
+		float4x4 WorldToVolume = LoadObjectWorldToVolume(ObjectIndex);
+		bool bGeneratedAsTwoSided;
+		float4 UVScaleAndVolumeScale = LoadObjectUVScale(ObjectIndex, bGeneratedAsTwoSided);
+		float3 VolumePosition = mul(float4(WorldPosition, 1), WorldToVolume).xyz;
+		float BoxDistance = ComputeDistanceFromBoxToPoint(-LocalPositionExtent, LocalPositionExtent, VolumePosition) * UVScaleAndVolumeScale.w;
+
+		BRANCH
+		if (BoxDistance < AOGlobalMaxSphereQueryRadius)
 		{
-			#if USE_OBJECT_COMPOSITING_TILE_CULLING
-				uint ObjectIndex = SharedCulledObjectList[ListObjectIndex];
-			#else
-				uint ObjectIndex = ListObjectIndex;
-			#endif
+			float3 UVAdd = LoadObjectUVAddAndSelfShadowBias(ObjectIndex).xyz;
+			float2 DistanceFieldMAD = LoadObjectDistanceFieldMAD(ObjectIndex);
 
-			float3 LocalPositionExtent = LoadObjectLocalPositionExtent(ObjectIndex);
-			float4x4 WorldToVolume = LoadObjectWorldToVolume(ObjectIndex);
-			bool bGeneratedAsTwoSided;
-			float4 UVScaleAndVolumeScale = LoadObjectUVScale(ObjectIndex, bGeneratedAsTwoSided);
-			float3 VolumePosition = mul(float4(WorldPosition, 1), WorldToVolume).xyz;
-			float BoxDistance = ComputeDistanceFromBoxToPoint(-LocalPositionExtent, LocalPositionExtent, VolumePosition) * UVScaleAndVolumeScale.w;
+			float3 ClampedSamplePosition = clamp(VolumePosition, -LocalPositionExtent, LocalPositionExtent);
+			float DistanceToClamped = length(VolumePosition - ClampedSamplePosition);
 
-			BRANCH
-			if (BoxDistance < AOGlobalMaxSphereQueryRadius)
-			{
-				float3 UVAdd = LoadObjectUVAddAndSelfShadowBias(ObjectIndex).xyz;
-				float2 DistanceFieldMAD = LoadObjectDistanceFieldMAD(ObjectIndex);
+			float3 StepVolumeUV = DistanceFieldVolumePositionToUV(ClampedSamplePosition, UVScaleAndVolumeScale.xyz, UVAdd);
+			float DistanceToOccluder = (SampleMeshDistanceField(StepVolumeUV, DistanceFieldMAD).x + DistanceToClamped) * UVScaleAndVolumeScale.w;
 
-				float3 ClampedSamplePosition = clamp(VolumePosition, -LocalPositionExtent, LocalPositionExtent);
-				float DistanceToClamped = length(VolumePosition - ClampedSamplePosition);
-
-				float3 StepVolumeUV = DistanceFieldVolumePositionToUV(ClampedSamplePosition, UVScaleAndVolumeScale.xyz, UVAdd);
-				float DistanceToOccluder = (SampleMeshDistanceField(StepVolumeUV, DistanceFieldMAD).x + DistanceToClamped) * UVScaleAndVolumeScale.w;
-
-				MinDistance = min(MinDistance, DistanceToOccluder);
-			}
+			MinDistance = min(MinDistance, DistanceToOccluder);
 		}
 	}
 
@@ -365,14 +368,6 @@ void CompositeHeightfieldsIntoGlobalDistanceFieldCS(
 
 					// Project the vertical height vector onto the normal of the heightfield directly below the point we are computing the distance field for, use the perpendicular distance
 					float DistanceToHeightfieldPlane = dot(WorldHeightfieldNormal, WorldPosition - WorldHeightfieldShadingPosition);
-
-					// Limit negative region of a heighfield to a user defined thickness  
-					const float MinInteriorDistance = -HeightfieldThickness;
-					if (DistanceToHeightfieldPlane < MinInteriorDistance)
-					{
-						DistanceToHeightfieldPlane = MinInteriorDistance - DistanceToHeightfieldPlane;
-					}
-
 					float MinDistance = clamp(DistanceToHeightfieldPlane, -AOGlobalMaxSphereQueryRadius, AOGlobalMaxSphereQueryRadius);
 
 					float3 GlobalUV = ComputeGlobalUV(WorldPosition, ClipmapIndex);

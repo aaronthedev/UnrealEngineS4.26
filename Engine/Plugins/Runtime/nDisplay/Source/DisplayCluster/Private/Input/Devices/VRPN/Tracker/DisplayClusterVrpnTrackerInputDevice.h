@@ -1,10 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Input/Devices/VRPN/Tracker/DisplayClusterVrpnTrackerInputDataHolder.h"
-
-#include "DisplayClusterConfigurationTypes.h"
 
 #if PLATFORM_WINDOWS
 #include "Windows/AllowWindowsPlatformTypes.h"
@@ -20,7 +18,7 @@ class FDisplayClusterVrpnTrackerInputDevice
 	: public FDisplayClusterVrpnTrackerInputDataHolder
 {
 public:
-	FDisplayClusterVrpnTrackerInputDevice(const FString& DeviceId, const UDisplayClusterConfigurationInputDeviceTracker* CfgDevice);
+	FDisplayClusterVrpnTrackerInputDevice(const FDisplayClusterConfigInput& config);
 	virtual ~FDisplayClusterVrpnTrackerInputDevice();
 
 public:
@@ -36,13 +34,12 @@ protected:
 	TMap<int32, bool> DirtyMap;
 
 	// Transform form tracker space to DisplayCluster space
-	void TransformCoordinates(FDisplayClusterVrpnTrackerChannelData& Data) const;
+	void TransformCoordinates(FDisplayClusterVrpnTrackerChannelData& data) const;
 
 
 private:
 	// Tracker origin
 	FVector  OriginLoc  = FVector::ZeroVector;
-	FRotator OriginRot  = FRotator::ZeroRotator;
 	FQuat    OriginQuat = FQuat::Identity;
 
 private:
@@ -50,10 +47,10 @@ private:
 	enum AxisMapType { X = 0, NX, Y, NY, Z, NZ, W, NW };
 
 	// Internal conversion helpers
-	AxisMapType ConvertToInternalMappingType(EDisplayClusterConfigurationTrackerMapping From) const;
-	AxisMapType ComputeAxisW(const AxisMapType Front, const AxisMapType Right, const AxisMapType Up) const;
-	FVector  GetMappedLocation(const FVector& Loc, const AxisMapType Front, const AxisMapType Right, const AxisMapType Up) const;
-	FQuat    GetMappedQuat(const FQuat& Quat, const AxisMapType Front, const AxisMapType Right, const AxisMapType Up, const AxisMapType AxisW) const;
+	AxisMapType String2Map(const FString& str, const AxisMapType defaultMap) const;
+	AxisMapType ComputeAxisW(const AxisMapType front, const AxisMapType right, const AxisMapType up) const;
+	FVector  GetMappedLocation(const FVector& loc, const AxisMapType front, const AxisMapType right, const AxisMapType up) const;
+	FQuat    GetMappedQuat(const FQuat& quat, const AxisMapType front, const AxisMapType right, const AxisMapType up, const AxisMapType axisW) const;
 
 	// Tracker space to DisplayCluster space axis mapping
 	AxisMapType AxisFront;
@@ -63,7 +60,7 @@ private:
 
 private:
 	// Data update handler
-	static void VRPN_CALLBACK HandleTrackerDevice(void *UserData, vrpn_TRACKERCB const TrackerData);
+	static void VRPN_CALLBACK HandleTrackerDevice(void *userData, vrpn_TRACKERCB const tr);
 
 private:
 	// The device (PIMPL)

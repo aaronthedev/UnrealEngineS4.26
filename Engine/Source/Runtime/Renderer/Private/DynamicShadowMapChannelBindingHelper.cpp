@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DynamicShadowMapChannelBindingHelper.h"
 #include "LightSceneInfo.h"
@@ -108,7 +108,7 @@ int32 FDynamicShadowMapChannelBindingHelper::GetPriority(const FLightSceneInfo* 
 {
 	check(Light);
 	const FLightSceneProxy* Proxy = Light->Proxy;
-	if (Proxy && (Proxy->CastsDynamicShadow() || Proxy->GetLightFunctionMaterial()))
+	if (Proxy && Proxy->CastsDynamicShadow())
 	{
 		if (Proxy->HasStaticShadowing())
 		{

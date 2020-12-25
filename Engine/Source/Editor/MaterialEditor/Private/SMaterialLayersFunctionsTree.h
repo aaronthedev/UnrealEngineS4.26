@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -95,12 +95,10 @@ class SMaterialLayersFunctionsInstanceWrapper : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SMaterialLayersFunctionsInstanceWrapper)
-		: _InMaterialEditorInstance(nullptr),
-		_InShowHiddenDelegate()
+		: _InMaterialEditorInstance(nullptr)
 	{}
 
 	SLATE_ARGUMENT(UMaterialEditorInstanceConstant*, InMaterialEditorInstance)
-	SLATE_ARGUMENT(FGetShowHiddenParameters, InShowHiddenDelegate)
 
 	SLATE_END_ARGS()
 	void Refresh();
@@ -124,7 +122,6 @@ public:
 
 	SLATE_ARGUMENT(UMaterialEditorInstanceConstant*, InMaterialEditorInstance)
 	SLATE_ARGUMENT(SMaterialLayersFunctionsInstanceWrapper*, InWrapper)
-	SLATE_ARGUMENT(FGetShowHiddenParameters, InShowHiddenDelegate)
 	SLATE_END_ARGS()
 
 	/** Constructs this widget with InArgs */
@@ -146,10 +143,6 @@ public:
 	void ResetAssetToDefault(TSharedPtr<IPropertyHandle> InHandle, TSharedPtr<FSortedParamData> InData);
 	void AddLayer();
 	void RemoveLayer(int32 Index);
-	FReply UnlinkLayer(int32 Index);
-	FReply RelinkLayersToParent();
-	EVisibility GetUnlinkLayerVisibility(int32 Index) const;
-	EVisibility GetRelinkLayersToParentVisibility() const;
 	FReply ToggleLayerVisibility(int32 Index);
 	TSharedPtr<class FAssetThumbnailPool> GetTreeThumbnailPool();
 
@@ -169,8 +162,6 @@ public:
 	void UpdateThumbnailMaterial(TEnumAsByte<EMaterialParameterAssociation> InAssociation, int32 InIndex, bool bAlterBlendIndex = false);
 	FReply OnThumbnailDoubleClick(const FGeometry& Geometry, const FPointerEvent& MouseEvent, EMaterialParameterAssociation InAssociation, int32 InIndex);
 	bool IsOverriddenExpression(class UDEditorParameterValue* Parameter, int32 InIndex);
-
-	FGetShowHiddenParameters GetShowHiddenDelegate() const;
 protected:
 
 	void ShowSubParameters(TSharedPtr<FSortedParamData> ParentParameter);
@@ -189,82 +180,29 @@ private:
 
 	bool bLayerIsolated;
 
-	/** Delegate to call to determine if hidden parameters should be shown */
-	FGetShowHiddenParameters ShowHiddenDelegate;
-
 };
 
 class UMaterialEditorPreviewParameters;
-class SMaterialLayersFunctionsMaterialTree;
-//////////////////////////////// Material version
-
-class SMaterialLayersFunctionsMaterialTreeItem : public STableRow< TSharedPtr<FSortedParamData> >
-{
-public:
-
-	SLATE_BEGIN_ARGS(SMaterialLayersFunctionsMaterialTreeItem)
-		: _StackParameterData(nullptr),
-		_MaterialEditorInstance(nullptr)
-	{}
-
-	/** The item content. */
-	SLATE_ARGUMENT(TSharedPtr<FSortedParamData>, StackParameterData)
-	SLATE_ARGUMENT(UMaterialEditorPreviewParameters*, MaterialEditorInstance)
-	SLATE_ARGUMENT(SMaterialLayersFunctionsMaterialTree*, InTree)
-	SLATE_END_ARGS()
-
-	FMaterialTreeColumnSizeData ColumnSizeData;
-	bool bIsBeingDragged;
-
-private:
-	bool bIsHoveredDragTarget;
-	FString GetCurvePath(class UDEditorScalarParameterValue* Parameter) const;
-	const FSlateBrush* GetBorderImage() const;
-
-public:
-
-	void RefreshOnRowChange(const FAssetData& AssetData, SMaterialLayersFunctionsMaterialTree* InTree);
-	FText GetLayerName(SMaterialLayersFunctionsMaterialTree* InTree, int32 Counter) const;
-
-	/**
-	* Construct the widget
-	*
-	* @param InArgs   A declaration from which to construct the widget
-	*/
-	void Construct(const FArguments& InArgs, const TSharedRef<STableViewBase>& InOwnerTableView);
-
-	/** The node info to build the tree view row from. */
-	TSharedPtr<FSortedParamData> StackParameterData;
-
-	SMaterialLayersFunctionsMaterialTree* Tree;
-
-	UMaterialEditorPreviewParameters* MaterialEditorInstance;
-
-	FString GetInstancePath(SMaterialLayersFunctionsMaterialTree* InTree) const;
-};
 
 class SMaterialLayersFunctionsMaterialWrapper : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SMaterialLayersFunctionsMaterialWrapper)
 		: _InMaterialEditorInstance(nullptr)
-		, _InGenerator()
 	{}
 
 	SLATE_ARGUMENT(UMaterialEditorPreviewParameters*, InMaterialEditorInstance)
-	SLATE_ARGUMENT(TSharedPtr<class IPropertyRowGenerator>, InGenerator)
+
 	SLATE_END_ARGS()
 	void Refresh();
 	void Construct(const FArguments& InArgs);
 	void SetEditorInstance(UMaterialEditorPreviewParameters* InMaterialEditorInstance);
-	TSharedPtr<class IPropertyRowGenerator> GetGenerator();
-	class UDEditorParameterValue* LayerParameter;
-	class UMaterialEditorPreviewParameters* MaterialEditorInstance;
-	TSharedPtr<class SMaterialLayersFunctionsMaterialTree> NestedTree;
 
-private:
-	TWeakPtr<class IPropertyRowGenerator> Generator;
+	class UDEditorParameterValue* LayerParameter;
+	UMaterialEditorPreviewParameters* MaterialEditorInstance;
+	TSharedPtr<class SMaterialLayersFunctionsMaterialTree> NestedTree;
 };
+
 
 class SMaterialLayersFunctionsMaterialTree : public STreeView<TSharedPtr<FSortedParamData>>
 {
@@ -275,35 +213,31 @@ public:
 	{}
 
 	SLATE_ARGUMENT(UMaterialEditorPreviewParameters*, InMaterialEditorInstance)
-		SLATE_ARGUMENT(SMaterialLayersFunctionsMaterialWrapper*, InWrapper)
-		SLATE_END_ARGS()
 
-		/** Constructs this widget with InArgs */
-		void Construct(const FArguments& InArgs);
-		TSharedRef< ITableRow > OnGenerateRowMaterialLayersFunctionsTreeView(TSharedPtr<FSortedParamData> Item, const TSharedRef< STableViewBase >& OwnerTable);
-		void OnGetChildrenMaterialLayersFunctionsTreeView(TSharedPtr<FSortedParamData> InParent, TArray< TSharedPtr<FSortedParamData> >& OutChildren);
-		void OnExpansionChanged(TSharedPtr<FSortedParamData> Item, bool bIsExpanded);
-		void SetParentsExpansionState();
-		float OnGetLeftColumnWidth() const { return 1.0f - ColumnWidth; }
-		float OnGetRightColumnWidth() const { return ColumnWidth; }
-		void OnSetColumnWidth(float InWidth) { ColumnWidth = InWidth; }
-		void ShowHiddenValues(bool& bShowHiddenParameters) { bShowHiddenParameters = true; }
-		FName LayersFunctionsParameterName;
-		class UDEditorParameterValue* FunctionParameter;
-		struct FMaterialLayersFunctions* FunctionInstance;
-		TSharedPtr<IPropertyHandle> FunctionInstanceHandle;
-		TSharedPtr<class FAssetThumbnailPool> GetTreeThumbnailPool();
+	SLATE_END_ARGS()
 
-		/** Object that stores all of the possible parameters we can edit */
-		UMaterialEditorPreviewParameters* MaterialEditorInstance;
+	/** Constructs this widget with InArgs */
+	void Construct(const FArguments& InArgs);
+	TSharedRef< ITableRow > OnGenerateRowMaterialLayersFunctionsTreeView(TSharedPtr<FSortedParamData> Item, const TSharedRef< STableViewBase >& OwnerTable);
+	void OnGetChildrenMaterialLayersFunctionsTreeView(TSharedPtr<FSortedParamData> InParent, TArray< TSharedPtr<FSortedParamData> >& OutChildren);
+	void OnExpansionChanged(TSharedPtr<FSortedParamData> Item, bool bIsExpanded);
+	void SetParentsExpansionState();
 
-		/** Builds the custom parameter groups category */
-		void CreateGroupsWidget();
+	float OnGetLeftColumnWidth() const { return 1.0f - ColumnWidth; }
+	float OnGetRightColumnWidth() const { return ColumnWidth; }
+	void OnSetColumnWidth(float InWidth) { ColumnWidth = InWidth; }
+	FName LayersFunctionsParameterName;
+	class UDEditorParameterValue* FunctionParameter;
+	struct FMaterialLayersFunctions* FunctionInstance;
+	TSharedPtr<IPropertyHandle> FunctionInstanceHandle;
+	TSharedPtr<class FAssetThumbnailPool> GetTreeThumbnailPool();
 
-		SMaterialLayersFunctionsMaterialWrapper* GetWrapper() { return Wrapper; }
+	/** Object that stores all of the possible parameters we can edit */
+	UMaterialEditorPreviewParameters* MaterialEditorInstance;
 
-		TSharedRef<SWidget> CreateThumbnailWidget(EMaterialParameterAssociation InAssociation, int32 InIndex, float InThumbnailSize);
-		void UpdateThumbnailMaterial(TEnumAsByte<EMaterialParameterAssociation> InAssociation, int32 InIndex, bool bAlterBlendIndex = false);
+	/** Builds the custom parameter groups category */
+	void CreateGroupsWidget();
+
 protected:
 
 	void ShowSubParameters(TSharedPtr<FSortedParamData> ParentParameter);
@@ -316,5 +250,6 @@ private:
 	/** The actual width of the right column.  The left column is 1-ColumnWidth */
 	float ColumnWidth;
 
-	SMaterialLayersFunctionsMaterialWrapper* Wrapper;
+	TSharedPtr<class IPropertyRowGenerator> Generator;
+
 };

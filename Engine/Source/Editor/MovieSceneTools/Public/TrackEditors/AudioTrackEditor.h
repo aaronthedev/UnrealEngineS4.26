@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -145,7 +145,6 @@ private:
 	int32 StoredXSize;
 	FColor StoredColor;
 	float StoredSectionHeight;
-	bool bStoredLooping;
 
 	/** Stored sound wave to determine when it is invalidated. */
 	TWeakObjectPtr<USoundWave> StoredSoundWave;

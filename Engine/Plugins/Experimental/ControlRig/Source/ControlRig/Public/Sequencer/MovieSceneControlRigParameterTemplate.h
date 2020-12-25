@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -27,13 +27,6 @@ private:
 
 private:
 	void EvaluateCurvesWithMasks(const FMovieSceneContext& Context, FEvaluatedControlRigParameterSectionValues& Values) const;
-
-protected:
-	/** The bool parameter names and their associated curves. */
-	UPROPERTY()
-	TArray<FEnumParameterNameAndCurve> Enums;
-	UPROPERTY()
-	TArray<FIntegerParameterNameAndCurve> Integers;
 
 };
 

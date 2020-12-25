@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_RESOLVE_INFO_H
-#define PXR_USD_USD_RESOLVE_INFO_H
+#ifndef USD_RESOLVE_INFO_H
+#define USD_RESOLVE_INFO_H
 
 /// \file usd/resolveInfo.h
 
@@ -82,10 +82,7 @@ public:
     }
     
     /// Return true if this UsdResolveInfo represents an attribute that has an
-    /// authored value opinion.  This will return `true` if there is *any*
-    /// authored value opinion, including a \ref Usd_AttributeBlocking "block"
-    ///
-    /// This is equivalent to `HasAuthoredValue() || ValueIsBlocked()`
+    /// authored value opinion.
     bool HasAuthoredValueOpinion() const {
         return
             _source == UsdResolveInfoSourceDefault ||
@@ -93,16 +90,6 @@ public:
             _source == UsdResolveInfoSourceValueClips ||
             _source == UsdResolveInfoSourceIsTimeDependent ||
             _valueIsBlocked;
-    }
-
-    /// Return true if this UsdResolveInfo represents an attribute that has an
-    /// authored value that is not \ref Usd_AttributeBlocking "blocked"
-    bool HasAuthoredValue() const {
-        return
-            _source == UsdResolveInfoSourceDefault ||
-            _source == UsdResolveInfoSourceTimeSamples ||
-            _source == UsdResolveInfoSourceValueClips ||
-            _source == UsdResolveInfoSourceIsTimeDependent;
     }
 
     /// Return the node within the containing PcpPrimIndex that provided
@@ -179,4 +166,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_USD_RESOLVE_INFO_H
+#endif // USD_RESOLVE_INFO_H

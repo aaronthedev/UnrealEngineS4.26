@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/SWidgetReflectorTreeWidgetItem.h"
 #include "SlateOptMacros.h"
@@ -138,9 +138,8 @@ TSharedRef<SWidget> SReflectorTreeWidgetItem::GenerateWidgetForColumn(const FNam
 	}
 	else if (ColumnName == NAME_Address )
 	{
-		const FString WidgetAddress = FWidgetReflectorNodeUtils::WidgetAddressToString(WidgetInfo->GetWidgetAddress());
-		const FText Address = FText::FromString(WidgetAddress);
-		const FString ConditionalBreakPoint = FString::Printf(TEXT("this == (SWidget*)%s"), *WidgetAddress);
+		const FText Address = FText::FromString(WidgetInfo->GetWidgetAddress());
+		const FString ConditionalBreakPoint = FString::Printf(TEXT("this == (SWidget*)%s"), *WidgetInfo->GetWidgetAddress());
 
 		return SNew(SHorizontalBox)
 

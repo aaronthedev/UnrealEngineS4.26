@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -32,7 +32,11 @@ public:
 	virtual int32 GetDependentRequestCount() const = 0;
 	virtual TSharedPtr<FNiagaraCompileRequestDataBase, ESPMode::ThreadSafe> GetDependentRequest(int32 Index) = 0;
 	virtual FName ResolveEmitterAlias(FName VariableName) const = 0;
+	virtual uint32 GetDetailLevelMask() const = 0;
 	virtual bool GetUseRapidIterationParams() const = 0;
+
+	static const uint32 CookForAllDetailLevelMask = 0xFFFFFFFF;
+
 };
 
 class FNiagaraCompileOptions
@@ -59,6 +63,7 @@ public:
 	FString Name;
 	int32 TargetUsageBitmask;
 	TArray<FString> AdditionalDefines;
+	uint32 DetailLevelMask = 0xFFFFFFFF;
 };
 
 struct FNiagaraParameterStore;
@@ -97,7 +102,7 @@ class UNiagaraScriptSourceBase : public UObject
 	
 	/** Cause the source to build up any internal variables that will be useful in the compilation process.*/
 	virtual TSharedPtr<FNiagaraCompileRequestDataBase, ESPMode::ThreadSafe> PreCompile(UNiagaraEmitter* Emitter, const TArray<FNiagaraVariable>& EncounterableVariables, TArray<TSharedPtr<FNiagaraCompileRequestDataBase, ESPMode::ThreadSafe>>& ReferencedCompileRequests, bool bClearErrors = true) { return nullptr; }
-
+	
 	/** 
 	 * Allows the derived editor only script source to handle a post load requested by an owning emitter. 
 	 * @param OwningEmitter The emitter requesting the post load.
@@ -108,15 +113,13 @@ class UNiagaraScriptSourceBase : public UObject
 	NIAGARA_API virtual bool AddModuleIfMissing(FString ModulePath, ENiagaraScriptUsage Usage, bool& bOutFoundModule) { bOutFoundModule = false; return false; }
 
 #if WITH_EDITOR
-	virtual void CleanUpOldAndInitializeNewRapidIterationParameters(const UNiagaraEmitter* Emitter, ENiagaraScriptUsage ScriptUsage, FGuid ScriptUsageId, FNiagaraParameterStore& RapidIterationParameters) const { checkf(false, TEXT("Not implemented")); }
+	virtual void CleanUpOldAndInitializeNewRapidIterationParameters(FString UniqueEmitterName, ENiagaraScriptUsage ScriptUsage, FGuid ScriptUsageId, FNiagaraParameterStore& RapidIterationParameters) const { checkf(false, TEXT("Not implemented")); }
 
 	FOnChanged& OnChanged() { return OnChangedDelegate; }
 
-	virtual void ForceGraphToRecompileOnNextCheck() {}
+	virtual void InvalidateCachedCompileIds() {}
 
 	virtual void RefreshFromExternalChanges() {}
-
-	virtual void CollectDataInterfaces(TArray<const UNiagaraDataInterfaceBase*>& DataInterfaces) const {};
 
 protected:
 	FOnChanged OnChangedDelegate;

@@ -74,18 +74,10 @@ struct UsdSkelTokensType {
     /// 
     /// UsdSkelAnimation
     const TfToken blendShapeWeights;
-    /// \brief "jointNames"
-    /// 
-    /// UsdSkelSkeleton
-    const TfToken jointNames;
     /// \brief "joints"
     /// 
     /// UsdSkelAnimation, UsdSkelSkeleton
     const TfToken joints;
-    /// \brief "normalOffsets"
-    /// 
-    /// UsdSkelBlendShape
-    const TfToken normalOffsets;
     /// \brief "offsets"
     /// 
     /// UsdSkelBlendShape

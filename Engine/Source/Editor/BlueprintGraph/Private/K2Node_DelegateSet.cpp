@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "K2Node_DelegateSet.h"
 #include "UObject/UnrealType.h"
@@ -54,10 +54,10 @@ public:
 		check(DelegatePin);
 
 		// Find the property on the specified scope
-		FProperty* BoundProperty = NULL;
-		for (TFieldIterator<FProperty> It(DelegateNode->DelegatePropertyClass, EFieldIteratorFlags::IncludeSuper); It; ++It)
+		UProperty* BoundProperty = NULL;
+		for (TFieldIterator<UProperty> It(DelegateNode->DelegatePropertyClass, EFieldIteratorFlags::IncludeSuper); It; ++It)
 		{
-			FProperty* Prop = *It;
+			UProperty* Prop = *It;
 			if( Prop->GetFName() == DelegateNode->DelegatePropertyName )
 			{
 				check(Prop->HasAllPropertyFlags(CPF_BlueprintAssignable));
@@ -192,18 +192,18 @@ UEdGraphPin* UK2Node_DelegateSet::GetDelegateOwner() const
 
 UFunction* UK2Node_DelegateSet::GetDelegateSignature()
 {
-	FMulticastDelegateProperty* DelegateProperty = FindFProperty<FMulticastDelegateProperty>(DelegatePropertyClass, DelegatePropertyName);
+	UMulticastDelegateProperty* DelegateProperty = FindField<UMulticastDelegateProperty>(DelegatePropertyClass, DelegatePropertyName);
 
 	if( !DelegateProperty )
 	{
 		// Attempt to find a remapped delegate property
-		FMulticastDelegateProperty* NewProperty = FMemberReference::FindRemappedField<FMulticastDelegateProperty>(DelegatePropertyClass, DelegatePropertyName);
+		UMulticastDelegateProperty* NewProperty = FMemberReference::FindRemappedField<UMulticastDelegateProperty>(DelegatePropertyClass, DelegatePropertyName);
 		if( NewProperty )
 		{
 			// Found a remapped property, update the node
 			DelegateProperty = NewProperty;
 			DelegatePropertyName = NewProperty->GetFName();
-			DelegatePropertyClass = Cast<UClass>(NewProperty->GetOwner<UObject>());
+			DelegatePropertyClass = Cast<UClass>(NewProperty->GetOuter());
 		}
 	}
 
@@ -212,12 +212,12 @@ UFunction* UK2Node_DelegateSet::GetDelegateSignature()
 
 UFunction* UK2Node_DelegateSet::GetDelegateSignature() const
 {
-	FMulticastDelegateProperty* DelegateProperty = FindFProperty<FMulticastDelegateProperty>(DelegatePropertyClass, DelegatePropertyName);
+	UMulticastDelegateProperty* DelegateProperty = FindField<UMulticastDelegateProperty>(DelegatePropertyClass, DelegatePropertyName);
 
 	if( !DelegateProperty )
 	{
 		// Attempt to find a remapped delegate property
-		DelegateProperty = FMemberReference::FindRemappedField<FMulticastDelegateProperty>(DelegatePropertyClass, DelegatePropertyName);
+		DelegateProperty = FMemberReference::FindRemappedField<UMulticastDelegateProperty>(DelegatePropertyClass, DelegatePropertyName);
 	}
 
 	return (DelegateProperty != NULL) ? DelegateProperty->SignatureFunction : NULL;

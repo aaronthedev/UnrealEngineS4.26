@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "FCPXML/FCPXMLExport.h"
 #include "MovieScene.h"
@@ -114,12 +114,7 @@ bool FFCPXMLExportVisitor::ConstructProjectNode(TSharedRef<FFCPXMLNode> InParent
 
 	TSharedRef<FFCPXMLNode> ChildrenNode = ProjectNode->CreateChildNode(TEXT("children"));
 
-	if (!ConstructMasterVideoClipNodes(ChildrenNode))
-	{
-		return false;
-	}
-
-	if (!ConstructMasterAudioClipNodes(ChildrenNode))
+	if (!ConstructMasterClipNodes(ChildrenNode))
 	{
 		return false;
 	}
@@ -132,7 +127,8 @@ bool FFCPXMLExportVisitor::ConstructProjectNode(TSharedRef<FFCPXMLNode> InParent
 	return true;
 }
 
-bool FFCPXMLExportVisitor::ConstructMasterVideoClipNodes(TSharedRef<FFCPXMLNode> InParentNode)
+/** Creates master clip node. */
+bool FFCPXMLExportVisitor::ConstructMasterClipNodes(TSharedRef<FFCPXMLNode> InParentNode)
 {
 	if (!ExportData->IsExportDataValid() || !ExportData->MovieSceneData.IsValid() || !ExportData->MovieSceneData->CinematicMasterTrack.IsValid())
 	{
@@ -163,16 +159,6 @@ bool FFCPXMLExportVisitor::ConstructMasterVideoClipNodes(TSharedRef<FFCPXMLNode>
 		{
 			return false;
 		}
-	}
-
-	return true;
-}
-
-bool FFCPXMLExportVisitor::ConstructMasterAudioClipNodes(TSharedRef<FFCPXMLNode> InParentNode)
-{
-	if (!ExportData->IsExportDataValid() || !ExportData->MovieSceneData.IsValid() || !ExportData->MovieSceneData->CinematicMasterTrack.IsValid())
-	{
-		return false;
 	}
 
 	for (TSharedPtr<FMovieSceneExportAudioMasterTrackData> AudioMasterTrack : ExportData->MovieSceneData->AudioMasterTracks)
@@ -250,12 +236,12 @@ bool FFCPXMLExportVisitor::ConstructMasterClipNode(TSharedRef<FFCPXMLNode> InPar
 		return false;
 	}
 
-	if (!ConstructLoggingInfoNode(ClipNode, InCinematicSectionData->MovieSceneSection))
+	if (!ConstructLoggingInfoNode(ClipNode, InCinematicSectionData))
 	{
 		return false;
 	}
 
-	if (!ConstructColorInfoNode(ClipNode))
+	if (!ConstructColorInfoNode(ClipNode, InCinematicSectionData))
 	{
 		return false;
 	}
@@ -340,15 +326,15 @@ bool FFCPXMLExportVisitor::ConstructMasterClipNode(TSharedRef<FFCPXMLNode> InPar
 
 
 /** Creates logginginfo node. */
-bool FFCPXMLExportVisitor::ConstructLoggingInfoNode(TSharedRef<FFCPXMLNode> InParentNode, const UMovieSceneSection* InMovieSceneSection)
+bool FFCPXMLExportVisitor::ConstructLoggingInfoNode(TSharedRef<FFCPXMLNode> InParentNode, const TSharedPtr<FMovieSceneExportCinematicSectionData> InSectionData)
 {
-	if (!IsValid(InMovieSceneSection))
+	if (!InSectionData.IsValid() || InSectionData->MovieSceneSection == nullptr)
 	{
 		return false;
 	}
 
 	TSharedRef<FFCPXMLNode> LoggingInfoNode = InParentNode->CreateChildNode(TEXT("logginginfo"));
-	ConstructLoggingInfoElements(LoggingInfoNode, InMovieSceneSection);
+	ConstructLoggingInfoElements(LoggingInfoNode, InSectionData->MovieSceneSection);
 
 	TSharedPtr<FFCPXMLNode> LogNoteNode = LoggingInfoNode->GetChildNode(TEXT("lognote"), ENodeInherit::NoInherit, ENodeReference::NoReferences);
 	if (!LogNoteNode.IsValid())
@@ -357,7 +343,7 @@ bool FFCPXMLExportVisitor::ConstructLoggingInfoNode(TSharedRef<FFCPXMLNode> InPa
 	}
 
 	FString Metadata{ TEXT("") };
-	const UMovieSceneCinematicShotSection* ShotSection = Cast<UMovieSceneCinematicShotSection>(InMovieSceneSection);
+	const UMovieSceneCinematicShotSection* ShotSection = Cast<UMovieSceneCinematicShotSection>(InSectionData->MovieSceneSection);
 	if (ShotSection == nullptr)
 	{
 		return false;
@@ -476,7 +462,7 @@ void FFCPXMLExportVisitor::SetLoggingInfoElementValue(TSharedPtr<FFCPXMLNode> In
 }
 
 /** Creates colorinfo node. */
-bool FFCPXMLExportVisitor::ConstructColorInfoNode(TSharedRef<FFCPXMLNode> InParentNode)
+bool FFCPXMLExportVisitor::ConstructColorInfoNode(TSharedRef<FFCPXMLNode> InParentNode, const TSharedPtr<FMovieSceneExportSectionData> InSectionData)
 {
 	TSharedPtr<FFCPXMLNode> ColorInfoNode = InParentNode->CreateChildNode(TEXT("colorinfo"));
 	ColorInfoNode->CreateChildNode(TEXT("lut"));
@@ -1162,7 +1148,7 @@ bool FFCPXMLExportVisitor::GetCinematicSectionFrames(const TSharedPtr<FMovieScen
 	OutStartFrame = InCinematicSectionData->StartFrame.Value;
 	OutEndFrame = InCinematicSectionData->EndFrame.Value;
 	OutDuration = OutEndFrame - OutStartFrame;
-	OutInFrame = HandleFrames;
+	OutInFrame = HandleFrames + 1;
 	OutOutFrame = HandleFrames + OutDuration;
 
 	return true;
@@ -1286,7 +1272,8 @@ bool FFCPXMLExportVisitor::ComposeFileKey(const TSharedPtr<FMovieSceneExportSect
 		return false;
 	}
 
-	OutName = InSection->MovieSceneSection->GetPathName();
+	OutName = InSection->SourceFilePath + InSection->SourceFilename;
+
 	return true;
 }
 

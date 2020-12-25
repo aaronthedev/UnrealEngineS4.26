@@ -1,7 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GenericPlatform/HttpRequestImpl.h"
-#include "Stats/Stats.h"
 #include "Http.h"
 
 FHttpRequestCompleteDelegate& FHttpRequestImpl::OnProcessRequestComplete()
@@ -22,32 +21,6 @@ FHttpRequestHeaderReceivedDelegate& FHttpRequestImpl::OnHeaderReceived()
 	return HeaderReceivedDelegate;
 }
 
-FHttpRequestWillRetryDelegate& FHttpRequestImpl::OnRequestWillRetry()
-{
-	UE_LOG(LogHttp, VeryVerbose, TEXT("FHttpRequestImpl::OnRequestWillRetry()"));
-	return OnRequestWillRetryDelegate;
-}
-
-void FHttpRequestImpl::SetTimeout(float InTimeoutSecs)
-{
-	TimeoutSecs = InTimeoutSecs;
-}
-
-void FHttpRequestImpl::ClearTimeout()
-{
-	TimeoutSecs.Reset();
-}
-
-TOptional<float> FHttpRequestImpl::GetTimeout() const
-{
-	return TimeoutSecs;
-}
-
-float FHttpRequestImpl::GetTimeoutOrDefault() const
-{
-	return GetTimeout().Get(FHttpModule::Get().GetHttpTimeout());
-}
-
 void FHttpRequestImpl::BroadcastResponseHeadersReceived()
 {
 	if (OnHeaderReceived().IsBound())
@@ -64,8 +37,6 @@ void FHttpRequestImpl::BroadcastResponseHeadersReceived()
 				if (Header.Split(TEXT(":"), &HeaderName, &HeaderValue))
 				{
 					HeaderValue.TrimStartInline();
-
-					QUICK_SCOPE_CYCLE_COUNTER(STAT_FHttpRequestImpl_BroadcastResponseHeadersReceived_OnHeaderReceived);
 					OnHeaderReceived().ExecuteIfBound(ThisPtr, HeaderName, HeaderValue);
 				}
 			}

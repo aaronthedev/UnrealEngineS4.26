@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -79,10 +79,10 @@ private:
 	TSharedPtr<IPropertyHandle> ConfigFilesHandle;
 
 	// A copy of the edit property we use with our helper class to update values on a per-config basis.
-	FProperty* ConfigEditorCopyOfEditProperty;
+	UProperty* ConfigEditorCopyOfEditProperty;
 
 	// The original property from the Project settings, that we have chosen to edit.
-	FProperty* OriginalProperty;
+	UProperty* OriginalProperty;
 
 	// A runtime class generated with the Original property as a member.
 	// This allows us to edit a property on a per config basis.

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -51,7 +51,7 @@ public:
 	/**
 	 * Test if the Target is hit at this 2D position / 3D ray
 	 */
-	virtual FInputRayHit IsHitByClick(const FInputDeviceRay& ClickPos);
+	virtual bool IsHitByClick(const FInputDeviceRay& ClickPos);
 
 	/**
 	 * Click the Target at this 2D position / 3D ray. Default behavior is to print debug string.

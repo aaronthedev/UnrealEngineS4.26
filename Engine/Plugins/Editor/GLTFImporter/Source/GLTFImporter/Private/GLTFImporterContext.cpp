@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GLTFImporterContext.h"
 #include "GLTFMaterialElement.h"
@@ -15,7 +15,7 @@ public:
 	virtual GLTF::FMaterialElement* CreateMaterial(const TCHAR* Name, UObject* ParentPackage, EObjectFlags Flags) override
 	{
 		const FString PackageName  = UPackageTools::SanitizePackageName(FPaths::Combine(ParentPackage->GetName(), TEXT("Materials"), Name));
-		UPackage*     AssetPackage = CreatePackage(*PackageName);
+		UPackage*     AssetPackage = CreatePackage(nullptr, *PackageName);
 		UMaterial*    Material     = NewObject<UMaterial>(AssetPackage, UMaterial::StaticClass(), *FPaths::GetBaseFilename(PackageName), Flags);
 
 		return new FGLTFMaterialElement(Material);

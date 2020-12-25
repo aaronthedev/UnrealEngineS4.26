@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieScene/MovieSceneLiveLinkTrack.h"
 
 #include "Evaluation/MovieSceneEvalTemplate.h"
-#include "Evaluation/MovieSceneEvaluationTrack.h"
 #include "MovieScene/MovieSceneLiveLinkSection.h"
 #include "MovieSceneLiveLinkSectionTemplate.h"
 

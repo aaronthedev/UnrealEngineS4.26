@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /** 
  *  Blackboard - holds AI's world knowledge, easily accessible for behavior trees
@@ -38,7 +38,7 @@ namespace EBlackboardDescription
 }
 
 
-UCLASS(ClassGroup = AI, meta = (BlueprintSpawnableComponent), hidecategories = (Sockets, Collision))
+UCLASS(ClassGroup = AI, meta = (BlueprintSpawnableComponent))
 class AIMODULE_API UBlackboardComponent : public UActorComponent
 {
 	GENERATED_BODY()
@@ -101,7 +101,7 @@ public:
 	/** caches UBrainComponent pointer to be used in communication */
 	void CacheBrainComponent(UBrainComponent& BrainComponent);
 
-	/** setup component for using given blackboard asset, returns true if blackboard is properly initialized for specified blackboard data */
+	/** setup component for using given blackboard asset */
 	bool InitializeBlackboard(UBlackboardData& NewAsset);
 	
 	/** @return true if component can be used with specified blackboard asset */
@@ -211,9 +211,7 @@ public:
 	FORCEINLINE const uint8* GetKeyRawData(const FName& KeyName) const { return GetKeyRawData(GetKeyID(KeyName)); }
 	FORCEINLINE const uint8* GetKeyRawData(FBlackboard::FKey KeyID) const { return ValueMemory.Num() && ValueOffsets.IsValidIndex(KeyID) ? (ValueMemory.GetData() + ValueOffsets[KeyID]) : NULL; }
 
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS // re BlackboardAsset
 	FORCEINLINE bool IsValidKey(FBlackboard::FKey KeyID) const { check(BlackboardAsset); return KeyID != FBlackboard::InvalidKey && BlackboardAsset->Keys.IsValidIndex(KeyID); }
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS // re BlackboardAsset
 
 	/** compares blackboard's values under specified keys */
 	EBlackboardCompare::Type CompareKeyValues(TSubclassOf<UBlackboardKeyType> KeyType, FBlackboard::FKey KeyA, FBlackboard::FKey KeyB) const;
@@ -235,14 +233,7 @@ protected:
 	UPROPERTY(transient)
 	UBrainComponent* BrainComp;
 
-	/** data asset defining entries. Will be used as part of InitializeComponent 
-	 *	call provided BlackboardAsset hasn't been already set (via a InitializeBlackboard 
-	 *	call). */
-	UPROPERTY(EditDefaultsOnly, Category = AI)
-	UBlackboardData* DefaultBlackboardAsset;
-
-	/** internal use, current BB asset being used. Will be made private in the future */
-	UE_DEPRECATED_FORGAME(4.26, "Directly accessing BlackboardAsset is not longer supported. Use DefaultBlackboardAsset or InitializeBlackboard to set it and GetBlackboardAsset to retrieve it")
+	/** data asset defining entries */
 	UPROPERTY(transient)
 	UBlackboardData* BlackboardAsset;
 
@@ -257,34 +248,11 @@ protected:
 	TArray<UBlackboardKeyType*> KeyInstances;
 
 protected:
-	struct FOnBlackboardChangeNotificationInfo
-	{
-		FOnBlackboardChangeNotificationInfo(const FOnBlackboardChangeNotification& InDelegateHandle)
-			: DelegateHandle(InDelegateHandle)
-		{
-		}
-
-		FDelegateHandle GetHandle() const
-		{
-			return DelegateHandle.GetHandle();
-		}
-
-		FOnBlackboardChangeNotification DelegateHandle;
-		bool bToBeRemoved = false;
-	};
-
-
-	/** Count of re-entrant observer notifications */
-	mutable int32 NotifyObserversRecursionCount = 0;
-
-	/** Count of observers to remove */
-	mutable int32 ObserversToRemoveCount = 0;
-
 	/** observers registered for blackboard keys */
-	mutable TMultiMap<uint8, FOnBlackboardChangeNotificationInfo> Observers;
+	mutable TMultiMap<uint8, FOnBlackboardChangeNotification> Observers;
 	
 	/** observers registered from owner objects */
-	mutable TMultiMap<UObject*, FDelegateHandle> ObserverHandles;
+	TMultiMap<UObject*, FDelegateHandle> ObserverHandles;
 
 	/** queued key change notification, will be processed on ResumeUpdates call */
 	mutable TArray<uint8> QueuedUpdates;
@@ -314,8 +282,6 @@ protected:
 
 //////////////////////////////////////////////////////////////////////////
 // Inlines
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS // re BlackboardAsset
 
 FORCEINLINE bool UBlackboardComponent::HasValidAsset() const
 {
@@ -406,7 +372,6 @@ typename TDataClass::FDataType UBlackboardComponent::GetValue(FBlackboard::FKey 
 	return RawData ? TDataClass::GetValue((TDataClass*)KeyOb, RawData) : TDataClass::InvalidValue;
 }
 
-PRAGMA_ENABLE_DEPRECATION_WARNINGS // re BlackboardAsset
 
 /**
  *	A helper type that improved performance of reading data from BB

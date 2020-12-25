@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_Abc_SourceName_h
-#define Alembic_Abc_SourceName_h
+#ifndef _Alembic_Abc_SourceName_h_
+#define _Alembic_Abc_SourceName_h_
 
 #include <Alembic/Util/Export.h>
 #include <Alembic/Abc/Foundation.h>

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GeometryCacheTrackEditor.h"
 #include "Rendering/DrawElements.h"
@@ -29,7 +29,6 @@
 #include "GeometryCacheComponent.h"
 #include "GeometryCache.h"
 #include "Styling/SlateIconFinder.h"
-#include "LevelSequence.h"
 
 namespace GeometryCacheEditorConstants
 {
@@ -267,15 +266,6 @@ void FGeometryCacheSection::SlipSection(FFrameNumber SlipTime)
 	ISequencerSection::SlipSection(SlipTime);
 }
 
-void FGeometryCacheSection::BeginDilateSection()
-{
-	Section.PreviousPlayRate = Section.Params.PlayRate; //make sure to cache the play rate
-}
-void FGeometryCacheSection::DilateSection(const TRange<FFrameNumber>& NewRange, float DilationFactor)
-{
-	Section.Params.PlayRate = Section.PreviousPlayRate / DilationFactor;
-	Section.SetRange(NewRange);
-}
 
 FGeometryCacheTrackEditor::FGeometryCacheTrackEditor(TSharedRef<ISequencer> InSequencer)
 	: FMovieSceneTrackEditor(InSequencer)
@@ -287,11 +277,6 @@ TSharedRef<ISequencerTrackEditor> FGeometryCacheTrackEditor::CreateTrackEditor(T
 	return MakeShareable(new FGeometryCacheTrackEditor(InSequencer));
 }
 
-
-bool FGeometryCacheTrackEditor::SupportsSequence(UMovieSceneSequence* InSequence) const
-{
-	return InSequence && InSequence->IsA(ULevelSequence::StaticClass());
-}
 
 bool FGeometryCacheTrackEditor::SupportsType(TSubclassOf<UMovieSceneTrack> Type) const
 {
@@ -374,7 +359,6 @@ FKeyPropertyResult FGeometryCacheTrackEditor::AddKeyInternal(FFrameNumber KeyTim
 
 			UMovieSceneSection* NewSection = Cast<UMovieSceneGeometryCacheTrack>(Track)->AddNewAnimation(KeyTime, GeomCacheComp);
 			KeyPropertyResult.bTrackModified = true;
-			KeyPropertyResult.SectionsCreated.Add(NewSection);
 
 			GetSequencer()->EmptySelection();
 			GetSequencer()->SelectSection(NewSection);

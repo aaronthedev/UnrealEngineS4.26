@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -123,6 +123,12 @@ enum class ECloudARPinCloudState : uint8
 	// Resolving failed, because the AR Cloud Service could not find the
 	// provided cloud anchor ID.
 	ErrorResolvingCloudIDNotFound,
+
+	// The server could not match the visual features provided by ARCore against
+	// the localization dataset of the requested CloudARPin ID. This means
+	// that the CloudARPin pose being requested was likely not created in the user's
+	// surroundings.
+	ErrorResolvingLocalizationNoMatch,
 
 	// The CloudARPin could not be resolved because the SDK used to host the CloudARPin
 	// was newer than the version being used to acquire it. These versions must

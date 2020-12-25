@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -50,7 +50,7 @@ public:
 	 * @return true if success
 	 */
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Reflect VRPN Keyboard"), Category = "DisplayClusterInput")
-	virtual bool SetVrpnKeyboardReflectionMode(const FString& VrpnDeviceId, EDisplayClusterInputKeyboardReflectionMode ReflectionMode) override;
+	virtual bool SetVrpnKeyboardReflectionMode(const FString& VrpnDeviceId, EDisplayClusterInputKeyboardReflectMode ReflectMode) override;
 
 	/**
 	* Bind VRPN tracker to a hand controller

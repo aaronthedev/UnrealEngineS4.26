@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	VulkanSwapChain.h: Vulkan viewport RHI definitions.
@@ -8,17 +8,11 @@
 #include "VulkanSwapChain.h"
 #include "VulkanPlatform.h"
 #include "Engine/RendererSettings.h"
-#include "HAL/PlatformFramePacer.h"
 #include "IHeadMountedDisplayModule.h"
 #include "IHeadMountedDisplayVulkanExtensions.h"
 
 
-#if PLATFORM_ANDROID
-// this path crashes within libvulkan during vkDestroySwapchainKHR on some versions of Android. See FORT-250079
-int32 GVulkanKeepSwapChain = 0;
-#else
 int32 GVulkanKeepSwapChain = 1;
-#endif
 static FAutoConsoleVariableRef CVarVulkanKeepSwapChain(
 	TEXT("r.Vulkan.KeepSwapChain"),
 	GVulkanKeepSwapChain,
@@ -51,15 +45,16 @@ static FAutoConsoleVariableRef CVarVulkanCPURHIFramePacer(
 	ECVF_RenderThreadSafe
 );
 
-int32 GVulkanForcePacingWithoutVSync = 0;
-static FAutoConsoleVariableRef CVarVulkanForcePacingWithoutVSync(
-	TEXT("r.Vulkan.ForcePacingWithoutVSync"),
-	GVulkanForcePacingWithoutVSync,
-	TEXT("Whether to CPU pacers remain enabled even if VSync is off"),
+int32 GVulkanExtensionFramePacer = 1;
+static FAutoConsoleVariableRef CVarVulkanExtensionFramePacer(
+	TEXT("r.Vulkan.ExtensionFramePacer"),
+	GVulkanExtensionFramePacer,
+	TEXT("Whether to enable the google extension Framepacer for Vulkan (when available on device)"),
 	ECVF_RenderThreadSafe
 );
 
-int32 GPrintVulkanVsyncDebug = 0;
+static int32 GPrintVulkanVsyncDebug = 0;
+
 #if !(UE_BUILD_SHIPPING)
 static FAutoConsoleVariableRef CVarVulkanDebugVsync(
 	TEXT("r.Vulkan.DebugVsync"),
@@ -121,7 +116,7 @@ VkResult SimulateErrors(VkResult Result)
 extern TAutoConsoleVariable<int32> GAllowPresentOnComputeQueue;
 static TSet<EPixelFormat> GPixelFormatNotSupportedWarning;
 
-FVulkanSwapChain::FVulkanSwapChain(VkInstance InInstance, FVulkanDevice& InDevice, void* WindowHandle, EPixelFormat& InOutPixelFormat, uint32 Width, uint32 Height, bool bIsFullScreen,
+FVulkanSwapChain::FVulkanSwapChain(VkInstance InInstance, FVulkanDevice& InDevice, void* WindowHandle, EPixelFormat& InOutPixelFormat, uint32 Width, uint32 Height,
 	uint32* InOutDesiredNumBackBuffers, TArray<VkImage>& OutImages, int8 InLockToVsync, FVulkanSwapChainRecreateInfo* RecreateInfo)
 	: SwapChain(VK_NULL_HANDLE)
 	, Device(InDevice)
@@ -137,7 +132,7 @@ FVulkanSwapChain::FVulkanSwapChain(VkInstance InInstance, FVulkanDevice& InDevic
 
 	NextPresentTargetTime = (FPlatformTime::Seconds() - GStartTime);
 
-	if (RecreateInfo != nullptr && RecreateInfo->SwapChain != VK_NULL_HANDLE)
+	if(RecreateInfo != nullptr && RecreateInfo->SwapChain != VK_NULL_HANDLE)
 	{
 		check(RecreateInfo->Surface != VK_NULL_HANDLE);
 		Surface = RecreateInfo->Surface;
@@ -417,7 +412,11 @@ FVulkanSwapChain::FVulkanSwapChain(VkInstance InInstance, FVulkanDevice& InDevic
 	SwapChainInfo.imageColorSpace = CurrFormat.colorSpace;
 	SwapChainInfo.imageExtent.width = SizeX;
 	SwapChainInfo.imageExtent.height = SizeY;
-	SwapChainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	SwapChainInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+	if (GVulkanDelayAcquireImage == EDelayAcquireImageType::DelayAcquire)
+	{
+		SwapChainInfo.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+	}
 	SwapChainInfo.preTransform = PreTransform;
 	SwapChainInfo.imageArrayLayers = 1;
 	SwapChainInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -428,6 +427,7 @@ FVulkanSwapChain::FVulkanSwapChain(VkInstance InInstance, FVulkanDevice& InDevic
 		SwapChainInfo.oldSwapchain = RecreateInfo->SwapChain;
 	}
 	
+
 	SwapChainInfo.clipped = VK_TRUE;
 	SwapChainInfo.compositeAlpha = CompositeAlpha;
 
@@ -445,18 +445,6 @@ FVulkanSwapChain::FVulkanSwapChain(VkInstance InInstance, FVulkanDevice& InDevic
 		}
 	}
 
-	if (Device.GetOptionalExtensions().HasQcomRenderPassTransform)
-	{
-		QCOMRenderPassTransform = SurfProperties.currentTransform;
-		SwapChainInfo.preTransform = QCOMRenderPassTransform;
-		ImageFormat = SwapChainInfo.imageFormat;
-		if (SwapChainInfo.preTransform == VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR ||
-			SwapChainInfo.preTransform == VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR)
-		{
-			Swap(SwapChainInfo.imageExtent.width, SwapChainInfo.imageExtent.height);
-		}
-	}
-
 	VkBool32 bSupportsPresent;
 	VERIFYVULKANRESULT(VulkanRHI::vkGetPhysicalDeviceSurfaceSupportKHR(Device.GetPhysicalHandle(), Device.GetPresentQueue()->GetFamilyIndex(), Surface, &bSupportsPresent));
 	ensure(bSupportsPresent);
@@ -466,41 +454,19 @@ FVulkanSwapChain::FVulkanSwapChain(VkInstance InInstance, FVulkanDevice& InDevic
 	static bool bPrintSwapchainCreationInfo = true;
 	if (bPrintSwapchainCreationInfo)
 	{
-		UE_LOG(LogVulkanRHI, Log, TEXT("Creating new VK swapchain with present mode %d, format %d, color space %d, num images %d"), 
-			static_cast<uint32>(SwapChainInfo.presentMode), static_cast<uint32>(SwapChainInfo.imageFormat), static_cast<uint32>(SwapChainInfo.imageColorSpace), static_cast<uint32>(SwapChainInfo.minImageCount));
+		UE_LOG(LogVulkanRHI, Log, TEXT("Creating new VK swapchain with format %d, color space %d, num images %d"), static_cast<uint32>(SwapChainInfo.imageFormat), static_cast<uint32>(SwapChainInfo.imageColorSpace), static_cast<uint32>(SwapChainInfo.minImageCount));
 #if WITH_EDITOR
 		bPrintSwapchainCreationInfo = false;
 #endif
 	}
 
-#if VULKAN_SUPPORTS_FULLSCREEN_EXCLUSIVE
-	VkSurfaceFullScreenExclusiveInfoEXT FullScreenInfo;
-	ZeroVulkanStruct(FullScreenInfo, VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT);
-	if (Device.GetOptionalExtensions().HasEXTFullscreenExclusive)
-	{
-		FullScreenInfo.fullScreenExclusive = bIsFullScreen ? VK_FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT : VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
-		FullScreenInfo.pNext = (void*)SwapChainInfo.pNext;
-		SwapChainInfo.pNext = &FullScreenInfo;
-	}
-#endif
-
-	VkResult Result = FVulkanPlatform::CreateSwapchainKHR(Device.GetInstanceHandle(), &SwapChainInfo, VULKAN_CPU_ALLOCATOR, &SwapChain);
-#if VULKAN_SUPPORTS_FULLSCREEN_EXCLUSIVE
-	if (Device.GetOptionalExtensions().HasEXTFullscreenExclusive && Result == VK_ERROR_INITIALIZATION_FAILED)
-	{
-		// Unlink fullscreen
-		UE_LOG(LogVulkanRHI, Warning, TEXT("Create swapchain failed with Initialization error; removing FullScreen extension..."));
-		SwapChainInfo.pNext = FullScreenInfo.pNext;
-		Result = FVulkanPlatform::CreateSwapchainKHR(Device.GetInstanceHandle(), &SwapChainInfo, VULKAN_CPU_ALLOCATOR, &SwapChain);
-	}
-#endif
-	VERIFYVULKANRESULT_EXPANDED(Result);
+	VERIFYVULKANRESULT_EXPANDED(VulkanRHI::vkCreateSwapchainKHR(Device.GetInstanceHandle(), &SwapChainInfo, VULKAN_CPU_ALLOCATOR, &SwapChain));
 
 	if (RecreateInfo != nullptr)
 	{
 		if (RecreateInfo->SwapChain != VK_NULL_HANDLE)
 		{
-			FVulkanPlatform::DestroySwapchainKHR(Device.GetInstanceHandle(), RecreateInfo->SwapChain, VULKAN_CPU_ALLOCATOR);
+			VulkanRHI::vkDestroySwapchainKHR(Device.GetInstanceHandle(), RecreateInfo->SwapChain, VULKAN_CPU_ALLOCATOR);
 			RecreateInfo->SwapChain = VK_NULL_HANDLE;
 		}
 		if (RecreateInfo->Surface != VK_NULL_HANDLE)
@@ -512,7 +478,6 @@ FVulkanSwapChain::FVulkanSwapChain(VkInstance InInstance, FVulkanDevice& InDevic
 
 	InternalWidth = FMath::Min(Width, SwapChainInfo.imageExtent.width);
 	InternalHeight = FMath::Min(Height, SwapChainInfo.imageExtent.height);
-	bInternalFullScreen = bIsFullScreen;
 
 	uint32 NumSwapChainImages;
 	VERIFYVULKANRESULT_EXPANDED(VulkanRHI::vkGetSwapchainImagesKHR(Device.GetInstanceHandle(), SwapChain, &NumSwapChainImages, nullptr));
@@ -535,6 +500,15 @@ FVulkanSwapChain::FVulkanSwapChain(VkInstance InInstance, FVulkanDevice& InDevic
 		ImageAcquiredSemaphore[BufferIndex]->AddRef();
 	}
 
+#if VULKAN_SUPPORTS_GOOGLE_DISPLAY_TIMING
+	if (GVulkanExtensionFramePacer && Device.GetOptionalExtensions().HasGoogleDisplayTiming)
+	{
+		GDTimingFramePacer = MakeUnique<FGDTimingFramePacer>(Device, SwapChain);
+		GVulkanCPURenderThreadFramePacer = 0;
+		GVulkanCPURHIFramePacer = 0;
+	}
+#endif
+
 	PresentID = 0;
 }
 
@@ -554,7 +528,7 @@ void FVulkanSwapChain::Destroy(FVulkanSwapChainRecreateInfo* RecreateInfo)
 	}
 	else
 	{
-		FVulkanPlatform::DestroySwapchainKHR(Device.GetInstanceHandle(), SwapChain, VULKAN_CPU_ALLOCATOR);
+		VulkanRHI::vkDestroySwapchainKHR(Device.GetInstanceHandle(), SwapChain, VULKAN_CPU_ALLOCATOR);
 	}
 	SwapChain = VK_NULL_HANDLE;
 
@@ -576,22 +550,6 @@ void FVulkanSwapChain::Destroy(FVulkanSwapChainRecreateInfo* RecreateInfo)
 	{
 		VulkanRHI::vkDestroySurfaceKHR(Instance, Surface, VULKAN_CPU_ALLOCATOR);
 	}
-
-	if (QCOMDepthView && QCOMDepthView != QCOMDepthStencilView)
-	{
-		QCOMDepthView->Destroy(Device);
-		delete QCOMDepthView;
-		QCOMDepthView = nullptr;
-	}
-
-	if (QCOMDepthStencilView)
-	{
-		QCOMDepthStencilView->Destroy(Device);
-		delete QCOMDepthStencilView;
-		QCOMDepthStencilView = nullptr;
-		QCOMDepthView = nullptr;
-	}
-
 	Surface = VK_NULL_HANDLE;
 }
 
@@ -682,10 +640,171 @@ int32 FVulkanSwapChain::AcquireImageIndex(VulkanRHI::FSemaphore** OutSemaphore)
 	return CurrentImageIndex;
 }
 
+#if VULKAN_SUPPORTS_GOOGLE_DISPLAY_TIMING
+FGDTimingFramePacer::FGDTimingFramePacer(FVulkanDevice& InDevice, VkSwapchainKHR InSwapChain)
+	: Device(InDevice)
+	, SwapChain(InSwapChain)
+{
+	VkRefreshCycleDurationGOOGLE RefreshCycleDuration;
+	VkResult Result = VulkanDynamicAPI::vkGetRefreshCycleDurationGOOGLE(Device.GetInstanceHandle(), SwapChain, &RefreshCycleDuration);
+	checkf(Result == VK_SUCCESS, TEXT("vkGetRefreshCycleDurationGOOGLE failed: %i"), Result);
+
+	RefreshDuration = RefreshCycleDuration.refreshDuration;
+	ensure(RefreshDuration > 0);
+	if (RefreshDuration == 0)
+	{
+		RefreshDuration = 16666667;
+	}
+	HalfRefreshDuration = (RefreshDuration / 2);
+
+	FMemory::Memzero(PresentTime); 
+
+	ZeroVulkanStruct(PresentTimesInfo, VK_STRUCTURE_TYPE_PRESENT_TIMES_INFO_GOOGLE);
+	PresentTimesInfo.swapchainCount = 1;
+	PresentTimesInfo.pTimes = &PresentTime;
+}
+
+// Used as a safety measure to prevent scheduling too far ahead in case of an error
+static constexpr uint64 GMaxAheadSchedulingTimeNanosec = 500000000llu; // 0.5 sec.
+
+static uint64 TimeNanoseconds()
+{
+#if PLATFORM_ANDROID || PLATFORM_LINUX
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec*1000000000ull + ts.tv_nsec;
+#else
+	#error VK_GOOGLE_display_timing requires TimeNanoseconds() implementation for this platform
+#endif
+}
+
+void FGDTimingFramePacer::ScheduleNextFrame(uint32 InPresentID, int32 InSyncInterval)
+{
+	UpdateSyncDuration(InSyncInterval);
+	if (SyncDuration == 0)
+	{
+		return;
+	}
+
+	const uint64 CpuPresentTime = TimeNanoseconds();
+
+	PresentTime.presentID = InPresentID; // Still need to pass ID for proper history values
+
+	PollPastFrameInfo();
+	if (!LastKnownFrameInfo.bValid)
+	{
+		return;
+	}
+
+	const uint64 CpuTargetPresentTimeMin = CalculateMinPresentTime(CpuPresentTime);
+	const uint64 CpuTargetPresentTimeMax = CalculateMaxPresentTime(CpuPresentTime);
+	const uint64 GpuTargetPresentTime = (PredictLastScheduledFramePresentTime(InPresentID) + SyncDuration);
+	
+	const uint64 TargetPresentTime = CalculateNearestVsTime(LastKnownFrameInfo.ActualPresentTime, FMath::Clamp(GpuTargetPresentTime, CpuTargetPresentTimeMin, CpuTargetPresentTimeMax));
+	LastScheduledPresentTime = TargetPresentTime;
+
+	PresentTime.desiredPresentTime = (TargetPresentTime - HalfRefreshDuration);
+
+	if (GPrintVulkanVsyncDebug != 0)
+	{
+		double cpuPMin = CpuTargetPresentTimeMin/1000000000.0;
+		double cpuPMax = CpuTargetPresentTimeMax/1000000000.0;
+		double gpuP = GpuTargetPresentTime/1000000000.0;
+		double desP = PresentTime.desiredPresentTime/1000000000.0;
+		double lastP = LastKnownFrameInfo.ActualPresentTime/1000000000.0;
+		double cpuDelta = 0.0;
+		double cpuNow = CpuPresentTime/1000000000.0;
+		FPlatformMisc::LowLevelOutputDebugStringf(TEXT(" -- ID: %u, desired %.3f, pred-gpu %.3f, pred-cpu-min %.3f, pred-cpu-max %.3f, last: %.3f, cpu-gpu-delta: %.3f, now-cpu %.3f"), PresentTime.presentID, desP, gpuP, cpuPMin, cpuPMax, lastP, cpuDelta, cpuNow);
+	}
+}
+
+void FGDTimingFramePacer::UpdateSyncDuration(int32 InSyncInterval)
+{
+	if (SyncInterval == InSyncInterval)
+	{
+		return;
+	}
+
+	SyncInterval = InSyncInterval;
+	SyncDuration = ((1000000000llu * FMath::Clamp(SyncInterval, 0, 3) + 30) / 60);
+	
+	if (SyncDuration > 0)
+	{
+		SyncDuration = (FMath::Max((SyncDuration + HalfRefreshDuration) / RefreshDuration, 1llu) * RefreshDuration);
+	}
+}
+
+uint64 FGDTimingFramePacer::PredictLastScheduledFramePresentTime(uint32 CurrentPresentID) const
+{
+	const uint32 PredictFrameCount = (CurrentPresentID - LastKnownFrameInfo.PresentID - 1);
+	// Use RefreshDuration for predicted frames and not SyncDuration for most optimistic prediction of future frames after last known (possible hitchy) frame.
+	// Second parameter will be always >= than LastScheduledPresentTime if use SyncDuration.
+	// It is possible that GPU will recover after hitch without any changes to a normal schedule but pessimistic planning will prevent this from happening.
+	return FMath::Max(LastScheduledPresentTime, LastKnownFrameInfo.ActualPresentTime + (RefreshDuration * PredictFrameCount));
+}
+
+uint64 FGDTimingFramePacer::CalculateMinPresentTime(uint64 CpuPresentTime) const
+{
+	// Do not use delta on Android because already using CLOCK_MONOTONIC for CPU time which is also used in the extension.
+	// Using delta will mostly work fine but there were problems in other projects. If GPU load changes quickly because
+	// of the delta filter lag its value may be too high for current frame and cause pessimistic planning and stuttering.
+	// Need additional time for testing to improve filtering.
+	// Adding HalfRefreshDuration to produce round-up (ceil) in the final CalculateNearestVsTime()
+	return (CpuPresentTime + HalfRefreshDuration);
+}
+
+uint64 FGDTimingFramePacer::CalculateMaxPresentTime(uint64 CpuPresentTime) const
+{
+	return (CpuPresentTime + GMaxAheadSchedulingTimeNanosec);
+}
+
+uint64 FGDTimingFramePacer::CalculateNearestVsTime(uint64 ActualPresentTime, uint64 TargetTime) const
+{
+	if (TargetTime > ActualPresentTime)
+	{
+		return (ActualPresentTime + ((TargetTime - ActualPresentTime) + HalfRefreshDuration) / RefreshDuration * RefreshDuration);
+	}
+	return ActualPresentTime;
+}
+
+void FGDTimingFramePacer::PollPastFrameInfo()
+{
+	for (;;)
+	{
+		// MUST call once with nullptr to get the count, or the API won't return any results at all.
+		uint32 Count = 0;
+		VkResult Result = VulkanDynamicAPI::vkGetPastPresentationTimingGOOGLE(Device.GetInstanceHandle(), SwapChain, &Count, nullptr);
+		checkf(Result == VK_SUCCESS, TEXT("vkGetPastPresentationTimingGOOGLE failed: %i"), Result);
+
+		if (Count == 0)
+		{
+			break;
+		}
+		
+		Count = 1;
+		VkPastPresentationTimingGOOGLE PastPresentationTiming;
+		Result = VulkanDynamicAPI::vkGetPastPresentationTimingGOOGLE(Device.GetInstanceHandle(), SwapChain, &Count, &PastPresentationTiming);
+		checkf(Result == VK_SUCCESS || Result == VK_INCOMPLETE, TEXT("vkGetPastPresentationTimingGOOGLE failed: %i"), Result);
+
+		// If desiredPresentTime was too large for some reason driver may ignore this value to prevent long wait
+		// Reset LastScheduledPresentTime in that case to be able to schedule on proper time
+		if (PastPresentationTiming.actualPresentTime < PastPresentationTiming.desiredPresentTime)
+		{
+			UE_LOG(LogVulkanRHI, Warning, TEXT("PastPresentationTiming actualPresentTime is less than desiredPresentTime! Resetting LastScheduledPresentTime..."));
+			LastScheduledPresentTime = 0;
+		}
+
+		LastKnownFrameInfo.PresentID = PastPresentationTiming.presentID;
+		LastKnownFrameInfo.ActualPresentTime = PastPresentationTiming.actualPresentTime;
+		LastKnownFrameInfo.bValid = true;
+	}
+}
+#endif //VULKAN_SUPPORTS_GOOGLE_DISPLAY_TIMING
+
 void FVulkanSwapChain::RenderThreadPacing()
 {
 	check(IsInRenderingThread());
-	const int32 SyncInterval = (LockToVsync || GVulkanForcePacingWithoutVSync) ? RHIGetSyncInterval() : 0;
+	const int32 SyncInterval = LockToVsync ? RHIGetSyncInterval() : 0;
 
 	//very naive CPU side frame pacer.
 	if (GVulkanCPURenderThreadFramePacer && SyncInterval > 0)
@@ -753,50 +872,55 @@ FVulkanSwapChain::EStatus FVulkanSwapChain::Present(FVulkanQueue* GfxQueue, FVul
 	Info.pSwapchains = &SwapChain;
 	Info.pImageIndices = (uint32*)&CurrentImageIndex;
 
-	bool bPlatformHandlesFramePacing = FVulkanPlatform::FramePace(Device, SwapChain, PresentID, Info);
+	const int32 SyncInterval = LockToVsync ? RHIGetSyncInterval() : 0;
+	ensureMsgf(SyncInterval <= 3 && SyncInterval >= 0, TEXT("Unsupported sync interval: %i"), SyncInterval);
 
-	if (!bPlatformHandlesFramePacing)
+#if VULKAN_SUPPORTS_GOOGLE_DISPLAY_TIMING
+	if (GVulkanExtensionFramePacer && Device.GetOptionalExtensions().HasGoogleDisplayTiming)
 	{
-		const int32 FramePace = (LockToVsync || GVulkanForcePacingWithoutVSync) ? FPlatformRHIFramePacer::GetFramePace() : 0;
+		check(GDTimingFramePacer);
+		GDTimingFramePacer->ScheduleNextFrame(PresentID, SyncInterval);
+		Info.pNext = GDTimingFramePacer->GetPresentTimesInfo();
+	}
+#endif
 
-		//very naive CPU side frame pacer.
-		if (GVulkanCPURHIFramePacer && FramePace > 0)
+	//very naive CPU side frame pacer.
+	if (GVulkanCPURHIFramePacer && SyncInterval > 0)
+	{
+		const double NowCPUTime = (FPlatformTime::Seconds() - GStartTime);
+
+		const double TimeToSleep = (NextPresentTargetTime - NowCPUTime);
+		const double TargetIntervalWithEpsilon = (double)SyncInterval * (1.0 / 60.0);
+
+		if (TimeToSleep > 0.0)
 		{
-			const double NowCPUTime = (FPlatformTime::Seconds() - GStartTime);
-
-			const double TimeToSleep = (NextPresentTargetTime - NowCPUTime);
-			const double TargetIntervalWithEpsilon = 1.0 / (double)FramePace;
-
-			if (TimeToSleep > 0.0)
+			uint32 IdleStart = FPlatformTime::Cycles();
+			QUICK_SCOPE_CYCLE_COUNTER(STAT_StallForEmulatedSyncInterval);
+			FPlatformProcess::SleepNoStats(static_cast<float>(TimeToSleep));
+			if (GPrintVulkanVsyncDebug)
 			{
-				uint32 IdleStart = FPlatformTime::Cycles();
-				QUICK_SCOPE_CYCLE_COUNTER(STAT_StallForEmulatedSyncInterval);
-				FPlatformProcess::SleepNoStats(static_cast<float>(TimeToSleep));
-				if (GPrintVulkanVsyncDebug)
-				{
-					UE_LOG(LogVulkanRHI, Log, TEXT("CurrentID: %i, CPU TimeToSleep: %f, TargetWEps: %f"), TimeToSleep * 1000.0, TargetIntervalWithEpsilon * 1000.0);
-				}
+				UE_LOG(LogVulkanRHI, Log, TEXT("CurrentID: %i, CPU TimeToSleep: %f, TargetWEps: %f"), TimeToSleep * 1000.0, TargetIntervalWithEpsilon * 1000.0);
+			}
 
-				uint32 ThisCycles = FPlatformTime::Cycles() - IdleStart;
-				if (IsInRHIThread())
-				{
-					GWorkingRHIThreadStallTime += ThisCycles;
-				}
-				else if (IsInActualRenderingThread())
-				{
-					GRenderThreadIdle[ERenderThreadIdleTypes::WaitingForGPUPresent] += ThisCycles;
-					GRenderThreadNumIdle[ERenderThreadIdleTypes::WaitingForGPUPresent]++;
-				}
-			}
-			else
+			uint32 ThisCycles = FPlatformTime::Cycles() - IdleStart;
+			if (IsInRHIThread())
 			{
-				if (GPrintVulkanVsyncDebug)
-				{
-					UE_LOG(LogVulkanRHI, Log, TEXT("CurrentID: %i, CPU TimeToSleep: %f"), PresentID, TimeToSleep * 1000.0);
-				}
+				GWorkingRHIThreadStallTime += ThisCycles;
 			}
-			NextPresentTargetTime = FMath::Max(NextPresentTargetTime + TargetIntervalWithEpsilon, NowCPUTime);
+			else if (IsInActualRenderingThread())
+			{
+				GRenderThreadIdle[ERenderThreadIdleTypes::WaitingForGPUPresent] += ThisCycles;
+				GRenderThreadNumIdle[ERenderThreadIdleTypes::WaitingForGPUPresent]++;
+			}
 		}
+		else
+		{
+			if (GPrintVulkanVsyncDebug)
+			{
+				UE_LOG(LogVulkanRHI, Log, TEXT("CurrentID: %i, CPU TimeToSleep: %f"), PresentID, TimeToSleep * 1000.0);
+			}
+		}
+		NextPresentTargetTime = FMath::Max(NextPresentTargetTime + TargetIntervalWithEpsilon, NowCPUTime);
 	}
 	PresentID++;
 
@@ -842,65 +966,6 @@ FVulkanSwapChain::EStatus FVulkanSwapChain::Present(FVulkanQueue* GfxQueue, FVul
 	return EStatus::Healthy;
 }
 
-void FVulkanSwapChain::CreateQCOMDepthStencil(const FVulkanSurface& InSurface) const
-{
-	check(!QCOMDepthStencilSurface);
-	check(!QCOMDepthStencilView);
-	check(!QCOMDepthView);
-
-	ETextureCreateFlags UEFlags = InSurface.UEFlags;
-	check(UEFlags & TexCreate_DepthStencilTargetable);
-
-	QCOMDepthStencilSurface = new FVulkanSurface(*InSurface.Device, nullptr, InSurface.GetViewType(), InSurface.PixelFormat, InSurface.Height, InSurface.Width,
-													InSurface.Depth, 1, InSurface.GetNumMips(), InSurface.GetNumSamples(), UEFlags, ERHIAccess::Unknown, FRHIResourceCreateInfo());
-
-	check(QCOMDepthStencilSurface->GetViewType() == VK_IMAGE_VIEW_TYPE_2D);
-	check(QCOMDepthStencilSurface->Image != VK_NULL_HANDLE);
-
-	QCOMDepthStencilView = new FVulkanTextureView;
-	QCOMDepthStencilView->Create(*QCOMDepthStencilSurface->Device, QCOMDepthStencilSurface->Image, QCOMDepthStencilSurface->GetViewType(), QCOMDepthStencilSurface->GetFullAspectMask(),
-								QCOMDepthStencilSurface->PixelFormat, QCOMDepthStencilSurface->ViewFormat, 0, FMath::Max(QCOMDepthStencilSurface->GetNumMips(), 1u), 0, 1u);
-
-	if (QCOMDepthStencilSurface->GetFullAspectMask() == QCOMDepthStencilSurface->GetPartialAspectMask())
-	{
-		QCOMDepthView = QCOMDepthStencilView;
-	}
-	else
-	{
-		QCOMDepthView = new FVulkanTextureView;
-		QCOMDepthView->Create(*QCOMDepthStencilSurface->Device, QCOMDepthStencilSurface->Image, QCOMDepthStencilSurface->GetViewType(), QCOMDepthStencilSurface->GetPartialAspectMask(),
-			QCOMDepthStencilSurface->PixelFormat, QCOMDepthStencilSurface->ViewFormat, 0, FMath::Max(QCOMDepthStencilSurface->GetNumMips(), 1u), 0, 1u);
-	}
-}
-
-const FVulkanTextureView* FVulkanSwapChain::GetOrCreateQCOMDepthStencilView(const FVulkanSurface& InSurface) const
-{
-	if (QCOMDepthStencilView)
-	{
-		return QCOMDepthStencilView;
-	}
-
-	CreateQCOMDepthStencil(InSurface);
-
-	return QCOMDepthStencilView;
-}
-
-const FVulkanTextureView* FVulkanSwapChain::GetOrCreateQCOMDepthView(const FVulkanSurface& InSurface) const
-{
-	if (QCOMDepthView)
-	{
-		return QCOMDepthView;
-	}
-
-	CreateQCOMDepthStencil(InSurface);
-
-	return QCOMDepthView;
-}
-
-const FVulkanSurface* FVulkanSwapChain::GetQCOMDepthStencilSurface() const
-{
-	return QCOMDepthStencilSurface;
-}
 
 void FVulkanDevice::SetupPresentQueue(VkSurfaceKHR Surface)
 {
@@ -919,12 +984,7 @@ void FVulkanDevice::SetupPresentQueue(VkSurfaceKHR Surface)
 		};
 
 		bool bGfx = SupportsPresent(Gpu, GfxQueue);
-		if (!bGfx)
-		{
-			FPlatformMisc::MessageBoxExt(EAppMsgType::Ok, TEXT("Cannot find a compatible Vulkan device that supports surface presentation.\n\n"), TEXT("Vulkan device not available"));
-			FPlatformMisc::RequestExitWithStatus(true, 1);
-		}
-
+		checkf(bGfx, TEXT("Graphics Queue doesn't support present!"));
 		bool bCompute = SupportsPresent(Gpu, ComputeQueue);
 		if (TransferQueue->GetFamilyIndex() != GfxQueue->GetFamilyIndex() && TransferQueue->GetFamilyIndex() != ComputeQueue->GetFamilyIndex())
 		{

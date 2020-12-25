@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ToolMenuSection.h"
 #include "ToolMenus.h"
@@ -11,9 +11,7 @@
 #include "Internationalization/Internationalization.h"
 
 FToolMenuSection::FToolMenuSection() :
-	ToolMenuSectionDynamic(nullptr),
-	bIsRegistering(false),
-	bAddedDuringRegister(false)
+	ToolMenuSectionDynamic(nullptr)
 {
 
 }
@@ -35,32 +33,22 @@ void FToolMenuSection::InitGeneratedSectionCopy(const FToolMenuSection& Source, 
 	Context = InContext;
 }
 
-bool FToolMenuSection::IsRegistering() const
-{
-	return bIsRegistering;
-}
-
 FToolMenuEntry& FToolMenuSection::AddEntry(const FToolMenuEntry& Args)
 {
 	if (Args.Name == NAME_None)
 	{
-		FToolMenuEntry& Result = Blocks.Add_GetRef(Args);
-		Result.bAddedDuringRegister = IsRegistering();
-		return Result;
+		return Blocks.Add_GetRef(Args);
 	}
 
 	int32 BlockIndex = IndexOfBlock(Args.Name);
 	if (BlockIndex != INDEX_NONE)
 	{
 		Blocks[BlockIndex] = Args;
-		Blocks[BlockIndex].bAddedDuringRegister = IsRegistering();
 		return Blocks[BlockIndex];
 	}
 	else
 	{
-		FToolMenuEntry& Result = Blocks.Add_GetRef(Args);
-		Result.bAddedDuringRegister = IsRegistering();
-		return Result;
+		return Blocks.Add_GetRef(Args);
 	}
 }
 
@@ -86,12 +74,7 @@ FToolMenuEntry& FToolMenuSection::AddMenuEntry(const FName InName, const TAttrib
 	return AddEntry(FToolMenuEntry::InitMenuEntry(InName, InLabel, InToolTip, InIcon, InAction, InUserInterfaceActionType, InTutorialHighlightName));
 }
 
-FToolMenuEntry& FToolMenuSection::AddMenuEntry(const TSharedPtr< const FUICommandInfo >& InCommand, const TAttribute<FText>& InLabelOverride, const TAttribute<FText>& InToolTipOverride, const TAttribute<FSlateIcon>& InIconOverride, const FName InTutorialHighlightName, const TOptional<FName> InNameOverride)
-{
-	return AddEntry(FToolMenuEntry::InitMenuEntry(InCommand, InLabelOverride, InToolTipOverride, InIconOverride, InTutorialHighlightName, InNameOverride));
-}
-
-FToolMenuEntry& FToolMenuSection::AddMenuEntry(const FName InNameOverride, const TSharedPtr< const FUICommandInfo >& InCommand, const TAttribute<FText>& InLabelOverride, const TAttribute<FText>& InToolTipOverride, const TAttribute<FSlateIcon>& InIconOverride, const FName InTutorialHighlightName)
+FToolMenuEntry& FToolMenuSection::AddMenuEntry(const TSharedPtr< const FUICommandInfo >& InCommand, const TAttribute<FText>& InLabelOverride, const TAttribute<FText>& InToolTipOverride, const TAttribute<FSlateIcon>& InIconOverride, const FName InTutorialHighlightName, const FName InNameOverride)
 {
 	return AddEntry(FToolMenuEntry::InitMenuEntry(InCommand, InLabelOverride, InToolTipOverride, InIconOverride, InTutorialHighlightName, InNameOverride));
 }
@@ -117,12 +100,7 @@ FToolMenuEntry& FToolMenuSection::AddDynamicEntry(const FName InName, const FNew
 
 FToolMenuEntry& FToolMenuSection::AddMenuSeparator(const FName InName)
 {
-	return AddSeparator(InName);
-}
-
-FToolMenuEntry& FToolMenuSection::AddSeparator(const FName InName)
-{
-	return AddEntry(FToolMenuEntry::InitSeparator(InName));
+	return AddEntry(FToolMenuEntry::InitMenuSeparator(InName));
 }
 
 FToolMenuEntry& FToolMenuSection::AddSubMenu(const FName InName, const TAttribute<FText>& InLabel, const TAttribute<FText>& InToolTip, const FNewToolMenuChoice& InMakeMenu, const FToolUIActionChoice& InAction, const EUserInterfaceActionType InUserInterfaceActionType, bool bInOpenSubMenuOnClick, const TAttribute<FSlateIcon>& InIcon, const bool bInShouldCloseWindowAfterMenuSelection)
@@ -184,6 +162,38 @@ bool FToolMenuSection::IsNonLegacyDynamic() const
 	return ToolMenuSectionDynamic || Construct.NewToolMenuDelegate.IsBound();
 }
 
+void FToolMenuSection::AssembleBlock(const FToolMenuEntry& Block)
+{
+	const EToolMenuInsertType Position = Block.InsertPosition.Position;
+
+	int32 ExistingIndex = IndexOfBlock(Block.Name);
+	if (ExistingIndex != INDEX_NONE)
+	{
+		Blocks[ExistingIndex] = Block;
+	}
+	else if (Position == EToolMenuInsertType::Before || Position == EToolMenuInsertType::After)
+	{
+		int32 DestIndex = IndexOfBlock(Block.InsertPosition.Name);
+		if (DestIndex != INDEX_NONE)
+		{
+			if (Position == EToolMenuInsertType::After)
+			{
+				++DestIndex;
+			}
+
+			Blocks.Insert(Block, DestIndex);
+		}
+	}
+	else if (Position == EToolMenuInsertType::First)
+	{
+		Blocks.Insert(Block, 0);
+	}
+	else
+	{
+		Blocks.Add(Block);
+	}
+}
+
 int32 FToolMenuSection::RemoveEntry(const FName InName)
 {
 	return Blocks.RemoveAll([InName](const FToolMenuEntry& Block) { return Block.Name == InName; });
@@ -227,7 +237,7 @@ int32 FToolMenuSection::FindBlockInsertIndex(const FToolMenuEntry& InBlock) cons
 		return INDEX_NONE;
 	}
 
-	if (InPosition.Position == EToolMenuInsertType::After)
+	if (InsertPosition.Position == EToolMenuInsertType::After)
 	{
 		++DestIndex;
 	}

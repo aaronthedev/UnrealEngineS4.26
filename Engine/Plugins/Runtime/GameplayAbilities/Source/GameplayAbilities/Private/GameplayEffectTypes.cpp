@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayEffectTypes.h"
 #include "GameFramework/Pawn.h"
@@ -327,6 +327,7 @@ bool FGameplayEffectContextHandle::NetSerialize(FArchive& Ar, class UPackageMap*
 			}
 		}
 
+		void* ContainerPtr = Data.Get();
 		UScriptStruct* ScriptStruct = Data->GetScriptStruct();
 
 		if (ScriptStruct->StructFlags & STRUCT_NetSerializeNative)
@@ -335,9 +336,9 @@ bool FGameplayEffectContextHandle::NetSerialize(FArchive& Ar, class UPackageMap*
 		}
 		else
 		{
-			// This won't work since FStructProperty::NetSerializeItem is deprecrated.
-			//	1) we have to manually crawl through the topmost struct's fields since we don't have a FStructProperty for it (just the UScriptProperty)
-			//	2) if there are any UStructProperties in the topmost struct's fields, we will assert in FStructProperty::NetSerializeItem.
+			// This won't work since UStructProperty::NetSerializeItem is deprecrated.
+			//	1) we have to manually crawl through the topmost struct's fields since we don't have a UStructProperty for it (just the UScriptProperty)
+			//	2) if there are any UStructProperties in the topmost struct's fields, we will assert in UStructProperty::NetSerializeItem.
 
 			ABILITY_LOG(Fatal, TEXT("FGameplayEffectContextHandle::NetSerialize called on data struct %s without a native NetSerialize"), *ScriptStruct->GetName());
 		}
@@ -417,7 +418,7 @@ void FGameplayTagCountContainer::Reset()
 	OnAnyTagChangeDelegate.Clear();
 }
 
-bool FGameplayTagCountContainer::UpdateExplicitTags(const FGameplayTag& Tag, const int32 CountDelta, const bool bDeferParentTagsOnRemove)
+bool FGameplayTagCountContainer::UpdateTagMap_Internal(const FGameplayTag& Tag, int32 CountDelta, bool bDeferParentTagsOnRemove)
 {
 	const bool bTagAlreadyExplicitlyExists = ExplicitTags.HasTagExact(Tag);
 
@@ -454,11 +455,6 @@ bool FGameplayTagCountContainer::UpdateExplicitTags(const FGameplayTag& Tag, con
 		ExplicitTags.RemoveTag(Tag, bDeferParentTagsOnRemove);
 	}
 
-	return true;
-}
-
-bool FGameplayTagCountContainer::GatherTagChangeDelegates(const FGameplayTag& Tag, const int32 CountDelta, TArray<FDeferredTagChangeDelegate>& TagChangeDelegates)
-{
 	// Check if change delegates are required to fire for the tag or any of its parents based on the count change
 	FGameplayTagContainer TagAndParentsContainer = Tag.GetGameplayTagParents();
 	bool CreatedSignificantChange = false;
@@ -466,7 +462,7 @@ bool FGameplayTagCountContainer::GatherTagChangeDelegates(const FGameplayTag& Ta
 	{
 		const FGameplayTag& CurTag = *CompleteTagIt;
 
-		// Get the current count of the specified tag. NOTE: Stored as a reference, so subsequent changes propagate to the map.
+		// Get the current count of the specified tag. NOTE: Stored as a reference, so subsequent changes propogate to the map.
 		int32& TagCountRef = GameplayTagCountMap.FindOrAdd(CurTag);
 
 		const int32 OldCount = TagCountRef;
@@ -476,65 +472,29 @@ bool FGameplayTagCountContainer::GatherTagChangeDelegates(const FGameplayTag& Ta
 		TagCountRef = NewTagCount;
 
 		// If a significant change (new addition or total removal) occurred, trigger related delegates
-		const bool SignificantChange = (OldCount == 0 || NewTagCount == 0);
+		bool SignificantChange = (OldCount == 0 || NewTagCount == 0);
 		CreatedSignificantChange |= SignificantChange;
 		if (SignificantChange)
 		{
-			TagChangeDelegates.AddDefaulted();
-			TagChangeDelegates.Last().BindLambda([Delegate = OnAnyTagChangeDelegate, CurTag, NewTagCount]()
-			{
-				Delegate.Broadcast(CurTag, NewTagCount);
-			});
+			OnAnyTagChangeDelegate.Broadcast(CurTag, NewTagCount);
 		}
 
 		FDelegateInfo* DelegateInfo = GameplayTagEventMap.Find(CurTag);
 		if (DelegateInfo)
 		{
-			TagChangeDelegates.AddDefaulted();
-			TagChangeDelegates.Last().BindLambda([Delegate = DelegateInfo->OnAnyChange, CurTag, NewTagCount]()
-			{
-				Delegate.Broadcast(CurTag, NewTagCount);
-			});
+			// Prior to calling OnAnyChange delegate, copy our OnNewOrRemove delegate, since things listening to OnAnyChange could add or remove 
+			// to this map causing our pointer to become invalid.
+			FOnGameplayEffectTagCountChanged OnNewOrRemoveLocalCopy = DelegateInfo->OnNewOrRemove;
 
+			DelegateInfo->OnAnyChange.Broadcast(CurTag, NewTagCount);
 			if (SignificantChange)
 			{
-				TagChangeDelegates.AddDefaulted();
-				TagChangeDelegates.Last().BindLambda([Delegate = DelegateInfo->OnNewOrRemove, CurTag, NewTagCount]()
-				{
-					Delegate.Broadcast(CurTag, NewTagCount);
-				});
+				OnNewOrRemoveLocalCopy.Broadcast(CurTag, NewTagCount);
 			}
 		}
 	}
 
 	return CreatedSignificantChange;
-}
-
-bool FGameplayTagCountContainer::UpdateTagMap_Internal(const FGameplayTag& Tag, int32 CountDelta)
-{
-	if (!UpdateExplicitTags(Tag, CountDelta, false))
-	{
-		return false;
-	}
-
-	TArray<FDeferredTagChangeDelegate> DeferredTagChangeDelegates;
-	bool bSignificantChange = GatherTagChangeDelegates(Tag, CountDelta, DeferredTagChangeDelegates);
-	for (FDeferredTagChangeDelegate& Delegate : DeferredTagChangeDelegates)
-	{
-		Delegate.Execute();
-	}
-
-	return bSignificantChange;
-}
-
-bool FGameplayTagCountContainer::UpdateTagMapDeferredParentRemoval_Internal(const FGameplayTag& Tag, int32 CountDelta, TArray<FDeferredTagChangeDelegate>& DeferredTagChangeDelegates)
-{
-	if (!UpdateExplicitTags(Tag, CountDelta, true))
-	{
-		return false;
-	}
-
-	return GatherTagChangeDelegates(Tag, CountDelta, DeferredTagChangeDelegates);
 }
 
 FGameplayTagBlueprintPropertyMap::FGameplayTagBlueprintPropertyMap()
@@ -565,7 +525,7 @@ EDataValidationResult FGameplayTagBlueprintPropertyMap::IsDataValid(UObject* Own
 				FText::FromName(Mapping.PropertyName)));
 		}
 
-		if (FProperty* Property = OwnerClass->FindPropertyByName(Mapping.PropertyName))
+		if (UProperty* Property = OwnerClass->FindPropertyByName(Mapping.PropertyName))
 		{
 			if (!IsPropertyTypeValid(Property))
 			{
@@ -618,7 +578,7 @@ void FGameplayTagBlueprintPropertyMap::Initialize(UObject* Owner, UAbilitySystem
 
 		if (Mapping.TagToMap.IsValid())
 		{
-			FProperty* Property = OwnerClass->FindPropertyByName(Mapping.PropertyName);
+			UProperty* Property = OwnerClass->FindPropertyByName(Mapping.PropertyName);
 			if (Property && IsPropertyTypeValid(Property))
 			{
 				Mapping.PropertyToEdit = Property;
@@ -641,9 +601,9 @@ void FGameplayTagBlueprintPropertyMap::Unregister()
 	{
 		for (FGameplayTagBlueprintPropertyMapping& Mapping : PropertyMappings)
 		{
-			if (Mapping.PropertyToEdit.Get() && Mapping.TagToMap.IsValid())
+			if (Mapping.PropertyToEdit && Mapping.TagToMap.IsValid())
 			{
-				ASC->UnregisterGameplayTagEvent(Mapping.DelegateHandle, Mapping.TagToMap, GetGameplayTagEventType(Mapping.PropertyToEdit.Get()));
+				ASC->UnregisterGameplayTagEvent(Mapping.DelegateHandle, Mapping.TagToMap, GetGameplayTagEventType(Mapping.PropertyToEdit));
 			}
 
 			Mapping.PropertyToEdit = nullptr;
@@ -669,33 +629,33 @@ void FGameplayTagBlueprintPropertyMap::GameplayTagEventCallback(const FGameplayT
 		return (Tag == Test.TagToMap);
 	});
 
-	if (Mapping && Mapping->PropertyToEdit.Get())
+	if (Mapping && Mapping->PropertyToEdit)
 	{
-		if (const FBoolProperty* BoolProperty = CastField<const FBoolProperty>(Mapping->PropertyToEdit.Get()))
+		if (const UBoolProperty* BoolProperty = Cast<const UBoolProperty>(Mapping->PropertyToEdit))
 		{
 			BoolProperty->SetPropertyValue_InContainer(Owner, NewCount > 0);
 		}
-		else if (const FIntProperty* IntProperty = CastField<const FIntProperty>(Mapping->PropertyToEdit.Get()))
+		else if (const UIntProperty* IntProperty = Cast<const UIntProperty>(Mapping->PropertyToEdit))
 		{
 			IntProperty->SetPropertyValue_InContainer(Owner, NewCount);
 		}
-		else if (const FFloatProperty* FloatProperty = CastField<const FFloatProperty>(Mapping->PropertyToEdit.Get()))
+		else if (const UFloatProperty* FloatProperty = Cast<const UFloatProperty>(Mapping->PropertyToEdit))
 		{
 			FloatProperty->SetPropertyValue_InContainer(Owner, (float)NewCount);
 		}
 	}
 }
 
-bool FGameplayTagBlueprintPropertyMap::IsPropertyTypeValid(const FProperty* Property) const
+bool FGameplayTagBlueprintPropertyMap::IsPropertyTypeValid(const UProperty* Property) const
 {
 	check(Property);
-	return (Property->IsA<FBoolProperty>() || Property->IsA<FIntProperty>() || Property->IsA<FFloatProperty>());
+	return (Property->IsA<UBoolProperty>() || Property->IsA<UIntProperty>() || Property->IsA<UFloatProperty>());
 }
 
-EGameplayTagEventType::Type FGameplayTagBlueprintPropertyMap::GetGameplayTagEventType(const FProperty* Property) const
+EGameplayTagEventType::Type FGameplayTagBlueprintPropertyMap::GetGameplayTagEventType(const UProperty* Property) const
 {
 	check(Property);
-	return (Property->IsA(FBoolProperty::StaticClass()) ? EGameplayTagEventType::NewOrRemoved : EGameplayTagEventType::AnyCountChange);
+	return (Property->IsA(UBoolProperty::StaticClass()) ? EGameplayTagEventType::NewOrRemoved : EGameplayTagEventType::AnyCountChange);
 }
 
 bool FGameplayTagRequirements::RequirementsMet(const FGameplayTagContainer& Container) const
@@ -1076,34 +1036,10 @@ bool FMinimalReplicationTagCountMap::NetSerialize(FArchive& Ar, class UPackageMa
 
 	if (Ar.IsSaving())
 	{
-		// if Count is too high then print a warning and clamp Count
 		int32 Count = TagMap.Num();
 		if (Count > MaxCount)
 		{
-#if UE_BUILD_SHIPPING
-			ABILITY_LOG(Error, TEXT("FMinimalReplicationTagCountMap has too many tags (%d) when the limit is %d. This will cause tags to not replicate. See FMinimapReplicationTagCountMap::NetSerialize"), TagMap.Num(), MaxCount);
-#else
-			TArray<FGameplayTag> TagKeys;
-			TagMap.GetKeys(TagKeys);
-
-			const int32 SpaceToReservePerEntry = 40;
-			FString TagsString;
-			// reserve lots of space for our tags string
-			TagsString.Reserve(Count * SpaceToReservePerEntry);
-
-			TagsString = TEXT("");
-			TagKeys[0].GetTagName().AppendString(TagsString);
-			for (int32 TagIndex = 1; TagIndex < Count; ++TagIndex)
-			{
-				// appends ", %tag_name" to the string
-				TagsString.Append(TEXT(", "));
-				TagKeys[TagIndex].GetTagName().AppendString(TagsString);
-			}
-
-			ABILITY_LOG(Error, TEXT("FMinimalReplicationTagCountMap has too many tags (%d) when the limit is %d. This will cause tags to not replicate. See FMinimapReplicationTagCountMap::NetSerialize\nTagMap tags: %s"), TagMap.Num(), MaxCount, *TagsString);
-#endif	
-
-			//clamp the count
+			ABILITY_LOG(Error, TEXT("FMinimapReplicationTagCountMap has too many tags (%d). This will cause tags to not replicate. See FMinimapReplicationTagCountMap::NetSerialize"), TagMap.Num());
 			Count = MaxCount;
 		}
 
@@ -1143,7 +1079,7 @@ bool FMinimalReplicationTagCountMap::NetSerialize(FArchive& Ar, class UPackageMa
 
 		if (Owner)
 		{
-			bool bUpdateOwnerTagMap = true;
+			bool UpdateOwnerTagMap = true;
 			if (bRequireNonOwningNetConnection)
 			{
 				if (AActor* OwningActor = Owner->GetOwner())
@@ -1153,15 +1089,26 @@ bool FMinimalReplicationTagCountMap::NetSerialize(FArchive& Ar, class UPackageMa
 					{
 						if (OwnerNetConnection == CastChecked<UPackageMapClient>(Map)->GetConnection())
 						{
-							bUpdateOwnerTagMap = false;
+							UpdateOwnerTagMap = false;
 						}
 					}
 				}
 			}
 
-			if (bUpdateOwnerTagMap)
+			if (UpdateOwnerTagMap)
 			{
-				UpdateOwnerTagMap();
+				// Update our tags with owner tags
+				for(auto It = TagMap.CreateIterator(); It; ++It)
+				{
+					Owner->SetTagMapCount(It->Key, It->Value);
+
+					// Remove tags with a count of zero from the map. This prevents them
+					// from being replicated incorrectly when recording client replays.
+					if (It->Value == 0)
+					{
+						It.RemoveCurrent();
+					}
+				}
 			}
 		}
 	}
@@ -1169,47 +1116,6 @@ bool FMinimalReplicationTagCountMap::NetSerialize(FArchive& Ar, class UPackageMa
 
 	bOutSuccess = true;
 	return true;
-}
-
-void FMinimalReplicationTagCountMap::SetOwner(UAbilitySystemComponent* ASC)
-{
-	Owner = ASC;
-	if (Owner && TagMap.Num() > 0)
-	{
-		// Invoke events in case we skipped them during ::NetSerialize
-		UpdateOwnerTagMap();
-	}
-}
-
-void FMinimalReplicationTagCountMap::RemoveAllTags()
-{
-	if (Owner)
-	{
-		for(auto It = TagMap.CreateIterator(); It; ++It)
-		{
-			Owner->SetTagMapCount(It->Key, 0);
-		}
-
-		TagMap.Reset();
-	}
-}
-
-void FMinimalReplicationTagCountMap::UpdateOwnerTagMap()
-{
-	if (Owner)
-	{
-		for (auto It = TagMap.CreateIterator(); It; ++It)
-		{
-			Owner->SetTagMapCount(It->Key, It->Value);
-
-			// Remove tags with a count of zero from the map. This prevents them
-			// from being replicated incorrectly when recording client replays.
-			if (It->Value == 0)
-			{
-				It.RemoveCurrent();
-			}
-		}
-	}
 }
 
 #undef LOCTEXT_NAMESPACE

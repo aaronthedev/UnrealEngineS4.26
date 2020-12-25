@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PreProcessor/LiveLinkAxisSwitchPreProcessor.h"
 #include "Roles/LiveLinkAnimationRole.h"
@@ -16,35 +16,21 @@ namespace
 		return Results[Value];
 	}
 
-	float LiveLinkAxisToVectorMember(ELiveLinkAxis InAxis, const FVector& Origin)
-	{
-		const uint8 Value = static_cast<uint8>(InAxis) % 3;
-		return Origin[Value];
-	}
-
 	float AxisSign(ELiveLinkAxis InAxis)
 	{
 		return static_cast<uint8>(InAxis) < 3 ? 1.f : -1.f;
 	}
 
-	void SwitchTransform(FTransform& Transform
-		, ELiveLinkAxis OrientationAxisX, ELiveLinkAxis OrientationAxisY, ELiveLinkAxis OrientationAxisZ
-		, ELiveLinkAxis TranslationAxisX, ELiveLinkAxis TranslationAxisY, ELiveLinkAxis TranslationAxisZ)
+	void SwitchTransform(FTransform& Transform, ELiveLinkAxis AxisX, ELiveLinkAxis AxisY, ELiveLinkAxis AxisZ)
 	{
 		const FMatrix InMatrix = Transform.ToMatrixWithScale();
 
-		FVector DestAxisX = InMatrix.GetScaledAxis(LiveLinkAxisToMatrixAxis(OrientationAxisX)) * AxisSign(OrientationAxisX);
-		FVector DestAxisY = InMatrix.GetScaledAxis(LiveLinkAxisToMatrixAxis(OrientationAxisY)) * AxisSign(OrientationAxisY);
-		FVector DestAxisZ = InMatrix.GetScaledAxis(LiveLinkAxisToMatrixAxis(OrientationAxisZ)) * AxisSign(OrientationAxisZ);
-
-		FVector Origin = InMatrix.GetOrigin();
-		FVector NewOrigin;
-		NewOrigin.X = LiveLinkAxisToVectorMember(TranslationAxisX, Origin) * AxisSign(TranslationAxisX);
-		NewOrigin.Y = LiveLinkAxisToVectorMember(TranslationAxisY, Origin) * AxisSign(TranslationAxisY);
-		NewOrigin.Z = LiveLinkAxisToVectorMember(TranslationAxisZ, Origin) * AxisSign(TranslationAxisZ);
+		FVector DestAxisX = InMatrix.GetScaledAxis(LiveLinkAxisToMatrixAxis(AxisX)) * AxisSign(AxisX);
+		FVector DestAxisY = InMatrix.GetScaledAxis(LiveLinkAxisToMatrixAxis(AxisY)) * AxisSign(AxisY);
+		FVector DestAxisZ = InMatrix.GetScaledAxis(LiveLinkAxisToMatrixAxis(AxisZ)) * AxisSign(AxisZ);
 
 		FMatrix Result(InMatrix);
-		Result.SetAxes(&DestAxisX, &DestAxisY, &DestAxisZ, &NewOrigin);
+		Result.SetAxes(&DestAxisX, &DestAxisY, &DestAxisZ);
 
 		Transform.SetFromMatrix(Result);
 	}
@@ -61,7 +47,7 @@ TSubclassOf<ULiveLinkRole> ULiveLinkTransformAxisSwitchPreProcessor::FLiveLinkTr
 bool ULiveLinkTransformAxisSwitchPreProcessor::FLiveLinkTransformAxisSwitchPreProcessorWorker::PreProcessFrame(FLiveLinkFrameDataStruct& InOutFrame) const
 {
 	FLiveLinkTransformFrameData& TransformData = *InOutFrame.Cast<FLiveLinkTransformFrameData>();
-	SwitchTransform(TransformData.Transform, OrientationAxisX, OrientationAxisY, OrientationAxisZ, TranslationAxisX, TranslationAxisY, TranslationAxisZ);
+	SwitchTransform(TransformData.Transform, AxisX, AxisY, AxisZ);
 	return true;
 }
 
@@ -78,12 +64,9 @@ ULiveLinkFramePreProcessor::FWorkerSharedPtr ULiveLinkTransformAxisSwitchPreProc
 	if (!Instance.IsValid())
 	{
 		Instance = MakeShared<FLiveLinkTransformAxisSwitchPreProcessorWorker, ESPMode::ThreadSafe>();
-		Instance->OrientationAxisX = OrientationAxisX;
-		Instance->OrientationAxisY = OrientationAxisY;
-		Instance->OrientationAxisZ = OrientationAxisZ;
-		Instance->TranslationAxisX = TranslationAxisX;
-		Instance->TranslationAxisY = TranslationAxisY;
-		Instance->TranslationAxisZ = TranslationAxisZ;
+		Instance->AxisX = AxisX;
+		Instance->AxisY = AxisY;
+		Instance->AxisZ = AxisZ;
 	}
 
 	return Instance;
@@ -92,12 +75,9 @@ ULiveLinkFramePreProcessor::FWorkerSharedPtr ULiveLinkTransformAxisSwitchPreProc
 #if WITH_EDITOR
 void ULiveLinkTransformAxisSwitchPreProcessor::PostEditChangeChainProperty(struct FPropertyChangedChainEvent& PropertyChangedEvent)
 {
-	if (PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(ThisClass, OrientationAxisX) ||
-		PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(ThisClass, OrientationAxisY) ||
-		PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(ThisClass, OrientationAxisZ) ||
-		PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(ThisClass, TranslationAxisX) ||
-		PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(ThisClass, TranslationAxisY) ||
-		PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(ThisClass, TranslationAxisZ))
+	if (PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(ThisClass, AxisX) ||
+		PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(ThisClass, AxisY) ||
+		PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(ThisClass, AxisZ))
 	{
 		Instance.Reset();
 	}
@@ -121,7 +101,7 @@ bool ULiveLinkAnimationAxisSwitchPreProcessor::FLiveLinkAnimationAxisSwitchPrePr
 	
 	for (FTransform& Transform : AnimationData.Transforms)
 	{
-		SwitchTransform(Transform, OrientationAxisX, OrientationAxisY, OrientationAxisZ, TranslationAxisX, TranslationAxisY, TranslationAxisZ);
+		SwitchTransform(Transform, AxisX, AxisY, AxisZ);
 	}
 	
 	return true;
@@ -140,12 +120,9 @@ ULiveLinkFramePreProcessor::FWorkerSharedPtr ULiveLinkAnimationAxisSwitchPreProc
 	if (!Instance.IsValid())
 	{
 		Instance = MakeShared<FLiveLinkAnimationAxisSwitchPreProcessorWorker, ESPMode::ThreadSafe>();
-		Instance->OrientationAxisX = OrientationAxisX;
-		Instance->OrientationAxisY = OrientationAxisY;
-		Instance->OrientationAxisZ = OrientationAxisZ;
-		Instance->TranslationAxisX = TranslationAxisX;
-		Instance->TranslationAxisY = TranslationAxisY;
-		Instance->TranslationAxisZ = TranslationAxisZ;
+		Instance->AxisX = AxisX;
+		Instance->AxisY = AxisY;
+		Instance->AxisZ = AxisZ;
 	}
 
 	return Instance;

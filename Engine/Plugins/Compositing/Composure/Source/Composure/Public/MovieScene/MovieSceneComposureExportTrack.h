@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "MovieSceneNameableTrack.h"
 #include "MovieSceneSection.h"
 #include "Channels/MovieSceneBoolChannel.h"
-#include "Compilation/IMovieSceneTrackTemplateProducer.h"
 #include "MovieSceneComposureExportTrack.generated.h"
 
 /**
@@ -34,7 +33,7 @@ struct FMovieSceneComposureExportPass
  * Movie scene track that exports a single pass (either the element's output, or an internal transform pass) during burnouts
  */
 UCLASS(MinimalAPI)
-class UMovieSceneComposureExportTrack : public UMovieSceneTrack, public IMovieSceneTrackTemplateProducer
+class UMovieSceneComposureExportTrack : public UMovieSceneTrack
 {
 public:
 	GENERATED_BODY()

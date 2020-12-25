@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -132,18 +132,8 @@ namespace Tools.DotNETCommon
 		/// <returns>True if the queue completed, false if the timeout elapsed</returns>
 		public bool Wait(int MillisecondsTimeout)
 		{
-			return Wait(TimeSpan.FromMilliseconds(MillisecondsTimeout));
-		}
-
-		/// <summary>
-		/// Waits for all queued tasks to finish, or the timeout to elapse
-		/// </summary>
-		/// <param name="Timeout">Maximum time to wait</param>
-		/// <returns>True if the queue completed, false if the timeout elapsed</returns>
-		public bool Wait(TimeSpan Timeout)
-		{
-			bool bResult = EmptyEvent.WaitOne(Timeout);
-			if (bResult)
+			bool bResult = EmptyEvent.WaitOne(MillisecondsTimeout);
+			if(bResult)
 			{
 				RethrowExceptions();
 			}

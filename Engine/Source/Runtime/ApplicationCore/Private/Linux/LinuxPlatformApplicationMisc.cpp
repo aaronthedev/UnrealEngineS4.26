@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Linux/LinuxPlatformApplicationMisc.h"
 #include "Misc/CommandLine.h"
@@ -57,18 +57,12 @@ namespace
 extern CORE_API TFunction<void()> UngrabAllInputCallback;
 extern CORE_API TFunction<EAppReturnType::Type(EAppMsgType::Type MsgType, const TCHAR* Text, const TCHAR* Caption)> MessageBoxExtCallback;
 
-static bool IsSDLDummyDriver()
-{
-	char const* SdlVideoDriver = SDL_GetCurrentVideoDriver();
-	return (SdlVideoDriver && !strcmp(SdlVideoDriver, "dummy"));
-}
-
 EAppReturnType::Type MessageBoxExtImpl(EAppMsgType::Type MsgType, const TCHAR* Text, const TCHAR* Caption)
 {
 	int NumberOfButtons = 0;
 
 	// if multimedia cannot be initialized for messagebox, just fall back to default implementation
-	if (!FPlatformApplicationMisc::InitSDL() || IsSDLDummyDriver()) //	will not initialize more than once
+	if (!FPlatformApplicationMisc::InitSDL()) //	will not initialize more than once
 	{
 		EAppReturnType::Type Answer = EAppReturnType::Type::Cancel;
 		FString Message = GetHeadlessMessageBoxMessage(MsgType, Caption, Text, Answer);
@@ -289,13 +283,6 @@ bool FLinuxPlatformApplicationMisc::InitSDL()
 		SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_MODE_SHOW_CURSOR, "1"); // When relative mouse mode is acive, don't hide cursor.
 		SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_MODE_WARP, "0"); // Don't warp the cursor to the center in relative mouse mode.
 
-		// If we're rendering offscreen, use the "dummy" SDL video driver
-		if (FParse::Param(FCommandLine::Get(), TEXT("RenderOffScreen")) && !getenv("SDL_VIDEODRIVER"))
-		{
-			UE_LOG(LogInit, Log, TEXT("Hinting SDL to use 'dummy' video driver."), *EglDeviceHint);
-			setenv("SDL_VIDEODRIVER", "dummy", 1);
-		}
-
 		// we don't use SDL for audio
 		if (SDL_Init((SDL_INIT_EVERYTHING ^ SDL_INIT_AUDIO) | SDL_INIT_NOPARACHUTE) != 0)
 		{
@@ -499,7 +486,7 @@ float FLinuxPlatformApplicationMisc::GetDPIScaleFactorAtPoint(float X, float Y)
 				if (SDL_GetDisplayDPI(Idx, nullptr, &HorzDPI, &VertDPI) == 0)
 				{
 					float Scale = LinuxPlatformApplicationMisc::QuantizeScale((HorzDPI + VertDPI) / 192.0f);	// average between two scales (divided by 96.0f)
-					UE_LOG(LogLinux, Verbose, TEXT("Scale at X=%f, Y=%f: %f (monitor=#%d, HDPI=%f (horz scale: %f), VDPI=%f (vert scale: %f))"), X, Y, Scale, Idx, HorzDPI, HorzDPI / 96.0f, VertDPI, VertDPI / 96.0f);
+					UE_LOG(LogLinux, Log, TEXT("Scale at X=%f, Y=%f: %f (monitor=#%d, HDPI=%f (horz scale: %f), VDPI=%f (vert scale: %f))"), X, Y, Scale, Idx, HorzDPI, HorzDPI / 96.0f, VertDPI, VertDPI / 96.0f);
 					return Scale;
 				}
 				else
@@ -516,9 +503,9 @@ float FLinuxPlatformApplicationMisc::GetDPIScaleFactorAtPoint(float X, float Y)
 
 void FLinuxPlatformApplicationMisc::ClipboardCopy(const TCHAR* Str)
 {
-	if (SDL_WasInit(SDL_INIT_VIDEO) && SDL_SetClipboardText(TCHAR_TO_UTF8(Str)))
+	if (SDL_SetClipboardText(TCHAR_TO_UTF8(Str)))
 	{
-		UE_LOG(LogInit, Warning, TEXT("Error copying clipboard contents: %s\n"), UTF8_TO_TCHAR(SDL_GetError()));
+		UE_LOG(LogInit, Fatal, TEXT("Error copying clipboard contents: %s\n"), UTF8_TO_TCHAR(SDL_GetError()));
 	}
 }
 

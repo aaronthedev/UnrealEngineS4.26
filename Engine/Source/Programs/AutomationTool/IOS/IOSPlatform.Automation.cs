@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -202,6 +202,7 @@ public class IOSPlatform : Platform
 		{
 			TargetReceiptFileName = TargetReceipt.GetDefaultPath(InProjectDirectory, TargetName, UnrealTargetPlatform.IOS, Config, "");
 		}
+
 		return TargetReceiptFileName;
 	}
 
@@ -210,10 +211,19 @@ public class IOSPlatform : Platform
 		IOSExports.GetProvisioningData(InProject, bDistribution, out MobileProvision, out SigningCertificate, out TeamUUID, out bAutomaticSigning);
 	}
 
-	public virtual bool DeployGeneratePList(FileReference ProjectFile, UnrealTargetConfiguration Config, DirectoryReference ProjectDirectory, bool bIsUE4Game, string GameName, bool bIsClient, string ProjectName, DirectoryReference InEngineDir, DirectoryReference AppDirectory, string InExecutablePath, out bool bSupportsPortrait, out bool bSupportsLandscape, out bool bSkipIcons)
+	public virtual bool DeployGeneratePList(FileReference ProjectFile, UnrealTargetConfiguration Config, DirectoryReference ProjectDirectory, bool bIsUE4Game, string GameName, string ProjectName, DirectoryReference InEngineDir, DirectoryReference AppDirectory, string InExecutablePath, out bool bSupportsPortrait, out bool bSupportsLandscape, out bool bSkipIcons)
 	{
-		FileReference TargetReceiptFileName = GetTargetReceiptFileName(Config, InExecutablePath, InEngineDir, ProjectDirectory, bIsUE4Game);
-		return IOSExports.GeneratePList(ProjectFile, Config, ProjectDirectory, bIsUE4Game, GameName, bIsClient, ProjectName, InEngineDir, AppDirectory, TargetReceiptFileName, out bSupportsPortrait, out bSupportsLandscape, out bSkipIcons);
+		string TargetName = Path.GetFileNameWithoutExtension(InExecutablePath).Split("-".ToCharArray())[0];
+		FileReference TargetReceiptFileName;
+		if (bIsUE4Game)
+		{
+			TargetReceiptFileName = TargetReceipt.GetDefaultPath(InEngineDir, "UE4Game", UnrealTargetPlatform.IOS, Config, "");
+		}
+		else
+		{
+			TargetReceiptFileName = TargetReceipt.GetDefaultPath(ProjectDirectory, TargetName, UnrealTargetPlatform.IOS, Config, "");
+		}
+		return IOSExports.GeneratePList(ProjectFile, Config, ProjectDirectory, bIsUE4Game, GameName, ProjectName, InEngineDir, AppDirectory, TargetReceiptFileName, out bSupportsPortrait, out bSupportsLandscape, out bSkipIcons);
 	}
 
 	protected string MakeIPAFileName(UnrealTargetConfiguration TargetConfiguration, ProjectParams Params, DeploymentContext SC, bool bAllowDistroPrefix)
@@ -276,79 +286,6 @@ public class IOSPlatform : Platform
 		}
 
 		return bIsBuiltAsFramework;
-	}
-
-	private void StageCustomLaunchScreenStoryboard(ProjectParams Params, DeploymentContext SC)
-	{
-		string InterfaceSBDirectory = Path.GetDirectoryName(Params.RawProjectPath.FullName) + "/Build/IOS/Resources/Interface/";
-		if (Directory.Exists(InterfaceSBDirectory + "LaunchScreen.storyboardc"))
-		{
-			string[] StoryboardFilesToStage = Directory.GetFiles(InterfaceSBDirectory + "LaunchScreen.storyboardc", "*", SearchOption.TopDirectoryOnly);
-
-			if (!DirectoryExists(SC.StageDirectory + "/LaunchScreen.storyboardc"))
-			{
-				DirectoryInfo createddir = Directory.CreateDirectory(SC.StageDirectory + "/LaunchScreen.storyboardc");
-			}
-
-			foreach (string Filename in StoryboardFilesToStage)
-			{
-				string workingFileName = Filename;
-				while (workingFileName.Contains("/"))
-				{
-					workingFileName = workingFileName.Substring(workingFileName.IndexOf('/') + 1);
-				}
-				workingFileName = workingFileName.Substring(workingFileName.IndexOf('/') + 1);
-
-				InternalUtils.SafeCopyFile(Filename, SC.StageDirectory + "/" + workingFileName);
-			}
-
-			string[] StoryboardAssetsToStage = Directory.GetFiles(InterfaceSBDirectory + "Assets/", "*", SearchOption.TopDirectoryOnly);
-
-			foreach (string Filename in StoryboardAssetsToStage)
-			{
-				string workingFileName = Filename;
-				while (workingFileName.Contains("/"))
-				{
-					workingFileName = workingFileName.Substring(workingFileName.IndexOf('/') + 1);
-				}
-				workingFileName = workingFileName.Substring(workingFileName.IndexOf('/') + 1);
-
-				InternalUtils.SafeCopyFile(Filename, SC.StageDirectory + "/" + workingFileName);
-			}
-		}
-		else
-		{
-			LogWarning("Use Custom Launch Screen Storyboard is checked but not compiled storyboard could be found. Have you compiled on Mac first ? Falling back to Standard Storyboard");
-			StageStandardLaunchScreenStoryboard(Params, SC);
-		}
-	}
-
-	private void StageStandardLaunchScreenStoryboard(ProjectParams Params, DeploymentContext SC)
-	{
-		string BuildGraphicsDirectory = Path.GetDirectoryName(Params.RawProjectPath.FullName) + "/Build/IOS/Resources/Graphics/";
-		if (File.Exists(BuildGraphicsDirectory + "LaunchScreenIOS.png"))
-		{
-			InternalUtils.SafeCopyFile(BuildGraphicsDirectory + "LaunchScreenIOS.png", SC.StageDirectory + "/LaunchScreenIOS.png");
-		}
-	}
-
-	private void StageLaunchScreenStoryboard(ProjectParams Params, DeploymentContext SC)
-	{
-		bool bCustomLaunchscreenStoryboard = false;
-		ConfigHierarchy PlatformGameConfig;
-		if (Params.EngineConfigs.TryGetValue(SC.StageTargetPlatform.PlatformType, out PlatformGameConfig))
-		{
-			PlatformGameConfig.GetBool("/Script/IOSRuntimeSettings.IOSRuntimeSettings", "bCustomLaunchscreenStoryboard", out bCustomLaunchscreenStoryboard);
-		}
-
-		if (bCustomLaunchscreenStoryboard)
-		{
-			StageCustomLaunchScreenStoryboard(Params, SC);
-		}
-		else
-		{
-			StageStandardLaunchScreenStoryboard(Params, SC);
-		}
 	}
 
 	public override void Package(ProjectParams Params, DeploymentContext SC, int WorkingCL)
@@ -438,8 +375,6 @@ public class IOSPlatform : Platform
 			}
 		}
 
-		StageLaunchScreenStoryboard(Params, SC);
-
 		IOSExports.GenerateAssetCatalog(Params.RawProjectPath, new FileReference(FullExePath), new DirectoryReference(CombinePaths(Params.BaseStageDirectory, (Platform == UnrealTargetPlatform.IOS ? "IOS" : "TVOS"))), Platform);
 
 		bCreatedIPA = false;
@@ -522,9 +457,6 @@ public class IOSPlatform : Platform
 				string IPPArguments = "RepackageFromStage \"" + (Params.IsCodeBasedProject ? Params.RawProjectPath.FullName : "Engine") + "\"";
 				IPPArguments += " -config " + TargetConfiguration.ToString();
 				IPPArguments += " -schemename " + SchemeName + " -schemeconfig \"" + SchemeConfiguration + "\"";
-
-				// targetname will be eg FooClient for a Client Shipping build.
-				IPPArguments += " -targetname " + SC.StageExecutables[0].Split("-".ToCharArray())[0];
 
 				if (TargetConfiguration == UnrealTargetConfiguration.Shipping)
 				{
@@ -644,7 +576,7 @@ public class IOSPlatform : Platform
 		{
 			// project.xcodeproj doesn't exist, so generate temp project
 			string Arguments = "-project=\"" + RawProjectPath + "\"";
-			Arguments += " -platforms=" + PlatformName + " -game -nointellisense -" + PlatformName + "deployonly -ignorejunk -projectfileformat=XCode -includetemptargets -automated";
+			Arguments += " -platforms=" + PlatformName + " -game -nointellisense -" + PlatformName + "deployonly -ignorejunk -projectfileformat=XCode -includetemptargets";
 
 			// If engine is installed then UBT doesn't need to be built
 			if (CommandUtils.IsEngineInstalled())
@@ -935,9 +867,8 @@ public class IOSPlatform : Platform
 							(SC.IsCodeBasedProject ? SC.ProjectRoot : DirectoryReference.Combine(SC.LocalRoot, "Engine")),
 							!SC.IsCodeBasedProject,
 							(SC.IsCodeBasedProject ? SC.StageExecutables[0] : "UE4Game"),
-							SC.IsCodeBasedProject ? false : Params.Client, // Code based projects will have Client in their executable name already
 							SC.ShortProjectName, DirectoryReference.Combine(SC.LocalRoot, "Engine"),
-							DirectoryReference.Combine((SC.IsCodeBasedProject ? SC.ProjectRoot : DirectoryReference.Combine(SC.LocalRoot, "Engine")), "Binaries", PlatformName, "Payload", (SC.IsCodeBasedProject ? SC.ShortProjectName : "UE4Game") + ".app"),
+														DirectoryReference.Combine((SC.IsCodeBasedProject ? SC.ProjectRoot : DirectoryReference.Combine(SC.LocalRoot, "Engine")), "Binaries", PlatformName, "Payload", (SC.IsCodeBasedProject ? SC.ShortProjectName : "UE4Game") + ".app"),
 							SC.StageExecutables[0],
 							out bSupportsPortrait,
 							out bSupportsLandscape,
@@ -946,16 +877,16 @@ public class IOSPlatform : Platform
 					// copy the plist to the stage dir
 					SC.StageFile(StagedFileType.SystemNonUFS, TargetPListFile, new StagedFileReference("Info.plist"));
 
-					// copy the icons from the engine
+					// copy the icons/launch screens from the engine
 					{
-						DirectoryReference GraphicsDataPath = DirectoryReference.Combine(SC.EngineRoot, "Build", "IOS", "Resources", "Graphics");
-						StageImageAndIconFiles(Params, GraphicsDataPath, bSupportsPortrait, bSupportsLandscape, SC, bSkipIcons);
+						DirectoryReference DataPath = DirectoryReference.Combine(SC.EngineRoot, "Build", "IOS", "Resources", "Graphics");
+						StageImageAndIconFiles(DataPath, bSupportsPortrait, bSupportsLandscape, SC, bSkipIcons);
 					}
 
-					// copy the icons from the game (may stomp the engine copies)
+					// copy the icons/launch screens from the game (may stomp the engine copies)
 					{
-						DirectoryReference GraphicsDataPath = DirectoryReference.Combine(SC.ProjectRoot, "Build", "IOS", "Resources", "Graphics");
-						StageImageAndIconFiles(Params, GraphicsDataPath, bSupportsPortrait, bSupportsLandscape, SC, bSkipIcons);
+						DirectoryReference DataPath = DirectoryReference.Combine(SC.ProjectRoot, "Build", "IOS", "Resources", "Graphics");
+						StageImageAndIconFiles(DataPath, bSupportsPortrait, bSupportsLandscape, SC, bSkipIcons);
 					}
 				}
 
@@ -1015,13 +946,50 @@ public class IOSPlatform : Platform
 		}
 	}
 
-	private void StageImageAndIconFiles(ProjectParams Params, DirectoryReference GraphicsDataPath, bool bSupportsPortrait, bool bSupportsLandscape, DeploymentContext SC, bool bSkipIcons)
+	private void StageImageAndIconFiles(DirectoryReference DataPath, bool bSupportsPortrait, bool bSupportsLandscape, DeploymentContext SC, bool bSkipIcons)
 	{
-		if (DirectoryReference.Exists(GraphicsDataPath))
+		if (DirectoryReference.Exists(DataPath))
 		{
+			List<string> ImageFileNames = new List<string>();
+			if (bSupportsPortrait)
+			{
+				ImageFileNames.Add("Default-IPhone6.png");
+				ImageFileNames.Add("Default-IPhone6Plus-Portrait.png");
+				ImageFileNames.Add("Default-Portrait@2x.png");
+				ImageFileNames.Add("Default-Portrait-1112@2x.png");
+				ImageFileNames.Add("Default-Portrait-1194@2x.png");
+				ImageFileNames.Add("Default-Portrait-1336@2x.png");
+				ImageFileNames.Add("Default-IPhoneXS-Portrait.png");
+				ImageFileNames.Add("Default-IPhoneXSMax-Portrait.png");
+				ImageFileNames.Add("Default-IPhoneXR-Portrait.png");
+			}
+			if (bSupportsLandscape)
+			{
+				ImageFileNames.Add("Default-IPhone6-Landscape.png");
+				ImageFileNames.Add("Default-IPhone6Plus-Landscape.png");
+				ImageFileNames.Add("Default-Landscape@2x.png");
+				ImageFileNames.Add("Default-Landscape-1112@2x.png");
+				ImageFileNames.Add("Default-Landscape-1194@2x.png");
+				ImageFileNames.Add("Default-Landscape-1336@2x.png");
+				ImageFileNames.Add("Default-IPhoneXS-Landscape.png");
+				ImageFileNames.Add("Default-IPhoneXSMax-Landscape.png");
+				ImageFileNames.Add("Default-IPhoneXR-Landscape.png");
+			}
+			ImageFileNames.Add("Default@2x.png");
+			ImageFileNames.Add("Default-568h@2x.png");
+
+			foreach (string ImageFileName in ImageFileNames)
+			{
+				FileReference ImageFile = FileReference.Combine(DataPath, ImageFileName);
+				if (FileReference.Exists(ImageFile))
+				{
+					SC.StageFile(StagedFileType.SystemNonUFS, ImageFile, new StagedFileReference(ImageFileName));
+				}
+			}
+
 			if (!bSkipIcons)
 			{
-				SC.StageFiles(StagedFileType.SystemNonUFS, GraphicsDataPath, "Icon*.png", StageFilesSearch.TopDirectoryOnly, StagedDirectoryReference.Root);
+				SC.StageFiles(StagedFileType.SystemNonUFS, DataPath, "Icon*.png", StageFilesSearch.TopDirectoryOnly, StagedDirectoryReference.Root);
 			}
 		}
 	}
@@ -1274,27 +1242,13 @@ public class IOSPlatform : Platform
 				int EndPos = Contents.IndexOf("</string>", Pos);
 				BundleIdentifier = Contents.Substring(Pos, EndPos - Pos);
 			}
-			
-			LogInformation("Checking if bundle {0} is installed", BundleIdentifier);
-			string Output = CommandUtils.RunAndLog(DeployServer, "ListApplications" + (String.IsNullOrEmpty(Params.DeviceNames[0]) ? "" : " -device " + Params.DeviceNames[0]), GetRunAndLogOnlyName(CmdEnv, DeployServer, null), 0, null, ERunOptions.SpewIsVerbose);
-			bool bBundleIsInstalled = Output.Contains(string.Format("CFBundleIdentifier -> {0}{1}", BundleIdentifier, Environment.NewLine)); 
+			RunAndLog(CmdEnv, DeployServer, "Backup -file \"" + CombinePaths(Params.BaseStageDirectory, PlatformName, SC.GetUFSDeployedManifestFileName(null)) + "\" -file \"" + CombinePaths(Params.BaseStageDirectory, PlatformName, SC.GetNonUFSDeployedManifestFileName(null)) + "\"" + (String.IsNullOrEmpty(Params.DeviceNames[0]) ? "" : " -device " + Params.DeviceNames[0]) + " -bundle " + BundleIdentifier);
 
-			if (bBundleIsInstalled)
-			{
-				LogInformation("Bundle {0} found, retrieving deployed manifests...", BundleIdentifier);
+			string[] ManifestFiles = Directory.GetFiles(CombinePaths(Params.BaseStageDirectory, PlatformName), "*_Manifest_UFS*.txt");
+			UFSManifests.AddRange(ManifestFiles);
 
-				RunAndLog(CmdEnv, DeployServer, "Backup -file \"" + CombinePaths(Params.BaseStageDirectory, PlatformName, SC.GetUFSDeployedManifestFileName(null)) + "\" -file \"" + CombinePaths(Params.BaseStageDirectory, PlatformName, SC.GetNonUFSDeployedManifestFileName(null)) + "\"" + (String.IsNullOrEmpty(Params.DeviceNames[0]) ? "" : " -device " + Params.DeviceNames[0]) + " -bundle " + BundleIdentifier);
-
-				string[] ManifestFiles = Directory.GetFiles(CombinePaths(Params.BaseStageDirectory, PlatformName), "*_Manifest_UFS*.txt");
-				UFSManifests.AddRange(ManifestFiles);
-
-				ManifestFiles = Directory.GetFiles(CombinePaths(Params.BaseStageDirectory, PlatformName), "*_Manifest_NonUFS*.txt");
-				NonUFSManifests.AddRange(ManifestFiles);
-			}
-			else
-			{
-				LogInformation("Bundle {0} not found, skipping retrieving deployed manifests", BundleIdentifier);
-			}
+			ManifestFiles = Directory.GetFiles(CombinePaths(Params.BaseStageDirectory, PlatformName), "*_Manifest_NonUFS*.txt");
+			NonUFSManifests.AddRange(ManifestFiles);
 		}
 		catch (System.Exception)
 		{
@@ -1380,12 +1334,6 @@ public class IOSPlatform : Platform
 		{
 			// push over the changed files
 			RunAndLog(CmdEnv, DeployServer, "Deploy -manifest \"" + SC.GetUFSDeploymentDeltaPath(Params.Devices.Count == 0 ? null : Params.DeviceNames[0]) + "\"" + (Params.Devices.Count == 0 ? "" : " -device " + Params.DeviceNames[0]) + AdditionalCommandline + " -bundle " + BundleIdentifier);
-
-			// IPA for launch-on doesn't include these files - they are a delta and still need uploading
-			if(bNeedsIPA)
-			{
-				RunAndLog(CmdEnv, DeployServer, "Deploy -manifest \"" + SC.GetNonUFSDeploymentDeltaPath(Params.Devices.Count == 0 ? null : Params.DeviceNames[0]) + "\"" + (Params.Devices.Count == 0 ? "" : " -device " + Params.DeviceNames[0]) + AdditionalCommandline + " -bundle " + BundleIdentifier);
-			}
 		}
 		Directory.SetCurrentDirectory(CurrentDir);
 		PrintRunTime();
@@ -1822,9 +1770,4 @@ public class IOSPlatform : Platform
 	}
 
 	#endregion
-
-	public override DirectoryReference GetProjectRootForStage(DirectoryReference RuntimeRoot, StagedDirectoryReference RelativeProjectRootForStage)
-	{
-		return DirectoryReference.Combine(RuntimeRoot, "cookeddata/" + RelativeProjectRootForStage.Name);
-	}
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	IScreenShotComparisonModule.h: Declares the IScreenShotComparisonModule interface.
@@ -11,7 +11,6 @@
 #include "ImageComparer.h"
 
 class IScreenShotManager;
-struct FAutomationScreenshotMetadata;
 
 /**
  * Type definition for shared pointers to instances of IScreenShotManager.
@@ -35,38 +34,20 @@ struct FScreenshotExportResults
 };
 
 /**
- * Describes options available when comparing screenshots
- */
-enum class EScreenShotCompareOptions
-{
-	None,
-	DiscardImage,
-	KeepImage,
-};
-
-/**
- * Interface that defines a class which is capable of comparing screenshots at a provided path with checked in ground truth versions
- * and generate results and reports.
+ * Interface for screen manager module.
  */
 class IScreenShotManager
 {
 public:
-		
 	virtual ~IScreenShotManager(){ }
 
 	/**
-	 * Takes the file at the provided path and uses the metadata to find and compare it with a ground truth version. 
-	 * 
-	 * @param IncomingPath		Path to the file. The file can reside anywhere but for best practices it should be under FPaths::AutomationTransientDir()
-	 * @param MetaData			Meta data for the image. This should have been created when the image was captured and is usually at the same path but with a json extension
-	 * @param Options			Comparison options. Use EScreenShotCompareOptions::DiscardImage if the incoming image does not need to be preserved (implicit if the path is under a transient dir)
-	 *
-	 * @return TFuture<FImageComparisonResult>
+	 * Compares a specific screenshot, the shot path must be relative from the incoming unapproved directory.
 	 */
-	virtual TFuture<FImageComparisonResult> CompareScreenshotAsync(const FString& IncomingPath, const FAutomationScreenshotMetadata& MetaData, const EScreenShotCompareOptions Options) = 0;
+	virtual TFuture<FImageComparisonResult> CompareScreenshotAsync(FString RelativeImagePath) = 0;
 
 	/**
-	 * Exports rs screenshots to the export location specified
+	 * Exports the screenshots to the export location specified
 	 */
 	virtual TFuture<FScreenshotExportResults> ExportComparisonResultsAsync(FString ExportPath = TEXT("")) = 0;
 
@@ -75,4 +56,18 @@ public:
 	 */
 	virtual bool OpenComparisonReports(FString ImportPath, TArray<FComparisonReport>& OutReports) = 0;
 
+	/**
+	 * 
+	 */
+	virtual FString GetLocalUnapprovedFolder() const = 0;
+
+	/**
+	 * 
+	 */
+	virtual FString GetLocalApprovedFolder() const = 0;
+
+	/**
+	 * 
+	 */
+	virtual FString GetLocalComparisonFolder() const = 0;
 };

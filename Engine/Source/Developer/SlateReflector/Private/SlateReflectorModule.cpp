@@ -1,44 +1,32 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-#include "SlateReflectorModule.h"
+#include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
-
-#include "SlateNavigationEventSimulator.h"
-#include "Textures/SlateIcon.h"
-#include "WidgetSnapshotService.h"
-
 #include "Widgets/DeclarativeSyntaxSupport.h"
-#include "Framework/Application/SlateApplication.h"
-#include "Framework/Docking/TabManager.h"
-#include "InputEventVisualizer.h"
 #include "Styling/CoreStyle.h"
-#include "Styling/WidgetReflectorStyle.h"
+#include "Widgets/SWidget.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Textures/SlateIcon.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Layout/SBox.h"
-#include "Widgets/SNavigationSimulationList.h"
+#include "Framework/Docking/TabManager.h"
+#include "Widgets/SWidgetReflector.h"
+#include "ISlateReflectorModule.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Widgets/SAtlasVisualizer.h"
-#include "Widgets/SWidget.h"
-#include "Widgets/SWidgetReflector.h"
+#include "WidgetSnapshotService.h"
 
-#define LOCTEXT_NAMESPACE "FSlateReflectorModuleImpl"
+
+#define LOCTEXT_NAMESPACE "FSlateReflectorModule"
 
 
 /**
  * Implements the SlateReflector module.
  */
-class FSlateReflectorModuleImpl : public FSlateReflectorModule
+class FSlateReflectorModule
+	: public ISlateReflectorModule
 {
 public:
-	virtual TSharedPtr<SWidgetReflector> GetWidgetReflectorInstance() override
-	{
-		return WidgetReflectorPtr.Pin();
-	}
-
-	virtual FInputEventVisualizer* GetInputEventVisualizer() override
-	{
-		return VisualizeInputEventsPtr.Get();
-	}
 
 	// ISlateReflectorModule interface
 
@@ -107,19 +95,19 @@ public:
 	virtual void DisplayWidgetReflector() override
 	{
 		check(bHasRegisteredTabSpawners);
-		FGlobalTabmanager::Get()->TryInvokeTab(FTabId("WidgetReflector"));
+		FGlobalTabmanager::Get()->InvokeTab(FTabId("WidgetReflector"));
 	}
 
 	virtual void DisplayTextureAtlasVisualizer() override
 	{
 		check(bHasRegisteredTabSpawners);
-		FGlobalTabmanager::Get()->TryInvokeTab(FTabId("TextureAtlasVisualizer"));
+		FGlobalTabmanager::Get()->InvokeTab(FTabId("TextureAtlasVisualizer"));
 	}
 
 	virtual void DisplayFontAtlasVisualizer() override
 	{
 		check(bHasRegisteredTabSpawners);
-		FGlobalTabmanager::Get()->TryInvokeTab(FTabId("FontAtlasVisualizer"));
+		FGlobalTabmanager::Get()->InvokeTab(FTabId("FontAtlasVisualizer"));
 	}
 
 	virtual void RegisterTabSpawner( const TSharedPtr<FWorkspaceItem>& WorkspaceGroup ) override
@@ -132,7 +120,7 @@ public:
 		bHasRegisteredTabSpawners = true;
 
 		{
-			FTabSpawnerEntry& SpawnerEntry = FGlobalTabmanager::Get()->RegisterNomadTabSpawner("WidgetReflector", FOnSpawnTab::CreateRaw(this, &FSlateReflectorModuleImpl::MakeWidgetReflectorTab) )
+			FTabSpawnerEntry& SpawnerEntry = FGlobalTabmanager::Get()->RegisterNomadTabSpawner("WidgetReflector", FOnSpawnTab::CreateRaw(this, &FSlateReflectorModule::MakeWidgetReflectorTab) )
 				.SetDisplayName(LOCTEXT("WidgetReflectorTitle", "Widget Reflector"))
 				.SetTooltipText(LOCTEXT("WidgetReflectorTooltipText", "Open the Widget Reflector tab."))
 				.SetIcon(FSlateIcon(FCoreStyle::Get().GetStyleSetName(), "WidgetReflector.TabIcon"));
@@ -144,7 +132,7 @@ public:
 		}
 
 		{
-			FTabSpawnerEntry& SpawnerEntry = FGlobalTabmanager::Get()->RegisterNomadTabSpawner("TextureAtlasVisualizer", FOnSpawnTab::CreateRaw(this, &FSlateReflectorModuleImpl::MakeTextureAtlasVisualizerTab) )
+			FTabSpawnerEntry& SpawnerEntry = FGlobalTabmanager::Get()->RegisterNomadTabSpawner("TextureAtlasVisualizer", FOnSpawnTab::CreateRaw(this, &FSlateReflectorModule::MakeTextureAtlasVisualizerTab) )
 				.SetDisplayName(LOCTEXT("TextureAtlasVisualizerTitle", "Texture Atlas Visualizer"))
 				.SetTooltipText(LOCTEXT("TextureAtlasVisualizerTooltipText", "Open the Texture Atlas Visualizer tab."))
 				.SetMenuType(ETabSpawnerMenuType::Hidden);
@@ -156,7 +144,7 @@ public:
 		}
 
 		{
-			FTabSpawnerEntry& SpawnerEntry = FGlobalTabmanager::Get()->RegisterNomadTabSpawner("FontAtlasVisualizer", FOnSpawnTab::CreateRaw(this, &FSlateReflectorModuleImpl::MakeFontAtlasVisualizerTab) )
+			FTabSpawnerEntry& SpawnerEntry = FGlobalTabmanager::Get()->RegisterNomadTabSpawner("FontAtlasVisualizer", FOnSpawnTab::CreateRaw(this, &FSlateReflectorModule::MakeFontAtlasVisualizerTab) )
 				.SetDisplayName(LOCTEXT("FontAtlasVisualizerTitle", "Font Atlas Visualizer"))
 				.SetTooltipText(LOCTEXT("FontAtlasVisualizerTooltipText", "Open the Font Atlas Visualizer tab."))
 				.SetMenuType(ETabSpawnerMenuType::Hidden);
@@ -177,26 +165,13 @@ public:
 		FGlobalTabmanager::Get()->UnregisterNomadTabSpawner("FontAtlasVisualizer");
 	}
 
-	virtual FSlateNavigationEventSimulator* GetNavigationEventSimulator() const override
-	{
-		return NavigationEventSimulator.Get();
-	}
-
-	virtual TSharedRef<INavigationEventSimulationView> CreateNavigationEventSimulationView(const FNavigationEventSimulationViewArgs& DetailsViewArgs) override
-	{
-		return SNew(SNavigationSimulationLiveList, DetailsViewArgs.OnWidgetSelected, DetailsViewArgs.OnNavigateToWidget);
-	}
-
 public:
 
 	// IModuleInterface interface
 
 	virtual void StartupModule() override
 	{
-		FWidgetReflectorStyle::Initialize();
-		WidgetSnapshotService = MakeShared<FWidgetSnapshotService>();
-		NavigationEventSimulator = MakeUnique<FSlateNavigationEventSimulator>();
-		VisualizeInputEventsPtr = MakeUnique<FInputEventVisualizer>();
+		WidgetSnapshotService = MakeShareable(new FWidgetSnapshotService());
 
 		bHasRegisteredTabSpawners = false;
 		RegisterTabSpawner(nullptr);
@@ -206,10 +181,7 @@ public:
 	{
 		UnregisterTabSpawner();
 
-		VisualizeInputEventsPtr.Reset();
-		NavigationEventSimulator.Reset();
 		WidgetSnapshotService.Reset();
-		FWidgetReflectorStyle::Shutdown();
 	}
 
 private:
@@ -250,16 +222,10 @@ private:
 
 	/** The service for handling remote widget snapshots */
 	TSharedPtr<FWidgetSnapshotService> WidgetSnapshotService;
-
-	/** NavigationEventSimulator instance */
-	TUniquePtr<FSlateNavigationEventSimulator> NavigationEventSimulator;
-
-	/** Holds the visualize input event singleton. */
-	TUniquePtr<FInputEventVisualizer> VisualizeInputEventsPtr;
 };
 
 
-IMPLEMENT_MODULE(FSlateReflectorModuleImpl, SlateReflector);
+IMPLEMENT_MODULE(FSlateReflectorModule, SlateReflector);
 
 
 #undef LOCTEXT_NAMESPACE

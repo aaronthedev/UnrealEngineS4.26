@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "FoliageTypePaintingCustomization.h"
 #include "Misc/Attribute.h"
@@ -86,7 +86,7 @@ void FFoliageTypePaintingCustomization::ShowFoliagePropertiesForCategory(IDetail
 	for (auto& PropertyHandle : CategoryProperties)
 	{
 		bool bShowingProperty = false;
-		if (FProperty* Property = PropertyHandle->GetProperty())
+		if (UProperty* Property = PropertyHandle->GetProperty())
 		{
 			if (Property->GetFName() == MobilityName)
 			{

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,9 +13,9 @@
 #include "SequencerScriptingRange.h"
 #include "SequenceTimeUnit.h"
 #include "ExtensionLibraries/MovieSceneSequenceExtensions.h"
-#include "MovieSceneSequence.h"
-#include "MovieScene.h"
+
 #include "MovieSceneScriptingChannel.generated.h"
+
 UCLASS(BlueprintType)
 class UMovieSceneScriptingKey : public UObject
 {
@@ -31,7 +31,6 @@ public:
 public:
 	FKeyHandle KeyHandle;
 	TWeakObjectPtr<UMovieSceneSequence> OwningSequence;
-	TWeakObjectPtr<UMovieSceneSection> OwningSection;
 };
 
 
@@ -52,8 +51,7 @@ public:
 template<typename ChannelType, typename ScriptingKeyType, typename ScriptingKeyValueType>
 struct TMovieSceneScriptingChannel
 {
-	ScriptingKeyType* AddKeyInChannel(TMovieSceneChannelHandle<ChannelType> ChannelHandle, TWeakObjectPtr<UMovieSceneSequence> Sequence, 
-		TWeakObjectPtr<UMovieSceneSection> Section, const FFrameNumber InTime, ScriptingKeyValueType& NewValue, float SubFrame, ESequenceTimeUnit TimeUnit, EMovieSceneKeyInterpolation Interpolation)
+	ScriptingKeyType* AddKeyInChannel(TMovieSceneChannelHandle<ChannelType> ChannelHandle, TWeakObjectPtr<UMovieSceneSequence> Sequence, const FFrameNumber InTime, ScriptingKeyValueType& NewValue, float SubFrame, ESequenceTimeUnit TimeUnit, EMovieSceneKeyInterpolation Interpolation)
 	{
 		ChannelType* Channel = ChannelHandle.Get();
 		if (Channel)
@@ -67,20 +65,10 @@ struct TMovieSceneScriptingChannel
 				KeyTime = FFrameRate::TransformTime(KeyTime, UMovieSceneSequenceExtensions::GetDisplayRate(Sequence.Get()), UMovieSceneSequenceExtensions::GetTickResolution(Sequence.Get())).RoundToFrame();
 			}
 
-			using namespace UE::MovieScene;
+			using namespace MovieScene;
 			Key->KeyHandle = AddKeyToChannel(Channel, KeyTime, NewValue, Interpolation);
 			Key->ChannelHandle = ChannelHandle;
-			Key->OwningSection = Section;
 			Key->OwningSequence = Sequence;
-
-#if WITH_EDITOR
-			const FMovieSceneChannelMetaData* MetaData = ChannelHandle.GetMetaData();
-			if (MetaData && Section.IsValid() && Sequence.IsValid() && Sequence->GetMovieScene())
-			{
-				Section.Get()->MarkAsChanged();
-				Sequence->GetMovieScene()->OnChannelChanged().Broadcast(MetaData, Section.Get());
-			}
-#endif
 
 			return Key;
 		}
@@ -99,23 +87,14 @@ struct TMovieSceneScriptingChannel
 		ChannelType* Channel = ChannelHandle.Get();
 		if (Channel)
 		{
-			TArrayView<FKeyHandle, int> KeyArray = TArrayView<FKeyHandle, int>(&Key->KeyHandle, 1);
-			Channel->DeleteKeys(KeyArray);
-#if WITH_EDITOR
-			const FMovieSceneChannelMetaData* MetaData = ChannelHandle.GetMetaData();
-			if (MetaData && Key->OwningSection.IsValid() && Key->OwningSequence.IsValid() && Key->OwningSequence->GetMovieScene())
-			{
-				Key->OwningSection.Get()->MarkAsChanged();
-				Key->OwningSequence->GetMovieScene()->OnChannelChanged().Broadcast(MetaData, Key->OwningSection.Get());
-			}
-#endif
+			Channel->DeleteKeys(MakeArrayView(&Key->KeyHandle, 1));
 			return;
 		}
 
 		FFrame::KismetExecutionMessage(TEXT("Invalid ChannelHandle for MovieSceneScriptingChannel, failed to remove key."), ELogVerbosity::Error);
 	}
 
-	TArray<UMovieSceneScriptingKey*> GetKeysInChannel(TMovieSceneChannelHandle<ChannelType> ChannelHandle, TWeakObjectPtr<UMovieSceneSequence> Sequence, TWeakObjectPtr<UMovieSceneSection> Section) const
+	TArray<UMovieSceneScriptingKey*> GetKeysInChannel(TMovieSceneChannelHandle<ChannelType> ChannelHandle, TWeakObjectPtr<UMovieSceneSequence> Sequence) const
 	{
 		TArray<UMovieSceneScriptingKey*> OutScriptingKeys;
 		ChannelType* Channel = ChannelHandle.Get();
@@ -131,7 +110,6 @@ struct TMovieSceneScriptingChannel
 				Key->KeyHandle = OutKeys[i];
 				Key->ChannelHandle = ChannelHandle;
 				Key->OwningSequence = Sequence;
-				Key->OwningSection = Section;
 				OutScriptingKeys.Add(Key);
 			}
 		}
@@ -155,8 +133,8 @@ struct TMovieSceneScriptingChannel
 			if (SpecifiedRange.HasLowerBound() && SpecifiedRange.HasUpperBound())
 			{
 				FFrameTime Interval = FFrameRate::TransformTime(1, FrameRate, Resolution);
-				FFrameNumber InFrame = UE::MovieScene::DiscreteInclusiveLower(SpecifiedRange);
-				FFrameNumber OutFrame = UE::MovieScene::DiscreteExclusiveUpper(SpecifiedRange);
+				FFrameNumber InFrame = MovieScene::DiscreteInclusiveLower(SpecifiedRange);
+				FFrameNumber OutFrame = MovieScene::DiscreteExclusiveUpper(SpecifiedRange);
 				for (FFrameTime EvalTime = InFrame; EvalTime < OutFrame; EvalTime += Interval)
 				{
 					FFrameNumber KeyTime = FFrameRate::Snap(EvalTime, Resolution, FrameRate).FloorToFrame();
@@ -197,7 +175,7 @@ struct TMovieSceneScriptingChannel
 		ChannelType* Channel = ChannelHandle.Get();
 		if (Channel)
 		{
-			using namespace UE::MovieScene;
+			using namespace MovieScene;
 			SetChannelDefault(Channel, InDefaultValue);
 			return;
 		}
@@ -209,7 +187,7 @@ struct TMovieSceneScriptingChannel
 		ChannelType* Channel = ChannelHandle.Get();
 		if (Channel)
 		{
-			using namespace UE::MovieScene;
+			using namespace MovieScene;
 			RemoveChannelDefault(Channel);
 			return;
 		}
@@ -223,7 +201,7 @@ struct TMovieSceneScriptingChannel
 		{
 			ScriptingKeyValueType Ret;
 
-			using namespace UE::MovieScene;
+			using namespace MovieScene;
 			if (GetChannelDefault(Channel, Ret))
 			{
 				return TOptional<ScriptingKeyValueType>(Ret);
@@ -316,7 +294,7 @@ struct TMovieSceneScriptingKey
 		ChannelType* Channel = ChannelHandle.Get();
 		if (Channel)
 		{
-			using namespace UE::MovieScene;
+			using namespace MovieScene;
 			if (!GetKeyValue(Channel, KeyHandle, Value))
 			{
 				FFrame::KismetExecutionMessage(TEXT("Invalid KeyIndex for MovieSceneScriptingKey, failed to get value. Did you forget to create the key through the channel?"), ELogVerbosity::Error);
@@ -335,7 +313,7 @@ struct TMovieSceneScriptingKey
 		ChannelType* Channel = ChannelHandle.Get();
 		if (Channel)
 		{
-			using namespace UE::MovieScene;
+			using namespace MovieScene;
 			if (!AssignValue(Channel, KeyHandle, InNewValue))
 			{
 				FFrame::KismetExecutionMessage(TEXT("Invalid KeyIndex for MovieSceneScriptingKey, failed to set value. Did you forget to create the key through the channel?"), ELogVerbosity::Error);
@@ -351,4 +329,3 @@ struct TMovieSceneScriptingKey
 public:
 	TMovieSceneChannelHandle<ChannelType> ChannelHandle;
 };
-

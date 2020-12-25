@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EdGraph/EdGraph.h"
 #include "Engine/Blueprint.h"
@@ -125,7 +125,7 @@ void UEdGraph::BuildSubobjectMapping(UObject* OtherObject, TMap<UObject*, UObjec
 
 	for (UEdGraphNode* GraphNode : Nodes)
 	{
-		if (GraphNode && !ObjectMapping.Contains(GraphNode))
+		if (!ObjectMapping.Contains(GraphNode))
 		{
 			UEdGraphNode* OtherGraphNode = FindMatchingNode(OtherGraph, GraphNode);
 			ObjectMapping.Emplace(GraphNode, OtherGraphNode);
@@ -147,18 +147,16 @@ void UEdGraph::PostInitProperties()
 	}
 }
 
-void UEdGraph::Serialize(FStructuredArchiveRecord Record)
+void UEdGraph::Serialize( FArchive& Ar )
 {
-	Super::Serialize(Record);
-	const FArchiveState& ArchiveState = Record.GetArchiveState();
-
+	Super::Serialize(Ar);
 	// Keep track of RF_Public
-	if(ArchiveState.IsTransacting())
+	if( Ar.IsTransacting() )
 	{
 		bool bIsPublic = HasAnyFlags(RF_Public);
-		if(ArchiveState.IsLoading())
+		if( Ar.IsLoading() )
 		{
-			Record << SA_VALUE(TEXT("IsPublic"), bIsPublic);
+			Ar << bIsPublic;
 			if (bIsPublic)
 			{
 				SetFlags( RF_Public );
@@ -168,9 +166,9 @@ void UEdGraph::Serialize(FStructuredArchiveRecord Record)
 				ClearFlags( RF_Public );
 			}
 		}
-		else if( ArchiveState.IsSaving())
+		else if( Ar.IsSaving() )
 		{
-			Record << SA_VALUE(TEXT("IsPublic"), bIsPublic);
+			Ar << bIsPublic;
 		}
 	}
 }

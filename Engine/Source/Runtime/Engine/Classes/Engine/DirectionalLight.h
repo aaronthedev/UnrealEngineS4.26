@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -44,8 +44,5 @@ public:
 #if WITH_EDITORONLY_DATA
 	/** Returns ArrowComponent subobject **/
 	ENGINE_API UArrowComponent* GetArrowComponent() const { return ArrowComponent; }
-
-	/** Returns SkyAtmosphereComponent subobject */
-	ENGINE_API UDirectionalLightComponent* GetComponent() const { return DirectionalLightComponent; }
 #endif
 };

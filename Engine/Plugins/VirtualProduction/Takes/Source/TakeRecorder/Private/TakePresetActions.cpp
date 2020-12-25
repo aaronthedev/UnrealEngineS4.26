@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TakePresetActions.h"
 #include "TakePreset.h"
@@ -59,12 +59,9 @@ void FTakePresetActions::OpenAssetEditor(const TArray<UObject*>& InObjects, TSha
 			TSharedPtr<FTakePresetToolkit> Toolkit = MakeShared<FTakePresetToolkit>();
 			Toolkit->Initialize(EToolkitMode::WorldCentric, EditWithinLevelEditor, TakePreset);
 
-			TSharedPtr<SDockTab> DockTab = EditWithinLevelEditor->GetTabManager()->TryInvokeTab(ITakeRecorderModule::TakeRecorderTabName);
-			if (DockTab.IsValid())
-			{
-				TSharedRef<STakeRecorderTabContent> TabContent = StaticCastSharedRef<STakeRecorderTabContent>(DockTab->GetContent());
-				TabContent->SetupForEditing(Toolkit);
-			}
+			TSharedRef<SDockTab> DockTab = EditWithinLevelEditor->GetTabManager()->InvokeTab(ITakeRecorderModule::TakeRecorderTabName);
+			TSharedRef<STakeRecorderTabContent> TabContent = StaticCastSharedRef<STakeRecorderTabContent>(DockTab->GetContent());
+			TabContent->SetupForEditing(Toolkit);
 		}
 	}
 }

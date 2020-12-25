@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "FbxImporter.h"
@@ -84,28 +84,6 @@ namespace UnFbx {
 					AnimatedPropertyNames.Add(AttributePropertyKvp.Key);
 				}
 				return;
-			}
-		}
-	}
-
-	void FFbxCurvesAPI::GetCustomStringPropertyArray(const FString& NodeName, TArray<TPair<FString, FString> >& CustomPropertyPairs) const
-	{
-		CustomPropertyPairs.Empty();
-
-		FbxNode* Node = GetNodeFromName(NodeName, Scene->GetRootNode());
-		if (Node)
-		{
-			// Import all custom user-defined FBX properties from the FBX node to the object metadata
-			FbxProperty CurrentProperty = Node->GetFirstProperty();
-			while (CurrentProperty.IsValid())
-			{
-				if (CurrentProperty.GetFlag(FbxPropertyFlags::eUserDefined) && CurrentProperty.GetPropertyDataType().GetType() == eFbxString)
-				{
-					FString PropertyValue = UTF8_TO_TCHAR(CurrentProperty.Get<FbxString>().Buffer());
-
-					CustomPropertyPairs.Add(TPair<FString, FString>(UTF8_TO_TCHAR(CurrentProperty.GetName()), PropertyValue));
-				}
-				CurrentProperty = Node->GetNextProperty(CurrentProperty);
 			}
 		}
 	}
@@ -230,9 +208,10 @@ namespace UnFbx {
 		}
 	}
 
-	void FFbxCurvesAPI::GetCurveDataForSequencer(const FFbxAnimCurveHandle &CurveHandle, FRichCurve& RichCurve, bool bNegative) const
+	//Similar to function UnFbx::FFbxImporter::ImportCurve in SkeletalMeshEdit but with weighted tangent support.
+	void FFbxCurvesAPI::GetCurveData(const FFbxAnimCurveHandle &CurveHandle, FRichCurve& RichCurve, bool bNegative) const
 	{
-		const float DefaultCurveWeight = FbxAnimCurveDef::sDEFAULT_WEIGHT;
+		static float DefaultCurveWeight = FbxAnimCurveDef::sDEFAULT_WEIGHT;
 		FbxAnimCurve* FbxCurve = CurveHandle.AnimCurve;
 		if (FbxCurve)
 		{
@@ -254,8 +233,8 @@ namespace UnFbx {
 
 				float LeaveTangent = 0.f;
 				float ArriveTangent = 0.f;
-				float LeaveTangentWeight = DefaultCurveWeight;
-				float ArriveTangentWeight = DefaultCurveWeight;
+				float LeaveTangentWeight = 0.f;
+				float ArriveTangentWeight = 0.f;
 				float ArriveTimeDiff = 0.f;
 				float LeaveTimeDiff = 0.f;
 
@@ -289,22 +268,17 @@ namespace UnFbx {
 					}
 					break;
 				}
-				if (KeyTangentMode &  FbxAnimCurveDef::eTangentAuto) //tangent can be auto or broken/user (
+				if (KeyTangentMode & FbxAnimCurveDef::eTangentGenericBreak)
+				{
+				 	NewTangentMode = RCTM_Break;
+				}
+				else if (KeyTangentMode &  FbxAnimCurveDef::eTangentAuto) //break and auto are exclusive
 				{
 					NewTangentMode = RCTM_Auto;
 				}
 				else
 				{
-					//no longer use KeyTangentMode & FbxAnimCurveDef::eTangentGenericBreak to see if tangent is broken since it maya broken/unify is just a manipulation state
-					//instead we manually check to see if the tangents are the same or different, if different then broken.
-					if (FMath::IsNearlyEqual(ArriveTangent, LeaveTangent))
-					{
-						NewTangentMode = RCTM_User;
-					}
-					else
-					{
-						NewTangentMode = RCTM_Break;
-					}
+				 	NewTangentMode = RCTM_User;
 				}
 
 				switch (KeyTangentWeightMode)
@@ -345,9 +319,9 @@ namespace UnFbx {
 					}
 					break;
 				}
-				RichCurve.SetKeyInterpMode(NewKeyHandle, NewInterpMode,false);
-				RichCurve.SetKeyTangentMode(NewKeyHandle, NewTangentMode,false);
-				RichCurve.SetKeyTangentWeightMode(NewKeyHandle, NewTangentWeightMode,false);
+				RichCurve.SetKeyInterpMode(NewKeyHandle, NewInterpMode);
+				RichCurve.SetKeyTangentMode(NewKeyHandle, NewTangentMode);
+				RichCurve.SetKeyTangentWeightMode(NewKeyHandle, NewTangentWeightMode);
 
 				FRichCurveKey& NewKey = RichCurve.GetKey(NewKeyHandle);
 				NewKey.ArriveTangent = ArriveTangent;
@@ -371,21 +345,6 @@ namespace UnFbx {
 				}
 				NewKey.LeaveTangentWeight = LeaveTangentWeight;
 			}
-		}
-		//no longer set tangents till end...
-		RichCurve.AutoSetTangents();
-	}
-
-	void FFbxCurvesAPI::GetCurveData(const FFbxAnimCurveHandle &CurveHandle, FRichCurve& RichCurve, bool bNegative) const
-	{
-		FbxAnimCurve* FbxCurve = CurveHandle.AnimCurve;
-		if (FbxCurve)
-		{
-			RichCurve.Reset();
-			//Send a neutral timespan 0 to infinite, the ImportCurve, offset the keytime by doing: (KeyTime - TimeSpan.start), setting TimeSpan.start at zero will not affect the keys time value.
-			FbxTimeSpan AnimTimeSpan(FBXSDK_TIME_ZERO, FBXSDK_TIME_INFINITE);
-			const bool bAutoSetTangents = false;
-			UnFbx::FFbxImporter::ImportCurve(FbxCurve, RichCurve, AnimTimeSpan, 1.0f, bAutoSetTangents);
 		}
 	}
 
@@ -430,20 +389,6 @@ namespace UnFbx {
 		else
 		{
 			CurveData.Reset();
-		}
-	}
-
-	void FFbxCurvesAPI::GetCurveDataForSequencer(const FString& NodeName, const FString& PropertyName, int32 ChannelIndex, int32 CompositeIndex, FRichCurve& RichCurve, bool bNegative) const
-	{
-		FFbxAnimCurveHandle CurveHandle;
-		GetCurveHandle(NodeName, PropertyName, ChannelIndex, CompositeIndex, CurveHandle);
-		if (CurveHandle.AnimCurve != nullptr)
-		{
-			GetCurveDataForSequencer(CurveHandle, RichCurve, bNegative);
-		}
-		else
-		{
-			RichCurve.Reset();
 		}
 	}
 
@@ -661,10 +606,11 @@ namespace UnFbx {
 	}
 
 
+
 	void FFbxCurvesAPI::GetConvertedTransformCurveData(const FString& NodeName, FRichCurve& TranslationX, FRichCurve& TranslationY, FRichCurve& TranslationZ,
 		FRichCurve& EulerRotationX, FRichCurve& EulerRotationY, FRichCurve& EulerRotationZ,
 		FRichCurve& ScaleX, FRichCurve& ScaleY, FRichCurve& ScaleZ,
-		FTransform& DefaultTransform, bool bUseSequencerCurve) const
+		FTransform& DefaultTransform) const
 	{
 
 		for (TPair< uint64, FFbxAnimNodeHandle> AnimNodeKvp : CurvesData)
@@ -686,35 +632,18 @@ namespace UnFbx {
 						}
 					}
 				}
-				const bool bNegate = true;
-				if (bUseSequencerCurve)
-				{
-					GetCurveDataForSequencer(TransformCurves[0], TranslationX, !bNegate);
-					GetCurveDataForSequencer(TransformCurves[1], TranslationY, bNegate);
-					GetCurveDataForSequencer(TransformCurves[2], TranslationZ, !bNegate);
 
-					GetCurveDataForSequencer(TransformCurves[3], EulerRotationX, !bNegate);
-					GetCurveDataForSequencer(TransformCurves[4], EulerRotationY, bNegate);
-					GetCurveDataForSequencer(TransformCurves[5], EulerRotationZ, bNegate);
+				GetCurveData(TransformCurves[0], TranslationX, false);
+				GetCurveData(TransformCurves[1], TranslationY, true);
+				GetCurveData(TransformCurves[2], TranslationZ, false);
 
-					GetCurveDataForSequencer(TransformCurves[6], ScaleX, !bNegate);
-					GetCurveDataForSequencer(TransformCurves[7], ScaleY, !bNegate);
-					GetCurveDataForSequencer(TransformCurves[8], ScaleZ, !bNegate);
-				}
-				else
-				{
-					GetCurveData(TransformCurves[0], TranslationX, !bNegate);
-					GetCurveData(TransformCurves[1], TranslationY, bNegate);
-					GetCurveData(TransformCurves[2], TranslationZ, !bNegate);
+				GetCurveData(TransformCurves[3], EulerRotationX, false);
+				GetCurveData(TransformCurves[4], EulerRotationY, true);
+				GetCurveData(TransformCurves[5], EulerRotationZ, true);
 
-					GetCurveData(TransformCurves[3], EulerRotationX, !bNegate);
-					GetCurveData(TransformCurves[4], EulerRotationY, bNegate);
-					GetCurveData(TransformCurves[5], EulerRotationZ, bNegate);
-
-					GetCurveData(TransformCurves[6], ScaleX, !bNegate);
-					GetCurveData(TransformCurves[7], ScaleY, !bNegate);
-					GetCurveData(TransformCurves[8], ScaleZ, !bNegate);
-				}
+				GetCurveData(TransformCurves[6], ScaleX, false);
+				GetCurveData(TransformCurves[7], ScaleY, false);
+				GetCurveData(TransformCurves[8], ScaleZ, false);
 
 				if (bIsCamera || bIsLight)
 				{

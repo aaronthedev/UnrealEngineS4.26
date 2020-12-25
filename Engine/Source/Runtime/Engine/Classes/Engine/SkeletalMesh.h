@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -20,13 +20,13 @@
 #include "BoneContainer.h"
 #include "Interfaces/Interface_CollisionDataProvider.h"
 #include "EngineTypes.h"
-#include "Engine/Engine.h"
 #include "SkeletalMeshSampling.h"
 #include "PerPlatformProperties.h"
 #include "SkeletalMeshLODSettings.h"
 #include "Animation/NodeMappingProviderInterface.h"
 #include "Animation/SkinWeightProfile.h"
 #include "Engine/StreamableRenderAsset.h"
+#include "RenderAssetUpdate.h"
 
 #include "SkeletalMesh.generated.h"
 
@@ -47,10 +47,6 @@ class FSkeletalMeshLODRenderData;
 class FSkinWeightVertexBuffer;
 struct FSkinWeightProfileInfo;
 class FSkeletalMeshUpdate;
-class USkeletalMeshEditorData;
-class FSkeletalMeshImportData;
-enum class ESkeletalMeshGeoImportVersions : uint8;
-enum class ESkeletalMeshSkinningImportVersions : uint8;
 
 #if WITH_APEX_CLOTHING
 
@@ -62,29 +58,6 @@ namespace nvidia
 	}
 }
 #endif
-
-UENUM()
-enum class ESkinCacheUsage : uint8
-{
-	// Auto will defer to child or global behavior based on context. If Ray Tracing is enabled, will imply Enabled
-	Auto		= 0,
-
-	// Mesh will not use the skin cache. If Ray Tracing is enabled, will imply Enabled
-	Disabled	= uint8(-1),
-
-	// Mesh will use the skin cache
-	Enabled		= 1,
-};
-
-UENUM()
-enum class ESkinCacheDefaultBehavior : uint8
-{
-	// All skeletal meshes are excluded from the skin cache. Each must opt in individually. If Ray Tracing is enabled, will imply Inclusive
-	Exclusive = 0,
-
-	// All skeletal meshes are included into the skin cache. Each must opt out individually
-	Inclusive = 1,
-};
 
 USTRUCT()
 struct FBoneMirrorInfo
@@ -238,12 +211,6 @@ struct FSkeletalMeshLODInfo
 	/** The filename of the file tha was used to import this LOD if it was not auto generated. */
 	UPROPERTY(VisibleAnywhere, Category= SkeletalMeshLODInfo, AdvancedDisplay)
 	FString SourceImportFilename;
-
-	/**
-	 * How this LOD uses the skin cache feature. Auto will defer to the default project global option. If Ray Tracing is enabled, will imply Enabled
-	 */
-	UPROPERTY(EditAnywhere, Category = SkeletalMeshLODInfo)
-	ESkinCacheUsage SkinCacheUsage = ESkinCacheUsage::Auto;
 
 	/** Whether to disable morph targets for this LOD. */
 	UPROPERTY()
@@ -446,11 +413,11 @@ struct FSkeletalMaterial
 	ENGINE_API friend bool operator==( const FSkeletalMaterial& LHS, const UMaterialInterface& RHS );
 	ENGINE_API friend bool operator==( const UMaterialInterface& LHS, const FSkeletalMaterial& RHS );
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=SkeletalMesh)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SkeletalMesh)
 	class UMaterialInterface *	MaterialInterface;
 	
 	/*This name should be use by the gameplay to avoid error if the skeletal mesh Materials array topology change*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = SkeletalMesh)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = SkeletalMesh)
 	FName						MaterialSlotName;
 #if WITH_EDITORONLY_DATA
 	UPROPERTY()
@@ -525,93 +492,11 @@ private:
 	/** Rendering resources used at runtime */
 	TUniquePtr<FSkeletalMeshRenderData> SkeletalMeshRenderData;
 
-#if WITH_EDITORONLY_DATA
 public:
-	/*
-	 * This editor data asset is save in the same package has the skeletalmesh, the editor data asset is always loaded.
-	 * If the skeletal mesh is rename the editor data asset will also be rename: the name is SkeletalMeshName_USkeletalMeshEditorData
-	 * If the skeletal mesh is duplicate the editor data asset will also be duplicate
-	 * There is only one editor data asset possible per skeletalmesh.
-	 * The reason we store the editor data in a separate asset is because the size of it can be very big and affect the editor performance. (undo/redo transactions)
-	 */
-	UPROPERTY()
-	mutable USkeletalMeshEditorData* MeshEditorDataObject;
-
-private:
-	/*
-	 * Return a valid USkeletalMeshEditorData, if the MeshEditorDataPath is invalid it will create the USkeletalMeshEditorData and set the MeshEditorDataPath to point on it.
-	 */
-	USkeletalMeshEditorData& GetMeshEditorData() const;
-
-#endif //WITH_EDITORONLY_DATA
-
-public:
-
 #if WITH_EDITORONLY_DATA
-
-	//////////////////////////////////////////////////////////////////////////
-	// USkeletalMeshEditorData public skeletalmesh API
-	// We do not want skeletal mesh client to use directly the asset(function GetMeshEditorData)
-	// We have to maintain some sync between the LODModels and the asset to avoid loading the asset when
-	// building the DDC key. That is why the asset accessor are private. the data we keep in sync in the LODModels is:
-	// IsLODImportedDataBuildAvailable
-	// IsLODImportedDataEmpty
-	// Raw mesh data DDC string ID, there is no API to retrieve it, since only the LODModels need this value
-	
-
-	/* Fill the OutMesh with the imported data */
-	void LoadLODImportedData(const int32 LODIndex, FSkeletalMeshImportData& OutMesh) const;
-	
-	/* Fill the asset LOD entry with the InMesh. */
-	void SaveLODImportedData(const int32 LODIndex, FSkeletalMeshImportData& InMesh);
-	
-	/* Return true if the imported data has all the necessary data to use the skeletalmesh builder. Return False otherwise.
-	 * Old asset before the refactor will not be able to be build until it get fully re-import.
-	 * This value is cache in the LODModel and update when we call SaveLODImportedData.
-	 */
-	bool IsLODImportedDataBuildAvailable(const int32 LODIndex) const;
-	
-	/* Return true if the imported data is present. Return false otherwise.
-	 * Old asset before the split workflow will not have this data and will not support import geo only or skinning only.
-	 * This value is cache in the LODModel and update when we call SaveLODImportedData.
-	 */
-	bool IsLODImportedDataEmpty(const int32 LODIndex) const;
-
-	/* Get the Versions of the geo and skinning data. We use those versions to answer to IsLODImportedDataBuildAvailable function. */
-	void GetLODImportedDataVersions(const int32 LODIndex, ESkeletalMeshGeoImportVersions& OutGeoImportVersion, ESkeletalMeshSkinningImportVersions& OutSkinningImportVersion) const;
-
-	/* Set the Versions of the geo and skinning data. We use those versions to answer to IsLODImportedDataBuildAvailable function. */
-	void SetLODImportedDataVersions(const int32 LODIndex, const ESkeletalMeshGeoImportVersions& InGeoImportVersion, const ESkeletalMeshSkinningImportVersions& InSkinningImportVersion);
-
-	/* Static function that copy the LOD import data from a source s^keletal mesh to a destination skeletal mesh*/
-	static void CopyImportedData(int32 SrcLODIndex, USkeletalMesh* SrcSkeletalMesh, int32 DestLODIndex, USkeletalMesh* DestSkeletalMesh);
-
-	/* Allocate the space we need. Use this before calling this API in multithreaded. */
-	void ReserveLODImportData(int32 MaxLODIndex);
-	
-	void ForceBulkDataResident(const int32 LODIndex);
-
-	/* Remove the import data for the specified LOD */
-	void EmptyLODImportData(const int32 LODIndex);
-
-	/* Remove the import data for all the LODs */
-	void EmptyAllImportData();
-
-	// End USkeletalMeshEditorData public skeletalmesh API
-	//////////////////////////////////////////////////////////////////////////
-
 	/** Get the imported data for this skeletal mesh. */
 	FORCEINLINE FSkeletalMeshModel* GetImportedModel() const { return ImportedModel.Get(); }
-#endif //WITH_EDITORONLY_DATA
-
-
-#if WITH_EDITOR
-    /** Warn if the platform supports the minimal number of per vertex bone weights */
-	void ValidateBoneWeights(const ITargetPlatform* TargetPlatform);
-	virtual void BeginCacheForCookedPlatformData(const ITargetPlatform* TargetPlatform) override;
 #endif
-
-
 
 	/** Get the data to use for rendering. */
 	FORCEINLINE FSkeletalMeshRenderData* GetResourceForRendering() const { return SkeletalMeshRenderData.Get(); }
@@ -693,7 +578,7 @@ public:
 #endif
 
 	/** List of materials applied to this mesh. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, transient, duplicatetransient, Category=SkeletalMesh)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, transient, duplicatetransient, Category=SkeletalMesh)
 	TArray<FSkeletalMaterial> Materials;
 
 	/** List of bones that should be mirrored. */
@@ -731,50 +616,25 @@ public:
 	FPerPlatformBool DisableBelowMinLodStripping;
 
 #if WITH_EDITORONLY_DATA
-	/** Whether this skeletal mesh overrides default LOD streaming settings. */
-	UPROPERTY(EditAnywhere, Category=LODSettings)
-	bool bOverrideLODStreamingSettings;
-
 	/** Whether we can stream the LODs of this mesh */
-	UPROPERTY(EditAnywhere, Category=LODSettings, meta=(DisplayName="Stream LODs", EditCondition="bOverrideLODStreamingSettings"))
+	UPROPERTY(EditAnywhere, Category=LODSettings, meta=(DisplayName="Stream LODs"))
 	FPerPlatformBool bSupportLODStreaming;
 
 	/** Maximum number of LODs that can be streamed */
-	UPROPERTY(EditAnywhere, Category=LODSettings, meta=(EditCondition="bOverrideLODStreamingSettings"))
+	UPROPERTY(EditAnywhere, Category=LODSettings)
 	FPerPlatformInt MaxNumStreamedLODs;
 
 	/** Maximum number of LODs below min LOD level that can be saved to optional pak (currently, need to be either 0 or > num of LODs below MinLod) */
-	UPROPERTY(EditAnywhere, Category=LODSettings, meta=(EditCondition="bOverrideLODStreamingSettings"))
+	UPROPERTY(EditAnywhere, Category=LODSettings)
 	FPerPlatformInt MaxNumOptionalLODs;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, AssetRegistrySearchable, BlueprintSetter = SetLODSettings, Category = LODSettings)
 	USkeletalMeshLODSettings* LODSettings;
 
-	/** The Default Control Rig To Animate with when used in Sequnecer. */
-	UPROPERTY(EditAnywhere, Category = AnimationRig, BlueprintGetter = GetDefaultAnimatingRig, BlueprintSetter = SetDefaultAnimatingRig, meta = (AllowedClasses = "ControlRigBlueprint"))
-	TSoftObjectPtr<UObject> DefaultAnimatingRig;
-
 #endif // WITH_EDITORONLY_DATA
-
-#if WITH_EDITOR
-	/** Get whether this mesh use LOD streaming. Do not use bSupportLODStreaming directly. Call this method instead. */
-	bool GetSupportsLODStreaming(const class ITargetPlatform* TargetPlatform) const;
-
-	/** Get the maximum number of LODs that can be streamed. Do not use MaxNumStreamedLODs directly. Call this method instead. */
-	int32 GetMaxNumStreamedLODs(const class ITargetPlatform* TargetPlatform) const;
-
-	/** Get the maximum number of optional LODs. Do not use MaxNumOptionalLODs directly. Call this method instead. */
-	int32 GetMaxNumOptionalLODs(const class ITargetPlatform* TargetPlatform) const;
-#endif
 
 	UFUNCTION(BlueprintSetter)
 	void SetLODSettings(USkeletalMeshLODSettings* InLODSettings);
-
-	UFUNCTION(BlueprintSetter)
-	void SetDefaultAnimatingRig(TSoftObjectPtr<UObject> InAnimatingRig);
-
-	UFUNCTION(BlueprintGetter)
-	TSoftObjectPtr<UObject> GetDefaultAnimatingRig();
 
 	UPROPERTY(EditAnywhere, Category=Mirroring)
 	TEnumAsByte<EAxis::Type> SkelMirrorAxis;
@@ -997,11 +857,10 @@ public:
 	/** Adds an asset to this mesh with validation and event broadcast */
 	void AddClothingAsset(UClothingAssetBase* InNewAsset);
 
-	const FSkeletalMeshSamplingInfo& GetSamplingInfo() const { return SamplingInfo; }
+	const FSkeletalMeshSamplingInfo& GetSamplingInfo() { return SamplingInfo; }
 
 #if WITH_EDITOR
 	void SetSamplingInfo(const FSkeletalMeshSamplingInfo& InSamplingInfo) { SamplingInfo = InSamplingInfo; }
-	const FOnMeshChanged& GetOnMeshChanged() const { return OnMeshChanged; }
 	FOnMeshChanged& GetOnMeshChanged() { return OnMeshChanged; }
 #endif
 
@@ -1023,6 +882,8 @@ protected:
 #if WITH_EDITOR
 	FOnMeshChanged OnMeshChanged;
 #endif
+
+	TRefCountPtr<FSkeletalMeshUpdate> PendingUpdate;
 
 	friend struct FSkeletalMeshUpdateContext;
 	friend class FSkeletalMeshUpdate;
@@ -1085,17 +946,6 @@ public:
 #if WITH_EDITOR
 private:
 	int32 PostEditChangeStackCounter;
-
-	//When loading a legacy asset (saved before the skeletalmesh build refactor), we need to create the user sections data.
-	//This function should be call only in the PostLoad
-	void CreateUserSectionsDataForLegacyAssets();
-
-
-	/*
-	 * This function will enforce the user section data is coherent with the sections.
-	 */
-	void PostLoadValidateUserSectionData();
-
 public:
 	//We want to avoid calling post edit change multiple time during import and build process.
 
@@ -1128,7 +978,6 @@ public:
 	virtual void GetAssetRegistryTagMetadata(TMap<FName, FAssetRegistryTagMetadata>& OutMetadata) const override;
 
 	void UpdateGenerateUpToData();
-
 #endif // WITH_EDITOR
 	virtual void BeginDestroy() override;
 	virtual bool IsReadyForFinishDestroy() override;
@@ -1141,23 +990,28 @@ public:
 	virtual FString GetDetailedInfoInternal() const override;
 	virtual void GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize) override;
 	virtual void GetPreloadDependencies(TArray<UObject*>& OutDeps) override;
-	virtual void PostDuplicate(bool bDuplicateForPIE) override;
-	virtual void PostRename(UObject* OldOuter, const FName OldName) override;
 	//~ End UObject Interface.
 
 	//~ Begin UStreamableRenderAsset Interface.
+	virtual int32 GetLODGroupForStreaming() const final override;
+	virtual int32 GetNumMipsForStreaming() const final override;
+	virtual int32 GetNumNonStreamingMips() const final override;
+	virtual int32 CalcNumOptionalMips() const final override;
 	virtual int32 CalcCumulativeLODSize(int32 NumLODs) const final override;
-	virtual FIoFilenameHash GetMipIoFilenameHash(const int32 MipIndex) const final override;
-	virtual bool DoesMipDataExist(const int32 MipIndex) const final override;
+	virtual bool GetMipDataFilename(const int32 MipIndex, FString& OutBulkDataFilename) const final override;
+	virtual bool IsReadyForStreaming() const final override;
+	virtual int32 GetNumResidentMips() const final override;
+	virtual int32 GetNumRequestedMips() const final override;
+	virtual bool CancelPendingMipChangeRequest() final override;
+	virtual bool HasPendingUpdate() const final override;
+	virtual bool IsPendingUpdateLocked() const final override;
 	virtual bool StreamOut(int32 NewMipCount) final override;
 	virtual bool StreamIn(int32 NewMipCount, bool bHighPrio) final override;
-	virtual bool HasPendingRenderResourceInitialization() const;
-	virtual EStreamableRenderAssetType GetRenderAssetType() const final override { return EStreamableRenderAssetType::SkeletalMesh; }
+	virtual bool UpdateStreamingStatus(bool bWaitForMipFading = false) final override;
 	//~ End UStreamableRenderAsset Interface.
 
-#if USE_BULKDATA_STREAMING_TOKEN
-	bool GetMipDataFilename(const int32 MipIndex, FString& OutBulkDataFilename) const;
-#endif
+	void LinkStreaming();
+	void UnlinkStreaming();
 
 	/**
 	* Cancels any pending static mesh streaming actions if possible.
@@ -1236,15 +1090,15 @@ public:
 
 	/** Utility for copying and converting a mirroring table from another USkeletalMesh. */
 	void CopyMirrorTableFrom(USkeletalMesh* SrcMesh);
-	void ExportMirrorTable(TArray<FBoneMirrorExport> &MirrorExportInfo) const;
-	void ImportMirrorTable(const TArray<FBoneMirrorExport> &MirrorExportInfo);
+	void ExportMirrorTable(TArray<FBoneMirrorExport> &MirrorExportInfo);
+	void ImportMirrorTable(TArray<FBoneMirrorExport> &MirrorExportInfo);
 
 	/** 
 	 *	Utility for checking that the bone mirroring table of this mesh is good.
 	 *	Return true if mirror table is OK, false if there are problems.
 	 *	@param	ProblemBones	Output string containing information on bones that are currently bad.
 	 */
-	bool MirrorTableIsGood(FString& ProblemBones) const;
+	bool MirrorTableIsGood(FString& ProblemBones);
 
 	/**
 	 * Returns the mesh only socket list - this ignores any sockets in the skeleton
@@ -1370,9 +1224,6 @@ public:
 	* Every big data should not be in the ddc key and should use this function, because its slow to create a key with big data.
 	*/
 	void InvalidateDeriveDataCacheGUID();
-
-	/** Generate the derived data key used to fetch derived data */
-	FString GetDerivedDataKey();
 #endif 
 
 private:
@@ -1384,11 +1235,6 @@ private:
 
 	/** Utility function to help with building the combined socket list */
 	bool IsSocketOnMesh( const FName& InSocketName ) const;
-
-	/**
-	* Create a new GUID for the source Model data, regenerate derived data and re-create any render state based on that.
-	*/
-	void InvalidateRenderData();
 
 #if WITH_EDITORONLY_DATA
 	/**
@@ -1460,16 +1306,10 @@ public:
 	 * Reset whole entry
 	 */
 	void ResetLODInfo();
-
 	/*
-	 * Returns whole array of LODInfo non-const
+	 * Returns whole array of LODInfo
 	 */
 	TArray<FSkeletalMeshLODInfo>& GetLODInfoArray() { return LODInfo;  }
-
-	/*
-	 * Returns whole array of LODInfo const
-	 */
-	const TArray<FSkeletalMeshLODInfo>& GetLODInfoArray() const { return LODInfo; }
 	
 	/* 
 	 * Get LODInfo of the given index non-const
@@ -1499,8 +1339,14 @@ public:
 	 * Returns total number of LOD
 	 */
 	int32 GetLODNum() const 
-	{
-		return LODInfo.Num();
+	{ 
+#if WITH_EDITOR
+		if (bSupportLODStreaming.Default || bSupportLODStreaming.PerPlatform.FindKey(true))
+		{
+			check(LODInfo.Num() <= MAX_MESH_LOD_COUNT); 
+		}
+#endif
+		return LODInfo.Num();  
 	}
 
 public:
@@ -1538,4 +1384,3 @@ protected:
 ENGINE_API void RefreshSkelMeshOnPhysicsAssetChange(const USkeletalMesh* InSkeletalMesh);
 
 ENGINE_API FVector GetSkeletalMeshRefVertLocation(const USkeletalMesh* Mesh, const FSkeletalMeshLODRenderData& LODData, const FSkinWeightVertexBuffer& SkinWeightVertexBuffer, const int32 VertIndex);
-ENGINE_API void GetSkeletalMeshRefTangentBasis(const USkeletalMesh* Mesh, const FSkeletalMeshLODRenderData& LODData, const FSkinWeightVertexBuffer& SkinWeightVertexBuffer, const int32 VertIndex, FVector& OutTangentX, FVector& OutTangentZ);

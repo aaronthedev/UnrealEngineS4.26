@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Framework/Application/SlateApplication.h"
@@ -36,10 +36,7 @@ UEditorStyleSettings::UEditorStyleSettings( const FObjectInitializer& ObjectInit
 	GridSnapSize = 16.f;
 
 	bShowFriendlyNames = true;
-	bShowNativeComponentNames = true;
 	LogTimestampMode = ELogTimes::None;
-	
-	bEnableLegacyEditorModeUI = false;
 }
 
 void UEditorStyleSettings::Init()

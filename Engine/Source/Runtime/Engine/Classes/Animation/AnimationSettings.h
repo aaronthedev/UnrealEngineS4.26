@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AnimationSettings.h: Declares the AnimationSettings class.
@@ -11,8 +11,6 @@
 #include "Templates/SubclassOf.h"
 #include "Animation/AnimSequence.h"
 #include "Engine/DeveloperSettings.h"
-#include "CustomAttributes.h"
-
 #include "AnimationSettings.generated.h"
 
 /**
@@ -23,17 +21,41 @@ class ENGINE_API UAnimationSettings : public UDeveloperSettings
 {
 	GENERATED_UCLASS_BODY()
 
-	/** Compression version for recompress commandlet, bump this to trigger full recompressed, otherwise only new imported animations will be recompressed */
+	// compression upgrade version
 	UPROPERTY(config, VisibleAnywhere, Category = Compression)
 	int32 CompressCommandletVersion;
 
-	/** List of bone names to treat with higher precision, in addition to any bones with sockets */
 	UPROPERTY(config, EditAnywhere, Category = Compression)
 	TArray<FString> KeyEndEffectorsMatchNameArray;
 
-	/** If true, this will forcibly recompress every animation, this should not be checked in enabled */
+	UPROPERTY(config, EditAnywhere, Category = Compression, NoClear)
+	TSubclassOf<class UAnimCompress>  DefaultCompressionAlgorithm; 
+
+	UPROPERTY(config, EditAnywhere, Category = Compression)
+	TEnumAsByte<AnimationCompressionFormat> RotationCompressionFormat;
+
+	UPROPERTY(config, EditAnywhere, Category = Compression)
+	TEnumAsByte<AnimationCompressionFormat> TranslationCompressionFormat;
+
+	/** Max error for compression of curves using remove redundant keys */
+	UPROPERTY(config, EditAnywhere, Category = Compression)
+	float MaxCurveError;
+
+	/** The alternate error threshold (0.0 means don't try anything other than the current / default scheme) 
+	* 
+	* Determines the current setting for world-space error tolerance in the animation compressor.
+	* When requested, animation being compressed will also consider an alternative compression
+	* method if the end result of that method produces less error than the AlternativeCompressionThreshold.
+	* Also known as "Max End Effector Error"
+	*/
+	UPROPERTY(config, EditAnywhere, Category = Compression, meta=(ClampMin = "0", UIMin = "0"))
+	float AlternativeCompressionThreshold;
+
 	UPROPERTY(config, EditAnywhere, Category = Compression)
 	bool ForceRecompression;
+
+	UPROPERTY(config, EditAnywhere, Category = Compression)
+	bool bOnlyCheckForMissingSkeletalMeshes;
 
 	/** If true and the existing compression error is greater than Alternative Compression Threshold, then any compression technique (even one that increases the size) with a lower error will be used until it falls below the threshold */
 	UPROPERTY(config, EditAnywhere, Category = Compression)
@@ -49,7 +71,14 @@ class ENGINE_API UAnimationSettings : public UDeveloperSettings
 	UPROPERTY(config, EditAnywhere, Category = Compression)
 	bool bRaiseMaxErrorToExisting;
 
-	/** If true, recompression will log performance information */
+	/** If true, then an exhaustive search is used otherwise only a short list of the best methods is tried */
+	UPROPERTY(config, EditAnywhere, Category = Compression)
+	bool bTryExhaustiveSearch;
+
+	/** If true, anim sequences are compressed in segments. This allows for parallel compression of individual sequences. */
+	UPROPERTY(config, EditAnywhere, Category = Compression)
+	bool bEnableSegmenting;
+
 	UPROPERTY(config, EditAnywhere, Category = Performance)
 	bool bEnablePerformanceLog;
 
@@ -60,22 +89,6 @@ class ENGINE_API UAnimationSettings : public UDeveloperSettings
 	/** If true, pre-4.19 behavior of zero-ticking animations during skeletal mesh init */
 	UPROPERTY(config, EditAnywhere, Category = Performance)
 	bool bTickAnimationOnSkeletalMeshInit;
-
-	/** List of custom attribute to import directly on their corresponding bone. The meaning field allows to contextualize the attribute name and customize tooling for it. */
-	UPROPERTY(config, EditAnywhere, Category = CustomAttributes)
-	TArray<FCustomAttributeSetting> BoneCustomAttributesNames;
-
-	/** List of bone names for which all custom attributes are directly imported on the bone. */
-	UPROPERTY(config, EditAnywhere, Category = CustomAttributes)
-	TArray<FString> BoneNamesWithCustomAttributes;
-
-	/** Custom Attribute specific blend types (by name) */
-	UPROPERTY(config, EditAnywhere, Category = CustomAttributes)
-	TMap<FName, ECustomAttributeBlendType> AttributeBlendModes;
-
-	/** Default Custom Attribute blend type */
-	UPROPERTY(config, EditAnywhere, Category = CustomAttributes)
-	ECustomAttributeBlendType DefaultAttributeBlendMode;
 
 public:
 	static UAnimationSettings * Get() { return CastChecked<UAnimationSettings>(UAnimationSettings::StaticClass()->GetDefaultObject()); }

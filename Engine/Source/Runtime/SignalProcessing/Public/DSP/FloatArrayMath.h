@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,9 +7,6 @@
 
 namespace Audio
 {
-	SIGNALPROCESSING_API void ArraySum(TArrayView<const float> InValues, float& OutSum);
-	SIGNALPROCESSING_API void ArraySum(const AlignedFloatBuffer& InValues, float& OutSum);
-
 	/** Cumulative sum of array.
 	 *
 	 *  InView contains data to be cumulatively summed.
@@ -85,48 +82,8 @@ namespace Audio
 	 */ 
 	SIGNALPROCESSING_API void ArrayMinMaxNormalize(TArrayView<const float> InView, TArray<float>& OutArray);
 
-	/** Multiplies two arrays element-wise. Stores result in InValues2*/
-	SIGNALPROCESSING_API void ArrayMultiplyInPlace(TArrayView<const float> InValues1, TArrayView<float> InValues2);
-	SIGNALPROCESSING_API void ArrayMultiplyInPlace(const AlignedFloatBuffer& InValues1, AlignedFloatBuffer& InValues2);
-
-	/** Multiplies two complex valued arrays element-wise. 
-	 * This assumes elements are in interleaved format [real_0, imag_0, ..., real_N, imag_N]
-	 * Stores result in InValues2
-	 */
-	SIGNALPROCESSING_API void ArrayComplexMultiplyInPlace(TArrayView<const float> InValues1, TArrayView<float> InValues2);
-	SIGNALPROCESSING_API void ArrayComplexMultiplyInPlace(const AlignedFloatBuffer& InValues1, AlignedFloatBuffer& InValues2);
-
 	/** Multiplies each element in InView by InMultiplier */
-	SIGNALPROCESSING_API void ArrayMultiplyByConstantInPlace(TArrayView<float> InValues, float InMultiplier);
-	SIGNALPROCESSING_API void ArrayMultiplyByConstantInPlace(AlignedFloatBuffer& InValues, float InMultiplier);
-
-	/** Add arrays element-wise in place. InAccumulateValues[i] += InValues[i]
-	 *
-	 *  InValues is the array to add.
-	 *  InAccumulateValues is the array which holds the sum.
-	 */
-	SIGNALPROCESSING_API void ArrayAddInPlace(TArrayView<const float> InValues, TArrayView<float> InAccumulateValues);
-	SIGNALPROCESSING_API void ArrayAddInPlace(const AlignedFloatBuffer& InValues, AlignedFloatBuffer& InAccumulateValues);
-
-	/** Multiply Add arrays element-wise in place. InAccumulateValues[i] += InMultiplier * InValues[i]
-	 *
-	 *  @param InValues - The array to add.
-	 *  @param InMultiplier - The value to multiply against InValues
-	 *  @param InAccumulateValues - The array which holds the sum.
-	 */
-	SIGNALPROCESSING_API void ArrayMultiplyAddInPlace(TArrayView<const float> InValues, float InMultiplier, TArrayView<float> InAccumulateValues);
-	SIGNALPROCESSING_API void ArrayMultiplyAddInPlace(const AlignedFloatBuffer& InValues, float InMultiplier, AlignedFloatBuffer& InAccumulateValues);
-
-	/** Linearly Interpolate Add arrays element-wise in place. InAccumulateValues[i] += ((1 - alpha) * InStartMultiplier + alpha * InEndMultipler) * InValues[i]
-	 * Interpolation is performed over the length of the array.
-	 *
-	 *  @param InValues - The array to add.
-	 *  @param InStartMultiplier - The beginning value to multiply against InValues
-	 *  @param InEndMultiplier - The ending value to multiply against InValues
-	 *  @param InAccumulateValues - The array which holds the sum.
-	 */
-	SIGNALPROCESSING_API void ArrayLerpAddInPlace(TArrayView<const float> InValues, float InStartMultiplier, float InEndMultiplier, TArrayView<float> InAccumulateValues);
-	SIGNALPROCESSING_API void ArrayLerpAddInPlace(const AlignedFloatBuffer& InValues, float InStartMultiplier, float InEndMultiplier, AlignedFloatBuffer& InAccumulateValues);
+	SIGNALPROCESSING_API void ArrayMultiplyByConstantInPlace(TArrayView<float> InView, float InMultiplier);
 
 	/** Subract arrays element-wise. OutArray = InMinuend - InSubtrahend
 	 *
@@ -136,38 +93,14 @@ namespace Audio
 	 */
 	SIGNALPROCESSING_API void ArraySubtract(TArrayView<const float> InMinuend, TArrayView<const float> InSubtrahend, TArray<float>& OutArray);
 
-	/** Subtract value from each element in InValues */
-	SIGNALPROCESSING_API void ArraySubtractByConstantInPlace(TArrayView<float> InValues, float InSubtrahend);
-	SIGNALPROCESSING_API void ArraySubtractByConstantInPlace(AlignedFloatBuffer& InValues, float InSubtrahend);
-
-
-	/** Take Square Root of values in place. */
-	SIGNALPROCESSING_API void ArraySqrtInPlace(TArrayView<float> InValues);
-
-
-	/** Perform complex conjugate of array.  Assumes complex numbers are interlaves [real_0, imag_0, real_1, image_1, ..., real_N, imag_N]. */
-	SIGNALPROCESSING_API void ArrayComplexConjugate(TArrayView<const float> InValues, TArrayView<float> OutValues);
-	SIGNALPROCESSING_API void ArrayComplexConjugate(const AlignedFloatBuffer& InValues, AlignedFloatBuffer& OutValues);
-
-	SIGNALPROCESSING_API void ArrayComplexConjugateInPlace(TArrayView<float> InValues);
-	SIGNALPROCESSING_API void ArrayComplexConjugateInPlace(AlignedFloatBuffer& InValues);
+	/** Subtract value from each element in InView */
+	SIGNALPROCESSING_API void ArraySubtractByConstantInPlace(TArrayView<float> InView, float InSubtrahend);
 
 	/** Convert magnitude values to decibel values in place. db = 20 * log10(val) */
-	SIGNALPROCESSING_API void ArrayMagnitudeToDecibelInPlace(TArrayView<float> InValues, float InMinimumDb);
-	SIGNALPROCESSING_API void ArrayMagnitudeToDecibelInPlace(AlignedFloatBuffer& InValues, float InMinimumDb);
+	SIGNALPROCESSING_API void ArrayMagnitudeToDecibelInPlace(TArrayView<float> InView);
 
 	/** Convert power values to decibel values in place. db = 10 * log10(val) */
-	SIGNALPROCESSING_API void ArrayPowerToDecibelInPlace(TArrayView<float> InValues, float InMinimumDb);
-	SIGNALPROCESSING_API void ArrayPowerToDecibelInPlace(AlignedFloatBuffer& InValues, float InMinimumDb);
-
-
-	/** Compute power of complex data. Out[i] = Complex[2 * i] * Complex[2 * i] + Complex[2 * i + 1] * Complex[2 * i + 1] */
-	SIGNALPROCESSING_API void ArrayComplexToPower(TArrayView<float> InComplexSamples, TArray<float>& OutPowerSamples);
-
-	/** Compute power of complex data. Out[i] = Complex[2 * i] * Complex[2 * i] + Complex[2 * i + 1] * Complex[2 * i + 1] */
-	SIGNALPROCESSING_API void ArrayComplexToPower(const AlignedFloatBuffer& InComplexSamples, AlignedFloatBuffer& OutPowerSamples);
-
-
+	SIGNALPROCESSING_API void ArrayPowerToDecibelInPlace(TArrayView<float> InView);
 
 	/** FContiguousSparse2DKernelTransform
 	 *
@@ -184,21 +117,17 @@ namespace Audio
 	{
 		struct FRow
 		{
-			int32 StartIndex = 0;
+			int32 StartIndex;
 			TArray<float> OffsetValues;
 		};
 
 	public:
-		FContiguousSparse2DKernelTransform(const FContiguousSparse2DKernelTransform& ) = delete;
-		FContiguousSparse2DKernelTransform(const FContiguousSparse2DKernelTransform&& ) = delete;
-		FContiguousSparse2DKernelTransform& operator=(const FContiguousSparse2DKernelTransform& ) = delete;
 
 		/**
 		 * NumInElements sets the expected number of input array elements as well as the number of elements in a row.
 		 * NumOutElements sets the number of output array elements as well as the number or rows.
 		 */
 		FContiguousSparse2DKernelTransform(const int32 NumInElements, const int32 NumOutElements);
-		virtual ~FContiguousSparse2DKernelTransform();
 
 		/** Returns the required size of the input array */
 		int32 GetNumInElements() const;

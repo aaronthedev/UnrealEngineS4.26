@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WindowsRealTimeStylusPlugin.h"
 
@@ -12,16 +12,16 @@ HRESULT FWindowsRealTimeStylusPlugin::QueryInterface(const IID& InterfaceID, voi
 		AddRef();
 		return S_OK;
 	}
-	else if ((InterfaceID == IID_IMarshal) && (FreeThreadedMarshaler != nullptr))
+	else if ((InterfaceID == IID_IMarshal) && (FreeThreadedMarshaller != nullptr))
 	{
-		return FreeThreadedMarshaler->QueryInterface(InterfaceID, Pointer);
+		return FreeThreadedMarshaller->QueryInterface(InterfaceID, Pointer);
 	}
 
 	*Pointer = nullptr;
 	return E_NOINTERFACE;
 }
 
-HRESULT FWindowsRealTimeStylusPlugin::StylusDown(IRealTimeStylus* InRealTimeStylus, const StylusInfo* StylusInfo, ULONG PacketSize, LONG* Packet, LONG** InOutPackets)
+HRESULT FWindowsRealTimeStylusPlugin::StylusDown(IRealTimeStylus* RealTimeStylus, const StylusInfo* StylusInfo, ULONG PacketSize, LONG* Packet, LONG** InOutPackets)
 {
 	FTabletContextInfo* TabletContext = FindTabletContext(StylusInfo->tcid);
 	if (TabletContext != nullptr)
@@ -31,7 +31,7 @@ HRESULT FWindowsRealTimeStylusPlugin::StylusDown(IRealTimeStylus* InRealTimeStyl
 	return S_OK;
 }
 
-HRESULT FWindowsRealTimeStylusPlugin::StylusUp(IRealTimeStylus* InRealTimeStylus, const StylusInfo* StylusInfo, ULONG PacketSize, LONG* Packet, LONG** InOutPackets)
+HRESULT FWindowsRealTimeStylusPlugin::StylusUp(IRealTimeStylus* RealTimeStylus, const StylusInfo* StylusInfo, ULONG PacketSize, LONG* Packet, LONG** InOutPackets)
 {
 	FTabletContextInfo* TabletContext = FindTabletContext(StylusInfo->tcid);
 	if (TabletContext != nullptr)
@@ -43,11 +43,11 @@ HRESULT FWindowsRealTimeStylusPlugin::StylusUp(IRealTimeStylus* InRealTimeStylus
 	return S_OK;
 }
 
-static void SetupPacketDescriptions(IRealTimeStylus* InRealTimeStylus, FTabletContextInfo& TabletContext)
+static void SetupPacketDescriptions(IRealTimeStylus* RealTimeStylus, FTabletContextInfo& TabletContext)
 {
 	ULONG NumPacketProperties = 0;
 	PACKET_PROPERTY* PacketProperties = nullptr;
-	HRESULT hr = InRealTimeStylus->GetPacketDescriptionData(TabletContext.ID, nullptr, nullptr, &NumPacketProperties, &PacketProperties);
+	HRESULT hr = RealTimeStylus->GetPacketDescriptionData(TabletContext.ID, nullptr, nullptr, &NumPacketProperties, &PacketProperties);
 	if (SUCCEEDED(hr) && PacketProperties != nullptr)
 	{
 		for (ULONG PropIdx = 0; PropIdx < NumPacketProperties; ++PropIdx)
@@ -124,10 +124,10 @@ static void SetupPacketDescriptions(IRealTimeStylus* InRealTimeStylus, FTabletCo
 	}
 }
 
-static void SetupTabletSupportedPackets(TComPtr<IRealTimeStylus> InRealTimeStylus, FTabletContextInfo& TabletContext)
+static void SetupTabletSupportedPackets(TComPtr<IRealTimeStylus> RealTimeStylus, FTabletContextInfo& TabletContext)
 {
 	IInkTablet* InkTablet;
-	InRealTimeStylus->GetTabletFromTabletContextId(TabletContext.ID, &InkTablet);
+	RealTimeStylus->GetTabletFromTabletContextId(TabletContext.ID, &InkTablet);
 
 	int16 Supported;
 
@@ -286,7 +286,7 @@ static void SetupTabletSupportedPackets(TComPtr<IRealTimeStylus> InRealTimeStylu
 
 FTabletContextInfo* FWindowsRealTimeStylusPlugin::FindTabletContext(TABLET_CONTEXT_ID TabletID)
 {
-	for (FTabletContextInfo& TabletContext : *TabletContexts)
+	for (FTabletContextInfo& TabletContext : TabletContexts)
 	{
 		if (TabletContext.ID == TabletID)
 		{
@@ -296,74 +296,63 @@ FTabletContextInfo* FWindowsRealTimeStylusPlugin::FindTabletContext(TABLET_CONTE
 	return nullptr;
 }
 
-void FWindowsRealTimeStylusPlugin::AddTabletContext(IRealTimeStylus* InRealTimeStylus, TABLET_CONTEXT_ID TabletID)
+void FWindowsRealTimeStylusPlugin::AddTabletContext(IRealTimeStylus* RealTimeStylus, TABLET_CONTEXT_ID TabletID)
 {
 	FTabletContextInfo* FoundContext = FindTabletContext(TabletID);
 	if (FoundContext == nullptr)
 	{
-		FoundContext = &TabletContexts->Emplace_GetRef();
+		int32 Created = TabletContexts.Emplace();
+		FoundContext = &TabletContexts[Created];
 		FoundContext->ID = TabletID;
 	}
 
-	SetupTabletSupportedPackets(InRealTimeStylus, *FoundContext);
-	SetupPacketDescriptions(InRealTimeStylus, *FoundContext);
+	SetupTabletSupportedPackets(RealTimeStylus, *FoundContext);
+	SetupPacketDescriptions(RealTimeStylus, *FoundContext);
 }
 
-void FWindowsRealTimeStylusPlugin::RemoveTabletContext(IRealTimeStylus* InRealTimeStylus, TABLET_CONTEXT_ID TabletID)
+void FWindowsRealTimeStylusPlugin::RemoveTabletContext(IRealTimeStylus* RealTimeStylus, TABLET_CONTEXT_ID TabletID)
 {
-	for (int32 ExistingIdx = 0; ExistingIdx < TabletContexts->Num(); ++ExistingIdx)
+	for (int32 ExistingIdx = 0; ExistingIdx < TabletContexts.Num(); ++ExistingIdx)
 	{
-		if ((*TabletContexts)[ExistingIdx].ID == TabletID)
+		if (TabletContexts[ExistingIdx].ID == TabletID)
 		{
-			TabletContexts->RemoveAt(ExistingIdx);
+			TabletContexts.RemoveAt(ExistingIdx);
 			break;
 		}
 	}
 }
 
-HRESULT FWindowsRealTimeStylusPlugin::RealTimeStylusEnabled(IRealTimeStylus* InRealTimeStylus, ULONG Num, const TABLET_CONTEXT_ID* InTabletContexts)
+HRESULT FWindowsRealTimeStylusPlugin::RealTimeStylusEnabled(IRealTimeStylus* RealTimeStylus, ULONG Num, const TABLET_CONTEXT_ID* InTabletContexts)
 {
 	for (ULONG TabletIdx = 0; TabletIdx < Num; ++TabletIdx)
 	{
-		AddTabletContext(InRealTimeStylus, InTabletContexts[TabletIdx]);
+		AddTabletContext(RealTimeStylus, InTabletContexts[TabletIdx]);
 	}
-
 	return S_OK;
 }
 
-HRESULT FWindowsRealTimeStylusPlugin::RealTimeStylusDisabled(IRealTimeStylus* InRealTimeStylus, ULONG Num, const TABLET_CONTEXT_ID* InTabletContexts)
+HRESULT FWindowsRealTimeStylusPlugin::RealTimeStylusDisabled(IRealTimeStylus* RealTimeStylus, ULONG Num, const TABLET_CONTEXT_ID* InTabletContexts)
 {
 	for (ULONG TabletIdx = 0; TabletIdx < Num; ++TabletIdx)
 	{
-		RemoveTabletContext(InRealTimeStylus, InTabletContexts[TabletIdx]);
+		RemoveTabletContext(RealTimeStylus, InTabletContexts[TabletIdx]);
 	}
-
 	return S_OK;
 }
 
-HRESULT FWindowsRealTimeStylusPlugin::TabletAdded(IRealTimeStylus* InRealTimeStylus, IInkTablet* InkTablet)
+HRESULT FWindowsRealTimeStylusPlugin::TabletAdded(IRealTimeStylus* RealTimeStylus, IInkTablet* InkTablet)
 {
 	TABLET_CONTEXT_ID TabletID;
-	if (SUCCEEDED(InRealTimeStylus->GetTabletContextIdFromTablet(InkTablet, &TabletID)))
+	if (SUCCEEDED(RealTimeStylus->GetTabletContextIdFromTablet(InkTablet, &TabletID)))
 	{
-		AddTabletContext(InRealTimeStylus, TabletID);
+		AddTabletContext(RealTimeStylus, TabletID);
 	}
-
 	return S_OK;
 }
 
-HRESULT FWindowsRealTimeStylusPlugin::TabletRemoved(IRealTimeStylus* InRealTimeStylus, LONG iTabletIndex)
+HRESULT FWindowsRealTimeStylusPlugin::TabletRemoved(IRealTimeStylus* RealTimeStylus, LONG iTabletIndex)
 {
-	ULONG TabletContextCount = 0;
-	TABLET_CONTEXT_ID* AllContexts = nullptr;
-	InRealTimeStylus->GetAllTabletContextIds(&TabletContextCount, &AllContexts);
-	
-	if (AllContexts == nullptr || iTabletIndex < 0 || iTabletIndex >= (LONG) TabletContextCount)
-	{
-		return E_INVALIDARG;
-	}
-	
-	RemoveTabletContext(InRealTimeStylus, AllContexts[iTabletIndex]);
+	TabletContexts.RemoveAt(iTabletIndex);
 	return S_OK;
 }
 
@@ -377,7 +366,7 @@ static float ToDegrees(int Value, const FPacketDescription& Desc)
 	return Value / Desc.Resolution;
 }
 
-void FWindowsRealTimeStylusPlugin::HandlePacket(IRealTimeStylus* InRealTimeStylus, const StylusInfo* StylusInfo, ULONG PacketCount, ULONG PacketBufferLength, LONG* Packets)
+void FWindowsRealTimeStylusPlugin::HandlePacket(IRealTimeStylus* RealTimeStylus, const StylusInfo* StylusInfo, ULONG PacketCount, ULONG PacketBufferLength, LONG* Packets)
 {
 	FTabletContextInfo* TabletContext = FindTabletContext(StylusInfo->tcid);
 	if (TabletContext == nullptr)
@@ -434,17 +423,17 @@ void FWindowsRealTimeStylusPlugin::HandlePacket(IRealTimeStylus* InRealTimeStylu
 	}
 }
 
-HRESULT FWindowsRealTimeStylusPlugin::Packets(IRealTimeStylus* InRealTimeStylus, const StylusInfo* StylusInfo,
+HRESULT FWindowsRealTimeStylusPlugin::Packets(IRealTimeStylus* RealTimeStylus, const StylusInfo* StylusInfo,
 	ULONG PacketCount, ULONG PacketBufferLength, LONG* Packets, ULONG* InOutPackets, LONG** PtrInOutPackets)
 {
-	HandlePacket(InRealTimeStylus, StylusInfo, PacketCount, PacketBufferLength, Packets);
+	HandlePacket(RealTimeStylus, StylusInfo, PacketCount, PacketBufferLength, Packets);
 	return S_OK;
 }
 
-HRESULT FWindowsRealTimeStylusPlugin::InAirPackets(IRealTimeStylus* InRealTimeStylus, const StylusInfo* StylusInfo,
+HRESULT FWindowsRealTimeStylusPlugin::InAirPackets(IRealTimeStylus* RealTimeStylus, const StylusInfo* StylusInfo,
 	ULONG PacketCount, ULONG PacketBufferLength, LONG* Packets, ULONG* InOutPackets, LONG** PtrInOutPackets)
 {
-	HandlePacket(InRealTimeStylus, StylusInfo, PacketCount, PacketBufferLength, Packets);
+	HandlePacket(RealTimeStylus, StylusInfo, PacketCount, PacketBufferLength, Packets);
 	return S_OK;
 }
 

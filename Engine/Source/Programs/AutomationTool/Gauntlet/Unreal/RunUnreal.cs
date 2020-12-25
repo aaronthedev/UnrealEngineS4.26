@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -113,7 +113,7 @@ namespace Gauntlet
 				ContextOptions.TestList.Add(TestRequest.CreateRequest(DefaultTestName));
 			}
 
-			bool EditorForAllRoles = Globals.Params.ParseParam("editor") || string.Equals(ContextOptions.Build, "editor", StringComparison.OrdinalIgnoreCase);
+			bool EditorForAllRoles = Globals.Params.ParseParam("editor") || string.Equals(Globals.Params.ParseValue("build", ""), "editor", StringComparison.OrdinalIgnoreCase);
 
 			if (EditorForAllRoles)
 			{
@@ -186,26 +186,14 @@ namespace Gauntlet
 						RequestedConfiguration = (UnrealTargetConfiguration)Enum.Parse(typeof(UnrealTargetConfiguration), ConfigString, true);
 					}
 
-					// look for-args= and then -clientargs= and -editorargs etc
-					Role.ExtraArgs = Globals.Params.ParseValue("Args", "");
-					string ExtraRoleArgs = Globals.Params.ParseValue(Type.ToString() + "Args", "");
-
-					if (!string.IsNullOrEmpty(ExtraRoleArgs))
-					{
-						Role.ExtraArgs += ExtraRoleArgs;
-					}
+					// look for -clientargs= and -editorclient etc
+					Role.ExtraArgs = Globals.Params.ParseValue(Type.ToString() + "Args", "");
 
 					// look for -clientexeccmds=, -editorexeccmds= etc, these are separate from clientargs for sanity
-					string ExecCmds = Globals.Params.ParseValue("ExecCmds", "");
-					string RoleExecCmds= Globals.Params.ParseValue(Type.ToString() + "ExecCmds", "");
+					string ExecCmds = Globals.Params.ParseValue(Type.ToString() + "ExecCmds", "");
 					if (!string.IsNullOrEmpty(ExecCmds))
 					{
 						Role.ExtraArgs += string.Format(" -ExecCmds=\"{0}\"", ExecCmds);
-					}
-
-					if (!string.IsNullOrEmpty(RoleExecCmds))
-					{
-						Role.ExtraArgs += string.Format(" -ExecCmds=\"{0}\"", RoleExecCmds);
 					}
 
 					bool UsesEditor = EditorForAllRoles || Globals.Params.ParseParam("Editor" + Type.ToString());
@@ -235,10 +223,7 @@ namespace Gauntlet
 						{
 							Role.Type = UnrealTargetRole.EditorGame;
 							Role.Platform = DefaultPlatform;
-							if (Role.Configuration > UnrealTargetConfiguration.Development)
-							{
-								Role.Configuration = UnrealTargetConfiguration.Development;
-							}
+							Role.Configuration = UnrealTargetConfiguration.Development;
 						}
 					}
 					else if (Type.IsServer())
@@ -250,10 +235,7 @@ namespace Gauntlet
 						{
 							Role.Type = UnrealTargetRole.EditorServer;
 							Role.Platform = DefaultPlatform;
-							if (Role.Configuration > UnrealTargetConfiguration.Development)
-							{
-								Role.Configuration = UnrealTargetConfiguration.Development;
-							}
+							Role.Configuration = UnrealTargetConfiguration.Development;
 						}
 					}
 
@@ -290,7 +272,7 @@ namespace Gauntlet
 
 			if (UsedPlatforms.Contains(UnrealTargetPlatform.PS4))
 			{
-				String DevKitUtilPath = Path.Combine(Environment.CurrentDirectory, "Engine/Platforms/PS4/Binaries/DotNET/PS4DevKitUtil.exe");
+				String DevKitUtilPath = Path.Combine(Environment.CurrentDirectory, "Engine/Binaries/DotNET/PS4/PS4DevKitUtil.exe");
 				Gauntlet.Log.Verbose("PS4DevkitUtil executing 'removeall'");
 				IProcessResult BootResult = CommandUtils.Run(DevKitUtilPath, "removeall");
 			}
@@ -397,14 +379,7 @@ namespace Gauntlet
 				// This will throw if the test cannot be created
 				ITestNode NewTest = Utils.TestConstructor.ConstructTest<ITestNode, UnrealTestContext>(Test.TestName, TestContext, Namespaces);
 
-				if (CombinedParams.ParseParam("listargs") || CombinedParams.ParseParam("listallargs"))
-				{
-					NewTest.DisplayCommandlineHelp();
-				}
-				else
-				{
-					NodeList.Add(NewTest);
-				}
+				NodeList.Add(NewTest);
 			}
 
 			return NodeList;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	CameraController.h: Implements controls for a camera with pseudo-physics
@@ -213,7 +213,7 @@ public:
  *
  * An interactive camera movement system.  Supports simple physics-based animation.
  */
-class FEditorCameraController
+class UNREALED_VTABLE FEditorCameraController
 {
 
 public:

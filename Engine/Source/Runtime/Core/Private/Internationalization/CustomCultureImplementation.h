@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -31,8 +31,7 @@ public:
 			InCustomCulture->GetBaseCulture()->GetTwoLetterISOLanguageName(),
 			InCustomCulture->GetBaseCulture()->GetDecimalNumberFormattingRules(),
 			InCustomCulture->GetBaseCulture()->GetPercentFormattingRules(),
-			InCustomCulture->GetBaseCulture()->GetCurrencyFormattingRules(FString()),
-			InCustomCulture->GetBaseCulture()->IsRightToLeft()
+			InCustomCulture->GetBaseCulture()->GetCurrencyFormattingRules(FString())
 		)
 #endif
 		, CustomCulture(InCustomCulture)
@@ -54,7 +53,6 @@ public:
 	virtual FString GetRegion() const override { return CustomCulture->GetRegion(); }
 	virtual FString GetScript() const override { return CustomCulture->GetScript(); }
 	virtual FString GetVariant() const override { return CustomCulture->GetVariant(); }
-	virtual bool IsRightToLeft() const override { return CustomCulture->IsRightToLeft(); }
 
 private:
 	TSharedRef<ICustomCulture> CustomCulture;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -69,9 +69,6 @@ public:
 
 private:
 
-	UPROPERTY(transient)
-	TMap<FName, TWeakObjectPtr<UObject>> DataSources;
-
-	/** Clear Invalid Data Sources that are GC-ed */
-	void ClearInvalidDataSource();
+	UPROPERTY()
+	TMap<FName, UObject*> DataSources;
 };

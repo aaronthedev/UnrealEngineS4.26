@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineSubsystemGameCircle.h"
 #include "Misc/ConfigCacheIni.h"
-#include "Stats/Stats.h"
 #include <jni.h>
 
 FOnlineSubsystemGameCircle::FOnlineSubsystemGameCircle(FName InInstanceName)
@@ -114,8 +113,6 @@ bool FOnlineSubsystemGameCircle::Init()
 
 bool FOnlineSubsystemGameCircle::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FOnlineSubsystemGameCircle_Tick);
-
 	if (!FOnlineSubsystemImpl::Tick(DeltaTime))
 	{
 		return false;

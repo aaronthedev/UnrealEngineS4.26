@@ -33,8 +33,8 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 //-*****************************************************************************
-#ifndef Alembic_Prman_PathUtil_h
-#define Alembic_Prman_PathUtil_h
+#ifndef _Alembic_Prman_PathUtil_h_
+#define _Alembic_Prman_PathUtil_h_
 
 
 #include <Alembic/AbcGeom/All.h>

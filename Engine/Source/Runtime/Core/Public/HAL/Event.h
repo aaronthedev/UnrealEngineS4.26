@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,8 +13,6 @@
  * This interface has platform-specific implementations that are used to wait for another
  * thread to signal that it is ready for the waiting thread to do some work. It can also
  * be used for telling groups of threads to exit.
- * 
- * Consider using FEventRef as a safer and more convenient alternative.
  */
 class FEvent
 {
@@ -120,32 +118,4 @@ protected:
 
 	/** Greater than 0, if the event called wait. */
 	TAtomic<uint32> EventStartCycles;
-};
-
-enum class EEventMode { AutoReset, ManualReset };
-
-/**
- * RAII-style `FEvent`
- *
- * non-copyable, non-movable
- */
-class FEventRef final
-{
-public:
-	explicit FEventRef(EEventMode Mode = EEventMode::AutoReset);
-
-	~FEventRef();
-
-	FEventRef(const FEventRef&) = delete;
-	FEventRef& operator=(const FEventRef&) = delete;
-	FEventRef(FEventRef&& Other) = delete;
-	FEventRef& operator=(FEventRef&& Other) = delete;
-
-	FEvent* operator->() const
-	{
-		return Event;
-	}
-
-private:
-	FEvent* Event;
 };

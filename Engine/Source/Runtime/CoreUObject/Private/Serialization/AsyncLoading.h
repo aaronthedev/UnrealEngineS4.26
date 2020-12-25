@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AsyncLoading.h: Unreal async loading definitions.
@@ -15,17 +15,14 @@
 #include "Templates/Casts.h"
 #include "UObject/ObjectRedirector.h"
 #include "UObject/UObjectThreadContext.h"
-#include "UObject/LinkerInstancingContext.h"
 #include "Templates/RefCounting.h"
 #include "Serialization/AsyncPackageLoader.h"
-
-#include "Async/AsyncFileHandle.h"
-
+class IAsyncReadRequest;
 struct FAsyncPackage;
 struct FFlushTree;
 class FAsyncLoadingThread;
 
-
+struct FAsyncPackage;
 /** [EDL] Async Package Loading State */
 enum class EAsyncPackageLoadingState : uint8
 {
@@ -658,7 +655,7 @@ public:
 		}
 	};
 
-	TMap<IAsyncReadRequest*, FAsyncPackage::FExportIORequest> PrecacheRequests;
+	TMap<IAsyncReadRequest*, FExportIORequest> PrecacheRequests;
 	TMap<int32, IAsyncReadRequest*> ExportIndexToPrecacheRequest;
 	int64 CurrentBlockOffset;
 	int64 CurrentBlockBytes;
@@ -926,15 +923,6 @@ private:
 	 * @param FlushTree Package dependency tree to be flushed
 	 */
 	void AddImportDependency(const FName& PendingImport, FFlushTree* FlushTree);
-	/**
-	 * Adds a package to the list of pending import packages.
-	 *
-	 * @param PendingImport Name of the package imported either directly or by one of the imported packages
-	 * @param PackageToLoad Name of the package to load into PendingImport
-	 * @param FlushTree Package dependency tree to be flushed
-	 */
-	void AddImportDependency(const FName& PendingImport, const FName& PackageToLoad, FFlushTree* FlushTree, FLinkerInstancingContext InstancingContext);
-
 	/**
 	 * Removes references to any imported packages.
 	 */

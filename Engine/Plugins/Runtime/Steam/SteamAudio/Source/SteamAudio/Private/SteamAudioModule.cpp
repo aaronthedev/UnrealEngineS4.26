@@ -12,6 +12,12 @@ IMPLEMENT_MODULE(SteamAudio::FSteamAudioModule, SteamAudio)
 namespace SteamAudio
 {
 	void* FSteamAudioModule::PhononDllHandle = nullptr;
+	void* FSteamAudioModule::TANDllHandle = nullptr;
+	void* FSteamAudioModule::TANUtilsDllHandle = nullptr;
+	void* FSteamAudioModule::EmbreeDllHandle = nullptr;
+	void* FSteamAudioModule::RadeonRaysDllHandle = nullptr;
+	void* FSteamAudioModule::TbbDllHandle = nullptr;
+	void* FSteamAudioModule::TbbMallocDllHandle = nullptr;
 
 	static bool bModuleStartedUp = false;
 
@@ -34,9 +40,7 @@ namespace SteamAudio
 		// Make folder paths globally available
 		BasePath = FPaths::ProjectContentDir() + "SteamAudio/";
 		RuntimePath = BasePath + "Runtime/";
-		DynamicRuntimePath = RuntimePath + "Dynamic/";
 		EditorOnlyPath = BasePath + "EditorOnly/";
-		DynamicEditorOnlyPath = EditorOnlyPath + "Dynamic/";
 
 		//Register the Steam Audio plugin factories
 		IModularFeatures::Get().RegisterModularFeature(FSpatializationPluginFactory::GetModularFeatureName(), &SpatializationPluginFactory);
@@ -50,6 +54,12 @@ namespace SteamAudio
 			FString PathToDll = FPaths::EngineDir() / TEXT("Binaries/ThirdParty/Phonon/Win32/");
 #else
 			FString PathToDll = FPaths::EngineDir() / TEXT("Binaries/ThirdParty/Phonon/Win64/");
+			FSteamAudioModule::TANDllHandle = LoadDll(PathToDll + TEXT("tanrt64.dll"), false);
+			FSteamAudioModule::TANUtilsDllHandle = LoadDll(PathToDll + TEXT("GPUUtilities.dll"), false);
+			FSteamAudioModule::RadeonRaysDllHandle = LoadDll(PathToDll + TEXT("RadeonRays.dll"), false);
+			FSteamAudioModule::EmbreeDllHandle = LoadDll(PathToDll + TEXT("embree.dll"), false);
+			FSteamAudioModule::TbbDllHandle = LoadDll(PathToDll + TEXT("tbb.dll"), false);
+			FSteamAudioModule::TbbMallocDllHandle = LoadDll(PathToDll + TEXT("tbbmalloc.dll"), false);
 #endif
 
 			FString DLLToLoad = PathToDll + TEXT("phonon.dll");
@@ -75,6 +85,42 @@ namespace SteamAudio
 		{
 			FPlatformProcess::FreeDllHandle(FSteamAudioModule::PhononDllHandle);
 			FSteamAudioModule::PhononDllHandle = nullptr;
+		}
+
+		if (FSteamAudioModule::TANDllHandle)
+		{
+			FPlatformProcess::FreeDllHandle(FSteamAudioModule::TANDllHandle);
+			FSteamAudioModule::TANDllHandle = nullptr;
+		}
+
+		if (FSteamAudioModule::TANUtilsDllHandle)
+		{
+			FPlatformProcess::FreeDllHandle(FSteamAudioModule::TANUtilsDllHandle);
+			FSteamAudioModule::TANUtilsDllHandle = nullptr;
+		}
+
+		if (FSteamAudioModule::EmbreeDllHandle)
+		{
+			FPlatformProcess::FreeDllHandle(FSteamAudioModule::EmbreeDllHandle);
+			FSteamAudioModule::EmbreeDllHandle = nullptr;
+		}
+
+		if (FSteamAudioModule::RadeonRaysDllHandle)
+		{
+			FPlatformProcess::FreeDllHandle(FSteamAudioModule::RadeonRaysDllHandle);
+			FSteamAudioModule::RadeonRaysDllHandle = nullptr;
+		}
+
+		if (FSteamAudioModule::TbbDllHandle)
+		{
+			FPlatformProcess::FreeDllHandle(FSteamAudioModule::TbbDllHandle);
+			FSteamAudioModule::TbbDllHandle = nullptr;
+		}
+
+		if (FSteamAudioModule::TbbMallocDllHandle)
+		{
+			FPlatformProcess::FreeDllHandle(FSteamAudioModule::TbbMallocDllHandle);
+			FSteamAudioModule::TbbMallocDllHandle = nullptr;
 		}
 #endif
 	}
@@ -121,7 +167,7 @@ namespace SteamAudio
 		{
 			Module->RegisterAudioDevice(OwningDevice);
 		}
-		
+
 		return TAudioOcclusionPtr(new FPhononOcclusion());
 	}
 

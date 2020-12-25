@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,7 +11,6 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SWidget.h"
 #include "Widgets/SCompoundWidget.h"
-#include "Widgets/Input/SButton.h"
 #include "Widgets/Views/STableViewBase.h"
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Views/STreeView.h"
@@ -54,9 +53,6 @@ public:
 protected:
 	/** Gets the icon for the key being manipulated */
 	const FSlateBrush* GetKeyIconImage() const;
-	/** Toggles the icon's color when in listen mode */
-	FSlateColor GetKeyIconColor() const;
-
 	/** Gets a succinct description for the key being manipulated */
 	FText GetKeyDescription() const;
 	/** Gets a tooltip for the selected key */
@@ -77,20 +73,6 @@ protected:
 
 	/** Helper to generate the filtered list of keys, based on the search string matching */
 	bool GetChildrenMatchingSearch(const TArray<FString>& SearchTokens, const TArray<FKeyTreeItem>& UnfilteredList, TArray<FKeyTreeItem>& OutFilteredList);
-
-	/** Start listening for the next key press */
-	FReply ListenForInput();
-	/** Assigns the heard input as the current key */
-	FReply ProcessHeardInput(FKey KeyHeard);
-
-	virtual bool SupportsKeyboardFocus() const override { return bListenForNextInput; }
-
-	/** Input listeners */
-	virtual FReply OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent) override;
-	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
-	virtual FReply OnMouseWheel(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
-	virtual FReply OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
-	virtual FReply OnAnalogValueChanged(const FGeometry& MyGeometry, const FAnalogInputEvent& InAnalogInputEvent) override;
 
 	/** 
 	 * Determine the best icon to represent the given key.
@@ -130,6 +112,4 @@ protected:
 	TArray<FKeyTreeItem>		KeyTreeRoot;
 	/** Array containing a filtered list, according to the text in the searchbox */
 	TArray<FKeyTreeItem>		FilteredKeyTreeRoot;
-
-	bool bListenForNextInput = false;
 };

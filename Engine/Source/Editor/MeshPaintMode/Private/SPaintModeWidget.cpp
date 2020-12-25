@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SPaintModeWidget.h"
 
@@ -122,6 +122,7 @@ void SPaintModeWidget::CreateDetailsView()
 	DetailsViewArgs.bAllowMultipleTopLevelObjects = true;
 
 	SettingsDetailsView = EditModule.CreateDetailView(DetailsViewArgs);
+	SettingsDetailsView->SetRootObjectCustomizationInstance(MakeShareable(new FPaintModeSettingsRootObjectCustomization));
 	SettingsDetailsView->SetObjects(SettingsObjects);
 }
 
@@ -254,7 +255,7 @@ EVisibility SPaintModeWidget::IsTexturePaintModeVisible() const
 	return (MeshPaintSettings->PaintMode == EPaintMode::Textures) ? EVisibility::Visible : EVisibility::Collapsed;
 }
 
-void SPaintModeWidget::NotifyPostChange(const FPropertyChangedEvent& PropertyChangedEvent, FProperty* PropertyThatChanged)
+void SPaintModeWidget::NotifyPostChange(const FPropertyChangedEvent& PropertyChangedEvent, UProperty* PropertyThatChanged)
 {
 	if (PropertyChangedEvent.ChangeType != EPropertyChangeType::Interactive)
 	{

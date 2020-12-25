@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,14 +14,10 @@
 #include "Materials/MaterialInterface.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/Texture.h"
-#include "UObject/GCObject.h"
 
 #include "GoogleARCorePassthroughCameraRenderer.generated.h"
 
-
-class UTexture;
-class FRHICommandListImmediate;
-class FSceneViewFamily;
+enum class ARCoreDisplayRotation : int32;
 
 /** A helper class that is used to load the GoogleARCorePassthroughCameraMaterial from its default object. */
 UCLASS()
@@ -32,59 +28,49 @@ class GOOGLEARCORERENDERING_API UGoogleARCoreCameraOverlayMaterialLoader : publi
 public:
 	/** A pointer to the camera overlay material that will be used to render the passthrough camera texture as background. */
 	UPROPERTY()
-	UMaterialInterface* RegularOverlayMaterial;
-	
-	/** A pointer to the camera overlay material that will be used to render the passthrough camera texture as background. */
-	UPROPERTY()
-	UMaterialInterface* DebugOverlayMaterial;
-	
-	UPROPERTY()
-	UMaterialInterface* DepthOcclusionMaterial;
-	
-	/** Material used for rendering the coloration of the depth map. */
-	UPROPERTY()
-	UMaterialInterface* DepthColorationMaterial;
+	UMaterialInterface* DefaultCameraOverlayMaterial;
 
 	UGoogleARCoreCameraOverlayMaterialLoader()
 	{
-		static ConstructorHelpers::FObjectFinder<UMaterialInterface> RegularOverlayMaterialRef(TEXT("/ARUtilities/Materials/MI_PassthroughCameraExternalTexture.MI_PassthroughCameraExternalTexture"));
-		RegularOverlayMaterial = RegularOverlayMaterialRef.Object;
-		
-		static ConstructorHelpers::FObjectFinder<UMaterialInterface> DebugOverlayMaterialRef(TEXT("/ARUtilities/Materials/M_PassthroughCamera.M_PassthroughCamera"));
-		DebugOverlayMaterial = DebugOverlayMaterialRef.Object;
-		
-		static ConstructorHelpers::FObjectFinder<UMaterialInterface> DepthOcclusionMaterialRef(TEXT("/GoogleARCore/M_SceneDepthOcclusion.M_SceneDepthOcclusion"));
-		DepthOcclusionMaterial = DepthOcclusionMaterialRef.Object;
-		
-		static ConstructorHelpers::FObjectFinder<UMaterialInterface> DepthColorationMaterialRef(TEXT("/ARUtilities/Materials/M_DepthColoration.M_DepthColoration"));
-		DepthColorationMaterial = DepthColorationMaterialRef.Object;
+		static ConstructorHelpers::FObjectFinder<UMaterialInterface> DefaultOverlayMaterialRef(TEXT("/GoogleARCore/GoogleARCorePassthroughCameraMaterial.GoogleARCorePassthroughCameraMaterial"));
+		DefaultCameraOverlayMaterial = DefaultOverlayMaterialRef.Object;
+
+		UMaterialInstanceDynamic *DynMat = UMaterialInstanceDynamic::Create(
+			DefaultOverlayMaterialRef.Object, this, FName("GoogleARCorePassthroughCameraMaterial_Dynamic"));
+
+		DefaultCameraOverlayMaterial = DynMat;
 	}
 };
 
-class GOOGLEARCORERENDERING_API FGoogleARCorePassthroughCameraRenderer : public FGCObject
+class FRHICommandListImmediate;
+
+class GOOGLEARCORERENDERING_API FGoogleARCorePassthroughCameraRenderer
 {
 public:
 	FGoogleARCorePassthroughCameraRenderer();
 
-	void InitializeRenderer_RenderThread(FSceneViewFamily& InViewFamily);
+	void SetDefaultCameraOverlayMaterial(UMaterialInterface* InDefaultCameraOverlayMaterial);
 
+	void InitializeOverlayMaterial();
+
+	void SetOverlayMaterialInstance(UMaterialInterface* NewMaterialInstance);
+	void ResetOverlayMaterialToDefault();
+
+	void InitializeRenderer_RenderThread(FTextureRHIRef ExternalTexture);
+
+	void UpdateOverlayUVCoordinate_RenderThread(TArray<FVector2D>& InOverlayUVs, FSceneView& InView);
 	void RenderVideoOverlay_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView);
-	
-	void UpdateCameraTextures(UTexture* NewCameraTexture, UTexture* DepthTexture, bool bEnableOcclusion);
-	
-	void AddReferencedObjects(FReferenceCollector& Collector) override;
-	
-private:
-	void RenderVideoOverlayWithMaterial(FRHICommandListImmediate& RHICmdList, FSceneView& InView, UMaterialInstanceDynamic* OverlayMaterialToUse, bool bRenderingOcclusion);
 
+	const TArray<float> OverlayQuadUVs;
 private:
+	bool bInitialized;
 	FIndexBufferRHIRef OverlayIndexBufferRHI;
 	FVertexBufferRHIRef OverlayVertexBufferRHI;
-	
-	UMaterialInstanceDynamic* RegularOverlayMaterial = nullptr;
-	UMaterialInstanceDynamic* DebugOverlayMaterial = nullptr;
-	UMaterialInstanceDynamic* DepthColorationMaterial = nullptr;
-	UMaterialInstanceDynamic* DepthOcclusionMaterial = nullptr;
-	
-	bool bEnableOcclusionRendering = false;
+	FTextureRHIRef VideoTexture;
+	float OverlayTextureUVs[8];
+	bool bMaterialInitialized;
+	UMaterialInterface* DefaultOverlayMaterial;
+	UMaterialInterface* OverrideOverlayMaterial;
+	UMaterialInterface* RenderingOverlayMaterial;
 };
+

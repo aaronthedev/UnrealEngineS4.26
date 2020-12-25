@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ThumbnailRendering/CurveLinearColorThumbnailRenderer.h"
 #include "Misc/App.h"
@@ -29,7 +29,7 @@ void UCurveLinearColorThumbnailRenderer::GetThumbnailSize(UObject* Object, float
 	}
 }
 
-void UCurveLinearColorThumbnailRenderer::Draw(UObject* Object, int32 X, int32 Y, uint32 Width, uint32 Height, FRenderTarget* Viewport, FCanvas* Canvas, bool bAdditionalViewFamily)
+void UCurveLinearColorThumbnailRenderer::Draw(UObject* Object, int32 X, int32 Y, uint32 Width, uint32 Height, FRenderTarget* Viewport, FCanvas* Canvas)
 {
 	UCurveLinearColor* GradientCurve = Cast<UCurveLinearColor>(Object);
 	if (GradientCurve)

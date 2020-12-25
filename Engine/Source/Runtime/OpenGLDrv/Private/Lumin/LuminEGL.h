@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 LuminEGL.h: Private EGL definitions for Lumin-specific functionality
@@ -10,7 +10,7 @@ LuminEGL.h: Private EGL definitions for Lumin-specific functionality
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
-#include <GLES3/gl31.h>
+#include <GLES2/gl2.h>
 
 struct LuminESPImpl;
 

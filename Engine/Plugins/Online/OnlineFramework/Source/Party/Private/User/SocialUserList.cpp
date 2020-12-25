@@ -1,25 +1,25 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "User/SocialUserList.h"
 #include "User/SocialUser.h"
 #include "SocialToolkit.h"
 #include "Party/PartyMember.h"
-#include "Stats/Stats.h"
 
 #include "Containers/Ticker.h"
+#include "Interfaces/OnlinePresenceInterface.h"
 #include "SocialSettings.h"
 #include "Algo/Transform.h"
 #include "SocialManager.h"
 #include "Party/SocialParty.h"
 
-TSharedRef<FSocialUserList> FSocialUserList::CreateUserList(const USocialToolkit& InOwnerToolkit, const FSocialUserListConfig& InConfig)
+TSharedRef<FSocialUserList> FSocialUserList::CreateUserList(USocialToolkit& InOwnerToolkit, const FSocialUserListConfig& InConfig)
 {
 	TSharedRef<FSocialUserList> NewList = MakeShareable(new FSocialUserList(InOwnerToolkit, InConfig));
 	NewList->InitializeList();
 	return NewList;
 }
 
-FSocialUserList::FSocialUserList(const USocialToolkit& InOwnerToolkit, const FSocialUserListConfig& InConfig)
+FSocialUserList::FSocialUserList(USocialToolkit& InOwnerToolkit, const FSocialUserListConfig& InConfig)
 	: OwnerToolkit(&InOwnerToolkit)
 	, ListConfig(InConfig)
 {
@@ -96,23 +96,14 @@ void FSocialUserList::UpdateNow()
 
 void FSocialUserList::SetAllowAutoUpdate(bool bIsEnabled)
 {
-	bIsEnabled ? AutoUpdateRequests++ : AutoUpdateRequests--;
-	AutoUpdateRequests = FMath::Max(AutoUpdateRequests, 0);
-
-	if (AutoUpdateRequests == 0 && UpdateTickerHandle.IsValid())
+	if (!bIsEnabled && UpdateTickerHandle.IsValid())
 	{
 		FTicker::GetCoreTicker().RemoveTicker(UpdateTickerHandle);
-		UpdateTickerHandle.Reset();
 	}
 	else if (bIsEnabled && !UpdateTickerHandle.IsValid())
 	{
 		UpdateTickerHandle = FTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateSP(this, &FSocialUserList::HandleAutoUpdateList), AutoUpdatePeriod);
 	}
-}
-
-void FSocialUserList::SetAllowSortDuringUpdate(bool bIsEnabled)
-{
-	ListConfig.bSortDuringUpdate = bIsEnabled;
 }
 
 bool FSocialUserList::HasPresenceFilters() const
@@ -228,6 +219,7 @@ void FSocialUserList::HandleUserPresenceChanged(ESocialSubsystem SubsystemType, 
 
 void FSocialUserList::HandleUserGameSpecificStatusChanged(USocialUser* User)
 {
+	// passing dummy Subsystem because HandleUserPresence changed currently doesn't care
 	MarkUserAsDirty(*User);
 	UpdateNow();
 }
@@ -287,8 +279,7 @@ void FSocialUserList::TryAddUserFast(USocialUser& User)
 				// Last step is to check the custom filter, if provided
 				bCanAdd = ListConfig.OnCustomFilterUser.IsBound() ? ListConfig.OnCustomFilterUser.Execute(User) : true;
 
-				// do an initial pass on the GameSpecificStatusFilters on newly added user, and for users that passed other checks but don't yet have the correct presence or game status,
-				// this will be called again from UpdateListInternal(), after the user broadcasts OnGameSpecificStatusChanged, or OnUserPresenceChanged, and the list mark it dirty.
+				// do an initial pass on the GameSpecificStatusFilters (these will only be run again when the user broadcasts OnGameSpecificStatusChanged)
 				for (TFunction<bool(const USocialUser&)> CustomFilterFunction : ListConfig.GameSpecificStatusFilters)
 				{
 					if (!bCanAdd)
@@ -356,8 +347,7 @@ void FSocialUserList::TryRemoveUserFast(USocialUser& User)
 				// We're going to keep the user based on the stock filters, but the custom filter can still veto
 				bRemoveUser = ListConfig.OnCustomFilterUser.IsBound() ? !ListConfig.OnCustomFilterUser.Execute(User) : false;
 
-				// For users that we decide to remove due to incorrect presence or game status, we'll keep listening to their presence and game status change since they may qualify again.
-				// For users that have presence or game status changed but still fit this list, these will be run again next time we got a presence changed or game status changed event.
+				// do an initial pass on the GameSpecificStatusFilters (these will only be run again when the user broadcasts OnGameSpecificStatusChanged)
 				if (!bRemoveUser)
 				{
 					for (TFunction<bool(const USocialUser&)> CustomFilterFunction : ListConfig.GameSpecificStatusFilters)
@@ -408,14 +398,6 @@ bool FSocialUserList::EvaluateUserPresence(const USocialUser& User, ESocialSubsy
 			{
 				bInSameParty = CurrentParty->ContainsUser(User);
 			}
-
-#if WITH_EDITOR
-			if (OwnerToolkit->Debug_IsRandomlyChangingPresence())
-			{
-				bIsOnline = User.GetOnlineStatus() != EOnlinePresenceState::Offline;
-				bIsPlayingThisGame = bIsOnline;
-			}
-#endif
 		}
 
 		return EvaluatePresenceFlag(bIsOnline, ESocialUserStateFlags::Online)
@@ -448,16 +430,15 @@ bool FSocialUserList::EvaluatePresenceFlag(bool bPresenceValue, ESocialUserState
 // encapsulates UserList sorting comparator and supporting data needed
 struct FUserSortData
 {
-	FUserSortData(USocialUser* InUser, EOnlinePresenceState::Type InStatus, bool InPlayingThisGame, FString InDisplayName, int64 InCustomSortValuePrimary, int64 InCustomSortValueSecondary)
-		: User(InUser), OnlineStatus(InStatus), PlayingThisGame(InPlayingThisGame), DisplayName(MoveTemp(InDisplayName)), CustomSortValuePrimary(InCustomSortValuePrimary), CustomSortValueSecondary(InCustomSortValueSecondary)
+	FUserSortData(USocialUser* InUser, EOnlinePresenceState::Type InStatus, bool InPlayingThisGame, FString InDisplayName, int32 InCustomSortValue)
+		: User(InUser), OnlineStatus(InStatus), PlayingThisGame(InPlayingThisGame), DisplayName(MoveTemp(InDisplayName)), CustomSortValue(InCustomSortValue)
 	{ }
 
 	USocialUser* User;
 	EOnlinePresenceState::Type OnlineStatus;
 	bool PlayingThisGame;
 	FString DisplayName;
-	int64 CustomSortValuePrimary;
-	int64 CustomSortValueSecondary;
+	int32 CustomSortValue;
 
 	bool operator<(const FUserSortData& OtherSortData) const
 	{
@@ -466,20 +447,13 @@ struct FUserSortData
 		{
 			if (PlayingThisGame == OtherSortData.PlayingThisGame)
 			{
-				if (CustomSortValuePrimary == OtherSortData.CustomSortValuePrimary)
+				if (CustomSortValue == OtherSortData.CustomSortValue)
 				{
-					if (CustomSortValueSecondary == OtherSortData.CustomSortValueSecondary)
-					{
-						return DisplayName < OtherSortData.DisplayName;
-					}
-					else
-					{
-						return CustomSortValueSecondary > OtherSortData.CustomSortValueSecondary;
-					}
+					return DisplayName < OtherSortData.DisplayName;
 				}
 				else
 				{
-					return CustomSortValuePrimary > OtherSortData.CustomSortValuePrimary;
+					return CustomSortValue > OtherSortData.CustomSortValue;
 				}
 			}
 			else
@@ -497,7 +471,6 @@ struct FUserSortData
 
 bool FSocialUserList::HandleAutoUpdateList(float)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FSocialUserList_HandleAutoUpdateList);
 	UpdateListInternal();
 	return true;
 }
@@ -509,29 +482,26 @@ void FSocialUserList::UpdateListInternal()
 	// Re-evaluate whether each user with dirtied presence is still fit for the list
 	for (TWeakObjectPtr<USocialUser> DirtyUser : UsersWithDirtyPresence)
 	{
-		if (DirtyUser.IsValid())
-		{
-			const bool bContainsUser = Users.Contains(DirtyUser);
-			const bool bPendingAdd = PendingAdds.Contains(DirtyUser);
-			const bool bPendingRemove = PendingRemovals.Contains(DirtyUser);
+		const bool bContainsUser = Users.Contains(DirtyUser);
+		const bool bPendingAdd = PendingAdds.Contains(DirtyUser);
+		const bool bPendingRemove = PendingRemovals.Contains(DirtyUser);
 
-			if (bPendingRemove || (!bContainsUser && !bPendingAdd))
-			{
-				TryAddUserFast(*DirtyUser);
-			}
-			else if (bPendingAdd || (bContainsUser && !bPendingRemove))
-			{
-				TryRemoveUser(*DirtyUser);
-			}
+		if (bPendingRemove || (!bContainsUser && !bPendingAdd))
+		{
+			TryAddUserFast(*DirtyUser);
+		}
+		else if (bPendingAdd || (bContainsUser && !bPendingRemove))
+		{
+			TryRemoveUser(*DirtyUser);
 		}
 	}
 	UsersWithDirtyPresence.Reset();
 
 	// Update the users in the list
-	bool bListUpdated = false;
+	bool bListChanged = false;
 	if (PendingRemovals.Num() > 0)
 	{
-		bListUpdated = true;
+		bListChanged = true;
 
 		Users.RemoveAllSwap(
 			[this] (USocialUser* User)
@@ -551,7 +521,7 @@ void FSocialUserList::UpdateListInternal()
 
 	if (PendingAdds.Num() > 0)
 	{
-		bListUpdated = true;
+		bListChanged = true;
 		Users.Append(PendingAdds);
 
 		for (USocialUser* User : PendingAdds)
@@ -561,46 +531,28 @@ void FSocialUserList::UpdateListInternal()
 		PendingAdds.Reset();
 	}
 
-	if (bListUpdated || bNeedsSort)
+	if (bListChanged || bNeedsSort)
 	{
-		if (ListConfig.bSortDuringUpdate)
+		bNeedsSort = false;
+
+		const int32 NumUsers = Users.Num();
+		TArray<FUserSortData> SortedData;
+		SortedData.Reserve(NumUsers);
+
+		Algo::Transform(Users, SortedData, [](USocialUser* const User) -> FUserSortData
 		{
-			bNeedsSort = false;
-			bListUpdated = true;
+			return FUserSortData(User, User->GetOnlineStatus(), User->IsPlayingThisGame(), User->GetDisplayName(), User->GetCustomSortValue());
+		});
 
-			const int32 NumUsers = Users.Num();
-			if (NumUsers > 1)
-			{
-				SCOPED_NAMED_EVENT(STAT_SocialUserList_Sort, FColor::Orange);
+		Algo::Sort(SortedData);
 
-				UE_LOG(LogParty, VeryVerbose, TEXT("%s sorting list of [%d] users"), ANSI_TO_TCHAR(__FUNCTION__), NumUsers);
-
-				TArray<FUserSortData> SortedData;
-				SortedData.Reserve(NumUsers);
-
-				Algo::Transform(Users, SortedData, [](USocialUser* const User) -> FUserSortData
-				{
-					return FUserSortData(User, User->GetOnlineStatus(), User->IsPlayingThisGame(), User->GetDisplayName(), User->GetCustomSortValuePrimary(), User->GetCustomSortValueSecondary());
-				});
-
-				Algo::Sort(SortedData);
-
-				// replace contents of Users from SortedData array
-				for (int Index = 0; Index < NumUsers; Index++)
-				{
-					Users[Index] = SortedData[Index].User;
-				}
-			}
-		}
-		else
+		// replace contents of Users from SortedData array
+		for (int Index = 0; Index < NumUsers; Index++)
 		{
-			bNeedsSort = true;
+			Users[Index] = SortedData[Index].User;
 		}
-
-		if (bListUpdated)
-		{
-			OnUpdateComplete().Broadcast();
-		}
+		
+		OnUpdateComplete().Broadcast();
 	}
 }
 

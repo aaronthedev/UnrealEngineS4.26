@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "HAL/PlatformProcess.h"
@@ -157,13 +157,13 @@ static bool CompressSliceToASTC(
 	int32 SizeX,
 	int32 SizeY,
 	FString CompressionParameters,
-	TArray64<uint8>& OutCompressedData
+	TArray<uint8>& OutCompressedData
 )
 {
 	// Always Y-invert the image prior to compression for proper orientation post-compression
 	TArray<uint8> LineBuffer;
+	LineBuffer.AddUninitialized(16384 * 4);
 	uint32 LineSize = SizeX * 4;
-	LineBuffer.AddUninitialized(LineSize);
 	for (int32 LineIndex = 0; LineIndex < (SizeY / 2); LineIndex++)
 	{
 		uint8* LineData0 = ((uint8*)SourceData) + (LineSize * LineIndex);
@@ -176,8 +176,8 @@ static bool CompressSliceToASTC(
 	// Compress and retrieve the PNG data to write out to disk
 	TSharedPtr<IImageWrapper> ImageWrapper = ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
 	ImageWrapper->SetRaw(SourceData, SizeX * SizeY * 4, SizeX, SizeY, ERGBFormat::RGBA, 8);
-	const TArray64<uint8>& FileData = ImageWrapper->GetCompressed();
-	int64 FileDataSize = FileData.Num();
+	const TArray<uint8>& FileData = ImageWrapper->GetCompressed();
+	int32 FileDataSize = FileData.Num();
 
 	FGuid Guid;
 	FPlatformMisc::CreateGuid(Guid);
@@ -238,7 +238,7 @@ static bool CompressSliceToASTC(
 	if (bConversionWasSuccessful)
 	{
 		// Get raw file data
-		TArray64<uint8> ASTCData;
+		TArray<uint8> ASTCData;
 		FFileHelper::LoadFileToArray(ASTCData, *OutputFilePath);
 			
 		// Process it
@@ -272,7 +272,7 @@ static bool CompressSliceToASTC(
 		uint32 MipSizeY = (TexelCountY + Header->BlockSizeY - 1) / Header->BlockSizeY;
 
 		// A block is always 16 bytes
-		uint64 MipSize = (uint64)MipSizeX * MipSizeY * 16;
+		uint32 MipSize = MipSizeX * MipSizeY * 16;
 
 		// Copy the compressed data
 		OutCompressedData.Empty(MipSize);
@@ -381,12 +381,12 @@ public:
 
 		if (bIsRGBColor)
 		{
-			CompressedPixelFormat = GetQualityFormat(BuildSettings.CompressionQuality);
+			CompressedPixelFormat = GetQualityFormat();
 			CompressionParameters = FString::Printf(TEXT("%s %s -esw bgra -ch 1 1 1 0"), *GetQualityString(BuildSettings.CompressionQuality), /*BuildSettings.bSRGB ? TEXT("-srgb") :*/ TEXT("") );
 		}
 		else if (bIsRGBAColor)
 		{
-			CompressedPixelFormat = GetQualityFormat(BuildSettings.CompressionQuality);
+			CompressedPixelFormat = GetQualityFormat();
 			CompressionParameters = FString::Printf(TEXT("%s %s -esw bgra -ch 1 1 1 1"), *GetQualityString(BuildSettings.CompressionQuality), /*BuildSettings.bSRGB ? TEXT("-srgb") :*/ TEXT("") );
 		}
 		else if (BuildSettings.TextureFormatName == GTextureFormatNameASTC_NormalAG)
@@ -405,9 +405,9 @@ public:
 		int32 SliceSizeInTexels = Image.SizeX * Image.SizeY;
 		for (int32 SliceIndex = 0; SliceIndex < Image.NumSlices && bCompressionSucceeded; ++SliceIndex)
 		{
-			TArray64<uint8> CompressedSliceData;
+			TArray<uint8> CompressedSliceData;
 			bCompressionSucceeded = CompressSliceToASTC(
-				(&Image.AsBGRA8()[0]) + (SliceIndex * SliceSizeInTexels),
+				Image.AsBGRA8() + (SliceIndex * SliceSizeInTexels),
 				Image.SizeX,
 				Image.SizeY,
 				CompressionParameters,

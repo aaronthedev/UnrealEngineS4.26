@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LiveLinkInstance.h"
 
@@ -38,6 +38,13 @@ void FLiveLinkInstanceProxy::UpdateAnimationNode(const FAnimationUpdateContext& 
 	{
 		Instance->CurrentRetargetAsset = PoseNode.CurrentRetargetAsset; //Cache for GC
 	}
+}
+
+ULiveLinkInstance::ULiveLinkInstance(const FObjectInitializer& Initializer)
+	: Super(Initializer)
+	, CurrentRetargetAsset(nullptr)
+{
+
 }
 
 FAnimInstanceProxy* ULiveLinkInstance::CreateAnimInstanceProxy()

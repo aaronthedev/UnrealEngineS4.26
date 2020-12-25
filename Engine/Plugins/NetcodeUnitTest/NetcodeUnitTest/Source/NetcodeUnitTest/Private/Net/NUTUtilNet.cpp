@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Net/NUTUtilNet.h"
 
@@ -31,7 +31,7 @@ class FWorldTickHook;
 IMPLEMENT_GET_PRIVATE_VAR(FRepLayout, Cmds, TArray<FRepLayoutCmd>);
 
 
-IMPLEMENT_FIELD(FNetPropertyHook)
+IMPLEMENT_INTRINSIC_CLASS(UNetPropertyHook, NETCODEUNITTEST_API, UProperty, COREUOBJECT_API, "/Script/NetcodeUnitTest", {});
 
 
 /** Active unit test worlds */
@@ -415,14 +415,14 @@ FScopedRPCParamReplace::FScopedRPCParamReplace(UMinimalClient* InMinClient, UFun
 
 		for (FRepLayoutCmd& CurCmd : Cmds)
 		{
-			if (FProperty* CurProp = CurCmd.Property)
+			if (UProperty* CurProp = CurCmd.Property)
 			{
 				if (CurProp->GetName() == InParamName)
 				{
 					ParamRepCmd = &CurCmd;
 					OriginalParam = CurProp;
 
-					FNetPropertyHook* HookParam = GetMutableDefault<FNetPropertyHook>();
+					UNetPropertyHook* HookParam = GetMutableDefault<UNetPropertyHook>();
 
 					HookParam->SerializeHook = InSerializeHook;
 
@@ -438,7 +438,7 @@ FScopedRPCParamReplace::FScopedRPCParamReplace(UMinimalClient* InMinClient, UFun
 
 FScopedRPCParamReplace::~FScopedRPCParamReplace()
 {
-	GetMutableDefault<FNetPropertyHook>()->SerializeHook.Unbind();
+	GetMutableDefault<UNetPropertyHook>()->SerializeHook.Unbind();
 
 	if (ParamRepCmd != nullptr)
 	{
@@ -450,10 +450,10 @@ FScopedRPCParamReplace::~FScopedRPCParamReplace()
 }
 
 /**
- * FNetPropertyHook
+ * UNetPropertyHook
  */
 
-bool FNetPropertyHook::NetSerializeItem(FArchive& Ar, UPackageMap* Map, void* Data, TArray<uint8>* MetaData) const
+bool UNetPropertyHook::NetSerializeItem(FArchive& Ar, UPackageMap* Map, void* Data, TArray<uint8>* MetaData) const
 {
 	bool bReturnVal = false;
 

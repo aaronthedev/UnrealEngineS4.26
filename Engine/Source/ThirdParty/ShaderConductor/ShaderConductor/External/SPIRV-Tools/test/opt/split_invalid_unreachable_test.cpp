@@ -24,9 +24,9 @@ namespace {
 using SplitInvalidUnreachableTest = PassTest<::testing::Test>;
 
 std::string spirv_header = R"(OpCapability Shader
-OpCapability VulkanMemoryModel
+OpCapability VulkanMemoryModelKHR
 OpExtension "SPV_KHR_vulkan_memory_model"
-OpMemoryModel Logical Vulkan
+OpMemoryModel Logical VulkanKHR
 OpEntryPoint Vertex %1 "shader"
 %uint = OpTypeInt 32 0
 %uint_1 = OpConstant %uint 1

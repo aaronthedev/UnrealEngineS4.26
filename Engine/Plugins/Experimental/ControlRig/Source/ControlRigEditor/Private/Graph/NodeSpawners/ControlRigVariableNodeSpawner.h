@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,11 +12,9 @@
 #include "BlueprintActionFilter.h"
 #include "BlueprintNodeSignature.h"
 #include "BlueprintFieldNodeSpawner.h"
-#include "RigVMCore/RigVMExternalVariable.h"
 #include "ControlRigVariableNodeSpawner.generated.h"
 
 class UControlRigGraphNode;
-class UControlRigBlueprint;
 
 UCLASS(Transient)
 class CONTROLRIGEDITOR_API UControlRigVariableNodeSpawner : public UBlueprintNodeSpawner
@@ -24,14 +22,13 @@ class CONTROLRIGEDITOR_API UControlRigVariableNodeSpawner : public UBlueprintNod
 	GENERATED_BODY()
 
 public:
-
 	/**
 	 * Creates a new UControlRigVariableNodeSpawner, charged with spawning 
 	 * a new member-variable node
 	 * 
 	 * @return A newly allocated instance of this class.
 	 */
-	static UControlRigVariableNodeSpawner* CreateFromExternalVariable(UControlRigBlueprint* InBlueprint, const FRigVMExternalVariable& InExternalVariable, bool bInIsGetter, const FText& InMenuDesc, const FText& InCategory, const FText& InTooltip);
+	static UControlRigVariableNodeSpawner* CreateFromPinType(const FEdGraphPinType& InPinType, const FText& InMenuDesc, const FText& InCategory, const FText& InTooltip);
 
 	// UBlueprintNodeSpawner interface
 	virtual void Prime() override;
@@ -41,12 +38,18 @@ public:
 	virtual bool IsTemplateNodeFilteredOut(FBlueprintActionFilter const& Filter) const override;
 	// End UBlueprintNodeSpawner interface
 
-private:
+	/**
+	 * Utility function for easily accessing the variable's type (needs to pull
+	 * the information differently if it is a local variable as opposed to a
+	 * member variable with a UProperty).
+	 * 
+	 * @return A struct detailing the wrapped variable's type.
+	 */
+	FEdGraphPinType GetVarType() const;
 
+private:
 	/** The pin type we will spawn */
-	TWeakObjectPtr<UControlRigBlueprint> Blueprint;
-	FRigVMExternalVariable ExternalVariable;
-	bool bIsGetter;
+	FEdGraphPinType EdGraphPinType;
 
 	friend class UEngineTestControlRig;
 };

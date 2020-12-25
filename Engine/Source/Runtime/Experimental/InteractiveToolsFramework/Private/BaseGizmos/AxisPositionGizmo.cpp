@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BaseGizmos/AxisPositionGizmo.h"
 #include "InteractiveGizmoManager.h"
@@ -65,11 +65,7 @@ void UAxisPositionGizmo::OnClickPress(const FInputDeviceRay& PressPos)
 		InteractionStartPoint, InteractionStartParameter,
 		RayNearestPt, RayNearestParam);
 
-	float DirectionSign = FVector::DotProduct(InteractionStartPoint - AxisSource->GetOrigin(), InteractionAxis);
-	ParameterSign = (bEnableSignedAxis && DirectionSign < 0) ? -1.0f : 1.0f;
-
 	InteractionCurPoint = InteractionStartPoint;
-	InteractionStartParameter *= ParameterSign;
 	InteractionCurParameter = InteractionStartParameter;
 
 	InitialTargetParameter = ParameterSource->GetParameter();
@@ -93,7 +89,7 @@ void UAxisPositionGizmo::OnClickDrag(const FInputDeviceRay& DragPos)
 		RayNearestPt, RayNearestParam);
 
 	InteractionCurPoint = AxisNearestPt;
-	InteractionCurParameter = ParameterSign * AxisNearestParam;
+	InteractionCurParameter = AxisNearestParam;
 
 	float DeltaParam = InteractionCurParameter - InteractionStartParameter;
 	float NewValue = InitialTargetParameter + DeltaParam;

@@ -1,21 +1,25 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Render/Device/SidebySide/DisplayClusterDeviceSideBySideBase.h"
 
-#include "Misc/DisplayClusterLog.h"
+#include "DisplayClusterLog.h"
 
 
 FDisplayClusterDeviceSideBySideBase::FDisplayClusterDeviceSideBySideBase()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterRender);
 }
 
 FDisplayClusterDeviceSideBySideBase::~FDisplayClusterDeviceSideBySideBase()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterRender);
 }
 
 
 void FDisplayClusterDeviceSideBySideBase::AdjustViewRect(enum EStereoscopicPass StereoPassType, int32& X, int32& Y, uint32& SizeX, uint32& SizeY) const
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterRender);
+
 	const int ViewportIndex = DecodeViewportIndex(StereoPassType);
 	const EStereoscopicPass Pass = DecodeStereoscopicPass(StereoPassType);
 	const uint32 ViewIndex = DecodeViewIndex(StereoPassType);
@@ -24,19 +28,19 @@ void FDisplayClusterDeviceSideBySideBase::AdjustViewRect(enum EStereoscopicPass 
 	FDisplayClusterRenderViewport& RenderViewport = RenderViewports[ViewportIndex];
 
 	// Provide the Engine with a viewport rectangle
-	const FIntRect& ViewportRect = RenderViewports[ViewportIndex].GetRect();
+	const FIntRect& ViewportArea = RenderViewports[ViewportIndex].GetArea();
 	if (Pass == EStereoscopicPass::eSSP_LEFT_EYE)
 	{
-		X = ViewportRect.Min.X / 2;
+		X = ViewportArea.Min.X / 2;
 	}
 	else if (Pass == EStereoscopicPass::eSSP_RIGHT_EYE)
 	{
-		X = SizeX / 2 + ViewportRect.Min.X / 2;
+		X = SizeX / 2 + ViewportArea.Min.X / 2;
 	}
 
-	Y = ViewportRect.Min.Y;
-	SizeX = ViewportRect.Width() / 2;
-	SizeY = ViewportRect.Height();
+	Y = ViewportArea.Min.Y;
+	SizeX = ViewportArea.Width() / 2;
+	SizeY = ViewportArea.Height();
 
 	// Update view context
 	FDisplayClusterRenderViewContext& ViewContext = RenderViewport.GetContext(ViewIndex);

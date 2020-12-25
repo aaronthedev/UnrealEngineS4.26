@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -147,7 +147,6 @@ struct FGatherTextFromPackagesConfiguration
 	FGatherTextFromPackagesConfiguration()
 		: IsEnabled(true)
 		, FileExtensions(GetDefaultPackageFileExtensions())
-		, ShouldExcludeDerivedClasses(false)
 		, ShouldGatherFromEditorOnlyData(false)
 		, SkipGatherCache(false)
 	{
@@ -177,14 +176,6 @@ struct FGatherTextFromPackagesConfiguration
 	/* Packages in these collections may be processed for gathering. */
 	UPROPERTY(config, EditAnywhere, Category = "Filter")
 	TArray<FName> Collections;
-
-	/* Classes that should be excluded from gathering. */
-	UPROPERTY(config, EditAnywhere, Category = "Filter", meta=(MetaClass="Object", AllowAbstract="True"))
-	TArray<FSoftClassPath> ExcludeClasses;
-
-	/* Should classes derived from those in the exclude classes list also be excluded from gathering? */
-	UPROPERTY(config, EditAnywhere, Category = "Filter")
-	bool ShouldExcludeDerivedClasses;
 
 	/* If enabled, data that is specified as editor-only may be processed for gathering. */
 	UPROPERTY(config, EditAnywhere, Category = "Gather Text")
@@ -285,19 +276,14 @@ struct FLocalizationExportingSettings
 
 	FLocalizationExportingSettings()
 		: CollapseMode(ELocalizedTextCollapseMode::IdenticalTextIdAndSource)
-		, POFormat(EPortableObjectFormat::Unreal)
 		, ShouldPersistCommentsOnExport(false)
 		, ShouldAddSourceLocationsAsComments(true)
 	{
 	}
 
 	/* How should we collapse down text when exporting to PO? */
-	UPROPERTY(config, EditAnywhere, Category = "Collapsing", AdvancedDisplay)
+	UPROPERTY(config, EditAnywhere, Category = "Collapsing")
 	ELocalizedTextCollapseMode CollapseMode;
-
-	/* Which format of PO file should we use? */
-	UPROPERTY(config, EditAnywhere, Category = "Format", AdvancedDisplay)
-	EPortableObjectFormat POFormat;
 
 	/* Should user comments in existing PO files be persisted after export? Useful if using a third party service that stores editor/translator notes in the PO format's comment fields. */
 	UPROPERTY(config, EditAnywhere, Category = "Comments")

@@ -1,25 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "ShaderCore.h"
-
-struct FShaderCompilerInput;
-struct FShaderCompilerOutput;
-
-/** Governs the behavior for adding shader defines to the preprocessed source. Can be helpful for the debugging, but makes the source unique
-    which can prevent efficient caching.
-  */
-enum class EDumpShaderDefines : uint8
-{
-	/** Will not be dumped unless Input.DumpDebugInfoPath is set */
-	DontCare,
-	/** No defines */
-	DontIncludeDefines,
-	/** Defines will be added in the comments */
-	AlwaysIncludeDefines
-};
 
 /**
  * Preprocess a shader.
@@ -35,4 +19,4 @@ extern SHADERPREPROCESSOR_API bool PreprocessShader(
 	FShaderCompilerOutput& ShaderOutput,
 	const FShaderCompilerInput& ShaderInput,
 	const FShaderCompilerDefinitions& AdditionalDefines,
-	EDumpShaderDefines DefinesPolicy = EDumpShaderDefines::DontCare);
+	bool bShaderDumpDefinesAsCommentedCode = true);

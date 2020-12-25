@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,7 +7,7 @@
 #include "MultiSelectionTool.h"
 #include "InteractiveToolBuilder.h"
 #include "MeshOpPreviewHelpers.h"
-#include "ToolDataVisualizer.h"
+#include "Drawing/ToolDataVisualizer.h"
 #include "ParameterizationOps/UVProjectionOp.h"
 #include "DynamicMesh3.h"
 #include "BaseTools/SingleClickTool.h"
@@ -78,6 +78,7 @@ public:
 	/** If set, UV scales will be relative to world space so different objects created with the same UV scale should have the same average texel size */
 	UPROPERTY(EditAnywhere, Category = ProjectionSettings, meta = (DisplayName = "UV Scale Relative to World Space"))
 	bool bWorldSpaceUVScale = false;
+
 };
 
 
@@ -107,7 +108,7 @@ class MESHMODELINGTOOLS_API UUVProjectionOperatorFactory : public UObject, publi
 
 public:
 	// IDynamicMeshOperatorFactory API
-	virtual TUniquePtr<FDynamicMeshOperator> MakeNewOperator() override;
+	virtual TSharedPtr<FDynamicMeshOperator> MakeNewOperator() override;
 
 	UPROPERTY()
 	UUVProjectionTool *Tool;
@@ -136,18 +137,18 @@ public:
 	virtual void SetWorld(UWorld* World, UInteractiveGizmoManager* GizmoManagerIn);
 	virtual void SetAssetAPI(IToolsContextAssetAPI* AssetAPI);
 
-	virtual void OnTick(float DeltaTime) override;
+	virtual void Tick(float DeltaTime) override;
 	virtual void Render(IToolsContextRenderAPI* RenderAPI) override;
 
 	virtual bool HasCancel() const override { return true; }
-	virtual bool HasAccept() const override { return true; }
+	virtual bool HasAccept() const override;
 	virtual bool CanAccept() const override;
 
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent &PropertyChangedEvent) override;
 #endif
 
-	virtual void OnPropertyModified(UObject* PropertySet, FProperty* Property) override;
+	virtual void OnPropertyModified(UObject* PropertySet, UProperty* Property) override;
 
 protected:
 
@@ -188,9 +189,8 @@ protected:
 	FToolDataVisualizer ProjectionShapeVisualizer;
 
 	void UpdateNumPreviews();
-	void UpdateVisualization();
 
-	void GenerateAsset(const TArray<FDynamicMeshOpResult>& Results);
+	void GenerateAsset(const TArray<TUniquePtr<FDynamicMeshOpResult>>& Results);
 
 	void TransformChanged(UTransformProxy* Proxy, FTransform Transform);
 };

@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/InputAxisDelegateBinding.h"
 #include "GameFramework/Actor.h"
 #include "Components/InputComponent.h"
-
 
 // Determines whether or not the Dynamic Delegate for the given binding
 // is a NAME_None function delegate. That implies it is a "dummy" delegate

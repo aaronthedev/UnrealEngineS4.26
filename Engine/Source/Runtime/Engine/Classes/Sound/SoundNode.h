@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -8,7 +8,6 @@
 #include "UObject/ObjectMacros.h"
 #include "UObject/Object.h"
 #include "UObject/Class.h"
-#include "Sound/SoundWave.h"
 #include "SoundNode.generated.h"
 
 class FAudioDevice;
@@ -74,8 +73,6 @@ class ENGINE_API USoundNode : public UObject
 	/** Stream of random numbers to be used by this instance of USoundNode */
 	FRandomStream RandomStream;
 
-	bool bIsRetainingAudio;
-
 public:
 	//~ Begin UObject Interface
 #if WITH_EDITOR
@@ -86,7 +83,6 @@ public:
 	virtual void Serialize(FArchive& Ar) override;
 	virtual bool CanBeClusterRoot() const override;
 	virtual bool CanBeInCluster() const override;
-	virtual void BeginDestroy() override;
 	//~ End UObject Interface
 
 	//
@@ -203,34 +199,5 @@ public:
 	 * @param bRecurse when true, this will cause all children of child nodes to be primed as well.
 	 */
 	virtual void PrimeChildWavePlayers(bool bRecurse);
-
-	/**
-	 * When this is called and stream caching is enabled,
-	 * any wave player sound nodes childed off of this node
-	 * will have their audio retained into the cache.
-	 *
-	 * @param bRecurse when true, this will cause all children of child nodes to be primed as well.
-	 */
-	virtual void RetainChildWavePlayers(bool bRecurse);
-
-	/**
-	 * When this is called and stream caching is enabled,
-	 * any wave player sound nodes childed off of this node
-	 * with loading behavior set to "Inherited"
-	 * will have their loading behavior updated and
-	 * their bLoadingBehaviorOverridden flag raised
-	 *
-	 * @param bRecurse when true, this will cause all children of child nodes to be overridden as well.
-	 */
-	virtual void OverrideLoadingBehaviorOnChildWaves(const bool bRecurse, const ESoundWaveLoadingBehavior InLoadingBehavior);
-
-	virtual void ReleaseRetainerOnChildWavePlayers(bool bRecurse);
-
-	/**
-	 * When called, this will find any child wave players connected to this node
-	 * and null out their associated USoundWave, allowing the USoundWave to be garbage collected.
-	 * This should only be called by USoundNodeQualityLevel::PostLoad when au.CullSoundWaveHardReferences is 1.
-	 */
-	virtual void RemoveSoundWaveOnChildWavePlayers();
 };
 

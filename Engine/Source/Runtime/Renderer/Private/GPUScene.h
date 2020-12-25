@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,5 +12,5 @@ class FViewInfo;
 
 extern void UploadDynamicPrimitiveShaderDataForView(FRHICommandListImmediate& RHICmdList, FScene& Scene, FViewInfo& View);
 extern void UpdateGPUScene(FRHICommandListImmediate& RHICmdList, FScene& Scene);
-extern RENDERER_API void AddPrimitiveToUpdateGPU(FScene& Scene, int32 PrimitiveId);
+extern void AddPrimitiveToUpdateGPU(FScene& Scene, int32 PrimitiveId);
 

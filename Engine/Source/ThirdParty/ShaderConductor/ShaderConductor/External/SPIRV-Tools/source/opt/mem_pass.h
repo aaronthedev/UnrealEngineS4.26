@@ -121,10 +121,9 @@ class MemPass : public Pass {
     return (op == SpvOpDecorate || op == SpvOpDecorateId);
   }
 
-  // Return the id of an undef value with type |type_id|.  Create and insert an
-  // undef after the first non-variable in the function if it doesn't already
-  // exist. Add undef to function undef map.  Returns 0 of the value does not
-  // exist, and cannot be created.
+  // Return undef in function for type. Create and insert an undef after the
+  // first non-variable in the function if it doesn't already exist. Add
+  // undef to function undef map.
   uint32_t Type2Undef(uint32_t type_id);
 
   // Cache of verified target vars

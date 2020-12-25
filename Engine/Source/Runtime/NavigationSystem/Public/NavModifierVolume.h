@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once 
 
@@ -23,10 +23,6 @@ class NAVIGATIONSYSTEM_API ANavModifierVolume : public AVolume, public INavRelev
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Default)
 	TSubclassOf<UNavArea> AreaClass;
-
-	/** Experimental: if set, the 2D space occupied by the volume box will ignore FillCollisionUnderneathForNavmesh */
-	UPROPERTY(EditAnywhere, Category = Default, AdvancedDisplay)
-	bool bMaskFillCollisionUnderneathForNavmesh;
 
 public:
 	ANavModifierVolume(const FObjectInitializer& ObjectInitializer);

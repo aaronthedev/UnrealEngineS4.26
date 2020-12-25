@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -46,9 +46,7 @@ public:
 	virtual FResourceArrayInterface* GetResourceArray() = 0;
 
 	/** Serializer. */
-	virtual void Serialize(FArchive& Ar, bool bForcePerElementSerialization = false) = 0;
-
-	virtual void OverrideFreezeSizeAndAlignment(int64& Size, int32& Alignment) const = 0;
+	virtual void Serialize(FArchive& Ar) = 0;
 
 	virtual SIZE_T GetResourceSize() const = 0;
 

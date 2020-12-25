@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/CheckBox.h"
 #include "Widgets/SNullWidget.h"
@@ -34,9 +34,6 @@ UCheckBox::UCheckBox(const FObjectInitializer& ObjectInitializer)
 
 	BorderBackgroundColor_DEPRECATED = FLinearColor::White;
 
-	ClickMethod = EButtonClickMethod::DownAndUp;
-	TouchMethod = EButtonTouchMethod::DownAndUp;
-
 	IsFocusable = true;
 #if WITH_EDITORONLY_DATA
 	AccessibleBehavior = ESlateAccessibleBehavior::Summary;
@@ -57,9 +54,6 @@ TSharedRef<SWidget> UCheckBox::RebuildWidget()
 		.OnCheckStateChanged( BIND_UOBJECT_DELEGATE(FOnCheckStateChanged, SlateOnCheckStateChangedCallback) )
 		.Style(&WidgetStyle)
 		.HAlign( HorizontalAlignment )
-		.ClickMethod(ClickMethod)
-		.TouchMethod(TouchMethod)
-		.PressMethod(PressMethod)
 		.IsFocusable(IsFocusable)
 		;
 
@@ -105,33 +99,6 @@ bool UCheckBox::IsPressed() const
 	}
 
 	return false;
-}
-
-void UCheckBox::SetClickMethod(EButtonClickMethod::Type InClickMethod)
-{
-	ClickMethod = InClickMethod;
-	if (MyCheckbox.IsValid())
-	{
-		MyCheckbox->SetClickMethod(ClickMethod);
-	}
-}
-
-void UCheckBox::SetTouchMethod(EButtonTouchMethod::Type InTouchMethod)
-{
-	TouchMethod = InTouchMethod;
-	if (MyCheckbox.IsValid())
-	{
-		MyCheckbox->SetTouchMethod(TouchMethod);
-	}
-}
-
-void UCheckBox::SetPressMethod(EButtonPressMethod::Type InPressMethod)
-{
-	PressMethod = InPressMethod;
-	if (MyCheckbox.IsValid())
-	{
-		MyCheckbox->SetPressMethod(PressMethod);
-	}
 }
 
 bool UCheckBox::IsChecked() const

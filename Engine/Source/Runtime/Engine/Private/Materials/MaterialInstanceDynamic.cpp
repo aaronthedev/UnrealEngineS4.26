@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*==============================================================================
 	MaterialInstanceDynamic.cpp: MaterialInstanceDynamic implementation.
@@ -31,45 +31,7 @@ UMaterialInstanceDynamic* UMaterialInstanceDynamic::Create(UMaterialInterface* P
 UMaterialInstanceDynamic* UMaterialInstanceDynamic::Create(UMaterialInterface* ParentMaterial, UObject* InOuter, FName Name)
 {
 	LLM_SCOPE(ELLMTag::MaterialInstance);
-
-	UPackage* TransientPackage = GetTransientPackage();
-
-	UObject* Outer = InOuter ? InOuter : TransientPackage;
-	if (Name != NAME_None)
-	{
-		UMaterialInstanceDynamic* ExistingMID = FindObjectFast<UMaterialInstanceDynamic>(Outer, *Name.ToString(), true);
-		if (ExistingMID)
-		{
-			bool bRenamed = false;
-
-#if WITH_EDITOR
-			// try to rename to enhance construction script determinism:
-			AActor* OwningActor = Cast<AActor>(Outer);
-			if (!OwningActor)
-			{
-				OwningActor = Outer->GetTypedOuter<AActor>();
-			}
-
-			if (OwningActor && OwningActor->IsRunningUserConstructionScript())
-			{
-				bRenamed = true;
-				// a collision, we're going to move this existing mid to the transient package and claim the name 
-				// for ourself:
-				ExistingMID	->Rename(
-					nullptr,
-					TransientPackage,
-					REN_DoNotDirty | REN_DontCreateRedirectors | REN_ForceNoResetLoaders | REN_NonTransactional
-				);
-			}
-#endif
-
-			if (!bRenamed)
-			{
-				// If a MID is made with the same name and outer as another, it will overwrite it. To avoid this we will change the name when there is a collision.
-				Name = MakeUniqueObjectName(Outer, UMaterialInstanceDynamic::StaticClass(), Name);
-			}
-		}
-	}
+	UObject* Outer = InOuter ? InOuter : GetTransientPackage();
 	UMaterialInstanceDynamic* MID = NewObject<UMaterialInstanceDynamic>(Outer, Name);
 	MID->SetParentInternal(ParentMaterial, false);
 	return MID;
@@ -77,39 +39,22 @@ UMaterialInstanceDynamic* UMaterialInstanceDynamic::Create(UMaterialInterface* P
 
 void UMaterialInstanceDynamic::SetVectorParameterValue(FName ParameterName, FLinearColor Value)
 {
-	FMaterialParameterInfo ParameterInfo(ParameterName);
+	FMaterialParameterInfo ParameterInfo(ParameterName); // @TODO: This will only work for non-layered parameters
 	SetVectorParameterValueInternal(ParameterInfo,Value);
-}
-
-void UMaterialInstanceDynamic::SetVectorParameterValueByInfo(const FMaterialParameterInfo& ParameterInfo, FLinearColor Value)
-{
-	SetVectorParameterValueInternal(ParameterInfo, Value);
 }
 
 FLinearColor UMaterialInstanceDynamic::K2_GetVectorParameterValue(FName ParameterName)
 {
 	FLinearColor Result(0,0,0);
-	FMaterialParameterInfo ParameterInfo(ParameterName);
-	Super::GetVectorParameterValue(ParameterInfo, Result);
-	return Result;
-}
-
-FLinearColor UMaterialInstanceDynamic::K2_GetVectorParameterValueByInfo(const FMaterialParameterInfo& ParameterInfo)
-{
-	FLinearColor Result(0, 0, 0);
+	FMaterialParameterInfo ParameterInfo(ParameterName); // @TODO: This will only work for non-layered parameters
 	Super::GetVectorParameterValue(ParameterInfo, Result);
 	return Result;
 }
 
 void UMaterialInstanceDynamic::SetScalarParameterValue(FName ParameterName, float Value)
 {
-	FMaterialParameterInfo ParameterInfo(ParameterName);
+	FMaterialParameterInfo ParameterInfo(ParameterName); // @TODO: This will only work for non-layered parameters
 	SetScalarParameterValueInternal(ParameterInfo,Value);
-}
-
-void UMaterialInstanceDynamic::SetScalarParameterValueByInfo(const FMaterialParameterInfo& ParameterInfo, float Value)
-{
-	SetScalarParameterValueInternal(ParameterInfo, Value);
 }
 
 bool UMaterialInstanceDynamic::InitializeScalarParameterAndGetIndex(const FName& ParameterName, float Value, int32& OutParameterIndex)
@@ -133,7 +78,7 @@ bool UMaterialInstanceDynamic::InitializeVectorParameterAndGetIndex(const FName&
 {
 	OutParameterIndex = INDEX_NONE;
 
-	FMaterialParameterInfo ParameterInfo(ParameterName);
+	FMaterialParameterInfo ParameterInfo(ParameterName); // @TODO: This will only work for non-layered parameters
 	SetVectorParameterValueInternal(ParameterInfo, Value);
 
 	OutParameterIndex = GameThread_FindParameterIndexByName(VectorParameterValues, ParameterInfo);
@@ -149,14 +94,7 @@ bool UMaterialInstanceDynamic::SetVectorParameterByIndex(int32 ParameterIndex, c
 float UMaterialInstanceDynamic::K2_GetScalarParameterValue(FName ParameterName)
 {
 	float Result = 0.f;
-	FMaterialParameterInfo ParameterInfo(ParameterName);
-	Super::GetScalarParameterValue(ParameterInfo, Result);
-	return Result;
-}
-
-float UMaterialInstanceDynamic::K2_GetScalarParameterValueByInfo(const FMaterialParameterInfo& ParameterInfo)
-{
-	float Result = 0.f;
+	FMaterialParameterInfo ParameterInfo(ParameterName); // @TODO: This will only work for non-layered parameters
 	Super::GetScalarParameterValue(ParameterInfo, Result);
 	return Result;
 }
@@ -166,7 +104,7 @@ void UMaterialInstanceDynamic::SetTextureParameterValue(FName ParameterName, UTe
 	// Save the texture renaming as it will be useful to remap the texture streaming data.
 	UTexture* RenamedTexture = NULL;
 
-	FMaterialParameterInfo ParameterInfo(ParameterName);
+	FMaterialParameterInfo ParameterInfo(ParameterName); // @TODO: This will only work for non-layered parameters
 	Super::GetTextureParameterValue(ParameterInfo, RenamedTexture);
 
 	if (Value && RenamedTexture && Value->GetFName() != RenamedTexture->GetFName())
@@ -177,31 +115,10 @@ void UMaterialInstanceDynamic::SetTextureParameterValue(FName ParameterName, UTe
 	SetTextureParameterValueInternal(ParameterInfo,Value);
 }
 
-void UMaterialInstanceDynamic::SetTextureParameterValueByInfo(const FMaterialParameterInfo& ParameterInfo, UTexture* Value)
-{
-	// Save the texture renaming as it will be useful to remap the texture streaming data.
-	UTexture* RenamedTexture = NULL;
-	Super::GetTextureParameterValue(ParameterInfo, RenamedTexture);
-
-	if (Value && RenamedTexture && Value->GetFName() != RenamedTexture->GetFName())
-	{
-		RenamedTextures.FindOrAdd(Value->GetFName()).AddUnique(RenamedTexture->GetFName());
-	}
-
-	SetTextureParameterValueInternal(ParameterInfo, Value);
-}
-
 UTexture* UMaterialInstanceDynamic::K2_GetTextureParameterValue(FName ParameterName)
 {
 	UTexture* Result = NULL;
-	FMaterialParameterInfo ParameterInfo(ParameterName);
-	Super::GetTextureParameterValue(ParameterInfo, Result);
-	return Result;
-}
-
-UTexture* UMaterialInstanceDynamic::K2_GetTextureParameterValueByInfo(const FMaterialParameterInfo& ParameterInfo)
-{
-	UTexture* Result = NULL;
+	FMaterialParameterInfo ParameterInfo(ParameterName); // @TODO: This will only work for non-layered parameters
 	Super::GetTextureParameterValue(ParameterInfo, Result);
 	return Result;
 }

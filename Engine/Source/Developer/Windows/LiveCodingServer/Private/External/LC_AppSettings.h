@@ -114,7 +114,4 @@ namespace appSettings
 	extern SettingBool* g_amalgamationSplitIntoSingleParts;
 	extern SettingInt* g_amalgamationSplitMinCppCount;
 	extern SettingString* g_amalgamationCppFileExtensions;		// DO NOT USE directly, use GetAmalgamatedCppFileExtensions instead!
-
-	// UE4-specific
-	extern SettingBool* g_ue4EnableNatVisSupport;
 }

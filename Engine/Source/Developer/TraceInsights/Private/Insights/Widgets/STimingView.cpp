@@ -1,16 +1,16 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "STimingView.h"
 
 #include "Containers/ArrayBuilder.h"
 #include "Containers/MapBuilder.h"
 #include "EditorStyleSet.h"
-#include "Features/IModularFeatures.h"
 #include "Fonts/FontMeasure.h"
 #include "Fonts/SlateFontInfo.h"
 #include "Framework/Application/MenuStack.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "HAL/PlatformApplicationMisc.h"
 #include "HAL/PlatformTime.h"
 #include "Layout/WidgetPath.h"
 #include "Misc/Paths.h"
@@ -19,8 +19,8 @@
 #include "Styling/CoreStyle.h"
 #include "Styling/SlateBrush.h"
 #include "TraceServices/AnalysisService.h"
+#include "TraceServices/SessionService.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Layout/SScrollBar.h"
 #include "Widgets/Layout/SSpacer.h"
@@ -31,103 +31,74 @@
 #include "Insights/Common/PaintUtils.h"
 #include "Insights/Common/Stopwatch.h"
 #include "Insights/Common/TimeUtils.h"
-#include "Insights/ITimingViewExtender.h"
 #include "Insights/InsightsManager.h"
 #include "Insights/InsightsStyle.h"
 #include "Insights/LoadingProfiler/LoadingProfilerManager.h"
 #include "Insights/LoadingProfiler/Widgets/SLoadingProfilerWindow.h"
 #include "Insights/Table/Widgets/STableTreeView.h"
-#include "Insights/Tests/TimingProfilerTests.h"
 #include "Insights/TimingProfilerCommon.h"
 #include "Insights/TimingProfilerManager.h"
 #include "Insights/ViewModels/BaseTimingTrack.h"
-#include "Insights/ViewModels/DrawHelpers.h"
 #include "Insights/ViewModels/FileActivityTimingTrack.h"
-#include "Insights/ViewModels/FrameTimingTrack.h"
-#include "Insights/ViewModels/GraphSeries.h"
-#include "Insights/ViewModels/GraphTrack.h"
 #include "Insights/ViewModels/LoadingTimingTrack.h"
-#include "Insights/ViewModels/MarkersTimingTrack.h"
 #include "Insights/ViewModels/ThreadTimingTrack.h"
-#include "Insights/ViewModels/TimeRulerTrack.h"
-#include "Insights/ViewModels/TimingEventSearch.h"
 #include "Insights/ViewModels/TimingGraphTrack.h"
+#include "Insights/ViewModels/DrawHelpers.h"
 #include "Insights/ViewModels/TimingViewDrawHelper.h"
 #include "Insights/Widgets/SStatsView.h"
 #include "Insights/Widgets/STimersView.h"
 #include "Insights/Widgets/STimingProfilerWindow.h"
-#include "Insights/Widgets/STimingViewTrackList.h"
 
 #include <limits>
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#define DEBUG_TIMING_TRACK 0
 #define LOCTEXT_NAMESPACE "STimingView"
-
-#define ACTIVATE_BENCHMARK 0
 
 // start auto generated ids from a big number (MSB set to 1) to avoid collisions with ids for gpu/cpu tracks based on 32bit timeline index
 uint64 FBaseTimingTrack::IdGenerator = (1ULL << 63);
 
+const TCHAR* GetName(ELoadTimeProfilerPackageEventType Type);
+const TCHAR* GetName(ELoadTimeProfilerObjectEventType Type);
+
 const TCHAR* GetFileActivityTypeName(Trace::EFileActivityType Type);
 uint32 GetFileActivityTypeColor(Trace::EFileActivityType Type);
-
-namespace Insights { const FName TimingViewExtenderFeatureName(TEXT("TimingViewExtender")); }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 STimingView::STimingView()
-	: bScrollableTracksOrderIsDirty(false)
-	, FrameSharedState(MakeShared<FFrameSharedState>(this))
-	, ThreadTimingSharedState(MakeShared<FThreadTimingSharedState>(this))
-	, LoadingSharedState(MakeShared<FLoadingSharedState>(this))
+	: LoadingSharedState(MakeShareable(new FLoadingSharedState()))
 	, bAssetLoadingMode(false)
-	, FileActivitySharedState(MakeShared<FFileActivitySharedState>(this))
-	, TimeRulerTrack(MakeShared<FTimeRulerTrack>())
-	, DefaultTimeMarker(MakeShared<Insights::FTimeMarker>())
-	, MarkersTrack(MakeShared<FMarkersTimingTrack>())
-	, GraphTrack(MakeShared<FTimingGraphTrack>())
+	, FileActivitySharedState(MakeShareable(new FFileActivitySharedState()))
+	, TimeRulerTrack(FBaseTimingTrack::GenerateId())
+	, MarkersTrack(FBaseTimingTrack::GenerateId())
+	, GraphTrack(MakeShareable(new FTimingGraphTrack(FBaseTimingTrack::GenerateId())))
 	, WhiteBrush(FInsightsStyle::Get().GetBrush("WhiteBrush"))
 	, MainFont(FCoreStyle::GetDefaultFontStyle("Regular", 8))
 {
-	DefaultTimeMarker->SetName(TEXT(""));
-	DefaultTimeMarker->SetColor(FLinearColor(0.85f, 0.5f, 0.03f, 0.5f));
-
-	GraphTrack->SetName(TEXT("Main Graph Track"));
-
-	IModularFeatures::Get().RegisterModularFeature(Insights::TimingViewExtenderFeatureName, FrameSharedState.Get());
-	IModularFeatures::Get().RegisterModularFeature(Insights::TimingViewExtenderFeatureName, ThreadTimingSharedState.Get());
-	IModularFeatures::Get().RegisterModularFeature(Insights::TimingViewExtenderFeatureName, LoadingSharedState.Get());
-	IModularFeatures::Get().RegisterModularFeature(Insights::TimingViewExtenderFeatureName, FileActivitySharedState.Get());
-
-	ExtensionOverlay = SNew(SOverlay).Visibility(EVisibility::SelfHitTestInvisible);
+	Reset();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 STimingView::~STimingView()
 {
-	AllTracks.Reset();
-	TopDockedTracks.Reset();
-	BottomDockedTracks.Reset();
-	ScrollableTracks.Reset();
-	ForegroundTracks.Reset();
-
-	for (Insights::ITimingViewExtender* Extender : GetExtenders())
+	for (const auto& KV : CachedTimelines)
 	{
-		Extender->OnEndSession(*this);
+		delete KV.Value;
 	}
-
-	IModularFeatures::Get().UnregisterModularFeature(Insights::TimingViewExtenderFeatureName, FileActivitySharedState.Get());
-	IModularFeatures::Get().UnregisterModularFeature(Insights::TimingViewExtenderFeatureName, LoadingSharedState.Get());
-	IModularFeatures::Get().UnregisterModularFeature(Insights::TimingViewExtenderFeatureName, ThreadTimingSharedState.Get());
-	IModularFeatures::Get().UnregisterModularFeature(Insights::TimingViewExtenderFeatureName, FrameSharedState.Get());
+	CachedTimelines.Reset();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void STimingView::Construct(const FArguments& InArgs)
 {
+	OnSelectionChanged = InArgs._OnSelectionChanged;
+	OnHoveredEventChanged = InArgs._OnHoveredEventChanged;
+	OnSelectedEventChanged = InArgs._OnSelectedEventChanged;
+
 	ChildSlot
 	[
 		SNew(SOverlay)
@@ -142,18 +113,20 @@ void STimingView::Construct(const FArguments& InArgs)
 			.AlwaysShowScrollbar(false)
 			.Visibility(EVisibility::Visible)
 			.Thickness(FVector2D(5.0f, 5.0f))
+			//.RenderOpacity(0.75)
 			.OnUserScrolled(this, &STimingView::HorizontalScrollBar_OnUserScrolled)
 		]
 
 		+ SOverlay::Slot()
 		.HAlign(HAlign_Right)
-		.Padding(FMargin(0.0f, 0.0f, 0.0f, 0.0f))
+		.Padding(FMargin(0, 22, 0, 12))
 		[
 			SAssignNew(VerticalScrollBar, SScrollBar)
 			.Orientation(Orient_Vertical)
 			.AlwaysShowScrollbar(false)
 			.Visibility(EVisibility::Visible)
 			.Thickness(FVector2D(5.0f, 5.0f))
+			//.RenderOpacity(0.75)
 			.OnUserScrolled(this, &STimingView::VerticalScrollBar_OnUserScrolled)
 		]
 
@@ -174,7 +147,7 @@ void STimingView::Construct(const FArguments& InArgs)
 			[
 				SNew(SHorizontalBox)
 
-				+ SHorizontalBox::Slot()
+				+SHorizontalBox::Slot()
 				.Padding(0.0f)
 				.AutoWidth()
 				[
@@ -184,8 +157,8 @@ void STimingView::Construct(const FArguments& InArgs)
 					.Text(FText::FromString(FString(TEXT("\xf0b0"))) /*fa-filter*/)
 				]
 
-				+ SHorizontalBox::Slot()
-				.Padding(FMargin(2.0f, 0.0f, 0.0f, 0.0f))
+				+SHorizontalBox::Slot()
+				.Padding(2.0f, 0.0f, 0.0f, 0.0f)
 				.AutoWidth()
 				[
 					SNew(STextBlock)
@@ -193,58 +166,6 @@ void STimingView::Construct(const FArguments& InArgs)
 					.Text(LOCTEXT("TracksFilter", "Tracks"))
 				]
 			]
-		]
-
-		+ SOverlay::Slot()
-		.HAlign(HAlign_Right)
-		.VAlign(VAlign_Top)
-		.Padding(FMargin(0.0f, 0.0f, 0.0f, 0.0f))
-		[
-			SNew(SHorizontalBox)
-
-			+ SHorizontalBox::Slot()
-			.Padding(0.0f)
-			.AutoWidth()
-			[
-				SNew(SCheckBox)
-				.Style(FEditorStyle::Get(), "ToggleButtonCheckbox")
-				.HAlign(HAlign_Center)
-				.Padding(FMargin(0.0f, 2.0f, 1.0f, 4.0f))
-				.OnCheckStateChanged(this, &STimingView::AutoScroll_OnCheckStateChanged)
-				.IsChecked(this, &STimingView::AutoScroll_IsChecked)
-				.ToolTipText(LOCTEXT("AutoScroll_Tooltip", "Auto Scroll"))
-				[
-					SNew(STextBlock)
-					.Text(LOCTEXT("AutoScroll_Button", " >> "))
-					.TextStyle(FEditorStyle::Get(), TEXT("Profiler.Caption"))
-				]
-			]
-
-			+ SHorizontalBox::Slot()
-			.Padding(0.0f)
-			.AutoWidth()
-			[
-				SNew(SComboButton)
-				.ComboButtonStyle(FEditorStyle::Get(), "GenericFilters.ComboButtonStyle")
-				.ForegroundColor(FLinearColor::White)
-				//.ToolTipText(LOCTEXT("AutoScrollOptions_ToolTip", "Auto-scroll options"))
-				.OnGetMenuContent(this, &STimingView::MakeAutoScrollOptionsMenu)
-				.HasDownArrow(true)
-				.ContentPadding(FMargin(0.0f, 0.0f, 0.0f, 0.0f))
-				.ButtonContent()
-				[
-					SNew(SBorder)
-					.Padding(0.0f)
-				]
-			]
-		]
-
-		+ SOverlay::Slot()
-		.HAlign(HAlign_Fill)
-		.VAlign(VAlign_Fill)
-		.Padding(FMargin(0.0f, 0.0f, 0.0f, 0.0f))
-		[
-			ExtensionOverlay.ToSharedRef()
 		]
 	];
 
@@ -256,91 +177,73 @@ void STimingView::Construct(const FArguments& InArgs)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void STimingView::HideAllDefaultTracks()
+void STimingView::Reset()
 {
-	FrameSharedState->HideAllFrameTracks();
-	ThreadTimingSharedState->HideAllGpuTracks();
-	ThreadTimingSharedState->HideAllCpuTracks();
-	LoadingSharedState->HideAllLoadingTracks();
-	FileActivitySharedState->HideAllIoTracks();
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STimingView::Reset(bool bIsFirstReset)
-{
-	if (!bIsFirstReset)
-	{
-		for (Insights::ITimingViewExtender* Extender : GetExtenders())
-		{
-			Extender->OnEndSession(*this);
-		}
-	}
+	bShowHideAllGpuTracks = true;
+	bShowHideAllCpuTracks = true;
+	bShowHideAllLoadingTracks = false;
+	bShowHideAllIoTracks = false;
 
 	//////////////////////////////////////////////////
 
 	Viewport.Reset();
 
+	bIsViewportDirty = true;
+	bIsVerticalViewportDirty = true;
+
 	//////////////////////////////////////////////////
 
-	for (auto& KV : AllTracks)
+	for (const auto& KV : CachedTimelines)
 	{
-		KV.Value->SetLocation(ETimingTrackLocation::None);
+		delete KV.Value;
 	}
+	CachedTimelines.Reset();
 
-	AllTracks.Reset();
-	TopDockedTracks.Reset();
-	BottomDockedTracks.Reset();
-	ScrollableTracks.Reset();
-	ForegroundTracks.Reset();
+	//TODO: TopTracks.Reset();
+	//TODO: ScrollableTracks.Reset();
+	//TODO: BottomTracks.Reset();
+	//TODO: ForegroundTracks.Reset();
 
-	bScrollableTracksOrderIsDirty = false;
+	//////////////////////////////////////////////////
+
+	TimingEventsTracks.Reset();
+
+	bAreTimingEventsTracksDirty = true;
 
 	FTimingEventsTrack::bUseDownSampling = true;
 
 	//////////////////////////////////////////////////
 
-	TimeRulerTrack->Reset();
-	AddTopDockedTrack(TimeRulerTrack);
-	TimeRulerTrack->AddTimeMarker(DefaultTimeMarker);
-	SetTimeMarker(std::numeric_limits<double>::infinity());
+	GpuTrack = nullptr;
+	CpuTracks.Reset();
 
-#if 0 // test for multiple time markers
-	TSharedRef<Insights::FTimeMarker> TimeMarkerA = DefaultTimeMarker;
-	TimeMarkerA->SetName(TEXT("A"));
-	TimeMarkerA->SetColor(FLinearColor(0.85f, 0.5f, 0.03f, 0.5f));
-
-	TSharedRef<Insights::FTimeMarker> TimeMarkerB = MakeShared<Insights::FTimeMarker>();
-	TimeRulerTrack->AddTimeMarker(TimeMarkerB);
-	TimeMarkerB->SetName(TEXT("B"));
-	TimeMarkerB->SetColor(FLinearColor(0.03f, 0.85f, 0.5f, 0.5f));
-
-	TSharedRef<Insights::FTimeMarker> TimeMarkerC = MakeShared<Insights::FTimeMarker>();
-	TimeRulerTrack->AddTimeMarker(TimeMarkerC);
-	TimeMarkerC->SetName(TEXT("C"));
-	TimeMarkerC->SetColor(FLinearColor(0.03f, 0.5f, 0.85f, 0.5f));
-
-	TimeMarkerA->SetTime(0.0f);
-	TimeMarkerB->SetTime(1.0f);
-	TimeMarkerC->SetTime(2.0f);
-#endif
-
-	MarkersTrack->Reset();
-	AddTopDockedTrack(MarkersTrack);
-
-	GraphTrack->Reset();
-	GraphTrack->SetOrder(FTimingTrackOrder::First);
-	constexpr double GraphTrackHeight = 200.0;
-	GraphTrack->SetHeight(static_cast<float>(GraphTrackHeight));
-	GraphTrack->GetSharedValueViewport().SetBaselineY(GraphTrackHeight - 1.0);
-	GraphTrack->GetSharedValueViewport().SetScaleY(GraphTrackHeight / 0.1); // 100ms
-	GraphTrack->AddDefaultFrameSeries();
-	GraphTrack->SetVisibilityFlag(false);
-	AddTopDockedTrack(GraphTrack);
+	ThreadGroups.Reset();
 
 	//////////////////////////////////////////////////
 
-	ExtensionOverlay->ClearChildren();
+	LoadingSharedState->Reset();
+
+	LoadingMainThreadTrack = nullptr;
+	LoadingAsyncThreadTrack = nullptr;
+
+	LoadingMainThreadId = 0;
+	LoadingAsyncThreadId = 0;
+
+	//////////////////////////////////////////////////
+
+	FileActivitySharedState->Reset();
+	IoOverviewTrack = nullptr;
+	IoActivityTrack = nullptr;
+
+	//////////////////////////////////////////////////
+
+	TimeRulerTrack.Reset();
+	MarkersTrack.Reset();
+
+	GraphTrack->Reset();
+	GraphTrack->SetHeight(200.0f);
+	GraphTrack->AddDefaultFrameSeries();
+	GraphTrack->SetVisibilityFlag(false);
 
 	//////////////////////////////////////////////////
 
@@ -352,112 +255,57 @@ void STimingView::Reset(bool bIsFirstReset)
 
 	MousePositionOnButtonUp = FVector2D::ZeroVector;
 
-	LastScrollPosY = 0.0f;
-
 	bIsLMB_Pressed = false;
 	bIsRMB_Pressed = false;
 
 	bIsSpaceBarKeyPressed = false;
 	bIsDragging = false;
 
-	bAutoScroll = false;
-	bIsAutoScrollFrameAligned = true;
-	AutoScrollFrameType = TraceFrameType_Game;
-	AutoScrollViewportOffsetPercent = 0.1; // scrolls forward 10% of viewport's width
-	AutoScrollMinDelay = 0.3; // [seconds]
-	LastAutoScrollTime = 0;
-
 	bIsPanning = false;
 	PanningMode = EPanningMode::None;
-
-	OverscrollLeft = 0.0f;
-	OverscrollRight = 0.0f;
-	OverscrollTop = 0.0f;
-	OverscrollBottom = 0.0f;
 
 	bIsSelecting = false;
 	SelectionStartTime = 0.0;
 	SelectionEndTime = 0.0;
 
-	if (HoveredTrack.IsValid())
-	{
-		HoveredTrack.Reset();
-		OnHoveredTrackChangedDelegate.Broadcast(HoveredTrack);
-	}
-	if (HoveredEvent.IsValid())
-	{
-		HoveredEvent.Reset();
-		OnHoveredEventChangedDelegate.Broadcast(HoveredEvent);
-	}
-
-	if (SelectedTrack.IsValid())
-	{
-		SelectedTrack.Reset();
-		OnSelectedTrackChangedDelegate.Broadcast(SelectedTrack);
-	}
-	if (SelectedEvent.IsValid())
-	{
-		SelectedEvent.Reset();
-		OnSelectedEventChangedDelegate.Broadcast(SelectedEvent);
-	}
-
-	if (TimingEventFilter.IsValid())
-	{
-		TimingEventFilter.Reset();
-	}
-
-	bPreventThrottling = false;
-
+	HoveredTimingEvent.Reset();
+	SelectedTimingEvent.Reset();
 	Tooltip.Reset();
 
 	LastSelectionType = ESelectionType::None;
 
+	TimeMarker = std::numeric_limits<double>::infinity();
+
 	//ThisGeometry
 
-	bDrawTopSeparatorLine = false;
-	bDrawBottomSeparatorLine = false;
+	Layout.ForceNormalMode();
 
 	//////////////////////////////////////////////////
 
 	NumUpdatedEvents = 0;
-	PreUpdateTracksDurationHistory.Reset();
-	PreUpdateTracksDurationHistory.AddValue(0);
-	UpdateTracksDurationHistory.Reset();
-	UpdateTracksDurationHistory.AddValue(0);
-	PostUpdateTracksDurationHistory.Reset();
-	PostUpdateTracksDurationHistory.AddValue(0);
-	TickDurationHistory.Reset();
-	TickDurationHistory.AddValue(0);
-	PreDrawTracksDurationHistory.Reset();
-	PreDrawTracksDurationHistory.AddValue(0);
-	DrawTracksDurationHistory.Reset();
-	DrawTracksDurationHistory.AddValue(0);
-	PostDrawTracksDurationHistory.Reset();
-	PostDrawTracksDurationHistory.AddValue(0);
-	OnPaintDeltaTimeHistory.Reset();
-	OnPaintDeltaTimeHistory.AddValue(0);
+	TimelineCacheUpdateDurationHistory.Reset();
+	TimelineCacheUpdateDurationHistory.AddValue(0);
+	TimeMarkerCacheUpdateDurationHistory.Reset();
+	TimeMarkerCacheUpdateDurationHistory.AddValue(0);
+	DrawDurationHistory.Reset();
+	OnPaintDurationHistory.Reset();
 	LastOnPaintTime = FPlatformTime::Cycles64();
 
-	//////////////////////////////////////////////////
-
-	for (Insights::ITimingViewExtender* Extender : GetExtenders())
+	if (bAssetLoadingMode)
 	{
-		Extender->OnBeginSession(*this);
+		EnableAssetLoadingMode();
 	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool STimingView::IsGpuTrackVisible() const
+void STimingView::EnableAssetLoadingMode()
 {
-	return ThreadTimingSharedState && ThreadTimingSharedState->IsGpuTrackVisible();
-}
+	bAssetLoadingMode = true;
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool STimingView::IsCpuTrackVisible(uint32 InThreadId) const
-{
-	return ThreadTimingSharedState && ThreadTimingSharedState->IsCpuTrackVisible(InThreadId);
+	bShowHideAllGpuTracks = false;
+	bShowHideAllCpuTracks = false;
+	bShowHideAllLoadingTracks = true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -466,389 +314,66 @@ void STimingView::Tick(const FGeometry& AllottedGeometry, const double InCurrent
 {
 	//SCompoundWidget::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
 
-	FStopwatch TickStopwatch;
-	TickStopwatch.Start();
+	//FStopwatch TickStopwatch;
+	//TickStopwatch.Start();
 
 	ThisGeometry = AllottedGeometry;
 
-	bPreventThrottling = false;
-
-	constexpr float OverscrollFadeSpeed = 2.0f;
-	if (OverscrollLeft > 0.0f)
-	{
-		OverscrollLeft = FMath::Max(0.0f, OverscrollLeft - InDeltaTime * OverscrollFadeSpeed);
-	}
-	if (OverscrollRight > 0.0f)
-	{
-		OverscrollRight = FMath::Max(0.0f, OverscrollRight - InDeltaTime * OverscrollFadeSpeed);
-	}
-	if (OverscrollTop > 0.0f)
-	{
-		OverscrollTop = FMath::Max(0.0f, OverscrollTop - InDeltaTime * OverscrollFadeSpeed);
-	}
-	if (OverscrollBottom > 0.0f)
-	{
-		OverscrollBottom = FMath::Max(0.0f, OverscrollBottom - InDeltaTime * OverscrollFadeSpeed);
-	}
-
 	const float ViewWidth = AllottedGeometry.GetLocalSize().X;
 	const float ViewHeight = AllottedGeometry.GetLocalSize().Y;
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-	// Update viewport.
-
-	Viewport.UpdateSize(ViewWidth, ViewHeight);
-
-	if (!bIsPanning && !bAutoScroll)
+	if (Viewport.UpdateSize(ViewWidth, ViewHeight))
 	{
-		// Elastic snap to horizontal time limits.
-		if (Viewport.EnforceHorizontalScrollLimits(0.5)) // 0.5 is the interpolation factor
-		{
-			UpdateHorizontalScrollBar();
-		}
+		bIsViewportDirty = true;
 	}
 
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-	// Check the analysis session time.
+	//////////////////////////////////////////////////
+	// Update Y postion of non-scrollable tracks (docked on top).
+	// Also compute total height (TopOffset) of top docked tracks.
 
-	TSharedPtr<const Trace::IAnalysisSession> Session = FInsightsManager::Get()->GetSession();
-	if (Session)
-	{
-		double SessionTime = 0.0;
-		{
-			Trace::FAnalysisSessionReadScope SessionReadScope(*Session.Get());
-			SessionTime = Session->GetDurationSeconds();
-		}
-
-		// Check if horizontal scroll area has changed.
-		if (SessionTime > Viewport.GetMaxValidTime() &&
-			SessionTime != DBL_MAX &&
-			SessionTime != std::numeric_limits<double>::infinity())
-		{
-			const double PreviousSessionTime = Viewport.GetMaxValidTime();
-			if ((PreviousSessionTime >= Viewport.GetStartTime() && PreviousSessionTime <= Viewport.GetEndTime()) ||
-				(SessionTime >= Viewport.GetStartTime() && SessionTime <= Viewport.GetEndTime()))
-			{
-				Viewport.AddDirtyFlags(ETimingTrackViewportDirtyFlags::HClippedSessionTimeChanged);
-			}
-
-			//UE_LOG(TimingProfiler, Log, TEXT("Session Duration: %g"), DT);
-			Viewport.SetMaxValidTime(SessionTime);
-			UpdateHorizontalScrollBar();
-		}
-	}
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	if (bIsPanning)
-	{
-		// Disable auto-scroll if user starts panning manually.
-		bAutoScroll = false;
-	}
-
-	if (bAutoScroll)
-	{
-		const uint64 CurrentTime = FPlatformTime::Cycles64();
-		if (static_cast<double>(CurrentTime - LastAutoScrollTime) * FPlatformTime::GetSecondsPerCycle64() > AutoScrollMinDelay)
-		{
-			const double ViewportDuration = Viewport.GetEndTime() - Viewport.GetStartTime(); // width of the viewport in [seconds]
-			const double AutoScrollViewportOffsetTime = ViewportDuration * AutoScrollViewportOffsetPercent;
-
-			// By default, align the current session time with the offseted right side of the viewport.
-			double MinStartTime = Viewport.GetMaxValidTime() - ViewportDuration + AutoScrollViewportOffsetTime;
-
-			if (bIsAutoScrollFrameAligned)
-			{
-				if (Session.IsValid())
-				{
-					Trace::FAnalysisSessionReadScope SessionReadScope(*Session.Get());
-					const Trace::IFrameProvider& FramesProvider = Trace::ReadFrameProvider(*Session.Get());
-
-					const uint64 FrameCount = FramesProvider.GetFrameCount(AutoScrollFrameType);
-
-					if (FrameCount > 0)
-					{
-						// Search the last frame with EndTime <= SessionTime.
-						uint64 FrameIndex = FrameCount;
-						while (FrameIndex > 0)
-						{
-							const Trace::FFrame* FramePtr = FramesProvider.GetFrame(AutoScrollFrameType, --FrameIndex);
-							if (FramePtr && FramePtr->EndTime <= Viewport.GetMaxValidTime())
-							{
-								// Align the start time of the frame with the right side of the viewport.
-								MinStartTime = FramePtr->EndTime - ViewportDuration + AutoScrollViewportOffsetTime;
-								break;
-							}
-						}
-
-						// Get the frame at the center of the viewport.
-						Trace::FFrame Frame;
-						const double ViewportCenter = MinStartTime + ViewportDuration / 2;
-						if (FramesProvider.GetFrameFromTime(AutoScrollFrameType, ViewportCenter, Frame))
-						{
-							if (Frame.EndTime > ViewportCenter)
-							{
-								// Align the start time of the frame with the center of the viewport.
-								MinStartTime = Frame.StartTime - ViewportDuration / 2;
-							}
-						}
-					}
-				}
-			}
-
-			ScrollAtTime(MinStartTime);
-			LastAutoScrollTime = CurrentTime;
-		}
-	}
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	if (Session)
-	{
-		// Tick plugin extenders.
-		// Each extender can add/remove tracks and/or change order of tracks.
-		for (Insights::ITimingViewExtender* Extender : GetExtenders())
-		{
-			Extender->Tick(*this, *Session.Get());
-		}
-
-		// Re-sort now if we need to
-		UpdateScrollableTracksOrder();
-	}
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	// Animate the (vertical) layout transition (i.e. compact mode <-> normal mode).
-	Viewport.UpdateLayout();
-
-	TimeRulerTrack->SetSelection(bIsSelecting, SelectionStartTime, SelectionEndTime);
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	class FTimingTrackUpdateContext : public ITimingTrackUpdateContext
-	{
-	public:
-		explicit FTimingTrackUpdateContext(STimingView* InTimingView, double InCurrentTime, float InDeltaTime) : TimingView(InTimingView), CurrentTime(InCurrentTime), DeltaTime(InDeltaTime) {}
-
-		virtual const FTimingTrackViewport& GetViewport() const override { return TimingView->GetViewport(); }
-		virtual const FVector2D& GetMousePosition() const override { return TimingView->GetMousePosition(); }
-		virtual const TSharedPtr<const ITimingEvent> GetHoveredEvent() const override { return TimingView->GetHoveredEvent(); }
-		virtual const TSharedPtr<const ITimingEvent> GetSelectedEvent() const override { return TimingView->GetSelectedEvent(); }
-		virtual const TSharedPtr<ITimingEventFilter> GetEventFilter() const override { return TimingView->GetEventFilter(); }
-		virtual double GetCurrentTime() const override { return CurrentTime; }
-		virtual float GetDeltaTime() const override { return DeltaTime; }
-
-	public:
-		STimingView* TimingView;
-		double CurrentTime;
-		float DeltaTime;
-	};
-
-	FTimingTrackUpdateContext UpdateContext(this, InCurrentTime, InDeltaTime);
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-	// Pre-Update.
-	// The tracks needs to update their size.
-
-	{
-		FStopwatch PreUpdateTracksStopwatch;
-		PreUpdateTracksStopwatch.Start();
-
-		for (TSharedPtr<FBaseTimingTrack>& TrackPtr : TopDockedTracks)
-		{
-			if (TrackPtr->IsVisible())
-			{
-				TrackPtr->PreUpdate(UpdateContext);
-			}
-		}
-
-		for (TSharedPtr<FBaseTimingTrack>& TrackPtr : BottomDockedTracks)
-		{
-			if (TrackPtr->IsVisible())
-			{
-				TrackPtr->PreUpdate(UpdateContext);
-			}
-		}
-
-		for (TSharedPtr<FBaseTimingTrack>& TrackPtr : ScrollableTracks)
-		{
-			if (TrackPtr->IsVisible())
-			{
-				TrackPtr->PreUpdate(UpdateContext);
-			}
-		}
-
-		for (TSharedPtr<FBaseTimingTrack>& TrackPtr : ForegroundTracks)
-		{
-			if (TrackPtr->IsVisible())
-			{
-				TrackPtr->PreUpdate(UpdateContext);
-			}
-		}
-
-		PreUpdateTracksStopwatch.Stop();
-		PreUpdateTracksDurationHistory.AddValue(PreUpdateTracksStopwatch.AccumulatedTime);
-	}
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-	// Update Y postion for the visible top docked tracks.
-	// Compute the total height of top docked areas.
-
-	int32 NumVisibleTopDockedTracks = 0;
 	float TopOffset = 0.0f;
-	for (TSharedPtr<FBaseTimingTrack>& TrackPtr : TopDockedTracks)
+	if (TimeRulerTrack.IsVisible())
 	{
-		TrackPtr->SetPosY(TopOffset);
-		if (TrackPtr->IsVisible())
-		{
-			TopOffset += TrackPtr->GetHeight();
-			NumVisibleTopDockedTracks++;
-		}
+		TimeRulerTrack.SetPosY(TopOffset);
+		TopOffset += TimeRulerTrack.GetHeight();
 	}
-	if (NumVisibleTopDockedTracks > 0)
+	if (MarkersTrack.IsVisible())
 	{
-		bDrawTopSeparatorLine = true;
-		TopOffset += 2.0f;
+		MarkersTrack.SetPosY(TopOffset);
+		TopOffset += MarkersTrack.GetHeight();
 	}
-	else
+	if (GraphTrack->IsVisible())
 	{
-		bDrawTopSeparatorLine = false;
+		GraphTrack->SetPosY(TopOffset);
+		TopOffset += GraphTrack->GetHeight();
 	}
 	Viewport.SetTopOffset(TopOffset);
 
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-	// Update Y postion for the visible bottom docked tracks.
-	// Compute the total height of bottom docked areas.
+	//////////////////////////////////////////////////
 
-	float BottomOffset = 0.0f;
-	for (TSharedPtr<FBaseTimingTrack>& TrackPtr : BottomDockedTracks)
-	{
-		if (TrackPtr->IsVisible())
-		{
-			BottomOffset += TrackPtr->GetHeight();
-		}
-	}
-	float BottomOffsetY = Viewport.GetHeight() - BottomOffset;
-	int32 NumVisibleBottomDockedTracks = 0;
-	for (TSharedPtr<FBaseTimingTrack>& TrackPtr : BottomDockedTracks)
-	{
-		TrackPtr->SetPosY(BottomOffsetY);
-		if (TrackPtr->IsVisible())
-		{
-			BottomOffsetY += TrackPtr->GetHeight();
-			NumVisibleBottomDockedTracks++;
-		}
-	}
-	if (NumVisibleBottomDockedTracks > 0)
-	{
-		bDrawBottomSeparatorLine = true;
-		BottomOffset += 2.0f;
-	}
-	else
-	{
-		bDrawBottomSeparatorLine = false;
-	}
-	Viewport.SetBottomOffset(BottomOffset);
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-	// Compute the total height of visible scrollable tracks.
-
-	float ScrollHeight = 0.0f;
-	for (TSharedPtr<FBaseTimingTrack>& TrackPtr : ScrollableTracks)
-	{
-		if (TrackPtr->IsVisible())
-		{
-			ScrollHeight += TrackPtr->GetHeight();
-		}
-	}
-	ScrollHeight += 1.0f; // allow 1 pixel at the bottom (for last horizontal line)
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-	// Check if vertical scroll area has changed.
-
-	bool bScrollHeightChanged = false;
-	if (ScrollHeight != Viewport.GetScrollHeight())
-	{
-		bScrollHeightChanged = true;
-		Viewport.SetScrollHeight(ScrollHeight);
-		UpdateVerticalScrollBar();
-	}
-
-	// Set the VerticalScrollBar padding so it is limited to the scrollable area.
-	VerticalScrollBar->SetPadding(FMargin(0.0f, TopOffset, 0.0f, FMath::Max(BottomOffset, 12.0f)));
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	const float InitialScrollPosY = Viewport.GetScrollPosY();
-
-	TSharedPtr<FBaseTimingTrack> SelectedScrollableTrack;
-	if (SelectedTrack.IsValid() && SelectedTrack->IsVisible())
-	{
-		if (ScrollableTracks.Contains(SelectedTrack))
-		{
-			SelectedScrollableTrack = SelectedTrack;
-		}
-	}
-
-	const float InitialPinnedTrackPosY = SelectedScrollableTrack.IsValid() ? SelectedScrollableTrack->GetPosY() : 0.0f;
-
-	// Update the Y position for visible scrollable tracks.
-	UpdatePositionForScrollableTracks();
-
-	// The selected track will be pinned (keeps Y pos fixed unless user scrolls vertically).
-	if (SelectedScrollableTrack.IsValid())
-	{
-		const float ScrollingDY = LastScrollPosY - InitialScrollPosY;
-		const float PinnedTrackPosY = SelectedScrollableTrack->GetPosY();
-		const float AdjustmentDY = InitialPinnedTrackPosY - PinnedTrackPosY + ScrollingDY;
-
-		if (!FMath::IsNearlyZero(AdjustmentDY, 0.5f))
-		{
-			ViewportScrollPosYOnButtonDown -= AdjustmentDY;
-			ScrollAtPosY(InitialScrollPosY - AdjustmentDY);
-			UpdatePositionForScrollableTracks();
-		}
-	}
-
-	// Elastic snap to vertical scroll limits.
 	if (!bIsPanning)
 	{
-		const float DY = Viewport.GetScrollHeight() - Viewport.GetScrollableAreaHeight() + 7.0f; // +7 is to allow some space for the horizontal scrollbar
-		const float MinY = FMath::Min(DY, 0.0f);
-		const float MaxY = DY - MinY;
+		//////////////////////////////////////////////////
+		// Elastic snap to vertical scroll limits.
+
+		const float MinY = 0.0f;// -0.5f * Viewport.Height;
+		const float MaxY = Viewport.GetScrollHeight() - Viewport.GetHeight() + TopOffset + 7.0f;
+		const float U = 0.5f;
 
 		float ScrollPosY = Viewport.GetScrollPosY();
-
 		if (ScrollPosY < MinY)
 		{
-			if (bScrollHeightChanged || Viewport.IsDirty(ETimingTrackViewportDirtyFlags::VLayoutChanged))
+			ScrollPosY = ScrollPosY * U + (1.0f - U) * MinY;
+			if (FMath::IsNearlyEqual(ScrollPosY, MinY, 0.5f))
 			{
 				ScrollPosY = MinY;
-			}
-			else
-			{
-				constexpr float U = 0.5f;
-				ScrollPosY = ScrollPosY * U + (1.0f - U) * MinY;
-				if (FMath::IsNearlyEqual(ScrollPosY, MinY, 0.5f))
-				{
-					ScrollPosY = MinY;
-				}
 			}
 		}
 		else if (ScrollPosY > MaxY)
 		{
-			if (bScrollHeightChanged || Viewport.IsDirty(ETimingTrackViewportDirtyFlags::VLayoutChanged))
+			ScrollPosY = ScrollPosY * U + (1.0f - U) * MaxY;
+			if (FMath::IsNearlyEqual(ScrollPosY, MaxY, 0.5f))
 			{
 				ScrollPosY = MaxY;
-			}
-			else
-			{
-				constexpr float U = 0.5f;
-				ScrollPosY = ScrollPosY * U + (1.0f - U) * MaxY;
-				if (FMath::IsNearlyEqual(ScrollPosY, MaxY, 0.5f))
-				{
-					ScrollPosY = MaxY;
-				}
 			}
 			if (ScrollPosY < MinY)
 			{
@@ -856,99 +381,332 @@ void STimingView::Tick(const FGeometry& AllottedGeometry, const double InCurrent
 			}
 		}
 
-		if (ScrollPosY != Viewport.GetScrollPosY())
+		ScrollAtPosY(ScrollPosY);
+
+		//////////////////////////////////////////////////
+		// Elastic snap to horizontal time limits.
+
+		if (Viewport.EnforceHorizontalScrollLimits(0.5)) // 0.5 is the interpolation factor
 		{
-			ScrollAtPosY(ScrollPosY);
-			UpdatePositionForScrollableTracks();
+			UpdateHorizontalScrollBar();
+			bIsViewportDirty = true;
 		}
 	}
 
-	LastScrollPosY = Viewport.GetScrollPosY();
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-	// At this point it is assumed all tracks have proper position and size.
-	// Update.
+	//TODO: Move this check into STimersView/SStatsView or in STimingProfilerWindow or in FTimingProfilerManager.
+	// We need to check if TimersView or StatsView needs to update their lists of timers / counters.
+	// But, ensure we do not check too often.
+	static uint64 NextTimestamp = 0;
+	uint64 Time = FPlatformTime::Cycles64();
+	if (Time > NextTimestamp)
 	{
-		FStopwatch UpdateTracksStopwatch;
-		UpdateTracksStopwatch.Start();
+		const uint64 WaitTime = static_cast<uint64>(0.2 / FPlatformTime::GetSecondsPerCycle64()); // 200ms
+		NextTimestamp = Time + WaitTime;
 
-		for (TSharedPtr<FBaseTimingTrack>& TrackPtr : TopDockedTracks)
+		TSharedPtr<STimingProfilerWindow> Wnd = FTimingProfilerManager::Get()->GetProfilerWindow();
+		if (Wnd)
 		{
-			if (TrackPtr->IsVisible())
+			TSharedPtr<STimersView> TimersView = Wnd->GetTimersView();
+			if (TimersView)
 			{
-				TrackPtr->Update(UpdateContext);
+				TimersView->RebuildTree(false);
+			}
+			TSharedPtr<SStatsView> StatsView = Wnd->GetStatsView();
+			if (StatsView)
+			{
+				StatsView->RebuildTree(false);
 			}
 		}
-
-		for (TSharedPtr<FBaseTimingTrack>& TrackPtr : BottomDockedTracks)
-		{
-			if (TrackPtr->IsVisible())
-			{
-				TrackPtr->Update(UpdateContext);
-			}
-		}
-
-		for (TSharedPtr<FBaseTimingTrack>& TrackPtr : ScrollableTracks)
-		{
-			if (TrackPtr->IsVisible())
-			{
-				TrackPtr->Update(UpdateContext);
-			}
-		}
-
-		for (TSharedPtr<FBaseTimingTrack>& TrackPtr : ForegroundTracks)
-		{
-			if (TrackPtr->IsVisible())
-			{
-				TrackPtr->Update(UpdateContext);
-			}
-		}
-
-		UpdateTracksStopwatch.Stop();
-		UpdateTracksDurationHistory.AddValue(UpdateTracksStopwatch.AccumulatedTime);
 	}
-	//////////////////////////////////////////////////
-	// Post-Update.
+
+	FileActivitySharedState->Update();
+
+	TSharedPtr<const Trace::IAnalysisSession> Session = FInsightsManager::Get()->GetSession();
+	if (Session)
 	{
-		FStopwatch PostUpdateTracksStopwatch;
-		PostUpdateTracksStopwatch.Start();
+		Trace::FAnalysisSessionReadScope SessionReadScope(*Session.Get());
 
-		for (TSharedPtr<FBaseTimingTrack>& TrackPtr : TopDockedTracks)
+		// Check if horizontal scroll area has changed.
+		double SessionTime = Session->GetDurationSeconds();
+		if (SessionTime > Viewport.GetMaxValidTime() &&
+			SessionTime != DBL_MAX &&
+			SessionTime != std::numeric_limits<double>::infinity())
 		{
-			if (TrackPtr->IsVisible())
+			//UE_LOG(TimingProfiler, Log, TEXT("Session Duration: %g"), DT);
+			Viewport.SetMaxValidTime(SessionTime);
+			UpdateHorizontalScrollBar();
+			//bIsMaxValidTimeDirty = true;
+
+			if (SessionTime >= Viewport.GetStartTime() && SessionTime <= Viewport.GetEndTime())
 			{
-				TrackPtr->PostUpdate(UpdateContext);
+				bAreTimingEventsTracksDirty = true;
+				MarkersTrack.SetDirtyFlag();
 			}
 		}
 
-		for (TSharedPtr<FBaseTimingTrack>& TrackPtr : BottomDockedTracks)
+		bool bIsTimingEventsTrackDirty = false;
+
+		if (Trace::ReadLoadTimeProfilerProvider(*Session.Get()))
 		{
-			if (TrackPtr->IsVisible())
+			const Trace::ILoadTimeProfilerProvider& LoadTimeProfilerProvider = *Trace::ReadLoadTimeProfilerProvider(*Session.Get());
+
+			LoadingMainThreadId = LoadTimeProfilerProvider.GetMainThreadId();
+			LoadingAsyncThreadId = LoadTimeProfilerProvider.GetAsyncLoadingThreadId();
+
+			if (LoadingMainThreadTrack == nullptr)
 			{
-				TrackPtr->PostUpdate(UpdateContext);
+				uint64 TrackId = FBaseTimingTrack::GenerateId();
+				LoadingMainThreadTrack = new FLoadingMainThreadTimingTrack(TrackId, LoadingSharedState);
+				LoadingMainThreadTrack->SetOrder(-3);
+				LoadingMainThreadTrack->SetVisibilityFlag(bShowHideAllLoadingTracks);
+				AddTimingEventsTrack(LoadingMainThreadTrack);
+				bIsTimingEventsTrackDirty = true;
+			}
+
+			if (LoadingAsyncThreadTrack == nullptr)
+			{
+				uint64 TrackId = FBaseTimingTrack::GenerateId();
+				LoadingAsyncThreadTrack = new FLoadingAsyncThreadTimingTrack(TrackId, LoadingSharedState);
+				LoadingMainThreadTrack->SetOrder(-2);
+				LoadingAsyncThreadTrack->SetVisibilityFlag(bShowHideAllLoadingTracks);
+				AddTimingEventsTrack(LoadingAsyncThreadTrack);
+				bIsTimingEventsTrackDirty = true;
 			}
 		}
 
-		for (TSharedPtr<FBaseTimingTrack>& TrackPtr : ScrollableTracks)
+		if (Trace::ReadFileActivityProvider(*Session.Get()))
 		{
-			if (TrackPtr->IsVisible())
+			if (IoOverviewTrack == nullptr)
 			{
-				TrackPtr->PostUpdate(UpdateContext);
+				// Note: The I/O timelines are just prototypes for now (will be removed once the functionality is moved in analyzer).
+				const uint64 TrackId = FBaseTimingTrack::GenerateId();
+				IoOverviewTrack = new FOverviewFileActivityTimingTrack(TrackId, FileActivitySharedState);
+				IoOverviewTrack->SetOrder(-1);
+				IoOverviewTrack->SetVisibilityFlag(bShowHideAllIoTracks);
+				AddTimingEventsTrack(IoOverviewTrack);
+				bIsTimingEventsTrackDirty = true;
 			}
 		}
 
-		for (TSharedPtr<FBaseTimingTrack>& TrackPtr : ForegroundTracks)
+		if (Trace::ReadTimingProfilerProvider(*Session.Get()))
 		{
-			if (TrackPtr->IsVisible())
+			const Trace::ITimingProfilerProvider& TimingProfilerProvider = *Trace::ReadTimingProfilerProvider(*Session.Get());
+
+			// Check if we have a GPU track.
+			uint32 GpuTimelineIndex;
+			if (TimingProfilerProvider.GetGpuTimelineIndex(GpuTimelineIndex))
 			{
-				TrackPtr->PostUpdate(UpdateContext);
+				const uint64 TrackId = static_cast<uint64>(GpuTimelineIndex);
+				if (!CachedTimelines.Contains(TrackId))
+				{
+					GpuTrack = new FGpuTimingTrack(TrackId, TEXT("GPU"), nullptr);
+					GpuTrack->SetOrder(0);
+					GpuTrack->SetVisibilityFlag(bShowHideAllGpuTracks);
+					AddTimingEventsTrack(GpuTrack);
+					bIsTimingEventsTrackDirty = true;
+				}
+			}
+
+			// Check available CPU tracks.
+			int32 Order = 1;
+			const Trace::IThreadProvider& ThreadProvider = Trace::ReadThreadProvider(*Session.Get());
+			ThreadProvider.EnumerateThreads([this, &Order, &bIsTimingEventsTrackDirty, &TimingProfilerProvider](const Trace::FThreadInfo& ThreadInfo)
+			{
+				const TCHAR* GroupName = ThreadInfo.GroupName;
+				if (GroupName == nullptr)
+				{
+					GroupName = ThreadInfo.Name;
+				}
+
+				bool bIsGroupVisible = bShowHideAllCpuTracks;
+				if (GroupName != nullptr)
+				{
+					if (!ThreadGroups.Contains(GroupName))
+					{
+						UE_LOG(TimingProfiler, Log, TEXT("New CPU Thread Group (%d) : \"%s\""), ThreadGroups.Num() + 1, GroupName);
+						ThreadGroups.Add(GroupName, { GroupName, bIsGroupVisible, 0, Order });
+					}
+					else
+					{
+						FThreadGroup& ThreadGroup = ThreadGroups[GroupName];
+						bIsGroupVisible = ThreadGroup.bIsVisible;
+						ThreadGroup.Order = Order;
+					}
+				}
+
+				uint32 CpuTimelineIndex;
+				if (TimingProfilerProvider.GetCpuThreadTimelineIndex(ThreadInfo.Id, CpuTimelineIndex))
+				{
+					FTimingEventsTrack* Track = nullptr;
+					const uint64 TrackId = static_cast<uint64>(CpuTimelineIndex);
+
+					if (!CachedTimelines.Contains(TrackId))
+					{
+						FString TrackName(ThreadInfo.Name && *ThreadInfo.Name ? ThreadInfo.Name : FString::Printf(TEXT("Thread %u"), ThreadInfo.Id));
+
+						// Create new Timing Events track for the CPU thread.
+						Track = new FCpuTimingTrack(TrackId, TrackName, GroupName);
+						Track->SetOrder(Order);
+						((FCpuTimingTrack*)Track)->SetThreadId(ThreadInfo.Id);
+						CpuTracks.Add(ThreadInfo.Id, Track);
+
+						FThreadGroup& ThreadGroup = ThreadGroups[GroupName];
+						ThreadGroup.NumTimelines++;
+
+						if (bAssetLoadingMode && (ThreadInfo.Id == LoadingMainThreadId || ThreadInfo.Id == LoadingAsyncThreadId))
+						{
+							Track->SetVisibilityFlag(true);
+							ThreadGroup.bIsVisible = true;
+						}
+						else
+						{
+							Track->SetVisibilityFlag(bIsGroupVisible);
+						}
+
+						AddTimingEventsTrack(Track);
+						bIsTimingEventsTrackDirty = true;
+					}
+					else
+					{
+						Track = CachedTimelines[TrackId];
+
+						if (Track->GetOrder() != Order)
+						{
+							Track->SetOrder(Order);
+							bIsTimingEventsTrackDirty = true;
+						}
+					}
+
+					Order++;
+				}
+			});
+		}
+
+		if (Trace::ReadFileActivityProvider(*Session.Get()))
+		{
+			if (IoActivityTrack == nullptr)
+			{
+				// Note: The I/O timelines are just prototypes for now (will be removed once the functionality is moved in analyzer).
+				uint64 TrackId = FBaseTimingTrack::GenerateId();
+				IoActivityTrack = new FDetailedFileActivityTimingTrack(TrackId, FileActivitySharedState);
+				IoActivityTrack->SetOrder(999999);
+				IoActivityTrack->SetVisibilityFlag(bShowHideAllIoTracks);
+				AddTimingEventsTrack(IoActivityTrack);
+				bIsTimingEventsTrackDirty = true;
 			}
 		}
 
-		PostUpdateTracksStopwatch.Stop();
-		PostUpdateTracksDurationHistory.AddValue(PostUpdateTracksStopwatch.AccumulatedTime);
+		if (bIsTimingEventsTrackDirty)
+		{
+			// The list has changed. Sort the list again.
+			Algo::SortBy(TimingEventsTracks, &FTimingEventsTrack::GetOrder);
+		}
 	}
+
+	// Compute total height of visible tracks.
+	float TotalScrollHeight = 0.0f;
+	for (FTimingEventsTrack* TrackPtr : TimingEventsTracks)
+	{
+		ensure(TrackPtr != nullptr);
+		FTimingEventsTrack& Track = *TrackPtr;
+
+		if (Track.IsVisible())
+		{
+			Track.SetPosY(TotalScrollHeight);
+			TotalScrollHeight += Track.GetHeight();
+		}
+
+		// Reset track's hovered/selected state.
+		Track.SetHoveredState(false);
+		Track.SetSelectedFlag(false);
+	}
+	TotalScrollHeight += 1.0f; // allow 1 pixel at the bottom (for last horizontal line)
+
+	// Set hovered/selected state for actual hovered/selected tracks, if any.
+	if (HoveredTimingEvent.Track != nullptr)
+	{
+		const_cast<FTimingEventsTrack*>(HoveredTimingEvent.Track)->SetHoveredState(true);
+	}
+	if (SelectedTimingEvent.Track != nullptr)
+	{
+		const_cast<FTimingEventsTrack*>(SelectedTimingEvent.Track)->SetSelectedFlag(true);
+	}
+
+	//TimeRulerTrack.Tick(InCurrentTime, InDeltaTime);
+	MarkersTrack.Tick(InCurrentTime, InDeltaTime);
+
+	// Check if vertical scroll area has changed.
+	if (TotalScrollHeight != Viewport.GetScrollHeight())
+	{
+		Viewport.SetScrollHeight(TotalScrollHeight);
+		UpdateVerticalScrollBar();
+		bIsVerticalViewportDirty = true;
+	}
+
+	// Update layout change animation (i.e. compact mode <-> normal mode).
+	Layout.Update();
+
 	//////////////////////////////////////////////////
+	// Update dirty tracks.
+
+	if (bIsViewportDirty)
+	{
+		bIsViewportDirty = false;
+
+		//TimeRuler.SetDirtyFlag();
+		MarkersTrack.SetDirtyFlag();
+		bAreTimingEventsTracksDirty = true;
+	}
+
+	if (bIsVerticalViewportDirty)
+	{
+		bIsVerticalViewportDirty = false;
+
+		bAreTimingEventsTracksDirty = true;
+	}
+
+	//if (TimeRuler.IsVisible() && TimeRuler.IsDirty())
+	//{
+	//	TimeRuler.ClearDirtyFlag();
+	//
+	//	TimeRuler.OnViewportChanged(Viewport);
+	//}
+
+	if (MarkersTrack.IsVisible() && MarkersTrack.IsDirty())
+	{
+		MarkersTrack.ClearDirtyFlag();
+
+		FStopwatch Stopwatch;
+		Stopwatch.Start();
+
+		MarkersTrack.Update(Viewport);
+
+		Stopwatch.Stop();
+		TimeMarkerCacheUpdateDurationHistory.AddValue(Stopwatch.AccumulatedTime);
+	}
+
+	if (bAreTimingEventsTracksDirty)
+	{
+		bAreTimingEventsTracksDirty = false;
+
+		GraphTrack->SetDirtyFlag();
+
+		FStopwatch Stopwatch;
+		Stopwatch.Start();
+
+		for (int32 TrackIndex = 0; TrackIndex < TimingEventsTracks.Num(); ++TrackIndex)
+		{
+			TimingEventsTracks[TrackIndex]->Update(Viewport);
+		}
+
+		Stopwatch.Stop();
+		TimelineCacheUpdateDurationHistory.AddValue(Stopwatch.AccumulatedTime);
+	}
+
+	if (GraphTrack->IsVisible())
+	{
+		GraphTrack->Update(Viewport);
+	}
 
 	Tooltip.Update();
 	if (!MousePosition.IsZero())
@@ -956,61 +714,14 @@ void STimingView::Tick(const FGeometry& AllottedGeometry, const double InCurrent
 		Tooltip.SetPosition(MousePosition, 0.0f, Viewport.GetWidth() - 12.0f, 0.0f, Viewport.GetHeight() - 12.0f); // -12.0f is to avoid overlaping the scrollbars
 	}
 
-	//////////////////////////////////////////////////
-
-	// Reset hovered/selected flags for all tracks.
-	for (TSharedPtr<FBaseTimingTrack>& TrackPtr : ScrollableTracks)
-	{
-		if (TrackPtr->IsVisible())
-		{
-			TrackPtr->SetHoveredState(false);
-			TrackPtr->SetSelectedFlag(false);
-		}
-	}
-
-	// Set the hovered flag for the actual hovered track, if any.
-	if (HoveredTrack.IsValid())
-	{
-		HoveredTrack->SetHoveredState(true);
-	}
-
-	// Set the selected flag for the actual selected track, if any.
-	if (SelectedTrack.IsValid())
-	{
-		SelectedTrack->SetSelectedFlag(true);
-	}
-
-	//////////////////////////////////////////////////
-
-	Viewport.ResetDirtyFlags();
-
-	TickStopwatch.Stop();
-	TickDurationHistory.AddValue(TickStopwatch.AccumulatedTime);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STimingView::UpdatePositionForScrollableTracks()
-{
-	// Update the Y postion for visible scrollable tracks.
-	float ScrollableTrackPosY = Viewport.GetTopOffset() - Viewport.GetScrollPosY();
-	for (TSharedPtr<FBaseTimingTrack>& TrackPtr : ScrollableTracks)
-	{
-		TrackPtr->SetPosY(ScrollableTrackPosY); // set pos y also for the hidden tracks
-		if (TrackPtr->IsVisible())
-		{
-			ScrollableTrackPosY += TrackPtr->GetHeight();
-		}
-	}
+	//TickStopwatch.Stop();
+	//TODO: TotalUpdateDurationHistory.AddValue(TickStopwatch.AccumulatedTime);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 int32 STimingView::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
 {
-	FStopwatch Stopwatch;
-	Stopwatch.Start();
-
 	const bool bEnabled = ShouldBeEnabled(bParentEnabled);
 	const ESlateDrawEffect DrawEffects = bEnabled ? ESlateDrawEffect::None : ESlateDrawEffect::DisabledEffect;
 	FDrawContext DrawContext(AllottedGeometry, MyCullingRect, InWidgetStyle, DrawEffects, OutDrawElements, LayerId);
@@ -1046,329 +757,100 @@ int32 STimingView::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeom
 	}
 #endif
 
-	////////////////////////////////////////////////////////////////////////////////////////////////////
+	//////////////////////////////////////////////////
 
-	class FTimingTrackDrawContext : public ITimingTrackDrawContext
-	{
-	public:
-		explicit FTimingTrackDrawContext(const STimingView* InTimingView, FDrawContext& InDrawContext, const FTimingViewDrawHelper& InHelper)
-			: TimingView(InTimingView)
-			, DrawContext(InDrawContext)
-			, Helper(InHelper)
-		{}
+	FStopwatch Stopwatch;
+	Stopwatch.Start();
 
-		virtual const FTimingTrackViewport& GetViewport() const override { return TimingView->GetViewport(); }
-		virtual const FVector2D& GetMousePosition() const override { return TimingView->GetMousePosition(); }
-		virtual const TSharedPtr<const ITimingEvent> GetHoveredEvent() const override { return TimingView->GetHoveredEvent(); }
-		virtual const TSharedPtr<const ITimingEvent> GetSelectedEvent() const override { return TimingView->GetSelectedEvent(); }
-		virtual const TSharedPtr<ITimingEventFilter> GetEventFilter() const override { return TimingView->GetEventFilter(); }
-		virtual FDrawContext& GetDrawContext() const override { return DrawContext; }
-		virtual const ITimingViewDrawHelper& GetHelper() const override { return Helper; }
-
-	public:
-		const STimingView* TimingView;
-		FDrawContext& DrawContext;
-		const FTimingViewDrawHelper& Helper;
-	};
-
-	FTimingViewDrawHelper Helper(DrawContext, Viewport);
-	FTimingTrackDrawContext TimingDrawContext(this, DrawContext, Helper);
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////
+	FTimingViewDrawHelper Helper(DrawContext, Viewport, Layout);
 
 	// Draw background.
 	Helper.DrawBackground();
 
-	//////////////////////////////////////////////////
-	// Pre-Draw
+	// Draw scrollable tracks.
 	{
-		FStopwatch PreDrawTracksStopwatch;
-		PreDrawTracksStopwatch.Start();
+		Helper.BeginTimelines();
 
-		for (const TSharedPtr<FBaseTimingTrack>& TrackPtr : ScrollableTracks)
+		for (int32 TrackIndex = 0; TrackIndex < TimingEventsTracks.Num(); ++TrackIndex)
 		{
-			if (TrackPtr->IsVisible())
+			FTimingEventsTrack& Track = *TimingEventsTracks[TrackIndex];
+			if (Track.IsVisible())
 			{
-				TrackPtr->PreDraw(TimingDrawContext);
+				Track.Draw(Helper);
 			}
 		}
 
-		for (const TSharedPtr<FBaseTimingTrack>& TrackPtr : TopDockedTracks)
-		{
-			if (TrackPtr->IsVisible())
-			{
-				TrackPtr->PreDraw(TimingDrawContext);
-			}
-		}
-
-		for (const TSharedPtr<FBaseTimingTrack>& TrackPtr : BottomDockedTracks)
-		{
-			if (TrackPtr->IsVisible())
-			{
-				TrackPtr->PreDraw(TimingDrawContext);
-			}
-		}
-
-		for (const TSharedPtr<FBaseTimingTrack>& TrackPtr : ForegroundTracks)
-		{
-			if (TrackPtr->IsVisible())
-			{
-				TrackPtr->PreDraw(TimingDrawContext);
-			}
-		}
-
-		PreDrawTracksStopwatch.Stop();
-		PreDrawTracksDurationHistory.AddValue(PreDrawTracksStopwatch.AccumulatedTime);
+		Helper.EndTimelines();
 	}
 
-	//////////////////////////////////////////////////
-	// Draw
+	if (!FTimingEvent::AreEquals(SelectedTimingEvent, HoveredTimingEvent))
 	{
-		FStopwatch DrawTracksStopwatch;
-		DrawTracksStopwatch.Start();
-
-		Helper.BeginDrawTracks();
-
-		const FVector2D Position = AllottedGeometry.GetAbsolutePosition();
-		const float Scale = AllottedGeometry.GetAccumulatedLayoutTransform().GetScale();
-
-		// Draw the scrollable tracks.
+		// Highlight the selected timing event (if any).
+		if (SelectedTimingEvent.IsValid())
 		{
-			const float TopY = Viewport.GetTopOffset();
-			const float BottomY = Viewport.GetHeight() - Viewport.GetBottomOffset();
-
-			const float L = Position.X;
-			const float R = Position.X + (Viewport.GetWidth() * Scale);
-			const float T = Position.Y + (TopY * Scale);
-			const float B = Position.Y + (BottomY * Scale);
-			const FSlateClippingZone ClipZone(FVector2D(L, T), FVector2D(R, T), FVector2D(L, B), FVector2D(R, B));
-			DrawContext.ElementList.PushClip(ClipZone);
-
-			for (const TSharedPtr<FBaseTimingTrack>& TrackPtr : ScrollableTracks)
-			{
-				if (TrackPtr->IsVisible())
-				{
-					if (TrackPtr->GetPosY() + TrackPtr->GetHeight() <= TopY)
-					{
-						continue;
-					}
-					if (TrackPtr->GetPosY() >= BottomY)
-					{
-						break;
-					}
-					TrackPtr->Draw(TimingDrawContext);
-				}
-			}
-
-			DrawContext.ElementList.PopClip();
+			const float Y = Viewport.GetViewportY(SelectedTimingEvent.Track->GetPosY()) + Layout.GetLaneY(SelectedTimingEvent.Depth);
+			Helper.DrawTimingEventHighlight(SelectedTimingEvent.StartTime, SelectedTimingEvent.EndTime, Y, FTimingViewDrawHelper::EHighlightMode::Selected);
 		}
 
-		// Draw the top docked tracks.
+		// Highlight the hovered timing event (if any).
+		if (HoveredTimingEvent.IsValid())
 		{
-			const float L = Position.X;
-			const float R = Position.X + (Viewport.GetWidth() * Scale);
-			const float T = Position.Y;
-			const float B = Position.Y + (Viewport.GetTopOffset() * Scale);
-			const FSlateClippingZone ClipZone(FVector2D(L, T), FVector2D(R, T), FVector2D(L, B), FVector2D(R, B));
-			DrawContext.ElementList.PushClip(ClipZone);
-
-			for (const TSharedPtr<FBaseTimingTrack>& TrackPtr : TopDockedTracks)
-			{
-				if (TrackPtr->IsVisible())
-				{
-					TrackPtr->Draw(TimingDrawContext);
-				}
-			}
-
-			if (bDrawTopSeparatorLine)
-			{
-				// Draw separator line between top docked tracks and scrollable tracks.
-				DrawContext.DrawBox(0.0f, Viewport.GetTopOffset() - 2.0f, Viewport.GetWidth(), 2.0f, WhiteBrush, FLinearColor(0.01f, 0.01f, 0.01f, 1.0f));
-				++DrawContext.LayerId;
-			}
-
-			DrawContext.ElementList.PopClip();
-		}
-
-		// Draw the bottom docked tracks.
-		{
-			const float L = Position.X;
-			const float R = Position.X + (Viewport.GetWidth() * Scale);
-			const float T = Position.Y + ((Viewport.GetHeight() - Viewport.GetBottomOffset()) * Scale);
-			const float B = Position.Y + (Viewport.GetHeight() * Scale);
-			const FSlateClippingZone ClipZone(FVector2D(L, T), FVector2D(R, T), FVector2D(L, B), FVector2D(R, B));
-			DrawContext.ElementList.PushClip(ClipZone);
-
-			for (const TSharedPtr<FBaseTimingTrack>& TrackPtr : BottomDockedTracks)
-			{
-				if (TrackPtr->IsVisible())
-				{
-					TrackPtr->Draw(TimingDrawContext);
-				}
-			}
-
-			if (bDrawBottomSeparatorLine)
-			{
-				// Draw separator line between top docked tracks and scrollable tracks.
-				DrawContext.DrawBox(0.0f, Viewport.GetHeight() - Viewport.GetBottomOffset(), Viewport.GetWidth(), 2.0f, WhiteBrush, FLinearColor(0.01f, 0.01f, 0.01f, 1.0f));
-				++DrawContext.LayerId;
-			}
-
-			DrawContext.ElementList.PopClip();
-		}
-
-		// Draw the foreground tracks.
-		for (const TSharedPtr<FBaseTimingTrack>& TrackPtr : ForegroundTracks)
-		{
-			if (TrackPtr->IsVisible())
-			{
-				TrackPtr->Draw(TimingDrawContext);
-			}
-		}
-
-		Helper.EndDrawTracks();
-
-		DrawTracksStopwatch.Stop();
-		DrawTracksDurationHistory.AddValue(DrawTracksStopwatch.AccumulatedTime);
-	}
-
-	//////////////////////////////////////////////////
-	// Draw the selected and/or hovered event.
-
-	if (ITimingEvent::AreValidAndEquals(SelectedEvent, HoveredEvent))
-	{
-		const TSharedRef<const FBaseTimingTrack> TrackPtr = SelectedEvent->GetTrack();
-
-		// Highlight the selected and hovered timing event (if any).
-		if (TrackPtr->IsVisible())
-		{
-			SelectedEvent->GetTrack()->DrawEvent(TimingDrawContext, *SelectedEvent, EDrawEventMode::SelectedAndHovered);
+			const float Y = Viewport.GetViewportY(HoveredTimingEvent.Track->GetPosY()) + Layout.GetLaneY(HoveredTimingEvent.Depth);
+			Helper.DrawTimingEventHighlight(HoveredTimingEvent.StartTime, HoveredTimingEvent.EndTime, Y, FTimingViewDrawHelper::EHighlightMode::Hovered);
 		}
 	}
 	else
 	{
-		// Highlight the selected timing event (if any).
-		if (SelectedEvent.IsValid())
+		// Highlight the selected and hovered timing event (if any).
+		if (SelectedTimingEvent.IsValid())
 		{
-			const TSharedRef<const FBaseTimingTrack> TrackPtr = SelectedEvent->GetTrack();
-			if (TrackPtr->IsVisible())
-			{
-				SelectedEvent->GetTrack()->DrawEvent(TimingDrawContext, *SelectedEvent, EDrawEventMode::Selected);
-			}
-		}
-
-		// Highlight the hovered timing event (if any).
-		if (HoveredEvent.IsValid())
-		{
-			const TSharedRef<const FBaseTimingTrack> TrackPtr = HoveredEvent->GetTrack();
-			if (TrackPtr->IsVisible())
-			{
-				HoveredEvent->GetTrack()->DrawEvent(TimingDrawContext, *HoveredEvent, EDrawEventMode::Hovered);
-			}
+			const float Y = Viewport.GetViewportY(SelectedTimingEvent.Track->GetPosY()) + Layout.GetLaneY(SelectedTimingEvent.Depth);
+			Helper.DrawTimingEventHighlight(SelectedTimingEvent.StartTime, SelectedTimingEvent.EndTime, Y, FTimingViewDrawHelper::EHighlightMode::SelectedAndHovered);
 		}
 	}
+
+	if (GraphTrack->IsVisible())
+	{
+		GraphTrack->Draw(DrawContext, Viewport, MousePosition);
+	}
+
+	if (MarkersTrack.IsVisible())
+	{
+		// Draw the time markers (vertical lines + category & message texts).
+		MarkersTrack.Draw(DrawContext, Viewport);
+	}
+
+	//////////////////////////////////////////////////
+
+	// Draw the time ruler.
+	if (TimeRulerTrack.IsVisible())
+	{
+		TimeRulerTrack.Draw(DrawContext, Viewport, MousePosition, bIsSelecting, SelectionStartTime, SelectionEndTime);
+	}
+
+	// Fill background for the Tracks filter combobox.
+	DrawContext.DrawBox(0, 0, 66, 22, WhiteBrush, FLinearColor(0.05f, 0.05f, 0.05f, 1.0f));
+
+	//////////////////////////////////////////////////
 
 	// Draw the time range selection.
 	FDrawHelpers::DrawTimeRangeSelection(DrawContext, Viewport, SelectionStartTime, SelectionEndTime, WhiteBrush, MainFont);
 
 	//////////////////////////////////////////////////
-	// Post-Draw
+
+	// Draw the time marker (orange vertical line).
+	//DrawTimeMarker(OnPaintState);
+	float TimeMarkerX = Viewport.TimeToSlateUnitsRounded(TimeMarker);
+	if (TimeMarkerX >= 0.0f && TimeMarkerX < Viewport.GetWidth())
 	{
-		FStopwatch PostDrawTracksStopwatch;
-		PostDrawTracksStopwatch.Start();
-
-		for (const TSharedPtr<FBaseTimingTrack>& TrackPtr : ScrollableTracks)
-		{
-			if (TrackPtr->IsVisible())
-			{
-				TrackPtr->PostDraw(TimingDrawContext);
-			}
-		}
-
-		for (const TSharedPtr<FBaseTimingTrack>& TrackPtr : TopDockedTracks)
-		{
-			if (TrackPtr->IsVisible())
-			{
-				TrackPtr->PostDraw(TimingDrawContext);
-			}
-		}
-
-		for (const TSharedPtr<FBaseTimingTrack>& TrackPtr : BottomDockedTracks)
-		{
-			if (TrackPtr->IsVisible())
-			{
-				TrackPtr->PostDraw(TimingDrawContext);
-			}
-		}
-
-		for (const TSharedPtr<FBaseTimingTrack>& TrackPtr : ForegroundTracks)
-		{
-			if (TrackPtr->IsVisible())
-			{
-				TrackPtr->PostDraw(TimingDrawContext);
-			}
-		}
-
-		PostDrawTracksStopwatch.Stop();
-		PostDrawTracksDurationHistory.AddValue(PostDrawTracksStopwatch.AccumulatedTime);
+		DrawContext.DrawBox(TimeMarkerX, 0.0f, 1.0f, Viewport.GetHeight(), WhiteBrush, FLinearColor(0.85f, 0.5f, 0.03f, 0.5f));
+		DrawContext.LayerId++;
 	}
 
 	//////////////////////////////////////////////////
 
-	// Draw tooltip with info about hovered event.
-	Tooltip.Draw(DrawContext);
-
-	// Fill background for the "Tracks" filter combobox.
-	DrawContext.DrawBox(0.0f, 0.0f, 66.0f, 24.0f, WhiteBrush, FLinearColor(0.05f, 0.05f, 0.05f, 1.0f));
-
-	// Fill background for the "Auto-scroll" toggle button.
-	DrawContext.DrawBox(ViewWidth - 40.0f, 0.0f, 40.0f, 24.0f, WhiteBrush, FLinearColor(0.05f, 0.05f, 0.05f, 1.0f));
-
-	//////////////////////////////////////////////////
-	// Draw the overscroll indication lines.
-
-	constexpr float OverscrollLineSize = 1.0f;
-	constexpr int32 OverscrollLineCount = 8;
-
-	if (OverscrollLeft > 0.0f)
-	{
-		// TODO: single box with gradient opacity
-		const float OverscrollLineY = Viewport.GetTopOffset();
-		const float OverscrollLineH = Viewport.GetScrollableAreaHeight();
-		for (int32 LineIndex = 0; LineIndex < OverscrollLineCount; ++LineIndex)
-		{
-			const float Opacity = OverscrollLeft * static_cast<float>(OverscrollLineCount - LineIndex) / static_cast<float>(OverscrollLineCount);
-			DrawContext.DrawBox(LineIndex * OverscrollLineSize, OverscrollLineY, OverscrollLineSize, OverscrollLineH, WhiteBrush, FLinearColor(1.0f, 0.1f, 0.1f, Opacity));
-		}
-	}
-	if (OverscrollRight > 0.0f)
-	{
-		const float OverscrollLineY = Viewport.GetTopOffset();
-		const float OverscrollLineH = Viewport.GetScrollableAreaHeight();
-		for (int32 LineIndex = 0; LineIndex < OverscrollLineCount; ++LineIndex)
-		{
-			const float Opacity = OverscrollRight * static_cast<float>(OverscrollLineCount - LineIndex) / static_cast<float>(OverscrollLineCount);
-			DrawContext.DrawBox(ViewWidth - (1 + LineIndex) * OverscrollLineSize, OverscrollLineY, OverscrollLineSize, OverscrollLineH, WhiteBrush, FLinearColor(1.0f, 0.1f, 0.1f, Opacity));
-		}
-	}
-	if (OverscrollTop > 0.0f)
-	{
-		const float OverscrollLineY = Viewport.GetTopOffset();
-		for (int32 LineIndex = 0; LineIndex < OverscrollLineCount; ++LineIndex)
-		{
-			const float Opacity = OverscrollTop * static_cast<float>(OverscrollLineCount - LineIndex) / static_cast<float>(OverscrollLineCount);
-			DrawContext.DrawBox(0.0f, OverscrollLineY + LineIndex * OverscrollLineSize, ViewWidth, OverscrollLineSize, WhiteBrush, FLinearColor(1.0f, 0.1f, 0.1f, Opacity));
-		}
-	}
-	if (OverscrollBottom > 0.0f)
-	{
-		const float OverscrollLineY = ViewHeight - Viewport.GetBottomOffset();
-		for (int32 LineIndex = 0; LineIndex < OverscrollLineCount; ++LineIndex)
-		{
-			const float Opacity = OverscrollBottom * static_cast<float>(OverscrollLineCount - LineIndex) / static_cast<float>(OverscrollLineCount);
-			DrawContext.DrawBox(0.0f, OverscrollLineY - (1 + LineIndex) * OverscrollLineSize, ViewWidth, OverscrollLineSize, WhiteBrush, FLinearColor(1.0f, 0.1f, 0.1f, Opacity));
-		}
-	}
+	Stopwatch.Stop();
+	DrawDurationHistory.AddValue(Stopwatch.AccumulatedTime);
 
 	//////////////////////////////////////////////////
 
@@ -1397,51 +879,55 @@ int32 STimingView::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeom
 
 		// Time interval since last OnPaint call.
 		const uint64 CurrentTime = FPlatformTime::Cycles64();
-		const uint64 OnPaintDeltaTime = CurrentTime - LastOnPaintTime;
+		const uint64 OnPaintDuration = CurrentTime - LastOnPaintTime;
 		LastOnPaintTime = CurrentTime;
-		OnPaintDeltaTimeHistory.AddValue(OnPaintDeltaTime); // saved for last 32 OnPaint calls
-		const uint64 AvgOnPaintDeltaTime = OnPaintDeltaTimeHistory.ComputeAverage();
-		const uint64 AvgOnPaintDeltaTimeMs = FStopwatch::Cycles64ToMilliseconds(AvgOnPaintDeltaTime);
-		const double AvgOnPaintFps = AvgOnPaintDeltaTimeMs != 0 ? 1.0 / FStopwatch::Cycles64ToSeconds(AvgOnPaintDeltaTime) : 0.0;
+		OnPaintDurationHistory.AddValue(OnPaintDuration); // saved for last 32 OnPaint calls
+		const uint64 AvgOnPaintDuration = OnPaintDurationHistory.ComputeAverage();
+		const uint64 AvgOnPaintDurationMs = FStopwatch::Cycles64ToMilliseconds(AvgOnPaintDuration);
+		const double AvgOnPaintFps = AvgOnPaintDurationMs != 0 ? 1.0 / FStopwatch::Cycles64ToSeconds(AvgOnPaintDuration) : 0.0;
 
-		const uint64 AvgPreDrawTracksDurationMs = FStopwatch::Cycles64ToMilliseconds(PreDrawTracksDurationHistory.ComputeAverage());
-		const uint64 AvgDrawTracksDurationMs = FStopwatch::Cycles64ToMilliseconds(DrawTracksDurationHistory.ComputeAverage());
-		const uint64 AvgPostDrawTracksDurationMs = FStopwatch::Cycles64ToMilliseconds(PostDrawTracksDurationHistory.ComputeAverage());
-		const uint64 AvgTotalDrawDurationMs = FStopwatch::Cycles64ToMilliseconds(TotalDrawDurationHistory.ComputeAverage());
+		const uint64 AvgDrawDurationMs = FStopwatch::Cycles64ToMilliseconds(DrawDurationHistory.ComputeAverage());
 
 		DrawContext.DrawText
 		(
 			DbgX, DbgY,
-			FString::Printf(TEXT("D: %llu ms + %llu ms + %llu ms + %llu ms = %llu ms | + %llu ms = %llu ms (%d fps)"),
-				AvgPreDrawTracksDurationMs, // pre-draw tracks time
-				AvgDrawTracksDurationMs, // draw tracks time
-				AvgPostDrawTracksDurationMs, // post-draw tracks time
-				AvgTotalDrawDurationMs - AvgPreDrawTracksDurationMs - AvgDrawTracksDurationMs - AvgPostDrawTracksDurationMs, // other draw code
-				AvgTotalDrawDurationMs,
-				AvgOnPaintDeltaTimeMs - AvgTotalDrawDurationMs, // other overhead to OnPaint calls
-				AvgOnPaintDeltaTimeMs, // average time between two OnPaint calls
+			FString::Printf(TEXT("D: %llu ms + %llu ms = %llu ms (%d fps)"),
+				AvgDrawDurationMs, // drawing time
+				AvgOnPaintDurationMs - AvgDrawDurationMs, // other overhead to OnPaint calls
+				AvgOnPaintDurationMs, // average time between two OnPaint calls
 				FMath::RoundToInt(AvgOnPaintFps)), // framerate of OnPaint calls
 			SummaryFont, DbgTextColor
 		);
 		DbgY += DbgDY;
 
 		//////////////////////////////////////////////////
-		// Display the "update" performance info.
+		// Display the "timelines cache update" info.
 
-		const uint64 AvgPreUpdateTracksDurationMs = FStopwatch::Cycles64ToMilliseconds(PreUpdateTracksDurationHistory.ComputeAverage());
-		const uint64 AvgUpdateTracksDurationMs = FStopwatch::Cycles64ToMilliseconds(UpdateTracksDurationHistory.ComputeAverage());
-		const uint64 AvgPostUpdateTracksDurationMs = FStopwatch::Cycles64ToMilliseconds(PostUpdateTracksDurationHistory.ComputeAverage());
-		const uint64 AvgTickDurationMs = FStopwatch::Cycles64ToMilliseconds(TickDurationHistory.ComputeAverage());
+		const uint64 AvgTimelineUpdateDurationMs = FStopwatch::Cycles64ToMilliseconds(TimelineCacheUpdateDurationHistory.ComputeAverage());
+		const uint64 LastTimelineUpdateDurationMs = FStopwatch::Cycles64ToMilliseconds(TimelineCacheUpdateDurationHistory.GetValue(0));
 
 		DrawContext.DrawText
 		(
 			DbgX, DbgY,
-			FString::Printf(TEXT("U avg: %llu ms + %llu ms + %llu ms + %llu ms = %llu ms"),
-				AvgPreUpdateTracksDurationMs,
-				AvgUpdateTracksDurationMs,
-				AvgPostUpdateTracksDurationMs,
-				AvgTickDurationMs - AvgPreUpdateTracksDurationMs - AvgUpdateTracksDurationMs - AvgPostUpdateTracksDurationMs,
-				AvgTickDurationMs),
+			FString::Printf(TEXT("U1 avg: %llu ms, last: %llu ms"),
+				AvgTimelineUpdateDurationMs, // time to update the Timeline cache
+				LastTimelineUpdateDurationMs), // last time to update the Timeline cache
+			SummaryFont, DbgTextColor
+		);
+		DbgY += DbgDY;
+
+		//////////////////////////////////////////////////
+		// Display the "time markers cache update" info.
+
+		const uint64 AvgTimeMarkerUpdateDurationMs = FStopwatch::Cycles64ToMilliseconds(TimeMarkerCacheUpdateDurationHistory.ComputeAverage());
+		const uint64 LastTimeMarkerUpdateDurationMs = FStopwatch::Cycles64ToMilliseconds(TimeMarkerCacheUpdateDurationHistory.GetValue(0));
+
+		DrawContext.DrawText
+		(
+			DbgX, DbgY,
+			FString::Printf(TEXT("U2 avg: %llu ms, last: %llu ms"),
+				AvgTimeMarkerUpdateDurationMs, // time to update the TimeMarker cache
+				LastTimeMarkerUpdateDurationMs), // last time to update the Timeline cache
 			SummaryFont, DbgTextColor
 		);
 		DbgY += DbgDY;
@@ -1468,41 +954,36 @@ int32 STimingView::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeom
 		//////////////////////////////////////////////////
 		// Display time markers stats.
 
-		if (MarkersTrack->IsVisible())
-		{
-			DrawContext.DrawText
-			(
-				DbgX, DbgY,
-				FString::Format(TEXT("{0} logs : {1} boxes, {2} texts"),
-				{
-					FText::AsNumber(MarkersTrack->GetNumLogMessages()).ToString(),
-					FText::AsNumber(MarkersTrack->GetNumBoxes()).ToString(),
-					FText::AsNumber(MarkersTrack->GetNumTexts()).ToString(),
-				}),
-				SummaryFont, DbgTextColor
-			);
-			DbgY += DbgDY;
-		}
+		DrawContext.DrawText
+		(
+			DbgX, DbgY,
+			FString::Format(TEXT("{0}{1} logs : {2} boxes, {3} texts"),
+			{
+				MarkersTrack.IsVisible() ? TEXT("") : TEXT("*"),
+				FText::AsNumber(MarkersTrack.GetNumLogMessages()).ToString(),
+				FText::AsNumber(MarkersTrack.GetNumBoxes()).ToString(),
+				FText::AsNumber(MarkersTrack.GetNumTexts()).ToString(),
+			}),
+			SummaryFont, DbgTextColor
+		);
+		DbgY += DbgDY;
 
 		//////////////////////////////////////////////////
 		// Display Graph track stats.
 
-		if (GraphTrack)
-		{
-			DrawContext.DrawText
-			(
-				DbgX, DbgY,
-				FString::Format(TEXT("{0} events : {1} points, {2} lines, {3} boxes"),
-					{
-						FText::AsNumber(GraphTrack->GetNumAddedEvents()).ToString(),
-						FText::AsNumber(GraphTrack->GetNumDrawPoints()).ToString(),
-						FText::AsNumber(GraphTrack->GetNumDrawLines()).ToString(),
-						FText::AsNumber(GraphTrack->GetNumDrawBoxes()).ToString(),
-					}),
-					SummaryFont, DbgTextColor
-			);
-			DbgY += DbgDY;
-		}
+		DrawContext.DrawText
+		(
+			DbgX, DbgY,
+			FString::Format(TEXT("{0} events : {1} points, {2} lines, {3} boxes"),
+				{
+					FText::AsNumber(GraphTrack->GetNumAddedEvents()).ToString(),
+					FText::AsNumber(GraphTrack->GetNumDrawPoints()).ToString(),
+					FText::AsNumber(GraphTrack->GetNumDrawLines()).ToString(),
+					FText::AsNumber(GraphTrack->GetNumDrawBoxes()).ToString(),
+				}),
+				SummaryFont, DbgTextColor
+				);
+		DbgY += DbgDY;
 
 		//////////////////////////////////////////////////
 		// Display viewport's horizontal info.
@@ -1542,239 +1023,95 @@ int32 STimingView::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeom
 		if (bIsPanning) InputStr += " Panning";
 		if (bIsSelecting) InputStr += " Selecting";
 		if (bIsDragging) InputStr += " Dragging";
-		if (TimeRulerTrack->IsScrubbing()) InputStr += " Scrubbing";
 		DrawContext.DrawText(DbgX, DbgY, InputStr, SummaryFont, DbgTextColor);
 		DbgY += DbgDY;
 	}
 
 	//////////////////////////////////////////////////
 
-	Stopwatch.Stop();
-	TotalDrawDurationHistory.AddValue(Stopwatch.AccumulatedTime);
+	{
+		// Draw info about selected event (bottom-right corner).
+		if (SelectedTimingEvent.IsValid())
+		{
+			SelectedTimingEvent.Track->DrawSelectedEventInfo(SelectedTimingEvent, Viewport, DrawContext, WhiteBrush, MainFont);
+		}
+
+		// Draw tooltip with info about hovered event.
+		Tooltip.Draw(DrawContext);
+
+		if (GraphTrack->IsVisible())
+		{
+			GraphTrack->PostDraw(DrawContext, Viewport, MousePosition);
+		}
+	}
 
 	return SCompoundWidget::OnPaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled && IsEnabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-const TCHAR* STimingView::GetLocationName(ETimingTrackLocation Location)
+void STimingView::AddTimingEventsTrack(FTimingEventsTrack* Track)
 {
-	switch (Location)
-	{
-	case ETimingTrackLocation::TopDocked:		return TEXT("Top Docked");
-	case ETimingTrackLocation::BottomDocked:	return TEXT("Bottom Docked");
-	case ETimingTrackLocation::Scrollable:		return TEXT("Scrollable");
-	case ETimingTrackLocation::Foreground:		return TEXT("Foreground");
-	default:									return nullptr;
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STimingView::AddTrack(TSharedPtr<FBaseTimingTrack> Track, ETimingTrackLocation Location)
-{
-	check(Track.IsValid());
-
-	check(Location == ETimingTrackLocation::Scrollable ||
-		  Location == ETimingTrackLocation::TopDocked ||
-		  Location == ETimingTrackLocation::BottomDocked ||
-		  Location == ETimingTrackLocation::Foreground);
-
-	const TCHAR* LocationName = GetLocationName(Location);
-	TArray<TSharedPtr<FBaseTimingTrack>>& TrackList = const_cast<TArray<TSharedPtr<FBaseTimingTrack>>&>(GetTrackList(Location));
-
-	const int32 MaxNumTracks = 1000;
-	if (TrackList.Num() >= MaxNumTracks)
-	{
-		UE_LOG(TimingProfiler, Warning, TEXT("Too many tracks already created (%d tracks)! Ignoring %s track : %s (\"%s\")"),
-			TrackList.Num(),
-			LocationName,
-			*Track->GetTypeName().ToString(),
-			*Track->GetName());
-		return;
-	}
-
-	UE_LOG(TimingProfiler, Log, TEXT("New %s Track (%d) : %s (\"%s\")"),
-		LocationName,
-		TrackList.Num() + 1,
-		*Track->GetTypeName().ToString(),
+	UE_LOG(TimingProfiler, Log, TEXT("New Timing Events Track (%d) : %s - %s (\"%s\")"),
+		TimingEventsTracks.Num() + 1,
+		*Track->GetType().ToString(),
+		*Track->GetSubType().ToString(),
 		*Track->GetName());
 
-	ensure(Track->GetLocation() == ETimingTrackLocation::None);
-	Track->SetLocation(Location);
-
-	check(!AllTracks.Contains(Track->GetId()));
-	AllTracks.Add(Track->GetId(), Track);
-
-	TrackList.Add(Track);
-	Algo::SortBy(TrackList, &FBaseTimingTrack::GetOrder);
-
-	if (Location == ETimingTrackLocation::Scrollable)
-	{
-		InvalidateScrollableTracksOrder();
-	}
+	CachedTimelines.Add(Track->GetId(), Track);
+	TimingEventsTracks.Add(Track);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool STimingView::RemoveTrack(TSharedPtr<FBaseTimingTrack> Track)
+bool STimingView::IsGpuTrackVisible() const
 {
-	check(Track.IsValid());
-
-	if (AllTracks.Remove(Track->GetId()) > 0)
-	{
-		const ETimingTrackLocation Location = Track->GetLocation();
-		check(Location == ETimingTrackLocation::Scrollable ||
-			  Location == ETimingTrackLocation::TopDocked ||
-			  Location == ETimingTrackLocation::BottomDocked ||
-			  Location == ETimingTrackLocation::Foreground);
-
-		Track->SetLocation(ETimingTrackLocation::None);
-
-		const TCHAR* LocationName = GetLocationName(Location);
-		TArray<TSharedPtr<FBaseTimingTrack>>& TrackList = const_cast<TArray<TSharedPtr<FBaseTimingTrack>>&>(GetTrackList(Location));
-
-		TrackList.Remove(Track);
-
-		if (Location == ETimingTrackLocation::Scrollable)
-		{
-			InvalidateScrollableTracksOrder();
-		}
-
-		UE_LOG(TimingProfiler, Log, TEXT("Removed %s Track (%d) : %s (\"%s\")"),
-			LocationName,
-			TrackList.Num(),
-			*Track->GetTypeName().ToString(),
-			*Track->GetName());
-
-		return true;
-	}
-	return false;
+	return GpuTrack != nullptr && GpuTrack->IsVisible();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void STimingView::HideAllScrollableTracks()
+bool STimingView::IsCpuTrackVisible(uint32 ThreadId) const
 {
-	for (TSharedPtr<FBaseTimingTrack>& Track : ScrollableTracks)
-	{
-		Track->Hide();
-	}
-	OnTrackVisibilityChanged();
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STimingView::InvalidateScrollableTracksOrder()
-{
-	bScrollableTracksOrderIsDirty = true;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STimingView::UpdateScrollableTracksOrder()
-{
-	if (bScrollableTracksOrderIsDirty)
-	{
-		Algo::SortBy(ScrollableTracks, &FBaseTimingTrack::GetOrder);
-		bScrollableTracksOrderIsDirty = false;
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-int32 STimingView::GetFirstScrollableTrackOrder() const
-{
-	return (ScrollableTracks.Num() > 0) ? ScrollableTracks[0]->GetOrder() : 1;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-int32 STimingView::GetLastScrollableTrackOrder() const
-{
-	return (ScrollableTracks.Num() > 0) ? ScrollableTracks.Last()->GetOrder() : -1;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-FReply STimingView::AllowTracksToProcessOnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
-{
-	for (TSharedPtr<FBaseTimingTrack>& TrackPtr : TopDockedTracks)
-	{
-		if (TrackPtr->IsVisible())
-		{
-			FReply Reply = TrackPtr->OnMouseButtonDown(MyGeometry, MouseEvent);
-			if (Reply.IsEventHandled())
-			{
-				return Reply;
-			}
-		}
-	}
-
-	for (TSharedPtr<FBaseTimingTrack>& TrackPtr : BottomDockedTracks)
-	{
-		if (TrackPtr->IsVisible())
-		{
-			FReply Reply = TrackPtr->OnMouseButtonDown(MyGeometry, MouseEvent);
-			if (Reply.IsEventHandled())
-			{
-				return Reply;
-			}
-		}
-	}
-
-	for (TSharedPtr<FBaseTimingTrack>& TrackPtr : ScrollableTracks)
-	{
-		if (TrackPtr->IsVisible())
-		{
-			FReply Reply = TrackPtr->OnMouseButtonDown(MyGeometry, MouseEvent);
-			if (Reply.IsEventHandled())
-			{
-				return Reply;
-			}
-		}
-	}
-
-	for (TSharedPtr<FBaseTimingTrack>& TrackPtr : ForegroundTracks)
-	{
-		if (TrackPtr->IsVisible())
-		{
-			FReply Reply = TrackPtr->OnMouseButtonDown(MyGeometry, MouseEvent);
-			if (Reply.IsEventHandled())
-			{
-				return Reply;
-			}
-		}
-	}
-
-	return FReply::Unhandled();
+	return CpuTracks.Contains(ThreadId) && CpuTracks[ThreadId]->IsVisible();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 FReply STimingView::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
-	FReply Reply = AllowTracksToProcessOnMouseButtonDown(MyGeometry, MouseEvent);
-	if (Reply.IsEventHandled())
-	{
-		return Reply;
-	}
+	FReply Reply = FReply::Unhandled();
 
 	MousePositionOnButtonDown = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
 	MousePosition = MousePositionOnButtonDown;
 
-	bool bStartPanningSelectingOrScrubbing = false;
 	bool bStartPanning = false;
 	bool bStartSelecting = false;
-	bool bStartScrubbing = false;
 
 	if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
 	{
+		if (MarkersTrack.IsVisible() && MarkersTrack.IsHeaderHovered())
+		{
+			MarkersTrack.ToggleCollapsed();
+		}
+
 		if (!bIsRMB_Pressed)
 		{
 			bIsLMB_Pressed = true;
-			bStartPanningSelectingOrScrubbing = true;
-			SelectHoveredTimingTrack();
+
+			if (!bIsSpaceBarKeyPressed &&
+				(MousePositionOnButtonDown.Y < TimeRulerTrack.GetHeight() ||
+				 (MouseEvent.GetModifierKeys().IsControlDown() && MouseEvent.GetModifierKeys().IsShiftDown())))
+			{
+				bStartSelecting = true;
+			}
+			else
+			{
+				bStartPanning = true;
+			}
+
+			// Capture mouse, so we can drag outside this widget.
+			Reply = FReply::Handled().CaptureMouse(SharedThis(this));
 		}
 	}
 	else if (MouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
@@ -1782,70 +1119,27 @@ FReply STimingView::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointe
 		if (!bIsLMB_Pressed)
 		{
 			bIsRMB_Pressed = true;
-			bStartPanningSelectingOrScrubbing = true;
-			SelectHoveredTimingTrack();
-		}
-	}
 
-	TSharedPtr<Insights::FTimeMarker> ScrubbingTimeMarker = nullptr;
-
-	if (bStartPanningSelectingOrScrubbing)
-	{
-		bool bIsHoveringTimeRulerTrack = false;
-		if (TimeRulerTrack->IsVisible())
-		{
-			bIsHoveringTimeRulerTrack = MousePositionOnButtonDown.Y >= TimeRulerTrack->GetPosY() &&
-										MousePositionOnButtonDown.Y < TimeRulerTrack->GetPosY() + TimeRulerTrack->GetHeight();
-			if (bIsHoveringTimeRulerTrack)
+			if (!bIsSpaceBarKeyPressed &&
+				(MousePositionOnButtonDown.Y < TimeRulerTrack.GetHeight() ||
+				(MouseEvent.GetModifierKeys().IsControlDown() && MouseEvent.GetModifierKeys().IsShiftDown())))
 			{
-				if (MouseEvent.GetModifierKeys().IsControlDown())
-				{
-					ScrubbingTimeMarker = DefaultTimeMarker;
-				}
-				else
-				{
-					ScrubbingTimeMarker = TimeRulerTrack->GetTimeMarkerAtPos(MousePositionOnButtonDown, Viewport);
-				}
+				bStartSelecting = true;
 			}
-		}
+			else
+			{
+				bStartPanning = true;
+			}
 
-		if (bIsSpaceBarKeyPressed)
-		{
-			bStartPanning = true;
+			// Capture mouse, so we can drag outside this widget.
+			Reply = FReply::Handled().CaptureMouse(SharedThis(this));
 		}
-		else if (ScrubbingTimeMarker)
-		{
-			bStartScrubbing = true;
-		}
-		else if (bIsHoveringTimeRulerTrack || (MouseEvent.GetModifierKeys().IsControlDown() && MouseEvent.GetModifierKeys().IsShiftDown()))
-		{
-			bStartSelecting = true;
-		}
-		else
-		{
-			bStartPanning = true;
-		}
-
-		// Capture mouse, so we can drag outside this widget.
-		Reply = FReply::Handled().CaptureMouse(SharedThis(this));
 	}
 
-	if (bPreventThrottling)
-	{
-		Reply.PreventThrottling();
-	}
-
-	if (bStartScrubbing)
-	{
-		bIsPanning = false;
-		bIsDragging = false;
-		TimeRulerTrack->StartScrubbing(ScrubbingTimeMarker.ToSharedRef());
-	}
-	else if (bStartPanning)
+	if (bStartPanning)
 	{
 		bIsPanning = true;
 		bIsDragging = false;
-		TimeRulerTrack->StopScrubbing();
 
 		ViewportStartTimeOnButtonDown = Viewport.GetStartTime();
 		ViewportScrollPosYOnButtonDown = Viewport.GetScrollPosY();
@@ -1870,7 +1164,6 @@ FReply STimingView::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointe
 	{
 		bIsSelecting = true;
 		bIsDragging = false;
-		TimeRulerTrack->StopScrubbing();
 
 		SelectionStartTime = Viewport.SlateUnitsToTime(MousePositionOnButtonDown.X);
 		SelectionEndTime = SelectionStartTime;
@@ -1883,68 +1176,9 @@ FReply STimingView::OnMouseButtonDown(const FGeometry& MyGeometry, const FPointe
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-FReply STimingView::AllowTracksToProcessOnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
-{
-	for (TSharedPtr<FBaseTimingTrack>& TrackPtr : TopDockedTracks)
-	{
-		if (TrackPtr->IsVisible())
-		{
-			FReply Reply = TrackPtr->OnMouseButtonUp(MyGeometry, MouseEvent);
-			if (Reply.IsEventHandled())
-			{
-				return Reply;
-			}
-		}
-	}
-
-	for (TSharedPtr<FBaseTimingTrack>& TrackPtr : BottomDockedTracks)
-	{
-		if (TrackPtr->IsVisible())
-		{
-			FReply Reply = TrackPtr->OnMouseButtonUp(MyGeometry, MouseEvent);
-			if (Reply.IsEventHandled())
-			{
-				return Reply;
-			}
-		}
-	}
-
-	for (TSharedPtr<FBaseTimingTrack>& TrackPtr : ScrollableTracks)
-	{
-		if (TrackPtr->IsVisible())
-		{
-			FReply Reply = TrackPtr->OnMouseButtonUp(MyGeometry, MouseEvent);
-			if (Reply.IsEventHandled())
-			{
-				return Reply;
-			}
-		}
-	}
-
-	for (TSharedPtr<FBaseTimingTrack>& TrackPtr : ForegroundTracks)
-	{
-		if (TrackPtr->IsVisible())
-		{
-			FReply Reply = TrackPtr->OnMouseButtonUp(MyGeometry, MouseEvent);
-			if (Reply.IsEventHandled())
-			{
-				return Reply;
-			}
-		}
-	}
-
-	return FReply::Unhandled();
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
 FReply STimingView::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
-	FReply Reply = AllowTracksToProcessOnMouseButtonUp(MyGeometry, MouseEvent);
-	if (Reply.IsEventHandled())
-	{
-		return Reply;
-	}
+	FReply Reply = FReply::Unhandled();
 
 	MousePositionOnButtonUp = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
 	MousePosition = MousePositionOnButtonUp;
@@ -1958,6 +1192,7 @@ FReply STimingView::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerE
 			if (bIsPanning)
 			{
 				PanningMode = EPanningMode::None;
+
 				bIsPanning = false;
 			}
 			else if (bIsSelecting)
@@ -1965,21 +1200,15 @@ FReply STimingView::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerE
 				RaiseSelectionChanged();
 				bIsSelecting = false;
 			}
-			else if (TimeRulerTrack->IsScrubbing())
-			{
-				RaiseTimeMarkerChanged();
-				TimeRulerTrack->StopScrubbing();
-			}
 
 			if (bIsValidForMouseClick)
 			{
 				// Select the hovered timing event (if any).
 				UpdateHoveredTimingEvent(MousePositionOnButtonUp.X, MousePositionOnButtonUp.Y);
-				SelectHoveredTimingTrack();
 				SelectHoveredTimingEvent();
 
 				// When clicking on an empty space...
-				if (!SelectedEvent.IsValid())
+				if (!SelectedTimingEvent.IsValid())
 				{
 					// ...reset selection.
 					SelectionEndTime = SelectionStartTime = 0.0;
@@ -2003,6 +1232,7 @@ FReply STimingView::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerE
 			if (bIsPanning)
 			{
 				PanningMode = EPanningMode::None;
+
 				bIsPanning = false;
 			}
 			else if (bIsSelecting)
@@ -2010,15 +1240,9 @@ FReply STimingView::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerE
 				RaiseSelectionChanged();
 				bIsSelecting = false;
 			}
-			else if (TimeRulerTrack->IsScrubbing())
-			{
-				RaiseTimeMarkerChanged();
-				TimeRulerTrack->StopScrubbing();
-			}
 
 			if (bIsValidForMouseClick)
 			{
-				SelectHoveredTimingTrack();
 				ShowContextMenu(MouseEvent);
 			}
 
@@ -2036,90 +1260,20 @@ FReply STimingView::OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerE
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-FReply STimingView::AllowTracksToProcessOnMouseButtonDoubleClick(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
-{
-	for (TSharedPtr<FBaseTimingTrack>& TrackPtr : TopDockedTracks)
-	{
-		if (TrackPtr->IsVisible())
-		{
-			FReply Reply = TrackPtr->OnMouseButtonDoubleClick(MyGeometry, MouseEvent);
-			if (Reply.IsEventHandled())
-			{
-				return Reply;
-			}
-		}
-	}
-
-	for (TSharedPtr<FBaseTimingTrack>& TrackPtr : BottomDockedTracks)
-	{
-		if (TrackPtr->IsVisible())
-		{
-			FReply Reply = TrackPtr->OnMouseButtonDoubleClick(MyGeometry, MouseEvent);
-			if (Reply.IsEventHandled())
-			{
-				return Reply;
-			}
-		}
-	}
-
-	for (TSharedPtr<FBaseTimingTrack>& TrackPtr : ScrollableTracks)
-	{
-		if (TrackPtr->IsVisible())
-		{
-			FReply Reply = TrackPtr->OnMouseButtonDoubleClick(MyGeometry, MouseEvent);
-			if (Reply.IsEventHandled())
-			{
-				return Reply;
-			}
-		}
-	}
-
-	for (TSharedPtr<FBaseTimingTrack>& TrackPtr : ForegroundTracks)
-	{
-		if (TrackPtr->IsVisible())
-		{
-			FReply Reply = TrackPtr->OnMouseButtonDoubleClick(MyGeometry, MouseEvent);
-			if (Reply.IsEventHandled())
-			{
-				return Reply;
-			}
-		}
-	}
-
-	return FReply::Unhandled();
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
 FReply STimingView::OnMouseButtonDoubleClick(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
-	FReply Reply = AllowTracksToProcessOnMouseButtonDoubleClick(MyGeometry, MouseEvent);
-	if (Reply.IsEventHandled())
-	{
-		return Reply;
-	}
+	FReply Reply = FReply::Unhandled();
 
 	if (MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
 	{
-		if (HoveredEvent.IsValid())
+		if (MarkersTrack.IsVisible() && MarkersTrack.IsHovered())
 		{
-			if (MouseEvent.GetModifierKeys().IsControlDown())
-			{
-				const double EndTime = Viewport.RestrictEndTime(HoveredEvent->GetEndTime());
-				SelectTimeInterval(HoveredEvent->GetStartTime(), EndTime - HoveredEvent->GetStartTime());
-			}
-			else
-			{
-				SetEventFilter(HoveredEvent->GetTrack()->GetFilterByEvent(HoveredEvent));
-			}
+			MarkersTrack.ToggleCollapsed();
 		}
-		else
+		else if (HoveredTimingEvent.IsValid())
 		{
-			if (TimingEventFilter.IsValid())
-			{
-				TimingEventFilter.Reset();
-				Viewport.AddDirtyFlags(ETimingTrackViewportDirtyFlags::HInvalidated);
-			}
+			double EndTime = Viewport.RestrictEndTime(HoveredTimingEvent.EndTime);
+			SelectTimeInterval(HoveredTimingEvent.StartTime, EndTime - HoveredTimingEvent.StartTime);
 		}
 
 		Reply = FReply::Handled();
@@ -2175,19 +1329,18 @@ FReply STimingView::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent
 				RaiseSelectionChanging();
 			}
 		}
-		else if (TimeRulerTrack->IsScrubbing())
-		{
-			if (HasMouseCapture())
-			{
-				bIsDragging = true;
-
-				TSharedRef<Insights::FTimeMarker> ScrubbingTimeMarker = TimeRulerTrack->GetScrubbingTimeMarker();
-				ScrubbingTimeMarker->SetTime(Viewport.SlateUnitsToTime(MousePosition.X));
-				RaiseTimeMarkerChanging();
-			}
-		}
 		else
 		{
+			if (MarkersTrack.IsVisible())
+			{
+				MarkersTrack.UpdateHoveredState(MousePosition.X, MousePosition.Y, Viewport);
+			}
+
+			if (GraphTrack->IsVisible())
+			{
+				GraphTrack->UpdateHoveredState(MousePosition.X, MousePosition.Y, Viewport);
+			}
+
 			UpdateHoveredTimingEvent(MousePosition.X, MousePosition.Y);
 		}
 
@@ -2219,16 +1372,17 @@ void STimingView::OnMouseLeave(const FPointerEvent& MouseEvent)
 
 		MousePosition = FVector2D::ZeroVector;
 
-		if (HoveredTrack.IsValid())
+		if (MarkersTrack.IsVisible())
 		{
-			HoveredTrack.Reset();
-			OnHoveredTrackChangedDelegate.Broadcast(HoveredTrack);
+			MarkersTrack.UpdateHoveredState(MousePosition.X, MousePosition.Y, Viewport);
 		}
-		if (HoveredEvent.IsValid())
+
+		if (GraphTrack->IsVisible())
 		{
-			HoveredEvent.Reset();
-			OnHoveredEventChangedDelegate.Broadcast(HoveredEvent);
+			GraphTrack->UpdateHoveredState(MousePosition.X, MousePosition.Y, Viewport);
 		}
+
+		HoveredTimingEvent.Reset();
 		Tooltip.SetDesiredOpacity(0.0f);
 	}
 }
@@ -2239,39 +1393,28 @@ FReply STimingView::OnMouseWheel(const FGeometry& MyGeometry, const FPointerEven
 {
 	if (MouseEvent.GetModifierKeys().IsShiftDown())
 	{
-		//MousePosition = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
 		if (GraphTrack->IsVisible() &&
 			MousePosition.Y >= GraphTrack->GetPosY() &&
 			MousePosition.Y < GraphTrack->GetPosY() + GraphTrack->GetHeight())
 		{
-			// Zoom in/out vertically.
-			const double Delta = MouseEvent.GetWheelDelta();
-			constexpr double ZoomStep = 0.25; // as percent
-			constexpr double MinScaleY = 0.0001;
-			constexpr double MaxScaleY = 1.0e10;
-			double ScaleY = GraphTrack->GetSharedValueViewport().GetScaleY();
-			if (Delta > 0)
-			{
-				ScaleY *= FMath::Pow(1.0 + ZoomStep, Delta);
-				if (ScaleY > MaxScaleY)
-				{
-					ScaleY = MaxScaleY;
-				}
-			}
-			else
-			{
-				ScaleY *= FMath::Pow(1.0 / (1.0 + ZoomStep), -Delta);
-				if (ScaleY < MinScaleY)
-				{
-					ScaleY = MinScaleY;
-				}
-			}
-			GraphTrack->GetSharedValueViewport().SetScaleY(ScaleY);
-
 			for (const TSharedPtr<FGraphSeries>& Series : GraphTrack->GetSeries())
 			{
-				if (Series->IsUsingSharedViewport())
+				if (Series->IsVisible() && !Series->IsAutoZoomEnabled())
 				{
+					// Zoom in/out vertically.
+					const double Delta = MouseEvent.GetWheelDelta();
+					constexpr double ZoomStep = 0.25; // as percent
+					double ScaleY;
+
+					if (Delta > 0)
+					{
+						ScaleY = Series->GetScaleY() * FMath::Pow(1.0 + ZoomStep, Delta);
+					}
+					else
+					{
+						ScaleY = Series->GetScaleY() * FMath::Pow(1.0 / (1.0 + ZoomStep), -Delta);
+					}
+
 					Series->SetScaleY(ScaleY);
 					Series->SetDirtyFlag();
 				}
@@ -2281,25 +1424,26 @@ FReply STimingView::OnMouseWheel(const FGeometry& MyGeometry, const FPointerEven
 		{
 			// Scroll vertically.
 			constexpr float ScrollSpeedY = 16.0f * 3;
-			const float NewScrollPosY = Viewport.GetScrollPosY() - ScrollSpeedY * MouseEvent.GetWheelDelta();
-			ScrollAtPosY(EnforceVerticalScrollLimits(NewScrollPosY));
+			const float ScrollPosY = Viewport.GetScrollPosY() - ScrollSpeedY * MouseEvent.GetWheelDelta();
+			ScrollAtPosY(ScrollPosY);
 		}
 	}
 	else if (MouseEvent.GetModifierKeys().IsControlDown())
 	{
 		// Scroll horizontally.
 		const double ScrollSpeedX = Viewport.GetDurationForViewportDX(16.0 * 3);
-		const double NewStartTime = Viewport.GetStartTime() - ScrollSpeedX * MouseEvent.GetWheelDelta();
-		ScrollAtTime(EnforceHorizontalScrollLimits(NewStartTime));
+		ScrollAtTime(Viewport.GetStartTime() - ScrollSpeedX * MouseEvent.GetWheelDelta());
 	}
 	else
 	{
 		// Zoom in/out horizontally.
 		const double Delta = MouseEvent.GetWheelDelta();
-		//MousePosition = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
+		MousePosition = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition());
 		if (Viewport.RelativeZoomWithFixedX(Delta, MousePosition.X))
 		{
+			//Viewport.EnforceHorizontalScrollLimits(1.0);
 			UpdateHorizontalScrollBar();
+			bIsViewportDirty = true;
 		}
 	}
 
@@ -2386,9 +1530,9 @@ FReply STimingView::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKe
 	if (InKeyEvent.GetKey() == EKeys::B)
 	{
 		// Toggle Bookmarks.
-		if (MarkersTrack->IsVisible())
+		if (MarkersTrack.IsVisible())
 		{
-			if (!MarkersTrack->IsBookmarksTrack())
+			if (!MarkersTrack.IsBookmarksTrack())
 			{
 				SetDrawOnlyBookmarks(true);
 			}
@@ -2407,9 +1551,9 @@ FReply STimingView::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKe
 	else if (InKeyEvent.GetKey() == EKeys::M)
 	{
 		// Toggle Time Markers.
-		if (MarkersTrack->IsVisible())
+		if (MarkersTrack.IsVisible())
 		{
-			if (MarkersTrack->IsBookmarksTrack())
+			if (MarkersTrack.IsBookmarksTrack())
 			{
 				SetDrawOnlyBookmarks(false);
 			}
@@ -2435,14 +1579,20 @@ FReply STimingView::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKe
 	{
 		if (InKeyEvent.GetModifierKeys().IsControlDown())
 		{
-			if (SelectedEvent.IsValid())
+			if (SelectedTimingEvent.IsValid())
 			{
-				SelectedEvent->GetTrack()->OnClipboardCopyEvent(*SelectedEvent);
+				const FTimerNodePtr TimerNodePtr = FTimingProfilerManager::Get()->GetTimerNode(SelectedTimingEvent.TypeId);
+				if (TimerNodePtr.IsValid())
+				{
+					// Copy name of selected timing event to clipboard.
+					FPlatformApplicationMisc::ClipboardCopy(*TimerNodePtr->GetName().ToString());
+				}
 			}
 		}
 		else
 		{
-			Viewport.SwitchLayoutCompactMode();
+			Layout.bIsCompactMode = !Layout.bIsCompactMode;
+			bAreTimingEventsTracksDirty = true;
 			return FReply::Handled();
 		}
 	}
@@ -2458,7 +1608,9 @@ FReply STimingView::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKe
 		const double ScaleX = Viewport.GetScaleX() * 1.25;
 		if (Viewport.ZoomWithFixedX(ScaleX, Viewport.GetWidth() / 2))
 		{
+			//Viewport.EnforceHorizontalScrollLimits(1.0);
 			UpdateHorizontalScrollBar();
+			bIsViewportDirty = true;
 		}
 		return FReply::Handled();
 	}
@@ -2469,7 +1621,9 @@ FReply STimingView::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKe
 		const double ScaleX = Viewport.GetScaleX() / 1.25;
 		if (Viewport.ZoomWithFixedX(ScaleX, Viewport.GetWidth() / 2))
 		{
+			//Viewport.EnforceHorizontalScrollLimits(1.0);
 			UpdateHorizontalScrollBar();
+			bIsViewportDirty = true;
 		}
 		return FReply::Handled();
 	}
@@ -2478,8 +1632,14 @@ FReply STimingView::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKe
 		if (InKeyEvent.GetModifierKeys().IsControlDown())
 		{
 			// Scroll Left
-			const double NewStartTime = Viewport.GetStartTime() - Viewport.GetDuration() * 0.05;
-			ScrollAtTime(EnforceHorizontalScrollLimits(NewStartTime));
+			const double DT = Viewport.GetDuration();
+			//ScrollAtTime(Viewport.GetStartTime() - DT * 0.05);
+			if (Viewport.ScrollAtTime(Viewport.GetStartTime() - DT * 0.05))
+			{
+				//Viewport.EnforceHorizontalScrollLimits(1.0);
+				UpdateHorizontalScrollBar();
+				bIsViewportDirty = true;
+			}
 		}
 		else
 		{
@@ -2492,8 +1652,14 @@ FReply STimingView::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKe
 		if (InKeyEvent.GetModifierKeys().IsControlDown())
 		{
 			// Scroll Right
-			const double NewStartTime = Viewport.GetStartTime() + Viewport.GetDuration() * 0.05;
-			ScrollAtTime(EnforceHorizontalScrollLimits(NewStartTime));
+			const double DT = Viewport.GetDuration();
+			//ScrollAtTime(Viewport.GetStartTime() + DT * 0.05);
+			if (Viewport.ScrollAtTime(Viewport.GetStartTime() + DT * 0.05))
+			{
+				//Viewport.EnforceHorizontalScrollLimits(1.0);
+				UpdateHorizontalScrollBar();
+				bIsViewportDirty = true;
+			}
 		}
 		else
 		{
@@ -2506,8 +1672,7 @@ FReply STimingView::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKe
 		if (InKeyEvent.GetModifierKeys().IsControlDown())
 		{
 			// Scroll Up
-			const float NewScrollPosY = Viewport.GetScrollPosY() - 16.0f * 3;
-			ScrollAtPosY(EnforceVerticalScrollLimits(NewScrollPosY));
+			ScrollAtPosY(Viewport.GetScrollPosY() - 16.0f * 3);
 		}
 		else
 		{
@@ -2520,8 +1685,7 @@ FReply STimingView::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKe
 		if (InKeyEvent.GetModifierKeys().IsControlDown())
 		{
 			// Scroll Down
-			const float NewScrollPosY = Viewport.GetScrollPosY() + 16.0f * 3;
-			ScrollAtPosY(EnforceVerticalScrollLimits(NewScrollPosY));
+			ScrollAtPosY(Viewport.GetScrollPosY() + 16.0f * 3);
 		}
 		else
 		{
@@ -2531,10 +1695,10 @@ FReply STimingView::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKe
 	}
 	else if (InKeyEvent.GetKey() == EKeys::Enter)
 	{
-		if (SelectedEvent.IsValid())
+		if (SelectedTimingEvent.IsValid())
 		{
-			const double Duration = Viewport.RestrictDuration(SelectedEvent->GetStartTime(), SelectedEvent->GetEndTime());
-			SelectTimeInterval(SelectedEvent->GetStartTime(), Duration);
+			const double Duration = Viewport.RestrictDuration(SelectedTimingEvent.StartTime, SelectedTimingEvent.EndTime);
+			SelectTimeInterval(SelectedTimingEvent.StartTime, Duration);
 		}
 		return FReply::Handled();
 	}
@@ -2547,41 +1711,38 @@ FReply STimingView::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKe
 	else if (InKeyEvent.GetKey() == EKeys::D) // debug: toggles down-sampling on/off
 	{
 		FTimingEventsTrack::bUseDownSampling = !FTimingEventsTrack::bUseDownSampling;
-		Viewport.AddDirtyFlags(ETimingTrackViewportDirtyFlags::HInvalidated);
+		bAreTimingEventsTracksDirty = true;
 		return FReply::Handled();
 	}
-	else if (InKeyEvent.GetKey() == EKeys::G)
+	else if (InKeyEvent.GetKey() == EKeys::G) // debug: toggles Graph track on/off
 	{
 		ShowHideGraphTrack_Execute();
 		return FReply::Handled();
 	}
-	else if (InKeyEvent.GetKey() == EKeys::R)
+	else if (InKeyEvent.GetKey() == EKeys::Y) // debug: toggles GPU track on/off
 	{
-		FrameSharedState->ShowHideAllFrameTracks();
+		ShowHideAllGpuTracks_Execute();
 		return FReply::Handled();
 	}
-	else if (InKeyEvent.GetKey() == EKeys::Y)
+	else if (InKeyEvent.GetKey() == EKeys::U) // debug: toggles CPU tracks on/off
 	{
-		ThreadTimingSharedState->ShowHideAllGpuTracks();
+		ShowHideAllCpuTracks_Execute();
 		return FReply::Handled();
 	}
-	else if (InKeyEvent.GetKey() == EKeys::U)
+	else if (InKeyEvent.GetKey() == EKeys::L)  // debug: toggles Loading tracks on/off
 	{
-		ThreadTimingSharedState->ShowHideAllCpuTracks();
+		ShowHideAllLoadingTracks_Execute();
 		return FReply::Handled();
 	}
-	else if (InKeyEvent.GetKey() == EKeys::L)
+	else if (InKeyEvent.GetKey() == EKeys::I)  // debug: toggles IO tracks on/off
 	{
-		LoadingSharedState->ShowHideAllLoadingTracks();
+		ShowHideAllIoTracks_Execute();
 		return FReply::Handled();
 	}
-	else if (InKeyEvent.GetKey() == EKeys::I)
+	else if (InKeyEvent.GetKey() == EKeys::O)  // debug: toggles IO merge lanes algorithm
 	{
-		FileActivitySharedState->ShowHideAllIoTracks();
-		return FReply::Handled();
-	}
-	else if (InKeyEvent.GetKey() == EKeys::O)
-	{
+		//FileActivitySharedState->ToggleMergeLanes();
+		//FileActivitySharedState->RequestUpdate();
 		FileActivitySharedState->ToggleBackgroundEvents();
 		return FReply::Handled();
 	}
@@ -2605,14 +1766,11 @@ FReply STimingView::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKe
 		LoadingSharedState->SetColorSchema(3);
 		return FReply::Handled();
 	}
-#if ACTIVATE_BENCHMARK
-	else if (InKeyEvent.GetKey() == EKeys::Z)
-		{
-			FTimingProfilerTests::FCheckValues CheckValues;
-			FTimingProfilerTests::RunEnumerateBenchmark(FTimingProfilerTests::FEnumerateTestParams(), CheckValues);
-			return FReply::Handled();
-		}
-#endif
+	else if (InKeyEvent.GetKey() == EKeys::Five)
+	{
+		LoadingSharedState->SetColorSchema(4);
+		return FReply::Handled();
+	}
 
 	return SCompoundWidget::OnKeyDown(MyGeometry, InKeyEvent);
 }
@@ -2643,23 +1801,59 @@ void STimingView::ShowContextMenu(const FPointerEvent& MouseEvent)
 	//FMenuBuilder MenuBuilder(bShouldCloseWindowAfterMenuSelection, ProfilerCommandList);
 	FMenuBuilder MenuBuilder(bShouldCloseWindowAfterMenuSelection, NULL);
 
-	if (HoveredTrack.IsValid())
+	if (GraphTrack->IsVisible() &&
+		MousePosition.Y >= GraphTrack->GetPosY() &&
+		MousePosition.Y < GraphTrack->GetPosY() + GraphTrack->GetHeight())
 	{
-		MenuBuilder.BeginSection(TEXT("Track"), FText::FromString(HoveredTrack->GetName()));
-		CreateTrackLocationMenu(MenuBuilder, HoveredTrack.ToSharedRef());
-		MenuBuilder.EndSection();
-
-		HoveredTrack->BuildContextMenu(MenuBuilder);
+		//GraphTrack->BuildContextMenu(MenuBuilder);
+		MenuBuilder.AddSubMenu
+		(
+			LOCTEXT("ContextMenu_Header_GraphTrack", "Graph Track"),
+			TAttribute<FText>(), // no tooltip
+			FNewMenuDelegate::CreateSP(GraphTrack.Get(), &FBaseTimingTrack::BuildContextMenu),
+			false,
+			FSlateIcon()
+		);
 	}
 	else
 	{
 		MenuBuilder.BeginSection(TEXT("Empty"));
 		{
-			MenuBuilder.AddMenuEntry(
-				LOCTEXT("ContextMenu_NA", "N/A"),
+			struct FLocal
+			{
+				static bool ReturnFalse()
+				{
+					return false;
+				}
+			};
+
+			FUIAction DummyUIAction;
+			DummyUIAction.CanExecuteAction = FCanExecuteAction::CreateStatic(&FLocal::ReturnFalse);
+
+			FText Title;
+			if (HoveredTimingEvent.Track != nullptr)
+			{
+				if (HoveredTimingEvent.Track->GetType() == FName(TEXT("Thread")) &&
+					((FThreadTimingTrack*)HoveredTimingEvent.Track)->GetGroupName() != nullptr)
+				{
+					Title = FText::Format(LOCTEXT("TrackTitleGroupFmt", "{0} (Group: {1})"), FText::FromString(HoveredTimingEvent.Track->GetName()), FText::FromString(((FThreadTimingTrack*)HoveredTimingEvent.Track)->GetGroupName()));
+				}
+				else
+				{
+					Title = FText::FromString(HoveredTimingEvent.Track->GetName());
+				}
+			}
+			else
+			{
+				Title = LOCTEXT("ContextMenu_NA", "N/A");
+			}
+
+			MenuBuilder.AddMenuEntry
+			(
+				Title,
 				LOCTEXT("ContextMenu_NA_Desc", "No actions available."),
 				FSlateIcon(),
-				FUIAction(FExecuteAction(), FCanExecuteAction::CreateLambda([](){ return false; })),
+				DummyUIAction,
 				NAME_None,
 				EUserInterfaceActionType::Button
 			);
@@ -2685,329 +1879,34 @@ void STimingView::ShowContextMenu(const FPointerEvent& MouseEvent)
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void STimingView::CreateTrackLocationMenu(FMenuBuilder& MenuBuilder, TSharedRef<FBaseTimingTrack> Track)
-{
-	if (EnumHasAnyFlags(Track->GetValidLocations(), ETimingTrackLocation::TopDocked))
-	{
-		if (Track->GetLocation() == ETimingTrackLocation::TopDocked)
-		{
-			MenuBuilder.AddMenuEntry(
-				LOCTEXT("ContextMenu_LocationTopDocked", "Location: Top Docked Tracks"),
-				LOCTEXT("ContextMenu_LocationTopDocked_Desc", "This track is in the list of top docked tracks."),
-				FSlateIcon(),
-				FUIAction(FExecuteAction(), FCanExecuteAction::CreateLambda([] { return false; })),
-				NAME_None,
-				EUserInterfaceActionType::Button
-			);
-		}
-		else
-		{
-			MenuBuilder.AddMenuEntry(
-				LOCTEXT("ContextMenu_DockToTop", "Dock To Top"),
-				LOCTEXT("ContextMenu_DockToTop_Desc", "Dock this track to the top."),
-				FSlateIcon(),
-				FUIAction(FExecuteAction::CreateSP(this, &STimingView::ChangeTrackLocation, Track, ETimingTrackLocation::TopDocked),
-						  FCanExecuteAction::CreateSP(this, &STimingView::CanChangeTrackLocation, Track, ETimingTrackLocation::TopDocked)),
-				NAME_None,
-				EUserInterfaceActionType::Button
-			);
-		}
-	}
-
-	if (EnumHasAnyFlags(Track->GetValidLocations(), ETimingTrackLocation::Scrollable))
-	{
-		if (Track->GetLocation() == ETimingTrackLocation::Scrollable)
-		{
-			MenuBuilder.AddMenuEntry(
-				LOCTEXT("ContextMenu_LocationScrollable", "Location: Scrollable Tracks"),
-				LOCTEXT("ContextMenu_LocationScrollable_Desc", "This track is in the list of scrollable tracks."),
-				FSlateIcon(),
-				FUIAction(FExecuteAction(), FCanExecuteAction::CreateLambda([] { return false; })),
-				NAME_None,
-				EUserInterfaceActionType::Button
-			);
-		}
-		else
-		{
-			MenuBuilder.AddMenuEntry(
-				LOCTEXT("ContextMenu_MoveToScrollable", "Move to Scrollable Tracks"),
-				LOCTEXT("ContextMenu_MoveToScrollable_Desc", "Move this track to the list of scrollable tracks."),
-				FSlateIcon(),
-				FUIAction(FExecuteAction::CreateSP(this, &STimingView::ChangeTrackLocation, Track, ETimingTrackLocation::Scrollable),
-						  FCanExecuteAction::CreateSP(this, &STimingView::CanChangeTrackLocation, Track, ETimingTrackLocation::Scrollable)),
-				NAME_None,
-				EUserInterfaceActionType::Button
-			);
-		}
-	}
-
-	if (EnumHasAnyFlags(Track->GetValidLocations(), ETimingTrackLocation::BottomDocked))
-	{
-		if (Track->GetLocation() == ETimingTrackLocation::BottomDocked)
-		{
-			MenuBuilder.AddMenuEntry(
-				LOCTEXT("ContextMenu_LocationBottomDocked", "Location: Bottom Docked Tracks"),
-				LOCTEXT("ContextMenu_LocationBottomDocked_Desc", "This track is in the list of bottom docked tracks."),
-				FSlateIcon(),
-				FUIAction(FExecuteAction(), FCanExecuteAction::CreateLambda([] { return false; })),
-				NAME_None,
-				EUserInterfaceActionType::Button
-			);
-		}
-		else
-		{
-			MenuBuilder.AddMenuEntry(
-				LOCTEXT("ContextMenu_DockToBottom", "Dock To Bottom"),
-				LOCTEXT("ContextMenu_DockToBottom_Desc", "Dock this track to the bottom."),
-				FSlateIcon(),
-				FUIAction(FExecuteAction::CreateSP(this, &STimingView::ChangeTrackLocation, Track, ETimingTrackLocation::BottomDocked),
-						  FCanExecuteAction::CreateSP(this, &STimingView::CanChangeTrackLocation, Track, ETimingTrackLocation::BottomDocked)),
-				NAME_None,
-				EUserInterfaceActionType::Button
-			);
-		}
-	}
-
-	if (EnumHasAnyFlags(Track->GetValidLocations(), ETimingTrackLocation::Foreground))
-	{
-		if (Track->GetLocation() == ETimingTrackLocation::Foreground)
-		{
-			MenuBuilder.AddMenuEntry(
-				LOCTEXT("ContextMenu_LocationForeground", "Location: Foreground Tracks"),
-				LOCTEXT("ContextMenu_LocationForeground_Desc", "This track is in the list of foreground tracks."),
-				FSlateIcon(),
-				FUIAction(FExecuteAction(), FCanExecuteAction::CreateLambda([] { return false; })),
-				NAME_None,
-				EUserInterfaceActionType::Button
-			);
-		}
-		else
-		{
-			MenuBuilder.AddMenuEntry(
-				LOCTEXT("ContextMenu_MoveToForeground", "Move to Foreground Tracks"),
-				LOCTEXT("ContextMenu_MoveToForeground_Desc", "Move this track to the list of foreground tracks."),
-				FSlateIcon(),
-				FUIAction(FExecuteAction::CreateSP(this, &STimingView::ChangeTrackLocation, Track, ETimingTrackLocation::Foreground),
-						  FCanExecuteAction::CreateSP(this, &STimingView::CanChangeTrackLocation, Track, ETimingTrackLocation::Foreground)),
-				NAME_None,
-				EUserInterfaceActionType::Button
-			);
-		}
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STimingView::ChangeTrackLocation(TSharedRef<FBaseTimingTrack> Track, ETimingTrackLocation NewLocation)
-{
-	if (ensure(CanChangeTrackLocation(Track, NewLocation)))
-	{
-		switch (Track->GetLocation())
-		{
-		case ETimingTrackLocation::Scrollable:
-			ensure(RemoveScrollableTrack(Track));
-			break;
-
-		case ETimingTrackLocation::TopDocked:
-			ensure(RemoveTopDockedTrack(Track));
-			break;
-
-		case ETimingTrackLocation::BottomDocked:
-			ensure(RemoveBottomDockedTrack(Track));
-			break;
-
-		case ETimingTrackLocation::Foreground:
-			ensure(RemoveForegroundTrack(Track));
-			break;
-		}
-
-		switch (NewLocation)
-		{
-		case ETimingTrackLocation::Scrollable:
-			AddScrollableTrack(Track);
-			break;
-
-		case ETimingTrackLocation::TopDocked:
-			AddTopDockedTrack(Track);
-			break;
-
-		case ETimingTrackLocation::BottomDocked:
-			AddBottomDockedTrack(Track);
-			break;
-
-		case ETimingTrackLocation::Foreground:
-			AddForegroundTrack(Track);
-			break;
-		}
-
-		OnTrackVisibilityChanged();
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool STimingView::CanChangeTrackLocation(TSharedRef<FBaseTimingTrack> Track, ETimingTrackLocation NewLocation) const
-{
-	return EnumHasAnyFlags(Track->GetValidLocations(), NewLocation) && Track->GetLocation() != NewLocation;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
 void STimingView::BindCommands()
 {
-	//FTimingViewCommands::Register();
-	//const FTimingViewCommands& Commands = FTimingViewCommands::Get();
-	//
-	//TSharedPtr<FUICommandList> CommandList = FTimingProfilerManager::Get()->GetCommandList();
+	FTimingViewCommands::Register();
+	const FTimingViewCommands& Commands = FTimingViewCommands::Get();
 
-	//CommandList->MapAction(
-	//	Commands.ShowAllGpuTracks,
-	//	FExecuteAction::CreateSP(this, &STimingView::ShowHideAllGpuTracks_Execute),
-	//	FCanExecuteAction(), //FCanExecuteAction::CreateLambda([] { return true; }),
-	//	FIsActionChecked::CreateSP(this, &STimingView::ShowHideAllGpuTracks_IsChecked));
+	TSharedPtr<FUICommandList> CommandList = FTimingProfilerManager::Get()->GetCommandList();
 
-	//CommandList->MapAction(
-	//	Commands.ShowAllCpuTracks,
-	//	FExecuteAction::CreateSP(this, &STimingView::ShowHideAllCpuTracks_Execute),
-	//	FCanExecuteAction(), //FCanExecuteAction::CreateLambda([] { return true; }),
-	//	FIsActionChecked::CreateSP(this, &STimingView::ShowHideAllCpuTracks_IsChecked));
-}
+	CommandList->MapAction(
+		Commands.ShowAllGpuTracks,
+		FExecuteAction::CreateSP(this, &STimingView::ShowHideAllGpuTracks_Execute),
+		FCanExecuteAction(), //FCanExecuteAction::CreateLambda([] { return true; }),
+		FIsActionChecked::CreateSP(this, &STimingView::ShowHideAllGpuTracks_IsChecked));
 
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STimingView::AutoScroll_OnCheckStateChanged(ECheckBoxState NewRadioState)
-{
-	bAutoScroll = (NewRadioState == ECheckBoxState::Checked);
-	Viewport.AddDirtyFlags(ETimingTrackViewportDirtyFlags::HInvalidated);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-ECheckBoxState STimingView::AutoScroll_IsChecked() const
-{
-	return bAutoScroll ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STimingView::AutoScrollFrameAligned_Execute()
-{
-	bIsAutoScrollFrameAligned = !bIsAutoScrollFrameAligned;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool STimingView::AutoScrollFrameAligned_IsChecked() const
-{
-	return bIsAutoScrollFrameAligned;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STimingView::AutoScrollFrameType_Execute(ETraceFrameType FrameType)
-{
-	AutoScrollFrameType = FrameType;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool STimingView::AutoScrollFrameType_CanExecute(ETraceFrameType FrameType) const
-{
-	return bIsAutoScrollFrameAligned;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool STimingView::AutoScrollFrameType_IsChecked(ETraceFrameType FrameType) const
-{
-	return AutoScrollFrameType == FrameType;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STimingView::AutoScrollViewportOffset_Execute(double Percent)
-{
-	AutoScrollViewportOffsetPercent = Percent;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool STimingView::AutoScrollViewportOffset_IsChecked(double Percent) const
-{
-	return AutoScrollViewportOffsetPercent == Percent;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STimingView::AutoScrollDelay_Execute(double Delay)
-{
-	AutoScrollMinDelay = Delay;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-bool STimingView::AutoScrollDelay_IsChecked(double Delay) const
-{
-	return AutoScrollMinDelay == Delay;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-double STimingView::EnforceHorizontalScrollLimits(const double InStartTime)
-{
-	double NewStartTime = InStartTime;
-
-	double MinT, MaxT;
-	Viewport.GetHorizontalScrollLimits(MinT, MaxT);
-
-	if (NewStartTime > MaxT)
-	{
-		NewStartTime = MaxT;
-		OverscrollRight = 1.0f;
-	}
-
-	if (NewStartTime < MinT)
-	{
-		NewStartTime = MinT;
-		OverscrollLeft = 1.0f;
-	}
-
-	return NewStartTime;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-float STimingView::EnforceVerticalScrollLimits(const float InScrollPosY)
-{
-	float NewScrollPosY = InScrollPosY;
-
-	const float DY = Viewport.GetScrollHeight() - Viewport.GetScrollableAreaHeight() + 7.0f; // +7 is to allow some space for the horizontal scrollbar
-	const float MinY = FMath::Min(DY, 0.0f);
-	const float MaxY = DY - MinY;
-
-	if (NewScrollPosY > MaxY)
-	{
-		NewScrollPosY = MaxY;
-		OverscrollBottom = 1.0f;
-	}
-
-	if (NewScrollPosY < MinY)
-	{
-		NewScrollPosY = MinY;
-		OverscrollTop = 1.0f;
-	}
-
-	return NewScrollPosY;
+	CommandList->MapAction(
+		Commands.ShowAllCpuTracks,
+		FExecuteAction::CreateSP(this, &STimingView::ShowHideAllCpuTracks_Execute),
+		FCanExecuteAction(), //FCanExecuteAction::CreateLambda([] { return true; }),
+		FIsActionChecked::CreateSP(this, &STimingView::ShowHideAllCpuTracks_IsChecked));
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void STimingView::HorizontalScrollBar_OnUserScrolled(float ScrollOffset)
 {
-	// Disable auto-scroll if user starts scrolling with horizontal scrollbar.
-	bAutoScroll = false;
-
-	Viewport.OnUserScrolled(HorizontalScrollBar, ScrollOffset);
+	if (Viewport.OnUserScrolled(HorizontalScrollBar, ScrollOffset))
+	{
+		bIsViewportDirty = true;
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3021,7 +1920,10 @@ void STimingView::UpdateHorizontalScrollBar()
 
 void STimingView::VerticalScrollBar_OnUserScrolled(float ScrollOffset)
 {
-	Viewport.OnUserScrolledY(VerticalScrollBar, ScrollOffset);
+	if (Viewport.OnUserScrolledY(VerticalScrollBar, ScrollOffset))
+	{
+		bIsVerticalViewportDirty = true;
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3038,7 +1940,9 @@ void STimingView::ScrollAtPosY(float ScrollPosY)
 	if (ScrollPosY != Viewport.GetScrollPosY())
 	{
 		Viewport.SetScrollPosY(ScrollPosY);
+
 		UpdateVerticalScrollBar();
+		bIsVerticalViewportDirty = true;
 	}
 }
 
@@ -3049,6 +1953,7 @@ void STimingView::ScrollAtTime(double StartTime)
 	if (Viewport.ScrollAtTime(StartTime))
 	{
 		UpdateHorizontalScrollBar();
+		bIsViewportDirty = true;
 	}
 }
 
@@ -3058,8 +1963,10 @@ void STimingView::CenterOnTimeInterval(double IntervalStartTime, double Interval
 {
 	if (Viewport.CenterOnTimeInterval(IntervalStartTime, IntervalDuration))
 	{
-		Viewport.EnforceHorizontalScrollLimits(1.0); // 1.0 is to disable interpolation
+		Viewport.EnforceHorizontalScrollLimits(1.0);
+
 		UpdateHorizontalScrollBar();
+		bIsViewportDirty = true;
 	}
 }
 
@@ -3103,64 +2010,20 @@ void STimingView::SelectTimeInterval(double IntervalStartTime, double IntervalDu
 
 void STimingView::RaiseSelectionChanging()
 {
-	OnSelectionChangedDelegate.Broadcast(Insights::ETimeChangedFlags::Interactive, SelectionStartTime, SelectionEndTime);
+	//TODO: SelectionChangingEvent.Broadcast(SelectionStartTime, SelectionEndTime);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void STimingView::RaiseSelectionChanged()
 {
-	OnSelectionChangedDelegate.Broadcast(Insights::ETimeChangedFlags::None, SelectionStartTime, SelectionEndTime);
+	//TODO: SelectionChangedEvent.Broadcast(SelectionStartTime, SelectionEndTime);
 
 	FTimingProfilerManager::Get()->SetSelectedTimeRange(SelectionStartTime, SelectionEndTime);
 
 	if (SelectionStartTime < SelectionEndTime)
 	{
 		UpdateAggregatedStats();
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STimingView::RaiseTimeMarkerChanging()
-{
-	const double TimeMarker = GetTimeMarker();
-	OnTimeMarkerChangedDelegate.Broadcast(Insights::ETimeChangedFlags::Interactive, TimeMarker);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STimingView::RaiseTimeMarkerChanged()
-{
-	const double TimeMarker = GetTimeMarker();
-	OnTimeMarkerChangedDelegate.Broadcast(Insights::ETimeChangedFlags::None, TimeMarker);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-double STimingView::GetTimeMarker() const
-{
-	return DefaultTimeMarker->GetTime();
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STimingView::SetTimeMarker(double InMarkerTime)
-{
-	DefaultTimeMarker->SetTime(InMarkerTime);
-	RaiseTimeMarkerChanged();
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STimingView::AddOverlayWidget(const TSharedRef<SWidget>& InWidget)
-{
-	if (ExtensionOverlay.IsValid())
-	{
-		ExtensionOverlay->AddSlot()
-		[
-			InWidget
-		];
 	}
 }
 
@@ -3182,7 +2045,7 @@ void STimingView::UpdateAggregatedStats()
 
 void STimingView::SetAndCenterOnTimeMarker(double Time)
 {
-	SetTimeMarker(Time);
+	TimeMarker = Time;
 
 	double MinT, MaxT;
 	Viewport.GetHorizontalScrollLimits(MinT, MaxT);
@@ -3199,7 +2062,6 @@ void STimingView::SetAndCenterOnTimeMarker(double Time)
 
 void STimingView::SelectToTimeMarker(double Time)
 {
-	const double TimeMarker = GetTimeMarker();
 	if (TimeMarker < Time)
 	{
 		SelectTimeInterval(TimeMarker, Time - TimeMarker);
@@ -3209,31 +2071,29 @@ void STimingView::SelectToTimeMarker(double Time)
 		SelectTimeInterval(Time, TimeMarker - Time);
 	}
 
-	SetTimeMarker(Time);
+	TimeMarker = Time;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void STimingView::SetTimeMarkersVisible(bool bIsMarkersTrackVisible)
 {
-	if (MarkersTrack->IsVisible() != bIsMarkersTrackVisible)
+	if (MarkersTrack.IsVisible() != bIsMarkersTrackVisible)
 	{
-		MarkersTrack->SetVisibilityFlag(bIsMarkersTrackVisible);
+		MarkersTrack.SetVisibilityFlag(bIsMarkersTrackVisible);
 
-		if (MarkersTrack->IsVisible())
+		if (MarkersTrack.IsVisible())
 		{
 			if (Viewport.GetScrollPosY() != 0.0f)
 			{
-				UE_LOG(TimingProfiler, Log, TEXT("SetTimeMarkersVisible!!!"));
-				Viewport.SetScrollPosY(Viewport.GetScrollPosY() + MarkersTrack->GetHeight());
+				Viewport.SetScrollPosY(Viewport.GetScrollPosY() + MarkersTrack.GetHeight());
 			}
 
-			MarkersTrack->SetDirtyFlag();
+			MarkersTrack.SetDirtyFlag();
 		}
 		else
 		{
-			UE_LOG(TimingProfiler, Log, TEXT("SetTimeMarkersVisible!!!"));
-			Viewport.SetScrollPosY(Viewport.GetScrollPosY() - MarkersTrack->GetHeight());
+			Viewport.SetScrollPosY(Viewport.GetScrollPosY() - MarkersTrack.GetHeight());
 		}
 	}
 }
@@ -3242,155 +2102,82 @@ void STimingView::SetTimeMarkersVisible(bool bIsMarkersTrackVisible)
 
 void STimingView::SetDrawOnlyBookmarks(bool bIsBookmarksTrack)
 {
-	if (MarkersTrack->IsBookmarksTrack() != bIsBookmarksTrack)
+	if (MarkersTrack.IsBookmarksTrack() != bIsBookmarksTrack)
 	{
-		const float PrevHeight = MarkersTrack->GetHeight();
-		MarkersTrack->SetBookmarksTrackFlag(bIsBookmarksTrack);
+		const float PrevHeight = MarkersTrack.GetHeight();
+		MarkersTrack.SetBookmarksTrackFlag(bIsBookmarksTrack);
 
-		if (MarkersTrack->IsVisible())
+		if (MarkersTrack.IsVisible())
 		{
 			if (Viewport.GetScrollPosY() != 0.0f)
 			{
-				UE_LOG(TimingProfiler, Log, TEXT("SetDrawOnlyBookmarks!!!"));
-				Viewport.SetScrollPosY(Viewport.GetScrollPosY() + MarkersTrack->GetHeight() - PrevHeight);
+				Viewport.SetScrollPosY(Viewport.GetScrollPosY() + MarkersTrack.GetHeight() - PrevHeight);
 			}
 
-			MarkersTrack->SetDirtyFlag();
+			MarkersTrack.SetDirtyFlag();
 		}
 	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-const TSharedPtr<FBaseTimingTrack> STimingView::GetTrackAt(float InPosX, float InPosY) const
+void STimingView::UpdateHoveredTimingEvent(float MX, float MY)
 {
-	TSharedPtr<FBaseTimingTrack> FoundTrack;
+	FTimingEvent TimingEvent;
 
-	if (InPosY < 0.0f)
+	if (MY >= Viewport.GetTopOffset() && MY < Viewport.GetHeight())
 	{
-		// above viewport
-	}
-	else if (InPosY < Viewport.GetTopOffset())
-	{
-		// Top Docked Tracks
-		for (const TSharedPtr<FBaseTimingTrack>& TrackPtr : TopDockedTracks)
+		for (const auto& KV : CachedTimelines)
 		{
-			const FBaseTimingTrack& Track = *TrackPtr;
-			if (TrackPtr->IsVisible())
-			{
-				if (InPosY >= Track.GetPosY() && InPosY < Track.GetPosY() + Track.GetHeight())
-				{
-					FoundTrack = TrackPtr;
-					break;
-				}
-			}
-		}
-	}
-	else if (InPosY < Viewport.GetHeight() - Viewport.GetBottomOffset())
-	{
-		// Scrollable Tracks
-		for (const TSharedPtr<FBaseTimingTrack>& TrackPtr : ScrollableTracks)
-		{
-			const FBaseTimingTrack& Track = *TrackPtr;
+			const FTimingEventsTrack& Track = *KV.Value;
 			if (Track.IsVisible())
 			{
-				if (InPosY >= Track.GetPosY() && InPosY < Track.GetPosY() + Track.GetHeight())
+				const float Y = Viewport.GetTopOffset() + Track.GetPosY() - Viewport.GetScrollPosY();
+				if (MY >= Y && MY < Y + Track.GetHeight())
 				{
-					FoundTrack = TrackPtr;
+					TimingEvent.Track = &Track;
 					break;
 				}
 			}
 		}
-	}
-	else if (InPosY < Viewport.GetHeight())
-	{
-		// Bottom Docked Tracks
-		for (const TSharedPtr<FBaseTimingTrack>& TrackPtr : BottomDockedTracks)
+
+		if (TimingEvent.Track)
 		{
-			const FBaseTimingTrack& Track = *TrackPtr;
-			if (TrackPtr->IsVisible())
+			const float Y0 = Viewport.GetTopOffset() + TimingEvent.Track->GetPosY() - Viewport.GetScrollPosY() + 1.0f + Layout.TimelineDY;
+
+			// If mouse is not above first sub-track or below last sub-track...
+			if (MY >= Y0 && MY < Y0 + TimingEvent.Track->GetHeight() + Layout.TimelineDY)
 			{
-				if (InPosY >= Track.GetPosY() && InPosY < Track.GetPosY() + Track.GetHeight())
-				{
-					FoundTrack = TrackPtr;
-					break;
-				}
+				int32 Depth = (MY - Y0) / (Layout.EventDY + Layout.EventH);
+				float EventMY = (MY - Y0) - Depth * (Layout.EventDY + Layout.EventH);
+
+				const double StartTime = Viewport.SlateUnitsToTime(MX);
+				const double EndTime = StartTime + 2.0 / Viewport.GetScaleX(); // +2px
+				constexpr bool bStopAtFirstMatch = true; // get first one matching
+				constexpr bool bSearchForLargestEvent = false;
+				TimingEvent.Track->SearchTimingEvent(StartTime, EndTime,
+					[Depth](double, double, uint32 EventDepth)
+					{
+						return EventDepth == Depth;
+					},
+					TimingEvent, bStopAtFirstMatch, bSearchForLargestEvent);
 			}
 		}
 	}
-	else
+
+	if (TimingEvent.IsValid())
 	{
-		// below viewport
-	}
-
-	return FoundTrack;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STimingView::UpdateHoveredTimingEvent(float InMousePosX, float InMousePosY)
-{
-	TSharedPtr<FBaseTimingTrack> NewHoveredTrack = GetTrackAt(InMousePosX, InMousePosY);
-	if (NewHoveredTrack != HoveredTrack)
-	{
-		HoveredTrack = NewHoveredTrack;
-		OnHoveredTrackChangedDelegate.Broadcast(HoveredTrack);
-	}
-
-	TSharedPtr<const ITimingEvent> NewHoveredEvent;
-	if (HoveredTrack.IsValid())
-	{
-		FStopwatch Stopwatch;
-		Stopwatch.Start();
-
-		NewHoveredEvent = HoveredTrack->GetEvent(InMousePosX, InMousePosY, Viewport);
-
-		Stopwatch.Stop();
-		const double DT = Stopwatch.GetAccumulatedTime();
-		if (DT > 0.001)
+		if (!TimingEvent.Equals(HoveredTimingEvent))
 		{
-			UE_LOG(TimingProfiler, Log, TEXT("HoveredTrack [%g, %g] GetEvent: %.1f ms"), InMousePosX, InMousePosY, DT * 1000.0);
-		}
-	}
-
-	if (NewHoveredEvent.IsValid())
-	{
-		if (!HoveredEvent.IsValid() || !NewHoveredEvent->Equals(*HoveredEvent))
-		{
-			FStopwatch Stopwatch;
-			Stopwatch.Start();
-
-			HoveredEvent = NewHoveredEvent;
-			ensure(HoveredTrack == HoveredEvent->GetTrack());
-			HoveredTrack->UpdateEventStats(const_cast<ITimingEvent&>(*HoveredEvent));
-
-			Stopwatch.Update();
-			const double T1 = Stopwatch.GetAccumulatedTime();
-
-			HoveredTrack->InitTooltip(Tooltip, *HoveredEvent);
-
-			Stopwatch.Update();
-			const double T2 = Stopwatch.GetAccumulatedTime();
-
-			OnHoveredEventChangedDelegate.Broadcast(HoveredEvent);
-
-			Stopwatch.Update();
-			const double T3 = Stopwatch.GetAccumulatedTime();
-			if (T3 > 0.001)
-			{
-				UE_LOG(TimingProfiler, Log, TEXT("HoveredTrack [%g, %g] Tooltip: %.1f ms (%.1f + %.1f + %.1f)"),
-					InMousePosX, InMousePosY, T3 * 1000.0, T1 * 1000.0, (T2 - T1) * 1000.0, (T3 - T2) * 1000.0);
-			}
+			HoveredTimingEvent = TimingEvent;
+			HoveredTimingEvent.Track->ComputeTimingEventStats(HoveredTimingEvent);
+			HoveredTimingEvent.Track->InitTooltip(Tooltip, HoveredTimingEvent);
 		}
 		Tooltip.SetDesiredOpacity(1.0f);
 	}
 	else
 	{
-		if (HoveredEvent.IsValid())
-		{
-			HoveredEvent.Reset();
-			OnHoveredEventChangedDelegate.Broadcast(HoveredEvent);
-		}
+		HoveredTimingEvent.Reset();
 		Tooltip.SetDesiredOpacity(0.0f);
 	}
 }
@@ -3401,24 +2188,12 @@ void STimingView::OnSelectedTimingEventChanged()
 {
 	if (!bAssetLoadingMode)
 	{
-		if (SelectedEvent.IsValid())
+		if (SelectedTimingEvent.IsValid() &&
+			SelectedTimingEvent.Track->GetType() == FName(TEXT("Thread")))
 		{
-			SelectedEvent->GetTrack()->UpdateEventStats(const_cast<ITimingEvent&>(*SelectedEvent));
-			SelectedEvent->GetTrack()->OnEventSelected(*SelectedEvent);
+			// Select the timer node coresponding to timing event type of selected timing event.
+			FTimingProfilerManager::Get()->SetSelectedTimer(SelectedTimingEvent.TypeId);
 		}
-	}
-
-	OnSelectedEventChangedDelegate.Broadcast(SelectedEvent);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STimingView::SelectHoveredTimingTrack()
-{
-	if (SelectedTrack != HoveredTrack)
-	{
-		SelectedTrack = HoveredTrack;
-		OnSelectedTrackChangedDelegate.Broadcast(SelectedTrack);
 	}
 }
 
@@ -3426,43 +2201,36 @@ void STimingView::SelectHoveredTimingTrack()
 
 void STimingView::SelectHoveredTimingEvent()
 {
-	if (SelectedEvent != HoveredEvent)
+	SelectedTimingEvent = HoveredTimingEvent;
+	if (SelectedTimingEvent.IsValid())
 	{
-		SelectedEvent = HoveredEvent;
-
-		if (SelectedEvent.IsValid())
-		{
-			LastSelectionType = ESelectionType::TimingEvent;
-			BringIntoView(SelectedEvent->GetStartTime(), SelectedEvent->GetEndTime());
-		}
-
-		OnSelectedTimingEventChanged();
+		LastSelectionType = ESelectionType::TimingEvent;
+		BringIntoView(SelectedTimingEvent.StartTime, SelectedTimingEvent.EndTime);
 	}
+	OnSelectedTimingEventChanged();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void STimingView::SelectLeftTimingEvent()
 {
-	if (SelectedEvent.IsValid())
+	if (SelectedTimingEvent.IsValid())
 	{
-		const uint32 Depth = SelectedEvent->GetDepth();
-		const double StartTime = SelectedEvent->GetStartTime();
-		const double EndTime = SelectedEvent->GetEndTime();
-
-		auto EventFilter = [Depth, StartTime, EndTime](double EventStartTime, double EventEndTime, uint32 EventDepth)
+		const uint32 Depth = SelectedTimingEvent.Depth;
+		const double StartTime = SelectedTimingEvent.StartTime;
+		const double EndTime = SelectedTimingEvent.EndTime;
+		const bool bStopAtFirstMatch = false; // get last one matching
+		const bool bSearchForLargestEvent = false;
+		if (SelectedTimingEvent.Track->SearchTimingEvent(0.0, StartTime,
+			[Depth, StartTime, EndTime](double EventStartTime, double EventEndTime, uint32 EventDepth)
+			{
+				return EventDepth == Depth &&
+					(EventStartTime < StartTime || EventEndTime < EndTime);
+			},
+			SelectedTimingEvent, bStopAtFirstMatch, bSearchForLargestEvent))
 		{
-			return EventDepth == Depth
-				&& (EventStartTime < StartTime || EventEndTime < EndTime);
-		};
-
-		const TSharedPtr<const ITimingEvent> LeftEvent = SelectedEvent->GetTrack()->SearchEvent(
-			FTimingEventSearchParameters(0.0, StartTime, ETimingEventSearchFlags::SearchAll, EventFilter));
-
-		if (LeftEvent.IsValid())
-		{
-			SelectedEvent = LeftEvent;
-			BringIntoView(SelectedEvent->GetStartTime(), SelectedEvent->GetEndTime());
+			SelectedTimingEvent.Track->ComputeTimingEventStats(SelectedTimingEvent);
+			BringIntoView(SelectedTimingEvent.StartTime, SelectedTimingEvent.EndTime);
 			OnSelectedTimingEventChanged();
 		}
 	}
@@ -3472,25 +2240,23 @@ void STimingView::SelectLeftTimingEvent()
 
 void STimingView::SelectRightTimingEvent()
 {
-	if (SelectedEvent.IsValid())
+	if (SelectedTimingEvent.IsValid())
 	{
-		const uint32 Depth = SelectedEvent->GetDepth();
-		const double StartTime = SelectedEvent->GetStartTime();
-		const double EndTime = SelectedEvent->GetEndTime();
-
-		auto EventFilter = [Depth, StartTime, EndTime](double EventStartTime, double EventEndTime, uint32 EventDepth)
+		const uint32 Depth = SelectedTimingEvent.Depth;
+		const double StartTime = SelectedTimingEvent.StartTime;
+		const double EndTime = SelectedTimingEvent.EndTime;
+		const bool bStopAtFirstMatch = true; // get first one matching
+		const bool bSearchForLargestEvent = false;
+		if (SelectedTimingEvent.Track->SearchTimingEvent(EndTime, Viewport.GetMaxValidTime(),
+			[Depth, StartTime, EndTime](double EventStartTime, double EventEndTime, uint32 EventDepth)
+			{
+				return EventDepth == Depth &&
+					(EventStartTime > StartTime || EventEndTime > EndTime);
+			},
+			SelectedTimingEvent, bStopAtFirstMatch, bSearchForLargestEvent))
 		{
-			return EventDepth == Depth
-				&& (EventStartTime > StartTime || EventEndTime > EndTime);
-		};
-
-		const TSharedPtr<const ITimingEvent> RightEvent = SelectedEvent->GetTrack()->SearchEvent(
-			FTimingEventSearchParameters(EndTime, Viewport.GetMaxValidTime(), ETimingEventSearchFlags::StopAtFirstMatch, EventFilter));
-
-		if (RightEvent.IsValid())
-		{
-			SelectedEvent = RightEvent;
-			BringIntoView(SelectedEvent->GetStartTime(), SelectedEvent->GetEndTime());
+			SelectedTimingEvent.Track->ComputeTimingEventStats(SelectedTimingEvent);
+			BringIntoView(SelectedTimingEvent.StartTime, SelectedTimingEvent.EndTime);
 			OnSelectedTimingEventChanged();
 		}
 	}
@@ -3500,27 +2266,25 @@ void STimingView::SelectRightTimingEvent()
 
 void STimingView::SelectUpTimingEvent()
 {
-	if (SelectedEvent.IsValid() &&
-		SelectedEvent->GetDepth() > 0)
+	if (SelectedTimingEvent.IsValid() &&
+		SelectedTimingEvent.Depth > 0)
 	{
-		const uint32 Depth = SelectedEvent->GetDepth() - 1;
-		const double StartTime = SelectedEvent->GetStartTime();
-		const double EndTime = SelectedEvent->GetEndTime();
-
-		auto EventFilter = [Depth, StartTime, EndTime](double EventStartTime, double EventEndTime, uint32 EventDepth)
+		const uint32 Depth = SelectedTimingEvent.Depth - 1;
+		double StartTime = SelectedTimingEvent.StartTime;
+		double EndTime = SelectedTimingEvent.EndTime;
+		const bool bStopAtFirstMatch = true; // get first one matching
+		const bool bSearchForLargestEvent = false;
+		if (SelectedTimingEvent.Track->SearchTimingEvent(StartTime, EndTime,
+			[Depth, StartTime, EndTime](double EventStartTime, double EventEndTime, uint32 EventDepth)
+			{
+				return EventDepth == Depth
+					&& EventStartTime <= EndTime
+					&& EventEndTime >= StartTime;
+			},
+			SelectedTimingEvent, bStopAtFirstMatch, bSearchForLargestEvent))
 		{
-			return EventDepth == Depth
-				&& EventStartTime <= EndTime
-				&& EventEndTime >= StartTime;
-		};
-
-		const TSharedPtr<const ITimingEvent> UpEvent = SelectedEvent->GetTrack()->SearchEvent(
-			FTimingEventSearchParameters(StartTime, EndTime, ETimingEventSearchFlags::StopAtFirstMatch, EventFilter));
-
-		if (UpEvent.IsValid())
-		{
-			SelectedEvent = UpEvent;
-			BringIntoView(SelectedEvent->GetStartTime(), SelectedEvent->GetEndTime());
+			SelectedTimingEvent.Track->ComputeTimingEventStats(SelectedTimingEvent);
+			BringIntoView(SelectedTimingEvent.StartTime, SelectedTimingEvent.EndTime);
 			OnSelectedTimingEventChanged();
 		}
 	}
@@ -3530,35 +2294,24 @@ void STimingView::SelectUpTimingEvent()
 
 void STimingView::SelectDownTimingEvent()
 {
-	if (SelectedEvent.IsValid())
+	if (SelectedTimingEvent.IsValid())
 	{
-		const uint32 Depth = SelectedEvent->GetDepth() + 1;
-		const double StartTime = SelectedEvent->GetStartTime();
-		const double EndTime = SelectedEvent->GetEndTime();
-		double LargestDuration = 0.0;
-
-		auto EventFilter = [Depth, StartTime, EndTime, &LargestDuration](double EventStartTime, double EventEndTime, uint32 EventDepth)
+		const uint32 Depth = SelectedTimingEvent.Depth + 1;
+		double StartTime = SelectedTimingEvent.StartTime;
+		double EndTime = SelectedTimingEvent.EndTime;
+		const bool bStopAtFirstMatch = false; // check all timing events
+		const bool bSearchForLargestEvent = true; // get largest timing event
+		if (SelectedTimingEvent.Track->SearchTimingEvent(StartTime, EndTime,
+			[Depth, StartTime, EndTime](double EventStartTime, double EventEndTime, uint32 EventDepth)
+			{
+				return EventDepth == Depth
+					&& EventStartTime <= EndTime
+					&& EventEndTime >= StartTime;
+			},
+			SelectedTimingEvent, bStopAtFirstMatch, bSearchForLargestEvent))
 		{
-			const double Duration = EventEndTime - EventStartTime;
-			return Duration > LargestDuration
-				&& EventDepth == Depth
-				&& EventStartTime <= EndTime
-				&& EventEndTime >= StartTime;
-		};
-
-		auto EventMatched = [&LargestDuration](double EventStartTime, double EventEndTime, uint32 EventDepth)
-		{
-			const double Duration = EventEndTime - EventStartTime;
-			LargestDuration = Duration;
-		};
-
-		const TSharedPtr<const ITimingEvent> DownEvent = SelectedEvent->GetTrack()->SearchEvent(
-			FTimingEventSearchParameters(StartTime, EndTime, ETimingEventSearchFlags::SearchAll, EventFilter, EventMatched));
-
-		if (DownEvent.IsValid())
-		{
-			SelectedEvent = DownEvent;
-			BringIntoView(SelectedEvent->GetStartTime(), SelectedEvent->GetEndTime());
+			SelectedTimingEvent.Track->ComputeTimingEventStats(SelectedTimingEvent);
+			BringIntoView(SelectedTimingEvent.StartTime, SelectedTimingEvent.EndTime);
 			OnSelectedTimingEventChanged();
 		}
 	}
@@ -3575,7 +2328,7 @@ void STimingView::FrameSelection()
 	if (LastSelectionType == ESelectionType::TimingEvent)
 	{
 		// Try framing the selected timing event.
-		if (SelectedEvent.IsValid())
+		if (SelectedTimingEvent.IsValid())
 		{
 			Type = ESelectionType::TimingEvent;
 		}
@@ -3599,7 +2352,7 @@ void STimingView::FrameSelection()
 	if (LastSelectionType == ESelectionType::None || Type == ESelectionType::None)
 	{
 		// First, try framing the selected timing event...
-		if (SelectedEvent.IsValid())
+		if (SelectedTimingEvent.IsValid())
 		{
 			Type = ESelectionType::TimingEvent;
 		}
@@ -3612,8 +2365,8 @@ void STimingView::FrameSelection()
 	if (Type == ESelectionType::TimingEvent)
 	{
 		// Frame the selected event.
-		StartTime = SelectedEvent->GetStartTime();
-		EndTime = Viewport.RestrictEndTime(SelectedEvent->GetEndTime());
+		StartTime = SelectedTimingEvent.StartTime;
+		EndTime = Viewport.RestrictEndTime(SelectedTimingEvent.EndTime);
 		if (EndTime == StartTime)
 		{
 			EndTime += 1.0 / Viewport.GetScaleX(); // +1px
@@ -3632,166 +2385,9 @@ void STimingView::FrameSelection()
 		if (Viewport.ZoomOnTimeInterval(StartTime - Duration * 0.1, Duration * 1.2))
 		{
 			UpdateHorizontalScrollBar();
+			bIsViewportDirty = true;
 		}
 	}
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STimingView::SetEventFilter(const TSharedPtr<ITimingEventFilter> InEventFilter)
-{
-	TimingEventFilter = InEventFilter;
-	Viewport.AddDirtyFlags(ETimingTrackViewportDirtyFlags::HInvalidated);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STimingView::ToggleEventFilterByEventType(const uint64 EventType)
-{
-	bool bSameFilter = false;
-
-	if (TimingEventFilter.IsValid() &&
-		TimingEventFilter->Is<FTimingEventFilterByEventType>())
-	{
-		const FTimingEventFilterByEventType& EventFilterByEventType = TimingEventFilter->As<FTimingEventFilterByEventType>();
-		if (EventFilterByEventType.GetEventType() == EventType)
-		{
-			bSameFilter = true;
-			SetEventFilter(nullptr); // reset filter
-		}
-	}
-
-	if (!bSameFilter)
-	{
-		TSharedRef<FTimingEventFilterByEventType> NewEventFilter = MakeShared<FTimingEventFilterByEventType>(EventType);
-		SetEventFilter(NewEventFilter); // set new filter
-	}
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-TSharedRef<SWidget> STimingView::MakeAutoScrollOptionsMenu()
-{
-	FMenuBuilder MenuBuilder(/*bInShouldCloseWindowAfterMenuSelection=*/true, nullptr);
-
-	MenuBuilder.BeginSection("QuickFilter", LOCTEXT("AutoScrollHeading", "Auto Scroll Options"));
-	{
-		MenuBuilder.AddMenuEntry(
-			LOCTEXT("AutoScrollFrameAligned", "Frame Aligned"),
-			LOCTEXT("AutoScrollFrameAligned_Tooltip", "Align the viewport's center position with the start time of a frame."),
-			FSlateIcon(),
-			FUIAction(FExecuteAction::CreateSP(this, &STimingView::AutoScrollFrameAligned_Execute),
-				FCanExecuteAction(),
-				FIsActionChecked::CreateSP(this, &STimingView::AutoScrollFrameAligned_IsChecked)),
-			NAME_None,
-			EUserInterfaceActionType::ToggleButton
-		);
-
-		MenuBuilder.AddMenuEntry(
-			LOCTEXT("AutoScrollFrameTypeGame", "Align with Game Frames"),
-			LOCTEXT("AutoScrollFrameTypeGame_Tooltip", "Align the viewport's center position with the start time of a Game frame."),
-			FSlateIcon(),
-			FUIAction(FExecuteAction::CreateSP(this, &STimingView::AutoScrollFrameType_Execute, TraceFrameType_Game),
-				FCanExecuteAction::CreateSP(this, &STimingView::AutoScrollFrameType_CanExecute, TraceFrameType_Game),
-				FIsActionChecked::CreateSP(this, &STimingView::AutoScrollFrameType_IsChecked, TraceFrameType_Game)),
-			NAME_None,
-			EUserInterfaceActionType::RadioButton
-		);
-
-		MenuBuilder.AddMenuEntry(
-			LOCTEXT("AutoScrollFrameTypeRendering", "Align with Rendering Frames"),
-			LOCTEXT("AutoScrollFrameTypeRendering_Tooltip", "Align the viewport's center position with the start time of a Rendering frame."),
-			FSlateIcon(),
-			FUIAction(FExecuteAction::CreateSP(this, &STimingView::AutoScrollFrameType_Execute, TraceFrameType_Rendering),
-				FCanExecuteAction::CreateSP(this, &STimingView::AutoScrollFrameType_CanExecute, TraceFrameType_Rendering),
-				FIsActionChecked::CreateSP(this, &STimingView::AutoScrollFrameType_IsChecked, TraceFrameType_Rendering)),
-			NAME_None,
-			EUserInterfaceActionType::RadioButton
-		);
-
-		MenuBuilder.AddMenuSeparator();
-
-		MenuBuilder.AddMenuEntry(
-			LOCTEXT("AutoScrollViewportOffset-10", "Viewport Offset: -10%"),
-			LOCTEXT("AutoScrollViewportOffset-10_Tooltip", "Set the viewport offset to -10% (i.e. backward) of the viewport's width.\nAvoids flickering as the end of session will be outside of the viewport."),
-			FSlateIcon(),
-			FUIAction(FExecuteAction::CreateSP(this, &STimingView::AutoScrollViewportOffset_Execute, -0.1),
-				FCanExecuteAction(),
-				FIsActionChecked::CreateSP(this, &STimingView::AutoScrollViewportOffset_IsChecked, -0.1)),
-			NAME_None,
-			EUserInterfaceActionType::RadioButton
-		);
-
-		MenuBuilder.AddMenuEntry(
-			LOCTEXT("AutoScrollViewportOffset0", "Viewport Offset: 0"),
-			LOCTEXT("AutoScrollViewportOffset0_Tooltip", "Set the viewport offset to 0."),
-			FSlateIcon(),
-			FUIAction(FExecuteAction::CreateSP(this, &STimingView::AutoScrollViewportOffset_Execute, 0.0),
-				FCanExecuteAction(),
-				FIsActionChecked::CreateSP(this, &STimingView::AutoScrollViewportOffset_IsChecked, 0.0)),
-			NAME_None,
-			EUserInterfaceActionType::RadioButton
-		);
-
-		MenuBuilder.AddMenuEntry(
-			LOCTEXT("AutoScrollViewportOffset+10", "Viewport Offset: +10%"),
-			LOCTEXT("AutoScrollViewportOffset+10_Tooltip", "Set the viewport offset to +10% (i.e. forward) of the viewport's width.\nAllows 10% empty space on the right side of the viewport."),
-			FSlateIcon(),
-			FUIAction(FExecuteAction::CreateSP(this, &STimingView::AutoScrollViewportOffset_Execute, +0.1),
-				FCanExecuteAction(),
-				FIsActionChecked::CreateSP(this, &STimingView::AutoScrollViewportOffset_IsChecked, +0.1)),
-			NAME_None,
-			EUserInterfaceActionType::RadioButton
-		);
-
-		MenuBuilder.AddMenuSeparator();
-
-		MenuBuilder.AddMenuEntry(
-			LOCTEXT("AutoScrollDelay0", "Delay: 0"),
-			LOCTEXT("AutoScrollDelay0_Tooltip", "Set the time delay of the auto-scroll update to 0."),
-			FSlateIcon(),
-			FUIAction(FExecuteAction::CreateSP(this, &STimingView::AutoScrollDelay_Execute, 0.0),
-				FCanExecuteAction(),
-				FIsActionChecked::CreateSP(this, &STimingView::AutoScrollDelay_IsChecked, 0.0)),
-			NAME_None,
-			EUserInterfaceActionType::RadioButton
-		);
-
-		MenuBuilder.AddMenuEntry(
-			LOCTEXT("AutoScrollDelay300ms", "Delay: 300ms"),
-			LOCTEXT("AutoScrollDelay300ms_Tooltip", "Set the time delay of the auto-scroll update to 300ms."),
-			FSlateIcon(),
-			FUIAction(FExecuteAction::CreateSP(this, &STimingView::AutoScrollDelay_Execute, 0.3),
-				FCanExecuteAction(),
-				FIsActionChecked::CreateSP(this, &STimingView::AutoScrollDelay_IsChecked, 0.3)),
-			NAME_None,
-			EUserInterfaceActionType::RadioButton
-		);
-
-		MenuBuilder.AddMenuEntry(
-			LOCTEXT("AutoScrollDelay1s", "Delay: 1s"),
-			LOCTEXT("AutoScrollDelay1s_Tooltip", "Set the time delay of the auto-scroll update to 1s."),
-			FSlateIcon(),
-			FUIAction(FExecuteAction::CreateSP(this, &STimingView::AutoScrollDelay_Execute, 1.0),
-				FCanExecuteAction(),
-				FIsActionChecked::CreateSP(this, &STimingView::AutoScrollDelay_IsChecked, 1.0)),
-			NAME_None,
-			EUserInterfaceActionType::RadioButton
-		);
-
-		MenuBuilder.AddMenuEntry(
-			LOCTEXT("AutoScrollDelay3s", "Delay: 3s"),
-			LOCTEXT("AutoScrollDelay3s_Tooltip", "Set the time delay of the auto-scroll update to 3s."),
-			FSlateIcon(),
-			FUIAction(FExecuteAction::CreateSP(this, &STimingView::AutoScrollDelay_Execute, 3.0),
-				FCanExecuteAction(),
-				FIsActionChecked::CreateSP(this, &STimingView::AutoScrollDelay_IsChecked, 3.0)),
-			NAME_None,
-			EUserInterfaceActionType::RadioButton
-		);
-	}
-
-	return MenuBuilder.MakeWidget();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3800,25 +2396,68 @@ TSharedRef<SWidget> STimingView::MakeTracksFilterMenu()
 {
 	FMenuBuilder MenuBuilder(/*bInShouldCloseWindowAfterMenuSelection=*/true, nullptr);
 
-	CreateAllTracksMenu(MenuBuilder);
-
 	MenuBuilder.BeginSection("QuickFilter", LOCTEXT("TracksFilterHeading", "Quick Filter"));
 	{
-		//const FTimingViewCommands& Commands = FTimingViewCommands::Get();
+		const FTimingViewCommands& Commands = FTimingViewCommands::Get();
 
-		//TODO: MenuBuilder.AddMenuEntry(Commands.AutoHideGraphTrack);
 		MenuBuilder.AddMenuEntry(
 			LOCTEXT("ShowGraphTrack", "Graph Track - G"),
 			LOCTEXT("ShowGraphTrack_Tooltip", "Show/hide the Graph track"),
 			FSlateIcon(),
 			FUIAction(FExecuteAction::CreateSP(this, &STimingView::ShowHideGraphTrack_Execute),
-					  FCanExecuteAction(),
-					  FIsActionChecked::CreateSP(this, &STimingView::ShowHideGraphTrack_IsChecked)),
+				FCanExecuteAction(),
+				FIsActionChecked::CreateSP(this, &STimingView::ShowHideGraphTrack_IsChecked)),
 			NAME_None,
 			EUserInterfaceActionType::ToggleButton
 		);
 
-		MenuBuilder.AddMenuSeparator("QuickFilterSeparator");
+		//TODO: MenuBuilder.AddMenuEntry(Commands.ShowAllGpuTracks);
+		MenuBuilder.AddMenuEntry(
+			LOCTEXT("ShowAllGpuTracks", "GPU Track - Y"),
+			LOCTEXT("ShowAllGpuTracks_Tooltip", "Show/hide the GPU track"),
+			FSlateIcon(),
+			FUIAction(FExecuteAction::CreateSP(this, &STimingView::ShowHideAllGpuTracks_Execute),
+					  FCanExecuteAction(),
+					  FIsActionChecked::CreateSP(this, &STimingView::ShowHideAllGpuTracks_IsChecked)),
+			NAME_None,
+			EUserInterfaceActionType::ToggleButton
+		);
+
+		//TODO: MenuBuilder.AddMenuEntry(Commands.ShowAllCpuTracks);
+		MenuBuilder.AddMenuEntry(
+			LOCTEXT("ShowAllCpuTracks", "CPU Thread Tracks - U"),
+			LOCTEXT("ShowAllCpuTracks_Tooltip", "Show/hide all CPU tracks (and all CPU thread groups)"),
+			FSlateIcon(),
+			FUIAction(FExecuteAction::CreateSP(this, &STimingView::ShowHideAllCpuTracks_Execute),
+					  FCanExecuteAction(),
+					  FIsActionChecked::CreateSP(this, &STimingView::ShowHideAllCpuTracks_IsChecked)),
+			NAME_None,
+			EUserInterfaceActionType::ToggleButton
+		);
+
+		//TODO: MenuBuilder.AddMenuEntry(Commands.ShowAllLoadingTracks);
+		MenuBuilder.AddMenuEntry(
+			LOCTEXT("ShowAllLoadingTracks", "Asset Loading Tracks - L"),
+			LOCTEXT("ShowAllLoadingTracks_Tooltip", "Show/hide the Asset Loading tracks"),
+			FSlateIcon(),
+			FUIAction(FExecuteAction::CreateSP(this, &STimingView::ShowHideAllLoadingTracks_Execute),
+					  FCanExecuteAction(),
+					  FIsActionChecked::CreateSP(this, &STimingView::ShowHideAllLoadingTracks_IsChecked)),
+			NAME_None,
+			EUserInterfaceActionType::ToggleButton
+		);
+
+		//TODO: MenuBuilder.AddMenuEntry(Commands.ShowAllIoTracks);
+		MenuBuilder.AddMenuEntry(
+			LOCTEXT("ShowAllIoTracks", "I/O Tracks - I"),
+			LOCTEXT("ShowAllIoTracks_Tooltip", "Show/hide the I/O (File Activity) tracks"),
+			FSlateIcon(),
+			FUIAction(FExecuteAction::CreateSP(this, &STimingView::ShowHideAllIoTracks_Execute),
+					  FCanExecuteAction(),
+					  FIsActionChecked::CreateSP(this, &STimingView::ShowHideAllIoTracks_IsChecked)),
+			NAME_None,
+			EUserInterfaceActionType::ToggleButton
+		);
 
 		//TODO: MenuBuilder.AddMenuEntry(Commands.AutoHideEmptyTracks);
 		MenuBuilder.AddMenuEntry(
@@ -3834,102 +2473,71 @@ TSharedRef<SWidget> STimingView::MakeTracksFilterMenu()
 	}
 	MenuBuilder.EndSection();
 
-	// Let any plugin extend the filter menu.
-	for (Insights::ITimingViewExtender* Extender : GetExtenders())
-	{
-		Extender->ExtendFilterMenu(*this, MenuBuilder);
-	}
+	MenuBuilder.BeginSection("ThreadGroups", LOCTEXT("ThreadGroupsHeading", "CPU Thread Groups"));
+	CreateThreadGroupsMenu(MenuBuilder);
+	MenuBuilder.EndSection();
+
+	//MenuBuilder.BeginSection("Tracks", LOCTEXT("TracksHeading", "Tracks"));
+	//CreateTracksMenu(MenuBuilder);
+	//MenuBuilder.EndSection();
 
 	return MenuBuilder.MakeWidget();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void STimingView::CreateAllTracksMenu(FMenuBuilder& MenuBuilder)
+void STimingView::CreateThreadGroupsMenu(FMenuBuilder& MenuBuilder)
 {
-	MenuBuilder.BeginSection("AllTracks", LOCTEXT("AllTracksHeading", "All Tracks"));
-
-	if (TopDockedTracks.Num() > 0)
+	// Sort the list of thread groups.
+	TArray<const FThreadGroup*> SortedThreadGroups;
+	SortedThreadGroups.Reserve(ThreadGroups.Num());
+	for (const auto& KV : ThreadGroups)
 	{
-		MenuBuilder.AddSubMenu(
-			LOCTEXT("TopDockedTracks", "Top Docked Tracks"),
-			LOCTEXT("TopDockedTracks_Tooltip", "Show/hide individual top docked tracks"),
-			FNewMenuDelegate::CreateLambda([this](FMenuBuilder& InSubMenuBuilder)
-				{
-					InSubMenuBuilder.AddWidget(
-						SNew(SBox)
-						.MaxDesiredHeight(300.0f)
-						.MinDesiredWidth(300.0f)
-						.MaxDesiredWidth(300.0f)
-						[
-							SNew(STimingViewTrackList, SharedThis(this), ETimingTrackLocation::TopDocked)
-						],
-						FText(), true);
-				})
-		);
+		SortedThreadGroups.Add(&KV.Value);
 	}
+	Algo::SortBy(SortedThreadGroups, &FThreadGroup::GetOrder);
 
-	if (BottomDockedTracks.Num() > 0)
+	for (const FThreadGroup* ThreadGroupPtr : SortedThreadGroups)
 	{
-		MenuBuilder.AddSubMenu(
-			LOCTEXT("BottomDockedTracks", "Bottom Docked Tracks"),
-			LOCTEXT("BottomDockedTracks_Tooltip", "Show/hide individual bottom docked tracks"),
-			FNewMenuDelegate::CreateLambda([this](FMenuBuilder& InSubMenuBuilder)
-				{
-					InSubMenuBuilder.AddWidget(
-						SNew(SBox)
-						.MaxDesiredHeight(300.0f)
-						.MinDesiredWidth(300.0f)
-						.MaxDesiredWidth(300.0f)
-						[
-							SNew(STimingViewTrackList, SharedThis(this), ETimingTrackLocation::BottomDocked)
-						],
-						FText(), true);
-				})
-		);
+		const FThreadGroup& ThreadGroup = *ThreadGroupPtr;
+		if (ThreadGroup.NumTimelines > 0)
+		{
+			MenuBuilder.AddMenuEntry(
+				//FText::FromString(ThreadGroup.Name),
+				FText::Format(LOCTEXT("ThreadGroupFmt", "{0} ({1})"), FText::FromString(ThreadGroup.Name), ThreadGroup.NumTimelines),
+				TAttribute<FText>(), // no tooltip
+				FSlateIcon(),
+				FUIAction(FExecuteAction::CreateSP(this, &STimingView::ToggleTrackVisibilityByGroup_Execute, ThreadGroup.Name),
+					FCanExecuteAction::CreateLambda([] { return true; }),
+					FIsActionChecked::CreateSP(this, &STimingView::ToggleTrackVisibilityByGroup_IsChecked, ThreadGroup.Name)),
+				NAME_None,
+				EUserInterfaceActionType::ToggleButton
+			);
+		}
 	}
+}
 
-	if (ScrollableTracks.Num() > 0)
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void STimingView::CreateTracksMenu(FMenuBuilder& MenuBuilder)
+{
+	for (int32 TrackIndex = 0; TrackIndex < TimingEventsTracks.Num(); ++TrackIndex)
 	{
-		MenuBuilder.AddSubMenu(
-			LOCTEXT("ScrollableTracks", "Scrollable Tracks"),
-			LOCTEXT("ScrollableTracks_Tooltip", "Show/hide individual scrollable tracks"),
-			FNewMenuDelegate::CreateLambda([this](FMenuBuilder& InSubMenuBuilder)
-				{
-					InSubMenuBuilder.AddWidget(
-						SNew(SBox)
-						.MaxDesiredHeight(300.0f)
-						.MinDesiredWidth(300.0f)
-						.MaxDesiredWidth(300.0f)
-						[
-							SNew(STimingViewTrackList, SharedThis(this), ETimingTrackLocation::Scrollable)
-						],
-						FText(), true);
-				})
-		);
+		const FTimingEventsTrack& Track = *TimingEventsTracks[TrackIndex];
+		if (Track.GetHeight() > 0.0f || Layout.TargetMinTimelineH > 0.0f)
+		{
+			MenuBuilder.AddMenuEntry(
+				FText::FromString(Track.GetName()),
+				TAttribute<FText>(), // no tooltip
+				FSlateIcon(),
+				FUIAction(FExecuteAction::CreateSP(this, &STimingView::ToggleTrackVisibility_Execute, Track.GetId()),
+					FCanExecuteAction::CreateLambda([] { return true; }),
+					FIsActionChecked::CreateSP(this, &STimingView::ToggleTrackVisibility_IsChecked, Track.GetId())),
+				NAME_None,
+				EUserInterfaceActionType::ToggleButton
+			);
+		}
 	}
-
-	if (ForegroundTracks.Num() > 0)
-	{
-		MenuBuilder.AddSubMenu(
-			LOCTEXT("ForegroundTracks", "Foreground Tracks"),
-			LOCTEXT("ForegroundTracks_Tooltip", "Show/hide individual foreground tracks"),
-			FNewMenuDelegate::CreateLambda([this](FMenuBuilder& InSubMenuBuilder)
-				{
-					InSubMenuBuilder.AddWidget(
-						SNew(SBox)
-						.MaxDesiredHeight(300.0f)
-						.MinDesiredWidth(300.0f)
-						.MaxDesiredWidth(300.0f)
-						[
-							SNew(STimingViewTrackList, SharedThis(this), ETimingTrackLocation::Foreground)
-						],
-						FText(), true);
-				})
-		);
-	}
-
-	MenuBuilder.EndSection();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -3944,24 +2552,144 @@ bool STimingView::ShowHideGraphTrack_IsChecked() const
 void STimingView::ShowHideGraphTrack_Execute()
 {
 	GraphTrack->ToggleVisibility();
+	bAreTimingEventsTracksDirty = true;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+bool STimingView::ShowHideAllCpuTracks_IsChecked() const
+{
+	return bShowHideAllCpuTracks;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void STimingView::ShowHideAllCpuTracks_Execute()
+{
+	bShowHideAllCpuTracks = !bShowHideAllCpuTracks;
+
+	for (int32 TrackIndex = 0; TrackIndex < TimingEventsTracks.Num(); ++TrackIndex)
+	{
+		FTimingEventsTrack& Track = *TimingEventsTracks[TrackIndex];
+		if (Track.GetType() == FName(TEXT("Thread")) && Track.GetSubType() == FName(TEXT("CPU")))
+		{
+			Track.SetVisibilityFlag(bShowHideAllCpuTracks);
+		}
+	}
+
+	for (auto& KV: ThreadGroups)
+	{
+		KV.Value.bIsVisible = bShowHideAllCpuTracks;
+	}
+
+	OnTimingEventsTrackVisibilityChanged();
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+bool STimingView::ShowHideAllGpuTracks_IsChecked() const
+{
+	return bShowHideAllGpuTracks;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void STimingView::ShowHideAllGpuTracks_Execute()
+{
+	bShowHideAllGpuTracks = !bShowHideAllGpuTracks;
+
+	for (int32 TrackIndex = 0; TrackIndex < TimingEventsTracks.Num(); ++TrackIndex)
+	{
+		FTimingEventsTrack& Track = *TimingEventsTracks[TrackIndex];
+		if (Track.GetType() == FName(TEXT("Thread")) && Track.GetSubType() == FName(TEXT("GPU")))
+		{
+			Track.SetVisibilityFlag(bShowHideAllGpuTracks);
+		}
+	}
+
+	OnTimingEventsTrackVisibilityChanged();
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+bool STimingView::ShowHideAllLoadingTracks_IsChecked() const
+{
+	return bShowHideAllLoadingTracks;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void STimingView::ShowHideAllLoadingTracks_Execute()
+{
+	bShowHideAllLoadingTracks = !bShowHideAllLoadingTracks;
+
+	for (int32 TrackIndex = 0; TrackIndex < TimingEventsTracks.Num(); ++TrackIndex)
+	{
+		FTimingEventsTrack& Track = *TimingEventsTracks[TrackIndex];
+		if (Track.GetType() == FName(TEXT("Loading")))
+		{
+			Track.SetVisibilityFlag(bShowHideAllLoadingTracks);
+		}
+	}
+
+	OnTimingEventsTrackVisibilityChanged();
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+bool STimingView::ShowHideAllIoTracks_IsChecked() const
+{
+	return bShowHideAllIoTracks;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void STimingView::ShowHideAllIoTracks_Execute()
+{
+	bShowHideAllIoTracks = !bShowHideAllIoTracks;
+
+	for (int32 TrackIndex = 0; TrackIndex < TimingEventsTracks.Num(); ++TrackIndex)
+	{
+		FTimingEventsTrack& Track = *TimingEventsTracks[TrackIndex];
+		if (Track.GetType() == FName(TEXT("FileActivity")))
+		{
+			Track.SetVisibilityFlag(bShowHideAllIoTracks);
+		}
+	}
+
+	OnTimingEventsTrackVisibilityChanged();
+
+	if (bShowHideAllIoTracks)
+	{
+		FileActivitySharedState->RequestUpdate();
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 bool STimingView::IsAutoHideEmptyTracksEnabled() const
 {
-	return (Viewport.GetLayout().TargetMinTimelineH == 0.0f);
+	return (Layout.TargetMinTimelineH == 0.0f);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void STimingView::ToggleAutoHideEmptyTracks()
 {
-	Viewport.ToggleLayoutMinTrackHeight();
-
-	for (const TSharedPtr<FBaseTimingTrack>& TrackPtr : ScrollableTracks)
+	if (Layout.TargetMinTimelineH == 0.0f)
 	{
-		TrackPtr->SetHeight(0.0f);
+		Layout.TargetMinTimelineH = FTimingEventsTrackLayout::RealMinTimelineH;
+	}
+	else
+	{
+		Layout.TargetMinTimelineH = 0.0f;
+	}
+
+	Layout.MinTimelineH = Layout.TargetMinTimelineH; // no layout animation
+
+	for (auto& CachedTimelineKV : CachedTimelines)
+	{
+		CachedTimelineKV.Value->SetHeight(0.0f);
 	}
 
 	ScrollAtPosY(0.0f);
@@ -3971,10 +2699,10 @@ void STimingView::ToggleAutoHideEmptyTracks()
 
 bool STimingView::ToggleTrackVisibility_IsChecked(uint64 InTrackId) const
 {
-	const TSharedPtr<FBaseTimingTrack>* const TrackPtrPtr = AllTracks.Find(InTrackId);
-	if (TrackPtrPtr)
+	if (CachedTimelines.Contains(InTrackId))
 	{
-		return (*TrackPtrPtr)->IsVisible();
+		const FTimingEventsTrack* Track = CachedTimelines[InTrackId];
+		return Track->IsVisible();
 	}
 	return false;
 }
@@ -3983,72 +2711,70 @@ bool STimingView::ToggleTrackVisibility_IsChecked(uint64 InTrackId) const
 
 void STimingView::ToggleTrackVisibility_Execute(uint64 InTrackId)
 {
-	const TSharedPtr<FBaseTimingTrack>* TrackPtrPtr = AllTracks.Find(InTrackId);
-	if (TrackPtrPtr)
+	if (CachedTimelines.Contains(InTrackId))
 	{
-		(*TrackPtrPtr)->ToggleVisibility();
-		OnTrackVisibilityChanged();
+		FTimingEventsTrack* Track = CachedTimelines[InTrackId];
+		Track->ToggleVisibility();
+
+		OnTimingEventsTrackVisibilityChanged();
 	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void STimingView::OnTrackVisibilityChanged()
+bool STimingView::ToggleTrackVisibilityByGroup_IsChecked(const TCHAR* InGroupName) const
 {
-	if (HoveredTrack.IsValid())
+	if (ThreadGroups.Contains(InGroupName))
 	{
-		HoveredTrack.Reset();
-		OnHoveredTrackChangedDelegate.Broadcast(HoveredTrack);
+		const FThreadGroup& ThreadGroup = ThreadGroups[InGroupName];
+		return ThreadGroup.bIsVisible;
 	}
-	if (HoveredEvent.IsValid())
+	return false;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void STimingView::ToggleTrackVisibilityByGroup_Execute(const TCHAR* InGroupName)
+{
+	if (ThreadGroups.Contains(InGroupName))
 	{
-		HoveredEvent.Reset();
-		OnHoveredEventChangedDelegate.Broadcast(HoveredEvent);
+		FThreadGroup& ThreadGroup = ThreadGroups[InGroupName];
+		ThreadGroup.bIsVisible = !ThreadGroup.bIsVisible;
+
+		for (auto& KV : CachedTimelines)
+		{
+			FTimingEventsTrack& Track = *KV.Value;
+			if (Track.GetType() == FName(TEXT("Thread")) && Track.GetSubType() == FName(TEXT("CPU")) &&
+				((FCpuTimingTrack*)&Track)->GetGroupName() == InGroupName)
+			{
+				Track.SetVisibilityFlag(ThreadGroup.bIsVisible);
+			}
+		}
+
+		OnTimingEventsTrackVisibilityChanged();
 	}
-	if (SelectedTrack.IsValid())
-	{
-		SelectedTrack.Reset();
-		OnSelectedTrackChangedDelegate.Broadcast(SelectedTrack);
-	}
-	if (SelectedEvent.IsValid())
-	{
-		SelectedEvent.Reset();
-		OnSelectedEventChangedDelegate.Broadcast(SelectedEvent);
-	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+void STimingView::OnTimingEventsTrackVisibilityChanged()
+{
+	HoveredTimingEvent.Reset();
+	SelectedTimingEvent.Reset();
 	Tooltip.SetDesiredOpacity(0.0f);
 
 	//TODO: ThreadFilterChangedEvent.Broadcast();
+
 	FTimingProfilerManager::Get()->OnThreadFilterChanged();
 
 	if (SelectionStartTime < SelectionEndTime)
 	{
 		UpdateAggregatedStats();
 	}
+
+	bAreTimingEventsTracksDirty = true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void STimingView::PreventThrottling()
-{
-	bPreventThrottling = true;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-TSharedPtr<FBaseTimingTrack> STimingView::FindTrack(uint64 InTrackId)
-{
-	TSharedPtr<FBaseTimingTrack>* TrackPtrPtr = AllTracks.Find(InTrackId);
-	return TrackPtrPtr ? *TrackPtrPtr : nullptr;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-TArray<Insights::ITimingViewExtender*> STimingView::GetExtenders() const
-{
-	return IModularFeatures::Get().GetModularFeatureImplementations<Insights::ITimingViewExtender>(Insights::TimingViewExtenderFeatureName);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-#undef ACTIVATE_BENCHMARK
 #undef LOCTEXT_NAMESPACE

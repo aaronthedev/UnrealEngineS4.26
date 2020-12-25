@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,46 +14,42 @@ public:
 	static void RegisterForHotReload();
 	static void UnregisterForHotReload();
 
-	// Returns true if Property is a FStructProperty with a Struct
+	// Returns true if Property is a UStructProperty with a Struct
 	// of type FVector, FColor, FRotator, FQuat, etc
-	static bool IsBuiltInStructProperty(const FProperty* Property);
-
-	// Returns true if Property is a FStructProperty with a Struct
-	// that the Variant Manager is allowed to capture specific properties from
-	static bool IsWalkableStructProperty(const FProperty* Property);
+	static bool IsBuiltInStructProperty(const UProperty* Property);
 
 	// Returns the OverrideMaterials property of the UMeshComponent class
-	static FArrayProperty* GetOverrideMaterialsProperty();
+	static UArrayProperty* GetOverrideMaterialsProperty();
 
 	// Returns the RelativeLocation property of the USceneComponent class
-	static FStructProperty* GetRelativeLocationProperty();
+	static UStructProperty* GetRelativeLocationProperty();
 
 	// Returns the RelativeRotation property of the USceneComponent class
-	static FStructProperty* GetRelativeRotationProperty();
+	static UStructProperty* GetRelativeRotationProperty();
 
 	// Returns the RelativeScale3D property of the USceneComponent class
-	static FStructProperty* GetRelativeScale3DProperty();
+	static UStructProperty* GetRelativeScale3DProperty();
 
 	// Returns the bVisible property of the USceneComponent class
-	static FBoolProperty* GetVisibilityProperty();
+	static UBoolProperty* GetVisibilityProperty();
 
 	// Returns the LightColor property of the ULightComponent class
-	static FStructProperty* GetLightColorProperty();
+	static UStructProperty* GetLightColorProperty();
 
 	// Returns the DefaultLightColor property of the UAtmosphericFogComponent class
-	static FStructProperty* GetDefaultLightColorProperty();
+	static UStructProperty* GetDefaultLightColorProperty();
 
 private:
-	// Invalidates all of our cached FProperty pointers
+	// Invalidates all of our cached UProperty pointers
 	static void InvalidateCache(UClass* OldClass, UClass* NewClass, EHotReloadedClassFlags Flags);
 
-	static FArrayProperty* OverrideMaterialsProperty;
-	static FStructProperty* RelativeLocationProperty;
-	static FStructProperty* RelativeRotationProperty;
-	static FStructProperty* RelativeScale3DProperty;
-	static FBoolProperty* VisiblityProperty;
-	static FStructProperty* LightColorProperty;
-	static FStructProperty* DefaultLightColorProperty;
+	static UArrayProperty* OverrideMaterialsProperty;
+	static UStructProperty* RelativeLocationProperty;
+	static UStructProperty* RelativeRotationProperty;
+	static UStructProperty* RelativeScale3DProperty;
+	static UBoolProperty* VisiblityProperty;
+	static UStructProperty* LightColorProperty;
+	static UStructProperty* DefaultLightColorProperty;
 
 	static FDelegateHandle OnHotReloadHandle;
 };

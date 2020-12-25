@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "USDImporterPrivatePCH.h"
 #include "Misc/Paths.h"
@@ -19,9 +19,35 @@ public:
 	/** IModuleInterface implementation */
 	virtual void StartupModule() override
 	{
-		IUnrealUSDWrapperModule& UnrealUSDWrapperModule = FModuleManager::Get().LoadModuleChecked< IUnrealUSDWrapperModule >( TEXT("UnrealUSDWrapper") );
+#if USE_USD_SDK
+		// Ensure base usd plugins are found and loaded
+		FString BasePluginPath = FPaths::ConvertRelativePathToFull(FPaths::EnginePluginsDir() + FString(TEXT("Importers/USDImporter")));
 
-		USDImporter = NewObject<UDEPRECATED_UUSDImporter>();
+#if PLATFORM_WINDOWS
+		BasePluginPath /= TEXT("Resources/UsdResources/Windows/plugins");
+#elif PLATFORM_LINUX
+		BasePluginPath /= ("Resources/UsdResources/Linux/plugins");
+#endif
+
+		std::vector<std::string> PluginPaths;
+		PluginPaths.push_back(TCHAR_TO_ANSI(*BasePluginPath));
+
+		// Load any custom plugins the user may have
+		const TArray<FDirectoryPath>& AdditionalPluginDirectories = GetDefault<UUSDImporterProjectSettings>()->AdditionalPluginDirectories;
+
+		for (const FDirectoryPath& Directory : AdditionalPluginDirectories)
+		{
+			if (!Directory.Path.IsEmpty())
+			{
+				PluginPaths.push_back(TCHAR_TO_ANSI(*Directory.Path));
+			}
+		}
+
+		IUnrealUSDWrapperModule& UnrealUSDWrapperModule = FModuleManager::Get().LoadModuleChecked< IUnrealUSDWrapperModule >( TEXT("UnrealUSDWrapper") );
+		UnrealUSDWrapperModule.Initialize(PluginPaths);
+
+		USDImporter = NewObject<UUSDImporter>();
+#endif // #if USE_USD_SDK
 	}
 
 	virtual void ShutdownModule() override
@@ -29,7 +55,7 @@ public:
 		USDImporter = nullptr;
 	}
 
-	class UDEPRECATED_UUSDImporter* GetImporter() override
+	class UUSDImporter* GetImporter() override
 	{
 		return USDImporter;
 	}
@@ -40,7 +66,7 @@ public:
 		Collector.AddReferencedObject(USDImporter);
 	}
 private:
-	UDEPRECATED_UUSDImporter* USDImporter;
+	UUSDImporter* USDImporter;
 };
 
 #undef LOCTEXT_NAMESPACE

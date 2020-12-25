@@ -1,43 +1,44 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreTechFileParser.h"
 
 #ifdef CAD_INTERFACE
 
+
 #include "CADData.h"
 #include "CADOptions.h"
 
 #include "CoreTechTypes.h"
-#include "DatasmithUtils.h"
 #include "GenericPlatform/GenericPlatformFile.h"
 #include "HAL/FileManager.h"
 #include "Internationalization/Text.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
-#include "Templates/TypeHash.h"
+
+#define EXTREFNUM 5000
 
 namespace CADLibrary 
 {
 
 namespace {
-
-	double Distance(const CT_COORDINATE& Point1, const CT_COORDINATE& Point2)
+	double Distance(CT_COORDINATE Point1, CT_COORDINATE Point2)
 	{
 		return sqrt((Point2.xyz[0] - Point1.xyz[0]) * (Point2.xyz[0] - Point1.xyz[0]) + (Point2.xyz[1] - Point1.xyz[1]) * (Point2.xyz[1] - Point1.xyz[1]) + (Point2.xyz[2] - Point1.xyz[2]) * (Point2.xyz[2] - Point1.xyz[2]));
-	};
+	}
 
-	void ScaleUV(CT_OBJECT_ID FaceID, TArray<FVector2D>& TexCoordArray, float Scale)
+	template<typename UVType>
+	void ScaleUV(CT_OBJECT_ID FaceID, void* TexCoordArray, int32 VertexCount, UVType Scale)
 	{
-		float VMin, VMax, UMin, UMax;
+		UVType VMin, VMax, UMin, UMax;
 		VMin = UMin = HUGE_VALF;
-		VMax = UMax =  -HUGE_VALF;
-		 
-		for (const FVector2D& TexCoord : TexCoordArray)
+		VMax = UMax = -HUGE_VALF;
+		UVType* UVSet = (UVType*) TexCoordArray;
+		for (int32 Index = 0, UVCoord = 0; Index < VertexCount; ++Index, UVCoord += 2)
 		{
-			UMin = FMath::Min(TexCoord[0], UMin);
-			UMax = FMath::Max(TexCoord[0], UMax);
-			VMin = FMath::Min(TexCoord[1], VMin);
-			VMax = FMath::Max(TexCoord[1], VMax);
+			UMin = FMath::Min(UVSet[UVCoord + 0], UMin);
+			UMax = FMath::Max(UVSet[UVCoord + 0], UMax);
+			VMin = FMath::Min(UVSet[UVCoord + 1], VMin);
+			VMax = FMath::Max(UVSet[UVCoord + 1], VMax);
 		}
 
 		double PuMin, PuMax, PvMin, PvMax;
@@ -57,9 +58,9 @@ namespace {
 		CT_OBJECT_TYPE SurfaceType;
 		CT_SURFACE_IO::AskType(SurfaceID, SurfaceType);
 
-		float DeltaU = (PuMax - PuMin) / (NbIsoCurves - 1);
-		float DeltaV = (PvMax - PvMin) / (NbIsoCurves - 1);
-		float U = PuMin, V = PvMin;
+		UVType DeltaU = (PuMax - PuMin) / (NbIsoCurves - 1);
+		UVType DeltaV = (PvMax - PvMin) / (NbIsoCurves - 1);
+		UVType U = PuMin, V = PvMin;
 
 		CT_COORDINATE NodeMatrix[121];
 
@@ -75,10 +76,10 @@ namespace {
 		}
 
 		// Compute length of 7 iso V line
-		float LengthU[NbIsoCurves];
-		float LengthUMin = HUGE_VAL;
-		float LengthUMax = 0;
-		float LengthUMed = 0;
+		UVType LengthU[NbIsoCurves];
+		UVType LengthUMin = HUGE_VAL;
+		UVType LengthUMax = 0;
+		UVType LengthUMed = 0;
 
 		for (int32 IndexJ = 0; IndexJ < NbIsoCurves; IndexJ++)
 		{
@@ -95,10 +96,10 @@ namespace {
 		LengthUMed = LengthUMed * 2 / 3 + LengthUMax / 3;
 
 		// Compute length of 7 iso U line
-		float LengthV[NbIsoCurves];
-		float LengthVMin = HUGE_VAL;
-		float LengthVMax = 0;
-		float LengthVMed = 0;
+		UVType LengthV[NbIsoCurves];
+		UVType LengthVMin = HUGE_VAL;
+		UVType LengthVMax = 0;
+		UVType LengthVMed = 0;
 
 		for (int32 IndexI = 0; IndexI < NbIsoCurves; IndexI++)
 		{
@@ -119,10 +120,10 @@ namespace {
 		case CT_CONE_TYPE:
 		case CT_CYLINDER_TYPE:
 		case CT_SPHERE_TYPE:
-		case CT_TORUS_TYPE:
 			Swap(LengthUMed, LengthVMed);
 			break;
 		case CT_S_REVOL_TYPE:
+		case CT_TORUS_TYPE:
 			// Need swap ?
 			// Swap(LengthUMed, LengthVMed);
 			break;
@@ -140,32 +141,30 @@ namespace {
 
 		// scale the UV map
 		// 0.1 define UV in cm and not in mm
-		float VScale = Scale * LengthVMed * 1 / (VMax - VMin) / 100;
-		float UScale = Scale * LengthUMed * 1 / (UMax - UMin) / 100;
+		UVType VScale = Scale * LengthVMed * 1 / (VMax - VMin) / 100;
+		UVType UScale = Scale * LengthUMed * 1 / (UMax - UMin) / 100;
 
-		for (FVector2D& TexCoord : TexCoordArray)
+		for (int32 Index = 0, UVCoord = 0; Index < VertexCount; ++Index, UVCoord += 2)
 		{
-			TexCoord[0] *= UScale;
-			TexCoord[1] *= VScale;
+			UVSet[UVCoord + 0] *= UScale;
+			UVSet[UVCoord + 1] *= VScale;
 		}
 	}
 }
 
-FString AsFString(CT_STR CtName)
+uint32 GetFileHash(const FString& FileName, const FFileStatData& FileStatData, const FString& Config, const FImportParameters& ImportParam)
 {
-	return CtName.IsEmpty() ? FString() : CtName.toUnicode();
-};
-
-	uint32 FCoreTechFileParser::GetFileHash()
-{
-	FFileStatData FileStatData = IFileManager::Get().GetStatData(*FileDescription.Path);
-
-		FileSize = FileStatData.FileSize;
+	int64 FileSize = FileStatData.FileSize;
 	FDateTime ModificationTime = FileStatData.ModificationTime;
 
-	uint32 FileHash = GetTypeHash(FileDescription);
+	uint32 FileHash = GetTypeHash(FileName);
 	FileHash = HashCombine(FileHash, GetTypeHash(FileSize));
 	FileHash = HashCombine(FileHash, GetTypeHash(ModificationTime));
+	FileHash = HashCombine(FileHash, GetTypeHash(ImportParam.StitchingTechnique));
+	if (!Config.IsEmpty())
+	{
+		FileHash = HashCombine(FileHash, GetTypeHash(Config));
+	}
 
 	return FileHash;
 }
@@ -180,36 +179,6 @@ uint32 GetGeomFileHash(const uint32 InSGHash, const FImportParameters& ImportPar
 	FileHash = HashCombine(FileHash, GetTypeHash(ImportParam.ScaleFactor));
 	FileHash = HashCombine(FileHash, GetTypeHash(ImportParam.StitchingTechnique));
 	return FileHash;
-}
-
-template<typename ValueType>
-void FillArrayOfVector(int32 ElementCount, void* InCTValueArray, FVector* OutValueArray)
-{
-	ValueType* Values = (ValueType*)InCTValueArray;
-	for (int Indice = 0; Indice < ElementCount; ++Indice)
-	{
-		OutValueArray[Indice].Set((float)Values[Indice * 3], (float)Values[Indice * 3 + 1], (float)Values[Indice * 3 + 2]);
-	}
-}
-
-template<typename ValueType>
-void FillArrayOfVector2D(int32 ElementCount, void* InCTValueArray, FVector2D* OutValueArray)
-{
-	ValueType* Values = (ValueType*)InCTValueArray;
-	for (int Indice = 0; Indice < ElementCount; ++Indice)
-	{
-		OutValueArray[Indice].Set((float)Values[Indice * 2], (float)Values[Indice * 2 + 1]);
-	}
-}
-
-template<typename ValueType>
-void FillArrayOfInt(int32 ElementCount, void* InCTValueArray, int32* OutValueArray)
-{
-	ValueType* Values = (ValueType*)InCTValueArray;
-	for (int Indice = 0; Indice < ElementCount; ++Indice)
-	{
-		OutValueArray[Indice] = (int32)Values[Indice];
-	}
 }
 
 uint32 GetFaceTessellation(CT_OBJECT_ID FaceID, TArray<FTessellationData>& FaceTessellationSet, const FImportParameters& ImportParams)
@@ -244,82 +213,38 @@ uint32 GetFaceTessellation(CT_OBJECT_ID FaceID, TArray<FTessellationData>& FaceT
 	}
 
 	FTessellationData& Tessellation = FaceTessellationSet.Emplace_GetRef();
-	Tessellation.PatchId = FaceID;
-	Tessellation.IndexArray.SetNum(IndexCount);
-
-	switch (IndexType)
+	if (ImportParams.bScaleUVMap && TexCoordArray != nullptr)
 	{
-	case CT_TESS_UBYTE:
-		FillArrayOfInt<uint8>(IndexCount, IndexArray, Tessellation.IndexArray.GetData());
-		break;
-	case CT_TESS_USHORT:
-		FillArrayOfInt<uint16>(IndexCount, IndexArray, Tessellation.IndexArray.GetData());
-		break;
-	case CT_TESS_UINT:
-		FillArrayOfInt<uint32>(IndexCount, IndexArray, Tessellation.IndexArray.GetData());
-		break;
-	}
-
-	Tessellation.VertexArray.SetNum(VertexCount);
-	switch (VertexType)
-	{
-	case CT_TESS_FLOAT:
-		FillArrayOfVector<float>(VertexCount, VertexArray, Tessellation.VertexArray.GetData());
-		break;
-	case CT_TESS_DOUBLE:
-		FillArrayOfVector<double>(VertexCount, VertexArray, Tessellation.VertexArray.GetData());
-		break;
-	}
-
-	Tessellation.NormalArray.SetNum(NormalCount);
-	switch (NormalType)
-	{
-	case CT_TESS_BYTE:
-		Tessellation.NormalArray.SetNumZeroed(NormalCount);
-		break;
-	case CT_TESS_SHORT:
-	{
-		int8* InCTValueArray = (int8*)NormalArray;
-		for (CT_UINT32 Indice = 0; Indice < NormalCount; ++Indice)
+		switch (TexCoordType)
 		{
-			Tessellation.NormalArray[Indice].Set(((float)InCTValueArray[Indice]) / 255.f, ((float)InCTValueArray[Indice + 1]) / 255.f, ((float)InCTValueArray[Indice + 2]) / 255.f);
+		case CT_TESS_FLOAT:
+			ScaleUV<float>(FaceID, TexCoordArray, VertexCount, (float) ImportParams.ScaleFactor);
+			break;
+		case CT_TESS_DOUBLE:
+			ScaleUV<double>(FaceID, TexCoordArray, VertexCount, ImportParams.ScaleFactor);
+			break;
 		}
-		break;
 	}
-	case CT_TESS_FLOAT:
-		FillArrayOfVector<float>(NormalCount, NormalArray, Tessellation.NormalArray.GetData());
-		break;
-	}
+
+	Tessellation.VertexCount = VertexCount;
+	Tessellation.NormalCount = NormalCount;
+	Tessellation.IndexCount = IndexCount;
+	Tessellation.TexCoordCount = TexCoordArray ? VertexCount : 0;
+	Tessellation.SizeOfVertexType = GetSize(VertexType);
+	Tessellation.SizeOfTexCoordType = GetSize(TexCoordType);
+	Tessellation.SizeOfNormalType = GetSize(NormalType);
+	Tessellation.SizeOfIndexType = GetSize(IndexType);
+
+	Tessellation.VertexArray.Append((uint8*) VertexArray, 3 * Tessellation.VertexCount * Tessellation.SizeOfVertexType);
+	Tessellation.NormalArray.Append((uint8*)NormalArray, 3 * Tessellation.NormalCount * Tessellation.SizeOfNormalType);
+	Tessellation.IndexArray.Append((uint8*)IndexArray, Tessellation.IndexCount * Tessellation.SizeOfIndexType);
 
 	if (TexCoordArray)
 	{
-		Tessellation.TexCoordArray.SetNum(VertexCount);
-		switch (TexCoordType)
-		{
-		case CT_TESS_SHORT:
-		{
-			int8* InCTValueArray = (int8*)TexCoordArray;
-			for (CT_UINT32 Indice = 0; Indice < VertexCount; ++Indice)
-			{
-				Tessellation.TexCoordArray[Indice].Set(((float)InCTValueArray[Indice]) / 255.f, ((float)InCTValueArray[Indice + 1]) / 255.f);
-			}
-			break;
-		}
-		case CT_TESS_FLOAT:
-			FillArrayOfVector2D<float>(VertexCount, TexCoordArray, Tessellation.TexCoordArray.GetData());
-			break;
-		case CT_TESS_DOUBLE:
-			FillArrayOfVector2D<double>(VertexCount, TexCoordArray, Tessellation.TexCoordArray.GetData());
-			break;
-		}
+		Tessellation.TexCoordArray.Append((uint8*)TexCoordArray, 2 * Tessellation.TexCoordCount * Tessellation.SizeOfTexCoordType);
 	}
 
-	if (ImportParams.bScaleUVMap && Tessellation.TexCoordArray.Num() != 0)
-	{
-		ScaleUV(FaceID, Tessellation.TexCoordArray, (float) ImportParams.ScaleFactor);
-	}
-
-	return Tessellation.IndexArray.Num() / 3;
+	return (uint32)Tessellation.IndexCount / 3;
 }
 
 
@@ -355,12 +280,12 @@ void GetCTObjectDisplayDataIds(CT_OBJECT_ID ObjectID, FObjectDisplayDataId& Mate
 
 FArchiveMaterial& FCoreTechFileParser::FindOrAddMaterial(CT_MATERIAL_ID MaterialId)
 {
-	if (FArchiveMaterial* NewMaterial = SceneGraphArchive.MaterialHIdToMaterial.Find(MaterialId))
+	if (FArchiveMaterial* NewMaterial = MockUpDescription.MaterialHIdToMaterial.Find(MaterialId))
 	{
 		return *NewMaterial;
 	}
 
-	FArchiveMaterial& NewMaterial = SceneGraphArchive.MaterialHIdToMaterial.Emplace(MaterialId, MaterialId);
+	FArchiveMaterial& NewMaterial = MockUpDescription.MaterialHIdToMaterial.Emplace(MaterialId, MaterialId);
 	GetMaterial(MaterialId, NewMaterial.Material);
 	NewMaterial.UEMaterialName = BuildMaterialName(NewMaterial.Material);
 	return NewMaterial;
@@ -368,12 +293,12 @@ FArchiveMaterial& FCoreTechFileParser::FindOrAddMaterial(CT_MATERIAL_ID Material
 
 FArchiveColor& FCoreTechFileParser::FindOrAddColor(uint32 ColorHId)
 {
-	if (FArchiveColor* Color = SceneGraphArchive.ColorHIdToColor.Find(ColorHId))
+	if (FArchiveColor* Color = MockUpDescription.ColorHIdToColor.Find(ColorHId))
 	{
 		return *Color;
 	}
 
-	FArchiveColor& NewColor = SceneGraphArchive.ColorHIdToColor.Add(ColorHId, ColorHId);
+	FArchiveColor& NewColor = MockUpDescription.ColorHIdToColor.Add(ColorHId, ColorHId);
 	GetColor(ColorHId, NewColor.Color);
 	NewColor.UEMaterialName = BuildColorName(NewColor.Color);
 	return NewColor;
@@ -440,15 +365,14 @@ bool GetMaterial(uint32 MaterialId, FCADMaterial& OutMaterial)
 		}
 	}
 
-	OutMaterial.MaterialName = AsFString(CtName);
+	OutMaterial.MaterialName = CtName.toUnicode();
 	OutMaterial.Diffuse = FColor(CtDiffuse[0], CtDiffuse[1], CtDiffuse[2], 255);
 	OutMaterial.Ambient = FColor(CtAmbient[0], CtAmbient[1], CtAmbient[2], 255);
 	OutMaterial.Specular = FColor(CtSpecular[0], CtSpecular[1], CtSpecular[2], 255);
 	OutMaterial.Shininess = CtShininess;
 	OutMaterial.Transparency = CtTransparency;
 	OutMaterial.Reflexion = CtReflexion;
-	OutMaterial.TextureName = AsFString(CtTextureName);
-
+	OutMaterial.TextureName = CtTextureName.toUnicode();
 	return true;
 }
 
@@ -502,7 +426,7 @@ uint32 GetStaticMeshUuid(const TCHAR* OutSgFile, const int32 BodyId)
 
 void FCoreTechFileParser::ExportSceneGraphFile()
 {
-	SceneGraphArchive.SerializeMockUp(*FPaths::Combine(CachePath, TEXT("scene"), SceneGraphArchive.ArchiveFileName + TEXT(".sg")));
+	SerializeMockUp(MockUpDescription, *FPaths::Combine(CachePath, TEXT("scene"), MockUpDescription.SceneGraphArchive + TEXT(".sg")));
 }
 
 void FCoreTechFileParser::ExportMeshArchiveFile()
@@ -512,7 +436,7 @@ void FCoreTechFileParser::ExportMeshArchiveFile()
 
 void FCoreTechFileParser::LoadSceneGraphArchive(const FString& SGFile)
 {
-	SceneGraphArchive.DeserializeMockUpFile(*SGFile);
+	DeserializeMockUpFile(*SGFile, MockUpDescription);
 }
 
 uint32 FCoreTechFileParser::GetMaterialNum()
@@ -558,7 +482,7 @@ void FCoreTechFileParser::ReadMaterials()
 			break;
 		}
 
-		FArchiveMaterial& MaterialObject = SceneGraphArchive.MaterialHIdToMaterial.Emplace(MaterialId, MaterialId);
+		FArchiveMaterial& MaterialObject = MockUpDescription.MaterialHIdToMaterial.Emplace(MaterialId, MaterialId);
 		MaterialObject.UEMaterialName = BuildMaterialName(Material);
 		MaterialObject.Material = Material; 
 
@@ -566,91 +490,41 @@ void FCoreTechFileParser::ReadMaterials()
 	}
 }
 
-FCoreTechFileParser::FCoreTechFileParser(const FImportParameters& ImportParams, const FString& EnginePluginsPath, const FString& InCachePath)
+FCoreTechFileParser::FCoreTechFileParser(const FString& InCADFullPath, const FString& InCachePath, const FImportParameters& ImportParams, const TCHAR* KernelIOPath)
 	: CachePath(InCachePath)
+	, FullPath(InCADFullPath)
+	, bNeedSaveCTFile(false)
 	, ImportParameters(ImportParams)
 {
-	CTKIO_InitializeKernel(ImportParameters.MetricUnit, *EnginePluginsPath);
+	CTKIO_InitializeKernel(ImportParameters.MetricUnit, KernelIOPath);
 }
 
-bool FCoreTechFileParser::FindFile(FFileDescription& File)
+FCoreTechFileParser::EProcessResult FCoreTechFileParser::ProcessFile()
 {
-	FString FileName = File.Name;
+	FileConfiguration.Empty();
 
-	FString FilePath = FPaths::GetPath(File.Path);
-	FString RootFilePath = File.MainCadFilePath;
+	CADFile = FPaths::GetCleanFilename(*FullPath);
 
-	// Basic case: FilePath is, or is in a sub-folder of, RootFilePath
-	if (FilePath.StartsWith(RootFilePath))
+	// Check if configuration is passed with file name
+	FString NewCADFile;
+	const FString CutOffMarker = TEXT("|");
+	if (FullPath.Split(CutOffMarker, &NewCADFile, &FileConfiguration))
 	{
-		return IFileManager::Get().FileExists(*File.Path);
+		FullPath = NewCADFile;
 	}
 
-	// Advance case: end of FilePath is in a upper-folder of RootFilePath
-	// e.g.
-	// FilePath = D:\\data temp\\Unstructured project\\Folder2\\Added_Object.SLDPRT
-	//                                                 ----------------------------
-	// RootFilePath = D:\\data\\CAD Files\\SolidWorks\\p033 - Unstructured project\\Folder1
-	//                ------------------------------------------------------------
-	// NewPath = D:\\data\\CAD Files\\SolidWorks\\p033 - Unstructured project\\Folder2\\Added_Object.SLDPRT
-	TArray<FString> RootPaths;
-	RootPaths.Reserve(30);
-	do
-	{
-		RootFilePath = FPaths::GetPath(RootFilePath);
-		RootPaths.Emplace(RootFilePath);
-	} while (!FPaths::IsDrive(RootFilePath) && !RootFilePath.IsEmpty());
-
-	TArray<FString> FilePaths;
-	FilePaths.Reserve(30);
-	FilePaths.Emplace(FileName);
-	while (!FPaths::IsDrive(FilePath) && !FilePath.IsEmpty())
-	{
-		FString FolderName = FPaths::GetCleanFilename(FilePath);
-		FilePath = FPaths::GetPath(FilePath);
-		FilePaths.Emplace(FPaths::Combine(FolderName, FilePaths.Last()));
-	};
-
-	for(int32 IndexFolderPath = 0; IndexFolderPath < RootPaths.Num(); IndexFolderPath++)
-	{
-		for (int32 IndexFilePath = 0; IndexFilePath < FilePaths.Num(); IndexFilePath++)
-		{
-			FString NewFilePath = FPaths::Combine(RootPaths[IndexFolderPath], FilePaths[IndexFilePath]);
-			if(IFileManager::Get().FileExists(*NewFilePath))
-			{
-				File.Path = NewFilePath;
-				return true;
-			};
-		}
-	}
-
-	// Last case: the FilePath is elsewhere and the file exist
-	// A Warning is launch because the file could be expected to not be loaded
-	if(IFileManager::Get().FileExists(*File.Path))
-	{
-		WarningMessages.Add(FString::Printf(TEXT("File %s has been loaded but seems to be localize in an external folder: %s."), *FileName, *FPaths::GetPath(FileDescription.Path)));
-		return true;
-	}
-
-	return false;
-}
-
-
-FCoreTechFileParser::EProcessResult FCoreTechFileParser::ProcessFile(const FFileDescription& InFileDescription)
-{
-	FileDescription = InFileDescription;
-
-	if (!FindFile(FileDescription))
+	if (!IFileManager::Get().FileExists(*FullPath))
 	{
 		return EProcessResult::FileNotFound;
 	}
 
-	uint32 FileHash = GetFileHash();
+	FFileStatData FileStatData = IFileManager::Get().GetStatData(*FullPath);
+	uint32 FileHash = GetFileHash(CADFile, FileStatData, FileConfiguration, ImportParameters);
 
-	SceneGraphArchive.ArchiveFileName = FString::Printf(TEXT("UEx%08x"), FileHash);
+	MockUpDescription.SceneGraphArchive = FString::Printf(TEXT("UEx%08x"), FileHash);
 
-	FString SceneGraphArchiveFilePath = FPaths::Combine(CachePath, TEXT("scene"), SceneGraphArchive.ArchiveFileName + TEXT(".sg"));
-	FString CTFilePath = FPaths::Combine(CachePath, TEXT("cad"), SceneGraphArchive.ArchiveFileName + TEXT(".ct"));
+	FString SceneGraphArchiveFilePath = FPaths::Combine(CachePath, TEXT("scene"), MockUpDescription.SceneGraphArchive + TEXT(".sg"));
+	FString CTFilePath = FPaths::Combine(CachePath, TEXT("cad"), MockUpDescription.SceneGraphArchive + TEXT(".ct"));
 
 	uint32 MeshFileHash = GetGeomFileHash(FileHash, ImportParameters);
 	MeshArchiveFile = FString::Printf(TEXT("UEx%08x"), MeshFileHash);
@@ -658,15 +532,19 @@ FCoreTechFileParser::EProcessResult FCoreTechFileParser::ProcessFile(const FFile
 
 	bool bNeedToProceed = true;
 #ifndef IGNORE_CACHE
-	if (ImportParameters.bEnableCacheUsage && IFileManager::Get().FileExists(*CTFilePath))
+	if (IFileManager::Get().FileExists(*SceneGraphArchiveFilePath))
 	{
-		if (IFileManager::Get().FileExists(*MeshArchiveFilePath)) // the file has been proceed with same meshing parameters
+		if (!IFileManager::Get().FileExists(*CTFilePath)) // the file is scene graph only because no CT file
+		{
+			bNeedToProceed = false;
+		}
+		else if (IFileManager::Get().FileExists(*MeshArchiveFilePath)) // the file has been proceed with same meshing parameters
 		{
 			bNeedToProceed = false;
 		}
 		else // the file has been converted into CT file but meshed with different parameters
 		{
-			FileDescription.ReplaceByKernelIOBackup(CTFilePath);
+			FullPath = CTFilePath;
 		}
 	}
 
@@ -686,33 +564,22 @@ FCoreTechFileParser::EProcessResult FCoreTechFileParser::ReadFileWithKernelIO()
 	CT_IO_ERROR Result = IO_OK;
 	CT_OBJECT_ID MainId = 0;
 
-	CT_KERNEL_IO::UnloadModel();
+	Result = CT_KERNEL_IO::UnloadModel();
 
-	SceneGraphArchive.FullPath = FileDescription.Path;
-	SceneGraphArchive.CADFileName = FileDescription.Name;
-
-		// the parallelization of monolithic Jt file is set in SetCoreTechImportOption. Then it's processed as the other exploded formats
-		CT_FLAGS CTImportOption = SetCoreTechImportOption();
+	CT_FLAGS CTImportOption = SetCoreTechImportOption(FPaths::GetExtension(CADFile));
 
 	FString LoadOption;
 	CT_UINT32 NumberOfIds = 1;
-
-	if (!FileDescription.Configuration.IsEmpty())
+	if (!FileConfiguration.IsEmpty())
 	{
-			if (FileDescription.Extension == "jt")
-			{
-				LoadOption = FileDescription.Configuration;
-			}
-			else
-			{
-		NumberOfIds = CT_KERNEL_IO::AskFileNbOfIds(*FileDescription.Path);
+		NumberOfIds = CT_KERNEL_IO::AskFileNbOfIds(*FullPath);
 		if (NumberOfIds > 1)
 		{
-			CT_UINT32 ActiveConfig = CT_KERNEL_IO::AskFileActiveConfig(*FileDescription.Path);
+			CT_UINT32 ActiveConfig = CT_KERNEL_IO::AskFileActiveConfig(*FullPath);
 			for (CT_UINT32 i = 0; i < NumberOfIds; i++)
 			{
-				CT_STR ConfValue = CT_KERNEL_IO::AskFileIdIthName(*FileDescription.Path, i);
-				if (FileDescription.Configuration == AsFString(ConfValue)) {
+				CT_STR ConfValue = CT_KERNEL_IO::AskFileIdIthName(*FullPath, i);
+				if (FileConfiguration == ConfValue.toUnicode()) {
 					ActiveConfig = i;
 					break;
 				}
@@ -722,24 +589,16 @@ FCoreTechFileParser::EProcessResult FCoreTechFileParser::ReadFileWithKernelIO()
 			LoadOption = FString::FromInt((int32) ActiveConfig);
 		}
 	}
+
+	Result = CT_KERNEL_IO::LoadFile(*FullPath, MainId, CTImportOption, 0, *LoadOption);
+	if (Result == IO_ERROR_EMPTY_ASSEMBLY)
+	{
+		Result = CT_KERNEL_IO::UnloadModel();
+		if (Result != IO_OK)
+		{
+			return EProcessResult::ProcessFailed;
 		}
-
-	Result = CT_KERNEL_IO::LoadFile(*FileDescription.Path, MainId, CTImportOption, 0, *LoadOption);
-	if (Result == IO_ERROR_EMPTY_ASSEMBLY)
-	{
-		CT_KERNEL_IO::UnloadModel();
-			CT_FLAGS CTReImportOption = CTImportOption | CT_LOAD_FLAGS_LOAD_EXTERNAL_REF;
-			CTReImportOption &= ~CT_LOAD_FLAGS_READ_ASM_STRUCT_ONLY;  // BUG CT -> Ticket 11685
-			Result = CT_KERNEL_IO::LoadFile(*FileDescription.Path, MainId, CTReImportOption, 0, *LoadOption);
-	}
-
-	// the file is loaded but it's empty, so no data is generate
-	if (Result == IO_ERROR_EMPTY_ASSEMBLY)
-	{
-		CT_KERNEL_IO::UnloadModel();
-		WarningMessages.Emplace(FString::Printf(TEXT("File %s has been loaded but no assembly has been detected."), *FileDescription.Name));
-		ExportSceneGraphFile();
-		return EProcessResult::ProcessOk;
+		Result = CT_KERNEL_IO::LoadFile(*FullPath, MainId, CTImportOption | CT_LOAD_FLAGS_LOAD_EXTERNAL_REF);
 	}
 
 	if (Result != IO_OK && Result != IO_OK_MISSING_LICENSES)
@@ -748,19 +607,10 @@ FCoreTechFileParser::EProcessResult FCoreTechFileParser::ReadFileWithKernelIO()
 		return EProcessResult::ProcessFailed;
 	}
 
-	FString CTFilePath = FPaths::Combine(CachePath, TEXT("cad"), SceneGraphArchive.ArchiveFileName + TEXT(".ct"));
-	if(CTFilePath != FileDescription.Path)
-	{
-		CT_LIST_IO ObjectList;
-		ObjectList.PushBack(MainId);
-
-		CT_KERNEL_IO::SaveFile(ObjectList, *FPaths::Combine(CachePath, TEXT("cad"), SceneGraphArchive.ArchiveFileName + TEXT(".ct")), L"Ct");
-	}
-
 	SetCoreTechTessellationState(ImportParameters);
 
-	SceneGraphArchive.FullPath = FileDescription.Path;
-	SceneGraphArchive.CADFileName = FileDescription.Name;
+	MockUpDescription.FullPath = FullPath;
+	MockUpDescription.CADFile = CADFile;
 
 	const CT_OBJECT_TYPE TypeSet[] = { CT_INSTANCE_TYPE, CT_ASSEMBLY_TYPE, CT_PART_TYPE, CT_COMPONENT_TYPE, CT_BODY_TYPE, CT_UNLOADED_COMPONENT_TYPE, CT_UNLOADED_ASSEMBLY_TYPE, CT_UNLOADED_PART_TYPE};
 	enum EObjectTypeIndex : uint8	{ CT_INSTANCE_INDEX = 0, CT_ASSEMBLY_INDEX, CT_PART_INDEX, CT_COMPONENT_INDEX, CT_BODY_INDEX, CT_UNLOADED_COMPONENT_INDEX, CT_UNLOADED_ASSEMBLY_INDEX, CT_UNLOADED_PART_INDEX };
@@ -774,18 +624,18 @@ FCoreTechFileParser::EProcessResult FCoreTechFileParser::ReadFileWithKernelIO()
 
 	BodyMeshes.Reserve(NbElements[CT_BODY_INDEX]);
 
-	SceneGraphArchive.BodySet.Reserve(NbElements[CT_BODY_INDEX]);
-	SceneGraphArchive.ComponentSet.Reserve(NbElements[CT_ASSEMBLY_INDEX] + NbElements[CT_PART_INDEX] + NbElements[CT_COMPONENT_INDEX]);
-	SceneGraphArchive.UnloadedComponentSet.Reserve(NbElements[CT_UNLOADED_COMPONENT_INDEX] + NbElements[CT_UNLOADED_ASSEMBLY_INDEX] + NbElements[CT_UNLOADED_PART_INDEX]);
-	SceneGraphArchive.Instances.Reserve(NbElements[CT_INSTANCE_INDEX]);
+	MockUpDescription.BodySet.Reserve(NbElements[CT_BODY_INDEX]);
+	MockUpDescription.ComponentSet.Reserve(NbElements[CT_ASSEMBLY_INDEX] + NbElements[CT_PART_INDEX] + NbElements[CT_COMPONENT_INDEX]);
+	MockUpDescription.UnloadedComponentSet.Reserve(NbElements[CT_UNLOADED_COMPONENT_INDEX] + NbElements[CT_UNLOADED_ASSEMBLY_INDEX] + NbElements[CT_UNLOADED_PART_INDEX]);
+	MockUpDescription.Instances.Reserve(NbElements[CT_INSTANCE_INDEX]);
 
-	SceneGraphArchive.CADIdToBodyIndex.Reserve(NbElements[CT_BODY_INDEX]);
-	SceneGraphArchive.CADIdToComponentIndex.Reserve(NbElements[CT_ASSEMBLY_INDEX] + NbElements[CT_PART_INDEX] + NbElements[CT_COMPONENT_INDEX]);
-	SceneGraphArchive.CADIdToUnloadedComponentIndex.Reserve(NbElements[CT_UNLOADED_COMPONENT_INDEX] + NbElements[CT_UNLOADED_ASSEMBLY_INDEX] + NbElements[CT_UNLOADED_PART_INDEX]);
-	SceneGraphArchive.CADIdToInstanceIndex.Reserve(NbElements[CT_INSTANCE_INDEX]);
+	MockUpDescription.CADIdToBodyIndex.Reserve(NbElements[CT_BODY_INDEX]);
+	MockUpDescription.CADIdToComponentIndex.Reserve(NbElements[CT_ASSEMBLY_INDEX] + NbElements[CT_PART_INDEX] + NbElements[CT_COMPONENT_INDEX]);
+	MockUpDescription.CADIdToUnloadedComponentIndex.Reserve(NbElements[CT_UNLOADED_COMPONENT_INDEX] + NbElements[CT_UNLOADED_ASSEMBLY_INDEX] + NbElements[CT_UNLOADED_PART_INDEX]);
+	MockUpDescription.CADIdToInstanceIndex.Reserve(NbElements[CT_INSTANCE_INDEX]);
 
 	uint32 MaterialNum = GetMaterialNum();
-	SceneGraphArchive.MaterialHIdToMaterial.Reserve(MaterialNum);
+	MockUpDescription.MaterialHIdToMaterial.Reserve(MaterialNum);
 
 	ReadMaterials();
 
@@ -794,10 +644,12 @@ FCoreTechFileParser::EProcessResult FCoreTechFileParser::ReadFileWithKernelIO()
 	bool bReadNodeSucceed = ReadNode(MainId, DefaultMaterialHash);
 	// End of parsing
 
-	CT_STR KernelIO_Version = CT_KERNEL_IO::AskVersion();
-	if (!KernelIO_Version.IsEmpty())
+	if (bNeedSaveCTFile)
 	{
-		SceneGraphArchive.ComponentSet[0].MetaData.Add(TEXT("KernelIOVersion"), AsFString(KernelIO_Version));
+		CT_LIST_IO ObjectList;
+		ObjectList.PushBack(MainId);
+
+		CT_KERNEL_IO::SaveFile(ObjectList, *FPaths::Combine(CachePath, TEXT("cad"), MockUpDescription.SceneGraphArchive + TEXT(".ct")), L"Ct");
 	}
 
 	CT_KERNEL_IO::UnloadModel();
@@ -813,32 +665,16 @@ FCoreTechFileParser::EProcessResult FCoreTechFileParser::ReadFileWithKernelIO()
 	return EProcessResult::ProcessOk;
 }
 
-	CT_FLAGS FCoreTechFileParser::SetCoreTechImportOption()
+CT_FLAGS FCoreTechFileParser::SetCoreTechImportOption(const FString& MainFileExt)
 {
 	// Set import option
 	CT_FLAGS Flags = CT_LOAD_FLAGS_USE_DEFAULT;
-		const FString& MainFileExt = FileDescription.Extension;
 
-		// Parallelisation of monolitic Jt file,
-		// For Jt file, first step the file is read with "Structure only option"
-		// For each body, the JT file is read with "READ_SPECIFIC_OBJECT", Configuration == BodyId
-		if (MainFileExt == TEXT("jt"))
-		{
-			if (FileDescription.Configuration.IsEmpty())
-			{
-				if (FileSize > 2e6 /* 2 Mb */) // First step 
+	// Do not read meta-data from JT files with CoreTech. It crashes...
+	if (MainFileExt != TEXT("jt"))
 	{
-					Flags |= CT_LOAD_FLAGS_READ_ASM_STRUCT_ONLY;
-				}
-			}
-			else // Second step
-			{
-				Flags &= ~CT_LOAD_FLAGS_REMOVE_EMPTY_COMPONENTS;
-				Flags |= CT_LOAD_FLAGS_READ_SPECIFIC_OBJECT;
-			}
-		}
-
 		Flags |= CT_LOAD_FLAGS_READ_META_DATA;
+	}
 
 	if (MainFileExt == TEXT("catpart") || MainFileExt == TEXT("catproduct") || MainFileExt == TEXT("cgr"))
 	{
@@ -849,8 +685,7 @@ FCoreTechFileParser::EProcessResult FCoreTechFileParser::ReadFileWithKernelIO()
 	// Ask Kernel IO to complete or create missing topology
 	if (MainFileExt == TEXT("igs") || MainFileExt == TEXT("iges"))
 	{
-		Flags |= CT_LOAD_FLAG_COMPLETE_TOPOLOGY;
-		Flags |= CT_LOAD_FLAG_SEARCH_NEW_TOPOLOGY;
+		Flags |= CT_LOAD_FLAG_SEARCH_NEW_TOPOLOGY | CT_LOAD_FLAG_COMPLETE_TOPOLOGY;
 	}
 
 	// 3dxml file is zipped files, it's full managed by Kernel_io. We cannot read it in sequential mode
@@ -870,7 +705,7 @@ bool FCoreTechFileParser::ReadNode(CT_OBJECT_ID NodeId, uint32 DefaultMaterialHa
 	switch (Type)
 	{
 	case CT_INSTANCE_TYPE:
-		if (int32* Index = SceneGraphArchive.CADIdToInstanceIndex.Find(NodeId))
+		if (int32* Index = MockUpDescription.CADIdToInstanceIndex.Find(NodeId))
 		{
 			return true;
 		}
@@ -879,7 +714,7 @@ bool FCoreTechFileParser::ReadNode(CT_OBJECT_ID NodeId, uint32 DefaultMaterialHa
 	case CT_ASSEMBLY_TYPE:
 	case CT_PART_TYPE:
 	case CT_COMPONENT_TYPE:
-		if (int32* Index = SceneGraphArchive.CADIdToComponentIndex.Find(NodeId))
+		if (int32* Index = MockUpDescription.CADIdToComponentIndex.Find(NodeId))
 		{
 			return true;
 		}
@@ -888,16 +723,20 @@ bool FCoreTechFileParser::ReadNode(CT_OBJECT_ID NodeId, uint32 DefaultMaterialHa
 	case CT_UNLOADED_ASSEMBLY_TYPE:
 	case CT_UNLOADED_COMPONENT_TYPE:
 	case CT_UNLOADED_PART_TYPE:
-		if (int32* Index = SceneGraphArchive.CADIdToUnloadedComponentIndex.Find(NodeId))
+		if (int32* Index = MockUpDescription.CADIdToUnloadedComponentIndex.Find(NodeId))
 		{
 			return true;
 		}
 		return ReadUnloadedComponent(NodeId);
 
 	case CT_BODY_TYPE:
-		break;
+		if (int32* Index = MockUpDescription.CADIdToBodyIndex.Find(NodeId))
+		{
+			return true;
+		}
+		return ReadBody(NodeId, DefaultMaterialHash);
 
-	//Treat all CT_CURVE_TYPE :
+		//Treat all CT_CURVE_TYPE :
 	case CT_CURVE_TYPE:
 	case CT_C_NURBS_TYPE:
 	case CT_CONICAL_TYPE:
@@ -926,12 +765,12 @@ bool FCoreTechFileParser::ReadUnloadedComponent(CT_OBJECT_ID ComponentId)
 		return false;
 	}
 
-	int32 Index = SceneGraphArchive.UnloadedComponentSet.Emplace(ComponentId);
-	SceneGraphArchive.CADIdToUnloadedComponentIndex.Add(ComponentId, Index);
-	ReadNodeMetaData(ComponentId, SceneGraphArchive.UnloadedComponentSet[Index].MetaData);
+	int32 Index = MockUpDescription.UnloadedComponentSet.Emplace(ComponentId);
+	MockUpDescription.CADIdToUnloadedComponentIndex.Add(ComponentId, Index);
+	ReadNodeMetaData(ComponentId, MockUpDescription.UnloadedComponentSet[Index].MetaData);
 
-	SceneGraphArchive.UnloadedComponentSet[Index].FileName = AsFString(Filename);
-	SceneGraphArchive.UnloadedComponentSet[Index].FileType = AsFString(FileType);
+	MockUpDescription.UnloadedComponentSet[Index].FileName = Filename.toUnicode();
+	MockUpDescription.UnloadedComponentSet[Index].FileType = FileType.toUnicode();
 
 	return true;
 }
@@ -976,11 +815,11 @@ void GetInstancesAndBodies(CT_OBJECT_ID InComponentId, TArray<CT_OBJECT_ID>& Out
 
 bool FCoreTechFileParser::ReadComponent(CT_OBJECT_ID ComponentId, uint32 DefaultMaterialHash)
 {
-	int32 Index = SceneGraphArchive.ComponentSet.Emplace(ComponentId);
-	SceneGraphArchive.CADIdToComponentIndex.Add(ComponentId, Index);
-	ReadNodeMetaData(ComponentId, SceneGraphArchive.ComponentSet[Index].MetaData);
+	int32 Index = MockUpDescription.ComponentSet.Emplace(ComponentId);
+	MockUpDescription.CADIdToComponentIndex.Add(ComponentId, Index);
+	ReadNodeMetaData(ComponentId, MockUpDescription.ComponentSet[Index].MetaData);
 
-	if (uint32 MaterialHash = GetObjectMaterial(SceneGraphArchive.ComponentSet[Index]))
+	if (uint32 MaterialHash = GetObjectMaterial(MockUpDescription.ComponentSet[Index]))
 	{
 		DefaultMaterialHash = MaterialHash;
 	}
@@ -989,40 +828,25 @@ bool FCoreTechFileParser::ReadComponent(CT_OBJECT_ID ComponentId, uint32 Default
 	TArray<CT_OBJECT_ID> Instances, Bodies;
 	GetInstancesAndBodies(ComponentId, Instances, Bodies);
 
-
-	// Kernel_IO's Stitching action always ends by the split of the new bodies into a set of connected patches
-	// a CT_Component (reference in the concept of instance/reference) can have bodies and instances
-	// The SEW stitching rule in UE is:
-	//   - case 1 : the component has only a set of bodies: the bodies are merged, stitched and splitted into a new set of topologically correct bodies
-	//   - case 2 : the component has only one body or has bodies + instance, only a topology healing is done on the bodies 
-	//
-	// Case 1: Repair is done before processing bodies of a component
-	// Case 2: Repair is done before getting the mesh of the body. As the body is exploded, the new bodies have to be discovered by comparing parent's bodies before and after the repair action
-
-	bool bNeedRepair = true;
-	if (!Instances.Num() && Bodies.Num() > 1 && ImportParameters.StitchingTechnique == StitchingSew)
+	if (!Instances.Num() && (Bodies.Num() > 1) && ImportParameters.StitchingTechnique == StitchingSew)
 	{
-		// Case 1: Repair is done before processing bodies of a component
-		// Bodies.Num() > 1 so merge all bodies, sew and split into connected bodies (Repair)
 		Repair(ComponentId, StitchingSew);
 		GetInstancesAndBodies(ComponentId, Instances, Bodies);
-		SetCoreTechTessellationState(ImportParameters);
-		bNeedRepair = false;
 	}
 
 	for (CT_OBJECT_ID InstanceId : Instances)
 	{
 		if (ReadInstance(InstanceId, DefaultMaterialHash))
 		{
-			SceneGraphArchive.ComponentSet[Index].Children.Add(InstanceId);
+			MockUpDescription.ComponentSet[Index].Children.Add(InstanceId);
 		}
 	}
 
 	for (CT_OBJECT_ID BodyId : Bodies)
 	{
-		if (ReadBody(BodyId, ComponentId, DefaultMaterialHash, bNeedRepair))
+		if (ReadBody(BodyId, DefaultMaterialHash))
 		{
-			SceneGraphArchive.ComponentSet[Index].Children.Add(BodyId);
+			MockUpDescription.ComponentSet[Index].Children.Add(BodyId);
 		}
 	}
 
@@ -1031,13 +855,13 @@ bool FCoreTechFileParser::ReadComponent(CT_OBJECT_ID ComponentId, uint32 Default
 
 bool FCoreTechFileParser::ReadInstance(CT_OBJECT_ID InstanceNodeId, uint32 DefaultMaterialHash)
 {
+	NodeConfiguration.Empty();
 
-	int32 Index = SceneGraphArchive.Instances.Emplace(InstanceNodeId);
-	SceneGraphArchive.CADIdToInstanceIndex.Add(InstanceNodeId, Index);
+	int32 Index = MockUpDescription.Instances.Emplace(InstanceNodeId);
+	MockUpDescription.CADIdToInstanceIndex.Add(InstanceNodeId, Index);
+	ReadNodeMetaData(InstanceNodeId, MockUpDescription.Instances[Index].MetaData);
 
-	ReadNodeMetaData(InstanceNodeId, SceneGraphArchive.Instances[Index].MetaData);
-
-	if (uint32 MaterialHash = GetObjectMaterial(SceneGraphArchive.Instances[Index]))
+	if (uint32 MaterialHash = GetObjectMaterial(MockUpDescription.Instances[Index]))
 	{
 		DefaultMaterialHash = MaterialHash;
 	}
@@ -1046,7 +870,7 @@ bool FCoreTechFileParser::ReadInstance(CT_OBJECT_ID InstanceNodeId, uint32 Defau
 	double Matrix[16];
 	if (CT_INSTANCE_IO::AskTransformation(InstanceNodeId, Matrix) == IO_OK)
 	{
-		float* MatrixFloats = (float*)SceneGraphArchive.Instances[Index].TransformMatrix.M;
+		float* MatrixFloats = (float*)MockUpDescription.Instances[Index].TransformMatrix.M;
 		for (int32 index = 0; index < 16; index++)
 		{
 			MatrixFloats[index] = (float) Matrix[index];
@@ -1058,55 +882,29 @@ bool FCoreTechFileParser::ReadInstance(CT_OBJECT_ID InstanceNodeId, uint32 Defau
 	CT_IO_ERROR CTReturn = CT_INSTANCE_IO::AskChild(InstanceNodeId, ReferenceNodeId);
 	if (CTReturn != CT_IO_ERROR::IO_OK)
 		return false;
-	SceneGraphArchive.Instances[Index].ReferenceNodeId = ReferenceNodeId;
+	MockUpDescription.Instances[Index].ReferenceNodeId = ReferenceNodeId;
 
 	CT_OBJECT_TYPE type;
 	CT_OBJECT_IO::AskType(ReferenceNodeId, type);
 	if (type == CT_UNLOADED_PART_TYPE || type == CT_UNLOADED_COMPONENT_TYPE || type == CT_UNLOADED_ASSEMBLY_TYPE)
 	{
-		SceneGraphArchive.Instances[Index].bIsExternalRef = true;
+		MockUpDescription.Instances[Index].bIsExternalRef = true;
 
-		const FString SupressedEntity = TEXT("Supressed Entity");
-		FString IsSupressedEntity = SceneGraphArchive.Instances[Index].MetaData.FindRef(SupressedEntity);
-		if (IsSupressedEntity == TEXT("true"))
+		CT_STR ComponentFile, FileType;
+		CT_COMPONENT_IO::AskExternalDefinition(ReferenceNodeId, ComponentFile, FileType);
+		FString ExternalRefFullPath = ComponentFile.toUnicode();
+
+		if(!NodeConfiguration.IsEmpty())
 		{
-			return false;
+			ExternalRefFullPath += TEXT("|") + NodeConfiguration;
 		}
 
-			CT_STR ComponentFile, FileType;
-			CT_UINT3264 InternalId;
-			CT_COMPONENT_IO::AskExternalDefinition(ReferenceNodeId, ComponentFile, FileType, InternalId);
-			FString ExternalRefFullPath = AsFString(ComponentFile);
-
-			FString Configuration;
-			if (FileDescription.Extension == TEXT("jt"))
-			{
-				if (ExternalRefFullPath.IsEmpty())
-				{
-					ExternalRefFullPath = FileDescription.Path;
-				}
-
-				// Parallelisation of monolitic Jt file,
-				// is the external reference is the current file ? 
-				// Yes => this is an unloaded part that will be imported with CT_LOAD_FLAGS_READ_SPECIFIC_OBJECT Option
-				// No => the external reference is realy external... 
-				if (FPaths::IsSamePath(ExternalRefFullPath, FileDescription.Path))
-				{
-					Configuration = FString::Printf(TEXT("%d"), InternalId);
-				}
-			}
-			else
-			{
-		const FString ConfigName = TEXT("Configuration Name");
-				Configuration = SceneGraphArchive.Instances[Index].MetaData.FindRef(ConfigName);
-			}
-		FFileDescription NewFileDescription(*ExternalRefFullPath, *Configuration, *FileDescription.MainCadFilePath);
-		SceneGraphArchive.Instances[Index].ExternalRef = NewFileDescription;
-		SceneGraphArchive.ExternalRefSet.Add(NewFileDescription);
+		MockUpDescription.Instances[Index].ExternalRef = FPaths::GetCleanFilename(ExternalRefFullPath);
+		MockUpDescription.ExternalRefSet.Add(ExternalRefFullPath);
 	}
 	else
 	{
-		SceneGraphArchive.Instances[Index].bIsExternalRef = false;
+		MockUpDescription.Instances[Index].bIsExternalRef = false;
 	}
 
 	return ReadNode(ReferenceNodeId, DefaultMaterialHash);
@@ -1126,91 +924,33 @@ uint32 GetBodiesFaceSetNum(TArray<CT_OBJECT_ID>& BodySet)
 	return size;
 }
 
-void FCoreTechFileParser::GetBodyTessellation(CT_OBJECT_ID BodyId, CT_OBJECT_ID ParentId, FBodyMesh& OutBodyMesh, uint32 DefaultMaterialHash, bool bNeedRepair)
+void FCoreTechFileParser::GetBodyTessellation(CT_OBJECT_ID BodyId, FBodyMesh& OutBodyMesh, const FImportParameters& ImportParams, uint32 DefaultMaterialHash)
 {
-	TArray<CT_OBJECT_ID> BodyFaces;
-	{
-		CT_LIST_IO FaceList;
-		CT_BODY_IO::AskFaces(BodyId, FaceList);
-		BodyFaces.Reserve((int32)(1.3 * FaceList.Count()));
-	}
+	CT_LIST_IO FaceList;
+	CT_BODY_IO::AskFaces(BodyId, FaceList);
 
-	FObjectDisplayDataId BodyMaterial;
-	BodyMaterial.DefaultMaterialName = DefaultMaterialHash;
-	GetCTObjectDisplayDataIds(BodyId, BodyMaterial);
-
-	TArray<CT_OBJECT_ID> BodiesToProcess ;
-	if (bNeedRepair && ImportParameters.StitchingTechnique != StitchingNone)
-	{
-		// Case 2: Repair is done before getting the mesh of the body.
-		// Repair may have created new bodies including discarding initial body, so the list of bodies has to be retrieved by comparing parent's bodies before (InitialBodies) and after (AfterRepairBodies) the repair action
-
-		TArray<CT_OBJECT_ID> Instances;
-		TArray<CT_OBJECT_ID> InitialBodies;
-		GetInstancesAndBodies(ParentId, Instances, InitialBodies);
-
-		Repair(BodyId, ImportParameters.StitchingTechnique);
-		SetCoreTechTessellationState(ImportParameters);
-
-		TArray<CT_OBJECT_ID> AfterRepairBodies;
-		GetInstancesAndBodies(ParentId, Instances, AfterRepairBodies);
-
-		BodiesToProcess .Reserve(AfterRepairBodies.Num());
-		for (CT_OBJECT_ID Body : AfterRepairBodies)
-		{
-			if (Body == BodyId)
-			{
-				BodiesToProcess .Add(Body);
-			}
-			else if(InitialBodies.Find(Body) == INDEX_NONE)
-			{
-				BodiesToProcess .Add(Body);
-			}
-		}
-	}
-	else
-	{
-		BodiesToProcess .Add(BodyId);
-	}
-
-	FBox& BBox = OutBodyMesh.BBox;
-	for (CT_OBJECT_ID Body : BodiesToProcess )
-	{
-		CT_LIST_IO FaceList;
-		CT_BODY_IO::AskFaces(Body, FaceList);
-
-		// Compute Body BBox based on CAD data
-		uint32 VerticesSize;
-		CT_BODY_IO::AskVerticesSizeArray(Body, VerticesSize);
-
-		TArray<CT_COORDINATE> VerticesArray;
-		VerticesArray.SetNum(VerticesSize);
-		CT_BODY_IO::AskVerticesArray(Body, VerticesArray.GetData());
-
-		for (const CT_COORDINATE& Point : VerticesArray)
-		{
-			BBox += FVector((float)Point.xyz[0], (float)Point.xyz[1], (float)Point.xyz[2]);
-		}
-
-		CT_OBJECT_ID FaceID;
-		FaceList.IteratorInitialize();
-		while ((FaceID = FaceList.IteratorIter()) != 0)
-		{
-			BodyFaces.Add(FaceID);
-		}
-	}
-	uint32 FaceSize = BodyFaces.Num();
+	uint32 FaceSize = FaceList.Count();
 
 	// Allocate memory space for tessellation data
 	OutBodyMesh.Faces.Reserve(FaceSize);
 	OutBodyMesh.ColorSet.Reserve(FaceSize);
 	OutBodyMesh.MaterialSet.Reserve(FaceSize);
 
-	// Loop through the face of bodies and collect all tessellation data
+	CT_MATERIAL_ID BodyCtMaterialId = 0;
+
+	FObjectDisplayDataId BodyMaterial;
+	BodyMaterial.DefaultMaterialName = DefaultMaterialHash;
+	GetCTObjectDisplayDataIds(BodyId, BodyMaterial);
+
+	// Loop through the face of the first body and collect all tessellation data
+	FaceList.IteratorInitialize();
+
 	int32 FaceIndex = 0;
-	for(CT_OBJECT_ID FaceID : BodyFaces)
+
+	CT_OBJECT_ID FaceID;
+	while ((FaceID = FaceList.IteratorIter()) != 0)
 	{
-		uint32 TriangleNum = GetFaceTessellation(FaceID, OutBodyMesh.Faces, ImportParameters);
+		uint32 TriangleNum = GetFaceTessellation(FaceID, OutBodyMesh.Faces, ImportParams);
 
 		if (TriangleNum == 0)
 		{
@@ -1226,7 +966,7 @@ void FCoreTechFileParser::GetBodyTessellation(CT_OBJECT_ID BodyId, CT_OBJECT_ID 
 	}
 }
 
-bool FCoreTechFileParser::ReadBody(CT_OBJECT_ID BodyId, CT_OBJECT_ID ParentId, uint32 DefaultMaterialHash, bool bNeedRepair)
+bool FCoreTechFileParser::ReadBody(CT_OBJECT_ID BodyId, uint32 DefaultMaterialHash)
 {
 	// Is this body a constructive geometry ?
 	CT_LIST_IO FaceList;
@@ -1242,30 +982,32 @@ bool FCoreTechFileParser::ReadBody(CT_OBJECT_ID BodyId, CT_OBJECT_ID ParentId, u
 		}
 	}
 
-	int32 Index = SceneGraphArchive.BodySet.Emplace(BodyId);
-	SceneGraphArchive.CADIdToBodyIndex.Add(BodyId, Index);
-	ReadNodeMetaData(BodyId, SceneGraphArchive.BodySet[Index].MetaData);
+	int32 Index = MockUpDescription.BodySet.Emplace(BodyId);
+	MockUpDescription.CADIdToBodyIndex.Add(BodyId, Index);
+	ReadNodeMetaData(BodyId, MockUpDescription.BodySet[Index].MetaData);
 
 	int32 BodyMeshIndex = BodyMeshes.Emplace(BodyId);
 
-	if (uint32 MaterialHash = GetObjectMaterial(SceneGraphArchive.BodySet[Index]))
+	if (uint32 MaterialHash = GetObjectMaterial(MockUpDescription.BodySet[Index]))
 	{
 		DefaultMaterialHash = MaterialHash;
 	}
 
-	SceneGraphArchive.BodySet[Index].MeshActorName = GetStaticMeshUuid(*SceneGraphArchive.ArchiveFileName, BodyId);
-	BodyMeshes[BodyMeshIndex].MeshActorName = SceneGraphArchive.BodySet[Index].MeshActorName;
+	bNeedSaveCTFile = true;
 
-	// Save Body in CT file for re-tessellation before getBody because GetBody can call repair and modify the body (delete and build a new one with a new Id)
+	MockUpDescription.BodySet[Index].MeshActorName = GetStaticMeshUuid(*MockUpDescription.SceneGraphArchive, BodyId);
+	BodyMeshes[BodyMeshIndex].MeshActorName = MockUpDescription.BodySet[Index].MeshActorName;
+
+	GetBodyTessellation(BodyId, BodyMeshes[BodyMeshIndex], ImportParameters, DefaultMaterialHash);
+
+	MockUpDescription.BodySet[Index].ColorFaceSet = BodyMeshes[BodyMeshIndex].ColorSet;
+	MockUpDescription.BodySet[Index].MaterialFaceSet = BodyMeshes[BodyMeshIndex].MaterialSet;
+
+	// Save Body in CT file for re-tessellation
 	CT_LIST_IO ObjectList;
 	ObjectList.PushBack(BodyId);
-	FString BodyFile = FString::Printf(TEXT("UEx%08x"), SceneGraphArchive.BodySet[Index].MeshActorName);
+	FString BodyFile = FString::Printf(TEXT("UEx%08x"), MockUpDescription.BodySet[Index].MeshActorName);
 	CT_KERNEL_IO::SaveFile(ObjectList, *FPaths::Combine(CachePath, TEXT("body"), BodyFile + TEXT(".ct")), L"Ct");
-
-	GetBodyTessellation(BodyId, ParentId, BodyMeshes[BodyMeshIndex], DefaultMaterialHash, bNeedRepair);
-
-	SceneGraphArchive.BodySet[Index].ColorFaceSet = BodyMeshes[BodyMeshIndex].ColorSet;
-	SceneGraphArchive.BodySet[Index].MaterialFaceSet = BodyMeshes[BodyMeshIndex].MaterialSet;
 
 	return true;
 }
@@ -1277,10 +1019,7 @@ void FCoreTechFileParser::GetAttributeValue(CT_ATTRIB_TYPE AttributType, int Ith
 
 	Value = "";
 
-	if (CT_ATTRIB_DEFINITION_IO::AskFieldDefinition(AttributType, IthField, FieldType, FieldName) != IO_OK) 
-	{
-		return;
-	}
+	if (CT_ATTRIB_DEFINITION_IO::AskFieldDefinition(AttributType, IthField, FieldType, FieldName) != IO_OK) return;
 
 	switch (FieldType) {
 		case CT_ATTRIB_FIELD_UNKNOWN:
@@ -1290,31 +1029,22 @@ void FCoreTechFileParser::GetAttributeValue(CT_ATTRIB_TYPE AttributType, int Ith
 		case CT_ATTRIB_FIELD_INTEGER:
 		{
 			int IValue;
-			if (CT_CURRENT_ATTRIB_IO::AskIntField(IthField, IValue) != IO_OK) 
-			{
-				break;
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskIntField(IthField, IValue) != IO_OK) break;
 			Value = FString::FromInt(IValue);
 			break;
 		}
 		case CT_ATTRIB_FIELD_DOUBLE:
 		{
 			double DValue;
-			if (CT_CURRENT_ATTRIB_IO::AskDblField(IthField, DValue) != IO_OK)
-			{
-				break;
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskDblField(IthField, DValue) != IO_OK) break;
 			Value = FString::Printf(TEXT("%lf"), DValue);
 			break;
 		}
 		case CT_ATTRIB_FIELD_STRING:
 		{
 			CT_STR StrValue;
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(IthField, StrValue) != IO_OK)
-			{
-				break;
-			}
-			Value = AsFString(StrValue);
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(IthField, StrValue) != IO_OK) break;
+			Value = StrValue.toUnicode();
 			break;
 		}
 		case CT_ATTRIB_FIELD_POINTER:
@@ -1330,18 +1060,16 @@ void FCoreTechFileParser::GetStringMetaDataValue(CT_OBJECT_ID NodeId, const TCHA
 	CT_UINT32 IthAttrib = 0;
 	while (CT_OBJECT_IO::SearchAttribute(NodeId, CT_ATTRIB_STRING_METADATA, IthAttrib++) == IO_OK)
 	{
-		if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_STRING_METADATA_NAME, FieldName) != IO_OK)
-		{
-			break;
-		}
-		if (!FCString::Strcmp(InMetaDataName, *AsFString(FieldName)))
+		if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_STRING_METADATA_NAME, FieldName) != IO_OK) break;
+		if (!FCString::Strcmp(InMetaDataName, FieldName.toUnicode()))
 		{
 			CT_STR FieldStrValue;
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_STRING_METADATA_VALUE, FieldStrValue) != IO_OK)
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_STRING_METADATA_VALUE, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty())
 			{
-				break;
+				return;
 			}
-			OutMetaDataValue = AsFString(FieldStrValue);
+			OutMetaDataValue = FieldStrValue.toUnicode();
 			return;
 		}
 	}
@@ -1349,11 +1077,16 @@ void FCoreTechFileParser::GetStringMetaDataValue(CT_OBJECT_ID NodeId, const TCHA
 
 void FCoreTechFileParser::ReadNodeMetaData(CT_OBJECT_ID NodeId, TMap<FString, FString>& OutMetaData)
 {
+	const FString ConfigName = TEXT("Configuration Name");
+
 	if (CT_COMPONENT_IO::IsA(NodeId, CT_COMPONENT_TYPE))
 	{
 		CT_STR FileName, FileType;
 		CT_COMPONENT_IO::AskExternalDefinition(NodeId, FileName, FileType);
-		OutMetaData.Add(TEXT("ExternalDefinition"), AsFString(FileName));
+		if (!FileName.IsEmpty())
+		{
+			OutMetaData.Add(TEXT("ExternalDefinition"), FileName.toUnicode());
+		}
 	}
 
 	CT_SHOW_ATTRIBUTE IsShow = CT_UNKNOWN;
@@ -1387,56 +1120,46 @@ void FCoreTechFileParser::ReadNodeMetaData(CT_OBJECT_ID NodeId, TMap<FString, FS
 		FString              FieldValue;
 
 
-		if (CT_CURRENT_ATTRIB_IO::AskAttributeType(AttributeType) != IO_OK)
-		{
-			continue;
-		}
-
+		if (CT_CURRENT_ATTRIB_IO::AskAttributeType(AttributeType) != IO_OK) continue;;
 		switch (AttributeType) {
 
 		case CT_ATTRIB_SPLT:
 			break;
 
 		case CT_ATTRIB_NAME:
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_NAME_VALUE, FieldStrValue) == IO_OK)
-			{
-				OutMetaData.Add(TEXT("CTName"), AsFString(FieldStrValue));
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_NAME_VALUE, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(TEXT("CTName"), FieldStrValue.toUnicode());
 			break;
 
 		case CT_ATTRIB_ORIGINAL_NAME:
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_NAME_VALUE, FieldStrValue) == IO_OK)
-			{
-				OutMetaData.Add(TEXT("Name"), AsFString(FieldStrValue));
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_NAME_VALUE, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(TEXT("Name"), FieldStrValue.toUnicode());
 			break;
 
 		case CT_ATTRIB_ORIGINAL_FILENAME:
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_FILENAME_VALUE, FieldStrValue) == IO_OK)
-			{
-				OutMetaData.Add(TEXT("FileName"), AsFString(FieldStrValue));
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_FILENAME_VALUE, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(TEXT("FileName"), FieldStrValue.toUnicode());
 			break;
 
 		case CT_ATTRIB_UUID:
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_UUID_VALUE, FieldStrValue) == IO_OK)
-			{
-				OutMetaData.Add(TEXT("UUID"), AsFString(FieldStrValue));
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_UUID_VALUE, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(TEXT("UUID"), FieldStrValue.toUnicode());
 			break;
 
 		case CT_ATTRIB_INPUT_FORMAT_AND_EMETTOR:
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_INPUT_FORMAT_AND_EMETTOR, FieldStrValue) == IO_OK)
-			{
-				OutMetaData.Add(TEXT("Input_Format_and_Emitter"), AsFString(FieldStrValue));
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_INPUT_FORMAT_AND_EMETTOR, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(TEXT("Input_Format_and_Emitter"), FieldStrValue.toUnicode());
 			break;
 
 		case CT_ATTRIB_CONFIGURATION_NAME:
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_NAME_VALUE, FieldStrValue) == IO_OK)
-			{
-				OutMetaData.Add(TEXT("ConfigurationName"), AsFString(FieldStrValue));
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_NAME_VALUE, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(TEXT("ConfigurationName"), FieldStrValue.toUnicode());
 			break;
 
 		case CT_ATTRIB_LAYERID:
@@ -1450,10 +1173,7 @@ void FCoreTechFileParser::ReadNodeMetaData(CT_OBJECT_ID NodeId, TMap<FString, FS
 
 		case CT_ATTRIB_COLORID:
 			{
-				if (CT_CURRENT_ATTRIB_IO::AskIntField(ITH_COLORID_VALUE, FieldIntValue) != IO_OK)
-				{
-					break;
-				}
+				if (CT_CURRENT_ATTRIB_IO::AskIntField(ITH_COLORID_VALUE, FieldIntValue) != IO_OK) break;
 				uint32 ColorId = FieldIntValue;
 
 				uint8 Alpha = 255;
@@ -1476,11 +1196,8 @@ void FCoreTechFileParser::ReadNodeMetaData(CT_OBJECT_ID NodeId, TMap<FString, FS
 
 		case CT_ATTRIB_MATERIALID:
 		{
-			if (CT_CURRENT_ATTRIB_IO::AskIntField(ITH_MATERIALID_VALUE, FieldIntValue) != IO_OK)
-			{
-				break;
-			}
-			if (FArchiveMaterial* Material = SceneGraphArchive.MaterialHIdToMaterial.Find(FieldIntValue))
+			if (CT_CURRENT_ATTRIB_IO::AskIntField(ITH_MATERIALID_VALUE, FieldIntValue) != IO_OK) break;
+			if (FArchiveMaterial* Material = MockUpDescription.MaterialHIdToMaterial.Find(FieldIntValue))
 			{
 				OutMetaData.Add(TEXT("MaterialName"), FString::FromInt(Material->UEMaterialName));
 			}
@@ -1488,10 +1205,7 @@ void FCoreTechFileParser::ReadNodeMetaData(CT_OBJECT_ID NodeId, TMap<FString, FS
 		}
 
 		case CT_ATTRIB_TRANSPARENCY:
-			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_TRANSPARENCY_VALUE, FieldDoubleValue0) != IO_OK)
-			{
-				break;
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_TRANSPARENCY_VALUE, FieldDoubleValue0) != IO_OK) break;
 			FieldIntValue = FMath::Max((1. - FieldDoubleValue0), FieldDoubleValue0) * 255.;
 			OutMetaData.Add(TEXT("Transparency"), FString::FromInt(FieldIntValue));
 			break;
@@ -1501,10 +1215,7 @@ void FCoreTechFileParser::ReadNodeMetaData(CT_OBJECT_ID NodeId, TMap<FString, FS
 			break;
 
 		case CT_ATTRIB_REFCOUNT:
-			if (CT_CURRENT_ATTRIB_IO::AskIntField(ITH_REFCOUNT_VALUE, FieldIntValue) != IO_OK)
-			{
-				break;
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskIntField(ITH_REFCOUNT_VALUE, FieldIntValue) != IO_OK) break;
 			//OutMetaData.Add(TEXT("RefCount"), FString::FromInt(FieldIntValue));
 			break;
 
@@ -1517,25 +1228,13 @@ void FCoreTechFileParser::ReadNodeMetaData(CT_OBJECT_ID NodeId, TMap<FString, FS
 			break;
 
 		case CT_ATTRIB_MASS_PROPERTIES:
-			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_MASS_PROPERTIES_AREA, FieldDoubleValue0) != IO_OK)
-			{
-				break;
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_MASS_PROPERTIES_AREA, FieldDoubleValue0) != IO_OK) break;
 			OutMetaData.Add(TEXT("Area"), FString::Printf(TEXT("%lf"), FieldDoubleValue0));
-			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_MASS_PROPERTIES_VOLUME, FieldDoubleValue0) != IO_OK)
-			{
-				break;
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_MASS_PROPERTIES_VOLUME, FieldDoubleValue0) != IO_OK) break;
 			OutMetaData.Add(TEXT("Volume"), FString::Printf(TEXT("%lf"), FieldDoubleValue0));
-			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_MASS_PROPERTIES_MASS, FieldDoubleValue0) != IO_OK)
-			{
-				break;
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_MASS_PROPERTIES_MASS, FieldDoubleValue0) != IO_OK) break;
 			OutMetaData.Add(TEXT("Mass"), FString::Printf(TEXT("%lf"), FieldDoubleValue0));
-			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_MASS_PROPERTIES_LENGTH, FieldDoubleValue0) != IO_OK)
-			{
-				break;
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_MASS_PROPERTIES_LENGTH, FieldDoubleValue0) != IO_OK) break;
 			OutMetaData.Add(TEXT("Length"), FString::Printf(TEXT("%lf"), FieldDoubleValue0));
 			//ITH_MASS_PROPERTIES_COGX, ITH_MASS_PROPERTIES_COGY, ITH_MASS_PROPERTIES_COGZ
 			//ITH_MASS_PROPERTIES_M1, ITH_MASS_PROPERTIES_M2, ITH_MASS_PROPERTIES_M3
@@ -1549,54 +1248,32 @@ void FCoreTechFileParser::ReadNodeMetaData(CT_OBJECT_ID NodeId, TMap<FString, FS
 			break;
 
 		case CT_ATTRIB_INTEGER_METADATA:
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_INTEGER_METADATA_NAME, FieldName) != IO_OK)
-			{
-				break;
-			}
-			if (CT_CURRENT_ATTRIB_IO::AskIntField(ITH_INTEGER_METADATA_VALUE, FieldIntValue) != IO_OK)
-			{
-				break;
-			}
-			OutMetaData.Add(AsFString(FieldName), FString::FromInt(FieldIntValue));
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_INTEGER_METADATA_NAME, FieldName) != IO_OK) break;
+			if (CT_CURRENT_ATTRIB_IO::AskIntField(ITH_INTEGER_METADATA_VALUE, FieldIntValue) != IO_OK) break;
+			OutMetaData.Add(FieldName.toUnicode(), FString::FromInt(FieldIntValue));
 			break;
 
 		case CT_ATTRIB_DOUBLE_METADATA:
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_DOUBLE_METADATA_NAME, FieldName) != IO_OK)
-			{
-				break;
-			}
-			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_DOUBLE_METADATA_VALUE, FieldDoubleValue0) != IO_OK)
-			{
-				break;
-			}
-			OutMetaData.Add(AsFString(FieldName), FString::Printf(TEXT("%lf"), FieldDoubleValue0));
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_DOUBLE_METADATA_NAME, FieldName) != IO_OK) break;
+			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_DOUBLE_METADATA_VALUE, FieldDoubleValue0) != IO_OK) break;
+			OutMetaData.Add(FieldName.toUnicode(), FString::Printf(TEXT("%lf"), FieldDoubleValue0));
 			break;
 
 		case CT_ATTRIB_STRING_METADATA:
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_STRING_METADATA_NAME, FieldName) != IO_OK)
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_STRING_METADATA_NAME, FieldName) != IO_OK) break;
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_STRING_METADATA_VALUE, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) break;
+			if(ConfigName== FieldName.toUnicode())
 			{
-				break;
+				NodeConfiguration = FieldStrValue.toUnicode();
 			}
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_STRING_METADATA_VALUE, FieldStrValue) != IO_OK)
-			{
-				break;
-			}
-			OutMetaData.Add(AsFString(FieldName), AsFString(FieldStrValue));
+			OutMetaData.Add(FieldName.toUnicode(), FieldStrValue.toUnicode());
 			break;
 
 		case CT_ATTRIB_ORIGINAL_UNITS:
-			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_ORIGINAL_UNITS_MASS, FieldDoubleValue0) != IO_OK)
-			{
-				break;
-			}
-			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_ORIGINAL_UNITS_LENGTH, FieldDoubleValue1) != IO_OK)
-			{
-				break;
-			}
-			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_ORIGINAL_UNITS_DURATION, FieldDoubleValue2) != IO_OK)
-			{
-				break;
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_ORIGINAL_UNITS_MASS, FieldDoubleValue0) != IO_OK) break;
+			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_ORIGINAL_UNITS_LENGTH, FieldDoubleValue1) != IO_OK) break;
+			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_ORIGINAL_UNITS_DURATION, FieldDoubleValue2) != IO_OK) break;
 			OutMetaData.Add(TEXT("OriginalUnitsMass"), FString::Printf(TEXT("%lf"), FieldDoubleValue0));
 			OutMetaData.Add(TEXT("OriginalUnitsLength"), FString::Printf(TEXT("%lf"), FieldDoubleValue1));
 			OutMetaData.Add(TEXT("OriginalUnitsDuration"), FString::Printf(TEXT("%lf"), FieldDoubleValue2));
@@ -1608,30 +1285,21 @@ void FCoreTechFileParser::ReadNodeMetaData(CT_OBJECT_ID NodeId, TMap<FString, FS
 			break;
 
 		case CT_ATTRIB_PRODUCT:
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_PRODUCT_REVISION, FieldStrValue) == IO_OK)
-			{
-				OutMetaData.Add(TEXT("ProductRevision"), AsFString(FieldStrValue));
-			}
-
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_PRODUCT_DEFINITION, FieldStrValue) == IO_OK)
-			{
-				OutMetaData.Add(TEXT("ProductDefinition"), AsFString(FieldStrValue));
-			}
-
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_PRODUCT_NOMENCLATURE, FieldStrValue) == IO_OK)
-			{
-				OutMetaData.Add(TEXT("ProductNomenclature"), AsFString(FieldStrValue));
-			}
-
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_PRODUCT_SOURCE, FieldStrValue) == IO_OK)
-			{
-				OutMetaData.Add(TEXT("ProductSource"), AsFString(FieldStrValue));
-			}
-
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_PRODUCT_DESCRIPTION, FieldStrValue) != IO_OK)
-			{
-				OutMetaData.Add(TEXT("ProductDescription"), AsFString(FieldStrValue));
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_PRODUCT_REVISION, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(TEXT("ProductRevision"), FieldStrValue.toUnicode());
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_PRODUCT_DEFINITION, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(TEXT("ProductDefinition"), FieldStrValue.toUnicode());
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_PRODUCT_NOMENCLATURE, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(TEXT("ProductNomenclature"), FieldStrValue.toUnicode());
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_PRODUCT_SOURCE, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(TEXT("ProductSource"), FieldStrValue.toUnicode());
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_PRODUCT_DESCRIPTION, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(TEXT("ProductDescription"), FieldStrValue.toUnicode());
 			break;
 
 		case CT_ATTRIB_SIMPLIFY:
@@ -1661,39 +1329,22 @@ void FCoreTechFileParser::ReadNodeMetaData(CT_OBJECT_ID NodeId, TMap<FString, FS
 			break;
 
 		case CT_ATTRIB_INTEGER_PARAMETER:
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_INTEGER_PARAMETER_NAME, FieldName) != IO_OK)
-			{
-				break;
-			}
-			if (CT_CURRENT_ATTRIB_IO::AskIntField(ITH_INTEGER_PARAMETER_VALUE, FieldIntValue) != IO_OK)
-			{
-				break;
-			}
-			OutMetaData.Add(AsFString(FieldName), FString::FromInt(FieldIntValue));
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_INTEGER_PARAMETER_NAME, FieldName) != IO_OK) break;
+			if (CT_CURRENT_ATTRIB_IO::AskIntField(ITH_INTEGER_PARAMETER_VALUE, FieldIntValue) != IO_OK) break;
+			OutMetaData.Add(FieldName.toUnicode(), FString::FromInt(FieldIntValue));
 			break;
 
 		case CT_ATTRIB_DOUBLE_PARAMETER:
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_DOUBLE_PARAMETER_NAME, FieldName) != IO_OK)
-			{
-				break;
-			}
-			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_DOUBLE_PARAMETER_VALUE, FieldDoubleValue0) != IO_OK)
-			{
-				break;
-			}
-			OutMetaData.Add(AsFString(FieldName), FString::Printf(TEXT("%lf"), FieldDoubleValue0));
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_DOUBLE_PARAMETER_NAME, FieldName) != IO_OK) break;
+			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_DOUBLE_PARAMETER_VALUE, FieldDoubleValue0) != IO_OK) break;
+			OutMetaData.Add(FieldName.toUnicode(), FString::Printf(TEXT("%lf"), FieldDoubleValue0));
 			break;
 
 		case CT_ATTRIB_STRING_PARAMETER:
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_STRING_PARAMETER_NAME, FieldName) != IO_OK)
-			{
-				break;
-			}
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_STRING_PARAMETER_VALUE, FieldStrValue) != IO_OK)
-			{
-				break;
-			}
-			OutMetaData.Add(AsFString(FieldName), AsFString(FieldStrValue));
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_STRING_PARAMETER_NAME, FieldName) != IO_OK) break;
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_STRING_PARAMETER_VALUE, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(FieldName.toUnicode(), FieldStrValue.toUnicode());
 			break;
 
 		case CT_ATTRIB_PARAMETER_ARRAY:
@@ -1703,30 +1354,25 @@ void FCoreTechFileParser::ReadNodeMetaData(CT_OBJECT_ID NodeId, TMap<FString, FS
 			break;
 
 		case CT_ATTRIB_SAVE_OPTION:
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_SAVE_OPTION_AUTHOR, FieldStrValue) == IO_OK)
-			{
-				OutMetaData.Add(TEXT("SaveOptionAuthor"), AsFString(FieldStrValue));
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_SAVE_OPTION_AUTHOR, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(TEXT("SaveOptionAuthor"), FieldStrValue.toUnicode());
 
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_SAVE_OPTION_ORGANIZATION, FieldStrValue) == IO_OK)
-			{
-				OutMetaData.Add(TEXT("SaveOptionOrganization"), AsFString(FieldStrValue));
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_SAVE_OPTION_ORGANIZATION, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(TEXT("SaveOptionOrganization"), FieldStrValue.toUnicode());
+	
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_SAVE_OPTION_FILE_DESCRIPTION, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(TEXT("SaveOptionFileDescription"), FieldStrValue.toUnicode());
 
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_SAVE_OPTION_FILE_DESCRIPTION, FieldStrValue) == IO_OK)
-			{
-				OutMetaData.Add(TEXT("SaveOptionFileDescription"), AsFString(FieldStrValue));
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_SAVE_OPTION_AUTHORISATION, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(TEXT("SaveOptionAuthorisation"), FieldStrValue.toUnicode());
 
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_SAVE_OPTION_AUTHORISATION, FieldStrValue) == IO_OK)
-			{
-				OutMetaData.Add(TEXT("SaveOptionAuthorisation"), AsFString(FieldStrValue));
-			}
-
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_SAVE_OPTION_PREPROCESSOR, FieldStrValue) == IO_OK)
-			{
-				OutMetaData.Add(TEXT("SaveOptionPreprocessor"), AsFString(FieldStrValue));
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_SAVE_OPTION_PREPROCESSOR, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(TEXT("SaveOptionPreprocessor"), FieldStrValue.toUnicode());
 			break;
 
 		case CT_ATTRIB_ORIGINAL_ID:
@@ -1735,26 +1381,15 @@ void FCoreTechFileParser::ReadNodeMetaData(CT_OBJECT_ID NodeId, TMap<FString, FS
 			break;
 
 		case CT_ATTRIB_ORIGINAL_ID_STRING:
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_ORIGINAL_ID_VALUE_STRING, FieldStrValue) != IO_OK)
-			{
-				break;
-			}
-			OutMetaData.Add(TEXT("OriginalIdStr"), AsFString(FieldStrValue));
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_ORIGINAL_ID_VALUE_STRING, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(TEXT("OriginalIdStr"), FieldStrValue.toUnicode());
 			break;
 
 		case CT_ATTRIB_COLOR_RGB_DOUBLE:
-			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_ATTRIB_COLOR_R_DOUBLE, FieldDoubleValue0) != IO_OK)
-			{
-				break;
-			}
-			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_ATTRIB_COLOR_G_DOUBLE, FieldDoubleValue1) != IO_OK)
-			{
-				break;
-			}
-			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_ATTRIB_COLOR_B_DOUBLE, FieldDoubleValue2) != IO_OK)
-			{
-				break;
-			}
+			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_ATTRIB_COLOR_R_DOUBLE, FieldDoubleValue0) != IO_OK) break;
+			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_ATTRIB_COLOR_G_DOUBLE, FieldDoubleValue1) != IO_OK) break;
+			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_ATTRIB_COLOR_B_DOUBLE, FieldDoubleValue2) != IO_OK) break;
 			FieldValue = FString::Printf(TEXT("%lf"), FieldDoubleValue0) + TEXT(", ") + FString::Printf(TEXT("%lf"), FieldDoubleValue1) + TEXT(", ") + FString::Printf(TEXT("%lf"), FieldDoubleValue2);
 			//OutMetaData.Add(TEXT("ColorRGBDouble"), FieldValue);
 			break;
@@ -1769,39 +1404,22 @@ void FCoreTechFileParser::ReadNodeMetaData(CT_OBJECT_ID NodeId, TMap<FString, FS
 			break;
 
 		case CT_ATTRIB_INTEGER_VALIDATION_ATTRIBUTE:
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_INTEGER_VALIDATION_NAME, FieldName) != IO_OK)
-			{
-				break;
-			}
-			if (CT_CURRENT_ATTRIB_IO::AskIntField(ITH_INTEGER_VALIDATION_VALUE, FieldIntValue) != IO_OK)
-			{
-				break;
-			}
-			OutMetaData.Add(AsFString(FieldName), FString::FromInt(FieldIntValue));
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_INTEGER_VALIDATION_NAME, FieldName) != IO_OK) break;
+			if (CT_CURRENT_ATTRIB_IO::AskIntField(ITH_INTEGER_VALIDATION_VALUE, FieldIntValue) != IO_OK) break;
+			OutMetaData.Add(FieldName.toUnicode(), FString::FromInt(FieldIntValue));
 			break;
 
 		case CT_ATTRIB_DOUBLE_VALIDATION_ATTRIBUTE:
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_DOUBLE_VALIDATION_NAME, FieldName) != IO_OK)
-			{
-				break;
-			}
-			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_DOUBLE_VALIDATION_VALUE, FieldDoubleValue0) != IO_OK)
-			{
-				break;
-			}
-			OutMetaData.Add(AsFString(FieldName), FString::Printf(TEXT("%lf"), FieldDoubleValue0));
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_DOUBLE_VALIDATION_NAME, FieldName) != IO_OK) break;
+			if (CT_CURRENT_ATTRIB_IO::AskDblField(ITH_DOUBLE_VALIDATION_VALUE, FieldDoubleValue0) != IO_OK) break;
+			OutMetaData.Add(FieldName.toUnicode(), FString::Printf(TEXT("%lf"), FieldDoubleValue0));
 			break;
 
 		case CT_ATTRIB_STRING_VALIDATION_ATTRIBUTE:
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_STRING_VALIDATION_NAME, FieldName) != IO_OK)
-			{
-				break;
-			}
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_STRING_VALIDATION_VALUE, FieldStrValue) != IO_OK)
-			{
-				break;
-			}
-			OutMetaData.Add(AsFString(FieldName), AsFString(FieldStrValue));
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_STRING_VALIDATION_NAME, FieldName) != IO_OK) break;
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_STRING_VALIDATION_VALUE, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(FieldName.toUnicode(), FieldStrValue.toUnicode());
 			break;
 
 		case CT_ATTRIB_BOUNDING_BOX:
@@ -1819,11 +1437,9 @@ void FCoreTechFileParser::ReadNodeMetaData(CT_OBJECT_ID NodeId, TMap<FString, FS
 			break;
 
 		case CT_ATTRIB_GROUPNAME:
-			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_GROUPNAME_VALUE, FieldStrValue) != IO_OK)
-			{
-				break;
-			}
-			OutMetaData.Add(TEXT("GroupName"), AsFString(FieldStrValue));
+			if (CT_CURRENT_ATTRIB_IO::AskStrField(ITH_GROUPNAME_VALUE, FieldStrValue) != IO_OK) break;
+			if (FieldStrValue.IsEmpty()) { break; }
+			OutMetaData.Add(TEXT("GroupName"), FieldStrValue.toUnicode());
 			break;
 
 		case CT_ATTRIB_ANALYZE_ID:
@@ -1841,12 +1457,6 @@ void FCoreTechFileParser::ReadNodeMetaData(CT_OBJECT_ID NodeId, TMap<FString, FS
 		default:
 			break;
 		}
-	}
-
-	// Clean metadata value i.e. remove all unprintable characters
-	for (auto& MetaPair : OutMetaData)
-	{
-		FDatasmithUtils::SanitizeStringInplace(MetaPair.Value);
 	}
 }
 

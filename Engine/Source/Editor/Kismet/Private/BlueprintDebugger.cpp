@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BlueprintDebugger.h"
 
@@ -205,7 +205,7 @@ TSharedRef<SDockTab> FBlueprintDebuggerImpl::CreateBluprintDebuggerTab(const FSp
 			}
 			else
 			{
-				InDebuggingToolsManager->TryInvokeTab(InTabName);
+				InDebuggingToolsManager->InvokeTab(InTabName);
 			}
 		}
 	};

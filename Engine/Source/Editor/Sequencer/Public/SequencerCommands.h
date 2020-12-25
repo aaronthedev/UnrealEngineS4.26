@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -46,12 +46,6 @@ public:
 	/** Step backward */
 	TSharedPtr< FUICommandInfo > StepBackward;
 
-	/** Step forward */
-	TSharedPtr< FUICommandInfo > StepForward2;
-
-	/** Step backward */
-	TSharedPtr< FUICommandInfo > StepBackward2;
-
 	/** Step to next key */
 	TSharedPtr< FUICommandInfo > StepToNextKey;
 
@@ -79,20 +73,11 @@ public:
 	/** Reset the view range to the playback range */
 	TSharedPtr< FUICommandInfo > ResetViewRange;
 
-	/** Zoom to fit the selected sections and keys */
-	TSharedPtr< FUICommandInfo > ZoomToFit;
-
 	/** Zoom into the view range */
 	TSharedPtr< FUICommandInfo > ZoomInViewRange;
 
 	/** Zoom out of the view range */
 	TSharedPtr< FUICommandInfo > ZoomOutViewRange;
-
-	/** Navigate backward */
-	TSharedPtr< FUICommandInfo > NavigateBackward;
-
-	/** Navigate forward */
-	TSharedPtr< FUICommandInfo > NavigateForward;
 
 	/** Set the selection range to the next shot. */
 	TSharedPtr< FUICommandInfo > SetSelectionRangeToNextShot;
@@ -108,9 +93,6 @@ public:
 
 	/** Reruns construction scripts on bound actors every frame. */
 	TSharedPtr< FUICommandInfo > ToggleRerunConstructionScripts;
-
-	/** When enabled, enables a single asynchronous evaluation once per-frame. When disabled, forces a full blocking evaluation every time this sequence is evaluated (should be avoided for real-time content). */
-	TSharedPtr< FUICommandInfo > ToggleAsyncEvaluation;
 
 	/** Toggle constraining the time cursor to the playback range while scrubbing */
 	TSharedPtr< FUICommandInfo > ToggleKeepCursorInPlaybackRangeWhileScrubbing;
@@ -252,10 +234,7 @@ public:
 
 	/** Opens the tagged binding manager. */
 	TSharedPtr< FUICommandInfo > OpenTaggedBindingManager;
-
-	/** Opens the node group manager. */
-	TSharedPtr< FUICommandInfo > OpenNodeGroupsManager;
-
+	
 	/** Sets the tree search widget as the focused widget in Slate for easy typing. */
 	TSharedPtr< FUICommandInfo > QuickTreeSearch;
 
@@ -309,6 +288,9 @@ public:
 
 	/** Toggles whether to show channel colors in the track area. */
 	TSharedPtr< FUICommandInfo > ToggleChannelColors;
+
+	/** Toggles whether the label browser is enabled in the level editor. */
+	TSharedPtr< FUICommandInfo > ToggleLabelBrowser;
 
 	/** Turns auto scroll on and off. */
 	TSharedPtr< FUICommandInfo > ToggleAutoScroll;
@@ -372,20 +354,6 @@ public:
 
 	/** Toggle whether we should evaluate sub sequences in isolation */
 	TSharedPtr< FUICommandInfo > ToggleEvaluateSubSequencesInIsolation;
-
-	/** Sets a transform key at the current time for the selected actor */
-	TSharedPtr< FUICommandInfo > AddTransformKey;
-
-	/** Sets a translation key at the current time for the selected actor */
-	TSharedPtr< FUICommandInfo > AddTranslationKey;
-
-	/** Sets a rotation key at the current time for the selected actor */
-	TSharedPtr< FUICommandInfo > AddRotationKey;
-
-	/** Sets a scale key at the current time for the selected actor */
-	TSharedPtr< FUICommandInfo > AddScaleKey;
-
-
 
 	/**
 	 * Initialize commands

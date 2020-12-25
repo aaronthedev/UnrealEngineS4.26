@@ -125,7 +125,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDLUX_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -137,7 +137,7 @@ private:
 
     // override SchemaBase virtuals.
     USDLUX_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -148,11 +148,10 @@ public:
     /// Implemented as an off-axis cosine power exponent.
     /// TODO: clarify semantics
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float shaping:focus = 0` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 0.0
     USDLUX_API
     UsdAttribute GetShapingFocusAttr() const;
 
@@ -172,11 +171,10 @@ public:
     /// falloff region.  The default tint is black.
     /// TODO: clarify semantics
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `color3f shaping:focusTint = (0, 0, 0)` |
-    /// | C++ Type | GfVec3f |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Color3f |
+    /// \n  C++ Type: GfVec3f
+    /// \n  Usd Type: SdfValueTypeNames->Color3f
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: (0, 0, 0)
     USDLUX_API
     UsdAttribute GetShapingFocusTintAttr() const;
 
@@ -195,11 +193,10 @@ public:
     /// Angular limit off the primary axis to restrict the
     /// light spread.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float shaping:cone:angle = 90` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 90.0
     USDLUX_API
     UsdAttribute GetShapingConeAngleAttr() const;
 
@@ -218,11 +215,10 @@ public:
     /// Controls the cutoff softness for cone angle.
     /// TODO: clarify semantics
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float shaping:cone:softness = 0` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 0.0
     USDLUX_API
     UsdAttribute GetShapingConeSoftnessAttr() const;
 
@@ -241,11 +237,10 @@ public:
     /// An IES (Illumination Engineering Society) light
     /// profile describing the angular distribution of light.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `asset shaping:ies:file` |
-    /// | C++ Type | SdfAssetPath |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Asset |
+    /// \n  C++ Type: SdfAssetPath
+    /// \n  Usd Type: SdfValueTypeNames->Asset
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDLUX_API
     UsdAttribute GetShapingIesFileAttr() const;
 
@@ -264,11 +259,10 @@ public:
     /// Rescales the angular distribution of the IES profile.
     /// TODO: clarify semantics
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float shaping:ies:angleScale = 0` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDLUX_API
     UsdAttribute GetShapingIesAngleScaleAttr() const;
 
@@ -279,29 +273,6 @@ public:
     /// the default for \p writeSparsely is \c false.
     USDLUX_API
     UsdAttribute CreateShapingIesAngleScaleAttr(VtValue const &defaultValue = VtValue(), bool writeSparsely=false) const;
-
-public:
-    // --------------------------------------------------------------------- //
-    // SHAPINGIESNORMALIZE 
-    // --------------------------------------------------------------------- //
-    /// Normalizes the IES profile so that it affects the shaping
-    /// of the light while preserving the overall energy output.
-    ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `bool shaping:ies:normalize = 0` |
-    /// | C++ Type | bool |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Bool |
-    USDLUX_API
-    UsdAttribute GetShapingIesNormalizeAttr() const;
-
-    /// See GetShapingIesNormalizeAttr(), and also 
-    /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
-    /// If specified, author \p defaultValue as the attribute's default,
-    /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
-    /// the default for \p writeSparsely is \c false.
-    USDLUX_API
-    UsdAttribute CreateShapingIesNormalizeAttr(VtValue const &defaultValue = VtValue(), bool writeSparsely=false) const;
 
 public:
     // ===================================================================== //

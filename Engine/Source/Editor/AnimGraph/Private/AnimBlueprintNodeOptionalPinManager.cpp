@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimBlueprintNodeOptionalPinManager.h"
 #include "UObject/UnrealType.h"
@@ -21,13 +21,13 @@ FAnimBlueprintNodeOptionalPinManager::FAnimBlueprintNodeOptionalPinManager(class
 	}
 }
 
-void FAnimBlueprintNodeOptionalPinManager::GetRecordDefaults(FProperty* TestProperty, FOptionalPinFromProperty& Record) const
+void FAnimBlueprintNodeOptionalPinManager::GetRecordDefaults(UProperty* TestProperty, FOptionalPinFromProperty& Record) const
 {
 	const UAnimationGraphSchema* Schema = GetDefault<UAnimationGraphSchema>();
 
 	// Determine if this is a pose or array of poses
-	FArrayProperty* ArrayProp = CastField<FArrayProperty>(TestProperty);
-	FStructProperty* StructProp = CastField<FStructProperty>(ArrayProp ? ArrayProp->Inner : TestProperty);
+	UArrayProperty* ArrayProp = Cast<UArrayProperty>(TestProperty);
+	UStructProperty* StructProp = Cast<UStructProperty>(ArrayProp ? ArrayProp->Inner : TestProperty);
 	const bool bIsPoseInput = (StructProp  && StructProp->Struct->IsChildOf(FPoseLinkBase::StaticStruct()));
 
 	//@TODO: Error if they specified two or more of these flags
@@ -36,14 +36,13 @@ void FAnimBlueprintNodeOptionalPinManager::GetRecordDefaults(FProperty* TestProp
 	const bool bOptional_HideByDefault = TestProperty->HasMetaData(Schema->NAME_PinHiddenByDefault);
 	const bool bNeverShow = TestProperty->HasMetaData(Schema->NAME_NeverAsPin);
 	const bool bPropertyIsCustomized = TestProperty->HasMetaData(Schema->NAME_CustomizeProperty);
-	const bool bCanTreatPropertyAsOptional = CanTreatPropertyAsOptional(TestProperty);
 
-	Record.bCanToggleVisibility = bCanTreatPropertyAsOptional && (bOptional_ShowByDefault || bOptional_HideByDefault);
+	Record.bCanToggleVisibility = bOptional_ShowByDefault || bOptional_HideByDefault;
 	Record.bShowPin = bAlwaysShow || bOptional_ShowByDefault;
 	Record.bPropertyIsCustomized = bPropertyIsCustomized;
 }
 
-void FAnimBlueprintNodeOptionalPinManager::CustomizePinData(UEdGraphPin* Pin, FName SourcePropertyName, int32 ArrayIndex, FProperty* Property) const
+void FAnimBlueprintNodeOptionalPinManager::CustomizePinData(UEdGraphPin* Pin, FName SourcePropertyName, int32 ArrayIndex, UProperty* Property) const
 {
 	if (BaseNode != nullptr)
 	{
@@ -51,7 +50,7 @@ void FAnimBlueprintNodeOptionalPinManager::CustomizePinData(UEdGraphPin* Pin, FN
 	}
 }
 
-void FAnimBlueprintNodeOptionalPinManager::PostInitNewPin(UEdGraphPin* Pin, FOptionalPinFromProperty& Record, int32 ArrayIndex, FProperty* Property, uint8* PropertyAddress, uint8* DefaultPropertyAddress) const
+void FAnimBlueprintNodeOptionalPinManager::PostInitNewPin(UEdGraphPin* Pin, FOptionalPinFromProperty& Record, int32 ArrayIndex, UProperty* Property, uint8* PropertyAddress, uint8* DefaultPropertyAddress) const
 {
 	check(PropertyAddress != nullptr);
 	check(Record.bShowPin);
@@ -96,7 +95,7 @@ void FAnimBlueprintNodeOptionalPinManager::PostInitNewPin(UEdGraphPin* Pin, FOpt
 
 		// Clear the asset reference on the node if the pin exists
 		// In theory this is only needed for pins that are newly created but there are a lot of existing nodes that have dead asset references
-		FObjectProperty* ObjectProperty = CastField<FObjectProperty>(Property);
+		UObjectProperty* ObjectProperty = Cast<UObjectProperty>(Property);
 		if (ObjectProperty)
 		{
 			ObjectProperty->SetObjectPropertyValue(PropertyAddress, nullptr);
@@ -104,7 +103,7 @@ void FAnimBlueprintNodeOptionalPinManager::PostInitNewPin(UEdGraphPin* Pin, FOpt
 	}
 }
 
-void FAnimBlueprintNodeOptionalPinManager::PostRemovedOldPin(FOptionalPinFromProperty& Record, int32 ArrayIndex, FProperty* Property, uint8* PropertyAddress, uint8* DefaultPropertyAddress) const
+void FAnimBlueprintNodeOptionalPinManager::PostRemovedOldPin(FOptionalPinFromProperty& Record, int32 ArrayIndex, UProperty* Property, uint8* PropertyAddress, uint8* DefaultPropertyAddress) const
 {
 	check(PropertyAddress != nullptr);
 	check(!Record.bShowPin);

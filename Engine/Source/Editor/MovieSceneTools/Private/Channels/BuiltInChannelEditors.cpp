@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BuiltInChannelEditors.h"
 #include "MovieSceneSequence.h"
@@ -11,7 +11,6 @@
 #include "MovieSceneCommonHelpers.h"
 #include "GameFramework/Actor.h"
 #include "EditorStyleSet.h"
-#include "Styling/CoreStyle.h"
 #include "CurveKeyEditors/SNumericKeyEditor.h"
 #include "CurveKeyEditors/SBoolCurveKeyEditor.h"
 #include "CurveKeyEditors/SStringCurveKeyEditor.h"
@@ -21,157 +20,57 @@
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Channels/MovieSceneChannelProxy.h"
 #include "Channels/MovieSceneChannelEditorData.h"
-#include "Channels/FloatChannelCurveModel.h"
-#include "Channels/IntegerChannelCurveModel.h"
-#include "Channels/BoolChannelCurveModel.h"
+#include "FloatChannelCurveModel.h"
 #include "EventChannelCurveModel.h"
 #include "PropertyCustomizationHelpers.h"
-#include "MovieSceneObjectBindingIDCustomization.h"
-#include "MovieSceneObjectBindingIDPicker.h"
-#include "LevelEditor.h"
-#include "Modules/ModuleManager.h"
-#include "Framework/Application/MenuStack.h"
-#include "Framework/Application/SlateApplication.h"
-#include "Editor/SceneOutliner/Private/SSocketChooser.h"
-#include "SComponentChooser.h"
-#include "EntitySystem/Interrogation/MovieSceneInterrogationLinker.h"
-#include "EntitySystem/Interrogation/MovieSceneInterrogatedPropertyInstantiator.h"
-#include "Systems/MovieScenePropertyInstantiator.h"
-#include "ISequencerModule.h"
-#include "MovieSceneTracksComponentTypes.h"
 
 #define LOCTEXT_NAMESPACE "BuiltInChannelEditors"
 
 
 FKeyHandle AddOrUpdateKey(FMovieSceneFloatChannel* Channel, UMovieSceneSection* SectionToKey, const TMovieSceneExternalValue<float>& ExternalValue, FFrameNumber InTime, ISequencer& Sequencer, const FGuid& InObjectBindingID, FTrackInstancePropertyBindings* PropertyBindings)
 {
-	using namespace UE::MovieScene;
-
-	const FMovieSceneSequenceID SequenceID = Sequencer.GetFocusedTemplateID();
-
-	// Find the first bound object so we can get the current property channel value on it.
-	UObject* FirstBoundObject = nullptr;
-	TOptional<float> CurrentBoundObjectValue;
-	if (InObjectBindingID.IsValid())
+	TOptional<float> Value;
+	float CurrentValue = 0.0f, CurrentWeight = 1.0f;
+	if ((ExternalValue.OnGetExternalValue && InObjectBindingID.IsValid()))
 	{
-		for (TWeakObjectPtr<> WeakObject : Sequencer.FindBoundObjects(InObjectBindingID, SequenceID))
+		for (TWeakObjectPtr<> WeakObject : Sequencer.FindBoundObjects(InObjectBindingID, Sequencer.GetFocusedTemplateID()))
 		{
 			if (UObject* Object = WeakObject.Get())
 			{
-				FirstBoundObject = Object;
-
-				if (ExternalValue.OnGetExternalValue)
+				Value = ExternalValue.OnGetExternalValue(*Object, PropertyBindings);
+				if (Value.IsSet() && ExternalValue.OnGetCurrentValueAndWeight && SectionToKey)
 				{
-					CurrentBoundObjectValue = ExternalValue.OnGetExternalValue(*Object, PropertyBindings);
+					CurrentValue = Value.Get(0.0f);
+					ExternalValue.OnGetCurrentValueAndWeight(Object, SectionToKey, InTime, Sequencer.GetFocusedTickResolution(), Sequencer.GetEvaluationTemplate(),CurrentValue,CurrentWeight);
 				}
-
 				break;
 			}
 		}
 	}
 
-	// If we got the current property channel value on the object, let's get the current evaluated property channel value at the given time (which is the value that the
-	// object *would* be at if we scrubbed here and let the sequence evaluation do its thing). This will help us figure out the difference between the current object value
-	// and the evaluated sequencer value: we will compute a new value for the channel so that a new sequence evaluation would come out at the "desired" value, which is
-	// what the current object value.
 	float NewValue = Channel->GetDefault().Get(0.f);
-
-	const bool bWasEvaluated = Channel->Evaluate(InTime, NewValue);
-
-	if (CurrentBoundObjectValue.IsSet() && SectionToKey)
+	bool bWasEvaluated = Channel->Evaluate(InTime, NewValue);
+	if (Value.IsSet()) //need to get the diff between Value(Global) and CurrentValue and apply that to the local
 	{
-		if (ExternalValue.OnGetCurrentValueAndWeight)
+		if (bWasEvaluated)
 		{
-			// We have a custom callback that can provide us with the evaluated value of this channel.
-			float CurrentValue = CurrentBoundObjectValue.Get(0.0f);
-			float CurrentWeight = 1.0f;
-			FMovieSceneRootEvaluationTemplateInstance& EvaluationTemplate = Sequencer.GetEvaluationTemplate();
-			ExternalValue.OnGetCurrentValueAndWeight(FirstBoundObject, SectionToKey, InTime, Sequencer.GetFocusedTickResolution(), EvaluationTemplate, CurrentValue, CurrentWeight);
-
-			if (CurrentBoundObjectValue.IsSet()) //need to get the diff between Value(Global) and CurrentValue and apply that to the local
-			{
-				if (bWasEvaluated)
-				{
-					float CurrentGlobalValue = CurrentBoundObjectValue.GetValue();
-					NewValue = (CurrentBoundObjectValue.Get(0.0f) - CurrentValue) * CurrentWeight + NewValue;
-				}
-				else //Nothing set (key or default) on channel so use external value
-				{
-					NewValue = CurrentBoundObjectValue.Get(0.0f);
-				}
-			}
+			float CurrentGlobalValue = Value.GetValue();
+			NewValue = (Value.Get(0.0f) - CurrentValue) * CurrentWeight + NewValue;
 		}
-		else
+		else //Nothing set (key or default) on channel so use external value
 		{
-			// No custom callback... we need to run the blender system on our property.
-			FSystemInterrogator Interrogator;
-			Interrogator.TrackImportedEntities(true);
-
-			TGuardValue<FEntityManager*> DebugVizGuard(GEntityManagerForDebuggingVisualizers, &Interrogator.GetLinker()->EntityManager);
-
-			UMovieSceneTrack* TrackToKey = SectionToKey->GetTypedOuter<UMovieSceneTrack>();
-
-			Interrogator.ImportTrack(TrackToKey, FInterrogationChannel::Default());
-			Interrogator.AddInterrogation(InTime);
-			Interrogator.Update();
-
-			const FMovieSceneEntityID EntityID = Interrogator.FindEntityFromOwner(FInterrogationKey::Default(), SectionToKey, 0);
-
-			UMovieSceneInterrogatedPropertyInstantiatorSystem* System = Interrogator.GetLinker()->FindSystem<UMovieSceneInterrogatedPropertyInstantiatorSystem>();
-
-			if (ensure(System) && EntityID)  // EntityID can be invalid here if we are keying a section that is currently empty
-			{
-				const FMovieSceneChannelProxy& SectionChannelProxy = SectionToKey->GetChannelProxy();
-				const FName ChannelTypeName = Channel->StaticStruct()->GetFName();
-				int32 ChannelIndex = SectionChannelProxy.FindIndex(ChannelTypeName, Channel);
-
-				FBuiltInComponentTypes* BuiltInComponents = FBuiltInComponentTypes::Get();
-
-				// Find the property definition based on the property tag that our section entity has.
-				int32 BoundPropertyDefinitionIndex = INDEX_NONE;
-				TArrayView<const FPropertyDefinition> PropertyDefinitions = BuiltInComponents->PropertyRegistry.GetProperties();
-				for (int32 Index = 0; Index < PropertyDefinitions.Num(); ++Index)
-				{
-					const FPropertyDefinition& PropertyDefinition = PropertyDefinitions[Index];
-					if (Interrogator.GetLinker()->EntityManager.HasComponent(EntityID, PropertyDefinition.PropertyType))
-					{
-						BoundPropertyDefinitionIndex = Index;
-						break;
-					}
-				}
-
-				if (ensure(ChannelIndex != INDEX_NONE && BoundPropertyDefinitionIndex != INDEX_NONE))
-				{
-					const FPropertyDefinition& BoundPropertyDefinition = PropertyDefinitions[BoundPropertyDefinitionIndex];
-
-					check(FirstBoundObject != nullptr);
-					if (Interrogator.GetLinker()->EntityManager.HasComponent(EntityID, BuiltInComponents->SceneComponentBinding))
-					{
-						FirstBoundObject = MovieSceneHelpers::SceneComponentFromRuntimeObject(FirstBoundObject);
-						check(FirstBoundObject != nullptr);
-					}
-
-					FDecompositionQuery Query;
-					Query.Entities = MakeArrayView(&EntityID, 1);
-					Query.bConvertFromSourceEntityIDs = false;
-					Query.Object = FirstBoundObject;
-
-					FIntermediate3DTransform InTransformData;
-
-					TRecompositionResult<float> RecomposeResult = System->RecomposeBlendFloatChannel(BoundPropertyDefinition, ChannelIndex, Query, CurrentBoundObjectValue.Get(0.f));
-
-					NewValue = RecomposeResult.Values[0];
-				}
-			}
+			NewValue = Value.Get(0.0f);
 		}
 	}
 
-	using namespace UE::MovieScene;
+	using namespace MovieScene;
 	return AddKeyToChannel(Channel, InTime, NewValue, Sequencer.GetKeyInterpolation());
 }
 
 FKeyHandle AddOrUpdateKey(FMovieSceneActorReferenceData* Channel, UMovieSceneSection* SectionToKey, FFrameNumber InTime, ISequencer& Sequencer, const FGuid& InObjectBindingID, FTrackInstancePropertyBindings* PropertyBindings)
 {
+	AActor* CurrentActor = nullptr;
+
 	if (PropertyBindings && InObjectBindingID.IsValid())
 	{
 		for (TWeakObjectPtr<> WeakObject : Sequencer.FindBoundObjects(InObjectBindingID, Sequencer.GetFocusedTemplateID()))
@@ -179,26 +78,17 @@ FKeyHandle AddOrUpdateKey(FMovieSceneActorReferenceData* Channel, UMovieSceneSec
 			if (UObject* Object = WeakObject.Get())
 			{
 				// Care is taken here to ensure that we call GetCurrentValue with the correct instantiation of UObject* rather than AActor*
-				AActor* CurrentActor = Cast<AActor>(PropertyBindings->GetCurrentValue<UObject*>(*Object));
-				if (CurrentActor)
-				{
-					FGuid ThisGuid = Sequencer.FindObjectId(*CurrentActor, Sequencer.GetFocusedTemplateID());
-
-					FMovieSceneObjectBindingID NewValue(ThisGuid, MovieSceneSequenceID::Root, EMovieSceneObjectBindingSpace::Local);
-
-					int32 NewIndex = Channel->GetData().AddKey(InTime, NewValue);
-
-					return Channel->GetData().GetHandle(NewIndex);
-				}
+				CurrentActor = Cast<AActor>(PropertyBindings->GetCurrentValue<UObject*>(*Object));
+				break;
 			}
 		}
 	}
 
-	FMovieSceneActorReferenceKey NewValue;
+	FGuid ThisGuid = CurrentActor ? Sequencer.FindObjectId(*CurrentActor, Sequencer.GetFocusedTemplateID()) : FGuid();
 
-	Channel->Evaluate(InTime, NewValue);
-
-	return Channel->GetData().UpdateOrAddKey(InTime, NewValue);
+	FMovieSceneObjectBindingID NewValue(ThisGuid, MovieSceneSequenceID::Root, EMovieSceneObjectBindingSpace::Local);
+	int32 NewIndex = Channel->GetData().AddKey(InTime, NewValue);
+	return Channel->GetData().GetHandle(NewIndex);
 }
 
 bool CanCreateKeyEditor(const FMovieSceneBoolChannel*    Channel)
@@ -222,11 +112,6 @@ bool CanCreateKeyEditor(const FMovieSceneStringChannel*  Channel)
 	return true;
 }
 bool CanCreateKeyEditor(const FMovieSceneObjectPathChannel* Channel)
-{
-	return true;
-}
-
-bool CanCreateKeyEditor(const FMovieSceneActorReferenceData* Channel)
 {
 	return true;
 }
@@ -336,7 +221,7 @@ TSharedRef<SWidget> CreateKeyEditor(const TMovieSceneChannelHandle<FMovieSceneOb
 
 		auto OnSetObjectLambda = [KeyEditor](const FAssetData& Asset) mutable
 		{
-			FScopedTransaction Transaction(LOCTEXT("SetEnumKey", "Set Enum Key Value"));
+			FScopedTransaction Transaction(LOCTEXT("SetKey", "Set Enum Key Value"));
 			KeyEditor.SetValueWithNotify(Asset.GetAsset(), EMovieSceneDataChangeType::TrackValueChangedRefreshImmediately);
 		};
 
@@ -355,225 +240,6 @@ TSharedRef<SWidget> CreateKeyEditor(const TMovieSceneChannelHandle<FMovieSceneOb
 	}
 
 	return SNullWidget::NullWidget;
-}
-
-/** Delegate used to set a class */
-DECLARE_DELEGATE_OneParam(FOnSetActorReferenceKey, FMovieSceneActorReferenceKey);
-
-class SActorReferenceBox : public SCompoundWidget, public FMovieSceneObjectBindingIDPicker
-{
-public:
-	SLATE_BEGIN_ARGS(SActorReferenceBox)
-	{}
-	SLATE_ATTRIBUTE(FMovieSceneActorReferenceKey, ActorReferenceKey)
-	SLATE_EVENT(FOnSetActorReferenceKey, OnSetActorReferenceKey)
-
-	SLATE_END_ARGS()
-
-	void Construct(const FArguments& InArgs, TWeakPtr<ISequencer> InSequencer)
-	{
-		WeakSequencer = InSequencer;
-		LocalSequenceID = InSequencer.Pin()->GetFocusedTemplateID();
-
-		Key = InArgs._ActorReferenceKey;
-		SetKey = InArgs._OnSetActorReferenceKey;
-
-		OnGlobalTimeChangedHandle = WeakSequencer.Pin()->OnGlobalTimeChanged().AddRaw(this, &SActorReferenceBox::GlobalTimeChanged);
-		OnMovieSceneDataChangedHandle = WeakSequencer.Pin()->OnMovieSceneDataChanged().AddRaw(this, &SActorReferenceBox::MovieSceneDataChanged);
-
-		ChildSlot
-		[
-			SNew(SComboButton)
-			.OnGetMenuContent(this, &SActorReferenceBox::GetPickerMenu)
-			.ContentPadding(FMargin(0.0, 0.0))
-			.ButtonStyle(FEditorStyle::Get(), "PropertyEditor.AssetComboStyle")
-			.ForegroundColor(FEditorStyle::GetColor("PropertyEditor.AssetName.ColorAndOpacity"))
-			.ButtonContent()
-			[
-				GetCurrentItemWidget(
-					SNew(STextBlock)
-					.TextStyle(FEditorStyle::Get(), "PropertyEditor.AssetClass")
-					.Font(FCoreStyle::GetDefaultFontStyle("Regular", 8))
-				)
-			]
-		];
-
-		Update();
-	}
-
-	virtual ~SActorReferenceBox()
-	{
-		if (WeakSequencer.IsValid())
-		{
-			WeakSequencer.Pin()->OnGlobalTimeChanged().Remove(OnGlobalTimeChangedHandle);
-			WeakSequencer.Pin()->OnMovieSceneDataChanged().Remove(OnMovieSceneDataChangedHandle);
-		}
-	}
-
-	virtual UMovieSceneSequence* GetSequence() const override
-	{
-		return WeakSequencer.Pin()->GetFocusedMovieSceneSequence();
-	}
-
-	/** Set the current binding ID */
-	virtual void SetCurrentValue(const FMovieSceneObjectBindingID& InBindingId) override
-	{
-		SetKey.Execute(FMovieSceneActorReferenceKey(InBindingId));
-	}
-
-	/** Get the current binding ID */
-	virtual FMovieSceneObjectBindingID GetCurrentValue() const override
-	{
-		return Key.Get().Object;
-	}
-
-	void GlobalTimeChanged()
-	{
-		Update();
-	}
-
-	void MovieSceneDataChanged(EMovieSceneDataChangeType)
-	{
-		Update();
-	}
-
-	void Update()
-	{
-		if (IsEmpty())
-		{
-			Initialize();
-		}
-		else
-		{
-			UpdateCachedData();
-		}
-	}
-
-private:
-
-	TAttribute< FMovieSceneActorReferenceKey> Key;
-
-	FOnSetActorReferenceKey SetKey;
-
-	FDelegateHandle OnGlobalTimeChangedHandle, OnMovieSceneDataChangedHandle;
-};
-
-
-TSharedRef<SWidget> CreateKeyEditor(const TMovieSceneChannelHandle<FMovieSceneActorReferenceData>& Channel, UMovieSceneSection* Section, const FGuid& InObjectBindingID, TWeakPtr<FTrackInstancePropertyBindings> PropertyBindings, TWeakPtr<ISequencer> InSequencer)
-{
-	const FMovieSceneActorReferenceData* RawChannel = Channel.Get();
-	if (!RawChannel)
-	{
-		return SNullWidget::NullWidget;
-	}
-
-	TFunction<TOptional<FMovieSceneActorReferenceKey>(UObject&, FTrackInstancePropertyBindings*)> Func;
-
-	TSequencerKeyEditor<FMovieSceneActorReferenceData, FMovieSceneActorReferenceKey> KeyEditor(InObjectBindingID, Channel, Section, InSequencer, PropertyBindings, Func);
-
-	auto OnSetCurrentValueLambda = [KeyEditor](FMovieSceneActorReferenceKey& ActorKey) mutable
-	{
-		FScopedTransaction Transaction(LOCTEXT("SetActorReferenceKey", "Set Actor Reference Key Value"));
-		KeyEditor.SetValueWithNotify(ActorKey, EMovieSceneDataChangeType::TrackValueChangedRefreshImmediately);
-
-		// Look for components to choose
-		ISequencer* Sequencer = KeyEditor.GetSequencer();
-		FMovieSceneEvaluationOperand ObjectOperand(ActorKey.Object.GetSequenceID(), ActorKey.Object.GetGuid());
-		TArray<USceneComponent*> ComponentsWithSockets;
-		AActor* Actor = nullptr;
-		for (TWeakObjectPtr<> WeakObject : Sequencer->FindBoundObjects(ObjectOperand))
-		{
-			Actor = Cast<AActor>(WeakObject.Get());
-			if (Actor)
-			{
-				TInlineComponentArray<USceneComponent*> Components(Actor);
-
-				for (USceneComponent* Component : Components)
-				{
-					if (Component && Component->HasAnySockets())
-					{
-						ComponentsWithSockets.Add(Component);
-					}
-				}
-				break;
-			}
-		}
-
-		if (ComponentsWithSockets.Num() == 0 || !Actor)
-		{
-			return;
-		}
-
-		// Pop up a component chooser
-		FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor");
-		TSharedPtr< ILevelEditor > LevelEditor = LevelEditorModule.GetFirstLevelEditor();
-
-		TSharedPtr<SWidget> ComponentMenuWidget =
-			SNew(SComponentChooserPopup)
-			.Actor(Actor)
-			.OnComponentChosen_Lambda([=](FName InComponentName) mutable
-				{
-					ActorKey.ComponentName = InComponentName;
-					KeyEditor.SetValueWithNotify(ActorKey, EMovieSceneDataChangeType::TrackValueChangedRefreshImmediately);
-
-					// Look for sockets to choose
-					USceneComponent* ComponentWithSockets = nullptr;
-					TInlineComponentArray<USceneComponent*> Components(Actor);
-
-					for (USceneComponent* Component : Components)
-					{
-						if (Component && Component->GetFName() == InComponentName)
-						{
-							ComponentWithSockets = Component;
-							break;
-						}
-					}
-
-					if (!ComponentWithSockets)
-					{
-						return;
-					}
-							
-					// Pop up a socket chooser
-					TSharedPtr<SWidget> SocketMenuWidget =
-						SNew(SSocketChooserPopup)
-						.SceneComponent(ComponentWithSockets)
-						.OnSocketChosen_Lambda([=](FName InSocketName) mutable
-							{
-								ActorKey.SocketName = InSocketName;
-								KeyEditor.SetValueWithNotify(ActorKey, EMovieSceneDataChangeType::TrackValueChangedRefreshImmediately);
-							}
-						);
-
-					// Create as context menu
-					FSlateApplication::Get().PushMenu(
-						LevelEditor.ToSharedRef(),
-						FWidgetPath(),
-						SocketMenuWidget.ToSharedRef(),
-						FSlateApplication::Get().GetCursorPos(),
-						FPopupTransitionEffect(FPopupTransitionEffect::ContextMenu)
-					);
-				}
-			);
-
-		// Create as context menu
-		FSlateApplication::Get().PushMenu(
-			LevelEditor.ToSharedRef(),
-			FWidgetPath(),
-			ComponentMenuWidget.ToSharedRef(),
-			FSlateApplication::Get().GetCursorPos(),
-			FPopupTransitionEffect(FPopupTransitionEffect::ContextMenu)
-		);
-	};
-
-	auto GetCurrentValueLambda = [KeyEditor]() -> FMovieSceneActorReferenceKey
-	{
-		return KeyEditor.GetCurrentValue();
-	};
-
-	return SNew(SActorReferenceBox, InSequencer)
-		.ActorReferenceKey_Lambda(GetCurrentValueLambda)
-		.OnSetActorReferenceKey_Lambda(OnSetCurrentValueLambda);
 }
 
 UMovieSceneKeyStructType* InstanceGeneratedStruct(FMovieSceneByteChannel* Channel, FSequencerKeyStructGenerator* Generator)
@@ -599,7 +265,7 @@ UMovieSceneKeyStructType* InstanceGeneratedStruct(FMovieSceneByteChannel* Channe
 		return nullptr;
 	}
 
-	FByteProperty* NewValueProperty = new FByteProperty(NewStruct, "Value", RF_NoFlags);
+	UByteProperty* NewValueProperty = NewObject<UByteProperty>(NewStruct, "Value");
 	NewValueProperty->SetPropertyFlags(CPF_Edit);
 	NewValueProperty->SetMetaData("Category", TEXT("Key"));
 	NewValueProperty->ArrayDim = 1;
@@ -637,7 +303,7 @@ UMovieSceneKeyStructType* InstanceGeneratedStruct(FMovieSceneObjectPathChannel* 
 		return nullptr;
 	}
 
-	FSoftObjectProperty* NewValueProperty = new FSoftObjectProperty(NewStruct, "Value", RF_NoFlags);
+	USoftObjectProperty* NewValueProperty = NewObject<USoftObjectProperty>(NewStruct, "Value");
 	NewValueProperty->SetPropertyFlags(CPF_Edit);
 	NewValueProperty->SetMetaData("Category", TEXT("Key"));
 	NewValueProperty->PropertyClass = PropertyClass;
@@ -656,7 +322,7 @@ void PostConstructKeyInstance(const TMovieSceneChannelHandle<FMovieSceneObjectPa
 {	
 	const UMovieSceneKeyStructType* GeneratedStructType = CastChecked<const UMovieSceneKeyStructType>(Struct->GetStruct());
 
-	FSoftObjectProperty* EditProperty = CastFieldChecked<FSoftObjectProperty>(GeneratedStructType->DestValueProperty.Get());
+	USoftObjectProperty* EditProperty = CastChecked<USoftObjectProperty>(GeneratedStructType->DestValueProperty);
 	const uint8* PropertyAddress = EditProperty->ContainerPtrToValuePtr<uint8>(Struct->GetStructMemory());
 
 	// It is safe to capture the property and address in this lambda because the lambda is owned by the struct itself, so cannot be invoked if the struct has been destroyed
@@ -1168,16 +834,6 @@ void ExtendKeyMenu(FMenuBuilder& OuterMenuBuilder, TArray<TExtendKeyMenuParams<F
 TUniquePtr<FCurveModel> CreateCurveEditorModel(const TMovieSceneChannelHandle<FMovieSceneFloatChannel>& FloatChannel, UMovieSceneSection* OwningSection, TSharedRef<ISequencer> InSequencer)
 {
 	return MakeUnique<FFloatChannelCurveModel>(FloatChannel, OwningSection, InSequencer);
-}
-
-TUniquePtr<FCurveModel> CreateCurveEditorModel(const TMovieSceneChannelHandle<FMovieSceneIntegerChannel>& IntegerChannel, UMovieSceneSection* OwningSection, TSharedRef<ISequencer> InSequencer)
-{
-	return MakeUnique<FIntegerChannelCurveModel>(IntegerChannel, OwningSection, InSequencer);
-}
-
-TUniquePtr<FCurveModel> CreateCurveEditorModel(const TMovieSceneChannelHandle<FMovieSceneBoolChannel>& BoolChannel, UMovieSceneSection* OwningSection, TSharedRef<ISequencer> InSequencer)
-{
-	return MakeUnique<FBoolChannelCurveModel>(BoolChannel, OwningSection, InSequencer);
 }
 
 TUniquePtr<FCurveModel> CreateCurveEditorModel(const TMovieSceneChannelHandle<FMovieSceneEventChannel>& EventChannel, UMovieSceneSection* OwningSection, TSharedRef<ISequencer> InSequencer)

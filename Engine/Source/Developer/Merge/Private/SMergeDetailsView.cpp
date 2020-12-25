@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SMergeDetailsView.h"
 #include "Widgets/Layout/SSplitter.h"
@@ -218,7 +218,7 @@ void SMergeDetailsView::Construct(const FArguments InArgs
 			Parent->HighlightDifference(PropertyIdentifier);
 		};
 
-		for( const auto& Difference : OrderedDifferences )
+		for( const auto Difference : OrderedDifferences )
 		{
 			auto Entry = TSharedPtr<FBlueprintDifferenceTreeEntry>(
 				new FBlueprintDifferenceTreeEntry(

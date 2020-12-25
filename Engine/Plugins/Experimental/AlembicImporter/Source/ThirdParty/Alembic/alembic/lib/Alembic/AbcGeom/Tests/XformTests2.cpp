@@ -46,7 +46,6 @@ void xformOut()
     OArchive archive( Alembic::AbcCoreOgawa::WriteArchive(), "matrixXform.abc" );
     OXform a( OObject( archive, kTop ), "a" );
 
-    TESTING_ASSERT( a.getSchema().valid() );
 
     M44d mat;
     mat.makeIdentity();
@@ -63,11 +62,7 @@ void xformOut()
 
         a.getSchema().set( asamp );
     }
-    TESTING_ASSERT( a.getSchema().valid() );
 
-    OXform b;
-    TESTING_ASSERT( !b.valid() );
-    TESTING_ASSERT( !b.getSchema().valid() );
 }
 
 //-*****************************************************************************

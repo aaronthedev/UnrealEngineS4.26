@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -16,38 +16,18 @@ public class TraceInsights : ModuleRules
 		PublicDependencyModuleNames.AddRange
 		(
 			new string[] {
-				"AppFramework", // for SColorPicker
-				"ApplicationCore",
-				"Cbor",
 				"Core",
-				"CoreUObject",
-				"DesktopPlatform",
-				"EditorStyle",
+				"ApplicationCore",
 				"InputCore",
-				"RenderCore",
 				"RHI",
+				"RenderCore",
 				"Slate",
-				"Sockets",
-				"TraceAnalysis",
+				"EditorStyle",
 				"TraceLog",
 				"TraceServices",
-				"WorkspaceMenuStructure",
-				"XmlParser",
+				"DesktopPlatform",
 			}
 		);
-
-		//Modules required for running automation in stand alone Insights
-		if (Target.Configuration != UnrealTargetConfiguration.Shipping && !Target.bBuildEditor)
-		{
-			PrivateDependencyModuleNames.AddRange(
-				new string[] {
-					"AutomationWorker",
-					"AutomationController",
-					"AutomationWindow",
-					"SessionServices",
-				}
-			);
-		}
 
 		if (Target.bBuildEditor)
 		{
@@ -67,6 +47,7 @@ public class TraceInsights : ModuleRules
 		PrivateIncludePathModuleNames.AddRange(
 			new string[] {
 				"Messaging",
+				"SessionServices",
 			}
 		);
 	}

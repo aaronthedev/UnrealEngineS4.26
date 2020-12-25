@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Evaluation/MovieSceneActorReferenceTemplate.h"
 
@@ -13,7 +13,7 @@ namespace PropertyTemplate
 	template<>
 	UObject* ConvertFromIntermediateType<UObject*, FMovieSceneObjectBindingID>(const FMovieSceneObjectBindingID& InObjectBinding, const FMovieSceneEvaluationOperand& Operand, FPersistentEvaluationData& PersistentData, IMovieScenePlayer& Player)
 	{
-		FMovieSceneObjectBindingID ResolvedID = InObjectBinding.ResolveLocalToRoot(Operand.SequenceID, Player);
+		FMovieSceneObjectBindingID ResolvedID = InObjectBinding.ResolveLocalToRoot(Operand.SequenceID, Player.GetEvaluationTemplate().GetHierarchy());
 
 		for (TWeakObjectPtr<>& WeakObject : Player.FindBoundObjects(ResolvedID.GetGuid(), ResolvedID.GetSequenceID()))
 		{
@@ -49,7 +49,7 @@ namespace PropertyTemplate
 }
 
 FMovieSceneActorReferenceSectionTemplate::FMovieSceneActorReferenceSectionTemplate(const UMovieSceneActorReferenceSection& Section, const UMovieScenePropertyTrack& Track)
-	: PropertyData(Track.GetPropertyName(), Track.GetPropertyPath().ToString())
+	: PropertyData(Track.GetPropertyName(), Track.GetPropertyPath())
 	, ActorReferenceData(Section.GetActorReferenceData())
 {
 }
@@ -58,7 +58,6 @@ void FMovieSceneActorReferenceSectionTemplate::Evaluate(const FMovieSceneEvaluat
 {
 	using namespace PropertyTemplate;
 
-	FMovieSceneActorReferenceKey ObjectBinding;
-	ActorReferenceData.Evaluate(Context.GetTime(), ObjectBinding);
+	FMovieSceneActorReferenceKey ObjectBinding = ActorReferenceData.Evaluate(Context.GetTime());
 	ExecutionTokens.Add(TPropertyTrackExecutionToken<UObject*, FMovieSceneObjectBindingID>(ObjectBinding.Object));
 }

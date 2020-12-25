@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -36,16 +36,12 @@ namespace Audio
 		// EarlyReflectionSettings controls the initial perceived echoes from a sound, modeling the first few
 		// orders of reflections from a sound source to the listener's ears. 
 		FEarlyReflectionsFastSettings EarlyReflections;
-
 		// LateReflectionSettings controls the long tail diffused echo modeling the higher order reflections
 		// from a sound source to the listener's ears. 
 		FLateReflectionsFastSettings LateReflections;
 
-		// Enables / Disables early reflections.
-		bool bEnableEarlyReflections;
-
-		// Enables / Disables late reflections.
-		bool bEnableLateReflections;
+		// Mix amount between dry and wet signals.
+		float Wetness;
 
 		// Set how reverb module generates reverb when there are 5 or more output channels. 
 		EQuadBehavior QuadBehavior;
@@ -56,6 +52,8 @@ namespace Audio
 	// class aims to support a flexible and pleasant sounding reverb balanced with computational efficiency. 
 	class SIGNALPROCESSING_API FPlateReverbFast {
 		public:
+			static const float MaxWetness;
+			static const float MinWetness;
 			static const FPlateReverbFastSettings DefaultSettings;
 			
 			// InMaxInternalBufferSamples sets the maximum number of samples used in internal buffers.
@@ -68,24 +66,36 @@ namespace Audio
 
 			const FPlateReverbFastSettings& GetSettings() const;
 
+			// Whether or not to enable late reflections
+			void EnableLateReflections(const bool bInEnableLateReflections);
+
+			// Whether or not to enable late reflections
+			void EnableEarlyReflections(const bool bInEnableEarlyReflections);
+
 			// Creates reverberated audio in OutSamples based upon InSamples
 			// InNumChannels can be 1 or 2 channels.
 			// OutSamples must be greater or equal to 2.
 			void ProcessAudio(const AlignedFloatBuffer& InSamples, const int32 InNumChannels, AlignedFloatBuffer& OutSamples, const int32 OutNumChannels);
 
-			void FlushAudio();
-
 			// Clamp individual settings to values supported by this class.
 			static void ClampSettings(FPlateReverbFastSettings& InOutSettings);
 
 		private:
+			// Copy input samples to output samples. Remap channels if necessary.
+			void PassThroughAudio(const AlignedFloatBuffer& InSamples, const int32 InNumChannels, AlignedFloatBuffer& OutSamples, const int32 OutNumChannels);
+
+			
 			// Copy reverberated samples to interleaved output samples. Map channels according to internal settings.
 			void InterleaveAndMixOutput(const AlignedFloatBuffer& InFrontLeftSamples, const AlignedFloatBuffer& InFrontRightSamples, AlignedFloatBuffer& OutSamples, const int32 OutNumChannels);
 
 			void ApplySettings();
 
 
+
+
 			float SampleRate;
+			float LastWetness;
+			bool bProcessCallSinceWetnessChanged;
 
 			FPlateReverbFastSettings Settings;
 			FEarlyReflectionsFast EarlyReflections;
@@ -101,5 +111,7 @@ namespace Audio
 			AlignedFloatBuffer RightAttenuatedSamples;
 			AlignedFloatBuffer ScaledInputBuffer;
 
+			bool bEnableEarlyReflections;
+			bool bEnableLateReflections;
 	};
 }

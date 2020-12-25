@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -98,16 +98,13 @@ protected:
 	/** Only save packages that been saved by a licensee **/
 	bool bOnlyLicenseed;
 
-	/** Should we build navigation data for the packages we are saving? **/
-	bool bShouldBuildNavigationData;
-
 	/** Ignore package version changelist **/
 	bool bIgnoreChangelist;
 
 	/** Filter packages based on a collection **/
 	TSet<FName> CollectionFilter;
 
-	/** Should we update HLODs */
+	/** Should we generated HLOD proxy meshes */
 	bool bShouldBuildHLOD;
 	bool bGenerateClusters;
 	bool bGenerateMeshProxies;
@@ -115,14 +112,12 @@ protected:
 	bool bForceProxyGeneration;
 	bool bForceEnableHLODForLevel;
 	bool bForceSingleClusterForLevel;
-	bool bHLODMapCleanup;
 	FString ForceHLODSetupAsset;
 	FString HLODSkipToMap;
 	bool bForceUATEnvironmentVariableSet;
 
 	/** Running count of packages that got modified and will need to be resaved */
-	int32 PackagesConsideredForResave;
-	int32 PackagesResaved;
+	int32 PackagesRequiringResave;
 
 	/** Only collect garbage after N packages */
 	int32 GarbageCollectionFrequency;
@@ -209,9 +204,10 @@ protected:
 
 	bool CheckoutFile(const FString& Filename, bool bAddFile = false, bool bIgnoreAlreadyCheckedOut = false);
 	bool RevertFile(const FString& Filename);
+
 	bool CanCheckoutFile(const FString& Filename, FString& CheckedOutUser);
+
 	void CheckoutAndSavePackage(UPackage* Package, TArray<FString>& SublevelFilenames, bool bIgnoreAlreadyCheckedOut = false);
-	void CheckInFiles(const TArray<FString>& InFilesToSubmit, const FText& InDescription) const;
 
 	// Print out a message only if running in very verbose mode
 	void VerboseMessage(const FString& Message);

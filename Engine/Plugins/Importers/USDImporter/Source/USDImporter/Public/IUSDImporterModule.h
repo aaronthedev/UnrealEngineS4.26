@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,6 +18,6 @@ public:
 		return FModuleManager::Get().IsModuleLoaded( "USDImporter" );
 	}
 
-	virtual class UDEPRECATED_UUSDImporter* GetImporter() = 0;
+	virtual class UUSDImporter* GetImporter() = 0;
 };
 

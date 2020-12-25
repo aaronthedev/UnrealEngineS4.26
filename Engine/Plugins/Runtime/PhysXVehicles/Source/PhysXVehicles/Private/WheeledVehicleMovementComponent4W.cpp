@@ -1,15 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WheeledVehicleMovementComponent4W.h"
 #include "Components/PrimitiveComponent.h"
 
 #include "PhysXPublic.h"
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-
 UWheeledVehicleMovementComponent4W::UWheeledVehicleMovementComponent4W(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 	// grab default values from physx
 	PxVehicleDifferential4WData DefDifferentialSetup;
 	TEnumAsByte<EVehicleDifferential4W::Type> DiffType((uint8)DefDifferentialSetup.mType);
@@ -109,7 +107,7 @@ void UWheeledVehicleMovementComponent4W::PostEditChangeProperty(struct FProperty
 }
 #endif
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 
 static void GetVehicleDifferential4WSetup(const FVehicleDifferential4WData& Setup, PxVehicleDifferential4WData& PxSetup)
 {
@@ -160,7 +158,7 @@ float FVehicleEngineData::FindPeakTorque() const
 	return PeakTorque;
 }
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 static void GetVehicleEngineSetup(const FVehicleEngineData& Setup, PxVehicleEngineData& PxSetup)
 {
 	PxSetup.mMOI = M2ToCm2(Setup.MOI);
@@ -341,7 +339,7 @@ void UWheeledVehicleMovementComponent4W::UpdateSimulation(float DeltaTime)
 
 void UWheeledVehicleMovementComponent4W::UpdateEngineSetup(const FVehicleEngineData& NewEngineSetup)
 {
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 	if (PVehicleDrive)
 	{
 		PxVehicleEngineData EngineData;
@@ -355,7 +353,7 @@ void UWheeledVehicleMovementComponent4W::UpdateEngineSetup(const FVehicleEngineD
 
 void UWheeledVehicleMovementComponent4W::UpdateDifferentialSetup(const FVehicleDifferential4WData& NewDifferentialSetup)
 {
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 	if (PVehicleDrive)
 	{
 		PxVehicleDifferential4WData DifferentialData;
@@ -369,7 +367,7 @@ void UWheeledVehicleMovementComponent4W::UpdateDifferentialSetup(const FVehicleD
 
 void UWheeledVehicleMovementComponent4W::UpdateTransmissionSetup(const FVehicleTransmissionData& NewTransmissionSetup)
 {
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 	if (PVehicleDrive)
 	{
 		PxVehicleGearsData GearData;
@@ -396,7 +394,7 @@ void BackwardsConvertCm2ToM2(float& val, float defaultValue)
 void UWheeledVehicleMovementComponent4W::Serialize(FArchive & Ar)
 {
 	Super::Serialize(Ar);
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 	if (Ar.IsLoading() && Ar.UE4Ver() < VER_UE4_VEHICLES_UNIT_CHANGE)
 	{
 		PxVehicleEngineData DefEngineData;
@@ -427,4 +425,3 @@ void UWheeledVehicleMovementComponent4W::ComputeConstants()
 	MaxEngineRPM = EngineSetup.MaxRPM;
 }
 
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

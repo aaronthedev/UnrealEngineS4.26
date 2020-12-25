@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PrecomputedLightVolume.cpp: Implementation of a precomputed light volume.
@@ -221,10 +221,24 @@ FArchive& operator<<(FArchive& Ar,FPrecomputedLightVolumeData& Volume)
 			if (!Ar.IsCooking() || Ar.CookingTarget()->SupportsFeature(ETargetPlatformFeatures::HighQualityLightmaps))
 			{
 				// Gather an array of samples from the octree
-				Volume.HighQualityLightmapOctree.FindAllElements([&HighQualitySamples](const FVolumeLightingSample& Sample)
+				for(FLightVolumeOctree::TConstIterator<> NodeIt(Volume.HighQualityLightmapOctree); NodeIt.HasPendingNodes(); NodeIt.Advance())
 				{
-					HighQualitySamples.Add(Sample);
-				});
+					const FLightVolumeOctree::FNode& CurrentNode = NodeIt.GetCurrentNode();
+
+					FOREACH_OCTREE_CHILD_NODE(ChildRef)
+					{
+						if(CurrentNode.HasChild(ChildRef))
+						{
+							NodeIt.PushChild(ChildRef);
+						}
+					}
+
+					for (FLightVolumeOctree::ElementConstIt ElementIt(CurrentNode.GetElementIt()); ElementIt; ++ElementIt)
+					{
+						const FVolumeLightingSample& Sample = *ElementIt;
+						HighQualitySamples.Add(Sample);
+					}
+				}
 			}
 			
 			Ar << HighQualitySamples;
@@ -234,10 +248,24 @@ FArchive& operator<<(FArchive& Ar,FPrecomputedLightVolumeData& Volume)
 			if (!Ar.IsCooking() || Ar.CookingTarget()->SupportsFeature(ETargetPlatformFeatures::LowQualityLightmaps))
 			{
 				// Gather an array of samples from the octree
-				Volume.LowQualityLightmapOctree.FindAllElements([&LowQualitySamples](const FVolumeLightingSample& Sample)
+				for(FLightVolumeOctree::TConstIterator<> NodeIt(Volume.LowQualityLightmapOctree); NodeIt.HasPendingNodes(); NodeIt.Advance())
 				{
-					LowQualitySamples.Add(Sample);
-				});
+					const FLightVolumeOctree::FNode& CurrentNode = NodeIt.GetCurrentNode();
+
+					FOREACH_OCTREE_CHILD_NODE(ChildRef)
+					{
+						if(CurrentNode.HasChild(ChildRef))
+						{
+							NodeIt.PushChild(ChildRef);
+						}
+					}
+
+					for (FLightVolumeOctree::ElementConstIt ElementIt(CurrentNode.GetElementIt()); ElementIt; ++ElementIt)
+					{
+						const FVolumeLightingSample& Sample = *ElementIt;
+						LowQualitySamples.Add(Sample);
+					}
+				}
 			}
 
 			Ar << LowQualitySamples;
@@ -317,8 +345,37 @@ void FPrecomputedLightVolumeData::InvalidateLightingCache()
 SIZE_T FPrecomputedLightVolumeData::GetAllocatedBytes() const
 {
 	SIZE_T NodeBytes = 0;
-	NodeBytes += HighQualityLightmapOctree.GetSizeBytes();
-	NodeBytes += LowQualityLightmapOctree.GetSizeBytes();
+
+	for (FLightVolumeOctree::TConstIterator<> NodeIt(HighQualityLightmapOctree); NodeIt.HasPendingNodes(); NodeIt.Advance())
+	{
+		const FLightVolumeOctree::FNode& CurrentNode = NodeIt.GetCurrentNode();
+		NodeBytes += sizeof(FLightVolumeOctree::FNode);
+		NodeBytes += CurrentNode.GetElements().GetAllocatedSize();
+
+		FOREACH_OCTREE_CHILD_NODE(ChildRef)
+		{
+			if(CurrentNode.HasChild(ChildRef))
+			{
+				NodeIt.PushChild(ChildRef);
+			}
+		}
+	}
+
+	for (FLightVolumeOctree::TConstIterator<> NodeIt(LowQualityLightmapOctree); NodeIt.HasPendingNodes(); NodeIt.Advance())
+	{
+		const FLightVolumeOctree::FNode& CurrentNode = NodeIt.GetCurrentNode();
+		NodeBytes += sizeof(FLightVolumeOctree::FNode);
+		NodeBytes += CurrentNode.GetElements().GetAllocatedSize();
+
+		FOREACH_OCTREE_CHILD_NODE(ChildRef)
+		{
+			if(CurrentNode.HasChild(ChildRef))
+			{
+				NodeIt.PushChild(ChildRef);
+			}
+		}
+	}
+
 	return NodeBytes;
 }
 
@@ -397,8 +454,11 @@ void FPrecomputedLightVolume::InterpolateIncidentRadiancePoint(
 		FVector WorldPosition = InWorldPosition - WorldOriginOffset; // relocate from world to volume space
 		FBoxCenterAndExtent BoundingBox( WorldPosition, FVector::ZeroVector );
 		// Iterate over the octree nodes containing the query point.
-		OctreeForRendering->FindElementsWithBoundsTest(BoundingBox, [&AccumulatedIncidentRadiance, &SkyBentNormal, &AccumulatedDirectionalLightShadowing, &AccumulatedWeight, &WorldPosition](const FVolumeLightingSample& VolumeSample)
+		for (FLightVolumeOctree::TConstElementBoxIterator<> OctreeIt(*OctreeForRendering, BoundingBox);
+			OctreeIt.HasPendingElements();
+			OctreeIt.Advance())
 		{
+			const FVolumeLightingSample& VolumeSample = OctreeIt.GetCurrentElement();
 			const float DistanceSquared = (VolumeSample.Position - WorldPosition).SizeSquared();
 			const float RadiusSquared = FMath::Square(VolumeSample.Radius);
 
@@ -415,7 +475,7 @@ void FPrecomputedLightVolume::InterpolateIncidentRadiancePoint(
 				AccumulatedDirectionalLightShadowing += VolumeSample.DirectionalLightShadowing * SampleWeight;
 				AccumulatedWeight += SampleWeight;
 			}
-		});
+		}
 	}
 }
 
@@ -441,10 +501,12 @@ void FPrecomputedLightVolume::InterpolateIncidentRadianceBlock(
 		PotentiallyIntersectingSamples.Reset(100);
 
 		// Iterate over the octree nodes containing the query point.
-		OctreeForRendering->FindElementsWithBoundsTest(BoundingBox, [&](const FVolumeLightingSample& VolumeSample)
+		for (FLightVolumeOctree::TConstElementBoxIterator<> OctreeIt(*OctreeForRendering, BoundingBox);
+			OctreeIt.HasPendingElements();
+			OctreeIt.Advance())
 		{
-			PotentiallyIntersectingSamples.Add(&VolumeSample);
-		});
+			PotentiallyIntersectingSamples.Add(&OctreeIt.GetCurrentElement());
+		}
 		
 		const int32 LinearIndexBase = DestCellPosition.Z * DestCellDimensions.Y * DestCellDimensions.X
 			+ DestCellPosition.Y * DestCellDimensions.X
@@ -500,15 +562,18 @@ void FPrecomputedLightVolume::InterpolateIncidentRadianceBlock(
 
 void FPrecomputedLightVolume::DebugDrawSamples(FPrimitiveDrawInterface* PDI, bool bDrawDirectionalShadowing) const
 {
-	OctreeForRendering->FindAllElements([bDrawDirectionalShadowing, PDI, this](const FVolumeLightingSample& VolumeSample)
+	for (FLightVolumeOctree::TConstElementBoxIterator<> OctreeIt(*OctreeForRendering, OctreeForRendering->GetRootBounds());
+		OctreeIt.HasPendingElements();
+		OctreeIt.Advance())
 	{
+		const FVolumeLightingSample& VolumeSample = OctreeIt.GetCurrentElement();
 		const FLinearColor AverageColor = bDrawDirectionalShadowing
 			? FLinearColor(VolumeSample.DirectionalLightShadowing, VolumeSample.DirectionalLightShadowing, VolumeSample.DirectionalLightShadowing)
 			: VolumeSample.Lighting.CalcIntegral() / (FSHVector2::ConstantBasisIntegral * PI);
 		
 		FVector SamplePosition = VolumeSample.Position + WorldOriginOffset; //relocate from volume to world space
 		PDI->DrawPoint(SamplePosition, AverageColor, 10, SDPG_World);
-	});
+	}
 }
 
 bool FPrecomputedLightVolume::IntersectBounds(const FBoxSphereBounds& InBounds) const

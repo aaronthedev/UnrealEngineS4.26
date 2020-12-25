@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -77,28 +77,6 @@ public:
 	explicit FORCEINLINE FPlane(EForceInit);
 
 	// Functions.
-	
-	/**
-	 * Checks if this plane is valid (ie: if it has a non-zero normal).
-	 *
-	 * @return true if the plane is well-defined (has a non-zero normal), otherwise false.
-	 */
-	FORCEINLINE bool IsValid() const;
-
-	/**
-	 * Get the origin of this plane.
-	 *
-	 * @return The origin (base point) of this plane.
-	 */
-	FORCEINLINE FVector GetOrigin() const;
-
-	/**
-	 * Get the normal of this plane.
-	 *
-	 * @return The normal of this plane.
-	 */
-	FORCEINLINE const FVector& GetNormal() const;
-
 
 	/**
 	 * Calculates distance between plane and a point.
@@ -293,10 +271,10 @@ public:
 		}
 		else
 		{
-			int16 iX((int16)FMath::RoundToInt(X));
-			int16 iY((int16)FMath::RoundToInt(Y));
-			int16 iZ((int16)FMath::RoundToInt(Z));
-			int16 iW((int16)FMath::RoundToInt(W));
+			int16 iX(FMath::RoundToInt(X));
+			int16 iY(FMath::RoundToInt(Y));
+			int16 iZ(FMath::RoundToInt(Z));
+			int16 iW(FMath::RoundToInt(W));
 			Ar << iX << iY << iZ << iW;
 		}
 		bOutSuccess = true;
@@ -433,21 +411,6 @@ FORCEINLINE FPlane::FPlane(FVector A, FVector B, FVector C)
 FORCEINLINE FPlane::FPlane(EForceInit)
 	: FVector(ForceInit), W(0.f)
 {}
-
-FORCEINLINE bool FPlane::IsValid() const
-{
-	return !IsNearlyZero();
-}
-
-FORCEINLINE const FVector& FPlane::GetNormal() const
-{
-	return *this;
-}
-
-FORCEINLINE FVector FPlane::GetOrigin() const
-{
-	return GetNormal() * W;
-}
 
 
 FORCEINLINE float FPlane::PlaneDot(const FVector &P) const

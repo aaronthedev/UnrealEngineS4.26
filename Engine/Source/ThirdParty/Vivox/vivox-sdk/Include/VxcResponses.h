@@ -1690,22 +1690,22 @@ typedef struct vx_resp_aux_get_render_devices {
     vx_device_t **render_devices;
 
     /**
-     * The render device currently in use by the Vivox SDK for the requested user
+     * The render device currently in use by the Vivox SDK.
      */
     vx_device_t *current_render_device;
 
     /**
-     * The effective render device of the requested user
+     * The effective render device
      */
     vx_device_t *effective_render_device;
 
     /**
-     * The default system render device of the requested user
+     * The default system render device
      */
     vx_device_t *default_render_device;
 
     /**
-     * The default communication render device of the requested user
+     * The default communication render device
      */
     vx_device_t *default_communication_render_device;
 } vx_resp_aux_get_render_devices_t;
@@ -1735,22 +1735,22 @@ typedef struct vx_resp_aux_get_capture_devices {
     vx_device_t **capture_devices;
 
     /**
-     * The current capture device of the requested user
+     * The current capture device
      */
     vx_device_t *current_capture_device;
 
     /**
-     * The effective capture device of the requested user
+     * The effective capture device
      */
     vx_device_t *effective_capture_device;
 
     /**
-     * The default system capture device of the requested user
+     * The default system capture device
      */
     vx_device_t *default_capture_device;
 
     /**
-     * The default communication capture device of the requested user
+     * The default communication capture device
      */
     vx_device_t *default_communication_capture_device;
 } vx_resp_aux_get_capture_devices_t;
@@ -2517,8 +2517,7 @@ typedef struct vx_resp_account_control_communications {
 
     vx_resp_base_t base;
     /**
-     * Line feed separated list of blocked or muted URIs.
-     * May be null for clear list operations or if no one were muted or blocked.
+     * Line feed separated list of blocked URIs (only set for vx_control_communications_operation_list, otherwise null)
      */
     char *blocked_uris;
 } vx_resp_account_control_communications_t;

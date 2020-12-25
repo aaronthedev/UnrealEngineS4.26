@@ -60,12 +60,6 @@
     #endif
 #endif
 
-// BEGIN EPIC MOD
-#ifndef CA_SUPPRESS
-#define CA_SUPPRESS(x)
-#endif
-// END EPIC MOD
-
 IMATH_INTERNAL_NAMESPACE_HEADER_ENTER
 
 

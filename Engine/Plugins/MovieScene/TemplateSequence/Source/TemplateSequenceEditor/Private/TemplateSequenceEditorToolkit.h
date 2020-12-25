@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,12 +14,6 @@ class ISequencer;
 class FAssetDragDropOp;
 class FClassDragDropOp;
 class FActorDragDropGraphEdOp;
-
-struct FTemplateSequenceToolkitParams
-{
-	bool bCanChangeBinding = true;
-	UClass* InitialBindingClass = nullptr;
-};
 
 /**
  * Implements an Editor toolkit for template sequences.
@@ -48,7 +42,7 @@ public:
 	 * @param TemplateSequence The animation to edit.
 	 * @param TrackEditorDelegates Delegates to call to create auto-key handlers for this sequencer.
 	 */
-	void Initialize(const EToolkitMode::Type Mode, const TSharedPtr<IToolkitHost>& InitToolkitHost, UTemplateSequence* TemplateSequence, const FTemplateSequenceToolkitParams& ToolkitParams);
+	void Initialize(const EToolkitMode::Type Mode, const TSharedPtr<IToolkitHost>& InitToolkitHost, UTemplateSequence* TemplateSequence);
 
 public:
 
@@ -73,6 +67,11 @@ public:
 
 private:
 
+	void ExtendSequencerToolbar(FToolBarBuilder& ToolbarBuilder);
+	FText GetBoundActorClassName() const;
+	TSharedRef<SWidget> GetBoundActorClassMenuContent();
+	void OnBoundActorClassPicked(UClass* ChosenClass);
+
 	TSharedRef<FExtender> HandleMenuExtensibilityGetExtender(const TSharedRef<FUICommandList> CommandList, const TArray<UObject*> ContextSensitiveObjects);
 	void HandleTrackMenuExtensionAddTrack(FMenuBuilder& AddTrackMenuBuilder, TArray<UObject*> ContextObjects);
 	void HandleAddComponentActionExecute(UActorComponent* Component);
@@ -82,6 +81,12 @@ private:
 	void HandleMapChanged(class UWorld* NewWorld, EMapChangeType MapChangeType);
 
 	void OnSequencerReceivedFocus();
+	bool OnSequencerReceivedDragOver(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent, FReply& OutReply);
+	bool OnSequencerAssetsDrop(const TArray<UObject*>& Assets, const FAssetDragDropOp& DragDropOp);
+	bool OnSequencerClassesDrop(const TArray<TWeakObjectPtr<UClass>>& Classes, const FClassDragDropOp& DragDropOp);
+	bool OnSequencerActorsDrop(const TArray<TWeakObjectPtr<AActor>>& Actors, const FActorDragDropGraphEdOp& DragDropOp);
+
+	void ChangeActorBinding(UObject& Object, UActorFactory* ActorFactory = nullptr, bool bSetupDefaults = true);
 
 private:
 

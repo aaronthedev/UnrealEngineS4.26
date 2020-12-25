@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using UnrealBuildTool;
 using System;
 public class MicrosoftSpatialSound : ModuleRules
@@ -25,8 +25,7 @@ public class MicrosoftSpatialSound : ModuleRules
 			{
 				"Core",
 				"MixedRealityInteropLibrary",
-                "AudioExtensions"
-            }
+			}
 			);
 			
 		
@@ -34,7 +33,7 @@ public class MicrosoftSpatialSound : ModuleRules
 			new string[]
 			{
 				"CoreUObject",
-				"Engine",
+				"Engine"
 			}
 			);
         PrivateIncludePathModuleNames.Add("TargetPlatform");

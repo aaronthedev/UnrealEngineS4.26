@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NetEventGroupingAndSorting.h"
 
@@ -9,7 +9,6 @@
 
 // Sort by name (ascending).
 #define INSIGHTS_DEFAULT_SORTING_NODES(A, B) return A->GetName().LexicalLess(B->GetName());
-//#define INSIGHTS_DEFAULT_SORTING_NODES(A, B) return A->GetDefaultSortOrder() < B->GetDefaultSortOrder();
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Sorting by Event Type
@@ -20,7 +19,7 @@ FNetEventNodeSortingByEventType::FNetEventNodeSortingByEventType(TSharedRef<Insi
 		FName(TEXT("ByEventType")),
 		LOCTEXT("Sorting_ByEventType_Name", "By Type"),
 		LOCTEXT("Sorting_ByEventType_Title", "Sort By Type"),
-		LOCTEXT("Sorting_ByEventType_Desc", "Sort by event type."),
+		LOCTEXT("Sorting_ByEventType_Desc", "Sort by event type (ascending or descending), then by name (ascending)."),
 		InColumnRef)
 {
 }
@@ -82,7 +81,7 @@ FNetEventNodeSortingByInstanceCount::FNetEventNodeSortingByInstanceCount(TShared
 		FName(TEXT("ByInstanceCount")),
 		LOCTEXT("Sorting_ByInstanceCount_Name", "By Instance Count"),
 		LOCTEXT("Sorting_ByInstanceCount_Title", "Sort By Instance Count"),
-		LOCTEXT("Sorting_ByInstanceCount_Desc", "Sort by aggregated instance count."),
+		LOCTEXT("Sorting_ByInstanceCount_Desc", "Sort by aggregated instance count (ascending or descending), then by name (ascending)."),
 		InColumnRef)
 {
 }
@@ -148,7 +147,7 @@ FNetEventNodeSortingByTotalInclusiveSize::FNetEventNodeSortingByTotalInclusiveSi
 		FName(TEXT("ByTotalInclusiveSize")),
 		LOCTEXT("Sorting_ByTotalInclusiveSize_Name", "By Total Inclusive Size"),
 		LOCTEXT("Sorting_ByTotalInclusiveSize_Title", "Sort By Total Inclusive Size"),
-		LOCTEXT("Sorting_ByTotalInclusiveSize_Desc", "Sort by aggregated total inclusive size."),
+		LOCTEXT("Sorting_ByTotalInclusiveSize_Desc", "Sort by aggregated total inclusive size (ascending or descending), then by name (ascending)."),
 		InColumnRef)
 {
 }
@@ -214,7 +213,7 @@ FNetEventNodeSortingByTotalExclusiveSize::FNetEventNodeSortingByTotalExclusiveSi
 		FName(TEXT("ByTotalExclusiveSize")),
 		LOCTEXT("Sorting_ByTotalExclusiveSize_Name", "By Total Exclusive Size"),
 		LOCTEXT("Sorting_ByTotalExclusiveSize_Title", "Sort By Total Exclusive Size"),
-		LOCTEXT("Sorting_ByTotalExclusiveSize_Desc", "Sort by aggregated total exclusive size."),
+		LOCTEXT("Sorting_ByTotalExclusiveSize_Desc", "Sort by aggregated total exclusive size (ascending or descending), then by name (ascending)."),
 		InColumnRef)
 {
 }
@@ -268,6 +267,64 @@ void FNetEventNodeSortingByTotalExclusiveSize::Sort(TArray<Insights::FBaseTreeNo
 				return ValueB < ValueA;
 			}
 		});
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Grouping by Event Type
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+FNetEventNodeGroupingByEventType::FNetEventNodeGroupingByEventType()
+	: FTreeNodeGrouping(
+		LOCTEXT("Grouping_ByEventType_ShortName", "Type"),
+		LOCTEXT("Grouping_ByEventType_TitleName", "Type"),
+		LOCTEXT("Grouping_ByEventType_Desc", "Creates a group for each net event type."),
+		TEXT("Profiler.FiltersAndPresets.StatTypeIcon"), //TODO
+		nullptr)
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+Insights::FTreeNodeGroupInfo FNetEventNodeGroupingByEventType::GetGroupForNode(const Insights::FBaseTreeNodePtr InNodePtr) const
+{
+	if (InNodePtr->GetTypeName() == FNetEventNode::TypeName)
+	{
+		const FNetEventNodePtr& NetEventNodePtr = StaticCastSharedPtr<FNetEventNode>(InNodePtr);
+		return { FName(*NetEventNodeTypeHelper::ToText(NetEventNodePtr->GetType()).ToString()), true };
+	}
+	else
+	{
+		return { FName("Unknown"), true };
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Grouping by Level
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+FNetEventNodeGroupingByLevel::FNetEventNodeGroupingByLevel()
+	: FTreeNodeGrouping(
+		LOCTEXT("Grouping_ByLevel_ShortName", "Level"),
+		LOCTEXT("Grouping_ByLevel_TitleName", "Level"),
+		LOCTEXT("Grouping_ByLevel_Desc", "Creates a group for each level."),
+		TEXT("Profiler.FiltersAndPresets.StatTypeIcon"), //TODO
+		nullptr)
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+Insights::FTreeNodeGroupInfo FNetEventNodeGroupingByLevel::GetGroupForNode(const Insights::FBaseTreeNodePtr InNodePtr) const
+{
+	if (InNodePtr->GetTypeName() == FNetEventNode::TypeName)
+	{
+		const FNetEventNodePtr& NetEventNodePtr = StaticCastSharedPtr<FNetEventNode>(InNodePtr);
+		return { FName(*FString::Printf(TEXT("Level %d"), NetEventNodePtr->GetLevel())), true };
+	}
+	else
+	{
+		return { FName("Unknown"), true };
 	}
 }
 

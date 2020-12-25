@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -66,7 +66,6 @@ public:
 	virtual void SetRigBoneMappings(const TMap<FName, FName>& InMappings) override;
 	virtual void RemoveUnusedBones() override;
 	virtual void UpdateSkeletonReferencePose(USkeletalMesh* InSkeletalMesh) override;
-	virtual void RegisterSlotNode(const FName& InSlotName) override;
 	virtual bool AddSlotGroupName(const FName& InSlotName) override;
 	virtual void SetSlotGroupName(const FName& InSlotName, const FName& InGroupName) override;
 	virtual void DeleteSlotName(const FName& InSlotName) override;
@@ -74,10 +73,8 @@ public:
 	virtual void RenameSlotName(const FName InOldSlotName, const FName InNewSlotName) override;
 	virtual FDelegateHandle RegisterOnSmartNameChanged(const FOnSmartNameChanged::FDelegate& InOnSmartNameChanged) override;
 	virtual void UnregisterOnSmartNameChanged(FDelegateHandle InHandle) override;
-	virtual void RegisterOnNotifiesChanged(const FSimpleMulticastDelegate::FDelegate& InDelegate) override;
-	virtual void UnregisterOnNotifiesChanged(void* Thing) override;
-	virtual FDelegateHandle RegisterOnSlotsChanged(const FSimpleMulticastDelegate::FDelegate& InOnSlotsChanged) override;
-	virtual void UnregisterOnSlotsChanged(FDelegateHandle InHandle) override;
+	virtual void RegisterOnNotifiesChanged(const FSimpleMulticastDelegate::FDelegate& InDelegate);
+	virtual void UnregisterOnNotifiesChanged(void* Thing);
 	virtual void SetBoneTranslationRetargetingMode(FName InBoneName, EBoneTranslationRetargetingMode::Type NewRetargetingMode) override;
 	virtual EBoneTranslationRetargetingMode::Type GetBoneTranslationRetargetingMode(FName InBoneName) const override;
 	virtual void RefreshBoneTree() override;
@@ -166,12 +163,9 @@ private:
 	/** Delegate called when trees need refreshing */
 	FSimpleMulticastDelegate OnTreeRefresh;
 
-	/** Delegate called when a smart name is changed */
+	/** Delegate called when a smart name is removed */
 	FOnSmartNameChanged OnSmartNameChanged;
 
 	/** Delegate called when notifies are modified */
 	FSimpleMulticastDelegate OnNotifiesChanged;
-
-	/** Delegate called when slots are modified */
-	FSimpleMulticastDelegate OnSlotsChanged;
 };

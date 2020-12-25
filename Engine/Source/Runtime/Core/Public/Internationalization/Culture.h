@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreTypes.h"
@@ -68,8 +68,6 @@ public:
 
 	const FString& GetVariant() const;
 
-	bool IsRightToLeft() const;
-
 	const FDecimalNumberFormattingRules& GetDecimalNumberFormattingRules() const;
 
 	const FDecimalNumberFormattingRules& GetPercentFormattingRules() const;
@@ -97,8 +95,8 @@ public:
 	 * @param PluralType The type of plural form to get (cardinal or ordinal)
 	 */
 	const TArray<ETextPluralForm>& GetValidPluralForms(const ETextPluralType PluralType) const;
-	
-	void RefreshCultureDisplayNames(const TArray<FString>& InPrioritizedDisplayCultureNames, const bool bFullRefresh = true);
+
+	void HandleCultureChanged();
 
 private:
 	explicit FCulture(TUniquePtr<FCultureImplementation>&& InImplementation);
@@ -117,5 +115,4 @@ private:
 	FString CachedNativeRegion;
 	FString CachedScript;
 	FString CachedVariant;
-	bool CachedIsRightToLeft;
 };

@@ -1,9 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LightmapUniformShaderParameters.h"
 #include "SceneManagement.h"
 #include "LightMap.h"
-#include "VT/LightmapVirtualTexture.h"
+#include "VT/VirtualTexture.h"
 #include "UnrealEngine.h"
 
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FPrecomputedLightingUniformParameters, "PrecomputedLightingBuffer");
@@ -103,7 +103,7 @@ void GetPrecomputedLightingParameters(
 			IAllocatedVirtualTexture* AllocatedVT = ResourceCluster->AcquireAllocatedVT();
 			check(AllocatedVT);
 
-			AllocatedVT->GetPackedPageTableUniform(&Parameters.LightmapVTPackedPageTableUniform[0]);
+			AllocatedVT->GetPackedPageTableUniform(&Parameters.LightmapVTPackedPageTableUniform[0], true);
 			NumLightmapVTLayers = AllocatedVT->GetNumTextureLayers();
 			for (uint32 LayerIndex = 0u; LayerIndex < NumLightmapVTLayers; ++LayerIndex)
 			{

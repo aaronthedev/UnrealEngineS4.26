@@ -33,7 +33,6 @@
 #include "pxr/usd/usd/stage.h"
 #include "pxr/usd/usdSkel/tokens.h"
 
-#include "pxr/base/tf/span.h"
 #include "pxr/usd/usdGeom/primvar.h"
 #include "pxr/usd/usdSkel/skeleton.h" 
 
@@ -51,7 +50,7 @@ PXR_NAMESPACE_OPEN_SCOPE
 class SdfAssetPath;
 
 // -------------------------------------------------------------------------- //
-// SKELBINDINGAPI                                                             //
+// BINDINGAPI                                                                 //
 // -------------------------------------------------------------------------- //
 
 /// \class UsdSkelBindingAPI
@@ -115,7 +114,7 @@ public:
 
 
     /// Applies this <b>single-apply</b> API schema to the given \p prim.
-    /// This information is stored by adding "SkelBindingAPI" to the 
+    /// This information is stored by adding "BindingAPI" to the 
     /// token-valued, listOp metadata \em apiSchemas on the prim.
     /// 
     /// \return A valid UsdSkelBindingAPI object is returned upon success. 
@@ -135,7 +134,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDSKEL_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -147,7 +146,7 @@ private:
 
     // override SchemaBase virtuals.
     USDSKEL_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -159,11 +158,10 @@ public:
     /// down to all the leaf gprims. If this transform is unset, an identity
     /// transform is used instead.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `matrix4d primvars:skel:geomBindTransform` |
-    /// | C++ Type | GfMatrix4d |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Matrix4d |
+    /// \n  C++ Type: GfMatrix4d
+    /// \n  Usd Type: SdfValueTypeNames->Matrix4d
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDSKEL_API
     UsdAttribute GetGeomBindTransformAttr() const;
 
@@ -185,12 +183,10 @@ public:
     /// attribute. If undefined on a primitive, the primitive inherits the 
     /// value of the nearest ancestor prim, if any.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform token[] skel:joints` |
-    /// | C++ Type | VtArray<TfToken> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->TokenArray |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+    /// \n  C++ Type: VtArray<TfToken>
+    /// \n  Usd Type: SdfValueTypeNames->TokenArray
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: No Fallback
     USDSKEL_API
     UsdAttribute GetJointsAttr() const;
 
@@ -215,11 +211,10 @@ public:
     /// See UsdGeomPrimvar for more information on interpolation and
     /// elementSize.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `int[] primvars:skel:jointIndices` |
-    /// | C++ Type | VtArray<int> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->IntArray |
+    /// \n  C++ Type: VtArray<int>
+    /// \n  Usd Type: SdfValueTypeNames->IntArray
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDSKEL_API
     UsdAttribute GetJointIndicesAttr() const;
 
@@ -242,11 +237,10 @@ public:
     /// *jointWeights* must match that of *jointIndices*. See UsdGeomPrimvar
     /// for more information on interpolation and elementSize.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float[] primvars:skel:jointWeights` |
-    /// | C++ Type | VtArray<float> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->FloatArray |
+    /// \n  C++ Type: VtArray<float>
+    /// \n  Usd Type: SdfValueTypeNames->FloatArray
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDSKEL_API
     UsdAttribute GetJointWeightsAttr() const;
 
@@ -269,12 +263,10 @@ public:
     /// is not inherited hierarchically, and is expected to be authored directly
     /// on the skinnable primitive to which the blend shapes apply.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform token[] skel:blendShapes` |
-    /// | C++ Type | VtArray<TfToken> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->TokenArray |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+    /// \n  C++ Type: VtArray<TfToken>
+    /// \n  Usd Type: SdfValueTypeNames->TokenArray
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: No Fallback
     USDSKEL_API
     UsdAttribute GetBlendShapesAttr() const;
 
@@ -413,16 +405,6 @@ public:
     /// its ancestors.
     USDSKEL_API
     UsdPrim GetInheritedAnimationSource() const;
-
-    /// Validate an array  of joint indices.
-    /// This ensures that all indices are the in the range [0, numJoints).
-    /// Returns true if the indices are valid, or false otherwise.
-    /// If invalid and \p reason is non-null, an error message describing
-    /// the first validation error will be set.
-    USDSKEL_API
-    static bool ValidateJointIndices(TfSpan<const int> indices,
-                                     size_t numJoints,
-                                     std::string* reason=nullptr);
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

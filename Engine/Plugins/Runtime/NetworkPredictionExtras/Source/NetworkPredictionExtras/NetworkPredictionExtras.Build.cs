@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -27,18 +27,13 @@ namespace UnrealBuildTool.Rules
                     "Engine",
                     "RenderCore",
 					"InputCore",
-					"PhysicsCore",
-					"Chaos",
-					"Engine"
 				}
 				);
 
 			PrivateDependencyModuleNames.AddRange(
 				new string[]
 				{
-					"TraceLog",
-					"Engine"
-                }
+				}
 				);
 
 			DynamicallyLoadedModuleNames.AddRange(
@@ -46,15 +41,6 @@ namespace UnrealBuildTool.Rules
 				{
 				}
 				);
-
-			// Only needed for the PIE delegate in FNetworkPredictionModule::StartupModule
-            if (Target.Type == TargetType.Editor) {
-                PrivateDependencyModuleNames.AddRange(
-                new string[]
-                {
-                    "UnrealEd",
-                });
-            }
 
 		}
 	}

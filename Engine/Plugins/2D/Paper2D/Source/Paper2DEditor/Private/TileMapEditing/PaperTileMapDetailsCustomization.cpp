@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TileMapEditing/PaperTileMapDetailsCustomization.h"
 #include "Layout/Margin.h"
@@ -105,7 +105,7 @@ void FPaperTileMapDetailsCustomization::CustomizeDetails(IDetailLayoutBuilder& D
 
 	TAttribute<EVisibility> InternalInstanceVis = TAttribute<EVisibility>::Create(TAttribute<EVisibility>::FGetter::CreateSP(this, &FPaperTileMapDetailsCustomization::GetVisibilityForInstancedOnlyProperties));
 
-	TSharedRef<SWrapBox> ButtonBox = SNew(SWrapBox).UseAllottedSize(true);
+	TSharedRef<SWrapBox> ButtonBox = SNew(SWrapBox).UseAllottedWidth(true);
 
 	const float MinButtonSize = 120.0f;
 	const FMargin ButtonPadding(0.0f, 2.0f, 2.0f, 0.0f);
@@ -267,7 +267,7 @@ void FPaperTileMapDetailsCustomization::CustomizeDetails(IDetailLayoutBuilder& D
 			TArray<UObject*> ListOfSelectedLayers;
 			ListOfSelectedLayers.Add(SelectedLayer);
 
-			for (const FProperty* TestProperty : TFieldRange<FProperty>(SelectedLayer->GetClass()))
+			for (const UProperty* TestProperty : TFieldRange<UProperty>(SelectedLayer->GetClass()))
 			{
 				if (TestProperty->HasAnyPropertyFlags(CPF_Edit))
 				{
@@ -289,7 +289,7 @@ void FPaperTileMapDetailsCustomization::CustomizeDetails(IDetailLayoutBuilder& D
 		TArray<UObject*> ListOfTileMaps;
 		ListOfTileMaps.Add(TileMap);
 
-		for (const FProperty* TestProperty : TFieldRange<FProperty>(TileMap->GetClass()))
+		for (const UProperty* TestProperty : TFieldRange<UProperty>(TileMap->GetClass()))
 		{
 			if (TestProperty->HasAnyPropertyFlags(CPF_Edit))
 			{

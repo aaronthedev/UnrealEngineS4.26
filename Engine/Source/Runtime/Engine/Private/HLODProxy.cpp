@@ -1,14 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/HLODProxy.h"
-#include "Engine/LODActor.h"
 #include "GameFramework/WorldSettings.h"
 
 #if WITH_EDITOR
 #include "Misc/ConfigCacheIni.h"
 #include "Serialization/ArchiveObjectCrc32.h"
-#include "HierarchicalLOD.h"
-#include "ObjectTools.h"
 #endif
 #include "Interfaces/ITargetPlatformManagerModule.h"
 #include "Materials/MaterialInstance.h"
@@ -16,9 +13,6 @@
 #include "Engine/Texture.h"
 #include "Engine/StaticMesh.h"
 #include "PhysicsEngine/BodySetup.h"
-#include "LevelUtils.h"
-#include "Engine/LevelStreaming.h"
-#include "Math/UnrealMathUtility.h"
 
 #if WITH_EDITOR
 
@@ -35,41 +29,11 @@ TSoftObjectPtr<UWorld> UHLODProxy::GetMap() const
 	return OwningMap;
 }
 
-UHLODProxyDesc* UHLODProxy::AddLODActor(ALODActor* InLODActor)
-{
-	check(InLODActor->ProxyDesc == nullptr);
-
-	// Create a new HLODProxyDesc and populate it from the provided InLODActor.
-	UHLODProxyDesc* HLODProxyDesc = NewObject<UHLODProxyDesc>(this);
-	HLODProxyDesc->UpdateFromLODActor(InLODActor);
-
-	InLODActor->Proxy = this;
-	InLODActor->ProxyDesc = HLODProxyDesc;
-	InLODActor->bBuiltFromHLODDesc = true;
-
-	HLODActors.Emplace(HLODProxyDesc);
-
-	MarkPackageDirty();
-
-	return HLODProxyDesc;
-}
-
 void UHLODProxy::AddMesh(ALODActor* InLODActor, UStaticMesh* InStaticMesh, const FName& InKey)
 {
-	// If the Save LOD Actors to HLOD packages feature is enabled, ensure that if a LODActor hasn't been rebuilt yet with
-	// the feature on that we can still update its mesh properly.
-	if (GetDefault<UHierarchicalLODSettings>()->bSaveLODActorsToHLODPackages && HLODActors.Contains(InLODActor->ProxyDesc))
-	{
-		check(InLODActor->Proxy == this);
-		HLODActors[InLODActor->ProxyDesc] = FHLODProxyMesh(InStaticMesh, InKey);
-		InLODActor->UpdateProxyDesc();
-	}
-	else
-	{
-		InLODActor->Proxy = this;
-		FHLODProxyMesh NewProxyMesh(InLODActor, InStaticMesh, InKey);
-		ProxyMeshes.AddUnique(NewProxyMesh);
-	}
+	InLODActor->Proxy = this;
+	FHLODProxyMesh NewProxyMesh(InLODActor, InStaticMesh, InKey);
+	ProxyMeshes.AddUnique(NewProxyMesh);
 }
 
 void UHLODProxy::Clean()
@@ -78,138 +42,28 @@ void UHLODProxy::Clean()
 	check(OwningMap.IsNull() || OwningMap.ToSoftObjectPath().ResolveObject() != nullptr);
 
 	// Remove all entries that have invalid actors
-	int32 NumRemoved = ProxyMeshes.RemoveAll([this](const FHLODProxyMesh& InProxyMesh)
+	ProxyMeshes.RemoveAll([](const FHLODProxyMesh& InProxyMesh)
 	{ 
 		TLazyObjectPtr<ALODActor> LODActor = InProxyMesh.GetLODActor();
-
-		bool bRemoveEntry = false;
 
 		// Invalid actor means that it has been deleted so we shouldnt hold onto its data
 		if(!LODActor.IsValid())
 		{
-			bRemoveEntry = true;
+			return true;
 		}
 		else if(LODActor.Get()->Proxy == nullptr)
 		{
 			// No proxy means we are also invalid
-			bRemoveEntry = true;
+			return true;
 		}
 		else if(!LODActor.Get()->Proxy->ContainsDataForActor(LODActor.Get()))
 		{
 			// actor and proxy are valid, but key differs (unbuilt)
-			bRemoveEntry = true;
+			return true;
 		}
 
-		if (bRemoveEntry)
-		{
-			RemoveAssets(InProxyMesh);
-		}
-
-		return bRemoveEntry;
+		return false;
 	});
-
-	// Ensure the HLOD descs are up to date.
-	if (GetDefault<UHierarchicalLODSettings>()->bSaveLODActorsToHLODPackages)
-	{
-		UWorld* World = Cast<UWorld>(OwningMap.ToSoftObjectPath().ResolveObject());
-		if (World)
-		{
-			UpdateHLODDescs(World->PersistentLevel);
-		}
-	}
-	else if (HLODActors.Num() > 0)
-	{
-		for (TMap<UHLODProxyDesc*, FHLODProxyMesh>::TIterator ItHLODActor = HLODActors.CreateIterator(); ItHLODActor; ++ItHLODActor)
-		{
-			RemoveAssets(ItHLODActor.Value());
-		}
-
-		HLODActors.Empty();
-		Modify();
-	}
-}
-
-bool UHLODProxy::IsEmpty() const
-{
-	return HLODActors.Num() == 0 && ProxyMeshes.Num() == 0;
-}
-
-void UHLODProxy::DeletePackage()
-{
-	UPackage* Package = GetOutermost();
-
-	ForEachObjectWithOuter(Package, [this](UObject* InObject)
-	{
-		DestroyObject(InObject);
-	});
-
-	ObjectTools::DeleteObjectsUnchecked({ Package });
-}
-
-void UHLODProxy::PreSave(const class ITargetPlatform* TargetPlatform)
-{
-	Super::PreSave(TargetPlatform);
-
-	if (!OwningMap.IsValid())
-	{
-		return;
-	}
-
-	// Always rebuild key on save here.
-	// We don't do this while cooking as keys rely on platform derived data which is context-dependent during cook
-	if (!GIsCookerLoadingPackage)
-	{
-		if (GetDefault<UHierarchicalLODSettings>()->bSaveLODActorsToHLODPackages)
-		{
-			UWorld* World = Cast<UWorld>(OwningMap.ToSoftObjectPath().ResolveObject());
-			for (AActor* Actor : World->PersistentLevel->Actors)
-			{
-				if (ALODActor* LODActor = Cast<ALODActor>(Actor))
-				{
-					if (LODActor->ProxyDesc && LODActor->ProxyDesc->GetOutermost() == GetOutermost())
-					{
-						LODActor->ProxyDesc->Key = UHLODProxy::GenerateKeyForActor(LODActor);
-					}
-				}
-			}
-		}
-	}
-}
-
-void UHLODProxy::UpdateHLODDescs(const ULevel* InLevel)
-{
-	// Gather a map of all the HLODProxyDescs used by LODActors in the level
-	TMap<const UHLODProxyDesc*, ALODActor*> LODActors;
-	for (AActor* Actor : InLevel->Actors)
-	{
-		if (ALODActor* LODActor = Cast<ALODActor>(Actor))
-		{
-			if (LODActor->ProxyDesc && LODActor->ProxyDesc->GetOutermost() == GetOutermost())
-			{
-				LODActors.Emplace(LODActor->ProxyDesc, LODActor);
-			}
-		}
-	}
-
-	// For each HLODProxyDesc stored in this proxy, ensure that it is up to date with the associated LODActor
-	// Purge the HLODProxyDesc that are unused (not referenced by any LODActor)
-	for (TMap<UHLODProxyDesc*, FHLODProxyMesh>::TIterator ItHLODActor = HLODActors.CreateIterator(); ItHLODActor; ++ItHLODActor)
-	{
-		UHLODProxyDesc* HLODProxyDesc = ItHLODActor.Key();
-		ALODActor** LODActor = LODActors.Find(HLODProxyDesc);
-		if (LODActor)
-		{
-			HLODProxyDesc->UpdateFromLODActor(*LODActor);
-		}
-		else
-		{
-			// Remove assets associated with this actor
-			RemoveAssets(ItHLODActor.Value());
-
-			Modify();
-			ItHLODActor.RemoveCurrent();
-		}
-	}
 }
 
 const AActor* UHLODProxy::FindFirstActor(const ALODActor* LODActor)
@@ -365,26 +219,12 @@ uint32 UHLODProxy::GetCRC(UStaticMesh* InStaticMesh, uint32 InCRC)
 	return FCrc::MemCrc32(KeyBuffer.GetData(), KeyBuffer.Num(), InCRC);
 }
 
-uint32 UHLODProxy::GetCRC(UStaticMeshComponent* InComponent, uint32 InCRC, const FTransform& TransformComponents)
+uint32 UHLODProxy::GetCRC(UStaticMeshComponent* InComponent, uint32 InCRC)
 {
 	TArray<uint8> KeyBuffer;
 
-	FVector  ComponentLocation = InComponent->GetComponentLocation();
-	FRotator ComponentRotation = InComponent->GetComponentRotation();
-	FVector  ComponentScale = InComponent->GetComponentScale();
-
-	ComponentLocation = TransformComponents.TransformPosition(ComponentLocation);
-	ComponentRotation = TransformComponents.TransformRotation(ComponentRotation.Quaternion()).Rotator();
-
-	// Include transform - round sufficiently to ensure stability
-	FIntVector Location(ComponentLocation / THRESH_POINTS_ARE_NEAR);
-	KeyBuffer.Append((uint8*)&Location, sizeof(Location));
-	FIntVector Rotation(ComponentRotation.GetNormalized().Vector() / THRESH_POINTS_ARE_NEAR);
-	KeyBuffer.Append((uint8*)&Rotation, sizeof(Rotation));
-	FIntVector Scale(ComponentScale / THRESH_POINTS_ARE_NEAR);
-	KeyBuffer.Append((uint8*)&Scale, sizeof(Scale));	
-
-	// Include other relevant properties
+	// incorporate transform & other relevant properties
+	KeyBuffer.Append((uint8*)&InComponent->GetComponentTransform(), sizeof(FTransform));
 	KeyBuffer.Append((uint8*)&InComponent->ForcedLodModel, sizeof(int32));
 	bool bUseMaxLODAsImposter = InComponent->bUseMaxLODAsImposter;
 	KeyBuffer.Append((uint8*)&bUseMaxLODAsImposter, sizeof(bool));
@@ -414,18 +254,17 @@ uint32 UHLODProxy::GetCRC(UStaticMeshComponent* InComponent, uint32 InCRC, const
 }
 
 // Key that forms the basis of the HLOD proxy key. Bump this key (i.e. generate a new GUID) when you want to force a rebuild of ALL HLOD proxies
-#define HLOD_PROXY_BASE_KEY		TEXT("174C29B19AB34A21894058E058F253B3")
+#define HLOD_PROXY_BASE_KEY		TEXT("76927B120C6645ACB9200E7FB8896AC3")
 
-FName UHLODProxy::GenerateKeyForActor(const ALODActor* LODActor, bool bMustUndoLevelTransform)
+FName UHLODProxy::GenerateKeyForActor(const ALODActor* LODActor)
 {
 	FString Key = HLOD_PROXY_BASE_KEY;
 
 	// Base us off the unique object ID
 	{
-		const UObject* Obj = LODActor->ProxyDesc ? Cast<const UObject>(LODActor->ProxyDesc) : Cast<const UObject>(LODActor);
-		FUniqueObjectGuid ObjectGUID = FUniqueObjectGuid::GetOrCreateIDForObject(Obj);
+		FUniqueObjectGuid ObjectID = FUniqueObjectGuid::GetOrCreateIDForObject(LODActor);
 		Key += TEXT("_");
-		Key += ObjectGUID.GetGuid().ToString(EGuidFormats::Digits);
+		Key += ObjectID.GetGuid().ToString(EGuidFormats::Digits);
 	}
 
 	// Accumulate a bunch of settings into a CRC
@@ -481,18 +320,6 @@ FName UHLODProxy::GenerateKeyForActor(const ALODActor* LODActor, bool bMustUndoL
 
 		TArray<UPrimitiveComponent*> Components;
 		ExtractComponents(LODActor, Components);
-		
-		// Components can be offset by their streaming level transform. Undo that transform to have the same signature
-		// when computing CRC for a sub level or a persistent level.
-		FTransform TransformComponents = FTransform::Identity;
-		if (bMustUndoLevelTransform)
-		{
-			ULevelStreaming* SteamingLevel = FLevelUtils::FindStreamingLevel(LODActor->GetLevel());
-			if (SteamingLevel)
-			{
-				TransformComponents = SteamingLevel->LevelTransform.Inverse();
-			}
-		}
 
 		// We get the CRC of each component and combine them
 		for(UPrimitiveComponent* Component : Components)
@@ -500,7 +327,7 @@ FName UHLODProxy::GenerateKeyForActor(const ALODActor* LODActor, bool bMustUndoL
 			if(UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(Component))
 			{
 				// CRC component
-				CRC = GetCRC(StaticMeshComponent, CRC, TransformComponents);
+				CRC = GetCRC(StaticMeshComponent, CRC);
 
 				if(UStaticMesh* StaticMesh = StaticMeshComponent->GetStaticMesh())
 				{
@@ -549,82 +376,6 @@ FName UHLODProxy::GenerateKeyForActor(const ALODActor* LODActor, bool bMustUndoL
 	return FName(*Key);
 }
 
-void UHLODProxy::SpawnLODActors(ULevel* InLevel)
-{
-	for (const auto& Pair : HLODActors)
-	{
-		// Spawn LODActor
-		ALODActor* LODActor = Pair.Key->SpawnLODActor(InLevel);
-		if (LODActor)
-		{
-			LODActor->Proxy = this;
-		}
-	}
-}
-
-void UHLODProxy::PostLoad()
-{
-	Super::PostLoad();
-
-	// PKG_ContainsMapData required so FEditorFileUtils::GetDirtyContentPackages can treat this as a map package
-	GetOutermost()->SetPackageFlags(PKG_ContainsMapData);
-}
-
-void UHLODProxy::DestroyObject(UObject* InObject)
-{
-	check(InObject->GetOutermost() == GetOutermost());
-	
-	InObject->MarkPackageDirty();
-
-	InObject->ClearFlags(RF_Public | RF_Standalone);
-	InObject->SetFlags(RF_Transient);
-
-	if (InObject->IsRooted())
-	{
-		InObject->RemoveFromRoot();
-	}
-}
-
-void UHLODProxy::RemoveAssets(const FHLODProxyMesh& ProxyMesh)
-{
-	UPackage* Outermost = GetOutermost();
-
-	// Destroy the static mesh
-	UStaticMesh* StaticMesh = const_cast<UStaticMesh*>(ProxyMesh.GetStaticMesh());
-	if (StaticMesh)
-	{
-		// Destroy every materials
-		for (const FStaticMaterial& StaticMaterial : StaticMesh->StaticMaterials)
-		{
-			UMaterialInterface* Material = StaticMaterial.MaterialInterface;
-
-			if (Material)
-			{
-				// Destroy every textures
-				TArray<UTexture*> Textures;
-				Material->GetUsedTextures(Textures, EMaterialQualityLevel::High, true, ERHIFeatureLevel::SM5, true);
-				for (UTexture* Texture : Textures)
-				{
-					if (Texture->GetOutermost() == Outermost)
-					{
-						DestroyObject(Texture);
-					}
-				}
-
-				if (Material->GetOutermost() == Outermost)
-				{
-					DestroyObject(Material);
-				}
-			}
-		}
-
-		if (StaticMesh->GetOutermost() == Outermost)
-		{
-			DestroyObject(StaticMesh);
-		}
-	}
-}
-
 #endif // #if WITH_EDITOR
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
@@ -650,15 +401,6 @@ bool UHLODProxy::ContainsDataForActor(const ALODActor* InLODActor) const
 	if(Key == NAME_None)
 	{
 		return false;
-	}
-
-	for (const auto& Pair : HLODActors)
-	{
-		const FHLODProxyMesh& ProxyMesh = Pair.Value;
-		if(ProxyMesh.GetKey() == Key)
-		{
-			return true;
-		}
 	}
 
 	for(const FHLODProxyMesh& ProxyMesh : ProxyMeshes)

@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2020 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2019 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -23,6 +23,7 @@
 #if SDL_VIDEO_RENDER_OGL && !SDL_RENDER_DISABLED
 
 #include "SDL_hints.h"
+#include "SDL_log.h"
 #include "SDL_assert.h"
 #include "SDL_opengl.h"
 #include "../SDL_sysrender.h"
@@ -179,7 +180,7 @@ GL_ClearErrors(SDL_Renderer *renderer)
         }
     } else if (data->glGetError != NULL) {
         while (data->glGetError() != GL_NO_ERROR) {
-            /* continue; */
+            continue;
         }
     }
 }
@@ -584,6 +585,7 @@ GL_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)
 
         renderdata->glGenTextures(1, &data->utexture);
         renderdata->glGenTextures(1, &data->vtexture);
+        renderdata->glEnable(textype);
 
         renderdata->glBindTexture(textype, data->utexture);
         renderdata->glTexParameteri(textype, GL_TEXTURE_MIN_FILTER,
@@ -608,6 +610,8 @@ GL_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)
                                     GL_CLAMP_TO_EDGE);
         renderdata->glTexImage2D(textype, 0, internalFormat, (texture_w+1)/2,
                                  (texture_h+1)/2, 0, format, type, NULL);
+
+        renderdata->glDisable(textype);
     }
 
     if (texture->format == SDL_PIXELFORMAT_NV12 ||
@@ -615,6 +619,8 @@ GL_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)
         data->nv12 = SDL_TRUE;
 
         renderdata->glGenTextures(1, &data->utexture);
+        renderdata->glEnable(textype);
+
         renderdata->glBindTexture(textype, data->utexture);
         renderdata->glTexParameteri(textype, GL_TEXTURE_MIN_FILTER,
                                     scaleMode);
@@ -626,6 +632,7 @@ GL_CreateTexture(SDL_Renderer * renderer, SDL_Texture * texture)
                                     GL_CLAMP_TO_EDGE);
         renderdata->glTexImage2D(textype, 0, GL_LUMINANCE_ALPHA, (texture_w+1)/2,
                                  (texture_h+1)/2, 0, GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE, NULL);
+        renderdata->glDisable(textype);
     }
 
     return GL_CheckError("", renderer);
@@ -646,6 +653,7 @@ GL_UpdateTexture(SDL_Renderer * renderer, SDL_Texture * texture,
 
     renderdata->drawstate.texture = NULL;  /* we trash this state. */
 
+    renderdata->glEnable(textype);
     renderdata->glBindTexture(textype, data->texture);
     renderdata->glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     renderdata->glPixelStorei(GL_UNPACK_ROW_LENGTH, (pitch / texturebpp));
@@ -688,6 +696,7 @@ GL_UpdateTexture(SDL_Renderer * renderer, SDL_Texture * texture,
                                     (rect->w + 1)/2, (rect->h + 1)/2,
                                     GL_LUMINANCE_ALPHA, GL_UNSIGNED_BYTE, pixels);
     }
+    renderdata->glDisable(textype);
 
     return GL_CheckError("glTexSubImage2D()", renderer);
 }
@@ -707,6 +716,7 @@ GL_UpdateTextureYUV(SDL_Renderer * renderer, SDL_Texture * texture,
 
     renderdata->drawstate.texture = NULL;  /* we trash this state. */
 
+    renderdata->glEnable(textype);
     renderdata->glBindTexture(textype, data->texture);
     renderdata->glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     renderdata->glPixelStorei(GL_UNPACK_ROW_LENGTH, Ypitch);
@@ -725,6 +735,7 @@ GL_UpdateTextureYUV(SDL_Renderer * renderer, SDL_Texture * texture,
     renderdata->glTexSubImage2D(textype, 0, rect->x/2, rect->y/2,
                                 (rect->w + 1)/2, (rect->h + 1)/2,
                                 data->format, data->formattype, Vplane);
+    renderdata->glDisable(textype);
 
     return GL_CheckError("glTexSubImage2D()", renderer);
 }
@@ -755,37 +766,6 @@ GL_UnlockTexture(SDL_Renderer * renderer, SDL_Texture * texture)
         (void *) ((Uint8 *) data->pixels + rect->y * data->pitch +
                   rect->x * SDL_BYTESPERPIXEL(texture->format));
     GL_UpdateTexture(renderer, texture, rect, pixels, data->pitch);
-}
-
-static void
-GL_SetTextureScaleMode(SDL_Renderer * renderer, SDL_Texture * texture, SDL_ScaleMode scaleMode)
-{
-    GL_RenderData *renderdata = (GL_RenderData *) renderer->driverdata;
-    const GLenum textype = renderdata->textype;
-    GL_TextureData *data = (GL_TextureData *) texture->driverdata;
-    GLenum glScaleMode = (scaleMode == SDL_ScaleModeNearest) ? GL_NEAREST : GL_LINEAR;
-
-    renderdata->glBindTexture(textype, data->texture);
-    renderdata->glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, glScaleMode);
-    renderdata->glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, glScaleMode);
-
-    if (texture->format == SDL_PIXELFORMAT_YV12 ||
-        texture->format == SDL_PIXELFORMAT_IYUV) {
-        renderdata->glBindTexture(textype, data->utexture);
-        renderdata->glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, glScaleMode);
-        renderdata->glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, glScaleMode);
-
-        renderdata->glBindTexture(textype, data->vtexture);
-        renderdata->glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, glScaleMode);
-        renderdata->glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, glScaleMode);
-    }
-
-    if (texture->format == SDL_PIXELFORMAT_NV12 ||
-        texture->format == SDL_PIXELFORMAT_NV21) {
-        renderdata->glBindTexture(textype, data->utexture);
-        renderdata->glTexParameteri(textype, GL_TEXTURE_MIN_FILTER, glScaleMode);
-        renderdata->glTexParameteri(textype, GL_TEXTURE_MAG_FILTER, glScaleMode);
-    }
 }
 
 static int
@@ -1186,9 +1166,9 @@ GL_RunCommandQueue(SDL_Renderer * renderer, SDL_RenderCommand *cmd, void *vertic
                     data->drawstate.clear_color = color;
                 }
 
-                if (data->drawstate.cliprect_enabled || data->drawstate.cliprect_enabled_dirty) {
+                if (data->drawstate.cliprect_enabled) {
                     data->glDisable(GL_SCISSOR_TEST);
-                    data->drawstate.cliprect_enabled_dirty = data->drawstate.cliprect_enabled;
+                    data->drawstate.cliprect_enabled_dirty = SDL_TRUE;
                 }
 
                 data->glClear(GL_COLOR_BUFFER_BIT);
@@ -1230,7 +1210,6 @@ GL_RunCommandQueue(SDL_Renderer * renderer, SDL_RenderCommand *cmd, void *vertic
                         data->glVertex2f(verts[0], verts[1]);
                     }
                     data->glEnd();
-                    verts -= 2 * count;
 
                     /* The line is half open, so we need one more point to complete it.
                      * http://www.opengl.org/documentation/specs/version1.1/glspec1.1/node47.html
@@ -1597,7 +1576,6 @@ GL_CreateRenderer(SDL_Window * window, Uint32 flags)
     renderer->UpdateTextureYUV = GL_UpdateTextureYUV;
     renderer->LockTexture = GL_LockTexture;
     renderer->UnlockTexture = GL_UnlockTexture;
-    renderer->SetTextureScaleMode = GL_SetTextureScaleMode;
     renderer->SetRenderTarget = GL_SetRenderTarget;
     renderer->QueueSetViewport = GL_QueueSetViewport;
     renderer->QueueSetDrawColor = GL_QueueSetViewport;  /* SetViewport and SetDrawColor are (currently) no-ops. */

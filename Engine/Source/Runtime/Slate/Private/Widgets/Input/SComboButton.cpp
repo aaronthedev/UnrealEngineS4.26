@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Layout/SBorder.h"
@@ -21,8 +21,6 @@ void SComboButton::Construct( const FArguments& InArgs )
 	ContentWidgetPtr = InArgs._MenuContent.Widget;
 	bIsFocusable = InArgs._IsFocusable;
 
-	const bool bHasDownArrowShadow = !InArgs._ComboButtonStyle->ShadowOffset.IsZero();
-
 	TSharedPtr<SHorizontalBox> HBox;
 
 	SMenuAnchor::Construct( SMenuAnchor::FArguments()
@@ -40,8 +38,6 @@ void SComboButton::Construct( const FArguments& InArgs )
 			.ForegroundColor( InArgs._ForegroundColor )
 			.ButtonColorAndOpacity( InArgs._ButtonColorAndOpacity )
 			.IsFocusable( InArgs._IsFocusable )
-		// We set the button to not be accessible as there are issues interacting with the menus that pop up e.g in SComboBox
-		.AccessibleParams(FAccessibleWidgetData(EAccessibleBehavior::NotAccessible, EAccessibleBehavior::NotAccessible, false))
 			[
 				// Button and down arrow on the right
 				// +-------------------+---+
@@ -62,26 +58,11 @@ void SComboButton::Construct( const FArguments& InArgs )
 				.VAlign( VAlign_Center )
 				.Padding( InArgs._HasDownArrow ? 2 : 0 )
 				[
-					SNew(SOverlay)
-					// drop shadow
-					+ SOverlay::Slot()
-					.VAlign(VAlign_Top)
-					.Padding(FMargin(InArgs._ComboButtonStyle->ShadowOffset.X, InArgs._ComboButtonStyle->ShadowOffset.Y, 0, 0))
-					[
-						SNew(SImage)
-						.Visibility( InArgs._HasDownArrow && bHasDownArrowShadow ? EVisibility::Visible : EVisibility::Collapsed )
-						.Image( &InArgs._ComboButtonStyle->DownArrowImage )
-						.ColorAndOpacity( InArgs._ComboButtonStyle->ShadowColorAndOpacity )
-					]
-					+ SOverlay::Slot()
-					.VAlign(VAlign_Top)
-					[
-						SNew(SImage)
-						.Visibility( InArgs._HasDownArrow ? EVisibility::Visible : EVisibility::Collapsed )
-						.Image( &InArgs._ComboButtonStyle->DownArrowImage )
-						// Inherit tinting from parent
-						.ColorAndOpacity( FSlateColor::UseForeground() )
-					]
+					SNew( SImage )
+					.Visibility( InArgs._HasDownArrow ? EVisibility::Visible : EVisibility::Collapsed )
+					.Image( &InArgs._ComboButtonStyle->DownArrowImage )
+					// Inherit tinting from parent
+					. ColorAndOpacity( FSlateColor::UseForeground() )
 				]
 			]
 		]

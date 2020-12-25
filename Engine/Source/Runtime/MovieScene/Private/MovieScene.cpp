@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieScene.h"
 #include "MovieSceneTrack.h"
@@ -7,10 +7,7 @@
 #include "Evaluation/MovieSceneEvaluationCustomVersion.h"
 #include "Compilation/MovieSceneSegmentCompiler.h"
 #include "UObject/SequencerObjectVersion.h"
-#include "Evaluation/IMovieSceneCustomClockSource.h"
 #include "CommonFrameRates.h"
-#include "EntitySystem/IMovieSceneEntityProvider.h"
-#include "UObject/UObjectHash.h"
 
 #define LOCTEXT_NAMESPACE "MovieScene"
 
@@ -54,8 +51,6 @@ UMovieScene::UMovieScene(const FObjectInitializer& ObjectInitializer)
 	bForceFixedFrameIntervalPlayback_DEPRECATED = false;
 	FixedFrameInterval_DEPRECATED = 0.0f;
 
-	NodeGroupCollection = CreateEditorOnlyDefaultSubobject<UMovieSceneNodeGroupCollection>("NodeGroupCollection");
-
 	InTime_DEPRECATED    =  FLT_MAX;
 	OutTime_DEPRECATED   = -FLT_MAX;
 	StartTime_DEPRECATED =  FLT_MAX;
@@ -75,40 +70,26 @@ void UMovieScene::PostInitProperties()
 	Super::PostInitProperties();
 }
 
-void UMovieScene::PostLoad()
-{
-	SortMarkedFrames();
-
-	Super::PostLoad();
-}
-
-
 void UMovieScene::Serialize( FArchive& Ar )
 {
 	Ar.UsingCustomVersion(FMovieSceneEvaluationCustomVersion::GUID);
 	Ar.UsingCustomVersion(FSequencerObjectVersion::GUID);
 
-	// Serialize the MovieScene
-	Super::Serialize(Ar);
-
 #if WITH_EDITOR
-	if (Ar.IsLoading())
-	{
-		UpgradeTimeRanges();
-		RemoveNullTracks();
 
-		for (FMovieSceneSpawnable& Spawnable : Spawnables)
-		{
-			if (UObject* Template = Spawnable.GetObjectTemplate())
-			{
-				// Spawnables are no longer marked archetype
-				Template->ClearFlags(RF_ArchetypeObject);
-				
-				FMovieSceneSpawnable::MarkSpawnableTemplate(*Template);
-			}
-		}
+	// Perform optimizations for cooking
+	if (Ar.IsCooking())
+	{
+		// @todo: Optimize master tracks?
+
+		// Optimize object bindings
+		OptimizeObjectArray(Spawnables);
+		OptimizeObjectArray(Possessables);
 	}
-#endif
+
+#endif // WITH_EDITOR
+
+	Super::Serialize(Ar);
 
 #if WITH_EDITORONLY_DATA
 	if (Ar.CustomVer(FSequencerObjectVersion::GUID) < FSequencerObjectVersion::FloatToIntConversion)
@@ -161,6 +142,41 @@ void UMovieScene::Serialize( FArchive& Ar )
 
 #if WITH_EDITOR
 
+template<typename T>
+void UMovieScene::OptimizeObjectArray(TArray<T>& ObjectArray)
+{
+	for (int32 ObjectIndex = ObjectArray.Num() - 1; ObjectIndex >= 0; --ObjectIndex)
+	{
+		FGuid ObjectGuid = ObjectArray[ObjectIndex].GetGuid();
+
+		// Find the binding relating to this object, and optimize its tracks
+		// @todo: ObjectBindings mapped by ID to avoid linear search
+		for (int32 BindingIndex = 0; BindingIndex < ObjectBindings.Num(); ++BindingIndex)
+		{
+			FMovieSceneBinding& Binding = ObjectBindings[BindingIndex];
+			if (Binding.GetObjectGuid() != ObjectGuid)
+			{
+				continue;
+			}
+			
+			bool bShouldRemoveObject = false;
+
+			// Optimize any tracks
+			Binding.PerformCookOptimization(bShouldRemoveObject);
+
+			// Remove the object if it's completely redundant
+			if (bShouldRemoveObject)
+			{
+				ObjectBindings.RemoveAtSwap(BindingIndex, 1, false);
+				ObjectArray.RemoveAtSwap(ObjectIndex, 1, false);
+			}
+
+			// Process next object
+			break;
+		}
+	}
+}
+
 // @todo sequencer: Some of these methods should only be used by tools, and should probably move out of MovieScene!
 FGuid UMovieScene::AddSpawnable( const FString& Name, UObject& ObjectTemplate )
 {
@@ -205,7 +221,7 @@ bool UMovieScene::RemoveSpawnable( const FGuid& Guid )
 				RemoveBinding( Guid );
 
 				Spawnables.RemoveAt( SpawnableIter.GetIndex() );
-
+				
 				bAnythingRemoved = true;
 				break;
 			}
@@ -215,12 +231,13 @@ bool UMovieScene::RemoveSpawnable( const FGuid& Guid )
 	return bAnythingRemoved;
 }
 
-#endif //WITH_EDITOR
-
 FMovieSceneSpawnable* UMovieScene::FindSpawnable( const TFunctionRef<bool(FMovieSceneSpawnable&)>& InPredicate )
 {
 	return Spawnables.FindByPredicate(InPredicate);
 }
+
+#endif //WITH_EDITOR
+
 
 FMovieSceneSpawnable& UMovieScene::GetSpawnable(int32 Index)
 {
@@ -563,143 +580,6 @@ void FMovieSceneSectionGroup::Clean()
 	Sections.RemoveAll([](TWeakObjectPtr<UMovieSceneSection>& Section) { return !(Section.IsValid()); });
 }
 
-void UMovieSceneNodeGroup::AddNode(const FString& Path)
-{
-	Modify();
-
-	Nodes.AddUnique(Path);
-	OnNodeGroupChangedEvent.Broadcast();
-}
-
-void UMovieSceneNodeGroup::RemoveNode(const FString& Path)
-{
-	Modify();
-
-	Nodes.Remove(Path);
-	OnNodeGroupChangedEvent.Broadcast();
-}
-
-bool UMovieSceneNodeGroup::ContainsNode(const FString& Path) const
-{
-	return Nodes.Contains(Path);
-}
-
-void UMovieSceneNodeGroup::UpdateNodePath(const FString& OldPath, const FString& NewPath)
-{
-	if (!OldPath.Equals(NewPath))
-	{
-		// If the node is in this group, replace it with it's new path
-		if (Nodes.Remove(OldPath))
-		{
-			Nodes.Add(NewPath);
-		}
-
-		// Find any nodes with a path that is a child of the changed node, and rename their paths as well
-		FString PathPrefix = OldPath + '.';
-
-		TArray<FString> PathsToRename;
-		for (const FString& NodePath : Nodes)
-		{
-			if (NodePath.StartsWith(PathPrefix))
-			{
-				PathsToRename.Add(NodePath);
-			}
-		}
-
-		for (const FString& NodePath : PathsToRename)
-		{
-			FString NewNodePath = NodePath;
-			if (NewNodePath.RemoveFromStart(PathPrefix))
-			{
-				NewNodePath = NewPath + '.' + NewNodePath;
-				Nodes.Remove(NodePath);
-				Nodes.Add(NewNodePath);
-			}
-		}
-
-	}
-}
-
-void UMovieSceneNodeGroup::SetName(const FName& InName)
-{
-	Modify();
-
-	Name = InName;
-	OnNodeGroupChangedEvent.Broadcast();
-}
-
-void UMovieSceneNodeGroup::SetEnableFilter(bool bInEnableFilter)
-{
-	if (bEnableFilter != bInEnableFilter)
-	{
-		bEnableFilter = bInEnableFilter;
-		OnNodeGroupChangedEvent.Broadcast();
-	}
-}
-
-void UMovieSceneNodeGroupCollection::PostLoad()
-{
-	bAnyActiveFilter = false;
-	for (UMovieSceneNodeGroup* NodeGroup : NodeGroups)
-	{
-		NodeGroup->OnNodeGroupChanged().AddUObject(this, &UMovieSceneNodeGroupCollection::OnNodeGroupChanged);
-		
-		if (NodeGroup->GetEnableFilter())
-		{
-			bAnyActiveFilter = true;
-		}
-	}
-	
-	Super::PostLoad();
-}
-
-void UMovieSceneNodeGroupCollection::AddNodeGroup(UMovieSceneNodeGroup* NodeGroup)
-{
-	Modify();
-
-	if (!NodeGroups.Contains(NodeGroup))
-	{
-		NodeGroups.Add(NodeGroup);
-		NodeGroup->OnNodeGroupChanged().AddUObject(this, &UMovieSceneNodeGroupCollection::OnNodeGroupChanged);
-		
-		OnNodeGroupCollectionChangedEvent.Broadcast();
-	}
-}
-
-void UMovieSceneNodeGroupCollection::RemoveNodeGroup(UMovieSceneNodeGroup* NodeGroup)
-{
-	Modify();
-
-	NodeGroup->OnNodeGroupChanged().RemoveAll(this);
-
-	if (NodeGroups.RemoveSingle(NodeGroup))
-	{
-		OnNodeGroupCollectionChangedEvent.Broadcast();
-	}
-}
-
-void UMovieSceneNodeGroupCollection::UpdateNodePath(const FString& OldPath, const FString& NewPath)
-{
-	for (UMovieSceneNodeGroup* NodeGroup : NodeGroups)
-	{
-		NodeGroup->UpdateNodePath(OldPath, NewPath);
-	}
-}
-
-void UMovieSceneNodeGroupCollection::OnNodeGroupChanged()
-{
-	bAnyActiveFilter = false;
-	for (const UMovieSceneNodeGroup* NodeGroup : NodeGroups)
-	{
-		if (NodeGroup->GetEnableFilter())
-		{
-			bAnyActiveFilter = true;
-			break;
-		}
-	}
-
-	OnNodeGroupCollectionChangedEvent.Broadcast();
-}
 
 bool UMovieScene::IsSectionInGroup(const UMovieSceneSection& InSection) const
 {
@@ -883,6 +763,7 @@ UMovieSceneTrack* UMovieScene::AddTrack( TSubclassOf<UMovieSceneTrack> TrackClas
 
 			CreatedType = NewObject<UMovieSceneTrack>(this, TrackClass, NAME_None, RF_Transactional);
 			check(CreatedType);
+			
 			Binding.AddTrack( *CreatedType );
 		}
 	}
@@ -893,7 +774,6 @@ UMovieSceneTrack* UMovieScene::AddTrack( TSubclassOf<UMovieSceneTrack> TrackClas
 bool UMovieScene::AddGivenTrack(UMovieSceneTrack* InTrack, const FGuid& ObjectGuid)
 {
 	check(ObjectGuid.IsValid());
-	check(InTrack);
 
 	Modify();
 	for (auto& Binding : ObjectBindings)
@@ -901,6 +781,7 @@ bool UMovieScene::AddGivenTrack(UMovieSceneTrack* InTrack, const FGuid& ObjectGu
 		if (Binding.GetObjectGuid() == ObjectGuid)
 		{
 			InTrack->Rename(nullptr, this);
+			check(InTrack);
 			Binding.AddTrack(*InTrack);
 			return true;
 		}
@@ -970,6 +851,7 @@ UMovieSceneTrack* UMovieScene::AddMasterTrack( TSubclassOf<UMovieSceneTrack> Tra
 
 	UMovieSceneTrack* CreatedType = NewObject<UMovieSceneTrack>(this, TrackClass, NAME_None, RF_Transactional);
 	MasterTracks.Add( CreatedType );
+	
 	return CreatedType;
 }
 
@@ -979,8 +861,8 @@ bool UMovieScene::AddGivenMasterTrack(UMovieSceneTrack* InTrack)
 	if (!MasterTracks.Contains(InTrack))
 	{
 		Modify();
-		MasterTracks.Add(InTrack);
 		InTrack->Rename(nullptr, this);
+		MasterTracks.Add(InTrack);
 		return true;
 	}
 	return false;
@@ -1021,7 +903,7 @@ UMovieSceneTrack* UMovieScene::AddCameraCutTrack( TSubclassOf<UMovieSceneTrack> 
 }
 
 
-UMovieSceneTrack* UMovieScene::GetCameraCutTrack() const
+UMovieSceneTrack* UMovieScene::GetCameraCutTrack()
 {
 	return CameraCutTrack;
 }
@@ -1149,9 +1031,10 @@ void UMovieScene::UpgradeTimeRanges()
 #endif
 }
 
-#if WITH_EDITOR
+/* UObject interface
+ *****************************************************************************/
 
-void UMovieScene::RemoveNullTracks()
+void UMovieScene::PostLoad()
 {
 	// Remove any null tracks
 	for( int32 TrackIndex = 0; TrackIndex < MasterTracks.Num(); )
@@ -1195,6 +1078,19 @@ void UMovieScene::RemoveNullTracks()
 	}
 #endif
 
+	UpgradeTimeRanges();
+
+	for (FMovieSceneSpawnable& Spawnable : Spawnables)
+	{
+		if (UObject* Template = Spawnable.GetObjectTemplate())
+		{
+			// Spawnables are no longer marked archetype
+			Template->ClearFlags(RF_ArchetypeObject);
+			
+			FMovieSceneSpawnable::MarkSpawnableTemplate(*Template);
+		}
+	}
+
 #if WITH_EDITORONLY_DATA
 	for (FFrameNumber MarkedFrame : EditorData.MarkedFrames_DEPRECATED)
 	{
@@ -1206,12 +1102,9 @@ void UMovieScene::RemoveNullTracks()
 	// Clean any section groups which might refer to sections which were not serialized
 	CleanSectionGroups();
 #endif
+
+	Super::PostLoad();
 }
-
-#endif // WITH_EDITOR
-
-/* UObject interface
- *****************************************************************************/
 
 
 void UMovieScene::PreSave(const class ITargetPlatform* TargetPlatform)
@@ -1261,6 +1154,7 @@ void UMovieScene::RemoveBinding(const FGuid& Guid)
 		}
 	}
 }
+
 
 void UMovieScene::ReplaceBinding(const FGuid& OldGuid, const FGuid& NewGuid, const FString& Name)
 {
@@ -1349,11 +1243,6 @@ void UMovieScene::MoveBindingContents(const FGuid& SourceBindingId, const FGuid&
 	}
 }
 
-TSharedPtr<FMovieSceneTimeController> UMovieScene::MakeCustomTimeController(UObject* PlaybackContext)
-{
-	return MakeShared<FMovieSceneTimeController_Custom>(CustomClockSourcePath, PlaybackContext);
-}
-
 void UMovieScene::SetMarkedFrame(int32 InMarkIndex, FFrameNumber InFrameNumber)
 {
 	if (InMarkIndex < 0 && InMarkIndex > MarkedFrames.Num()-1)
@@ -1406,24 +1295,17 @@ int32 UMovieScene::AddMarkedFrame(const FMovieSceneMarkedFrame &InMarkedFrame)
 		MarkedFrames[MarkedIndex].Label = NewLabel;
 	}
 
-	SortMarkedFrames();
-	return FindMarkedFrameByFrameNumber(InMarkedFrame.FrameNumber);
+	return MarkedIndex;
 }
 
-void UMovieScene::DeleteMarkedFrame(int32 DeleteIndex)
+void UMovieScene::RemoveMarkedFrame(int32 RemoveIndex)
 {
-	MarkedFrames.RemoveAt(DeleteIndex);
-	SortMarkedFrames();
+	MarkedFrames.RemoveAt(RemoveIndex);
 }
 
-void UMovieScene::DeleteMarkedFrames()
+void UMovieScene::ClearMarkedFrames()
 {
 	MarkedFrames.Empty();
-}
-
-void UMovieScene::SortMarkedFrames()
-{
-	MarkedFrames.Sort([&](const FMovieSceneMarkedFrame& A, const FMovieSceneMarkedFrame& B) { return A.FrameNumber < B.FrameNumber; });
 }
 
 int32 UMovieScene::FindMarkedFrameByLabel(const FString& InLabel) const

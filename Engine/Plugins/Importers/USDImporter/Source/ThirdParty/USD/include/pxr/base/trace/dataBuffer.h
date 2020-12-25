@@ -22,8 +22,8 @@
 // language governing permissions and limitations under the Apache License.
 //
 
-#ifndef PXR_BASE_TRACE_DATA_BUFFER_H
-#define PXR_BASE_TRACE_DATA_BUFFER_H
+#ifndef TRACE_DATA_CACHE_H
+#define TRACE_DATA_CACHE_H
 
 #include "pxr/pxr.h"
 
@@ -126,4 +126,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TRACE_DATA_BUFFER_H
+#endif // TRACE_DATA_CACHE_H

@@ -1,8 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UObject/PropertyTempVal.h"
 
-FPropertyTempVal::FPropertyTempVal(FProperty* InProp)
+FPropertyTempVal::FPropertyTempVal(UProperty* InProp)
 {
 	// Allocate space for the owned object and construct it
 	void* LocalValue = FMemory::Malloc(InProp->GetSize(), InProp->GetMinAlignment());

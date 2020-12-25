@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Chaos/ImplicitObject.h"
@@ -13,14 +13,14 @@ namespace Chaos
 	struct TCylinderSpecializeSamplingHelper;
 
 	template<class T>
-	class TCylinder final : public FImplicitObject
+	class TCylinder final : public TImplicitObject<T, 3>
 	{
 	public:
-		using FImplicitObject::SignedDistance;
-		using FImplicitObject::GetTypeName;
+		using TImplicitObject<T, 3>::SignedDistance;
+		using TImplicitObject<T, 3>::GetTypeName;
 
 		TCylinder(const TVector<T, 3>& x1, const TVector<T, 3>& x2, const T Radius)
-		    : FImplicitObject(EImplicitObject::FiniteConvex, ImplicitObjectType::Cylinder)
+		    : TImplicitObject<T, 3>(EImplicitObject::FiniteConvex, ImplicitObjectType::Cylinder)
 		    , MPlane1(x1, (x2 - x1).GetSafeNormal()) // Plane normals point inward
 		    , MPlane2(x2, -MPlane1.Normal())
 		    , MHeight((x2 - x1).Size())
@@ -28,10 +28,10 @@ namespace Chaos
 		    , MLocalBoundingBox(x1, x1)
 		{
 			MLocalBoundingBox.GrowToInclude(x2);
-			MLocalBoundingBox = TAABB<T, 3>(MLocalBoundingBox.Min() - TVector<T, 3>(MRadius), MLocalBoundingBox.Max() + TVector<T, 3>(MRadius));
+			MLocalBoundingBox = TBox<T, 3>(MLocalBoundingBox.Min() - TVector<T, 3>(MRadius), MLocalBoundingBox.Max() + TVector<T, 3>(MRadius));
 		}
 		TCylinder(const TCylinder<T>& Other)
-		    : FImplicitObject(EImplicitObject::FiniteConvex, ImplicitObjectType::Cylinder)
+		    : TImplicitObject<T, 3>(EImplicitObject::FiniteConvex, ImplicitObjectType::Cylinder)
 		    , MPlane1(Other.MPlane1)
 		    , MPlane2(Other.MPlane2)
 		    , MHeight(Other.MHeight)
@@ -40,7 +40,7 @@ namespace Chaos
 		{
 		}
 		TCylinder(TCylinder<T>&& Other)
-		    : FImplicitObject(EImplicitObject::FiniteConvex, ImplicitObjectType::Cylinder)
+		    : TImplicitObject<T, 3>(EImplicitObject::FiniteConvex, ImplicitObjectType::Cylinder)
 		    , MPlane1(MoveTemp(Other.MPlane1))
 		    , MPlane2(MoveTemp(Other.MPlane2))
 		    , MHeight(Other.MHeight)
@@ -50,7 +50,7 @@ namespace Chaos
 		}
 		~TCylinder() {}
 
-		static constexpr EImplicitObjectType StaticType() { return ImplicitObjectType::Cylinder; }
+		static ImplicitObjectType GetType() { return ImplicitObjectType::Cylinder; }
 
 		/**
 		 * Returns sample points centered about the origin.
@@ -169,7 +169,7 @@ namespace Chaos
 			return SideDistance;
 		}
 
-		virtual const TAABB<T, 3> BoundingBox() const override { return MLocalBoundingBox; }
+		virtual const TBox<T, 3>& BoundingBox() const override { return MLocalBoundingBox; }
 
 		T GetRadius() const { return MRadius; }
 		T GetHeight() const { return MHeight; }
@@ -213,12 +213,12 @@ namespace Chaos
 		virtual void Serialize(FChaosArchive& Ar)
 		{
 			FChaosArchiveScopedMemory ScopedMemory(Ar, GetTypeName());
-			FImplicitObject::SerializeImp(Ar);
+			TImplicitObject<T, 3>::SerializeImp(Ar);
 			Ar << MPlane1;
 			Ar << MPlane2;
 			Ar << MHeight;
 			Ar << MRadius;
-			TBox<T, 3>::SerializeAsAABB(Ar, MLocalBoundingBox);
+			Ar << MLocalBoundingBox;
 		}
 
 	private:
@@ -263,13 +263,13 @@ namespace Chaos
 		}
 
 		//needed for serialization
-		TCylinder() : FImplicitObject(EImplicitObject::HasBoundingBox, ImplicitObjectType::Cylinder) {}
-		friend FImplicitObject;	//needed for serialization
+		TCylinder() : TImplicitObject<T, 3>(EImplicitObject::HasBoundingBox, ImplicitObjectType::Cylinder) {}
+		friend TImplicitObject<T, 3>;	//needed for serialization
 
 	private:
 		TPlane<T, 3> MPlane1, MPlane2;
 		T MHeight, MRadius;
-		TAABB<T, 3> MLocalBoundingBox;
+		TBox<T, 3> MLocalBoundingBox;
 	};
 
 	template<typename T>

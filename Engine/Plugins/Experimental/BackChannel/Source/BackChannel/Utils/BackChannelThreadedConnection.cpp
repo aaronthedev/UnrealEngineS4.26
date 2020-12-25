@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BackChannel/Utils/BackChannelThreadedConnection.h"
 #include "BackChannel/Private/BackChannelCommon.h"
@@ -21,7 +21,7 @@ bool FBackChannelThreadedListener::IsRunning() const
 	return bIsRunning;
 }
 
-void FBackChannelThreadedListener::Start(TSharedRef<IBackChannelSocketConnection> InConnection, FBackChannelListenerDelegate InDelegate)
+void FBackChannelThreadedListener::Start(TSharedRef<IBackChannelConnection> InConnection, FBackChannelListenerDelegate InDelegate)
 {
 	Connection = InConnection;
 	Delegate = InDelegate;
@@ -38,7 +38,7 @@ uint32 FBackChannelThreadedListener::Run()
 	{
 		FScopeLock RunningLock(&RunningCS);
 
-		Connection->WaitForConnection(1, [this](TSharedRef<IBackChannelSocketConnection> NewConnection) {
+		Connection->WaitForConnection(1, [this](TSharedRef<IBackChannelConnection> NewConnection) {
 			return Delegate.Execute(NewConnection);
 		});
 	}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -8,8 +8,7 @@ public class CurveEditor : ModuleRules
 	{
 		PrivateDependencyModuleNames.AddRange(
 			new string[] {
-                "ApplicationCore",
-                "Core",
+				"Core",
 				"CoreUObject",
 				"Engine",
 				"EditorStyle",

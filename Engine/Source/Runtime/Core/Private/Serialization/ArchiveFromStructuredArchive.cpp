@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Serialization/StructuredArchive.h"
 #include "Internationalization/Text.h"
@@ -83,7 +83,7 @@ void FArchiveFromStructuredArchiveImpl::Seek(int64 InPos)
 	if (InnerArchive.IsTextFormat())
 	{
 		check(Pimpl->Pos >= 0 && Pimpl->Pos <= Pimpl->Buffer.Num());
-		Pimpl->Pos = (int32)InPos;
+		Pimpl->Pos = InPos;
 	}
 	else
 	{
@@ -211,16 +211,16 @@ void FArchiveFromStructuredArchiveImpl::Serialize(void* V, int64 Length)
 				checkf(false, TEXT("Attempt to read past end of archive"));
 			}
 			FMemory::Memcpy(V, Pimpl->Buffer.GetData() + Pimpl->Pos, Length);
-			Pimpl->Pos += (int32)Length;
+			Pimpl->Pos += Length;
 		}
 		else
 		{
 			if (Pimpl->Pos + Length > Pimpl->Buffer.Num())
 			{
-				Pimpl->Buffer.AddUninitialized((int32)(Pimpl->Pos + Length - Pimpl->Buffer.Num()));
+				Pimpl->Buffer.AddUninitialized(Pimpl->Pos + Length - Pimpl->Buffer.Num());
 			}
 			FMemory::Memcpy(Pimpl->Buffer.GetData() + Pimpl->Pos, V, Length);
-			Pimpl->Pos += (int32)Length;
+			Pimpl->Pos += Length;
 		}
 	}
 	else
@@ -308,14 +308,7 @@ void FArchiveFromStructuredArchiveImpl::OpenArchive()
 
 FArchive* FArchiveFromStructuredArchiveImpl::GetCacheableArchive()
 {
-	if (IsTextFormat())
-	{
-		return nullptr;
-	}
-	else
-	{
-		return InnerArchive.GetCacheableArchive();
-	}
+	return IsTextFormat() ? nullptr : Pimpl->Root->GetUnderlyingArchive().GetCacheableArchive();
 }
 
 bool FArchiveFromStructuredArchiveImpl::ContainsData() const

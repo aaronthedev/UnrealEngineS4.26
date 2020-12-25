@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DSP/BufferOnePoleLPF.h"
 #include "DSP/BufferVectorOperations.h"
@@ -26,11 +26,6 @@ void FBufferOnePoleLPF::SetG(float InG)
 void FBufferOnePoleLPF::Reset()
 {
 	SetG(0.0f);
-	FlushAudio();
-}
-
-void FBufferOnePoleLPF::FlushAudio()
-{
 	Z1 = 0.0f;
 }
 

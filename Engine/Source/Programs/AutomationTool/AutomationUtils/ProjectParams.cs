@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -237,7 +237,6 @@ namespace AutomationTool
 			this.MapsToCook = InParams.MapsToCook;
 			this.MapIniSectionsToCook = InParams.MapIniSectionsToCook;
 			this.DirectoriesToCook = InParams.DirectoriesToCook;
-            this.DDCGraph = InParams.DDCGraph;
             this.InternationalizationPreset = InParams.InternationalizationPreset;
             this.CulturesToCook = InParams.CulturesToCook;
             this.BasedOnReleaseVersion = InParams.BasedOnReleaseVersion;
@@ -281,8 +280,6 @@ namespace AutomationTool
             this.RunTimeoutSeconds = InParams.RunTimeoutSeconds;
 			this.Clean = InParams.Clean;
 			this.Pak = InParams.Pak;
-			this.IgnorePaksFromDifferentCookSource = InParams.IgnorePaksFromDifferentCookSource;
-			this.IoStore = InParams.IoStore;
 			this.SignPak = InParams.SignPak;
 			this.SignedPak = InParams.SignedPak;
 			this.PakAlignForMemoryMapping = InParams.PakAlignForMemoryMapping;
@@ -319,7 +316,6 @@ namespace AutomationTool
 			this.ServerCommandline = InParams.ServerCommandline;
             this.ClientCommandline = InParams.ClientCommandline;
             this.Package = InParams.Package;
-			this.SkipPackage = InParams.SkipPackage;
 			this.ForcePackageData = InParams.ForcePackageData;
 			this.Deploy = InParams.Deploy;
 			this.DeployFolder = InParams.DeployFolder;
@@ -348,7 +344,6 @@ namespace AutomationTool
 			this.NumClients = InParams.NumClients;
             this.Compressed = InParams.Compressed;
 			this.AdditionalPakOptions = InParams.AdditionalPakOptions;
-			this.AdditionalIoStoreOptions = InParams.AdditionalIoStoreOptions;
 			this.Archive = InParams.Archive;
 			this.ArchiveDirectoryParam = InParams.ArchiveDirectoryParam;
 			this.ArchiveMetaData = InParams.ArchiveMetaData;
@@ -392,7 +387,6 @@ namespace AutomationTool
 			ParamList<string> MapsToCook = null,
 			ParamList<string> MapIniSectionsToCook = null,
 			ParamList<string> DirectoriesToCook = null,
-            string DDCGraph = null,
             string InternationalizationPreset = null,
             ParamList<string> CulturesToCook = null,
 			ParamList<string> ClientCookedTargets = null,
@@ -411,7 +405,6 @@ namespace AutomationTool
 			bool? Clean = null,
             bool? Compressed = null,
 			string AdditionalPakOptions = null,
-			string AdditionalIoStoreOptions = null,
             bool? IterativeCooking = null,
 			string IterateSharedCookedBuild = null,
 			bool? IterateSharedBuildUsePrecompiledExe = null,
@@ -459,12 +452,8 @@ namespace AutomationTool
 			bool? SeparateDebugInfo = null,
 			bool? MapFile = null,
 			bool? NoXGE = null,
-			bool? SkipPackage = null,
 			bool? Package = null,
 			bool? Pak = null,
-			bool? IgnorePaksFromDifferentCookSource = null,
-			bool? IoStore = null,
-			bool? SkipIoStore = null,
 			bool? Prereqs = null,
 			string AppLocalDirectory = null,
 			bool? NoBootstrapExe = null,
@@ -524,7 +513,6 @@ namespace AutomationTool
 			{
 				this.DirectoriesToCook = DirectoriesToCook;
 			}
-			this.DDCGraph = ParseParamValueIfNotSpecified(Command, DDCGraph, "ddc");
             this.InternationalizationPreset = ParseParamValueIfNotSpecified(Command, InternationalizationPreset, "i18npreset");
 
             // If not specified in parameters, check commandline.
@@ -602,7 +590,7 @@ namespace AutomationTool
 			DLCName = ParseParamValueIfNotSpecified(Command, DLCName, "DLCName", String.Empty);
 			if(!String.IsNullOrEmpty(DLCName))
 			{
-				List<PluginInfo> CandidatePlugins = Plugins.ReadAvailablePlugins(CommandUtils.EngineDirectory, DirectoryReference.FromFile(RawProjectPath), null);
+				List<PluginInfo> CandidatePlugins = Plugins.ReadAvailablePlugins(CommandUtils.EngineDirectory, RawProjectPath, null);
 				PluginInfo DLCPlugin = CandidatePlugins.FirstOrDefault(x => String.Equals(x.Name, DLCName, StringComparison.InvariantCultureIgnoreCase));
 				if(DLCPlugin == null)
 				{
@@ -630,7 +618,7 @@ namespace AutomationTool
 			this.SignedPak = !String.IsNullOrEmpty(this.SignPak) || GetParamValueIfNotSpecified(Command, SignedPak, this.SignedPak, "signedpak");
 			if (string.IsNullOrEmpty(this.SignPak))
 			{
-				this.SignPak = Path.Combine(RawProjectPath.Directory.FullName, @"Restricted\NoRedist\Build\Keys.txt");
+				this.SignPak = Path.Combine(RawProjectPath.Directory.FullName, @"Build\NoRedist\Keys.txt");
 				if (!File.Exists(this.SignPak))
 				{
 					this.SignPak = null;
@@ -638,9 +626,6 @@ namespace AutomationTool
 			}
 			this.PakAlignForMemoryMapping = GetParamValueIfNotSpecified(Command, PakAlignForMemoryMapping, this.PakAlignForMemoryMapping, "PakAlignForMemoryMapping");
 			this.Pak = GetParamValueIfNotSpecified(Command, Pak, this.Pak, "pak");
-			this.IgnorePaksFromDifferentCookSource = GetParamValueIfNotSpecified(Command, IgnorePaksFromDifferentCookSource, this.IgnorePaksFromDifferentCookSource, "IgnorePaksFromDifferentCookSource");
-			this.IoStore = GetParamValueIfNotSpecified(Command, IoStore, this.IoStore, "iostore");
-			this.SkipIoStore = GetParamValueIfNotSpecified(Command, SkipIoStore, this.SkipIoStore, "skipiostore");
 			this.SkipPak = GetParamValueIfNotSpecified(Command, SkipPak, this.SkipPak, "skippak");
 			if (this.SkipPak)
 			{
@@ -671,7 +656,6 @@ namespace AutomationTool
             }
             this.Compressed = GetParamValueIfNotSpecified(Command, Compressed, this.Compressed, "compressed");
 			this.AdditionalPakOptions = ParseParamValueIfNotSpecified(Command, AdditionalPakOptions, "AdditionalPakOptions");
-			this.AdditionalIoStoreOptions = ParseParamValueIfNotSpecified(Command, AdditionalIoStoreOptions, "AdditionalIoStoreOptions");
 			this.IterativeCooking = GetParamValueIfNotSpecified(Command, IterativeCooking, this.IterativeCooking, new string[] { "iterativecooking", "iterate" });
 			this.IterateSharedCookedBuild = GetParamValueIfNotSpecified(Command, false, false, "iteratesharedcookedbuild") ? "usesyncedbuild" : null;
 			this.IterateSharedCookedBuild = ParseParamValueIfNotSpecified(Command, IterateSharedCookedBuild, "IterateSharedCookedBuild", String.Empty);
@@ -705,12 +689,6 @@ namespace AutomationTool
 			}
 
 			this.LogWindow = GetParamValueIfNotSpecified(Command, LogWindow, this.LogWindow, "logwindow");
-			string ExtraTargetsToStageWithClientString = null;
-			ExtraTargetsToStageWithClientString = ParseParamValueIfNotSpecified(Command, ExtraTargetsToStageWithClientString, "ExtraTargetsToStageWithClient", null);
-			if (!string.IsNullOrEmpty(ExtraTargetsToStageWithClientString))
-			{
-				this.ExtraTargetsToStageWithClient = new ParamList<string>(ExtraTargetsToStageWithClientString.Split('+'));
-			}
 			this.Stage = GetParamValueIfNotSpecified(Command, Stage, this.Stage, "stage");
 			this.SkipStage = GetParamValueIfNotSpecified(Command, SkipStage, this.SkipStage, "skipstage");
 			if (this.SkipStage)
@@ -770,7 +748,6 @@ namespace AutomationTool
             this.ClientCommandline = ParseParamValueIfNotSpecified(Command, ClientCommandline, "clientcmdline");
             this.ClientCommandline = this.ClientCommandline.Replace('\'', '\"'); // replace any single quotes with double quotes
             this.Package = GetParamValueIfNotSpecified(Command, Package, this.Package, "package");
-			this.SkipPackage = GetParamValueIfNotSpecified(Command, SkipPackage, this.SkipPackage, "skippackage");
 			this.ForcePackageData = GetParamValueIfNotSpecified(Command, Package, this.ForcePackageData, "forcepackagedata");
 
 			this.Deploy = GetParamValueIfNotSpecified(Command, Deploy, this.Deploy, "deploy");
@@ -779,7 +756,7 @@ namespace AutomationTool
 			// if the user specified -deploy but no folder, set the default
 			if (this.Deploy && string.IsNullOrEmpty(this.DeployFolder))
 			{
-				this.DeployFolder = UnrealBuildTool.DeployExports.GetDefaultDeployFolder(this.ShortProjectName);
+				this.DeployFolder = this.ShortProjectName;
 			}
 			else if (string.IsNullOrEmpty(this.DeployFolder) == false)
 			{
@@ -1203,18 +1180,6 @@ namespace AutomationTool
 		public bool Pak { private set; get; }
 
 		/// <summary>
-		/// Stage: True if we should disable trying to re-use pak files from another staged build when we've specified a different cook source platform
-		/// </summary>
-		[Help("pak", "disable reuse of pak files from the alternate cook source folder, if specified")]
-		public bool IgnorePaksFromDifferentCookSource { get; private set; }
-
-		/// <summary>
-		/// Shared: True if container file(s) should be generated with ZenPak.
-		/// </summary>
-		[Help("iostore", "generate I/O store container file(s)")]
-		public bool IoStore { private set; get; }
-
-		/// <summary>
 		/// 
 		/// </summary>
 		public bool UsePak(Platform PlatformToCheck)
@@ -1270,12 +1235,6 @@ namespace AutomationTool
 		/// </summary>
 		[Help("skippak", "use a pak file, but assume it is already built, implies pak")]
 		public bool SkipPak { private set; get; }
-
-		/// <summary>
-		/// Shared: true if we want to skip iostore, even if -iostore is specified
-		/// </summary>
-		[Help("skipiostore", "override the -iostore commandline option to not run it")]
-		public bool SkipIoStore { private set; get; }
 
 		/// <summary>
 		/// Shared: true if this build is staged, command line: -stage
@@ -1511,11 +1470,6 @@ namespace AutomationTool
 		public ParamList<string> DirectoriesToCook = new ParamList<string>();
 
         /// <summary>
-        /// Cook: Which ddc graph to use when cooking.
-        /// </summary>
-        public string DDCGraph;
-
-        /// <summary>
         /// Cook: Internationalization preset to cook.
         /// </summary>
         public string InternationalizationPreset;
@@ -1631,11 +1585,6 @@ namespace AutomationTool
 		/// </summary>
 		public string AdditionalPakOptions;
 
-		/// <summary>
-		/// Additional parameters when generating iostore container files
-		/// </summary>
-		public string AdditionalIoStoreOptions;
-
         /// <summary>
         /// Cook: Do not include a version number in the cooked content
         /// </summary>
@@ -1735,16 +1684,6 @@ namespace AutomationTool
 		/// </summary>
 		[Help("bundlename", "string to use as the bundle name when deploying to mobile device")]
         public string BundleName;
-
-		//<summary>
-		/// Stage: Specifies a list of extra targets that should be staged along with a client
-		/// </summary>
-		public ParamList<string> ExtraTargetsToStageWithClient = new ParamList<string>();
-
-        /// <summary>
-        /// Stage: Optional callback that a build script can use to modify a deployment context before it is applied
-        /// </summary>
-        public Action<ProjectParams, DeploymentContext> ModifyDeploymentContextCallback = null;
 
         /// <summary>
         /// On Windows, adds an executable to the root of the staging directory which checks for prerequisites being 
@@ -1959,10 +1898,7 @@ namespace AutomationTool
 
 		[Help("package", "package the project for the target platform")]
 		public bool Package { get; set; }
-		
-		[Help("skippackage", "Skips packaging the project for the target platform")]
-		public bool SkipPackage { get; set; }
-		
+
 		[Help("package", "Determine whether data is packaged. This can be an iteration optimization for platforms that require packages for deployment")]
 		public bool ForcePackageData { get; set; }
 
@@ -2167,7 +2103,7 @@ namespace AutomationTool
 				}
 				else if (AvailableGameTargets.Count > 0)
 				{
-					if (AvailableGameTargets.Count > 1)
+					if (AvailableEditorTargets.Count > 1)
 					{
 						throw new AutomationException("There can be only one Game target per project.");
 					}
@@ -2177,26 +2113,12 @@ namespace AutomationTool
 
 				if (AvailableEditorTargets.Count > 0)
 				{
-					string DefaultEditorTarget;
-
-					if (EngineConfigs[BuildHostPlatform.Current.Platform].GetString("/Script/BuildSettings.BuildSettings", "DefaultEditorTarget", out DefaultEditorTarget))
+					if (AvailableEditorTargets.Count > 1)
 					{
-						if (!AvailableEditorTargets.Contains(DefaultEditorTarget))
-						{
-							throw new AutomationException(string.Format("A default editor target '{0}' was specified in engine.ini but does not exist", DefaultEditorTarget));
-						}
-
-						EditorTarget = DefaultEditorTarget;
+						throw new AutomationException("There can be only one Editor target per project.");
 					}
-					else
-					{
-						if (AvailableEditorTargets.Count > 1)
-						{
-							throw new AutomationException("Project contains multiple editor targets but no DefaultEditorTarget is set in the [/Script/BuildSettings.BuildSettings] section of DefaultEngine.ini");
-						}
 
-						EditorTarget = AvailableEditorTargets.First();
-					}
+					EditorTarget = AvailableEditorTargets.First();
 				}
 
 				if (AvailableServerTargets.Count > 0 && (DedicatedServer || Cook || CookOnTheFly)) // only if server is needed
@@ -2273,11 +2195,6 @@ namespace AutomationTool
 					}
 
 					ClientCookedTargetsList = new ParamList<string>(GameTarget);
-					
-					if (ExtraTargetsToStageWithClient != null)
-					{
-						ClientCookedTargetsList.AddRange(ExtraTargetsToStageWithClient);
-					}
 				}
 				else
 				{
@@ -2366,11 +2283,6 @@ namespace AutomationTool
 		{
 			get { return !String.IsNullOrEmpty(IterateSharedCookedBuild);  }
 		}
-
-        public bool HasDDCGraph
-        {
-            get { return !String.IsNullOrEmpty(DDCGraph); }
-        }
 
         public bool HasInternationalizationPreset
         {
@@ -2476,20 +2388,10 @@ namespace AutomationTool
 		private Dictionary<UnrealTargetPlatform, FileReference> ProjectExePaths;
 
 		/// <summary>
-		/// Override for the computed based on release version path
-		/// </summary>
-		public string BasedOnReleaseVersionPathOverride = null;
-
-		/// <summary>
 		/// Get the path to the directory of the version we are basing a diff or a patch on.  
 		/// </summary>				
 		public String GetBasedOnReleaseVersionPath(DeploymentContext SC, bool bIsClientOnly)
 		{
-			if (!string.IsNullOrEmpty(BasedOnReleaseVersionPathOverride))
-			{
-				return BasedOnReleaseVersionPathOverride;
-			}
-
 			String BasePath = BasedOnReleaseVersionBasePath;
 			String Platform = SC.StageTargetPlatform.GetCookPlatform(SC.DedicatedServer, bIsClientOnly);
 			if (String.IsNullOrEmpty(BasePath))
@@ -2817,7 +2719,6 @@ namespace AutomationTool
 				CommandUtils.LogLog("ClientTargetPlatform={0}", string.Join(",", ClientTargetPlatforms));
 				CommandUtils.LogLog("Compressed={0}", Compressed);
 				CommandUtils.LogLog("AdditionalPakOptions={0}", AdditionalPakOptions);
-				CommandUtils.LogLog("AdditionalIoStoreOptions={0}", AdditionalIoStoreOptions);
 				CommandUtils.LogLog("CookOnTheFly={0}", CookOnTheFly);
 				CommandUtils.LogLog("CookOnTheFlyStreaming={0}", CookOnTheFlyStreaming);
 				CommandUtils.LogLog("UnversionedCookedContent={0}", UnversionedCookedContent);
@@ -2837,7 +2738,6 @@ namespace AutomationTool
                 CommandUtils.LogLog("AdditionalCookerOptions={0}", AdditionalCookerOptions);
 				CommandUtils.LogLog("DedicatedServer={0}", DedicatedServer);
 				CommandUtils.LogLog("DirectoriesToCook={0}", DirectoriesToCook.ToString());
-                CommandUtils.LogLog("DDCGraph={0}", DDCGraph);
                 CommandUtils.LogLog("CulturesToCook={0}", CommandUtils.IsNullOrEmpty(CulturesToCook) ? "<Not Specified> (Use Defaults)" : CulturesToCook.ToString());
 				CommandUtils.LogLog("EditorTargets={0}", EditorTargets.ToString());
 				CommandUtils.LogLog("Foreign={0}", Foreign);
@@ -2866,10 +2766,6 @@ namespace AutomationTool
 				CommandUtils.LogLog("MapsToCook={0}", MapsToCook.ToString());
 				CommandUtils.LogLog("MapIniSectionsToCook={0}", MapIniSectionsToCook.ToString());
 				CommandUtils.LogLog("Pak={0}", Pak);
-				CommandUtils.LogLog("IgnorePaksFromDifferentCookSource={0}", IgnorePaksFromDifferentCookSource);
-				CommandUtils.LogLog("IoStore={0}", IoStore);
-				CommandUtils.LogLog("SkipIoStore={0}", SkipIoStore);
-				CommandUtils.LogLog("SkipPackage={0}", SkipPackage);
 				CommandUtils.LogLog("Package={0}", Package);
 				CommandUtils.LogLog("ForcePackageData={0}", ForcePackageData);
 				CommandUtils.LogLog("NullRHI={0}", NullRHI);

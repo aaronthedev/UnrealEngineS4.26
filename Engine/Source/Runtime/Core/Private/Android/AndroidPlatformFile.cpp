@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AndroidFile.cpp: Android platform implementations of File functions
@@ -35,12 +35,10 @@ DEFINE_LOG_CATEGORY_STATIC(LogAndroidFile, Log, All);
 	#define __lseek(_fd, _offset, _whence)			lseek64(_fd, _offset, _whence)
 	#define __pread(_fd, _buf, _count, _offset)		pread64(_fd, _buf, _count, _offset)
 	#define __pwrite(_fd, _buf, _count, _offset)	pwrite64(_fd, _buf, _count, _offset)
-	#define __ftruncate(_fd, _length)				ftruncate64(_fd, _length)
 #else
 	#define __lseek(_fd, _offset, _whence)			lseek(_fd, _offset, _whence)
 	#define __pread(_fd, _buf, _count, _offset)		pread(_fd, _buf, _count, _offset)
 	#define __pwrite(_fd, _buf, _count, _offset)	pwrite(_fd, _buf, _count, _offset)
-	#define __ftruncate(_fd, _length)				ftruncate(_fd, _length)
 #endif
 
 // make an FTimeSpan object that represents the "epoch" for time_t (from a stat struct)
@@ -64,7 +62,7 @@ namespace
 			AndroidEpoch + FTimespan::FromSeconds(FileInfo.st_mtime), 
 			FileSize,
 			bIsDirectory,
-			!(FileInfo.st_mode & S_IWUSR)
+			!!(FileInfo.st_mode & S_IWUSR)
 		);
 	}
 }
@@ -83,14 +81,6 @@ FString GAndroidAppType;
 FString GFilePathBase;
 // Obb File Path base - setup during load
 FString GOBBFilePathBase;
-// Obb Main filepath
-FString GOBBMainFilePath;
-// Obb Patch filepath
-FString GOBBPatchFilePath;
-// Obb Overflow1 filepath
-FString GOBBOverflow1FilePath;
-// Obb Overflow2 filepath
-FString GOBBOverflow2FilePath;
 // Internal File Direcory Path (for application) - setup during load
 FString GInternalFilePath;
 // External File Direcory Path (for application) - setup during load
@@ -127,21 +117,6 @@ const FString &GetFileBasePath()
 {
 	static FString BasePath = GFilePathBase + FString(FILEBASE_DIRECTORY) + FApp::GetProjectName() + FString("/");
 	return BasePath;
-}
-
-
-FString AndroidRelativeToAbsolutePath(bool bUseInternalBasePath, FString RelPath)
-{
-	if (RelPath.StartsWith(TEXT("../"), ESearchCase::CaseSensitive))
-	{
-		
-		do {
-			RelPath.RightChopInline(3, false);
-		} while (RelPath.StartsWith(TEXT("../"), ESearchCase::CaseSensitive));
-
-		return (bUseInternalBasePath ? GInternalFilePath : GetFileBasePath()) / RelPath;
-	}
-	return RelPath;
 }
 
 /**
@@ -395,9 +370,7 @@ public:
 			return false;
 		}
 
-		int Result = 0;
-		do { Result = __ftruncate(File->Handle, NewSize); } while (Result < 0 && errno == EINTR);
-		return Result == 0;
+		return ftruncate(File->Handle, NewSize) == 0;
 	}
 
 	virtual int64 Size() override
@@ -551,7 +524,7 @@ public:
 		const FString ManifestPath = BasePath + ManifestFileName;
 
 
-		int Handle = open(TCHAR_TO_UTF8(*ManifestPath), O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+		int Handle = open(TCHAR_TO_UTF8(*ManifestPath), O_WRONLY | O_CREAT | O_TRUNC);
 
 		if ( Handle == -1 )
 		{
@@ -1000,17 +973,7 @@ public:
 				FFileHandleAndroid* OBBFile = static_cast<FFileHandleAndroid*>(new FFileHandleAndroid(*OBBEntry.File, 0, OBBEntry.File->Size()));
 				check(nullptr != OBBFile);
 				ZipResource.AddPatchFile(MakeShareable(OBBFile));
-				FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Mounted main OBB in APK: %s"), *GAPKFilename);
-
-				// check for optional patch obb in APK
-				if (APKZip.HasEntry("assets/patch.obb.png"))
-				{
-					auto patchOBBEntry = APKZip.GetEntry("assets/patch.obb.png");
-					FFileHandleAndroid* patchOBBFile = static_cast<FFileHandleAndroid*>(new FFileHandleAndroid(*patchOBBEntry.File, 0, patchOBBEntry.File->Size()));
-					check(nullptr != patchOBBFile);
-					ZipResource.AddPatchFile(MakeShareable(patchOBBFile));
-					FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Mounted patch OBB in APK: %s"), *GAPKFilename);
-				}
+				FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Mounted OBB in APK: %s"), *GAPKFilename);
 			}
 			else
 			{
@@ -1023,93 +986,25 @@ public:
 			// For external OBBs we mount the specific OBB files,
 			// main and patch, only. As required by Android specs.
 			// See <http://developer.android.com/google/play/expansion-files.html>
-			// but first checks for overrides of expected OBB file paths if provided
 			FString OBBDir1 = GOBBFilePathBase + FString(TEXT("/Android/obb/") + GPackageName);
 			FString OBBDir2 = GOBBFilePathBase + FString(TEXT("/obb/") + GPackageName);
 			FString MainOBBName = FString::Printf(TEXT("main.%d.%s.obb"), GAndroidPackageVersion, *GPackageName);
 			FString PatchOBBName = FString::Printf(TEXT("patch.%d.%s.obb"), GAndroidPackageVersion, *GPackageName);
-
-			if (!GOBBMainFilePath.IsEmpty() && FileExists(*GOBBMainFilePath, true))
+			if (FileExists(*(OBBDir1 / MainOBBName), true))
 			{
-				MountOBB(*GOBBMainFilePath);
-				FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Mounted main OBB: %s"), *GOBBMainFilePath);
-			}
-			else if (FileExists(*(OBBDir1 / MainOBBName), true))
-			{
-				GOBBMainFilePath = OBBDir1 / MainOBBName;
-				MountOBB(*GOBBMainFilePath);
-				FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Mounted main OBB: %s"), *GOBBMainFilePath);
+				MountOBB(*(OBBDir1 / MainOBBName));
 			}
 			else if (FileExists(*(OBBDir2 / MainOBBName), true))
 			{
-				GOBBMainFilePath = OBBDir2 / MainOBBName;
-				MountOBB(*GOBBMainFilePath);
-				FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Mounted main OBB: %s"), *GOBBMainFilePath);
+				MountOBB(*(OBBDir2 / MainOBBName));
 			}
-
-			bool bHavePatch = false;
-			if (!GOBBPatchFilePath.IsEmpty() && FileExists(*GOBBPatchFilePath, true))
+			if (FileExists(*(OBBDir1 / PatchOBBName), true))
 			{
-				bHavePatch = true;
-				MountOBB(*GOBBPatchFilePath);
-				FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Mounted patch OBB: %s"), *GOBBPatchFilePath);
-			}
-			else if (FileExists(*(OBBDir1 / PatchOBBName), true))
-			{
-				bHavePatch = true;
-				GOBBPatchFilePath = OBBDir1 / PatchOBBName;
-				MountOBB(*GOBBPatchFilePath);
-				FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Mounted patch OBB: %s"), *GOBBPatchFilePath);
+				MountOBB(*(OBBDir1 / PatchOBBName));
 			}
 			else if (FileExists(*(OBBDir2 / PatchOBBName), true))
 			{
-				bHavePatch = true;
-				GOBBPatchFilePath = OBBDir2 / PatchOBBName;
-				MountOBB(*GOBBPatchFilePath);
-				FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Mounted patch OBB: %s"), *GOBBPatchFilePath);
-			}
-
-			// Only check for overflow files if we found a patch file
-			if (bHavePatch)
-			{
-				FString Overflow1OBBName = FString::Printf(TEXT("overflow1.%d.%s.obb"), GAndroidPackageVersion, *GPackageName);
-				FString Overflow2OBBName = FString::Printf(TEXT("overflow2.%d.%s.obb"), GAndroidPackageVersion, *GPackageName);
-
-				if (!GOBBOverflow1FilePath.IsEmpty() && FileExists(*GOBBOverflow1FilePath, true))
-				{
-					MountOBB(*GOBBOverflow1FilePath);
-					FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Mounted overflow1 OBB: %s"), *GOBBOverflow1FilePath);
-				}
-				else if (FileExists(*(OBBDir1 / Overflow1OBBName), true))
-				{
-					GOBBOverflow1FilePath = OBBDir1 / Overflow1OBBName;
-					MountOBB(*GOBBOverflow1FilePath);
-					FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Mounted overflow1 OBB: %s"), *GOBBOverflow1FilePath);
-				}
-				else if (FileExists(*(OBBDir2 / Overflow1OBBName), true))
-				{
-					GOBBOverflow1FilePath = OBBDir2 / Overflow1OBBName;
-					MountOBB(*GOBBOverflow1FilePath);
-					FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Mounted overflow1 OBB: %s"), *GOBBOverflow1FilePath);
-				}
-
-				if (!GOBBOverflow2FilePath.IsEmpty() && FileExists(*GOBBOverflow2FilePath, true))
-				{
-					MountOBB(*GOBBOverflow2FilePath);
-					FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Mounted overflow2 OBB: %s"), *GOBBOverflow2FilePath);
-				}
-				else if (FileExists(*(OBBDir1 / Overflow2OBBName), true))
-				{
-					GOBBOverflow2FilePath = OBBDir1 / Overflow2OBBName;
-					MountOBB(*GOBBOverflow2FilePath);
-					FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Mounted overflow2 OBB: %s"), *GOBBOverflow2FilePath);
-				}
-				else if (FileExists(*(OBBDir2 / Overflow2OBBName), true))
-				{
-					GOBBOverflow2FilePath = OBBDir2 / Overflow2OBBName;
-					MountOBB(*GOBBOverflow2FilePath);
-					FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Mounted overflow2 OBB: %s"), *GOBBOverflow2FilePath);
-				}
+				MountOBB(*(OBBDir2 / PatchOBBName));
 			}
 		}
 
@@ -2007,13 +1902,17 @@ private:
 	FString NormalizePath(const TCHAR* Path)
 	{
 		FString Result(Path);
-		Result.ReplaceInline(TEXT("\\"), TEXT("/"), ESearchCase::CaseSensitive);
+		Result.ReplaceInline(TEXT("\\"), TEXT("/"));
 		// This replacement addresses a "bug" where some callers
 		// pass in paths that are badly composed with multiple
 		// subdir separators.
-		Result.ReplaceInline(TEXT("//"), TEXT("/"), ESearchCase::CaseSensitive);
+		Result.ReplaceInline(TEXT("//"), TEXT("/"));
+		if (!Result.IsEmpty() && Result[Result.Len() - 1] == TEXT('/'))
+		{
+			Result.LeftChop(1);
+		}
 		// Remove redundant current-dir references.
-		Result.ReplaceInline(TEXT("/./"), TEXT("/"), ESearchCase::CaseSensitive);
+		Result.ReplaceInline(TEXT("/./"), TEXT("/"));
 		return Result;
 	}
 
@@ -2028,7 +1927,7 @@ private:
 #endif
 		if (!AndroidPath.IsEmpty())
 		{
-			if (AndroidPath.StartsWith(TEXT("/"), ESearchCase::CaseSensitive) ||	// (AllowLocal && AndroidPath.StartsWith(TEXT("/"), ESearchCase::CaseSensitive)) ||		// requiring AllowLocal isn't really useful; system will do permission checks anyway
+			if (AndroidPath.StartsWith(TEXT("/")) ||	// (AllowLocal && AndroidPath.StartsWith(TEXT("/"))) ||		// requiring AllowLocal isn't really useful; system will do permission checks anyway
 				AndroidPath.StartsWith(GFontPathBase) ||
 				AndroidPath.StartsWith(TEXT("/system/etc/")) ||
 				AndroidPath.StartsWith(GInternalFilePath.Left(AndroidPath.Len())) ||
@@ -2040,12 +1939,12 @@ private:
 			}
 			else
 			{
-				while (AndroidPath.StartsWith(TEXT("../"), ESearchCase::CaseSensitive))
+				while (AndroidPath.StartsWith(TEXT("../")))
 				{
-					AndroidPath.RightChopInline(3, false);
+					AndroidPath = AndroidPath.RightChop(3);
 				}
 				AndroidPath.ReplaceInline(FPlatformProcess::BaseDir(), TEXT(""));
-				if (AndroidPath.Equals(TEXT(".."), ESearchCase::CaseSensitive))
+				if (AndroidPath.Equals(TEXT("..")))
 				{
 					AndroidPath = TEXT("");
 				}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -81,22 +81,10 @@ public:
 		check(InnerBackend);
 	}
 
-	/** Return a name for this interface */
-	virtual FString GetName() const override
-	{
-		return FString::Printf(TEXT("CorruptionWrapper (%s)"), *InnerBackend->GetName());
-	}
-
 	/** return true if this cache is writable **/
 	virtual bool IsWritable() override
 	{
 		return InnerBackend->IsWritable();
-	}
-
-	/** Returns a class of speed for this interface **/
-	virtual ESpeedClass GetSpeedClass() override
-	{
-		return InnerBackend->GetSpeedClass();
 	}
 
 	/**
@@ -141,7 +129,7 @@ public:
 				FDerivedDataTrailer RecomputedTrailer(OutData);
 				if (Trailer == RecomputedTrailer)
 				{
-					UE_LOG(LogDerivedDataCache, VeryVerbose, TEXT("FDerivedDataBackendCorruptionWrapper: cache hit, footer is ok %s"),CacheKey);
+					UE_LOG(LogDerivedDataCache, Verbose, TEXT("FDerivedDataBackendCorruptionWrapper: cache hit, footer is ok %s"),CacheKey);
 				}
 				else
 				{
@@ -172,7 +160,7 @@ public:
 	 * @param	InData		Buffer containing the data to cache, can be destroyed after the call returns, immediately
 	 * @param	bPutEvenIfExists	If true, then do not attempt skip the put even if CachedDataProbablyExists returns true
 	 */
-	virtual void PutCachedData(const TCHAR* CacheKey, TArrayView<const uint8> InData, bool bPutEvenIfExists) override
+	virtual void PutCachedData(const TCHAR* CacheKey, TArray<uint8>& InData, bool bPutEvenIfExists) override
 	{
 		COOK_STAT(auto Timer = UsageStats.TimePut());
 		if (!InnerBackend->IsWritable())
@@ -210,21 +198,6 @@ public:
 				InnerBackend->GatherUsageStats(UsageStatsMap, GraphPath + TEXT(". 0"));
 			}
 		});
-	}
-
-	virtual bool TryToPrefetch(const TCHAR* CacheKey) override
-	{
-		return InnerBackend->TryToPrefetch(CacheKey);
-	}
-
-	virtual bool WouldCache(const TCHAR* CacheKey, TArrayView<const uint8> InData) override
-	{
-		return InnerBackend->WouldCache(CacheKey, InData);
-	}
-
-	virtual bool ApplyDebugOptions(FBackendDebugOptions& InOptions) 
-	{ 
-		return InnerBackend->ApplyDebugOptions(InOptions);
 	}
 
 private:

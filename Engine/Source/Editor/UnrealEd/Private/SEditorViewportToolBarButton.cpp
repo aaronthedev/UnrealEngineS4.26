@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "SEditorViewportToolBarButton.h"
@@ -10,7 +10,7 @@
 #include "EditorStyleSet.h"
 
 
-void SEditorViewportToolBarButton::Construct( const FArguments& Declaration)
+void SEditorViewportToolBarButton::Construct( const FArguments& Declaration )
 {
 	OnClickedDelegate = Declaration._OnClicked;
 	IsChecked = Declaration._IsChecked;
@@ -31,7 +31,7 @@ void SEditorViewportToolBarButton::Construct( const FArguments& Declaration)
 
 		ButtonWidget =
 			SNew( SButton )
-			.ButtonStyle(Declaration._ButtonStyle)
+			.ButtonStyle( FEditorStyle::Get(), "EditorViewportToolBar.Button" ) 
 			.OnClicked( OnClickedDelegate )
 			.HAlign( HAlign_Center )
 			.VAlign( VAlign_Center )
@@ -57,7 +57,7 @@ void SEditorViewportToolBarButton::Construct( const FArguments& Declaration)
 
 		ButtonWidget = 
 			SNew( SCheckBox )
-			.Style(Declaration._CheckBoxStyle)
+			.Style(FEditorStyle::Get(), "LevelViewportToolBar.CheckBoxButton" )
 			.OnCheckStateChanged( this, &SEditorViewportToolBarButton::OnCheckStateChanged )
 			.IsChecked( this, &SEditorViewportToolBarButton::OnIsChecked )
 			[

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Framework/MultiBox/SToolBarComboButtonBlock.h"
 #include "Widgets/SBoxPanel.h"
@@ -113,7 +113,8 @@ void SToolBarComboButtonBlock::BuildMultiBlockWidget(const ISlateStyle* StyleSet
 	}
 
 	// Add this widget to the search list of the multibox
-	OwnerMultiBoxWidget.Pin()->AddElement(this->AsWidget(), Label.Get(), MultiBlock->GetSearchable());
+	if (MultiBlock->GetSearchable())
+		OwnerMultiBoxWidget.Pin()->AddSearchElement(this->AsWidget(), Label.Get());
 
 	// Setup the string for the metatag
 	FName TagName;
@@ -147,7 +148,6 @@ void SToolBarComboButtonBlock::BuildMultiBlockWidget(const ISlateStyle* StyleSet
 		// Label text
 		+ SVerticalBox::Slot()
 		.AutoHeight()
-		.Padding(StyleSet->GetMargin(ISlateStyle::Join( StyleName, ".Label.Padding" )))
 		.HAlign( HAlign_Center )	// Center the label text horizontally
 		[
 			SNew( STextBlock )

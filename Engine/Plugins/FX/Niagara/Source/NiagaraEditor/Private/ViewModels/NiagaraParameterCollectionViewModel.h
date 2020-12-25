@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -54,9 +54,6 @@ public:
 
 	/** Gets the available types which can be used with the parameter view models. */
 	virtual const TArray<TSharedPtr<FNiagaraTypeDefinition>>& GetAvailableTypes() = 0;
-
-	/** Gets the available types which can be used with the parameter view models, sorted ascending by name. */
-	TArray<TSharedPtr<FNiagaraTypeDefinition>> GetAvailableTypesSorted();
 
 	/** Gets the display name for the provided type. */
 	virtual FText GetTypeDisplayName(TSharedPtr<FNiagaraTypeDefinition> Type) const = 0;

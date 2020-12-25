@@ -14,6 +14,8 @@
 # limitations under the License.
 """Generates language headers from a JSON grammar file"""
 
+from __future__ import print_function
+
 import errno
 import json
 import os.path
@@ -159,26 +161,27 @@ def main():
     import argparse
     parser = argparse.ArgumentParser(description='Generate language headers from a JSON grammar')
 
+    parser.add_argument('--extinst-name',
+                        type=str, required=True,
+                        help='The name to use in tokens')
     parser.add_argument('--extinst-grammar', metavar='<path>',
                         type=str, required=True,
                         help='input JSON grammar file for extended instruction set')
-    parser.add_argument('--extinst-output-path', metavar='<path>',
+    parser.add_argument('--extinst-output-base', metavar='<path>',
                         type=str, required=True,
-                        help='Path of the language-specific output file.')
+                        help='Basename of the language-specific output file.')
     args = parser.parse_args()
 
     with open(args.extinst_grammar) as json_file:
         grammar_json = json.loads(json_file.read())
-        grammar_name = os.path.splitext(os.path.basename(args.extinst_output_path))[0]
-        grammar = ExtInstGrammar(name = grammar_name,
+        grammar = ExtInstGrammar(name = args.extinst_name,
                                  copyright = grammar_json['copyright'],
                                  instructions = grammar_json['instructions'],
                                  operand_kinds = grammar_json['operand_kinds'],
                                  version = grammar_json['version'],
                                  revision = grammar_json['revision'])
-        make_path_to_file(args.extinst_output_path)
-        with open(args.extinst_output_path, 'w') as f:
-            f.write(CGenerator().generate(grammar))
+        make_path_to_file(args.extinst_output_base)
+        print(CGenerator().generate(grammar), file=open(args.extinst_output_base + '.h', 'w'))
 
 
 if __name__ == '__main__':

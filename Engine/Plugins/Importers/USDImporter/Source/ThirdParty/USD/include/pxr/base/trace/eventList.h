@@ -22,8 +22,8 @@
 // language governing permissions and limitations under the Apache License.
 //
 
-#ifndef PXR_BASE_TRACE_EVENT_LIST_H
-#define PXR_BASE_TRACE_EVENT_LIST_H
+#ifndef TRACE_EVENT_LIST_H
+#define TRACE_EVENT_LIST_H
 
 #include "pxr/pxr.h"
 
@@ -32,7 +32,6 @@
 #include "pxr/base/trace/event.h"
 #include "pxr/base/trace/eventContainer.h"
 
-#include <list>
 #include <unordered_set>
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -76,7 +75,8 @@ public:
     /// Returns a reference to the newly constructed event.
     template < class... Args>
     const TraceEvent& EmplaceBack(Args&&... args) {
-        return _events.emplace_back(std::forward<Args>(args)...);
+        _events.emplace_back(std::forward<Args>(args)...);
+        return _events.back();
     }
 
     /// For speed the TraceEvent class holds a pointer to a TraceStaticKeyData. 
@@ -118,4 +118,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif //PXR_BASE_TRACE_EVENT_LIST_H
+#endif //TRACE_EVENT_LIST_H

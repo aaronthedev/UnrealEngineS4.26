@@ -267,7 +267,7 @@ MBoundingBox AbcWriteJob::getBoundingBox(double iFrame, const MMatrix & eMInvMat
             {
                 // check for riCurves flag for flattening all curve object to
                 // one curve group
-                MPlug riCurvesPlug = dagNode.findPlug("riCurves", true, &status);
+                MPlug riCurvesPlug = dagNode.findPlug("riCurves", &status);
                 if ( status == MS::kSuccess && riCurvesPlug.asBool() == true)
                 {
                     MBoundingBox box = dagNode.boundingBox();
@@ -364,7 +364,7 @@ bool AbcWriteJob::checkCurveGrp()
     return true;
 }
 
-void AbcWriteJob::setup(double iFrame, MayaTransformWriterPtr iParent)
+void AbcWriteJob::setup(double iFrame, MayaTransformWriterPtr iParent, GetMembersMap& gmMap)
 {
     MStatus status;
 
@@ -389,7 +389,7 @@ void AbcWriteJob::setup(double iFrame, MayaTransformWriterPtr iParent)
 
     // look for riCurves flag for flattening all curve objects to a curve group
     MFnDependencyNode fnDepNode(ob, &status);
-    MPlug riCurvesPlug = fnDepNode.findPlug("riCurves", true, &status);
+    MPlug riCurvesPlug = fnDepNode.findPlug("riCurves", &status);
     bool riCurvesVal = riCurvesPlug.asBool();
     bool writeOutAsGroup = false;
     if (riCurvesVal)
@@ -489,7 +489,7 @@ void AbcWriteJob::setup(double iFrame, MayaTransformWriterPtr iParent)
         {
             if (mCurDag.push(mCurDag.child(i)) == MS::kSuccess)
             {
-                setup(iFrame, trans);
+                setup(iFrame, trans, gmMap);
                 mCurDag.pop();
             }
         }
@@ -605,7 +605,7 @@ void AbcWriteJob::setup(double iFrame, MayaTransformWriterPtr iParent)
         {
             Alembic::Abc::OObject obj = iParent->getObject();
             MayaMeshWriterPtr mesh(new MayaMeshWriter(mCurDag, obj,
-                mShapeTimeIndex, mArgs));
+                mShapeTimeIndex, mArgs, gmMap));
 
             if (mesh->isAnimated() && mShapeTimeIndex != 0)
             {
@@ -642,18 +642,6 @@ void AbcWriteJob::setup(double iFrame, MayaTransformWriterPtr iParent)
             AttributesWriterPtr attrs = mesh->getAttrs();
             if (mShapeTimeIndex != 0 && attrs->isAnimated())
                 mShapeAttrList.push_back(attrs);
-
-            if (mShapeTimeIndex != 0)
-            {
-                std::vector< MayaFaceSetWriterPtr >::iterator it;
-                for (it = mesh->beginFaces(); it != mesh->endFaces(); ++it)
-                {
-                    if ((*it)->getAttrs() && (*it)->getAttrs()->isAnimated())
-                    {
-                        mShapeAttrList.push_back((*it)->getAttrs());
-                    }
-                }
-            }
         }
         else
         {
@@ -834,26 +822,23 @@ bool AbcWriteJob::eval(double iFrame)
             userInfo = "";
         }
 
-        MTime sec(1.0, MTime::kSeconds);
-        double fps(sec.as(MTime::uiUnit()));
-
 #ifdef ALEMBIC_WITH_HDF5
         if (mAsOgawa)
         {
             mRoot = CreateArchiveWithInfo(Alembic::AbcCoreOgawa::WriteArchive(),
-                mFileName, fps, appWriter, userInfo,
+                mFileName, appWriter, userInfo,
                 Alembic::Abc::ErrorHandler::kThrowPolicy);
         }
         else
         {
             mRoot = CreateArchiveWithInfo(Alembic::AbcCoreHDF5::WriteArchive(),
-                mFileName, fps, appWriter, userInfo,
+                mFileName, appWriter, userInfo,
                 Alembic::Abc::ErrorHandler::kThrowPolicy);
         }
 #else
         // just write it out as Ogawa
         mRoot = CreateArchiveWithInfo(Alembic::AbcCoreOgawa::WriteArchive(),
-            mFileName, fps, appWriter, userInfo,
+            mFileName, appWriter, userInfo,
             Alembic::Abc::ErrorHandler::kThrowPolicy);
 #endif
 
@@ -872,11 +857,12 @@ bool AbcWriteJob::eval(double iFrame)
         mArgs.setFirstAnimShape = (iFrame == *mShapeFrames.begin());
 
         util::ShapeSet::const_iterator end = mArgs.dagPaths.end();
+        GetMembersMap gmMap;
         for (util::ShapeSet::const_iterator it = mArgs.dagPaths.begin();
             it != end; ++it)
         {
             mCurDag = *it;
-            setup(iFrame * util::spf(), MayaTransformWriterPtr());
+            setup(iFrame * util::spf(), MayaTransformWriterPtr(), gmMap);
         }
         perFrameCallback(iFrame);
     }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SlateShaders.h"
 #include "Rendering/RenderingCommon.h"
@@ -9,8 +9,6 @@ EColorVisionDeficiency GSlateColorDeficiencyType = EColorVisionDeficiency::Norma
 int32 GSlateColorDeficiencySeverity = 0;
 bool GSlateColorDeficiencyCorrection = false;
 bool GSlateShowColorDeficiencyCorrectionWithDeficiency = false;
-
-IMPLEMENT_TYPE_LAYOUT(FSlateElementPS);
 
 IMPLEMENT_SHADER_TYPE(, FSlateElementVS, TEXT("/Engine/Private/SlateVertexShader.usf"), TEXT("Main"), SF_Vertex);
 
@@ -136,21 +134,21 @@ FSlateElementVS::FSlateElementVS( const ShaderMetaType::CompiledShaderInitialize
 
 void FSlateElementVS::SetViewProjection(FRHICommandList& RHICmdList, const FMatrix& InViewProjection )
 {
-	SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), ViewProjection, InViewProjection );
+	SetShaderValue(RHICmdList, GetVertexShader(), ViewProjection, InViewProjection );
 }
 
 void FSlateElementVS::SetShaderParameters(FRHICommandList& RHICmdList, const FVector4& ShaderParams )
 {
-	SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), VertexShaderParams, ShaderParams );
+	SetShaderValue(RHICmdList, GetVertexShader(), VertexShaderParams, ShaderParams );
 }
 
 void FSlateElementVS::SetVerticalAxisMultiplier(FRHICommandList& RHICmdList, float InMultiplier )
 {
-	SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), SwitchVerticalAxisMultiplier, InMultiplier );
+	SetShaderValue(RHICmdList, GetVertexShader(), SwitchVerticalAxisMultiplier, InMultiplier );
 }
 
 /** Serializes the shader data */
-/*bool FSlateElementVS::Serialize( FArchive& Ar )
+bool FSlateElementVS::Serialize( FArchive& Ar )
 {
 	bool bShaderHasOutdatedParameters = FGlobalShader::Serialize( Ar );
 
@@ -159,7 +157,7 @@ void FSlateElementVS::SetVerticalAxisMultiplier(FRHICommandList& RHICmdList, flo
 	Ar << SwitchVerticalAxisMultiplier;
 
 	return bShaderHasOutdatedParameters;
-}*/
+}
 
 
 /************************************************************************/
@@ -176,12 +174,12 @@ FSlateMaskingVS::FSlateMaskingVS(const ShaderMetaType::CompiledShaderInitializer
 
 void FSlateMaskingVS::SetViewProjection(FRHICommandList& RHICmdList, const FMatrix& InViewProjection)
 {
-	SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), ViewProjection, InViewProjection);
+	SetShaderValue(RHICmdList, GetVertexShader(), ViewProjection, InViewProjection);
 }
 
 void FSlateMaskingVS::SetVerticalAxisMultiplier(FRHICommandList& RHICmdList, float InMultiplier )
 {
-	SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), SwitchVerticalAxisMultiplier, InMultiplier );
+	SetShaderValue(RHICmdList, GetVertexShader(), SwitchVerticalAxisMultiplier, InMultiplier );
 }
 
 void FSlateMaskingVS::SetMaskRect(FRHICommandList& RHICmdList, const FVector2D& TopLeft, const FVector2D& TopRight, const FVector2D& BotLeft, const FVector2D& BotRight)
@@ -189,11 +187,11 @@ void FSlateMaskingVS::SetMaskRect(FRHICommandList& RHICmdList, const FVector2D& 
 	//FVector4 MaskRectVal[4] = { FVector4(TopLeft, FVector2D::ZeroVector), FVector4(TopRight, FVector2D::ZeroVector), FVector4(BotLeft, FVector2D::ZeroVector), FVector4(BotRight, FVector2D::ZeroVector) };
 	FVector4 MaskRectVal[2] = { FVector4(TopLeft, TopRight), FVector4(BotLeft, BotRight) };
 
-	SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), MaskRect, MaskRectVal);
+	SetShaderValue(RHICmdList, GetVertexShader(), MaskRect, MaskRectVal);
 }
 
 /** Serializes the shader data */
-/*bool FSlateMaskingVS::Serialize(FArchive& Ar)
+bool FSlateMaskingVS::Serialize(FArchive& Ar)
 {
 	bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
 
@@ -202,4 +200,4 @@ void FSlateMaskingVS::SetMaskRect(FRHICommandList& RHICmdList, const FVector2D& 
 	Ar << SwitchVerticalAxisMultiplier;
 
 	return bShaderHasOutdatedParameters;
-}*/
+}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -27,13 +27,13 @@ struct FRigUnit_FitChainToCurve_Rotation
 	/**
 	 * The rotation to be applied
 	 */
-	UPROPERTY(EditAnywhere, meta = (Input), Category = "Rotation")
+	UPROPERTY(meta = (Input))
 	FQuat Rotation;
 
 	/**
 	 * The ratio of where this rotation sits along the chain
 	 */
-	UPROPERTY(EditAnywhere, meta = (Input, Constant), Category = "Rotation")
+	UPROPERTY(meta = (Input, Constant))
 	float Ratio;
 };
 
@@ -54,31 +54,31 @@ struct FRigUnit_FitChainToCurve_DebugSettings
 	/**
 	 * If enabled debug information will be drawn
 	 */
-	UPROPERTY(EditAnywhere, meta = (Input), Category = "DebugSettings")
+	UPROPERTY(meta = (Input))
 	bool bEnabled;
 
 	/**
 	 * The size of the debug drawing information
 	 */
-	UPROPERTY(EditAnywhere, meta = (Input, EditCondition = "bEnabled"), Category = "DebugSettings")
+	UPROPERTY(meta = (Input))
 	float Scale;
 
 	/**
 	 * The color to use for debug drawing
 	 */
-	UPROPERTY(EditAnywhere, meta = (Input, EditCondition = "bEnabled"), Category = "DebugSettings")
+	UPROPERTY(meta = (Input))
 	FLinearColor CurveColor;
 
 	/**
 	 * The color to use for debug drawing
 	 */
-	UPROPERTY(EditAnywhere, meta = (Input, EditCondition = "bEnabled"), Category = "DebugSettings")
+	UPROPERTY(meta = (Input))
 	FLinearColor SegmentsColor;
 
 	/**
 	 * The offset at which to draw the debug information in the world
 	 */
-	UPROPERTY(EditAnywhere, meta = (Input, EditCondition = "bEnabled"), Category = "DebugSettings")
+	UPROPERTY(meta = (Input))
 	FTransform WorldOffset;
 };
 
@@ -96,10 +96,10 @@ struct FRigUnit_FitChainToCurve_WorkData
 	float ChainLength;
 
 	UPROPERTY()
-	TArray<FVector> ItemPositions;
+	TArray<FVector> BonePositions;
 
 	UPROPERTY()
-	TArray<float> ItemSegments;
+	TArray<float> BoneSegments;
 
 	UPROPERTY()
 	TArray<FVector> CurvePositions;
@@ -108,26 +108,25 @@ struct FRigUnit_FitChainToCurve_WorkData
 	TArray<float> CurveSegments;
 
 	UPROPERTY()
-	TArray<FCachedRigElement> CachedItems;
+	TArray<int32> BoneIndices;
 
 	UPROPERTY()
-	TArray<int32> ItemRotationA;
+	TArray<int32> BoneRotationA;
 
 	UPROPERTY()
-	TArray<int32> ItemRotationB;
+	TArray<int32> BoneRotationB;
 
 	UPROPERTY()
-	TArray<float> ItemRotationT;
+	TArray<float> BoneRotationT;
 
 	UPROPERTY()
-	TArray<FTransform> ItemLocalTransforms;
+	TArray<FTransform> BoneLocalTransforms;
 };
-
 /**
  * Fits a given chain to a four point bezier curve.
  * Additionally provides rotational control matching the features of the Distribute Rotation node.
  */
-USTRUCT(meta=(DisplayName="Fit Chain on Curve", Category="Hierarchy", Keywords="Fit,Resample,Bezier", Deprecated = "4.25"))
+USTRUCT(meta=(DisplayName="Fit Chain on Curve", Category="Hierarchy", Keywords="Fit,Resample,Bezier"))
 struct FRigUnit_FitChainToCurve : public FRigUnit_HighlevelBaseMutable
 {
 	GENERATED_BODY()
@@ -144,7 +143,6 @@ struct FRigUnit_FitChainToCurve : public FRigUnit_HighlevelBaseMutable
 		SecondaryAxis = FVector(0.f, 0.f, 0.f);
 		PoleVectorPosition = FVector::ZeroVector;
 		RotationEaseType = EControlRigAnimEasingType::Linear;
-		Weight = 1.f;
 		bPropagateToChildren = false;
 		DebugSettings = FRigUnit_FitChainToCurve_DebugSettings();
 	}
@@ -155,13 +153,13 @@ struct FRigUnit_FitChainToCurve : public FRigUnit_HighlevelBaseMutable
 	/** 
 	 * The name of the first bone to align
 	 */
-	UPROPERTY(meta = (Input))
+	UPROPERTY(meta = (Input, Constant, BoneName))
 	FName StartBone;
 
 	/** 
 	 * The name of the last bone to align
 	 */
-	UPROPERTY(meta = (Input))
+	UPROPERTY(meta = (Input, Constant, BoneName))
 	FName EndBone;
 
 	/** 
@@ -227,137 +225,14 @@ struct FRigUnit_FitChainToCurve : public FRigUnit_HighlevelBaseMutable
 	EControlRigAnimEasingType RotationEaseType;
 
 	/**
-	 * The weight of the solver - how much the rotation should be applied
-	 */
-	UPROPERTY(meta = (Input))
-	float Weight;
-
-	/**
 	 * If set to true all of the global transforms of the children
 	 * of this bone will be recalculated based on their local transforms.
 	 * Note: This is computationally more expensive than turning it off.
 	 */
-	UPROPERTY(meta = (Input, Constant))
+	UPROPERTY(meta = (Input))
 	bool bPropagateToChildren;
 
-	UPROPERTY(meta = (Input, DetailsOnly))
-	FRigUnit_FitChainToCurve_DebugSettings DebugSettings;
-
-	UPROPERTY(transient)
-	FRigUnit_FitChainToCurve_WorkData WorkData;
-};
-
-/**
- * Fits a given chain to a four point bezier curve.
- * Additionally provides rotational control matching the features of the Distribute Rotation node.
- */
-USTRUCT(meta=(DisplayName="Fit Chain on Curve", Category="Hierarchy", Keywords="Fit,Resample,Bezier"))
-struct FRigUnit_FitChainToCurvePerItem : public FRigUnit_HighlevelBaseMutable
-{
-	GENERATED_BODY()
-
-	FRigUnit_FitChainToCurvePerItem()
-	{
-		Bezier = FCRFourPointBezier();
-		Alignment = EControlRigCurveAlignment::Stretched;
-		Minimum = 0.f;
-		Maximum = 1.f;
-		SamplingPrecision = 12;
-		PrimaryAxis = FVector(1.f, 0.f, 0.f);
-		SecondaryAxis = FVector(0.f, 0.f, 0.f);
-		PoleVectorPosition = FVector::ZeroVector;
-		RotationEaseType = EControlRigAnimEasingType::Linear;
-		Weight = 1.f;
-		bPropagateToChildren = false;
-		DebugSettings = FRigUnit_FitChainToCurve_DebugSettings();
-	}
-
-	RIGVM_METHOD()
-	virtual void Execute(const FRigUnitContext& Context) override;
-
-	/** 
-	 * The items to align
-	 */
 	UPROPERTY(meta = (Input))
-	FRigElementKeyCollection Items;
-
-	/** 
-	 * The curve to align to
-	 */
-	UPROPERTY(meta = (Input))
-	FCRFourPointBezier Bezier;
-
-	/** 
-	 * Specifies how to align the chain on the curve
-	 */
-	UPROPERTY(meta = (Input, Constant))
-	EControlRigCurveAlignment Alignment;
-
-	/** 
-	 * The minimum U value to use on the curve
-	 */
-	UPROPERTY(meta = (Input, Constant))
-	float Minimum;
-
-	/** 
-	 * The maximum U value to use on the curve
-	 */
-	UPROPERTY(meta = (Input, Constant))
-	float Maximum;
-
-	/**
-	 * The number of samples to use on the curve. Clamped at 64.
-	 */
-	UPROPERTY(meta = (Input, Constant))
-	int32 SamplingPrecision;
-
-	/**
-	 * The major axis being aligned - along the bone
-	 */
-	UPROPERTY(meta = (Input))
-	FVector PrimaryAxis;
-
-	/**
-	 * The minor axis being aligned - towards the pole vector.
-	 * You can use (0.0, 0.0, 0.0) to disable it.
-	 */
-	UPROPERTY(meta = (Input))
-	FVector SecondaryAxis;
-
-	/**
-	 * The the position of the pole vector used for aligning the secondary axis.
-	 * Only has an effect if the secondary axis is set.
-	 */
-	UPROPERTY(meta = (Input))
-	FVector PoleVectorPosition;
-
-	/** 
-	 * The list of rotations to be applied along the curve
-	 */
-	UPROPERTY(meta = (Input))
-	TArray<FRigUnit_FitChainToCurve_Rotation> Rotations;
-
-	/**
-	 * The easing to use between to rotations.
-	 */
-	UPROPERTY(meta = (Input, Constant))
-	EControlRigAnimEasingType RotationEaseType;
-
-	/**
-	 * The weight of the solver - how much the rotation should be applied
-	 */
-	UPROPERTY(meta = (Input))
-	float Weight;
-
-	/**
-	 * If set to true all of the global transforms of the children
-	 * of this bone will be recalculated based on their local transforms.
-	 * Note: This is computationally more expensive than turning it off.
-	 */
-	UPROPERTY(meta = (Input, Constant))
-	bool bPropagateToChildren;
-
-	UPROPERTY(meta = (Input, DetailsOnly))
 	FRigUnit_FitChainToCurve_DebugSettings DebugSettings;
 
 	UPROPERTY(transient)

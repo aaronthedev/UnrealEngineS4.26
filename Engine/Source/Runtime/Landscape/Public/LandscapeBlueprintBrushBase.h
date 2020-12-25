@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,8 +7,6 @@
 #include "GameFramework/Actor.h"
 
 #include "LandscapeBlueprintBrushBase.generated.h"
-
-class UTextureRenderTarget2D;
 
 UCLASS(Abstract, NotBlueprintable)
 class LANDSCAPE_API ALandscapeBlueprintBrushBase : public AActor
@@ -36,25 +34,20 @@ protected:
 #endif
 
 public:
-	virtual UTextureRenderTarget2D* Render_Native(bool InIsHeightmap, UTextureRenderTarget2D* InCombinedResult, const FName& InWeightmapLayerName) {return nullptr;}
-	virtual void Initialize_Native(const FTransform& InLandscapeTransform, const FIntPoint& InLandscapeSize, const FIntPoint& InLandscapeRenderTargetSize) {}
-
-	UFUNCTION(BlueprintNativeEvent)
+	UFUNCTION(BlueprintImplementableEvent)
 	UTextureRenderTarget2D* Render(bool InIsHeightmap, UTextureRenderTarget2D* InCombinedResult, const FName& InWeightmapLayerName);
 
-	UFUNCTION(BlueprintNativeEvent)
+	UFUNCTION(BlueprintImplementableEvent)
 	void Initialize(const FTransform& InLandscapeTransform, const FIntPoint& InLandscapeSize, const FIntPoint& InLandscapeRenderTargetSize);
 
 	UFUNCTION(BlueprintCallable, Category = "Landscape")
 	void RequestLandscapeUpdate();
 
 	UFUNCTION(BlueprintImplementableEvent)
-	void GetBlueprintRenderDependencies(TArray<UObject*>& OutStreamableAssets);
+	void GetBlueprintRenderDependencies(TArray<UTexture2D*>& OutStreamableAssets);
 
 #if WITH_EDITOR
-	virtual void CheckForErrors() override;
-
-	virtual void GetRenderDependencies(TSet<UObject*>& OutDependencies);
+	virtual void GetRenderDependencies(TSet<UTexture2D*>& OutStreamableAssets);
 
 	virtual void SetOwningLandscape(class ALandscape* InOwningLandscape);
 	class ALandscape* GetOwningLandscape() const;
@@ -74,7 +67,5 @@ public:
 	virtual void PostEditMove(bool bFinished) override;
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 	virtual void Destroyed() override;
-
-	virtual void PushDeferredLayersContentUpdate();
 #endif
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,24 +6,10 @@
 #include "LineTypes.h"
 #include "CircleTypes.h"
 
-THIRD_PARTY_INCLUDES_START
-#include "ThirdParty/GTEngine/Mathematics/GteVector2.h"
 #include "ThirdParty/GTEngine/Mathematics/GteVector3.h"
 #include "ThirdParty/GTEngine/Mathematics/GteLine.h"
 #include "ThirdParty/GTEngine/Mathematics/GteCircle3.h"
-THIRD_PARTY_INCLUDES_END
 
-template<typename Real>
-gte::Vector2<Real> Convert(const FVector2<Real>& Vec)
-{
-	return gte::Vector2<Real>({ Vec.X, Vec.Y});
-}
-
-template<typename Real>
-FVector2<Real> Convert(const gte::Vector2<Real>& Vec)
-{
-	return FVector2<Real>(Vec[0], Vec[1]);
-}
 
 template<typename Real>
 gte::Vector3<Real> Convert(const FVector3<Real>& Vec)

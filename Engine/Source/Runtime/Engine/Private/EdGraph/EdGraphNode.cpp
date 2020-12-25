@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EdGraph/EdGraphNode.h"
 #include "Serialization/PropertyLocalizationDataGathering.h"
 #include "UObject/BlueprintsObjectVersion.h"
 #include "UObject/FrameworkObjectVersion.h"
-#include "UObject/ReleaseObjectVersion.h"
 #include "EdGraph/EdGraphPin.h"
 #include "Textures/SlateIcon.h"
 #include "EdGraph/EdGraph.h"
@@ -28,14 +27,12 @@ FEdGraphTerminalType FEdGraphTerminalType::FromPinType(const FEdGraphPinType& Pi
 	TerminalType.TerminalSubCategoryObject = PinType.PinSubCategoryObject;
 	TerminalType.bTerminalIsConst = PinType.bIsConst;
 	TerminalType.bTerminalIsWeakPointer = PinType.bIsWeakPointer;
-	TerminalType.bTerminalIsUObjectWrapper = PinType.bIsUObjectWrapper;
 	return TerminalType;
 }
 
 FArchive& operator<<(FArchive& Ar, FEdGraphTerminalType& T)
 {
 	Ar.UsingCustomVersion(FFrameworkObjectVersion::GUID);
-	Ar.UsingCustomVersion(FReleaseObjectVersion::GUID);
 
 	if (Ar.CustomVer(FFrameworkObjectVersion::GUID) >= FFrameworkObjectVersion::PinsStoreFName)
 	{
@@ -81,11 +78,6 @@ FArchive& operator<<(FArchive& Ar, FEdGraphTerminalType& T)
 
 	Ar << T.bTerminalIsConst;
 	Ar << T.bTerminalIsWeakPointer;
-
-	if (Ar.CustomVer(FReleaseObjectVersion::GUID) >= FReleaseObjectVersion::PinTypeIncludesUObjectWrapperFlag)
-	{
-		Ar << T.bTerminalIsUObjectWrapper;
-	}
 
 	return Ar;
 }
@@ -235,10 +227,10 @@ bool UEdGraphNode::GetCanRenameNode() const
 
 #if WITH_EDITOR
 
-FString UEdGraphNode::GetPropertyNameAndValueForDiff(const FProperty* Prop, const uint8* PropertyAddr) const
+FString UEdGraphNode::GetPropertyNameAndValueForDiff(const UProperty* Prop, const uint8* PropertyAddr) const
 {
 	FString ExportedStringValue;
-	if (const FFloatProperty* FloatProp = CastField<const FFloatProperty>(Prop))
+	if (const UFloatProperty* FloatProp = Cast<const UFloatProperty>(Prop))
 	{
 		// special case for floats to remove unnecessary zeros
 		const float FloatValue = FloatProp->GetPropertyValue(PropertyAddr);
@@ -249,7 +241,7 @@ FString UEdGraphNode::GetPropertyNameAndValueForDiff(const FProperty* Prop, cons
 		Prop->ExportTextItem(ExportedStringValue, PropertyAddr, NULL, NULL, PPF_PropertyWindow, NULL);
 	}
 
-	const bool bIsBool = Prop->IsA(FBoolProperty::StaticClass());
+	const bool bIsBool = Prop->IsA(UBoolProperty::StaticClass());
 	return FString::Printf(TEXT("%s: %s"), *FName::NameToDisplayString(Prop->GetName(), bIsBool), *ExportedStringValue);
 }
 
@@ -269,10 +261,10 @@ void UEdGraphNode::DiffProperties(UClass* StructA, UClass* StructB, UObject* Dat
 void UEdGraphNode::DiffProperties(UStruct* StructA, UStruct* StructB, uint8* DataA, uint8* DataB, FDiffResults& Results, FDiffSingleResult& Diff) const
 {
 	// Run through all the properties in the first struct
-	for (TFieldIterator<FProperty> PropertyIt(StructA, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
+	for (TFieldIterator<UProperty> PropertyIt(StructA, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
 	{
-		FProperty* Prop = *PropertyIt;
-		FProperty* PropB = StructB->FindPropertyByName(Prop->GetFName());
+		UProperty* Prop = *PropertyIt;
+		UProperty* PropB = StructB->FindPropertyByName(Prop->GetFName());
 
 		if (!PropB || Prop->GetClass() != PropB->GetClass())
 		{
@@ -284,8 +276,8 @@ void UEdGraphNode::DiffProperties(UStruct* StructA, UStruct* StructB, uint8* Dat
 		if (!Prop->HasAnyPropertyFlags(CPF_Edit | CPF_BlueprintVisible) ||
 			Prop->HasAnyPropertyFlags(CPF_Transient) ||
 			Prop->HasAnyPropertyFlags(CPF_DisableEditOnInstance) ||
-			Prop->IsA(FDelegateProperty::StaticClass()) ||
-			Prop->IsA(FMulticastDelegateProperty::StaticClass()))
+			Prop->IsA(UDelegateProperty::StaticClass()) ||
+			Prop->IsA(UMulticastDelegateProperty::StaticClass()))
 		{
 			continue;
 		}

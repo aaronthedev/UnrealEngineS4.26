@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MediaTrackEditor.h"
 
@@ -20,7 +20,6 @@
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Layout/SBox.h"
 #include "Misc/QualifiedFrameTime.h"
-#include "LevelSequence.h"
 
 #include "MediaThumbnailSection.h"
 
@@ -161,7 +160,7 @@ TSharedRef<ISequencerSection> FMediaTrackEditor::MakeSectionInterface(UMovieScen
 
 bool FMediaTrackEditor::SupportsSequence(UMovieSceneSequence* InSequence) const
 {
-	return InSequence && InSequence->IsA(ULevelSequence::StaticClass());
+	return (InSequence != nullptr) && (InSequence->GetClass()->GetName() == TEXT("LevelSequence"));
 }
 
 
@@ -210,7 +209,6 @@ FKeyPropertyResult FMediaTrackEditor::AddAttachedMediaSource(FFrameNumber KeyTim
 				UMovieSceneSection* NewSection = MediaTrack->AddNewMediaSourceOnRow(*MediaSource, KeyTime, RowIndex);
 				MediaTrack->SetDisplayName(LOCTEXT("MediaTrackName", "Media"));
 				KeyPropertyResult.bTrackModified = true;
-				KeyPropertyResult.SectionsCreated.Add(NewSection);
 
 				GetSequencer()->EmptySelection();
 				GetSequencer()->SelectSection(NewSection);
@@ -231,7 +229,7 @@ FKeyPropertyResult FMediaTrackEditor::AddMasterMediaSource(FFrameNumber KeyTime,
 	UMovieSceneTrack* Track = TrackResult.Track;
 	auto MediaTrack = Cast<UMovieSceneMediaTrack>(Track);
 
-	UMovieSceneSection* NewSection = MediaTrack->AddNewMediaSourceOnRow(*MediaSource, KeyTime, RowIndex);
+	MediaTrack->AddNewMediaSourceOnRow(*MediaSource, KeyTime, RowIndex);
 
 	if (TrackResult.bWasCreated)
 	{
@@ -239,7 +237,6 @@ FKeyPropertyResult FMediaTrackEditor::AddMasterMediaSource(FFrameNumber KeyTime,
 	}
 
 	KeyPropertyResult.bTrackModified = true;
-	KeyPropertyResult.SectionsCreated.Add(NewSection);
 
 	return KeyPropertyResult;
 }

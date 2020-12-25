@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	HairStrandsTransmittance.h: Hair strands transmittance evaluation.
@@ -10,27 +10,23 @@
 #include "RendererInterface.h"
 #include "RenderGraphResources.h"
 
-class FLightSceneInfo;
-class FViewInfo;
-
 struct FHairStrandsTransmittanceMaskData
 {
-	FRDGBufferRef TransmittanceMask = nullptr;
-	FRDGBufferSRVRef TransmittanceMaskSRV = nullptr;
+	TRefCountPtr<FPooledRDGBuffer>	TransmittanceMask;
+	FShaderResourceViewRHIRef		TransmittanceMaskSRV;
 };
 
 /// Write opaque hair shadow onto screen shadow mask to have fine hair details cast onto opaque geometries
 void RenderHairStrandsShadowMask(
-	FRDGBuilder& GraphBuilder,
+	FRHICommandListImmediate& RHICmdList,
 	const TArray<FViewInfo>& Views,
-	const FLightSceneInfo* LightSceneInfo,
-	const struct FHairStrandsRenderingData* HairDatas,
-	FRDGTextureRef ScreenShadowMaskTexture); 
+	const class FLightSceneInfo* LightSceneInfo,
+	IPooledRenderTarget* ScreenShadowMaskTexture,
+	const struct FHairStrandsDatas* Hairdatas);
 
 /// Write hair transmittance onto screen shadow mask
 FHairStrandsTransmittanceMaskData RenderHairStrandsTransmittanceMask(
-	FRDGBuilder& GraphBuilder,
+	FRHICommandListImmediate& RHICmdList,
 	const TArray<FViewInfo>& Views,
 	const class FLightSceneInfo* LightSceneInfo,
-	const struct FHairStrandsRenderingData* Hairdatas,
-	FRDGTextureRef ScreenShadowMaskSubPixelTexture);
+	const struct FHairStrandsDatas* Hairdatas);

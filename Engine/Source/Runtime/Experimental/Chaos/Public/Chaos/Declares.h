@@ -1,16 +1,17 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Chaos/ParticleHandleFwd.h"
-#include "Chaos/PBDRigidsEvolutionFwd.h"
 
 namespace Chaos
 {
+	class FPBDRigidsSolver;
+
 	typedef FPBDRigidsSolver FPhysicsSolver;
 
-	class FImplicitObject;
-	class FPerShapeData;
+	template <typename T, int d> class TImplicitObject;
+	template <typename T, int d> class TPerShapeData;
 	template <typename TSOA> class TParticleView;
 	template<class T, int d> class TPBDRigidParticles;
 }

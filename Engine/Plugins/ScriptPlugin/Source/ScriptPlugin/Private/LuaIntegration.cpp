@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LuaIntegration.h"
 #include "ScriptPluginLog.h"
@@ -922,17 +922,17 @@ void FLuaContext::GetScriptDefinedFields(TArray<FScriptField>& OutFields)
 		switch (ValueType)
 		{
 			case LUA_TNUMBER:
-				PropertyInfo.Class = FFloatProperty::StaticClass();
+				PropertyInfo.Class = UFloatProperty::StaticClass();
 				break;
 			case LUA_TSTRING:
-				PropertyInfo.Class = FStrProperty::StaticClass();
+				PropertyInfo.Class = UStrProperty::StaticClass();
 				break;
 			case LUA_TBOOLEAN:
-				PropertyInfo.Class = FBoolProperty::StaticClass();
+				PropertyInfo.Class = UBoolProperty::StaticClass();
 				break;
 			case LUA_TNIL:
 			case LUA_TUSERDATA:
-				PropertyInfo.Class = FObjectProperty::StaticClass();
+				PropertyInfo.Class = UObjectProperty::StaticClass();
 				break;
 			case LUA_TFUNCTION:
 				if (KeyName.StartsWith(TEXT("Event")))

@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CborWriter.h"
 
-FCborWriter::FCborWriter(FArchive* InStream, ECborEndianness InWriterEndianness)
+FCborWriter::FCborWriter(FArchive* InStream)
 	: Stream(InStream)
-	, Endianness(InWriterEndianness)
 {
 	check(Stream != nullptr && Stream->IsSaving());
 	ContextStack.Emplace();
@@ -22,8 +21,6 @@ const FArchive* FCborWriter::GetArchive() const
 
 void FCborWriter::WriteContainerStart(ECborCode ContainerType, int64 NbItem)
 {
-	ScopedCborArchiveEndianness ScopedArchiveEndianness(*Stream, Endianness);
-
 	check(ContainerType == ECborCode::Array || ContainerType == ECborCode::Map);
 	CheckContext(ContainerType);
 
@@ -50,8 +47,6 @@ void FCborWriter::WriteContainerStart(ECborCode ContainerType, int64 NbItem)
 
 void FCborWriter::WriteContainerEnd()
 {
-	ScopedCborArchiveEndianness ScopedArchiveEndianness(*Stream, Endianness);
-
 	check(ContextStack.Top().IsIndefiniteContainer());
 	FCborHeader Header(ECborCode::Break);
 	*Stream << Header;
@@ -60,8 +55,6 @@ void FCborWriter::WriteContainerEnd()
 
 void FCborWriter::WriteNull()
 {
-	ScopedCborArchiveEndianness ScopedArchiveEndianness(*Stream, Endianness);
-
 	CheckContext(ECborCode::Prim);
 	FCborHeader Header(ECborCode::Prim | ECborCode::Null);
 	*Stream << Header;
@@ -69,16 +62,12 @@ void FCborWriter::WriteNull()
 
 void FCborWriter::WriteValue(uint64 Value)
 {
-	ScopedCborArchiveEndianness ScopedArchiveEndianness(*Stream, Endianness);
-
 	CheckContext(ECborCode::Uint);
 	WriteUIntValue(ECborCode::Uint, *Stream, Value);
 }
 
 void FCborWriter::WriteValue(int64 Value)
 {
-	ScopedCborArchiveEndianness ScopedArchiveEndianness(*Stream, Endianness);
-
 	if (Value < 0)
 	{
 		CheckContext(ECborCode::Int);
@@ -93,8 +82,6 @@ void FCborWriter::WriteValue(int64 Value)
 
 void FCborWriter::WriteValue(bool Value)
 {
-	ScopedCborArchiveEndianness ScopedArchiveEndianness(*Stream, Endianness);
-
 	CheckContext(ECborCode::Prim);
 	FCborHeader Header(ECborCode::Prim | (Value ? ECborCode::True : ECborCode::False));
 	*Stream << Header;
@@ -102,8 +89,6 @@ void FCborWriter::WriteValue(bool Value)
 
 void FCborWriter::WriteValue(float Value)
 {
-	ScopedCborArchiveEndianness ScopedArchiveEndianness(*Stream, Endianness);
-
 	CheckContext(ECborCode::Prim);
 	FCborHeader Header(ECborCode::Prim | ECborCode::Value_4Bytes);
 	*Stream << Header;
@@ -112,8 +97,6 @@ void FCborWriter::WriteValue(float Value)
 
 void FCborWriter::WriteValue(double Value)
 {
-	ScopedCborArchiveEndianness ScopedArchiveEndianness(*Stream, Endianness);
-
 	CheckContext(ECborCode::Prim);
 	FCborHeader Header(ECborCode::Prim | ECborCode::Value_8Bytes);
 	*Stream << Header;
@@ -122,8 +105,6 @@ void FCborWriter::WriteValue(double Value)
 
 void FCborWriter::WriteValue(const FString& Value)
 {
-	ScopedCborArchiveEndianness ScopedArchiveEndianness(*Stream, Endianness);
-
 	CheckContext(ECborCode::TextString);
 	FTCHARToUTF8 UTF8String(*Value);
 	// Write string header
@@ -135,18 +116,10 @@ void FCborWriter::WriteValue(const FString& Value)
 
 void FCborWriter::WriteValue(const char* CString, uint64 Length)
 {
-	ScopedCborArchiveEndianness ScopedArchiveEndianness(*Stream, Endianness);
-
 	CheckContext(ECborCode::ByteString);
 	// Write c string header
 	WriteUIntValue(ECborCode::ByteString, *Stream, Length);
 	Stream->Serialize(const_cast<char*>(CString), Length);
-}
-
-void FCborWriter::WriteValue(const uint8* Bytes, uint64 Length)
-{
-	static_assert(sizeof(uint8) == sizeof(char), "Expected char type to be 1 byte");
-	WriteValue(reinterpret_cast<const char*>(Bytes), Length);
 }
 
 FCborHeader FCborWriter::WriteUIntValue(FCborHeader Header, FArchive& Ar, uint64 Value)

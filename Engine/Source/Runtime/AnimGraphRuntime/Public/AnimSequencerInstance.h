@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  *
@@ -8,40 +8,29 @@
 
 #pragma once
 #include "Animation/AnimInstance.h"
-#include "SequencerAnimationSupport.h"
+#include "AnimCustomInstance.h"
 #include "AnimSequencerInstance.generated.h"
 
-struct FRootMotionOverride;
-
 UCLASS(transient, NotBlueprintable)
-class ANIMGRAPHRUNTIME_API UAnimSequencerInstance : public UAnimInstance, public ISequencerAnimationSupport
+class ANIMGRAPHRUNTIME_API UAnimSequencerInstance : public UAnimCustomInstance
 {
 	GENERATED_UCLASS_BODY()
 
 public:
 
 	/** Update an animation sequence player in this instance */
-	virtual void UpdateAnimTrack(UAnimSequenceBase* InAnimSequence, int32 SequenceId, float InPosition, float Weight, bool bFireNotifies);
-	virtual void UpdateAnimTrack(UAnimSequenceBase* InAnimSequence, int32 SequenceId, float InFromPosition, float InToPosition, float Weight, bool bFireNotifies);
-
-	/** Update with Root Motion*/
-	void UpdateAnimTrackWithRootMotion(UAnimSequenceBase* InAnimSequence, int32 SequenceId,const TOptional<FRootMotionOverride>& RootMotion, float InFromPosition, float InToPosition, float Weight, bool bFireNotifies);
-
-	/** Construct all nodes in this instance */
-	virtual void ConstructNodes() override;
+	void UpdateAnimTrack(UAnimSequenceBase* InAnimSequence, int32 SequenceId, float InPosition, float Weight, bool bFireNotifies);
+	void UpdateAnimTrack(UAnimSequenceBase* InAnimSequence, int32 SequenceId, float InFromPosition, float InToPosition, float Weight, bool bFireNotifies);
 
 	/** Reset all nodes in this instance */
-	virtual void ResetNodes() override;
+	void ResetNodes();
 
 	/** Reset the pose for this instance*/
-	virtual void ResetPose() override;
+	void ResetPose();
 
 	/** Saved the named pose to restore after */
-	virtual void SavePose() override;
+	void SavePose();
 
-	virtual UAnimInstance* GetSourceAnimInstance() override { return this; }
-	virtual void SetSourceAnimInstance(UAnimInstance* SourceAnimInstance) {  /* nothing to do */ ensure(false); }
-	virtual bool DoesSupportDifferentSourceAnimInstance() const override { return false; }
 protected:
 	// UAnimInstance interface
 	virtual FAnimInstanceProxy* CreateAnimInstanceProxy() override;
@@ -52,4 +41,3 @@ public:
 	static const FName SequencerPoseName;
 
 };
-

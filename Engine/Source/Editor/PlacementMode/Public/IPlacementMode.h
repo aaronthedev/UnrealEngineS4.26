@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
 #include "EdMode.h"
 
 class UActorFactory;
-class SWidget;
 
 class IPlacementMode : public FEdMode
 {

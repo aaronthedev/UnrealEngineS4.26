@@ -1,10 +1,16 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "../Common.ush"
 #include "RayTracingCommon.ush"
 
 RWTexture2D<float4> Output;
 RaytracingAccelerationStructure TLAS;
+
+struct FBarycentricsPayload : FMinimalPayload
+{
+	float2 Barycentrics;
+};
+
 
 RAY_TRACING_ENTRY_RAYGEN(RayTracingBarycentricsMainRGS)
 {
@@ -17,7 +23,7 @@ RAY_TRACING_ENTRY_RAYGEN(RayTracingBarycentricsMainRGS)
 	              | RAY_FLAG_CULL_BACK_FACING_TRIANGLES      // use back face culling
 	              | RAY_FLAG_FORCE_OPAQUE;                   // don't run anyhit shader
 
-	FDefaultPayload Payload = (FDefaultPayload)0;
+	FBarycentricsPayload Payload = (FBarycentricsPayload)0;
 
 	TraceRay(
 		TLAS,   // AccelerationStructure
@@ -39,7 +45,7 @@ RAY_TRACING_ENTRY_RAYGEN(RayTracingBarycentricsMainRGS)
 }
 
 RAY_TRACING_ENTRY_CLOSEST_HIT(RayTracingBarycentricsMainCHS,
-	FDefaultPayload, Payload,
+	FBarycentricsPayload, Payload,
 	FDefaultAttributes, Attributes)
 {
 	Payload.Barycentrics = Attributes.Barycentrics;

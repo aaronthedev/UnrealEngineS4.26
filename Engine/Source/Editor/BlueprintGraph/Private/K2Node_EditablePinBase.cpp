@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "K2Node_EditablePinBase.h"
 #include "UObject/UnrealType.h"
@@ -360,28 +360,6 @@ bool UK2Node_EditablePinBase::ModifyUserDefinedPinDefaultValue(TSharedPtr<FUserP
 	return true;
 }
 
-bool UK2Node_EditablePinBase::UpdateUserDefinedPinDefaultValues()
-{
-	bool bAnyChanged = false;
-	const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
-	
-	// If any of our pins got fixed up, we need to refresh our user pin default values
-	for (TSharedPtr<FUserPinInfo> PinInfo : UserDefinedPins)
-	{
-		if (UEdGraphPin* Pin = FindPin(PinInfo->PinName))
-		{
-			if (Pin->Direction == PinInfo->DesiredPinDirection)
-			{
-				if (!K2Schema->DoesDefaultValueMatch(*Pin, PinInfo->PinDefaultValue))
-				{
-					bAnyChanged |= ModifyUserDefinedPinDefaultValue(PinInfo, Pin->GetDefaultAsString());
-				}
-			}
-		}
-	}
-	return bAnyChanged;
-}
-
 bool UK2Node_EditablePinBase::UpdateEdGraphPinDefaultValue(TSharedPtr<FUserPinInfo> PinInfo, FString& NewDefaultValue)
 {
 	const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
@@ -413,9 +391,9 @@ bool UK2Node_EditablePinBase::CreateUserDefinedPinsForFunctionEntryExit(const UF
 
 	// Create the inputs and outputs
 	bool bAllPinsGood = true;
-	for ( TFieldIterator<FProperty> PropIt(Function); PropIt && ( PropIt->PropertyFlags & CPF_Parm ); ++PropIt )
+	for ( TFieldIterator<UProperty> PropIt(Function); PropIt && ( PropIt->PropertyFlags & CPF_Parm ); ++PropIt )
 	{
-		FProperty* Param = *PropIt;
+		UProperty* Param = *PropIt;
 
 		const bool bIsFunctionInput = !Param->HasAnyPropertyFlags(CPF_OutParm) || Param->HasAnyPropertyFlags(CPF_ReferenceParm);
 
@@ -433,12 +411,4 @@ bool UK2Node_EditablePinBase::CreateUserDefinedPinsForFunctionEntryExit(const UF
 	}
 
 	return bAllPinsGood;
-}
-
-FUserPinInfo::FUserPinInfo(const UEdGraphPin& InPin)
-	: PinName(InPin.GetFName())
-	, PinType(InPin.PinType)
-	, DesiredPinDirection(InPin.Direction)
-	, PinDefaultValue(InPin.DefaultValue)
-{
 }

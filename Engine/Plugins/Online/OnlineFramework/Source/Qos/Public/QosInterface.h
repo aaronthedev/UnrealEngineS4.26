@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -21,11 +21,6 @@ public:
 	 * Get the interface singleton
 	 */
 	static TSharedRef<FQosInterface> Get();
-
-	/**
-	 * Re-initialize our FQosRegionManager instance
-	 */
-	bool Init();
 
 	/**
 	 * Start running the async QoS evaluation
@@ -116,6 +111,8 @@ protected:
 
 	friend class FQosModule;
 	FQosInterface();
+	
+	bool Init();
 
 	/** FGCObject interface */
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;

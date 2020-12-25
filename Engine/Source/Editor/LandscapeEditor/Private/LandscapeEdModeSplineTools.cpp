@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "EngineDefines.h"
@@ -83,7 +83,7 @@ public:
 	~FLandscapeToolSplines()
 	{
 		// GEditor is invalid at shutdown as the object system is unloaded before the landscape module.
-		if (UObjectInitialized() && !IsEngineExitRequested())
+		if (UObjectInitialized())
 		{
 			// Remove undo delegate
 			GEditor->UnregisterForUndo(this);
@@ -92,14 +92,17 @@ public:
 
 	virtual const TCHAR* GetToolName() override { return TEXT("Splines"); }
 	virtual FText GetDisplayName() override { return NSLOCTEXT("UnrealEd", "LandscapeMode_Splines", "Splines"); };
-	virtual FText GetDisplayMessage() override { return NSLOCTEXT("UnrealEd", "LandscapeMode_Splines_Message", "Create a Landscape Spline to carve your landscape, modify blendmasks and deform meshes into roads and other linear features.  Spline mesh settings can be found in the details panel when you have  segments selected."); };
 
 	virtual void SetEditRenderType() override { GLandscapeEditRenderMode = ELandscapeEditRenderMode::None | (GLandscapeEditRenderMode & ELandscapeEditRenderMode::BitMaskForMask); }
 	virtual bool SupportsMask() override { return false; }
 
-	void CreateSplineComponent(ALandscapeProxy* Proxy, FVector Scale3D)
+	void CreateSplineComponent(ALandscapeProxy* Landscape, FVector Scale3D)
 	{
-		Proxy->CreateSplineComponent(Scale3D);
+		Landscape->Modify();
+		Landscape->SplineComponent = NewObject<ULandscapeSplinesComponent>(Landscape, NAME_None, RF_Transactional);
+		Landscape->SplineComponent->SetRelativeScale3D_Direct(Scale3D);
+		Landscape->SplineComponent->AttachToComponent(Landscape->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
+		Landscape->SplineComponent->ShowSplineEditorMesh(true);
 	}
 
 	void UpdatePropertiesWindows()
@@ -328,9 +331,6 @@ public:
 			NewSegment->VirtualTextureLodBias = CopyFromSegment->VirtualTextureLodBias;
 			NewSegment->VirtualTextureCullMips = CopyFromSegment->VirtualTextureCullMips;
 			NewSegment->VirtualTextureRenderPassType = CopyFromSegment->VirtualTextureRenderPassType;
-			NewSegment->bRenderCustomDepth = CopyFromSegment->bRenderCustomDepth;
-			NewSegment->CustomDepthStencilWriteMask = CopyFromSegment->CustomDepthStencilWriteMask;
-			NewSegment->CustomDepthStencilValue = CopyFromSegment->CustomDepthStencilValue;
 		}
 
 		Start->ConnectedSegments.Add(FLandscapeSplineConnection(NewSegment, 0));
@@ -366,16 +366,6 @@ public:
 		{
 			NewSegment->UpdateSplinePoints();
 		}
-	}
-
-	void FlipSelectedSplineSegments()
-	{
-		FScopedTransaction Transaction(LOCTEXT("LandscapeSpline_FlipSegments", "Flip Selected Landscape Spline Segments"));
-		for (ULandscapeSplineSegment* Segment : SelectedSplineSegments)
-		{
-			FlipSegment(Segment);
-		}
-		EdMode->AutoUpdateDirtyLandscapeSplines();
 	}
 
 	// called when alt-dragging a newly added end segment
@@ -711,9 +701,6 @@ public:
 		NewSegment->VirtualTextureLodBias = Segment->VirtualTextureLodBias;
 		NewSegment->VirtualTextureCullMips = Segment->VirtualTextureCullMips;
 		NewSegment->VirtualTextureRenderPassType = Segment->VirtualTextureRenderPassType;
-		NewSegment->bRenderCustomDepth = Segment->bRenderCustomDepth;
-		NewSegment->CustomDepthStencilWriteMask = Segment->CustomDepthStencilWriteMask;
-		NewSegment->CustomDepthStencilValue = Segment->CustomDepthStencilValue;
 
 		Segment->Connections[0].TangentLen *= t;
 		Segment->Connections[1].ControlPoint->ConnectedSegments.Remove(FLandscapeSplineConnection(Segment, 1));
@@ -879,10 +866,10 @@ public:
 			ALandscapeProxy* FromProxy = LandscapeSplinesComp ? Cast<ALandscapeProxy>(LandscapeSplinesComp->GetOuter()) : nullptr;
 			if (FromProxy)
 			{
-				ULandscapeInfo* ProxyLandscapeInfo = FromProxy->GetLandscapeInfo();
-				check(ProxyLandscapeInfo);
 				if (!ToLandscape)
 				{
+					ULandscapeInfo* ProxyLandscapeInfo = FromProxy->GetLandscapeInfo();
+					check(ProxyLandscapeInfo);
 					ToLandscape = ProxyLandscapeInfo->GetCurrentLevelLandscapeProxy(true);
 					if (!ToLandscape)
 					{
@@ -891,10 +878,133 @@ public:
 					}
 				}
 
-				ProxyLandscapeInfo->MoveSplineToLevel(ControlPoint, ToLandscape->GetLevel());
+				if (ToLandscape != FromProxy)
+				{
+					ToLandscape->Modify();
+					if (ToLandscape->SplineComponent == nullptr)
+					{
+						CreateSplineComponent(ToLandscape, FromProxy->SplineComponent->GetRelativeScale3D());
+						check(ToLandscape->SplineComponent);
+					}
+					ToLandscape->SplineComponent->Modify();
+
+					const FTransform OldToNewTransform =
+						FromProxy->SplineComponent->GetComponentTransform().GetRelativeTransform(ToLandscape->SplineComponent->GetComponentTransform());
+
+					if (FromProxies.Find(FromProxy) == nullptr)
+					{
+						FromProxies.Add(FromProxy);
+						FromProxy->Modify();
+						FromProxy->SplineComponent->Modify();
+						FromProxy->SplineComponent->MarkRenderStateDirty();
+					}
+
+					// Delete all Mesh Components associated with the ControlPoint. (Will get recreated in UpdateSplinePoints)
+					if (ControlPoint->LocalMeshComponent)
+					{
+						ControlPoint->LocalMeshComponent->Modify();
+						ControlPoint->LocalMeshComponent->UnregisterComponent();
+						ControlPoint->LocalMeshComponent->DestroyComponent();
+						FromProxy->SplineComponent->Modify();
+						FromProxy->SplineComponent->MeshComponentLocalOwnersMap.Remove(ControlPoint->LocalMeshComponent);
+						ControlPoint->LocalMeshComponent = nullptr;
+					}
+
+					TMap<ULandscapeSplinesComponent*, UControlPointMeshComponent*> ForeignMeshComponents = ControlPoint->GetForeignMeshComponents();
+					for (auto Pair : ForeignMeshComponents)
+					{
+						Pair.Key->RemoveForeignMeshComponent(ControlPoint, Pair.Value);
+						Pair.Value->Modify();
+						Pair.Value->UnregisterComponent();
+						Pair.Value->DestroyComponent();
+					}
+					
+					// Move control point to new level
+					FromProxy->SplineComponent->ControlPoints.Remove(ControlPoint);
+					ControlPoint->Rename(nullptr, ToLandscape->SplineComponent);
+					ToLandscape->SplineComponent->ControlPoints.Add(ControlPoint);
+
+					ControlPoint->Location = OldToNewTransform.TransformPosition(ControlPoint->Location);
+
+					const bool bUpdateCollision = true; // default value
+					const bool bUpdateSegments = false; // done in next loop
+					const bool bUpdateMeshLevel = false; // no need because mesh have been deleted
+					ControlPoint->UpdateSplinePoints(bUpdateCollision, bUpdateSegments, bUpdateMeshLevel);
+				}
 			}
 		}
-				
+
+		for (ULandscapeSplineSegment* Segment : SelectedSplineSegments)
+		{
+			ULandscapeSplinesComponent* LandscapeSplinesComp = Segment->GetOuterULandscapeSplinesComponent();
+			ALandscapeProxy* FromProxy = LandscapeSplinesComp ? Cast<ALandscapeProxy>(LandscapeSplinesComp->GetOuter()) : nullptr;
+			if (FromProxy)
+			{
+				if (!ToLandscape)
+				{
+					ULandscapeInfo* ProxyLandscapeInfo = FromProxy->GetLandscapeInfo();
+					check(ProxyLandscapeInfo);
+					ToLandscape = ProxyLandscapeInfo->GetCurrentLevelLandscapeProxy(true);
+					if (!ToLandscape)
+					{
+						// No Landscape Proxy, don't support for creating only for Spline now
+						return;
+					}
+				}
+
+				if (ToLandscape != FromProxy)
+				{
+					ToLandscape->Modify();
+					if (ToLandscape->SplineComponent == nullptr)
+					{
+						CreateSplineComponent(ToLandscape, FromProxy->SplineComponent->GetRelativeScale3D());
+						check(ToLandscape->SplineComponent);
+					}
+					ToLandscape->SplineComponent->Modify();
+
+					if (FromProxies.Find(FromProxy) == nullptr)
+					{
+						FromProxies.Add(FromProxy);
+						FromProxy->Modify();
+						FromProxy->SplineComponent->Modify();
+						FromProxy->SplineComponent->MarkRenderStateDirty();
+					}
+
+					// Delete all Mesh Components associated with the Segment. (Will get recreated in UpdateSplinePoints)
+					for (auto* MeshComponent : Segment->LocalMeshComponents)
+					{
+						MeshComponent->Modify();
+						MeshComponent->UnregisterComponent();
+						MeshComponent->DestroyComponent();
+						FromProxy->Modify();
+						FromProxy->SplineComponent->MeshComponentLocalOwnersMap.Remove(MeshComponent);
+					}
+					Segment->LocalMeshComponents.Empty();
+
+					TMap<ULandscapeSplinesComponent*, TArray<USplineMeshComponent*>> ForeignMeshComponents = Segment->GetForeignMeshComponents();
+					for (auto Pair : ForeignMeshComponents)
+					{
+						Pair.Key->RemoveAllForeignMeshComponents(Segment);
+						for (auto MeshComponent : Pair.Value)
+						{
+							MeshComponent->Modify();
+							MeshComponent->UnregisterComponent();
+							MeshComponent->DestroyComponent();
+						}
+					}
+										
+					// Move segment to new level
+					FromProxy->SplineComponent->Segments.Remove(Segment);
+					Segment->Rename(nullptr, ToLandscape->SplineComponent);
+					ToLandscape->SplineComponent->Segments.Add(Segment);
+
+					const bool bUpdateCollision = true; // default value
+					const bool bUpdateMeshLevel = false; // no need because mesh have been deleted 
+					Segment->UpdateSplinePoints(bUpdateCollision, bUpdateMeshLevel);
+				}
+			}
+		}
+
 		if (ToLandscape && ToLandscape->SplineComponent)
 		{
 			if (!ToLandscape->SplineComponent->IsRegistered())
@@ -1168,7 +1278,14 @@ public:
 		{
 			if (SelectedSplineSegments.Num() > 0)
 			{
-				FlipSelectedSplineSegments();
+				FScopedTransaction Transaction(LOCTEXT("LandscapeSpline_FlipSegments", "Flip Landscape Spline Segments"));
+
+				for (ULandscapeSplineSegment* Segment : SelectedSplineSegments)
+				{
+					FlipSegment(Segment);
+				}
+
+				EdMode->AutoUpdateDirtyLandscapeSplines();
 				return true;
 			}
 		}
@@ -2233,22 +2350,6 @@ protected:
 };
 
 
-bool FEdModeLandscape::HasSelectedSplineSegments() const
-{
-	return SplinesTool && (SplinesTool->SelectedSplineSegments.Num() > 0);
-}
-
-void FEdModeLandscape::FlipSelectedSplineSegments()
-{
-	if (!SplinesTool)
-	{
-		return;
-	}
-
-	// Do Flip
-	SplinesTool->FlipSelectedSplineSegments();
-}
-
 void FEdModeLandscape::ShowSplineProperties()
 {
 	if (SplinesTool /*&& SplinesTool == CurrentTool*/)
@@ -2256,20 +2357,6 @@ void FEdModeLandscape::ShowSplineProperties()
 		SplinesTool->ShowSplineProperties();
 	}
 }
-
-void FEdModeLandscape::GetSelectedSplineOwners(TSet<ALandscapeProxy*>& SelectedSplineOwners) const
-{
-	for (ULandscapeSplineSegment* Segment : SplinesTool->SelectedSplineSegments)
-	{
-		SelectedSplineOwners.Add(Segment->GetTypedOuter<ALandscapeProxy>());
-	}
-
-	for (ULandscapeSplineControlPoint* ControlPoint : SplinesTool->SelectedSplineControlPoints)
-	{
-		SelectedSplineOwners.Add(ControlPoint->GetTypedOuter<ALandscapeProxy>());
-	}
-}
-
 
 void FEdModeLandscape::SelectAllConnectedSplineControlPoints()
 {

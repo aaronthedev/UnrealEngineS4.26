@@ -21,19 +21,17 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_PCP_CHANGES_H
-#define PXR_USD_PCP_CHANGES_H
+#ifndef PCP_CHANGES_H
+#define PCP_CHANGES_H
 
 /// \file pcp/changes.h
 
 #include "pxr/pxr.h"
 #include "pxr/usd/pcp/api.h"
-#include "pxr/usd/sdf/changeList.h"
 #include "pxr/usd/sdf/declareHandles.h"
 #include "pxr/usd/sdf/path.h"
 #include "pxr/usd/sdf/types.h"
 #include "pxr/base/tf/declarePtrs.h"
-#include "pxr/base/tf/span.h"
 
 #include <map>
 #include <set>
@@ -45,6 +43,8 @@ TF_DECLARE_WEAK_AND_REF_PTRS(PcpLayerStack);
 
 class PcpCache;
 class PcpSite;
+class SdfChangeList;
+typedef std::map<SdfLayerHandle, SdfChangeList> SdfLayerChangeListMap;
 
 /// \class PcpLayerStackChanges
 ///
@@ -181,51 +181,51 @@ public:
     /// get the changes using \c GetLayerStackChanges() and
     /// \c GetCacheChanges().
     PCP_API 
-    void DidChange(const TfSpan<const PcpCache*> &caches,
-                   const SdfLayerChangeListVec& changes);
+    void DidChange(const std::vector<PcpCache*>& caches,
+                   const SdfLayerChangeListMap& changes);
 
     /// Tries to load the sublayer of \p layer at \p sublayerPath.  If
     /// successful, any layer stack using \p layer is marked as having changed
     /// and all prims in \p cache using any prim in any of those layer stacks
     /// are marked as changed.
     PCP_API 
-    void DidMaybeFixSublayer(const PcpCache* cache,
+    void DidMaybeFixSublayer(PcpCache* cache,
                              const SdfLayerHandle& layer,
                              const std::string& assetPath);
 
     /// Tries to load the asset at \p assetPath.  If successful, any prim
     /// in \p cache using the site \p site is marked as changed.
     PCP_API 
-    void DidMaybeFixAsset(const PcpCache* cache,
+    void DidMaybeFixAsset(PcpCache* cache,
                           const PcpSite& site,
                           const SdfLayerHandle& srcLayer,
                           const std::string& assetPath);
 
     /// The layer identified by \p layerId was muted in \p cache.
     PCP_API 
-    void DidMuteLayer(const PcpCache* cache, const std::string& layerId);
+    void DidMuteLayer(PcpCache* cache, const std::string& layerId);
 
     /// The layer identified by \p layerId was unmuted in \p cache.
     PCP_API 
-    void DidUnmuteLayer(const PcpCache* cache, const std::string& layerId);
+    void DidUnmuteLayer(PcpCache* cache, const std::string& layerId);
 
     /// The sublayer tree changed.  This often, but doesn't always, imply that
     /// anything and everything may have changed.  If clients want to indicate
     /// that anything and everything may have changed they should call this
     /// method and \c DidChangePrimGraph() with the absolute root path.
     PCP_API
-    void DidChangeLayers(const PcpCache* cache);
+    void DidChangeLayers(PcpCache* cache);
 
     /// The sublayer offsets changed.
     PCP_API
-    void DidChangeLayerOffsets(const PcpCache* cache);
+    void DidChangeLayerOffsets(PcpCache* cache);
 
     /// The object at \p path changed significantly enough to require
     /// recomputing the entire prim or property index.  A significant change
     /// implies changes to every namespace descendant's index, specs, and
     /// dependencies.
     PCP_API 
-    void DidChangeSignificantly(const PcpCache* cache, const SdfPath& path);
+    void DidChangeSignificantly(PcpCache* cache, const SdfPath& path);
 
     /// The spec stack for the prim or property has changed, due to the
     /// addition or removal of the spec in \p changedLayer at \p changedPath.
@@ -233,25 +233,25 @@ public:
     /// any change requires rebuilding the property stack.  It implies that 
     /// dependencies on those specs has changed.
     PCP_API 
-    void DidChangeSpecs(const PcpCache* cache, const SdfPath& path,
+    void DidChangeSpecs(PcpCache* cache, const SdfPath& path,
                         const SdfLayerHandle& changedLayer,
                         const SdfPath& changedPath);
 
     /// The spec stack for the prim or property at \p path in \p cache has
     /// changed.
     PCP_API 
-    void DidChangeSpecStack(const PcpCache* cache, const SdfPath& path);
+    void DidChangeSpecStack(PcpCache* cache, const SdfPath& path);
 
     /// The connections on the attribute or targets on the relationship have
     /// changed.
     PCP_API 
-    void DidChangeTargets(const PcpCache* cache, const SdfPath& path,
+    void DidChangeTargets(PcpCache* cache, const SdfPath& path,
                           PcpCacheChanges::TargetType targetType);
 
     /// The relocates that affect prims and properties at and below
     /// the given cache path have changed.
     PCP_API 
-    void DidChangeRelocates(const PcpCache* cache, const SdfPath& path);
+    void DidChangeRelocates(PcpCache* cache, const SdfPath& path);
 
     /// The composed object at \p oldPath was moved to \p newPath.  This
     /// implies every corresponding Sd change.  This object will subsume
@@ -259,12 +259,22 @@ public:
     /// that are not so subsumed will be converted to DidChangePrimGraph()
     /// and/or DidChangeSpecs() changes.
     PCP_API 
-    void DidChangePaths(const PcpCache* cache,
+    void DidChangePaths(PcpCache* cache,
                         const SdfPath& oldPath, const SdfPath& newPath);
+
+    /// The changes in \p changes to the prim spec at \p changePath in 
+    /// \p changedLayer may affect the payload decoration for the composed
+    /// prim at \p path in \p cache.  If this is the case, register a
+    /// significant change for that composed prim.
+    PCP_API 
+    void DidChangeFieldsForDecorator(PcpCache* cache, const SdfPath& path,
+                                     const SdfLayerHandle& changedLayer,
+                                     const SdfPath& changedPath,
+                                     const SdfChangeList& changes);
 
     /// Remove any changes for \p cache.
     PCP_API
-    void DidDestroyCache(const PcpCache* cache);
+    void DidDestroyCache(PcpCache* cache);
 
     /// Swap the contents of this and \p other.
     PCP_API
@@ -302,16 +312,16 @@ private:
     typedef std::map<PcpCache*, PcpCacheChanges::PathEditMap> _RenameChanges;
 
     // Returns the PcpLayerStackChanges for the given cache's layer stack.
-    PcpLayerStackChanges& _GetLayerStackChanges(const PcpCache* cache);
+    PcpLayerStackChanges& _GetLayerStackChanges(PcpCache* cache);
 
     // Returns the PcpLayerStackChanges for the given layer stack.
     PcpLayerStackChanges& _GetLayerStackChanges(const PcpLayerStackPtr&);
 
     // Returns the PcpCacheChanges for the given cache.
-    PcpCacheChanges& _GetCacheChanges(const PcpCache* cache);
+    PcpCacheChanges& _GetCacheChanges(PcpCache* cache);
 
     // Returns the PcpCacheChanges::PathEditMap for the given cache.
-    PcpCacheChanges::PathEditMap& _GetRenameChanges(const PcpCache* cache);
+    PcpCacheChanges::PathEditMap& _GetRenameChanges(PcpCache* cache);
 
 
     // Optimize the changes.
@@ -327,6 +337,27 @@ private:
     void _OptimizePathChanges(const PcpCache* cache, PcpCacheChanges* changes,
                               PcpCacheChanges::PathEditMap* pathChanges);
 
+    // Bitmask for change type passed to _DidChangeDependents.
+    enum _ChangeType {
+        _ChangeTypeSignificant = 1 << 0,
+        _ChangeTypeSpecs       = 1 << 1,
+        _ChangeTypeTargets     = 1 << 2,
+        _ChangeTypeConnections = 1 << 3,
+        _ChangeTypeDecorator   = 1 << 4
+    };
+
+    // Propagate changes of the type indicated by \p changeType to all 
+    // dependents of the Sd site (\p path, \p layer) in \p layerStacks.
+    // If \p fallbackToParent is \c true then, if necessary, use the parent's 
+    // dependencies to find paths that use the Sd site.
+    void _DidChangeDependents(int changeType,
+                              PcpCache* cache,
+                              const SdfLayerHandle& layer,
+                              const SdfPath& path,
+                              const SdfChangeList& layerChangeList,
+                              bool onlyExistingDependentPaths,
+                              std::string* debugSummary);
+
     // Sublayer change type for _DidChangeSublayer.
     enum _SublayerChangeType {
         _SublayerAdded,
@@ -335,21 +366,21 @@ private:
 
     // Helper function for loading a sublayer of \p layer at \p sublayerPath
     // for processing changes described by \p sublayerChange.
-    SdfLayerRefPtr _LoadSublayerForChange(const PcpCache* cache,
+    SdfLayerRefPtr _LoadSublayerForChange(PcpCache* cache,
                                           const SdfLayerHandle& layer,
                                           const std::string& sublayerPath,
                                           _SublayerChangeType changeType) const;
 
     // Helper function for loading a sublayer at \p sublayerPath
     // for processing changes described by \p sublayerChange.
-    SdfLayerRefPtr _LoadSublayerForChange(const PcpCache* cache,
+    SdfLayerRefPtr _LoadSublayerForChange(PcpCache* cache,
                                           const std::string& sublayerPath,
                                           _SublayerChangeType changeType) const;
 
     // Propagates changes to \p sublayer specified by \p sublayerChange to 
     // the dependents of that sublayer.  This includes all layer stacks
     // that include the sublayer.
-    void _DidChangeSublayerAndLayerStacks(const PcpCache* cache,
+    void _DidChangeSublayerAndLayerStacks(PcpCache* cache,
                                           const PcpLayerStackPtrVector& stacks,
                                           const std::string& sublayerPath,
                                           const SdfLayerHandle& sublayer,
@@ -358,7 +389,7 @@ private:
 
     // Propagates changes to \p sublayer specified by \p sublayerChange to 
     // the dependents of that sublayer.
-    void _DidChangeSublayer(const PcpCache* cache,
+    void _DidChangeSublayer(PcpCache* cache,
                             const PcpLayerStackPtrVector& layerStacks,
                             const std::string& sublayerPath,
                             const SdfLayerHandle& sublayer,
@@ -376,23 +407,20 @@ private:
     // Recompute the new relocations, storing the result in the Changes,
     // so that change-processing can determine which other caches it
     // needs to invalidate.
-    void _DidChangeLayerStackRelocations(
-        const TfSpan<const PcpCache*>& caches,
-        const PcpLayerStackPtr & layerStack,
-        std::string* debugSummary);
+    void _DidChangeLayerStackRelocations( const std::vector<PcpCache*>& caches,
+                                          const PcpLayerStackPtr & layerStack,
+                                          std::string* debugSummary );
 
     // Register changes to any prim indexes in \p caches that are affected
     // by a change to a layer's resolved path used by \p layerStack.
-    void _DidChangeLayerStackResolvedPath(
-        const TfSpan<const PcpCache*>& caches,
-        const PcpLayerStackPtr& layerStack,
-        std::string* debugSummary);
+    void _DidChangeLayerStackResolvedPath(const std::vector<PcpCache*>& caches,
+                                          const PcpLayerStackPtr& layerStack,
+                                          std::string* debugSummary);
 
     // The spec stack for the prim or property index at \p path must be
     // recomputed due to a change that affects only the internal representation
     // of the stack and not its contents.
-    void _DidChangeSpecStackInternal(
-        const PcpCache* cache, const SdfPath& path);
+    void _DidChangeSpecStackInternal(PcpCache* cache, const SdfPath& path);
 
 private:
     LayerStackChanges _layerStackChanges;
@@ -403,4 +431,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_PCP_CHANGES_H
+#endif // PCP_CHANGES_H

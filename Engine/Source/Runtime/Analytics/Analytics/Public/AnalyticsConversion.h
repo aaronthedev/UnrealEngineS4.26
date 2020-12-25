@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,46 +25,13 @@ inline FString AnalyticsConversionToString(const FString& Value)
 {
 	return Value;
 }
-
-#define ANALYTICS_MAX_FLOAT_VALUE_BEFORE_EXPONENTIAL_NOTATION (1.0e+15F)
-
 inline FString AnalyticsConversionToString(float Value)
 {
-	if (FPlatformMath::IsFinite(Value))
-	{
-		if (Value > ANALYTICS_MAX_FLOAT_VALUE_BEFORE_EXPONENTIAL_NOTATION || Value < -ANALYTICS_MAX_FLOAT_VALUE_BEFORE_EXPONENTIAL_NOTATION)
-		{
-			return FString::Printf(TEXT("%.9e"), Value);
-		}
-		else
-		{
-			return LexToSanitizedString(Value);
-		}
-	}
-	else
-	{
-		// This function exists to convert numbers to Json-compatible strings for analytics. Json doesn't support INF or NAN so we will just send null
-		return "null";
-	}
+	return LexToSanitizedString(Value);
 }
 inline FString AnalyticsConversionToString(double Value)
 {
-	if (FPlatformMath::IsFinite(Value))
-	{
-		if (Value > ANALYTICS_MAX_FLOAT_VALUE_BEFORE_EXPONENTIAL_NOTATION || Value < -ANALYTICS_MAX_FLOAT_VALUE_BEFORE_EXPONENTIAL_NOTATION)
-		{
-			return FString::Printf(TEXT("%.9e"), Value);
-		}
-		else
-		{
-			return LexToSanitizedString(Value);
-		}
-	}
-	else
-	{
-		// This function exists to convert numbers to Json-compatible strings for analytics. Json doesn't support INF or NAN so we will just send null
-		return "null";
-	}
+	return LexToSanitizedString(Value);
 }
 
 /** Array conversion. Creates comma-separated list. */
@@ -79,7 +46,7 @@ FString AnalyticsConversionToString(const TArray<T, AllocatorType>& ValueArray)
 		Result += TEXT(",");
 	}
 	// Remove the trailing comma (LeftChop will ensure an empty container won't crash here).
-	Result.LeftChopInline(1, false);
+	Result = Result.LeftChop(1);
 	return Result;
 }
 
@@ -97,7 +64,7 @@ FString AnalyticsConversionToString(const TMap<KeyType, ValueType, Allocator, Ke
 		Result += TEXT(",");
 	}
 	// Remove the trailing comma (LeftChop will ensure an empty container won't crash here).
-	Result.LeftChopInline(1, false);
+	Result = Result.LeftChop(1);
 	return Result;
 }
 

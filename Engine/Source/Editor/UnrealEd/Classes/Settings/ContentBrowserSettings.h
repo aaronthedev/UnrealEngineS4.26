@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ContentBrowserSettings.h: Declares the UContentBrowserSettings class.
@@ -53,10 +53,6 @@ public:
 	/** Whether the Content Browser should open the Sources Panel by default */
 	UPROPERTY(EditAnywhere, config, Category = ContentBrowser)
 	bool bShowFullCollectionNameInToolTip;
-
-	/** Enables the rendering of Material Instance thumbnail previews */
-	UPROPERTY(EditAnywhere, config, Category = ContentBrowser)
-	bool bEnableRealtimeMaterialInstanceThumbnails = true;
 
 public:
 
@@ -118,18 +114,6 @@ public:
 	bool GetDisplayFavorites() const
 	{
 		return DisplayFavorites;
-	}
-
-	/** Sets whether we should dock the collections view under the paths view */
-	void SetDockCollections(bool bInDockCollections)
-	{
-		DockCollections = bInDockCollections;
-	}
-
-	/** Gets whether we should dock the collections view under the paths view */
-	bool GetDockCollections() const
-	{
-		return DockCollections;
 	}
 
 	/** Sets whether we are allowed to display C++ folders or not */
@@ -222,9 +206,6 @@ private:
 
 	UPROPERTY(config)
 	bool DisplayFavorites;
-
-	UPROPERTY(config)
-	bool DockCollections;
 
 	UPROPERTY(config)
 	bool DisplayCppFolders;

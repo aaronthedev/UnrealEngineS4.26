@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -772,18 +772,11 @@ namespace AutomationTool
 				string[] PathDirectories = Environment.GetEnvironmentVariable("PATH").Split(Path.PathSeparator);
 				foreach (string PathDirectory in PathDirectories)
 				{
-					try
+					string TryApp = Path.Combine(PathDirectory, App);
+					if (FileExists(Quiet, TryApp))
 					{
-						string TryApp = Path.Combine(PathDirectory, App);
-						if (FileExists(Quiet, TryApp))
-						{
-							ResolvedPath = TryApp;
-							break;
-						}
-					}
-					catch(ArgumentException)	// Path.Combine can throw an exception
-					{
-						Log.TraceWarningOnce("PATH variable contains invalid characters.");
+						ResolvedPath = TryApp;
+						break;
 					}
 				}
 			}

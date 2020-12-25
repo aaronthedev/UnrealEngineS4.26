@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_Maya_Export_h
-#define Alembic_Maya_Export_h
+#ifndef _Alembic_Maya_Export_h_
+#define _Alembic_Maya_Export_h_
 
 #if defined _WIN32 || defined _WIN64
     #define ALEMBIC_MAYA_PLUGIN_EXPORT __declspec(dllexport)
@@ -43,5 +43,5 @@
     #define ALEMBIC_MAYA_PLUGIN_EXPORT __attribute__ ((visibility ("default")))
 #endif
 
-#endif /* Alembic_Maya_Export_h */
+#endif /* _Alembic_Maya_Export_h_ */
 

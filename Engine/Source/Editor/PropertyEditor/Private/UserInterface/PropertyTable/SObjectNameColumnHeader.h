@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -34,7 +34,7 @@ class SObjectNameColumnHeader : public SColumnHeader
 
 		SColumnHeader::FArguments ColumnArgs;
 		ColumnArgs.Style( Style );
-		ColumnArgs.Customization( InArgs._Customization );
+		ColumnArgs.Customization( Customization );
 
 		SColumnHeader::Construct( ColumnArgs, InPropertyTableColumn, InPropertyUtilities );
 	}

@@ -1,41 +1,26 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "UObject/Class.h"
 #include "UObject/PropertyPortFlags.h"
 #include "UObject/UnrealType.h"
-#include "UObject/UnrealTypePrivate.h"
 #include "UObject/UObjectThreadContext.h"
 #include "Serialization/ArchiveUObjectFromStructuredArchive.h"
 #include "Algo/Find.h"
 #include "UObject/LinkerLoad.h"
 
-// WARNING: This should always be the last include in any file that needs it (except .generated.h)
-#include "UObject/UndefineUPropertyMacros.h"
-
 /*-----------------------------------------------------------------------------
-	FByteProperty.
+	UByteProperty.
 -----------------------------------------------------------------------------*/
 
-IMPLEMENT_FIELD(FByteProperty)
-
-#if WITH_EDITORONLY_DATA
-FByteProperty::FByteProperty(UField* InField)
-	: TProperty_Numeric(InField)
-{
-	UByteProperty* SourceProperty = CastChecked<UByteProperty>(InField);
-	Enum = SourceProperty->Enum;
-}
-#endif // WITH_EDITORONLY_DATA
-
-void FByteProperty::GetPreloadDependencies(TArray<UObject*>& OutDeps)
+void UByteProperty::GetPreloadDependencies(TArray<UObject*>& OutDeps)
 {
 	Super::GetPreloadDependencies(OutDeps);
 	OutDeps.Add(Enum);
 }
 
-void FByteProperty::SerializeItem( FStructuredArchive::FSlot Slot, void* Value, void const* Defaults ) const
+void UByteProperty::SerializeItem( FStructuredArchive::FSlot Slot, void* Value, void const* Defaults ) const
 {
 	FArchive& UnderlyingArchive = Slot.GetUnderlyingArchive();
 
@@ -95,12 +80,12 @@ void FByteProperty::SerializeItem( FStructuredArchive::FSlot Slot, void* Value, 
 		Slot << EnumValueName;
 	}
 }
-bool FByteProperty::NetSerializeItem( FArchive& Ar, UPackageMap* Map, void* Data, TArray<uint8> * MetaData ) const
+bool UByteProperty::NetSerializeItem( FArchive& Ar, UPackageMap* Map, void* Data, TArray<uint8> * MetaData ) const
 {
 	Ar.SerializeBits( Data, Enum ? FMath::CeilLogTwo(Enum->GetMaxEnumValue()) : 8 );
 	return 1;
 }
-void FByteProperty::Serialize( FArchive& Ar )
+void UByteProperty::Serialize( FArchive& Ar )
 {
 	Super::Serialize( Ar );
 	Ar << Enum;
@@ -109,20 +94,13 @@ void FByteProperty::Serialize( FArchive& Ar )
 		Ar.Preload(Enum);
 	}
 }
-
-void FByteProperty::PostDuplicate(const FField& InField)
+void UByteProperty::AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector)
 {
-	const FByteProperty& Source = static_cast<const FByteProperty&>(InField);
-	Enum = Source.Enum;
-	Super::PostDuplicate(InField);
+	UByteProperty* This = CastChecked<UByteProperty>(InThis);
+	Collector.AddReferencedObject( This->Enum, This );
+	Super::AddReferencedObjects( This, Collector );
 }
-
-void FByteProperty::AddReferencedObjects(FReferenceCollector& Collector)
-{
-	Collector.AddReferencedObject(Enum, nullptr);
-	Super::AddReferencedObjects(Collector);
-}
-FString FByteProperty::GetCPPType( FString* ExtendedTypeText/*=NULL*/, uint32 CPPExportFlags/*=0*/ ) const
+FString UByteProperty::GetCPPType( FString* ExtendedTypeText/*=NULL*/, uint32 CPPExportFlags/*=0*/ ) const
 {
 	if (Enum)
 	{
@@ -168,7 +146,7 @@ FString FByteProperty::GetCPPType( FString* ExtendedTypeText/*=NULL*/, uint32 CP
 template <typename OldIntType>
 struct TConvertIntToEnumProperty
 {
-	static void Convert(FStructuredArchive::FSlot Slot, FByteProperty* Property, UEnum* Enum, void* Obj, const FPropertyTag& Tag)
+	static void Convert(FStructuredArchive::FSlot Slot, UByteProperty* Property, UEnum* Enum, void* Obj, const FPropertyTag& Tag)
 	{
 		OldIntType OldValue;
 		Slot << OldValue;
@@ -193,17 +171,18 @@ struct TConvertIntToEnumProperty
 	}
 };
 
-EConvertFromTypeResult FByteProperty::ConvertFromType(const FPropertyTag& Tag, FStructuredArchive::FSlot Slot, uint8* Data, UStruct* DefaultsStruct)
+EConvertFromTypeResult UByteProperty::ConvertFromType(const FPropertyTag& Tag, FStructuredArchive::FSlot Slot, uint8* Data, UStruct* DefaultsStruct)
 {
 	if (Tag.Type == NAME_ByteProperty  && ((Tag.EnumName == NAME_None) != (Enum == nullptr)))
 	{
 		// a byte property gained or lost an enum
 		// attempt to convert it
-		uint8 PreviousValue = 0;
+		uint8 PreviousValue;
 		if (Tag.EnumName == NAME_None)
 		{
 			// If we're a nested property the EnumName tag got lost. Fail to read in this case
-			FProperty* const PropertyOwner = GetOwner<FProperty>();
+			UProperty* const PropertyOwner = Cast<UProperty>(GetOuterUField());
+
 			if (PropertyOwner)
 			{
 				return EConvertFromTypeResult::UseSerializeItem;
@@ -315,7 +294,7 @@ EConvertFromTypeResult FByteProperty::ConvertFromType(const FPropertyTag& Tag, F
 	return EConvertFromTypeResult::Converted;
 }
 
-void FByteProperty::ExportTextItem( FString& ValueStr, const void* PropertyValue, const void* DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope ) const
+void UByteProperty::ExportTextItem( FString& ValueStr, const void* PropertyValue, const void* DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope ) const
 {
 	if (0 != (PortFlags & PPF_ExportCpp))
 	{
@@ -378,12 +357,12 @@ void FByteProperty::ExportTextItem( FString& ValueStr, const void* PropertyValue
 		Super::ExportTextItem(ValueStr, PropertyValue, DefaultValue, Parent, PortFlags, ExportRootScope);
 	}
 }
-const TCHAR* FByteProperty::ImportText_Internal( const TCHAR* InBuffer, void* Data, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText ) const
+const TCHAR* UByteProperty::ImportText_Internal( const TCHAR* InBuffer, void* Data, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText ) const
 {
 	if( Enum && (PortFlags & PPF_ConsoleVariable) == 0 )
 	{
 		FString Temp;
-		if (const TCHAR* Buffer = FPropertyHelpers::ReadToken(InBuffer, Temp, true))
+		if (const TCHAR* Buffer = UPropertyHelpers::ReadToken(InBuffer, Temp, true))
 		{
 			int32 EnumIndex = Enum->GetIndexByName(*Temp, EGetByNameFlags::CheckAuthoredName);
 			if (EnumIndex == INDEX_NONE && (Temp.IsNumeric() && !Algo::Find(Temp, TEXT('.'))))
@@ -418,7 +397,7 @@ const TCHAR* FByteProperty::ImportText_Internal( const TCHAR* InBuffer, void* Da
 	if (!Enum)
 	{
 		FString Temp;
-		if (const TCHAR* Buffer = FPropertyHelpers::ReadToken(InBuffer, Temp))
+		if (const TCHAR* Buffer = UPropertyHelpers::ReadToken(InBuffer, Temp))
 		{
 			const FCoreTexts& CoreTexts = FCoreTexts::Get();
 
@@ -438,9 +417,14 @@ const TCHAR* FByteProperty::ImportText_Internal( const TCHAR* InBuffer, void* Da
 	return Super::ImportText_Internal( InBuffer, Data, PortFlags, Parent, ErrorText );
 }
 
-UEnum* FByteProperty::GetIntPropertyEnum() const
+UEnum* UByteProperty::GetIntPropertyEnum() const
 {
 	return Enum;
 }
 
-#include "UObject/DefineUPropertyMacros.h"
+IMPLEMENT_CORE_INTRINSIC_CLASS(UByteProperty, UNumericProperty,
+	{
+		Class->EmitObjectReference(STRUCT_OFFSET(UByteProperty, Enum), TEXT("Enum"));
+	}
+);
+

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,7 +11,6 @@
 #include "Rendering/RenderingCommon.h"
 #include "DisplayNodes/SequencerTrackNode.h"
 #include "SectionLayout.h"
-#include "SequencerKeyRenderer.h"
 #include "SequencerKeyTimeCache.h"
 
 class FPaintArgs;
@@ -37,6 +36,15 @@ public:
 	virtual FVector2D ComputeDesiredSize(float) const override;
 
 private:
+
+	/**
+	 * Computes the geometry for a key area
+	 *
+	 * @param KeyArea			The key area to compute geometry for
+	 * @param SectionGeometry	The geometry of the section
+	 * @return The geometry of the key area
+	 */
+	FGeometry GetKeyAreaGeometry( const FSectionLayoutElement& KeyArea, const FGeometry& SectionGeometry ) const;
 
 	/**
 	 * Determines the key that is under the mouse
@@ -78,6 +86,13 @@ private:
 	virtual FReply OnMouseMove( const FGeometry& MyGeometry, const FPointerEvent& MouseEvent ) override;
 	virtual FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 	virtual void OnMouseLeave( const FPointerEvent& MouseEvent ) override;
+
+	/**
+	 * Paints keys visible inside the section
+	 *
+	 * @param InPainter			Section painter
+	 */
+	void PaintKeys( FSequencerSectionPainter& InPainter, const FWidgetStyle& InWidgetStyle ) const;
 
 	/**
 	 * Paint the easing handles for this section
@@ -144,8 +159,18 @@ private:
 	TArray<FSequencerOverlapRange> UnderlappingEasingSegments;
 	/** The signature of the track last time the overlapping segments were updated */
 	FGuid CachedTrackSignature;
-	/** structure responsible for rendering keys  */
-	UE::Sequencer::FKeyRenderer KeyRenderer;
+
+	/** Key funcs for looking up a set of cached keys by its layout element */
+	struct FLayoutElementKeyFuncs : BaseKeyFuncs<TArray<FSequencerCachedKeys, TInlineAllocator<1>>, FSectionLayoutElement>
+	{
+		enum { bAllowDuplicateKeys = false };
+
+		static const FSectionLayoutElement& GetSetKey(const TPair<FSectionLayoutElement, TArray<FSequencerCachedKeys, TInlineAllocator<1>>>& Element);
+		static bool Matches(const FSectionLayoutElement& A, const FSectionLayoutElement& B);
+		static uint32 GetKeyHash(const FSectionLayoutElement& Key);
+	};
+	/** Cache of key area positions */
+	TMap<FSectionLayoutElement, TArray<FSequencerCachedKeys, TInlineAllocator<1>>, FDefaultSetAllocator, FLayoutElementKeyFuncs> CachedKeyAreaPositions;
 
 	friend struct FSequencerSectionPainterImpl;
 };

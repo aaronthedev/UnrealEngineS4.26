@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -69,23 +69,30 @@ public:
 
 	/** Initialization constructor. */
 	FTexelToVertexMap(int32 InSizeX,int32 InSizeY):
+		Data(InSizeX * InSizeY),
 		SizeX(InSizeX),
 		SizeY(InSizeY)
 	{
 		// Clear the map to zero.
-		Data.AddZeroed(SizeX * SizeY);
+		for(int32 Y = 0;Y < SizeY;Y++)
+		{
+			for(int32 X = 0;X < SizeX;X++)
+			{
+				FMemory::Memzero(&(*this)(X,Y),sizeof(FTexelToVertex));
+			}
+		}
 	}
 
 	// Accessors.
 	FTexelToVertex& operator()(int32 X,int32 Y)
 	{
 		const uint32 TexelIndex = Y * SizeX + X;
-		return Data[TexelIndex];
+		return Data(TexelIndex);
 	}
 	const FTexelToVertex& operator()(int32 X,int32 Y) const
 	{
 		const int32 TexelIndex = Y * SizeX + X;
-		return Data[TexelIndex];
+		return Data(TexelIndex);
 	}
 
 	int32 GetSizeX() const { return SizeX; }
@@ -95,7 +102,7 @@ public:
 private:
 
 	/** The mapping data. */
-	TArray<FTexelToVertex> Data;
+	TChunkedArray<FTexelToVertex> Data;
 
 	/** The width of the mapping data. */
 	int32 SizeX;

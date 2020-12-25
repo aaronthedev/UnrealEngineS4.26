@@ -1,13 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Processor.h"
 #include "HAL/Event.h"
 #include "HAL/PlatformProcess.h"
 #include "HAL/RunnableThread.h"
-#include "StreamReader.h"
 #include "Templates/UnrealTemplate.h"
 #include "Trace/Analysis.h"
-#include "Trace/DataStream.h"
 
 namespace Trace
 {
@@ -34,37 +32,28 @@ FAnalysisProcessor::FImpl::~FImpl()
 ////////////////////////////////////////////////////////////////////////////////
 uint32 FAnalysisProcessor::FImpl::Run()
 {
-	FStreamBuffer Buffer;
-
-	while (!StopEvent->Wait(0, true))
+	for (FStreamReader Reader(DataStream); FStreamReader::FData* Data = Reader.Read();)
 	{
-		UnpausedEvent->Wait();
-
-		int32 BytesRead = Buffer.Fill([&] (uint8* Out, uint32 Size)
-		{
-			return DataStream.Read(Out, Size);
-		});
-
-		if (BytesRead <= 0)
+		if (StopEvent->Wait(0, true))
 		{
 			break;
 		}
 
-		if (!AnalysisEngine.OnData(Buffer))
+		UnpausedEvent->Wait();
+
+		if (!AnalysisEngine.OnData(*Data))
 		{
 			break;
 		}
 	}
 
-	AnalysisEngine.End();
-	bComplete = true;
 	return 0;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 bool FAnalysisProcessor::FImpl::IsActive() const
 {
-	return !bComplete;
+	return (Thread != nullptr);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -108,14 +97,7 @@ void FAnalysisProcessor::Pause(bool bState) { if (Impl != nullptr) { Impl->Pause
 ////////////////////////////////////////////////////////////////////////////////
 FAnalysisProcessor::FAnalysisProcessor(FAnalysisProcessor&& Rhs)
 {
-	this->operator = (MoveTemp(Rhs));
-}
-
-////////////////////////////////////////////////////////////////////////////////
-FAnalysisProcessor& FAnalysisProcessor::operator = (FAnalysisProcessor&& Rhs)
-{
 	Swap(Impl, Rhs.Impl);
-	return *this;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

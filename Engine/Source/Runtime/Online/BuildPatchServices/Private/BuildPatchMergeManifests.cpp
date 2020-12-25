@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BuildPatchMergeManifests.h"
 #include "HAL/ThreadSafeBool.h"
@@ -190,13 +190,9 @@ bool FBuildMergeManifests::MergeManifests(const FString& ManifestFilePathA, cons
 	// Create the new manifest
 	FBuildPatchAppManifest MergedManifest;
 
-	// Copy basic info from B, preserving the generated build ID
-	{
-		FString NewBuildId = MoveTemp(MergedManifest.ManifestMeta.BuildId);
-		MergedManifest.ManifestMeta = ManifestB->ManifestMeta;
-		MergedManifest.CustomFields = ManifestB->CustomFields;
-		MergedManifest.ManifestMeta.BuildId = MoveTemp(NewBuildId);
-	}
+	// Copy basic info from B
+	MergedManifest.ManifestMeta = ManifestB->ManifestMeta;
+	MergedManifest.CustomFields = ManifestB->CustomFields;
 
 	// Set the new version string
 	MergedManifest.ManifestMeta.BuildVersion = NewVersionString;

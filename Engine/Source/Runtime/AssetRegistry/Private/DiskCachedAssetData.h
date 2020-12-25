@@ -1,25 +1,23 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "AssetRegistry/AssetData.h"
+#include "AssetData.h"
 #include "PackageDependencyData.h"
 
 class FDiskCachedAssetData
 {
 public:
 	FDateTime Timestamp;
-	FName Extension;
 	TArray<FAssetData> AssetDataList;
 	FPackageDependencyData DependencyData;
 
 	FDiskCachedAssetData()
 	{}
 
-	FDiskCachedAssetData(const FDateTime& InTimestamp, FName InExtension)
+	FDiskCachedAssetData(const FDateTime& InTimestamp)
 		: Timestamp(InTimestamp)
-		, Extension(InExtension)
 	{}
 
 	/**
@@ -29,7 +27,6 @@ public:
 	void SerializeForCache(FArchive& Ar)
 	{
 		Ar << Timestamp;
-		Ar << Extension;
 	
 		int32 AssetDataCount = AssetDataList.Num();
 		Ar << AssetDataCount;

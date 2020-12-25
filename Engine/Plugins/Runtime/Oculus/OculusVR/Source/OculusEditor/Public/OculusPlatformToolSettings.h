@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,6 +11,7 @@ enum class EOculusPlatformTarget : uint8
 {
 	Rift UMETA(DisplayName="Rift"),
 	Quest UMETA(DisplayName="Quest"),
+	Mobile UMETA(DisplayName="Oculus Go | Gear VR"),
 	Length UMETA(DisplayName="Invalid")
 };
 

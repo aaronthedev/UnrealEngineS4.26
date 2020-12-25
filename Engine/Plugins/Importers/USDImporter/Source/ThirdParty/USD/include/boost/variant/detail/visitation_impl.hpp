@@ -13,26 +13,27 @@
 #ifndef BOOST_VARIANT_DETAIL_VISITATION_IMPL_HPP
 #define BOOST_VARIANT_DETAIL_VISITATION_IMPL_HPP
 
-#include <boost/config.hpp>
+#include "boost/config.hpp"
 
-#include <boost/variant/detail/backup_holder.hpp>
-#include <boost/variant/detail/cast_storage.hpp>
-#include <boost/variant/detail/forced_return.hpp>
-#include <boost/variant/variant_fwd.hpp> // for BOOST_VARIANT_DO_NOT_USE_VARIADIC_TEMPLATES
+#include "boost/variant/detail/backup_holder.hpp"
+#include "boost/variant/detail/cast_storage.hpp"
+#include "boost/variant/detail/forced_return.hpp"
+#include "boost/variant/detail/generic_result_type.hpp"
+#include "boost/variant/variant_fwd.hpp" // for BOOST_VARIANT_DO_NOT_USE_VARIADIC_TEMPLATES
 
-#include <boost/mpl/eval_if.hpp>
-#include <boost/mpl/bool.hpp>
-#include <boost/mpl/identity.hpp>
-#include <boost/mpl/int.hpp>
-#include <boost/mpl/next.hpp>
-#include <boost/mpl/deref.hpp>
-#include <boost/mpl/or.hpp>
-#include <boost/preprocessor/cat.hpp>
-#include <boost/preprocessor/inc.hpp>
-#include <boost/preprocessor/repeat.hpp>
-#include <boost/type_traits/is_same.hpp>
-#include <boost/type_traits/has_nothrow_copy.hpp>
-#include <boost/type_traits/is_nothrow_move_constructible.hpp>
+#include "boost/mpl/eval_if.hpp"
+#include "boost/mpl/bool.hpp"
+#include "boost/mpl/identity.hpp"
+#include "boost/mpl/int.hpp"
+#include "boost/mpl/next.hpp"
+#include "boost/mpl/deref.hpp"
+#include "boost/mpl/or.hpp"
+#include "boost/preprocessor/cat.hpp"
+#include "boost/preprocessor/inc.hpp"
+#include "boost/preprocessor/repeat.hpp"
+#include "boost/type_traits/is_same.hpp"
+#include "boost/type_traits/has_nothrow_copy.hpp"
+#include "boost/type_traits/is_nothrow_move_constructible.hpp"
 
 #if BOOST_WORKAROUND(BOOST_MSVC, >= 1400) 
 # pragma warning (push) 
@@ -48,7 +49,7 @@
 #if !defined(BOOST_VARIANT_VISITATION_UNROLLING_LIMIT)
 
 #ifndef BOOST_VARIANT_DO_NOT_USE_VARIADIC_TEMPLATES
-#   include <boost/mpl/limits/list.hpp>
+#   include "boost/mpl/limits/list.hpp"
 #   define BOOST_VARIANT_VISITATION_UNROLLING_LIMIT   \
         BOOST_MPL_LIMIT_LIST_SIZE
 #else
@@ -101,7 +102,8 @@ struct visitation_impl_step< LastIter,LastIter >
 //
 
 template <typename Visitor, typename VoidPtrCV, typename T>
-inline typename Visitor::result_type
+inline
+    BOOST_VARIANT_AUX_GENERIC_RESULT_TYPE(typename Visitor::result_type)
 visitation_impl_invoke_impl(
       int, Visitor& visitor, VoidPtrCV storage, T*
     , mpl::true_// never_uses_backup
@@ -113,7 +115,8 @@ visitation_impl_invoke_impl(
 }
 
 template <typename Visitor, typename VoidPtrCV, typename T>
-inline typename Visitor::result_type
+inline
+    BOOST_VARIANT_AUX_GENERIC_RESULT_TYPE(typename Visitor::result_type)
 visitation_impl_invoke_impl(
       int internal_which, Visitor& visitor, VoidPtrCV storage, T*
     , mpl::false_// never_uses_backup
@@ -134,7 +137,8 @@ visitation_impl_invoke_impl(
 }
 
 template <typename Visitor, typename VoidPtrCV, typename T, typename NoBackupFlag>
-inline typename Visitor::result_type
+inline
+    BOOST_VARIANT_AUX_GENERIC_RESULT_TYPE(typename Visitor::result_type)
 visitation_impl_invoke(
       int internal_which, Visitor& visitor, VoidPtrCV storage, T* t
     , NoBackupFlag
@@ -154,7 +158,8 @@ visitation_impl_invoke(
 }
 
 template <typename Visitor, typename VoidPtrCV, typename NBF>
-inline typename Visitor::result_type
+inline
+    BOOST_VARIANT_AUX_GENERIC_RESULT_TYPE(typename Visitor::result_type)
 visitation_impl_invoke(int, Visitor&, VoidPtrCV, apply_visitor_unrolled*, NBF, long)
 {
     // should never be here at runtime!
@@ -173,7 +178,8 @@ template <
     , typename Visitor, typename VPCV
     , typename NBF
     >
-inline typename Visitor::result_type
+inline
+    BOOST_VARIANT_AUX_GENERIC_RESULT_TYPE(typename Visitor::result_type)
 visitation_impl(
       int, int, Visitor&, VPCV
     , mpl::true_ // is_apply_visitor_unrolled
@@ -190,7 +196,8 @@ template <
     , typename Visitor, typename VoidPtrCV
     , typename NoBackupFlag
     >
-inline typename Visitor::result_type
+inline
+    BOOST_VARIANT_AUX_GENERIC_RESULT_TYPE(typename Visitor::result_type)
 visitation_impl(
       const int internal_which, const int logical_which
     , Visitor& visitor, VoidPtrCV storage
@@ -251,7 +258,7 @@ visitation_impl(
     typedef typename is_same< next_type,apply_visitor_unrolled >::type
         is_apply_visitor_unrolled;
 
-    return detail::variant::visitation_impl(
+    return visitation_impl(
           internal_which, logical_which
         , visitor, storage
         , is_apply_visitor_unrolled()

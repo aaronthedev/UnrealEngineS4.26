@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -38,17 +38,6 @@ public:
 	 * @return true if the file is supported, false otherwise.
 	 */
 	virtual bool FactoryCanImport(const FString& Filename);
-
-	/**
-	 * Whether the factory is checking for SlowTask::ShouldCancel()
-	 * while importing and aborting the import when appropriate.
-	 *
-	 * @return true if factory import can be canceled.
-	 */
-	virtual bool CanImportBeCanceled() const
-	{
-		return false;
-	}
 
 	/**
 	 * Whether the specified file can be imported by this factory. (Implemented in script)
@@ -113,12 +102,6 @@ public:
 	virtual UObject* ImportObject(UClass* InClass, UObject* InOuter, FName InName, EObjectFlags Flags, const FString& Filename, const TCHAR* Parms, bool& OutCanceled);
 
 	/**
-	 * Returns an array of all the additional objects created during the last imports, as some factories may produce more than one object.
-	 * The internal array is cleared before each import and upon Cleanup().
-	 */
-	const TArray<UObject*>& GetAdditionalImportedObjects() const { return AdditionalImportedObjects; }
-
-	/**
 	 * Import object(s) using a task via script
 	 *
 	 * @param InTask
@@ -180,7 +163,7 @@ public:
 	virtual void GetSupportedFileExtensions(TArray<FString>& OutExtensions) const;
 
 	/** Do clean up after importing is done. Will be called once for multi batch import. */
-	virtual void CleanUp() { AdditionalImportedObjects.Empty(); }
+	virtual void CleanUp() {}
 	/**
 	 * Creates an asset if it doesn't exist. If it does exist then it overwrites it if possible. If it can not overwrite then it will delete and replace. If it can not delete, it will return nullptr.
 	 * 
@@ -217,7 +200,7 @@ public:
 	/**
 	 * @return true if this factory is being used for automated import.  Dialogs and user input should be disabled if this method returns true
 	 */
-	virtual bool IsAutomatedImport() const;
+	bool IsAutomatedImport() const;
 public:
 
 	/**
@@ -412,7 +395,5 @@ protected:
 	*/
 	UPROPERTY()
 	int32 OverwriteYesOrNoToAllState;
-
-	TArray<UObject*> AdditionalImportedObjects;
 
 };

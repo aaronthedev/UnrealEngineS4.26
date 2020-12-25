@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -6,30 +6,31 @@ public class PicpMPCDI : ModuleRules
 {
 	public PicpMPCDI(ReadOnlyTargetRules Target) : base(Target)
 	{
-		PublicIncludePathModuleNames.AddRange(
-			new string[] {
-				"PicpProjection"
-			});
-
 		PrivateIncludePaths.AddRange(
 			new string[] {
-				"MPCDI/Private"
+				"PicpMPCDI/Private",
+				"PicpProjection/Private",
+				"MPCDI/Private"				
 			});
 
 		PublicDependencyModuleNames.AddRange(
-			new string[] {
+			new string[]
+			{
 				"Core",
 				"CoreUObject",
-				"Engine"
+				"Engine",
 			});
 
 		PrivateDependencyModuleNames.AddRange(
-			new string[] {
+			new string[]
+			{
 				"MPCDI",
-				"Projects",
+				"PicpProjection",
+				"Projects",				
 				"RenderCore",
-				"RHI"
-			});
+                "RHI"
+			}
+		);
 
 		if (Target.bBuildEditor == true)
 		{

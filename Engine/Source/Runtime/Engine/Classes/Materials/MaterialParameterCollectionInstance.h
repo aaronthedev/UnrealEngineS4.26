@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  * MaterialParameterCollectionInstance.h 
@@ -49,12 +49,6 @@ class ENGINE_API UMaterialParameterCollectionInstance : public UObject
 		return Collection;
 	}
 
-	DECLARE_MULTICAST_DELEGATE(FOnParametersUpdated);
-	FOnParametersUpdated& OnParametersUpdated()
-	{
-		return ParametersUpdatedDelegate;
-	}
-
 	void UpdateRenderState(bool bRecreateUniformBuffer);
 
 	void DeferredUpdateRenderState(bool bRecreateUniformBuffer);
@@ -79,9 +73,6 @@ protected:
 
 	/** Instance resource which stores the rendering thread representation of this instance. */
 	FMaterialParameterCollectionInstanceResource* Resource;
-
-	/** Delegate for when parameter values are updated */
-	FOnParametersUpdated ParametersUpdatedDelegate;
 
 	/** Boils down the instance overrides and default values into data to be set on the uniform buffer. */
 	void GetParameterData(TArray<FVector4>& ParameterData) const;

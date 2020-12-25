@@ -1,17 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "ProfilingDebugging/PlatformFileTrace.h"
 
-PRAGMA_DISABLE_UNSAFE_TYPECAST_WARNINGS
-
 class FWindowsReadRequest;
 class FWindowsAsyncReadFileHandle;
-
-#if !defined(USE_WINAPI_CREATEFILE2)
-	#define USE_WINAPI_CREATEFILE2 0
-#endif
 
 class FWindowsReadRequestWorker : public FNonAbandonableTask
 {
@@ -194,7 +188,7 @@ public:
 
 			for (int32 Try = 0; bFailed && Try < 10; Try++)
 			{
-#if USE_WINAPI_CREATEFILE2
+#if PLATFORM_XBOXONE
 				DWORD  Access = GENERIC_READ;
 				DWORD  WinFlags = FILE_SHARE_READ;
 				DWORD  Create = OPEN_EXISTING;
@@ -341,14 +335,9 @@ public:
 		Size = InFileSize;
 		SetComplete();
 	}
-
 	virtual void WaitCompletionImpl(float TimeLimitSeconds) override
 	{
-		// Even though SetComplete called in the constructor and sets bCompleteAndCallbackCalled=true, we still need to implement WaitComplete as
-		// the CompleteCallback can end up starting async tasks that can overtake the constructor execution and need to wait for the constructor to finish.
-		while (!*(volatile bool*)&bCompleteAndCallbackCalled);
 	}
-
 	virtual void CancelImpl()
 	{
 	}
@@ -362,14 +351,9 @@ public:
 	{
 		SetComplete();
 	}
-
 	virtual void WaitCompletionImpl(float TimeLimitSeconds) override
 	{
-		// Even though SetComplete called in the constructor and sets bCompleteAndCallbackCalled=true, we still need to implement WaitComplete as
-		// the CompleteCallback can end up starting async tasks that can overtake the constructor execution and need to wait for the constructor to finish.
-		while (!*(volatile bool*)&bCompleteAndCallbackCalled);
 	}
-
 	virtual void CancelImpl()
 	{
 	}
@@ -408,19 +392,8 @@ public:
 		check(!LiveRequests.Num()); // must delete all requests before you delete the handle
 #endif
 		TRACE_PLATFORMFILE_BEGIN_CLOSE(FileHandle);
-		BOOL CloseResult = CloseHandle(FileHandle);
-#if PLATFORMFILETRACE_ENABLED
-		if (CloseResult)
-		{
-			TRACE_PLATFORMFILE_END_CLOSE(FileHandle);
-		}
-		else
-		{
-			TRACE_PLATFORMFILE_FAIL_CLOSE(FileHandle);
-		}
-#else
-		(void)CloseResult;
-#endif
+		CloseHandle(FileHandle);
+		TRACE_PLATFORMFILE_END_CLOSE();
 	}
 	void RemoveRequest(FWindowsReadRequest* Req)
 	{
@@ -516,5 +489,3 @@ const TCHAR* FWindowsReadRequest::GetFileNameForErrorMessagesAndPanicRetry()
 {
 	return *Owner->FileNameForErrorMessagesAndPanicRetry;
 }
-
-PRAGMA_ENABLE_UNSAFE_TYPECAST_WARNINGS

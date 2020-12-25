@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TutorialStateSettings.h"
 #include "Templates/SubclassOf.h"
 #include "EditorTutorial.h"
-#include "Misc/PackageName.h"
 
 UTutorialStateSettings::UTutorialStateSettings(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -17,14 +16,11 @@ void UTutorialStateSettings::PostInitProperties()
 
 	for(const auto& Progress : TutorialsProgress)
 	{
-		if (FPackageName::IsValidObjectPath(*Progress.Tutorial.ToString()))
+		TSubclassOf<UEditorTutorial> TutorialClass = LoadClass<UEditorTutorial>(NULL, *Progress.Tutorial.ToString(), NULL, LOAD_None, NULL);
+		if(TutorialClass != nullptr)
 		{
-			TSubclassOf<UEditorTutorial> TutorialClass = LoadClass<UEditorTutorial>(NULL, *Progress.Tutorial.ToString(), NULL, LOAD_None, NULL);
-			if (TutorialClass != nullptr)
-			{
-				UEditorTutorial* Tutorial = TutorialClass->GetDefaultObject<UEditorTutorial>();
-				ProgressMap.Add(Tutorial, Progress);
-			}
+			UEditorTutorial* Tutorial = TutorialClass->GetDefaultObject<UEditorTutorial>();
+			ProgressMap.Add(Tutorial, Progress);
 		}
 	}
 }

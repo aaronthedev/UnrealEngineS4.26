@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Factories/FbxSceneImportData.h"
 #include "Serialization/JsonReader.h"
@@ -17,7 +17,7 @@ UFbxSceneImportData::UFbxSceneImportData(const FObjectInitializer& ObjectInitial
 	bCreateFolderHierarchy = false;
 	bForceFrontXAxis = false;
 	bImportScene = true;
-	HierarchyType = (int32)EFBXSceneOptionsCreateHierarchyType::FBXSOCHT_CreateLevelActors;
+	HierarchyType = FBXSOCHT_CreateLevelActors;
 #endif
 }
 
@@ -124,7 +124,7 @@ UnFbx::FBXImportOptions *JSONToFbxOption(TSharedPtr<FJsonValue> OptionJsonValue,
 	
 	if (OptionObj->TryGetObjectField("OverlappingThresholds", DataObj))
 	{
-		double Pos, NTB, UV, MorphPos;
+		double Pos, NTB, UV;
 		if ((*DataObj)->TryGetNumberField("ThresholdPosition", Pos))
 		{
 			Option->OverlappingThresholds.ThresholdPosition = (float)Pos;
@@ -136,10 +136,6 @@ UnFbx::FBXImportOptions *JSONToFbxOption(TSharedPtr<FJsonValue> OptionJsonValue,
 		if ((*DataObj)->TryGetNumberField("ThresholdUV", UV))
 		{
 			Option->OverlappingThresholds.ThresholdUV = (float)UV;
-		}
-		if ((*DataObj)->TryGetNumberField("MorphThresholdPosition", MorphPos))
-		{
-			Option->OverlappingThresholds.MorphThresholdPosition = (float)MorphPos;
 		}
 	}
 
@@ -205,7 +201,7 @@ FString FbxOptionToJSON(FString OptionName, UnFbx::FBXImportOptions *Option)
 		);
 
 	//Skeletal mesh options
-	JsonString += FString::Printf(TEXT("\"bUpdateSkeletonReferencePose\" : \"%d\", \"bUseT0AsRefPose\" : \"%d\", \"bPreserveSmoothingGroups\" : \"%d\", \"bImportMeshesInBoneHierarchy\" : \"%d\", \"bImportMorphTargets\" : \"%d\", \"OverlappingThresholds\" : {\"ThresholdPosition\" : \"%f\", \"ThresholdTangentNormal\" : \"%f\", \"ThresholdUV\" : \"%f\", \"MorphThresholdPosition\" : \"%f\"},"),
+	JsonString += FString::Printf(TEXT("\"bUpdateSkeletonReferencePose\" : \"%d\", \"bUseT0AsRefPose\" : \"%d\", \"bPreserveSmoothingGroups\" : \"%d\", \"bImportMeshesInBoneHierarchy\" : \"%d\", \"bImportMorphTargets\" : \"%d\", \"OverlappingThresholds\" : {\"ThresholdPosition\" : \"%f\", \"ThresholdTangentNormal\" : \"%f\", \"ThresholdUV\" : \"%f\"},"),
 		Option->bUpdateSkeletonReferencePose ? 1 : 0,
 		Option->bUseT0AsRefPose ? 1 : 0,
 		Option->bPreserveSmoothingGroups ? 1 : 0,
@@ -213,8 +209,7 @@ FString FbxOptionToJSON(FString OptionName, UnFbx::FBXImportOptions *Option)
 		Option->bImportMorph ? 1 : 0,
 		Option->OverlappingThresholds.ThresholdPosition,
 		Option->OverlappingThresholds.ThresholdTangentNormal,
-		Option->OverlappingThresholds.ThresholdUV,
-		Option->OverlappingThresholds.MorphThresholdPosition
+		Option->OverlappingThresholds.ThresholdUV
 		);
 
 	JsonString += FString::Printf(TEXT("\"MaterialBasePath\" : \"%s\"}"), *(Option->MaterialBasePath.ToString()));
@@ -320,7 +315,7 @@ FString UFbxSceneImportData::ToJson() const
 	{
 		Json += TEXT(", \"MeshInfo\" : [");
 		bool bFirstNode = true;
-		for (const TSharedPtr<FFbxMeshInfo>& MeshInfo : SceneInfoSourceData->MeshInfo)
+		for (const TSharedPtr<FFbxMeshInfo> MeshInfo : SceneInfoSourceData->MeshInfo)
 		{
 			if (!MeshInfo.IsValid())
 			{

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AutomationWorkerModule.h"
 
@@ -27,8 +27,6 @@
 
 
 #define LOCTEXT_NAMESPACE "AutomationTest"
-
-DEFINE_LOG_CATEGORY_STATIC(LogAutomationWorker, Log, All);
 
 IMPLEMENT_MODULE(FAutomationWorkerModule, AutomationWorker);
 
@@ -375,7 +373,6 @@ void FAutomationWorkerModule::HandlePreTestingEvent()
 {
 #if WITH_ENGINE
 	FAutomationTestFramework::Get().OnScreenshotCaptured().BindRaw(this, &FAutomationWorkerModule::HandleScreenShotCapturedWithName);
-	FAutomationTestFramework::Get().OnScreenshotAndTraceCaptured().BindRaw(this, &FAutomationWorkerModule::HandleScreenShotAndTraceCapturedWithName);
 #endif
 }
 
@@ -383,7 +380,6 @@ void FAutomationWorkerModule::HandlePreTestingEvent()
 void FAutomationWorkerModule::HandlePostTestingEvent()
 {
 #if WITH_ENGINE
-	FAutomationTestFramework::Get().OnScreenshotAndTraceCaptured().Unbind();
 	FAutomationTestFramework::Get().OnScreenshotCaptured().Unbind();
 #endif
 }
@@ -416,12 +412,6 @@ void FAutomationWorkerModule::HandlePerformanceDataRetrieved(const FAutomationWo
 #if WITH_ENGINE
 void FAutomationWorkerModule::HandleScreenShotCapturedWithName(const TArray<FColor>& RawImageData, const FAutomationScreenshotData& Data)
 {
-	HandleScreenShotAndTraceCapturedWithName(RawImageData, TArray<uint8>(), Data);
-}
-
-void FAutomationWorkerModule::HandleScreenShotAndTraceCapturedWithName(const TArray<FColor>& RawImageData, const TArray<uint8>& CapturedFrameTrace, const FAutomationScreenshotData& Data)
-{
-#if WITH_AUTOMATION_TESTS
 	int32 NewHeight = Data.Height;
 	int32 NewWidth = Data.Width;
 
@@ -431,64 +421,30 @@ void FAutomationWorkerModule::HandleScreenShotAndTraceCapturedWithName(const TAr
 	FAutomationScreenshotMetadata Metadata(Data);
 		
 	// Send the screen shot if we have a target
-	if (TestRequesterAddress.IsValid())
+	if( TestRequesterAddress.IsValid() )
 	{
 		FAutomationWorkerScreenImage* Message = new FAutomationWorkerScreenImage();
 
-		Message->ScreenShotName = Data.ScreenshotName;
+		Message->ScreenShotName = FPaths::ProjectDir() / Data.Path;
+		FPaths::MakePathRelativeTo(Message->ScreenShotName, *FPaths::AutomationDir());
 		Message->ScreenImage = CompressedBitmap;
-		Message->FrameTrace = CapturedFrameTrace;
 		Message->Metadata = Metadata;
-
-		UE_LOG(LogAutomationWorker, Log, TEXT("Sending screenshot %s"), *Message->ScreenShotName);
-
 		MessageEndpoint->Send(Message, TestRequesterAddress);
 	}
 	else
 	{
 		//Save locally
 		const bool bTree = true;
-
-		FString LocalFile = AutomationCommon::GetLocalPathForScreenshot(Data.ScreenshotName);
-		FString LocalTraceFile = FPaths::ChangeExtension(LocalFile, TEXT(".rdc"));
-		FString DirectoryPath = FPaths::GetPath(LocalFile);
-
-		UE_LOG(LogAutomationWorker, Log, TEXT("Saving screenshot %s as %s"),*Data.ScreenshotName, *LocalFile);
-
-		if (!IFileManager::Get().MakeDirectory(*DirectoryPath, bTree))
-		{
-			UE_LOG(LogAutomationWorker, Error, TEXT("Failed to create directory %s for incoming screenshot"), *DirectoryPath);
-			return;
-		}
-
-		if (!FFileHelper::SaveArrayToFile(CompressedBitmap, *LocalFile))
-		{
-			uint32 WriteErrorCode = FPlatformMisc::GetLastError();
-			TCHAR WriteErrorBuffer[2048];
-			FPlatformMisc::GetSystemErrorMessage(WriteErrorBuffer, 2048, WriteErrorCode);
-			UE_LOG(LogAutomationWorker, Warning, TEXT("Fail to save screenshot to %s. WriteError: %u (%s)"), *LocalFile, WriteErrorCode, WriteErrorBuffer);
-			return;
-		}
-
-		if (CapturedFrameTrace.Num() > 0)
-		{
-			if (!FFileHelper::SaveArrayToFile(CapturedFrameTrace, *LocalTraceFile))
-			{
-				uint32 WriteErrorCode = FPlatformMisc::GetLastError();
-				TCHAR WriteErrorBuffer[2048];
-				FPlatformMisc::GetSystemErrorMessage(WriteErrorBuffer, 2048, WriteErrorCode);
-				UE_LOG(LogAutomationWorker, Warning, TEXT("Failed to save frame trace to %s. WriteError: %u (%s)"), *LocalTraceFile, WriteErrorCode, WriteErrorBuffer);
-			}
-		}
+		IFileManager::Get().MakeDirectory(*FPaths::GetPath(Data.Path), bTree);
+		FFileHelper::SaveArrayToFile(CompressedBitmap, *Data.Path);
 
 		FString Json;
 		if ( FJsonObjectConverter::UStructToJsonObjectString(Metadata, Json) )
 		{
-			FString MetadataPath = FPaths::ChangeExtension(LocalFile, TEXT("json"));
+			FString MetadataPath = FPaths::ChangeExtension(Data.Path, TEXT("json"));
 			FFileHelper::SaveStringToFile(Json, *MetadataPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 		}
 	}
-#endif // WITH_AUTOMATION_TESTS
 }
 #endif
 
@@ -530,7 +486,7 @@ void FAutomationWorkerModule::SendAnalyticsEvents(TArray<FString>& InAnalyticsIt
 		if( EventString.EndsWith( TEXT( ",PERF" ) ) )
 		{
 			// Chop the ",PERF" off the end
-			EventString.LeftInline( EventString.Len() - 5, false );
+			EventString = EventString.Left( EventString.Len() - 5 );
 
 			FAutomationPerformanceSnapshot PerfSnapshot;
 			PerfSnapshot.FromCommaDelimitedString( EventString );

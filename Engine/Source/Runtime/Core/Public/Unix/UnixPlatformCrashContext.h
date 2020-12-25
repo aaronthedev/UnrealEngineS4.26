@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -106,10 +106,6 @@ struct CORE_API FUnixCrashContext : public FGenericCrashContext
 	 * Sets the FirstCrashHandlerFrame only if it has not been set before
 	 */
 	void SetFirstCrashHandlerFrame(uint64* ProgramCounter);
-
-	virtual void GetPortableCallStack(const uint64* StackFrames, int32 NumStackFrames, TArray<FCrashStackFrame>& OutCallStack) const override;
-
-	void AddPlatformSpecificProperties() const;
 
 protected:
 	/**

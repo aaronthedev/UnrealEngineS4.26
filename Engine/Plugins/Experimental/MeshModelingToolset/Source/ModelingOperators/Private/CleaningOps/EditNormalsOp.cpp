@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CleaningOps/EditNormalsOp.h"
 
@@ -37,7 +37,7 @@ void FEditNormalsOp::CalculateResult(FProgressCancel* Progress)
 	}
 
 	// if you split normals you must always recompute as well
-	bool bNeedsRecompute = bRecomputeNormals || SplitNormalMethod != ESplitNormalMethod::UseExistingTopology;
+	bool bNeedsRecompute = bRecomputeNormals || bSplitNormals;
 
 	if (bFixInconsistentNormals)
 	{
@@ -84,32 +84,14 @@ void FEditNormalsOp::CalculateResult(FProgressCancel* Progress)
 	float NormalDotProdThreshold = FMathf::Cos(NormalSplitThreshold * FMathf::DegToRad);
 
 	FMeshNormals FaceNormals(ResultMesh.Get());
-	if (SplitNormalMethod != ESplitNormalMethod::UseExistingTopology)
+	if (bSplitNormals)
 	{
-		if (SplitNormalMethod == ESplitNormalMethod::FaceNormalThreshold)
+		FaceNormals.ComputeTriangleNormals();
+		const TArray<FVector3d>& Normals = FaceNormals.GetNormals();
+		ResultMesh->Attributes()->PrimaryNormals()->CreateFromPredicate([&Normals, &NormalDotProdThreshold](int VID, int TA, int TB)
 		{
-			FaceNormals.ComputeTriangleNormals();
-			const TArray<FVector3d>& Normals = FaceNormals.GetNormals();
-			ResultMesh->Attributes()->PrimaryNormals()->CreateFromPredicate([&Normals, &NormalDotProdThreshold](int VID, int TA, int TB)
-			{
-				return Normals[TA].Dot(Normals[TB]) > NormalDotProdThreshold;
-			}, 0);
-		}
-		else if (SplitNormalMethod == ESplitNormalMethod::PerTriangle)
-		{
-			FMeshNormals::InitializeMeshToPerTriangleNormals(ResultMesh.Get());
-		}
-		else if (SplitNormalMethod == ESplitNormalMethod::PerVertex)
-		{
-			FMeshNormals::InitializeOverlayToPerVertexNormals(ResultMesh->Attributes()->PrimaryNormals(), false);
-		}
-		else // SplitNormalMethod == ESplitNormalMethod::FaceGroupID
-		{
-			ResultMesh->Attributes()->PrimaryNormals()->CreateFromPredicate([this](int VID, int TA, int TB)
-			{
-				return ResultMesh->GetTriangleGroup(TA) == ResultMesh->GetTriangleGroup(TB);
-			}, 0);
-		}
+			return Normals[TA].Dot(Normals[TB]) > NormalDotProdThreshold;
+		}, 0);
 	}
 
 	if (Progress->Cancelled())
@@ -132,7 +114,7 @@ void FEditNormalsOp::CalculateResult(FProgressCancel* Progress)
 		return;
 	}
 
-	if (SplitNormalMethod == ESplitNormalMethod::FaceNormalThreshold && bAllowSharpVertices)
+	if (bAllowSharpVertices)
 	{
 		ResultMesh->Attributes()->PrimaryNormals()->SplitVerticesWithPredicate([this, &FaceNormals, &NormalDotProdThreshold](int ElementID, int TriID)
 		{

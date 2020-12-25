@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "HAL/FileManager.h"
@@ -57,41 +57,6 @@ void FSlateStyleSet::GetResources(TArray< const FSlateBrush* >& OutResources) co
 
 	// Append this style's resources to OutResources.
 	OutResources.Append(SlateBrushResources);
-}
-
-TArray<FName> FSlateStyleSet::GetEntriesUsingBrush(const FName BrushName) const
-{
-	TArray<FName> FoundStyles;
-
-	// Collection for this style's brush resources.
-	for (TMap< FName, FSlateBrush* >::TConstIterator It(BrushResources); It; ++It)
-	{
-		if (It.Value()->GetResourceName() == BrushName)
-		{
-			FoundStyles.Add(It.Key());
-		}
-	}
-
-	//Gather resources from our definitions
-	TArray<const FSlateBrush*> BrushesInStyle;
-	BrushesInStyle.Reserve(20);
-
-	for (TMap< FName, TSharedRef< struct FSlateWidgetStyle > >::TConstIterator It(WidgetStyleValues); It; ++It)
-	{
-		It.Value()->GetResources(BrushesInStyle);
-
-		for (const FSlateBrush* Brush : BrushesInStyle)
-		{
-			if (Brush->GetResourceName() == BrushName)
-			{
-				FoundStyles.Add(It.Key());
-			}
-		}
-
-		BrushesInStyle.Reset();
-	}
-
-	return FoundStyles;
 }
 
 void FSlateStyleSet::SetContentRoot(const FString& InContentRootDir)
@@ -164,7 +129,7 @@ FString FSlateStyleSet::RootToCoreContentDir(const FString& RelativePath)
 	return ( CoreContentRootDir / RelativePath );
 }
 
-float FSlateStyleSet::GetFloat(const FName PropertyName, const ANSICHAR* Specifier, float DefaultValue) const
+float FSlateStyleSet::GetFloat(const FName PropertyName, const ANSICHAR* Specifier) const
 {
 	const float* Result = FloatValues.Find(Join(PropertyName, Specifier));
 
@@ -176,10 +141,10 @@ float FSlateStyleSet::GetFloat(const FName PropertyName, const ANSICHAR* Specifi
 	}
 #endif
 
-	return Result ? *Result : DefaultValue;
+	return Result ? *Result : FStyleDefaults::GetFloat();
 }
 
-FVector2D FSlateStyleSet::GetVector(const FName PropertyName, const ANSICHAR* Specifier, FVector2D DefaultValue) const
+FVector2D FSlateStyleSet::GetVector(const FName PropertyName, const ANSICHAR* Specifier) const
 {
 	const FVector2D* const Result = Vector2DValues.Find(Join(PropertyName, Specifier));
 
@@ -191,10 +156,10 @@ FVector2D FSlateStyleSet::GetVector(const FName PropertyName, const ANSICHAR* Sp
 	}
 #endif
 
-	return Result ? *Result : DefaultValue;
+	return Result ? *Result : FStyleDefaults::GetVector2D();
 }
 
-const FLinearColor& FSlateStyleSet::GetColor(const FName PropertyName, const ANSICHAR* Specifier, const FLinearColor& DefaultValue) const
+const FLinearColor& FSlateStyleSet::GetColor(const FName PropertyName, const ANSICHAR* Specifier) const
 {
 	const FName LookupName(Join(PropertyName, Specifier));
 	const FLinearColor* Result = ColorValues.Find(LookupName);
@@ -207,11 +172,13 @@ const FLinearColor& FSlateStyleSet::GetColor(const FName PropertyName, const ANS
 	}
 #endif
 
-	return Result ? *Result : DefaultValue;
+	return Result ? *Result : FStyleDefaults::GetColor();
 }
 
-const FSlateColor FSlateStyleSet::GetSlateColor(const FName PropertyName, const ANSICHAR* Specifier, const FSlateColor& DefaultValue) const
+const FSlateColor FSlateStyleSet::GetSlateColor(const FName PropertyName, const ANSICHAR* Specifier) const
 {
+	static FSlateColor UseForegroundStatic = FSlateColor::UseForeground();
+
 	const FName StyleName(Join(PropertyName, Specifier));
 	const FSlateColor* Result = SlateColorValues.Find(StyleName);
 
@@ -220,7 +187,7 @@ const FSlateColor FSlateStyleSet::GetSlateColor(const FName PropertyName, const 
 		const FLinearColor* LinearColorLookup = ColorValues.Find(StyleName);
 		if ( LinearColorLookup == nullptr )
 		{
-			return DefaultValue;
+			return UseForegroundStatic;
 		}
 
 		return *LinearColorLookup;
@@ -237,7 +204,7 @@ const FSlateColor FSlateStyleSet::GetSlateColor(const FName PropertyName, const 
 	return *Result;
 }
 
-const FMargin& FSlateStyleSet::GetMargin(const FName PropertyName, const ANSICHAR* Specifier, const FMargin& DefaultValue) const
+const FMargin& FSlateStyleSet::GetMargin(const FName PropertyName, const ANSICHAR* Specifier) const
 {
 	const FName StyleName(Join(PropertyName, Specifier));
 	const FMargin* const Result = MarginValues.Find(StyleName);
@@ -250,7 +217,7 @@ const FMargin& FSlateStyleSet::GetMargin(const FName PropertyName, const ANSICHA
 	}
 #endif
 
-	return Result ? *Result : DefaultValue;
+	return Result ? *Result : FStyleDefaults::GetMargin();
 }
 
 const FSlateBrush* FSlateStyleSet::GetBrush(const FName PropertyName, const ANSICHAR* Specifier) const

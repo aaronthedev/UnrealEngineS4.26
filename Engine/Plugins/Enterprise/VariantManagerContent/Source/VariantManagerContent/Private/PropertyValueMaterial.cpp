@@ -1,17 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PropertyValueMaterial.h"
 
-#include "VariantManagerContentLog.h"
-#include "VariantObjectBinding.h"
-
-#include "Components/MeshComponent.h"
 #include "CoreMinimal.h"
+#include "Components/MeshComponent.h"
 #include "HAL/UnrealMemory.h"
+#include "VariantObjectBinding.h"
 
 #define LOCTEXT_NAMESPACE "PropertyValueMaterial"
 
-FProperty* UPropertyValueMaterial::OverrideMaterialsProperty = nullptr;
+UProperty* UPropertyValueMaterial::OverrideMaterialsProperty = nullptr;
 
 UPropertyValueMaterial::UPropertyValueMaterial(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -62,7 +60,6 @@ bool UPropertyValueMaterial::Resolve(UObject* Object)
 	// is just to get ParentContainerAddress pointing at the target UMeshComponent, as we
 	// apply/record values by calling the respective functions instead
 	FCapturedPropSegment OverrideInner = CapturedPropSegments.Pop();
-	ParentContainerObject = Object;
 	bool bResolveSucceeded = ResolvePropertiesRecursive(Object->GetClass(), Object, 0);
 	CapturedPropSegments.Add(OverrideInner);
 
@@ -98,11 +95,11 @@ bool UPropertyValueMaterial::Resolve(UObject* Object)
 	return true;
 }
 
-bool UPropertyValueMaterial::ContainsProperty(const FProperty* Prop) const
+bool UPropertyValueMaterial::ContainsProperty(const UProperty* Prop) const
 {
 	if (OverrideMaterialsProperty == nullptr)
 	{
-		if (FArrayProperty* ArrayProp = FindFProperty<FArrayProperty>(UMeshComponent::StaticClass(), GET_MEMBER_NAME_CHECKED(UMeshComponent, OverrideMaterials)))
+		if (UArrayProperty* ArrayProp = FindField<UArrayProperty>(UMeshComponent::StaticClass(), GET_MEMBER_NAME_CHECKED(UMeshComponent, OverrideMaterials)))
 		{
 			OverrideMaterialsProperty = ArrayProp->Inner;
 		}
@@ -212,9 +209,9 @@ void UPropertyValueMaterial::ApplyDataToResolvedObject()
 	OnPropertyApplied.Broadcast();
 }
 
-FFieldClass* UPropertyValueMaterial::GetPropertyClass() const
+UClass* UPropertyValueMaterial::GetPropertyClass() const
 {
-	return FObjectProperty::StaticClass();
+	return UObjectProperty::StaticClass();
 }
 
 UClass* UPropertyValueMaterial::GetObjectPropertyObjectClass() const

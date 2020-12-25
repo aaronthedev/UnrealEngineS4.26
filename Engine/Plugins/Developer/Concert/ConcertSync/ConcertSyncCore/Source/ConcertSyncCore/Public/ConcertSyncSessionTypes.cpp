@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ConcertSyncSessionTypes.h"
 #include "ConcertLogGlobal.h"
@@ -45,10 +45,6 @@ void DebugPrintExportedObject(const FConcertExportedObject& Object)
 	{
 		UE_LOG(LogConcert, Display, TEXT("PendingKill: Yes"));
 	}
-	if (!Object.ObjectData.NewPackageName.IsNone())
-	{
-		UE_LOG(LogConcert, Display, TEXT("NewName: %s"), *Object.ObjectData.NewPackageName.ToString());
-	}
 	if (!Object.ObjectData.NewName.IsNone())
 	{
 		UE_LOG(LogConcert, Display, TEXT("NewName: %s"), *Object.ObjectData.NewName.ToString());
@@ -57,13 +53,9 @@ void DebugPrintExportedObject(const FConcertExportedObject& Object)
 	{
 		UE_LOG(LogConcert, Display, TEXT("NewOuterPathName: %s"), *Object.ObjectData.NewOuterPathName.ToString());
 	}
-	if (!Object.ObjectData.NewExternalPackageName.IsNone())
-	{
-		UE_LOG(LogConcert, Display, TEXT("NewPackageName: %s"), *Object.ObjectData.NewExternalPackageName.ToString());
-	}
 	if (Object.SerializedAnnotationData.Num())
 	{
-		UE_LOG(LogConcert, Display, TEXT("Has Annotation"));
+		UE_LOG(LogConcert, Display, TEXT("Has annotation"));
 	}
 	for (const FConcertSerializedPropertyData& Prop : Object.PropertyDatas)
 	{
@@ -742,14 +734,13 @@ FText FConcertSyncTransactionActivitySummary::CreateDisplayTextForUser(const FTe
 }
 
 
-FConcertSyncPackageActivitySummary FConcertSyncPackageActivitySummary::CreateSummaryForEvent(const FConcertPackageInfo& PackageInfo)
+FConcertSyncPackageActivitySummary FConcertSyncPackageActivitySummary::CreateSummaryForEvent(const FConcertSyncPackageEvent& InEvent)
 {
 	FConcertSyncPackageActivitySummary ActivitySummary;
-	ActivitySummary.PackageName = PackageInfo.PackageName;
-	ActivitySummary.NewPackageName = PackageInfo.NewPackageName;
-	ActivitySummary.PackageUpdateType = PackageInfo.PackageUpdateType;
-	ActivitySummary.bAutoSave = PackageInfo.bAutoSave;
-	ActivitySummary.bPreSave = PackageInfo.bPreSave;
+	ActivitySummary.PackageName = InEvent.Package.Info.PackageName;
+	ActivitySummary.NewPackageName = InEvent.Package.Info.NewPackageName;
+	ActivitySummary.PackageUpdateType = InEvent.Package.Info.PackageUpdateType;
+	ActivitySummary.bAutoSave = InEvent.Package.Info.bAutoSave;
 	return ActivitySummary;
 }
 
@@ -765,18 +756,9 @@ FText FConcertSyncPackageActivitySummary::CreateDisplayText(const bool InUseRich
 		FormatPattern = LOCTEXT("CreateDisplayText_Package_Added", "Added package {PackageName}.");
 		break;
 	case EConcertPackageUpdateType::Saved:
-		if (bPreSave)
-		{
-			FormatPattern = bAutoSave
-				? LOCTEXT("CreateDisplayText_Package_PreAutoSaved", "Captured package {PackageName} original state.")
-				: LOCTEXT("CreateDisplayText_Package_PreSaved", "Captured package {PackageName} original state.");
-		}
-		else
-		{
-			FormatPattern = bAutoSave
-				? LOCTEXT("CreateDisplayText_Package_AutoSaved", "Auto-saved package {PackageName}.") 
-				: LOCTEXT("CreateDisplayText_Package_Saved", "Saved package {PackageName}.");
-		}
+		FormatPattern = bAutoSave 
+			? LOCTEXT("CreateDisplayText_Package_AutoSaved", "Auto-saved package {PackageName}.") 
+			: LOCTEXT("CreateDisplayText_Package_Saved", "Saved package {PackageName}.");
 		break;
 	case EConcertPackageUpdateType::Renamed:
 		FormatPattern = LOCTEXT("CreateDisplayText_Package_Renamed", "Renamed package {PackageName} to {NewPackageName}.");

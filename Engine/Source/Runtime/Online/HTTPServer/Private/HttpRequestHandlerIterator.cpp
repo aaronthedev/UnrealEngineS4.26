@@ -1,37 +1,44 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "HttpRequestHandlerIterator.h"
 #include "HttpServerRequest.h"
 #include "HttpRouteHandle.h"
 
 
 FHttpRequestHandlerIterator::FHttpRequestHandlerIterator(
-	TSharedPtr<FHttpServerRequest> InRequest, 
+	const TSharedPtr<FHttpServerRequest>& InRequest, 
 	const FHttpRequestHandlerRegistrar& InRequestHandlerRegistrar)
-	: HttpPathIterator(InRequest->RelativePath)
-	, Request(MoveTemp(InRequest))
+	: Request(InRequest)
 	, RequestHandlerRegistrar(InRequestHandlerRegistrar)
+	, HttpPathIterator(InRequest->RelativePath)
 {
 }
 
-const FHttpRequestHandler* const FHttpRequestHandlerIterator::Next()
+const FHttpRequestHandler * const FHttpRequestHandlerIterator::Next()
 {
 	while (HttpPathIterator.HasNext())
 	{
 		// Determine if we have a matching handler for the next route
-  		const auto& NextRoute = HttpPathIterator.Next();
+		const auto& NextRoute = HttpPathIterator.Next();
 
 		// Filter by http route
-		FRouteQueryResult QueryResult = RequestHandlerRegistrar.QueryRoute(NextRoute, Request->Verb, &HttpPathIterator.ParsedTokens);
-		if (!QueryResult)
+		const auto RouteHandlePtr = RequestHandlerRegistrar->Find(NextRoute);
+		if (!RouteHandlePtr)
 		{
 			// Not a matching route
 			continue;
 		}
-		const FHttpRouteHandle& RouteHandle = QueryResult.RouteHandle;
+		const auto& RouteHandle = *RouteHandlePtr;
+
+		// Filter by http verb
+		const EHttpServerRequestVerbs VerbFilterResult = RouteHandle->Verbs & Request->Verb;
+		if (EHttpServerRequestVerbs::VERB_NONE == VerbFilterResult)
+		{
+			// Not a matching verb
+			continue;
+		}
 
 		// Make request path relative to the respective handler
 		Request->RelativePath.MakeRelative(NextRoute);
-		Request->PathParams = MoveTemp(QueryResult.PathParams);
 
 		return &(RouteHandle->Handler);
 	}
@@ -50,7 +57,7 @@ bool FHttpRequestHandlerIterator::FHttpPathIterator::HasNext() const
 
 const FString& FHttpRequestHandlerIterator::FHttpPathIterator::Next()
 {
-	// Callers should always test HasNext() first!
+	// Callers  should always test HasNext() first!
 	check(!bLastIteration); 
 
 	if (!bFirstIteration)
@@ -59,7 +66,6 @@ const FString& FHttpRequestHandlerIterator::FHttpPathIterator::Next()
 		if (NextPath.FindLastChar(TCHAR('/'), SlashIndex))
 		{
 			const bool bAllowShrinking = false;
-			ParsedTokens.Insert(NextPath.RightChop(SlashIndex + 1), 0);
 			NextPath.RemoveAt(SlashIndex, NextPath.Len() - SlashIndex, bAllowShrinking);
 
 			if (0 == NextPath.Len())
@@ -67,10 +73,6 @@ const FString& FHttpRequestHandlerIterator::FHttpPathIterator::Next()
 				NextPath.AppendChar(TCHAR('/'));
 				bLastIteration = true;
 			}
-		}
-		else
-		{
-			bLastIteration = true;
 		}
 	}
 	bFirstIteration = false;

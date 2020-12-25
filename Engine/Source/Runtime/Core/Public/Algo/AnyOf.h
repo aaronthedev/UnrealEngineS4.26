@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -34,20 +34,5 @@ namespace Algo
 	FORCEINLINE bool AnyOf(const RangeType& Range, ProjectionType Projection)
 	{
 		return !Algo::NoneOf(Range, MoveTemp(Projection));
-	}
-
-	/**
-	 * Checks if any projection of the elements in the range is truthy.
-	 * Should be used when the range iterator doesn't return a reference.
-	 *
-	 * @param  Range       The range to check.
-	 * @param  Projection  The projection to apply to each element.
-	 *
-	 * @return  true if at least one projection is truthy, false otherwise.
-	 */
-	template <typename RangeType, typename ProjectionType>
-	FORCEINLINE bool AnyOf(const RangeType& Range, ProjectionType Projection, ENoRef NoRef)
-	{
-		return !Algo::NoneOf(Range, MoveTemp(Projection), NoRef);
 	}
 }

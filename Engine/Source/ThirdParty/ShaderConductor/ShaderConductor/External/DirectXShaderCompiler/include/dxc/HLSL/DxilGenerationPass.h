@@ -85,7 +85,6 @@ void initializeHLEnsureMetadataPass(llvm::PassRegistry&);
 void initializeHLEmitMetadataPass(llvm::PassRegistry&);
 void initializeDxilFinalizeModulePass(llvm::PassRegistry&);
 void initializeDxilEmitMetadataPass(llvm::PassRegistry&);
-void initializeDxilEraseDeadRegionPass(llvm::PassRegistry&);
 void initializeDxilExpandTrigIntrinsicsPass(llvm::PassRegistry&);
 void initializeDxilDeadFunctionEliminationPass(llvm::PassRegistry&);
 void initializeHLDeadFunctionEliminationPass(llvm::PassRegistry&);
@@ -108,9 +107,6 @@ void initializePausePassesPass(llvm::PassRegistry&);
 void initializeResumePassesPass(llvm::PassRegistry&);
 void initializeMatrixBitcastLowerPassPass(llvm::PassRegistry&);
 void initializeDxilCleanupAddrSpaceCastPass(llvm::PassRegistry&);
-
-ModulePass *createDxilValidateWaveSensitivityPass();
-void initializeDxilValidateWaveSensitivityPass(llvm::PassRegistry&);
 
 bool AreDxilResourcesDense(llvm::Module *M, hlsl::DxilResourceBase **ppNonDense);
 

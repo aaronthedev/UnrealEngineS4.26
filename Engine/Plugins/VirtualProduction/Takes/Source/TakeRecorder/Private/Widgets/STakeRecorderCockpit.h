@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,7 +13,6 @@ class ULevelSequence;
 class UTakeMetaData;
 class UTakeRecorder;
 class FUICommandList;
-struct FDigitsTypeInterface;
 
 /**
  * Cockpit UI for defining take meta-data.
@@ -41,10 +40,6 @@ public:
 	}
 
 	FFrameRate GetFrameRate() const;
-
-	void SetFrameRate(FFrameRate InFrameRate, bool bFromTimecode);
-
-	bool IsSameFrameRate(FFrameRate InFrameRate) const;
 
 	bool Reviewing() const;
 
@@ -82,10 +77,10 @@ private:
 	FText GetUserDescriptionText() const;
 	void SetUserDescriptionText(const FText& InNewText, ETextCommit::Type);
 
+	FReply SetFrameRate();
 	FText GetFrameRateText() const;
 	FText GetFrameRateTooltipText() const;
 	bool IsFrameRateCompatible(FFrameRate InFrameRate) const;
-	bool IsSetFromTimecode() const;
 
 	FText GetSlateText() const;
 	void SetSlateText(const FText& InNewText, ETextCommit::Type InCommitType);
@@ -130,8 +125,6 @@ private:
 	void BindCommands();
 
 	void OnToggleEditPreviousRecording(ECheckBoxState CheckState);
-	
-	TSharedRef<SWidget> OnCreateMenu();
 
 private:
 
@@ -159,6 +152,4 @@ private:
 	FDelegateHandle OnRecordingInitializedHandle, OnRecordingFinishedHandle;
 
 	TSharedPtr<FUICommandList> CommandList;
-
-	TSharedPtr<FDigitsTypeInterface> DigitsTypeInterface;
 };

@@ -1,13 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Ticker.h"
 
-/**
- * This works the same as the core FTicker, but on supported mobile platforms 
- * it continues ticking while the app is running in the background.
- */
 class FBackgroundableTicker
 	: public FTicker
 {

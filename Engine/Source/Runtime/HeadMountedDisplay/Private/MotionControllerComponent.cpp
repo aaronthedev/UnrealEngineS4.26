@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 //
 #include "MotionControllerComponent.h"
 #include "GameFramework/Pawn.h"
@@ -92,9 +92,9 @@ void UMotionControllerComponent::BeginDestroy()
 	}
 }
 
-void UMotionControllerComponent::CreateRenderState_Concurrent(FRegisterComponentContext* Context)
+void UMotionControllerComponent::CreateRenderState_Concurrent()
 {
-	Super::CreateRenderState_Concurrent(Context);
+	Super::CreateRenderState_Concurrent();
 	RenderThreadRelativeTransform = GetRelativeTransform();
 	RenderThreadComponentScale = GetComponentScale();
 }
@@ -268,7 +268,7 @@ void UMotionControllerComponent::Serialize(FArchive& Ar)
 
 #if WITH_EDITOR
 //=============================================================================
-void UMotionControllerComponent::PreEditChange(FProperty* PropertyAboutToChange)
+void UMotionControllerComponent::PreEditChange(UProperty* PropertyAboutToChange)
 {
 	PreEditMaterialCount = DisplayMeshMaterialOverrides.Num();
 	Super::PreEditChange(PropertyAboutToChange);
@@ -279,7 +279,7 @@ void UMotionControllerComponent::PostEditChangeProperty(FPropertyChangedEvent& P
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
-	FProperty* PropertyThatChanged = PropertyChangedEvent.Property;
+	UProperty* PropertyThatChanged = PropertyChangedEvent.Property;
 	const FName PropertyName = (PropertyThatChanged != nullptr) ? PropertyThatChanged->GetFName() : NAME_None;
 
 	if (PropertyName == GET_MEMBER_NAME_CHECKED(UMotionControllerComponent, bDisplayDeviceModel))

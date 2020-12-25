@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	UnObjGC.cpp: Unreal object garbage collection code.
@@ -65,7 +65,7 @@ public:
 				FString TokenDebugInfo;
 				if (UClass *Class = (ReferencingObject ? ReferencingObject->GetClass() : nullptr))
 				{
-					FTokenInfo TokenInfo = Class->ReferenceTokenStream.GetTokenInfo(TokenIndex);
+					const FTokenInfo& TokenInfo = Class->DebugTokenMap.GetTokenInfo(TokenIndex);
 					TokenDebugInfo = FString::Printf(TEXT("ReferencingObjectClass: %s, Property Name: %s, Offset: %d"),
 						*Class->GetFullName(), *TokenInfo.Name.GetPlainNameString(), TokenInfo.Offset);
 				}
@@ -102,12 +102,7 @@ void VerifyGCAssumptions()
 	int32 MaxNumberOfObjects = GUObjectArray.GetObjectArrayNumPermanent();
 
 	FDisregardSetReferenceProcessor Processor;
-	TFastReferenceCollector<
-		FDisregardSetReferenceProcessor, 
-		FDisregardSetReferenceCollector, 
-		FGCArrayPool, 
-		EFastReferenceCollectorOptions::AutogenerateTokenStream | EFastReferenceCollectorOptions::ProcessNoOpTokens
-	> ReferenceCollector(Processor, FGCArrayPool::Get());
+	TFastReferenceCollector<false, FDisregardSetReferenceProcessor, FDisregardSetReferenceCollector, FGCArrayPool, true> ReferenceCollector(Processor, FGCArrayPool::Get());
 
 	int32 NumThreads = FMath::Max(1, FTaskGraphInterface::Get().GetNumWorkerThreads());
 	int32 NumberOfObjectsPerThread = (MaxNumberOfObjects / NumThreads) + 1;
@@ -192,7 +187,7 @@ public:
 				FString TokenDebugInfo;
 				if (UClass *Class = (ReferencingObject ? ReferencingObject->GetClass() : nullptr))
 				{
-					FTokenInfo TokenInfo = Class->ReferenceTokenStream.GetTokenInfo(TokenIndex);
+					const FTokenInfo& TokenInfo = Class->DebugTokenMap.GetTokenInfo(TokenIndex);
 					TokenDebugInfo = FString::Printf(TEXT("ReferencingObjectClass: %s, Property Name: %s, Offset: %d"),
 						*Class->GetFullName(), *TokenInfo.Name.GetPlainNameString(), TokenInfo.Offset);
 				}
@@ -295,12 +290,7 @@ void VerifyClustersAssumptions()
 		FGCArrayStruct& ArrayStruct = ArrayStructs[ThreadIndex];
 		
 		FClusterVerifyReferenceProcessor Processor;
-		TFastReferenceCollector<
-			FClusterVerifyReferenceProcessor, 
-			FClusterVerifyReferenceCollector, 
-			FGCArrayPool, 
-			EFastReferenceCollectorOptions::AutogenerateTokenStream | EFastReferenceCollectorOptions::ProcessNoOpTokens
-		> ReferenceCollector(Processor, FGCArrayPool::Get());
+		TFastReferenceCollector<false, FClusterVerifyReferenceProcessor, FClusterVerifyReferenceCollector, FGCArrayPool, true> ReferenceCollector(Processor, FGCArrayPool::Get());
 
 		for (int32 ClusterIndex = 0; ClusterIndex < NumClusters && (FirstClusterIndex + ClusterIndex) < MaxNumberOfClusters; ++ClusterIndex)
 		{

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayCueSet.h"
 #include "GameplayTagsManager.h"
@@ -264,18 +264,15 @@ bool UGameplayCueSet::HandleGameplayCueNotify_Internal(AActor* TargetActor, int3
 		{
 			if (InstancedCue->HandlesEvent(EventType))
 			{
-				if (TargetActor)
+				//Get our instance. We should probably have a flag or something to determine if we want to reuse or stack instances. That would mean changing our map to have a list of active instances.
+				AGameplayCueNotify_Actor* SpawnedInstancedCue = CueManager->GetInstancedCueActor(TargetActor, CueData.LoadedGameplayCueClass, Parameters);
+				if (ensure(SpawnedInstancedCue))
 				{
-					//Get our instance. We should probably have a flag or something to determine if we want to reuse or stack instances. That would mean changing our map to have a list of active instances.
-					AGameplayCueNotify_Actor* SpawnedInstancedCue = CueManager->GetInstancedCueActor(TargetActor, CueData.LoadedGameplayCueClass, Parameters);
-					if (ensure(SpawnedInstancedCue))
+					SpawnedInstancedCue->HandleGameplayCue(TargetActor, EventType, Parameters);
+					bReturnVal = true;
+					if (!SpawnedInstancedCue->IsOverride)
 					{
-						SpawnedInstancedCue->HandleGameplayCue(TargetActor, EventType, Parameters);
-						bReturnVal = true;
-						if (!SpawnedInstancedCue->IsOverride)
-						{
-							HandleGameplayCueNotify_Internal(TargetActor, CueData.ParentDataIdx, EventType, Parameters);
-						}
+						HandleGameplayCueNotify_Internal(TargetActor, CueData.ParentDataIdx, EventType, Parameters);
 					}
 				}
 			}

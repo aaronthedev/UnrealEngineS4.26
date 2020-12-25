@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,7 +10,7 @@ class ULevelSequence;
 /**
  * Take preset that is stored as an asset comprising a ULevelSequence, and a set of actor recording sources
  */
-UCLASS(BlueprintType)
+UCLASS()
 class TAKESCORE_API UTakePreset : public UObject
 {
 public:

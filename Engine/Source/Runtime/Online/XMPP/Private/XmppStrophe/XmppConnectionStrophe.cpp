@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "XmppStrophe/XmppConnectionStrophe.h"
 #include "XmppStrophe/XmppMessagesStrophe.h"
@@ -14,7 +14,6 @@
 #include "XmppStrophe/StropheError.h"
 #include "XmppLog.h"
 #include "Containers/BackgroundableTicker.h"
-#include "Stats/Stats.h"
 
 #if WITH_XMPP_STROPHE
 
@@ -149,10 +148,9 @@ void FXmppConnectionStrophe::Logout()
 
 EXmppLoginStatus::Type FXmppConnectionStrophe::GetLoginStatus() const
 {
-	EXmppLoginStatus::Type CurrentLoginStatus = LoginStatus;
-	if (CurrentLoginStatus == EXmppLoginStatus::LoggedIn || CurrentLoginStatus == EXmppLoginStatus::ProcessingLogin)
+	if (LoginStatus == EXmppLoginStatus::LoggedIn)
 	{
-		return CurrentLoginStatus;
+		return EXmppLoginStatus::LoggedIn;
 	}
 	else
 	{
@@ -192,8 +190,6 @@ IXmppPubSubPtr FXmppConnectionStrophe::PubSub()
 
 bool FXmppConnectionStrophe::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FXmppConnectionStrophe_Tick);
-
 	// Logout if we've been requested to from the XMPP Thread
 	if (RequestLogout)
 	{
@@ -225,7 +221,6 @@ bool FXmppConnectionStrophe::SendStanza(FStropheStanza&& Stanza)
 		return false;
 	}
 
-	OnStanzaSent().Broadcast(Stanza);
 	bool bQueuedStanzaToBeSent = true;
 	if (StropheThread.IsValid())
 	{
@@ -248,7 +243,7 @@ bool FXmppConnectionStrophe::SendStanza(FStropheStanza&& Stanza)
 			PingStrophe->ResetPingTimer();
 		}
 	}
-	
+
 	return bQueuedStanzaToBeSent;
 }
 
@@ -302,7 +297,7 @@ void FXmppConnectionStrophe::ReceiveConnectionError(const FStropheError& Error, 
 void FXmppConnectionStrophe::ReceiveStanza(const FStropheStanza& Stanza)
 {
 	UE_LOG(LogXmpp, Verbose, TEXT("Received Strophe XMPP Stanza %s"), *Stanza.GetName());
-	OnStanzaReceived().Broadcast(Stanza);
+
 	// Reset our ping timer now that we've received traffic
 	if (PingStrophe.IsValid() && ServerConfiguration.bResetPingTimeoutOnReceiveStanza)
 	{

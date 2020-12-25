@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,7 +13,6 @@
 
 #include "MovieSceneFloatChannel.generated.h"
 
-
 USTRUCT()
 struct FMovieSceneTangentData
 {
@@ -22,10 +21,9 @@ struct FMovieSceneTangentData
 	FMovieSceneTangentData()
 		: ArriveTangent(0.f)
 		, LeaveTangent(0.f)
+		, TangentWeightMode(RCTWM_WeightedNone)
 		, ArriveTangentWeight(0.f)
 		, LeaveTangentWeight(0.f)
-		, TangentWeightMode(RCTWM_WeightedNone)
-
 	{}
 
 	bool Serialize(FArchive& Ar);
@@ -38,24 +36,24 @@ struct FMovieSceneTangentData
 	}
 
 	/** If RCIM_Cubic, the arriving tangent at this key */
-	UPROPERTY(EditAnywhere, Category = "Key")
+	UPROPERTY(EditAnywhere, Category="Key")
 	float ArriveTangent;
 
 	/** If RCIM_Cubic, the leaving tangent at this key */
-	UPROPERTY(EditAnywhere, Category = "Key")
+	UPROPERTY(EditAnywhere, Category="Key")
 	float LeaveTangent;
-
-	/** If RCTWM_WeightedArrive or RCTWM_WeightedBoth, the weight of the left tangent */
-	UPROPERTY(EditAnywhere, Category = "Key")
-	float ArriveTangentWeight;
-
-	/** If RCTWM_WeightedLeave or RCTWM_WeightedBoth, the weight of the right tangent */
-	UPROPERTY(EditAnywhere, Category = "Key")
-	float LeaveTangentWeight;
 
 	/** If RCIM_Cubic, the tangent weight mode */
 	UPROPERTY(EditAnywhere, Category = "Key")
 	TEnumAsByte<ERichCurveTangentWeightMode> TangentWeightMode;
+
+	/** If RCTWM_WeightedArrive or RCTWM_WeightedBoth, the weight of the left tangent */
+	UPROPERTY(EditAnywhere, Category="Key")
+	float ArriveTangentWeight;
+
+	/** If RCTWM_WeightedLeave or RCTWM_WeightedBoth, the weight of the right tangent */
+	UPROPERTY(EditAnywhere, Category="Key")
+	float LeaveTangentWeight;
 
 };
 
@@ -84,11 +82,11 @@ struct FMovieSceneFloatValue
 	GENERATED_BODY()
 
 	FMovieSceneFloatValue()
-		: Value(0.f), InterpMode(RCIM_Cubic), TangentMode(RCTM_Auto), PaddingByte(0)
+		: Value(0.f), InterpMode(RCIM_Cubic), TangentMode(RCTM_Auto)
 	{}
 
 	explicit FMovieSceneFloatValue(float InValue)
-		: Value(InValue), InterpMode(RCIM_Cubic), TangentMode(RCTM_Auto), PaddingByte(0)
+		: Value(InValue), InterpMode(RCIM_Cubic), TangentMode(RCTM_Auto)
 	{}
 
 	bool Serialize(FArchive& Ar);
@@ -100,22 +98,18 @@ struct FMovieSceneFloatValue
 		return Ar;
 	}
 
-	UPROPERTY(EditAnywhere, Category = "Key")
+	UPROPERTY(EditAnywhere, Category="Key")
 	float Value;
 
-	UPROPERTY(EditAnywhere, Category = "Key")
-	FMovieSceneTangentData Tangent;
-
-	UPROPERTY(EditAnywhere, Category = "Key")
+	UPROPERTY(EditAnywhere, Category="Key")
 	TEnumAsByte<ERichCurveInterpMode> InterpMode;
 
-	UPROPERTY(EditAnywhere, Category = "Key")
+	UPROPERTY(EditAnywhere, Category="Key")
 	TEnumAsByte<ERichCurveTangentMode> TangentMode;
 
-	UPROPERTY()
-	uint8 PaddingByte;
+	UPROPERTY(EditAnywhere, Category="Key")
+	FMovieSceneTangentData Tangent;
 };
-
 
 template<>
 struct TIsPODType<FMovieSceneFloatValue>
@@ -232,14 +226,6 @@ public:
 	virtual void PostEditChange() override;
 
 public:
-
-	/**
-	 * Check whether this channel has any data
-	 */
-	FORCEINLINE bool HasAnyData() const
-	{
-		return Times.Num() != 0 || bHasDefaultValue == true;
-	}
 
 	/**
 	 * Set this channel's default value that should be used when no keys are present
@@ -422,13 +408,13 @@ inline void AssignValue(FMovieSceneFloatChannel* InChannel, FKeyHandle InKeyHand
 }
 
 /**
- * Overload for adding a new key to a float channel at a given time. See UE::MovieScene::AddKeyToChannel for default implementation.
+ * Overload for adding a new key to a float channel at a given time. See MovieScene::AddKeyToChannel for default implementation.
  */
 MOVIESCENE_API FKeyHandle AddKeyToChannel(FMovieSceneFloatChannel* Channel, FFrameNumber InFrameNumber, float InValue, EMovieSceneKeyInterpolation Interpolation);
 
 
 /**
- * Overload for dilating float channel data. See UE::MovieScene::Dilate for default implementation.
+ * Overload for dilating float channel data. See MovieScene::Dilate for default implementation.
  */
 MOVIESCENE_API void Dilate(FMovieSceneFloatChannel* InChannel, FFrameNumber Origin, float DilationFactor);
 

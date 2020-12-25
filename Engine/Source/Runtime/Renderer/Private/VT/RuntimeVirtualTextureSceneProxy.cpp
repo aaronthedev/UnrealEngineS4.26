@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VT/RuntimeVirtualTextureSceneProxy.h"
 
@@ -6,9 +6,6 @@
 #include "VirtualTextureSystem.h"
 #include "VT/RuntimeVirtualTexture.h"
 #include "VT/RuntimeVirtualTextureProducer.h"
-#include "VT/VirtualTexture.h"
-#include "VT/VirtualTextureBuilder.h"
-#include "VT/VirtualTextureScalability.h"
 
 int32 FRuntimeVirtualTextureSceneProxy::ProducerIdGenerator = 1;
 
@@ -16,29 +13,20 @@ FRuntimeVirtualTextureSceneProxy::FRuntimeVirtualTextureSceneProxy(URuntimeVirtu
 	: SceneIndex(0)
 	, ProducerId(0)
 	, VirtualTexture(nullptr)
-	, bHidePrimitivesInEditor(false)
-	, bHidePrimitivesInGame(false)
 	, CombinedDirtyRect(0, 0, 0, 0)
 {
-	// Evaluate the flags used to hide primitives writing to this virtual texture.
-	InComponent->GetHidePrimitiveSettings(bHidePrimitivesInEditor, bHidePrimitivesInGame);
-
-	if (InComponent->GetVirtualTexture() != nullptr)
+	if (InComponent->GetVirtualTexture() != nullptr && InComponent->GetVirtualTexture()->GetEnabled())
 	{
 		// We store a ProducerId here so that we will be able to find our SceneIndex from the Producer during rendering.
 		// We will need the SceneIndex to determine which primitives should render to this Producer.
 		ProducerId = ProducerIdGenerator++;
 
-		URuntimeVirtualTexture::FInitSettings InitSettings;
-		InitSettings.TileCountBias = InComponent->IsScalable() ? VirtualTextureScalability::GetRuntimeVirtualTextureSizeBias(InComponent->GetScalabilityGroup()) : 0;
-
 		VirtualTexture = InComponent->GetVirtualTexture();
-		Transform = InComponent->GetComponentTransform();
-		const FBox Bounds = InComponent->Bounds.GetBox();
+		Transform = InComponent->GetVirtualTextureTransform();
 
 		// The producer description is calculated using the transform to determine the aspect ratio
 		FVTProducerDescription Desc;
-		VirtualTexture->GetProducerDescription(Desc, InitSettings, Transform);
+		VirtualTexture->GetProducerDescription(Desc, Transform);
 		VirtualTextureSize = FIntPoint(Desc.BlockWidthInTiles * Desc.TileSize, Desc.BlockHeightInTiles * Desc.TileSize);
 		// We only need to dirty flush up to the producer description MaxLevel which accounts for the RemoveLowMips
 		MaxDirtyLevel = Desc.MaxLevel;
@@ -47,22 +35,21 @@ FRuntimeVirtualTextureSceneProxy::FRuntimeVirtualTextureSceneProxy(URuntimeVirtu
 		const bool bClearTextures = VirtualTexture->GetClearTextures();
 
 		// The Producer object created here will be passed into the virtual texture system which will take ownership.
-		IVirtualTexture* Producer = new FRuntimeVirtualTextureProducer(Desc, ProducerId, MaterialType, bClearTextures, InComponent->GetScene(), Transform, Bounds);
+		IVirtualTexture* Producer = new FRuntimeVirtualTextureProducer(Desc, ProducerId, MaterialType, bClearTextures, InComponent->GetScene(), Transform);
 
-		if (InComponent->IsStreamingLowMips())
+		if (InComponent->IsStreamingLowMips() && VirtualTexture->GetStreamLowMips() > 0)
 		{
-			UVirtualTexture2D* StreamingTexture = InComponent->GetStreamingTexture()->Texture;
 			// Streaming mips start from the MaxLevel before taking into account the RemoveLowMips
 			const int32 MaxLevel = FMath::CeilLogTwo(FMath::Max(Desc.BlockWidthInTiles, Desc.BlockHeightInTiles));
 			// Wrap our producer to use a streaming producer for low mips
 			int32 StreamingTransitionLevel;
-			Producer = RuntimeVirtualTexture::CreateStreamingTextureProducer(Producer, Desc, StreamingTexture, MaxLevel, StreamingTransitionLevel);
+			Producer = VirtualTexture->CreateStreamingTextureProducer(Producer, MaxLevel, StreamingTransitionLevel);
 			// Any dirty flushes don't need to flush the streaming mips (they only change with a build step).
-			MaxDirtyLevel = FMath::Clamp(StreamingTransitionLevel, 0, MaxDirtyLevel);
+			MaxDirtyLevel = FMath::Min(MaxDirtyLevel, StreamingTransitionLevel);
 		}
 
 		// The Initialize() call will allocate the virtual texture by spawning work on the render thread.
-		VirtualTexture->Initialize(Producer, Desc, Transform, Bounds);
+		VirtualTexture->Initialize(Producer, Transform);
 	}
 }
 

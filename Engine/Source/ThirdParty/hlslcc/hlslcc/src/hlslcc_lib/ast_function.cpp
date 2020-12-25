@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // This code is modified from that in the Mesa3D Graphics library available at
 // http://mesa3d.org/
@@ -485,7 +485,7 @@ static bool verify_parameter_modes(_mesa_glsl_parse_state *state,
 				if (deref)
 				{
 					ir_variable * var = deref->variable_referenced();
-					if (var != NULL && (var->mode == ir_var_shared || var->type->is_image()))
+					if (var != NULL && var->mode == ir_var_shared)
 					{
 						fail = false;
 					}
@@ -2602,7 +2602,6 @@ ir_rvalue* gen_image_op(
 
 	bool const bIsByteBuffer = (image->type->HlslName != nullptr && !strcmp(image->type->HlslName, "ByteAddressBuffer"));
 	bool const bIsRWByteBuffer = (image->type->HlslName != nullptr && !strcmp(image->type->HlslName, "RWByteAddressBuffer"));
-	bool const bIsRWTexture = (image->type->HlslName != nullptr && !strncmp(image->type->HlslName, "RWTexture", 9));
 	
 	if (strcmp(method, "GetDimensions") == 0)
 	{
@@ -2673,11 +2672,6 @@ ir_rvalue* gen_image_op(
 				}
 			}
 		}
-	}
-	else if (bIsRWTexture && !strcmp(method, "Load") && num_params == 1)
-	{
-		// The "Load" function on RWTexture resources is similar to the [] operator
-		result = new(ctx)ir_dereference_image(image, (ir_rvalue*)param_list.head);
 	}
 	else if((bIsByteBuffer || bIsRWByteBuffer) && !strcmp(method, "Load") && num_params == 1)
 	{

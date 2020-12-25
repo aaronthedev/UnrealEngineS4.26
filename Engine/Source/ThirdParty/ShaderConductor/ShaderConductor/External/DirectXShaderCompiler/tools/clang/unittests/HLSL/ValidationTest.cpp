@@ -8,8 +8,6 @@
 //                                                                           //
 ///////////////////////////////////////////////////////////////////////////////
 
-#define NOMINMAX
-
 #include <memory>
 #include <vector>
 #include <string>
@@ -27,8 +25,8 @@
 #include "dxc/Support/Global.h"
 #include "dxc/Support/FileIOHelper.h"
 
-#include "dxc/Test/DxcTestUtils.h"
-#include "dxc/Test/HlslTestUtils.h"
+#include "DxcTestUtils.h"
+#include "HlslTestUtils.h"
 
 using namespace std;
 using namespace hlsl;
@@ -188,7 +186,7 @@ public:
   TEST_METHOD(InvalidSigCompTyFail)
   TEST_METHOD(MultiStream2Fail)
   TEST_METHOD(PhiTGSMFail)
-  TEST_METHOD(QuadOpInVS)
+  TEST_METHOD(QuadOpInCS)
   TEST_METHOD(ReducibleFail)
   TEST_METHOD(SampleBiasFail)
   TEST_METHOD(SamplerKindFail)
@@ -260,40 +258,6 @@ public:
 
   TEST_METHOD(WhenDisassembleInvalidBlobThenFail)
 
-  TEST_METHOD(MeshMultipleSetMeshOutputCounts)
-  TEST_METHOD(MeshMissingSetMeshOutputCounts)
-  TEST_METHOD(MeshNonDominatingSetMeshOutputCounts)
-  TEST_METHOD(MeshOversizePayload)
-  TEST_METHOD(MeshOversizeOutput)
-  TEST_METHOD(MeshOversizePayloadOutput)
-  TEST_METHOD(MeshMultipleGetMeshPayload)
-  TEST_METHOD(MeshOutofRangeMaxVertexCount)
-  TEST_METHOD(MeshOutofRangeMaxPrimitiveCount)
-  TEST_METHOD(MeshLessThanMinX)
-  TEST_METHOD(MeshGreaterThanMaxX)
-  TEST_METHOD(MeshLessThanMinY)
-  TEST_METHOD(MeshGreaterThanMaxY)
-  TEST_METHOD(MeshLessThanMinZ)
-  TEST_METHOD(MeshGreaterThanMaxZ)
-  TEST_METHOD(MeshGreaterThanMaxXYZ)
-  TEST_METHOD(MeshGreaterThanMaxVSigRowCount)
-  TEST_METHOD(MeshGreaterThanMaxPSigRowCount)
-  TEST_METHOD(MeshGreaterThanMaxTotalSigRowCount)
-  TEST_METHOD(MeshOversizeSM)
-  TEST_METHOD(AmplificationMultipleDispatchMesh)
-  TEST_METHOD(AmplificationMissingDispatchMesh)
-  TEST_METHOD(AmplificationNonDominatingDispatchMesh)
-  TEST_METHOD(AmplificationOversizePayload)
-  TEST_METHOD(AmplificationLessThanMinX)
-  TEST_METHOD(AmplificationGreaterThanMaxX)
-  TEST_METHOD(AmplificationLessThanMinY)
-  TEST_METHOD(AmplificationGreaterThanMaxY)
-  TEST_METHOD(AmplificationLessThanMinZ)
-  TEST_METHOD(AmplificationGreaterThanMaxZ)
-  TEST_METHOD(AmplificationGreaterThanMaxXYZ)
-
-  TEST_METHOD(ValidateRootSigContainer)
-
   dxc::DxcDllSupport m_dllSupport;
   VersionSupportInfo m_ver;
 
@@ -307,10 +271,11 @@ public:
     }
   }
 
-  void CheckValidationMsgs(IDxcBlob *pBlob, llvm::ArrayRef<LPCSTR> pErrorMsgs, bool bRegex = false, UINT32 Flags = DxcValidatorFlags_Default) {
+  void CheckValidationMsgs(IDxcBlob *pBlob, llvm::ArrayRef<LPCSTR> pErrorMsgs, bool bRegex = false) {
     CComPtr<IDxcValidator> pValidator;
     CComPtr<IDxcOperationResult> pResult;
 
+    UINT32 Flags = DxcValidatorFlags_Default;
     if (!IsDxilContainerLike(pBlob->GetBufferPointer(), pBlob->GetBufferSize())) {
       // Validation of raw bitcode as opposed to DxilContainer is not supported through DXIL.dll
       if (!m_ver.m_InternalValidator) {
@@ -326,15 +291,15 @@ public:
     CheckOperationResultMsgs(pResult, pErrorMsgs, false, bRegex);
   }
 
-  void CheckValidationMsgs(const char *pBlob, size_t blobSize, llvm::ArrayRef<LPCSTR> pErrorMsgs, bool bRegex = false, UINT32 Flags = DxcValidatorFlags_Default) {
+  void CheckValidationMsgs(const char *pBlob, size_t blobSize, llvm::ArrayRef<LPCSTR> pErrorMsgs, bool bRegex = false) {
     CComPtr<IDxcLibrary> pLibrary;
     CComPtr<IDxcBlobEncoding> pBlobEncoding; // Encoding doesn't actually matter, it's binary.
     VERIFY_SUCCEEDED(m_dllSupport.CreateInstance(CLSID_DxcLibrary, &pLibrary));
     VERIFY_SUCCEEDED(pLibrary->CreateBlobWithEncodingFromPinned(pBlob, blobSize, CP_UTF8, &pBlobEncoding));
-    CheckValidationMsgs(pBlobEncoding, pErrorMsgs, bRegex, Flags);
+    CheckValidationMsgs(pBlobEncoding, pErrorMsgs, bRegex);
   }
 
-  bool CompileSource(IDxcBlobEncoding *pSource, LPCSTR pShaderModel,
+  void CompileSource(IDxcBlobEncoding *pSource, LPCSTR pShaderModel,
                      LPCWSTR *pArguments, UINT32 argCount, const DxcDefine *pDefines,
                      UINT32 defineCount, IDxcBlob **pResultBlob) {
     CComPtr<IDxcCompiler> pCompiler;
@@ -344,51 +309,35 @@ public:
     CA2W shWide(pShaderModel, CP_UTF8);
 
     wchar_t *pEntryName = L"main";
-
-    llvm::StringRef stage;
-    unsigned RequiredDxilMajor = 1, RequiredDxilMinor = 0;
-    if (ParseTargetProfile(pShaderModel, stage, RequiredDxilMajor, RequiredDxilMinor)) {
-      if (stage.compare("lib") == 0)
-        pEntryName = L"";
-      if (stage.compare("rootsig") != 0) {
-        RequiredDxilMajor = std::max(RequiredDxilMajor, (unsigned)6) - 5;
-        if (m_ver.SkipDxilVersion(RequiredDxilMajor, RequiredDxilMinor))
-          return false;
-      }
-    }
-
-    std::vector<LPCWSTR> args;
-    args.reserve(argCount + 1);
-    args.insert(args.begin(), pArguments, pArguments + argCount);
-    args.emplace_back(L"-Qkeep_reflect_in_dxil");
+    if (llvm::StringRef(pShaderModel).startswith("lib_"))
+      pEntryName = L"";
 
     VERIFY_SUCCEEDED(
         m_dllSupport.CreateInstance(CLSID_DxcCompiler, &pCompiler));
     VERIFY_SUCCEEDED(pCompiler->Compile(pSource, L"hlsl.hlsl", pEntryName, shWide,
-                                        args.data(), (UINT32)args.size(), pDefines,
+                                        pArguments, argCount, pDefines,
                                         defineCount, nullptr, &pResult));
     CheckOperationResultMsgs(pResult, nullptr, false, false);
     VERIFY_SUCCEEDED(pResult->GetResult(pResultBlob));
-    return true;
   }
 
-  bool CompileSource(IDxcBlobEncoding *pSource, LPCSTR pShaderModel,
+  void CompileSource(IDxcBlobEncoding *pSource, LPCSTR pShaderModel,
                      IDxcBlob **pResultBlob) {
-    return CompileSource(pSource, pShaderModel, nullptr, 0, nullptr, 0, pResultBlob);
+    CompileSource(pSource, pShaderModel, nullptr, 0, nullptr, 0, pResultBlob);
   }
 
-  bool CompileSource(LPCSTR pSource, LPCSTR pShaderModel,
+  void CompileSource(LPCSTR pSource, LPCSTR pShaderModel,
                      IDxcBlob **pResultBlob) {
     CComPtr<IDxcBlobEncoding> pSourceBlob;
     Utf8ToBlob(m_dllSupport, pSource, &pSourceBlob);
-    return CompileSource(pSourceBlob, pShaderModel, nullptr, 0, nullptr, 0, pResultBlob);
+    CompileSource(pSourceBlob, pShaderModel, nullptr, 0, nullptr, 0, pResultBlob);
   }
 
   void DisassembleProgram(IDxcBlob *pProgram, std::string *text) {
     *text = ::DisassembleProgram(m_dllSupport, pProgram);
   }
 
-  bool RewriteAssemblyCheckMsg(IDxcBlobEncoding *pSource, LPCSTR pShaderModel,
+  void RewriteAssemblyCheckMsg(IDxcBlobEncoding *pSource, LPCSTR pShaderModel,
     LPCWSTR *pArguments, UINT32 argCount,
     const DxcDefine *pDefines, UINT32 defineCount,
     llvm::ArrayRef<LPCSTR> pLookFors,
@@ -396,8 +345,7 @@ public:
     llvm::ArrayRef<LPCSTR> pErrorMsgs,
     bool bRegex = false) {
     CComPtr<IDxcBlob> pText;
-    if (!RewriteAssemblyToText(pSource, pShaderModel, pArguments, argCount, pDefines, defineCount, pLookFors, pReplacements, &pText, bRegex))
-      return false;
+    RewriteAssemblyToText(pSource, pShaderModel, pArguments, argCount, pDefines, defineCount, pLookFors, pReplacements, &pText, bRegex);
     CComPtr<IDxcAssembler> pAssembler;
     CComPtr<IDxcOperationResult> pAssembleResult;
     VERIFY_SUCCEEDED(
@@ -410,7 +358,6 @@ public:
       VERIFY_SUCCEEDED(pAssembleResult->GetResult(&pBlob));
       CheckValidationMsgs(pBlob, pErrorMsgs, bRegex);
     }
-    return true;
   }
 
   void RewriteAssemblyCheckMsg(LPCSTR pSource, LPCSTR pShaderModel,
@@ -460,7 +407,7 @@ public:
       pLookFors, pReplacements, pErrorMsgs, bRegex);
   }
 
-  bool RewriteAssemblyToText(IDxcBlobEncoding *pSource, LPCSTR pShaderModel,
+  void RewriteAssemblyToText(IDxcBlobEncoding *pSource, LPCSTR pShaderModel,
                              LPCWSTR *pArguments, UINT32 argCount,
                              const DxcDefine *pDefines, UINT32 defineCount,
                              llvm::ArrayRef<LPCSTR> pLookFors,
@@ -468,8 +415,7 @@ public:
                              IDxcBlob **pBlob, bool bRegex = false) {
     CComPtr<IDxcBlob> pProgram;
     std::string disassembly;
-    if (!CompileSource(pSource, pShaderModel, pArguments, argCount, pDefines, defineCount, &pProgram))
-      return false;
+    CompileSource(pSource, pShaderModel, pArguments, argCount, pDefines, defineCount, &pProgram);
     DisassembleProgram(pProgram, &disassembly);
     for (unsigned i = 0; i < pLookFors.size(); ++i) {
       LPCSTR pLookFor = pLookFors[i];
@@ -510,21 +456,18 @@ public:
       }
     }
     Utf8ToBlob(m_dllSupport, disassembly.c_str(), pBlob);
-    return true;
   }
 
 
   // compile one or two sources, validate module from 1 with container parts from 2, check messages
-  bool ReplaceContainerPartsCheckMsgs(LPCSTR pSource1, LPCSTR pSource2, LPCSTR pShaderModel,
+  void ReplaceContainerPartsCheckMsgs(LPCSTR pSource1, LPCSTR pSource2, LPCSTR pShaderModel,
                                      llvm::ArrayRef<DxilFourCC> PartsToReplace,
                                      llvm::ArrayRef<LPCSTR> pErrorMsgs) {
     CComPtr<IDxcBlob> pProgram1, pProgram2;
-    if (!CompileSource(pSource1, pShaderModel, &pProgram1))
-      return false;
+    CompileSource(pSource1, pShaderModel, &pProgram1);
     VERIFY_IS_NOT_NULL(pProgram1);
     if (pSource2) {
-      if (!CompileSource(pSource2, pShaderModel, &pProgram2))
-        return false;
+      CompileSource(pSource2, pShaderModel, &pProgram2);
       VERIFY_IS_NOT_NULL(pProgram2);
     } else {
       pProgram2 = pProgram1;
@@ -576,7 +519,6 @@ public:
     pContainerWriter->write(pOutputStream);
 
     CheckValidationMsgs((const char *)pOutputStream->GetPtr(), pOutputStream->GetPtrSize(), pErrorMsgs, /*bRegex*/false);
-    return true;
   }
 };
 
@@ -665,7 +607,7 @@ TEST_F(ValidationTest, WhenUnknownBlocksThenFail) {
 
 TEST_F(ValidationTest, WhenZeroInputPatchCountWithInputThenFail) {
 	RewriteAssemblyCheckMsg(
-		L"..\\DXILValidation\\SimpleHs1.hlsl", "hs_6_0",
+		L"..\\CodeGenHLSL\\validation\\SimpleHs1.hlsl", "hs_6_0",
 		"void ()* @\"\\01?HSPerPatchFunc@@YA?AUHSPerPatchData@@V?$InputPatch@UPSSceneIn@@$02@@@Z\", i32 3, i32 3",
 		"void ()* @\"\\01?HSPerPatchFunc@@YA?AUHSPerPatchData@@V?$InputPatch@UPSSceneIn@@$02@@@Z\", i32 0, i32 3",
 		"When HS input control point count is 0, no input signature should exist");
@@ -673,7 +615,7 @@ TEST_F(ValidationTest, WhenZeroInputPatchCountWithInputThenFail) {
 
 TEST_F(ValidationTest, WhenInstrDisallowedThenFail) {
   RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\abs2.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\abs2.hlsl", "ps_6_0",
       {
           "target triple = \"dxil-ms-dx\"",
           "ret void",
@@ -735,7 +677,7 @@ TEST_F(ValidationTest, BarrierFail) {
 }
 TEST_F(ValidationTest, CBufferLegacyOutOfBoundFail) {
   RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\cbuffer1.50.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\cbuffer1.50.hlsl", "ps_6_0",
       "cbufferLoadLegacy.f32(i32 59, %dx.types.Handle %Foo2_cbuffer, i32 0)",
       "cbufferLoadLegacy.f32(i32 59, %dx.types.Handle %Foo2_cbuffer, i32 6)",
       "Cbuffer access out of bound");
@@ -743,7 +685,7 @@ TEST_F(ValidationTest, CBufferLegacyOutOfBoundFail) {
 
 TEST_F(ValidationTest, CsThreadSizeFail) {
   RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\share_mem1.hlsl", "cs_6_0",
+      L"..\\CodeGenHLSL\\validation\\share_mem1.hlsl", "cs_6_0",
       {"!{i32 8, i32 8, i32 1",
        "[256 x float]"},
       {"!{i32 1025, i32 1025, i32 1025",
@@ -758,7 +700,7 @@ TEST_F(ValidationTest, CsThreadSizeFail) {
 TEST_F(ValidationTest, DeadLoopFail) {
   if (m_ver.SkipIRSensitiveTest()) return;
   RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\loop1.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\loop1.hlsl", "ps_6_0",
       {"br i1 %exitcond, label %for.end.loopexit, label %for.body, !llvm.loop !([0-9]+)",
        "?%add(\\.lcssa)? = phi float \\[ %add, %for.body \\]",
        "!dx.entryPoints = !\\{!([0-9]+)\\}",
@@ -776,7 +718,7 @@ TEST_F(ValidationTest, DeadLoopFail) {
 }
 TEST_F(ValidationTest, EvalFail) {
   RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\eval.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\eval.hlsl", "ps_6_0",
       "!\"A\", i8 9, i8 0, !([0-9]+), i8 2, i32 1, i8 4",
       "!\"A\", i8 9, i8 0, !\\1, i8 0, i32 1, i8 4",
       "Interpolation mode on A used with eval_\\* instruction must be ",
@@ -824,9 +766,9 @@ TEST_F(ValidationTest, InnerCoverageFail) {
 TEST_F(ValidationTest, InterpChangeFail) {
   RewriteAssemblyCheckMsg(
       L"..\\CodeGenHLSL\\interpChange.hlsl", "ps_6_0",
-      { "i32 1, i8 0, (.*)}",
+      { "i32 1, i8 0, null}",
         "?!dx.viewIdState ="},
-      { "i32 0, i8 2, \\1}",
+      { "i32 0, i8 2, null}",
         "!1012 ="},
       "interpolation mode that differs from another element packed",
       /*bRegex*/true);
@@ -841,14 +783,14 @@ TEST_F(ValidationTest, InterpOnIntFail) {
 }
 TEST_F(ValidationTest, InvalidSigCompTyFail) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\abs2.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\abs2.hlsl", "ps_6_0",
       "!\"A\", i8 4",
       "!\"A\", i8 0",
       "A specifies unrecognized or invalid component type");
 }
 TEST_F(ValidationTest, MultiStream2Fail) {
   RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\multiStreamGS.hlsl", "gs_6_0",
+      L"..\\CodeGenHLSL\\validation\\multiStreamGS.hlsl", "gs_6_0",
       "i32 1, i32 12, i32 7, i32 1, i32 1",
       "i32 1, i32 12, i32 7, i32 2, i32 1",
       "Multiple GS output streams are used but 'XXX' is not pointlist");
@@ -864,16 +806,17 @@ TEST_F(ValidationTest, PhiTGSMFail) {
       "TGSM pointers must originate from an unambiguous TGSM global variable");
 }
 
-TEST_F(ValidationTest, QuadOpInVS) {
-  if (m_ver.SkipDxilVersion(1, 5)) return;
+TEST_F(ValidationTest, QuadOpInCS) {
+  if (m_ver.SkipDxilVersion(1, 3)) return;
   RewriteAssemblyCheckMsg(
       "struct PerThreadData { int "
       "input; int output; }; RWStructuredBuffer<PerThreadData> g_sb; "
-      "void main(uint vid : SV_VertexID)"
-      "{ g_sb[vid].output = WaveActiveSum(g_sb[vid].input); }",
-      "vs_6_0", {"@dx.op.waveActiveOp.i32(i32 119", "declare i32 @dx.op.waveActiveOp.i32(i32, i32, i8, i8)"},
+      "[numthreads(8, 12, 1)] void main(uint GI : SV_GroupIndex) "
+      "{ PerThreadData pts = g_sb[GI]; pts.output = "
+      "WaveActiveSum(pts.input); g_sb[GI] = pts; }; ",
+      "cs_6_0", {"@dx.op.waveActiveOp.i32(i32 119", "declare i32 @dx.op.waveActiveOp.i32(i32, i32, i8, i8)"},
       {"@dx.op.quadOp.i32(i32 123", "declare i32 @dx.op.quadOp.i32(i32, i32, i8, i8)"},
-      "QuadOp not valid in shader model vs_6_0"
+      "'QuadReadAcross' should only be used in 'Pixel Shader'"
       );
 }
 
@@ -895,7 +838,7 @@ TEST_F(ValidationTest, ReducibleFail) {
 }
 TEST_F(ValidationTest, SampleBiasFail) {
   RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\sampleBias.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\sampleBias.hlsl", "ps_6_0",
       {"float -1.600000e+01"
       },
       {"float 1.800000e+01"
@@ -918,17 +861,18 @@ TEST_F(ValidationTest, SamplerKindFail) {
       {"Invalid sampler mode",
        "require sampler declared in comparison mode",
        "requires sampler declared in default mode",
-       // 1.4: "should", 1.5: "should be "
-       "on srv resource"});
+       "should on srv resource"});
 }
 TEST_F(ValidationTest, SemaOverlapFail) {
   RewriteAssemblyCheckMsg(
       L"..\\CodeGenHLSL\\semaOverlap1.hlsl", "ps_6_0",
-      {"!\\{i32 0, !\"A\", i8 9, i8 0, !([0-9]+), i8 2, i32 1, i8 4, i32 0, i8 0, (.*)"
-      "!\\{i32 1, !\"A\", i8 9, i8 0, !([0-9]+)",
+      {"!([0-9]+) = !\\{i32 0, !\"A\", i8 9, i8 0, !([0-9]+), i8 2, i32 1, i8 4, i32 0, i8 0, null\\}\n"
+      "!([0-9]+) = !\\{i32 0\\}\n"
+      "!([0-9]+) = !\\{i32 1, !\"A\", i8 9, i8 0, !([0-9]+)",
       },
-      {"!\\{i32 0, !\"A\", i8 9, i8 0, !\\1, i8 2, i32 1, i8 4, i32 0, i8 0, \\2"
-      "!\\{i32 1, !\"A\", i8 9, i8 0, !\\1",
+      {"!\\1 = !\\{i32 0, !\"A\", i8 9, i8 0, !\\2, i8 2, i32 1, i8 4, i32 0, i8 0, null\\}\n"
+      "!\\3 = !\\{i32 0\\}\n"
+      "!\\4 = !\\{i32 1, !\"A\", i8 9, i8 0, !\\2",
       },
       {"Semantic 'A' overlap at 0"},
       /*bRegex*/true);
@@ -946,15 +890,15 @@ TEST_F(ValidationTest, SigOutOfRangeFail) {
 TEST_F(ValidationTest, SigOverlapFail) {
   RewriteAssemblyCheckMsg(
       L"..\\CodeGenHLSL\\semaOverlap1.hlsl", "ps_6_0",
-      { "i8 2, i32 1, i8 4, i32 1, i8 0,",
+      { "i32 1, i8 0, null}",
         "?!dx.viewIdState =" },
-      { "i8 2, i32 1, i8 4, i32 0, i8 0,",
+      { "i32 0, i8 0, null}",
         "!1012 =" },
       {"signature element A at location (0,0) size (1,4) overlaps another signature element"});
 }
 TEST_F(ValidationTest, SimpleHs1Fail) {
   RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\SimpleHs1.hlsl", "hs_6_0",
+      L"..\\CodeGenHLSL\\validation\\SimpleHs1.hlsl", "hs_6_0",
       {"i32 3, i32 3, i32 2, i32 3, i32 3, float 6.400000e+01}",
        "\"SV_TessFactor\", i8 9, i8 25",
        "\"SV_InsideTessFactor\", i8 9, i8 26",
@@ -972,7 +916,7 @@ TEST_F(ValidationTest, SimpleHs1Fail) {
 }
 TEST_F(ValidationTest, SimpleHs3Fail) {
   RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\SimpleHs3.hlsl", "hs_6_0",
+      L"..\\CodeGenHLSL\\validation\\SimpleHs3.hlsl", "hs_6_0",
       {
           "i32 3, i32 3, i32 2, i32 3, i32 3, float 6.400000e+01}",
       },
@@ -985,7 +929,7 @@ TEST_F(ValidationTest, SimpleHs3Fail) {
 }
 TEST_F(ValidationTest, SimpleHs4Fail) {
   RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\SimpleHs4.hlsl", "hs_6_0",
+      L"..\\CodeGenHLSL\\validation\\SimpleHs4.hlsl", "hs_6_0",
       {
           "i32 2, i32 2, i32 1, i32 3, i32 2, float 6.400000e+01}",
       },
@@ -998,7 +942,7 @@ TEST_F(ValidationTest, SimpleHs4Fail) {
 }
 TEST_F(ValidationTest, SimpleDs1Fail) {
   RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\SimpleDs1.hlsl", "ds_6_0",
+      L"..\\CodeGenHLSL\\validation\\SimpleDs1.hlsl", "ds_6_0",
       {"!{i32 2, i32 3}"
       },
       {"!{i32 4, i32 36}"
@@ -1010,7 +954,7 @@ TEST_F(ValidationTest, SimpleDs1Fail) {
 TEST_F(ValidationTest, SimpleGs1Fail) {
   return;   // Skip for now since this fails AssembleToContainer in PSV creation due to out of range stream index
   RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\SimpleGS1.hlsl", "gs_6_0",
+      L"..\\CodeGenHLSL\\validation\\SimpleGS1.hlsl", "gs_6_0",
       {"!{i32 1, i32 3, i32 1, i32 5, i32 1}",
        "i8 4, i32 1, i8 4, i32 2, i8 0, null}"
       },
@@ -1041,8 +985,7 @@ TEST_F(ValidationTest, UavBarrierFail) {
       {"uav load don't support offset",
        "uav load don't support mipLevel/sampleIndex",
        "store on typed uav must write to all four components of the UAV",
-       "sync in a non-",    // 1.4: "Compute" 1.5: "Compute/Amplification/Mesh"
-       " Shader must only sync UAV (sync_uglobal)"});
+       "sync in a non-Compute Shader must only sync UAV (sync_uglobal)"});
 }
 TEST_F(ValidationTest, UndefValueFail) {
   TestCheck(L"..\\CodeGenHLSL\\UndefValue.hlsl");
@@ -1066,7 +1009,7 @@ TEST_F(ValidationTest, UpdateCounterFail) {
 
 TEST_F(ValidationTest, LocalResCopy) {
   RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\resCopy.hlsl", "cs_6_0", {"ret void"},
+      L"..\\CodeGenHLSL\\validation\\resCopy.hlsl", "cs_6_0", {"ret void"},
       {"%H = alloca %dx.types.ResRet.i32\n"
        "ret void"},
       {"Dxil struct types should only used by ExtractValue"});
@@ -1102,7 +1045,7 @@ TEST_F(ValidationTest, WhenMetaFlagsUsageDeclThenOK) {
 
 TEST_F(ValidationTest, GsVertexIDOutOfBound) {
   RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\SimpleGS1.hlsl", "gs_6_0",
+      L"..\\CodeGenHLSL\\validation\\SimpleGS1.hlsl", "gs_6_0",
       "dx.op.loadInput.f32(i32 4, i32 0, i32 0, i8 2, i32 0)",
       "dx.op.loadInput.f32(i32 4, i32 0, i32 0, i8 2, i32 1)", 
       "expect VertexID between 0~1, got 1");
@@ -1110,7 +1053,7 @@ TEST_F(ValidationTest, GsVertexIDOutOfBound) {
 
 TEST_F(ValidationTest, StreamIDOutOfBound) {
   RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\SimpleGS1.hlsl", "gs_6_0",
+      L"..\\CodeGenHLSL\\validation\\SimpleGS1.hlsl", "gs_6_0",
       "dx.op.emitStream(i32 97, i8 0)",
       "dx.op.emitStream(i32 97, i8 1)", 
       "expect StreamID between 0 , got 1");
@@ -1120,7 +1063,7 @@ TEST_F(ValidationTest, SignatureDataWidth) {
   if (m_ver.SkipDxilVersion(1, 2)) return;
   std::vector<LPCWSTR> pArguments = { L"-enable-16bit-types", L"-HV", L"2018" };
   RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\signature_packing_by_width.hlsl", "ps_6_2",
+      L"..\\CodeGenHLSL\\validation\\signature_packing_by_width.hlsl", "ps_6_2",
       pArguments.data(), 3, nullptr, 0,
       {"i8 8, i8 0, (![0-9]+), i8 2, i32 1, i8 2, i32 0, i8 0, null}"},
       {"i8 9, i8 0, \\1, i8 2, i32 1, i8 2, i32 0, i8 0, null}"},
@@ -1131,13 +1074,12 @@ TEST_F(ValidationTest, SignatureDataWidth) {
 
 TEST_F(ValidationTest, SignatureStreamIDForNonGS) {
   RewriteAssemblyCheckMsg(
-    L"..\\DXILValidation\\abs1.hlsl", "ps_6_0",
-    { ", i8 0, i32 1, i8 4, i32 0, i8 0, [^,]+}",
+    L"..\\CodeGenHLSL\\validation\\abs1.hlsl", "ps_6_0",
+    { ", i8 0, i32 1, i8 4, i32 0, i8 0, null}",
       "?!dx.viewIdState ="},
-    { ", i8 0, i32 1, i8 4, i32 0, i8 0, !1019}\n!1019 = !{i32 0, i32 1}",
+    { ", i8 0, i32 1, i8 4, i32 0, i8 0, !19}\n!19 = !{i32 0, i32 1}",
       "!1012 =" },
-    "Stream index \\(1\\) must between 0 and 0",
-    true);
+    "Stream index (1) must between 0 and 0");
 }
 
 TEST_F(ValidationTest, TypedUAVStoreFullMask0) {
@@ -1219,7 +1161,7 @@ TEST_F(ValidationTest, CBufferOverlap1) {
 
 TEST_F(ValidationTest, ControlFlowHint) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\if1.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\if1.hlsl", "ps_6_0",
       "!\"dx.controlflow.hints\", i32 1",
       "!\"dx.controlflow.hints\", i32 5",
       "Attribute forcecase only works for switch");
@@ -1227,7 +1169,7 @@ TEST_F(ValidationTest, ControlFlowHint) {
 
 TEST_F(ValidationTest, ControlFlowHint1) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\if1.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\if1.hlsl", "ps_6_0",
       "!\"dx.controlflow.hints\", i32 1",
       "!\"dx.controlflow.hints\", i32 1, i32 2",
       "Can't use branch and flatten attributes together");
@@ -1235,7 +1177,7 @@ TEST_F(ValidationTest, ControlFlowHint1) {
 
 TEST_F(ValidationTest, ControlFlowHint2) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\if1.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\if1.hlsl", "ps_6_0",
       "!\"dx.controlflow.hints\", i32 1",
       "!\"dx.controlflow.hints\", i32 3",
       "Invalid control flow hint");
@@ -1243,7 +1185,7 @@ TEST_F(ValidationTest, ControlFlowHint2) {
 
 TEST_F(ValidationTest, SemanticLength1) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\binary1.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\binary1.hlsl", "ps_6_0",
       "!\"C\"",
       "!\"\"",
       "Semantic length must be at least 1 and at most 64");
@@ -1251,7 +1193,7 @@ TEST_F(ValidationTest, SemanticLength1) {
 
 TEST_F(ValidationTest, SemanticLength64) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\binary1.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\binary1.hlsl", "ps_6_0",
       "!\"C\"",
       "!\"CSESESESESESESESESESESESESESESESESESESESESESESESESESESESESESESESE\"",
       "Semantic length must be at least 1 and at most 64");
@@ -1259,7 +1201,7 @@ TEST_F(ValidationTest, SemanticLength64) {
 
 TEST_F(ValidationTest, PullModelPosition) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\eval.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\eval.hlsl", "ps_6_0",
       "!\"A\", i8 9, i8 0",
       "!\"SV_Position\", i8 9, i8 3",
       "does not support pull-model evaluation of position");
@@ -1267,7 +1209,7 @@ TEST_F(ValidationTest, PullModelPosition) {
 
 TEST_F(ValidationTest, StructBufGlobalCoherentAndCounter) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\struct_buf1.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\struct_buf1.hlsl", "ps_6_0",
       "!\"buf2\", i32 0, i32 0, i32 1, i32 12, i1 false, i1 false",
       "!\"buf2\", i32 0, i32 0, i32 1, i32 12, i1 true, i1 true",
       "globallycoherent cannot be used with append/consume buffers'buf2'");
@@ -1275,7 +1217,7 @@ TEST_F(ValidationTest, StructBufGlobalCoherentAndCounter) {
 
 TEST_F(ValidationTest, StructBufStrideAlign) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\struct_buf1.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\struct_buf1.hlsl", "ps_6_0",
       "= !{i32 1, i32 52}",
       "= !{i32 1, i32 50}",
       "structured buffer element size must be a multiple of 4 bytes (actual size 50 bytes)");
@@ -1283,7 +1225,7 @@ TEST_F(ValidationTest, StructBufStrideAlign) {
 
 TEST_F(ValidationTest, StructBufStrideOutOfBound) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\struct_buf1.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\struct_buf1.hlsl", "ps_6_0",
       "= !{i32 1, i32 52}",
       "= !{i32 1, i32 2052}",
       "structured buffer elements cannot be larger than 2048 bytes (actual size 2052 bytes)");
@@ -1291,7 +1233,7 @@ TEST_F(ValidationTest, StructBufStrideOutOfBound) {
 
 TEST_F(ValidationTest, StructBufLoadCoordinates) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\struct_buf1.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\struct_buf1.hlsl", "ps_6_0",
       "bufferLoad.f32(i32 68, %dx.types.Handle %buf1_texture_structbuf, i32 1, i32 8)",
       "bufferLoad.f32(i32 68, %dx.types.Handle %buf1_texture_structbuf, i32 1, i32 undef)",
       "structured buffer require 2 coordinates");
@@ -1299,7 +1241,7 @@ TEST_F(ValidationTest, StructBufLoadCoordinates) {
 
 TEST_F(ValidationTest, StructBufStoreCoordinates) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\struct_buf1.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\struct_buf1.hlsl", "ps_6_0",
       "bufferStore.f32(i32 69, %dx.types.Handle %buf2_UAV_structbuf, i32 0, i32 0",
       "bufferStore.f32(i32 69, %dx.types.Handle %buf2_UAV_structbuf, i32 0, i32 undef",
       "structured buffer require 2 coordinates");
@@ -1307,7 +1249,7 @@ TEST_F(ValidationTest, StructBufStoreCoordinates) {
 
 TEST_F(ValidationTest, TypedBufRetType) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\sample5.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\sample5.hlsl", "ps_6_0",
       " = type { <4 x float>",
       " = type { <4 x double>",
       "elements of typed buffers and textures must fit in four 32-bit quantities");
@@ -1315,7 +1257,7 @@ TEST_F(ValidationTest, TypedBufRetType) {
 
 TEST_F(ValidationTest, VsInputSemantic) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\clip_planes.hlsl", "vs_6_0",
+      L"..\\CodeGenHLSL\\validation\\clip_planes.hlsl", "vs_6_0",
       "!\"POSITION\", i8 9, i8 0",
       "!\"SV_Target\", i8 9, i8 16",
       "Semantic 'SV_Target' is invalid as vs Input");
@@ -1323,7 +1265,7 @@ TEST_F(ValidationTest, VsInputSemantic) {
 
 TEST_F(ValidationTest, VsOutputSemantic) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\clip_planes.hlsl", "vs_6_0",
+      L"..\\CodeGenHLSL\\validation\\clip_planes.hlsl", "vs_6_0",
       "!\"NORMAL\", i8 9, i8 0",
       "!\"SV_Target\", i8 9, i8 16",
       "Semantic 'SV_Target' is invalid as vs Output");
@@ -1331,7 +1273,7 @@ TEST_F(ValidationTest, VsOutputSemantic) {
 
 TEST_F(ValidationTest, HsInputSemantic) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\SimpleHs1.hlsl", "hs_6_0",
+      L"..\\CodeGenHLSL\\validation\\SimpleHs1.hlsl", "hs_6_0",
       "!\"TEXCOORD\", i8 9, i8 0",
       "!\"VertexID\", i8 4, i8 1",
       "Semantic 'VertexID' is invalid as hs Input");
@@ -1339,7 +1281,7 @@ TEST_F(ValidationTest, HsInputSemantic) {
 
 TEST_F(ValidationTest, HsOutputSemantic) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\SimpleHs1.hlsl", "hs_6_0",
+      L"..\\CodeGenHLSL\\validation\\SimpleHs1.hlsl", "hs_6_0",
       "!\"TEXCOORD\", i8 9, i8 0",
       "!\"VertexID\", i8 4, i8 1",
       "Semantic 'VertexID' is invalid as hs Output");
@@ -1347,7 +1289,7 @@ TEST_F(ValidationTest, HsOutputSemantic) {
 
 TEST_F(ValidationTest, PatchConstSemantic) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\SimpleHs1.hlsl", "hs_6_0",
+      L"..\\CodeGenHLSL\\validation\\SimpleHs1.hlsl", "hs_6_0",
       "!\"SV_TessFactor\", i8 9, i8 25",
       "!\"VertexID\", i8 4, i8 1",
       "Semantic 'VertexID' is invalid as hs PatchConstant");
@@ -1355,7 +1297,7 @@ TEST_F(ValidationTest, PatchConstSemantic) {
 
 TEST_F(ValidationTest, DsInputSemantic) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\SimpleDs1.hlsl", "ds_6_0",
+      L"..\\CodeGenHLSL\\validation\\SimpleDs1.hlsl", "ds_6_0",
       "!\"TEXCOORD\", i8 9, i8 0",
       "!\"VertexID\", i8 4, i8 1",
       "Semantic 'VertexID' is invalid as ds Input");
@@ -1363,7 +1305,7 @@ TEST_F(ValidationTest, DsInputSemantic) {
 
 TEST_F(ValidationTest, DsOutputSemantic) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\SimpleDs1.hlsl", "ds_6_0",
+      L"..\\CodeGenHLSL\\validation\\SimpleDs1.hlsl", "ds_6_0",
       "!\"TEXCOORD\", i8 9, i8 0",
       "!\"VertexID\", i8 4, i8 1",
       "Semantic 'VertexID' is invalid as ds Output");
@@ -1371,7 +1313,7 @@ TEST_F(ValidationTest, DsOutputSemantic) {
 
 TEST_F(ValidationTest, GsInputSemantic) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\SimpleGS1.hlsl", "gs_6_0",
+      L"..\\CodeGenHLSL\\validation\\SimpleGS1.hlsl", "gs_6_0",
       "!\"POSSIZE\", i8 9, i8 0",
       "!\"VertexID\", i8 4, i8 1",
       "Semantic 'VertexID' is invalid as gs Input");
@@ -1379,7 +1321,7 @@ TEST_F(ValidationTest, GsInputSemantic) {
 
 TEST_F(ValidationTest, GsOutputSemantic) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\SimpleGS1.hlsl", "gs_6_0",
+      L"..\\CodeGenHLSL\\validation\\SimpleGS1.hlsl", "gs_6_0",
       "!\"TEXCOORD\", i8 9, i8 0",
       "!\"VertexID\", i8 4, i8 1",
       "Semantic 'VertexID' is invalid as gs Output");
@@ -1387,7 +1329,7 @@ TEST_F(ValidationTest, GsOutputSemantic) {
 
 TEST_F(ValidationTest, PsInputSemantic) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\abs2.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\abs2.hlsl", "ps_6_0",
       "!\"A\", i8 4, i8 0",
       "!\"VertexID\", i8 4, i8 1",
       "Semantic 'VertexID' is invalid as ps Input");
@@ -1395,7 +1337,7 @@ TEST_F(ValidationTest, PsInputSemantic) {
 
 TEST_F(ValidationTest, PsOutputSemantic) {
     RewriteAssemblyCheckMsg(
-      L"..\\DXILValidation\\abs2.hlsl", "ps_6_0",
+      L"..\\CodeGenHLSL\\validation\\abs2.hlsl", "ps_6_0",
       "!\"SV_Target\", i8 9, i8 16",
       "!\"VertexID\", i8 4, i8 1",
       "Semantic 'VertexID' is invalid as ps Output");
@@ -1404,8 +1346,8 @@ TEST_F(ValidationTest, PsOutputSemantic) {
 TEST_F(ValidationTest, ArrayOfSVTarget) {
     RewriteAssemblyCheckMsg(
       L"..\\CodeGenHLSL\\targetArray.hlsl", "ps_6_0",
-      "i32 2, !\"SV_Target\", i8 9, i8 16, !([0-9]+), i8 0, i32 1, i8 4, i32 0, i8 0, (.*)}",
-      "i32 2, !\"SV_Target\", i8 9, i8 16, !101, i8 0, i32 2, i8 4, i32 0, i8 0, \\2}\n!101 = !{i32 5, i32 6}",
+      "i32 2, !\"SV_Target\", i8 9, i8 16, !([0-9]+), i8 0, i32 1, i8 4, i32 0, i8 0, null}",
+      "i32 2, !\"SV_Target\", i8 9, i8 16, !101, i8 0, i32 2, i8 4, i32 0, i8 0, null}\n!101 = !{i32 5, i32 6}",
       "Pixel shader output registers are not indexable.",
       /*bRegex*/true);
 }
@@ -1465,7 +1407,7 @@ TEST_F(ValidationTest, UDivByZero) {
 }
 
 TEST_F(ValidationTest, UnusedMetadata) {
-  RewriteAssemblyCheckMsg(L"..\\DXILValidation\\loop2.hlsl", "ps_6_0",
+  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\validation\\loop2.hlsl", "ps_6_0",
                           ", !llvm.loop ",
                           ", !llvm.loop2 ",
                           "All metadata must be used by dxil");
@@ -1503,7 +1445,7 @@ TEST_F(ValidationTest, LocalRes6Dbg) {
 }
 
 TEST_F(ValidationTest, AddrSpaceCast) {
-  RewriteAssemblyCheckMsg(L"..\\DXILValidation\\staticGlobals.hlsl", "ps_6_0",
+  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\validation\\staticGlobals.hlsl", "ps_6_0",
                           "%([0-9]+) = getelementptr \\[4 x i32\\], \\[4 x i32\\]\\* %([0-9]+), i32 0, i32 0\n"
                           "  store i32 %([0-9]+), i32\\* %\\1, align 4",
                           "%\\1 = getelementptr [4 x i32], [4 x i32]* %\\2, i32 0, i32 0\n"
@@ -1514,7 +1456,7 @@ TEST_F(ValidationTest, AddrSpaceCast) {
 }
 
 TEST_F(ValidationTest, PtrBitCast) {
-  RewriteAssemblyCheckMsg(L"..\\DXILValidation\\staticGlobals.hlsl", "ps_6_0",
+  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\validation\\staticGlobals.hlsl", "ps_6_0",
                           "%([0-9]+) = getelementptr \\[4 x i32\\], \\[4 x i32\\]\\* %([0-9]+), i32 0, i32 0\n"
                           "  store i32 %([0-9]+), i32\\* %\\1, align 4",
                           "%\\1 = getelementptr [4 x i32], [4 x i32]* %\\2, i32 0, i32 0\n"
@@ -1526,7 +1468,7 @@ TEST_F(ValidationTest, PtrBitCast) {
 
 TEST_F(ValidationTest, MinPrecisionBitCast) {
   if (m_ver.SkipDxilVersion(1, 2)) return;
-  RewriteAssemblyCheckMsg(L"..\\DXILValidation\\staticGlobals.hlsl", "ps_6_0",
+  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\validation\\staticGlobals.hlsl", "ps_6_0",
                           "%([0-9]+) = getelementptr \\[4 x i32\\], \\[4 x i32\\]\\* %([0-9]+), i32 0, i32 0\n"
                           "  store i32 %([0-9]+), i32\\* %\\1, align 4",
                           "%\\1 = getelementptr [4 x i32], [4 x i32]* %\\2, i32 0, i32 0\n"
@@ -1537,7 +1479,7 @@ TEST_F(ValidationTest, MinPrecisionBitCast) {
 }
 
 TEST_F(ValidationTest, StructBitCast) {
-  RewriteAssemblyCheckMsg(L"..\\DXILValidation\\staticGlobals.hlsl", "ps_6_0",
+  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\validation\\staticGlobals.hlsl", "ps_6_0",
                           "%([0-9]+) = getelementptr \\[4 x i32\\], \\[4 x i32\\]\\* %([0-9]+), i32 0, i32 0\n"
                           "  store i32 %([0-9]+), i32\\* %\\1, align 4",
                           "%\\1 = getelementptr [4 x i32], [4 x i32]* %\\2, i32 0, i32 0\n"
@@ -1548,7 +1490,7 @@ TEST_F(ValidationTest, StructBitCast) {
 }
 
 TEST_F(ValidationTest, MultiDimArray) {
-  RewriteAssemblyCheckMsg(L"..\\DXILValidation\\staticGlobals.hlsl", "ps_6_0",
+  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\validation\\staticGlobals.hlsl", "ps_6_0",
                           "= alloca [4 x i32]",
                           "= alloca [4 x i32]\n"
                           "  %md = alloca [2 x [4 x float]]",
@@ -1576,7 +1518,7 @@ TEST_F(ValidationTest, IllegalSampleOffset4) {
 }
 
 TEST_F(ValidationTest, NoFunctionParam) {
-  RewriteAssemblyCheckMsg(L"..\\DXILValidation\\abs2.hlsl", "ps_6_0",
+  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\validation\\abs2.hlsl", "ps_6_0",
     {"define void @main\\(\\)",               "void \\(\\)\\* @main, !([0-9]+)\\}(.*)!\\1 = !\\{!([0-9]+)\\}",  "void \\(\\)\\* @main"},
     {"define void @main(<4 x i32> %mainArg)", "void (<4 x i32>)* @main, !\\1}\\2!\\1 = !{!\\3, !\\3}",          "void (<4 x i32>)* @main"},
     "with parameter is not permitted",
@@ -1584,7 +1526,7 @@ TEST_F(ValidationTest, NoFunctionParam) {
 }
 
 TEST_F(ValidationTest, I8Type) {
-  RewriteAssemblyCheckMsg(L"..\\DXILValidation\\staticGlobals.hlsl", "ps_6_0",
+  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\validation\\staticGlobals.hlsl", "ps_6_0",
                           "%([0-9]+) = alloca \\[4 x i32\\]",
                           "%\\1 = alloca [4 x i32]\n"
                           "  %m8 = alloca i8",
@@ -1857,9 +1799,9 @@ TEST_F(ValidationTest, SemTargetMax) {
 float4 main(float4 col : COLOR) : SV_Target7 { return col; } \
     ",
     "ps_6_0", 
-    { "!{i32 0, !\"SV_Target\", i8 9, i8 16, ![0-9]+, i8 0, i32 1, i8 4, i32 7, i8 0, (.*)}",
+    { "!{i32 0, !\"SV_Target\", i8 9, i8 16, ![0-9]+, i8 0, i32 1, i8 4, i32 7, i8 0, null}",
       "?!dx.viewIdState ="},
-    { "!{i32 0, !\"SV_Target\", i8 9, i8 16, !101, i8 0, i32 1, i8 4, i32 8, i8 0, \\1}\n!101 = !{i32 8}",
+    { "!{i32 0, !\"SV_Target\", i8 9, i8 16, !101, i8 0, i32 1, i8 4, i32 8, i8 0, null}\n!101 = !{i32 8}",
       "!1012 ="},
     "SV_Target semantic index exceeds maximum \\(7\\)",
     /*bRegex*/true);
@@ -1870,9 +1812,9 @@ TEST_F(ValidationTest, SemTargetIndexMatchesRow) {
 float4 main(float4 col : COLOR) : SV_Target7 { return col; } \
     ",
     "ps_6_0", 
-    { "!{i32 0, !\"SV_Target\", i8 9, i8 16, !([0-9]+), i8 0, i32 1, i8 4, i32 7, i8 0, (.*)}",
+    { "!{i32 0, !\"SV_Target\", i8 9, i8 16, !([0-9]+), i8 0, i32 1, i8 4, i32 7, i8 0, null}",
       "?!dx.viewIdState ="},
-    { "!{i32 0, !\"SV_Target\", i8 9, i8 16, !\\1, i8 0, i32 1, i8 4, i32 6, i8 0, \\2}",
+    { "!{i32 0, !\"SV_Target\", i8 9, i8 16, !\\1, i8 0, i32 1, i8 4, i32 6, i8 0, null}",
       "!1012 ="},
     "SV_Target semantic index must match packed row location",
     /*bRegex*/true);
@@ -1883,8 +1825,8 @@ TEST_F(ValidationTest, SemTargetCol0) {
 float3 main(float4 col : COLOR) : SV_Target7 { return col.xyz; } \
     ",
     "ps_6_0", 
-    "!{i32 0, !\"SV_Target\", i8 9, i8 16, !([0-9]+), i8 0, i32 1, i8 3, i32 7, i8 0, (.*)}",
-    "!{i32 0, !\"SV_Target\", i8 9, i8 16, !\\1, i8 0, i32 1, i8 3, i32 7, i8 1, \\2}",
+    "!{i32 0, !\"SV_Target\", i8 9, i8 16, !([0-9]+), i8 0, i32 1, i8 3, i32 7, i8 0, null}",
+    "!{i32 0, !\"SV_Target\", i8 9, i8 16, !\\1, i8 0, i32 1, i8 3, i32 7, i8 1, null}",
     "SV_Target packed location must start at column 0",
     /*bRegex*/true);
 }
@@ -1896,8 +1838,8 @@ float4 main(uint vid : SV_VertexID, uint iid : SV_InstanceID) : SV_Position { \
 } \
     ",
     "vs_6_0", 
-    "!{i32 0, !\"SV_VertexID\", i8 5, i8 1, ![0-9]+, i8 0, i32 1, i8 1, i32 0, i8 0, (.*)}",
-    "!{i32 0, !\"SV_VertexID\", i8 5, i8 1, !101, i8 0, i32 1, i8 1, i32 0, i8 0, \\1}\n!101 = !{i32 1}",
+    "!{i32 0, !\"SV_VertexID\", i8 5, i8 1, ![0-9]+, i8 0, i32 1, i8 1, i32 0, i8 0, null}",
+    "!{i32 0, !\"SV_VertexID\", i8 5, i8 1, !101, i8 0, i32 1, i8 1, i32 0, i8 0, null}\n!101 = !{i32 1}",
     "SV_VertexID semantic index exceeds maximum \\(0\\)",
     /*bRegex*/true);
 }
@@ -1929,8 +1871,8 @@ Vertex main(uint id : SV_OutputControlPointID, InputPatch< Vertex, 3 > patch) { 
 } \
     ",
     "hs_6_0",
-    "!{i32 0, !\"SV_TessFactor\", i8 9, i8 25, ![0-9]+, i8 0, i32 3, i8 1, i32 0, i8 3, (.*)}",
-    "!{i32 0, !\"SV_TessFactor\", i8 9, i8 25, !101, i8 0, i32 2, i8 1, i32 0, i8 3, \\1}\n!101 = !{i32 0, i32 1}",
+    "!{i32 0, !\"SV_TessFactor\", i8 9, i8 25, ![0-9]+, i8 0, i32 3, i8 1, i32 0, i8 3, null}",
+    "!{i32 0, !\"SV_TessFactor\", i8 9, i8 25, !101, i8 0, i32 2, i8 1, i32 0, i8 3, null}\n!101 = !{i32 0, i32 1}",
     "TessFactor rows, columns \\(2, 1\\) invalid for domain Tri.  Expected 3 rows and 1 column.",
     /*bRegex*/true);
 }
@@ -1962,9 +1904,9 @@ Vertex main(uint id : SV_OutputControlPointID, InputPatch< Vertex, 3 > patch) { 
 } \
     ",
     "hs_6_0",
-    { "!{i32 1, !\"SV_InsideTessFactor\", i8 9, i8 26, !([0-9]+), i8 0, i32 1, i8 1, i32 3, i8 0, (.*)}",
+    { "!{i32 1, !\"SV_InsideTessFactor\", i8 9, i8 26, !([0-9]+), i8 0, i32 1, i8 1, i32 3, i8 0, null}",
       "?!dx.viewIdState =" },
-    { "!{i32 1, !\"SV_InsideTessFactor\", i8 9, i8 26, !101, i8 0, i32 2, i8 1, i32 3, i8 0, \\2}\n!101 = !{i32 0, i32 1}",
+    { "!{i32 1, !\"SV_InsideTessFactor\", i8 9, i8 26, !101, i8 0, i32 2, i8 1, i32 3, i8 0, null}\n!101 = !{i32 0, i32 1}",
       "!1012 =" },
     "InsideTessFactor rows, columns \\(2, 1\\) invalid for domain Tri.  Expected 1 rows and 1 column.",
     /*bRegex*/true);
@@ -1997,8 +1939,8 @@ Vertex main(uint id : SV_OutputControlPointID, InputPatch< Vertex, 3 > patch) { 
 } \
     ",
     "hs_6_0",
-    "!{i32 0, !\"SV_TessFactor\", i8 9, i8 25, !([0-9]+), i8 0, i32 3, i8 1, i32 0, i8 3, (.*)}",
-    "!{i32 0, !\"SV_TessFactor\", i8 9, i8 25, !\\1, i8 0, i32 3, i8 1, i32 -1, i8 -1, \\2}",
+    "!{i32 0, !\"SV_TessFactor\", i8 9, i8 25, !([0-9]+), i8 0, i32 3, i8 1, i32 0, i8 3, null}",
+    "!{i32 0, !\"SV_TessFactor\", i8 9, i8 25, !\\1, i8 0, i32 3, i8 1, i32 -1, i8 -1, null}",
     "PatchConstant Semantic 'SV_TessFactor' should have a valid packing location",
     /*bRegex*/true);
 }
@@ -2008,8 +1950,8 @@ TEST_F(ValidationTest, SemShouldNotBeAllocated) {
 float4 main(float4 col : COLOR, out uint coverage : SV_Coverage) : SV_Target7 { coverage = 7; return col; } \
     ",
     "ps_6_0",
-    "!\"SV_Coverage\", i8 5, i8 14, !([0-9]+), i8 0, i32 1, i8 1, i32 -1, i8 -1, (.*)}",
-    "!\"SV_Coverage\", i8 5, i8 14, !\\1, i8 0, i32 1, i8 1, i32 2, i8 0, \\2}",
+    "!\"SV_Coverage\", i8 5, i8 14, !([0-9]+), i8 0, i32 1, i8 1, i32 -1, i8 -1, null}",
+    "!\"SV_Coverage\", i8 5, i8 14, !\\1, i8 0, i32 1, i8 1, i32 2, i8 0, null}",
     "Output Semantic 'SV_Coverage' should have a packing location of -1",
     /*bRegex*/true);
 }
@@ -2034,16 +1976,16 @@ void main( \
     ",
     "vs_6_0",
 
-    { "= !{i32 1, !\"f2out\", i8 9, i8 0, !([0-9]+), i8 2, i32 1, i8 2, i32 1, i8 0, (.*)}\n"
-      "!([0-9]+) = !{i32 2, !\"f3out\", i8 9, i8 0, !([0-9]+), i8 2, i32 1, i8 3, i32 2, i8 0, (.*)}\n"
-      "!([0-9]+) = !{i32 3, !\"SV_ClipDistance\", i8 9, i8 6, !([0-9]+), i8 2, i32 1, i8 2, i32 3, i8 0, (.*)}\n"
-      "!([0-9]+) = !{i32 4, !\"SV_CullDistance\", i8 9, i8 7, !([0-9]+), i8 2, i32 1, i8 1, i32 3, i8 2, (.*)}\n",
+    { "= !{i32 1, !\"f2out\", i8 9, i8 0, !([0-9]+), i8 2, i32 1, i8 2, i32 1, i8 0, null}\n"
+      "!([0-9]+) = !{i32 2, !\"f3out\", i8 9, i8 0, !([0-9]+), i8 2, i32 1, i8 3, i32 2, i8 0, null}\n"
+      "!([0-9]+) = !{i32 3, !\"SV_ClipDistance\", i8 9, i8 6, !([0-9]+), i8 2, i32 1, i8 2, i32 3, i8 0, null}\n"
+      "!([0-9]+) = !{i32 4, !\"SV_CullDistance\", i8 9, i8 7, !([0-9]+), i8 2, i32 1, i8 1, i32 3, i8 2, null}\n",
       "?!dx.viewIdState =" },
 
-    { "= !{i32 1, !\"f2out\", i8 9, i8 0, !\\1, i8 2, i32 1, i8 2, i32 1, i8 2, \\2}\n"
-      "!\\3 = !{i32 2, !\"f3out\", i8 9, i8 0, !\\4, i8 2, i32 1, i8 3, i32 2, i8 1, \\5}\n"
-      "!\\6 = !{i32 3, !\"SV_ClipDistance\", i8 9, i8 6, !\\7, i8 2, i32 1, i8 2, i32 2, i8 0, \\8}\n"
-      "!\\9 = !{i32 4, !\"SV_CullDistance\", i8 9, i8 7, !\\10, i8 2, i32 1, i8 1, i32 1, i8 0, \\11}\n",
+    { "= !{i32 1, !\"f2out\", i8 9, i8 0, !\\1, i8 2, i32 1, i8 2, i32 1, i8 2, null}\n"
+      "!\\2 = !{i32 2, !\"f3out\", i8 9, i8 0, !\\3, i8 2, i32 1, i8 3, i32 2, i8 1, null}\n"
+      "!\\4 = !{i32 3, !\"SV_ClipDistance\", i8 9, i8 6, !\\5, i8 2, i32 1, i8 2, i32 2, i8 0, null}\n"
+      "!\\6 = !{i32 4, !\"SV_CullDistance\", i8 9, i8 7, !\\7, i8 2, i32 1, i8 1, i32 1, i8 0, null}\n",
       "!1012 =" },
 
     "signature element SV_ClipDistance at location \\(2,0\\) size \\(1,2\\) violates component ordering rule \\(arb < sv < sgv\\).\n"
@@ -2129,8 +2071,8 @@ void main( \
     ",
     "vs_6_0",
 
-    "!{i32 2, !\"SV_ViewportArrayIndex\", i8 5, i8 5, !([0-9]+), i8 1, i32 1, i8 1, i32 3, i8 0, (.*)}",
-    "!{i32 2, !\"SV_ViewportArrayIndex\", i8 5, i8 5, !\\1, i8 1, i32 1, i8 1, i32 1, i8 3, \\2}",
+    "!{i32 2, !\"SV_ViewportArrayIndex\", i8 5, i8 5, !([0-9]+), i8 1, i32 1, i8 1, i32 3, i8 0, null}",
+    "!{i32 2, !\"SV_ViewportArrayIndex\", i8 5, i8 5, !\\1, i8 1, i32 1, i8 1, i32 1, i8 3, null}",
 
     "signature element SV_ViewportArrayIndex at location \\(1,3\\) size \\(1,1\\) has an indexing conflict with another signature element packed into the same row.",
     /*bRegex*/true);
@@ -2164,9 +2106,9 @@ Vertex main(uint id : SV_OutputControlPointID, InputPatch< Vertex, 4 > patch) { 
     ",
     "hs_6_0",
     //!{i32 0, !"SV_TessFactor", i8 9, i8 25, !23, i8 0, i32 4, i8 1, i32 0, i8 3, null}
-    { "!{i32 1, !\"SV_InsideTessFactor\", i8 9, i8 26, !([0-9]+), i8 0, i32 2, i8 1, i32 4, i8 3, (.*)}",
+    { "!{i32 1, !\"SV_InsideTessFactor\", i8 9, i8 26, !([0-9]+), i8 0, i32 2, i8 1, i32 4, i8 3, null}",
       "?!dx.viewIdState =" },
-    { "!{i32 1, !\"SV_InsideTessFactor\", i8 9, i8 26, !\\1, i8 0, i32 2, i8 1, i32 0, i8 2, \\2}",
+    { "!{i32 1, !\"SV_InsideTessFactor\", i8 9, i8 26, !\\1, i8 0, i32 2, i8 1, i32 0, i8 2, null}",
       "!1012 =" },
     "signature element SV_InsideTessFactor at location \\(0,2\\) size \\(2,1\\) has an indexing conflict with another signature element packed into the same row.",
     /*bRegex*/true);
@@ -2201,8 +2143,8 @@ Vertex main(uint id : SV_OutputControlPointID, InputPatch< Vertex, 4 > patch) { 
 } \
     ",
     "hs_6_0",
-    "!{i32 2, !\"Arb\", i8 9, i8 0, !([0-9]+), i8 0, i32 3, i8 1, i32 0, i8 0, (.*)}",
-    "!{i32 2, !\"Arb\", i8 9, i8 0, !\\1, i8 0, i32 3, i8 1, i32 2, i8 0, \\2}",
+    "!{i32 2, !\"Arb\", i8 9, i8 0, !([0-9]+), i8 0, i32 3, i8 1, i32 0, i8 0, null}",
+    "!{i32 2, !\"Arb\", i8 9, i8 0, !\\1, i8 0, i32 3, i8 1, i32 2, i8 0, null}",
     "signature element Arb at location \\(2,0\\) size \\(3,1\\) has an indexing conflict with another signature element packed into the same row.",
     /*bRegex*/true);
 }
@@ -2236,9 +2178,9 @@ Vertex main(uint id : SV_OutputControlPointID, InputPatch< Vertex, 4 > patch) { 
 } \
     ",
     "hs_6_0",
-    { "!{i32 2, !\"Arb\", i8 9, i8 0, !([0-9]+), i8 0, i32 3, i8 1, i32 0, i8 0, (.*)}",
+    { "!{i32 2, !\"Arb\", i8 9, i8 0, !([0-9]+), i8 0, i32 3, i8 1, i32 0, i8 0, null}",
       "?!dx.viewIdState =" },
-    { "!{i32 2, !\"Arb\", i8 9, i8 0, !\\1, i8 0, i32 3, i8 1, i32 31, i8 0, \\2}",
+    { "!{i32 2, !\"Arb\", i8 9, i8 0, !\\1, i8 0, i32 3, i8 1, i32 31, i8 0, null}",
       "!1012 =" },
     "signature element Arb at location \\(31,0\\) size \\(3,1\\) is out of range.",
     /*bRegex*/true);
@@ -2273,8 +2215,8 @@ Vertex main(uint id : SV_OutputControlPointID, InputPatch< Vertex, 4 > patch) { 
 } \
     ",
     "hs_6_0",
-    "!{i32 2, !\"Arb\", i8 9, i8 0, !([0-9]+), i8 0, i32 3, i8 1, i32 0, i8 0, (.*)}",
-    "!{i32 2, !\"Arb\", i8 9, i8 0, !\\1, i8 0, i32 3, i8 1, i32 1, i8 3, \\2}",
+    "!{i32 2, !\"Arb\", i8 9, i8 0, !([0-9]+), i8 0, i32 3, i8 1, i32 0, i8 0, null}",
+    "!{i32 2, !\"Arb\", i8 9, i8 0, !\\1, i8 0, i32 3, i8 1, i32 1, i8 3, null}",
     "signature element Arb at location \\(1,3\\) size \\(3,1\\) overlaps another signature element.",
     /*bRegex*/true);
 }
@@ -2300,13 +2242,13 @@ void main( \
     ",
     "vs_6_0",
 
-    {"!{i32 1, !\"Array\", i8 5, i8 0, !([0-9]+), i8 1, i32 2, i8 1, i32 1, i8 0, (.*)}(.*)"
+    {"!{i32 1, !\"Array\", i8 5, i8 0, !([0-9]+), i8 1, i32 2, i8 1, i32 1, i8 0, null}(.*)"
     "!\\1 = !{i32 0, i32 1}\n",
-    "= !{i32 2, !\"Value\", i8 5, i8 0, !([0-9]+), i8 1, i32 1, i8 3, i32 1, i8 1, (.*)}"},
+    "= !{i32 2, !\"Value\", i8 5, i8 0, !([0-9]+), i8 1, i32 1, i8 3, i32 1, i8 1, null}"},
 
-    {"!{i32 1, !\"Array\", i8 5, i8 0, !\\1, i8 1, i32 2, i8 1, i32 1, i8 1, \\2}\\3"
+    {"!{i32 1, !\"Array\", i8 5, i8 0, !\\1, i8 1, i32 2, i8 1, i32 1, i8 1, null}\\2"
     "!\\1 = !{i32 0, i32 1}\n",
-    "= !{i32 2, !\"Value\", i8 5, i8 0, !\\1, i8 1, i32 1, i8 3, i32 2, i8 0, \\2}"},
+    "= !{i32 2, !\"Value\", i8 5, i8 0, !\\1, i8 1, i32 1, i8 3, i32 2, i8 0, null}"},
 
     "signature element Value at location \\(2,0\\) size \\(1,3\\) overlaps another signature element.",
     /*bRegex*/true);
@@ -2318,8 +2260,8 @@ float4 main(float4 f4 : Input, out float d0 : SV_Depth, out float d1 : SV_Target
 { d0 = f4.z; d1 = f4.w; return f4; } \
     ",
     "ps_6_0",
-    {"!{i32 2, !\"SV_Target\", i8 9, i8 16, !([0-9]+), i8 0, i32 1, i8 1, i32 0, i8 0, (.*)}"},
-    {"!{i32 2, !\"SV_DepthGreaterEqual\", i8 9, i8 19, !\\1, i8 0, i32 1, i8 1, i32 -1, i8 -1, \\2}"},
+    {"!{i32 2, !\"SV_Target\", i8 9, i8 16, !([0-9]+), i8 0, i32 1, i8 1, i32 0, i8 0, null}"},
+    {"!{i32 2, !\"SV_DepthGreaterEqual\", i8 9, i8 19, !\\1, i8 0, i32 1, i8 1, i32 -1, i8 -1, null}"},
     "Pixel Shader only allows one type of depth semantic to be declared",
     /*bRegex*/true);
 }
@@ -3278,16 +3220,16 @@ TEST_F(ValidationTest, LibFunctionResInSig) {
     "float fnStreamInArg(float f, inout PointStream<Data> S1) : SV_Target {\n"
     "  S1.Append((Data)f); return 1.0; }\n"
     , "lib_6_x",
-    { "!{!\"lib\", i32 6, i32 15}", "!dx.valver = !{!([0-9]+)}", "= !{i32 20, !([0-9]+), !([0-9]+), !([0-9]+)}" },
-    { "!{!\"lib\", i32 6, i32 3}", "!dx.valver = !{!100\\1}\n!1002 = !{i32 1, i32 3}", "= !{i32 20, !\\1, !\\2}" },
-    {  "Function '\\\\01\\?fnResInReturn@@YA\\?AUResStructInStruct@@M@Z' uses resource in function signature"
-      ,"Function '\\\\01\\?fnResInArg@@YAMUResStructInStruct@@@Z' uses resource in function signature"
-      ,"Function '\\\\01\\?fnStreamInArg@@YAMMV\\?\\$PointStream@UData@@@@@Z' uses resource in function signature"
+    { "!{!\"lib\", i32 6, i32 15}", "!dx.valver = !{!2}" },
+    { "!{!\"lib\", i32 6, i32 3}", "!dx.valver = !{!1002}\n!1002 = !{i32 1, i32 3}" },
+    {  "Function '\\01?fnResInReturn@@YA?AUResStructInStruct@@M@Z' uses resource in function signature"
+      ,"Function '\\01?fnResInArg@@YAMUResStructInStruct@@@Z' uses resource in function signature"
+      ,"Function '\\01?fnStreamInArg@@YAMMV?$PointStream@UData@@@@@Z' uses resource in function signature"
       // TODO: Unable to lower stream append, since it's used in a non-GS function.
       // Should we fail to compile earlier (even on lib_6_x), or add lowering to linker?
-      ,"Function 'dx\\.hl\\.op\\.\\.void \\(i32, %\"class\\.PointStream<Data>\"\\*, float\\*\\)' uses resource in function signature"
+      ,"Function 'dx.hl.op..void (i32, %\"class.PointStream<Data>\"*, float*)' uses resource in function signature"
     },
-    /*bRegex*/ true);
+    false);
 }
 
 TEST_F(ValidationTest, RayPayloadIsStruct) {
@@ -3422,32 +3364,32 @@ TEST_F(ValidationTest, ResInShaderStruct) {
     "[shader(\"callable\")] void CallableProto(inout Param p) { p.f += 1.0; }\n"
     "export void BadCallable(inout ResStructInStruct p) { p.f += 1.0; }\n"
     , "lib_6_x",
-    { "!{!\"lib\", i32 6, i32 15}", "!dx.valver = !{!([0-9]+)}", "= !{i32 20, !([0-9]+), !([0-9]+), !([0-9]+)}",
-      "!{void \\(%struct\\.Payload\\*, %struct\\.Attributes\\*\\)\\* @\"\\\\01\\?AnyHitProto@@YAXUPayload@@UAttributes@@@Z\", "
-        "!\"\\\\01\\?AnyHitProto@@YAXUPayload@@UAttributes@@@Z\",",
-      "!{void \\(%struct\\.Payload\\*, %struct\\.Attributes\\*\\)\\* @\"\\\\01\\?ClosestHitProto@@YAXUPayload@@UAttributes@@@Z\", "
-        "!\"\\\\01\\?ClosestHitProto@@YAXUPayload@@UAttributes@@@Z\",",
-      "!{void \\(%struct\\.Payload\\*\\)\\* @\"\\\\01\\?MissProto@@YAXUPayload@@@Z\", "
-        "!\"\\\\01\\?MissProto@@YAXUPayload@@@Z\",",
-      "!{void \\(%struct\\.Param\\*\\)\\* @\"\\\\01\\?CallableProto@@YAXUParam@@@Z\", "
-        "!\"\\\\01\\?CallableProto@@YAXUParam@@@Z\","
+    { "!{!\"lib\", i32 6, i32 15}", "!dx.valver = !{!2}",
+      "!{void (%struct.Payload*, %struct.Attributes*)* @\"\\01?AnyHitProto@@YAXUPayload@@UAttributes@@@Z\", "
+        "!\"\\01?AnyHitProto@@YAXUPayload@@UAttributes@@@Z\",",
+      "!{void (%struct.Payload*, %struct.Attributes*)* @\"\\01?ClosestHitProto@@YAXUPayload@@UAttributes@@@Z\", "
+        "!\"\\01?ClosestHitProto@@YAXUPayload@@UAttributes@@@Z\",",
+      "!{void (%struct.Payload*)* @\"\\01?MissProto@@YAXUPayload@@@Z\", "
+        "!\"\\01?MissProto@@YAXUPayload@@@Z\",",
+      "!{void (%struct.Param*)* @\"\\01?CallableProto@@YAXUParam@@@Z\", "
+        "!\"\\01?CallableProto@@YAXUParam@@@Z\","
     },
-    { "!{!\"lib\", i32 6, i32 3}", "!dx.valver = !{!100\\1}\n!1002 = !{i32 1, i32 3}", "= !{i32 20, !\\1, !\\2}",
-      "!{void (%struct.ResStructInStruct*, %struct.Attributes*)* @\"\\\\01?BadAnyHit@@YAXUResStructInStruct@@UAttributes@@@Z\", "
-        "!\"\\\\01?BadAnyHit@@YAXUResStructInStruct@@UAttributes@@@Z\",",
-      "!{void (%struct.ResStructInStruct*, %struct.Attributes*)* @\"\\\\01?BadClosestHit@@YAXUResStructInStruct@@UAttributes@@@Z\", "
-        "!\"\\\\01?BadClosestHit@@YAXUResStructInStruct@@UAttributes@@@Z\",",
-      "!{void (%struct.ResStructInStruct*)* @\"\\\\01?BadMiss@@YAXUResStructInStruct@@@Z\", "
-        "!\"\\\\01?BadMiss@@YAXUResStructInStruct@@@Z\",",
-      "!{void (%struct.ResStructInStruct*)* @\"\\\\01?BadCallable@@YAXUResStructInStruct@@@Z\", "
-        "!\"\\\\01?BadCallable@@YAXUResStructInStruct@@@Z\",",
+    { "!{!\"lib\", i32 6, i32 3}", "!dx.valver = !{!1002}\n!1002 = !{i32 1, i32 3}",
+      "!{void (%struct.ResStructInStruct*, %struct.Attributes*)* @\"\\01?BadAnyHit@@YAXUResStructInStruct@@UAttributes@@@Z\", "
+        "!\"\\01?BadAnyHit@@YAXUResStructInStruct@@UAttributes@@@Z\",",
+      "!{void (%struct.ResStructInStruct*, %struct.Attributes*)* @\"\\01?BadClosestHit@@YAXUResStructInStruct@@UAttributes@@@Z\", "
+        "!\"\\01?BadClosestHit@@YAXUResStructInStruct@@UAttributes@@@Z\",",
+      "!{void (%struct.ResStructInStruct*)* @\"\\01?BadMiss@@YAXUResStructInStruct@@@Z\", "
+        "!\"\\01?BadMiss@@YAXUResStructInStruct@@@Z\",",
+      "!{void (%struct.ResStructInStruct*)* @\"\\01?BadCallable@@YAXUResStructInStruct@@@Z\", "
+        "!\"\\01?BadCallable@@YAXUResStructInStruct@@@Z\",",
     },
-    {  "Function '\\\\01\\?BadAnyHit@@YAXUResStructInStruct@@UAttributes@@@Z' uses resource in function signature"
-      ,"Function '\\\\01\\?BadClosestHit@@YAXUResStructInStruct@@UAttributes@@@Z' uses resource in function signature"
-      ,"Function '\\\\01\\?BadMiss@@YAXUResStructInStruct@@@Z' uses resource in function signature"
-      ,"Function '\\\\01\\?BadCallable@@YAXUResStructInStruct@@@Z' uses resource in function signature"
+    {  "Function '\\01?BadAnyHit@@YAXUResStructInStruct@@UAttributes@@@Z' uses resource in function signature"
+      ,"Function '\\01?BadClosestHit@@YAXUResStructInStruct@@UAttributes@@@Z' uses resource in function signature"
+      ,"Function '\\01?BadMiss@@YAXUResStructInStruct@@@Z' uses resource in function signature"
+      ,"Function '\\01?BadCallable@@YAXUResStructInStruct@@@Z' uses resource in function signature"
     },
-    /*bRegex*/ true);
+    false);
 }
 
 TEST_F(ValidationTest, WhenPayloadSizeTooSmallThenFail) {
@@ -3574,229 +3516,4 @@ TEST_F(ValidationTest, ShaderFunctionReturnTypeVoid) {
       ,"Shader function '\\01?BadCallable@@YAMUParam@@@Z' must have void return type"
     },
     false);
-}
-
-TEST_F(ValidationTest, MeshMultipleSetMeshOutputCounts) {
-  TestCheck(L"..\\CodeGenHLSL\\mesh-val\\multipleSetMeshOutputCounts.hlsl");
-}
-
-TEST_F(ValidationTest, MeshMissingSetMeshOutputCounts) {
-  TestCheck(L"..\\CodeGenHLSL\\mesh-val\\missingSetMeshOutputCounts.hlsl");
-}
-
-TEST_F(ValidationTest, MeshNonDominatingSetMeshOutputCounts) {
-  TestCheck(L"..\\CodeGenHLSL\\mesh-val\\nonDominatingSetMeshOutputCounts.hlsl");
-}
-
-TEST_F(ValidationTest, MeshOversizePayload) {
-  TestCheck(L"..\\CodeGenHLSL\\mesh-val\\msOversizePayload.hlsl");
-}
-
-TEST_F(ValidationTest, MeshOversizeOutput) {
-  TestCheck(L"..\\CodeGenHLSL\\mesh-val\\msOversizeOutput.hlsl");
-}
-
-TEST_F(ValidationTest, MeshOversizePayloadOutput) {
-  TestCheck(L"..\\CodeGenHLSL\\mesh-val\\msOversizePayloadOutput.hlsl");
-}
-
-TEST_F(ValidationTest, MeshMultipleGetMeshPayload) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\mesh.hlsl", "ms_6_5",
-                          "%([0-9]+) = call %struct.MeshPayload\\* @dx.op.getMeshPayload.struct.MeshPayload\\(i32 170\\)  ; GetMeshPayload\\(\\)",
-                          "%\\1 = call %struct.MeshPayload* @dx.op.getMeshPayload.struct.MeshPayload(i32 170)  ; GetMeshPayload()\n"
-                          "  %.extra.unused.payload. = call %struct.MeshPayload* @dx.op.getMeshPayload.struct.MeshPayload(i32 170)  ; GetMeshPayload()",
-                          "GetMeshPayload cannot be called multiple times.",
-                          true);
-}
-
-TEST_F(ValidationTest, MeshOutofRangeMaxVertexCount) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\mesh.hlsl", "ms_6_5",
-                          "= !{!([0-9]+), i32 32, i32 16, i32 2, i32 40}",
-                          "= !{!\\1, i32 257, i32 16, i32 2, i32 40}",
-                          "MS max vertex output count must be \\[0..256\\].  257 specified",
-                          true);
-}
-
-TEST_F(ValidationTest, MeshOutofRangeMaxPrimitiveCount) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\mesh.hlsl", "ms_6_5",
-                          "= !{!([0-9]+), i32 32, i32 16, i32 2, i32 40}",
-                          "= !{!\\1, i32 32, i32 257, i32 2, i32 40}",
-                          "MS max primitive output count must be \\[0..256\\].  257 specified",
-                          true);
-}
-
-TEST_F(ValidationTest, MeshLessThanMinX) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\mesh.hlsl", "ms_6_5",
-                          "= !{i32 32, i32 1, i32 1}",
-                          "= !{i32 0, i32 1, i32 1}",
-                          "Declared Thread Group X size 0 outside valid range [1..128]");
-}
-
-TEST_F(ValidationTest, MeshGreaterThanMaxX) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\mesh.hlsl", "ms_6_5",
-                          "= !{i32 32, i32 1, i32 1}",
-                          "= !{i32 129, i32 1, i32 1}",
-                          "Declared Thread Group X size 129 outside valid range [1..128]");
-}
-
-TEST_F(ValidationTest, MeshLessThanMinY) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\mesh.hlsl", "ms_6_5",
-                          "= !{i32 32, i32 1, i32 1}",
-                          "= !{i32 32, i32 0, i32 1}",
-                          "Declared Thread Group Y size 0 outside valid range [1..128]");
-}
-
-TEST_F(ValidationTest, MeshGreaterThanMaxY) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\mesh.hlsl", "ms_6_5",
-                          "= !{i32 32, i32 1, i32 1}",
-                          "= !{i32 1, i32 129, i32 1}",
-                          "Declared Thread Group Y size 129 outside valid range [1..128]");
-}
-
-TEST_F(ValidationTest, MeshLessThanMinZ) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\mesh.hlsl", "ms_6_5",
-                          "= !{i32 32, i32 1, i32 1}",
-                          "= !{i32 32, i32 1, i32 0}",
-                          "Declared Thread Group Z size 0 outside valid range [1..128]");
-}
-
-TEST_F(ValidationTest, MeshGreaterThanMaxZ) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\mesh.hlsl", "ms_6_5",
-                          "= !{i32 32, i32 1, i32 1}",
-                          "= !{i32 1, i32 1, i32 129}",
-                          "Declared Thread Group Z size 129 outside valid range [1..128]");
-}
-
-TEST_F(ValidationTest, MeshGreaterThanMaxXYZ) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\mesh.hlsl", "ms_6_5",
-                          "= !{i32 32, i32 1, i32 1}",
-                          "= !{i32 32, i32 2, i32 4}",
-                          "Declared Thread Group Count 256 (X*Y*Z) is beyond the valid maximum of 128");
-}
-
-TEST_F(ValidationTest, MeshGreaterThanMaxVSigRowCount) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\mesh.hlsl", "ms_6_5",
-                          "!([0-9]+) = !{i32 1, !\"COLOR\", i8 9, i8 0, !([0-9]+), i8 2, i32 4, i8 1, i32 1, i8 0, (.*)"
-                          "!\\2 = !{i32 0, i32 1, i32 2, i32 3}",
-                          "!\\1 = !{i32 1, !\"COLOR\", i8 9, i8 0, !\\2, i8 2, i32 32, i8 1, i32 1, i8 0, \\3"
-                          "!\\2 = !{i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 8, i32 9, i32 10,"
-                          "i32 11, i32 12, i32 13, i32 14, i32 15, i32 16, i32 17, i32 18, i32 19, i32 20,"
-                          "i32 21, i32 22, i32 23, i32 24, i32 25, i32 26, i32 27, i32 28, i32 29, i32 30, i32 31}",
-                          "For shader 'main', vertex output signatures are taking up more than 32 rows",
-                          true);
-}
-
-TEST_F(ValidationTest, MeshGreaterThanMaxPSigRowCount) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\mesh.hlsl", "ms_6_5",
-                          "!([0-9]+) = !{i32 4, !\"LAYER\", i8 4, i8 0, !([0-9]+), i8 1, i32 6, i8 1, i32 1, i8 0, (.*)"
-                          "!\\2 = !{i32 0, i32 1, i32 2, i32 3, i32 4, i32 5}",
-                          "!\\1 = !{i32 4, !\"LAYER\", i8 4, i8 0, !\\2, i8 1, i32 32, i8 1, i32 1, i8 0, \\3"
-                          "!\\2 = !{i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 8, i32 9, i32 10,"
-                          "i32 11, i32 12, i32 13, i32 14, i32 15, i32 16, i32 17, i32 18, i32 19, i32 20,"
-                          "i32 21, i32 22, i32 23, i32 24, i32 25, i32 26, i32 27, i32 28, i32 29, i32 30, i32 31}",
-                          "For shader 'main', primitive output signatures are taking up more than 32 rows",
-                          true);
-}
-
-TEST_F(ValidationTest, MeshGreaterThanMaxTotalSigRowCount) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\mesh.hlsl", "ms_6_5",
-                          { "!([0-9]+) = !{i32 1, !\"COLOR\", i8 9, i8 0, !([0-9]+), i8 2, i32 4, i8 1, i32 1, i8 0, (.*)"
-                            "!\\2 = !{i32 0, i32 1, i32 2, i32 3}",
-                            "!([0-9]+) = !{i32 4, !\"LAYER\", i8 4, i8 0, !([0-9]+), i8 1, i32 6, i8 1, i32 1, i8 0, (.*)"
-                            "!\\2 = !{i32 0, i32 1, i32 2, i32 3, i32 4, i32 5}" },
-                          { "!\\1 = !{i32 1, !\"COLOR\", i8 9, i8 0, !\\2, i8 2, i32 16, i8 1, i32 1, i8 0, \\3"
-                            "!\\2 = !{i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 8, i32 9, i32 10,"
-                            "i32 11, i32 12, i32 13, i32 14, i32 15}",
-                            "!\\1 = !{i32 4, !\"LAYER\", i8 4, i8 0, !\\2, i8 1, i32 16, i8 1, i32 1, i8 0, \\3"
-                            "!\\2 = !{i32 0, i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7, i32 8, i32 9, i32 10,"
-                            "i32 11, i32 12, i32 13, i32 14, i32 15}",
-                          },
-                          "For shader 'main', vertex and primitive output signatures are taking up more than 32 rows",
-                          true);
-}
-
-TEST_F(ValidationTest, MeshOversizeSM) {
-  TestCheck(L"..\\CodeGenHLSL\\mesh-val\\oversizeSM.hlsl");
-}
-
-TEST_F(ValidationTest, AmplificationMultipleDispatchMesh) {
-  TestCheck(L"..\\CodeGenHLSL\\mesh-val\\multipleDispatchMesh.hlsl");
-}
-
-TEST_F(ValidationTest, AmplificationMissingDispatchMesh) {
-  TestCheck(L"..\\CodeGenHLSL\\mesh-val\\missingDispatchMesh.hlsl");
-}
-
-TEST_F(ValidationTest, AmplificationNonDominatingDispatchMesh) {
-  TestCheck(L"..\\CodeGenHLSL\\mesh-val\\nonDominatingDispatchMesh.hlsl");
-}
-
-TEST_F(ValidationTest, AmplificationOversizePayload) {
-  TestCheck(L"..\\CodeGenHLSL\\mesh-val\\asOversizePayload.hlsl");
-}
-
-TEST_F(ValidationTest, AmplificationLessThanMinX) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\amplification.hlsl", "as_6_5",
-                          "= !{i32 32, i32 1, i32 1}",
-                          "= !{i32 0, i32 1, i32 1}",
-                          "Declared Thread Group X size 0 outside valid range [1..128]");
-}
-
-TEST_F(ValidationTest, AmplificationGreaterThanMaxX) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\amplification.hlsl", "as_6_5",
-                          "= !{i32 32, i32 1, i32 1}",
-                          "= !{i32 129, i32 1, i32 1}",
-                          "Declared Thread Group X size 129 outside valid range [1..128]");
-}
-
-TEST_F(ValidationTest, AmplificationLessThanMinY) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\amplification.hlsl", "as_6_5",
-                          "= !{i32 32, i32 1, i32 1}",
-                          "= !{i32 32, i32 0, i32 1}",
-                          "Declared Thread Group Y size 0 outside valid range [1..128]");
-}
-
-TEST_F(ValidationTest, AmplificationGreaterThanMaxY) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\amplification.hlsl", "as_6_5",
-                          "= !{i32 32, i32 1, i32 1}",
-                          "= !{i32 1, i32 129, i32 1}",
-                          "Declared Thread Group Y size 129 outside valid range [1..128]");
-}
-
-TEST_F(ValidationTest, AmplificationLessThanMinZ) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\amplification.hlsl", "as_6_5",
-                          "= !{i32 32, i32 1, i32 1}",
-                          "= !{i32 32, i32 1, i32 0}",
-                          "Declared Thread Group Z size 0 outside valid range [1..128]");
-}
-
-TEST_F(ValidationTest, AmplificationGreaterThanMaxZ) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\amplification.hlsl", "as_6_5",
-                          "= !{i32 32, i32 1, i32 1}",
-                          "= !{i32 1, i32 1, i32 129}",
-                          "Declared Thread Group Z size 129 outside valid range [1..128]");
-}
-
-TEST_F(ValidationTest, AmplificationGreaterThanMaxXYZ) {
-  RewriteAssemblyCheckMsg(L"..\\CodeGenHLSL\\mesh-val\\amplification.hlsl", "as_6_5",
-                          "= !{i32 32, i32 1, i32 1}",
-                          "= !{i32 32, i32 2, i32 4}",
-                          "Declared Thread Group Count 256 (X*Y*Z) is beyond the valid maximum of 128");
-}
-
-TEST_F(ValidationTest, ValidateRootSigContainer) {
-  // Validation of root signature-only container not supported until 1.5
-  if (m_ver.SkipDxilVersion(1, 5)) return;
-
-  LPCSTR pSource = "#define main \"DescriptorTable(UAV(u0))\"";
-  CComPtr<IDxcBlob> pObject;
-  if (!CompileSource(pSource, "rootsig_1_0", &pObject))
-    return;
-  CheckValidationMsgs(pObject, {}, false,
-    DxcValidatorFlags_RootSignatureOnly | DxcValidatorFlags_InPlaceEdit);
-  pObject.Release();
-  if (!CompileSource(pSource, "rootsig_1_1", &pObject))
-    return;
-  CheckValidationMsgs(pObject, {}, false,
-    DxcValidatorFlags_RootSignatureOnly | DxcValidatorFlags_InPlaceEdit);
 }

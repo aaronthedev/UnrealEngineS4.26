@@ -1,19 +1,17 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "RenderingThread.h"
-#include "UObject/GCObject.h"
 
 struct FSlateDynamicImageBrush;
 struct FCompositeFont;
-struct FStandaloneCompositeFont;
 
 //This is a helper class that we use to hold values we parse from the .ini. Clean way to access things like dynamic image brushes / fonts / etc used in our UI that
 //we want to be somewhat data driven but we can't rely on UObject support to implement(as the PreLoad stuff happens too early for UObject support)
 //This lets us set easy to change values in our .ini that are parsed at runtime and stored in this container
-class PRELOADSCREEN_API FPreLoadSettingsContainerBase : public FDeferredCleanupInterface, public FGCObject
+class PRELOADSCREEN_API FPreLoadSettingsContainerBase : public FDeferredCleanupInterface
 {
 public:
 
@@ -90,7 +88,7 @@ public:
         }
     }
 
-private:
+public:
 
     FPreLoadSettingsContainerBase() 
 		: CurrentLoadGroup(NAME_None)
@@ -102,11 +100,6 @@ private:
     virtual ~FPreLoadSettingsContainerBase();
 
 public:
-
-	//~ Begin FGCObject interface
-	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
-	virtual FString GetReferencerName() const override { return TEXT("FPreLoadSettingsContainerBase"); }
-	//~ End FGCObject interface
 
     virtual const FSlateDynamicImageBrush* GetBrush(const FString& Identifier);
     virtual FText GetLocalizedText(const FString& Identifier);
@@ -168,9 +161,9 @@ protected:
 	TArray<FString> ParsedLoadingGroupIdentifiers;
 
 	/* Property Storage. Ties FName to a particular resource so we can get it by identifier. */
-    TMap<FName, FSlateDynamicImageBrush*> BrushResources;
+    TMap<FName, const FSlateDynamicImageBrush*> BrushResources;
     TMap<FName, FText> LocalizedTextResources;
-    TMap<FName, TSharedPtr<FStandaloneCompositeFont>> FontResources;
+    TMap<FName, TSharedPtr<FCompositeFont>> FontResources;
 
 	TMap<FName, FScreenOrderByLoadingGroup> ScreenOrderByLoadingGroups;
     TMap<FName, FScreenGroupingBase> ScreenGroupings;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -21,7 +21,7 @@ namespace BuildPatchServices
 		 *
 		 * @return new Http request instance
 		 */
-		virtual TSharedRef<IHttpRequest, ESPMode::ThreadSafe> CreateRequest() = 0;
+		virtual TSharedRef<IHttpRequest> CreateRequest() = 0;
 	};
 
 	/**

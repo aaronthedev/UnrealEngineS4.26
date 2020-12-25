@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -349,7 +349,6 @@ namespace ProxyLOD
 		                                   TAOSMesh<VertexType>& ResultMesh)
 	{
 
-		TRACE_CPUPROFILER_EVENT_SCOPE(ProxyLOD::MergeMeshArray)
 		const int32 NumPartitions = MeshArray.Num();
 
 

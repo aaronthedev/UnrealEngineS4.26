@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MagicLeapHandMeshingModule.h"
 #include "GameFramework/Actor.h"
 #include "EngineUtils.h"
-#include "Stats/Stats.h"
 
 DEFINE_LOG_CATEGORY(LogMagicLeapHandMeshing);
 
@@ -22,7 +21,6 @@ void FMagicLeapHandMeshingModule::ShutdownModule()
 
 bool FMagicLeapHandMeshingModule::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FMagicLeapHandMeshingModule_Tick);
 	MeshTracker.Update();
 	return true;
 }
@@ -45,11 +43,6 @@ bool FMagicLeapHandMeshingModule::ConnectMRMesh(UMRMeshComponent* InMRMeshPtr)
 bool FMagicLeapHandMeshingModule::DisconnectMRMesh(class UMRMeshComponent* InMRMeshPtr)
 {
 	return MeshTracker.DisconnectMRMesh(InMRMeshPtr);
-}
-
-void FMagicLeapHandMeshingModule::SetUseWeightedNormals(const bool bInUseWeightedNormals)
-{
-	MeshTracker.SetUseWeightedNormals(bInUseWeightedNormals);
 }
 
 bool FMagicLeapHandMeshingModule::HasMRMesh() const

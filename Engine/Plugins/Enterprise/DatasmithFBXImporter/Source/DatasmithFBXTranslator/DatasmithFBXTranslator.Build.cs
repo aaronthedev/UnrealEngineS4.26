@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System.IO;
 
 namespace UnrealBuildTool.Rules
@@ -17,6 +17,7 @@ namespace UnrealBuildTool.Rules
 					"LevelSequence",
 					"MeshDescription",
 					"StaticMeshDescription",
+					"MeshDescriptionOperations",
 					"UnrealEd", // For UnFbx
 				}
 			);
@@ -27,7 +28,7 @@ namespace UnrealBuildTool.Rules
 				new string[]
 				{
 					"DatasmithContent",
-					"DatasmithTranslator"
+					"DatasmithImporter"
 				}
 			);
 		}

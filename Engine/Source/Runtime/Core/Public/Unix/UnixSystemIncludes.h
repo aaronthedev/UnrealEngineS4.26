@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 // Set up compiler pragmas, etc
@@ -31,6 +31,7 @@
 #include <utime.h>
 #include <execinfo.h>
 #include <signal.h>
+#include <sys/sysctl.h>
 #if PLATFORM_ENABLE_VECTORINTRINSICS
 #include <xmmintrin.h>
 #endif // PLATFORM_RASPBERRY

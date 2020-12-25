@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -534,19 +534,14 @@ namespace Gauntlet
 				return false;
 			}
 
-			Dictionary<UnrealTargetPlatform, string> DeviceMap = new Dictionary<UnrealTargetPlatform, string>();
-
-			foreach (string Platform in UnrealTargetPlatform.GetValidPlatformNames())
+			Dictionary<UnrealTargetPlatform, string> DeviceMap = new Dictionary<UnrealTargetPlatform, string>()
 			{
-				if (Platform == "PS4" || Platform == "XboxOne")
-				{
-					DeviceMap.Add(UnrealTargetPlatform.Parse(Platform), string.Format("{0}-DevKit", Platform));
-				}
-				else
-				{
-					DeviceMap.Add(UnrealTargetPlatform.Parse(Platform), Platform);
-				}
-			}
+				// todo: add other platforms and externalize this mapping
+				{ UnrealTargetPlatform.PS4 , "PS4-DevKit" },
+				{ UnrealTargetPlatform.XboxOne , "XboxOne-DevKit" },
+				{ UnrealTargetPlatform.Android , "Android" },
+				{ UnrealTargetPlatform.Switch , "Switch" }
+			};
 
 			List<string> Devices = new List<string>();
 
@@ -1007,7 +1002,7 @@ namespace Gauntlet
 			}
 
 			var Devices = TooFewTotalDevices.Concat(TooFewCurrentDevices);
-			var UnsupportedPlatforms = Devices.Where(D => !ServicePlatforms.Contains(D.Platform.Value) && (!D.Platform.Value.ToString().StartsWith("XboxOne")) && (D.Platform.Value.ToString() != "XSX") && (D.Platform.Value.ToString() != "PS5"));
+			var UnsupportedPlatforms = Devices.Where(D => !ServicePlatforms.Contains(D.Platform.Value));
 
 			// Request devices from the service if we need them
 			if (UseServiceDevices && !String.IsNullOrEmpty(DeviceURL) && UnsupportedPlatforms.Count() == 0 && (TooFewTotalDevices.Count() > 0 || TooFewCurrentDevices.Count() > 0))

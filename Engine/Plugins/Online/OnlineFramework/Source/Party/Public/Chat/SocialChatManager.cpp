@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SocialChatManager.h"
 #include "User/SocialUser.h"
@@ -349,151 +349,121 @@ USocialChatChannel& USocialChatManager::FindOrCreateChannel(const FText& Display
 
 void USocialChatManager::HandleChatRoomCreated(const FUniqueNetId& LocalUserId, const FChatRoomId& RoomId, bool bWasSuccessful, const FString& Error)
 {
-	if (IsUniqueIdOfOwner(LocalUserId))
+	if (bWasSuccessful)
 	{
-		if (bWasSuccessful)
-		{
-			FindOrCreateRoom(RoomId);
-		}
-		else
-		{
-			HandleChatRoomCreatedFailure(LocalUserId, RoomId, Error);
-		}
+		FindOrCreateRoom(RoomId);
+	}
+	else
+	{
+		HandleChatRoomCreatedFailure(LocalUserId, RoomId, Error);
 	}
 }
 
 void USocialChatManager::HandleChatRoomConfigured(const FUniqueNetId& LocalUserId, const FChatRoomId& RoomId, bool bWasSuccessful, const FString& Error)
 {
-	if (IsUniqueIdOfOwner(LocalUserId))
+	if (bWasSuccessful)
 	{
-		if (bWasSuccessful)
-		{
-			FindOrCreateRoom(RoomId);
-		}
-		else
-		{
-			HandleChatRoomConfiguredFailure(LocalUserId, RoomId, Error);
-		}
+		FindOrCreateRoom(RoomId);
+	}
+	else
+	{
+		HandleChatRoomConfiguredFailure(LocalUserId, RoomId, Error);
 	}
 }
 
 void USocialChatManager::HandleChatRoomJoinPublic(const FUniqueNetId& LocalUserId, const FChatRoomId& RoomId, bool bWasSuccessful, const FString& Error)
 {
-	if (IsUniqueIdOfOwner(LocalUserId))
+	if (bWasSuccessful)
 	{
-		if (bWasSuccessful)
-		{
-			FindOrCreateRoom(RoomId);
-		}
-		else
-		{
-			HandleChatRoomJoinPublicFailure(LocalUserId, RoomId, Error);
-		}
+		FindOrCreateRoom(RoomId);
+	}
+	else
+	{
+		HandleChatRoomJoinPublicFailure(LocalUserId, RoomId, Error);
 	}
 }
 
 void USocialChatManager::HandleChatRoomJoinPrivate(const FUniqueNetId& LocalUserId, const FChatRoomId& RoomId, bool bWasSuccessful, const FString& Error)
 {
-	if (IsUniqueIdOfOwner(LocalUserId))
+	if (bWasSuccessful)
 	{
-		if (bWasSuccessful)
-		{
-			FindOrCreateRoom(RoomId);
-		}
-		else
-		{
-			HandleChatRoomJoinPrivateFailure(LocalUserId, RoomId, Error);
-		}
+		FindOrCreateRoom(RoomId);
+	}
+	else
+	{
+		HandleChatRoomJoinPrivateFailure(LocalUserId, RoomId, Error);
 	}
 }
 
 void USocialChatManager::HandleChatRoomExit(const FUniqueNetId& LocalUserId, const FChatRoomId& RoomId, bool bWasSuccessful, const FString& Error)
 {
-	if (IsUniqueIdOfOwner(LocalUserId))
+	if (bWasSuccessful)
 	{
-		if (bWasSuccessful)
+		USocialChatRoom** Room = ChatRoomsById.Find(RoomId);
+		if (ensure(Room))
 		{
-			USocialChatRoom** Room = ChatRoomsById.Find(RoomId);
-			if (ensure(Room))
-			{
-				ChatRoomsById.Remove(RoomId);
-				OnChannelLeftInternal(**Room);
-			}
+			ChatRoomsById.Remove(RoomId);
+			OnChannelLeftInternal(**Room);
 		}
-		else
-		{
-			HandleChatRoomExitFailure(LocalUserId, RoomId, Error);
-		}
+	}
+	else
+	{
+		HandleChatRoomExitFailure(LocalUserId, RoomId, Error);
 	}
 }
 
 void USocialChatManager::HandleChatRoomMemberJoin(const FUniqueNetId& LocalUserId, const FChatRoomId& RoomId, const FUniqueNetId& MemberId)
 {
-	if (IsUniqueIdOfOwner(LocalUserId))
-	{
-		// This is potentially a previously unknown user, so establish them first
-		GetOwningToolkit().QueueUserDependentAction(MemberId.AsShared(),
-			[this, RoomId](USocialUser& User)
+	// This is potentially a previously unknown user, so establish them first
+	GetOwningToolkit().QueueUserDependentAction(MemberId.AsShared(),
+		[this, RoomId] (USocialUser& User)
 		{
 			if (USocialChatRoom** Channel = ChatRoomsById.Find(RoomId))
 			{
 				(*Channel)->NotifyUserJoinedChannel(User);
 			}
 		});
-	}
 }
 
 void USocialChatManager::HandleChatRoomMemberExit(const FUniqueNetId& LocalUserId, const FChatRoomId& RoomId, const FUniqueNetId& MemberId)
 {
-	if (IsUniqueIdOfOwner(LocalUserId))
+	//@todo SocialChat: Should the channel be tracking users in it? Should be up to a SocialUserList, shouldn't it? 
+	//	Maybe a channel is actually a UserList? Overkill for PMs, but sounds reasonable for a ChatRoom
+	USocialChatRoom* Channel = GetChatRoom(RoomId);
+	USocialUser* SocialUser = GetOwningToolkit().FindUser(MemberId.AsShared());
+	if (ensure(Channel) && SocialUser)
 	{
-		//@todo SocialChat: Should the channel be tracking users in it? Should be up to a SocialUserList, shouldn't it? 
-		//	Maybe a channel is actually a UserList? Overkill for PMs, but sounds reasonable for a ChatRoom
-		USocialChatRoom* Channel = GetChatRoom(RoomId);
-		USocialUser* SocialUser = GetOwningToolkit().FindUser(MemberId.AsShared());
-		if (ensure(Channel) && SocialUser)
-		{
-			Channel->NotifyUserLeftChannel(*SocialUser);
-		}
+		Channel->NotifyUserLeftChannel(*SocialUser);
 	}
 }
 
 void USocialChatManager::HandleChatRoomMemberUpdate(const FUniqueNetId& LocalUserId, const FChatRoomId& RoomId, const FUniqueNetId& MemberId)
 {
-	if (IsUniqueIdOfOwner(LocalUserId))
+	USocialChatRoom* Channel = GetChatRoom(RoomId);
+	USocialUser* SocialUser = GetOwningToolkit().FindUser(MemberId.AsShared());
+	if (ensure(Channel) && ensure(SocialUser))
 	{
-		USocialChatRoom* Channel = GetChatRoom(RoomId);
-		USocialUser* SocialUser = GetOwningToolkit().FindUser(MemberId.AsShared());
-		if (ensure(Channel) && ensure(SocialUser))
-		{
-			Channel->NotifyChannelUserChanged(*SocialUser);
-		}
+		Channel->NotifyChannelUserChanged(*SocialUser);
 	}
 }
 
 void USocialChatManager::HandleChatRoomMessageReceived(const FUniqueNetId& LocalUserId, const FChatRoomId& RoomId, const TSharedRef<FChatMessage>& ChatMessage)
 {
-	if (IsUniqueIdOfOwner(LocalUserId))
+	USocialChatRoom* Channel = GetChatRoom(RoomId);
+	if (ensure(Channel))
 	{
-		USocialChatRoom* Channel = GetChatRoom(RoomId);
-		if (ensure(Channel))
-		{
-			Channel->NotifyMessageReceived(ChatMessage);
-		}
+		Channel->NotifyMessageReceived(ChatMessage);
 	}
 }
 
 void USocialChatManager::HandleChatPrivateMessageReceived(const FUniqueNetId& LocalUserId, const TSharedRef<FChatMessage>& ChatMessage)
 {
-	if (IsUniqueIdOfOwner(LocalUserId))
+	// We can expect that we already know about a user that is sending us a private message and should not have to create one
+	USocialUser* SocialUser = GetOwningToolkit().FindUser(ChatMessage->GetUserId());
+	if (ensure(SocialUser))
 	{
-		// We can expect that we already know about a user that is sending us a private message and should not have to create one
-		USocialUser* SocialUser = GetOwningToolkit().FindUser(ChatMessage->GetUserId());
-		if (ensure(SocialUser))
-		{
-			USocialChatChannel& Channel = FindOrCreateChannel(*SocialUser);
-			Channel.NotifyMessageReceived(ChatMessage);
-		}
+		USocialChatChannel& Channel = FindOrCreateChannel(*SocialUser);
+		Channel.NotifyMessageReceived(ChatMessage);
 	}
 }
 
@@ -558,12 +528,7 @@ void USocialChatManager::RefreshGroupsRequestCompleted(FGroupsResult Result)
 
 void USocialChatManager::OnGroupUpdated(const FUniqueNetId& GroupId)
 {
-}
-
-bool USocialChatManager::IsUniqueIdOfOwner(const FUniqueNetId& LocalUserId) const
-{
-	const USocialUser& Owner = GetOwningToolkit().GetLocalUser();
-	return LocalUserId == Owner.GetUserId(ESocialSubsystem::Primary);
+	printf("");
 }
 
 void USocialChatManager::GetGroupChannels(TArray<USocialGroupChannel*>& JoinedChannels) const
@@ -592,7 +557,7 @@ USocialGroupChannel& USocialChatManager::FindOrCreateGroupChannel(IOnlineGroupsP
 	USocialGroupChannel* NewGroupChannel = NewObject<USocialGroupChannel>(this, NewGroupClass);
 	check(NewGroupChannel);
 
-	GroupChannels.Add(GroupId.AsShared(), NewGroupChannel);
+	GroupChannels.Add(FUniqueNetIdRepl(GroupId), NewGroupChannel);
 
 	NewGroupChannel->Initialize(InGroupInterface, GetOwningToolkit().GetLocalUser(), GroupId);
 

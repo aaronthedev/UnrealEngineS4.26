@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	HlslAST.h - Abstract Syntax Tree interfaces for HLSL.
@@ -27,7 +27,6 @@ namespace CrossCompiler
 		struct FIterationStatement;
 		struct FCompoundStatement;
 		struct FExpressionStatement;
-		struct FSemanticSpecifier;
 
 		struct FASTWriter
 		{
@@ -125,42 +124,6 @@ namespace CrossCompiler
 			~FASTWriterIncrementScope()
 			{
 				--Writer.Indent;
-			}
-		};
-
-		struct FASTWriterSkipExpressionScope
-		{
-			FASTWriter& Writer;
-			int32 OriginalScope;
-
-			FASTWriterSkipExpressionScope(FASTWriter& InWriter) :
-				Writer(InWriter)
-			{
-				OriginalScope = Writer.ExpressionScope;
-				Writer.ExpressionScope = 0;
-			}
-
-			~FASTWriterSkipExpressionScope()
-			{
-				Writer.ExpressionScope = OriginalScope;
-			}
-		};
-
-		struct FASTWriterClearIndentScope
-		{
-			FASTWriter& Writer;
-			int32 OriginalIndent;
-
-			FASTWriterClearIndentScope(FASTWriter& InWriter) :
-				Writer(InWriter)
-			{
-				OriginalIndent = Writer.Indent;
-				Writer.Indent = 0;
-			}
-
-			~FASTWriterClearIndentScope()
-			{
-				Writer.Indent = OriginalIndent;
 			}
 		};
 
@@ -273,10 +236,15 @@ namespace CrossCompiler
 			ArrayIndex,
 
 			FunctionCall,
-			ExpressionList,
+			InitializerList,
 
 			Identifier,
-			Literal,
+			//Int_constant,
+			UintConstant,
+			FloatConstant,
+			BoolConstant,
+
+			Sequence,
 
 			TypeCast,
 		};
@@ -375,8 +343,11 @@ namespace CrossCompiler
 			case EHlslToken::Mod:
 				return AST::EOperators::Mod;
 
+			case EHlslToken::Comma:
+				return AST::EOperators::Sequence;
+
 			default:
-				checkf(0, TEXT("Unhandled token %d"), (int32)Token);
+				check(0);
 				break;
 			}
 
@@ -394,17 +365,16 @@ namespace CrossCompiler
 
 		struct FExpression : public FNode
 		{
-			FExpression(FLinearAllocator* InAllocator, EOperators InOperator, const FSourceInfo& InInfo);
-			FExpression(FLinearAllocator* InAllocator, EOperators InOperator, FExpression* E0, const FSourceInfo& InInfo);
-			FExpression(FLinearAllocator* InAllocator, EOperators InOperator, FExpression* E0, FExpression* E1, const FSourceInfo& InInfo);
 			FExpression(FLinearAllocator* InAllocator, EOperators InOperator, FExpression* E0, FExpression* E1, FExpression* E2, const FSourceInfo& InInfo);
 			~FExpression();
 
 			EOperators Operator;
+			FExpression* SubExpressions[3];
 
 			union
 			{
-				ELiteralType LiteralType;
+				uint32 UintConstant;
+				bool BoolConstant;
 				struct FTypeSpecifier* TypeSpecifier;
 			};
 			const TCHAR* Identifier;
@@ -413,13 +383,6 @@ namespace CrossCompiler
 
 			void WriteOperator(FASTWriter& Writer) const;
 			virtual void Write(FASTWriter& Writer) const override;
-
-			virtual bool GetConstantIntValue(int32& OutValue) const override;
-
-			bool IsConstant() const
-			{
-				return Operator == EOperators::Literal;
-			}
 		};
 
 		struct FUnaryExpression : public FExpression
@@ -428,6 +391,42 @@ namespace CrossCompiler
 
 			virtual void Write(FASTWriter& Writer) const override;
 			virtual FUnaryExpression* AsUnaryExpression() override { return this; }
+			virtual bool GetConstantIntValue(int32& OutValue) const override;
+
+			bool IsConstant() const
+			{
+				switch (Operator)
+				{
+				case EOperators::UintConstant:
+				case EOperators::FloatConstant:
+				case EOperators::BoolConstant:
+					return true;
+
+				default:
+					break;
+				}
+				return false;
+			}
+
+			uint32 GetUintConstantValue() const
+			{
+				switch (Operator)
+				{
+				case EOperators::UintConstant:
+					return UintConstant;
+
+				case EOperators::FloatConstant:
+					return static_cast<uint32>(FCString::Atof(Identifier));
+
+				case EOperators::BoolConstant:
+					return static_cast<uint32>(BoolConstant);
+
+				default:
+					break;
+				}
+
+				return 0;
+			}
 		};
 
 		struct FBinaryExpression : public FExpression
@@ -440,25 +439,14 @@ namespace CrossCompiler
 
 		struct FFunctionExpression : public FExpression
 		{
-			FFunctionExpression(FLinearAllocator* InAllocator, const FSourceInfo& InInfo, FExpression* InCallee);
+			FFunctionExpression(FLinearAllocator* InAllocator, const FSourceInfo& InInfo, FExpression* Callee);
 
 			virtual void Write(FASTWriter& Writer) const override;
-
-			FExpression* Callee;
 		};
 
-		struct FExpressionList : public FExpression
+		struct FInitializerListExpression : public FExpression
 		{
-			enum class EType
-			{
-				FreeForm,			// a, b, c
-				Parenthesized,		// ( a, b, c )
-				Braced,				// { a, b, c }
-			};
-
-			FExpressionList(FLinearAllocator* InAllocator, EType InType, const FSourceInfo& InInfo);
-
-			EType Type = EType::FreeForm;
+			FInitializerListExpression(FLinearAllocator* InAllocator, const FSourceInfo& InInfo);
 
 			virtual void Write(FASTWriter& Writer) const override;
 		};
@@ -474,24 +462,14 @@ namespace CrossCompiler
 			virtual FCompoundStatement* AsCompoundStatement() override { return this; }
 		};
 
-		struct FSemanticSpecifier : public FNode
+		struct FRegisterSpecifier : public FNode
 		{
-			enum class ESpecType
-			{
-				Semantic,
-				Register,
-				PackOffset,
-			};
-
-			FSemanticSpecifier(FLinearAllocator* InAllocator, ESpecType InType, const FSourceInfo& InInfo);
-			FSemanticSpecifier(FLinearAllocator* InAllocator, const TCHAR* InSemantic, const FSourceInfo& InInfo);
-			~FSemanticSpecifier();
+			FRegisterSpecifier(FLinearAllocator* InAllocator, const FSourceInfo& InInfo);
+			~FRegisterSpecifier();
 
 			virtual void Write(FASTWriter& Writer) const override;
 
-			TLinearArray<FExpression*>	Arguments;
-			ESpecType					Type;
-			const TCHAR*				Semantic;
+			TLinearArray<FExpression*> Arguments;
 		};
 
 		struct FDeclaration : public FNode
@@ -504,12 +482,14 @@ namespace CrossCompiler
 
 			const TCHAR* Identifier;
 
-			FSemanticSpecifier* Semantic;
+			const TCHAR* Semantic;
 
 			bool bIsArray;
 			//bool bIsUnsizedArray;
 
 			TLinearArray<FExpression*> ArraySize;
+
+			FRegisterSpecifier* Register;
 
 			FExpression* Initializer;
 		};
@@ -538,8 +518,6 @@ namespace CrossCompiler
 				uint32 Raw;
 			};
 
-			const TCHAR* PrimitiveType = nullptr;
-
 			FTypeQualifier();
 
 			void Write(FASTWriter& Writer) const;
@@ -554,7 +532,7 @@ namespace CrossCompiler
 
 			const TCHAR* Name;
 			const TCHAR* ParentName;
-			TLinearArray<FNode*> Members;
+			TLinearArray<FNode*> Declarations;
 		};
 
 		struct FCBufferDeclaration : public FNode
@@ -606,15 +584,11 @@ namespace CrossCompiler
 			FDeclaratorList(FLinearAllocator* InAllocator, const FSourceInfo& InInfo);
 			~FDeclaratorList();
 
-			void WriteNoEOL(FASTWriter& Writer) const;
-
 			virtual void Write(FASTWriter& Writer) const override;
 			virtual FDeclaratorList* AsDeclaratorList() override { return this; }
 
 			FFullySpecifiedType* Type;
 			TLinearArray<FNode*> Declarations;
-
-			bool bTypedef = false;
 		};
 
 		struct FParameterDeclarator : public FNode
@@ -629,7 +603,7 @@ namespace CrossCompiler
 
 			FFullySpecifiedType* Type;
 			const TCHAR* Identifier;
-			FSemanticSpecifier* Semantic;
+			const TCHAR* Semantic;
 			bool bIsArray;
 
 			TLinearArray<FExpression*> ArraySize;
@@ -645,11 +619,11 @@ namespace CrossCompiler
 
 			FFullySpecifiedType* ReturnType;
 			const TCHAR* Identifier;
-			FSemanticSpecifier* ReturnSemantic;
+			const TCHAR* ReturnSemantic;
 
 			TLinearArray<FNode*> Parameters;
 
-			bool bIsDefinition = false;
+			bool bIsDefinition;
 
 			//Signature
 		};

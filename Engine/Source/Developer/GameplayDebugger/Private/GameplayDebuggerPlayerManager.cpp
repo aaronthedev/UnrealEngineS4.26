@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayDebuggerPlayerManager.h"
 #include "Engine/World.h"
@@ -35,10 +35,9 @@ void AGameplayDebuggerPlayerManager::BeginPlay()
 	Super::BeginPlay();
 
 	UWorld* World = GetWorld();
-	check(World);
 	const ENetMode NetMode = World->GetNetMode();
 	
-	bHasAuthority = FGameplayDebuggerUtils::IsAuthority(World);
+	bHasAuthority = (NetMode != NM_Client);
 	bIsLocal = (NetMode != NM_DedicatedServer);
 	bInitialized = true;
 

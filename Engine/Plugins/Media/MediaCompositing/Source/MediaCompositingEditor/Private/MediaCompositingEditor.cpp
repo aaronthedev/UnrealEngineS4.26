@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Delegates/IDelegateInstance.h"
 #include "ISequencerModule.h"
@@ -8,7 +8,6 @@
 #include "MediaCompositingEditorStyle.h"
 #include "MediaSequenceRecorderExtender.h"
 #include "MediaTrackEditor.h"
-#include "MediaPlayerPropertyTrackEditor.h"
 
 
 #define LOCTEXT_NAMESPACE "MediaCompositingEditorModule"
@@ -28,7 +27,6 @@ public:
 
 		ISequencerModule& SequencerModule = FModuleManager::Get().LoadModuleChecked<ISequencerModule>("Sequencer");
 		TrackEditorBindingHandle = SequencerModule.RegisterPropertyTrackEditor<FMediaTrackEditor>();
-		PropertyTrackEditorBindingHandle = SequencerModule.RegisterPropertyTrackEditor<FMediaPlayerPropertyTrackEditor>();
 
 		ISequenceRecorder& SequenceRecorder = FModuleManager::LoadModuleChecked<ISequenceRecorder>("SequenceRecorder");
 		RecorderExtender = MakeShared<FMediaSequenceRecorderExtender>();
@@ -51,12 +49,10 @@ public:
 		if (SequencerModulePtr)
 		{
 			SequencerModulePtr->UnRegisterTrackEditor(TrackEditorBindingHandle);
-			SequencerModulePtr->UnRegisterTrackEditor(PropertyTrackEditorBindingHandle);
 		}
 	}
 
 	FDelegateHandle TrackEditorBindingHandle;
-	FDelegateHandle PropertyTrackEditorBindingHandle;
 	TSharedPtr<FMediaSequenceRecorderExtender> RecorderExtender;
 };
 

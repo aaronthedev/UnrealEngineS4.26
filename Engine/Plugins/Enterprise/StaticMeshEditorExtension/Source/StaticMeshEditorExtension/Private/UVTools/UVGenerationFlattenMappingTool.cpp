@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UVGenerationFlattenMappingTool.h"
 
@@ -16,6 +16,7 @@
 #include "Interfaces/IMainFrameModule.h"
 #include "Interfaces/IPluginManager.h"
 #include "IStaticMeshEditor.h"
+#include "MeshDescriptionOperations.h"
 #include "MeshEditorUtils.h"
 #include "MeshUtilitiesCommon.h"
 #include "Misc/ScopedSlowTask.h"

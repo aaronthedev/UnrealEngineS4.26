@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/ScrollBox.h"
 #include "Containers/Ticker.h"
@@ -25,7 +25,6 @@ UScrollBox::UScrollBox(const FObjectInitializer& ObjectInitializer)
 	, AllowOverscroll(true)
 	, NavigationDestination(EDescendantScrollDestination::IntoView)
 	, NavigationScrollPadding(0.0f)
-	, ScrollWhenFocusChanges(EScrollWhenFocusChanges::NoScroll)
 {
 	bIsVariable = false;
 
@@ -80,7 +79,7 @@ void UScrollBox::OnSlotAdded(UPanelSlot* InSlot)
 void UScrollBox::OnSlotRemoved(UPanelSlot* InSlot)
 {
 	// Remove the widget from the live slot if it exists.
-	if ( MyScrollBox.IsValid() && InSlot->Content)
+	if ( MyScrollBox.IsValid() )
 	{
 		TSharedPtr<SWidget> Widget = InSlot->Content->GetCachedWidget();
 		if ( Widget.IsValid() )
@@ -99,7 +98,6 @@ TSharedRef<SWidget> UScrollBox::RebuildWidget()
 		.ConsumeMouseWheel(ConsumeMouseWheel)
 		.NavigationDestination(NavigationDestination)
 		.NavigationScrollPadding(NavigationScrollPadding)
-		.ScrollWhenFocusChanges(ScrollWhenFocusChanges)
 		.AnimateWheelScrolling(bAnimateWheelScrolling)
 		.WheelScrollMultiplier(WheelScrollMultiplier)
 		.OnUserScrolled(BIND_UOBJECT_DELEGATE(FOnUserScrolled, SlateHandleUserScrolled));
@@ -190,7 +188,7 @@ void UScrollBox::ScrollToEnd()
 	}
 }
 
-void UScrollBox::ScrollWidgetIntoView(UWidget* WidgetToFind, bool AnimateScroll, EDescendantScrollDestination InScrollDestination, float Padding)
+void UScrollBox::ScrollWidgetIntoView(UWidget* WidgetToFind, bool AnimateScroll, EDescendantScrollDestination InScrollDestination)
 {
 	TSharedPtr<SWidget> SlateWidgetToFind;
 	if (WidgetToFind)
@@ -202,7 +200,7 @@ void UScrollBox::ScrollWidgetIntoView(UWidget* WidgetToFind, bool AnimateScroll,
 	{
 		// NOTE: Pass even if null! This, in effect, cancels a request to scroll which is necessary to avoid warnings/ensures 
 		//       when we request to scroll to a widget and later remove that widget!
-		MyScrollBox->ScrollDescendantIntoView(SlateWidgetToFind, AnimateScroll, InScrollDestination, Padding);
+		MyScrollBox->ScrollDescendantIntoView(SlateWidgetToFind, AnimateScroll, InScrollDestination);
 	}
 }
 

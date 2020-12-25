@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	NOTE: This file should ONLY be included by UnrealMath.h!
@@ -819,9 +819,9 @@ FORCEINLINE FBasisVectorMatrix::FBasisVectorMatrix(const FVector& XAxis,const FV
 }
 
 
-FORCEINLINE FLookFromMatrix::FLookFromMatrix(const FVector& EyePosition, const FVector& LookDirection, const FVector& UpVector)
+FORCEINLINE FLookAtMatrix::FLookAtMatrix(const FVector& EyePosition, const FVector& LookAtPosition, const FVector& UpVector)
 {
-	const FVector ZAxis = LookDirection.GetSafeNormal();
+	const FVector ZAxis = (LookAtPosition - EyePosition).GetSafeNormal();
 	const FVector XAxis = (UpVector ^ ZAxis).GetSafeNormal();
 	const FVector YAxis = ZAxis ^ XAxis;
 
@@ -836,12 +836,5 @@ FORCEINLINE FLookFromMatrix::FLookFromMatrix(const FVector& EyePosition, const F
 	M[3][1] = -EyePosition | YAxis;
 	M[3][2] = -EyePosition | ZAxis;
 	M[3][3] = 1.0f;
-}
-
-
-
-FORCEINLINE FLookAtMatrix::FLookAtMatrix(const FVector& EyePosition, const FVector& LookAtPosition, const FVector& UpVector) :
-	FLookFromMatrix(EyePosition, LookAtPosition - EyePosition, UpVector)
-{
 }
 

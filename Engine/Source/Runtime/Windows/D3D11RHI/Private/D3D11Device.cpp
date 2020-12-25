@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	D3D11Device.cpp: D3D device RHI implementation.
@@ -61,10 +61,6 @@ FD3D11DynamicRHI::FD3D11DynamicRHI(IDXGIFactory1* InDXGIFactory1,D3D_FEATURE_LEV
 #endif
 	FeatureLevel(InFeatureLevel),
 	AmdAgsContext(NULL),
-#if INTEL_EXTENSIONS
-	IntelExtensionContext(nullptr),
-	IntelD3D11ExtensionFuncs(nullptr),
-#endif
 	bCurrentDepthStencilStateIsReadOnly(false),
 	CurrentDepthTexture(NULL),
 	NumSimultaneousRenderTargets(0),
@@ -77,8 +73,7 @@ FD3D11DynamicRHI::FD3D11DynamicRHI(IDXGIFactory1* InDXGIFactory1,D3D_FEATURE_LEV
 	bUsingTessellation(false),
 	GPUProfilingData(this),
 	ChosenAdapter(InChosenAdapter),
-	ChosenDescription(InChosenDescription),
-	bAllowVendorDevice(!FParse::Param(FCommandLine::Get(), TEXT("novendordevice")))
+	ChosenDescription(InChosenDescription)
 {
 	// This should be called once at the start 
 	check(ChosenAdapter >= 0);
@@ -113,9 +108,13 @@ FD3D11DynamicRHI::FD3D11DynamicRHI(IDXGIFactory1* InDXGIFactory1,D3D_FEATURE_LEV
 	ERHIFeatureLevel::Type PreviewFeatureLevel;
 	if (RHIGetPreviewFeatureLevel(PreviewFeatureLevel))
 	{
-		// ES3.1 feature level emulation in D3D11
+		// ES2/3.1 feature level emulation in D3D11
 		GMaxRHIFeatureLevel = PreviewFeatureLevel;
-		if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES3_1)
+		if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES2)
+		{
+			GMaxRHIShaderPlatform = SP_PCD3D_ES2;
+		}
+		else if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES3_1)
 		{
 			GMaxRHIShaderPlatform = SP_PCD3D_ES3_1;
 		}
@@ -200,7 +199,6 @@ FD3D11DynamicRHI::FD3D11DynamicRHI(IDXGIFactory1* InDXGIFactory1,D3D_FEATURE_LEV
 	GPixelFormats[ PF_BC6H			].PlatformFormat	= DXGI_FORMAT_BC6H_UF16;
 	GPixelFormats[ PF_BC7			].PlatformFormat	= DXGI_FORMAT_BC7_TYPELESS;
 	GPixelFormats[ PF_R8_UINT		].PlatformFormat	= DXGI_FORMAT_R8_UINT;
-	GPixelFormats[ PF_R8			].PlatformFormat	= DXGI_FORMAT_R8_UNORM;
 
 	GPixelFormats[PF_R16G16B16A16_UNORM].PlatformFormat = DXGI_FORMAT_R16G16B16A16_UNORM;
 	GPixelFormats[PF_R16G16B16A16_SNORM].PlatformFormat = DXGI_FORMAT_R16G16B16A16_SNORM;
@@ -226,9 +224,6 @@ FD3D11DynamicRHI::FD3D11DynamicRHI(IDXGIFactory1* InDXGIFactory1,D3D_FEATURE_LEV
 	GRHISupportsResolveCubemapFaces = true;
 	GRHISupportsCopyToTextureMultipleMips = true;
 
-	GRHITransitionPrivateData_SizeInBytes = sizeof(FD3D11TransitionData);
-	GRHITransitionPrivateData_AlignInBytes = alignof(FD3D11TransitionData);
-
 	// Initialize the constant buffers.
 	InitConstantBuffers();
 
@@ -236,8 +231,6 @@ FD3D11DynamicRHI::FD3D11DynamicRHI(IDXGIFactory1* InDXGIFactory1,D3D_FEATURE_LEV
 	{
 		DirtyUniformBuffers[Frequency] = 0;
 	}
-
-	GlobalUniformBuffers.AddZeroed(FUniformBufferStaticSlotRegistry::Get().GetSlotCount());
 }
 
 FD3D11DynamicRHI::~FD3D11DynamicRHI()
@@ -268,20 +261,6 @@ void FD3D11DynamicRHI::RHIPushEvent(const TCHAR* Name, FColor Color)
 { 
 	GPUProfilingData.PushEvent(Name, Color);
 }
-
-#if PLATFORM_HOLOLENS
-void FD3D11DynamicRHI::RHISuspendRendering()
-{
-	TRefCountPtr<IDXGIDevice3> dxgiDevice;
-	if (Direct3DDevice->QueryInterface(IID_PPV_ARGS(dxgiDevice.GetInitReference())))
-	{
-		dxgiDevice->Trim();
-	}
-}
-void FD3D11DynamicRHI::RHIResumeRendering()
-{
-}
-#endif
 
 void FD3D11DynamicRHI::RHIPopEvent()
 { 
@@ -406,15 +385,6 @@ uint32 FD3D11DynamicRHI::GetMaxMSAAQuality(uint32 SampleCount)
 
 static bool GFormatSupportsTypedUAVLoad[PF_MAX];
 
-// The D3D11 header is not recent enough to check support for this
-static const D3D11_FEATURE D3D11_FEATURE_FORMAT_SUPPORT3 = (D3D11_FEATURE)15;
-#if !PLATFORM_HOLOLENS
-typedef struct D3D11_FEATURE_DATA_D3D11_OPTIONS3
-{
-	BOOL VPAndRTArrayIndexFromAnyShaderFeedingRasterizer;
-} D3D11_FEATURE_DATA_D3D11_OPTIONS3;
-#endif
-
 void FD3D11DynamicRHI::SetupAfterDeviceCreation()
 {
 	// without that the first RHIClear would get a scissor rect of (0,0)-(0,0) which means we get a draw call clear 
@@ -430,16 +400,6 @@ void FD3D11DynamicRHI::SetupAfterDeviceCreation()
 	{
 		UE_LOG(LogD3D11RHI, Log, TEXT("Async texture creation disabled: %s"),
 			D3D11RHI_ShouldAllowAsyncResourceCreation() ? TEXT("no driver support") : TEXT("disabled by user"));
-	}
-
-	{
-		D3D11_FEATURE_DATA_D3D11_OPTIONS3 Data;
-		HRESULT Result = Direct3DDevice->CheckFeatureSupport(D3D11_FEATURE_FORMAT_SUPPORT3, &Data, sizeof(Data));
-		GRHISupportsArrayIndexFromAnyShader = SUCCEEDED(Result) && Data.VPAndRTArrayIndexFromAnyShaderFeedingRasterizer;
-		if (GRHISupportsArrayIndexFromAnyShader)
-		{
-			UE_LOG(LogD3D11RHI, Log, TEXT("Array index from any shader is supported"));
-		}
 	}
 
 	// Check for typed UAV load support
@@ -520,7 +480,17 @@ void FD3D11DynamicRHI::CleanupD3DDevice()
 		check(!GIsCriticalError);
 
 		// Ask all initialized FRenderResources to release their RHI resources.
-		FRenderResource::ReleaseRHIForAllResources();
+		for(TLinkedList<FRenderResource*>::TIterator ResourceIt(FRenderResource::GetResourceList());ResourceIt;ResourceIt.Next())
+		{
+			FRenderResource* Resource = *ResourceIt;
+			check(Resource->IsInitialized());
+			Resource->ReleaseRHI();
+		}
+
+		for(TLinkedList<FRenderResource*>::TIterator ResourceIt(FRenderResource::GetResourceList());ResourceIt;ResourceIt.Next())
+		{
+			ResourceIt->ReleaseDynamicRHI();
+		}
 
 		extern void EmptyD3DSamplerStateCache();
 		EmptyD3DSamplerStateCache();
@@ -549,30 +519,22 @@ void FD3D11DynamicRHI::CleanupD3DDevice()
 		// Clean up the AMD extensions and shut down the AMD AGS utility library
 		if (AmdAgsContext != NULL)
 		{
-			check(bAllowVendorDevice);
-
 			// AGS is holding an extra reference to the immediate context. Release it before calling DestroyDevice.
 			Direct3DDeviceIMContext->Release();
-			agsDriverExtensionsDX11_DestroyDevice(AmdAgsContext, Direct3DDevice, NULL, Direct3DDeviceIMContext, NULL);
+			agsDriverExtensionsDX11_DestroyDevice(AmdAgsContext, Direct3DDevice, NULL);
 			agsDeInit(AmdAgsContext);
 			GRHIDeviceIsAMDPreGCNArchitecture = false;
 			AmdAgsContext = NULL;
 		}
-#endif //AMD_AGS_API
-
-#if INTEL_EXTENSIONS
-		if (IsRHIDeviceIntel() && bAllowVendorDevice)
-		{
-			StopIntelExtensions();
-		}
-#endif // INTEL_EXTENSIONS
 
 #if INTEL_METRICSDISCOVERY
-		if (GDX11IntelMetricsDiscoveryEnabled && bAllowVendorDevice)
+		if (GDX11IntelMetricsDiscoveryEnabled)
 		{
 			StopIntelMetricsDiscovery();
 		}
 #endif // INTEL_METRICSDISCOVERY
+
+#endif //AMD_AGS_API
 
 		// When running with D3D debug, clear state and flush the device to get rid of spurious live objects in D3D11's report.
 		if (D3D11RHI_ShouldCreateWithD3DDebug())

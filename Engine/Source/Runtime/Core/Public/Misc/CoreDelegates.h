@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,7 +13,6 @@
 
 class AActor;
 class Error;
-class IPakFile;
 
 // delegates for hotfixes
 namespace EHotfixDelegates
@@ -61,26 +60,17 @@ public:
 	// delegate type for prompting the pak system to mount all pak files, which haven't already been mounted, from all default locations
 	DECLARE_DELEGATE_RetVal_OneParam(int32, FOnMountAllPakFiles, const TArray<FString>&);
 
-	// deprecated delegate type for prompting the pak system to mount a new pak
+	// delegate type for prompting the pak system to mount a new pak
 	DECLARE_DELEGATE_RetVal_ThreeParams(bool, FOnMountPak, const FString&, int32, IPlatformFile::FDirectoryVisitor*);
 
 	// delegate type for prompting the pak system to mount a new pak
-	DECLARE_DELEGATE_RetVal_TwoParams(IPakFile*, FMountPak, const FString&, int32);
-
-	// delegate type for prompting the pak system to unmount a pak
 	DECLARE_DELEGATE_RetVal_OneParam(bool, FOnUnmountPak, const FString&);
 
 	// delegate type for prompting the pak system to optimize memory for mounted paks
 	DECLARE_DELEGATE(FOnOptimizeMemoryUsageForMountedPaks);
 
-	// deprecated delegate for handling when a new pak file is successfully mounted passes in the name of the mounted pak file
+	// delegate for handling when a new pak file is successfully mounted passes in the name of the mounted pak file
 	DECLARE_MULTICAST_DELEGATE_OneParam(FPakFileMountedDelegate, const TCHAR*);
-
-	// deprecated delegate for handling when a new pak file is successfully mounted passes in the name of the pak file and its chunk ID (or INDEX_NONE)
-	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnPakFileMounted, const TCHAR*, const int32);
-
-	// delegate for handling when a new pak file is successfully mounted
-	DECLARE_MULTICAST_DELEGATE_OneParam(FOnPakFileMounted2, const IPakFile&);
 
 	// delegate to let other systems no that no paks were mounted, in case something wants to handle that case
 	DECLARE_MULTICAST_DELEGATE(FNoPakFilesMountedDelegate);
@@ -109,11 +99,8 @@ public:
 	// Callback for handling accepting invitations - generally for engine code
 	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnInviteAccepted, const FString&, const FString&);
 
-	UE_DEPRECATED(4.26, "FCoreDelegates::FRegisterEncryptionKeyDelegate is deprecated; use FRegisterEncryptionKeyMulticastDelegate instead")
-	DECLARE_DELEGATE_TwoParams(FRegisterEncryptionKeyDelegate, const FGuid&, const FAES::FAESKey&);
-
 	// Callback for registering a new encryption key
-	DECLARE_MULTICAST_DELEGATE_TwoParams(FRegisterEncryptionKeyMulticastDelegate, const FGuid&, const FAES::FAESKey&);
+	DECLARE_DELEGATE_TwoParams(FRegisterEncryptionKeyDelegate, const FGuid&, const FAES::FAESKey&);
 
 	// Callback for accessing pak encryption key, if it exists
 	DECLARE_DELEGATE_OneParam(FPakEncryptionKeyDelegate, uint8[32]);
@@ -164,25 +151,16 @@ public:
 	// Callback for mounting all the pak files in default locations
 	static FOnMountAllPakFiles OnMountAllPakFiles;
 
-	// Callback to prompt the pak system to mount a pak file
-	static FMountPak MountPak;
-
-	UE_DEPRECATED(4.26, "OnMountPak is deprecated; use MountPak instead.")
+	// Callback for mounting a new pak file.
 	static FOnMountPak OnMountPak;
 
-	// Callback to prompt the pak system to unmount a pak file.
+	// Callback for unmounting a pak file.
 	static FOnUnmountPak OnUnmountPak;
 
 	// Callback to optimize memeory for currently mounted paks
 	static FOnOptimizeMemoryUsageForMountedPaks OnOptimizeMemoryUsageForMountedPaks;
 
-	// After a pakfile is mounted this is called
-	static FOnPakFileMounted2 OnPakFileMounted2;
-
-	UE_DEPRECATED(4.26, "FCoreDelegates::OnPakFileMounted is deprecated; use OnPakFileMounted2 instead")
-	static FOnPakFileMounted OnPakFileMounted;
-
-	UE_DEPRECATED(4.25, "FCoreDelegates::PakFileMountedCallback is deprecated. Use FCoreDelegates::OnPakFileMounted2 instead.")
+	// After a pakfile is mounted this callback is called for each new file
 	static FPakFileMountedDelegate PakFileMountedCallback;
 
 	// After a file is added this is called
@@ -212,11 +190,7 @@ public:
 	// Called when an actor label is changed
 	static FOnActorLabelChanged OnActorLabelChanged;
 
-	UE_DEPRECATED(4.26, "FCoreDelegates::GetRegisterEncryptionKeyDelegate is deprecated; use GetRegisterEncryptionKeyMulticastDelegate instead")
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS // Don't warn about FRegisterEncryptionKeyDelegate
 	static FRegisterEncryptionKeyDelegate& GetRegisterEncryptionKeyDelegate();
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-	static FRegisterEncryptionKeyMulticastDelegate& GetRegisterEncryptionKeyMulticastDelegate();
 	static FPakEncryptionKeyDelegate& GetPakEncryptionKeyDelegate();
 	static FPakSigningKeysDelegate& GetPakSigningKeysDelegate();
 
@@ -255,9 +229,6 @@ public:
 	// Called when before the application is exiting.
 	static FSimpleMulticastDelegate OnPreExit;
 
-	// Called before the engine exits. Separate from OnPreExit as OnEnginePreExit occurs before shutting down any core modules.
-	static FSimpleMulticastDelegate OnEnginePreExit;
-
 	/** Delegate for gathering up additional localization paths that are unknown to the UE4 core (such as plugins) */
 	DECLARE_MULTICAST_DELEGATE_OneParam(FGatherAdditionalLocResPathsDelegate, TArray<FString>&);
 	static FGatherAdditionalLocResPathsDelegate GatherAdditionalLocResPathsCallback;
@@ -273,9 +244,6 @@ public:
 
 	// Called at the beginning of a frame
 	static FSimpleMulticastDelegate OnBeginFrame;
-
-	// Called at the moment of sampling the input (currently on the gamethread)
-	static FSimpleMulticastDelegate OnSamplingInput;
 
 	// Called at the end of a frame
 	static FSimpleMulticastDelegate OnEndFrame;
@@ -588,10 +556,6 @@ public:
 	/** Sent when GC finish destroy takes more time than expected */
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnGCFinishDestroyTimeExtended, const FString&);
 	static FOnGCFinishDestroyTimeExtended OnGCFinishDestroyTimeExtended;
-
-	/** Called when the application's network initializes or shutdowns on platforms where the network stack is not always available */
-	DECLARE_MULTICAST_DELEGATE_OneParam(FApplicationNetworkInitializationChanged, bool /*bIsNetworkInitialized*/);
-	static FApplicationNetworkInitializationChanged ApplicationNetworkInitializationChanged;
 
 private:
 

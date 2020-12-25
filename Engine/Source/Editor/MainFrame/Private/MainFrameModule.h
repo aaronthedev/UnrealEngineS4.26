@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -55,8 +55,6 @@ public:
 
 	virtual void RequestCloseEditor( ) override
 	{
-		ClearDelayedShowMainFrameDelegate();
-
 		if ( MainFrameHandler->CanCloseEditor() )
 		{
 			MainFrameHandler->ShutDownEditor();
@@ -74,7 +72,7 @@ public:
 		return LoadedLevelName; 
 	}
 
-	virtual TSharedRef<FUICommandList>& GetMainFrameCommandBindings( ) override
+	virtual const TSharedRef<FUICommandList>& GetMainFrameCommandBindings( ) override
 	{
 		return FMainFrameCommands::ActionList;
 	}
@@ -86,10 +84,8 @@ public:
 
 	virtual const FText GetApplicationTitle( const bool bIncludeGameName ) const override
 	{
-		return OverriddenWindowTitle.IsEmpty() ? StaticGetApplicationTitle( bIncludeGameName ) : OverriddenWindowTitle;
+		return StaticGetApplicationTitle( bIncludeGameName );
 	}
-
-	virtual void SetApplicationTitleOverride(const FText& NewOverriddenApplicationTitle) override;
 
 	virtual void ShowAboutWindow( ) const override
 	{
@@ -110,22 +106,6 @@ public:
 	void BroadcastMainFrameSDKNotInstalled(const FString& PlatformName, const FString& DocLink) override
 	{
 		return MainFrameSDKNotInstalled.Broadcast(PlatformName, DocLink);
-	}
-
-	virtual void EnableDelayedShowMainFrame() override
-	{
-		bDelayedShowMainFrame = true;
-	}
-
-	virtual void ShowDelayedMainFrame() override
-	{
-		bDelayedShowMainFrame = false;
-
-		if (DelayedShowMainFrameDelegate.IsBound())
-		{
-			DelayedShowMainFrameDelegate.Execute();
-			ClearDelayedShowMainFrameDelegate();
-		}
 	}
 
 public:
@@ -179,12 +159,6 @@ private:
 	// Handles launching code accessor
 	void HandleCodeAccessorLaunching( );
 
-	// Reset delegate
-	void ClearDelayedShowMainFrameDelegate()
-	{
-		DelayedShowMainFrameDelegate.Unbind();
-	}
-
 private:
 
 	// Weak pointer to the level editor's compile notification item.
@@ -192,9 +166,6 @@ private:
 
 	// Friendly name for persistently level name currently loaded.  Used for window and tab titles.
 	FString LoadedLevelName;
-
-	// Override window title, or empty to not override
-	FText OverriddenWindowTitle;
 
 	/// Event to be called when the mainframe is fully created.
 	FMainFrameCreationFinishedEvent MainFrameCreationFinishedEvent;
@@ -217,9 +188,8 @@ private:
 	// Weak pointer to the code accessor's notification item.
 	TWeakPtr<class SNotificationItem> CodeAccessorNotificationPtr;
 
-	// Delegate that holds a delayed call to ShowMainFrameWindow
-	FSimpleDelegate DelayedShowMainFrameDelegate;
-
-	// Allow delaying when to show main frame's window
-	bool bDelayedShowMainFrame;
+	// Sounds used for compilation.
+	class USoundBase* CompileStartSound;
+	class USoundBase* CompileSuccessSound;
+	class USoundBase* CompileFailSound;
 };

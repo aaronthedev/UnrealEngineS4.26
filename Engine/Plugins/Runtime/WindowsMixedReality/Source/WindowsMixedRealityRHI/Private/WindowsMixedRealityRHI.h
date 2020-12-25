@@ -28,7 +28,6 @@ public:
 	// IModuleInterface	
 	virtual bool SupportsDynamicReloading() override;
 	virtual void StartupModule() override;
-	virtual void ShutdownModule() override;
 
 	// IDynamicRHIModule
 	virtual bool IsSupported() override;
@@ -63,7 +62,6 @@ public:
 	HolographicSpace^ GetHolographicSpace() const { return HoloSpace; }
 private:
 	HolographicSpace^ HoloSpace;
-	bool bIsMobileMultiViewEnabled = false;
 #endif // PLATFORM_HOLOLENS
 	
 };

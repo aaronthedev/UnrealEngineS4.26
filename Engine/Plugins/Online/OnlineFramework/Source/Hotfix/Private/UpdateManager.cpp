@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UpdateManager.h"
 #include "Misc/CommandLine.h"
@@ -10,9 +10,6 @@
 #include "Engine/LocalPlayer.h"
 #include "OnlineSubsystem.h"
 #include "Misc/CoreDelegates.h"
-#include "InstallBundleManagerInterface.h"
-#include "InstallBundleUtils.h"
-#include "Stats/Stats.h"
 
 #include "OnlineHotfixManager.h"
 
@@ -56,13 +53,15 @@ UUpdateManager::UUpdateManager()
 	, UpdateCheckCompleteDelay(0.5f)
 	, HotfixAvailabilityCheckCompleteDelay(0.1f)
 	, UpdateCheckAvailabilityCompleteDelay(0.1f)
+	, bCheckPlatformOSSForUpdate(true)
+	, bCheckOSSForUpdate(true)
 	, AppSuspendedUpdateCheckTimeSeconds(600)
 	, bPlatformEnvironmentDetected(false)
 	, bInitialUpdateFinished(false)
 	, bCheckHotfixAvailabilityOnly(false)
 	, CurrentUpdateState(EUpdateState::UpdateIdle)
 	, WorstNumFilesPendingLoadViewed(0)
-	, LastPatchCheckResult(EInstallBundleManagerPatchCheckResult::PatchCheckFailure)
+	, LastPatchCheckResult(EPatchCheckResult::PatchCheckFailure)
 	, LastHotfixResult(EHotfixResult::Failed)
 	, LoadStartTime(0.0)
 	, UpdateStateEnum(nullptr)
@@ -240,41 +239,117 @@ void UUpdateManager::CheckComplete(EUpdateCompletionStatus Result, bool bUpdateT
 	DelayResponse(CompletionDelegate, bCheckHotfixAvailabilityOnly ? UpdateCheckAvailabilityCompleteDelay : UpdateCheckCompleteDelay);
 }
 
-inline FName GetUniqueTag(UUpdateManager* UpdateManager)
-{
-	return FName(*FString::Printf(TEXT("Tag_%u_%s"), UpdateManager->GetUniqueID(), *UpdateManager->GetName()));
-}
-
 void UUpdateManager::StartPatchCheck()
 {
 	ensure(ChecksEnabled());
 
-	UGameInstance* GameInstance = GetGameInstance();
-	check(GameInstance);
-
 	SetUpdateState(EUpdateState::CheckingForPatch);
-	if (GameInstance->IsDedicatedServerInstance())
+	if (bCheckPlatformOSSForUpdate && IOnlineSubsystem::GetByPlatform() != nullptr)
 	{
-		PatchCheckComplete(EPatchCheckResult::NoPatchRequired);
-		return;
+		StartPlatformOSSPatchCheck();
 	}
-
-	IInstallBundleManager* InstallBundleMan = IInstallBundleManager::GetPlatformInstallBundleManager();
-	if (InstallBundleMan && !InstallBundleMan->IsNullInterface())
+	else if (bCheckOSSForUpdate)
 	{
-		InstallBundleMan->PatchCheckCompleteDelegate.AddUObject(this, &UUpdateManager::InstallBundlePatchCheckComplete);
-		InstallBundleMan->AddEnvironmentWantsPatchCheckBackCompatDelegate(
-			GetUniqueTag(this),
-			FEnvironmentWantsPatchCheck::CreateUObject(this, &UUpdateManager::EnvironmentWantsPatchCheck));
-		InstallBundleMan->StartPatchCheck();
+		StartOSSPatchCheck();
 	}
 	else
 	{
-		FPatchCheck::Get().GetOnComplete().AddUObject(this, &UUpdateManager::PatchCheckComplete);
-		FPatchCheck::Get().AddEnvironmentWantsPatchCheckBackCompatDelegate(
-			GetUniqueTag(this),
-			FEnvironmentWantsPatchCheck::CreateUObject(this, &UUpdateManager::EnvironmentWantsPatchCheck));
-		FPatchCheck::Get().StartPatchCheck();
+		UE_LOG(LogHotfixManager, Warning, TEXT("Patch check disabled for both Platform and Default OSS"));
+		PatchCheckComplete(EPatchCheckResult::NoPatchRequired);
+	}
+}
+
+void UUpdateManager::StartPlatformOSSPatchCheck()
+{
+	EPatchCheckResult PatchResult = EPatchCheckResult::PatchCheckFailure;
+	bool bStarted = false;
+
+	IOnlineSubsystem* PlatformOnlineSub = IOnlineSubsystem::GetByPlatform();
+	check(PlatformOnlineSub);
+	IOnlineIdentityPtr PlatformOnlineIdentity = PlatformOnlineSub->GetIdentityInterface();
+	if (PlatformOnlineIdentity.IsValid())
+	{
+		TSharedPtr<const FUniqueNetId> UserId = GetFirstSignedInUser(PlatformOnlineIdentity);
+#if PLATFORM_SWITCH
+		// checking the CanPlayOnline privilege on switch will log the user in if required in all but the NotLoggedIn state
+		const bool bCanCheckPlayOnlinePrivilege = UserId.IsValid() && (PlatformOnlineIdentity->GetLoginStatus(*UserId) != ELoginStatus::NotLoggedIn);
+#else
+		const bool bCanCheckPlayOnlinePrivilege = UserId.IsValid() && (PlatformOnlineIdentity->GetLoginStatus(*UserId) == ELoginStatus::LoggedIn);
+#endif
+		if (bCanCheckPlayOnlinePrivilege)
+		{
+			bStarted = true;
+			PlatformOnlineIdentity->GetUserPrivilege(*UserId,
+				EUserPrivileges::CanPlayOnline, IOnlineIdentity::FOnGetUserPrivilegeCompleteDelegate::CreateUObject(this, &ThisClass::OnCheckForPatchComplete, true));
+		}
+		else if (!bInitialUpdateFinished)
+		{
+			UE_LOG(LogHotfixManager, Verbose, TEXT("Skipping initial patch check with no signed in user"));
+			bStarted = true;
+			PatchCheckComplete(EPatchCheckResult::NoPatchRequired);
+		}
+		else
+		{
+			UE_LOG(LogHotfixManager, Warning, TEXT("No valid platform user id when starting patch check!"));
+			PatchResult = EPatchCheckResult::NoLoggedInUser;
+		}
+	}
+
+	if (!bStarted)
+	{
+		// Any failure to call GetUserPrivilege will result in completing the flow via this path
+		PatchCheckComplete(PatchResult);
+	}
+}
+
+void UUpdateManager::StartOSSPatchCheck()
+{
+	UGameInstance* GameInstance = GetGameInstance();
+	check(GameInstance);
+
+	EPatchCheckResult PatchResult = EPatchCheckResult::PatchCheckFailure;
+	bool bStarted = false;
+
+	if (GameInstance->IsDedicatedServerInstance())
+	{
+		bStarted = true;
+		PatchCheckComplete(EPatchCheckResult::NoPatchRequired);
+	}
+	else
+	{
+		UWorld* World = GetWorld();
+		IOnlineIdentityPtr IdentityInt = Online::GetIdentityInterface(World);
+		if (IdentityInt.IsValid())
+		{
+			ULocalPlayer* LP = GameInstance->GetFirstGamePlayer();
+			if (LP != nullptr)
+			{
+				const int32 ControllerId = LP->GetControllerId();
+				TSharedPtr<const FUniqueNetId> UserId = IdentityInt->GetUniquePlayerId(ControllerId);
+				if (!UserId.IsValid())
+				{
+					// Invalid user for "before title/login" check, underlying code doesn't need a valid user currently
+					UserId = IdentityInt->CreateUniquePlayerId(TEXT("InvalidUser"));
+				}
+
+				if (UserId.IsValid())
+				{
+					bStarted = true;
+					IdentityInt->GetUserPrivilege(*UserId,
+						EUserPrivileges::CanPlayOnline, IOnlineIdentity::FOnGetUserPrivilegeCompleteDelegate::CreateUObject(this, &ThisClass::OnCheckForPatchComplete, false));
+				}
+			}
+			else
+			{
+				UE_LOG(LogHotfixManager, Warning, TEXT("No local player to perform check!"));
+			}
+		}
+	}
+
+	if (!bStarted)
+	{
+		// Any failure to call GetUserPrivilege will result in completing the flow via this path
+		PatchCheckComplete(PatchResult);
 	}
 }
 
@@ -288,69 +363,86 @@ bool UUpdateManager::EnvironmentWantsPatchCheck() const
 	return false;
 }
 
-EInstallBundleManagerPatchCheckResult ToInstallBundleManagerPatchCheckResult(EPatchCheckResult InResult)
+inline bool SkipPatchCheck(UUpdateManager* UpdateManager)
 {
-	// EInstallBundleManagerPatchCheckResult should be a superset of EPatchCheckResult
+	// Does the environment care about patch checks (LIVE, STAGE, etc)
+	bool bEnvironmentWantsPatchCheck = UpdateManager->EnvironmentWantsPatchCheck();
 
-	EInstallBundleManagerPatchCheckResult OutResult = EInstallBundleManagerPatchCheckResult::PatchCheckFailure;
-	switch (InResult)
+	// Can always opt in to a check
+	const bool bForcePatchCheck = FParse::Param(FCommandLine::Get(), TEXT("ForcePatchCheck"));
+
+	// Prevent a patch check on editor builds 
+	const bool bSkipDueToEditor = UE_EDITOR;
+
+	// prevent a check when running unattended
+	const bool bSkipDueToUnattended = FApp::IsUnattended();
+
+	// Explicitly skipping the check
+	const bool bForceSkipCheck = FParse::Param(FCommandLine::Get(), TEXT("SkipPatchCheck"));
+	const bool bSkipPatchCheck = !bForcePatchCheck && (!bEnvironmentWantsPatchCheck || bSkipDueToEditor || bForceSkipCheck || bSkipDueToUnattended);
+
+	return bSkipPatchCheck;
+}
+
+void UUpdateManager::OnCheckForPatchComplete(const FUniqueNetId& UniqueId, EUserPrivileges::Type Privilege, uint32 PrivilegeResult, bool bConsoleCheck)
+{
+	UE_LOG(LogHotfixManager, Verbose, TEXT("[OnCheckForPatchComplete] Privilege=%d PrivilegeResult=%d"), (uint32)Privilege, PrivilegeResult);
+
+	EPatchCheckResult Result = EPatchCheckResult::NoPatchRequired;
+	if (Privilege == EUserPrivileges::CanPlayOnline)
 	{
-	case EPatchCheckResult::NoPatchRequired:
-		OutResult = EInstallBundleManagerPatchCheckResult::NoPatchRequired;
-		break;
-	case EPatchCheckResult::PatchRequired:
-		OutResult = EInstallBundleManagerPatchCheckResult::ClientPatchRequired;
-		break;
-	case EPatchCheckResult::NoLoggedInUser:
-		OutResult = EInstallBundleManagerPatchCheckResult::NoLoggedInUser;
-		break;
-	case EPatchCheckResult::PatchCheckFailure:
-		OutResult = EInstallBundleManagerPatchCheckResult::PatchCheckFailure;
-		break;
-	default:
-		ensureAlwaysMsgf(false, TEXT("Unknown EPatchCheckResult"));
-		OutResult = EInstallBundleManagerPatchCheckResult::PatchCheckFailure;
-		break;
+		if (bConsoleCheck || !SkipPatchCheck(this))
+		{
+			if (PrivilegeResult & (uint32)IOnlineIdentity::EPrivilegeResults::RequiredSystemUpdate)
+			{
+				Result = EPatchCheckResult::PatchRequired;
+			}
+			else if (PrivilegeResult & (uint32)IOnlineIdentity::EPrivilegeResults::RequiredPatchAvailable)
+			{
+				Result = EPatchCheckResult::PatchRequired;
+			}
+			else if (PrivilegeResult & ((uint32)IOnlineIdentity::EPrivilegeResults::UserNotLoggedIn | (uint32)IOnlineIdentity::EPrivilegeResults::UserNotFound))
+			{
+				Result = EPatchCheckResult::NoLoggedInUser;
+			}
+			else if (PrivilegeResult & (uint32)IOnlineIdentity::EPrivilegeResults::GenericFailure)
+			{
+#if (PLATFORM_XBOXONE || PLATFORM_PS4 || PLATFORM_SWITCH)
+				// Skip console backend failures
+				Result = EPatchCheckResult::NoPatchRequired;
+#else
+				Result = EPatchCheckResult::PatchCheckFailure;
+#endif
+			}
+		}
 	}
 
-	// Make sure we don't miss a case
-	static_assert(InstallBundleUtil::CastToUnderlying(EPatchCheckResult::Count) == 4, "");
+	if (bCheckOSSForUpdate && bConsoleCheck && Result == EPatchCheckResult::NoPatchRequired)
+	{
+		// We perform both checks in this case
+		StartOSSPatchCheck();
+		return;
+	}
 
-	return OutResult;
+	PatchCheckComplete(Result);
 }
 
 void UUpdateManager::PatchCheckComplete(EPatchCheckResult PatchResult)
 {
-	FPatchCheck::Get().GetOnComplete().RemoveAll(this);
-	FPatchCheck::Get().RemoveEnvironmentWantsPatchCheckBackCompatDelegate(GetUniqueTag(this));
-
-	InstallBundlePatchCheckComplete(ToInstallBundleManagerPatchCheckResult(PatchResult));
-}
-
-void UUpdateManager::InstallBundlePatchCheckComplete(EInstallBundleManagerPatchCheckResult PatchResult)
-{
-	IInstallBundleManager* InstallBundleMan = IInstallBundleManager::GetPlatformInstallBundleManager();
-	if (InstallBundleMan && !InstallBundleMan->IsNullInterface())
-	{
-		InstallBundleMan->RemoveEnvironmentWantsPatchCheckBackCompatDelegate(GetUniqueTag(this));
-	}
-	IInstallBundleManager::PatchCheckCompleteDelegate.RemoveAll(this);
-
 	LastPatchCheckResult = PatchResult;
 
-	if (PatchResult == EInstallBundleManagerPatchCheckResult::NoPatchRequired)
+	if (PatchResult == EPatchCheckResult::NoPatchRequired)
 	{
 		StartPlatformEnvironmentCheck();
 	}
-	else if (PatchResult == EInstallBundleManagerPatchCheckResult::NoLoggedInUser)
+	else if (PatchResult == EPatchCheckResult::NoLoggedInUser)
 	{
 		CheckComplete(EUpdateCompletionStatus::UpdateFailure_NotLoggedIn);
 	}
 	else
 	{
-		ensure(PatchResult == EInstallBundleManagerPatchCheckResult::PatchCheckFailure ||
-			PatchResult == EInstallBundleManagerPatchCheckResult::ClientPatchRequired ||
-			PatchResult == EInstallBundleManagerPatchCheckResult::ContentPatchRequired);
+		ensure(PatchResult == EPatchCheckResult::PatchCheckFailure ||
+			   PatchResult == EPatchCheckResult::PatchRequired);
 
 		// Skip hotfix check in error states, but still preload data as if there was nothing wrong
 		StartInitialPreload();
@@ -574,21 +666,17 @@ void UUpdateManager::InitialPreloadComplete()
 {
 	SetUpdateState(EUpdateState::InitialLoadComplete);
 
-	if (LastPatchCheckResult == EInstallBundleManagerPatchCheckResult::PatchCheckFailure)
+	if (LastPatchCheckResult == EPatchCheckResult::PatchCheckFailure)
 	{
 		CheckComplete(EUpdateCompletionStatus::UpdateFailure_PatchCheck);
 	}
-	else if (LastPatchCheckResult == EInstallBundleManagerPatchCheckResult::ClientPatchRequired)
+	else if (LastPatchCheckResult == EPatchCheckResult::PatchRequired)
 	{
 		CheckComplete(EUpdateCompletionStatus::UpdateSuccess_NeedsPatch);
 	}
-	else if (LastPatchCheckResult == EInstallBundleManagerPatchCheckResult::ContentPatchRequired)
-	{
-		CheckComplete(EUpdateCompletionStatus::UpdateSuccess_NeedsRelaunch);
-	}
 	else
 	{
-		ensure(LastPatchCheckResult == EInstallBundleManagerPatchCheckResult::NoPatchRequired);
+		ensure(LastPatchCheckResult == EPatchCheckResult::NoPatchRequired);
 		// Patch check success, check hotfix status
 		switch (LastHotfixResult)
 		{
@@ -623,7 +711,6 @@ void UUpdateManager::SetUpdateState(EUpdateState NewState)
 
 bool UUpdateManager::Tick(float InDeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_UUpdateManager_Tick);
 	if (CurrentUpdateState == EUpdateState::WaitingOnInitialLoad)
 	{
 		WorstNumFilesPendingLoadViewed = FMath::Max(GetNumAsyncPackages(), WorstNumFilesPendingLoadViewed);

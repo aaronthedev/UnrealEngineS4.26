@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AndroidVivoxVoiceChat.h"
 
@@ -100,7 +100,7 @@ bool FAndroidVivoxVoiceChat::Uninitialize()
 
 void FAndroidVivoxVoiceChat::OnVoiceChatConnectComplete(const FVoiceChatResult& Result)
 {
-	if (Result.IsSuccess())
+	if (Result.bSuccess)
 	{
 		OnVoiceChatReconnectedDelegate.Broadcast();
 	}

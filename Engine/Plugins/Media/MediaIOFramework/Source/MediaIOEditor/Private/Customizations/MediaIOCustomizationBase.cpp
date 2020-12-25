@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Customizations/MediaIOCustomizationBase.h"
 
@@ -38,11 +38,10 @@ void FMediaIOCustomizationBase::CustomizeHeader(TSharedRef<IPropertyHandle> InPr
 	if (MediaProperty->IsValidHandle())
 	{
 		static FName NAME_MediaIOCustomLayout = TEXT("MediaIOCustomLayout");
-		// FProperties: it doesn't make sense to ask for MetaData of a property class as it's always native and doesn't have metadata
-		//if (MediaProperty->HasMetaData(NAME_MediaIOCustomLayout))
-		//{			
-			//DeviceProviderName = *MediaProperty->GetPropertyClass()->GetMetaData(NAME_MediaIOCustomLayout);
-		//}
+		if (MediaProperty->HasMetaData(NAME_MediaIOCustomLayout))
+		{
+			DeviceProviderName = *MediaProperty->GetPropertyClass()->GetMetaData(NAME_MediaIOCustomLayout);
+		}
 
 		if (DeviceProviderName == NAME_None)
 		{
@@ -119,7 +118,7 @@ void FMediaIOCustomizationBase::CustomizeChildren(TSharedRef<IPropertyHandle> In
 
 void FMediaIOCustomizationBase::AssignValueImpl(const void* NewValue) const
 {
-	if (FStructProperty* StructProperty = CastField<FStructProperty>(MediaProperty->GetProperty()))
+	if (UStructProperty* StructProperty = Cast<UStructProperty>(MediaProperty->GetProperty()))
 	{
 		TArray<void*> RawData;
 		MediaProperty->AccessRawData(RawData);

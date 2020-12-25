@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AssetManagerEditorModule.h"
 #include "Modules/ModuleManager.h"
@@ -7,7 +7,6 @@
 #include "PrimaryAssetIdCustomization.h"
 #include "SAssetAuditBrowser.h"
 #include "Engine/PrimaryAssetLabel.h"
-#include <Templates/UniquePtr.h>
 
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -63,12 +62,8 @@
 #include "UObject/ConstructorHelpers.h"
 #include "Misc/HotReloadInterface.h"
 #include "Misc/ScopedSlowTask.h"
-#include "Editor/StatsViewer/Public/IStatsViewer.h"
-#include "Editor/StatsViewer/Public/StatsViewerModule.h"
 #include "Subsystems/AssetEditorSubsystem.h"
-#include "ToolMenus.h"
-#include "Toolkits/AssetEditorToolkitMenuContext.h"
-#include "ContentBrowserMenuContexts.h"
+
 
 #define LOCTEXT_NAMESPACE "AssetManagerEditor"
 
@@ -312,7 +307,6 @@ public:
 	virtual void OpenReferenceViewerUI(const TArray<FName> SelectedPackages, const FReferenceViewerParams ReferenceViewerParams = FReferenceViewerParams()) override;
 	virtual void OpenSizeMapUI(TArray<FAssetIdentifier> SelectedIdentifiers) override;
 	virtual void OpenSizeMapUI(TArray<FName> SelectedPackages) override;	
-	virtual void OpenShaderCookStatistics(TArray<FName> SelectedIdentifiers) override;
 	virtual bool GetStringValueForCustomColumn(const FAssetData& AssetData, FName ColumnName, FString& OutValue) override;
 	virtual bool GetDisplayTextForCustomColumn(const FAssetData& AssetData, FName ColumnName, FText& OutValue) override;
 	virtual bool GetIntegerValueForCustomColumn(const FAssetData& AssetData, FName ColumnName, int64& OutValue) override;
@@ -322,21 +316,21 @@ public:
 	virtual void SetCurrentRegistrySource(const FString& SourceName) override;
 	virtual void RefreshRegistryData() override;
 	virtual bool IsPackageInCurrentRegistrySource(FName PackageName) override;
-	virtual bool FilterAssetIdentifiersForCurrentRegistrySource(TArray<FAssetIdentifier>& AssetIdentifiers, const FAssetManagerDependencyQuery& DependencyQuery = FAssetManagerDependencyQuery::None(), bool bForwardDependency = true) override;
+	virtual bool FilterAssetIdentifiersForCurrentRegistrySource(TArray<FAssetIdentifier>& AssetIdentifiers, EAssetRegistryDependencyType::Type DependencyType = EAssetRegistryDependencyType::None, bool bForwardDependency = true) override;
 	virtual bool WriteCollection(FName CollectionName, ECollectionShareType::Type ShareType, const TArray<FName>& PackageNames, bool bShowFeedback) override;
 private:
 
-	static bool GetDependencyTypeArg(const FString& Arg, UE::AssetRegistry::EDependencyQuery& OutRequiredFlags);
+	static bool GetDependencyTypeArg(const FString& Arg, EAssetRegistryDependencyType::Type& OutDepType);
 
 	//Prints all dependency chains from assets in the search path to the target package.
-	void FindReferenceChains(FName TargetPackageName, FName RootSearchPath, UE::AssetRegistry::EDependencyQuery RequiredDependencyFlags);
+	void FindReferenceChains(FName TargetPackageName, FName RootSearchPath, EAssetRegistryDependencyType::Type DependencyType);
 
 	//Prints all dependency chains from the PackageName to any dependency of one of the given class names.
 	//If the package name is a path rather than a package, then it will do this for each package in the path.
-	void FindClassDependencies(FName PackagePath, const TArray<FName>& TargetClasses, UE::AssetRegistry::EDependencyQuery RequiredDependencyFlags);
+	void FindClassDependencies(FName PackagePath, const TArray<FName>& TargetClasses, EAssetRegistryDependencyType::Type DependencyType);
 
-	bool GetPackageDependencyChain(FName SourcePackage, FName TargetPackage, TArray<FName>& VisitedPackages, TArray<FName>& OutDependencyChain, UE::AssetRegistry::EDependencyQuery RequiredFlags);
-	void GetPackageDependenciesPerClass(FName SourcePackage, const TArray<FName>& TargetClasses, TArray<FName>& VisitedPackages, TArray<FName>& OutDependentPackages, UE::AssetRegistry::EDependencyQuery RequiredDependencyFlags);
+	bool GetPackageDependencyChain(FName SourcePackage, FName TargetPackage, TArray<FName>& VisitedPackages, TArray<FName>& OutDependencyChain, EAssetRegistryDependencyType::Type DependencyType);
+	void GetPackageDependenciesPerClass(FName SourcePackage, const TArray<FName>& TargetClasses, TArray<FName>& VisitedPackages, TArray<FName>& OutDependentPackages, EAssetRegistryDependencyType::Type DependencyType);
 
 	void LogAssetsWithMultipleLabels();
 	bool CreateOrEmptyCollection(FName CollectionName, ECollectionShareType::Type ShareType);
@@ -357,9 +351,12 @@ private:
 	static const FName ReferenceViewerTabName;
 	static const FName SizeMapTabName;
 
+	FDelegateHandle ContentBrowserAssetExtenderDelegateHandle;
+	FDelegateHandle ContentBrowserPathExtenderDelegateHandle;
 	FDelegateHandle ContentBrowserCommandExtenderDelegateHandle;
 	FDelegateHandle ReferenceViewerDelegateHandle;
 	FDelegateHandle AssetEditorExtenderDelegateHandle;
+	FDelegateHandle LevelEditorExtenderDelegateHandle;
 
 	TWeakPtr<SDockTab> AssetAuditTab;
 	TWeakPtr<SDockTab> ReferenceViewerTab;
@@ -371,19 +368,18 @@ private:
 	FAssetManagerEditorRegistrySource* CurrentRegistrySource;
 
 	IAssetRegistry* AssetRegistry;
-	TUniquePtr<FSandboxPlatformFile> CookedSandbox;
-	TUniquePtr<FSandboxPlatformFile> EditorCookedSandbox;
+	FSandboxPlatformFile* CookedSandbox;
+	FSandboxPlatformFile* EditorCookedSandbox;
 	TSharedPtr<FAssetManagerGraphPanelNodeFactory> AssetManagerGraphPanelNodeFactory;
 	TSharedPtr<FAssetManagerGraphPanelPinFactory> AssetManagerGraphPanelPinFactory;
 
-	static void CreateAssetContextMenu(FToolMenuSection& InSection);
+	void CreateAssetContextMenu(FMenuBuilder& MenuBuilder);
 	void OnExtendContentBrowserCommands(TSharedRef<FUICommandList> CommandList, FOnContentBrowserGetSelection GetSelectionDelegate);
 	void OnExtendLevelEditorCommands(TSharedRef<FUICommandList> CommandList);
-	void ExtendContentBrowserAssetSelectionMenu();
-	void ExtendContentBrowserPathSelectionMenu();
+	TSharedRef<FExtender> OnExtendContentBrowserAssetSelectionMenu(const TArray<FAssetData>& SelectedAssets);
+	TSharedRef<FExtender> OnExtendContentBrowserPathSelectionMenu(const TArray<FString>& SelectedPaths);
 	TSharedRef<FExtender> OnExtendAssetEditor(const TSharedRef<FUICommandList> CommandList, const TArray<UObject*> ContextSensitiveObjects);
-	void ExtendAssetEditorMenu();
-	void ExtendLevelEditorActorContextMenu();
+	TSharedRef<FExtender> OnExtendLevelEditor(const TSharedRef<FUICommandList> CommandList, const TArray<AActor*> SelectedActors);
 	void OnHotReload(bool bWasTriggeredAutomatically);
 	void OnMarkPackageDirty(UPackage* Pkg, bool bWasDirty);
 	void OnEditAssetIdentifiers(TArray<FAssetIdentifier> AssetIdentifiers);
@@ -473,9 +469,13 @@ void FAssetManagerEditorModule::StartupModule()
 		// Register content browser hook
 		FContentBrowserModule& ContentBrowserModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>(TEXT("ContentBrowser"));
 		
-		ExtendContentBrowserAssetSelectionMenu();
+		TArray<FContentBrowserMenuExtender_SelectedAssets>& CBAssetMenuExtenderDelegates = ContentBrowserModule.GetAllAssetViewContextMenuExtenders();
+		CBAssetMenuExtenderDelegates.Add(FContentBrowserMenuExtender_SelectedAssets::CreateRaw(this, &FAssetManagerEditorModule::OnExtendContentBrowserAssetSelectionMenu));
+		ContentBrowserAssetExtenderDelegateHandle = CBAssetMenuExtenderDelegates.Last().GetHandle();
 
-		ExtendContentBrowserPathSelectionMenu();
+		TArray<FContentBrowserMenuExtender_SelectedPaths>& CBPathExtenderDelegates = ContentBrowserModule.GetAllPathViewContextMenuExtenders();
+		CBPathExtenderDelegates.Add(FContentBrowserMenuExtender_SelectedPaths::CreateRaw(this, &FAssetManagerEditorModule::OnExtendContentBrowserPathSelectionMenu));
+		ContentBrowserPathExtenderDelegateHandle = CBPathExtenderDelegates.Last().GetHandle();
 
 		TArray<FContentBrowserCommandExtender>& CBCommandExtenderDelegates = ContentBrowserModule.GetAllContentBrowserCommandExtenders();
 		CBCommandExtenderDelegates.Add(FContentBrowserCommandExtender::CreateRaw(this, &FAssetManagerEditorModule::OnExtendContentBrowserCommands));
@@ -485,7 +485,6 @@ void FAssetManagerEditorModule::StartupModule()
 		TArray<FAssetEditorExtender>& AssetEditorMenuExtenderDelegates = FAssetEditorToolkit::GetSharedMenuExtensibilityManager()->GetExtenderDelegates();
 		AssetEditorMenuExtenderDelegates.Add(FAssetEditorExtender::CreateRaw(this, &FAssetManagerEditorModule::OnExtendAssetEditor));
 		AssetEditorExtenderDelegateHandle = AssetEditorMenuExtenderDelegates.Last().GetHandle();
-		ExtendAssetEditorMenu();
 
 		// Register level editor hooks and commands
 		FLevelEditorModule& LevelEditorModule = FModuleManager::Get().LoadModuleChecked<FLevelEditorModule>("LevelEditor");
@@ -493,14 +492,15 @@ void FAssetManagerEditorModule::StartupModule()
 		TSharedRef<FUICommandList> CommandList = LevelEditorModule.GetGlobalLevelEditorActions();
 		OnExtendLevelEditorCommands(CommandList);
 
-		ExtendLevelEditorActorContextMenu();
+		TArray<FLevelEditorModule::FLevelViewportMenuExtender_SelectedActors>& LevelEditorMenuExtenderDelegates = LevelEditorModule.GetAllLevelViewportContextMenuExtenders();
+		LevelEditorMenuExtenderDelegates.Add(FLevelEditorModule::FLevelViewportMenuExtender_SelectedActors::CreateRaw(this, &FAssetManagerEditorModule::OnExtendLevelEditor));
+		LevelEditorExtenderDelegateHandle = AssetEditorMenuExtenderDelegates.Last().GetHandle();
 
 		// Add nomad tabs
 		FGlobalTabmanager::Get()->RegisterNomadTabSpawner(AssetAuditTabName, FOnSpawnTab::CreateRaw(this, &FAssetManagerEditorModule::SpawnAssetAuditTab))
 			.SetDisplayName(LOCTEXT("AssetAuditTitle", "Asset Audit"))
 			.SetTooltipText(LOCTEXT("AssetAuditTooltip", "Open Asset Audit window, allows viewing detailed information about assets."))
-			.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsMiscCategory())
-			.SetIcon(FSlateIcon(FEditorStyle::Get().GetStyleSetName(), "GenericEditor.Tabs.Properties"));
+			.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsMiscCategory());
 
 		FGlobalTabmanager::Get()->RegisterNomadTabSpawner(ReferenceViewerTabName, FOnSpawnTab::CreateRaw(this, &FAssetManagerEditorModule::SpawnReferenceViewerTab))
 			.SetDisplayName(LOCTEXT("ReferenceViewerTitle", "Reference Viewer"))
@@ -526,8 +526,17 @@ void FAssetManagerEditorModule::StartupModule()
 
 void FAssetManagerEditorModule::ShutdownModule()
 {
-	CookedSandbox.Release();
-	EditorCookedSandbox.Release();
+	if (CookedSandbox)
+	{
+		delete CookedSandbox;
+		CookedSandbox = nullptr;
+	}
+
+	if (EditorCookedSandbox)
+	{
+		delete EditorCookedSandbox;
+		EditorCookedSandbox = nullptr;
+	}
 
 	for (IConsoleObject* AuditCmd : AuditCmds)
 	{
@@ -539,6 +548,10 @@ void FAssetManagerEditorModule::ShutdownModule()
 	{
 		FContentBrowserModule& ContentBrowserModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>(TEXT("ContentBrowser"));
 		
+		TArray<FContentBrowserMenuExtender_SelectedAssets>& CBAssetMenuExtenderDelegates = ContentBrowserModule.GetAllAssetViewContextMenuExtenders();
+		CBAssetMenuExtenderDelegates.RemoveAll([this](const FContentBrowserMenuExtender_SelectedAssets& Delegate) { return Delegate.GetHandle() == ContentBrowserAssetExtenderDelegateHandle; });
+		TArray<FContentBrowserMenuExtender_SelectedPaths>& CBPathMenuExtenderDelegates = ContentBrowserModule.GetAllPathViewContextMenuExtenders();
+		CBPathMenuExtenderDelegates.RemoveAll([this](const FContentBrowserMenuExtender_SelectedPaths& Delegate) { return Delegate.GetHandle() == ContentBrowserPathExtenderDelegateHandle; });
 		TArray<FContentBrowserCommandExtender>& CBCommandExtenderDelegates = ContentBrowserModule.GetAllContentBrowserCommandExtenders();
 		CBCommandExtenderDelegates.RemoveAll([this](const FContentBrowserCommandExtender& Delegate) { return Delegate.GetHandle() == ContentBrowserCommandExtenderDelegateHandle; });
 		
@@ -556,7 +569,9 @@ void FAssetManagerEditorModule::ShutdownModule()
 		CommandList->UnmapAction(FAssetManagerEditorCommands::Get().ViewReferences);
 		CommandList->UnmapAction(FAssetManagerEditorCommands::Get().ViewSizeMap);
 		CommandList->UnmapAction(FAssetManagerEditorCommands::Get().ViewAssetAudit);
-		CommandList->UnmapAction(FAssetManagerEditorCommands::Get().ViewShaderCookStatistics);
+
+		TArray<FLevelEditorModule::FLevelViewportMenuExtender_SelectedActors>& LevelEditorMenuExtenderDelegates = LevelEditorModule.GetAllLevelViewportContextMenuExtenders();
+		LevelEditorMenuExtenderDelegates.RemoveAll([this](const FLevelEditorModule::FLevelViewportMenuExtender_SelectedActors& Delegate) { return Delegate.GetHandle() == LevelEditorExtenderDelegateHandle; });
 
 		if (AssetManagerGraphPanelNodeFactory.IsValid())
 		{
@@ -640,7 +655,7 @@ TSharedRef<SDockTab> FAssetManagerEditorModule::SpawnSizeMapTab(const FSpawnTabA
 
 void FAssetManagerEditorModule::OpenAssetAuditUI(TArray<FAssetData> SelectedAssets)
 {
-	FGlobalTabmanager::Get()->TryInvokeTab(AssetAuditTabName);
+	FGlobalTabmanager::Get()->InvokeTab(AssetAuditTabName);
 
 	if (AssetAuditUI.IsValid())
 	{
@@ -650,7 +665,7 @@ void FAssetManagerEditorModule::OpenAssetAuditUI(TArray<FAssetData> SelectedAsse
 
 void FAssetManagerEditorModule::OpenAssetAuditUI(TArray<FAssetIdentifier> SelectedIdentifiers)
 {
-	FGlobalTabmanager::Get()->TryInvokeTab(AssetAuditTabName);
+	FGlobalTabmanager::Get()->InvokeTab(AssetAuditTabName);
 
 	if (AssetAuditUI.IsValid())
 	{
@@ -660,7 +675,7 @@ void FAssetManagerEditorModule::OpenAssetAuditUI(TArray<FAssetIdentifier> Select
 
 void FAssetManagerEditorModule::OpenAssetAuditUI(TArray<FName> SelectedPackages)
 {
-	FGlobalTabmanager::Get()->TryInvokeTab(AssetAuditTabName);
+	FGlobalTabmanager::Get()->InvokeTab(AssetAuditTabName);
 
 	if (AssetAuditUI.IsValid())
 	{
@@ -672,11 +687,9 @@ void FAssetManagerEditorModule::OpenReferenceViewerUI(const TArray<FAssetIdentif
 {
 	if (SelectedIdentifiers.Num() > 0)
 	{
-		if (TSharedPtr<SDockTab> NewTab = FGlobalTabmanager::Get()->TryInvokeTab(ReferenceViewerTabName))
-		{
-			TSharedRef<SReferenceViewer> ReferenceViewer = StaticCastSharedRef<SReferenceViewer>(NewTab->GetContent());
-			ReferenceViewer->SetGraphRootIdentifiers(SelectedIdentifiers, ReferenceViewerParams);
-		}
+		TSharedRef<SDockTab> NewTab = FGlobalTabmanager::Get()->InvokeTab(ReferenceViewerTabName);
+		TSharedRef<SReferenceViewer> ReferenceViewer = StaticCastSharedRef<SReferenceViewer>(NewTab->GetContent());
+		ReferenceViewer->SetGraphRootIdentifiers(SelectedIdentifiers, ReferenceViewerParams);
 	}
 }
 
@@ -706,48 +719,9 @@ void FAssetManagerEditorModule::OpenSizeMapUI(TArray<FAssetIdentifier> SelectedI
 {
 	if (SelectedIdentifiers.Num() > 0)
 	{
-		if (TSharedPtr<SDockTab> NewTab = FGlobalTabmanager::Get()->TryInvokeTab(SizeMapTabName))
-		{
-			TSharedRef<SSizeMap> SizeMap = StaticCastSharedRef<SSizeMap>(NewTab->GetContent());
-			SizeMap->SetRootAssetIdentifiers(SelectedIdentifiers);
-		}
-	}
-}
-
-void FAssetManagerEditorModule::OpenShaderCookStatistics(TArray<FName> SelectedPackages)
-{
-	FString SubPath;
-	FString CommonPath = "";
-	if(SelectedPackages.Num())
-	{
-		//Find the common path
-		CommonPath = SelectedPackages[0].ToString();
-		uint32 CommonIdentical = CommonPath.Len();
-		for (FName Name : SelectedPackages)
-		{
-			FString Path = Name.ToString();
-			uint32 Identical = 0;
-			uint32 NumCharacters = FMath::Min((uint32)Path.Len(), CommonIdentical);
-			for(Identical = 0; Identical < NumCharacters; ++Identical)
-			{
-				if(CommonPath[Identical] != Path[Identical])
-				{
-					break;
-				}
-			}
-			CommonIdentical = FMath::Min(Identical, CommonIdentical);
-		}
-		CommonPath.LeftInline(CommonIdentical);
-	}
-	static const FName LevelEditorModuleName("LevelEditor");
-	static const FName LevelEditorStatsViewerTab("LevelEditorStatsViewer");
-	FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>(LevelEditorModuleName);
-	TSharedPtr<FTabManager> TabManager = LevelEditorModule.GetLevelEditorTabManager();
-	if (TSharedPtr<SDockTab> Tab = TabManager->TryInvokeTab(LevelEditorStatsViewerTab))
-	{
-		TSharedRef<SWidget> Content = Tab->GetContent();
-		IStatsViewer* StatsView = (IStatsViewer*)&*Content;
-		StatsView->SwitchAndFilterPage(EStatsPage::ShaderCookerStats, CommonPath, FString("Path"));
+		TSharedRef<SDockTab> NewTab = FGlobalTabmanager::Get()->InvokeTab(SizeMapTabName);
+		TSharedRef<SSizeMap> SizeMap = StaticCastSharedRef<SSizeMap>(NewTab->GetContent());
+		SizeMap->SetRootAssetIdentifiers(SelectedIdentifiers);
 	}
 }
 
@@ -808,12 +782,11 @@ TArray<FName> FAssetManagerEditorModule::GetContentBrowserSelectedAssetPackages(
 	return OutAssetPackages;
 }
 
-void FAssetManagerEditorModule::CreateAssetContextMenu(FToolMenuSection& InSection)
+void FAssetManagerEditorModule::CreateAssetContextMenu(FMenuBuilder& MenuBuilder)
 {
-	InSection.AddMenuEntry(FAssetManagerEditorCommands::Get().ViewReferences);
-	InSection.AddMenuEntry(FAssetManagerEditorCommands::Get().ViewSizeMap);
-	InSection.AddMenuEntry(FAssetManagerEditorCommands::Get().ViewAssetAudit);
-	InSection.AddMenuEntry(FAssetManagerEditorCommands::Get().ViewShaderCookStatistics);
+	MenuBuilder.AddMenuEntry(FAssetManagerEditorCommands::Get().ViewReferences);
+	MenuBuilder.AddMenuEntry(FAssetManagerEditorCommands::Get().ViewSizeMap);
+	MenuBuilder.AddMenuEntry(FAssetManagerEditorCommands::Get().ViewAssetAudit);
 }
 
 void FAssetManagerEditorModule::OnExtendContentBrowserCommands(TSharedRef<FUICommandList> CommandList, FOnContentBrowserGetSelection GetSelectionDelegate)
@@ -831,14 +804,6 @@ void FAssetManagerEditorModule::OnExtendContentBrowserCommands(TSharedRef<FUICom
 		{
 			OpenSizeMapUI(GetContentBrowserSelectedAssetPackages(GetSelectionDelegate));
 		})
-	);
-
-
-	CommandList->MapAction(FAssetManagerEditorCommands::Get().ViewShaderCookStatistics,
-		FExecuteAction::CreateLambda([this, GetSelectionDelegate]
-	{
-		OpenShaderCookStatistics(GetContentBrowserSelectedAssetPackages(GetSelectionDelegate));
-	})
 	);
 
 	CommandList->MapAction(FAssetManagerEditorCommands::Get().ViewAssetAudit,
@@ -867,16 +832,6 @@ void FAssetManagerEditorModule::OnExtendLevelEditorCommands(TSharedRef<FUIComman
 		FCanExecuteAction::CreateRaw(this, &FAssetManagerEditorModule::AreLevelEditorPackagesSelected)
 	);
 
-	CommandList->MapAction(FAssetManagerEditorCommands::Get().ViewShaderCookStatistics,
-		FExecuteAction::CreateLambda([this]
-		{
-			OpenShaderCookStatistics(GetLevelEditorSelectedAssetPackages());
-		}),
-		FCanExecuteAction::CreateRaw(this, &FAssetManagerEditorModule::AreLevelEditorPackagesSelected)
-	);
-
-
-
 	CommandList->MapAction(FAssetManagerEditorCommands::Get().ViewAssetAudit,
 		FExecuteAction::CreateLambda([this]
 		{
@@ -886,32 +841,30 @@ void FAssetManagerEditorModule::OnExtendLevelEditorCommands(TSharedRef<FUIComman
 	);
 }
 
-void FAssetManagerEditorModule::ExtendContentBrowserAssetSelectionMenu()
+TSharedRef<FExtender> FAssetManagerEditorModule::OnExtendContentBrowserAssetSelectionMenu(const TArray<FAssetData>& SelectedAssets)
 {
-	UToolMenu* Menu = UToolMenus::Get()->ExtendMenu("ContentBrowser.AssetContextMenu");
-	FToolMenuSection& Section = Menu->FindOrAddSection("AssetContextReferences");
-	FToolMenuEntry& Entry = Section.AddDynamicEntry("AssetManagerEditorViewCommands", FNewToolMenuSectionDelegate::CreateLambda([](FToolMenuSection& InSection)
-	{
-		UContentBrowserAssetContextMenuContext* Context = InSection.FindContext<UContentBrowserAssetContextMenuContext>();
-		if (Context && Context->bCanBeModified && Context->SelectedObjects.Num() > 0)
-		{
-			FAssetManagerEditorModule::CreateAssetContextMenu(InSection);
-		}
-	}));
+	TSharedRef<FExtender> Extender(new FExtender());
+	
+	Extender->AddMenuExtension(
+		"AssetContextReferences",
+		EExtensionHook::After,
+		nullptr,
+		FMenuExtensionDelegate::CreateRaw(this, &FAssetManagerEditorModule::CreateAssetContextMenu));
+
+	return Extender;
 }
 
-void FAssetManagerEditorModule::ExtendContentBrowserPathSelectionMenu()
+TSharedRef<FExtender> FAssetManagerEditorModule::OnExtendContentBrowserPathSelectionMenu(const TArray<FString>& SelectedPaths)
 {
-	UToolMenu* Menu = UToolMenus::Get()->ExtendMenu("ContentBrowser.FolderContextMenu");
-	FToolMenuSection& Section = Menu->FindOrAddSection("PathContextBulkOperations");
-	FToolMenuEntry& Entry = Section.AddDynamicEntry("AssetManagerEditorViewCommands", FNewToolMenuSectionDelegate::CreateLambda([](FToolMenuSection& InSection)
-	{
-		UContentBrowserFolderContext* Context = InSection.FindContext<UContentBrowserFolderContext>();
-		if (Context && Context->bCanBeModified && Context->NumAssetPaths > 0)
-		{
-			FAssetManagerEditorModule::CreateAssetContextMenu(InSection);
-		}
-	}));
+	TSharedRef<FExtender> Extender(new FExtender());
+
+	Extender->AddMenuExtension(
+		"PathContextBulkOperations",
+		EExtensionHook::After,
+		nullptr,
+		FMenuExtensionDelegate::CreateRaw(this, &FAssetManagerEditorModule::CreateAssetContextMenu));
+
+	return Extender;
 }
 
 TSharedRef<FExtender> FAssetManagerEditorModule::OnExtendAssetEditor(const TSharedRef<FUICommandList> CommandList, const TArray<UObject*> ContextSensitiveObjects)
@@ -939,50 +892,34 @@ TSharedRef<FExtender> FAssetManagerEditorModule::OnExtendAssetEditor(const TShar
 			FExecuteAction::CreateRaw(this, &FAssetManagerEditorModule::OpenSizeMapUI, PackageNames));
 
 		CommandList->MapAction(
-			FAssetManagerEditorCommands::Get().ViewShaderCookStatistics,
-			FExecuteAction::CreateRaw(this, &FAssetManagerEditorModule::OpenShaderCookStatistics, PackageNames));
-
-		CommandList->MapAction(
 			FAssetManagerEditorCommands::Get().ViewAssetAudit,
 			FExecuteAction::CreateRaw(this, &FAssetManagerEditorModule::OpenAssetAuditUI, PackageNames));
+
+		Extender->AddMenuExtension(
+			"FindInContentBrowser",
+			EExtensionHook::After,
+			CommandList,
+			FMenuExtensionDelegate::CreateRaw(this, &FAssetManagerEditorModule::CreateAssetContextMenu));
 	}
 
 	return Extender;
 }
 
-void FAssetManagerEditorModule::ExtendAssetEditorMenu()
+TSharedRef<FExtender> FAssetManagerEditorModule::OnExtendLevelEditor(const TSharedRef<FUICommandList> CommandList, const TArray<AActor*> SelectedActors)
 {
-	UToolMenu* Menu = UToolMenus::Get()->ExtendMenu("MainFrame.MainMenu.Asset");
-	FToolMenuSection& Section = Menu->FindOrAddSection("AssetEditorActions");
-	FToolMenuEntry& Entry = Section.AddDynamicEntry("AssetManagerEditorViewCommands", FNewToolMenuSectionDelegate::CreateLambda([](FToolMenuSection& InSection)
-	{
-		UAssetEditorToolkitMenuContext* MenuContext = InSection.FindContext<UAssetEditorToolkitMenuContext>();
-		if (MenuContext && MenuContext->Toolkit.IsValid() && MenuContext->Toolkit.Pin()->IsActuallyAnAsset())
-		{
-			for (const UObject* EditedAsset : *MenuContext->Toolkit.Pin()->GetObjectsCurrentlyBeingEdited())
-			{
-				if (EditedAsset && EditedAsset->IsAsset() && !EditedAsset->IsPendingKill())
-				{
-					FAssetManagerEditorModule::CreateAssetContextMenu(InSection);
-					break;
-				}
-			}
-		}
-	}));
-	Entry.InsertPosition = FToolMenuInsert("FindInContentBrowser", EToolMenuInsertType::After);
-}
+	TSharedRef<FExtender> Extender(new FExtender());
 
-void FAssetManagerEditorModule::ExtendLevelEditorActorContextMenu()
-{
-	UToolMenu* Menu = UToolMenus::Get()->ExtendMenu("LevelEditor.ActorContextMenu");
-	FToolMenuSection& Section = Menu->FindOrAddSection("ActorAsset");
-	FToolMenuEntry& Entry = Section.AddDynamicEntry("AssetManagerEditorViewCommands", FNewToolMenuSectionDelegate::CreateLambda([](FToolMenuSection& InSection)
+	// Most of this work is handled in the command list extension
+	if (SelectedActors.Num() > 0)
 	{
-		if (GEditor->CanSyncToContentBrowser() && GEditor->GetSelectedComponentCount() == 0 && GEditor->GetSelectedActorCount() > 0)
-		{
-			FAssetManagerEditorModule::CreateAssetContextMenu(InSection);
-		}
-	}));
+		Extender->AddMenuExtension(
+			"ActorAsset",
+			EExtensionHook::After,
+			CommandList,
+			FMenuExtensionDelegate::CreateRaw(this, &FAssetManagerEditorModule::CreateAssetContextMenu));
+	}
+
+	return Extender;
 }
 
 void FAssetManagerEditorModule::OnHotReload(bool bWasTriggeredAutomatically)
@@ -1096,7 +1033,7 @@ bool FAssetManagerEditorModule::GetManagedPackageListForAssetData(const FAssetDa
 	{
 		for (const FPrimaryAssetId& PrimaryAssetId : PrimaryAssetSet)
 		{
-			CurrentRegistrySource->RegistryState->GetDependencies(PrimaryAssetId, FoundDependencies, UE::AssetRegistry::EDependencyCategory::Manage);
+			CurrentRegistrySource->RegistryState->GetDependencies(PrimaryAssetId, FoundDependencies, EAssetRegistryDependencyType::Manage);
 		}
 	}
 	
@@ -1376,7 +1313,7 @@ FString FAssetManagerEditorModule::GetSavedAssetRegistryPath(ITargetPlatform* Ta
 	// Initialize sandbox wrapper
 	if (!CookedSandbox)
 	{
-		CookedSandbox = FSandboxPlatformFile::Create(false);
+		CookedSandbox = new FSandboxPlatformFile(false);
 
 		FString OutputDirectory = FPaths::Combine(*FPaths::ProjectDir(), TEXT("Saved"), TEXT("Cooked"), TEXT("[Platform]"));
 		FPaths::NormalizeDirectoryName(OutputDirectory);
@@ -1386,7 +1323,7 @@ FString FAssetManagerEditorModule::GetSavedAssetRegistryPath(ITargetPlatform* Ta
 
 	if (!EditorCookedSandbox)
 	{
-		EditorCookedSandbox = FSandboxPlatformFile::Create(false);
+		EditorCookedSandbox = new FSandboxPlatformFile(false);
 
 		FString OutputDirectory = FPaths::Combine(*FPaths::ProjectDir(), TEXT("Saved"), TEXT("EditorCooked"), TEXT("[Platform]"));
 		FPaths::NormalizeDirectoryName(OutputDirectory);
@@ -1544,7 +1481,7 @@ void FAssetManagerEditorModule::SetCurrentRegistrySource(const FString& SourceNa
 					if (AssetData.ChunkIDs.Num() > 0)
 					{
 						TArray<FAssetIdentifier> ManagerAssets;
-						CurrentRegistrySource->RegistryState->GetReferencers(AssetData.PackageName, ManagerAssets, UE::AssetRegistry::EDependencyCategory::Manage);
+						CurrentRegistrySource->RegistryState->GetReferencers(AssetData.PackageName, ManagerAssets, EAssetRegistryDependencyType::Manage);
 
 						for (int32 ChunkId : AssetData.ChunkIDs)
 						{
@@ -1559,7 +1496,7 @@ void FAssetManagerEditorModule::SetCurrentRegistrySource(const FString& SourceNa
 								
 								TArray<FAssetIdentifier> ManagedAssets;
 
-								CurrentRegistrySource->RegistryState->GetDependencies(ChunkAssetId, ManagedAssets, UE::AssetRegistry::EDependencyCategory::Manage);
+								CurrentRegistrySource->RegistryState->GetDependencies(ChunkAssetId, ManagedAssets, EAssetRegistryDependencyType::Manage);
 
 								for (const FAssetIdentifier& ManagedAsset : ManagedAssets)
 								{
@@ -1648,14 +1585,7 @@ bool FAssetManagerEditorModule::IsPackageInCurrentRegistrySource(FName PackageNa
 	return true;
 }
 
-bool IAssetManagerEditorModule::FilterAssetIdentifiersForCurrentRegistrySource(TArray<FAssetIdentifier>& AssetIdentifiers, EAssetRegistryDependencyType::Type DependencyType, bool bForwardDependency)
-{
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	return FilterAssetIdentifiersForCurrentRegistrySource(AssetIdentifiers, FAssetManagerDependencyQuery(DependencyType), bForwardDependency);
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-}
-
-bool FAssetManagerEditorModule::FilterAssetIdentifiersForCurrentRegistrySource(TArray<FAssetIdentifier>& AssetIdentifiers, const FAssetManagerDependencyQuery& DependencyQuery, bool bForwardDependency)
+bool FAssetManagerEditorModule::FilterAssetIdentifiersForCurrentRegistrySource(TArray<FAssetIdentifier>& AssetIdentifiers, EAssetRegistryDependencyType::Type DependencyType, bool bForwardDependency)
 {
 	bool bMadeChange = false;
 	if (!CurrentRegistrySource || !CurrentRegistrySource->RegistryState || CurrentRegistrySource->bIsEditor)
@@ -1674,7 +1604,7 @@ bool FAssetManagerEditorModule::FilterAssetIdentifiersForCurrentRegistrySource(T
 				// Remove bad package
 				AssetIdentifiers.RemoveAt(Index);
 
-				if (!DependencyQuery.IsNone())
+				if (DependencyType != EAssetRegistryDependencyType::None)
 				{
 					// If this is a redirector replace with references
 					TArray<FAssetData> Assets;
@@ -1688,11 +1618,11 @@ bool FAssetManagerEditorModule::FilterAssetIdentifiersForCurrentRegistrySource(T
 
 							if (bForwardDependency)
 							{
-								CurrentRegistrySource->RegistryState->GetDependencies(PackageName, FoundReferences, DependencyQuery.Categories, DependencyQuery.Flags);
+								CurrentRegistrySource->RegistryState->GetDependencies(PackageName, FoundReferences, DependencyType);
 							}
 							else
 							{
-								CurrentRegistrySource->RegistryState->GetReferencers(PackageName, FoundReferences, DependencyQuery.Categories, DependencyQuery.Flags);
+								CurrentRegistrySource->RegistryState->GetReferencers(PackageName, FoundReferences, DependencyType);
 							}
 
 							AssetIdentifiers.Insert(FoundReferences, Index);
@@ -1769,16 +1699,16 @@ void FAssetManagerEditorModule::PerformAuditConsoleCommand(const TArray<FString>
 	LogAssetsWithMultipleLabels();
 }
 
-bool FAssetManagerEditorModule::GetDependencyTypeArg(const FString& Arg, UE::AssetRegistry::EDependencyQuery& OutRequiredFlags)
+bool FAssetManagerEditorModule::GetDependencyTypeArg(const FString& Arg, EAssetRegistryDependencyType::Type& OutDepType)
 {
 	if (Arg.Compare(TEXT("-hardonly"), ESearchCase::IgnoreCase) == 0)
 	{
-		OutRequiredFlags = UE::AssetRegistry::EDependencyQuery::Hard;
+		OutDepType = EAssetRegistryDependencyType::Hard;
 		return true;
 	}
 	else if (Arg.Compare(TEXT("-softonly"), ESearchCase::IgnoreCase) == 0)
 	{
-		OutRequiredFlags = UE::AssetRegistry::EDependencyQuery::Soft;
+		OutDepType = EAssetRegistryDependencyType::Soft;
 		return true;
 	}
 	return false;
@@ -1795,13 +1725,13 @@ void FAssetManagerEditorModule::PerformDependencyChainConsoleCommand(const TArra
 	FName TargetPath = FName(*Args[0].ToLower());
 	FName SearchRoot = FName(*Args[1].ToLower());
 
-	UE::AssetRegistry::EDependencyQuery RequiredDependencyFlags = UE::AssetRegistry::EDependencyQuery::NoRequirements;
+	EAssetRegistryDependencyType::Type DependencyType = EAssetRegistryDependencyType::Packages;
 	if (Args.Num() > 2)
 	{
-		GetDependencyTypeArg(Args[2], RequiredDependencyFlags);
+		GetDependencyTypeArg(Args[2], DependencyType);
 	}
 
-	FindReferenceChains(TargetPath, SearchRoot, RequiredDependencyFlags);
+	FindReferenceChains(TargetPath, SearchRoot, DependencyType);
 }
 
 void FAssetManagerEditorModule::PerformDependencyClassConsoleCommand(const TArray<FString>& Args)
@@ -1812,13 +1742,13 @@ void FAssetManagerEditorModule::PerformDependencyClassConsoleCommand(const TArra
 		return;
 	}
 
-	UE::AssetRegistry::EDependencyQuery RequiredDependencyFlags = UE::AssetRegistry::EDependencyQuery::NoRequirements;
+	EAssetRegistryDependencyType::Type DependencyType = EAssetRegistryDependencyType::Packages;
 
 	FName SourcePackagePath = FName(*Args[0].ToLower());
 	TArray<FName> TargetClasses;
 	for (int32 i = 1; i < Args.Num(); ++i)
 	{
-		if (!GetDependencyTypeArg(Args[i], RequiredDependencyFlags))
+		if (!GetDependencyTypeArg(Args[i], DependencyType))
 		{
 			TargetClasses.AddUnique(FName(*Args[i]));
 		}
@@ -1848,11 +1778,11 @@ void FAssetManagerEditorModule::PerformDependencyClassConsoleCommand(const TArra
 	for (FName SourcePackage : PackagesToSearch)
 	{
 		UE_LOG(LogAssetManagerEditor, Verbose, TEXT("FindDepClasses for: %s"), *SourcePackage.ToString());
-		FindClassDependencies(SourcePackage, TargetClasses, RequiredDependencyFlags);
+		FindClassDependencies(SourcePackage, TargetClasses, DependencyType);
 	}
 }
 
-bool FAssetManagerEditorModule::GetPackageDependencyChain(FName SourcePackage, FName TargetPackage, TArray<FName>& VisitedPackages, TArray<FName>& OutDependencyChain, UE::AssetRegistry::EDependencyQuery RequiredFlags)
+bool FAssetManagerEditorModule::GetPackageDependencyChain(FName SourcePackage, FName TargetPackage, TArray<FName>& VisitedPackages, TArray<FName>& OutDependencyChain, EAssetRegistryDependencyType::Type DependencyType)
 {
 	//avoid crashing from circular dependencies.
 	if (VisitedPackages.Contains(SourcePackage))
@@ -1868,7 +1798,7 @@ bool FAssetManagerEditorModule::GetPackageDependencyChain(FName SourcePackage, F
 	}
 
 	TArray<FName> SourceDependencies;
-	if (AssetRegistry->GetDependencies(SourcePackage, SourceDependencies, UE::AssetRegistry::EDependencyCategory::Package, RequiredFlags) == false)
+	if (AssetRegistry->GetDependencies(SourcePackage, SourceDependencies, DependencyType) == false)
 	{
 		return false;
 	}
@@ -1877,7 +1807,7 @@ bool FAssetManagerEditorModule::GetPackageDependencyChain(FName SourcePackage, F
 	while (DependencyCounter < SourceDependencies.Num())
 	{
 		const FName& ChildPackageName = SourceDependencies[DependencyCounter];
-		if (GetPackageDependencyChain(ChildPackageName, TargetPackage, VisitedPackages, OutDependencyChain, RequiredFlags))
+		if (GetPackageDependencyChain(ChildPackageName, TargetPackage, VisitedPackages, OutDependencyChain, DependencyType))
 		{
 			OutDependencyChain.Add(SourcePackage);
 			return true;
@@ -1888,7 +1818,7 @@ bool FAssetManagerEditorModule::GetPackageDependencyChain(FName SourcePackage, F
 	return false;
 }
 
-void FAssetManagerEditorModule::GetPackageDependenciesPerClass(FName SourcePackage, const TArray<FName>& TargetClasses, TArray<FName>& VisitedPackages, TArray<FName>& OutDependentPackages, UE::AssetRegistry::EDependencyQuery RequiredDependencyFlags)
+void FAssetManagerEditorModule::GetPackageDependenciesPerClass(FName SourcePackage, const TArray<FName>& TargetClasses, TArray<FName>& VisitedPackages, TArray<FName>& OutDependentPackages, EAssetRegistryDependencyType::Type DependencyType)
 {
 	//avoid crashing from circular dependencies.
 	if (VisitedPackages.Contains(SourcePackage))
@@ -1898,7 +1828,7 @@ void FAssetManagerEditorModule::GetPackageDependenciesPerClass(FName SourcePacka
 	VisitedPackages.AddUnique(SourcePackage);
 
 	TArray<FName> SourceDependencies;
-	if (AssetRegistry->GetDependencies(SourcePackage, SourceDependencies, UE::AssetRegistry::EDependencyCategory::Package, RequiredDependencyFlags) == false)
+	if (AssetRegistry->GetDependencies(SourcePackage, SourceDependencies, DependencyType) == false)
 	{
 		return;
 	}
@@ -1907,7 +1837,7 @@ void FAssetManagerEditorModule::GetPackageDependenciesPerClass(FName SourcePacka
 	while (DependencyCounter < SourceDependencies.Num())
 	{
 		const FName& ChildPackageName = SourceDependencies[DependencyCounter];
-		GetPackageDependenciesPerClass(ChildPackageName, TargetClasses, VisitedPackages, OutDependentPackages, RequiredDependencyFlags);
+		GetPackageDependenciesPerClass(ChildPackageName, TargetClasses, VisitedPackages, OutDependentPackages, DependencyType);
 		++DependencyCounter;
 	}
 
@@ -1927,7 +1857,7 @@ void FAssetManagerEditorModule::GetPackageDependenciesPerClass(FName SourcePacka
 	}
 }
 
-void FAssetManagerEditorModule::FindReferenceChains(FName TargetPackageName, FName RootSearchPath, UE::AssetRegistry::EDependencyQuery RequiredDependencyFlags)
+void FAssetManagerEditorModule::FindReferenceChains(FName TargetPackageName, FName RootSearchPath, EAssetRegistryDependencyType::Type DependencyType)
 {
 	//find all the assets we think might depend on our target through some chain
 	TArray<FAssetData> AssetsInSearchPath;
@@ -1949,7 +1879,7 @@ void FAssetManagerEditorModule::FindReferenceChains(FName TargetPackageName, FNa
 	for (const FName& SearchPackage : SearchPackages)
 	{
 		VisitedPackages.Reset();
-		if (GetPackageDependencyChain(SearchPackage, TargetPackageName, VisitedPackages, FoundChains[CurrentFoundChain], RequiredDependencyFlags))
+		if (GetPackageDependencyChain(SearchPackage, TargetPackageName, VisitedPackages, FoundChains[CurrentFoundChain], DependencyType))
 		{
 			++CurrentFoundChain;
 			FoundChains.AddDefaulted(1);
@@ -1969,7 +1899,7 @@ void FAssetManagerEditorModule::FindReferenceChains(FName TargetPackageName, FNa
 	}
 }
 
-void FAssetManagerEditorModule::FindClassDependencies(FName SourcePackageName, const TArray<FName>& TargetClasses, UE::AssetRegistry::EDependencyQuery RequiredDependencyFlags)
+void FAssetManagerEditorModule::FindClassDependencies(FName SourcePackageName, const TArray<FName>& TargetClasses, EAssetRegistryDependencyType::Type DependencyType)
 {
 	TArray<FAssetData> PackageAssets;
 	if (!AssetRegistry->GetAssetsByPackageName(SourcePackageName, PackageAssets))
@@ -1980,7 +1910,7 @@ void FAssetManagerEditorModule::FindClassDependencies(FName SourcePackageName, c
 
 	TArray<FName> VisitedPackages;
 	TArray<FName> DependencyPackages;
-	GetPackageDependenciesPerClass(SourcePackageName, TargetClasses, VisitedPackages, DependencyPackages, RequiredDependencyFlags);
+	GetPackageDependenciesPerClass(SourcePackageName, TargetClasses, VisitedPackages, DependencyPackages, DependencyType);
 
 	if (DependencyPackages.Num() > 0)
 	{
@@ -1994,7 +1924,7 @@ void FAssetManagerEditorModule::FindClassDependencies(FName SourcePackageName, c
 		{
 			TArray<FName> Chain;
 			VisitedPackages.Reset();
-			GetPackageDependencyChain(SourcePackageName, DependencyPackage, VisitedPackages, Chain, RequiredDependencyFlags);
+			GetPackageDependencyChain(SourcePackageName, DependencyPackage, VisitedPackages, Chain, DependencyType);
 
 			UE_LOG(LogAssetManagerEditor, Log, TEXT("Chain to package: %s"), *DependencyPackage.ToString());
 			TArray<FAssetData> DepAssets;
@@ -2138,7 +2068,7 @@ void FAssetManagerEditorModule::DumpAssetDependencies(const TArray<FString>& Arg
 			TArray<FAssetIdentifier> FoundDependencies;
 			TArray<FString> DependencyStrings;
 
-			AssetRegistry->GetDependencies(PrimaryAssetId, FoundDependencies, UE::AssetRegistry::EDependencyCategory::Manage);
+			AssetRegistry->GetDependencies(PrimaryAssetId, FoundDependencies, EAssetRegistryDependencyType::Manage);
 
 			for (const FAssetIdentifier& Identifier : FoundDependencies)
 			{
@@ -2194,15 +2124,11 @@ bool FAssetManagerEditorModule::WriteCollection(FName CollectionName, ECollectio
 	bool bSuccess = false;
 
 	TSet<FName> ObjectPathsToAddToCollection;
-
-	FARFilter Filter;
-	Filter.PackageNames = PackageNames;
-	Filter.bIncludeOnlyOnDiskAssets = true;
-	TArray<FAssetData> AssetsInPackages;
-	AssetRegistry->GetAssets(Filter, AssetsInPackages);
-	for (const FAssetData& AssetData : AssetsInPackages)
+	for (FName PackageToAdd : PackageNames)
 	{
-		ObjectPathsToAddToCollection.Add(AssetData.ObjectPath);
+		const FString PackageString = PackageToAdd.ToString();
+		const FName ObjectPath = *FString::Printf(TEXT("%s.%s"), *PackageString, *FPackageName::GetLongPackageAssetName(PackageString));
+		ObjectPathsToAddToCollection.Add(ObjectPath);
 	}
 
 	if (ObjectPathsToAddToCollection.Num() == 0)
@@ -2236,31 +2162,5 @@ bool FAssetManagerEditorModule::WriteCollection(FName CollectionName, ECollectio
 	}
 
 	return bSuccess;
-}
-
-FAssetManagerDependencyQuery::FAssetManagerDependencyQuery(EAssetRegistryDependencyType::Type DependencyType)
-{
-	using namespace UE::AssetRegistry;
-
-	Categories = EDependencyCategory::None;
-	Flags = EDependencyQuery::NoRequirements;
-	if (DependencyType & EAssetRegistryDependencyType::Packages)
-	{
-		Categories |= EDependencyCategory::Package;
-		Flags |= (DependencyType & EAssetRegistryDependencyType::Hard) ? EDependencyQuery::NoRequirements : EDependencyQuery::Soft;
-		Flags |= (DependencyType & EAssetRegistryDependencyType::Soft) ? EDependencyQuery::NoRequirements : EDependencyQuery::Hard;
-	}
-
-	if (DependencyType & EAssetRegistryDependencyType::SearchableName)
-	{
-		Categories |= EDependencyCategory::SearchableName;
-	}
-
-	if (DependencyType & EAssetRegistryDependencyType::Manage)
-	{
-		Categories |= EDependencyCategory::Manage;
-		Flags |= (DependencyType & EAssetRegistryDependencyType::HardManage) ? EDependencyQuery::NoRequirements : EDependencyQuery::Indirect;
-		Flags |= (DependencyType & EAssetRegistryDependencyType::SoftManage) ? EDependencyQuery::NoRequirements : EDependencyQuery::Direct;
-	}
 }
 #undef LOCTEXT_NAMESPACE

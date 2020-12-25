@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -454,11 +454,6 @@ public:
 	{
 		return FScopedCurveEditorTreeEventGuard(this);
 	}
-
-	/**
-	 * Compact the memory used by this tree (does not modify any meaningful state)
-	 */
-	void Compact();
 
 private:
 

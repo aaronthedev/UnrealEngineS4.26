@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Script.h: Blueprint bytecode execution engine.
@@ -10,7 +10,6 @@
 #include "HAL/ThreadSingleton.h"
 #include "Stats/Stats.h"
 #include "Misc/EnumClassFlags.h"
-#include "Misc/CoreMisc.h"
 
 struct FFrame;
 
@@ -214,7 +213,7 @@ enum EExprToken
 	EX_EndStructConst		= 0x30, // End of UStruct constant
 	EX_SetArray				= 0x31, // Set the value of arbitrary array
 	EX_EndArray				= 0x32,
-	EX_PropertyConst		= 0x33, // FProperty constant.
+	//						= 0x33,
 	EX_UnicodeStringConst   = 0x34, // Unicode string constant.
 	EX_Int64Const			= 0x35,	// 64-bit integer constant.
 	EX_UInt64Const			= 0x36,	// 64-bit unsigned integer constant.
@@ -272,7 +271,6 @@ enum EExprToken
 	EX_InstrumentationEvent	= 0x6A, // Instrumentation event
 	EX_ArrayGetByRef		= 0x6B,
 	EX_ClassSparseDataVariable = 0x6C, // Sparse data variable
-	EX_FieldPathConst		= 0x6D,
 	EX_Max					= 0x100,
 };
 
@@ -440,112 +438,28 @@ class COREUOBJECT_API FBlueprintCoreDelegates
 public:
 	// Callback for debugging events such as a breakpoint (Object that triggered event, active stack frame, Info)
 	DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnScriptDebuggingEvent, const UObject*, const struct FFrame&, const FBlueprintExceptionInfo&);
+	// Callback for when script execution terminates.
+	DECLARE_MULTICAST_DELEGATE(FOnScriptExecutionEnd);
 	// Callback for blueprint profiling signals
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnScriptInstrumentEvent, const FScriptInstrumentationSignal& );
 	// Callback for blueprint instrumentation enable/disable events
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnToggleScriptProfiler, bool );
 
-	// Deprecated
-	DECLARE_MULTICAST_DELEGATE(FOnScriptExecutionEnd);
-
 public:
 	// Called when a script exception occurs
 	static FOnScriptDebuggingEvent OnScriptException;
+	// Called when a script execution terminates.
+	static FOnScriptExecutionEnd OnScriptExecutionEnd;
 	// Called when a script profiling event is fired
 	static FOnScriptInstrumentEvent OnScriptProfilingEvent;
 	// Called when a script profiler is enabled/disabled
 	static FOnToggleScriptProfiler OnToggleScriptProfiler;
-
-	UE_DEPRECATED(4.26, "OnScriptExecutionEnd is deprecated, bind to delegate inside FBlueprintContextTracker instead")
-	static FOnScriptExecutionEnd OnScriptExecutionEnd;
 
 public:
 	static void ThrowScriptException(const UObject* ActiveObject, const struct FFrame& StackFrame, const FBlueprintExceptionInfo& Info);
 	static void InstrumentScriptEvent(const FScriptInstrumentationSignal& Info);
 	static void SetScriptMaximumLoopIterations( const int32 MaximumLoopIterations );
 };
-
-#if DO_BLUEPRINT_GUARD
-
-/**
- * Helper struct for dealing with tracking blueprint context and exceptions
- */
-struct COREUOBJECT_API FBlueprintContextTracker : TThreadSingleton<FBlueprintContextTracker>
-{
-	FBlueprintContextTracker()
-		: Runaway(0)
-		, Recurse(0)
-		, bRanaway(false)
-		, ScriptEntryTag(0)
-	{}
-
-	/** @return Reference to the FBlueprintContextTracker for the current thread, creating the FBlueprintContextTracker if none exists */
-	static FBlueprintContextTracker& Get();
-
-	/** @return Pointer to the FBlueprintContextTracker for the current thread, if any */
-	static const FBlueprintContextTracker* TryGet();
-
-	/** Resets runaway tracking, will unset flag */
-	void ResetRunaway();
-
-	/** Increments Runaway counter */
-	FORCEINLINE void AddRunaway()
-	{
-		Runaway++;
-	}
-
-	/** Called at start of a script function execution */
-	void EnterScriptContext(const class UObject* ContextObject, const class UFunction* ContextFunction);
-
-	/** Called at start of a script function execution */
-	void ExitScriptContext();
-
-	/** Record an access violation warning for a specific object, returns true if warning should be logged */
-	bool RecordAccessViolation(const UObject* Object);
-
-	/** Returns how many function executions deep we are, may be higher than ScriptStack size */
-	FORCEINLINE int32 GetScriptEntryTag() const
-	{
-		return ScriptEntryTag;
-	}
-	
-	/** Returns current script stack frame */
-	FORCEINLINE const TArray<const FFrame*>& GetScriptStack() const
-	{
-		return ScriptStack;
-	}
-
-	/** Delegate called from EnterScriptContext, could be called on any thread! This can be used to detect entries into script from native code */
-	DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnEnterScriptContext, const struct FBlueprintContextTracker&, const UObject*, const UFunction*);
-	static FOnEnterScriptContext OnEnterScriptContext;
-
-	/** Delegate called from ExitScriptContext, could be called on any thread! This can be used to clean up debugging context */
-	DECLARE_MULTICAST_DELEGATE_OneParam(FOnExitScriptContext, const struct FBlueprintContextTracker&);
-	static FOnExitScriptContext OnExitScriptContext;
-
-private:
-
-	// Runaway tracking
-	int32 Runaway;
-	int32 Recurse;
-	bool bRanaway;
-
-	// Script entry point tracking, enter/exit context
-	int32 ScriptEntryTag;
-
-	// Stack pointers from the VM to be unrolled when we assert
-	TArray<const FFrame*> ScriptStack;
-
-	// Map of reported access warnings in exception handler
-	TMap<FName, int32> DisplayedWarningsMap;
-
-	// Only FFrame can modify the stack
-	friend FFrame;
-	friend void ProcessLocalScriptFunction(UObject* Context, FFrame& Stack, RESULT_DECL);
-};
-
-#endif // DO_BLUEPRINT_GUARD
-
 
 // Scoped struct to allow execution of script in editor, while resetting the runaway loop counts
 struct COREUOBJECT_API FEditorScriptExecutionGuard

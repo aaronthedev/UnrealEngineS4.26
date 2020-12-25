@@ -1,10 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "ToolContextInterfaces.h"
-#include "ToolDataVisualizer.h"
+#include "Drawing/ToolDataVisualizer.h"
 #include "FrameTypes.h"
 
 

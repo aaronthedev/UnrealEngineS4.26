@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "K2Node_SetVariableOnPersistentFrame.h"
@@ -35,10 +35,10 @@ public:
 			}
 
 			bool bIsSparseProperty;
-			FProperty* BoundProperty = FKismetCompilerUtilities::FindPropertyInScope(Context.NewClass->UberGraphFunction, Pin, CompilerContext.MessageLog, CompilerContext.GetSchema(), Context.NewClass, bIsSparseProperty);
+			UProperty* BoundProperty = FKismetCompilerUtilities::FindPropertyInScope(Context.NewClass->UberGraphFunction, Pin, CompilerContext.MessageLog, CompilerContext.GetSchema(), Context.NewClass, bIsSparseProperty);
 			// no setters on sparse properties for now
 			check(!bIsSparseProperty);
-			if (!BoundProperty || (BoundProperty->GetOwner<UObject>() != Context.NewClass->UberGraphFunction))
+			if (!BoundProperty || (BoundProperty->GetOuter() != Context.NewClass->UberGraphFunction))
 			{
 				CompilerContext.MessageLog.Error(*LOCTEXT("SetVariableOnPersistentFrame_IceErrorNoProperty", "ICE SetVariableOnPersistentFrame - No property found. @@").ToString(), Pin);
 				return;

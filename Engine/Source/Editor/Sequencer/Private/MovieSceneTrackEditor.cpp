@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieSceneTrackEditor.h"
 #include "CoreMinimal.h"
@@ -14,8 +14,6 @@
 #include "Sequencer.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "SequencerUtilities.h"
-#include "Framework/Application/SlateApplication.h"
-
 
 FMovieSceneTrackEditor::FMovieSceneTrackEditor(TSharedRef<ISequencer> InSequencer)
 	: Sequencer(InSequencer)
@@ -31,32 +29,10 @@ UMovieSceneSequence* FMovieSceneTrackEditor::GetMovieSceneSequence() const
 	return Sequencer.Pin()->GetFocusedMovieSceneSequence();
 }
 
-TOptional<FFrameNumber> FMovieSceneTrackEditor::NextKeyTime;
-bool FMovieSceneTrackEditor::bKeying;
-
 FFrameNumber FMovieSceneTrackEditor::GetTimeForKey()
 { 
-	// When shift is down, enable adding keys/sections one after the other
-	if (bKeying && NextKeyTime.IsSet() && FSlateApplication::Get().GetModifierKeys().IsShiftDown())
-	{
-		return NextKeyTime.GetValue();
-	}
-
-	// Otherwise, key at the current time
 	TSharedPtr<ISequencer> SequencerPin = Sequencer.Pin();
 	return SequencerPin.IsValid() ? SequencerPin->GetLocalTime().Time.FrameNumber : FFrameNumber(0);
-}
-
-void FMovieSceneTrackEditor::BeginKeying()
-{
-	bKeying = true;
-	NextKeyTime.Reset();
-}
-
-void FMovieSceneTrackEditor::EndKeying()
-{
-	bKeying = false;
-	NextKeyTime.Reset();
 }
 
 void FMovieSceneTrackEditor::UpdatePlaybackRange()
@@ -91,15 +67,6 @@ void FMovieSceneTrackEditor::AnimatablePropertyChanged( FOnKeyProperty OnKeyProp
 		FScopedTransaction AutoKeyTransaction( NSLOCTEXT("AnimatablePropertyTool", "PropertyChanged", "Animatable Property Changed"), bShouldActuallyTransact );
 
 		FKeyPropertyResult KeyPropertyResult = OnKeyProperty.Execute( KeyTime );
-
-		for (TWeakObjectPtr<UMovieSceneSection> NewSection : KeyPropertyResult.SectionsCreated)
-		{
-			if (NewSection.IsValid())
-			{
-				NextKeyTime = NewSection.Get()->GetExclusiveEndFrame();
-				break;
-			}
-		}
 
 		if (KeyPropertyResult.bTrackCreated)
 		{
@@ -172,6 +139,10 @@ FMovieSceneTrackEditor::FFindOrCreateTrackResult FMovieSceneTrackEditor::FindOrC
 const TSharedPtr<ISequencer> FMovieSceneTrackEditor::GetSequencer() const
 {
 	return Sequencer.Pin();
+}
+
+void FMovieSceneTrackEditor::AddKey( const FGuid& ObjectGuid )
+{
 }
 
 UMovieSceneTrack* FMovieSceneTrackEditor::AddTrack(UMovieScene* FocusedMovieScene, const FGuid& ObjectHandle, TSubclassOf<class UMovieSceneTrack> TrackClass, FName UniqueTypeName)

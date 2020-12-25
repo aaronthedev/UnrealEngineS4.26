@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayTagContainerCustomization.h"
 #include "Widgets/Input/SComboButton.h"
@@ -12,7 +12,6 @@
 #include "ScopedTransaction.h"
 #include "Widgets/Input/SHyperlink.h"
 #include "EditorFontGlyphs.h"
-#include "Framework/MultiBox/MultiBoxBuilder.h"
 
 #define LOCTEXT_NAMESPACE "GameplayTagContainerCustomization"
 
@@ -24,8 +23,6 @@ void FGameplayTagContainerCustomization::CustomizeHeader(TSharedRef<class IPrope
 	StructPropertyHandle->SetOnPropertyValueChanged(OnTagContainerChanged);
 
 	BuildEditableContainerList();
-
-	FUIAction SearchForReferencesAction(FExecuteAction::CreateSP(this, &FGameplayTagContainerCustomization::OnWholeContainerSearchForReferences));
 
 	HeaderRow
 		.NameContent()
@@ -75,11 +72,7 @@ void FGameplayTagContainerCustomization::CustomizeHeader(TSharedRef<class IPrope
 					ActiveTags()
 				]
 			]
-		]
-		.AddCustomContextMenuAction(SearchForReferencesAction,
-			LOCTEXT("WholeContainerSearchForReferences", "Search For References"),
-			LOCTEXT("WholeContainerSearchForReferencesTooltip", "Find referencers that reference *any* of the tags in this container"),
-			FSlateIcon());
+		];
 
 	GEditor->RegisterForUndo(this);
 }
@@ -141,94 +134,33 @@ TSharedRef<ITableRow> FGameplayTagContainerCustomization::MakeListViewWidget(TSh
 
 	return SNew( STableRow< TSharedPtr<FString> >, OwnerTable )
 	[
-		SNew(SBorder)
-		.OnMouseButtonDown(this, &FGameplayTagContainerCustomization::OnSingleTagMouseButtonPressed, *Item.Get())
-		.Padding(0.0f)
-		.BorderImage(FEditorStyle::GetBrush("NoBorder"))
-		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			.Padding(0,0,2,0)
-			[
-				SNew(SButton)
-				.IsEnabled(!StructPropertyHandle->IsEditConst())
-				.ContentPadding(FMargin(0))
-				.ButtonStyle(FEditorStyle::Get(), "FlatButton.Danger")
-				.ForegroundColor(FSlateColor::UseForeground())
-				.OnClicked(this, &FGameplayTagContainerCustomization::OnRemoveTagClicked, *Item.Get())
-				[
-					SNew(STextBlock)
-					.Font(FEditorStyle::Get().GetFontStyle("FontAwesome.9"))
-					.Text(FEditorFontGlyphs::Times)
-				]
-			]
+		SNew(SHorizontalBox)
 
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		.Padding(0,0,2,0)
+		[
+			SNew(SButton)
+			.IsEnabled(!StructPropertyHandle->IsEditConst())
+			.ContentPadding(FMargin(0))
+			.ButtonStyle(FEditorStyle::Get(), "FlatButton.Danger")
+			.ForegroundColor(FSlateColor::UseForeground())
+			.OnClicked(this, &FGameplayTagContainerCustomization::OnRemoveTagClicked, *Item.Get())
 			[
-				TagItem.ToSharedRef()
+				SNew(STextBlock)
+				.Font(FEditorStyle::Get().GetFontStyle("FontAwesome.9"))
+				.Text(FEditorFontGlyphs::Times)
 			]
 		]
+
+		+ SHorizontalBox::Slot()
+		.AutoWidth()
+		.VAlign(VAlign_Center)
+		[
+			TagItem.ToSharedRef()
+		]
 	];
-}
-
-FReply FGameplayTagContainerCustomization::OnSingleTagMouseButtonPressed(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent, FString TagName)
-{
-	if (MouseEvent.IsMouseButtonDown(EKeys::RightMouseButton))
-	{
-		FMenuBuilder MenuBuilder(/*bShouldCloseWindowAfterMenuSelection=*/ true, /*CommandList=*/ nullptr);
-
-		FUIAction SearchForReferencesAction(FExecuteAction::CreateSP(this, &FGameplayTagContainerCustomization::OnSingleTagSearchForReferences, TagName));
-
-		MenuBuilder.BeginSection(NAME_None, FText::Format(LOCTEXT("SingleTagMenuHeading", "Tag Actions ({0})"), FText::AsCultureInvariant(TagName)));
-		MenuBuilder.AddMenuEntry(
-			LOCTEXT("SingleTagSearchForReferences", "Search For References"),
-			FText::Format(LOCTEXT("SingleTagSearchForReferencesTooltip", "Find references to the tag {0}"), FText::AsCultureInvariant(TagName)),
-			FSlateIcon(),
-			SearchForReferencesAction);
-		MenuBuilder.EndSection();
-
-		// Spawn context menu
-		FWidgetPath WidgetPath = MouseEvent.GetEventPath() != nullptr ? *MouseEvent.GetEventPath() : FWidgetPath();
-		FSlateApplication::Get().PushMenu(TagListView.ToSharedRef(), WidgetPath, MenuBuilder.MakeWidget(), MouseEvent.GetScreenSpacePosition(), FPopupTransitionEffect(FPopupTransitionEffect::ContextMenu));
-
-		return FReply::Handled();
-	}
-
-	return FReply::Unhandled();
-}
-
-void FGameplayTagContainerCustomization::OnSingleTagSearchForReferences(FString TagName)
-{
-	FName TagFName(*TagName, FNAME_Find);
-	if (FEditorDelegates::OnOpenReferenceViewer.IsBound() && !TagFName.IsNone())
-	{
-		TArray<FAssetIdentifier> AssetIdentifiers;
-		AssetIdentifiers.Emplace(FGameplayTag::StaticStruct(), TagFName);
-		FEditorDelegates::OnOpenReferenceViewer.Broadcast(AssetIdentifiers, FReferenceViewerParams());
-	}
-}
-
-void FGameplayTagContainerCustomization::OnWholeContainerSearchForReferences()
-{
-	if (FEditorDelegates::OnOpenReferenceViewer.IsBound())
-	{
-		TArray<FAssetIdentifier> AssetIdentifiers;
-		AssetIdentifiers.Reserve(TagNames.Num());
-		for (TSharedPtr<FString>& TagNamePtr : TagNames)
-		{
-			FName TagFName(**TagNamePtr.Get(), FNAME_Find);
-			if (!TagFName.IsNone())
-			{
-				AssetIdentifiers.Emplace(FGameplayTag::StaticStruct(), TagFName);
-			}
-		}
-
-		FEditorDelegates::OnOpenReferenceViewer.Broadcast(AssetIdentifiers, FReferenceViewerParams());
-	}
 }
 
 void FGameplayTagContainerCustomization::OnTagDoubleClicked(FString TagName)

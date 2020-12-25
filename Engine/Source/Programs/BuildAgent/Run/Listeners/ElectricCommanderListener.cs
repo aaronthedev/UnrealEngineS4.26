@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using BuildAgent.Run;
 using BuildAgent.Run.Interfaces;
@@ -134,18 +134,20 @@ namespace BuildAgent.Run.Listeners
 			string Outcome = null;
 
 			List<ErrorMatch> Errors = new List<ErrorMatch>();
-			for(; ;)
+			while (!bDisposing)
 			{
 				// Copy the current set of errors
-				bool bReadyToDispose;
-				lock (LockObject)
+				lock(LockObject)
 				{
 					if (NewErrors.Count > 0)
 					{
 						Errors.AddRange(NewErrors);
 						NewErrors.Clear();
 					}
-					bReadyToDispose = bDisposing;
+					else if(bDisposing)
+					{
+						break;
+					}
 				}
 
 				// Write them to disk
@@ -180,12 +182,6 @@ namespace BuildAgent.Run.Listeners
 				{
 					SetProperty("/myJobStep/outcome", NewOutcome);
 					Outcome = NewOutcome;
-				}
-
-				// Exit once we've flushed everything
-				if(bReadyToDispose)
-				{
-					break;
 				}
 
 				// Wait until the next update
@@ -257,7 +253,7 @@ namespace BuildAgent.Run.Listeners
 							{
 								Message.AppendLine(Line);
 							}
-							 Writer.WriteElementString("message", SanitizeString(Message.ToString()));
+							Writer.WriteElementString("message", Message.ToString());
 
 							Writer.WriteEndElement();
 						}
@@ -274,26 +270,6 @@ namespace BuildAgent.Run.Listeners
 				Stream.Write(XmlData, 0, XmlData.Length);
 				Stream.SetLength(Stream.Position);
 			}
-		}
-
-		/// <summary>
-		/// Removes invalid characters from the string. Some characters are invalid even when encoded into entities.
-		/// </summary>
-		/// <param name="Line">Line to sanitize</param>
-		/// <returns></returns>
-		static string SanitizeString(string Line)
-		{
-			// Don't expect many (if any) hits here, so just operate on whole string objects
-			for (int Idx = 0; Idx < Line.Length; Idx++)
-			{
-				int Character = Line[Idx];
-				if(Character < 0x20 && (Character != 0x09 && Character != 0x0a && Character != 0x0d))
-				{
-					Line = Line.Remove(Idx, 1);
-					Idx--;
-				}
-			}
-			return Line;
 		}
 	}
 }

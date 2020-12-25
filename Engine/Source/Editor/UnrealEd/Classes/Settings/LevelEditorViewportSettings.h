@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -222,10 +222,6 @@ class UNREALED_API ULevelEditorViewportSettings
 	UPROPERTY(EditAnywhere, config, Category=Controls)
 	TEnumAsByte<EWASDType> FlightCameraControlType;
 
-	/** Enable the use of the experimental navigation in the flight camera controls. */
-	UPROPERTY(EditAnywhere, config, Category=Controls)
-	bool FlightCameraControlExperimentalNavigation;
-
 	/** Choose the control scheme for landscape tools (ignored for pen input) */
 	UPROPERTY(EditAnywhere, config, Category=Controls)
 	ELandscapeFoliageEditorControlType LandscapeEditorControlType;
@@ -241,10 +237,6 @@ class UNREALED_API ULevelEditorViewportSettings
 	/** If checked, in orthographic view ports zooming will center on the mouse position.  If unchecked, the zoom is around the center of the viewport. */
 	UPROPERTY(EditAnywhere, config, Category=Controls, meta=(DisplayName = "Orthographic Zoom to Cursor Position"))
 	uint32 bCenterZoomAroundCursor:1;
-
-	/** The closest possible distance allowed when viewing through an orthographic camera */
-	UPROPERTY(EditAnywhere, config, Category = Controls, meta=(UIMin = "1.0", ClampMin = "1.0"))
-	float MinimumOrthographicZoom;
 
 	/** Allow translate/rotate widget */
 	UPROPERTY(EditAnywhere, config, Category=LookAndFeel, meta=( DisplayName = "Enable Combined Translate/Rotate Widget" ))
@@ -426,11 +418,6 @@ public:
 	UPROPERTY(config)
 	TEnumAsByte<ERotationGridMode> CurrentRotGridMode;
 
-	/** Toggles legacy behavior for updating components and actors during drag operations. This could be useful if you're seeing a degradation in performance due to too many PostEditMove calls */
-	UE_DEPRECATED(4.26, "This property is meant to be a temporary toggle for a rollback if too many post edit move calls degrade performance during drag operations.")
-	UPROPERTY(EditAnywhere, config, Category=Controls, AdvancedDisplay, meta = (DisplayName = "Use Legacy Behavior for actor and component updates while dragging"))
-	bool bUseLegacyPostEditBehavior = false;
-
 public:
 
 	/** How to constrain perspective view port FOV */
@@ -503,22 +490,6 @@ public:
 	/** Specify the units used by the measuring tool */
 	UPROPERTY(EditAnywhere, config, Category = LookAndFeel)
 	TEnumAsByte<EMeasuringToolUnits> MeasuringToolUnits;
-
-	/** The size adjustment to apply to selected spline points (in screen space units). */
-	UPROPERTY(EditAnywhere, config, Category = LookAndFeel, AdvancedDisplay, meta = (ClampMin = "-5.00", ClampMax = "20.00"))
-	float SelectedSplinePointSizeAdjustment;
-
-	/** The size adjustment to apply to spline line thickness which increases the spline's hit tolerance. */
-	UPROPERTY(EditAnywhere, config, Category = LookAndFeel, AdvancedDisplay, meta = (ClampMin = "0.00"))
-	float SplineLineThicknessAdjustment;
-
-	/** The size adjustment to apply to spline tangent handle (in screen space units). */
-	UPROPERTY(EditAnywhere, config, Category = LookAndFeel, AdvancedDisplay, meta = (ClampMin = "-5.00", ClampMax = "20.00"))
-	float SplineTangentHandleSizeAdjustment;
-
-	/** The scale to apply to spline tangent lengths */
-	UPROPERTY(EditAnywhere, config, Category = LookAndFeel, AdvancedDisplay, meta = (ClampMin = "0.00"))
-	float SplineTangentScale;
 
 private:
 

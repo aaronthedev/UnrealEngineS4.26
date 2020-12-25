@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 TextureInstanceView.h: Definitions of classes used for texture streaming.
@@ -270,7 +270,7 @@ public:
 	// MaxSize_VisibleOnly : Biggest screen size for visble instances only.
 	// MaxForcedNumLODs: max number of LODs forced resident. Used for meshes only
 	void GetRenderAssetScreenSize(
-		EStreamableRenderAssetType AssetType,
+		typename FStreamingRenderAsset::EAssetType AssetType,
 		const UStreamableRenderAsset* InAsset,
 		float& MaxSize,
 		float& MaxSize_VisibleOnly,
@@ -311,7 +311,7 @@ private:
 	float MaxLevelRenderAssetScreenSize;
 
 	void ProcessElement(
-		EStreamableRenderAssetType AssetType,
+		typename FStreamingRenderAsset::EAssetType AssetType,
 		const FBoundsViewInfo& BoundsVieWInfo,
 		float TexelFactor,
 		bool bForceLoad,

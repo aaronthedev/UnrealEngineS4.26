@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reservekd.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reservekd.
 
 #pragma once
 
@@ -95,19 +95,10 @@ private:
 	void OnMenuOpenChanged(bool bOpen);
 
 	/** Invoked when the selection in the list changes */
-	void OnSelectionChanged_Internal(TSharedPtr<FString> ProposedSelection, ESelectInfo::Type SelectInfo, bool bForce = false);
+	void OnSelectionChanged_Internal(TSharedPtr<FString> ProposedSelection, ESelectInfo::Type SelectInfo);
 
 	/** Invoked when the search text changes */
 	void OnSearchTextChanged(const FText& ChangedText);
-
-	/** Invoked when the search is committed*/
-	void OnSearchTextCommitted(const FText& ChangedText, ETextCommit::Type CommitType);
-
-	/** Special case handling for search box key commands */
-	FReply OnSearchTextKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent);
-
-	/** Special case handling for combo list key commands */
-	FReply OnComboListKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent);
 
 	/** Handle clicking on the content menu */
 	virtual FReply OnButtonClicked() override;

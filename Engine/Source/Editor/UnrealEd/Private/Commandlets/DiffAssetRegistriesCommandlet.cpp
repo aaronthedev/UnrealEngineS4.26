@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Commandlets/DiffAssetRegistriesCommandlet.h"
 
@@ -171,7 +171,7 @@ int32 UDiffAssetRegistriesCommandlet::Main(const FString& FullCommandLine)
 	}
 
 	auto FindAssetRegistryPath = [&](const FString& PathVal, FString& OutPath) {
-			for (const FString& SearchPath : AssetRegistrySearchPath)
+			for (const FString SearchPath : AssetRegistrySearchPath)
 			{
 				FString FinalSearchPath = SearchPath;
 				FinalSearchPath.ReplaceInline(TEXT("[buildversion]"), *PathVal);
@@ -462,7 +462,7 @@ void UDiffAssetRegistriesCommandlet::ConsistencyCheck(const FString& OldPath, co
 	{
 		FName Package = Recurse[RecurseIndex];
 		TArray<FAssetIdentifier> Referencers;
-		NewState.GetReferencers(Package, Referencers, UE::AssetRegistry::EDependencyCategory::Package, UE::AssetRegistry::EDependencyQuery::Hard);
+		NewState.GetReferencers(Package, Referencers, EAssetRegistryDependencyType::Hard);
 		
 		for (const FAssetIdentifier& Referencer : Referencers)
 		{
@@ -542,7 +542,7 @@ FName UDiffAssetRegistriesCommandlet::GetClassName(FAssetRegistryState& InRegist
 
 		if (NewName == NAME_None)
 		{
-			UE_LOG(LogDiffAssets, Log, TEXT("Unable to find class type of asset %s"), *InAssetPath.ToString());
+			UE_LOG(LogDiffAssets, Warning, TEXT("Unable to find class type of asset %s"), *InAssetPath.ToString());
 		}
 		AssetPathToClassName.Add(InAssetPath) = NewName;
 	}
@@ -560,7 +560,7 @@ TArray<int32> UDiffAssetRegistriesCommandlet::GetAssetChunks(FAssetRegistryState
 		{
 			if (Assets[0]->ChunkIDs.Num() > 1)
 			{
-				UE_LOG(LogDiffAssets, Log, TEXT("Multiple ChunkIds for asset %s"), *InAssetPath.ToString());
+				UE_LOG(LogDiffAssets, Warning, TEXT("Multiple ChunkIds for asset %s"), *InAssetPath.ToString());
 			}
 
 			for (int32 id : Assets[0]->ChunkIDs)
@@ -682,7 +682,7 @@ void UDiffAssetRegistriesCommandlet::SummarizeDeterminism()
 	TArray<FName> AssetPaths;
 	ChangeInfoByAsset.GetKeys(AssetPaths);
 
-	for (const FName& AssetPath : AssetPaths)
+	for (const FName AssetPath : AssetPaths)
 	{
 		const FChangeInfo& ChangeInfo = ChangeInfoByAsset[AssetPath];
 
@@ -711,27 +711,13 @@ void UDiffAssetRegistriesCommandlet::SummarizeDeterminism()
 			}
 		}
 
-		TArray<int32> ChunkIds = GetAssetChunks(NewState, AssetPath);
-		FName ClassName = GetClassName(NewState, AssetPath);
 		if (classification == 'c')
 		{
 			NondeterministicSummary += ChangeInfo;
-			
-			for (int32 ChunkId : ChunkIds)
-			{
-				ChangesByChunk.FindOrAdd(ChunkId).Determinism.FindOrAdd(ClassName).AddDirect(ChangeInfo);
-			}
-			DeterminismByClass.FindOrAdd(ClassName).AddDirect(ChangeInfo);
 		}
 		else if (classification == 'n')
 		{
 			IndirectNondeterministicSummary += ChangeInfo;
-
-			for (int32 ChunkId : ChunkIds)
-			{
-				ChangesByChunk.FindOrAdd(ChunkId).Determinism.FindOrAdd(ClassName).AddIndirect(ChangeInfo);
-			}
-			DeterminismByClass.FindOrAdd(ClassName).AddIndirect(ChangeInfo);
 		}
 	}
 }
@@ -811,7 +797,7 @@ void UDiffAssetRegistriesCommandlet::LogChangedFiles(FArchive *CSVFile, FString 
 		UE_LOG(LogDiffAssets, Display, TEXT("Saving CSV results to %s"), *CSVFilename);
 	}
 
-	for (const FName& AssetPath : AssetPaths)
+	for (const FName AssetPath : AssetPaths)
 	{
 		const FChangeInfo& ChangeInfo = ChangeInfoByAsset[AssetPath];
 
@@ -923,7 +909,7 @@ void UDiffAssetRegistriesCommandlet::LogChangedFiles(FArchive *CSVFile, FString 
 	}
 }
 
-void UDiffAssetRegistriesCommandlet::LogClassSummary(FArchive *CSVFile, const FString& HeaderPrefix, const TMap<FName, FChangeInfo>& InChangeInfoByAsset, bool bDoWarnings, TMap<FName, FDeterminismInfo> DeterminismInfo)
+void UDiffAssetRegistriesCommandlet::LogClassSummary(FArchive *CSVFile, const FString& HeaderPrefix, const TMap<FName, FChangeInfo>& InChangeInfoByAsset, bool bDoWarnings)
 {
 	const float InvToMB = 1.0 / (1024 * 1024);
 	FString HeaderSpacer = (HeaderPrefix.Len() ? TEXT(" ") : TEXT(""));
@@ -970,15 +956,9 @@ void UDiffAssetRegistriesCommandlet::LogClassSummary(FArchive *CSVFile, const FS
 			//We'll need to display the header, since this is the first row that has sufficient changes
 			if (CSVFile)
 			{
-				FString ExtraNondeterminismHeader = TEXT("");
-				if (DeterminismInfo.Num())
-				{
-					ExtraNondeterminismHeader = TEXT(",DirectNondeterministicCount,DirectNondeterministicSize,IndirectNondeterministicCount,IndirectNondeterministicSize");
-				}
-
 				CSVFile->Logf(TEXT(""));
 				CSVFile->Logf(TEXT("%s%sClass Summary"), *HeaderPrefix, *HeaderSpacer);
-				CSVFile->Logf(TEXT("Name,Percentage,TotalCount,TotalSize,Adds,AddedSize,Changes,ChangesSize,Deletes,DeletedSize,Unchanged,UnchangedSize%s"), *ExtraNondeterminismHeader);
+				CSVFile->Logf(TEXT("Name,Percentage,TotalSize,Adds,AddedSize,Changes,ChangesSize,Deletes,DeletedSize,Unchanged,UnchangedSize"));
 			}
 
 			bChangesPastThreshold = true;
@@ -986,40 +966,14 @@ void UDiffAssetRegistriesCommandlet::LogClassSummary(FArchive *CSVFile, const FS
 
 		if (CSVFile)
 		{
-			FString ExtraNondeterminismData = TEXT("");
-			if (DeterminismInfo.Num())
-			{
-				int64 DirectCount = 0;
-				int64 IndirectCount = 0;
-
-				int64 DirectSize = 0;
-				int64 IndirectSize = 0;
-				if (DeterminismInfo.Contains(ClassName))
-				{
-					int64 TotalCount = Changes.GetTotalChangeCount();
-					DirectCount = DeterminismInfo[ClassName].DirectCount;
-					IndirectCount = DeterminismInfo[ClassName].IndirectCount;
-
-					DirectSize = DeterminismInfo[ClassName].DirectSize;
-					IndirectSize = DeterminismInfo[ClassName].IndirectSize;
-				}
-
-
-				ExtraNondeterminismData = FString::Printf(TEXT(",%lld,%lld,%lld,%lld"),
-					DirectCount, DirectSize, IndirectCount, IndirectSize);
-			}
-
-
-			CSVFile->Logf(TEXT("%s,%0.02f,%lld,%lld,%lld,%lld,%lld,%lld,%lld,%lld,%lld,%lld%s"),
+			CSVFile->Logf(TEXT("%s,%0.02f,%lld,%lld,%lld,%lld,%lld,%lld,%lld,%lld,%lld"),
 				*ClassName.ToString(),
 				Changes.GetChangePercentage() * 100.0,
-				Changes.GetTotalChangeCount(),
 				Changes.GetTotalChangeSize(),
 				Changes.Adds, Changes.AddedBytes,
 				Changes.Changes, Changes.ChangedBytes,
 				Changes.Deletes, Changes.DeletedBytes,
-				Changes.Unchanged, Changes.UnchangedBytes,
-				*ExtraNondeterminismData);
+				Changes.Unchanged, Changes.UnchangedBytes);
 		}
 
 		// log summary & change
@@ -1194,7 +1148,7 @@ void UDiffAssetRegistriesCommandlet::DiffAssetRegistries(const FString& OldPath,
 		{
 			FName Package = Recurse[RecurseIndex];
 			TArray<FAssetIdentifier> Referencers;
-			NewState.GetReferencers(Package, Referencers, UE::AssetRegistry::EDependencyCategory::Package, UE::AssetRegistry::EDependencyQuery::Hard);
+			NewState.GetReferencers(Package, Referencers, EAssetRegistryDependencyType::Hard);
 
 			for (const FAssetIdentifier& Referencer : Referencers)
 			{
@@ -1310,19 +1264,12 @@ void UDiffAssetRegistriesCommandlet::DiffAssetRegistries(const FString& OldPath,
 			TArray<FAssetIdentifier> Referencers;
 			
 			// grab the hash/guid change flags, shift up to the dependency ones
-			int32 PackageFlags = AssetPathFlags.FindOrAdd(Package);
-			int32 NewFlags = (PackageFlags & 0x0C) << 2;
-
-			// If we have a dependency chain like C -> B -> A, and A changes, this does not
-			// necessarily cause B's binary representation to change, but it can still impact C.
-			// We must propagate the dependency change flags too, otherwise C will be marked as
-			// non-deterministic when this happens.
-			NewFlags |= PackageFlags & (EAssetFlags::DepGuidChange | EAssetFlags::DepHashChange);
+			int32 NewFlags = (AssetPathFlags.FindOrAdd(Package) & 0x0C) << 2;
 			
-			// don't bother touching anything if this asset or its dependencies didn't change
+			// don't bother touching anything if this asset didn't change
 			if (NewFlags)
 			{
-				NewState.GetReferencers(Package, Referencers, UE::AssetRegistry::EDependencyCategory::Package, UE::AssetRegistry::EDependencyQuery::Hard);
+				NewState.GetReferencers(Package, Referencers, EAssetRegistryDependencyType::Hard);
 
 				for (const FAssetIdentifier& Referencer : Referencers)
 				{
@@ -1364,7 +1311,7 @@ void UDiffAssetRegistriesCommandlet::DiffAssetRegistries(const FString& OldPath,
 
 	//Overall Class Summary
 	//Actually do the warnings in this run, since it's the overall one
-	LogClassSummary(CSVFile, TEXT("Overall"), ChangeSummaryByClass, true, DeterminismByClass);
+	LogClassSummary(CSVFile, TEXT("Overall"), ChangeSummaryByClass, true);
 
 	//Chunk-by-chunk class summaries
 	if (bGroupByChunk)
@@ -1377,7 +1324,7 @@ void UDiffAssetRegistriesCommandlet::DiffAssetRegistries(const FString& OldPath,
 			FString ChunkHeader = (ChunkID == -1) ? TEXT("Untagged") : FString::Printf(TEXT("Chunk %d"), ChunkID);
 			if (ChangesByChunk[ChunkID].ChangesByClass.Num())
 			{
-				LogClassSummary(CSVFile, *ChunkHeader, ChangesByChunk[ChunkID].ChangesByClass, false, ChangesByChunk[ChunkID].Determinism);
+				LogClassSummary(CSVFile, *ChunkHeader, ChangesByChunk[ChunkID].ChangesByClass, false);
 			}
 		}
 	}

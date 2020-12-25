@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -7,39 +7,45 @@ public class DisplayCluster : ModuleRules
 {
 	public DisplayCluster(ReadOnlyTargetRules ROTargetRules) : base(ROTargetRules)
 	{
-		PublicDependencyModuleNames.AddRange(
+		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+
+		PrivateIncludePaths.AddRange(
 			new string[] {
-				"CinematicCamera",
+				"DisplayCluster/Private",
+			});
+
+		PublicDependencyModuleNames.AddRange(
+			new string[]
+			{
 				"Core",
 				"CoreUObject",
-				"DisplayClusterConfiguration",
-				"Engine"
+				"Engine",
+				"InputCore",
 			});
 
 		PrivateDependencyModuleNames.AddRange(
-			new string[] {
+			new string[]
+			{
+				"Core",
+				"CoreUObject",
 				"D3D11RHI",
 				"D3D12RHI",
+				"Engine",
 				"HeadMountedDisplay",
 				"InputCore",
 				"Json",
 				"JsonUtilities",
 				"Networking",
-				"RenderCore",
 				"RHI",
+				"RenderCore",
 				"Slate",
 				"SlateCore",
-				"Sockets",
-				"TextureShare",
-				"TextureShareCore",
+				"Sockets"
 			});
 
 		if (Target.bBuildEditor == true)
 		{
-			PublicIncludePathModuleNames.Add("DisplayClusterConfigurator");
-
 			PrivateDependencyModuleNames.Add("UnrealEd");
-			PrivateDependencyModuleNames.Add("LevelEditor");
 		}
 
 		AddEngineThirdPartyPrivateStaticDependencies(Target, "DX11");
@@ -47,11 +53,11 @@ public class DisplayCluster : ModuleRules
 		AddEngineThirdPartyPrivateStaticDependencies(Target, "NVAftermath");
 		AddEngineThirdPartyPrivateStaticDependencies(Target, "NVAPI");
 		AddEngineThirdPartyPrivateStaticDependencies(Target, "IntelMetricsDiscovery");
-		AddEngineThirdPartyPrivateStaticDependencies(Target, "IntelExtensionsFramework");
 
 		// 3rd party dependencies
 		AddThirdPartyDependencies(ROTargetRules);
 	}
+
 
 	public void AddThirdPartyDependencies(ReadOnlyTargetRules ROTargetRules)
 	{

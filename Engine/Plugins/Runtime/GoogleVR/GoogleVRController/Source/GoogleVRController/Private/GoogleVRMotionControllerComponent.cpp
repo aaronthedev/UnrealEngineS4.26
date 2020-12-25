@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GoogleVRMotionControllerComponent.h"
 #include "GoogleVRController.h"
@@ -311,8 +311,8 @@ void UGoogleVRMotionControllerComponent::TickComponent( float DeltaTime, ELevelT
 	// Update the battery level indicator.
 	UpdateBatteryIndicator();
 
-	if (PlayerController->IsInputKeyDown(EKeys::Daydream_Left_Trackpad_Click)
-		|| PlayerController->IsInputKeyDown(EKeys::Daydream_Right_Trackpad_Click))
+	if (PlayerController->IsInputKeyDown(FGamepadKeyNames::MotionController_Left_Thumbstick)
+		|| PlayerController->IsInputKeyDown(FGamepadKeyNames::MotionController_Right_Thumbstick))
 	{
 		TrySetControllerMaterial(TouchpadMaterial);
 		if (ControllerTouchPointMeshComponent != nullptr)
@@ -322,10 +322,15 @@ void UGoogleVRMotionControllerComponent::TickComponent( float DeltaTime, ELevelT
 	}
 	else
 	{
-		if (PlayerController->IsInputKeyDown(EKeys::Daydream_Left_Select_Click)
-			|| PlayerController->IsInputKeyDown(EKeys::Daydream_Right_Select_Click))
+		if (PlayerController->IsInputKeyDown(FGamepadKeyNames::MotionController_Left_Shoulder)
+			|| PlayerController->IsInputKeyDown(FGamepadKeyNames::MotionController_Right_Shoulder))
 		{
 			TrySetControllerMaterial(AppMaterial);
+		}
+		else if (PlayerController->IsInputKeyDown(FGamepadKeyNames::SpecialLeft)
+				 || PlayerController->IsInputKeyDown(FGamepadKeyNames::SpecialRight))
+		{
+			TrySetControllerMaterial(SystemMaterial);
 		}
 		else
 		{
@@ -337,13 +342,13 @@ void UGoogleVRMotionControllerComponent::TickComponent( float DeltaTime, ELevelT
 		{
 			ControllerTouchPointMeshComponent->SetVisibility(true);
 
-			if (PlayerController->IsInputKeyDown(EKeys::Daydream_Left_Trackpad_Touch))
+			if (PlayerController->IsInputKeyDown(EKeys::Steam_Touch_0))
 			{
 				ControllerTouchPointMeshComponent->SetRelativeScale3D(ControllerTouchPointMeshComponent->GetRelativeScale3D() * TOUCHPAD_POINT_FILTER_STRENGTH +
 																	  TouchMeshScale * (1.0f - TOUCHPAD_POINT_FILTER_STRENGTH));
 
-				float TouchPadX = PlayerController->GetInputAnalogKeyState(EKeys::Daydream_Left_Trackpad_X);
-				float TouchPadY = PlayerController->GetInputAnalogKeyState(EKeys::Daydream_Left_Trackpad_Y);
+				float TouchPadX = PlayerController->GetInputAnalogKeyState(FGamepadKeyNames::MotionController_Left_Thumbstick_X);
+				float TouchPadY = PlayerController->GetInputAnalogKeyState(FGamepadKeyNames::MotionController_Left_Thumbstick_Y);
 				float X = TouchPadX * TOUCHPAD_RADIUS * WorldToMetersScale;
 				float Y = TouchPadY * TOUCHPAD_RADIUS * WorldToMetersScale;
 

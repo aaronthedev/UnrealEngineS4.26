@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieSceneSignedObject.h"
 #include "Templates/Casts.h"
@@ -8,6 +8,9 @@
 UMovieSceneSignedObject::UMovieSceneSignedObject(const FObjectInitializer& Init)
 	: Super(Init)
 {
+#if WITH_EDITOR
+	PreLoadSignature.A = PreLoadSignature.B = PreLoadSignature.C = PreLoadSignature.D = 0xFFFFFFFF;
+#endif
 }
 
 void UMovieSceneSignedObject::PostInitProperties()
@@ -16,21 +19,32 @@ void UMovieSceneSignedObject::PostInitProperties()
 
 	// Always seed newly created objects with a new signature
 	// (CDO and archetypes always have a zero GUID)
-	if (!HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject | RF_NeedLoad | RF_LoadCompleted) && Signature == GetDefault<UMovieSceneSignedObject>()->Signature)
+	if (!HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject) && Signature == GetDefault<UMovieSceneSignedObject>()->Signature)
 	{
 		Signature = FGuid::NewGuid();
+#if WITH_EDITOR
+		PreLoadSignature = Signature;
+#endif
 	}
 }
 
 void UMovieSceneSignedObject::PostLoad()
 {
 	Super::PostLoad();
+#if WITH_EDITOR
+	if (!HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject) && Signature == PreLoadSignature)
+	{
+		UPackage* Package = GetOutermost();
+		UMovieSceneSequence* Sequence = GetTypedOuter<UMovieSceneSequence>();
+		FString PackageName = Package ? Package->GetName() : TEXT("Unknown package");
+		FString SequenceName = Sequence ? Sequence->GetName() : TEXT("Unknown sequence");
+		UE_LOG(LogMovieScene, Warning, TEXT("Legacy data detected in sequence '%s (%s)'. This will cause deterministic cooking issues. Please resave the package."), *PackageName, *SequenceName);
+	}
+#endif
 }
 
 void UMovieSceneSignedObject::MarkAsChanged()
 {
-	using namespace UE::MovieScene;
-
 	Signature = FGuid::NewGuid();
 
 	OnSignatureChangedEvent.Broadcast();

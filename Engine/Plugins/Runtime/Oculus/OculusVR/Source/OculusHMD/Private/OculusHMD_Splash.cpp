@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OculusHMD_Splash.h"
 
@@ -39,6 +39,7 @@ FSplash::FSplash(FOculusHMD* InOculusHMD) :
 		LayerDesc.QuadSize = FVector2D(0.01f, 0.01f);
 		LayerDesc.Priority = 0;
 		LayerDesc.PositionType = IStereoLayers::TrackerLocked;
+		LayerDesc.ShapeType = IStereoLayers::QuadLayer;
 		LayerDesc.Texture = GBlackTexture->TextureRHI;
 		BlackLayer = MakeShareable(new FLayer(NextLayerId++, LayerDesc));
 	}
@@ -49,6 +50,7 @@ FSplash::FSplash(FOculusHMD* InOculusHMD) :
 		LayerDesc.QuadSize = FVector2D(0.01f, 0.01f);
 		LayerDesc.Priority = 0;
 		LayerDesc.PositionType = IStereoLayers::TrackerLocked;
+		LayerDesc.ShapeType = IStereoLayers::QuadLayer;
 		LayerDesc.Texture = nullptr;
 		UELayer = MakeShareable(new FLayer(NextLayerId++, LayerDesc));
 	}
@@ -105,28 +107,20 @@ void FSplash::LoadSettings()
 		AddSplash(SplashDesc);
 	}
 
+	UStereoLayerFunctionLibrary::EnableAutoLoadingSplashScreen(HMDSettings->bAutoEnabled);
 	if (HMDSettings->bAutoEnabled)
 	{
-		if (!PreLoadLevelDelegate.IsValid())
+		if (!LoadLevelDelegate.IsValid())
 		{
-			PreLoadLevelDelegate = FCoreUObjectDelegates::PreLoadMap.AddSP(this, &FSplash::OnPreLoadMap);
-		}
-		if (!PostLoadLevelDelegate.IsValid())
-		{
-			PostLoadLevelDelegate = FCoreUObjectDelegates::PostLoadMapWithWorld.AddSP(this, &FSplash::OnPostLoadMap);
+			LoadLevelDelegate = FCoreUObjectDelegates::PreLoadMap.AddSP(this, &FSplash::OnPreLoadMap);
 		}
 	}
 	else
 	{
-		if (PreLoadLevelDelegate.IsValid())
+		if (LoadLevelDelegate.IsValid())
 		{
-			FCoreUObjectDelegates::PreLoadMap.Remove(PreLoadLevelDelegate);
-			PreLoadLevelDelegate.Reset();
-		}
-		if (PostLoadLevelDelegate.IsValid())
-		{
-			FCoreUObjectDelegates::PostLoadMapWithWorld.Remove(PostLoadLevelDelegate);
-			PostLoadLevelDelegate.Reset();
+			FCoreUObjectDelegates::PreLoadMap.Remove(LoadLevelDelegate);
+			LoadLevelDelegate.Reset();
 		}
 	}
 }
@@ -135,23 +129,6 @@ void FSplash::OnPreLoadMap(const FString&)
 {
 	DoShow();
 }
-
-void FSplash::OnPostLoadMap(UWorld* LoadedWorld)
-{
-	// Don't auto-hide splash if show loading screen is called explicitly
-	if (!bShouldShowSplash)
-	{
-		UE_LOG(LogHMD, Log, TEXT("FSplash::OnPostLoadMap Hide Auto Splash"));
-		HideLoadingScreen();
-	}
-}
-
-#if WITH_EDITOR
-void FSplash::OnPieBegin(bool bIsSimulating)
-{
-	LoadSettings();
-}
-#endif
 
 void FSplash::Startup()
 {
@@ -165,26 +142,14 @@ void FSplash::Startup()
 		Frame->WorldToMetersScale = 1.0f;
 
 		float SystemDisplayFrequency;
-		if (OVRP_SUCCESS(FOculusHMDModule::GetPluginWrapper().GetSystemDisplayFrequency2(&SystemDisplayFrequency)))
+		if (OVRP_SUCCESS(ovrp_GetSystemDisplayFrequency2(&SystemDisplayFrequency)))
 		{
 			SystemDisplayInterval = 1.0f / SystemDisplayFrequency;
 		}
 
 		LoadSettings();
 
-		OculusHMD->InitDevice();
 
-#if WITH_EDITOR
-		PieBeginDelegateHandle = FEditorDelegates::BeginPIE.AddRaw(this, &FSplash::OnPieBegin);
-#else
-		UOculusHMDRuntimeSettings* HMDSettings = GetMutableDefault<UOculusHMDRuntimeSettings>();
-		check(HMDSettings);
-		if (HMDSettings->bAutoEnabled)
-		{
-			UE_LOG(LogHMD, Log, TEXT("FSplash::Startup Show Splash on Startup"));
-			DoShow();
-		}
-#endif
 
 		bInitialized = true;
 	}
@@ -244,12 +209,12 @@ void FSplash::RenderFrame_RenderThread(FRHICommandListImmediate& RHICmdList)
 	}
 
 	ovrpResult Result;
-	if ( FOculusHMDModule::GetPluginWrapper().GetInitialized() && OculusHMD->WaitFrameNumber != XFrame->FrameNumber)
+	if ( ovrp_GetInitialized() && OculusHMD->WaitFrameNumber != Frame->FrameNumber)
 	{ 
-		UE_LOG(LogHMD, Verbose, TEXT("Splash FOculusHMDModule::GetPluginWrapper().WaitToBeginFrame %u"), XFrame->FrameNumber);
-		if (OVRP_FAILURE(Result = FOculusHMDModule::GetPluginWrapper().WaitToBeginFrame(XFrame->FrameNumber)))
+		UE_LOG(LogHMD, Verbose, TEXT("Splash ovrp_WaitToBeginFrame %u"), XFrame->FrameNumber);
+		if (OVRP_FAILURE(Result = ovrp_WaitToBeginFrame(XFrame->FrameNumber)))
 		{
-			UE_LOG(LogHMD, Error, TEXT("Splash FOculusHMDModule::GetPluginWrapper().WaitToBeginFrame %u failed (%d)"), XFrame->FrameNumber, Result);
+			UE_LOG(LogHMD, Error, TEXT("Splash ovrp_WaitToBeginFrame %u failed (%d)"), XFrame->FrameNumber, Result);
 			XFrame->ShowFlags.Rendering = false;
 		}
 		else
@@ -266,9 +231,9 @@ void FSplash::RenderFrame_RenderThread(FRHICommandListImmediate& RHICmdList)
 
 	if (XFrame->ShowFlags.Rendering)
 	{
-		if (OVRP_FAILURE(Result = FOculusHMDModule::GetPluginWrapper().Update3(ovrpStep_Render, XFrame->FrameNumber, 0.0)))
+		if (OVRP_FAILURE(Result = ovrp_Update3(ovrpStep_Render, XFrame->FrameNumber, 0.0)))
 		{
-			UE_LOG(LogHMD, Error, TEXT("Splash FOculusHMDModule::GetPluginWrapper().Update3 %u failed (%d)"), XFrame->FrameNumber, Result);
+			UE_LOG(LogHMD, Error, TEXT("Splash ovrp_Update3 %u failed (%d)"), XFrame->FrameNumber, Result);
 		}
 	}
 
@@ -308,9 +273,6 @@ void FSplash::RenderFrame_RenderThread(FRHICommandListImmediate& RHICmdList)
 		Layers_RenderThread[LayerIndex]->UpdateTexture_RenderThread(CustomPresent, RHICmdList);
 	}
 
-	// This submit is required since splash happens before the game is rendering, so layers won't be submitted with game render commands
-	CustomPresent->SubmitGPUCommands_RenderThread(RHICmdList);
-
 	// RHIFrame
 	for (int32 LayerIndex = 0; LayerIndex < XLayers.Num(); LayerIndex++)
 	{
@@ -323,10 +285,10 @@ void FSplash::RenderFrame_RenderThread(FRHICommandListImmediate& RHICmdList)
 
 		if (XFrame->ShowFlags.Rendering)
 		{
-			UE_LOG(LogHMD, Verbose, TEXT("Splash FOculusHMDModule::GetPluginWrapper().BeginFrame4 %u"), XFrame->FrameNumber);
-			if (OVRP_FAILURE(ResultT = FOculusHMDModule::GetPluginWrapper().BeginFrame4(XFrame->FrameNumber, CustomPresent->GetOvrpCommandQueue())))
+			UE_LOG(LogHMD, Verbose, TEXT("Splash ovrp_BeginFrame4 %u"), XFrame->FrameNumber);
+			if (OVRP_FAILURE(ResultT = ovrp_BeginFrame4(XFrame->FrameNumber, CustomPresent->GetOvrpCommandQueue())))
 			{
-				UE_LOG(LogHMD, Error, TEXT("Splash FOculusHMDModule::GetPluginWrapper().BeginFrame4 %u failed (%d)"), XFrame->FrameNumber, ResultT);
+				UE_LOG(LogHMD, Error, TEXT("Splash ovrp_BeginFrame4 %u failed (%d)"), XFrame->FrameNumber, ResultT);
 				XFrame->ShowFlags.Rendering = false;
 			}
 		}
@@ -346,10 +308,10 @@ void FSplash::RenderFrame_RenderThread(FRHICommandListImmediate& RHICmdList)
 				LayerSubmitPtr[LayerIndex] = Layers_RHIThread[LayerIndex]->UpdateLayer_RHIThread(XSettings.Get(), XFrame.Get(), LayerIndex);
 			}
 
-			UE_LOG(LogHMD, Verbose, TEXT("Splash FOculusHMDModule::GetPluginWrapper().EndFrame4 %u"), XFrame->FrameNumber);
-			if (OVRP_FAILURE(ResultT = FOculusHMDModule::GetPluginWrapper().EndFrame4(XFrame->FrameNumber, LayerSubmitPtr.GetData(), LayerSubmitPtr.Num(), CustomPresent->GetOvrpCommandQueue())))
+			UE_LOG(LogHMD, Verbose, TEXT("Splash ovrp_EndFrame4 %u"), XFrame->FrameNumber);
+			if (OVRP_FAILURE(ResultT = ovrp_EndFrame4(XFrame->FrameNumber, LayerSubmitPtr.GetData(), LayerSubmitPtr.Num(), CustomPresent->GetOvrpCommandQueue())))
 			{
-				UE_LOG(LogHMD, Error, TEXT("Splash FOculusHMDModule::GetPluginWrapper().EndFrame4 %u failed (%d)"), XFrame->FrameNumber, ResultT);
+				UE_LOG(LogHMD, Error, TEXT("Splash ovrp_EndFrame4 %u failed (%d)"), XFrame->FrameNumber, ResultT);
 			}
 			else
 			{
@@ -388,25 +350,6 @@ void FSplash::PreShutdown()
 void FSplash::Shutdown()
 {
 	CheckInGameThread();
-
-#if WITH_EDITOR
-	if (PieBeginDelegateHandle.IsValid())
-	{
-		FEditorDelegates::BeginPIE.Remove(PieBeginDelegateHandle);
-		PieBeginDelegateHandle.Reset();
-	}
-#endif
-
-	if (PreLoadLevelDelegate.IsValid())
-	{
-		FCoreUObjectDelegates::PreLoadMap.Remove(PreLoadLevelDelegate);
-		PreLoadLevelDelegate.Reset();
-	}
-	if (PostLoadLevelDelegate.IsValid())
-	{
-		FCoreUObjectDelegates::PostLoadMapWithWorld.Remove(PostLoadLevelDelegate);
-		PostLoadLevelDelegate.Reset();
-	}
 
 	if (bInitialized)
 	{
@@ -479,18 +422,15 @@ bool FSplash::GetSplash(unsigned InSplashLayerIndex, FOculusSplashDesc& OutDesc)
 
 IStereoLayers::FLayerDesc FSplash::StereoLayerDescFromOculusSplashDesc(FOculusSplashDesc OculusDesc)
 {
-	IStereoLayers::FLayerDesc LayerDesc;
-	if (OculusDesc.LoadedTexture->GetTextureCube() != nullptr)
-	{
-		LayerDesc.SetShape<FCubemapLayer>();
-	}
-	// else LayerDesc.Shape defaults to FQuadLayer
+	bool bIsCubemap = OculusDesc.LoadedTexture->GetTextureCube() != nullptr;
 
+	IStereoLayers::FLayerDesc LayerDesc;
 	LayerDesc.Transform = OculusDesc.TransformInMeters * FTransform(OculusHMD->GetSplashRotation().Quaternion());
 	LayerDesc.QuadSize = OculusDesc.QuadSizeInMeters;
 	LayerDesc.UVRect = FBox2D(OculusDesc.TextureOffset, OculusDesc.TextureOffset + OculusDesc.TextureScale);
 	LayerDesc.Priority = INT32_MAX - (int32)(OculusDesc.TransformInMeters.GetTranslation().X * 1000.f);
 	LayerDesc.PositionType = IStereoLayers::TrackerLocked;
+	LayerDesc.ShapeType = bIsCubemap ? IStereoLayers::CubemapLayer : IStereoLayers::QuadLayer;
 	LayerDesc.Texture = OculusDesc.LoadedTexture;
 	LayerDesc.Flags = IStereoLayers::LAYER_FLAG_QUAD_PRESERVE_TEX_RATIO | (OculusDesc.bNoAlphaChannel ? IStereoLayers::LAYER_FLAG_TEX_NO_ALPHA_CHANNEL : 0) | (OculusDesc.bIsDynamic ? IStereoLayers::LAYER_FLAG_TEX_CONTINUOUS_UPDATE : 0);
 
@@ -500,6 +440,8 @@ IStereoLayers::FLayerDesc FSplash::StereoLayerDescFromOculusSplashDesc(FOculusSp
 void FSplash::DoShow()
 {
 	CheckInGameThread();
+
+	OculusHMD->InitDevice();
 
 	OculusHMD->SetSplashRotationToForward();
 
@@ -589,7 +531,7 @@ void FSplash::DoShow()
 	StartTicker();
 	bIsShown = true;
 
-	UE_LOG(LogHMD, Log, TEXT("FSplash::DoShow"));
+	UE_LOG(LogHMD, Log, TEXT("FSplash::OnShow"));
 }
 
 
@@ -597,7 +539,7 @@ void FSplash::DoHide()
 {
 	CheckInGameThread();
 
-	UE_LOG(LogHMD, Log, TEXT("FSplash::DoHide"));
+	UE_LOG(LogHMD, Log, TEXT("FSplash::OnHide"));
 	bIsShown = false;
 
 	StopTicker();

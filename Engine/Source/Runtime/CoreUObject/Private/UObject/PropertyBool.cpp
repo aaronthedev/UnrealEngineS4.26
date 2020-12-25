@@ -1,33 +1,27 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "UObject/UObjectGlobals.h"
 #include "UObject/UnrealType.h"
-#include "UObject/UnrealTypePrivate.h"
 #include "UObject/PropertyHelper.h"
 
-// WARNING: This should always be the last include in any file that needs it (except .generated.h)
-#include "UObject/UndefineUPropertyMacros.h"
-
 /*-----------------------------------------------------------------------------
-	FBoolProperty.
+	UBoolProperty.
 -----------------------------------------------------------------------------*/
 
-IMPLEMENT_FIELD(FBoolProperty)
-
-FBoolProperty::FBoolProperty(FFieldVariant InOwner, const FName& InName, EObjectFlags InObjectFlags)
-: FProperty(InOwner, InName, InObjectFlags)
-	, FieldSize(0)
-	, ByteOffset(0)
-	, ByteMask(1)
-	, FieldMask(1)
+UBoolProperty::UBoolProperty( const FObjectInitializer& ObjectInitializer )
+: UProperty( ObjectInitializer )
+, FieldSize(0)
+, ByteOffset(0)
+, ByteMask(1)
+, FieldMask(1)
 {
-	SetBoolSize(1, false, 1);
+	SetBoolSize( 1, false, 1 );
 }
 
-FBoolProperty::FBoolProperty(FFieldVariant InOwner, const FName& InName, EObjectFlags InObjectFlags, int32 InOffset, EPropertyFlags InFlags, uint32 InBitMask, uint32 InElementSize, bool bIsNativeBool)
-	: FProperty(InOwner, InName, InObjectFlags, InOffset, InFlags | CPF_HasGetValueTypeHash)
+UBoolProperty::UBoolProperty(ECppProperty, int32 InOffset, EPropertyFlags InFlags, uint32 InBitMask, uint32 InElementSize, bool bIsNativeBool)
+	: UProperty(FObjectInitializer::Get(), EC_CppProperty, InOffset, InFlags | CPF_HasGetValueTypeHash)
 	, FieldSize(0)
 	, ByteOffset(0)
 	, ByteMask(1)
@@ -36,29 +30,17 @@ FBoolProperty::FBoolProperty(FFieldVariant InOwner, const FName& InName, EObject
 	SetBoolSize(InElementSize, bIsNativeBool, InBitMask);
 }
 
-#if WITH_EDITORONLY_DATA
-FBoolProperty::FBoolProperty(UField* InField)
-	: FProperty(InField)
+UBoolProperty::UBoolProperty( const FObjectInitializer& ObjectInitializer, ECppProperty, int32 InOffset, EPropertyFlags InFlags, uint32 InBitMask, uint32 InElementSize, bool bIsNativeBool )
+: UProperty( ObjectInitializer, EC_CppProperty, InOffset, InFlags | CPF_HasGetValueTypeHash)
+, FieldSize(0)
+, ByteOffset(0)
+, ByteMask(1)
+, FieldMask(1)
 {
-	UBoolProperty* SourceProperty = CastChecked<UBoolProperty>(InField);
-	FieldSize = SourceProperty->FieldSize;
-	ByteOffset = SourceProperty->ByteOffset;
-	ByteMask = SourceProperty->ByteMask;
-	FieldMask = SourceProperty->FieldMask;
-}
-#endif // WITH_EDITORONLY_DATA
-
-void FBoolProperty::PostDuplicate(const FField& InField)
-{
-	const FBoolProperty& Source = static_cast<const FBoolProperty&>(InField);
-	FieldSize = Source.FieldSize;
-	ByteOffset = Source.ByteOffset;
-	ByteMask = Source.ByteMask;
-	FieldMask = Source.FieldMask;
-	Super::PostDuplicate(InField);
+	SetBoolSize( InElementSize, bIsNativeBool, InBitMask );
 }
 
-void FBoolProperty::SetBoolSize( const uint32 InSize, const bool bIsNativeBool, const uint32 InBitMask /*= 0*/ )
+void UBoolProperty::SetBoolSize( const uint32 InSize, const bool bIsNativeBool, const uint32 InBitMask /*= 0*/ )
 {
 	if (bIsNativeBool)
 	{
@@ -90,7 +72,7 @@ void FBoolProperty::SetBoolSize( const uint32 InSize, const bool bIsNativeBool, 
 	check(ByteMask != 0);
 }
 
-int32 FBoolProperty::GetMinAlignment() const
+int32 UBoolProperty::GetMinAlignment() const
 {
 	int32 Alignment = 0;
 	switch(ElementSize)
@@ -104,11 +86,11 @@ int32 FBoolProperty::GetMinAlignment() const
 	case sizeof(uint64):
 		Alignment = alignof(uint64); break;
 	default:
-		UE_LOG(LogProperty, Fatal, TEXT("Unsupported FBoolProperty %s size %d."), *GetName(), (int32)ElementSize);
+		UE_LOG(LogProperty, Fatal, TEXT("Unsupported UBoolProperty %s size %d."), *GetName(), (int32)ElementSize);
 	}
 	return Alignment;
 }
-void FBoolProperty::LinkInternal(FArchive& Ar)
+void UBoolProperty::LinkInternal(FArchive& Ar)
 {
 	check(FieldSize != 0);
 	ElementSize = FieldSize;
@@ -122,34 +104,29 @@ void FBoolProperty::LinkInternal(FArchive& Ar)
 		PropertyFlags |= CPF_NoDestructor;
 	}
 }
-void FBoolProperty::Serialize( FArchive& Ar )
+void UBoolProperty::Serialize( FArchive& Ar )
 {
 	Super::Serialize( Ar );
 
-	Ar << FieldSize;
-	Ar << ByteOffset;
-	Ar << ByteMask;
-	Ar << FieldMask;
-
-	// Serialize additional flags which will help to identify this FBoolProperty type and size.
+	// Serialize additional flags which will help to identify this UBoolProperty type and size.
 	uint8 BoolSize = (uint8)ElementSize;
 	Ar << BoolSize;
 	uint8 NativeBool = false;
 	if( Ar.IsLoading())
 	{
 		Ar << NativeBool;
-		//if (!IsPendingKill())
+		if (!IsPendingKill())
 		{
 			SetBoolSize( BoolSize, !!NativeBool );
 		}
 	}
 	else
 	{
-		NativeBool = Ar.IsSaving() ? (IsNativeBool() ? 1 : 0) : 0;
+		NativeBool = (!HasAnyFlags(RF_ClassDefaultObject) && !IsPendingKill() && Ar.IsSaving()) ? (IsNativeBool() ? 1 : 0) : 0;
 		Ar << NativeBool;
 	}
 }
-FString FBoolProperty::GetCPPType( FString* ExtendedTypeText/*=NULL*/, uint32 CPPExportFlags/*=0*/ ) const
+FString UBoolProperty::GetCPPType( FString* ExtendedTypeText/*=NULL*/, uint32 CPPExportFlags/*=0*/ ) const
 {
 	check(FieldSize != 0);
 
@@ -174,19 +151,19 @@ FString FBoolProperty::GetCPPType( FString* ExtendedTypeText/*=NULL*/, uint32 CP
 		case sizeof(uint8):
 			return TEXT("uint8");
 		default:
-			UE_LOG(LogProperty, Fatal, TEXT("Unsupported FBoolProperty %s size %d."), *GetName(), ElementSize);
+			UE_LOG(LogProperty, Fatal, TEXT("Unsupported UBoolProperty %s size %d."), *GetName(), ElementSize);
 			break;
 		}
 	}
 	return TEXT("uint32");
 }
 
-FString FBoolProperty::GetCPPTypeForwardDeclaration() const
+FString UBoolProperty::GetCPPTypeForwardDeclaration() const
 {
 	return FString();
 }
 
-FString FBoolProperty::GetCPPMacroType( FString& ExtendedTypeText ) const
+FString UBoolProperty::GetCPPMacroType( FString& ExtendedTypeText ) const
 {
 	check(FieldSize != 0);
 	if (IsNativeBool())
@@ -206,7 +183,7 @@ FString FBoolProperty::GetCPPMacroType( FString& ExtendedTypeText ) const
 		case sizeof(uint8):
 			return TEXT("UBOOL8");
 		default:
-			UE_LOG(LogProperty, Fatal, TEXT("Unsupported FBoolProperty %s size %d."), *GetName(), ElementSize);
+			UE_LOG(LogProperty, Fatal, TEXT("Unsupported UBoolProperty %s size %d."), *GetName(), ElementSize);
 			break;
 		}
 	}
@@ -214,7 +191,7 @@ FString FBoolProperty::GetCPPMacroType( FString& ExtendedTypeText ) const
 }
 
 template<typename T>
-void LoadFromType(FBoolProperty* Property, const FPropertyTag& Tag, FStructuredArchive::FSlot Slot, uint8* Data)
+void LoadFromType(UBoolProperty* Property, const FPropertyTag& Tag, FStructuredArchive::FSlot Slot, uint8* Data)
 {
 	T IntValue;
 	Slot << IntValue;
@@ -235,7 +212,7 @@ void LoadFromType(FBoolProperty* Property, const FPropertyTag& Tag, FStructuredA
 	}
 }
 
-EConvertFromTypeResult FBoolProperty::ConvertFromType(const FPropertyTag& Tag, FStructuredArchive::FSlot Slot, uint8* Data, UStruct* DefaultsStruct)
+EConvertFromTypeResult UBoolProperty::ConvertFromType(const FPropertyTag& Tag, FStructuredArchive::FSlot Slot, uint8* Data, UStruct* DefaultsStruct)
 {
 	if (Tag.Type == NAME_IntProperty)
 	{
@@ -259,7 +236,7 @@ EConvertFromTypeResult FBoolProperty::ConvertFromType(const FPropertyTag& Tag, F
 		if (Tag.EnumName == NAME_None)
 		{
 			// If we're a nested property the EnumName tag got lost, don't allow this
-			if (GetOwner<FProperty>())
+			if (GetOuterUField()->IsA<UProperty>())
 			{
 				return EConvertFromTypeResult::UseSerializeItem;
 			}
@@ -291,7 +268,7 @@ EConvertFromTypeResult FBoolProperty::ConvertFromType(const FPropertyTag& Tag, F
 	return EConvertFromTypeResult::Converted;
 }
 
-void FBoolProperty::ExportTextItem( FString& ValueStr, const void* PropertyValue, const void* DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope ) const
+void UBoolProperty::ExportTextItem( FString& ValueStr, const void* PropertyValue, const void* DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope ) const
 {
 	check(FieldSize != 0);
 	const uint8* ByteValue = (uint8*)PropertyValue + ByteOffset;
@@ -307,10 +284,10 @@ void FBoolProperty::ExportTextItem( FString& ValueStr, const void* PropertyValue
 	}
 	ValueStr += FString::Printf( TEXT("%s"), Temp );
 }
-const TCHAR* FBoolProperty::ImportText_Internal( const TCHAR* Buffer, void* Data, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText ) const
+const TCHAR* UBoolProperty::ImportText_Internal( const TCHAR* Buffer, void* Data, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText ) const
 {
 	FString Temp; 
-	Buffer = FPropertyHelpers::ReadToken( Buffer, Temp );
+	Buffer = UPropertyHelpers::ReadToken( Buffer, Temp );
 	if( !Buffer )
 	{
 		return NULL;
@@ -336,7 +313,7 @@ const TCHAR* FBoolProperty::ImportText_Internal( const TCHAR* Buffer, void* Data
 	}
 	return Buffer;
 }
-bool FBoolProperty::Identical( const void* A, const void* B, uint32 PortFlags ) const
+bool UBoolProperty::Identical( const void* A, const void* B, uint32 PortFlags ) const
 {
 	check(FieldSize != 0);
 	const uint8* ByteValueA = (const uint8*)A + ByteOffset;
@@ -344,7 +321,7 @@ bool FBoolProperty::Identical( const void* A, const void* B, uint32 PortFlags ) 
 	return ((*ByteValueA ^ (B ? *ByteValueB : 0)) & FieldMask) == 0;
 }
 
-void FBoolProperty::SerializeItem( FStructuredArchive::FSlot Slot, void* Value, void const* Defaults ) const
+void UBoolProperty::SerializeItem( FStructuredArchive::FSlot Slot, void* Value, void const* Defaults ) const
 {
 	check(FieldSize != 0);
 	uint8* ByteValue = (uint8*)Value + ByteOffset;
@@ -353,7 +330,7 @@ void FBoolProperty::SerializeItem( FStructuredArchive::FSlot Slot, void* Value, 
 	*ByteValue = ((*ByteValue) & ~FieldMask) | (B ? ByteMask : 0);
 }
 
-bool FBoolProperty::NetSerializeItem( FArchive& Ar, UPackageMap* Map, void* Data, TArray<uint8> * MetaData ) const
+bool UBoolProperty::NetSerializeItem( FArchive& Ar, UPackageMap* Map, void* Data, TArray<uint8> * MetaData ) const
 {
 	check(FieldSize != 0);
 	uint8* ByteValue = (uint8*)Data + ByteOffset;
@@ -362,7 +339,7 @@ bool FBoolProperty::NetSerializeItem( FArchive& Ar, UPackageMap* Map, void* Data
 	*ByteValue = ((*ByteValue) & ~FieldMask) | (Value ? ByteMask : 0);
 	return true;
 }
-void FBoolProperty::CopyValuesInternal( void* Dest, void const* Src, int32 Count  ) const
+void UBoolProperty::CopyValuesInternal( void* Dest, void const* Src, int32 Count  ) const
 {
 	check(FieldSize != 0 && !IsNativeBool());
 	for (int32 Index = 0; Index < Count; Index++)
@@ -372,23 +349,27 @@ void FBoolProperty::CopyValuesInternal( void* Dest, void const* Src, int32 Count
 		*DestByteValue = (*DestByteValue & ~FieldMask) | (*SrcByteValue & FieldMask);
 	}
 }
-void FBoolProperty::ClearValueInternal( void* Data ) const
+void UBoolProperty::ClearValueInternal( void* Data ) const
 {
 	check(FieldSize != 0);
 	uint8* ByteValue = (uint8*)Data + ByteOffset;
 	*ByteValue &= ~FieldMask;
 }
 
-void FBoolProperty::InitializeValueInternal( void* Data ) const
+void UBoolProperty::InitializeValueInternal( void* Data ) const
 {
 	check(FieldSize != 0);
 	uint8* ByteValue = (uint8*)Data + ByteOffset;
 	*ByteValue &= ~FieldMask;
 }
 
-uint32 FBoolProperty::GetValueTypeHashInternal(const void* Src) const
+uint32 UBoolProperty::GetValueTypeHashInternal(const void* Src) const
 {
 	return GetTypeHash(*(const bool*)Src);
 }
 
-#include "UObject/DefineUPropertyMacros.h"
+IMPLEMENT_CORE_INTRINSIC_CLASS(UBoolProperty, UProperty,
+	{
+	}
+);
+

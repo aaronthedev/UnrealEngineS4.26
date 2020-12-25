@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,7 +19,6 @@
 #include "RHI.h"
 #include "RHIResources.h"
 #include "HAL/ThreadSafeCounter.h"
-#include "HAL/ThreadSafeBool.h"
 #include "Containers/Queue.h"
 #include "Serialization/Archive.h"
 #include "Serialization/ArrayReader.h"
@@ -54,7 +53,7 @@ public:
 	virtual IMediaCache& GetCache() override;
 	virtual IMediaControls& GetControls() override;
 	virtual FString GetInfo() const override;
-	virtual FGuid GetPlayerPluginGUID() const override;
+	virtual FName GetPlayerName() const override;
 	virtual IMediaSamples& GetSamples() override;
 	virtual FString GetStats() const override;
 	virtual IMediaTracks& GetTracks() override;

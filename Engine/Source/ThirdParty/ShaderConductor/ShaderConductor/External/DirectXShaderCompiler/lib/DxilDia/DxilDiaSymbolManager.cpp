@@ -19,7 +19,6 @@
 #include "dxc/DxilPIXPasses/DxilPIXVirtualRegisters.h"
 #include "dxc/Support/Unicode.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DebugInfoMetadata.h"
@@ -286,7 +285,7 @@ public:
         IMalloc *pMalloc = pSession->GetMallocNoRef();
         IFR(FunctionSymbol::Create(pMalloc, pSession, m_ID, m_Node, m_TypeID, m_Node->getType(), ppRet));
         (*ppRet)->SetLexicalParent(m_ParentID);
-        (*ppRet)->SetName(CA2W(m_Node->getName().str().c_str(), CP_UTF8));
+        (*ppRet)->SetName(CA2W(m_Node->getName().str().c_str()));
         return S_OK;
     }
 
@@ -378,7 +377,7 @@ public:
         IMalloc *pMalloc = pSession->GetMallocNoRef();
         IFR(TypedefTypeSymbol::Create(pMalloc, pSession, m_ParentID, m_ID, m_Node, m_BaseTypeID, ppRet));
         (*ppRet)->SetLexicalParent(m_ParentID);
-        (*ppRet)->SetName(CA2W(m_Node->getName().str().c_str(), CP_UTF8));
+        (*ppRet)->SetName(CA2W(m_Node->getName().str().c_str()));
         return S_OK;
     }
 
@@ -413,7 +412,7 @@ public:
         IMalloc *pMalloc = pSession->GetMallocNoRef();
         IFR(VectorTypeSymbol::Create(pMalloc, pSession, m_ParentID, m_ID, m_Node, m_ElemTyID, m_NumElts, ppRet));
         (*ppRet)->SetLexicalParent(m_ParentID);
-        (*ppRet)->SetName(CA2W(m_Node->getName().str().c_str(), CP_UTF8));
+        (*ppRet)->SetName(CA2W(m_Node->getName().str().c_str()));
         return S_OK;
     }
 
@@ -468,7 +467,7 @@ public:
         IMalloc *pMalloc = pSession->GetMallocNoRef();
         IFR(GlobalVariableSymbol::Create(pMalloc, pSession, m_ID, m_GV, m_TypeID, m_Type, ppRet));
         (*ppRet)->SetLexicalParent(m_ParentID);
-        (*ppRet)->SetName(CA2W(m_GV->getName().str().c_str(), CP_UTF8));
+        (*ppRet)->SetName(CA2W(m_GV->getName().str().c_str()));
         (*ppRet)->SetIsHLSLData(true);
         return S_OK;
     }
@@ -538,7 +537,7 @@ public:
         IMalloc *pMalloc = pSession->GetMallocNoRef();
         IFR(LocalVariableSymbol::Create(pMalloc, pSession, m_ID, m_Node, m_TypeID, m_Type, m_VI->GetOffsetInUDT(), m_VI->GetDxilRegister(), ppRet));
         (*ppRet)->SetLexicalParent(m_ParentID);
-        (*ppRet)->SetName(CA2W(m_Node->getName().str().c_str(), CP_UTF8));
+        (*ppRet)->SetName(CA2W(m_Node->getName().str().c_str()));
         (*ppRet)->SetDataKind(m_Node->getTag() == llvm::dwarf::DW_TAG_arg_variable ? DataIsParam : DataIsLocal);
         return S_OK;
     }
@@ -572,7 +571,7 @@ public:
         IMalloc *pMalloc = pSession->GetMallocNoRef();
         IFR(UDTFieldSymbol::Create(pMalloc, pSession, m_ID, m_Node, m_TypeID, m_Type, ppRet));
         (*ppRet)->SetLexicalParent(m_ParentID);
-        (*ppRet)->SetName(CA2W(m_Node->getName().str().c_str(), CP_UTF8));
+        (*ppRet)->SetName(CA2W(m_Node->getName().str().c_str()));
         (*ppRet)->SetDataKind(m_Node->isStaticMember() ? DataIsStaticLocal : DataIsMember);
         return S_OK;
     }
@@ -611,7 +610,7 @@ public:
     std::vector<llvm::DIType *> m_Layout;
     DWORD m_dwCurrentSizeInBytes = 0;
   };
-  using TypeToInfoMap = llvm::DenseMap<llvm::DIType *, std::unique_ptr<TypeInfo> >;
+  using TypeToInfoMap = llvm::DenseMap<llvm::DIType *, TypeInfo>;
 
   // Because of the way the VarToID map is constructed, the
   // vector<LocalVarInfo> may need to grow. The Symbol Constructor for local
@@ -649,12 +648,7 @@ public:
   HRESULT CreateGlobalVariablesForAllCUs();
   HRESULT CreateLocalVariables();
   HRESULT CreateLiveRanges();
-  HRESULT IsDbgDeclareCall(llvm::Module *M, const llvm::Instruction *I,
-                           DWORD *pReg, DWORD *pRegSize,
-                           llvm::DILocalVariable **LV, uint64_t *pStartOffset,
-                           uint64_t *pEndOffset,
-                           dxil_dia::Session::RVA *pLowestUserRVA,
-                           dxil_dia::Session::RVA *pHighestUserRVA);
+  HRESULT IsDbgDeclareCall(llvm::Module *M, const llvm::Instruction *I, DWORD *pReg, DWORD *pRegSize, llvm::DILocalVariable **LV, uint64_t *pStartOffset, uint64_t *pEndOffset);
   HRESULT GetDxilAllocaRegister(llvm::Instruction *I, DWORD *pRegNum, DWORD *pRegSize);
   HRESULT PopulateParentToChildrenIDMap(SymbolManager::ParentToChildrenMap *pParentToChildren);
 
@@ -664,7 +658,7 @@ private:
   template<typename Factory, typename... Args>
   HRESULT AddType(DWORD dwParentID, llvm::DIType *T, DWORD *pNewSymID, Args&&... args) {
       IFR(AddSymbol<Factory>(dwParentID, pNewSymID, std::forward<Args>(args)...));
-      if (!m_TypeToInfo.insert(std::make_pair(T, llvm::make_unique<TypeInfo>(*pNewSymID))).second) {
+      if (!m_TypeToInfo.insert(std::make_pair(T, TypeInfo(*pNewSymID))).second) {
           return E_FAIL;
       }
       return S_OK;
@@ -814,45 +808,7 @@ HRESULT dxil_dia::hlsl_symbols::CompilandDetailsSymbol::GetChildren(std::vector<
 HRESULT dxil_dia::hlsl_symbols::CompilandEnvSymbol::CreateFlags(IMalloc *pMalloc, Session *pSession, Symbol **ppSym) {
   IFR(AllocAndInit(pMalloc, pSession, HlslCompilandEnvFlagsId, SymTagCompilandEnv, (CompilandEnvSymbol**)ppSym));
   (*ppSym)->SetName(L"hlslFlags");
-
-  const char *specialCases[] = { "/T", "-T", "-D", "/D", "-E", "/E", };
-
-  llvm::MDNode *argsNode = pSession->Arguments()->getOperand(0);
-  // Construct a double null terminated string for defines with L"\0" as a delimiter
-  CComBSTR pBSTR;
-  for (llvm::MDNode::op_iterator it = argsNode->op_begin(); it != argsNode->op_end(); ++it) {
-    llvm::StringRef strRef = llvm::dyn_cast<llvm::MDString>(*it)->getString();
-
-    bool skip = false;
-    bool skipTwice = false;
-    for (unsigned i = 0; i < _countof(specialCases); i++) {
-      if (strRef == specialCases[i]) {
-        skipTwice = true;
-        skip = true;
-        break;
-      }
-      else if (strRef.startswith(specialCases[i])) {
-        skip = true;
-        break;
-      }
-    }
-
-    if (skip) {
-      if (skipTwice)
-        ++it;
-      continue;
-    }
-
-    std::string str(strRef.begin(), strRef.size());
-    CA2W cv(str.c_str(), CP_UTF8);
-    pBSTR.Append(cv);
-    pBSTR.Append(L"\0", 1);
-  }
-  pBSTR.Append(L"\0", 1);
-  VARIANT Variant;
-  Variant.bstrVal = pBSTR;
-  Variant.vt = VARENUM::VT_BSTR;
-  (*ppSym)->SetValue(&Variant);
+  (*ppSym)->SetValue(pSession->DxilModuleRef().GetGlobalFlags());
   return S_OK;
 }
 
@@ -879,7 +835,7 @@ HRESULT dxil_dia::hlsl_symbols::CompilandEnvSymbol::CreateDefines(IMalloc *pMall
   for (llvm::MDNode::op_iterator it = definesNode->op_begin(); it != definesNode->op_end(); ++it) {
     llvm::StringRef strRef = llvm::dyn_cast<llvm::MDString>(*it)->getString();
     std::string str(strRef.begin(), strRef.size());
-    CA2W cv(str.c_str(), CP_UTF8);
+    CA2W cv(str.c_str());
     pBSTR.Append(cv);
     pBSTR.Append(L"\0", 1);
   }
@@ -942,7 +898,7 @@ STDMETHODIMP dxil_dia::hlsl_symbols::TypeSymbol::get_name(
     DXASSERT(!this->HasName(), "Setting type name multiple times.");
     std::string Name;
     IFR(m_lazySymbolName(m_pSession, &Name));
-    this->SetName(CA2W(Name.c_str(), CP_UTF8));
+    this->SetName(CA2W(Name.c_str()));
     m_lazySymbolName = nullptr;
   }
   return Symbol::get_name(pRetVal);
@@ -1157,7 +1113,7 @@ HRESULT dxil_dia::hlsl_symbols::SymbolManagerInit::GetTypeInfo(llvm::DIType *T, 
     return E_FAIL;
   }
 
-  *TI = tyInfoIt->second.get();
+  *TI = &tyInfoIt->second;
   return S_OK;
 }
 
@@ -1185,8 +1141,6 @@ HRESULT dxil_dia::hlsl_symbols::SymbolManagerInit::CreateFunctionBlockForLocalSc
     }
   } else if (auto *Block = llvm::dyn_cast<llvm::DILexicalBlock>(LS)) {
     ParentLS = Block->getScope();
-  } else if (auto *BlockFile = llvm::dyn_cast<llvm::DILexicalBlockFile>(LS)) {
-    ParentLS = BlockFile->getScope();
   }
 
   if (ParentLS == nullptr) {
@@ -1240,7 +1194,6 @@ HRESULT dxil_dia::hlsl_symbols::SymbolManagerInit::CreateFunctionBlocksForFuncti
 }
 
 HRESULT dxil_dia::hlsl_symbols::SymbolManagerInit::CreateFunctionsForCU(llvm::DICompileUnit *CU) {
-  bool FoundFunctions = false;
   for (llvm::DISubprogram *SubProgram : CU->getSubprograms()) {
     DWORD dwNewFunID;
     const DWORD dwParentID = SubProgram->isLocalToUnit() ? HlslCompilandId : HlslProgramId;
@@ -1248,23 +1201,10 @@ HRESULT dxil_dia::hlsl_symbols::SymbolManagerInit::CreateFunctionsForCU(llvm::DI
     IFR(CreateType(SubProgram->getType(), &dwSubprogramTypeID));
     IFR(AddSymbol<symbol_factory::Function>(dwParentID, &dwNewFunID, SubProgram, dwSubprogramTypeID));
     m_ScopeToSym.insert(std::make_pair(SubProgram, dwNewFunID));
-  }
 
-  for (llvm::DISubprogram* SubProgram : CU->getSubprograms()) {
     if (llvm::Function *F = SubProgram->getFunction()) {
       IFR(CreateFunctionBlocksForFunction(F));
-      FoundFunctions = true;
     }
-  }
-
-  if (!FoundFunctions) {
-    // This works around an old bug in dxcompiler whose effects are still
-    // sometimes present in PIX users' traces. (The bug was that the subprogram(s)
-    // weren't pointing to their contained function.)
-    llvm::Module *M = &m_Session.ModuleRef();
-    auto &DM = M->GetDxilModule();
-    llvm::Function *EntryPoint = DM.GetEntryFunction();
-    IFR(CreateFunctionBlocksForFunction(EntryPoint));
   }
 
   return S_OK;
@@ -1319,7 +1259,7 @@ HRESULT dxil_dia::hlsl_symbols::SymbolManagerInit::CreateType(llvm::DIType *Type
 
   auto lsIT = m_TypeToInfo.find(Type);
   if (lsIT != m_TypeToInfo.end()) {
-    *pNewTypeID = lsIT->second->GetTypeID();
+    *pNewTypeID = lsIT->second.GetTypeID();
     return S_OK;
   }
 
@@ -1389,7 +1329,7 @@ HRESULT dxil_dia::hlsl_symbols::SymbolManagerInit::CreateSubroutineType(DWORD dw
           if (!name) {
             OS << "???";
           } else {
-            OS << CW2A((BSTR)name, CP_UTF8);
+            OS << CW2A((BSTR)name);
           }
         }
         if (first) {
@@ -1456,7 +1396,7 @@ HRESULT dxil_dia::hlsl_symbols::SymbolManagerInit::CreateCompositeType(DWORD dwP
       if (!name) {
         OS << "???";
       } else {
-        OS << CW2A((BSTR)name, CP_UTF8);
+        OS << CW2A((BSTR)name);
       }
 
       OS << "[";
@@ -1479,23 +1419,7 @@ HRESULT dxil_dia::hlsl_symbols::SymbolManagerInit::CreateCompositeType(DWORD dwP
     };
 
     IFR(AddType<symbol_factory::Type>(dwParentID, CT, pNewTypeID, SymTagArrayType, CT, LazyName));
-    TypeInfo *ctTI;
-    IFR(GetTypeInfo(CT, &ctTI));
-    TypeInfo *baseTI;
-    IFR(GetTypeInfo(BaseType, &baseTI));
-    int64_t embedCount = 1;
-    for (llvm::DINode *N : CT->getElements()) {
-      if (N != nullptr) {
-        if (auto *SubRange = llvm::dyn_cast<llvm::DISubrange>(N)) {
-          embedCount *= SubRange->getCount();
-        } else {
-          return E_FAIL;
-        }
-      }
-    }
-    for (int64_t i = 0; i < embedCount; ++i) {
-      ctTI->Embed(*baseTI);
-    }
+
     return S_OK;
   }
   case llvm::dwarf::DW_TAG_class_type: {
@@ -1653,7 +1577,7 @@ HRESULT dxil_dia::hlsl_symbols::SymbolManagerInit::HandleDerivedType(DWORD dwPar
     if (!name) {
       OS << "???";
     } else {
-      OS << CW2A((BSTR)name, CP_UTF8);
+      OS << CW2A((BSTR)name);
     }
     OS << Qualifier;
     return S_OK;
@@ -1812,10 +1736,10 @@ HRESULT dxil_dia::hlsl_symbols::SymbolManagerInit::CreateLocalVariables() {
   llvm::Function *DbgDeclare = llvm::Intrinsic::getDeclaration(M, llvm::Intrinsic::dbg_declare);
   for (llvm::Value *U : DbgDeclare->users()) {
     auto *CI = llvm::dyn_cast<llvm::CallInst>(U);
-    auto *LS = llvm::dyn_cast_or_null<llvm::DILocalScope>(CI->getDebugLoc()->getInlinedAtScope());
+    auto *LS = llvm::dyn_cast_or_null<llvm::DILocalScope>(CI->getDebugLoc()->getScope());
     auto SymIt = m_ScopeToSym.find(LS);
     if (SymIt == m_ScopeToSym.end()) {
-      return E_FAIL;
+      continue;
     }
 
     auto *LocalNameMetadata = llvm::dyn_cast<llvm::MetadataAsValue>(CI->getArgOperand(1));
@@ -1837,7 +1761,7 @@ HRESULT dxil_dia::hlsl_symbols::SymbolManagerInit::CreateLiveRanges() {
   //     if scope not in end_of_scope:
   //       end_of_scope[scope] = rva(I)
   //     if I is dbg.declare:
-  //       live_range[symbol of I] = SymbolManager.LiveRange[FirstUseRVA, end_of_scope[scope]]
+  //       live_range[symbol of I] = SymbolManager.LiveRange[RVA(I), end_of_scope[scope]]
   llvm::Module *M = &m_Session.ModuleRef();
   m_SymToLR.clear();
   const auto &Instrs = m_Session.InstructionsRef();
@@ -1849,7 +1773,10 @@ HRESULT dxil_dia::hlsl_symbols::SymbolManagerInit::CreateLiveRanges() {
     if (!DL) {
       continue;
     }
-    llvm::MDNode *LocalScope = DL.getScope();
+    llvm::MDNode *LocalScope = DL.getInlinedAtScope();
+    if (LocalScope == nullptr) {
+      LocalScope = DL.getScope();
+    }
     if (LocalScope == nullptr) {
       continue;
     }
@@ -1868,15 +1795,11 @@ HRESULT dxil_dia::hlsl_symbols::SymbolManagerInit::CreateLiveRanges() {
     llvm::DILocalVariable *LV;
     uint64_t StartOffset;
     uint64_t EndOffset;
-    Session::RVA FirstUseRVA;
-    Session::RVA LastUseRVA;
-    HRESULT hr = IsDbgDeclareCall(M, I, &Reg, &RegSize, &LV, &StartOffset,
-                                  &EndOffset, &FirstUseRVA, &LastUseRVA);
+    HRESULT hr;
+    IFR(hr = IsDbgDeclareCall(M, I, &Reg, &RegSize, &LV, &StartOffset, &EndOffset));
     if (hr != S_OK) {
       continue;
     }
-
-    endOfScopeRVA = std::max<Session::RVA>(endOfScopeRVA, LastUseRVA);
 
     auto varIt = m_VarToID.find(LV);
     if (varIt == m_VarToID.end()) {
@@ -1898,19 +1821,16 @@ HRESULT dxil_dia::hlsl_symbols::SymbolManagerInit::CreateLiveRanges() {
       }
       Var->SetDxilRegister(Reg + dwRegIndex);
       m_SymToLR[Var->GetVarID()] = SymbolManager::LiveRange{
-        static_cast<uint32_t>(FirstUseRVA),
-        endOfScopeRVA - static_cast<uint32_t>(FirstUseRVA)
+        static_cast<uint32_t>(RVA),
+        endOfScopeRVA - static_cast<uint32_t>(RVA)
       };
     }
+
   }
   return S_OK;
 }
 
-HRESULT dxil_dia::hlsl_symbols::SymbolManagerInit::IsDbgDeclareCall(
-    llvm::Module *M, const llvm::Instruction *I, DWORD *pReg, DWORD *pRegSize,
-    llvm::DILocalVariable **LV, uint64_t *pStartOffset, uint64_t *pEndOffset,
-    dxil_dia::Session::RVA *pLowestUserRVA,
-    dxil_dia::Session::RVA *pHighestUserRVA) {
+HRESULT dxil_dia::hlsl_symbols::SymbolManagerInit::IsDbgDeclareCall(llvm::Module *M, const llvm::Instruction *I, DWORD *pReg, DWORD *pRegSize, llvm::DILocalVariable **LV, uint64_t *pStartOffset, uint64_t *pEndOffset) {
   auto *CI = llvm::dyn_cast<llvm::CallInst>(I);
   if (CI == nullptr) {
     return S_FALSE;
@@ -1924,12 +1844,7 @@ HRESULT dxil_dia::hlsl_symbols::SymbolManagerInit::IsDbgDeclareCall(
   *LV = nullptr;
   *pReg = *pRegSize = 0;
   *pStartOffset = *pEndOffset = 0;
-  *pLowestUserRVA = 0;
-  *pHighestUserRVA = 0;
 
-  std::vector<dxil_dia::Session::RVA> usesRVAs;
-
-  bool HasRegister = false;
   if (auto *RegMV = llvm::dyn_cast<llvm::MetadataAsValue>(CI->getArgOperand(0))) {
     if (auto *RegVM = llvm::dyn_cast<llvm::ValueAsMetadata>(RegMV->getMetadata())) {
       if (auto *Reg = llvm::dyn_cast<llvm::Instruction>(RegVM->getValue())) {
@@ -1938,30 +1853,13 @@ HRESULT dxil_dia::hlsl_symbols::SymbolManagerInit::IsDbgDeclareCall(
         if (hr != S_OK) {
           return hr;
         }
-        HasRegister = true;
-        llvm::iterator_range<llvm::Value::user_iterator> users = Reg->users();
-        for (llvm::User *user : users) {
-          auto *inst = llvm::dyn_cast<llvm::Instruction>(user);
-          if (inst != nullptr) {
-            auto rva = m_Session.RvaMapRef().find(inst);
-            usesRVAs.push_back(rva->second);
-          }
-        }
       }
     }
-  }
-  if (!HasRegister) {
-    return E_FAIL;
-  }
-
-  if (!usesRVAs.empty()) {
-    *pLowestUserRVA = *std::min_element(usesRVAs.begin(), usesRVAs.end());
-    *pHighestUserRVA = *std::max_element(usesRVAs.begin(), usesRVAs.end());
   }
 
   if (auto *LVMV = llvm::dyn_cast<llvm::MetadataAsValue>(CI->getArgOperand(1))) {
     *LV = llvm::dyn_cast<llvm::DILocalVariable>(LVMV->getMetadata());
-    if (*LV == nullptr) {
+    if (LV == nullptr) {
       return E_FAIL;
     }
   }

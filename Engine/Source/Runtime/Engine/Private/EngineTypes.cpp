@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/EngineTypes.h"
 #include "UObject/UnrealType.h"
@@ -214,7 +214,7 @@ UActorComponent* FComponentReference::GetComponent(AActor* OwningActor) const
 		{
 			if(ComponentProperty != NAME_None)
 			{
-				FObjectPropertyBase* ObjProp = FindFProperty<FObjectPropertyBase>(SearchActor->GetClass(), ComponentProperty);
+				UObjectPropertyBase* ObjProp = FindField<UObjectPropertyBase>(SearchActor->GetClass(), ComponentProperty);
 				if(ObjProp != NULL)
 				{
 					// .. and return the component that is there

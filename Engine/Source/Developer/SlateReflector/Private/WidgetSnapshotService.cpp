@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WidgetSnapshotService.h"
 #include "Misc/App.h"
@@ -53,7 +53,7 @@ void FWidgetSnapshotService::HandleWidgetSnapshotRequestMessage(const FWidgetSna
 	if (MessageEndpoint.IsValid() && Message.TargetInstanceId == FApp::GetInstanceId())
 	{
 		FWidgetSnapshotData SnapshotData;
-		SnapshotData.TakeSnapshot(false);
+		SnapshotData.TakeSnapshot();
 
 		FWidgetSnapshotResponse* WidgetSnapshotResponse = new FWidgetSnapshotResponse;
 		WidgetSnapshotResponse->SnapshotRequestId = Message.SnapshotRequestId;

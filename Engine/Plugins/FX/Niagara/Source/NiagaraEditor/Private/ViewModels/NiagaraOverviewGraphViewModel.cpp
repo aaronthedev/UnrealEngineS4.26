@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ViewModels/NiagaraOverviewGraphViewModel.h"
 #include "Framework/Commands/GenericCommands.h"
@@ -16,9 +16,6 @@
 #include "NiagaraSystem.h"
 #include "Editor.h"
 #include "Framework/Application/SlateApplication.h"
-#include "ViewModels/Stack/NiagaraStackObject.h"
-#include "ViewModels/Stack/NiagaraStackEntry.h"
-#include "NiagaraStackEditorData.h"
 
 #define LOCTEXT_NAMESPACE "NiagaraOverviewGraphViewModel"
 
@@ -41,14 +38,6 @@ FNiagaraOverviewGraphViewModel::~FNiagaraOverviewGraphViewModel()
 			SystemViewModelPinned->GetSelectionViewModel()->OnEntrySelectionChanged().RemoveAll(this);
 		}
 	}
-
-	// Clean up stale entries
-	for (TWeakObjectPtr<UNiagaraStackObject>& TempStackObj : TempEntries)
-	{
-		if (TempStackObj.IsValid())
-			TempStackObj->Finalize();
-	}
-	TempEntries.Empty();
 }
 
 void FNiagaraOverviewGraphViewModel::Initialize(TSharedRef<FNiagaraSystemViewModel> InSystemViewModel)
@@ -145,11 +134,6 @@ void FNiagaraOverviewGraphViewModel::SetupCommands()
 		FGenericCommands::Get().Duplicate,
 		FExecuteAction::CreateRaw(this, &FNiagaraOverviewGraphViewModel::DuplicateNodes),
 		FCanExecuteAction::CreateRaw(this, &FNiagaraOverviewGraphViewModel::CanDuplicateNodes));
-
-	Commands->MapAction(
-		FGenericCommands::Get().Rename,
-		FExecuteAction::CreateRaw(this, &FNiagaraOverviewGraphViewModel::RenameNode),
-		FCanExecuteAction::CreateRaw(this, &FNiagaraOverviewGraphViewModel::CanRenameNode));
 }
 
 void FNiagaraOverviewGraphViewModel::SelectAllNodes()
@@ -295,14 +279,6 @@ void FNiagaraOverviewGraphViewModel::PasteNodes()
 	UEdGraph* Graph = GetGraph();
 	if (Graph != nullptr)
 	{
-		// Check if we need to early out due to trying to paste nodes to an emitter asset edit mode overview graph.
-		TSharedPtr<FNiagaraSystemViewModel> WeakSystemViewModel = SystemViewModel.Pin();
-		ENiagaraSystemViewModelEditMode SystemEditMode = WeakSystemViewModel->GetEditMode();
-		if (SystemEditMode == ENiagaraSystemViewModelEditMode::EmitterAsset)
-		{
-			return;
-		}
-
 		const FScopedTransaction Transaction(FGenericCommands::Get().Paste->GetDescription());;
 		Graph->Modify();
 
@@ -365,49 +341,6 @@ bool FNiagaraOverviewGraphViewModel::CanDuplicateNodes() const
 	return CanCopyNodes();
 }
 
-void FNiagaraOverviewGraphViewModel::RenameNode()
-{
-	UEdGraph* Graph = GetGraph();
-	if (Graph != nullptr)
-	{
-		const TSet<UObject*>& SelectedNodes = NodeSelection->GetSelectedObjects();
-		if (SelectedNodes.Num() > 0)
-		{
-			for (UObject* SelectedNode : SelectedNodes)
-			{
-				UNiagaraOverviewNode* SelectedOverviewNode = Cast<UNiagaraOverviewNode>(SelectedNode);
-				if (SelectedOverviewNode != nullptr)
-				{
-					SelectedOverviewNode->RequestRename();
-					return;
-				}
-			}
-		}
-	}
-}
-
-bool FNiagaraOverviewGraphViewModel::CanRenameNode() const
-{
-	UEdGraph* Graph = GetGraph();
-	if (Graph != nullptr)
-	{
-		const TSet<UObject*>& SelectedNodes = NodeSelection->GetSelectedObjects();
-		if (SelectedNodes.Num() == 1)
-		{
-			for (UObject* SelectedNode : SelectedNodes)
-			{
-				UNiagaraOverviewNode* SelectedOverviewNode = Cast<UNiagaraOverviewNode>(SelectedNode);
-				if (SelectedOverviewNode != nullptr && SelectedOverviewNode->GetCanRenameNode())
-				{
-					return true;
-				}
-			}
-		}
-	}
-
-	return false;
-}
-
 FText FNiagaraOverviewGraphViewModel::GetDisplayNameInternal() const
 {
 	ensureMsgf(SystemViewModel.IsValid(), TEXT("SystemViewModel was not initialized before InitDisplayName!"));
@@ -437,17 +370,8 @@ void FNiagaraOverviewGraphViewModel::GraphSelectionChanged()
 	if (bUpdatingGraphSelectionFromSystem == false)
 	{
 		TGuardValue<bool> UpdateGuard(bUpdatingSystemSelectionFromGraph, true);
-		bool bClearCurrentSelection = FSlateApplication::Get().GetModifierKeys().IsControlDown() == false;
-
-		TArray<UNiagaraStackEntry*> EntriesToSelect;
-		TArray<UNiagaraStackEntry*> EntriesToDeselect;
 
 		TArray<FGuid> SelectedGuids;
-		TArray<TWeakObjectPtr<UNiagaraStackObject>> NewTempEntries;
-		if (!bClearCurrentSelection)
-			NewTempEntries = TempEntries;
-		TArray<TWeakObjectPtr<UNiagaraStackObject>> ClearTempEntries = TempEntries;
-
 		for (UObject* SelectedObject : NodeSelection->GetSelectedObjects())
 		{
 			UNiagaraOverviewNode* SelectedOverviewNode = Cast<UNiagaraOverviewNode>(SelectedObject);
@@ -455,46 +379,10 @@ void FNiagaraOverviewGraphViewModel::GraphSelectionChanged()
 			{
 				SelectedGuids.AddUnique(SelectedOverviewNode->GetEmitterHandleGuid());
 			}
-			else
-			{
-				// Add other selected nodes as generic object entries
-				// See if we already have this object selected, if so, reuse
-				UNiagaraStackObject* StackObject = nullptr;
-				for (TWeakObjectPtr<UNiagaraStackObject>& TempStackObj : TempEntries)
-				{
-					if (TempStackObj.IsValid() && TempStackObj->GetObject() == SelectedObject)
-					{
-						StackObject = TempStackObj.Get();
-						break;
-					}
-				}
-
-				// If not already in existence, create a temp one
-				if (!StackObject)
-				{
-					StackObject = NewObject<UNiagaraStackObject>(GetTransientPackage());
-					UNiagaraStackEditorData* EditorData = NewObject< UNiagaraStackEditorData >(GetTransientPackage());
-					UNiagaraStackEntry::FRequiredEntryData RequiredEntryData(GetSystemViewModel(), nullptr, TEXT("Custom"), NAME_None, *EditorData);
-					StackObject->Initialize(RequiredEntryData, SelectedObject, TEXT(""));
-					NewTempEntries.AddUnique(StackObject);
-				}
-
-				if (StackObject)
-				{
-					EntriesToSelect.Add(StackObject);
-					ClearTempEntries.Remove(StackObject);
-				}
-			}
 		}
 
-		// Keep track of previously created temp entries.
-		TempEntries = NewTempEntries;
-		for (TWeakObjectPtr<UNiagaraStackObject>& TempStackObj : ClearTempEntries)
-		{
-			if (TempStackObj.IsValid())
-				EntriesToDeselect.Add(TempStackObj.Get());
-		}
-
+		TArray<UNiagaraStackEntry*> EntriesToSelect;
+		TArray<UNiagaraStackEntry*> EntriesToDeselect;
 		UNiagaraStackEntry* SystemRootEntry = GetSystemViewModel()->GetSystemStackViewModel()->GetRootEntry();
 		if (SelectedGuids.Contains(FGuid()))
 		{
@@ -518,14 +406,8 @@ void FNiagaraOverviewGraphViewModel::GraphSelectionChanged()
 			}
 		}
 
+		bool bClearCurrentSelection = FSlateApplication::Get().GetModifierKeys().IsControlDown() == false;
 		GetSystemViewModel()->GetSelectionViewModel()->UpdateSelectedEntries(EntriesToSelect, EntriesToDeselect, bClearCurrentSelection);
-
-		// Clean up stale entries
-		for (TWeakObjectPtr<UNiagaraStackObject>& TempStackObj : ClearTempEntries)
-		{
-			if (TempStackObj.IsValid())
-				TempStackObj->Finalize();
-		}
 	}
 }
 

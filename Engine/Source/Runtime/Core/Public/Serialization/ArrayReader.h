@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -32,17 +32,17 @@ public:
 
 	void Serialize(void* Data, int64 Count)
 	{
-		if (Count && !IsError())
+		if (Count && !ArIsError)
 		{
 			// Only serialize if we have the requested amount of data
 			if (Offset + Count <= Num())
 			{
-				FMemory::Memcpy(Data, &((*this)[(int32)Offset]), Count);
+				FMemory::Memcpy(Data, &((*this)[Offset]), Count);
 				Offset += Count;
 			}
 			else
 			{
-				SetError();
+				ArIsError = true;
 			}
 		}
 	}

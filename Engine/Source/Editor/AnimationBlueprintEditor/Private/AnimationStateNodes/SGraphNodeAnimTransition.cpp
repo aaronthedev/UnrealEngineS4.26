@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "AnimationStateNodes/SGraphNodeAnimTransition.h"
@@ -282,7 +282,7 @@ FLinearColor SGraphNodeAnimTransition::StaticGetTransitionColor(UAnimStateTransi
 			{
 				const int32 TransIndex = *pTransIndex;
 
-				if (Class->GetAnimNodeProperties().Num())
+				if (Class->AnimNodeProperties.Num())
 				{
 					UAnimationStateMachineGraph* TypedGraph = CastChecked<UAnimationStateMachineGraph>(StateMachineGraph);
 

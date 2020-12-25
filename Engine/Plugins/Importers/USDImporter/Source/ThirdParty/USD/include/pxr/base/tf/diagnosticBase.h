@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_DIAGNOSTIC_BASE_H
-#define PXR_BASE_TF_DIAGNOSTIC_BASE_H
+#ifndef TF_DIAGNOSTIC_BASE_H
+#define TF_DIAGNOSTIC_BASE_H
 
 /// \file tf/diagnosticBase.h
 
@@ -211,4 +211,4 @@ protected:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_DIAGNOSTIC_BASE_H
+#endif // TF_DIAGNOSTIC_BASE_H

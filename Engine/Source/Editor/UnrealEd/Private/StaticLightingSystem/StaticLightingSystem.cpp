@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	StaticLightingSystem.cpp: Bsp light mesh illumination builder code
@@ -81,7 +81,6 @@ DEFINE_LOG_CATEGORY(LogStaticLightingSystem);
 #include "Widgets/Notifications/SNotificationList.h"
 #include "Misc/UObjectToken.h"
 #include "Subsystems/AssetEditorSubsystem.h"
-#include "Rendering/StaticLightingSystemInterface.h"
 
 #define LOCTEXT_NAMESPACE "StaticLightingSystem"
 
@@ -523,32 +522,6 @@ bool FStaticLightingSystem::BeginLightmassProcess()
 			Component->VisibilityId = INDEX_NONE;
 		}
 
-		{
-			TMap<FGuid, ULevel*> LevelGuids;
-
-			for (int32 LevelIndex = 0; LevelIndex < World->GetNumLevels(); LevelIndex++)
-			{
-				ULevel* Level = World->GetLevel(LevelIndex);
-
-				if (ShouldOperateOnLevel(Level) && Options.ShouldBuildLightingForLevel(Level))
-				{
-					if (LevelGuids.Contains(Level->LevelBuildDataId))
-					{
-						FMessageLog("LightingResults").Warning()
-							->AddToken(FUObjectToken::Create(LevelGuids[Level->LevelBuildDataId]->GetOuter()))
-							->AddToken(FTextToken::Create(LOCTEXT("LightmassError_DuplicatedLevelGuids1", "has the same level built data GUID as")))
-							->AddToken(FUObjectToken::Create(Level->GetOuter()))
-							->AddToken(FTextToken::Create(LOCTEXT("LightmassError_DuplicatedLevelGuids2", ". A new GUID is assigned to the later one. All previously built lighting is invalidated and the level needs to be resaved.")));
-
-						Level->LevelBuildDataId = FGuid::NewGuid();
-						Level->MarkPackageDirty();
-					}
-
-					LevelGuids.Add(Level->LevelBuildDataId, Level);
-				}
-			}
-		}
-
 		FString SkippedLevels;
 		for ( int32 LevelIndex=0; LevelIndex < World->GetNumLevels(); LevelIndex++ )
 		{
@@ -776,10 +749,7 @@ bool FStaticLightingSystem::BeginLightmassProcess()
 	else
 	{
 		InvalidateStaticLighting();
-
-		// Calling ApplyNewLightingData() results in creating an empty MapBuildData which is causing cooking issues
-		// Disabled for now
-		//ApplyNewLightingData(true);
+		ApplyNewLightingData(true);
 	}
 	
 	if (!bForceNoPrecomputedLighting)
@@ -805,6 +775,9 @@ void FStaticLightingSystem::InvalidateStaticLighting()
 		{
 			continue;
 		}
+
+		// Clear all the atmosphere guids from the MapBuildData when starting a new build.
+		Level->GetOrCreateMapBuildData()->ClearSkyAtmosphereBuildData();
 
 		const bool bBuildLightingForLevel = Options.ShouldBuildLightingForLevel( Level );
 		
@@ -1241,7 +1214,7 @@ void FStaticLightingSystem::EncodeTextures(bool bLightingSuccessful)
 		FLightmassStatistics::FScopedGather EncodeStatScope2(LightmassStatistics.EncodingLightmapsTime);
 		// Flush pending shadow-map and light-map encoding.
 		SlowTask.EnterProgressFrame(1, LOCTEXT("EncodingImportedStaticLightMapsStatusMessage", "Encoding imported static light maps."));
-		FLightMap2D::EncodeTextures(World, LightingScenario, bLightingSuccessful, GMultithreadedLightmapEncode ? true : false);
+		FLightMap2D::EncodeTextures(World, bLightingSuccessful, GMultithreadedLightmapEncode ? true : false);
 	}
 
 	{
@@ -2074,7 +2047,6 @@ void FStaticLightingSystem::GatherScene()
 		}
 	}
 
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	bool LegacyAtmosphericFogRegistered = false;
 	for (TObjectIterator<UAtmosphericFogComponent> It; It; ++It)
 	{
@@ -2086,7 +2058,6 @@ void FStaticLightingSystem::GatherScene()
 			break;	// We only register the first we find
 		}
 	}
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	for (TObjectIterator<USkyAtmosphereComponent> It; It; ++It)
 	{
@@ -2517,8 +2488,6 @@ void UEditorEngine::BuildLighting(const FLightingBuildOptions& Options)
 void UEditorEngine::UpdateBuildLighting()
 {
 	FStaticLightingManager::Get()->UpdateBuildLighting();
-
-	FStaticLightingSystemInterface::EditorTick();
 }
 
 bool UEditorEngine::IsLightingBuildCurrentlyRunning() const

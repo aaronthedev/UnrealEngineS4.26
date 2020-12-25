@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -13,6 +13,7 @@ public class Paper2DEditor : ModuleRules
 				"Core",
 				"CoreUObject",
 				"ApplicationCore",
+				"Json",
 				"Slate",
 				"SlateCore",
 				"Engine",
@@ -31,17 +32,12 @@ public class Paper2DEditor : ModuleRules
 				"Projects",
 				"NavigationSystem",
 				"ToolMenus",
-                "IntroTutorials"
-            });
-
-		PublicDependencyModuleNames.AddRange(
-			new string[] {
-				"Json",
 			});
 
 		PrivateIncludePathModuleNames.AddRange(
 			new string[] {
 				"Settings",
+				"IntroTutorials",
 				"AssetTools",
 				"LevelEditor"
 			});

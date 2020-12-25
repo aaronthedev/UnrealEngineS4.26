@@ -1,9 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "KismetNodes/SGraphNodeK2CreateDelegate.h"
-#include "SSearchableComboBox.h"
+#include "Widgets/Input/SComboButton.h"
+#include "Widgets/Views/STableViewBase.h"
+#include "Widgets/Views/STableRow.h"
+#include "Widgets/Views/SListView.h"
+#include "Widgets/SBoxPanel.h"
 #include "EdGraphSchema_K2.h"
 #include "K2Node_CreateDelegate.h"
+
 #include "Editor/UnrealEd/Public/Kismet2/BlueprintEditorUtils.h"
 #include "Editor/UnrealEd/Public/Kismet2/KismetEditorUtilities.h"
 #include "Editor/UnrealEd/Public/ScopedTransaction.h"
@@ -34,9 +39,9 @@ FText SGraphNodeK2CreateDelegate::FunctionDescription(const UFunction* Function,
 	// Describe input parameters.
 	{
 		bool bFirst = true;
-		for (TFieldIterator<FProperty> PropIt(Function); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
+		for (TFieldIterator<UProperty> PropIt(Function); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
 		{
-			FProperty* const Param = *PropIt;
+			UProperty* const Param = *PropIt;
 			const bool bIsFunctionInput = Param && (!Param->HasAnyPropertyFlags(CPF_OutParm) || Param->HasAnyPropertyFlags(CPF_ReferenceParm));
 			if (bIsFunctionInput)
 			{
@@ -61,15 +66,15 @@ FText SGraphNodeK2CreateDelegate::FunctionDescription(const UFunction* Function,
 	{
 		TArray<FString> Outputs;
 
-		FProperty* const FunctionReturnProperty = Function->GetReturnProperty();
+		UProperty* const FunctionReturnProperty = Function->GetReturnProperty();
 		if (FunctionReturnProperty)
 		{
 			Outputs.Add(UEdGraphSchema_K2::TypeToText(FunctionReturnProperty).ToString());
 		}
 
-		for (TFieldIterator<FProperty> PropIt(Function); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
+		for (TFieldIterator<UProperty> PropIt(Function); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
 		{
-			FProperty* const Param = *PropIt;
+			UProperty* const Param = *PropIt;
 			const bool bIsFunctionOutput = Param && Param->HasAnyPropertyFlags(CPF_OutParm);
 			if (bIsFunctionOutput)
 			{
@@ -129,7 +134,7 @@ FText SGraphNodeK2CreateDelegate::GetCurrentFunctionDescription() const
 		return FText::GetEmpty();
 	}
 
-	if (const UFunction* Func = FindUField<UFunction>(ScopeClass, Node->GetFunctionName()))
+	if (const UFunction* Func = FindField<UFunction>(ScopeClass, Node->GetFunctionName()))
 	{
 		return FunctionDescription(Func);
 	}
@@ -142,7 +147,16 @@ FText SGraphNodeK2CreateDelegate::GetCurrentFunctionDescription() const
 	return NSLOCTEXT("GraphNodeK2Create", "SelectFunctionLabel", "Select Function...");
 }
 
-void SGraphNodeK2CreateDelegate::OnFunctionSelected(TSharedPtr<FString> FunctionItemData, ESelectInfo::Type SelectInfo)
+TSharedRef<ITableRow> SGraphNodeK2CreateDelegate::HandleGenerateRowFunction(TSharedPtr<FFunctionItemData> FunctionItemData, const TSharedRef<STableViewBase>& OwnerTable)
+{
+	check(FunctionItemData.IsValid());
+	return SNew(STableRow< TSharedPtr<FFunctionItemData> >, OwnerTable).Content()
+		[
+			SNew(STextBlock).Text(FunctionItemData->Description)
+		];
+}
+
+void SGraphNodeK2CreateDelegate::OnFunctionSelected(TSharedPtr<FFunctionItemData> FunctionItemData, ESelectInfo::Type SelectInfo)
 {
 	const FScopedTransaction Transaction(NSLOCTEXT("GraphNodeK2Create", "CreateMatchingSigniture", "Create matching signiture"));
 
@@ -180,13 +194,7 @@ void SGraphNodeK2CreateDelegate::OnFunctionSelected(TSharedPtr<FString> Function
 				FName NewEventName = FBlueprintEditorUtils::FindUniqueCustomEventName(NodeBP);
 
 				UBlueprintEventNodeSpawner* Spawner = UBlueprintEventNodeSpawner::Create(UK2Node_CustomEvent::StaticClass(), NewEventName);
-				
-				// Get a good spawn location for the new event
-				UEdGraph* NodeGraph = Node->GetGraph();
-				check(NodeGraph);
-				FVector2D SpawnPos = NodeGraph->GetGoodPlaceForNewNode();
-
-				UEdGraphNode* NewNode = Spawner->Invoke(NodeGraph, IBlueprintNodeBinder::FBindingSet(), SpawnPos);
+				UEdGraphNode* NewNode = Spawner->Invoke(Node->GetGraph(), IBlueprintNodeBinder::FBindingSet(), FVector2D(Node->NodePosX, Node->NodePosY + 200));
 
 				if (UK2Node_CustomEvent* NewEventNode = Cast<UK2Node_CustomEvent>(NewNode))
 				{
@@ -202,13 +210,12 @@ void SGraphNodeK2CreateDelegate::OnFunctionSelected(TSharedPtr<FString> Function
 			}
 			else
 			{
-				FName FuncName( **FunctionItemData.Get());
-				Node->SetFunction(FuncName);
+				Node->SetFunction(FunctionItemData->Name);
 			}
 			
 			Node->HandleAnyChange(true);
 
-			TSharedPtr<SSearchableComboBox> SelectFunctionWidgetPtr = FunctionOptionComboBox.Pin();
+			auto SelectFunctionWidgetPtr = SelectFunctionWidget.Pin();
 			if (SelectFunctionWidgetPtr.IsValid())
 			{
 				SelectFunctionWidgetPtr->SetIsOpen(false);
@@ -217,11 +224,12 @@ void SGraphNodeK2CreateDelegate::OnFunctionSelected(TSharedPtr<FString> Function
 	}
 }
 
-TSharedPtr<FString> SGraphNodeK2CreateDelegate::AddDefaultFunctionDataOption(const FText& DisplayName)
+TSharedPtr<SGraphNodeK2CreateDelegate::FFunctionItemData> SGraphNodeK2CreateDelegate::AddDefaultFunctionDataOption(const FText& DisplayName)
 {
-	TSharedPtr<FString> Res = MakeShareable(new FString(DisplayName.ToString()));
-	FunctionOptionList.Add(Res);
-	return Res;
+	TSharedPtr<FFunctionItemData> NewEntry = MakeShareable(new FFunctionItemData());
+	NewEntry->Description = DisplayName;
+	FunctionDataItems.Add(NewEntry);
+	return NewEntry;
 }
 
 void SGraphNodeK2CreateDelegate::CreateBelowPinControls(TSharedPtr<SVerticalBox> MainBox)
@@ -257,7 +265,7 @@ void SGraphNodeK2CreateDelegate::CreateBelowPinControls(TSharedPtr<SVerticalBox>
 					.ToolTipText(FunctionSignatureToolTipText)
 				];
 
-			FunctionOptionList.Empty();
+			FunctionDataItems.Empty();
 
 			// add an empty row, so the user can clear the selection if they want
 			AddDefaultFunctionDataOption(NSLOCTEXT("GraphNodeK2Create", "EmptyFunctionOption", "[None]"));
@@ -271,50 +279,40 @@ void SGraphNodeK2CreateDelegate::CreateBelowPinControls(TSharedPtr<SVerticalBox>
 				CreateMatchingEventData = AddDefaultFunctionDataOption(NSLOCTEXT("GraphNodeK2Create", "CreateMatchingEventOption", "[Create a matching event]"));
 			}
 
-			struct FFunctionItemData
-			{
-				FName Name;
-				FText Description;
-			};
-
-			TArray<FFunctionItemData> ClassFunctions;
-
 			for (TFieldIterator<UFunction> It(ScopeClass); It; ++It)
 			{
 				UFunction* Func = *It;
 				if (Func && FunctionSignature->IsSignatureCompatibleWith(Func) &&
 					UEdGraphSchema_K2::FunctionCanBeUsedInDelegate(Func))
 				{
-					FFunctionItemData ItemData;
-					ItemData.Name = Func->GetFName();
-					ItemData.Description = FunctionDescription(Func);
-					ClassFunctions.Emplace(MoveTemp(ItemData));
+					TSharedPtr<FFunctionItemData> ItemData = MakeShareable(new FFunctionItemData());
+					ItemData->Name = Func->GetFName();
+					ItemData->Description = FunctionDescription(Func);
+					FunctionDataItems.Add(ItemData);
 				}
 			}
 
-			ClassFunctions.Sort([](const FFunctionItemData& A, const FFunctionItemData& B) {
-				return A.Description.CompareTo(B.Description) < 0;
-			});
-
-			for (const FFunctionItemData& ItemData : ClassFunctions)
-			{
-				// Add this to the searchable text box as an FString so users can type and find it
-				FunctionOptionList.Add(MakeShareable(new FString(ItemData.Name.ToString())));
-			}
-
-			TSharedRef<SSearchableComboBox> SelectFunctionWidgetRef =
-				SNew(SSearchableComboBox)
-				.OptionsSource(&FunctionOptionList)
-				.OnGenerateWidget(this, &SGraphNodeK2CreateDelegate::MakeFunctionOptionComboWidget)
-				.OnSelectionChanged(this, &SGraphNodeK2CreateDelegate::OnFunctionSelected)
-				.ContentPadding(2)
-				.MaxListHeight(200.0f)
-				.Content()
+			TSharedRef<SComboButton> SelectFunctionWidgetRef = SNew(SComboButton)
+				.Method(EPopupMethod::CreateNewWindow)
+				.ButtonContent()
 				[
 					SNew(STextBlock)
-					.Text(GetCurrentFunctionDescription())
+					.Text(this, &SGraphNodeK2CreateDelegate::GetCurrentFunctionDescription)
+				]
+			.MenuContent()
+				[
+					SNew(SVerticalBox)
+ 					 + SVerticalBox::Slot()
+ 					 .AutoHeight()
+ 					 .MaxHeight(500.f)
+ 					 [
+ 						SNew(SListView<TSharedPtr<FFunctionItemData> >)
+ 						.ListItemsSource(&FunctionDataItems)
+ 						.OnGenerateRow(this, &SGraphNodeK2CreateDelegate::HandleGenerateRowFunction)
+ 						.OnSelectionChanged(this, &SGraphNodeK2CreateDelegate::OnFunctionSelected)
+ 					 ]
 				];
-			
+
 			MainBox->AddSlot()
 				.AutoHeight()
 				.VAlign(VAlign_Fill)
@@ -323,19 +321,14 @@ void SGraphNodeK2CreateDelegate::CreateBelowPinControls(TSharedPtr<SVerticalBox>
 					SelectFunctionWidgetRef
 				];
 
-			FunctionOptionComboBox = SelectFunctionWidgetRef;
+			SelectFunctionWidget = SelectFunctionWidgetRef;
 		}
 	}
 }
 
-TSharedRef<SWidget> SGraphNodeK2CreateDelegate::MakeFunctionOptionComboWidget(TSharedPtr<FString> InItem)
-{
-	return SNew(STextBlock).Text(FText::FromString(*InItem));
-}
-
 SGraphNodeK2CreateDelegate::~SGraphNodeK2CreateDelegate()
 {
-	TSharedPtr<SSearchableComboBox> SelectFunctionWidgetPtr = FunctionOptionComboBox.Pin();
+	auto SelectFunctionWidgetPtr = SelectFunctionWidget.Pin();
 	if (SelectFunctionWidgetPtr.IsValid())
 	{
 		SelectFunctionWidgetPtr->SetIsOpen(false);

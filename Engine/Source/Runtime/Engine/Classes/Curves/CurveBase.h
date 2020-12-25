@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -79,7 +79,6 @@ public:
 	virtual void GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const override;
 	virtual void PostInitProperties() override;
 	virtual void PostLoad() override;
-	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
 
 	UPROPERTY(VisibleAnywhere, Instanced, Category=ImportSettings)
 	class UAssetImportData* AssetImportData;
@@ -90,8 +89,5 @@ public:
 	UPROPERTY()
 	FString ImportPath_DEPRECATED;
 
-	// Delegate called whenever the curve data is updated
-	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnUpdateCurve, UCurveBase* /*Curve*/, EPropertyChangeType::Type /*ChangeType*/);
-	FOnUpdateCurve OnUpdateCurve;
 #endif
 };

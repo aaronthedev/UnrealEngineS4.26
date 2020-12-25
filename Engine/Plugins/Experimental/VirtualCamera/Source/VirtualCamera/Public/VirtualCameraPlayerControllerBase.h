@@ -1,12 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "GameFramework/PlayerController.h"
 
 #include "CineCameraActor.h"
+#include "ILiveLinkClient.h"
 #include "InputCore.h"
-#include "IVirtualCameraController.h"
 #include "LevelSequencePlaybackController.h"
 #include "Math/UnitConversion.h"
 #include "Misc/FrameNumber.h"
@@ -16,7 +16,6 @@
 #include "VirtualCameraPlayerControllerBase.generated.h"
 
 class AVPRootActor;
-class ILiveLinkClient;
 
 UENUM(BlueprintType)
 enum class ETrackerInputSource : uint8
@@ -51,6 +50,30 @@ enum class ETouchInputState : uint8
 
 	/* Touch and hold for attach targeting */
 	TouchAndHold,
+};
+
+USTRUCT(BlueprintType)
+struct FTrackingOffset
+{
+public:
+	GENERATED_BODY()
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Settings")
+	FVector Translation;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera Settings")
+	FRotator Rotation;
+	
+	FTransform AsTransform() const
+	{
+		return FTransform(Rotation, Translation);
+	}
+	
+	FTrackingOffset()
+		: Translation(EForceInit::ForceInitToZero), Rotation(EForceInit::ForceInitToZero)
+	{
+		
+	};
 };
 
 UCLASS(Abstract)
@@ -469,8 +492,8 @@ public:
 	FFrameRate GetCurrentSequenceFrameRate();
 
 	/**
-	 * Returns previously set unit of distance.
-	 * @return DesiredUnits - The unit that is used for distance measures like focus distance
+	 * Set the matte aspect ratio to a new value.
+	 * @return DesiredUnits - The new unit to use for distance measures like focus distance
 	 */
 	UFUNCTION(BlueprintPure, Category = "Virtual Camera|Settings")
 	EUnit GetDesiredDistanceUnits();
@@ -754,7 +777,7 @@ public:
 	void SetCurrentFocusDistance(const float NewFocusDistance);
 
 	/**
-	 * Sets unit of distance.
+	 * Set the matte aspect ratio to a new value.
 	 * @param DesiredUnits - The new unit to use for distance measures like focus distance
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Virtual Camera|Settings")

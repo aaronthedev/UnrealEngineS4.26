@@ -2,7 +2,6 @@
 
 #include "stdafx.h"
 #include "MixedRealityInterop.h"
-#include <winrt/Windows.Media.Devices.h>
 
 #include <wrl.h>
 #include <mmdeviceapi.h>
@@ -10,7 +9,8 @@
 #include <mutex>
 
 using namespace Microsoft::WRL;
-using namespace winrt::Windows::Media::Devices;
+using namespace Windows::System::Threading;
+using namespace Windows::Media::Devices;
 
 namespace WindowsMixedReality
 {
@@ -30,7 +30,6 @@ namespace WindowsMixedReality
 			m_SpatialAudioStream(nullptr),
 			m_RenderState(RenderState::Inactive),
 			m_bufferCompletionEvent(nullptr),
-			m_MaxDynamicObjects(0),
 			m_SampleRate(0),
 			m_NumSources(0)
 		{
@@ -53,7 +52,7 @@ namespace WindowsMixedReality
 
 				// This call must be made on the main UI thread.  Async operation will call back to 
 				// IActivateAudioInterfaceCompletionHandler::ActivateCompleted, which must be an agile interface implementation
-				hr = ActivateAudioInterfaceAsync(m_DeviceIdString.c_str(), __uuidof(ISpatialAudioClient), nullptr, this, &AsyncOperation);
+				hr = ActivateAudioInterfaceAsync(m_DeviceIdString->Data(), __uuidof(ISpatialAudioClient), nullptr, this, &AsyncOperation);
 				if (FAILED(hr))
 				{
 					m_RenderState = RenderState::Inactive;
@@ -81,15 +80,6 @@ namespace WindowsMixedReality
 				// Get the pointer for the Audio Client
 				punkAudioInterface.Get()->QueryInterface(IID_PPV_ARGS(&m_SpatialAudioClient));
 				if (nullptr == m_SpatialAudioClient)
-				{
-					hr = E_FAIL;
-					goto exit;
-				}
-
-				// Store the max dynamic object count
-				//Note: we do not actually use this value other than to put a warning in the log.
-				hr = m_SpatialAudioClient->GetMaxDynamicObjectCount(&m_MaxDynamicObjects);
-				if (FAILED(hr))
 				{
 					hr = E_FAIL;
 					goto exit;
@@ -250,7 +240,7 @@ namespace WindowsMixedReality
 		ComPtr<ISpatialAudioObjectRenderStream> m_SpatialAudioStream;
 		HANDLE m_bufferCompletionEvent;
 
-		std::wstring m_DeviceIdString;
+		Platform::String^ m_DeviceIdString;
 		RenderState	m_RenderState;
 		UINT32 m_MaxDynamicObjects;
 		UINT32 m_SampleRate;
@@ -261,7 +251,7 @@ namespace WindowsMixedReality
 	std::map<int, ComPtr<SpatialAudioClientRendererWinRT>> sacRendererMap;
 	int sacRendererIndex = 0;
 
-	static ComPtr<SpatialAudioClientRendererWinRT> GetSac(int32_t Id)
+	static ComPtr<SpatialAudioClientRendererWinRT> GetSac(int32 Id)
 	{
 		std::lock_guard<std::mutex> lock(sacRendererLock);
 		return sacRendererMap[Id];
@@ -299,15 +289,6 @@ namespace WindowsMixedReality
 		return false;
 	}
 
-	UINT32 SpatialAudioClient::GetMaxDynamicObjects() const
-	{
-		if (ComPtr<SpatialAudioClientRendererWinRT> sac = GetSac(sacId))
-		{
-			return sac->GetMaxDynamicObjects();
-		}
-		return 0;
-	}
-	
 	ISpatialAudioObject* SpatialAudioClient::ActivatDynamicSpatialAudioObject()
 	{
 		if (ComPtr<SpatialAudioClientRendererWinRT> sac = GetSac(sacId))

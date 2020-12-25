@@ -11,11 +11,7 @@
 
 #include "dxc/Support/WinIncludes.h"
 
-#ifdef _WIN32
 #define DXC_API_IMPORT __declspec(dllexport)
-#else
-#define DXC_API_IMPORT __attribute__ ((visibility ("default")))
-#endif
 
 #include "dxc/dxcisense.h"
 #include "dxc/dxctools.h"
@@ -45,18 +41,11 @@ DEFINE_CROSS_PLATFORM_UUIDOF(IDxcRewriter)
 DEFINE_CROSS_PLATFORM_UUIDOF(IDxcRewriter2)
 DEFINE_CROSS_PLATFORM_UUIDOF(IDxcIntelliSense)
 DEFINE_CROSS_PLATFORM_UUIDOF(IDxcLinker)
-DEFINE_CROSS_PLATFORM_UUIDOF(IDxcBlobUtf16)
-DEFINE_CROSS_PLATFORM_UUIDOF(IDxcBlobUtf8)
-DEFINE_CROSS_PLATFORM_UUIDOF(IDxcCompilerArgs)
-DEFINE_CROSS_PLATFORM_UUIDOF(IDxcUtils)
-DEFINE_CROSS_PLATFORM_UUIDOF(IDxcResult)
-DEFINE_CROSS_PLATFORM_UUIDOF(IDxcCompiler3)
 
 HRESULT CreateDxcCompiler(_In_ REFIID riid, _Out_ LPVOID *ppv);
 HRESULT CreateDxcDiaDataSource(_In_ REFIID riid, _Out_ LPVOID *ppv);
 HRESULT CreateDxcIntelliSense(_In_ REFIID riid, _Out_ LPVOID *ppv);
-HRESULT CreateDxcCompilerArgs(_In_ REFIID riid, _Out_ LPVOID *ppv);
-HRESULT CreateDxcUtils(_In_ REFIID riid, _Out_ LPVOID *ppv);
+HRESULT CreateDxcLibrary(_In_ REFIID riid, _Out_ LPVOID *ppv);
 HRESULT CreateDxcRewriter(_In_ REFIID riid, _Out_ LPVOID *ppv);
 HRESULT CreateDxcValidator(_In_ REFIID riid, _Out_ LPVOID *ppv);
 HRESULT CreateDxcAssembler(_In_ REFIID riid, _Out_ LPVOID *ppv);
@@ -89,11 +78,8 @@ static HRESULT ThreadMallocDxcCreateInstance(
   if (IsEqualCLSID(rclsid, CLSID_DxcCompiler)) {
     hr = CreateDxcCompiler(riid, ppv);
   }
-  else if (IsEqualCLSID(rclsid, CLSID_DxcCompilerArgs)) {
-    hr = CreateDxcCompilerArgs(riid, ppv);
-  }
-  else if (IsEqualCLSID(rclsid, CLSID_DxcUtils)) {
-    hr = CreateDxcUtils(riid, ppv);
+  else if (IsEqualCLSID(rclsid, CLSID_DxcLibrary)) {
+    hr = CreateDxcLibrary(riid, ppv);
   }
   else if (IsEqualCLSID(rclsid, CLSID_DxcValidator)) {
     if (DxilLibIsEnabled()) {

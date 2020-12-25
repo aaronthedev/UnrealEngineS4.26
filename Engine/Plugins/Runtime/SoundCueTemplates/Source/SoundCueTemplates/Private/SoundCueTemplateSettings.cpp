@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "SoundCueTemplateSettings.h"
 
 #include "Sound/AudioSettings.h"
@@ -49,7 +49,8 @@ namespace
 
 void FSoundCueTemplateQualitySettingsNotifier::PostQualitySettingsUpdated() const
 {
-	const FText Text = LOCTEXT("NewSoundCueTemplateQualityLevel", "Main Audio Settings Quality Settings level has been added. SoundCueTemplate Quality Settings may need updates.");
+	const FText Text = LOCTEXT("NewSoundCueTemplateQualityLevel",
+		"Main Audio Settings Quality Settings level has been added. SoundCueTemplate Quality Settings may need updates.");
 	PostNotification(Text);
 }
 

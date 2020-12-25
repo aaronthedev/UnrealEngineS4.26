@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "K2Node_DynamicCast.h"
@@ -303,7 +303,7 @@ FText UK2Node_DynamicCast::GetMenuCategory() const
 FBlueprintNodeSignature UK2Node_DynamicCast::GetSignature() const
 {
 	FBlueprintNodeSignature NodeSignature = Super::GetSignature();
-	NodeSignature.AddSubObject(TargetType.Get());
+	NodeSignature.AddSubObject(TargetType);
 
 	return NodeSignature;
 }

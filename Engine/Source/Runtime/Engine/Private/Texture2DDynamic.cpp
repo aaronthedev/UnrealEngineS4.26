@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Texture2DDynamic.cpp: Implementation of UTexture2DDynamic.
@@ -44,9 +44,9 @@ void FTexture2DDynamicResource::InitRHI()
 		SamplerAddressMode,
 		SamplerAddressMode
 	);
-	SamplerStateRHI = GetOrCreateSamplerState( SamplerStateInitializer );
+	SamplerStateRHI = RHICreateSamplerState( SamplerStateInitializer );
 
-	ETextureCreateFlags  Flags = TexCreate_None;
+	uint32 Flags = 0;
 	if ( Owner->bIsResolveTarget )
 	{
 		Flags |= TexCreate_ResolveTargetable;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	OpenGLQuery.cpp: OpenGL query RHI implementation.
@@ -527,7 +527,7 @@ public:
 };
 
 
-bool FOpenGLDynamicRHI::RHIGetRenderQueryResult(FRHIRenderQuery* QueryRHI, uint64& OutResult, bool bWait, uint32 GPUIndex)
+bool FOpenGLDynamicRHI::RHIGetRenderQueryResult(FRHIRenderQuery* QueryRHI,uint64& OutResult,bool bWait)
 {
 	check(IsInRenderingThread() || IsInRHIThread());
 
@@ -783,7 +783,7 @@ void FOpenGLBufferedGPUTiming::PlatformStaticInitialize(void* UserData)
 	if ( !GAreGlobalsInitialized )
 	{
 		GIsSupported = FOpenGL::SupportsTimestampQueries();
-		SetTimingFrequency(1000 * 1000 * 1000);
+		GTimingFrequency = 1000 * 1000 * 1000;
 		GAreGlobalsInitialized = true;
 	}
 }
@@ -1146,58 +1146,86 @@ void FOpenGLDisjointTimeStampQuery::ReleaseResources()
 
 FGPUFenceRHIRef FOpenGLDynamicRHI::RHICreateGPUFence(const FName &Name)
 {
+#if OPENGL_GL3
 	return new FOpenGLGPUFence(Name);
+#else
+	UE_LOG(LogRHI, Fatal, TEXT("Fences are only available in OpenGL3 or later"));
+	return nullptr;
+#endif
 }
 
 FOpenGLGPUFence::~FOpenGLGPUFence()
 {
-	RunOnGLRenderContextThread([Proxy = Proxy]()
-		{
-			VERIFY_GL_SCOPE();
-			delete Proxy;
-		});
+#if OPENGL_GL3
+	if (bValidSync)
+	{
+		FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
+		RHITHREAD_GLCOMMAND_PROLOGUE();
+		VERIFY_GL_SCOPE();
+		FOpenGL::DeleteSync(Fence);
+		RHITHREAD_GLCOMMAND_EPILOGUE_NORETURN();
+	}
+#else
+	UE_LOG(LogRHI, Fatal, TEXT("Fences are only available in OpenGL3 or later"));
+#endif
 }
 
 void FOpenGLGPUFence::Clear()
 {
-	RunOnGLRenderContextThread([Proxy = Proxy]()
-			{
-				VERIFY_GL_SCOPE();
-				delete Proxy;
-			});
-	Proxy = new FOpenGLGPUFenceProxy();
+#if OPENGL_GL3
+
+	if (bValidSync)
+	{
+		FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
+		RHITHREAD_GLCOMMAND_PROLOGUE();
+		VERIFY_GL_SCOPE();
+		FOpenGL::DeleteSync(Fence);
+		bValidSync = false;
+		RHITHREAD_GLCOMMAND_EPILOGUE();
+	}
+#else
+	UE_LOG(LogRHI, Fatal, TEXT("Fences are only available in OpenGL3 or later"));
+#endif
 }
 bool FOpenGLGPUFence::Poll() const
 {
-	RunOnGLRenderContextThread([Proxy = Proxy]()
-		{
-			VERIFY_GL_SCOPE();
-			check(Proxy != nullptr);
-			if (Proxy->bValidSync)
-			{
-				FOpenGLBase::EFenceResult Result = (FOpenGL::ClientWaitSync(Proxy->Fence, 0, 0));
-				Proxy->bIsSignaled = (Result == FOpenGLBase::FR_AlreadySignaled || Result == FOpenGLBase::FR_ConditionSatisfied);
-			}
-		});
-	return Proxy->bIsSignaled;
+#if OPENGL_GL3
+	if (!bValidSync)
+	{
+		return false;
+	}
 
+	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
+	RHITHREAD_GLCOMMAND_PROLOGUE();
+	VERIFY_GL_SCOPE();
 
+	FOpenGLBase::EFenceResult Result = FOpenGL::ClientWaitSync(Fence, 0, 0);
+	return (Result == FOpenGLBase::FR_AlreadySignaled || Result == FOpenGLBase::FR_ConditionSatisfied);
+
+	RHITHREAD_GLCOMMAND_EPILOGUE_RETURN(bool);
+#else
+	UE_LOG(LogRHI, Fatal, TEXT("Fences are only available in OpenGL3 or later"));
+	return false;
+#endif
 }
 
 void FOpenGLGPUFence::WriteInternal()
 {
-	RunOnGLRenderContextThread([Proxy = Proxy]()
-		{
-			check(Proxy != nullptr);
-			VERIFY_GL_SCOPE();
-			if (Proxy->bValidSync)
-			{
-				FOpenGL::DeleteSync(Proxy->Fence);
-				Proxy->bValidSync = false;
-				Proxy->bIsSignaled = false;
-			}
+#if OPENGL_GL3
+	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
+	RHITHREAD_GLCOMMAND_PROLOGUE();
+	VERIFY_GL_SCOPE();
 
-			Proxy->Fence = FOpenGL::FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-			Proxy->bValidSync = true;
-		});
+	if (bValidSync)
+	{
+		FOpenGL::DeleteSync(Fence);
+		bValidSync = false;
+	}
+
+	Fence = FOpenGL::FenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+	bValidSync = true;
+	RHITHREAD_GLCOMMAND_EPILOGUE();
+#else
+	UE_LOG(LogRHI, Fatal, TEXT("Fences are only available in OpenGL3 or later"));
+#endif
 }

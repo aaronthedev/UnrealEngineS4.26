@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MeshDrawShaderBindings.h: 
@@ -13,39 +13,28 @@
 /** Stores the number of each resource type that will need to be bound to a single shader, computed during shader reflection. */
 class FMeshDrawShaderBindingsLayout
 {
-protected:
+public:
+	EShaderFrequency Frequency : SF_NumBits + 1;
 	const FShaderParameterMapInfo& ParameterMapInfo;
 
-public:
-
-	FMeshDrawShaderBindingsLayout(const TShaderRef<FShader>& Shader)
-		: ParameterMapInfo(Shader->ParameterMapInfo)
+	FMeshDrawShaderBindingsLayout(const FShader* Shader) :
+		ParameterMapInfo(Shader->GetParameterMapInfo())
 	{
-		check(Shader.IsValid());
+		check(Shader);
+		Frequency = (EShaderFrequency)Shader->GetTarget().Frequency;
+		checkSlow((EShaderFrequency)Frequency == (EShaderFrequency)Shader->GetTarget().Frequency);
 	}
-
-#if DO_GUARD_SLOW
-	const FShaderParameterMapInfo& GetParameterMapInfo()
+	
+	inline uint32 GetHash() const
 	{
-		return ParameterMapInfo;
+		uint32 LocalFrequency = Frequency;
+		return FCrc::TypeCrc32(LocalFrequency, 0);
 	}
-#endif
 
 	bool operator==(const FMeshDrawShaderBindingsLayout& Rhs) const
 	{
-		// Since 4.25, FShader (the owner of this memory) is no longer shared across the shadermaps and gets deleted at the same time as the owning shadermap.
-		// To prevent crashes when a singe mesh draw command is shared across multiple MICs with compatible shaders, consider shader bindings belonging to different FShaders different.
-		return &ParameterMapInfo == &Rhs.ParameterMapInfo;
-	}
-
-	inline uint32 GetLooseDataSizeBytes() const
-	{
-		uint32 DataSize = 0;
-		for (const FShaderLooseParameterBufferInfo& Info : ParameterMapInfo.LooseParameterBuffers)
-		{
-			DataSize += Info.Size;
-		}
-		return DataSize;
+		return Frequency == Rhs.Frequency
+			&& ParameterMapInfo == Rhs.ParameterMapInfo;
 	}
 
 	inline uint32 GetDataSizeBytes() const
@@ -58,7 +47,10 @@ public:
 		// Allocate a bit for each SRV tracking whether it is a FRHITexture* or FRHIShaderResourceView*
 		DataSize += FMath::DivideAndRoundUp(ParameterMapInfo.SRVs.Num(), 8);
 
-		DataSize += GetLooseDataSizeBytes();
+		for (int32 LooseBufferIndex = 0; LooseBufferIndex < ParameterMapInfo.LooseParameterBuffers.Num(); LooseBufferIndex++)
+		{
+			DataSize += ParameterMapInfo.LooseParameterBuffers[LooseBufferIndex].BufferSize;
+		}
 
 		// Align to pointer size so subsequent packed shader bindings will have their pointers aligned
 		return Align(DataSize, sizeof(void*));
@@ -114,8 +106,8 @@ public:
 
 		if (Parameter.IsBound())
 		{
-			checkf(Value.GetReference(), TEXT("Attempted to set null uniform buffer for type %s"), UniformBufferStructType::StaticStructMetadata.GetStructTypeName());
-			checkfSlow(Value.GetReference()->IsValid(), TEXT("Attempted to set already deleted uniform buffer for type %s"), UniformBufferStructType::StaticStructMetadata.GetStructTypeName());
+			checkf(Value.GetReference(), TEXT("Attempted to set null uniform buffer for type %s on %s"), UniformBufferStructType::StaticStructMetadata.GetStructTypeName(), GetShaderFrequencyString(Frequency));
+			checkfSlow(Value.GetReference()->IsValid(), TEXT("Attempted to set already deleted uniform buffer for type %s on %s"), UniformBufferStructType::StaticStructMetadata.GetStructTypeName(), GetShaderFrequencyString(Frequency));
 			WriteBindingUniformBuffer(Value.GetReference(), Parameter.GetBaseIndex());
 		}
 	}
@@ -127,20 +119,20 @@ public:
 
 		if (Parameter.IsBound())
 		{
-			checkf(Value.GetUniformBufferRHI(), TEXT("Attempted to set null uniform buffer for type %s"), UniformBufferStructType::StaticStructMetadata.GetStructTypeName());
-			checkfSlow(Value.GetUniformBufferRHI()->IsValid(), TEXT("Attempted to set already deleted uniform buffer for type %s"), UniformBufferStructType::StaticStructMetadata.GetStructTypeName());
+			checkf(Value.GetUniformBufferRHI(), TEXT("Attempted to set null uniform buffer for type %s on %s"), UniformBufferStructType::StaticStructMetadata.GetStructTypeName(), GetShaderFrequencyString(Frequency));
+			checkfSlow(Value.GetUniformBufferRHI()->IsValid(), TEXT("Attempted to set already deleted uniform buffer for type %s on %s"), UniformBufferStructType::StaticStructMetadata.GetStructTypeName(), GetShaderFrequencyString(Frequency));
 			WriteBindingUniformBuffer(Value.GetUniformBufferRHI(), Parameter.GetBaseIndex());
 		}
 	}
 
-	void Add(const FShaderUniformBufferParameter& Parameter, const FRHIUniformBuffer* Value)
+	void Add(FShaderUniformBufferParameter Parameter, FRHIUniformBuffer* Value)
 	{
 		checkfSlow(Parameter.IsInitialized(), TEXT("Parameter was not serialized"));
 
 		if (Parameter.IsBound())
 		{
-			checkf(Value, TEXT("Attempted to set null uniform buffer"));
-			checkfSlow(Value->IsValid(), TEXT("Attempted to set already deleted uniform buffer of type %s"), *Value->GetLayout().GetDebugName());
+			checkf(Value, TEXT("Attempted to set null uniform buffer with unknown type on %s"), GetShaderFrequencyString(Frequency));
+			checkfSlow(Value->IsValid(), TEXT("Attempted to set already deleted uniform buffer of type %s on %s"), *Value->GetLayout().GetDebugName().ToString(), GetShaderFrequencyString(Frequency));
 			WriteBindingUniformBuffer(Value, Parameter.GetBaseIndex());
 		}
 	}
@@ -151,8 +143,8 @@ public:
 
 		if (Parameter.IsBound())
 		{
-			checkf(Value, TEXT("Attempted to set null SRV on slot %u"), Parameter.GetBaseIndex());
-			checkfSlow(Value->IsValid(), TEXT("Attempted to set already deleted SRV on slot %u"), Parameter.GetBaseIndex());
+			checkf(Value, TEXT("Attempted to set null SRV on slot %u of %s"), Parameter.GetBaseIndex(), GetShaderFrequencyString(Frequency));
+			checkfSlow(Value->IsValid(), TEXT("Attempted to set already deleted SRV on slot %u of %s"), Parameter.GetBaseIndex(), GetShaderFrequencyString(Frequency));
 			WriteBindingSRV(Value, Parameter.GetBaseIndex());
 		}
 	}
@@ -168,13 +160,13 @@ public:
 
 		if (TextureParameter.IsBound())
 		{
-			checkf(TextureRHI, TEXT("Attempted to set null Texture on slot %u"), TextureParameter.GetBaseIndex());
+			checkf(TextureRHI, TEXT("Attempted to set null Texture on slot %u of %s"), TextureParameter.GetBaseIndex(), GetShaderFrequencyString(Frequency));
 			WriteBindingTexture(TextureRHI, TextureParameter.GetBaseIndex());
 		}
 
 		if (SamplerParameter.IsBound())
 		{
-			checkf(SamplerStateRHI, TEXT("Attempted to set null Sampler on slot %u"), SamplerParameter.GetBaseIndex());
+			checkf(SamplerStateRHI, TEXT("Attempted to set null Sampler on slot %u of %s"), SamplerParameter.GetBaseIndex(), GetShaderFrequencyString(Frequency));
 			WriteBindingSampler(SamplerStateRHI, SamplerParameter.GetBaseIndex());
 		}
 	}
@@ -190,17 +182,15 @@ public:
 			bool bFoundParameter = false;
 			uint8* LooseDataOffset = GetLooseDataStart();
 
-			TArrayView<const FShaderLooseParameterBufferInfo> LooseParameterBuffers(ParameterMapInfo.LooseParameterBuffers);
-			for (int32 LooseBufferIndex = 0; LooseBufferIndex < LooseParameterBuffers.Num(); LooseBufferIndex++)
+			for (int32 LooseBufferIndex = 0; LooseBufferIndex < ParameterMapInfo.LooseParameterBuffers.Num(); LooseBufferIndex++)
 			{
-				const FShaderLooseParameterBufferInfo& LooseParameterBuffer = LooseParameterBuffers[LooseBufferIndex];
+				const FShaderLooseParameterBufferInfo& LooseParameterBuffer = ParameterMapInfo.LooseParameterBuffers[LooseBufferIndex];
 
-				if (LooseParameterBuffer.BaseIndex == Parameter.GetBufferIndex())
+				if (LooseParameterBuffer.BufferIndex == Parameter.GetBufferIndex())
 				{
-					TArrayView<const FShaderParameterInfo> Parameters(LooseParameterBuffer.Parameters);
-					for (int32 LooseParameterIndex = 0; LooseParameterIndex < Parameters.Num(); LooseParameterIndex++)
+					for (int32 LooseParameterIndex = 0; LooseParameterIndex < LooseParameterBuffer.Parameters.Num(); LooseParameterIndex++)
 					{
-						FShaderParameterInfo LooseParameter = Parameters[LooseParameterIndex];
+						FShaderParameterInfo LooseParameter = LooseParameterBuffer.Parameters[LooseParameterIndex];
 
 						if (Parameter.GetBaseIndex() == LooseParameter.BaseIndex)
 						{
@@ -208,8 +198,6 @@ public:
 							ensureMsgf(sizeof(ParameterType) == Parameter.GetNumBytes(), TEXT("Attempted to set fewer bytes than the shader required.  Setting %u bytes on loose parameter at BaseIndex %u, Size %u.  This can cause GPU hangs, depending on usage."), sizeof(ParameterType), Parameter.GetBaseIndex(), Parameter.GetNumBytes());
 							const int32 NumBytesToSet = FMath::Min<int32>(sizeof(ParameterType), Parameter.GetNumBytes());
 							FMemory::Memcpy(LooseDataOffset, &Value, NumBytesToSet);
-							const int32 NumBytesToClear = FMath::Min<int32>(0, Parameter.GetNumBytes() - NumBytesToSet);
-							FMemory::Memset(LooseDataOffset + NumBytesToSet, 0x00, NumBytesToClear);
 							bFoundParameter = true;
 							break;
 						}
@@ -219,7 +207,7 @@ public:
 					break;
 				}
 
-				LooseDataOffset += LooseParameterBuffer.Size;
+				LooseDataOffset += LooseParameterBuffer.BufferSize;
 			}
 
 			checkfSlow(bFoundParameter, TEXT("Attempted to set loose parameter at BaseIndex %u, Size %u which was never in the shader's parameter map."), Parameter.GetBaseIndex(), Parameter.GetNumBytes());
@@ -229,9 +217,9 @@ public:
 private:
 	uint8* Data;
 
-	inline const FRHIUniformBuffer** GetUniformBufferStart() const
+	inline FRHIUniformBuffer** GetUniformBufferStart() const
 	{
-		return (const FRHIUniformBuffer**)(Data + GetUniformBufferOffset());
+		return (FRHIUniformBuffer**)(Data + GetUniformBufferOffset());
 	}
 
 	inline FRHISamplerState** GetSamplerStart() const
@@ -258,42 +246,22 @@ private:
 		uint8* LooseDataStart = Data + GetLooseDataOffset();
 		return LooseDataStart;
 	}
-	
-	template<typename ElementType>
-	inline int FindSortedArrayBaseIndex(const TConstArrayView<ElementType>& Array, uint32 BaseIndex)
+
+	inline void WriteBindingUniformBuffer(FRHIUniformBuffer* Value, uint32 BaseIndex)
 	{
-		int Index = 0; 
-		int Size = Array.Num();
+		int32 FoundIndex = -1;
 
-		//start with binary search for larger lists
-		while (Size > 8)
+		for (int32 SearchIndex = 0; SearchIndex < ParameterMapInfo.UniformBuffers.Num(); SearchIndex++)
 		{
-			const int LeftoverSize = Size % 2;
-			Size = Size / 2;
+			FShaderParameterInfo Parameter = ParameterMapInfo.UniformBuffers[SearchIndex];
 
-			const int CheckIndex = Index + Size;
-			const int IndexIfLess = CheckIndex + LeftoverSize;
-
-			Index = Array[CheckIndex].BaseIndex < BaseIndex ? IndexIfLess : Index;
-		}
-
-		//small size array optimization
-		const int ArrayEnd = FMath::Min(Index + Size + 1, Array.Num());
-		while (Index < ArrayEnd)
-		{
-			if (Array[Index].BaseIndex == BaseIndex)
+			if (Parameter.BaseIndex == BaseIndex)
 			{
-				return Index;
+				FoundIndex = SearchIndex;
+				break;
 			}
-			Index++;
 		}
 
-		return -1;
-	}
-
-	inline void WriteBindingUniformBuffer(const FRHIUniformBuffer* Value, uint32 BaseIndex)
-	{
-		int32 FoundIndex = FindSortedArrayBaseIndex(MakeArrayView(ParameterMapInfo.UniformBuffers), BaseIndex);
 		if (FoundIndex >= 0)
 		{
 #if VALIDATE_UNIFORM_BUFFER_LIFETIME
@@ -313,7 +281,19 @@ private:
 
 	inline void WriteBindingSampler(FRHISamplerState* Value, uint32 BaseIndex)
 	{
-		int32 FoundIndex = FindSortedArrayBaseIndex(MakeArrayView(ParameterMapInfo.TextureSamplers), BaseIndex);
+		int32 FoundIndex = -1;
+
+		for (int32 SearchIndex = 0; SearchIndex < ParameterMapInfo.TextureSamplers.Num(); SearchIndex++)
+		{
+			FShaderParameterInfo Parameter = ParameterMapInfo.TextureSamplers[SearchIndex];
+
+			if (Parameter.BaseIndex == BaseIndex)
+			{
+				FoundIndex = SearchIndex;
+				break;
+			}
+		}
+
 		if (FoundIndex >= 0)
 		{
 			GetSamplerStart()[FoundIndex] = Value;
@@ -324,7 +304,19 @@ private:
 
 	inline void WriteBindingSRV(FRHIShaderResourceView* Value, uint32 BaseIndex)
 	{
-		int32 FoundIndex = FindSortedArrayBaseIndex(MakeArrayView(ParameterMapInfo.SRVs), BaseIndex);
+		int32 FoundIndex = -1;
+
+		for (int32 SearchIndex = 0; SearchIndex < ParameterMapInfo.SRVs.Num(); SearchIndex++)
+		{
+			FShaderParameterInfo Parameter = ParameterMapInfo.SRVs[SearchIndex];
+
+			if (Parameter.BaseIndex == BaseIndex)
+			{
+				FoundIndex = SearchIndex;
+				break;
+			}
+		}
+
 		if (FoundIndex >= 0)
 		{
 			uint32 TypeByteIndex = FoundIndex / 8;
@@ -338,7 +330,19 @@ private:
 
 	inline void WriteBindingTexture(FRHITexture* Value, uint32 BaseIndex)
 	{
-		int32 FoundIndex = FindSortedArrayBaseIndex(MakeArrayView(ParameterMapInfo.SRVs), BaseIndex);
+		int32 FoundIndex = -1;
+
+		for (int32 SearchIndex = 0; SearchIndex < ParameterMapInfo.SRVs.Num(); SearchIndex++)
+		{
+			FShaderParameterInfo Parameter = ParameterMapInfo.SRVs[SearchIndex];
+
+			if (Parameter.BaseIndex == BaseIndex)
+			{
+				FoundIndex = SearchIndex;
+				break;
+			}
+		}
+
 		if (FoundIndex >= 0)
 		{
 			GetSRVStart()[FoundIndex] = Value;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -53,7 +53,7 @@ public:
     mtlpp::PurgeableState SetPurgeableState(mtlpp::PurgeableState state);
 	void FreeRange(ns::Range const& Range);
 
-    void SetOwner(ns::Range const& Range, FMetalRHIBuffer* Owner, bool bIsSwap);
+    void SetOwner(ns::Range const& Range, FMetalRHIBuffer* Owner);
 
 private:
     struct Allocation

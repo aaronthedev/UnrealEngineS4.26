@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimSequencerInstanceProxy.h"
 #include "AnimSequencerInstance.h"
@@ -7,58 +7,14 @@ void FAnimSequencerInstanceProxy::Initialize(UAnimInstance* InAnimInstance)
 {
 	FAnimInstanceProxy::Initialize(InAnimInstance);
 	ConstructNodes();
-	FullBodyBlendNode.bAdditiveNode = false;
-	FullBodyBlendNode.bNormalizeAlpha = true;
 
-	AdditiveBlendNode.bAdditiveNode = true;
-	AdditiveBlendNode.bNormalizeAlpha = false;
-
-	FullBodyBlendNode.ResetPoses();
-	AdditiveBlendNode.ResetPoses();
-
-	SnapshotNode.SnapshotName = UAnimSequencerInstance::SequencerPoseName;
-	ClearSequencePlayerMap();
 	UpdateCounter.Reset();
-	RootMotionOverride.Reset();
 }
 
 bool FAnimSequencerInstanceProxy::Evaluate(FPoseContext& Output)
 {
 	SequencerRootNode.Evaluate_AnyThread(Output);
-	if (RootMotionOverride.IsSet())
-	{
-		// Almost always root is first, child is second bone but maybe not, so we do too loops to avoid any if's in the loop
 
-		if (!RootMotionOverride.GetValue().bBlendFirstChildOfRoot)
-		{
-			for (const FCompactPoseBoneIndex BoneIndex : Output.Pose.ForEachBoneIndex())
-			{
-				if (BoneIndex.IsRootBone())
-				{
-					Output.Pose[BoneIndex] = RootMotionOverride.GetValue().RootMotion;
-					break;
-				}
-			}
-		}
-		else
-		{
-			int RootIndex = INDEX_NONE;
-			for (const FCompactPoseBoneIndex BoneIndex : Output.Pose.ForEachBoneIndex())
-			{
-				FMeshPoseBoneIndex MeshBoneIndex = Output.Pose.GetBoneContainer().MakeMeshPoseIndex(BoneIndex);
-				int32 ParentIndex = Output.Pose.GetBoneContainer().GetParentBoneIndex(MeshBoneIndex.GetInt());
-				if (ParentIndex == INDEX_NONE)
-				{
-					RootIndex = MeshBoneIndex.GetInt();
-				}
-				else if (ParentIndex == RootIndex)
-				{
-					Output.Pose[BoneIndex] = RootMotionOverride.GetValue().RootMotion;
-					break;
-				}
-			}
-		}
-	}
 	return true;
 }
 
@@ -75,6 +31,20 @@ void FAnimSequencerInstanceProxy::ConstructNodes()
 	SequencerRootNode.Base.SetLinkNode(&FullBodyBlendNode);
 	SequencerRootNode.Additive.SetLinkNode(&AdditiveBlendNode);
 
+	FullBodyBlendNode.bAdditiveNode = false;
+	FullBodyBlendNode.bNormalizeAlpha = true;
+
+	AdditiveBlendNode.bAdditiveNode = true;
+	AdditiveBlendNode.bNormalizeAlpha = false;
+
+	FullBodyBlendNode.ResetPoses();
+	AdditiveBlendNode.ResetPoses();
+
+
+	SnapshotNode.SnapshotName = UAnimSequencerInstance::SequencerPoseName;
+
+
+	ClearSequencePlayerMap();
 }
 
 void FAnimSequencerInstanceProxy::ClearSequencePlayerMap()
@@ -173,26 +143,14 @@ void FAnimSequencerInstanceProxy::TermAnimTrack(int32 SequenceId)
 
 void FAnimSequencerInstanceProxy::UpdateAnimTrack(UAnimSequenceBase* InAnimSequence, uint32 SequenceId, float InPosition, float Weight, bool bFireNotifies)
 {
-	UpdateAnimTrack(InAnimSequence, SequenceId, TOptional<FRootMotionOverride>(), TOptional<float>(), InPosition, Weight, bFireNotifies);
+	UpdateAnimTrack(InAnimSequence, SequenceId, TOptional<float>(), InPosition, Weight, bFireNotifies);
 }
 
 void FAnimSequencerInstanceProxy::UpdateAnimTrack(UAnimSequenceBase* InAnimSequence, uint32 SequenceId, TOptional<float> InFromPosition, float InToPosition, float Weight, bool bFireNotifies)
 {
-	UpdateAnimTrack(InAnimSequence, SequenceId, TOptional<FRootMotionOverride>(), InFromPosition, InToPosition, Weight, bFireNotifies);
-}
-
-
-void FAnimSequencerInstanceProxy::UpdateAnimTrackWithRootMotion(UAnimSequenceBase* InAnimSequence, int32 SequenceId, const TOptional<FRootMotionOverride>& RootMotion, float InFromPosition, float InToPosition, float Weight, bool bFireNotifies)
-{
-	UpdateAnimTrack(InAnimSequence, SequenceId, RootMotion, InFromPosition, InToPosition, Weight, bFireNotifies);
-
-}
-void FAnimSequencerInstanceProxy::UpdateAnimTrack(UAnimSequenceBase* InAnimSequence, uint32 SequenceId, const TOptional<FRootMotionOverride>& InRootMotionOverride, TOptional<float> InFromPosition, float InToPosition, float Weight, bool bFireNotifies)
-{
 	EnsureAnimTrack(InAnimSequence, SequenceId);
 
 	FSequencerPlayerAnimSequence* PlayerState = FindPlayer<FSequencerPlayerAnimSequence>(SequenceId);
-
 	PlayerState->PlayerNode.ExplicitTime = InToPosition;
 	if (InFromPosition.IsSet())
 	{
@@ -208,14 +166,14 @@ void FAnimSequencerInstanceProxy::UpdateAnimTrack(UAnimSequenceBase* InAnimSeque
 	FAnimNode_MultiWayBlend& BlendNode = (PlayerState->bAdditive) ? AdditiveBlendNode : FullBodyBlendNode;
 	BlendNode.DesiredAlphas[PlayerState->PoseIndex] = Weight;
 
-	// if additive, apply alpha value correctlyeTick
+	// if additive, apply alpha value correctly
 	// this will be used when apply additive is blending correct total alpha to additive
 	if (PlayerState->bAdditive)
 	{
 		SequencerRootNode.Alpha = BlendNode.GetTotalAlpha();
 	}
-	RootMotionOverride = InRootMotionOverride;
 }
+
 void FAnimSequencerInstanceProxy::EnsureAnimTrack(UAnimSequenceBase* InAnimSequence, uint32 SequenceId)
 {
 	FSequencerPlayerAnimSequence* PlayerState = FindPlayer<FSequencerPlayerAnimSequence>(SequenceId);

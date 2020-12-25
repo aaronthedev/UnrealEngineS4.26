@@ -1,10 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-
-#include "Misc/StringBuilder.h"
 
 /**
  * A primary asset type, represented as an FName internally and implicitly convertible back and forth
@@ -57,12 +55,6 @@ struct FPrimaryAssetType
 		return Name.ToString();
 	}
 
-	/** Appends to the given builder the string version of this Type */
-	void AppendString(FStringBuilderBase& Builder) const
-	{
-		Name.AppendString(Builder);
-	}
-
 	/** UStruct Overrides */
 	bool ExportTextItem(FString& ValueStr, FPrimaryAssetType const& DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope) const;
 	bool ImportTextItem(const TCHAR*& Buffer, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText);
@@ -96,21 +88,24 @@ struct FPrimaryAssetId
 	static COREUOBJECT_API const FName PrimaryAssetTypeTag;
 	static COREUOBJECT_API const FName PrimaryAssetNameTag;
 
-	FPrimaryAssetId() {}
-
 	FPrimaryAssetId(FPrimaryAssetType InAssetType, FName InAssetName)
 		: PrimaryAssetType(InAssetType), PrimaryAssetName(InAssetName)
 	{}
 
-	static COREUOBJECT_API FPrimaryAssetId ParseTypeAndName(const TCHAR* TypeAndName, uint32 Len);
-	static COREUOBJECT_API FPrimaryAssetId ParseTypeAndName(FName TypeAndName);
-	static FPrimaryAssetId ParseTypeAndName(const FString& TypeAndName)
+	FPrimaryAssetId(const FString& InString)
 	{
-		return ParseTypeAndName(*TypeAndName, static_cast<uint32>(TypeAndName.Len()));
+		FString TypeString;
+		FString NameString;
+
+		if (InString.Split(TEXT(":"), &TypeString, &NameString, ESearchCase::CaseSensitive))
+		{
+			PrimaryAssetType = *TypeString;
+			PrimaryAssetName = *NameString;
+		}
 	}
 
-	explicit FPrimaryAssetId(const FString& TypeAndName)
-		: FPrimaryAssetId(ParseTypeAndName(TypeAndName))
+	FPrimaryAssetId()
+		: PrimaryAssetType(NAME_None), PrimaryAssetName(NAME_None)
 	{}
 
 	/** Returns true if this is a valid identifier */
@@ -122,19 +117,13 @@ struct FPrimaryAssetId
 	/** Returns string version of this identifier in Type:Name format */
 	FString ToString() const
 	{
-		TStringBuilder<256> Builder;
-		AppendString(Builder);
-		return FString(Builder.Len(), Builder.GetData());
-	}
-
-	/** Appends to the given builder the string version of this identifier in Type:Name format */
-	void AppendString(FStringBuilderBase& Builder) const
-	{
 		if (IsValid())
 		{
-			PrimaryAssetType.AppendString(Builder);
-			Builder << TEXT(":");
-			PrimaryAssetName.AppendString(Builder);
+			return FString::Printf(TEXT("%s:%s"), *PrimaryAssetType.ToString(), *PrimaryAssetName.ToString());
+		}
+		else
+		{
+			return FString();
 		}
 	}
 
@@ -177,5 +166,3 @@ struct FPrimaryAssetId
 
 	friend struct Z_Construct_UScriptStruct_FPrimaryAssetId_Statics;
 };
-
-COREUOBJECT_API FStringBuilderBase& operator<<(FStringBuilderBase& Builder, const FPrimaryAssetId& Id);

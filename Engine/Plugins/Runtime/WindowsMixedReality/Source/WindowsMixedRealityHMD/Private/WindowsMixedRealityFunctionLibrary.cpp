@@ -5,11 +5,6 @@
 #include "Engine/Engine.h"
 #include "WindowsMixedRealityHMD.h"
 
-#if WITH_WINDOWS_MIXED_REALITY
-#include "MixedRealityInterop.h"
-#include "WindowsMixedRealityInteropUtility.h"
-#endif
-
 #include <functional>
 
 UWindowsMixedRealityFunctionLibrary::UWindowsMixedRealityFunctionLibrary(const FObjectInitializer& ObjectInitializer)
@@ -100,7 +95,6 @@ bool UWindowsMixedRealityFunctionLibrary::IsTrackingAvailable()
 FPointerPoseInfo UWindowsMixedRealityFunctionLibrary::GetPointerPoseInfo(EControllerHand hand)
 {
 	FPointerPoseInfo info;
-	info.TrackingStatus = GetControllerTrackingStatus(hand);
 
 #if WITH_WINDOWS_MIXED_REALITY
 
@@ -120,61 +114,6 @@ FPointerPoseInfo UWindowsMixedRealityFunctionLibrary::GetPointerPoseInfo(EContro
 #endif
 
 	return info;
-}
-
-bool UWindowsMixedRealityFunctionLibrary::IsButtonClicked(EControllerHand hand, EHMDInputControllerButtons button)
-{
-#if WITH_WINDOWS_MIXED_REALITY
-	WindowsMixedReality::FWindowsMixedRealityHMD* hmd = GetWindowsMixedRealityHMD();
-	if (hmd == nullptr)
-	{
-		return false;
-	}
-
-	return hmd->GetPressState((WindowsMixedReality::HMDHand)hand, (WindowsMixedReality::HMDInputControllerButtons)button) == WindowsMixedReality::HMDInputPressState::Pressed;
-#endif
-
-	return false;
-}
-
-bool UWindowsMixedRealityFunctionLibrary::IsButtonDown(EControllerHand hand, EHMDInputControllerButtons button)
-{
-#if WITH_WINDOWS_MIXED_REALITY
-	WindowsMixedReality::FWindowsMixedRealityHMD* hmd = GetWindowsMixedRealityHMD();
-	if (hmd == nullptr)
-	{
-		return false;
-	}
-
-	return hmd->GetPressState((WindowsMixedReality::HMDHand)hand, (WindowsMixedReality::HMDInputControllerButtons)button, false) == WindowsMixedReality::HMDInputPressState::Pressed;
-#endif
-
-	return false;
-}
-
-bool UWindowsMixedRealityFunctionLibrary::IsGrasped(EControllerHand hand)
-{
-	return IsButtonDown(hand, EHMDInputControllerButtons::Grasp);
-}
-
-bool UWindowsMixedRealityFunctionLibrary::IsSelectPressed(EControllerHand hand)
-{
-	return IsButtonDown(hand, EHMDInputControllerButtons::Select);
-}
-
-EHMDTrackingStatus UWindowsMixedRealityFunctionLibrary::GetControllerTrackingStatus(EControllerHand hand)
-{
-#if WITH_WINDOWS_MIXED_REALITY
-	WindowsMixedReality::FWindowsMixedRealityHMD* hmd = GetWindowsMixedRealityHMD();
-	if (hmd == nullptr)
-	{
-		return EHMDTrackingStatus::NotTracked;
-	}
-
-	return (EHMDTrackingStatus)hmd->GetControllerTrackingStatus((WindowsMixedReality::HMDHand)hand);
-#endif
-
-	return EHMDTrackingStatus::NotTracked;
 }
 
 void UWindowsMixedRealityFunctionLibrary::SetFocusPointForFrame(FVector position)
@@ -233,6 +172,7 @@ static void SetFocusPointForFrame(const TArray<FString>& Args, UWorld*, FOutputD
 #define LOCTEXT_NAMESPACE "WindowsMixedReality"
 static FAutoConsoleCommand CSetFocusPointForFrameCmd(
 	TEXT("vr.SetFocusPointForFrame"),
-	*LOCTEXT("CVarText_SetFocusPointForFrame", "Set the reference point for the stabilization plane on hololens 2. You must set it each frame to activate the feature for that frame.  DEPRECATED: please switch to using the SetFocusPointForFrame blueprint function in this library instead.").ToString(),
+	*LOCTEXT("CVarText_SetFocusPointForFrame",
+		"Set the reference point for the stabilization plane on hololens 2. You must set it each frame to activate the feature for that frame.  DEPRECATED: please switch to using the SetFocusPointForFrame blueprint function in this library instead.").ToString(),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(SetFocusPointForFrame));
 #undef LOCTEXT_NAMESPACE

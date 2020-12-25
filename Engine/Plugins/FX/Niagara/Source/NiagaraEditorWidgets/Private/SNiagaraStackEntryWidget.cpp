@@ -1,35 +1,22 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SNiagaraStackEntryWidget.h"
 #include "NiagaraEditorWidgetsStyle.h"
-#include "NiagaraStackEditorData.h"
 #include "Widgets/Layout/SWrapBox.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
-#include "Widgets/Text/SInlineEditableTextBlock.h"
-#include "Framework/Application/SlateApplication.h"
 
 #define LOCTEXT_NAMESPACE "SNiagaraStackEntryWidget"
 
-void SNiagaraStackDisplayName::Construct(const FArguments& InArgs, UNiagaraStackEntry& InStackEntry, UNiagaraStackViewModel& InStackViewModel)
+void SNiagaraStackDisplayName::Construct(const FArguments& InArgs, UNiagaraStackEntry& InStackEntry, UNiagaraStackViewModel& InStackViewModel, FName InTextStyleName)
 {
-	StackEntryItem = &InStackEntry;
+	StackEntry = &InStackEntry;
 	StackViewModel = &InStackViewModel;
+	TextStyleName = InTextStyleName;
 
-	NameStyle = InArgs._NameStyle;
-	EditableNameStyle = InArgs._EditableNameStyle;
-	OriginalNameStyle = InArgs._OriginalNameStyle;
-
-	TAttribute<FText> EntryToolTipText;
-	EntryToolTipText.Bind(this, &SNiagaraStackDisplayName::GetEntryToolTipText);
-	SetToolTip(FSlateApplication::Get().MakeToolTip(EntryToolTipText));
-
-	TAttribute<bool> EntryIsEnabled;
-	EntryIsEnabled.Bind(this, &SNiagaraStackDisplayName::GetEntryIsEnabled);
-	SetEnabled(EntryIsEnabled);
+	ColorAndOpacity = InArgs._ColorAndOpacity;
 
 	StackViewModel->OnStructureChanged().AddSP(this, &SNiagaraStackDisplayName::StackViewModelStructureChanged);
-	StackEntryItem->OnAlternateDisplayNameChanged().AddSP(this, &SNiagaraStackDisplayName::StackEntryItemAlternateNameChanged);
 
 	ChildSlot
 	[
@@ -43,15 +30,18 @@ void SNiagaraStackDisplayName::Construct(const FArguments& InArgs, UNiagaraStack
 SNiagaraStackDisplayName::~SNiagaraStackDisplayName()
 {
 	StackViewModel->OnStructureChanged().RemoveAll(this);
-	StackEntryItem->OnAlternateDisplayNameChanged().RemoveAll(this);
 }
 
 TSharedRef<SWidget> SNiagaraStackDisplayName::ConstructChildren()
 {
-	EditableTextBlock.Reset();
-	TArray<TSharedRef<SWidget>> NameWidgets;
+	TSharedRef<STextBlock> BaseNameWidget = SNew(STextBlock)
+		.TextStyle(FNiagaraEditorWidgetsStyle::Get(), TextStyleName)
+		.ToolTipText_UObject(StackEntry, &UNiagaraStackEntry::GetTooltipText)
+		.Text_UObject(StackEntry, &UNiagaraStackEntry::GetDisplayName)
+		.HighlightText_UObject(StackViewModel, &UNiagaraStackViewModel::GetCurrentSearchText)
+		.ColorAndOpacity(ColorAndOpacity)
+		.IsEnabled(this, &SNiagaraStackDisplayName::GetIsEnabled);
 
-	// First check to see if we need to insert the emitter name.
 	int32 NumTopLevelEmitters = 0;
 	for (const TSharedRef<UNiagaraStackViewModel::FTopLevelViewModel>& TopLevelViewModel : StackViewModel->GetTopLevelViewModels())
 	{
@@ -61,69 +51,36 @@ TSharedRef<SWidget> SNiagaraStackDisplayName::ConstructChildren()
 		}
 	}
 
-	if (NumTopLevelEmitters > 1)
+	if (NumTopLevelEmitters <= 1)
 	{
-		TSharedPtr<UNiagaraStackViewModel::FTopLevelViewModel> TopLevelViewModel = StackViewModel->GetTopLevelViewModelForEntry(*StackEntryItem);
-		NameWidgets.Add(SNew(STextBlock)
-			.TextStyle(NameStyle)
-			.Text(this, &SNiagaraStackDisplayName::GetTopLevelDisplayName, TWeakPtr<UNiagaraStackViewModel::FTopLevelViewModel>(TopLevelViewModel))
-			.HighlightText_UObject(StackViewModel, &UNiagaraStackViewModel::GetCurrentSearchText)
-			.ColorAndOpacity(this, &SNiagaraStackDisplayName::GetTextColorForSearch, FSlateColor::UseForeground()));
-	}
-	TopLevelViewModelCountAtLastConstruction = NumTopLevelEmitters;
-
-	// Next add the main name widget which will be the alternate name if it's available, otherwise it's the regular display name.
-	if (StackEntryItem->SupportsRename())
-	{
-		// If the entry can be renamed we need an editable text block.
-		NameWidgets.Add(SAssignNew(EditableTextBlock, SInlineEditableTextBlock)
-			.Style(EditableNameStyle)
-			.Text(this, &SNiagaraStackDisplayName::GetEntryDisplayName)
-			.HighlightText_UObject(StackViewModel, &UNiagaraStackViewModel::GetCurrentSearchText)
-			.ColorAndOpacity(this, &SNiagaraStackEntryWidget::GetTextColorForSearch, FSlateColor::UseForeground())
-			.OnTextCommitted(this, &SNiagaraStackDisplayName::EntryNameTextCommitted));
+		TopLevelViewModelCountAtLastConstruction = 1;
+		return BaseNameWidget;
 	}
 	else
 	{
-		// Otherwise add a regular text block.
-		NameWidgets.Add(SNew(STextBlock)
-			.TextStyle(NameStyle)
-			.Text(this, &SNiagaraStackDisplayName::GetEntryDisplayName)
-			.HighlightText_UObject(StackViewModel, &UNiagaraStackViewModel::GetCurrentSearchText)
-			.ColorAndOpacity(this, &SNiagaraStackDisplayName::GetTextColorForSearch, FSlateColor::UseForeground()));
-	}
-
-	// Finally add a subdued box for the regular display name if we're showing an alternate name.
-	if(StackEntryItem->GetAlternateDisplayName().IsSet())
-	{
-		NameWidgets.Add(SNew(STextBlock)
-			.TextStyle(OriginalNameStyle)
-			.Text(this, &SNiagaraStackDisplayName::GetOriginalName)
-			.HighlightText_UObject(StackViewModel, &UNiagaraStackViewModel::GetCurrentSearchText)
-			.ColorAndOpacity(this, &SNiagaraStackDisplayName::GetTextColorForSearch, FSlateColor::UseSubduedForeground()));
-	}
-
-	// If there is more than one name, put them in a wrap box so that they flow correctly when the rows are narrow.
-	if(NameWidgets.Num() > 1)
-	{
-		TSharedRef<SWrapBox> NamesWrapBox = SNew(SWrapBox)
-			.UseAllottedSize(true);
-		for (TSharedRef<SWidget> NameWidget : NameWidgets)
+		TopLevelViewModelCountAtLastConstruction = StackViewModel->GetTopLevelViewModels().Num();
+		TSharedPtr<UNiagaraStackViewModel::FTopLevelViewModel> TopLevelViewModel = StackViewModel->GetTopLevelViewModelForEntry(*StackEntry);
+		if(TopLevelViewModel.IsValid())
 		{
-			NamesWrapBox->AddSlot()
-				.VAlign(VAlign_Center)
-				.Padding(FMargin(0, 0, 5, 0))
+			return SNew(SWrapBox)
+				.Clipping(EWidgetClipping::ClipToBoundsAlways)
+				.UseAllottedWidth(true)
+				+ SWrapBox::Slot()
 				[
-					NameWidget
+					SNew(STextBlock)
+					.TextStyle(FNiagaraEditorWidgetsStyle::Get(), TextStyleName)
+					.ToolTipText_UObject(StackEntry, &UNiagaraStackEntry::GetTooltipText)
+					.Text(this, &SNiagaraStackDisplayName::GetTopLevelDisplayName, TWeakPtr<UNiagaraStackViewModel::FTopLevelViewModel>(TopLevelViewModel))
+					.HighlightText_UObject(StackViewModel, &UNiagaraStackViewModel::GetCurrentSearchText)
+					.ColorAndOpacity(ColorAndOpacity)
+					.IsEnabled(this, &SNiagaraStackDisplayName::GetIsEnabled)
+				]
+				+ SWrapBox::Slot()
+				[
+					BaseNameWidget
 				];
 		}
-		return NamesWrapBox;
 	}
-	else if (NameWidgets.Num() == 1)
-	{
-		return NameWidgets[0];
-	}
-
 	TopLevelViewModelCountAtLastConstruction = -1;
 	return SNullWidget::NullWidget;
 }
@@ -136,7 +93,7 @@ FText SNiagaraStackDisplayName::GetTopLevelDisplayName(TWeakPtr<UNiagaraStackVie
 		if (TopLevelViewModel->GetDisplayName().IdenticalTo(TopLevelDisplayNameCache) == false)
 		{
 			TopLevelDisplayNameCache = TopLevelViewModel->GetDisplayName();
-			TopLevelDisplayNameFormattedCache = FText::Format(LOCTEXT("TopLevelDisplayNameFormat", "{0} -"), TopLevelDisplayNameCache);
+			TopLevelDisplayNameFormattedCache = FText::Format(LOCTEXT("TopLevelDisplayNameFormat", "{0} - "), TopLevelDisplayNameCache);
 		}
 	}
 	else
@@ -148,80 +105,30 @@ FText SNiagaraStackDisplayName::GetTopLevelDisplayName(TWeakPtr<UNiagaraStackVie
 
 void SNiagaraStackDisplayName::StackViewModelStructureChanged()
 {
-	if (StackEntryItem->IsFinalized() == false && StackViewModel->GetTopLevelViewModels().Num() != TopLevelViewModelCountAtLastConstruction)
+	if (StackEntry->IsFinalized() == false && StackViewModel->GetTopLevelViewModels().Num() != TopLevelViewModelCountAtLastConstruction)
 	{
 		Container->SetContent(ConstructChildren());
 	}
 }
 
-void SNiagaraStackDisplayName::StackEntryItemAlternateNameChanged()
+bool SNiagaraStackDisplayName::GetIsEnabled() const
 {
-	if (StackEntryItem->IsFinalized() == false)
-	{
-		Container->SetContent(ConstructChildren());
-	}
+	return StackEntry->GetOwnerIsEnabled() && StackEntry->GetIsEnabled();
 }
 
-FText SNiagaraStackDisplayName::GetEntryDisplayName() const 
-{
-	return StackEntryItem->GetAlternateDisplayName().IsSet() ? StackEntryItem->GetAlternateDisplayName().GetValue() : StackEntryItem->GetDisplayName();
-}
-
-FText SNiagaraStackDisplayName::GetOriginalName() const
-{
-	if (StackEntryItem->IsFinalized() == false)
-	{
-		return FText::Format(FTextFormat::FromString(TEXT("({0})")), StackEntryItem->GetDisplayName());
-	}
-	return FText::GetEmpty();
-}
-
-FText SNiagaraStackDisplayName::GetEntryToolTipText() const
-{
-	if (StackEntryItem->IsFinalized() == false)
-	{
-		return StackEntryItem->GetTooltipText();
-	}
-	return FText::GetEmpty();
-}
-
-bool SNiagaraStackDisplayName::GetEntryIsEnabled() const
-{
-	if (StackEntryItem->IsFinalized() == false)
-	{
-		return StackEntryItem->GetIsEnabledAndOwnerIsEnabled();
-	}
-	return false;
-}
-
-void SNiagaraStackDisplayName::EntryNameTextCommitted(const FText& InText, ETextCommit::Type CommitInfo)
-{
-	if (StackEntryItem->IsFinalized() == false && CommitInfo != ETextCommit::OnCleared)
-	{
-		StackEntryItem->OnRenamed(InText);
-	}
-}
-
-void SNiagaraStackDisplayName::StartRename()
-{
-	if (EditableTextBlock.IsValid())
-	{
-		EditableTextBlock->EnterEditingMode();
-	}
-}
-
-FSlateColor SNiagaraStackEntryWidget::GetTextColorForSearch(FSlateColor DefaultColor) const
+FSlateColor SNiagaraStackEntryWidget::GetTextColorForSearch() const
 {
 	if (IsCurrentSearchMatch())
 	{
-		return FSlateColor(FLinearColor(FColor::Orange));
-	}
-	return DefaultColor;
+		return FNiagaraEditorWidgetsStyle::Get().GetColor("NiagaraEditor.Stack.SearchHighlightColor");
+	} 
+	
+	return FSlateColor::UseForeground();
 }
 
 bool SNiagaraStackEntryWidget::IsCurrentSearchMatch() const
 {
-	UNiagaraStackEntry* FocusedEntry = StackViewModel->GetCurrentFocusedEntry();
+	auto FocusedEntry = StackViewModel->GetCurrentFocusedEntry();
 	return StackEntryItem != nullptr && FocusedEntry == StackEntryItem;
 }
 

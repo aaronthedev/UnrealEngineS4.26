@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VisualTreeCapture.h"
 #include "Debugging/SlateDebugging.h"
@@ -61,16 +61,9 @@ TSharedPtr<const SWidget> FVisualTreeSnapshot::Pick(FVector2D Point)
 	for (int Index = Entries.Num() - 1; Index >= 0; Index--)
 	{
 		const FVisualEntry& Entry = Entries[Index];
-		if (Entry.ClippingIndex != -1)
+		if (Entry.ClippingIndex != -1 && !ClippingStates[Entry.ClippingIndex].IsPointInside(Point))
 		{
-			// TODO: This isn't always a valid index, but should be.
-			if (ensure(ClippingStates.IsValidIndex(Entry.ClippingIndex)))
-			{
-				if (!ClippingStates[Entry.ClippingIndex].IsPointInside(Point))
-				{
-					continue;
-				}
-			}
+			continue;
 		}
 
 		if (!Entry.IsPointInside(Point))
@@ -93,7 +86,6 @@ TSharedPtr<const SWidget> FVisualTreeSnapshot::Pick(FVector2D Point)
 }
 
 FVisualTreeCapture::FVisualTreeCapture()
-	: bIsEnabled(false)
 {
 }
 
@@ -105,35 +97,27 @@ FVisualTreeCapture::~FVisualTreeCapture()
 void FVisualTreeCapture::Enable()
 {
 #if WITH_SLATE_DEBUGGING
-	if (ensure(bIsEnabled == false))
-	{
-		FSlateApplication::Get().OnWindowBeingDestroyed().AddRaw(this, &FVisualTreeCapture::OnWindowBeingDestroyed);
-		FSlateDebugging::BeginWindow.AddRaw(this, &FVisualTreeCapture::BeginWindow);
-		FSlateDebugging::EndWindow.AddRaw(this, &FVisualTreeCapture::EndWindow);
-		FSlateDebugging::BeginWidgetPaint.AddRaw(this, &FVisualTreeCapture::BeginWidgetPaint);
-		FSlateDebugging::EndWidgetPaint.AddRaw(this, &FVisualTreeCapture::EndWidgetPaint);
-		FSlateDebugging::ElementAdded.AddRaw(this, &FVisualTreeCapture::ElementAdded);
-		bIsEnabled = true;
-	}
+	FSlateApplication::Get().OnWindowBeingDestroyed().AddRaw(this, &FVisualTreeCapture::OnWindowBeingDestroyed);
+	FSlateDebugging::BeginWindow.AddRaw(this, &FVisualTreeCapture::BeginWindow);
+	FSlateDebugging::EndWindow.AddRaw(this, &FVisualTreeCapture::EndWindow);
+	FSlateDebugging::BeginWidgetPaint.AddRaw(this, &FVisualTreeCapture::BeginWidgetPaint);
+	FSlateDebugging::EndWidgetPaint.AddRaw(this, &FVisualTreeCapture::EndWidgetPaint);
+	FSlateDebugging::ElementAdded.AddRaw(this, &FVisualTreeCapture::ElementAdded);
 #endif
 }
 
 void FVisualTreeCapture::Disable()
 {
 #if WITH_SLATE_DEBUGGING
-	if (bIsEnabled)
+	if (FSlateApplication::IsInitialized())
 	{
-		if (FSlateApplication::IsInitialized())
-		{
-			FSlateApplication::Get().OnWindowBeingDestroyed().RemoveAll(this);
-		}
-		FSlateDebugging::BeginWindow.RemoveAll(this);
-		FSlateDebugging::EndWindow.RemoveAll(this);
-		FSlateDebugging::BeginWidgetPaint.RemoveAll(this);
-		FSlateDebugging::EndWidgetPaint.RemoveAll(this);
-		FSlateDebugging::ElementAdded.RemoveAll(this);
-		bIsEnabled = false;
+		FSlateApplication::Get().OnWindowBeingDestroyed().RemoveAll(this);
 	}
+	FSlateDebugging::BeginWindow.RemoveAll(this);
+	FSlateDebugging::EndWindow.RemoveAll(this);
+	FSlateDebugging::BeginWidgetPaint.RemoveAll(this);
+	FSlateDebugging::EndWidgetPaint.RemoveAll(this);
+	FSlateDebugging::ElementAdded.RemoveAll(this);
 #endif
 }
 

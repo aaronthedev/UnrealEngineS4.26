@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -126,7 +126,7 @@ class RecordPerformance : BuildCommand
 		}
 		else if (PlatformName == "Linux")
 		{
-			return new string[] { "vulkan" };
+			return new string[] { "opengl4", "vulkan" };
 		}
 		else
 		{

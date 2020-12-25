@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -132,7 +132,7 @@ struct TIMESYNTH_API FTimeSynthQuantizationSettings
 	GENERATED_USTRUCT_BODY()
 
 	// The beats per minute of the pulse. Musical convention gives this as BPM for "quarter notes" (BeatDivision = 4).
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Synth|TimeSynth|PlayClip", meta = (ClampMin = "1.0", UIMin = "1.0", ClampMax = "999.0", UIMax = "999.0"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Synth|TimeSynth|PlayClip", meta = (ClampMin = "1.0", UIMin = "1.0"))
 	float BeatsPerMinute;
 
 	// Defines numerator when determining beat time in seconds
@@ -497,9 +497,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "TimeSynth")
 	float GetEnvelopeFollowerValue() const { return CurrentEnvelopeValue; }
 
-	UFUNCTION(BlueprintCallable, Category = "TimeSynth")
-	int32 GetMaxActiveClipLimit() const;
-
 	// The default quantizations settings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "TimeSynth")
 	FTimeSynthQuantizationSettings QuantizationSettings;
@@ -529,11 +526,11 @@ public:
 	uint8 bIsFilterBEnabled : 1;
 
 	// The filter settings to use for filter A
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Filter", meta = (EditCondition = "bIsFilterAEnabled"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Filter", meta = (EditCondition = "bIsFilterEnabled"))
 	FTimeSynthFilterSettings FilterASettings;
 
 	// The filter settings to use for filter B
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Filter", meta = (EditCondition = "bIsFilterBEnabled"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Filter", meta = (EditCondition = "bIsFilterEnabled"))
 	FTimeSynthFilterSettings FilterBSettings;
 
 	// Whether or not the filter is enabled
@@ -571,10 +568,6 @@ public:
 	// Sets the desired FFT Size for the spectrum analyzer
 	UFUNCTION(BlueprintCallable, Category = "Spectral Analysis", meta = (WorldContext = "WorldContextObject"))
 	void SetFFTSize(ETimeSynthFFTSize InFFTSize);
-
-	// Check to see if clips are actively generating sound on the TimeSynth
-	UFUNCTION(BlueprintCallable, Category = "Playback State", meta = (WorldContext = "WorldContextObject"))
-	bool HasActiveClips();
 
 private:
 	// Called when a new event happens when registered
@@ -628,12 +621,6 @@ private:
 
 		bool bIsGloballyQuantized;
 
-		bool bIsInitialized;
-
-		bool bHasStartedPlaying;
-
-		bool bHasBeenStopped;
-
 		FPlayingClipInfo()
 			: ClipQuantization(Audio::EEventQuantization::Bar)
 			, VolumeScale(1.0f)
@@ -646,9 +633,6 @@ private:
 			, VolumeGroupId(INDEX_NONE)
 			, SynthClip(nullptr)
 			, bIsGloballyQuantized(false)
-			, bIsInitialized(false)
-			, bHasStartedPlaying(false)
-			, bHasBeenStopped(false)
 		{}
 	};
 
@@ -713,7 +697,6 @@ private:
 		float TargetVolumeDb;
 		float StartVolumeDb;
 		float CurrentVolumeDb;
-		float LastVolumeDb;
 
 		float CurrentTime;
 		float TargetFadeTime;
@@ -725,16 +708,6 @@ private:
 			: TargetVolumeDb(0.0f)
 			, StartVolumeDb(0.0f)
 			, CurrentVolumeDb(0.0f)
-			, LastVolumeDb(-1.0f)
-			, CurrentTime(0.0f)
-			, TargetFadeTime(0.0f)
-		{}
-
-		FVolumeGroupData(const float InitialVolume_dB)
-			: TargetVolumeDb(InitialVolume_dB)
-			, StartVolumeDb(InitialVolume_dB)
-			, CurrentVolumeDb(InitialVolume_dB)
-			, LastVolumeDb(InitialVolume_dB)
 			, CurrentTime(0.0f)
 			, TargetFadeTime(0.0f)
 		{}
@@ -748,7 +721,7 @@ private:
 	Audio::FSpectrumAnalyzerSettings SpectrumAnalyzerSettings;
 	FThreadSafeCounter SpectrumAnalysisCounter;
 
-	// Array of spectrum data, maps to FrequenciesToAnalyze FProperty
+	// Array of spectrum data, maps to FrequenciesToAnalyze UProperty
 	TArray<FTimeSynthSpectralData> SpectralData;
 
 	// Using a state variable filter
@@ -759,9 +732,6 @@ private:
 
 	// Need to limit output to prevent wrap around issues when converting to int16
 	Audio::FDynamicsProcessor DynamicsProcessor;
-
-	FThreadSafeBool bHasActiveClips;
-	FThreadSafeBool bTimeSynthWasDisabled;
 
 	friend class FTimeSynthEventListener;
 };

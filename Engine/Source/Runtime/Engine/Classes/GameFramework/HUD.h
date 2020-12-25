@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -111,7 +111,6 @@ protected:
 	UPROPERTY()
 	UCanvas* DebugCanvas;
 
-	/** List of debug strings attached to actors, sorted by actor first, then by order of addition */
 	UPROPERTY()
 	TArray<struct FDebugTextInfo> DebugTextList;
 
@@ -589,11 +588,6 @@ protected:
 private:
 	// Helper function to deal with screen offset and splitscreen mapping of coordinates to HUD
 	FVector2D GetCoordinateOffset() const;
-
-	/** Helper function to find the first and last index (if any) of elements from DebugTextList with the matching actor : 
-	* @return number of elements found.
-	*/
-	int32 FindDebugTextListIntervalForActor(AActor* InSrcActor, int32& OutFirstIdx, int32& OutLastIdx) const;
 };
 
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VoiceModule.h"
 #include "VoicePrivate.h"
@@ -46,14 +46,6 @@ BOOL CALLBACK CaptureDeviceCallback(
 		FVoiceCaptureDeviceWindows::FCaptureDeviceInfo DeviceDesc;
 		DeviceDesc.DeviceName = DeviceDescription;
 		DeviceDesc.DeviceId = *lpGuid;
-		// Default devices are list first in this callback
-		DeviceDesc.bIsDefault = !VCPtr->Devices.Num();
-
-		// Set the default voice capture device info here
-		if (DeviceDesc.bIsDefault)
-		{
-			VCPtr->DefaultVoiceCaptureDevice = DeviceDesc;
-		}
 		VCPtr->Devices.Emplace(DeviceDescription, DeviceDesc);
 
 		// Allow HMD to override the default voice capture device
@@ -61,7 +53,7 @@ BOOL CALLBACK CaptureDeviceCallback(
 		{
 			UE_LOG(LogVoice, Display, TEXT("VoiceCapture device overridden by HMD to use '%s' %s"), lpcstrDescription, *PrintMSGUID(lpGuid));
 			VCPtr->DefaultVoiceCaptureDevice = DeviceDesc;
-			VCPtr->Devices.Add(DeviceDescription, VCPtr->DefaultVoiceCaptureDevice);
+			VCPtr->Devices.Add(FString(DEFAULT_DEVICE_NAME), VCPtr->DefaultVoiceCaptureDevice);
 		}
 	}
 	
@@ -282,7 +274,11 @@ bool FVoiceCaptureDeviceWindows::Init()
 		HMDAudioInputDevice = IHeadMountedDisplayModule::Get().GetAudioInputDevice();
 	}
 
-	Devices.Reset();
+	DefaultVoiceCaptureDevice.DeviceName = FString(DEFAULT_DEVICE_NAME);
+	DefaultVoiceCaptureDevice.DeviceId = DSDEVID_DefaultVoiceCapture;
+
+	Devices.Empty();
+	Devices.Add(FString(DEFAULT_DEVICE_NAME), DefaultVoiceCaptureDevice);
 
 	hr = DirectSoundCaptureEnumerate((LPDSENUMCALLBACK)CaptureDeviceCallback, this);
 	if (FAILED(hr))

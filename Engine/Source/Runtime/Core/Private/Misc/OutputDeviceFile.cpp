@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Misc/OutputDeviceFile.h"
 #include "Misc/AssertionMacros.h"
@@ -201,7 +201,7 @@ void FAsyncWriter::Serialize(void* InData, int64 Length)
 			if (Length >= Buffer.Num())
 			{
 				// Keep the buffer bigger than we require so that % Buffer.Num() does not return 0 for Lengths = Buffer.Num()
-				Buffer.SetNumUninitialized((int32)(Length + 1));
+				Buffer.SetNumUninitialized(Length + 1);
 			}
 		}
 	}
@@ -286,10 +286,11 @@ struct FOutputDeviceFile::FCategoryInclusionInternal
  * @param InFilename		Filename to use, can be NULL
  * @param bInDisableBackup	If true, existing files will not be backed up
  */
-FOutputDeviceFile::FOutputDeviceFile( const TCHAR* InFilename, bool bInDisableBackup, bool bInAppendIfExists, bool bCreateWriterLazily)
+FOutputDeviceFile::FOutputDeviceFile( const TCHAR* InFilename, bool bInDisableBackup, bool bInAppendIfExists)
 : AsyncWriter(nullptr)
 , WriterArchive(nullptr)
 , AppendIfExists(bInAppendIfExists)
+, Opened(false)
 , Dead(false)
 , CategoryInclusionInternal(nullptr)
 , bDisableBackup(bInDisableBackup)
@@ -302,13 +303,6 @@ FOutputDeviceFile::FOutputDeviceFile( const TCHAR* InFilename, bool bInDisableBa
 	{
 		Filename[0]	= 0;
 	}
-
-#if ALLOW_LOG_FILE && !NO_LOGGING
-	if (!bCreateWriterLazily) // Should the file created/opened immediately?
-	{
-		CreateWriter();
-	}
-#endif
 }
 
 /**
@@ -348,6 +342,7 @@ void FOutputDeviceFile::TearDown()
 	WriterArchive = nullptr;
 
 	Filename[0] = 0;
+	Opened = false;
 }
 
 /**
@@ -402,32 +397,10 @@ void FOutputDeviceFile::WriteByteOrderMarkToArchive(EByteOrderMark ByteOrderMark
 	}
 }
 
-bool FOutputDeviceFile::IsOpened() const
-{
-	return AsyncWriter != nullptr;
-}
-
 bool FOutputDeviceFile::CreateWriter(uint32 MaxAttempts)
 {
-	if (IsOpened())
-	{
-		return true;
-	}
-
-	// Make log filename.
-	if (!Filename[0])
-	{
-		FCString::Strcpy(Filename, *FPlatformOutputDevices::GetAbsoluteLogFilename());
-	}
-
-	// if the file already exists, create a backup as we are going to overwrite it
-	if (!bDisableBackup)
-	{
-		CreateBackupCopy(Filename);
-	}
-
 	// Create a silent filewriter so that it doesn't try to log any errors since it would redirect logging back to itself through this output device
-	uint32 WriteFlags = FILEWRITE_Silent | FILEWRITE_AllowRead | (AppendIfExists ? FILEWRITE_Append : 0);
+	uint32 WriteFlags = FILEWRITE_Silent | FILEWRITE_AllowRead | ((Opened || AppendIfExists) ? FILEWRITE_Append : 0);
 
 	// Open log file.
 	FArchive* Ar = IFileManager::Get().CreateFileWriter(Filename, WriteFlags);
@@ -444,28 +417,23 @@ bool FOutputDeviceFile::CreateWriter(uint32 MaxAttempts)
 		{
 			// Continue to increment indices until a valid filename is found
 			FinalFilename = FilenamePart + FString::FromInt(FileIndex++) + ExtensionPart;
-			CreateBackupCopy(*FinalFilename);
+			if (!Opened)
+			{
+				CreateBackupCopy(*FinalFilename);
+			}
 			FCString::Strcpy(Filename, UE_ARRAY_COUNT(Filename), *FinalFilename);
 			Ar = IFileManager::Get().CreateFileWriter(*FinalFilename, WriteFlags);
 		} while (!Ar && FileIndex < MaxAttempts);
 	}
 
+	FAsyncWriter* Result = nullptr;
 	if (Ar)
 	{
 		WriterArchive = Ar;
 		AsyncWriter = new FAsyncWriter(*WriterArchive);
-		WriteByteOrderMarkToArchive(EByteOrderMark::UTF8);
+	}
 
-		if (!bSuppressEventTag)
-		{
-			Logf(TEXT("Log file open, %s"), FPlatformTime::StrTimestamp());
-		}
-		return true;
-	}
-	else
-	{
-		return false;
-	}
+	return !!AsyncWriter;
 }
 
 /**
@@ -487,8 +455,31 @@ void FOutputDeviceFile::Serialize( const TCHAR* Data, ELogVerbosity::Type Verbos
 	{
 		if (!AsyncWriter && !Dead)
 		{
+			// Make log filename.
+			if( !Filename[0] )
+			{
+				FCString::Strcpy(Filename, *FPlatformOutputDevices::GetAbsoluteLogFilename());
+			}
+
+			// if the file already exists, create a backup as we are going to overwrite it
+			if (!bDisableBackup && !Opened)
+			{
+				CreateBackupCopy(Filename);
+			}
+
 			// Open log file and create the worker thread.
-			if (!CreateWriter())
+			if (CreateWriter())
+			{
+				Opened = true;
+
+				WriteByteOrderMarkToArchive(EByteOrderMark::UTF8);
+
+				if (!bSuppressEventTag)
+				{
+					Logf( TEXT("Log file open, %s"), FPlatformTime::StrTimestamp() );
+				}
+			}
+			else 
 			{
 				Dead = true;
 			}

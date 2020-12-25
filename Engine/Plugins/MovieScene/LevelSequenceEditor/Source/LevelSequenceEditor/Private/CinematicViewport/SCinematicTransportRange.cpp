@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CinematicViewport/SCinematicTransportRange.h"
 #include "Rendering/DrawElements.h"
@@ -102,62 +102,7 @@ void SCinematicTransportRange::Tick(const FGeometry& AllottedGeometry, const dou
 		FTimeToPixel TimeToPixelConverter(AllottedGeometry, WorkingRange, Sequencer->GetFocusedTickResolution());
 		const float DuplicateThreshold = (TimeToPixelConverter.PixelToSeconds(3.f) - TimeToPixelConverter.PixelToSeconds(0.f));
 
-		Sequencer->GetKeysFromSelection(ActiveKeyCollection, FMath::Max(DuplicateThreshold, SMALL_NUMBER));
-	}
-}
-
-void SCinematicTransportRange::DrawKeys(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, int32 LayerId, bool bParentEnabled, const TArrayView<const FFrameNumber>& Keys, const TArrayView<const FLinearColor>& KeyColors, bool& bOutPlayMarkerOnKey) const
-{
-	ISequencer* Sequencer = GetSequencer();
-	if (!Sequencer)
-	{
-		return;
-	}
-
-	const ESlateDrawEffect DrawEffects = bParentEnabled ? ESlateDrawEffect::None : ESlateDrawEffect::DisabledEffect;
-
-	static const float TrackOffsetY = 6.f;
-	const float TrackHeight = AllottedGeometry.GetLocalSize().Y - TrackOffsetY;
-
-	FFrameRate           TickResolution  = Sequencer->GetFocusedTickResolution();
-	TRange<double>       WorkingRange    = Sequencer->GetFocusedMovieSceneSequence()->GetMovieScene()->GetEditorData().GetWorkingRange();
-	TRange<FFrameNumber> PlaybackRange   = Sequencer->GetFocusedMovieSceneSequence()->GetMovieScene()->GetPlaybackRange();
-
-	const FFrameTime FramesPerPixel = (WorkingRange.Size<double>() / AllottedGeometry.GetLocalSize().X) * TickResolution;
-	const float FullRange = WorkingRange.Size<float>();
-
-	static const float BrushWidth = 7.f;
-	static const float BrushHeight = 7.f;
-
-	const float BrushOffsetY = TrackOffsetY + TrackHeight * .5f - BrushHeight * .5f;
-	const FSlateBrush* KeyBrush = FLevelSequenceEditorStyle::Get()->GetBrush("LevelSequenceEditor.CinematicViewportTransportRangeKey");
-	const FQualifiedFrameTime CurrentTime = Sequencer->GetLocalTime();
-
-	FLinearColor KeyColor = KeyColors.Num() ? KeyColors[0] : FEditorStyle::GetSlateColor("SelectionColor").GetColor(FWidgetStyle());
-
-	int32 KeyIndex = 0;
-	for (const FFrameNumber Time : Keys)
-	{
-		if (FMath::Abs(CurrentTime.Time - Time) < FramesPerPixel/2)
-		{
-			bOutPlayMarkerOnKey = true;
-		}
-
-		float Lerp = (Time/TickResolution - WorkingRange.GetLowerBoundValue()) / FullRange;
-
-		FSlateDrawElement::MakeBox(
-			OutDrawElements,
-			LayerId+2,
-			AllottedGeometry.ToPaintGeometry(
-				FVector2D(BrushWidth, BrushHeight),
-				FSlateLayoutTransform(FVector2D(AllottedGeometry.GetLocalSize().X*Lerp - BrushWidth*.5f, BrushOffsetY))
-			),
-			KeyBrush,
-			DrawEffects,
-			KeyIndex < KeyColors.Num() ? KeyColors[KeyIndex] : KeyColor
-		);
-
-		++KeyIndex;
+		Sequencer->GetKeysFromSelection(ActiveKeyCollection, DuplicateThreshold);
 	}
 }
 
@@ -177,10 +122,6 @@ int32 SCinematicTransportRange::OnPaint(const FPaintArgs& Args, const FGeometry&
 	FFrameRate           TickResolution  = Sequencer->GetFocusedTickResolution();
 	TRange<double>       WorkingRange    = Sequencer->GetFocusedMovieSceneSequence()->GetMovieScene()->GetEditorData().GetWorkingRange();
 	TRange<FFrameNumber> PlaybackRange   = Sequencer->GetFocusedMovieSceneSequence()->GetMovieScene()->GetPlaybackRange();
-
-	// Anything within 3 pixel's worth of time is a duplicate as far as we're concerned
-	FTimeToPixel TimeToPixelConverter(AllottedGeometry, WorkingRange, TickResolution);
-	const float DuplicateThreshold = (TimeToPixelConverter.PixelToSeconds(3.f) - TimeToPixelConverter.PixelToSeconds(0.f));
 
 	const FFrameTime FramesPerPixel = (WorkingRange.Size<double>() / AllottedGeometry.GetLocalSize().X) * TickResolution;
 
@@ -232,59 +173,45 @@ int32 SCinematicTransportRange::OnPaint(const FPaintArgs& Args, const FGeometry&
 
 	bool bPlayMarkerOnKey = false;
 
-	const FLinearColor KeyframeColor = FEditorStyle::GetSlateColor("SelectionColor").GetColor(FWidgetStyle());
+	const FLinearColor KeyFrameColor = FEditorStyle::GetSlateColor("SelectionColor").GetColor(FWidgetStyle());
 
 	// Draw the current key collection tick marks
-	if (ActiveKeyCollection.IsValid())
 	{
-		TRange<FFrameNumber> VisibleFrameRange(
-			(WorkingRange.GetLowerBoundValue() * TickResolution).FloorToFrame(), 
-			(WorkingRange.GetUpperBoundValue() * TickResolution).CeilToFrame()
-			);
+		static const float BrushWidth = 7.f;
+		static const float BrushHeight = 7.f;
 
-		TArrayView<const FFrameNumber> Keys = ActiveKeyCollection->GetKeysInRange(VisibleFrameRange);
-
-		DrawKeys(AllottedGeometry, OutDrawElements, LayerId, bParentEnabled, Keys, TArrayView<FLinearColor>(), bPlayMarkerOnKey);
-	}
-
-	// Draw the marked frames
-	TArray<FMovieSceneMarkedFrame> MarkedFrames = Sequencer->GetMarkedFrames();
-	if (MarkedFrames.Num())
-	{
-		int64 TotalMaxSeconds = static_cast<int64>(TNumericLimits<int32>::Max() / TickResolution.AsDecimal());
-
-		FFrameNumber ThresholdFrames = (FMath::Max(DuplicateThreshold, SMALL_NUMBER) * TickResolution).FloorToFrame();
-		if (ThresholdFrames.Value < -TotalMaxSeconds)
+		if (ActiveKeyCollection.IsValid())
 		{
-			ThresholdFrames.Value = TotalMaxSeconds;
-		}
-		else if (ThresholdFrames.Value > TotalMaxSeconds)
-		{
-			ThresholdFrames.Value = TotalMaxSeconds;
-		}
+			const float BrushOffsetY = TrackOffsetY + TrackHeight * .5f - BrushHeight * .5f;
+			const FSlateBrush* KeyBrush = FLevelSequenceEditorStyle::Get()->GetBrush("LevelSequenceEditor.CinematicViewportTransportRangeKey");
 
-		TArray<FFrameNumber> GroupedTimes;
-		TArray<FLinearColor> KeyColors;
+			TRange<FFrameNumber> VisibleFrameRange(
+				(WorkingRange.GetLowerBoundValue() * TickResolution).FloorToFrame(), 
+				(WorkingRange.GetUpperBoundValue() * TickResolution).CeilToFrame()
+				);
 
-		GroupedTimes.Reset(MarkedFrames.Num());
-		KeyColors.Reset(MarkedFrames.Num());
-		int32 Index = 0;
-		while ( Index < MarkedFrames.Num() )
-		{
-			FFrameNumber PredicateTime = MarkedFrames[Index].FrameNumber;
-			GroupedTimes.Add(PredicateTime);
-			KeyColors.Add(MarkedFrames[Index].Color);
-			KeyColors[KeyColors.Num()-1].A = 0.8f; // make the alpha consistent across all markers
-
-			while (Index < MarkedFrames.Num() && FMath::Abs(MarkedFrames[Index].FrameNumber - PredicateTime) <= ThresholdFrames)
+			for (FFrameNumber Time : ActiveKeyCollection->GetKeysInRange(VisibleFrameRange))
 			{
-				++Index;
+				if (FMath::Abs(CurrentTime.Time - Time) < FramesPerPixel/2)
+				{
+					bPlayMarkerOnKey = true;
+				}
+
+				float Lerp = (Time/TickResolution - WorkingRange.GetLowerBoundValue()) / FullRange;
+
+				FSlateDrawElement::MakeBox(
+					OutDrawElements,
+					LayerId+2,
+					AllottedGeometry.ToPaintGeometry(
+						FVector2D(BrushWidth, BrushHeight),
+						FSlateLayoutTransform(FVector2D(AllottedGeometry.GetLocalSize().X*Lerp - BrushWidth*.5f, BrushOffsetY))
+					),
+					KeyBrush,
+					DrawEffects,
+					KeyFrameColor
+				);
 			}
 		}
-		GroupedTimes.Shrink();
-		KeyColors.Shrink();
-
-		DrawKeys(AllottedGeometry, OutDrawElements, LayerId, bParentEnabled, GroupedTimes, KeyColors, bPlayMarkerOnKey);
 	}
 
 	// Draw the play marker
@@ -298,7 +225,7 @@ int32 SCinematicTransportRange::OnPaint(const FPaintArgs& Args, const FGeometry&
 			AllottedGeometry.ToPaintGeometry(FVector2D(PositionX - FMath::CeilToFloat(BrushWidth/2), 0.f), FVector2D(BrushWidth, BrushHeight)),
 			FLevelSequenceEditorStyle::Get()->GetBrush("LevelSequenceEditor.CinematicViewportPlayMarker"),
 			DrawEffects,
-			bPlayMarkerOnKey ? KeyframeColor : LightGray
+			bPlayMarkerOnKey ? KeyFrameColor : LightGray
 		);
 
 		if (!bPlayMarkerOnKey)

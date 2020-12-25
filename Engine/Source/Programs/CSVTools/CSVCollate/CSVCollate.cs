@@ -1,5 +1,5 @@
 // Copyright (C) Microsoft. All rights reserved.
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -14,7 +14,7 @@ namespace CSVTools
 {
     class Version
     {
-        private static string VersionString = "1.32";
+        private static string VersionString = "1.26";
 
         public static string Get() { return VersionString; }
     };
@@ -23,14 +23,12 @@ namespace CSVTools
     {
         static string formatString =
             "Format: \n" +
-            "       -csv <filename>  -csvDir <path>\n" +
-			"       [-searchPattern <pattern, e.g *.csv>] - for use with -csvDir\n" +
-			"       [-avg] -stats will be per frame averaged\n" +
-			"       [-recurse] - for use with -csvdir\n" +
+            "       -csv <filename> OR -csvDir <path>\n" +
+            "       [-avg] -stats will be per frame averaged\n" +
 			"       [-filterOutlierStat <stat>] - discard CSVs if this stat has very high values\n" +
 			"       [-filterOutlierThreshold <value>] - threshold for outliers (default:1000)\n" +
-			"       [-metadataFilter <key=value,key=value...>] : filters based on CSV metadata\n" +
 			"       -o <csvFilename> \n";
+
 
 		void Run(string[] args)
         {
@@ -68,39 +66,13 @@ namespace CSVTools
 			// Whether or not we want stats to be averaged rather than appended
 			bool bAverage = GetBoolArg("avg");
 
-			string csvDir = GetArg("csvDir");
-			string csvFilenamesStr = GetArg("csvs", false);
-
-			if ( csvDir == null && csvFilenamesStr == null )
-			{
-				WriteLine("-csvs or -csvdir is required");
-				WriteLine(formatString);
-				return;
-			}
-
-			string searchPattern = GetArg("searchPattern", null);
-			if (csvFilenamesStr.Contains("*"))
-			{
-				// If passed a wildcard to -csvs, this is equivalent to -csvdir . -searchpattern <csvs>
-				if (csvDir != null && csvDir != "")
-				{
-					throw new Exception("Can't use -csvs with -csvdir");
-				}
-				csvDir = ".";
-				searchPattern = csvFilenamesStr;
-			}
-
-			// Read CSV filenames from a directory or list
-			string[] csvFilenames;
+            // Read CSV filenames from a directory or list
+            string[] csvFilenames;
+            string csvDir = GetArg("csvDir");
             if (csvDir.Length > 0)
             {
-				if (searchPattern == null)
-				{
-					searchPattern = "*.csv";
-				}
-				DirectoryInfo di = new DirectoryInfo(csvDir);
-				bool bRecurse = GetBoolArg("recurse");
-				var files = di.GetFiles(searchPattern, bRecurse ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly);
+                DirectoryInfo di = new DirectoryInfo(csvDir);
+                var files = di.GetFiles("*.csv", SearchOption.AllDirectories);
                 csvFilenames = new string[files.Length];
                 int i = 0;
                 foreach (FileInfo csvFile in files)
@@ -111,6 +83,7 @@ namespace CSVTools
             }
             else
             {
+                string csvFilenamesStr = GetArg("csvs", true);
                 if (csvFilenamesStr.Length == 0)
                 {
                     System.Console.Write(formatString);
@@ -119,17 +92,12 @@ namespace CSVTools
                 csvFilenames = csvFilenamesStr.Split(';');
             }
 
-			Console.WriteLine("Collating " + csvFilenames.Length + " csvs:");
-			foreach (string csvFilename in csvFilenames)
-			{
-				Console.WriteLine("  "+csvFilename);
-			}
-			Console.WriteLine("");
+            CsvStats combinedCsvStats = new CsvStats();
 
-			CsvStats combinedCsvStats = new CsvStats();
+			// List of stats to be averaged
+			//CsvStats[] statsToAvg = new CsvStats[csvFilenames.Length];
 
-
-			string metadataFilterString = GetArg("metadataFilter", null);
+			// Read all the CSVs into one big CSVStats class
 			List<int> frameCsvCounts=new List<int>();
 			List<string> allCsvFilenames = new List<string>();
 			int csvIndex = 0;
@@ -153,14 +121,6 @@ namespace CSVTools
 								break;
 							}
 						}
-					}
-				}
-				if (metadataFilterString != null)
-				{
-					if (srcCsvStats.metaData == null || !CsvStats.DoesMetadataMatchFilter(srcCsvStats.metaData, metadataFilterString))
-					{
-						WriteLine("Skipping CSV " + csvFilename + " due to metadata filter");
-						skip = true;
 					}
 				}
 				if ( skip )
@@ -193,27 +153,23 @@ namespace CSVTools
 						metadataA.CombineAndValidate(metadataB);
 					}
 					combinedCsvStats.Combine(srcCsvStats, bAverage, false);
-				}
-
-				// If we're computing the average, update the counts for each frame
-				if (bAverage)
-				{
-					// Resize frameCsvCounts if necessary
-					for (int i = frameCsvCounts.Count; i < combinedCsvStats.SampleCount; i++)
+					if ( bAverage )
 					{
-						frameCsvCounts.Add(0);
-					}
-					for (int i = 0; i < srcCsvStats.SampleCount; i++)
-					{
-						frameCsvCounts[i] += 1;
+						// Resize the framecount array to match
+						for (int i= frameCsvCounts.Count; i<combinedCsvStats.SampleCount; i++)
+						{
+							frameCsvCounts.Add(0);
+						}
+						for (int i=0; i<srcCsvStats.SampleCount;i++)
+						{
+							frameCsvCounts[i] += 1;
+						}
 					}
 				}
-
 				allCsvFilenames.Add(Path.GetFileName(csvFilename));
-				csvIndex++;
 				WriteLine("Csvs Processed: " + csvIndex + " / " + csvFilenames.Length);
-			}
-
+				csvIndex++;
+            }
 
 			if (bAverage)
 			{

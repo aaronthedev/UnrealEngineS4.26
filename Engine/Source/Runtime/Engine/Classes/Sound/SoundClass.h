@@ -1,26 +1,52 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
-
-#include "AudioDefines.h"
-#include "AudioDynamicParameter.h"
 #include "IAudioExtensionPlugin.h"
-#include "IAudioModulation.h"
-#include "Sound/AudioOutputTarget.h"
-#include "Sound/SoundModulationDestination.h"
 #include "UObject/ObjectMacros.h"
 #include "UObject/Object.h"
-
+#include "AudioDefines.h"
 #if WITH_EDITOR
 #include "EdGraph/EdGraph.h"
-#endif // WITH_EDITOR
-#include "SoundWaveLoadingBehavior.h"
-
+#endif
 #include "SoundClass.generated.h"
 
+UENUM()
+namespace EAudioOutputTarget
+{
+	enum Type
+	{
+		Speaker UMETA(ToolTip = "Sound plays only from speakers."),
+		Controller UMETA(ToolTip = "Sound plays only from controller if present."),
+		ControllerFallbackToSpeaker UMETA(ToolTip = "Sound plays on the controller if present. If not present, it plays from speakers.")
+	};
+}
 
-
+/**
+ * Only used when stream caching is enabled. Determines how we are going to load or retain a given audio asset.
+ * A USoundWave's loading behavior can be overridden in the USoundWave itself, the sound wave's USoundClass, or by cvars.
+ * The order of priority is defined as:
+ * 1) The loading behavior set on the USoundWave
+ * 2) The loading behavior set on the USoundWave's USoundClass.
+ * 3) The loading behavior set on the nearest parent of a USoundWave's USoundClass.
+ * 4) The loading behavior set via the au.streamcache cvars.
+ */
+UENUM()
+enum class ESoundWaveLoadingBehavior : uint8
+{
+	// If set on a USoundWave, use the setting defined by the USoundClass. If set on the next parent USoundClass, or the default behavior defined via the au.streamcache cvars.
+	Inherited = 0,
+	// the first chunk of audio for this asset will be retained in the audio cache until a given USoundWave is either destroyed or USoundWave::ReleaseCompressedAudioData is called.
+	RetainOnLoad = 1,
+	// the first chunk of audio for this asset will be loaded into the cache from disk when this asset is loaded, but may be evicted to make room for other audio if it isn't played for a while.
+	PrimeOnLoad = 2,
+	// the first chunk of audio for this asset will not be loaded until this asset is played or primed.
+	LoadOnDemand = 3,
+	// Force all audio data for this audio asset to live outside of the cache and use the non-streaming decode pathways. Only usable if set on the USoundWave.
+	ForceInline = 4 UMETA(DisplayName = "Force Inline"),
+	// This value is used to delineate when the value of ESoundWaveLoadingBehavior hasn't been cached on a USoundWave yet.
+	Uninitialized = 0xff UMETA(Hidden)
+};
 
 USTRUCT()
 struct FSoundClassEditorData
@@ -48,113 +74,105 @@ struct FSoundClassEditorData
 /**
  * Structure containing configurable properties of a sound class.
  */
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 USTRUCT(BlueprintType)
 struct FSoundClassProperties
 {
 	GENERATED_USTRUCT_BODY()
 
 	/** Volume multiplier. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = General)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassProperties)
 	float Volume;
 
 	/** Pitch multiplier. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = General)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassProperties)
 	float Pitch;
 
 	/** Lowpass filter frequency */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = General)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = SoundClassProperties)
 	float LowPassFilterFrequency;
 
-	/** Distance scale to apply to sounds that play with this sound class.
-	  * Sounds will have their attenuation distance scaled by this amount.
-	  * Allows adjusting attenuation settings dynamically. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = General)
-	float AttenuationDistanceScale;
-
 	/** The amount of stereo sounds to bleed to the rear speakers */
-	UE_DEPRECATED(4.25, "Stereo Bleed is no longer supported.")
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Routing, meta = (DeprecatedProperty, DeprecationMessage = "Stereo Bleed no longer supported."))
-	float StereoBleed = 0.f;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassProperties)
+	float StereoBleed;
 
 	/** The amount of a sound to bleed to the LFE channel */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Routing, meta = (DisplayName = "LFE Bleed"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassProperties)
 	float LFEBleed;
 
-	/** Voice center channel volume - Not a multiplier (does not propagate to child classes) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Routing)
+	/** Voice center channel volume - Not a multiplier (no propagation)	*/
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassProperties)
 	float VoiceCenterChannelVolume;
 
-	/** Volume of the radio filter effect. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, AdvancedDisplay, Category = Legacy)
+	/** Volume of the radio filter effect */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassProperties)
 	float RadioFilterVolume;
 
 	/** Volume at which the radio filter kicks in */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, AdvancedDisplay, Category = Legacy)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassProperties)
 	float RadioFilterVolumeThreshold;
 
-	/** Whether to use 'Master EQ Submix' as set in the 'Audio' category of Project Settings as the default submix for referencing sounds. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, AdvancedDisplay, Category = Legacy, meta = (DisplayName = "Output to Master EQ Submix"))
-	uint8 bApplyEffects:1;
+	/** Sound mix voice - whether to apply audio effects */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassProperties)
+	uint32 bApplyEffects:1;
 
-	/** Whether to inflate referencing sound's priority to always play. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = General)
-	uint8 bAlwaysPlay:1;
+	/** Whether to artificially prioritise the component to play */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassProperties)
+	uint32 bAlwaysPlay:1;
 
 	/** Whether or not this sound plays when the game is paused in the UI */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, AdvancedDisplay, Category = Legacy)
-	uint8 bIsUISound:1;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassProperties)
+	uint32 bIsUISound:1;
 
-	/** Whether or not this is music (propagates to child classes only if parent is true) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, AdvancedDisplay, Category = Legacy)
-	uint8 bIsMusic:1;
+	/** Whether or not this is music (propagates only if parent is true) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassProperties)
+	uint32 bIsMusic:1;
 
-	/** Whether or not this sound class forces sounds to the center channel */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Routing)
-	uint8 bCenterChannelOnly:1;
+	/** Whether or not this sound class has reverb applied */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassProperties)
+	uint32 bReverb:1;
 
-	/** Whether the Interior/Exterior volume and LPF modifiers should be applied */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Routing)
-	uint8 bApplyAmbientVolumes:1;
-
-	/** Whether or not sounds referencing this class send to the reverb submix */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Submix, meta = (DisplayName = "Send to Master Reverb Submix"))
-	uint8 bReverb:1;
-
-	/** Send amount to master reverb effect for referencing, unattenuated (2D) sounds. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Submix)
+	/** Amount of audio to send to master reverb effect for 2D sounds played with this sound class. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = SoundClassProperties)
 	float Default2DReverbSendAmount;
 
-	/** Default modulation settings for sounds directly referencing this class */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Modulation)
-	FSoundModulationDefaultSettings ModulationSettings;
+	/** Whether or not this sound class forces sounds to the center channel */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassProperties)
+	uint32 bCenterChannelOnly:1;
+
+	/** Whether the Interior/Exterior volume and LPF modifiers should be applied */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassProperties)
+	uint32 bApplyAmbientVolumes:1;
 
 	/** Which output target the sound should be played through */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Routing)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassProperties)
 	TEnumAsByte<EAudioOutputTarget::Type> OutputTarget;
 
-	/** Specifies how and when compressed audio data is loaded for asset if stream caching is enabled. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Loading, meta = (DisplayName = "Loading Behavior Override"))
+	/** The loading behavior used for USoundWaves of this USoundClass. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = SoundClassProperties, meta = (DisplayName = "Loading Behavior Override"))
 	ESoundWaveLoadingBehavior LoadingBehavior;
 
-	/** Default output submix of referencing sounds. If unset, falls back to the 'Master Submix' as set in the 'Audio' category of Project Settings. 
-	  * (Unavailable if legacy 'Output to Master EQ Submix' is set) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Submix, meta = (EditCondition = "!bApplyEffects"))
-	USoundSubmix* DefaultSubmix;
-
-	FSoundClassProperties();
-};
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
-/** Class for sound class properties which are intended to be dynamically changing without a sound mix. */
-struct FSoundClassDynamicProperties
-{
-	FDynamicParameter AttenuationScaleParam;
-
-	FSoundClassDynamicProperties()
-		: AttenuationScaleParam(1.0f)
-	{
-	}
+	FSoundClassProperties()
+		: Volume(1.0f)
+		, Pitch(1.0f)
+		, LowPassFilterFrequency(MAX_FILTER_FREQUENCY)
+		, StereoBleed(0.25f)
+		, LFEBleed(0.5f)
+		, VoiceCenterChannelVolume(0.0f)
+		, RadioFilterVolume(0.0f)
+		, RadioFilterVolumeThreshold(0.0f)
+		, bApplyEffects(false)
+		, bAlwaysPlay(false)
+		, bIsUISound(false)
+		, bIsMusic(false)
+		, bReverb(true)
+		, Default2DReverbSendAmount(0.0f)
+		, bCenterChannelOnly(false)
+		, bApplyAmbientVolumes(false)
+		, OutputTarget(EAudioOutputTarget::Speaker)
+		, LoadingBehavior(ESoundWaveLoadingBehavior::Inherited)
+		{
+		}
+	
 };
 
 /**
@@ -206,25 +224,32 @@ class ENGINE_API USoundClass : public UObject
 {
 	GENERATED_UCLASS_BODY()
 
-public:
 	/** Configurable properties like volume and priority. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = General, meta = (ShowOnlyInnerProperties))
-	FSoundClassProperties Properties;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClass)
+	struct FSoundClassProperties Properties;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = General)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClass)
 	TArray<USoundClass*> ChildClasses;
 
 	/** SoundMix Modifiers to activate automatically when a sound of this class is playing. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = General)
-	TArray<FPassiveSoundMixModifier> PassiveSoundMixModifiers;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClass)
+	TArray<struct FPassiveSoundMixModifier> PassiveSoundMixModifiers;
 
-	UPROPERTY(BlueprintReadOnly, Category = General)
+	/**
+	  * Modulation for the sound class. If not set on sound directly, settings
+	  * fall back to the modulation settings provided here.
+	  */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Modulation)
+	FSoundModulation Modulation;
+
+public:
+	UPROPERTY()
 	USoundClass* ParentClass;
 
 #if WITH_EDITORONLY_DATA
 	/** EdGraph based representation of the SoundClass */
 	class UEdGraph* SoundClassGraph;
-#endif // WITH_EDITORONLY_DATA
+#endif
 
 protected:
 
@@ -234,7 +259,7 @@ protected:
 	virtual void BeginDestroy() override;
 	virtual void PostLoad() override;
 #if WITH_EDITOR
-	virtual void PreEditChange(FProperty* PropertyAboutToChange) override;
+	virtual void PreEditChange(UProperty* PropertyAboutToChange) override;
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 	//~ End UObject Interface.

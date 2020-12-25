@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,7 +12,7 @@
  */
 struct FCompressedImage2D
 {
-	TArray64<uint8> RawData;
+	TArray<uint8> RawData;
 	int32 SizeX;
 	int32 SizeY;
 	int32 SizeZ; // Only for Volume Texture
@@ -153,10 +153,6 @@ struct FTextureBuildSettings
 	int32 CompressionQuality;
 	/** ETextureLossyCompressionAmount */
 	int32 LossyCompressionAmount;
-	/** Values > 1.0 will scale down source texture. Ignored for textures with mips */
-	float Downscale;
-	/** ETextureDownscaleOptions */
-	uint8 DownscaleOptions;
 	/** TextureAddress, opaque to avoid dependencies on engine headers. How to address the texture (clamp, wrap, ...) for virtual textures this is baked into the build data, for regular textures this is ignored. */
 	int32 VirtualAddressingModeX;
 	int32 VirtualAddressingModeY;
@@ -212,8 +208,6 @@ struct FTextureBuildSettings
 		, ChromaKeyThreshold(1.0f / 255.0f)
 		, CompressionQuality(-1)
 		, LossyCompressionAmount(0)
-		, Downscale(0.0)
-		, DownscaleOptions(0)
 		, VirtualAddressingModeX(0)
 		, VirtualAddressingModeY(0)
 		, VirtualTextureTileSize(0)

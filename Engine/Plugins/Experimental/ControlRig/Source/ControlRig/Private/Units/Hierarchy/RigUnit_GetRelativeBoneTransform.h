@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,38 +8,30 @@
 /**
  * GetBoneTransform is used to retrieve a single transform from a hierarchy.
  */
-USTRUCT(meta=(DisplayName="Get Relative Transform", Category="Hierarchy", DocumentationPolicy = "Strict", Keywords = "GetRelativeBoneTransform", Deprecated = "4.25", Varying))
+USTRUCT(meta=(DisplayName="Get Relative Transform", Category="Hierarchy", DocumentationPolicy = "Strict", Keywords = "GetRelativeBoneTransform"))
 struct FRigUnit_GetRelativeBoneTransform : public FRigUnit
 {
 	GENERATED_BODY()
 
 	FRigUnit_GetRelativeBoneTransform()
-		: CachedBone(FCachedRigElement())
-		, CachedSpace(FCachedRigElement())
+		: CachedBoneIndex(INDEX_NONE)
+		, CachedSpaceIndex(INDEX_NONE)
 	{}
 
-	virtual FRigElementKey DetermineSpaceForPin(const FString& InPinPath, void* InUserContext) const override
-	{
-		if (InPinPath.StartsWith(TEXT("Transform")))
-		{
-			return FRigElementKey(Space, ERigElementType::Bone);
-		}
-		return FRigElementKey();
-	}
-
+	virtual FString GetUnitLabel() const override;
 	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;
 
 	/**
 	 * The name of the Bone to retrieve the transform for.
 	 */
-	UPROPERTY(meta = (Input))
+	UPROPERTY(meta = (Input, BoneName, Constant))
 	FName Bone;
 
 	/**
 	 * The name of the Bone to retrieve the transform relative within.
 	 */
-	UPROPERTY(meta = (Input))
+	UPROPERTY(meta = (Input, BoneName, Constant))
 	FName Space;
 
 	// The current transform of the given bone - or identity in case it wasn't found.
@@ -47,10 +39,10 @@ struct FRigUnit_GetRelativeBoneTransform : public FRigUnit
 	FTransform Transform;
 
 	// Used to cache the internally used bone index
-	UPROPERTY(transient)
-	FCachedRigElement CachedBone;
+	UPROPERTY()
+	int32 CachedBoneIndex;
 
 	// Used to cache the internally used space index
-	UPROPERTY(transient)
-	FCachedRigElement CachedSpace;
+	UPROPERTY()
+	int32 CachedSpaceIndex;
 };

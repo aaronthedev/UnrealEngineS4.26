@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SMergeAssetPickerView.h"
 #include "Templates/SubclassOf.h"
@@ -366,7 +366,8 @@ TSharedRef<SWidget> SMergeAssetPickerPanel::MakeRevisionPickerMenu()
 		FMenuBuilder MenuBuilder(/*bInShouldCloseWindowAfterMenuSelection =*/true, /*CommandList =*/nullptr);
 		MenuBuilder.BeginSection("RevisionSection", LOCTEXT("Revisions", "Revisions"));
 		{
-			FText const RevisionTooltip = LOCTEXT("UnknownRevisionTip", "The selected asset must be a temporary one created by the merge-tool (with this preordained revision).");
+			FText const RevisionTooltip = LOCTEXT("UnknownRevisionTip",
+				"The selected asset must be a temporary one created by the merge-tool (with this preordained revision).");
 			MenuBuilder.AddMenuEntry(TAttribute<FText>(this, &SMergeAssetPickerPanel::GetRevisionTextValue),
 				RevisionTooltip, FSlateIcon(), FUIAction());
 		}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -268,12 +268,6 @@ KISMET_MATH_FORCEINLINE
 int32 UKismetMathLibrary::Clamp(int32 V, int32 A, int32 B)
 {
 	return FMath::Clamp(V, A, B);
-}
-
-KISMET_MATH_FORCEINLINE
-int32 UKismetMathLibrary::Wrap(int32 Value, int32 Min, int32 Max)
-{
-	return FMath::Wrap(Value, Min, Max);
 }
 
 KISMET_MATH_FORCEINLINE
@@ -778,12 +772,6 @@ float UKismetMathLibrary::FClamp(float V, float A, float B)
 }	
 
 KISMET_MATH_FORCEINLINE
-float UKismetMathLibrary::FWrap(float Value, float Min, float Max)
-{
-	return FMath::Wrap(Value, Min, Max);
-}
-
-KISMET_MATH_FORCEINLINE
 float UKismetMathLibrary::Lerp(float A, float B, float V)
 {
 	return A + V*(B-A);
@@ -918,124 +906,6 @@ KISMET_MATH_FORCEINLINE
 bool UKismetMathLibrary::EqualEqual_TransformTransform(const FTransform& A, const FTransform& B)
 {
 	return NearlyEqual_TransformTransform(A, B);
-}
-
-
-/* FIntPoint
-*****************************************************************************/
-
-KISMET_MATH_FORCEINLINE
-FIntPoint UKismetMathLibrary::IntPoint_Zero()
-{
-	return FIntPoint::ZeroValue;
-}
-
-KISMET_MATH_FORCEINLINE
-FIntPoint UKismetMathLibrary::IntPoint_One()
-{
-	return FIntPoint(1);
-}
-
-KISMET_MATH_FORCEINLINE
-FIntPoint UKismetMathLibrary::IntPoint_Up()
-{
-	return FIntPoint(0, -1);
-}
-
-KISMET_MATH_FORCEINLINE
-FIntPoint UKismetMathLibrary::IntPoint_Left()
-{
-	return FIntPoint(-1, 0);
-}
-
-KISMET_MATH_FORCEINLINE
-FIntPoint UKismetMathLibrary::IntPoint_Right()
-{
-	return FIntPoint(1, 0);
-}
-
-KISMET_MATH_FORCEINLINE
-FIntPoint UKismetMathLibrary::IntPoint_Down()
-{
-	return FIntPoint(0, 1);
-}
-
-KISMET_MATH_FORCEINLINE
-FVector2D UKismetMathLibrary::Conv_IntPointToVector2D(FIntPoint InIntPoint)
-{
-	return FVector2D(InIntPoint.X, InIntPoint.Y);
-}
-
-
-KISMET_MATH_FORCEINLINE
-FIntPoint UKismetMathLibrary::Add_IntPointIntPoint(FIntPoint A, FIntPoint B)
-{
-	return A + B;
-}
-
-KISMET_MATH_FORCEINLINE
-FIntPoint UKismetMathLibrary::Add_IntPointInt(FIntPoint A, int32 B)
-{
-	return A + FIntPoint(B);
-}
-
-KISMET_MATH_FORCEINLINE
-FIntPoint UKismetMathLibrary::Subtract_IntPointIntPoint(FIntPoint A, FIntPoint B)
-{
-	return A - B;
-}
-
-KISMET_MATH_FORCEINLINE
-FIntPoint UKismetMathLibrary::Subtract_IntPointInt(FIntPoint A, int32 B)
-{
-	return A - FIntPoint(B);
-}
-
-KISMET_MATH_FORCEINLINE
-FIntPoint UKismetMathLibrary::Multiply_IntPointIntPoint(FIntPoint A, FIntPoint B)
-{
-	return A * B;
-}
-
-KISMET_MATH_FORCEINLINE
-FIntPoint UKismetMathLibrary::Multiply_IntPointInt(FIntPoint A, int32 B)
-{
-	return A * FIntPoint(B);
-}
-
-KISMET_MATH_FORCEINLINE
-FIntPoint UKismetMathLibrary::Divide_IntPointIntPoint(FIntPoint A, FIntPoint B)
-{
-	if (B.X == 0 || B.Y == 0)
-	{
-		ReportError_Divide_IntPointOnIntPoint();
-		return FIntPoint::ZeroValue;
-	}
-	return A / B;
-}
-
-KISMET_MATH_FORCEINLINE
-FIntPoint UKismetMathLibrary::Divide_IntPointInt(FIntPoint A, int32 B)
-{
-	if (B == 0)
-	{
-		ReportError_Divide_IntPointOnInt();
-		return FIntPoint::ZeroValue;
-	}
-
-	return A / FIntPoint(B);
-}
-
-KISMET_MATH_FORCEINLINE
-bool UKismetMathLibrary::Equal_IntPointIntPoint(FIntPoint A, FIntPoint B)
-{
-	return A == B;
-}
-
-KISMET_MATH_FORCEINLINE
-bool UKismetMathLibrary::NotEqual_IntPointIntPoint(FIntPoint A, FIntPoint B)
-{
-	return A != B;
 }
 
 
@@ -1405,12 +1275,6 @@ FRotator UKismetMathLibrary::Conv_VectorToRotator(FVector InVec)
 
 KISMET_MATH_FORCEINLINE
 FQuat UKismetMathLibrary::Conv_VectorToQuaterion(FVector InVec)
-{
-	return InVec.ToOrientationQuat();
-}
-
-KISMET_MATH_FORCEINLINE
-FQuat UKismetMathLibrary::Conv_VectorToQuaternion(FVector InVec)
 {
 	return InVec.ToOrientationQuat();
 }
@@ -1996,12 +1860,6 @@ FQuat UKismetMathLibrary::Conv_Vector4ToQuaterion(const FVector4& InVec)
 }
 
 KISMET_MATH_FORCEINLINE
-FQuat UKismetMathLibrary::Conv_Vector4ToQuaternion(const FVector4& InVec)
-{
-	return InVec.ToOrientationQuat();
-}
-
-KISMET_MATH_FORCEINLINE
 FVector4 UKismetMathLibrary::Add_Vector4Vector4(const FVector4& A, const FVector4& B)
 {
 	return A + B;
@@ -2161,12 +2019,6 @@ KISMET_MATH_FORCEINLINE
 FVector4 UKismetMathLibrary::Vector4_MirrorByVector3(const FVector4& Direction, const FVector4& SurfaceNormal)
 {
 	return Direction.Reflect3(SurfaceNormal);
-}
-
-KISMET_MATH_FORCEINLINE
-FVector4 UKismetMathLibrary::TransformVector4(const FMatrix& Matrix, const FVector4& Vec4)
-{
-	return Matrix.TransformFVector4(Vec4);
 }
 
 
@@ -2599,18 +2451,6 @@ int64 UKismetMathLibrary::Conv_IntToInt64(int32 InInt)
 
 KISMET_MATH_FORCEINLINE
 uint8 UKismetMathLibrary::Conv_IntToByte(int32 InInt)
-{
-	return (uint8)InInt;
-}
-
-KISMET_MATH_FORCEINLINE
-int32 UKismetMathLibrary::Conv_Int64ToInt(int64 InInt)
-{
-	return (int32)InInt;
-}
-
-KISMET_MATH_FORCEINLINE
-uint8 UKismetMathLibrary::Conv_Int64ToByte(int64 InInt)
 {
 	return (uint8)InInt;
 }

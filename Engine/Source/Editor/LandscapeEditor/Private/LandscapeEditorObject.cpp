@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LandscapeEditorObject.h"
 #include "Engine/Texture2D.h"
@@ -478,57 +478,49 @@ bool ULandscapeEditorObject::SetAlphaTexture(UTexture2D* InTexture, EColorChanne
 		NewAlphaTexture->Source.GetMipData(NewTextureData, 0);
 	}
 
-	const bool bSourceDataIsG8 = NewAlphaTexture != NULL && NewAlphaTexture->Source.IsValid() && NewAlphaTexture->Source.GetFormat() == TSF_G8;
-	const int32 NumChannels = bSourceDataIsG8 ? 1 : 4;
-
 	// Load fallback if there's no texture or data
-	if (NewAlphaTexture == NULL || (NewTextureData.Num() != NumChannels * NewAlphaTexture->Source.GetSizeX() * NewAlphaTexture->Source.GetSizeY()))
+	if (NewAlphaTexture == NULL || (NewTextureData.Num() != 4 * NewAlphaTexture->Source.GetSizeX() * NewAlphaTexture->Source.GetSizeY()))
 	{
 		NewAlphaTexture = GetClass()->GetDefaultObject<ULandscapeEditorObject>()->AlphaTexture;
-		if (NewAlphaTexture)
-		{
-			NewAlphaTexture->Source.GetMipData(NewTextureData, 0);
-		}
+		NewAlphaTexture->Source.GetMipData(NewTextureData, 0);
 		Result = false;
 	}
 
-	if (NewAlphaTexture)
+	check(NewAlphaTexture);
+	AlphaTexture = NewAlphaTexture;
+	AlphaTextureSizeX = NewAlphaTexture->Source.GetSizeX();
+	AlphaTextureSizeY = NewAlphaTexture->Source.GetSizeY();
+	AlphaTextureChannel = InTextureChannel;
+	AlphaTextureData.Empty(AlphaTextureSizeX*AlphaTextureSizeY);
+
+	if (NewTextureData.Num() != 4 *AlphaTextureSizeX*AlphaTextureSizeY)
 	{
-		AlphaTexture = NewAlphaTexture;
-		AlphaTextureSizeX = NewAlphaTexture->Source.GetSizeX();
-		AlphaTextureSizeY = NewAlphaTexture->Source.GetSizeY();
-		AlphaTextureChannel = NumChannels == 1 ? EColorChannel::Red : InTextureChannel;
-		AlphaTextureData.Empty(AlphaTextureSizeX * AlphaTextureSizeY);
-
-		if (NewTextureData.Num() != NumChannels * AlphaTextureSizeX * AlphaTextureSizeY)
+		// Don't crash if for some reason we couldn't load any source art
+		AlphaTextureData.AddZeroed(AlphaTextureSizeX*AlphaTextureSizeY);
+	}
+	else
+	{
+		uint8* SrcPtr;
+		switch(AlphaTextureChannel)
 		{
-			// Don't crash if for some reason we couldn't load any source art
-			AlphaTextureData.AddZeroed(AlphaTextureSizeX * AlphaTextureSizeY);
+		case 1:
+			SrcPtr = &((FColor*)NewTextureData.GetData())->G;
+			break;
+		case 2:
+			SrcPtr = &((FColor*)NewTextureData.GetData())->B;
+			break;
+		case 3:
+			SrcPtr = &((FColor*)NewTextureData.GetData())->A;
+			break;
+		default:
+			SrcPtr = &((FColor*)NewTextureData.GetData())->R;
+			break;
 		}
-		else
-		{
-			uint8* SrcPtr;
-			switch (AlphaTextureChannel)
-			{
-			case 1:
-				SrcPtr = &((FColor*)NewTextureData.GetData())->G;
-				break;
-			case 2:
-				SrcPtr = &((FColor*)NewTextureData.GetData())->B;
-				break;
-			case 3:
-				SrcPtr = &((FColor*)NewTextureData.GetData())->A;
-				break;
-			default:
-				SrcPtr = &((FColor*)NewTextureData.GetData())->R;
-				break;
-			}
 
-			for (int32 i = 0; i < AlphaTextureSizeX * AlphaTextureSizeY; i++)
-			{
-				AlphaTextureData.Add(*SrcPtr);
-				SrcPtr += NumChannels;
-			}
+		for (int32 i=0;i<AlphaTextureSizeX*AlphaTextureSizeY;i++)
+		{
+			AlphaTextureData.Add(*SrcPtr);
+			SrcPtr += 4;
 		}
 	}
 

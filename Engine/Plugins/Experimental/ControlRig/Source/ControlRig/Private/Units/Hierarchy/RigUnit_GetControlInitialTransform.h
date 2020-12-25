@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,15 +8,17 @@
 /**
  * GetControlTransform is used to retrieve a single transform from a hierarchy.
  */
-USTRUCT(meta=(DisplayName="Get Control Initial Transform", Category="Controls", DocumentationPolicy = "Strict", Keywords="GetControlInitialTransform", Deprecated = "4.25"))
+USTRUCT(meta=(DisplayName="Get Control Initial Transform", Category="Controls", DocumentationPolicy = "Strict", Keywords="GetControlInitialTransform"))
 struct FRigUnit_GetControlInitialTransform : public FRigUnit
 {
 	GENERATED_BODY()
 
 	FRigUnit_GetControlInitialTransform()
 		: Space(EBoneGetterSetterMode::LocalSpace)
-		, CachedControlIndex(FCachedRigElement())
+		, CachedControlIndex(INDEX_NONE)
 	{}
+
+	virtual FString GetUnitLabel() const override;
 
 	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;
@@ -24,7 +26,7 @@ struct FRigUnit_GetControlInitialTransform : public FRigUnit
 	/**
 	 * The name of the Control to retrieve the transform for.
 	 */
-	UPROPERTY(meta = (Input))
+	UPROPERTY(meta = (Input, ControlName, Constant))
 	FName Control;
 
 	/**
@@ -40,5 +42,5 @@ struct FRigUnit_GetControlInitialTransform : public FRigUnit
 
 	// Used to cache the internally used bone index
 	UPROPERTY()
-	FCachedRigElement CachedControlIndex;
+	int32 CachedControlIndex;
 };

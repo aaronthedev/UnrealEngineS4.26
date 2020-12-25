@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "HAL/FileManager.h"
@@ -121,12 +121,12 @@ public:
 	}
 
 	/** 
-	 * Filter used to test to see if a FProperty is candidate for comparison.
+	 * Filter used to test to see if a UProperty is candidate for comparison.
 	 * @param Property	The property to test
 	 *
-	 * @return True if FProperty should be compared, false otherwise
+	 * @return True if UProperty should be compared, false otherwise
 	 */
-	static bool ShouldCompareProperty (const FProperty* Property)
+	static bool ShouldCompareProperty (const UProperty* Property)
 	{
 		// Ignore components & transient properties
 		const bool bIsTransient = !!( Property->PropertyFlags & CPF_Transient );
@@ -144,9 +144,9 @@ public:
 	 */
 	static void GetObjProperties (UObject* Obj, FPropertiesMap& ObjProperties)
 	{
-		for (TFieldIterator<FProperty> PropIt(Obj->GetClass(), EFieldIteratorFlags::IncludeSuper); PropIt; ++PropIt)
+		for (TFieldIterator<UProperty> PropIt(Obj->GetClass(), EFieldIteratorFlags::IncludeSuper); PropIt; ++PropIt)
 		{
-			FProperty* Prop = *PropIt;
+			UProperty* Prop = *PropIt;
 
 			if ( ShouldCompareProperty(Prop) )
 			{
@@ -607,7 +607,7 @@ public:
 	static UPackage* CreateTempPackage(FString Name)
 	{
 		FString TempPackageName = FString::Printf(TEXT("/Temp/BpAutomation-%u-%s"), GenTempUid(), *Name);
-		return CreatePackage(*TempPackageName);
+		return CreatePackage(NULL, *TempPackageName);
 	}
 
 	/**
@@ -902,7 +902,7 @@ bool FBlueprintCompileOnLoadTest::RunTest(const FString& BlueprintAssetPath)
 	TSet<TWeakObjectPtr<UBlueprint>> BlueprintDependencies;
 	{
 		TArray<UBlueprint*> DependentBlueprints;
-		FBlueprintEditorUtils::FindDependentBlueprints(InitialBlueprint, DependentBlueprints);
+		FBlueprintEditorUtils::GetDependentBlueprints(InitialBlueprint, DependentBlueprints);
 		for (auto BP : DependentBlueprints)
 		{
 			BlueprintDependencies.Add(BP);

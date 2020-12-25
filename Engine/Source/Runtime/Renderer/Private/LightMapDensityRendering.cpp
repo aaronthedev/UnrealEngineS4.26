@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	LightMapDensityRendering.cpp: Implementation for rendering lightmap density.
@@ -36,12 +36,13 @@ IMPLEMENT_DENSITY_LIGHTMAPPED_SHADER_TYPE(TUniformLightMapPolicy<LMP_HQ_LIGHTMAP
 
 #endif
 
-IMPLEMENT_STATIC_UNIFORM_BUFFER_STRUCT(FLightmapDensityPassUniformParameters, "LightmapDensityPass", SceneTextures);
+IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FLightmapDensityPassUniformParameters, "LightmapDensityPass");
 
-void SetupLightmapDensityPassUniformBuffer(FRDGBuilder& GraphBuilder, ERHIFeatureLevel::Type FeatureLevel, FLightmapDensityPassUniformParameters& LightmapDensityPassParameters)
+void SetupLightmapDensityPassUniformBuffer(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FLightmapDensityPassUniformParameters& LightmapDensityPassParameters)
 {
-	SetupSceneTextureUniformParameters(GraphBuilder, FeatureLevel, ESceneTextureSetupMode::None, LightmapDensityPassParameters.SceneTextures);
-
+	FSceneRenderTargets& SceneRenderTargets = FSceneRenderTargets::Get(RHICmdList);
+	SetupSceneTextureUniformParameters(SceneRenderTargets, View.FeatureLevel, ESceneTextureSetupMode::None, LightmapDensityPassParameters.SceneTextures);
+	
 	LightmapDensityPassParameters.GridTexture = GEngine->LightMapDensityTexture->Resource->TextureRHI;
 	LightmapDensityPassParameters.GridTextureSampler = TStaticSamplerState<SF_Bilinear, AM_Wrap, AM_Wrap, AM_Wrap>::GetRHI();
 
@@ -56,45 +57,43 @@ void SetupLightmapDensityPassUniformBuffer(FRDGBuilder& GraphBuilder, ERHIFeatur
 	LightmapDensityPassParameters.VertexMappedColor = GEngine->LightMapDensityVertexMappedColor;
 }
 
-TRDGUniformBufferRef<FLightmapDensityPassUniformParameters> CreateLightmapDensityPassUniformBuffer(FRDGBuilder& GraphBuilder, ERHIFeatureLevel::Type FeatureLevel)
+bool FDeferredShadingSceneRenderer::RenderLightMapDensities(FRHICommandListImmediate& RHICmdList)
 {
-	auto* UniformBufferParameters = GraphBuilder.AllocParameters<FLightmapDensityPassUniformParameters>();
-	SetupLightmapDensityPassUniformBuffer(GraphBuilder, FeatureLevel, *UniformBufferParameters);
-	return GraphBuilder.CreateUniformBuffer(UniformBufferParameters);
-}
+	bool bDirty = false;
 
-BEGIN_SHADER_PARAMETER_STRUCT(FLightMapDensitiesPassParameters, )
-	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FLightmapDensityPassUniformParameters, Pass)
-	RENDER_TARGET_BINDING_SLOTS()
-END_SHADER_PARAMETER_STRUCT()
-
-void FDeferredShadingSceneRenderer::RenderLightMapDensities(FRDGBuilder& GraphBuilder, const FRenderTargetBindingSlots& RenderTargets)
-{
-	RDG_EVENT_SCOPE(GraphBuilder, "LightMapDensity");
-
-	auto* PassParameters = GraphBuilder.AllocParameters<FLightMapDensitiesPassParameters>();
-	PassParameters->Pass = CreateLightmapDensityPassUniformBuffer(GraphBuilder, FeatureLevel);
-	PassParameters->RenderTargets = RenderTargets;
-
-	// Draw the scene's emissive and light-map color.
-	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
+	if (Scene->GetFeatureLevel() >= ERHIFeatureLevel::SM5)
 	{
-		FViewInfo& View = Views[ViewIndex];
-		RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
-		RDG_EVENT_SCOPE_CONDITIONAL(GraphBuilder, Views.Num() > 1, "View%d", ViewIndex);
+		SCOPED_DRAW_EVENT(RHICmdList, LightMapDensity);
 
-		GraphBuilder.AddPass(
-			{},
-			PassParameters,
-			ERDGPassFlags::Raster,
-			[this, &View](FRHICommandList& RHICmdList)
+		// Draw the scene's emissive and light-map color.
+		for(int32 ViewIndex = 0;ViewIndex < Views.Num();ViewIndex++)
 		{
+			SCOPED_CONDITIONAL_DRAW_EVENTF(RHICmdList, EventView, Views.Num() > 1, TEXT("View%d"), ViewIndex);
+
+			FViewInfo& View = Views[ViewIndex];
+
 			Scene->UniformBuffers.UpdateViewUniformBuffer(View);
+
+			FLightmapDensityPassUniformParameters LightmapDensityPassParameters;
+			SetupLightmapDensityPassUniformBuffer(RHICmdList, View, LightmapDensityPassParameters);
+			Scene->UniformBuffers.LightmapDensityPassUniformBuffer.UpdateUniformBufferImmediate(LightmapDensityPassParameters);
+
+			FMeshPassProcessorRenderState DrawRenderState(View, Scene->UniformBuffers.LightmapDensityPassUniformBuffer);
+
+			// Opaque blending, depth tests and writes.
+			DrawRenderState.SetBlendState(TStaticBlendState<>::GetRHI());
+			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<true,CF_DepthNearOrEqual>::GetRHI());
 			RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1);
+
 			View.ParallelMeshDrawCommandPasses[EMeshPass::LightmapDensity].DispatchDraw(nullptr, RHICmdList);
-		});
+
+			bDirty = bDirty && View.ParallelMeshDrawCommandPasses[EMeshPass::LightmapDensity].HasAnyDraw();
+		}
 	}
+
+	return bDirty;
 }
+
 
 template<typename LightMapPolicyType>
 void FLightmapDensityMeshProcessor::Process(
@@ -156,8 +155,11 @@ void FLightmapDensityMeshProcessor::Process(
 				IAllocatedVirtualTexture* AllocatedVT = MeshBatch.LCI->GetResourceCluster()->AllocatedVT;
 				if (AllocatedVT)
 				{
-					ShaderElementData.LightMapResolutionScale.X = AllocatedVT->GetWidthInPixels();
-					ShaderElementData.LightMapResolutionScale.Y = AllocatedVT->GetHeightInPixels() * 2.0f; // Compensates the VT specific math in GetLightMapCoordinates (used to pack more coefficients per texture)
+					// We use the total Space size here as the Lightmap Scale/Bias is transformed to VT space
+					// TODO - what should we do about multiple layers, as physical texture backing each layer may be different size
+					const uint32 PhysicalTextureSize = AllocatedVT->GetPhysicalTextureSize(0u);
+					ShaderElementData.LightMapResolutionScale.X = PhysicalTextureSize;
+					ShaderElementData.LightMapResolutionScale.Y = PhysicalTextureSize * 2.0f; // Compensates the VT specific math in GetLightMapCoordinates (used to pack more coefficients per texture)
 				}
 			}
 			else
@@ -241,9 +243,8 @@ void FLightmapDensityMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT Mesh
 		const bool bMaterialMasked = Material->IsMasked();
 		const bool bTranslucentBlendMode = IsTranslucentBlendMode(Material->GetBlendMode());
 		const bool bIsLitMaterial = Material->GetShadingModels().IsLit();
-		const FMeshDrawingPolicyOverrideSettings OverrideSettings = ComputeMeshOverrideSettings(MeshBatch);
-		const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, *Material, OverrideSettings);
-		const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, *Material, OverrideSettings);
+		const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, *Material);
+		const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, *Material);
 		const FLightMapInteraction LightMapInteraction = (MeshBatch.LCI && bIsLitMaterial) ? MeshBatch.LCI->GetLightMapInteraction(FeatureLevel) : FLightMapInteraction();
 
 		// Force simple lightmaps based on system settings.
@@ -259,8 +260,7 @@ void FLightmapDensityMeshProcessor::AddMeshBatch(const FMeshBatch& RESTRICT Mesh
 			{
 				// Override with the default material for opaque materials that are not two sided
 				MaterialRenderProxy = GEngine->LevelColorationLitMaterial->GetRenderProxy();
-				// If LevelColorationLitMaterial happens to be compiling, use the fallback material and overwrite MaterialRenderProxy
-				Material = &MaterialRenderProxy->GetMaterialWithFallback(FeatureLevel, MaterialRenderProxy);
+				Material = MaterialRenderProxy->GetMaterial(FeatureLevel);
 			}
 
 			if (!MaterialRenderProxy)
@@ -349,6 +349,7 @@ FLightmapDensityMeshProcessor::FLightmapDensityMeshProcessor(const FScene* Scene
 	PassDrawRenderState.SetDepthStencilState(TStaticDepthStencilState<true, CF_DepthNearOrEqual>::GetRHI());
 
 	PassDrawRenderState.SetViewUniformBuffer(Scene->UniformBuffers.ViewUniformBuffer);
+	PassDrawRenderState.SetPassUniformBuffer(Scene->UniformBuffers.LightmapDensityPassUniformBuffer);
 }
 
 FMeshPassProcessor* CreateLightmapDensityPassProcessor(const FScene* Scene, const FSceneView* InViewIfDynamicMeshCommand, FMeshPassDrawListContext* InDrawListContext)

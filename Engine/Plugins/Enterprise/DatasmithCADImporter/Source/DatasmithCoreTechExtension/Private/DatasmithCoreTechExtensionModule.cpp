@@ -1,8 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithCoreTechExtensionModule.h"
 
-#include "CoreTechRetessellateAction.h"
+#include "CoreTechParametricSurfaceExtension.h"
 
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "IStaticMeshEditor.h"

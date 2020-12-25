@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -37,11 +37,9 @@ public class MeshModelingTools : ModuleRules
 				"Eigen",
                 "InteractiveToolsFramework",
 				"GeometricObjects",
-				"GeometryAlgorithms",
 				"DynamicMesh",
 				"MeshConversion",
-				"MeshDescription",
-                "StaticMeshDescription",
+                "MeshSolverUtilities",
 				"ModelingComponents",
 				"ModelingOperators",
 
@@ -72,10 +70,9 @@ public class MeshModelingTools : ModuleRules
 
 				"CoreUObject",
 				"Engine",
-				"RenderCore",
 				"ModelingOperators",
 				"InputCore",
-				"PhysicsCore"
+
 				// ... add private dependencies that you statically link with here ...
 			}
 			);

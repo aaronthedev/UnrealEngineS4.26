@@ -1,10 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MetalRHIPrivate.h"
-#include "MetalRHIRenderQuery.h"
-#include "MetalVertexDeclaration.h"
-#include "MetalShaderTypes.h"
-#include "MetalGraphicsPipelineState.h"
 #include "Misc/App.h"
 #if PLATFORM_IOS
 #include "IOS/IOSAppDelegate.h"
@@ -16,8 +12,6 @@
 #include "MetalContext.h"
 #include "MetalProfiler.h"
 #include "MetalCommandBuffer.h"
-
-#include "MetalFrameAllocator.h"
 
 int32 GMetalSupportsIntermediateBackBuffer = 0;
 static FAutoConsoleVariableRef CVarMetalSupportsIntermediateBackBuffer(
@@ -53,7 +47,7 @@ static FAutoConsoleVariableRef CVarMetalCommandQueueSize(
 	GMetalCommandQueueSize,
 	TEXT("The maximum number of command-buffers that can be allocated from each command-queue. (Default: 5120 Mac, 64 iOS/tvOS)"), ECVF_ReadOnly);
 
-int32 GMetalBufferZeroFill = 0; // Deliberately not static
+int32 GMetalBufferZeroFill = 1; // Deliberately not static
 static FAutoConsoleVariableRef CVarMetalBufferZeroFill(
 	TEXT("rhi.Metal.BufferZeroFill"),
 	GMetalBufferZeroFill,
@@ -82,21 +76,27 @@ static FAutoConsoleVariableRef CVarMetalResourceDeferDeleteNumFrames(
 #if UE_BUILD_SHIPPING
 int32 GMetalRuntimeDebugLevel = 0;
 #else
+#if PLATFORM_MAC
+int32 GMetalRuntimeDebugLevel = 3;
+#else
 int32 GMetalRuntimeDebugLevel = 1;
+#endif
 #endif
 static FAutoConsoleVariableRef CVarMetalRuntimeDebugLevel(
 	TEXT("rhi.Metal.RuntimeDebugLevel"),
 	GMetalRuntimeDebugLevel,
 	TEXT("The level of debug validation performed by MetalRHI in addition to the underlying Metal API & validation layer.\n")
 	TEXT("Each subsequent level adds more tests and reporting in addition to the previous level.\n")
-	TEXT("*LEVELS >= 3 ARE IGNORED IN SHIPPING AND TEST BUILDS*. (Default: 1 (Debug, Development), 0 (Test, Shipping))\n")
+	TEXT("*LEVELS >= 5 ARE IGNORED IN SHIPPING AND TEST BUILDS*. (Default: 3 (Debug, Development), 0 (Test, Shipping))\n")
 	TEXT("\t0: Off,\n")
-	TEXT("\t1: Enable light-weight validation of resource bindings & API usage,\n")
-	TEXT("\t2: Reset resource bindings when binding a PSO/Compute-Shader to simplify GPU debugging,\n")
-	TEXT("\t3: Allow rhi.Metal.CommandBufferCommitThreshold to break command-encoders (except when MSAA is enabled),\n")
-	TEXT("\t4: Enable slower, more extensive validation checks for resource types & encoder usage,\n")
-    TEXT("\t5: Record the draw, blit & dispatch commands issued into a command-buffer and report them on failure,\n")
-    TEXT("\t6: Wait for each command-buffer to complete immediately after submission."));
+	TEXT("\t1: Record the debug-groups issued into a command-buffer and report them on failure,\n")
+	TEXT("\t2: Enable light-weight validation of resource bindings & API usage,\n")
+	TEXT("\t3: Track resources and validate lifetime on command-buffer failure,\n")
+	TEXT("\t4: Reset resource bindings when binding a PSO/Compute-Shader to simplify GPU debugging,\n")
+	TEXT("\t5: Allow rhi.Metal.CommandBufferCommitThreshold to break command-encoders (except when MSAA is enabled),\n")
+	TEXT("\t6: Enable slower, more extensive validation checks for resource types & encoder usage,\n")
+    TEXT("\t7: Record the draw, blit & dispatch commands issued into a command-buffer and report them on failure,\n")
+    TEXT("\t8: Wait for each command-buffer to complete immediately after submission."));
 
 float GMetalPresentFramePacing = 0.0f;
 #if !PLATFORM_MAC
@@ -107,54 +107,9 @@ static FAutoConsoleVariableRef CVarMetalPresentFramePacing(
 #endif
 
 #if PLATFORM_MAC
-static int32 GMetalDefaultUniformBufferAllocation = 1024*1024;
-#else
-static int32 GMetalDefaultUniformBufferAllocation = 1024*32;
-#endif
-static FAutoConsoleVariableRef CVarMetalDefaultUniformBufferAllocation(
-    TEXT("rhi.Metal.DefaultUniformBufferAllocation"),
-    GMetalDefaultUniformBufferAllocation,
-    TEXT("Default size of a uniform buffer allocation."));
-
-#if PLATFORM_MAC
-static int32 GMetalTargetUniformAllocationLimit = 1024 * 1024 * 50;
-#else
-static int32 GMetalTargetUniformAllocationLimit = 1024 * 1024 * 5;
-#endif
-static FAutoConsoleVariableRef CVarMetalTargetUniformAllocationLimit(
-     TEXT("rhi.Metal.TargetUniformAllocationLimit"),
-     GMetalTargetUniformAllocationLimit,
-     TEXT("Target Allocation limit for the uniform buffer pool."));
-
-#if PLATFORM_MAC
-static int32 GMetalTargetTransferAllocatorLimit = 1024*1024*50;
-#else
-static int32 GMetalTargetTransferAllocatorLimit = 1024*1024*2;
-#endif
-static FAutoConsoleVariableRef CVarMetalTargetTransferAllocationLimit(
-	TEXT("rhi.Metal.TargetTransferAllocationLimit"),
-	GMetalTargetTransferAllocatorLimit,
-	TEXT("Target Allocation limit for the upload staging buffer pool."));
-
-#if PLATFORM_MAC
-static int32 GMetalDefaultTransferAllocation = 1024*1024*10;
-#else
-static int32 GMetalDefaultTransferAllocation = 1024*1024*1;
-#endif
-static FAutoConsoleVariableRef CVarMetalDefaultTransferAllocation(
-	TEXT("rhi.Metal.DefaultTransferAllocation"),
-	GMetalDefaultTransferAllocation,
-	TEXT("Default size of a single entry in the upload pool."));
-
-
-
-#if PLATFORM_MAC
 static ns::AutoReleased<ns::Object<id <NSObject>>> GMetalDeviceObserver;
 static mtlpp::Device GetMTLDevice(uint32& DeviceIndex)
 {
-#if PLATFORM_MAC_ARM64
-    return mtlpp::Device::CreateSystemDefaultDevice();
-#else
 	SCOPED_AUTORELEASE_POOL;
 	
 	DeviceIndex = 0;
@@ -296,7 +251,6 @@ static mtlpp::Device GetMTLDevice(uint32& DeviceIndex)
 		}
 	}
 	return SelectedDevice;
-#endif // PLATFORM_MAC_ARM64
 }
 
 mtlpp::PrimitiveTopologyClass TranslatePrimitiveTopology(uint32 PrimitiveType)
@@ -395,7 +349,7 @@ FMetalDeviceContext::FMetalDeviceContext(mtlpp::Device MetalDevice, uint32 InDev
 , ActiveContexts(1)
 , ActiveParallelContexts(0)
 , PSOManager(0)
-, FrameNumberRHIThread(0)
+, DeviceFrameIndex(0)
 {
 	CommandQueue.SetRuntimeDebuggingLevel(GMetalRuntimeDebugLevel);
 	
@@ -429,17 +383,6 @@ FMetalDeviceContext::FMetalDeviceContext(mtlpp::Device MetalDevice, uint32 InDev
 	{
 		GMetalSupportsIntermediateBackBuffer = 1;
 	}
-    
-    // initialize uniform allocator
-    UniformBufferAllocator = new FMetalFrameAllocator(MetalDevice.GetPtr());
-    UniformBufferAllocator->SetTargetAllocationLimitInBytes(GMetalTargetUniformAllocationLimit);
-    UniformBufferAllocator->SetDefaultAllocationSizeInBytes(GMetalDefaultUniformBufferAllocation);
-    UniformBufferAllocator->SetStatIds(GET_STATID(STAT_MetalUniformAllocatedMemory), GET_STATID(STAT_MetalUniformMemoryInFlight), GET_STATID(STAT_MetalUniformBytesPerFrame));
-	
-	TransferBufferAllocator = new FMetalFrameAllocator(MetalDevice.GetPtr());
-	TransferBufferAllocator->SetTargetAllocationLimitInBytes(GMetalTargetTransferAllocatorLimit);
-	TransferBufferAllocator->SetDefaultAllocationSizeInBytes(GMetalDefaultTransferAllocation);
-	// We won't set StatIds here so it goes to the default frame allocator stats
 	
 	PSOManager = new FMetalPipelineStateCacheManager();
 	
@@ -454,8 +397,6 @@ FMetalDeviceContext::~FMetalDeviceContext()
 	delete &(GetCommandQueue());
 	
 	delete PSOManager;
-    
-    delete UniformBufferAllocator;
 	
 #if PLATFORM_MAC
 	if (FPlatformMisc::MacOSXVersionCompare(10, 13, 4) >= 0)
@@ -478,6 +419,9 @@ void FMetalDeviceContext::BeginFrame()
 	
 	// Wait for the frame semaphore on the immediate context.
 	dispatch_semaphore_wait(CommandBufferSemaphore, DISPATCH_TIME_FOREVER);
+	
+	// Bump the frame counter.
+	DeviceFrameIndex++;
 }
 
 #if METAL_DEBUG_OPTIONS
@@ -561,8 +505,6 @@ void FMetalDeviceContext::DrainHeap()
 
 void FMetalDeviceContext::EndFrame()
 {
-	check(MetalIsSafeToUseRHIThreadResources());
-	
 	// A 'frame' in this context is from the beginning of encoding on the CPU
 	// to the end of all rendering operations on the GPU. So the semaphore is
 	// signalled when the last command buffer finishes GPU execution.
@@ -596,11 +538,7 @@ void FMetalDeviceContext::EndFrame()
 		SubmitFlags |= EMetalSubmitFlagsWaitOnCommandBuffer;
 	}
 #endif
-    
 	SubmitCommandsHint((uint32)SubmitFlags);
-    
-    // increment the internal frame counter
-    FrameNumberRHIThread++;
 	
     FlushFreeList();
     
@@ -802,6 +740,36 @@ void FMetalDeviceContext::ReleaseFence(FMetalFence* Fence)
 	}
 }
 
+void FMetalDeviceContext::RegisterUB(FMetalUniformBuffer* UB)
+{
+	FScopeLock Lock(&FreeListMutex);
+	UniformBuffers.Add(UB);
+}
+
+void FMetalDeviceContext::UpdateIABs(FRHITextureReference* ModifiedRef)
+{
+	if(GIsMetalInitialized)
+	{
+		FScopeLock Lock(&FreeListMutex);
+		for (FMetalUniformBuffer* UB : UniformBuffers)
+		{
+			if (UB && UB->IAB && UB->TextureReferences.Contains(ModifiedRef))
+			{
+				UB->UpdateTextureReference(ModifiedRef);
+			}
+		}
+	}
+}
+
+void FMetalDeviceContext::UnregisterUB(FMetalUniformBuffer* UB)
+{
+	if(GIsMetalInitialized)
+	{
+		FScopeLock Lock(&FreeListMutex);
+		UniformBuffers.Remove(UB);
+	}
+}
+
 FMetalTexture FMetalDeviceContext::CreateTexture(FMetalSurface* Surface, mtlpp::TextureDescriptor Descriptor)
 {
 	FMetalTexture Tex = Heap.CreateTexture(Descriptor, Surface);
@@ -941,18 +909,6 @@ uint32 FMetalDeviceContext::GetNumActiveContexts(void) const
 uint32 FMetalDeviceContext::GetDeviceIndex(void) const
 {
 	return DeviceIndex;
-}
-
-void FMetalDeviceContext::NewLock(FMetalRHIBuffer* Buffer, FMetalFrameAllocator::AllocationEntry& Allocation)
-{
-	check(!OutstandingLocks.Contains(Buffer));
-	OutstandingLocks.Add(Buffer, Allocation);
-}
-
-FMetalFrameAllocator::AllocationEntry FMetalDeviceContext::FetchAndRemoveLock(FMetalRHIBuffer* Buffer)
-{
-	FMetalFrameAllocator::AllocationEntry Backing = OutstandingLocks.FindAndRemoveChecked(Buffer);
-	return Backing;
 }
 
 #if METAL_DEBUG_OPTIONS
@@ -1173,60 +1129,73 @@ void FMetalContext::FinishFrame(bool const bImmediateContext)
 #endif
 }
 
-void FMetalContext::TransitionResource(FRHIUnorderedAccessView* InResource)
+void FMetalContext::TransitionResources(FRHIUnorderedAccessView** InUAVs, int32 NumUAVs)
 {
-	FMetalUnorderedAccessView* UAV = ResourceCast(InResource);
-
-	// figure out which one of the resources we need to set
-	FMetalStructuredBuffer* StructuredBuffer = UAV->SourceView->SourceStructuredBuffer.GetReference();
-	FMetalVertexBuffer*     VertexBuffer     = UAV->SourceView->SourceVertexBuffer.GetReference();
-	FMetalIndexBuffer*      IndexBuffer      = UAV->SourceView->SourceIndexBuffer.GetReference();
-	FRHITexture*            Texture          = UAV->SourceView->SourceTexture.GetReference();
-	FMetalSurface*          Surface          = UAV->SourceView->TextureView;
-
-	if (StructuredBuffer)
+	for (uint32 i = 0; i < NumUAVs; i++)
 	{
-		RenderPass.TransitionResources(StructuredBuffer->GetCurrentBuffer());
-	}
-	else if (VertexBuffer && VertexBuffer->GetCurrentBufferOrNil())
-	{
-		RenderPass.TransitionResources(VertexBuffer->GetCurrentBuffer());
-	}
-	else if (IndexBuffer)
-	{
-		RenderPass.TransitionResources(IndexBuffer->GetCurrentBuffer());
-	}
-	else if (Surface)
-	{
-		RenderPass.TransitionResources(Surface->Texture.GetParentTexture());
-	}
-	else if (Texture)
-	{
-		if (!Surface)
+		FMetalUnorderedAccessView* UAV = (FMetalUnorderedAccessView*)InUAVs[i];
+		if (UAV)
 		{
-			Surface = GetMetalSurfaceFromRHITexture(Texture);
-		}
-		if ((Surface != nullptr) && Surface->Texture)
-		{
-			RenderPass.TransitionResources(Surface->Texture);
-			if (Surface->MSAATexture)
+			ns::AutoReleased<mtlpp::Resource> Resource;
+			
+			// figure out which one of the resources we need to set
+			FMetalStructuredBuffer* StructuredBuffer = UAV->SourceView->SourceStructuredBuffer.GetReference();
+			FMetalVertexBuffer* VertexBuffer = UAV->SourceView->SourceVertexBuffer.GetReference();
+			FMetalIndexBuffer* IndexBuffer = UAV->SourceView->SourceIndexBuffer.GetReference();
+			FRHITexture* Texture = UAV->SourceView->SourceTexture.GetReference();
+			FMetalSurface* Surface = UAV->SourceView->TextureView;
+			if (StructuredBuffer)
 			{
-				RenderPass.TransitionResources(Surface->MSAATexture);
+				check(StructuredBuffer->Buffer);
+				RenderPass.TransitionResources(StructuredBuffer->Buffer);
+			}
+			else if (VertexBuffer && VertexBuffer->Buffer)
+			{
+				RenderPass.TransitionResources(VertexBuffer->Buffer);
+			}
+			else if (IndexBuffer)
+			{
+				check(IndexBuffer->Buffer);
+				RenderPass.TransitionResources(IndexBuffer->Buffer);
+			}
+			else if (Surface)
+			{
+				RenderPass.TransitionResources(Surface->Texture.GetParentTexture());
+			}
+			else if (Texture)
+			{
+				if (!Surface)
+				{
+					Surface = GetMetalSurfaceFromRHITexture(Texture);
+				}
+				if (Surface != nullptr && Surface->Texture)
+				{
+					RenderPass.TransitionResources(Surface->Texture);
+					if (Surface->MSAATexture)
+					{
+						RenderPass.TransitionResources(Surface->MSAATexture);
+					}
+				}
 			}
 		}
 	}
 }
 
-void FMetalContext::TransitionResource(FRHITexture* InResource)
+void FMetalContext::TransitionResources(FRHITexture** InTextures, int32 NumTextures)
 {
-	FMetalSurface* Surface = GetMetalSurfaceFromRHITexture(InResource);
-
-	if ((Surface != nullptr) && Surface->Texture)
+	for (uint32 i = 0; i < NumTextures; i++)
 	{
-		RenderPass.TransitionResources(Surface->Texture);
-		if (Surface->MSAATexture)
+		if (InTextures[i])
 		{
-			RenderPass.TransitionResources(Surface->MSAATexture);
+			FMetalSurface* Surface = GetMetalSurfaceFromRHITexture(InTextures[i]);
+			if (Surface != nullptr && Surface->Texture)
+			{
+				RenderPass.TransitionResources(Surface->Texture);
+				if (Surface->MSAATexture)
+				{
+					RenderPass.TransitionResources(Surface->MSAATexture);
+				}
+			}
 		}
 	}
 }
@@ -1319,7 +1288,7 @@ bool FMetalContext::PrepareToDraw(uint32 PrimitiveType, EMetalIndexType IndexTyp
 	bool const bNeedsDepthStencilWrite = (IsValidRef(CurrentPSO->PixelShader) && (CurrentPSO->PixelShader->Bindings.InOutMask & 0x8000));
 	
 	// @todo Improve the way we handle binding a dummy depth/stencil so we can get pure UAV raster operations...
-	bool const bNeedsDepthStencilForUAVRaster = (StateCache.GetRenderPassInfo().GetNumColorRenderTargets() == 0);
+	bool const bNeedsDepthStencilForUAVRaster = (StateCache.GetRenderPassInfo().GetNumColorRenderTargets() == 0 && StateCache.GetRenderPassInfo().NumUAVs > 0);
 	
 	bool const bBindDepthStencilForWrite = bNeedsDepthStencilWrite && !StateCache.HasValidDepthStencilSurface();
 	bool const bBindDepthStencilForUAVRaster = bNeedsDepthStencilForUAVRaster && !StateCache.HasValidDepthStencilSurface();
@@ -1461,7 +1430,7 @@ void FMetalContext::SetRenderPassInfo(const FRHIRenderPassInfo& RenderTargetsInf
 	if (IsFeatureLevelSupported( GMaxRHIShaderPlatform, ERHIFeatureLevel::ES3_1 ))
 	{
 		// @todo Improve the way we handle binding a dummy depth/stencil so we can get pure UAV raster operations...
-		const bool bNeedsDepthStencilForUAVRaster = RenderTargetsInfo.GetNumColorRenderTargets() == 0 && !RenderTargetsInfo.DepthStencilRenderTarget.DepthStencilTarget;
+		const bool bNeedsDepthStencilForUAVRaster = RenderTargetsInfo.GetNumColorRenderTargets() == 0 && RenderTargetsInfo.NumUAVs > 0 && !RenderTargetsInfo.DepthStencilRenderTarget.DepthStencilTarget;
 
 		if (bNeedsDepthStencilForUAVRaster)
 		{

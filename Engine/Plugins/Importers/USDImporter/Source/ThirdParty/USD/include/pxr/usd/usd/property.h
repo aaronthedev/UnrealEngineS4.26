@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_PROPERTY_H
-#define PXR_USD_USD_PROPERTY_H
+#ifndef USD_PROPERTY_H
+#define USD_PROPERTY_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/usd/api.h"
@@ -55,7 +55,10 @@ class UsdProperty;
 class UsdProperty : public UsdObject {
 public:
     /// Construct an invalid property.
-    UsdProperty() : UsdObject(_Null<UsdProperty>()) {}
+    UsdProperty()
+        : UsdObject(UsdTypeProperty, Usd_PrimDataHandle(), SdfPath(), TfToken())
+    {
+    }
 
     // --------------------------------------------------------------------- //
     /// \name Object and Namespace Accessors
@@ -268,12 +271,6 @@ public:
     USD_API
     UsdProperty FlattenTo(const UsdProperty &property) const;
 
-protected:
-    template <class Derived>
-    UsdProperty(_Null<Derived>) : UsdObject(_Null<Derived>()) {}
-
-    bool _GetTargets(SdfSpecType specType, SdfPathVector *out) const;
-    
 private:
     friend class UsdAttribute;
     friend class UsdObject;
@@ -292,4 +289,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_USD_PROPERTY_H
+#endif // USD_PROPERTY_H

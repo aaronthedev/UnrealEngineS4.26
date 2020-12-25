@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,9 +14,6 @@ struct FNiagaraEmitterHandle;
 class FNiagaraEmitterInstance;
 class FNiagaraEmitterViewModel;
 class UNiagaraStackViewModel;
-class UNiagaraStackEntry;
-class UNiagaraMessageData;
-enum class ENiagaraSystemViewModelEditMode;
 
 /** The view model for the FNiagaraEmitterEditorWidget. */
 class FNiagaraEmitterHandleViewModel : public TSharedFromThis<FNiagaraEmitterHandleViewModel>, public FGCObject
@@ -46,13 +43,14 @@ public:
 	void SetSimulation(TWeakPtr<FNiagaraEmitterInstance, ESPMode::ThreadSafe> InSimulation);
 
 	/** Gets the id of the emitter handle. */
-	NIAGARAEDITOR_API FGuid GetId() const;
+	FGuid GetId() const;
+	FText GetIdText() const;
 
 	/** Gets the name of the emitter handle. */
-	NIAGARAEDITOR_API FName GetName() const;
+	FName GetName() const;
 
 	/** Sets the name of the emitter handle. */
-	NIAGARAEDITOR_API void SetName(FName InName);
+	void SetName(FName InName);
 
 	/** Gets the text representation of the emitter handle name. */
 	NIAGARAEDITOR_API FText GetNameText() const;
@@ -83,9 +81,6 @@ public:
 	/** Gets whether or not the emitter for this handle has been isolated in the UI. */
 	NIAGARAEDITOR_API bool GetIsIsolated() const;
 
-	/** Sets whether or not this emitter is isolated. May affect other emitters in the system. */
-	NIAGARAEDITOR_API void SetIsIsolated(bool InIsIsolated);
-
 	/** Gets the check state for the is enabled check box. */
 	NIAGARAEDITOR_API ECheckBoxState GetIsEnabledCheckState() const;
 
@@ -101,9 +96,6 @@ public:
 	/** Gets the stack view model which represents the emitter pointed to by this handle. */
 	NIAGARAEDITOR_API UNiagaraStackViewModel* GetEmitterStackViewModel();
 
-	/** Gets the current edit mode of the emitter's owning system. */
-	NIAGARAEDITOR_API ENiagaraSystemViewModelEditMode GetOwningSystemEditMode() const;
-
 	/** Gets whether or not this emitter handle has a rename pending. */
 	NIAGARAEDITOR_API bool GetIsRenamePending() const;
 
@@ -117,14 +109,9 @@ public:
 	FOnNameChanged& OnNameChanged();
 
 	void Cleanup();
-	NIAGARAEDITOR_API void GetRendererEntries(TArray<UNiagaraStackEntry*>& InRenderingEntries);
-	NIAGARAEDITOR_API TSharedRef<FNiagaraSystemViewModel> GetOwningSystemViewModel() const;
 
-	/** Add a serialized message to the Emitter this viewmodel is managing. Returns a key to the new message. */
-	NIAGARAEDITOR_API FGuid AddMessage(UNiagaraMessageData* NewMessage, const FGuid& InNewGuid = FGuid()) const;
-
-	/** Remove a serialized message from the Emitter this viewmodel is managing. */
-	NIAGARAEDITOR_API void RemoveMessage(const FGuid& MessageKey) const;
+private:
+	TSharedRef<FNiagaraSystemViewModel> GetOwningSystemViewModel() const;
 
 private:
 	/** The system view model which owns this emitter handle view model. */

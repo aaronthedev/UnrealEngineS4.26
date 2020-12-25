@@ -1,24 +1,23 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/Layout/SDPIScaler.h"
 #include "Layout/ArrangedChildren.h"
 
 SDPIScaler::SDPIScaler()
-	: ChildSlot(this)
+: ChildSlot(this)
 {
 	SetCanTick(false);
 	bCanSupportFocus = false;
-	bHasRelativeLayoutScale = true;
 }
 
 void SDPIScaler::Construct( const FArguments& InArgs )
 {
-	DPIScale = InArgs._DPIScale;
-
 	ChildSlot
 	[
 		InArgs._Content.Widget
 	];
+	
+	DPIScale = InArgs._DPIScale;
 }
 
 void SDPIScaler::OnArrangeChildren( const FGeometry& AllottedGeometry, FArrangedChildren& ArrangedChildren ) const
@@ -34,6 +33,7 @@ void SDPIScaler::OnArrangeChildren( const FGeometry& AllottedGeometry, FArranged
 			AllottedGeometry.GetLocalSize() / MyDPIScale,
 			MyDPIScale
 		));
+
 	}
 }
 	
@@ -57,13 +57,10 @@ void SDPIScaler::SetContent(TSharedRef<SWidget> InContent)
 
 void SDPIScaler::SetDPIScale(TAttribute<float> InDPIScale)
 {
-	if (SetAttribute(DPIScale, InDPIScale, EInvalidateWidgetReason::Layout))
-	{
-		InvalidatePrepass();
-	}
+	DPIScale = InDPIScale;
 }
 
-float SDPIScaler::GetRelativeLayoutScale(int32 ChildIndex, float LayoutScaleMultiplier) const
+float SDPIScaler::GetRelativeLayoutScale(const FSlotBase& Child, float LayoutScaleMultiplier) const
 {
 	return DPIScale.Get();
 }

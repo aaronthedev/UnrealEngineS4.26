@@ -1,13 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Perception/AIPerceptionStimuliSourceComponent.h"
 #include "Perception/AIPerceptionSystem.h"
-#include "VisualLogger/VisualLogger.h"
-
 
 UAIPerceptionStimuliSourceComponent::UAIPerceptionStimuliSourceComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-	, bAutoRegisterAsSource(false)
 {
 	bSuccessfullyRegistered = false;
 }
@@ -22,7 +19,7 @@ void UAIPerceptionStimuliSourceComponent::OnRegister()
 	if (!GIsEditor || GIsPlayInEditorWorld)
 #endif // WITH_EDITOR
 	{
-		RegisterAsSourceForSenses.RemoveAllSwap([](const TSubclassOf<UAISense>& SenseClass) {
+		RegisterAsSourceForSenses.RemoveAllSwap([](TSubclassOf<UAISense> SenseClass) {
 			return SenseClass == nullptr;
 		});
 	}
@@ -89,12 +86,7 @@ void UAIPerceptionStimuliSourceComponent::RegisterForSense(TSubclassOf<UAISense>
 		UAIPerceptionSystem* PerceptionSystem = UAIPerceptionSystem::GetCurrent(World);
 		if (PerceptionSystem)
 		{
-			UE_CVLOG(bSuccessfullyRegistered == false && RegisterAsSourceForSenses.Num(), OwnerActor, LogAIPerception, Warning
-				, TEXT("Registering as stimuli source for sense %s while the UAIPerceptionStimuliSourceComponent has not registered with the AIPerceptionSystem just yet. This will result in posing as a source for only this one sense.")
-				, *SenseClass->GetName());
-
 			PerceptionSystem->RegisterSourceForSenseClass(SenseClass, *OwnerActor);
-			RegisterAsSourceForSenses.AddUnique(SenseClass);
 			bSuccessfullyRegistered = true;
 		}
 	}
@@ -154,40 +146,3 @@ void UAIPerceptionStimuliSourceComponent::UnregisterFromSense(TSubclassOf<UAISen
 		}
 	}
 }
-
-#if WITH_EDITOR
-void UAIPerceptionStimuliSourceComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
-{
-	static const FName NAME_RegisterAsSourceForSenses = GET_MEMBER_NAME_CHECKED(UAIPerceptionStimuliSourceComponent, RegisterAsSourceForSenses);
-
-	Super::PostEditChangeProperty(PropertyChangedEvent);
-
-	if (PropertyChangedEvent.Property != nullptr)
-	{
-		if (PropertyChangedEvent.Property->GetFName() == NAME_RegisterAsSourceForSenses)
-		{
-			if (PropertyChangedEvent.ChangeType == EPropertyChangeType::Duplicate)
-			{
-				const int32 ChangeAtIndex = PropertyChangedEvent.GetArrayIndex(NAME_RegisterAsSourceForSenses.ToString());
-				if (ensure(ChangeAtIndex != INDEX_NONE))
-				{
-					// clear duplicate
-					RegisterAsSourceForSenses[ChangeAtIndex] = nullptr;
-				}
-			}
-			else if (PropertyChangedEvent.ChangeType == EPropertyChangeType::ValueSet)
-			{
-				TArray<TSubclassOf<UAISense>> TmpCopy = RegisterAsSourceForSenses;
-				RegisterAsSourceForSenses.Empty(RegisterAsSourceForSenses.Num());
-				for (TSubclassOf<UAISense> Sense : TmpCopy)
-				{
-					if (Sense)
-					{
-						RegisterAsSourceForSenses.AddUnique(Sense);
-					}
-				}
-			}
-		}
-	}
-}
-#endif // WITH_EDITOR

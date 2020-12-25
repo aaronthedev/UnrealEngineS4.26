@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  *
@@ -8,67 +8,112 @@
 #pragma once
 
 #include "CoreMinimal.h"
-
-#include "GameFramework/Volume.h"
-#include "ReverbSettings.h"
-#include "UObject/Class.h"
 #include "UObject/ObjectMacros.h"
-
-#include "Sound/SoundSubmixSend.h"
-
+#include "UObject/Class.h"
+#include "GameFramework/Volume.h"
+#include "Audio.h"
 #include "AudioVolume.generated.h"
 
 class AAudioVolume;
 struct FBodyInstance;
-class USoundSubmix;
 
-// Enum describing the state of checking audio volume location
-UENUM(BlueprintType)
-enum class EAudioVolumeLocationState : uint8
+/**
+ * DEPRECATED: Exists for backwards compatibility
+ * Indicates a reverb preset to use.
+ *
+ */
+UENUM()
+enum ReverbPreset
 {
-	// A send based on linear interpolation between a distance range and send-level range
-	InsideTheVolume,
-
-	// A send based on a supplied curve
-	OutsideTheVolume,
+	REVERB_Default,
+	REVERB_Bathroom,
+	REVERB_StoneRoom,
+	REVERB_Auditorium,
+	REVERB_ConcertHall,
+	REVERB_Cave,
+	REVERB_Hallway,
+	REVERB_StoneCorridor,
+	REVERB_Alley,
+	REVERB_Forest,
+	REVERB_City,
+	REVERB_Mountains,
+	REVERB_Quarry,
+	REVERB_Plain,
+	REVERB_ParkingLot,
+	REVERB_SewerPipe,
+	REVERB_Underwater,
+	REVERB_SmallRoom,
+	REVERB_MediumRoom,
+	REVERB_LargeRoom,
+	REVERB_MediumHall,
+	REVERB_LargeHall,
+	REVERB_Plate,
+	REVERB_MAX,
 };
 
-/** Struct to determine dynamic submix send data for use with audio volumes. */
+/** Struct encapsulating settings for reverb effects. */
 USTRUCT(BlueprintType)
-struct FAudioVolumeSubmixSendSettings
+struct FReverbSettings
 {
 	GENERATED_USTRUCT_BODY()
 
-	// The state the listener needs to be in, relative to the audio volume, for this submix send list to be used for a given sound
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = AudioVolumeSubmixSends)
-	EAudioVolumeLocationState ListenerLocationState = EAudioVolumeLocationState::InsideTheVolume;
+	/* Whether to apply the reverb settings below. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=ReverbSettings )
+	bool bApplyReverb;
 
+#if WITH_EDITORONLY_DATA
+	/** The reverb preset to employ. */
 	UPROPERTY()
-	EAudioVolumeLocationState SourceLocationState_DEPRECATED = EAudioVolumeLocationState::InsideTheVolume;
+	TEnumAsByte<enum ReverbPreset> ReverbType_DEPRECATED;
+#endif
 
-	// Submix send array for sounds that are outside the audio volume when the listener is inside the volume
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = AudioVolumeSubmixSends)
-	TArray<FSoundSubmixSendInfo> SubmixSends;
+	/** The reverb asset to employ. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=ReverbSettings)
+	class UReverbEffect* ReverbEffect;
+	
+
+	/** This is used to apply plugin-specific settings when a Reverb Plugin is being used. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ReverbSettings)
+	class USoundEffectSubmixPreset* ReverbPluginEffect;
+
+	/** Volume level of the reverb affect. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ReverbSettings)
+	float Volume;
+
+	/** Time to fade from the current reverb settings into this setting, in seconds. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=ReverbSettings)
+	float FadeTime;
+
+	FReverbSettings()
+		: bApplyReverb(true)
+#if WITH_EDITORONLY_DATA
+		, ReverbType_DEPRECATED(REVERB_Default)
+#endif
+		, ReverbEffect(nullptr)
+		, ReverbPluginEffect(nullptr)
+		, Volume(0.5f)
+		, FadeTime(2.0f)
+	{
+	}
+
+	bool operator==(const FReverbSettings& Other) const;
+	bool operator!=(const FReverbSettings& Other) const { return !(*this == Other); }
+
+#if WITH_EDITORONLY_DATA
+	void PostSerialize(const FArchive& Ar);
+#endif
 };
 
-USTRUCT(BlueprintType)
-struct FAudioVolumeSubmixOverrideSettings
+#if WITH_EDITORONLY_DATA
+template<>
+struct TStructOpsTypeTraits<FReverbSettings> : public TStructOpsTypeTraitsBase2<FReverbSettings>
 {
-	GENERATED_USTRUCT_BODY()
-
-	// The submix to override the effect chain of
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = AudioVolumeSubmixSends)
-	USoundSubmix* Submix;
-
-	// The submix effect chain to overrideac
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = SoundSubmix)
-	TArray<USoundEffectSubmixPreset*> SubmixEffectChain;
-
-	// The amount of time to crossfade to the override for the submix chain
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = SoundSubmix)
-	float CrossfadeTime;
+	enum 
+	{
+		WithPostSerialize = true,
+	};
 };
-
+#endif
 
 /** Struct encapsulating settings for interior areas. */
 USTRUCT(BlueprintType)
@@ -88,7 +133,7 @@ struct FInteriorSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=InteriorSettings)
 	float ExteriorTime;
 
-	// The desired LPF frequency cutoff in hertz of sounds inside the volume when the player is outside the volume
+	// The desired LPF frequency cutoff in hertz of sounds outside the volume when the player is inside the volume
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = InteriorSettings)
 	float ExteriorLPF;
 
@@ -104,7 +149,7 @@ struct FInteriorSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=InteriorSettings)
 	float InteriorTime;
 
-	// The desired LPF frequency cutoff in hertz of sounds outside the volume when the player is inside the volume
+	// The desired LPF frequency cutoff in hertz of sounds inside  the volume when the player is outside the volume
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = InteriorSettings)
 	float InteriorLPF;
 
@@ -150,8 +195,6 @@ struct FAudioVolumeProxy
 	float Priority;
 	FReverbSettings ReverbSettings;
 	FInteriorSettings InteriorSettings;
-	TArray<FAudioVolumeSubmixSendSettings> SubmixSendSettings;
-	TArray<FAudioVolumeSubmixOverrideSettings> SubmixOverrideSettings;
 	FBodyInstance* BodyInstance; // This is scary
 };
 
@@ -180,14 +223,6 @@ private:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=AmbientZone, meta=(AllowPrivateAccess="true"))
 	FInteriorSettings AmbientZoneSettings;
 
-	/** Submix send settings to use for this volume. Allows audio to dynamically send to submixes based on source and listener locations relative to this volume. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Submixes, meta = (AllowPrivateAccess = "true"))
-	TArray<FAudioVolumeSubmixSendSettings> SubmixSendSettings;
-
-	/** Submix effect chain override settings. Will override the effect chains on the given submixes when the conditions are met. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Submixes, meta = (AllowPrivateAccess = "true"))
-	TArray<FAudioVolumeSubmixOverrideSettings> SubmixOverrideSettings;
-
 public:
 
 	float GetPriority() const { return Priority; }
@@ -209,16 +244,6 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category=AudioVolume)
 	void SetInteriorSettings(const FInteriorSettings& NewInteriorSettings);
-
-	const TArray<FAudioVolumeSubmixSendSettings>& GetSubmixSendSettings() const { return SubmixSendSettings; }
-
-	UFUNCTION(BlueprintCallable, Category = AudioVolume)
-	void SetSubmixSendSettings(const TArray<FAudioVolumeSubmixSendSettings>& NewSubmixSendSettings);
-
-	const TArray<FAudioVolumeSubmixOverrideSettings>& GetSubmixOverrideSettings() const { return SubmixOverrideSettings; }
-
-	UFUNCTION(BlueprintCallable, Category = AudioVolume)
-	void SetSubmixOverrideSettings(const TArray<FAudioVolumeSubmixOverrideSettings>& NewSubmixOverrideSettings);
 
 private:
 
@@ -245,3 +270,6 @@ public:
 	virtual void PostRegisterAllComponents() override;
 	//~ End AActor Interface
 };
+
+
+

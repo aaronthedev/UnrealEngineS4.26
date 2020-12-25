@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreTypes.h"
-#include "Containers/StringFwd.h"
 
 class FName;
 
@@ -23,8 +22,6 @@ class IAnalysisSession
 {
 public:
 	virtual ~IAnalysisSession() = default;
-	virtual void Stop(bool bAndWait=false) const = 0;
-	virtual void Wait() const = 0;
 	
 	virtual const TCHAR* GetName() const = 0;
 	virtual bool IsAnalysisComplete() const = 0;
@@ -41,7 +38,6 @@ public:
 	
 	virtual ILinearAllocator& GetLinearAllocator() = 0;
 	virtual const TCHAR* StoreString(const TCHAR* String) = 0;
-	virtual const TCHAR* StoreString(const FStringView& String) = 0;
 	
 	virtual void AddAnalyzer(IAnalyzer* Analyzer) = 0;
 

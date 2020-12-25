@@ -7,7 +7,6 @@
 	"Modules":[{
 			"Name": "CoreUObject",
 			"ModuleType": "EngineRuntime",
-			"OverrideModuleType": "None",
 			"BaseDirectory": "..\\..\\..\\Runtime\\CoreUObject",
 			"IncludeBase": "..\\..\\..\\Runtime\\CoreUObject",
 			"OutputDirectory": "..\\..\\..\\..\\Intermediate/Build/Inc\\CoreUObject\\",
@@ -25,7 +24,6 @@
 		}, {
 			"Name": "UHTDebugging",
 			"ModuleType": "GameRuntime",
-			"OverrideModuleType": "None",
 			"BaseDirectory": ".\\UHTDebugging",
 			"IncludeBase": ".\\UHTDebugging",
 			"OutputDirectory": "..\\..\\..\\..\\Intermediate/Build/Inc\\UHTDebugging\\",

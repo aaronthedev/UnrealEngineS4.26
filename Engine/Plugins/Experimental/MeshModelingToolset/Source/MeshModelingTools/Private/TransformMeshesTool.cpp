@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TransformMeshesTool.h"
 #include "InteractiveToolManager.h"
@@ -7,12 +7,12 @@
 #include "ToolSetupUtil.h"
 #include "DynamicMesh3.h"
 #include "BaseBehaviors/ClickDragBehavior.h"
-#include "ToolSceneQueriesUtil.h"
 
 #include "BaseGizmos/GizmoComponents.h"
 #include "BaseGizmos/TransformGizmo.h"
 
 #include "Components/PrimitiveComponent.h"
+#include "CollisionQueryParams.h"
 #include "Engine/World.h"
 
 #define LOCTEXT_NAMESPACE "UTransformMeshesTool"
@@ -82,7 +82,7 @@ void UTransformMeshesTool::Setup()
 	UpdateTransformMode(TransformProps->TransformMode);
 
 	GetToolManager()->DisplayMessage(
-		LOCTEXT("OnStartTransformMeshesTool", "Translate/Rotate/Scale the selected objects. [A] cycles through Transform modes. Reposition the Gizmo using Set Pivot Mode [S]. Toggle Snap Drag Mode [D] to move the object by click-draging. [W] and [E] cycle through SnapDrag Source and Rotation types."),
+		LOCTEXT("OnStartTransformMeshesTool", "To transform Objects around points, reposition the Gizmo using Set Pivot mode (S). To quickly position Objects, enable Snap Drag mode (D). A cycles through Transform modes, W and E through SnapDrag Source and Rotation types."),
 		EToolMessageLevel::UserNotification);
 }
 
@@ -99,7 +99,7 @@ void UTransformMeshesTool::Shutdown(EToolShutdownType ShutdownType)
 
 
 
-void UTransformMeshesTool::OnTick(float DeltaTime)
+void UTransformMeshesTool::Tick(float DeltaTime)
 {
 	// make sure state is up-to-date
 
@@ -126,7 +126,7 @@ void UTransformMeshesTool::Render(IToolsContextRenderAPI* RenderAPI)
 	FPrimitiveDrawInterface* PDI = RenderAPI->GetPrimitiveDrawInterface();
 }
 
-void UTransformMeshesTool::OnPropertyModified(UObject* PropertySet, FProperty* Property)
+void UTransformMeshesTool::OnPropertyModified(UObject* PropertySet, UProperty* Property)
 {
 }
 
@@ -223,12 +223,7 @@ void UTransformMeshesTool::SetActiveGizmos_Single(bool bLocalRotations)
 	{
 		Transformable.TransformProxy->AddComponent(Target->GetOwnerComponent());
 	}
-
-	// leave out nonuniform scale if we have multiple objects in non-local mode
-	bool bCanNonUniformScale = ComponentTargets.Num() == 1 || bLocalRotations;
-	ETransformGizmoSubElements GizmoElements = (bCanNonUniformScale) ?
-		ETransformGizmoSubElements::FullTranslateRotateScale : ETransformGizmoSubElements::TranslateRotateUniformScale;
-	Transformable.TransformGizmo = GizmoManager->CreateCustomTransformGizmo(GizmoElements, this);
+	Transformable.TransformGizmo = GizmoManager->Create3AxisTransformGizmo(this);
 	Transformable.TransformGizmo->SetActiveTarget(Transformable.TransformProxy);
 
 	ActiveGizmos.Add(Transformable);
@@ -312,9 +307,11 @@ void UTransformMeshesTool::OnClickPress(const FInputDeviceRay& PressPos)
 
 void UTransformMeshesTool::OnClickDrag(const FInputDeviceRay& DragPos)
 {
+	FCollisionObjectQueryParams ObjectQueryParams(FCollisionObjectQueryParams::AllObjects);
+	FCollisionQueryParams CollisionParams = FCollisionQueryParams::DefaultQueryParam;
+
 	bool bApplyToPivot = TransformProps->bSetPivot;
 
-	TArray<UPrimitiveComponent*> IgnoreComponents;
 	if (bApplyToPivot == false)
 	{
 		int IgnoreIndex = (TransformProps->TransformMode == ETransformMeshesTransformMode::PerObjectGizmo) ?
@@ -323,7 +320,7 @@ void UTransformMeshesTool::OnClickDrag(const FInputDeviceRay& DragPos)
 		{
 			if (IgnoreIndex == -1 || k == IgnoreIndex)
 			{
-				IgnoreComponents.Add(ComponentTargets[k]->GetOwnerComponent());
+				CollisionParams.AddIgnoredComponent(ComponentTargets[k]->GetOwnerComponent());
 			}
 		}
 	}
@@ -333,7 +330,7 @@ void UTransformMeshesTool::OnClickDrag(const FInputDeviceRay& DragPos)
 	float NormalSign = (TransformProps->RotationMode == ETransformMeshesSnapDragRotationMode::AlignFlipped) ? -1.0f : 1.0f;
 
 	FHitResult Result;
-	bool bWorldHit = ToolSceneQueriesUtil::FindNearestVisibleObjectHit(TargetWorld, Result, DragPos.WorldRay, &IgnoreComponents);
+	bool bWorldHit = TargetWorld->LineTraceSingleByObjectType(Result, DragPos.WorldRay.Origin, DragPos.WorldRay.PointAt(999999), ObjectQueryParams, CollisionParams);
 	if (bWorldHit == false)
 	{
 		return;
@@ -375,11 +372,11 @@ void UTransformMeshesTool::OnClickDrag(const FInputDeviceRay& DragPos)
 		FVector3d AlignTranslate = ToFrameWorld.Origin - FromFrameWorld.Origin;
 
 		FTransform NewTransform = StartDragTransform;
-		NewTransform.Accumulate( FTransform((FVector)CenterShift) );
-		NewTransform.Accumulate( FTransform((FQuat)AlignRotation) );
-		NewTransform.Accumulate( FTransform((FVector)AlignTranslate) );
+		NewTransform.Accumulate( FTransform(CenterShift) );
+		NewTransform.Accumulate( FTransform(AlignRotation) );
+		NewTransform.Accumulate( FTransform(AlignTranslate) );
 		CenterShift = AlignRotation * CenterShift;
-		NewTransform.Accumulate( FTransform((FVector)-CenterShift) );
+		NewTransform.Accumulate( FTransform(-CenterShift) );
 
 		FTransformMeshesTarget& ActiveTarget =
 			(TransformProps->TransformMode == ETransformMeshesTransformMode::PerObjectGizmo) ?

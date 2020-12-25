@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -215,6 +215,7 @@ protected:
 	// Begin FBlueprintEditor
 	virtual void RegisterApplicationModes(const TArray<UBlueprint*>& InBlueprints, bool bShouldOpenInDefaultsMode, bool bNewlyCreated = false) override;
 	virtual FGraphAppearanceInfo GetGraphAppearance(class UEdGraph* InGraph) const override;
+	virtual void AppendExtraCompilerResults(TSharedPtr<class IMessageLogListing> ResultsListing) override;
 	virtual TSubclassOf<UEdGraphSchema> GetDefaultSchemaClass() const override;
 	// End FBlueprintEditor
 
@@ -285,7 +286,7 @@ private:
 	void AddSlotTrack( UPanelSlot* Slot );
 
 	/** Add an animation track for the supplied material property path to the current animation. */
-	void AddMaterialTrack( UWidget* Widget, TArray<FProperty*> MaterialPropertyPath, FText MaterialPropertyDisplayName );
+	void AddMaterialTrack( UWidget* Widget, TArray<UProperty*> MaterialPropertyPath, FText MaterialPropertyDisplayName );
 
 	/** Handler which is called whenever sequencer movie scene data changes. */
 	void OnMovieSceneDataChanged(EMovieSceneDataChangeType DataChangeType);
@@ -375,6 +376,9 @@ private:
 	TWeakObjectPtr<UWidgetAnimation> CurrentAnimation;
 
 	FDelegateHandle SequencerAddTrackExtenderHandle;
+
+	/** Messages we want to append to the compiler results. */
+	TArray< TSharedRef<class FTokenizedMessage> > DesignerCompilerMessages;
 
 	/** When true the animation data in the generated class should be replaced with the current animation data. */
 	bool bRefreshGeneratedClassAnimations;

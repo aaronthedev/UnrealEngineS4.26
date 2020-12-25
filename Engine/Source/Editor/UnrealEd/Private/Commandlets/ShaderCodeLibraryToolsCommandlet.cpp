@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Commandlets/ShaderCodeLibraryToolsCommandlet.h"
 #include "Misc/Paths.h"
@@ -39,14 +39,11 @@ int32 UShaderCodeLibraryToolsCommandlet::StaticMain(const FString& Params)
 		{
 			bNativeFormat |= bArchive;
 		}
-
-		bool bNeedsDeterministicOrder = false;
-		GConfig->GetBool(TEXT("/Script/UnrealEd.ProjectPackagingSettings"), TEXT("bDeterministicShaderCodeOrder"), bNeedsDeterministicOrder, GGameIni);
 		
 		TArray<FString> OldMetaDataDirs;
 		OldMetaDataDirs.Add(Left);
 		
-		return FShaderCodeLibrary::CreatePatchLibrary(OldMetaDataDirs, Right, Output, bNativeFormat, bNeedsDeterministicOrder) ? 0 : 1;
+		return FShaderCodeLibrary::CreatePatchLibrary(OldMetaDataDirs, Right, Output, bNativeFormat) ? 0 : 1;
 	}
 	
 	UE_LOG(LogShaderCodeLibraryTools, Warning, TEXT("Usage: <Path-To-Old-MetaData> <Path-To-New-MetaData> <Output-Path> [-PreferNativeArchives]\n"));

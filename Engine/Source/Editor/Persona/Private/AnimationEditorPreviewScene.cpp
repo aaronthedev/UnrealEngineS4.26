@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimationEditorPreviewScene.h"
 #include "Framework/Notifications/NotificationManager.h"
@@ -24,7 +24,6 @@
 #include "Particles/ParticleSystemComponent.h"
 #include "Factories/PreviewMeshCollectionFactory.h"
 #include "AnimPreviewAttacheInstance.h"
-#include "AnimCustomInstanceHelper.h"
 #include "Animation/PreviewCollectionInterface.h"
 #include "ScopedTransaction.h"
 #include "Preferences/PersonaOptions.h"
@@ -52,7 +51,6 @@ FAnimationEditorPreviewScene::FAnimationEditorPreviewScene(const ConstructionVal
 	, LastTickTime(0.0)
 	, bSelecting(false)
 	, bAllowAdditionalMeshes(true)
-	, bAdditionalMeshesSelectable(true)
 {
 	if (GEditor)
 	{
@@ -273,7 +271,7 @@ void FAnimationEditorPreviewScene::SetPreviewMeshInternal(USkeletalMesh* NewPrev
 
 	// Setting the skeletal mesh to in the PreviewScene can change AnimScriptInstance so we must re register it
 	// with the AnimBlueprint
-	if (DebuggedSkeletalMeshComponent && DebuggedSkeletalMeshComponent->GetAnimInstance() && !DebuggedSkeletalMeshComponent->GetAnimInstance()->IsA<UAnimPreviewInstance>())
+	if (DebuggedSkeletalMeshComponent)
 	{
 		UAnimBlueprint* SourceBlueprint = PersonaToolkit.Pin()->GetAnimBlueprint();
 		PersonaUtils::SetObjectBeingDebugged(SourceBlueprint, DebuggedSkeletalMeshComponent->GetAnimInstance());
@@ -319,20 +317,15 @@ void FAnimationEditorPreviewScene::SetAdditionalMeshes(class UDataAsset* InAddit
 	RefreshAdditionalMeshes(true);
 }
 
-void FAnimationEditorPreviewScene::SetAdditionalMeshesSelectable(bool bSelectable)
-{
-	bAdditionalMeshesSelectable = bSelectable;
-}
-
 void FAnimationEditorPreviewScene::RefreshAdditionalMeshes(bool bAllowOverrideBaseMesh)
 {
 	// remove all components
 	for (USkeletalMeshComponent* Component : AdditionalMeshes)
 	{
 		const UAnimInstance* AnimInst = Component->GetAnimInstance();
-		if (AnimInst && AnimInst->IsA(UAnimPreviewAttacheInstance::StaticClass()))
+		if (AnimInst && AnimInst->IsA(UAnimCustomInstance::StaticClass()))
 		{
-			FAnimCustomInstanceHelper::UnbindFromSkeletalMeshComponent<UAnimPreviewAttacheInstance>(Component);
+			UAnimCustomInstance::UnbindFromSkeletalMeshComponent(Component);
 		}
 		
 		RemoveComponent(Component);
@@ -376,11 +369,11 @@ void FAnimationEditorPreviewScene::RefreshAdditionalMeshes(bool bAllowOverrideBa
 					if (SkeletalMesh)
 					{
 						USkeletalMeshComponent* NewComp = NewObject<USkeletalMeshComponent>(Actor);
-						NewComp->bSelectable = bAdditionalMeshesSelectable;
 						NewComp->RegisterComponent();
 						NewComp->SetSkeletalMesh(SkeletalMesh);
 						NewComp->bUseAttachParentBound = true;
 						AddComponent(NewComp, FTransform::Identity, true);
+
 						if (bUseCustomAnimBP && AnimInstances.IsValidIndex(MeshIndex) && AnimInstances[MeshIndex] != nullptr)
 						{
 							NewComp->SetAnimInstanceClass(AnimInstances[MeshIndex]);
@@ -388,8 +381,9 @@ void FAnimationEditorPreviewScene::RefreshAdditionalMeshes(bool bAllowOverrideBa
 						else
 						{
 							bool bWasCreated = false;
-							FAnimCustomInstanceHelper::BindToSkeletalMeshComponent<UAnimPreviewAttacheInstance>(NewComp,bWasCreated);
+							UAnimCustomInstance::BindToSkeletalMeshComponent<UAnimPreviewAttacheInstance>(NewComp,bWasCreated);
 						}
+
 						AdditionalMeshes.Add(NewComp);
 					}
 				}
@@ -553,12 +547,6 @@ void FAnimationEditorPreviewScene::RemoveAttachedComponent( bool bRemovePreviewA
 
 			// if this component is added by additional meshes, do not remove it. 
 			if (AdditionalMeshes.Contains(ChildComponent))
-			{
-				bRemove = false;
-			}
-
-			// you can use delegate to avoid being removed
-			if (OnRemoveAttachedComponentFilter.IsBound() && !OnRemoveAttachedComponentFilter.Execute(ChildComponent))
 			{
 				bRemove = false;
 			}
@@ -776,12 +764,12 @@ void FAnimationEditorPreviewScene::ClearSelectedBone()
 	SelectedBoneIndex = INDEX_NONE;
 	SkeletalMeshComponent->BonesOfInterest.Empty();
 
-	OnSelectedBoneChanged.Broadcast(NAME_None, ESelectInfo::Direct);
+	OnSelectedBoneChanged.Broadcast(NAME_None);
 
 	InvalidateViews();
 }
 
-void FAnimationEditorPreviewScene::SetSelectedBone(const FName& BoneName, ESelectInfo::Type InSelectInfo)
+void FAnimationEditorPreviewScene::SetSelectedBone(const FName& BoneName)
 {
 	TGuardValue<bool> RecursionGuard(bSelecting, true);
 
@@ -807,7 +795,7 @@ void FAnimationEditorPreviewScene::SetSelectedBone(const FName& BoneName, ESelec
 
 			InvalidateViews();
 
-			OnSelectedBoneChanged.Broadcast(BoneName, InSelectInfo);
+			OnSelectedBoneChanged.Broadcast(BoneName);
 		}
 	}
 }
@@ -1125,7 +1113,7 @@ void FAnimationEditorPreviewScene::HandleSkeletonTreeSelectionChanged(const TArr
 			{
 				if(Item->IsOfTypeByName("FSkeletonTreeBoneItem"))
 				{
-					SetSelectedBone(Item->GetRowItemName(), InSelectInfo);
+					SetSelectedBone(Item->GetRowItemName());
 				}
 				else if(Item->IsOfTypeByName("FSkeletonTreeSocketItem"))
 				{

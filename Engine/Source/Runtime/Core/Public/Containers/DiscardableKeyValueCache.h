@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -90,7 +90,7 @@ public:
 	bool Add(const KeyType& Key, const ValueType& Value)
 	{
 		uint32 LockFlags = ApplyLock(0, LockFlags::WriteLock);
-		bool Success = Add(Key, Value, LockFlags);
+		bool Success = Add(Key, Value);
 		Unlock(LockFlags);
 		return Success;
 	}

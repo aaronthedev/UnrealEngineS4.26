@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcCoreAbstract_All_h
-#define Alembic_AbcCoreAbstract_All_h
+#ifndef _Alembic_AbcCoreAbstract_All_h_
+#define _Alembic_AbcCoreAbstract_All_h_
 
 #include <Alembic/AbcCoreAbstract/ArchiveReader.h>
 #include <Alembic/AbcCoreAbstract/ArchiveWriter.h>

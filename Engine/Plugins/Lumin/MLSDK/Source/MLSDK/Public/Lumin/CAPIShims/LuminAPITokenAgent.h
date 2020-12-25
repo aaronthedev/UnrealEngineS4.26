@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,19 +10,19 @@ LUMIN_THIRD_PARTY_INCLUDES_START
 #include <ml_token_agent.h>
 LUMIN_THIRD_PARTY_INCLUDES_END
 
-namespace LUMIN_MLSDK_API
+namespace MLSDK_API
 {
 
 CREATE_FUNCTION_SHIM(ml_identity, MLResult, MLTokenAgentGetClientCredentials)
-#define MLTokenAgentGetClientCredentials ::LUMIN_MLSDK_API::MLTokenAgentGetClientCredentialsShim
+#define MLTokenAgentGetClientCredentials ::MLSDK_API::MLTokenAgentGetClientCredentialsShim
 CREATE_FUNCTION_SHIM(ml_identity, MLResult, MLTokenAgentGetClientCredentialsAsync)
-#define MLTokenAgentGetClientCredentialsAsync ::LUMIN_MLSDK_API::MLTokenAgentGetClientCredentialsAsyncShim
+#define MLTokenAgentGetClientCredentialsAsync ::MLSDK_API::MLTokenAgentGetClientCredentialsAsyncShim
 CREATE_FUNCTION_SHIM(ml_identity, MLResult, MLTokenAgentGetClientCredentialsWait)
-#define MLTokenAgentGetClientCredentialsWait ::LUMIN_MLSDK_API::MLTokenAgentGetClientCredentialsWaitShim
+#define MLTokenAgentGetClientCredentialsWait ::MLSDK_API::MLTokenAgentGetClientCredentialsWaitShim
 CREATE_FUNCTION_SHIM(ml_identity, MLResult, MLTokenAgentReleaseClientCredentials)
-#define MLTokenAgentReleaseClientCredentials ::LUMIN_MLSDK_API::MLTokenAgentReleaseClientCredentialsShim
+#define MLTokenAgentReleaseClientCredentials ::MLSDK_API::MLTokenAgentReleaseClientCredentialsShim
 CREATE_FUNCTION_SHIM(ml_identity, const char*, MLTokenAgentGetResultString)
-#define MLTokenAgentGetResultString ::LUMIN_MLSDK_API::MLTokenAgentGetResultStringShim
+#define MLTokenAgentGetResultString ::MLSDK_API::MLTokenAgentGetResultStringShim
 
 }
 

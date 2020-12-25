@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GenericPlatform/GenericPlatformProcess.h"
 #include "Misc/Timespan.h"
@@ -17,9 +17,7 @@
 #include "Misc/EventPool.h"
 #include "Misc/EngineVersion.h"
 #include "Misc/LazySingleton.h"
-#include "Misc/Fork.h"
 #include "ProfilingDebugging/CsvProfiler.h"
-#include "Async/TaskGraphInterfaces.h"
 
 #ifndef DEFAULT_NO_THREADING
 	#define DEFAULT_NO_THREADING 0
@@ -446,13 +444,7 @@ FEvent* FGenericPlatformProcess::CreateSynchEvent(bool bIsManualReset)
 {
 #if PLATFORM_USE_PTHREADS
 	FEvent* Event = NULL;
-	
-	// Create fake singlethread events in environments that don't support multithreading
-	// For processes that intend to fork: create real events even in the master process since the allocated mutex might get reused by the
-	//forked child process when he gets to run in multithread mode.
-	const bool bIsMultithread = FPlatformProcess::SupportsMultithreading() || FForkProcessHelper::SupportsMultithreadingPostFork();
-
-	if (bIsMultithread)
+	if (FPlatformProcess::SupportsMultithreading())
 	{
 		// Allocate the new object
 		Event = new FPThreadEvent();
@@ -483,11 +475,6 @@ FEvent* FGenericPlatformProcess::GetSynchEventFromPool(bool bIsManualReset)
 		: TLazySingleton<FEventPool<EEventPoolTypes::AutoReset>>::Get().GetEventFromPool();
 }
 
-void FGenericPlatformProcess::FlushPoolSyncEvents()
-{
-	TLazySingleton<FEventPool<EEventPoolTypes::ManualReset>>::Get().EmptyPool();
-	TLazySingleton<FEventPool<EEventPoolTypes::AutoReset>>::Get().EmptyPool();
-}
 
 void FGenericPlatformProcess::ReturnSynchEventToPool(FEvent* Event)
 {
@@ -558,18 +545,11 @@ bool FGenericPlatformProcess::WritePipe(void* WritePipe, const uint8* Data, cons
 
 bool FGenericPlatformProcess::SupportsMultithreading()
 {
-	if (!FCommandLine::IsInitialized())
-	{
-		// If we don't know yet -- return the default setting
-		return !DEFAULT_NO_THREADING;
-	}
-
 #if DEFAULT_NO_THREADING
-	static bool bSupportsMultithreading = FParse::Param(FCommandLine::Get(), TEXT("threading"));
+	static bool bSupportsMultithreading = FCommandLine::IsInitialized() ? FParse::Param(FCommandLine::Get(), TEXT("threading")) : 0;
 #else
-	static bool bSupportsMultithreading = !FParse::Param(FCommandLine::Get(), TEXT("nothreading"));
+	static bool bSupportsMultithreading = FCommandLine::IsInitialized() ? !FParse::Param(FCommandLine::Get(), TEXT("nothreading")) : 1;
 #endif
-
 	return bSupportsMultithreading;
 }
 
@@ -626,19 +606,3 @@ void FGenericPlatformProcess::TearDown()
 	TLazySingleton<FEventPool<EEventPoolTypes::AutoReset>>::TearDown();
 	TLazySingleton<FEventPool<EEventPoolTypes::ManualReset>>::TearDown();
 }
-
-ENamedThreads::Type FGenericPlatformProcess::GetDesiredThreadForUObjectReferenceCollector()
-{
-	return ENamedThreads::AnyThread;
-}
-
-void FGenericPlatformProcess::ModifyThreadAssignmentForUObjectReferenceCollector( int32& NumThreads, int32& NumBackgroundThreads, ENamedThreads::Type& NormalThreadName, ENamedThreads::Type& BackgroundThreadName )
-{
-#if PLATFORM_ANDROID
-	// On devices with overridden affinity only HiPri threads can run on big cores
-	NormalThreadName = ENamedThreads::AnyHiPriThreadHiPriTask; 
-	NumBackgroundThreads = 0; // run on single group
-#endif
-}
-
-

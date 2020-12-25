@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -243,8 +243,6 @@ public:
 		return Filename;
 	}
 
-	virtual bool Precache(int64 PrecacheOffset, int64 PrecacheSize) override;
-
 protected:
 	bool InternalPrecache( int64 PrecacheOffset, int64 PrecacheSize );
 	/** 
@@ -268,21 +266,10 @@ protected:
 	int64 Size;
 	int64 Pos;
 	int64 BufferBase;
+	int64 BufferCount;
 	TUniquePtr<IFileHandle> Handle;
-	/**
-	 * The contract for the BufferWindow and the low level pos is that if we have a BufferWindow and Pos is within it, then the LowLevel Pos is at the end of the BufferWindow
-	 * If we do not have a BufferWindow, or Pos is outside of it, then LowLevel Pos is at Pos.
-	 */
-	TArray64<uint8> BufferArray;
-	int64 BufferSize;
-	bool bFirstReadAfterSeek;
-
-	enum
-	{
-		bPrecacheAsSoonAsPossible = 0 // Setting this to true makes it more likely bytes will be available without waiting due to external Precache calls, but at the cost of a larger number of read requests.
-	};
-
-	friend class FArchiveFileReaderGenericTest;
+	uint8* Buffer;
+	uint32 BufferSize;
 };
 
 
@@ -355,8 +342,9 @@ protected:
 	FString Filename;
 	uint32 Flags;
 	int64 Pos;
+	int64 BufferCount;
 	TUniquePtr<IFileHandle> Handle;
-	TArray64<uint8> BufferArray;
-	int64 BufferSize;
+	uint8* Buffer;
+	uint32 BufferSize;
 	bool bLoggingError;
 };

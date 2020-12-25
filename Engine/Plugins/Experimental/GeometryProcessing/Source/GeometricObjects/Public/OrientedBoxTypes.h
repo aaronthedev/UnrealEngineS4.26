@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // ported from geometry3Sharp Box3
 
@@ -97,7 +97,7 @@ struct TOrientedBox3
 	}
 
 	/** @return true if box contains point */
-	inline bool Contains(const FVector3<RealType>& Point) const
+	inline bool Contains(const FVector3<RealType>& Point) 
 	{
 		FVector3<RealType> InFramePoint = Frame.ToFramePoint(Point);
 		return (TMathUtil<RealType>::Abs(InFramePoint.X) <= Extents.X) &&
@@ -130,47 +130,6 @@ struct TOrientedBox3
 		RealType dz = (Index < 4) ? (-Extents.Z) : (Extents.Z);
 		return Frame.PointAt(dx, dy, dz);
 	}
-
-	/**
-	 * Call CornerPointFunc(FVector3) for each of the 8 box corners. Order is the same as GetCorner(X).
-	 * This is more efficient than calling GetCorner(X) because the Rotation matrix is only computed once.
-	 */
-	template<typename PointFuncType>
-	void EnumerateCorners(PointFuncType CornerPointFunc) const
-	{
-		TMatrix3<RealType> RotMatrix = Frame.Rotation.ToRotationMatrix();
-		RealType X = Extents.X, Y = Extents.Y, Z = Extents.Z;
-		CornerPointFunc( RotMatrix*FVector3<RealType>(-X,-Y,-Z) + Frame.Origin );
-		CornerPointFunc( RotMatrix*FVector3<RealType>( X,-Y,-Z) + Frame.Origin );
-		CornerPointFunc( RotMatrix*FVector3<RealType>( X, Y,-Z) + Frame.Origin );
-		CornerPointFunc( RotMatrix*FVector3<RealType>(-X, Y,-Z) + Frame.Origin );
-		CornerPointFunc( RotMatrix*FVector3<RealType>(-X,-Y, Z) + Frame.Origin );
-		CornerPointFunc( RotMatrix*FVector3<RealType>( X,-Y, Z) + Frame.Origin );
-		CornerPointFunc( RotMatrix*FVector3<RealType>( X, Y, Z) + Frame.Origin );
-		CornerPointFunc( RotMatrix*FVector3<RealType>(-X, Y, Z) + Frame.Origin );
-	}
-
-
-	/**
-	 * Call CornerPointPredicate(FVector3) for each of the 8 box corners, with early-out if any call returns false
-	 * @return true if all tests pass
-	 */
-	template<typename PointPredicateType>
-	bool TestCorners(PointPredicateType CornerPointPredicate) const
-	{
-		TMatrix3<RealType> RotMatrix = Frame.Rotation.ToRotationMatrix();
-		RealType X = Extents.X, Y = Extents.Y, Z = Extents.Z;
-		return CornerPointPredicate(RotMatrix * FVector3<RealType>(-X, -Y, -Z) + Frame.Origin) &&
-			CornerPointPredicate(RotMatrix * FVector3<RealType>(X, -Y, -Z) + Frame.Origin) &&
-			CornerPointPredicate(RotMatrix * FVector3<RealType>(X, Y, -Z) + Frame.Origin) &&
-			CornerPointPredicate(RotMatrix * FVector3<RealType>(-X, Y, -Z) + Frame.Origin) &&
-			CornerPointPredicate(RotMatrix * FVector3<RealType>(-X, -Y, Z) + Frame.Origin) &&
-			CornerPointPredicate(RotMatrix * FVector3<RealType>(X, -Y, Z) + Frame.Origin) &&
-			CornerPointPredicate(RotMatrix * FVector3<RealType>(X, Y, Z) + Frame.Origin) &&
-			CornerPointPredicate(RotMatrix * FVector3<RealType>(-X, Y, Z) + Frame.Origin);
-	}
-
-
 
 	/**
 	 * Get whether the corner at Index (see diagram in GetCorner documentation comment) is in the negative or positive direction for each axis

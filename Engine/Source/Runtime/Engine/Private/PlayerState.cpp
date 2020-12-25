@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PlayerState.cpp: 
@@ -12,7 +12,6 @@
 #include "Net/UnrealNetwork.h"
 #include "Net/OnlineEngineInterface.h"
 #include "GameFramework/GameStateBase.h"
-#include "Net/Core/PushModel/PushModel.h"
 
 APlayerState::APlayerState(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer
@@ -133,7 +132,7 @@ void APlayerState::RecalculateAvgPing()
 
 	if (bShouldUpdateReplicatedPing || !HasAuthority())
 	{
-		SetPing(FMath::Min(255, (int32)(ExactPing * 0.25f)));
+		Ping = FMath::Min(255, (int32)(ExactPing * 0.25f));
 	}
 }
 
@@ -151,22 +150,22 @@ void APlayerState::DispatchCopyProperties(APlayerState* PlayerState)
 
 void APlayerState::OverrideWith(APlayerState* PlayerState)
 {
-	SetIsSpectator(PlayerState->IsSpectator());
-	SetIsOnlyASpectator(PlayerState->IsOnlyASpectator());
-	SetUniqueId(PlayerState->GetUniqueId().GetUniqueNetId());
+	bIsSpectator = PlayerState->bIsSpectator;
+	bOnlySpectator = PlayerState->bOnlySpectator;
+	SetUniqueId(PlayerState->UniqueId.GetUniqueNetId());
 	SetPlayerNameInternal(PlayerState->GetPlayerName());
 }
 
 
 void APlayerState::CopyProperties(APlayerState* PlayerState)
 {
-	PlayerState->SetScore(GetScore());
-	PlayerState->SetPing(GetPing());
+	PlayerState->Score = Score;
+	PlayerState->Ping = Ping;
 	PlayerState->ExactPing = ExactPing;
-	PlayerState->SetPlayerId(GetPlayerId());
-	PlayerState->SetUniqueId(GetUniqueId().GetUniqueNetId());
+	PlayerState->PlayerId = PlayerId;
+	PlayerState->SetUniqueId(UniqueId.GetUniqueNetId());
 	PlayerState->SetPlayerNameInternal(GetPlayerName());
-	PlayerState->SetStartTime(GetStartTime());
+	PlayerState->StartTime = StartTime;
 	PlayerState->SavedNetworkAddress = SavedNetworkAddress;
 }
 
@@ -202,12 +201,12 @@ void APlayerState::PostInitializeComponents()
 	AController* OwningController = Cast<AController>(GetOwner());
 	if (OwningController != NULL)
 	{
-		SetIsABot(Cast<APlayerController>(OwningController) == nullptr);
+		bIsABot = (Cast<APlayerController>(OwningController) == nullptr);
 	}
 
 	if (GameStateBase)
 	{
-		SetStartTime(GameStateBase->GetPlayerStartTime(OwningController));
+		StartTime = GameStateBase->GetPlayerStartTime(OwningController);
 	}
 }
 
@@ -233,7 +232,7 @@ void APlayerState::OnRep_bIsInactive()
 
 bool APlayerState::ShouldBroadCastWelcomeMessage(bool bExiting)
 {
-	return (!IsInactive() && GetNetMode() != NM_Standalone);
+	return (!bIsInactive && GetNetMode() != NM_Standalone);
 }
 
 void APlayerState::Destroyed()
@@ -265,7 +264,7 @@ void APlayerState::Destroyed()
 void APlayerState::Reset()
 {
 	Super::Reset();
-	SetScore(0);
+	Score = 0;
 	ForceNetUpdate();
 }
 
@@ -277,13 +276,20 @@ FString APlayerState::GetHumanReadableName() const
 void APlayerState::OnRep_PlayerName()
 {
 	OldNamePrivate = GetPlayerName();
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS;
+	OldName = OldNamePrivate;
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS;
+
 	HandleWelcomeMessage();
 }
 
 void APlayerState::SetPlayerNameInternal(const FString& S)
 {
-	MARK_PROPERTY_DIRTY_FROM_NAME(APlayerState, PlayerNamePrivate, this);
 	PlayerNamePrivate = S;
+
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS;
+	PlayerName = PlayerNamePrivate;
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS;
 }
 
 void APlayerState::SetPlayerName(const FString& S)
@@ -298,6 +304,10 @@ void APlayerState::SetPlayerName(const FString& S)
 	}
 
 	OldNamePrivate = GetPlayerName();
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS;
+	OldName = OldNamePrivate;
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS;
+
 	ForceNetUpdate();
 }
 
@@ -319,6 +329,10 @@ FString APlayerState::GetOldPlayerName() const
 void APlayerState::SetOldPlayerName(const FString& S)
 {
 	OldNamePrivate = S;
+
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	OldName = S;
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 void APlayerState::HandleWelcomeMessage()
@@ -347,7 +361,7 @@ void APlayerState::HandleWelcomeMessage()
 	}
 	else
 	{
-		int32 WelcomeMessageNum = IsOnlyASpectator() ? 16 : 1;
+		int32 WelcomeMessageNum = bOnlySpectator ? 16 : 1;
 		bHasBeenWelcomed = true;
 
 		if (ShouldBroadCastWelcomeMessage())
@@ -374,35 +388,32 @@ void APlayerState::OnRep_UniqueId()
 	RegisterPlayerWithSession(false);
 }
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 void APlayerState::SetUniqueId(const TSharedPtr<const FUniqueNetId>& InUniqueId)
 {
-	MARK_PROPERTY_DIRTY_FROM_NAME(APlayerState, UniqueId, this);
 	UniqueId.SetUniqueNetId(InUniqueId);
 }
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 void APlayerState::RegisterPlayerWithSession(bool bWasFromInvite)
 {
 	if (GetNetMode() != NM_Standalone)
 	{
-		if (GetUniqueId().IsValid()) // May not be valid if this is was created via DebugCreatePlayer
+		if (UniqueId.IsValid()) // May not be valid if this is was created via DebugCreatePlayer
 		{
 			// Register the player as part of the session
 			const APlayerState* PlayerState = GetDefault<APlayerState>();
-			UOnlineEngineInterface::Get()->RegisterPlayer(GetWorld(), PlayerState->SessionName, *GetUniqueId(), bWasFromInvite);
+			UOnlineEngineInterface::Get()->RegisterPlayer(GetWorld(), PlayerState->SessionName, *UniqueId, bWasFromInvite);
 		}
 	}
 }
 
 void APlayerState::UnregisterPlayerWithSession()
 {
-	if (GetNetMode() == NM_Client && GetUniqueId().IsValid())
+	if (GetNetMode() == NM_Client && UniqueId.IsValid())
 	{
 		const APlayerState* PlayerState = GetDefault<APlayerState>();
 		if (PlayerState->SessionName != NAME_None)
 		{
-			UOnlineEngineInterface::Get()->UnregisterPlayer(GetWorld(), PlayerState->SessionName, *GetUniqueId());
+			UOnlineEngineInterface::Get()->UnregisterPlayer(GetWorld(), PlayerState->SessionName, *UniqueId);
 		}
 	}
 }
@@ -425,7 +436,7 @@ APlayerState* APlayerState::Duplicate()
 void APlayerState::SeamlessTravelTo(APlayerState* NewPlayerState)
 {
 	DispatchCopyProperties(NewPlayerState);
-	NewPlayerState->SetIsOnlyASpectator(IsOnlyASpectator());
+	NewPlayerState->bOnlySpectator = bOnlySpectator;
 }
 
 
@@ -436,93 +447,23 @@ bool APlayerState::IsPrimaryPlayer() const
 
 void APlayerState::GetLifetimeReplicatedProps(TArray< FLifetimeProperty > & OutLifetimeProps) const
 {
-	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+	Super::GetLifetimeReplicatedProps( OutLifetimeProps );
 
-	FDoRepLifetimeParams SharedParams;
-	SharedParams.bIsPushBased = true;
+	DOREPLIFETIME( APlayerState, Score );
 
-	DOREPLIFETIME_WITH_PARAMS_FAST(APlayerState, Score, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(APlayerState, bIsSpectator, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(APlayerState, bOnlySpectator, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(APlayerState, bFromPreviousLevel, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(APlayerState, StartTime, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(APlayerState, PlayerNamePrivate, SharedParams);
-
-	SharedParams.Condition = COND_SkipOwner;
-	DOREPLIFETIME_WITH_PARAMS_FAST(APlayerState, Ping, SharedParams);
-
-	SharedParams.Condition = COND_InitialOnly;
-	DOREPLIFETIME_WITH_PARAMS_FAST(APlayerState, PlayerId, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(APlayerState, bIsABot, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(APlayerState, bIsInactive, SharedParams);
-	DOREPLIFETIME_WITH_PARAMS_FAST(APlayerState, UniqueId, SharedParams);
-}
-
-
+	DOREPLIFETIME( APlayerState, bIsSpectator );
+	DOREPLIFETIME( APlayerState, bOnlySpectator );
+	DOREPLIFETIME( APlayerState, bFromPreviousLevel );
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
-void APlayerState::SetScore(const float NewScore)
-{
-	MARK_PROPERTY_DIRTY_FROM_NAME(APlayerState, Score, this);
-	Score = NewScore;
-}
-
-void APlayerState::SetPlayerId(const int32 NewId)
-{
-	MARK_PROPERTY_DIRTY_FROM_NAME(APlayerState, PlayerId, this);
-	PlayerId = NewId;
-}
-
-void APlayerState::SetPing(const uint8 NewPing)
-{
-	MARK_PROPERTY_DIRTY_FROM_NAME(APlayerState, Ping, this);
-	Ping = NewPing;
-}
-
-void APlayerState::SetIsSpectator(const bool bNewSpectator)
-{
-	MARK_PROPERTY_DIRTY_FROM_NAME(APlayerState, bIsSpectator, this);
-	bIsSpectator = bNewSpectator;
-}
-
-void APlayerState::SetIsOnlyASpectator(const bool bNewSpectator)
-{
-	MARK_PROPERTY_DIRTY_FROM_NAME(APlayerState, bOnlySpectator, this);
-	bOnlySpectator = bNewSpectator;
-}
-
-void APlayerState::SetIsABot(const bool bNewIsABot)
-{
-	MARK_PROPERTY_DIRTY_FROM_NAME(APlayerState, bIsABot, this);
-	bIsABot = bNewIsABot;
-}
-
-void APlayerState::SetIsInactive(const bool bNewInactive)
-{
-	MARK_PROPERTY_DIRTY_FROM_NAME(APlayerState, bIsInactive, this);
-	bIsInactive = bNewInactive;
-}
-
-void APlayerState::SetIsFromPreviousLevel(const bool bNewFromPreviousLevel)
-{
-	MARK_PROPERTY_DIRTY_FROM_NAME(APlayerState, bFromPreviousLevel, this);
-	bFromPreviousLevel = bNewFromPreviousLevel;
-}
-
-void APlayerState::SetStartTime(const int32 NewStartTime)
-{
-	MARK_PROPERTY_DIRTY_FROM_NAME(APlayerState, StartTime, this);
-	StartTime = NewStartTime;
-}
-
-void APlayerState::SetUniqueId(const FUniqueNetIdRepl& NewUniqueId)
-{
-	MARK_PROPERTY_DIRTY_FROM_NAME(APlayerState, UniqueId, this);
-	UniqueId = NewUniqueId;
-}
-
-void APlayerState::SetUniqueId(FUniqueNetIdRepl&& NewUniqueId)
-{
-	MARK_PROPERTY_DIRTY_FROM_NAME(APlayerState, UniqueId, this);
-	UniqueId = MoveTemp(NewUniqueId);
-}
+	DOREPLIFETIME( APlayerState, StartTime );
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
+
+	DOREPLIFETIME_CONDITION( APlayerState, Ping,		COND_SkipOwner );
+
+	DOREPLIFETIME_CONDITION( APlayerState, PlayerId,	COND_InitialOnly );
+	DOREPLIFETIME_CONDITION( APlayerState, bIsABot,		COND_InitialOnly );
+	DOREPLIFETIME_CONDITION( APlayerState, bIsInactive, COND_InitialOnly );
+	DOREPLIFETIME_CONDITION( APlayerState, UniqueId,	COND_InitialOnly );
+
+	DOREPLIFETIME(APlayerState, PlayerNamePrivate);
+}

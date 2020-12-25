@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -165,7 +165,7 @@ namespace UnrealBuildTool
 						{
 							// Find the last non-whitespace character. If it's an escaped newline, merge the following line with it.
 							int EndIdx = Line.Length;
-							while (EndIdx > StartIdx)
+							for(; EndIdx > StartIdx; EndIdx--)
 							{
 								if(Line[EndIdx - 1] == '\\')
 								{
@@ -176,14 +176,11 @@ namespace UnrealBuildTool
 									}
 									Line += NextLine;
 									EndIdx = Line.Length;
-									continue;
 								}
 								if(Line[EndIdx - 1] != ' ' && Line[EndIdx - 1] != '\t')
 								{
 									break;
 								}
-
-								EndIdx--;
 							}
 
 							// Break out if we've got a comment

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,7 +12,7 @@
 #include "Snapping/PointPlanarSnapSolver.h"
 #include "ToolSceneQueriesUtil.h"
 #include "Properties/MeshMaterialProperties.h"
-#include "Mechanics/PlaneDistanceFromHitMechanic.h"
+#include "Changes/ValueWatcher.h"
 #include "DrawPolygonTool.generated.h"
 
 
@@ -55,13 +55,7 @@ enum class EDrawPolygonDrawMode : uint8
 	Square UMETA(DisplayName = "Square"),
 
 	/** Rectangle */
-	Rectangle UMETA(DisplayName = "Rectangle"),
-
-	/** Rounded Rectangle */
-	RoundedRectangle UMETA(DisplayName = "Rounded Rectangle"),
-
-	/** Circle w/ Hole */
-	HoleyCircle UMETA(DisplayName = "Circle w/ Hole")
+	Rectangle UMETA(DisplayName = "Rectangle")
 
 };
 
@@ -98,27 +92,29 @@ public:
 	UPROPERTY(EditAnywhere, NonTransactional, Category = Polygon)
 	EDrawPolygonOutputMode OutputMode = EDrawPolygonOutputMode::ExtrudedInteractive;
 
-	/** Feature size as fraction of overall shape size, for shapes with secondary features like the rounded corners of a Rounded Rectangle */
-	UPROPERTY(EditAnywhere, NonTransactional, Category = Polygon, meta = (UIMin = "0.01", UIMax = "0.99", ClampMin = "0.01", ClampMax = "0.99",
-									EditCondition = "PolygonType == EDrawPolygonDrawMode::RoundedRectangle || PolygonType == EDrawPolygonDrawMode::HoleyCircle", EditConditionHides))
-	float FeatureSizeRatio = .25;
-
 	/** Extrusion Distance in non-interactive mode */
-	UPROPERTY(EditAnywhere, NonTransactional, Category = Polygon, meta = (UIMin = "-1000", UIMax = "1000", ClampMin = "-10000", ClampMax = "10000",
-									EditCondition = "OutputMode == EDrawPolygonOutputMode::ExtrudedConstant", EditConditionHides))
+	UPROPERTY(EditAnywhere, NonTransactional, Category = Polygon, meta = (UIMin = "-1000", UIMax = "1000", ClampMin = "-10000", ClampMax = "10000"))
 	float ExtrudeHeight = 100.0f;
 
-	/** Number of sections in round features */
-	UPROPERTY(EditAnywhere, NonTransactional, Category = Polygon, meta = (UIMin = "3", UIMax = "100", ClampMin = "3", ClampMax = "10000",
-				  EditCondition = "PolygonType == EDrawPolygonDrawMode::Circle || PolygonType == EDrawPolygonDrawMode::RoundedRectangle || PolygonType == EDrawPolygonDrawMode::HoleyCircle", EditConditionHides))
+	/** Extrusion Distance in non-interactive mode */
+	UPROPERTY(EditAnywhere, NonTransactional, Category = Polygon, meta = (UIMin = "3", UIMax = "100", ClampMin = "3", ClampMax = "10000"))
 	int Steps = 16;
 
-	UPROPERTY(EditAnywhere, NonTransactional, Category = Polygon, meta = (EditCondition = "PolygonType == EDrawPolygonDrawMode::Freehand", EditConditionHides))
+	UPROPERTY(EditAnywhere, NonTransactional, Category = Polygon)
 	bool bAllowSelfIntersections = false;
 
 	UPROPERTY(EditAnywhere, NonTransactional, Category = Polygon)
 	bool bShowGizmo = true;
+
+	//
+	// save/restore support
+	//
+	virtual void SaveProperties(UInteractiveTool* SaveFromTool) override;
+	virtual void RestoreProperties(UInteractiveTool* RestoreToTool) override;
 };
+
+
+
 
 UCLASS()
 class MESHMODELINGTOOLS_API UDrawPolygonToolSnapProperties : public UInteractiveToolPropertySet
@@ -129,29 +125,32 @@ public:
 	UPROPERTY(EditAnywhere, NonTransactional, Category = Snapping)
 	bool bEnableSnapping = true;
 
-	UPROPERTY(EditAnywhere, NonTransactional, Category = Snapping, Meta = (EditCondition = "bEnableSnapping", EditConditionHides))
-	bool bSnapToWorldGrid = false;
-
-	UPROPERTY(EditAnywhere, NonTransactional, Category = Snapping, Meta = (EditCondition = "bEnableSnapping", EditConditionHides))
+	UPROPERTY(EditAnywhere, NonTransactional, Category = Snapping, Meta = (EditCondition = "bEnableSnapping"))
 	bool bSnapToVertices = true;
 
-	UPROPERTY(EditAnywhere, NonTransactional, Category = Snapping, Meta = (EditCondition = "bEnableSnapping", EditConditionHides))
+	UPROPERTY(EditAnywhere, NonTransactional, Category = Snapping, Meta = (EditCondition = "bEnableSnapping"))
 	bool bSnapToEdges = false;
 
-	UPROPERTY(EditAnywhere, NonTransactional, Category = Snapping, Meta = (EditCondition = "bEnableSnapping", EditConditionHides))
+	UPROPERTY(EditAnywhere, NonTransactional, Category = Snapping, Meta = (EditCondition = "bEnableSnapping"))
 	bool bSnapToAngles = true;
 
-	UPROPERTY(EditAnywhere, NonTransactional, Category = Snapping, Meta = (EditCondition = "bEnableSnapping", EditConditionHides))
+	UPROPERTY(EditAnywhere, NonTransactional, Category = Snapping, Meta = (EditCondition = "bEnableSnapping"))
 	bool bSnapToLengths = true;
 
-	UPROPERTY(VisibleAnywhere, NonTransactional, Category = Snapping, meta = (TransientToolProperty))
+	UPROPERTY(VisibleAnywhere, NonTransactional, Category = Snapping)
 	float SegmentLength = 0.0f;
 
 	UPROPERTY(EditAnywhere, NonTransactional, Category = Snapping)
 	bool bHitSceneObjects = false;
 
-	UPROPERTY(EditAnywhere, NonTransactional, Category = Snapping, Meta = (EditCondition = "bHitSceneObjects", EditConditionHides))
+	UPROPERTY(EditAnywhere, NonTransactional, Category = Snapping, Meta = (EditCondition = "bHitSceneObjects"))
 	float HitNormalOffset = 0.0f;
+
+	//
+	// save/restore support
+	//
+	virtual void SaveProperties(UInteractiveTool* SaveFromTool) override;
+	virtual void RestoreProperties(UInteractiveTool* RestoreToTool) override;
 };
 
 
@@ -177,7 +176,6 @@ public:
 	virtual void Setup() override;
 	virtual void Shutdown(EToolShutdownType ShutdownType) override;
 
-	virtual void OnTick(float DeltaTime) override;
 	virtual void Render(IToolsContextRenderAPI* RenderAPI) override;
 
 	virtual bool HasCancel() const override { return false; }
@@ -197,17 +195,18 @@ public:
 
 	// polygon drawing functions
 	virtual void ResetPolygon();
-	virtual void UpdatePreviewVertex(const FVector3d& PreviewVertex);
-	virtual void AppendVertex(const FVector3d& Vertex);
-	virtual bool FindDrawPlaneHitPoint(const FInputDeviceRay& ClickPos, FVector3d& HitPosOut);
+	virtual void UpdatePreviewVertex(const FVector& PreviewVertex);
+	virtual void AppendVertex(const FVector& Vertex);
+	virtual bool FindDrawPlaneHitPoint(const FInputDeviceRay& ClickPos, FVector& HitPosOut);
 	virtual void EmitCurrentPolygon();
 
 	virtual void BeginInteractiveExtrude();
 	virtual void EndInteractiveExtrude();
+	virtual float FindInteractiveHeightDistance(const FInputDeviceRay& ClickPos);
 
 
 public:
-	virtual void ApplyUndoPoints(const TArray<FVector3d>& ClickPointsIn, const TArray<FVector3d>& PolygonVerticesIn);
+	virtual void PopLastVertexAction();
 
 
 protected:
@@ -229,19 +228,20 @@ protected:
 	
 
 	/** Origin of plane we will draw polygon on */
-	FVector3d DrawPlaneOrigin;
+	UPROPERTY()
+	FVector DrawPlaneOrigin;
 
 	/** Orientation of plane we will draw polygon on */
-	FQuaterniond DrawPlaneOrientation;
+	UPROPERTY()
+	FQuat DrawPlaneOrientation;
 	
 	/** Vertices of current preview polygon */
-	TArray<FVector3d> PolygonVertices;
-
-	/** Vertices of holes in current preview polygon */
-	TArray<TArray<FVector3d>> PolygonHolesVertices;
+	UPROPERTY()
+	TArray<FVector> PolygonVertices;
 
 	/** last vertex of polygon that is actively being updated as input device is moved */
-	FVector3d PreviewVertex;
+	UPROPERTY()
+	FVector PreviewVertex;
 
 protected:
 	UWorld* TargetWorld;
@@ -268,8 +268,9 @@ protected:
 	IClickBehaviorTarget* SetPointInWorldConnector = nullptr;
 
 	// updates plane and gizmo position
-	virtual void SetDrawPlaneFromWorldPos(const FVector3d& Position, const FVector3d& Normal);
+	virtual void SetDrawPlaneFromWorldPos(const FVector& Position, const FVector& Normal);
 
+	TValueWatcher<bool> ShowGizmoWatcher;
 	void UpdateShowGizmoState(bool bNewVisibility);
 
 
@@ -278,26 +279,24 @@ protected:
 	bool bAbortActivePolygonDraw;
 
 	bool bInFixedPolygonMode = false;
-	TArray<FVector3d> FixedPolygonClickPoints;
+	TArray<FVector> FixedPolygonClickPoints;
 
 	// can close poly if current segment intersects existing segment
 	bool UpdateSelfIntersection();
 	bool bHaveSelfIntersection;
 	int SelfIntersectSegmentIdx;
-	FVector3d SelfIntersectionPoint;
+	FVector3f SelfIntersectionPoint;
 
 	// only used when SnapSettings.bHitSceneObjects = true
 	bool bHaveSurfaceHit;
-	FVector3d SurfaceHitPoint;
-	FVector3d SurfaceOffsetPoint;
+	FVector3f SurfaceHitPoint;
+	FVector3f SurfaceOffsetPoint;
 
 	bool bIgnoreSnappingToggle = false;		// toggled by hotkey (shift)
 	FPointPlanarSnapSolver SnapEngine;
 	ToolSceneQueriesUtil::FSnapGeometry LastSnapGeometry;
-	FVector3d LastGridSnapPoint;
 
-	void GetPolygonParametersFromFixedPoints(const TArray<FVector3d>& FixedPoints, FVector2d& FirstReferencePt, FVector2d& BoxSize, double& YSign, double& AngleRad);
-	void GenerateFixedPolygon(const TArray<FVector3d>& FixedPoints, TArray<FVector3d>& VerticesOut, TArray<TArray<FVector3d>>& HolesVerticesOut);
+	void GenerateFixedPolygon(TArray<FVector>& FixedPoints, TArray<FVector>& VerticesOut);
 
 
 	// extrusion control
@@ -307,50 +306,24 @@ protected:
 	void UpdateLivePreview();
 	bool bPreviewUpdatePending;
 
-	UPROPERTY()
-	UPlaneDistanceFromHitMechanic* HeightMechanic;
+	FDynamicMesh3 PreviewHeightTarget;
+	FDynamicMeshAABBTree3 PreviewHeightTargetAABB;
+	FFrame3d PreviewHeightFrame;
+	void GeneratePreviewHeightTarget();
 
 
 	FFrame3f HitPosFrameWorld;
 
-	/** Generate extruded meshes.  Returns true on success. */
-	bool GeneratePolygonMesh(const TArray<FVector3d>& Polygon, const TArray<TArray<FVector3d>>& PolygonHoles, FDynamicMesh3* ResultMeshOut, FFrame3d& WorldFrameOut, bool bIncludePreviewVtx, double ExtrudeDistance, bool bExtrudeSymmetric);
+	// we use this to generate extruded meshes
+	void GeneratePolygonMesh(const TArray<FVector>& Polygon, FDynamicMesh3* ResultMeshOut, FFrame3d& WorldFrameOut, bool bIncludePreviewVtx, double ExtrudeDistance, bool bExtrudeSymmetric);
 
 
 	// user feedback messages
 	void ShowStartupMessage();
 	void ShowExtrudeMessage();
-
-
-	friend class FDrawPolygonStateChange;
-	int32 CurrentCurveTimestamp = 1;
-	void UndoCurrentOperation(const TArray<FVector3d>& ClickPointsIn, const TArray<FVector3d>& PolygonVerticesIn);
-	bool CheckInCurve(int32 Timestamp) const { return CurrentCurveTimestamp == Timestamp; }
 };
 
 
 
-// Change event used by DrawPolygonTool to undo draw state.
-// Currently does not redo.
-class MESHMODELINGTOOLS_API FDrawPolygonStateChange : public FToolCommandChange
-{
-public:
-	using Points = TArray<FVector3d>;
-	bool bHaveDoneUndo = false;
-	int32 CurveTimestamp = 0;
-	const Points FixedVertexPoints;
-	const Points PolyPoints;
 
-	FDrawPolygonStateChange(int32 CurveTimestampIn,
-							const Points& FixedVertexPointsIn,
-							const Points& PolyPointsIn)
-		: CurveTimestamp(CurveTimestampIn),
-		FixedVertexPoints(FixedVertexPointsIn),
-		PolyPoints(PolyPointsIn)
-	{
-	}
-	virtual void Apply(UObject* Object) override {}
-	virtual void Revert(UObject* Object) override;
-	virtual bool HasExpired(UObject* Object) const override;
-	virtual FString ToString() const override;
-};
+

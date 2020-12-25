@@ -33,8 +33,8 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 //-*****************************************************************************
-#ifndef Alembic_Abc_OTypedScalarProperty_h
-#define Alembic_Abc_OTypedScalarProperty_h
+#ifndef _Alembic_Abc_OTypedScalarProperty_h_
+#define _Alembic_Abc_OTypedScalarProperty_h_
 
 #include <Alembic/Abc/Foundation.h>
 #include <Alembic/Abc/OScalarProperty.h>

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
  	IOSAudioDevice.cpp: Unreal IOSAudio audio interface object.
@@ -32,10 +32,9 @@ IMPLEMENT_MODULE(FIOSAudioDeviceModule, IOSAudio);
 	FIOSAudioDevice
  ------------------------------------------------------------------------------------*/
 
-static int32 SuspendCounter = 0;
-
 void FIOSAudioDevice::ResumeContext()
 {
+	int32& SuspendCounter = GetSuspendCounter();
 	if (SuspendCounter > 0)
 	{
 		FPlatformAtomics::InterlockedDecrement(&SuspendCounter);
@@ -56,6 +55,7 @@ void FIOSAudioDevice::ResumeContext()
 
 void FIOSAudioDevice::SuspendContext()
 {
+	int32& SuspendCounter = GetSuspendCounter();
 	if (SuspendCounter == 0)
 	{
 		FPlatformAtomics::InterlockedIncrement(&SuspendCounter);
@@ -74,20 +74,10 @@ void FIOSAudioDevice::SuspendContext()
 	}
 }
 
-void FIOSAudioDevice::IncrementSuspendCounter()
+int32& FIOSAudioDevice::GetSuspendCounter()
 {
-    if(SuspendCounter == 0)
-    {
-        FPlatformAtomics::InterlockedIncrement(&SuspendCounter);
-    }
-}
-
-void FIOSAudioDevice::DecrementSuspendCounter()
-{
-    if (SuspendCounter > 0)
-    {
-        FPlatformAtomics::InterlockedDecrement(&SuspendCounter);
-    }
+	static int32 SuspendCounter = 0;
+	return SuspendCounter;
 }
 
 void FIOSAudioDevice::UpdateDeviceDeltaTime()
@@ -172,7 +162,11 @@ bool FIOSAudioDevice::InitializeHardware()
 
 	// Setup audo mixer unit
 	UnitDescription.componentType         = kAudioUnitType_Mixer;
+#ifdef __IPHONE_9_0
     UnitDescription.componentSubType      = kAudioUnitSubType_SpatialMixer;
+#else
+	UnitDescription.componentSubType      = kAudioUnitSubType_AU3DMixerEmbedded;
+#endif
 	UnitDescription.componentManufacturer = kAudioUnitManufacturer_Apple;
 	UnitDescription.componentFlags        = 0;
 	UnitDescription.componentFlagsMask    = 0;
@@ -245,7 +239,7 @@ bool FIOSAudioDevice::InitializeHardware()
 
 	// Initialize and start the audio unit graph
 	Status = AUGraphInitialize(AudioUnitGraph);
-	if (Status == noErr && SuspendCounter == 0)
+	if (Status == noErr && GetSuspendCounter() == 0)
 	{
 		Status = AUGraphStart(AudioUnitGraph);
 	}

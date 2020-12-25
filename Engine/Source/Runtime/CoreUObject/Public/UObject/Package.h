@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,8 +6,6 @@
 #include "UObject/ObjectMacros.h"
 #include "UObject/UObjectGlobals.h"
 #include "UObject/Object.h"
-#include "UObject/PackageId.h"
-#include "UObject/LinkerSave.h"
 #include "Misc/Guid.h"
 #include "Misc/WorldCompositionUtility.h"
 #include "Misc/OutputDeviceError.h"
@@ -15,16 +13,13 @@
 #include "Serialization/CustomVersion.h"
 #include "Templates/UniquePtr.h"
 #include "Misc/SecureHash.h"
-#include "Async/Future.h"
 
 class Error;
 
 // This is a dummy type which is not implemented anywhere. It's only 
 // used to flag a deprecated Conform argument to package save functions.
 class FLinkerNull;
-struct FPackageSaveInfo;
 class FSavePackageContext;
-struct FSavePackageArgs;
 
 /**
 * Represents the result of saving a package
@@ -63,16 +58,13 @@ struct FSavePackageResultStruct
 	int64 TotalFileSize;
 
 	/** MD5 hash of the cooked data */
-	TFuture<FMD5Hash> CookedHash;
-
-	/** Linker for linker comparison after save. */
-	TUniquePtr<FLinkerSave> LinkerSave;
+	FMD5Hash CookedHash;
 
 	/** Constructors, it will implicitly construct from the result enum */
 	FSavePackageResultStruct() : Result(ESavePackageResult::Error), TotalFileSize(0) {}
 	FSavePackageResultStruct(ESavePackageResult InResult) : Result(InResult), TotalFileSize(0) {}
 	FSavePackageResultStruct(ESavePackageResult InResult, int64 InTotalFileSize) : Result(InResult), TotalFileSize(InTotalFileSize) {}
-	FSavePackageResultStruct(ESavePackageResult InResult, int64 InTotalFileSize, TFuture<FMD5Hash>&& InHash, TUniquePtr<FLinkerSave> Linker = nullptr) : Result(InResult), TotalFileSize(InTotalFileSize), CookedHash(MoveTemp(InHash)), LinkerSave(MoveTemp(Linker)) {}
+	FSavePackageResultStruct(ESavePackageResult InResult, int64 InTotalFileSize, FMD5Hash InHash) : Result(InResult), TotalFileSize(InTotalFileSize), CookedHash(InHash) {}
 
 	bool operator==(const FSavePackageResultStruct& Other) const
 	{
@@ -87,7 +79,7 @@ struct FSavePackageResultStruct
 };
 
 COREUOBJECT_API void StartSavingEDLCookInfoForVerification();
-COREUOBJECT_API void VerifyEDLCookInfo(bool bFullReferencesExpected=true);
+COREUOBJECT_API void VerifyEDLCookInfo();
 
 /**
 * A package.
@@ -154,14 +146,6 @@ public:
 	/** Whether this package has been fully loaded (aka had all it's exports created) at some point.															*/
 	mutable uint8 bHasBeenFullyLoaded:1;
 
-	/**
-	 * Whether this package can be imported, i.e. its package name is a package that exists on disk.
-	 * Note: This includes all normal packages where the Name matches the FileName
-	 * and localized packages shadowing an existing source package,
-	 * but excludes level streaming packages with /Temp/ names.
-	 */
-	uint8 bCanBeImported:1;
-
 private:
 	/** Time in seconds it took to fully load this package. 0 if package is either in process of being loaded or has never been fully loaded.					*/
 	float LoadTime;		// TODO: strip from runtime?
@@ -177,7 +161,11 @@ private:
 #if WITH_EDITORONLY_DATA
 	/** Persistent GUID of package if it was loaded from disk. Persistent across saves. */
 	FGuid PersistentGuid;
+
+	/** Persistent GUID of owning package, to allow private references when saving */
+	FGuid OwnerPersistentGuid;
 #endif
+
 	/** Chunk IDs for the streaming install chunks this package will be placed in.  Empty for no chunk */
 	TArray<int32> ChunkIDs;
 
@@ -187,7 +175,6 @@ public:
 	virtual bool NeedsLoadForClient() const override { return true; }				// To avoid calling the expensive generic version, which only makes sure that the UPackage static class isn't excluded
 	virtual bool NeedsLoadForServer() const override { return true; }
 	virtual bool IsPostLoadThreadSafe() const override;
-	virtual bool IsDestructionThreadSafe() const override { return true; }
 
 #if WITH_EDITORONLY_DATA
 																					/** Sets the bLoadedByEditorPropertiesOnly flag */
@@ -199,16 +186,14 @@ public:
 private:
 	/** Package Flags */
 	uint32	PackageFlagsPrivate;
-	
-	/** Globally unique id used to address I/O chunks within the package */
-	FPackageId PackageId;
+
 public:
 
 	/** Editor only: PIE instance ID this package belongs to, INDEX_NONE otherwise */
 	int32 PIEInstanceID;		// TODO: strip from runtime?
 
 	/** The name of the file that this package was loaded from */
-	FName	FileName;
+	FName	FileName;			// TODO: strip from runtime?
 
 	/** Linker load associated with this package */
 	class FLinkerLoad* LinkerLoad;
@@ -242,10 +227,12 @@ public:
 	*/
 	virtual void PostInitProperties() override;
 
-	virtual void BeginDestroy() override;	
+	virtual void BeginDestroy() override;
 
 	/** Serializer */
 	virtual void Serialize( FArchive& Ar ) override;
+
+	static void AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector);
 
 	/** Packages are never assets */
 	virtual bool IsAsset() const override { return false; }
@@ -290,15 +277,7 @@ public:
 #endif
 
 	/**
-	 * Clear the package dirty flag without any transaction tracking
-	 */
-	void ClearDirtyFlag()
-	{
-		bDirty = false;
-	}
-
-	/**
-	* Marks/Unmarks the package's bDirty flag, save the package to the transaction buffer if a transaction is ongoing
+	* Marks/Unmarks the package's bDirty flag
 	*/
 	void SetDirtyFlag( bool bIsDirty );
 
@@ -332,23 +311,6 @@ public:
 	*/
 	void FullyLoad();
 
-	/**
-	* Marks/Unmarks the package's bCanBeImported flag.
-	*/
-	void SetCanBeImportedFlag(bool bInCanBeImported)
-	{
-		bCanBeImported = bInCanBeImported;
-	}
-
-	/**
-	* Returns whether the package can be imported.
-	*
-	* @return		true if the package can be imported.
-	*/
-	bool CanBeImported() const
-	{
-		return bCanBeImported;
-	}
 	/**
 	* Tags the Package's metadata
 	*/
@@ -495,10 +457,9 @@ public:
 		return Guid;
 	}
 	/** makes our a new fresh Guid */
-	FORCEINLINE FGuid MakeNewGuid()
+	FORCEINLINE void MakeNewGuid()
 	{
 		Guid = FGuid::NewGuid();
-		return Guid;
 	}
 	/** sets a specific Guid */
 	FORCEINLINE void SetGuid(FGuid NewGuid)
@@ -517,6 +478,21 @@ public:
 	{
 		PersistentGuid = NewPersistentGuid;
 	}
+
+	/** returns our owner persistent Guid */
+	FORCEINLINE FGuid GetOwnerPersistentGuid() const
+	{
+		return OwnerPersistentGuid;
+	}
+	/** sets a specific owner persistent Guid */
+	FORCEINLINE void SetOwnerPersistentGuid(FGuid NewOwnerPersistentGuid)
+	{
+		OwnerPersistentGuid = NewOwnerPersistentGuid;
+	}
+
+	bool IsOwned() const;
+	bool IsOwnedBy(const UPackage* Package) const;
+	bool HasSameOwner(const UPackage* Package) const;
 #endif
 
 	/** returns our FileSize */
@@ -535,30 +511,6 @@ public:
 	{
 		ChunkIDs = InChunkIDs;
 	}
-
-	/** returns the unique package id */
-	FORCEINLINE FPackageId GetPackageId() const
-	{
-		return PackageId;
-	}
-
-	/** sets the unique package id */
-	FORCEINLINE void SetPackageId(FPackageId InPackageId)
-	{
-		PackageId = InPackageId;
-	}
-
-	/**
-	 * Utility function to find Asset in this package, if any
-	 * @return the asset in the package, if any
-	 */
-	UObject* FindAssetInPackage() const;
-
-	/**
-	 * Return the list of packages found assigned to object outer-ed to the top level objects of this package
-	 * @return the array of external packages
-	 */
-	TArray<UPackage*> GetExternalPackages() const;
 
 	////////////////////////////////////////////////////////
 	// MetaData 
@@ -597,18 +549,6 @@ public:
 		uint32 SaveFlags=SAVE_None, const class ITargetPlatform* TargetPlatform = NULL, const FDateTime& FinalTimeStamp = FDateTime::MinValue(), 
 		bool bSlowTask = true, class FArchiveDiffMap* InOutDiffMap = nullptr,
 		FSavePackageContext* SavePackageContext = nullptr);
-
-	/**
-	 * Save an asset into an Unreal Package
-	 * Save2 is currently experimental and shouldn't be used until it can safely replace Save.
-	 */
-	static FSavePackageResultStruct Save2(UPackage* InPackage, UObject* InAsset, const TCHAR* InFilename, FSavePackageArgs& SaveArgs);
-
-	/**
-	 * Save a list of packages concurrently using Save2 mechanism
-	 * SaveConcurrent is currently experimental and shouldn't be used until it can safely replace Save.
-	 */
-	static ESavePackageResult SaveConcurrent(TArrayView<FPackageSaveInfo> InPackages, FSavePackageArgs& SaveArgs, TArray<FSavePackageResultStruct>& OutResults);
 
 	/**
 	* Save one specific object (along with any objects it references contained within the same Outer) into an Unreal package.

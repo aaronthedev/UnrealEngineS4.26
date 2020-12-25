@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -64,7 +64,6 @@ protected:
 		Args.bClearSelectionOnClick = bClearSelectionOnClick;
 		Args.SelectionMode = SelectionMode;
 		Args.ConsumeMouseWheel = ConsumeMouseWheel;
-		Args.bReturnFocusToSelection = bReturnFocusToSelection;
 
 		MyListView = MyTreeView = ITypedUMGListView<UObject*>::ConstructTreeView<TreeViewT>(this, ListItems, Args);
 		MyTreeView->SetOnEntryInitialized(SListView<UObject*>::FOnEntryInitialized::CreateUObject(this, &UTreeView::HandleOnEntryInitializedInternal));

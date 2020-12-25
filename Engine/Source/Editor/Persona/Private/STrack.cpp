@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "STrack.h"
@@ -14,7 +14,7 @@
 #include "SCurveEditor.h"
 #include "SScrubWidget.h"
 
-const float STrackDefaultHeight = 24.0f;
+const float STrackDefaultHeight = 20.0f;
 const float DraggableBarSnapTolerance = 20.0f;
 const float NodeHandleWidth = 12.f;
 const float NodeHandleHeight = STrackDefaultHeight;
@@ -98,11 +98,11 @@ void STrackNode::Construct(const FArguments& InArgs)
 	bCenterOnPosition = InArgs._CenterOnPosition;
 	
 	NodeSelectionSet = InArgs._NodeSelectionSet;
-	bAllowDrag = InArgs._AllowDrag;
+	AllowDrag = InArgs._AllowDrag;
 
 	Font = FCoreStyle::GetDefaultFontStyle("Regular", 10);
 
-	const FSlateBrush* StyleInfo = FEditorStyle::GetBrush( TEXT("SpecialEditableTextImageNormal") ); // FIXME: make slate argument for STrackNode
+	const FSlateBrush* StyleInfo = FEditorStyle::GetBrush("ProgressBar.Background"); // FIXME: make slate argument for STrackNode
 
 	if(InArgs._OverrideContent.Widget != SNullWidget::NullWidget)
 	{
@@ -198,15 +198,7 @@ FReply STrackNode::OnMouseButtonUp( const FGeometry& MyGeometry, const FPointerE
 	{
 		Select();
 		OnTrackNodeClicked.ExecuteIfBound();
-
-		return FReply::Handled().ReleaseMouseCapture();
 	}
-	else if(MouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
-	{
-		Select();
-		OnTrackNodeClicked.ExecuteIfBound();
-	}
-
 	return FReply::Unhandled();
 }
 
@@ -227,7 +219,7 @@ void STrackNode::OnMouseLeave( const FPointerEvent& MouseEvent )
 
 FReply STrackNode::OnDragDetected( const FGeometry& MyGeometry, const FPointerEvent& MouseEvent )
 {
-	if (bAllowDrag && MouseEvent.IsMouseButtonDown( EKeys::LeftMouseButton ) )
+	if (AllowDrag && MouseEvent.IsMouseButtonDown( EKeys::LeftMouseButton ) )
 	{
 		bBeingDragged = true;
 
@@ -250,23 +242,17 @@ FReply STrackNode::BeginDrag( const FGeometry& MyGeometry, const FPointerEvent& 
 	OnTrackNodeClicked.ExecuteIfBound();
 
 	//void FTrackNodeDragDropOp(TSharedRef<STrackNode> TrackNode, const FVector2D &CursorPosition, const FVector2D &ScreenPositionOfNode)
-	return FReply::Handled().BeginDragDrop(FTrackNodeDragDropOp::New(SharedThis(this), ScreenCursorPos, ScreenNodePosition)).ReleaseMouseCapture();
+	return FReply::Handled().BeginDragDrop(FTrackNodeDragDropOp::New(SharedThis(this), ScreenCursorPos, ScreenNodePosition));
 }
 
 FReply STrackNode::OnMouseButtonDown( const FGeometry& MyGeometry, const FPointerEvent& MouseEvent )
 {
-	if(MouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
+	if ( MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton )
 	{
-		return FReply::Handled();
-	}
-	else if ( MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton )
-	{
-		if(bAllowDrag)
+		if(AllowDrag)
 		{
-			return FReply::Handled().DetectDrag( SharedThis(this), EKeys::LeftMouseButton ).CaptureMouse(AsShared());
+			return FReply::Handled().DetectDrag( SharedThis(this), EKeys::LeftMouseButton );
 		}
-
-		return FReply::Handled();
 	}
 
 	return FReply::Unhandled();
@@ -374,6 +360,7 @@ void STrack::Construct( const FArguments& InArgs )
 	TrackMinValue = InArgs._TrackMinValue;
 	TrackMaxValue = InArgs._TrackMaxValue;
 	TrackNumDiscreteValues = InArgs._TrackNumDiscreteValues;
+	ScrubPosition = InArgs._ScrubPosition;
 	ViewInputMin = InArgs._ViewInputMin;
 	ViewInputMax = InArgs._ViewInputMax;
 	OnSelectionChanged = InArgs._OnSelectionChanged;
@@ -434,6 +421,35 @@ int32 STrack::OnPaint( const FPaintArgs& Args, const FGeometry& AllottedGeometry
 	int32 CustomLayerId = LayerId + 1;
 	FPaintGeometry MyGeometry = AllottedGeometry.ToPaintGeometry();
 
+	// Background
+	FSlateDrawElement::MakeBox( 
+		OutDrawElements,
+		CustomLayerId++, 
+		MyGeometry, 
+		FEditorStyle::GetBrush(TEXT( "Persona.NotifyEditor.NotifyTrackBackground" )),
+		ESlateDrawEffect::None, 
+		TrackColor.Get()
+		);
+
+	// Draw Scrub Position
+	if ( ScrubPosition.Get() >= 0.f )
+	{
+		float XPos = DataToLocalX(ScrubPosition.Get(), AllottedGeometry);
+
+		TArray<FVector2D> LinePoints;
+		LinePoints.Add(FVector2D(XPos, 0.f));
+		LinePoints.Add(FVector2D(XPos, AllottedGeometry.Size.Y));
+
+		FSlateDrawElement::MakeLines( 
+			OutDrawElements,
+			CustomLayerId++,
+			MyGeometry,
+			LinePoints,
+			ESlateDrawEffect::None,
+			FLinearColor::Red
+			);
+	}
+
 	// Draggable Bars
 	for ( int32 I=0; DraggableBars.IsBound() && I < DraggableBars.Get().Num(); I++ )
 	{
@@ -489,6 +505,36 @@ int32 STrack::OnPaint( const FPaintArgs& Args, const FGeometry& AllottedGeometry
 			);
 	}
 	CustomLayerId++;
+
+	// draw line for every 1/4 length
+	if ( TrackMaxValue.Get() > 0.f && TrackNumDiscreteValues.Get() > 0 )
+	{
+		int32 Divider = SScrubWidget::GetDivider( ViewInputMin.Get(), ViewInputMax.Get(), AllottedGeometry.Size, TrackMaxValue.Get(), TrackNumDiscreteValues.Get());
+
+		const float TimePerValue = TrackMaxValue.Get()/static_cast<float>(TrackNumDiscreteValues.Get());
+		for (int I=1; I<TrackNumDiscreteValues.Get(); ++I)
+		{
+			if ( I % Divider == 0 )
+			{
+				float XPos = DataToLocalX(TimePerValue*I, AllottedGeometry);
+
+				TArray<FVector2D> LinePoints;
+				LinePoints.Add(FVector2D(XPos, 0.f));
+				LinePoints.Add(FVector2D(XPos, AllottedGeometry.Size.Y));
+
+				FSlateDrawElement::MakeLines( 
+					OutDrawElements,
+					CustomLayerId,
+					MyGeometry,
+					LinePoints,
+					ESlateDrawEffect::None,
+					FLinearColor::Black
+					);
+			}
+		}	
+		++CustomLayerId;
+	}
+
 	
 	return SPanel::OnPaint( Args, AllottedGeometry, MyCullingRect, OutDrawElements, CustomLayerId, InWidgetStyle, bParentEnabled );
 }

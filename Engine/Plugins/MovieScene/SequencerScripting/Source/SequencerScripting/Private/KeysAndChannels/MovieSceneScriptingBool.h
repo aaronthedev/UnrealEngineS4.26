@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,7 +13,6 @@
 #include "MovieScene.h"
 
 #include "MovieSceneScriptingBool.generated.h"
-
 
 /**
 * Exposes a Sequencer bool type key to Python/Blueprints.
@@ -78,7 +77,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Editor Scripting | Sequencer Tools | Keys", meta=(DisplayName = "Add Key (Bool)"))
 	UMovieSceneScriptingBoolKey* AddKey(const FFrameNumber& InTime, bool NewValue, float SubFrame = 0.f, ESequenceTimeUnit TimeUnit = ESequenceTimeUnit::DisplayRate)
 	{
-		return AddKeyInChannel(ChannelHandle, OwningSequence, OwningSection, InTime, NewValue, SubFrame, TimeUnit, EMovieSceneKeyInterpolation::Auto);
+		return AddKeyInChannel(ChannelHandle, OwningSequence, InTime, NewValue, SubFrame, TimeUnit, EMovieSceneKeyInterpolation::Auto);
 	}
 
 	/**
@@ -98,7 +97,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Editor Scripting | Sequencer Tools | Keys", meta = (DisplayName = "Get Keys (Bool)"))
 	virtual TArray<UMovieSceneScriptingKey*> GetKeys() const override
 	{
-		return GetKeysInChannel(ChannelHandle, OwningSequence, OwningSection);
+		return GetKeysInChannel(ChannelHandle, OwningSequence);
 	}
 
 	/**
@@ -172,7 +171,5 @@ public:
 	}
 public:
 	TWeakObjectPtr<UMovieSceneSequence> OwningSequence;
-	TWeakObjectPtr<UMovieSceneSection> OwningSection;
 	TMovieSceneChannelHandle<FMovieSceneBoolChannel> ChannelHandle;
 };
-

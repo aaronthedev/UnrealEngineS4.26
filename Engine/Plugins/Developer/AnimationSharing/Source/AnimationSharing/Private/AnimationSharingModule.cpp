@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimationSharingModule.h"
 #include "Engine/Engine.h"
@@ -8,8 +8,6 @@
 IMPLEMENT_MODULE( FAnimSharingModule, AnimationSharing);
 
 TMap<const UWorld*, UAnimationSharingManager*> FAnimSharingModule::WorldAnimSharingManagers;
-
-FOnAnimationSharingManagerCreated FAnimSharingModule::OnAnimationSharingManagerCreated;
 
 void FAnimSharingModule::StartupModule()
 {
@@ -38,8 +36,6 @@ bool FAnimSharingModule::CreateAnimationSharingManager(UWorld* InWorld, const UA
 		UAnimationSharingManager* Manager = NewObject<UAnimationSharingManager>(InWorld);
 		Manager->Initialise(Setup);
 		WorldAnimSharingManagers.Add(InWorld, Manager);
-		
-		OnAnimationSharingManagerCreated.Broadcast(Manager, InWorld);
 
 		return true;
 	}

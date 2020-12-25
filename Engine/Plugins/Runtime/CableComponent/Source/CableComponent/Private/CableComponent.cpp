@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved. 
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved. 
 
 #include "CableComponent.h"
 #include "EngineGlobals.h"
@@ -435,7 +435,7 @@ void UCableComponent::VerletIntegrate(float InSubstepTime, const FVector& Gravit
 }
 
 /** Solve a single distance constraint between a pair of particles */
-static FORCEINLINE void SolveDistanceConstraint(FCableParticle& ParticleA, FCableParticle& ParticleB, float DesiredDistance)
+static void SolveDistanceConstraint(FCableParticle& ParticleA, FCableParticle& ParticleB, float DesiredDistance)
 {
 	// Find current vector between particles
 	FVector Delta = ParticleB.Position - ParticleA.Position;
@@ -623,32 +623,9 @@ void UCableComponent::GetEndPositions(FVector& OutStartPosition, FVector& OutEnd
 
 }
 
-void UCableComponent::OnVisibilityChanged()
-{
-	Super::OnVisibilityChanged();
-
-	// Does not interact well with any other states that would be blocking tick
-	if (bSkipCableUpdateWhenNotVisible)
-	{
-		SetComponentTickEnabled(IsVisible());
-	}
-}
-
 void UCableComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-	if (bSkipCableUpdateWhenNotVisible && !IsVisible())
-	{
-		SetComponentTickEnabled(false);
-		return;
-	}
-
-	AActor* Owner = GetOwner();
-	if (bSkipCableUpdateWhenNotOwnerRecentlyRendered && Owner && !Owner->WasRecentlyRendered(2.0f))
-	{
-		return;
-	}
 
 	const FVector Gravity = FVector(0, 0, GetWorld()->GetGravityZ()) * CableGravityScale;
 
@@ -684,18 +661,10 @@ void UCableComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, F
 
 	// Perform simulation substeps
 	TimeRemainder += DeltaTime;
-	while (TimeRemainder > UseSubstep)
+	while(TimeRemainder > UseSubstep)
 	{
-
-		PerformSubstep(bUseSubstepping ? UseSubstep : TimeRemainder, Gravity);
-		if (bUseSubstepping)
-		{
-			TimeRemainder -= UseSubstep;
-		}
-		else
-		{
-			TimeRemainder = 0.0f;
-		}
+		PerformSubstep(UseSubstep, Gravity);
+		TimeRemainder -= UseSubstep;
 	}
 
 	// Need to send new data to render thread
@@ -705,9 +674,9 @@ void UCableComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, F
 	UpdateComponentToWorld();
 };
 
-void UCableComponent::CreateRenderState_Concurrent(FRegisterComponentContext* Context)
+void UCableComponent::CreateRenderState_Concurrent()
 {
-	Super::CreateRenderState_Concurrent(Context);
+	Super::CreateRenderState_Concurrent();
 
 	SendRenderDynamicData_Concurrent();
 }

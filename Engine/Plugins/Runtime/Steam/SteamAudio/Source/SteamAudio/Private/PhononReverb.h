@@ -7,16 +7,9 @@
 #include "IAudioExtensionPlugin.h"
 #include "Sound/SoundEffectSubmix.h"
 #include "Sound/SoundEffectPreset.h"
-#include "UObject/WeakObjectPtrTemplates.h"
-
 #include "PhononCommon.h"
 #include "phonon.h"
 #include "PhononReverb.generated.h"
-
-
-// Forward Declaration
-class FSubmixEffectReverbPlugin;
-
 
 namespace SteamAudio
 {
@@ -46,8 +39,7 @@ namespace SteamAudio
 		virtual void Initialize(const FAudioPluginInitializationParams InitializationParams) override;
 		virtual void OnInitSource(const uint32 SourceId, const FName& AudioComponentUserId, const uint32 NumChannels, UReverbPluginSourceSettingsBase* InSettings) override;
 		virtual void OnReleaseSource(const uint32 SourceId) override;
-		virtual FSoundEffectSubmixPtr GetEffectSubmix() override;
-		virtual USoundSubmix* GetSubmix() override;
+		virtual class FSoundEffectSubmix* GetEffectSubmix(class USoundSubmix* Submix) override;
 		virtual void ProcessSourceAudio(const FAudioPluginSourceInputData& InputData, FAudioPluginSourceOutputData& OutputData) override;
 		
 		void ProcessMixedAudio(const FSoundEffectSubmixInputData& InData, FSoundEffectSubmixOutputData& OutData);
@@ -56,9 +48,6 @@ namespace SteamAudio
 		void UpdateListener(const FVector& Position, const FVector& Forward, const FVector& Up, const FVector& Right);
 
 	private:
-		FSoundEffectSubmixPtr SubmixEffect;
-		TWeakObjectPtr<USoundSubmix> ReverbSubmix;
-
 		IPLhandle BinauralRenderer;
 		IPLhandle IndirectBinauralEffect;
 		IPLhandle IndirectPanningEffect;
@@ -126,7 +115,7 @@ class USubmixEffectReverbPluginPreset : public USoundEffectSubmixPreset
 	GENERATED_BODY()
 
 public:
-	EFFECT_PRESET_METHODS(SubmixEffectReverbPlugin)
+	EFFECT_PRESET_METHODS_NO_ASSET_ACTIONS(SubmixEffectReverbPlugin)
 
 	UPROPERTY(EditAnywhere, Category = SubmixEffectPreset)
 	FSubmixEffectReverbPluginSettings Settings;

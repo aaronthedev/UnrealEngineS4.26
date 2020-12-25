@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -57,16 +57,15 @@ public:
 	virtual IMediaTextureSampleConverter* GetMediaTextureSampleConverter() override
 	{
 		// Only use sample converter for Win8+
-		return FPlatformMisc::VerifyWindowsVersion(6, 2) ? this : nullptr;
+		return FWindowsPlatformMisc::VerifyWindowsVersion(6, 2) ? this : nullptr;
 	}
 
 	/**
 	 * Texture sample convert using hardware video decoding.
 	 */
-	virtual bool Convert(FTexture2DRHIRef & InDstTexture, const FConversionHints & Hints) override
+	virtual void Convert(FTexture2DRHIRef InDstTexture) override
 	{
 		FWmfMediaHardwareVideoDecodingParameters::ConvertTextureFormat_RenderThread(this, InDstTexture);
-		return true;
 	}
 
 	/**
@@ -92,7 +91,7 @@ public:
 		}
 
 		FRHIResourceCreateInfo CreateInfo;
-		const ETextureCreateFlags CreateFlags = TexCreate_Dynamic | TexCreate_DisableSRVCreation;
+		const uint32 CreateFlags = TexCreate_Dynamic | TexCreate_DisableSRVCreation;
 		DestinationTexture = RHICreateTexture2D(
 			Dim.X,
 			Dim.Y,

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,18 +25,8 @@ struct FRayTracingInstance
 	/** Instance mask that can be used to exclude the instance from specific effects (eg. ray traced shadows). */
 	uint8 Mask = RAY_TRACING_MASK_ALL;
 
-	/** 
-	* Transforms count. When NumTransforms == 1 we create a single instance. 
-	* When it's more than one we create multiple identical instances with different transforms. 
-	* When GPU transforms are used it is a conservative count. NumTransforms should be less or equal to `InstanceTransforms.Num() 
-	*/
-	uint32 NumTransforms = 0;
-
-	/** Instance transforms. */
+	/** When InstanceTransforms.Num() == 1 we create a single instance. When it's more than one we create multiple identical instances with different transforms. */
 	TArray<FMatrix> InstanceTransforms;
-
-	/** When instance transforms are only available in GPU, this SRV holds them. */
-	FShaderResourceViewRHIRef InstanceGPUTransformsSRV;
 
 	/** Build mask and flags based on materials specified in Materials. You can still override Mask after calling this function. */
 	ENGINE_API void BuildInstanceMaskAndFlags();

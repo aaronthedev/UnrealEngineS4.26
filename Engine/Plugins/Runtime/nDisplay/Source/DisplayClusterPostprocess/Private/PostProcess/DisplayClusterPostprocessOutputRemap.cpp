@@ -1,8 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PostProcess/DisplayClusterPostprocessOutputRemap.h"
 
-#include "Misc/DisplayClusterHelpers.h"
+#include "DisplayClusterPostprocessHelpers.h"
 #include "DisplayClusterPostprocessLog.h"
 #include "DisplayClusterPostprocessStrings.h"
 
@@ -27,16 +27,16 @@ FDisplayClusterPostprocessOutputRemap::~FDisplayClusterPostprocessOutputRemap()
 //////////////////////////////////////////////////////////////////////////////////////////////
 bool FDisplayClusterPostprocessOutputRemap::IsPostProcessRenderTargetAfterWarpBlendRequired()
 {
-	return MeshRef >= 0;
+	return MeshRef>=0;
 }
 
-void FDisplayClusterPostprocessOutputRemap::InitializePostProcess(const TMap<FString, FString>& Parameters)
+void FDisplayClusterPostprocessOutputRemap::InitializePostProcess(const FString& CfgLine)
 {
 	// PFM file (optional)
 	FString ExtMeshFile;
-	if (DisplayClusterHelpers::map::template ExtractValue(Parameters, DisplayClusterPostprocessStrings::output_remap::File, ExtMeshFile))
+	if (DisplayClusterHelpers::str::ExtractValue(CfgLine, DisplayClusterStrings::cfg::data::postprocess::output_remap::File, ExtMeshFile))
 	{
-		UE_LOG(LogDisplayClusterPostprocessOutputRemap, Log, TEXT("Found Argument '%s'='%s'"), DisplayClusterPostprocessStrings::output_remap::File, *ExtMeshFile);
+		UE_LOG(LogDisplayClusterPostprocessOutputRemap, Log, TEXT("Found Argument '%s'='%s'"), DisplayClusterStrings::cfg::data::postprocess::output_remap::File, *ExtMeshFile);
 	}
 
 	// Load ext mesh:
@@ -52,7 +52,7 @@ void FDisplayClusterPostprocessOutputRemap::InitializePostProcess(const TMap<FSt
 	}
 }
 
-void FDisplayClusterPostprocessOutputRemap::PerformPostProcessRenderTargetAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* InOutTexture, const TArray<FDisplayClusterRenderViewport>& RenderViewports) const
+void FDisplayClusterPostprocessOutputRemap::PerformPostProcessRenderTargetAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* InOutTexture) const
 {
 	check(MeshRef >= 0);
 	FIntPoint ScreenSize = InOutTexture->GetSizeXY();

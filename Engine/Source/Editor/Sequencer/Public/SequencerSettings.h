@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -203,6 +203,11 @@ public:
 	/** Sets whether or not to snap curve values to the interval. */
 	void SetSnapCurveValueToInterval(bool InbSnapCurveValueToInterval);
 
+	/** Gets whether or not the label browser is visible. */
+	bool GetLabelBrowserVisible() const;
+	/** Sets whether or not the label browser is visible. */
+	void SetLabelBrowserVisible(bool Visible);
+
 	/** Gets whether or not to show selected nodes only. */
 	bool GetShowSelectedNodesOnly() const;
 	/** Sets whether or not to show selected nodes only. */
@@ -279,25 +284,10 @@ public:
 	/** Set whether to show channel colors */
 	void SetShowChannelColors(bool bInShowChannelColors);
 
-	/** @return The tolerance to use when reducing keys */
-	float GetReduceKeysTolerance() const;
-	/** Set the tolerance to use when reducing keys */
-	void SetReduceKeysTolerance(float InReduceKeysTolerance);
-
 	/** @return true if deleting keys that fall beyond the section range when trimming */
 	bool GetDeleteKeysWhenTrimming() const;
 	/** Set whether to delete keys that fall beyond the section range when trimming */
 	void SetDeleteKeysWhenTrimming(bool bInDeleteKeysWhenTrimming);
-
-	/** @return true if disable sections when baking */
-	bool GetDisableSectionsAfterBaking() const;
-	/** Set whether to disable sections when baking, as opposed to deleting */
-	void SetDisableSectionsAfterBaking(bool bInDisableSectionsAfterBaking);
-
-	/** @return Whether to playback in clean mode (game view, hide viewport UI) */
-	bool GetCleanPlaybackMode() const;
-	/** Toggle whether to playback in clean mode */
-	void SetCleanPlaybackMode(bool bInCleanPlaybackMode);
 
 	/** @return Whether to activate realtime viewports when in sequencer */
 	bool ShouldActivateRealtimeViewports() const;
@@ -440,6 +430,10 @@ protected:
 	UPROPERTY( config, EditAnywhere, Category=Snapping )
 	bool bSnapCurveValueToInterval;
 
+	/** Enable or disable the label browser. */
+	UPROPERTY( config, EditAnywhere, Category=General )
+	bool bLabelBrowserVisible;
+
 	/** Only show selected nodes in the tree view. */
 	UPROPERTY( config, EditAnywhere, Category=General )
 	bool bShowSelectedNodesOnly;
@@ -500,24 +494,12 @@ protected:
 	UPROPERTY(config, EditAnywhere, Category = Timeline)
 	bool bShowChannelColors;
 
-	/** The tolerance to use when reducing keys */
-	UPROPERTY(config, EditAnywhere, Category = Timeline)
-	float ReduceKeysTolerance;
-
 	/** Enable or disable deleting keys that fall beyond the section range when trimming. */
 	UPROPERTY(config, EditAnywhere, Category = Timeline)
 	bool bDeleteKeysWhenTrimming;
 
-	/** Whether to disable sections after baking as opposed to deleting. */
-	UPROPERTY(config, EditAnywhere, Category = Timeline)
-	bool bDisableSectionsAfterBaking;
-
-	/** When enabled, sequencer will playback in clean mode (game view, hide viewport UI) */
-	UPROPERTY(config, EditAnywhere, Category = General)
-	bool bCleanPlaybackMode;
-
 	/** When enabled, sequencer will activate 'Realtime' in viewports */
-	UPROPERTY(config, EditAnywhere, Category = General)
+	UPROPERTY(config, EditAnywhere, Category=General)
 	bool bActivateRealtimeViewports;
 
 	/** When enabled, entering a sub sequence will evaluate that sub sequence in isolation, rather than from the master sequence */

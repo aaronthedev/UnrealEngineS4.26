@@ -24,9 +24,7 @@ struct spv_optimizer_options_t {
   spv_optimizer_options_t()
       : run_validator_(true),
         val_options_(),
-        max_id_bound_(kDefaultMaxIdBound),
-        preserve_bindings_(false),
-        preserve_spec_constants_(false) {}
+        max_id_bound_(kDefaultMaxIdBound) {}
 
   // When true the validator will be run before optimizations are run.
   bool run_validator_;
@@ -38,12 +36,5 @@ struct spv_optimizer_options_t {
   // this value must be at least 0x3FFFFF, but implementations can allow for a
   // higher value.
   uint32_t max_id_bound_;
-
-  // When true, all binding declarations within the module should be preserved.
-  bool preserve_bindings_;
-
-  // When true, all specialization constants within the module should be
-  // preserved.
-  bool preserve_spec_constants_;
 };
 #endif  // SOURCE_SPIRV_OPTIMIZER_OPTIONS_H_

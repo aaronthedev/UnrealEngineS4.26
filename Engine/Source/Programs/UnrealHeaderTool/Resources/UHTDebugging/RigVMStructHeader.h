@@ -1,27 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "RigVMStructHeader.generated.h"
-
-UENUM()
-enum class ERigVMTestEnum : uint8
-{
-	A,
-	B,
-	C
-};
-
-UENUM()
-namespace ERigVMTestNameSpaceEnum
-{
-	enum Type
-	{
-		A,
-		B,
-		C
-	};
-}
 
 USTRUCT()
 struct FRigVMStructBase
@@ -61,36 +42,18 @@ struct FRigVMMethodStruct : public FRigVMStructBase
 	UPROPERTY(meta = (Output))
 	FVector D;
 
-	UPROPERTY(meta = (Input, Output, ArraySize = 8))
+	UPROPERTY(meta = (Input, Output, MaxArraySize = 8))
 	TArray<FVector> E;
 
 	UPROPERTY(meta = (Input))
 	TArray<FVector> F;
 
-	UPROPERTY(meta = (Output, ArraySize = 8))
+	UPROPERTY(meta = (Output, MaxArraySize = 8))
 	TArray<FVector> G;
 
-	UPROPERTY(meta = (ArraySize = 8))
+	UPROPERTY(meta = (MaxArraySize = 8))
 	TArray<FVector> H;
 
 	UPROPERTY()
-	TArray<FVector> I;
-
-	UPROPERTY()
-	TArray<float> J;
-
-	UPROPERTY()
 	float Cache;
-
-	UPROPERTY(meta = (Input))
-	TEnumAsByte<ERigVMTestEnum> InputEnum;
-
-	UPROPERTY()
-	TEnumAsByte<ERigVMTestEnum> HiddenEnum;
-
-	UPROPERTY(meta = (Input))
-	TEnumAsByte<ERigVMTestNameSpaceEnum::Type> InputNameSpaceEnum;
-
-	UPROPERTY()
-	TEnumAsByte<ERigVMTestNameSpaceEnum::Type> HiddenNameSpaceEnum;
 };

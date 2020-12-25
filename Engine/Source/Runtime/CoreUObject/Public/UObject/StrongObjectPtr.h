@@ -1,18 +1,18 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "UObject/GCObject.h"
 #include "Templates/EnableIf.h"
 #include "Templates/PointerIsConvertibleFromTo.h"
-#include "Templates/UniquePtr.h"
+#include "Templates/UniqueObj.h"
 
 namespace UE4StrongObjectPtr_Private
 {
 	class FInternalReferenceCollector : public FGCObject
 	{
 	public:
-		explicit FInternalReferenceCollector(const volatile UObject* InObject)
+		FInternalReferenceCollector(const volatile UObject* InObject = nullptr)
 			: Object(InObject)
 		{
 			check(IsInGameThread());
@@ -45,11 +45,6 @@ namespace UE4StrongObjectPtr_Private
 			Collector.AddReferencedObject(Object);
 		}
 
-		virtual FString GetReferencerName() const override
-		{
-			return "UE4StrongObjectPtr_Private::FInternalReferenceCollector";
-		}
-
 	private:
 		const volatile UObject* Object;
 	};
@@ -64,6 +59,7 @@ class TStrongObjectPtr
 {
 public:
 	TStrongObjectPtr(TStrongObjectPtr&& InOther) = default;
+	TStrongObjectPtr(const TStrongObjectPtr& InOther) = default;
 	TStrongObjectPtr& operator=(TStrongObjectPtr&& InOther) = default;
 	~TStrongObjectPtr() = default;
 
@@ -73,38 +69,34 @@ public:
 	}
 
 	FORCEINLINE_DEBUGGABLE explicit TStrongObjectPtr(ObjectType* InObject)
+		: ReferenceCollector(InObject)
 	{
 		static_assert(TPointerIsConvertibleFromTo<ObjectType, const volatile UObject>::Value, "TStrongObjectPtr can only be constructed with UObject types");
-		Reset(InObject);
-	}
-
-	FORCEINLINE_DEBUGGABLE TStrongObjectPtr(const TStrongObjectPtr& InOther)
-	{
-		Reset(InOther.Get());
 	}
 
 	template <
 		typename OtherObjectType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherObjectType*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherObjectType, ObjectType>::Value>::Type
 	>
 	FORCEINLINE_DEBUGGABLE TStrongObjectPtr(const TStrongObjectPtr<OtherObjectType>& InOther)
+		: ReferenceCollector(InOther.Get())
 	{
-		Reset(InOther.Get());
 	}
 
 	FORCEINLINE_DEBUGGABLE TStrongObjectPtr& operator=(const TStrongObjectPtr& InOther)
 	{
-		Reset(InOther.Get());
+		// TUniqueObj is not assignable so we need to implement this instead of defaulting it.
+		ReferenceCollector->Set(InOther.Get());
 		return *this;
 	}
 
-	template <
-		typename OtherObjectType,
-		typename = decltype(ImplicitConv<ObjectType*>((OtherObjectType*)nullptr))
-	>
-	FORCEINLINE_DEBUGGABLE TStrongObjectPtr& operator=(const TStrongObjectPtr<OtherObjectType>& InOther)
+	template <typename OtherObjectType>
+	FORCEINLINE_DEBUGGABLE typename TEnableIf<
+		TPointerIsConvertibleFromTo<OtherObjectType, ObjectType>::Value,
+		TStrongObjectPtr&
+	>::Type operator=(const TStrongObjectPtr<OtherObjectType>& InOther)
 	{
-		Reset(InOther.Get());
+		ReferenceCollector->Set(InOther.Get());
 		return *this;
 	}
 
@@ -122,31 +114,22 @@ public:
 
 	FORCEINLINE_DEBUGGABLE bool IsValid() const
 	{
-		return ReferenceCollector && ReferenceCollector->IsValid();
+		return ReferenceCollector->IsValid();
 	}
 
 	FORCEINLINE_DEBUGGABLE explicit operator bool() const
 	{
-		return IsValid();
+		return ReferenceCollector->IsValid();
 	}
 
 	FORCEINLINE_DEBUGGABLE ObjectType* Get() const
 	{
-		return ReferenceCollector
-			? ReferenceCollector->GetAs<ObjectType>()
-			: nullptr;
+		return ReferenceCollector->GetAs<ObjectType>();
 	}
 
 	FORCEINLINE_DEBUGGABLE void Reset(ObjectType* InNewObject = nullptr)
 	{
-		if (ReferenceCollector)
-		{
-			ReferenceCollector->Set(InNewObject);
-		}
-		else if (InNewObject)
-		{
-			ReferenceCollector = MakeUnique<UE4StrongObjectPtr_Private::FInternalReferenceCollector>(InNewObject);
-		}
+		ReferenceCollector->Set(InNewObject);
 	}
 
 	FORCEINLINE_DEBUGGABLE friend uint32 GetTypeHash(const TStrongObjectPtr& InStrongObjectPtr)
@@ -155,7 +138,7 @@ public:
 	}
 
 private:
-	TUniquePtr<UE4StrongObjectPtr_Private::FInternalReferenceCollector> ReferenceCollector;
+	TUniqueObj<UE4StrongObjectPtr_Private::FInternalReferenceCollector> ReferenceCollector;
 };
 
 template <typename LHSObjectType, typename RHSObjectType>

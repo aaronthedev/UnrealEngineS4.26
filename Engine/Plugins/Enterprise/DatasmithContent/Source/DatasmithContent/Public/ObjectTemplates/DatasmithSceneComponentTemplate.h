@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -22,9 +22,6 @@ public:
 
 	UPROPERTY()
 	TSoftObjectPtr< USceneComponent > AttachParent;
-
-	UPROPERTY()
-	bool bVisible;
 
 	UPROPERTY()
 	TSet<FName> Tags;

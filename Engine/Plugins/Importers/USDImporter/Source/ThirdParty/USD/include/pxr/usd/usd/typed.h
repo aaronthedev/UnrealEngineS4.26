@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_TYPED_H
-#define PXR_USD_USD_TYPED_H
+#ifndef USD_TYPED_H
+#define USD_TYPED_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/usd/api.h"
@@ -97,14 +97,14 @@ public:
 
 protected:
     USD_API
-    bool _IsCompatible() const override;
+    virtual bool _IsCompatible() const override;
 
 private:
     USD_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 };
 
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_USD_TYPED_H
+#endif // USD_TYPED_H

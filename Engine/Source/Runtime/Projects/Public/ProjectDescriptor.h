@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -94,9 +94,6 @@ struct PROJECTS_API FProjectDescriptor
 	/** Indicates if this project is an Enterprise project */
 	bool bIsEnterpriseProject;
 
-	/** Indicates that enabled by default engine plugins should not be enabled unless explicitly enabled by the project or target files. */
-	bool bDisableEnginePluginsByDefault;
-
 	/** Constructor. */
 	FProjectDescriptor();
 
@@ -136,39 +133,15 @@ struct PROJECTS_API FProjectDescriptor
 	/**
 	 * Adds a directory to the additional plugin directories list. 
 	 *
-	 * @param Dir - the new directory to add (must be a full path)
-	 * @return whether the plugin directory list was changed
+	 * @param Dir - the new directory to add
 	 */
-	bool AddPluginDirectory(const FString& Dir);
+	void AddPluginDirectory(const FString& Dir);
 	/**
 	 * Removes the directory from the list to scan
 	 *
-	 * @param Dir the directory to remove (must be a full path)
-	 * @return whether the plugin directory list was changed
+	 * @param Dir the directory to remove
 	 */
-	bool RemovePluginDirectory(const FString& Dir);
-
-	/** @return - Access to the additional root directories */
-	const TArray<FString>& GetAdditionalRootDirectories() const
-	{
-		return AdditionalRootDirectories;
-	}
-
-	/**
-	 * Adds a directory to the additional root directories list. 
-	 *
-	 * @param Dir - the new directory to add (must be a full path)
-	 * @return whether the root directory list was changed
-	 */
-	bool AddRootDirectory(const FString& Dir);
-	/**
-	 * Removes the directory from the list to scan
-	 *
-	 * @param Dir the directory to remove (must be a full path)
-	 * @return whether the root directory list was changed
-	 */
-	bool RemoveRootDirectory(const FString& Dir);
-
+	void RemovePluginDirectory(const FString& Dir);
 
 private:
 	/** @return the path relative to this project if possible */
@@ -179,10 +152,4 @@ private:
 	 * Paths are in memory as absolute paths. Conversion to/from path relative happens during Save/Load
 	 */
 	TArray<FString> AdditionalPluginDirectories;
-
-	/**
-	 * List of additional root directories to scan for modules.
-	 * Paths are in memory as absolute paths. Conversion to/from path relative happens during Save/Load
-	 */
-	TArray<FString> AdditionalRootDirectories;
 };

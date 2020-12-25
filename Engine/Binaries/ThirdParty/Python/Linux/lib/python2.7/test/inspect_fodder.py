@@ -56,9 +56,3 @@ class ParrotDroppings:
 
 class FesteringGob(MalodorousPervert, ParrotDroppings):
     pass
-
-currentframe = inspect.currentframe()
-try:
-    raise Exception()
-except:
-    tb = sys.exc_info()[2]

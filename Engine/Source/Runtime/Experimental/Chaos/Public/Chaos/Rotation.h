@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Chaos/Vector.h"
@@ -7,7 +7,6 @@
 #include <cmath>
 #if !COMPILE_WITHOUT_UNREAL_SUPPORT
 #include "Math/Quat.h"
-#include "Math/RotationMatrix.h"
 #else
 #include <array>
 
@@ -100,16 +99,6 @@ namespace Chaos
 
 			OutAxis = DefaultAxis;
 			return false;
-		}
-
-		/**
-		 * Extract the Swing and Twist rotations, assuming that the Twist Axis is (1,0,0).
-		 * /see ToSwingTwist
-		 */
-		void ToSwingTwistX(FQuat& OutSwing, FQuat& OutTwist) const
-		{
-			OutTwist = (X != 0.0f)? FQuat(X, 0, 0, W).GetNormalized() : FQuat::Identity;
-			OutSwing = *this * OutTwist.Inverse();
 		}
 
 		/**
@@ -264,17 +253,7 @@ namespace Chaos
 		 */
 		static TVector<float, 3> CalculateAngularVelocity(const TRotation<float, 3>& InR0, const TRotation<float, 3>& InR1, const float InDt)
 		{
-			return CalculateAngularVelocity1(InR0, InR1, InDt);
-		}
-
-		/**
-		 * Calculate the axis-angle delta (angular velocity * dt) required to take an object with orientation R0 to orientation R1.
-		 *
-		 * This should match the algorithm used in PerParticleUpdateFromDeltaPosition rule.
-		 */
-		static TVector<float, 3> CalculateAngularDelta(const TRotation<float, 3>& InR0, const TRotation<float, 3>& InR1)
-		{
-			return CalculateAngularVelocity(InR0, InR1, 1.0f);
+			return CalculateAngularVelocity2(InR0, InR1, InDt);
 		}
 
 		/**
@@ -288,17 +267,5 @@ namespace Chaos
 			return R1.GetNormalized();
 		}
 
-		/**
-		 * Check that two rotations are approximately equal. Assumes the quaternions are normalized and in the same hemisphere.
-		 * For small values of Epsilon, this is approximately equivalent to checking that the rotations are within 2*Epsilon
-		 * radians of each other.
-		 */
-		static bool IsNearlyEqual(const TRotation<float, 3>& A, const TRotation<float, 3>& B, const float Epsilon)
-		{
-			// Only check imaginary part. This is comparing Epsilon to 2*AngleDelta for small angle deltas
-			return FMath::IsNearlyEqual(A.X, B.X, Epsilon) 
-				&& FMath::IsNearlyEqual(A.Y, B.Y, Epsilon) 
-				&& FMath::IsNearlyEqual(A.Z, B.Z, Epsilon);
-		}
 	};
 }

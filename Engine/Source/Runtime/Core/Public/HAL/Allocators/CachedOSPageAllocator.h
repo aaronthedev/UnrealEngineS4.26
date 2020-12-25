@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,21 +19,21 @@ protected:
 		}
 	};
 
-	void* AllocateImpl(SIZE_T Size, uint32 CachedByteLimit, FFreePageBlock* First, FFreePageBlock* Last, uint32& FreedPageBlocksNum, SIZE_T& CachedTotal);
-	void FreeImpl(void* Ptr, SIZE_T Size, uint32 NumCacheBlocks, uint32 CachedByteLimit, FFreePageBlock* First, uint32& FreedPageBlocksNum, SIZE_T& CachedTotal);
-	void FreeAllImpl(FFreePageBlock* First, uint32& FreedPageBlocksNum, SIZE_T& CachedTotal);
+	void* AllocateImpl(SIZE_T Size, uint32 CachedByteLimit, FFreePageBlock* First, FFreePageBlock* Last, uint32& FreedPageBlocksNum, uint32& CachedTotal);
+	void FreeImpl(void* Ptr, SIZE_T Size, uint32 NumCacheBlocks, uint32 CachedByteLimit, FFreePageBlock* First, uint32& FreedPageBlocksNum, uint32& CachedTotal);
+	void FreeAllImpl(FFreePageBlock* First, uint32& FreedPageBlocksNum, uint32& CachedTotal);
 };
 
 template <uint32 NumCacheBlocks, uint32 CachedByteLimit>
 struct TCachedOSPageAllocator : private FCachedOSPageAllocator
 {
 	TCachedOSPageAllocator()
-		: CachedTotal(0)
-		, FreedPageBlocksNum(0)
+		: FreedPageBlocksNum(0)
+		, CachedTotal       (0)
 	{
 	}
 
-	FORCEINLINE void* Allocate(SIZE_T Size, uint32 AllocationHint = 0)
+	FORCEINLINE void* Allocate(SIZE_T Size)
 	{
 		return AllocateImpl(Size, CachedByteLimit, FreedPageBlocks, FreedPageBlocks + FreedPageBlocksNum, FreedPageBlocksNum, CachedTotal);
 	}
@@ -49,11 +49,11 @@ struct TCachedOSPageAllocator : private FCachedOSPageAllocator
 
 	uint64 GetCachedFreeTotal()
 	{
-		return CachedTotal;
+		return static_cast<uint64>(CachedTotal);
 	}
 
 private:
 	FFreePageBlock FreedPageBlocks[NumCacheBlocks];
-	SIZE_T         CachedTotal;
 	uint32         FreedPageBlocksNum;
+	uint32         CachedTotal;
 };

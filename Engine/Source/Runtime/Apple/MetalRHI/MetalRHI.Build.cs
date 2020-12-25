@@ -1,6 +1,5 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-using System.IO;
 using UnrealBuildTool;
 
 public class MetalRHI : ModuleRules
@@ -26,6 +25,14 @@ public class MetalRHI : ModuleRules
 		if (Target.Platform == UnrealTargetPlatform.Mac)
 		{
 			PublicFrameworks.Add("QuartzCore");
+		}
+
+		var StatsModule = "../Plugins/NotForLicensees/MetalStatistics/MetalStatistics.uplugin";
+		bool bMetalStats = System.IO.File.Exists(StatsModule);
+		if ( bMetalStats && Target.Configuration != UnrealTargetConfiguration.Shipping )
+		{
+			PublicDefinitions.Add("METAL_STATISTICS=1");
+			WhitelistRestrictedFolders.Add("Public/NotForLicensees");
 		}
 	}
 }

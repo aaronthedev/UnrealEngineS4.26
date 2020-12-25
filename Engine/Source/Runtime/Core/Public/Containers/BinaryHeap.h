@@ -4,7 +4,6 @@
 #pragma once
 
 #include "CoreTypes.h"
-#include "Templates/IsSigned.h"
 
 /*-----------------------------------------------------------------------------
 	Binary Heap, used to index another data structure.
@@ -16,8 +15,6 @@ template< typename KeyType, typename IndexType = uint32 >
 class FBinaryHeap
 {
 public:
-	static_assert(!TIsSigned<IndexType>::Value, "FBinaryHeap only supports signed index types");
-
 				FBinaryHeap();
 				FBinaryHeap( uint32 InHeapSize, uint32 InIndexSize );
 				~FBinaryHeap();
@@ -199,10 +196,7 @@ FORCEINLINE void FBinaryHeap< KeyType, IndexType >::Resize( uint32 NewHeapSize, 
 template< typename KeyType, typename IndexType >
 FORCEINLINE bool FBinaryHeap< KeyType, IndexType >::IsPresent( IndexType Index ) const
 {
-	if (Index >= IndexSize)
-	{
-		return false;
-	}
+	checkSlow( Index < IndexSize );
 	return HeapIndexes[ Index ] != (IndexType)-1;
 }
 
@@ -283,6 +277,8 @@ FORCEINLINE void FBinaryHeap< KeyType, IndexType >::Update( KeyType Key, IndexTy
 template< typename KeyType, typename IndexType >
 FORCEINLINE void FBinaryHeap< KeyType, IndexType >::Remove( IndexType Index )
 {
+	checkSlow( Heap );
+	
 	if( !IsPresent( Index ) )
 	{
 		return;

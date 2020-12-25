@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LiveLinkMessageBusSource.h"
 
@@ -15,20 +15,6 @@
 
 #include "MessageEndpointBuilder.h"
 #include "Misc/App.h"
-
-
-FLiveLinkMessageBusSource::FLiveLinkMessageBusSource(const FText& InSourceType, const FText& InSourceMachineName, const FMessageAddress& InConnectionAddress, double InMachineTimeOffset)
-	: ConnectionAddress(InConnectionAddress)
-	, SourceType(InSourceType)
-	, SourceMachineName(InSourceMachineName)
-	, ConnectionLastActive(0.0)
-	, bIsValid(false)
-	, MachineTimeOffset(InMachineTimeOffset)
-{}
-
-void FLiveLinkMessageBusSource::InitializeSettings(ULiveLinkSourceSettings* Settings)
-{
-}
 
 void FLiveLinkMessageBusSource::ReceiveClient(ILiveLinkClient* InClient, FGuid InSourceGuid)
 {
@@ -69,7 +55,7 @@ void FLiveLinkMessageBusSource::Update()
 	if (!ConnectionAddress.IsValid())
 	{
 		FLiveLinkMessageBusDiscoveryManager& DiscoveryManager = ILiveLinkModule::Get().GetMessageBusDiscoveryManager();
-		for (const FProviderPollResultPtr& Result : DiscoveryManager.GetDiscoveryResults())
+		for (const FProviderPollResultPtr Result : DiscoveryManager.GetDiscoveryResults())
 		{
 			if (Client->GetSourceType(SourceGuid).ToString() == Result->Name)
 			{
@@ -204,7 +190,7 @@ void FLiveLinkMessageBusSource::InternalHandleMessage(const TSharedRef<IMessageC
 		FLiveLinkFrameDataStruct DataStruct(MessageTypeInfo);
 		const FLiveLinkBaseFrameData* Message = reinterpret_cast<const FLiveLinkBaseFrameData*>(Context->GetMessage());
 		DataStruct.InitializeWith(MessageTypeInfo, Message);
-		DataStruct.GetBaseData()->WorldTime = Message->WorldTime.GetOffsettedTime();
+		DataStruct.GetBaseData()->WorldTime = FLiveLinkWorldTime(Message->WorldTime.GetOffsettedTime(), MachineTimeOffset);
 		Client->PushSubjectFrameData_AnyThread(SubjectKey, MoveTemp(DataStruct));
 	}
 }

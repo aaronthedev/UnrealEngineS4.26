@@ -1,8 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Input/IDisplayClusterInputManager.h"
+#include "Network/DisplayClusterMessage.h"
+
 #include "IPDisplayClusterManager.h"
 
 
@@ -19,6 +21,6 @@ public:
 
 	virtual void Update() = 0;
 
-	virtual void ExportInputData(TMap<FString, FString>& InputData) const = 0;
-	virtual void ImportInputData(const TMap<FString, FString>& InputData) = 0;
+	virtual void ExportInputData(FDisplayClusterMessage::DataType& InputData) const = 0;
+	virtual void ImportInputData(const FDisplayClusterMessage::DataType& InputData) = 0;
 };

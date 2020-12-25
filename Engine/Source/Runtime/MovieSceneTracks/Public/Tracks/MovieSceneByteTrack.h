@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "Tracks/MovieScenePropertyTrack.h"
-#include "Compilation/IMovieSceneTrackTemplateProducer.h"
 #include "MovieSceneByteTrack.generated.h"
 
 class UEnum;
@@ -14,7 +13,7 @@ class UEnum;
  * Handles manipulation of byte properties in a movie scene
  */
 UCLASS()
-class MOVIESCENETRACKS_API UMovieSceneByteTrack : public UMovieScenePropertyTrack, public IMovieSceneTrackTemplateProducer
+class MOVIESCENETRACKS_API UMovieSceneByteTrack : public UMovieScenePropertyTrack
 {
 	GENERATED_UCLASS_BODY()
 

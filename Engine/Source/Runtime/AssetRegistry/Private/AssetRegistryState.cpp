@@ -1,6 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-#include "AssetRegistry/AssetRegistryState.h"
+#include "AssetRegistryState.h"
 #include "AssetRegistry.h"
 #include "Misc/CommandLine.h"
 #include "Misc/FileHelper.h"
@@ -11,7 +11,7 @@
 #include "UObject/UObjectIterator.h"
 #include "UObject/MetaData.h"
 #include "AssetRegistryPrivate.h"
-#include "AssetRegistry/ARFilter.h"
+#include "ARFilter.h"
 #include "DependsNode.h"
 #include "PackageReader.h"
 #include "NameTableArchive.h"
@@ -248,7 +248,6 @@ void FAssetRegistryState::FilterTags(const FAssetDataTagMapSharedView& InTagsAnd
 
 void FAssetRegistryState::InitializeFromExistingAndPrune(const FAssetRegistryState & ExistingState, const TSet<FName>& RequiredPackages, const TSet<FName>& RemovePackages, const TSet<int32> ChunksToKeep, const FAssetRegistrySerializationOptions & Options)
 {
-	LLM_SCOPE(ELLMTag::AssetRegistry);
 	const bool bIsFilteredByChunkId = ChunksToKeep.Num() != 0;
 	const bool bIsFilteredByRequiredPackages = RequiredPackages.Num() != 0;
 	const bool bIsFilteredByRemovedPackages = RemovePackages.Num() != 0;
@@ -348,19 +347,13 @@ void FAssetRegistryState::InitializeFromExistingAndPrune(const FAssetRegistrySta
 	{
 		FDependsNode* NewNode = CreateOrFindDependsNode(OldNode->GetIdentifier());
 		NewNode->Reserve(OldNode);
-	}
 	
-	for (FDependsNode* OldNode : ValidDependsNodes)
-	{
-		FDependsNode* NewNode = CreateOrFindDependsNode(OldNode->GetIdentifier());
-		OldNode->IterateOverDependencies([&, OldNode, NewNode](FDependsNode* InDependency, UE::AssetRegistry::EDependencyCategory InCategory, UE::AssetRegistry::EDependencyProperty InFlags, bool bDuplicate) {
+		OldNode->IterateOverDependencies([&, OldNode, NewNode](FDependsNode* InDependency, EAssetRegistryDependencyType::Type InDependencyType) {
 			if (ValidDependsNodes.Contains(InDependency))
 			{
 				// Only add link if it's part of the filtered asset set
 				FDependsNode* NewDependency = CreateOrFindDependsNode(InDependency->GetIdentifier());
-				NewNode->SetIsDependencyListSorted(InCategory, false);
-				NewNode->AddDependency(NewDependency, InCategory, InFlags);
-				NewDependency->SetIsReferencersSorted(false);
+				NewNode->AddDependency(NewDependency, InDependencyType, true);
 				NewDependency->AddReferencer(NewNode);
 			}
 		});
@@ -376,19 +369,10 @@ void FAssetRegistryState::InitializeFromExistingAndPrune(const FAssetRegistrySta
 			RemoveDependsNode(DependsNode->GetIdentifier());
 		}
 	}
-
-	// Restore the sortedness that we turned off for performance when creating each DependsNode
-	for (TPair<FAssetIdentifier, FDependsNode*> Pair : CachedDependsNodes)
-	{
-		FDependsNode* DependsNode = Pair.Value;
-		DependsNode->SetIsDependencyListSorted(UE::AssetRegistry::EDependencyCategory::All, true);
-		DependsNode->SetIsReferencersSorted(true);
-	}
 }
 
 void FAssetRegistryState::InitializeFromExisting(const TMap<FName, FAssetData*>& AssetDataMap, const TMap<FAssetIdentifier, FDependsNode*>& DependsNodeMap, const TMap<FName, FAssetPackageData*>& AssetPackageDataMap, const FAssetRegistrySerializationOptions& Options, EInitializationMode InInitializationMode)
 {
-	LLM_SCOPE(ELLMTag::AssetRegistry);
 	if (InInitializationMode == EInitializationMode::Rebuild)
 	{
 		Reset();
@@ -464,33 +448,17 @@ void FAssetRegistryState::InitializeFromExisting(const TMap<FName, FAssetData*>&
 		{
 			FDependsNode* OldNode = Pair.Value;
 			FDependsNode* NewNode = CreateOrFindDependsNode(Pair.Key);
-			NewNode->Reserve(OldNode);
-		}
 
-		for (const TPair<FAssetIdentifier, FDependsNode*>& Pair : DependsNodeMap)
-		{
-			FDependsNode* OldNode = Pair.Value;
-			FDependsNode* NewNode = CreateOrFindDependsNode(Pair.Key);
-			Pair.Value->IterateOverDependencies([this, &DependsNodeMap, &ScriptPackages, OldNode, NewNode](FDependsNode* InDependency, UE::AssetRegistry::EDependencyCategory InCategory, UE::AssetRegistry::EDependencyProperty InFlags, bool bDuplicate) {
+			Pair.Value->IterateOverDependencies([this, &DependsNodeMap, &ScriptPackages, OldNode, NewNode](FDependsNode* InDependency, EAssetRegistryDependencyType::Type InDependencyType) {
 				const FAssetIdentifier& Identifier = InDependency->GetIdentifier();
 				if (DependsNodeMap.Find(Identifier) || ScriptPackages.Contains(Identifier))
 				{
 					// Only add if this node is in the incoming map
 					FDependsNode* NewDependency = CreateOrFindDependsNode(Identifier);
-					NewNode->SetIsDependencyListSorted(InCategory, false);
-					NewNode->AddDependency(NewDependency, InCategory, InFlags);
-					NewDependency->SetIsReferencersSorted(false);
+					NewNode->AddDependency(NewDependency, InDependencyType, true);
 					NewDependency->AddReferencer(NewNode);
 				}
 			});
-		}
-
-		// Restore the sortedness that we turned off for performance when creating each DependsNode
-		for (TPair<FAssetIdentifier, FDependsNode*> Pair : CachedDependsNodes)
-		{
-			FDependsNode* DependsNode = Pair.Value;
-			DependsNode->SetIsDependencyListSorted(UE::AssetRegistry::EDependencyCategory::All, true);
-			DependsNode->SetIsReferencersSorted(true);
 		}
 	}
 }
@@ -511,9 +479,7 @@ void FAssetRegistryState::PruneAssetData(const TSet<FName>& RequiredPackages, co
 	// Generate list up front as the maps will get cleaned up
 	TArray<FAssetData*> AllAssetData;
 	CachedAssetsByObjectPath.GenerateValueArray(AllAssetData);
-	TSet<FDependsNode*> RemoveDependsNodes;
 
-	// Remove assets and mark-for-removal any dependencynodes for assets removed due to having no tags
 	for (FAssetData* AssetData : AllAssetData)
 	{
 		bool bRemoveAssetData = false;
@@ -541,37 +507,21 @@ void FAssetRegistryState::PruneAssetData(const TSet<FName>& RequiredPackages, co
 
 		if (bRemoveAssetData)
 		{
-			bool bRemovedAssetData, bRemovedPackageData;
-			FName AssetPackageName = AssetData->PackageName;
-			// AssetData might be deleted after this call
-			RemoveAssetData(AssetData, false /* bRemoveDependencyData */, bRemovedAssetData, bRemovedPackageData);
 			if (!bRemoveDependencyData)
 			{
-				RequiredDependNodePackages.Add(AssetPackageName);
+				RequiredDependNodePackages.Add(AssetData->PackageName);
 			}
-			else if (bRemovedPackageData)
-			{
-				FDependsNode** RemovedNode = CachedDependsNodes.Find(AssetPackageName);
-				if (RemovedNode)
-				{
-					RemoveDependsNodes.Add(*RemovedNode);
-				}
-			}
+			RemoveAssetData(AssetData, bRemoveDependencyData);
 		}
 	}
 
 	TArray<FDependsNode*> AllDependsNodes;
 	CachedDependsNodes.GenerateValueArray(AllDependsNodes);
 
-	// Mark-for-removal all other dependsnodes that are filtered out by our settings
 	for (FDependsNode* DependsNode : AllDependsNodes)
 	{
 		const FAssetIdentifier& Id = DependsNode->GetIdentifier();
 		bool bRemoveDependsNode = false;
-		if (RemoveDependsNodes.Contains(DependsNode))
-		{
-			continue;
-		}
 
 		if (Options.bFilterSearchableNames && Id.IsValue())
 		{
@@ -587,32 +537,12 @@ void FAssetRegistryState::PruneAssetData(const TSet<FName>& RequiredPackages, co
 		
 		if (bRemoveDependsNode)
 		{
-			RemoveDependsNodes.Add(DependsNode);
+			RemoveDependsNode(Id);
 		}
 	}
-
-	// Batch-remove all of the marked-for-removal dependsnodes
-	for (FDependsNode* DependsNode : AllDependsNodes)
-	{
-		check(DependsNode != nullptr);
-		if (RemoveDependsNodes.Contains(DependsNode))
-		{
-			CachedDependsNodes.Remove(DependsNode->GetIdentifier());
-			NumDependsNodes--;
-			// if the depends nodes were preallocated in a block, we can't delete them one at a time, only the whole chunk in the destructor
-			if (PreallocatedDependsNodeDataBuffers.Num() == 0)
-			{
-				delete DependsNode;
-			}
-		}
-		else
-		{
-			DependsNode->RemoveLinks([&RemoveDependsNodes](const FDependsNode* ExistingDependsNode) { return RemoveDependsNodes.Contains(ExistingDependsNode); });
-		}
-	}
+	CachedDependsNodes.GenerateValueArray(AllDependsNodes);
 
 	// Remove any orphaned depends nodes. This will leave cycles in but those might represent useful data
-	CachedDependsNodes.GenerateValueArray(AllDependsNodes);
 	for (FDependsNode* DependsNode : AllDependsNodes)
 	{
 		if (DependsNode->GetConnectionCount() == 0)
@@ -628,35 +558,29 @@ bool FAssetRegistryState::HasAssets(const FName PackagePath) const
 	return FoundAssetArray && FoundAssetArray->Num() > 0;
 }
 
-bool FAssetRegistryState::GetAssets(const FARCompiledFilter& Filter, const TSet<FName>& PackageNamesToSkip, TArray<FAssetData>& OutAssetData) const
+bool FAssetRegistryState::GetAssets(const FARFilter& Filter, const TSet<FName>& PackageNamesToSkip, TArray<FAssetData>& OutAssetData) const
 {
-	return EnumerateAssets(Filter, PackageNamesToSkip, [&OutAssetData](const FAssetData& AssetData)
-	{
-		OutAssetData.Emplace(AssetData);
-		return true;
-	});
-}
-
-bool FAssetRegistryState::EnumerateAssets(const FARCompiledFilter& Filter, const TSet<FName>& PackageNamesToSkip, TFunctionRef<bool(const FAssetData&)> Callback) const
-{
-	// Verify filter input. If all assets are needed, use EnumerateAllAssets() instead.
-	if (Filter.IsEmpty() || !IsFilterValid(Filter))
+	// Verify filter input. If all assets are needed, use GetAllAssets() instead.
+	if (!IsFilterValid(Filter, false) || Filter.IsEmpty())
 	{
 		return false;
 	}
 
-	const uint32 FilterWithoutPackageFlags = Filter.WithoutPackageFlags;
-	const uint32 FilterWithPackageFlags = Filter.WithPackageFlags;
+	// Prepare a set of each filter component for fast searching
+	TSet<FName> FilterPackageNames(Filter.PackageNames);
+	TSet<FName> FilterPackagePaths(Filter.PackagePaths);
+	TSet<FName> FilterClassNames(Filter.ClassNames);
+	TSet<FName> FilterObjectPaths(Filter.ObjectPaths);
 
 	// Form a set of assets matched by each filter
 	TArray<TSet<FAssetData*>> DiskFilterSets;
 
 	// On disk package names
-	if (Filter.PackageNames.Num() > 0)
+	if (FilterPackageNames.Num())
 	{
 		TSet<FAssetData*>& PackageNameFilter = DiskFilterSets[DiskFilterSets.AddDefaulted()];
 
-		for (FName PackageName : Filter.PackageNames)
+		for (FName PackageName : FilterPackageNames)
 		{
 			const TArray<FAssetData*>* PackageAssets = CachedAssetsByPackageName.Find(PackageName);
 
@@ -668,11 +592,11 @@ bool FAssetRegistryState::EnumerateAssets(const FARCompiledFilter& Filter, const
 	}
 
 	// On disk package paths
-	if (Filter.PackagePaths.Num() > 0)
+	if (FilterPackagePaths.Num())
 	{
 		TSet<FAssetData*>& PathFilter = DiskFilterSets[DiskFilterSets.AddDefaulted()];
 
-		for (FName PackagePath : Filter.PackagePaths)
+		for (FName PackagePath : FilterPackagePaths)
 		{
 			const TArray<FAssetData*>* PathAssets = CachedAssetsByPath.Find(PackagePath);
 
@@ -684,11 +608,11 @@ bool FAssetRegistryState::EnumerateAssets(const FARCompiledFilter& Filter, const
 	}
 
 	// On disk classes
-	if (Filter.ClassNames.Num() > 0)
+	if (FilterClassNames.Num())
 	{
 		TSet<FAssetData*>& ClassFilter = DiskFilterSets[DiskFilterSets.AddDefaulted()];
 
-		for (FName ClassName : Filter.ClassNames)
+		for (FName ClassName : FilterClassNames)
 		{
 			const TArray<FAssetData*>* ClassAssets = CachedAssetsByClass.Find(ClassName);
 
@@ -700,11 +624,11 @@ bool FAssetRegistryState::EnumerateAssets(const FARCompiledFilter& Filter, const
 	}
 
 	// On disk object paths
-	if (Filter.ObjectPaths.Num() > 0)
+	if (FilterObjectPaths.Num())
 	{
 		TSet<FAssetData*>& ObjectPathsFilter = DiskFilterSets[DiskFilterSets.AddDefaulted()];
 
-		for (FName ObjectPath : Filter.ObjectPaths)
+		for (FName ObjectPath : FilterObjectPaths)
 		{
 			FAssetData* AssetDataPtr = CachedAssetsByObjectPath.FindRef(ObjectPath);
 
@@ -716,7 +640,7 @@ bool FAssetRegistryState::EnumerateAssets(const FARCompiledFilter& Filter, const
 	}
 
 	// On disk tags and values
-	if (Filter.TagsAndValues.Num() > 0)
+	if (Filter.TagsAndValues.Num())
 	{
 		TSet<FAssetData*>& TagAndValuesFilter = DiskFilterSets[DiskFilterSets.AddDefaulted()];
 
@@ -794,20 +718,7 @@ bool FAssetRegistryState::EnumerateAssets(const FARCompiledFilter& Filter, const
 				continue;
 			}
 
-			if (AssetData->HasAnyPackageFlags(FilterWithoutPackageFlags))
-			{
-				continue;
-			}
-
-			if (!AssetData->HasAllPackageFlags(FilterWithPackageFlags))
-			{
-				continue;
-			}
-
-			if (!Callback(*AssetData))
-			{
-				return true;
-			}
+			OutAssetData.Add(*AssetData);
 		}
 	}
 
@@ -815,15 +726,6 @@ bool FAssetRegistryState::EnumerateAssets(const FARCompiledFilter& Filter, const
 }
 
 bool FAssetRegistryState::GetAllAssets(const TSet<FName>& PackageNamesToSkip, TArray<FAssetData>& OutAssetData) const
-{
-	return EnumerateAllAssets(PackageNamesToSkip, [&OutAssetData](const FAssetData& AssetData)
-	{
-		OutAssetData.Emplace(AssetData);
-		return true;
-	});
-}
-
-bool FAssetRegistryState::EnumerateAllAssets(const TSet<FName>& PackageNamesToSkip, TFunctionRef<bool(const FAssetData&)> Callback) const
 {
 	// All unloaded disk assets
 	for (const TPair<FName, FAssetData*>& AssetDataPair : CachedAssetsByObjectPath)
@@ -835,10 +737,7 @@ bool FAssetRegistryState::EnumerateAllAssets(const TSet<FName>& PackageNamesToSk
 			// Make sure the asset's package was not loaded then the object was deleted/renamed
 			if (!PackageNamesToSkip.Contains(AssetData->PackageName))
 			{
-				if (!Callback(*AssetData))
-				{
-					return true;
-				}
+				OutAssetData.Emplace(*AssetData);
 			}
 		}
 	}
@@ -849,29 +748,6 @@ bool FAssetRegistryState::GetDependencies(const FAssetIdentifier& AssetIdentifie
 										  TArray<FAssetIdentifier>& OutDependencies,
 										  EAssetRegistryDependencyType::Type InDependencyType) const
 {
-	bool bResult = false;
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	UE::AssetRegistry::FDependencyQuery Flags(InDependencyType);
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-	if (!!(InDependencyType & EAssetRegistryDependencyType::Packages))
-	{
-		bResult = GetDependencies(AssetIdentifier, OutDependencies, UE::AssetRegistry::EDependencyCategory::Package, Flags) || bResult;
-	}
-	if (!!(InDependencyType & EAssetRegistryDependencyType::SearchableName))
-	{
-		bResult = GetDependencies(AssetIdentifier, OutDependencies, UE::AssetRegistry::EDependencyCategory::SearchableName) || bResult;
-	}
-	if (!!(InDependencyType & EAssetRegistryDependencyType::Manage))
-	{
-		bResult = GetDependencies(AssetIdentifier, OutDependencies, UE::AssetRegistry::EDependencyCategory::Manage, Flags) || bResult;
-	}
-	return bResult;
-}
-
-bool FAssetRegistryState::GetDependencies(const FAssetIdentifier& AssetIdentifier,
-										  TArray<FAssetIdentifier>& OutDependencies,
-										  UE::AssetRegistry::EDependencyCategory Category, const UE::AssetRegistry::FDependencyQuery& Flags) const
-{
 	const FDependsNode* const* NodePtr = CachedDependsNodes.Find(AssetIdentifier);
 	const FDependsNode* Node = nullptr;
 	if (NodePtr != nullptr)
@@ -881,29 +757,8 @@ bool FAssetRegistryState::GetDependencies(const FAssetIdentifier& AssetIdentifie
 
 	if (Node != nullptr)
 	{
-		Node->GetDependencies(OutDependencies, Category, Flags);
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
+		Node->GetDependencies(OutDependencies, InDependencyType);
 
-bool FAssetRegistryState::GetDependencies(const FAssetIdentifier& AssetIdentifier,
-										  TArray<FAssetDependency>& OutDependencies,
-										  UE::AssetRegistry::EDependencyCategory Category, const UE::AssetRegistry::FDependencyQuery& Flags) const
-{
-	const FDependsNode* const* NodePtr = CachedDependsNodes.Find(AssetIdentifier);
-	const FDependsNode* Node = nullptr;
-	if (NodePtr != nullptr)
-	{
-		Node = *NodePtr;
-	}
-
-	if (Node != nullptr)
-	{
-		Node->GetDependencies(OutDependencies, Category, Flags);
 		return true;
 	}
 	else
@@ -916,29 +771,6 @@ bool FAssetRegistryState::GetReferencers(const FAssetIdentifier& AssetIdentifier
 										 TArray<FAssetIdentifier>& OutReferencers,
 										 EAssetRegistryDependencyType::Type InReferenceType) const
 {
-	bool bResult = false;
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	UE::AssetRegistry::FDependencyQuery Flags(InReferenceType);
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-	if (!!(InReferenceType & EAssetRegistryDependencyType::Packages))
-	{
-		bResult = GetReferencers(AssetIdentifier, OutReferencers, UE::AssetRegistry::EDependencyCategory::Package, Flags) || bResult;
-	}
-	if (!!(InReferenceType & EAssetRegistryDependencyType::SearchableName))
-	{
-		bResult = GetReferencers(AssetIdentifier, OutReferencers, UE::AssetRegistry::EDependencyCategory::SearchableName) || bResult;
-	}
-	if (!!(InReferenceType & EAssetRegistryDependencyType::Manage))
-	{
-		bResult = GetReferencers(AssetIdentifier, OutReferencers, UE::AssetRegistry::EDependencyCategory::Manage, Flags) || bResult;
-	}
-	return bResult;
-}
-
-bool FAssetRegistryState::GetReferencers(const FAssetIdentifier& AssetIdentifier,
-										 TArray<FAssetIdentifier>& OutReferencers,
-										 UE::AssetRegistry::EDependencyCategory Category, const UE::AssetRegistry::FDependencyQuery& Flags) const
-{
 	const FDependsNode* const* NodePtr = CachedDependsNodes.Find(AssetIdentifier);
 	const FDependsNode* Node = nullptr;
 
@@ -950,7 +782,7 @@ bool FAssetRegistryState::GetReferencers(const FAssetIdentifier& AssetIdentifier
 	if (Node != nullptr)
 	{
 		TArray<FDependsNode*> DependencyNodes;
-		Node->GetReferencers(DependencyNodes, Category, Flags);
+		Node->GetReferencers(DependencyNodes, InReferenceType);
 
 		OutReferencers.Reserve(DependencyNodes.Num());
 		for (FDependsNode* DependencyNode : DependencyNodes)
@@ -958,29 +790,6 @@ bool FAssetRegistryState::GetReferencers(const FAssetIdentifier& AssetIdentifier
 			OutReferencers.Add(DependencyNode->GetIdentifier());
 		}
 
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
-
-bool FAssetRegistryState::GetReferencers(const FAssetIdentifier& AssetIdentifier,
-										 TArray<FAssetDependency>& OutReferencers,
-										 UE::AssetRegistry::EDependencyCategory Category, const UE::AssetRegistry::FDependencyQuery& Flags) const
-{
-	const FDependsNode* const* NodePtr = CachedDependsNodes.Find(AssetIdentifier);
-	const FDependsNode* Node = nullptr;
-
-	if (NodePtr != nullptr)
-	{
-		Node = *NodePtr;
-	}
-
-	if (Node != nullptr)
-	{
-		Node->GetReferencers(OutReferencers, Category, Flags);
 		return true;
 	}
 	else
@@ -1006,6 +815,10 @@ bool FAssetRegistryState::Serialize(FArchive& OriginalAr, const FAssetRegistrySe
 		int32 AssetCount = CachedAssetsByObjectPath.Num();
 		Ar << AssetCount;
 
+		TArray<FDependsNode*> Dependencies;
+		TMap<FAssetIdentifier, int32> DependsIndexMap;
+		DependsIndexMap.Reserve(CachedAssetsByObjectPath.Num());
+
 		// Write asset data first
 		for (TPair<FName, FAssetData*>& Pair : CachedAssetsByObjectPath)
 		{
@@ -1013,25 +826,8 @@ bool FAssetRegistryState::Serialize(FArchive& OriginalAr, const FAssetRegistrySe
 			AssetData.SerializeForCache(Ar);
 		}
 
-		// Serialize Dependencies
-		// Write placeholder data for the size
-		int64 OffsetToDependencySectionSize = Ar.Tell();
-		int64 DependencySectionSize = 0;
-		Ar << DependencySectionSize;
-		int64 DependencySectionStart = Ar.Tell();
-
-		if (!Options.bSerializeDependencies)
+		if (Options.bSerializeDependencies)
 		{
-			int32 NumDependencies = 0;
-			Ar << NumDependencies;
-		}
-		else
-		{
-			TMap<FDependsNode*, FDependsNode*> RedirectCache;
-			TMap<FDependsNode*, int32> DependsIndexMap;
-			TArray<FDependsNode*> Dependencies;
-			DependsIndexMap.Reserve(CachedAssetsByObjectPath.Num());
-
 			// Scan dependency nodes, we won't save all of them if we filter out certain types
 			for (TPair<FAssetIdentifier, FDependsNode*>& Pair : CachedDependsNodes)
 			{
@@ -1041,47 +837,80 @@ bool FAssetRegistryState::Serialize(FArchive& OriginalAr, const FAssetRegistrySe
 					|| (Options.bSerializeSearchableNameDependencies && Node->GetIdentifier().IsValue())
 					|| (Options.bSerializeManageDependencies && Node->GetIdentifier().GetPrimaryAssetId().IsValid()))
 				{
-					DependsIndexMap.Add(Node, Dependencies.Num());
+					DependsIndexMap.Add(Node->GetIdentifier(), Dependencies.Num());
 					Dependencies.Add(Node);
 				}
 			}
+		}
 
-			int32 NumDependencies = Dependencies.Num();
-			Ar << NumDependencies;
+		int32 NumDependencies = Dependencies.Num();
+		Ar << NumDependencies;
 
-			TUniqueFunction<int32(FDependsNode*, bool bAsReferencer)> GetSerializeIndexFromNode = [this, &RedirectCache, &DependsIndexMap](FDependsNode* InDependency, bool bAsReferencer)
+		TArray<FDependsNode*> ProcessedDependencies;
+		TMap<EAssetRegistryDependencyType::Type, int32> DepCounts;
+		TMap<FDependsNode*, FDependsNode*> RedirectCache;
+
+		for (FDependsNode* DependentNode : Dependencies)
+		{
+			FAssetIdentifier Identifier = DependentNode->GetIdentifier();
+
+			ProcessedDependencies.Empty();
+			DepCounts.Empty();
+			DepCounts.Add(EAssetRegistryDependencyType::Hard, 0);
+			DepCounts.Add(EAssetRegistryDependencyType::Soft, 0);
+			DepCounts.Add(EAssetRegistryDependencyType::SearchableName, 0);
+			DepCounts.Add(EAssetRegistryDependencyType::SoftManage, 0);
+			DepCounts.Add(EAssetRegistryDependencyType::HardManage, 0);
+			DepCounts.Add(EAssetRegistryDependencyType::None, 0); // Referencers
+
+			auto DependencyProcessor = [&](FDependsNode* InDependency, EAssetRegistryDependencyType::Type InDependencyType)
 			{
-				if (!bAsReferencer)
+				FDependsNode* RedirectedDependency = ResolveRedirector(InDependency, CachedAssetsByObjectPath, RedirectCache);
+
+				if (RedirectedDependency && DependsIndexMap.Contains(RedirectedDependency->GetIdentifier()))
 				{
-					InDependency = ResolveRedirector(InDependency, CachedAssetsByObjectPath, RedirectCache);
+					ProcessedDependencies.Add(InDependency);
+					DepCounts[InDependencyType]++;
 				}
-				if (!InDependency)
-				{
-					return -1;
-				}
-				int32* DependencyIndex = DependsIndexMap.Find(InDependency);
-				if (!DependencyIndex)
-				{
-					return -1;
-				}
-				return *DependencyIndex;
 			};
 
-			FDependsNode::FSaveScratch Scratch;
-			for (FDependsNode* DependentNode : Dependencies)
+			DependentNode->IterateOverDependencies(DependencyProcessor, EAssetRegistryDependencyType::Hard);
+			DependentNode->IterateOverDependencies(DependencyProcessor, EAssetRegistryDependencyType::Soft);
+
+			if (Options.bSerializeSearchableNameDependencies)
 			{
-				DependentNode->SerializeSave(Ar, GetSerializeIndexFromNode, Scratch);
+				DependentNode->IterateOverDependencies(DependencyProcessor, EAssetRegistryDependencyType::SearchableName);
+			}
+			if (Options.bSerializeManageDependencies)
+			{
+				DependentNode->IterateOverDependencies(DependencyProcessor, EAssetRegistryDependencyType::SoftManage);
+				DependentNode->IterateOverDependencies(DependencyProcessor, EAssetRegistryDependencyType::HardManage);
+			}
+
+			DependentNode->IterateOverReferencers([&](FDependsNode* InReferencer) 
+			{
+				if (DependsIndexMap.Contains(InReferencer->GetIdentifier()))
+				{
+					ProcessedDependencies.Add(InReferencer);
+					DepCounts[EAssetRegistryDependencyType::None]++;
+				}
+			});
+
+			Ar << Identifier;
+			Ar << DepCounts[EAssetRegistryDependencyType::Hard];
+			Ar << DepCounts[EAssetRegistryDependencyType::Soft];
+			Ar << DepCounts[EAssetRegistryDependencyType::SearchableName];
+			Ar << DepCounts[EAssetRegistryDependencyType::SoftManage];
+			Ar << DepCounts[EAssetRegistryDependencyType::HardManage];
+			Ar << DepCounts[EAssetRegistryDependencyType::None];
+
+			for (FDependsNode* Dependency : ProcessedDependencies)
+			{
+				int32 Index = DependsIndexMap[Dependency->GetIdentifier()];
+				Ar << Index;
 			}
 		}
-		// Write the real value to the placeholder data for the DependencySectionSize
-		int64 DependencySectionEnd = Ar.Tell();
-		DependencySectionSize = DependencySectionEnd - DependencySectionStart;
-		Ar.Seek(OffsetToDependencySectionSize);
-		Ar << DependencySectionSize;
-		check(Ar.Tell() == DependencySectionStart);
-		Ar.Seek(DependencySectionEnd);
 
-		// Serialize the PackageData
 		int32 PackageDataCount = 0;
 		if (Options.bSerializePackageData)
 		{
@@ -1133,53 +962,83 @@ bool FAssetRegistryState::Serialize(FArchive& OriginalAr, const FAssetRegistrySe
 			AddAssetData(NewAssetData);
 		}
 
-		if (Version >= FAssetRegistryVersion::AddedDependencyFlags)
-		{
-			int64 DependencySectionSize;
-			Ar << DependencySectionSize;
-			int64 DependencySectionEnd = Ar.Tell() + DependencySectionSize;
+		int32 LocalNumDependsNodes = 0;
+		Ar << LocalNumDependsNodes;
 
-			if (!Options.bSerializeDependencies)
+		FDependsNode* PreallocatedDependsNodeDataBuffer = nullptr;
+		if (Options.bSerializeDependencies && LocalNumDependsNodes > 0)
+		{
+			PreallocatedDependsNodeDataBuffer = new FDependsNode[LocalNumDependsNodes];
+			PreallocatedDependsNodeDataBuffers.Add(PreallocatedDependsNodeDataBuffer);
+			CachedDependsNodes.Reserve(LocalNumDependsNodes);		
+		}
+
+		TMap<EAssetRegistryDependencyType::Type, int32> DepCounts;
+
+		for (int32 DependsNodeIndex = 0; DependsNodeIndex < LocalNumDependsNodes; DependsNodeIndex++)
+		{
+			FAssetIdentifier AssetIdentifier;
+			Ar << AssetIdentifier;
+
+			DepCounts.Empty();
+
+			Ar << DepCounts.FindOrAdd(EAssetRegistryDependencyType::Hard);
+			Ar << DepCounts.FindOrAdd(EAssetRegistryDependencyType::Soft);
+			Ar << DepCounts.FindOrAdd(EAssetRegistryDependencyType::SearchableName);
+			Ar << DepCounts.FindOrAdd(EAssetRegistryDependencyType::SoftManage);
+			if (Version < FAssetRegistryVersion::AddedHardManage)
 			{
-				Ar.Seek(DependencySectionEnd);
+				DepCounts.Add(EAssetRegistryDependencyType::HardManage, 0);
 			}
 			else
 			{
-				int32 LocalNumDependsNodes = 0;
-				Ar << LocalNumDependsNodes;
-
-				FDependsNode* PreallocatedDependsNodeDataBuffer = nullptr;
-				if (LocalNumDependsNodes > 0)
-				{
-					PreallocatedDependsNodeDataBuffer = new FDependsNode[LocalNumDependsNodes];
-					PreallocatedDependsNodeDataBuffers.Add(PreallocatedDependsNodeDataBuffer);
-					CachedDependsNodes.Reserve(LocalNumDependsNodes);
-				}
-				TUniqueFunction<FDependsNode*(int32)> GetNodeFromSerializeIndex = [&PreallocatedDependsNodeDataBuffer, LocalNumDependsNodes](int32 Index) -> FDependsNode*
-				{
-					if (Index < 0 || LocalNumDependsNodes <= Index)
-					{
-						return nullptr;
-					}
-					return &PreallocatedDependsNodeDataBuffer[Index];
-				};
-
-				FDependsNode::FLoadScratch Scratch;
-				for (int32 DependsNodeIndex = 0; DependsNodeIndex < LocalNumDependsNodes; DependsNodeIndex++)
-				{
-					FDependsNode* DependsNode = &PreallocatedDependsNodeDataBuffer[DependsNodeIndex];
-					DependsNode->SerializeLoad(Ar, GetNodeFromSerializeIndex, Scratch, Options);
-					CachedDependsNodes.Add(DependsNode->GetIdentifier(), DependsNode);
-				}
-				if (Ar.IsError())
-				{
-					Ar.Seek(DependencySectionEnd);
-				}
+				Ar << DepCounts.FindOrAdd(EAssetRegistryDependencyType::HardManage);
 			}
-		}
-		else
-		{
-			LegacySerializeLoad_BeforeAssetRegistryDependencyFlags(Ar, Options, Version);
+			Ar << DepCounts.FindOrAdd(EAssetRegistryDependencyType::None); // Referencers
+						
+			// Create the node if we're actually saving dependencies, otherwise just fake serialize
+			FDependsNode* NewDependsNodeData = (Options.bSerializeDependencies ? &PreallocatedDependsNodeDataBuffer[DependsNodeIndex] : nullptr);
+
+			if (NewDependsNodeData)
+			{
+				NewDependsNodeData->SetIdentifier(AssetIdentifier);
+				NewDependsNodeData->Reserve(DepCounts[EAssetRegistryDependencyType::Hard], DepCounts[EAssetRegistryDependencyType::Soft], DepCounts[EAssetRegistryDependencyType::SearchableName], DepCounts[EAssetRegistryDependencyType::SoftManage], DepCounts[EAssetRegistryDependencyType::HardManage], DepCounts[EAssetRegistryDependencyType::None]);
+				CachedDependsNodes.Add(NewDependsNodeData->GetIdentifier(), NewDependsNodeData);
+			}
+
+			auto SerializeDependencyType = [&](EAssetRegistryDependencyType::Type InDependencyType, bool bShouldAdd)
+			{
+				for (int32 DependencyIndex = 0; DependencyIndex < DepCounts[InDependencyType]; ++DependencyIndex)
+				{
+					int32 Index = 0;
+					Ar << Index;
+
+					if (Index < 0 || Index >= LocalNumDependsNodes)
+					{
+						Ar.SetError();
+						return;
+					}
+					if (bShouldAdd)
+					{
+						if (InDependencyType == EAssetRegistryDependencyType::None)
+						{
+							NewDependsNodeData->AddReferencer(&PreallocatedDependsNodeDataBuffer[Index], true);
+						}
+						else
+						{
+							NewDependsNodeData->AddDependency(&PreallocatedDependsNodeDataBuffer[Index], InDependencyType, true);
+						}
+					}
+				}
+			};
+
+			// Serialize each type, don't do anything if serializing that type isn't allowed
+			SerializeDependencyType(EAssetRegistryDependencyType::Hard, Options.bSerializeDependencies);
+			SerializeDependencyType(EAssetRegistryDependencyType::Soft, Options.bSerializeDependencies);
+			SerializeDependencyType(EAssetRegistryDependencyType::SearchableName, Options.bSerializeDependencies && Options.bSerializeSearchableNameDependencies);
+			SerializeDependencyType(EAssetRegistryDependencyType::SoftManage, Options.bSerializeDependencies && Options.bSerializeManageDependencies);
+			SerializeDependencyType(EAssetRegistryDependencyType::HardManage, Options.bSerializeDependencies && Options.bSerializeManageDependencies);
+			SerializeDependencyType(EAssetRegistryDependencyType::None, Options.bSerializeDependencies);
 		}
 
 		int32 LocalNumPackageData = 0;
@@ -1223,56 +1082,6 @@ bool FAssetRegistryState::Serialize(FArchive& OriginalAr, const FAssetRegistrySe
 	}
 
 	return !OriginalAr.IsError();
-}
-
-void FAssetRegistryState::LegacySerializeLoad_BeforeAssetRegistryDependencyFlags(FArchive& Ar, const FAssetRegistrySerializationOptions& Options, FAssetRegistryVersion::Type Version)
-{
-	int32 LocalNumDependsNodes = 0;
-	Ar << LocalNumDependsNodes;
-
-	FDependsNode Placeholder;
-	FDependsNode* PreallocatedDependsNodeDataBuffer = nullptr;
-	if (Options.bSerializeDependencies && LocalNumDependsNodes > 0)
-	{
-		PreallocatedDependsNodeDataBuffer = new FDependsNode[LocalNumDependsNodes];
-		PreallocatedDependsNodeDataBuffers.Add(PreallocatedDependsNodeDataBuffer);
-		CachedDependsNodes.Reserve(LocalNumDependsNodes);
-	}
-	TUniqueFunction<FDependsNode* (int32)> GetNodeFromSerializeIndex = [&PreallocatedDependsNodeDataBuffer, LocalNumDependsNodes](int32 Index)->FDependsNode *
-	{
-		if (Index < 0 || LocalNumDependsNodes <= Index)
-		{
-			return nullptr;
-		}
-		return &PreallocatedDependsNodeDataBuffer[Index];
-	};
-
-	uint32 HardBits, SoftBits, HardManageBits, SoftManageBits;
-	FDependsNode::LegacySerializeLoad_BeforeAssetRegistryDependencyFlags_GetPropertySetBits(HardBits, SoftBits, HardManageBits, SoftManageBits);
-
-	TArray<FDependsNode*> DependsNodes;
-	for (int32 DependsNodeIndex = 0; DependsNodeIndex < LocalNumDependsNodes; DependsNodeIndex++)
-	{
-		// Create the node if we're actually saving dependencies, otherwise just fake serialize
-		FDependsNode* DependsNode = nullptr;
-		if (Options.bSerializeDependencies)
-		{
-			DependsNode = &PreallocatedDependsNodeDataBuffer[DependsNodeIndex];
-		}
-		else
-		{
-			DependsNode = &Placeholder;
-		}
-
-		// Call the DependsNode legacy serialization function
-		DependsNode->LegacySerializeLoad_BeforeAssetRegistryDependencyFlags(Ar, Version, PreallocatedDependsNodeDataBuffer, LocalNumDependsNodes, Options, HardBits, SoftBits, HardManageBits, SoftManageBits);
-
-		// Register the DependsNode with its AssetIdentifier
-		if (Options.bSerializeDependencies)
-		{
-			CachedDependsNodes.Add(DependsNode->GetIdentifier(), DependsNode);
-		}
-	}
 }
 
 void FAssetRegistryState::StripAssetRegistryKeyForObject(FName ObjectPath, FName Key)
@@ -1440,11 +1249,7 @@ FDependsNode* FAssetRegistryState::ResolveRedirector(FDependsNode* InDependency,
 				{
 					FDependsNode* ChainedRedirector = nullptr;
 					// This asset is a redirector, so we want to look at its dependencies and find the asset that it is redirecting to
-					CurrentDependency->IterateOverDependencies([&](FDependsNode* InDepends, UE::AssetRegistry::EDependencyCategory Category, UE::AssetRegistry::EDependencyProperty Property, bool bDuplicate) {
-						if (bDuplicate)
-						{
-							return; // Already looked at this dependency node
-						}
+					CurrentDependency->IterateOverDependencies([&](FDependsNode* InDepends, EAssetRegistryDependencyType::Type) {
 						if (InAllowedAssets.Contains(InDepends->GetPackageName()))
 						{
 							// This asset is in the allowed asset list, so take this as the redirect target
@@ -1457,7 +1262,7 @@ FDependsNode* FAssetRegistryState::ResolveRedirector(FDependsNode* InDependency,
 							// redirector (or itself in some horrible situations) so we'll move to that node and try again
 							ChainedRedirector = InDepends;
 						}
-					}, UE::AssetRegistry::EDependencyCategory::Package);
+					});
 
 					if (ChainedRedirector)
 					{
@@ -1603,10 +1408,9 @@ void FAssetRegistryState::UpdateAssetData(FAssetData* AssetData, const FAssetDat
 	*AssetData = NewAssetData;
 }
 
-void FAssetRegistryState::RemoveAssetData(FAssetData* AssetData, bool bRemoveDependencyData, bool& bOutRemovedAssetData, bool& bOutRemovedPackageData)
+bool FAssetRegistryState::RemoveAssetData(FAssetData* AssetData, bool bRemoveDependencyData)
 {
-	bOutRemovedAssetData = false;
-	bOutRemovedPackageData = false;
+	bool bRemoved = false;
 
 	if (ensure(AssetData))
 	{
@@ -1628,8 +1432,6 @@ void FAssetRegistryState::RemoveAssetData(FAssetData* AssetData, bool bRemoveDep
 		// Only remove dependencies and package data if there are no other known assets in the package
 		if (OldPackageAssets->Num() == 0)
 		{
-			CachedAssetsByPackageName.Remove(AssetData->PackageName);
-
 			// We need to update the cached dependencies references cache so that they know we no
 			// longer exist and so don't reference them.
 			if (bRemoveDependencyData)
@@ -1639,7 +1441,6 @@ void FAssetRegistryState::RemoveAssetData(FAssetData* AssetData, bool bRemoveDep
 
 			// Remove the package data as well
 			RemovePackageData(AssetData->PackageName);
-			bOutRemovedPackageData = true;
 		}
 
 		// if the assets were preallocated in a block, we can't delete them one at a time, only the whole chunk in the destructor
@@ -1648,13 +1449,15 @@ void FAssetRegistryState::RemoveAssetData(FAssetData* AssetData, bool bRemoveDep
 			delete AssetData;
 		}
 		NumAssets--;
-		bOutRemovedAssetData = true;
+		bRemoved = true;
 	}
+
+	return bRemoved;
 }
 
-FDependsNode* FAssetRegistryState::FindDependsNode(const FAssetIdentifier& Identifier) const
+FDependsNode* FAssetRegistryState::FindDependsNode(const FAssetIdentifier& Identifier)
 {
-	FDependsNode*const* FoundNode = CachedDependsNodes.Find(Identifier);
+	FDependsNode** FoundNode = CachedDependsNodes.Find(Identifier);
 	if (FoundNode)
 	{
 		return *FoundNode;
@@ -1820,14 +1623,49 @@ bool FAssetRegistryState::RemovePackageData(FName PackageName)
 	return false;
 }
 
-bool FAssetRegistryState::IsFilterValid(const FARCompiledFilter& Filter)
+bool FAssetRegistryState::IsFilterValid(const FARFilter& Filter, bool bAllowRecursion)
 {
-	if (Filter.PackageNames.Contains(NAME_None) ||
-		Filter.PackagePaths.Contains(NAME_None) ||
-		Filter.ObjectPaths.Contains(NAME_None) || 
-		Filter.ClassNames.Contains(NAME_None) ||
-		Filter.TagsAndValues.Contains(NAME_None)
-		)
+	for (int32 NameIdx = 0; NameIdx < Filter.PackageNames.Num(); ++NameIdx)
+	{
+		if (Filter.PackageNames[NameIdx] == NAME_None)
+		{
+			return false;
+		}
+	}
+
+	for (int32 PathIdx = 0; PathIdx < Filter.PackagePaths.Num(); ++PathIdx)
+	{
+		if (Filter.PackagePaths[PathIdx] == NAME_None)
+		{
+			return false;
+		}
+	}
+
+	for (int32 ObjectPathIdx = 0; ObjectPathIdx < Filter.ObjectPaths.Num(); ++ObjectPathIdx)
+	{
+		if (Filter.ObjectPaths[ObjectPathIdx] == NAME_None)
+		{
+			return false;
+		}
+	}
+
+	for (int32 ClassIdx = 0; ClassIdx < Filter.ClassNames.Num(); ++ClassIdx)
+	{
+		if (Filter.ClassNames[ClassIdx] == NAME_None)
+		{
+			return false;
+		}
+	}
+
+	for (auto FilterTagIt = Filter.TagsAndValues.CreateConstIterator(); FilterTagIt; ++FilterTagIt)
+	{
+		if (FilterTagIt.Key() == NAME_None)
+		{
+			return false;
+		}
+	}
+
+	if (!bAllowRecursion && (Filter.bRecursiveClasses || Filter.bRecursivePaths))
 	{
 		return false;
 	}
@@ -1836,152 +1674,27 @@ bool FAssetRegistryState::IsFilterValid(const FARCompiledFilter& Filter)
 }
 
 #if ASSET_REGISTRY_STATE_DUMPING_ENABLED
-namespace UE
+
+void FAssetRegistryState::Dump(const TArray<FString>& Arguments, TArray<FString>& OutLines) const
 {
-namespace AssetRegistry
-{
-	void PropertiesToString(EDependencyProperty Properties, FStringBuilderBase& Builder, EDependencyCategory CategoryFilter)
+	OutLines.Reserve(14 + CachedAssetsByObjectPath.Num() * 5 + CachedDependsNodes.Num() + CachedPackageData.Num());
+
+	if (Arguments.Contains(TEXT("ObjectPath")))
 	{
-		bool bFirst = true;
-		auto AppendPropertyName = [&Properties, &Builder, &bFirst](EDependencyProperty TestProperty, const TCHAR* NameWith, const TCHAR* NameWithout)
+		OutLines.Add(FString::Printf(TEXT("--- Begin CachedAssetsByObjectPath ---")));
+
+		for (const TPair<FName, FAssetData*>& Pair : CachedAssetsByObjectPath)
 		{
-			if (!bFirst)
-			{
-				Builder.Append(TEXT(","));
-			}
-			if (!!(Properties & TestProperty))
-			{
-				Builder.Append(NameWith);
-			}
-			else
-			{
-				Builder.Append(NameWithout);
-			}
-			bFirst = false;
-		};
-		if (!!(CategoryFilter & EDependencyCategory::Package))
-		{
-			AppendPropertyName(EDependencyProperty::Hard, TEXT("Hard"), TEXT("Soft"));
-			AppendPropertyName(EDependencyProperty::Game, TEXT("Game"), TEXT("EditorOnly"));
-			AppendPropertyName(EDependencyProperty::Build, TEXT("Build"), TEXT("NotBuild"));
+			OutLines.Add(FString::Printf(TEXT("	%s"), *Pair.Key.ToString()));
 		}
-		if (!!(CategoryFilter & EDependencyCategory::Manage))
-		{
-			AppendPropertyName(EDependencyProperty::Direct, TEXT("Direct"), TEXT("Indirect"));
-		}
-		static_assert((EDependencyProperty::PackageMask | EDependencyProperty::SearchableNameMask | EDependencyProperty::ManageMask) == EDependencyProperty::AllMask,
-			"Need to handle new flags in this function");
+
+		OutLines.Add(
+			FString::Printf(TEXT("--- End CachedAssetsByObjectPath : %d entries ---"), CachedAssetsByObjectPath.Num()));
 	}
-}
-}
 
-void FAssetRegistryState::Dump(const TArray<FString>& Arguments, TArray<FString>& OutPages, int32 LinesPerPage) const
-{
-	int32 ExpectedNumLines = 14 + CachedAssetsByObjectPath.Num() * 5 + CachedDependsNodes.Num() + CachedPackageData.Num();
-	const int32 EstimatedLinksPerNode = 10*2; // Each dependency shows up once as a dependency and once as a reference
-	const int32 EstimatedCharactersPerLine = 100;
-	const bool bDumpDependencyDetails = Arguments.Contains(TEXT("DependencyDetails"));
-	if (bDumpDependencyDetails)
+	auto PrintAssetDataMap = [&OutLines](FString Name, const TMap<FName, TArray<FAssetData*>>& AssetMap)
 	{
-		ExpectedNumLines += CachedDependsNodes.Num() * (3 + EstimatedLinksPerNode);
-	}
-	LinesPerPage = FMath::Max(LinesPerPage, 1);
-	const int32 ExpectedNumPages = ExpectedNumLines / LinesPerPage;
-	const int32 PageEndSearchLength = LinesPerPage / 20;
-	const uint32 HashStartValue = MAX_uint32 - 49979693; // Pick a large starting value to bias against picking empty string
-	const uint32 HashMultiplier = 67867967;
-	TStringBuilder<16> PageBuffer;
-	TStringBuilder<16> OverflowText;
-
-	OutPages.Reserve(ExpectedNumPages);
-	PageBuffer.AddUninitialized(LinesPerPage * EstimatedCharactersPerLine);// TODO: Add Reserve function to TStringBuilder
-	PageBuffer.Reset();
-	OverflowText.AddUninitialized(PageEndSearchLength * EstimatedCharactersPerLine);
-	OverflowText.Reset();
-	int32 NumLinesInPage = 0;
-	const int32 LineTerminatorLen = TCString<TCHAR>::Strlen(LINE_TERMINATOR);
-
-	auto FinishPage = [&PageBuffer, &NumLinesInPage, HashStartValue, HashMultiplier, PageEndSearchLength, &OutPages, &OverflowText, LineTerminatorLen]()
-	{
-		int32 PageEndIndex = PageBuffer.Len();
-		const TCHAR* BufferEnd = PageBuffer.GetData() + PageEndIndex;
-		int32 NumOverflowLines = 0;
-		// We want to facilitate diffing dumps between two different versions that should be similar, but naively breaking up the dump into pages makes this difficult
-		// because after one missing or added line, every page from that point on will be offset and therefore different, making false positive differences
-		// To make pages after one missing or added line the same, we look for a good page ending based on the text of all the lines near the end of the current page
-		// By choosing specific-valued texts as page breaks, we will usually randomly get lucky and have the two diffs pick the same line for the end of the page
-		if (NumLinesInPage > PageEndSearchLength)
-		{
-			const TCHAR* WinningLineEnd = BufferEnd;
-			uint32 WinningLineValue = 0;
-			int32 WinningSearchIndex = 0;
-			const TCHAR* LineEnd = BufferEnd;
-			for (int32 SearchIndex = 0; SearchIndex < PageEndSearchLength; ++SearchIndex)
-			{
-				uint32 LineValue = HashStartValue;
-				const TCHAR* LineStart = LineEnd;
-				while (LineStart[-LineTerminatorLen] != LINE_TERMINATOR[0] || TCString<TCHAR>::Strncmp(LINE_TERMINATOR, LineStart - LineTerminatorLen, LineTerminatorLen) != 0)
-				{
-					--LineStart;
-					LineValue = LineValue * HashMultiplier + static_cast<uint32>(TChar<TCHAR>::ToLower(*LineStart));
-				}
-				if (SearchIndex == 0 || LineValue < WinningLineValue) // We arbitrarily choose the smallest hash as the winning value
-				{
-					WinningLineValue = LineValue;
-					WinningLineEnd = LineEnd;
-					WinningSearchIndex = SearchIndex;
-				}
-				LineEnd = LineStart - LineTerminatorLen;
-			}
-			if (WinningLineEnd != BufferEnd)
-			{
-				PageEndIndex = WinningLineEnd - PageBuffer.GetData();
-				NumOverflowLines = WinningSearchIndex;
-			}
-		}
-
-		OutPages.Emplace(PageEndIndex, PageBuffer.GetData());
-		if (PageEndIndex != PageBuffer.Len())
-		{
-			PageEndIndex += LineTerminatorLen; // Skip the newline
-			OverflowText.Reset();
-			OverflowText.Append(PageBuffer.GetData() + PageEndIndex, PageBuffer.Len() - PageEndIndex);
-			PageBuffer.Reset();
-			PageBuffer.Append(OverflowText);
-			PageBuffer.Append(LINE_TERMINATOR);
-			NumLinesInPage = NumOverflowLines;
-		}
-		else
-		{
-			PageBuffer.Reset();
-			NumLinesInPage = 0;
-		}
-	};
-	auto AddLine = [&PageBuffer, LinesPerPage, &NumLinesInPage, &FinishPage, &OutPages]()
-	{
-		if (LinesPerPage == 1)
-		{
-			OutPages.Emplace(PageBuffer.Len(), PageBuffer.GetData());
-			PageBuffer.Reset();
-		}
-		else
-		{
-			++NumLinesInPage;
-			if (NumLinesInPage != LinesPerPage)
-			{
-				PageBuffer.Append(LINE_TERMINATOR);
-			}
-			else
-			{
-				FinishPage();
-			}
-		}
-	};
-
-	auto PrintAssetDataMap = [&AddLine, &PageBuffer](FString Name, const TMap<FName, TArray<FAssetData*>>& AssetMap)
-	{
-		PageBuffer.Appendf(TEXT("--- Begin %s ---"), *Name);
-		AddLine();
+		OutLines.Add(FString::Printf(TEXT("--- Begin %s ---"), *Name));
 
 		TArray<FName> Keys;
 		AssetMap.GenerateKeyArray(Keys);
@@ -2006,41 +1719,15 @@ void FAssetRegistryState::Dump(const TArray<FString>& Arguments, TArray<FString>
 				{ return A.ObjectPath.ToString() < B.ObjectPath.ToString(); }
 				);
 
-			PageBuffer.Append(TEXT("	"));
-			Key.AppendString(PageBuffer);
-			PageBuffer.Appendf(TEXT(" : %d item(s)"), Items.Num());
-			AddLine();
+			OutLines.Add(FString::Printf(TEXT("	%s : %d item(s)"), *Key.ToString(), Items.Num()));
 			for (const FAssetData* Data : Items)
 			{
-				PageBuffer.Append(TEXT("	 "));
-				Data->ObjectPath.AppendString(PageBuffer);
-				AddLine();
+				OutLines.Add(FString::Printf(TEXT("	 %s"), *Data->ObjectPath.ToString()));
 			}
 		}
 
-		PageBuffer.Appendf(TEXT("--- End %s : %d entries ---"), *Name, ValidCount);
-		AddLine();
+		OutLines.Add(FString::Printf(TEXT("--- End %s : %d entries ---"), *Name, ValidCount));
 	};
-
-	if (Arguments.Contains(TEXT("ObjectPath")))
-	{
-		PageBuffer.Append(TEXT("--- Begin CachedAssetsByObjectPath ---"));
-		AddLine();
-
-		TArray<FName> Keys;
-		CachedAssetsByObjectPath.GenerateKeyArray(Keys);
-		Keys.Sort(FNameLexicalLess());
-
-		for (FName ObjectPath : Keys)
-		{
-			PageBuffer.Append(TEXT("	"));
-			ObjectPath.AppendString(PageBuffer);
-			AddLine();
-		}
-
-		PageBuffer.Appendf(TEXT("--- End CachedAssetsByObjectPath : %d entries ---"), CachedAssetsByObjectPath.Num());
-		AddLine();
-	}
 
 	if (Arguments.Contains(TEXT("PackageName")))
 	{
@@ -2062,10 +1749,9 @@ void FAssetRegistryState::Dump(const TArray<FString>& Arguments, TArray<FString>
 		PrintAssetDataMap(TEXT("CachedAssetsByTag"), CachedAssetsByTag);
 	}
 
-	if (Arguments.Contains(TEXT("Dependencies")) && !bDumpDependencyDetails)
+	if (Arguments.Contains(TEXT("Dependencies")))
 	{
-		PageBuffer.Appendf(TEXT("--- Begin CachedDependsNodes ---"));
-		AddLine();
+		OutLines.Add(FString::Printf(TEXT("--- Begin CachedDependsNodes ---")));
 
 		TArray<FDependsNode*> Nodes;
 		CachedDependsNodes.GenerateValueArray(Nodes);
@@ -2075,136 +1761,17 @@ void FAssetRegistryState::Dump(const TArray<FString>& Arguments, TArray<FString>
 
 		for (const FDependsNode* Node : Nodes)
 		{
-			PageBuffer.Append(TEXT("	"));
-			Node->GetIdentifier().AppendString(PageBuffer);
-			PageBuffer.Appendf(TEXT(" : %d connection(s)"), Node->GetConnectionCount());
-			AddLine();
+			OutLines.Add(
+				FString::Printf(TEXT("	%s : %d connection(s)"),
+					*Node->GetIdentifier().ToString(), Node->GetConnectionCount()));
 		}
 
-		PageBuffer.Appendf(TEXT("--- End CachedDependsNodes : %d entries ---"), CachedDependsNodes.Num());
-		AddLine();
+		OutLines.Add(FString::Printf(TEXT("--- End CachedDependsNodes : %d entries ---"), CachedDependsNodes.Num()));
 	}
 
-	if (bDumpDependencyDetails)
-	{
-		using namespace UE::AssetRegistry;
-		PageBuffer.Append(TEXT("--- Begin CachedDependsNodes ---"));
-		AddLine();
-
-		auto SortByAssetID = [](const FDependsNode& A, const FDependsNode& B) { return A.GetIdentifier().ToString() < B.GetIdentifier().ToString(); };
-		TArray<FDependsNode*> Nodes;
-		CachedDependsNodes.GenerateValueArray(Nodes);
-		Nodes.Sort(SortByAssetID);
-
-		if (Arguments.Contains(TEXT("LegacyDependencies")))
-		{
-			EDependencyCategory CategoryTypes[] = { EDependencyCategory::Package, EDependencyCategory::Package,EDependencyCategory::SearchableName,EDependencyCategory::Manage, EDependencyCategory::Manage, EDependencyCategory::None };
-			EDependencyQuery CategoryQueries[] = { EDependencyQuery::Hard, EDependencyQuery::Soft, EDependencyQuery::NoRequirements, EDependencyQuery::Direct, EDependencyQuery::Indirect, EDependencyQuery::NoRequirements };
-			const TCHAR* CategoryNames[] = { TEXT("Hard"), TEXT("Soft"), TEXT("SearchableName"), TEXT("HardManage"), TEXT("SoftManage"), TEXT("References") };
-			const int NumCategories = UE_ARRAY_COUNT(CategoryTypes);
-			check(NumCategories == UE_ARRAY_COUNT(CategoryNames) && NumCategories == UE_ARRAY_COUNT(CategoryQueries));
-
-			TArray<FDependsNode*> Links;
-			for (const FDependsNode* Node : Nodes)
-			{
-				PageBuffer.Append(TEXT("	"));
-				Node->GetIdentifier().AppendString(PageBuffer);
-				AddLine();
-				for (int CategoryIndex = 0; CategoryIndex < NumCategories; ++CategoryIndex)
-				{
-					EDependencyCategory CategoryType = CategoryTypes[CategoryIndex];
-					EDependencyQuery CategoryQuery = CategoryQueries[CategoryIndex];
-					const TCHAR* CategoryName = CategoryNames[CategoryIndex];
-					Links.Reset();
-					if (CategoryType != EDependencyCategory::None)
-					{
-						Node->GetDependencies(Links, CategoryType, CategoryQuery);
-					}
-					else
-					{
-						Node->GetReferencers(Links);
-					}
-					if (Links.Num() > 0)
-					{
-						PageBuffer.Appendf(TEXT("		%s"), CategoryName);
-						AddLine();
-						Links.Sort(SortByAssetID);
-						for (FDependsNode* LinkNode : Links)
-						{
-							PageBuffer.Append(TEXT("			"));
-							LinkNode->GetIdentifier().AppendString(PageBuffer);
-							AddLine();
-						}
-					}
-				}
-			}
-		}
-		else
-		{
-			EDependencyCategory CategoryTypes[] = { EDependencyCategory::Package, EDependencyCategory::SearchableName,EDependencyCategory::Manage, EDependencyCategory::None };
-			const TCHAR* CategoryNames[] = { TEXT("Package"), TEXT("SearchableName"), TEXT("Manage"), TEXT("References") };
-			const int NumCategories = UE_ARRAY_COUNT(CategoryTypes);
-			check(NumCategories == UE_ARRAY_COUNT(CategoryNames));
-
-			TArray<FAssetDependency> Dependencies;
-			TArray<FDependsNode*> References;
-			for (const FDependsNode* Node : Nodes)
-			{
-				PageBuffer.Append(TEXT("	"));
-				Node->GetIdentifier().AppendString(PageBuffer);
-				AddLine();
-				for (int CategoryIndex = 0; CategoryIndex < NumCategories; ++CategoryIndex)
-				{
-					EDependencyCategory CategoryType = CategoryTypes[CategoryIndex];
-					const TCHAR* CategoryName = CategoryNames[CategoryIndex];
-					if (CategoryType != EDependencyCategory::None)
-					{
-						Dependencies.Reset();
-						Node->GetDependencies(Dependencies, CategoryType);
-						if (Dependencies.Num() > 0)
-						{
-							PageBuffer.Appendf(TEXT("		%s"), CategoryName);
-							AddLine();
-							Dependencies.Sort([](const FAssetDependency& A, const FAssetDependency& B) { return A.AssetId.ToString() < B.AssetId.ToString(); });
-							for (const FAssetDependency& AssetDependency : Dependencies)
-							{
-								PageBuffer.Append(TEXT("			"));
-								AssetDependency.AssetId.AppendString(PageBuffer);
-								PageBuffer.Append(TEXT("\t\t{"));
-								PropertiesToString(AssetDependency.Properties, PageBuffer, AssetDependency.Category);
-								PageBuffer.Append(TEXT("}"));
-								AddLine();
-							}
-						}
-					}
-					else
-					{
-						References.Reset();
-						Node->GetReferencers(References);
-						if (References.Num() > 0)
-						{
-							PageBuffer.Appendf(TEXT("		%s"), CategoryName);
-							AddLine();
-							References.Sort(SortByAssetID);
-							for (const FDependsNode* Reference : References)
-							{
-								PageBuffer.Append(TEXT("			"));
-								Reference->GetIdentifier().AppendString(PageBuffer);
-								AddLine();
-							}
-						}
-					}
-				}
-			}
-		}
-
-		PageBuffer.Appendf(TEXT("--- End CachedDependsNodes : %d entries ---"), CachedDependsNodes.Num());
-		AddLine();
-	}
 	if (Arguments.Contains(TEXT("PackageData")))
 	{
-		PageBuffer.Append(TEXT("--- Begin CachedPackageData ---"));
-		AddLine();
+		OutLines.Add(FString::Printf(TEXT("--- Begin CachedPackageData ---")));
 
 		TArray<FName> Keys;
 		CachedPackageData.GenerateKeyArray(Keys);
@@ -2213,28 +1780,11 @@ void FAssetRegistryState::Dump(const TArray<FString>& Arguments, TArray<FString>
 		for (const FName& Key : Keys)
 		{
 			const FAssetPackageData* PackageData = CachedPackageData.FindChecked(Key);
-			PageBuffer.Append(TEXT("	"));
-			Key.AppendString(PageBuffer);
-			PageBuffer.Append(TEXT(" : "));
-			PageBuffer.Append(PackageData->PackageGuid.ToString()); // TODO: Add AppendString for Guid
-			PageBuffer.Appendf(TEXT(" : %d bytes"), PackageData->DiskSize);
-			AddLine();
+			OutLines.Add(FString::Printf(TEXT("	%s : %s : %d bytes"),
+					*Key.ToString(), *PackageData->PackageGuid.ToString(), PackageData->DiskSize));
 		}
 
-		PageBuffer.Appendf(TEXT("--- End CachedPackageData : %d entries ---"), CachedPackageData.Num());
-		AddLine();
-	}
-
-	if (PageBuffer.Len() > 0)
-	{
-		if (LinesPerPage == 1)
-		{
-			AddLine();
-		}
-		else
-		{
-			FinishPage();
-		}
+		OutLines.Add(FString::Printf(TEXT("--- End CachedPackageData : %d entries ---"), CachedPackageData.Num()));
 	}
 }
 

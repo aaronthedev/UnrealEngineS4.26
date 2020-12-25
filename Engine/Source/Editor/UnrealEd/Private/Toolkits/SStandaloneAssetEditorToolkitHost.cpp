@@ -1,7 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Toolkits/SStandaloneAssetEditorToolkitHost.h"
-#include "Toolkits/AssetEditorToolkitMenuContext.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Misc/ConfigCacheIni.h"
@@ -46,12 +45,70 @@ void SStandaloneAssetEditorToolkitHost::SetupInitialContent( const TSharedRef<FT
 	const FName AssetEditorMenuName = GetMenuName();
 	if (!UToolMenus::Get()->IsMenuRegistered(AssetEditorMenuName))
 	{
-		UToolMenu* Menu = UToolMenus::Get()->RegisterMenu(AssetEditorMenuName, "MainFrame.MainMenu");
+		UToolMenus::Get()->RegisterMenu(AssetEditorMenuName, "MainFrame.MainMenu");
+	}
 
-		if (bCreateDefaultStandaloneMenu)
+	if (bCreateDefaultStandaloneMenu)
+	{
+		struct Local
 		{
-			CreateDefaultStandaloneMenuBar(Menu);
+			static void FillFileMenu( FMenuBuilder& MenuBuilder, TWeakPtr< FAssetEditorToolkit > AssetEditorToolkitWeak )
+			{
+				auto AssetEditorToolkit( AssetEditorToolkitWeak.Pin().ToSharedRef() );
+				
+				AssetEditorToolkit->FillDefaultFileMenuCommands( MenuBuilder );
+			}
+
+			static void AddAssetMenu( FMenuBarBuilder& MenuBarBuilder, TWeakPtr< FAssetEditorToolkit > AssetEditorToolkitWeak )
+			{
+				MenuBarBuilder.AddPullDownMenu( 
+					LOCTEXT("AssetMenuLabel", "Asset"),		// @todo toolkit major: Either use "Asset", "File", or the asset type name e.g. "Blueprint" (Also update custom pull-down menus)
+					LOCTEXT("AssetMenuLabel_ToolTip", "Opens a menu with commands for managing this asset"),
+					FNewMenuDelegate::CreateStatic( &Local::FillAssetMenu, AssetEditorToolkitWeak ),
+					"Asset");
+
+				auto AssetEditorToolkit( AssetEditorToolkitWeak.Pin().ToSharedRef() );
+			}
+
+			static void FillAssetMenu( FMenuBuilder& MenuBuilder, TWeakPtr< FAssetEditorToolkit > AssetEditorToolkitWeak )
+			{
+				auto AssetEditorToolkit( AssetEditorToolkitWeak.Pin().ToSharedRef() );
+				
+				MenuBuilder.BeginSection("AssetEditorActions", LOCTEXT("ActionsHeading", "Actions") );
+				{
+					AssetEditorToolkit->FillDefaultAssetMenuCommands( MenuBuilder );
+				}
+				MenuBuilder.EndSection();
+			}
+
+			static void ExtendHelpMenu( FMenuBuilder& MenuBuilder, TWeakPtr< FAssetEditorToolkit > AssetEditorToolkitWeak )
+			{
+				auto AssetEditorToolkit( AssetEditorToolkitWeak.Pin().ToSharedRef() );
+
+				MenuBuilder.BeginSection("HelpBrowse", NSLOCTEXT("MainHelpMenu", "Browse", "Browse"));
+				{
+					AssetEditorToolkit->FillDefaultHelpMenuCommands( MenuBuilder );
+				}
+				MenuBuilder.EndSection();
+			}
+		};
+
+		TSharedPtr<FExtender> MenuExtender = MakeShareable(new FExtender());
+
+		auto AssetEditorToolkit = HostedAssetEditorToolkit.ToSharedRef();
+
+		// Add asset-specific menu items to the top of the "File" menu
+		MenuExtender->AddMenuExtension( "FileLoadAndSave", EExtensionHook::First, AssetEditorToolkit->GetToolkitCommands(), FMenuExtensionDelegate::CreateStatic( &Local::FillFileMenu, TWeakPtr< FAssetEditorToolkit >( AssetEditorToolkit ) ) );
+
+		// Add the "Asset" menu, if we're editing an asset
+		if (AssetEditorToolkit->IsActuallyAnAsset())
+		{
+			MenuExtender->AddMenuBarExtension( "Edit", EExtensionHook::After, AssetEditorToolkit->GetToolkitCommands(), FMenuBarExtensionDelegate::CreateStatic( &Local::AddAssetMenu, TWeakPtr< FAssetEditorToolkit >( AssetEditorToolkit ) ) );
 		}
+
+		MenuExtender->AddMenuExtension( "HelpOnline", EExtensionHook::Before, AssetEditorToolkit->GetToolkitCommands(), FMenuExtensionDelegate::CreateStatic( &Local::ExtendHelpMenu, TWeakPtr< FAssetEditorToolkit >( AssetEditorToolkit ) ) );
+
+		MenuExtenders.Add(MenuExtender);
 	}
 
 	DefaultMenuWidget = SNullWidget::NullWidget;
@@ -60,65 +117,6 @@ void SStandaloneAssetEditorToolkitHost::SetupInitialContent( const TSharedRef<FT
 
 	RestoreFromLayout(DefaultLayout);
 	GenerateMenus(bCreateDefaultStandaloneMenu);
-}
-
-void SStandaloneAssetEditorToolkitHost::CreateDefaultStandaloneMenuBar(UToolMenu* MenuBar)
-{
-	struct Local
-	{
-		static void ExtendFileMenu(UToolMenu* InMenuBar)
-		{
-			const FName MenuName = *(InMenuBar->GetMenuName().ToString() + TEXT(".") + TEXT("File"));
-			UToolMenu* Menu = UToolMenus::Get()->ExtendMenu(MenuName);
-			FToolMenuSection& Section = Menu->FindOrAddSection("FileLoadAndSave");
-			Section.AddDynamicEntry(NAME_None, FNewToolMenuSectionDelegate::CreateLambda([](FToolMenuSection& InSection)
-			{
-				InSection.FindContext<UAssetEditorToolkitMenuContext>()->Toolkit.Pin()->FillDefaultFileMenuCommands(InSection);
-			}));
-		}
-
-		static void FillAssetMenu(UToolMenu* InMenu)
-		{
-			FToolMenuSection& Section = InMenu->AddSection("AssetEditorActions", LOCTEXT("ActionsHeading", "Actions"));
-			Section.AddDynamicEntry(NAME_None, FNewToolMenuSectionDelegate::CreateLambda([](FToolMenuSection& InSection)
-			{
-				InSection.FindContext<UAssetEditorToolkitMenuContext>()->Toolkit.Pin()->FillDefaultAssetMenuCommands(InSection);
-			}));
-		}
-
-		static void ExtendHelpMenu(UToolMenu* InMenuBar)
-		{
-			const FName MenuName = *(InMenuBar->GetMenuName().ToString() + TEXT(".") + TEXT("Help"));
-			UToolMenu* Menu = UToolMenus::Get()->ExtendMenu(MenuName);
-			FToolMenuSection& Section = Menu->AddSection("HelpBrowse", NSLOCTEXT("MainHelpMenu", "Browse", "Browse"));
-			Section.InsertPosition = FToolMenuInsert("HelpOnline", EToolMenuInsertType::Before);
-			Section.AddDynamicEntry(NAME_None, FNewToolMenuSectionDelegate::CreateLambda([](FToolMenuSection& InSection)
-			{
-				InSection.FindContext<UAssetEditorToolkitMenuContext>()->Toolkit.Pin()->FillDefaultHelpMenuCommands(InSection);
-			}));
-		}
-	};
-
-	// Add asset-specific menu items to the top of the "File" menu
-	Local::ExtendFileMenu(MenuBar);
-
-	// Add the "Asset" menu, if we're editing an asset
-	MenuBar->FindOrAddSection(NAME_None).AddDynamicEntry("DynamicAssetEntry", FNewToolMenuSectionDelegate::CreateLambda([](FToolMenuSection& InSection)
-	{
-		UAssetEditorToolkitMenuContext* Context = InSection.FindContext<UAssetEditorToolkitMenuContext>();
-		if (Context->Toolkit.Pin()->IsActuallyAnAsset())
-		{
-			InSection.AddSubMenu(
-				"Asset",
-				LOCTEXT("AssetMenuLabel", "Asset"),		// @todo toolkit major: Either use "Asset", "File", or the asset type name e.g. "Blueprint" (Also update custom pull-down menus)
-				LOCTEXT("AssetMenuLabel_ToolTip", "Opens a menu with commands for managing this asset"),
-				FNewToolMenuDelegate::CreateStatic(&Local::FillAssetMenu)
-				).InsertPosition = FToolMenuInsert("Edit", EToolMenuInsertType::After);
-		}
-	}));
-
-	// Add asset-specific menu items to the "Help" menu
-	Local::ExtendHelpMenu(MenuBar);
 }
 
 
@@ -201,11 +199,7 @@ void SStandaloneAssetEditorToolkitHost::GenerateMenus(bool bForceCreateMenu)
 	if( bForceCreateMenu || DefaultMenuWidget != SNullWidget::NullWidget )
 	{
 		const FName AssetEditorMenuName = GetMenuName();
-
-		UAssetEditorToolkitMenuContext* ContextObject = NewObject<UAssetEditorToolkitMenuContext>();
-		ContextObject->Toolkit = HostedAssetEditorToolkit;
-		FToolMenuContext ToolMenuContext(HostedAssetEditorToolkit->GetToolkitCommands(), FExtender::Combine(MenuExtenders).ToSharedRef(), ContextObject);
-		HostedAssetEditorToolkit->InitToolMenuContext(ToolMenuContext);
+		FToolMenuContext ToolMenuContext(HostedAssetEditorToolkit->GetToolkitCommands(), FExtender::Combine(MenuExtenders).ToSharedRef());
 		IMainFrameModule& MainFrameModule = FModuleManager::LoadModuleChecked<IMainFrameModule>( "MainFrame" );
 		DefaultMenuWidget = MainFrameModule.MakeMainMenu( MyTabManager, AssetEditorMenuName, ToolMenuContext );
 
@@ -235,18 +229,6 @@ TSharedRef< SWidget > SStandaloneAssetEditorToolkitHost::GetParentWidget()
 
 void SStandaloneAssetEditorToolkitHost::BringToFront()
 {
-	// If our host window is not active, force it to front to ensure the tab will be visible
-	// The tab manager won't activate a tab on an inactive window in all cases
-	const TSharedPtr<SDockTab> HostTab = HostTabPtr.Pin();
-	if (HostTab.IsValid())
-	{
-		TSharedPtr<SWindow> ParentWindow = HostTab->GetParentWindow();
-		if (ParentWindow.IsValid() && !ParentWindow->IsActive())
-		{
-			ParentWindow->BringToFront();
-		}
-	}
-
 	FGlobalTabmanager::Get()->DrawAttentionToTabManager( this->MyTabManager.ToSharedRef() );
 }
 

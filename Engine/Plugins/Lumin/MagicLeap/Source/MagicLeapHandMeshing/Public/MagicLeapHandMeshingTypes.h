@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,7 +7,7 @@
 
 /** Stores a hand mesh's vertices and indices. */
 USTRUCT(BlueprintType)
-struct MAGICLEAPHANDMESHING_API FMagicLeapHandMeshBlock
+struct FMagicLeapHandMeshBlock
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -30,7 +30,7 @@ struct MAGICLEAPHANDMESHING_API FMagicLeapHandMeshBlock
 
 /** Stores MLHandMeshBlock data. */
 USTRUCT(BlueprintType)
-struct MAGICLEAPHANDMESHING_API FMagicLeapHandMesh
+struct FMagicLeapHandMesh
 {
 	GENERATED_USTRUCT_BODY()
 

@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "ParserHelper.h"
 #include "UnrealHeaderTool.h"
-#include "Algo/Find.h"
 #include "Misc/DefaultValueHelper.h"
 
 /////////////////////////////////////////////////////
@@ -19,13 +18,12 @@
  *			is declared in a package that is already compiled and has had its
  *			source stripped)
  */
-FTokenData* FClassMetaData::FindTokenData( FProperty* Prop )
+FTokenData* FClassMetaData::FindTokenData( UProperty* Prop )
 {
 	check(Prop);
 
 	FTokenData* Result = nullptr;
-	UObject* Outer = Prop->GetOwner<UObject>();
-	check(Outer);
+	UObject* Outer = Prop->GetOuter();
 	UClass* OuterClass = nullptr;
 	if (Outer->IsA<UStruct>())
 	{
@@ -83,9 +81,9 @@ FTokenData* FClassMetaData::FindTokenData( FProperty* Prop )
 	return Result;
 }
 
-void FClassMetaData::AddInheritanceParent(FString&& InParent, FUnrealSourceFile* UnrealSourceFile)
+void FClassMetaData::AddInheritanceParent(const FString& InParent, FUnrealSourceFile* UnrealSourceFile)
 {
-	MultipleInheritanceParents.Add(new FMultipleInheritanceBaseClass(MoveTemp(InParent)));
+	MultipleInheritanceParents.Add(new FMultipleInheritanceBaseClass(InParent));
 }
 
 void FClassMetaData::AddInheritanceParent(UClass* ImplementedInterfaceClass, FUnrealSourceFile* UnrealSourceFile)
@@ -129,7 +127,6 @@ const TCHAR* FPropertyBase::GetPropertyTypeText( EPropertyType Type )
 		CASE_TEXT(CPT_LazyObjectReference);
 		CASE_TEXT(CPT_Map);
 		CASE_TEXT(CPT_Set);
-		CASE_TEXT(CPT_FieldPath);
 		CASE_TEXT(CPT_MAX);
 	}
 
@@ -144,50 +141,29 @@ const TCHAR* FPropertyBase::GetPropertyTypeText( EPropertyType Type )
  *
  * @param	Other	the token to copy this token's properties to.
  */
-FToken& FToken::operator=(const FToken& Other)
+void FToken::Clone( const FToken& Other )
 {
-	FPropertyBase::operator=((FPropertyBase&)Other);
+	// none of FPropertyBase's members require special handling
+	(FPropertyBase&)*this	= (FPropertyBase&)Other;
 
 	TokenType = Other.TokenType;
 	TokenName = Other.TokenName;
-	bTokenNameInitialized = Other.bTokenNameInitialized;
 	StartPos = Other.StartPos;
 	StartLine = Other.StartLine;
 	TokenProperty = Other.TokenProperty;
 
 	FCString::Strncpy(Identifier, Other.Identifier, NAME_SIZE);
 	FMemory::Memcpy(String, Other.String, sizeof(String));
-
-	return *this;
-}
-
-FToken& FToken::operator=(FToken&& Other)
-{
-	FPropertyBase::operator=(MoveTemp(Other));
-
-	TokenType = Other.TokenType;
-	TokenName = Other.TokenName;
-	bTokenNameInitialized = Other.bTokenNameInitialized;
-	StartPos = Other.StartPos;
-	StartLine = Other.StartLine;
-	TokenProperty = Other.TokenProperty;
-
-	FCString::Strncpy(Identifier, Other.Identifier, NAME_SIZE);
-	FMemory::Memcpy(String, Other.String, sizeof(String));
-
-	return *this;
 }
 
 /////////////////////////////////////////////////////
 // FAdvancedDisplayParameterHandler
-static const FName NAME_AdvancedDisplay(TEXT("AdvancedDisplay"));
-
 FAdvancedDisplayParameterHandler::FAdvancedDisplayParameterHandler(const TMap<FName, FString>* MetaData)
 	: NumberLeaveUnmarked(-1), AlreadyLeft(0), bUseNumber(false)
 {
 	if(MetaData)
 	{
-		const FString* FoundString = MetaData->Find(NAME_AdvancedDisplay);
+		const FString* FoundString = MetaData->Find(FName(TEXT("AdvancedDisplay")));
 		if(FoundString)
 		{
 			FoundString->ParseIntoArray(ParametersNames, TEXT(","), true);
@@ -253,9 +229,9 @@ FFunctionData* FFunctionData::Add(UFunction* Function)
 	return &Output.Get();
 }
 
-FFunctionData* FFunctionData::Add(FFuncInfo&& FunctionInfo)
+FFunctionData* FFunctionData::Add(const FFuncInfo& FunctionInfo)
 {
-	TUniqueObj<FFunctionData>& Output = FunctionDataMap.Emplace(FunctionInfo.FunctionReference, MoveTemp(FunctionInfo));
+	TUniqueObj<FFunctionData>& Output = FunctionDataMap.Emplace(FunctionInfo.FunctionReference, FunctionInfo);
 
 	return &Output.Get();
 }
@@ -284,15 +260,7 @@ FClassMetaData* FCompilerMetadataManager::AddClassData(UStruct* Struct, FUnrealS
 	return pClassData->Get();
 }
 
-FClassMetaData* FCompilerMetadataManager::AddInterfaceClassData(UStruct* Struct, FUnrealSourceFile* UnrealSourceFile)
-{
-	FClassMetaData* ClassData = AddClassData(Struct, UnrealSourceFile);
-	ClassData->ParsedInterface = EParsedInterface::ParsedUInterface;
-	InterfacesToVerify.Emplace(Struct, ClassData);
-	return ClassData;
-}
-
-FTokenData* FPropertyData::Set(FProperty* InKey, FTokenData&& InValue, FUnrealSourceFile* UnrealSourceFile)
+FTokenData* FPropertyData::Set(UProperty* InKey, const FTokenData& InValue, FUnrealSourceFile* UnrealSourceFile)
 {
 	FTokenData* Result = NULL;
 
@@ -300,26 +268,41 @@ FTokenData* FPropertyData::Set(FProperty* InKey, FTokenData&& InValue, FUnrealSo
 	if (pResult != NULL)
 	{
 		Result = pResult->Get();
-		*Result = MoveTemp(InValue);
+		*Result = FTokenData(InValue);
 	}
 	else
 	{
-		pResult = &Super::Emplace(InKey, new FTokenData(MoveTemp(InValue)));
+		pResult = &Super::Emplace(InKey, new FTokenData(InValue));
 		Result = pResult->Get();
 	}
 
 	return Result;
 }
 
-void FCompilerMetadataManager::CheckForNoIInterfaces()
+const TCHAR* FNameLookupCPP::GetNameCPP(UStruct* Struct, bool bForceInterface /*= false */)
 {
-	for (const TPair<UStruct*, FClassMetaData*>& StructDataPair : InterfacesToVerify)
+	TCHAR* NameCPP = StructNameMap.FindRef(Struct);
+	if (NameCPP && !bForceInterface)
 	{
-		if (StructDataPair.Value->ParsedInterface == EParsedInterface::ParsedUInterface)
-		{
-			FString Name = StructDataPair.Key->GetName();
-			FError::Throwf(TEXT("UInterface 'U%s' parsed without a corresponding 'I%s'"), *Name, *Name);
-		}
+		return NameCPP;
 	}
-	InterfacesToVerify.Reset();
+
+	FString DesiredStructName = Struct->GetName();
+	FString	TempName = FString(bForceInterface ? TEXT("I") : Struct->GetPrefixCPP()) + DesiredStructName;
+	int32 StringLength = TempName.Len();
+
+	NameCPP = new TCHAR[StringLength + 1];
+	FCString::Strcpy(NameCPP, StringLength + 1, *TempName);
+	NameCPP[StringLength] = 0;
+
+	if (bForceInterface)
+	{
+		InterfaceAllocations.Add(NameCPP);
+	}
+	else
+	{
+		StructNameMap.Add(Struct, NameCPP);
+	}
+
+	return NameCPP;
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MediaSource.h"
 
@@ -68,12 +68,6 @@ FString UMediaSource::GetMediaOption(const FName& Key, const FString& DefaultVal
 
 
 FText UMediaSource::GetMediaOption(const FName& Key, const FText& DefaultValue) const
-{
-	return DefaultValue;
-}
-
-
-TSharedPtr<IMediaOptions::FDataContainer, ESPMode::ThreadSafe> UMediaSource::GetMediaOption(const FName& Key, const TSharedPtr<FDataContainer, ESPMode::ThreadSafe>& DefaultValue) const
 {
 	return DefaultValue;
 }

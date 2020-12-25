@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DesktopPlatformBase.h"
 #include "HAL/FileManager.h"
@@ -558,7 +558,7 @@ bool FDesktopPlatformBase::CleanGameProject(const FString& ProjectDir, FString& 
 	return true;
 }
 
-bool FDesktopPlatformBase::CompileGameProject(const FString& RootDir, const FString& ProjectFileName, FFeedbackContext* Warn, ECompilationResult::Type* OutResult)
+bool FDesktopPlatformBase::CompileGameProject(const FString& RootDir, const FString& ProjectFileName, FFeedbackContext* Warn)
 {
 	FModuleManager& ModuleManager = FModuleManager::Get();
 
@@ -576,15 +576,10 @@ bool FDesktopPlatformBase::CompileGameProject(const FString& RootDir, const FStr
 	}
 
 	// Append any other options
-	Arguments += " -Progress -NoEngineChanges -NoHotReloadFromIDE";
+	Arguments += " -Progress -NoHotReloadFromIDE";
 
 	// Run UBT
-	int32 ExitCode;
-	bool bResult = static_cast<IDesktopPlatform*>(this)->RunUnrealBuildTool(LOCTEXT("CompilingProject", "Compiling project..."), RootDir, Arguments, Warn, ExitCode);
-	if (OutResult != nullptr)
-	{
-		*OutResult = (ECompilationResult::Type)ExitCode;
-	}
+	bool bResult = RunUnrealBuildTool(LOCTEXT("CompilingProject", "Compiling project..."), RootDir, Arguments, Warn);
 
 	// Reset module paths in case they have changed during compilation
 	ModuleManager.ResetModulePathsCache();
@@ -754,12 +749,6 @@ FProcHandle FDesktopPlatformBase::InvokeUnrealBuildToolAsync(const FString& InCm
 	return ProcHandle;
 }
 
-bool FDesktopPlatformBase::RunUnrealBuildTool(const FText& Description, const FString& RootDir, const FString& Arguments, FFeedbackContext* Warn)
-{
-	int32 ExitCode;
-	return static_cast<IDesktopPlatform*>(this)->RunUnrealBuildTool(Description, RootDir, Arguments, Warn, ExitCode);
-}
-
 struct FTargetFileVisitor : IPlatformFile::FDirectoryStatVisitor
 {
 	TSet<FString>& RemainingTargetNames;
@@ -806,12 +795,6 @@ struct FTargetFileVisitor : IPlatformFile::FDirectoryStatVisitor
 
 bool IsTargetInfoValid(const TArray<FTargetInfo>& Targets, const FString& SourceDir, const FDateTime& LastModifiedTime)
 {
-	if (FApp::GetEngineIsPromotedBuild())
-	{
-		// Promoted builds may not have source code, so we will assume all supplied targets are valid since they will not appear on disk
-		return true;
-	}
-
 	// Create the state 
 	TSet<FString> RemainingTargetNames;
 	for (const FTargetInfo& Target : Targets)
@@ -862,7 +845,12 @@ const TArray<FTargetInfo>& FDesktopPlatformBase::GetTargetsForProject(const FStr
 		ProjectDir = FPaths::GetPath(ProjectFile);
 	}
 
+	// Get the project source directory. If it doesn't exist, there are no targets for this project.
 	FString ProjectSourceDir = ProjectDir / TEXT("Source");
+	if (!IFileManager::Get().DirectoryExists(*ProjectSourceDir))
+	{
+		return ProjectFileToTargets.Add(NormalizedProjectFile, TArray<FTargetInfo>());
+	}
 
 	// Get the path to the info filename
 	FString InfoFileName = ProjectDir / TEXT("Intermediate/TargetInfo.json");
@@ -877,12 +865,6 @@ const TArray<FTargetInfo>& FDesktopPlatformBase::GetTargetsForProject(const FStr
 		{
 			return ProjectFileToTargets.Emplace(MoveTemp(NormalizedProjectFile), MoveTemp(NewTargets));
 		}
-	}
-
-	// Get the project source directory. If it doesn't exist, there are no targets for this project.
-	if (!IFileManager::Get().DirectoryExists(*ProjectSourceDir))
-	{
-		return ProjectFileToTargets.Add(NormalizedProjectFile, TArray<FTargetInfo>());
 	}
 
 	// Otherwise, we'll have to run UBT to update it

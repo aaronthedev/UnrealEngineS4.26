@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_Arnold_ProcArgs_h
-#define Alembic_Arnold_ProcArgs_h
+#ifndef _Alembic_Arnold_ProcArgs_h_
+#define _Alembic_Arnold_ProcArgs_h_
 
 #include <ai.h>
 #include <string>

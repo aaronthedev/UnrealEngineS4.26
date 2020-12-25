@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Misc/BlacklistNames.h"
 
 #include "ToolMenuBase.generated.h"
 
@@ -74,8 +73,6 @@ struct SLATE_API FCustomizedToolMenu
 	UPROPERTY()
 	TArray<FName> SectionOrder;
 
-	FBlacklistNames BlacklistFilter;
-
 	FCustomizedToolMenuEntry* FindEntry(const FName InEntryName);
 	const FCustomizedToolMenuEntry* FindEntry(const FName InEntryName) const;
 	FCustomizedToolMenuEntry* AddEntry(const FName InEntryName);
@@ -100,7 +97,6 @@ struct SLATE_API FCustomizedToolMenuHierarchy
 	FCustomizedToolMenu GenerateFlattened() const;
 
 	TArray<const FCustomizedToolMenu*> Hierarchy;
-	TArray<const FCustomizedToolMenu*> RuntimeHierarchy;
 };
 
 UCLASS(Abstract)

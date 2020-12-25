@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -95,7 +95,6 @@ public:
 	float AdjustMaxAlpha;
 
 #if WITH_EDITORONLY_DATA
-	UE_DEPRECATED(4.26, "OnUpdateGradient is deprecated. Please use UCurveBase::OnUpdateCurve instead")
 	FOnUpdateGradient OnUpdateGradient;
 #endif
 protected:

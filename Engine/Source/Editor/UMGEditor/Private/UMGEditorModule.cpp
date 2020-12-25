@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UMGEditorModule.h"
 #include "Modules/ModuleManager.h"
@@ -24,7 +24,6 @@
 #include "Animation/MovieSceneSequenceEditor_WidgetAnimation.h"
 #include "IUMGModule.h"
 #include "Designer/DesignerCommands.h"
-#include "Navigation/SWidgetDesignerNavigation.h"
 
 #include "ClassIconFinder.h"
 
@@ -60,11 +59,9 @@ public:
 			FDesignerCommands::Register();
 		}
 
-		MenuExtensibilityManager = MakeShared<FExtensibilityManager>();
-		ToolBarExtensibilityManager = MakeShared<FExtensibilityManager>();
-		DesignerExtensibilityManager = MakeShared<FDesignerExtensibilityManager>();
-
-		DesignerExtensibilityManager->AddDesignerExtensionFactory(SWidgetDesignerNavigation::MakeDesignerExtension());
+		MenuExtensibilityManager = MakeShareable(new FExtensibilityManager());
+		ToolBarExtensibilityManager = MakeShareable(new FExtensibilityManager());
+		DesignerExtensibilityManager = MakeShareable(new FDesignerExtensibilityManager());
 
 		// Register widget blueprint compiler we do this no matter what.
 		IKismetCompilerInterface& KismetCompilerModule = FModuleManager::LoadModuleChecked<IKismetCompilerInterface>("KismetCompiler");
@@ -174,11 +171,6 @@ public:
 		{
 			Collector.AddReferencedObject(Settings);
 		}
-	}
-
-	virtual FString GetReferencerName() const override
-	{
-		return "FUMGEditorModule";
 	}
 
 	virtual FWidgetBlueprintCompiler* GetRegisteredCompiler() override

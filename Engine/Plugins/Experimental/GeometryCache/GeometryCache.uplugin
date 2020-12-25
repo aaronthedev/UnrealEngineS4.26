@@ -22,8 +22,7 @@
 			"LoadingPhase" : "Default",
 			"WhitelistPlatforms" :
 			[
-				"Win64",
-				"Mac"
+				"Win64"
 			]
 		},
 		{
@@ -32,19 +31,7 @@
 			"LoadingPhase" : "Default",
 			"WhitelistPlatforms" :
 			[
-				"Win64",
-				"Mac"
-			]
-		},
-		{
-			"Name" : "GeometryCacheStreamer",
-			"Type" : "Editor",
-			"LoadingPhase" : "Default",
-			"WhitelistPlatforms" :
-			[
-				"Win64",
-				"Mac",
-				"Linux"
+				"Win64"
 			]
 		},
 		{

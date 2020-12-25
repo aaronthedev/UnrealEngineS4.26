@@ -1,11 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Lightmass/LightmassImportanceVolume.h"
 #include "Engine/CollisionProfile.h"
 #include "Components/BrushComponent.h"
-#if WITH_EDITOR
-#include "Rendering/StaticLightingSystemInterface.h"
-#endif
+
 
 ALightmassImportanceVolume::ALightmassImportanceVolume(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -20,18 +18,3 @@ ALightmassImportanceVolume::ALightmassImportanceVolume(const FObjectInitializer&
 
 }
 
-#if WITH_EDITOR
-void ALightmassImportanceVolume::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
-{
-	Super::PostEditChangeProperty(PropertyChangedEvent);
-
-	FStaticLightingSystemInterface::OnLightmassImportanceVolumeModified.Broadcast();
-}
-
-void ALightmassImportanceVolume::PostEditMove(bool bFinished)
-{
-	Super::PostEditMove(bFinished);
-
-	FStaticLightingSystemInterface::OnLightmassImportanceVolumeModified.Broadcast();
-}
-#endif

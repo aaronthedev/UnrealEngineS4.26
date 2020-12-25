@@ -1,25 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ProxyLODMeshConvertUtils.h" 
 #include "ProxyLODMeshUtilities.h"
 
-#include "StaticMeshOperations.h"
-
-
-static void ResetStaticMeshDescription(FMeshDescription& MeshDecription)
-{
-	MeshDecription.Empty();
-	FStaticMeshAttributes Attributes(MeshDecription);
-	Attributes.Register();
-}
+#include "MeshDescriptionOperations.h"
 
 // Convert QuadMesh to Triangles by splitting
 void ProxyLOD::MixedPolyMeshToRawMesh(const FMixedPolyMesh& SimpleMesh, FMeshDescription& DstRawMesh)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(ProxyLOD::MixedPolyMeshToRawMesh)
-
-	ResetStaticMeshDescription(DstRawMesh);
-
 	TVertexAttributesRef<FVector> VertexPositions = DstRawMesh.VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
 	TEdgeAttributesRef<bool> EdgeHardnesses = DstRawMesh.EdgeAttributes().GetAttributesRef<bool>(MeshAttribute::Edge::IsHard);
 	TEdgeAttributesRef<float> EdgeCreaseSharpnesses = DstRawMesh.EdgeAttributes().GetAttributesRef<float>(MeshAttribute::Edge::CreaseSharpness);
@@ -132,9 +120,6 @@ void ProxyLOD::MixedPolyMeshToRawMesh(const FMixedPolyMesh& SimpleMesh, FMeshDes
 
 void ProxyLOD::AOSMeshToRawMesh(const FAOSMesh& AOSMesh, FMeshDescription& OutRawMesh)
 {
-
-	ResetStaticMeshDescription(OutRawMesh);
-
 	TVertexAttributesRef<FVector> VertexPositions = OutRawMesh.VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
 	TEdgeAttributesRef<bool> EdgeHardnesses = OutRawMesh.EdgeAttributes().GetAttributesRef<bool>(MeshAttribute::Edge::IsHard);
 	TEdgeAttributesRef<float> EdgeCreaseSharpnesses = OutRawMesh.EdgeAttributes().GetAttributesRef<float>(MeshAttribute::Edge::CreaseSharpness);
@@ -224,8 +209,6 @@ void ProxyLOD::AOSMeshToRawMesh(const FAOSMesh& AOSMesh, FMeshDescription& OutRa
 
 void ProxyLOD::VertexDataMeshToRawMesh(const FVertexDataMesh& SrcVertexDataMesh, FMeshDescription& OutRawMesh)
 {
-	ResetStaticMeshDescription(OutRawMesh);
-
 	TVertexAttributesRef<FVector> VertexPositions = OutRawMesh.VertexAttributes().GetAttributesRef<FVector>(MeshAttribute::Vertex::Position);
 	TEdgeAttributesRef<bool> EdgeHardnesses = OutRawMesh.EdgeAttributes().GetAttributesRef<bool>(MeshAttribute::Edge::IsHard);
 	TEdgeAttributesRef<float> EdgeCreaseSharpnesses = OutRawMesh.EdgeAttributes().GetAttributesRef<float>(MeshAttribute::Edge::CreaseSharpness);
@@ -240,6 +223,12 @@ void ProxyLOD::VertexDataMeshToRawMesh(const FVertexDataMesh& SrcVertexDataMesh,
 	const uint32 DstNumIndexes = SrcVertexDataMesh.Indices.Num();
 	const uint32 SrcNumTriangles = DstNumIndexes / 3;
 	
+	if (VertexInstanceUVs.GetNumIndices() < 2)
+	{
+		//We set the lightmap channel so 2
+		VertexInstanceUVs.SetNumIndices(2);
+	}
+
 	FPolygonGroupID PolygonGroupID = FPolygonGroupID::Invalid;
 	if (OutRawMesh.PolygonGroups().Num() == 0)
 	{
@@ -312,17 +301,21 @@ void ProxyLOD::VertexDataMeshToRawMesh(const FVertexDataMesh& SrcVertexDataMesh,
 			}
 			else
 			{
+				//There is 
 				VertexInstanceColors[VertexInstanceIDs[Corner]] = FVector4(FLinearColor(SrcVertexDataMesh.FaceColors[TriangleIndex]));
 			}
 
-			//UVs
-			if (SrcVertexDataMesh.UVs.Num() == 0)
+			//UVs, copy two time the same value, one for UV_Channel 0 and another for lightmap channel 1
+			for (int32 channel = 0; channel < 2; ++channel)
 			{
-				VertexInstanceUVs.Set(VertexInstanceIDs[Corner], FVector2D(0.0f, 0.0f));
-			}
-			else
-			{
-				VertexInstanceUVs.Set(VertexInstanceIDs[Corner], SrcVertexDataMesh.UVs[SrcIndex]);
+				if (SrcVertexDataMesh.UVs.Num() == 0)
+				{
+					VertexInstanceUVs.Set(VertexInstanceIDs[Corner], channel, FVector2D(0.0f, 0.0f));
+				}
+				else
+				{
+					VertexInstanceUVs.Set(VertexInstanceIDs[Corner], channel, SrcVertexDataMesh.UVs[SrcIndex]);
+				}
 			}
 		}
 
@@ -357,7 +350,7 @@ void ProxyLOD::VertexDataMeshToRawMesh(const FVertexDataMesh& SrcVertexDataMesh,
 		}
 	}
 
-	FStaticMeshOperations::ConvertSmoothGroupToHardEdges(FaceSmoothingMasks, OutRawMesh);
+	FMeshDescriptionOperations::ConvertSmoothGroupToHardEdges(FaceSmoothingMasks, OutRawMesh);
 }
 
 
@@ -448,7 +441,7 @@ void ProxyLOD::RawMeshToVertexDataMesh(const FMeshDescription& SrcRawMesh, FVert
 	TArray<uint32> FaceSmoothingMasks;
 	FaceSmoothingMasks.AddZeroed(NumTriangles);
 
-	FStaticMeshOperations::ConvertHardEdgesToSmoothGroup(SrcRawMesh, FaceSmoothingMasks);
+	FMeshDescriptionOperations::ConvertHardEdgesToSmoothGroup(SrcRawMesh, FaceSmoothingMasks);
 
 	TArray<uint32>& DstFacePartition = DstVertexDataMesh.FacePartition;
 	ResizeArray(DstFacePartition, NumTriangles);
@@ -550,7 +543,6 @@ static void CopyNormals(const TAOSMesh<AOSVertexType>& AOSMesh, FVertexDataMesh&
 template <typename  AOSVertexType>
 static void AOSMeshToVertexDataMesh(const TAOSMesh<AOSVertexType>& AOSMesh, FVertexDataMesh& VertexDataMesh)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(AOSMeshToVertexDataMesh)
 
 	// Copy the topology and geometry of the mesh
 

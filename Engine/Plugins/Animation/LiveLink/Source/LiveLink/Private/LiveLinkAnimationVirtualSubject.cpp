@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LiveLinkAnimationVirtualSubject.h"
 
@@ -11,11 +11,7 @@ namespace LiveLinkAnimationVirtualSubjectUtils
 {
 	void AddToBoneNames(TArray<FName>& BoneNames, const TArray<FName>& NewBoneNames, const FName Prefix)
 	{
-		FString NameFormat;
-		if (Prefix != NAME_None)
-		{
-			NameFormat = Prefix.ToString() + TEXT("_");
-		}
+		FString NameFormat = Prefix.ToString() + TEXT("_");
 
 		BoneNames.Reserve(BoneNames.Num() + NewBoneNames.Num());
 
@@ -83,7 +79,7 @@ bool ULiveLinkAnimationVirtualSubject::AreSubjectsValid(const TArray<FLiveLinkSu
 
 	bool bValid = true;
 
-	for (const FName& SubjectName : Subjects)
+	for (const FName SubjectName : Subjects)
 	{
 		const FLiveLinkSubjectKey* FoundPtr = InActiveSubjects.FindByPredicate(
 			[SubjectName](const FLiveLinkSubjectKey& SubjectData)
@@ -107,7 +103,7 @@ bool ULiveLinkAnimationVirtualSubject::BuildSubjectSnapshot(TArray<FLiveLinkSubj
 
 	bool bSnapshotDone = true;
 
-	for (const FName& SubjectName : Subjects)
+	for (const FName SubjectName : Subjects)
 	{
 		FLiveLinkSubjectFrameData& NextSnapshot = OutSnapshot.AddDefaulted_GetRef();
 		if (!LiveLinkClient->EvaluateFrame_AnyThread(SubjectName, GetRole(), NextSnapshot))
@@ -137,8 +133,7 @@ void ULiveLinkAnimationVirtualSubject::BuildSkeleton(const TArray<FLiveLinkSubje
 			check(SubjectSnapShotData.StaticData.IsValid());
 			const FLiveLinkSkeletonStaticData* SubjectSkeletonData = SubjectSnapShotData.StaticData.Cast<FLiveLinkSkeletonStaticData>();
 
-			const FName BonePrefix = bAppendSubjectNameToBones ? Subjects[i] : NAME_None;
-			LiveLinkAnimationVirtualSubjectUtils::AddToBoneNames(BoneNames, SubjectSkeletonData->GetBoneNames(), BonePrefix);
+			LiveLinkAnimationVirtualSubjectUtils::AddToBoneNames(BoneNames, SubjectSkeletonData->GetBoneNames(), Subjects[i]);
 			LiveLinkAnimationVirtualSubjectUtils::AddToBoneParents(BoneParents, SubjectSkeletonData->GetBoneParents());
 			SkeletonData->PropertyNames.Append(SubjectSkeletonData->PropertyNames);
 		}

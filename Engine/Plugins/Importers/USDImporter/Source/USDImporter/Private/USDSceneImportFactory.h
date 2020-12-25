@@ -1,6 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-#pragma once
+#pragma once 
 
 #include "Factories/SceneImportFactory.h"
 #include "Editor/EditorEngine.h"
@@ -9,12 +9,14 @@
 
 #include "USDSceneImportFactory.generated.h"
 
-class UDEPRECATED_UUSDSceneImportOptions;
+DECLARE_LOG_CATEGORY_EXTERN(LogUSDSceneImport, Log, All);
+
+class UUSDSceneImportOptions;
 class UWorld;
 
 
-UCLASS(transient, Deprecated)
-class UDEPRECATED_UUSDSceneImportFactory : public USceneImportFactory, public IImportSettingsParser
+UCLASS(transient)
+class UUSDSceneImportFactory : public USceneImportFactory, public IImportSettingsParser
 {
 	GENERATED_UCLASS_BODY()
 
@@ -32,7 +34,7 @@ private:
 	UPROPERTY()
 	FUSDSceneImportContext ImportContext;
 
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Use the new USDStageImporter module instead"))
-	UDEPRECATED_UUSDSceneImportOptions* ImportOptions_DEPRECATED;
+	UPROPERTY()
+	UUSDSceneImportOptions* ImportOptions;
 };
 

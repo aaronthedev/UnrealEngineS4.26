@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "FunctionalAITest.h"
 #include "TimerManager.h"
@@ -118,8 +118,9 @@ void AFunctionalAITest::OnTimeout()
 		const FVector TransformedOrigin = GetTransform().TransformPosition(NavMeshDebugOrigin);
 		const FBox DebugBounds = FBox::BuildAABB(TransformedOrigin, NavMeshDebugExtent);
 
-		NavigationOctree->FindElementsWithBoundsTest(DebugBounds, [&AreaFilter, &Navmesh](const FNavigationOctreeElement& Element)
+		for (FNavigationOctree::TConstElementBoxIterator<FNavigationOctree::DefaultStackAllocator> It(*NavigationOctree, DebugBounds); It.HasPendingElements(); It.Advance())
 		{
+			const FNavigationOctreeElement& Element = It.GetCurrentElement();
 			if (Element.IsMatchingFilter(AreaFilter))
 			{
 				const FCompositeNavModifier NavModifier = Element.GetModifierForAgent(&Navmesh->GetConfig());
@@ -134,7 +135,7 @@ void AFunctionalAITest::OnTimeout()
 
 				UE_LOG(LogFunctionalTest, Log, TEXT("> modifier, owner:%s areas:%s"), *GetNameSafe(Element.GetOwner()), *DebugAreaNames);
 			}
-		});
+		}
 	}
 
 	Super::OnTimeout();

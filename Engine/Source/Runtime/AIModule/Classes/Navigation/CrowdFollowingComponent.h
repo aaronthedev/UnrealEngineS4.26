@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
-#include "UObject/WeakInterfacePtr.h"
 #include "EngineDefines.h"
 #include "AITypes.h"
 #include "Navigation/PathFollowingComponent.h"
@@ -13,7 +12,7 @@
 #include "CrowdFollowingComponent.generated.h"
 
 class INavLinkCustomInterface;
-class IRVOAvoidanceInterface;
+class UCharacterMovementComponent;
 class UCrowdManager;
 
 namespace ECrowdAvoidanceQuality
@@ -151,7 +150,8 @@ class AIMODULE_API UCrowdFollowingComponent : public UPathFollowingComponent, pu
 
 protected:
 
-	TWeakInterfacePtr<IRVOAvoidanceInterface> AvoidanceInterface;
+	UPROPERTY(transient)
+	UCharacterMovementComponent* CharacterMovement;
 
 public:
 	UPROPERTY()
@@ -159,19 +159,15 @@ public:
 
 protected:
 #if WITH_EDITORONLY_DATA
-	UE_DEPRECATED(4.26, "This member is deprecated and no longer used. Use AvoidanceInterface instead.")
-	UPROPERTY(transient)
-	class UCharacterMovementComponent* CharacterMovement;
-
-	/** DEPRECATED: Group mask for this agent - use IRVOAvoidanceInterface instead */
+	/** DEPRECATED: Group mask for this agent - use property from CharacterMovementComponent instead */
 	UPROPERTY()
 	FNavAvoidanceMask AvoidanceGroup_DEPRECATED;
 
-	/** DEPRECATED: Will avoid other agents if they are in one of specified groups - use IRVOAvoidanceInterface instead */
+	/** DEPRECATED: Will avoid other agents if they are in one of specified groups - use property from CharacterMovementComponent instead */
 	UPROPERTY()
 	FNavAvoidanceMask GroupsToAvoid_DEPRECATED;
 
-	/** DEPRECATED: Will NOT avoid other agents if they are in one of specified groups, higher priority than GroupsToAvoid - use IRVOAvoidanceInterface instead */
+	/** DEPRECATED: Will NOT avoid other agents if they are in one of specified groups, higher priority than GroupsToAvoid - use property from CharacterMovementComponent instead */
 	UPROPERTY()
 	FNavAvoidanceMask GroupsToIgnore_DEPRECATED;
 #endif

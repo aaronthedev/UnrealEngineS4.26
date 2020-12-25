@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Modules/BuildVersion.h"
 #include "Misc/FileHelper.h"
@@ -18,31 +18,6 @@ FBuildVersion::FBuildVersion()
 {
 }
 
-int FBuildVersion::GetEffectiveCompatibleChangelist() const
-{
-	return (Changelist != 0 && CompatibleChangelist != 0) ? CompatibleChangelist : Changelist;
-}
-
-FEngineVersion FBuildVersion::GetEngineVersion() const
-{
-	int EncodedChangelist = Changelist;
-	if (IsLicenseeVersion)
-	{
-		EncodedChangelist = FEngineVersion::EncodeLicenseeChangelist(EncodedChangelist);
-	}
-	return FEngineVersion((uint16)MajorVersion, (uint16)MinorVersion, (uint16)PatchVersion, EncodedChangelist, BranchName);
-}
-
-FEngineVersion FBuildVersion::GetCompatibleEngineVersion() const
-{
-	int EncodedChangelist = GetEffectiveCompatibleChangelist();
-	if (IsLicenseeVersion)
-	{
-		EncodedChangelist = FEngineVersion::EncodeLicenseeChangelist(EncodedChangelist);
-	}
-	return FEngineVersion((uint16)MajorVersion, (uint16)MinorVersion, (uint16)PatchVersion, EncodedChangelist, BranchName);
-}
-
 FString FBuildVersion::GetDefaultFileName()
 {
 	return FPaths::EngineDir() / TEXT("Build/Build.version");
@@ -54,7 +29,7 @@ FString FBuildVersion::GetFileNameForCurrentExecutable()
 #if PLATFORM_WINDOWS || PLATFORM_MAC
 	if(AppExecutableName.EndsWith(TEXT("-Cmd")))
 	{
-		AppExecutableName.LeftInline(AppExecutableName.Len() - 4, false);
+		AppExecutableName = AppExecutableName.Left(AppExecutableName.Len() - 4);
 	}
 #endif
 #if UE_BUILD_DEVELOPMENT
@@ -68,7 +43,7 @@ FString FBuildVersion::GetFileNameForCurrentExecutable()
 			{
 				break;
 			}
-			AppExecutableName.LeftInline(EndIdx, false);
+			AppExecutableName = AppExecutableName.Left(EndIdx);
 		}
 	}
 #endif

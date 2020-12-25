@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -27,14 +27,8 @@ public:
 
 	void Close();
 
-	/** Return a name for this interface */
-	virtual FString GetName() const override { return Filename; }
-
 	/** return true if this cache is writable **/
 	virtual bool IsWritable() override;
-
-	/** Returns a class of speed for this interface **/
-	virtual ESpeedClass GetSpeedClass() override;
 
 	virtual bool BackfillLowerCacheLevels() override;
 
@@ -62,7 +56,7 @@ public:
 	 * @param	InData		Buffer containing the data to cache, can be destroyed after the call returns, immediately
 	 * @param	bPutEvenIfExists	If true, then do not attempt skip the put even if CachedDataProbablyExists returns true
 	 */
-	virtual void PutCachedData(const TCHAR* CacheKey, TArrayView<const uint8> InData, bool bPutEvenIfExists) override;
+	virtual void PutCachedData(const TCHAR* CacheKey, TArray<uint8>& InData, bool bPutEvenIfExists) override;
 	virtual void RemoveCachedData(const TCHAR* CacheKey, bool bTransient) override;
 
 	/**
@@ -91,12 +85,6 @@ public:
 	static bool SortAndCopy(const FString &InputFilename, const FString &OutputFilename);
 
 	virtual void GatherUsageStats(TMap<FString, FDerivedDataCacheUsageStats>& UsageStatsMap, FString&& GraphPath) override;
-
-	virtual bool TryToPrefetch(const TCHAR* CacheKey) override { return false; }
-
-	virtual bool WouldCache(const TCHAR* CacheKey, TArrayView<const uint8> InData) override { return true; }
-
-	virtual bool ApplyDebugOptions(FBackendDebugOptions& InOptions) override { return false; }
 
 private:
 	FDerivedDataCacheUsageStats UsageStats;
@@ -138,14 +126,8 @@ class FCompressedPakFileDerivedDataBackend : public FPakFileDerivedDataBackend
 public:
 	FCompressedPakFileDerivedDataBackend(const TCHAR* InFilename, bool bInWriting);
 
-	virtual void PutCachedData(const TCHAR* CacheKey, TArrayView<const uint8> InData, bool bPutEvenIfExists) override;
+	virtual void PutCachedData(const TCHAR* CacheKey, TArray<uint8>& InData, bool bPutEvenIfExists) override;
 	virtual bool GetCachedData(const TCHAR* CacheKey, TArray<uint8>& OutData) override;
-
-	/** Returns a class of speed for this interface **/
-	virtual ESpeedClass GetSpeedClass() override
-	{
-		return ESpeedClass::Fast;
-	}
 
 private:
 	static const EName CompressionFormat = NAME_Zlib;

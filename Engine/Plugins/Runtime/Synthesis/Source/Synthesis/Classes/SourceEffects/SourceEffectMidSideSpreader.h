@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -27,13 +27,13 @@ struct SYNTHESIS_API FSourceEffectMidSideSpreaderSettings
 {
 	GENERATED_USTRUCT_BODY()
 
-	// Amount of Mid/Side Spread. 0.0 is no spread, 1.0 is full wide. 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SourceEffect|Preset", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
-	float SpreadAmount;
-
 	// Indicate the channel mode of the input signal
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SourceEffect|Preset")
 	EStereoChannelMode InputMode;
+
+	// Amount of Mid/Side Spread. 0.0 is no spread, 1.0 is full wide. 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SourceEffect|Preset", meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
+	float SpreadAmount;
 
 	// Indicate the channel mode of the output signal
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "SourceEffect|Preset")
@@ -44,8 +44,8 @@ struct SYNTHESIS_API FSourceEffectMidSideSpreaderSettings
 	bool bEqualPower;
 
 	FSourceEffectMidSideSpreaderSettings()
-		: SpreadAmount(0.5f)
-		, InputMode(EStereoChannelMode::LeftRight)
+		: InputMode(EStereoChannelMode::LeftRight)
+		, SpreadAmount(0.5f)
 		, OutputMode(EStereoChannelMode::LeftRight)
 		, bEqualPower(false)
 	{}

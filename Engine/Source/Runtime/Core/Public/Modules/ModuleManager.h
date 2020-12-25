@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -21,10 +21,6 @@
 #if WITH_HOT_RELOAD
 	/** If true, we are reloading a class for HotReload */
 	extern CORE_API bool GIsHotReload;
-#endif
-
-#if WITH_ENGINE
-	extern CORE_API TMap<UClass*, UClass*>& GetClassesToReinstanceForHotReload(); 
 #endif
 
 
@@ -252,11 +248,6 @@ public:
 	void AbandonModuleWithCallback( const FName InModuleName );
 
 	/**
-	 * Add any extra search paths that may be required
-	 */
-	void AddExtraBinarySearchPaths();
-
-	/**
 	  * Gets a module by name, checking to ensure it exists.
 	  *
 	  * This method checks whether the module actually exists. If the module does not exist, an assertion will be triggered.
@@ -271,7 +262,7 @@ public:
 		FModuleManager& ModuleManager = FModuleManager::Get();
 
 		checkf(ModuleManager.IsModuleLoaded(ModuleName), TEXT("Tried to get module interface for unloaded module: '%s'"), *(ModuleName.ToString()));
-		return static_cast<TModuleInterface&>(*ModuleManager.GetModule(ModuleName));
+		return (TModuleInterface&)(*ModuleManager.GetModule(ModuleName));
 	}
 
 private:
@@ -306,7 +297,7 @@ public:
 	static TModuleInterface& LoadModuleChecked( const FName InModuleName)
 	{
 		IModuleInterface& ModuleInterface = FModuleManager::Get().LoadModuleChecked(InModuleName);
-		return static_cast<TModuleInterface&>(ModuleInterface);
+		return (TModuleInterface&)(ModuleInterface);
 	}
 
 	/**
@@ -427,9 +418,6 @@ public:
 
 	/** Determines if any non-default module instances are loaded (eg. hot reloaded modules) */
 	bool HasAnyOverridenModuleFilename() const;
-
-	/** Save the current module manager's state into a file for bootstrapping other processes. */
-	void SaveCurrentStateForBootstrap(const TCHAR* Filename);
 #endif
 
 	/**
@@ -551,7 +539,6 @@ public:
 	/** Clears module path cache */
 	void ResetModulePathsCache();
 
-	friend FArchive& operator<<( FArchive& Ar, FModuleManager& ModuleManager );
 private:
 	static void WarnIfItWasntSafeToLoadHere(const FName InModuleName);
 
@@ -575,9 +562,6 @@ private:
 
 	/** Finds modules within a given directory. */
 	void FindModulePathsInDirectory(const FString &DirectoryName, bool bIsGameDirectory, TMap<FName, FString> &OutModulePaths) const;
-
-	/** Serialize a bootstrapping state into or from an archive. */
-	void SerializeStateForBootstrap_Impl(FArchive& Ar);
 #endif
 
 	/** Adds pending module initializer registrations to the StaticallyLinkedModuleInitializers map. */
@@ -597,9 +581,6 @@ private:
 
 	/** True if module manager should automatically register new UObjects discovered while loading C++ modules */
 	bool bCanProcessNewlyLoadedObjects;
-
-	/** True once AddExtraBinarySearchPaths has been called */
-	bool bExtraBinarySearchPathsAdded;
 
 	/** Cache of known module paths. Used for performance. Can increase editor startup times by up to 30% */
 	mutable TMap<FName, FString> ModulePathsCache;
@@ -629,8 +610,6 @@ private:
 	/** Critical section object controlling R/W access to Modules. */
 	mutable FCriticalSection ModulesCriticalSection;
 };
-
-FArchive& operator<<( FArchive& Ar, FModuleManager& ModuleManager );
 
 /**
  * Utility class for registering modules that are statically linked.
@@ -848,15 +827,6 @@ class FDefaultGameModuleImpl
 		} \
 	} GEncryptionKeyRegistration;
 
-#define IMPLEMENT_TARGET_NAME_REGISTRATION() \
-	struct FTargetNameRegistration \
-	{ \
-		FTargetNameRegistration() \
-		{ \
-			FPlatformMisc::SetUBTTargetName(TEXT(PREPROCESSOR_TO_STRING(UE_TARGET_NAME))); \
-		} \
-	} GTargetNameRegistration;
-
 #if IS_PROGRAM
 
 	#if IS_MONOLITHIC
@@ -908,7 +878,6 @@ class FDefaultGameModuleImpl
 			IMPLEMENT_LIVE_CODING_PROJECT() \
 			IMPLEMENT_SIGNING_KEY_REGISTRATION() \
 			IMPLEMENT_ENCRYPTION_KEY_REGISTRATION() \
-			IMPLEMENT_TARGET_NAME_REGISTRATION() \
 			IMPLEMENT_GAME_MODULE( ModuleImplClass, ModuleName ) \
 			PER_MODULE_BOILERPLATE
 
@@ -923,7 +892,6 @@ class FDefaultGameModuleImpl
 			IMPLEMENT_LIVE_CODING_PROJECT() \
 			IMPLEMENT_SIGNING_KEY_REGISTRATION() \
 			IMPLEMENT_ENCRYPTION_KEY_REGISTRATION() \
-			IMPLEMENT_TARGET_NAME_REGISTRATION() \
 			IMPLEMENT_GAME_MODULE( ModuleImplClass, ModuleName ) \
 			/* Implement the GIsGameAgnosticExe variable (See Core.h). */ \
 			bool GIsGameAgnosticExe = false;
@@ -934,7 +902,6 @@ class FDefaultGameModuleImpl
 
 	#define IMPLEMENT_PRIMARY_GAME_MODULE( ModuleImplClass, ModuleName, GameName ) \
 		/* Nothing special to do for modular builds.  The game name will be set via the command-line */ \
-		IMPLEMENT_TARGET_NAME_REGISTRATION() \
 		IMPLEMENT_GAME_MODULE( ModuleImplClass, ModuleName )
 #endif	//IS_MONOLITHIC
 

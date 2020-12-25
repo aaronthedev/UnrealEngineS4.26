@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	SceneSoftwareOcclusion.cpp 
@@ -1046,8 +1046,8 @@ static FGraphEventRef SubmitScene(const FScene* Scene, FViewInfo& View, FOcclusi
 
 			// Relevance requirements
 			FPrimitiveViewRelevance ViewRelevance = Proxy->GetViewRelevance(&View);
-			const bool bNonOpaqueRelevance = (ViewRelevance.bMasked || ViewRelevance.HasTranslucency()); // TODO: opaque sections
-			bool bCanBeOccluder = ViewRelevance.bDrawRelevance && (ViewRelevance.bOpaque && !bNonOpaqueRelevance);
+			const bool bNonOpaqueRelevance = (ViewRelevance.bMaskedRelevance || ViewRelevance.HasTranslucency()); // TODO: opaque sections
+			bool bCanBeOccluder = ViewRelevance.bDrawRelevance && (ViewRelevance.bOpaqueRelevance && !bNonOpaqueRelevance);
 
 			if (bCanBeOccluder)
 			{
@@ -1114,7 +1114,7 @@ inline bool BinRowTestBit(uint64 Mask, int32 Bit)
 	return (Mask & (1ull << Bit)) != 0;
 }
 
-void FSceneSoftwareOcclusion::DebugDraw(FRDGBuilder& GraphBuilder, const FViewInfo& View, FScreenPassRenderTarget Output, int32 InX, int32 InY)
+void FSceneSoftwareOcclusion::DebugDraw(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, int32 InX, int32 InY)
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	if (GSOVisualizeBuffer == 0)
@@ -1127,60 +1127,60 @@ void FSceneSoftwareOcclusion::DebugDraw(FRDGBuilder& GraphBuilder, const FViewIn
 	{
 		return;
 	}
+		
+	FLinearColor ColorBuffer[2] = 
+	{ 
+		FLinearColor(0.1f, 0.1f, 0.1f), // un-occluded
+		FLinearColor::White // occluded
+	};
 
-	if (!Output.IsValid())
+	FRenderTargetTemp TempRenderTarget(View);
+	if (!TempRenderTarget.GetRenderTargetTexture().IsValid())
 	{
 		return;
 	}
 
-	AddDrawCanvasPass(GraphBuilder, RDG_EVENT_NAME("Canvas"), View, Output, [Results, InX, InY](FCanvas& Canvas)
+	FCanvas Canvas(&TempRenderTarget, NULL, View.Family->CurrentRealTime, View.Family->CurrentWorldTime, View.Family->DeltaWorldTime, View.GetFeatureLevel());
+	Canvas.SetAllowSwitchVerticalAxis(false);
+	FBatchedElements* BatchedElements = Canvas.GetBatchedElements(FCanvas::ET_Line);
+						
+	for (int32 i = 0; i < BIN_NUM; ++i)
 	{
-		Canvas.SetAllowSwitchVerticalAxis(true);
-
-		FLinearColor ColorBuffer[2] =
+		int32 BinStartX = InX + i*BIN_WIDTH;
+		int32 BinStartY = InY;
+		
+		// vertical line for each bin border
+		BatchedElements->AddLine(FVector(BinStartX, BinStartY, 0.f), FVector(BinStartX, BinStartY+FRAMEBUFFER_HEIGHT, 0.f), FColor::Blue, FHitProxyId());
+						
+		const FFramebufferBin& Bin = Results->Bins[i];
+		for (int32 j = 0; j < FRAMEBUFFER_HEIGHT; ++j)
 		{
-			FLinearColor(0.1f, 0.1f, 0.1f), // un-occluded
-			FLinearColor::White // occluded
-		};
+			uint64 RowData = Bin.Data[j];
+			int32 BitY = (FRAMEBUFFER_HEIGHT + InY) - j; // flip image by Y axis
 
-		FBatchedElements* BatchedElements = Canvas.GetBatchedElements(FCanvas::ET_Line);
-
-		for (int32 i = 0; i < BIN_NUM; ++i)
-		{
-			int32 BinStartX = InX + i * BIN_WIDTH;
-			int32 BinStartY = InY;
-
-			// vertical line for each bin border
-			BatchedElements->AddLine(FVector(BinStartX, BinStartY, 0.f), FVector(BinStartX, BinStartY + FRAMEBUFFER_HEIGHT, 0.f), FColor::Blue, FHitProxyId());
-
-			const FFramebufferBin& Bin = Results->Bins[i];
-			for (int32 j = 0; j < FRAMEBUFFER_HEIGHT; ++j)
+			FVector Pos0 = FVector(BinStartX, BitY, 0.f);
+			int32 Bit0 = BinRowTestBit(RowData, 0) ? 1 : 0;
+			
+			for (int32 k = 1; k < BIN_WIDTH; ++k)
 			{
-				uint64 RowData = Bin.Data[j];
-				int32 BitY = (FRAMEBUFFER_HEIGHT + InY) - j; // flip image by Y axis
-
-				FVector Pos0 = FVector(BinStartX, BitY, 0.f);
-				int32 Bit0 = BinRowTestBit(RowData, 0) ? 1 : 0;
-
-				for (int32 k = 1; k < BIN_WIDTH; ++k)
+				int32 Bit1 = BinRowTestBit(RowData, k) ? 1 : 0;
+				if (Bit0 != Bit1 || (k == (BIN_WIDTH-1)))
 				{
-					int32 Bit1 = BinRowTestBit(RowData, k) ? 1 : 0;
-					if (Bit0 != Bit1 || (k == (BIN_WIDTH - 1)))
-					{
-						int32 BitX = BinStartX + k;
-						FVector Pos1 = FVector(BitX, BitY, 0.f);
-						BatchedElements->AddLine(Pos0, Pos1, ColorBuffer[Bit0], FHitProxyId());
-						Pos0 = Pos1;
-						Bit0 = Bit1;
-					}
+					int32 BitX = BinStartX + k;
+					FVector Pos1 = FVector(BitX, BitY, 0.f);
+					BatchedElements->AddLine(Pos0, Pos1, ColorBuffer[Bit0], FHitProxyId());
+					Pos0 = Pos1;
+					Bit0 = Bit1;
 				}
 			}
 		}
-
-		// vertical line for last bin border
-		int32 BinX = InX + BIN_NUM * BIN_WIDTH;
-		int32 BinY = InY;
-		BatchedElements->AddLine(FVector(BinX, BinY, 0.f), FVector(BinX, BinY + FRAMEBUFFER_HEIGHT, 0.f), FColor::Blue, FHitProxyId());
-	});
+	}
+	
+	// vertical line for last bin border
+	int32 BinX = InX + BIN_NUM*BIN_WIDTH;
+	int32 BinY = InY;
+	BatchedElements->AddLine(FVector(BinX, BinY, 0.f), FVector(BinX, BinY+FRAMEBUFFER_HEIGHT, 0.f), FColor::Blue, FHitProxyId());
+	
+	Canvas.Flush_RenderThread(RHICmdList);
 #endif//!(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }

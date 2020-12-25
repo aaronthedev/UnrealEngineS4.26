@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_Abc_OArchive_h
-#define Alembic_Abc_OArchive_h
+#ifndef _Alembic_Abc_OArchive_h_
+#define _Alembic_Abc_OArchive_h_
 
 #include <Alembic/Util/Export.h>
 #include <Alembic/Abc/Foundation.h>

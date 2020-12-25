@@ -2,14 +2,14 @@
 
 Copyright (c) Facebook Technologies, LLC and its affiliates.  All rights reserved.
 
-Licensed under the Oculus Master SDK License Version 1.0 (the "License");
+Licensed under the Oculus SDK License Version 3.5 (the "License");
 you may not use the Oculus SDK except in compliance with the License,
 which is provided at the time of installation or download, or which
 otherwise accompanies this software in either electronic or hard copy form.
 
 You may obtain a copy of the License at
 
-https://developer.oculus.com/licenses/oculusmastersdk-1.0/
+https://developer.oculus.com/licenses/sdk-3.5/
 
 Unless required by applicable law or agreed to in writing, the Oculus SDK
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -184,8 +184,6 @@ typedef enum {
   ovrpOverlayFlag_Cubemap = (ovrpShape_Cubemap << ovrpOverlayFlag_ShapeShift),
   ovrpOverlayFlag_offCenterCubemap = (ovrpShape_OffcenterCubemap << ovrpOverlayFlag_ShapeShift),
   ovrpOverlayFlag_ShapeMask = (0xF << ovrpOverlayFlag_ShapeShift),
-
-  ovrpOverlayFlag_Hidden = 0x00000200,
 
   // Internal flags
   /// If true, the overlay is a loading screen.

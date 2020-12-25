@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SlateWidgetLocatorByPath.h"
 #include "SlateWidgetElement.h"
@@ -264,7 +264,7 @@ private:
 			while (TempPath.FindChar(TEXT('/'), Index))
 			{
 				const FString PathPiece = TempPath.Left(Index);
-				TempPath.RightChopInline(Index + 1, false);
+				TempPath = TempPath.RightChop(Index + 1);
 
 				if (PathPiece.Len() == 0)
 				{

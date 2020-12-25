@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SelectionSet.h"
 
@@ -67,6 +67,7 @@ void UMeshSelectionSet::AddIndices(EMeshSelectionElementType ElementType, const 
 	}
 	NotifySelectionSetModified();
 }
+
 
 
 void UMeshSelectionSet::RemoveIndices(EMeshSelectionElementType ElementType, const TArray<int32>& Indices)

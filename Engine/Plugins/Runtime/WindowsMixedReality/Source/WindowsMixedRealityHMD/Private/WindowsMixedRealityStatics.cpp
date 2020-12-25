@@ -5,25 +5,8 @@
 #include "Engine/Engine.h"
 #include "WindowsMixedRealityHMD.h"
 
-#if WITH_EDITOR
-#include "WindowsMixedRealityRuntimeSettings.h"
-#endif
-
 namespace WindowsMixedReality
 {
-	//declare static delegate
-	FWindowsMixedRealityStatics::FOnConfigureGesturesDelegate FWindowsMixedRealityStatics::OnConfigureGesturesDelegate;
-	FDelegateHandle FWindowsMixedRealityStatics::ConfigureGesturesHandle;
-
-	FWindowsMixedRealityStatics::FOnGetXRSystemFlagsDelegate FWindowsMixedRealityStatics::OnGetXRSystemFlagsDelegate;
-	FDelegateHandle FWindowsMixedRealityStatics::GetXRSystemFlagsHandle;
-
-	FWindowsMixedRealityStatics::FOnTogglePlayDelegate FWindowsMixedRealityStatics::OnTogglePlayDelegate;
-	FDelegateHandle FWindowsMixedRealityStatics::TogglePlayDelegateHandle;
-
-	FWindowsMixedRealityStatics::FOnGetHandJointTransformDelegate FWindowsMixedRealityStatics::OnGetHandJointTransformDelegate;
-	FDelegateHandle FWindowsMixedRealityStatics::GetHandJointTransformDelegateHandle;
-
 	FWindowsMixedRealityHMD* GetWindowsMixedRealityHMD() noexcept
 	{
 		if (GEngine->XRSystem.IsValid() && (GEngine->XRSystem->GetSystemName() == FName("WindowsMixedRealityHMD")))
@@ -157,59 +140,27 @@ namespace WindowsMixedReality
 #endif
 
 	// Remoting
-	EXRDeviceConnectionResult::Type FWindowsMixedRealityStatics::ConnectToRemoteHoloLens(FString remoteIP, unsigned int bitrate, bool isHoloLens1)
+	void FWindowsMixedRealityStatics::ConnectToRemoteHoloLens(FString remoteIP, unsigned int bitrate, bool isHoloLens1)
 	{
 #if !PLATFORM_HOLOLENS
 		FWindowsMixedRealityHMD* hmd = GetWindowsMixedRealityHMD();
+
 		if (hmd != nullptr)
 		{
-			if (!remoteIP.Contains("."))
-			{
-				// If the given ip is not valid, try using it as a port for a listen connection to the remoting player.
-				int port = FCString::Atoi(*remoteIP);
-				remoteIP = TEXT("0.0.0.0");
-				hmd->ConnectToRemoteHoloLens(*remoteIP, bitrate, isHoloLens1, port, true);
-			}
-			else
-			{
-				FString address, portStr;
-				int port;
-				if (remoteIP.Split(TEXT(":"), &address, &portStr))
-				{
-					port = FCString::Atoi(*portStr);
-				}
-				else
-				{
-					address = remoteIP;
-					port = 8265;
-				}
-				hmd->ConnectToRemoteHoloLens(*address, bitrate, isHoloLens1, port);
-			}
+			hmd->ConnectToRemoteHoloLens(*remoteIP, bitrate, isHoloLens1);
 		}
 		else
 		{
 			if (!GEngine->XRSystem.IsValid())
 			{
-#if WITH_EDITOR
-				UWindowsMixedRealityRuntimeSettings::Get()->OnRemotingStatusChanged.ExecuteIfBound(FString(TEXT("Cannot Connect, see log for Errors.")), FLinearColor::Red);
-#endif
-				UE_LOG(LogWmrHmd, Error, TEXT("ConnectToRemoteHoloLens XRSystem is not valid. Perhaps it failed to start up?  Cannot Connect."));
+				UE_LOG(LogWmrHmd, Warning, TEXT("ConnectToRemoteHoloLens XRSystem is not valid. Perhaps it failed to start up?  Cannot Connect."));
 			}
 			else if (GEngine->XRSystem->GetSystemName() != FName("WindowsMixedRealityHMD"))
 			{
-#if WITH_EDITOR
-				UWindowsMixedRealityRuntimeSettings::Get()->OnRemotingStatusChanged.ExecuteIfBound(FString(TEXT("Cannot Connect, see log for Errors.")), FLinearColor::Red);
-#endif
-				UE_LOG(LogWmrHmd, Error, TEXT("ConnectToRemoteHoloLens XRSystem SystemName is %s, not WindowsMixedRealityHMD.  Cannot Connect.  Perhaps you want to disable other XR plugins, adjust the priorities of XR plugins, deactivate other XR hardware, or run with -hmd=WindowsMixedRealityHMD in your editor commandline?"), *GEngine->XRSystem->GetSystemName().ToString());
+				UE_LOG(LogWmrHmd, Warning, TEXT("ConnectToRemoteHoloLens XRSystem SystemName is %s, not WindowsMixedRealityHMD.  Cannot Connect.  Perhaps you want to disable other XR plugins, adjust the priorities of XR plugins, deactivate other XR hardware, or run with -hmd=WindowsMixedRealityHMD in your editor commandline?"), *GEngine->XRSystem->GetSystemName().ToString());
 			}
 		}
-#else
-#if WITH_EDITOR
-		UWindowsMixedRealityRuntimeSettings::Get()->OnRemotingStatusChanged.ExecuteIfBound(FString(TEXT("Cannot Connect, see log for Errors.")), FLinearColor::Red);
 #endif
-		UE_LOG(LogWmrHmd, Error, TEXT("FWindowsMixedRealityStatics::ConnectToRemoteHoloLens() is doing nothing because PLATFORM_HOLOLENS. (You don't 'remote' when running on device or emulated device.)"));
-#endif
-		return EXRDeviceConnectionResult::Success;
 	}
 
 	void FWindowsMixedRealityStatics::DisconnectFromRemoteHoloLens()
@@ -224,13 +175,13 @@ namespace WindowsMixedReality
 #endif
 	}
 #if WITH_WINDOWS_MIXED_REALITY
-	bool FWindowsMixedRealityStatics::GetHandJointOrientationAndPosition(HMDHand hand, HMDHandJoint joint, FRotator& OutOrientation, FVector& OutPosition, float& OutRadius)
+	bool FWindowsMixedRealityStatics::GetHandJointOrientationAndPosition(HMDHand hand, HMDHandJoint joint, FRotator& OutOrientation, FVector& OutPosition)
 	{
 		FWindowsMixedRealityHMD* hmd = GetWindowsMixedRealityHMD();
 
 		if (hmd != nullptr)
 		{
-			return hmd->GetHandJointOrientationAndPosition(hand, joint, OutOrientation, OutPosition, OutRadius);
+			return hmd->GetHandJointOrientationAndPosition(hand, joint, OutOrientation, OutPosition);
 		}
 
 		return false;

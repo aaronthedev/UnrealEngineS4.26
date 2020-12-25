@@ -1,25 +1,22 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "MiscTraceAnalysis.h"
 #include "TraceServices/Model/AnalysisSession.h"
 #include "Model/LogPrivate.h"
 #include "Model/ThreadsPrivate.h"
 #include "Model/BookmarksPrivate.h"
 #include "Model/FramesPrivate.h"
-#include "Model/Channel.h"
 #include "Common/Utils.h"
 
 FMiscTraceAnalyzer::FMiscTraceAnalyzer(Trace::IAnalysisSession& InSession,
 									   Trace::FThreadProvider& InThreadProvider,
 									   Trace::FBookmarkProvider& InBookmarkProvider,
 									   Trace::FLogProvider& InLogProvider,
-									   Trace::FFrameProvider& InFrameProvider,
-									   Trace::FChannelProvider& InChannelProvider)
+									   Trace::FFrameProvider& InFrameProvider)
 	: Session(InSession)
 	, ThreadProvider(InThreadProvider)
 	, BookmarkProvider(InBookmarkProvider)
 	, LogProvider(InLogProvider)
 	, FrameProvider(InFrameProvider)
-	, ChannelProvider(InChannelProvider)
 {
 	Trace::FLogCategory& BookmarkLogCategory = LogProvider.GetCategory(Trace::FLogProvider::ReservedLogCategory_Bookmark);
 	BookmarkLogCategory.Name = TEXT("LogBookmark");
@@ -43,34 +40,56 @@ void FMiscTraceAnalyzer::OnAnalysisBegin(const FOnAnalysisContext& Context)
 	Builder.RouteEvent(RouteId_EndGameFrame, "Misc", "EndGameFrame");
 	Builder.RouteEvent(RouteId_BeginRenderFrame, "Misc", "BeginRenderFrame");
 	Builder.RouteEvent(RouteId_EndRenderFrame, "Misc", "EndRenderFrame");
-	Builder.RouteEvent(RouteId_ChannelAnnounce, "Trace", "ChannelAnnounce");
-	Builder.RouteEvent(RouteId_ChannelToggle, "Trace", "ChannelToggle");
 }
 
-void FMiscTraceAnalyzer::OnThreadInfo(const FThreadInfo& ThreadInfo)
-{
-	uint32 ThreadId = ThreadInfo.GetId();
-	FString Name = ThreadInfo.GetName();
-
-	Trace::FAnalysisSessionEditScope _(Session);
-
-	ThreadProvider.AddThread(ThreadId, *Name, EThreadPriority(ThreadInfo.GetSortHint()));
-
-	const ANSICHAR* GroupNameA = ThreadInfo.GetGroupName();
-	if (*GroupNameA)
-	{
-		const TCHAR* GroupName = Session.StoreString(ANSI_TO_TCHAR(GroupNameA));
-		ThreadProvider.SetThreadGroup(ThreadId, GroupName);
-	}
-}
-
-bool FMiscTraceAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventContext& Context)
+bool FMiscTraceAnalyzer::OnEvent(uint16 RouteId, const FOnEventContext& Context)
 {
 	Trace::FAnalysisSessionEditScope _(Session);
 
 	const auto& EventData = Context.EventData;
 	switch (RouteId)
 	{
+	case RouteId_RegisterGameThread:
+	{
+		uint32 ThreadId = EventData.GetValue<uint32>("ThreadId");
+		ThreadProvider.AddGameThread(ThreadId);
+		break;
+	}
+	case RouteId_CreateThread:
+	{
+		uint32 CreatedThreadId = EventData.GetValue<uint32>("CreatedThreadId");
+		EThreadPriority Priority = static_cast<EThreadPriority>(EventData.GetValue<uint32>("Priority"));
+		ThreadProvider.AddThread(CreatedThreadId, reinterpret_cast<const TCHAR*>(EventData.GetAttachment()), Priority);
+		uint32 CurrentThreadId = EventData.GetValue<uint32>("CurrentThreadId");
+		FThreadState* ThreadState = GetThreadState(CurrentThreadId);
+		if (ThreadState->ThreadGroupStack.Num())
+		{
+			ThreadProvider.SetThreadGroup(CreatedThreadId, ThreadState->ThreadGroupStack.Top());
+		}
+		break;
+	}
+	case RouteId_SetThreadGroup:
+	{
+		const TCHAR* GroupName = Session.StoreString(ANSI_TO_TCHAR(reinterpret_cast<const char*>(EventData.GetAttachment())));
+		uint32 ThreadId = EventData.GetValue<uint32>("ThreadId");
+		ThreadProvider.SetThreadGroup(ThreadId, GroupName);
+		break;
+	}
+	case RouteId_BeginThreadGroupScope:
+	{
+		const TCHAR* GroupName = Session.StoreString(ANSI_TO_TCHAR(reinterpret_cast<const char*>(EventData.GetAttachment())));
+		uint32 CurrentThreadId = EventData.GetValue<uint32>("CurrentThreadId");
+		FThreadState* ThreadState = GetThreadState(CurrentThreadId);
+		ThreadState->ThreadGroupStack.Push(GroupName);
+		break;
+	}
+	case RouteId_EndThreadGroupScope:
+	{
+		uint32 CurrentThreadId = EventData.GetValue<uint32>("CurrentThreadId");
+		FThreadState* ThreadState = GetThreadState(CurrentThreadId);
+		ThreadState->ThreadGroupStack.Pop();
+		break;
+	}
 	case RouteId_BookmarkSpec:
 	{
 		uint64 BookmarkPoint = EventData.GetValue<uint64>("BookmarkPoint");
@@ -92,7 +111,7 @@ bool FMiscTraceAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventCon
 	{
 		uint64 BookmarkPoint = EventData.GetValue<uint64>("BookmarkPoint");
 		uint64 Cycle = EventData.GetValue<uint64>("Cycle");
-		double Timestamp = Context.EventTime.AsSeconds(Cycle);
+		double Timestamp = Context.SessionContext.TimestampFromCycle(Cycle);
 		BookmarkProvider.AppendBookmark(Timestamp, BookmarkPoint, EventData.GetAttachment());
 		LogProvider.AppendMessage(BookmarkPoint, Timestamp, EventData.GetAttachment());
 		break;
@@ -102,7 +121,7 @@ bool FMiscTraceAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventCon
 		uint64 Cycle = EventData.GetValue<uint64>("Cycle");
 		uint8 FrameType = EventData.GetValue<uint8>("FrameType");
 		check(FrameType < TraceFrameType_Count);
-		FrameProvider.BeginFrame(ETraceFrameType(FrameType), Context.EventTime.AsSeconds(Cycle));
+		FrameProvider.BeginFrame(ETraceFrameType(FrameType), Context.SessionContext.TimestampFromCycle(Cycle));
 		break;
 	}
 	case RouteId_EndFrame:
@@ -110,7 +129,7 @@ bool FMiscTraceAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventCon
 		uint64 Cycle = EventData.GetValue<uint64>("Cycle");
 		uint8 FrameType = EventData.GetValue<uint8>("FrameType");
 		check(FrameType < TraceFrameType_Count);
-		FrameProvider.EndFrame(ETraceFrameType(FrameType), Context.EventTime.AsSeconds(Cycle));
+		FrameProvider.EndFrame(ETraceFrameType(FrameType), Context.SessionContext.TimestampFromCycle(Cycle));
 		break;
 	}
 	case RouteId_BeginGameFrame:
@@ -133,89 +152,17 @@ bool FMiscTraceAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventCon
 		LastFrameCycle[FrameType] = Cycle;
 		if (RouteId == RouteId_BeginGameFrame || RouteId == RouteId_BeginRenderFrame)
 		{
-			FrameProvider.BeginFrame(FrameType, Context.EventTime.AsSeconds(Cycle));
+			FrameProvider.BeginFrame(FrameType, Context.SessionContext.TimestampFromCycle(Cycle));
 		}
 		else
 		{
-			FrameProvider.EndFrame(FrameType, Context.EventTime.AsSeconds(Cycle));
+			FrameProvider.EndFrame(FrameType, Context.SessionContext.TimestampFromCycle(Cycle));
 		}
 		break;
 	}
-
-	case RouteId_ChannelAnnounce:
-		OnChannelAnnounce(Context);
-		break;
-
-	case RouteId_ChannelToggle:
-		OnChannelToggle(Context);
-		break;
-
-	// Begin retired events
-	//
-	case RouteId_RegisterGameThread:
-	{
-		uint32 ThreadId = FTraceAnalyzerUtils::GetThreadIdField(Context);
-		ThreadProvider.AddGameThread(ThreadId);
-		break;
-	}
-	case RouteId_CreateThread:
-	{
-		uint32 CreatedThreadId = FTraceAnalyzerUtils::GetThreadIdField(Context, "CreatedThreadId");
-		EThreadPriority Priority = static_cast<EThreadPriority>(EventData.GetValue<uint32>("Priority"));
-		ThreadProvider.AddThread(CreatedThreadId, reinterpret_cast<const TCHAR*>(EventData.GetAttachment()), Priority);
-		uint32 CurrentThreadId = EventData.GetValue<uint32>("CurrentThreadId");
-		FThreadState* ThreadState = GetThreadState(CurrentThreadId);
-		if (ThreadState->ThreadGroupStack.Num())
-		{
-			ThreadProvider.SetThreadGroup(CreatedThreadId, ThreadState->ThreadGroupStack.Top());
-		}
-		break;
-	}
-	case RouteId_SetThreadGroup:
-	{
-		const TCHAR* GroupName = Session.StoreString(ANSI_TO_TCHAR(reinterpret_cast<const char*>(EventData.GetAttachment())));
-		uint32 ThreadId = FTraceAnalyzerUtils::GetThreadIdField(Context);
-		ThreadProvider.SetThreadGroup(ThreadId, GroupName);
-		break;
-	}
-	case RouteId_BeginThreadGroupScope:
-	{
-		const TCHAR* GroupName = Session.StoreString(ANSI_TO_TCHAR(reinterpret_cast<const char*>(EventData.GetAttachment())));
-		uint32 CurrentThreadId = EventData.GetValue<uint32>("CurrentThreadId");
-		FThreadState* ThreadState = GetThreadState(CurrentThreadId);
-		ThreadState->ThreadGroupStack.Push(GroupName);
-		break;
-	}
-	case RouteId_EndThreadGroupScope:
-	{
-		uint32 CurrentThreadId = EventData.GetValue<uint32>("CurrentThreadId");
-		FThreadState* ThreadState = GetThreadState(CurrentThreadId);
-		ThreadState->ThreadGroupStack.Pop();
-		break;
-	}
-	//
-	// End retired events
 	}
 
 	return true;
-}
-
-void FMiscTraceAnalyzer::OnChannelAnnounce(const FOnEventContext& Context)
-{
-	FString ChannelName = FTraceAnalyzerUtils::LegacyAttachmentString<ANSICHAR>("Name", Context);
-	uint32 ChannelId = Context.EventData.GetValue<uint32>("Id");
-	bool bEnabled = Context.EventData.GetValue<bool>("IsEnabled");
-	bool bReadOnly = Context.EventData.GetValue<bool>("ReadOnly", false);
-
-	ChannelProvider.AnnounceChannel(*ChannelName, ChannelId, bReadOnly);
-	ChannelProvider.UpdateChannel(ChannelId, bEnabled);
-}
-
-void FMiscTraceAnalyzer::OnChannelToggle(const FOnEventContext& Context)
-{
-	uint32 ChannelId = Context.EventData.GetValue<uint32>("Id");
-	bool bEnabled = Context.EventData.GetValue<bool>("IsEnabled");
-	ChannelProvider.UpdateChannel(ChannelId, bEnabled);
 }
 
 FMiscTraceAnalyzer::FThreadState* FMiscTraceAnalyzer::GetThreadState(uint32 ThreadId)

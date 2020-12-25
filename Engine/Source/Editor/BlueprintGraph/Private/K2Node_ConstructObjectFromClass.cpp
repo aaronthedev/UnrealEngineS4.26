@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "K2Node_ConstructObjectFromClass.h"
 #include "UObject/UnrealType.h"
@@ -95,11 +95,11 @@ void UK2Node_ConstructObjectFromClass::CreatePinsForClass(UClass* InClass, TArra
 
 	const UObject* const ClassDefaultObject = InClass->GetDefaultObject(false);
 
-	for (TFieldIterator<FProperty> PropertyIt(InClass, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
+	for (TFieldIterator<UProperty> PropertyIt(InClass, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
 	{
-		FProperty* Property = *PropertyIt;
-		UClass* PropertyClass = CastChecked<UClass>(Property->GetOwner<UObject>());
-		const bool bIsDelegate = Property->IsA(FMulticastDelegateProperty::StaticClass());
+		UProperty* Property = *PropertyIt;
+		UClass* PropertyClass = CastChecked<UClass>(Property->GetOuter());
+		const bool bIsDelegate = Property->IsA(UMulticastDelegateProperty::StaticClass());
 		const bool bIsExposedToSpawn = UEdGraphSchema_K2::IsPropertyExposedOnSpawn(Property);
 		const bool bIsSettableExternally = !Property->HasAnyPropertyFlags(CPF_DisableEditOnInstance);
 
@@ -326,11 +326,6 @@ FText UK2Node_ConstructObjectFromClass::GetBaseNodeTitle() const
 	return NSLOCTEXT("K2Node", "ConstructObject_BaseTitle", "Construct Object from Class");
 }
 
-FText UK2Node_ConstructObjectFromClass::GetDefaultNodeTitle() const
-{
-	return NSLOCTEXT("K2Node", "ConstructObject_Title_NONE", "Construct NONE");
-}
-
 FText UK2Node_ConstructObjectFromClass::GetNodeTitleFormat() const
 {
 	return NSLOCTEXT("K2Node", "Construct", "Construct {ClassName}");
@@ -353,7 +348,7 @@ FText UK2Node_ConstructObjectFromClass::GetNodeTitle(ENodeTitleType::Type TitleT
 		}
 		return CachedNodeTitle;
 	}
-	return GetDefaultNodeTitle();
+	return NSLOCTEXT("K2Node", "ConstructObject_Title_NONE", "Construct NONE");
 }
 
 bool UK2Node_ConstructObjectFromClass::IsCompatibleWithGraph(const UEdGraph* TargetGraph) const 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ConcertClientSequencerManager.h"
 #include "HAL/IConsoleManager.h"
@@ -14,7 +14,6 @@
 #include "Engine/GameEngine.h"
 #include "MovieSceneSequence.h"
 #include "LevelSequencePlayer.h"
-#include "LevelSequenceActor.h"
 
 #if WITH_EDITOR
 	#include "ISequencerModule.h"
@@ -31,7 +30,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogConcertSequencerSync, Warning, Log)
 static TAutoConsoleVariable<int32> CVarEnablePlaybackSync(TEXT("Concert.EnableSequencerPlaybackSync"), 1, TEXT("Enable Concert Sequencer Playback Syncing of opened Sequencer."));
 
 // Enable Sequence Playing on game client
-static TAutoConsoleVariable<int32> CVarEnableSequencePlayer(TEXT("Concert.EnableSequencePlayer"), 1, TEXT("Enable Concert Sequence Players on `-game` client."));
+static TAutoConsoleVariable<int32> CVarEnableSequencePlayer(TEXT("Concert.EnableSequencePlayer"), 0, TEXT("Enable Concert Sequence Players on `-game` client."));
 
 // Enable opening Sequencer on remote machine whenever a sequencer is opened, if both instance have this option on.
 static TAutoConsoleVariable<int32> CVarEnableRemoteSequencerOpen(TEXT("Concert.EnableOpenRemoteSequencer"), 0, TEXT("Enable Concert remote Sequencer opening."));
@@ -338,13 +337,12 @@ void FConcertClientSequencerManager::ApplyTransportOpenEvent(const FString& Sequ
 
 void FConcertClientSequencerManager::ApplyCloseToPlayers(const FConcertSequencerCloseEvent& InEvent)
 {
-	ALevelSequenceActor* LevelSequenceActor = SequencePlayers.FindRef(*InEvent.SequenceObjectPath);
-	if (LevelSequenceActor && LevelSequenceActor->SequencePlayer)
+	ULevelSequencePlayer* Player = SequencePlayers.FindRef(*InEvent.SequenceObjectPath);
+	if (Player)
 	{
-		LevelSequenceActor->SequencePlayer->Stop();
+		Player->Stop();
 		if (!InEvent.bMasterClose)
 		{
-			LevelSequenceActor->Destroy(false, false);
 			SequencePlayers.Remove(*InEvent.SequenceObjectPath);
 		}
 	}
@@ -473,7 +471,6 @@ void FConcertClientSequencerManager::ApplyEventToSequencers(const FConcertSequen
 void FConcertClientSequencerManager::ApplyEventToPlayers(const FConcertSequencerState& EventState)
 {
 	ULevelSequencePlayer* Player = nullptr;
-	ALevelSequenceActor* LevelSequenceActor = nullptr;
 	// we do not have a player for this state yet
 	if (!SequencePlayers.Contains(*EventState.SequenceObjectPath))
 	{
@@ -487,19 +484,15 @@ void FConcertClientSequencerManager::ApplyEventToPlayers(const FConcertSequencer
 		ULevelSequence* Sequence = LoadObject<ULevelSequence>(nullptr, *EventState.SequenceObjectPath);
 		if (Sequence && CurrentWorld)
 		{
-			FMovieSceneSequencePlaybackSettings PlaybackSettings;
-			// Sequencer behaves differently to Player. 
-			// Sequencer pauses at the last frame and Player Stops and goes to the first frame unless we set this flag.
-			PlaybackSettings.bPauseAtEnd = true;
-			Player = ULevelSequencePlayer::CreateLevelSequencePlayer(CurrentWorld->PersistentLevel, Sequence, PlaybackSettings, LevelSequenceActor);
+			Player = NewObject<ULevelSequencePlayer>((UObject*)GetTransientPackage(), FName("ConcertSequencePlayer"));
+			Player->Initialize(Sequence, CurrentWorld->PersistentLevel, FMovieSceneSequencePlaybackSettings(), FLevelSequenceCameraSettings());
 		}
-		SequencePlayers.Add(*EventState.SequenceObjectPath, LevelSequenceActor);
+		SequencePlayers.Add(*EventState.SequenceObjectPath, Player);
 	}
 
-	LevelSequenceActor = SequencePlayers.FindChecked(*EventState.SequenceObjectPath);
-	if (LevelSequenceActor && LevelSequenceActor->SequencePlayer)
+	Player = SequencePlayers.FindChecked(*EventState.SequenceObjectPath);
+	if (Player)
 	{
-		Player = LevelSequenceActor->SequencePlayer;
 		float LatencyCompensationMs = GetLatencyCompensationMs();
 
 		FFrameRate SequenceRate = Player->GetFrameRate();
@@ -531,9 +524,8 @@ void FConcertClientSequencerManager::ApplyEventToPlayers(const FConcertSequencer
 					CompensatedTime.FrameNumber.Value, CompensatedTime.GetSubFrame(), CompensatedTime / SequenceRate
 				);
 
-				Player->SetPlaybackPosition(FMovieSceneSequencePlaybackParams(CompensatedTime, EUpdatePositionMethod::Play));
+				Player->PlayToFrame(CompensatedTime);
 				Player->SetPlayRate(EventState.PlaybackSpeed);
-				Player->Play();
 			}
 			else
 			{
@@ -560,21 +552,20 @@ void FConcertClientSequencerManager::ApplyEventToPlayers(const FConcertSequencer
 			case EConcertMovieScenePlayerStatus::Stepping:
 				// fallthrough, handles as scrub
 			case EConcertMovieScenePlayerStatus::Scrubbing:
-				Player->SetPlaybackPosition(FMovieSceneSequencePlaybackParams(IncomingTime, EUpdatePositionMethod::Scrub));
+				Player->ScrubToFrame(IncomingTime);
 				break;
 			case EConcertMovieScenePlayerStatus::Paused:
+				Player->JumpToFrame(IncomingTime);
 				Player->Pause();
-				Player->SetPlaybackPosition(FMovieSceneSequencePlaybackParams(IncomingTime, EUpdatePositionMethod::Jump));
 				break;
 			case EConcertMovieScenePlayerStatus::Stopped:
-				// Stopping will reset the position, so we need to stop first and then set the position.
-				Player->Pause();
-				Player->SetPlaybackPosition(FMovieSceneSequencePlaybackParams(IncomingTime, EUpdatePositionMethod::Jump));
+				Player->JumpToFrame(IncomingTime);
+				Player->Stop();
 				break;
 			case EConcertMovieScenePlayerStatus::Jumping:
 				// fallthrough, handles as stop
 			default:
-				Player->SetPlaybackPosition(FMovieSceneSequencePlaybackParams(IncomingTime, EUpdatePositionMethod::Jump));
+				Player->JumpToFrame(IncomingTime);
 			}
 
 			Player->SetPlayRate(EventState.PlaybackSpeed);

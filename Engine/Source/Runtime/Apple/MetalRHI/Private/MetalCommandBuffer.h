@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -31,7 +31,9 @@ enum EMetalDebugCommandType
 enum EMetalDebugLevel
 {
 	EMetalDebugLevelOff,
+	EMetalDebugLevelLogDebugGroups,
 	EMetalDebugLevelFastValidation,
+	EMetalDebugLevelTrackResources,
 	EMetalDebugLevelResetOnBind,
 	EMetalDebugLevelConditionalSubmit,
 	EMetalDebugLevelValidation,
@@ -49,6 +51,38 @@ struct FMetalDebugCommand
 	EMetalDebugCommandType Type;
 	MTLRenderPassDescriptor* PassDesc;
 };
+
+@interface FMetalResourceTracker : FApplePlatformObject
+{
+@public
+	TSet<id> Resources;
+	FCriticalSection Mutex;
+};
+@end
+
+@interface FMetalResourceTrackCount : FApplePlatformObject
+{
+@public
+	NSUInteger RetainCount;
+};
+@end
+
+/**
+ * Simpler NSObject extension that provides for an associated object to track debug groups in a command-buffer.
+ * This doesn't interfere with objc_msgSend invocation so doesn't cost as much on the CPU.
+ */
+@interface NSObject (IMetalDebugGroupAssociation)
+@property (nonatomic, strong) NSMutableArray<NSString*>* debugGroups;
+@property (nonatomic, strong) FMetalResourceTracker* resourceTracker;
+@property (atomic, strong) FMetalResourceTrackCount* resourceTrackCount;
+@end
+
+
+namespace FMetalCommandBufferDebugHelpers
+{
+	void TrackResource(id<MTLCommandBuffer> Buffer, id Ptr);
+	void DumpResources(id<MTLCommandBuffer> Buffer);
+}
 
 #if MTLPP_CONFIG_VALIDATE && METAL_DEBUG_OPTIONS
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -39,9 +39,6 @@ public:
 	void OnToggleSelectAll(ECheckBoxState CheckType);
 	FReply OnExpandAll();
 	FReply OnCollapseAll();
-
-	static void FillNodeStatusMap(FbxSceneReimportStatusMapPtr NodeStatusMap, TSharedPtr<FFbxSceneInfo> SceneInfo, TSharedPtr<FFbxSceneInfo> SceneInfoOriginal);
-
 protected:
 	TSharedPtr<FFbxSceneInfo> SceneInfo;
 	TSharedPtr<FFbxSceneInfo> SceneInfoOriginal;
@@ -63,10 +60,4 @@ protected:
 
 	// Internal structure and function to create the tree view status data
 	TMap<FbxNodeInfoPtr, TSharedPtr<FTreeNodeValue>> NodeTreeData;
-
-	static void FillNodeStatusMapInternal(FbxSceneReimportStatusMapPtr NodeStatusMap
-		, TSharedPtr<FFbxSceneInfo> SceneInfo
-		, TSharedPtr<FFbxSceneInfo> SceneInfoOriginal
-		, TMap<FbxNodeInfoPtr, TSharedPtr<FTreeNodeValue>>* NodeTreeDataPtr
-		, TArray<FbxNodeInfoPtr>* FbxRootNodeArrayPtr);
 };

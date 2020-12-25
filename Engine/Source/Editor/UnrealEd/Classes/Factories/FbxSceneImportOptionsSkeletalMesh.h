@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,7 +9,7 @@
 #include "MeshBuild.h"
 #include "FbxSceneImportOptionsSkeletalMesh.generated.h"
 
-UCLASS(BlueprintType, config=EditorPerProjectUserSettings, HideCategories=Object, MinimalAPI)
+UCLASS(config=EditorPerProjectUserSettings, HideCategories=Object, MinimalAPI)
 class UFbxSceneImportOptionsSkeletalMesh : public UObject
 {
 	GENERATED_UCLASS_BODY()
@@ -54,10 +54,6 @@ class UFbxSceneImportOptionsSkeletalMesh : public UObject
 	UPROPERTY(EditAnywhere, config, Category = "SkeletalMesh|Thresholds", meta = (NoSpinbox = "true", ClampMin = "0.0", ClampMax = "1.0"))
 	float ThresholdUV;
 
-	/** Threshold to compare vertex position equality when computing morph target deltas. */
-	UPROPERTY(EditAnywhere, config, Category = "SkeletalMesh|Thresholds", meta = (NoSpinbox = "true", ClampMin = "0.0"))
-	float MorphThresholdPosition;
-
 	//////////////////////////////////////////////////////////////////////////
 	// Animation section
 
@@ -88,10 +84,6 @@ class UFbxSceneImportOptionsSkeletalMesh : public UObject
 	/** If true, all previous custom attribute curves will be deleted when doing a re-import. */
 	UPROPERTY(EditAnywhere, AdvancedDisplay, config, Category = Animation)
 	bool bDeleteExistingCustomAttributeCurves;
-
-	/** If true, all previous non-curve custom attributes will be deleted when doing a re-import. */
-	UPROPERTY(EditAnywhere, AdvancedDisplay, config, Category = ImportSettings)
-	bool bDeleteExistingNonCurveCustomAttributes;
 
 	/** Type of asset to import from the FBX file */
 	UPROPERTY(EditAnywhere, AdvancedDisplay, config, Category = Animation)

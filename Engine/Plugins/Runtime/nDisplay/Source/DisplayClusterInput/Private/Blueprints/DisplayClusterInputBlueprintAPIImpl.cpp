@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Blueprints/DisplayClusterInputBlueprintAPIImpl.h"
 
@@ -10,6 +10,8 @@
 
 bool UDisplayClusterInputBlueprintAPIImpl::BindVrpnChannels(const FString& VrpnDeviceId, const TArray<struct FDisplayClusterInputBinding>& VrpnDeviceBinds)
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputBP);
+
 	for (const auto& It : VrpnDeviceBinds)
 	{
 		BindVrpnChannel(VrpnDeviceId, It.VrpnChannel, It.Target);
@@ -20,6 +22,8 @@ bool UDisplayClusterInputBlueprintAPIImpl::BindVrpnChannels(const FString& VrpnD
 
 bool UDisplayClusterInputBlueprintAPIImpl::BindVrpnChannel(const FString& VrpnDeviceId, const int32 VrpnChannel, const FKey Target)
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputBP);
+
 	if(!Target.IsValid() || VrpnChannel < 0 || VrpnDeviceId.IsEmpty())
 	{
 		UE_LOG(LogDisplayClusterInputBP, Error, TEXT("Can't bind %s:%d to %s"), *VrpnDeviceId, VrpnChannel, *Target.ToString());
@@ -31,6 +35,8 @@ bool UDisplayClusterInputBlueprintAPIImpl::BindVrpnChannel(const FString& VrpnDe
 
 bool UDisplayClusterInputBlueprintAPIImpl::BindVrpnKeyboard(const FString& VrpnDeviceId, const FKey Key, const FKey Target)
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputBP);
+
 	if (!Key.IsValid() || !Target.IsValid() || VrpnDeviceId.IsEmpty())
 	{
 		UE_LOG(LogDisplayClusterInputBP, Error, TEXT("Can't bind %s#%s to %s"), *VrpnDeviceId, *Key.GetDisplayName().ToString(), *Target.GetDisplayName().ToString());
@@ -47,13 +53,17 @@ bool UDisplayClusterInputBlueprintAPIImpl::BindVrpnKeyboard(const FString& VrpnD
 	return IDisplayClusterInputModule::Get().BindVrpnChannel(VrpnDeviceId, VrpnChannel, Target.GetDisplayName().ToString());
 }
 
-bool UDisplayClusterInputBlueprintAPIImpl::SetVrpnKeyboardReflectionMode(const FString& VrpnDeviceId, EDisplayClusterInputKeyboardReflectionMode ReflectionMode)
+bool UDisplayClusterInputBlueprintAPIImpl::SetVrpnKeyboardReflectionMode(const FString& VrpnDeviceId, EDisplayClusterInputKeyboardReflectMode ReflectMode)
 {
-	return IDisplayClusterInputModule::Get().SetVrpnKeyboardReflectionMode(VrpnDeviceId, ReflectionMode);
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputBP);
+
+	return IDisplayClusterInputModule::Get().SetVrpnKeyboardReflectionMode(VrpnDeviceId, ReflectMode);
 }
 
 bool UDisplayClusterInputBlueprintAPIImpl::BindVrpnTracker(const FString& VrpnDeviceId, int32 VrpnChannel, EControllerHand Target)
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputBP);
+
 	const FString TargetString = UEnum::GetValueAsString(Target);
 	return IDisplayClusterInputModule::Get().BindVrpnChannel(VrpnDeviceId, VrpnChannel, TargetString);
 }

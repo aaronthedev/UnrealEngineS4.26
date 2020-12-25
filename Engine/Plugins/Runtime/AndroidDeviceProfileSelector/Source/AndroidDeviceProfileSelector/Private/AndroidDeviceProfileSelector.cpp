@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AndroidDeviceProfileSelector.h"
 #include "AndroidDeviceProfileMatchingRules.h"
@@ -8,6 +8,10 @@
 #include "Misc/CommandLine.h"
 #include "Misc/SecureHash.h"
 #include "Containers/StringConv.h"
+
+#if ANDROIDDEVICEPROFILESELECTORSECRETS_H
+#include "NoRedist/AndroidDeviceProfileSelectorSecrets.h"
+#endif
 
 UAndroidDeviceProfileMatchingRules::UAndroidDeviceProfileMatchingRules(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -23,7 +27,7 @@ static UAndroidDeviceProfileMatchingRules* GetAndroidDeviceProfileMatchingRules(
 {
 	// We need to initialize the class early as device profiles need to be evaluated before ProcessNewlyLoadedUObjects can be called.
 	extern UClass* Z_Construct_UClass_UAndroidDeviceProfileMatchingRules();
-	CreatePackage(UAndroidDeviceProfileMatchingRules::StaticPackage());
+	CreatePackage(nullptr, UAndroidDeviceProfileMatchingRules::StaticPackage());
 	Z_Construct_UClass_UAndroidDeviceProfileMatchingRules();
 
 	// Get the default object which will has the values from DeviceProfiles.ini
@@ -213,14 +217,14 @@ FString FAndroidDeviceProfileSelector::FindMatchingProfile(const FString& GPUFam
 						MatchHashString = Item.MatchString;
 					}
 					FString HashInputString = *SourceString + SaltString
-#ifdef HASH_PEPPER_SECRET_GUID
+#if ANDROIDDEVICEPROFILESELECTORSECRETS_H
 						+ HASH_PEPPER_SECRET_GUID.ToString()
 #endif
 						;
 
 					FSHAHash SourceHash;
 					FSHA1::HashBuffer(TCHAR_TO_ANSI(*HashInputString), HashInputString.Len(), SourceHash.Hash);
-					if (SourceHash.ToString() != MatchHashString.ToUpper())
+					if (SourceHash.ToString() != MatchHashString)
 					{
 						bFoundMatch = false;
 					}

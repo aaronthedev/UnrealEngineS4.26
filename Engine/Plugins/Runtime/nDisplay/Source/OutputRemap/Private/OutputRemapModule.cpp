@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OutputRemapModule.h"
 #include "OutputRemapShader.h"
@@ -8,6 +8,8 @@
 #include "ShaderCore.h"
 
 #include "RHICommandList.h"
+
+#include "OutputRemapHelpers.h"
 
 #include "OutputRemapLog.h"
 #include "OutputRemapMesh.h"

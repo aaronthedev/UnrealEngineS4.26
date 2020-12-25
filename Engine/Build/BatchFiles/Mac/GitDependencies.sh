@@ -1,5 +1,5 @@
 #!/bin/sh
-# Copyright Epic Games, Inc. All Rights Reserved.
+# Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 set -e
 
@@ -15,7 +15,7 @@ if [ ! -f ../../../Binaries/DotNET/GitDependencies.exe ]; then
 	exit 1
 fi 
 
-source SetupEnvironment.sh -mono "`pwd`"
+source SetupMono.sh "`pwd`"
 
 cd ../../../..
 

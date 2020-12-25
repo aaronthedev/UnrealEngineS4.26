@@ -1,10 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
  
 #pragma once
  
 #include "CoreMinimal.h"
-#include "UObject/WeakObjectPtr.h"
 #include "IDetailCustomization.h"
+#include "IPropertyUtilities.h"
 #include "EditorUndoClient.h"
  
 class UEdGraphPin;
@@ -22,25 +22,19 @@ public:
  
 	/** IDetailCustomization interface */
 	virtual void CustomizeDetails( IDetailLayoutBuilder& DetailBuilder ) override;
-	virtual void CustomizeDetails( const TSharedPtr<IDetailLayoutBuilder>& DetailBuilder ) override;
-
+	
 	//~ Begin FEditorUndoClient Interface
 	virtual void PostUndo(bool bSuccess) override;
 	virtual void PostRedo(bool bSuccess) override { PostUndo(bSuccess); }
 	// End of FEditorUndoClient
  
-	void OnComboValueChanged();
 private:
 	void OnBeginValueChanged();
 	void OnEndValueChanged();
 	void OnValueChanged();
 	void OnStaticSwitchValueChanged();
 
-	UEdGraphPin* GetAnyDefaultPin();
-
-	TArray<UEdGraphPin*> GetDefaultPins();
-
-	TWeakPtr<class IDetailLayoutBuilder> CachedDetailBuilder;
+	UEdGraphPin* GetDefaultPin();
 
 	TWeakObjectPtr<class UNiagaraScriptVariable> Variable;
 	TSharedPtr<class INiagaraEditorTypeUtilities, ESPMode::ThreadSafe> TypeUtilityValue;

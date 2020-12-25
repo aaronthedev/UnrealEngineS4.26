@@ -1,28 +1,35 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreTechBlueprintLibrary.h"
 
-#include "CoreTechRetessellateAction.h"
+#ifdef CAD_LIBRARY
+#include "CoreTechHelper.h"
+#include "CoreTechMeshLoader.h"
+#endif
+#include "CoreTechParametricSurfaceExtension.h"
 #include "DatasmithAdditionalData.h"
 #include "DatasmithStaticMeshImporter.h" // Call to BuildStaticMesh
 #include "DatasmithUtils.h"
+#include "Translators/DatasmithTranslator.h"
+#include "UI/DatasmithDisplayHelper.h"
 
+#include "Algo/AnyOf.h"
 #include "AssetData.h"
+#include "Async/ParallelFor.h"
 #include "Engine/StaticMesh.h"
 #include "IStaticMeshEditor.h"
 #include "StaticMeshAttributes.h"
+#include "Misc/FileHelper.h"
+#include "Misc/ScopedSlowTask.h"
+#include "Toolkits/IToolkit.h"
 #include "Toolkits/ToolkitManager.h"
+#include "UObject/StrongObjectPtr.h"
+#include "Algo/Transform.h"
 
 
 #define LOCTEXT_NAMESPACE "CoreTechRetessellateAction"
 
-
-bool UCoreTechBlueprintLibrary::RetessellateStaticMesh(UStaticMesh* StaticMesh, const FDatasmithRetessellationOptions& TessellationSettings, FText& FailureReason)
-{
-	return RetessellateStaticMeshWithNotification(StaticMesh, TessellationSettings, true, FailureReason);
-}
-
-bool UCoreTechBlueprintLibrary::RetessellateStaticMeshWithNotification(UStaticMesh* StaticMesh, const FDatasmithRetessellationOptions& TessellationSettings, bool bApplyChanges, FText& FailureReason)
+bool UCoreTechBlueprintLibrary::RetessellateStaticMesh( UStaticMesh* StaticMesh, const FDatasmithTessellationOptions& TessellationSettings, bool bPostChanges, FText& OutReason )
 {
 	bool bTessellationOutcome = false;
 
@@ -30,7 +37,7 @@ bool UCoreTechBlueprintLibrary::RetessellateStaticMeshWithNotification(UStaticMe
 	int32 LODIndex = 0;
 
 	FAssetData AssetData( StaticMesh );
-	if (UCoreTechParametricSurfaceData* CoreTechData = Datasmith::GetAdditionalData<UCoreTechParametricSurfaceData>(AssetData))
+	if( UCoreTechParametricSurfaceData* CoreTechData = Datasmith::GetAdditionalData<UCoreTechParametricSurfaceData>(AssetData) )
 	{
 		// Make sure MeshDescription exists
 		FMeshDescription* DestinationMeshDescription = StaticMesh->GetMeshDescription( LODIndex );
@@ -39,25 +46,18 @@ bool UCoreTechBlueprintLibrary::RetessellateStaticMeshWithNotification(UStaticMe
 			DestinationMeshDescription = StaticMesh->CreateMeshDescription(0);
 		}
 
-		if (DestinationMeshDescription)
+		if( DestinationMeshDescription )
 		{
-			if (bApplyChanges)
+			if(bPostChanges)
 			{
 				StaticMesh->Modify();
 				StaticMesh->PreEditChange( nullptr );
 			}
 
-			const int32 OldNumberOfUVChannels = DestinationMeshDescription->VertexInstanceAttributes().GetAttributeIndexCount<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate);
-			if (FCoreTechRetessellate_Impl::ApplyOnOneAsset( *StaticMesh, *CoreTechData, TessellationSettings ))
+			if( FCoreTechRetessellate_Impl::ApplyOnOneAsset( *StaticMesh, *CoreTechData, TessellationSettings ) )
 			{
-				const int32 NumberOfUVChannels = DestinationMeshDescription->VertexInstanceAttributes().GetAttributeIndexCount<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate);
-				if (NumberOfUVChannels < OldNumberOfUVChannels)
-				{
-					FailureReason = FText::Format(NSLOCTEXT("BlueprintRetessellation", "UVChannelsDestroyed", "Tessellation operation on Static Mesh {0} is destroying all UV channels above channel #{1}"), FText::FromString(StaticMesh->GetName()), NumberOfUVChannels - 1);
-				}
-
 				// Post static mesh has changed
-				if (bApplyChanges)
+				if(bPostChanges)
 				{
 					FDatasmithStaticMeshImporter::PreBuildStaticMesh(StaticMesh); // handle uvs stuff
 					FDatasmithStaticMeshImporter::BuildStaticMesh(StaticMesh);
@@ -88,17 +88,17 @@ bool UCoreTechBlueprintLibrary::RetessellateStaticMeshWithNotification(UStaticMe
 			}
 			else
 			{
-				FailureReason = NSLOCTEXT("BlueprintRetessellation", "LoadFailed", "Cannot generate mesh from parametric surface data");
+				OutReason = NSLOCTEXT("BlueprintRetessellation", "LoadFailed", "Cannot generate mesh from parametric surface data");
 			}
 		}
 		else
 		{
-			FailureReason = NSLOCTEXT("BlueprintRetessellation", "MeshDescriptionMissing", "Cannot create mesh description");
+			OutReason = NSLOCTEXT("BlueprintRetessellation", "MeshDescriptionMissing", "Cannot create mesh description");
 		}
 	}
 	else
 	{
-		FailureReason = NSLOCTEXT("BlueprintRetessellation", "MissingData", "No tessellation data attached to the static mesh");
+		OutReason = NSLOCTEXT("BlueprintRetessellation", "MissingData", "No tessellation data attached to the static mesh");
 	}
 #endif
 

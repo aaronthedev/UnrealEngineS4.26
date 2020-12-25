@@ -1,12 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Rendering/MorphTargetVertexInfoBuffers.h"
-#include "ProfilingDebugging/LoadTimeTracker.h"
+
 
 void FMorphTargetVertexInfoBuffers::InitRHI()
 {
-	SCOPED_LOADTIMER(FFMorphTargetVertexInfoBuffers_InitRHI);
-
 	check(NumTotalWorkItems > 0);
 
 	{
@@ -25,6 +23,15 @@ void FMorphTargetVertexInfoBuffers::InitRHI()
 		RHIUnlockVertexBuffer(MorphDeltasVB);
 		MorphDeltasSRV = RHICreateShaderResourceView(MorphDeltasVB, 2, PF_R16F);
 	}
+	{
+		FRHIResourceCreateInfo CreateInfo;
+		void* MorphPermutationsVBData = nullptr;
+		MorphPermutationsVB = RHICreateAndLockVertexBuffer(MorphPermutations.GetAllocatedSize(), BUF_Static | BUF_ShaderResource, CreateInfo, MorphPermutationsVBData);
+		FMemory::Memcpy(MorphPermutationsVBData, MorphPermutations.GetData(), MorphPermutations.GetAllocatedSize());
+		RHIUnlockVertexBuffer(MorphPermutationsVB);
+		MorphPermutationsSRV = RHICreateShaderResourceView(MorphPermutationsVB, 4, PF_R32_UINT);
+	}
+	MorphPermutations.Empty();
 	VertexIndices.Empty();
 	MorphDeltas.Empty();
 }
@@ -35,4 +42,6 @@ void FMorphTargetVertexInfoBuffers::ReleaseRHI()
 	VertexIndicesSRV.SafeRelease();
 	MorphDeltasVB.SafeRelease();
 	MorphDeltasSRV.SafeRelease();
+	MorphPermutationsVB.SafeRelease();
+	MorphPermutationsSRV.SafeRelease();
 }

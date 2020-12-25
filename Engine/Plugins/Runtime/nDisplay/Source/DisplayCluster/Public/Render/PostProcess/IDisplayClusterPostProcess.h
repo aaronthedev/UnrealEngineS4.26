@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,9 +7,6 @@
 #include "RHI.h"
 #include "RHIResources.h"
 #include "RHICommandList.h"
-
-class FDisplayClusterRenderViewport;
-class FViewport;
 
 
 /**
@@ -27,25 +24,7 @@ public:
 	*
 	* @param CfgLine - Configuration line for this postprocess
 	*/
-	UE_DEPRECATED(4.26, "This function is deprecated. Use TMap based InitializePostProcess.")
 	virtual void InitializePostProcess(const FString& CfgLine)
-	{ }
-
-	/**
-	* Game thread call. Postprocess initialization
-	*
-	* @param Parameters - Configuration parameters
-	*/
-	virtual void InitializePostProcess(const TMap<FString, FString>& Parameters)
-	{ }
-
-	/**
-	* Called every time the main viewport changed
-	*
-	* @param MainViewport
-	* @param RenderViewports
-	*/
-	virtual void PerformUpdateViewport(const FViewport& MainViewport, const TArray<FDisplayClusterRenderViewport>& RenderViewports)
 	{ }
 
 	/**
@@ -152,18 +131,7 @@ public:
 	* @param RHICmdList - RHI command list
 	* @param SrcTexture - Source texture
 	*/
-	UE_DEPRECATED(4.26, "Please use PerformPostProcessRenderTargetBeforeWarpBlend_RenderThread with an extended argument list.")
 	virtual void PerformPostProcessRenderTargetBeforeWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture) const
-	{ }
-
-	/**
-	* PP operation on a render target before warp&blend
-	*
-	* @param RHICmdList - RHI command list
-	* @param SrcTexture - Source texture
-	* @param RenderViewports - Viewports data
-	*/
-	virtual void PerformPostProcessRenderTargetBeforeWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture, const TArray<FDisplayClusterRenderViewport>& RenderViewports) const
 	{ }
 
 	/**
@@ -182,17 +150,6 @@ public:
 	* @param RHICmdList - RHI command list
 	* @param SrcTexture - Source texture
 	*/
-	UE_DEPRECATED(4.26, "Please use PerformPostProcessRenderTargetAfterWarpBlend_RenderThread with extended argument list.")
 	virtual void PerformPostProcessRenderTargetAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture) const
-	{ }
-
-	/**
-	* PP operation on a render target after warp&blend
-	*
-	* @param RHICmdList - RHI command list
-	* @param SrcTexture - Source texture
-	* @param RenderViewports - Viewports data
-	*/
-	virtual void PerformPostProcessRenderTargetAfterWarpBlend_RenderThread(FRHICommandListImmediate& RHICmdList, FRHITexture2D* SrcTexture, const TArray<FDisplayClusterRenderViewport>& RenderViewports) const
 	{ }
 };

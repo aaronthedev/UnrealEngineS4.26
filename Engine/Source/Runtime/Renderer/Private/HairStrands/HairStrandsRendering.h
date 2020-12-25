@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	HairRendering.h: Hair rendering implementation.
@@ -11,7 +11,6 @@
 #include "Shader.h"
 #include "HairStrandsUtils.h"
 #include "HairStrandsCluster.h"
-#include "HairStrandsClusters.h"
 #include "HairStrandsLUT.h"
 #include "HairStrandsDeepShadow.h"
 #include "HairStrandsVoxelization.h"
@@ -23,30 +22,21 @@
 #include "HairStrandsInterface.h"
 
 /// Hold all the hair strands data
-struct FHairStrandsRenderingData
+struct FHairStrandsDatas
 {
+	FHairStrandsDeepShadowViews DeepShadowViews;
 	FHairStrandsVisibilityViews HairVisibilityViews;
-	FHairStrandsMacroGroupViews MacroGroupsPerViews;
-	FHairStrandsDebugData DebugData;
+	FHairStrandsClusterViews HairClusterPerViews;
 };
 
-void RenderHairPrePass(
-	FRDGBuilder& GraphBuilder,
-	FScene* Scene,
-	TArray<FViewInfo>& Views,
-	FHairStrandsRenderingData& OutHairDatas);
+enum class EHairStrandsInterpolationType
+{
+	RenderStrands,
+	SimulationStrands
+};
 
-void RenderHairBasePass(
-	FRDGBuilder& GraphBuilder,
-	FScene* Scene,
-	FSceneRenderTargets& SceneContext,
-	TArray<FViewInfo>& Views,
-	FHairStrandsRenderingData& OutHairDatas);
-
-void RunHairStrandsBookmark(
-	FRDGBuilder& GraphBuilder, 
-	EHairStrandsBookmark Bookmark, 
-	FHairStrandsBookmarkParameters& Parameters);
-
-FHairStrandsBookmarkParameters CreateHairStrandsBookmarkParameters(FViewInfo& View);
-FHairStrandsBookmarkParameters CreateHairStrandsBookmarkParameters(TArray<FViewInfo>& View);
+void RunHairStrandsInterpolation(
+	FRHICommandListImmediate& RHICmdList, 
+	EWorldType::Type WorldType, 
+	TShaderMap<FGlobalShaderType>* ShaderMap, 
+	EHairStrandsInterpolationType Type);

@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_UTILS_SPARSE_VALUE_WRITER_H
-#define PXR_USD_USD_UTILS_SPARSE_VALUE_WRITER_H
+#ifndef USDUTILS_SPARSE_VALUE_WRITER_H
+#define USDUTILS_SPARSE_VALUE_WRITER_H
 
 /// \file usdUtils/sparseValueWriter.h
 ///
@@ -94,7 +94,7 @@ public:
     /// 
     /// \p defaultValue can be unspecified (or left empty) if you don't 
     /// care about authoring a default value. In this case, the sparse authoring
-    /// logic is initialized with the existing authored default value or
+    /// logic is intialized with the existing authored default value or 
     /// the fallback value, if \p attr has one.
     USDUTILS_API
     UsdUtilsSparseAttrValueWriter(const UsdAttribute &attr, 
@@ -264,12 +264,6 @@ public:
     void Clear() {
         _attrValueWriterMap.clear();
     }
-
-    /// Returns a new vector of UsdUtilsSparseAttrValueWriter populated 
-    /// from the attrValueWriter map.
-    USDUTILS_API
-    std::vector<UsdUtilsSparseAttrValueWriter> 
-    GetSparseAttrValueWriters() const;
 
 private:
     // Templated helper method used by the two public SetAttribute() methods.

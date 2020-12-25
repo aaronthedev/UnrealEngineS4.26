@@ -1,36 +1,36 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TrackRecorders/MovieScenePropertyTrackRecorder.h"
 #include "UObject/UnrealType.h"
 #include "MovieSceneCommonHelpers.h"
 
-bool FMovieScenePropertyTrackRecorderFactory::CanRecordProperty(UObject* InObjectToRecord, FProperty* InPropertyToRecord) const
+bool FMovieScenePropertyTrackRecorderFactory::CanRecordProperty(UObject* InObjectToRecord, UProperty* InPropertyToRecord) const
 {
-	if (InPropertyToRecord->IsA<FBoolProperty>())
+	if (InPropertyToRecord->IsA<UBoolProperty>())
 	{
 		return true;
 	}
-	else if (InPropertyToRecord->IsA<FByteProperty>())
+	else if (InPropertyToRecord->IsA<UByteProperty>())
 	{
 		return true;
 	}
-	else if (InPropertyToRecord->IsA<FEnumProperty>())
+	else if (InPropertyToRecord->IsA<UEnumProperty>())
 	{
 		return true;
 	}
-	else if (InPropertyToRecord->IsA<FIntProperty>())
+	else if (InPropertyToRecord->IsA<UIntProperty>())
 	{
 		return true;
 	}
-	else if (InPropertyToRecord->IsA<FStrProperty>())
+	else if (InPropertyToRecord->IsA<UStrProperty>())
 	{
 		return true;
 	}
-	else if (InPropertyToRecord->IsA<FFloatProperty>())
+	else if (InPropertyToRecord->IsA<UFloatProperty>())
 	{
 		return true;
 	}
-	else if (FStructProperty* StructProperty = CastField<FStructProperty>(InPropertyToRecord))
+	else if (UStructProperty* StructProperty = Cast<UStructProperty>(InPropertyToRecord))
 	{
 		if (StructProperty->Struct->GetFName() == NAME_Vector)
 		{
@@ -68,7 +68,7 @@ UMovieSceneTrackRecorder* FMovieScenePropertyTrackRecorderFactory::CreateTrackRe
 		TrackRecorder->PropertyRecorder = MakeShareable(new FMovieSceneTrackPropertyRecorder<uint8>(Binding));
 		break;
 	case ESerializedPropertyType::EnumType:
-		TrackRecorder->PropertyRecorder = MakeShareable(new FMovieSceneTrackPropertyRecorder<uint8>(Binding));
+		TrackRecorder->PropertyRecorder = MakeShareable(new FMovieSceneTrackPropertyRecorderEnum(Binding));
 		break;
 	case ESerializedPropertyType::IntegerType:
 		TrackRecorder->PropertyRecorder = MakeShareable(new FMovieSceneTrackPropertyRecorder<int32>(Binding));
@@ -93,34 +93,34 @@ UMovieSceneTrackRecorder* FMovieScenePropertyTrackRecorderFactory::CreateTrackRe
 void UMovieScenePropertyTrackRecorder::CreateTrackImpl()
 {
  	FTrackInstancePropertyBindings Binding(PropertyToRecord, PropertyToRecord.ToString());
- 	FProperty* Property = Binding.GetProperty(*ObjectToRecord);
+ 	UProperty* Property = Binding.GetProperty(*ObjectToRecord);
  	if (Property != nullptr)
  	{
- 		if (Property->IsA<FBoolProperty>())
+ 		if (Property->IsA<UBoolProperty>())
  		{
  			PropertyRecorder = MakeShareable(new FMovieSceneTrackPropertyRecorder<bool>(Binding));
  		}
- 		else if (Property->IsA<FByteProperty>())
+ 		else if (Property->IsA<UByteProperty>())
  		{
  			PropertyRecorder = MakeShareable(new FMovieSceneTrackPropertyRecorder<uint8>(Binding));
  		}
-		else if (Property->IsA<FEnumProperty>())
+		else if (Property->IsA<UEnumProperty>())
 		{
-			PropertyRecorder = MakeShareable(new FMovieSceneTrackPropertyRecorder<uint8>(Binding));
+			PropertyRecorder = MakeShareable(new FMovieSceneTrackPropertyRecorderEnum(Binding));
 		}
-		else if (Property->IsA<FIntProperty>())
+		else if (Property->IsA<UIntProperty>())
 		{
 			PropertyRecorder = MakeShareable(new FMovieSceneTrackPropertyRecorder<int32>(Binding));
 		}
-		else if (Property->IsA<FStrProperty>())
+		else if (Property->IsA<UStrProperty>())
 		{
 			PropertyRecorder = MakeShareable(new FMovieSceneTrackPropertyRecorder<FString>(Binding));
 		}
-		else if (Property->IsA<FFloatProperty>())
+		else if (Property->IsA<UFloatProperty>())
  		{
 			PropertyRecorder = MakeShareable(new FMovieSceneTrackPropertyRecorder<float>(Binding));
  		}
- 		else if (FStructProperty* StructProperty = CastField<FStructProperty>(Property))
+ 		else if (UStructProperty* StructProperty = Cast<UStructProperty>(Property))
  		{
  			if (StructProperty->Struct->GetFName() == NAME_Vector)
  			{

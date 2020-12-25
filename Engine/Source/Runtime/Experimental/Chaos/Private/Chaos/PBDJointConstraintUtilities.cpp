@@ -1,618 +1,23 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "Chaos/PBDJointConstraintUtilities.h"
-#include "Chaos/DenseMatrix.h"
-#include "Chaos/Joint/JointConstraintsCVars.h"
 #include "Chaos/ParticleHandle.h"
 #include "Chaos/Utilities.h"
 
-//PRAGMA_DISABLE_OPTIMIZATION
-
 namespace Chaos
 {
-	FReal GetSwingAngleY(const FRotation3& RSwing)
+	template<typename T, int d>
+	TVector<T, d> TPBDJointUtilities<T, d>::ConditionInertia(const TVector<T, d>& InI, const T MaxRatio)
 	{
-		return 4.0f * FMath::Atan2(RSwing.Y, 1.0f + RSwing.W);
-	}
-
-	FReal GetSwingAngleZ(const FRotation3& RSwing)
-	{
-		return 4.0f * FMath::Atan2(RSwing.Z, 1.0f + RSwing.W);
-	}
-
-	// Iterative find near point on ellipse. Point InP, Radii R.
-	// https://www.geometrictools.com/Documentation/DistancePointEllipseEllipsoid.pdf
-	FVec2 NearPointOnEllipse(const FVec2& P, const FVec2& R, const int MaxIts = 20, const FReal Tolerance = 1.e-4f)
-	{
-		// Map point into first quadrant
-		FVec2 PAbs = P.GetAbs();
-
-		// Check for point on minor axis
-		const FReal Epsilon = 1.e-6f;
-		if (R.X >= R.Y)
+		// @todo(ccaulfield): simd
+		if (MaxRatio > 0)
 		{
-			if (PAbs.Y < Epsilon)
-			{
-				return FVec2((P.X > 0.0f) ? R.X : -R.X, 0.0f);
-			}
-		}
-		else
-		{
-			if (PAbs.X < Epsilon)
-			{
-				return FVec2(0.0f, (P.Y > 0.0f)? R.Y : -R.Y);
-			}
-		}
-
-		// Iterate to find nearest point
-		FVec2 R2 = R * R;
-		FVec2 RP = R * PAbs;
-		FReal T = FMath::Max(RP.X - R2.X, RP.Y - R2.Y);
-		FVec2 D;
-		for (int32 It = 0; It < MaxIts; ++It)
-		{
-			D = FVec2(1.0f / (T + R2.X), 1 / (T + R2.Y));
-			FVec2 RPD = RP * D;
-
-			FVec2 FV = RPD * RPD;
-			FReal F = FV.X + FV.Y - 1.0f;
-
-			if (F < Tolerance)
-			{
-				return (R2 * P) * D;
-			}
-
-			FReal DF = -2.0f * FVec2::DotProduct(FV, D);
-			T = T - F / DF;
-		}
-
-		// Too many iterations - return current value clamped
-		FVec2 S = (R2 * P) * D;
-		FVec2 SN = S / R;	
-		return S / SN.Size();
-	}
-
-	bool GetEllipticalAxisError(const FVec3& SwingAxisRot, const FVec3& EllipseNormal, const FVec3& TwistAxis, FVec3& AxisLocal, FReal& Error)
-	{
-		const FReal R2 = SwingAxisRot.SizeSquared();
-		const FReal A = 1.0f - R2;
-		const FReal B = 1.0f / (1.0f + R2);
-		const FReal B2 = B * B;
-		const FReal V1 = 2.0f * A * B2;
-		const FVec3 V2 = FVec3(A, 2.0f * SwingAxisRot.Z, -2.0f * SwingAxisRot.Y);
-		const FReal RD = FVec3::DotProduct(SwingAxisRot, EllipseNormal);
-		const FReal DV1 = -4.0f * RD * (3.0f - R2) * B2 * B;
-		const FVec3 DV2 = FVec3(-2.0f * RD, 2.0f * EllipseNormal.Z, -2.0f * EllipseNormal.Y);
-		
-		const FVec3 Line = V1 * V2 - FVec3(1, 0, 0);
-		FVec3 Normal = V1 * DV2 + DV1 * V2;
-		if (Utilities::NormalizeSafe(Normal))
-		{
-			AxisLocal = FVec3::CrossProduct(Line, Normal);
-			Error = -FVec3::DotProduct(FVec3::CrossProduct(Line, AxisLocal), TwistAxis);
-			return true;
-		}
-		return false;
-	}
-
-	void FPBDJointUtilities::GetSphericalAxisDelta(
-		const FVec3& X0,
-		const FVec3& X1,
-		FVec3& Axis,
-		FReal& Delta)
-	{
-		Axis = FVec3(0);
-		Delta = 0;
-
-		const FVec3 DX = X1 - X0;
-		const FReal DXLen = DX.Size();
-		if (DXLen > KINDA_SMALL_NUMBER)
-		{
-			Axis = DX / DXLen;
-			Delta = DXLen;
-		}
-	}
-
-
-	void FPBDJointUtilities::GetCylindricalAxesDeltas(
-		const FRotation3& R0,
-		const FVec3& X0,
-		const FVec3& X1,
-		const int32 CylinderAxisIndex,
-		FVec3& CylinderAxis,
-		FReal& CylinderDelta,
-		FVec3& RadialAxis,
-		FReal& RadialDelta)
-	{
-		CylinderAxis = FVec3(0);
-		CylinderDelta = 0;
-		RadialAxis = FVec3(0);
-		RadialDelta = 0;
-
-		FVec3 DX = X1 - X0;
-
-		const FMatrix33 R0M = R0.ToMatrix();
-		CylinderAxis = R0M.GetAxis(CylinderAxisIndex);
-		CylinderDelta = FVec3::DotProduct(DX, CylinderAxis);
-
-		DX = DX - CylinderDelta * CylinderAxis;
-		const FReal DXLen = DX.Size();
-		if (DXLen > KINDA_SMALL_NUMBER)
-		{
-			RadialAxis = DX / DXLen;
-			RadialDelta = DXLen;
-		}
-	}
-
-
-	void FPBDJointUtilities::GetPlanarAxisDelta(
-		const FRotation3& R0,
-		const FVec3& X0,
-		const FVec3& X1,
-		const int32 PlaneAxisIndex,
-		FVec3& Axis,
-		FReal& Delta)
-	{
-		const FMatrix33 R0M = R0.ToMatrix();
-		Axis = R0M.GetAxis(PlaneAxisIndex);
-		Delta = FVec3::DotProduct(X1 - X0, Axis);
-	}
-
-	void FPBDJointUtilities::DecomposeSwingTwistLocal(const FRotation3& R0, const FRotation3& R1, FRotation3& R01Swing, FRotation3& R01Twist)
-	{
-		const FRotation3 R01 = R0.Inverse() * R1;
-		R01.ToSwingTwistX(R01Swing, R01Twist);
-	}
-
-	void FPBDJointUtilities::GetSwingTwistAngles(const FRotation3& R0, const FRotation3& R1, FReal& TwistAngle, FReal& Swing1Angle, FReal& Swing2Angle)
-	{
-		FRotation3 R01Twist, R01Swing;
-		FPBDJointUtilities::DecomposeSwingTwistLocal(R0, R1, R01Swing, R01Twist);
-		TwistAngle = R01Twist.GetAngle();
-		// @todo(ccaulfield): makes assumptions about Swing1 and Swing2 axes - fix this
-		Swing1Angle = GetSwingAngleZ(R01Swing);
-		Swing2Angle = GetSwingAngleY(R01Swing);
-	}
-
-	FReal FPBDJointUtilities::GetTwistAngle(const FRotation3& InTwist)
-	{
-		FRotation3 Twist = InTwist.GetNormalized();
-		ensure(FMath::Abs(Twist.W) <= 1.0f);
-		FReal Angle = Twist.GetAngle();
-		if (Angle > PI)
-		{
-			Angle = Angle - (FReal)2 * PI;
-		}
-		if (Twist.X < 0.0f)
-		{
-			Angle = -Angle;
-		}
-		return Angle;
-	}
-
-
-	void FPBDJointUtilities::GetTwistAxisAngle(
-		const FRotation3& R0,
-		const FRotation3& R1,
-		FVec3& Axis,
-		FReal& Angle)
-	{
-		FRotation3 R01Twist, R01Swing;
-		FPBDJointUtilities::DecomposeSwingTwistLocal(R0, R1, R01Swing, R01Twist);
-
-		Axis = R1 * FJointConstants::TwistAxis();
-		Angle = FPBDJointUtilities::GetTwistAngle(R01Twist);
-	}
-
-
-	void FPBDJointUtilities::GetConeAxisAngleLocal(
-		const FRotation3& R0,
-		const FRotation3& R1,
-		const FReal AngleTolerance,
-		FVec3& AxisLocal,
-		FReal& Angle)
-	{
-		// Decompose rotation of body 1 relative to body 0 into swing and twist rotations, assuming twist is X axis
-		FRotation3 R01Twist, R01Swing;
-		FPBDJointUtilities::DecomposeSwingTwistLocal(R0, R1, R01Swing, R01Twist);
-
-		R01Swing.ToAxisAndAngleSafe(AxisLocal, Angle, FJointConstants::Swing1Axis(), AngleTolerance);
-		if (Angle > PI)
-		{
-			Angle = Angle - (FReal)2 * PI;
-		}
-	}
-
-	void FPBDJointUtilities::GetCircularConeAxisErrorLocal(
-		const FRotation3& R0,
-		const FRotation3& R1,
-		const FReal SwingLimit,
-		FVec3& AxisLocal,
-		FReal& Error)
-	{
-		FRotation3 R01Twist, R01Swing;
-		FPBDJointUtilities::DecomposeSwingTwistLocal(R0, R1, R01Swing, R01Twist);
-
-		FReal Angle = 0.0f;
-		R01Swing.ToAxisAndAngleSafe(AxisLocal, Angle, FJointConstants::Swing1Axis(), 1.e-6f);
-
-		Error = 0.0f;
-		if (Angle > SwingLimit)
-		{
-			Error = Angle - SwingLimit;
-		}
-		else if (Angle < -SwingLimit)
-		{
-			Error = Angle + SwingLimit;
-		}
-	}
-
-	void FPBDJointUtilities::GetEllipticalConeAxisErrorLocal(
-		const FRotation3& R0,
-		const FRotation3& R1,
-		const FReal SwingLimitY,
-		const FReal SwingLimitZ,
-		FVec3& AxisLocal,
-		FReal& Error)
-	{
-		if (FMath::IsNearlyEqual(SwingLimitY, SwingLimitZ, 1.e-3f))
-		{ 
-			GetCircularConeAxisErrorLocal(R0, R1, SwingLimitY, AxisLocal, Error);
-			return;
-		}
-
-		AxisLocal = FJointConstants::Swing1Axis();
-		Error = 0.0f;
-
-		FRotation3 R01Twist, R01Swing;
-		FPBDJointUtilities::DecomposeSwingTwistLocal(R0, R1, R01Swing, R01Twist);
-
-		const FVec2 SwingAngles = FVec2(GetSwingAngleY(R01Swing), GetSwingAngleZ(R01Swing));
-		const FVec2 SwingLimits = FVec2(SwingLimitY, SwingLimitZ);
-
-		// Transform onto a circle to see if we are within the ellipse
-		const FVec2 CircleMappedAngles = SwingAngles / SwingLimits;
-		if (CircleMappedAngles.SizeSquared() > 1.0f)
-		{
-			// Map the swing to a position on the elliptical limits
-			const FVec2 ClampedSwingAngles = NearPointOnEllipse(SwingAngles, SwingLimits);
-
-			// Get the ellipse normal
-			const FVec2 ClampedNormal = ClampedSwingAngles / (SwingLimits * SwingLimits);
-
-			// Calculate the axis and error
-			const FVec3 TwistAxis = R01Swing.GetAxisX();
-			const FVec3 SwingRotAxis = FVec3(0.0f, FMath::Tan(ClampedSwingAngles.X / 4.0f), FMath::Tan(ClampedSwingAngles.Y / 4.0f));
-			const FVec3 EllipseNormal = FVec3(0.0f, ClampedNormal.X, ClampedNormal.Y);
-			GetEllipticalAxisError(SwingRotAxis, EllipseNormal, TwistAxis, AxisLocal, Error);
-		}
-	}
-
-	void FPBDJointUtilities::GetLockedSwingAxisAngle(
-		const FRotation3& R0,
-		const FRotation3& R1,
-		const EJointAngularConstraintIndex SwingConstraintIndex,
-		FVec3& Axis,
-		FReal& Angle)
-	{
-		// NOTE: this differs from GetDualConeSwingAxisAngle in that it returns an axis with length Sin(SwingAngle)
-		// and an Angle that is actually Sin(SwingAngle). This allows it to be used when we get closer to degenerate twist angles.
-		FVec3 Twist1 = R1 * FJointConstants::TwistAxis();
-		FVec3 Swing0 = R0 * FJointConstants::OtherSwingAxis(SwingConstraintIndex);
-		Axis = FVec3::CrossProduct(Swing0, Twist1);
-		Angle = -FVec3::DotProduct(Swing0, Twist1);
-	}
-
-
-	void FPBDJointUtilities::GetDualConeSwingAxisAngle(
-		const FRotation3& R0,
-		const FRotation3& R1,
-		const EJointAngularConstraintIndex SwingConstraintIndex,
-		FVec3& Axis,
-		FReal& Angle)
-	{
-		FVec3 Twist1 = R1 * FJointConstants::TwistAxis();
-		FVec3 Swing0 = R0 * FJointConstants::OtherSwingAxis(SwingConstraintIndex);
-		Axis = FVec3::CrossProduct(Swing0, Twist1);
-		Angle = 0.0f;
-		if (Utilities::NormalizeSafe(Axis, KINDA_SMALL_NUMBER))
-		{
-			FReal SwingTwistDot = FVec3::DotProduct(Swing0, Twist1);
-			Angle = FMath::Asin(FMath::Clamp(-SwingTwistDot, -1.0f, 1.0f));
-		}
-	}
-
-
-	void FPBDJointUtilities::GetSwingAxisAngle(
-		const FRotation3& R0,
-		const FRotation3& R1,
-		const FReal AngleTolerance,
-		const EJointAngularConstraintIndex SwingConstraintIndex,
-		FVec3& Axis,
-		FReal& Angle)
-	{
-		// Decompose rotation of body 1 relative to body 0 into swing and twist rotations, assuming twist is X axis
-		FRotation3 R01Twist, R01Swing;
-		FPBDJointUtilities::DecomposeSwingTwistLocal(R0, R1, R01Swing, R01Twist);
-		const FReal R01SwingYorZ = (FJointConstants::AxisIndex(SwingConstraintIndex) == 2) ? R01Swing.Z : R01Swing.Y;	// Can't index a quat :(
-		Angle = 4.0f * FMath::Atan2(R01SwingYorZ, 1.0f + R01Swing.W);
-		const FVec3& AxisLocal = (SwingConstraintIndex == EJointAngularConstraintIndex::Swing1) ? FJointConstants::Swing1Axis() : FJointConstants::Swing2Axis();
-		Axis = R0 * AxisLocal;
-	}
-
-
-	void FPBDJointUtilities::GetLockedRotationAxes(const FRotation3& R0, const FRotation3& R1, FVec3& Axis0, FVec3& Axis1, FVec3& Axis2)
-	{
-		const FReal W0 = R0.W;
-		const FReal W1 = R1.W;
-		const FVec3 V0 = FVec3(R0.X, R0.Y, R0.Z);
-		const FVec3 V1 = FVec3(R1.X, R1.Y, R1.Z);
-
-		const FVec3 C = V1 * W0 + V0 * W1;
-		const FReal D0 = W0 * W1;
-		const FReal D1 = FVec3::DotProduct(V0, V1);
-		const FReal D = D0 - D1;
-
-		Axis0 = 0.5f * (V0 * V1.X + V1 * V0.X + FVec3(D, C.Z, -C.Y));
-		Axis1 = 0.5f * (V0 * V1.Y + V1 * V0.Y + FVec3(-C.Z, D, C.X));
-		Axis2 = 0.5f * (V0 * V1.Z + V1 * V0.Z + FVec3(C.Y, -C.X, D));
-
-		// Handle degenerate case of 180 deg swing
-		if (FMath::Abs(D0 + D1) < SMALL_NUMBER)
-		{
-			const FReal Epsilon = SMALL_NUMBER;
-			Axis0.X += Epsilon;
-			Axis1.Y += Epsilon;
-			Axis2.Z += Epsilon;
-		}
-	}
-	
-
-	FReal FPBDJointUtilities::GetConeAngleLimit(
-		const FPBDJointSettings& JointSettings,
-		const FVec3& SwingAxisLocal,
-		const FReal SwingAngle)
-	{
-		// Calculate swing limit for the current swing axis
-		const FReal Swing1Limit = JointSettings.AngularLimits[(int32)EJointAngularConstraintIndex::Swing1];
-		const FReal Swing2Limit = JointSettings.AngularLimits[(int32)EJointAngularConstraintIndex::Swing2];
-
-		// Circular swing limit
-		FReal SwingAngleMax = Swing1Limit;
-
-		// Elliptical swing limit
-		// @todo(ccaulfield): do elliptical constraints properly (axis is still for circular limit)
-		if (!FMath::IsNearlyEqual(Swing1Limit, Swing2Limit, KINDA_SMALL_NUMBER))
-		{
-			// Map swing axis to ellipse and calculate limit for this swing axis
-			const FReal DotSwing1 = FMath::Abs(FVec3::DotProduct(SwingAxisLocal, FJointConstants::Swing1Axis()));
-			const FReal DotSwing2 = FMath::Abs(FVec3::DotProduct(SwingAxisLocal, FJointConstants::Swing2Axis()));
-			SwingAngleMax = FMath::Sqrt(Swing1Limit * DotSwing1 * Swing1Limit * DotSwing1 + Swing2Limit * DotSwing2 * Swing2Limit * DotSwing2);
-		}
-
-		return SwingAngleMax;
-	}
-
-	bool FPBDJointUtilities::GetSoftLinearLimitEnabled(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		return JointSettings.bSoftLinearLimitsEnabled && !bChaos_Joint_DisableSoftLimits;
-	}
-
-	bool FPBDJointUtilities::GetSoftTwistLimitEnabled(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		return JointSettings.bSoftTwistLimitsEnabled && !bChaos_Joint_DisableSoftLimits;
-	}
-
-	bool FPBDJointUtilities::GetSoftSwingLimitEnabled(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		return JointSettings.bSoftSwingLimitsEnabled && !bChaos_Joint_DisableSoftLimits;
-	}
-
-	FReal FPBDJointUtilities::GetLinearStiffness(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		return (SolverSettings.Stiffness > (FReal)0) ? SolverSettings.Stiffness : JointSettings.Stiffness;
-	}
-
-	FReal FPBDJointUtilities::GetSoftLinearStiffness(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		return (SolverSettings.SoftLinearStiffness > (FReal)0) ? SolverSettings.SoftLinearStiffness : JointSettings.SoftLinearStiffness;
-	}
-
-	FReal FPBDJointUtilities::GetSoftLinearDamping(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		return (SolverSettings.SoftLinearDamping > (FReal)0) ? SolverSettings.SoftLinearDamping : JointSettings.SoftLinearDamping;
-	}
-
-	FReal FPBDJointUtilities::GetTwistStiffness(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		return (SolverSettings.Stiffness > (FReal)0) ? SolverSettings.Stiffness : JointSettings.Stiffness;
-	}
-
-	FReal FPBDJointUtilities::GetSoftTwistStiffness(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		return (SolverSettings.SoftTwistStiffness > 0)? SolverSettings.SoftTwistStiffness : JointSettings.SoftTwistStiffness;
-	}
-
-	FReal FPBDJointUtilities::GetSoftTwistDamping(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		return (SolverSettings.SoftTwistDamping > 0) ? SolverSettings.SoftTwistDamping : JointSettings.SoftTwistDamping;
-	}
-
-	FReal FPBDJointUtilities::GetSwingStiffness(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		return (SolverSettings.Stiffness > (FReal)0) ? SolverSettings.Stiffness : JointSettings.Stiffness;
-	}
-
-	FReal FPBDJointUtilities::GetSoftSwingStiffness(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		return (SolverSettings.SoftSwingStiffness > 0) ? SolverSettings.SoftSwingStiffness : JointSettings.SoftSwingStiffness;
-	}
-
-	FReal FPBDJointUtilities::GetSoftSwingDamping(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		return (SolverSettings.SoftSwingDamping > 0) ? SolverSettings.SoftSwingDamping : JointSettings.SoftSwingDamping;
-	}
-
-	FReal FPBDJointUtilities::GetLinearDriveStiffness(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings,
-		const int32 AxisIndex)
-	{
-		if (JointSettings.bLinearPositionDriveEnabled[AxisIndex])
-		{
-			return (SolverSettings.LinearDriveStiffness > 0.0f) ? SolverSettings.LinearDriveStiffness : JointSettings.LinearDriveStiffness;
-		}
-		return 0.0f;
-	}
-
-	FReal FPBDJointUtilities::GetLinearDriveDamping(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings,
-		const int32 AxisIndex)
-	{
-		if (JointSettings.bLinearVelocityDriveEnabled[AxisIndex])
-		{
-			return (SolverSettings.LinearDriveDamping > 0.0f) ? SolverSettings.LinearDriveDamping : JointSettings.LinearDriveDamping;
-		}
-		return 0.0f;
-	}
-
-	FReal FPBDJointUtilities::GetAngularTwistDriveStiffness(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		if (JointSettings.bAngularTwistPositionDriveEnabled)
-		{
-			return (SolverSettings.AngularDriveStiffness > 0.0f) ? SolverSettings.AngularDriveStiffness : JointSettings.AngularDriveStiffness;
-		}
-		return 0.0f;
-	}
-
-	FReal FPBDJointUtilities::GetAngularTwistDriveDamping(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		if (JointSettings.bAngularTwistVelocityDriveEnabled)
-		{
-			return (SolverSettings.AngularDriveDamping > 0.0f) ? SolverSettings.AngularDriveDamping : JointSettings.AngularDriveDamping;
-		}
-		return 0.0f;
-	}
-
-	FReal FPBDJointUtilities::GetAngularSwingDriveStiffness(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		if (JointSettings.bAngularSwingPositionDriveEnabled)
-		{
-			return (SolverSettings.AngularDriveStiffness > 0.0f) ? SolverSettings.AngularDriveStiffness : JointSettings.AngularDriveStiffness;
-		}
-		return 0.0f;
-	}
-
-	FReal FPBDJointUtilities::GetAngularSwingDriveDamping(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		if (JointSettings.bAngularSwingVelocityDriveEnabled)
-		{
-			return (SolverSettings.AngularDriveDamping > 0.0f) ? SolverSettings.AngularDriveDamping : JointSettings.AngularDriveDamping;
-		}
-		return 0.0f;
-	}
-
-	FReal FPBDJointUtilities::GetAngularSLerpDriveStiffness(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		if (JointSettings.bAngularSLerpPositionDriveEnabled)
-		{
-			return (SolverSettings.AngularDriveStiffness > 0.0f) ? SolverSettings.AngularDriveStiffness : JointSettings.AngularDriveStiffness;
-		}
-		return 0.0f;
-	}
-
-	FReal FPBDJointUtilities::GetAngularSLerpDriveDamping(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		if (JointSettings.bAngularSLerpVelocityDriveEnabled)
-		{
-			return (SolverSettings.AngularDriveDamping > 0.0f) ? SolverSettings.AngularDriveDamping : JointSettings.AngularDriveDamping;
-		}
-		return 0.0f;
-	}
-
-	FReal FPBDJointUtilities::GetLinearProjection(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		return (SolverSettings.LinearProjection >= 0.0f) ? SolverSettings.LinearProjection : JointSettings.LinearProjection;
-	}
-
-	FReal FPBDJointUtilities::GetAngularProjection(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		return (SolverSettings.AngularProjection >= 0.0f) ? SolverSettings.AngularProjection : JointSettings.AngularProjection;
-	}
-
-	bool FPBDJointUtilities::GetLinearSoftAccelerationMode(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		return JointSettings.LinearSoftForceMode == EJointForceMode::Acceleration;
-	}
-
-	bool FPBDJointUtilities::GetAngularSoftAccelerationMode(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		return JointSettings.AngularSoftForceMode == EJointForceMode::Acceleration;
-	}
-
-	bool FPBDJointUtilities::GetDriveAccelerationMode(
-		const FPBDJointSolverSettings& SolverSettings,
-		const FPBDJointSettings& JointSettings)
-	{
-		return JointSettings.AngularDriveForceMode == EJointForceMode::Acceleration;
-	}
-
-
-	FVec3 FPBDJointUtilities::ConditionInertia(const FVec3& InI, const FReal MaxRatio)
-	{
-		FReal IMin = InI.Min();
-		FReal IMax = InI.Max();
-		if ((MaxRatio > 0) && (IMin > 0))
-		{
-			FReal Ratio = IMax / IMin;
+			T IMin = InI.Min();
+			T IMax = InI.Max();
+			T Ratio = IMax / IMin;
 			if (Ratio > MaxRatio)
 			{
-				FReal MinIMin = IMax / MaxRatio;
-				return FVec3(
+				T MinIMin = IMax / MaxRatio;
+				return TVector<T, d>(
 					FMath::Lerp(MinIMin, IMax, (InI.X - IMin) / (IMax - IMin)),
 					FMath::Lerp(MinIMin, IMax, (InI.Y - IMin) / (IMax - IMin)),
 					FMath::Lerp(MinIMin, IMax, (InI.Z - IMin) / (IMax - IMin)));
@@ -621,130 +26,109 @@ namespace Chaos
 		return InI;
 	}
 
-	
-	FVec3 FPBDJointUtilities::ConditionParentInertia(const FVec3& IParent, const FVec3& IChild, const FReal MinRatio)
+	template<typename T, int d>
+	TVector<T, d> TPBDJointUtilities<T, d>::ConditionParentInertia(const TVector<T, d>& IParent, const TVector<T, d>& IChild, const T MinRatio)
 	{
+		// @todo(ccaulfield): simd
 		if (MinRatio > 0)
 		{
-			FReal IParentMax = IParent.Max();
-			FReal IChildMax = IChild.Max();
-			if ((IParentMax > 0) && (IChildMax > 0))
+			T IParentMax = IParent.Max();
+			T IChildMax = IChild.Max();
+			T Ratio = IParentMax / IChildMax;
+			if (Ratio < MinRatio)
 			{
-				FReal Ratio = IParentMax / IChildMax;
-				if (Ratio < MinRatio)
-				{
-					FReal Multiplier = MinRatio / Ratio;
-					return IParent * Multiplier;
-				}
+				T Multiplier = MinRatio / Ratio;
+				return IParent * Multiplier;
 			}
 		}
 		return IParent;
 	}
 
-	
-	FReal FPBDJointUtilities::ConditionParentMass(const FReal MParent, const FReal MChild, const FReal MinRatio)
+	template<typename T, int d>
+	T TPBDJointUtilities<T, d>::ConditionParentMass(const T MParent, const T MChild, const T MinRatio)
 	{
-		if ((MinRatio > 0) && (MParent > 0) && (MChild > 0))
+		if (MinRatio > 0)
 		{
-			FReal Ratio = MParent / MChild;
+			T Ratio = MParent / MChild;
 			if (Ratio < MinRatio)
 			{
-				FReal Multiplier = MinRatio / Ratio;
+				T Multiplier = MinRatio / Ratio;
 				return MParent * Multiplier;
 			}
 		}
 		return MParent;
 	}
 
-	
-	// @todo(ccaulfield): should also take into account the length of the joint connector to prevent over-rotation
-	void FPBDJointUtilities::ConditionInverseMassAndInertia(
-		FReal& InOutInvMParent,
-		FReal& InOutInvMChild,
-		FVec3& InOutInvIParent,
-		FVec3& InOutInvIChild,
-		const FReal MinParentMassRatio,
-		const FReal MaxInertiaRatio)
+	template<typename T, int d>
+	void TPBDJointUtilities<T, d>::GetConditionedInverseMass(const TPBDRigidParticleHandle<T, d>* PParent, const TPBDRigidParticleHandle<T, d>* PChild, T& OutInvMParent, T& OutInvMChild, PMatrix<T, d, d>& OutInvIParent, PMatrix<T, d, d>& OutInvIChild, const T MinParentMassRatio, const T MaxInertiaRatio)
 	{
-		FReal MParent = 0.0f;
-		FVec3 IParent = FVec3(0);
-		FReal MChild = 0.0f;
-		FVec3 IChild = FVec3(0);
+		T MParent = PParent->M();
+		T MChild = PChild->M();
+		MParent = ConditionParentMass(MParent, MChild, MinParentMassRatio);
 
-		// Set up inertia so that it is more uniform (reduce the maximum ratio of the inertia about each axis)
-		if (InOutInvMParent > 0)
-		{
-			MParent = 1.0f / InOutInvMParent;
-			IParent = ConditionInertia(FVec3(1.0f / InOutInvIParent.X, 1.0f / InOutInvIParent.Y, 1.0f / InOutInvIParent.Z), MaxInertiaRatio);
-		}
-		if (InOutInvMChild > 0)
-		{
-			MChild = 1.0f / InOutInvMChild;
-			IChild = ConditionInertia(FVec3(1.0f / InOutInvIChild.X, 1.0f / InOutInvIChild.Y, 1.0f / InOutInvIChild.Z), MaxInertiaRatio);
-		}
+		TVector<T, d> IParent = ConditionInertia(PParent->I().GetDiagonal(), MaxInertiaRatio);
+		TVector<T, d> IChild = ConditionInertia(PChild->I().GetDiagonal(), MaxInertiaRatio);
+		IParent = ConditionParentInertia(IParent, IChild, MinParentMassRatio);
 
-		// Set up relative mass and inertia so that the parent cannot be much lighter than the child
-		if ((InOutInvMParent > 0) && (InOutInvMChild > 0))
-		{
-			MParent = ConditionParentMass(MParent, MChild, MinParentMassRatio);
-			IParent = ConditionParentInertia(IParent, IChild, MinParentMassRatio);
-		}
-
-		// Map back to inverses
-		if (InOutInvMParent > 0)
-		{
-			InOutInvMParent = (FReal)1 / MParent;
-			InOutInvIParent = FVec3((FReal)1 / IParent.X, (FReal)1 / IParent.Y, (FReal)1 / IParent.Z);
-		}
-		if (InOutInvMChild > 0)
-		{
-			InOutInvMChild = (FReal)1 / MChild;
-			InOutInvIChild = FVec3((FReal)1 / IChild.X, (FReal)1 / IChild.Y, (FReal)1 / IChild.Z);
-		}
+		OutInvMParent = (T)1 / MParent;
+		OutInvMChild = (T)1 / MChild;
+		OutInvIParent = PMatrix<T, d, d>((T)1 / IParent.X, (T)1 / IParent.Y, (T)1 / IParent.Z);
+		OutInvIChild = PMatrix<T, d, d>((T)1 / IChild.X, (T)1 / IChild.Y, (T)1 / IChild.Z);
 	}
 
 
-	FVec3 FPBDJointUtilities::GetSphereLimitedPositionError(const FVec3& CX, const FReal Radius)
+	template<typename T, int d>
+	void TPBDJointUtilities<T, d>::GetConditionedInverseMass(const TPBDRigidParticleHandle<T, d>* P0, T& OutInvM0, PMatrix<T, d, d>& OutInvI0, const T MaxInertiaRatio)
 	{
-		FReal CXLen = CX.Size();
+		TVector<T, d> I0 = ConditionInertia(P0->I().GetDiagonal(), MaxInertiaRatio);
+
+		OutInvM0 = P0->InvM();
+		OutInvI0 = PMatrix<T, d, d>((T)1 / I0.X, (T)1 / I0.Y, (T)1 / I0.Z);
+	}
+
+
+	template<typename T, int d>
+	TVector<T, d> GetSphereLimitedPositionError(const TVector<T, d>& CX, const T Radius)
+	{
+		T CXLen = CX.Size();
 		if (CXLen < Radius)
 		{
-			return FVec3(0, 0, 0);
+			return TVector<T, d>(0, 0, 0);
 		}
 		else if (CXLen > SMALL_NUMBER)
 		{
-			FVec3 Dir = CX / CXLen;
+			TVector<T, d> Dir = CX / CXLen;
 			return CX - Radius * Dir;
 		}
 		return CX;
 	}
 
-
-	FVec3 FPBDJointUtilities::GetCylinderLimitedPositionError(const FVec3& InCX, const FVec3& Axis, const FReal Limit, const EJointMotionType AxisMotion)
+	template<typename T, int d>
+	TVector<T, d> GetCylinderLimitedPositionError(const TVector<T, d>& InCX, const TVector<T, d>& Axis, const T Limit, const EJointMotionType AxisMotion)
 	{
-		FVec3 CXAxis = FVec3::DotProduct(InCX, Axis) * Axis;
-		FVec3 CXPlane = InCX - CXAxis;
-		FReal CXPlaneLen = CXPlane.Size();
+		TVector<T, d> CXAxis = TVector<T, d>::DotProduct(InCX, Axis) * Axis;
+		TVector<T, d> CXPlane = InCX - CXAxis;
+		T CXPlaneLen = CXPlane.Size();
 		if (AxisMotion == EJointMotionType::Free)
 		{
-			CXAxis = FVec3(0, 0, 0);
+			CXAxis = TVector<T, d>(0, 0, 0);
 		}
 		if (CXPlaneLen < Limit)
 		{
-			CXPlane = FVec3(0, 0, 0);
+			CXPlane = TVector<T, d>(0, 0, 0);
 		}
 		else if (CXPlaneLen > KINDA_SMALL_NUMBER)
 		{
-			FVec3 Dir = CXPlane / CXPlaneLen;
+			TVector<T, d> Dir = CXPlane / CXPlaneLen;
 			CXPlane = CXPlane - Limit * Dir;
 		}
 		return CXAxis + CXPlane;
 	}
 
-
-	FVec3 FPBDJointUtilities::GetLineLimitedPositionError(const FVec3& CX, const FVec3& Axis, const FReal Limit, const EJointMotionType AxisMotion)
+	template<typename T, int d>
+	TVector<T, d> GetLineLimitedPositionError(const TVector<T, d>& CX, const TVector<T, d>& Axis, const T Limit, const EJointMotionType AxisMotion)
 	{
-		FReal CXDist = FVec3::DotProduct(CX, Axis);
+		T CXDist = TVector<T, d>::DotProduct(CX, Axis);
 		if ((AxisMotion == EJointMotionType::Free) || (FMath::Abs(CXDist) < Limit))
 		{
 			return CX - CXDist * Axis;
@@ -759,18 +143,10 @@ namespace Chaos
 		}
 	}
 
-
-	FVec3 FPBDJointUtilities::GetLimitedPositionError(const FPBDJointSettings& JointSettings, const FRotation3& R0, const FVec3& InCX)
+	template<typename T, int d>
+	TVector<T, d> GetLimitedPositionError(const TPBDJointSettings<T, d>& JointSettings, const TRotation<T, d>& R0, const TVector<T, d>& InCX)
 	{
-		// This function is only used for projection and is only relevant for hard limits.
-		// Treat soft-limits as free for error calculation.
-		const TVector<EJointMotionType, 3>& Motion =
-		{
-			((JointSettings.LinearMotionTypes[0] == EJointMotionType::Limited) && JointSettings.bSoftLinearLimitsEnabled) ? EJointMotionType::Free : JointSettings.LinearMotionTypes[0],
-			((JointSettings.LinearMotionTypes[1] == EJointMotionType::Limited) && JointSettings.bSoftLinearLimitsEnabled) ? EJointMotionType::Free : JointSettings.LinearMotionTypes[1],
-			((JointSettings.LinearMotionTypes[2] == EJointMotionType::Limited) && JointSettings.bSoftLinearLimitsEnabled) ? EJointMotionType::Free : JointSettings.LinearMotionTypes[2],
-		};
-
+		const TVector<EJointMotionType, d>& Motion = JointSettings.Motion.LinearMotionTypes;
 		if ((Motion[0] == EJointMotionType::Locked) && (Motion[1] == EJointMotionType::Locked) && (Motion[2] == EJointMotionType::Locked))
 		{
 			return InCX;
@@ -778,46 +154,655 @@ namespace Chaos
 		else if ((Motion[0] == EJointMotionType::Limited) && (Motion[1] == EJointMotionType::Limited) && (Motion[2] == EJointMotionType::Limited))
 		{
 			// Spherical distance constraints
-			return GetSphereLimitedPositionError(InCX, JointSettings.LinearLimit);
+			return GetSphereLimitedPositionError(InCX, JointSettings.Motion.LinearLimit);
 		}
 		else if ((Motion[1] == EJointMotionType::Limited) && (Motion[2] == EJointMotionType::Limited))
 		{
 			// Circular Limit (X Axis)
-			FVec3 Axis = R0 * FVec3(1, 0, 0);
-			return GetCylinderLimitedPositionError(InCX, Axis, JointSettings.LinearLimit, Motion[0]);
+			TVector<T, d> Axis = R0 * TVector<T, d>(1, 0, 0);
+			return GetCylinderLimitedPositionError(InCX, Axis, JointSettings.Motion.LinearLimit, Motion[0]);
 		}
 		else if ((Motion[0] == EJointMotionType::Limited) && (Motion[2] == EJointMotionType::Limited))
 		{
 			// Circular Limit (Y Axis)
-			FVec3 Axis = R0 * FVec3(0, 1, 0);
-			return GetCylinderLimitedPositionError(InCX, Axis, JointSettings.LinearLimit, Motion[1]);
+			TVector<T, d> Axis = R0 * TVector<T, d>(0, 1, 0);
+			return GetCylinderLimitedPositionError(InCX, Axis, JointSettings.Motion.LinearLimit, Motion[1]);
 		}
 		else if ((Motion[0] == EJointMotionType::Limited) && (Motion[1] == EJointMotionType::Limited))
 		{
 			// Circular Limit (Z Axis)
-			FVec3 Axis = R0 * FVec3(0, 0, 1);
-			return GetCylinderLimitedPositionError(InCX, Axis, JointSettings.LinearLimit, Motion[2]);
+			TVector<T, d> Axis = R0 * TVector<T, d>(0, 0, 1);
+			return GetCylinderLimitedPositionError(InCX, Axis, JointSettings.Motion.LinearLimit, Motion[2]);
 		}
 		else
 		{
 			// Line/Square/Cube Limits (no way to author square or cube limits, but would work if we wanted it)
-			FVec3 CX = InCX;
+			TVector<T, d> CX = InCX;
 			if (Motion[0] != EJointMotionType::Locked)
 			{
-				FVec3 Axis = R0 * FVec3(1, 0, 0);
-				CX = GetLineLimitedPositionError(CX, Axis, JointSettings.LinearLimit, Motion[0]);
+				TVector<T, d> Axis = R0 * TVector<T, d>(1, 0, 0);
+				CX = GetLineLimitedPositionError(CX, Axis, JointSettings.Motion.LinearLimit, Motion[0]);
 			}
 			if (Motion[1] != EJointMotionType::Locked)
 			{
-				FVec3 Axis = R0 * FVec3(0, 1, 0);
-				CX = GetLineLimitedPositionError(CX, Axis, JointSettings.LinearLimit, Motion[1]);
+				TVector<T, d> Axis = R0 * TVector<T, d>(0, 1, 0);
+				CX = GetLineLimitedPositionError(CX, Axis, JointSettings.Motion.LinearLimit, Motion[1]);
 			}
 			if (Motion[2] != EJointMotionType::Locked)
 			{
-				FVec3 Axis = R0 * FVec3(0, 0, 1);
-				CX = GetLineLimitedPositionError(CX, Axis, JointSettings.LinearLimit, Motion[2]);
+				TVector<T, d> Axis = R0 * TVector<T, d>(0, 0, 1);
+				CX = GetLineLimitedPositionError(CX, Axis, JointSettings.Motion.LinearLimit, Motion[2]);
 			}
 			return CX;
 		}
 	}
+
+
+	template<class T, int d>
+	void TPBDJointUtilities<T, d>::CalculateSwingConstraintSpace(
+		const TPBDJointSolverSettings<T, d>& SolverSettings,
+		const TPBDJointSettings<T, d>& JointSettings,
+		const int32 Index0,
+		const int32 Index1,
+		TVector<T, d>& P0,
+		TRotation<T, d>& Q0,
+		TVector<T, d>& P1,
+		TRotation<T, d>& Q1,
+		TVector<T, d>& OutX0,
+		PMatrix<T, d, d>& OutR0,
+		TVector<T, d>& OutX1,
+		PMatrix<T, d, d>& OutR1,
+		TVector<T, d>& OutCR)
+	{
+		const TRigidTransform<T, d>& XL0 = JointSettings.ConstraintFrames[Index0];
+		const TRigidTransform<T, d>& XL1 = JointSettings.ConstraintFrames[Index1];
+		const TVector<T, d> X0 = P0 + Q0 * XL0.GetTranslation();
+		const TVector<T, d> X1 = P1 + Q1 * XL1.GetTranslation();
+		const TRotation<T, d> R0 = Q0 * XL0.GetRotation();
+		const TRotation<T, d> R1 = Q1 * XL1.GetRotation();
+
+		TRotation<T, d> R01 = R0.Inverse() * R1;
+		TRotation<T, d> R01Twist, R01Swing;
+		R01.ToSwingTwist(TJointConstants<T, d>::TwistAxis(), R01Swing, R01Twist);
+		R01Swing = R01Swing.GetNormalized();
+		R01Twist = R01Twist.GetNormalized();
+
+		TVector<T, d> TwistAxis01;
+		T TwistAngle = (T)0;
+		R01Twist.ToAxisAndAngleSafe(TwistAxis01, TwistAngle, TJointConstants<T, d>::TwistAxis(), SolverSettings.SwingTwistAngleTolerance);
+		if (TwistAngle > PI)
+		{
+			TwistAngle = TwistAngle - (T)2 * PI;
+		}
+		if (TVector<T, d>::DotProduct(TwistAxis01, TJointConstants<T, d>::TwistAxis()) < 0)
+		{
+			TwistAngle = -TwistAngle;
+		}
+
+		const PMatrix<T, d, d> Axes0 = R0.ToMatrix();
+		const PMatrix<T, d, d> Axes1 = R1.ToMatrix();
+
+		T Swing1Angle = (T)0;
+		const TVector<T, d> SwingCross1 = TVector<T, d>::CrossProduct(Axes0.GetAxis((int32)EJointAngularConstraintIndex::Swing1), Axes1.GetAxis((int32)EJointAngularConstraintIndex::Swing1));
+		const T SwingCross1Len = SwingCross1.Size();
+		if (SwingCross1Len > KINDA_SMALL_NUMBER)
+		{
+			Swing1Angle = FMath::Asin(FMath::Clamp(SwingCross1Len, (T)0, (T)1));
+		}
+		const T Swing1Dot = TVector<T, d>::DotProduct(Axes0.GetAxis((int32)EJointAngularConstraintIndex::Swing1), Axes1.GetAxis((int32)EJointAngularConstraintIndex::Swing1));
+		if (Swing1Dot < (T)0)
+		{
+			Swing1Angle = (T)PI - Swing1Angle;
+		}
+
+		T Swing2Angle = (T)0;
+		const TVector<T, d> SwingCross2 = TVector<T, d>::CrossProduct(Axes0.GetAxis((int32)EJointAngularConstraintIndex::Swing2), Axes1.GetAxis((int32)EJointAngularConstraintIndex::Swing2));
+		const T SwingCross2Len = SwingCross2.Size();
+		if (SwingCross2Len > KINDA_SMALL_NUMBER)
+		{
+			Swing2Angle = FMath::Asin(FMath::Clamp(SwingCross2Len, (T)0, (T)1));
+		}
+		const T Swing2Dot = TVector<T, d>::DotProduct(Axes0.GetAxis((int32)EJointAngularConstraintIndex::Swing2), Axes1.GetAxis((int32)EJointAngularConstraintIndex::Swing2));
+		if (Swing2Dot < (T)0)
+		{
+			Swing2Angle = (T)PI - Swing2Angle;
+		}
+
+		OutX0 = X0;
+		OutX1 = X1;
+		OutR0 = R0.ToMatrix();
+		OutR1 = R1.ToMatrix();
+		OutCR[(int32)EJointAngularAxisIndex::Twist] = TwistAngle;
+		OutCR[(int32)EJointAngularAxisIndex::Swing1] = Swing1Angle;
+		OutCR[(int32)EJointAngularAxisIndex::Swing2] = Swing2Angle;
+	}
+
+	template<class T, int d>
+	void TPBDJointUtilities<T, d>::CalculateConeConstraintSpace(
+		const TPBDJointSolverSettings<T, d>& SolverSettings,
+		const TPBDJointSettings<T, d>& JointSettings,
+		const int32 Index0,
+		const int32 Index1,
+		TVector<T, d>& P0,
+		TRotation<T, d>& Q0,
+		TVector<T, d>& P1,
+		TRotation<T, d>& Q1,
+		TVector<T, d>& OutX0,
+		PMatrix<T, d, d>& OutR0, 
+		TVector<T, d>& OutX1, 
+		PMatrix<T, d, d>& OutR1, 
+		TVector<T, d>& OutCR)
+	{
+		const TRigidTransform<T, d>& XL0 = JointSettings.ConstraintFrames[Index0];
+		const TRigidTransform<T, d>& XL1 = JointSettings.ConstraintFrames[Index1];
+		const TVector<T, d> X0 = P0 + Q0 * XL0.GetTranslation();
+		const TVector<T, d> X1 = P1 + Q1 * XL1.GetTranslation();
+		const TRotation<T, d> R0 = Q0 * XL0.GetRotation();
+		const TRotation<T, d> R1 = Q1 * XL1.GetRotation();
+
+		TRotation<T, d> R01 = R0.Inverse() * R1;
+		TRotation<T, d> R01Twist, R01Swing;
+		R01.ToSwingTwist(TJointConstants<T, d>::TwistAxis(), R01Swing, R01Twist);
+		R01Swing = R01Swing.GetNormalized();
+		R01Twist = R01Twist.GetNormalized();
+
+		TVector<T, d> TwistAxis01;
+		T TwistAngle;
+		R01Twist.ToAxisAndAngleSafe(TwistAxis01, TwistAngle, TJointConstants<T, d>::TwistAxis(), SolverSettings.SwingTwistAngleTolerance);
+		if (TwistAngle > PI)
+		{
+			TwistAngle = TwistAngle - (T)2 * PI;
+		}
+		if (TVector<T, d>::DotProduct(TwistAxis01, TJointConstants<T, d>::TwistAxis()) < 0)
+		{
+			TwistAxis01 = -TwistAxis01;
+			TwistAngle = -TwistAngle;
+		}
+		TVector<T, d> TwistAxis0 = R0 * TwistAxis01;
+		TVector<T, d> TwistAxis1 = R1 * TwistAxis01;
+
+		TVector<T, d> SwingAxis01;
+		T SwingAngle;
+		R01Swing.ToAxisAndAngleSafe(SwingAxis01, SwingAngle, TJointConstants<T, d>::Swing1Axis(), SolverSettings.SwingTwistAngleTolerance);
+		if (SwingAngle > PI)
+		{
+			SwingAngle = SwingAngle - (T)2 * PI;
+		}
+		TVector<T, d> SwingAxis0 = R0 * SwingAxis01;
+		TVector<T, d> SwingAxis1 = SwingAxis0;
+
+		OutX0 = X0;
+		OutX1 = X1;
+		OutR0.SetAxis((int32)EJointAngularAxisIndex::Twist, TwistAxis0);
+		OutR0.SetAxis((int32)EJointAngularAxisIndex::Swing1, SwingAxis0);
+		OutR0.SetAxis((int32)EJointAngularAxisIndex::Swing2, TVector<T, d>::CrossProduct(SwingAxis0, TwistAxis0));
+		OutR1.SetAxis((int32)EJointAngularAxisIndex::Twist, TwistAxis1);
+		OutR1.SetAxis((int32)EJointAngularAxisIndex::Swing1, SwingAxis1);
+		OutR1.SetAxis((int32)EJointAngularAxisIndex::Swing2, TVector<T, d>::CrossProduct(SwingAxis1, TwistAxis1));
+		OutCR[(int32)EJointAngularAxisIndex::Twist] = TwistAngle;
+		OutCR[(int32)EJointAngularAxisIndex::Swing1] = SwingAngle;
+		OutCR[(int32)EJointAngularAxisIndex::Swing2] = (T)0;
+	}
+
+
+	template<typename T, int d>
+	void TPBDJointUtilities<T, d>::ApplyJointPositionConstraint(
+		const T Dt,
+		const TPBDJointSolverSettings<T, d>& SolverSettings,
+		const TPBDJointSettings<T, d>& JointSettings,
+		const int32 Index0,
+		const int32 Index1,
+		TVector<T, d>& P0,
+		TRotation<T, d>& Q0,
+		TVector<T, d>& P1,
+		TRotation<T, d>& Q1,
+		float InvM0,
+		const PMatrix<T, d, d>& InvIL0,
+		float InvM1,
+		const PMatrix<T, d, d>& InvIL1)
+	{
+		const TRigidTransform<T, d>& XL0 = JointSettings.ConstraintFrames[Index0];
+		const TRigidTransform<T, d>& XL1 = JointSettings.ConstraintFrames[Index1];
+		const TVector<T, d> X0 = P0 + Q0 * XL0.GetTranslation();
+		const TVector<T, d> X1 = P1 + Q1 * XL1.GetTranslation();
+		const TRotation<T, d> R0 = Q0 * XL0.GetRotation();
+		PMatrix<T, d, d> InvI0 = Utilities::Multiply(Q0.ToMatrix(), Utilities::Multiply(InvIL0, Q0.ToMatrix().GetTransposed()));
+		PMatrix<T, d, d> InvI1 = Utilities::Multiply(Q1.ToMatrix(), Utilities::Multiply(InvIL1, Q1.ToMatrix().GetTransposed()));
+
+		// Calculate constraint error
+		TVector<T, d> CX = GetLimitedPositionError(JointSettings, R0, X1 - X0);
+
+		// Calculate constraint correction
+		PMatrix<T, d, d> M0 = PMatrix<T, d, d>(0, 0, 0);
+		PMatrix<T, d, d> M1 = PMatrix<T, d, d>(0, 0, 0);
+		if (InvM0 > 0)
+		{
+			M0 = Utilities::ComputeJointFactorMatrix(X0 - P0, InvI0, InvM0);
+		}
+		if (InvM1 > 0)
+		{
+			M1 = Utilities::ComputeJointFactorMatrix(X1 - P1, InvI1, InvM1);
+		}
+		PMatrix<T, d, d> MI = (M0 + M1).Inverse();
+		TVector<T, d> DX = Utilities::Multiply(MI, CX);
+
+		// Apply constraint correction
+		TVector<T, d> DP0 = InvM0 * DX;
+		TVector<T, d> DP1 = -InvM1 * DX;
+		TVector<T, d> DR0 = Utilities::Multiply(InvI0, TVector<T, d>::CrossProduct(X0 - P0, DX));
+		TVector<T, d> DR1 = Utilities::Multiply(InvI1, TVector<T, d>::CrossProduct(X1 - P1, -DX));
+		TRotation<T, d> DQ0 = (TRotation<T, d>::FromElements(DR0, 0) * Q0) * (T)0.5;
+		TRotation<T, d> DQ1 = (TRotation<T, d>::FromElements(DR1, 0) * Q1) * (T)0.5;
+		P0 = P0 + DP0;
+		P1 = P1 + DP1;
+		Q0 = (Q0 + DQ0).GetNormalized();
+		Q1 = (Q1 + DQ1).GetNormalized();
+		Q1.EnforceShortestArcWith(Q0);
+	}
+
+	template<typename T, int d>
+	void TPBDJointUtilities<T, d>::ApplyJointTwistConstraint(
+		const T Dt,
+		const TPBDJointSolverSettings<T, d>& SolverSettings,
+		const TPBDJointSettings<T, d>& JointSettings,
+		const int32 Index0,
+		const int32 Index1,
+		TVector<T, d>& P0,
+		TRotation<T, d>& Q0,
+		TVector<T, d>& P1,
+		TRotation<T, d>& Q1,
+		float InvM0,
+		const PMatrix<T, d, d>& InvIL0,
+		float InvM1,
+		const PMatrix<T, d, d>& InvIL1)
+	{
+		const TRigidTransform<T, d>& XL0 = JointSettings.ConstraintFrames[Index0];
+		const TRigidTransform<T, d>& XL1 = JointSettings.ConstraintFrames[Index1];
+		const TRotation<T, d> R0 = Q0 * XL0.GetRotation();
+		const TRotation<T, d> R1 = Q1 * XL1.GetRotation();
+		PMatrix<T, d, d> InvI0 = Utilities::Multiply(Q0.ToMatrix(), Utilities::Multiply(InvIL0, Q0.ToMatrix().GetTransposed()));
+		PMatrix<T, d, d> InvI1 = Utilities::Multiply(Q1.ToMatrix(), Utilities::Multiply(InvIL1, Q1.ToMatrix().GetTransposed()));
+
+		TRotation<T, d> R01 = R0.Inverse() * R1;
+		TRotation<T, d> R01Twist, R01Swing;
+		R01.ToSwingTwist(TJointConstants<T, d>::TwistAxis(), R01Swing, R01Twist);
+		R01Swing = R01Swing.GetNormalized();
+		R01Twist = R01Twist.GetNormalized();
+
+		TVector<T, d> TwistAxis01;
+		T TwistAngle;
+		R01Twist.ToAxisAndAngleSafe(TwistAxis01, TwistAngle, TJointConstants<T, d>::TwistAxis(), SolverSettings.SwingTwistAngleTolerance);
+		if (TwistAngle > PI)
+		{
+			TwistAngle = TwistAngle - (T)2 * PI;
+		}
+		if (TVector<T, d>::DotProduct(TwistAxis01, TJointConstants<T, d>::TwistAxis()) < 0)
+		{
+			TwistAxis01 = -TwistAxis01;
+			TwistAngle = -TwistAngle;
+		}
+
+		TVector<T, d> TwistAxis0 = R0 * TwistAxis01;
+		TVector<T, d> TwistAxis1 = R1 * TwistAxis01;
+		T TwistAngleMax = FLT_MAX;
+		if (JointSettings.Motion.AngularMotionTypes[(int32)EJointAngularConstraintIndex::Twist] == EJointMotionType::Limited)
+		{
+			TwistAngleMax = JointSettings.Motion.AngularLimits[(int32)EJointAngularConstraintIndex::Twist];
+		}
+		else if (JointSettings.Motion.AngularMotionTypes[(int32)EJointAngularConstraintIndex::Twist] == EJointMotionType::Locked)
+		{
+			TwistAngleMax = 0;
+		}
+
+		T DTwistAngle = 0;
+		if (TwistAngle > TwistAngleMax)
+		{
+			DTwistAngle = TwistAngle - TwistAngleMax;
+		}
+		else if (TwistAngle < -TwistAngleMax)
+		{
+			DTwistAngle = TwistAngle + TwistAngleMax;
+		}
+		T DTwistAngle0 = DTwistAngle;
+		T DTwistAngle1 = -DTwistAngle;
+
+		T L = (T)1 / (TVector<T, d>::DotProduct(TwistAxis0, Utilities::Multiply(InvI0, TwistAxis0)) + TVector<T, d>::DotProduct(TwistAxis1, Utilities::Multiply(InvI1, TwistAxis1)));
+		TVector<T, d> W0 = Utilities::Multiply(InvI0, TwistAxis0) * L * DTwistAngle0;
+		TVector<T, d> W1 = Utilities::Multiply(InvI1, TwistAxis1) * L * DTwistAngle1;
+		TRotation<T, d> DQ0 = (TRotation<T, d>::FromElements(W0, (T)0.0) * Q0) * (T)0.5;
+		TRotation<T, d> DQ1 = (TRotation<T, d>::FromElements(W1, (T)0.0) * Q1) * (T)0.5;
+		Q0 = (Q0 + DQ0).GetNormalized();
+		Q1 = (Q1 + DQ1).GetNormalized();
+		Q1.EnforceShortestArcWith(Q0);
+	}
+
+	template<typename T, int d>
+	void TPBDJointUtilities<T, d>::ApplyJointConeConstraint(
+		const T Dt,
+		const TPBDJointSolverSettings<T, d>& SolverSettings,
+		const TPBDJointSettings<T, d>& JointSettings,
+		const int32 Index0,
+		const int32 Index1,
+		TVector<T, d>& P0,
+		TRotation<T, d>& Q0,
+		TVector<T, d>& P1,
+		TRotation<T, d>& Q1,
+		float InvM0,
+		const PMatrix<T, d, d>& InvIL0,
+		float InvM1,
+		const PMatrix<T, d, d>& InvIL1)
+	{
+		const TRigidTransform<T, d>& XL0 = JointSettings.ConstraintFrames[Index0];
+		const TRigidTransform<T, d>& XL1 = JointSettings.ConstraintFrames[Index1];
+		const TRotation<T, d> R0 = Q0 * XL0.GetRotation();
+		const TRotation<T, d> R1 = Q1 * XL1.GetRotation();
+		PMatrix<T, d, d> InvI0 = Utilities::Multiply(Q0.ToMatrix(), Utilities::Multiply(InvIL0, Q0.ToMatrix().GetTransposed()));
+		PMatrix<T, d, d> InvI1 = Utilities::Multiply(Q1.ToMatrix(), Utilities::Multiply(InvIL1, Q1.ToMatrix().GetTransposed()));
+
+		// Calculate Swing axis for each body
+		TRotation<T, d> R01 = R0.Inverse() * R1;
+		TRotation<T, d> R01Twist, R01Swing;
+		R01.ToSwingTwist(TJointConstants<T, d>::TwistAxis(), R01Swing, R01Twist);
+		R01Swing = R01Swing.GetNormalized();
+		R01Twist = R01Twist.GetNormalized();
+
+		TVector<T, d> SwingAxis01;
+		T SwingAngle;
+		R01Swing.ToAxisAndAngleSafe(SwingAxis01, SwingAngle, TJointConstants<T, d>::Swing1Axis(), SolverSettings.SwingTwistAngleTolerance);
+		if (SwingAngle > PI)
+		{
+			SwingAngle = SwingAngle - (T)2 * PI;
+		}
+
+		TVector<T, d> SwingAxis0 = R0 * SwingAxis01;
+		TVector<T, d> SwingAxis1 = SwingAxis0;
+
+		// Calculate swing limit for the current swing axis
+		T SwingAngleMax = FLT_MAX;
+		T Swing1Limit = JointSettings.Motion.AngularLimits[(int32)EJointAngularConstraintIndex::Swing1];
+		T Swing2Limit = JointSettings.Motion.AngularLimits[(int32)EJointAngularConstraintIndex::Swing2];
+
+		// Circular swing limit
+		SwingAngleMax = Swing1Limit;
+
+		// Elliptical swing limit
+		if (!FMath::IsNearlyEqual(Swing1Limit, Swing2Limit, KINDA_SMALL_NUMBER))
+		{
+			// Map swing axis to ellipse and calculate limit for this swing axis
+			T DotSwing1 = FMath::Abs(TVector<T, d>::DotProduct(SwingAxis01, TJointConstants<T, d>::Swing1Axis()));
+			T DotSwing2 = FMath::Abs(TVector<T, d>::DotProduct(SwingAxis01, TJointConstants<T, d>::Swing2Axis()));
+			SwingAngleMax = FMath::Sqrt(Swing1Limit * DotSwing2 * Swing1Limit * DotSwing2 + Swing2Limit * DotSwing1 * Swing2Limit * DotSwing1);
+		}
+
+		// Calculate swing error we need to correct
+		T DSwingAngle = 0;
+		if (SwingAngle > SwingAngleMax)
+		{
+			DSwingAngle = SwingAngle - SwingAngleMax;
+		}
+		else if (SwingAngle < -SwingAngleMax)
+		{
+			DSwingAngle = SwingAngle + SwingAngleMax;
+		}
+		T DSwingAngle0 = DSwingAngle;
+		T DSwingAngle1 = -DSwingAngle;
+
+		// Apply swing correction
+		T L = (T)1 / (TVector<T, d>::DotProduct(SwingAxis0, Utilities::Multiply(InvI0, SwingAxis0)) + TVector<T, d>::DotProduct(SwingAxis1, Utilities::Multiply(InvI1, SwingAxis1)));
+		TVector<T, d> W0 = Utilities::Multiply(InvI0, SwingAxis0) * L * DSwingAngle0;
+		TVector<T, d> W1 = Utilities::Multiply(InvI1, SwingAxis1) * L * DSwingAngle1;
+		TRotation<T, d> DQ0 = (TRotation<T, d>::FromElements(W0, (T)0.0) * Q0) * (T)0.5;
+		TRotation<T, d> DQ1 = (TRotation<T, d>::FromElements(W1, (T)0.0) * Q1) * (T)0.5;
+		Q0 = (Q0 + DQ0).GetNormalized();
+		Q1 = (Q1 + DQ1).GetNormalized();
+		Q1.EnforceShortestArcWith(Q0);
+	}
+
+	template<typename T, int d>
+	void TPBDJointUtilities<T, d>::ApplyJointSwingConstraint(
+		const T Dt,
+		const TPBDJointSolverSettings<T, d>& SolverSettings,
+		const TPBDJointSettings<T, d>& JointSettings,
+		const int32 Index0,
+		const int32 Index1,
+		const EJointAngularConstraintIndex SwingConstraint,
+		TVector<T, d>& P0,
+		TRotation<T, d>& Q0,
+		TVector<T, d>& P1,
+		TRotation<T, d>& Q1,
+		float InvM0,
+		const PMatrix<T, d, d>& InvIL0,
+		float InvM1,
+		const PMatrix<T, d, d>& InvIL1)
+	{
+		const TRigidTransform<T, d>& XL0 = JointSettings.ConstraintFrames[Index0];
+		const TRigidTransform<T, d>& XL1 = JointSettings.ConstraintFrames[Index1];
+		const TRotation<T, d> R0 = Q0 * XL0.GetRotation();
+		const TRotation<T, d> R1 = Q1 * XL1.GetRotation();
+		PMatrix<T, d, d> InvI0 = Utilities::Multiply(Q0.ToMatrix(), Utilities::Multiply(InvIL0, Q0.ToMatrix().GetTransposed()));
+		PMatrix<T, d, d> InvI1 = Utilities::Multiply(Q1.ToMatrix(), Utilities::Multiply(InvIL1, Q1.ToMatrix().GetTransposed()));
+
+		const PMatrix<T, d, d> Axes0 = R0.ToMatrix();
+		const PMatrix<T, d, d> Axes1 = R1.ToMatrix();
+		const TVector<T, d> SwingCross = TVector<T, d>::CrossProduct(Axes0.GetAxis((int32)SwingConstraint), Axes1.GetAxis((int32)SwingConstraint));
+		const T SwingCrossLen = SwingCross.Size();
+		if (SwingCrossLen > KINDA_SMALL_NUMBER)
+		{
+			const TVector<T, d> SwingAxis = SwingCross / SwingCrossLen;
+			TVector<T, d> SwingAxis0 = SwingAxis;
+			TVector<T, d> SwingAxis1 = SwingAxis;
+
+			T SwingAngle = FMath::Asin(FMath::Clamp(SwingCrossLen, (T)0, (T)1));
+			const T SwingDot = TVector<T, d>::DotProduct(Axes0.GetAxis((int32)SwingConstraint), Axes1.GetAxis((int32)SwingConstraint));
+			if (SwingDot < (T)0)
+			{
+				SwingAngle = (T)PI - SwingAngle;
+			}
+
+			T SwingAngleMax = FLT_MAX;
+			if (JointSettings.Motion.AngularMotionTypes[(int32)SwingConstraint] == EJointMotionType::Limited)
+			{
+				T Swing1Limit = JointSettings.Motion.AngularLimits[(int32)SwingConstraint];
+				SwingAngleMax = Swing1Limit;
+			}
+			else if (JointSettings.Motion.AngularMotionTypes[(int32)SwingConstraint] == EJointMotionType::Locked)
+			{
+				SwingAngleMax = 0;
+			}
+
+			// Calculate swing error we need to correct
+			T DSwingAngle = 0;
+			if (SwingAngle > SwingAngleMax)
+			{
+				DSwingAngle = SwingAngle - SwingAngleMax;
+			}
+			else if (SwingAngle < -SwingAngleMax)
+			{
+				DSwingAngle = SwingAngle + SwingAngleMax;
+			}
+			T DSwingAngle0 = DSwingAngle;
+			T DSwingAngle1 = -DSwingAngle;
+
+			// Apply swing correction
+			T L = (T)1 / (TVector<T, d>::DotProduct(SwingAxis0, Utilities::Multiply(InvI0, SwingAxis0)) + TVector<T, d>::DotProduct(SwingAxis1, Utilities::Multiply(InvI1, SwingAxis1)));
+			TVector<T, d> W0 = Utilities::Multiply(InvI0, SwingAxis0) * L * DSwingAngle0;
+			TVector<T, d> W1 = Utilities::Multiply(InvI1, SwingAxis1) * L * DSwingAngle1;
+			TRotation<T, d> DQ0 = (TRotation<T, d>::FromElements(W0, (T)0.0) * Q0) * (T)0.5;
+			TRotation<T, d> DQ1 = (TRotation<T, d>::FromElements(W1, (T)0.0) * Q1) * (T)0.5;
+			Q0 = (Q0 + DQ0).GetNormalized();
+			Q1 = (Q1 + DQ1).GetNormalized();
+			Q1.EnforceShortestArcWith(Q0);
+		}
+	}
+
+	template<typename T, int d>
+	void TPBDJointUtilities<T, d>::ApplyJointTwistDrive(
+		const T Dt,
+		const TPBDJointSolverSettings<T, d>& SolverSettings,
+		const TPBDJointSettings<T, d>& JointSettings,
+		const int32 Index0,
+		const int32 Index1,
+		TVector<T, d>& P0,
+		TRotation<T, d>& Q0,
+		TVector<T, d>& P1,
+		TRotation<T, d>& Q1,
+		float InvM0,
+		const PMatrix<T, d, d>& InvIL0,
+		float InvM1,
+		const PMatrix<T, d, d>& InvIL1)
+	{
+		const TRigidTransform<T, d>& XL0 = JointSettings.ConstraintFrames[Index0];
+		const TRigidTransform<T, d>& XL1 = JointSettings.ConstraintFrames[Index1];
+		const TRotation<T, d> R0 = Q0 * XL0.GetRotation();
+		const TRotation<T, d> R1 = Q1 * XL1.GetRotation();
+		PMatrix<T, d, d> InvI0 = Utilities::Multiply(Q0.ToMatrix(), Utilities::Multiply(InvIL0, Q0.ToMatrix().GetTransposed()));
+		PMatrix<T, d, d> InvI1 = Utilities::Multiply(Q1.ToMatrix(), Utilities::Multiply(InvIL1, Q1.ToMatrix().GetTransposed()));
+
+		TRotation<T, d> R01 = R0.Inverse() * R1;
+		TRotation<T, d> R01Twist, R01Swing;
+		R01.ToSwingTwist(TJointConstants<T, d>::TwistAxis(), R01Swing, R01Twist);
+		R01Swing = R01Swing.GetNormalized();
+		R01Twist = R01Twist.GetNormalized();
+
+		TVector<T, d> TwistAxis01;
+		T TwistAngle;
+		R01Twist.ToAxisAndAngleSafe(TwistAxis01, TwistAngle, TJointConstants<T, d>::TwistAxis(), SolverSettings.SwingTwistAngleTolerance);
+		if (TwistAngle > PI)
+		{
+			TwistAngle = TwistAngle - (T)2 * PI;
+		}
+		if (TVector<T, d>::DotProduct(TwistAxis01, TJointConstants<T, d>::TwistAxis()) < 0)
+		{
+			TwistAxis01 = -TwistAxis01;
+			TwistAngle = -TwistAngle;
+		}
+
+		TVector<T, d> TwistAxis0 = R0 * TwistAxis01;
+		TVector<T, d> TwistAxis1 = R1 * TwistAxis01;
+		T TwistAngleTarget = JointSettings.Motion.AngularDriveTargetAngles[(int32)EJointAngularConstraintIndex::Twist];
+		T Stiffness = (SolverSettings.PBDDriveStiffness > 0) ? SolverSettings.PBDDriveStiffness : JointSettings.Motion.AngularDriveStiffness;
+		T DriveStiffness = FMath::Clamp(Stiffness, (T)0, (T)1);
+		T DTwistAngle = TwistAngle - TwistAngleTarget;
+		T DTwistAngle0 = DriveStiffness * DTwistAngle;
+		T DTwistAngle1 = -DriveStiffness * DTwistAngle;
+
+		T L = (T)1 / (TVector<T, d>::DotProduct(TwistAxis0, Utilities::Multiply(InvI0, TwistAxis0)) + TVector<T, d>::DotProduct(TwistAxis1, Utilities::Multiply(InvI1, TwistAxis1)));
+		TVector<T, d> W0 = Utilities::Multiply(InvI0, TwistAxis0) * L * DTwistAngle0;
+		TVector<T, d> W1 = Utilities::Multiply(InvI1, TwistAxis1) * L * DTwistAngle1;
+		TRotation<T, d> DQ0 = (TRotation<T, d>::FromElements(W0, (T)0.0) * Q0) * (T)0.5;
+		TRotation<T, d> DQ1 = (TRotation<T, d>::FromElements(W1, (T)0.0) * Q1) * (T)0.5;
+		Q0 = (Q0 + DQ0).GetNormalized();
+		Q1 = (Q1 + DQ1).GetNormalized();
+		Q1.EnforceShortestArcWith(Q0);
+	}
+
+	template<typename T, int d>
+	void TPBDJointUtilities<T, d>::ApplyJointConeDrive(
+		const T Dt,
+		const TPBDJointSolverSettings<T, d>& SolverSettings,
+		const TPBDJointSettings<T, d>& JointSettings,
+		const int32 Index0,
+		const int32 Index1,
+		TVector<T, d>& P0,
+		TRotation<T, d>& Q0,
+		TVector<T, d>& P1,
+		TRotation<T, d>& Q1,
+		float InvM0,
+		const PMatrix<T, d, d>& InvIL0,
+		float InvM1,
+		const PMatrix<T, d, d>& InvIL1)
+	{
+		const TRigidTransform<T, d>& XL0 = JointSettings.ConstraintFrames[Index0];
+		const TRigidTransform<T, d>& XL1 = JointSettings.ConstraintFrames[Index1];
+		const TRotation<T, d> R0 = Q0 * XL0.GetRotation();
+		const TRotation<T, d> R1 = Q1 * XL1.GetRotation();
+		PMatrix<T, d, d> InvI0 = Utilities::Multiply(Q0.ToMatrix(), Utilities::Multiply(InvIL0, Q0.ToMatrix().GetTransposed()));
+		PMatrix<T, d, d> InvI1 = Utilities::Multiply(Q1.ToMatrix(), Utilities::Multiply(InvIL1, Q1.ToMatrix().GetTransposed()));
+
+		// Calculate Swing axis for each body
+		TRotation<T, d> R01 = R0.Inverse() * R1;
+		TRotation<T, d> R01Twist, R01Swing;
+		R01.ToSwingTwist(TJointConstants<T, d>::TwistAxis(), R01Swing, R01Twist);
+		R01Swing = R01Swing.GetNormalized();
+		R01Twist = R01Twist.GetNormalized();
+
+		TVector<T, d> SwingAxis01;
+		T SwingAngle;
+		R01Swing.ToAxisAndAngleSafe(SwingAxis01, SwingAngle, TJointConstants<T, d>::Swing1Axis(), SolverSettings.SwingTwistAngleTolerance);
+		if (SwingAngle > PI)
+		{
+			SwingAngle = SwingAngle - (T)2 * PI;
+		}
+
+		TVector<T, d> SwingAxis0 = R0 * SwingAxis01;
+		TVector<T, d> SwingAxis1 = SwingAxis0;
+
+		// Circular swing target (max of Swing1, Swing2 targets)
+		T Swing1Target = JointSettings.Motion.AngularDriveTargetAngles[(int32)EJointAngularConstraintIndex::Swing1];
+		T Swing2Target = JointSettings.Motion.AngularDriveTargetAngles[(int32)EJointAngularConstraintIndex::Swing2];
+		T SwingAngleTarget = FMath::Max(Swing1Target, Swing2Target);
+
+		T Stiffness = (SolverSettings.PBDDriveStiffness > 0) ? SolverSettings.PBDDriveStiffness : JointSettings.Motion.AngularDriveStiffness;
+		T DriveStiffness = FMath::Clamp(Stiffness, (T)0, (T)1);
+		T DSwingAngle = SwingAngle - SwingAngleTarget;
+		T DSwingAngle0 = DriveStiffness * DSwingAngle;
+		T DSwingAngle1 = -DriveStiffness * DSwingAngle;
+
+		// Apply swing correction
+		T L = (T)1 / (TVector<T, d>::DotProduct(SwingAxis0, Utilities::Multiply(InvI0, SwingAxis0)) + TVector<T, d>::DotProduct(SwingAxis1, Utilities::Multiply(InvI1, SwingAxis1)));
+		TVector<T, d> W0 = Utilities::Multiply(InvI0, SwingAxis0) * L * DSwingAngle0;
+		TVector<T, d> W1 = Utilities::Multiply(InvI1, SwingAxis1) * L * DSwingAngle1;
+		TRotation<T, d> DQ0 = (TRotation<T, d>::FromElements(W0, (T)0.0) * Q0) * (T)0.5;
+		TRotation<T, d> DQ1 = (TRotation<T, d>::FromElements(W1, (T)0.0) * Q1) * (T)0.5;
+		Q0 = (Q0 + DQ0).GetNormalized();
+		Q1 = (Q1 + DQ1).GetNormalized();
+		Q1.EnforceShortestArcWith(Q0);
+	}
+
+	template<typename T, int d>
+	void TPBDJointUtilities<T, d>::ApplyJointSLerpDrive(
+		const T Dt,
+		const TPBDJointSolverSettings<T, d>& SolverSettings,
+		const TPBDJointSettings<T, d>& JointSettings,
+		const int32 Index0,
+		const int32 Index1,
+		TVector<T, d>& P0,
+		TRotation<T, d>& Q0,
+		TVector<T, d>& P1,
+		TRotation<T, d>& Q1,
+		float InvM0,
+		const PMatrix<T, d, d>& InvIL0,
+		float InvM1,
+		const PMatrix<T, d, d>& InvIL1)
+	{
+		const TRigidTransform<T, d>& XL0 = JointSettings.ConstraintFrames[Index0];
+		const TRigidTransform<T, d>& XL1 = JointSettings.ConstraintFrames[Index1];
+		const TRotation<T, d> R0 = Q0 * XL0.GetRotation();
+		const TRotation<T, d> R1 = Q1 * XL1.GetRotation();
+		PMatrix<T, d, d> InvI0 = Utilities::Multiply(Q0.ToMatrix(), Utilities::Multiply(InvIL0, Q0.ToMatrix().GetTransposed()));
+		PMatrix<T, d, d> InvI1 = Utilities::Multiply(Q1.ToMatrix(), Utilities::Multiply(InvIL1, Q1.ToMatrix().GetTransposed()));
+
+		const TRotation<T, d> TargetR1 = R0 * JointSettings.Motion.AngularDriveTarget;
+		const TRotation<T, d> DR1 = TargetR1 * R1.Inverse();
+		const TRotation<T, d> TargetQ0 = DR1.Inverse() * Q0;
+		const TRotation<T, d> TargetQ1 = DR1 * Q1;
+
+		T Stiffness = (SolverSettings.PBDDriveStiffness > 0) ? SolverSettings.PBDDriveStiffness : JointSettings.Motion.AngularDriveStiffness;
+		T DriveStiffness = FMath::Clamp(Stiffness, (T)0, (T)1);
+
+		// @todo(ccaulfield): use ang mom in slerp drive
+		T L0 = InvM0;// TVector<T, d>::DotProduct(Axis0, Utilities::Multiply(InvI0, Axis0));
+		T L1 = InvM1;//TVector<T, d>::DotProduct(Axis1, Utilities::Multiply(InvI1, Axis1));
+		const T F0 = DriveStiffness * L0 / (L0 + L1);
+		const T F1 = DriveStiffness * L1 / (L0 + L1);
+
+		Q0 = TRotation<T, d>::Slerp(Q0, TargetQ0, F0);
+		Q1 = TRotation<T, d>::Slerp(Q1, TargetQ1, F1);
+		Q1.EnforceShortestArcWith(Q0);
+	}
+}
+
+namespace Chaos
+{
+	template class TPBDJointUtilities<float, 3>;
 }

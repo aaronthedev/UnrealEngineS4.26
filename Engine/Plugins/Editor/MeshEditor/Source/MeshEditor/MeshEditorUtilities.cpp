@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MeshEditorUtilities.h"
 
@@ -70,14 +70,6 @@ bool FMeshEditorUtilities::AssignMaterialToPolygons( UMaterialInterface* Selecte
 			};
 
 			const FName UniqueSlotName = MakeUniqueSlotName( SelectedMaterial->GetFName() );
-			
-			// Get existing polygon group settings from the first selected polygon in order to reaply them on the new polygon group.
-			TPolygonGroupAttributesConstRef<bool> PolygonGroupCastShadow = MeshDescription->PolygonGroupAttributes().GetAttributesRef<bool>( MeshAttribute::PolygonGroup::CastShadow );
-			TPolygonGroupAttributesConstRef<bool> PolygonGroupCollision = MeshDescription->PolygonGroupAttributes().GetAttributesRef<bool>( MeshAttribute::PolygonGroup::EnableCollision );
-			const FPolygonID PolygonID( PolygonElements[0].ElementAddress.ElementID );
-			const FPolygonGroupID PolygonGroupID( MeshDescription->GetPolygonPolygonGroup( PolygonID ) );
-			const bool bCastShadow = PolygonGroupCollision.Get( PolygonGroupID );
-			const bool bEnableCollision = PolygonGroupCastShadow.Get( PolygonGroupID );
 
 			static TArray<FPolygonGroupToCreate> PolygonGroupsToCreate;
 			PolygonGroupsToCreate.Reset( 1 );
@@ -86,8 +78,6 @@ bool FMeshEditorUtilities::AssignMaterialToPolygons( UMaterialInterface* Selecte
 			FPolygonGroupToCreate& PolygonGroupToCreate = PolygonGroupsToCreate.Last();
 			PolygonGroupToCreate.PolygonGroupAttributes.Attributes.Emplace( MeshAttribute::PolygonGroup::MaterialAssetName, 0, FMeshElementAttributeValue( FName( *SelectedMaterial->GetPathName() ) ) );
 			PolygonGroupToCreate.PolygonGroupAttributes.Attributes.Emplace( MeshAttribute::PolygonGroup::ImportedMaterialSlotName, 0, FMeshElementAttributeValue( UniqueSlotName ));
-			PolygonGroupToCreate.PolygonGroupAttributes.Attributes.Emplace( MeshAttribute::PolygonGroup::CastShadow, 0, FMeshElementAttributeValue( bCastShadow ) );
-			PolygonGroupToCreate.PolygonGroupAttributes.Attributes.Emplace( MeshAttribute::PolygonGroup::EnableCollision, 0, FMeshElementAttributeValue( bEnableCollision ) );
 			static TArray<FPolygonGroupID> NewPolygonGroupIDs;
 			EditableMesh->CreatePolygonGroups( PolygonGroupsToCreate, NewPolygonGroupIDs );
 			PolygonGroupToAssign = NewPolygonGroupIDs[ 0 ];

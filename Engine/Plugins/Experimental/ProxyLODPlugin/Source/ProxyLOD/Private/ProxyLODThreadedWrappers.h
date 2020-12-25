@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 THIRD_PARTY_INCLUDES_START
@@ -9,7 +9,6 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_reduce.h>
 #include <tbb/task_group.h>
-#include <tbb/task_scheduler_observer.h>
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
 THIRD_PARTY_INCLUDES_END
 
@@ -32,7 +31,7 @@ namespace ProxyLOD
 	/**
 	* Splittable Range Types for parallel loops.
 	*
-	* NB: to satisfy load balancing needs, the parallel loop-based algorithms can split the range of an item
+	* NB: to satisfy load balancing needs, the parallel loop-based algorithms can split the rage of an item
 	*     of work to make smaller tasks.
 	*/
 	typedef tbb::blocked_range<int32>    FIntRange;
@@ -72,17 +71,9 @@ namespace ProxyLOD
 	template <typename RangeType, typename FunctorType>
 	void Parallel_For(const RangeType& Range, const FunctorType& Functor, const bool bParallel = true)
 	{
-		TRACE_CPUPROFILER_EVENT_SCOPE(ProxyLOD::Parallel_For)
 		if (bParallel) // run in parallel
 		{
-			// Functor can be passed by reference since we wait until completion
-			tbb::parallel_for(Range,
-				[&Functor](const RangeType& Range)
-				{
-					// #TODO Investigate why Insights stops working when used
-					//TRACE_CPUPROFILER_EVENT_SCOPE(ProxyLOD::Parallel_For)
-					Functor(Range);
-				});
+			tbb::parallel_for(Range, Functor);
 		}
 		else // single threaded
 		{
@@ -123,25 +114,18 @@ namespace ProxyLOD
 	* @return Result of parallel reduce - of type ValueType.
 	*/
 	template <typename RangeType, typename ValueType, typename FunctorType, typename ReduceFunctorType>
-	ValueType Parallel_Reduce(const RangeType& Range, const ValueType& IdentityValue, const FunctorType& Functor, const ReduceFunctorType& ReduceFunctor, const bool bParallel = true)
+	ValueType Parallel_Reduce(const RangeType& Range, const ValueType& IdenityValue, const FunctorType& Functor, const ReduceFunctorType& ReduceFunctor, const bool bParallel = true)
 	{
-		TRACE_CPUPROFILER_EVENT_SCOPE(ProxyLOD::Parallel_Reduce)
 		if (bParallel)
 		{
-			// Functor can be passed by reference since we wait until completion
-			return tbb::parallel_reduce(Range, IdentityValue,
-				[&Functor](const RangeType& Range, ValueType InitialValue)
-				{
-					// #TODO Investigate why Insights stops working when used
-					//TRACE_CPUPROFILER_EVENT_SCOPE(ProxyLOD::Parallel_Reduce)
-					return Functor(Range, InitialValue);
-				}, ReduceFunctor);
+			return tbb::parallel_reduce(Range, IdenityValue, Functor, ReduceFunctor);
 		}
 		else
 		{
-			return Functor(Range, IdentityValue);
+			return Functor(Range, IdenityValue);
 		}
 	}
+
 
 	/**
 	* Parallel Task Group - enqueues tasks to be run in parallel.
@@ -199,32 +183,22 @@ namespace ProxyLOD
 		*/
 		void Wait()
 		{
-			if (bParallel)
-			{
-				TRACE_CPUPROFILER_EVENT_SCOPE(FTaskGroup::Wait)
-				TBBTaskGroup.wait();
-			}
+			if (bParallel) TBBTaskGroup.wait();
 		}
 
 	private:
 		bool bParallel = true;
 		tbb::task_group  TBBTaskGroup;
+
+
 	};
 
 	template <typename FunctorType>
 	void FTaskGroup::Run(const FunctorType& Functor)
 	{
-		TRACE_CPUPROFILER_EVENT_SCOPE(FTaskGroup::Run)
 		if (bParallel)
 		{
-			// Functor must be passed by copy here since the function returns before completion
-			TBBTaskGroup.run(
-				[Functor]()
-				{
-					TRACE_CPUPROFILER_EVENT_SCOPE(FTaskGroup::Run)
-					Functor();
-				}
-			);
+			TBBTaskGroup.run(Functor);
 		}
 		else
 		{
@@ -235,16 +209,9 @@ namespace ProxyLOD
 	template <typename FunctorType>
 	void FTaskGroup::RunAndWait(const FunctorType& Functor)
 	{
-		TRACE_CPUPROFILER_EVENT_SCOPE(FTaskGroup::RunAndWait)
 		if (bParallel)
 		{
-			// Functor can be passed by reference since we wait until completion
-			TBBTaskGroup.run_and_wait(
-				[&Functor]()
-				{
-					TRACE_CPUPROFILER_EVENT_SCOPE(FTaskGroup::RunAndWait)
-					Functor();
-				});
+			TBBTaskGroup.run_and_wait(Functor);
 		}
 		else
 		{

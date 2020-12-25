@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_FILE_FORMAT_H
-#define PXR_USD_SDF_FILE_FORMAT_H
+#ifndef SDF_FILE_FORMAT_H
+#define SDF_FILE_FORMAT_H
 
 /// \file sdf/fileFormat.h
 
@@ -44,11 +44,11 @@
 PXR_NAMESPACE_OPEN_SCOPE
 
 class ArAssetInfo;
-class SdfSchemaBase;
 
 SDF_DECLARE_HANDLES(SdfLayer);
 SDF_DECLARE_HANDLES(SdfSpec);
 TF_DECLARE_WEAK_AND_REF_PTRS(SdfAbstractData);
+TF_DECLARE_WEAK_AND_REF_PTRS(SdfLayerBase);
 TF_DECLARE_WEAK_AND_REF_PTRS(SdfFileFormat);
 
 #define SDF_FILE_FORMAT_TOKENS   \
@@ -63,9 +63,6 @@ TF_DECLARE_PUBLIC_TOKENS(SdfFileFormatTokens, SDF_API, SDF_FILE_FORMAT_TOKENS);
 class SdfFileFormat : public TfRefBase, public TfWeakBase, boost::noncopyable
 {
 public:
-    /// Returns the schema for this format.
-    SDF_API const SdfSchemaBase& GetSchema() const;
-
     /// Returns the format identifier.
     SDF_API const TfToken& GetFormatId() const;
 
@@ -127,15 +124,46 @@ public:
 
     /// Instantiate a layer.
     SDF_API 
-    SdfLayerRefPtr NewLayer(const SdfFileFormatConstPtr &fileFormat,
-                            const std::string &identifier,
-                            const std::string &realPath,
-                            const ArAssetInfo& assetInfo,
-                            const FileFormatArguments &args) const;
+    SdfLayerBaseRefPtr NewLayer(const SdfFileFormatConstPtr &fileFormat,
+                                const std::string &identifier,
+                                const std::string &realPath,
+                                const ArAssetInfo& assetInfo,
+                                const FileFormatArguments &args) const;
+
+    /// Instantiate a layer of the SdfLayerBase subclass T.  Issue an error and
+    /// return null if the created layer does not have dynamic type T.
+    template <class T>
+    TfRefPtr<T> NewLayer(const SdfFileFormatConstPtr &fileFormat,
+                         const std::string &identifier,
+                         const std::string &realPath,
+                         const ArAssetInfo &assetInfo,
+                         const FileFormatArguments &args) const {
+        SdfLayerBaseRefPtr l = 
+            NewLayer(fileFormat, identifier, realPath, assetInfo, args);
+        if (TfRefPtr<T> ret = TfDynamic_cast<TfRefPtr<T> >(l))
+            return ret;
+        _IssueNewLayerFailError(l, typeid(T), identifier, realPath);
+        return TfRefPtr<T>();
+    }
 
     /// Return true if this file format prefers to skip reloading anonymous
     /// layers.
     SDF_API bool ShouldSkipAnonymousReload() const;
+
+    /// Return true if the \p layer produced by this file format
+    /// streams its data to and from its serialized data store on demand.
+    ///
+    /// Sdf will treat streaming layers differently to avoid pulling
+    /// in data unnecessarily. For example, reloading a streaming layer 
+    /// will not perform fine-grained change notification, since doing 
+    /// so would require the full contents of the layer to be loaded.
+    ///
+    /// Edits to a streaming layer are assumed to immediately affect
+    /// the serialized data without an explicit call to SdfLayer::Save.
+    ///
+    /// It is a coding error to call this function with a layer that was
+    /// not created with this file format.
+    SDF_API bool IsStreamingLayer(const SdfLayerBase& layer) const;
 
     /// Return true if layers produced by this file format are based
     /// on physical files on disk. If so, this file format requires
@@ -159,38 +187,38 @@ public:
         const std::string& file) const = 0;
 
     /// Reads scene description from the asset specified by \p resolvedPath
-    /// into the layer \p layer.
+    /// into the layer \p layerBase.
     ///
     /// \p metadataOnly is a flag that asks for only the layer metadata
     /// to be read in, which can be much faster if that is all that is
     /// required.  Note that this is just a hint: some FileFormat readers
     /// may disregard this flag and still fully populate the layer contents.
     ///
-    /// Returns true if the asset is successfully read into \p layer,
+    /// Returns true if the asset is successfully read into \p layerBase,
     /// false otherwise.
     SDF_API
     virtual bool Read(
-        SdfLayer* layer,
+        const SdfLayerBasePtr& layerBase,
         const std::string& resolvedPath,
         bool metadataOnly) const = 0;
 
-    /// Writes the content in \p layer into the file at \p filePath. If the
+    /// Writes the content in \p layerBase into the file at \p filePath. If the
     /// content is successfully written, this method returns true. Otherwise,
     /// false is returned and errors are posted. The default implementation
     /// returns false.
     SDF_API
     virtual bool WriteToFile(
-        const SdfLayer& layer,
+        const SdfLayerBase* layerBase,
         const std::string& filePath,
         const std::string& comment = std::string(),
         const FileFormatArguments& args = FileFormatArguments()) const;
 
-    /// Reads data in the string \p str into the layer \p layer. If
+    /// Reads data in the string \p str into the layer \p layerBase. If
     /// the file is successfully read, this method returns true. Otherwise,
     /// false is returned and errors are posted.
     SDF_API
     virtual bool ReadFromString(
-        SdfLayer* layer,
+        const SdfLayerBasePtr& layerBase,
         const std::string& str) const;
 
     /// Write the provided \p spec to \p out indented \p indent levels.
@@ -200,12 +228,12 @@ public:
         std::ostream& out,
         size_t indent) const;
 
-    /// Writes the content in \p layer to the string \p str. This function
-    /// should write a textual representation of \p layer to the stream
+    /// Writes the content in \p layerBase to the string \p str. This function
+    /// should write a textual representation of \p layerBase to the stream
     /// that can be read back in via ReadFromString.
     SDF_API
     virtual bool WriteToString(
-        const SdfLayer& layer,
+        const SdfLayerBase* layerBase,
         std::string* str,
         const std::string& comment = std::string()) const;
 
@@ -224,8 +252,8 @@ public:
     static SdfFileFormatConstPtr FindById(
         const TfToken& formatId);
 
-    /// Returns the file format instance that supports the extension for
-    /// \p path.  If a format with a matching extension is not found, this
+    /// Returns the file format instance that supports the specified file \p
+    /// extension. If a format with a matching extension is not found, this
     /// returns a null file format pointer.
     ///
     /// An extension may be handled by multiple file formats, but each
@@ -235,7 +263,7 @@ public:
     /// will be returned.
     SDF_API
     static SdfFileFormatConstPtr FindByExtension(
-        const std::string& path,
+        const std::string& extension,
         const std::string& target = std::string());
 
 protected:
@@ -244,24 +272,7 @@ protected:
         const TfToken& formatId,
         const TfToken& versionString,
         const TfToken& target,
-        const std::string& extension);
-
-    /// Constructor.
-    /// \p schema must remain valid for the lifetime of this file format.
-    SDF_API SdfFileFormat(
-        const TfToken& formatId,
-        const TfToken& versionString,
-        const TfToken& target,
-        const std::string& extension,
-        const SdfSchemaBase& schema);
-
-    /// Disallow temporary SdfSchemaBase objects being passed to the c'tor.
-    SdfFileFormat(
-        const TfToken& formatId,
-        const TfToken& versionString,
-        const TfToken& target,
-        const std::string& extension,
-        const SdfSchemaBase&& schema) = delete;
+        const std::string& extensions);
 
     /// Constructor.
     SDF_API SdfFileFormat(
@@ -269,23 +280,6 @@ protected:
         const TfToken& versionString,
         const TfToken& target,
         const std::vector<std::string> &extensions);
-
-    /// Constructor.
-    /// \p schema must remain valid for the lifetime of this file format.
-    SDF_API SdfFileFormat(
-        const TfToken& formatId,
-        const TfToken& versionString,
-        const TfToken& target,
-        const std::vector<std::string> &extensions,
-        const SdfSchemaBase& schema);
-
-    /// Disallow temporary SdfSchemaBase objects being passed to the c'tor.
-    SdfFileFormat(
-        const TfToken& formatId,
-        const TfToken& versionString,
-        const TfToken& target,
-        const std::vector<std::string> &extensions,
-        const SdfSchemaBase&& schema) = delete;
 
     /// Destructor.
     SDF_API virtual ~SdfFileFormat();
@@ -300,15 +294,15 @@ protected:
     /// ownership of \p data.
     SDF_API
     static void _SetLayerData(
-        SdfLayer* layer, SdfAbstractDataRefPtr& data);
+        const SdfLayerHandle& layer, SdfAbstractDataRefPtr& data);
 
     /// Get the internal data for \p layer.
     SDF_API
-    static SdfAbstractDataConstPtr _GetLayerData(const SdfLayer& layer);
+    static SdfAbstractDataConstPtr _GetLayerData(const SdfLayerHandle& layer);
 
 private:
     SDF_API
-    virtual SdfLayer *_InstantiateNewLayer(
+    virtual SdfLayerBase *_InstantiateNewLayer(
         const SdfFileFormatConstPtr &fileFormat,
         const std::string &identifier,
         const std::string &realPath,
@@ -320,13 +314,25 @@ private:
     SDF_API
     virtual bool _ShouldSkipAnonymousReload() const;
 
+    // File format subclasses must override this to determine whether the
+    // given layer is streaming or not. The file format of \p layer is 
+    // guaranteed to be an instance of this class.
+    virtual bool _IsStreamingLayer(const SdfLayerBase& layer) const = 0;
+
     /// File format subclasses may override this to specify whether
     /// their layers are backed by physical files on disk.
     /// Default implementation returns true.
     SDF_API
     virtual bool _LayersAreFileBased() const;
 
-    const SdfSchemaBase& _schema;
+    // Helper to issue an error in case the method template NewLayer fails.
+    SDF_API 
+    void _IssueNewLayerFailError(SdfLayerBaseRefPtr const &l,
+                                 std::type_info const &type,
+                                 std::string const &identifier,
+                                 std::string const &realPath) const;
+
+
     const TfToken _formatId;
     const TfToken _target;
     const std::string _cookie;
@@ -373,4 +379,4 @@ public:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_FILE_FORMAT_H
+#endif // SDF_FILE_FORMAT_H

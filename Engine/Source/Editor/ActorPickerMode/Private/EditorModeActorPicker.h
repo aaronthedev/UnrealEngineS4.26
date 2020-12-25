@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,7 +9,6 @@
 
 class FEditorViewportClient;
 class FViewport;
-class SWindow;
 
 namespace EPickState
 {
@@ -40,9 +39,11 @@ public:
 	virtual bool GetCursor(EMouseCursor::Type& OutCursor) const override;
 	virtual bool UsesToolkits() const override;
 	virtual bool IsCompatibleWith(FEditorModeID OtherModeID) const override;
-	virtual void Enter() override;
-	virtual void Exit() override;
+	virtual void Initialize() override;
 	/** End FEdMode interface */
+
+	/** End the mode */
+	virtual void Exit() override;
 
 	/** Delegate used to display information about picking near the cursor */
 	FText GetCursorDecoratorText() const;

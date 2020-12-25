@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Polygon.cpp: FPoly implementation (Editor polygons).
@@ -984,12 +984,6 @@ bool UPolys::Modify(bool bAlwaysMarkDirty)
 	Super::Modify(bAlwaysMarkDirty);
 
 	return !!GUndo; // we will make a broad assumption that if we have an undo buffer, we were saved in it
-}
-
-void UPolys::PreEditChange(FProperty*)
-{
-	// Do not call Super! Override PreEditChange to keep the same behavior as the Modify which change the default of `bAlwaysMarkDirty`...
-	Modify(false);
 }
 #endif
 

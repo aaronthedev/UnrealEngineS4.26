@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -62,9 +62,6 @@ public:
 	/** returns "SubMenuC.SubMenuD" for menu "ModuleA.MenuB.SubMenuC.SubMenuD" */
 	FString GetSubMenuNamePath() const;
 
-	/* Set support for extenders */
-	void SetExtendersEnabled(bool bEnabled);
-
 	//~ Begin UToolMenuBase Interface
 	virtual bool IsEditing() const override;
 	virtual FName GetSectionName(const FName InEntryName) const override;
@@ -85,9 +82,12 @@ public:
 	template <typename TContextType>
 	TContextType* FindContext() const
 	{
-		return Context.FindContext<TContextType>();
+		return Context.Find<TContextType>();
 	}
 
+	//~ Begin UObject Interface
+	virtual bool IsDestructionThreadSafe() const { return false; }
+	//~ End UObject Interface
 
 	friend class UToolMenus;
 
@@ -104,10 +104,6 @@ private:
 	int32 IndexOfSection(const FName SectionName) const;
 
 	int32 FindInsertIndex(const FToolMenuSection& InSection) const;
-
-	bool IsRegistering() const;
-
-	void Empty();
 
 public:
 
@@ -165,8 +161,6 @@ public:
 private:
 
 	bool bRegistered;
-	bool bIsRegistering;
-	bool bExtendersEnabled;
 
 	const ISlateStyle* StyleSet;
 

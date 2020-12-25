@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VPScoutingSubsystem.h"
 #include "VPUtilitiesEditorModule.h"
@@ -16,7 +16,6 @@
 #include "UObject/Script.h"
 #include "VPSettings.h"
 #include "VPUtilitiesEditorSettings.h"
-#include "LevelEditorActions.h"
 
 /* UVPScoutingSubsystem name
  *****************************************************************************/
@@ -379,24 +378,4 @@ void UVPScoutingSubsystem::ExitVRMode()
 	{
 		VREditorModule.EnableVREditor(false);
 	}
-}
-
-bool UVPScoutingSubsystem::IsLocationGridSnappingEnabled()
-{
-	return FLevelEditorActionCallbacks::LocationGridSnap_IsChecked();
-}
-
-void UVPScoutingSubsystem::ToggleLocationGridSnapping()
-{
-	FLevelEditorActionCallbacks::LocationGridSnap_Clicked();
-}
-
-bool UVPScoutingSubsystem::IsRotationGridSnappingEnabled()
-{
-	return FLevelEditorActionCallbacks::RotationGridSnap_IsChecked();
-}
-
-void UVPScoutingSubsystem::ToggleRotationGridSnapping()
-{
-	FLevelEditorActionCallbacks::RotationGridSnap_Clicked();
 }

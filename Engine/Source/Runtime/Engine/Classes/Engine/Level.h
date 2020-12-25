@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -30,51 +30,6 @@ class UNavigationDataChunk;
 class UTexture2D;
 struct FLevelCollection;
 class ULevelActorContainer;
-class FLevelPartitionOperationScope;
-class FRegisterComponentContext;
-
-UINTERFACE()
-class ULevelPartitionInterface : public UInterface
-{
-	GENERATED_BODY()
-};
-
-class ILevelPartitionInterface
-{
-	GENERATED_BODY()
-
-#if WITH_EDITOR
-	friend class FLevelPartitionOperationScope;
-#endif
-
-public:
-	virtual ULevel* GetSubLevel(const FVector& Coords) const = 0;
-
-private:
-#if WITH_EDITOR
-	virtual void BeginOperation(class FLevelPartitionOperationScope* Scope) = 0;
-	virtual void EndOperation() = 0;
-#endif
-};
-
-#if WITH_EDITOR
-class ENGINE_API FLevelPartitionOperationScope
-{
-public:
-	FLevelPartitionOperationScope(ULevel* Level);
-	~FLevelPartitionOperationScope();
-		
-	TArray<AActor*> GetActors() const;
-	ULevel* GetLevel() const;
-
-private:
-	static ULevel* CreateTransientLevel(UWorld* InWorld);
-	static void DestroyTransientLevel(ULevel* InLevel);
-
-	ILevelPartitionInterface* InterfacePtr = nullptr;
-	ULevel* Level = nullptr;
-};
-#endif
 
 /**
  * Structure containing all information needed for determining the screen space
@@ -432,7 +387,7 @@ public:
 	 * This is not the same as GetOuter(), because GetOuter() for a streaming level is a vestigial world that is not used. 
 	 * It should not be accessed during BeginDestroy(), just like any other UObject references, since GC may occur in any order.
 	 */
-	UPROPERTY(Transient)
+	UPROPERTY(transient)
 	UWorld* OwningWorld;
 
 	/** BSP UModel. */
@@ -570,9 +525,6 @@ public:
 	 */
 	UPROPERTY()
 	uint8 										bLocked:1;
-
-	/** Whether the level has been saved after introducing actor GUIDs */
-	uint8										bContainsStableActorGUIDs:1;
 #endif
 	
 	/** The below variables are used temporarily while making a level visible.				*/
@@ -593,16 +545,12 @@ public:
 	uint8										bAlreadyRoutedActorInitialize:1;
 	/** Whether we already sorted the actor list.											*/
 	uint8										bAlreadySortedActorList:1;
-	/** Whether this level is in the process of being associated with its world	(i.e. we are within AddToWorld for this level */
+	/** Whether this level is in the process of being associated with its world				*/
 	uint8										bIsAssociatingLevel:1;
-	/** Whether this level is in the process of being disassociated with its world (i.e. we are within RemoveFromWorld for this level */
-	uint8										bIsDisassociatingLevel : 1;
 	/** Whether this level should be fully added to the world before rendering his components	*/
 	uint8										bRequireFullVisibilityToRender:1;
 	/** Whether this level is specific to client, visibility state will not be replicated to server	*/
 	uint8										bClientOnlyVisible:1;
-	/** Whether this level was duplicated */
-	uint8										bWasDuplicated:1;
 	/** Whether this level was duplicated for PIE	*/
 	uint8										bWasDuplicatedForPIE:1;
 	/** Whether the level is currently being removed from the world */
@@ -630,9 +578,6 @@ public:
 	DECLARE_MULTICAST_DELEGATE_OneParam(FLevelTransformEvent, const FTransform&);
 	FLevelTransformEvent OnApplyLevelTransform;
 
-	DECLARE_MULTICAST_DELEGATE(FLevelCleanupEvent);
-	FLevelCleanupEvent OnCleanupLevel;
-
 #if WITH_EDITORONLY_DATA
 	/** Level simplification settings for each LOD */
 	UPROPERTY()
@@ -650,23 +595,6 @@ public:
 
 	UPROPERTY(transient)
 	bool bLevelOkayForPlacementWhileCheckedIn;
-
-	/** Returns true if the current level is a partitioned level */
-	ENGINE_API bool IsPartitionedLevel() const;
-
-	/** Returns true if the current level is a sublevel (managed by a parent partitioned level) */
-	ENGINE_API bool IsPartitionSubLevel() const;
-
-	/** Assign a level partition to this level */
-	ENGINE_API void SetLevelPartition(ILevelPartitionInterface* LevelPartition);
-
-	/** Get the level partition assigned to this level, if any */
-	ENGINE_API ILevelPartitionInterface* GetLevelPartition();
-	ENGINE_API const ILevelPartitionInterface* GetLevelPartition() const;
-	
-	/** Setup the provided sublevel so that it is handled by this level's partition */
-	ENGINE_API void SetPartitionSubLevel(ULevel* SubLevel);
-
 #endif //WITH_EDITORONLY_DATA
 
 	/** Actor which defines level logical bounding box				*/
@@ -685,13 +613,6 @@ public:
 	ENGINE_API void MarkLevelBoundsDirty();
 
 private:
-
-#if WITH_EDITORONLY_DATA
-	/** Use external actors, new actor spawned in this level will be external and existing external actors will be loaded on load. */
-	UPROPERTY(EditInstanceOnly, Category = World)
-	bool bUseExternalActors;
-#endif
-
 	FLevelBoundsActorUpdatedEvent LevelBoundsActorUpdatedEvent; 
 
 	UPROPERTY()
@@ -713,16 +634,6 @@ private:
 	/** List of replicated static actors that have been destroyed. Used by net drivers to replicate destruction to clients. */
 	UPROPERTY(Transient)
 	TArray<FReplicatedStaticActorDestructionInfo> DestroyedReplicatedStaticActors;
-
-#if WITH_EDITORONLY_DATA
-	/** Level partition, if any */
-	UPROPERTY(EditInstanceOnly, Category = World)
-	TScriptInterface<ILevelPartitionInterface> LevelPartition;
-
-	/** When the level is partitioned, this will point to the owner partition (will be the same as this->LevelPartition in case that is the top partition level */
-	UPROPERTY()
-	TSoftObjectPtr<UObject> OwnerLevelPartition;
-#endif // #if WITH_EDITORONLY_DATA
 
 public:
 	// Used internally to determine which actors should go on the world's NetworkActor list
@@ -761,22 +672,14 @@ public:
 	virtual void PostEditUndo() override;	
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 	virtual void BeginCacheForCookedPlatformData(const ITargetPlatform *TargetPlatform) override;
-	virtual bool CanEditChange(const FProperty* PropertyThatWillChange) const override;
 #endif // WITH_EDITOR
 	virtual void PostLoad() override;
 	virtual void PreSave(const class ITargetPlatform* TargetPlatform) override;
-	virtual void PreDuplicate(FObjectDuplicationParameters& DupParams) override;
 	virtual void PostDuplicate(bool bDuplicateForPIE) override;
 	virtual bool CanBeClusterRoot() const override;
 	virtual void CreateCluster() override;
 	static void AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector);
 	//~ End UObject Interface.
-
-	/**
-	 * Flag this level instance for destruction.
-	 * This is called by UWorld::CleanupWorld to flag the level and its owned packages for destruction.
-	 */
-	ENGINE_API void CleanupLevel();
 
 	/**
 	 * Clears all components of actors associated with this level (aka in Actors array) and 
@@ -789,7 +692,7 @@ public:
 	 * creates the BSP model components.
 	 * @param bRerunConstructionScripts	If we want to rerun construction scripts on actors in level
 	 */
-	ENGINE_API void UpdateLevelComponents(bool bRerunConstructionScripts, FRegisterComponentContext* Context = nullptr);
+	ENGINE_API void UpdateLevelComponents(bool bRerunConstructionScripts);
 
 	/**
 	 * Incrementally updates all components of actors associated with this level.
@@ -797,7 +700,7 @@ public:
 	 * @param NumComponentsToUpdate		Number of components to update in this run, 0 for all
 	 * @param bRerunConstructionScripts	If we want to rerun construction scripts on actors in level
 	 */
-	void IncrementalUpdateComponents( int32 NumComponentsToUpdate, bool bRerunConstructionScripts, FRegisterComponentContext* Context = nullptr);
+	void IncrementalUpdateComponents( int32 NumComponentsToUpdate, bool bRerunConstructionScripts );
 
 	/**
 	* Incrementally unregisters all components of actors associated with this level.
@@ -922,62 +825,6 @@ public:
 	ENGINE_API void HandleLegacyMapBuildData();
 
 #if WITH_EDITOR
-	/** Returns true if the level uses external actors mode. */
-	ENGINE_API bool IsUsingExternalActors() const;
-
-	/** Sets if the level uses external actors mode or not. */
-	ENGINE_API void SetUseExternalActors(bool bEnable);
-
-	ENGINE_API static bool CanConvertActorToExternalPackaging(AActor* Actor);
-
-	/** 
-	 * Convert this level actors to the specified loading strategy
-	 * @param bExternal if true will convert internal actors to external, will convert external actors to internal otherwise
-	 * @note does not affect the level bUseExternalActors flag
-	 */
-	ENGINE_API void ConvertAllActorsToPackaging(bool bExternal);
-
-	/**
-	 * Get the list of (on disk) external actor packages associated with this level
-	 * @return Array of packages associated with this level
-	 */
-	ENGINE_API TArray<FString> GetOnDiskExternalActorPackages() const;
-
-	/**
-	 * Get the list of (loaded) external actor packages associated with this level
-	 * @return Array of packages associated with this level
-	 */
-	ENGINE_API TArray<UPackage*> GetLoadedExternalActorPackages() const;
-
-	/**
-	 * Get the folder containing the external actors for this level path
-	 * @param InLevelPackageName The package name to get the external actors path of
-	 * @param InPackageShortName Optional short name to use instead of the package short name
-	 * @return the folder
-	 */
-	static ENGINE_API FString GetExternalActorsPath(const FString& InLevelPackageName, const FString& InPackageShortName = FString());
-
-	/**
-	 * Get the folder containing the external actors for this level
-	 * @param InLevelPackage The package to get the external actors path of
-	 * @param InPackageShortName Optional short name to use instead of the package short name
-	 * @return the folder
-	 */
-	static ENGINE_API FString GetExternalActorsPath(UPackage* InLevelPackage, const FString& InPackageShortName = FString());
-
-	/**
-	 * Create an package for this actor
-	 * @param InGuid the guid to generate the name from.
-	 * @return the created package
-	 */
-	static ENGINE_API UPackage* CreateActorPackage(UPackage* InLevelPackage, const FGuid& InGuid);
-
-	/**
-	 * Detach or reattach all level actors to from/to their external package
-	 * @param bReattach if false will detach actors from their external package until reattach is called, passing true will reattach actors, no-op for non external actors
-	 */
-	ENGINE_API void DetachAttachAllActorsPackages(bool bReattach);
-
 	/** 
 	*  Called after lighting was built and data gets propagated to this level
 	*  @param	bLightingSuccessful	 Whether lighting build was successful

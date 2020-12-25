@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -65,60 +65,29 @@ namespace Gauntlet
 		}
 
 		// There are issues with IPA Zip64 files being created with Ionic.Zip possibly limited to when running on mono (see IOSPlatform.PackageIPA)
-		// This manifests as header overflow errors, etc in 7zip, Ionic.Zip, System.IO.Compression, and OSX system unzip		
+		// This manifests as header overflow errors, etc in 7zip, Ionic.Zip, System.IO.Compression, and OSX system unzip
+		// This is limited to bulk builds which exceed 4 gigs, this method works around this, though we really do need to fix
 		internal static bool ExecuteIPAZipCommand(String Arguments, out String Output, String ShouldExist = "")
 		{
-			using (new ScopedSuspendECErrorParsing())
+			IProcessResult Result = ExecuteCommand("unzip", Arguments);
+			Output = Result.Output;
+
+			if (Result.ExitCode != 0)
 			{
-				IProcessResult Result = ExecuteCommand("unzip", Arguments);
-				Output = Result.Output;
-
-				if (Result.ExitCode != 0)
+				if (!String.IsNullOrEmpty(ShouldExist))
 				{
-					if (!String.IsNullOrEmpty(ShouldExist))
+					if (!File.Exists(ShouldExist) && !Directory.Exists(ShouldExist))
 					{
-						if (!File.Exists(ShouldExist) && !Directory.Exists(ShouldExist))
-						{
-							Log.Error(String.Format("unzip encountered an error or warning procesing IPA, possibly due to Zip64 issue, {0} missing", ShouldExist));
-							return false;
-						}
+						Log.Error(String.Format("unzip encountered an error or warning procesing IPA, possibly due to Zip64 issue, {0} missing", ShouldExist));
+						return false;
 					}
-
-					Log.Info(String.Format("unzip encountered an issue procesing IPA, possibly due to Zip64. Future steps may fail."));
 				}
+
+				Log.Warning(String.Format("unzip encountered an error or warning procesing IPA, possibly due to Zip64 issue. Future steps may fail."));
 			}
 			
 			return true;
 		}
-
-		// IPA handling using ditto command, which is capable of handling IPA's > 4GB/Zip64
-		internal static bool ExecuteIPADittoCommand(String Arguments, out String Output, String ShouldExist = "")
-		{
-			using (new ScopedSuspendECErrorParsing())
-			{
-				IProcessResult Result = ExecuteCommand("ditto", Arguments);
-				Output = Result.Output;
-
-				if (Result.ExitCode != 0)
-				{
-					if (!String.IsNullOrEmpty(ShouldExist))
-					{
-						if (!File.Exists(ShouldExist) && !Directory.Exists(ShouldExist))
-						{
-							Log.Error(String.Format("ditto encountered an error or warning procesing IPA, {0} missing", ShouldExist));
-							return false;
-						}
-					}
-
-					Log.Error(String.Format("ditto encountered an issue procesing IPA"));
-					return false;
-
-				}
-			}
-			
-			return true;
-		}
-
 
 		private static string GetBundleIdentifier(string SourceIPA)
 		{

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Tracks/MovieSceneCameraShakeTrack.h"
 #include "Sections/MovieSceneCameraShakeSection.h"
@@ -12,7 +12,7 @@
 
 #define LOCTEXT_NAMESPACE "MovieSceneCameraShakeTrack"
 
-UMovieSceneSection* UMovieSceneCameraShakeTrack::AddNewCameraShake(FFrameNumber KeyTime, TSubclassOf<UCameraShakeBase> ShakeClass)
+UMovieSceneSection* UMovieSceneCameraShakeTrack::AddNewCameraShake(FFrameNumber KeyTime, TSubclassOf<UCameraShake> ShakeClass)
 {
 	Modify();
 
@@ -30,6 +30,11 @@ UMovieSceneSection* UMovieSceneCameraShakeTrack::AddNewCameraShake(FFrameNumber 
 	return NewSection;
 }
 
+FMovieSceneTrackSegmentBlenderPtr UMovieSceneCameraShakeTrack::GetTrackSegmentBlender() const
+{
+	return FMovieSceneAdditiveCameraTrackBlender();
+}
+
 #if WITH_EDITORONLY_DATA
 FText UMovieSceneCameraShakeTrack::GetDisplayName() const
 {
@@ -37,15 +42,8 @@ FText UMovieSceneCameraShakeTrack::GetDisplayName() const
 }
 #endif
 
-FMovieSceneEvalTemplatePtr UMovieSceneCameraShakeTrack::CreateTemplateForSection(const UMovieSceneSection& InSection) const
-{
-	const UMovieSceneCameraShakeSection* CameraShakeSection = CastChecked<const UMovieSceneCameraShakeSection>(&InSection);
-	if (*CameraShakeSection->ShakeData.ShakeClass)
-	{
-		return FMovieSceneCameraShakeSectionTemplate(*CameraShakeSection);
-	}
-	return FMovieSceneEvalTemplatePtr();
-}
+
+
 
 /* UMovieSceneTrack interface
 *****************************************************************************/

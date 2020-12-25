@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -27,23 +27,6 @@ class SImage;
 enum class EInvalidateWidgetReason : uint8;
 
 template< typename ObjectType > class TAttribute;
-
-struct FWindowTitleBarArgs
-{
-	FWindowTitleBarArgs(const TSharedRef<SWindow>& InWindow)
-		: Window(InWindow)
-		, CenterContentAlignment(HAlign_Fill)
-	{}
-
-	/** The window to create the title bar for */
-	TSharedRef<SWindow> Window;
-	
-	/** Optional content for the title bar's center (will override window title) */
-	TSharedPtr<SWidget> CenterContent;
-
-	/** The horizontal alignment of the center content. */
-	EHorizontalAlignment CenterContentAlignment;
-};
 
 /**
  * Interface for window title bars.
@@ -75,7 +58,7 @@ private:
 private:	
 	FSlateApplicationBase* SlateApp;
 	// @see FSlateApplicationBase::LocateWidgetInWindow
-	FWidgetPath LocateWidgetInWindow(FVector2D ScreenspaceMouseCoordinate, const TSharedRef<SWindow>& Window, bool bIgnoreEnabledStatus, int32 UserIndex) const;
+	FWidgetPath LocateWidgetInWindow(FVector2D ScreenspaceMouseCoordinate, const TSharedRef<SWindow>& Window, bool bIgnoreEnabledStatus) const;
 };
 
 /**
@@ -354,7 +337,7 @@ public:
 	 *
 	 * @return The path to the widget.
 	 */
-	virtual FWidgetPath LocateWindowUnderMouse( FVector2D ScreenspaceMouseCoordinate, const TArray< TSharedRef<SWindow > >& Windows, bool bIgnoreEnabledStatus = false, int32 UserIndex = INDEX_NONE) = 0;
+	virtual FWidgetPath LocateWindowUnderMouse( FVector2D ScreenspaceMouseCoordinate, const TArray< TSharedRef<SWindow > >& Windows, bool bIgnoreEnabledStatus = false ) = 0;
 
 	/**
 	 * Calculates the tooltip window position.
@@ -401,17 +384,7 @@ public:
 	 * @param OutTitleBar Will hold a pointer to the title bar's interface.
 	 * @return The new title bar widget.
 	 */
-	UE_DEPRECATED(4.26, "This version of MakeWindowTitleBar has been deprecated. Use the version that takes in an FWindowTitleBarArgs parameter instead.")
-	virtual TSharedRef<SWidget> MakeWindowTitleBar(const TSharedRef<SWindow>& Window, const TSharedPtr<SWidget>& CenterContent, EHorizontalAlignment CenterContentAlignment, TSharedPtr<IWindowTitleBar>& OutTitleBar) const;
-
-	/**
-	 * Creates a title bar for the specified window.
-	 *
-	 * @param InArgs	The creation arguments for the titlebar
-	 * @param OutTitleBar Will hold a pointer to the title bar's interface.
-	 * @return The new title bar widget.
-	 */
-	virtual TSharedRef<SWidget> MakeWindowTitleBar( const FWindowTitleBarArgs& InArgs, TSharedPtr<IWindowTitleBar>& OutTitleBar ) const = 0;
+	virtual TSharedRef<SWidget> MakeWindowTitleBar( const TSharedRef<SWindow>& Window, const TSharedPtr<SWidget>& CenterContent, EHorizontalAlignment CenterContentAlignment, TSharedPtr<IWindowTitleBar>& OutTitleBar ) const = 0;
 
 	/**
 	 * Destroying windows has implications on some OSs (e.g. destroying Win32 HWNDs can cause events to be lost).
@@ -571,7 +544,7 @@ protected:
 	virtual bool ShowUserFocus(const TSharedPtr<const SWidget> Widget) const = 0;
 
 	/** Given a window, locate a widget under the cursor in it; returns an invalid path if cursor is not over this window. */
-	virtual FWidgetPath LocateWidgetInWindow(FVector2D ScreenspaceMouseCoordinate, const TSharedRef<SWindow>& Window, bool bIgnoreEnabledStatus, int32 UserIndex) const = 0;
+	virtual FWidgetPath LocateWidgetInWindow(FVector2D ScreenspaceMouseCoordinate, const TSharedRef<SWindow>& Window, bool bIgnoreEnabledStatus) const = 0;
 
 #if WITH_EDITOR
 	void UpdateCustomSafeZone(const FMargin& NewSafeZoneRatio, bool bShouldRecacheMetrics) 
@@ -587,12 +560,8 @@ protected:
 	{
 		FDisplayMetrics DisplayMetrics;
 		GetDisplayMetrics(DisplayMetrics);
-
-		if (FDisplayMetrics::GetDebugTitleSafeZoneRatio() < 1.0f)
-		{
-			CustomSafeZoneRatio = FMargin();
-			OnDebugSafeZoneChanged.Broadcast(FMargin(), false);
-		}
+		CustomSafeZoneRatio = FMargin();
+		OnDebugSafeZoneChanged.Broadcast(FMargin(), false);
 	}
 #endif
 

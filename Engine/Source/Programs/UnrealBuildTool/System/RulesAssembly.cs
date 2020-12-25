@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -28,9 +28,9 @@ namespace UnrealBuildTool
 		private Assembly CompiledAssembly;
 
 		/// <summary>
-		/// The base directories for this assembly
+		/// The base directory for this assembly
 		/// </summary>
-		private List<DirectoryReference> BaseDirs;
+		private DirectoryReference BaseDir;
 
 		/// <summary>
 		/// All the plugins included in this assembly
@@ -51,6 +51,11 @@ namespace UnrealBuildTool
 		/// Mapping from module file to its context.
 		/// </summary>
 		private Dictionary<FileReference, ModuleRulesContext> ModuleFileToContext;
+
+		/// <summary>
+		/// Cache for whether a module has source code
+		/// </summary>
+		private Dictionary<FileReference, bool> ModuleHasSource = new Dictionary<FileReference, bool>();
 
 		/// <summary>
 		/// Whether this assembly contains engine modules. Used to set default values for bTreatAsEngineModule.
@@ -77,7 +82,7 @@ namespace UnrealBuildTool
 		/// Constructor. Compiles a rules assembly from the given source files.
 		/// </summary>
 		/// <param name="Scope">The scope of items created by this assembly</param>
-		/// <param name="BaseDirs">The base directories for this assembly</param>
+		/// <param name="BaseDir">The base directory for this assembly</param>
 		/// <param name="Plugins">All the plugins included in this assembly</param>
 		/// <param name="ModuleFileToContext">List of module files to compile</param>
 		/// <param name="TargetFiles">List of target files to compile</param>
@@ -87,10 +92,10 @@ namespace UnrealBuildTool
 		/// <param name="bReadOnly">Whether the modules and targets in this assembly are installed, and should be created with the bUsePrecompiled flag set</param> 
 		/// <param name="bSkipCompile">Whether to skip compiling this assembly</param>
 		/// <param name="Parent">The parent rules assembly</param>
-		internal RulesAssembly(RulesScope Scope, List<DirectoryReference> BaseDirs, IReadOnlyList<PluginInfo> Plugins, Dictionary<FileReference, ModuleRulesContext> ModuleFileToContext, List<FileReference> TargetFiles, FileReference AssemblyFileName, bool bContainsEngineModules, BuildSettingsVersion? DefaultBuildSettings, bool bReadOnly, bool bSkipCompile, RulesAssembly Parent)
+		internal RulesAssembly(RulesScope Scope, DirectoryReference BaseDir, IReadOnlyList<PluginInfo> Plugins, Dictionary<FileReference, ModuleRulesContext> ModuleFileToContext, List<FileReference> TargetFiles, FileReference AssemblyFileName, bool bContainsEngineModules, BuildSettingsVersion? DefaultBuildSettings, bool bReadOnly, bool bSkipCompile, RulesAssembly Parent)
 		{
 			this.Scope = Scope;
-			this.BaseDirs = BaseDirs;
+			this.BaseDir = BaseDir;
 			this.Plugins = Plugins;
 			this.ModuleFileToContext = ModuleFileToContext;
 			this.bContainsEngineModules = bContainsEngineModules;
@@ -173,11 +178,11 @@ namespace UnrealBuildTool
 		/// <returns>True if the path is read-only, false otherwise</returns>
 		public bool IsReadOnly(FileSystemReference Location)
 		{
-			if (BaseDirs.Any(x => Location.IsUnderDirectory(x)))
+			if(Location.IsUnderDirectory(BaseDir))
 			{
 				return bReadOnly;
 			}
-			else if (Parent != null)
+			else if(Parent != null)
 			{
 				return Parent.IsReadOnly(Location);
 			}
@@ -392,11 +397,7 @@ namespace UnrealBuildTool
 						throw new BuildException("Found multiple platform group overrides ({0} and {1}) for module {2} without a platform specific override. Create a platform override with the class hierarchy as needed.", 
 							GroupRulesObjectType.Name, PlatformRulesObjectType.Name, ModuleName);
 					}
-					// remember the platform group if we found it, but keep searching to verify there isn't more than one
-					if (GroupRulesObjectType != null)
-					{
-						PlatformRulesObjectType = GroupRulesObjectType;
-					}
+					PlatformRulesObjectType = GroupRulesObjectType;
 				}
 			}
 
@@ -444,10 +445,6 @@ namespace UnrealBuildTool
 							RulesObject.DirectoriesForModuleSubClasses.Add(SubType, SubTypeFileName.Directory);
 							RulesObject.SubclassRules.Add(SubTypeFileName.FullName);
 						}
-						if (SubType.BaseType == null)
-						{
-							throw new BuildException("{0} is not derived from {1}", RulesObjectType.Name, BaseRulesObjectType.Name);
-						}
 						SubType = SubType.BaseType;
 					}
 				}
@@ -478,52 +475,18 @@ namespace UnrealBuildTool
 		protected TargetRules CreateTargetRulesInstance(string TypeName, TargetInfo TargetInfo)
 		{
 			// The build module must define a type named '<TargetName>Target' that derives from our 'TargetRules' type.  
-			Type BaseRulesType = CompiledAssembly.GetType(TypeName);
-			if (BaseRulesType == null)
+			Type RulesType = CompiledAssembly.GetType(TypeName);
+			if (RulesType == null)
 			{
 				throw new BuildException("Expecting to find a type to be declared in a target rules named '{0}'.  This type must derive from the 'TargetRules' type defined by Unreal Build Tool.", TypeName);
 			}
 
-			// Look for platform/group rules that we will use instead of the base rules
-			string PlatformRulesName = TargetInfo.Name + "_" + TargetInfo.Platform.ToString();
-			Type PlatformRulesType = CompiledAssembly.GetType(TypeName + "_" + TargetInfo.Platform.ToString());
-			if (PlatformRulesType == null)
-			{
-				foreach (UnrealPlatformGroup Group in UEBuildPlatform.GetPlatformGroups(TargetInfo.Platform))
-				{
-					// look to see if the group has an override
-					string GroupRulesName = TargetInfo.Name + "_" + Group.ToString();
-					Type GroupRulesObjectType = CompiledAssembly.GetType(TypeName + "_" + Group.ToString());
-
-					// we expect only one platform group to be found in the extensions
-					if (GroupRulesObjectType != null && PlatformRulesType != null)
-					{
-						throw new BuildException("Found multiple platform group overrides ({0} and {1}) for rules {2} without a platform specific override. Create a platform override with the class hierarchy as needed.", 
-							GroupRulesObjectType.Name, PlatformRulesType.Name, TypeName);
-					}
-					// remember the platform group if we found it, but keep searching to verify there isn't more than one
-					if (GroupRulesObjectType != null)
-					{
-						PlatformRulesName = GroupRulesName;
-						PlatformRulesType = GroupRulesObjectType;
-					}
-				}
-			}
-			if (PlatformRulesType != null && !PlatformRulesType.IsSubclassOf(BaseRulesType))
-			{
-				throw new BuildException("Expecting {0} to be a specialization of {1}", PlatformRulesType, BaseRulesType);
-			}
-
 			// Create an instance of the module's rules object, and set some defaults before calling the constructor.
-			Type RulesType = PlatformRulesType ?? BaseRulesType;
 			TargetRules Rules = (TargetRules)FormatterServices.GetUninitializedObject(RulesType);
 			if (DefaultBuildSettings.HasValue)
 			{
 				Rules.DefaultBuildSettings = DefaultBuildSettings.Value;
 			}
-
-			// Return the base target file name to the caller. This affects where the resulting build product is created so the platform/group is not desired in this case.
-			Rules.File = TargetNameToTargetFile[TargetInfo.Name];
 
 			// Find the constructor
 			ConstructorInfo Constructor = RulesType.GetConstructor(new Type[] { typeof(TargetInfo) });
@@ -541,6 +504,9 @@ namespace UnrealBuildTool
 			{
 				throw new BuildException(Ex, "Unable to instantiate instance of '{0}' object type from compiled assembly '{1}'.  Unreal Build Tool creates an instance of your module's 'Rules' object in order to find out about your module's requirements.  The CLR exception details may provide more information:  {2}", TypeName, Path.GetFileNameWithoutExtension(CompiledAssembly.Location), Ex.ToString());
 			}
+
+			// Return the target file name to the caller
+			Rules.File = TargetNameToTargetFile[TargetInfo.Name];
 
 			// Set the default overriddes for the configured target type
 			Rules.SetOverridesForTargetType();

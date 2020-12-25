@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "XmppPubSubStrophe.h"
 #include "XmppConnectionStrophe.h"
 #include "Containers/BackgroundableTicker.h"
-#include "Stats/Stats.h"
 
 #if WITH_XMPP_STROPHE
 
@@ -92,7 +91,6 @@ bool FXmppPubSubStrophe::GetLastMessages(const FXmppPubSubId& NodeId, int32 NumM
 
 bool FXmppPubSubStrophe::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FXmppPubSubStrophe_Tick);
 	return true;
 }
 

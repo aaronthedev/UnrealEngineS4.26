@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,11 +8,8 @@
 #include "Engine/Scene.h"
 #include "Engine/DeveloperSettings.h"
 #include "PixelFormat.h"
-#include "PerPlatformProperties.h"
 
 #include "RendererSettings.generated.h"
-
-enum class ESkinCacheDefaultBehavior : uint8;
 
 struct FPropertyChangedEvent;
 
@@ -131,9 +128,9 @@ namespace EAutoExposureMethodUI
 {
 	enum Type
 	{
-		/** requires compute shader to construct 64 bin histogram */
+		/** Not supported on mobile, requires compute shader to construct 64 bin histogram */
 		AEM_Histogram  UMETA(DisplayName = "Auto Exposure Histogram"),
-		/** faster method that computes single value by downsampling */
+		/** Not supported on mobile, faster method that computes single value by downsampling */
 		AEM_Basic      UMETA(DisplayName = "Auto Exposure Basic"),
 		/** Uses camera settings. */
 		AEM_Manual   UMETA(DisplayName = "Manual"),
@@ -171,6 +168,12 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 {
 	GENERATED_UCLASS_BODY()
 
+	UPROPERTY(config, EditAnywhere, Category=Mobile, meta=(
+		ConsoleVariable="r.MobileHDR",DisplayName="Mobile HDR",
+		ToolTip="If true, mobile renders in full HDR. Disable this setting for games that do not require lighting features for better performance on slow devices. Changing this setting requires restarting the editor.",
+		ConfigRestartRequired = true))
+	uint32 bMobileHDR:1;
+
 	UPROPERTY(config, EditAnywhere, Category = Mobile, meta = (
 		ConsoleVariable = "r.Mobile.DisableVertexFog", DisplayName = "Disable vertex fogging in mobile shaders",
 		ToolTip = "If true, vertex fog will be omitted from all mobile shaders. If your game does not use fog, you should choose this setting to increase shading performance.",
@@ -188,6 +191,17 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ToolTip = "Multi-sample anti-aliasing setting to use on mobile. MSAA is currently supported using Metal on iOS, and on Android devices with the required support using ES 2 or ES 3.1.\nIf MSAA is not available, the current default AA method will be used."))
 	TEnumAsByte<EMobileMSAASampleCount::Type> MobileMSAASampleCount;
 
+	UPROPERTY(config, EditAnywhere, Category = Mobile, meta = (
+		ConsoleVariable = "r.Mobile.UseLegacyShadingModel", DisplayName = "Use legacy shading model",
+		ToolTip = "If true then mobile shaders will use the cheaper but lower quality specular calculation found in versions prior to 4.20.",
+		ConfigRestartRequired = true))
+		uint32 bMobileUseLegacyShadingModel : 1;
+
+	UPROPERTY(config, meta = (
+		ConsoleVariable = "r.Mobile.UseHWsRGBEncoding", DisplayName = "Single-pass linear rendering",
+		ToolTip = "If true then mobile single-pass (non mobile HDR) rendering will use HW accelerated sRGB encoding/decoding. Available only on Oculus for now."))
+		uint32 bMobileUseHWsRGBEncoding : 1;
+
 	UPROPERTY(config, EditAnywhere, Category = Mobile, meta=(
 		ConsoleVariable="r.Mobile.AllowDitheredLODTransition", DisplayName="Allow Dithered LOD Transition",
 		ToolTip="Whether to support 'Dithered LOD Transition' material option on mobile platforms. Enabling this may degrade performance as rendering will not benefit from Early-Z optimization.",
@@ -199,14 +213,7 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ToolTip="Whether to support 'Software Occlusion Culling' on mobile platforms. This will package occluder information and enable Software Occlusion Culling.",
 		ConfigRestartRequired=false))
 	uint32 bMobileAllowSoftwareOcclusionCulling:1;
-
-	UPROPERTY(config, EditAnywhere, Category = Mobile, meta = (
-		EditCondition = "bVirtualTextures",
-		ConsoleVariable = "r.Mobile.VirtualTextures", DisplayName = "Enable virtual texture support on Mobile",
-		ToolTip = "Whether to support Virtual Textures on mobile. Requires general Virtual Texturing option enabled as well. Changing this setting requires restarting the editor.",
-		ConfigRestartRequired = true))
-	uint32 bMobileVirtualTextures : 1;
-
+	
 	UPROPERTY(config, EditAnywhere, Category = Materials, meta = (
 		ConsoleVariable = "r.DiscardUnusedQuality", DisplayName = "Game Discards Unused Material Quality Levels",
 		ToolTip = "When running in game mode, whether to keep shaders for all quality levels in memory or only those needed for the current quality level.\nUnchecked: Keep all quality levels in memory allowing a runtime quality level change. (default)\nChecked: Discard unused quality levels when loading content for the game, saving some memory."))
@@ -214,7 +221,7 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 
 	UPROPERTY(config, EditAnywhere, Category=Culling, meta=(
 		ConsoleVariable="r.AllowOcclusionQueries",DisplayName="Occlusion Culling",
-		ToolTip="Allows occluded meshes to be culled and not rendered."))
+		ToolTip="Allows occluded meshes to be culled and no rendered."))
 	uint32 bOcclusionCulling:1;
 
 	UPROPERTY(config, EditAnywhere, Category=Culling, meta=(
@@ -231,7 +238,7 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ConsoleVariable="r.MinScreenRadiusForCSMDepth",DisplayName="Min Screen Radius for Cascaded Shadow Maps",
 		ToolTip="Screen radius at which objects are culled for cascaded shadow map depth passes. Larger values can improve performance but can cause artifacts as objects stop casting shadows."))
 	float MinScreenRadiusForCSMdepth;
-
+	
 	UPROPERTY(config, EditAnywhere, Category=Culling, meta=(
 		ConsoleVariable="r.PrecomputedVisibilityWarning",DisplayName="Warn about no precomputed visibility",
 		ToolTip="Displays a warning when no precomputed visibility data is available for the current camera location. This can be helpful if you are making a game that relies on precomputed visibility, e.g. a first person mobile game."))
@@ -303,17 +310,12 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ConfigRestartRequired = true,
 		ConsoleVariable = "r.ClearCoatNormal",
 		ToolTip = "Use a separate normal map for the bottom layer of a clear coat material. This is a higher quality feature that is expensive."))
-	uint32 bClearCoatEnableSecondNormal : 1;
+		uint32 bClearCoatEnableSecondNormal : 1;
 
 	UPROPERTY(config, EditAnywhere, Category = Reflections, meta = (
 		ConsoleVariable = "r.ReflectionCaptureResolution", DisplayName = "Reflection Capture Resolution",
 		ToolTip = "The cubemap resolution for all reflection capture probes. Must be power of 2. Note that for very high values the memory and performance impact may be severe."))
 	int32 ReflectionCaptureResolution;
-
-	UPROPERTY(config, EditAnywhere, Category = Reflections, meta = (
-		ConsoleVariable = "r.Mobile.ReflectionCaptureCompression", DisplayName = "Mobile Reflection Capture Compression",
-		ToolTip = "Whether to use the Reflection Capture Compression or not for mobile. It will use ETC2 format to do the compression."))
-	uint32 bReflectionCaptureCompression : 1;
 
 	UPROPERTY(config, EditAnywhere, Category = Reflections, meta = (
 		ConsoleVariable = "r.ReflectionEnvironmentLightmapMixBasedOnRoughness", DisplayName = "Reduce lightmap mixing on smooth surfaces",
@@ -425,18 +427,12 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ConsoleVariable = "r.DefaultFeature.AutoExposure", DisplayName = "Auto Exposure",
 		ToolTip = "Whether the default for AutoExposure is enabled or not (postprocess volume/camera/game setting can still override and enable or disable it independently)"))
 	uint32 bDefaultFeatureAutoExposure : 1;
-
+	
 	UPROPERTY(config, EditAnywhere, Category = DefaultSettings, meta = (
 		ConsoleVariable = "r.DefaultFeature.AutoExposure.Method", DisplayName = "Auto Exposure",
 		ToolTip = "The default method for AutoExposure(postprocess volume/camera/game setting can still override and enable or disable it independently)"))
-	TEnumAsByte<EAutoExposureMethodUI::Type> DefaultFeatureAutoExposure;
+	TEnumAsByte<EAutoExposureMethodUI::Type> DefaultFeatureAutoExposure; 
 
-	UPROPERTY(config, EditAnywhere, Category = DefaultSettings, meta = (
-		ConsoleVariable = "r.DefaultFeature.AutoExposure.Bias", DisplayName = "Auto Exposure Bias",
-		ToolTip = "Default Value for auto exposure bias."))
-	float DefaultFeatureAutoExposureBias;
-
-	UE_DEPRECATED(4.26, "Extend Default Luminance Range is deprecated, and will be forced to ON at all times in future revisions.")
 	UPROPERTY(config, EditAnywhere, Category = DefaultSettings, meta = (
 		ConsoleVariable = "r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange", DisplayName = "Extend default luminance range in Auto Exposure settings",
 		ToolTip = "Whether the default values for AutoExposure should support an extended range of scene luminance. Also changes the exposure settings to be expressed in EV100.",
@@ -527,20 +523,10 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 	TEnumAsByte<EClearSceneOptions::Type> ClearSceneMethod;
 
 	UPROPERTY(config, EditAnywhere, Category=Optimizations, meta=(
-		DisplayName="Output velocities during base pass",
-		ConsoleVariable="r.BasePassOutputsVelocity",
-		ConfigRestartRequired = true,
-		ToolTip="Enables emitting velocity during Base Pass rendering. Changing this setting requires restarting the editor.\nNote: enabling this behaves as if 'Output velocities due to vertex deformation' (r.VertexDeformationOutputsVelocity) is also enabled."
-		))
+		ConsoleVariable="r.BasePassOutputsVelocity", DisplayName="Accurate velocities from Vertex Deformation",
+		ToolTip="Enables materials with time-based World Position Offset and/or World Displacement to output accurate velocities. This incurs a performance cost. If this is disabled, those materials will not output velocities. Changing this setting requires restarting the editor.",
+		ConfigRestartRequired=true))
 	uint32 bBasePassOutputsVelocity:1;
-
-	UPROPERTY(config, EditAnywhere, Category=Optimizations, meta=(
-		DisplayName="Output velocities due to vertex deformation",
-		ConsoleVariable="r.VertexDeformationOutputsVelocity",
-		EditCondition = "!bBasePassOutputsVelocity",
-		ToolTip="Enables materials with World Position Offset and/or World Displacement to output velocities during velocity pass even when the actor has not moved. This incurs a performance cost and can be quite significant if many objects are using WPO, such as a forest of trees - in that case consider 'Output velocities during base pass' (r.BasePassOutputsVelocity) and disabling this option."
-		))
-	uint32 bVertexDeformationOutputsVelocity:1;
 
 	UPROPERTY(config, EditAnywhere, Category=Optimizations, meta=(
 		ConsoleVariable="r.SelectiveBasePassOutputs", DisplayName="Selectively output to the GBuffer rendertargets",
@@ -559,7 +545,7 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ToolTip = "The X size of the GPU simulation texture size. SizeX*SizeY determines the maximum number of GPU simulated particles in an emitter. Potentially overridden by CVar settings in BaseDeviceProfile.ini.",
 		ConfigRestartRequired = true))
 	int32 GPUSimulationTextureSizeX;
-
+	
 	UPROPERTY(config, EditAnywhere, Category = Optimizations, meta = (
 		ConsoleVariable = "fx.GPUSimulationTextureSizeY",
 		DisplayName = "GPU Particle simulation texture size - Y",
@@ -582,37 +568,38 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ConsoleVariable = "r.MorphTarget.Mode", DisplayName = "Use GPU for computing morph targets",
 		ToolTip = "Whether to use original CPU method (loop per morph then by vertex) or use a GPU-based method on Shader Model 5 hardware."))
 	uint32 bUseGPUMorphTargets : 1;
-
+	
 	UPROPERTY(config, EditAnywhere, Category = Debugging, meta = (
 		ConsoleVariable = "r.GPUCrashDebugging", DisplayName = "Enable vendor specific GPU crash analysis tools",
-		ToolTip = "Enables vendor specific GPU crash analysis tools.",
+		ToolTip = "Enables vendor specific GPU crash analysis tools.  Currently only supports NVIDIA Aftermath on DX11.",
 		ConfigRestartRequired = true))
 		uint32 bNvidiaAftermathEnabled : 1;
 
+	UPROPERTY(config, EditAnywhere, Category=VR, meta=(
+		ConsoleVariable="vr.InstancedStereo", DisplayName="Instanced Stereo",
+		ToolTip="Enable instanced stereo rendering (only available for D3D SM5 or PS4).",
+		ConfigRestartRequired=true))
+	uint32 bInstancedStereo:1;
+
 	UPROPERTY(config, EditAnywhere, Category = VR, meta = (
-		ConsoleVariable = "vr.InstancedStereo", DisplayName = "Instanced Stereo",
-		ToolTip = "Enable single-pass stereoscopic rendering through view instancing or draw call instancing.",
+		EditCondition = "bInstancedStereo",
+		ConsoleVariable = "vr.MultiView", DisplayName = "Multi-View",
+		ToolTip = "Enable multi-view for instanced stereo rendering (only available on the PS4).",
 		ConfigRestartRequired = true))
 	uint32 bMultiView : 1;
 
-	UPROPERTY(config, EditAnywhere, Category = VR, meta=(
-		ConsoleVariable="r.MobileHDR", DisplayName="Mobile HDR",
-		ToolTip="If true, mobile pipelines include a full post-processing pass with tonemapping. Disable this setting for a performance boost and to enable stereoscopic rendering optimizations. Changing this setting requires restarting the editor.",
-		ConfigRestartRequired = true))
-	uint32 bMobilePostProcessing:1;
-
 	UPROPERTY(config, EditAnywhere, Category = VR, meta = (
-		EditCondition = "!bMobilePostProcessing",
 		ConsoleVariable = "vr.MobileMultiView", DisplayName = "Mobile Multi-View",
-		ToolTip = "Enable single-pass stereoscopic rendering on mobile platforms.",
+		ToolTip = "Enable mobile multi-view rendering (only available on Oculus Mobile and some Gear VR Android devices).",
 		ConfigRestartRequired = true))
 		uint32 bMobileMultiView : 1;
-	
-	UPROPERTY(config, meta = (
-		EditCondition = "!bMobilePostProcessing",
-		ConsoleVariable = "r.Mobile.UseHWsRGBEncoding", DisplayName = "Single-pass linear rendering",
-		ToolTip = "If true then mobile single-pass (without post-processing) rendering will use HW accelerated sRGB encoding/decoding. Available only on Oculus for now."))
-		uint32 bMobileUseHWsRGBEncoding : 1;
+
+	UPROPERTY(config, EditAnywhere, Category = VR, meta = (
+		EditCondition = "bMobileMultiView",
+		ConsoleVariable = "vr.MobileMultiView.Direct", DisplayName = "Mobile Multi-View Direct",
+		ToolTip = "Enable direct mobile multi-view rendering (only available on multi-view enabled Oculus Mobile, Gear VR, and Daydream Android devices).",
+		ConfigRestartRequired = true))
+		uint32 bMobileMultiViewDirect : 1;
 
 	UPROPERTY(config, EditAnywhere, Category = VR, meta = (
 		ConsoleVariable = "vr.RoundRobinOcclusion", DisplayName = "Round Robin Occlusion Queries",
@@ -625,12 +612,6 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ToolTip = "Enable Omni-directional Stereo Capture.",
 		ConfigRestartRequired = true))
 		uint32 bODSCapture : 1;
-
-	UPROPERTY(config, EditAnywhere, Category = Experimental, meta = (
-		ConsoleVariable="r.MeshStreaming",DisplayName="Mesh Streaming",
-		ToolTip="When enabled mesh will stream in based on what is visible on screen.",
-		ConfigRestartRequired = true))
-		uint32 bMeshStreaming : 1;
 
 	UPROPERTY(config, EditAnywhere, Category=Editor, meta=(
 		ConsoleVariable="r.WireframeCullThreshold",DisplayName="Wireframe Cull Threshold",
@@ -676,16 +657,16 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ConfigRestartRequired = true))
 		uint32 bSupportPointLightWholeSceneShadows : 1;
 
-	/**
+	/** 
 	"Atmospheric fog requires permutations of the basepass shaders.  Disabling will reduce the number of shader permutations required per material. Changing this setting requires restarting the editor."
 	*/
 	UPROPERTY(config, EditAnywhere, Category = ShaderPermutationReduction, meta = (
-		ConsoleVariable = "r.SupportAtmosphericFog", DisplayName = "Support Atmospheric Fog",
+		ConsoleVariable = "r.SupportAtmosphericFog", DisplayName = "Support Atmospheric Fog",	
 		ConfigRestartRequired = true))
 		uint32 bSupportAtmosphericFog : 1;
 
 	/**
-	"The sky atmosphere component requires extra samplers/textures to be bound to apply aerial perspective on transparent surfaces (and all surfaces on mobile via per vertex evaluation)."
+	"The sky atmosphere component requires extra samplers/textures to be bound to apply aerial perspective on transparent surfaces (and all surfaces on mobile via per vertex evaluation)." 
 	*/
 	UPROPERTY(config, EditAnywhere, Category = ShaderPermutationReduction, meta = (
 		ConsoleVariable = "r.SupportSkyAtmosphere", DisplayName = "Support Sky Atmosphere",
@@ -704,23 +685,13 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		uint32 bSupportSkyAtmosphereAffectsHeightFog : 1;
 
 	/**
-	"Skin cache allows a compute shader to skin once each vertex, save those results into a new buffer and reuse those calculations when later running the depth, base and velocity passes. This also allows opting into the 'recompute tangents' for skinned mesh instance feature. Disabling will reduce the number of shader permutations required per material. Changing this setting requires restarting the editor."
+	"Skincache allows a compute shader to skin once each vertex, save those results into a new buffer and reuse those calculations when later running the depth, base and velocity passes. This also allows opting into the 'recompute tangents' for skinned mesh instance feature. Disabling will reduce the number of shader permutations required per material. Changing this setting requires restarting the editor."
 	*/
 	UPROPERTY(config, EditAnywhere, Category = Optimizations, meta = (
-		ConsoleVariable = "r.SkinCache.CompileShaders", DisplayName = "Support Compute Skin Cache",
+		ConsoleVariable = "r.SkinCache.CompileShaders", DisplayName = "Support Compute Skincache",
 		ToolTip = "Cannot be disabled while Ray Tracing is enabled as it is then required.",
 		ConfigRestartRequired = true))
-	uint32 bSupportSkinCacheShaders : 1;
-
-	UPROPERTY(config, EditAnywhere, Category = Optimizations, meta = (
-		ConsoleVariable = "r.SkinCache.DefaultBehavior", DisplayName = "Default Skin Cache Behavior",
-		ToolTip = "Default behavior if all skeletal meshes are included/excluded from the skin cache. If Ray Tracing is enabled, will force inclusive behavior."))
-	ESkinCacheDefaultBehavior DefaultSkinCacheBehavior;
-
-	UPROPERTY(config, EditAnywhere, Category = Optimizations, meta = (
-		ConsoleVariable = "r.SkinCache.SceneMemoryLimitInMB", DisplayName = "Maximum memory for Compute Skin Cache per world (MB)",
-		ToolTip = "Maximum amount of memory (in MB) per world/scene allowed for the Compute Skin Cache to generate output vertex data and recompute tangents."))
-	float SkinCacheSceneMemoryLimitInMB;
+		uint32 bSupportSkinCacheShaders : 1;
 
 	UPROPERTY(config, EditAnywhere, Category = MobileShaderPermutationReduction, meta = (
 		ConsoleVariable = "r.Mobile.EnableStaticAndCSMShadowReceivers", DisplayName = "Support Combined Static and CSM Shadowing",
@@ -736,8 +707,8 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 
 	UPROPERTY(config, EditAnywhere, Category = MobileShaderPermutationReduction, meta = (
 		ConsoleVariable = "r.Mobile.AllowDistanceFieldShadows",
-		DisplayName = "Support Pre-baked Distance Field Shadow Maps",
-		ToolTip = "Generate shaders for static primitives render Lightmass-baked distance field shadow maps from stationary directional lights. Changing this setting requires restarting the editor.",
+		DisplayName = "Support Distance Field Shadows",
+		ToolTip = "Generate shaders for primitives to receive distance field shadows from stationary directional lights. Changing this setting requires restarting the editor.",
 		ConfigRestartRequired = true))
 		uint32 bMobileAllowDistanceFieldShadows : 1;
 
@@ -767,21 +738,12 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ConfigRestartRequired = true))
 		uint32 bMobileAllowMovableSpotlights : 1;
 
-	UPROPERTY(config, EditAnywhere, Category = MobileShaderPermutationReduction, meta = (
-		EditCondition = "bMobileAllowMovableSpotlights",
-		ConsoleVariable = "r.Mobile.EnableMovableSpotlightsShadow",
-		DisplayName = "Support Movable SpotlightShadows",
-		ToolTip = "Generate shaders for primitives to receive shadow from movable spotlights. Changing this setting requires restarting the editor.",
-		ConfigRestartRequired = true))
-		uint32 bMobileAllowMovableSpotlightShadows : 1;
+	UPROPERTY(config, EditAnywhere, Category = Optimizations, meta = (
+		ConsoleVariable = "r.SkinCache.SceneMemoryLimitInMB", DisplayName = "Maximum memory for Compute Skincache per world (MB)",
+		ToolTip = "Maximum amount of memory (in MB) per world/scene allowed for the Compute Skincache to generate output vertex data and recompute tangents."))
+		float SkinCacheSceneMemoryLimitInMB;
 
-	UPROPERTY(config, EditAnywhere, Category = Skinning, meta = (
-		ConsoleVariable = "r.GPUSkin.Support16BitBoneIndex", DisplayName = "Support 16-bit Bone Index",
-		ToolTip = "If enabled, a new mesh imported will use 8 bit (if <=256 bones) or 16 bit (if > 256 bones) bone indices for rendering.",
-		ConfigRestartRequired = true))
-		uint32 bSupport16BitBoneIndex : 1;
-
-	UPROPERTY(config, EditAnywhere, Category = Skinning, meta = (
+	UPROPERTY(config, EditAnywhere, Category = Optimizations, meta = (
 		ConsoleVariable = "r.GPUSkin.Limit2BoneInfluences", DisplayName = "Limit GPU skinning to 2 bones influence",
 		ToolTip = "Whether to use 2 bone influences instead of the default of 4 for GPU skinning. This does not change skeletal mesh assets but reduces the number of instructions required by the GPU skin vertex shaders. Changing this setting requires restarting the editor.",
 		ConfigRestartRequired = true))
@@ -799,65 +761,16 @@ class ENGINE_API URendererSettings : public UDeveloperSettings
 		ConfigRestartRequired = true))
 		uint32 bSupportReversedIndexBuffers : 1;
 
+	UPROPERTY(config, EditAnywhere, Category = Materials, meta = (
+		ConsoleVariable = "r.SupportMaterialLayers", Tooltip = "Support new material layering system.",
+		ConfigRestartRequired = true))
+		uint32 bSupportMaterialLayers : 1;
+
 	UPROPERTY(config, EditAnywhere, Category = Lighting, meta = (
 		ConsoleVariable = "r.LightPropagationVolume", DisplayName = "Light Propagation Volumes",
 		ToolTip = "Whether to allow the usage and compilation of Light Propagation Volumes.",
 		ConfigRestartRequired = true))
 		uint32 bLPV : 1;
-
-	UPROPERTY(config, EditAnywhere, Category = Mobile, meta = (
-		ConsoleVariable = "r.Mobile.AmbientOcclusion", DisplayName = "Mobile Ambient Occlusion",
-		ToolTip = "Mobile Ambient Occlusion. Causion: An extra sampler will be occupied in mobile base pass pixel shader after enable the mobile ambient occlusion. Changing this setting requires restarting the editor.",
-		ConfigRestartRequired = true))
-		uint32 bMobileAmbientOcclusion : 1;
-
-	UPROPERTY(config, EditAnywhere, Category = Skinning, meta = (
-		ConsoleVariable = "r.GPUSkin.UnlimitedBoneInfluences", DisplayName = "Use Unlimited Bone Influences",
-		ToolTip = "If enabled, a new mesh imported will use unlimited bone buffer instead of fixed MaxBoneInfluences for rendering.",
-		ConfigRestartRequired = true))
-		uint32 bUseUnlimitedBoneInfluences : 1;
-		
-	UPROPERTY(config, EditAnywhere, Category = Skinning, meta = (
-		ConsoleVariable = "r.GPUSkin.UnlimitedBoneInfluencesThreshold", DisplayName = "Unlimited Bone Influences Threshold",
-		ToolTip = "When Unlimited Bone Influence is enabled, it still uses a fixed bone inflence buffer until the max bone influence of a mesh exceeds this value"))
-		int32 UnlimitedBonInfluencesThreshold;
-	
-	UPROPERTY(config, EditAnywhere, Category = Mobile, meta = (
-		ConsoleVariable = "r.Mobile.PlanarReflectionMode", DisplayName = "Planar Reflection Mode",
-		ToolTip = "The PlanarReflection will work differently on different mode on mobile platform, choose the proper mode as expect. Changing this setting requires restarting the editor.",
-		ConfigRestartRequired = true))
-		TEnumAsByte<EMobilePlanarReflectionMode::Type> MobilePlanarReflectionMode;
-
-	UPROPERTY(config, EditAnywhere, Category="Experimental|LOD Streaming|Skeletal Mesh", meta=(
-		DisplayName="Stream LODs by default",
-		ToolTip="Whether to stream skeletal mesh LODs by default."))
-	FPerPlatformBool bStreamSkeletalMeshLODs;
-
-	UPROPERTY(config, EditAnywhere, Category="Experimental|LOD Streaming|Skeletal Mesh", meta=(
-		DisplayName="Discard optional LODs",
-		ToolTip="Whether to discard skeletal mesh LODs below minimum LOD levels at cook time."))
-	FPerPlatformBool bDiscardSkeletalMeshOptionalLODs;
-
-	/**
-	" Visualize calibration material settings for post process calibration materials, used for setting full-screen images used for monitor calibration."
-	*/
-	UPROPERTY(config, EditAnywhere, Category = PostProcessCalibrationMaterials, meta = (AllowedClasses = "Material",
-		DisplayName = "Visualize Calibration Color Material Path",
-		ToolTip = "When the VisualizeCalibrationColor show flag is enabled, this path will be used as the post-process material to render.",
-		ConfigRestartRequired = false))
-	FSoftObjectPath VisualizeCalibrationColorMaterialPath;
-
-	UPROPERTY(config, EditAnywhere, Category = PostProcessCalibrationMaterials, meta = (AllowedClasses = "Material",
-		DisplayName = "Visualize Calibration Custom Material Path",
-		ToolTip = "When the VisualizeCalibrationCustom show flag is enabled, this path will be used as the post-process material to render.",
-		ConfigRestartRequired = false))
-	FSoftObjectPath VisualizeCalibrationCustomMaterialPath;
-
-	UPROPERTY(config, EditAnywhere, Category = PostProcessCalibrationMaterials, meta = (AllowedClasses = "Material",
-		DisplayName = "Visualize Calibration Grayscale Material Path",
-		ToolTip = "When the VisualizeCalibrationGrayscale show flag is enabled, this path will be used as the post-process material to render.",
-		ConfigRestartRequired = false))
-		FSoftObjectPath VisualizeCalibrationGrayscaleMaterialPath;
 
 public:
 
@@ -866,9 +779,9 @@ public:
 	virtual void PostInitProperties() override;
 
 #if WITH_EDITOR
-	virtual void PreEditChange(FProperty* PropertyAboutToChange) override;
+	virtual void PreEditChange(UProperty* PropertyAboutToChange) override;
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
-	virtual bool CanEditChange(const FProperty* InProperty) const override;
+	virtual bool CanEditChange(const UProperty* InProperty) const override;
 #endif
 
 	//~ End UObject Interface
@@ -882,7 +795,7 @@ private:
 	void SanatizeReflectionCaptureResolution();
 };
 
-UCLASS(config = Engine, projectuserconfig, meta = (DisplayName = "Rendering Overrides (Local)"))
+UCLASS(config = Engine, globaluserconfig, meta = (DisplayName = "Rendering Overrides (Local)"))
 class ENGINE_API URendererOverrideSettings : public UDeveloperSettings
 {
 	GENERATED_UCLASS_BODY()

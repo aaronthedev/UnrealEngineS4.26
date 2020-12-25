@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2020 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2019 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -57,6 +57,7 @@ UIKit_ShowMessageBoxAlertController(const SDL_MessageBoxData *messageboxdata, in
 {
     int i;
     int __block clickedindex = messageboxdata->numbuttons;
+    const SDL_MessageBoxButtonData *buttons = messageboxdata->buttons;
     UIWindow *window = nil;
     UIWindow *alertwindow = nil;
 
@@ -72,28 +73,17 @@ UIKit_ShowMessageBoxAlertController(const SDL_MessageBoxData *messageboxdata, in
     for (i = 0; i < messageboxdata->numbuttons; i++) {
         UIAlertAction *action;
         UIAlertActionStyle style = UIAlertActionStyleDefault;
-        const SDL_MessageBoxButtonData *sdlButton;
 
-        if (messageboxdata->flags & SDL_MESSAGEBOX_BUTTONS_RIGHT_TO_LEFT) {
-            sdlButton = &messageboxdata->buttons[messageboxdata->numbuttons - 1 - i];
-        } else {
-            sdlButton = &messageboxdata->buttons[i];
-        }
-
-        if (sdlButton->flags & SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT) {
+        if (buttons[i].flags & SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT) {
             style = UIAlertActionStyleCancel;
         }
 
-        action = [UIAlertAction actionWithTitle:@(sdlButton->text)
+        action = [UIAlertAction actionWithTitle:@(buttons[i].text)
                                           style:style
                                         handler:^(UIAlertAction *action) {
-				                            clickedindex = (int)(sdlButton - messageboxdata->buttons);
+                                            clickedindex = i;
                                         }];
         [alert addAction:action];
-
-        if (sdlButton->flags & SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT) {
-            alert.preferredAction = action;
-        }
     }
 
     if (messageboxdata->window) {
@@ -151,6 +141,7 @@ UIKit_ShowMessageBoxAlertView(const SDL_MessageBoxData *messageboxdata, int *but
 #if __IPHONE_OS_VERSION_MIN_REQUIRED < 80000
     int i;
     int clickedindex = messageboxdata->numbuttons;
+    const SDL_MessageBoxButtonData *buttons = messageboxdata->buttons;
     UIAlertView *alert = [[UIAlertView alloc] init];
     SDLAlertViewDelegate *delegate = [[SDLAlertViewDelegate alloc] init];
 
@@ -159,13 +150,7 @@ UIKit_ShowMessageBoxAlertView(const SDL_MessageBoxData *messageboxdata, int *but
     alert.message = @(messageboxdata->message);
 
     for (i = 0; i < messageboxdata->numbuttons; i++) {
-        const SDL_MessageBoxButtonData *sdlButton;
-        if (messageboxdata->flags & SDL_MESSAGEBOX_BUTTONS_RIGHT_TO_LEFT) {
-            sdlButton = &messageboxdata->buttons[messageboxdata->numbuttons - 1 - i];
-        } else {
-            sdlButton = &messageboxdata->buttons[i];
-        }
-        [alert addButtonWithTitle:@(sdlButton->text)];
+        [alert addButtonWithTitle:@(buttons[i].text)];
     }
 
     delegate.clickedIndex = &clickedindex;
@@ -176,9 +161,6 @@ UIKit_ShowMessageBoxAlertView(const SDL_MessageBoxData *messageboxdata, int *but
 
     alert.delegate = nil;
 
-	if (messageboxdata->flags & SDL_MESSAGEBOX_BUTTONS_RIGHT_TO_LEFT) {
-		clickedindex = messageboxdata->numbuttons - 1 - clickedindex;
-	}
     *buttonid = messageboxdata->buttons[clickedindex].buttonid;
     return YES;
 #else

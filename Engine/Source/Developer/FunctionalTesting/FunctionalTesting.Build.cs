@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -32,13 +32,6 @@ public class FunctionalTesting : ModuleRules
 					"SourceControl",
 					"UnrealEd",
 					"LevelEditor"
-				}
-			);
-
-			// Circular references that need to be cleaned up
-			CircularlyReferencedDependentModules.AddRange(
-				new string[] {
-					"UnrealEd",
 				}
 			);
 		}

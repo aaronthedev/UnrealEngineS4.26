@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UserDefinedStructureCompilerUtils.h"
 #include "UObject/ObjectMacros.h"
@@ -22,7 +22,6 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Serialization/ObjectWriter.h"
 #include "Serialization/ObjectReader.h"
-#include "UObject/FieldIterator.h"
 
 #define LOCTEXT_NAMESPACE "StructureCompiler"
 
@@ -78,12 +77,8 @@ struct FUserDefinedStructureCompilerInner
 
 			CastChecked<UUserDefinedStructEditorData>(DuplicatedStruct->EditorData)->RecreateDefaultInstance();
 
-			// List of unique classes and structs to regenerate bytecode and property referenced objects list
-			TSet<UStruct*> StructsToRegenerateReferencesFor;
-
-			for (TAllFieldsIterator<FStructProperty> FieldIt(RF_NoFlags, EInternalObjectFlags::PendingKill); FieldIt; ++FieldIt)
+			for (UStructProperty* StructProperty : TObjectRange<UStructProperty>(RF_ClassDefaultObject, /** bIncludeDerivedClasses */ true, /** InternalExcludeFlags */ EInternalObjectFlags::PendingKill))
 			{
-				FStructProperty* StructProperty = *FieldIt;
 				if (StructProperty && (StructureToReinstance == StructProperty->Struct))
 				{
 					if (UBlueprintGeneratedClass* OwnerClass = Cast<UBlueprintGeneratedClass>(StructProperty->GetOwnerClass()))
@@ -92,7 +87,6 @@ struct FUserDefinedStructureCompilerInner
 						{
 							ClearStructReferencesInBP(FoundBlueprint, BlueprintsToRecompile);
 							StructProperty->Struct = DuplicatedStruct;
-							StructsToRegenerateReferencesFor.Add(OwnerClass);
 						}
 					}
 					else if (UUserDefinedStruct* OwnerStruct = Cast<UUserDefinedStruct>(StructProperty->GetOwnerStruct()))
@@ -110,7 +104,6 @@ struct FUserDefinedStructureCompilerInner
 							{
 								// Don't change this for a default value only change, it won't get correctly replaced later
 								StructProperty->Struct = DuplicatedStruct;
-								StructsToRegenerateReferencesFor.Add(OwnerStruct);
 							}
 						}
 					}
@@ -119,12 +112,6 @@ struct FUserDefinedStructureCompilerInner
 						UE_LOG(LogK2Compiler, Error, TEXT("ReplaceStructWithTempDuplicate unknown owner"));
 					}
 				}
-			}
-
-			// Make sure we update the list of objects referenced by structs after we replaced the struct in FStructProperties
-			for (UStruct* Struct : StructsToRegenerateReferencesFor)
-			{
-				Struct->CollectBytecodeAndPropertyReferencedObjects();
 			}
 
 			DuplicatedStruct->RemoveFromRoot();
@@ -159,24 +146,33 @@ struct FUserDefinedStructureCompilerInner
 			const FString TransientString = FString::Printf(TEXT("TRASHSTRUCT_%s"), *StructToClean->GetName());
 			const FName TransientName = MakeUniqueObjectName(GetTransientPackage(), UUserDefinedStruct::StaticClass(), FName(*TransientString));
 			TransientStruct = NewObject<UUserDefinedStruct>(GetTransientPackage(), TransientName, RF_Public | RF_Transient);
-			TransientStruct->PrepareCppStructOps();
 
 			TArray<UObject*> SubObjects;
 			GetObjectsWithOuter(StructToClean, SubObjects, true);
 			SubObjects.Remove(StructToClean->EditorData);
 			for (UObject* CurrSubObj : SubObjects)
 			{
-				FLinkerLoad::InvalidateExport(CurrSubObj);
+				CurrSubObj->Rename(nullptr, TransientStruct, REN_DontCreateRedirectors);
+				if (UProperty* Prop = Cast<UProperty>(CurrSubObj))
+				{
+					FKismetCompilerUtilities::InvalidatePropertyExport(Prop);
+				}
+				else
+				{
+					FLinkerLoad::InvalidateExport(CurrSubObj);
+				}
 			}
 
 			StructToClean->SetSuperStruct(nullptr);
 			StructToClean->Children = nullptr;
-			StructToClean->DestroyChildPropertiesAndResetPropertyLinks();
 			StructToClean->Script.Empty();
 			StructToClean->MinAlignment = 0;
-			StructToClean->ScriptAndPropertyObjectReferences.Empty();
+			StructToClean->RefLink = nullptr;
+			StructToClean->PropertyLink = nullptr;
+			StructToClean->DestructorLink = nullptr;
+			StructToClean->ScriptObjectReferences.Empty();
+			StructToClean->PropertyLink = nullptr;
 			StructToClean->ErrorMessage.Empty();
-			StructToClean->SetStructTrashed(true);
 		}
 
 		return TransientStruct;
@@ -218,12 +214,12 @@ struct FUserDefinedStructureCompilerInner
 				continue;
 			}
 
-			FProperty* VarProperty = nullptr;
+			UProperty* VarProperty = nullptr;
 
 			bool bIsNewVariable = false;
 			if (FStructureEditorUtils::FStructEditorManager::ActiveChange == FStructureEditorUtils::EStructureEditorChangeInfo::DefaultValueChanged)
 			{
-				VarProperty = FindFProperty<FProperty>(Struct, VarDesc.VarName);
+				VarProperty = FindField<UProperty>(Struct, VarDesc.VarName);
 				if (!ensureMsgf(VarProperty, TEXT("Could not find the expected property (%s); was the struct (%s) unexpectedly sanitized?"), *VarDesc.VarName.ToString(), *Struct->GetName()))
 				{
 					VarProperty = FKismetCompilerUtilities::CreatePropertyOnScope(Struct, VarDesc.VarName, VarType, NULL, CPF_None, Schema, MessageLog);
@@ -294,9 +290,9 @@ struct FUserDefinedStructureCompilerInner
 			{
 				const UClass* ClassObject = Cast<UClass>(VarType.PinSubCategoryObject.Get());
 
-				if (ClassObject && ClassObject->IsChildOf(AActor::StaticClass()) && (VarType.PinCategory == UEdGraphSchema_K2::PC_Object || VarType.PinCategory == UEdGraphSchema_K2::PC_Interface || VarType.PinCategory == UEdGraphSchema_K2::PC_SoftObject))
+				if (ClassObject && ClassObject->IsChildOf(AActor::StaticClass()) && (VarType.PinCategory == UEdGraphSchema_K2::PC_Object || VarType.PinCategory == UEdGraphSchema_K2::PC_Interface))
 				{
-					// prevent Actor reference variables from having default values (because Blueprint templates are library elements that can 
+					// prevent hard reference Actor variables from having default values (because Blueprint templates are library elements that can 
 					// bridge multiple levels and different levels might not have the actor that the default is referencing).
 					VarProperty->PropertyFlags |= CPF_DisableEditOnTemplate;
 				}
@@ -480,43 +476,6 @@ void FUserDefinedStructureCompilerUtils::CompileStruct(class UUserDefinedStruct*
 
 			if (bReconstruct)
 			{
-				// We need to recombine any nested subpins on this node, otherwise there will be an
-				// unexpected amount of pins during reconstruction. 
-				{
-					TArray<UEdGraphPin*> NestedSplitPins;
-					for (int32 i = Node->Pins.Num() - 1; i >= 0; --i)
-					{
-						UEdGraphPin* Pin = Node->Pins[i];
-						if (Pin->ParentPin != nullptr && Pin->ParentPin->ParentPin != nullptr && !Pin->bOrphanedPin)
-						{
-							NestedSplitPins.Add(Pin);
-							
-							// If there was nothing connected to or changed about this pin, then skip it
-							if (Pin->LinkedTo.Num() > 0 || !Pin->DoesDefaultValueMatchAutogenerated())
-							{
-								// Otherwise add an orphan pin so warning/connections are not silently lost
-								UEdGraphPin* OrphanPin = Node->CreatePin(Pin->Direction, Pin->PinType, Pin->PinName);
-								OrphanPin->bOrphanedPin = true;
-								OrphanPin->bNotConnectable = true;
-								OrphanPin->DefaultValue = Pin->DefaultValue;
-								OrphanPin->DefaultObject = Pin->DefaultObject;
-
-								for (UEdGraphPin* OldLink : Pin->LinkedTo)
-								{
-									OrphanPin->MakeLinkTo(OldLink);
-								}
-							}
-						}
-					}
-
-					// Wait to recombine because otherwise we could end up combining pins that that haven't had their orphan created yet
-					const UEdGraphSchema* Schema = Node->GetSchema();
-					for (int32 i = NestedSplitPins.Num() - 1; i >= 0; --i)
-					{
-						Schema->RecombinePin(NestedSplitPins[i]);
-					}
-				}
-
 				if (Node->HasValidBlueprint())
 				{
 					UBlueprint* FoundBlueprint = Node->GetBlueprint();

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,24 +9,27 @@
 class FPicpProjectionOverlayViewport
 {
 public:
-	FRHITexture2D* ViewportTexture; //Overlay texture to compose in viewport projection
+	FRHITexture2D* ViewportTexture; // Texture to render
+	//@ Add more render options here
 
 public:
 	FPicpProjectionOverlayViewport()
 		: ViewportTexture(nullptr)
-	{ }
+	{ 
+	}
 
 	FPicpProjectionOverlayViewport(FRHITexture2D* TextureRef)
 		: ViewportTexture(TextureRef)
-	{ }
+	{ 
+	}
 	
 	bool IsEnabled() const
-	{
+	{ 
 		return ViewportTexture!=nullptr && ViewportTexture->IsValid(); 
 	}
 
 	void Empty()
-	{
-		ViewportTexture = nullptr;
+	{ 
+		ViewportTexture = nullptr;  
 	}
 };

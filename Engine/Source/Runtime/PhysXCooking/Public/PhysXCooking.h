@@ -1,11 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
-#include "IPhysXCookingModule.h"
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 
 #include "IPhysXCooking.h"
+#include "IPhysXCookingModule.h"
 
 namespace physx
 {

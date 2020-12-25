@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "HttpModule.h"
 #include "Misc/ConfigCacheIni.h"
@@ -47,11 +47,6 @@ void FHttpModule::UpdateConfigs()
 
 	AllowedDomains.Empty();
 	GConfig->GetArray(TEXT("HTTP"), TEXT("AllowedDomains"), AllowedDomains, GEngineIni);
-
-	if (HttpManager != nullptr)
-	{
-		HttpManager->UpdateConfigs();
-	}
 }
 
 void FHttpModule::StartupModule()
@@ -90,7 +85,7 @@ void FHttpModule::StartupModule()
 	FPlatformHttp::Init();
 
 	HttpManager = FPlatformHttp::CreatePlatformHttpManager();
-	if (nullptr == HttpManager)
+	if (NULL == HttpManager)
 	{
 		// platform does not provide specific HTTP manager, use generic one
 		HttpManager = new FHttpManager();
@@ -172,7 +167,7 @@ bool FHttpModule::HandleHTTPCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 				HttpMethod = TEXT("PUT");
 			}
 
-			TSharedRef<IHttpRequest, ESPMode::ThreadSafe> Request = CreateRequest();
+			TSharedRef<IHttpRequest> Request = CreateRequest();
 			Request->SetURL(UploadUrl);
 			Request->SetVerb(HttpMethod);
 			Request->SetHeader(TEXT("Content-Type"), TEXT("application/x-uehttp-upload-test"));
@@ -209,15 +204,15 @@ FHttpModule& FHttpModule::Get()
 	return *Singleton;
 }
 
-TSharedRef<IHttpRequest, ESPMode::ThreadSafe> FHttpModule::CreateRequest()
+TSharedRef<IHttpRequest> FHttpModule::CreateRequest()
 {
 	if (bUseNullHttp)
 	{
-		return TSharedRef<IHttpRequest, ESPMode::ThreadSafe>(new FNullHttpRequest());
+		return TSharedRef<IHttpRequest>(new FNullHttpRequest());
 	}
 	else
 	{
 		// Create the platform specific Http request instance
-		return TSharedRef<IHttpRequest, ESPMode::ThreadSafe>(FPlatformHttp::ConstructRequest());
+		return TSharedRef<IHttpRequest>(FPlatformHttp::ConstructRequest());
 	}
 }

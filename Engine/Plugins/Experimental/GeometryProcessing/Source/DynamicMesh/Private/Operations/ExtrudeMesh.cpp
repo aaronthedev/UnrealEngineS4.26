@@ -1,23 +1,23 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Operations/ExtrudeMesh.h"
 #include "MeshNormals.h"
 #include "DynamicMeshEditor.h"
-#include "Selections/MeshConnectedComponents.h"
-#include "MeshIndexUtil.h"
 
 
 FExtrudeMesh::FExtrudeMesh(FDynamicMesh3* mesh) : Mesh(mesh)
 {
 	ExtrudedPositionFunc = [this](const FVector3d& Position, const FVector3f& Normal, int VertexID) 
 	{
-		return Position + this->DefaultExtrudeDistance * (FVector3d)Normal;
+		return Position + this->DefaultExtrudeDistance * Normal;
 	};
 }
 
 
 bool FExtrudeMesh::Apply()
 {
+	//@todo should apply per-connected-component? will then handle bowties properly
+
 	FMeshNormals Normals;
 	bool bHaveVertexNormals = Mesh->HasVertexNormals();
 	if (!bHaveVertexNormals)
@@ -26,39 +26,12 @@ bool FExtrudeMesh::Apply()
 		Normals.ComputeVertexNormals();
 	}
 
-	FMeshConnectedComponents MeshRegions(Mesh);
-	MeshRegions.FindConnectedTriangles();
+	InitialLoops.SetMesh(Mesh);
+	InitialLoops.Compute();
+	int NumInitialLoops = InitialLoops.GetLoopCount();
 
-	bool bAllOK = true;
-	Extrusions.SetNum(MeshRegions.Num());
-	for (int k = 0; k < MeshRegions.Num(); ++k)
-	{
-		FExtrusionInfo& Extrusion = Extrusions[k];
-		Extrusion.InitialTriangles = MoveTemp(MeshRegions.Components[k].Indices);
-		if (ApplyExtrude(Extrusion, (bHaveVertexNormals) ? nullptr : &Normals) == false)
-		{
-			bAllOK = false;
-		}
-	}
-
-	return bAllOK;
-}
-
-
-
-
-
-bool FExtrudeMesh::ApplyExtrude(FExtrusionInfo& Region, FMeshNormals* UseNormals)
-{
-	Region.InitialLoops.SetMesh(Mesh, Region.InitialTriangles);
-	bool bOK = Region.InitialLoops.Compute();
-	if (bOK == false)
-	{
-		return false;
-	}
-	int NumInitialLoops = Region.InitialLoops.GetLoopCount();
-
-	MeshIndexUtil::TriangleToVertexIDs(Mesh, Region.InitialTriangles, Region.InitialVertices);
+	BufferUtil::AppendElements(InitialTriangles, Mesh->TriangleIndicesItr());
+	BufferUtil::AppendElements(InitialVertices, Mesh->VertexIndicesItr());
 
 	// duplicate triangles of mesh
 
@@ -66,26 +39,22 @@ bool FExtrudeMesh::ApplyExtrude(FExtrusionInfo& Region, FMeshNormals* UseNormals
 
 	FMeshIndexMappings IndexMap;
 	FDynamicMeshEditResult DuplicateResult;
-	Editor.DuplicateTriangles(Region.InitialTriangles, IndexMap, DuplicateResult);
-	Region.OffsetTriangles = DuplicateResult.NewTriangles;
-	Region.OffsetTriGroups = DuplicateResult.NewGroups;
-	Region.InitialToOffsetMapV = IndexMap.GetVertexMap().GetForwardMap();
+	Editor.DuplicateTriangles(InitialTriangles, IndexMap, DuplicateResult);
+	OffsetTriangles = DuplicateResult.NewTriangles;
+	OffsetTriGroups = DuplicateResult.NewGroups;
+	InitialToOffsetMapV = IndexMap.GetVertexMap().GetForwardMap();
 
 	// set vertices to new positions
-	for (int vid : Region.InitialVertices)
+	for (int vid : InitialVertices)
 	{
-		if ( ! Region.InitialToOffsetMapV.Contains(vid) )
-		{
-			continue;
-		}
-		int newvid = Region.InitialToOffsetMapV[vid];
+		int newvid = InitialToOffsetMapV[vid];
 		if ( ! Mesh->IsVertex(newvid) )
 		{
 			continue;
 		}
 
 		FVector3d v = Mesh->GetVertex(vid);
-		FVector3f n = (UseNormals != nullptr) ? (FVector3f)(*UseNormals)[vid] : Mesh->GetVertexNormal(vid);
+		FVector3f n = (bHaveVertexNormals) ? Mesh->GetVertexNormal(vid) : (FVector3f)Normals[vid];
 		FVector3d newv = ExtrudedPositionFunc(v, n, vid);
 
 		Mesh->SetVertex(newvid, newv);
@@ -94,19 +63,19 @@ bool FExtrudeMesh::ApplyExtrude(FExtrusionInfo& Region, FMeshNormals* UseNormals
 	// we need to reverse one side
 	if (IsPositiveOffset)
 	{
-		Editor.ReverseTriangleOrientations(Region.InitialTriangles, true);
+		Editor.ReverseTriangleOrientations(InitialTriangles, true);
 	}
 	else
 	{
-		Editor.ReverseTriangleOrientations(Region.OffsetTriangles, true);
+		Editor.ReverseTriangleOrientations(OffsetTriangles, true);
 	}
 
 	// stitch each loop
-	Region.NewLoops.SetNum(NumInitialLoops);
-	Region.StitchTriangles.SetNum(NumInitialLoops);
-	Region.StitchPolygonIDs.SetNum(NumInitialLoops);
+	NewLoops.SetNum(NumInitialLoops);
+	StitchTriangles.SetNum(NumInitialLoops);
+	StitchPolygonIDs.SetNum(NumInitialLoops);
 	int LoopIndex = 0;
-	for (FEdgeLoop& BaseLoop : Region.InitialLoops.Loops)
+	for (FEdgeLoop& BaseLoop : InitialLoops.Loops)
 	{
 		int LoopCount = BaseLoop.GetVertexCount();
 
@@ -114,71 +83,68 @@ bool FExtrudeMesh::ApplyExtrude(FExtrusionInfo& Region, FMeshNormals* UseNormals
 		OffsetLoop.SetNum(LoopCount);
 		for (int k = 0; k < LoopCount; ++k)
 		{
-			OffsetLoop[k] = Region.InitialToOffsetMapV[BaseLoop.Vertices[k]];
+			OffsetLoop[k] = InitialToOffsetMapV[BaseLoop.Vertices[k]];
 		}
 
 		FDynamicMeshEditResult StitchResult;
-		bool bStitchSuccess;
 		if (IsPositiveOffset)
 		{
-			bStitchSuccess = Editor.StitchVertexLoopsMinimal(OffsetLoop, BaseLoop.Vertices, StitchResult);
+			Editor.StitchVertexLoopsMinimal(OffsetLoop, BaseLoop.Vertices, StitchResult);
 		}
 		else
 		{
-			bStitchSuccess = Editor.StitchVertexLoopsMinimal(BaseLoop.Vertices, OffsetLoop, StitchResult);
+			Editor.StitchVertexLoopsMinimal(BaseLoop.Vertices, OffsetLoop, StitchResult);
 		}
+		StitchResult.GetAllTriangles(StitchTriangles[LoopIndex]);
+		StitchPolygonIDs[LoopIndex] = StitchResult.NewGroups;
 
-		if (bStitchSuccess)
+		// for each polygon we created in stitch, set UVs and normals
+		if (Mesh->HasAttributes())
 		{
-			StitchResult.GetAllTriangles(Region.StitchTriangles[LoopIndex]);
-			Region.StitchPolygonIDs[LoopIndex] = StitchResult.NewGroups;
+			float AccumUVTranslation = 0;
 
-			// for each polygon we created in stitch, set UVs and normals
-			if (Mesh->HasAttributes())
+			FFrame3d FirstProjectFrame;
+			FVector3d FrameUp;
+
+			int NumNewQuads = StitchResult.NewQuads.Num();
+			for (int k = 0; k < NumNewQuads; k++)
 			{
-				float AccumUVTranslation = 0;
+				FVector3f Normal = Editor.ComputeAndSetQuadNormal(StitchResult.NewQuads[k], true);
 
-				FFrame3d FirstProjectFrame;
-				FVector3d FrameUp;
-
-				int NumNewQuads = StitchResult.NewQuads.Num();
-				for (int k = 0; k < NumNewQuads; k++)
+				// align axis 0 of projection frame to first edge, then for further edges,
+				// rotate around 'up' axis to keep normal aligned and frame horizontal
+				FFrame3d ProjectFrame;
+				if (k == 0)
 				{
-					FVector3f Normal = Editor.ComputeAndSetQuadNormal(StitchResult.NewQuads[k], true);
-
-					// align axis 0 of projection frame to first edge, then for further edges,
-					// rotate around 'up' axis to keep normal aligned and frame horizontal
-					FFrame3d ProjectFrame;
-					if (k == 0)
-					{
-						FVector3d FirstEdge = Mesh->GetVertex(BaseLoop.Vertices[1]) - Mesh->GetVertex(BaseLoop.Vertices[0]);
-						FirstEdge.Normalize();
-						FirstProjectFrame = FFrame3d(FVector3d::Zero(), (FVector3d)Normal);
-						FirstProjectFrame.ConstrainedAlignAxis(0, FirstEdge, (FVector3d)Normal);
-						FrameUp = FirstProjectFrame.GetAxis(1);
-						ProjectFrame = FirstProjectFrame;
-					}
-					else
-					{
-						ProjectFrame = FirstProjectFrame;
-						ProjectFrame.ConstrainedAlignAxis(2, (FVector3d)Normal, FrameUp);
-					}
-
-					if (k > 0)
-					{
-						AccumUVTranslation += Mesh->GetVertex(BaseLoop.Vertices[k]).Distance(Mesh->GetVertex(BaseLoop.Vertices[k - 1]));
-					}
-
-					// translate horizontally such that vertical spans are adjacent in UV space (so textures tile/wrap properly)
-					float TranslateU = UVScaleFactor * AccumUVTranslation;
-					Editor.SetQuadUVsFromProjection(StitchResult.NewQuads[k], ProjectFrame, UVScaleFactor, FVector2f(TranslateU, 0));
+					FVector3d FirstEdge = Mesh->GetVertex(BaseLoop.Vertices[1]) - Mesh->GetVertex(BaseLoop.Vertices[0]);
+					FirstEdge.Normalize();
+					FirstProjectFrame = FFrame3d(FVector3d::Zero(), (FVector3d)Normal);
+					FirstProjectFrame.ConstrainedAlignAxis(0, FirstEdge, (FVector3d)Normal);
+					FrameUp = FirstProjectFrame.GetAxis(1);
+					ProjectFrame = FirstProjectFrame;
 				}
-			}
+				else
+				{
+					ProjectFrame = FirstProjectFrame;
+					ProjectFrame.ConstrainedAlignAxis(2, (FVector3d)Normal, FrameUp);
+				}
 
-			Region.NewLoops[LoopIndex].InitializeFromVertices(Mesh, OffsetLoop);
+				if (k > 0)
+				{
+					AccumUVTranslation += Mesh->GetVertex(BaseLoop.Vertices[k]).Distance(Mesh->GetVertex(BaseLoop.Vertices[k-1]));
+				}
+
+				// translate horizontally such that vertical spans are adjacent in UV space (so textures tile/wrap properly)
+				float TranslateU = UVScaleFactor*AccumUVTranslation;
+				Editor.SetQuadUVsFromProjection(StitchResult.NewQuads[k], ProjectFrame, UVScaleFactor, FVector2f(TranslateU, 0) );
+			}
 		}
+
+		NewLoops[LoopIndex].InitializeFromVertices(Mesh, OffsetLoop);
 		LoopIndex++;
 	}
 
 	return true;
 }
+
+

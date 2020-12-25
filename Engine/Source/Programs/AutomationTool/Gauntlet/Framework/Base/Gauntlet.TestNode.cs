@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -66,16 +66,6 @@ namespace Gauntlet
 		/// Maximum duration that the test is expected to run for. Tests longer than this will be halted.
 		/// </summary>
 		float MaxDuration { get; }
-
-		/// <summary>
-		/// Return true if the warnings and errors needs to log after summary
-		/// </summary>
-		bool LogWarningsAndErrorsAfterSummary { get; }
-
-		/// <summary>
-		/// What the test result should be treated as if we reach max duration.
-		/// </summary>
-		EMaxDurationReachedResult MaxDurationReachedResult { get; }
 
 		/// <summary>
 		/// Priority of this test in relation to any others that are running
@@ -157,11 +147,7 @@ namespace Gauntlet
 		/// </summary>
 		/// <param name="Node"></param>
 		/// <returns></returns>
-		void CleanupTest();
-
-		/// <summary>
-		/// Output all defined commandline information for this test to the gauntlet window and exit test early.
-		/// </summary>
-		void DisplayCommandlineHelp();
+		void CleanupTest();	
+		
 	}
 }

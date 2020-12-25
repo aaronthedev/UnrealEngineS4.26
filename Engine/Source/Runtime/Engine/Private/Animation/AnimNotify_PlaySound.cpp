@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Animation/AnimNotifies/AnimNotify_PlaySound.h"
 #include "Components/SkeletalMeshComponent.h"
@@ -22,14 +22,13 @@ UAnimNotify_PlaySound::UAnimNotify_PlaySound()
 
 #if WITH_EDITORONLY_DATA
 	NotifyColor = FColor(196, 142, 255, 255);
-	bPreviewIgnoreAttenuation = false;
 #endif // WITH_EDITORONLY_DATA
 }
 
 void UAnimNotify_PlaySound::Notify(class USkeletalMeshComponent* MeshComp, class UAnimSequenceBase* Animation)
 {
 	// Don't call super to avoid call back in to blueprints
-	if (Sound && MeshComp)
+	if (Sound)
 	{
 		if (Sound->IsLooping())
 		{
@@ -37,23 +36,13 @@ void UAnimNotify_PlaySound::Notify(class USkeletalMeshComponent* MeshComp, class
 			return;
 		}
 
-#if WITH_EDITORONLY_DATA
-		UWorld* World = MeshComp->GetWorld();
-		if (bPreviewIgnoreAttenuation && World && World->WorldType == EWorldType::EditorPreview)
+		if (bFollow)
 		{
-			UGameplayStatics::PlaySound2D(World, Sound, VolumeMultiplier, PitchMultiplier);
+			UGameplayStatics::SpawnSoundAttached(Sound, MeshComp, AttachName, FVector(ForceInit), EAttachLocation::SnapToTarget, false, VolumeMultiplier, PitchMultiplier);
 		}
 		else
-#endif
 		{
-			if (bFollow)
-			{
-				UGameplayStatics::SpawnSoundAttached(Sound, MeshComp, AttachName, FVector(ForceInit), EAttachLocation::SnapToTarget, false, VolumeMultiplier, PitchMultiplier);
-			}
-			else
-			{
-				UGameplayStatics::PlaySoundAtLocation(MeshComp->GetWorld(), Sound, MeshComp->GetComponentLocation(), VolumeMultiplier, PitchMultiplier);
-			}
+			UGameplayStatics::PlaySoundAtLocation(MeshComp->GetWorld(), Sound, MeshComp->GetComponentLocation(), VolumeMultiplier, PitchMultiplier);
 		}
 	}
 }

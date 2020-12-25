@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CurveStructCustomization.h"
 #include "Curves/CurveFloat.h"
@@ -160,7 +160,6 @@ void FCurveStructCustomization::CustomizeChildren( TSharedRef<IPropertyHandle> I
 					[
 						SNew(SHorizontalBox)
 						+SHorizontalBox::Slot()
-						.AutoWidth()
 						[
 							Child->CreatePropertyValueWidget()
 						]
@@ -280,6 +279,8 @@ void FCurveStructCustomization::OnExternalCurveChanged(TSharedRef<IPropertyHandl
 		{
 			CurveWidget->SetCurveOwner(this, CurvePropertyHandle->IsEditable());
 		}
+
+		CurvePropertyHandle->NotifyPostChange();
 	}
 }
 
@@ -298,9 +299,10 @@ FReply FCurveStructCustomization::OnCreateButtonClicked()
 		{
 			FString Package(NewCurveDlg->GetFullAssetPath().ToString());
 			FString Name(NewCurveDlg->GetAssetName().ToString());
+			FString Group(TEXT(""));
 
 			// Find (or create!) the desired package for this object
-			UPackage* Pkg = CreatePackage( *Package);
+			UPackage* Pkg = CreatePackage(NULL, *Package);
 			UPackage* OutermostPkg = Pkg->GetOutermost();
 
 			TArray<UPackage*> TopLevelPackages;
@@ -311,7 +313,7 @@ FReply FCurveStructCustomization::OnCreateButtonClicked()
 				return FReply::Handled();
 			}
 
-			if (!PromptUserIfExistingObject(Name, Package, Pkg))
+			if (!PromptUserIfExistingObject(Name, Package, Group, Pkg))
 			{
 				return FReply::Handled();
 			}

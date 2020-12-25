@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 using System.IO;
@@ -10,38 +10,43 @@ namespace UnrealBuildTool.Rules
 	{
 		public GoogleARCoreBase(ReadOnlyTargetRules Target) : base(Target)
 		{
-			PrivateIncludePaths.AddRange(new string[]
-			{
-				"GoogleARCoreBase/Private",
-			});
+			PrivateIncludePaths.AddRange(
+				new string[]
+				{
+					"GoogleARCoreBase/Private",
+				}
+			);
 
 			PublicIncludePathModuleNames.Add("TargetPlatform");
 
-			PublicDependencyModuleNames.AddRange(new string[]
-			{
-				"HeadMountedDisplay",
-				"AugmentedReality",
-			});
+			PublicDependencyModuleNames.AddRange(
+				new string[]
+				{
+					"HeadMountedDisplay",
+					"AugmentedReality",
+				}
+			);
 
-			PrivateDependencyModuleNames.AddRange(new string[]
-			{
-				"Core",
-				"CoreUObject",
-				"Engine",
-				"EngineSettings",
-				"Slate",
-				"SlateCore",
-				"RHI",
-				"RenderCore",
-				"AndroidPermission",
-				"GoogleARCoreRendering",
-				"GoogleARCoreSDK",
-				"OpenGL",
-				"ProceduralMeshComponent",
-				"UElibPNG",
-				"zlib",
-				"MRMesh",
-			});
+			PrivateDependencyModuleNames.AddRange(
+				new string[]
+				{
+					"Core",
+					"CoreUObject",
+					"Engine",
+					"EngineSettings",
+					"Slate",
+					"SlateCore",
+					"RHI",
+					"RenderCore",
+					"AndroidPermission",
+					"GoogleARCoreRendering",
+					"GoogleARCoreSDK",
+					"OpenGL",
+					"ProceduralMeshComponent",
+					"UElibPNG",
+					"zlib"
+				}
+			);
 
 			PrivateIncludePathModuleNames.AddRange(
 				new string[]
@@ -53,17 +58,11 @@ namespace UnrealBuildTool.Rules
 			if (Target.Platform == UnrealTargetPlatform.Android)
 			{
 				// Additional dependencies on android...
-				PrivateDependencyModuleNames.AddRange(
-					new string[]
-					{
-						"Launch",
-						"OpenGLDrv"
-					}
-				);
+				PrivateDependencyModuleNames.Add("Launch");
 
-				// Register Plugin Language
-				string PluginPath = Utils.MakePathRelativeTo(ModuleDirectory, Target.RelativeEnginePath);
-				AdditionalPropertiesForReceipt.Add("AndroidPlugin", Path.Combine(PluginPath, "GoogleARCoreBase_APL.xml"));
+                // Register Plugin Language
+                string PluginPath = Utils.MakePathRelativeTo(ModuleDirectory, Target.RelativeEnginePath);
+                AdditionalPropertiesForReceipt.Add("AndroidPlugin", Path.Combine(PluginPath, "GoogleARCoreBase_APL.xml"));
 				
 				// Needed for including "AndroidEGL.h"
 				string EnginePath = Path.GetFullPath(Target.RelativeEnginePath);

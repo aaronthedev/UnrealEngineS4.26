@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	DebugRenderSceneProxy.h: Useful scene proxy for rendering non performance-critical information.
@@ -19,7 +19,7 @@ class UPrimitiveComponent;
 
 DECLARE_DELEGATE_TwoParams(FDebugDrawDelegate, class UCanvas*, class APlayerController*);
 
-class FDebugRenderSceneProxy : public FPrimitiveSceneProxy
+class ENGINE_VTABLE FDebugRenderSceneProxy : public FPrimitiveSceneProxy
 {
 public:
 	ENGINE_API SIZE_T GetTypeHash() const override;
@@ -249,7 +249,7 @@ public:
 };
 
 
-struct FDebugDrawDelegateHelper
+struct ENGINE_VTABLE FDebugDrawDelegateHelper
 {
 	FDebugDrawDelegateHelper()
 		: State(UndefinedState)

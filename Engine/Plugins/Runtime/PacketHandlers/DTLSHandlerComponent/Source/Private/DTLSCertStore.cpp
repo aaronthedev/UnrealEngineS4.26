@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DTLSCertStore.h"
 #include "Misc/Paths.h"
@@ -21,10 +21,10 @@ FDTLSCertStore& FDTLSCertStore::Get()
 	return *Instance.Get();
 }
 
-TSharedPtr<FDTLSCertificate> FDTLSCertStore::CreateCert(const FTimespan& Lifetime)
+TSharedPtr<FDTLSCertificate> FDTLSCertStore::CreateCert()
 {
 	TSharedRef<FDTLSCertificate> Cert = MakeShared<FDTLSCertificate>();
-	if (Cert->GenerateCertificate(Lifetime))
+	if (Cert->GenerateCertificate())
 	{
 		return Cert;
 	}
@@ -33,9 +33,9 @@ TSharedPtr<FDTLSCertificate> FDTLSCertStore::CreateCert(const FTimespan& Lifetim
 	return nullptr;
 }
 
-TSharedPtr<FDTLSCertificate> FDTLSCertStore::CreateCert(const FTimespan& Lifetime, const FString& Identifier)
+TSharedPtr<FDTLSCertificate> FDTLSCertStore::CreateCert(const FString& Identifier)
 {
-	TSharedPtr<FDTLSCertificate> Cert = CreateCert(Lifetime);
+	TSharedPtr<FDTLSCertificate> Cert = CreateCert();
 	if (Cert.IsValid() && !Identifier.IsEmpty())
 	{
 		CertMap.Emplace(Identifier, Cert);

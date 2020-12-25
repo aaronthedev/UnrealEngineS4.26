@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	EmptyRHI.cpp: Empty device RHI implementation.
@@ -41,7 +41,7 @@ FEmptyDynamicRHI::FEmptyDynamicRHI()
 // 	GMaxCubeTextureDimensions = 16384;
 // 	GMaxTextureArrayLayers = 8192;
 
-//	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::ES2_REMOVED] = SP_NumPlatforms;
+//	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::ES2] = SP_NumPlatforms;
 //	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::ES3_1] = SP_NumPlatforms;
 //	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM4] = SP_NumPlatforms;
 //	GShaderPlatformForFeatureLevel[ERHIFeatureLevel::SM5] = ;
@@ -95,10 +95,8 @@ FEmptyDynamicRHI::FEmptyDynamicRHI()
 
 	GDynamicRHI = this;
 
-	// Command lists need the validation RHI context if enabled, so call the global scope version of RHIGetDefaultContext() and RHIGetDefaultAsyncComputeContext().
-	GRHICommandList.GetImmediateCommandList().SetContext(::RHIGetDefaultContext());
-	GRHICommandList.GetImmediateAsyncComputeCommandList().SetComputeContext(::RHIGetDefaultAsyncComputeContext());
-
+	GRHICommandList.GetImmediateCommandList().SetContext(RHIGetDefaultContext());
+	GRHICommandList.GetImmediateAsyncComputeCommandList().SetComputeContext(RHIGetDefaultAsyncComputeContext());
 	FRenderResource::InitPreRHIResources();
 	GIsRHIInitialized = true;
 }

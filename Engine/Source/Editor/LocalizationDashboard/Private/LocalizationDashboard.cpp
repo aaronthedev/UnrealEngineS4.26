@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LocalizationDashboard.h"
 #include "Misc/Paths.h"
@@ -248,7 +248,7 @@ void FLocalizationDashboard::Terminate()
 
 void FLocalizationDashboard::Show()
 {
-	FGlobalTabmanager::Get()->TryInvokeTab(TabName);
+	FGlobalTabmanager::Get()->InvokeTab(TabName);
 }
 
 TWeakPtr<SDockTab> FLocalizationDashboard::ShowTargetEditorTab(ULocalizationTarget* const LocalizationTarget)

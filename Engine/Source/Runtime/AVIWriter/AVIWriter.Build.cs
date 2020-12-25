@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -19,7 +19,8 @@ namespace UnrealBuildTool.Rules
 				}
 				);
 
-			if (Target.Platform.IsInGroup(UnrealPlatformGroup.Windows))
+			if ((Target.Platform == UnrealTargetPlatform.Win64) ||
+				(Target.Platform == UnrealTargetPlatform.Win32))
 			{
 				if (Target.bBuildDeveloperTools)
 				{

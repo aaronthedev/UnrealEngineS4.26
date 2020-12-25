@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Rendering/StaticMeshVertexBuffer.h"
 #include "EngineUtils.h"
 #include "Components.h"
 #include "GPUSkinCache.h"
-#include "ProfilingDebugging/LoadTimeTracker.h"
 
 FStaticMeshVertexBuffer::FStaticMeshVertexBuffer() :
 	TangentsData(nullptr),
@@ -271,7 +270,7 @@ FVertexBufferRHIRef FStaticMeshVertexBuffer::CreateTangentsRHIBuffer_Internal()
 {
 	if (GetNumVertices())
 	{
- 		FResourceArrayInterface* RESTRICT ResourceArray = TangentsData ? TangentsData->GetResourceArray() : nullptr;
+		FResourceArrayInterface* RESTRICT ResourceArray = TangentsData ? TangentsData->GetResourceArray() : nullptr;
 		const uint32 SizeInBytes = ResourceArray ? ResourceArray->GetResourceDataSize() : 0;
 		FRHIResourceCreateInfo CreateInfo(ResourceArray);
 		CreateInfo.bWithoutNativeResource = !TangentsData;
@@ -328,55 +327,23 @@ FVertexBufferRHIRef FStaticMeshVertexBuffer::CreateTexCoordRHIBuffer_Async()
 	return CreateTexCoordRHIBuffer_Internal<false>();
 }
 
-void FStaticMeshVertexBuffer::CopyRHIForStreaming(const FStaticMeshVertexBuffer& Other, bool InAllowCPUAccess)
-{
-	// Copy serialized properties.
-	TangentsStride = Other.TangentsStride;
-	TexcoordStride = Other.TexcoordStride;
-	NumTexCoords = Other.NumTexCoords;
-	NumVertices = Other.NumVertices;
-	bUseFullPrecisionUVs = Other.bUseFullPrecisionUVs;
-	bUseHighPrecisionTangentBasis = Other.bUseHighPrecisionTangentBasis;
-
-	// Handle CPU access.
-	if (InAllowCPUAccess)
-	{
-		NeedsCPUAccess = Other.NeedsCPUAccess;
-		AllocateData(NeedsCPUAccess);
-	}
-	else
-	{
-		NeedsCPUAccess = false;
-	}
-
-	// Copy resource references.
-	TangentsVertexBuffer.VertexBufferRHI = Other.TangentsVertexBuffer.VertexBufferRHI;
-	TexCoordVertexBuffer.VertexBufferRHI = Other.TexCoordVertexBuffer.VertexBufferRHI;
-	TangentsSRV = Other.TangentsSRV;
-	TextureCoordinatesSRV = Other.TextureCoordinatesSRV;
-}
-
 void FStaticMeshVertexBuffer::InitRHI()
 {
-	SCOPED_LOADTIMER(FStaticMeshVertexBuffer_InitRHI);
-
 	TangentsVertexBuffer.VertexBufferRHI = CreateTangentsRHIBuffer_RenderThread();
 	TexCoordVertexBuffer.VertexBufferRHI = CreateTexCoordRHIBuffer_RenderThread();
 	if (TangentsVertexBuffer.VertexBufferRHI && (RHISupportsManualVertexFetch(GMaxRHIShaderPlatform) || IsGPUSkinCacheAvailable(GMaxRHIShaderPlatform)))
 	{
-		// When TangentsData is null, this buffer hasn't been streamed in yet. We still need to create a FRHIShaderResourceView which will be
-		// cached in a vertex factory uniform buffer later. The nullptr tells the RHI that the SRV doesn't view on anything yet.
-		TangentsSRV = RHICreateShaderResourceView(FShaderResourceViewInitializer(
+		TangentsSRV = RHICreateShaderResourceView(
 			TangentsData ? TangentsVertexBuffer.VertexBufferRHI : nullptr,
-			GetUseHighPrecisionTangentBasis() ? PF_R16G16B16A16_SNORM : PF_R8G8B8A8_SNORM));
+			GetUseHighPrecisionTangentBasis() ? 8 : 4,
+			GetUseHighPrecisionTangentBasis() ? PF_R16G16B16A16_SNORM : PF_R8G8B8A8_SNORM);
 	}
 	if (TexCoordVertexBuffer.VertexBufferRHI && RHISupportsManualVertexFetch(GMaxRHIShaderPlatform))
 	{
-		// When TexcoordData is null, this buffer hasn't been streamed in yet. We still need to create a FRHIShaderResourceView which will be
-		// cached in a vertex factory uniform buffer later. The nullptr tells the RHI that the SRV doesn't view on anything yet.
-		TextureCoordinatesSRV = RHICreateShaderResourceView(FShaderResourceViewInitializer(
+		TextureCoordinatesSRV = RHICreateShaderResourceView(
 			TexcoordData ? TexCoordVertexBuffer.VertexBufferRHI : nullptr,
-			GetUseFullPrecisionUVs() ? PF_G32R32F : PF_G16R16F));
+			GetUseFullPrecisionUVs() ? 8 : 4,
+			GetUseFullPrecisionUVs() ? PF_G32R32F : PF_G16R16F);
 	}
 }
 

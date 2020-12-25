@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Templates/SharedPointer.h"
 #include "Misc/EnumClassFlags.h"
-#include "Containers/ContainersFwd.h"
 #include "Containers/UnrealString.h"
 #include "Internationalization/Text.h"
 
@@ -12,6 +11,7 @@ class FCurveEditorTree;
 struct FCurveEditorTreeItem;
 struct FCurveEditorTreeItemID;
 struct FCurveEditorFilterStates;
+template<typename> class TArrayView;
 enum class ECurveEditorTreeFilterState : uint8;
 
 enum class ECurveEditorTreeFilterType : uint32

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	HoloLensTargetPlatform.cpp: Implements the FHoloLensTargetPlatform class.
@@ -14,35 +14,28 @@
 #include "HoloLensPlatformEditor.h"
 #include "GeneralProjectSettings.h"
 
-DEFINE_LOG_CATEGORY(LogHoloLensTargetPlatform);
+DEFINE_LOG_CATEGORY_STATIC(LogHoloLensTargetPlatform, Log, All);
 
 FHoloLensTargetPlatform::FHoloLensTargetPlatform()
+	: HoloLensDeviceDetectorModule(IHoloLensDeviceDetectorModule::Get())
 {
-	PlatformInfo = ::PlatformInfo::FindPlatformInfo(FName("HoloLens"));
-
 #if WITH_ENGINE
 	FConfigCacheIni::LoadLocalIniFile(EngineSettings, TEXT("Engine"), true, *PlatformName());
 	TextureLODSettings = nullptr; // These are registered by the device profile system.
 	StaticMeshLODSettings.Initialize(EngineSettings);
 #endif
 
-	DeviceDetector = IHoloLensDeviceDetector::Create();
-
-	DeviceDetectedRegistration = DeviceDetector->OnDeviceDetected().AddRaw(this, &FHoloLensTargetPlatform::OnDeviceDetected);
-
-	{
-		DeviceDetector->StartDeviceDetection();
-	}
+	DeviceDetectedRegistration = HoloLensDeviceDetectorModule.OnDeviceDetected().AddRaw(this, &FHoloLensTargetPlatform::OnDeviceDetected);
 }
 
 FHoloLensTargetPlatform::~FHoloLensTargetPlatform()
 {
-	DeviceDetector->OnDeviceDetected().Remove(DeviceDetectedRegistration);
+	IHoloLensDeviceDetectorModule::Get().OnDeviceDetected().Remove(DeviceDetectedRegistration);
 }
 
 void FHoloLensTargetPlatform::GetAllDevices(TArray<ITargetDevicePtr>& OutDevices) const
 {
-	DeviceDetector->StartDeviceDetection();
+	HoloLensDeviceDetectorModule.StartDeviceDetection();
 
 	OutDevices.Reset();
 	FScopeLock Lock(&DevicesLock);
@@ -53,7 +46,7 @@ ITargetDevicePtr FHoloLensTargetPlatform::GetDevice(const FTargetDeviceId& Devic
 {
 	if (PlatformName() == DeviceId.GetPlatformName())
 	{
-		DeviceDetector->StartDeviceDetection();
+		IHoloLensDeviceDetectorModule::Get().StartDeviceDetection();
 
 		FScopeLock Lock(&DevicesLock);
 		for (ITargetDevicePtr Device : Devices)
@@ -65,13 +58,12 @@ ITargetDevicePtr FHoloLensTargetPlatform::GetDevice(const FTargetDeviceId& Devic
 		}
 	}
 
-
 	return nullptr;
 }
 
 ITargetDevicePtr FHoloLensTargetPlatform::GetDefaultDevice() const
 {
-	DeviceDetector->StartDeviceDetection();
+	IHoloLensDeviceDetectorModule::Get().StartDeviceDetection();
 
 	FScopeLock Lock(&DevicesLock);
 	for (ITargetDevicePtr RemoteDevice : Devices)
@@ -89,12 +81,19 @@ bool FHoloLensTargetPlatform::SupportsFeature(ETargetPlatformFeatures Feature) c
 {
 	switch (Feature)
 	{
-	case ETargetPlatformFeatures::Packaging:
-	case ETargetPlatformFeatures::UserCredentials:
-	case ETargetPlatformFeatures::DeviceOutputLog:
-		return true;
-	default:
-		return TTargetPlatformBase<FHoloLensPlatformProperties>::SupportsFeature(Feature);
+		case ETargetPlatformFeatures::Packaging:
+			return true;
+
+		case ETargetPlatformFeatures::LowQualityLightmaps:
+			// HoloLens 2 is mobile renderer, thus only supports low quality light maps
+			return true;
+
+		case ETargetPlatformFeatures::HighQualityLightmaps:
+			// HoloLens 2 is mobile renderer, thus only supports low quality light maps
+			return false;
+
+		default:
+			return TTargetPlatformBase<FHoloLensPlatformProperties>::SupportsFeature(Feature);
 	}
 }
 
@@ -104,6 +103,11 @@ void FHoloLensTargetPlatform::GetReflectionCaptureFormats(TArray<FName>& OutForm
 {
 	OutFormats.Add(FName(TEXT("FullHDR")));
 	OutFormats.Add(FName(TEXT("EncodedHDR")));
+}
+
+const FPlatformAudioCookOverrides* FHoloLensTargetPlatform::GetAudioCompressionSettings() const
+{
+	return nullptr;
 }
 
 void FHoloLensTargetPlatform::GetTextureFormats(const UTexture* InTexture, TArray< TArray<FName> >& OutFormats) const
@@ -135,17 +139,25 @@ void FHoloLensTargetPlatform::GetAllTargetedShaderFormats(TArray<FName>& OutForm
 
 void FHoloLensTargetPlatform::OnDeviceDetected(const FHoloLensDeviceInfo& Info)
 {
-	FHoloLensDevicePtr NewDevice = MakeShared<FHoloLensTargetDevice, ESPMode::ThreadSafe>(*this, Info);
+	if (SupportsDevice(Info.DeviceTypeName, Info.bIs64Bit))
 	{
-		FScopeLock Lock(&DevicesLock);
-		Devices.Add(NewDevice);
+		// Don't automatically add remote devices that require credentials.  They
+		// must be manually added by the user so that we can collect those credentials.
+		if (Info.IsLocal() || !Info.bRequiresCredentials)
+		{
+			FHoloLensDevicePtr NewDevice = MakeShared<FHoloLensTargetDevice, ESPMode::ThreadSafe>(*this, Info);
+			{
+				FScopeLock Lock(&DevicesLock);
+				Devices.Add(NewDevice);
+			}
+			DeviceDiscoveredEvent.Broadcast(NewDevice.ToSharedRef());
+		}
 	}
-	DeviceDiscoveredEvent.Broadcast(NewDevice.ToSharedRef());
 }
 
-bool FHoloLensTargetPlatform::SupportsBuildTarget(EBuildTargetType BuildTarget) const
+bool FHoloLensTargetPlatform::SupportsBuildTarget(EBuildTargetType TargetType) const
 {
-	return BuildTarget == EBuildTargetType::Game;
+	return TargetType == EBuildTargetType::Game;
 }
 
 bool FHoloLensTargetPlatform::IsSdkInstalled(bool bProjectHasCode, FString& OutDocumentationPath) const
@@ -199,11 +211,4 @@ int32 FHoloLensTargetPlatform::CheckRequirements(bool bProjectHasCode, EBuildCon
 	}
 
 	return BuildStatus;
-}
-
-bool FHoloLensTargetPlatform::AddDevice(const FString& DeviceId, const FString& DeviceUserFriendlyName, const FString& Username, const FString& Password, bool bDefault)
-{
-	DeviceDetector->TryAddDevice(DeviceId, DeviceUserFriendlyName, Username, Password);
-
-	return true;
 }

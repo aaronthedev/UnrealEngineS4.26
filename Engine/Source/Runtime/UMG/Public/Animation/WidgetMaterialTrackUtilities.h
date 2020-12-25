@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -41,12 +41,12 @@ private:
 
 struct FWidgetMaterialPropertyPath
 {
-	FWidgetMaterialPropertyPath(const TArray<FProperty*>& InPropertyPath, const FString& InDisplayName)
+	FWidgetMaterialPropertyPath(const TArray<UProperty*>& InPropertyPath, const FString& InDisplayName)
 		: PropertyPath(InPropertyPath)
 		, DisplayName(InDisplayName)
 	{}
 
-	TArray<FProperty*> PropertyPath;
+	TArray<UProperty*> PropertyPath;
 	FString DisplayName;
 };
 namespace WidgetMaterialTrackUtilities

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EdGraphSchema_BehaviorTreeDecorator.h"
 #include "Modules/ModuleManager.h"
@@ -9,7 +9,6 @@
 #include "AIGraphTypes.h"
 #include "BehaviorTreeDecoratorGraphNode_Decorator.h"
 #include "BehaviorTreeDecoratorGraphNode_Logic.h"
-#include "Classes/EditorStyleSettings.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "ToolMenus.h"
 #include "BehaviorTreeEditorModule.h"
@@ -19,6 +18,7 @@
 #include "Framework/Commands/GenericCommands.h"
 
 #define LOCTEXT_NAMESPACE "BehaviorTreeDecoratorSchema"
+#define SNAP_GRID (16) // @todo ensure this is the same as SNodePanel::GetSnapGridSize()
 
 namespace DecoratorSchema
 {
@@ -70,7 +70,7 @@ UEdGraphNode* FDecoratorSchemaAction_NewNode::PerformAction(class UEdGraph* Pare
 
 		NodeTemplate->NodePosX = XLocation;
 		NodeTemplate->NodePosY = Location.Y;
-		NodeTemplate->SnapToGrid(GetDefault<UEditorStyleSettings>()->GridSnapSize);
+		NodeTemplate->SnapToGrid(SNAP_GRID);
 
 		ResultNode = NodeTemplate;
 	}
@@ -167,7 +167,16 @@ void UEdGraphSchema_BehaviorTreeDecorator::GetContextMenuActions(UToolMenu* Menu
 		return;
 	}
 
-	if (Context->Node)
+	if (Context->Pin)
+	{
+		// Only display the 'Break Links' option if there is a link to break!
+		if (Context->Pin->LinkedTo.Num() > 0)
+		{
+			FToolMenuSection& Section = Menu->AddSection("DecoratorGraphSchemaPinActions", LOCTEXT("PinActionsMenuHeader", "Pin Actions"));
+			Section.AddMenuEntry(FGraphEditorCommands::Get().BreakPinLinks);
+		}
+	}
+	else if (Context->Node)
 	{
 		{
 			FToolMenuSection& Section = Menu->AddSection("DecoratorGraphSchemaNodeActions", LOCTEXT("ClassActionsMenuHeader", "Node Actions"));

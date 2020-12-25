@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -6,7 +6,6 @@
 #include "UObject/Object.h"
 #include "Sound/SoundWaveProcedural.h"
 #include "Sound/SoundSourceBusSend.h"
-#include "Sound/AudioBus.h"
 #include "SoundSourceBus.generated.h"
 
 class USoundSourceBus;
@@ -22,14 +21,14 @@ enum class ESourceBusChannels : uint8
 };
 
 // A source bus is a type of USoundBase and can be "played" like any sound.
-UCLASS(hidecategories= (Compression, SoundWave, Streaming, Subtitles, Analysis, Format, Loading, Info, ImportSettings), ClassGroup = Sound, meta = (BlueprintSpawnableComponent))
+UCLASS(hidecategories= (Compression, SoundWave, Streaming, Subtitles, Sound, Info, ImportSettings), ClassGroup = Sound, meta = (BlueprintSpawnableComponent))
 class ENGINE_API USoundSourceBus : public USoundWave
 {
 	GENERATED_UCLASS_BODY()
 
 public:
 
-	/** How many channels to use for the source bus if the audio bus is not specified, otherwise it will use the audio bus object's channel count. */
+	/** How many channels to use for the source bus. */
 	UPROPERTY(EditAnywhere, Category = BusProperties)
 	ESourceBusChannels SourceBusChannels;
 
@@ -37,12 +36,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = BusProperties, meta = (UIMin = 0.0, ClampMin = 0.0))
 	float SourceBusDuration;
 
-	/** Audio bus to use to use as audio for this source bus. This source bus will sonify the audio from the audio bus. */
-	UPROPERTY(EditAnywhere, Category = BusProperties)
-	UAudioBus* AudioBus;
-
 	/** Stop the source bus when the volume goes to zero. */
-	UPROPERTY(meta = (DeprecatedProperty))
+	UPROPERTY(EditAnywhere, Category = BusProperties)
 	uint32 bAutoDeactivateWhenSilent:1;
 
 	//~ Begin UObject Interface.
@@ -59,4 +54,7 @@ public:
 
 protected:
 	void Init();
+
+	uint32 DurationSamples;
+	bool bInitialized;
 };

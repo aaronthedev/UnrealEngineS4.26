@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Tiles/STiledLandscapeImportDlg.h"
 #include "Materials/MaterialInterface.h"
@@ -50,7 +50,7 @@ static FIntPoint ExtractTileCoordinates(FString BaseFilename)
 	return ResultPosition;
 }
 
-void STiledLandscapeImportDlg::Construct(const FArguments& InArgs, TSharedPtr<SWindow> InParentWindow)
+void STiledLandcapeImportDlg::Construct(const FArguments& InArgs, TSharedPtr<SWindow> InParentWindow)
 {
 	bShouldImport = false;
 	ParentWindow = InParentWindow;
@@ -78,7 +78,7 @@ void STiledLandscapeImportDlg::Construct(const FArguments& InArgs, TSharedPtr<SW
 					SNew(SButton)
 					.HAlign(HAlign_Center)
 					.ContentPadding(FEditorStyle::GetMargin("StandardDialog.ContentPadding"))
-					.OnClicked(this, &STiledLandscapeImportDlg::OnClickedSelectHeightmapTiles)
+					.OnClicked(this, &STiledLandcapeImportDlg::OnClickedSelectHeightmapTiles)
 					.Text(LOCTEXT("TiledLandscapeImport_SelectButtonText", "Select Heightmap Tiles..."))
 				]
 
@@ -93,28 +93,13 @@ void STiledLandscapeImportDlg::Construct(const FArguments& InArgs, TSharedPtr<SW
 				.VAlign(VAlign_Center)
 				[
 					SNew(SCheckBox)
-					.IsChecked(this, &STiledLandscapeImportDlg::GetFlipYAxisState)
-					.OnCheckStateChanged(this, &STiledLandscapeImportDlg::OnFlipYAxisStateChanged)
+					.IsChecked(this, &STiledLandcapeImportDlg::GetFlipYAxisState)
+					.OnCheckStateChanged(this, &STiledLandcapeImportDlg::OnFlipYAxisStateChanged)
 					.ToolTipText(LOCTEXT("TiledLandscapeImport_FlipYAxisToolTip", "Whether tile Y coordinate should be flipped (Make sure 'Flip Y-Axis Orientation' option is switched off in World Machine) "))
 				]
-
-				// Enable edit layers
-				+SUniformGridPanel::Slot(0, 2)
-				.VAlign(VAlign_Center)
-				[
-					SNew(STextBlock)
-					.Text(LOCTEXT("TiledLandscapeImport_EnableEditLayers", "Enable Edit Layers"))
-				]
-				+SUniformGridPanel::Slot(1, 2)
-				.VAlign(VAlign_Center)
-				[
-					SNew(SCheckBox)
-					.IsChecked(this, &STiledLandscapeImportDlg::GetEditLayersState)
-					.OnCheckStateChanged(this, &STiledLandscapeImportDlg::OnEditLayersStateChanged)
-					.ToolTipText(LOCTEXT("TiledLandscapeImport_EditLayersToolTip", "Whether landscape edit layers should be enabled"))
-				]
+										
 				// Tiles origin offset
-				+SUniformGridPanel::Slot(0, 3)
+				+SUniformGridPanel::Slot(0, 2)
 				.VAlign(VAlign_Center)
 				[
 					SNew(STextBlock)
@@ -122,7 +107,7 @@ void STiledLandscapeImportDlg::Construct(const FArguments& InArgs, TSharedPtr<SW
 					.Text(LOCTEXT("TiledLandscapeImport_TilesOffsetText", "Tile Coordinates Offset"))
 				]
 
-				+SUniformGridPanel::Slot(1, 3)
+				+SUniformGridPanel::Slot(1, 2)
 				.VAlign(VAlign_Center)
 				[
 					SNew(SHorizontalBox)
@@ -132,8 +117,8 @@ void STiledLandscapeImportDlg::Construct(const FArguments& InArgs, TSharedPtr<SW
 					.FillWidth(1.f)
 					[
 						SNew(SNumericEntryBox<int32>)
-						.Value(this, &STiledLandscapeImportDlg::GetTileOffsetX)
-						.OnValueChanged(this, &STiledLandscapeImportDlg::SetTileOffsetX)
+						.Value(this, &STiledLandcapeImportDlg::GetTileOffsetX)
+						.OnValueChanged(this, &STiledLandcapeImportDlg::SetTileOffsetX)
 						.LabelPadding(0)
 						.Label()
 						[
@@ -146,8 +131,8 @@ void STiledLandscapeImportDlg::Construct(const FArguments& InArgs, TSharedPtr<SW
 					.FillWidth(1.f)
 					[
 						SNew(SNumericEntryBox<int32>)
-						.Value(this, &STiledLandscapeImportDlg::GetTileOffsetY)
-						.OnValueChanged(this, &STiledLandscapeImportDlg::SetTileOffsetY)
+						.Value(this, &STiledLandcapeImportDlg::GetTileOffsetY)
+						.OnValueChanged(this, &STiledLandcapeImportDlg::SetTileOffsetY)
 						.LabelPadding(0)
 						.Label()
 						[
@@ -157,65 +142,65 @@ void STiledLandscapeImportDlg::Construct(const FArguments& InArgs, TSharedPtr<SW
 				]
 				
 				// Tile configuration
-				+SUniformGridPanel::Slot(0, 4)
+				+SUniformGridPanel::Slot(0, 3)
 				.VAlign(VAlign_Center)
 				[
 					SNew(STextBlock)
 					.Text(LOCTEXT("TiledLandscapeImport_ConfigurationText", "Import Configuration"))
 				]
 
-				+SUniformGridPanel::Slot(1, 4)
+				+SUniformGridPanel::Slot(1, 3)
 				.VAlign(VAlign_Center)
 				[
 					SAssignNew(TileConfigurationComboBox, SComboBox<TSharedPtr<FTileImportConfiguration>>)
 					.OptionsSource(&ActiveConfigurations)
-					.OnSelectionChanged(this, &STiledLandscapeImportDlg::OnSetImportConfiguration)
-					.OnGenerateWidget(this, &STiledLandscapeImportDlg::HandleTileConfigurationComboBoxGenarateWidget)
+					.OnSelectionChanged(this, &STiledLandcapeImportDlg::OnSetImportConfiguration)
+					.OnGenerateWidget(this, &STiledLandcapeImportDlg::HandleTileConfigurationComboBoxGenarateWidget)
 					.Content()
 					[
 						SNew(STextBlock)
-						.Text(this, &STiledLandscapeImportDlg::GetTileConfigurationText)
+						.Text(this, &STiledLandcapeImportDlg::GetTileConfigurationText)
 					]
 				]
 
 				// Scale
-				+SUniformGridPanel::Slot(0, 5)
+				+SUniformGridPanel::Slot(0, 4)
 				.VAlign(VAlign_Center)
 				[
 					SNew(STextBlock)
 					.Text(LOCTEXT("TiledLandscapeImport_ScaleText", "Landscape Scale"))
 				]
 			
-				+SUniformGridPanel::Slot(1, 5)
+				+SUniformGridPanel::Slot(1, 4)
 				.VAlign(VAlign_Center)
 				[
 					SNew( SVectorInputBox )
 					.bColorAxisLabels( true )
 					.AllowResponsiveLayout( true )
 					.AllowSpin(false)
-					.X( this, &STiledLandscapeImportDlg::GetScaleX )
-					.Y( this, &STiledLandscapeImportDlg::GetScaleY )
-					.Z( this, &STiledLandscapeImportDlg::GetScaleZ )
-					.OnXCommitted( this, &STiledLandscapeImportDlg::OnSetScale, 0 )
-					.OnYCommitted( this, &STiledLandscapeImportDlg::OnSetScale, 1 )
-					.OnZCommitted( this, &STiledLandscapeImportDlg::OnSetScale, 2 )
+					.X( this, &STiledLandcapeImportDlg::GetScaleX )
+					.Y( this, &STiledLandcapeImportDlg::GetScaleY )
+					.Z( this, &STiledLandcapeImportDlg::GetScaleZ )
+					.OnXCommitted( this, &STiledLandcapeImportDlg::OnSetScale, 0 )
+					.OnYCommitted( this, &STiledLandcapeImportDlg::OnSetScale, 1 )
+					.OnZCommitted( this, &STiledLandcapeImportDlg::OnSetScale, 2 )
 				]
 
 				// Landcape material
-				+SUniformGridPanel::Slot(0, 6)
+				+SUniformGridPanel::Slot(0, 5)
 				.VAlign(VAlign_Center)
 				[
 					SNew(STextBlock)
 					.Text(LOCTEXT("TiledLandscapeImport_MaterialText", "Material"))
 				]
 			
-				+SUniformGridPanel::Slot(1, 6)
+				+SUniformGridPanel::Slot(1, 5)
 				.VAlign(VAlign_Center)
 				[
 					SNew(SObjectPropertyEntryBox)
 					.AllowedClass(UMaterialInterface::StaticClass())
-					.ObjectPath(this, &STiledLandscapeImportDlg::GetLandscapeMaterialPath)
-					.OnObjectChanged(this, &STiledLandscapeImportDlg::OnLandscapeMaterialChanged)
+					.ObjectPath(this, &STiledLandcapeImportDlg::GetLandscapeMaterialPath)
+					.OnObjectChanged(this, &STiledLandcapeImportDlg::OnLandscapeMaterialChanged)
 					.AllowClear(true)
 				]
 			]
@@ -227,7 +212,7 @@ void STiledLandscapeImportDlg::Construct(const FArguments& InArgs, TSharedPtr<SW
 			[
 				SAssignNew(LayerDataListView, SListView<TSharedPtr<FTiledLandscapeImportSettings::LandscapeLayerSettings>>)
 				.ListItemsSource( &LayerDataList )
-				.OnGenerateRow( this, &STiledLandscapeImportDlg::OnGenerateWidgetForLayerDataListView )
+				.OnGenerateRow( this, &STiledLandcapeImportDlg::OnGenerateWidgetForLayerDataListView )
 				.SelectionMode(ESelectionMode::None)
 			]
 
@@ -239,7 +224,7 @@ void STiledLandscapeImportDlg::Construct(const FArguments& InArgs, TSharedPtr<SW
 			.Padding(FEditorStyle::GetMargin("StandardDialog.ContentPadding"))
 			[
 				SNew(STextBlock)
-				.Text(this, &STiledLandscapeImportDlg::GetImportSummaryText)
+				.Text(this, &STiledLandcapeImportDlg::GetImportSummaryText)
 				.WrapTextAt(600.0f)
 			]
 
@@ -259,8 +244,8 @@ void STiledLandscapeImportDlg::Construct(const FArguments& InArgs, TSharedPtr<SW
 					SNew(SButton)
 					.HAlign(HAlign_Center)
 					.ContentPadding(FEditorStyle::GetMargin("StandardDialog.ContentPadding"))
-					.IsEnabled(this, &STiledLandscapeImportDlg::IsImportEnabled)
-					.OnClicked(this, &STiledLandscapeImportDlg::OnClickedImport)
+					.IsEnabled(this, &STiledLandcapeImportDlg::IsImportEnabled)
+					.OnClicked(this, &STiledLandcapeImportDlg::OnClickedImport)
 					.Text(LOCTEXT("TiledLandscapeImport_ImportButtonText", "Import"))
 				]
 				+SUniformGridPanel::Slot(1,0)
@@ -268,7 +253,7 @@ void STiledLandscapeImportDlg::Construct(const FArguments& InArgs, TSharedPtr<SW
 					SNew(SButton)
 					.HAlign(HAlign_Center)
 					.ContentPadding(FEditorStyle::GetMargin("StandardDialog.ContentPadding"))
-					.OnClicked(this, &STiledLandscapeImportDlg::OnClickedCancel)
+					.OnClicked(this, &STiledLandcapeImportDlg::OnClickedCancel)
 					.Text(LOCTEXT("TiledLandscapeImport_CancelButtonText", "Cancel"))
 				]
 			]
@@ -279,7 +264,7 @@ void STiledLandscapeImportDlg::Construct(const FArguments& InArgs, TSharedPtr<SW
 	ImportSettings.ComponentsNum = 0;
 }
 
-TSharedRef<SWidget> STiledLandscapeImportDlg::HandleTileConfigurationComboBoxGenarateWidget(TSharedPtr<FTileImportConfiguration> InItem) const
+TSharedRef<SWidget> STiledLandcapeImportDlg::HandleTileConfigurationComboBoxGenarateWidget(TSharedPtr<FTileImportConfiguration> InItem) const
 {
 	const FText ItemText = GenerateConfigurationText(InItem->NumComponents, InItem->NumSectionsPerComponent, InItem->NumQuadsPerSection);
 		
@@ -290,7 +275,7 @@ TSharedRef<SWidget> STiledLandscapeImportDlg::HandleTileConfigurationComboBoxGen
 	];
 }
 
-FText STiledLandscapeImportDlg::GetTileConfigurationText() const
+FText STiledLandcapeImportDlg::GetTileConfigurationText() const
 {
 	if (ImportSettings.HeightmapFileList.Num() == 0)
 	{
@@ -305,7 +290,7 @@ FText STiledLandscapeImportDlg::GetTileConfigurationText() const
 	return GenerateConfigurationText(ImportSettings.ComponentsNum, ImportSettings.SectionsPerComponent, ImportSettings.QuadsPerSection);
 }
 
-TSharedRef<ITableRow> STiledLandscapeImportDlg::OnGenerateWidgetForLayerDataListView(
+TSharedRef<ITableRow> STiledLandcapeImportDlg::OnGenerateWidgetForLayerDataListView(
 	TSharedPtr<FTiledLandscapeImportSettings::LandscapeLayerSettings> InLayerData, 
 	const TSharedRef<STableViewBase>& OwnerTable)
 {
@@ -332,8 +317,8 @@ TSharedRef<ITableRow> STiledLandscapeImportDlg::OnGenerateWidgetForLayerDataList
 					.AutoWidth()
 					[
 						SNew(SCheckBox)
-						.IsChecked(this, &STiledLandscapeImportDlg::GetLayerBlendState, InLayerData)
-						.OnCheckStateChanged(this, &STiledLandscapeImportDlg::OnLayerBlendStateChanged, InLayerData)
+						.IsChecked(this, &STiledLandcapeImportDlg::GetLayerBlendState, InLayerData)
+						.OnCheckStateChanged(this, &STiledLandcapeImportDlg::OnLayerBlendStateChanged, InLayerData)
 						.ToolTipText(LOCTEXT("TiledLandscapeImport_BlendOption", "Weight-Blended Layer"))
 					]
 					
@@ -344,7 +329,7 @@ TSharedRef<ITableRow> STiledLandscapeImportDlg::OnGenerateWidgetForLayerDataList
 					.Padding(2)
 					.AutoWidth()
 					[
-						SNew(STextBlock).Text(this, &STiledLandscapeImportDlg::GetWeightmapCountText, InLayerData)
+						SNew(STextBlock).Text(this, &STiledLandcapeImportDlg::GetWeightmapCountText, InLayerData)
 					]
 					
 					// Button for selecting weightmap files
@@ -356,7 +341,7 @@ TSharedRef<ITableRow> STiledLandscapeImportDlg::OnGenerateWidgetForLayerDataList
 						SNew(SButton)
 						.HAlign(HAlign_Center)
 						.ContentPadding(FEditorStyle::GetMargin("StandardDialog.ContentPadding"))
-						.OnClicked(this, &STiledLandscapeImportDlg::OnClickedSelectWeightmapTiles, InLayerData)
+						.OnClicked(this, &STiledLandcapeImportDlg::OnClickedSelectWeightmapTiles, InLayerData)
 						.Text(LOCTEXT("TiledLandscapeImport_SelectWeightmapButtonText", "Select Weightmap Tiles..."))
 					]
 				]
@@ -364,32 +349,32 @@ TSharedRef<ITableRow> STiledLandscapeImportDlg::OnGenerateWidgetForLayerDataList
 	
 }
 
-bool STiledLandscapeImportDlg::ShouldImport() const
+bool STiledLandcapeImportDlg::ShouldImport() const
 {
 	return bShouldImport;
 }
 
-const FTiledLandscapeImportSettings& STiledLandscapeImportDlg::GetImportSettings() const
+const FTiledLandscapeImportSettings& STiledLandcapeImportDlg::GetImportSettings() const
 {
 	return ImportSettings;
 }
 
-TOptional<float> STiledLandscapeImportDlg::GetScaleX() const
+TOptional<float> STiledLandcapeImportDlg::GetScaleX() const
 {
 	return ImportSettings.Scale3D.X;
 }
 
-TOptional<float> STiledLandscapeImportDlg::GetScaleY() const
+TOptional<float> STiledLandcapeImportDlg::GetScaleY() const
 {
 	return ImportSettings.Scale3D.Y;
 }
 
-TOptional<float> STiledLandscapeImportDlg::GetScaleZ() const
+TOptional<float> STiledLandcapeImportDlg::GetScaleZ() const
 {
 	return ImportSettings.Scale3D.Z;
 }
 
-void STiledLandscapeImportDlg::OnSetScale(float InValue, ETextCommit::Type CommitType, int32 InAxis)
+void STiledLandcapeImportDlg::OnSetScale(float InValue, ETextCommit::Type CommitType, int32 InAxis)
 {
 	if (InAxis < 2) //XY uniform
 	{
@@ -402,47 +387,37 @@ void STiledLandscapeImportDlg::OnSetScale(float InValue, ETextCommit::Type Commi
 	}
 }
 
-TOptional<int32> STiledLandscapeImportDlg::GetTileOffsetX() const
+TOptional<int32> STiledLandcapeImportDlg::GetTileOffsetX() const
 {
 	return ImportSettings.TilesCoordinatesOffset.X;
 }
 
-void STiledLandscapeImportDlg::SetTileOffsetX(int32 InValue)
+void STiledLandcapeImportDlg::SetTileOffsetX(int32 InValue)
 {
 	ImportSettings.TilesCoordinatesOffset.X = InValue;
 }
 
-TOptional<int32> STiledLandscapeImportDlg::GetTileOffsetY() const
+TOptional<int32> STiledLandcapeImportDlg::GetTileOffsetY() const
 {
 	return ImportSettings.TilesCoordinatesOffset.Y;
 }
 
-void STiledLandscapeImportDlg::SetTileOffsetY(int32 InValue)
+void STiledLandcapeImportDlg::SetTileOffsetY(int32 InValue)
 {
 	ImportSettings.TilesCoordinatesOffset.Y = InValue;
 }
 
-ECheckBoxState STiledLandscapeImportDlg::GetFlipYAxisState() const
+ECheckBoxState STiledLandcapeImportDlg::GetFlipYAxisState() const
 {
 	return ImportSettings.bFlipYAxis ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
 }
 
-void STiledLandscapeImportDlg::OnFlipYAxisStateChanged(ECheckBoxState NewState)
+void STiledLandcapeImportDlg::OnFlipYAxisStateChanged(ECheckBoxState NewState)
 {
 	ImportSettings.bFlipYAxis = (NewState == ECheckBoxState::Checked);
 }
 
-ECheckBoxState STiledLandscapeImportDlg::GetEditLayersState() const
-{
-	return ImportSettings.bEditLayersEnabled ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-}
-
-void STiledLandscapeImportDlg::OnEditLayersStateChanged(ECheckBoxState NewState)
-{
-	ImportSettings.bEditLayersEnabled = (NewState == ECheckBoxState::Checked);
-}
-
-void STiledLandscapeImportDlg::OnSetImportConfiguration(TSharedPtr<FTileImportConfiguration> InTileConfig, ESelectInfo::Type SelectInfo)
+void STiledLandcapeImportDlg::OnSetImportConfiguration(TSharedPtr<FTileImportConfiguration> InTileConfig, ESelectInfo::Type SelectInfo)
 {
 	if (InTileConfig.IsValid())
 	{
@@ -458,7 +433,7 @@ void STiledLandscapeImportDlg::OnSetImportConfiguration(TSharedPtr<FTileImportCo
 	}
 }
 
-FReply STiledLandscapeImportDlg::OnClickedSelectHeightmapTiles()
+FReply STiledLandcapeImportDlg::OnClickedSelectHeightmapTiles()
 {
 	TotalLandscapeRect = FIntRect(MAX_int32, MAX_int32, MIN_int32, MIN_int32);
 	ImportSettings.HeightmapFileList.Empty();
@@ -500,25 +475,12 @@ FReply STiledLandscapeImportDlg::OnClickedSelectHeightmapTiles()
 				for (const FString& Filename : ImportSettings.HeightmapFileList)
 				{
 					FFormatNamedArguments Arguments;
+					Arguments.Add(TEXT("FileName"), FText::FromString(Filename));
 
-					FString BaseFilename = FPaths::GetBaseFilename(Filename);
-					FString CleanFilename = FPaths::GetCleanFilename(Filename);
-
-					Arguments.Add(TEXT("FileName"), FText::FromString(CleanFilename));
-
-					FText FilenameError;
-					if (FPackageName::DoesPackageNameContainInvalidCharacters(BaseFilename, &FilenameError))
-					{
-						Arguments.Add(TEXT("FilenameError"), FilenameError);
-						StatusMessage = FText::Format(LOCTEXT("TiledLandscapeImport_HeightmapTileInvalidName", "File name ({FileName}) contains invalid characters. {FilenameError}"), Arguments);
-						bValidTiles = false;
-						break;
-					}
-
-					FIntPoint TileCoordinate = ExtractTileCoordinates(BaseFilename);
+					FIntPoint TileCoordinate = ExtractTileCoordinates(FPaths::GetBaseFilename(Filename));
 					if (TileCoordinate.GetMin() < 0)
 					{
-						StatusMessage = FText::Format(LOCTEXT("TiledLandscapeImport_HeightmapTileInvalidPattern", "File name ({FileName}) should match pattern: <name>_X<number>_Y<number>.<extension>"), Arguments);
+						StatusMessage = FText::Format(LOCTEXT("TiledLandscapeImport_HeightmapTileInvalidName", "File name ({FileName}) should match pattern: <name>_X<number>_Y<number>."), Arguments);
 						bValidTiles = false;
 						break;
 					}
@@ -607,7 +569,7 @@ FReply STiledLandscapeImportDlg::OnClickedSelectHeightmapTiles()
 	return FReply::Handled();
 }
 
-FReply STiledLandscapeImportDlg::OnClickedSelectWeightmapTiles(TSharedPtr<FTiledLandscapeImportSettings::LandscapeLayerSettings> InLayerData)
+FReply STiledLandcapeImportDlg::OnClickedSelectWeightmapTiles(TSharedPtr<FTiledLandscapeImportSettings::LandscapeLayerSettings> InLayerData)
 {
 	InLayerData->WeightmapFiles.Empty();
 
@@ -648,12 +610,12 @@ FReply STiledLandscapeImportDlg::OnClickedSelectWeightmapTiles(TSharedPtr<FTiled
 	return FReply::Handled();
 }
 
-bool STiledLandscapeImportDlg::IsImportEnabled() const
+bool STiledLandcapeImportDlg::IsImportEnabled() const
 {
 	return ImportSettings.HeightmapFileList.Num() && ImportSettings.ComponentsNum > 0;
 }
 
-FReply STiledLandscapeImportDlg::OnClickedImport()
+FReply STiledLandcapeImportDlg::OnClickedImport()
 {
 	// copy weightmaps list data to an import structure  
 	ImportSettings.LandscapeLayerSettingsList.Empty();
@@ -668,7 +630,7 @@ FReply STiledLandscapeImportDlg::OnClickedImport()
 	return FReply::Handled();
 }
 
-FReply STiledLandscapeImportDlg::OnClickedCancel()
+FReply STiledLandcapeImportDlg::OnClickedCancel()
 {
 	ParentWindow->RequestDestroyWindow();
 	bShouldImport = false;
@@ -676,12 +638,12 @@ FReply STiledLandscapeImportDlg::OnClickedCancel()
 	return FReply::Handled();
 }
 
-FString STiledLandscapeImportDlg::GetLandscapeMaterialPath() const
+FString STiledLandcapeImportDlg::GetLandscapeMaterialPath() const
 {
 	return ImportSettings.LandscapeMaterial.IsValid() ? ImportSettings.LandscapeMaterial->GetPathName() : FString("");
 }
 
-void STiledLandscapeImportDlg::OnLandscapeMaterialChanged(const FAssetData& AssetData)
+void STiledLandcapeImportDlg::OnLandscapeMaterialChanged(const FAssetData& AssetData)
 {
 	ImportSettings.LandscapeMaterial = Cast<UMaterialInterface>(AssetData.GetAsset());
 
@@ -689,7 +651,7 @@ void STiledLandscapeImportDlg::OnLandscapeMaterialChanged(const FAssetData& Asse
 	UpdateLandscapeLayerList();
 }
 
-int32 STiledLandscapeImportDlg::SetPossibleConfigurationsForFileWidth(int64 TargetFileWidth)
+int32 STiledLandcapeImportDlg::SetPossibleConfigurationsForFileWidth(int64 TargetFileWidth)
 {
 	int32 Idx = AllConfigurations.IndexOfByPredicate([&](const FTileImportConfiguration& A){
 		return TargetFileWidth == A.SizeX;
@@ -716,7 +678,7 @@ int32 STiledLandscapeImportDlg::SetPossibleConfigurationsForFileWidth(int64 Targ
 	return ActiveConfigurations.Num();
 }
 
-void STiledLandscapeImportDlg::GenerateAllPossibleTileConfigurations()
+void STiledLandcapeImportDlg::GenerateAllPossibleTileConfigurations()
 {
 	AllConfigurations.Empty();
 	for (int32 ComponentsNum = 1; ComponentsNum <= 32; ComponentsNum++)
@@ -746,7 +708,7 @@ void STiledLandscapeImportDlg::GenerateAllPossibleTileConfigurations()
 	});
 }
 
-FText STiledLandscapeImportDlg::GetImportSummaryText() const
+FText STiledLandcapeImportDlg::GetImportSummaryText() const
 {
 	FTextBuilder StatusMessageBuilder;
 	StatusMessageBuilder.AppendLine(StatusMessage);
@@ -773,23 +735,23 @@ FText STiledLandscapeImportDlg::GetImportSummaryText() const
 	return StatusMessageBuilder.ToText();
 }
 
-FText STiledLandscapeImportDlg::GetWeightmapCountText(TSharedPtr<FTiledLandscapeImportSettings::LandscapeLayerSettings> InLayerData) const
+FText STiledLandcapeImportDlg::GetWeightmapCountText(TSharedPtr<FTiledLandscapeImportSettings::LandscapeLayerSettings> InLayerData) const
 {
 	int32 NumWeighmaps = InLayerData.IsValid() ? InLayerData->WeightmapFiles.Num() : 0;
 	return FText::AsNumber(NumWeighmaps);
 }
 
-ECheckBoxState STiledLandscapeImportDlg::GetLayerBlendState(TSharedPtr<FTiledLandscapeImportSettings::LandscapeLayerSettings> InLayerData) const
+ECheckBoxState STiledLandcapeImportDlg::GetLayerBlendState(TSharedPtr<FTiledLandscapeImportSettings::LandscapeLayerSettings> InLayerData) const
 {
 	return (InLayerData->bNoBlendWeight ? ECheckBoxState::Unchecked : ECheckBoxState::Checked);
 }
 
-void STiledLandscapeImportDlg::OnLayerBlendStateChanged(ECheckBoxState NewState, TSharedPtr<FTiledLandscapeImportSettings::LandscapeLayerSettings> InLayerData)
+void STiledLandcapeImportDlg::OnLayerBlendStateChanged(ECheckBoxState NewState, TSharedPtr<FTiledLandscapeImportSettings::LandscapeLayerSettings> InLayerData)
 {
 	InLayerData->bNoBlendWeight = !(NewState == ECheckBoxState::Checked);
 }
 
-FText STiledLandscapeImportDlg::GenerateConfigurationText(int32 NumComponents, int32 NumSectionsPerComponent, int32 NumQuadsPerSection) const
+FText STiledLandcapeImportDlg::GenerateConfigurationText(int32 NumComponents, int32 NumSectionsPerComponent, int32 NumQuadsPerSection) const
 {
 	const FString ComponentsStr = FString::Printf(TEXT("%dx%d"), NumComponents, NumComponents);
 	const FString SectionsStr = FString::Printf(TEXT("%dx%d"), NumSectionsPerComponent, NumSectionsPerComponent);
@@ -803,7 +765,7 @@ FText STiledLandscapeImportDlg::GenerateConfigurationText(int32 NumComponents, i
 		);
 }
 
-void STiledLandscapeImportDlg::UpdateLandscapeLayerList()
+void STiledLandcapeImportDlg::UpdateLandscapeLayerList()
 {
 	TArray<FName> LayerNamesList = ALandscapeProxy::GetLayersFromMaterial(ImportSettings.LandscapeMaterial.Get());
 	LayerDataList.Empty();

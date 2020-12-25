@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SequenceRecorder.h"
 #include "ISequenceAudioRecorder.h"
@@ -27,7 +27,6 @@
 #include "Engine/Selection.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
-#include "Compilation/MovieSceneCompiledDataManager.h"
 #include "LevelSequenceActor.h"
 #include "IAssetViewport.h"
 #include "Tracks/MovieSceneAudioTrack.h"
@@ -38,6 +37,7 @@
 #include "IAssetTools.h"
 #include "AssetToolsModule.h"
 #include "Camera/CameraActor.h"
+#include "Compilation/MovieSceneCompiler.h"
 #include "ISequenceRecorderExtender.h"
 #include "ScopedTransaction.h"
 #include "Features/IModularFeatures.h"
@@ -365,9 +365,9 @@ void FSequenceRecorder::Tick(float DeltaSeconds)
 	}
 
 	// if a replay recording is in progress and channels are paused, wait until we have data again before recording
-	if (UDemoNetDriver* DemoNetDriver = CurrentReplayWorld.IsValid() ? CurrentReplayWorld->GetDemoNetDriver() : nullptr)
+	if(CurrentReplayWorld.IsValid() && CurrentReplayWorld->DemoNetDriver != nullptr)
 	{
-		if (DemoNetDriver->GetChannelsArePaused())
+		if(CurrentReplayWorld->DemoNetDriver->bChannelsArePaused)
 		{
 			return;
 		}
@@ -443,7 +443,7 @@ void FSequenceRecorder::Tick(float DeltaSeconds)
 					{
 						bWaitingForTargetLevelSequenceLength = true;
 
-						float SequenceDurationInSeconds = FFrameNumber(UE::MovieScene::DiscreteSize(CurrentMovieScene->GetPlaybackRange())) / CurrentMovieScene->GetTickResolution();
+						float SequenceDurationInSeconds = FFrameNumber(MovieScene::DiscreteSize(CurrentMovieScene->GetPlaybackRange())) / CurrentMovieScene->GetTickResolution();
 						if (CurrentTime >= SequenceDurationInSeconds)
 						{
 							StopRecording(Settings->bAllowLooping);
@@ -709,7 +709,7 @@ bool FSequenceRecorder::StartRecordingInternal(UWorld* World)
 				if (DupActorToTrigger->SequencePlayer)
 				{
 					DupActorToTrigger->SequencePlayer->SetDisableCameraCuts(true);
-					DupActorToTrigger->SequencePlayer->SetPlaybackPosition(FMovieSceneSequencePlaybackParams(0, EUpdatePositionMethod::Jump));
+					DupActorToTrigger->SequencePlayer->JumpToFrame(0);
 					DupActorToTrigger->SequencePlayer->Play();
 				}
 				else
@@ -1086,18 +1086,15 @@ bool FSequenceRecorder::StopRecording(bool bAllowLooping)
 
 						if (RecordedCameraLevelSequence != LevelSequence)
 						{
-							UMovieSceneCompiledDataManager* DataManager = UMovieSceneCompiledDataManager::GetPrecompiledData();
-							FMovieSceneCompiledDataID       DataID      = DataManager->Compile(LevelSequence);
+							FMovieSceneSequencePrecompiledTemplateStore TemplateStore;
+							FMovieSceneCompiler::Compile(*LevelSequence, TemplateStore);
 
-							if (const FMovieSceneSequenceHierarchy* Hierarchy = DataManager->FindHierarchy(DataID))
+							for (auto& Pair : TemplateStore.AccessTemplate(*LevelSequence).Hierarchy.AllSubSequenceData())
 							{
-								for (auto& Pair : Hierarchy->AllSubSequenceData())
+								if (Pair.Value.Sequence == RecordedCameraLevelSequence)
 								{
-									if (Pair.Value.Sequence == RecordedCameraLevelSequence)
-									{
-										SequenceID = Pair.Key;
-										break;
-									}
+									SequenceID = Pair.Key;
+									break;
 								}
 							}
 						}

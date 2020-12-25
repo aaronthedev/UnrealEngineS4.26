@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,6 +10,6 @@
  */
 struct FDisplayClusterVrpnButtonChannelData
 {
-	bool BtnStateOld;
-	bool BtnStateNew;
+	bool btnStateOld;
+	bool btnStateNew;
 };

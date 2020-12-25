@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	VulkanStatePipeline.cpp: Vulkan pipeline state implementation.
@@ -181,12 +181,6 @@ bool FVulkanComputePipelineDescriptorState::InternalUpdateDescriptorSets(FVulkan
 
 		const VkDescriptorSet DescriptorSet = DescriptorSetHandles[0];
 		DSWriter[0].SetDescriptorSet(DescriptorSet);
-#if VULKAN_VALIDATE_DESCRIPTORS_WRITTEN
-		for(FVulkanDescriptorSetWriter& Writer : DSWriter)
-		{
-			Writer.CheckAllWritten();
-		}
-#endif
 
 		{
 	#if VULKAN_ENABLE_AGGRESSIVE_STATS
@@ -211,60 +205,56 @@ FVulkanGraphicsPipelineDescriptorState::FVulkanGraphicsPipelineDescriptorState(F
 	FMemory::Memzero(PackedUniformBuffersDirty);
 
 	check(InGfxPipeline);
+	check(InGfxPipeline->Pipeline);
+	DescriptorSetsLayout = &InGfxPipeline->Pipeline->GetLayout().GetDescriptorSetsLayout();
+	PipelineDescriptorInfo = &InGfxPipeline->Pipeline->GetGfxLayout().GetGfxPipelineDescriptorInfo();
+	
+	UsedSetsMask = PipelineDescriptorInfo->HasDescriptorsInSetMask;
+	const FVulkanShaderFactory& ShaderFactory = Device->GetShaderFactory();
+
+	const FVulkanVertexShader* VertexShader = ShaderFactory.LookupShader<FVulkanVertexShader>(InGfxPipeline->GetShaderKey(SF_Vertex));
+	check(VertexShader);
+	PackedUniformBuffers[ShaderStage::Vertex].Init(VertexShader->GetCodeHeader(), PackedUniformBuffersMask[ShaderStage::Vertex]);
+
+	uint64 PixelShaderKey = InGfxPipeline->GetShaderKey(SF_Pixel);
+	if (PixelShaderKey)
 	{
-		
-		check(InGfxPipeline->Layout);
-		DescriptorSetsLayout = &InGfxPipeline->Layout->GetDescriptorSetsLayout();
-		FVulkanGfxLayout& GfxLayout  = *(FVulkanGfxLayout*)InGfxPipeline->Layout;
-		PipelineDescriptorInfo = &GfxLayout.GetGfxPipelineDescriptorInfo();
+		const FVulkanPixelShader* PixelShader = ShaderFactory.LookupShader<FVulkanPixelShader>(PixelShaderKey);
+		check(PixelShader);
 
-		UsedSetsMask = PipelineDescriptorInfo->HasDescriptorsInSetMask;
-		const FVulkanShaderFactory& ShaderFactory = Device->GetShaderFactory();
-
-		const FVulkanVertexShader* VertexShader = ShaderFactory.LookupShader<FVulkanVertexShader>(InGfxPipeline->GetShaderKey(SF_Vertex));
-		check(VertexShader);
-		PackedUniformBuffers[ShaderStage::Vertex].Init(VertexShader->GetCodeHeader(), PackedUniformBuffersMask[ShaderStage::Vertex]);
-
-		uint64 PixelShaderKey = InGfxPipeline->GetShaderKey(SF_Pixel);
-		if (PixelShaderKey)
-		{
-			const FVulkanPixelShader* PixelShader = ShaderFactory.LookupShader<FVulkanPixelShader>(PixelShaderKey);
-			check(PixelShader);
-
-			PackedUniformBuffers[ShaderStage::Pixel].Init(PixelShader->GetCodeHeader(), PackedUniformBuffersMask[ShaderStage::Pixel]);
-		}
+		PackedUniformBuffers[ShaderStage::Pixel].Init(PixelShader->GetCodeHeader(), PackedUniformBuffersMask[ShaderStage::Pixel]);
+	}
 
 #if VULKAN_SUPPORTS_GEOMETRY_SHADERS
-		uint64 GeometryShaderKey = InGfxPipeline->GetShaderKey(SF_Geometry);
-		if (GeometryShaderKey)
-		{
-			const FVulkanGeometryShader* GeometryShader = ShaderFactory.LookupShader<FVulkanGeometryShader>(GeometryShaderKey);
-			check(GeometryShader);
+	uint64 GeometryShaderKey = InGfxPipeline->GetShaderKey(SF_Geometry);
+	if (GeometryShaderKey)
+	{
+		const FVulkanGeometryShader* GeometryShader = ShaderFactory.LookupShader<FVulkanGeometryShader>(GeometryShaderKey);
+		check(GeometryShader);
 
-			PackedUniformBuffers[ShaderStage::Geometry].Init(GeometryShader->GetCodeHeader(), PackedUniformBuffersMask[ShaderStage::Geometry]);
-		}
+		PackedUniformBuffers[ShaderStage::Geometry].Init(GeometryShader->GetCodeHeader(), PackedUniformBuffersMask[ShaderStage::Geometry]);
+	}
 #endif
 
 #if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-		uint64 HullShaderKey = InGfxPipeline->GetShaderKey(SF_Hull);
-		if (HullShaderKey)
-		{
-			const FVulkanHullShader* HullShader = ShaderFactory.LookupShader<FVulkanHullShader>(HullShaderKey);
-			PackedUniformBuffers[ShaderStage::Hull].Init(HullShader->GetCodeHeader(), PackedUniformBuffersMask[ShaderStage::Hull]);
-		}
-		uint64 DomainShaderKey = InGfxPipeline->GetShaderKey(SF_Domain);
-		if (DomainShaderKey)
-		{
-			const FVulkanDomainShader* DomainShader = ShaderFactory.LookupShader<FVulkanDomainShader>(DomainShaderKey);
-			PackedUniformBuffers[ShaderStage::Domain].Init(DomainShader->GetCodeHeader(), PackedUniformBuffersMask[ShaderStage::Domain]);
-		}
-#endif
-		CreateDescriptorWriteInfos();
-
-		//UE_LOG(LogVulkanRHI, Warning, TEXT("GfxPSOState %p For PSO %p Writes:%d"), this, InGfxPipeline, DSWriteContainer.DescriptorWrites.Num());
-
-		InGfxPipeline->AddRef();
+	uint64 HullShaderKey = InGfxPipeline->GetShaderKey(SF_Hull);
+	if (HullShaderKey)
+	{
+		const FVulkanHullShader* HullShader = ShaderFactory.LookupShader<FVulkanHullShader>(HullShaderKey);
+		PackedUniformBuffers[ShaderStage::Hull].Init(HullShader->GetCodeHeader(), PackedUniformBuffersMask[ShaderStage::Hull]);
 	}
+	uint64 DomainShaderKey = InGfxPipeline->GetShaderKey(SF_Domain);
+	if (DomainShaderKey)
+	{
+		const FVulkanDomainShader* DomainShader = ShaderFactory.LookupShader<FVulkanDomainShader>(DomainShaderKey);
+		PackedUniformBuffers[ShaderStage::Domain].Init(DomainShader->GetCodeHeader(), PackedUniformBuffersMask[ShaderStage::Domain]);
+	}
+#endif
+	CreateDescriptorWriteInfos();
+
+	//UE_LOG(LogVulkanRHI, Warning, TEXT("GfxPSOState %p For PSO %p Writes:%d"), this, InGfxPipeline, DSWriteContainer.DescriptorWrites.Num());
+
+	InGfxPipeline->AddRef();
 }
 
 template<bool bUseDynamicGlobalUBs>
@@ -348,12 +338,18 @@ bool FVulkanGraphicsPipelineDescriptorState::InternalUpdateDescriptorSets(FVulka
 }
 
 
-void FVulkanCommandListContext::RHISetGraphicsPipelineState(FRHIGraphicsPipelineState* GraphicsState, bool bApplyAdditionalState)
+void FVulkanCommandListContext::RHISetGraphicsPipelineState(FRHIGraphicsPipelineState* GraphicsState)
 {
 	FVulkanRHIGraphicsPipelineState* Pipeline = ResourceCast(GraphicsState);
 	
+#if VULKAN_ENABLE_LRU_CACHE
+	if (!Pipeline)
+	{
+		return; // this happens when we immediately evict an cached PSO...the thing is never actually created
+	}
 	FVulkanPipelineStateCacheManager* PipelineStateCache = Device->GetPipelineStateCache();
-	PipelineStateCache->LRUTouch(Pipeline);
+	PipelineStateCache->PipelineLRU.Touch(Pipeline);
+#endif
 
 	FVulkanCmdBuffer* CmdBuffer = CommandBufferManager->GetActiveCmdBuffer();
 	bool bForceResetPipeline = !CmdBuffer->bHasPipeline;
@@ -369,17 +365,12 @@ void FVulkanCommandListContext::RHISetGraphicsPipelineState(FRHIGraphicsPipeline
 		PendingGfxState->StencilRef = 0;
 	}
 
-	if (bApplyAdditionalState)
+	// Yuck - Bind pending pixel shader UAVs from SetRenderTargets
 	{
-		ApplyGlobalUniformBuffers(static_cast<FVulkanVertexShader*>(Pipeline->VulkanShaders[ShaderStage::Vertex]));
-#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-		ApplyGlobalUniformBuffers(static_cast<FVulkanHullShader*>(Pipeline->VulkanShaders[ShaderStage::Hull]));
-		ApplyGlobalUniformBuffers(static_cast<FVulkanDomainShader*>(Pipeline->VulkanShaders[ShaderStage::Domain]));
-#endif
-#if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
-		ApplyGlobalUniformBuffers(static_cast<FVulkanGeometryShader*>(Pipeline->VulkanShaders[ShaderStage::Geometry]));
-#endif
-		ApplyGlobalUniformBuffers(static_cast<FVulkanPixelShader*>(Pipeline->VulkanShaders[ShaderStage::Pixel]));
+		for (int32 Index = 0; Index < PendingPixelUAVs.Num(); ++Index)
+		{
+			PendingGfxState->SetUAVForStage(ShaderStage::Pixel, PendingPixelUAVs[Index].BindIndex, PendingPixelUAVs[Index].UAV);
+		}
 	}
 }
 
@@ -388,103 +379,3 @@ template bool FVulkanGraphicsPipelineDescriptorState::InternalUpdateDescriptorSe
 template bool FVulkanGraphicsPipelineDescriptorState::InternalUpdateDescriptorSets<false>(FVulkanCommandListContext* CmdListContext, FVulkanCmdBuffer* CmdBuffer);
 template bool FVulkanComputePipelineDescriptorState::InternalUpdateDescriptorSets<true>(FVulkanCommandListContext* CmdListContext, FVulkanCmdBuffer* CmdBuffer);
 template bool FVulkanComputePipelineDescriptorState::InternalUpdateDescriptorSets<false>(FVulkanCommandListContext* CmdListContext, FVulkanCmdBuffer* CmdBuffer);
-
-
-#if VULKAN_VALIDATE_DESCRIPTORS_WRITTEN
-
-
-void FVulkanDescriptorSetWriter::CheckAllWritten()
-{
-auto GetVkDescriptorTypeString = [](VkDescriptorType Type)
-{
-	switch (Type)
-	{
-		// + 19 to skip "VK_DESCRIPTOR_TYPE_"
-#define VKSWITCHCASE(x)	case x: return FString(&TEXT(#x)[19]);
-		VKSWITCHCASE(VK_DESCRIPTOR_TYPE_SAMPLER)
-			VKSWITCHCASE(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
-			VKSWITCHCASE(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)
-			VKSWITCHCASE(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
-			VKSWITCHCASE(VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER)
-			VKSWITCHCASE(VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER)
-			VKSWITCHCASE(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER)
-			VKSWITCHCASE(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
-			VKSWITCHCASE(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)
-			VKSWITCHCASE(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC)
-			VKSWITCHCASE(VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT)
-#undef VKSWITCHCASE
-	default:
-		break;
-	}
-
-	return FString::Printf(TEXT("Unknown VkDescriptorType %d"), (int32)Type);
-};
-	const uint32 Writes = NumWrites;
-	if (Writes == 0)
-		return;
-
-	bool bFail = false;
-	if(Writes <= 32) //early out for the most common case.
-	{
-		bFail = WrittenMask[0] != ((1llu << Writes)-1);
-	}
-	else
-	{
-		int32 Last = int32(WrittenMask.Num()-1);
-		for(int32 i = 0; !bFail && i < Last; ++i)
-		{
-			uint64 Mask = WrittenMask[i];
-			bFail = bFail || Mask != 0xffffffff; 
-		}
-
-		uint32 TailCount = Writes % 32;
-		check(TailCount != 0);
-		uint32 TailMask = (1llu << TailCount)-1;
-		bFail = bFail || TailMask != WrittenMask[Last];
-	}
-
-	if(bFail)
-	{
-		FString Descriptors;
-		for (uint32 i = 0; i < Writes; ++i)
-		{
-			uint32 Index = i / 32;
-			uint32 Mask = i % 32;
-			if(0 == (WrittenMask[Index] & (1llu << Mask)))
-			{
-				FString TypeString = GetVkDescriptorTypeString(WriteDescriptors[i].descriptorType);
-				Descriptors += FString::Printf(TEXT("\t\tDescriptorWrite %d/%d Was not written(Type %s)\n"), i, NumWrites, *TypeString);
-			}
-		}
-		UE_LOG(LogVulkanRHI, Warning, TEXT("Not All descriptors where filled out. this can/will cause a driver crash\n%s\n"), *Descriptors);
-		ensureMsgf(false, TEXT("Not All descriptors where filled out. this can/will cause a driver crash\n%s\n"), *Descriptors);
-	}
-}
-
-void FVulkanDescriptorSetWriter::Reset()
-{
-	WrittenMask = BaseWrittenMask;
-}
-void FVulkanDescriptorSetWriter::SetWritten(uint32 DescriptorIndex)
-{
-	uint32 Index = DescriptorIndex / 32;
-	uint32 Mask = DescriptorIndex % 32;
-	WrittenMask[Index] |= (1<<Mask);
-}
-void FVulkanDescriptorSetWriter::SetWrittenBase(uint32 DescriptorIndex)
-{
-	uint32 Index = DescriptorIndex / 32;
-	uint32 Mask = DescriptorIndex % 32;
-	BaseWrittenMask[Index] |= (1<<Mask);
-}
-
-void FVulkanDescriptorSetWriter::InitWrittenMasks(uint32 NumDescriptorWrites)
-{
-	uint32 Size = (NumDescriptorWrites + 31) / 32;
-	WrittenMask.Empty(Size);
-	WrittenMask.SetNumZeroed(Size);
-	BaseWrittenMask.Empty(Size);
-	BaseWrittenMask.SetNumZeroed(Size);
-}
-#endif
-

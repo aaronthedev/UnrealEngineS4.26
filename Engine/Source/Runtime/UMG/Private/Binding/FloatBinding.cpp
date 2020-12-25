@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Binding/FloatBinding.h"
 
@@ -8,12 +8,12 @@ UFloatBinding::UFloatBinding()
 {
 }
 
-bool UFloatBinding::IsSupportedDestination(FProperty* Property) const
+bool UFloatBinding::IsSupportedDestination(UProperty* Property) const
 {
 	return IsSupportedSource(Property);
 }
 
-bool UFloatBinding::IsSupportedSource(FProperty* Property) const
+bool UFloatBinding::IsSupportedSource(UProperty* Property) const
 {
 	return IsConcreteTypeCompatibleWithReflectedType<float>(Property);
 }

@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CborReader.h"
 
-FCborReader::FCborReader(FArchive* InStream, ECborEndianness InReaderEndianness)
+FCborReader::FCborReader(FArchive* InStream)
 	: Stream(InStream)
-	, Endianness(InReaderEndianness)
 {
 	ContextStack.Emplace();
 }
@@ -38,8 +37,6 @@ const FCborContext& FCborReader::GetContext() const
 
 bool FCborReader::ReadNext(FCborContext& OutContext)
 {
-	ScopedCborArchiveEndianness ScopedArchiveEndianness(*Stream, Endianness);
-
 	OutContext.Reset();
 
 	// if an error happened, successive read are also errors 
@@ -178,8 +175,6 @@ bool FCborReader::ReadNext(FCborContext& OutContext)
 
 bool FCborReader::SkipContainer(ECborCode ContainerType)
 {
-	ScopedCborArchiveEndianness ScopedArchiveEndianness(*Stream, Endianness);
-
 	if (GetContext().MajorType() != ContainerType)
 	{
 		return false;
@@ -303,3 +298,4 @@ FCborHeader FCborReader::SetError(ECborCode ErrorCode)
 	Dummy.Header.Set(ErrorCode);
 	return Dummy.Header;
 }
+

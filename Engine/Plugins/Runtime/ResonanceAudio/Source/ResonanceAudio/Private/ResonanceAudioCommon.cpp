@@ -9,7 +9,6 @@
 #include "Interfaces/IPluginManager.h"
 #include "HAL/PlatformProcess.h"
 #include "Misc/Paths.h"
-#include "AudioMixerDevice.h"
 
 DEFINE_LOG_CATEGORY(LogResonanceAudio);
 
@@ -150,16 +149,6 @@ namespace ResonanceAudio
 		return ResonanceAudioVector * SCALE_FACTOR;
 	}
 
-
-	FVector ConvertToResonanceAudioCoordinates(const Audio::FChannelPositionInfo& ChannelPositionInfo)
-	{
-		FVector ResonanceAudioVector;
-		ResonanceAudioVector.X = ChannelPositionInfo.Radius * FMath::Sin(ChannelPositionInfo.Azimuth) * FMath::Cos(ChannelPositionInfo.Elevation);
-		ResonanceAudioVector.Y = ChannelPositionInfo.Radius * FMath::Sin(ChannelPositionInfo.Azimuth) * FMath::Sin(ChannelPositionInfo.Elevation);
-		ResonanceAudioVector.Z = ChannelPositionInfo.Radius * FMath::Cos(ChannelPositionInfo.Azimuth);
-
-		return ResonanceAudioVector * SCALE_FACTOR;
-	}
 
 	FQuat ConvertToResonanceAudioRotation(const FQuat& UnrealQuat)
 	{

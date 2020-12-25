@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -12,8 +12,7 @@ public class AdjustEditor : ModuleRules
 			new string[] {
 				"Core",
 				"CoreUObject",
-				"DeveloperSettings",
-				"Analytics",
+                "Analytics",
                 "AnalyticsVisualEditing",
                 "Engine",
 				"Projects"

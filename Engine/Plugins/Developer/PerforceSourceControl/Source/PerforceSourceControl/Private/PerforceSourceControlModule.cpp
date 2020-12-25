@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PerforceSourceControlModule.h"
 #include "Misc/App.h"
@@ -27,7 +27,6 @@ void FPerforceSourceControlModule::StartupModule()
 	PerforceSourceControlProvider.RegisterWorker( "GetWorkspaces", FGetPerforceSourceControlWorker::CreateStatic( &CreateWorker<FPerforceGetWorkspacesWorker> ) );
 	PerforceSourceControlProvider.RegisterWorker( "Copy", FGetPerforceSourceControlWorker::CreateStatic( &CreateWorker<FPerforceCopyWorker> ) );
 	PerforceSourceControlProvider.RegisterWorker( "Resolve", FGetPerforceSourceControlWorker::CreateStatic( &CreateWorker<FPerforceResolveWorker> ) );
-	PerforceSourceControlProvider.RegisterWorker( "ChangeStatus", FGetPerforceSourceControlWorker::CreateStatic( &CreateWorker<FPerforceChangeStatusWorker> ) );
 
 	// load our settings
 	PerforceSourceControlSettings.LoadSettings();
@@ -58,15 +57,6 @@ void FPerforceSourceControlModule::SaveSettings()
 	}
 
 	PerforceSourceControlSettings.SaveSettings();
-}
-
-void FPerforceSourceControlModule::SetLastErrors(const TArray<FText>& InErrors)
-{
-	FPerforceSourceControlModule* Module = FModuleManager::GetModulePtr<FPerforceSourceControlModule>("PerforceSourceControl");
-	if (Module)
-	{
-		Module->GetProvider().SetLastErrors(InErrors);
-	}
 }
 
 IMPLEMENT_MODULE(FPerforceSourceControlModule, PerforceSourceControl);

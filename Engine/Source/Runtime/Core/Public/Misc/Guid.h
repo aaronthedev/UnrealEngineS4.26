@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,8 +7,6 @@
 #include "Misc/Crc.h"
 #include "Containers/UnrealString.h"
 #include "Serialization/StructuredArchive.h"
-#include "Serialization/MemoryLayout.h"
-#include "Hash/CityHash.h"
 
 class FArchive;
 class FOutputDevice;
@@ -66,15 +64,8 @@ enum class EGuidFormats
 	 * Base64 characters with dashes and underscores instead of pluses and slashes (respectively)
 	 *
 	 * For example: AQsMCQ0PAAUKCgQEBAgADQ
-	*/
-	Short,
-
-	/**
-	 * Base-36 encoded, compatible with case-insensitive OS file systems (such as Windows).
-	 *
-	 * For example: 1DPF6ARFCM4XH5RMWPU8TGR0J
 	 */
-	Base36Encoded,
+	Short
 };
 
 /**
@@ -100,17 +91,9 @@ public:
 	 * @param InC The third component.
 	 * @param InD The fourth component.
 	 */
-	explicit FGuid(uint32 InA, uint32 InB, uint32 InC, uint32 InD)
+	FGuid(uint32 InA, uint32 InB, uint32 InC, uint32 InD)
 		: A(InA), B(InB), C(InC), D(InD)
 	{ }
-
-	explicit FGuid(const FString& InGuidStr)
-	{
-		if (!Parse(InGuidStr, *this))
-		{
-			Invalidate();
-		}
-	}
 
 public:
 
@@ -316,7 +299,7 @@ public:
 	 */
 	friend uint32 GetTypeHash(const FGuid& Guid)
 	{
-		return uint32(CityHash64((char*)&Guid, sizeof(FGuid)));
+		return FCrc::MemCrc_DEPRECATED(&Guid, sizeof(FGuid));
 	}
 
 public:
@@ -364,7 +347,6 @@ public:
 	/** Holds the fourth component. */
 	uint32 D;
 };
-template<> struct TCanBulkSerialize<FGuid> { enum { Value = true }; };
-DECLARE_INTRINSIC_TYPE_LAYOUT(FGuid);
+
 
 template <> struct TIsPODType<FGuid> { enum { Value = true }; };

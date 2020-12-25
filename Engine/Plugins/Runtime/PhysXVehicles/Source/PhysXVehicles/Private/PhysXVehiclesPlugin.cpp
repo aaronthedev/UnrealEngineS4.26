@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "PhysicsPublic.h"
@@ -13,8 +13,6 @@
 #include "Engine/Console.h"
 #include "ConsoleSettings.h"
 #endif // ALLOW_CONSOLE
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 class FPhysXVehiclesPlugin : public IPhysXVehiclesPlugin
 {
@@ -119,4 +117,9 @@ public:
 
 IMPLEMENT_MODULE(FPhysXVehiclesPlugin, PhysXVehicles )
 
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
+
+
+
+
+
+

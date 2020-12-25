@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Fonts/FontCacheFreeType.h"
 #include "SlateGlobals.h"
@@ -6,10 +6,6 @@
 #include "HAL/PlatformFilemanager.h"
 #include "HAL/LowLevelMemTracker.h"
 #include "HAL/IConsoleManager.h"
-#include "Misc/FileHelper.h"
-#include "Application/SlateApplicationBase.h"
-#include "Async/Async.h"
-#include "HAL/PlatformProcess.h"
 
 #if WITH_FREETYPE
 
@@ -174,9 +170,7 @@ void ApplySizeAndScale(FT_Face InFace, const int32 InFontSize, const float InFon
 
 FT_Error LoadGlyph(FT_Face InFace, const uint32 InGlyphIndex, const int32 InLoadFlags, const int32 InFontSize, const float InFontScale)
 {
-#if WITH_VERY_VERBOSE_SLATE_STATS
 	QUICK_SCOPE_CYCLE_COUNTER(STAT_FreetypeLoadGlyph);
-#endif
 	ApplySizeAndScale(InFace, InFontSize, InFontScale);
 	return FT_Load_Glyph(InFace, InGlyphIndex, InLoadFlags);
 }
@@ -327,44 +321,18 @@ FFreeTypeLibrary::~FFreeTypeLibrary()
 #endif // WITH_FREETYPE
 }
 
+
 FFreeTypeFace::FFreeTypeFace(const FFreeTypeLibrary* InFTLibrary, FFontFaceDataConstRef InMemory, const int32 InFaceIndex, const EFontLayoutMethod InLayoutMethod)
 #if WITH_FREETYPE
 	: FTFace(nullptr)
-	, bPendingAsyncLoad(true)
+	, Memory(MoveTemp(InMemory))
 #endif // WITH_FREETYPE
 {
 	LayoutMethod = InLayoutMethod;
-	CompleteAsyncLoad(InFTLibrary, InMemory, InFaceIndex);
-}
 
-FFreeTypeFace::FFreeTypeFace(const EFontLayoutMethod InLayoutMethod)
 #if WITH_FREETYPE
-	: FTFace(nullptr)
-	, bPendingAsyncLoad(true)
-#endif // WITH_FREETYPE
-{
-	LayoutMethod = InLayoutMethod;
-}
-
-void FFreeTypeFace::FailAsyncLoad()
-{
-#if WITH_FREETYPE
-	ensure(bPendingAsyncLoad);
-	bPendingAsyncLoad = false;
-#endif
-}
-
-void FFreeTypeFace::CompleteAsyncLoad(const FFreeTypeLibrary* InFTLibrary, FFontFaceDataConstRef InMemory, const int32 InFaceIndex)
-{
-#if WITH_FREETYPE
-	ensure(bPendingAsyncLoad);
-	bPendingAsyncLoad = false;
-
-	FTFace = nullptr;
-	Memory = MoveTemp(InMemory);
-
 	FT_Error Error = FT_New_Memory_Face(InFTLibrary->GetLibrary(), Memory->GetData().GetData(), static_cast<FT_Long>(Memory->GetData().Num()), InFaceIndex, &FTFace);
-
+	
 	if (Error)
 	{
 		// You can look these error codes up in the FreeType docs: https://www.freetype.org/freetype2/docs/reference/ft2-error_code_values.html

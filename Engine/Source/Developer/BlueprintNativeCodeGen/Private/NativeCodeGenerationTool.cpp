@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NativeCodeGenerationTool.h"
 #include "Input/Reply.h"
@@ -25,7 +25,6 @@
 #include "EditorStyleSet.h"
 #include "SourceCodeNavigation.h"
 #include "DesktopPlatformModule.h"
-#include "BlueprintNativeCodeGenModule.h"
 #include "IBlueprintCompilerCppBackendModule.h"
 #include "BlueprintNativeCodeGenUtils.h"
 //#include "Editor/KismetCompiler/Public/BlueprintCompilerCppBackendInterface.h"
@@ -146,8 +145,6 @@ struct FGeneratedCodeData
 		FScopedSlowTask SlowTask(WorkParts, LOCTEXT("GeneratingCppFiles", "Generating C++ files.."));
 		SlowTask.MakeDialog();
 
-		const bool bWasNativeCodeGenModuleLoaded = IBlueprintNativeCodeGenModule::IsNativeCodeGenModuleLoaded();
-		IBlueprintNativeCodeGenModule& CodeGenModule = IBlueprintNativeCodeGenModule::Get();
 		IBlueprintCompilerCppBackendModule& CodeGenBackend = (IBlueprintCompilerCppBackendModule&)IBlueprintCompilerCppBackendModule::Get();
 
 		TArray<FString> CreatedFiles;
@@ -189,12 +186,6 @@ struct FGeneratedCodeData
 					CreatedFiles.Add(NewCppFilename);
 				}
 			}
-		}
-
-		if (!bWasNativeCodeGenModuleLoaded && IBlueprintNativeCodeGenModule::IsNativeCodeGenModuleLoaded())
-		{
-			// Unload the module so that it can be reinitialized to prepare for another run.
-			FModuleManager::Get().UnloadModule(CodeGenModule.GetModuleName());
 		}
 
 		SlowTask.EnterProgressFrame();
@@ -387,7 +378,7 @@ void FNativeCodeGenerationTool::Open(UBlueprint& Blueprint, TSharedRef< class FB
 bool FNativeCodeGenerationTool::CanGenerate(const UBlueprint& Blueprint)
 {
 	return (Blueprint.Status == EBlueprintStatus::BS_UpToDate || Blueprint.Status == EBlueprintStatus::BS_UpToDateWithWarnings)
-		&& (Blueprint.BlueprintType == EBlueprintType::BPTYPE_Normal || Blueprint.BlueprintType == EBlueprintType::BPTYPE_FunctionLibrary || Blueprint.BlueprintType == EBlueprintType::BPTYPE_Interface)
+		&& (Blueprint.BlueprintType == EBlueprintType::BPTYPE_Normal || Blueprint.BlueprintType == EBlueprintType::BPTYPE_FunctionLibrary)
 		&& Cast<UBlueprintGeneratedClass>(Blueprint.GeneratedClass);
 }
 

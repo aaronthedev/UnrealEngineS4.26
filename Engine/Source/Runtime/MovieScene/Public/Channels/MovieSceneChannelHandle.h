@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -65,24 +65,11 @@ public:
 	FName GetChannelTypeName() const;
 
 	/**
-	 * Access this channel's index
-	 */
-	int32 GetChannelIndex() const;
-
-	/**
 	 * Get the channel pointer this handle represents.
 	 *
 	 * @return the channel's pointer, or nullptr if the proxy it was created with is no longer alive.
 	 */
 	FMovieSceneChannel* Get() const;
-
-	/**
-	 * Attempt to access the proxy for this channel. Will return nullptr if it is no longer valid.
-	 */
-	FMovieSceneChannelProxy* GetChannelProxy() const
-	{
-		return WeakChannelProxy.Pin().Get();
-	}
 
 #if WITH_EDITOR
 

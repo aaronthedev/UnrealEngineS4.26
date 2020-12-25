@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_NOTICE_H
-#define PXR_USD_SDF_NOTICE_H
+#ifndef SDF_NOTICE_H
+#define SDF_NOTICE_H
 
 /// \file sdf/notice.h
 
@@ -59,44 +59,24 @@ public:
     ///
     class BaseLayersDidChange {
     public:
-        BaseLayersDidChange(const SdfLayerChangeListVec &changeVec,
+        BaseLayersDidChange(const SdfLayerChangeListMap &changeMap,
                             size_t serialNumber)
-            : _vec(&changeVec)
+            : _map(&changeMap)
             , _serialNumber(serialNumber)
             {}
-
-        using const_iterator = SdfLayerChangeListVec::const_iterator;
-        using iterator = const_iterator;
 
         /// A list of layers changed.
         SDF_API
         SdfLayerHandleVector GetLayers() const;
 
-        /// A list of layers and the changes that occurred to them.
-        const SdfLayerChangeListVec &GetChangeListVec() const { return *_vec; }
+        /// A map of layers to the changes that occurred to them.
+        const SdfLayerChangeListMap &GetChangeListMap() const { return *_map; }
 
-        const_iterator begin() const { return _vec->begin(); }
-        const_iterator cbegin() const { return _vec->cbegin(); }
-        const_iterator end() const { return _vec->end(); } 
-        const_iterator cend() const { return _vec->cend(); }
-
-        const_iterator find(SdfLayerHandle const &layer) const {
-            return std::find_if(
-                begin(), end(),
-                [&layer](SdfLayerChangeListVec::value_type const &p) {
-                    return p.first == layer;
-                });
-        }
-       
-        bool count(SdfLayerHandle const &layer) const {
-            return find(layer) != end();
-        }
-
-        /// The serial number for this round of change processing.
+        /// The the serial number for this round of change processing.
         size_t GetSerialNumber() const { return _serialNumber; }
 
     private:
-        const SdfLayerChangeListVec *_vec;
+        const SdfLayerChangeListMap *_map;
         const size_t _serialNumber;
     };
 
@@ -105,16 +85,16 @@ public:
     /// Notice sent per-layer indicating all layers whose contents have changed
     /// within a single round of change processing.  If more than one layer
     /// changes in a single round of change processing, we send this notice once
-    /// per layer with the same changeVec and serialNumber.  This is so clients
+    /// per layer with the same changeMap and serialNumber.  This is so clients
     /// can listen to notices from only the set of layers they care about rather
     /// than listening to the global LayersDidChange notice.
     ///
     class LayersDidChangeSentPerLayer 
         : public Base, public BaseLayersDidChange {
     public:
-        LayersDidChangeSentPerLayer(const SdfLayerChangeListVec &changeVec,
+        LayersDidChangeSentPerLayer(const SdfLayerChangeListMap &changeMap,
                                     size_t serialNumber)
-            : BaseLayersDidChange(changeVec, serialNumber) {}
+            : BaseLayersDidChange(changeMap, serialNumber) {}
         SDF_API virtual ~LayersDidChangeSentPerLayer();
     };
 
@@ -125,9 +105,9 @@ public:
     class LayersDidChange
         : public Base, public BaseLayersDidChange {
     public:
-        LayersDidChange(const SdfLayerChangeListVec &changeVec,
+        LayersDidChange(const SdfLayerChangeListMap &changeMap,
                         size_t serialNumber)
-            : BaseLayersDidChange(changeVec, serialNumber) {}
+            : BaseLayersDidChange(changeMap, serialNumber) {}
         SDF_API virtual ~LayersDidChange();
     };
 
@@ -234,4 +214,4 @@ public:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_NOTICE_H
+#endif // SDF_NOTICE_H

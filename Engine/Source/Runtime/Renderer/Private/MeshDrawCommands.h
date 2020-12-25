@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 MeshDrawCommands.h: Mesh draw commands.
@@ -16,33 +16,30 @@ class FParallelCommandListSet;
 /**
  * Global vertex buffer pool used for GPUScene primitive id arrays.
  */
-
-struct FPrimitiveIdVertexBufferPoolEntry
-{
-	int32 BufferSize = 0;
-	uint32 LastDiscardId = 0;
-	FVertexBufferRHIRef BufferRHI;
-};
-
 class FPrimitiveIdVertexBufferPool : public FRenderResource
 {
 public:
 	FPrimitiveIdVertexBufferPool();
 	~FPrimitiveIdVertexBufferPool();
 
-	FPrimitiveIdVertexBufferPoolEntry Allocate(int32 BufferSize);
-	void ReturnToFreeList(FPrimitiveIdVertexBufferPoolEntry Entry);
-	RENDERER_API void DiscardAll();
+	FRHIVertexBuffer* Allocate(int32 BufferSize);
+	void DiscardAll();
 
 	virtual void ReleaseDynamicRHI() override;
 
 private:
+	struct FPrimitiveIdVertexBufferPoolEntry
+	{
+		int32 BufferSize;
+		uint32 LastDiscardId;
+		FVertexBufferRHIRef BufferRHI;
+	};
+
 	uint32 DiscardId;
 	TArray<FPrimitiveIdVertexBufferPoolEntry> Entries;
-	FCriticalSection AllocationCS;
 };
 
-extern RENDERER_API TGlobalResource<FPrimitiveIdVertexBufferPool> GPrimitiveIdVertexBufferPool;
+extern TGlobalResource<FPrimitiveIdVertexBufferPool> GPrimitiveIdVertexBufferPool;
 
 /**	
  * Parallel mesh draw command pass setup task context.
@@ -65,7 +62,6 @@ public:
 		, InstanceFactor(1)
 		, NumDynamicMeshElements(0)
 		, NumDynamicMeshCommandBuildRequestElements(0)
-		, NeedsShaderInitialisation(false)
 		, PrimitiveIdBufferData(nullptr)
 		, PrimitiveIdBufferDataSize(0)
 		, PrimitiveBounds(nullptr)
@@ -102,7 +98,6 @@ public:
 	TArray<const FStaticMeshBatch*, SceneRenderingAllocator> MobileBasePassCSMDynamicMeshCommandBuildRequests;
 	FDynamicMeshDrawCommandStorage MeshDrawCommandStorage;
 	FGraphicsMinimalPipelineStateSet MinimalPipelineStatePassSet;
-	bool NeedsShaderInitialisation;
 
 	// Resources preallocated on rendering thread.
 	void* PrimitiveIdBufferData;
@@ -131,7 +126,8 @@ class FParallelMeshDrawCommandPass
 {
 public:
 	FParallelMeshDrawCommandPass()
-		: bPrimitiveIdBufferDataOwnedByRHIThread(false)
+		: PrimitiveIdVertexBufferRHI(nullptr)
+		, bPrimitiveIdBufferDataOwnedByRHIThread(false)
 		, MaxNumDraws(0)
 	{
 	}
@@ -167,18 +163,9 @@ public:
 	void SetDumpInstancingStats(const FString& InPassName);
 	bool HasAnyDraw() const { return MaxNumDraws > 0; }
 
-	void InitCreateSnapshot()
-	{
-		new (&TaskContext.MinimalPipelineStatePassSet) FGraphicsMinimalPipelineStateSet();
-	}
-
-	void FreeCreateSnapshot()
-	{
-		TaskContext.MinimalPipelineStatePassSet.~FGraphicsMinimalPipelineStateSet();
-	}
 
 private:
-	FPrimitiveIdVertexBufferPoolEntry PrimitiveIdVertexBufferPoolEntry;
+	FRHIVertexBuffer* PrimitiveIdVertexBufferRHI;
 	FMeshDrawCommandPassSetupTaskContext TaskContext;
 	FGraphEventRef TaskEventRef;
 	FString PassNameForStats;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Camera/CameraComponent.h"
 #include "UObject/ConstructorHelpers.h"
@@ -111,8 +111,7 @@ FText UCameraComponent::GetFilmbackText() const
 void UCameraComponent::OnRegister()
 {
 #if WITH_EDITORONLY_DATA
-	AActor* MyOwner = GetOwner();
-	if ((MyOwner != nullptr) && !IsRunningCommandlet())
+	if (AActor* MyOwner = GetOwner())
 	{
 		if (ProxyMeshComponent == nullptr)
 		{
@@ -274,7 +273,7 @@ void UCameraComponent::GetCameraView(float DeltaTime, FMinimalViewInfo& DesiredV
 
 		if (XRCamera.IsValid())
 		{
-			if (XRSystem->IsHeadTrackingAllowedForWorld(*GetWorld()))
+			if (XRSystem->IsHeadTrackingAllowed())
 			{
 				const FTransform ParentWorld = CalcNewComponentToWorld(FTransform());
 

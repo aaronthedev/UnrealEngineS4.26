@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AllDesktopTargetPlatform.cpp: Implements the FDesktopTargetPlatform class.
@@ -42,11 +42,16 @@ FAllDesktopTargetPlatform::~FAllDesktopTargetPlatform()
 void FAllDesktopTargetPlatform::GetAllPossibleShaderFormats( TArray<FName>& OutFormats ) const
 {
 	static FName NAME_PCD3D_SM5(TEXT("PCD3D_SM5"));
+	static FName NAME_GLSL_150(TEXT("GLSL_150"));
+	static FName NAME_GLSL_430(TEXT("GLSL_430"));
 
 #if PLATFORM_WINDOWS
-	// right now, only windows can properly compile D3D shaders
+	// right now, only windows can properly compile D3D shaders (this won't corrupt the DDC, but it will
+	// make it so that packages cooked on Mac/Linux will only run on Windows with -opengl)
 	OutFormats.AddUnique(NAME_PCD3D_SM5);
 #endif
+	OutFormats.AddUnique(NAME_GLSL_150);
+	OutFormats.AddUnique(NAME_GLSL_430);
 }
 
 
@@ -78,8 +83,7 @@ FName FAllDesktopTargetPlatform::GetWaveFormat( const class USoundWave* Wave ) c
 	{
 		return NAME_ADPCM;
 	}
-	// there is no one platform to check for Streaming status here
-	else if (Wave->IsStreaming(TEXT("Windows")))
+	else if (Wave->IsStreaming())
 	{
 #if !USE_VORBIS_FOR_STREAMING
 		return NAME_OPUS;

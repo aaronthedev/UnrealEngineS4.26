@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -34,24 +34,14 @@ struct FDiskUtilizationTracker
 			TotalIdleTime(0.0)
 		{}
 
-		double GetOverallThroughputBS() const
-		{
-			return (TotalIOTime + TotalIdleTime) > 0.0 ? double(TotalBytesRead) / (TotalIOTime + TotalIdleTime) : 0.0;
-		}
-
 		double GetOverallThroughputMBS() const
 		{
-			return GetOverallThroughputBS() / (1024.0 * 1024.0);
-		}
-
-		double GetReadThrougputBS() const
-		{
-			return TotalIOTime > 0.0 ? double(TotalBytesRead) / TotalIOTime : 0.0;
+			return double(TotalBytesRead) / (TotalIOTime + TotalIdleTime) / (1024 * 1024);
 		}
 
 		double GetReadThrougputMBS() const
 		{
-			return GetReadThrougputBS() / (1024.0 * 1024.0);
+			return double(TotalBytesRead) / (TotalIOTime) / (1024 * 1024);
 		}
 
 		double GetTotalIdleTimeInSeconds() const
@@ -114,20 +104,98 @@ struct FDiskUtilizationTracker
 	{
 	}
 
-	void StartRead(uint64 InReadBytes, uint64 InSeekDistance = 0);
-	void FinishRead();
+	void StartRead(uint64 InReadBytes, uint64 InSeekDistance = 0)
+	{
+		static bool bBreak = false;
+
+		bool bReset = bResetShortTermStats.AtomicSet(false);
+
+		if (bReset)
+		{
+			ShortTermStats.Reset();
+			bBreak = true;
+		}
+
+		// update total reads
+		LongTermStats.TotalReads++;
+		ShortTermStats.TotalReads++;
+
+		// update seek data
+		if (InSeekDistance > 0)
+		{
+			LongTermStats.TotalSeeks++;
+			ShortTermStats.TotalSeeks++;
+
+			LongTermStats.TotalSeekDistance += InSeekDistance;
+			ShortTermStats.TotalSeekDistance += InSeekDistance;
+		}
+
+		{
+			FScopeLock Lock(&CriticalSection);
+
+			if (InFlightReads == 0)
+			{
+				// if this is the first started read from idle start 
+				ReadStartCycle = FPlatformTime::Cycles64();
+
+				// update idle time (if we've been idle)
+				if (IdleStartCycle > 0)
+				{
+					const double IdleTime = double(ReadStartCycle - IdleStartCycle) * FPlatformTime::GetSecondsPerCycle64();
+
+					LongTermStats.TotalIdleTime += IdleTime;
+					ShortTermStats.TotalIdleTime += bReset ? 0 : IdleTime;
+
+					CSV_CUSTOM_STAT(DiskIO, AccumulatedIdleTime, float(IdleTime), ECsvCustomStatOp::Accumulate);
+				}
+			}
+
+			InFlightBytes += InReadBytes;
+			InFlightReads++;
+		}
+	}
+
+	void FinishRead()
+	{
+
+		// if we're the last in flight read update the start idle counter
+		{
+			FScopeLock Lock(&CriticalSection);
+			check(InFlightReads > 0);
+
+			if (--InFlightReads == 0)
+			{
+				IdleStartCycle = FPlatformTime::Cycles64();
+
+				// update our read counters
+				const double IOTime = double(IdleStartCycle - ReadStartCycle) * FPlatformTime::GetSecondsPerCycle64();
+
+				LongTermStats.TotalIOTime += IOTime;
+				ShortTermStats.TotalIOTime += IOTime;
+
+				LongTermStats.TotalBytesRead += InFlightBytes;
+				ShortTermStats.TotalBytesRead += InFlightBytes;
+
+				CSV_CUSTOM_STAT(DiskIO, AccumulatedIOTime, float(IOTime), ECsvCustomStatOp::Accumulate);
+
+				InFlightBytes = 0;
+			}
+
+		}
+		MaybePrint();
+	}
 
 	uint32 GetOutstandingRequests() const
 	{
 		return InFlightReads;
 	}
 
-	const struct UtilizationStats& GetLongTermStats() const
+	struct UtilizationStats& GetLongTermStats()
 	{
 		return LongTermStats;
 	}
 
-	const struct UtilizationStats& GetShortTermStats() const
+	struct UtilizationStats& GetShortTermStats()
 	{
 		return ShortTermStats;
 	}
@@ -137,8 +205,6 @@ struct FDiskUtilizationTracker
 		bResetShortTermStats = true;
 	}
 
-private:
-	static float GetThrottleRateMBS();
 	static constexpr float PrintFrequencySeconds = 0.5f;
 
 	void MaybePrint();

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -21,8 +21,8 @@ public class portmidi : ModuleRules
         else if (Target.Platform == UnrealTargetPlatform.Mac)
         {
             PublicAdditionalLibraries.Add(Target.UEThirdPartySourceDirectory + "portmidi/lib/Mac/libportmidi.a");
-			PublicFrameworks.Add("CoreAudio");
-			PublicFrameworks.Add("CoreMIDI");
+			PublicAdditionalFrameworks.Add( new Framework( "CoreAudio" ));
+			PublicAdditionalFrameworks.Add( new Framework( "CoreMIDI" ));
         }
 	}
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -15,14 +15,18 @@ class ENGINE_API UMaterialExpressionTextureSampleParameter2D : public UMaterialE
 {
 	GENERATED_UCLASS_BODY()
 
-#if WITH_EDITOR
+
 	//~ Begin UMaterialExpression Interface
+#if WITH_EDITOR
 	virtual void GetCaption(TArray<FString>& OutCaptions) const override;
+#endif // WITH_EDITOR
 	//~ End UMaterialExpression Interface
 	
 	//~ Begin UMaterialExpressionTextureSampleParameter Interface
 	virtual bool TextureIsValid(UTexture* InTexture, FString& OutMessage) override;
 	virtual void SetDefaultTexture() override;
 	//~ End UMaterialExpressionTextureSampleParameter Interface
-#endif // WITH_EDITOR
 };
+
+
+

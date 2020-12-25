@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SNiagaraParameterCollection.h"
 #include "NiagaraEditorModule.h"
@@ -12,6 +12,7 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SExpandableArea.h"
 #include "Widgets/Text/SInlineEditableTextBlock.h"
+#include "Widgets/Input/SComboBox.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
@@ -21,6 +22,7 @@
 #include "Framework/Commands/GenericCommands.h"
 #include "Editor/PropertyEditor/Public/PropertyEditorModule.h"
 #include "IDetailsView.h"
+#include "Widgets/Input/SButton.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/Input/SSpinBox.h"
 #include "ScopedTransaction.h"
@@ -374,44 +376,20 @@ EVisibility SNiagaraParameterCollection::GetAddButtonTextVisibility() const
 TSharedRef<SWidget> SNiagaraParameterCollection::GetAddMenuContent()
 {
 	FMenuBuilder AddMenuBuilder(true, nullptr);
-	TSortedMap<FString, TArray<TSharedPtr<FNiagaraTypeDefinition>>> SubmenusToAdd;
-	for (TSharedPtr<FNiagaraTypeDefinition> AvailableType : Collection->GetAvailableTypesSorted())
+	for (TSharedPtr<FNiagaraTypeDefinition> AvailableType : Collection->GetAvailableTypes())
 	{
 		if (AvailableType->GetStruct() != nullptr || AvailableType->GetEnum() != nullptr)
 		{
-			FText SubmenuText = FNiagaraEditorUtilities::GetTypeDefinitionCategory(*AvailableType);
-			if (SubmenuText.IsEmptyOrWhitespace())
-			{
-				AddMenuBuilder.AddMenuEntry
-	            (
-	                AvailableType->GetNameText(),
-	                FText(),
-	                FSlateIcon(),
-					FUIAction(FExecuteAction::CreateSP(Collection.ToSharedRef(), &INiagaraParameterCollectionViewModel::AddParameter, AvailableType))
-	            );
-			}
-			else
-			{
-				SubmenusToAdd.FindOrAdd(SubmenuText.ToString()).Add(AvailableType);
-			}
+			const FText DisplayName = AvailableType->GetEnum() != nullptr ? 
+				FText::FromName(AvailableType->GetEnum()->GetFName()) : AvailableType->GetStruct()->GetDisplayNameText();
+			AddMenuBuilder.AddMenuEntry
+			(
+				DisplayName,
+				FText(),
+				FSlateIcon(),
+				FUIAction(FExecuteAction::CreateSP(Collection.ToSharedRef(), &INiagaraParameterCollectionViewModel::AddParameter, AvailableType))
+			);
 		}
-	}
-	for (const auto& Entry : SubmenusToAdd)
-	{
-		TArray<TSharedPtr<FNiagaraTypeDefinition>> SubmenuEntries = Entry.Value;
-		AddMenuBuilder.AddSubMenu(FText::FromString(Entry.Key), FText(), FNewMenuDelegate::CreateLambda([SubmenuEntries, this](FMenuBuilder& InSubMenuBuilder)
-        {
-			for (TSharedPtr<FNiagaraTypeDefinition> AvailableType : SubmenuEntries)
-			{
-				InSubMenuBuilder.AddMenuEntry
-                (
-                    AvailableType->GetNameText(),
-                    FText(),
-                    FSlateIcon(),
-                    FUIAction(FExecuteAction::CreateSP(Collection.ToSharedRef(), &INiagaraParameterCollectionViewModel::AddParameter, AvailableType))
-                );
-			}
-        }));
 	}
 	return AddMenuBuilder.MakeWidget();
 }
@@ -853,13 +831,8 @@ void SNiagaraParameterCollection::ParameterContentColumnWidthChanged(float Width
 	OnContentColumnWidthChanged.ExecuteIfBound(Width);
 }
 
-void SNiagaraParameterCollection::NotifyPostChange(const FPropertyChangedEvent& PropertyChangedEvent, FProperty* PropertyThatChanged)
+void SNiagaraParameterCollection::NotifyPostChange(const FPropertyChangedEvent& PropertyChangedEvent, UProperty* PropertyThatChanged)
 {
-	if (PropertyChangedEvent.GetNumObjectsBeingEdited() == 0)
-	{
-		return;
-	}
-
 	for (TSharedRef<INiagaraParameterViewModel> Parameter : Collection->GetParameters())
 	{
 		if (Parameter->GetDefaultValueType() == INiagaraParameterViewModel::EDefaultValueType::Object)

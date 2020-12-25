@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EditorAnalytics.h"
 #include "GeneralProjectSettings.h"
@@ -10,16 +10,56 @@
 #include "AnalyticsEventAttribute.h"
 #include "Interfaces/IAnalyticsProvider.h"
 
+
 #define LOCTEXT_NAMESPACE "EditorAnalytics"
 
 
-void FEditorAnalytics::ReportEvent(FString EventName, FString PlatformName, bool bHasCode)
+void FEditorAnalytics::ReportBuildRequirementsFailure(FString EventName, FString PlatformName, bool bHasCode, int32 Requirements)
 {
-	TArray<FAnalyticsEventAttribute> Empty;
-	ReportEvent(EventName, PlatformName, bHasCode, Empty);
+	TArray<FAnalyticsEventAttribute> ParamArray;
+	ParamArray.Add(FAnalyticsEventAttribute(TEXT("Time"), 0.0));
+	if (Requirements & ETargetPlatformReadyStatus::SDKNotFound)
+	{
+		ReportEvent(EventName, PlatformName, bHasCode, EAnalyticsErrorCodes::SDKNotFound, ParamArray);
+	}
+	if (Requirements & ETargetPlatformReadyStatus::LicenseNotAccepted)
+	{
+		ReportEvent(EventName, PlatformName, bHasCode, EAnalyticsErrorCodes::LicenseNotAccepted, ParamArray);
+	}
+	if (Requirements & ETargetPlatformReadyStatus::ProvisionNotFound)
+	{
+		ReportEvent(EventName, PlatformName, bHasCode, EAnalyticsErrorCodes::ProvisionNotFound, ParamArray);
+	}
+	if (Requirements & ETargetPlatformReadyStatus::SigningKeyNotFound)
+	{
+		ReportEvent(EventName, PlatformName, bHasCode, EAnalyticsErrorCodes::CertificateNotFound, ParamArray);
+	}
+	if (Requirements & ETargetPlatformReadyStatus::CodeUnsupported)
+	{
+		ReportEvent(EventName, PlatformName, bHasCode, EAnalyticsErrorCodes::CodeUnsupported, ParamArray);
+	}
+	if (Requirements & ETargetPlatformReadyStatus::PluginsUnsupported)
+	{
+		ReportEvent(EventName, PlatformName, bHasCode, EAnalyticsErrorCodes::PluginsUnsupported, ParamArray);
+	}
 }
 
-void FEditorAnalytics::ReportEvent(FString EventName, FString PlatformName, bool bHasCode, const TArray<FAnalyticsEventAttribute>& ExtraParams)
+void FEditorAnalytics::ReportEvent(FString EventName, FString PlatformName, bool bHasCode)
+{
+	if( FEngineAnalytics::IsAvailable() )
+	{
+		const UGeneralProjectSettings& ProjectSettings = *GetDefault<UGeneralProjectSettings>();
+		TArray<FAnalyticsEventAttribute> ParamArray;
+		ParamArray.Add(FAnalyticsEventAttribute(TEXT("ProjectID"), ProjectSettings.ProjectID.ToString()));
+		ParamArray.Add(FAnalyticsEventAttribute(TEXT("Platform"), PlatformName));
+		ParamArray.Add(FAnalyticsEventAttribute(TEXT("ProjectType"), bHasCode ? TEXT("C++ Code") : TEXT("Content Only")));
+		ParamArray.Add(FAnalyticsEventAttribute(TEXT("VanillaEditor"), (GEngine && GEngine->IsVanillaProduct()) ? TEXT("Yes") : TEXT("No")));
+
+		FEngineAnalytics::GetProvider().RecordEvent( EventName, ParamArray );
+	}
+}
+
+void FEditorAnalytics::ReportEvent(FString EventName, FString PlatformName, bool bHasCode, TArray<FAnalyticsEventAttribute>& ExtraParams)
 {
 	if( FEngineAnalytics::IsAvailable() )
 	{
@@ -157,36 +197,6 @@ FString FEditorAnalytics::TranslateErrorCode(int32 ErrorCode)
 bool FEditorAnalytics::ShouldElevateMessageThroughDialog(const int32 ErrorCode)
 {
 	return (EAnalyticsErrorCodes::Type)ErrorCode == EAnalyticsErrorCodes::MissingExecutable;
-}
-
-void FEditorAnalytics::ReportBuildRequirementsFailure(FString EventName, FString PlatformName, bool bHasCode, int32 Requirements)
-{
-	TArray<FAnalyticsEventAttribute> ParamArray;
-	ParamArray.Add(FAnalyticsEventAttribute(TEXT("Time"), 0.0));
-	if (Requirements & ETargetPlatformReadyStatus::SDKNotFound)
-	{
-		ReportEvent(EventName, PlatformName, bHasCode, EAnalyticsErrorCodes::SDKNotFound, ParamArray);
-	}
-	if (Requirements & ETargetPlatformReadyStatus::LicenseNotAccepted)
-	{
-		ReportEvent(EventName, PlatformName, bHasCode, EAnalyticsErrorCodes::LicenseNotAccepted, ParamArray);
-	}
-	if (Requirements & ETargetPlatformReadyStatus::ProvisionNotFound)
-	{
-		ReportEvent(EventName, PlatformName, bHasCode, EAnalyticsErrorCodes::ProvisionNotFound, ParamArray);
-	}
-	if (Requirements & ETargetPlatformReadyStatus::SigningKeyNotFound)
-	{
-		ReportEvent(EventName, PlatformName, bHasCode, EAnalyticsErrorCodes::CertificateNotFound, ParamArray);
-	}
-	if (Requirements & ETargetPlatformReadyStatus::CodeUnsupported)
-	{
-		ReportEvent(EventName, PlatformName, bHasCode, EAnalyticsErrorCodes::CodeUnsupported, ParamArray);
-	}
-	if (Requirements & ETargetPlatformReadyStatus::PluginsUnsupported)
-	{
-		ReportEvent(EventName, PlatformName, bHasCode, EAnalyticsErrorCodes::PluginsUnsupported, ParamArray);
-	}
 }
 
 #undef LOCTEXT_NAMESPACE

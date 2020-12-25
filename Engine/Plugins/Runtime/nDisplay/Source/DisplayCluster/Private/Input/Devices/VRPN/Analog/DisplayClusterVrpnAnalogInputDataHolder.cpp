@@ -1,15 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Input/Devices/VRPN/Analog/DisplayClusterVrpnAnalogInputDataHolder.h"
-
-#include "DisplayClusterConfigurationTypes.h"
-
-#include "Misc/DisplayClusterTypesConverter.h"
-#include "Misc/DisplayClusterLog.h"
+#include "DisplayClusterUtils/DisplayClusterTypesConverter.h"
+#include "DisplayClusterLog.h"
 
 
-FDisplayClusterVrpnAnalogInputDataHolder::FDisplayClusterVrpnAnalogInputDataHolder(const FString& DeviceId, const UDisplayClusterConfigurationInputDeviceAnalog* CfgDevice)
-	: FDisplayClusterInputDeviceBase<EDisplayClusterInputDeviceType::VrpnAnalog>(DeviceId, CfgDevice)
+FDisplayClusterVrpnAnalogInputDataHolder::FDisplayClusterVrpnAnalogInputDataHolder(const FDisplayClusterConfigInput& config) :
+	FDisplayClusterInputDeviceBase<EDisplayClusterInputDeviceType::VrpnAnalog>(config)
 {
 }
 
@@ -32,33 +29,33 @@ bool FDisplayClusterVrpnAnalogInputDataHolder::Initialize()
 //////////////////////////////////////////////////////////////////////////////////////////////
 FString FDisplayClusterVrpnAnalogInputDataHolder::SerializeToString() const
 {
-	FString Result;
-	Result.Reserve(128);
+	FString result;
+	result.Reserve(128);
 
-	for (auto it : DeviceData) 
+	for (auto it = DeviceData.CreateConstIterator(); it; ++it)
 	{
-		Result += FString::Printf(TEXT("%d%s%s%s"), it.Key, SerializationDelimiter, *DisplayClusterTypesConverter::template ToHexString(it.Value.AxisValue), SerializationDelimiter);
+		result += FString::Printf(TEXT("%d%s%s%s"), it->Key, SerializationDelimiter, *FDisplayClusterTypesConverter::template ToHexString(it->Value.axisValue), SerializationDelimiter);
 	}
 
-	return Result;
+	return result;
 }
 
-bool FDisplayClusterVrpnAnalogInputDataHolder::DeserializeFromString(const FString& Data)
+bool FDisplayClusterVrpnAnalogInputDataHolder::DeserializeFromString(const FString& data)
 {
-	TArray<FString> Parsed;
-	Data.ParseIntoArray(Parsed, SerializationDelimiter);
+	TArray<FString> parsed;
+	data.ParseIntoArray(parsed, SerializationDelimiter);
 
-	if (Parsed.Num() % SerializationItems)
+	if (parsed.Num() % SerializationItems)
 	{
-		UE_LOG(LogDisplayClusterInputVRPN, Error, TEXT("Wrong items amount after deserialization [%s]"), *Data);
+		UE_LOG(LogDisplayClusterInputVRPN, Error, TEXT("Wrong items amount after deserialization [%s]"), *data);
 		return false;
 	}
 
-	for (int i = 0; i < Parsed.Num(); i += SerializationItems)
+	for (int i = 0; i < parsed.Num(); i += SerializationItems)
 	{
-		const int   Ch  = FCString::Atoi(*Parsed[i]);
-		const float Val = DisplayClusterTypesConverter::template FromHexString<float>(*Parsed[i + 1]); // SerializationItems == 2 so [i + 1] is safe
-		DeviceData.Add(Ch, FDisplayClusterVrpnAnalogChannelData{ Val });
+		const int   ch  = FCString::Atoi(*parsed[i]);
+		const float val = FDisplayClusterTypesConverter::template FromHexString<float>(*parsed[i + 1]);
+		DeviceData.Add(ch, FDisplayClusterVrpnAnalogChannelData{ val });
 	}
 
 	return true;

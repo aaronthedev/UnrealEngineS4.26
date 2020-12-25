@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EditModes/TwoBoneIKEditMode.h"
 #include "SceneManagement.h"
@@ -200,8 +200,8 @@ void FTwoBoneIKEditMode::OnExternalNodePropertyChange(FPropertyChangedEvent& InP
 	// this code doesn't really work great unless you have very specific order of operation is happening
 	// 
 /*
-	FProperty* Property = InPropertyEvent.Property;
-	FProperty* InnerProperty = InPropertyEvent.MemberProperty;
+	UProperty* Property = InPropertyEvent.Property;
+	UProperty* InnerProperty = InPropertyEvent.MemberProperty;
 	
 	if(InnerProperty && InnerProperty->GetFName() == GET_MEMBER_NAME_CHECKED(UAnimGraphNode_TwoBoneIK, Node))
 	{

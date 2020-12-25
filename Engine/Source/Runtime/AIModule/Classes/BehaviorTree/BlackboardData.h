@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -88,7 +88,6 @@ public:
 
 	const TArray<FBlackboardEntry>& GetKeys() const { return Keys; }
 
-	virtual void PostInitProperties() override;
 	virtual void PostLoad() override;
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
@@ -129,12 +128,6 @@ public:
 
 		return CreatedKeyType;
 	}
-
-#if WITH_EDITOR
-	/** A delegate called on PostEditChangeProperty. Can be used in editor to react to asset changes. */
-	DECLARE_MULTICAST_DELEGATE_OneParam(FBlackboardDataChanged, UBlackboardData* /*Asset*/);
-	static FBlackboardDataChanged OnBlackboardDataChanged;
-#endif
 
 	/** delegate called for every loaded blackboard asset
 	 *  meant for adding game specific persistent keys */

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Slate/SGameLayerManager.h"
 #include "Widgets/SOverlay.h"
@@ -11,31 +11,15 @@
 #include "Engine/GameEngine.h"
 #include "Engine/UserInterfaceSettings.h"
 #include "GeneralProjectSettings.h"
-#include "Input/HittestGrid.h"
 #include "Widgets/LayerManager/STooltipPresenter.h"
 #include "Widgets/Layout/SDPIScaler.h"
 #include "Widgets/Layout/SPopup.h"
 #include "Widgets/Layout/SWindowTitleBarArea.h"
-#include "Slate/DebugCanvas.h"
+#include "DebugCanvas.h"
 #include "Types/InvisibleToWidgetReflectorMetaData.h"
-#include "Framework/Application/SlateApplication.h"
-
 
 /* SGameLayerManager interface
  *****************************************************************************/
-static void HandlePerUserHitTestingToggled(IConsoleVariable* CVar)
-{
-	FSlateApplication::Get().InvalidateAllWidgets(false);
-}
-
-static int32 bEnablePerUserHitTesting = true;
-
-static FAutoConsoleVariableRef CVarEnablePerUserHitTesting(
-	TEXT("Slate.AllowPerUserHitTesting"),
-	bEnablePerUserHitTesting,
-	TEXT("Toggles between widgets mapping to a user id and requring a matching user id from an input event or allowing all users to interact with widget"),
-	FConsoleVariableDelegate::CreateStatic(&HandlePerUserHitTestingToggled)
-);
 
 SGameLayerManager::SGameLayerManager()
 :	DefaultWindowTitleBarHeight(64.0f)
@@ -48,12 +32,6 @@ SGameLayerManager::SGameLayerManager()
 void SGameLayerManager::Construct(const SGameLayerManager::FArguments& InArgs)
 {
 	SceneViewport = InArgs._SceneViewport;
-
-	// In PIE we should default to per user hit testing being off because developers will need the mouse and keyboard to work for all players
-	if (GIsEditor)
-	{
-		bEnablePerUserHitTesting = false;
-	}
 
 	TSharedRef<SDPIScaler> DPIScaler =
 		SNew(SDPIScaler)
@@ -379,41 +357,6 @@ void SGameLayerManager::UpdateLayout()
 	}
 }
 
-class SPlayerLayer : public SOverlay
-{
-	SLATE_BEGIN_ARGS(SPlayerLayer)
-	{
-		_Visibility = EVisibility::SelfHitTestInvisible;
-	}
-	SLATE_END_ARGS()
-
-public:
-	void Construct(const FArguments& InArgs, ULocalPlayer* InOwningPlayer)
-	{
-		OwningPlayer = InOwningPlayer;
-
-		SOverlay::Construct(SOverlay::FArguments());
-	}
-
-	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override
-	{
-		const int32 UserIndex = bEnablePerUserHitTesting && OwningPlayer.IsValid() ? FSlateApplication::Get().GetUserIndexForController(OwningPlayer->GetControllerId()) : INDEX_NONE;
-
-		// Set user index for all widgets beneath this layer to the index of the player that owns this layer
-		const int32 OldUserIndex = Args.GetHittestGrid().GetUserIndex();
-		Args.GetHittestGrid().SetUserIndex(UserIndex);
-
-		const int32 OutgoingLayer = SOverlay::OnPaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
-
-		// Restore whatever index was set before
-		Args.GetHittestGrid().SetUserIndex(OldUserIndex);
-
-		return OutgoingLayer;
-	}
-private:
-	TWeakObjectPtr<ULocalPlayer> OwningPlayer;
-};
-
 TSharedPtr<SGameLayerManager::FPlayerLayer> SGameLayerManager::FindOrCreatePlayerLayer(ULocalPlayer* LocalPlayer)
 {
 	TSharedPtr<FPlayerLayer>* PlayerLayerPtr = PlayerLayers.Find(LocalPlayer);
@@ -432,7 +375,7 @@ TSharedPtr<SGameLayerManager::FPlayerLayer> SGameLayerManager::FindOrCreatePlaye
 		TSharedPtr<FPlayerLayer> NewLayer = MakeShareable(new FPlayerLayer());
 
 		// Create a new overlay widget to house any widgets we want to display for the player.
-		NewLayer->Widget = SNew(SPlayerLayer, LocalPlayer)
+		NewLayer->Widget = SNew(SOverlay)
 			.AddMetaData(StopNavigation)
 			.Clipping(EWidgetClipping::ClipToBoundsAlways);
 		

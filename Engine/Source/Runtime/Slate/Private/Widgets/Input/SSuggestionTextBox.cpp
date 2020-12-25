@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/Input/SSuggestionTextBox.h"
 #include "Layout/WidgetPath.h"
@@ -48,7 +48,6 @@ void SSuggestionTextBox::Construct( const FArguments& InArgs )
 					.SelectAllTextWhenFocused(InArgs._SelectAllTextWhenFocused.Get())
 					.Style(InArgs._TextStyle)
 					.Text(InArgs._Text)
-					.OnKeyDownHandler(this, &SSuggestionTextBox::OnKeyDown)
 					.OnTextChanged(this, &SSuggestionTextBox::HandleTextBoxTextChanged)
 					.OnTextCommitted(this, &SSuggestionTextBox::HandleTextBoxTextCommitted)
 			]

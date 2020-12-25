@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimNodes/AnimNode_TwoWayBlend.h"
 #include "Animation/AnimInstanceProxy.h"
@@ -100,8 +100,6 @@ void FAnimNode_TwoWayBlend::Update_AnyThread(const FAnimationUpdateContext& Cont
 		// Take all of A
 		A.Update(Context);
 	}
-
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Alpha"), InternalBlendAlpha);
 }
 
 void FAnimNode_TwoWayBlend::Evaluate_AnyThread(FPoseContext& Output)
@@ -117,10 +115,7 @@ void FAnimNode_TwoWayBlend::Evaluate_AnyThread(FPoseContext& Output)
 			A.Evaluate(Pose1);
 			B.Evaluate(Pose2);
 
-			FAnimationPoseData BlendedAnimationPoseData(Output);
-			const FAnimationPoseData AnimationPoseOneData(Pose1);
-			const FAnimationPoseData AnimationPoseTwoData(Pose2);
-			FAnimationRuntime::BlendTwoPosesTogether(AnimationPoseOneData, AnimationPoseTwoData, (1.0f - InternalBlendAlpha), BlendedAnimationPoseData);
+			FAnimationRuntime::BlendTwoPosesTogether(Pose1.Pose, Pose2.Pose, Pose1.Curve, Pose2.Curve, (1.0f - InternalBlendAlpha), Output.Pose, Output.Curve);
 		}
 		else
 		{

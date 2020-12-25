@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	GenericPlatformMisc.cpp: Generic implementations of misc platform functions
@@ -41,6 +41,9 @@
 
 #include "FramePro/FrameProProfiler.h"
 #include "BuildSettings.h"
+
+// define for glibc 2.12.2 and lower (which is shipped with CentOS 6.x and which we target by default)
+#define __secure_getenv getenv
 
 extern bool GInitializedSDL;
 
@@ -234,14 +237,6 @@ void FUnixPlatformMisc::PlatformInit()
 	{
 		// If "-norandomguids" specified, don't use SYS_getrandom syscall
 		SysGetRandomSupported = 0;
-	}
-
-	// This symbol is used for debugging but with LTO enabled it gets stripped as nothing is using it
-	// Lets use it here just to log if its valid under VeryVerbose settings
-	extern uint8** GNameBlocksDebug;
-	if (GNameBlocksDebug)
-	{
-		UE_LOG(LogInit, VeryVerbose, TEXT("GNameBlocksDebug Valid - %i"), !!GNameBlocksDebug);
 	}
 }
 
@@ -1083,28 +1078,4 @@ IPlatformChunkInstall* FUnixPlatformMisc::GetPlatformChunkInstall()
 	}
 
 	return ChunkInstall;
-}
-
-bool FUnixPlatformMisc::SetStoredValues(const FString& InStoreId, const FString& InSectionName, const TMap<FString, FString>& InKeyValues)
-{
-	check(!InStoreId.IsEmpty());
-	check(!InSectionName.IsEmpty());
-
-	const FString ConfigPath = FString(FPlatformProcess::ApplicationSettingsDir()) / InStoreId / FString(TEXT("KeyValueStore.ini"));
-
-	FConfigFile ConfigFile;
-	ConfigFile.Read(ConfigPath);
-
-	for (auto const& InKeyValue : InKeyValues)
-	{
-		check(!InKeyValue.Key.IsEmpty());
-
-		FConfigSection& Section = ConfigFile.FindOrAdd(InSectionName);
-
-		FConfigValue& KeyValue = Section.FindOrAdd(*InKeyValue.Key);
-		KeyValue = FConfigValue(InKeyValue.Value);
-	}
-
-	ConfigFile.Dirty = true;
-	return ConfigFile.Write(ConfigPath);
 }

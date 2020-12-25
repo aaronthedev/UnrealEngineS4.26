@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	WeakObjectPtr.h: Weak pointer to UObject
@@ -8,7 +8,6 @@
 
 #include "CoreMinimal.h"
 #include "UObject/UObjectArray.h"
-#include "UObject/FastReferenceCollectorOptions.h"
 
 /**
  * FWeakObjectPtr is a weak pointer to a UObject. 
@@ -21,10 +20,6 @@
 struct FWeakObjectPtr
 {
 public:
-
-	template <typename ReferenceProcessorType, typename CollectorType, typename ArrayPoolType, EFastReferenceCollectorOptions Options>
-	friend class TFastReferenceCollector;
-	friend struct FFieldPath;
 
 	/** Null constructor **/
 	FORCEINLINE FWeakObjectPtr()

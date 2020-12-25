@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/UserInterfaceSettings.h"
 
@@ -143,8 +143,6 @@ float UUserInterfaceSettings::CalculateScale(FIntPoint Size, bool& bError) const
 		case EUIScalingRule::Vertical:
 			EvalPoint = Size.Y;
 			break;
-		case EUIScalingRule::ScaleToFit:
-			return DesignScreenSize.X > 0 && DesignScreenSize.Y > 0 ? FMath::Min((float)(Size.X) / DesignScreenSize.X, (float)(Size.Y) / DesignScreenSize.Y) : 1.f;
 		}
 
 		const FRichCurve* DPICurve = UIScaleCurve.GetRichCurveConst();

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Tracks/MovieSceneEulerTransformTrack.h"
 #include "MovieSceneCommonHelpers.h"
@@ -28,5 +28,10 @@ bool UMovieSceneEulerTransformTrack::SupportsType(TSubclassOf<UMovieSceneSection
 UMovieSceneSection* UMovieSceneEulerTransformTrack::CreateNewSection()
 {
 	return NewObject<UMovieScene3DTransformSection>(this, NAME_None, RF_Transactional);
+}
+
+FMovieSceneEvalTemplatePtr UMovieSceneEulerTransformTrack::CreateTemplateForSection(const UMovieSceneSection& InSection) const
+{
+	return FMovieSceneEulerTransformPropertySectionTemplate(*CastChecked<UMovieScene3DTransformSection>(&InSection), *this);
 }
 

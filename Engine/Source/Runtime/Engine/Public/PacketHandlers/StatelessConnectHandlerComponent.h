@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -36,7 +36,7 @@ class UNetDriver;
  *
  * Partially based on the Datagram Transport Layer Security protocol.
  */
-class ENGINE_API StatelessConnectHandlerComponent : public HandlerComponent
+class StatelessConnectHandlerComponent : public HandlerComponent
 {
 public:
 	/**
@@ -73,7 +73,7 @@ private:
 	 * @param InTimestamp		The timestamp value to send
 	 * @param InCookie			The cookie value to send
 	 */
-	void SendChallengeResponse(uint8 InSecretId, double InTimestamp, uint8 InCookie[COOKIE_BYTE_SIZE]);
+	void SendChallengeResponse(uint8 InSecretId, float InTimestamp, uint8 InCookie[COOKIE_BYTE_SIZE]);
 
 	/**
 	 * Constructs and sends the server ack to a successful challenge response, from the server to the client.
@@ -192,7 +192,11 @@ protected:
 
 	virtual void Outgoing(FBitWriter& Packet, FOutPacketTraits& Traits) override;
 
-	virtual void IncomingConnectionless(FIncomingPacketRef PacketRef) override;
+	virtual void IncomingConnectionless(const TSharedPtr<const FInternetAddr>& Address, FBitReader& Packet) override;
+
+	virtual void OutgoingConnectionless(const TSharedPtr<const FInternetAddr>& Address, FBitWriter& Packet, FOutPacketTraits& Traits) override
+	{
+	}
 
 	virtual bool CanReadUnaligned() const override
 	{
@@ -215,7 +219,7 @@ private:
 	 * @param OutOrigCookie			If this is a restart handshake challenge response, this is the original handshake's cookie
 	 * @return				Whether or not the handshake packet was parsed successfully
 	 */
-	bool ParseHandshakePacket(FBitReader& Packet, bool& bOutRestartHandshake, uint8& OutSecretId, double& OutTimestamp,
+	bool ParseHandshakePacket(FBitReader& Packet, bool& bOutRestartHandshake, uint8& OutSecretId, float& OutTimestamp,
 								uint8 (&OutCookie)[COOKIE_BYTE_SIZE], uint8 (&OutOrigCookie)[COOKIE_BYTE_SIZE]);
 
 	/**
@@ -226,7 +230,7 @@ private:
 	 * @param TimeStamp			The serverside timestamp
 	 * @param OutCookie			Outputs the generated cookie value.
 	 */
-	void GenerateCookie(TSharedPtr<const FInternetAddr> ClientAddress, uint8 SecretId, double Timestamp, uint8 (&OutCookie)[COOKIE_BYTE_SIZE]);
+	void GenerateCookie(TSharedPtr<const FInternetAddr> ClientAddress, uint8 SecretId, float Timestamp, uint8 (&OutCookie)[COOKIE_BYTE_SIZE]);
 
 	/**
 	 * Generates a new HandshakeSecret value
@@ -256,7 +260,7 @@ private:
 	uint8 ActiveSecret;
 
 	/** The time of the last secret value update */
-	double LastSecretUpdateTimestamp;
+	float LastSecretUpdateTimestamp;
 
 	/** The last address to successfully complete the handshake challenge */
 	TSharedPtr<const FInternetAddr> LastChallengeSuccessAddress;
@@ -277,14 +281,11 @@ private:
 	/** The local (client) time at which the challenge was last updated */
 	double LastChallengeTimestamp;
 
-	/** The local (client) time at which the last restart handshake request was received */
-	double LastRestartPacketTimestamp;
-
 	/** The SecretId value of the last challenge response sent */
 	uint8 LastSecretId;
 
 	/** The Timestamp value of the last challenge response sent */
-	double LastTimestamp;
+	float LastTimestamp;
 
 	/** The Cookie value of the last challenge response sent. Will differ from AuthorisedCookie, if a handshake retry is triggered. */
 	uint8 LastCookie[COOKIE_BYTE_SIZE];

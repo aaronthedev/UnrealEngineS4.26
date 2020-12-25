@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,10 +8,6 @@
 #include "FbxFactory.generated.h"
 
 class IImportSettingsParser;
-
-namespace UnFbx {
-	class FFbxImporter;
-}
 
 UCLASS(hidecategories=Object)
 class UNREALED_API UFbxFactory : public UFactory
@@ -30,17 +26,16 @@ class UNREALED_API UFbxFactory : public UFactory
 
 
 	//~ Begin UObject Interface
+	virtual void CleanUp() override;
 	virtual bool ConfigureProperties() override;
 	virtual void PostInitProperties() override;
 	//~ End UObject Interface
 
 	//~ Begin UFactory Interface
-	virtual void CleanUp() override;
 	virtual bool DoesSupportClass(UClass * Class) override;
 	virtual UClass* ResolveSupportedClass() override;
-	virtual UObject* FactoryCreateFile(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, const FString& Filename, const TCHAR* Parms, FFeedbackContext* Warn, bool& bOutOperationCanceled) override;
+	virtual UObject* FactoryCreateFile(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, const FString& Filename, const TCHAR* Parms, FFeedbackContext* Warn, bool& bOutOperationCanceled);
 	virtual bool FactoryCanImport(const FString& Filename) override;
-	virtual bool CanImportBeCanceled() const override;
 	virtual IImportSettingsParser* GetImportSettingsParser() override;
 
 	//~ End UFactory Interface
@@ -56,27 +51,12 @@ class UNREALED_API UFbxFactory : public UFactory
 
 	void SetDetectImportTypeOnImport(bool bDetectState) { bDetectImportTypeOnImport = bDetectState; }
 
-private:
-
-	/**
-	 * Delete the newly created objects after an import cancelation.
-	 */
-	void CancelObjectCreation(UnFbx::FFbxImporter* FbxImporter) const;
-
 protected:
 	// @todo document
-	UObject* RecursiveImportNode(UnFbx::FFbxImporter* FFbxImporter, void* Node, UObject* InParent, FName InName, EObjectFlags Flags, struct FScopedSlowTask& SlowTask, TArray<UObject*>& OutNewAssets);
+	UObject* RecursiveImportNode(void* FFbxImporter, void* Node, UObject* InParent, FName InName, EObjectFlags Flags, int32& Index, int32 Total, TArray<UObject*>& OutNewAssets);
 
 	// @todo document
-	UObject* ImportANode(UnFbx::FFbxImporter* FbxImporter, TArray<void*> VoidNodes, UObject* InParent, FName InName, EObjectFlags Flags, struct FScopedSlowTask& SlowTask, UObject* InMesh = NULL, int LODIndex = 0);
-
-	/**
-	 * Used to display special task progression text if needs be (like import being cancelled).
-	 * 
-	 * @param TaskText	The current import task text we want to display.
-	 * @return			The task text after taking into account the factory's current state.
-	 */
-	FText GetImportTaskText(const FText& TaskText) const;
+	UObject* ImportANode(void* VoidFbxImporter, TArray<void*> VoidNodes, UObject* InParent, FName InName, EObjectFlags Flags, int32& NodeIndex, int32 Total = 0, UObject* InMesh = NULL, int LODIndex = 0);
 
 	bool bShowOption;
 	bool bDetectImportTypeOnImport;

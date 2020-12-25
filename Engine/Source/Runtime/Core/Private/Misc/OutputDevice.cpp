@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Misc/OutputDevice.h"
 #include "Containers/UnrealString.h"
@@ -9,6 +9,16 @@
 #include "Misc/VarargsHelper.h"
 
 DEFINE_LOG_CATEGORY(LogOutputDevice);
+
+const TCHAR* FOutputDevice::VerbosityToString(ELogVerbosity::Type Verbosity)
+{
+	return FOutputDeviceHelper::VerbosityToString(Verbosity);
+}
+
+FString FOutputDevice::FormatLogLine( ELogVerbosity::Type Verbosity, const class FName& Category, const TCHAR* Message /*= nullptr*/, ELogTimes::Type LogTime /*= ELogTimes::None*/, const double Time /*= -1.0*/ )
+{
+	return FOutputDeviceHelper::FormatLogLine(Verbosity, Category, Message, LogTime, Time);
+}
 
 void FOutputDevice::Log( ELogVerbosity::Type Verbosity, const TCHAR* Str )
 {

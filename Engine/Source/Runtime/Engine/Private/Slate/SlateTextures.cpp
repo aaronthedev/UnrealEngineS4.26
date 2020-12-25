@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Slate/SlateTextures.h"
 #include "RenderUtils.h"
 #include "ClearQuad.h"
-#include "ProfilingDebugging/LoadTimeTracker.h"
 
 FSlateTexture2DRHIRef::FSlateTexture2DRHIRef( FTexture2DRHIRef InRef, uint32 InWidth, uint32 InHeight )
 	: TSlateTexture( InRef )
@@ -16,7 +15,7 @@ FSlateTexture2DRHIRef::FSlateTexture2DRHIRef( FTexture2DRHIRef InRef, uint32 InW
 
 }
 
-FSlateTexture2DRHIRef::FSlateTexture2DRHIRef( uint32 InWidth, uint32 InHeight, EPixelFormat InPixelFormat, TSharedPtr<FSlateTextureData, ESPMode::ThreadSafe> InTextureData, ETextureCreateFlags InTexCreateFlags, bool bInCreateEmptyTexture)
+FSlateTexture2DRHIRef::FSlateTexture2DRHIRef( uint32 InWidth, uint32 InHeight, EPixelFormat InPixelFormat, TSharedPtr<FSlateTextureData, ESPMode::ThreadSafe> InTextureData, uint32 InTexCreateFlags, bool bInCreateEmptyTexture)
 	: Width( InWidth )
 	, Height( InHeight )
 	, TexCreateFlags( InTexCreateFlags )
@@ -40,8 +39,6 @@ void FSlateTexture2DRHIRef::Cleanup()
 
 void FSlateTexture2DRHIRef::InitDynamicRHI()
 {
-	SCOPED_LOADTIMER(FSlateTexture2DRHIRef_InitDynamicRHI);
-
 	check( IsInRenderingThread() );
 
 	if( Width > 0 && Height > 0 )
@@ -125,7 +122,7 @@ void FSlateTexture2DRHIRef::SetTextureData( FSlateTextureDataPtr NewTextureData 
 	TextureData = NewTextureData;
 }
 
-void FSlateTexture2DRHIRef::SetTextureData( FSlateTextureDataPtr NewTextureData, EPixelFormat InPixelFormat, ETextureCreateFlags InTexCreateFlags )
+void FSlateTexture2DRHIRef::SetTextureData( FSlateTextureDataPtr NewTextureData, EPixelFormat InPixelFormat, uint32 InTexCreateFlags )
 {
 	check( IsInRenderingThread() );
 
@@ -308,8 +305,6 @@ void FSlateTextureRenderTarget2DResource::ClampSize(int32 MaxSizeX,int32 MaxSize
 
 void FSlateTextureRenderTarget2DResource::InitDynamicRHI()
 {
-	SCOPED_LOADTIMER(FSlateTextureRenderTarget2DResource_InitDynamicRHI);
-
 	check(IsInRenderingThread());
 
 	if( TargetSizeX > 0 && TargetSizeY > 0 )
@@ -321,7 +316,7 @@ void FSlateTextureRenderTarget2DResource::InitDynamicRHI()
 			TargetSizeY, 
 			Format, 
 			1,
-			/*TexCreateFlags=*/TexCreate_None,
+			/*TexCreateFlags=*/0,
 			TexCreate_RenderTargetable,
 			/*bNeedsTwoCopies=*/false,
 			CreateInfo,
@@ -339,7 +334,7 @@ void FSlateTextureRenderTarget2DResource::InitDynamicRHI()
 		AddressY == TA_Wrap ? AM_Wrap : (AddressY == TA_Clamp ? AM_Clamp : AM_Mirror),
 		AM_Wrap
 	);
-	SamplerStateRHI = GetOrCreateSamplerState( SamplerStateInitializer );
+	SamplerStateRHI = RHICreateSamplerState( SamplerStateInitializer );
 }
 
 void FSlateTextureRenderTarget2DResource::ReleaseDynamicRHI()

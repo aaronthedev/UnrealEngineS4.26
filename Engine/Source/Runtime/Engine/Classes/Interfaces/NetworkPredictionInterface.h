@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 //=============================================================================
 // INetworkPredictionInterface is an interface for objects that want to perform
@@ -87,7 +87,6 @@ public:
 	, ServerTimeLastForcedUpdate(0.f)
 	, bTriggeringForcedUpdates(false)
 	, bForcedUpdateDurationExceeded(false)
-	, bLastRequestNeedsForcedUpdates(false)
 	{
 	}
 
@@ -114,12 +113,9 @@ public:
 	float ServerTimeLastForcedUpdate;
 
 	/** Set to true while requirements for ForcePositionUpdate interval are met, and set back to false after updates are received again. */
-	uint8 bTriggeringForcedUpdates : 1;
+	bool bTriggeringForcedUpdates;
 
 	/** Set to true while bTriggeringForcedUpdates is true and after update duration has been exceeded (when server will stop forcing updates). */
-	uint8 bForcedUpdateDurationExceeded : 1;
-
-	/** Set to true if last received move request  is bad and needs correction */
-	uint8 bLastRequestNeedsForcedUpdates : 1;
+	bool bForcedUpdateDurationExceeded;
 };
 

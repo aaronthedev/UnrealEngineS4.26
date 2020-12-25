@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ActorEditorUtils.h"
 #include "Components/ActorComponent.h"
@@ -53,7 +53,7 @@ namespace FActorEditorUtils
 				if (Component->CreationMethod == EComponentCreationMethod::Native)
 				{
 					// Make sure it's an exposed native component
-					if (FComponentEditorUtils::GetPropertyForEditableNativeComponent(Component))
+					if (FComponentEditorUtils::CanEditNativeComponent(Component))
 					{
 						OutEditableComponents.Add(Component);
 					}

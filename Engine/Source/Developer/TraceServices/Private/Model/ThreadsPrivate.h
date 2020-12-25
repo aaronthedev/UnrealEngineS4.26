@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -29,17 +29,18 @@ private:
 	struct FThreadInfoInternal
 	{
 		uint32 Id = 0;
-		const TCHAR* Name = TEXT("UnnamedThread");
+		const TCHAR* Name = nullptr;
 		uint32 GroupSortOrder = ~0u;
-		int32 PrioritySortOrder = INT_MAX;
+		uint32 PrioritySortOrder = ~0u;
 		uint32 FallbackSortOrder = ~0u;
 		const TCHAR* GroupName = nullptr;
+		bool IsGameThread = false;
 
 		bool operator<(const FThreadInfoInternal& Other) const;
 	};
 
 	void SortThreads();
-	static int32 GetPrioritySortOrder(EThreadPriority ThreadPriority);
+	static uint32 GetPrioritySortOrder(EThreadPriority ThreadPriority);
 	static uint32 GetGroupSortOrder(const TCHAR* GroupName);
 
 	IAnalysisSession& Session;

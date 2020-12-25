@@ -821,7 +821,6 @@ class test_NamedTemporaryFile(TC):
         old_fdopen = os.fdopen
         closed = []
         def close(fd):
-            old_close(fd)
             closed.append(fd)
         def fdopen(*args):
             raise ValueError()

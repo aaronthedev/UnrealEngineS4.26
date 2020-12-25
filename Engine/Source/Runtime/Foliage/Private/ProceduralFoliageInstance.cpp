@@ -1,30 +1,30 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ProceduralFoliageInstance.h"
 #include "FoliageType_InstancedStaticMesh.h"
 
 FProceduralFoliageInstance::FProceduralFoliageInstance()
-: Rotation(ForceInit)
-, Location(ForceInit)
-, Age(0)
+: Location(ForceInit)
+, Rotation(ForceInit)
 , Normal(ForceInit)
+, Age(0)
 , Scale(1)
 , Type(nullptr)
-, BaseComponent(nullptr)
 , bBlocker(false)
+, BaseComponent(nullptr)
 , bAlive(true)
 {
 }
 
 FProceduralFoliageInstance::FProceduralFoliageInstance(const FProceduralFoliageInstance& Other)
-: Rotation(Other.Rotation)
-, Location(Other.Location)
-, Age(Other.Age)
+: Location(Other.Location)
+, Rotation(Other.Rotation)
 , Normal(Other.Normal)
+, Age(Other.Age)
 , Scale(Other.Scale)
 , Type(Other.Type)
-, BaseComponent(Other.BaseComponent)
 , bBlocker(Other.bBlocker)
+, BaseComponent(Other.BaseComponent)
 , bAlive(Other.bAlive)
 {
 

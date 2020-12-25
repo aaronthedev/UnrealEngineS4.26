@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	OpenGLShaderResources.h: OpenGL shader resource RHI definitions.
@@ -30,7 +30,8 @@ enum
 {
 	OGL_MAX_UNIFORM_BUFFER_BINDINGS = 12,	// @todo-mobile: Remove me
 	OGL_FIRST_UNIFORM_BUFFER = 0,			// @todo-mobile: Remove me
-	OGL_UAV_NOT_SUPPORTED_FOR_GRAPHICS_UNIT = -1, // for now, only CS and PS supports UAVs/ images
+	OGL_MAX_COMPUTE_STAGE_UAV_UNITS = 8,	// @todo-mobile: Remove me
+	OGL_UAV_NOT_SUPPORTED_FOR_GRAPHICS_UNIT = -1, // for now, only CS supports UAVs/ images
 };
 
 struct FOpenGLShaderResourceTable : public FBaseShaderResourceTable
@@ -100,21 +101,25 @@ struct FOpenGLShaderBindings
 	TArray<CrossCompiler::FPackedArrayInfo>			PackedGlobalArrays;
 	TArray<FOpenGLShaderVarying>					InputVaryings;
 	TArray<FOpenGLShaderVarying>					OutputVaryings;
-	FOpenGLShaderResourceTable						ShaderResourceTable;
+	FOpenGLShaderResourceTable				ShaderResourceTable;
 
 	uint16	InOutMask;
 	uint8	NumSamplers;
 	uint8	NumUniformBuffers;
 	uint8	NumUAVs;
 	bool	bFlattenUB;
+	uint8	VertexAttributeRemap[16];
+	uint8	VertexRemappedMask;
 
 	FOpenGLShaderBindings() :
 		InOutMask(0),
 		NumSamplers(0),
 		NumUniformBuffers(0),
 		NumUAVs(0),
-		bFlattenUB(false)
+		bFlattenUB(false),
+		VertexRemappedMask(0)
 	{
+		FMemory::Memset(VertexAttributeRemap, 0xFF);
 	}
 
 	friend bool operator==( const FOpenGLShaderBindings &A, const FOpenGLShaderBindings& B)
@@ -203,6 +208,11 @@ inline FArchive& operator<<(FArchive& Ar, FOpenGLShaderBindings& Bindings)
 	Ar << Bindings.NumUniformBuffers;
 	Ar << Bindings.NumUAVs;
 	Ar << Bindings.bFlattenUB;
+	for (uint32 i = 0; i < UE_ARRAY_COUNT(Bindings.VertexAttributeRemap); i++)
+	{
+		Ar << Bindings.VertexAttributeRemap[i];
+	}
+	Ar << Bindings.VertexRemappedMask;
 	return Ar;
 }
 
@@ -257,18 +267,17 @@ class TOpenGLShader : public RHIResourceType
 public:
 	enum
 	{
-		StaticFrequency = FrequencyT,
-		TypeEnum = GLTypeEnum,
+		StaticFrequency = FrequencyT
 	};
+	static const GLenum TypeEnum = GLTypeEnum;
 
 	/** The OpenGL resource ID. */
 	GLuint Resource;
+	/** true if the shader has compiled successfully. */
+	bool bSuccessfullyCompiled;
 
 	/** External bindings for this shader. */
 	FOpenGLShaderBindings Bindings;
-
-	/** Static slots for each uniform buffer. */
-	TArray<FUniformBufferStaticSlot> StaticSlots;
 
 	// List of memory copies from RHIUniformBuffer to packed uniforms
 	TArray<CrossCompiler::FUniformBufferCopyInfo> UniformBuffersCopyInfo;
@@ -281,6 +290,7 @@ public:
 	/** Constructor. */
 	TOpenGLShader()
 		: Resource(0)
+		, bSuccessfullyCompiled(false)
 	{
 		FMemory::Memzero( &Bindings, sizeof(Bindings) );
 	}
@@ -315,7 +325,6 @@ public:
 	bool NeedsTextureStage(int32 TextureStageIndex);
 	int32 MaxTextureStageUsed();
 	const TBitArray<>& GetTextureNeeds(int32& OutMaxTextureStageUsed);
-	const TBitArray<>& GetUAVNeeds(int32& OutMaxUAVUnitUsed) const;
 	bool NeedsUAVStage(int32 UAVStageIndex) const;
 
 	FOpenGLLinkedProgram* LinkedProgram;

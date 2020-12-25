@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	DistanceFieldObjectCulling.usf
@@ -15,13 +15,7 @@ Buffer<uint> UploadOperationIndices;
 Buffer<float4> UploadOperationData;
 
 // In float4's.  Must match equivalent C++ variables.
-#define UPLOAD_DATA_STRIDE (OBJECT_BOUNDS_STRIDE + OBJECT_DATA_STRIDE)
-
-void UploadBoundsFloat4(uint DestIndex, uint UploadIndex)
-{
-	float4 UploadVector = UploadOperationData[UploadIndex];
-	WriteFloat4(RWSceneObjectBounds, DestIndex, UploadVector);
-}
+#define UPLOAD_DATA_STRIDE (1 + OBJECT_DATA_STRIDE)
 
 void UploadDataFloat4(uint DestIndex, uint UploadIndex)
 {
@@ -40,21 +34,14 @@ void UploadObjectsToBufferCS(
 	if (DispatchThreadId.x < NumUploadOperations)
 	{
 		uint DestIndex = UploadOperationIndices[UploadOperationIndex];
+		float4 UploadBounds = UploadOperationData[UploadOperationIndex * UPLOAD_DATA_STRIDE + 0];
 
-		{
-			UNROLL
-			for (uint VectorIndex = 0; VectorIndex < OBJECT_BOUNDS_STRIDE; ++VectorIndex)
-			{
-				UploadBoundsFloat4(DestIndex * OBJECT_BOUNDS_STRIDE + VectorIndex, UploadOperationIndex * UPLOAD_DATA_STRIDE + VectorIndex);
-			}
-		}
+		WriteFloat4(RWSceneObjectBounds, DestIndex, UploadBounds);
 
+		UNROLL
+		for (uint VectorIndex = 0; VectorIndex < OBJECT_DATA_STRIDE; VectorIndex++)
 		{
-			UNROLL
-			for (uint VectorIndex = 0; VectorIndex < OBJECT_DATA_STRIDE; ++VectorIndex)
-			{
-				UploadDataFloat4(DestIndex * OBJECT_DATA_STRIDE + VectorIndex, UploadOperationIndex * UPLOAD_DATA_STRIDE + OBJECT_BOUNDS_STRIDE + VectorIndex);
-			}
+			UploadDataFloat4(DestIndex * OBJECT_DATA_STRIDE + VectorIndex, UploadOperationIndex * UPLOAD_DATA_STRIDE + VectorIndex + 1);
 		}
 	}
 }
@@ -66,11 +53,6 @@ RWBuffer<float4> RWCopyObjectData;
 RWBuffer<float> RWCopyObjectBounds;
 RWBuffer<float> RWCopyObjectData;
 #endif
-
-void CopyBoundsFloat4(uint DestIndex, uint SourceIndex)
-{
-	WriteFloat4(RWCopyObjectBounds, DestIndex, LoadFloat4(SceneObjectBounds, SourceIndex));
-}
 
 void CopyDataFloat4(uint DestIndex, uint SourceIndex)
 {
@@ -90,20 +72,12 @@ void CopyObjectBufferCS(
 		uint SourceIndex = CopyOperationIndex;
 		uint DestIndex = CopyOperationIndex;
 
-		{
-			UNROLL
-			for (uint VectorIndex = 0; VectorIndex < OBJECT_BOUNDS_STRIDE; ++VectorIndex)
-			{
-				CopyBoundsFloat4(DestIndex * OBJECT_BOUNDS_STRIDE + VectorIndex, SourceIndex * OBJECT_BOUNDS_STRIDE + VectorIndex);
-			}
-		}
+		WriteFloat4(RWCopyObjectBounds, DestIndex, LoadFloat4(SceneObjectBounds, SourceIndex));
 
+		UNROLL
+		for (uint VectorIndex = 0; VectorIndex < OBJECT_DATA_STRIDE; VectorIndex++)
 		{
-			UNROLL
-			for (uint VectorIndex = 0; VectorIndex < OBJECT_DATA_STRIDE; VectorIndex++)
-			{
-				CopyDataFloat4(DestIndex * OBJECT_DATA_STRIDE + VectorIndex, SourceIndex * OBJECT_DATA_STRIDE + VectorIndex);
-			}
+			CopyDataFloat4(DestIndex * OBJECT_DATA_STRIDE + VectorIndex, SourceIndex * OBJECT_DATA_STRIDE + VectorIndex);
 		}
 	}
 }
@@ -128,11 +102,6 @@ Buffer<uint4> RemoveOperationIndices;
 	#define RWDataRemoveSource ObjectData2
 #endif
 
-void WriteBoundsFloat4(uint DestIndex, uint SourceIndex)
-{
-	WriteFloat4(RWSceneObjectBounds, DestIndex, LoadFloat4(RWBoundsRemoveSource, SourceIndex));
-}
-
 void WriteDataFloat4(uint DestIndex, uint SourceIndex)
 {
 	WriteFloat4(RWSceneObjectData, DestIndex, LoadFloat4(RWDataRemoveSource, SourceIndex));
@@ -152,20 +121,12 @@ void RemoveObjectsFromBufferCS(
 		uint SourceIndex = RemoveOperationIndices[RemoveOperationIndex].y;
 		uint DestIndex = RemoveOperationIndices[RemoveOperationIndex].x;
 
-		{
-			UNROLL
-			for (uint VectorIndex = 0; VectorIndex < OBJECT_BOUNDS_STRIDE; ++VectorIndex)
-			{
-				WriteBoundsFloat4(DestIndex * OBJECT_BOUNDS_STRIDE + VectorIndex, SourceIndex * OBJECT_BOUNDS_STRIDE + VectorIndex);
-			}
-		}
+		WriteFloat4(RWSceneObjectBounds, DestIndex, LoadFloat4(RWBoundsRemoveSource, SourceIndex));
 
+		UNROLL
+		for (uint VectorIndex = 0; VectorIndex < OBJECT_DATA_STRIDE; VectorIndex++)
 		{
-			UNROLL
-			for (uint VectorIndex = 0; VectorIndex < OBJECT_DATA_STRIDE; VectorIndex++)
-			{
-				WriteDataFloat4(DestIndex * OBJECT_DATA_STRIDE + VectorIndex, SourceIndex * OBJECT_DATA_STRIDE + VectorIndex);
-			}
+			WriteDataFloat4(DestIndex * OBJECT_DATA_STRIDE + VectorIndex, SourceIndex * OBJECT_DATA_STRIDE + VectorIndex);
 		}
 	}
 }

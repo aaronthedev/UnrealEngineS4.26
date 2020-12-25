@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	CubemapUnwapUtils.h: Pixel and Vertex shader to render a cube map as 2D texture
@@ -48,7 +48,7 @@ class FCubemapTexturePropertiesVS : public FGlobalShader
 	DECLARE_SHADER_TYPE(FCubemapTexturePropertiesVS,Global);
 public:
 
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters) { return IsPCPlatform(Parameters.Platform);}
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters) { return !IsConsolePlatform(Parameters.Platform); }
 
 	FCubemapTexturePropertiesVS(const ShaderMetaType::CompiledShaderInitializerType& Initializer):
 		FGlobalShader(Initializer)
@@ -59,8 +59,16 @@ public:
 
 	void SetParameters(FRHICommandList& RHICmdList, const FMatrix& TransformValue);
 
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << Transform;
+
+		return bShaderHasOutdatedParameters;
+	}
+
 private:
-	LAYOUT_FIELD(FShaderParameter, Transform);
+	FShaderParameter Transform;
 };
 
 /**
@@ -72,7 +80,7 @@ class FCubemapTexturePropertiesPS : public FGlobalShader
 	DECLARE_SHADER_TYPE(FCubemapTexturePropertiesPS,Global);
 public:
 
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters) { return IsPCPlatform(Parameters.Platform);}
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters) { return !IsConsolePlatform(Parameters.Platform); }
 
 	FCubemapTexturePropertiesPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -87,17 +95,24 @@ public:
 
 	void SetParameters(FRHICommandList& RHICmdList, const FTexture* Texture, const FMatrix& ColorWeightsValue, float MipLevel, float GammaValue);
 
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << CubeTexture << CubeTextureSampler << PackedProperties0 << ColorWeights << Gamma;
+		return bShaderHasOutdatedParameters;
+	}
+
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
 		OutEnvironment.SetDefine(TEXT("HDR_OUTPUT"), bHDROutput ? TEXT("1") : TEXT("0"));
 	}
 private:
-	LAYOUT_FIELD(FShaderResourceParameter, CubeTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, CubeTextureSampler);
-	LAYOUT_FIELD(FShaderParameter, PackedProperties0);
-	LAYOUT_FIELD(FShaderParameter, ColorWeights);
-	LAYOUT_FIELD(FShaderParameter, Gamma);
+	FShaderResourceParameter CubeTexture;
+	FShaderResourceParameter CubeTextureSampler;
+	FShaderParameter PackedProperties0;
+	FShaderParameter ColorWeights;
+	FShaderParameter Gamma;
 };
 
 
@@ -147,11 +162,20 @@ public:
 
 	void SetParameters(FRHICommandList& RHICmdList, const FTexture* Texture, float InBrightnessInLumens);
 
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << IESTexture;
+		Ar << IESTextureSampler;
+		Ar << BrightnessInLumens;
+		return bShaderHasOutdatedParameters;
+	}
+
 private:
 	/** The texture to sample. */
-	LAYOUT_FIELD(FShaderResourceParameter, IESTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, IESTextureSampler);
-	LAYOUT_FIELD(FShaderParameter, BrightnessInLumens);
+	FShaderResourceParameter IESTexture;
+	FShaderResourceParameter IESTextureSampler;
+	FShaderParameter BrightnessInLumens;
 };
 
 class ENGINE_API FIESLightProfileBatchedElementParameters : public FBatchedElementParameters

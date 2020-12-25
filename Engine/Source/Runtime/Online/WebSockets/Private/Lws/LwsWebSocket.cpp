@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LwsWebSocket.h"
 
@@ -12,7 +12,6 @@
 #endif
 #include "Misc/EmbeddedCommunication.h"
 #include "Misc/ScopeLock.h"
-#include "Misc/ConfigCacheIni.h"
 #include "HttpModule.h"
 #include "HttpManager.h"
 #include "PlatformHttp.h"
@@ -40,7 +39,7 @@ FLwsReceiveBufferBinary::FLwsReceiveBufferBinary(const uint8* Data, const int32 
 	: BytesRemaining(InBytesRemaining)
 {
 	check(Data);
-	check(Size >= 0);
+	check(Size > 0);
 	check(InBytesRemaining >= 0);
 	Payload.Append(Data, Size);
 }
@@ -100,22 +99,13 @@ void FLwsWebSocket::Connect()
 		return;
 	}
 
-	bool bDisableDomainWhitelist = false;
-	GConfig->GetBool(TEXT("LwsWebSocket"), TEXT("bDisableDomainWhitelist"), bDisableDomainWhitelist, GEngineIni);
-	if (!bDisableDomainWhitelist)
+	FHttpManager& HttpManager = FHttpModule::Get().GetHttpManager();
+	if (!HttpManager.IsDomainAllowed(Url))
 	{
-		FHttpManager& HttpManager = FHttpModule::Get().GetHttpManager();
-		if (!HttpManager.IsDomainAllowed(Url))
-		{
-			State = EState::Error;
-			UE_LOG(LogWebSockets, Warning, TEXT("FLwsWebSocket[%d]::Connect: %s is not whitelisted. Refusing to connect."), Identifier, *Url);
-			OnConnectionError().Broadcast(TEXT("Invalid Domain"));
-			return;
-		}
-	}
-	else
-	{
-		UE_LOG(LogWebSockets, Log, TEXT("FLwsWebSocket[%d]::Connect: Domain whitelisting has been disabled by config."), Identifier);
+		State = EState::Error;
+		UE_LOG(LogWebSockets, Warning, TEXT("FLwsWebSocket[%d]::Connect: %s is not whitelisted. Refusing to connect."), Identifier, *Url);
+		OnConnectionError().Broadcast(TEXT("Invalid Domain"));
+		return;
 	}
 
 	// No lock, we are not being processed on the websockets thread yet
@@ -166,7 +156,6 @@ void FLwsWebSocket::Send(const FString& Data)
 {
 	FTCHARToUTF8 Converted(*Data);
 	Send((uint8*)Converted.Get(), Converted.Length(), false);
-	OnMessageSent().Broadcast(Data);
 }
 
 void FLwsWebSocket::SendFromQueue()
@@ -497,26 +486,15 @@ int FLwsWebSocket::LwsCallback(lws* Instance, lws_callback_reasons Reason, void*
 	{
 		// in FLwsWebSocketsManager::CallbackWrapper, we copied UserData to Data, so Data is the X509_STORE_CTX* instead of the SSL*
 		X509_STORE_CTX* Context = static_cast<X509_STORE_CTX*>(Data);
-		int PreverifyOk = 1;
-		bool bDisableCertValidation = false;
-		GConfig->GetBool(TEXT("LwsWebSocket"), TEXT("bDisableCertValidation"), bDisableCertValidation, GEngineIni);
-		if (!bDisableCertValidation)
+		int PreverifyOk = Length;
+		if (PreverifyOk == 1)
 		{
-			PreverifyOk = Length;
-			if (PreverifyOk == 1)
+			const FString Domain = FGenericPlatformHttp::GetUrlDomain(Url);
+			if (!FSslModule::Get().GetCertificateManager().VerifySslCertificates(Context, Domain))
 			{
-				const FString Domain = FGenericPlatformHttp::GetUrlDomain(Url);
-				if (!FSslModule::Get().GetCertificateManager().VerifySslCertificates(Context, Domain))
-				{
-					PreverifyOk = 0;
-				}
+				PreverifyOk = 0;
 			}
 		}
-		else
-		{
-			X509_STORE_CTX_set_error(Context, X509_V_OK);
-		}
-
 		return PreverifyOk == 1 ? 0 : 1;
 	}
 #endif

@@ -33,8 +33,8 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 //-*****************************************************************************
-#ifndef Alembic_Prman_ArbAttrUtil_h
-#define Alembic_Prman_ArbAttrUtil_h
+#ifndef _Alembic_Prman_ArbAttrUtil_h_
+#define _Alembic_Prman_ArbAttrUtil_h_
 
 #include <ri.h>
 

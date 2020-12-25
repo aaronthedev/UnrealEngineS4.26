@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Internationalization/PackageLocalizationManager.h"
 #include "Misc/Paths.h"
-#include "Misc/PackageName.h"
-#include "Interfaces/IPluginManager.h"
 #include "Internationalization/Culture.h"
+#include "Misc/PackageName.h"
 #include "Internationalization/IPackageLocalizationCache.h"
 #include "Internationalization/PackageLocalizationCache.h"
 
@@ -71,15 +70,12 @@ void FPackageLocalizationManager::InitializeFromCache(const TSharedRef<IPackageL
 {
 	ActiveCache = InCache;
 	ActiveCache->ConditionalUpdateCache();
-
-	// Allow the plugin manager to update the package localization cache by exposing access through a delegate.
-	// PluginManager is a Core class, but package localization functionality is added at the CoreUObject level.
-	IPluginManager::Get().SetUpdatePackageLocalizationCacheDelegate(IPluginManager::FUpdatePackageLocalizationCacheDelegate::CreateRaw(this, &FPackageLocalizationManager::ConditionalUpdateCache));
 }
 
 void FPackageLocalizationManager::InitializeFromDefaultCache()
 {
-	InitializeFromCache(MakeShared<FDefaultPackageLocalizationCache>());
+	ActiveCache = MakeShareable(new FDefaultPackageLocalizationCache());
+	ActiveCache->ConditionalUpdateCache();
 }
 
 FName FPackageLocalizationManager::FindLocalizedPackageName(const FName InSourcePackageName)

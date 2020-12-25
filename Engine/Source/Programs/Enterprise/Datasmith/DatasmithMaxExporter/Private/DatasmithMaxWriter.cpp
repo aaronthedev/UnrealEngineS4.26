@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithMaxWriter.h"
 
@@ -67,15 +67,11 @@ EDSBitmapType FDatasmithMaxMatHelper::GetTextureClass(Texmap* InTexMap)
 
 	if (InTexMap != nullptr)
 	{
-		MSTR ClassName;
-		InTexMap->GetClassName(ClassName);
-
 		if (InTexMap->ClassID() == RBITMAPCLASS)
 		{
 			Type = EDSBitmapType::RegularBitmap;
 		}
-		//Somehow, there are multiple autodesk map classes using the same ClassID, we only support Autodesk Bitmap.
-		else if (InTexMap->ClassID() == AUTODESKBITMAPCLASS && FCString::Stricmp(ClassName, TEXT("Autodesk Bitmap")) == 0)
+		else if (InTexMap->ClassID() == AUTODESKBITMAPCLASS)
 		{
 			Type = EDSBitmapType::AutodeskBitmap;
 		}
@@ -565,7 +561,7 @@ TSharedPtr< IDatasmithBaseMaterialElement > FDatasmithMaxMatExport::ExportUnique
 	{
 		if (FString(DatasmithScene->GetMaterial(i)->GetName()) == MaterialName)
 		{
-			return DatasmithScene->GetMaterial(i);
+			return TSharedPtr< IDatasmithBaseMaterialElement >();
 		}
 	}
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,7 +7,6 @@
 
 // Insights
 #include "Insights/ViewModels/BaseTimingTrack.h"
-#include "Insights/ViewModels/TrackHeader.h"
 
 namespace Trace
 {
@@ -44,42 +43,32 @@ class FMarkersTimingTrack : public FBaseTimingTrack
 {
 	friend class FTimeMarkerTrackBuilder;
 
-	INSIGHTS_DECLARE_RTTI(FMarkersTimingTrack, FBaseTimingTrack)
-
 public:
-	FMarkersTimingTrack();
+	explicit FMarkersTimingTrack(uint64 InTrackId);
 	virtual ~FMarkersTimingTrack();
 
 	virtual void Reset() override;
 
-	bool IsCollapsed() const { return Header.IsCollapsed(); }
-	void Expand() { Header.SetIsCollapsed(false); }
-	void Collapse() { Header.SetIsCollapsed(true); }
-	void ToggleCollapsed() { Header.ToggleCollapsed(); }
+	bool IsCollapsed() const { return bIsCollapsed; }
+	void ToggleCollapsed() { bIsCollapsed = !bIsCollapsed; }
 
 	bool IsBookmarksTrack() const { return bUseOnlyBookmarks; }
-	bool IsLogsTrack() const { return !bUseOnlyBookmarks; }
 	void SetBookmarksTrackFlag(bool bInUseOnlyBookmarks)
 	{
 		bUseOnlyBookmarks = bInUseOnlyBookmarks;
-		UpdateTrackNameAndHeight();
+		UpdateHeight();
 	}
-	void SetBookmarksTrack() { SetBookmarksTrackFlag(true); }
-	void SetLogsTrack() { SetBookmarksTrackFlag(false); }
 
 	// Stats
 	int32 GetNumLogMessages() const { return NumLogMessages; }
 	int32 GetNumBoxes() const { return TimeMarkerBoxes.Num(); }
 	int32 GetNumTexts() const { return TimeMarkerTexts.Num(); }
 
-	// FBaseTimingTrack
-	virtual void Update(const ITimingTrackUpdateContext& Context) override;
-	virtual void PostUpdate(const ITimingTrackUpdateContext& Context) override;
-	virtual void Draw(const ITimingTrackDrawContext& Context) const override;
-	virtual void PostDraw(const ITimingTrackDrawContext& Context) const override;
-	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
-	virtual FReply OnMouseButtonDoubleClick(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
-	virtual void BuildContextMenu(FMenuBuilder& MenuBuilder) override;
+	virtual void UpdateHoveredState(float MouseX, float MouseY, const FTimingTrackViewport& Viewport) override;
+	virtual void Tick(const double CurrentTime, const float DeltaTime) override;
+	virtual void Update(const FTimingTrackViewport& Viewport) override;
+
+	void Draw(FDrawContext& DrawContext, const FTimingTrackViewport& Viewport) const;
 
 private:
 	void ResetCache()
@@ -88,16 +77,19 @@ private:
 		TimeMarkerTexts.Reset();
 	}
 
-	void UpdateTrackNameAndHeight();
-	void UpdateDrawState(const FTimingTrackViewport& Viewport);
+	void UpdateHeight();
+
+	void DrawHeader(FDrawContext& DrawContext, bool bFirstDraw) const;
 
 private:
 	TArray<FTimeMarkerBoxInfo> TimeMarkerBoxes;
 	TArray<FTimeMarkerTextInfo> TimeMarkerTexts;
 
+	bool bIsCollapsed; // If false, the vertical lines will extend to entire viewport height; otherwise will be limited to this track's height.
 	bool bUseOnlyBookmarks; // If true, uses only bookmarks; otherwise it uses all log messages.
 
-	FTrackHeader Header;
+	float TargetHoveredAnimPercent; // [0.0 .. 1.0], 0.0 = hidden, 1.0 = visible
+	float CurrentHoveredAnimPercent;
 
 	// Stats
 	int32 NumLogMessages;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -33,10 +33,6 @@ public:
 	/** If enabled will force the project set HLOD level settings to be used across all levels in the project when Building Clusters */
 	UPROPERTY(EditAnywhere, config, Category = HLODSystem)
 	bool bForceSettingsInAllMaps;
-
-	/** If enabled, will save LOD actors descriptions in the HLOD packages */
-	UPROPERTY(EditAnywhere, config, Category = HLODSystem)
-	bool bSaveLODActorsToHLODPackages;
 
 	/** When set in combination with */
 	UPROPERTY(EditAnywhere, config, Category = HLODSystem, meta=(editcondition="bForceSettingsInAllMaps"))
@@ -105,9 +101,6 @@ struct UNREALED_API FHierarchicalLODBuilder
 	/** Get the list of mesh packages to save for a given level */
 	void GetMeshesPackagesToSave(ULevel* InLevel, TSet<UPackage*>& InHLODPackagesToSave, const FString& PreviousLevelName = "");
 
-	/** Delete HLOD packages that are empty. */
-	void DeleteEmptyHLODPackages(ULevel* InLevel);
-
 	/** 
 	 * @param	bInForce	Whether to force the recalculation of this actor's build flag. If this is false then the cached flag is used an only recalculated every so often.
 	 * @return whether a build is needed (i.e. any LOD actors are dirty) 
@@ -124,14 +117,15 @@ struct UNREALED_API FHierarchicalLODBuilder
 
 private:
 	/**
-	* Builds the clusters (HLODs) for InLevel
+	* Builds the clusters (HLODs) for InLevel, and will create the new/merged StaticMeshes if bCreateMeshes is true
 	*
 	* @param InLevel - Level for which the HLODs are currently being build
+	* @param bCreateMeshes - Whether or not to create/merge the StaticMeshes (false if builing preview only)
 	*/
-	void BuildClusters(ULevel* InLevel);
+	void BuildClusters(ULevel* InLevel, const bool bCreateMeshes);
 
 	/** Generates a single cluster for the ULevel (across all HLOD levels) */
-	void GenerateAsSingleCluster(const int32 NumHLODLevels, ULevel* InLevel);
+	void GenerateAsSingleCluster(const int32 NumHLODLevels, ULevel* InLevel, const bool bCreateMeshes);
 
 	/**
 	* Initializes the clusters, creating one for each actor within the level eligble for HLOD-ing
@@ -140,7 +134,7 @@ private:
 	* @param LODIdx - LOD index we are building
 	* @param CullCost - Test variable for tweaking HighestCost
 	*/
-	void InitializeClusters(ULevel* InLevel, const int32 LODIdx, float CullCost, bool const bVolumesOnly);
+	void InitializeClusters(ULevel* InLevel, const int32 LODIdx, float CullCost, bool const bPreviewBuild, bool const bVolumesOnly);
 
 	/**
 	* Merges clusters and builds actors for resulting (valid) clusters
@@ -149,8 +143,9 @@ private:
 	* @param LODIdx - LOD index we are building, used for determining which StaticMesh LOD to use
 	* @param HighestCost - Allowed HighestCost for this LOD level
 	* @param MinNumActors - Minimum number of actors for this LOD level
+	* @param bCreateMeshes - Whether or not to create/merge the StaticMeshes (false if builing preview only)
 	*/
-	void MergeClustersAndBuildActors(ULevel* InLevel, const int32 LODIdx, float HighestCost, int32 MinNumActors);
+	void MergeClustersAndBuildActors(ULevel* InLevel, const int32 LODIdx, float HighestCost, int32 MinNumActors, const bool bCreateMeshes);
 
 	/**
 	* Finds the minimal spanning tree MST for the clusters by sorting on their cost ( Lower == better )
@@ -164,52 +159,21 @@ private:
 	void HandleHLODVolumes(ULevel* InLevel);
 
 	/**
-	* Determine whether or not this level should have HLODs built for it in the specified world
-	*
-	* @param World - The world the level is part of
-	* @param Level - The level to test
-	* @return bool
-	*/
-	bool ShouldBuildHLODForLevel(const UWorld* World, const ULevel* Level) const;
-
-	/**
 	* Determine whether or not this actor is eligble for HLOD creation
 	*
 	* @param Actor - Actor to test
 	* @return bool
 	*/
-	bool ShouldGenerateCluster(AActor* Actor, const int32 HLODLevelIndex);
+	bool ShouldGenerateCluster(AActor* Actor, const bool bPreviewBuild, const int32 HLODLevelIndex);
 	
-	/**
-	* if criteria matches, creates new LODActor and replace current Actors with that. We don't need
-	* this clears previous actors and sets to this new actor
-	* this is required when new LOD is created from these actors, this will be replaced
-	* to save memory and to reduce memory increase during this process, we discard previous actors and replace with this actor
-	*
-	* @param InLevel - Level for which currently the HLODs are being build
-	* @param LODIdx - LOD index to build
-	* @return ALODActor*
-	*/
-	ALODActor* CreateLODActor(const FLODCluster& InCluster, ULevel* InLevel, const int32 LODIdx);
-
 	/**
 	* Deletes LOD actors from the world	
 	*
 	* @param InLevel - Level to delete the actors from
+	* @param bPreviewOnly - Only delete preview actors
 	* @return void
 	*/
 	void DeleteLODActors(ULevel* InLevel);
-
-	/**
-	 * Create a temporary level in which we'll spawn newly created LODActor.
-	 * This is to avoid dirtying the main level when no changes are detected.
-	 */
-	void CreateTempLODActorLevel(ULevel* InLevel);
-
-	/**
-	 * Delete the temporary LODActor level.
-	 */
-	void ApplyClusteringChanges(ULevel* InLevel);
 
 	/** Array of LOD Clusters - this is only valid within scope since mem stack allocator */
 	TArray<FLODCluster, TMemStackAllocator<>> Clusters;
@@ -230,13 +194,4 @@ private:
 	TArray<AActor*> ValidStaticMeshActorsInLevel;
 	/** Actors which were rejected from the previous HLOD level(s) */
 	TArray<AActor*> RejectedActorsInLevel;
-
-	/** Temporary LODActor levels */
-	ULevel* TempLevel;
-
-	/** Previous LODActors found in level */
-	TArray<ALODActor*> OldLODActors;
-
-	/** Newly spawned LODActors from cluster(s) rebuilding */
-	TArray<ALODActor*> NewLODActors;
 };

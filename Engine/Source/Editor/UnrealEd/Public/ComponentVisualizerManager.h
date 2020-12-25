@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -21,9 +21,6 @@ public:
 
 	/** Activate a component visualizer given a clicked proxy */
 	bool HandleProxyForComponentVis(FEditorViewportClient* InViewportClient, HHitProxy *HitProxy, const FViewportClick &Click);
-
-	/** Activate a component visualizer given the specific visualizer */
-	bool SetActiveComponentVis(FEditorViewportClient* InViewportClient, TSharedPtr<FComponentVisualizer>& InVisualizer);
 
 	/** Clear active component visualizer */
 	void ClearActiveComponentVis();

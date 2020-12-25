@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AIController.h"
 #include "CollisionQueryParams.h"
@@ -47,7 +47,6 @@ AAIController::AAIController(const FObjectInitializer& ObjectInitializer)
 	bWantsPlayerState = false;
 	TeamID = FGenericTeamId::NoTeam;
 
-	bStartAILogicOnPossess = false;
 	bStopAILogicOnUnposses = true;
 }
 
@@ -65,15 +64,6 @@ void AAIController::PostInitializeComponents()
 	if (bWantsPlayerState && !IsPendingKill() && (GetNetMode() != NM_Client))
 	{
 		InitPlayerState();
-	}
-
-	if (BrainComponent == nullptr)
-	{
-		BrainComponent = FindComponentByClass<UBrainComponent>();
-	}
-	if (Blackboard == nullptr)
-	{
-		Blackboard = FindComponentByClass<UBlackboardComponent>();
 	}
 
 #if ENABLE_VISUAL_LOG
@@ -511,16 +501,6 @@ void AAIController::OnPossess(APawn* InPawn)
 
 		REDIRECT_OBJECT_TO_VLOG(CachedGameplayTasksComponent, this);
 	}
-
-	if (Blackboard && Blackboard->GetBlackboardAsset())
-	{
-		InitializeBlackboard(*Blackboard, *Blackboard->GetBlackboardAsset());
-	}
-
-	if (bStartAILogicOnPossess && BrainComponent)
-	{
-		BrainComponent->StartLogic();
-	}
 }
 
 void AAIController::OnUnPossess()
@@ -534,9 +514,12 @@ void AAIController::OnUnPossess()
 		PathFollowingComponent->Cleanup();
 	}
 
-	if (bStopAILogicOnUnposses && BrainComponent)
+	if (bStopAILogicOnUnposses)
 	{
-		BrainComponent->Cleanup();
+		if (BrainComponent)
+		{
+			BrainComponent->Cleanup();
+		}
 	}
 
 	if (CachedGameplayTasksComponent && (CachedGameplayTasksComponent->GetOwner() == CurrentPawn))
@@ -905,6 +888,7 @@ bool AAIController::RunBehaviorTree(UBehaviorTree* BTAsset)
 	}
 
 	bool bSuccess = true;
+	bool bShouldInitializeBlackboard = false;
 
 	// see if need a blackboard component at all
 	UBlackboardComponent* BlackboardComp = Blackboard;

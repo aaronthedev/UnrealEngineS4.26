@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SourceEffects/SourceEffectStereoDelay.h"
 #include "Templates/Casts.h"
@@ -18,8 +18,6 @@ void FSourceEffectStereoDelay::OnPresetChanged()
 	DelayStereo.SetWetLevel(Settings.WetLevel);
 	DelayStereo.SetDelayRatio(Settings.DelayRatio);
 	DelayStereo.SetMode((Audio::EStereoDelayMode::Type)Settings.DelayMode);
-	DelayStereo.SetFilterEnabled(Settings.bFilterEnabled);
-	DelayStereo.SetFilterSettings((Audio::EBiquadFilter::Type)Settings.FilterType, Settings.FilterFrequency, Settings.FilterQ);
 }
 
 void FSourceEffectStereoDelay::ProcessAudio(const FSoundEffectSourceInputData& InData, float* OutAudioBufferData)

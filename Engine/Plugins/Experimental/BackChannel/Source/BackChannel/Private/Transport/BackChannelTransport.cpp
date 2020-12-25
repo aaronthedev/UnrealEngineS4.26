@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BackChannel/Private/BackChannelCommon.h"
 #include "BackChannel/Transport/IBackChannelTransport.h"
@@ -15,7 +15,7 @@ class FBackChannelTransport : public IBackChannelTransport
 public:
 
 
-	virtual TSharedPtr<IBackChannelSocketConnection> CreateConnection(const int32 Type) override
+	virtual TSharedPtr<IBackChannelConnection> CreateConnection(const int32 Type) override
 	{
 		check(Type == IBackChannelTransport::TCP);
 		TSharedPtr<FBackChannelConnection> Connection = MakeShareable(new FBackChannelConnection());

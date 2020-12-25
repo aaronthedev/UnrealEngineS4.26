@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -40,7 +40,14 @@ public:
 	{
 	}
 
-	LAYOUT_FIELD(FShaderResourceParameter, UnresolvedSurface);
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << UnresolvedSurface;
+		return bShaderHasOutdatedParameters;
+	}
+	
+	FShaderResourceParameter UnresolvedSurface;
 };
 
 class FResolveDepth2XPS : public FGlobalShader
@@ -74,7 +81,14 @@ public:
 	{
 	}
 
-	LAYOUT_FIELD(FShaderResourceParameter, UnresolvedSurface);
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << UnresolvedSurface;
+		return bShaderHasOutdatedParameters;
+	}
+
+	FShaderResourceParameter UnresolvedSurface;
 };
 
 
@@ -109,7 +123,14 @@ public:
 	{
 	}
 
-	LAYOUT_FIELD(FShaderResourceParameter, UnresolvedSurface);
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << UnresolvedSurface;
+		return bShaderHasOutdatedParameters;
+	}
+
+	FShaderResourceParameter UnresolvedSurface;
 };
 
 
@@ -146,7 +167,14 @@ public:
 	{
 	}
 
-	LAYOUT_FIELD(FShaderResourceParameter, UnresolvedSurface);
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << UnresolvedSurface;
+		return bShaderHasOutdatedParameters;
+	}
+
+	FShaderResourceParameter UnresolvedSurface;
 };
 
 
@@ -169,8 +197,15 @@ public:
 	void SetParameters(FRHICommandList& RHICmdList, FParameter)
 	{
 	}
-
-	LAYOUT_FIELD(FShaderResourceParameter, UnresolvedSurface);
+	
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << UnresolvedSurface;
+		return bShaderHasOutdatedParameters;
+	}
+	
+	FShaderResourceParameter UnresolvedSurface;
 };
 
 class FResolveSingleSamplePS : public FGlobalShader
@@ -192,8 +227,16 @@ public:
 	
 	RENDERCORE_API void SetParameters(FRHICommandList& RHICmdList, uint32 SingleSampleIndexValue);
 	
-	LAYOUT_FIELD(FShaderResourceParameter, UnresolvedSurface);
-	LAYOUT_FIELD(FShaderParameter, SingleSampleIndex);
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << UnresolvedSurface;
+		Ar << SingleSampleIndex;
+		return bShaderHasOutdatedParameters;
+	}
+	
+	FShaderResourceParameter UnresolvedSurface;
+	FShaderParameter SingleSampleIndex;
 };
 
 /**
@@ -216,6 +259,14 @@ public:
 
 	RENDERCORE_API void SetParameters(FRHICommandList& RHICmdList, const FResolveRect& SrcBounds, const FResolveRect& DstBounds, uint32 DstSurfaceWidth, uint32 DstSurfaceHeight);
 
-	LAYOUT_FIELD(FShaderParameter, PositionMinMax);
-	LAYOUT_FIELD(FShaderParameter, UVMinMax);
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << PositionMinMax;
+		Ar << UVMinMax;
+		return bShaderHasOutdatedParameters;
+	}
+
+	FShaderParameter PositionMinMax;
+	FShaderParameter UVMinMax;
 };

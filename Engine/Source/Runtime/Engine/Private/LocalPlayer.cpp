@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/LocalPlayer.h"
 #include "Misc/FileHelper.h"
@@ -15,7 +15,6 @@
 #include "UObject/UObjectIterator.h"
 #include "GameFramework/OnlineReplStructs.h"
 #include "GameFramework/PlayerController.h"
-#include "GameFramework/PlayerState.h"
 #include "Engine/SkeletalMesh.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "UnrealEngine.h"
@@ -29,13 +28,13 @@
 #include "Physics/PhysicsInterfaceCore.h"
 #include "Rendering/SkeletalMeshRenderData.h"
 #include "HAL/PlatformApplicationMisc.h"
-#include "Framework/Application/SlateApplication.h"
 
 #include "IHeadMountedDisplay.h"
 #include "IXRTrackingSystem.h"
 #include "IXRCamera.h"
 #include "SceneViewExtension.h"
 #include "Net/DataChannel.h"
+#include "GameFramework/PlayerState.h"
 
 #include "GameDelegates.h"
 
@@ -56,13 +55,6 @@ static TAutoConsoleVariable<int32> CVarViewportTest(
 	ECVF_RenderThreadSafe);
 
 #endif // !UE_BUILD_SHIPPING
-
-int32 GCalcLocalPlayerCachedLODDistanceFactor = 1;
-static FAutoConsoleVariableRef CVarCalcLocalPlayerCachedLODDistanceFactor(
-	TEXT("r.CalcLocalPlayerCachedLODDistanceFactor"),
-	GCalcLocalPlayerCachedLODDistanceFactor,
-	TEXT("Should we calculate a LOD Distance Factor based on the current FOV.  Should not be necessary since LOD is already based on screen size.\n")
-	);
 
 DECLARE_CYCLE_STAT(TEXT("CalcSceneView"), STAT_CalcSceneView, STATGROUP_Engine);
 
@@ -326,7 +318,7 @@ bool ULocalPlayer::SpawnPlayActor(const FString& URL,FString& OutError, UWorld* 
 	return PlayerController != NULL;
 }
 
-void ULocalPlayer::SendSplitJoin(TArray<FString>& Options)
+void ULocalPlayer::SendSplitJoin()
 {
 	UNetDriver* NetDriver = NULL;
 
@@ -379,11 +371,6 @@ void ULocalPlayer::SendSplitJoin(TArray<FString>& Options)
 			if (GameUrlOptions.Len() > 0)
 			{
 				URL.AddOption(*FString::Printf(TEXT("%s"), *GameUrlOptions));
-			}
-
-			for (FString& Option : Options)
-			{
-				URL.AddOption(*FString::Printf(TEXT("%s"), *Option));
 			}
 
 			// Send the player unique Id at login
@@ -558,12 +545,11 @@ public:
 		if (bShouldLockView)
 		{
 			PlayerState.bLocked = true;
+			PlayerStates.AddAnnotation(Player, PlayerState);
 
 			// Also copy to the clipboard.
 			FString ViewPointString = ViewPointToString(PlayerState.ViewPoint);
 			FPlatformApplicationMisc::ClipboardCopy(*ViewPointString);
-
-			PlayerStates.AddAnnotation(Player, MoveTemp(PlayerState));
 		}
 
 		if (bPrintHelp)
@@ -1035,7 +1021,7 @@ bool ULocalPlayer::GetPixelPoint(const FSceneViewProjectionData& ProjectionData,
 bool ULocalPlayer::GetProjectionData(FViewport* Viewport, EStereoscopicPass StereoPass, FSceneViewProjectionData& ProjectionData) const
 {
 	// If the actor
-	if ((Viewport == NULL) || (PlayerController == NULL) || (Viewport->GetSizeXY().X == 0) || (Viewport->GetSizeXY().Y == 0) || (Size.X == 0) || (Size.Y == 0))
+	if ((Viewport == NULL) || (PlayerController == NULL) || (Viewport->GetSizeXY().X == 0) || (Viewport->GetSizeXY().Y == 0))
 	{
 		return false;
 	}
@@ -1086,23 +1072,14 @@ bool ULocalPlayer::GetProjectionData(FViewport* Viewport, EStereoscopicPass Ster
 
 	// If stereo rendering is enabled, update the size and offset appropriately for this pass
 	const bool bNeedStereo = IStereoRendering::IsStereoEyePass(StereoPass) && GEngine->IsStereoscopic3D();
-	const bool bIsHeadTrackingAllowed =
-		GEngine->XRSystem.IsValid() &&
-		(GetWorld() != nullptr ? GEngine->XRSystem->IsHeadTrackingAllowedForWorld(*GetWorld()) : GEngine->XRSystem->IsHeadTrackingAllowed());
+	const bool bIsHeadTrackingAllowed = GEngine->XRSystem.IsValid() && GEngine->XRSystem->IsHeadTrackingAllowed();
 	if (bNeedStereo)
 	{
 		GEngine->StereoRenderingDevice->AdjustViewRect(StereoPass, X, Y, SizeX, SizeY);
 	}
 
 	// scale distances for cull distance purposes by the ratio of our current FOV to the default FOV
-	if (GCalcLocalPlayerCachedLODDistanceFactor != 0)
-	{
-		PlayerController->LocalPlayerCachedLODDistanceFactor = ViewInfo.FOV / FMath::Max<float>(0.01f, (PlayerController->PlayerCameraManager != NULL) ? PlayerController->PlayerCameraManager->DefaultFOV : 90.f);
-	}
-	else // This should be removed in the final version. Leaving in so this can be toggled on and off in order to evaluate it.
-	{
-		PlayerController->LocalPlayerCachedLODDistanceFactor = 1.f;
-	}
+	PlayerController->LocalPlayerCachedLODDistanceFactor = ViewInfo.FOV / FMath::Max<float>(0.01f, (PlayerController->PlayerCameraManager != NULL) ? PlayerController->PlayerCameraManager->DefaultFOV : 90.f);
 
     FVector StereoViewLocation = ViewInfo.Location;
     if (bNeedStereo || bIsHeadTrackingAllowed)
@@ -1645,16 +1622,6 @@ bool ULocalPlayer::IsCachedUniqueNetIdPairedWithControllerId() const
 	return (CachedUniqueNetId == UniqueIdFromController);
 }
 
-TSharedPtr<FSlateUser> ULocalPlayer::GetSlateUser()
-{
-	return FSlateApplication::Get().GetUserFromControllerId(ControllerId);
-}
-
-TSharedPtr<const FSlateUser> ULocalPlayer::GetSlateUser() const
-{
-	return FSlateApplication::Get().GetUserFromControllerId(ControllerId);
-}
-
 UWorld* ULocalPlayer::GetWorld() const
 {
 	return ViewportClient ? ViewportClient->GetWorld() : nullptr;
@@ -1683,12 +1650,8 @@ void ULocalPlayer::AddReferencedObjects(UObject* InThis, FReferenceCollector& Co
 
 bool ULocalPlayer::IsPrimaryPlayer() const
 {
-	if (UWorld* World = GetWorld())
-	{
-		ULocalPlayer* const PrimaryPlayer = GetOuterUEngine()->GetFirstGamePlayer(World);
-		return (this == PrimaryPlayer);
-	}
-	return false;
+	ULocalPlayer* const PrimaryPlayer = GetOuterUEngine()->GetFirstGamePlayer(GetWorld());
+	return (this == PrimaryPlayer);
 }
 
 void ULocalPlayer::CleanupViewState()

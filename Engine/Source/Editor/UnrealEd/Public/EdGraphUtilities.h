@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -139,9 +139,6 @@ public:
 
 	/** returns true if the ParameterName is marked as ArrayTypeDependentParams */
 	static bool IsArrayDependentParam(const UFunction* Function, const FName ParameterName );
-
-	/** returns true if the ParamaterName is marked as a Set, Map, or array param in the relevant function */
-	static bool IsDynamicContainerParam(const UFunction* Function, const FName ParameterName);
 
 	/** returns the first pin marked as an ArrayParam, usually returning nullptr */
 	static UEdGraphPin* FindArrayParamPin(const UFunction* Function, const UEdGraphNode* Node);

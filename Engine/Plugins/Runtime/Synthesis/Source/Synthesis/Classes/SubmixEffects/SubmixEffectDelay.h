@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -27,7 +27,7 @@ struct SYNTHESIS_API FSubmixEffectDelaySettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Realtime, meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "20000.0"))
 	float InterpolationTime;
 
-	// Number of milliseconds of delay.  Caps at max delay at runtime.
+	// Number of milliseconds of delay.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Realtime, meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "20000.0"))
 	float DelayLength;
 
@@ -60,12 +60,10 @@ public:
 	// Set the time it takes, in milliseconds, to arrive at a new parameter.
 	void SetInterpolationTime(float Time);
 
-	// Set how long the actually delay is, in milliseconds.
+	// Set how long the actualy delay is, in milliseconds.
 	void SetDelayLineLength(float Length);
 
 private:
-	static const float MinLengthDelaySec;
-
 	// This is called on the audio render thread to query the parameters.
 	void UpdateParameters();
 

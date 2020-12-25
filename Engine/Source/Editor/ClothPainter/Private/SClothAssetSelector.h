@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,7 +11,7 @@
 struct FAssetData;
 class USkeletalMesh;
 class UClothingAssetCommon;
-struct FClothPhysicalMeshData;
+class UClothPhysicalMeshDataBase;
 struct FPointWeightMap;
 
 struct FClothingAssetListItem
@@ -27,7 +27,7 @@ struct FClothingMaskListItem
 	{}
 
 	FPointWeightMap* GetMask();
-	FClothPhysicalMeshData* GetMeshData();
+	UClothPhysicalMeshDataBase* GetMeshData();
 	USkeletalMesh* GetOwningMesh();
 
 	TWeakObjectPtr<UClothingAssetCommon> ClothingAsset;
@@ -92,15 +92,6 @@ protected:
 
 	void RefreshAssetList();
 	void RefreshMaskList();
-
-	TOptional<float> GetCurrentKernelRadius() const;
-	void OnCurrentKernelRadiusChanged(float InValue);
-	void OnCurrentKernelRadiusCommitted(float InValue, ETextCommit::Type CommitType);
-	bool CurrentKernelRadiusIsEnabled() const;
-
-	ECheckBoxState GetCurrentUseMultipleInfluences() const;
-	void OnCurrentUseMultipleInfluencesChanged(ECheckBoxState InValue);
-	bool CurrentUseMultipleInfluencesIsEnabled() const;
 
 	void OnClothingLodSelected(int32 InNewLod);
 

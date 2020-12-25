@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,26 +9,30 @@
 class SHADERFORMATOPENGL_API FGlslLanguageSpec : public ILanguageSpec
 {
 protected:
-	bool bDefaultPrecisionIsHalf;
+	bool bIsES2;
+	bool bIsWebGL;
+	bool bIsES31;
 
 public:
-	FGlslLanguageSpec(bool bInDefaultPrecisionIsHalf)
-		: bDefaultPrecisionIsHalf(bInDefaultPrecisionIsHalf)
+	FGlslLanguageSpec(bool bInIsES2, bool bInIsWebGL, bool bInIsES31) 
+		: bIsES2(bInIsES2)
+		, bIsWebGL(bInIsWebGL) 
+		, bIsES31(bInIsES31)
 	{}
 
 	virtual bool SupportsDeterminantIntrinsic() const override
 	{
-		return true;
+		return !bIsES2;
 	}
 
 	virtual bool SupportsTransposeIntrinsic() const override
 	{
-		return true;
+		return !bIsES2;
 	}
 
 	virtual bool SupportsIntegerModulo() const override
 	{
-		return true;
+		return !bIsES2 || bIsWebGL;
 	}
 
 	virtual bool SupportsMatrixConversions() const override { return true; }
@@ -38,9 +42,9 @@ public:
 
 	virtual void SetupLanguageIntrinsics(_mesa_glsl_parse_state* State, exec_list* ir) override;
 
-	virtual bool AllowsImageLoadsForNonScalar() const { return true; }
+	virtual bool AllowsImageLoadsForNonScalar() const { return !bIsES2; }
 
-	virtual bool EmulateStructuredWithTypedBuffers() const override { return true; }
+	virtual bool EmulateStructuredWithTypedBuffers() const override { return bIsES31; }
 };
 
 class ir_variable;
@@ -51,9 +55,9 @@ class ir_variable;
 #endif // __GNUC__
 struct SHADERFORMATOPENGL_API FGlslCodeBackend : public FCodeBackend
 {
-	FGlslCodeBackend(unsigned int InHlslCompileFlags, EHlslCompileTarget InTarget) :
+	FGlslCodeBackend(unsigned int InHlslCompileFlags, EHlslCompileTarget InTarget, bool bInIsWebGL) :
 		FCodeBackend(InHlslCompileFlags, InTarget),
-		bExplicitDepthWrites(false)
+		bIsWebGL(bInIsWebGL)
 	{
 	}
 
@@ -92,10 +96,10 @@ struct SHADERFORMATOPENGL_API FGlslCodeBackend : public FCodeBackend
 
 	virtual bool WantsPrecisionModifiers()
 	{
-		return Target == HCT_FeatureLevelES3_1 || Target == HCT_FeatureLevelES3_1Ext;
+		return Target == HCT_FeatureLevelES2 || Target == HCT_FeatureLevelES3_1 || Target == HCT_FeatureLevelES3_1Ext;
 	}
 
-	bool bExplicitDepthWrites;
+	bool bIsWebGL;
 };
 
 

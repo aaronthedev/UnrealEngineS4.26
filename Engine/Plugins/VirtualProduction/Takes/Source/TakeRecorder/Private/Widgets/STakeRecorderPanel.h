@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -59,7 +59,7 @@ public:
 
 	TSharedPtr<STakeRecorderCockpit> GetCockpitWidget() const { return CockpitWidget; }
 
-	void ClearPendingTake();
+	void NewTake();
 
 private:
 
@@ -96,7 +96,7 @@ private:
 
 	FReply OnBackToPendingTake();
 
-	FReply OnClearPendingTake();
+	FReply OnNewTake();
 
 	FReply OnReviewLastRecording();
 

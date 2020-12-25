@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #if WITH_ACCESSIBILITY
 
@@ -30,25 +30,12 @@ bool FSlateAccessibleCheckBox::IsCheckable() const {
 	return true;
 }
 
-bool FSlateAccessibleCheckBox::GetCheckedState() const
-{
+bool FSlateAccessibleCheckBox::GetCheckedState() const {
 	if (Widget.IsValid())
 	{
 		return StaticCastSharedPtr<SCheckBox>(Widget.Pin())->IsChecked();
 	}
 	return false;
-}
-
-FString FSlateAccessibleCheckBox::GetValue() const
-{
-	bool bChecked = GetCheckedState();
-	return FString::FromInt(bChecked ? 1 : 0);
-}
-
-FVariant FSlateAccessibleCheckBox::GetValueAsVariant() const
-{
-	bool bChecked = GetCheckedState();
-	return FVariant(bChecked);
 }
 
 const FString& FSlateAccessibleEditableText::GetText() const
@@ -82,11 +69,6 @@ bool FSlateAccessibleEditableText::IsReadOnly() const
 FString FSlateAccessibleEditableText::GetValue() const
 {
 	return GetText();
-}
-
-FVariant FSlateAccessibleEditableText::GetValueAsVariant() const
-{
-	return FVariant(GetText());
 }
 
 void FSlateAccessibleEditableText::SetValue(const FString& Value)
@@ -128,11 +110,6 @@ bool FSlateAccessibleEditableTextBox::IsReadOnly() const
 FString FSlateAccessibleEditableTextBox::GetValue() const
 {
 	return GetText();
-}
-
-FVariant FSlateAccessibleEditableTextBox::GetValueAsVariant() const
-{
-	return FVariant(GetText());
 }
 
 void FSlateAccessibleEditableTextBox::SetValue(const FString& Value)
@@ -186,15 +163,6 @@ FString FSlateAccessibleSlider::GetValue() const
 		return FString::SanitizeFloat(StaticCastSharedPtr<SSlider>(Widget.Pin())->GetValue());
 	}
 	return FString::SanitizeFloat(0.0f);
-}
-
-FVariant FSlateAccessibleSlider::GetValueAsVariant() const
-{
-	if (Widget.IsValid())
-	{
-		return FVariant(StaticCastSharedPtr<SSlider>(Widget.Pin())->GetValue());
-	}
-	return FVariant();
 }
 
 void FSlateAccessibleSlider::SetValue(const FString& Value)

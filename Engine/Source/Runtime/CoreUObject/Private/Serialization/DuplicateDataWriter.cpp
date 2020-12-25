@@ -1,11 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "UObject/LazyObjectPtr.h"
-#include "UObject/Package.h"
 #include "UObject/PropertyPortFlags.h"
-#include "UObject/UnrealType.h"
-#include "UObject/Package.h"
 #include "Serialization/DuplicatedObject.h"
 #include "Serialization/DuplicatedDataWriter.h"
 
@@ -24,8 +21,7 @@
  * @param	InInstanceGraph			the instancing graph to use when creating the duplicate objects.
  */
 FDuplicateDataWriter::FDuplicateDataWriter( FUObjectAnnotationSparse<FDuplicatedObject,false>& InDuplicatedObjects, FLargeMemoryData& InObjectData, UObject* SourceObject,
-	UObject* DestObject, EObjectFlags InFlagMask, EObjectFlags InApplyFlags, EInternalObjectFlags InInternalFlagMask, EInternalObjectFlags InApplyInternalFlags, FObjectInstancingGraph* InInstanceGraph, uint32 InPortFlags,
-	bool InAssignExternalPackages)
+	UObject* DestObject, EObjectFlags InFlagMask, EObjectFlags InApplyFlags, EInternalObjectFlags InInternalFlagMask, EInternalObjectFlags InApplyInternalFlags, FObjectInstancingGraph* InInstanceGraph, uint32 InPortFlags)
 : DuplicatedObjectAnnotation(InDuplicatedObjects)
 , ObjectData(InObjectData)
 , Offset(0)
@@ -33,7 +29,6 @@ FDuplicateDataWriter::FDuplicateDataWriter( FUObjectAnnotationSparse<FDuplicated
 , ApplyFlags(InApplyFlags)
 , InternalFlagMask(InInternalFlagMask)
 , ApplyInternalFlags(InApplyInternalFlags)
-, bAssignExternalPackages(InAssignExternalPackages)
 , InstanceGraph(InInstanceGraph)
 {
 	this->SetIsSaving(true);
@@ -141,38 +136,15 @@ UObject* FDuplicateDataWriter::GetDuplicatedObject(UObject* Object, bool bCreate
 			if(DupOuter != nullptr)
 			{
 				// The object's outer is being duplicated, create a duplicate of this object.
-				FStaticConstructObjectParameters Params(Object->GetClass());
-				Params.Outer = DupOuter;
-				Params.Name = Object->GetFName();
-				Params.SetFlags = ApplyFlags | Object->GetMaskedFlags(FlagMask);
-				Params.InternalSetFlags = ApplyInternalFlags | (Object->GetInternalFlags() & InternalFlagMask);
-				Params.Template = Object->GetArchetype();
-				Params.bCopyTransientsFromClassDefaults = true;
-				Params.InstanceGraph = InstanceGraph;
-				Result = StaticConstructObject_Internal(Params);
-				
-				// If we assign external package to duplicated object, fetch the package
-				Result->SetExternalPackage(bAssignExternalPackages ? Cast<UPackage>(GetDuplicatedObject(Object->GetExternalPackage(), false)) : nullptr);
-				
+				Result = StaticConstructObject_Internal(Object->GetClass(), DupOuter, Object->GetFName(),
+					ApplyFlags | Object->GetMaskedFlags(FlagMask),
+					ApplyInternalFlags | (Object->GetInternalFlags() & InternalFlagMask),
+					Object->GetArchetype(), true, InstanceGraph);
+
 				AddDuplicate(Object, Result);
 			}
 		}
 	}
 
 	return Result;
-}
-
-FArchive& FDuplicateDataWriter::operator<<(FField*& Field)
-{
-	//if (Field &&
-	//	!Field->HasAnyFlags(RF_DuplicateTransient) &&
-	//	(!Field->HasAnyFlags(RF_NonPIEDuplicateTransient) || HasAnyPortFlags(PPF_DuplicateForPIE)))
-	//{
-	//}
-	//else
-	//{
-	//	UObject* NullObject = nullptr;
-	//	Serialize(&NullObject, sizeof(UObject*));
-	//}
-	return *this;
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "MeshBoundaryLoops.h"
@@ -16,30 +16,6 @@ int FMeshBoundaryLoops::GetMaxVerticesLoopIndex() const
 		}
 	}
 	return j;
-}
-
-
-
-int FMeshBoundaryLoops::GetLongestLoopIndex() const
-{
-	int32 LongestLoopIdx = -1;
-	double LongestLoopLen = 0;
-	for (int i = 0; i < Loops.Num(); ++i)
-	{
-		int32 LoopNum = Loops[i].Vertices.Num();
-		double LoopLen = 0;
-		for (int32 k = 0; k < LoopNum; ++k)
-		{
-			FVector3d NextPos = Mesh->GetVertex(Loops[i].Vertices[(k+1)%LoopNum]);
-			LoopLen += Mesh->GetVertex(Loops[i].Vertices[k]).Distance(NextPos);
-		}
-		if (LoopLen > LongestLoopLen)
-		{
-			LongestLoopLen = LoopLen;
-			LongestLoopIdx = i;
-		}
-	}
-	return LongestLoopIdx;
 }
 
 
@@ -409,7 +385,7 @@ int FMeshBoundaryLoops::FindLeftTurnEdge(int incoming_e, int bowtie_v, TArray<in
 
 		// compute projected angle
 		FVector3d bc = Mesh->GetVertex(bdry_ev.B) - Mesh->GetVertex(bowtie_v);
-		double fAngleS = -VectorUtil::PlaneAngleSignedD(ab, bc, n);
+		double fAngleS = VectorUtil::PlaneAngleSignedD(ab, bc, n);
 
 		// turn left!
 		if (best_angle == TNumericLimits<double>::Max() || fAngleS < best_angle)
@@ -419,7 +395,9 @@ int FMeshBoundaryLoops::FindLeftTurnEdge(int incoming_e, int bowtie_v, TArray<in
 		}
 	}
 
-	// Note w/ bowtie vertices and open spans, best_e CAN be invalid (== -1)
+	// [RMS] w/ bowtie vertices and open spans, this does happen
+	//Debug.Assert(best_e != -1);
+
 	return best_e;
 }
 
@@ -512,7 +490,6 @@ bool FMeshBoundaryLoops::ExtractSubloops(TArray<int>& loopV, TArray<int>& loopE,
 			FEdgeSpan& NewSpan = subs.Spans[subs.Spans.Emplace()];
 			NewSpan.InitializeFromVertices(Mesh, VerticesTemp, false);
 			NewSpan.SetBowtieVertices(bowties);
-			return false;
 		}
 
 		if (bv != bv_shortest)
@@ -676,55 +653,3 @@ int FMeshBoundaryLoops::CountInList(const TArray<int>& Loop, int Item)
 	}
 	return c;
 }
-
-int FMeshBoundaryLoops::FindLoopTrianglesHint(const TArray<int>& HintTris) const
-{
-	TSet<int> HintEdges;
-	for (int TriangleID : HintTris)
-	{
-		if (Mesh->IsTriangle(TriangleID) == false)
-		{
-			continue;
-		}
-
-		FIndex3i TriangleEdges = Mesh->GetTriEdges(TriangleID);
-		for (int j = 0; j < 3; ++j)
-		{
-			if (Mesh->IsBoundaryEdge(TriangleEdges[j]))
-			{
-				HintEdges.Add(TriangleEdges[j]);
-			}
-		}
-	}
-
-	return FindLoopEdgesHint(HintEdges);
-}
-
-
-int FMeshBoundaryLoops::FindLoopEdgesHint(const TSet<int>& HintEdges) const
-{
-	int NumLoops = GetLoopCount();
-	int BestLoop = -1;
-	int MaxVotes = 0;
-	for (int LoopIndex = 0; LoopIndex < NumLoops; ++LoopIndex)
-	{
-		int Votes = 0;
-		const FEdgeLoop& CurrentLoop = Loops[LoopIndex];
-		for (int EdgeID : CurrentLoop.Edges)
-		{
-			if (HintEdges.Contains(EdgeID))
-			{
-				++Votes;
-			}
-		}
-
-		if (Votes > MaxVotes)
-		{
-			BestLoop = LoopIndex;
-			MaxVotes = Votes;
-		}
-	}
-
-	return BestLoop;
-}
-

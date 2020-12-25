@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AudioCapture.h"
 #include "CoreMinimal.h"
 #include "Misc/ScopeLock.h"
 #include "Modules/ModuleManager.h"
 #include "AudioCaptureCore.h"
-#include "Misc/ConfigCacheIni.h"
 
 DEFINE_LOG_CATEGORY(LogAudioCapture);
 
@@ -23,7 +22,7 @@ bool UAudioCapture::OpenDefaultAudioStream()
 {
 	if (!AudioCapture.IsStreamOpen())
 	{
-		Audio::FOnCaptureFunction OnCapture = [this](const float* AudioData, int32 NumFrames, int32 InNumChannels, int32 InSampleRate, double StreamTime, bool bOverFlow)
+		Audio::FOnCaptureFunction OnCapture = [this](const float* AudioData, int32 NumFrames, int32 InNumChannels, double StreamTime, bool bOverFlow)
 		{
 			OnGeneratedAudio(AudioData, NumFrames * InNumChannels);
 		};
@@ -93,12 +92,18 @@ UAudioCapture* UAudioCaptureFunctionLibrary::CreateAudioCapture()
 
 void FAudioCaptureModule::StartupModule()
 {
-	// Load platform specific implementations for audio capture (if specified in a .ini file)
-	FString AudioCaptureModuleName;
-	if (GConfig->GetString(TEXT("Audio"), TEXT("AudioCaptureModuleName"), AudioCaptureModuleName, GEngineIni))
-	{
-		FModuleManager::Get().LoadModule(*AudioCaptureModuleName);
-	}
+	// Load platform specific implementations for audio capture:
+#if PLATFORM_WINDOWS || PLATFORM_MAC || PLATFORM_XBOXONE
+	FModuleManager::Get().LoadModule(TEXT("AudioCaptureRtAudio"));
+#elif PLATFORM_IOS
+	FModuleManager::Get().LoadModule(TEXT("AudioCaptureAudioUnit"));
+#elif PLATFORM_PS4
+	FModuleManager::Get().LoadModule(TEXT("AudioCapturePS4Voice"));
+#elif PLATFORM_ANDROID
+	FModuleManager::Get().LoadModule(TEXT("AudioCaptureAndroid"));
+#elif PLATFORM_SWITCH
+	FModuleManager::Get().LoadModule(TEXT("AudioCaptureSwitch"));
+#endif
 }
 
 void FAudioCaptureModule::ShutdownModule()

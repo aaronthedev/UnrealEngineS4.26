@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MaterialShaderQualitySettings.h"
 #include "UObject/Package.h"
@@ -91,7 +91,7 @@ const UShaderPlatformQualitySettings* UMaterialShaderQualitySettings::GetShaderP
 	// TODO: discuss this, in order to preview render quality settings we override the
 	// requested platform's settings.
 	// However we do not know if we are asking for the editor preview window (override able) or for thumbnails, cooking purposes etc.. (Must not override)
-	// The code below 'works' because desktop platforms do not cook for ES31 preview.
+	// The code below 'works' because desktop platforms do not cook for ES2/ES31 preview.
 	if (IsPCPlatform(ShaderPlatform) && GetMaxSupportedFeatureLevel(ShaderPlatform) <= ERHIFeatureLevel::ES3_1)
 	{
 		// Can check this cant be cooked by iterating through target platforms and shader formats to ensure it's not covered.
@@ -119,13 +119,6 @@ UShaderPlatformQualitySettings::UShaderPlatformQualitySettings(const FObjectInit
 	GetQualityOverrides(EMaterialQualityLevel::High).bEnableOverride = true;
 }
 
-const FMaterialQualityOverrides& UShaderPlatformQualitySettings::GetQualityOverrides(EMaterialQualityLevel::Type QualityLevel) const
-{
-	check(QualityLevel <= EMaterialQualityLevel::Num);
-	static const FMaterialQualityOverrides DefaultQualityOverrides;
-	return (QualityLevel < EMaterialQualityLevel::Num) ? QualityOverrides[(int32)QualityLevel] : DefaultQualityOverrides;
-}
-
 void UShaderPlatformQualitySettings::BuildHash(EMaterialQualityLevel::Type QualityLevel, FSHAHash& OutHash) const
 {
 	FSHA1 Hash;
@@ -144,24 +137,16 @@ void UShaderPlatformQualitySettings::AppendToHashState(EMaterialQualityLevel::Ty
 
 //////////////////////////////////////////////////////////////////////////
 
-bool FMaterialQualityOverrides::CanOverride(EShaderPlatform ShaderPlatform) const
-{
-	// Only mobile renderer can lower the quality of a shader even without quality level nodes in the material (see TMobileBasePassPSPolicyParamType<>::ModifyCompilationEnvironmentForQualityLevel).
-	// Whitelist the platforms here that are going to use it.
-	return IsMobilePlatform(ShaderPlatform);
-}
-
 bool FMaterialQualityOverrides::HasAnyOverridesSet() const
 {
 	static const FMaterialQualityOverrides DefaultOverrides;
 
 	return
-		MobileShadowQuality != DefaultOverrides.MobileShadowQuality
+		MobileCSMQuality != DefaultOverrides.MobileCSMQuality
 		|| bForceDisableLMDirectionality != DefaultOverrides.bForceDisableLMDirectionality
 		|| bForceFullyRough != DefaultOverrides.bForceFullyRough
 		|| bForceNonMetal != DefaultOverrides.bForceNonMetal
 		|| bForceLQReflections != DefaultOverrides.bForceLQReflections
-		|| bForceDisablePreintegratedGF != DefaultOverrides.bForceDisablePreintegratedGF
 		|| bDisableMaterialNormalCalculation != DefaultOverrides.bDisableMaterialNormalCalculation
 		|| bDiscardQualityDuringCook != DefaultOverrides.bDiscardQualityDuringCook;
 }

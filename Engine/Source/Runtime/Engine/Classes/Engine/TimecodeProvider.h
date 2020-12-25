@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,7 +8,6 @@
 
 #include "Misc/FrameRate.h"
 #include "Misc/Timecode.h"
-#include "Misc/QualifiedFrameTime.h"
 
 #include "TimecodeProvider.generated.h"
 
@@ -43,53 +42,34 @@ class ENGINE_API UTimecodeProvider : public UObject
 
 public:
 	/**
-	 * Number of frames to subtract from the qualified frame time when GetDelayedQualifiedFrameTime or GetDelayedTimecode is called.
-	 * @see GetDelayedQualifiedFrameTime, GetDelayedTimecode
+	 * Number of frames to subtract from the current timecode when GetDelayedTimecode is called.
+	 * @see GetDelayedTimecode
 	 */
 	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "Settings")
-	float FrameDelay = 0.f;
+	int32 FrameDelay = 0;
 
 	/**
-	 * Fetch current timecode from its source. e.g. From hardware/network/file/etc.
-	 * It is recommended to cache the fetched timecode.
-	*/
+	 * Return the Timecode at that moment. It may not be in sync with the current frame.
+	 * Only valid when GetSynchronizationState() is Synchronized.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Provider")
-	virtual bool FetchTimecode(FQualifiedFrameTime& OutFrameTime) { return false; };
+	virtual FTimecode GetTimecode() const PURE_VIRTUAL(UTimecodeProvider::GetTimecode, return FTimecode(););
 
 	/**
-	 * Update the state of the provider. Call it to ensure timecode and state are updated.
-	 * It is suggested to fetch timecode from its source and cache it for the getters.
-	*/
-	UFUNCTION(BlueprintCallable, Category = "Provider")
-	virtual void FetchAndUpdate() {}
-
-	/**
-	 * Return current frame time. 
-	 * Since it may be called several times per frame, it is suggested to return a cached value.
-	*/
-	UFUNCTION(BlueprintCallable, Category = "Provider")
-	virtual FQualifiedFrameTime GetQualifiedFrameTime() const PURE_VIRTUAL(UTimecodeProvider::GetQualifiedFrameTime, return FQualifiedFrameTime(););
-
-	/**
-	 * Return current frame time with FrameDelay applied.
-	 * Only assume valid when GetSynchronizationState() returns Synchronized.
-	*/
-	UFUNCTION(BlueprintCallable, Category = "Provider")
-	FQualifiedFrameTime GetDelayedQualifiedFrameTime() const;
-
-	/** Return the frame time converted into a timecode value. */
-	UFUNCTION(BlueprintCallable, Category = "Provider")
-	FTimecode GetTimecode() const;
-
-	/** Return the delayed frame time converted into a timecode value. */
+	 * Return the Timecode with the Frame Delay applied. It may not be in sync with the current frame.
+	 * Only valid when GetSynchronizationState() is Synchronized.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Provider")
 	FTimecode GetDelayedTimecode() const;
 	
-	/** Return the frame rate of the frame time. */
+	/**
+	 * Return the frame rate.
+	 * Depending on the implementation, it may or may not be valid only when GetSynchronizationState() is Synchronized.
+	 */
 	UFUNCTION(BlueprintCallable, Category = "Provider")
-	FFrameRate GetFrameRate() const { return GetQualifiedFrameTime().Rate; }
+	virtual FFrameRate GetFrameRate() const PURE_VIRTUAL(UTimecodeProvider::GetFrameRate, return FFrameRate(););
 
-	/** The state of the TimecodeProvider and if it's currently synchronized and the Timecode and FrameRate getters are valid. */
+	/** The state of the TimecodeProvider and if it's currently synchronized and the Timecode and FrameRate are valid. */
 	UFUNCTION(BlueprintCallable, Category = "Provider")
 	virtual ETimecodeProviderSynchronizationState GetSynchronizationState() const PURE_VIRTUAL(UTimecodeProvider::IsSynchronized, return ETimecodeProviderSynchronizationState::Closed;);
 

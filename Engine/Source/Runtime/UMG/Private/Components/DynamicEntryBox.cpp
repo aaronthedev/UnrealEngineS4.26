@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/DynamicEntryBox.h"
 #include "UMGPrivate.h"
@@ -31,10 +31,6 @@ void UDynamicEntryBox::ValidateCompiledDefaults(IWidgetCompilerLog& CompileLog) 
 	{
 		CompileLog.Error(FText::Format(LOCTEXT("Error_DynamicEntryBox_MissingEntryClass", "{0} has no EntryWidgetClass specified - required for any Dynamic Entry Box to function."), FText::FromString(GetName())));
 	}
-	else if (CompileLog.GetContextClass() && EntryWidgetClass->IsChildOf(CompileLog.GetContextClass()))
-	{
-		CompileLog.Error(FText::Format(LOCTEXT("Error_DynamicEntryBox_RecursiveEntryClass", "{0} has a recursive EntryWidgetClass specified (reference itself)."), FText::FromString(GetName())));
-	}
 }
 #endif
 
@@ -46,7 +42,7 @@ void UDynamicEntryBox::SynchronizeProperties()
 #if WITH_EDITORONLY_DATA
 	if (IsDesignTime() && MyPanelWidget.IsValid())
 	{
-		if (!EntryWidgetClass || !IsEntryClassValid(EntryWidgetClass))
+		if (!EntryWidgetClass)
 		{
 			// We have no entry class, so clear everything out
 			Reset(true);
@@ -59,7 +55,7 @@ void UDynamicEntryBox::SynchronizeProperties()
 			while (StartingNumber < NumDesignerPreviewEntries)
 			{
 				UUserWidget* PreviewEntry = CreateEntryInternal(EntryWidgetClass);
-				if (PreviewEntry && IsDesignTime() && OnPreviewEntryCreatedFunc)
+				if (IsDesignTime() && OnPreviewEntryCreatedFunc)
 				{
 					OnPreviewEntryCreatedFunc(PreviewEntry);
 				}
@@ -77,7 +73,7 @@ UUserWidget* UDynamicEntryBox::BP_CreateEntry()
 
 UUserWidget* UDynamicEntryBox::BP_CreateEntryOfClass(TSubclassOf<UUserWidget> EntryClass)
 {
-	if (EntryClass && IsEntryClassValid(EntryClass))
+	if (EntryClass)
 	{
 		return CreateEntryInternal(EntryClass);
 	}

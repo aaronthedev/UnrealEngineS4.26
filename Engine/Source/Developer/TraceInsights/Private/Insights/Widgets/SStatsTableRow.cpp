@@ -1,17 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SStatsTableRow.h"
 
 #include "EditorStyleSet.h"
 #include "SlateOptMacros.h"
 #include "Widgets/SOverlay.h"
-#include "Widgets/SToolTip.h"
 #include "Widgets/Images/SImage.h"
 
 // Insights
 #include "Insights/Common/TimeUtils.h"
-#include "Insights/Table/ViewModels/Table.h"
-#include "Insights/Table/ViewModels/TableColumn.h"
+#include "Insights/ViewModels/StatsViewColumnFactory.h"
 #include "Insights/Widgets/SStatsTableCell.h"
 #include "Insights/Widgets/SStatsViewTooltip.h"
 
@@ -26,15 +24,14 @@ void SStatsTableRow::Construct(const FArguments& InArgs, const TSharedRef<STable
 	OnShouldBeEnabled = InArgs._OnShouldBeEnabled;
 	IsColumnVisibleDelegate = InArgs._OnIsColumnVisible;
 	GetColumnOutlineHAlignmentDelegate = InArgs._OnGetColumnOutlineHAlignmentDelegate;
-	SetHoveredCellDelegate = InArgs._OnSetHoveredCell;
+	SetHoveredTableCellDelegate = InArgs._OnSetHoveredTableCell;
 
 	HighlightText = InArgs._HighlightText;
 	HighlightedNodeName = InArgs._HighlightedNodeName;
 
-	TablePtr = InArgs._TablePtr;
 	StatsNodePtr = InArgs._StatsNodePtr;
 
-	RowToolTip = MakeShared<SStatsCounterTableRowToolTip>(StatsNodePtr);
+	RowToolTip = MakeShareable(new SStatsCounterTableRowToolTip(StatsNodePtr));
 
 	SetEnabled(TAttribute<bool>(this, &SStatsTableRow::HandleShouldBeEnabled));
 
@@ -45,8 +42,6 @@ void SStatsTableRow::Construct(const FArguments& InArgs, const TSharedRef<STable
 
 TSharedRef<SWidget> SStatsTableRow::GenerateWidgetForColumn(const FName& ColumnId)
 {
-	TSharedPtr<Insights::FTableColumn> ColumnPtr = TablePtr->FindColumnChecked(ColumnId);
-
 	return
 		SNew(SOverlay)
 		.Visibility(EVisibility::SelfHitTestInvisible)
@@ -71,12 +66,11 @@ TSharedRef<SWidget> SStatsTableRow::GenerateWidgetForColumn(const FName& ColumnI
 		[
 			SNew(SStatsTableCell, SharedThis(this))
 			.Visibility(this, &SStatsTableRow::IsColumnVisible, ColumnId)
-			.TablePtr(TablePtr)
-			.ColumnPtr(ColumnPtr)
 			.StatsNodePtr(StatsNodePtr)
+			.ColumnId(ColumnId)
 			.HighlightText(HighlightText)
-			.IsNameColumn(ColumnPtr->IsHierarchy())
-			.OnSetHoveredCell(this, &SStatsTableRow::OnSetHoveredCell)
+			.IsNameColumn(ColumnId == FStatsViewColumnFactory::Get().Collection[0]->Id) // name column
+			.OnSetHoveredTableCell(this, &SStatsTableRow::OnSetHoveredTableCell)
 		];
 }
 
@@ -146,7 +140,7 @@ const FSlateBrush* SStatsTableRow::GetOutlineBrush(const FName ColumnId) const
 	{
 		Brush = FEditorStyle::GetBrush("Profiler.EventGraph.Border.L");
 	}
-	else if (Result == HAlign_Right)
+	else if(Result == HAlign_Right)
 	{
 		Brush = FEditorStyle::GetBrush("Profiler.EventGraph.Border.R");
 	}
@@ -171,7 +165,7 @@ bool SStatsTableRow::HandleShouldBeEnabled() const
 	{
 		if (OnShouldBeEnabled.IsBound())
 		{
-			bResult = OnShouldBeEnabled.Execute(StatsNodePtr);
+			bResult = OnShouldBeEnabled.Execute(StatsNodePtr->GetId());
 		}
 	}
 
@@ -194,9 +188,9 @@ EVisibility SStatsTableRow::IsColumnVisible(const FName ColumnId) const
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void SStatsTableRow::OnSetHoveredCell(TSharedPtr<Insights::FTable> InTablePtr, TSharedPtr<Insights::FTableColumn> InColumnPtr, FStatsNodePtr InStatsNodePtr)
+void SStatsTableRow::OnSetHoveredTableCell(const FName InColumnId, const FStatsNodePtr InSamplePtr)
 {
-	SetHoveredCellDelegate.ExecuteIfBound(InTablePtr, InColumnPtr, InStatsNodePtr);
+	SetHoveredTableCellDelegate.ExecuteIfBound(InColumnId, InSamplePtr);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

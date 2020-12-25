@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SDeviceProfileEditor.h"
 #include "Widgets/Text/STextBlock.h"
@@ -365,7 +365,8 @@ TSharedPtr< SWidget > SDeviceProfileEditor::CreateMainDeviceProfilePanel()
 			[
 				SNew( STextBlock )
 				.AutoWrapText(true)
-				.Text(LOCTEXT("CreateDeviceProfile", "To create a device profile, edit your project's DefaultDeviceProfiles.ini file. Make sure to add to or create a section called [DeviceProfileNameAndTypes]. See Engine/Config/BaseDeviceProfiles.ini for examples."))
+				.Text(LOCTEXT("CreateDeviceProfile", "To create a device profile, edit your project's DefaultDeviceProfiles.ini file. "
+					"Make sure to add to or create a section called [DeviceProfileNameAndTypes]. See Engine/Config/BaseDeviceProfiles.ini for examples."))
 			]
 		];
 
@@ -482,7 +483,7 @@ void SDeviceProfileEditor::HandleDeviceProfilePinned( const TWeakObjectPtr< UDev
 		DeviceProfiles.Add( DeviceProfile.Get() );
 		RebuildPropertyTable();
 
-		TabManager->TryInvokeTab(DeviceProfileEditorTabName);
+		TabManager->InvokeTab(DeviceProfileEditorTabName);
 	}
 }
 
@@ -494,7 +495,7 @@ void SDeviceProfileEditor::HandleDeviceProfileUnpinned( const TWeakObjectPtr< UD
 		DeviceProfiles.Remove( DeviceProfile.Get() );
 		RebuildPropertyTable();
 
-		TabManager->TryInvokeTab(DeviceProfileEditorTabName);
+		TabManager->InvokeTab(DeviceProfileEditorTabName);
 	}
 }
 
@@ -513,7 +514,7 @@ void SDeviceProfileEditor::HandleDeviceProfileViewAlone( const TWeakObjectPtr< U
 			.SetGroup(DeviceManagerMenuGroup.ToSharedRef());
 	}
 
-	TabManager->TryInvokeTab(TabId);
+	TabManager->InvokeTab(TabId);
 }
 
 
@@ -557,9 +558,9 @@ void SDeviceProfileEditor::RebuildPropertyTable()
 
 	PropertyTable->SetIsUserAllowedToChangeRoot( false );
 
-	for (TFieldIterator<FProperty> DeviceProfilePropertyIter( UDeviceProfile::StaticClass() ); DeviceProfilePropertyIter; ++DeviceProfilePropertyIter)
+	for (TFieldIterator<UProperty> DeviceProfilePropertyIter( UDeviceProfile::StaticClass() ); DeviceProfilePropertyIter; ++DeviceProfilePropertyIter)
 	{
-		TWeakFieldPtr< FProperty > DeviceProfileProperty = *DeviceProfilePropertyIter;
+		TWeakObjectPtr< UProperty > DeviceProfileProperty = *DeviceProfilePropertyIter;
 		if(DeviceProfileProperty->GetName() != TEXT("Parent") )
 		{
 			PropertyTable->AddColumn(DeviceProfileProperty);

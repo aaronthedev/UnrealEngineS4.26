@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -48,14 +48,17 @@ namespace ProxyLOD
 	*  ( 2 ) Merges the simplified meshes back to a single mesh.
 	*
 	* @param  SrcBBox               Spatial region that will be partitioned into NumPartitions along the major axis.
+	* @param  SrcTriNumByPartition  The number of triangles the original (pre-voxelization / iso-surface extraction) 
+	*                               geometry has in each partition.  Used in stopping criterion.
 	* @param  MinFractionToRetain   Fraction of original geometry to retain. Used in stopping criterion.
 	* @param  MaxFeatureCost        Limit to the error allowed when simplifying.  Used in stopping criterion.
 	* @param  InOutMesh             The mesh to simplify and on return the simplified mesh.
 	*
 	*/
-	void PartitionAndSimplifyMesh( const FBBox& SrcBBox,
-		                           const float MinFractionToRetain,
-		                           const float MaxFeatureCost,
+	void PartitionAndSimplifyMesh( const FBBox& SrcBBox, 
+		                           const TArray<int32>& SrcTriNumByPartition, 
+		                           const float MinFractionToRetain, 
+		                           const float MaxFeatureCost, 
 		                           const int32 NumPartitions,
 		                           FAOSMesh& InOutMesh);
 
@@ -70,6 +73,12 @@ namespace ProxyLOD
 	* by first (higher) partition wave with subsequent waves cleaning up the seams 
 	* that resulted from previous waves. 
 	* 
+	* ( ) Partition and Simplify with 6 partitions
+	* ( ) Partition and Simplify with 4 partitions
+	* ( ) Partition and Simplify with 2 partitions
+	* ( ) Simplify (1 partition)
+	*
+	*
 	* @param  SrcPolyField          Container that holds the original (pre-voxelization / iso-surface extraction)
 	*                               used to help determine the target number of triangles for the simplifier.
 	* @param  MinFractionToRetain   Fraction of original geometry to retain. Used in stopping criterion.
@@ -81,9 +90,12 @@ namespace ProxyLOD
 		                       const float MinFractionToRatain, 
 		                       const float MaxFeatureCost, 
 		                       FAOSMesh& InOutMesh);
+	
+	
+	
 }
 
-// --- Templated code implementation ---
+// --- Templated code implimentation ---
 
 namespace
 {
@@ -123,8 +135,6 @@ namespace
 template <typename TerminationCriterionType>
 static inline float ProxyLOD::SimplifyMesh(const TerminationCriterionType& Terminator, FAOSMesh& InOutMesh, TArray<int32>* SeamVertexArray)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(ProxyLOD::SimplifyMesh)
-
 	typedef FAOSMesh                          SimplifierMeshType;
 	typedef ProxyLOD::FQuadricMeshSimplifier  FMeshSimplifier;
 
@@ -159,18 +169,16 @@ static inline float ProxyLOD::SimplifyMesh(const TerminationCriterionType& Termi
 	Simplifier.InitCosts();
 
 	// Do the simplification.  
+
 	const float MaxSqrError = Simplifier.SimplifyMesh(Terminator);
 
 	// Resize the AOSMesh to hold the result - this empties it first.
+
 	InOutMesh.Resize(Simplifier.GetNumVerts(), Simplifier.GetNumTris());
 
 	// Copy the new mesh back into the AOSMeshedVolume and capture the seam vertexes.
-	int NumVertices;
-	int NumIndices;
-	Simplifier.OutputMesh(InOutMesh.Vertexes, InOutMesh.Indexes, SeamVertexArray, &NumVertices, &NumIndices);
 
-	// Set the number of vertices again after calling OutputMesh which removes duplicates
-	InOutMesh.SetVertexAndIndexCount(NumVertices, NumIndices);
+	Simplifier.OutputMesh(InOutMesh.Vertexes, InOutMesh.Indexes, SeamVertexArray);
 
 	return MaxSqrError;
 }

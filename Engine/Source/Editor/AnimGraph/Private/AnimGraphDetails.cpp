@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimGraphDetails.h"
 #include "IAnimationBlueprintEditor.h"
@@ -15,7 +15,6 @@
 #include "Widgets/Images/SImage.h"
 #include "AnimGraphNode_Root.h"
 #include "ScopedTransaction.h"
-#include "ObjectEditorUtils.h"
 #include "SKismetInspector.h"
 #include "AnimationGraph.h"
 #include "AnimationGraphSchema.h"
@@ -404,7 +403,7 @@ void FAnimGraphDetails::RefreshGroupSource()
 				
 		if(Function->HasMetaData(FBlueprintMetadata::MD_AnimBlueprintFunction))
 		{
-			FText Group = FObjectEditorUtils::GetCategoryText(Function);
+			FText Group = Function->GetMetaDataText(FBlueprintMetadata::MD_FunctionCategory, TEXT("UObjectCategory"), Function->GetFullGroupName(false));
 
 			if (!Group.IsEmpty())
 			{

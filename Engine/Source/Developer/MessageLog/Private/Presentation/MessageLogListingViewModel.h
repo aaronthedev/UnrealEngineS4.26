@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,7 +12,7 @@
 /**
  * The non-UI solution specific presentation logic for a collection of messages for a particular system.
  */
-class MESSAGELOG_API FMessageLogListingViewModel
+class FMessageLogListingViewModel
 	: public TSharedFromThis<FMessageLogListingViewModel>
 	, public IMessageLogListing
 {
@@ -168,12 +168,6 @@ private:
 	/** Rebuilds the list of filtered messages */
 	void RefreshFilteredMessages();
 
-	/** Dismisses a notification that was previously shown. */
-	void DismissNotification(int32 NotificationId);
-
-	/** Opens the message log from a notification that was previously shown. */
-	void OpenMessageLogFromNotification(int32 NotificationId);
-
 	/** Helper function for opening this message log from a notification */
 	void OpenMessageLog();
 
@@ -235,15 +229,4 @@ private:
 
 	/** Delegate to call when page selection state is changed */
 	FOnPageSelectionChangedEvent PageSelectionChangedEvent;
-
-	/** All open notifications */
-	struct FOpenNotification
-	{
-		int32 NotificationId;
-		TWeakPtr<class SNotificationItem> NotificationItem;
-		FOpenNotification(int32 InNotificationId, const TWeakPtr<class SNotificationItem>& InNotificationItem) : NotificationId(InNotificationId), NotificationItem(InNotificationItem) {}
-		FOpenNotification() : NotificationId(INDEX_NONE) {}
-	};
-	TArray<FOpenNotification> OpenNotifications;
-	static int32 NextNotificationId;
 };

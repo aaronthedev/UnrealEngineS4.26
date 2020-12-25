@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MetalShaderResources.h: Metal shader resource RHI definitions.
@@ -327,13 +327,13 @@ struct FMetalCodeHeader
 
 	uint64 CompilerBuild;
 	uint32 CompilerVersion;
+	uint32 Frequency;
 	uint32 SourceLen;
 	uint32 SourceCRC;
 	uint32 NumThreadsX;
 	uint32 NumThreadsY;
 	uint32 NumThreadsZ;
-	uint32 CompileFlags;
-	uint8 Frequency;
+	uint16 CompileFlags;
 	uint8 Version;
 	int8 SideTable;
 	bool bDeviceFunctionConstants;
@@ -341,17 +341,18 @@ struct FMetalCodeHeader
 	FMetalCodeHeader()
 	: CompilerBuild(0)
 	, CompilerVersion(0)
+	, Frequency(0)
 	, SourceLen(0)
 	, SourceCRC(0)
 	, NumThreadsX(0)
 	, NumThreadsY(0)
 	, NumThreadsZ(0)
 	, CompileFlags(0)
-	, Frequency(0)
 	, Version(0)
 	, SideTable(-1)
 	, bDeviceFunctionConstants(false)
 	{
+		
 	}
 };
 
@@ -384,13 +385,13 @@ inline FArchive& operator<<(FArchive& Ar, FMetalCodeHeader& Header)
 
 	Ar << Header.CompilerBuild;
 	Ar << Header.CompilerVersion;
+	Ar << Header.Frequency;
 	Ar << Header.SourceLen;
 	Ar << Header.SourceCRC;
 	Ar << Header.NumThreadsX;
 	Ar << Header.NumThreadsY;
 	Ar << Header.NumThreadsZ;
 	Ar << Header.CompileFlags;
-	Ar << Header.Frequency;
 	Ar << Header.Version;
 	Ar << Header.SideTable;
 	Ar << Header.bDeviceFunctionConstants;
@@ -398,14 +399,41 @@ inline FArchive& operator<<(FArchive& Ar, FMetalCodeHeader& Header)
     return Ar;
 }
 
-struct FMetalShaderLibraryHeader
+struct FMetalShadeEntry
+{
+	TArray<uint8> Data;
+	uint32 Index;
+	uint8 Type;
+
+	FMetalShadeEntry()
+	: Index(0)
+	, Type(0)
+	{
+
+	}
+
+	FMetalShadeEntry(TArray<uint8> InData, uint32 InIndex, uint8 InType)
+	: Data(InData)
+	, Index(InIndex)
+	, Type(InType)
+	{
+
+	}
+	
+	friend FArchive& operator<<(FArchive& Ar, FMetalShadeEntry& Header)
+	{
+		return Ar << Header.Data << Header.Index << Header.Type;
+	}
+};
+
+struct FMetalShaderMap
 {
 	FString Format;
-	uint32 NumLibraries;
-	uint32 NumShadersPerLibrary;
+	uint32 Count;
+	TMap<FSHAHash, FMetalShadeEntry> HashMap;
 	
-	friend FArchive& operator<<(FArchive& Ar, FMetalShaderLibraryHeader& Header)
+	friend FArchive& operator<<(FArchive& Ar, FMetalShaderMap& Header)
 	{
-		return Ar << Header.Format << Header.NumLibraries << Header.NumShadersPerLibrary;
+		return Ar << Header.Format << Header.Count << Header.HashMap;
 	}
 };

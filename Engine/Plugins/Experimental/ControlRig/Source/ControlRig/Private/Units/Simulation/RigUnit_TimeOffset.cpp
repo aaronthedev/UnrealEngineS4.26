@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Units/Simulation/RigUnit_TimeOffset.h"
 #include "Units/RigUnitContext.h"
@@ -29,8 +29,6 @@ FRigUnit_TimeOffsetFloat_Execute()
 	}
 
 	int32 MaxSize = FMath::Clamp<int32>(BufferSize, 2, 512);
-	MaxSize = FMath::Min<int32>(MaxSize, Buffer.Num());
-
 	if (Context.State == EControlRigState::Init)
 	{
 		UpperBound = 0;
@@ -63,7 +61,7 @@ FRigUnit_TimeOffsetFloat_Execute()
 
 				if (AccumulatedTime >= SecondsAgo)
 				{
-					T = 1.f - (AccumulatedTime - SecondsAgo) / DeltaTimes[Index];
+					T = (AccumulatedTime - SecondsAgo) / DeltaTimes[Index];
 					break;
 				}
 				AccumulatedTime = AccumulatedTime + DeltaTimes[Index];;
@@ -136,8 +134,6 @@ FRigUnit_TimeOffsetVector_Execute()
 	}
 
 	int32 MaxSize = FMath::Clamp<int32>(BufferSize, 2, 512);
-	MaxSize = FMath::Min<int32>(MaxSize, Buffer.Num());
-
 	if (Context.State == EControlRigState::Init)
 	{
 		UpperBound = 0;
@@ -170,7 +166,7 @@ FRigUnit_TimeOffsetVector_Execute()
 
 				if (AccumulatedTime >= SecondsAgo)
 				{
-					T = 1.f - (AccumulatedTime - SecondsAgo) / DeltaTimes[Index];
+					T = (AccumulatedTime - SecondsAgo) / DeltaTimes[Index];
 					break;
 				}
 				AccumulatedTime = AccumulatedTime + DeltaTimes[Index];;
@@ -243,8 +239,6 @@ FRigUnit_TimeOffsetTransform_Execute()
 	}
 
 	int32 MaxSize = FMath::Clamp<int32>(BufferSize, 2, 512);
-	MaxSize = FMath::Min<int32>(MaxSize, Buffer.Num());
-
 	if (Context.State == EControlRigState::Init)
 	{
 		UpperBound = 0;
@@ -277,7 +271,7 @@ FRigUnit_TimeOffsetTransform_Execute()
 
 				if (AccumulatedTime >= SecondsAgo)
 				{
-					T = 1.f - (AccumulatedTime - SecondsAgo) / DeltaTimes[Index];
+					T = (AccumulatedTime - SecondsAgo) / DeltaTimes[Index];
 					break;
 				}
 				AccumulatedTime = AccumulatedTime + DeltaTimes[Index];;

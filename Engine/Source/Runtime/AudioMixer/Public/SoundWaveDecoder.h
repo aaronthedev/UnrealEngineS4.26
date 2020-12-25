@@ -1,15 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Engine/Public/AudioDevice.h"
 #include "Engine/Classes/Sound/SoundWave.h"
+#include "AudioMixer/Private/AudioMixerBuffer.h"
+#include "AudioMixer/Private/AudioMixerSourceBuffer.h"
 #include "DSP/SinOsc.h"
 #include "DSP/ParamInterpolator.h"
-#include "Misc/ScopeLock.h"
-
-
 
 class FAudioDevice;
 
@@ -17,10 +16,6 @@ class FAudioDevice;
 
 namespace Audio
 {
-	class FMixerBuffer;
-	class FMixerSourceBuffer;
-	struct FMixerSourceVoiceBuffer;
-
 	struct FDecodingSoundSourceHandle
 	{
 		FDecodingSoundSourceHandle()
@@ -38,14 +33,12 @@ namespace Audio
 			, SeekTime(0.0f)
 			, PitchScale(1.0f)
 			, VolumeScale(1.0f)
-			, bForceSyncDecode(false)
 		{}
 
 		USoundWave* SoundWave;
 		float SeekTime;
 		float PitchScale;
 		float VolumeScale;
-		bool bForceSyncDecode;
 		FDecodingSoundSourceHandle Handle;
 	};
 
@@ -76,14 +69,8 @@ namespace Audio
 		// Sets the volume scale
 		void SetVolumeScale(float InVolumeScale, uint32 NumFrames = 512);
 
-		// Sets the ForceSyncDecode flag. (Decodes for this soundwave will not happen in an async task if true)
-		void SetForceSyncDecode(bool bShouldForceSyncDecode);
-
 		// Get audio buffer
 		bool GetAudioBuffer(const int32 InNumFrames, const int32 InNumChannels, AlignedFloatBuffer& OutAudioBuffer);
-
-		// Return the underlying sound wave
-		USoundWave* GetSoundWave() { return SoundWave; }
 
 	private:
 
@@ -96,17 +83,11 @@ namespace Audio
 		// The sound wave object with which this sound is generating
 		USoundWave* SoundWave;
 
-		// Mixer buffer object which is a convenience wrapper around some buffer initialization and management
+		// Mixer buffer object which is a conveince wrapper around some buffer initialization and management
 		FMixerBuffer* MixerBuffer;
 
-		// Critical Section around mixer source buffer access
-		FCriticalSection MixerSourceBufferCritSec;
-
 		// Object which handles bulk of decoding operations
-		TSharedPtr<FMixerSourceBuffer, ESPMode::ThreadSafe> MixerSourceBuffer;
-
-		// Scratch buffer used for upmixing and downmixing the audio
-		AlignedFloatBuffer ScratchBuffer;
+		TSharedPtr<FMixerSourceBuffer> MixerSourceBuffer;
 
 		// Sample rate of the source
 		int32 SampleRate;
@@ -116,9 +97,6 @@ namespace Audio
 
 		// If we've initialized	
 		FThreadSafeBool bInitialized;
-
-		// force the decoding of this sound to be synchronous
-		bool bForceSyncDecode{false};
 
 		// Object used for source generation from decoded buffers
 		struct FSourceInfo
@@ -167,7 +145,7 @@ namespace Audio
 			TArray<float> NextFrameValues;
 
 			// The current decoded PCM buffer we are reading from
-			TSharedPtr<FMixerSourceVoiceBuffer, ESPMode::ThreadSafe> CurrentPCMBuffer;
+			TSharedPtr<FMixerSourceVoiceBuffer> CurrentPCMBuffer;
 
 			// If this sound is done (has decoded all data)
 			bool bIsDone;
@@ -207,15 +185,11 @@ namespace Audio
 
 	typedef TSharedPtr<FDecodingSoundSource> FDecodingSoundSourcePtr;
 	
-	class AUDIOMIXER_API FSoundSourceDecoder : public FGCObject
+	class AUDIOMIXER_API FSoundSourceDecoder
 	{
 	public:
 		FSoundSourceDecoder();
 		virtual ~FSoundSourceDecoder();
-
-		//~ Begin FGCObject
-		virtual void AddReferencedObjects(FReferenceCollector & Collector) override;
-		//~ End FGCObject
 
 		// Initialize the source decoder at the given output sample rate
 		// Sources will automatically sample rate convert to match this output
@@ -235,9 +209,6 @@ namespace Audio
 
 		// Removes the decoding source from the decoder
 		void RemoveDecodingSource(const FDecodingSoundSourceHandle& Handle);
-
-		// Resets internal state of decoder
-		void Reset();
 
 		// Sets the source pitch scale
 		void SetSourcePitchScale(const FDecodingSoundSourceHandle& Handle, float InPitchScale);
@@ -262,7 +233,6 @@ namespace Audio
 		int32 AudioThreadId;
 		FAudioDevice* AudioDevice;
 		int32 SampleRate;
-		mutable FCriticalSection DecodingSourcesCritSec;
 		TMap<int32, FDecodingSoundSourcePtr> InitializingDecodingSources;
 		TMap<int32, FDecodingSoundSourcePtr> DecodingSources;
 		TMap<int32, FSourceDecodeInit> PrecachingSources;

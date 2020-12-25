@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GoogleARCoreCookSupport.h"
 #include "GoogleARCoreBaseLogCategory.h"
@@ -218,13 +218,7 @@ void FGoogleARCoreSessionConfigCookSupport::OnSerializeSessionConfig(UARSessionC
 
 		FString ImageListFileContents;
 
-		for (int32 i = 0; i < CandidateImageList.Num(); i++) 
-		{
-			if (!CandidateImageList[i])
-			{
-				continue;
-			}
-			
+		for (int32 i = 0; i < CandidateImageList.Num(); i++) {
 			UTexture2D *Tex = CandidateImageList[i]->GetCandidateTexture();
 
 			if (Tex) {
@@ -293,7 +287,9 @@ void FGoogleARCoreSessionConfigCookSupport::OnSerializeSessionConfig(UARSessionC
 
 		if (OutReturnCode)
 		{
-			Ar.SetCriticalError();
+			Ar.SetError();
+			Ar.ArIsError = 1;
+			Ar.ArIsCriticalError = 1;
 			UE_LOG(LogGoogleARCore, Error, TEXT("Failed to build augmented image database: %s"), *OutStderr);
 		}
 		else

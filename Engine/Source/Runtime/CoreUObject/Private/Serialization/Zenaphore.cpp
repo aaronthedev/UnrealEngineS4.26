@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Zenaphore.h"
 #include "HAL/Event.h"
@@ -15,15 +15,6 @@ FZenaphore::~FZenaphore()
 	FPlatformProcess::ReturnSynchEventToPool(Event);
 }
 
-void FZenaphore::NotifyInternal(FZenaphoreWaiterNode* Waiter)
-{
-	TRACE_CPUPROFILER_EVENT_SCOPE(ZenaphoreTrigger);
-	check(Waiter);
-	FScopeLock Lock(&Mutex);
-	Waiter->bTriggered = true;
-	Event->Trigger();
-}
-
 void FZenaphore::NotifyOne()
 {
 	for (;;)
@@ -35,7 +26,10 @@ void FZenaphore::NotifyOne()
 		}
 		if (HeadWaiter.CompareExchange(Waiter, Waiter->Next))
 		{
-			NotifyInternal(Waiter);
+			TRACE_CPUPROFILER_EVENT_SCOPE(ZenaphoreTrigger);
+			FScopeLock Lock(&Mutex);
+			Waiter->bTriggered = true;
+			Event->Trigger();
 			return;
 		}
 	}
@@ -43,38 +37,15 @@ void FZenaphore::NotifyOne()
 
 void FZenaphore::NotifyAll()
 {
-	for (;;)
+	FZenaphoreWaiterNode* Waiter = HeadWaiter.Load();
+	while (Waiter)
 	{
-		FZenaphoreWaiterNode* Waiter = HeadWaiter.Load();
-		if (!Waiter)
-		{
-			return;
-		}
 		if (HeadWaiter.CompareExchange(Waiter, Waiter->Next))
 		{
-			NotifyInternal(Waiter);
-		}
-	}
-}
-
-FZenaphoreWaiter::~FZenaphoreWaiter()
-{
-	if (SpinCount)
-	{
-		WaitInternal();
-	}
-}
-
-void FZenaphoreWaiter::WaitInternal()
-{
-	for (;;)
-	{
-		Outer.Event->Wait(INT32_MAX, true);
-		FScopeLock Lock(&Outer.Mutex);
-		if (WaiterNode.bTriggered)
-		{
-			Outer.Event->Reset();
-			return;
+			TRACE_CPUPROFILER_EVENT_SCOPE(ZenaphoreTrigger);
+			FScopeLock Lock(&Mutex);
+			Waiter->bTriggered = true;
+			Event->Trigger();
 		}
 	}
 }
@@ -94,7 +65,22 @@ void FZenaphoreWaiter::Wait()
 	}
 	else
 	{
-		WaitInternal();
+#if CPUPROFILERTRACE_ENABLED
+		FCpuProfilerTrace::OutputBeginEvent(WaitCpuScopeId);
+#endif
+		for (;;)
+		{
+			Outer.Event->Wait(INT32_MAX, true);
+			FScopeLock Lock(&Outer.Mutex);
+			if (WaiterNode.bTriggered)
+			{
+				Outer.Event->Reset();
+				break;
+			}
+		}
 		SpinCount = 0;
+#if CPUPROFILERTRACE_ENABLED
+		FCpuProfilerTrace::OutputEndEvent();
+#endif
 	}
 }

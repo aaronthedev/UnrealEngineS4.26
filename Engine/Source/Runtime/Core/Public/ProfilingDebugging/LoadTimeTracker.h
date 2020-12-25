@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
 * Declarations for LoadTimer which helps get load times for various parts of the game.
@@ -10,19 +10,11 @@
 #include "Containers/Array.h"
 #include "Containers/Map.h"
 #include "UObject/NameTypes.h"
-#include "Trace/Trace.inl"
-#include "ProfilingDebugging/CpuProfilerTrace.h"
 #include "ProfilingDebugging/ScopedTimers.h"
-#include "Serialization/LoadTimeTrace.h"
-#include "Stats/Stats.h"
-#include "Misc/Optional.h"
+#include "Trace/Trace.h"
 
 #ifndef ENABLE_LOADTIME_TRACKING
 	#define ENABLE_LOADTIME_TRACKING 0
-#endif
-
-#ifndef ENABLE_LOADTIME_TRACKING_WITH_STATS
-	#define ENABLE_LOADTIME_TRACKING_WITH_STATS 0
 #endif
 
 #define ENABLE_LOADTIME_RAW_TIMINGS 0
@@ -217,36 +209,10 @@ struct CORE_API FScopedLoadTimeAccumulatorTimer : public FScopedDurationTimer
 #endif
 
 #if ENABLE_LOADTIME_RAW_TIMINGS
-#define SCOPED_LOADTIMER_TEXT(TimerName)
 #define SCOPED_LOADTIMER(TimerName) FScopedDurationTimer DurationTimer_##TimerName(FLoadTimeTracker::Get().TimerName);
 #define SCOPED_LOADTIMER_CNT(TimerName) FScopedDurationTimer DurationTimer_##TimerName(FLoadTimeTracker::Get().TimerName); FLoadTimeTracker::Get().TimerName##Cnt++;
-#define ADD_CUSTOM_LOADTIMER_META(key, value)
 #else
 
-#if CPUPROFILERTRACE_ENABLED
-#define SCOPED_LOADTIMER_TEXT(TimerName) \
-	TOptional<FCpuProfilerTrace::FDynamicEventScope> PREPROCESSOR_JOIN(__LoadTimerEventScope, __LINE__); \
-	if (UE_TRACE_CHANNELEXPR_IS_ENABLED(LoadTimeChannel|CpuChannel)) \
-	{ \
-		PREPROCESSOR_JOIN(__LoadTimerEventScope, __LINE__).Emplace(TimerName, LoadTimeChannel); \
-	}
-#else
-#define SCOPED_LOADTIMER_TEXT(TimerName)
-#endif
-
-#define CUSTOM_LOADTIMER_LOG Cpu
-
-#define SCOPED_LOADTIMER(TimerName) TRACE_CPUPROFILER_EVENT_SCOPE_ON_CHANNEL(TimerName, LoadTimeChannel)
-#define SCOPED_CUSTOM_LOADTIMER(TimerName) UE_TRACE_LOG_SCOPED_T(CUSTOM_LOADTIMER_LOG, TimerName, LoadTimeChannel)
+#define SCOPED_LOADTIMER(TimerName) TRACE_CPUPROFILER_EVENT_SCOPE_GROUP(TimerName, CpuProfilerGroup_LoadTime)
 #define SCOPED_LOADTIMER_CNT(TimerName)
-
-#define ADD_CUSTOM_LOADTIMER_META(TimerName, Key, Value) << TimerName.Key(Value)
-#endif
-
-#if ENABLE_LOADTIME_TRACKING_WITH_STATS && STATS
-	#define SCOPED_ACCUM_LOADTIME_STAT(InstanceName) FSimpleScopeSecondsStat ScopeTimer(FDynamicStats::CreateStatIdDouble<FStatGroup_STATGROUP_LoadTimeClass>(InstanceName, true), 1000.0);
-	#define ACCUM_LOADTIMECOUNT_STAT(InstanceName) INC_DWORD_STAT_FNAME_BY(FDynamicStats::CreateStatIdInt64<FStatGroup_STATGROUP_LoadTimeClassCount>(InstanceName+TEXT("_Count"), true).GetName(), 1);
-#else
-	#define SCOPED_ACCUM_LOADTIME_STAT(...)
-	#define ACCUM_LOADTIMECOUNT_STAT(...)
 #endif

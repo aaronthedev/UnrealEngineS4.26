@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -26,8 +26,6 @@ protected:
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	virtual bool NeedsNativePresent() override
 	{ return true; }
-	virtual bool NeedsAdvanceBackbuffer() override
-	{ return true; };
 
 	virtual bool Present(int32& InOutSyncInterval) override;
 	virtual void OnBackBufferResize() override;

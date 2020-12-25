@@ -1,121 +1,43 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "SkeletalMeshTypes.h"
-#include "Chaos/AABBTree.h"
-#include "Chaos/GeometryParticlesfwd.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogClothingMeshUtils, Log, All);
 
-struct FClothPhysicalMeshData;
+class UClothPhysicalMeshDataBase;
 
 namespace ClothingMeshUtils
 {
 	struct CLOTHINGSYSTEMRUNTIMECOMMON_API ClothMeshDesc
 	{
-		struct FClothBvEntry
-		{
-			ClothMeshDesc* TmData;
-			int32 Index;
-
-			bool HasBoundingBox() const { return true; }
-
-			Chaos::TAABB<float, 3> BoundingBox() const
-			{
-				int32 TriBaseIdx = Index * 3;
-
-				const uint32 IA = TmData->Indices[TriBaseIdx + 0];
-				const uint32 IB = TmData->Indices[TriBaseIdx + 1];
-				const uint32 IC = TmData->Indices[TriBaseIdx + 2];
-
-				const FVector& A = TmData->Positions[IA];
-				const FVector& B = TmData->Positions[IB];
-				const FVector& C = TmData->Positions[IC];
-
-				Chaos::TAABB<float,3> Bounds(A, A);
-
-				Bounds.GrowToInclude(B);
-				Bounds.GrowToInclude(C);
-
-				return Bounds;
-			}
-
-			template<typename TPayloadType>
-			int32 GetPayload(int32 Idx) const
-			{
-				return Idx;
-			}
-
-			Chaos::FUniqueIdx UniqueIdx() const
-			{
-				return Chaos::FUniqueIdx(Index);
-			}
-		};
-
-		ClothMeshDesc(TArrayView<const FVector> InPositions, TArrayView<const FVector> InNormals, TArrayView<const uint32> InIndices)
+		ClothMeshDesc(TArrayView<const FVector> InPositions, TArrayView<const FVector> InNormals,  TArrayView<const uint32> InIndices)
 			: Positions(InPositions)
 			, Normals(InNormals)
 			, Indices(InIndices)
-			, bHasValidBVH(false)
-		{
-		}
+		{}
 
 		bool HasValidMesh() const
 		{
 			return Positions.Num() == Normals.Num() && Indices.Num() % 3 == 0;
 		}
 
-		TArray<int32> FindCandidateTriangles(const FVector Point)
-		{
-			ensure(HasValidMesh());
-			const int32 NumTris = Indices.Num() / 3;
-			if (NumTris > 100)
-			{
-				// This is not thread safe
-				if (!bHasValidBVH)
-				{
-					TArray<FClothBvEntry> BVEntries;
-					BVEntries.Reset(NumTris);
-
-					for (int Tri = 0; Tri < NumTris; Tri++)
-					{
-						BVEntries.Add({ this, Tri });
-					}
-					BVH.Reinitialize(BVEntries);
-					bHasValidBVH = true;
-				}
-				Chaos::TAABB<float, 3> TmpAABB(Point, Point);
-				return BVH.FindAllIntersections(TmpAABB);
-			}
-			else
-			{
-				return TArray<int32>();
-			}
-		}
-
 		TArrayView<const FVector> Positions;
 		TArrayView<const FVector> Normals;
 		TArrayView<const uint32> Indices;
-
-		bool bHasValidBVH;
-		Chaos::TAABBTree<int32, Chaos::TAABBTreeLeafArray<int32, float, false>, float, false> BVH;
 	};
 
 	// Static method for calculating a skinned mesh result from source data
-	// The bInPlaceOutput allows us to directly populate arrays that are already allocated
-	// bRemoveScaleAndInvertPostTransform will determine if the PostTransform should be inverted and the scale removed (NvCloth uses this). It is templated to remove branches at compile time
-	template<bool bInPlaceOutput = false, bool bRemoveScaleAndInvertPostTransform = true>
 	void CLOTHINGSYSTEMRUNTIMECOMMON_API
 	SkinPhysicsMesh(
 		const TArray<int32>& BoneMap, // UClothingAssetCommon::UsedBoneIndices
-		const FClothPhysicalMeshData& InMesh, 
-		const FTransform& PostTransform, // Final transform to apply to component space positions and normals
+		const UClothPhysicalMeshDataBase& InMesh, 
+		const FTransform& RootBoneTransform, 
 		const FMatrix* InBoneMatrices, 
 		const int32 InNumBoneMatrices, 
 		TArray<FVector>& OutPositions, 
-		TArray<FVector>& OutNormals,
-		uint32 ArrayOffset = 0); // Used for Chaos Cloth
+		TArray<FVector>& OutNormals);
 
 	/**
 	* Given mesh information for two meshes, generate a list of skinning data to embed mesh0 in mesh1
@@ -129,9 +51,7 @@ namespace ClothingMeshUtils
 		TArray<FMeshToMeshVertData>& OutSkinningData,
 		const ClothMeshDesc& TargetMesh,
 		const TArray<FVector>* TargetTangents,
-		const ClothMeshDesc& SourceMesh,
-		bool bUseMultipleInfluences,
-		float KernelMaxDistance);
+		const ClothMeshDesc& SourceMesh);
 
 	/** 
 	 * Embeds a list of positions into a source mesh

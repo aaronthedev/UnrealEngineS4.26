@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CurveEditorSelection.h"
 #include "CurveEditorTypes.h"
@@ -65,19 +65,14 @@ void FCurveEditorSelection::Add(FCurveModelID CurveID, ECurvePointType PointType
 void FCurveEditorSelection::Add(FCurveModelID CurveID, ECurvePointType PointType, TArrayView<const FKeyHandle> Keys)
 {
 	TSharedPtr<FCurveEditor> CurveEditor = WeakCurveEditor.Pin();
-	if (Keys.Num() > 0 && CurveEditor)
+	if (Keys.Num() > 0 && CurveEditor && !CurveEditor->GetCurves()[CurveID]->IsReadOnly())
 	{
-		const TUniquePtr<FCurveModel> *CurveModel = CurveEditor->GetCurves().Find(CurveID);
-		if (CurveModel && CurveModel->IsValid() && !(*CurveModel)->IsReadOnly())
+		ChangeSelectionPointType(PointType);
+
+		FKeyHandleSet& SelectedKeys = CurveToSelectedKeys.FindOrAdd(CurveID);
+		for (FKeyHandle Key : Keys)
 		{
-			ChangeSelectionPointType(PointType);
-
-			FKeyHandleSet& SelectedKeys = CurveToSelectedKeys.FindOrAdd(CurveID);
-			for (FKeyHandle Key : Keys)
-			{
-				SelectedKeys.Add(Key);
-			}
-
+			SelectedKeys.Add(Key);
 		}
 	}
 

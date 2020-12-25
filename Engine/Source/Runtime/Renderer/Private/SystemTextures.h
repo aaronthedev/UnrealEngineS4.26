@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	SystemTextures.h: System textures definitions.
@@ -24,10 +24,6 @@ public:
 	 */
 	inline void InitializeTextures(FRHICommandListImmediate& RHICmdList, const ERHIFeatureLevel::Type InFeatureLevel)
 	{
-		// When we render to system textures it should occur on all GPUs since this only
-		// happens once on startup (or when the feature level changes).
-		SCOPED_GPU_MASK(RHICmdList, FRHIGPUMask::All());
-
 		// if this is the first call initialize everything
 		if (FeatureLevelInitializedTo == ERHIFeatureLevel::Num)
 		{
@@ -71,15 +67,12 @@ public:
 	TRefCountPtr<IPooledRenderTarget> SSAORandomization;
 	/** GTAO randomization */
 	TRefCountPtr<IPooledRenderTarget> GTAORandomization;
-	/** GTAO PreIntegrated */
-	TRefCountPtr<IPooledRenderTarget> GTAOPreIntegrated;
 
 	/** Preintegrated GF for single sample IBL */
 	TRefCountPtr<IPooledRenderTarget> PreintegratedGF;
 	/** Hair BSDF LUT texture */
 	TRefCountPtr<IPooledRenderTarget> HairLUT0;
 	TRefCountPtr<IPooledRenderTarget> HairLUT1;
-	TRefCountPtr<IPooledRenderTarget> HairLUT2;
 	/** Linearly Transformed Cosines LUTs */
 	TRefCountPtr<IPooledRenderTarget> LTCMat;
 	TRefCountPtr<IPooledRenderTarget> LTCAmp;
@@ -99,7 +92,6 @@ public:
 	/** float4(0,0,0,0) volumetric texture. */
 	TRefCountPtr<IPooledRenderTarget> VolumetricBlackDummy;
 	
-
 	// Dummy 0 Uint texture for RHIs that need explicit overloads
 	TRefCountPtr<IPooledRenderTarget> ZeroUIntDummy;
 

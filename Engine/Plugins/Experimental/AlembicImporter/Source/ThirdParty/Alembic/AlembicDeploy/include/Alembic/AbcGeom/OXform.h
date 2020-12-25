@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcGeom_OXform_h
-#define Alembic_AbcGeom_OXform_h
+#ifndef _Alembic_AbcGeom_OXform_h_
+#define _Alembic_AbcGeom_OXform_h_
 
 #include <Alembic/Util/Export.h>
 #include <Alembic/AbcGeom/Foundation.h>
@@ -165,7 +165,7 @@ public:
     //! Valid returns whether this function set is valid.
     bool valid() const
     {
-        return ( super_type::valid() );
+        return ( m_opsPWPtr && super_type::valid() );
     }
 
     //! unspecified-bool-type operator overload.

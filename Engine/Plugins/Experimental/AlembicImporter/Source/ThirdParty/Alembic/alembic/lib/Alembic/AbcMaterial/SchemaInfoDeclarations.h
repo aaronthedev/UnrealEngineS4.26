@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcMaterial_SchemaInfoDeclarations_h
-#define Alembic_AbcMaterial_SchemaInfoDeclarations_h
+#ifndef _Alembic_AbcMaterial_SchemaInfoDeclarations_h_
+#define _Alembic_AbcMaterial_SchemaInfoDeclarations_h_
 
 #include <Alembic/Abc/OSchema.h>
 

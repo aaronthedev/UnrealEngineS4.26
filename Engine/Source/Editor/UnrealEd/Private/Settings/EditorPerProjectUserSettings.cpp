@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Editor/EditorPerProjectUserSettings.h"
 #include "Misc/Paths.h"
@@ -31,7 +31,6 @@ UEditorPerProjectUserSettings::UEditorPerProjectUserSettings(const FObjectInitia
 	PreviewFeatureLevel = (int32)ERHIFeatureLevel::SM5;
 	PreviewShaderFormatName = NAME_None;
 	bPreviewFeatureLevelActive = false;
-	PreviewDeviceProfileName = NAME_None;
 }
 
 void UEditorPerProjectUserSettings::PostInitProperties()

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -248,9 +248,6 @@ public:
 	/** @return	whether at least one actor is selected */
 	bool AreActorsSelected() const;
 
-	/** @return whether any of the currently selected levels can be converted to the specified actor bExternal packaging */
-	bool CanConvertAnyLevelToExternalActors(bool bExternal) const;
-
 	/** @return whether moving the selected actors to the selected level is a valid action */
 	bool IsValidMoveActorsToLevel() const;
 
@@ -415,9 +412,6 @@ protected:
 	/** Removes the Actors in the selected Levels from the viewport's existing selection */
 	void DeselectActors_Executed();
 
-	/** Set level `Use External Actors` to bExternal  */
-	void ConvertLevelToExternalActors_Executed(bool bExternal);
-
 	/** Toggles selected levels to a visible state in the viewports */
 	void ShowSelectedLevels_Executed();
 
@@ -452,7 +446,7 @@ protected:
 	void LockAllLevels_Executed();
 
 	/** Unlocks all levels */
-	void UnlockAllLevels_Executed();
+	void UnockAllLevels_Executed();
 
 	/** Toggle all read-only levels */
 	void ToggleReadOnlyLevels_Executed();
@@ -644,7 +638,6 @@ struct FTiledLandscapeImportSettings
 		, TilesCoordinatesOffset(0,0)
 		, SizeX(1009)
 		, bFlipYAxis(true)
-		, bEditLayersEnabled(false)
 	{}
 	
 	FVector				Scale3D;
@@ -657,7 +650,6 @@ struct FTiledLandscapeImportSettings
 	FIntPoint			TilesCoordinatesOffset;
 	int32				SizeX;
 	bool				bFlipYAxis;
-	bool				bEditLayersEnabled;
 
 
 	TWeakObjectPtr<UMaterialInterface>	LandscapeMaterial;

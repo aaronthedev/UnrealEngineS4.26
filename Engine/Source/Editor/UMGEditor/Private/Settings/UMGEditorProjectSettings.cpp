@@ -1,12 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UMGEditorProjectSettings.h"
 #include "WidgetBlueprint.h"
 #include "WidgetCompilerRule.h"
 #include "UObject/Package.h"
 #include "UObject/UObjectIterator.h"
-
-#include "Blueprint/UserWidget.h"
 #include "Components/CanvasPanel.h"
 
 UUMGEditorProjectSettings::UUMGEditorProjectSettings()
@@ -18,7 +16,10 @@ UUMGEditorProjectSettings::UUMGEditorProjectSettings()
 
 	bUseWidgetTemplateSelector = false;
 	DefaultRootWidget = UCanvasPanel::StaticClass();
-	DefaultWidgetParentClass = UUserWidget::StaticClass();
+
+	// Deprecated
+	bCookSlowConstructionWidgetTree_DEPRECATED = true;
+	bWidgetSupportsDynamicCreation_DEPRECATED = true;
 }
 
 #if WITH_EDITOR
@@ -34,6 +35,16 @@ FText UUMGEditorProjectSettings::GetSectionDescription() const
 }
 
 #endif
+
+bool UUMGEditorProjectSettings::CompilerOption_SupportsDynamicCreation(const class UWidgetBlueprint* WidgetBlueprint) const
+{
+	return GetFirstCompilerOption(WidgetBlueprint, &FWidgetCompilerOptions::bWidgetSupportsDynamicCreation, true);
+}
+
+bool UUMGEditorProjectSettings::CompilerOption_CookSlowConstructionWidgetTree(const class UWidgetBlueprint* WidgetBlueprint) const
+{
+	return GetFirstCompilerOption(WidgetBlueprint, &FWidgetCompilerOptions::bCookSlowConstructionWidgetTree, true);
+}
 
 bool UUMGEditorProjectSettings::CompilerOption_AllowBlueprintTick(const class UWidgetBlueprint* WidgetBlueprint) const
 {
@@ -154,4 +165,9 @@ void UUMGEditorProjectSettings::PostInitProperties()
 
 void UUMGEditorProjectSettings::PerformUpgradeStepForVersion(int32 ForVersion)
 {
+	if (ForVersion == 1)
+	{
+		DefaultCompilerOptions.bCookSlowConstructionWidgetTree = bCookSlowConstructionWidgetTree_DEPRECATED;
+		DefaultCompilerOptions.bWidgetSupportsDynamicCreation = bWidgetSupportsDynamicCreation_DEPRECATED;
+	}
 }

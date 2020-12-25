@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "StaticMeshComponentAdapter.h"
 #include "MaterialBakingStructures.h"
@@ -63,16 +63,6 @@ FString FStaticMeshComponentAdapter::GetBaseName() const
 	return StaticMesh->GetOutermost()->GetName();
 }
 
-FName FStaticMeshComponentAdapter::GetMaterialSlotName(int32 MaterialIndex) const
-{
-	return StaticMeshComponent->GetMaterialSlotNames()[MaterialIndex];
-}
-
-FName FStaticMeshComponentAdapter::GetImportedMaterialSlotName(int32 MaterialIndex) const
-{
-	return FName();
-}
-
 void FStaticMeshComponentAdapter::SetMaterial(int32 MaterialIndex, UMaterialInterface* Material)
 {
 	StaticMeshComponent->SetMaterial(MaterialIndex, Material);
@@ -83,11 +73,6 @@ void FStaticMeshComponentAdapter::RemapMaterialIndex(int32 LODIndex, int32 Secti
 }
 
 int32 FStaticMeshComponentAdapter::AddMaterial(UMaterialInterface* Material)
-{
-	return INDEX_NONE;
-}
-
-int32 FStaticMeshComponentAdapter::AddMaterial(UMaterialInterface* Material, const FName& SlotName, const FName& ImportedSlotName)
 {
 	return INDEX_NONE;
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -77,7 +77,7 @@ private:
 
 	FName SelectedProfileName;
 
-	TSharedPtr<class IEditableSkeleton> EditableSkeleton;
+	TWeakPtr<class IEditableSkeleton> EditableSkeleton;
 
 	FOnBlendProfileSelected BlendProfileSelectedDelegate;
 

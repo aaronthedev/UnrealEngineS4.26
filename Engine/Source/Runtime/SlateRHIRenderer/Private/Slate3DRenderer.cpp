@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Slate3DRenderer.h"
 #include "Fonts/FontCache.h"
@@ -107,6 +107,21 @@ void FSlate3DRenderer::DrawWindow_GameThread(FSlateDrawBuffer& DrawBuffer)
 	}
 }
 
+struct TKeepAliveCommandString
+{
+	static const TCHAR* TStr() { return TEXT("TKeepAliveCommand"); }
+};
+
+template<typename TKeepAliveType>
+struct TKeepAliveCommand final : public FRHICommand < TKeepAliveCommand<TKeepAliveType>, TKeepAliveCommandString >
+{
+	TKeepAliveType Value;
+	
+	TKeepAliveCommand(TKeepAliveType InValue) : Value(InValue) {}
+
+	void Execute(FRHICommandListBase& CmdList) {}
+};
+
 void FSlate3DRenderer::DrawWindowToTarget_RenderThread(FRHICommandListImmediate& InRHICmdList, const FRenderThreadUpdateContext& Context)
 {
 	check(IsInRenderingThread());
@@ -118,14 +133,12 @@ void FSlate3DRenderer::DrawWindowToTarget_RenderThread(FRHICommandListImmediate&
 
 	const TArray<TSharedRef<FSlateWindowElementList>>& WindowsToDraw = Context.WindowDrawBuffer->GetWindowElementLists();
 
-	FMemMark MemMark(FMemStack::Get());
-
 	// Enqueue a command to unlock the draw buffer after all windows have been drawn
 	RenderTargetPolicy->BeginDrawingWindows();
 
 	// Set render target and clear.
 	FTexture2DRHIRef RTTextureRHI = Context.RenderTarget->GetRenderTargetTexture();
-	InRHICmdList.Transition(FRHITransitionInfo(RTTextureRHI, ERHIAccess::Unknown, ERHIAccess::RTV));
+	InRHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, RTTextureRHI);
 	
 	FRHIRenderPassInfo RPInfo(RTTextureRHI, ERenderTargetActions::Load_Store);
 	if (Context.bClearTarget)
@@ -177,7 +190,6 @@ void FSlate3DRenderer::DrawWindowToTarget_RenderThread(FRHICommandListImmediate&
 					InRHICmdList,
 					BackBufferTarget,
 					ColorTarget,
-					ColorTarget,
 					DepthStencil,
 					BatchData.GetFirstRenderBatchIndex(),
 					BatchData.GetRenderBatches(),
@@ -194,6 +206,7 @@ void FSlate3DRenderer::DrawWindowToTarget_RenderThread(FRHICommandListImmediate&
 	FSlateEndDrawingWindowsCommand::EndDrawingWindows(InRHICmdList, Context.WindowDrawBuffer, *RenderTargetPolicy);
 	InRHICmdList.CopyToResolveTarget(Context.RenderTarget->GetRenderTargetTexture(), RTTextureRHI, FResolveParams());
 
-	// Enqueue a command to keep "this" alive.
-	InRHICmdList.EnqueueLambda([Self = SharedThis(this)](FRHICommandListImmediate&){});
+	ISlate3DRendererPtr Self = SharedThis(this);
+
+	ALLOC_COMMAND_CL(InRHICmdList, TKeepAliveCommand<ISlate3DRendererPtr>)(Self);
 }

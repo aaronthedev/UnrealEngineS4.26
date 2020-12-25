@@ -1,12 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GoogleARCorePointCloudRendererComponent.h"
 #include "DrawDebugHelpers.h"
 #include "GoogleARCoreTypes.h"
-#include "ARBlueprintLibrary.h"
+#include "GoogleARCoreFunctionLibrary.h"
 
-
-UDEPRECATED_GoogleARCorePointCloudRendererComponent::UDEPRECATED_GoogleARCorePointCloudRendererComponent()
+UGoogleARCorePointCloudRendererComponent::UGoogleARCorePointCloudRendererComponent()
 	: PointColor(FColor::Red)
 	, PointSize(0.1f)
 {
@@ -14,20 +13,27 @@ UDEPRECATED_GoogleARCorePointCloudRendererComponent::UDEPRECATED_GoogleARCorePoi
 	PrimaryComponentTick.bCanEverTick = true;
 }
 
-void UDEPRECATED_GoogleARCorePointCloudRendererComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction * ThisTickFunction)
+void UGoogleARCorePointCloudRendererComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction * ThisTickFunction)
 {
 	DrawPointCloud();
 }
 
-void UDEPRECATED_GoogleARCorePointCloudRendererComponent::DrawPointCloud()
+void UGoogleARCorePointCloudRendererComponent::DrawPointCloud()
 {
 	UWorld* World = GetWorld();
-	if (UARBlueprintLibrary::GetTrackingQuality() != EARTrackingQuality::NotTracking)
+	if (UGoogleARCoreFrameFunctionLibrary::GetTrackingState() == EGoogleARCoreTrackingState::Tracking)
 	{
-		const auto PointCloud = UARBlueprintLibrary::GetPointCloud();
-		for (const auto& PointPosition : PointCloud)
+		UGoogleARCorePointCloud* LatestPointCloud = nullptr;
+		EGoogleARCoreFunctionStatus Status = UGoogleARCoreFrameFunctionLibrary::GetPointCloud(LatestPointCloud);
+		if (Status == EGoogleARCoreFunctionStatus::Success && LatestPointCloud != nullptr && LatestPointCloud->GetPointNum() > 0)
 		{
-			DrawDebugPoint(World, PointPosition, PointSize, PointColor, false);
+			for (int i = 0; i < LatestPointCloud->GetPointNum(); i++)
+			{
+				FVector PointPosition = FVector::ZeroVector;
+				float PointConfidence = 0;
+				LatestPointCloud->GetPoint(i, PointPosition, PointConfidence);
+				DrawDebugPoint(World, PointPosition, PointSize, PointColor, false);
+			}
 		}
 	}
 }

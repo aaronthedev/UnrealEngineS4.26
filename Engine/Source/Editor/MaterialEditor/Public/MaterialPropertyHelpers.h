@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -41,7 +41,6 @@ struct MATERIALEDITOR_API FSortedParamData
 public:
 	EStackDataType StackDataType;
 
-	UPROPERTY(Transient)
 	class UDEditorParameterValue* Parameter;
 
 	FName PropertyName;
@@ -59,11 +58,8 @@ public:
 	FString NodeKey;
 };
 
-USTRUCT()
 struct FUnsortedParamData
 {
-	GENERATED_USTRUCT_BODY()
-	UPROPERTY(Transient)
 	class UDEditorParameterValue* Parameter;
 	FEditorParameterGroup ParameterGroup;
 	TSharedPtr<class IDetailTreeNode> ParameterNode;

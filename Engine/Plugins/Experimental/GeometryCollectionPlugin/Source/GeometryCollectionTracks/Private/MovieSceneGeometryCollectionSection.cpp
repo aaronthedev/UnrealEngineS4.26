@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieSceneGeometryCollectionSection.h"
 #include "MovieSceneGeometryCollectionTemplate.h"
@@ -35,6 +35,11 @@ UMovieSceneGeometryCollectionSection::UMovieSceneGeometryCollectionSection( cons
 TOptional<FFrameTime> UMovieSceneGeometryCollectionSection::GetOffsetTime() const
 {
 	return TOptional<FFrameTime>(Params.StartFrameOffset);
+}
+
+FMovieSceneEvalTemplatePtr UMovieSceneGeometryCollectionSection::GenerateTemplate() const
+{
+	return FMovieSceneGeometryCollectionSectionTemplate(*this);
 }
 
 FFrameNumber GetStartOffsetAtTrimTime(FQualifiedFrameTime TrimTime, const FMovieSceneGeometryCollectionParams& Params, FFrameNumber StartFrame, FFrameRate FrameRate)
@@ -131,7 +136,7 @@ float UMovieSceneGeometryCollectionSection::MapTimeToAnimation(FFrameTime InPosi
 
 
 #if WITH_EDITOR
-void UMovieSceneGeometryCollectionSection::PreEditChange(FProperty* PropertyAboutToChange)
+void UMovieSceneGeometryCollectionSection::PreEditChange(UProperty* PropertyAboutToChange)
 {
 	// Store the current play rate so that we can compute the amount to compensate the section end time when the play rate changes
 	PreviousPlayRate = Params.PlayRate;
@@ -149,7 +154,7 @@ void UMovieSceneGeometryCollectionSection::PostEditChangeProperty(FPropertyChang
 
 		if (!FMath::IsNearlyZero(NewPlayRate))
 		{
-			float CurrentDuration = UE::MovieScene::DiscreteSize(GetRange());
+			float CurrentDuration = MovieScene::DiscreteSize(GetRange());
 			float NewDuration = CurrentDuration * (PreviousPlayRate / NewPlayRate);
 			SetEndFrame( GetInclusiveStartFrame() + FMath::FloorToInt(NewDuration) );
 

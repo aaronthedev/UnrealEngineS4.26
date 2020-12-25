@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  *
@@ -13,7 +13,7 @@
 #include "DefaultSizedThumbnailRenderer.generated.h"
 
 UCLASS(abstract, config=Editor, MinimalAPI)
-class UDefaultSizedThumbnailRenderer : public UThumbnailRenderer
+class UNREALED_VTABLE UDefaultSizedThumbnailRenderer : public UThumbnailRenderer
 {
 	GENERATED_UCLASS_BODY()
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -218,7 +218,7 @@ struct GAMEPLAYABILITIES_API FGameplayAbilitySpec : public FFastArraySerializerI
 	GENERATED_USTRUCT_BODY()
 
 	FGameplayAbilitySpec()
-		: Ability(nullptr), Level(1), InputID(INDEX_NONE), SourceObject(nullptr), ActiveCount(0), InputPressed(false), RemoveAfterActivation(false), PendingRemove(false), bActivateOnce(false)
+		: Ability(nullptr), Level(1), InputID(INDEX_NONE), SourceObject(nullptr), ActiveCount(0), InputPressed(false), RemoveAfterActivation(false), PendingRemove(false)
 	{ }
 
 	/** Version that takes an ability class */
@@ -266,17 +266,9 @@ struct GAMEPLAYABILITIES_API FGameplayAbilitySpec : public FFastArraySerializerI
 	UPROPERTY(NotReplicated)
 	uint8 PendingRemove:1;
 
-	/** This ability should be activated once when it is granted. */
-	UPROPERTY(NotReplicated)
-	uint8 bActivateOnce : 1;
-
 	/** Activation state of this ability. This is not replicated since it needs to be overwritten locally on clients during prediction. */
 	UPROPERTY(NotReplicated)
 	FGameplayAbilityActivationInfo	ActivationInfo;
-
-	/** Optional ability tags that are replicated.  These tags are also captured as source tags by applied gameplay effects. */
-	UPROPERTY()
-	FGameplayTagContainer DynamicAbilityTags;
 
 	/** Non replicating instances of this ability. */
 	UPROPERTY(NotReplicated)

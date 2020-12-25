@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/SynthComponent.h"
 #include "AudioDevice.h"
@@ -44,16 +44,12 @@ void USynthSound::StartOnAudioDevice(FAudioDevice* InAudioDevice)
 
 void USynthSound::OnBeginGenerate()
 {
-	if (ensure(OwningSynthComponent))
-	{
-		OwningSynthComponent->OnBeginGenerate();
-	}
+	check(OwningSynthComponent);
+	OwningSynthComponent->OnBeginGenerate();
 }
 
 int32 USynthSound::OnGeneratePCMAudio(TArray<uint8>& OutAudio, int32 NumSamples)
 {
-	LLM_SCOPE(ELLMTag::AudioSynthesis);
-
 	OutAudio.Reset();
 
 	if (bAudioMixer)
@@ -100,19 +96,10 @@ int32 USynthSound::OnGeneratePCMAudio(TArray<uint8>& OutAudio, int32 NumSamples)
 void USynthSound::OnEndGenerate()
 {
 	// Mark pending kill can null this out on the game thread in rare cases.
-	if (OwningSynthComponent)
+	if(OwningSynthComponent)
 	{
 		OwningSynthComponent->OnEndGenerate();
 	}
-}
-
-ISoundGeneratorPtr USynthSound::CreateSoundGenerator(int32 InSampleRate, int32 InNumChannels)
-{
-	if (OwningSynthComponent)
-	{
-		return OwningSynthComponent->CreateSoundGeneratorInternal(SampleRate, NumChannels);
-	}
-	return nullptr;
 }
 
 Audio::EAudioMixerStreamDataFormat::Type USynthSound::GetGeneratedPCMDataFormat() const
@@ -134,7 +121,7 @@ USynthComponent::USynthComponent(const FObjectInitializer& ObjectInitializer)
 	bIsSynthPlaying = false;
 	bIsInitialized = false;
 	bIsUISound = false;
-	bAlwaysPlay = true;
+
 	Synth = nullptr;
 
 	// Set the default sound class
@@ -159,12 +146,6 @@ void USynthComponent::OnAudioComponentEnvelopeValue(const UAudioComponent* InAud
 	{
 		OnAudioEnvelopeValueNative.Broadcast(InAudioComponent, EnvelopeValue);
 	}
-}
-
-void USynthComponent::BeginDestroy()
-{
-	Super::BeginDestroy();
-	Stop();
 }
 
 void USynthComponent::Activate(bool bReset)
@@ -298,6 +279,7 @@ void USynthComponent::CreateAudioComponent()
 		AudioComponent->bStopWhenOwnerDestroyed = true;
 		AudioComponent->bShouldRemainActiveIfDropped = true;
 		AudioComponent->Mobility = EComponentMobility::Movable;
+		AudioComponent->Modulation = Modulation;
 
 #if WITH_EDITORONLY_DATA
 		AudioComponent->bVisualizeComponent = false;
@@ -306,7 +288,6 @@ void USynthComponent::CreateAudioComponent()
 		// Set defaults to be the same as audio component defaults
 		AudioComponent->EnvelopeFollowerAttackTime = EnvelopeFollowerAttackTime;
 		AudioComponent->EnvelopeFollowerReleaseTime = EnvelopeFollowerReleaseTime;
-		AudioComponent->bAlwaysPlay = bAlwaysPlay;
 	}
 }
 
@@ -391,14 +372,40 @@ void USynthComponent::PumpPendingMessages()
 	{
 		Command();
 	}
+
+	ESynthEvent SynthEvent;
+	while (PendingSynthEvents.Dequeue(SynthEvent))
+	{
+		switch (SynthEvent)
+		{
+			case ESynthEvent::Start:
+				bIsSynthPlaying = true;
+				OnStart();
+				break;
+
+			case ESynthEvent::Stop:
+				bIsSynthPlaying = false;
+				OnStop();
+				break;
+
+			default:
+				break;
+		}
+	}
 }
 
-FAudioDevice* USynthComponent::GetAudioDevice() const
+FAudioDevice* USynthComponent::GetAudioDevice()
 {
 	// If the synth component has a world, that means it was already registed with that world
 	if (UWorld* World = GetWorld())
 	{
-		return World->AudioDeviceHandle.GetAudioDevice();
+		// Make sure it has a proper audio device handle and retrieve it
+		if (World->AudioDeviceHandle != INDEX_NONE)
+		{
+			FAudioDeviceManager* AudioDeviceManager = GEngine->GetAudioDeviceManager();
+			check(AudioDeviceManager);
+			return AudioDeviceManager->GetAudioDevice(World->AudioDeviceHandle);
+		}
 	}
 
 	// Otherwise, retrieve the audio component's audio device (probably from it's owner)
@@ -413,8 +420,6 @@ FAudioDevice* USynthComponent::GetAudioDevice() const
 
 int32 USynthComponent::OnGeneratePCMAudio(float* GeneratedPCMData, int32 NumSamples)
 {
-	LLM_SCOPE(ELLMTag::AudioSynthesis);
-
 	PumpPendingMessages();
 
 	check(NumSamples > 0);
@@ -470,9 +475,17 @@ void USynthComponent::Start()
 		AudioComponent->SetSound(Synth);
 		AudioComponent->Play(0);
 
+		// Copy sound base data to the sound
+		Synth->SourceEffectChain = SourceEffectChain;
+		Synth->SoundSubmixObject = SoundSubmix;
+		Synth->SoundSubmixSends = SoundSubmixSends;
+
 		SetActiveFlag(AudioComponent->IsActive());
 
-		bIsSynthPlaying = true;
+		if (IsActive())
+		{
+			PendingSynthEvents.Enqueue(ESynthEvent::Start);
+		}
 	}
 }
 
@@ -480,14 +493,11 @@ void USynthComponent::Stop()
 {
 	if (IsActive())
 	{
+		PendingSynthEvents.Enqueue(ESynthEvent::Stop);
+
 		if (AudioComponent)
 		{
-			AudioComponent->Stop();		
-			
-			if (FAudioDevice* AudioDevice = AudioComponent->GetAudioDevice())
-			{
-				AudioDevice->StopSoundsUsingResource(Synth);
-			}
+			AudioComponent->Stop();
 		}
 
 		SetActiveFlag(false);
@@ -507,7 +517,7 @@ void USynthComponent::SetVolumeMultiplier(float VolumeMultiplier)
 	}
 }
 
-void USynthComponent::SetSubmixSend(USoundSubmixBase* Submix, float SendLevel)
+void USynthComponent::SetSubmixSend(USoundSubmix* Submix, float SendLevel)
 {
 	if (AudioComponent)
 	{
@@ -515,37 +525,7 @@ void USynthComponent::SetSubmixSend(USoundSubmixBase* Submix, float SendLevel)
 	}
 }
 
-void USynthComponent::SetLowPassFilterEnabled(bool InLowPassFilterEnabled)
-{
-	if (AudioComponent)
-	{
-		AudioComponent->SetLowPassFilterEnabled(InLowPassFilterEnabled);
-	}
-}
-
-void USynthComponent::SetLowPassFilterFrequency(float InLowPassFilterFrequency)
-{
-	if (AudioComponent)
-	{
-		AudioComponent->SetLowPassFilterFrequency(InLowPassFilterFrequency);
-	}
-}
-
 void USynthComponent::SynthCommand(TFunction<void()> Command)
 {
-	if (SoundGenerator.IsValid())
-	{
-		UE_LOG(LogAudioMixer, Error, TEXT("Synthesis component '%s' has implemented a sound generator interface. Do not call SynthCommand on the USynthComponent)."), *GetName());
-	}
-	else
-	{
-		CommandQueue.Enqueue(MoveTemp(Command));
-	}
-}
-
-ISoundGeneratorPtr USynthComponent::CreateSoundGeneratorInternal(int32 InSampleRate, int32 InNumChannels)
-{	
-	LLM_SCOPE(ELLMTag::AudioSynthesis);
-
-	return SoundGenerator = CreateSoundGenerator(InSampleRate, InNumChannels);
+	CommandQueue.Enqueue(MoveTemp(Command));
 }

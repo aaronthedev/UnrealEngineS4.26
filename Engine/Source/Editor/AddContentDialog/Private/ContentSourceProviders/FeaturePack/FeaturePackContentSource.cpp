@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "FeaturePackContentSource.h"
 #include "HAL/PlatformFilemanager.h"
@@ -188,7 +188,7 @@ FFeaturePackContentSource::FFeaturePackContentSource(FString InFeaturePackPath)
 		if( ThisTemplateRoot.EndsWith(TemplatesFolder) == true )
 		{
 			int32 Index = ThisTemplateRoot.Find(TemplatesFolder);
-			ThisTemplateRoot.LeftInline(Index);
+			ThisTemplateRoot = ThisTemplateRoot.Left(Index);
 		}
 		MountPoint = ThisTemplateRoot;
 		FFileHelper::LoadFileToString( ManifestString, *FeaturePackPath);
@@ -829,7 +829,7 @@ bool FFeaturePackContentSource::LoadFeaturePackImageData()
  	}
 
 	// parse the screenshots field
-	for (const TSharedPtr<FJsonValue>& ScreenshotFilename : ScreenshotFilenameArray)
+	for (const TSharedPtr<FJsonValue> ScreenshotFilename : ScreenshotFilenameArray)
 	{
 		TSharedPtr<TArray<uint8>> SingleScreenshotData = MakeShareable(new TArray<uint8>);
  		if (FFileHelper::LoadFileToArray(*SingleScreenshotData.Get(), *FPaths::Combine(*MountPoint, TEXT("Media"), *ScreenshotFilename->AsString()) ))
@@ -860,7 +860,7 @@ bool FFeaturePackContentSource::LoadFeaturePackImageDataFromPackFile(FPakPlatfor
 	}
 
 	// parse the screenshots field
-	for (const TSharedPtr<FJsonValue>& ScreenshotFilename : ScreenshotFilenameArray)
+	for (const TSharedPtr<FJsonValue> ScreenshotFilename : ScreenshotFilenameArray)
 	{
 		TSharedPtr<TArray<uint8>> SingleScreenshotData = MakeShareable(new TArray<uint8>);
 		if (LoadPakFileToBuffer(PakPlatformFile, FPaths::Combine(*MountPoint, TEXT("Media"), *ScreenshotFilename->AsString()), *SingleScreenshotData))

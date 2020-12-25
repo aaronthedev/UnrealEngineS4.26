@@ -1,8 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "../Common.ush"
 #include "../ShaderPrintCommon.ush"
-#include "HairStrandsVisibilityCommon.ush" 
+#include "HairStrandsVisibilityCommon.ush"
 
 float PPLLMeanListElementCountPerPixel;
 float PPLLMaxTotalListElementCount;

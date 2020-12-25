@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Designer/DesignTimeUtils.h"
 #include "Widgets/SWindow.h"
@@ -35,17 +35,6 @@ bool FDesignTimeUtils::GetArrangedWidgetRelativeToWindow(TSharedRef<SWidget> Wid
 		return false;
 	}
 
-	while( WidgetWindow->GetParentWidget().IsValid() )
-	{
-		TSharedRef<SWidget> CurrentWidget = WidgetWindow->GetParentWidget().ToSharedRef();
-		TSharedPtr<SWindow> ParentWidgetWindow = FSlateApplication::Get().FindWidgetWindow(CurrentWidget);
-		if( !ParentWidgetWindow.IsValid() )
-		{
-			break;
-		}
-		WidgetWindow = ParentWidgetWindow;
-	}
-	
 	TSharedRef<SWindow> CurrentWindowRef = WidgetWindow.ToSharedRef();
 
 	FWidgetPath WidgetPath;

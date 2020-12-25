@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithMaxAttributes.h"
 
@@ -115,8 +115,6 @@ TOptional<FDatasmithMaxStaticMeshAttributes> FDatasmithMaxStaticMeshAttributes::
 					}
 				}
 			}
-
-			ParamBlock2->ReleaseDesc();
 		}
 	}
 	

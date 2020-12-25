@@ -1,89 +1,48 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BaseGizmos/GizmoRenderingUtil.h"
 #include "RHI.h"
 
 
-// yuck global value set by Editor
-static const FSceneView* GlobalCurrentSceneView = nullptr;
-
-static FCriticalSection GlobalCurrentSceneViewLock;
-
-#if WITH_EDITOR
-static bool bGlobalUseCurrentSceneViewTracking = true;
-#else
-static bool bGlobalUseCurrentSceneViewTracking = false;
-#endif
-
-
-void GizmoRenderingUtil::SetGlobalFocusedEditorSceneView(const FSceneView* View)
-{
-	GlobalCurrentSceneViewLock.Lock();
-	GlobalCurrentSceneView = View;
-	GlobalCurrentSceneViewLock.Unlock();
-}
-
-void GizmoRenderingUtil::SetGlobalFocusedSceneViewTrackingEnabled(bool bEnabled)
-{
-	bGlobalUseCurrentSceneViewTracking = bEnabled;
-}
-
-
-const FSceneView* GizmoRenderingUtil::FindFocusedEditorSceneView(
+const FSceneView* GizmoRenderingUtil::FindActiveSceneView(
 	const TArray<const FSceneView*>& Views,
 	const FSceneViewFamily& ViewFamily,
 	uint32 VisibilityMap)
 {
-	// we are likely being called from a rendering thread GetDynamicMeshElements() function
-	const FSceneView* GlobalEditorView = nullptr;
-	GlobalCurrentSceneViewLock.Lock();
-	GlobalEditorView = GlobalCurrentSceneView;
-	GlobalCurrentSceneViewLock.Unlock();
+	// can we tell focus here?
 
-	// if we only have one view, and we are not tracking active view, just use that one
-	if (bGlobalUseCurrentSceneViewTracking == false && Views.Num() == 1)
-	{
-		return Views[0];
-	}
-
-	// otherwise try to find the view that the game thread set for us
-	int32 VisibleViews = 0;
+	const FSceneView* FirstValidView = nullptr;
+	const FSceneView* GizmoControlView = nullptr;
 	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
 		if (VisibilityMap & (1 << ViewIndex))
 		{
-			VisibleViews++;
-			if (Views[ViewIndex] == GlobalEditorView)
+			const FSceneView* View = Views[ViewIndex];
+			if (View != nullptr)
 			{
-				return Views[ViewIndex];
+				if (FirstValidView == nullptr)
+				{
+					FirstValidView = View;
+				}
+				if (View->IsPerspectiveProjection())
+				{
+					GizmoControlView = View;
+				}
 			}
 		}
 	}
 
-	// if we did not find our view, but only one view is visible, we can speculatively return that one
-	if (bGlobalUseCurrentSceneViewTracking == false && VisibleViews == 1)
-	{
-		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
-		{
-			if (VisibilityMap & (1 << ViewIndex))
-			{
-				return Views[ViewIndex];
-			}
-		}
-	}
-
-	// ok give up
-	if (bGlobalUseCurrentSceneViewTracking == false)
-	{
-		return Views[0];
-	}
-	else
+	if (FirstValidView == nullptr)
 	{
 		return nullptr;
 	}
+	if (GizmoControlView == nullptr)
+	{
+		GizmoControlView = FirstValidView;
+	}
+
+	return GizmoControlView;
 }
-
-
 
 
 static double VectorDifferenceSqr(const FVector2D& A, const FVector2D& B)

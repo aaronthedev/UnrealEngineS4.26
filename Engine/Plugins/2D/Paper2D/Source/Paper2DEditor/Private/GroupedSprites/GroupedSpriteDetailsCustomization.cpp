@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GroupedSprites/GroupedSpriteDetailsCustomization.h"
 #include "Layout/Margin.h"
@@ -41,7 +41,7 @@ void FGroupedSpriteComponentDetailsCustomization::CustomizeDetails(IDetailLayout
 	DetailBuilder.GetObjectsBeingCustomized(/*out*/ ObjectsBeingCustomized);
 
 
-	TSharedRef<SWrapBox> ButtonBox = SNew(SWrapBox).UseAllottedSize(true);
+	TSharedRef<SWrapBox> ButtonBox = SNew(SWrapBox).UseAllottedWidth(true);
 
 	const float MinButtonSize = 100.0f;
 	const FMargin ButtonPadding(0.0f, 2.0f, 2.0f, 0.0f);

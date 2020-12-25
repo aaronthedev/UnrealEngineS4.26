@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,6 +6,8 @@
 #include "SLiveLinkMessageBusSourceFactory.h"
 #include "LiveLinkMessageBusSourceFactory.generated.h"
 
+
+class SLiveLinkMessageBusSourceEditor;
 
 UCLASS()
 class ULiveLinkMessageBusSourceFactory : public ULiveLinkSourceFactory
@@ -19,8 +21,6 @@ public:
 	virtual EMenuType GetMenuType() const override { return EMenuType::SubPanel; }
 	virtual TSharedPtr<SWidget> BuildCreationPanel(FOnLiveLinkSourceCreated OnLiveLinkSourceCreated) const override;
 	virtual TSharedPtr<ILiveLinkSource> CreateSource(const FString& ConnectionString) const override;
-
-	static FString CreateConnectionString(const FProviderPollResult& Result);
 
 private:
 	void OnSourceSelected(FProviderPollResultPtr SelectedSource, FOnLiveLinkSourceCreated OnLiveLinkSourceCreated) const;

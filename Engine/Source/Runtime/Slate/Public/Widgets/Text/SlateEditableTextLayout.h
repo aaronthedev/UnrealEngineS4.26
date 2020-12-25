@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -184,7 +184,7 @@ public:
 	bool HandleTypeChar(const TCHAR InChar);
 
 	/** Called to handle a carriage return action acting on the current selection or at the cursor position */
-	bool HandleCarriageReturn(bool isRepeat);
+	bool HandleCarriageReturn();
 
 	/** Are we able to delete the currently selected text? */
 	bool CanExecuteDelete() const;
@@ -373,13 +373,6 @@ public:
 
 	bool HasActiveContextMenu() const;
 
-	/**
-	 * Fill OutTextLine with the text line where the current cursor location is at
-	 *
-	 * @param OutTextLine   FString of the line
-	 */
-	void GetCurrentTextLine(FString& OutTextLine) const;
-
 private:
 	/** Insert the given text at the current cursor position, correctly taking into account new line characters */
 	void InsertTextAtCursorImpl(const FString& InString);
@@ -406,7 +399,6 @@ private:
 
 		virtual void SetTextFromVirtualKeyboard(const FText& InNewText, ETextEntryType TextEntryType) override;
 		virtual void SetSelectionFromVirtualKeyboard(int InSelStart, int InSelEnd) override;
-		virtual bool GetSelection(int& OutSelStart, int& OutSelEnd) override;
 
 		virtual FText GetText() const override;
 		virtual FText GetHintText() const override;

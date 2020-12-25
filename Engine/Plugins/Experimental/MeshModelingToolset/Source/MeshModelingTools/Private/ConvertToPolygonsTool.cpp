@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ConvertToPolygonsTool.h"
 #include "InteractiveToolManager.h"
@@ -10,8 +10,7 @@
 #include "MeshRegionBoundaryLoops.h"
 #include "MeshDescriptionToDynamicMesh.h"
 #include "DynamicMeshToMeshDescription.h"
-#include "Util/ColorConstants.h"
-#include "ToolSetupUtil.h"
+
 
 #include "SceneManagement.h" // for FPrimitiveDrawInterface
 
@@ -40,13 +39,12 @@ UInteractiveTool* UConvertToPolygonsToolBuilder::BuildTool(const FToolBuilderSta
 	return NewTool;
 }
 
+
+
 /*
  * Tool
  */
-UConvertToPolygonsTool::UConvertToPolygonsTool()
-{
-	SetToolDisplayName(LOCTEXT("ConvertToPolygonsToolName", "Find PolyGroups Tool"));
-}
+
 
 void UConvertToPolygonsTool::Setup()
 {
@@ -64,7 +62,6 @@ void UConvertToPolygonsTool::Setup()
 	}
 
 	Settings = NewObject<UConvertToPolygonsToolProperties>(this);
-	Settings->RestoreProperties(this);
 	AddToolPropertySource(Settings);
 
 	// create preview mesh object
@@ -72,25 +69,11 @@ void UConvertToPolygonsTool::Setup()
 	PreviewMesh->CreateInWorld(ComponentTarget->GetOwnerActor()->GetWorld(), FTransform::Identity);
 	PreviewMesh->SetVisible(false);
 	PreviewMesh->SetTransform(ComponentTarget->GetWorldTransform());
-	PreviewMesh->SetTangentsMode(EDynamicMeshTangentCalcType::AutoCalculated);
 
-	FComponentMaterialSet MaterialSet;
-	ComponentTarget->GetMaterialSet(MaterialSet);
-	PreviewMesh->SetMaterials(MaterialSet.Materials);
-
-	Settings->WatchProperty(Settings->ConversionMode,
-							[this](EConvertToPolygonsMode NewMode)
-							{ bPolygonsValid = false; });
-	Settings->WatchProperty(Settings->bShowGroupColors,
-							[this](bool bNewValue) { UpdateVisualization(); });
-	if (Settings->bShowGroupColors)
+	if (ComponentTarget->GetMaterial(0) != nullptr)
 	{
-		UpdateVisualization();
+		PreviewMesh->SetMaterial(ComponentTarget->GetMaterial(0));
 	}
-
-	GetToolManager()->DisplayMessage(
-		LOCTEXT("OnStartTool", "Cluster triangles of the Mesh into PolyGroups using various strategies"),
-		EToolMessageLevel::UserNotification);
 
 	UpdatePolygons();
 }
@@ -98,8 +81,6 @@ void UConvertToPolygonsTool::Setup()
 
 void UConvertToPolygonsTool::Shutdown(EToolShutdownType ShutdownType)
 {
-	Settings->SaveProperties(this);
-
 	PreviewMesh->SetVisible(false);
 	PreviewMesh->Disconnect();
 	PreviewMesh = nullptr;
@@ -108,39 +89,35 @@ void UConvertToPolygonsTool::Shutdown(EToolShutdownType ShutdownType)
 
 	if (ShutdownType == EToolShutdownType::Accept)
 	{
-		GetToolManager()->BeginUndoTransaction(LOCTEXT("ConvertToPolygonsToolTransactionName", "Find Polygroups"));
-		ComponentTarget->CommitMesh([=](const FPrimitiveComponentTarget::FCommitParams& CommitParams)
+		GetToolManager()->BeginUndoTransaction(LOCTEXT("DeformMeshToolTransactionName", "Convert to Polygons"));
+		ComponentTarget->CommitMesh([=](FMeshDescription* MeshDescription)
 		{
-			ConvertToPolygons(CommitParams.MeshDescription);
+			ConvertToPolygons(MeshDescription);
 		});
 		GetToolManager()->EndUndoTransaction();
 	}
 }
 
 
-void UConvertToPolygonsTool::OnPropertyModified(UObject* PropertySet, FProperty* Property)
+void UConvertToPolygonsTool::OnPropertyModified(UObject* PropertySet, UProperty* Property)
 {
 	bPolygonsValid = false;
 	GetToolManager()->PostInvalidation();
 }
 
 
-void UConvertToPolygonsTool::OnTick(float DeltaTime)
-{
-	if (bPolygonsValid == false)
-	{
-		UpdatePolygons();
-	}
-}
-
 void UConvertToPolygonsTool::Render(IToolsContextRenderAPI* RenderAPI)
 {
 	FColor LineColor(255, 0, 0);
 
+	if (bPolygonsValid == false)
+	{
+		UpdatePolygons();
+	}
+
 	if (true)
 	{
 		FPrimitiveDrawInterface* PDI = RenderAPI->GetPrimitiveDrawInterface();
-		float PDIScale = RenderAPI->GetCameraState().GetPDIScalingFactor();
 		FTransform Transform = ComponentTarget->GetWorldTransform(); //Actor->GetTransform();
 
 		TArray<int>& Edges = Polygons.PolygonEdges;
@@ -148,35 +125,34 @@ void UConvertToPolygonsTool::Render(IToolsContextRenderAPI* RenderAPI)
 		{
 			FVector3d A, B;
 			Polygons.Mesh->GetEdgeV(eid, A, B);
-			PDI->DrawLine(Transform.TransformPosition((FVector)A), Transform.TransformPosition((FVector)B),
-				LineColor, 0, 2.0*PDIScale, 1.0f, true);
+			PDI->DrawLine(Transform.TransformPosition(A), Transform.TransformPosition(B),
+				LineColor, 0, 2.0, 1.0f, true);
 		}
 	}
+}
+
+
+bool UConvertToPolygonsTool::HasAccept() const
+{
+	return true;
+}
+
+bool UConvertToPolygonsTool::CanAccept() const
+{
+	return true;
 }
 
 
 void UConvertToPolygonsTool::UpdatePolygons()
 {
 	Polygons = FFindPolygonsAlgorithm(&SearchMesh);
-	if (Settings->ConversionMode == EConvertToPolygonsMode::FromUVISlands)
-	{
-		Polygons.FindPolygonsFromUVIslands();
-	}
-	else if (Settings->ConversionMode == EConvertToPolygonsMode::FaceNormalDeviation)
-	{
-		double DotTolerance = 1.0 - FMathd::Cos(Settings->AngleTolerance * FMathd::DegToRad);
-		Polygons.FindPolygonsFromFaceNormals(DotTolerance);
-	}
-	else
-	{
-		check(false);
-	}
-	
+	double DotTolerance = 1.0 - FMathd::Cos(Settings->AngleTolerance * FMathd::DegToRad);
+	Polygons.FindPolygons(DotTolerance);
 	Polygons.FindPolygonEdges();
 
 	GetToolManager()->DisplayMessage(
-		FText::Format(LOCTEXT("UpdatePolygonsMessage", "Found {0} Polygroups in {1} Triangles"),
-			FText::AsNumber(Polygons.FoundPolygons.Num()), FText::AsNumber(SearchMesh.TriangleCount())), EToolMessageLevel::Internal);
+		FText::Format(LOCTEXT("UpdatePolygonsMessage", "ConvertToPolygons - found {0} polys in {1} triangles"), 
+			FText::AsNumber(Polygons.FoundPolygons.Num()), FText::AsNumber(SearchMesh.TriangleCount()) ), EToolMessageLevel::Internal);
 
 	if (Settings->bCalculateNormals)
 	{
@@ -198,11 +174,16 @@ void UConvertToPolygonsTool::UpdatePolygons()
 		FMeshNormals Normals(&SearchMesh);
 		Normals.RecomputeOverlayNormals(SearchMesh.Attributes()->PrimaryNormals());
 		Normals.CopyToOverlay(NormalOverlay, false);
-	}
 
-	PreviewMesh->UpdatePreview(&SearchMesh);
-	PreviewMesh->SetVisible(true);
-	ComponentTarget->SetOwnerVisibility(false);
+		PreviewMesh->UpdatePreview(&SearchMesh);
+		PreviewMesh->SetVisible(true);
+		ComponentTarget->SetOwnerVisibility(false);
+	}
+	else
+	{
+		PreviewMesh->SetVisible(false);
+		ComponentTarget->SetOwnerVisibility(true);
+	}
 
 	bPolygonsValid = true;
 }
@@ -222,25 +203,6 @@ void UConvertToPolygonsTool::ConvertToPolygons(FMeshDescription* MeshIn)
 	Converter.Convert(&SearchMesh, *MeshIn);
 }
 
-
-
-void UConvertToPolygonsTool::UpdateVisualization()
-{
-	if (Settings->bShowGroupColors)
-	{
-		PreviewMesh->SetOverrideRenderMaterial(ToolSetupUtil::GetSelectionMaterial(GetToolManager()));
-		PreviewMesh->SetTriangleColorFunction([this](const FDynamicMesh3* Mesh, int TriangleID)
-		{
-			return LinearColors::SelectFColor(Mesh->GetTriangleGroup(TriangleID));
-		}, 
-		UPreviewMesh::ERenderUpdateMode::FastUpdate);
-	}
-	else
-	{
-		PreviewMesh->ClearOverrideRenderMaterial();
-		PreviewMesh->ClearTriangleColorFunction(UPreviewMesh::ERenderUpdateMode::FastUpdate);
-	}
-}
 
 
 

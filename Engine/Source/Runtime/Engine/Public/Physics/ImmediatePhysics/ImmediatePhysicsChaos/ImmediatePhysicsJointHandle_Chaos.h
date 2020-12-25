@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,8 +15,8 @@ namespace ImmediatePhysics_Chaos
 	struct ENGINE_API FJointHandle
 	{
 	public:
-		using FChaosConstraintContainer = Chaos::FPBDJointConstraints;
-		using FChaosConstraintHandle = typename Chaos::FPBDJointConstraintHandle;
+		using FChaosConstraintContainer = Chaos::TPBDJointConstraints<FReal, Dimensions>;
+		using FChaosConstraintHandle = typename Chaos::TPBDJointConstraintHandle<FReal, Dimensions>;
 
 		FJointHandle(FChaosConstraintContainer* InConstraints, FConstraintInstance* ConstraintInstance, FActorHandle* InActor1, FActorHandle* InActor2);
 		~FJointHandle();
@@ -27,7 +27,7 @@ namespace ImmediatePhysics_Chaos
 		const Chaos::TVector<FActorHandle*, 2>& GetActorHandles();
 		const Chaos::TVector<const FActorHandle*, 2>& GetActorHandles() const;
 
-		void SetSoftLinearSettings(bool bLinearSoft, FReal LinearStiffness, FReal LinearDamping);
+		void UpdateLevels();
 
 	private:
 		Chaos::TVector<FActorHandle*, 2> ActorHandles;

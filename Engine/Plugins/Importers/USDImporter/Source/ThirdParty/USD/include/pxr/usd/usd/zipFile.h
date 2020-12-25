@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_ZIP_FILE_H
-#define PXR_USD_USD_ZIP_FILE_H
+#ifndef USD_ZIPFILE_H
+#define USD_ZIPFILE_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/usd/api.h"
@@ -232,9 +232,7 @@ public:
     UsdZipFileWriter(const UsdZipFileWriter&) = delete;
     UsdZipFileWriter& operator=(const UsdZipFileWriter&) = delete;
 
-    USD_API
     UsdZipFileWriter(UsdZipFileWriter&& rhs);
-    USD_API
     UsdZipFileWriter& operator=(UsdZipFileWriter&& rhs);
 
     /// Returns true if this is a valid object, false otherwise.
@@ -275,4 +273,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_USD_ZIP_FILE_H
+#endif // USD_ZIPFILE_H

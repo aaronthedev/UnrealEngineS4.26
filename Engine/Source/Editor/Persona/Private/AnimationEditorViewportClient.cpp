@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimationEditorViewportClient.h"
 #include "Modules/ModuleManager.h"
@@ -113,8 +113,7 @@ FAnimationViewportClient::FAnimationViewportClient(const TSharedRef<IPersonaPrev
 	SetRealtime(true);
 	if(GEditor->PlayWorld)
 	{
-		const bool bShouldBeRealtime = false;
-		AddRealtimeOverride(bShouldBeRealtime, LOCTEXT("RealtimeOverride_PIE", "Play in Editor"));
+		SetRealtime(false,true); // We are PIE, don't start in realtime mode
 	}
 
 	// @todo double define - fix it
@@ -122,8 +121,6 @@ FAnimationViewportClient::FAnimationViewportClient(const TSharedRef<IPersonaPrev
 	const float FOVMax = 170.f;
 
 	ViewFOV = FMath::Clamp<float>(ConfigOption->GetAssetEditorOptions(InAssetEditorToolkit->GetEditorName()).ViewportConfigs[ViewportIndex].ViewFOV, FOVMin, FOVMax);
-	CameraSpeedSetting = ConfigOption->GetAssetEditorOptions(InAssetEditorToolkit->GetEditorName()).ViewportConfigs[ViewportIndex].CameraSpeedSetting;
-	CameraSpeedScalar = ConfigOption->GetAssetEditorOptions(InAssetEditorToolkit->GetEditorName()).ViewportConfigs[ViewportIndex].CameraSpeedScalar;
 
 	EngineShowFlags.SetSeparateTranslucency(true);
 	EngineShowFlags.SetCompositeEditorPrimitives(true);
@@ -141,7 +138,7 @@ FAnimationViewportClient::FAnimationViewportClient(const TSharedRef<IPersonaPrev
 	{
 		World->bAllowAudioPlayback = !ConfigOption->bMuteAudio;
 
-		if(FAudioDevice* AudioDevice = World->GetAudioDeviceRaw())
+		if(FAudioDevice* AudioDevice = World->GetAudioDevice())
 		{
 			AudioDevice->SetUseAttenuationForNonGameWorlds(ConfigOption->bUseAudioAttenuation);
 		}
@@ -225,7 +222,7 @@ void FAnimationViewportClient::OnToggleUseAudioAttenuation()
 	UWorld* World = PreviewScene->GetWorld();
 	if(World)
 	{
-		if(FAudioDevice* AudioDevice = GetWorld()->GetAudioDeviceRaw())
+		if(FAudioDevice* AudioDevice = GetWorld()->GetAudioDevice())
 		{
 			AudioDevice->SetUseAttenuationForNonGameWorlds(ConfigOption->bUseAudioAttenuation);
 		}
@@ -382,12 +379,10 @@ void FAnimationViewportClient::HandleSkeletalMeshChanged(USkeletalMesh* OldSkele
 		PhysAsset->InvalidateAllPhysicsMeshes();
 		PreviewMeshComponent->TermArticulated();
 		PreviewMeshComponent->InitArticulated(GetWorld()->GetPhysicsScene());
-		if (PreviewMeshComponent->CanOverrideCollisionProfile())
-		{
-			// Set to PhysicsActor to enable tracing regardless of project overrides
-			static FName CollisionProfileName(TEXT("PhysicsActor"));
-			PreviewMeshComponent->SetCollisionProfileName(CollisionProfileName);
-		}
+
+		// Set to PhysicsActor to enable tracing regardless of project overrides
+		static FName CollisionProfileName(TEXT("PhysicsActor"));
+		PreviewMeshComponent->SetCollisionProfileName(CollisionProfileName);
 	}
 
 	Invalidate();
@@ -484,9 +479,6 @@ void FAnimationViewportClient::DrawCanvas( FViewport& InViewport, FSceneView& Vi
 		{
 			DrawUVsForMesh(Viewport, &Canvas, 1.0f);
 		}
-
-		// Debug draw clothing texts
-		PreviewMeshComponent->DebugDrawClothingTexts(&Canvas, &View);
 	}
 }
 
@@ -844,7 +836,7 @@ FText FAnimationViewportClient::GetDisplayInfo(bool bDisplayAllInfo) const
 
 			// Calculate polys based on non clothing sections so we don't duplicate the counts.
 			uint32 NumTotalTriangles = 0;
-			int32 NumSections = LODData.RenderSections.Num();
+			int32 NumSections = LODData.NumNonClothingSections();
 			for(int32 SectionIndex = 0; SectionIndex < NumSections; SectionIndex++)
 			{
 				NumTotalTriangles += LODData.RenderSections[SectionIndex].NumTriangles;
@@ -857,14 +849,13 @@ FText FAnimationViewportClient::GetDisplayInfo(bool bDisplayAllInfo) const
 				FText::AsNumber(NumTotalTriangles)));
 
 			TextValue = ConcatenateLine(TextValue, FText::Format(LOCTEXT("ScreenSizeFOVFormat", "Current Screen Size: {0}, FOV: {1}"), FText::AsNumber(CachedScreenSize), FText::AsNumber(ViewFOV)));
+
 			for (int32 SectionIndex = 0; SectionIndex < LODData.RenderSections.Num(); SectionIndex++)
 			{
 				int32 SectionVerts = LODData.RenderSections[SectionIndex].GetNumVertices();
 
-				FText SectionDisabledText = LODData.RenderSections[SectionIndex].bDisabled ? LOCTEXT("SectionIsDisbable", " Disabled") : FText::GetEmpty();
-				TextValue = ConcatenateLine(TextValue, FText::Format(LOCTEXT("SectionFormat", " [Section {0}]{1} Verts: {2}, Bones: {3}, Max Influences: {4}"),
+				TextValue = ConcatenateLine(TextValue, FText::Format(LOCTEXT("SectionFormat", " [Section {0}] Verts: {1}, Bones: {2}, Max Influences: {3}"),
 					FText::AsNumber(SectionIndex),
-					SectionDisabledText,
 					FText::AsNumber(SectionVerts),
 					FText::AsNumber(LODData.RenderSections[SectionIndex].BoneMap.Num()),
 					FText::AsNumber(LODData.RenderSections[SectionIndex].MaxBoneInfluences)
@@ -886,24 +877,11 @@ FText FAnimationViewportClient::GetDisplayInfo(bool bDisplayAllInfo) const
 				FTransform LocalTransform = LocalBoneTransforms[BoneIndex];
 				FTransform ComponentTransform = PreviewMeshComponent->GetDrawTransform(BoneIndex);
 
-				auto GetDisplayTransform = [](const FTransform& InTransform) -> FText
-				{
-					FRotator R(InTransform.GetRotation());
-					FVector T(InTransform.GetTranslation());
-					FVector S(InTransform.GetScale3D());
+				TextValue = ConcatenateLine(TextValue, FText::Format(LOCTEXT("LocalTransform", "Local: {0}"), FText::FromString(LocalTransform.ToHumanReadableString())));
 
-					FString Output = FString::Printf(TEXT("Rotation: X(Roll) %f Y(Pitch)  %f Z(Yaw) %f\r\n"), R.Roll, R.Pitch, R.Yaw);
-					Output += FString::Printf(TEXT("Translation: %f %f %f\r\n"), T.X, T.Y, T.Z);
-					Output += FString::Printf(TEXT("Scale3D: %f %f %f\r\n"), S.X, S.Y, S.Z);
+				TextValue = ConcatenateLine(TextValue, FText::Format(LOCTEXT("ComponentTransform", "Component: {0}"), FText::FromString(ComponentTransform.ToHumanReadableString())));
 
-					return FText::FromString(Output);
-				};
-
-				TextValue = ConcatenateLine(TextValue, FText::Format(LOCTEXT("LocalTransform", "Local: {0}"), GetDisplayTransform(LocalTransform)));
-
-				TextValue = ConcatenateLine(TextValue, FText::Format(LOCTEXT("ComponentTransform", "Component: {0}"), GetDisplayTransform(ComponentTransform)));
-
-				TextValue = ConcatenateLine(TextValue, FText::Format(LOCTEXT("ReferenceTransform", "Reference: {0}"), GetDisplayTransform(ReferenceTransform)));
+				TextValue = ConcatenateLine(TextValue, FText::Format(LOCTEXT("ReferenceTransform", "Reference: {0}"), FText::FromString(ReferenceTransform.ToHumanReadableString())));
 			}
 
 			TextValue = ConcatenateLine(TextValue, FText::Format(LOCTEXT("ApproximateSize", "Approximate Size: {0}x{1}x{2}"),
@@ -937,12 +915,11 @@ FText FAnimationViewportClient::GetDisplayInfo(bool bDisplayAllInfo) const
 
 			// Triangles
 			uint32 NumTotalTriangles = 0;
-			int32 NumSections = LODData.RenderSections.Num();
+			int32 NumSections = LODData.NumNonClothingSections();
 			for (int32 SectionIndex = 0; SectionIndex < NumSections; SectionIndex++)
 			{
 				NumTotalTriangles += LODData.RenderSections[SectionIndex].NumTriangles;
 			}
-
 			TextValue = ConcatenateLine(TextValue, FText::Format(LOCTEXT("TrianglesFormat", "Triangles: {0}"), FText::AsNumber(NumTotalTriangles)));
 
 			// Vertices
@@ -969,40 +946,7 @@ FText FAnimationViewportClient::GetDisplayInfo(bool bDisplayAllInfo) const
 			
 			const FName ProfileName = PreviewMeshComponent->GetCurrentSkinWeightProfileName();
 			const FRuntimeSkinWeightProfileData* OverrideData = LODData.SkinWeightProfilesData.GetOverrideData(ProfileName);
-			TextValue = ConcatenateLine(TextValue, FText::Format(LOCTEXT("NumSkinWeightOverrides", "Skin Weight Profile Weights: {0}"),	(OverrideData && OverrideData->NumWeightsPerVertex > 0) ? FText::AsNumber(OverrideData->BoneWeights.Num() / OverrideData->NumWeightsPerVertex) : LOCTEXT("NoSkinWeightsOverridesForLOD", "no data for LOD")));
-		}
-	}
-
-	if (const IClothingSimulation* const ClothingSimulation = PreviewMeshComponent->GetClothingSimulation())
-	{
-		// Cloth stats
-		if (const int32 NumActiveCloths = ClothingSimulation->GetNumCloths())
-		{
-			TextValue = ConcatenateLine(TextValue, FText::Format(LOCTEXT("NumActiveCloths", "Active Cloths: {0}"), NumActiveCloths));
-		}
-		if (const int32 NumKinematicParticles = ClothingSimulation->GetNumKinematicParticles())
-		{
-			TextValue = ConcatenateLine(TextValue, FText::Format(LOCTEXT("NumKinematicParticles", "Kinematic Particles: {0}"), NumKinematicParticles));
-		}
-		if (const int32 NumDynamicParticles = ClothingSimulation->GetNumDynamicParticles())
-		{
-			TextValue = ConcatenateLine(TextValue, FText::Format(LOCTEXT("NumDynamicParticles", "Dynamic Particles: {0}"), NumDynamicParticles));
-		}
-		if (const float SimulationTime = ClothingSimulation->GetSimulationTime())
-		{
-			FNumberFormattingOptions NumberFormatOptions;
-			NumberFormatOptions.AlwaysSign = false;
-			NumberFormatOptions.UseGrouping = false;
-			NumberFormatOptions.RoundingMode = ERoundingMode::HalfFromZero;
-			NumberFormatOptions.MinimumIntegralDigits = 1;
-			NumberFormatOptions.MaximumIntegralDigits = 6;
-			NumberFormatOptions.MinimumFractionalDigits = 2;
-			NumberFormatOptions.MaximumFractionalDigits = 2;
-			TextValue = ConcatenateLine(TextValue, FText::Format(LOCTEXT("SimulationTime", "Simulation Time: {0}ms"), FText::AsNumber(SimulationTime, &NumberFormatOptions)));
-		}
-		if (ClothingSimulation->IsTeleported())
-		{
-			TextValue = ConcatenateLine(TextValue, LOCTEXT("IsTeleported", "*** Warning ***: Max Delta Time Teleport!"));
+			TextValue = ConcatenateLine(TextValue, FText::Format(LOCTEXT("NumSkinWeightOverrides", "Skin Weight Profile Weights: {0}"),	OverrideData ? FText::AsNumber(OverrideData->OverridesInfo.Num()) : LOCTEXT("NoSkinWeightsOverridesForLOD", "no data for LOD")));
 		}
 	}
 
@@ -1285,10 +1229,7 @@ void FAnimationViewportClient::DrawWatchedPoses(UDebugSkelMeshComponent * MeshCo
 			{
 				for (const FAnimNodePoseWatch& AnimNodePoseWatch : AnimBlueprintGeneratedClass->GetAnimBlueprintDebugData().AnimNodePoseWatch)
 				{
-					if(AnimNodePoseWatch.Object.Get() != nullptr)
-					{
-						DrawBonesFromCompactPose(*AnimNodePoseWatch.PoseInfo.Get(), MeshComponent, PDI, AnimNodePoseWatch.PoseDrawColour);
-					}
+					DrawBonesFromCompactPose(*AnimNodePoseWatch.PoseInfo.Get(), MeshComponent, PDI, AnimNodePoseWatch.PoseDrawColour);
 				}
 			}
 		}
@@ -1538,16 +1479,6 @@ void FAnimationViewportClient::DrawSockets(const UDebugSkelMeshComponent* InPrev
 
 FSphere FAnimationViewportClient::GetCameraTarget()
 {
-	// give the editor mode a chance to give us a camera target
-	if (GetPersonaModeManager())
-	{
-		FSphere Target;
-		if (GetPersonaModeManager()->GetCameraTarget(Target))
-		{
-			return Target;
-		}
-	}
-
 	const FSphere DefaultSphere(FVector(0,0,0), 100.0f);
 
 	UDebugSkelMeshComponent* PreviewMeshComponent = GetAnimPreviewScene()->GetPreviewMeshComponent();
@@ -1557,6 +1488,16 @@ FSphere FAnimationViewportClient::GetCameraTarget()
 	}
 
 	PreviewMeshComponent->CalcBounds(PreviewMeshComponent->GetComponentTransform());
+
+	// give the editor mode a chance to give us a camera target
+	if (GetPersonaModeManager())
+	{
+		FSphere Target;
+		if (GetPersonaModeManager()->GetCameraTarget(Target))
+		{
+			return Target;
+		}
+	}
 
 	FBoxSphereBounds Bounds = PreviewMeshComponent->CalcBounds(FTransform::Identity);
 	return Bounds.GetSphere();
@@ -1686,35 +1627,41 @@ void FAnimationViewportClient::FocusViewportOnPreviewMesh(bool bUseCustomCamera)
 		return;
 	}
 
-	if (UDebugSkelMeshComponent* const PreviewMeshComponent = GetAnimPreviewScene()->GetPreviewMeshComponent())
+	UDebugSkelMeshComponent* const PreviewMeshComponent = GetAnimPreviewScene()->GetPreviewMeshComponent();
+	if ( !PreviewMeshComponent )
 	{
-		if (USkeletalMesh* const SkelMesh = PreviewMeshComponent->SkeletalMesh)
+		return;
+	}
+
+	USkeletalMesh* const SkelMesh = PreviewMeshComponent->SkeletalMesh;
+	if (!SkelMesh)
+	{
+		return;
+	}
+
+	if (bUseCustomCamera && SkelMesh->bHasCustomDefaultEditorCamera)
+	{
+		FViewportCameraTransform& ViewTransform = GetViewTransform();
+
+		ViewTransform.SetLocation(SkelMesh->DefaultEditorCameraLocation);
+		ViewTransform.SetRotation(SkelMesh->DefaultEditorCameraRotation);
+		ViewTransform.SetLookAt(SkelMesh->DefaultEditorCameraLookAt);
+		ViewTransform.SetOrthoZoom(SkelMesh->DefaultEditorCameraOrthoZoom);
+
+		Invalidate();
+		return;
+	}
+
+	if (PreviewMeshComponent->GetSelectedEditorSection() != INDEX_NONE )
+	{
+		const FBox SelectedSectionBounds = ComputeBoundingBoxForSelectedEditorSection();
+		
+		if ( SelectedSectionBounds.IsValid )
 		{
-			if (bUseCustomCamera && SkelMesh->bHasCustomDefaultEditorCamera)
-			{
-				FViewportCameraTransform& ViewTransform = GetViewTransform();
-
-				ViewTransform.SetLocation(SkelMesh->DefaultEditorCameraLocation);
-				ViewTransform.SetRotation(SkelMesh->DefaultEditorCameraRotation);
-				ViewTransform.SetLookAt(SkelMesh->DefaultEditorCameraLookAt);
-				ViewTransform.SetOrthoZoom(SkelMesh->DefaultEditorCameraOrthoZoom);
-
-				Invalidate();
-				return;
-			}
-
-			if (PreviewMeshComponent->GetSelectedEditorSection() != INDEX_NONE)
-			{
-				const FBox SelectedSectionBounds = ComputeBoundingBoxForSelectedEditorSection();
-
-				if (SelectedSectionBounds.IsValid)
-				{
-					FocusViewportOnBox(SelectedSectionBounds);
-				}
-
-				return;
-			}
+			FocusViewportOnBox(SelectedSectionBounds);
 		}
+
+		return;
 	}
 
 	FSphere Sphere = GetCameraTarget();
@@ -1942,7 +1889,7 @@ void FAnimationViewportClient::UpdateAudioListener(const FSceneView& View)
 
 	if (ViewportWorld)
 	{
-		if (FAudioDevice* AudioDevice = ViewportWorld->GetAudioDeviceRaw())
+		if (FAudioDevice* AudioDevice = ViewportWorld->GetAudioDevice())
 		{
 			const FVector& ViewLocation = GetViewLocation();
 			const FRotator& ViewRotation = GetViewRotation();

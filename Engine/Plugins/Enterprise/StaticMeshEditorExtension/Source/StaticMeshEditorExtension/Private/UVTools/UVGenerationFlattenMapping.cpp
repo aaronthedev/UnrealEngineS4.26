@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UVTools/UVGenerationFlattenMapping.h"
 
@@ -15,10 +15,10 @@
 #include "Math/UnrealMathUtility.h"
 #include "MeshAttributes.h"
 #include "MeshDescription.h"
+#include "MeshDescriptionOperations.h"
 #include "Misc/ScopedSlowTask.h"
 #include "OverlappingCorners.h"
 #include "StaticMeshAttributes.h"
-#include "StaticMeshOperations.h"
 #include "Templates/TypeHash.h"
 
 #define FLATTEN_AREA_WEIGHT 0.7
@@ -62,15 +62,7 @@ private:
 	static FVector GetBestCandidateProjection(const TSet< FaceStruct* >& TempMeshFaces, FVector CandidatesProjectVec[19]);
 	static void CreateGroupUVIslands(TSet< FaceStruct* > TempMeshFaces, TArray< TArray< FaceStruct* > >& IslandsOfFaces, const TArray< int32 >& EdgeInUse, float AngleThreshold, float AreaWeight);
 
-	struct FVertexPair
-	{
-		int32 A;
-		int32 B;
-		FVertexPair() : A(0), B(0) {}
-		FVertexPair(int32 A, int32 B) : A(A), B(B) {}
-	};
-
-	static void AddFaceVertexPair(FaceStruct* Face, TArray< TArray< FVertexPair > >& VertexPair, TArray<int32>& EdgeInUse);
+	static void AddFaceVertexPair(FaceStruct* Face, TArray< TArray< FVector2D > >& VertexPair, TArray<int32>& EdgeInUse);
 
 	static int32 SplitInGeomGroups(TArray<FaceStruct>& Faces);
 
@@ -78,7 +70,7 @@ private:
 	static TArray< FVector2D > ComputeOrientedBox2D(const TArray< FVector2D >& ConvexHull);
 };
 
-void FUVGenerationFlattenMappingInternal::AddFaceVertexPair(FaceStruct* Face, TArray< TArray< FVertexPair > >& VertexPair, TArray<int32>& EdgeInUse)
+void FUVGenerationFlattenMappingInternal::AddFaceVertexPair(FaceStruct* Face, TArray< TArray< FVector2D > >& VertexPair, TArray<int32>& EdgeInUse)
 {
 	ensure( VertexPair.IsValidIndex( Face->V0 ) && VertexPair.IsValidIndex( Face->V1 ) && VertexPair.IsValidIndex( Face->V2 ) );
 
@@ -92,18 +84,18 @@ void FUVGenerationFlattenMappingInternal::AddFaceVertexPair(FaceStruct* Face, TA
 	int32 Index = -1;
 	for (int32 i = 0; i < VertexPair[Face->V0].Num(); i++)
 	{
-		if (VertexPair[Face->V0][i].A == Face->V1)
+		if (VertexPair[Face->V0][i][0] == Face->V1)
 		{
-			Index = (int32)VertexPair[Face->V0][i].B;
+			Index = (int32)VertexPair[Face->V0][i][1];
 		}
 	}
 
 	if (Index == -1)
 	{
-		FVertexPair t1(Face->V1, EdgeInUse.Num());
+		FVector2D t1(Face->V1, EdgeInUse.Num());
 		VertexPair[Face->V0].Add(t1);
 
-		FVertexPair t2(Face->V0, EdgeInUse.Num());
+		FVector2D t2(Face->V0, EdgeInUse.Num());
 		VertexPair[Face->V1].Add(t2);
 		Face->Edges[0] = EdgeInUse.Num();
 		EdgeInUse.Add(1);
@@ -117,18 +109,18 @@ void FUVGenerationFlattenMappingInternal::AddFaceVertexPair(FaceStruct* Face, TA
 	Index = -1;
 	for (int32 i = 0; i < VertexPair[Face->V1].Num(); i++)
 	{
-		if (VertexPair[Face->V1][i].A == Face->V2)
+		if (VertexPair[Face->V1][i][0] == Face->V2)
 		{
-			Index = (int32)VertexPair[Face->V1][i].B;
+			Index = (int32)VertexPair[Face->V1][i][1];
 		}
 	}
 
 	if (Index == -1)
 	{
-		FVertexPair t1(Face->V2, EdgeInUse.Num());
+		FVector2D t1(Face->V2, EdgeInUse.Num());
 		VertexPair[Face->V1].Add(t1);
 
-		FVertexPair t2(Face->V1, EdgeInUse.Num());
+		FVector2D t2(Face->V1, EdgeInUse.Num());
 		VertexPair[Face->V2].Add(t2);
 		Face->Edges[1] = EdgeInUse.Num();
 		EdgeInUse.Add(1);
@@ -142,18 +134,18 @@ void FUVGenerationFlattenMappingInternal::AddFaceVertexPair(FaceStruct* Face, TA
 	Index = -1;
 	for (int32 i = 0; i < VertexPair[Face->V2].Num(); i++)
 	{
-		if (VertexPair[Face->V2][i].A == Face->V0)
+		if (VertexPair[Face->V2][i][0] == Face->V0)
 		{
-			Index = (int32)VertexPair[Face->V2][i].B;
+			Index = (int32)VertexPair[Face->V2][i][1];
 		}
 	}
 
 	if (Index == -1)
 	{
-		FVertexPair t1(Face->V0, EdgeInUse.Num());
+		FVector2D t1(Face->V0, EdgeInUse.Num());
 		VertexPair[Face->V2].Add(t1);
 
-		FVertexPair t2(Face->V2, EdgeInUse.Num());
+		FVector2D t2(Face->V2, EdgeInUse.Num());
 		VertexPair[Face->V0].Add(t2);
 		Face->Edges[2] = EdgeInUse.Num();
 		EdgeInUse.Add(1);
@@ -225,32 +217,21 @@ int32 FUVGenerationFlattenMappingInternal::SplitInGeomGroups(TArray<FaceStruct>&
 	TSet<int32> AlreadyParsedVertex;
 	TSet<int32> InUseVertex;
 
-	// Since we're going to remove elements until the TMap is empty,
-	// it is preferable to avoid using iterators as it is incredibly
-	// slow to scan bitarrays to find used bits when the map is
-	// really sparse.
-	TArray<int32> Keys;
-	HashVertexFaces.GenerateKeyArray(Keys);
-
-	for (int32 Key : Keys)
+	while (HashVertexFaces.Num() > 0)
 	{
-		TArray<FaceStruct*, TInlineAllocator<8>>* Values = HashVertexFaces.Find(Key);
-		if (Values == nullptr)
-		{
-			continue;
-		}
+		auto FacesIt = HashVertexFaces.CreateIterator();
 
 		InUseVertex.Reset();
 
-		for (FaceStruct* Face : *Values)
+		for (int32 i = 0; i < FacesIt->Value.Num(); i++)
 		{
-			Face->Group = CurrentGroup;
-			InUseVertex.Emplace(Face->V0);
-			InUseVertex.Emplace(Face->V1);
-			InUseVertex.Emplace(Face->V2);
+			FacesIt->Value[i]->Group = CurrentGroup;
+			InUseVertex.Emplace(FacesIt->Value[i]->V0);
+			InUseVertex.Emplace(FacesIt->Value[i]->V1);
+			InUseVertex.Emplace(FacesIt->Value[i]->V2);
 		}
 
-		HashVertexFaces.Remove(Key);
+		FacesIt.RemoveCurrent();
 
 		while (InUseVertex.Num() > 0)
 		{
@@ -721,12 +702,11 @@ void FUVGenerationFlattenMappingInternal::CreateGroupUVIslands(TSet<FaceStruct*>
 	TArray< TArray<FaceStruct*> > FaceProjectionGroupList;
 	FaceProjectionGroupList.AddDefaulted(ProjectVecs.Num());
 
-	// For big meshes, it is preferable to use TMap instead
-	// of TArray here to reduce the initialization cost and
-	// and memory usage when vertex count is high. The TMap
-	// usage is going to be really sparse anyway.
-	TArray< TMap<int32, int32> > EdgeProjectionGroupList;
-	EdgeProjectionGroupList.SetNum(ProjectVecs.Num());
+	TArray<int32> EdgeList;
+	EdgeList.AddZeroed(MaxEdgeIndex + 1);
+
+	TArray< TArray<int32> > EdgeProjectionGroupList;
+	EdgeProjectionGroupList.Init(EdgeList, ProjectVecs.Num());
 
 	//best angle and second best for each Face
 	TArray<FVector2D> BestAnglesForFace;
@@ -784,10 +764,10 @@ void FUVGenerationFlattenMappingInternal::CreateGroupUVIslands(TSet<FaceStruct*>
 		int32 PrefAngleIdx = (int32)BestAnglesForFace[FaceIndex][0];
 		const FaceStruct* Face = ValidFaces[FaceIndex];
 
-		TMap<int32, int32>& EdgeProjectionGroup = EdgeProjectionGroupList[PrefAngleIdx];
-		EdgeProjectionGroup.FindOrAdd(Face->V0)++;
-		EdgeProjectionGroup.FindOrAdd(Face->V1)++;
-		EdgeProjectionGroup.FindOrAdd(Face->V2)++;
+		TArray<int32>& EdgeProjectionGroup = EdgeProjectionGroupList[PrefAngleIdx];
+		EdgeProjectionGroup[Face->V0]++;
+		EdgeProjectionGroup[Face->V1]++;
+		EdgeProjectionGroup[Face->V2]++;
 	}
 
 	TMap< int32, TSet< int32 > > AnglesIndexToFaces;
@@ -826,56 +806,47 @@ void FUVGenerationFlattenMappingInternal::CreateGroupUVIslands(TSet<FaceStruct*>
 			//if there is an alternative we'll check which one shares more edges
 			if (AltAngleIdx >= 0 && AltAngleIdx != PrefAngleIdx)
 			{
-				TMap<int32, int32>& EdgeProjectionGroup = EdgeProjectionGroupList[PrefAngleIdx];
+				TArray<int32>& EdgeProjectionGroup = EdgeProjectionGroupList[PrefAngleIdx];
 
 				int32 UnconnectedVert = 0;
-				
-				const int32* Value = EdgeProjectionGroup.Find(Face->V0);
-				if (Value == nullptr || *Value < 2)
+				if (EdgeProjectionGroup[Face->V0] < 2)
+				{
+					UnconnectedVert++;
+				}
+				if (EdgeProjectionGroup[Face->V1] < 2)
+				{
+					UnconnectedVert++;
+				}
+				if (EdgeProjectionGroup[Face->V2] < 2)
 				{
 					UnconnectedVert++;
 				}
 
-				Value = EdgeProjectionGroup.Find(Face->V1);
-				if (Value == nullptr || *Value < 2)
-				{
-					UnconnectedVert++;
-				}
-
-				Value = EdgeProjectionGroup.Find(Face->V2);
-				if (Value == nullptr || *Value < 2)
-				{
-					UnconnectedVert++;
-				}
-
-				TMap<int32, int32>& AltEdgeProjectionGroup = EdgeProjectionGroupList[AltAngleIdx];
+				TArray<int32>& AltEdgeProjectionGroup = EdgeProjectionGroupList[AltAngleIdx];
 
 				int32 AltUnconnectedVert = 0;
-				Value = AltEdgeProjectionGroup.Find(Face->V0);
-				if (Value == nullptr || *Value < 1)
+				if (AltEdgeProjectionGroup[Face->V0] < 1)
 				{
 					AltUnconnectedVert++;
 				}
-				Value = AltEdgeProjectionGroup.Find(Face->V1);
-				if (Value == nullptr || *Value < 1)
+				if (AltEdgeProjectionGroup[Face->V1] < 1)
 				{
 					AltUnconnectedVert++;
 				}
-				Value = AltEdgeProjectionGroup.Find(Face->V2);
-				if (Value == nullptr || *Value < 1)
+				if (AltEdgeProjectionGroup[Face->V2] < 1)
 				{
 					AltUnconnectedVert++;
 				}
 
 				if (UnconnectedVert > AltUnconnectedVert)
 				{
-					EdgeProjectionGroup.FindChecked(Face->V0)--;
-					EdgeProjectionGroup.FindChecked(Face->V1)--;
-					EdgeProjectionGroup.FindChecked(Face->V2)--;
+					EdgeProjectionGroup[Face->V0]--;
+					EdgeProjectionGroup[Face->V1]--;
+					EdgeProjectionGroup[Face->V2]--;
 
-					AltEdgeProjectionGroup.FindOrAdd(Face->V0)++;
-					AltEdgeProjectionGroup.FindOrAdd(Face->V1)++;
-					AltEdgeProjectionGroup.FindOrAdd(Face->V2)++;
+					AltEdgeProjectionGroup[Face->V0]++;
+					AltEdgeProjectionGroup[Face->V1]++;
+					AltEdgeProjectionGroup[Face->V2]++;
 
 					BestAnglesForFace[FaceIndex][0] = (int32)BestAnglesForFace[FaceIndex][1];
 					BestAnglesForFace[FaceIndex][1] = -1;
@@ -931,7 +902,6 @@ void FUVGenerationFlattenMappingInternal::CreateGroupUVIslands(TSet<FaceStruct*>
 			}
 		}
 	}
-
 	GetUVIslands(FaceProjectionGroupList, EdgeInUse, IslandsOfFaces);
 }
 
@@ -1083,7 +1053,7 @@ void FUVGenerationFlattenMappingInternal::CalculateUVs(TArray<FaceStruct>& Flatt
 			// we'll create a pair of vertex connection
 			TArray<int32> EdgeInUse;
 
-			TArray< TArray< FVertexPair > > VertexPair;
+			TArray< TArray< FVector2D > > VertexPair;
 			VertexPair.AddDefaulted(VertexNum);
 
 			for (auto itr = TempMeshFaces[Index].CreateIterator(); itr; ++itr)
@@ -1131,7 +1101,7 @@ TArray<FUVGenerationFlattenMappingInternal::FaceStruct> FUVGenerationFlattenMapp
 	for (const FPolygonID PolygonID : InMesh.Polygons().GetElementIDs())
 	{
 		const TArray<FTriangleID>& TriangleIDs = InMesh.GetPolygonTriangleIDs(PolygonID);
-		for (const FTriangleID& TriangleID : TriangleIDs)
+		for (const FTriangleID TriangleID : TriangleIDs)
 		{
 			FaceStruct Face;
 			Face.Group = -1;
@@ -1302,7 +1272,7 @@ TArray<int32> UUVGenerationFlattenMapping::GetOverlappingCornersRemapping(const 
 {
 	float ComparisonThreshold = bRemoveDegenerates ? THRESH_POINTS_ARE_SAME : 0.0f;
 	FOverlappingCorners OverlappingCorners;
-	FStaticMeshOperations::FindOverlappingCorners(OverlappingCorners, InMeshDescription, ComparisonThreshold);
+	FMeshDescriptionOperations::FindOverlappingCorners(OverlappingCorners, InMeshDescription, ComparisonThreshold);
 
 	// Create a instanceID mapping that merge overlapping vertices.
 	// In order to produce a better UV mapping

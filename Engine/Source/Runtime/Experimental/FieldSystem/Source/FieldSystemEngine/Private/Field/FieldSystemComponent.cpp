@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Field/FieldSystemComponent.h"
 
@@ -10,7 +10,7 @@
 #include "Modules/ModuleManager.h"
 #include "Misc/CoreMiscDefines.h"
 #include "Physics/Experimental/PhysScene_Chaos.h"
-#include "PhysicsProxy/PerSolverFieldSystem.h"
+#include "PhysicsProxy/FieldSystemPhysicsProxy.h"
 #include "PBDRigidsSolver.h"
 
 DEFINE_LOG_CATEGORY_STATIC(FSC_Log, NoLogging, All);
@@ -18,6 +18,7 @@ DEFINE_LOG_CATEGORY_STATIC(FSC_Log, NoLogging, All);
 UFieldSystemComponent::UFieldSystemComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 	, FieldSystem(nullptr)
+	, PhysicsProxy(nullptr)
 	, ChaosModule(nullptr)
 	, bHasPhysicsState(false)
 {
@@ -26,6 +27,7 @@ UFieldSystemComponent::UFieldSystemComponent(const FObjectInitializer& ObjectIni
 	SetGenerateOverlapEvents(false);
 }
 
+
 FPrimitiveSceneProxy* UFieldSystemComponent::CreateSceneProxy()
 {
 	UE_LOG(FSC_Log, Log, TEXT("FieldSystemComponent[%p]::CreateSceneProxy()"), this);
@@ -33,34 +35,6 @@ FPrimitiveSceneProxy* UFieldSystemComponent::CreateSceneProxy()
 	return new FFieldSystemSceneProxy(this);
 }
 
-TSet<FPhysScene_Chaos*> UFieldSystemComponent::GetPhysicsScenes() const
-{
-	TSet<FPhysScene_Chaos*> Scenes;
-	if (SupportedSolvers.Num())
-	{
-		for (const TSoftObjectPtr<AChaosSolverActor>& Actor : SupportedSolvers)
-		{
-			if (!Actor.IsValid())
-				continue;
-			Scenes.Add(Actor->GetPhysicsScene().Get());
-		}
-	}
-	else
-	{
-#if INCLUDE_CHAOS
-		if (ensure(GetOwner()) && ensure(GetOwner()->GetWorld()))
-		{
-			Scenes.Add(GetOwner()->GetWorld()->GetPhysicsScene());
-		}
-		else
-		{
-			check(GWorld);
-			Scenes.Add(GWorld->GetPhysicsScene());
-		}
-#endif
-	}
-	return Scenes;
-}
 
 void UFieldSystemComponent::OnCreatePhysicsState()
 {
@@ -70,8 +44,14 @@ void UFieldSystemComponent::OnCreatePhysicsState()
 	if(bValidWorld)
 	{
 		// Check we can get a suitable dispatcher
-		ChaosModule = FChaosSolversModule::GetModule();
+		ChaosModule = FModuleManager::Get().GetModulePtr<FChaosSolversModule>("ChaosSolvers");
 		check(ChaosModule);
+
+		PhysicsProxy = new FFieldSystemPhysicsProxy(this);
+#if INCLUDE_CHAOS
+		TSharedPtr<FPhysScene_Chaos> Scene = GetOwner()->GetWorld()->PhysicsScene_Chaos;
+		Scene->AddObject(this, PhysicsProxy);
+#endif
 
 		bHasPhysicsState = true;
 
@@ -88,11 +68,22 @@ void UFieldSystemComponent::OnCreatePhysicsState()
 void UFieldSystemComponent::OnDestroyPhysicsState()
 {
 	UActorComponent::OnDestroyPhysicsState();
+	if (!PhysicsProxy)
+	{
+		check(!bHasPhysicsState);
+		return;
+	}
+
+#if INCLUDE_CHAOS
+	TSharedPtr<FPhysScene_Chaos> Scene = GetOwner()->GetWorld()->PhysicsScene_Chaos;
+	Scene->RemoveObject(PhysicsProxy);
+#endif
 
 	ChaosModule = nullptr;
-
+	PhysicsProxy = nullptr;
 
 	bHasPhysicsState = false;
+	
 }
 
 bool UFieldSystemComponent::ShouldCreatePhysicsState() const
@@ -107,44 +98,40 @@ bool UFieldSystemComponent::HasValidPhysicsState() const
 
 void UFieldSystemComponent::DispatchCommand(const FFieldSystemCommand& InCommand)
 {
-	using namespace Chaos;
 	if (HasValidPhysicsState())
 	{
 		checkSlow(ChaosModule); // Should already be checked from OnCreatePhysicsState
+		Chaos::IDispatcher* PhysicsDispatcher = ChaosModule->GetDispatcher();
+		checkSlow(PhysicsDispatcher); // Should always have one of these
 
 		// Assemble a list of compatible solvers
-		TArray<FPhysicsSolverBase*> SupportedSolverList;
+		TArray<Chaos::FPhysicsSolver*> SolverList;
 		if(SupportedSolvers.Num() > 0)
 		{
 			for(TSoftObjectPtr<AChaosSolverActor>& SolverActorPtr : SupportedSolvers)
 			{
 				if(AChaosSolverActor* CurrActor = SolverActorPtr.Get())
 				{
-					SupportedSolverList.Add(CurrActor->GetSolver());
+					SolverList.Add(CurrActor->GetSolver());
 				}
 			}
 		}
 
-		TArray<FPhysicsSolverBase*> WorldSolverList = ChaosModule->GetAllSolvers();
-		const int32 NumFilterSolvers = SupportedSolverList.Num();
-
-		for(FPhysicsSolverBase* Solver : WorldSolverList)
+		PhysicsDispatcher->EnqueueCommandImmediate([PhysicsProxy = this->PhysicsProxy, NewCommand = InCommand, ChaosModule = this->ChaosModule, SolverList]()
 		{
-			const bool bSolverValid = NumFilterSolvers == 0 || SupportedSolverList.Contains(Solver);
-			if(bSolverValid)
+			const int32 NumFilterSolvers = SolverList.Num();
+			const TArray<Chaos::FPhysicsSolver*>& Solvers = ChaosModule->GetSolvers();
+
+			for(Chaos::FPhysicsSolver* Solver : Solvers)
 			{
-				Solver->CastHelper([&InCommand](auto& Concrete)
+				const bool bSolverValid = NumFilterSolvers == 0 || SolverList.Contains(Solver);
+
+				if(Solver->Enabled() && Solver->HasActiveParticles() && bSolverValid)
 				{
-					Concrete.EnqueueCommandImmediate([ConcreteSolver = &Concrete, NewCommand = InCommand]()
-					{
-						if(ConcreteSolver->HasActiveParticles())
-						{
-							ConcreteSolver->GetPerSolverField().BufferCommand(NewCommand);
-						}
-					});
-				});
+					PhysicsProxy->BufferCommand(Solver, NewCommand);
+				}
 			}
-		}
+		});
 	}
 }
 

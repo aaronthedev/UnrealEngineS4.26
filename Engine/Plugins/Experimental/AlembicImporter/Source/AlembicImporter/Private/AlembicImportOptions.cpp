@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AlembicImportOptions.h"
 
 #include "PropertyEditorModule.h"
 #include "IDetailsView.h"
 #include "AbcImportSettings.h"
-#include "Math/UnrealMathUtility.h"
 #include "Modules/ModuleManager.h"
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Layout/SUniformGridPanel.h"
@@ -26,7 +25,6 @@ void SAlembicImportOptions::Construct(const FArguments& InArgs)
 	FDetailsViewArgs DetailsViewArgs;
 	DetailsViewArgs.bAllowSearch = false;
 	DetailsViewArgs.NameAreaSettings = FDetailsViewArgs::HideNameArea;
-	DetailsViewArgs.ColumnWidth = 0.5f;
 	DetailsView = PropertyEditorModule.CreateDetailView(DetailsViewArgs);
 	DetailsView->SetObject(ImportSettings);
 	
@@ -34,9 +32,6 @@ void SAlembicImportOptions::Construct(const FArguments& InArgs)
 	{
 		PolyMeshData.Add(FPolyMeshDataPtr(new FPolyMeshData(PolyMesh)));
 	}
-
-	static const float MaxDesiredHeight = 250.f;
-	float MinDesiredHeight = FMath::Clamp(InArgs._PolyMeshes.Num() * 16.f, 0.f, MaxDesiredHeight);
 
 	this->ChildSlot
 	[
@@ -80,8 +75,7 @@ void SAlembicImportOptions::Construct(const FArguments& InArgs)
 			[
 				SNew(SBox)				
 				.MinDesiredWidth(512.0f)
-				.MinDesiredHeight(MinDesiredHeight)
-				.MaxDesiredHeight(MaxDesiredHeight)
+				.MaxDesiredHeight(350.0f)
 				[
 					SNew(SListView<FPolyMeshDataPtr>)
 					.ItemHeight(24)						

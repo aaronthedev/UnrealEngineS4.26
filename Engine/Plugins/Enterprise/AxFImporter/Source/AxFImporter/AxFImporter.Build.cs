@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System;
@@ -10,7 +10,7 @@ namespace UnrealBuildTool.Rules
     {
         private string ThirdPartyPath
         {
-            get { return Path.GetFullPath(Path.Combine(EngineDirectory, "Restricted/NotForLicensees/Source/ThirdParty/Enterprise")); }
+            get { return Path.GetFullPath(Path.Combine(ModuleDirectory, "../ThirdParty/NotForLicensees/")); }
         }
 
         public AxFImporter(ReadOnlyTargetRules Target) : base(Target)
@@ -56,6 +56,7 @@ namespace UnrealBuildTool.Rules
                 }
                 RuntimeDependencies.Add(ModulePath);
             }
+
 
             if (Directory.Exists(ThirdPartyPath))
             {

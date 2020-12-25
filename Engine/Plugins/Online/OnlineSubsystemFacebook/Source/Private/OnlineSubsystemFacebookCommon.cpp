@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineSubsystemFacebookCommon.h"
 #include "OnlineSubsystemFacebookPrivate.h"
@@ -9,7 +9,6 @@
 #include "OnlineExternalUIFacebookCommon.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/CommandLine.h"
-#include "Stats/Stats.h"
 
 /** Fallback to latest tested API version */
 #define FACEBOOK_API_VER TEXT("v2.12")
@@ -70,8 +69,6 @@ bool FOnlineSubsystemFacebookCommon::Shutdown()
 
 bool FOnlineSubsystemFacebookCommon::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FOnlineSubsystemFacebookCommon_Tick);
-
 	if (!FOnlineSubsystemImpl::Tick(DeltaTime))
 	{
 		return false;
@@ -155,6 +152,11 @@ IOnlineTitleFilePtr FOnlineSubsystemFacebookCommon::GetTitleFileInterface() cons
 }
 
 IOnlineEntitlementsPtr FOnlineSubsystemFacebookCommon::GetEntitlementsInterface() const
+{
+	return nullptr;
+}
+
+IOnlineStorePtr FOnlineSubsystemFacebookCommon::GetStoreInterface() const
 {
 	return nullptr;
 }

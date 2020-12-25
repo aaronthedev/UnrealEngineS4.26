@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ProceduralFoliageSpawner.h"
 #include "ProceduralFoliageTile.h"
@@ -16,6 +16,13 @@ UProceduralFoliageSpawner::UProceduralFoliageSpawner(const FObjectInitializer& O
 	NumUniqueTiles = 10;
 	RandomSeed = 42;
 }
+
+#if WITH_EDITOR
+void UProceduralFoliageSpawner::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	bNeedsSimulation = true;
+}
+#endif
 
 UProceduralFoliageTile* UProceduralFoliageSpawner::CreateTempTile()
 {
@@ -40,6 +47,8 @@ void UProceduralFoliageSpawner::SetClean()
 	{
 		FoliageTypeObject.SetClean();
 	}
+
+	bNeedsSimulation = false;
 }
 
 // Custom serialization version for all packages containing ProceduralFoliage
@@ -74,6 +83,34 @@ void UProceduralFoliageSpawner::Serialize(FArchive& Ar)
 	Ar.UsingCustomVersion(FProceduralFoliageCustomVersion::GUID);
 }
 
+bool UProceduralFoliageSpawner::AnyDirty() const
+{
+	bool bDirty = bNeedsSimulation;
+
+	if (!bDirty)
+	{
+		for (const FFoliageTypeObject& FoliageTypeObject : FoliageTypes)
+		{
+			if (FoliageTypeObject.IsDirty())
+			{
+				bDirty = true;
+				break;
+			}
+		}
+	}
+	
+	return bDirty;
+}
+
+void UProceduralFoliageSpawner::SimulateIfNeeded()
+{
+	//if (AnyDirty())	@todo: for now we must force simulation every time since precomputed tiles are weak pointers
+	{
+		Simulate();
+	}
+
+}
+
 void UProceduralFoliageSpawner::Empty()
 {
 	for (TWeakObjectPtr<UProceduralFoliageTile>& WeakTile : PrecomputedTiles)
@@ -95,12 +132,12 @@ const UProceduralFoliageTile* UProceduralFoliageSpawner::GetRandomTile(int32 X, 
 		FRandomStream HashStream;	
 		
 		HashStream.Initialize(X);
-		const double XRand = HashStream.FRand();
+		const float XRand = HashStream.FRand();
 		
 		HashStream.Initialize(Y);
-		const double YRand = HashStream.FRand();
+		const float YRand = HashStream.FRand();
 		
-		const int32 RandomNumber = (RAND_MAX * XRand / (YRand + 0.01));
+		const int32 RandomNumber = (RAND_MAX * XRand / (YRand + 0.01f));
 		const int32 Idx = FMath::Clamp(RandomNumber % PrecomputedTiles.Num(), 0, PrecomputedTiles.Num() - 1);
 		return PrecomputedTiles[Idx].Get();
 	}
@@ -171,7 +208,7 @@ void UProceduralFoliageSpawner::Simulate(int32 NumSteps)
 
 int32 UProceduralFoliageSpawner::GetRandomNumber()
 {
-	return RandomStream.FRand() * float(RAND_MAX);
+	return RandomStream.FRand() * RAND_MAX;
 }
 
 #undef LOCTEXT_NAMESPACE

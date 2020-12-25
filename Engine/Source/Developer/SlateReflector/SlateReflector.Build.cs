@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -53,9 +53,8 @@ public class SlateReflector : ModuleRules
 			PublicDefinitions.Add("SLATE_REFLECTOR_HAS_SESSION_SERVICES=1");
 
 			PrivateDependencyModuleNames.AddRange(
-				new string[] {
-					"PropertyEditor",
-					"UnrealEd",
+                new string[] {
+                    "PropertyEditor",
                 }
 			);
 

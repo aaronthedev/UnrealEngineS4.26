@@ -1,10 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RigUnit_BlendTransform.h"
 #include "Units/RigUnitContext.h"
 #include "AnimationRuntime.h"
 
-FRigUnit_BlendTransform_Execute()
+void FRigUnit_BlendTransform::Execute(const FRigUnitContext& Context)
 {
     DECLARE_SCOPE_HIERARCHICAL_COUNTER_RIGUNIT()
 	if (Targets.Num() > 0)
@@ -39,10 +39,7 @@ FRigUnit_BlendTransform_Execute()
 				BlendWeights.Add(SourceWeight);
 			}
 
-			PRAGMA_DISABLE_DEPRECATION_WARNINGS
-			// deprecated node calls a deprecated function, suppress warning for this case
 			FAnimationRuntime::BlendTransformsByWeight(Result, BlendTransform, BlendWeights);
-			PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		}
 	}
 

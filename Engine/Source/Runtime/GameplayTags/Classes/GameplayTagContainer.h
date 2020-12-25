@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -48,7 +48,7 @@ typedef uint16 FGameplayTagNetIndex;
  * A single gameplay tag, which represents a hierarchical name of the form x.y that is registered in the GameplayTagsManager
  * You can filter the gameplay tags displayed in the editor using, meta = (Categories = "Tag1.Tag2.Tag3"))
  */
-USTRUCT(BlueprintType, meta = (HasNativeMake = "GameplayTags.BlueprintGameplayTagLibrary.MakeLiteralGameplayTag", HasNativeBreak = "GameplayTags.BlueprintGameplayTagLibrary.GetTagName", DisableSplitPin))
+USTRUCT(BlueprintType, meta = (HasNativeMake = "GameplayTags.BlueprintGameplayTagLibrary.MakeLiteralGameplayTag", HasNativeBreak = "GameplayTags.BlueprintGameplayTagLibrary.GetTagName"))
 struct GAMEPLAYTAGS_API FGameplayTag
 {
 	GENERATED_USTRUCT_BODY()
@@ -65,7 +65,7 @@ struct GAMEPLAYTAGS_API FGameplayTag
 	 * @param ErrorIfNotfound: ensure() that tag exists.
 	 * @return Will return the corresponding FGameplayTag or an empty one if not found.
 	 */
-	static FGameplayTag RequestGameplayTag(const FName& TagName, bool ErrorIfNotFound=true);
+	static FGameplayTag RequestGameplayTag(FName TagName, bool ErrorIfNotFound=true);
 
 	/** 
 	 * Returns true if this is a valid gameplay tag string (foo.bar.baz). If false, it will fill 
@@ -246,7 +246,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 protected:
 
 	/** Intentionally private so only the tag manager can use */
-	explicit FGameplayTag(const FName& InTagName);
+	explicit FGameplayTag(FName InTagName);
 
 	/** This Tags Name */
 	UPROPERTY(VisibleAnywhere, Category = GameplayTags, SaveGame)
@@ -547,14 +547,14 @@ struct GAMEPLAYTAGS_API FGameplayTagContainer
 	 * @param TagToRemove		Tag to remove from the container
 	 * @param bDeferParentTags	Skip calling FillParentTags for performance (must be handled by calling code)
 	 */
-	bool RemoveTag(const FGameplayTag& TagToRemove, bool bDeferParentTags=false);
+	bool RemoveTag(FGameplayTag TagToRemove, bool bDeferParentTags=false);
 
 	/**
 	 * Removes all tags in TagsToRemove from this container
 	 *
 	 * @param TagsToRemove	Tags to remove from the container
 	 */
-	void RemoveTags(const FGameplayTagContainer& TagsToRemove);
+	void RemoveTags(FGameplayTagContainer TagsToRemove);
 
 	/** Remove all tags from the container. Will maintain slack by default */
 	void Reset(int32 Slack = 0);
@@ -575,13 +575,10 @@ struct GAMEPLAYTAGS_API FGameplayTagContainer
 	FString ToString() const;
 
 	/** Sets from a ImportText string, used in asset registry */
-	void FromExportString(const FString& ExportString);
+	void FromExportString(FString ExportString);
 
 	/** Returns abbreviated human readable Tag list without parens or property names. If bQuoted is true it will quote each tag */
 	FString ToStringSimple(bool bQuoted = false) const;
-
-	/** Returns abbreviated human readable Tag list without parens or property names, but will limit each string to specified len.  This is to get around output restrictions*/
-	TArray<FString> ToStringsMaxLen(int32 MaxLen) const;
 
 	/** Returns human readable description of what match is being looked for on the readable tag list. */
 	FText ToMatchingText(EGameplayContainerMatchType MatchType, bool bInvertCondition) const;
@@ -882,7 +879,6 @@ struct TStructOpsTypeTraits<FGameplayTagContainer> : public TStructOpsTypeTraits
 	};
 };
 
-/** Class that can be subclassed by a game/plugin to allow easily adding native gameplay tags at startup */
 struct GAMEPLAYTAGS_API FGameplayTagNativeAdder
 {
 	FGameplayTagNativeAdder();
@@ -890,10 +886,12 @@ struct GAMEPLAYTAGS_API FGameplayTagNativeAdder
 	virtual void AddTags() = 0;
 };
 
+/**
+ *	Helper struct for viewing tag references (assets that reference a tag). Drop this into a struct and set the OnGetgameplayStatName. A details customization
+ *	will display a tree view of assets referencing the tag
+ */
 USTRUCT()
-struct 
-	UE_DEPRECATED(4.26, "FGameplayTagReferenceHelper has been deprecated, to find references right click a normal gameplay tag")
-	FGameplayTagReferenceHelper
+struct FGameplayTagReferenceHelper
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -901,6 +899,15 @@ struct
 	{
 	}
 
+	/** 
+	 *	Delegate to be called to get the tag we want to inspect. The void* is a raw pointer to the outer struct's data. You can do a static cast to access it. Eg:
+	 *	
+	 *	ReferenceHelper.OnGetGameplayTagName.BindLambda([this](void* RawData) {
+	 *		FMyStructType* ThisData = static_cast<FMyStructType*>(RawData);
+	 *		return ThisData->MyTag.GetTagName();
+	 *	});
+	 *
+	*/
 	DECLARE_DELEGATE_RetVal_OneParam(FName, FOnGetGameplayTagName, void* /**RawOuterStructData*/);
 	FOnGetGameplayTagName OnGetGameplayTagName;
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -38,7 +38,6 @@ struct PERSONA_API FPersonaTabs
 	static const FName SkeletonSlotGroupNamesID;
 	static const FName CurveNameManagerID;
 	static const FName BlendProfileManagerID;
-	static const FName AnimMontageSectionsID;
 
 	// Advanced Preview Scene
 	static const FName AdvancedPreviewSceneSettingsID;

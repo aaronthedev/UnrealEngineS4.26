@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -57,11 +57,6 @@ public partial class Project : CommandUtils
 				if (Params.IterativeCooking)
 				{
 					COTFCommandLine += " -iterate -iteratehash";
-				}
-
-				if (Params.HasDDCGraph)
-				{
-					COTFCommandLine += " -ddc=" + Params.DDCGraph;
 				}
 
 				var ServerLogFile = CombinePaths(LogFolderOutsideOfSandbox, "Server.log");
@@ -146,11 +141,6 @@ public partial class Project : CommandUtils
             try
             {
                 var CommandletParams = IsBuildMachine ? "-buildmachine -fileopenlog" : "-fileopenlog";
-
-                if (Params.HasDDCGraph)
-                {
-                    CommandletParams += " -ddc=" + Params.DDCGraph;
-                }
                 if (Params.UnversionedCookedContent)
                 {
                     CommandletParams += " -unversioned";
@@ -221,15 +211,6 @@ public partial class Project : CommandUtils
                 {
                     CommandletParams += " -basedonreleaseversion=" + Params.BasedOnReleaseVersion;
                 }
-                if (!String.IsNullOrEmpty(Params.CreateReleaseVersionBasePath))
-                {
-                    CommandletParams += " -createreleaseversionroot=" + Params.CreateReleaseVersionBasePath;
-                }
-                if (!String.IsNullOrEmpty(Params.BasedOnReleaseVersionBasePath))
-                {
-                    CommandletParams += " -basedonreleaseversionroot=" + Params.BasedOnReleaseVersionBasePath;
-                }
-
                 // if we are not going to pak but we specified compressed then compress in the cooker ;)
                 // otherwise compress the pak files
                 if (!Params.Pak && !Params.SkipPak && Params.Compressed)

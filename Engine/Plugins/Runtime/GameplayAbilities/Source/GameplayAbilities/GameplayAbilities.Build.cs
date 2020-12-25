@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -13,11 +13,9 @@ namespace UnrealBuildTool.Rules
 				{
 					"Core",
 					"CoreUObject",
-					"NetCore",
 					"Engine",
 					"GameplayTags",
 					"GameplayTasks",
-					"PhysicsCore"
 				}
 				);
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -76,7 +76,6 @@ public:
 	// End of SWidget interface
 
 	void Register(TSharedRef<FDesignerExtension> Extension);
-	void Unregister(TSharedRef<FDesignerExtension> Extension);
 
 	// IUMGDesigner interface
 	virtual float GetPreviewScale() const override;
@@ -128,8 +127,6 @@ protected:
 	virtual int32 GetSnapGridSize() const override;
 
 private:
-	void RegisterExtensions();
-
 	/** Establishes the resolution and aspect ratio to use on construction from config settings */
 	void SetStartupResolution();
 
@@ -200,7 +197,7 @@ private:
 	// Handles selecting a common screen resolution.
 	void HandleOnCommonResolutionSelected(const FPlayScreenResolution InResolution);
 	bool HandleIsCommonResolutionSelected(const FPlayScreenResolution InResolution) const;
-	FUIAction GetResolutionMenuAction( const FPlayScreenResolution& ScreenResolution );
+	void AddScreenResolutionSection(FMenuBuilder& MenuBuilder, const TArray<FPlayScreenResolution> Resolutions, const FText SectionName);
 	TSharedRef<SWidget> GetResolutionsMenu();
 
 	TSharedRef<SWidget> GetScreenSizingFillMenu();
@@ -289,7 +286,7 @@ private:
 	
 	void ClearDropPreviews();
 
-	void DetermineDragDropPreviewWidgets(TArray<UWidget*>& OutWidgets, const FDragDropEvent& DragDropEvent, UWidgetTree* RootWidgetTree);
+	void DetermineDragDropPreviewWidgets(TArray<UWidget*>& OutWidgets, const FDragDropEvent& DragDropEvent);
 
 	void SwapSafeZoneTypes();
 

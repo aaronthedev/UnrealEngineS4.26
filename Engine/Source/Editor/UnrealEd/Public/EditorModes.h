@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,6 @@
 #include "MaterialShared.h"
 #include "SceneManagement.h"
 #include "Editor.h"
-#include "Tools/Modes.h"
 
 enum EModeTools : int8;
 class FEditorViewportClient;
@@ -29,8 +28,17 @@ public:
 	/** Placement mode */
 	const static FEditorModeID EM_Placement;
 
+	/** Bsp mode */
+	const static FEditorModeID EM_Bsp;
+
+	/** Geometry editing mode. */
+	const static FEditorModeID EM_Geometry;
+
 	/** Interpolation editing. */
 	const static FEditorModeID EM_InterpEdit;
+
+	/** Texture alignment via the widget. */
+	const static FEditorModeID EM_Texture;
 
 	/** Mesh paint tool */
 	const static FEditorModeID EM_MeshPaint;

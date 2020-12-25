@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "STimersViewTooltip.h"
 
@@ -150,7 +150,7 @@ TSharedPtr<SToolTip> STimersViewTooltip::GetRowTooltip(const TSharedPtr<FTimerNo
 					.Padding(2.0f)
 					[
 						SNew(STextBlock)
-						.Text(FText::AsNumber(TimerNodePtr->GetTimerId()))
+						.Text(FText::AsNumber(TimerNodePtr->GetId()))
 						.TextStyle(FEditorStyle::Get(), TEXT("Profiler.Tooltip"))
 					]
 
@@ -166,8 +166,6 @@ TSharedPtr<SToolTip> STimersViewTooltip::GetRowTooltip(const TSharedPtr<FTimerNo
 					.Padding(2.0f)
 					[
 						SNew(STextBlock)
-						.WrapTextAt(512.0f)
-						.WrappingPolicy(ETextWrappingPolicy::AllowPerCharacterWrapping)
 						.Text(FText::FromName(TimerNodePtr->GetName()))
 						.TextStyle(FEditorStyle::Get(), TEXT("Profiler.Tooltip"))
 					]
@@ -184,8 +182,6 @@ TSharedPtr<SToolTip> STimersViewTooltip::GetRowTooltip(const TSharedPtr<FTimerNo
 					//.Padding(2.0f)
 					//[
 					//	SNew(STextBlock)
-					//	.WrapTextAt(512.0f)
-					//	.WrappingPolicy(ETextWrappingPolicy::AllowPerCharacterWrapping)
 					//	.Text(FText::FromName(TimerNodePtr->GetMetaGroupName()))
 					//	.TextStyle(FEditorStyle::Get(), TEXT("Profiler.Tooltip"))
 					//]

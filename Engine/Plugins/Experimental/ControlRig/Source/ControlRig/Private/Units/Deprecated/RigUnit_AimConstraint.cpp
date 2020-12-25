@@ -1,15 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RigUnit_AimConstraint.h"
 #include "Units/RigUnitContext.h"
 #include "HelperUtil.h"
 #include "AnimationCoreLibrary.h"
 
-FRigUnit_AimConstraint_Execute()
+void FRigUnit_AimConstraint::Execute(const FRigUnitContext& Context)
 {
     DECLARE_SCOPE_HIERARCHICAL_COUNTER_RIGUNIT()
-
-	TArray<FConstraintData>& ConstraintData = WorkData.ConstraintData;
 
 	if (Context.State == EControlRigState::Init)
 	{
@@ -38,6 +36,10 @@ FRigUnit_AimConstraint_Execute()
 					}
 				}
 			}
+		}
+		else
+		{
+			UnitLogHelpers::PrintMissingHierarchy(RigUnitName);
 		}
 	}
 	else if (Context.State == EControlRigState::Update)

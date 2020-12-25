@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -16,7 +16,10 @@ public:
 	virtual IVideoRecordingSystem* GetVideoRecordingSystem() override;
 
 private:
-	void StartupModule() override;
+	/**
+	 * Load global/generic modules, and perform any initialization
+	 */
+	bool StartupModules();
 
 };
 

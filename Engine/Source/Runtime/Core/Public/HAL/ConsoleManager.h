@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,6 +15,7 @@ public:
 	FConsoleManager()
 		: bHistoryWasLoaded(false)
 		, ThreadPropagationCallback(0)
+		, ThreadPropagationThreadId(0)
 		, bCallAllConsoleVariableSinks(true)
 	{
 	}
@@ -91,6 +92,7 @@ private: // ----------------------------------------------------
 	TArray<FConsoleCommandDelegate>	ConsoleVariableChangeSinks;
 
 	IConsoleThreadPropagation* ThreadPropagationCallback;
+	uint32 ThreadPropagationThreadId;
 
 	// if true the next call to CallAllConsoleVariableSinks() we will call all registered sinks
 	bool bCallAllConsoleVariableSinks;

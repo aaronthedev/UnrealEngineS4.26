@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -16,12 +16,10 @@ struct EBuildModuleType
 	{
 		Program,
 		EngineRuntime,
-		EngineUncooked,
 		EngineDeveloper,
 		EngineEditor,
 		EngineThirdParty,
 		GameRuntime,
-		GameUncooked,
 		GameDeveloper,
 		GameEditor,
 		GameThirdParty,
@@ -53,44 +51,6 @@ struct EBuildModuleType
 	* @return	The enum value corresponding to the name
 	*/
 	static EBuildModuleType::Type Parse(const TCHAR* Value);
-};
-
-/** Build module override type to add additional PKG flags if necessary, mirrored in ModuleRules.cs, enum PackageOverrideType */
-struct EPackageOverrideType
-{
-	enum Type
-	{
-		None,
-		EditorOnly,
-		EngineDeveloper,
-		GameDeveloper,
-		EngineUncookedOnly,
-		GameUncookedOnly
-	};
-
-	friend FArchive& operator<<(FArchive& Ar, EPackageOverrideType::Type& Type)
-	{
-		if (Ar.IsLoading())
-		{
-			uint8 Value;
-			Ar << Value;
-			Type = (EPackageOverrideType::Type)Value;
-		}
-		else if (Ar.IsSaving())
-		{
-			uint8 Value = (uint8)Type;
-			Ar << Value;
-		}
-		return Ar;
-	}
-	/**
-	* Converts a string literal into EPackageOverrideType::Type value
-	*
-	* @param	The string to convert to EPackageOverrideType::Type
-	*
-	* @return	The enum value corresponding to the name
-	*/
-	static EPackageOverrideType::Type Parse(const TCHAR* Value);
 };
 
 /**

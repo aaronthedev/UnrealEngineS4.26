@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VT/VirtualTextureBuildSettings.h"
 
@@ -31,7 +31,7 @@ static TAutoConsoleVariable<int32> CVarVTTileBorderSize(
 void FVirtualTextureBuildSettings::Init()
 {
 	TileSize = CVarVTTileSize.GetValueOnAnyThread();
-	TileBorderSize = CVarVTTileBorderSize.GetValueOnAnyThread();
+	TileBorderSize = CVarVTTileBorderSize.GetValueOnAnyThread();;
 	bEnableCompressCrunch = CVarVTCompressCrunch.GetValueOnAnyThread() != 0;
 	bEnableCompressZlib = CVarVTCompressZlib.GetValueOnAnyThread() != 0;
 }

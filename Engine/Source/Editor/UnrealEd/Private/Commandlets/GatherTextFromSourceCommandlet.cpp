@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Commandlets/GatherTextFromSourceCommandlet.h"
 #include "HAL/FileManager.h"
@@ -284,19 +284,17 @@ int32 UGatherTextFromSourceCommandlet::Main( const FString& Params )
 		}
 
 		ParseCtxt.Filename = SourceFile;
-		ParseCtxt.FileTypes = ParseCtxt.Filename.EndsWith(TEXT(".ini")) ? EGatherTextSourceFileTypes::Ini : EGatherTextSourceFileTypes::Cpp;
 		FPaths::MakePathRelativeTo(ParseCtxt.Filename, *ProjectBasePath);
 		ParseCtxt.LineNumber = 0;
 		ParseCtxt.FilePlatformName = GetSplitPlatformNameFromPath(ParseCtxt.Filename);
-		ParseCtxt.LineText.Reset();
-		ParseCtxt.Namespace.Reset();
-		ParseCtxt.RawStringLiteralClosingDelim.Reset();
+		ParseCtxt.LineText.Empty();
+		ParseCtxt.Namespace.Empty();
 		ParseCtxt.ExcludedRegion = false;
 		ParseCtxt.WithinBlockComment = false;
 		ParseCtxt.WithinLineComment = false;
 		ParseCtxt.WithinStringLiteral = false;
 		ParseCtxt.WithinNamespaceDefine = false;
-		ParseCtxt.WithinStartingLine = nullptr;
+		ParseCtxt.WithinStartingLine.Empty();
 		ParseCtxt.FlushMacroStack();
 
 		FString SourceFileText;
@@ -687,48 +685,20 @@ FString UGatherTextFromSourceCommandlet::StripCommentsFromToken(const FString& I
 	return StrippedToken.TrimStartAndEnd();
 }
 
-bool UGatherTextFromSourceCommandlet::ParseSourceText(const FString& Text, const TArray<FParsableDescriptor*>& Parsables, FSourceFileParseContext& ParseCtxt)
+bool UGatherTextFromSourceCommandlet::ParseSourceText(const FString& Text, const TArray<UGatherTextFromSourceCommandlet::FParsableDescriptor*>& Parsables, FSourceFileParseContext& ParseCtxt)
 {
-	// Cache array of parsables and tokens valid for this filetype
-	TArray< FParsableDescriptor*> ParsablesForFile;
-	TArray<FString> ParsableTokensForFile;
-	for (FParsableDescriptor* Parsable : Parsables)
-	{
-		if (Parsable->MatchesFileTypes(ParseCtxt.FileTypes))
-		{
-			ParsablesForFile.Add(Parsable);
-			ParsableTokensForFile.Add(Parsable->GetToken());
-		}
-	}
-	check(ParsablesForFile.Num() == ParsableTokensForFile.Num());
-
-	// Anything to parse for this filetype?
-	if (ParsablesForFile.Num() == 0)
-	{
-		return true;
-	}
-
 	// Create array of ints, one for each parsable we're looking for.
-	TArray<int32> ParsableMatchCountersForFile;
-	ParsableMatchCountersForFile.AddZeroed(ParsablesForFile.Num());
+	TArray<int32> ParsableMatchCounters;
+	ParsableMatchCounters.AddZeroed(Parsables.Num());
 
-	// Use the file extension to work out what comments look like for this file
-	// We default to C++-style comments
-	const TCHAR* LineComment = TEXT("//");
-	const TCHAR* BlockCommentStart = TEXT("/*");
-	const TCHAR* BlockCommentEnd = TEXT("*/");
-	if (EnumHasAnyFlags(ParseCtxt.FileTypes, EGatherTextSourceFileTypes::Ini))
+	// Cache array of tokens
+	TArray<FString> ParsableTokens;
+	for (int32 ParIdx=0; ParIdx<Parsables.Num(); ParIdx++)
 	{
-		LineComment = TEXT(";");
-		BlockCommentStart = nullptr;
-		BlockCommentEnd = nullptr;
+		ParsableTokens.Add(Parsables[ParIdx]->GetToken());
 	}
-	const int32 LineCommentLen = LineComment ? FCString::Strlen(LineComment) : 0;
-	const int32 BlockCommentStartLen = BlockCommentStart ? FCString::Strlen(BlockCommentStart) : 0;
-	const int32 BlockCommentEndLen = BlockCommentEnd ? FCString::Strlen(BlockCommentEnd) : 0;
-	checkf((BlockCommentStartLen == 0 && BlockCommentEndLen == 0) || (BlockCommentStartLen > 0 && BlockCommentEndLen > 0), TEXT("Block comments require both a start and an end marker!"));
 
-	// Split the file into lines 
+	// Split the file into lines of 
 	TArray<FString> TextLines;
 	Text.ParseIntoArrayLines(TextLines, false);
 
@@ -741,38 +711,39 @@ bool UGatherTextFromSourceCommandlet::ParseSourceText(const FString& Text, const
 			continue;
 
 		// Use these pending vars to defer parsing a token hit until longer tokens can't hit too
-		int32 PendingParseIdx = INDEX_NONE;
+		int32 PendingParseIdx = -1;
 		const TCHAR* ParsePoint = NULL;
-		for (int32& Element : ParsableMatchCountersForFile)
-		{
-			Element = 0;
-		}
+		ParsableMatchCounters.Empty(Parsables.Num());
+		ParsableMatchCounters.AddZeroed(Parsables.Num());
 		ParseCtxt.LineNumber = LineIdx + 1;
 		ParseCtxt.LineText = Line;
-		ParseCtxt.WithinLineComment = false;
 		ParseCtxt.EndParsingCurrentLine = false;
 
 		const TCHAR* Cursor = *Line;
-		while (*Cursor && !ParseCtxt.EndParsingCurrentLine)
+		bool EndOfLine = false;
+		while (!EndOfLine && !ParseCtxt.EndParsingCurrentLine)
 		{
-			// Check if we're starting comments or string literals
-
+			// Check if we're starting comments or string literals. Begins *at* "//" or "/*".
 			if (!ParseCtxt.WithinLineComment && !ParseCtxt.WithinBlockComment && !ParseCtxt.WithinStringLiteral)
 			{
-				if (LineCommentLen > 0 && FCString::Strncmp(Cursor, LineComment, LineCommentLen) == 0)
+				if(*Cursor == TEXT('/'))
 				{
-					ParseCtxt.WithinLineComment = true;
-					ParseCtxt.WithinStartingLine = *Line;
-					ParseCtxt.EndParsingCurrentLine = true;
-					Cursor += LineCommentLen;
-					continue;
-				}
-				else if (BlockCommentStartLen > 0 && FCString::Strncmp(Cursor, BlockCommentStart, BlockCommentStartLen) == 0)
-				{
-					ParseCtxt.WithinBlockComment = true;
-					ParseCtxt.WithinStartingLine = *Line;
-					Cursor += BlockCommentStartLen;
-					continue;
+					const TCHAR* const ForwardCursor = Cursor + 1;
+					switch(*ForwardCursor)
+					{
+					case TEXT('/'):
+						{
+							ParseCtxt.WithinLineComment = true;
+							ParseCtxt.WithinStartingLine = ParseCtxt.LineText;
+						}
+						break;
+					case TEXT('*'):
+						{
+							ParseCtxt.WithinBlockComment = true;
+							ParseCtxt.WithinStartingLine = ParseCtxt.LineText;
+						}
+						break;
+					}
 				}
 			}
 
@@ -783,60 +754,15 @@ bool UGatherTextFromSourceCommandlet::ParseSourceText(const FString& Text, const
 					if (Cursor == *Line)
 					{
 						ParseCtxt.WithinStringLiteral = true;
-						ParseCtxt.WithinStartingLine = *Line;
-						++Cursor;
-						continue;
+						ParseCtxt.WithinStartingLine = ParseCtxt.LineText;
 					}
 					else if (Cursor > *Line)
 					{
 						const TCHAR* const ReverseCursor = Cursor - 1;
-						if (EnumHasAnyFlags(ParseCtxt.FileTypes, EGatherTextSourceFileTypes::Cpp) && *ReverseCursor == TEXT('R'))
-						{
-							// Potentially a C++11 raw string literal, so walk forwards and validate that this looks legit
-							// While doing this we can parse out its optional user defined delimiter so we can find when the string closes
-							//   eg) For 'R"Delim(string)Delim"', ')Delim' would be the closing delimiter.
-							//   eg) For 'R"(string)"', ')' would be the closing delimiter.
-							ParseCtxt.RawStringLiteralClosingDelim = TEXT(")");
-							{
-								bool bIsValid = true;
-
-								const TCHAR* ForwardCursor = Cursor + 1;
-								for (;;)
-								{
-									const TCHAR DelimChar = *ForwardCursor++;
-									if (DelimChar == TEXT('('))
-									{
-										break;
-									}
-									if (DelimChar == 0 || !FChar::IsAlnum(DelimChar))
-									{
-										bIsValid = false;
-										break;
-									}
-									ParseCtxt.RawStringLiteralClosingDelim += DelimChar;
-								}
-
-								if (bIsValid)
-								{
-									ParseCtxt.WithinStringLiteral = true;
-									ParseCtxt.WithinStartingLine = *Line;
-									Cursor = ForwardCursor;
-									continue;
-								}
-								else
-								{
-									ParseCtxt.RawStringLiteralClosingDelim.Reset();
-									// Fall through to the quoted string parsing below
-								}
-							}
-						}
-						
 						if (*ReverseCursor != TEXT('\\') && *ReverseCursor != TEXT('\''))
 						{
 							ParseCtxt.WithinStringLiteral = true;
-							ParseCtxt.WithinStartingLine = *Line;
-							++Cursor;
-							continue;
+							ParseCtxt.WithinStartingLine = ParseCtxt.LineText;
 						}
 						else 
 						{
@@ -853,9 +779,7 @@ bool UGatherTextFromSourceCommandlet::ParseSourceText(const FString& Text, const
 							if (IsEscaped)
 							{
 								ParseCtxt.WithinStringLiteral = true;
-								ParseCtxt.WithinStartingLine = *Line;
-								++Cursor;
-								continue;
+								ParseCtxt.WithinStartingLine = ParseCtxt.LineText;
 							}
 							else
 							{
@@ -864,9 +788,7 @@ bool UGatherTextFromSourceCommandlet::ParseSourceText(const FString& Text, const
 								if (*ReverseCursor == TEXT('\'') && *ForwardCursor != TEXT('\''))
 								{
 									ParseCtxt.WithinStringLiteral = true;
-									ParseCtxt.WithinStartingLine = *Line;
-									++Cursor;
-									continue;
+									ParseCtxt.WithinStartingLine = ParseCtxt.LineText;
 								}
 							}
 						}
@@ -877,33 +799,16 @@ bool UGatherTextFromSourceCommandlet::ParseSourceText(const FString& Text, const
 			{
 				if (*Cursor == TEXT('\"'))
 				{
-					if (Cursor == *Line && ParseCtxt.RawStringLiteralClosingDelim.IsEmpty())
+					if (Cursor == *Line)
 					{
 						ParseCtxt.WithinStringLiteral = false;
-						++Cursor;
-						continue;
 					}
 					else if (Cursor > *Line)
 					{
-						// Is this ending a C++11 raw string literal?
-						if (!ParseCtxt.RawStringLiteralClosingDelim.IsEmpty())
-						{
-							const TCHAR* EndDelimCursor = Cursor - ParseCtxt.RawStringLiteralClosingDelim.Len();
-							if (EndDelimCursor >= *Line && FCString::Strncmp(EndDelimCursor, *ParseCtxt.RawStringLiteralClosingDelim, ParseCtxt.RawStringLiteralClosingDelim.Len()) == 0)
-							{
-								ParseCtxt.RawStringLiteralClosingDelim.Reset();
-								ParseCtxt.WithinStringLiteral = false;
-							}
-							++Cursor;
-							continue;
-						}
-
 						const TCHAR* const ReverseCursor = Cursor - 1;
 						if (*ReverseCursor != TEXT('\\') && *ReverseCursor != TEXT('\''))
 						{
 							ParseCtxt.WithinStringLiteral = false;
-							++Cursor;
-							continue;
 						}
 						else
 						{
@@ -920,8 +825,6 @@ bool UGatherTextFromSourceCommandlet::ParseSourceText(const FString& Text, const
 							if (IsEscaped)
 							{
 								ParseCtxt.WithinStringLiteral = false;
-								++Cursor;
-								continue;
 							}
 							else
 							{
@@ -930,8 +833,6 @@ bool UGatherTextFromSourceCommandlet::ParseSourceText(const FString& Text, const
 								if (*ReverseCursor == TEXT('\'') && *ForwardCursor != TEXT('\''))
 								{
 									ParseCtxt.WithinStringLiteral = false;
-									++Cursor;
-									continue;
 								}
 							}
 						}
@@ -939,29 +840,33 @@ bool UGatherTextFromSourceCommandlet::ParseSourceText(const FString& Text, const
 				}
 			}
 
-			// Check if we're ending comments
-			if (ParseCtxt.WithinBlockComment && BlockCommentEndLen > 0 && FCString::Strncmp(Cursor, BlockCommentEnd, BlockCommentEndLen) == 0)
+			// Check if we're ending comments. Ends *after* "*/".
+			if(ParseCtxt.WithinBlockComment)
 			{
-				ParseCtxt.WithinBlockComment = false;
-				Cursor += BlockCommentEndLen;
-				continue;
+				if(*Cursor == TEXT('/') && Cursor > *Line)
+				{
+					const TCHAR* const ReverseCursor = Cursor - 1;
+					if (*ReverseCursor == TEXT('*'))
+					{
+						ParseCtxt.WithinBlockComment = false;
+					}
+				}
 			}
 
-			for (int32 ParIdx = 0; ParIdx < ParsablesForFile.Num(); ++ParIdx)
+			for (int32 ParIdx=0; ParIdx<Parsables.Num(); ParIdx++)
 			{
-				FParsableDescriptor* Parsable = ParsablesForFile[ParIdx];
-				const FString& Token = ParsableTokensForFile[ParIdx];
+				FString& Token = ParsableTokens[ParIdx];
 
-				if (Token.Len() == ParsableMatchCountersForFile[ParIdx])
+				if (Token.Len() == ParsableMatchCounters[ParIdx])
 				{
 					// already seen this entire token and are looking for longer matches - skip it
 					continue;
 				}
 
-				if (*Cursor == Token[ParsableMatchCountersForFile[ParIdx]])
+				if (*Cursor == Token[ParsableMatchCounters[ParIdx]])
 				{
 					// Char at cursor matches the next char in the parsable's identifying token
-					if (Token.Len() == ++(ParsableMatchCountersForFile[ParIdx]))
+					if (Token.Len() == ++(ParsableMatchCounters[ParIdx]))
 					{
 						// don't immediately parse - this parsable has seen its entire token but a longer one could be about to hit too
 						const TCHAR* TokenStart = Cursor + 1 - Token.Len();
@@ -976,24 +881,25 @@ bool UGatherTextFromSourceCommandlet::ParseSourceText(const FString& Text, const
 				{
 					// Char at cursor doesn't match the next char in the parsable's identifying token
 					// Reset the counter to start of the token
-					ParsableMatchCountersForFile[ParIdx] = 0;
+					ParsableMatchCounters[ParIdx] = 0;
 				}
 			}
 
 			// Now check PendingParse and only run it if there are no better candidates
-			if (PendingParseIdx != INDEX_NONE)
+			if (0 <= PendingParseIdx)
 			{
-				FParsableDescriptor* PendingParsable = ParsablesForFile[PendingParseIdx];
-
 				bool MustDefer = false; // pending will be deferred if another parsable has a equal and greater number of matched chars
-				if (!PendingParsable->OverridesLongerTokens())
+				if( !Parsables[PendingParseIdx]->OverridesLongerTokens() )
 				{
-					for (int32 ParIdx = 0; ParIdx < ParsablesForFile.Num(); ++ParIdx)
+					for (int32 ParIdx=0; ParIdx<Parsables.Num(); ParIdx++)
 					{
-						if (PendingParseIdx != ParIdx && ParsableMatchCountersForFile[ParIdx] >= ParsableTokensForFile[PendingParseIdx].Len())
+						if (PendingParseIdx != ParIdx)
 						{
-							// a longer token is matching so defer
-							MustDefer = true;
+							if (ParsableMatchCounters[ParIdx] >= ParsableTokens[PendingParseIdx].Len())
+							{
+								// a longer token is matching so defer
+								MustDefer = true;
+							}
 						}
 					}
 				}
@@ -1001,43 +907,22 @@ bool UGatherTextFromSourceCommandlet::ParseSourceText(const FString& Text, const
 				if (!MustDefer)
 				{
 					// Do the parse now
-					// TODO: Would be nice if TryParse returned what it consumed, and operated on const TCHAR*
-					PendingParsable->TryParse(FString(ParsePoint), ParseCtxt);
-					for (int32& Element : ParsableMatchCountersForFile)
+					Parsables[PendingParseIdx]->TryParse(FString(ParsePoint), ParseCtxt);
+					for(auto& Element : ParsableMatchCounters)
 					{
 						Element = 0;
 					}
-					PendingParseIdx = INDEX_NONE;
+					PendingParseIdx = -1;
 					ParsePoint = NULL;
 				}
 			}
 
-			// Advance cursor
-			++Cursor;
-		}
-
-		// Handle a string literal that went beyond a single line
-		if (ParseCtxt.WithinStringLiteral)
-		{
-			if (EnumHasAnyFlags(ParseCtxt.FileTypes, EGatherTextSourceFileTypes::Ini))
+			EndOfLine = ('\0' == *(++Cursor)) ? true : false;
+			if(EndOfLine)
 			{
-				// INI files don't support multi-line literals; always terminate them after ending a line
-				ParseCtxt.WithinStringLiteral = false;
+				ParseCtxt.WithinLineComment = false;
 			}
-			else if (Cursor > *Line && ParseCtxt.RawStringLiteralClosingDelim.IsEmpty())
-			{
-				// C++ only allows multi-line literals if they're escaped with a trailing slash or within a C++11 raw string literal
-				ParseCtxt.WithinStringLiteral = *(Cursor - 1) == TEXT('\\');
-			}
-
-			UE_CLOG(!ParseCtxt.WithinStringLiteral, LogGatherTextFromSourceCommandlet, Warning, TEXT("A string literal was not correctly terminated. File %s at line %d, starting line: %s"), *ParseCtxt.Filename, ParseCtxt.LineNumber, ParseCtxt.WithinStartingLine);
 		}
-	}
-
-	// Handle a string C++11 raw string literal that was never closed as this is likely a false positive that needs to be fixed in the parser
-	if (ParseCtxt.WithinStringLiteral && !ParseCtxt.RawStringLiteralClosingDelim.IsEmpty())
-	{
-		UE_LOG(LogGatherTextFromSourceCommandlet, Warning, TEXT("A C++11 raw string literal was not correctly terminated. File %s, starting line: %s"), *ParseCtxt.Filename, ParseCtxt.WithinStartingLine);
 	}
 
 	return true;
@@ -1358,8 +1243,7 @@ void UGatherTextFromSourceCommandlet::FIfDescriptor::TryParse(const FString& Tex
 		// Handle "#if defined <defname>"
 		if (RemainingText.StartsWith(DefinedString, ESearchCase::CaseSensitive))
 		{
-			RemainingText.RightChopInline(DefinedString.Len(), false);
-			RemainingText.TrimStartInline();
+			RemainingText = RemainingText.RightChop(DefinedString.Len()).TrimStart();
 		}
 
 		Context.PushMacroBlock(RemainingText);
@@ -1395,8 +1279,7 @@ void UGatherTextFromSourceCommandlet::FElIfDescriptor::TryParse(const FString& T
 		// Handle "#elif defined <defname>"
 		if (RemainingText.StartsWith(DefinedString, ESearchCase::CaseSensitive))
 		{
-			RemainingText.RightChopInline(DefinedString.Len(), false);
-			RemainingText.TrimStartInline();
+			RemainingText = RemainingText.RightChop(DefinedString.Len()).TrimStart();
 		}
 
 		Context.PopMacroBlock(); // Pop the current #if or #ifdef state
@@ -1441,7 +1324,7 @@ bool UGatherTextFromSourceCommandlet::FMacroDescriptor::ParseArgsFromMacro(const
 	FString RemainingText = Text.RightChop(GetToken().Len());
 	RemainingText.TrimStartInline();
 
-	const int32 OpenBracketIdx = RemainingText.Find(TEXT("("), ESearchCase::CaseSensitive);
+	const int32 OpenBracketIdx = RemainingText.Find(TEXT("("));
 	if (OpenBracketIdx == INDEX_NONE)
 	{
 		// No opening bracket; warn about this, but don't consider it an error as we're likely parsing something we shouldn't be
@@ -1522,10 +1405,10 @@ bool UGatherTextFromSourceCommandlet::FMacroDescriptor::ParseArgsFromMacro(const
 		{
 			Args.Add(FString(Cursor - ArgStart - 1, ArgStart));
 		}
-		//else
-		//{
-		//	Args.Add(FString(ArgStart));
-		//}
+		else
+		{
+			Args.Add(FString(ArgStart));
+		}
 
 		Success = 0 < Args.Num() ? true : false;	
 	}
@@ -1668,7 +1551,7 @@ void UGatherTextFromSourceCommandlet::FStringMacroDescriptor::TryParse(const FSt
 
 			if (NumArgs != Arguments.Num())
 			{
-				UE_LOG(LogGatherTextFromSourceCommandlet, Warning, TEXT("Unexpected number of arguments in %s macro in %s(%d):%s"), *GetToken(), *Context.Filename, Context.LineNumber, *FLocTextHelper::SanitizeLogOutput(Context.LineText));
+				UE_LOG(LogGatherTextFromSourceCommandlet, Warning, TEXT("Too many arguments in %s macro in %s(%d):%s"), *GetToken(), *Context.Filename, Context.LineNumber, *FLocTextHelper::SanitizeLogOutput(Context.LineText));
 			}
 			else
 			{
@@ -1934,7 +1817,8 @@ void UGatherTextFromSourceCommandlet::FIniNamespaceDescriptor::TryParse(const FS
 	// [<config section name>]
 	if (!Context.ExcludedRegion)
 	{
-		if( Context.LineText[ 0 ] == '[' )
+		if( FCString::Stricmp( *FPaths::GetExtension( Context.Filename, false ), TEXT("ini") ) == 0 &&
+			Context.LineText[ 0 ] == '[' )
 		{
 			int32 ClosingBracket;
 			if( Text.FindChar( ']', ClosingBracket ) && ClosingBracket > 1 )

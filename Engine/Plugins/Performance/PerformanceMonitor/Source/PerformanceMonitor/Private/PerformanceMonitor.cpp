@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 //#include "OrionGame.h"
 #include "PerformanceMonitor.h"
@@ -357,7 +357,7 @@ void FPerformanceMonitorModule::RecordFrame()
 			ArrayForStatName.Add(StatUnitData->RawGameThreadTime);
 			GeneratedStats.Emplace(TEXT("GameThreadTime"), ArrayForStatName);
 			ArrayForStatName = GeneratedStats.FindOrAdd(TEXT("GPUFrameTime"));
-			ArrayForStatName.Add(StatUnitData->RawGPUFrameTime[0]);
+			ArrayForStatName.Add(StatUnitData->RawGPUFrameTime);
 			GeneratedStats.Emplace(TEXT("GPUFrameTime"), ArrayForStatName);
 
 			ArrayForStatName = GeneratedStats.FindOrAdd(TEXT("GlobalRenderThreadTime"));

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "AudioMixerTypes.h"
@@ -7,7 +7,6 @@
 #include "Engine/EngineTypes.h"
 #include "IAudioExtensionPlugin.h"
 #include "Sound/SoundWaveProcedural.h"
-#include "Sound/SoundGenerator.h"
 #include "UObject/ObjectMacros.h"
 
 #include "SynthComponent.generated.h"
@@ -51,7 +50,6 @@ class AUDIOMIXER_API USynthSound : public USoundWaveProcedural
 	virtual int32 OnGeneratePCMAudio(TArray<uint8>& OutAudio, int32 NumSamples) override;
 	virtual void OnEndGenerate() override;
 	virtual Audio::EAudioMixerStreamDataFormat::Type GetGeneratedPCMDataFormat() const override;
-	virtual ISoundGeneratorPtr CreateSoundGenerator(int32 InSampleRate, int32 InNumChannels) override;
 	/** End USoundWave */
 
 protected:
@@ -112,15 +110,7 @@ public:
 
 	/** Sets how much audio the sound should send to the given submix. */
 	UFUNCTION(BlueprintCallable, Category = "Audio|Components|Audio")
-	void SetSubmixSend(USoundSubmixBase* Submix, float SendLevel);
-
-	/** Sets whether or not the low pass filter is enabled on the audio component. */
-	UFUNCTION(BlueprintCallable, Category = "Audio|Components|Audio")
-	void SetLowPassFilterEnabled(bool InLowPassFilterEnabled);
-
-	/** Sets lowpass filter frequency of the audio component. */
-	UFUNCTION(BlueprintCallable, Category = "Audio|Components|Audio")
-	virtual void SetLowPassFilterFrequency(float InLowPassFilterFrequency);
+	void SetSubmixSend(USoundSubmix* Submix, float SendLevel);
 
 	/** Auto destroy this component on completion */
 	UPROPERTY()
@@ -168,7 +158,7 @@ public:
 
 	/** Submix this sound belongs to */
 	UPROPERTY(EditAnywhere, Category = Effects)
-	USoundSubmixBase* SoundSubmix;
+	USoundSubmix* SoundSubmix;
 
 	/** An array of submix sends. Audio from this sound will send a portion of its audio to these effects.  */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Effects)
@@ -177,6 +167,10 @@ public:
 	/** This sound will send its audio output to this list of buses if there are bus instances playing after source effects are processed.  */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Effects, meta = (DisplayName = "Post-Effect Bus Sends"))
 	TArray<FSoundSourceBusSendInfo> BusSends;
+
+	/** Modulation for the sound */
+	UPROPERTY(EditAnywhere, Category = Modulation)
+	FSoundModulation Modulation;
 
 	/** This sound will send its audio output to this list of buses if there are bus instances playing before source effects are processed.  */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Effects, meta = (DisplayName = "Pre-Effect Bus Sends"))
@@ -189,9 +183,6 @@ public:
 	/** Whether or not this synth is playing as a preview sound */
 	UPROPERTY()
 	uint8 bIsPreviewSound : 1;
-
-	/** Whether to artificially prioritize the component to play */
-	uint8 bAlwaysPlay : 1;
 
 	/** Call if creating this synth component not via an actor component in BP, but in code or some other location. Optionally override the sample rate of the sound wave, otherwise it uses the audio device's sample rate. */
 	void Initialize(int32 SampleRateOverride = INDEX_NONE);
@@ -222,9 +213,6 @@ public:
 	void AddAudioBufferListener(IAudioBufferListener* InAudioBufferListener);
 	void RemoveAudioBufferListener(IAudioBufferListener* InAudioBufferListener);
 
-
-	virtual void BeginDestroy() override;
-
 protected:
 
 	// Method to execute parameter changes on game thread in audio render thread
@@ -233,10 +221,10 @@ protected:
 	// Called when synth is created.
 	virtual bool Init(int32& SampleRate) { return true; }
 
-	UE_DEPRECATED(4.26, "Use OnBeginGenerate to get a callback before audio is generating on the audio render thread")
+	// Called when synth is about to start playing
 	virtual void OnStart() {}
 
-	UE_DEPRECATED(4.26, "Use OnEndGenerate to get a callback when audio stops generating on the audio render thread")
+	// Called when synth is about to stop playing
 	virtual void OnStop() {}
 
 	// Called when the synth component begins generating audio in render thread
@@ -246,19 +234,14 @@ protected:
 	virtual void OnEndGenerate() {}
 
 	// Called when more audio is needed to be generated
-	// This method of generating audio is soon to be deprecated. For all new synth components, create an FSoundGenerator instance and implement CreateSoundGenerator method to create an instance.
 	virtual int32 OnGenerateAudio(float* OutAudio, int32 NumSamples) PURE_VIRTUAL(USynthComponent::OnGenerateAudio, return 0; );
-
-	// Implemented by the synth component to create a generator object instead of generating audio directly on the synth component.
-	// This method prevents UObjects from having to exist in the audio render thread.
-	virtual ISoundGeneratorPtr CreateSoundGenerator(int32 InSampleRate, int32 InNumChannels) { return nullptr; }
 
 	// Called by procedural sound wave
 	// Returns the number of samples actually generated
 	int32 OnGeneratePCMAudio(float* GeneratedPCMData, int32 NumSamples);
 
 	// Gets the audio device associated with this synth component
-	FAudioDevice* GetAudioDevice() const;
+	FAudioDevice* GetAudioDevice();
 
 	// Can be set by the derived class, defaults to 2
 	int32 NumChannels;
@@ -267,8 +250,6 @@ protected:
 	int32 PreferredBufferLength;
 
 private:
-	// Creates the synth component's sound generator, calls into overridden client code to create the instance.
-	ISoundGeneratorPtr CreateSoundGeneratorInternal(int32 InSampleRate, int32 InNumChannels);
 
 	UPROPERTY(Transient)
 	USynthSound* Synth;
@@ -289,9 +270,14 @@ private:
 
 	TQueue<TFunction<void()>> CommandQueue;
 
-	// Synth component's handle to its sound generator instance.
-	// used to forward BP functions to the instance directly.
-	ISoundGeneratorPtr SoundGenerator;
+	enum class ESynthEvent : uint8
+	{
+		None,
+		Start,
+		Stop
+	};
+
+	TQueue<ESynthEvent> PendingSynthEvents;
 
 	friend class USynthSound;
 };

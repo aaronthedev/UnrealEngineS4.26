@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -17,17 +17,15 @@ class FQueuedThreadPool;
 #define USE_IMGMEDIA_DEALLOC_POOL UE_BUILD_DEBUG
 
 
-/** Log category for this module. */
+/** Log category for the this module. */
 DECLARE_LOG_CATEGORY_EXTERN(LogImgMedia, Log, All);
-
-/** Stat category for this module. */
-DECLARE_STATS_GROUP(TEXT("ImgMediaPlugin"), STATGROUP_ImgMediaPlugin, STATCAT_Advanced);
 
 
 #if USE_IMGMEDIA_DEALLOC_POOL
 	/** Thread pool used for deleting image frame buffers. */
 	extern FQueuedThreadPool* GetImgMediaThreadPoolSlow();
 #endif
+
 
 namespace ImgMedia
 {

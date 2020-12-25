@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ConstantQNRT.h"
 #include "ConstantQNRTFactory.h"
@@ -154,17 +154,6 @@ TUniquePtr<Audio::IAnalyzerNRTSettings> UConstantQNRTSettings::GetSettings(const
 	return Settings;
 }
 
-#if WITH_EDITOR
-FText UConstantQNRTSettings::GetAssetActionName() const
-{
-	return NSLOCTEXT("AssetTypeActions", "AssetTypeActions_AssetSoundSynesthesiaConstantQNRTSettings", "Synesthesia NRT Settings (ConstantQ)");
-}
-
-UClass* UConstantQNRTSettings::GetSupportedClass() const
-{
-	return UConstantQNRTSettings::StaticClass();
-}
-#endif
 
 /***************************************************************************/
 /*********************        UConstantQNRT         ************************/
@@ -230,20 +219,12 @@ void UConstantQNRT::GetNormalizedChannelConstantQAtTime(const float InSeconds, c
 
 		FFloatInterval ConstantQInterval = ConstantQResult->GetChannelConstantQInterval(InChannelIdx);
 
-		const float ConstantQRange = ConstantQInterval.Max - Settings->NoiseFloorDb;
+		const float ConstantQRange = ConstantQInterval.Max - FMath::Max(Settings->NoiseFloorDb, ConstantQInterval.Min);
 
 		if (ConstantQRange > SMALL_NUMBER)
 		{
 			const float Scaling = 1.f / ConstantQRange;
 			Audio::ArrayMultiplyByConstantInPlace(OutConstantQ, Scaling);
-		}
-		else 
-		{
-			// The range is too small or negative. Set output values to zero.
-			if (OutConstantQ.Num() > 0)
-			{
-				FMemory::Memset(OutConstantQ.GetData(), 0, sizeof(float) * OutConstantQ.Num());
-			}
 		}
 
 		Audio::ArrayClampInPlace(OutConstantQ, 0.f, 1.f);
@@ -261,18 +242,6 @@ TUniquePtr<Audio::IAnalyzerNRTSettings> UConstantQNRT::GetSettings(const float I
 
 	return AnalyzerSettings;
 }
-
-#if WITH_EDITOR
-FText UConstantQNRT::GetAssetActionName() const
-{
-	return NSLOCTEXT("AssetTypeActions", "AssetTypeActions_AssetSoundSynesthesiaConstantQNRT", "Synesthesia NRT (ConstantQ)");
-}
-
-UClass* UConstantQNRT::GetSupportedClass() const
-{
-	return UConstantQNRT::StaticClass();
-}
-#endif
 
 FName UConstantQNRT::GetAnalyzerNRTFactoryName() const 
 {

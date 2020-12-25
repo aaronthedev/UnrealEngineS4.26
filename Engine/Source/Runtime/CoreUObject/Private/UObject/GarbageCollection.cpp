@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	UnObjGC.cpp: Unreal object garbage collection code.
@@ -29,7 +29,6 @@
 #include "ProfilingDebugging/CsvProfiler.h"
 #include "HAL/Runnable.h"
 #include "HAL/RunnableThread.h"
-#include "UObject/FieldPathProperty.h"
 
 /*-----------------------------------------------------------------------------
    Garbage collection.
@@ -72,38 +71,11 @@ static int32 GUnrechableObjectIndex = 0;
 /** Helpful constant for determining how many token slots we need to store a pointer **/
 static const uint32 GNumTokensPerPointer = sizeof(void*) / sizeof(uint32); //-V514
 
-FThreadSafeBool GIsGarbageCollecting(false);
-
-/**
-* Call back into the async loading code to inform of the destruction of serialized objects
-*/
-void NotifyUnreachableObjects(const TArrayView<FUObjectItem*>& UnreachableObjects);
-
-/** Locks all UObject hash tables when performing GC */
-class FGCScopeLock
+FThreadSafeBool& FGCScopeLock::GetGarbageCollectingFlag()
 {
-	/** Previous value of the GetGarbageCollectingFlag() */
-	bool bPreviousGabageCollectingFlagValue;
-public:
-
-	/**
-	 * We're storing the value of GetGarbageCollectingFlag in the constructor, it's safe as only
-	 * one thread is ever going to be setting it and calling this code - the game thread.
-	 **/
-	FORCEINLINE FGCScopeLock()
-		: bPreviousGabageCollectingFlagValue(GIsGarbageCollecting)
-	{
-		void LockUObjectHashTables();
-		LockUObjectHashTables();
-		GIsGarbageCollecting = true;
-	}
-	FORCEINLINE ~FGCScopeLock()
-	{
-		GIsGarbageCollecting = bPreviousGabageCollectingFlagValue;
-		void UnlockUObjectHashTables();
-		UnlockUObjectHashTables();
-	}
-};
+	static FThreadSafeBool IsGarbageCollecting(false);
+	return IsGarbageCollecting;
+}
 
 FGCCSyncObject::FGCCSyncObject()
 {
@@ -127,7 +99,7 @@ void FGCCSyncObject::Create()
 		~FSingletonOwner()	{ GGCSingleton = nullptr;	}
 	};
 	static const FSingletonOwner MagicStaticSingleton;
-}
+	}
 
 FGCCSyncObject& FGCCSyncObject::Get()
 {
@@ -159,9 +131,19 @@ FGCScopeGuard::~FGCScopeGuard()
 	FGCCSyncObject::Get().UnlockAsync();
 }
 
+bool IsGarbageCollecting()
+{
+	return FGCScopeLock::GetGarbageCollectingFlag();
+}
+
 bool IsGarbageCollectionLocked()
 {
 	return FGCCSyncObject::Get().IsAsyncLocked();
+}
+
+bool IsGarbageCollectionWaiting()
+{
+	return FGCCSyncObject::Get().IsGCWaiting();
 }
 
 // Minimum number of objects to spawn a GC sub-task for
@@ -286,19 +268,14 @@ class FAsyncPurge : public FRunnable
 	FEvent* FinishedPurgeEvent;
 	/** Current index into the global unreachable objects array (GUnreachableObjects) of the object being destroyed */
 	int32 ObjCurrentPurgeObjectIndex;
-	/** Number of objects deferred to the game thread to destroy */
-	int32 NumObjectsToDestroyOnGameThread;
-	/** Number of objectsalready destroyed on the game thread */
-	int32 NumObjectsDestroyedOnGameThread;
-	/** Current index into the global unreachable objects array (GUnreachableObjects) of the object being destroyed on the game thread */
-	int32 ObjCurrentPurgeObjectIndexOnGameThread;
 	/** Number of unreachable objects the last time single-threaded tick was called */
 	int32 LastUnreachableObjectsCount;
+	/** A list of objects that were not thread safe to destroy on the worker thread */
+	TLockFreePointerListUnordered<UObject, PLATFORM_CACHE_LINE_SIZE> GameThreadObjects;
 	/** Stats for the number of objects destroyed */
 	int32 ObjectsDestroyedSinceLastMarkPhase;
 
 	/** [PURGE/GAME THREAD] Destroys objects that are unreachable */
-	template <bool bMultithreaded> // Having this template argument lets the compiler strip unnecessary checks
 	bool TickDestroyObjects(bool bUseTimeLimit, float TimeLimit, double StartTime)
 	{
 		const int32 TimeLimitEnforcementGranularityForDeletion = 100;
@@ -312,22 +289,22 @@ class FAsyncPurge : public FRunnable
 
 			UObject* Object = (UObject*)ObjectItem->Object;
 			check(Object->HasAllFlags(RF_FinishDestroyed | RF_BeginDestroyed));
-			if (!bMultithreaded || Object->IsDestructionThreadSafe())
+			if (!Thread || Object->IsDestructionThreadSafe())
 			{
 				Object->~UObject();
 				GUObjectAllocator.FreeUObject(Object);
-				GUnreachableObjects[ObjCurrentPurgeObjectIndex] = nullptr;
 			}
 			else
 			{
-				++NumObjectsToDestroyOnGameThread;
+				// This object will be destroyed incrementally on the game thread
+				GameThreadObjects.Push(Object);
 			}
 			++ProcessedObjectsCount;
 			++ObjectsDestroyedSinceLastMarkPhase;
 			++ObjCurrentPurgeObjectIndex;
 
 			// Time slicing when running on the game thread
-			if (!bMultithreaded && bUseTimeLimit && (ProcessedObjectsCount == TimeLimitEnforcementGranularityForDeletion) && (ObjCurrentPurgeObjectIndex < GUnreachableObjects.Num()))
+			if (bUseTimeLimit && (ProcessedObjectsCount == TimeLimitEnforcementGranularityForDeletion) && (ObjCurrentPurgeObjectIndex < GUnreachableObjects.Num()))
 			{
 				ProcessedObjectsCount = 0;
 				if ((FPlatformTime::Seconds() - StartTime) > TimeLimit)
@@ -347,39 +324,22 @@ class FAsyncPurge : public FRunnable
 		int32 ProcessedObjectsCount = 0;
 		bool bFinishedDestroyingObjects = true;
 
-		// Cache the number of objects to destroy locally. The number may grow later but that's ok, we'll catch up to it in the next tick
-		const int32 LocalNumObjectsToDestroyOnGameThread = NumObjectsToDestroyOnGameThread;
-
-		while (NumObjectsDestroyedOnGameThread < LocalNumObjectsToDestroyOnGameThread && ObjCurrentPurgeObjectIndexOnGameThread < GUnreachableObjects.Num())
+		while (UObject* Object = GameThreadObjects.Pop())
 		{
-			FUObjectItem* ObjectItem = GUnreachableObjects[ObjCurrentPurgeObjectIndexOnGameThread];			
-			if (ObjectItem)
-			{
-				GUnreachableObjects[ObjCurrentPurgeObjectIndexOnGameThread] = nullptr;
-				UObject* Object = (UObject*)ObjectItem->Object;
-				Object->~UObject();
-				GUObjectAllocator.FreeUObject(Object);
-				++ProcessedObjectsCount;
-				++NumObjectsDestroyedOnGameThread;
+			Object->~UObject();
+			GUObjectAllocator.FreeUObject(Object);
 
-				if (bUseTimeLimit && (ProcessedObjectsCount == TimeLimitEnforcementGranularityForDeletion) && NumObjectsDestroyedOnGameThread < LocalNumObjectsToDestroyOnGameThread)
+			if (bUseTimeLimit && (ProcessedObjectsCount == TimeLimitEnforcementGranularityForDeletion) && !GameThreadObjects.IsEmpty())
+			{
+				ProcessedObjectsCount = 0;
+				if ((FPlatformTime::Seconds() - StartTime) > TimeLimit)
 				{
-					ProcessedObjectsCount = 0;
-					if ((FPlatformTime::Seconds() - StartTime) > TimeLimit)
-					{
-						bFinishedDestroyingObjects = false;
-						break;
-					}
-				}
+					bFinishedDestroyingObjects = false;
+					break;
+				}				
 			}
-			++ObjCurrentPurgeObjectIndexOnGameThread;
 		}
 
-		// Make sure that when we reach the end of GUnreachableObjects array, there's no objects to destroy left
-		check(!bFinishedDestroyingObjects || NumObjectsDestroyedOnGameThread == LocalNumObjectsToDestroyOnGameThread);
-
-		// Note that even though NumObjectsToDestroyOnGameThread may have been incremented by now or still hasn't but it will be 
-		// after we report we're done with all objects, it doesn't matter since we don't care about the result of this function in MT mode
 		return bFinishedDestroyingObjects;
 	}
 
@@ -401,9 +361,6 @@ public:
 		, BeginPurgeEvent(nullptr)
 		, FinishedPurgeEvent(nullptr)
 		, ObjCurrentPurgeObjectIndex(0)
-		, NumObjectsToDestroyOnGameThread(0)
-		, NumObjectsDestroyedOnGameThread(0)
-		, ObjCurrentPurgeObjectIndexOnGameThread(0)
 		, LastUnreachableObjectsCount(0)
 		, ObjectsDestroyedSinceLastMarkPhase(0)
 	{
@@ -432,19 +389,6 @@ public:
 		FinishedPurgeEvent = nullptr;
 	}
 
-	/** Returns true if the destruction process is finished */
-	FORCEINLINE bool IsFinished() const
-	{
-		if (Thread)
-		{
-			return FinishedPurgeEvent->Wait(0, true) && NumObjectsToDestroyOnGameThread == NumObjectsDestroyedOnGameThread;
-		}
-		else
-		{
-			return (ObjCurrentPurgeObjectIndex >= LastUnreachableObjectsCount && NumObjectsToDestroyOnGameThread == NumObjectsDestroyedOnGameThread);
-		}
-	}
-
 	/** [MAIN THREAD] Adds objects to the purge queue */
 	void BeginPurge()
 	{
@@ -455,9 +399,6 @@ public:
 
 			ObjCurrentPurgeObjectIndex = 0;
 			ObjectsDestroyedSinceLastMarkPhase = 0;
-			NumObjectsToDestroyOnGameThread = 0;
-			NumObjectsDestroyedOnGameThread = 0;
-			ObjCurrentPurgeObjectIndexOnGameThread = 0;
 
 			BeginPurgeEvent->Trigger();
 		}
@@ -471,20 +412,34 @@ public:
 		{
 			// If we're running single-threaded we need to tick the main loop here too
 			LastUnreachableObjectsCount = GUnreachableObjects.Num();
-			bCanStartDestroyingGameThreadObjects = TickDestroyObjects<false>(bUseTimeLimit, TimeLimit, StartTime);
+			bCanStartDestroyingGameThreadObjects = TickDestroyObjects(bUseTimeLimit, TimeLimit, StartTime);
+		}
+		else if (!bUseTimeLimit)
+		{
+			// Wait for the worker thread to finish processing all objects
+			WaitForAsyncDestructionToFinish();
 		}
 		if (bCanStartDestroyingGameThreadObjects)
 		{
-			do
+			// Deal with objects that couldn't be destroyed on the worker thread. This will do nothing when running single-threaded
+			bool bFinishedDestroyingObjectsOnGameThread = TickDestroyGameThreadObjects(bUseTimeLimit, TimeLimit, StartTime);
+			if (!Thread && bFinishedDestroyingObjectsOnGameThread)
 			{
-				// Deal with objects that couldn't be destroyed on the worker thread. This will do nothing when running single-threaded
-				bool bFinishedDestroyingObjectsOnGameThread = TickDestroyGameThreadObjects(bUseTimeLimit, TimeLimit, StartTime);
-				if (!Thread && bFinishedDestroyingObjectsOnGameThread)
-				{
-					// This only gets triggered here in single-threaded mode
-					FinishedPurgeEvent->Trigger();
-				}
-			} while (!bUseTimeLimit && !IsFinished());
+				FinishedPurgeEvent->Trigger();
+			}
+		}
+	}
+
+	/** Returns true if the destruction process is finished */
+	bool IsFinished() const
+	{
+		if (Thread)
+		{
+			return FinishedPurgeEvent->Wait(0, true) && GameThreadObjects.IsEmpty();
+		}
+		else
+		{
+			return (ObjCurrentPurgeObjectIndex >= LastUnreachableObjectsCount && GameThreadObjects.IsEmpty());
 		}
 	}
 
@@ -530,7 +485,7 @@ public:
 			if (BeginPurgeEvent->Wait(15, true))
 			{
 				BeginPurgeEvent->Reset();
-				TickDestroyObjects<true>(/* bUseTimeLimit = */ false, /* TimeLimit = */ 0.0f, /* StartTime = */ 0.0);
+				TickDestroyObjects(/* bUseTimeLimit = */ false, /* TimeLimit = */ 0.0f, /* StartTime = */ 0.0);
 				FinishedPurgeEvent->Trigger();
 			}
 		}
@@ -543,14 +498,6 @@ public:
 		StopTaskCounter.Increment();
 	}
 	//~ End FRunnable Interface
-
-	void VerifyAllObjectsDestroyed()
-	{
-		for (FUObjectItem* ObjectItem : GUnreachableObjects)
-		{
-			UE_CLOG(ObjectItem, LogGarbage, Fatal, TEXT("Object 0x%016llx has not been destroyed during async purge"), (int64)(PTRINT)ObjectItem->Object);
-		}
-	}
 };
 static FAsyncPurge* GAsyncPurge = nullptr;
 
@@ -574,21 +521,10 @@ void ShutdownGarbageCollection()
 /**
 * Handles UObject references found by TFastReferenceCollector
 */
-
-#if UE_WITH_GC
-template <EFastReferenceCollectorOptions Options>
+template <bool bParallel>
 class FGCReferenceProcessor
 {
 public:
-
-	constexpr static FORCEINLINE bool IsParallel()
-	{
-		return !!(Options & EFastReferenceCollectorOptions::Parallel);
-	}
-	constexpr static FORCEINLINE bool IsWithClusters()
-	{
-		return !!(Options & EFastReferenceCollectorOptions::WithClusters);
-	}
 
 	FGCReferenceProcessor()
 	{
@@ -633,10 +569,8 @@ public:
 	}
 
 	/** Marks all objects that can't be directly in a cluster but are referenced by it as reachable */
-	static FORCENOINLINE bool MarkClusterMutableObjectsAsReachable(FUObjectCluster& Cluster, TArray<UObject*>& ObjectsToSerialize)
+	static FORCEINLINE bool MarkClusterMutableObjectsAsReachable(FUObjectCluster& Cluster, TArray<UObject*>& ObjectsToSerialize)
 	{
-		check(IsWithClusters());
-
 		// This is going to be the return value and basically means that we ran across some pending kill objects
 		bool bAddClusterObjectsToSerialize = false;
 		for (int32& ReferencedMutableObjectIndex : Cluster.MutableObjects)
@@ -644,7 +578,7 @@ public:
 			if (ReferencedMutableObjectIndex >= 0) // Pending kill support
 			{
 				FUObjectItem* ReferencedMutableObjectItem = GUObjectArray.IndexToObjectUnsafeForGC(ReferencedMutableObjectIndex);
-				if (IsParallel())
+				if (bParallel)
 				{
 					if (!ReferencedMutableObjectItem->IsPendingKill())
 					{
@@ -727,10 +661,8 @@ public:
 	}
 
 	/** Marks all clusters referenced by another cluster as reachable */
-	static FORCENOINLINE void MarkReferencedClustersAsReachable(int32 ClusterIndex, TArray<UObject*>& ObjectsToSerialize)
+	static FORCEINLINE void MarkReferencedClustersAsReachable(int32 ClusterIndex, TArray<UObject*>& ObjectsToSerialize)
 	{
-		check(IsWithClusters());
-
 		// If we run across some PendingKill objects we need to add all objects from this cluster
 		// to ObjectsToSerialize so that we can properly null out all the references.
 		// It also means this cluster will have to be dissolved because we may no longer guarantee all cross-cluster references are correct.
@@ -746,7 +678,7 @@ public:
 				if (!ReferencedClusterRootObjectItem->IsPendingKill())
 				{
 					// This condition should get collapsed by the compiler based on the template argument
-					if (IsParallel())
+					if (bParallel)
 					{
 						if (ReferencedClusterRootObjectItem->IsUnreachable())
 						{
@@ -823,7 +755,7 @@ public:
 		// Add encountered object reference to list of to be serialized objects if it hasn't already been added.
 		else if (ObjectItem->IsUnreachable())
 		{
-			if (IsParallel())
+			if (bParallel)
 			{
 				// Mark it as reachable.
 				if (ObjectItem->ThisThreadAtomicallyClearedRFUnreachable())
@@ -831,7 +763,7 @@ public:
 					// Objects that are part of a GC cluster should never have the unreachable flag set!
 					checkSlow(ObjectItem->GetOwnerIndex() <= 0);
 
-					if (!IsWithClusters() || !ObjectItem->HasAnyFlags(EInternalObjectFlags::ClusterRoot))
+					if (!ObjectItem->HasAnyFlags(EInternalObjectFlags::ClusterRoot))
 					{
 						// Add it to the list of objects to serialize.
 						ObjectsToSerialize.Add(Object);
@@ -865,7 +797,7 @@ public:
 				// Objects that are part of a GC cluster should never have the unreachable flag set!
 				checkSlow(ObjectItem->GetOwnerIndex() <= 0);
 
-				if (!IsWithClusters() || !ObjectItem->HasAnyFlags(EInternalObjectFlags::ClusterRoot))
+				if (!ObjectItem->HasAnyFlags(EInternalObjectFlags::ClusterRoot))
 				{
 					// Add it to the list of objects to serialize.
 					ObjectsToSerialize.Add(Object);
@@ -877,10 +809,10 @@ public:
 				}
 			}
 		}
-		else if (IsWithClusters() && (ObjectItem->GetOwnerIndex() > 0 && !ObjectItem->HasAnyFlags(EInternalObjectFlags::ReachableInCluster)))
+		else if (ObjectItem->GetOwnerIndex() > 0 && !ObjectItem->HasAnyFlags(EInternalObjectFlags::ReachableInCluster))
 		{
 			bool bNeedsDoing = true;
-			if (IsParallel())
+			if (bParallel)
 			{
 				bNeedsDoing = ObjectItem->ThisThreadAtomicallySetFlag(EInternalObjectFlags::ReachableInCluster);
 			}
@@ -894,7 +826,7 @@ public:
 				const int32 OwnerIndex = ObjectItem->GetOwnerIndex();
 				FUObjectItem* RootObjectItem = GUObjectArray.IndexToObjectUnsafeForGC(OwnerIndex);
 				checkSlow(RootObjectItem->HasAnyFlags(EInternalObjectFlags::ClusterRoot));
-				if (IsParallel())
+				if (bParallel)
 				{
 					if (RootObjectItem->ThisThreadAtomicallyClearedRFUnreachable())
 					{
@@ -920,7 +852,6 @@ public:
 	*
 	* @param ObjectsToSerialize An array of remaining objects to serialize.
 	* @param ReferencingObject Object referencing the object to process.
-	* @param Object Object being referenced.
 	* @param TokenIndex Index to the token stream where the reference was found.
 	* @param bAllowReferenceElimination True if reference elimination is allowed.
 	*/
@@ -938,7 +869,7 @@ public:
 				FString TokenDebugInfo;
 				if (UClass *Class = (ReferencingObject ? ReferencingObject->GetClass() : nullptr))
 				{
-					FTokenInfo TokenInfo = Class->ReferenceTokenStream.GetTokenInfo(TokenIndex);
+					auto& TokenInfo = Class->DebugTokenMap.GetTokenInfo(TokenIndex);
 					TokenDebugInfo = FString::Printf(TEXT("ReferencingObjectClass: %s, Property Name: %s, Offset: %d"),
 						*Class->GetFullName(), *TokenInfo.Name.GetPlainNameString(), TokenInfo.Offset);
 				}
@@ -959,16 +890,20 @@ public:
 	}
 };
 
-template <EFastReferenceCollectorOptions Options>
-FGCCollector<Options>::FGCCollector(FGCReferenceProcessor<Options>& InProcessor, FGCArrayStruct& InObjectArrayStruct)
+typedef FGCReferenceProcessor<true> FGCReferenceProcessorMultithreaded;
+typedef FGCReferenceProcessor<false> FGCReferenceProcessorSinglethreaded;
+
+
+template <bool bParallel>
+FGCCollector<bParallel>::FGCCollector(FGCReferenceProcessor<bParallel>& InProcessor, FGCArrayStruct& InObjectArrayStruct)
 		: ReferenceProcessor(InProcessor)
 		, ObjectArrayStruct(InObjectArrayStruct)
 		, bAllowEliminatingReferences(true)
 {
 }
 
-template <EFastReferenceCollectorOptions Options>
-FORCEINLINE void FGCCollector<Options>::InternalHandleObjectReference(UObject*& Object, const UObject* ReferencingObject, const FProperty* ReferencingProperty)
+template <bool bParallel>
+FORCEINLINE void FGCCollector<bParallel>::InternalHandleObjectReference(UObject*& Object, const UObject* ReferencingObject, const UProperty* ReferencingProperty)
 {
 #if ENABLE_GC_OBJECT_CHECKS
 		if (Object && !Object->IsValidLowLevelFast())
@@ -982,14 +917,14 @@ FORCEINLINE void FGCCollector<Options>::InternalHandleObjectReference(UObject*& 
 		ReferenceProcessor.HandleObjectReference(ObjectArrayStruct.ObjectsToSerialize, const_cast<UObject*>(ReferencingObject), Object, bAllowEliminatingReferences);
 }
 
-template <EFastReferenceCollectorOptions Options>
-void FGCCollector<Options>::HandleObjectReference(UObject*& Object, const UObject* ReferencingObject, const FProperty* ReferencingProperty)
+template <bool bParallel>
+void FGCCollector<bParallel>::HandleObjectReference(UObject*& Object, const UObject* ReferencingObject, const UProperty* ReferencingProperty)
 {
 		InternalHandleObjectReference(Object, ReferencingObject, ReferencingProperty);
 }
 
-template <EFastReferenceCollectorOptions Options>
-void FGCCollector<Options>::HandleObjectReferences(UObject** InObjects, const int32 ObjectNum, const UObject* InReferencingObject, const FProperty* InReferencingProperty)
+template <bool bParallel>
+void FGCCollector<bParallel>::HandleObjectReferences(UObject** InObjects, const int32 ObjectNum, const UObject* InReferencingObject, const UProperty* InReferencingProperty)
 {
 		for (int32 ObjectIndex = 0; ObjectIndex < ObjectNum; ++ObjectIndex)
 		{
@@ -997,19 +932,21 @@ void FGCCollector<Options>::HandleObjectReferences(UObject** InObjects, const in
 			InternalHandleObjectReference(Object, InReferencingObject, InReferencingProperty);
 		}
 }
-#endif	// UE_WITH_GC
+
+typedef FGCCollector<true> FGCCollectorMultithreaded;
+typedef FGCCollector<false> FGCCollectorSinglethreaded;
 
 /*----------------------------------------------------------------------------
 	FReferenceFinder.
 ----------------------------------------------------------------------------*/
-FReferenceFinder::FReferenceFinder(TArray<UObject*>& InObjectArray, UObject* InOuter, bool bInRequireDirectOuter, bool bInShouldIgnoreArchetype, bool bInSerializeRecursively, bool bInShouldIgnoreTransient)
-	: ObjectArray(InObjectArray)
-	, LimitOuter(InOuter)
+FReferenceFinder::FReferenceFinder( TArray<UObject*>& InObjectArray, UObject* InOuter, bool bInRequireDirectOuter, bool bInShouldIgnoreArchetype, bool bInSerializeRecursively, bool bInShouldIgnoreTransient )
+	:	ObjectArray( InObjectArray )
+	,	LimitOuter( InOuter )
 	, SerializedProperty(nullptr)
-	, bRequireDirectOuter(bInRequireDirectOuter)
-	, bShouldIgnoreArchetype(bInShouldIgnoreArchetype)
-	, bSerializeRecursively(false)
-	, bShouldIgnoreTransient(bInShouldIgnoreTransient)
+	,	bRequireDirectOuter( bInRequireDirectOuter )
+	, bShouldIgnoreArchetype( bInShouldIgnoreArchetype )
+	, bSerializeRecursively( false )
+	, bShouldIgnoreTransient( bInShouldIgnoreTransient )
 {
 	bSerializeRecursively = bInSerializeRecursively && LimitOuter != NULL;
 	if (InOuter)
@@ -1023,7 +960,7 @@ FReferenceFinder::FReferenceFinder(TArray<UObject*>& InObjectArray, UObject* InO
 	}
 }
 
-void FReferenceFinder::FindReferences(UObject* Object, UObject* InReferencingObject, FProperty* InReferencingProperty)
+void FReferenceFinder::FindReferences(UObject* Object, UObject* InReferencingObject, UProperty* InReferencingProperty)
 {
 	check(Object != NULL);
 
@@ -1035,7 +972,7 @@ void FReferenceFinder::FindReferences(UObject* Object, UObject* InReferencingObj
 	Object->CallAddReferencedObjects(*this);
 }
 
-void FReferenceFinder::HandleObjectReference( UObject*& InObject, const UObject* InReferencingObject /*= NULL*/, const FProperty* InReferencingProperty /*= NULL*/ )
+void FReferenceFinder::HandleObjectReference( UObject*& InObject, const UObject* InReferencingObject /*= NULL*/, const UProperty* InReferencingProperty /*= NULL*/ )
 {
 	// Avoid duplicate entries.
 	if ( InObject != NULL )
@@ -1055,7 +992,7 @@ void FReferenceFinder::HandleObjectReference( UObject*& InObject, const UObject*
 			if ( bSerializeRecursively == true && !SerializedObjects.Find(Object) )
 			{
 				SerializedObjects.Add(Object);
-				FindReferences(Object, const_cast<UObject*>(InReferencingObject), const_cast<FProperty*>(InReferencingProperty));
+				FindReferences(Object, const_cast<UObject*>(InReferencingObject), const_cast<UProperty*>(InReferencingProperty));
 			}
 		}
 	}
@@ -1071,84 +1008,38 @@ void FReferenceFinder::HandleObjectReference( UObject*& InObject, const UObject*
  * is used to deal with object references from types that aren't supported by the reflectable type system.
  * interface doesn't make sense to implement for.
  */
-
-#if UE_WITH_GC
-
 class FRealtimeGC : public FGarbageCollectionTracer
 {
-	typedef void(FRealtimeGC::*MarkObjectsFn)(TArray<UObject*>&, const EObjectFlags);
-	typedef void(FRealtimeGC::*ReachabilityAnalysisFn)(FGCArrayStruct*);
-
-	/** Pointers to functions used for Marking objects as unreachable */
-	MarkObjectsFn MarkObjectsFunctions[4];
-	/** Pointers to functions used for Reachability Analysis */
-	ReachabilityAnalysisFn ReachabilityAnalysisFunctions[4];
-
-	template <EFastReferenceCollectorOptions CollectorOptions>
-	void PerformReachabilityAnalysisOnObjectsInternal(FGCArrayStruct* ArrayStruct)
-	{
-		FGCReferenceProcessor<CollectorOptions> ReferenceProcessor;
-		// NOTE: we want to run with automatic token stream generation off as it should be already generated at this point,
-		// BUT we want to be ignoring Noop tokens as they're only pointing either at null references or at objects that never get GC'd (native classes)
-		TFastReferenceCollector<
-			FGCReferenceProcessor<CollectorOptions>,
-			FGCCollector<CollectorOptions>,
-			FGCArrayPool,
-			CollectorOptions
-			>  ReferenceCollector(ReferenceProcessor, FGCArrayPool::Get());
-		ReferenceCollector.CollectReferences(*ArrayStruct);
-	}
-
-	/** Calculates GC function index based on current settings */
-	static FORCEINLINE int32 GetGCFunctionIndex(bool bParallel, bool bWithClusters)
-	{
-		return (int32(bParallel) | (int32(bWithClusters) << 1));
-	}
-
 public:
 	/** Default constructor, initializing all members. */
 	FRealtimeGC()
-	{
-		MarkObjectsFunctions[GetGCFunctionIndex(false, false)] = &FRealtimeGC::MarkObjectsAsUnreachable<false, false>;
-		MarkObjectsFunctions[GetGCFunctionIndex(true, false)] = &FRealtimeGC::MarkObjectsAsUnreachable<true, false>;
-		MarkObjectsFunctions[GetGCFunctionIndex(false, true)] = &FRealtimeGC::MarkObjectsAsUnreachable<false, true>;
-		MarkObjectsFunctions[GetGCFunctionIndex(true, true)] = &FRealtimeGC::MarkObjectsAsUnreachable<true, true>;
-
-		ReachabilityAnalysisFunctions[GetGCFunctionIndex(false, false)] = &FRealtimeGC::PerformReachabilityAnalysisOnObjectsInternal<EFastReferenceCollectorOptions::None | EFastReferenceCollectorOptions::None>;
-		ReachabilityAnalysisFunctions[GetGCFunctionIndex(true, false)] = &FRealtimeGC::PerformReachabilityAnalysisOnObjectsInternal<EFastReferenceCollectorOptions::Parallel | EFastReferenceCollectorOptions::None>;
-		ReachabilityAnalysisFunctions[GetGCFunctionIndex(false, true)] = &FRealtimeGC::PerformReachabilityAnalysisOnObjectsInternal<EFastReferenceCollectorOptions::None | EFastReferenceCollectorOptions::WithClusters>;
-		ReachabilityAnalysisFunctions[GetGCFunctionIndex(true, true)] = &FRealtimeGC::PerformReachabilityAnalysisOnObjectsInternal<EFastReferenceCollectorOptions::Parallel | EFastReferenceCollectorOptions::WithClusters>;
-	}
+	{}
 
 	/** 
 	 * Marks all objects that don't have KeepFlags and EInternalObjectFlags::GarbageCollectionKeepFlags as unreachable
 	 * This function is a template to speed up the case where we don't need to assemble the token stream (saves about 6ms on PS4)
 	 */
-	template <bool bParallel, bool bWithClusters>
-	void MarkObjectsAsUnreachable(TArray<UObject*>& ObjectsToSerialize, const EObjectFlags KeepFlags)
+	void MarkObjectsAsUnreachable(TArray<UObject*>& ObjectsToSerialize, const EObjectFlags KeepFlags, bool bForceSingleThreaded)
 	{
 		const EInternalObjectFlags FastKeepFlags = EInternalObjectFlags::GarbageCollectionKeepFlags;
-		const int32 MaxNumberOfObjects = GUObjectArray.GetObjectArrayNum() - GUObjectArray.GetFirstGCIndex();
-		const int32 NumThreads = FMath::Max(1, FTaskGraphInterface::Get().GetNumWorkerThreads());
-		const int32 NumberOfObjectsPerThread = (MaxNumberOfObjects / NumThreads) + 1;		
 
+		TLockFreePointerListFIFO<UObject, PLATFORM_CACHE_LINE_SIZE> ObjectsToSerializeList;
 		TLockFreePointerListFIFO<FUObjectItem, PLATFORM_CACHE_LINE_SIZE> ClustersToDissolveList;
 		TLockFreePointerListFIFO<FUObjectItem, PLATFORM_CACHE_LINE_SIZE> KeepClusterRefsList;
-		FGCArrayStruct** ObjectsToSerializeArrays = new FGCArrayStruct*[NumThreads];
-		for (int32 ThreadIndex = 0; ThreadIndex < NumThreads; ++ThreadIndex)
-		{
-			ObjectsToSerializeArrays[ThreadIndex] = FGCArrayPool::Get().GetArrayStructFromPool();
-		}
+
+		int32 MaxNumberOfObjects = GUObjectArray.GetObjectArrayNum() - GUObjectArray.GetFirstGCIndex();
+		int32 NumThreads = FMath::Max(1, FTaskGraphInterface::Get().GetNumWorkerThreads());
+		int32 NumberOfObjectsPerThread = (MaxNumberOfObjects / NumThreads) + 1;		
 
 		// Iterate over all objects. Note that we iterate over the UObjectArray and usually check only internal flags which
 		// are part of the array so we don't suffer from cache misses as much as we would if we were to check ObjectFlags.
-		ParallelFor(NumThreads, [ObjectsToSerializeArrays, &ClustersToDissolveList, &KeepClusterRefsList, FastKeepFlags, KeepFlags, NumberOfObjectsPerThread, NumThreads, MaxNumberOfObjects](int32 ThreadIndex)
+		ParallelFor(NumThreads, [&ObjectsToSerializeList, &ClustersToDissolveList, &KeepClusterRefsList, FastKeepFlags, KeepFlags, NumberOfObjectsPerThread, NumThreads, MaxNumberOfObjects](int32 ThreadIndex)
 		{
-			int32 FirstObjectIndex = ThreadIndex * NumberOfObjectsPerThread + GUObjectArray.GetFirstGCIndex();
+			// Temporary clamping GUObjectArray.GetFirstGCIndex() is -1 in some rare circumstances UE-76532, until we find a permanent fix
+			int32 FirstObjectIndex = FMath::Max(ThreadIndex * NumberOfObjectsPerThread + GUObjectArray.GetFirstGCIndex(), 0);
 			int32 NumObjects = (ThreadIndex < (NumThreads - 1)) ? NumberOfObjectsPerThread : (MaxNumberOfObjects - (NumThreads - 1) * NumberOfObjectsPerThread);
 			int32 LastObjectIndex = FMath::Min(GUObjectArray.GetObjectArrayNum() - 1, FirstObjectIndex + NumObjects - 1);
 			int32 ObjectCountDuringMarkPhase = 0;
-			TArray<UObject*>& LocalObjectsToSerialize = ObjectsToSerializeArrays[ThreadIndex]->ObjectsToSerialize;
 
 			for (int32 ObjectIndex = FirstObjectIndex; ObjectIndex <= LastObjectIndex; ++ObjectIndex)
 			{
@@ -1163,10 +1054,7 @@ public:
 					// Keep track of how many objects are around.
 					ObjectCountDuringMarkPhase++;
 					
-					if (bWithClusters)
-					{
-						ObjectItem->ClearFlags(EInternalObjectFlags::ReachableInCluster);
-					}
+					ObjectItem->ClearFlags(EInternalObjectFlags::ReachableInCluster);
 					// Special case handling for objects that are part of the root set.
 					if (ObjectItem->IsRootSet())
 					{
@@ -1176,18 +1064,15 @@ public:
 #if DO_GUARD_SLOW
 						checkCode(if (ObjectItem->IsPendingKill()) { UE_LOG(LogGarbage, Fatal, TEXT("Object %s is part of root set though has been marked RF_PendingKill!"), *Object->GetFullName()); });
 #endif
-						if (bWithClusters)
+						if (ObjectItem->HasAnyFlags(EInternalObjectFlags::ClusterRoot) || ObjectItem->GetOwnerIndex() > 0)
 						{
-							if (ObjectItem->HasAnyFlags(EInternalObjectFlags::ClusterRoot) || ObjectItem->GetOwnerIndex() > 0)
-							{
-								KeepClusterRefsList.Push(ObjectItem);
-							}
+							KeepClusterRefsList.Push(ObjectItem);
 						}
 
-						LocalObjectsToSerialize.Add(Object);
+						ObjectsToSerializeList.Push(Object);
 					}
 					// Regular objects or cluster root objects
-					else if (!bWithClusters || ObjectItem->GetOwnerIndex() <= 0)
+					else if (ObjectItem->GetOwnerIndex() <= 0)
 					{
 						bool bMarkAsUnreachable = true;
 						if (!ObjectItem->IsPendingKill())
@@ -1203,7 +1088,7 @@ public:
 								bMarkAsUnreachable = false;
 							}
 						}
-						else if (bWithClusters && ObjectItem->HasAnyFlags(EInternalObjectFlags::ClusterRoot))
+						else if (ObjectItem->HasAnyFlags(EInternalObjectFlags::ClusterRoot))
 						{
 							ClustersToDissolveList.Push(ObjectItem);
 						}
@@ -1213,14 +1098,11 @@ public:
 						{
 							// IsValidLowLevel is extremely slow in this loop so only do it in debug
 							checkSlow(Object->IsValidLowLevel());
-							LocalObjectsToSerialize.Add(Object);
+							ObjectsToSerializeList.Push(Object);
 
-							if (bWithClusters)
+							if (ObjectItem->HasAnyFlags(EInternalObjectFlags::ClusterRoot))
 							{
-								if (ObjectItem->HasAnyFlags(EInternalObjectFlags::ClusterRoot))
-								{
-									KeepClusterRefsList.Push(ObjectItem);
-								}
+								KeepClusterRefsList.Push(ObjectItem);
 							}
 						}
 						else
@@ -1232,25 +1114,10 @@ public:
 			}
 
 			GObjectCountDuringLastMarkPhase.Add(ObjectCountDuringMarkPhase);
-		}, !bParallel);
+		}, bForceSingleThreaded);
 		
-		// Collect all objects to serialize from all threads and put them into a single array
-		{
-			int32 NumObjectsToSerialize = 0;
-			for (int32 ThreadIndex = 0; ThreadIndex < NumThreads; ++ThreadIndex)
-			{
-				NumObjectsToSerialize += ObjectsToSerializeArrays[ThreadIndex]->ObjectsToSerialize.Num();
-			}
-			ObjectsToSerialize.Reserve(NumObjectsToSerialize);
-			for (int32 ThreadIndex = 0; ThreadIndex < NumThreads; ++ThreadIndex)
-			{
-				ObjectsToSerialize.Append(ObjectsToSerializeArrays[ThreadIndex]->ObjectsToSerialize);
-				FGCArrayPool::Get().ReturnToPool(ObjectsToSerializeArrays[ThreadIndex]);
-			}
-			delete[] ObjectsToSerializeArrays;
-		}
+		ObjectsToSerializeList.PopAll(ObjectsToSerialize);
 
-		if (bWithClusters)
 		{
 			TArray<FUObjectItem*> ClustersToDissolve;
 			ClustersToDissolveList.PopAll(ClustersToDissolve);
@@ -1260,13 +1127,12 @@ public:
 				// DissolveClusterAndMarkObjectsAsUnreachable calls already dissolved its cluster
 				if (ObjectItem->HasAnyFlags(EInternalObjectFlags::ClusterRoot))
 				{
-					GUObjectClusters.DissolveClusterAndMarkObjectsAsUnreachable(ObjectItem);
-					GUObjectClusters.SetClustersNeedDissolving();
-				}
+				GUObjectClusters.DissolveClusterAndMarkObjectsAsUnreachable(ObjectItem);
+				GUObjectClusters.SetClustersNeedDissolving();
 			}
 		}
+		}
 
-		if (bWithClusters)
 		{
 			TArray<FUObjectItem*> KeepClusterRefs;
 			KeepClusterRefsList.PopAll(KeepClusterRefs);
@@ -1288,7 +1154,7 @@ public:
 						{
 							RootObjectItem->ClearFlags(EInternalObjectFlags::Unreachable);
 							// Make sure all referenced clusters are marked as reachable too
-							FGCReferenceProcessor<EFastReferenceCollectorOptions::WithClusters>::MarkReferencedClustersAsReachable(RootObjectItem->GetClusterIndex(), ObjectsToSerialize);
+							FGCReferenceProcessorSinglethreaded::MarkReferencedClustersAsReachable(RootObjectItem->GetClusterIndex(), ObjectsToSerialize);
 						}
 					}
 				}
@@ -1297,7 +1163,7 @@ public:
 					checkSlow(ObjectItem->HasAnyFlags(EInternalObjectFlags::ClusterRoot));
 					// this thing is definitely not marked unreachable, so don't test it here
 					// Make sure all referenced clusters are marked as reachable too
-					FGCReferenceProcessor<EFastReferenceCollectorOptions::WithClusters>::MarkReferencedClustersAsReachable(ObjectItem->GetClusterIndex(), ObjectsToSerialize);
+					FGCReferenceProcessorSinglethreaded::MarkReferencedClustersAsReachable(ObjectItem->GetClusterIndex(), ObjectsToSerialize);
 				}
 			}
 		}
@@ -1308,7 +1174,7 @@ public:
 	 *
 	 * @param KeepFlags		Objects with these flags will be kept regardless of being referenced or not
 	 */
-	void PerformReachabilityAnalysis(EObjectFlags KeepFlags, bool bForceSingleThreaded, bool bWithClusters)
+	void PerformReachabilityAnalysis(EObjectFlags KeepFlags, bool bForceSingleThreaded = false)
 	{
 		LLM_SCOPE(ELLMTag::GC);
 
@@ -1330,13 +1196,13 @@ public:
 
 		{
 			const double StartTime = FPlatformTime::Seconds();
-			(this->*MarkObjectsFunctions[GetGCFunctionIndex(!bForceSingleThreaded, bWithClusters)])(ObjectsToSerialize, KeepFlags);
-			UE_LOG(LogGarbage, Verbose, TEXT("%f ms for MarkObjectsAsUnreachable Phase (%d Objects To Serialize)"), (FPlatformTime::Seconds() - StartTime) * 1000, ObjectsToSerialize.Num());
+			MarkObjectsAsUnreachable(ObjectsToSerialize, KeepFlags, bForceSingleThreaded);
+			UE_LOG(LogGarbage, Verbose, TEXT("%f ms for Mark Phase (%d Objects To Serialize"), (FPlatformTime::Seconds() - StartTime) * 1000, ObjectsToSerialize.Num());
 		}
 
 		{
 			const double StartTime = FPlatformTime::Seconds();
-			PerformReachabilityAnalysisOnObjects(ArrayStruct, bForceSingleThreaded, bWithClusters);
+			PerformReachabilityAnalysisOnObjects(ArrayStruct, bForceSingleThreaded);
 			UE_LOG(LogGarbage, Verbose, TEXT("%f ms for Reachability Analysis"), (FPlatformTime::Seconds() - StartTime) * 1000);
 		}
         
@@ -1351,12 +1217,22 @@ public:
 #endif
 	}
 
-	virtual void PerformReachabilityAnalysisOnObjects(FGCArrayStruct* ArrayStruct, bool bForceSingleThreaded, bool bWithClusters) override
+	virtual void PerformReachabilityAnalysisOnObjects(FGCArrayStruct* ArrayStruct, bool bForceSingleThreaded) override
 	{
-		(this->*ReachabilityAnalysisFunctions[GetGCFunctionIndex(!bForceSingleThreaded, bWithClusters)])(ArrayStruct);
+		if (!bForceSingleThreaded)
+		{
+			FGCReferenceProcessorMultithreaded ReferenceProcessor;
+			TFastReferenceCollector<true, FGCReferenceProcessorMultithreaded, FGCCollectorMultithreaded, FGCArrayPool> ReferenceCollector(ReferenceProcessor, FGCArrayPool::Get());
+			ReferenceCollector.CollectReferences(*ArrayStruct);
+		}
+		else
+		{
+			FGCReferenceProcessorSinglethreaded ReferenceProcessor;
+			TFastReferenceCollector<false, FGCReferenceProcessorSinglethreaded, FGCCollectorSinglethreaded, FGCArrayPool> ReferenceCollector(ReferenceProcessor, FGCArrayPool::Get());
+			ReferenceCollector.CollectReferences(*ArrayStruct);
+		}
 	}
 };
-#endif // UE_WITH_GC
 
 // Allow parallel GC to be overridden to single threaded via console command.
 static int32 GAllowParallelGC = 1;
@@ -1364,7 +1240,7 @@ static int32 GAllowParallelGC = 1;
 static FAutoConsoleVariableRef CVarAllowParallelGC(
 	TEXT("gc.AllowParallelGC"),
 	GAllowParallelGC,
-	TEXT("Used to control parallel GC."),
+	TEXT("sed to control parallel GC."),
 	ECVF_Default
 );
 
@@ -1431,9 +1307,6 @@ static bool IncrementalDestroyGarbage(bool bUseTimeLimit, float TimeLimit);
  */
 void IncrementalPurgeGarbage(bool bUseTimeLimit, float TimeLimit)
 {
-#if !UE_WITH_GC
-	return;
-#else
 	SCOPED_NAMED_EVENT(IncrementalPurgeGarbage, FColor::Red);
 	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("IncrementalPurgeGarbage"), STAT_IncrementalPurgeGarbage, STATGROUP_GC);
 	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(GarbageCollection);
@@ -1472,35 +1345,29 @@ void IncrementalPurgeGarbage(bool bUseTimeLimit, float TimeLimit)
 		}
 
 	} ResetPurgeProgress(bCompleted);
-	
+
+	// Keep track of start time to enforce time limit unless bForceFullPurge is true;
+	GCStartTime = FPlatformTime::Seconds();
+
+	bool bTimeLimitReached = false;
+	if (GUnrechableObjectIndex < GUnreachableObjects.Num())
 	{
-		// Lock before settting GCStartTime as it could be slow to lock if async loading is in progress
-		// but we still want to perform some GC work otherwise we'd be keeping objects in memory for a long time
-		FConditionalGCLock ScopedGCLock;
-
-		// Keep track of start time to enforce time limit unless bForceFullPurge is true;
-		GCStartTime = FPlatformTime::Seconds();
-		bool bTimeLimitReached = false;
-
-		if (GUnrechableObjectIndex < GUnreachableObjects.Num())
 		{
+			FConditionalGCLock ScopedGCLock;
 			bTimeLimitReached = UnhashUnreachableObjects(bUseTimeLimit, TimeLimit);
-
-			if (GUnrechableObjectIndex >= GUnreachableObjects.Num())
-			{
-				FScopedCBDProfile::DumpProfile();
-			}
 		}
-
-		if (!bTimeLimitReached)
+		if (GUnrechableObjectIndex >= GUnreachableObjects.Num())
 		{
-			bCompleted = IncrementalDestroyGarbage(bUseTimeLimit, TimeLimit);
+			FScopedCBDProfile::DumpProfile();
 		}
 	}
-#endif // !UE_WITH_GC
+
+	if (!bTimeLimitReached)
+	{
+		bCompleted = IncrementalDestroyGarbage(bUseTimeLimit, TimeLimit);
+	}
 }
 
-#if UE_WITH_GC
 bool IncrementalDestroyGarbage(bool bUseTimeLimit, float TimeLimit)
 {
 	const bool bMultithreadedPurge = !ShouldForceSingleThreadedGC() && GMultithreadedDestructionEnabled;
@@ -1768,10 +1635,6 @@ bool IncrementalDestroyGarbage(bool bUseTimeLimit, float TimeLimit)
 
 		if (GAsyncPurge->IsFinished())
 		{
-#if UE_BUILD_DEBUG
-			GAsyncPurge->VerifyAllObjectsDestroyed();
-#endif
-
 			bCompleted = true;
 			// Incremental purge is finished, time to reset variables.
 			GObjFinishDestroyHasBeenRoutedToAllObjects		= false;
@@ -1802,7 +1665,6 @@ bool IncrementalDestroyGarbage(bool bUseTimeLimit, float TimeLimit)
 
 	return bCompleted;
 }
-#endif // UE_WITH_GC
 
 /**
  * Returns whether an incremental purge is still pending/ in progress.
@@ -1925,15 +1787,6 @@ void GatherUnreachableObjects(bool bForceSingleThreaded)
  */
 void CollectGarbageInternal(EObjectFlags KeepFlags, bool bPerformFullPurge)
 {
-#if !UE_WITH_GC
-	return;
-#else
-	if (GIsInitialLoad)
-	{
-		// During initial load classes may not yet have their GC token streams assembled
-		UE_LOG(LogGarbage, Log, TEXT("Skipping CollectGarbage() call during initial load. It's not safe."));
-		return;
-	}
 	SCOPE_TIME_GUARD(TEXT("Collect Garbage"));
 	SCOPED_NAMED_EVENT(CollectGarbageInternal, FColor::Red);
 	CSV_EVENT_GLOBAL(TEXT("GC"));
@@ -1990,12 +1843,6 @@ void CollectGarbageInternal(EObjectFlags KeepFlags, bool bPerformFullPurge)
 		check(!GObjIncrementalPurgeIsInProgress);
 		check(!GObjPurgeIsRequired);
 
-		// This can happen if someone disables clusters from the console (gc.CreateGCClusters)
-		if (!GCreateGCClusters && GUObjectClusters.GetNumAllocatedClusters())
-		{
-			GUObjectClusters.DissolveClusters(true);
-		}
-
 #if VERIFY_DISREGARD_GC_ASSUMPTIONS
 		// Only verify assumptions if option is enabled. This avoids false positives in the Editor or commandlets.
 		if ((GUObjectArray.DisregardForGCEnabled() || GUObjectClusters.GetNumAllocatedClusters()) && GShouldVerifyGCAssumptions)
@@ -2012,14 +1859,12 @@ void CollectGarbageInternal(EObjectFlags KeepFlags, bool bPerformFullPurge)
 		// or detailed per class gc stats are enabled (not thread safe)
 		// Temporarily forcing single-threaded GC in the editor until Modify() can be safely removed from HandleObjectReference.
 		const bool bForceSingleThreadedGC = ShouldForceSingleThreadedGC();
-		// Run with GC clustering code enabled only if clustering is enabled and there's actual allocated clusters
-		const bool bWithClusters = !!GCreateGCClusters && GUObjectClusters.GetNumAllocatedClusters();
 
 		// Perform reachability analysis.
 		{
 			const double StartTime = FPlatformTime::Seconds();
 			FRealtimeGC TagUsedRealtimeGC;
-			TagUsedRealtimeGC.PerformReachabilityAnalysis(KeepFlags, bForceSingleThreadedGC, bWithClusters);
+			TagUsedRealtimeGC.PerformReachabilityAnalysis(KeepFlags, bForceSingleThreadedGC);
 			UE_LOG(LogGarbage, Log, TEXT("%f ms for GC"), (FPlatformTime::Seconds() - StartTime) * 1000);
 		}
 
@@ -2034,11 +1879,10 @@ void CollectGarbageInternal(EObjectFlags KeepFlags, bool bPerformFullPurge)
 		// Fire post-reachability analysis hooks
 		FCoreUObjectDelegates::PostReachabilityAnalysis.Broadcast();
 
-		{			
+		{
 			FGCArrayPool::Get().ClearWeakReferences(bPerformFullPurge);
 
 			GatherUnreachableObjects(bForceSingleThreadedGC);
-			NotifyUnreachableObjects(GUnreachableObjects);
 
 			if (bPerformFullPurge || !GIncrementalBeginDestroyEnabled)
 			{
@@ -2072,7 +1916,6 @@ void CollectGarbageInternal(EObjectFlags KeepFlags, bool bPerformFullPurge)
 	FCoreUObjectDelegates::GetPostGarbageCollect().Broadcast();
 
 	STAT_ADD_CUSTOMMESSAGE_NAME( STAT_NamedMarker, TEXT( "GarbageCollection - End" ) );
-#endif	// UE_WITH_GC
 }
 
 bool IsIncrementalUnhashPending()
@@ -2093,7 +1936,6 @@ bool UnhashUnreachableObjects(bool bUseTimeLimit, float TimeLimit)
 	const int32 TimeLimitEnforcementGranularityForBeginDestroy = 10;
 	int32 Items = 0;
 	int32 TimePollCounter = 0;
-	const bool bFirstIteration = (GUnrechableObjectIndex == 0);
 
 	while (GUnrechableObjectIndex < GUnreachableObjects.Num())
 	{
@@ -2116,31 +1958,16 @@ bool UnhashUnreachableObjects(bool bUseTimeLimit, float TimeLimit)
 		}
 	}
 
-	const bool bTimeLimitReached = (GUnrechableObjectIndex < GUnreachableObjects.Num());
-
-	if (!bUseTimeLimit)
-	{
-		UE_LOG(LogGarbage, Log, TEXT("%f ms for %sunhashing unreachable objects (%d objects unhashed)"),
+	UE_LOG(LogGarbage, Log, TEXT("%f ms for %sunhashing unreachable objects. Items %d (%d/%d)"),
 		(FPlatformTime::Seconds() - StartTime) * 1000,
 		bUseTimeLimit ? TEXT("incrementally ") : TEXT(""),
-			Items,
+		Items,
 		GUnrechableObjectIndex, GUnreachableObjects.Num());
-	}
-	else if (!bTimeLimitReached)
-	{
-		// When doing incremental unhashing log only the first and last iteration (this was the last one)
-		UE_LOG(LogGarbage, Log, TEXT("Finished unhashing unreachable objects (%d objects unhashed)."), GUnreachableObjects.Num());
-	}
-	else if (bFirstIteration)
-	{
-		// When doing incremental unhashing log only the first and last iteration (this was the first one)
-		UE_LOG(LogGarbage, Log, TEXT("Starting unhashing unreachable objects (%d objects to unhash)."), GUnreachableObjects.Num());
-	}
 
 	FCoreUObjectDelegates::PostGarbageCollectConditionalBeginDestroy.Broadcast();
 
 	// Return true if time limit has been reached
-	return bTimeLimitReached;
+	return GUnrechableObjectIndex < GUnreachableObjects.Num();
 }
 
 void CollectGarbage(EObjectFlags KeepFlags, bool bPerformFullPurge)
@@ -2195,7 +2022,7 @@ void UObject::AddReferencedObjects(UObject* This, FReferenceCollector& Collector
 {
 #if WITH_EDITOR
 	//@todo UE4 - This seems to be required and it should not be. Seems to be related to the texture streamer.
-	FLinkerLoad* LinkerLoad = This->GetLinker();
+	FLinkerLoad* LinkerLoad = This->GetLinker();	
 	if (LinkerLoad)
 	{
 		LinkerLoad->AddReferencedObjects(Collector);
@@ -2204,25 +2031,23 @@ void UObject::AddReferencedObjects(UObject* This, FReferenceCollector& Collector
 	if (GIsEditor)
 	{
 		UObject* LoadOuter = This->GetOuter();
-		UClass* Class = This->GetClass();
-		UPackage* Package = This->GetExternalPackageInternal();
+		UClass *Class = This->GetClass();
 		Collector.AllowEliminatingReferences(false);
-		Collector.AddReferencedObject(LoadOuter, This);
-		Collector.AddReferencedObject(Package, This);
+		Collector.AddReferencedObject( LoadOuter, This );
 		Collector.AllowEliminatingReferences(true);
-		Collector.AddReferencedObject(Class, This);
+		Collector.AddReferencedObject( Class, This );
 	}
 #endif
 }
 
 bool UObject::IsDestructionThreadSafe() const
 {
-	return false;
+	return true;
 }
 
 /*-----------------------------------------------------------------------------
 	Implementation of realtime garbage collection helper functions in 
-	FProperty, UClass, ...
+	UProperty, UClass, ...
 -----------------------------------------------------------------------------*/
 
 /**
@@ -2231,7 +2056,7 @@ bool UObject::IsDestructionThreadSafe() const
  *
  * @return true if property (or sub- properties) contain a UObject reference, false otherwise
  */
-bool FProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps, EPropertyObjectReferenceType InReferenceType /*= EPropertyObjectReferenceType::Strong*/) const
+bool UProperty::ContainsObjectReference(TArray<const UStructProperty*>& EncounteredStructProps) const
 {
 	return false;
 }
@@ -2242,10 +2067,10 @@ bool FProperty::ContainsObjectReference(TArray<const FStructProperty*>& Encounte
  *
  * @return true if property (or sub- properties) contain a UObject reference, false otherwise
  */
-bool FArrayProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps, EPropertyObjectReferenceType InReferenceType /*= EPropertyObjectReferenceType::Strong*/) const
+bool UArrayProperty::ContainsObjectReference(TArray<const UStructProperty*>& EncounteredStructProps) const
 {
 	check(Inner);
-	return Inner->ContainsObjectReference(EncounteredStructProps, InReferenceType);
+	return Inner->ContainsObjectReference(EncounteredStructProps);
 }
 
 /**
@@ -2254,11 +2079,11 @@ bool FArrayProperty::ContainsObjectReference(TArray<const FStructProperty*>& Enc
  *
  * @return true if property (or sub- properties) contain a UObject reference, false otherwise
  */
-bool FMapProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps, EPropertyObjectReferenceType InReferenceType /*= EPropertyObjectReferenceType::Strong*/) const
+bool UMapProperty::ContainsObjectReference(TArray<const UStructProperty*>& EncounteredStructProps) const
 {
 	check(KeyProp);
 	check(ValueProp);
-	return KeyProp->ContainsObjectReference(EncounteredStructProps, InReferenceType) || ValueProp->ContainsObjectReference(EncounteredStructProps, InReferenceType);
+	return KeyProp->ContainsObjectReference(EncounteredStructProps) || ValueProp->ContainsObjectReference(EncounteredStructProps);
 }
 
 /**
@@ -2267,10 +2092,10 @@ bool FMapProperty::ContainsObjectReference(TArray<const FStructProperty*>& Encou
 *
 * @return true if property (or sub- properties) contain a UObject reference, false otherwise
 */
-bool FSetProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps, EPropertyObjectReferenceType InReferenceType /*= EPropertyObjectReferenceType::Strong*/) const
+bool USetProperty::ContainsObjectReference(TArray<const UStructProperty*>& EncounteredStructProps) const
 {
 	check(ElementProp);
-	return ElementProp->ContainsObjectReference(EncounteredStructProps, InReferenceType);
+	return ElementProp->ContainsObjectReference(EncounteredStructProps);
 }
 
 /**
@@ -2279,7 +2104,7 @@ bool FSetProperty::ContainsObjectReference(TArray<const FStructProperty*>& Encou
  *
  * @return true if property (or sub- properties) contain a UObject reference, false otherwise
  */
-bool FStructProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps, EPropertyObjectReferenceType InReferenceType /*= EPropertyObjectReferenceType::Strong*/) const
+bool UStructProperty::ContainsObjectReference(TArray<const UStructProperty*>& EncounteredStructProps) const
 {
 	if (EncounteredStructProps.Contains(this))
 	{
@@ -2289,19 +2114,15 @@ bool FStructProperty::ContainsObjectReference(TArray<const FStructProperty*>& En
 	{
 		if (!Struct)
 		{
-			UE_LOG(LogGarbage, Warning, TEXT("Broken FStructProperty does not have a UStruct: %s"), *GetFullName() );
-		}
-		else if (Struct->StructFlags & STRUCT_AddStructReferencedObjects)
-		{
-			return true;
+			UE_LOG(LogGarbage, Warning, TEXT("Broken UStructProperty does not have a UStruct: %s"), *GetFullName() );
 		}
 		else
 		{
 			EncounteredStructProps.Add(this);
-			FProperty* Property = Struct->PropertyLink;
+			UProperty* Property = Struct->PropertyLink;
 			while( Property )
 			{
-				if (Property->ContainsObjectReference(EncounteredStructProps, InReferenceType))
+				if (Property->ContainsObjectReference(EncounteredStructProps))
 				{
 					EncounteredStructProps.RemoveSingleSwap(this);
 					return true;
@@ -2314,21 +2135,76 @@ bool FStructProperty::ContainsObjectReference(TArray<const FStructProperty*>& En
 	}
 }
 
-bool FFieldPathProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps, EPropertyObjectReferenceType InReferenceType /*= EPropertyObjectReferenceType::Strong*/) const
+// Returns true if this property contains a weak UObject reference.
+bool UProperty::ContainsWeakObjectReference() const
 {
-	return !!(InReferenceType & EPropertyObjectReferenceType::Strong);
+	return false;
 }
 
 // Returns true if this property contains a weak UObject reference.
-bool FDelegateProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps, EPropertyObjectReferenceType InReferenceType /*= EPropertyObjectReferenceType::Strong*/) const
+bool UArrayProperty::ContainsWeakObjectReference() const
 {
-	return !!(InReferenceType & EPropertyObjectReferenceType::Weak);
+	check(Inner);
+	return Inner->ContainsWeakObjectReference();
 }
 
 // Returns true if this property contains a weak UObject reference.
-bool FMulticastDelegateProperty::ContainsObjectReference(TArray<const FStructProperty*>& EncounteredStructProps, EPropertyObjectReferenceType InReferenceType /*= EPropertyObjectReferenceType::Strong*/) const
+bool UMapProperty::ContainsWeakObjectReference() const
 {
-	return !!(InReferenceType & EPropertyObjectReferenceType::Weak);
+	check(KeyProp);
+	check(ValueProp);
+	return KeyProp->ContainsWeakObjectReference() || ValueProp->ContainsWeakObjectReference();
+}
+
+// Returns true if this property contains a weak UObject reference.
+bool USetProperty::ContainsWeakObjectReference() const
+{
+	check(ElementProp);
+	return ElementProp->ContainsWeakObjectReference();
+}
+
+// Returns true if this property contains a weak UObject reference.
+bool UStructProperty::ContainsWeakObjectReference() const
+{
+	// prevent recursion in the case of structs containing dynamic arrays of themselves
+	static TArray<const UStructProperty*> EncounteredStructProps;
+
+	if (!EncounteredStructProps.Contains(this))
+	{
+		if (!Struct)
+		{
+			UE_LOG(LogGarbage, Warning, TEXT("Broken UStructProperty does not have a UStruct: %s"), *GetFullName() );
+		}
+		else
+		{
+			EncounteredStructProps.Add(this);
+
+			for (UProperty* Property = Struct->PropertyLink; Property != NULL; Property = Property->PropertyLinkNext)
+			{
+				if (Property->ContainsWeakObjectReference())
+				{
+					EncounteredStructProps.RemoveSingleSwap(this);
+					return true;
+				}
+			}
+
+			EncounteredStructProps.RemoveSingleSwap(this);
+		}
+	}
+	
+	return false;
+}
+
+// Returns true if this property contains a weak UObject reference.
+bool UDelegateProperty::ContainsWeakObjectReference() const
+{
+	return true;
+}
+
+// Returns true if this property contains a weak UObject reference.
+bool UMulticastDelegateProperty::ContainsWeakObjectReference() const
+{
+	return true;
 }
 
 /**
@@ -2346,7 +2222,7 @@ struct FGCReferenceFixedArrayTokenHelper
 	 * @param InStride					array type stride (e.g. sizeof(struct) or sizeof(UObject*))
 	 * @param InProperty                the property this array represents
 	 */
-	FGCReferenceFixedArrayTokenHelper(UClass& OwnerClass, int32 InOffset, int32 InCount, int32 InStride, const FProperty& InProperty)
+	FGCReferenceFixedArrayTokenHelper(UClass& OwnerClass, int32 InOffset, int32 InCount, int32 InStride, const UProperty& InProperty)
 		: ReferenceTokenStream(&OwnerClass.ReferenceTokenStream)
 	,	Count(InCount)
 	{
@@ -2380,7 +2256,7 @@ private:
  * Emits tokens used by realtime garbage collection code to passed in ReferenceTokenStream. The offset emitted is relative
  * to the passed in BaseOffset which is used by e.g. arrays of structs.
  */
-void FProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const FStructProperty*>& EncounteredStructProps)
+void UProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const UStructProperty*>& EncounteredStructProps)
 {
 }
 
@@ -2388,50 +2264,23 @@ void FProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<c
  * Emits tokens used by realtime garbage collection code to passed in OwnerClass' ReferenceTokenStream. The offset emitted is relative
  * to the passed in BaseOffset which is used by e.g. arrays of structs.
  */
-void FObjectProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const FStructProperty*>& EncounteredStructProps)
+void UObjectProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const UStructProperty*>& EncounteredStructProps)
 {
 	FGCReferenceFixedArrayTokenHelper FixedArrayHelper(OwnerClass, BaseOffset + GetOffset_ForGC(), ArrayDim, sizeof(UObject*), *this);
 	OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_Object);
 }
 
-void FWeakObjectProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const FStructProperty*>& EncounteredStructProps)
-{
-	FGCReferenceFixedArrayTokenHelper FixedArrayHelper(OwnerClass, BaseOffset + GetOffset_ForGC(), ArrayDim, sizeof(FWeakObjectPtr), *this);
-	OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_WeakObject);
-}
-void FLazyObjectProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const FStructProperty*>& EncounteredStructProps)
-{
-	FGCReferenceFixedArrayTokenHelper FixedArrayHelper(OwnerClass, BaseOffset + GetOffset_ForGC(), ArrayDim, sizeof(FLazyObjectPtr), *this);
-	OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_LazyObject);
-}
-void FSoftObjectProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const FStructProperty*>& EncounteredStructProps)
-{
-	FGCReferenceFixedArrayTokenHelper FixedArrayHelper(OwnerClass, BaseOffset + GetOffset_ForGC(), ArrayDim, sizeof(FSoftObjectPtr), *this);
-	OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_SoftObject);
-}
-void FDelegateProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const FStructProperty*>& EncounteredStructProps)
-{
-	FGCReferenceFixedArrayTokenHelper FixedArrayHelper(OwnerClass, BaseOffset + GetOffset_ForGC(), ArrayDim, this->ElementSize, *this);
-	OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_Delegate);
-}
-void FMulticastDelegateProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const FStructProperty*>& EncounteredStructProps)
-{
-	FGCReferenceFixedArrayTokenHelper FixedArrayHelper(OwnerClass, BaseOffset + GetOffset_ForGC(), ArrayDim, this->ElementSize, *this);
-	OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_MulticastDelegate);
-}
 /**
  * Emits tokens used by realtime garbage collection code to passed in OwnerClass' ReferenceTokenStream. The offset emitted is relative
  * to the passed in BaseOffset which is used by e.g. arrays of structs.
  */
-void FArrayProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const FStructProperty*>& EncounteredStructProps)
+void UArrayProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const UStructProperty*>& EncounteredStructProps)
 {
-	if (Inner->ContainsObjectReference(EncounteredStructProps, EPropertyObjectReferenceType::Strong | EPropertyObjectReferenceType::Weak))
+	if (Inner->ContainsObjectReference(EncounteredStructProps))
 	{
-		bool bUsesFreezableAllocator = EnumHasAnyFlags(ArrayFlags, EArrayPropertyFlags::UsesMemoryImageAllocator);
-
-		if( Inner->IsA(FStructProperty::StaticClass()) )
+		if( Inner->IsA(UStructProperty::StaticClass()) )
 		{
-			OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), bUsesFreezableAllocator ? GCRT_ArrayStructFreezable : GCRT_ArrayStruct);
+			OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_ArrayStruct);
 
 			OwnerClass.ReferenceTokenStream.EmitStride(Inner->ElementSize);
 			const uint32 SkipIndexIndex = OwnerClass.ReferenceTokenStream.EmitSkipIndexPlaceholder();
@@ -2439,13 +2288,13 @@ void FArrayProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TAr
 			const uint32 SkipIndex = OwnerClass.ReferenceTokenStream.EmitReturn();
 			OwnerClass.ReferenceTokenStream.UpdateSkipIndexPlaceholder(SkipIndexIndex, SkipIndex);
 		}
-		else if( Inner->IsA(FObjectProperty::StaticClass()) )
+		else if( Inner->IsA(UObjectProperty::StaticClass()) )
 		{
-			OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), bUsesFreezableAllocator ? GCRT_ArrayObjectFreezable : GCRT_ArrayObject);
+			OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_ArrayObject);
 		}
-		else if( Inner->IsA(FInterfaceProperty::StaticClass()) )
+		else if( Inner->IsA(UInterfaceProperty::StaticClass()) )
 		{
-			OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), bUsesFreezableAllocator ? GCRT_ArrayStructFreezable : GCRT_ArrayStruct);
+			OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_ArrayStruct);
 
 			OwnerClass.ReferenceTokenStream.EmitStride(Inner->ElementSize);
 			const uint32 SkipIndexIndex = OwnerClass.ReferenceTokenStream.EmitSkipIndexPlaceholder();
@@ -2454,30 +2303,6 @@ void FArrayProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TAr
 
 			const uint32 SkipIndex = OwnerClass.ReferenceTokenStream.EmitReturn();
 			OwnerClass.ReferenceTokenStream.UpdateSkipIndexPlaceholder(SkipIndexIndex, SkipIndex);
-		}
-		else if (Inner->IsA(FFieldPathProperty::StaticClass()))
-		{
-			OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_ArrayAddFieldPathReferencedObject);
-		}
-		else if (Inner->IsA(FWeakObjectProperty::StaticClass()))
-		{
-			OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_ArrayWeakObject);
-		}
-		else if (Inner->IsA(FLazyObjectProperty::StaticClass()))
-		{
-			OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_ArrayLazyObject);
-		}
-		else if (Inner->IsA(FSoftObjectProperty::StaticClass()))
-		{
-			OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_ArraySoftObject);
-		}
-		else if (Inner->IsA(FDelegateProperty::StaticClass()))
-		{
-			OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_ArrayDelegate);
-		}
-		else if (Inner->IsA(FMulticastDelegateProperty::StaticClass()))
-		{
-			OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_ArrayMulticastDelegate);
 		}
 		else
 		{
@@ -2491,26 +2316,12 @@ void FArrayProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TAr
  * Emits tokens used by realtime garbage collection code to passed in OwnerClass' ReferenceTokenStream. The offset emitted is relative
  * to the passed in BaseOffset which is used by e.g. arrays of structs.
  */
-void FMapProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const FStructProperty*>& EncounteredStructProps)
+void UMapProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const UStructProperty*>& EncounteredStructProps)
 {
-	if (ContainsObjectReference(EncounteredStructProps, EPropertyObjectReferenceType::Strong | EPropertyObjectReferenceType::Weak))
+	if (ContainsObjectReference(EncounteredStructProps))
 	{
-		// TMap reference tokens are processed by GC in a similar way to an array of structs
 		OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_AddTMapReferencedObjects);
 		OwnerClass.ReferenceTokenStream.EmitPointer((const void*)this);
-		const uint32 SkipIndexIndex = OwnerClass.ReferenceTokenStream.EmitSkipIndexPlaceholder();
-
-		if (KeyProp->ContainsObjectReference(EncounteredStructProps, EPropertyObjectReferenceType::Strong | EPropertyObjectReferenceType::Weak))
-		{
-			KeyProp->EmitReferenceInfo(OwnerClass, 0, EncounteredStructProps);
-		}
-		if (ValueProp->ContainsObjectReference(EncounteredStructProps, EPropertyObjectReferenceType::Strong | EPropertyObjectReferenceType::Weak))
-		{
-			ValueProp->EmitReferenceInfo(OwnerClass, 0, EncounteredStructProps);
-		}
-
-		const uint32 SkipIndex = OwnerClass.ReferenceTokenStream.EmitReturn();
-		OwnerClass.ReferenceTokenStream.UpdateSkipIndexPlaceholder(SkipIndexIndex, SkipIndex);
 	}
 }
 
@@ -2518,18 +2329,12 @@ void FMapProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArra
 * Emits tokens used by realtime garbage collection code to passed in OwnerClass' ReferenceTokenStream. The offset emitted is relative
 * to the passed in BaseOffset which is used by e.g. arrays of structs.
 */
-void FSetProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const FStructProperty*>& EncounteredStructProps)
+void USetProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const UStructProperty*>& EncounteredStructProps)
 {
-	if (ContainsObjectReference(EncounteredStructProps, EPropertyObjectReferenceType::Strong | EPropertyObjectReferenceType::Weak))
+	if (ContainsObjectReference(EncounteredStructProps))
 	{
-		// TSet reference tokens are processed by GC in a similar way to an array of structs
 		OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_AddTSetReferencedObjects);
 		OwnerClass.ReferenceTokenStream.EmitPointer((const void*)this);
-
-		const uint32 SkipIndexIndex = OwnerClass.ReferenceTokenStream.EmitSkipIndexPlaceholder();
-		ElementProp->EmitReferenceInfo(OwnerClass, 0, EncounteredStructProps);
-		const uint32 SkipIndex = OwnerClass.ReferenceTokenStream.EmitReturn();
-		OwnerClass.ReferenceTokenStream.UpdateSkipIndexPlaceholder(SkipIndexIndex, SkipIndex);
 	}
 }
 
@@ -2538,9 +2343,8 @@ void FSetProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArra
  * Emits tokens used by realtime garbage collection code to passed in ReferenceTokenStream. The offset emitted is relative
  * to the passed in BaseOffset which is used by e.g. arrays of structs.
  */
-void FStructProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const FStructProperty*>& EncounteredStructProps)
+void UStructProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const UStructProperty*>& EncounteredStructProps)
 {
-	check(Struct);
 	if (Struct->StructFlags & STRUCT_AddStructReferencedObjects)
 	{
 		UScriptStruct::ICppStructOps* CppStructOps = Struct->GetCppStructOps();
@@ -2551,12 +2355,14 @@ void FStructProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TA
 
 		void *FunctionPtr = (void*)CppStructOps->AddStructReferencedObjects();
 		OwnerClass.ReferenceTokenStream.EmitPointer(FunctionPtr);
+		return;
 	}
-	if (ContainsObjectReference(EncounteredStructProps, EPropertyObjectReferenceType::Strong | EPropertyObjectReferenceType::Weak))
+	check(Struct);
+	if (ContainsObjectReference(EncounteredStructProps))
 	{
 		FGCReferenceFixedArrayTokenHelper FixedArrayHelper(OwnerClass, BaseOffset + GetOffset_ForGC(), ArrayDim, ElementSize, *this);
 
-		FProperty* Property = Struct->PropertyLink;
+		UProperty* Property = Struct->PropertyLink;
 		while( Property )
 		{
 			Property->EmitReferenceInfo(OwnerClass, BaseOffset + GetOffset_ForGC(), EncounteredStructProps);
@@ -2569,24 +2375,21 @@ void FStructProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TA
  * Emits tokens used by realtime garbage collection code to passed in ReferenceTokenStream. The offset emitted is relative
  * to the passed in BaseOffset which is used by e.g. arrays of structs.
  */
-void FInterfaceProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const FStructProperty*>& EncounteredStructProps)
+void UInterfaceProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const UStructProperty*>& EncounteredStructProps)
 {
 	FGCReferenceFixedArrayTokenHelper FixedArrayHelper(OwnerClass, BaseOffset + GetOffset_ForGC(), ArrayDim, sizeof(FScriptInterface), *this);
 
 	OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_Object);
 }
 
-void FFieldPathProperty::EmitReferenceInfo(UClass& OwnerClass, int32 BaseOffset, TArray<const FStructProperty*>& EncounteredStructProps)
-{
-	static_assert(sizeof(FFieldPath) == sizeof(TFieldPath<FProperty>), "TFieldPath should have the same size as the underlying FFieldPath");
-	FGCReferenceFixedArrayTokenHelper FixedArrayHelper(OwnerClass, BaseOffset + GetOffset_ForGC(), ArrayDim, sizeof(FFieldPath), *this);
-	OwnerClass.EmitObjectReference(BaseOffset + GetOffset_ForGC(), GetFName(), GCRT_AddFieldPathReferencedObject);
-}
-
 void UClass::EmitObjectReference(int32 Offset, const FName& DebugName, EGCReferenceType Kind)
 {
 	FGCReferenceInfo ObjectReference(Kind, Offset);
-	ReferenceTokenStream.EmitReferenceInfo(ObjectReference, DebugName);
+	int32 TokenIndex = ReferenceTokenStream.EmitReferenceInfo(ObjectReference);
+
+#if ENABLE_GC_OBJECT_CHECKS
+	DebugTokenMap.MapToken(DebugName, Offset, TokenIndex);
+#endif
 }
 
 void UClass::EmitObjectArrayReference(int32 Offset, const FName& DebugName)
@@ -2635,14 +2438,6 @@ void UClass::EmitFixedArrayEnd()
 	ReferenceTokenStream.EmitReturn();
 }
 
-void UClass::EmitExternalPackageReference()
-{
-#if WITH_EDITOR
-	static const FName TokenName("ExternalPackageToken");
-	ReferenceTokenStream.EmitReferenceInfo(FGCReferenceInfo(GCRT_ExternalPackage, 0), TokenName);
-#endif
-}
-
 struct FScopeLockIfNotNative
 {
 	FCriticalSection& ScopeCritical;
@@ -2677,14 +2472,17 @@ void UClass::AssembleReferenceTokenStream(bool bForce)
 		if (bForce)
 		{
 			ReferenceTokenStream.Empty();
+#if ENABLE_GC_OBJECT_CHECKS
+			DebugTokenMap.Empty();
+#endif
 			ClassFlags &= ~CLASS_TokenStreamAssembled;
 		}
-		TArray<const FStructProperty*> EncounteredStructProps;
+		TArray<const UStructProperty*> EncounteredStructProps;
 
 		// Iterate over properties defined in this class
-		for( TFieldIterator<FProperty> It(this,EFieldIteratorFlags::ExcludeSuper); It; ++It)
+		for( TFieldIterator<UProperty> It(this,EFieldIteratorFlags::ExcludeSuper); It; ++It)
 		{
-			FProperty* Property = *It;
+			UProperty* Property = *It;
 			Property->EmitReferenceInfo(*this, 0, EncounteredStructProps);
 		}
 
@@ -2698,7 +2496,7 @@ void UClass::AssembleReferenceTokenStream(bool bForce)
 			if (!SuperClass->ReferenceTokenStream.IsEmpty())
 			{
 				// Prepend super's stream. This automatically handles removing the EOS token.
-				ReferenceTokenStream.PrependStream(SuperClass->ReferenceTokenStream);
+				PrependStreamWithSuperClass(*SuperClass);
 			}
 		}
 		else
@@ -2706,32 +2504,22 @@ void UClass::AssembleReferenceTokenStream(bool bForce)
 			UObjectBase::EmitBaseReferences(this);
 		}
 
+#if !WITH_EDITOR
+		// In no-editor builds UObject::ARO is empty, thus only classes
+		// which implement their own ARO function need to have the ARO token generated.
+		if (ClassAddReferencedObjects != &UObject::AddReferencedObjects)
+#endif
 		{
 			check(ClassAddReferencedObjects != NULL);
-			const bool bKeepOuter = true;//GetFName() != NAME_Package;
-			const bool bKeepClass = true;//!HasAnyInternalFlags(EInternalObjectFlags::Native) || IsA(UDynamicClass::StaticClass());
-
-			ClassAddReferencedObjectsType AddReferencedObjectsFn = nullptr;
-#if !WITH_EDITOR
-			// In no-editor builds UObject::ARO is empty, thus only classes
-			// which implement their own ARO function need to have the ARO token generated.
-			if (ClassAddReferencedObjects != &UObject::AddReferencedObjects)
-			{
-				AddReferencedObjectsFn = ClassAddReferencedObjects;
-			}
-#else
-			AddReferencedObjectsFn = ClassAddReferencedObjects;
-#endif
-			ReferenceTokenStream.Fixup(AddReferencedObjectsFn, bKeepOuter, bKeepClass);
+			ReferenceTokenStream.ReplaceOrAddAddReferencedObjectsCall(ClassAddReferencedObjects);
 		}
-
 		if (ReferenceTokenStream.IsEmpty())
 		{
 			return;
 		}
 
 		// Emit end of stream token.
-		static const FName EOSDebugName("EndOfStreamToken");
+		static const FName EOSDebugName("EOS");
 		EmitObjectReference(0, EOSDebugName, GCRT_EndOfStream);
 
 		// Shrink reference token stream to proper size.
@@ -2751,50 +2539,28 @@ void UClass::AssembleReferenceTokenStream(bool bForce)
 void FGCReferenceTokenStream::PrependStream( const FGCReferenceTokenStream& Other )
 {
 	// Remove embedded EOS token if needed.
-	FGCReferenceInfo EndOfStream(GCRT_EndOfStream, 0);
-	int32 NumTokensToPrepend = (Other.Tokens.Num() && Other.Tokens.Last() == EndOfStream) ? (Other.Tokens.Num() - 1) : Other.Tokens.Num();
-
-	TArray<uint32> TempTokens;
-	TempTokens.Reserve(NumTokensToPrepend + Tokens.Num());
-
-#if ENABLE_GC_OBJECT_CHECKS
-	check(TokenDebugInfo.Num() == Tokens.Num());
-	check(Other.TokenDebugInfo.Num() == Other.Tokens.Num());
-	TArray<FName> TempTokenDebugInfo;
-	TempTokenDebugInfo.Reserve(NumTokensToPrepend + TokenDebugInfo.Num());
-#endif // ENABLE_GC_OBJECT_CHECKS
-
-	for (int32 TokenIndex = 0; TokenIndex < NumTokensToPrepend; ++TokenIndex)
+	TArray<uint32> TempTokens = Other.Tokens;
+	FGCReferenceInfo EndOfStream( GCRT_EndOfStream, 0 );
+	if( TempTokens.Last() == EndOfStream )
 	{
-		TempTokens.Add(Other.Tokens[TokenIndex]);
-#if ENABLE_GC_OBJECT_CHECKS
-		TempTokenDebugInfo.Add(Other.TokenDebugInfo[TokenIndex]);
-#endif // ENABLE_GC_OBJECT_CHECKS
+		TempTokens.RemoveAt( TempTokens.Num() - 1 );
 	}
-
-	TempTokens.Append(Tokens);
+	// TArray doesn't have a general '+' operator.
+	TempTokens += Tokens;
 	Tokens = MoveTemp(TempTokens);
-
-#if ENABLE_GC_OBJECT_CHECKS
-	TempTokenDebugInfo.Append(TokenDebugInfo);
-	TokenDebugInfo = MoveTemp(TempTokenDebugInfo);
-#endif // ENABLE_GC_OBJECT_CHECKS
 }
 
-void FGCReferenceTokenStream::Fixup(void (*AddReferencedObjectsPtr)(UObject*, class FReferenceCollector&), bool bKeepOuterToken, bool bKeepClassToken)
+void FGCReferenceTokenStream::ReplaceOrAddAddReferencedObjectsCall(void (*AddReferencedObjectsPtr)(UObject*, class FReferenceCollector&))
 {
-	bool bReplacedARO = false;
-
 	// Try to find exiting ARO pointer and replace it (to avoid removing and readding tokens).
 	for (int32 TokenStreamIndex = 0; TokenStreamIndex < Tokens.Num(); ++TokenStreamIndex)
 	{
 		uint32 TokenIndex = (uint32)TokenStreamIndex;
-		FGCReferenceInfo Token = Tokens[TokenIndex];
+		const EGCReferenceType TokenType = (EGCReferenceType)AccessReferenceInfo(TokenIndex).Type;
 		// Read token type and skip additional data if present.
-		switch (Token.Type)
+		switch (TokenType)
 		{
 		case GCRT_ArrayStruct:
-		case GCRT_ArrayStructFreezable:
 			{
 				// Skip stride and move to Skip Info
 				TokenIndex += 2;
@@ -2821,99 +2587,37 @@ void FGCReferenceTokenStream::Fixup(void (*AddReferencedObjectsPtr)(UObject*, cl
 		case GCRT_AddReferencedObjects:
 			{
 				// Store the pointer after the ARO token.
-				if (AddReferencedObjectsPtr)
-				{
-					StorePointer(&Tokens[TokenIndex + 1], (const void*)AddReferencedObjectsPtr);					
-				}
-				bReplacedARO = true;
-				TokenIndex += GNumTokensPerPointer;
+				StorePointer(&Tokens[++TokenIndex], (const void*)AddReferencedObjectsPtr);
+				return;
 			}
-			break;
 		case GCRT_AddTMapReferencedObjects:
 		case GCRT_AddTSetReferencedObjects:
 			{
 				// Skip pointer
 				TokenIndex += GNumTokensPerPointer;
-				TokenIndex += 1; // GCRT_EndOfPointer;
-				// Move to Skip Info
-				TokenIndex += 1;
-				const FGCSkipInfo SkipInfo = ReadSkipInfo(TokenIndex);
-				// Set the TokenIndex to the skip index - 1 because we're going to
-				// increment in the for loop anyway.
-				TokenIndex = SkipInfo.SkipIndex - 1;
-			}
-			break;
-		case GCRT_Class:
-		case GCRT_NoopClass:
-			{
-				if (bKeepClassToken)
-				{
-					Token.Type = GCRT_Class;
-				}
-				else
-				{
-					Token.Type = GCRT_NoopClass;
-				}
-				Tokens[TokenIndex] = Token;
-			}
-			break;
-		case GCRT_PersistentObject:
-		case GCRT_NoopPersistentObject:
-			{
-				if (bKeepOuterToken)
-				{
-					Token.Type = GCRT_PersistentObject;
-				}
-				else
-				{
-					Token.Type = GCRT_NoopPersistentObject;
-				}
-				Tokens[TokenIndex] = Token;
 			}
 			break;
 		case GCRT_None:
 		case GCRT_Object:
-		case GCRT_ExternalPackage:
+		case GCRT_PersistentObject:
 		case GCRT_ArrayObject:
-		case GCRT_ArrayObjectFreezable:
-		case GCRT_AddFieldPathReferencedObject:
-		case GCRT_ArrayAddFieldPathReferencedObject:
 		case GCRT_EndOfPointer:
-		case GCRT_EndOfStream:
-		case GCRT_WeakObject:
-		case GCRT_ArrayWeakObject:
-		case GCRT_LazyObject:
-		case GCRT_ArrayLazyObject:
-		case GCRT_SoftObject:
-		case GCRT_ArraySoftObject:
-		case GCRT_Delegate:
-		case GCRT_ArrayDelegate:
-		case GCRT_MulticastDelegate:
-		case GCRT_ArrayMulticastDelegate:
+		case GCRT_EndOfStream:		
 			break;
 		default:
-			UE_LOG(LogGarbage, Fatal, TEXT("Unknown token type (%u) when trying to add ARO token."), (uint32)Token.Type);
+			UE_LOG(LogGarbage, Fatal, TEXT("Unknown token type (%u) when trying to add ARO token."), (uint32)TokenType);
 			break;
 		};
 		TokenStreamIndex = (int32)TokenIndex;
 	}
 	// ARO is not in the token stream yet.
-	if (!bReplacedARO && AddReferencedObjectsPtr)
-	{
-		static const FName TokenName("AROToken");
-		EmitReferenceInfo(FGCReferenceInfo(GCRT_AddReferencedObjects, 0), TokenName);
-		EmitPointer((const void*)AddReferencedObjectsPtr);
-	}
+	EmitReferenceInfo(FGCReferenceInfo(GCRT_AddReferencedObjects, 0));
+	EmitPointer((const void*)AddReferencedObjectsPtr);
 }
 
-int32 FGCReferenceTokenStream::EmitReferenceInfo(FGCReferenceInfo ReferenceInfo, const FName& DebugName)
+int32 FGCReferenceTokenStream::EmitReferenceInfo(FGCReferenceInfo ReferenceInfo)
 {
-	int32 TokenIndex = Tokens.Add(ReferenceInfo);
-#if ENABLE_GC_OBJECT_CHECKS
-	check(TokenDebugInfo.Num() == TokenIndex);
-	TokenDebugInfo.Add(DebugName);
-#endif
-	return TokenIndex;
+	return Tokens.Add(ReferenceInfo);
 }
 
 /**
@@ -2923,13 +2627,7 @@ int32 FGCReferenceTokenStream::EmitReferenceInfo(FGCReferenceInfo ReferenceInfo,
  */
 uint32 FGCReferenceTokenStream::EmitSkipIndexPlaceholder()
 {
-	uint32 TokenIndex = Tokens.Add(E_GCSkipIndexPlaceholder);
-#if ENABLE_GC_OBJECT_CHECKS
-	static const FName TokenName("SkipIndexPlaceholder");
-	check(TokenDebugInfo.Num() == TokenIndex);
-	TokenDebugInfo.Add(TokenName);
-#endif
-	return TokenIndex;
+	return Tokens.Add( E_GCSkipIndexPlaceholder );
 }
 
 /**
@@ -2960,38 +2658,19 @@ void FGCReferenceTokenStream::UpdateSkipIndexPlaceholder( uint32 SkipIndexIndex,
  *
  * @param Count count to emit
  */
-int32 FGCReferenceTokenStream::EmitCount( uint32 Count )
+void FGCReferenceTokenStream::EmitCount( uint32 Count )
 {
-	int32 TokenIndex = Tokens.Add( Count );
-#if ENABLE_GC_OBJECT_CHECKS
-	static const FName TokenName("CountToken");
-	check(TokenDebugInfo.Num() == TokenIndex);
-	TokenDebugInfo.Add(TokenName);
-#endif
-	return TokenIndex;
+	Tokens.Add( Count );
 }
 
-int32 FGCReferenceTokenStream::EmitPointer( void const* Ptr )
+void FGCReferenceTokenStream::EmitPointer( void const* Ptr )
 {
 	const int32 StoreIndex = Tokens.Num();
 	Tokens.AddUninitialized(GNumTokensPerPointer);
 	StorePointer(&Tokens[StoreIndex], Ptr);
-
-#if ENABLE_GC_OBJECT_CHECKS
-	static const FName TokenName("PointerToken");
-	check(TokenDebugInfo.Num() == StoreIndex);
-	for (int32 PointerTokenIndex = 0; PointerTokenIndex < GNumTokensPerPointer; ++PointerTokenIndex)
-	{
-		TokenDebugInfo.Add(TokenName);
-	}
-#endif
-
 	// Now inser the end of pointer marker, this will mostly be used for storing ReturnCount value
 	// if the pointer was stored at the end of struct array stream.
-	static const FName EndOfPointerTokenName("EndOfPointerToken");
-	EmitReferenceInfo(FGCReferenceInfo(GCRT_EndOfPointer, 0), EndOfPointerTokenName);
-
-	return StoreIndex;
+	EmitReferenceInfo(FGCReferenceInfo(GCRT_EndOfPointer, 0));
 }
 
 /**
@@ -2999,17 +2678,9 @@ int32 FGCReferenceTokenStream::EmitPointer( void const* Ptr )
  *
  * @param Stride stride to emit
  */
-int32 FGCReferenceTokenStream::EmitStride( uint32 Stride )
+void FGCReferenceTokenStream::EmitStride( uint32 Stride )
 {
-	int32 TokenIndex = Tokens.Add( Stride );
-
-#if ENABLE_GC_OBJECT_CHECKS
-	static const FName TokenName("StrideToken");
-	check(TokenDebugInfo.Num() == TokenIndex);
-	TokenDebugInfo.Add(TokenName);
-#endif
-
-	return TokenIndex;
+	Tokens.Add( Stride );
 }
 
 /**
@@ -3028,15 +2699,54 @@ uint32 FGCReferenceTokenStream::EmitReturn()
 
 #if ENABLE_GC_OBJECT_CHECKS
 
-FTokenInfo FGCReferenceTokenStream::GetTokenInfo(int32 TokenIndex) const
+void FGCDebugReferenceTokenMap::MapToken(const FName& DebugName, int32 Offset, int32 TokenIndex)
 {
-	FTokenInfo DebugInfo;
-	DebugInfo.Offset = FGCReferenceInfo(Tokens[TokenIndex]).Offset;
-	DebugInfo.Name = TokenDebugInfo[TokenIndex];
-	return DebugInfo;
+	if(TokenMap.Num() <= TokenIndex)
+	{
+		TokenMap.AddZeroed(TokenIndex - TokenMap.Num() + 1);
+
+		auto& TokenInfo = TokenMap[TokenIndex];
+
+		TokenInfo.Offset = Offset;
+		TokenInfo.Name = DebugName;
+	}
+	else
+	{
+		// Token already mapped.
+		checkNoEntry();
+	}
 }
 
-#endif
+void FGCDebugReferenceTokenMap::PrependWithSuperClass(const UClass& SuperClass)
+{
+	if (SuperClass.ReferenceTokenStream.Size() == 0)
+	{
+		return;
+	}
+
+	// Check if token stream is already ended with end-of-stream token. If so then something's wrong.
+	checkSlow(TokenMap.Num() == 0 || TokenMap.Last().Name != "EOS");
+
+	int32 OldTokenNumber = TokenMap.Num();
+	int32 NewTokenOffset = SuperClass.ReferenceTokenStream.Size() - 1;
+	TokenMap.AddZeroed(NewTokenOffset);
+
+	for(int32 OldTokenIndex = OldTokenNumber - 1; OldTokenIndex >= 0; --OldTokenIndex)
+	{
+		TokenMap[OldTokenIndex + NewTokenOffset] = TokenMap[OldTokenIndex];
+	}
+
+	for(int32 NewTokenIndex = 0; NewTokenIndex < NewTokenOffset; ++NewTokenIndex)
+	{
+		TokenMap[NewTokenIndex] = SuperClass.DebugTokenMap.GetTokenInfo(NewTokenIndex);
+	}
+}
+
+const FTokenInfo& FGCDebugReferenceTokenMap::GetTokenInfo(int32 TokenIndex) const
+{
+	return TokenMap[TokenIndex];
+}
+#endif // ENABLE_GC_OBJECT_CHECKS
 
 
 FGCArrayPool* FGCArrayPool::GetGlobalSingleton()

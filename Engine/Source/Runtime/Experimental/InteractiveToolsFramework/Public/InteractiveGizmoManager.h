@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -170,8 +170,7 @@ public:
 	/** Render any active Gizmos. Called by UInteractiveToolsContext. */
 	virtual void Render(IToolsContextRenderAPI* RenderAPI);
 
-	/** Let active Gizmos do screen space drawing.  Called by UInteractiveToolsContext */
-	virtual void DrawHUD( FCanvas* Canvas, IToolsContextRenderAPI* RenderAPI );
+
 
 	//
 	// access to APIs, etc

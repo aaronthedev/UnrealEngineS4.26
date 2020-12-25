@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -11,8 +11,6 @@
 #include "Serialization/BulkData.h"
 #include "LandscapeHeightfieldCollisionComponent.h"
 
-#include "Chaos/PhysicalMaterials.h"
-
 #include "LandscapeMeshCollisionComponent.generated.h"
 
 class UPhysicalMaterial;
@@ -24,24 +22,12 @@ namespace physx
 	class PxMaterial;
 	class PxTriangleMesh;
 }
-#elif WITH_CHAOS
-namespace Chaos
-{
-	class FTriangleMeshImplicitObject;
-}
-#endif
-
-
+#endif // WITH_PHYSX
 
 UCLASS()
 class ULandscapeMeshCollisionComponent : public ULandscapeHeightfieldCollisionComponent
 {
-	GENERATED_BODY()
-
-public:
-
-	ULandscapeMeshCollisionComponent();
-	virtual ~ULandscapeMeshCollisionComponent();
+	GENERATED_UCLASS_BODY()
 
 	// Keep the possibility to share projected height field PhysX object with editor mesh collision objects...
 
@@ -49,7 +35,7 @@ public:
 	UPROPERTY()
 	FGuid MeshGuid;
 
-	struct FTriMeshGeometryRef : public FRefCountedObject
+	struct FPhysXMeshRef : public FRefCountedObject
 	{
 		FGuid Guid;
 
@@ -62,17 +48,25 @@ public:
 #endif	//WITH_EDITOR
 #endif	//WITH_PHYSX
 
-#if WITH_CHAOS
-		TArray<Chaos::FMaterialHandle> UsedChaosMaterials;
-		TUniquePtr<Chaos::FTriangleMeshImplicitObject> Trimesh;
+		/** tors **/
+		FPhysXMeshRef() 
+#if WITH_PHYSX
+			:	RBTriangleMesh(NULL)
 #if WITH_EDITOR
-		TUniquePtr<Chaos::FTriangleMeshImplicitObject> EditorTrimesh;
-#endif // WITH_EDITOR
-#endif // WITH_CHAOS
-
-		FTriMeshGeometryRef();
-		FTriMeshGeometryRef(FGuid& InGuid);
-		virtual ~FTriMeshGeometryRef();
+			,	RBTriangleMeshEd(NULL)
+#endif	//WITH_EDITOR
+#endif	//WITH_PHYSX
+		{}
+		FPhysXMeshRef(FGuid& InGuid)
+			:	Guid(InGuid)
+#if WITH_PHYSX
+			,	RBTriangleMesh(NULL)
+#if WITH_EDITOR
+			,	RBTriangleMeshEd(NULL)
+#endif	//WITH_EDITOR
+#endif	//WITH_PHYSX
+		{}
+		virtual ~FPhysXMeshRef();
 	};
 
 #if WITH_EDITORONLY_DATA
@@ -81,7 +75,7 @@ public:
 #endif //WITH_EDITORONLY_DATA
 
 	/** Physics engine version of heightfield data. */
-	TRefCountPtr<FTriMeshGeometryRef>			MeshRef;
+	TRefCountPtr<struct FPhysXMeshRef>			MeshRef;
 
 	//~ Begin UActorComponent Interface.
 protected:
@@ -115,3 +109,4 @@ public:
 	virtual bool RecreateCollision() override;
 	//~ End ULandscapeHeightfieldCollisionComponent Interface
 };
+

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Common/StatsCollector.h"
 #include "HAL/PlatformTime.h"
@@ -27,9 +27,9 @@ namespace BuildPatchServices
 
 	uint64 FStatsCollector::SecondsToCycles(double Seconds)
 	{
-		const long double Result = Seconds / FPlatformTime::GetSecondsPerCycle64();
+		const double Result = Seconds / FPlatformTime::GetSecondsPerCycle64();
 		// We upper clamp to cover cases where Seconds is too high to represent the resulting cycles as uint64.
-		if (Result >= double(TNumericLimits<uint64>::Max()))
+		if (Result >= TNumericLimits<uint64>::Max())
 		{
 			return TNumericLimits<uint64>::Max();
 		}

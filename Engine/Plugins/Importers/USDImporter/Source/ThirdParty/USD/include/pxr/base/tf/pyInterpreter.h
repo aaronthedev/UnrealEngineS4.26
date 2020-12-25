@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_PY_INTERPRETER_H
-#define PXR_BASE_TF_PY_INTERPRETER_H
+#ifndef TF_PYINTERPRETER_H
+#define TF_PYINTERPRETER_H
 
 /// \file tf/pyInterpreter.h
 /// Python runtime utilities.
@@ -93,4 +93,4 @@ extern std::string TfPyGetModulePath(const std::string & moduleName);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_PY_INTERPRETER_H
+#endif // TF_PYINTERPRETER_H

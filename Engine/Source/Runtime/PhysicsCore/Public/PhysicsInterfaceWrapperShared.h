@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,8 +7,7 @@ enum class EQueryFlags : uint16
 	None = 0,
 	PreFilter = (1 << 2),
 	PostFilter = (1 << 3),
-	AnyHit = (1 << 4),
-	SkipNarrowPhase = (1 << 5)
+	AnyHit = (1 << 4)
 };
 
 inline EQueryFlags operator| (EQueryFlags lhs, EQueryFlags rhs)

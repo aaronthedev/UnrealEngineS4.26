@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -224,7 +224,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Synth|Components|Audio")
 	void SetPosLfoType(const ESynthLFOType InLfoType);
 
-	virtual void SetLowPassFilterFrequency(float InLowPassFilterFrequency) override;
+	// Set the Cut-off frequency of the low-pass filter
+	UFUNCTION(BlueprintCallable, Category = "Synth|Components|Audio")
+	void SetLowPassFilterFrequency(float InNewFrequency);
 
 	// Set the Cut-off frequency of the low-pass filter
 	UFUNCTION(BlueprintCallable, Category = "Synth|Components|Audio",  Meta = (ClampMin = "0.0", ClampMax = "10.0"))

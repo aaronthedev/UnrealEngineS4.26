@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,7 +10,6 @@
 #include "ShaderParameters.h"
 #include "UniformBuffer.h"
 #include "LightmapUniformShaderParameters.h"
-#include "UnifiedBuffer.h"
 
 /** 
  * The uniform shader parameters associated with a primitive. 
@@ -29,7 +28,7 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FPrimitiveUniformShaderParameters,ENGINE_AP
 	SHADER_PARAMETER(FVector,ObjectBounds)		// only needed for editor/development
 	SHADER_PARAMETER(float,LpvBiasMultiplier)
 	SHADER_PARAMETER_EX(float,DecalReceiverMask,EShaderPrecisionModifier::Half)
-	SHADER_PARAMETER_EX(float,PerObjectGBufferData,EShaderPrecisionModifier::Half)		// 0..1, 2 bits, bCastContactShadow, bHeightfieldRepresentation
+	SHADER_PARAMETER_EX(float,PerObjectGBufferData,EShaderPrecisionModifier::Half)		// 0..1, 2 bits, bDistanceFieldRepresentation, bHeightfieldRepresentation
 	SHADER_PARAMETER_EX(float,UseVolumetricLightmapShadowFromStationaryLights,EShaderPrecisionModifier::Half)		
 	SHADER_PARAMETER_EX(float,DrawsVelocity,EShaderPrecisionModifier::Half)
 	SHADER_PARAMETER_EX(FVector4,ObjectOrientation,EShaderPrecisionModifier::Half)
@@ -55,7 +54,7 @@ inline FPrimitiveUniformShaderParameters GetPrimitiveUniformShaderParameters(
 	const FBoxSphereBounds& LocalBounds,
 	const FBoxSphereBounds& PreSkinnedLocalBounds,
 	bool bReceivesDecals,
-	bool bHasDistanceFieldRepresentation,		// Currently unused
+	bool bHasDistanceFieldRepresentation,
 	bool bHasCapsuleRepresentation,
 	bool bUseSingleSampleShadowFromStationaryLights,
 	bool bUseVolumetricLightmap,
@@ -65,8 +64,7 @@ inline FPrimitiveUniformShaderParameters GetPrimitiveUniformShaderParameters(
 	uint32 LightmapDataIndex,
 	int32 SingleCaptureIndex,
 	bool bOutputVelocity,
-	const FCustomPrimitiveData* CustomPrimitiveData,
-	bool bCastContactShadow = true
+	const FCustomPrimitiveData* CustomPrimitiveData
 )
 {
 	FPrimitiveUniformShaderParameters Result;
@@ -102,7 +100,7 @@ inline FPrimitiveUniformShaderParameters GetPrimitiveUniformShaderParameters(
 			);
 	}
 	Result.DecalReceiverMask = bReceivesDecals ? 1 : 0;
-	Result.PerObjectGBufferData = (2 * (int32)bHasCapsuleRepresentation + (int32)bCastContactShadow) / 3.0f;
+	Result.PerObjectGBufferData = (2 * (int32)bHasCapsuleRepresentation + (int32)bHasDistanceFieldRepresentation) / 3.0f;
 	Result.UseSingleSampleShadowFromStationaryLights = bUseSingleSampleShadowFromStationaryLights ? 1.0f : 0.0f;
 	Result.UseVolumetricLightmapShadowFromStationaryLights = bUseVolumetricLightmap && bUseSingleSampleShadowFromStationaryLights ? 1.0f : 0.0f;
 	Result.DrawsVelocity = bDrawsVelocity ? 1 : 0;
@@ -140,13 +138,12 @@ inline FPrimitiveUniformShaderParameters GetPrimitiveUniformShaderParameters(
 	float LpvBiasMultiplier,
 	uint32 LightmapDataIndex,
 	int32 SingleCaptureIndex,
-    bool bOutputVelocity,
-	bool bCastContactShadow = true
+    bool bOutputVelocity
 )
 {
 	// Pass through call
 	return GetPrimitiveUniformShaderParameters(LocalToWorld, PreviousLocalToWorld, ActorPosition, WorldBounds, LocalBounds, LocalBounds, bReceivesDecals, bHasDistanceFieldRepresentation, bHasCapsuleRepresentation, 
-		bUseSingleSampleShadowFromStationaryLights, bUseVolumetricLightmap, bDrawsVelocity, LightingChannelMask, LpvBiasMultiplier, LightmapDataIndex, SingleCaptureIndex, bOutputVelocity, nullptr, bCastContactShadow);
+		bUseSingleSampleShadowFromStationaryLights, bUseVolumetricLightmap, bDrawsVelocity, LightingChannelMask, LpvBiasMultiplier, LightmapDataIndex, SingleCaptureIndex, bOutputVelocity, nullptr);
 }
 
 inline TUniformBufferRef<FPrimitiveUniformShaderParameters> CreatePrimitiveUniformBufferImmediate(
@@ -186,8 +183,7 @@ inline FPrimitiveUniformShaderParameters GetIdentityPrimitiveParameters()
 		1.0f,		// LPV bias
 		INDEX_NONE,
 		INDEX_NONE,
-		false,
-		/* bCastContactShadow = */ true
+		false
 	);
 }
 
@@ -211,13 +207,12 @@ extern ENGINE_API TGlobalResource<FIdentityPrimitiveUniformBuffer> GIdentityPrim
 struct FPrimitiveSceneShaderData
 {
 	// Must match usf
-	enum { PrimitiveDataStrideInFloat4s = 36 };
+	enum { PrimitiveDataStrideInFloat4s = 35 };
 
 	FVector4 Data[PrimitiveDataStrideInFloat4s];
 
 	FPrimitiveSceneShaderData()
 	{
-		static_assert(FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s == FScatterUploadBuffer::PrimitiveDataStrideInFloat4s,"");
 		Setup(GetIdentityPrimitiveParameters());
 	}
 
@@ -232,13 +227,9 @@ struct FPrimitiveSceneShaderData
 	ENGINE_API static uint16 GetPrimitivesPerTextureLine();
 };
 
-class FSinglePrimitiveStructured : public FRenderResource
+class ENGINE_VTABLE FSinglePrimitiveStructured : public FRenderResource
 {
 public:
-
-	FSinglePrimitiveStructured()
-		: ShaderPlatform(SP_NumPlatforms)
-	{}
 
 	ENGINE_API virtual void InitRHI() override;
 
@@ -246,8 +237,6 @@ public:
 	{
 		PrimitiveSceneDataBufferRHI.SafeRelease();
 		PrimitiveSceneDataBufferSRV.SafeRelease();
-		SkyIrradianceEnvironmentMapRHI.SafeRelease();
-		SkyIrradianceEnvironmentMapSRV.SafeRelease();
 		PrimitiveSceneDataTextureRHI.SafeRelease();
 		PrimitiveSceneDataTextureSRV.SafeRelease();
 		LightmapSceneDataBufferRHI.SafeRelease();
@@ -256,16 +245,13 @@ public:
 
 	ENGINE_API void UploadToGPU();
 
-	EShaderPlatform ShaderPlatform=SP_NumPlatforms;
+	EShaderPlatform ShaderPlatform;
 
 	FPrimitiveSceneShaderData PrimitiveSceneData;
 	FLightmapSceneShaderData LightmapSceneData;
 
 	FStructuredBufferRHIRef PrimitiveSceneDataBufferRHI;
 	FShaderResourceViewRHIRef PrimitiveSceneDataBufferSRV;
-
-	FStructuredBufferRHIRef SkyIrradianceEnvironmentMapRHI;
-	FShaderResourceViewRHIRef SkyIrradianceEnvironmentMapSRV;
 
 	FTexture2DRHIRef PrimitiveSceneDataTextureRHI;
 	FShaderResourceViewRHIRef PrimitiveSceneDataTextureSRV;

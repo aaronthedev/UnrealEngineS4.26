@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	TextureDerivedDataTask.cpp: Tasks to update texture DDC.
@@ -25,7 +25,6 @@
 
 #include "DerivedDataCacheInterface.h"
 #include "Engine/TextureCube.h"
-#include "Engine/VolumeTexture.h"
 #include "GenericPlatform/GenericPlatformMath.h"
 #include "Interfaces/ITargetPlatform.h"
 #include "Interfaces/ITargetPlatformManagerModule.h"
@@ -235,12 +234,12 @@ void FTextureCacheDerivedDataWorker::BuildTexture()
 		// @todo: This will remove the streaming bulk data, which we immediately reload below!
 		// Should ideally avoid this redundant work, but it only happens when we actually have 
 		// to build the texture, which should only ever be once.
-		this->BytesCached = PutDerivedDataInCache(DerivedData, KeySuffix, Texture.GetPathName(), BuildSettingsPerLayer[0].bCubemap || BuildSettingsPerLayer[0].bVolume || BuildSettingsPerLayer[0].bTextureArray);
+		this->BytesCached = PutDerivedDataInCache(DerivedData, KeySuffix);
 
 		if (DerivedData->VTData->Chunks.Num())
 		{
 			const bool bInlineMips = (CacheFlags & ETextureCacheFlags::InlineMips) != 0;
-			bSucceeded = !bInlineMips || DerivedData->TryInlineMipData(BuildSettingsPerLayer[0].LODBiasWithCinematicMips, &Texture);
+			bSucceeded = !bInlineMips || DerivedData->TryInlineMipData(BuildSettingsPerLayer[0].LODBiasWithCinematicMips);
 		}
 		else
 		{
@@ -250,16 +249,8 @@ void FTextureCacheDerivedDataWorker::BuildTexture()
 	else if (bHasValidMip0)
 	{
 		// Only support single Block/Layer here (Blocks and Layers are intended for VT support)
-		if (TextureData.Blocks.Num() > 1)
-		{
-			// This warning can happen if user attempts to import a UDIM without VT enabled
-			UE_LOG(LogTexture, Warning, TEXT("Texture %s was imported as UDIM with %d blocks but VirtualTexturing is not enabled, only the 1001 block will be availiable"),
-				*Texture.GetName(), TextureData.Blocks.Num());
-		}
-
-		// No user-facing way to generated multi-layered textures currently, so this should not occur
-		ensureMsgf(TextureData.Layers.Num() == 1, TEXT("Texture %s has %d layers bu VirtualTexturing is not enabled, only layer0 will be availiable"),
-			*Texture.GetName(), TextureData.Blocks.Num());
+		ensure(TextureData.Blocks.Num() == 1);
+		ensure(TextureData.Layers.Num() == 1);
 
 		check(DerivedData->Mips.Num() == 0);
 		DerivedData->SizeX = 0;
@@ -291,7 +282,6 @@ void FTextureCacheDerivedDataWorker::BuildTexture()
 				NewMip->SizeX = CompressedImage.SizeX;
 				NewMip->SizeY = CompressedImage.SizeY;
 				NewMip->SizeZ = CompressedImage.SizeZ;
-				NewMip->FileRegionType = FFileRegion::SelectType(EPixelFormat(CompressedImage.PixelFormat));
 				check(NewMip->SizeZ == 1 || BuildSettingsPerLayer[0].bVolume || BuildSettingsPerLayer[0].bTextureArray); // Only volume & arrays can have SizeZ != 1
 				NewMip->BulkData.Lock(LOCK_READ_WRITE);
 				check(CompressedImage.RawData.GetTypeSize() == 1);
@@ -319,13 +309,13 @@ void FTextureCacheDerivedDataWorker::BuildTexture()
 			// @todo: This will remove the streaming bulk data, which we immediately reload below!
 			// Should ideally avoid this redundant work, but it only happens when we actually have 
 			// to build the texture, which should only ever be once.
-			this->BytesCached = PutDerivedDataInCache(DerivedData, KeySuffix, Texture.GetPathName(), BuildSettingsPerLayer[0].bCubemap || (BuildSettingsPerLayer[0].bVolume && !GSupportsVolumeTextureStreaming) || (BuildSettingsPerLayer[0].bTextureArray && !GSupportsTexture2DArrayStreaming));
+			this->BytesCached = PutDerivedDataInCache(DerivedData, KeySuffix);
 		}
 
 		if (DerivedData->Mips.Num())
 		{
 			const bool bInlineMips = (CacheFlags & ETextureCacheFlags::InlineMips) != 0;
-			bSucceeded = !bInlineMips || DerivedData->TryInlineMipData(BuildSettingsPerLayer[0].LODBiasWithCinematicMips, &Texture);
+			bSucceeded = !bInlineMips || DerivedData->TryInlineMipData(BuildSettingsPerLayer[0].LODBiasWithCinematicMips);
 		}
 		else
 		{
@@ -419,7 +409,7 @@ void FTextureCacheDerivedDataWorker::DoWork()
 
 	TArray<uint8> RawDerivedData;
 
-	if (!bForceRebuild && GetDerivedDataCacheRef().GetSynchronous(*DerivedData->DerivedDataKey, RawDerivedData, Texture.GetPathName()))
+	if (!bForceRebuild && GetDerivedDataCacheRef().GetSynchronous(*DerivedData->DerivedDataKey, RawDerivedData))
 	{
 		const bool bInlineMips = (CacheFlags & ETextureCacheFlags::InlineMips) != 0;
 		const bool bForDDC = (CacheFlags & ETextureCacheFlags::ForDDCBuild) != 0;
@@ -431,11 +421,11 @@ void FTextureCacheDerivedDataWorker::DoWork()
 		// Load any streaming (not inline) mips that are necessary for our platform.
 		if (bForDDC)
 		{
-			bSucceeded = DerivedData->TryLoadMips(0, nullptr, &Texture);
+			bSucceeded = DerivedData->TryLoadMips(0,NULL);
 		}
 		else if (bInlineMips)
 		{
-			bSucceeded = DerivedData->TryInlineMipData(BuildSettingsPerLayer[0].LODBiasWithCinematicMips, &Texture);
+			bSucceeded = DerivedData->TryInlineMipData(BuildSettingsPerLayer[0].LODBiasWithCinematicMips);
 		}
 		else
 		{

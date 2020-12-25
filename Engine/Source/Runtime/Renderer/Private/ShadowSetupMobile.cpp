@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 ShadowSetupMobile.cpp: Shadow setup implementation for mobile specific features.
@@ -74,6 +74,14 @@ static bool EnableStaticMeshCSMVisibilityState(bool bMovableLight, const FPrimit
 				MobileCSMVisibilityInfo.MobileCSMStaticMeshVisibilityMap[StaticMesh.Id] = MobileCSMVisibilityInfo.MobileNonCSMStaticMeshVisibilityMap[StaticMesh.Id];
 				// CSM excluded list
 				MobileCSMVisibilityInfo.MobileNonCSMStaticMeshVisibilityMap[StaticMesh.Id] = false;
+
+				if (StaticMesh.bRequiresPerElementVisibility)
+				{
+					// CSM enabled list
+					MobileCSMVisibilityInfo.MobileCSMStaticBatchVisibility[StaticMesh.BatchVisibilityId] = MobileCSMVisibilityInfo.MobileNonCSMStaticBatchVisibility[StaticMesh.BatchVisibilityId];
+					// CSM excluded list
+					MobileCSMVisibilityInfo.MobileNonCSMStaticBatchVisibility[StaticMesh.BatchVisibilityId] = 0;
+				}
 				
 				INC_DWORD_STAT_BY(STAT_CSMStaticMeshReceivers, 1);
 				bFoundReceiver = true;
@@ -138,10 +146,10 @@ static bool MobileDetermineStaticMeshesCSMVisibilityStateInner(
 			FVisibleLightViewInfo& VisibleLightViewInfo = View.VisibleLightInfos[LightSceneInfo.Id];
 
 			const FPrimitiveViewRelevance& Relevance = View.PrimitiveViewRelevanceMap[PrimitiveSceneInfo->GetIndex()];
-			const bool bLit = (Relevance.ShadingModelMask != (1 << MSM_Unlit));
+			const bool bLit = (Relevance.ShadingModelMaskRelevance != (1 << MSM_Unlit));
 			bool bCanReceiveDynamicShadow =
 				bLit
-				&& (Relevance.bOpaque || Relevance.bMasked)
+				&& (Relevance.bOpaqueRelevance || Relevance.bMaskedRelevance)
 				&& IsReceiverFunc(PrimitiveBounds.Origin, PrimitiveBounds.BoxExtent, PrimitiveBounds.SphereRadius);
 
 			if (bCanReceiveDynamicShadow)
@@ -161,16 +169,38 @@ static bool MobileDetermineStaticMeshesCSMVisibilityState(FScene* Scene, FViewIn
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_ShadowOctreeTraversal);
 		// Find primitives that are in a shadow frustum in the octree.
-		Scene->PrimitiveOctree.FindElementsWithPredicate([&IsReceiverFunc](const FBoxCenterAndExtent& NodeBounds)
+		for (FScenePrimitiveOctree::TConstIterator<SceneRenderingAllocator> PrimitiveOctreeIt(Scene->PrimitiveOctree);
+		PrimitiveOctreeIt.HasPendingNodes();
+			PrimitiveOctreeIt.Advance())
 		{
-			return IsReceiverFunc(FVector(NodeBounds.Center), FVector(NodeBounds.Extent), NodeBounds.Extent.Size3());
-		},
-		[&bFoundReceiver, Scene, &View, WholeSceneShadow, &IsReceiverFunc](const FPrimitiveSceneInfoCompact& Primitive)
-		{
-			// gather the shadows for this one primitive
-			bFoundReceiver = MobileDetermineStaticMeshesCSMVisibilityStateInner(Scene, View, Primitive, WholeSceneShadow, IsReceiverFunc) || bFoundReceiver;
-		});
+			const FScenePrimitiveOctree::FNode& PrimitiveOctreeNode = PrimitiveOctreeIt.GetCurrentNode();
+			const FOctreeNodeContext& PrimitiveOctreeNodeContext = PrimitiveOctreeIt.GetCurrentContext();
+
+			// Find children of this octree node that may contain relevant primitives.
+			FOREACH_OCTREE_CHILD_NODE(ChildRef)
+			{
+				if (PrimitiveOctreeNode.HasChild(ChildRef))
+				{
+					// Check that the child node is in the frustum for at least one shadow.
+					const FOctreeNodeContext ChildContext = PrimitiveOctreeNodeContext.GetChildContext(ChildRef);
+					bool bCanReceiveDynamicShadow = IsReceiverFunc(FVector(ChildContext.Bounds.Center), FVector(ChildContext.Bounds.Extent), ChildContext.Bounds.Extent.Size3());
+
+					if (bCanReceiveDynamicShadow)
+					{
+						PrimitiveOctreeIt.PushChild(ChildRef);
+					}
+				}
+			}
+
+			// Check all the primitives in this octree node.
+			for (FScenePrimitiveOctree::ElementConstIt NodePrimitiveIt(PrimitiveOctreeNode.GetElementIt()); NodePrimitiveIt; ++NodePrimitiveIt)
+			{
+				// gather the shadows for this one primitive
+				bFoundReceiver = MobileDetermineStaticMeshesCSMVisibilityStateInner(Scene, View, *NodePrimitiveIt, WholeSceneShadow, IsReceiverFunc) || bFoundReceiver;
+			}
+		}
 	}
+
 	return bFoundReceiver;
 }
 

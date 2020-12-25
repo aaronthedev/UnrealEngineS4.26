@@ -63,15 +63,11 @@ class SdfAssetPath;
 /// 
 /// Linking is specified as collections (UsdCollectionAPI) which can
 /// be accessed via GetLightLinkCollection() and GetShadowLinkCollection().
-/// Note that these collections have their includeRoot set to true,
-/// so that lights will illuminate and cast shadows from all objects
-/// by default.  To illuminate only a specific set of objects, there
-/// are two options.  One option is to modify the collection paths
-/// to explicitly exclude everything else, assuming it is known;
-/// the other option is to set includeRoot to false and explicitly
-/// include the desired objects.  These are complementary approaches
-/// that may each be preferable depending on the scenario and how
-/// to best express the intent of the light setup.
+/// Note however that there are extra semantics in how UsdLuxLight
+/// uses its collections: if a collection is empty, the light is treated
+/// as linked to <i>all</i> geometry for the respective purpose.
+/// UsdCollectionAPI and UsdCollectionAPI::MembershipQuery are unaware
+/// of this light-specific interpretation.
 /// 
 ///
 class UsdLuxLight : public UsdGeomXformable
@@ -129,7 +125,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDLUX_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -141,7 +137,7 @@ private:
 
     // override SchemaBase virtuals.
     USDLUX_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -149,11 +145,10 @@ public:
     // --------------------------------------------------------------------- //
     /// Scales the power of the light linearly.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float intensity = 1` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 1.0
     USDLUX_API
     UsdAttribute GetIntensityAttr() const;
 
@@ -173,11 +168,10 @@ public:
     /// of 2 (similar to an F-stop control over exposure).  The result
     /// is multiplied against the intensity.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float exposure = 0` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 0.0
     USDLUX_API
     UsdAttribute GetExposureAttr() const;
 
@@ -196,11 +190,10 @@ public:
     /// A multiplier for the effect of this light on the diffuse
     /// response of materials.  This is a non-physical control.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float diffuse = 1` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 1.0
     USDLUX_API
     UsdAttribute GetDiffuseAttr() const;
 
@@ -219,11 +212,10 @@ public:
     /// A multiplier for the effect of this light on the specular
     /// response of materials.  This is a non-physical control.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float specular = 1` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 1.0
     USDLUX_API
     UsdAttribute GetSpecularAttr() const;
 
@@ -244,11 +236,10 @@ public:
     /// of the light, by causing the power to not vary with the area or
     /// angular size of the light.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `bool normalize = 0` |
-    /// | C++ Type | bool |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Bool |
+    /// \n  C++ Type: bool
+    /// \n  Usd Type: SdfValueTypeNames->Bool
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: False
     USDLUX_API
     UsdAttribute GetNormalizeAttr() const;
 
@@ -266,11 +257,10 @@ public:
     // --------------------------------------------------------------------- //
     /// The color of emitted light, in energy-linear terms.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `color3f color = (1, 1, 1)` |
-    /// | C++ Type | GfVec3f |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Color3f |
+    /// \n  C++ Type: GfVec3f
+    /// \n  Usd Type: SdfValueTypeNames->Color3f
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: (1, 1, 1)
     USDLUX_API
     UsdAttribute GetColorAttr() const;
 
@@ -288,11 +278,10 @@ public:
     // --------------------------------------------------------------------- //
     /// Enables using colorTemperature.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `bool enableColorTemperature = 0` |
-    /// | C++ Type | bool |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Bool |
+    /// \n  C++ Type: bool
+    /// \n  Usd Type: SdfValueTypeNames->Bool
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: False
     USDLUX_API
     UsdAttribute GetEnableColorTemperatureAttr() const;
 
@@ -316,11 +305,10 @@ public:
     /// computed result multiplies against the color attribute.
     /// See UsdLuxBlackbodyTemperatureAsRgb().
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float colorTemperature = 6500` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 6500.0
     USDLUX_API
     UsdAttribute GetColorTemperatureAttr() const;
 

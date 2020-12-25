@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Lightmass.h: lightmass import/export implementation.
@@ -55,7 +55,6 @@
 #include "ComponentRecreateRenderStateContext.h"
 #include "EditorLevelUtils.h"
 #include "Misc/MessageDialog.h"
-#include "Modules/ModuleManager.h"
 
 extern FSwarmDebugOptions GSwarmDebugOptions;
 
@@ -394,7 +393,6 @@ void FLightmassProcessor::SwarmCallback( NSwarm::FMessage* CallbackMessage, void
 						TList<FGuid>* NewElement = new TList<FGuid>(TaskStateMessage->TaskGuid, NULL);
 						Processor->CompletedVolumetricLightmapTasks.AddElement( NewElement );
 						FPlatformAtomics::InterlockedIncrement( &Processor->NumCompletedTasks );
-						FPlatformAtomics::InterlockedIncrement( &Processor->NumCompletedVolumetricLightmapTasks );
 					}
 					else if (TaskStateMessage->TaskGuid == MeshAreaLightDataGuid)
 					{
@@ -1039,7 +1037,6 @@ void FLightmassExporter::WriteLights( int32 Channel )
 		SunLightAtmosphereTransmittance[Index] = FLinearColor::White;
 	}
 
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	// Compute a mapping between directional light and trnasmittance to apply. For each AtmosphereSunLightIndex, the brightest lights is kept.
 	if ((AtmosphericFogComponent && AtmosphericFogComponent->bAtmosphereAffectsSunIlluminance) || SkyAtmosphereComponent)
 	{
@@ -1071,7 +1068,6 @@ void FLightmassExporter::WriteLights( int32 Channel )
 			}
 		}
 	}
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	// Export directional lights.
 	for ( int32 LightIndex = 0; LightIndex < DirectionalLights.Num(); ++LightIndex )
@@ -2922,8 +2918,7 @@ void FLightmassProcessor::IssueStaticShadowDepthMapTask(const ULightComponent* L
 		}
 		else
 		{
-			UE_LOG(LogLightmassSolver, Warning,  TEXT("Error, AddTask for StaticShadowDepthMaps failed with error code %d"), ErrorCode );
-			bProcessingFailed = true;
+			UE_LOG(LogLightmassSolver, Log,  TEXT("Error, AddTask for StaticShadowDepthMaps failed with error code %d"), ErrorCode );
 		}
 	}
 }
@@ -3164,7 +3159,6 @@ bool FLightmassProcessor::BeginRun()
 	if( ErrorCode < 0 )
 	{
 		UE_LOG(LogLightmassSolver, Log,  TEXT("Error, BeginJobSpecification failed with error code %d"), ErrorCode );
-		bProcessingFailed = true;
 	}
 
 	// Count the number of tasks given to Swarm
@@ -3207,8 +3201,7 @@ bool FLightmassProcessor::BeginRun()
 				}
 				else
 				{
-					UE_LOG(LogLightmassSolver, Warning,  TEXT("Error, AddTask failed with error code %d"), ErrorCode );
-					bProcessingFailed = true;
+					UE_LOG(LogLightmassSolver, Log,  TEXT("Error, AddTask failed with error code %d"), ErrorCode );
 				}
 			}
 		}
@@ -3226,8 +3219,7 @@ bool FLightmassProcessor::BeginRun()
 			}
 			else
 			{
-				UE_LOG(LogLightmassSolver, Warning,  TEXT("Error, AddTask failed with error code %d"), ErrorCode );
-				bProcessingFailed = true;
+				UE_LOG(LogLightmassSolver, Log,  TEXT("Error, AddTask failed with error code %d"), ErrorCode );
 			}
 		}
 
@@ -3242,7 +3234,6 @@ bool FLightmassProcessor::BeginRun()
 			else
 			{
 				UE_LOG(LogLightmassSolver, Log,  TEXT("Error, AddTask failed with error code %d"), ErrorCode );
-				bProcessingFailed = true;
 			}
 		}
 
@@ -3384,7 +3375,7 @@ bool FLightmassProcessor::Update()
 	bool bIsFinished = false;
 	if ( !bQuitReceived && !bProcessingFailed && !GEditor->GetMapBuildCancelled() )
 	{
-		bool bAllTaskAreComplete = (FPlatformAtomics::AtomicRead(&NumCompletedTasks) == NumTotalSwarmTasks ? true : false);
+		bool bAllTaskAreComplete = (NumCompletedTasks == NumTotalSwarmTasks ? true : false);
 
 #if USE_LOCAL_SWARM_INTERFACE
 		if (IsRunningCommandlet())

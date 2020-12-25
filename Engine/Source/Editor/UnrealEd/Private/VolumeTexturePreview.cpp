@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*==============================================================================
 	VolumeTexturePreview.h: Implementation for previewing Volume textures.
@@ -44,7 +44,6 @@ UNREALED_API void GetBestFitForNumberOfTiles(int32 InSize, int32& OutNumTilesX, 
  */
 class FSimpleElementVolumeTexturePreviewPS : public FGlobalShader
 {
-	DECLARE_INLINE_TYPE_LAYOUT(FSimpleElementVolumeTexturePreviewPS, NonVirtual);
 public:
 
 	FSimpleElementVolumeTexturePreviewPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
@@ -74,59 +73,74 @@ public:
 	
 	void SetParameters(FRHICommandList& RHICmdList, const FTexture* TextureValue, int32 SizeZ, const FMatrix& ColorWeightsValue, float GammaValue, float MipLevel, float Opacity, const FRotator& TraceOrientation)
 	{
-		FRHIPixelShader* ShaderRHI = RHICmdList.GetBoundPixelShader();
-
-		SetTextureParameter(RHICmdList, ShaderRHI, InTexture, InTextureSampler, TextureValue);
+		SetTextureParameter(RHICmdList, GetPixelShader(), InTexture, InTextureSampler, TextureValue);
 		if (GEditor && GEditor->Bad)
 		{
-			SetTextureParameter(RHICmdList, ShaderRHI, BadTexture, BadTextureSampler, GEditor->Bad->Resource);
+			SetTextureParameter(RHICmdList, GetPixelShader(), BadTexture, BadTextureSampler, GEditor->Bad->Resource);
 		}
 		else
 		{
-			SetTextureParameter(RHICmdList, ShaderRHI, BadTexture, GWhiteTexture->TextureRHI);
+			SetTextureParameter(RHICmdList, GetPixelShader(), BadTexture, GWhiteTexture->TextureRHI);
 		}
-		SetShaderValue(RHICmdList, ShaderRHI,ColorWeights,ColorWeightsValue);
+		SetShaderValue(RHICmdList, GetPixelShader(),ColorWeights,ColorWeightsValue);
 
 		const int32 MipSizeZ = MipLevel >= 0 ? FMath::Max<int32>(SizeZ >> FMath::FloorToInt(MipLevel), 1) : SizeZ;
 		FVector4 PackedParametersValue(GammaValue, MipLevel, (float)MipSizeZ, Opacity);
-		SetShaderValue(RHICmdList, ShaderRHI, PackedParameters, PackedParametersValue);
+		SetShaderValue(RHICmdList, GetPixelShader(), PackedParameters, PackedParametersValue);
 
 		int32 NumTilesX = 0;
 		int32 NumTilesY = 0;
 		GetBestFitForNumberOfTiles(MipSizeZ, NumTilesX, NumTilesY);
-		SetShaderValue(RHICmdList, ShaderRHI, NumTilesPerSideParameter, FVector4((float)NumTilesX, (float)NumTilesY, 0 ,0));
+		SetShaderValue(RHICmdList, GetPixelShader(), NumTilesPerSideParameter, FVector4((float)NumTilesX, (float)NumTilesY, 0 ,0));
 
-		SetShaderValue(RHICmdList, ShaderRHI,TextureComponentReplicate,TextureValue->bGreyScaleFormat ? FLinearColor(1,0,0,0) : FLinearColor(0,0,0,0));
-		SetShaderValue(RHICmdList, ShaderRHI,TextureComponentReplicateAlpha,TextureValue->bGreyScaleFormat ? FLinearColor(1,0,0,0) : FLinearColor(0,0,0,1));
+		SetShaderValue(RHICmdList, GetPixelShader(),TextureComponentReplicate,TextureValue->bGreyScaleFormat ? FLinearColor(1,0,0,0) : FLinearColor(0,0,0,0));
+		SetShaderValue(RHICmdList, GetPixelShader(),TextureComponentReplicateAlpha,TextureValue->bGreyScaleFormat ? FLinearColor(1,0,0,0) : FLinearColor(0,0,0,1));
 
 		const FVector TextureDimension((float)TextureValue->GetSizeX(), (float)TextureValue->GetSizeY(), (float)SizeZ);
 		const float OneOverMinDimension = 1.f / FMath::Max(TextureDimension.GetMin(), 1.f);
-		SetShaderValue(RHICmdList, ShaderRHI, TraceVolumeScalingParameter, FVector4(
+		SetShaderValue(RHICmdList, GetPixelShader(), TraceVolumeScalingParameter, FVector4(
 				TextureDimension.X * OneOverMinDimension, 
 				TextureDimension.Y * OneOverMinDimension, 
 				TextureDimension.Z * OneOverMinDimension, 
 				TextureDimension.GetMax() * OneOverMinDimension * .5f) // Extent
 			);
 
-		SetShaderValue(RHICmdList, ShaderRHI, TextureDimensionParameter, FVector(TextureDimension.X, TextureDimension.Y, TextureDimension.Z));
+		SetShaderValue(RHICmdList, GetPixelShader(), TextureDimensionParameter, FVector(TextureDimension.X, TextureDimension.Y, TextureDimension.Z));
 
-		SetShaderValue(RHICmdList, ShaderRHI, TraceViewMatrixParameter, FMatrix(FRotationMatrix::Make(TraceOrientation)));
+		SetShaderValue(RHICmdList, GetPixelShader(), TraceViewMatrixParameter, FMatrix(FRotationMatrix::Make(TraceOrientation)));
+	}
+
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << InTexture;
+		Ar << InTextureSampler;
+		Ar << BadTexture;
+		Ar << BadTextureSampler;
+		Ar << TextureComponentReplicate;
+		Ar << TextureComponentReplicateAlpha;
+		Ar << ColorWeights;
+		Ar << PackedParameters;
+		Ar << NumTilesPerSideParameter;
+		Ar << TraceVolumeScalingParameter;
+		Ar << TextureDimensionParameter;
+		Ar << TraceViewMatrixParameter;
+		return bShaderHasOutdatedParameters;
 	}
 
 private:
-	
-	LAYOUT_FIELD(FShaderResourceParameter, InTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, InTextureSampler);
-	LAYOUT_FIELD(FShaderResourceParameter, BadTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, BadTextureSampler);
-	LAYOUT_FIELD(FShaderParameter, TextureComponentReplicate);
-	LAYOUT_FIELD(FShaderParameter, TextureComponentReplicateAlpha);
-	LAYOUT_FIELD(FShaderParameter, ColorWeights);
-	LAYOUT_FIELD(FShaderParameter, PackedParameters);
-	LAYOUT_FIELD(FShaderParameter, NumTilesPerSideParameter);
-	LAYOUT_FIELD(FShaderParameter, TraceVolumeScalingParameter);
-	LAYOUT_FIELD(FShaderParameter, TextureDimensionParameter);
-	LAYOUT_FIELD(FShaderParameter, TraceViewMatrixParameter);
+	FShaderResourceParameter InTexture;
+	FShaderResourceParameter InTextureSampler;
+	FShaderResourceParameter BadTexture;
+	FShaderResourceParameter BadTextureSampler;
+	FShaderParameter TextureComponentReplicate;
+	FShaderParameter TextureComponentReplicateAlpha;
+	FShaderParameter ColorWeights; 
+	FShaderParameter PackedParameters;
+	FShaderParameter NumTilesPerSideParameter;
+	FShaderParameter TraceVolumeScalingParameter;
+	FShaderParameter TextureDimensionParameter;
+	FShaderParameter TraceViewMatrixParameter;
 };
 
 class FVolumeTextureTilePreviewPS : public FSimpleElementVolumeTexturePreviewPS
@@ -161,22 +175,23 @@ void FBatchedElementVolumeTexturePreviewParameters::BindShaders(
 {
 	TShaderMapRef<FSimpleElementVS> VertexShader(GetGlobalShaderMap(InFeatureLevel));
 
-	TShaderRef<FSimpleElementVolumeTexturePreviewPS> PixelShader ;
+	FSimpleElementVolumeTexturePreviewPS* PixelShader = nullptr;
+	
 	if (bViewModeAsDepthSlices)
 	{
 		TShaderMapRef<FVolumeTextureTilePreviewPS> TileShader(GetGlobalShaderMap(InFeatureLevel));
-		PixelShader = TileShader;
+		PixelShader = *TileShader;
 	}
 	else
 	{
 		TShaderMapRef<FVolumeTextureTracePreviewPS> TileShader(GetGlobalShaderMap(InFeatureLevel));
-		PixelShader = TileShader;
+		PixelShader = *TileShader;
 	}
 
 
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GSimpleElementVertexDeclaration.VertexDeclarationRHI;
-	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(PixelShader);
 	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 	if (!bViewModeAsDepthSlices)

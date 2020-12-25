@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -69,14 +69,6 @@ struct UNREALED_API FBatchReplaceInstancesOfClassParameters
 	const TSet<UObject*>* InstancesThatShouldUseOldClass = nullptr;
 
 	bool bArchetypesAreUpToDate = false; 
-	
-	/** 
-	 * Blueprints reuses its UClass* from compile to compile, but it's more 
-	 * intuitive to just replace a UClass* with a new instance (e.g. from a 
-	 * package reload). This flag tells the reinstancer to replace references
-	 * to old classes with references to new classes.
-	 */
-	bool bReplaceReferencesToOldClasses = false;
 };
 
 class UNREALED_API FBlueprintCompileReinstancer : public TSharedFromThis<FBlueprintCompileReinstancer>, public FGCObject
@@ -107,7 +99,7 @@ protected:
 	TArray<UBlueprint*> Dependencies;
 
 	/** Mappings from old fields before recompilation to their new equivalents */
-	TMap<FName, FProperty*> PropertyMap;
+	TMap<FName, UProperty*> PropertyMap;
 	TMap<FName, UFunction*> FunctionMap;
 
 	/** Whether or not this resinstancer has already reinstanced  */
@@ -156,7 +148,7 @@ public:
 	void SaveClassFieldMapping(UClass* InClassToReinstance);
 
 	/** Helper to gather mappings from the old class's fields to the new class's version */
-	void GenerateFieldMappings(TMap<FFieldVariant, FFieldVariant>& FieldMapping);
+	void GenerateFieldMappings(TMap<UObject*, UObject*>& FieldMapping);
 
 	/** Reinstances all objects in the ObjectReinstancingMap */
 	void ReinstanceObjects(bool bForceAlwaysReinstance = false);
@@ -231,5 +223,5 @@ protected:
 
 private:
 	/** Handles the work of ReplaceInstancesOfClass, handling both normal replacement of instances and batch */
-	static void ReplaceInstancesOfClass_Inner(TMap<UClass*, UClass*>& InOldToNewClassMap, UObject* InOriginalCDO, TSet<UObject*>* ObjectsThatShouldUseOldStuff = NULL, bool bClassObjectReplaced = false, bool bPreserveRootComponent = true, bool bArchetypesAreUpToDate = false, const TSet<UObject*>* InstancesThatShouldUseOldClass = nullptr, bool bReplaceReferencesToOldClasses = false);
+	static void ReplaceInstancesOfClass_Inner(TMap<UClass*, UClass*>& InOldToNewClassMap, UObject* InOriginalCDO, TSet<UObject*>* ObjectsThatShouldUseOldStuff = NULL, bool bClassObjectReplaced = false, bool bPreserveRootComponent = true, bool bArchetypesAreUpToDate = false, const TSet<UObject*>* InstancesThatShouldUseOldClass = nullptr);
 };

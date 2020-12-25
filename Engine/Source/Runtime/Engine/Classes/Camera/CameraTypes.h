@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,8 +8,6 @@
 #include "EngineDefines.h"
 #include "Engine/Scene.h"
 #include "CameraTypes.generated.h"
-
-class UCameraShakeSourceComponent;
 
 //@TODO: Document
 UENUM()
@@ -23,27 +21,17 @@ namespace ECameraProjectionMode
 }
 
 UENUM()
-enum class ECameraShakePlaySpace : uint8
-{
-	/** This anim is applied in camera space. */
-	CameraLocal,
-	/** This anim is applied in world space. */
-	World,
-	/** This anim is applied in a user-specified space (defined by UserPlaySpaceMatrix). */
-	UserDefined,
-};
-
-/** Backwards compatible name for the camera shake play space enum, for C++ code. */
 namespace ECameraAnimPlaySpace
 {
-	UE_DEPRECATED(4.26, "Please use ECameraShakePlaySpace")
-	typedef ECameraShakePlaySpace Type;
-	UE_DEPRECATED(4.26, "Please use ECameraShakePlaySpace")
-	static const ECameraShakePlaySpace CameraLocal = ECameraShakePlaySpace::CameraLocal;
-	UE_DEPRECATED(4.26, "Please use ECameraShakePlaySpace")
-	static const ECameraShakePlaySpace World = ECameraShakePlaySpace::World;
-	UE_DEPRECATED(4.26, "Please use ECameraShakePlaySpace")
-	static const ECameraShakePlaySpace UserDefined = ECameraShakePlaySpace::UserDefined;
+	enum Type
+	{
+ 		/** This anim is applied in camera space. */
+ 		CameraLocal,
+ 		/** This anim is applied in world space. */
+ 		World,
+ 		/** This anim is applied in a user-specified space (defined by UserPlaySpaceMatrix). */
+ 		UserDefined,
+ 	};
 }
 
 USTRUCT(BlueprintType)
@@ -59,11 +47,11 @@ struct FMinimalViewInfo
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Camera)
 	FRotator Rotation;
 
-	/** The horizontal field of view (in degrees) in perspective mode (ignored in orthographic mode). */
+	/** The field of view (in degrees) in perspective mode (ignored in Orthographic mode) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Camera)
 	float FOV;
 
-	/** The originally desired horizontal field of view before any adjustments to account for different aspect ratios */
+	/** This is the originally desired field of view before any adjustments to account for different aspect ratios */
 	UPROPERTY(Transient)
 	float DesiredFOV;
 

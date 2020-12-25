@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -185,7 +185,11 @@ public partial class Project : CommandUtils
 			string LookFor = "Bringing up level for play took";
 			bool bCommandlet = false;
 
-			if (Params.RunAutomationTest != "" || Params.RunAutomationTests)
+			if (Params.RunAutomationTest != "")
+			{
+				LookFor = "Automation Test Succeeded";
+			}
+			else if (Params.RunAutomationTests)
 			{
 				LookFor = "Automation Test Queue Empty";
 			}
@@ -388,7 +392,11 @@ public partial class Project : CommandUtils
 			{
 				LookFor = "Welcomed by server";
 			}
-			else if (Params.RunAutomationTest != "" || Params.RunAutomationTests)
+			else if (Params.RunAutomationTest != "")
+			{
+				LookFor = "Automation Test Succeeded";
+			}
+			else if (Params.RunAutomationTests)
 			{
 				LookFor = "Automation Test Queue Empty";
 			}
@@ -782,6 +790,10 @@ public partial class Project : CommandUtils
 				{
 					TempCmdLine += "-signedpak ";
 				}
+				else
+				{
+					TempCmdLine += "-pak ";
+				}
 			}
 			else if (!Params.Stage)
 			{
@@ -826,11 +838,6 @@ public partial class Project : CommandUtils
 		{
 			TempCmdLine += "-buildmachine ";
 		}
-		if (Params.HasDDCGraph)
-		{
-			TempCmdLine += "-ddc=" + Params.DDCGraph +" ";
-		}
-
 		if (Params.CrashIndex > 0)
 		{
 			int RealIndex = Params.CrashIndex - 1;
@@ -978,13 +985,11 @@ public partial class Project : CommandUtils
 			{
 				Args += " -signedpak";
 			}
+			else
+			{
+				Args += " -pak";
+			}
 		}
-
-		if (Params.HasDDCGraph)
-		{
-			Args += " -ddc=" + Params.DDCGraph;
-		}
-
 		if (IsBuildMachine || Params.Unattended)
 		{
 			Args += " -buildmachine";

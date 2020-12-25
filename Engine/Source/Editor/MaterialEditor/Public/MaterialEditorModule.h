@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -61,6 +61,8 @@ public:
 	/** Delegate to be called when a Material Instance Editor is created, for toolbar, tab, and menu extension **/
 	DECLARE_EVENT_OneParam(IMaterialEditorModule, FMaterialInstanceEditorOpenedEvent, TWeakPtr<IMaterialEditor>);
 	virtual FMaterialInstanceEditorOpenedEvent& OnMaterialInstanceEditorOpened() { return MaterialInstanceEditorOpenedEvent; };
+
+	virtual bool MaterialLayersEnabled() = 0;
 
 	/**
 	 * Singleton-like access to this module's interface.  This is just for convenience!

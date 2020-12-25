@@ -1,11 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Operations/SimpleHoleFiller.h"
 #include "DynamicMeshEditor.h"
-#include "CompGeom/PolygonTriangulation.h"
-
-
-
 
 bool FSimpleHoleFiller::Fill(int GroupID)
 {
@@ -30,22 +26,6 @@ bool FSimpleHoleFiller::Fill(int GroupID)
 
 	// [TODO] 4-case? could check nbr normals to figure out best internal edge...
 
-	bool bOK = false;
-	if (FillType == EFillType::PolygonEarClipping)
-	{
-		bOK = Fill_EarClip(GroupID);
-	}
-	else
-	{
-		bOK = Fill_Fan(GroupID);
-	}
-
-	return bOK;
-}
-
-
-bool FSimpleHoleFiller::Fill_Fan(int GroupID)
-{
 	// compute centroid
 	FVector3d c = FVector3d::Zero();
 	for (int i = 0; i < Loop.GetVertexCount(); ++i)
@@ -68,88 +48,5 @@ bool FSimpleHoleFiller::Fill_Fan(int GroupID)
 	}
 	NewTriangles = AddFanResult.NewTriangles;
 
-	return true;
-}
-
-
-
-
-bool FSimpleHoleFiller::Fill_EarClip(int GroupID)
-{
-	TArray<FVector3d> Vertices;
-	int32 NumVertices = Loop.GetVertexCount();
-	for (int32 i = 0; i < NumVertices; ++i)
-	{
-		Vertices.Add(Mesh->GetVertex(Loop.Vertices[i]));
-	}
-
-	TArray<FIndex3i> Triangles;
-	PolygonTriangulation::TriangulateSimplePolygon(Vertices, Triangles);
-
-	for (FIndex3i PolyTriangle : Triangles)
-	{
-		FIndex3i MeshTriangle(
-			Loop.Vertices[PolyTriangle.A],
-			Loop.Vertices[PolyTriangle.C],
-			Loop.Vertices[PolyTriangle.B]);  // Reversing orientation here!!
-		int32 NewTriangle = Mesh->AppendTriangle(MeshTriangle, GroupID);
-		if (NewTriangle >= 0)
-		{
-			NewTriangles.Add(NewTriangle);
-		}
-	}
-
-	return true;
-}
-
-bool FSimpleHoleFiller::UpdateAttributes(TArray<FMeshRegionBoundaryLoops::VidOverlayMap<FVector2f>>& VidUVMaps)
-{
-	if (!Mesh->HasAttributes() || NewTriangles.Num() == 0)
-	{
-		return false;
-	}
-
-	FDynamicMeshAttributeSet* Attributes = Mesh->Attributes();
-
-	check(VidUVMaps.Num() == Attributes->NumUVLayers());
-	for (int i = 0; i < Attributes->NumUVLayers(); ++i)
-	{
-		FDynamicMeshUVOverlay* UVLayer = Attributes->GetUVLayer(i);
-		FMeshRegionBoundaryLoops::VidOverlayMap<FVector2f>& UVMap = VidUVMaps[i];
-
-		for (int32 Tid : NewTriangles)
-		{
-			FIndex3i TriVids = Mesh->GetTriangle(Tid);
-			FIndex3i TriUVs;
-			for (int32 j = 0; j < 3; ++j)
-			{
-				int32 Vid = TriVids[j];
-
-				if (!UVMap.Contains(Vid))
-				{
-					return false;
-				}
-
-				FMeshRegionBoundaryLoops::ElementIDAndValue<FVector2f>& VertUVInfo = UVMap[Vid];
-				if (VertUVInfo.Key == IndexConstants::InvalidID)
-				{
-					TriUVs[j] = UVLayer->AppendElement(VertUVInfo.Value);
-					VertUVInfo.Key = TriUVs[j];
-				}
-				else if (UVLayer->IsElement(VertUVInfo.Key))
-				{
-					TriUVs[j] = VertUVInfo.Key;
-				}
-				else
-				{
-					return false;
-				}
-			}
-			UVLayer->SetTriangle(Tid, TriUVs);
-		}
-	}
-
-	FDynamicMeshEditor MeshEditor(Mesh);
-	MeshEditor.SetTriangleNormals(NewTriangles);
 	return true;
 }

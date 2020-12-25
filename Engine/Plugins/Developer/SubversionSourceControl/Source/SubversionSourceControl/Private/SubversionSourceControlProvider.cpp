@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SubversionSourceControlProvider.h"
 #include "HAL/PlatformProcess.h"
@@ -328,7 +328,7 @@ bool FSubversionSourceControlProvider::TestConnection(const FString& RepositoryN
 	{
 		FFormatNamedArguments Arguments;
 		Arguments.Add( TEXT("RepositoryName"), FText::FromString(RepositoryName) );
-		SourceControlLog.Info(FText::Format(LOCTEXT("ConnectionSuccess", "Successfully connected to repository {RepositoryName}"), Arguments));
+		SourceControlLog.Warning(FText::Format(LOCTEXT("ConnectionSuccess", "Successfully connected to repository {RepositoryName}"), Arguments));
 	}
 	else
 	{

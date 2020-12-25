@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/GameViewportClient.h"
 #include "HAL/FileManager.h"
@@ -61,7 +61,8 @@
 #include "IImageWrapper.h"
 #include "IImageWrapperModule.h"
 #include "HAL/PlatformApplicationMisc.h"
-#include "CustomStaticScreenPercentage.h"
+
+CSV_DEFINE_CATEGORY(View, true);
 
 #if WITH_EDITOR
 #include "Settings/LevelEditorPlaySettings.h"
@@ -115,92 +116,43 @@ static TAutoConsoleVariable<float> CVarSecondaryScreenPercentage( // TODO: make 
 	TEXT(" 1: override secondary screen percentage."),
 	ECVF_Default);
 
-#if CSV_PROFILER
-struct FCsvLocalPlayer
-{
-	FCsvLocalPlayer()
-	{
-		CategoryIndex = INDEX_NONE;
-		PrevViewOrigin = FVector::ZeroVector;
-		LastFrame = 0;
-		PrevTime = 0.0;
-	}
 
-	uint32 CategoryIndex;
-	uint32 LastFrame;
-	double PrevTime;
-	FVector PrevViewOrigin;
-};
-static TMap<uint32, FCsvLocalPlayer> GCsvLocalPlayers;
-#endif
-
-void UGameViewportClient::EnableCsvPlayerStats(int32 LocalPlayerCount)
+void UGameViewportClient::UpdateCsvCameraStats(const FSceneView* View)
 {
 #if CSV_PROFILER
-	if (GCsvLocalPlayers.Num() < LocalPlayerCount)
+	if (!View)
 	{
-		for (int PlayerIndex = GCsvLocalPlayers.Num(); PlayerIndex < LocalPlayerCount; PlayerIndex++)
-		{
-			FCsvLocalPlayer& CsvData = GCsvLocalPlayers.Add(PlayerIndex);
-			uint32 index = GCsvLocalPlayers.Num() - 1;
-			FString CategoryName = (PlayerIndex == 0) ? TEXT("View") : FString::Printf(TEXT("View%d"), index);
-			CsvData.CategoryIndex = FCsvProfiler::Get()->RegisterCategory(CategoryName, (PlayerIndex == 0) ? true : false, false);
-		}
+		return;
 	}
+	static uint32 PrevFrameNumber = GFrameNumber;
+	static double PrevTime = 0.0;
+	static FVector PrevViewOrigin = FVector(ForceInitToZero);
 
-	int32 PlayerIndex = 0;
-	for (auto& KV : GCsvLocalPlayers)
+	// TODO: support multiple views/view families, e.g for splitscreen. For now, we just output stats for the first one.
+	if (GFrameNumber != PrevFrameNumber)
 	{
-		FCsvLocalPlayer& value = KV.Value;
-		FCsvProfiler::Get()->EnableCategoryByIndex(value.CategoryIndex, PlayerIndex < LocalPlayerCount);
-		PlayerIndex++;
-	}
-#endif
-}
+		FVector ViewOrigin = View->ViewMatrices.GetViewOrigin();
+		FVector ForwardVec = View->ViewMatrices.GetOverriddenTranslatedViewMatrix().GetColumn(2);
+		FVector UpVec = View->ViewMatrices.GetOverriddenTranslatedViewMatrix().GetColumn(1);
+		FVector Diff = ViewOrigin - PrevViewOrigin;
+		double CurrentTime = FPlatformTime::Seconds();
+		double DeltaT = CurrentTime - PrevTime;
+		FVector Velocity = Diff / float(DeltaT);
+		float CameraSpeed = Velocity.Size();
+		PrevViewOrigin = ViewOrigin;
+		PrevTime = CurrentTime;
+		PrevFrameNumber = GFrameNumber;
 
-void UGameViewportClient::UpdateCsvCameraStats(const TMap<ULocalPlayer*, FSceneView*>& PlayerViewMap)
-{
-#if CSV_PROFILER
-
-	for (TMap<ULocalPlayer*, FSceneView*>::TConstIterator It(PlayerViewMap); It; ++It)
-	{
-		ULocalPlayer* LocalPlayer = It.Key();
-		FSceneView* SceneView = It.Value();
-
-		uint32 PlayerIndex = ConvertLocalPlayerToGamePlayerIndex(LocalPlayer);
-		if (PlayerIndex != INDEX_NONE)
-		{
-			FCsvLocalPlayer& CsvData = GCsvLocalPlayers.FindOrAdd(PlayerIndex);
-			if (CsvData.CategoryIndex == INDEX_NONE)
-			{
-				uint32 index = GCsvLocalPlayers.Num() - 1;
-				FString CategoryName = LocalPlayer->IsPrimaryPlayer() ? TEXT("View") : FString::Printf(TEXT("View%d"), index);
-				CsvData.CategoryIndex = FCsvProfiler::Get()->RegisterCategory(CategoryName, (index == 0) ? true : false, false);
-			}
-
-			FVector ViewOrigin = SceneView->ViewMatrices.GetViewOrigin();
-			FVector ForwardVec = SceneView->ViewMatrices.GetOverriddenTranslatedViewMatrix().GetColumn(2);
-			FVector UpVec = SceneView->ViewMatrices.GetOverriddenTranslatedViewMatrix().GetColumn(1);
-			FVector Diff = ViewOrigin - CsvData.PrevViewOrigin;
-			double CurrentTime = FPlatformTime::Seconds();
-			double DeltaT = CurrentTime - CsvData.PrevTime;
-			FVector Velocity = Diff / float(DeltaT);
-			float CameraSpeed = Velocity.Size();
-			CsvData.PrevViewOrigin = ViewOrigin;
-			CsvData.LastFrame = GFrameNumber;
-			CsvData.PrevTime = CurrentTime;
-
-			FCsvProfiler::RecordCustomStat("PosX", CsvData.CategoryIndex, ViewOrigin.X, ECsvCustomStatOp::Set);
-			FCsvProfiler::RecordCustomStat("PosY", CsvData.CategoryIndex, ViewOrigin.Y, ECsvCustomStatOp::Set);
-			FCsvProfiler::RecordCustomStat("PosZ", CsvData.CategoryIndex, ViewOrigin.Z, ECsvCustomStatOp::Set);
-			FCsvProfiler::RecordCustomStat("ForwardX", CsvData.CategoryIndex, ForwardVec.X, ECsvCustomStatOp::Set);
-			FCsvProfiler::RecordCustomStat("ForwardY", CsvData.CategoryIndex, ForwardVec.Y, ECsvCustomStatOp::Set);
-			FCsvProfiler::RecordCustomStat("ForwardZ", CsvData.CategoryIndex, ForwardVec.Z, ECsvCustomStatOp::Set);
-			FCsvProfiler::RecordCustomStat("UpX", CsvData.CategoryIndex, UpVec.X, ECsvCustomStatOp::Set);
-			FCsvProfiler::RecordCustomStat("UpY", CsvData.CategoryIndex, UpVec.Y, ECsvCustomStatOp::Set);
-			FCsvProfiler::RecordCustomStat("UpZ", CsvData.CategoryIndex, UpVec.Z, ECsvCustomStatOp::Set);
-			FCsvProfiler::RecordCustomStat("Speed", CsvData.CategoryIndex, CameraSpeed, ECsvCustomStatOp::Set);
-		}
+		CSV_CUSTOM_STAT(View, PosX, View->ViewMatrices.GetViewOrigin().X, ECsvCustomStatOp::Set);
+		CSV_CUSTOM_STAT(View, PosY, View->ViewMatrices.GetViewOrigin().Y, ECsvCustomStatOp::Set);
+		CSV_CUSTOM_STAT(View, PosZ, View->ViewMatrices.GetViewOrigin().Z, ECsvCustomStatOp::Set);
+		CSV_CUSTOM_STAT(View, ForwardX, ForwardVec.X, ECsvCustomStatOp::Set);
+		CSV_CUSTOM_STAT(View, ForwardY, ForwardVec.Y, ECsvCustomStatOp::Set);
+		CSV_CUSTOM_STAT(View, ForwardZ, ForwardVec.Z, ECsvCustomStatOp::Set);
+		CSV_CUSTOM_STAT(View, UpX, UpVec.X, ECsvCustomStatOp::Set);
+		CSV_CUSTOM_STAT(View, UpY, UpVec.Y, ECsvCustomStatOp::Set);
+		CSV_CUSTOM_STAT(View, UpZ, UpVec.Z, ECsvCustomStatOp::Set);
+		CSV_CUSTOM_STAT(View, Speed, CameraSpeed, ECsvCustomStatOp::Set);
 	}
 #endif
 }
@@ -208,6 +160,9 @@ void UGameViewportClient::UpdateCsvCameraStats(const TMap<ULocalPlayer*, FSceneV
 
 UGameViewportClient::UGameViewportClient(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
+#if WITH_EDITOR
+	, bShowTitleSafeZone(true)
+#endif
 	, EngineShowFlags(ESFIM_Game)
 	, CurrentBufferVisualizationMode(NAME_None)
 	, HighResScreenshotDialog(NULL)
@@ -216,6 +171,8 @@ UGameViewportClient::UGameViewportClient(const FObjectInitializer& ObjectInitial
 	, MouseCaptureMode(EMouseCaptureMode::CapturePermanently)
 	, bHideCursorDuringCapture(false)
 	, MouseLockMode(EMouseLockMode::LockOnCapture)
+	, AudioDeviceHandle(INDEX_NONE)
+	, bHasAudioFocus(false)
 	, bIsMouseOverClient(false)
 #if WITH_EDITOR
 	, bUseMouseForTouchInEditor(false)
@@ -226,9 +183,6 @@ UGameViewportClient::UGameViewportClient(const FObjectInitializer& ObjectInitial
 	ViewModeIndex = VMI_Lit;
 
 	SplitscreenInfo.Init(FSplitscreenData(), ESplitScreenType::SplitTypeCount);
-
-	static float OneOverThree = 1.0f / 3.0f;
-	static float TwoOverThree = 2.0f / 3.0f;
 
 	SplitscreenInfo[ESplitScreenType::None].PlayerData.Add(FPerPlayerSplitscreenData(1.0f, 1.0f, 0.0f, 0.0f));
 
@@ -246,13 +200,13 @@ UGameViewportClient::UGameViewportClient(const FObjectInitializer& ObjectInitial
 	SplitscreenInfo[ESplitScreenType::ThreePlayer_FavorBottom].PlayerData.Add(FPerPlayerSplitscreenData(0.5f, 0.5f, 0.5f, 0.0f));
 	SplitscreenInfo[ESplitScreenType::ThreePlayer_FavorBottom].PlayerData.Add(FPerPlayerSplitscreenData(1.0f, 0.5f, 0.0f, 0.5f));
 
-	SplitscreenInfo[ESplitScreenType::ThreePlayer_Vertical].PlayerData.Add(FPerPlayerSplitscreenData(OneOverThree, 1.0f, 0.0f, 0.0f));
-	SplitscreenInfo[ESplitScreenType::ThreePlayer_Vertical].PlayerData.Add(FPerPlayerSplitscreenData(OneOverThree, 1.0f, OneOverThree, 0.0f));
-	SplitscreenInfo[ESplitScreenType::ThreePlayer_Vertical].PlayerData.Add(FPerPlayerSplitscreenData(OneOverThree, 1.0f, TwoOverThree, 0.0f));
+	SplitscreenInfo[ESplitScreenType::ThreePlayer_Vertical].PlayerData.Add(FPerPlayerSplitscreenData(0.333f, 1.0f, 0.0f, 0.0f));
+	SplitscreenInfo[ESplitScreenType::ThreePlayer_Vertical].PlayerData.Add(FPerPlayerSplitscreenData(0.333f, 1.0f, 0.333f, 0.0f));
+	SplitscreenInfo[ESplitScreenType::ThreePlayer_Vertical].PlayerData.Add(FPerPlayerSplitscreenData(0.333f, 1.0f, 0.666f, 0.0f));
 
-	SplitscreenInfo[ESplitScreenType::ThreePlayer_Horizontal].PlayerData.Add(FPerPlayerSplitscreenData(1.0f, OneOverThree, 0.0f, 0.0f));
-	SplitscreenInfo[ESplitScreenType::ThreePlayer_Horizontal].PlayerData.Add(FPerPlayerSplitscreenData(1.0f, OneOverThree, 0.0f, OneOverThree));
-	SplitscreenInfo[ESplitScreenType::ThreePlayer_Horizontal].PlayerData.Add(FPerPlayerSplitscreenData(1.0f, OneOverThree, 0.0f, TwoOverThree));
+	SplitscreenInfo[ESplitScreenType::ThreePlayer_Horizontal].PlayerData.Add(FPerPlayerSplitscreenData(1.0f, 0.333f, 0.0f, 0.0f));
+	SplitscreenInfo[ESplitScreenType::ThreePlayer_Horizontal].PlayerData.Add(FPerPlayerSplitscreenData(1.0f, 0.333f, 0.0f, 0.333f));
+	SplitscreenInfo[ESplitScreenType::ThreePlayer_Horizontal].PlayerData.Add(FPerPlayerSplitscreenData(1.0f, 0.333f, 0.0f, 0.666f));
 
 	SplitscreenInfo[ESplitScreenType::FourPlayer_Grid].PlayerData.Add(FPerPlayerSplitscreenData(0.5f, 0.5f, 0.0f, 0.0f));
 	SplitscreenInfo[ESplitScreenType::FourPlayer_Grid].PlayerData.Add(FPerPlayerSplitscreenData(0.5f, 0.5f, 0.5f, 0.0f));
@@ -269,6 +223,7 @@ UGameViewportClient::UGameViewportClient(const FObjectInitializer& ObjectInitial
 	SplitscreenInfo[ESplitScreenType::FourPlayer_Horizontal].PlayerData.Add(FPerPlayerSplitscreenData(1.f, 0.25f, 0.0f, 0.5f));
 	SplitscreenInfo[ESplitScreenType::FourPlayer_Horizontal].PlayerData.Add(FPerPlayerSplitscreenData(1.f, 0.25f, 0.0f, 0.75f));
 
+	MaxSplitscreenPlayers = 4;
 	bSuppressTransitionMessage = true;
 
 	if (HasAnyFlags(RF_ClassDefaultObject) == false)
@@ -287,18 +242,14 @@ UGameViewportClient::UGameViewportClient(const FObjectInitializer& ObjectInitial
 		}
 #endif
 
-		AudioDeviceDestroyedHandle = FAudioDeviceManagerDelegates::OnAudioDeviceDestroyed.AddLambda([this](const Audio::FDeviceId InDeviceId)
-		{
-			if (InDeviceId == AudioDevice.GetDeviceID())
-			{
-				AudioDevice.Reset();
-			}
-		});
 	}
 }
 
 UGameViewportClient::UGameViewportClient(FVTableHelper& Helper)
 	: Super(Helper)
+#if WITH_EDITOR
+	, bShowTitleSafeZone(true)
+#endif
 	, EngineShowFlags(ESFIM_Game)
 	, CurrentBufferVisualizationMode(NAME_None)
 	, HighResScreenshotDialog(NULL)
@@ -306,6 +257,8 @@ UGameViewportClient::UGameViewportClient(FVTableHelper& Helper)
 	, MouseCaptureMode(EMouseCaptureMode::CapturePermanently)
 	, bHideCursorDuringCapture(false)
 	, MouseLockMode(EMouseLockMode::LockOnCapture)
+	, AudioDeviceHandle(INDEX_NONE)
+	, bHasAudioFocus(false)
 {
 
 }
@@ -351,12 +304,14 @@ void UGameViewportClient::PostInitProperties()
 
 void UGameViewportClient::BeginDestroy()
 {
-	if (AudioDeviceDestroyedHandle.IsValid())
+	if (GEngine)
 	{
-		FAudioDeviceManagerDelegates::OnAudioDeviceDestroyed.Remove(AudioDeviceDestroyedHandle);
-		AudioDeviceDestroyedHandle.Reset();
+		class FAudioDeviceManager* AudioDeviceManager = GEngine->GetAudioDeviceManager();
+		if (AudioDeviceManager)
+		{
+			AudioDeviceManager->ShutdownAudioDevice(AudioDeviceHandle);
+		}
 	}
-	AudioDevice.Reset();
 
 	RemoveAllViewportWidgets();
 	Super::BeginDestroy();
@@ -372,20 +327,12 @@ void UGameViewportClient::DetachViewportClient()
 
 FSceneViewport* UGameViewportClient::GetGameViewport()
 {
-	if (Viewport && Viewport->GetViewportType() == NAME_SceneViewport)
-	{
-		return static_cast<FSceneViewport*>(Viewport);
-	}
-	return nullptr;
+	return static_cast<FSceneViewport*>(Viewport);
 }
 
 const FSceneViewport* UGameViewportClient::GetGameViewport() const
 {
-	if (Viewport && Viewport->GetViewportType() == NAME_SceneViewport)
-	{
-		return static_cast<FSceneViewport*>(Viewport);
-	}
-	return nullptr;
+	return static_cast<FSceneViewport*>(Viewport);
 }
 
 
@@ -430,7 +377,7 @@ void UGameViewportClient::SetEnabledStats(const TArray<FString>& InEnabledStats)
 	{
 		if (FAudioDeviceManager* DeviceManager = GEngine->GetAudioDeviceManager())
 		{
-			Audio::FAudioDebugger::ResolveDesiredStats(this);
+			FAudioDebugger::ResolveDesiredStats(this);
 		}
 	}
 #endif // ENABLE_AUDIO_DEBUG
@@ -466,14 +413,6 @@ void UGameViewportClient::Init(struct FWorldContext& WorldContext, UGameInstance
 		}
 	}
 	MouseLockMode = GetDefault<UInputSettings>()->DefaultViewportMouseLockMode;
-
-	// Don't capture mouse when headless
-	if(!FApp::CanEverRender())
-	{
-		MouseCaptureMode = EMouseCaptureMode::NoCapture;
-		MouseLockMode = EMouseLockMode::DoNotLock;
-	}
-
 	// In off-screen rendering mode don't lock mouse to the viewport, as we don't want mouse to lock to an invisible window
 	if (FSlateApplication::Get().IsRenderingOffScreen()) {
 		MouseLockMode = EMouseLockMode::DoNotLock;
@@ -487,30 +426,27 @@ void UGameViewportClient::Init(struct FWorldContext& WorldContext, UGameInstance
 		FAudioDeviceManager* AudioDeviceManager = GEngine->GetAudioDeviceManager();
 		if (AudioDeviceManager)
 		{
-			// Get a new audio device for this world.
-			FAudioDeviceParams DeviceParams = AudioDeviceManager->GetDefaultParamsForNewWorld();
-			DeviceParams.AssociatedWorld = World;
-
-			AudioDevice = AudioDeviceManager->RequestAudioDevice(DeviceParams);
-
-			if (AudioDevice.IsValid())
+			FAudioDeviceManager::FCreateAudioDeviceResults NewDeviceResults;
+			if (AudioDeviceManager->CreateAudioDevice(bCreateNewAudioDevice, NewDeviceResults))
 			{
+				AudioDeviceHandle = NewDeviceResults.Handle;
+
 #if ENABLE_AUDIO_DEBUG
-				Audio::FAudioDebugger::ResolveDesiredStats(this);
+				FAudioDebugger::ResolveDesiredStats(this);
 #endif // ENABLE_AUDIO_DEBUG
 
 				// Set the base mix of the new device based on the world settings of the world
 				if (World)
 				{
-					AudioDevice.GetAudioDevice()->SetDefaultBaseSoundMix(World->GetWorldSettings()->DefaultBaseSoundMix);
+					NewDeviceResults.AudioDevice->SetDefaultBaseSoundMix(World->GetWorldSettings()->DefaultBaseSoundMix);
 
 					// Set the world's audio device handle to use so that sounds which play in that world will use the correct audio device
-					World->SetAudioDevice(AudioDevice);
+					World->SetAudioDeviceHandle(AudioDeviceHandle);
 				}
 
 				// Set this audio device handle on the world context so future world's set onto the world context
 				// will pass the audio device handle to them and audio will play on the correct audio device
-				WorldContext.AudioDeviceID = AudioDevice.GetDeviceID();
+				WorldContext.AudioDeviceHandle = AudioDeviceHandle;
 			}
 		}
 	}
@@ -591,8 +527,6 @@ bool UGameViewportClient::InputKey(const FInputKeyEventArgs& EventArgs)
 		GEngine->RemapGamepadControllerIdForPIE(this, ControllerId);
 	}
 
-	OnInputKeyEvent.Broadcast(EventArgs);
-
 #if WITH_EDITOR
 	// Give debugger commands a chance to process key binding
 	if (GameViewportInputKeyDelegate.IsBound())
@@ -659,8 +593,6 @@ bool UGameViewportClient::InputAxis(FViewport* InViewport, int32 ControllerId, F
 		GEngine->RemapGamepadControllerIdForPIE(this, ControllerId);
 	}
 
-	OnInputAxisEvent.Broadcast(InViewport, ControllerId, Key, Delta, DeltaTime, NumSamples, bGamepad);
-	
 	bool bResult = false;
 
 	// Don't allow mouse/joystick input axes while in PIE and the console has forced the cursor to be visible.  It's
@@ -970,27 +902,6 @@ void UGameViewportClient::AddSoftwareCursor(EMouseCursor::Type Cursor, const FSo
 	}
 }
 
-void UGameViewportClient::AddSoftwareCursorFromSlateWidget(EMouseCursor::Type InCursorType, TSharedPtr<SWidget> CursorWidgetPtr)
-{
-	if (CursorWidgetPtr.IsValid())
-	{
-		CursorWidgets.Emplace(InCursorType, CursorWidgetPtr);
-	}
-}
-
-TSharedPtr<SWidget> UGameViewportClient::GetSoftwareCursorWidget(EMouseCursor::Type Cursor) const
-{
-	if (CursorWidgets.Contains(Cursor))
-	{
-		const TSharedPtr<SWidget> CursorWidgetPtr = CursorWidgets.FindRef(Cursor);
-		if (CursorWidgetPtr.IsValid())
-		{	
-			return CursorWidgetPtr;
-		}
-	}
-	return nullptr;
-}
-
 bool UGameViewportClient::HasSoftwareCursor(EMouseCursor::Type Cursor) const
 {
 	return CursorWidgets.Contains(Cursor);
@@ -1226,10 +1137,6 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 	}
 
 	UWorld* MyWorld = GetWorld();
-	if (MyWorld == nullptr)
-	{
-		return;
-	}
 
 	// Force path tracing view mode, and extern code set path tracer show flags
 	const bool bForcePathTracing = InViewport->GetClient()->GetEngineShowFlags()->PathTracing;
@@ -1310,105 +1217,9 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 		}
 	}
 
-	// Setup the screen percentage and upscaling method for the view family.
-	bool bFinalScreenPercentageShowFlag;
-	bool bUsesDynamicResolution = false;
-	{
-		checkf(ViewFamily.GetScreenPercentageInterface() == nullptr,
-			TEXT("Some code has tried to set up an alien screen percentage driver, that could be wrong if not supported very well by the RHI."));
-
-		// Force screen percentage show flag to be turned off if not supported.
-		if (!ViewFamily.SupportsScreenPercentage())
-		{
-			ViewFamily.EngineShowFlags.ScreenPercentage = false;
-		}
-
-		// Set up secondary resolution fraction for the view family.
-		if (!bStereoRendering && ViewFamily.SupportsScreenPercentage())
-		{
-			float CustomSecondaruScreenPercentage = CVarSecondaryScreenPercentage.GetValueOnGameThread();
-
-			if (CustomSecondaruScreenPercentage > 0.0)
-			{
-				// Override secondary resolution fraction with CVar.
-				ViewFamily.SecondaryViewFraction = FMath::Min(CustomSecondaruScreenPercentage / 100.0f, 1.0f);
-			}
-			else
-			{
-				// Automatically compute secondary resolution fraction from DPI.
-				ViewFamily.SecondaryViewFraction = GetDPIDerivedResolutionFraction();
-			}
-
-			check(ViewFamily.SecondaryViewFraction > 0.0f);
-		}
-
-		// Setup main view family with screen percentage interface by dynamic resolution if screen percentage is enabled.
-		#if WITH_DYNAMIC_RESOLUTION
-		if (ViewFamily.EngineShowFlags.ScreenPercentage)
-		{
-			FDynamicResolutionStateInfos DynamicResolutionStateInfos;
-			GEngine->GetDynamicResolutionCurrentStateInfos(/* out */ DynamicResolutionStateInfos);
-
-			// Do not allow dynamic resolution to touch the view family if not supported to ensure there is no possibility to ruin
-			// game play experience on platforms that does not support it, but have it enabled by mistake.
-			if (DynamicResolutionStateInfos.Status == EDynamicResolutionStatus::Enabled)
-			{
-				GEngine->EmitDynamicResolutionEvent(EDynamicResolutionStateEvent::BeginDynamicResolutionRendering);
-				GEngine->GetDynamicResolutionState()->SetupMainViewFamily(ViewFamily);
-
-				bUsesDynamicResolution = ViewFamily.GetScreenPercentageInterface() != nullptr;
-			}
-			else if (DynamicResolutionStateInfos.Status == EDynamicResolutionStatus::DebugForceEnabled)
-			{
-				GEngine->EmitDynamicResolutionEvent(EDynamicResolutionStateEvent::BeginDynamicResolutionRendering);
-				ViewFamily.SetScreenPercentageInterface(new FLegacyScreenPercentageDriver(
-					ViewFamily,
-					DynamicResolutionStateInfos.ResolutionFractionApproximation,
-					/* AllowPostProcessSettingsScreenPercentage = */ false,
-					DynamicResolutionStateInfos.ResolutionFractionUpperBound));
-
-				bUsesDynamicResolution = true;
-			}
-
-			#if CSV_PROFILER
-			if (DynamicResolutionStateInfos.ResolutionFractionApproximation >= 0.0f)
-			{
-				CSV_CUSTOM_STAT_GLOBAL(DynamicResolutionPercentage, DynamicResolutionStateInfos.ResolutionFractionApproximation * 100.0f, ECsvCustomStatOp::Set);
-			}
-			#endif
-		}
-		#endif
-
-		if (GCustomStaticScreenPercentage && ViewFamily.ViewMode == EViewModeIndex::VMI_Lit)
-		{
-			GCustomStaticScreenPercentage->SetupMainGameViewFamily(ViewFamily);
-		}
-
-		// If a screen percentage interface was not set by dynamic resolution, then create one matching legacy behavior.
-		if (ViewFamily.GetScreenPercentageInterface() == nullptr)
-		{
-			bool AllowPostProcessSettingsScreenPercentage = false;
-			float GlobalResolutionFraction = 1.0f;
-
-			if (ViewFamily.EngineShowFlags.ScreenPercentage)
-			{
-				// Allow FPostProcessSettings::ScreenPercentage.
-				AllowPostProcessSettingsScreenPercentage = true;
-
-				// Get global view fraction set by r.ScreenPercentage.
-				GlobalResolutionFraction = FLegacyScreenPercentageDriver::GetCVarResolutionFraction();
-			}
-
-			ViewFamily.SetScreenPercentageInterface(new FLegacyScreenPercentageDriver(
-				ViewFamily, GlobalResolutionFraction, AllowPostProcessSettingsScreenPercentage));
-		}
-
-		check(ViewFamily.GetScreenPercentageInterface() != nullptr);
-
-		bFinalScreenPercentageShowFlag = ViewFamily.EngineShowFlags.ScreenPercentage;
-	}
-
 	TMap<ULocalPlayer*,FSceneView*> PlayerViewMap;
+
+	FAudioDevice* AudioDevice = MyWorld->GetAudioDevice();
 	TArray<FSceneView*> Views;
 
 	for (FLocalPlayerIterator Iterator(GEngine, MyWorld); Iterator; ++Iterator)
@@ -1446,11 +1257,6 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 						View->DiffuseOverrideParameter = FVector4(GEngine->LightingOnlyBrightness.R, GEngine->LightingOnlyBrightness.G, GEngine->LightingOnlyBrightness.B, 0.0f);
 						View->SpecularOverrideParameter = FVector4(.1f, .1f, .1f, 0.0f);
 					}
-					else if (View->Family->EngineShowFlags.LightingOnlyOverride)
-					{
-						View->DiffuseOverrideParameter = FVector4(GEngine->LightingOnlyBrightness.R, GEngine->LightingOnlyBrightness.G, GEngine->LightingOnlyBrightness.B, 0.0f);
-						View->SpecularOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
-					}
 					else if (View->Family->EngineShowFlags.ReflectionOverride)
 					{
 						View->DiffuseOverrideParameter = FVector4(0.f, 0.f, 0.f, 0.f);
@@ -1482,7 +1288,7 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 						PlayerViewMap.Add(LocalPlayer, View);
 
 						// Update the listener.
-						if (AudioDevice && PlayerController != NULL)
+						if (AudioDevice != NULL && PlayerController != NULL)
 						{
 							bool bUpdateListenerPosition = true;
 
@@ -1495,8 +1301,8 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 								// If there is more than one world referencing the main audio device
 								if (AudioDeviceManager->GetNumMainAudioDeviceWorlds() > 1)
 								{
-									Audio::FDeviceId MainAudioDeviceID = GEngine->GetMainAudioDeviceID();
-									if (AudioDevice->DeviceID == MainAudioDeviceID && !bHasAudioFocus)
+									uint32 MainAudioDeviceHandle = GEngine->GetAudioDeviceHandle();
+									if (AudioDevice->DeviceHandle == MainAudioDeviceHandle && !bHasAudioFocus)
 									{
 										bUpdateListenerPosition = false;
 									}
@@ -1528,17 +1334,21 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 								FVector OverrideAttenuation;
 								if (PlayerController->GetAudioListenerAttenuationOverridePosition(OverrideAttenuation))
 								{
-									AudioDevice->SetListenerAttenuationOverride(ViewportIndex, OverrideAttenuation);
+									AudioDevice->SetListenerAttenuationOverride(OverrideAttenuation);
 								}
 								else
 								{
-									AudioDevice->ClearListenerAttenuationOverride(ViewportIndex);
+									AudioDevice->ClearListenerAttenuationOverride();
 								}
 							}
 						}
 
 					#if RHI_RAYTRACING
 						View->SetupRayTracedRendering();
+					#endif
+
+					#if CSV_PROFILER
+						UpdateCsvCameraStats(View);
 					#endif
 					}
 
@@ -1550,10 +1360,6 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 			}
 		}
 	}
-
-#if CSV_PROFILER
-	UpdateCsvCameraStats(PlayerViewMap);
-#endif
 
 	FinalizeViews(&ViewFamily, PlayerViewMap);
 
@@ -1605,23 +1411,98 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 		bBufferCleared = true;
 	}
 
+	// Force screen percentage show flag to be turned off if not supported.
+	if (!ViewFamily.SupportsScreenPercentage())
 	{
-		// Make sure the engine show flag for screen percentage is still what it was when setting up the screen percentage interface
-		ViewFamily.EngineShowFlags.ScreenPercentage = bFinalScreenPercentageShowFlag;
+		ViewFamily.EngineShowFlags.ScreenPercentage = false;
+	}
 
-		if (bStereoRendering && bUsesDynamicResolution)
+	// Set up secondary resolution fraction for the view family.
+	if (!bStereoRendering && ViewFamily.SupportsScreenPercentage())
+	{
+		float CustomSecondaruScreenPercentage = CVarSecondaryScreenPercentage.GetValueOnGameThread();
+
+		if (CustomSecondaruScreenPercentage > 0.0)
 		{
-			// Change screen percentage method to raw output when doing dynamic resolution with VR if not using TAA upsample.
-			for (FSceneView* View : Views)
+			// Override secondary resolution fraction with CVar.
+			ViewFamily.SecondaryViewFraction = FMath::Min(CustomSecondaruScreenPercentage / 100.0f, 1.0f);
+		}
+		else
+		{
+			// Automatically compute secondary resolution fraction from DPI.
+			ViewFamily.SecondaryViewFraction = GetDPIDerivedResolutionFraction();
+		}
+
+		check(ViewFamily.SecondaryViewFraction > 0.0f);
+	}
+
+	checkf(ViewFamily.GetScreenPercentageInterface() == nullptr,
+		TEXT("Some code has tried to set up an alien screen percentage driver, that could be wrong if not supported very well by the RHI."));
+
+	// Setup main view family with screen percentage interface by dynamic resolution if screen percentage is enabled.
+	#if WITH_DYNAMIC_RESOLUTION
+	if (ViewFamily.EngineShowFlags.ScreenPercentage)
+	{
+		FDynamicResolutionStateInfos DynamicResolutionStateInfos;
+		GEngine->GetDynamicResolutionCurrentStateInfos(/* out */ DynamicResolutionStateInfos);
+
+		// Do not allow dynamic resolution to touch the view family if not supported to ensure there is no possibility to ruin
+		// game play experience on platforms that does not support it, but have it enabled by mistake.
+		if (DynamicResolutionStateInfos.Status == EDynamicResolutionStatus::Enabled)
+		{
+			GEngine->EmitDynamicResolutionEvent(EDynamicResolutionStateEvent::BeginDynamicResolutionRendering);
+			GEngine->GetDynamicResolutionState()->SetupMainViewFamily(ViewFamily);
+		}
+		else if (DynamicResolutionStateInfos.Status == EDynamicResolutionStatus::DebugForceEnabled)
+		{
+			GEngine->EmitDynamicResolutionEvent(EDynamicResolutionStateEvent::BeginDynamicResolutionRendering);
+			ViewFamily.SetScreenPercentageInterface(new FLegacyScreenPercentageDriver(
+				ViewFamily,
+				DynamicResolutionStateInfos.ResolutionFractionApproximation,
+				/* AllowPostProcessSettingsScreenPercentage = */ false,
+				DynamicResolutionStateInfos.ResolutionFractionUpperBound));
+		}
+
+		#if CSV_PROFILER
+		if (DynamicResolutionStateInfos.ResolutionFractionApproximation >= 0.0f)
+		{
+			CSV_CUSTOM_STAT_GLOBAL(DynamicResolutionPercentage, DynamicResolutionStateInfos.ResolutionFractionApproximation * 100.0f, ECsvCustomStatOp::Set);
+		}
+		#endif
+	}
+	#endif
+
+	// If a screen percentage interface was not set by dynamic resolution, then create one matching legacy behavior.
+	if (ViewFamily.GetScreenPercentageInterface() == nullptr)
+	{
+		bool AllowPostProcessSettingsScreenPercentage = false;
+		float GlobalResolutionFraction = 1.0f;
+
+		if (ViewFamily.EngineShowFlags.ScreenPercentage)
+		{
+			// Allow FPostProcessSettings::ScreenPercentage.
+			AllowPostProcessSettingsScreenPercentage = true;
+
+			// Get global view fraction set by r.ScreenPercentage.
+			GlobalResolutionFraction = FLegacyScreenPercentageDriver::GetCVarResolutionFraction();
+		}
+
+		ViewFamily.SetScreenPercentageInterface(new FLegacyScreenPercentageDriver(
+			ViewFamily, GlobalResolutionFraction, AllowPostProcessSettingsScreenPercentage));
+	}
+	else if (bStereoRendering)
+	{
+		// Change screen percentage method to raw output when doing dynamic resolution with VR if not using TAA upsample.
+		for (FSceneView* View : Views)
+		{
+			if (View->PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::SpatialUpscale)
 			{
-				if (View->PrimaryScreenPercentageMethod == EPrimaryScreenPercentageMethod::SpatialUpscale)
-				{
-					View->PrimaryScreenPercentageMethod = EPrimaryScreenPercentageMethod::RawOutput;
-				}
+				View->PrimaryScreenPercentageMethod = EPrimaryScreenPercentageMethod::RawOutput;
 			}
 		}
 	}
 
+	
 	ViewFamily.bIsHDR = GetWindow().IsValid() ? GetWindow().Get()->GetIsHDR() : false;
 
 	// Draw the player views.
@@ -1631,8 +1512,6 @@ void UGameViewportClient::Draw(FViewport* InViewport, FCanvas* SceneCanvas)
 	}
 	else
 	{
-		GetRendererModule().PerFrameCleanupIfSkipRenderer();
-
 		// Make sure RHI resources get flushed if we're not using a renderer
 		ENQUEUE_RENDER_COMMAND(UGameViewportClient_FlushRHIResources)(
 			[](FRHICommandListImmediate& RHICmdList)
@@ -1928,7 +1807,7 @@ void UGameViewportClient::Precache()
 	if(!GIsEditor)
 	{
 		// Precache sounds...
-		if (AudioDevice)
+		if (FAudioDevice* AudioDevice = GetWorld()->GetAudioDevice())
 		{
 			UE_LOG(LogPlayerManagement, Log, TEXT("Precaching sounds..."));
 			for(TObjectIterator<USoundWave> It;It;++It)
@@ -1995,7 +1874,7 @@ void UGameViewportClient::ReceivedFocus(FViewport* InViewport)
 
 	if (GEngine && GEngine->GetAudioDeviceManager())
 	{
-		GEngine->GetAudioDeviceManager()->SetActiveDevice(AudioDevice.GetDeviceID());
+		GEngine->GetAudioDeviceManager()->SetActiveDevice(AudioDeviceHandle);
 		bHasAudioFocus = true;
 	}
 }
@@ -2066,8 +1945,12 @@ bool UGameViewportClient::IsOrtho() const
 void UGameViewportClient::PostRender(UCanvas* Canvas)
 {
 #if WITH_EDITOR
-	DrawTitleSafeArea(Canvas);
+	if(bShowTitleSafeZone)
+	{
+		DrawTitleSafeArea(Canvas);
+	}
 #endif
+
 	// Draw the transition screen.
 	DrawTransition(Canvas);
 }
@@ -2109,19 +1992,9 @@ void UGameViewportClient::SSSwapControllers()
 
 void UGameViewportClient::ShowTitleSafeArea()
 {
-	static IConsoleVariable* DebugSafeZoneModeCvar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.DebugSafeZone.Mode"));
-	if (DebugSafeZoneModeCvar)
-	{
-		const int32 DebugSafeZoneMode = DebugSafeZoneModeCvar->GetInt();
-		if (DebugSafeZoneMode != 1)
-		{
-			DebugSafeZoneModeCvar->Set(1);
-		}
-		else
-		{
-			DebugSafeZoneModeCvar->Set(0);
-		}
-	}
+#if !UE_BUILD_SHIPPING
+	bShowTitleSafeZone = !bShowTitleSafeZone;
+#endif
 }
 
 void UGameViewportClient::SetConsoleTarget(int32 PlayerIndex)
@@ -2546,33 +2419,13 @@ bool UGameViewportClient::CalculateDeadZoneForAllSides( ULocalPlayer* LPlayer, U
 void UGameViewportClient::DrawTitleSafeArea( UCanvas* Canvas )
 {
 #if WITH_EDITOR
-	// If we have a valid player hud, then the title area has already rendered.
-	APlayerController* FirstPlayerController = GetWorld()->GetFirstPlayerController();
-	if (FirstPlayerController && FirstPlayerController->GetHUD())
-	{
-		return;
-	}
-
-	// If r.DebugSafeZone.Mode isn't set to draw title area, don't draw it.
-	static IConsoleVariable* SafeZoneModeCvar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.DebugSafeZone.Mode"));
-	if (SafeZoneModeCvar && (SafeZoneModeCvar->GetInt() != 1))
-	{
-		return;
-	}
-
 	FMargin SafeZone;
 	const ULevelEditorPlaySettings* PlayInSettings = GetDefault<ULevelEditorPlaySettings>();
 
 	float Width, Height;
 	GetPixelSizeOfScreen(Width, Height, Canvas, 0);
 
-	FLinearColor UnsafeZoneColor(1.0f, 0.0f, 0.0f, 0.25f);
-	static IConsoleVariable* AlphaCvar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.DebugSafeZone.OverlayAlpha"));
-	if (AlphaCvar)
-	{
-		UnsafeZoneColor.A = AlphaCvar->GetFloat();
-	}
-
+	const FLinearColor UnsafeZoneColor(1.0f, 0.0f, 0.0f, 0.25f);
 	FCanvasTileItem TileItem(FVector2D::ZeroVector, GWhiteTexture, UnsafeZoneColor);
 	TileItem.BlendMode = SE_BLEND_Translucent;
 
@@ -2756,54 +2609,9 @@ void UGameViewportClient::VerifyPathRenderingComponents()
 	}
 }
 
-void UGameViewportClient::SetMouseCaptureMode(EMouseCaptureMode Mode)
-{
-	if (MouseCaptureMode != Mode)
-	{
-		UE_LOG(LogViewport, Display, TEXT("Viewport MouseCaptureMode Changed, %s -> %s"),
-			*StaticEnum<EMouseCaptureMode>()->GetNameStringByValue((uint64)MouseCaptureMode),
-			*StaticEnum<EMouseCaptureMode>()->GetNameStringByValue((uint64)Mode)
-		);
-
-		MouseCaptureMode = Mode;
-	}
-}
-
-EMouseCaptureMode UGameViewportClient::GetMouseCaptureMode() const
-{
-	return MouseCaptureMode;
-}
-
 bool UGameViewportClient::CaptureMouseOnLaunch()
 {
-	// Capture mouse unless headless
-	return !FApp::CanEverRender() ? false : GetDefault<UInputSettings>()->bCaptureMouseOnLaunch;
-}
-
-void UGameViewportClient::SetMouseLockMode(EMouseLockMode InMouseLockMode)
-{
-	if (MouseLockMode != InMouseLockMode)
-	{
-		UE_LOG(LogViewport, Display, TEXT("Viewport MouseLockMode Changed, %s -> %s"),
-			*StaticEnum<EMouseLockMode>()->GetNameStringByValue((uint64)MouseLockMode),
-			*StaticEnum<EMouseLockMode>()->GetNameStringByValue((uint64)InMouseLockMode)
-		);
-
-		MouseLockMode = InMouseLockMode;
-	}
-}
-
-void UGameViewportClient::SetHideCursorDuringCapture(bool InHideCursorDuringCapture)
-{
-	if (bHideCursorDuringCapture != InHideCursorDuringCapture)
-	{
-		UE_LOG(LogViewport, Display, TEXT("Viewport HideCursorDuringCapture Changed, %s -> %s"),
-			bHideCursorDuringCapture ? TEXT("True") : TEXT("False"),
-			InHideCursorDuringCapture ? TEXT("True") : TEXT("False")
-		);
-
-		bHideCursorDuringCapture = InHideCursorDuringCapture;
-	}
+	return GetDefault<UInputSettings>()->bCaptureMouseOnLaunch;
 }
 
 bool UGameViewportClient::Exec( UWorld* InWorld, const TCHAR* Cmd,FOutputDevice& Ar)
@@ -2895,10 +2703,6 @@ bool UGameViewportClient::Exec( UWorld* InWorld, const TCHAR* Cmd,FOutputDevice&
 	else if (FParse::Command(&Cmd, TEXT("GETALLLOCATION")))
 	{
 		return HandleGetAllLocationCommand(Cmd, Ar);
-	}
-	else if (FParse::Command(&Cmd, TEXT("GETALLROTATION")))
-	{
-		return HandleGetAllRotationCommand(Cmd, Ar);
 	}
 	else if(FParse::Command(&Cmd, TEXT("TEXTUREDEFRAG")))
 	{
@@ -3038,21 +2842,11 @@ bool UGameViewportClient::HandleShowCommand( const TCHAR* Cmd, FOutputDevice& Ar
 			{
 			}
 
-			bool HandleShowFlag(uint32 InIndex, const FString& InName)
+			bool OnEngineShowFlag(uint32 InIndex, const FString& InName)
 			{
 				FString Value = FString::Printf(TEXT("%s=%d"), *InName, EngineShowFlags.GetSingleFlag(InIndex) ? 1 : 0);
 				LinesToSort.Add(Value);
 				return true;
-			}
-
-			bool OnEngineShowFlag(uint32 InIndex, const FString& InName)
-			{
-				return HandleShowFlag(InIndex, InName);
-			}
-
-			bool OnCustomShowFlag(uint32 InIndex, const FString& InName)
-			{
-				return HandleShowFlag(InIndex, InName);
 			}
 
 			TSet<FString>& LinesToSort;
@@ -3146,7 +2940,7 @@ void UGameViewportClient::ToggleShowCollision()
 	if (World != nullptr)
 	{
 		// Tell engine to create proxies for hidden components, so we can still draw collision
-		World->bCreateRenderStateForHiddenComponentsWithCollsion = bIsShowingCollision;
+		World->bCreateRenderStateForHiddenComponents = bIsShowingCollision;
 
 		// Need to recreate scene proxies when this flag changes.
 		FGlobalComponentRecreateRenderStateContext Recreate;
@@ -3330,12 +3124,6 @@ bool UGameViewportClient::HandleViewModeCommand( const TCHAR* Cmd, FOutputDevice
 			ViewModeIndex = VMI_Lit;
 		}
 	}
-
-#if UE_BUILD_TEST || UE_BUILD_SHIPPING
-	Ar.Logf(TEXT("Debug viewmodes not allowed in Test or Shipping builds."));
-	ViewModeIndex = VMI_Lit;
-#endif
-
 	if ((ViewModeIndex != VMI_Lit && ViewModeIndex != VMI_ShaderComplexity) && !AllowDebugViewmodes())
 	{
 		Ar.Logf(TEXT("Debug viewmodes not allowed on consoles by default.  See AllowDebugViewmodes()."));
@@ -3663,7 +3451,7 @@ bool UGameViewportClient::HandleDisplayCommand( const TCHAR* Cmd, FOutputDevice&
 		if (Obj != nullptr)
 		{
 			FName PropertyName(PropStr, FNAME_Find);
-			if (PropertyName != NAME_None && FindFProperty<FProperty>(Obj->GetClass(), PropertyName) != nullptr)
+			if (PropertyName != NAME_None && FindField<UProperty>(Obj->GetClass(), PropertyName) != nullptr)
 			{
 				AddDebugDisplayProperty(Obj, nullptr, PropertyName);
 			}
@@ -3715,7 +3503,7 @@ bool UGameViewportClient::HandleDisplayAllCommand( const TCHAR* Cmd, FOutputDevi
 			if (Cls != nullptr)
 			{
 				FName PropertyName(PropStr, FNAME_Find);
-				FProperty* Prop = PropertyName != NAME_None ? FindFProperty<FProperty>(Cls, PropertyName) : nullptr;
+				UProperty* Prop = PropertyName != NAME_None ? FindField<UProperty>(Cls, PropertyName) : nullptr;
 				{
 					// add all un-GCable things immediately as that list is static
 					// so then we only have to iterate over dynamic things each frame
@@ -3831,34 +3619,6 @@ bool UGameViewportClient::HandleGetAllLocationCommand(const TCHAR* Cmd, FOutputD
 			{
 				FVector ActorLocation = It->GetActorLocation();
 				Ar.Logf(TEXT("%i) %s (%f, %f, %f)"), cnt++, *It->GetFullName(), ActorLocation.X, ActorLocation.Y, ActorLocation.Z);
-			}
-		}
-	}
-	else
-	{
-		Ar.Logf(TEXT("Unrecognized class %s"), ClassName);
-	}
-
-	return true;
-}
-
-bool UGameViewportClient::HandleGetAllRotationCommand(const TCHAR* Cmd, FOutputDevice& Ar)
-{
-	// iterate through all actors of the specified class and log their rotation
-	TCHAR ClassName[256];
-	UClass* Class;
-
-	if (FParse::Token(Cmd, ClassName, UE_ARRAY_COUNT(ClassName), 1) &&
-		(Class = FindObject<UClass>(ANY_PACKAGE, ClassName)) != NULL)
-	{
-		bool bShowPendingKills = FParse::Command(&Cmd, TEXT("SHOWPENDINGKILLS"));
-		int32 cnt = 0;
-		for (TObjectIterator<AActor> It; It; ++It)
-		{
-			if ((bShowPendingKills || !It->IsPendingKill()) && It->IsA(Class))
-			{
-				FRotator ActorRotation = It->GetActorRotation();
-				Ar.Logf(TEXT("%i) %s (%f, %f, %f)"), cnt++, *It->GetFullName(), ActorRotation.Yaw, ActorRotation.Pitch, ActorRotation.Roll);
 			}
 		}
 	}
@@ -4038,10 +3798,17 @@ bool UGameViewportClient::IsSimulateInEditorViewport() const
 	return GameViewport ? GameViewport->GetPlayInEditorIsSimulate() : false;
 }
 
+#if WITH_EDITOR
+void UGameViewportClient::SetPlayInEditorUseMouseForTouch(bool bInUseMouseForTouch)
+{
+	bUseMouseForTouchInEditor = bInUseMouseForTouch;
+}
+#endif
+
 bool UGameViewportClient::GetUseMouseForTouch() const
 {
 #if WITH_EDITOR
-	return GetDefault<ULevelEditorPlaySettings>()->UseMouseForTouch || GetDefault<UInputSettings>()->bUseMouseForTouch;
+	return bUseMouseForTouchInEditor || GetDefault<UInputSettings>()->bUseMouseForTouch;
 #else
 	return GetDefault<UInputSettings>()->bUseMouseForTouch;
 #endif
@@ -4049,11 +3816,6 @@ bool UGameViewportClient::GetUseMouseForTouch() const
 
 void* UGameViewportClient::LoadCursorFromPngs(ICursor& PlatformCursor, const FString& InPathToCursorWithoutExtension, FVector2D InHotSpot)
 {
-	if (!PlatformCursor.IsCreateCursorFromRGBABufferSupported())
-	{
-		return nullptr;
-	}
-
 	TArray<TSharedPtr<FPngFileData>> CursorPngFiles;
 	if (!LoadAvailableCursorPngs(CursorPngFiles, InPathToCursorWithoutExtension))
 	{
@@ -4077,13 +3839,13 @@ void* UGameViewportClient::LoadCursorFromPngs(ICursor& PlatformCursor, const FSt
 
 	if (PngImageWrapper.IsValid() && PngImageWrapper->SetCompressed(NearestCursor->FileData.GetData(), NearestCursor->FileData.Num()))
 	{
-		TArray64<uint8> RawImageData;
+		const TArray<uint8>* RawImageData = nullptr;
 		if (PngImageWrapper->GetRaw(ERGBFormat::RGBA, 8, RawImageData))
 		{
 			const int32 Width = PngImageWrapper->GetWidth();
 			const int32 Height = PngImageWrapper->GetHeight();
 
-			return PlatformCursor.CreateCursorFromRGBABuffer((FColor*) RawImageData.GetData(), Width, Height, InHotSpot);
+			return PlatformCursor.CreateCursorFromRGBABuffer((FColor*) RawImageData->GetData(), Width, Height, InHotSpot);
 		}
 	}
 

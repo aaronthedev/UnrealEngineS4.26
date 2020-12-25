@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -61,7 +61,7 @@ private:
 template <SIZE_T NumBits, typename SequenceType>
 typename TSequenceNumber<NumBits, SequenceType>::DifferenceT TSequenceNumber<NumBits, SequenceType>::Diff(TSequenceNumber A, TSequenceNumber B) 
 { 
-	constexpr SIZE_T ShiftValue = sizeof(DifferenceT)*8 - NumBits;
+	const SIZE_T ShiftValue = sizeof(DifferenceT)*8 - NumBits;
 
 	const SequenceT ValueA = A.Value;
 	const SequenceT ValueB = B.Value;

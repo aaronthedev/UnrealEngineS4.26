@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 StreamingTexture.cpp: Definitions of classes used for texture.
@@ -10,15 +10,15 @@ StreamingTexture.cpp: Definitions of classes used for texture.
 #include "HAL/FileManager.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/SkeletalMesh.h"
-#include "LandscapeComponent.h"
 
 FStreamingRenderAsset::FStreamingRenderAsset(
 	UStreamableRenderAsset* InRenderAsset,
 	const int32* NumStreamedMips,
 	int32 NumLODGroups,
+	EAssetType InAssetType,
 	const FRenderAssetStreamingSettings& Settings)
 	: RenderAsset(InRenderAsset)
-	, RenderAssetType(InRenderAsset->GetRenderAssetType())
+	, RenderAssetType(InAssetType)
 {
 	UpdateStaticData(Settings);
 	UpdateDynamicData(NumStreamedMips, NumLODGroups, Settings, false);
@@ -35,7 +35,6 @@ FStreamingRenderAsset::FStreamingRenderAsset(
 	VisibleWantedMips = MinAllowedMips;
 	HiddenWantedMips = MinAllowedMips;
 	RetentionPriority = 0;
-	NormalizedScreenSize = 0.f;
 	BudgetedMips = MinAllowedMips;
 	NumForcedMips = 0;
 	LoadOrderPriority = 0;
@@ -44,18 +43,18 @@ FStreamingRenderAsset::FStreamingRenderAsset(
 
 void FStreamingRenderAsset::UpdateStaticData(const FRenderAssetStreamingSettings& Settings)
 {
-	FMemory::Memzero(CumulativeLODSizes);
 
+	OptionalBulkDataFilename = TEXT("");
 	if (RenderAsset)
 	{
-		const FStreamableRenderResourceState ResourceState = RenderAsset->GetStreamableResourceState();
-
 		LODGroup = RenderAsset->GetLODGroupForStreaming();
+		NumNonStreamingMips = RenderAsset->GetNumNonStreamingMips();
+		MipCount = RenderAsset->GetNumMipsForStreaming();
 		BudgetMipBias = 0;
 
 		if (IsTexture())
 		{
-			check(ResourceState.MaxNumLODs <= UE_ARRAY_COUNT(CumulativeLODSizes));
+			MipCount = FMath::Min<int32>(MipCount, MAX_TEXTURE_MIP_COUNT);
 			const TextureGroup TextureLODGroup = static_cast<TextureGroup>(LODGroup);
 			BoostFactor = GetExtraBoost(TextureLODGroup, Settings);
 			bIsCharacterTexture = (TextureLODGroup == TEXTUREGROUP_Character || TextureLODGroup == TEXTUREGROUP_CharacterSpecular || TextureLODGroup == TEXTUREGROUP_CharacterNormalMap);
@@ -63,102 +62,89 @@ void FStreamingRenderAsset::UpdateStaticData(const FRenderAssetStreamingSettings
 		}
 		else
 		{
-			check(ResourceState.MaxNumLODs <= UE_ARRAY_COUNT(CumulativeLODSizes_Mesh));
-			check(ResourceState.MaxNumLODs <= UE_ARRAY_COUNT(LODScreenSizes));
-
+			check(MipCount <= MaxNumMeshLODs);
 			// Default boost value .71 is too small for meshes
 			BoostFactor = 1.f;
 			bIsCharacterTexture = false;
 			bIsTerrainTexture = false;
-			if (RenderAssetType == EStreamableRenderAssetType::StaticMesh)
+			if (RenderAssetType == AT_StaticMesh)
 			{
 				const UStaticMesh* StaticMesh = CastChecked<UStaticMesh>(RenderAsset);
-				for (int32 LODIndex = 0; LODIndex < ResourceState.MaxNumLODs; ++LODIndex)
+				for (int32 Idx = 0; Idx < MaxNumMeshLODs; ++Idx)
 				{
-					check(LODIndex < UE_ARRAY_COUNT(LODScreenSizes)); // See ScreenSize.
+					const int32 LODIdx = FMath::Max(MipCount - Idx - 1, 0);
 					// Screen sizes stored on assets are 2R/D where R is the radius of bounding spheres and D is the
 					// distance from view origins to bounds origins. The factor calculated by the streamer, however,
 					// is R/D so multiply 0.5 here
-					LODScreenSizes[ResourceState.MaxNumLODs - LODIndex - 1] = StaticMesh->RenderData->ScreenSize[LODIndex + ResourceState.AssetLODBias].GetValue() * 0.5f;
+					LODScreenSizes[Idx] = StaticMesh->RenderData->ScreenSize[LODIdx].GetValueForFeatureLevel(GMaxRHIFeatureLevel) * 0.5f;
 				}
 			}
-			else if (RenderAssetType == EStreamableRenderAssetType::SkeletalMesh)
+			else // AT_SkeletalMesh
 			{
 				USkeletalMesh* SkeletalMesh = CastChecked<USkeletalMesh>(RenderAsset);
-				const TArray<FSkeletalMeshLODInfo>& AssetLODInfos =  SkeletalMesh->GetLODInfoArray();
-				for (int32 LODIndex = 0; LODIndex < ResourceState.MaxNumLODs; ++LODIndex)
+				const TArray<FSkeletalMeshLODInfo>& LODInfos =  SkeletalMesh->GetLODInfoArray();
+				for (int32 Idx = 0; Idx < MaxNumMeshLODs; ++Idx)
 				{
-					LODScreenSizes[ResourceState.MaxNumLODs - LODIndex - 1] = AssetLODInfos[LODIndex + ResourceState.AssetLODBias].ScreenSize.GetValue() * 0.5f;
-				}
-			}
-			else
-			{
-				const ULandscapeLODStreamingProxy* LandscapeProxy = CastChecked<ULandscapeLODStreamingProxy>(RenderAsset);
-				const TArray<float> LODScreenSizeArray = LandscapeProxy->GetLODScreenSizeArray();
-				for (int32 LODIndex = 0; LODIndex < ResourceState.MaxNumLODs; ++LODIndex)
-				{
-					LODScreenSizes[ResourceState.MaxNumLODs - LODIndex - 1] = LODScreenSizeArray[LODIndex + ResourceState.AssetLODBias];
+					const int32 LODIdx = FMath::Max(MipCount - Idx - 1, 0);
+					LODScreenSizes[Idx] = LODInfos[LODIdx].ScreenSize.GetValueForFeatureLevel(GMaxRHIFeatureLevel) * 0.5f;
 				}
 			}
 		}
 
-		for (int32 LODIndex = 0; LODIndex < ResourceState.MaxNumLODs; ++LODIndex)
+		NumNonOptionalMips = MipCount - RenderAsset->CalcNumOptionalMips();
+		OptionalMipsState = (NumNonOptionalMips == MipCount) ? EOptionalMipsState::OMS_NoOptionalMips : EOptionalMipsState::OMS_NotCached;
+
+		const int32 MaxNumMips = IsTexture() ? MAX_TEXTURE_MIP_COUNT : MaxNumMeshLODs;
+		for (int32 MipIndex = 0; MipIndex < MaxNumMips; ++MipIndex)
 		{
-			CumulativeLODSizes[LODIndex] = RenderAsset->CalcCumulativeLODSize(LODIndex + ResourceState.AssetLODBias + 1);
+			CumulativeLODSizes[MipIndex] = RenderAsset->CalcCumulativeLODSize(FMath::Min(MipIndex + 1, MipCount));
 		}
 
-		// If there are optional mips
-		if (ResourceState.NumNonOptionalLODs < ResourceState.MaxNumLODs)
+		const int32 OptionalMipCount = MipCount - NumNonOptionalMips;
+		const int32 OptionalMipIndex = OptionalMipCount - 1; // just here so it's clear why this -1 is here
+		if (!RenderAsset->GetMipDataFilename(OptionalMipIndex, OptionalBulkDataFilename))
 		{
-			// Use the hash for the smallest asset index (highest index) since this LOD is always included in optional mip load.
-			OptionalMipsState = EOptionalMipsState::OMS_NotCached;
-			OptionalFileHash = RenderAsset->GetMipIoFilenameHash(ResourceState.LODCountToAssetFirstLODIdx(ResourceState.NumNonOptionalLODs + 1));
-		}
-		else
-		{
-			OptionalMipsState = EOptionalMipsState::OMS_NoOptionalMips;
-			OptionalFileHash = INVALID_IO_FILENAME_HASH;
+			OptionalBulkDataFilename.Empty();
 		}
 	}
 	else
 	{
 		LODGroup = TEXTUREGROUP_World;
-		RenderAssetType = EStreamableRenderAssetType::None;
+		RenderAssetType = AT_Num;
+		NumNonStreamingMips = 0;
+		MipCount = 0;
 		BudgetMipBias = 0;
 		BoostFactor = 1.f;
+		NumNonOptionalMips = MipCount;
 		OptionalMipsState = EOptionalMipsState::OMS_NoOptionalMips;
-		OptionalFileHash = INVALID_IO_FILENAME_HASH;
 
 		bIsCharacterTexture = false;
 		bIsTerrainTexture = false;
+
+		for (int32 MipIndex=0; MipIndex < MAX_TEXTURE_MIP_COUNT; ++MipIndex)
+		{
+			CumulativeLODSizes[MipIndex] = 0;
+		}
 	}
 }
 
 void FStreamingRenderAsset::UpdateOptionalMipsState_Async()
 {
-	// Cache the pointer to prevent a race condition with FRenderAssetStreamingManager::RemoveStreamingRenderAsset()
-	UStreamableRenderAsset*	CachedRenderAsset = RenderAsset;
-	if (CachedRenderAsset && OptionalMipsState == EOptionalMipsState::OMS_NotCached && OptionalFileHash != INVALID_IO_FILENAME_HASH)
+	// Here we do a lazy update where we check if the highres mip file exists only if it could be useful to do so.
+	// This requires texture to be at max resolution before the optional mips .
+	if (OptionalMipsState == EOptionalMipsState::OMS_NotCached && !OptionalBulkDataFilename.IsEmpty())
 	{
-		FStreamableRenderResourceState ResourceState = CachedRenderAsset->GetStreamableResourceState();
-		if (ResourceState.IsValid() && CachedRenderAsset->DoesMipDataExist(ResourceState.AssetLODBias))
-		{
-			OptionalMipsState = EOptionalMipsState::OMS_HasOptionalMips;
-		}
-		else
-		{
-			OptionalMipsState = EOptionalMipsState::OMS_NoOptionalMips;
-		}
-	}	
+		OptionalMipsState = IFileManager::Get().FileExists(*OptionalBulkDataFilename) ? EOptionalMipsState::OMS_HasOptionalMips : EOptionalMipsState::OMS_NoOptionalMips;
+	}
+
 }
 
-void FStreamingRenderAsset::UpdateDynamicData(const int32* NumStreamedMips, int32 NumLODGroups, const FRenderAssetStreamingSettings& Settings, bool bWaitForMipFading, TArray<UStreamableRenderAsset*>* DeferredTickCBAssets)
+void FStreamingRenderAsset::UpdateDynamicData(const int32* NumStreamedMips, int32 NumLODGroups, const FRenderAssetStreamingSettings& Settings, bool bWaitForMipFading)
 {
 	// Note that those values are read from the async task and must not be assigned temporary values!!
 	if (RenderAsset)
 	{
-		// Get the resource state after calling UpdateStreamingStatus() since it might have updated it.
-		const FStreamableRenderResourceState ResourceState = UpdateStreamingStatus(bWaitForMipFading, DeferredTickCBAssets);
+		UpdateStreamingStatus(bWaitForMipFading);
 
 		// The last render time of this texture/mesh. Can be FLT_MAX when texture has no resource.
 		const float LastRenderTimeForTexture = RenderAsset->GetLastRenderTimeForStreaming();
@@ -173,8 +159,14 @@ void FStreamingRenderAsset::UpdateDynamicData(const int32* NumStreamedMips, int3
 		int32 LODBias = 0;
 		if (!Settings.bUseAllMips)
 		{
-			const int32 ResourceLODBias = FMath::Max<int32>(0, RenderAsset->GetCachedLODBias() - ResourceState.AssetLODBias);
-			LODBias = FMath::Max<int32>(ResourceLODBias - NumCinematicMipLevels, 0);
+			LODBias = FMath::Max<int32>(RenderAsset->GetCachedLODBias() - NumCinematicMipLevels, 0);
+
+
+#if WITH_EDITORONLY_DATA
+			// When data is not cooked, the asset can have more mips than the engine supports.
+			// The engine limit is applied in UpdateStaticData() when computing MipCount, but this will also be be accounted in GetCachedLODBias().
+			LODBias -= RenderAsset->GetNumMipsForStreaming() - MipCount;
+#endif
 
 			// Reduce the max allowed resolution according to LODBias if the texture group allows it.
 			if (IsMaxResolutionAffectedByGlobalBias() && !Settings.bUsePerTextureBias)
@@ -185,57 +177,74 @@ void FStreamingRenderAsset::UpdateDynamicData(const int32* NumStreamedMips, int3
 			LODBias += BudgetMipBias;
 		}
 
-		// If the optional mips are not available, or if we shouldn't load them now, clamp the possible mips requested. 
-		// (when the non-optional mips are not yet loaded, loading optional mips generates cross files requests).
-		// This is not bullet proof though since the texture/mesh could have a pending stream-out request.
-		if (OptionalMipsState != EOptionalMipsState::OMS_HasOptionalMips || ResidentMips < ResourceState.NumNonOptionalLODs)
+		// Update MaxAllowedMips in an atomic way to avoid possible bad interaction with the async task.
 		{
-			MaxAllowedMips = FMath::Clamp<int32>(ResourceState.MaxNumLODs - LODBias, ResourceState.NumNonStreamingLODs, ResourceState.NumNonOptionalLODs);
-		}
-		else
-		{
-			MaxAllowedMips = FMath::Clamp<int32>(ResourceState.MaxNumLODs - LODBias, ResourceState.NumNonStreamingLODs, ResourceState.MaxNumLODs);
+			// The max mip count is affected by the texture bias and cinematic bias settings.
+			// don't set MaxAllowdMips more then once as it could be read by async texture task
+			int32 TempMaxAllowedMips = FMath::Clamp<int32>(FMath::Min<int32>(MipCount - LODBias, GMaxTextureMipCount), NumNonStreamingMips, MipCount);
+			if (NumNonOptionalMips < MipCount)
+			{
+				// If the optional mips are not available, or if we shouldn't load them now, clamp the possible mips requested. 
+				// (when the non-optional mips are not yet loaded, loading optional mips generates cross files requests).
+				// This is not bullet proof though since the texture/mesh could have a pending stream-out request.
+				if (OptionalMipsState != EOptionalMipsState::OMS_HasOptionalMips || ResidentMips < NumNonOptionalMips)
+				{
+					TempMaxAllowedMips = FMath::Min(TempMaxAllowedMips, NumNonOptionalMips);
+				}
+			}
+			MaxAllowedMips = TempMaxAllowedMips;
 		}
 	
 		check(LODGroup < NumLODGroups);
 		if (NumStreamedMips[LODGroup] > 0)
 		{
-			MinAllowedMips = FMath::Clamp<int32>(ResourceState.MaxNumLODs - NumStreamedMips[LODGroup], ResourceState.NumNonStreamingLODs, MaxAllowedMips);
+			MinAllowedMips = FMath::Clamp<int32>(MipCount - NumStreamedMips[LODGroup], NumNonStreamingMips, MaxAllowedMips);
 		}
 		else
 		{
-			MinAllowedMips = ResourceState.NumNonStreamingLODs;
+			MinAllowedMips = NumNonStreamingMips;
 		}
 	}
 	else
 	{
+		bReadyForStreaming = false;
+		bInFlight = false;
 		bForceFullyLoad = false;
 		bIgnoreStreamingMipBias = false;
 		ResidentMips = 0;
 		RequestedMips = 0;
 		MinAllowedMips = 0;
 		MaxAllowedMips = 0;
+		NumNonOptionalMips = 0;
 		OptionalMipsState = EOptionalMipsState::OMS_NotCached;
 		LastRenderTime = FLT_MAX;	
 	}
 }
 
-FStreamableRenderResourceState FStreamingRenderAsset::UpdateStreamingStatus(bool bWaitForMipFading, TArray<UStreamableRenderAsset*>* DeferredTickCBAssets)
+void FStreamingRenderAsset::UpdateStreamingStatus(bool bWaitForMipFading)
 {
-	FStreamableRenderResourceState ResourceState;
-
 	if (RenderAsset)
 	{
-		RenderAsset->TickStreaming(true, DeferredTickCBAssets);
+		bInFlight = RenderAsset->UpdateStreamingStatus(bWaitForMipFading);
 
-		// Call only after UpdateStreamingStatus() since it could update it.
-		ResourceState = RenderAsset->GetStreamableResourceState();
+		// Optimization: Use GetCachedNumResidentLODs() and GetCachedReadyForStreaming()
+		// instead of GetNumResidentMips() and IsReadyForStreaming() to reduce cache misses
+		// Platforms tested and results (ave exec time of FRenderAssetStreamingManager::UpdateResourceStreaming):
+		//   PS4 Pro - from ~0.79 ms/frame to ~0.55 ms/frame
 
 		// This must be updated after UpdateStreamingStatus
-		ResidentMips = ResourceState.NumResidentLODs;
-		RequestedMips = ResourceState.NumRequestedLODs;
+		ResidentMips = RenderAsset->GetCachedNumResidentLODs();
+		if (!bReadyForStreaming)
+		{
+			bReadyForStreaming = RenderAsset->GetCachedReadyForStreaming();
+		}
+		RequestedMips = RenderAsset->GetNumRequestedMips();
 	}
-	return ResourceState;
+	else
+	{
+		bReadyForStreaming = false;
+		bInFlight = false;
+	}
 }
 
 float FStreamingRenderAsset::GetExtraBoost(TextureGroup	LODGroup, const FRenderAssetStreamingSettings& Settings)
@@ -262,7 +271,7 @@ float FStreamingRenderAsset::GetExtraBoost(TextureGroup	LODGroup, const FRenderA
 	}
 }
 
-int32 FStreamingRenderAsset::GetWantedMipsFromSize(float Size, float InvMaxScreenSizeOverAllViews) const
+int32 FStreamingRenderAsset::GetWantedMipsFromSize(float Size, float MaxScreenSizeOverAllViews) const
 {
 	if (IsTexture())
 	{
@@ -272,10 +281,12 @@ int32 FStreamingRenderAsset::GetWantedMipsFromSize(float Size, float InvMaxScree
 	}
 	else
 	{
-		check(RenderAssetType == EStreamableRenderAssetType::StaticMesh || RenderAssetType == EStreamableRenderAssetType::SkeletalMesh || RenderAssetType == EStreamableRenderAssetType::LandscapeMeshMobile);
+		check(MinAllowedMips >= 1);
+		check(MaxAllowedMips <= MipCount);
+		check(RenderAssetType == AT_StaticMesh || RenderAssetType == AT_SkeletalMesh);
 		if (Size != FLT_MAX)
 		{
-			const float NormalizedSize = Size * InvMaxScreenSizeOverAllViews;
+			const float NormalizedSize = Size / MaxScreenSizeOverAllViews;
 			for (int32 NumMips = MinAllowedMips; NumMips <= MaxAllowedMips; ++NumMips)
 			{
 				if (GetNormalizedScreenSize(NumMips) >= NormalizedSize)
@@ -299,7 +310,6 @@ void FStreamingRenderAsset::SetPerfectWantedMips_Async(
 {
 	bForceFullyLoadHeuristic = (MaxSize == FLT_MAX || MaxSize_VisibleOnly == FLT_MAX);
 	bLooksLowRes = InLooksLowRes; // Things like lightmaps, HLOD and close instances.
-	NormalizedScreenSize = 0.f;
 
 	if (MaxNumForcedLODs >= MaxAllowedMips)
 	{
@@ -308,27 +318,20 @@ void FStreamingRenderAsset::SetPerfectWantedMips_Async(
 		return;
 	}
 
-	float InvMaxScreenSizeOverAllViews = 1.f;
-	if (IsMesh())
-	{
-		InvMaxScreenSizeOverAllViews = 1.f / MaxScreenSizeOverAllViews;
-		NormalizedScreenSize = FMath::Max(MaxSize, MaxSize_VisibleOnly) * InvMaxScreenSizeOverAllViews;
-	}
-
 	NumForcedMips = FMath::Min(MaxNumForcedLODs, MaxAllowedMips);
-	VisibleWantedMips = FMath::Max(GetWantedMipsFromSize(MaxSize_VisibleOnly, InvMaxScreenSizeOverAllViews), NumForcedMips);
+	VisibleWantedMips = FMath::Max(GetWantedMipsFromSize(MaxSize_VisibleOnly, MaxScreenSizeOverAllViews), NumForcedMips);
 
 	// Terrain, Forced Fully Load and Things that already look bad are not affected by hidden scale.
 	if (bIsTerrainTexture || bForceFullyLoadHeuristic || bLooksLowRes)
 	{
-		HiddenWantedMips = FMath::Max(GetWantedMipsFromSize(MaxSize, InvMaxScreenSizeOverAllViews), NumForcedMips);
+		HiddenWantedMips = FMath::Max(GetWantedMipsFromSize(MaxSize, MaxScreenSizeOverAllViews), NumForcedMips);
 		NumMissingMips = 0; // No impact for terrains as there are not allowed to drop mips.
 	}
 	else
 	{
-		HiddenWantedMips = FMath::Max(GetWantedMipsFromSize(MaxSize * Settings.HiddenPrimitiveScale, InvMaxScreenSizeOverAllViews), NumForcedMips);
+		HiddenWantedMips = FMath::Max(GetWantedMipsFromSize(MaxSize * Settings.HiddenPrimitiveScale, MaxScreenSizeOverAllViews), NumForcedMips);
 		// NumMissingMips contains the number of mips not loaded because of HiddenPrimitiveScale. When out of budget, those texture will be considered as already sacrificed.
-		NumMissingMips = FMath::Max<int32>(GetWantedMipsFromSize(MaxSize, InvMaxScreenSizeOverAllViews) - FMath::Max<int32>(VisibleWantedMips, HiddenWantedMips), 0);
+		NumMissingMips = FMath::Max<int32>(GetWantedMipsFromSize(MaxSize, MaxScreenSizeOverAllViews) - FMath::Max<int32>(VisibleWantedMips, HiddenWantedMips), 0);
 	}
 }
 
@@ -461,7 +464,7 @@ bool FStreamingRenderAsset::UpdateLoadOrderPriority_Async(int32 MinMipForSplitRe
 	}
 
 	// If the entry is valid and we need to send a new request to load/drop the right mip.
-	if (RenderAsset && WantedMips != RequestedMips)
+	if (bReadyForStreaming && RenderAsset && WantedMips != RequestedMips)
 	{
 		const bool bIsVisible			= ResidentMips < VisibleWantedMips; // Otherwise it means we are loading mips that are only useful for non visible primitives.
 		const bool bMustLoadFirst		= bForceFullyLoadHeuristic || bIsTerrainTexture || bIsCharacterTexture;
@@ -480,11 +483,11 @@ bool FStreamingRenderAsset::UpdateLoadOrderPriority_Async(int32 MinMipForSplitRe
 	}
 }
 
-void FStreamingRenderAsset::CancelStreamingRequest()
+void FStreamingRenderAsset::CancelPendingMipChangeRequest()
 {
 	if (RenderAsset)
 	{
-		RenderAsset->CancelPendingStreamingRequest();
+		RenderAsset->CancelPendingMipChangeRequest();
 		UpdateStreamingStatus(false);
 	}
 }
@@ -508,20 +511,18 @@ void FStreamingRenderAsset::StreamWantedMipsUsingCachedData(FRenderAssetStreamin
 
 void FStreamingRenderAsset::StreamWantedMips_Internal(FRenderAssetStreamingManager& Manager, bool bUseCachedData)
 {
-	if (RenderAsset && !RenderAsset->HasPendingInitOrStreaming())
+	if (RenderAsset && !RenderAsset->HasPendingUpdate())
 	{
-		const FStreamableRenderResourceState ResourceState = RenderAsset->GetStreamableResourceState();
-
 		const uint32 bLocalForceFullyLoadHeuristic = bUseCachedData ? bCachedForceFullyLoadHeuristic : bForceFullyLoadHeuristic;
 		const int32 LocalVisibleWantedMips = bUseCachedData ? CachedVisibleWantedMips : VisibleWantedMips;
 		// Update ResidentMips now as it is guarantied to not change here (since no pending requests).
-		ResidentMips = ResourceState.NumResidentLODs;
+		ResidentMips = RenderAsset->GetNumResidentMips();
 
 		// Prevent streaming-in optional mips and non optional mips as they are from different files.
 		int32 LocalWantedMips = bUseCachedData ? CachedWantedMips : WantedMips;
-		if (ResidentMips < ResourceState.NumNonOptionalLODs && LocalWantedMips > ResourceState.NumNonOptionalLODs)
+		if (ResidentMips < NumNonOptionalMips && LocalWantedMips > NumNonOptionalMips)
 		{ 
-			LocalWantedMips = ResourceState.NumNonOptionalLODs;
+			LocalWantedMips = NumNonOptionalMips;
 		}
 
 		if (LocalWantedMips != ResidentMips)

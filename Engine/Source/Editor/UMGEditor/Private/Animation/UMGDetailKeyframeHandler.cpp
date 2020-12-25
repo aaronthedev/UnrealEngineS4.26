@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Animation/UMGDetailKeyframeHandler.h"
 #include "Animation/WidgetAnimation.h"
@@ -30,7 +30,7 @@ bool FUMGDetailKeyframeHandler::IsPropertyAnimated(const IPropertyHandle& Proper
 		if (ObjectHandle.IsValid()) 
 		{
 			UMovieScene* MovieScene = Sequencer->GetFocusedMovieSceneSequence()->GetMovieScene();
-			FProperty* Property = PropertyHandle.GetProperty();
+			UProperty* Property = PropertyHandle.GetProperty();
 			TSharedRef<FPropertyPath> PropertyPath = FPropertyPath::CreateEmpty();
 			PropertyPath->AddProperty(FPropertyInfo(Property));
 			FName PropertyName(*PropertyPath->ToString(TEXT(".")));

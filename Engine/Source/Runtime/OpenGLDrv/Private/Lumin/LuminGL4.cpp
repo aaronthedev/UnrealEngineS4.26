@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #if PLATFORM_LUMINGL4
 
@@ -135,6 +135,43 @@ static void PlatformCreateDummyGLWindow(FPlatformOpenGLContext *OutContext)
 	checkf(Result == EGL_TRUE, TEXT("elgInitialize error: 0x%x "), eglGetError());
 
 	OutContext->DisplayConnection = DefaultDisplay;
+}
+
+static bool PlatformOpenGL3()
+{
+	return FParse::Param(FCommandLine::Get(), TEXT("opengl3"));
+}
+
+static bool PlatformOpenGL4()
+{
+	return FParse::Param(FCommandLine::Get(), TEXT("opengl4"));
+}
+
+static void PlatformOpenGLVersionFromCommandLine(int& OutMajorVersion, int& OutMinorVersion)
+{
+	// Lumin GL4 determines OpenGL Context version based on command line arguments
+	bool bGL3 = PlatformOpenGL3();
+	bool bGL4 = PlatformOpenGL4();
+	if (!bGL3 && !bGL4)
+	{
+		// Defaults to GL4.3(SM5 feature level) if no command line arguments are passed in 
+		bGL4 = true;
+	}
+
+	if (bGL3)
+	{
+		OutMajorVersion = 3;
+		OutMinorVersion = 2;
+	}
+	else if (bGL4)
+	{
+		OutMajorVersion = 4;
+		OutMinorVersion = 3;
+	}
+	else
+	{
+		verifyf(false, TEXT("OpenGLRHI initialized with invalid command line, must be one of: -opengl3, -opengl4"));
+	}
 }
 
 /**
@@ -304,8 +341,9 @@ struct FPlatformOpenGLDevice
 		extern void InitDebugContext();
 		ContextUsageGuard = new FCriticalSection;
 
-		const int MajorVersion = 4;
-		const int MinorVersion = 3;
+		int MajorVersion = 0;
+		int MinorVersion = 0;
+		PlatformOpenGLVersionFromCommandLine(MajorVersion, MinorVersion);
 
 		PlatformCreateDummyGLWindow(&SharedContext);
 		PlatformCreateOpenGLContextCore(&SharedContext, MajorVersion, MinorVersion, NULL);
@@ -388,8 +426,9 @@ FPlatformOpenGLContext* PlatformCreateOpenGLContext(FPlatformOpenGLDevice* Devic
 	Context->DisplayConnection = DefaultDisplay;
 	check(Context->DisplayConnection);
 
-	const int MajorVersion = 4;
-	const int MinorVersion = 3;
+	int MajorVersion = 0;
+	int MinorVersion = 0;
+	PlatformOpenGLVersionFromCommandLine(MajorVersion, MinorVersion);
 
 	PlatformCreateOpenGLContextCore(Context, MajorVersion, MinorVersion, Device->SharedContext.OpenGLContext);
 	check(Context->OpenGLContext);
@@ -459,17 +498,17 @@ bool PlatformBlitToViewport(FPlatformOpenGLDevice* Device,
 	uint32 BackbufferSizeX,
 	uint32 BackbufferSizeY,
 	bool bPresent,
-	bool bLockToVsync)
+	bool bLockToVsync,
+	int32 SyncInterval)
 {
 	FScopeLock ScopeLock(Device->ContextUsageGuard);
 	{
-		int32 SyncInterval = RHIGetSyncInterval();
 		FPlatformOpenGLContext* const Context = Viewport.GetGLContext();
 		check(Context && Context->OpenGLContext);
 		FScopeContext ScopeContext(Context);
 		if (bPresent && Viewport.GetCustomPresent())
 		{
-			// Commented out becuase we try to match Lumin standard here. This does not match Windows/Linux though
+			// Commented out becuase we try to match Lumin ES2 standard here. This does not match Windows/Linux though
 			// glDisable(GL_FRAMEBUFFER_SRGB);
 			bPresent = Viewport.GetCustomPresent()->Present(SyncInterval);
 			// glEnable(GL_FRAMEBUFFER_SRGB);

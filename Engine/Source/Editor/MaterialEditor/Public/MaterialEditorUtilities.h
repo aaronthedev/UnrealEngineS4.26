@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -196,10 +196,10 @@ public:
 
 
 	/** Commands for the Parents menu */
-	static void OnOpenMaterial(const FAssetData InMaterial);
-	static void OnOpenFunction(const FAssetData InFunction);
-	static void OnShowMaterialInContentBrowser(const FAssetData InMaterial);
-	static void OnShowFunctionInContentBrowser(const FAssetData InFunction);
+	static void OnOpenMaterial(FAssetData InMaterial);
+	static void OnOpenFunction(FAssetData InFunction);
+	static void OnShowMaterialInContentBrowser(FAssetData InMaterial);
+	static void OnShowFunctionInContentBrowser(FAssetData InFunction);
 
 private:
 

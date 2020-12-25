@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================================
 	ApplePlatformRunnableThread.h: Apple platform threading functions
@@ -83,8 +83,7 @@ private:
 			case TPri_SlightlyBelowNormal: return 30;
 			case TPri_BelowNormal: return 25;
 			case TPri_Lowest: return 20;
-			case TPri_Num:
-			default: UE_LOG(LogHAL, Fatal, TEXT("Unknown Priority passed to FRunnableThreadApple::TranslateThreadPriority()")); return 31;
+			default: UE_LOG(LogHAL, Fatal, TEXT("Unknown Priority passed to FRunnableThreadApple::TranslateThreadPriority()"));
 		}
 	}
     

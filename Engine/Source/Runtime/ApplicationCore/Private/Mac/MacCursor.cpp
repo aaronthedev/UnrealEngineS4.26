@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Mac/MacCursor.h"
 #include "Mac/MacWindow.h"
@@ -260,7 +260,7 @@ void* FMacCursor::CreateCursorFromRGBABuffer(const FColor* Pixels, int32 Width, 
 			hasAlpha : YES
 			isPlanar : NO
 			colorSpaceName : NSCalibratedRGBColorSpace
-			bitmapFormat : NSBitmapFormatAlphaFirst
+			bitmapFormat : NSAlphaFirstBitmapFormat
 			bytesPerRow : Width * 4
 			bitsPerPixel : 32];
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreGlobals.h"
@@ -47,6 +47,5 @@ private:
 	double StartTime = 0.0;
 	bool bHasCmdLine = false;
 	bool bDisabled = false;
-	int32 SuspendCount = 0;
 	timer_t TimerId = nullptr;
 };

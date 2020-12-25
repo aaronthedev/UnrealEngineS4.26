@@ -1,62 +1,54 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-
 #include "Network/Service/DisplayClusterService.h"
-#include "Network/Session/IDisplayClusterSessionPacketHandler.h"
-#include "Network/Protocol/IDisplayClusterProtocolClusterSync.h"
-#include "Network/Packet/DisplayClusterPacketInternal.h"
-
+#include "Network/Protocol/IPDisplayClusterClusterSyncProtocol.h"
+#include "Network/DisplayClusterMessage.h"
 #include "Misc/DisplayClusterBarrier.h"
 
 
 /**
- * Cluster synchronization TCP server
+ * Cluster synchronization service
  */
 class FDisplayClusterClusterSyncService
-	: public    FDisplayClusterService
-	, public    IDisplayClusterSessionPacketHandler<FDisplayClusterPacketInternal, true>
-	, protected IDisplayClusterProtocolClusterSync
+	: public  FDisplayClusterService
+	, private IPDisplayClusterClusterSyncProtocol
 {
 public:
-	FDisplayClusterClusterSyncService();
+	FDisplayClusterClusterSyncService(const FString& InAddr, const int32 InPort);
 	virtual ~FDisplayClusterClusterSyncService();
 
 public:
-	virtual bool Start(const FString& Address, int32 Port) override;
+	virtual bool Start() override;
 	void Shutdown() override;
 
 protected:
-	// Creates session instance for this service
-	virtual TUniquePtr<IDisplayClusterSession> CreateSession(FSocket* Socket, const FIPv4Endpoint& Endpoint, uint64 SessionId) override;
+	virtual TSharedPtr<FDisplayClusterSessionBase> CreateSession(FSocket* InSocket, const FIPv4Endpoint& InEP) override;
 
 protected:
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	// IDisplayClusterSessionStatusListener
+	// IDisplayClusterSessionListener
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	virtual void NotifySessionClose(uint64 SessionId) override;
-
-protected:
-	//////////////////////////////////////////////////////////////////////////////////////////////
-	// IDisplayClusterSessionPacketHandler
-	//////////////////////////////////////////////////////////////////////////////////////////////
-	virtual TSharedPtr<FDisplayClusterPacketInternal> ProcessPacket(const TSharedPtr<FDisplayClusterPacketInternal>& Request) override;
+	virtual void NotifySessionOpen(FDisplayClusterSessionBase* InSession) override;
+	virtual void NotifySessionClose(FDisplayClusterSessionBase* InSession) override;
+	virtual TSharedPtr<FDisplayClusterMessage> ProcessMessage(const TSharedPtr<FDisplayClusterMessage>& Request) override;
 
 private:
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	// IDisplayClusterProtocolClusterSync
+	// IPDisplayClusterClusterSyncProtocol
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	virtual void WaitForGameStart(double* ThreadWaitTime, double* BarrierWaitTime) override;
-	virtual void WaitForFrameStart(double* ThreadWaitTime, double* BarrierWaitTime) override;
-	virtual void WaitForFrameEnd(double* ThreadWaitTime, double* BarrierWaitTime) override;
+	virtual void WaitForGameStart() override;
+	virtual void WaitForFrameStart() override;
+	virtual void WaitForFrameEnd() override;
+	virtual void WaitForTickEnd() override;
 	virtual void GetDeltaTime(float& DeltaSeconds) override;
-	virtual void GetFrameTime(TOptional<FQualifiedFrameTime>& FrameTime) override;
-	virtual void GetSyncData(TMap<FString, FString>& SyncData, EDisplayClusterSyncGroup SyncGroup)  override;
-	virtual void GetInputData(TMap<FString, FString>& InputData) override;
-	virtual void GetEventsData(TArray<TSharedPtr<FDisplayClusterClusterEventJson>>& JsonEvents, TArray<TSharedPtr<FDisplayClusterClusterEventBinary>>& BinaryEvents) override;
-	virtual void GetNativeInputData(TMap<FString, FString>& NativeInputData) override;
+	virtual void GetTimecode(FTimecode& Timecode, FFrameRate& FrameRate) override;
+	virtual void GetSyncData(FDisplayClusterMessage::DataType& SyncData, EDisplayClusterSyncGroup SyncGroup)  override;
+	virtual void GetInputData(FDisplayClusterMessage::DataType& InputData) override;
+	virtual void GetEventsData(FDisplayClusterMessage::DataType& EventsData) override;
+	virtual void GetNativeInputData(FDisplayClusterMessage::DataType& NativeInputData) override;
 
 private:
 	// Game start sync barrier
@@ -65,4 +57,7 @@ private:
 	FDisplayClusterBarrier BarrierFrameStart;
 	// Frame end barrier
 	FDisplayClusterBarrier BarrierFrameEnd;
+	// Tick end barrier
+	FDisplayClusterBarrier BarrierTickEnd;
 };
+

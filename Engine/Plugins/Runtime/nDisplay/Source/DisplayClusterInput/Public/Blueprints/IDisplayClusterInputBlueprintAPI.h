@@ -1,12 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/Interface.h"
 #include "DisplayClusterInputTypes.h"
-
-#include "DisplayClusterConfigurationTypes.h"
 
 #include "IDisplayClusterInputBlueprintAPI.generated.h"
 
@@ -56,7 +54,7 @@ public:
 	 * @return true if success
 	 */
 	UFUNCTION(BlueprintCallable, meta = (DisplayName = "Set VRPN Keyboard Reflection"), Category = "DisplayClusterInput")
-	virtual bool SetVrpnKeyboardReflectionMode(const FString& VrpnDeviceId, EDisplayClusterInputKeyboardReflectionMode ReflectionMode) = 0;
+	virtual bool SetVrpnKeyboardReflectionMode(const FString& VrpnDeviceId, EDisplayClusterInputKeyboardReflectMode ReflectMode) = 0;
 
 	/**
 	* Bind VRPN tracker to a hand controller

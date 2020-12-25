@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,7 +8,6 @@
 #include "Runtime/Engine/Classes/Components/AudioComponent.h"
 #include "Sound/SoundAttenuation.h"
 #include "Channels/MovieSceneFloatChannel.h"
-#include "Sections/MovieSceneActorReferenceSection.h"
 #include "MovieSceneAudioSection.generated.h"
 
 class USoundBase;
@@ -81,14 +80,6 @@ public:
 	}
 
 	/**
-	 * @return Whether to allow looping if the section length is greater than the sound duration
-	 */
-	bool GetLooping() const
-	{
-		return bLooping;
-	}
-
-	/**
 	 * @return Whether subtitles should be suppressed
 	 */
 	bool GetSuppressSubtitles() const
@@ -111,16 +102,6 @@ public:
 	{
 		return AttenuationSettings;
 	}
-
-	/*
-	 * @return The attach actor data
-	 */
-	const FMovieSceneActorReferenceData& GetAttachActorData() const { return AttachActorData; }
-
-	/*
-	 * @return The attach component given the bound actor and the actor attach key with the component and socket names
-	 */
-	USceneComponent* GetAttachComponent(const AActor* InParentActor, const FMovieSceneActorReferenceKey& Key) const;
 
 	/** ~UObject interface */
 	virtual void PostLoad() override;
@@ -166,8 +147,7 @@ public:
 	virtual void TrimSection(FQualifiedFrameTime TrimTime, bool bTrimLeft, bool bDeleteKeys) override;
 	virtual UMovieSceneSection* SplitSection(FQualifiedFrameTime SplitTime, bool bDeleteKeys) override;
 	virtual TOptional<FFrameTime> GetOffsetTime() const override;
-
-	virtual EMovieSceneChannelProxyType CacheChannelProxy() override;
+	virtual FMovieSceneEvalTemplatePtr GenerateTemplate() const override;
 
 private:
 
@@ -203,14 +183,7 @@ private:
 	UPROPERTY( )
 	FMovieSceneFloatChannel PitchMultiplier;
 
-	UPROPERTY()
-	FMovieSceneActorReferenceData AttachActorData;
-
-	/* Allow looping if the section length is greater than the sound duration */
-	UPROPERTY(EditAnywhere, Category = "Audio")
-	bool bLooping;
-
-	UPROPERTY(EditAnywhere, Category = "Audio")
+	UPROPERTY( EditAnywhere, Category="Audio" )
 	bool bSuppressSubtitles;
 
 	/** Should the attenuation settings on this section be used. */

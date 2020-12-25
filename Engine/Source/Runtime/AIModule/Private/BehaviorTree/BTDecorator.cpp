@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BehaviorTree/BTDecorator.h"
 #include "BehaviorTree/BTCompositeNode.h"
@@ -103,7 +103,7 @@ void UBTDecorator::ConditionalFlowAbort(UBehaviorTreeComponent& OwnerComp, EBTDe
 	const bool bAlwaysRequestWhenPassing = (RequestMode == EBTDecoratorAbortRequest::ConditionPassing);
 
 	const bool bLogRestart = (bIsExecutingBranch != bPass) || (bIsExecutingBranch && bPass && (bAlwaysRequestWhenPassing || bAbortPending));
-	UE_VLOG(OwnerComp.GetOwner(), LogBehaviorTree, Verbose, TEXT("%s, ConditionalFlowAbort(%s) pass:%d executingBranch:%d abortPending:%d => %s"),
+	UE_VLOG(&OwnerComp, LogBehaviorTree, Verbose, TEXT("%s, ConditionalFlowAbort(%s) pass:%d executingBranch:%d abortPending:%d => %s"),
 		*UBehaviorTreeTypes::DescribeNodeHelper(this),
 		bAlwaysRequestWhenPassing ? TEXT("always when passing") : TEXT("on change"),
 		bPass ? 1 : 0,
@@ -122,7 +122,7 @@ void UBTDecorator::ConditionalFlowAbort(UBehaviorTreeComponent& OwnerComp, EBTDe
 		// value changes anyway since their nodes execution will be blocked by this condition 
 		// during tree search
 		const UBTCompositeNode* BranchRoot = GetParentNode()->Children[GetChildIndex()].ChildComposite;
-		OwnerComp.RequestUnregisterAuxNodesInBranch(BranchRoot);
+		OwnerComp.UnregisterAuxNodesInBranch(BranchRoot);
 	}
 	else if (bIsExecutingBranch && bPass && (bAlwaysRequestWhenPassing || bAbortPending))
 	{

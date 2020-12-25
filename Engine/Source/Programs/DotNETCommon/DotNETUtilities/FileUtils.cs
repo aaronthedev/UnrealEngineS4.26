@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -277,7 +277,7 @@ namespace Tools.DotNETCommon
 				}
 
 				// Throw the original exception
-				throw new WrappedFileOrDirectoryException(Ex, String.Format("{0}: Unable to move {1} to {2}", Ex.GetType(), SourceLocation, TargetLocation));
+				throw new WrappedFileOrDirectoryException(Ex, String.Format("Unable to move {0} to {1}", SourceLocation, TargetLocation));
 			}
 		}
 

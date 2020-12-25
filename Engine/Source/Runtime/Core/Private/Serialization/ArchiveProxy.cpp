@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Serialization/ArchiveProxy.h"
 
@@ -10,10 +10,5 @@ FArchiveProxy::FArchiveProxy(FArchive& InInnerArchive)
 : FArchive    (InInnerArchive)
 , InnerArchive(InInnerArchive)
 {
-	LinkProxy(InnerArchive.GetArchiveState(), GetArchiveState());
 }
 
-FArchiveProxy::~FArchiveProxy()
-{
-	UnlinkProxy(InnerArchive.GetArchiveState(), GetArchiveState());
-}

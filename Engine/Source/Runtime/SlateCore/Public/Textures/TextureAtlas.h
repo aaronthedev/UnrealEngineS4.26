@@ -1,12 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Containers/List.h"
-#include "Layout/SlateRect.h"
-
-#define WITH_ATLAS_DEBUGGING (WITH_EDITOR || IS_PROGRAM) && !UE_BUILD_SHIPPING
 
 /** 
  * Specifies how to handle texture atlas padding (when specified for the atlas). 
@@ -61,6 +58,7 @@ struct FAtlasedTextureSlot : public TIntrusiveLinkedList<FAtlasedTextureSlot>
 	/** Uniform Padding. can only be zero or one. See ESlateTextureAtlasPaddingStyle. */
 	uint8 Padding;
 
+
 	FAtlasedTextureSlot( uint32 InX, uint32 InY, uint32 InWidth, uint32 InHeight, uint8 InPadding )
 		: TIntrusiveLinkedList<FAtlasedTextureSlot>()
 		, X(InX)
@@ -109,7 +107,7 @@ public:
 	 * @param TextureHeight	Height of the texture
 	 * @param Data			Raw texture data
 	 */
-	const FAtlasedTextureSlot* AddTexture(uint32 TextureWidth, uint32 TextureHeight, const TArray<uint8>& Data);
+	const FAtlasedTextureSlot* AddTexture( uint32 TextureWidth, uint32 TextureHeight, const TArray<uint8>& Data );
 
 	/** @return the width of the atlas */
 	uint32 GetWidth() const { return AtlasWidth; }
@@ -124,9 +122,6 @@ public:
 	 */
 	virtual void ConditionalUpdateTexture() = 0;
 	
-#if WITH_ATLAS_DEBUGGING
-	const FAtlasedTextureSlot* GetSlotAtPosition(FIntPoint InPosition) const;
-#endif
 protected:
 	/**
 	 * Finds the optimal slot for a texture in the atlas
@@ -218,22 +213,6 @@ protected:
 #endif
 };
 
-struct FAtlasSlotInfo
-{
-	FAtlasSlotInfo()
-		: AtlasSlotRect()
-		, TextureName(NAME_None)
-	{}
-
-	bool operator!= (const FAtlasSlotInfo& Other) const
-	{
-		return AtlasSlotRect != Other.AtlasSlotRect & TextureName != Other.TextureName;
-	}
-
-	FSlateRect AtlasSlotRect;
-	FName TextureName;
-};
-
 /**
  * Interface to allow the Slate atlas visualizer to query atlas page information for an atlas provider
  */
@@ -251,9 +230,4 @@ public:
 
 	/** Does the page resources for the given index only contain alpha information? This affects how the atlas visualizer will sample them (verify with GetNumAtlasPages) */
 	virtual bool IsAtlasPageResourceAlphaOnly(const int32 InIndex) const = 0;
-	
-#if WITH_ATLAS_DEBUGGING
-	/** Finds a currently occupied slot at a position specified in atlas coordinates where 0,0 is the top left and the size of the atlas is bottom right */
-	virtual FAtlasSlotInfo GetAtlasSlotInfoAtPosition(FIntPoint InPosition, int32 AtlasIndex) const = 0;
-#endif
 };

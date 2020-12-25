@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_SCHEMA_H
-#define PXR_USD_SDF_SCHEMA_H
+#ifndef SDF_SCHEMA_H
+#define SDF_SCHEMA_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/sdf/api.h"
@@ -40,6 +40,7 @@
 #include "pxr/base/tf/weakBase.h"
 #include "pxr/base/vt/value.h"
 
+#include <boost/function.hpp>
 #include <memory>
 #include <string>
 #include <vector>
@@ -134,12 +135,12 @@ public:
         FieldDefinition& ReadOnly();
         FieldDefinition& AddInfo(const TfToken& tok, const JsValue& val);
 
-        using Validator =
-            SdfAllowed (*) (const SdfSchemaBase&, const VtValue&);
-        FieldDefinition& ValueValidator(Validator v);
-        FieldDefinition& ListValueValidator(Validator v);
-        FieldDefinition& MapKeyValidator(Validator v);
-        FieldDefinition& MapValueValidator(Validator v);
+        typedef boost::function<
+            SdfAllowed(const SdfSchemaBase&, const VtValue&)> Validator;
+        FieldDefinition& ValueValidator(const Validator& v);
+        FieldDefinition& ListValueValidator(const Validator& v);
+        FieldDefinition& MapKeyValidator(const Validator& v);
+        FieldDefinition& MapValueValidator(const Validator& v);
 
         /// @}
 
@@ -218,10 +219,8 @@ public:
     
     /// Returns the spec definition for the given spec type.
     /// Returns NULL if no definition exists for the given spec type.
-    inline const SpecDefinition* GetSpecDefinition(SdfSpecType specType) const {
-        return _specDefinitions[specType].second ?
-            &_specDefinitions[specType].first : nullptr;
-    }
+    SDF_API 
+    const SpecDefinition* GetSpecDefinition(SdfSpecType type) const;
 
     /// Convenience functions for accessing specific field information.
     /// @{
@@ -312,15 +311,9 @@ public:
     /// Returns all registered type names.
     std::vector<SdfValueTypeName> GetAllTypes() const;
 
-    /// Return the type name object for the given type name token.
+    /// Return the type name object for the given type name string.
     SDF_API 
-    SdfValueTypeName FindType(const TfToken& typeName) const;
-    /// \overload
-    SDF_API
-    SdfValueTypeName FindType(const char *typeName) const;
-    /// \overload
-    SDF_API
-    SdfValueTypeName FindType(std::string const &typeName) const;
+    SdfValueTypeName FindType(const std::string& typeName) const;
 
     /// Return the type name object for the given type and optional role.
     SDF_API 
@@ -336,7 +329,7 @@ public:
     /// exists otherwise create a temporary type name object.  Clients
     /// should not normally need to call this.
     SDF_API
-    SdfValueTypeName FindOrCreateType(const TfToken& typeName) const;
+    SdfValueTypeName FindOrCreateType(const std::string& typeName) const;
 
     /// @}
 
@@ -379,49 +372,61 @@ protected:
         class Type
         {
         public:
-            ~Type();
-
             // Specify a type with the given name, default value, and default
             // array value of VtArray<T>.
             template <class T>
-            Type(const TfToken& name, const T& defaultValue)
-                : Type(name, VtValue(defaultValue), VtValue(VtArray<T>()))
-            { }
-            template <class T>
-            Type(char const *name, const T& defaultValue)
-                : Type(TfToken(name),
-                       VtValue(defaultValue), VtValue(VtArray<T>()))
+            Type(const std::string& name, const T& defaultValue)
+                : _name(name)
+                , _defaultValue(defaultValue)
+                , _defaultArrayValue(VtArray<T>())
             { }
 
             // Specify a type with the given name and underlying C++ type.
             // No default value or array value will be registered.
-            Type(const TfToken& name, const TfType& type);
+            Type(const std::string& name, const TfType& type)
+                : _name(name)
+                , _type(type)
+            { }
 
             // Set C++ type name string for this type. Defaults to type name
             // from TfType.
-            Type& CPPTypeName(const std::string& cppTypeName);
+            Type& CPPTypeName(const std::string& cppTypeName)
+            {
+                _cppTypeName = cppTypeName;
+                if (!_defaultArrayValue.IsEmpty()) {
+                    _arrayCppTypeName = "VtArray<" + cppTypeName + ">";
+                }
+                return *this;
+            }
 
             // Set shape for this type. Defaults to shapeless.
-            Type& Dimensions(const SdfTupleDimensions& dims);
+            Type& Dimensions(const SdfTupleDimensions& dims)
+            { _dimensions = dims; return *this; }
 
             // Set default unit for this type. Defaults to dimensionless unit.
-            Type& DefaultUnit(TfEnum unit);
+            Type& DefaultUnit(TfEnum unit) { _unit = unit; return *this; }
 
             // Set role for this type. Defaults to no role.
-            Type& Role(const TfToken& role);
+            Type& Role(const TfToken& role) { _role = role; return *this; }
 
             // Indicate that arrays of this type are not supported.
-            Type& NoArrays();
+            Type& NoArrays() 
+            { 
+                _defaultArrayValue = VtValue(); 
+                _arrayCppTypeName = std::string();
+                return *this; 
+            }
 
         private:
-            Type(const TfToken& name, 
-                 const VtValue& defaultValue, 
-                 const VtValue& defaultArrayValue);
-
-            class _Impl;
-            std::unique_ptr<_Impl> _impl;
-
             friend class _ValueTypeRegistrar;
+
+            std::string _name;
+            TfType _type;
+            VtValue _defaultValue, _defaultArrayValue;
+            std::string _cppTypeName, _arrayCppTypeName;
+            TfEnum _unit;
+            TfToken _role;
+            SdfTupleDimensions _dimensions;
         };
 
         /// Register a value type and its corresponding array value type.
@@ -432,12 +437,6 @@ protected:
     };
 
     SdfSchemaBase();
-    
-    /// Construct an SdfSchemaBase but does not populate it with standard
-    /// fields and types.
-    class EmptyTag {};
-    SdfSchemaBase(EmptyTag);
-
     virtual ~SdfSchemaBase();
 
     /// Creates and registers a new field named \p fieldKey with the fallback
@@ -454,30 +453,12 @@ protected:
         return _CreateField(fieldKey, VtValue(fallback), plugin);
     }
 
-    /// Registers the given spec \p type with this schema and return a 
-    /// _SpecDefiner for specifying additional fields.
-    _SpecDefiner _Define(SdfSpecType type) {
-        // Mark the definition as valid and return a pointer to it.
-        _specDefinitions[type].second = true;
-        return _SpecDefiner(this, &_specDefinitions[type].first);
-    }
-
-    /// Returns a _SpecDefiner for the previously-defined spec \p type
-    /// for specifying additional fields.
+    /// Returns the SpecDefinition for the given spec type. Subclasses may
+    /// then extend this definition by specifying additional fields.
     _SpecDefiner _ExtendSpecDefinition(SdfSpecType specType);
 
     /// Registers the standard fields.
     void _RegisterStandardFields();
-
-    /// Registers plugin fields and sets up handling so that fields will
-    /// be added when additional plugins are registered.
-    void _RegisterPluginFields();
-
-    /// Registers standard attribute value types.
-    void _RegisterStandardTypes();
-
-    /// Registers legacy attribute value types.
-    void _RegisterLegacyTypes();
 
     /// Returns a type registrar.
     _ValueTypeRegistrar _GetTypeRegistrar() const;
@@ -500,7 +481,10 @@ protected:
 private:
     friend class _SpecDefiner;
 
-    void _OnDidRegisterPlugins(const PlugNotice::DidRegisterPlugins& n);
+    // Return a _SpecDefiner for the internal definition associated with \p type.
+    _SpecDefiner _Define(SdfSpecType type) {
+        return _SpecDefiner(this, &_specDefinitions[type]);
+    }
 
     // Return a _SpecDefiner for an existing spec definition, \p local.
     _SpecDefiner _Define(SpecDefinition *local) {
@@ -530,9 +514,10 @@ private:
         _FieldDefinitionMap;
     _FieldDefinitionMap _fieldDefinitions;
     
-    // Pair of definition and flag indicating validity.
-    std::pair<SdfSchemaBase::SpecDefinition, bool>
-    _specDefinitions[SdfNumSpecTypes];
+    typedef TfHashMap<SdfSpecType, SdfSchemaBase::SpecDefinition, 
+                                 TfHash> 
+        _SpecDefinitionMap;
+    _SpecDefinitionMap _specDefinitions;
 
     std::unique_ptr<Sdf_ValueTypeRegistry> _valueTypeRegistry;
     TfTokenVector _requiredFieldNames;
@@ -555,6 +540,13 @@ private:
     friend class TfSingleton<SdfSchema>;
     SdfSchema();
     virtual ~SdfSchema();
+
+    static void _RegisterTypes(_ValueTypeRegistrar registry);
+
+    void _OnDidRegisterPlugins(const PlugNotice::DidRegisterPlugins& n);
+
+    const Sdf_ValueTypeNamesType* _NewValueTypeNames() const;
+    friend struct Sdf_ValueTypeNamesType::_Init;
 };
 
 SDF_API_TEMPLATE_CLASS(TfSingleton<SdfSchema>);
@@ -588,6 +580,8 @@ SDF_API_TEMPLATE_CLASS(TfSingleton<SdfSchema>);
     ((InheritPaths, "inheritPaths"))                         \
     ((Instanceable, "instanceable"))                         \
     ((Kind, "kind"))                                         \
+    ((MapperArgValue, "value"))                              \
+    ((Marker, "marker"))                                     \
     ((PrimOrder, "primOrder"))                               \
     ((NoLoadHint, "noLoadHint"))                             \
     ((Owner, "owner"))                                       \
@@ -598,6 +592,7 @@ SDF_API_TEMPLATE_CLASS(TfSingleton<SdfSchema>);
     ((PropertyOrder, "propertyOrder"))                       \
     ((References, "references"))                             \
     ((Relocates, "relocates"))                               \
+    ((Script, "script"))                                     \
     ((SessionOwner, "sessionOwner"))                         \
     ((Specializes, "specializes"))                           \
     ((Specifier, "specifier"))                               \
@@ -638,4 +633,4 @@ TF_DECLARE_PUBLIC_TOKENS(SdfChildrenKeys, SDF_API, SDF_CHILDREN_KEYS);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_SCHEMA_H
+#endif // SDF_SCHEMA_H

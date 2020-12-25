@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "StringTableEditor.h"
 #include "Misc/FileHelper.h"
@@ -160,11 +160,6 @@ const UStringTable* FStringTableEditor::GetStringTable() const
 	return Cast<const UStringTable>(GetEditingObject());
 }
 
-void FStringTableEditor::RefreshStringTableEditor(const FString& NewSelection)
-{
-	HandlePostChange(NewSelection);
-}
-
 void FStringTableEditor::HandlePostChange(const FString& NewSelection)
 {
 	// We need to cache and restore the selection here as RefreshCachedStringTable will re-create the list view items
@@ -209,9 +204,6 @@ void FStringTableEditor::InitStringTableEditor(const EToolkitMode::Type Mode, co
 	
 	FStringTableEditorModule& StringTableEditorModule = FModuleManager::LoadModuleChecked<FStringTableEditorModule>("StringTableEditor");
 	AddMenuExtender(StringTableEditorModule.GetMenuExtensibilityManager()->GetAllExtenders(GetToolkitCommands(), GetEditingObjects()));
-	AddToolbarExtender(StringTableEditorModule.GetToolBarExtensibilityManager()->GetAllExtenders(GetToolkitCommands(), GetEditingObjects()));
-
-	RegenerateMenusAndToolbars();
 
 	// Support undo/redo
 	GEditor->RegisterForUndo(this);

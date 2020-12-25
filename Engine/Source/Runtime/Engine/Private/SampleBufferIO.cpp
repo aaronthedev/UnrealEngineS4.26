@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Sound/SampleBufferIO.h"
 #include "AudioMixer.h"
@@ -15,9 +15,9 @@ namespace Audio
 	{
 	}
 
-	void FSoundWavePCMLoader::LoadSoundWave(USoundWave* InSoundWave, TFunction<void(const USoundWave* SoundWave, const Audio::FSampleBuffer& OutSampleBuffer)> OnLoaded, bool bSynchronous /** = false */)
+	void FSoundWavePCMLoader::LoadSoundWave(USoundWave* InSoundWave, TFunction<void(const USoundWave* SoundWave, const Audio::FSampleBuffer& OutSampleBuffer)> OnLoaded)
 	{
-		FAudioDeviceHandle AudioDevice = FAudioDevice::GetMainAudioDevice();
+		FAudioDevice* AudioDevice = FAudioDevice::GetMainAudioDevice();
 
 		if (!AudioDevice || !InSoundWave)
 		{
@@ -34,31 +34,17 @@ namespace Audio
 			LoadingSoundWaveInfo.Status = FLoadingSoundWaveInfo::LoadStatus::Loading;
 
 			// Kick off a decompression/precache of the sound wave
-			AudioDevice->Precache(InSoundWave, bSynchronous, true, true);
+			AudioDevice->Precache(InSoundWave, false, true, true);
 		}
 		else
 		{
 			LoadingSoundWaveInfo.Status = FLoadingSoundWaveInfo::LoadStatus::Loaded;
 		}
 
-		if (bSynchronous)
-		{
-			check(InSoundWave->GetPrecacheState() == ESoundWavePrecacheState::Done);
+		LoadingSoundWaveInfo.SoundWave  = InSoundWave;
+		LoadingSoundWaveInfo.OnLoaded   = MoveTemp(OnLoaded);
 
-			const Audio::DefaultUSoundWaveSampleType* RawPCMData = reinterpret_cast<const Audio::DefaultUSoundWaveSampleType*>(InSoundWave->RawPCMData);
-			const int32 NumSamples = InSoundWave->RawPCMDataSize / sizeof(Audio::DefaultUSoundWaveSampleType);
-
-			TSampleBuffer<> SampleBuffer(RawPCMData, NumSamples, InSoundWave->NumChannels, InSoundWave->GetSampleRateForCurrentPlatform());
-			OnLoaded(InSoundWave, SampleBuffer);
-
-		}
-		else
-		{
-			LoadingSoundWaveInfo.SoundWave = InSoundWave;
-			LoadingSoundWaveInfo.OnLoaded = MoveTemp(OnLoaded);
-
-			LoadingSoundWaves.Add(LoadingSoundWaveInfo);
-		}
+		LoadingSoundWaves.Add(LoadingSoundWaveInfo);
 	}
 
 	void FSoundWavePCMLoader::Update()
@@ -183,15 +169,10 @@ namespace Audio
 		FText InvalidPathReason;
 		bool const bValidPackageName = FPackageName::IsValidLongPackageName(AbsoluteFilePath, false, &InvalidPathReason);
 
-		if (!bValidPackageName)
-		{
-			UE_LOG(LogAudio, Warning, TEXT("File path given was not valid (%s): the recording output will be saved to a USoundWave at the root of the Content folder."), *InvalidPathReason.ToString());
-			AbsoluteFilePath = TEXT("/Game/") + FString(TEXT("/")) + FileName;
-			AbsoluteFilePath = AbsoluteFilePath.Replace(TEXT("//"), TEXT("/"), ESearchCase::CaseSensitive);
-		}
+		check(bValidPackageName);
 
 		// Set up Package.
-		CurrentPackage = CreatePackage( *AbsoluteFilePath);
+		CurrentPackage = CreatePackage(nullptr, *AbsoluteFilePath);
 
 		// Create a new USoundWave.
 		CurrentSoundWave = NewObject<USoundWave>(CurrentPackage, *FileName, RF_Public | RF_Standalone);
@@ -292,16 +273,10 @@ namespace Audio
 			FText InvalidPathReason;
 			bool const bValidPackageName = FPackageName::IsValidLongPackageName(AbsoluteFilePath, false, &InvalidPathReason);
 
-			if (!bValidPackageName)
-			{
-				UE_LOG(LogAudio, Warning, TEXT("File path given was not valid (%s): the recording output will be saved to a USoundWave at the root of the Content folder."), *InvalidPathReason.ToString());
-				AbsoluteFilePath = TEXT("/Game/") + *FileName;
-				FPaths::NormalizeDirectoryName(AbsoluteFilePath);
-				AbsoluteFilePath = AbsoluteFilePath.Replace(TEXT("//"), TEXT("/"), ESearchCase::CaseSensitive);
-			}
+			check(bValidPackageName);
 
 			// Set up Package.
-			CurrentPackage = CreatePackage( *AbsoluteFilePath);
+			CurrentPackage = CreatePackage(nullptr, *AbsoluteFilePath);
 
 			// Create a new USoundWave.
 			CurrentSoundWave = NewObject<USoundWave>(CurrentPackage, **FileName, RF_Public | RF_Standalone);

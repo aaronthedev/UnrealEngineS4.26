@@ -174,9 +174,9 @@ public:
 
     // Define a  little function to convert encoded blob into a string.
     auto GetErrorAsString = [&name](const CComPtr<IDxcBlobEncoding> &pBlobString) -> std::string {
-      CComPtr<IDxcBlobUtf8> pUTF8BlobStr;
-      if (SUCCEEDED(hlsl::DxcGetBlobAsUtf8(pBlobString, DxcGetThreadMallocNoRef(), &pUTF8BlobStr)))
-        return std::string(pUTF8BlobStr->GetStringPointer(), pUTF8BlobStr->GetStringLength());
+      CComPtr<IDxcBlobEncoding> pUTF8BlobStr;
+      if (SUCCEEDED(hlsl::DxcGetBlobAsUtf8(pBlobString, &pUTF8BlobStr)))
+        return std::string(static_cast<char*>(pUTF8BlobStr->GetBufferPointer()), pUTF8BlobStr->GetBufferSize());
       else
         return std::string("invalid semantic define " + name);
     };

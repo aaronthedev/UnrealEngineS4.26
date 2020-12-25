@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SourceEffects/SourceEffectDynamicsProcessor.h"
 
@@ -61,9 +61,8 @@ void FSourceEffectDynamicsProcessor::OnPresetChanged()
 	DynamicsProcessor.SetKneeBandwidth(Settings.KneeBandwidthDb);
 	DynamicsProcessor.SetInputGain(Settings.InputGainDb);
 	DynamicsProcessor.SetOutputGain(Settings.OutputGainDb);
+	DynamicsProcessor.SetChannelLinked(Settings.bStereoLinked);
 	DynamicsProcessor.SetAnalogMode(Settings.bAnalogMode);
-
-	DynamicsProcessor.SetChannelLinkMode(Settings.bStereoLinked ? Audio::EDynamicsProcessorChannelLinkMode::Average : Audio::EDynamicsProcessorChannelLinkMode::Disabled);
 }
 
 void FSourceEffectDynamicsProcessor::ProcessAudio(const FSoundEffectSourceInputData& InData, float* OutAudioBufferData)

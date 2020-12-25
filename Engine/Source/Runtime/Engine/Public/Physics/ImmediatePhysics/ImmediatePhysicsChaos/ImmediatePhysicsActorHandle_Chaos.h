@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Physics/ImmediatePhysics/ImmediatePhysicsChaos/ImmediatePhysicsCore_Chaos.h"
-#include "Chaos/ChaosEngineInterface.h"
 
 #include "Engine/EngineTypes.h"
 
@@ -15,15 +14,9 @@ namespace ImmediatePhysics_Chaos
 	public:
 		~FActorHandle();
 
-		void SetName(const FName& InName) { Name = InName; }
-		const FName& GetName() const { return Name; }
-
 		void SetEnabled(bool bEnabled);
 
-		/** Sets the world transform, zeroes velocity, etc.*/
-		void InitWorldTransform(const FTransform& WorldTM);
-
-		/** Sets the world transform, maintains velocity etc.*/
+		/** Sets the world transform.*/
 		void SetWorldTransform(const FTransform& WorldTM);
 
 		/** Make a body kinematic, or non-kinematic */
@@ -40,9 +33,6 @@ namespace ImmediatePhysics_Chaos
 
 		/** Does this actor have a kinematic target (next kinematic transform to be applied) */
 		bool HasKinematicTarget() const;
-
-		/** Whether the body is static */
-		bool IsStatic() const;
 
 		/** Whether the body is simulating */
 		bool IsSimulated() const;
@@ -65,8 +55,6 @@ namespace ImmediatePhysics_Chaos
 		void AddForce(const FVector& Force);
 
 		void AddRadialForce(const FVector& Origin, float Strength, float Radius, ERadialImpulseFalloff Falloff, EForceType ForceType);
-
-		void AddImpulseAtLocation(FVector Impulse, FVector Location);
 
 		/** Set the linear damping*/
 		void SetLinearDamping(float NewLinearDamping);
@@ -97,14 +85,12 @@ namespace ImmediatePhysics_Chaos
 
 		/** Get the inverse mass. */
 		float GetInverseMass() const;
-		float GetMass() const;
 
 		/** Set the inverse inertia. Mass-space inverse inertia diagonal vector */
 		void SetInverseInertia(const FVector& NewInverseInertia);
 
 		/** Get the inverse inertia. Mass-space inverse inertia diagonal vector */
 		FVector GetInverseInertia() const;
-		FVector GetInertia() const;
 
 		/** Set the max depenetration velocity*/
 		void SetMaxDepenetrationVelocity(float NewMaxDepenetrationVelocity);
@@ -119,7 +105,7 @@ namespace ImmediatePhysics_Chaos
 		float GetMaxContactImpulse() const;
 
 		/** Get the actor-space centre of mass offset */
-		FTransform GetLocalCoMTransform() const;
+		const FTransform& GetLocalCoMTransform() const;
 
 		Chaos::TGeometryParticleHandle<FReal, Dimensions>* GetParticle();
 		const Chaos::TGeometryParticleHandle<FReal, Dimensions>* GetParticle() const;
@@ -133,24 +119,15 @@ namespace ImmediatePhysics_Chaos
 		friend struct FSimulation;
 		friend struct FJointHandle;
 
-		FActorHandle(
-			Chaos::TPBDRigidsSOAs<FReal, 3>& InParticles,
-			Chaos::TArrayCollectionArray<Chaos::FVec3>& InParticlePrevXs,
-			Chaos::TArrayCollectionArray<Chaos::FRotation3>& InParticlePrevRs,
-			EActorType ActorType,
-			FBodyInstance* BodyInstance,
-			const FTransform& Transform);
-
+		FActorHandle(Chaos::TPBDRigidsEvolutionGBF<FReal, Dimensions>* InEvolution, EActorType ActorType, FBodyInstance* BodyInstance, const FTransform& Transform);
 
 		Chaos::TGenericParticleHandle<FReal, Dimensions> Handle() const;
 
-		FName Name;
-		Chaos::TPBDRigidsSOAs<FReal, 3>& Particles;
+		Chaos::TPBDRigidsEvolutionGBF<FReal, Dimensions>* Evolution;
 		Chaos::TGeometryParticleHandle<FReal, Dimensions>* ParticleHandle;
-		Chaos::TArrayCollectionArray<Chaos::FVec3>& ParticlePrevXs;
-		Chaos::TArrayCollectionArray<Chaos::FRotation3>& ParticlePrevRs;
-		TUniquePtr<Chaos::FImplicitObject> Geometry;
-		TArray<TUniquePtr<Chaos::FPerShapeData>> Shapes;
+		TUniquePtr<Chaos::TImplicitObject<float, 3>> Geometry;
+		TArray<TUniquePtr<Chaos::TPerShapeData<float, 3>>> Shapes;
+		FTransform ActorToCoMTransform;
 		int32 Level;
 	};
 

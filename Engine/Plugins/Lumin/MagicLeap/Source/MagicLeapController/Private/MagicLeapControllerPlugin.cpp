@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "IMagicLeapControllerPlugin.h"
 #include "MagicLeapController.h"
 #include "Framework/Application/SlateApplication.h"
+#include "MagicLeapPluginUtil.h"
 
 class FMagicLeapControllerPlugin : public IMagicLeapControllerPlugin
 {
@@ -56,6 +55,7 @@ public:
 	}
 
 private:
+	FMagicLeapAPISetup APISetup;
 	TSharedPtr<IInputDevice> InputDevice;
 };
 

@@ -76,16 +76,16 @@ MayaCameraWriter::MayaCameraWriter(MDagPath & iDag,
     {
         sel.getDependNode(0, renderObj);
         MFnDependencyNode dep(renderObj);
-        MPlug plug = dep.findPlug("motionBlurUseShutter", true);
+        MPlug plug = dep.findPlug("motionBlurUseShutter");
         if (plug.asBool())
         {
             MTime sec(1.0, MTime::kSeconds);
             double val = sec.as(MTime::uiUnit());
 
             mUseRenderShutter = true;
-            plug = dep.findPlug("motionBlurShutterOpen", true);
+            plug = dep.findPlug("motionBlurShutterOpen");
             mShutterOpen = plug.asDouble() / val;
-            plug = dep.findPlug("motionBlurShutterClose", true);
+            plug = dep.findPlug("motionBlurShutterClose");
             mShutterClose = plug.asDouble() / val;
         }
     }

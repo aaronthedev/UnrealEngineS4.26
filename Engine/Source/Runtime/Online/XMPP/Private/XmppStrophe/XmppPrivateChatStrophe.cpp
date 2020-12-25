@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "XmppStrophe/XmppPrivateChatStrophe.h"
 #include "XmppStrophe/XmppConnectionStrophe.h"
@@ -8,7 +8,6 @@
 #include "XmppLog.h"
 #include "Misc/EmbeddedCommunication.h"
 #include "Containers/BackgroundableTicker.h"
-#include "Stats/Stats.h"
 
 #if WITH_XMPP_STROPHE
 
@@ -44,6 +43,22 @@ bool FXmppPrivateChatStrophe::ReceiveStanza(const FStropheStanza& IncomingStanza
 		return false;
 	}
 
+	// Potentially filter out non-friends/non-admins
+	if (ConnectionManager.GetServer().bPrivateChatFriendsOnly && ConnectionManager.Presence().IsValid())
+	{
+		FXmppUserJid FromJid = IncomingStanza.GetFrom();
+		if (FromJid.Id != TEXT("xmpp-admin"))
+		{
+			TArray<FXmppUserJid> RosterMembers;
+			ConnectionManager.Presence()->GetRosterMembers(RosterMembers);
+			if (!RosterMembers.Contains(FromJid))
+			{
+				// This was meant for us, but we don't want to see it
+				return true;
+			}
+		}
+	}
+
 	TOptional<FString> BodyText = IncomingStanza.GetBodyText();
 	if (!BodyText.IsSet())
 	{
@@ -57,7 +72,7 @@ bool FXmppPrivateChatStrophe::ReceiveStanza(const FStropheStanza& IncomingStanza
 	ChatMessage.Body = MoveTemp(BodyText.GetValue());
 
 	// Parse Timezone
-	TOptional<const FStropheStanza> StanzaDelay = IncomingStanza.GetChildStropheStanza(Strophe::SN_DELAY);
+	TOptional<const FStropheStanza> StanzaDelay = IncomingStanza.GetChild(Strophe::SN_DELAY);
 	if (StanzaDelay.IsSet())
 	{
 		if (StanzaDelay->HasAttribute(Strophe::SA_STAMP))
@@ -102,8 +117,6 @@ bool FXmppPrivateChatStrophe::SendChat(const FXmppUserJid& RecipientId, const FS
 
 bool FXmppPrivateChatStrophe::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FXmppPrivateChatStrophe_Tick);
-
 	while (!IncomingChatMessages.IsEmpty())
 	{
 		TUniquePtr<FXmppChatMessage> ChatMessage;
@@ -121,21 +134,6 @@ bool FXmppPrivateChatStrophe::Tick(float DeltaTime)
 void FXmppPrivateChatStrophe::OnChatReceived(TUniquePtr<FXmppChatMessage>&& Chat)
 {
 	TSharedRef<FXmppChatMessage> ChatRef = MakeShareable(Chat.Release());
-
-	// Potentially filter out non-friends/non-admins
-	if (ConnectionManager.GetServer().bPrivateChatFriendsOnly && ConnectionManager.Presence().IsValid())
-	{
-		if (ChatRef->FromJid.Id != TEXT("xmpp-admin"))
-		{
-			TArray<FXmppUserJid> RosterMembers;
-			ConnectionManager.Presence()->GetRosterMembers(RosterMembers);
-			if (!RosterMembers.Contains(ChatRef->FromJid))
-			{
-				return;
-			}
-		}
-	}
-
 	OnChatReceivedDelegate.Broadcast(ConnectionManager.AsShared(), ChatRef->FromJid, ChatRef);
 }
 

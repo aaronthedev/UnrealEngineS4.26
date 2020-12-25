@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -238,7 +238,6 @@ private:
 	void OnRigElementRemoved(FRigHierarchyContainer* Container, const FRigElementKey& InKey);
 	void OnRigElementRenamed(FRigHierarchyContainer* Container, ERigElementType ElementType, const FName& InOldName, const FName& InNewName);
 	void OnRigElementSelected(FRigHierarchyContainer* Container, const FRigElementKey& InKey, bool bSelected);
-	void HandleRefreshEditorFromBlueprint(UControlRigBlueprint* InBlueprint);
 
 	// import curve part
 	void ImportCurve(const FAssetData& InAssetData);

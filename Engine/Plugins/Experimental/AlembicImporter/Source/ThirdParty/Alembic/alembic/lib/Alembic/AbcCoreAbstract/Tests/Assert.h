@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcCoreAbstract_Tests_Assert_h
-#define Alembic_AbcCoreAbstract_Tests_Assert_h
+#ifndef _Alembic_AbcCoreAbstract_Tests_Assert_h_
+#define _Alembic_AbcCoreAbstract_Tests_Assert_h_
 
 #include <iostream>
 #include <stdexcept>

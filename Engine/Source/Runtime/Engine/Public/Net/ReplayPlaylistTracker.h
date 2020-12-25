@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -113,13 +113,13 @@ private:
 	void PlayNextReplay();
 
 	/** Called if an error occurs *after* the replay was requested to start (successfully), but before the replay actually starts. */
-	void OnDemoFailedToStart(UWorld* InWorld, EDemoPlayFailure::Type FailureType);
+	static void OnDemoFailedToStart(class UDemoNetDriver* DemoNetDriver, EDemoPlayFailure::Type FailureType, TSharedRef<ThisClass> This);
 
 	/** Called when the DemoNetDriver hits a Hard Stop, like an error or a user requesting a stop. */
-	void OnDemoStopped(UWorld* InWorld);
+	static void OnDemoStopped(TSharedRef<FReplayPlaylistTracker> Tracker);
 
 	/** Called when a replay has reached its end. */
-	void OnDemoPlaybackFinished(UWorld* InWorld);
+	static void OnDemoPlaybackFinished(TSharedRef<FReplayPlaylistTracker> Tracker);
 
 	bool bIsStartingReplay;
 	int32 CurrentReplay;

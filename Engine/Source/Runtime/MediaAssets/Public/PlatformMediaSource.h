@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -27,23 +27,17 @@ public:
 #if WITH_EDITORONLY_DATA
 
 	/** Media sources per platform. */
-	UPROPERTY(transient, EditAnywhere, Category=Sources, Meta=(DisplayName="Media Sources"))
+	UPROPERTY(EditAnywhere, Category=Sources, Meta=(DisplayName="Media Sources"))
 	TMap<FString, UMediaSource*> PlatformMediaSources;
-
-private:
-	/** Blind data encountered at load that could not be mapped to a known platform */
-	TMap<FGuid, UMediaSource*> BlindPlatformMediaSources;
 
 #endif
 
 public:
-	//~ UObject interface
-	virtual void PreSave(const class ITargetPlatform* TargetPlatform);
-	virtual void Serialize(FArchive& Ar) override;
 
 	//~ UMediaSource interface
 
 	virtual FString GetUrl() const override;
+	virtual void Serialize(FArchive& Ar) override;
 	virtual bool Validate() const override;
 
 public:

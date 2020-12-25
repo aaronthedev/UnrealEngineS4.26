@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/Text/SlateEditableTextLayout.h"
 #include "Styling/CoreStyle.h"
@@ -963,7 +963,7 @@ FReply FSlateEditableTextLayout::HandleKeyDown(const FKeyEvent& InKeyEvent)
 	else if (Key == EKeys::Enter && !OwnerWidget->IsTextReadOnly())
 	{
 		FScopedEditableTextTransaction TextTransaction(*this);
-		HandleCarriageReturn(InKeyEvent.IsRepeat());
+		HandleCarriageReturn();
 		Reply = FReply::Handled();
 	}
 	else if (Key == EKeys::Tab && OwnerWidget->CanTypeCharacter(TEXT('\t')))
@@ -1294,7 +1294,7 @@ FReply FSlateEditableTextLayout::HandleMouseMove(const FGeometry& InMyGeometry, 
 
 FReply FSlateEditableTextLayout::HandleMouseButtonDoubleClick(const FGeometry& InMyGeometry, const FPointerEvent& InMouseEvent)
 {
-	if (OwnerWidget->ShouldSelectWordOnMouseDoubleClick() && InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
+	if (InMouseEvent.GetEffectingButton() == EKeys::LeftMouseButton)
 	{
 		SelectWordAt(InMyGeometry, InMouseEvent.GetScreenSpacePosition());
 		return FReply::Handled();
@@ -1488,7 +1488,7 @@ bool FSlateEditableTextLayout::HandleTypeChar(const TCHAR InChar)
 	return false;
 }
 
-bool FSlateEditableTextLayout::HandleCarriageReturn(bool isRepeat)
+bool FSlateEditableTextLayout::HandleCarriageReturn()
 {
 	if (OwnerWidget->IsTextReadOnly())
 	{
@@ -1498,11 +1498,6 @@ bool FSlateEditableTextLayout::HandleCarriageReturn(bool isRepeat)
 	if (OwnerWidget->IsMultiLineTextEdit() && OwnerWidget->CanInsertCarriageReturn())
 	{
 		InsertNewLineAtCursorImpl();
-	}
-	else if (isRepeat)
-	{
-		// Skip committing text on a repeat enter key
-		return false;
 	}
 	else
 	{
@@ -2620,8 +2615,6 @@ void FSlateEditableTextLayout::UpdateCursorHighlight()
 	{
 		TextLayout->AddLineHighlight(LineHighlight);
 	}
-	
-	VirtualKeyboardEntry->OnSelectionChanged.ExecuteIfBound();
 }
 
 void FSlateEditableTextLayout::RemoveCursorHighlight()
@@ -3066,12 +3059,7 @@ void FSlateEditableTextLayout::MakeUndoState(SlateEditableTextTypes::FUndoState&
 
 bool FSlateEditableTextLayout::CanExecuteUndo() const
 {
-	// Previously, if UndoStates was empty then the event would bubble up back to the Editor and trigger an undo.
-	// Now, the editable text always catches the undo event so that it never bubbles up. This prevents bugs such
-	// as undo-ing in a search box triggering an undo, and various issues related to undo-ing property changes
-	// while focused in to the property widget being undone.
-	// Note that these cases are all still checked in the actual Undo method.
-	return !OwnerWidget->IsTextReadOnly()/* && UndoStates.Num() > 0*/ && !TextInputMethodContext->IsComposing();
+	return !OwnerWidget->IsTextReadOnly() && UndoStates.Num() > 0 && !TextInputMethodContext->IsComposing();
 }
 
 void FSlateEditableTextLayout::Undo()
@@ -3126,8 +3114,7 @@ void FSlateEditableTextLayout::Undo()
 
 bool FSlateEditableTextLayout::CanExecuteRedo() const
 {
-	// See comment in CanExecuteUndo
-	return !OwnerWidget->IsTextReadOnly() /*&& CurrentUndoLevel != INDEX_NONE*/ && !TextInputMethodContext->IsComposing();
+	return !OwnerWidget->IsTextReadOnly() && CurrentUndoLevel != INDEX_NONE && !TextInputMethodContext->IsComposing();
 }
 
 void FSlateEditableTextLayout::Redo()
@@ -3428,7 +3415,7 @@ FVector2D FSlateEditableTextLayout::ComputeDesiredSize(float LayoutScaleMultipli
 		MarginValue.Right += CaretWidth;
 
 		const FVector2D HintTextSize = HintTextLayout->ComputeDesiredSize(
-			FSlateTextBlockLayout::FWidgetArgs(HintText, FText::GetEmpty(), WrapTextAt, AutoWrapText, WrappingPolicy, ETextTransformPolicy::None, MarginValue, LineHeightPercentage, Justification),
+			FSlateTextBlockLayout::FWidgetArgs(HintText, FText::GetEmpty(), WrapTextAt, AutoWrapText, WrappingPolicy, MarginValue, LineHeightPercentage, Justification),
 			LayoutScaleMultiplier, HintTextStyle
 			);
 
@@ -3536,17 +3523,6 @@ bool FSlateEditableTextLayout::HasActiveContextMenu() const
 	return ActiveContextMenu.IsValid();
 }
 
-void FSlateEditableTextLayout::GetCurrentTextLine(FString& OutTextLine) const
-{	
-	// grab line of text
-	const int32 LineIdx = CursorInfo.GetCursorLocation().GetLineIndex();
-	const TArray< FTextLayout::FLineModel >& Lines = TextLayout->GetLineModels();
-	if (Lines.IsValidIndex(LineIdx))
-	{
-		OutTextLine = *Lines[LineIdx].Text;
-	}
-}
-
 TSharedRef<FSlateEditableTextLayout::FVirtualKeyboardEntry> FSlateEditableTextLayout::FVirtualKeyboardEntry::Create(FSlateEditableTextLayout& InOwnerLayout)
 {
 	return MakeShareable(new FVirtualKeyboardEntry(InOwnerLayout));
@@ -3611,19 +3587,6 @@ FText FSlateEditableTextLayout::FVirtualKeyboardEntry::GetText() const
 	check(IsInGameThread());
 
 	return OwnerLayout->GetText();
-}
-
-bool FSlateEditableTextLayout::FVirtualKeyboardEntry::GetSelection(int& OutSelStart, int& OutSelEnd)
-{
-	check(IsInGameThread());
-
-	const FTextLocation CursorInteractionPosition = OwnerLayout->CursorInfo.GetCursorInteractionLocation();
-	FTextLocation SelectionLocation = OwnerLayout->SelectionStart.Get(CursorInteractionPosition);
-	FTextSelection Selection(SelectionLocation, CursorInteractionPosition);
-
-	OutSelStart = Selection.GetBeginning().GetOffset();
-	OutSelEnd = Selection.GetEnd().GetOffset();
-	return true;
 }
 
 FText FSlateEditableTextLayout::FVirtualKeyboardEntry::GetHintText() const

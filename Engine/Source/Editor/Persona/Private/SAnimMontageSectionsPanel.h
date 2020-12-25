@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -9,8 +9,6 @@
 #include "Widgets/SCompoundWidget.h"
 #include "SNodePanel.h"
 #include "STrack.h"
-#include "WorkflowOrientedApp/WorkflowTabFactory.h"
-#include "EditorUndoClient.h"
 
 class SBorder;
 class SMontageEditor;
@@ -19,45 +17,39 @@ class UAnimMontage;
 // Forward declatations
 class UAnimMontage;
 class SMontageEditor;
-class IPersonaToolkit;
 
-struct FAnimMontageSectionsSummoner : public FWorkflowTabFactory
-{
-public:
-	FAnimMontageSectionsSummoner(TSharedPtr<class FAssetEditorToolkit> InHostingApp, const TSharedRef<class IPersonaToolkit>& InPersonaToolkit, FSimpleMulticastDelegate& InOnSectionsChanged);
-
-	virtual TSharedRef<SWidget> CreateTabBody(const FWorkflowTabSpawnInfo& Info) const override;
-	virtual TSharedPtr<SToolTip> CreateTabToolTipWidget(const FWorkflowTabSpawnInfo& Info) const override;
-
-public:
-	TWeakPtr<class IPersonaToolkit> PersonaToolkit;
-	FSimpleMulticastDelegate& OnSectionsChanged;
-};
-
-class SAnimMontageSectionsPanel : public SCompoundWidget, public FEditorUndoClient
+class SAnimMontageSectionsPanel : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS( SAnimMontageSectionsPanel )
+		: _Montage()
+		, _MontageEditor()
+		, _bChildAnimMontage(false)
 	{}
+
+		SLATE_ARGUMENT( UAnimMontage*, Montage)						// The montage asset being edited
+		SLATE_ARGUMENT( TWeakPtr<SMontageEditor>, MontageEditor )	// The montage editor that owns this widget
+		SLATE_ARGUMENT( bool, bChildAnimMontage)
 
 	SLATE_END_ARGS()
 
-	~SAnimMontageSectionsPanel();
-
-	// FEditorUndoClient interface
-	virtual void PostUndo(bool bSuccess) { Update(); };
-	virtual void PostRedo(bool bSuccess) { Update(); };
-
-	void Construct(const FArguments& InArgs, const TSharedRef<IPersonaToolkit>& InPersonaToolkit, FSimpleMulticastDelegate& InOnSectionsChanged);
+	void Construct(const FArguments& InArgs);
 
 	// Rebuild panel widgets
 	void Update();
 
-	// Callback when a section in the upper display is clicked
-	// @param SectionIdx - Section that was clicked
-	// @param NextSecitonIdx - Section to set as the next section
-	void SetNextSectionIndex(int32 SectionIdx, int32 NextSecitonIdx);
 
+	void SetSectionPos(float NewPos, int32 SectionIdx, int32 RowIdx);
+	// Callback when mouse-drag ends for a section
+	void OnSectionDrop();
+
+	// Callback when a section in the upper display is clicked
+	// @param SectionIndex - Section that was clicked
+	void TopSectionClicked(int32 SectionIndex);
+
+	// Callback when a section in the lower display is clicked
+	// @param SectionIndex - Section that was clicked
+	void SectionClicked(int32 SectionIndex);
 	// Unlinks the requested section
 	// @param SectionIndex - Section to unlink
 	void RemoveLink(int32 SectionIndex);
@@ -76,24 +68,6 @@ public:
 
 private:
 
-	/** Shows the context menu for a section */
-	TSharedRef<SWidget> OnGetSectionMenuContent(int32 SectionIdx);
-
-	/** Restarts the preview animation */
-	void RestartPreview();
-
-	/** Restarts the preview animation playing all sections */
-	void RestartPreviewPlayAllSections();
-
-	/** Restarts the preview animation from the specified sections */
-	void RestartPreviewFromSection(int32 FromSectionIdx);
-
-	void SortSections();
-
-	void MakeDefaultSequentialSections();
-
-	void ClearSequenceOrdering();
-
 	// Returns whether or not the provided section is part of a loop
 	// @param SectionIdx - Section to check
 	bool IsLoop(int32 SectionIdx);
@@ -101,6 +75,24 @@ private:
 	// Main panel area widget
 	TSharedPtr<SBorder>			PanelArea;
 
-	// Persona toolkit we are hosted in
-	TWeakPtr<IPersonaToolkit> WeakPersonaToolkit;
+	// The montage we are currently observing
+	UAnimMontage*				Montage;
+	// The montage editor panel we are a child of
+	TWeakPtr<SMontageEditor>	MontageEditor;
+	// Section to row idx mapping
+	TArray<TArray<int32>>		SectionMap;
+
+	// Selection sets 
+	STrackNodeSelectionSet		TopSelectionSet;
+	STrackNodeSelectionSet		SelectionSet;
+
+	// Currently selected section index
+	int32						SelectedCompositeSection;
+
+	/*
+	* Child Anim Montage: Child Anim Montage only can replace name of animations, and no other meaningful edits
+	* as it will derive every data from Parent. There might be some other data that will allow to be replaced, but for now, it is
+	* not.
+	*/
+	bool						bChildAnimMontage;
 };

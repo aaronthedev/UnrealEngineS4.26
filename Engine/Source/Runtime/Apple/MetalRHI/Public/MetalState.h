@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MetalState.h: Metal state definitions.
@@ -142,7 +142,6 @@ public:
 	};
 	FBlendPerMRT RenderTargetStates[MaxSimultaneousRenderTargets];
 	bool bUseIndependentRenderTargetBlendStates;
-	bool bUseAlphaToCoverage;
 
 private:
 	// this tracks blend settings (in a bit flag) into a unique key that uses few bits, for PipelineState MRT setup

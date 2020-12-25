@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -130,9 +130,6 @@ public:
 	 * @see sqlite3_last_insert_rowid
 	 */
 	int64 GetLastInsertRowId() const;
-
-	/** Performs a quick check on the integrity of the database, returns true if everything is ok. */
-	bool PerformQuickIntegrityCheck() const;
 
 private:
 	friend class FSQLitePreparedStatement;

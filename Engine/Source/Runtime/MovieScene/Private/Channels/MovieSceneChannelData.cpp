@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Channels/MovieSceneChannelData.h"
 #include "Misc/FrameRate.h"
 
-namespace UE
-{
+
 namespace MovieScene
 {
 	void EvaluateTime(TArrayView<const FFrameNumber> InTimes, FFrameTime InTime, int32& OutIndex1, int32& OutIndex2)
@@ -85,9 +84,7 @@ namespace MovieScene
 		OutMin = MinIndex;
 		OutMax = MaxIndex;
 	}
-
 } // namespace MovieScene
-} // namespace UE
 
 FMovieSceneChannelData::FMovieSceneChannelData(TArray<FFrameNumber>* InTimes, FKeyHandleLookupTable* InKeyHandles)
 	: Times(InTimes), KeyHandles(InKeyHandles)
@@ -109,7 +106,7 @@ int32 FMovieSceneChannelData::GetIndex(FKeyHandle Handle)
 int32 FMovieSceneChannelData::FindKey(FFrameNumber InTime, FFrameNumber InTolerance)
 {
 	int32 MinIndex = 0, MaxIndex = 0;
-	UE::MovieScene::FindRange(*Times, InTime, InTolerance, 1, MinIndex, MaxIndex);
+	MovieScene::FindRange(*Times, InTime, InTolerance, 1, MinIndex, MaxIndex);
 	if (Times->IsValidIndex(MinIndex) && FMath::Abs((*Times)[MinIndex] - InTime) <= InTolerance)
 	{
 		return MinIndex;
@@ -120,7 +117,7 @@ int32 FMovieSceneChannelData::FindKey(FFrameNumber InTime, FFrameNumber InTolera
 
 void FMovieSceneChannelData::FindKeys(FFrameNumber InTime, int32 MaxNum, int32& OutMinIndex, int32& OutMaxIndex, int32 InTolerance)
 {
-	UE::MovieScene::FindRange(*Times, InTime, InTolerance, MaxNum, OutMinIndex, OutMaxIndex);
+	MovieScene::FindRange(*Times, InTime, InTolerance, MaxNum, OutMinIndex, OutMaxIndex);
 }
 
 int32 FMovieSceneChannelData::AddKeyInternal(FFrameNumber InTime)

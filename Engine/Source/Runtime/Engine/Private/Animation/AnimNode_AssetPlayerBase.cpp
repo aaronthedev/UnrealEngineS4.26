@@ -1,15 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Animation/AnimNode_AssetPlayerBase.h"
 #include "Animation/AnimInstanceProxy.h"
 
 FAnimNode_AssetPlayerBase::FAnimNode_AssetPlayerBase()
-	: GroupName(NAME_None)
-#if WITH_EDITORONLY_DATA
-	, GroupIndex_DEPRECATED(INDEX_NONE)
-#endif
+	: GroupIndex(INDEX_NONE)
 	, GroupRole(EAnimGroupRole::CanBeLeader)
-	, GroupScope(EAnimSyncGroupScope::Local)
 	, bIgnoreForRelevancyTest(false)
 	, bHasBeenFullWeight(false)
 	, BlendWeight(0.0f)
@@ -41,9 +37,9 @@ void FAnimNode_AssetPlayerBase::CreateTickRecordForNode(const FAnimationUpdateCo
 	const float FinalBlendWeight = Context.GetFinalBlendWeight();
 
 	FAnimGroupInstance* SyncGroup;
-	const FName GroupNameToUse = ((GroupRole < EAnimGroupRole::TransitionLeader) || bHasBeenFullWeight) ? GroupName : NAME_None;
+	const int32 GroupIndexToUse = ((GroupRole < EAnimGroupRole::TransitionLeader) || bHasBeenFullWeight) ? GroupIndex : INDEX_NONE;
 
-	FAnimTickRecord& TickRecord = Context.AnimInstanceProxy->CreateUninitializedTickRecordInScope(/*out*/ SyncGroup, GroupNameToUse, GroupScope);
+	FAnimTickRecord& TickRecord = Context.AnimInstanceProxy->CreateUninitializedTickRecord(GroupIndexToUse, /*out*/ SyncGroup);
 
 	Context.AnimInstanceProxy->MakeSequenceTickRecord(TickRecord, Sequence, bLooping, PlayRate, FinalBlendWeight, /*inout*/ InternalTimeAccumulator, MarkerTickRecord);
 	TickRecord.RootMotionWeightModifier = Context.GetRootMotionWeightModifier();
@@ -53,16 +49,14 @@ void FAnimNode_AssetPlayerBase::CreateTickRecordForNode(const FAnimationUpdateCo
 	{
 		SyncGroup->TestTickRecordForLeadership(GroupRole);
 	}
-
-	TRACE_ANIM_TICK_RECORD(Context, TickRecord);
 }
 
-float FAnimNode_AssetPlayerBase::GetCachedBlendWeight() const
+float FAnimNode_AssetPlayerBase::GetCachedBlendWeight()
 {
 	return BlendWeight;
 }
 
-float FAnimNode_AssetPlayerBase::GetAccumulatedTime() const
+float FAnimNode_AssetPlayerBase::GetAccumulatedTime()
 {
 	return InternalTimeAccumulator;
 }

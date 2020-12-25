@@ -1,19 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MagicLeapImageTrackerModule.h"
 #include "MagicLeapImageTrackerRunnable.h"
-#include "Stats/Stats.h"
-#include "MagicLeapHandle.h"
 
 FMagicLeapImageTrackerModule::FMagicLeapImageTrackerModule()
 : Runnable(nullptr)
 {
-	IMagicLeapPlugin::Get().RegisterMagicLeapTrackerEntity(this);
-}
-
-FMagicLeapImageTrackerModule::~FMagicLeapImageTrackerModule()
-{
-	IMagicLeapPlugin::Get().UnregisterMagicLeapTrackerEntity(this);
 }
 
 void FMagicLeapImageTrackerModule::StartupModule()
@@ -35,64 +27,40 @@ void FMagicLeapImageTrackerModule::ShutdownModule()
 	{
 		delete InRunnable;
 	});
+
 	IModuleInterface::ShutdownModule();
-}
-
-void FMagicLeapImageTrackerModule::DestroyTracker()
-{
-	DestroyEntityTracker();
-}
-
-void FMagicLeapImageTrackerModule::DestroyEntityTracker()
-{
-	Runnable->Stop();
 }
 
 bool FMagicLeapImageTrackerModule::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FMagicLeapImageTrackerModule_Tick);
-	if (!Runnable->IsRunning())
-	{
-		return true;
-	}
-
-
 	FMagicLeapImageTrackerTask CompletedTask;
 	if (Runnable->TryGetCompletedTask(CompletedTask))
 	{
+		FMagicLeapImageTrackerTarget& ImageTrackerTarget = CompletedTask.Target;
 		switch (CompletedTask.Type)
 		{
 		case FMagicLeapImageTrackerTask::EType::TargetCreateFailed:
 		{
-			CompletedTask.FailureDynamicDelegate.Broadcast();
-			CompletedTask.FailureStaticDelegate.ExecuteIfBound(CompletedTask.TargetName);
+			ImageTrackerTarget.OnSetImageTargetFailed.Broadcast();
 		}
 		break;
 
 		case FMagicLeapImageTrackerTask::EType::TargetCreateSucceeded:
 		{
-			CompletedTask.SuccessDynamicDelegate.Broadcast();
-			CompletedTask.SuccessStaticDelegate.ExecuteIfBound(CompletedTask.TargetName);
+			ImageTrackerTarget.OnSetImageTargetSucceeded.Broadcast();
 		}
 		break;
 		}
 	}
 
+	Runnable->UpdateTargetsMainThread();
+
 	return true;
 }
 
-void FMagicLeapImageTrackerModule::SetTargetAsync(const FMagicLeapImageTargetSettings& ImageTarget, const FMagicLeapSetImageTargetCompletedStaticDelegate& SucceededDelegate, const FMagicLeapSetImageTargetCompletedStaticDelegate& FailedDelegate)
+void FMagicLeapImageTrackerModule::SetTargetAsync(const FMagicLeapImageTrackerTarget& ImageTarget)
 {
-	Runnable->SetTargetAsync(ImageTarget, SucceededDelegate, FailedDelegate);
-	if (!TickDelegateHandle.IsValid())
-	{
-		TickDelegateHandle = FTicker::GetCoreTicker().AddTicker(TickDelegate);
-	}
-}
-
-void FMagicLeapImageTrackerModule::SetTargetAsync(const FMagicLeapImageTargetSettings& ImageTarget, const FMagicLeapSetImageTargetSucceededMulti& SucceededDelegate, const FMagicLeapSetImageTargetFailedMulti& FailedDelegate)
-{
-	Runnable->SetTargetAsync(ImageTarget, SucceededDelegate, FailedDelegate);
+	Runnable->SetTargetAsync(ImageTarget);
 	if (!TickDelegateHandle.IsValid())
 	{
 		TickDelegateHandle = FTicker::GetCoreTicker().AddTicker(TickDelegate);
@@ -101,24 +69,7 @@ void FMagicLeapImageTrackerModule::SetTargetAsync(const FMagicLeapImageTargetSet
 
 bool FMagicLeapImageTrackerModule::RemoveTargetAsync(const FString& TargetName)
 {
-	return Runnable->IsRunning() ? Runnable->RemoveTargetAsync(TargetName) : true;
-}
-
-void FMagicLeapImageTrackerModule::GetTargetState(const FString& TargetName, bool bProvideTransformInTrackingSpace, FMagicLeapImageTargetState& TargetState) const
-{
-	if (Runnable->IsRunning())
-	{
-		Runnable->GetTargetState(TargetName, bProvideTransformInTrackingSpace, TargetState);
-	}
-	else
-	{
-		TargetState.TrackingStatus = EMagicLeapImageTargetStatus::NotTracked;
-	}
-}
-
-FGuid FMagicLeapImageTrackerModule::GetTargetHandle(const FString& TargetName) const
-{
-	return (Runnable->IsRunning()) ? Runnable->GetTargetHandle(TargetName) : MagicLeap::INVALID_FGUID;
+	return Runnable->RemoveTargetAsync(TargetName);
 }
 
 uint32 FMagicLeapImageTrackerModule::GetMaxSimultaneousTargets() const
@@ -140,5 +91,11 @@ void FMagicLeapImageTrackerModule::SetImageTrackerEnabled(bool bEnabled)
 {
 	Runnable->SetImageTrackerEnabled(bEnabled);
 }
+
+bool FMagicLeapImageTrackerModule::TryGetRelativeTransform(const FString& TargetName, FVector& OutLocation, FRotator& OutRotation)
+{
+	return Runnable->TryGetRelativeTransformMainThread(TargetName, OutLocation, OutRotation);
+}
+
 
 IMPLEMENT_MODULE(FMagicLeapImageTrackerModule, MagicLeapImageTracker);

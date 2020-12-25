@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "StandaloneRendererPrivate.h"
 #include "OpenGL/SlateOpenGLRenderer.h"
@@ -191,9 +191,7 @@ void FSlateOpenGLContext::Initialize(void* InWindow, const FSlateOpenGLContext* 
 		[View setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
 		if (FPlatformApplicationMisc::IsHighDPIModeEnabled())
 		{
-			PRAGMA_DISABLE_DEPRECATION_WARNINGS
-				[View setWantsBestResolutionOpenGLSurface : YES];
-			PRAGMA_ENABLE_DEPRECATION_WARNINGS
+			[View setWantsBestResolutionOpenGLSurface:YES];
 		}
 
 		MainThreadCall(^{

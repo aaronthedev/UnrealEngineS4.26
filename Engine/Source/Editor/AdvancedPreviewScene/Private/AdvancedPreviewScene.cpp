@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AdvancedPreviewScene.h"
 #include "UnrealClient.h"
@@ -48,7 +48,7 @@ FAdvancedPreviewScene::FAdvancedPreviewScene(ConstructionValues CVS, float InFlo
 	const FTransform SphereTransform(FRotator(0, 0, 0), FVector(0, 0, 0), FVector(2000));
 	SkyComponent = NewObject<UStaticMeshComponent>(GetTransientPackage());
 
-	// Set up sky sphere showing the same cube map as used by the sky light
+	// Set up sky sphere showing hte same cube map as used by the sky light
 	UStaticMesh* SkySphere = LoadObject<UStaticMesh>(NULL, TEXT("/Engine/EditorMeshes/AssetViewer/Sphere_inversenormals.Sphere_inversenormals"), NULL, LOAD_None, NULL);
 	check(SkySphere);
 	SkyComponent->SetStaticMesh(SkySphere);
@@ -144,18 +144,13 @@ void FAdvancedPreviewScene::UpdateScene(FPreviewSceneProfile& Profile, bool bUpd
 		static const float OneOver360 = 1.0f / 360.0f;
 		float Rotation = Profile.LightingRigRotation;
 		InstancedSkyMaterial->GetScalarParameterValue(CubeMapRotationName, Rotation);
-		const bool bLightRighRotationChanged = !FMath::IsNearlyEqual(Rotation, Profile.LightingRigRotation, 0.05f);
-
-		// We also test any change of light direction because the default profile light orientation might not match the LightingRigRotation.
-		FRotator LightDir = GetLightDirection();
-		const bool bLightDirChanged = LightDir != Profile.DirectionalLightRotation;
-
-		if (bLightRighRotationChanged || bLightDirChanged)
+		if (!FMath::IsNearlyEqual(Rotation, Profile.LightingRigRotation, 0.05f))
 		{			
 			InstancedSkyMaterial->SetScalarParameterValueEditorOnly(CubeMapRotationName, Profile.LightingRigRotation * OneOver360);
 
 			// Update light direction as well
-			LightDir.Yaw = -Profile.LightingRigRotation;
+			FRotator LightDir = GetLightDirection();
+			LightDir.Yaw = Profile.LightingRigRotation;
 			SetLightDirection(LightDir);
 			DefaultSettings->Profiles[CurrentProfileIndex].DirectionalLightRotation = LightDir;
 			SkyLight->SourceCubemapAngle = Profile.LightingRigRotation;
@@ -313,7 +308,7 @@ void FAdvancedPreviewScene::SetFloorVisibility(const bool bVisible, const bool b
 	{
 		FName PropertyName("bShowFloor");
 
-		FProperty* FloorProperty = FindFProperty<FProperty>(FPreviewSceneProfile::StaticStruct(), PropertyName);
+		UProperty* FloorProperty = FindField<UProperty>(FPreviewSceneProfile::StaticStruct(), PropertyName);
 		DefaultSettings->Profiles[CurrentProfileIndex].bShowFloor = bVisible;
 
 		FPropertyChangedEvent PropertyEvent(FloorProperty);
@@ -331,7 +326,7 @@ void FAdvancedPreviewScene::SetEnvironmentVisibility(const bool bVisible, const 
 	// If not direct set visibility in profile and refresh the scene
 	if (!bDirect)
 	{
-		FProperty* EnvironmentProperty = FindFProperty<FProperty>(FPreviewSceneProfile::StaticStruct(), GET_MEMBER_NAME_CHECKED(FPreviewSceneProfile, bShowEnvironment));
+		UProperty* EnvironmentProperty = FindField<UProperty>(FPreviewSceneProfile::StaticStruct(), GET_MEMBER_NAME_CHECKED(FPreviewSceneProfile, bShowEnvironment));
 		DefaultSettings->Profiles[CurrentProfileIndex].bShowEnvironment = bVisible;
 
 		FPropertyChangedEvent PropertyEvent(EnvironmentProperty);
@@ -413,7 +408,7 @@ void FAdvancedPreviewScene::HandleTogglePostProcessing()
 	bPostProcessing = Profile.bPostProcessingEnabled;
 	
 	FName PropertyName("bPostProcessingEnabled");
-	FProperty* PostProcessingProperty = FindFProperty<FProperty>(FPreviewSceneProfile::StaticStruct(), PropertyName);
+	UProperty* PostProcessingProperty = FindField<UProperty>(FPreviewSceneProfile::StaticStruct(), PropertyName);
 	FPropertyChangedEvent PropertyEvent(PostProcessingProperty);
 	DefaultSettings->PostEditChangeProperty(PropertyEvent);	
 }

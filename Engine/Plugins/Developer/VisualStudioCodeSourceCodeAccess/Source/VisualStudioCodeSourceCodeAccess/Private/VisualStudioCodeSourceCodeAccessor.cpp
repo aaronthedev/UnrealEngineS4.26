@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VisualStudioCodeSourceCodeAccessor.h"
 #include "VisualStudioCodeSourceCodeAccessModule.h"
@@ -37,7 +37,7 @@ FString FVisualStudioCodeSourceCodeAccessor::GetSolutionPath() const
 	{
 		CachedSolutionPath = FPaths::ProjectDir();
 
-		if (!FUProjectDictionary::GetDefault().IsForeignProject(CachedSolutionPath))
+		if (!FUProjectDictionary(FPaths::RootDir()).IsForeignProject(CachedSolutionPath))
 		{
 			CachedSolutionPath = FPaths::Combine(FPaths::RootDir(), FString("UE4") + GVSCodeWorkspaceExtension);
 		}

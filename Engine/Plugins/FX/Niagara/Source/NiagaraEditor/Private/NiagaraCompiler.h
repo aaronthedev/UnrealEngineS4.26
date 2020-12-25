@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,7 +7,6 @@
 #include "NiagaraHlslTranslator.h"
 #include "INiagaraCompiler.h"
 #include "Kismet2/CompilerResultsLog.h"
-#include "ShaderCompiler.h"
 
 class Error;
 class UNiagaraGraph;
@@ -16,19 +15,6 @@ class UNiagaraNodeFunctionCall;
 class UNiagaraScript;
 class UNiagaraScriptSource;
 struct FNiagaraTranslatorOutput;
-
-struct FNiagaraCompilerJob
-{
-	TSharedPtr<FShaderCompileJob, ESPMode::ThreadSafe> ShaderCompileJob;
-	FNiagaraCompileResults CompileResults;
-	double StartTime;
-	FNiagaraTranslatorOutput TranslatorOutput;
-
-	FNiagaraCompilerJob()
-	{
-		StartTime = FPlatformTime::Seconds();
-	}
-};
 
 class NIAGARAEDITOR_API FHlslNiagaraCompiler : public INiagaraCompiler
 {
@@ -42,17 +28,8 @@ public:
 	virtual ~FHlslNiagaraCompiler() {}
 
 	//Begin INiagaraCompiler Interface
-	virtual int32 CompileScript(const FNiagaraCompileRequestData* InCompileRequest, const FNiagaraCompileOptions& InOptions, const FNiagaraTranslateResults& InTranslateResults, FNiagaraTranslatorOutput *TranslatorOutput, FString& TranslatedHLSL) override;
-	virtual TOptional<FNiagaraCompileResults> GetCompileResult(int32 JobID, bool bWait = false) override;
+	virtual FNiagaraCompileResults CompileScript(const FNiagaraCompileRequestData* InCompileRequest, const FNiagaraCompileOptions& InOptions, FNiagaraTranslatorOutput *TranslatorOutput, FString& TranslatedHLSL) override;
 
 	virtual void Error(FText ErrorText) override;
 	virtual void Warning(FText WarningText) override;
-
-private:
-	TUniquePtr<FNiagaraCompilerJob> CompilationJob;
-
-	void DumpDebugInfo(const FNiagaraCompileResults& CompileResult, const FShaderCompilerInput& Input, bool bGPUScript);
-
-	/** SCW doesn't have access to the VM op code names so we do a fixup pass to make these human readable after we get the data back from SCW. */
-	void FixupVMAssembly(FString& Asm);
 };

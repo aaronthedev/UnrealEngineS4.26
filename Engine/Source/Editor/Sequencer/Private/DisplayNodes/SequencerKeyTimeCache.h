@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,21 +15,14 @@
 /** Simple structure that caches the sorted key times for a given key area */
 struct FSequencerCachedKeys
 {
-	FSequencerCachedKeys(TSharedRef<IKeyArea> InKeyArea)
-		: KeyArea(InKeyArea)
-	{}
-
-	/**
-	 * Update this cache to store key times and handles from the specified key area
-	 * @return true if this cache was updated, false if it was already up to date
-	 */
-	bool Update(FFrameRate SourceResolution);
+	/** Update this cache to store key times and handles from the specified key area */
+	void Update(TSharedRef<IKeyArea> KeyArea, FFrameRate SourceResolution);
 
 	/** Get an view of the cached array for keys that fall within the specified range */
 	void GetKeysInRange(const TRange<double>& Range, TArrayView<const double>* OutTimes, TArrayView<const FFrameNumber>* OutKeyFrames, TArrayView<const FKeyHandle>* OutHandles) const;
 
 	/** Get the key area this cache was generated for, or nullptr if the cache has never been updated */
-	const TSharedPtr<IKeyArea>& GetKeyArea() const
+	TSharedPtr<IKeyArea> GetKeyArea() const
 	{
 		return KeyArea;
 	}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SProjectLauncherPackagingSettings.h"
 
@@ -127,23 +127,6 @@ void SProjectLauncherPackagingSettings::Construct(const FArguments& InArgs, cons
 									.Text(LOCTEXT("IncludePrerequisitesCheckBoxText", "Include an installer for prerequisites of packaged games"))
 								]
 							]
-
-						+ SVerticalBox::Slot()
-							.AutoHeight()
-							.Padding(0.0, 4.0, 0.0, 0.0)
-							[
-								SNew(SCheckBox)
-								.IsEnabled(this, &SProjectLauncherPackagingSettings::IsEditable)
-								.IsChecked(this, &SProjectLauncherPackagingSettings::HandleUseIoStoreCheckBoxIsChecked)
-								.OnCheckStateChanged(this, &SProjectLauncherPackagingSettings::HandleUseIoStoreCheckStateChanged)
-								.Padding(FMargin(4.0f, 0.0f))
-								.ToolTipText(LOCTEXT("UseIoStoreCheckBoxTooltip", "Use container files for optimized loading (I/O Store)"))
-								.Content()
-								[
-									SNew(STextBlock)
-									.Text(LOCTEXT("UseIoStoreCheckBoxText", "Use container files for optimized loading (I/O Store)"))
-								]
-							]
 					]
 			]
 	];
@@ -200,28 +183,6 @@ ECheckBoxState SProjectLauncherPackagingSettings::HandleIncludePrerequisitesChec
 	if (SelectedProfile.IsValid())
 	{
 		if (SelectedProfile->IsIncludingPrerequisites())
-		{
-			return ECheckBoxState::Checked;
-		}
-	}
-	return ECheckBoxState::Unchecked;
-}
-
-void SProjectLauncherPackagingSettings::HandleUseIoStoreCheckStateChanged(ECheckBoxState NewState)
-{
-	ILauncherProfilePtr SelectedProfile = Model->GetSelectedProfile();
-	if (SelectedProfile.IsValid())
-	{
-		SelectedProfile->SetUseIoStore(NewState == ECheckBoxState::Checked);
-	}
-}
-
-ECheckBoxState SProjectLauncherPackagingSettings::HandleUseIoStoreCheckBoxIsChecked() const
-{
-	ILauncherProfilePtr SelectedProfile = Model->GetSelectedProfile();
-	if (SelectedProfile.IsValid())
-	{
-		if (SelectedProfile->IsUsingIoStore())
 		{
 			return ECheckBoxState::Checked;
 		}

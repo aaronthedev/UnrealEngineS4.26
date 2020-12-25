@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OodleHandlerComponent.h"
 #include "Misc/CoreMisc.h"
@@ -545,7 +545,7 @@ void OodleHandlerComponent::InitializeDictionary(FString FilePath, TSharedPtr<FO
 	// Load the dictionary, if it's not yet loaded
 	if (DictionaryRef == nullptr)
 	{
-		TUniquePtr<FArchive> ReadArc(IFileManager::Get().CreateFileReader(*FilePath));
+		FArchive* ReadArc = IFileManager::Get().CreateFileReader(*FilePath);
 
 		if (ReadArc != nullptr)
 		{
@@ -607,6 +607,9 @@ void OodleHandlerComponent::InitializeDictionary(FString FilePath, TSharedPtr<FO
 
 
 			ReadArc->Close();
+
+			delete ReadArc;
+			ReadArc = nullptr;
 		}
 		else
 		{
@@ -872,9 +875,7 @@ void OodleHandlerComponent::FreePacketLogs()
 	if (OutPacketLog != nullptr)
 	{
 		OutPacketLog->Close();
-
-		// Proxy archives must be deleted before their inner archive
-		TUniquePtr<FArchive> InnerDeleter(&OutPacketLog->GetInnerArchive());
+		OutPacketLog->DeleteInnerArchive();
 
 		delete OutPacketLog;
 
@@ -884,9 +885,7 @@ void OodleHandlerComponent::FreePacketLogs()
 	if (InPacketLog != nullptr)
 	{
 		InPacketLog->Close();
-
-		// Proxy archives must be deleted before their inner archive
-		TUniquePtr<FArchive> InnerDeleter(&InPacketLog->GetInnerArchive());
+		InPacketLog->DeleteInnerArchive();
 
 		delete InPacketLog;
 
@@ -930,6 +929,11 @@ void OodleHandlerComponent::Incoming(FBitReader& Packet)
 				uint32 DecompressedLength;
 
 				SerializeOodlePacketSize(Packet, DecompressedLength);
+
+#if !UE_BUILD_SHIPPING
+				// Never allow DecompressedLength values bigger than this, due to performance/security considerations
+				check(MAX_OODLE_PACKET_BYTES <= 16384);
+#endif
 
 				if (DecompressedLength < MAX_OODLE_PACKET_BYTES)
 				{

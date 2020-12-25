@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
@@ -116,26 +116,24 @@ void FenceTransactions(FConcertSyncClientLiveSession& InLiveSession, FConcertCli
 {
 	InLiveSession.GetSessionDatabase().SetEndpoint(InSourceClient.EndpointId, InSourceClient.EndpointData);
 
-	FConcertSyncActivity PackageActivityBasePart;
-	FConcertPackageInfo PackageInfo;
-	FConcertPackageDataStream PackageDataStream;
-	PackageActivityBasePart.EndpointId = InSourceClient.EndpointId;
-	PackageInfo.PackageName = InPackageName;
-	PackageInfo.PackageUpdateType = EConcertPackageUpdateType::Dummy;
+	FConcertSyncPackageActivity PackageActivity;
+	PackageActivity.EndpointId = InSourceClient.EndpointId;
+	PackageActivity.EventData.Package.Info.PackageName = InPackageName;
+	PackageActivity.EventData.Package.Info.PackageUpdateType = EConcertPackageUpdateType::Dummy;
 	if (InTransactionIdOverride)
 	{
-		PackageInfo.TransactionEventIdAtSave = *InTransactionIdOverride;
+		PackageActivity.EventData.Package.Info.TransactionEventIdAtSave = *InTransactionIdOverride;
 	}
 	else
 	{
-		InLiveSession.GetSessionDatabase().GetTransactionMaxEventId(PackageInfo.TransactionEventIdAtSave);
+		InLiveSession.GetSessionDatabase().GetTransactionMaxEventId(PackageActivity.EventData.Package.Info.TransactionEventIdAtSave);
 	}
 
 	int64 ActivityId = 0;
 	int64 EventId = 0;
-	InLiveSession.GetSessionDatabase().AddPackageActivity(PackageActivityBasePart, PackageInfo, PackageDataStream, ActivityId, EventId);
+	InLiveSession.GetSessionDatabase().AddPackageActivity(PackageActivity, ActivityId, EventId);
 
-	InLiveTransactionAuthors.ResolveLiveTransactionAuthorsForPackage(PackageInfo.PackageName);
+	InLiveTransactionAuthors.ResolveLiveTransactionAuthorsForPackage(PackageActivity.EventData.Package.Info.PackageName);
 }
 
 /** Ensures the live transaction authors works correctly when there is no other clients connected. */

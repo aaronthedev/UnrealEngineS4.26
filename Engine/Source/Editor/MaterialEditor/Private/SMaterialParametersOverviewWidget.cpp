@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SMaterialParametersOverviewWidget.h"
 #include "MaterialEditor/DEditorFontParameterValue.h"
@@ -96,7 +96,6 @@ void SMaterialParametersOverviewTreeItem::Construct(const FArguments& InArgs, co
 // END GROUP
 
 // PROPERTY ----------------------------------------------
-	bool bisPaddedProperty = false;
 	if (StackParameterData->StackDataType == EStackDataType::Property)
 	{
 		UDEditorStaticComponentMaskParameterValue* CompMaskParam = Cast<UDEditorStaticComponentMaskParameterValue>(StackParameterData->Parameter);
@@ -331,7 +330,33 @@ void SMaterialParametersOverviewTreeItem::Construct(const FArguments& InArgs, co
 				}
 			}
 		}
-		else if (CompMaskParam)
+		else if (!CompMaskParam)
+		{
+			FNodeWidgets StoredNodeWidgets = Node.CreateNodeWidgets();
+			TSharedRef<SWidget> StoredRightSideWidget = StoredNodeWidgets.ValueWidget.ToSharedRef();
+			StackParameterData->ParameterNode->CreatePropertyHandle()->MarkResetToDefaultCustomized(true);
+			FDetailWidgetRow& CustomWidget = Row.CustomWidget();
+			CustomWidget
+			.FilterString(NameOverride)
+			.NameContent()
+			[
+				SNew(SHorizontalBox)
+				+SHorizontalBox::Slot()
+				.VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.Text(NameOverride)
+					.ToolTipText(FMaterialPropertyHelpers::GetParameterExpressionDescription(StackParameterData->Parameter, MaterialEditorInstance))
+					.Font(FEditorStyle::GetFontStyle(TEXT("PropertyWindow.NormalFont")))
+				]
+			]
+			.ValueContent()
+			[
+				StoredRightSideWidget
+			];
+
+		}
+		else
 		{
 			TSharedPtr<IPropertyHandle> RMaskProperty = StackParameterData->ParameterNode->CreatePropertyHandle()->GetChildHandle("R");
 			TSharedPtr<IPropertyHandle> GMaskProperty = StackParameterData->ParameterNode->CreatePropertyHandle()->GetChildHandle("G");
@@ -414,32 +439,6 @@ void SMaterialParametersOverviewTreeItem::Construct(const FArguments& InArgs, co
 				]	
 			];
 		}
-		else
-		{	
-			if (TSharedPtr<IPropertyHandle> PropertyHandle = StackParameterData->ParameterNode->CreatePropertyHandle())
-			{
-				PropertyHandle->MarkResetToDefaultCustomized(true);
-			}
-
-			FDetailWidgetDecl* CustomNameWidget = Row.CustomNameWidget();
-			if (CustomNameWidget)
-			{
-				(*CustomNameWidget)
-				[
-					SNew(SHorizontalBox)
-					+SHorizontalBox::Slot()
-					.VAlign(VAlign_Center)
-					[
-						SNew(STextBlock)
-						.Text(NameOverride)
-						.ToolTipText(FMaterialPropertyHelpers::GetParameterExpressionDescription(StackParameterData->Parameter, MaterialEditorInstance))
-						.Font(FEditorStyle::GetFontStyle(TEXT("PropertyWindow.NormalFont")))
-					]
-				];
-			}
-
-			bisPaddedProperty = true;
-		}
 
 		FNodeWidgets NodeWidgets = Node.CreateNodeWidgets();
 		LeftSideWidget = NodeWidgets.NameWidget.ToSharedRef();
@@ -458,7 +457,6 @@ void SMaterialParametersOverviewTreeItem::Construct(const FArguments& InArgs, co
 
 // FINAL WRAPPER
 	{
-		float ValuePadding = bisPaddedProperty ? 20.0f : 0.0f;
 		WrapperWidget->AddSlot()
 			.AutoHeight()
 			[
@@ -496,8 +494,8 @@ void SMaterialParametersOverviewTreeItem::Construct(const FArguments& InArgs, co
 					[
 						SNew(SHorizontalBox)
 						+ SHorizontalBox::Slot()
-						.MaxWidth(350.0f - ValuePadding)
-						.Padding(FMargin(5.0f, 2.0f, ValuePadding, 2.0f))
+						.MaxWidth(350.0f)
+						.Padding(FMargin(5.0f, 2.0f, 0.0f, 2.0f))
 						[
 							RightSideWidget
 						]
@@ -598,20 +596,32 @@ void SMaterialParametersOverviewTree::SetParentsExpansionState()
 
 TSharedPtr<class FAssetThumbnailPool> SMaterialParametersOverviewTree::GetTreeThumbnailPool()
 {
-	return GetOwner().Pin()->GetGenerator()->GetGeneratedThumbnailPool();
+	return Generator->GetGeneratedThumbnailPool();
 }
 
 void SMaterialParametersOverviewTree::CreateGroupsWidget()
 {
 	check(MaterialEditorInstance);
+	MaterialEditorInstance->RegenerateArrays();
 	UnsortedParameters.Empty();
 	SortedParameters.Empty();
-
-	const TArray<TSharedRef<IDetailTreeNode>> TestData = GetOwner().Pin()->GetGenerator()->GetRootTreeNodes();
-	if (TestData.Num() == 0)
+	FPropertyEditorModule& Module = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
+	if (!Generator.IsValid())
 	{
-		return;
+		FPropertyRowGeneratorArgs Args;
+		Generator = Module.CreatePropertyRowGenerator(Args);
+
+		TArray<UObject*> Objects;
+		Objects.Add(MaterialEditorInstance);
+		Generator->SetObjects(Objects);
 	}
+	else
+	{
+		TArray<UObject*> Objects;
+		Objects.Add(MaterialEditorInstance);
+		Generator->SetObjects(Objects);
+	}
+	const TArray<TSharedRef<IDetailTreeNode>> TestData = Generator->GetRootTreeNodes();
 	TSharedPtr<IDetailTreeNode> Category = TestData[0];
 	TSharedPtr<IDetailTreeNode> ParameterGroups;
 	TArray<TSharedRef<IDetailTreeNode>> Children;
@@ -629,39 +639,25 @@ void SMaterialParametersOverviewTree::CreateGroupsWidget()
 
 	Children.Empty();
 	ParameterGroups->GetChildren(Children);
-
-	// the order should correspond to UnsortedParameters exactly
-	TArray<TSharedPtr<IPropertyHandle>> DeferredSearches;
 	for (int32 GroupIdx = 0; GroupIdx < Children.Num(); ++GroupIdx)
 	{
+		bHasAnyParameters = true;
 		TArray<void*> GroupPtrs;
 		TSharedPtr<IPropertyHandle> ChildHandle = Children[GroupIdx]->CreatePropertyHandle();
 		ChildHandle->AccessRawData(GroupPtrs);
 		auto GroupIt = GroupPtrs.CreateConstIterator();
 		const FEditorParameterGroup* ParameterGroupPtr = reinterpret_cast<FEditorParameterGroup*>(*GroupIt);
-		if (!ParameterGroupPtr)
-		{
-			continue;
-		}
-
 		const FEditorParameterGroup& ParameterGroup = *ParameterGroupPtr;
-		if (ParameterGroup.GroupName == FMaterialPropertyHelpers::LayerParamName)
-		{
-			// Don't create or show the material layer parameter info in this UI
-			continue;
-		}
 
 		for (int32 ParamIdx = 0; ParamIdx < ParameterGroup.Parameters.Num(); ParamIdx++)
 		{
 			UDEditorParameterValue* Parameter = ParameterGroup.Parameters[ParamIdx];
-			if (Parameter->ParameterInfo.Association == EMaterialParameterAssociation::GlobalParameter)
+
+			TSharedPtr<IPropertyHandle> ParametersArrayProperty = ChildHandle->GetChildHandle("Parameters");
+			TSharedPtr<IPropertyHandle> ParameterProperty = ParametersArrayProperty->GetChildHandle(ParamIdx);
+			TSharedPtr<IPropertyHandle> ParameterValueProperty = ParameterProperty->GetChildHandle("ParameterValue");
+
 			{
-				bHasAnyParameters = true;
-				TSharedPtr<IPropertyHandle> ParametersArrayProperty = ChildHandle->GetChildHandle("Parameters");
-				TSharedPtr<IPropertyHandle> ParameterProperty = ParametersArrayProperty->GetChildHandle(ParamIdx);
-				TSharedPtr<IPropertyHandle> ParameterValueProperty = ParameterProperty->GetChildHandle("ParameterValue");
-
-
 				FUnsortedParamData NonLayerProperty;
 				UDEditorScalarParameterValue* ScalarParam = Cast<UDEditorScalarParameterValue>(Parameter);
 				UDEditorVectorParameterValue* VectorParam = Cast<UDEditorVectorParameterValue>(Parameter);
@@ -698,28 +694,14 @@ void SMaterialParametersOverviewTree::CreateGroupsWidget()
 
 				NonLayerProperty.Parameter = Parameter;
 				NonLayerProperty.ParameterGroup = ParameterGroup;
+				NonLayerProperty.ParameterNode = Generator->FindTreeNode(ParameterValueProperty);
+				NonLayerProperty.ParameterHandle = NonLayerProperty.ParameterNode->CreatePropertyHandle();
 				NonLayerProperty.UnsortedName = Parameter->ParameterInfo.Name;
 
-				DeferredSearches.Add(ParameterValueProperty);
 				UnsortedParameters.Add(NonLayerProperty);
 			}
 		}
 	}
-
-	checkf(UnsortedParameters.Num() == DeferredSearches.Num(), TEXT("Internal inconsistency: number of node searches does not match the number of properties"));
-	TArray<TSharedPtr<IDetailTreeNode>> DeferredResults = GetOwner().Pin()->GetGenerator()->FindTreeNodes(DeferredSearches);
-	checkf(UnsortedParameters.Num() == DeferredResults.Num(), TEXT("Internal inconsistency: number of node search results does not match the number of properties"));
-
-	for (int Idx = 0, NumUnsorted = UnsortedParameters.Num(); Idx < NumUnsorted; ++Idx)
-	{
-		FUnsortedParamData& NonLayerProperty = UnsortedParameters[Idx];
-		NonLayerProperty.ParameterNode = DeferredResults[Idx];
-		NonLayerProperty.ParameterHandle = NonLayerProperty.ParameterNode->CreatePropertyHandle();
-	}
-
-	DeferredResults.Empty();
-	DeferredSearches.Empty();
-
 	ShowSubParameters();
 	RequestTreeRefresh();
 	SetParentsExpansionState();
@@ -951,8 +933,6 @@ void SMaterialParametersOverviewPanel::Refresh()
 void SMaterialParametersOverviewPanel::Construct(const FArguments& InArgs)
 {
 	ExternalScrollbar = SNew(SScrollBar);
-	TSharedPtr<IPropertyRowGenerator> InGenerator = InArgs._InGenerator;
-	Generator = InGenerator;
 
 	NestedTree = SNew(SMaterialParametersOverviewTree)
 		.InMaterialEditorInstance(InArgs._InMaterialEditorInstance)
@@ -972,7 +952,7 @@ void SMaterialParametersOverviewPanel::UpdateEditorInstance(UMaterialEditorPrevi
 
 TSharedPtr<class IPropertyRowGenerator> SMaterialParametersOverviewPanel::GetGenerator()
 {
-	 return Generator.Pin();
+	 return NestedTree->GetGenerator();
 }
 
 #undef LOCTEXT_NAMESPACE

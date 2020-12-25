@@ -97,7 +97,7 @@ MObjectArray getOutConnectedSG( const MDagPath &shapeDPath )
 
     // iterate through the output connected shading engines
     for( ; itDG.isDone()!= true; itDG.next() )
-        connSG.append( itDG.currentItem() );
+        connSG.append( itDG.thisNode() );
 
     return connSG;
 }
@@ -179,11 +179,11 @@ void disconnectProps(MFnDependencyNode & iNode,
         MPlug dstPlug;
         if (propName == Alembic::AbcGeom::kVisibilityPropertyName)
         {
-            dstPlug = iNode.findPlug("visibility", true);
+            dstPlug = iNode.findPlug("visibility");
         }
         else
         {
-            dstPlug = iNode.findPlug(propName.c_str(), true);
+            dstPlug = iNode.findPlug(propName.c_str());
         }
 
         // make sure the long name matches
@@ -344,7 +344,7 @@ MStatus getPlugByName(const MString & objName, const MString & attrName,
     {
         MFnDependencyNode mFn(object, &status);
         if (status == MS::kSuccess)
-            plug = mFn.findPlug(attrName, true, &status);
+            plug = mFn.findPlug(attrName, &status);
     }
 
     return status;

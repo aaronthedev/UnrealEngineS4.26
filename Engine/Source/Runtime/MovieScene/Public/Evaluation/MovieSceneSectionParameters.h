@@ -1,9 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
+#include "Evaluation/MovieSceneSequenceTransform.h"
 #include "MovieSceneSectionParameters.generated.h"
 
 USTRUCT(BlueprintType)
@@ -14,8 +15,6 @@ struct FMovieSceneSectionParameters
 	/** Default constructor */
 	FMovieSceneSectionParameters()
 		: StartFrameOffset(0)
-		, EndFrameOffset(0)
-		, FirstLoopStartFrameOffset(0)
 		, TimeScale(1.0f)
 		, HierarchicalBias(100)
 		, StartOffset_DEPRECATED(0.f)
@@ -25,27 +24,15 @@ struct FMovieSceneSectionParameters
 
 public:
 	/** Number of frames (in display rate) to skip at the beginning of the sub-sequence. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category="Clipping")
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, BlueprintReadWrite, Category = "Clipping")
 	FFrameNumber StartFrameOffset;
 
-	/** Whether this section supports looping the sub-sequence. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category="Clipping")
-	bool bCanLoop = false;
-
-	/** Number of frames (in display rate) to skip at the beginning of the sub-sequence. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category="Clipping", meta=(EditCondition="bCanLoop"))
-	FFrameNumber EndFrameOffset;
-
-	/** Number of frames (in display rate) to offset the first loop of the sub-sequence. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category="Clipping", meta=(EditCondition="bCanLoop"))
-	FFrameNumber FirstLoopStartFrameOffset;
-
 	/** Playback time scaling factor. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category="Timing")
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, BlueprintReadWrite, Category="Timing")
 	float TimeScale;
 
 	/** Hierachical bias. Higher bias will take precedence. */
-	UPROPERTY(config, BlueprintReadWrite, EditAnywhere, Category="Sequence")
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, BlueprintReadWrite, Category="Sequence")
 	int32 HierarchicalBias;
 
 	UPROPERTY()

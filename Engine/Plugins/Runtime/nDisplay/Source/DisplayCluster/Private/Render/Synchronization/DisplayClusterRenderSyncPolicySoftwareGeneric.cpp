@@ -1,14 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Render/Synchronization/DisplayClusterRenderSyncPolicySoftwareGeneric.h"
 
 
-// Empty by default. Use initialization list to add some params. Used by FDisplayClusterRenderManager
-TMap<FString, FString> FDisplayClusterRenderSyncPolicySoftwareGeneric::DefaultParameters;
 
-
-FDisplayClusterRenderSyncPolicySoftwareGeneric::FDisplayClusterRenderSyncPolicySoftwareGeneric(const TMap<FString, FString>& Parameters)
-	: FDisplayClusterRenderSyncPolicySoftwareBase(Parameters)
+FDisplayClusterRenderSyncPolicySoftwareGeneric::FDisplayClusterRenderSyncPolicySoftwareGeneric()
 {
 }
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ComposurePipelineBaseActor.h"
 #include "ComposureViewExtension.h"
@@ -80,7 +80,7 @@ bool AComposurePipelineBaseActor::IsAutoRunSuspended() const
 	UWorld* MyWorld = GetWorld();
 	const bool bIsEditorInstance = (MyWorld && MyWorld->WorldType == EWorldType::Editor);
 
-	const bool bIsPIEing = GEditor && (GEditor->PlayWorld != nullptr);
+	const bool bIsPIEing = GEditor && (GEditor->PlayWorld != nullptr) && !GEditor->bIsSimulatingInEditor;
 	return bIsEditorInstance && bIsPIEing && CVarSuspendEditorInstancesWithPIE.GetValueOnGameThread();
 }
 #endif

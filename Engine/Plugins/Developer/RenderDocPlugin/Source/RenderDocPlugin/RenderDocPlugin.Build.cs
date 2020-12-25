@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -21,7 +21,6 @@ namespace UnrealBuildTool.Rules
 				, "InputDevice"
                 , "MainFrame"
 				, "RHI"				// RHI module: required for accessing the UE4 flag GUsingNullRHI.
-				, "DeveloperSettings"
 			});
 
 			if (Target.bBuildEditor == true)

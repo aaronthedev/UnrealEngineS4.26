@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Math/BasicMathExpressionEvaluator.h"
 #include "Misc/AutomationTest.h"
@@ -40,11 +40,11 @@ namespace ExpressionParser
 		// This call will return false if there is some other data after the number, which is why we check the parsed length instead
 		double PrimaryValue = 0.0;
 		int32 PrimaryParsedLen = 0;
-		FastDecimalFormat::StringToNumber(InStream.GetRead(), UE_PTRDIFF_TO_INT32(InStream.GetEnd() - InStream.GetRead()), InPrimaryFormattingRules, FNumberParsingOptions::DefaultNoGrouping(), PrimaryValue, &PrimaryParsedLen);
+		FastDecimalFormat::StringToNumber(InStream.GetRead(), InStream.GetEnd() - InStream.GetRead(), InPrimaryFormattingRules, FNumberParsingOptions::DefaultNoGrouping(), PrimaryValue, &PrimaryParsedLen);
 
 		double FallbackValue = 0.0;
 		int32 FallbackParsedLen = 0;
-		FastDecimalFormat::StringToNumber(InStream.GetRead(), UE_PTRDIFF_TO_INT32(InStream.GetEnd() - InStream.GetRead()), InFallbackFormattingRules, FNumberParsingOptions::DefaultNoGrouping(), FallbackValue, &FallbackParsedLen);
+		FastDecimalFormat::StringToNumber(InStream.GetRead(), InStream.GetEnd() - InStream.GetRead(), InFallbackFormattingRules, FNumberParsingOptions::DefaultNoGrouping(), FallbackValue, &FallbackParsedLen);
 
 		// We take whichever value parsed the most text from the string
 		if (FallbackParsedLen <= PrimaryParsedLen)
@@ -73,7 +73,7 @@ namespace ExpressionParser
 		// This call will return false if there is some other data after the number, which is why we check the parsed length instead
 		double Value = 0.0;
 		int32 ParsedLen = 0;
-		FastDecimalFormat::StringToNumber(InStream.GetRead(), UE_PTRDIFF_TO_INT32(InStream.GetEnd() - InStream.GetRead()), InFormattingRules, FNumberParsingOptions::DefaultNoGrouping(), Value, &ParsedLen);
+		FastDecimalFormat::StringToNumber(InStream.GetRead(), InStream.GetEnd() - InStream.GetRead(), InFormattingRules, FNumberParsingOptions::DefaultNoGrouping(), Value, &ParsedLen);
 
 		if (OutValue)
 		{
@@ -163,23 +163,21 @@ FBasicMathExpressionEvaluator::FBasicMathExpressionEvaluator()
 	Grammar.DefinePreUnaryOperator<FPlus>();
 	Grammar.DefinePreUnaryOperator<FMinus>();
 	Grammar.DefinePreUnaryOperator<FSquareRoot>();
-
-	// Left-to-right evaluation is required for non-commutative binary operations, and a reasonable default for commutative ones too.
-	Grammar.DefineBinaryOperator<FPlus>(5, EAssociativity::LeftToRight);
-	Grammar.DefineBinaryOperator<FMinus>(5, EAssociativity::LeftToRight);
-	Grammar.DefineBinaryOperator<FStar>(4, EAssociativity::LeftToRight);
-	Grammar.DefineBinaryOperator<FForwardSlash>(4, EAssociativity::LeftToRight);
-	Grammar.DefineBinaryOperator<FPercent>(4, EAssociativity::LeftToRight);
-	Grammar.DefineBinaryOperator<FPower>(3);
+	Grammar.DefineBinaryOperator<FPlus>(5);
+	Grammar.DefineBinaryOperator<FMinus>(5);
+	Grammar.DefineBinaryOperator<FStar>(4);
+	Grammar.DefineBinaryOperator<FForwardSlash>(4);
+	Grammar.DefineBinaryOperator<FPercent>(4);
+	Grammar.DefineBinaryOperator<FPower>(4);;
 
 	JumpTable.MapPreUnary<FPlus>([](double N)			{ return N; });
 	JumpTable.MapPreUnary<FMinus>([](double N)			{ return -N; });
-	JumpTable.MapPreUnary<FSquareRoot>([](double A)		{ return double(FMath::Sqrt((float)A)); }); //@TODO: FLOATPRECISION: Needs a double version of Sqrt
+	JumpTable.MapPreUnary<FSquareRoot>([](double A)		{ return double(FMath::Sqrt(A)); });
 
 	JumpTable.MapBinary<FPlus>([](double A, double B)	{ return A + B; });
 	JumpTable.MapBinary<FMinus>([](double A, double B)	{ return A - B; });
 	JumpTable.MapBinary<FStar>([](double A, double B)	{ return A * B; });
-	JumpTable.MapBinary<FPower>([](double A, double B)	{ return double(FMath::Pow((float)A, (float)B)); }); //@TODO: FLOATPRECISION: Needs a double version of Pow
+	JumpTable.MapBinary<FPower>([](double A, double B)	{ return double(FMath::Pow(A, B)); });
 
 	JumpTable.MapBinary<FForwardSlash>([](double A, double B) -> FExpressionResult {
 		if (B == 0)
@@ -195,7 +193,7 @@ FBasicMathExpressionEvaluator::FBasicMathExpressionEvaluator()
 			return MakeError(LOCTEXT("ModZero", "Modulo zero"));
 		}
 
-		return MakeValue(double(FMath::Fmod((float)A, (float)B))); //@TODO: FLOATPRECISION: Needs a double version of FMod
+		return MakeValue(double(FMath::Fmod(A, B)));
 	});
 }
 
@@ -308,7 +306,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBasicMathExpressionEvaluatorTest, "System.Core
 // Evaluates valid math expressions.
 bool FBasicMathExpressionEvaluatorTest::RunTest(const FString& Parameters)
 {
-	TestTrue(TEXT("Valid expression, '+1', evaluated incorrectly."), TestExpression(this, TEXT("+1"), 1));
+	TestTrue(TEXT("Valid expression, '+2', evaluated incorrectly."), TestExpression(this, TEXT("+1"), 1));
 	TestTrue(TEXT("Valid expression, '-20', evaluated incorrectly."), TestExpression(this, TEXT("-20"), -20));
 	TestTrue(TEXT("Valid expression, '-+-2', evaluated incorrectly."), TestExpression(this, TEXT("-+-2"), 2));
 	TestTrue(TEXT("Valid expression, '1 + 2', evaluated incorrectly."), TestExpression(this, TEXT("1 + 2"), 3));
@@ -316,18 +314,11 @@ bool FBasicMathExpressionEvaluatorTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Valid expression, '1+2*3*4+1', evaluated incorrectly."), TestExpression(this, TEXT("1+2*3*4+1"), 1 + 2 * 3 * 4 + 1));
 	TestTrue(TEXT("Valid expression, '1*2+3', evaluated incorrectly."), TestExpression(this, TEXT("1*2+3"), 1 * 2 + 3));
 	TestTrue(TEXT("Valid expression, '1+2*3*4+1', evaluated incorrectly."), TestExpression(this, TEXT("1+2*3*4+1"), 1 + 2 * 3 * 4 + 1));
-	TestTrue(TEXT("Valid expression, '8-4+3', evaluated incorrectly."), TestExpression(this, TEXT("8-4+3"), 8 - 4 + 3));
 	
 	TestTrue(TEXT("Valid expression, '2^2', evaluated incorrectly."), TestExpression(this, TEXT("2^2"), 4));
-	TestTrue(TEXT("Valid expression, '2^(2*3)', evaluated incorrectly."), TestExpression(this, TEXT("2^(2*3)"), 64));
-	TestTrue(TEXT("Valid expression, '2^2*3', evaluated incorrectly."), TestExpression(this, TEXT("2^2*3"), 12));
 	TestTrue(TEXT("Valid expression, 'sqrt(4)', evaluated incorrectly."), TestExpression(this, TEXT("sqrt(4)"), 2));
 	TestTrue(TEXT("Valid expression, '4*sqrt(4)+10', evaluated incorrectly."), TestExpression(this, TEXT("4*sqrt(4)+10"), 18));
 	TestTrue(TEXT("Valid expression, '8%6', evaluated incorrectly."), TestExpression(this, TEXT("8%6"), 2));
-
-	TestTrue(TEXT("Valid expression, '100-20-10-10', evaluated incorrectly."), TestExpression(this, TEXT("100-20-10-10"), 100 - 20 - 10 - 10));
-	TestTrue(TEXT("Valid expression, '100-(20-10)-10', evaluated incorrectly."), TestExpression(this, TEXT("100-(20-10)-10"), 100 - (20 - 10) - 10));
-	TestTrue(TEXT("Valid expression, '100/2/5', evaluated incorrectly."), TestExpression(this, TEXT("100/2/5"), 100 / 2 / 5));
 
 	return true;
 }
@@ -348,7 +339,6 @@ bool FBasicMathExpressionEvaluatorGroupedExpressionsTest::RunTest(const FString&
 	TestTrue(TEXT("Valid grouped expression, '(1+2)*3*4+1', evaluated incorrectly."), TestExpression(this, TEXT("(1+2)*3*4+1"), (1 + 2) * 3 * 4 + 1));
 	TestTrue(TEXT("Valid grouped expression, '(1+2)*3*(4+1)', evaluated incorrectly."), TestExpression(this, TEXT("(1+2)*3*(4+1)"), (1 + 2) * 3 * (4 + 1)));
 	TestTrue(TEXT("Valid grouped expression, '((1+2) / (3+1) + 2) * 3', evaluated incorrectly."), TestExpression(this, TEXT("((1+2) / (3+1) + 2) * 3"), ((1.0 + 2) / (3 + 1) + 2) * 3));
-	TestTrue(TEXT("Valid grouped expression, '8 / 2 * (2 + 2)', evaluated incorrectly."), TestExpression(this, TEXT("8 / 2 * (2 + 2)"), 8 / 2 * (2 + 2)));
 
 	return true;
 }

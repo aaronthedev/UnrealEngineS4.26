@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OculusHMDPrivate.h"
 #include "RHICommandList.h"
@@ -26,9 +26,9 @@ bool InGameThread()
 
 bool InRenderThread()
 {
-	if (GIsThreadedRendering && !GIsRenderingThreadSuspended.Load(EMemoryOrder::Relaxed))
+	if (GRenderingThread && !GIsRenderingThreadSuspended.Load(EMemoryOrder::Relaxed))
 	{
-		return IsInActualRenderingThread();
+		return FPlatformTLS::GetCurrentThreadId() == GRenderingThread->GetThreadID();
 	}
 	else
 	{
@@ -39,16 +39,16 @@ bool InRenderThread()
 
 bool InRHIThread()
 {
-	if (GIsThreadedRendering && !GIsRenderingThreadSuspended.Load(EMemoryOrder::Relaxed))
+	if (GRenderingThread && !GIsRenderingThreadSuspended.Load(EMemoryOrder::Relaxed))
 	{
-		if (IsRHIThreadRunning())
+		if (GRHIThreadId)
 		{
-			if (IsInRHIThread())
+			if (FPlatformTLS::GetCurrentThreadId() == GRHIThreadId)
 			{
 				return true;
 			}
-
-			if (IsInActualRenderingThread())
+			
+			if (FPlatformTLS::GetCurrentThreadId() == GRenderingThread->GetThreadID())
 			{
 				return GetImmediateCommandList_ForRenderCommand().Bypass();
 			}
@@ -57,7 +57,7 @@ bool InRHIThread()
 		}
 		else
 		{
-			return IsInActualRenderingThread();
+			return FPlatformTLS::GetCurrentThreadId() == GRenderingThread->GetThreadID();
 		}
 	}
 	else
@@ -82,13 +82,6 @@ bool ConvertPose_Internal(const FPose& InPose, FPose& OutPose, const FQuat BaseO
 bool ConvertPose_Internal(const ovrpPosef& InPose, FPose& OutPose, const FQuat BaseOrientation, const FVector BaseOffset, float WorldToMetersScale)
 {
 	return ConvertPose_Internal(FPose(ToFQuat(InPose.Orientation), ToFVector(InPose.Position)), OutPose, BaseOrientation, BaseOffset, WorldToMetersScale);
-}
-
-bool ConvertPose_Internal(const FPose& InPose, ovrpPosef& OutPose, const FQuat BaseOrientation, const FVector BaseOffset, float WorldToMetersScale)
-{
-	OutPose.Orientation = ToOvrpQuatf(BaseOrientation * InPose.Orientation);
-	OutPose.Position = ToOvrpVector3f(BaseOrientation.RotateVector(InPose.Position) / WorldToMetersScale + BaseOffset);
-	return true;
 }
 
 #if OCULUS_HMD_SUPPORTED_PLATFORMS

@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OculusHMD_VulkanExtensions.h"
 
 #if OCULUS_HMD_SUPPORTED_PLATFORMS
 #include "OculusHMDPrivateRHI.h"
-#include "OculusHMDModule.h"
 
 namespace OculusHMD
 {
@@ -28,9 +27,9 @@ bool FVulkanExtensions::GetVulkanInstanceExtensionsRequired(TArray<const ANSICHA
 	TArray<const char*> Extensions;
 	{
 		int32 ExtensionCount = 0;
-		FOculusHMDModule::GetPluginWrapper().GetInstanceExtensionsVk(nullptr, &ExtensionCount);
+		ovrp_GetInstanceExtensionsVk(nullptr, &ExtensionCount);
 		Extensions.SetNum(ExtensionCount);
-		FOculusHMDModule::GetPluginWrapper().GetInstanceExtensionsVk(Extensions.GetData(), &ExtensionCount);
+		ovrp_GetInstanceExtensionsVk(Extensions.GetData(), &ExtensionCount);
 	}
 
 	int32 ExtensionsFound = 0;
@@ -69,9 +68,9 @@ bool FVulkanExtensions::GetVulkanDeviceExtensionsRequired(struct VkPhysicalDevic
 	TArray<const char*> Extensions;
 	{
 		int32 ExtensionCount = 0;
-		FOculusHMDModule::GetPluginWrapper().GetDeviceExtensionsVk(nullptr, &ExtensionCount);
+		ovrp_GetDeviceExtensionsVk(nullptr, &ExtensionCount);
 		Extensions.SetNum(ExtensionCount);
-		FOculusHMDModule::GetPluginWrapper().GetDeviceExtensionsVk(Extensions.GetData(), &ExtensionCount);
+		ovrp_GetDeviceExtensionsVk(Extensions.GetData(), &ExtensionCount);
 	}
 
 	int32 ExtensionsFound = 0;

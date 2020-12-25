@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
-#include "Misc/Paths.h"
 #include "ImageComparer.generated.h"
 
 class Error;
@@ -145,7 +144,7 @@ class FComparableImage
 public:
 	int32 Width;
 	int32 Height;
-	TArray64<uint8> Bytes;
+	TArray<uint8> Bytes;
 
 	FComparableImage()
 		: RedTotal(0)
@@ -168,8 +167,8 @@ public:
 
 	FORCEINLINE FColor GetPixel(int32 X, int32 Y)
 	{
-		int64 Offset = ( (int64)Y * Width + X ) * 4;
-		check(Offset < ( (int64)Width * Height * 4 ));
+		int32 Offset = ( Y * Width + X ) * 4;
+		check(Offset < ( Width * Height * 4 ));
 
 		return FColor(
 			Bytes[Offset],
@@ -196,12 +195,7 @@ public:
 };
 
 /**
- * This struct holds the results of comparing an incoming image from a platform with an approved image that exists under the 
- * project hierarchy. 
- 
- * All paths in this structure should be portable. Test results (including this struct) result can be serialized to 
- * JSON and stored on the network as during automation runs then opened in the editor to commit / approve changes
- * to the local project.
+ *
  */
 USTRUCT()
 struct FImageComparisonResult
@@ -210,106 +204,40 @@ struct FImageComparisonResult
 
 public:
 
-	/*
-		Time that the comparison was performed
-	*/
 	UPROPERTY()
-	FDateTime CreationTime = FDateTime::Now();
+	FString ApprovedFile;
 
-	/*
-		Platform that the incoming image was generated on
-	*/
 	UPROPERTY()
-	FString SourcePlatform;
+	FString IncomingFile;
 
-	/*
-		RHI that the incoming image was generated with
-	*/
 	UPROPERTY()
-	FString SourceRHI;
+	FString ComparisonFile;
 
-	/*
-		Path to a folder where the idealized ground-truth for this comparison would be. Relative to the project directory.
-		Note: This path may not exist a fallback is being used for approval, or if there is no approved
-		image at all. Comparing this value with the FPaths::GetPath(ApprovedFilePath) can be used to determine that.
-		(the IsIdeal() function performs that check).
-	*/
 	UPROPERTY()
-	FString IdealApprovedFolderPath;
+	FString ReportApprovedFile;
 
-	/*
-		Path to the file that was considered as the ground-truth. Relative to the project directory
-	*/
 	UPROPERTY()
-	FString ApprovedFilePath;
+	FString ReportIncomingFile;
 
-	/*
-		Path to the file that was generated in the test. Relative to the project directory, only valid when a test is run locally
-	*/
 	UPROPERTY()
-	FString IncomingFilePath;
+	FString ReportComparisonFile;
 
-	/*
-		Path to the delta image between the ground-truth and the incoming file. Relative to the project directory, only valid when a test is run locally
-	*/
-	UPROPERTY()
-	FString ComparisonFilePath;
-
-	/*
-		Name of the approved file saved for the report. Path is relative to the location of the metadata for the report
-	*/
-	UPROPERTY()
-	FString ReportApprovedFilePath;
-
-	/*
-		name of the incoming file saved for the report.  Path is relative to the location of the metadata for the report
-	*/
-	UPROPERTY()
-	FString ReportIncomingFilePath;
-
-	/*
-		Name of the delta image saved for the report.  Path is relative to the location of the metadata for the report
-	*/
-	UPROPERTY()
-	FString ReportComparisonFilePath;
-
-	/*
-		Largest local difference found during comparison
-	*/
 	UPROPERTY()
 	double MaxLocalDifference;
 
-	/*
-		Global difference found during comparison
-	*/
 	UPROPERTY()
 	double GlobalDifference;
 
-	/*
-		Tolerance values for comparison
-	*/
-	UPROPERTY()
-	FImageTolerance Tolerance;
-
-	/*
-		Error message that can be set during a comparison
-	*/
 	UPROPERTY()
 	FText ErrorMessage;
 
-	/*
-		Error message that can be set during a comparison
-	*/
 	UPROPERTY()
-	int32 Version;
-
-	static constexpr int32 CurrentVersion = 2;
+	FImageTolerance Tolerance;
 
 	FImageComparisonResult()
 		: MaxLocalDifference(0.0f)
 		, GlobalDifference(0.0f)
 		, ErrorMessage()
-		, Version(CurrentVersion)
 	{
 	}
 
@@ -317,47 +245,14 @@ public:
 		: MaxLocalDifference(0.0f)
 		, GlobalDifference(0.0f)
 		, ErrorMessage(Error)
-		, Version(CurrentVersion)
 	{
 	}
 
-	/*
-		Returns true if this is a new image with no approved file to compare against
-	*/
-	bool IsValid() const
-	{
-		return Version == CurrentVersion;
-	}
-	
-	/*
-		Marks this struct as invalid. Can be used before serializing in to ensure very old files with
-		no version info aren't recognized.
-	*/
-	void SetInvalid()
-	{
-		Version = 0;
-	}
-
-	/*
-		Returns true if this is a new image with no approved file to compare against
-	*/
 	bool IsNew() const
 	{
-		return ApprovedFilePath.IsEmpty();
+		return ApprovedFile.IsEmpty();
 	}
 
-	/*
-		Returns true if this is am ideal comparison (e.g not using a fallback for
-		comparison)
-	*/
-	bool IsIdeal() const
-	{
-		return FPaths::GetPath(ApprovedFilePath) == IdealApprovedFolderPath;
-	}
-
-	/*
-		Returns true if the images were within the provided tolerance values
-	*/
 	bool AreSimilar() const
 	{
 		if ( IsNew() )
@@ -378,43 +273,11 @@ struct SCREENSHOTCOMPARISONTOOLS_API FComparisonReport
 {
 public:
 
-	/*
-		ReportRootDirectory is where all reports are saved. E.g. <path>/Saved/Automation/Reports
-		ReportFile is a specific report for a test under this path. E.g. <path>/Saved/Automation/Reports/Test/TestName/report.json.
-	*/
-
 	FComparisonReport(const FString& InReportRootDirectory, const FString& InReportFile);
-
-	void SetComparisonResult(const FImageComparisonResult& InResult)
-	{
-		Comparison = InResult;
-	}
-
-	const FImageComparisonResult& GetComparisonResult() const
-	{
-		return Comparison;
-	}
-
-	/*
-		Return the path to the file used to generate this report
-	*/
-	const FString& GetReportFile() const { return ReportFile; }
-
-	/*
-		Return the path to all files in this report
-	*/
-	const FString& GetReportPath() const { return ReportPath; }
-
-	/*
-		Return the path to a location where all reports (including this one) are kept in this session
-	*/
-	const FString& GetReportRootDirectory() const { return ReportRootDirectory; }
-
-private:
 
 	FString ReportRootDirectory;
 	FString ReportFile;
-	FString ReportPath;
+	FString ReportFolder;
 	FImageComparisonResult Comparison;
 };
 
@@ -424,8 +287,13 @@ private:
 class SCREENSHOTCOMPARISONTOOLS_API FImageComparer
 {
 public:
-	
-	FImageComparisonResult Compare(const FString& ImagePathA, const FString& ImagePathB, FImageTolerance Tolerance, const FString& OutDeltaPath);
+	FString ImageRootA;
+	FString ImageRootB;
+	FString DeltaDirectory;
+
+	FImageComparer(const FString& Directory = "");
+
+	FImageComparisonResult Compare(const FString& ImagePathA, const FString& ImagePathB, FImageTolerance Tolerance);
 
 	enum class EStructuralSimilarityComponent : uint8
 	{
@@ -436,7 +304,7 @@ public:
 	/**
 	 * https://en.wikipedia.org/wiki/Structural_similarity
 	 */
-	double CompareStructuralSimilarity(const FString& ImagePathA, const FString& ImagePathB, EStructuralSimilarityComponent InCompareComponent, const FString& OutDeltaPath);
+	double CompareStructuralSimilarity(const FString& ImagePathA, const FString& ImagePathB, EStructuralSimilarityComponent InCompareComponent);
 
 private:
 	TSharedPtr<FComparableImage> Open(const FString& ImagePath, FText& OutError);

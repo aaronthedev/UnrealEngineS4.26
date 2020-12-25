@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	D3D11Query.cpp: D3D query RHI implementation.
@@ -203,7 +203,7 @@ FRenderQueryRHIRef FD3D11DynamicRHI::RHICreateRenderQuery(ERenderQueryType Query
 	return new FD3D11RenderQuery(Query, QueryType);
 }
 
-bool FD3D11DynamicRHI::RHIGetRenderQueryResult(FRHIRenderQuery* QueryRHI, uint64& OutResult, bool bWait, uint32 GPUIndex)
+bool FD3D11DynamicRHI::RHIGetRenderQueryResult(FRHIRenderQuery* QueryRHI,uint64& OutResult,bool bWait)
 {
 	check(IsInRenderingThread());
 	FD3D11RenderQuery* Query = ResourceCast(QueryRHI);
@@ -292,7 +292,6 @@ bool FD3D11DynamicRHI::GetQueryData(ID3D11Query* Query, void* Data, SIZE_T DataS
 	HRESULT Result;
 	SAFE_GET_QUERY_DATA
 
-
 	// Isn't the query finished yet, and can we wait for it?
 	if ( Result == S_FALSE && bWait )
 	{
@@ -317,23 +316,16 @@ bool FD3D11DynamicRHI::GetQueryData(ID3D11Query* Query, void* Data, SIZE_T DataS
 			float DeltaTime = FPlatformTime::Seconds() - StartTime;
 			if(DeltaTime > TimeoutWarningLimit)
 			{
-				HRESULT DeviceRemovedReason = Direct3DDevice->GetDeviceRemovedReason();
 				TimeoutWarningLimit += 5.0;
-				UE_LOG(LogD3D11RHI, Log, TEXT("GetQueryData is taking a very long time (%.1f s) (%08x)"), DeltaTime, (uint32)DeviceRemovedReason);
+				UE_LOG(LogD3D11RHI, Log, TEXT("GetQueryData is taking a very long time (%.1f s)"), DeltaTime);
 			}
 
 			if(DeltaTime > TimeoutValue)
 			{
-				HRESULT DeviceRemovedReason = Direct3DDevice->GetDeviceRemovedReason();
-				UE_LOG(LogD3D11RHI, Log, TEXT("Timed out while waiting for GPU to catch up. (%.1f s) (ErrorCode %08x) (%08x)"), TimeoutValue, (uint32)Result, (uint32)DeviceRemovedReason);
+				UE_LOG(LogD3D11RHI, Log, TEXT("Timed out while waiting for GPU to catch up. (%.1f s) (ErrorCode %08x)"), TimeoutValue, (uint32)Result);
 				if(FAILED(Result))
 				{
 					VERIFYD3D11RESULT_EX(Result, Direct3DDevice);
-				}
-				else if (QueryType == RQT_AbsoluteTime)
-				{
-					UE_LOG(LogD3D11RHI, Log, TEXT("GPU has hung or crashed, checking status."));
-					GPUProfilingData.CheckGpuHeartbeat(true);
 				}
 				return false;
 			}
@@ -430,7 +422,7 @@ void FD3D11BufferedGPUTiming::PlatformStaticInitialize(void* UserData)
 	check( !GAreGlobalsInitialized );
 
 	// Get the GPU timestamp frequency.
-	SetTimingFrequency(0);
+	GTimingFrequency = 0;
 	TRefCountPtr<ID3D11Query> FreqQuery;
 	FD3D11DynamicRHI* D3DRHI = (FD3D11DynamicRHI*)UserData;
 	ID3D11DeviceContext *D3D11DeviceContext = D3DRHI->GetDeviceContext();
@@ -472,7 +464,7 @@ void FD3D11BufferedGPUTiming::PlatformStaticInitialize(void* UserData)
 			if (D3DResult == S_OK)
 			{
 				DebugState = 2;
-				SetTimingFrequency(FreqQueryData.Frequency);
+				GTimingFrequency = FreqQueryData.Frequency;
 				checkSlow(!FreqQueryData.Disjoint);
 
 				if (FreqQueryData.Disjoint)
@@ -482,7 +474,7 @@ void FD3D11BufferedGPUTiming::PlatformStaticInitialize(void* UserData)
 			}
 		}
 
-		UE_LOG(LogD3D11RHI, Log, TEXT("GPU Timing Frequency: %f (Debug: %d %d)"), GetTimingFrequency() / (double)(1000 * 1000), DebugState, DebugCounter);
+		UE_LOG(LogD3D11RHI, Log, TEXT("GPU Timing Frequency: %f (Debug: %d %d)"), GTimingFrequency / (double)(1000 * 1000), DebugState, DebugCounter);
 	}
 
 	FreqQuery = NULL;
@@ -580,10 +572,8 @@ void FD3D11BufferedGPUTiming::CalibrateTimers(FD3D11DynamicRHI* InD3DRHI)
 		// If we managed to get valid timestamps, save both of them (CPU & GPU) and return
 		if (D3DResult == S_OK && GPUTimestamp)
 		{
-			FGPUTimingCalibrationTimestamp CalibrationTimestamp;
-			CalibrationTimestamp.CPUMicroseconds = uint64(FPlatformTime::ToSeconds64(CPUTimestamp) * 1e6);
-			CalibrationTimestamp.GPUMicroseconds = uint64(GPUTimestamp * (1e6 / GetTimingFrequency()));
-			SetCalibrationTimestamp(CalibrationTimestamp);
+			GCalibrationTimestamp.CPUMicroseconds = uint64(FPlatformTime::ToSeconds64(CPUTimestamp) * 1e6);
+			GCalibrationTimestamp.GPUMicroseconds = uint64(GPUTimestamp * (1e6 / GTimingFrequency));
 			break;
 		}
 		else
@@ -626,10 +616,8 @@ void FD3D11BufferedGPUTiming::InitDynamicRHI()
 			QueryDesc.Query = D3D11_QUERY_TIMESTAMP;
 			QueryDesc.MiscFlags = 0;
 
-			CA_SUPPRESS(6385);	// Doesn't like COM
 			D3DResult = D3DRHI->GetDevice()->CreateQuery(&QueryDesc,StartTimestamps[TimestampIndex].GetInitReference());
 			GIsSupported = GIsSupported && (D3DResult == S_OK);
-			CA_SUPPRESS(6385);	// Doesn't like COM
 			D3DResult = D3DRHI->GetDevice()->CreateQuery(&QueryDesc,EndTimestamps[TimestampIndex].GetInitReference());
 			GIsSupported = GIsSupported && (D3DResult == S_OK);
 		}

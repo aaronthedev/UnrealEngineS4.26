@@ -1,13 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
 
 public class AESHandlerComponent : ModuleRules
 {
-	protected virtual bool DefaultToSSL { get { return true; } }
-
-	public AESHandlerComponent(ReadOnlyTargetRules Target) : base(Target)
+    public AESHandlerComponent(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PrivateIncludePaths.AddRange(
 			new string[] {
@@ -39,7 +37,16 @@ public class AESHandlerComponent : ModuleRules
 				}
 				);
 		}
-		else if (DefaultToSSL)
+		else if (Target.Platform == UnrealTargetPlatform.Switch)
+		{
+			PublicDependencyModuleNames.AddRange(
+				new string[]
+				{
+					"PlatformCryptoSwitch",
+				}
+				);
+		}
+		else
 		{
 			PublicDependencyModuleNames.AddRange(
 				new string[]

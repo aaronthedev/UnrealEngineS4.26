@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	OpenGLViewport.cpp: OpenGL viewport RHI implementation.
@@ -10,6 +10,19 @@
 #include "RHI.h"
 #include "OpenGLDrv.h"
 #include "OpenGLDrvPrivate.h"
+
+/**
+ * RHI console variables used by viewports.
+ */
+namespace RHIOpenGLConsoleVariables
+{
+	int32 SyncInterval = 1;
+	static FAutoConsoleVariableRef CVarSyncInterval(
+		TEXT("RHI.SyncIntervalOgl"),
+		SyncInterval,
+		TEXT("When synchronizing with OpenGL, specifies the interval at which to refresh.")
+		);
+};
 
 void FOpenGLDynamicRHI::RHIGetSupportedResolution(uint32 &Width, uint32 &Height)
 {
@@ -94,27 +107,29 @@ void FOpenGLDynamicRHI::RHIBeginDrawingViewport(FRHIViewport* ViewportRHI, FRHIT
 	if( CurrentContext != CONTEXT_Rendering )
 	{
 		check(CurrentContext == CONTEXT_Shared);
-		check(!bIsRenderingContextAcquired || !GUseThreadedRendering);
-
-		bRevertToSharedContextAfterDrawingViewport = true;
-		PlatformRenderingContextSetup(PlatformDevice);
+		if (FOpenGL::GetShaderPlatform() != EShaderPlatform::SP_OPENGL_ES2_WEBGL)
+		{
+			check(!bIsRenderingContextAcquired || !GUseThreadedRendering);
+			bRevertToSharedContextAfterDrawingViewport = true;
+			PlatformRenderingContextSetup(PlatformDevice);
+		}
+		else
+		{
+			// XXX multithread check?
+			// On WebGL, PlatformRenderingContextSetup actually makes-current the Shared context.
+		}
 	}
 
 	// Set the render target and viewport.
 	if( RenderTarget )
 	{
 		FRHIRenderTargetView RTV(RenderTarget, ERenderTargetLoadAction::ELoad);
-		SetRenderTargets(1, &RTV, nullptr);
+		RHISetRenderTargets(1, &RTV, nullptr, 0, NULL);
 	}
 	else
 	{
 		FRHIRenderTargetView RTV(DrawingViewport->GetBackBuffer(), ERenderTargetLoadAction::ELoad);
-		SetRenderTargets(1, &RTV, nullptr);
-	}
-
-	if (IsValidRef(CustomPresent))
-	{
-		CustomPresent->BeginDrawing();
+		RHISetRenderTargets(1, &RTV, nullptr, 0, NULL);
 	}
 }
 
@@ -132,20 +147,13 @@ void FOpenGLDynamicRHI::RHIEndDrawingViewport(FRHIViewport* ViewportRHI,bool bPr
 
 	FOpenGLTexture2D* BackBuffer = Viewport->GetBackBuffer();
 
-	FOpenGLContextState& ContextState = GetContextStateForCurrentContext();
-
-	if (ContextState.bScissorEnabled)
-	{
-		ContextState.bScissorEnabled = false;
-		glDisable(GL_SCISSOR_TEST);
-	}
-
 	bool bNeedFinishFrame = PlatformBlitToViewport(PlatformDevice,
 		*Viewport, 
 		BackBuffer->GetSizeX(),
 		BackBuffer->GetSizeY(),
 		bPresent,
-		bLockToVsync
+		bLockToVsync,
+		RHIGetSyncInterval()
 	);
 
 	// Always consider the Framebuffer in the rendering context dirty after the blit

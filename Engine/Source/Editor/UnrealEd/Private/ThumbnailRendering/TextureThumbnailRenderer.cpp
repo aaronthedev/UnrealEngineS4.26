@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ThumbnailRendering/TextureThumbnailRenderer.h"
 #include "CanvasItem.h"
@@ -46,7 +46,7 @@ void UTextureThumbnailRenderer::GetThumbnailSize(UObject* Object, float Zoom, ui
 	}
 }
 
-void UTextureThumbnailRenderer::Draw(UObject* Object, int32 X, int32 Y, uint32 Width, uint32 Height, FRenderTarget*, FCanvas* Canvas, bool bAdditionalViewFamily)
+void UTextureThumbnailRenderer::Draw(UObject* Object, int32 X, int32 Y, uint32 Width, uint32 Height, FRenderTarget*, FCanvas* Canvas)
 {
 	UTexture* Texture = Cast<UTexture>(Object);
 	if (Texture != nullptr && Texture->Resource != nullptr) 
@@ -63,7 +63,6 @@ void UTextureThumbnailRenderer::Draw(UObject* Object, int32 X, int32 Y, uint32 W
 		UTexture2DArray* Texture2DArray = Cast<UTexture2DArray>(Texture);
 		UTextureRenderTargetCube* RTTextureCube = Cast<UTextureRenderTargetCube>(Texture);
 		UTextureLightProfile* TextureLightProfile = Cast<UTextureLightProfile>(Texture);
-		const bool bIsVirtualTexture = Texture->IsCurrentlyVirtualTextured();
 
 		TRefCountPtr<FBatchedElementParameters> BatchedElementParameters;
 
@@ -109,16 +108,6 @@ void UTextureThumbnailRenderer::Draw(UObject* Object, int32 X, int32 Y, uint32 W
 		FCanvasTileItem CanvasTile( FVector2D( X, Y ), Texture->Resource, FVector2D( Width,Height ), FLinearColor::White );
 		CanvasTile.BlendMode = bUseTranslucentBlend ? SE_BLEND_Translucent : SE_BLEND_Opaque;
 		CanvasTile.BatchedElementParameters = BatchedElementParameters;
-		if (bIsVirtualTexture && Texture->Source.GetNumBlocks() > 1)
-		{
-			// Adjust UVs to display entire UDIM range, acounting for UE4 inverted V-axis
-			// We're not actually rendering a VT here, but the editor-only texture we're using is still using the UDIM tile layout
-			// So we use inverted Y-axis, but then normalize back to [0,1)
-			const FIntPoint BlockSize = Texture->Source.GetSizeInBlocks();
-			const float RcpBlockSizeY = 1.0f / (float)BlockSize.Y;
-			CanvasTile.UV0.Y = (1.0f - (float)BlockSize.Y) * RcpBlockSizeY;
-			CanvasTile.UV1.Y = RcpBlockSizeY;
-		}
 		CanvasTile.Draw( Canvas );
 
 		if (TextureLightProfile)
@@ -133,7 +122,7 @@ void UTextureThumbnailRenderer::Draw(UObject* Object, int32 X, int32 Y, uint32 W
 			TextItem.Draw(Canvas);
 		}
 
-		if (bIsVirtualTexture)
+		if (Texture2D && Texture2D->VirtualTextureStreaming)
 		{
 			auto VTChars = TEXT("VT");
 			int32 VTWidth = 0;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -625,7 +625,7 @@ protected:
 	virtual void UpdateDecelerationData();
 
 	/** check if move is completed */
-	virtual bool HasReachedDestination(const FVector& CurrentLocation) const;
+	bool HasReachedDestination(const FVector& CurrentLocation) const;
 
 	/** check if segment is completed */
 	virtual bool HasReachedCurrentTarget(const FVector& CurrentLocation) const;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -22,7 +22,6 @@
 #include "Camera/PlayerCameraManager.h"
 #include "Components/InputComponent.h"
 #include "GameFramework/ForceFeedbackEffect.h"
-#include "GameFramework/UpdateLevelVisibilityLevelInfo.h"
 #include "GenericPlatform/IInputInterface.h"
 #include "PlayerController.generated.h"
 
@@ -49,7 +48,7 @@ DECLARE_DELEGATE_RetVal(bool, FCanUnpause);
 /** delegate used to override default viewport audio listener position calculated from camera */
 DECLARE_DELEGATE_ThreeParams(FGetAudioListenerPos, FVector& /*Location*/, FVector& /*ProjFront*/, FVector& /*ProjRight*/);
 
-ENGINE_API DECLARE_LOG_CATEGORY_EXTERN(LogPlayerController, Log, All);
+DECLARE_LOG_CATEGORY_EXTERN(LogPlayerController, Log, All);
 DECLARE_STATS_GROUP(TEXT("PlayerController"), STATGROUP_PlayerController, STATCAT_Advanced);
 
 UENUM()
@@ -161,6 +160,40 @@ struct ENGINE_API FUpdateLevelStreamingLevelStatus
 	/** Whether we want to force a blocking load */
 	UPROPERTY()
 	uint32 bNewShouldBlockOnLoad : 1;
+};
+
+/** This structure is used to pass arguments to ServerUpdateLevelVisibilty() and ServerUpdateMultipleLevelsVisibility() server RPC functions */
+USTRUCT()
+struct ENGINE_API FUpdateLevelVisibilityLevelInfo
+{
+	GENERATED_BODY();
+
+	FUpdateLevelVisibilityLevelInfo()
+		: PackageName(NAME_None)
+		, FileName(NAME_None)
+		, bIsVisible(false)
+	{
+	}
+
+	/**
+	 * @param Level			Level to pull PackageName and FileName from.
+	 * @param bInIsVisible	Default value for bIsVisible.
+	 */
+	FUpdateLevelVisibilityLevelInfo(const class ULevel* const Level, const bool bInIsVisible);
+
+	/** The name of the package for the level whose status changed. */
+	UPROPERTY()
+	FName PackageName;
+
+	/** The name / path of the asset file for the level whose status changed. */
+	UPROPERTY()
+	FName FileName;
+
+	/** The new visibility state for this level. */
+	UPROPERTY()
+	uint32 bIsVisible : 1;
+
+	bool NetSerialize(FArchive& Ar, UPackageMap* PackageMap, bool& bOutSuccess);
 };
 
 template<>
@@ -316,22 +349,11 @@ public:
 	UPROPERTY()
 	int32 ClientCap;
 	
-	/**
-	 * Object that manages "cheat" commands.
-	 *
-	 * By default:
-	 *   - Debug and Development builds will force it to be instantiated (@see APlayerController::EnableCheats).
-	 *   - Test and Shipping builds will only instantiate it if the authoritative game mode allows cheats (@see AGameModeBase::AllowCheats).
-	 * 
-	 * This behavior can be changed either by overriding APlayerController::EnableCheats or AGameModeBase::AllowCheats.
-	 */
+	/** Object that manages "cheat" commands.  Not instantiated in shipping builds. */
 	UPROPERTY(Transient, BlueprintReadOnly, Category="Cheat Manager")
 	UCheatManager* CheatManager;
 	
-	/**
-	 * Class of my CheatManager.
-	 * @see CheatManager for more information about when it will be instantiated.
-	 */
+	/** Class of my CheatManager.  The Cheat Manager is not created in shipping builds */
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category="Cheat Manager")
 	TSubclassOf<UCheatManager> CheatClass;
 
@@ -898,7 +920,7 @@ public:
 	 * @param CustomPlaySpace - Matrix used when Space = CAPS_UserDefined
 	 */
 	UFUNCTION(unreliable, client, BlueprintCallable, Category="Game|Feedback")
-	void ClientPlayCameraAnim(class UCameraAnim* AnimToPlay, float Scale=1.f, float Rate=1.f, float BlendInTime=0.f, float BlendOutTime=0.f, bool bLoop=false, bool bRandomStartTime=false, ECameraShakePlaySpace Space=ECameraShakePlaySpace::CameraLocal, FRotator CustomPlaySpace=FRotator::ZeroRotator);
+	void ClientPlayCameraAnim(class UCameraAnim* AnimToPlay, float Scale=1.f, float Rate=1.f, float BlendInTime=0.f, float BlendOutTime=0.f, bool bLoop=false, bool bRandomStartTime=false, ECameraAnimPlaySpace::Type Space=ECameraAnimPlaySpace::CameraLocal, FRotator CustomPlaySpace=FRotator::ZeroRotator);
 
 	/** 
 	 * Play Camera Shake 
@@ -908,29 +930,7 @@ public:
 	 * @param UserPlaySpaceRot - Matrix used when PlaySpace = CAPS_UserDefined
 	 */
 	UFUNCTION(unreliable, client, BlueprintCallable, Category="Game|Feedback")
-	void ClientStartCameraShake(TSubclassOf<class UCameraShakeBase> Shake, float Scale = 1.f, ECameraShakePlaySpace PlaySpace = ECameraShakePlaySpace::CameraLocal, FRotator UserPlaySpaceRot = FRotator::ZeroRotator);
-
-	/** Backwards compatible method, for C++ code */
-	UE_DEPRECATED(4.26, "Please use ClientStartCameraShake")
-	void ClientPlayCameraShake(TSubclassOf<class UCameraShakeBase> Shake, float Scale = 1.f, ECameraShakePlaySpace PlaySpace = ECameraShakePlaySpace::CameraLocal, FRotator UserPlaySpaceRot = FRotator::ZeroRotator)
-	{
-		return ClientStartCameraShake(Shake, Scale, PlaySpace, UserPlaySpaceRot);
-	}
-
-	/** 
-	 * Play Camera Shake localized to a given source
-	 * @param Shake - Camera shake animation to play
-	 * @param SourceComponent - The source from which the camera shakes originates
-	 */
-	UFUNCTION(BlueprintCallable, Category="Game|Feedback")
-	void ClientStartCameraShakeFromSource(TSubclassOf<class UCameraShakeBase> Shake, class UCameraShakeSourceComponent* SourceComponent);
-
-	/** Backwards compatible method, for C++ code */
-	UE_DEPRECATED(4.26, "Please use ClientStartCameraShakeFromSource")
-	void ClientPlayCameraShakeFromSource(TSubclassOf<class UCameraShakeBase> Shake, class UCameraShakeSourceComponent* SourceComponent)
-	{
-		return ClientStartCameraShakeFromSource(Shake, SourceComponent);
-	}
+	void ClientPlayCameraShake(TSubclassOf<class UCameraShake> Shake, float Scale = 1.f, ECameraAnimPlaySpace::Type PlaySpace = ECameraAnimPlaySpace::CameraLocal, FRotator UserPlaySpaceRot = FRotator::ZeroRotator);
 
 	/**
 	 * Play sound client-side (so only the client will hear it)
@@ -990,13 +990,12 @@ public:
 	 * Tell client to fade camera
 	 * @Param bEnableFading - true if we should apply FadeColor/FadeAmount to the screen
 	 * @Param FadeColor - Color to fade to
-	 * @Param FadeAlpha - Contains the start fade (X) and end fade (Y) values to apply. A start fade of less than 0 will use the screen's current fade value
+	 * @Param FadeAlpha - Amount of fading to apply
 	 * @Param FadeTime - length of time for fade to occur over
 	 * @Param bFadeAudio - true to apply fading of audio alongside the video
-	 * @param bHoldWhenFinished - True for fade to hold at the ToAlpha until fade is disabled
 	 */
 	UFUNCTION(Reliable, Client)
-	void ClientSetCameraFade(bool bEnableFading, FColor FadeColor = FColor(ForceInit), FVector2D FadeAlpha = FVector2D(-1.0f, 0.0f), float FadeTime = 0, bool bFadeAudio = false, bool bHoldWhenFinished = false);
+	void ClientSetCameraFade(bool bEnableFading, FColor FadeColor = FColor(ForceInit), FVector2D FadeAlpha = FVector2D(ForceInit), float FadeTime = 0, bool bFadeAudio = false);
 
 	/**
 	 * Replicated function to set camera style on client
@@ -1068,11 +1067,7 @@ public:
 
 	/** Stop camera shake on client.  */
 	UFUNCTION(reliable, client, BlueprintCallable, Category="Game|Feedback")
-	void ClientStopCameraShake(TSubclassOf<class UCameraShakeBase> Shake, bool bImmediately = true);
-
-	/** Stop camera shake on client.  */
-	UFUNCTION(BlueprintCallable, Category="Game|Feedback")
-	void ClientStopCameraShakesFromSource(class UCameraShakeSourceComponent* SourceComponent, bool bImmediately = true);
+	void ClientStopCameraShake(TSubclassOf<class UCameraShake> Shake, bool bImmediately = true);
 
 	/** 
 	 * Play a force feedback pattern on the player's controller
@@ -1670,10 +1665,10 @@ public:
 	virtual void SpawnPlayerCameraManager();
 
 	/** get audio listener position and orientation */
-	virtual void GetAudioListenerPosition(FVector& OutLocation, FVector& OutFrontDir, FVector& OutRightDir) const;
+	virtual void GetAudioListenerPosition(FVector& OutLocation, FVector& OutFrontDir, FVector& OutRightDir);
 
 	/** Gets the attenuation position override. */
-	virtual bool GetAudioListenerAttenuationOverridePosition(FVector& OutLocation) const;
+	virtual bool GetAudioListenerAttenuationOverridePosition(FVector& OutLocation);
 
 	/**
 	 * Used to override the default positioning of the audio listener
@@ -1885,8 +1880,6 @@ public:
 	 */
 	UFUNCTION(Reliable, Client)
 	void OnServerStartedVisualLogger(bool bIsLogging);
-
-	void SetShowMouseCursor(bool bShow);
 
 	/** Returns true if the mouse cursor should be shown */
 	virtual bool ShouldShowMouseCursor() const;

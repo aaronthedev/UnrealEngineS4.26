@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "XmppStrophe/XmppPingStrophe.h"
 #include "XmppStrophe/StropheStanza.h"
@@ -8,7 +8,6 @@
 #include "Misc/Guid.h"
 #include "Misc/EmbeddedCommunication.h"
 #include "Containers/BackgroundableTicker.h"
-#include "Stats/Stats.h"
 
 #if WITH_XMPP_STROPHE
 
@@ -32,8 +31,6 @@ FXmppPingStrophe::~FXmppPingStrophe()
 
 bool FXmppPingStrophe::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FXmppPingStrophe_Tick);
-
 	// Process our ping queue and send pongs
 	while (!IncomingPings.IsEmpty())
 	{

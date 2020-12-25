@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -63,8 +63,6 @@ public:
 		FString DeviceName;
 		/** Enumerated capture device guid */
 		GUID DeviceId;
-		/** If this is the default device. */
-		bool bIsDefault;
 	};
 
 	/** DirectSound8 Interface */
@@ -123,11 +121,10 @@ public:
 	virtual EVoiceCaptureState::Type GetVoiceData(uint8* OutVoiceBuffer, uint32 InVoiceBufferSize, uint32& OutAvailableVoiceData, uint64& OutSampleCounter) override;
 	virtual int32 GetBufferSize() const override;
 	virtual void DumpState() const override;
-	virtual float GetCurrentAmplitude() const override;
 
 	// FTickerObjectBase
 	virtual bool Tick(float DeltaTime) override;
-	
+
 private:
 
 	/** All windows related variables to hide windows includes */
@@ -174,16 +171,6 @@ private:
 	* Whether the microphone level is above the threshold set 
 	*/
 	bool bIsMicActive;
-
-	/**
-	 * This linear ease is used to add attack fade in and release fadeout to the noise gate.
-	 */
-	Audio::FLinearEase NoiseGateAttenuator;
-
-	/**
-	 * This bool is used to track when we engage 
-	 */
-	bool bWasMicAboveNoiseGateThreshold;
 
 	/**
 	 * Create the D3D8 capture device

@@ -33,8 +33,8 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 //-*****************************************************************************
-#ifndef Alembic_Prman_SubDTags_h
-#define Alembic_Prman_SubDTags_h
+#ifndef _Alembic_Prman_SubDTags_h_
+#define _Alembic_Prman_SubDTags_h_
 
 #include <list>
 #include <ri.h>

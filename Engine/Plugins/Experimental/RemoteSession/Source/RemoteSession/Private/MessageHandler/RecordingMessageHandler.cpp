@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RecordingMessageHandler.h"
 #include "RemoteSession.h"
@@ -290,10 +290,6 @@ bool FRecordingMessageHandler::OnTouchStarted(const TSharedPtr< FGenericWindow >
 			FScopedSwitchWorldHack SwitchWorld(WidgetPath);
 			FPointerEvent PointerEvent(ControllerId, TouchIndex, Location, Location, Force, true);
 			bRouteMessageResult = FSlateApplication::Get().RoutePointerDownEvent(WidgetPath, PointerEvent).IsEventHandled();
-			if (!bRouteMessageResult && OnRouteTouchDownToWidgetFailedDelegate.IsBound())
-			{
-				OnRouteTouchDownToWidgetFailedDelegate.Broadcast(Location);
-			}
 		}
 	}
 

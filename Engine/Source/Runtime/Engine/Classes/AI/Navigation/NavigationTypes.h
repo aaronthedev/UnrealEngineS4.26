@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -349,11 +349,6 @@ struct FNavLocation
 	FORCEINLINE bool HasNodeRef() const { return NodeRef != INVALID_NAVNODEREF; }
 
 	FORCEINLINE operator FVector() const { return Location; }
-
-	bool operator==(const FNavLocation& Other) const
-	{
-		return Location == Other.Location && NodeRef == Other.NodeRef;
-	}
 };
 
 /** Describes node in navigation path */
@@ -368,11 +363,6 @@ struct FNavPathPoint : public FNavLocation
 	FNavPathPoint() : Flags(0), CustomLinkId(0) {}
 	FNavPathPoint(const FVector& InLocation, NavNodeRef InNodeRef = INVALID_NAVNODEREF, uint32 InFlags = 0) 
 		: FNavLocation(InLocation, InNodeRef), Flags(InFlags), CustomLinkId(0) {}
-
-	bool operator==(const FNavPathPoint& Other) const
-	{
-		return Flags == Other.Flags && CustomLinkId == Other.CustomLinkId && FNavLocation::operator==(Other);
-	}
 };
 
 /** path type data */
@@ -481,7 +471,6 @@ struct FMovementProperties
 		, bCanFly(false)
 	{
 	}
-	FMovementProperties(const FMovementProperties& Other) = default;
 };
 
 /** Properties of representation of an 'agent' (or Pawn) used by AI navigation/pathfinding. */
@@ -560,15 +549,12 @@ struct ENGINE_API FNavDataConfig : public FNavAgentProperties
 {
 	GENERATED_USTRUCT_BODY()
 
-	/** Internal/debug name of this agent */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Display)
 	FName Name;
 
-	/** Color used to represent this agent in the editor and for debugging */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Display)
 	FColor Color;
 
-	/** Rough size of this agent, used when projecting unto navigation mesh */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Querying)
 	FVector DefaultQueryExtent;
 
@@ -584,7 +570,6 @@ struct ENGINE_API FNavDataConfig : public FNavAgentProperties
 #endif // WITH_EDITOR
 
 protected:
-	/** Class to use when spawning navigation data instance */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Navigation, meta = (MetaClass = "NavigationData"))
 	TSoftClassPtr<AActor> NavDataClass;
 

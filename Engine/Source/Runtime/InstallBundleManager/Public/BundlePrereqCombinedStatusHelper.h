@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -42,14 +42,16 @@ public:
 	FBundlePrereqCombinedStatusHelper& operator=(FBundlePrereqCombinedStatusHelper&& Other);
 	
 	//Setup tracking for all bundles required in the supplied BundleContentState
-	void SetBundlesToTrackFromContentState(const FInstallBundleCombinedContentState& BundleContentState, TArrayView<FName> BundlesToTrack);
+	void SetBundlesToTrackFromContentState(const FInstallBundleContentState& BundleContentState);
 	
 	//Get current CombinedBundleStatus for everything setup to track
 	const FCombinedBundleStatus& GetCurrentCombinedState() const;
 	
-	//Useful for resolving tick order issue
-	void ForceTick() { Tick(0); }
-
+	//How to weight downloads vs. installs. Defaults to even. Does not have to add up to 1.0.
+	//Setting Download to .5 and Install to .5 will be the same as setting Download to 1.f and Install to 1.f.
+	float DownloadWeight;
+	float InstallWeight;
+	
 private:
 	bool Tick(float dt);
 	void UpdateBundleCache();
@@ -59,25 +61,25 @@ private:
 	void CleanUpDelegates();
 	
 	//Called so we can track when a bundle is finished
-	void OnBundleInstallComplete(FInstallBundleRequestResultInfo CompletedBundleInfo);
-	void OnBundleInstallPauseChanged(FInstallBundlePauseInfo PauseInfo);
+	void OnBundleInstallComplete(FInstallBundleResultInfo CompletedBundleInfo);
 	
-	float GetCombinedProgressPercent() const;
+	float GetCombinedProgressPercent();
+	float GetIndividualWeightedProgressPercent(FInstallBundleStatus& Bundle);
 	
 private:
 	//All bundles we need including pre-reqs
 	TArray<FName> RequiredBundleNames;
 	
 	//Internal Cache of all bundle statuses to track progress
-	TMap<FName, FInstallBundleProgress> BundleStatusCache;
+	TMap<FName, FInstallBundleStatus> BundleStatusCache;
 	
 	//Bundle weights that determine what % of the overall install each bundle represents
 	TMap<FName, float> CachedBundleWeights;
 	
 	FCombinedBundleStatus CurrentCombinedStatus;
 	
-	bool bBundleNeedsUpdate = false;
+	bool bBundleNeedsUpdate;
 	
-	IInstallBundleManager* InstallBundleManager = nullptr;
+	IInstallBundleManager* InstallBundleManager;
 	FDelegateHandle TickHandle;
 };

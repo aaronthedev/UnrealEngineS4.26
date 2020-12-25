@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
  
 #pragma once
@@ -24,36 +24,26 @@ class USoundNodeQualityLevel : public USoundNode
 
 public:
 
+#if WITH_EDITOR
 	//~ Begin UObject Interface
 	virtual void PostLoad() override;
 	//~ End UObject Interface
+#endif
 
 	//~ Begin USoundNode Interface.
-	virtual void Serialize(FArchive& Ar) override;	
 	virtual void ParseNodes( FAudioDevice* AudioDevice, const UPTRINT NodeWaveInstanceHash, FActiveSound& ActiveSound, const FSoundParseParameters& ParseParams, TArray<FWaveInstance*>& WaveInstances ) override;
 	virtual int32 GetMaxChildNodes() const override;
 	virtual int32 GetMinChildNodes() const override;
 	virtual void PrimeChildWavePlayers(bool bRecurse) override;
-	virtual void RetainChildWavePlayers(bool bRecurse) override;
-	virtual void ReleaseRetainerOnChildWavePlayers(bool bRecurse) override;
 
 #if WITH_EDITOR
 	virtual FText GetInputPinName(int32 PinIndex) const override;
 #endif
 	//~ End USoundNode Interface.
 
-	// A Property to indicate which quality this node was cooked with. (INDEX_NONE if not cooked, or unset).
-	UPROPERTY()
-	int32 CookedQualityLevelIndex = INDEX_NONE;
-
 #if WITH_EDITOR
 	void ReconcileNode(bool bReconstructNode);
-
-	// Critical section to protect Child nodes array while serializing
-	FCriticalSection EditorOnlyCs;
 #endif
 
-private:
-	virtual void ForCurrentQualityLevel(TFunction<void(USoundNode*)>&& Lambda);
 };
 

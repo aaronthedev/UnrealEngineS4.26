@@ -170,11 +170,6 @@ int NvGetLaneId()
     return g_NvidiaExt.IncrementCounter();
 }
 
-// returns value of special register - specify subopcode from any of NV_SPECIALOP_* specified in nvShaderExtnEnums.h - other opcodes undefined behavior
-uint NvGetSpecial(uint subOpCode)
-{
-    return __NvGetSpecial(subOpCode);
-}
 
 //----------------------------------------------------------------------------//
 //----------------------------- FP16 Atmoic Functions-------------------------//

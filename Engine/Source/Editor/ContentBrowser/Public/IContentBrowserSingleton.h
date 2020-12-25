@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,7 +8,6 @@
 #include "AssetData.h"
 #include "Developer/AssetTools/Public/AssetTypeCategories.h"
 #include "ARFilter.h"
-#include "ContentBrowserItem.h"
 #include "ContentBrowserDelegates.h"
 #include "Developer/CollectionManager/Public/CollectionManagerTypes.h"
 #include "Misc/FilterCollection.h"
@@ -18,7 +17,7 @@
 class FViewport;
 class UFactory;
 
-typedef const FContentBrowserItem& FAssetFilterType;
+typedef const FAssetData& FAssetFilterType;
 typedef TFilterCollection<FAssetFilterType> FAssetFilterCollectionType;
 
 class UFactory;
@@ -41,32 +40,22 @@ namespace EAssetViewType
 /** A selection of items in the Content Browser */
 struct FContentBrowserSelection
 {
-	TArray<FContentBrowserItem> SelectedItems;
-
-	// Legacy data - if set will take precedence over SelectedItems
 	TArray<FAssetData> SelectedAssets;
 	TArray<FString> SelectedFolders;
 
-	bool IsLegacy() const
-	{
-		return SelectedAssets.Num() > 0 || SelectedFolders.Num() > 0;
-	}
-
 	int32 Num() const
 	{
-		return SelectedItems.Num() + SelectedAssets.Num() + SelectedFolders.Num();
+		return SelectedAssets.Num() + SelectedFolders.Num();
 	}
 
 	void Reset()
 	{
-		SelectedItems.Reset();
 		SelectedAssets.Reset();
 		SelectedFolders.Reset();
 	}
 
 	void Empty()
 	{
-		SelectedItems.Reset();
 		SelectedAssets.Empty();
 		SelectedFolders.Empty();
 	}
@@ -272,12 +261,6 @@ struct FAssetPickerConfig
 	/** Indicates if the 'Show Developers' option should be enabled or disabled */
 	bool bCanShowDevelopersFolder;
 
-	/** Indicates if engine content should always be shown */
-	bool bForceShowEngineContent;
-
-	/** Indicates if plugin content should always be shown */
-	bool bForceShowPluginContent;
-
 	/** Indicates if the context menu is going to load the assets, and if so to preload before the context menu is shown, and warn about the pending load. */
 	bool bPreloadAssetsForContextMenu;
 
@@ -308,8 +291,6 @@ struct FAssetPickerConfig
 		, bCanShowFolders(false)
 		, bCanShowRealTimeThumbnails(false)
 		, bCanShowDevelopersFolder(true)
-		, bForceShowEngineContent(false)
-		, bForceShowPluginContent(false)
 		, bPreloadAssetsForContextMenu(true)
 		, bAddFilterUI(false)
 		, bShowPathInColumnView(false)
@@ -346,9 +327,6 @@ struct FPathPickerConfig
 	/** If true, will allow class folders to be shown in the picker */
 	bool bAllowClassesFolder;
 
-	/** If true, will allow read-only folders to be shown in the picker */
-	bool bAllowReadOnlyFolders;
-
 	/** If true, will add the path specified in DefaultPath to the tree if it doesn't exist already */
 	bool bAddDefaultPath;
 
@@ -356,7 +334,6 @@ struct FPathPickerConfig
 		: bFocusSearchBoxWhenOpened(true)
 		, bAllowContextMenu(true)
 		, bAllowClassesFolder(false)
-		, bAllowReadOnlyFolders(true)
 		, bAddDefaultPath(false)
 	{}
 };
@@ -558,24 +535,13 @@ public:
 	/** 
 	 * Selects the supplied assets in the primary content browser. 
      *
-	 * @param AssetList                     An array of strings representing folder asset paths to sync
+	 * @param AssetList                     An array of strings represeting folder asset paths to sync
 	 * @param bAllowLockedBrowsers 	        When true, even locked browsers may handle the sync. Only set to true if the sync doesn't seem external to the content browser
 	 * @param bFocusContentBrowser          When true, brings the ContentBrowser into the foreground.
 	 * @param InstanceName					When supplied, will only sync the Content Browser with the matching InstanceName.  bAllowLockedBrowsers is ignored.
 	 * @param bNewSpawnBrowser				When supplied, will spawn a new Content Browser instead of selecting the assets in an existing one.
 	 */ 
 	virtual void SyncBrowserToFolders(const TArray<FString>& FolderList, bool bAllowLockedBrowsers = false, bool bFocusContentBrowser = true, const FName& InstanceName = FName(), bool bNewSpawnBrowser = false) = 0;
-
-	/**
-	 * Selects the supplied items in the primary content browser.
-	 *
-	 * @param ItemsToSync                   An array of items to sync
-	 * @param bAllowLockedBrowsers 	        When true, even locked browsers may handle the sync. Only set to true if the sync doesn't seem external to the content browser
-	 * @param bFocusContentBrowser          When true, brings the ContentBrowser into the foreground.
-	 * @param InstanceName					When supplied, will only sync the Content Browser with the matching InstanceName.  bAllowLockedBrowsers is ignored.
-	 * @param bNewSpawnBrowser				When supplied, will spawn a new Content Browser instead of selecting the assets in an existing one.
-	 */
-	virtual void SyncBrowserToItems(const TArray<FContentBrowserItem>& ItemsToSync, bool bAllowLockedBrowsers = false, bool bFocusContentBrowser = true, const FName& InstanceName = FName(), bool bNewSpawnBrowser = false) = 0;
 
 	/** 
 	 * Selects the supplied assets in the primary content browser. 
@@ -596,9 +562,6 @@ public:
 
 	/** Returns the folders that are selected in the path view */
 	virtual void GetSelectedPathViewFolders(TArray<FString>& SelectedFolders) = 0;
-
-	/** Gets the current path if one exists, otherwise returns empty string. */
-	virtual FString GetCurrentPath() = 0;
 
 	/**
 	 * Capture active viewport to thumbnail and assigns that thumbnail to incoming assets

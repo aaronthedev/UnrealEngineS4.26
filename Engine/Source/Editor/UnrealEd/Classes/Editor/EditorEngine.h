@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,11 +25,10 @@
 #include "Misc/CompilationResult.h"
 #include "Interfaces/ITargetPlatform.h"
 #include "Interfaces/ITargetPlatformManagerModule.h"
-#include "PlayInEditorDataTypes.h"
+
 #include "EditorSubsystem.h"
 #include "Subsystems/SubsystemCollection.h"
 #include "RHI.h"
-#include "UnrealEngine.h"
 
 #include "EditorEngine.generated.h"
 
@@ -55,7 +54,6 @@ class UAnimSequence;
 class UAudioComponent;
 class UBrushBuilder;
 class UFoliageType;
-class UFbxImportUI;
 class UGameViewportClient;
 class ULocalPlayer;
 class UNetDriver;
@@ -90,6 +88,84 @@ enum EPasteTo
 	PT_OriginalLocation	= 0,
 	PT_Here				= 1,
 	PT_WorldOrigin		= 2
+};
+
+USTRUCT()
+struct FSlatePlayInEditorInfo
+{
+	GENERATED_USTRUCT_BODY()
+
+	/** The spawned player for updating viewport location from player when pie closes */
+	TWeakObjectPtr<class ULocalPlayer>	EditorPlayer;
+
+	/** The current play in editor SWindow if playing in a floating window */
+	TWeakPtr<class SWindow>				SlatePlayInEditorWindow;
+	
+	/** The current play in editor rendering and I/O viewport if playing in a floating window*/
+	TSharedPtr<class FSceneViewport>	SlatePlayInEditorWindowViewport;
+	
+	/** The slate viewport that should be used for play in viewport */
+	TWeakPtr<class IAssetViewport>		DestinationSlateViewport;
+
+	FSlatePlayInEditorInfo()
+	: SlatePlayInEditorWindow(NULL), DestinationSlateViewport(NULL)
+	{}
+};
+
+/**
+ * Data structure for storing PIE login credentials
+ */
+USTRUCT()
+struct FPIELoginInfo
+{
+public:
+
+	GENERATED_USTRUCT_BODY()
+
+	/** Type of account. Needed to identity the auth method to use (epic, internal, facebook, etc) */
+	UPROPERTY()
+	FString Type;
+	/** Id of the user logging in (email, display name, facebook id, etc) */
+	UPROPERTY()
+	FString Id;
+	/** Credentials of the user logging in (password or auth token) */
+	UPROPERTY()
+	FString Token;
+};
+
+/**
+ * Holds various data to pass to the post login delegate for PIE logins
+ */
+struct FPieLoginStruct
+{
+	/** World context handle for this login */
+	FName WorldContextHandle;
+	/** Setting index for window positioning */
+	int32 SettingsIndex;
+	/** X location for window positioning */
+	int32 NextX;
+	/** Y location for window positioning */
+	int32 NextY;
+	/** What net mode to run this instance as */
+	EPlayNetMode NetMode;
+	/** Passthrough condition of blueprint compilation*/
+	bool bAnyBlueprintErrors;
+	/** Passthrough condition of spectator mode */
+	bool bStartInSpectatorMode;
+	/** Passthrough start time of PIE */
+	double PIEStartTime;
+
+	FPieLoginStruct() :
+		WorldContextHandle(NAME_None),
+		SettingsIndex(0),
+		NextX(0),
+		NextY(0),
+		NetMode(EPlayNetMode::PIE_Standalone),
+		bAnyBlueprintErrors(false),
+		bStartInSpectatorMode(false),
+		PIEStartTime(0)
+	{
+	}
 };
 
 USTRUCT()
@@ -272,34 +348,37 @@ struct FSelectionStateOfLevel
 	TArray<FString> SelectedComponents;
 };
 
+/** Overrides you can pass when starting PIE to temporarily suppress the user's options for dedicated server, number of clients..etc. */
+struct FPlayInEditorOverrides
+{
+	FPlayInEditorOverrides()
+		: bDedicatedServer()
+		, NumberOfClients()
+	{
+	}
+
+	TOptional<bool> bDedicatedServer;
+	TOptional<int32> NumberOfClients;
+};
+
 struct FPreviewPlatformInfo
 {
 	FPreviewPlatformInfo()
 	:	PreviewFeatureLevel(ERHIFeatureLevel::SM5)
-	,	PreviewPlatformName(NAME_None)
-	,	PreviewShaderFormatName(NAME_None)
 	,	bPreviewFeatureLevelActive(false)
 	{}
 
-	FPreviewPlatformInfo(ERHIFeatureLevel::Type InFeatureLevel, FName InPreviewPlatformName = NAME_None, FName InPreviewShaderFormatName = NAME_None, FName InDeviceProfileName = NAME_None, bool InbPreviewFeatureLevelActive = false)
+	FPreviewPlatformInfo(ERHIFeatureLevel::Type InFeatureLevel, FName InPreviewShaderPlatformName = NAME_None, bool InbPreviewFeatureLevelActive = false)
 	:	PreviewFeatureLevel(InFeatureLevel)
-	,	PreviewPlatformName(InPreviewPlatformName)
-	,	PreviewShaderFormatName(InPreviewShaderFormatName)
-	,	DeviceProfileName(InDeviceProfileName)
+	,	PreviewShaderPlatformName(InPreviewShaderPlatformName)
 	,	bPreviewFeatureLevelActive(InbPreviewFeatureLevelActive)
 	{}
 
 	/** The feature level we should use when loading or creating a new world */
 	ERHIFeatureLevel::Type PreviewFeatureLevel;
-
-	/** The the platform to preview, or NAME_None if there is no preview platform */
-	FName PreviewPlatformName;
-
+	
 	/** The shader platform to preview, or NAME_None if there is no shader preview platform */
-	FName PreviewShaderFormatName;
-
-	/** The device profile to preview. */
-	FName DeviceProfileName;
+	FName PreviewShaderPlatformName;
 
 	/** Is feature level preview currently active */
 	bool bPreviewFeatureLevelActive;
@@ -307,13 +386,21 @@ struct FPreviewPlatformInfo
 	/** Checks if two FPreviewPlatformInfos are for the same preview platform. Note, this does NOT compare the bPreviewFeatureLevelActive flag */
 	bool Matches(const FPreviewPlatformInfo& Other) const
 	{
-		return PreviewFeatureLevel == Other.PreviewFeatureLevel && PreviewPlatformName == Other.PreviewPlatformName && PreviewShaderFormatName == Other.PreviewShaderFormatName && DeviceProfileName == Other.DeviceProfileName;
+		return PreviewFeatureLevel == Other.PreviewFeatureLevel && PreviewShaderPlatformName == Other.PreviewShaderPlatformName;
 	}
 
-	/** Return platform name like "Android", or NAME_None if none is set or the preview feature level is not active */
+	/** Convert platform name like "Android", or NAME_None if none is set or the preview feature level is not active */
 	FName GetEffectivePreviewPlatformName() const
 	{
-		return bPreviewFeatureLevelActive ? PreviewPlatformName : NAME_None;
+		if (PreviewShaderPlatformName != NAME_None && bPreviewFeatureLevelActive)
+		{
+			ITargetPlatform* TargetPlatform = GetTargetPlatformManager()->FindTargetPlatformWithSupport(TEXT("ShaderFormat"), PreviewShaderPlatformName);
+			if (TargetPlatform)
+			{
+				return FName(*TargetPlatform->IniPlatformName());
+			}
+		}
+		return NAME_None;
 	}
 
 	/** returns the preview feature level if active, or GMaxRHIFeatureLevel otherwise */
@@ -322,21 +409,6 @@ struct FPreviewPlatformInfo
 		return bPreviewFeatureLevelActive ? PreviewFeatureLevel : GMaxRHIFeatureLevel;
 	}
 
-};
-
-/** Struct used in filtering allowed references between assets. Passes context about the referencers to game-level filters */
-struct FAssetReferenceFilterContext
-{
-	TArray<FAssetData> ReferencingAssets;
-};
-
-/** Used in filtering allowed references between assets. Implement a subclass of this and return it in OnMakeAssetReferenceFilter */
-class IAssetReferenceFilter
-{
-public:
-	virtual ~IAssetReferenceFilter() { }
-	/** Filter function to pass/fail an asset. Called in some situations that are performance-sensitive so is expected to be fast. */
-	virtual bool PassesFilter(const FAssetData& AssetData, FText* OutOptionalFailureReason = nullptr) const = 0;
 };
 
 /**
@@ -427,7 +499,6 @@ public:
 	UPROPERTY(EditAnywhere, config, Category=Advanced)
 	uint32 UseAxisIndicator:1;
 
-	UE_DEPRECATED(4.25, "This variable is no longer read.")
 	UPROPERTY(EditAnywhere, config, Category=Advanced)
 	uint32 GodMode:1;
 
@@ -472,19 +543,49 @@ public:
 	UPROPERTY()
 	class UWorld* PlayWorld;
 
+	/** An optional location for the starting location for "Play From Here"																*/
+	UPROPERTY()
+	FVector PlayWorldLocation;
 
+	/** An optional rotation for the starting location for "Play From Here"																*/
+	UPROPERTY()
+	FRotator PlayWorldRotation;
+
+	/** Has a request for "Play From Here" been made?													 								*/
+	UPROPERTY()
+	uint32 bIsPlayWorldQueued:1;
 
 	/** Has a request to toggle between PIE and SIE been made? */
 	UPROPERTY()
 	uint32 bIsToggleBetweenPIEandSIEQueued:1;
 
-	/** Allows multiple PIE worlds under a single instance. If false, you can only do multiple UE4 processes for pie networking */
+	/** True if we are requesting to start a simulation-in-editor session */
+	UPROPERTY()
+	uint32 bIsSimulateInEditorQueued:1;
+
+	/** Allows multipel PIE worlds under a single instance. If false, you can only do multiple UE4 processes for pie networking */
 	UPROPERTY(globalconfig)
 	uint32 bAllowMultiplePIEWorlds:1;
 
 	/** True if there is a pending end play map queued */
 	UPROPERTY()
 	uint32 bRequestEndPlayMapQueued:1;
+
+	/** Did the request include the optional location and rotation?										 								*/
+	UPROPERTY()
+	uint32 bHasPlayWorldPlacement:1;
+
+	/** True to enable mobile preview mode when launching the game from the editor on PC platform */
+	UPROPERTY()
+	uint32 bUseMobilePreviewForPlayWorld:1;
+
+	/** True to enable VR preview mode when launching the game from the editor on PC platform */
+	UPROPERTY()
+	uint32 bUseVRPreviewForPlayWorld:1;
+
+	/** True if we're Simulating In Editor, as opposed to Playing In Editor.  In this mode, simulation takes place right the level editing environment */
+	UPROPERTY()
+	uint32 bIsSimulatingInEditor:1;
 
 	/** True if we should not display notifications about undo/redo */
 	UPROPERTY()
@@ -522,9 +623,15 @@ public:
 	UPROPERTY(config)
 	int32 BuildPlayDevice;
 
-
 	/** Maps world contexts to their slate data */
 	TMap<FName, FSlatePlayInEditorInfo>	SlatePlayInEditorMap;
+
+	/** Viewport the next PlaySession was requested to happen on */
+	TWeakPtr<class IAssetViewport>		RequestedDestinationSlateViewport;
+
+	/** When set to anything other than -1, indicates a specific In-Editor viewport index that PIE should use */
+	UPROPERTY()
+	int32 PlayInEditorViewportIndex;
 
 	/** Play world url string edited by a user. */
 	UPROPERTY()
@@ -597,10 +704,6 @@ public:
 	DECLARE_MULTICAST_DELEGATE_OneParam(FPreviewFeatureLevelChanged, ERHIFeatureLevel::Type);
 	FPreviewFeatureLevelChanged PreviewFeatureLevelChanged;
 
-	/** A delegate that is called when the preview platform changes. */
-	DECLARE_MULTICAST_DELEGATE(FPreviewPlatformChanged);
-	FPreviewPlatformChanged PreviewPlatformChanged;
-
 	/** Whether or not the editor is currently compiling */
 	bool bIsCompiling;
 
@@ -610,7 +713,28 @@ private:
 	UPROPERTY()
 	UEditorWorldExtensionManager* EditorWorldExtensionsManager;
 
+protected:
+
+	/** Count of how many PIE instances are waiting to log in */
+	int32 PIEInstancesToLogInCount;
+	bool bAtLeastOnePIELoginFailed;
+
+	/* These are parameters that we need to cache for late joining */
+	FString ServerPrefix;
+	int32 PIEInstance;
+	int32 SettingsIndex;
+	bool bStartLateJoinersInSpectatorMode;
+
+private:
+
+	/** Additional launch options requested for the next PlaySession */
+	FString RequestedAdditionalStandaloneLaunchOptions;
+
 public:
+
+	/** The "manager" of all the layers for the UWorld currently being edited */
+	UE_DEPRECATED(4.24, "ILayers and FLayers (GEditor->Layers) have been deprecated, use ULayersSubsystem (rather than ILayers) and GEditor->GetEditorSubsystem<ULayersSubsystem>() (rather than GEditor->Layers) instead.")
+	TSharedPtr< class ILayers >				Layers;
 
 	/** List of all viewport clients */
 	const TArray<class FEditorViewportClient*>& GetAllViewportClients() { return AllViewportClients; }
@@ -813,8 +937,8 @@ public:
 	virtual void SetMapBuildCancelled(bool InCancelled) override { /* Intentionally empty. */ }
 	virtual void HandleNetworkFailure(UWorld *World, UNetDriver *NetDriver, ENetworkFailure::Type FailureType, const FString& ErrorString) override;
 	virtual ERHIFeatureLevel::Type GetDefaultWorldFeatureLevel() const override { return DefaultWorldFeatureLevel; }
-	virtual bool GetPreviewPlatformName(FName& PlatformGroupName, FName& VanillaPlatformName) const override;
 
+	FString GetPlayOnTargetPlatformName() const;
 protected:
 	virtual void InitializeObjectReferences() override;
 	virtual void ProcessToggleFreezeCommand(UWorld* InWorld) override;
@@ -824,13 +948,8 @@ private:
 	virtual void RemapGamepadControllerIdForPIE(class UGameViewportClient* GameViewport, int32 &ControllerId) override;
 	virtual TSharedPtr<SViewport> GetGameViewportWidget() const override;
 	virtual void TriggerStreamingDataRebuild() override;
-
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	virtual bool NetworkRemapPath(UNetDriver* Driver, FString& Str, bool bReading = true) override;
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-	virtual bool NetworkRemapPath(UNetConnection* Connection, FString& Str, bool bReading = true) override;
 	virtual bool NetworkRemapPath(UPendingNetGame* PendingNetGame, FString& Str, bool bReading = true) override;
-
 	virtual bool AreEditorAnalyticsEnabled() const override;
 	virtual void CreateStartupAnalyticsAttributes(TArray<FAnalyticsEventAttribute>& StartSessionAttributes) const override;
 	virtual void VerifyLoadMapWorldCleanup() override;
@@ -853,6 +972,7 @@ public:
 	/**
 	 * Exec command handlers
 	 */
+	bool	HandleBlueprintifyFunction( const TCHAR* Str , FOutputDevice& Ar );
 	bool	HandleCallbackCommand( UWorld* InWorld, const TCHAR* Str, FOutputDevice& Ar );
 	bool	HandleTestPropsCommand( const TCHAR* Str, FOutputDevice& Ar );
 	bool	HandleMapCommand( const TCHAR* Str, FOutputDevice& Ar, UWorld* InWorld );
@@ -1003,15 +1123,6 @@ public:
 	void RebuildModelFromBrushes(UModel* Model, bool bSelectedBrushesOnly, bool bTreatMovableBrushesAsStatic = false);
 
 	/**
-	 * Builds up a model from a given set of brushes. Used by BspConversionTool to build brushes before converting them
-	 * to static meshes.
-	 *
-	 * @param BrushesToBuild	List of brushes to build.
-	 * @param Model				Model into which to put the output.
-	 */
-	void RebuildModelFromBrushes(TArray<ABrush*>& BrushesToBuild, UModel* Model);
-
-	/**
 	 * Rebuilds levels containing currently selected brushes and should be invoked after a brush has been modified
 	 */
 	void RebuildAlteredBSP();
@@ -1076,14 +1187,14 @@ public:
 	/** 
 	 * Snaps an actor in a direction.  Optionally will align with the trace normal.
 	 * @param InActor			Actor to move to the floor.
-	 * @param InAlign			Whether or not to rotate the actor to align with the trace normal.
+	 * @param InAlign			sWhether or not to rotate the actor to align with the trace normal.
 	 * @param InUseLineTrace	Whether or not to only trace with a line through the world.
 	 * @param InUseBounds		Whether or not to base the line trace off of the bounds.
 	 * @param InUsePivot		Whether or not to use the pivot position.
 	 * @param InDestination		The destination actor we want to move this actor to, NULL assumes we just want to go towards the floor
 	 * @return					Whether or not the actor was moved.
 	 */
-	bool SnapObjectTo( FActorOrComponent Object, const bool InAlign, const bool InUseLineTrace, const bool InUseBounds, const bool InUsePivot, FActorOrComponent InDestination = FActorOrComponent(), TArray<FActorOrComponent> ObjectsToIgnore = TArray<FActorOrComponent>() );
+	bool SnapObjectTo( FActorOrComponent Object, const bool InAlign, const bool InUseLineTrace, const bool InUseBounds, const bool InUsePivot, FActorOrComponent InDestination = FActorOrComponent() );
 
 	/**
 	 * Snaps the view of the camera to that of the provided actor.
@@ -1629,15 +1740,10 @@ public:
 	/**
 	 * Reimport animation using SourceFilePath and SourceFileStamp 
 	 *
-	 * @param Skeleton				The skeleton that animation is import into
-	 * @oaram AnimSequence			The existing AnimSequence.
-	 * @param ImportData			The import data of the existing AnimSequence
-	 * @param InFilename			The FBX filename
-	 * @param bOutImportAll			
-	 * @param bFactoryShowOptions	When true, create a UI popup asking the user for the reimport options.
-	 * @param ReimportUI			Optional parameter used to pass reimport options.
+	 * @param Skeleton	The skeleton that animation is import into
+	 * @param Filename	The FBX filename
 	 */
-	static bool ReimportFbxAnimation( USkeleton* Skeleton, UAnimSequence* AnimSequence, class UFbxAnimSequenceImportData* ImportData, const TCHAR* InFilename, bool& bOutImportAll, const bool bFactoryShowOptions, UFbxImportUI* ReimportUI = nullptr);
+	static bool ReimportFbxAnimation( USkeleton* Skeleton, UAnimSequence* AnimSequence, class UFbxAnimSequenceImportData* ImportData, const TCHAR* InFilename);
 
 
 	// Object management.
@@ -1717,24 +1823,19 @@ public:
 	 * @param	bUseMobilePreview		True to enable mobile preview mode (PC platform only)
 	 * @param	bUseVRPreview			True to enable VR preview mode (PC platform only)
 	 */
-	UE_DEPRECATED(4.25, "Use the overload of RequestPlaySession which takes a FRequestPlaySessionParams instead.")
 	void RequestPlaySession( bool bAtPlayerStart, TSharedPtr<class IAssetViewport> DestinationViewport, bool bInSimulateInEditor, const FVector* StartLocation = NULL, const FRotator* StartRotation = NULL, int32 DestinationConsole = -1, bool bUseMobilePreview = false, bool bUseVRPreview = false, bool bUseVulkanPreview = false);
 
 	// @todo gmp: temp hack for Rocket demo
-	UE_DEPRECATED(4.25, "Use the overload of RequestPlaySession which takes a FRequestPlaySessionParams instead.")
 	void RequestPlaySession(const FVector* StartLocation, const FRotator* StartRotation, bool MobilePreview, bool VulkanPreview, const FString& MobilePreviewTargetDevice, FString AdditionalStandaloneLaunchParameters = TEXT(""));
 
 	/** Request to play a game on a remote device */
-	UE_DEPRECATED(4.25, "Use the overload of RequestPlaySession which takes a FRequestPlaySessionParams instead.")
 	void RequestPlaySession( const FString& DeviceId, const FString& DeviceName );
-	
-	/** Request a play session (Play in Editor, Play in New Process, Launcher) with the configured parameters. See FRequestPlaySessionParams for more details. */
-	void RequestPlaySession(const FRequestPlaySessionParams& InParams);
 
 	/** Cancel request to start a play session */
 	void CancelRequestPlaySession();
 
-
+	/** Asks the player to save dirty maps, if this fails it will return false and call CancelRequestPlaySession */
+	bool SaveMapsForPlaySession();
 
 	/** Makes a request to start a play from a Slate editor session */
 	void RequestToggleBetweenPIEandSIE() { bIsToggleBetweenPIEandSIEQueued = true; }
@@ -1748,44 +1849,13 @@ public:
 	/** Called when the debugger has single-stepped the active PIE or SIE session */
 	void PlaySessionSingleStepped();
 
-	/** Returns true if we are currently either PIE/SIE in the editor, false if we are not (even if we would start next tick). See IsPlaySessionInProgress() */
-	bool IsPlayingSessionInEditor() const { return PlayInEditorSessionInfo.IsSet(); }
-	/** Returns true if we are going to start PIE/SIE on the next tick, false if we are not (or if we are already in progress). See IsPlaySessionInProgress() */
-	bool IsPlaySessionRequestQueued() const { return PlaySessionRequest.IsSet(); }
-	/** Returns true if Playing in Editor, Simulating in Editor, or are either of these queued to start on the next tick. */
-	bool IsPlaySessionInProgress() const { return IsPlayingSessionInEditor() || IsPlaySessionRequestQueued(); }
-	
-	/** Returns true if we are currently Simulating in Editor, false if we are not (even if we would next tick). See IsSimulateInEditorInProgress() */
-	bool IsSimulatingInEditor() const { return PlayInEditorSessionInfo.IsSet() && PlayInEditorSessionInfo->OriginalRequestParams.WorldType == EPlaySessionWorldType::SimulateInEditor; }	
-	/** Returns true if we are going to start Simulating in Editor on the next tick, false if we are not (or we are already simulating). See IsSimulateInEditorInProgress() */
-	bool IsSimulateInEditorQueued() const { return PlaySessionRequest.IsSet() && PlaySessionRequest->WorldType == EPlaySessionWorldType::SimulateInEditor; }
-	/** Returns true if we are currently Simulating in Editor, or are going to start Simulating in Editor on the next tick. */
-	bool IsSimulateInEditorInProgress() const { return IsSimulatingInEditor() || IsSimulateInEditorQueued(); }
-
-	/** Returns the currently set PlaySessionRequest (if any). Unset if there is no session queued or has already been started (see GetPlayInEditorSessionInfo()) */
-	const TOptional<FRequestPlaySessionParams> GetPlaySessionRequest() const { return PlaySessionRequest; }
-
-	/** Returns information about the currently active Play In Editor session. Unset if there is no active PIE session. */
-	const TOptional<FPlayInEditorSessionInfo> GetPlayInEditorSessionInfo() const { return PlayInEditorSessionInfo; }
-	
-	/** Returns true if the user has queued a Play in Editor (in VR Mode) or one is currently running. */
-	bool IsVRPreviewActive() const
-	{
-		return (PlaySessionRequest.IsSet() && PlaySessionRequest->SessionPreviewTypeOverride == EPlaySessionPreviewType::VRPreview) ||
-			(PlayInEditorSessionInfo.IsSet() && PlayInEditorSessionInfo->OriginalRequestParams.SessionPreviewTypeOverride == EPlaySessionPreviewType::VRPreview);
-	}
-
 	/** Called when game client received input key */
 	bool ProcessDebuggerCommands(const FKey InKey, const FModifierKeysState ModifierKeyState, EInputEvent EventType);
 
 	/**
 	 * Kicks off a "Play From Here" request that was most likely made during a transaction
 	 */
-	UE_DEPRECATED(4.25, "Call StartQueuedPlaySessionRequest, or override StartQueuedPlaySessionRequestImpl instead.")
 	virtual void StartQueuedPlayMapRequest();
-
-	/** Kicks off a "Request Play Session" request if there is one set. This should not be called mid-transaction. */
-	void StartQueuedPlaySessionRequest();
 
 	/**
 	 * Request that the current PIE/SIE session should end.  
@@ -1819,12 +1889,8 @@ public:
 	 * @param	InWorld		World context
 	 * @param	bInSimulateInEditor	True to start an in-editor simulation session, or false to start a play-in-editor session
 	 */
-	UE_DEPRECATED(4.25, "Override StartPlayInEditorSession(FRequestPlaySessionParams& InRequestParams) instead. InWorld is GetEditorWorldContext().World(), and the other arguments come from InRequestParams now.") 
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	virtual void PlayInEditor( UWorld* InWorld, bool bInSimulateInEditor, FPlayInEditorOverrides Overrides = FPlayInEditorOverrides());
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
-	UE_DEPRECATED(4.25, "Override CreateInnerProcessPIEGameInstance instead.")
 	virtual UGameInstance* CreatePIEGameInstance(int32 InPIEInstance, bool bInSimulateInEditor, bool bAnyBlueprintErrors, bool bStartInSpectatorMode, bool bPlayNetDedicated, bool bPlayStereoscopic, float PIEStartTime);
 
 	/**
@@ -1844,27 +1910,9 @@ public:
 	virtual void EndPlayOnLocalPc();
 
 	/**
-	 * Overrides the realtime state all viewports until RemoveViewportsRealtimeOverride is called.
-	 * The state of this override is not preserved between editor sessions. 
-	 *
-	 * @param bShouldBeRealtime	If true, this viewport will be realtime, if false this viewport will not be realtime
-	 * @param SystemDisplayName	This display name of whatever system is overriding realtime. This name is displayed to users in the viewport options menu
-	 */
-	void SetViewportsRealtimeOverride(bool bShouldBeRealtime, FText SystemDisplayName);
-
-	/**
-	 * Removes the current realtime override.  If there was another realtime override set it will restore that override
-	 */
-	void RemoveViewportsRealtimeOverride(FText SystemDisplayName);
-
-	UE_DEPRECATED(4.26, "To remove realtime overrides, please now provide a system name to make sure you remove the correct override.")
-	void RemoveViewportsRealtimeOverride();
-
-	/**
 	 * Disables any realtime viewports that are currently viewing the level.  This will not disable
 	 * things like preview viewports in Cascade, etc. Typically called before running the game.
 	 */
-	UE_DEPRECATED(4.25, "To save and restore realtime state non-permanently use SetViewportsRealtimeOverride and RemoveViewportsRealtimeOverride")
 	void DisableRealtimeViewports();
 
 	/**
@@ -1872,7 +1920,6 @@ public:
 	 * disable viewporst that were realtime when DisableRealtimeViewports has been called and got
 	 * latter toggled to be realtime.
 	 */
-	UE_DEPRECATED(4.25, "To save and restore realtime state non-permanently use SetViewportsRealtimeOverride and RemoveViewportsRealtimeOverride")
 	void RestoreRealtimeViewports();
 
 	/**
@@ -1983,12 +2030,6 @@ public:
 	void SetSelectionStateOfLevel(const FSelectionStateOfLevel& InSelectionStateOfLevel);
 
 	/**
-	 * Reset All Selection Sets (i.e. objects, actors, components)
-	 * @note each set is independent and a selected actor might not be in the object selection set.
-	 */
-	void ResetAllSelectionSets();
-
-	/**
 	 * Clears out the current map, if any, and creates a new blank map.
 	 *
 	 * @return	Pointer to the map that was created.
@@ -2064,7 +2105,7 @@ public:
 	 * @param	CommonBaseClass		The class of object to color.
 	 * @param	PropertyChain		The chain of properties from member to lowest property.
 	 */
-	virtual void SetPropertyColorationTarget(UWorld* InWorld, const FString& PropertyValue, class FProperty* Property, class UClass* CommonBaseClass, class FEditPropertyChain* PropertyChain);
+	virtual void SetPropertyColorationTarget(UWorld* InWorld, const FString& PropertyValue, class UProperty* Property, class UClass* CommonBaseClass, class FEditPropertyChain* PropertyChain);
 
 	/**
 	 * Accessor for current property-based coloration settings.
@@ -2074,7 +2115,7 @@ public:
 	 * @param	OutCommonBaseClass	[out] The class of object to color.
 	 * @param	OutPropertyChain	[out] The chain of properties from member to lowest property.
 	 */
-	virtual void GetPropertyColorationTarget(FString& OutPropertyValue, FProperty*& OutProperty, UClass*& OutCommonBaseClass, FEditPropertyChain*& OutPropertyChain);
+	virtual void GetPropertyColorationTarget(FString& OutPropertyValue, UProperty*& OutProperty, UClass*& OutCommonBaseClass, FEditPropertyChain*& OutPropertyChain);
 
 	/**
 	 * Selects actors that match the property coloration settings.
@@ -2477,29 +2518,15 @@ public:
 	*/
 	void GetReferencedAssetsForEditorSelection(TArray<UObject*>& Objects, const bool bIgnoreOtherAssetsIfBPReferenced = false);
 
-	/** Returns a filter to restruct what assets show up in asset pickers based on what the selection is used for (i.e. what will reference the assets) */
-	DECLARE_DELEGATE_RetVal_OneParam(TSharedPtr<IAssetReferenceFilter>, FOnMakeAssetReferenceFilter, const FAssetReferenceFilterContext& /*Context*/);
-	FOnMakeAssetReferenceFilter& OnMakeAssetReferenceFilter() { return OnMakeAssetReferenceFilterDelegate; }
-	TSharedPtr<IAssetReferenceFilter> MakeAssetReferenceFilter(const FAssetReferenceFilterContext& Context) { return OnMakeAssetReferenceFilterDelegate.IsBound() ? OnMakeAssetReferenceFilterDelegate.Execute(Context) : nullptr; }
-
-protected:
-
-	/** Returns a filter to restruct what assets show up in asset pickers based on what the selection is used for (i.e. what will reference the assets) */
-	FOnMakeAssetReferenceFilter OnMakeAssetReferenceFilterDelegate;
-
-public:
-
 	/** Returns the WorldContext for the editor world. For now, there will always be exactly 1 of these in the editor. 
 	 *
 	 * @param	bEnsureIsGWorld		Temporarily allow callers to validate that this maps to GWorld to help track down any conversion bugs
 	 */
 	FWorldContext &GetEditorWorldContext(bool bEnsureIsGWorld = false);
 
-	/** 
-	 * Returns the WorldContext for the PIE world, by default will get the first one which will be the server or simulate instance.
-	 * You need to iterate the context list if you want all the pie world contexts.
-	 */
-	FWorldContext* GetPIEWorldContext(int32 WorldPIEInstance = 0);
+	/** Returns the WorldContext for the PIE world.
+	*/
+	FWorldContext* GetPIEWorldContext();
 
 	/** 
 	 * mostly done to check if PIE is being set up, go GWorld is going to change, and it's not really _the_G_World_
@@ -2559,7 +2586,7 @@ public:
 	 *
 	 * @return	the friendly name for the property.  localized first, then metadata, then the property's name.
 	 */
-	static FString GetFriendlyName( const FProperty* Property, UStruct* OwnerStruct = NULL );
+	static FString GetFriendlyName( const UProperty* Property, UStruct* OwnerStruct = NULL );
 
 	/**
 	 * Register a client tool to receive undo events 
@@ -2573,6 +2600,27 @@ public:
 	 */
 	void UnregisterForUndo( class FEditorUndoClient* UndoEditor );
 
+	/** 
+	 * Are we playing on a local PC session?
+	 */
+	bool IsPlayingOnLocalPCSession() const { return bPlayOnLocalPcSession && !bIsPlayWorldQueued; }
+
+	/** 
+	 * Are we playing via the Launcher?
+	 */
+	bool IsPlayingViaLauncher() const { return bPlayUsingLauncher && !bIsPlayWorldQueued; }
+
+	/** 
+	 * Cancel playing via the Launcher
+	 */
+	void CancelPlayingViaLauncher();
+
+	/** @return true if the editor is able to launch PIE with online platform support */
+	bool SupportsOnlinePIE() const;
+
+	/** @return true if there are active PIE instances logged into an online platform */
+	bool IsPlayingWithOnlinePIE() const { return NumOnlinePIEInstances > 0; }
+
 	/**
 	 * Ensures the assets specified are loaded and adds them to the global selection set
 	 * @param Assets		An array of assets to load and select
@@ -2584,6 +2632,11 @@ public:
 	 * @return True if percentage based scaling is enabled
 	 */
 	bool UsePercentageBasedScaling() const;
+
+	DECLARE_DELEGATE(FPIEInstanceWindowSwitch);
+
+	/** Sets the delegate for when the focused PIE window is changed */
+	void SetPIEInstanceWindowSwitchDelegate(FPIEInstanceWindowSwitch PIEInstanceWindowSwitchDelegate);
 
 	/**
 	 * Returns the actor grouping utility class that performs all grouping related tasks
@@ -2641,12 +2694,24 @@ private:
 	 * @param bStartInSpectatorMode passthrough value if it is expected that PIE will start in spectator mode
 	 * @param PIEStartTime passthrough value of the time that PIE was initiated by the user
 	 */
-	UE_DEPRECATED(4.25, "This is now done as part of StartPlayInEditorSession as online-login/non-logged in flow is now combined.")
 	virtual void LoginPIEInstances(bool bAnyBlueprintErrors, bool bStartInSpectatorMode, double PIEStartTime);
 
+	/**
+	 * Delegate called as each PIE instance login is complete, continues creating the PIE world for a single instance
+	 * 
+	 * @param LocalUserNum local user id, for PIE is going to be 0 (there is no splitscreen)
+	 * @param bWasSuccessful was the login successful
+	 * @param ErrorString descriptive error when applicable
+	 * @param DataStruct data required to continue PIE creation, set at login time
+	 */
+	virtual void OnLoginPIEComplete(int32 LocalUserNum, bool bWasSuccessful, const FString& ErrorString, FPieLoginStruct DataStruct);
+
+	/** Above function but called a frame later, to stop PIE login from happening from a network callback */
+	virtual void OnLoginPIEComplete_Deferred(int32 LocalUserNum, bool bWasSuccessful, FString ErrorString, FPieLoginStruct DataStruct);
+
 	/** Called when all PIE instances have been successfully logged in */
-	UE_DEPRECATED(4.25, "Override OnAllPIEInstancesStarted instead, which is called in both online and offline PIE sessions.")
 	virtual void OnLoginPIEAllComplete();
+
 	/** Called when a recompilation of a module is beginning */
 	void OnModuleCompileStarted(bool bIsAsyncCompile);
 
@@ -2665,7 +2730,6 @@ public:
 	 * @param DataStruct data required to continue PIE creation, set at login time
 	 * @return	true if world created successfully
 	 */
-	UE_DEPRECATED(4.25, "This is now handled as part of OnLoginPIEComplete_Deferred.")
 	bool CreatePIEWorldFromLogin(FWorldContext& PieWorldContext, EPlayNetMode PlayNetMode, FPieLoginStruct& DataStruct);
 
 	/** Called before creating a PIE server instance. */
@@ -2686,35 +2750,53 @@ public:
 	 */
 	bool GetSimulateInEditorViewTransform(FTransform& OutViewTransform) const;
 
-public:
+private:
+	/** Gets the scene viewport for a viewport client */
+	FSceneViewport* GetGameSceneViewport(UGameViewportClient* ViewportClient) const;
+
 	/**
 	 * Non Online PIE creation flow, creates all instances of PIE at once when online isn't requested/required
 	 *
 	 * @param bAnyBlueprintErrors passthrough value of blueprint errors encountered during PIE creation
 	 * @param bStartInSpectatorMode passthrough value if it is expected that PIE will start in spectator mode
 	 */
-	UE_DEPRECATED(4.25, "This non-online flow is now deprecated and is shared with normal online flow. See OnLoginPIEComplete_Deferred instead.")
 	void SpawnIntraProcessPIEWorlds(bool bAnyBlueprintErrors, bool bStartInSpectatorMode);
 
-	/*
+	/** Common init shared by CreatePIEWorldByDuplication and CreatePIEWorldBySavingToTemp */
+	void PostCreatePIEWorld(UWorld *InWorld);
+
+	/**
+	 * Toggles PIE to SIE or vice-versa
+	 */
+	void ToggleBetweenPIEandSIE( bool bNewSession = false);
+
+	/**
+	 * Hack to switch worlds for the PIE window before and after a slate event
+	 *
+	 * @param WorldID	The id of the world to restore or -1 if no world
+	 * @return The ID of the world to restore later or -1 if no world to restore
+	 */
+	int32 OnSwitchWorldForSlatePieWindow( int32 WorldID );
+
+	/**
+	 * Called via a delegate to toggle between the editor and pie world
+	 */
+	void OnSwitchWorldsForPIE( bool bSwitchToPieWorld, UWorld* OverrideWorld = nullptr );
+
+	/**
+	 * Gives focus to the server or first PIE client viewport
+	 */
+	void GiveFocusToFirstClientPIEViewport();
+
+public:
+	/**
 	 * Spawns a PlayFromHere playerstart in the given world
 	 * @param	World		The World to spawn in (for PIE this may not be GWorld)
 	 * @param	PlayerStartPIE	A reference to the resulting PlayerStartPIE actor
-	 * @param	StartLocation	The location to spawn the player in.
-	 * @param	StartRotation	The rotation to spawn the player at.
 	 *
 	 * @return	true if spawn succeeded, false if failed
 	 */
-	bool SpawnPlayFromHereStart(UWorld* World, AActor*& PlayerStartPIE, const FVector& StartLocation, const FRotator& StartRotation);
-	
-	/**
-	 * Spawns a PlayFromHere playerstart in the given world if there is a location set to spawn in.
-	 * @param	World		The World to spawn in (for PIE this may not be GWorld)
-	 * @param	PlayerStartPIE	A reference to the resulting PlayerStartPIE actor
-	 *
-	 * @return	true if spawn succeeded, false if failed. Returns true even if no object was spawned (due to location not being set).
-	 */
-	bool SpawnPlayFromHereStart(UWorld* World, AActor*& PlayerStartPIE);
+	bool SpawnPlayFromHereStart(UWorld* World, AActor*& PlayerStartPIE, const FVector& StartLocation, const FRotator& StartRotation );
 
 
 private:
@@ -2915,66 +2997,63 @@ private:
 	/** The Timer manager for all timer delegates */
 	TSharedPtr<class FTimerManager> TimerManager;
 
-	/** Currently active function execution world switcher, will be null most of the time */
-	FScopedConditionalWorldSwitcher* FunctionStackWorldSwitcher = nullptr;
+	/** The output log -> message log redirector for use during PIE */
+	TSharedPtr<class FOutputLogErrorsToMessageLogProxy> OutputLogErrorsToMessageLogProxyPtr;
 
-	/** Stack entry where world switcher was created, and should be destroyed at */
-	int32 FunctionStackWorldSwitcherTag = -1;
-
-	/** Delegate handles for function execution */
-	FDelegateHandle ScriptExecutionStartHandle, ScriptExecutionEndHandle;
-
-	// This chunk is used for Play In New Process
-public:
-	/**
-	 * Are we playing on a local PC session?
-	 */
-	bool IsPlayingOnLocalPCSession() const { return PlayOnLocalPCSessions.Num() > 0; }
-	
-	/** 
-	 * Launch a new process with settings pulled from the specified parameters.
-	 * @param InParams 				Shared parameters to launch with.
-	 * @param InInstanceNum 		Which instance index is this? Used to do load settings per-instance if needed.
-	 * @param NetMode				What net mode should this process launch under?
-	 * @param bIsDedicatedServer 	Is this instance a dedicated server? Overrides NetMode.
-	 */
-	virtual void LaunchNewProcess(const FRequestPlaySessionParams& InParams, const int32 InInstanceNum, EPlayNetMode NetMode, bool bIsDedicatedServer);
-
-	// This chunk is used for Play In New Process
-protected:
 	struct FPlayOnPCInfo
 	{
 		FProcHandle ProcessHandle;
 	};
 
-	/** List of New Process sessions that are currently active, started by this Editor instance. */
 	TArray<FPlayOnPCInfo> PlayOnLocalPCSessions;
 
-	/** Start a Play in New Process session with the given parameters. Called by StartQueuedPlaySessionRequestImpl based on request settings. */
-	virtual void StartPlayInNewProcessSession(FRequestPlaySessionParams& InRequestParams);
+	bool bPlayOnLocalPcSession;
+
+	/** True if we are using the "Play On Device" launcher mode (ie UAT) */
+	// @todo: This should be an enum along with bPlayOnLocalPcSession, or completely refactored
+	bool bPlayUsingLauncher;
+	bool bPlayUsingMobilePreview;
+	bool bPlayUsingVulkanPreview;
+	FString PlayUsingMobilePreviewTargetDevice;
+
+	/** The platform to run on (as selected in dreop down) */
+	FString PlayUsingLauncherDeviceId;
+	FString PlayUsingLauncherDeviceName;
+	bool bPlayUsingLauncherHasCode;
+	bool bPlayUsingLauncherBuild;
+
+	/** Used to prevent reentrant calls to EndPlayMap(). */
+	bool bIsEndingPlay;
+
+	/** List of files we are deferring adding to source control */
+	TArray<FString> DeferredFilesToAddToSourceControl;
+
+	FPIEInstanceWindowSwitch PIEInstanceWindowSwitchDelegate;
+
+	/** Number of currently running instances logged into an online platform */
+	int32 NumOnlinePIEInstances;
+
+	/** Cached version of the view location at the point the PIE session was ended */
+	FVector LastViewLocation;
 	
-	// This chunk is used for Play Via Launcher settings.
-public:
+	/** Cached version of the view location at the point the PIE session was ended */
+	FRotator LastViewRotation;
+	
+	/** Are the lastview/rotation variables valid */
+	bool bLastViewAndLocationValid;
+
+protected:
+
 	/**
-	 * Are we playing via the Launcher?
+	 * Launch a standalone instance on this PC.
+	 *
+	 * @param	MapNameOverride		Map name override
+	 * @param	WindowPos			Position we want to put the window we create.
+	 * @param	PIENum				PIE instance count
+	 * @param	bIsServer			Is this instance a server.
 	 */
-	bool IsPlayingViaLauncher() const { return LauncherSessionInfo.IsSet(); }
+	void PlayStandaloneLocalPc(FString MapNameOverride = FString(), FIntPoint* WindowPos = NULL, int32 PIENum = 0, bool bIsServer = false);
 
-	/**
-	 * Cancel playing via the Launcher
-	 */
-	void CancelPlayingViaLauncher();
-
-	/**
-	* Returns the last device that was used via the Launcher.
-	*/
-	FString GetPlayOnTargetPlatformName() const;
-
-	/**
-	* Launch a standalone instance using the Launcher to process required
-	* cooking, building, and deployment to a (possibly) remote device for testing.
-	*/
-	UE_DEPRECATED(4.25, "Use RequestPlaySession with parameters configured to provide a launcher target instead.")
 	void PlayUsingLauncher();
 
 	/** 
@@ -2983,176 +3062,6 @@ public:
 	* if the physical device is not authorized to be launched to, we need to pop an error instead of trying to launch
 	*/
 	void CancelPlayUsingLauncher();
-
-protected:
-	struct FLauncherCachedInfo
-	{
-		FString PlayUsingLauncherDeviceName;
-		bool bPlayUsingLauncherHasCode;
-		bool bPlayUsingLauncherBuild;
-	};
-
-	/** 
-	* If set, there is a active attempt to use the Launcher. Launching is an async process so we store the request info for the duration.
-	* of the launch. This is cleared on cancel (or on finish).
-	*/
-	TOptional<FLauncherCachedInfo> LauncherSessionInfo;
-
-	/** 
-	* The last platform we ran on (as selected by the drop down or via automation)
-	* Stored outside of the Session Info as the UI needs access to this at all times.
-	*/
-	FString LastPlayUsingLauncherDeviceId;
-	
-	/** Start a Launcher session with the given parameters. Called by StartQueuedPlaySessionRequestImpl based on request settings. */
-	virtual void StartPlayUsingLauncherSession(FRequestPlaySessionParams& InRequestParams);
-
-	// This chunk is for Play in Editor
-public:
-	/** @return true if the editor is able to launch PIE with online platform support */
-	bool SupportsOnlinePIE() const;
-
-	/** @return true if there are active PIE instances logged into an online platform */
-	bool IsPlayingWithOnlinePIE() const
-	{
-		return PlayInEditorSessionInfo.IsSet() && PlayInEditorSessionInfo->bUsingOnlinePlatform;
-	}
-
-protected:
-
-	/** Specifies whether or not there has been a Play Session requested to be kicked off on the next Tick. */
-	TOptional<FRequestPlaySessionParams> PlaySessionRequest;
-	
-	/** If set, transient information about the current Play in Editor session which persists until the session stops. */
-	TOptional<FPlayInEditorSessionInfo> PlayInEditorSessionInfo;
-	
-	/** Used to prevent reentrant calls to EndPlayMap(). */
-	bool bIsEndingPlay;
-
-protected:
-	DECLARE_DELEGATE(FPIEInstanceWindowSwitch);
-
-	/** Sets the delegate for when the focused PIE window is changed */
-	void SetPIEInstanceWindowSwitchDelegate(FPIEInstanceWindowSwitch PIEInstanceWindowSwitchDelegate);
-
-	/** Gets the scene viewport for a viewport client */
-	FSceneViewport* GetGameSceneViewport(UGameViewportClient* ViewportClient) const;
-
-	/** Common init shared by CreatePIEWorldByDuplication and CreatePIEWorldBySavingToTemp */
-	void PostCreatePIEWorld(UWorld *InWorld);
-
-	/**
-	 * Toggles PIE to SIE or vice-versa
-	 */
-	void ToggleBetweenPIEandSIE(bool bNewSession = false);
-
-	/**
-	 * Hack to switch worlds for the PIE window before and after a slate event
-	 *
-	 * @param WorldID	The id of the world to switch to where -1 is unknown, 0 is editor, and 1 is PIE
-	 * @param PIEInstance	When switching to a PIE instance, this is the specific client/server instance to use
-	 * @return The ID of the world to restore later or -1 if no world to restore
-	 */
-	int32 OnSwitchWorldForSlatePieWindow(int32 WorldID, int32 WorldPIEInstance);
-
-	/**
-	 * Called via a delegate to toggle between the editor and pie world
-	 */
-	void OnSwitchWorldsForPIE(bool bSwitchToPieWorld, UWorld* OverrideWorld = nullptr);
-
-	/**
-	 * Called to switch to a specific PIE instance, where -1 means the editor world
-	 */
-	void OnSwitchWorldsForPIEInstance(int32 WorldPIEInstance);
-
-	/** Call to enable/disable callbacks for PIE world switching when PIE starts/stops */
-	void EnableWorldSwitchCallbacks(bool bEnable);
-
-	/** Callback when script execution starts, might switch world */
-	void OnScriptExecutionStart(const struct FBlueprintContextTracker& ContextTracker, const UObject* ContextObject, const UFunction* ContextFunction);
-
-	/** Callback when script execution starts, might switch world */
-	void OnScriptExecutionEnd(const struct FBlueprintContextTracker& ContextTracker);
-
-	/**
-	 * Gives focus to the server or first PIE client viewport
-	 */
-	void GiveFocusToLastClientPIEViewport();
-
-	/**
-	 * Delegate called as each PIE instance login is complete, continues creating the PIE world for a single instance
-	 *
-	 * @param LocalUserNum local user id, for PIE is going to be 0 (there is no splitscreen)
-	 * @param bWasSuccessful was the login successful
-	 * @param ErrorString descriptive error when applicable
-	 * @param DataStruct data required to continue PIE creation, set at login time
-	 */
-	virtual void OnLoginPIEComplete(int32 LocalUserNum, bool bWasSuccessful, const FString& ErrorString, FPieLoginStruct DataStruct);
-
-	/** Above function but called a frame later, to stop PIE login from happening from a network callback */
-	virtual void OnLoginPIEComplete_Deferred(int32 LocalUserNum, bool bWasSuccessful, FString ErrorString, FPieLoginStruct DataStruct);
-
-	/** allow for game specific override to determine if login should be treated as successful for pass-through handling instead */
-	virtual bool IsLoginPIESuccessful(int32 LocalUserNum, bool bWasSuccessful, const FString& ErrorString, const FPieLoginStruct& DataStruct) { return bWasSuccessful; }
-
-	/** Called when all PIE instances have been successfully logged in */
-	virtual void OnAllPIEInstancesStarted();
-	
-	/** Backs up the current editor selection and then clears it. Optionally reselects the instances in the Play world. */
-	void TransferEditorSelectionToPlayInstances(const bool bInSelectInstances);
-	
-	/** Create a new GameInstance for PIE with the specified parameters. */
-	virtual UGameInstance* CreateInnerProcessPIEGameInstance(FRequestPlaySessionParams& InParams, const FGameInstancePIEParameters& InPIEParameters, int32 InPIEInstanceIndex);
-	
-	/** Creates a SPIEViewport for the specified instance. This is used for Play in New Window, but not for instances that live in the level editor viewport. */
-	TSharedRef<class SPIEViewport> GeneratePIEViewportWindow(const FRequestPlaySessionParams& InSessionParams, int32 InViewportIndex, const FWorldContext& InWorldContext, EPlayNetMode InNetMode, UGameViewportClient* InViewportClient, FSlatePlayInEditorInfo& InSlateInfo);
-
-	/** Stores the position of the window for that instance index. Doesn't save it to the CDO until the play session ends. */
-	void StoreWindowSizeAndPositionForInstanceIndex(const int32 InInstanceIndex, const FIntPoint& InSize, const FIntPoint& InPosition);
-	/** Returns the stored position at that index. */
-	void GetWindowSizeAndPositionForInstanceIndex(ULevelEditorPlaySettings& InEditorPlaySettings, const int32 InInstanceIndex, FIntPoint& OutSize, FIntPoint& OutPosition);
-
-	/** Start the queued Play Session Request. After this is called the queued play session request will be cleared. */
-	virtual void StartQueuedPlaySessionRequestImpl();
-	
-	/** Start a Play in Editor session with the given parameters. Called by StartQueuedPlaySessionRequestImpl based on request settings. */
-	virtual void StartPlayInEditorSession(FRequestPlaySessionParams& InRequestParams);
-
-	/** 
-	* Creates a new Play in Editor instance (which may be in a new process if not running under one process.
-	* This reads the current session state to start the next instance needed.
-	* @param	InRequestParams			- Mostly used for global settings. Probably shouldn't vary per instance.
-	* @param	bInDedicatedInstance	- If true, this will create a dedicated server instance. Shouldn't be used if we're using multiple processes.
-	* @param	InNetMode				- The net mode to launch this instance with. Not pulled from the RequestParams because some net modes (such as ListenServer)
-										  need different net modes for subsequent instances.
-	*/
-	virtual void CreateNewPlayInEditorInstance(FRequestPlaySessionParams &InRequestParams, const bool bInDedicatedInstance, const EPlayNetMode InNetMode);
-
-
-	/** Asks the player to save dirty maps, if this fails it will return false. */
-	bool SaveMapsForPlaySession();
-	
-protected:
-
-	FPIEInstanceWindowSwitch PIEInstanceWindowSwitchDelegate;
-
-	/** Cached version of the view location at the point the PIE session was ended */
-	FVector LastViewLocation;
-
-	/** Cached version of the view location at the point the PIE session was ended */
-	FRotator LastViewRotation;
-
-	/** Are the lastview/rotation variables valid */
-	bool bLastViewAndLocationValid;
-
-	/** The output log -> message log redirector for use during PIE */
-	TSharedPtr<class FOutputLogErrorsToMessageLogProxy> OutputLogErrorsToMessageLogProxyPtr;
-
-private:
-	/** List of files we are deferring adding to source control */
-	TArray<FString> DeferredFilesToAddToSourceControl;
-
-protected:
 
 	/** Called when Matinee is opened */
 	virtual void OnOpenMatinee(){};
@@ -3199,7 +3108,6 @@ public:
 	TSharedPtr<class ILauncherWorker> LauncherWorker;
 	
 	/** Function to run the Play On command for automation testing. */
-	UE_DEPRECATED(4.25, "Use RequestPlaySession and StartQueuedPlaySessionRequest instead.")
 	void AutomationPlayUsingLauncher(const FString& InLauncherDeviceId);	
 
 	virtual void HandleTravelFailure(UWorld* InWorld, ETravelFailure::Type FailureType, const FString& ErrorString);
@@ -3229,9 +3137,6 @@ public:
 
 	/** Return the delegate that is called when the preview feature level changes */
 	FPreviewFeatureLevelChanged& OnPreviewFeatureLevelChanged() { return PreviewFeatureLevelChanged; }
-
-	/** Return the delegate that is called when the preview platform changes */
-	FPreviewPlatformChanged& OnPreviewPlatformChanged() { return PreviewPlatformChanged; }
 
 protected:
 
@@ -3292,89 +3197,6 @@ public:
 private:
 	FSubsystemCollection<UEditorSubsystem> EditorSubsystemCollection;
 
-	// DEPRECATED VARIABLES ONLY
-public:
-	UE_DEPRECATED(4.25, "Use the Request Parameters to specify this instead. Can be read from the current session if it was set in the request.")
-	/** An optional location for the starting location for "Play From Here"																*/
-	UPROPERTY()
-	FVector PlayWorldLocation;
-
-	UE_DEPRECATED(4.25, "Use the Request Parameters to specify this instead. Can be read from the current session if it was set in the request.")
-	/** An optional rotation for the starting location for "Play From Here"																*/
-	UPROPERTY()
-	FRotator PlayWorldRotation;
-
-	UE_DEPRECATED(4.25, "Use IsPlaySessionQueued() or IsPlaySessionInProgress() instead.")
-	/** Has a request for "Play From Here" been made?													 								*/
-	UPROPERTY()
-	uint32 bIsPlayWorldQueued:1;
-	
-	UE_DEPRECATED(4.25, "Use IsSimulateInEditorQueued() or IsSimulateInEditorInProgress() instead.")
-	/** True if we are requesting to start a simulation-in-editor session */
-	UPROPERTY()
-	uint32 bIsSimulateInEditorQueued:1;
-	
-	/** Did the request include the optional location and rotation?										 								*/
-	UE_DEPRECATED(4.25, "Use FRequestPlaySessionParams::HasPlayWorldPlacement() on the queued/current session instead.")
-	UPROPERTY()
-	uint32 bHasPlayWorldPlacement:1;
-
-	/** True to enable mobile preview mode when launching the game from the editor on PC platform */
-	UE_DEPRECATED(4.25, "Use FRequestPlaySessionParams::SessionPreviewTypeOverride on the queued/current session instead.")
-	UPROPERTY()
-	uint32 bUseMobilePreviewForPlayWorld:1;
-
-	/** True to enable VR preview mode when launching the game from the editor on PC platform */
-	UE_DEPRECATED(4.25, "Use FRequestPlaySessionParams::SessionPreviewTypeOverride on the queued/current session instead.")
-	UPROPERTY()
-	uint32 bUseVRPreviewForPlayWorld:1;
-
-	/** True if we're Simulating In Editor, as opposed to Playing In Editor.  In this mode, simulation takes place right the level editing environment */
-	// UE_DEPRECATED(4.25, "Use IsSimulateInEditorInProgress instead.")
-	UPROPERTY()
-	uint32 bIsSimulatingInEditor:1;
-	
-	/** Viewport the next PlaySession was requested to happen on */
-	UE_DEPRECATED(4.25, "This is stored as part of the FRequestPlaySessionParams now.")
-	TWeakPtr<class IAssetViewport>		RequestedDestinationSlateViewport;
-
-	/** When set to anything other than -1, indicates a specific In-Editor viewport index that PIE should use */
-	UE_DEPRECATED(4.25, "This isn't read and was replaced by RequestedDestinationSlateViewport.")
-	UPROPERTY()
-	int32 PlayInEditorViewportIndex;
-	
-protected:
-
-	/** Count of how many PIE instances are waiting to log in */
-	UE_DEPRECATED(4.25, "This has moved to the current session instead (stored in FPlayInEditorSessionInfo)")
-	int32 PIEInstancesToLogInCount;
-
-	UE_DEPRECATED(4.25, "This has moved to the current session instead (stored in FPlayInEditorSessionInfo)")
-	bool bAtLeastOnePIELoginFailed;
-
-	/* These are parameters that we need to cache for late joining */
-	UE_DEPRECATED(4.25, "This has moved to the current session instead (stored in FPlayInEditorSessionInfo)")
-	FString ServerPrefix;
-	
-	UE_DEPRECATED(4.25, "This has moved to the current session instead (stored in FPlayInEditorSessionInfo)")
-	int32 PIEInstance;
-	
-	UE_DEPRECATED(4.25, "This has moved to the current session instead (stored in FPlayInEditorSessionInfo)")
-	int32 SettingsIndex;
-	
-	UE_DEPRECATED(4.25, "This has moved to the current session instead (stored in FPlayInEditorSessionInfo)")
-	bool bStartLateJoinersInSpectatorMode;
-
-private:
-
-	/** Additional launch options requested for the next PlaySession */
-	UE_DEPRECATED(4.25, "Use FRequestPlaySessionParams::AdditionalStandaloneCommandLineParameters instead.")
-	FString RequestedAdditionalStandaloneLaunchOptions;
-
-protected:
-	UE_DEPRECATED(4.25, "Use FRequestPlaySessionParams::NumOustandingPIELogins instead.")
-	/** Number of currently running instances logged into an online platform */
-	int32 NumOnlinePIEInstances;
 };
 
 //////////////////////////////////////////////////////////////////////////

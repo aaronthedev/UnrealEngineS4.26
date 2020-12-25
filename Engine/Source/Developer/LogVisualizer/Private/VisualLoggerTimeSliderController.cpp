@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VisualLoggerTimeSliderController.h"
 #include "Rendering/DrawElements.h"
@@ -573,16 +573,14 @@ FReply FVisualLoggerTimeSliderController::OnMouseWheel( SWidget& WidgetOwner, co
 		const float ZoomDelta = -0.1f * MouseEvent.GetWheelDelta();
 
 		{
-			float MouseFractionX = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition()).X / MyGeometry.GetLocalSize().X;
-
 			TRange<float> LocalViewRange = TimeSliderArgs.ViewRange.Get();
 			float LocalViewRangeMax = LocalViewRange.GetUpperBoundValue();
 			float LocalViewRangeMin = LocalViewRange.GetLowerBoundValue();
 			const float OutputViewSize = LocalViewRangeMax - LocalViewRangeMin;
 			const float OutputChange = OutputViewSize * ZoomDelta;
 
-			float NewViewOutputMin = LocalViewRangeMin - (OutputChange * MouseFractionX);
-			float NewViewOutputMax = LocalViewRangeMax + (OutputChange * (1.0f - MouseFractionX));
+			float NewViewOutputMin = LocalViewRangeMin - (OutputChange * 0.5f);
+			float NewViewOutputMax = LocalViewRangeMax + (OutputChange * 0.5f);
 
 			if( FMath::Abs( OutputChange ) > 0.01f && NewViewOutputMin < NewViewOutputMax )
 			{

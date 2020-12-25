@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,27 +10,27 @@ LUMIN_THIRD_PARTY_INCLUDES_START
 #include <ml_sharedfile.h>
 LUMIN_THIRD_PARTY_INCLUDES_END
 
-namespace LUMIN_MLSDK_API
+namespace MLSDK_API
 {
 
 CREATE_FUNCTION_SHIM(ml_sharedfile, MLResult, MLSharedFileRead)
-#define MLSharedFileRead ::LUMIN_MLSDK_API::MLSharedFileReadShim
+#define MLSharedFileRead ::MLSDK_API::MLSharedFileReadShim
 CREATE_FUNCTION_SHIM(ml_sharedfile, MLResult, MLSharedFileWrite)
-#define MLSharedFileWrite ::LUMIN_MLSDK_API::MLSharedFileWriteShim
+#define MLSharedFileWrite ::MLSDK_API::MLSharedFileWriteShim
 CREATE_FUNCTION_SHIM(ml_sharedfile, MLResult, MLSharedFileListAccessibleFiles)
-#define MLSharedFileListAccessibleFiles ::LUMIN_MLSDK_API::MLSharedFileListAccessibleFilesShim
+#define MLSharedFileListAccessibleFiles ::MLSDK_API::MLSharedFileListAccessibleFilesShim
 CREATE_FUNCTION_SHIM(ml_sharedfile, MLResult, MLSharedFilePick)
-#define MLSharedFilePick ::LUMIN_MLSDK_API::MLSharedFilePickShim
+#define MLSharedFilePick ::MLSDK_API::MLSharedFilePickShim
 CREATE_FUNCTION_SHIM(ml_sharedfile, MLResult, MLSharedFileGetListLength)
-#define MLSharedFileGetListLength ::LUMIN_MLSDK_API::MLSharedFileGetListLengthShim
+#define MLSharedFileGetListLength ::MLSDK_API::MLSharedFileGetListLengthShim
 CREATE_FUNCTION_SHIM(ml_sharedfile, MLResult, MLSharedFileGetMLFileInfoByIndex)
-#define MLSharedFileGetMLFileInfoByIndex ::LUMIN_MLSDK_API::MLSharedFileGetMLFileInfoByIndexShim
+#define MLSharedFileGetMLFileInfoByIndex ::MLSDK_API::MLSharedFileGetMLFileInfoByIndexShim
 CREATE_FUNCTION_SHIM(ml_sharedfile, MLResult, MLSharedFileGetErrorCode)
-#define MLSharedFileGetErrorCode ::LUMIN_MLSDK_API::MLSharedFileGetErrorCodeShim
+#define MLSharedFileGetErrorCode ::MLSDK_API::MLSharedFileGetErrorCodeShim
 CREATE_FUNCTION_SHIM(ml_sharedfile, MLResult, MLSharedFileListRelease)
-#define MLSharedFileListRelease ::LUMIN_MLSDK_API::MLSharedFileListReleaseShim
+#define MLSharedFileListRelease ::MLSDK_API::MLSharedFileListReleaseShim
 CREATE_FUNCTION_SHIM(ml_sharedfile, const char*, MLSharedFileGetResultString)
-#define MLSharedFileGetResultString ::LUMIN_MLSDK_API::MLSharedFileGetResultStringShim
+#define MLSharedFileGetResultString ::MLSDK_API::MLSharedFileGetResultStringShim
 
 }
 

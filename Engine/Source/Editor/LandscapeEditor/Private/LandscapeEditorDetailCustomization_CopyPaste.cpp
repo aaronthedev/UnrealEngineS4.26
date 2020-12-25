@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LandscapeEditorDetailCustomization_CopyPaste.h"
 #include "Widgets/Text/STextBlock.h"
@@ -22,7 +22,6 @@
 #include "Widgets/Input/SNumericEntryBox.h"
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Views/SListView.h"
-#include "Editor.h"
 
 #define LOCTEXT_NAMESPACE "LandscapeEditor.CopyPaste"
 
@@ -473,11 +472,7 @@ FReply FLandscapeEditorDetailCustomization_CopyPaste::OnGizmoImportButtonClicked
 			if (Data.Num() <= 0
 				|| Data.Num() != (LandscapeEdMode->UISettings->GizmoImportSize.X * LandscapeEdMode->UISettings->GizmoImportSize.Y * sizeof(uint16)))
 			{
-				const FText MessageFormat = NSLOCTEXT("UnrealEd", "LandscapeImport_BadHeightmapSize", "File size does not match.\nExpected {0} entries but file contains {1}.");
-				const FText Message = FText::Format(MessageFormat, 
-					FText::AsNumber(LandscapeEdMode->UISettings->GizmoImportSize.X * LandscapeEdMode->UISettings->GizmoImportSize.Y), 
-					FText::AsNumber(Data.Num() / 2));
-				FMessageDialog::Open(EAppMsgType::Ok, Message);
+				FMessageDialog::Open(EAppMsgType::Ok, NSLOCTEXT("UnrealEd", "LandscapeImport_BadHeightmapSize", "File size does not match"));
 				return FReply::Handled();
 			}
 
@@ -503,12 +498,8 @@ FReply FLandscapeEditorDetailCustomization_CopyPaste::OnGizmoImportButtonClicked
 
 					if (LayerData->Num() != (LandscapeEdMode->UISettings->GizmoImportSize.X * LandscapeEdMode->UISettings->GizmoImportSize.Y))
 					{
-						const FText MessageFormat = NSLOCTEXT("UnrealEd", "LandscapeImport_BadLayerSize", "Layer {0} file size does not match.\nExpected {1} entries but file contains {2}.");
-						const FText Message = FText::Format(MessageFormat, 
-							FText::FromString(Layer.LayerFilename),
-							FText::AsNumber(LandscapeEdMode->UISettings->GizmoImportSize.X * LandscapeEdMode->UISettings->GizmoImportSize.Y), 
-							FText::AsNumber(LayerData->Num()));
-						FMessageDialog::Open(EAppMsgType::Ok, Message);
+						FMessageDialog::Open(EAppMsgType::Ok,
+							FText::Format(NSLOCTEXT("UnrealEd", "LandscapeImport_BadLayerSize", "Layer {0} file size does not match the heightmap resolution."), FText::FromString(Layer.LayerFilename)));
 						return FReply::Handled();
 					}
 

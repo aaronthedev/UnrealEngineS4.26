@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,7 +9,7 @@
 /**
  * SetRelativeBoneTransform is used to perform a change in the hierarchy by setting a single bone's transform.
  */
-USTRUCT(meta=(DisplayName="Set Relative Transform", Category="Hierarchy", DocumentationPolicy="Strict", Keywords = "SetRelativeBoneTransform", Deprecated = "4.25"))
+USTRUCT(meta=(DisplayName="Set Relative Transform", Category="Hierarchy", DocumentationPolicy="Strict", Keywords = "SetRelativeBoneTransform"))
 struct FRigUnit_SetRelativeBoneTransform : public FRigUnitMutable
 {
 	GENERATED_BODY()
@@ -17,32 +17,24 @@ struct FRigUnit_SetRelativeBoneTransform : public FRigUnitMutable
 	FRigUnit_SetRelativeBoneTransform()
 		: Weight(1.f)
 		, bPropagateToChildren(false)
-		, CachedBone(FCachedRigElement())
-		, CachedSpaceIndex(FCachedRigElement())
+		, CachedBoneIndex(INDEX_NONE)
+		, CachedSpaceIndex(INDEX_NONE)
 	{}
 
-	virtual FRigElementKey DetermineSpaceForPin(const FString& InPinPath, void* InUserContext) const override
-	{
-		if (InPinPath.StartsWith(TEXT("Transform")))
-		{
-			return FRigElementKey(Space, ERigElementType::Bone);
-		}
-		return FRigElementKey();
-	}
-
+	virtual FString GetUnitLabel() const override;
 	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;
 
 	/**
 	 * The name of the Bone to set the transform for.
 	 */
-	UPROPERTY(meta = (Input))
+	UPROPERTY(meta = (Input, BoneName, Constant))
 	FName Bone;
 
 	/**
 	 * The name of the Bone to set the transform relative within.
 	 */
-	UPROPERTY(meta = (Input))
+	UPROPERTY(meta = (Input, BoneName, Constant))
 	FName Space;
 
 	/**
@@ -62,14 +54,14 @@ struct FRigUnit_SetRelativeBoneTransform : public FRigUnitMutable
 	 * of this bone will be recalculated based on their local transforms.
 	 * Note: This is computationally more expensive than turning it off.
 	 */
-	UPROPERTY(meta = (Input, Constant))
+	UPROPERTY(meta = (Input))
 	bool bPropagateToChildren;
 
 	// Used to cache the internally used bone index
-	UPROPERTY(transient)
-	FCachedRigElement CachedBone;
+	UPROPERTY()
+	int32 CachedBoneIndex;
 
 	// Used to cache the internally used space index
-	UPROPERTY(transient)
-	FCachedRigElement CachedSpaceIndex;
+	UPROPERTY()
+	int32 CachedSpaceIndex;
 };

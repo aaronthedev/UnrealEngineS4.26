@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -10,7 +10,6 @@
 #include "RenderingThread.h"
 #include "Components/LightComponentBase.h"
 #include "Math/SHMath.h"
-#include "Rendering/SkyLightImportanceSampling.h"
 #include "SkyLightComponent.generated.h"
 
 class FSkyLightSceneProxy;
@@ -19,7 +18,7 @@ class UTextureCube;
 /** 
  * A cubemap texture resource that knows how to upload the capture data from a sky capture. 
  */
-class ENGINE_API FSkyTextureCubeResource : public FTexture, private FDeferredCleanupInterface
+class FSkyTextureCubeResource : public FTexture, private FDeferredCleanupInterface
 {
 	// @todo - support compression
 
@@ -94,11 +93,6 @@ class ENGINE_API USkyLightComponent : public ULightComponentBase
 {
 	GENERATED_UCLASS_BODY()
 
-	/** When enabled, the sky will be captured and convolved to achieve dynamic diffuse and specular environment lighting. 
-	 * SkyAtmosphere, VolumetricCloud Components as well as sky domes with Sky materials are taken into account. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Light)
-	bool bRealTimeCapture;
-
 	/** Indicates where to get the light contribution from. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Light)
 	TEnumAsByte<enum ESkyLightSourceType> SourceType;
@@ -166,33 +160,6 @@ class ENGINE_API USkyLightComponent : public ULightComponentBase
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DistanceFieldAmbientOcclusion)
 	FColor OcclusionTint;
 
-	/**
-	 * Whether the cloud should occlude sky contribution within the atmosphere (progressively fading multiple scattering out) or not.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = AtmosphereAndCloud)
-	uint32 bCloudAmbientOcclusion : 1;
-	/**
-	 * The strength of the ambient occlusion, higher value will block more light.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = AtmosphereAndCloud, meta = (UIMin = "0", UIMax = "1", ClampMin = "0", SliderExponent = 1.0))
-	float CloudAmbientOcclusionStrength;
-	/**
-	 * The world space radius of the cloud ambient occlusion map around the camera in kilometers.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = AtmosphereAndCloud, meta = (UIMin = "1", ClampMin = "1"))
-	float CloudAmbientOcclusionExtent;
-	/**
-	 * Scale the cloud ambient occlusion map resolution, base resolution is 512. The resolution is still clamped to 'r.VolumetricCloud.SkyAO.MaxResolution'.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = AtmosphereAndCloud, meta = (UIMin = "0.25", UIMax = "8", ClampMin = "0.25", SliderExponent = 1.0))
-	float CloudAmbientOcclusionMapResolutionScale;
-	/**
-	 * Controls the cone aperture angle over which the sky occlusion due to volumetric clouds is evaluated. A value of 1 means `take into account the entire hemisphere` resulting in blurry occlusion, while a value of 0 means `take into account a single up occlusion direction up` resulting in sharp occlusion.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = AtmosphereAndCloud, meta = (UIMin = "0.0", UIMax = "0.1", ClampMin = "0.0", ClampMax = "1.0", SliderExponent = 2.0))
-	float CloudAmbientOcclusionApertureScale;
-
-
 	/** Controls how occlusion from Distance Field Ambient Occlusion is combined with Screen Space Ambient Occlusion. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=DistanceFieldAmbientOcclusion)
 	TEnumAsByte<enum EOcclusionCombineMode> OcclusionCombineMode;
@@ -202,15 +169,16 @@ class ENGINE_API USkyLightComponent : public ULightComponentBase
 	//~ Begin UObject Interface
 	virtual void PostInitProperties() override;
 	virtual void PostLoad() override;
-	virtual void PostInterpChange(FProperty* PropertyThatChanged) override;
+	virtual void PostInterpChange(UProperty* PropertyThatChanged) override;
 #if WITH_EDITOR
-	virtual void PreEditChange(FProperty* PropertyAboutToChange) override;
+	virtual void PreEditChange(UProperty* PropertyAboutToChange) override;
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
-	virtual bool CanEditChange(const FProperty* InProperty) const override;
+	virtual bool CanEditChange(const UProperty* InProperty) const override;
 	virtual void CheckForErrors() override;
 #endif // WITH_EDITOR
 	virtual void BeginDestroy() override;
 	virtual bool IsReadyForFinishDestroy() override;
+	virtual bool IsDestructionThreadSafe() const override { return false; }
 	//~ End UObject Interface
 
 	virtual TStructOnScope<FActorComponentInstanceData> GetComponentInstanceData() const override;
@@ -277,8 +245,6 @@ public:
 	/** Whether sky occlusion is supported by current feature level */
 	bool IsOcclusionSupported() const;
 
-	bool IsRealTimeCaptureEnabled() const;
-
 	/** 
 	 * Recaptures the scene for the skylight. 
 	 * This is useful for making sure the sky light is up to date after changing something in the world that it would capture.
@@ -287,15 +253,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Rendering|Components|SkyLight")
 	void RecaptureSky();
 
-	void UpdateImportanceSamplingData();
+	void SetIrradianceEnvironmentMap(const FSHVectorRGB3& InIrradianceEnvironmentMap)
+	{
+		IrradianceEnvironmentMap = InIrradianceEnvironmentMap;
+	}
 
 	virtual void Serialize(FArchive& Ar) override;
 
-	const FTexture* GetProcessedSkyTexture() const { return ProcessedSkyTexture; }
-#if RHI_RAYTRACING
-	const FSkyLightImportanceSamplingData* GetImportanceSamplingData() const { return ImportanceSamplingData; }
-#endif
-	FSHVectorRGB3 GetIrradianceEnvironmentMap() { return IrradianceEnvironmentMap; }
 protected:
 
 #if WITH_EDITOR
@@ -311,10 +275,6 @@ protected:
 	TRefCountPtr<FSkyTextureCubeResource> ProcessedSkyTexture;
 	FSHVectorRGB3 IrradianceEnvironmentMap;
 	float AverageBrightness;
-
-#if RHI_RAYTRACING
-	TRefCountPtr<FSkyLightImportanceSamplingData> ImportanceSamplingData;
-#endif
 
 	/** If 0, no blend is present.  If > 0, BlendDestinationProcessedSkyTexture and BlendDestinationIrradianceEnvironmentMap must be generated and used for rendering. */
 	float BlendFraction;
@@ -343,7 +303,7 @@ protected:
 	static FCriticalSection SkyCapturesToUpdateLock;
 
 	//~ Begin UActorComponent Interface
-	virtual void CreateRenderState_Concurrent(FRegisterComponentContext* Context) override;
+	virtual void CreateRenderState_Concurrent() override;
 	virtual void DestroyRenderState_Concurrent() override;
 	//~ Begin UActorComponent Interface
 
@@ -385,10 +345,6 @@ public:
 
 	// This has to be refcounted to keep it alive during the handoff without doing a deep copy
 	TRefCountPtr<FSkyTextureCubeResource> ProcessedSkyTexture;
-
-#if RHI_RAYTRACING
-	TRefCountPtr<FSkyLightImportanceSamplingData> ImportanceSamplingData;
-#endif
 
 	FSHVectorRGB3 IrradianceEnvironmentMap;
 };

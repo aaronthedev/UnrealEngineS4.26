@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "InteractiveGizmoManager.h"
@@ -8,7 +8,6 @@
 #include "BaseGizmos/PlanePositionGizmo.h"
 #include "BaseGizmos/AxisAngleGizmo.h"
 #include "BaseGizmos/TransformGizmo.h"
-#include "BaseGizmos/IntervalGizmo.h"
 
 #define LOCTEXT_NAMESPACE "UInteractiveGizmoManager"
 
@@ -234,14 +233,6 @@ void UInteractiveGizmoManager::Render(IToolsContextRenderAPI* RenderAPI)
 
 }
 
-void UInteractiveGizmoManager::DrawHUD( FCanvas* Canvas, IToolsContextRenderAPI* RenderAPI )
-{
-	for (FActiveGizmo& ActiveGizmo : ActiveGizmos)
-	{
-		ActiveGizmo.Gizmo->DrawHUD(Canvas, RenderAPI);
-	}
-}
-
 void UInteractiveGizmoManager::DisplayMessage(const FText& Message, EToolMessageLevel Level)
 {
 	TransactionsAPI->DisplayMessage(Message, Level);
@@ -298,9 +289,6 @@ void UInteractiveGizmoManager::RegisterDefaultGizmos()
 	CustomThreeAxisBuilder = NewObject<UTransformGizmoBuilder>();
 	CustomThreeAxisBuilder->GizmoActorBuilder = MakeShared<FTransformGizmoActorFactory>();
 	RegisterGizmoType(CustomThreeAxisTransformBuilderIdentifier, CustomThreeAxisBuilder);
-
-	UIntervalGizmoBuilder* IntervalGizmoBuilder = NewObject<UIntervalGizmoBuilder>();
-	RegisterGizmoType(UIntervalGizmo::GizmoName, IntervalGizmoBuilder);
 
 	bDefaultGizmosRegistered = true;
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "StreamingGeometryCacheData.h"
 #include "Async/AsyncFileHandle.h"
@@ -91,7 +91,7 @@ void FStreamingGeometryCacheData::RemoveResidentChunk(FResidentChunk& LoadedChun
 /**
 This is called from some random thread when reading is complete.
 */
-void FStreamingGeometryCacheData::OnAsyncReadComplete(int32 LoadedChunkIndex, IBulkDataIORequest* ReadRequest)
+void FStreamingGeometryCacheData::OnAsyncReadComplete(int32 LoadedChunkIndex, IAsyncReadRequest* ReadRequest)
 {
 	// We should do the least amount of work possible here as to not stall the async io threads.
 	// We also cannot take the critical section here as this would lead to a deadlock between the
@@ -217,8 +217,8 @@ void FStreamingGeometryCacheData::UpdateStreamingStatus()
 					continue;
 				}
 
-				checkf(Chunk.BulkData.CanLoadFromDisk(), TEXT("Bulk data is not loaded and cannot be loaded from disk!"));
-				check(!Chunk.BulkData.IsStoredCompressedOnDisk()); // We do not support compressed Bulkdata for this system
+				checkf(Chunk.BulkData.GetFilename().Len(), TEXT("Bulk data is not loaded and not associated with a file."));
+				check(!Chunk.BulkData.IsStoredCompressedOnDisk());
 
 				FResidentChunk &ResidentChunk = AddResidentChunk(NeededIndex, Chunk);
 
@@ -228,7 +228,7 @@ void FStreamingGeometryCacheData::UpdateStreamingStatus()
 				// Kick of a load
 				check(Chunk.BulkData.GetBulkDataSize() == ResidentChunk.DataSize);
 
-				FBulkDataIORequestCallBack AsyncFileCallBack = [this, NeededIndex](bool bWasCancelled, IBulkDataIORequest* Req)
+				FAsyncFileCallBack AsyncFileCallBack = [this, NeededIndex](bool bWasCancelled, IAsyncReadRequest* Req)
 				{
 					this->OnAsyncReadComplete(NeededIndex, Req);
 				};
@@ -316,10 +316,7 @@ bool FStreamingGeometryCacheData::BlockTillAllRequestsFinished(float TimeLimit)
 void FStreamingGeometryCacheData::ProcessCompletedChunks()
 {
 	//Note: This function should only be called from code which owns the CriticalSection
-	if (!IsInGameThread() && !IsInRenderingThread())
-	{
-		return;
-	}
+	check(IsInGameThread() || IsInRenderingThread());
 
 	FCompletedChunk CompletedChunk;
 	while (CompletedChunks.Dequeue(CompletedChunk))
@@ -346,7 +343,6 @@ void FStreamingGeometryCacheData::ProcessCompletedChunks()
 				DEC_DWORD_STAT(STAT_OutstandingRequests);
 				INC_MEMORY_STAT_BY(STAT_ChunkDataResident, Chunk->DataSize);
 				INC_MEMORY_STAT_BY(STAT_ChunkDataStreamed, Chunk->DataSize);
-				DEC_MEMORY_STAT_BY(STAT_AsyncFileMemory, Chunk->DataSize);
 				IGeometryCacheStreamingManager::Get().IoBandwidth.Add(Chunk->DataSize);
 			}
 			else

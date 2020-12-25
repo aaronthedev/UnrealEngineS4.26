@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "QosRegionManager.h"
 #include "Misc/CommandLine.h"
@@ -82,7 +82,7 @@ UQosRegionManager::UQosRegionManager(const FObjectInitializer& ObjectInitializer
 	}
 }
 
-void UQosRegionManager::PostReloadConfig(FProperty* PropertyThatWasLoaded)
+void UQosRegionManager::PostReloadConfig(UProperty* PropertyThatWasLoaded)
 {
 	if (!HasAnyFlags(RF_ClassDefaultObject))
 	{
@@ -178,11 +178,7 @@ FString UQosRegionManager::GetDatacenterId()
 
 		FString DCIDString;
 	};
-
-	// TODO (EvanK): making this not static (and thus removing the only-once optimization) due to forked servers
-	//               not being able to change their DCID after the fork point. will add it back in after we can
-	//               deprecate the static versions of the getters.
-	FDcidInfo DCID;
+	static FDcidInfo DCID;
 	return DCID.DCIDString;
 }
 
@@ -212,11 +208,7 @@ FString UQosRegionManager::GetAdvertisedSubregionId()
 
 		FString SubregionString;
 	};
-
-	// TODO (EvanK): making this not static (and thus removing the only-once optimization) due to forked servers
-	//               not being able to change their subregion after the fork point. will add it back in after we can
-	//               deprecate the static versions of the getters.
-	FSubregion Subregion;
+	static FSubregion Subregion;
 	return Subregion.SubregionString;
 }
 

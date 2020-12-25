@@ -1,7 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 // Pattern-Matching based on OSC 1.0 Protocol
 #include "Audio/AudioAddressPattern.h"
 
+namespace
+{
+	const TArray<TCHAR> AddressInvalidChars = { ' ', '#', };
+	const TArray<TCHAR> AddressPatternChars = { ',', '*', '?', '[', ']', '{', '}' };
+} // namespace <>
 
 bool FAudioAddressPattern::BracePatternMatches(const FString& Pattern, int32 PatternStartIndex, int32 PatternEndIndex, const FString& Part, int32& PartIter)
 {
@@ -128,18 +133,6 @@ int32 FAudioAddressPattern::FindPatternTerminatorIndex(const FString& Pattern, i
 	return EndIndex;
 }
 
-const TArray<TCHAR>& FAudioAddressPattern::GetInvalidChars()
-{
-	static const TArray<TCHAR> InvalidChars = { ' ', '#', };
-	return InvalidChars;
-}
-
-const TArray<TCHAR>& FAudioAddressPattern::GetPatternChars()
-{
-	static const TArray<TCHAR> PatternChars = { ',', '*', '?', '[', ']', '{', '}' };
-	return PatternChars;
-}
-
 bool FAudioAddressPattern::IsValidPatternPart(const FString& Part)
 {
 	bool bInBrackets = false;
@@ -152,7 +145,7 @@ bool FAudioAddressPattern::IsValidPatternPart(const FString& Part)
 			return false;
 		}
 
-		if (GetInvalidChars().Contains(Char))
+		if (AddressInvalidChars.Contains(Char))
 		{
 			return false;
 		}
@@ -265,12 +258,12 @@ bool FAudioAddressPattern::IsValidPath(const FString& Path, bool bInvalidateSepa
 			continue;
 		}
 
-		if (GetInvalidChars().Contains(Char))
+		if (AddressInvalidChars.Contains(Char))
 		{
 			return false;
 		}
 
-		if (GetPatternChars().Contains(Char))
+		if (AddressPatternChars.Contains(Char))
 		{
 			return false;
 		}

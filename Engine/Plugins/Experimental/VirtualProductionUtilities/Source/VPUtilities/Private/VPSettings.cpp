@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VPSettings.h"
 
@@ -30,13 +30,8 @@ UVPSettings::UVPSettings()
 	}
 }
 
-UVPSettings* UVPSettings::GetVPSettings()
-{
-	return GetMutableDefault<UVPSettings>();
-}
 
 #if WITH_EDITOR
-
 void UVPSettings::PostEditChangeChainProperty(struct FPropertyChangedChainEvent& PropertyChangedEvent)
 {
 	if (PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(ThisClass, Roles))

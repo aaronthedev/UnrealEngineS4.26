@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_PLUG_INTERFACE_FACTORY_H
-#define PXR_BASE_PLUG_INTERFACE_FACTORY_H
+#ifndef PLUG_INTERFACEFACTORY_H
+#define PLUG_INTERFACEFACTORY_H
 
 /// \file plug/interfaceFactory.h
 
@@ -74,4 +74,4 @@ TF_REGISTRY_FUNCTION(TfType)                                                \
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_PLUG_INTERFACE_FACTORY_H
+#endif // PLUG_INTERFACEFACTORY_H

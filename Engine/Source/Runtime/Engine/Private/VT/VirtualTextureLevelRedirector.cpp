@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VT/VirtualTextureLevelRedirector.h"
 
@@ -18,7 +18,7 @@ FVTRequestPageResult FVirtualTextureLevelRedirector::RequestPageData(
 	const FVirtualTextureProducerHandle& ProducerHandle,
 	uint8 LayerMask,
 	uint8 vLevel,
-	uint64 vAddress,
+	uint32 vAddress,
 	EVTRequestPagePriority Priority)
 {
 	int32 VirtualTextureIndex = vLevel < TransitionLevel ? 0 : 1;
@@ -33,7 +33,7 @@ IVirtualTextureFinalizer* FVirtualTextureLevelRedirector::ProducePageData(
 	const FVirtualTextureProducerHandle& ProducerHandle,
 	uint8 LayerMask,
 	uint8 vLevel,
-	uint64 vAddress,
+	uint32 vAddress,
 	uint64 RequestHandle,
 	const FVTProduceTargetLayer* TargetLayers)
 {

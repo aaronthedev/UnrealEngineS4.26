@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DestructibleChunkParamsProxy.h"
 #include "IDestructibleMeshEditor.h"
 #include "ApexDestructibleAssetImport.h"
 #include "DestructibleMesh.h"
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 UDestructibleChunkParamsProxy::UDestructibleChunkParamsProxy(const FObjectInitializer& ObjectInitializer)
 	:Super(ObjectInitializer)
 {
@@ -33,5 +32,3 @@ void UDestructibleChunkParamsProxy::PostEditChangeProperty( struct FPropertyChan
 		DestructibleMeshEditorPtr.Pin()->RefreshViewport();
 	}
 }
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

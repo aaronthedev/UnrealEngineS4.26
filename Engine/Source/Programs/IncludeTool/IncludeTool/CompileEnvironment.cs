@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using IncludeTool.Support;
 using System;
@@ -314,7 +314,7 @@ namespace IncludeTool
 							}
 							else if(Tokens[Idx].StartsWith("/FI"))
 							{
-								Environment.ForceIncludeFiles.Add(new FileReference(Tokens[Idx].Substring(3)));
+								Environment.ForceIncludeFiles.Add(new FileReference(Tokens[Idx].Substring(2)));
 							}
 							else if(Tokens[Idx] == "-include")
 							{
@@ -345,14 +345,7 @@ namespace IncludeTool
 							{
 								if(!SourceFile.HasExtension(".a"))
 								{
-									if(NewFileToEnvironment.ContainsKey(SourceFile))
-									{
-										Console.WriteLine("Source file {0} is compiled with multiple environments", SourceFile);
-									}
-									else
-									{
-										NewFileToEnvironment.Add(SourceFile, Environment);
-									}
+									NewFileToEnvironment.Add(SourceFile, Environment);
 								}
 							}
 						}

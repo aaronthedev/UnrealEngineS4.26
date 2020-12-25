@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Presentation/PropertyEditor/PropertyEditor.h"
 #include "Modules/ModuleManager.h"
@@ -20,7 +20,6 @@
 #include "EditConditionParser.h"
 #include "EditConditionContext.h"
 #include "Subsystems/AssetEditorSubsystem.h"
-#include "PropertyHandleImpl.h"
 
 #define LOCTEXT_NAMESPACE "PropertyEditor"
 
@@ -41,7 +40,7 @@ FPropertyEditor::FPropertyEditor( const TSharedRef<FPropertyNode>& InPropertyNod
 	// FPropertyEditor isn't built to handle CategoryNodes
 	check( InPropertyNode->AsCategoryNode() == NULL );
 
-	FProperty* Property = InPropertyNode->GetProperty();
+	UProperty* Property = InPropertyNode->GetProperty();
 
 	if( Property )
 	{
@@ -101,7 +100,7 @@ FString FPropertyEditor::GetDocumentationLink() const
 
 	if( PropertyNode->AsItemPropertyNode() )
 	{
-		FProperty* Property = PropertyNode->GetProperty();
+		UProperty* Property = PropertyNode->GetProperty();
 		DocumentationLink = PropertyEditorHelpers::GetDocumentationLink( Property );
 	}
 
@@ -114,7 +113,7 @@ FString FPropertyEditor::GetDocumentationExcerptName() const
 
 	if( PropertyNode->AsItemPropertyNode() )
 	{
-		FProperty* Property = PropertyNode->GetProperty();
+		UProperty* Property = PropertyNode->GetProperty();
 		ExcerptName = PropertyEditorHelpers::GetDocumentationExcerptName( Property );
 	}
 
@@ -169,7 +168,7 @@ FText FPropertyEditor::GetValueAsDisplayText() const
 	return Text;
 }
 
-bool FPropertyEditor::PropertyIsA(const FFieldClass* Class) const
+bool FPropertyEditor::PropertyIsA(const UClass* Class) const
 {
 	return PropertyNode->GetProperty() != NULL ? PropertyNode->GetProperty()->IsA( Class ) : false;
 }
@@ -280,8 +279,8 @@ void FPropertyEditor::OnClearItem()
 
 void FPropertyEditor::MakeNewBlueprint()
 {
-	FProperty* NodeProperty = PropertyNode->GetProperty();
-	FClassProperty* ClassProp = CastField<FClassProperty>(NodeProperty);
+	UProperty* NodeProperty = PropertyNode->GetProperty();
+	UClassProperty* ClassProp = Cast<UClassProperty>(NodeProperty);
 	UClass* Class = (ClassProp ? ClassProp->MetaClass : FEditorClassUtils::GetClassFromString(NodeProperty->GetMetaData("MetaClass")));
 
 	UClass* RequiredInterface = FEditorClassUtils::GetClassFromString(NodeProperty->GetMetaData("MustImplement"));
@@ -306,11 +305,11 @@ void FPropertyEditor::MakeNewBlueprint()
 
 void FPropertyEditor::EditConfigHierarchy()
 {
-	FProperty* NodeProperty = PropertyNode->GetProperty();
+	UProperty* NodeProperty = PropertyNode->GetProperty();
 
 	IConfigEditorModule& ConfigEditorModule = FModuleManager::LoadModuleChecked<IConfigEditorModule>("ConfigEditor");
 	ConfigEditorModule.CreateHierarchyEditor(NodeProperty);
-	FGlobalTabmanager::Get()->TryInvokeTab(FName(TEXT("ConfigEditor")));
+	FGlobalTabmanager::Get()->InvokeTab(FName(TEXT("ConfigEditor")));
 }
 
 void FPropertyEditor::InsertItem()
@@ -455,7 +454,7 @@ void FPropertyEditor::ToggleEditConditionState()
 
 	PropertyNode->NotifyPreChange( PropertyNode->GetProperty(), PropertyUtilities->GetNotifyHook() );
 
-	const FBoolProperty* EditConditionProperty = EditConditionContext->GetSingleBoolProperty(EditConditionExpression);
+	const UBoolProperty* EditConditionProperty = EditConditionContext->GetSingleBoolProperty(EditConditionExpression);
 	check(EditConditionProperty != nullptr);
 
 	FPropertyNode* ParentNode = PropertyNode->GetParentNode();
@@ -511,24 +510,15 @@ void FPropertyEditor::ToggleEditConditionState()
 		}
 	}
 
-	TArray<TMap<FString,int32>> ArrayIndicesPerObject;
-	ArrayIndicesPerObject.AddDefaulted(ComplexParentNode->GetInstancesNum());
-
-	for (int32 ObjectIndex = 0; ObjectIndex < ComplexParentNode->GetInstancesNum(); ++ObjectIndex)
-	{
-		FPropertyValueImpl::GenerateArrayIndexMapToObjectNode(ArrayIndicesPerObject[ObjectIndex], &PropertyNode.Get());
-	}
-
-	FPropertyChangedEvent ChangeEvent(PropertyNode->GetProperty(), EPropertyChangeType::ValueSet);
-	ChangeEvent.SetArrayIndexPerObject(ArrayIndicesPerObject);
+	FPropertyChangedEvent ChangeEvent(PropertyNode->GetProperty());
 	PropertyNode->NotifyPostChange( ChangeEvent, PropertyUtilities->GetNotifyHook() );
 }
 
 void FPropertyEditor::OnGetClassesForAssetPicker( TArray<const UClass*>& OutClasses )
 {
-	FProperty* NodeProperty = GetPropertyNode()->GetProperty();
+	UProperty* NodeProperty = GetPropertyNode()->GetProperty();
 
-	FObjectPropertyBase* ObjProp = CastField<FObjectPropertyBase>( NodeProperty );
+	UObjectPropertyBase* ObjProp = Cast<UObjectPropertyBase>( NodeProperty );
 
 	// This class and its children are the classes that we can show objects for
 	UClass* AllowedClass = ObjProp ? ObjProp->PropertyClass : UObject::StaticClass();
@@ -555,9 +545,9 @@ void FPropertyEditor::OnGetActorFiltersForSceneOutliner( TSharedPtr<SceneOutline
 		static bool IsFilteredActor( const AActor* Actor, TSharedRef<FPropertyEditor> PropertyEditor )
 		{
 			const TSharedRef<FPropertyNode> PropertyNode = PropertyEditor->GetPropertyNode();
-			FProperty* NodeProperty = PropertyNode->GetProperty();
+			UProperty* NodeProperty = PropertyNode->GetProperty();
 
-			FObjectPropertyBase* ObjProp = CastField<FObjectPropertyBase>( NodeProperty );
+			UObjectPropertyBase* ObjProp = Cast<UObjectPropertyBase>( NodeProperty );
 
 			// This class and its children are the classes that we can show objects for
 			UClass* AllowedClass = ObjProp ? ObjProp->PropertyClass : AActor::StaticClass();
@@ -587,7 +577,7 @@ void FPropertyEditor::RequestRefresh()
 bool FPropertyEditor::IsOnlyVisibleWhenEditConditionMet() const
 {
 	static const FName Name_EditConditionHides("EditConditionHides");
-	FProperty* Property = PropertyNode->GetProperty();
+	UProperty* Property = PropertyNode->GetProperty();
 	if (Property && Property->HasMetaData(Name_EditConditionHides))
 	{
 		return HasEditCondition();
@@ -621,38 +611,25 @@ bool FPropertyEditor::IsEditConditionMet() const
 
 bool FPropertyEditor::SupportsEditConditionToggle() const
 {
-	FProperty* Property = PropertyNode->GetProperty();
+	UProperty* Property = PropertyNode->GetProperty();
 
 	static const FName Name_HideEditConditionToggle("HideEditConditionToggle");
-	if (EditConditionExpression.IsValid() && !Property->HasMetaData(Name_HideEditConditionToggle))
+	if (!Property->HasMetaData(Name_HideEditConditionToggle) && EditConditionExpression.IsValid())
 	{
-		const FBoolProperty* ConditionalProperty = EditConditionContext->GetSingleBoolProperty(EditConditionExpression);
+		const UBoolProperty* ConditionalProperty = EditConditionContext->GetSingleBoolProperty(EditConditionExpression);
 		if (ConditionalProperty != nullptr)
 		{
-			// There are 2 valid states for inline edit conditions:
-			// 1. The property is marked as editable and has InlineEditConditionToggle set. 
-			// 2. The property is not marked as editable and does not have InlineEditConditionToggle set.
-			// In both cases, the original property will be hidden and only show up as a toggle.
-
 			static const FName Name_InlineEditConditionToggle("InlineEditConditionToggle");
-			const bool bIsInlineEditCondition = ConditionalProperty->HasMetaData(Name_InlineEditConditionToggle);
-			const bool bIsEditable = ConditionalProperty->HasAllPropertyFlags(CPF_Edit);
-
-			if (bIsInlineEditCondition == bIsEditable)
+			if (ConditionalProperty->HasMetaData(Name_InlineEditConditionToggle))
 			{
+				// If the edit condition property is not marked as editable, it's technically a bug.
+				// However, this was the behaviour prior to 4.23, so just warn and allow it for now.
+				if (!ConditionalProperty->HasAllPropertyFlags(CPF_Edit))
+				{
+					UE_LOG(LogPropertyEditor, Error, TEXT("Property being used as InlineEditConditionToggle is not marked as editable: Field \"%s\" in class \"%s\"."), *ConditionalProperty->GetNameCPP(), *Property->GetOwnerStruct()->GetName());
+				}
+
 				return true;
-			}
-
-			if (bIsInlineEditCondition && !bIsEditable)
-			{
-				UE_LOG(LogPropertyEditor, Warning, TEXT("Property being used as inline edit condition is not editable, but has redundant InlineEditConditionToggle flag. Field \"%s\" in class \"%s\"."), *ConditionalProperty->GetNameCPP(), *Property->GetOwnerStruct()->GetName());
-				return true;
-			}
-
-			// The property is already shown, and not marked as inline edit condition.
-			if (!bIsInlineEditCondition && bIsEditable)
-			{
-				return false;
 			}
 		}
 	}
@@ -680,7 +657,7 @@ TSharedRef< FPropertyNode > FPropertyEditor::GetPropertyNode() const
 	return PropertyNode;
 }
 
-const FProperty* FPropertyEditor::GetProperty() const
+const UProperty* FPropertyEditor::GetProperty() const
 {
 	return PropertyNode->GetProperty();
 }
@@ -701,10 +678,10 @@ void FPropertyEditor::SyncToObjectsInNode( const TWeakPtr< FPropertyNode >& Weak
 
 	TSharedPtr< FPropertyNode > PropertyNode = WeakPropertyNode.Pin();
 	check(PropertyNode.IsValid());
-	FProperty* NodeProperty = PropertyNode->GetProperty();
+	UProperty* NodeProperty = PropertyNode->GetProperty();
 
-	FObjectPropertyBase* ObjectProperty = CastField<FObjectPropertyBase>( NodeProperty );
-	FInterfaceProperty* IntProp = CastField<FInterfaceProperty>( NodeProperty );
+	UObjectPropertyBase* ObjectProperty = Cast<UObjectPropertyBase>( NodeProperty );
+	UInterfaceProperty* IntProp = Cast<UInterfaceProperty>( NodeProperty );
 	{
 		UClass* PropertyClass = UObject::StaticClass();
 		if( ObjectProperty )

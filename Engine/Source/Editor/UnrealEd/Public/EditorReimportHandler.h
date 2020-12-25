@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -10,7 +10,7 @@
 class FReimportHandler;
 
 /** Reimport manager for package resources with associated source files on disk. */
-class FReimportManager : FGCObject
+class UNREALED_VTABLE FReimportManager : FGCObject
 {
 public:
 	/**
@@ -52,11 +52,10 @@ public:
 	 * @param	bShowNotification True to show a notification when complete, false otherwise
 	 * @param	PreferredReimportFile if not empty, will be use in case the original file is missing and bAskForNewFileIfMissing is set to false
 	 * @param	SourceFileIndex		which source file index you want to reimport default is INDEX_NONE(the factory will choose)
-	 * @param	bAutomated		True to skip dialog prompts
 	 *
 	 * @return	true if the object was handled by one of the reimport handlers; false otherwise
 	 */
-	UNREALED_API virtual bool Reimport( UObject* Obj, bool bAskForNewFileIfMissing = false, bool bShowNotification = true, FString PreferredReimportFile = TEXT(""), FReimportHandler* SpecifiedReimportHandler = nullptr, int32 SourceFileIndex = INDEX_NONE, bool bForceNewFile = false, bool bAutomated = false);
+	UNREALED_API virtual bool Reimport( UObject* Obj, bool bAskForNewFileIfMissing = false, bool bShowNotification = true, FString PreferredReimportFile = TEXT(""), FReimportHandler* SpecifiedReimportHandler = nullptr, int32 SourceFileIndex = INDEX_NONE, bool bForceNewFile = false);
 
 	/**
 	 * Attemp to reimport all specified objects. This function will verify that all source file exist and ask the user
@@ -69,9 +68,8 @@ public:
 	 * * @param	ToImportObjects		Objects to try reimporting
 	 * * @param	bShowNotification	True to show a notification when complete, false otherwise
 	 * * @param	SourceFileIndex		which source file index you want to reimport default is INDEX_NONE(the factory will chooseP)
-	 * * @param	bAutomated			True to skip dialog prompts
 	 */
-	UNREALED_API virtual void ValidateAllSourceFileAndReimport(TArray<UObject*> &ToImportObjects, bool bShowNotification = true, int32 SourceFileIndex = INDEX_NONE, bool bForceNewFile = false, bool bAutomated = false);
+	UNREALED_API virtual void ValidateAllSourceFileAndReimport(TArray<UObject*> &ToImportObjects, bool bShowNotification = true, int32 SourceFileIndex = INDEX_NONE, bool bForceNewFile = false);
 
 	/**
 	* Attempt to reimport multiple objects from its source by giving registered reimport
@@ -82,11 +80,10 @@ public:
 	* @param	bShowNotification True to show a notification when complete, false otherwise
 	* @param	PreferredReimportFile if not empty, will be use in case the original file is missing and bAskForNewFileIfMissing is set to false
 	* @param	SourceFileIndex which source file index you want to reimport default is INDEX_NONE(the factory will choose)
-	* @param	bAutomated	True to skip dialog prompts
 	*
 	* @return	true if the objects all imported successfully, for more granular success reporting use FReimportManager::Reimport
 	*/
-	UNREALED_API virtual bool ReimportMultiple( TArrayView<UObject*> Objects, bool bAskForNewFileIfMissing = false, bool bShowNotification = true, FString PreferredReimportFile = TEXT(""), FReimportHandler* SpecifiedReimportHandler = nullptr, int32 SourceFileIndex = INDEX_NONE, bool bForceNewFile = false, bool bAutomated = false);
+	UNREALED_API virtual bool ReimportMultiple( TArrayView<UObject*> Objects, bool bAskForNewFileIfMissing = false, bool bShowNotification = true, FString PreferredReimportFile = TEXT(""), FReimportHandler* SpecifiedReimportHandler = nullptr, int32 SourceFileIndex = INDEX_NONE );
 
 	/**
 	 * Update the reimport paths for the specified object
@@ -172,11 +169,11 @@ namespace EReimportResult
 /** 
 * Reimport handler for package resources with associated source files on disk.
 */
-class FReimportHandler
+class UNREALED_VTABLE FReimportHandler
 {
 public:
 	/** Constructor. Add self to manager */
-	FReimportHandler() : bAutomatedReimport(false) { FReimportManager::Instance()->RegisterHandler( *this ); }
+	FReimportHandler(){ FReimportManager::Instance()->RegisterHandler( *this ); }
 	/** Destructor. Remove self from manager */
 	virtual ~FReimportHandler(){ FReimportManager::Instance()->UnregisterHandler( *this ); }
 	
@@ -247,27 +244,11 @@ public:
 	/** Returns the UFactory object associated with this reimport handler */
 	virtual const UObject* GetFactoryObject() const { return nullptr; }
 
-	/** Call after multiple import happen */
-	virtual void PostImportCleanUp() {}
-
 	/**	Sets the preferred reimport path, for aiding in resolving reimporting objects where the
 	 *	object path differs from the new path (ex. differing extensions).
 	 */
 	void SetPreferredReimportPath(const FString& Path) { PreferredReimportPath = Path; }
 
-	/** Sets automated, when True dialog prompts should not appear. */
-	virtual void SetAutomatedReimport(const bool InAutomatedReimport)
-	{
-		bAutomatedReimport = InAutomatedReimport;
-	}
-
-	/** When True dialog prompts should not appear. */
-	virtual bool IsAutomatedReimport() const
-	{
-		return bAutomatedReimport;
-	}
-
 protected:
 	FString PreferredReimportPath;
-	bool bAutomatedReimport;
 };

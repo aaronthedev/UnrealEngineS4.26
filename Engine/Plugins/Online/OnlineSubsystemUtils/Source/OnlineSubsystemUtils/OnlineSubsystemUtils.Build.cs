@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -15,7 +15,7 @@ public class OnlineSubsystemUtils : ModuleRules
         string EnginePath = Path.GetFullPath(Target.RelativeEnginePath);
         string RuntimePath = EnginePath + "Source/Runtime/";
 
-        bool bIsWindowsPlatformBuild = Target.Platform.IsInGroup(UnrealPlatformGroup.Windows);
+        bool bIsWindowsPlatformBuild = ((Target.Platform == UnrealTargetPlatform.Win32) || (Target.Platform == UnrealTargetPlatform.Win64));
 
         if (bIsWindowsPlatformBuild)
         {
@@ -34,8 +34,7 @@ public class OnlineSubsystemUtils : ModuleRules
 				"Json",
 				"AudioMixer",
 				"SignalProcessing",
-				"AudioMixerCore",
-				"DeveloperSettings"
+				"AudioMixerCore"
 			}
 		);
 

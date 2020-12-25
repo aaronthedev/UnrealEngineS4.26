@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DataTableEditorUtils.h"
 #include "UObject/UObjectHash.h"
@@ -9,7 +9,6 @@
 #include "Framework/Application/SlateUser.h"
 #include "EditorStyleSet.h"
 #include "Engine/UserDefinedStruct.h"
-#include "Misc/StringUtility.h"
 #include "ScopedTransaction.h"
 #include "K2Node_GetDataTableRow.h"
 #include "Input/Reply.h"
@@ -18,8 +17,6 @@
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Input/SComboBox.h"
 #include "AssetRegistryModule.h"
-#include "DetailWidgetRow.h"
-#include "Editor.h"
 
 #define LOCTEXT_NAMESPACE "DataTableEditorUtils"
 
@@ -759,19 +756,14 @@ void FDataTableEditorUtils::CacheDataTableForEditing(const UDataTable* DataTable
 		return;
 	}
 
-	CacheDataForEditing(DataTable->RowStruct, DataTable->GetRowMap(), OutAvailableColumns, OutAvailableRows);
-}
-
-void FDataTableEditorUtils::CacheDataForEditing(const UScriptStruct* RowStruct, const TMap<FName, uint8*>& RowMap, TArray<FDataTableEditorColumnHeaderDataPtr>& OutAvailableColumns, TArray<FDataTableEditorRowListViewDataPtr>& OutAvailableRows)
-{
 	TArray<FDataTableEditorColumnHeaderDataPtr> OldColumns = OutAvailableColumns;
 	TArray<FDataTableEditorRowListViewDataPtr> OldRows = OutAvailableRows;
 
 	// First build array of properties
-	TArray<const FProperty*> StructProps;
-	for (TFieldIterator<const FProperty> It(RowStruct); It; ++It)
+	TArray<const UProperty*> StructProps;
+	for (TFieldIterator<const UProperty> It(DataTable->RowStruct); It; ++It)
 	{
-		const FProperty* Prop = *It;
+		const UProperty* Prop = *It;
 		check(Prop);
 		if (!Prop->HasMetaData(FName(TEXT("HideFromDataTableEditorColumn"))))
 		{
@@ -787,8 +779,8 @@ void FDataTableEditorUtils::CacheDataForEditing(const UScriptStruct* RowStruct, 
 	OutAvailableColumns.Reset(StructProps.Num());
 	for (int32 Index = 0; Index < StructProps.Num(); ++Index)
 	{
-		const FProperty* Prop = StructProps[Index];
-		const FText PropertyDisplayName = DataTableUtils::GetPropertyDisplayName(Prop, FName::NameToDisplayString(Prop->GetName(), Prop->IsA<FBoolProperty>()));
+		const UProperty* Prop = StructProps[Index];
+		const FText PropertyDisplayName = DataTableUtils::GetPropertyDisplayName(Prop, FName::NameToDisplayString(Prop->GetName(), Prop->IsA<UBoolProperty>()));
 
 		FDataTableEditorColumnHeaderDataPtr CachedColumnData;
 		
@@ -814,9 +806,9 @@ void FDataTableEditorUtils::CacheDataForEditing(const UScriptStruct* RowStruct, 
 	}
 
 	// Populate the row data
-	OutAvailableRows.Reset(RowMap.Num());
+	OutAvailableRows.Reset(DataTable->GetRowMap().Num());
 	int32 Index = 0;
-	for (auto RowIt = RowMap.CreateConstIterator(); RowIt; ++RowIt, ++Index)
+	for (auto RowIt = DataTable->GetRowMap().CreateConstIterator(); RowIt; ++RowIt, ++Index)
 	{
 		FText RowName = FText::FromName(RowIt->Key);
 		FDataTableEditorRowListViewDataPtr CachedRowData;
@@ -840,10 +832,10 @@ void FDataTableEditorUtils::CacheDataForEditing(const UScriptStruct* RowStruct, 
 
 		// Always rebuild cell data
 		{
-			const uint8* RowData = RowIt.Value();
+			uint8* RowData = RowIt.Value();
 			for (int32 ColumnIndex = 0; ColumnIndex < StructProps.Num(); ++ColumnIndex)
 			{
-				const FProperty* Prop = StructProps[ColumnIndex];
+				const UProperty* Prop = StructProps[ColumnIndex];
 				FDataTableEditorColumnHeaderDataPtr CachedColumnData = OutAvailableColumns[ColumnIndex];
 
 				const FText CellText = DataTableUtils::GetPropertyValueAsText(Prop, RowData);
@@ -924,73 +916,18 @@ bool FDataTableEditorUtils::IsValidTableStruct(const UScriptStruct* Struct)
 	return (bBasedOnTableRowBase || bUDStruct) && bValidStruct;
 }
 
-void FDataTableEditorUtils::AddSearchForReferencesContextMenu(FDetailWidgetRow& RowNameDetailWidget, FExecuteAction SearchForReferencesAction)
-{
-	if (SearchForReferencesAction.IsBound() && FEditorDelegates::OnOpenReferenceViewer.IsBound())
-	{
-		RowNameDetailWidget.AddCustomContextMenuAction(FUIAction(SearchForReferencesAction),
-			NSLOCTEXT("FDataTableRowUtils", "FDataTableRowUtils_SearchForReferences", "Find Row References"),
-			NSLOCTEXT("FDataTableRowUtils", "FDataTableRowUtils_SearchForReferencesTooltip", "Find assets that reference this Row"),
-			FSlateIcon());
-	}
-}
-
-FText FDataTableEditorUtils::GetHandleShortDescription(const UObject* TableAsset, FName RowName)
-{
-	FText TableNameText = LOCTEXT("Description_None", "None");
-	FText RowNameText = TableNameText;
-	const int32 MaxChars = 15;
-	FString More = TEXT("...");
-
-	if (!TableAsset && RowName.IsNone())
-	{
-		// Just display None on it's own
-		return TableNameText;
-	}
-
-	if (TableAsset)
-	{
-		FString TempString = TableAsset->GetName();
-
-		// Chop off end if needed
-		if (TempString.Len() > MaxChars)
-		{
-			TempString.LeftInline(MaxChars - More.Len());
-			TempString.Append(More);
-		}
-
-		TableNameText = FText::AsCultureInvariant(TempString);
-	}
-
-	if (!RowName.IsNone())
-	{
-		FString TempString = RowName.ToString();
-
-		// Show right side if too long, usually more important
-		if (TempString.Len() > MaxChars)
-		{
-			TempString.RightInline(MaxChars - More.Len());
-			TempString.InsertAt(0, More);
-		}
-
-		RowNameText = FText::AsCultureInvariant(TempString);
-	}
-
-	return FText::Format(LOCTEXT("HandlePreviewFormat", "{0}[{1}]"), TableNameText, RowNameText);
-}
-
 FText FDataTableEditorUtils::GetRowTypeInfoTooltipText(FDataTableEditorColumnHeaderDataPtr ColumnHeaderDataPtr)
 {
 	if (ColumnHeaderDataPtr.IsValid())
 	{
-		const FProperty* Property = ColumnHeaderDataPtr->Property;
+		const UProperty* Property = ColumnHeaderDataPtr->Property;
 		if (Property)
 		{
-			const FFieldClass* PropertyClass = Property->GetClass();
-			const FStructProperty* StructProp = CastField<const FStructProperty>(Property);
+			const UClass* PropertyClass = Property->GetClass();
+			const UStructProperty* StructProp = Cast<const UStructProperty>(Property);
 			if (StructProp)
 			{
-				FString TypeName = FName::NameToDisplayString(Property->GetCPPType(), Property->IsA<FBoolProperty>());
+				FString TypeName = FName::NameToDisplayString(Property->GetCPPType(), Property->IsA<UBoolProperty>());
 				if (TypeName.Len())
 				{
 					// If type name starts with F and another capital letter, assume standard naming and remove F in the string shown to the user
@@ -1016,10 +953,10 @@ FString FDataTableEditorUtils::GetRowTypeTooltipDocExcerptName(FDataTableEditorC
 {
 	if (ColumnHeaderDataPtr.IsValid())
 	{
-		const FProperty* Property = ColumnHeaderDataPtr->Property;
+		const UProperty* Property = ColumnHeaderDataPtr->Property;
 		if (Property)
 		{
-			const FStructProperty* StructProp = CastField<const FStructProperty>(Property);
+			const UStructProperty* StructProp = Cast<const UStructProperty>(Property);
 			if (StructProp)
 			{
 				if (StructProp->Struct == TBaseStructure<FSoftObjectPath>::Get())
@@ -1030,7 +967,7 @@ FString FDataTableEditorUtils::GetRowTypeTooltipDocExcerptName(FDataTableEditorC
 				{
 					return "SoftClass";
 				}
-				FString TypeName = FName::NameToDisplayString(Property->GetCPPType(), Property->IsA<FBoolProperty>());
+				FString TypeName = FName::NameToDisplayString(Property->GetCPPType(), Property->IsA<UBoolProperty>());
 				if (TypeName.Len())
 				{
 					// If type name starts with F and another capital letter, assume standard naming and remove F to match the doc excerpt name
@@ -1041,10 +978,10 @@ FString FDataTableEditorUtils::GetRowTypeTooltipDocExcerptName(FDataTableEditorC
 					return TypeName;
 				}
 			}
-			const FFieldClass* PropertyClass = Property->GetClass();
+			const UClass* PropertyClass = Property->GetClass();
 			if (PropertyClass)
 			{
-				if (PropertyClass == FStrProperty::StaticClass())
+				if (PropertyClass == UStrProperty::StaticClass())
 				{
 					return "String";
 				}

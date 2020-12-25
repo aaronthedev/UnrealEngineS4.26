@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -24,7 +24,6 @@ namespace EInAppPurchaseResult
 /**
  *	FOnlineStoreInterfaceIOS - Implementation of the online store for IOS
  */
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 class FOnlineStoreInterfaceIOS : public IOnlineStore
 {
 public:
@@ -76,7 +75,6 @@ private:
 	/** Delegate fired when the purchase restoration has completed, whether successful or unsuccessful */
 	FOnInAppPurchaseRestoreComplete OnPurchaseRestoreCompleteDelegate;
 };
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 typedef TSharedPtr<FOnlineStoreInterfaceIOS, ESPMode::ThreadSafe> FOnlineStoreInterfaceIOSPtr;
 

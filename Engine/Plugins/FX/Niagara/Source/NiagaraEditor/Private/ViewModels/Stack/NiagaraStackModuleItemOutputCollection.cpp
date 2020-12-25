@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ViewModels/Stack/NiagaraStackModuleItemOutputCollection.h"
 #include "ViewModels/Stack/NiagaraStackModuleItemOutput.h"
@@ -9,9 +9,6 @@
 #include "ViewModels/Stack/NiagaraStackGraphUtilities.h"
 
 #include "EdGraph/EdGraphPin.h"
-#include "NiagaraEditorSettings.h"
-#include "NiagaraEditorUtilities.h"
-#include "NiagaraNodeOutput.h"
 
 UNiagaraStackModuleItemOutputCollection::UNiagaraStackModuleItemOutputCollection()
 	: FunctionCallNode(nullptr)
@@ -28,7 +25,7 @@ void UNiagaraStackModuleItemOutputCollection::Initialize(FRequiredEntryData InRe
 
 FText UNiagaraStackModuleItemOutputCollection::GetDisplayName() const
 {
-	return NSLOCTEXT("StackModuleItemOutputCollection", "ParameterWritesLabel", "Parameter Writes");
+	return NSLOCTEXT("StackModuleItemOutputCollection", "OutputsLabel", "Outputs");
 }
 
 bool UNiagaraStackModuleItemOutputCollection::IsExpandedByDefault() const
@@ -51,37 +48,38 @@ void UNiagaraStackModuleItemOutputCollection::RefreshChildrenInternal(const TArr
 	UEdGraphPin* OutputParameterMapPin = FNiagaraStackGraphUtilities::GetParameterMapOutputPin(*FunctionCallNode);
 	if (ensureMsgf(OutputParameterMapPin != nullptr, TEXT("Invalid Stack Graph - Function call node has no output pin.")))
 	{
-		TArray<FNiagaraVariable> OutputVariables;
-		TArray<FNiagaraVariable> Unused;
-		FCompileConstantResolver ConstantResolver = GetEmitterViewModel().IsValid()
-			? FCompileConstantResolver(GetEmitterViewModel()->GetEmitter(), FNiagaraStackGraphUtilities::GetOutputNodeUsage(*FunctionCallNode))
+		FNiagaraParameterMapHistoryBuilder Builder;
+		Builder.SetIgnoreDisabled(false);
+		Builder.ConstantResolver = GetEmitterViewModel().IsValid()
+			? FCompileConstantResolver(GetEmitterViewModel()->GetEmitter())
 			: FCompileConstantResolver();
-		FNiagaraStackGraphUtilities::GetStackFunctionOutputVariables(*FunctionCallNode, ConstantResolver, OutputVariables, Unused);
-		
-		for(int32 OutputIndex = 0; OutputIndex < OutputVariables.Num(); OutputIndex++)
+		FunctionCallNode->BuildParameterMapHistory(Builder, false);
+
+		if (ensureMsgf(Builder.Histories.Num() == 1, TEXT("Invalid Stack Graph - Function call node has invalid history count!")))
 		{
-			FNiagaraVariable& Variable = OutputVariables[OutputIndex];
-			const FNiagaraNamespaceMetadata NamespaceMetadata = FNiagaraEditorUtilities::GetNamespaceMetaDataForVariableName(Variable.GetName());
-			if ( (NamespaceMetadata.IsValid()) && (NamespaceMetadata.Namespaces.Contains(FNiagaraConstants::LocalNamespace) == false) && (NamespaceMetadata.Namespaces.Contains(FNiagaraConstants::ModuleNamespace) == false) )
+			for (int32 i = 0; i < Builder.Histories[0].Variables.Num(); i++)
 			{
-				UNiagaraStackModuleItemOutput* Output = FindCurrentChildOfTypeByPredicate<UNiagaraStackModuleItemOutput>(CurrentChildren,
-					[&](UNiagaraStackModuleItemOutput* CurrentOutput) { return CurrentOutput->GetOutputParameterHandle().GetParameterHandleString() == Variable.GetName(); });
+				FNiagaraVariable& Variable = Builder.Histories[0].Variables[i];
+				TArray<const UEdGraphPin*>& WriteHistory = Builder.Histories[0].PerVariableWriteHistory[i];
 
-				if (Output == nullptr)
+				for (const UEdGraphPin* WritePin : WriteHistory)
 				{
-					Output = NewObject<UNiagaraStackModuleItemOutput>(this);
-					Output->Initialize(CreateDefaultChildRequiredData(), *FunctionCallNode, Variable.GetName(), Variable.GetType());
-				}
+					if (Cast<UNiagaraNodeParameterMapSet>(WritePin->GetOwningNode()) != nullptr)
+					{
+						UNiagaraStackModuleItemOutput* Output = FindCurrentChildOfTypeByPredicate<UNiagaraStackModuleItemOutput>(CurrentChildren,
+							[&](UNiagaraStackModuleItemOutput* CurrentOutput) { return CurrentOutput->GetOutputParameterHandle().GetParameterHandleString() == Variable.GetName(); });
 
-				NewChildren.Add(Output);
+						if (Output == nullptr)
+						{
+							Output = NewObject<UNiagaraStackModuleItemOutput>(this);
+							Output->Initialize(CreateDefaultChildRequiredData(), *FunctionCallNode, Variable.GetName(), Variable.GetType());
+						}
+
+						NewChildren.Add(Output);
+						break;
+					}
+				}
 			}
 		}
-		auto SortNewChildrenPred = [](const UNiagaraStackEntry& EntryA, const UNiagaraStackEntry& EntryB) {
-			const UNiagaraStackModuleItemOutput* ModuleItemA = static_cast<const UNiagaraStackModuleItemOutput*>(&EntryA);
-			const UNiagaraStackModuleItemOutput* ModuleItemB = static_cast<const UNiagaraStackModuleItemOutput*>(&EntryB);
-			return FNiagaraEditorUtilities::GetVariableSortPriority(ModuleItemA->GetOutputParameterHandle().GetParameterHandleString(), ModuleItemB->GetOutputParameterHandle().GetParameterHandleString());
-		};
-
-		NewChildren.Sort(SortNewChildrenPred);
 	}
 }

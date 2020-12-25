@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Engine/Engine.h"
@@ -12,6 +12,8 @@ enum class EMagicLeapContactsResult : uint8
 	HandleNotFound,
 	/** Request is completed, its corresponding result has been returned, and its related resources are marked for deletion. */
 	Completed,
+	/** Request is successfully cancelled. */
+	Cancelled,
 	/** Request failed due to system being in an illegal state, for e.g., when the user hasn't successfully logged-in. */
 	IllegalState,
 };
@@ -49,7 +51,7 @@ enum class EMagicLeapContactsOperationStatus : uint8
 	of value is stored, e.g. "home", "work", etc.
 */
 USTRUCT(BlueprintType)
-struct MAGICLEAPCONTACTS_API FMagicLeapTaggedAttribute
+struct FMagicLeapTaggedAttribute
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -64,7 +66,7 @@ struct MAGICLEAPCONTACTS_API FMagicLeapTaggedAttribute
 
 /** Representation of available information for a single contact in an address book. */
 USTRUCT(BlueprintType)
-struct MAGICLEAPCONTACTS_API FMagicLeapContact
+struct FMagicLeapContact
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -89,12 +91,12 @@ struct MAGICLEAPCONTACTS_API FMagicLeapContact
 };
 
 /** Delegate used to convey the result of a single contact operation. */
-DECLARE_DYNAMIC_DELEGATE_OneParam(FMagicLeapSingleContactResultDelegate, EMagicLeapContactsOperationStatus, OpStatus);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FMagicLeapSingleContactResultDelegateMulti, EMagicLeapContactsOperationStatus, OpStatus);
+DECLARE_DYNAMIC_DELEGATE_OneParam(FSingleContactResultDelegate, EMagicLeapContactsOperationStatus, OpStatus);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FSingleContactResultDelegateMulti, EMagicLeapContactsOperationStatus, OpStatus);
 
 /** Delegate used to convey the result of a multiple contacts operation. */
-DECLARE_DYNAMIC_DELEGATE_TwoParams(FMagicLeapMultipleContactsResultDelegate, const TArray<FMagicLeapContact>&, Contacts, EMagicLeapContactsOperationStatus, OpStatus);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FMagicLeapMultipleContactsResultDelegateMulti, const TArray<FMagicLeapContact>&, Contacts, EMagicLeapContactsOperationStatus, OpStatus);
+DECLARE_DYNAMIC_DELEGATE_TwoParams(FMultipleContactsResultDelegate, const TArray<FMagicLeapContact>&, Contacts, EMagicLeapContactsOperationStatus, OpStatus);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FMultipleContactsResultDelegateMulti, const TArray<FMagicLeapContact>&, Contacts, EMagicLeapContactsOperationStatus, OpStatus);
 
 /**
 	Delegate used to pass log messages from the contacts plugin to the initiating blueprint.
@@ -102,5 +104,5 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FMagicLeapMultipleContactsResultDel
 	@param LogMessage A string containing the log message.
 	@param OpStatus The status of the operation associated with the log message.
 */
-DECLARE_DYNAMIC_DELEGATE_TwoParams(FMagicLeapContactsLogMessage, const FString&, LogMessage, EMagicLeapContactsOperationStatus, OpStatus);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FMagicLeapContactsLogMessageMulti, const FString&, LogMessage, EMagicLeapContactsOperationStatus, OpStatus);
+DECLARE_DYNAMIC_DELEGATE_TwoParams(FContactsLogMessage, const FString&, LogMessage, EMagicLeapContactsOperationStatus, OpStatus);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FContactsLogMessageMulti, const FString&, LogMessage, EMagicLeapContactsOperationStatus, OpStatus);

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,19 +10,19 @@ LUMIN_THIRD_PARTY_INCLUDES_START
 #include <ml_head_tracking.h>
 LUMIN_THIRD_PARTY_INCLUDES_END
 
-namespace LUMIN_MLSDK_API
+namespace MLSDK_API
 {
 
 CREATE_FUNCTION_SHIM(ml_perception_client, MLResult, MLHeadTrackingCreate)
-#define MLHeadTrackingCreate ::LUMIN_MLSDK_API::MLHeadTrackingCreateShim
+#define MLHeadTrackingCreate ::MLSDK_API::MLHeadTrackingCreateShim
 CREATE_FUNCTION_SHIM(ml_perception_client, MLResult, MLHeadTrackingDestroy)
-#define MLHeadTrackingDestroy ::LUMIN_MLSDK_API::MLHeadTrackingDestroyShim
+#define MLHeadTrackingDestroy ::MLSDK_API::MLHeadTrackingDestroyShim
 CREATE_FUNCTION_SHIM(ml_perception_client, MLResult, MLHeadTrackingGetStaticData)
-#define MLHeadTrackingGetStaticData ::LUMIN_MLSDK_API::MLHeadTrackingGetStaticDataShim
+#define MLHeadTrackingGetStaticData ::MLSDK_API::MLHeadTrackingGetStaticDataShim
 CREATE_FUNCTION_SHIM(ml_perception_client, MLResult, MLHeadTrackingGetState)
-#define MLHeadTrackingGetState ::LUMIN_MLSDK_API::MLHeadTrackingGetStateShim
+#define MLHeadTrackingGetState ::MLSDK_API::MLHeadTrackingGetStateShim
 CREATE_FUNCTION_SHIM(ml_perception_client, MLResult, MLHeadTrackingGetMapEvents)
-#define MLHeadTrackingGetMapEvents ::LUMIN_MLSDK_API::MLHeadTrackingGetMapEventsShim
+#define MLHeadTrackingGetMapEvents ::MLSDK_API::MLHeadTrackingGetMapEventsShim
 
 }
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UserDefinedStructureEditor.h"
 #include "Widgets/Text/STextBlock.h"
@@ -81,7 +81,7 @@ void FDefaultValueDetails::CustomizeDetails(class IDetailLayoutBuilder& DetailLa
 
 		IDetailCategoryBuilder& StructureCategory = DetailLayout.EditCategory("DefaultValues", LOCTEXT("DefaultValues", "Default Values"));
 
-		for (TFieldIterator<FProperty> PropertyIter(UserDefinedStruct.Get()); PropertyIter; ++PropertyIter)
+		for (TFieldIterator<UProperty> PropertyIter(UserDefinedStruct.Get()); PropertyIter; ++PropertyIter)
 		{
 			StructureCategory.AddExternalStructureProperty(StructData, (*PropertyIter)->GetFName());
 		}
@@ -161,12 +161,12 @@ public:
 	}
 
 	// FNotifyHook interface
-	virtual void NotifyPreChange( FProperty* PropertyAboutToChange ) override
+	virtual void NotifyPreChange( UProperty* PropertyAboutToChange ) override
 	{
 		++PropertyChangeRecursionGuard;
 	}
 
-	virtual void NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, FProperty* PropertyThatChanged) override
+	virtual void NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, UProperty* PropertyThatChanged) override
 	{
 		--PropertyChangeRecursionGuard;
 	}
@@ -202,10 +202,10 @@ void FDefaultValueDetails::OnFinishedChangingProperties(const FPropertyChangedEv
 
 		if ( ensure(OwnerStruct == UserDefinedStruct.Get()) )
 		{
-			const FProperty* DirectProperty = PropertyChangedEvent.MemberProperty;
-			while (DirectProperty && !DirectProperty->GetOwner<const UUserDefinedStruct>())
+			const UProperty* DirectProperty = PropertyChangedEvent.MemberProperty;
+			while (DirectProperty && !Cast<const UUserDefinedStruct>(DirectProperty->GetOuter()))
 			{
-				DirectProperty = DirectProperty->GetOwner<const FProperty>();
+				DirectProperty = Cast<const UProperty>(DirectProperty->GetOuter());
 			}
 			ensure(nullptr != DirectProperty);
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ApexDestructionEditorModule.h"
 #include "Misc/PackageName.h"
@@ -28,9 +28,7 @@
 #include "PropertyEditorModule.h"
 #include "DestructibleMeshDetails.h"
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 IMPLEMENT_MODULE( FDestructibleMeshEditorModule, ApexDestructionEditor );
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 #define LOCTEXT_NAMESPACE "DestructibleMeshEditor"
 
@@ -56,7 +54,6 @@ void FDestructibleMeshEditorModule::StartupModule()
 		ContentBrowserExtenderDelegateHandle = CBMenuExtenderDelegates.Last().GetHandle();
 	}
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	UThumbnailManager::Get().RegisterCustomRenderer(UDestructibleMesh::StaticClass(), UDestructibleMeshThumbnailRenderer::StaticClass());
 
 	DestructibleMeshComponentBroker = MakeShareable(new FDestructibleMeshComponentBroker);
@@ -66,7 +63,6 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	PropertyModule.RegisterCustomClassLayout(UDestructibleMesh::StaticClass()->GetFName(), FOnGetDetailCustomizationInstance::CreateStatic(&FDestructibleMeshDetails::MakeInstance));
 
 	FApexDestructionStyle::Initialize();
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 TSharedRef<FExtender> FDestructibleMeshEditorModule::OnExtendContentBrowserAssetSelectionMenu(const TArray<FAssetData>& SelectedAssets)
@@ -100,7 +96,6 @@ TSharedRef<FExtender> FDestructibleMeshEditorModule::OnExtendContentBrowserAsset
 
 void FDestructibleMeshEditorModule::ShutdownModule()
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	MenuExtensibilityManager.Reset();
 	ToolBarExtensibilityManager.Reset();
 
@@ -125,20 +120,16 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		UThumbnailManager::Get().UnregisterCustomRenderer(UDestructibleMesh::StaticClass());
 		FComponentAssetBrokerage::UnregisterBroker(DestructibleMeshComponentBroker);
 	}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 TSharedRef<IDestructibleMeshEditor> FDestructibleMeshEditorModule::CreateDestructibleMeshEditor( const EToolkitMode::Type Mode, const TSharedPtr< IToolkitHost >& InitToolkitHost, UDestructibleMesh* Table )
 {
 	TSharedRef< FDestructibleMeshEditor > NewDestructibleMeshEditor( new FDestructibleMeshEditor() );
 	NewDestructibleMeshEditor->InitDestructibleMeshEditor( Mode, InitToolkitHost, Table );
 	return NewDestructibleMeshEditor;
 }
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 UDestructibleMesh* FDestructibleMeshEditorModule::CreateDestructibleMeshFromStaticMesh(UObject* InParent, UStaticMesh* StaticMesh, FName Name, EObjectFlags Flags, FText& OutErrorMsg)
 {
 	if (StaticMesh == NULL)
@@ -252,6 +243,5 @@ UDestructibleMesh* FDestructibleMeshEditorModule::CreateDestructibleMeshFromStat
 	
 	return DestructibleMesh;
 }
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 #undef LOCTEXT_NAMESPACE

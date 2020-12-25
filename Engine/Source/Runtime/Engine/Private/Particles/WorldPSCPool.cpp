@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Particles/WorldPSCPool.h"
 #include "HAL/IConsoleManager.h"
@@ -86,10 +86,6 @@ UParticleSystemComponent* FPSCPool::Acquire(UWorld* World, UParticleSystem* Temp
 		RetElem = FreeElements.Pop(false);
 		check(RetElem.PSC->Template == Template);
 		check(!RetElem.PSC->IsPendingKill());
-
-		//Reset visibility in case the component was reclaimed by the pool while invisible.
-		RetElem.PSC->SetVisibility(true);
-		RetElem.PSC->SetHiddenInGame(false);
 
 		if (RetElem.PSC->GetWorld() != World)
 		{

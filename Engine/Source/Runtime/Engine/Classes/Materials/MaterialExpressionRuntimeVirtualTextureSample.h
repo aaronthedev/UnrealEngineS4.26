@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -28,33 +28,15 @@ enum ERuntimeVirtualTextureMipValueMode
 	RVTMVM_MAX,
 };
 
-/**
- * Defines texture addressing behavior.
- */
-UENUM()
-enum ERuntimeVirtualTextureTextureAddressMode
-{
-	/* Clamp mode. */
-	RVTTA_Clamp UMETA(DisplayName = "Clamp"),
-	/* Wrap mode. */
-	RVTTA_Wrap UMETA(DisplayName = "Wrap"),
-
-	RVTTA_MAX,
-};
-
 /** Material expression for sampling from a runtime virtual texture. */
 UCLASS(collapsecategories, hidecategories=Object)
 class ENGINE_API UMaterialExpressionRuntimeVirtualTextureSample : public UMaterialExpression
 {
 	GENERATED_UCLASS_BODY()
 
-	/** Optional UV coordinates input if we want to override standard world position based coordinates. */
-	UPROPERTY(meta = (RequiredInput = "false"))
+	/** UV coordinates input if we want to override standard world position based coordinates. */
+	UPROPERTY()
 	FExpressionInput Coordinates;
-
-	/** Optional world position input to override the default world position. */
-	UPROPERTY(meta = (RequiredInput = "false"))
-	FExpressionInput WorldPosition;
 
 	/** Meaning depends on MipValueMode. A single unit is one mip level.  */
 	UPROPERTY(meta = (RequiredInput = "false"))
@@ -72,17 +54,9 @@ class ENGINE_API UMaterialExpressionRuntimeVirtualTextureSample : public UMateri
 	UPROPERTY(EditAnywhere, Category = VirtualTexture, meta = (DisplayName = "Enable packed page table"))
 	bool bSinglePhysicalSpace = true;
 
-	/** Enable sparse adaptive page tables. Note that the bound Virtual Texture should have valid adaptive virtual texture settings for sampling to work correctly. */
-	UPROPERTY(EditAnywhere, Category = VirtualTexture, meta = (DisplayName = "Enable adaptive page table"))
-	bool bAdaptive = false;
-
 	/** Defines how the MipValue property is applied to the virtual texture lookup. */
 	UPROPERTY(EditAnywhere, Category = TextureSample)
 	TEnumAsByte<enum ERuntimeVirtualTextureMipValueMode> MipValueMode = RVTMVM_None;
-
-	/** Defines the texture addressing mode. */
-	UPROPERTY(EditAnywhere, Category = TextureSample)
-	TEnumAsByte<enum ERuntimeVirtualTextureTextureAddressMode> TextureAddressMode = RVTTA_Clamp;
 
 	/** Init settings that affect shader compilation and need to match the current VirtualTexture */
 	bool InitVirtualTextureDependentSettings();

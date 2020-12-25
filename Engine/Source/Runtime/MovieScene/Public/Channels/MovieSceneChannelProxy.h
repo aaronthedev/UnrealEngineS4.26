@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -152,15 +152,8 @@ struct MOVIESCENE_API FMovieSceneChannelProxy : TSharedFromThis<FMovieSceneChann
 {
 public:
 
-	FSimpleMulticastDelegate OnDestroy;
-
 	/** Default construction - emtpy proxy */
 	FMovieSceneChannelProxy(){}
-
-	~FMovieSceneChannelProxy()
-	{
-		OnDestroy.Broadcast();
-	}
 
 	/**
 	 * Construction via multiple channels

@@ -1,20 +1,16 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PreLoadMoviePlayerScreenBase.h"
 #include "PreLoadScreenManager.h"
 #include "PreLoadMoviePlayerModule.h"
 
-#include "Framework/Application/SlateApplication.h"
-#include "Framework/SlateDelegates.h"
 #include "HAL/FileManager.h"
 #include "Misc/ConfigCacheIni.h"
 
-#include "Framework/Application/SlateApplication.h"
 #include "Widgets/Layout/SDPIScaler.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/SViewport.h"
-#include "Widgets/DeclarativeSyntaxSupport.h"
 
 class SDefaultPreLoadScreenMovieBorder : public SBorder
 {

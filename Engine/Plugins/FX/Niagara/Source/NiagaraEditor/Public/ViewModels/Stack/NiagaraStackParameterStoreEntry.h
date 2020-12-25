@@ -1,7 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
-#include "NiagaraClipboard.h"
 #include "ViewModels/Stack/NiagaraStackItem.h"
 #include "NiagaraTypes.h"
 #include "ViewModels/Stack/NiagaraParameterHandle.h"
@@ -24,6 +23,7 @@ class NIAGARAEDITOR_API UNiagaraStackParameterStoreEntry : public UNiagaraStackI
 
 public:
 	DECLARE_MULTICAST_DELEGATE(FOnValueChanged);
+	DECLARE_MULTICAST_DELEGATE(FOnParameterDeleted);
 
 public:
 	UNiagaraStackParameterStoreEntry();
@@ -73,10 +73,16 @@ public:
 	void Reset();
 
 	/** Returns whether or not this input can be renamed. */
-	virtual bool SupportsRename() const override { return true; }
+	bool CanRenameInput() const;
+
+	/** Gets whether this input has a rename pending. */
+	bool GetIsRenamePending() const;
+
+	/** Sets whether this input has a rename pending. */
+	void SetIsRenamePending(bool bIsRenamePending);
 
 	/** Renames this input to the name specified. */
-	virtual void OnRenamed(FText NewName) override;
+	void RenameInput(FString NewName);
 
 	/** Checks if the chosen name is unique (not duplicate) */
 	bool IsUniqueName(FString NewName);
@@ -84,21 +90,14 @@ public:
 	/** Gets a multicast delegate which is called whenever the value on this input changes. */
 	FOnValueChanged& OnValueChanged();
 
+	/** Gets a multicast delegate which is called when this parameter is deleted. */
+	FOnParameterDeleted& OnParameterDeleted();
+
 	/** Delete the parameter from the ParameterStore and notify that the store changed. */
 	void Delete();
 
 	/** Use an external asset instead of the local value object.*/
 	void ReplaceValueObject(UObject* Obj);
-
-	virtual bool SupportsCopy() const override { return true; }
-	virtual bool SupportsPaste() const override { return true; }
-	virtual bool TestCanCopyWithMessage(FText& OutMessage) const override;
-	virtual void Copy(UNiagaraClipboardContent* ClipboardContent) const override;
-	virtual bool TestCanPasteWithMessage(const UNiagaraClipboardContent* ClipboardContent, FText& OutMessage) const override;
-	virtual FText GetPasteTransactionText(const UNiagaraClipboardContent* ClipboardContent) const override;
-	virtual void Paste(const UNiagaraClipboardContent* ClipboardContent, FText& OutPasteWarning) override;
-	const UNiagaraClipboardFunctionInput* ToClipboardFunctionInput(UObject* InOuter) const;
-	void SetValueFromClipboardFunctionInput(const UNiagaraClipboardFunctionInput& ClipboardFunctionInput);
 
 protected:
 	//~ UNiagaraStackEntry interface
@@ -107,8 +106,6 @@ protected:
 	void RefreshValueAndHandle();
 	TSharedPtr<FNiagaraVariable> GetCurrentValueVariable();
 	UObject* GetCurrentValueObject();
-
-	void NotifyDataInterfaceChanged();
 
 private:
 	void RemovePins(TArray<UEdGraphPin*> PinsToRemove);
@@ -130,11 +127,15 @@ private:
 	/** A multicast delegate which is called when the value of this input is changed. */
 	FOnValueChanged ValueChangedDelegate;
 
-	/** A pointer to the data interface object for this input if one is available. */
-	TWeakObjectPtr<UObject> ValueObject;
+	/** A multicast delegate which is called when this parameter is deleted. */
+	FOnParameterDeleted ParameterDeletedDelegate;
 
-	/** A pointer to the owner of the parameter store that owns this entry. */
-	TWeakObjectPtr<UObject> Owner;
+	/** A pointer to the data interface object for this input if one is available. */
+	UPROPERTY()
+	UObject* ValueObject;
+
+	UPROPERTY()
+	UObject* Owner;
 
 	FNiagaraParameterStore* ParameterStore;
 

@@ -1,8 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "OverridePassSequence.h"
+#include "PostProcess/RenderingCompositionGraph.h"
 
 struct FPaniniProjectionConfig
 {
@@ -79,3 +80,5 @@ struct FUpscaleInputs
 };
 
 FScreenPassTexture AddUpscalePass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FUpscaleInputs& Inputs);
+
+FRenderingCompositeOutputRef AddUpscalePass(FRenderingCompositionGraph& Graph, FRenderingCompositeOutputRef Input, EUpscaleMethod Method, EUpscaleStage Stage);

@@ -1,11 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Rendering/ColorVertexBuffer.h"
 #include "CoreMinimal.h"
 #include "RHI.h"
 #include "Components.h"
 #include "EngineUtils.h"
-#include "ProfilingDebugging/LoadTimeTracker.h"
+#include "StaticMeshVertexData.h"
 
 /*-----------------------------------------------------------------------------
 FColorVertexBuffer
@@ -16,8 +16,8 @@ class FColorVertexData :
 	public TStaticMeshVertexData<FColor>
 {
 public:
-	FColorVertexData(bool InNeedsCPUAccess = false)
-		: TStaticMeshVertexData<FColor>(InNeedsCPUAccess)
+	FColorVertexData( bool InNeedsCPUAccess=false )
+		: TStaticMeshVertexData<FColor>( InNeedsCPUAccess )
 	{
 	}
 };
@@ -330,7 +330,6 @@ void FColorVertexBuffer::ImportText(const TCHAR* SourceText)
 void FColorVertexBuffer::operator=(const FColorVertexBuffer &Other)
 {
 	//VertexData doesn't need to be allocated here because Build will be called next,
-	delete VertexData;
 	VertexData = NULL;
 }
 
@@ -417,39 +416,13 @@ FVertexBufferRHIRef FColorVertexBuffer::CreateRHIBuffer_Async()
 	return CreateRHIBuffer_Internal<false>();
 }
 
-void FColorVertexBuffer::CopyRHIForStreaming(const FColorVertexBuffer& Other, bool InAllowCPUAccess)
-{
-	// Copy serialized properties.
-	Stride = Other.Stride;
-	NumVertices = Other.NumVertices;
-
-	// Handle CPU access.
-	if (InAllowCPUAccess)
-	{
-		NeedsCPUAccess = Other.NeedsCPUAccess;
-		AllocateData(NeedsCPUAccess);
-	}
-	else
-	{
-		NeedsCPUAccess = false;
-	}
-
-	// Copy resource references.
-	VertexBufferRHI = Other.VertexBufferRHI;
-	ColorComponentsSRV = Other.ColorComponentsSRV;
-}
-
 void FColorVertexBuffer::InitRHI()
 {
-	SCOPED_LOADTIMER(FColorVertexBuffer_InitRHI);
-
 	VertexBufferRHI = CreateRHIBuffer_RenderThread();
 
 	if (VertexBufferRHI && RHISupportsManualVertexFetch(GMaxRHIShaderPlatform))
 	{
-		// When VertexData is null, this buffer hasn't been streamed in yet. We still need to create a FRHIShaderResourceView which will be
-		// cached in a vertex factory uniform buffer later. The nullptr tells the RHI that the SRV doesn't view on anything yet.
-		ColorComponentsSRV = RHICreateShaderResourceView(FShaderResourceViewInitializer(VertexData ? VertexBufferRHI : nullptr, PF_R8G8B8A8));
+		ColorComponentsSRV = RHICreateShaderResourceView(VertexData ? VertexBufferRHI : nullptr, 4, PF_R8G8B8A8);
 	}
 }
 

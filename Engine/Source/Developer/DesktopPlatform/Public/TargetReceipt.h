@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -67,9 +67,6 @@ struct DESKTOPPLATFORM_API FTargetReceipt
 	/** The type of the target */
 	EBuildTargetType TargetType;
 
-	/** The version information for this target */
-	FBuildVersion Version;
-
 	/** The exectuable to launch for this target */
 	FString Launch;
 
@@ -78,9 +75,6 @@ struct DESKTOPPLATFORM_API FTargetReceipt
 
 	/** All the runtime dependencies that this target relies on */
 	TArray<FRuntimeDependency> RuntimeDependencies;
-
-	/** All plugins that were either enabled or disabled via the target rules. */
-	TMap<FString, bool> PluginNameToEnabledState;
 
 	/** Additional build properties passed through from the module rules */
 	TArray<FReceiptProperty> AdditionalProperties;

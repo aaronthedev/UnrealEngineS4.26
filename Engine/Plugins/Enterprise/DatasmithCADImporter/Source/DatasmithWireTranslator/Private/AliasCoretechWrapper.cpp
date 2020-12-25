@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AliasCoretechWrapper.h"
 
@@ -18,8 +18,6 @@
 #include "AlTrimCurve.h"
 #include "AlTrimRegion.h"
 #include "AlTM.h"
-
-using namespace CADLibrary;
 
 TWeakPtr<FAliasCoretechWrapper> FAliasCoretechWrapper::SharedSession;
 

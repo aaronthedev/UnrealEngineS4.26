@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "CoreMinimal.h"
@@ -6,12 +6,9 @@
 
 #include "GoogleARCorePlaneRendererComponent.generated.h"
 
-/**
- * A helper component that renders all the ARCore planes in the current tracking session.
- * NOTE: This class is now deprecated, plane visualization is done through UARPlaneComponent.
- */
-UCLASS(Experimental, ClassGroup = (GoogleARCore), Deprecated)
-class GOOGLEARCOREBASE_API UDEPRECATED_GoogleARCorePlaneRendererComponent : public USceneComponent
+/** A helper component that renders all the ARCore planes in the current tracking session. */
+UCLASS(Experimental, ClassGroup = (GoogleARCore), meta = (BlueprintSpawnableComponent))
+class GOOGLEARCOREBASE_API UGoogleARCorePlaneRendererComponent : public USceneComponent
 {
 	GENERATED_BODY()
 public:
@@ -36,7 +33,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GoogleARCore|TrackablePlaneRenderer")
 	float BoundaryPolygonThickness;
 
-	UDEPRECATED_GoogleARCorePlaneRendererComponent();
+	UGoogleARCorePlaneRendererComponent();
 
 	/** Function called every frame on this Component. */
 	void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction * ThisTickFunction) override;

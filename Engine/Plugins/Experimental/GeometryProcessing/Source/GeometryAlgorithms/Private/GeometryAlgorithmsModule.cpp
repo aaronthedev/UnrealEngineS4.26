@@ -1,15 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GeometryAlgorithmsModule.h"
-
-#include "ExactPredicates.h"
 
 #define LOCTEXT_NAMESPACE "FGeometryAlgorithmsModule"
 
 void FGeometryAlgorithmsModule::StartupModule()
 {
 	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
-	ExactPredicates::GlobalInit();
 }
 
 void FGeometryAlgorithmsModule::ShutdownModule()

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -7,21 +7,28 @@ public class DisplayClusterPostprocess : ModuleRules
 {
 	public DisplayClusterPostprocess(ReadOnlyTargetRules ROTargetRules) : base(ROTargetRules)
 	{
+		PrivateIncludePaths.AddRange(
+			new string[]
+			{
+				"DisplayClusterPostprocess/Private",
+			}
+		);
+
 		PublicDependencyModuleNames.AddRange(
-			new string[] {
+			new string[]
+			{
 				"Core",
-				"Engine"
+				"Engine",
 			});
 
 		PrivateDependencyModuleNames.AddRange(
-			new string[] {
+			new string[]
+			{
 				"DisplayCluster",
 				"OutputRemap",
 				"RHI",
-				"TextureShare",
-				"TextureShareCore",
-				"TextureShareD3D12"
-			});
+			}
+		);
 
 		if (Target.bBuildEditor == true)
 		{

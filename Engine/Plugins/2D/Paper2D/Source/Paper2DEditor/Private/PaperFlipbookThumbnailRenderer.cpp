@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PaperFlipbookThumbnailRenderer.h"
 #include "Misc/App.h"
@@ -15,7 +15,7 @@ UPaperFlipbookThumbnailRenderer::UPaperFlipbookThumbnailRenderer(const FObjectIn
 {
 }
 
-void UPaperFlipbookThumbnailRenderer::Draw(UObject* Object, int32 X, int32 Y, uint32 Width, uint32 Height, FRenderTarget* RenderTarget, FCanvas* Canvas, bool bAdditionalViewFamily)
+void UPaperFlipbookThumbnailRenderer::Draw(UObject* Object, int32 X, int32 Y, uint32 Width, uint32 Height, FRenderTarget* RenderTarget, FCanvas* Canvas)
 {
 	if (UPaperFlipbook* Flipbook = Cast<UPaperFlipbook>(Object))
 	{

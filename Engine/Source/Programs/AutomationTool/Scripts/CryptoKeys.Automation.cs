@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -40,7 +40,7 @@ namespace AutomationTool
 			}
 
 			FileReference OutputFile = FileReference.Combine(ProjectPath.Directory, "Config", "DefaultCrypto.ini");
-			FileReference NoRedistOutputFile = FileReference.Combine(ProjectPath.Directory, "Restricted", "NoRedist", "Config", "DefaultCrypto.ini");
+			FileReference NoRedistOutputFile = FileReference.Combine(ProjectPath.Directory, "Config", "NoRedist", "DefaultCrypto.ini");
 			FileReference DestinationFile = OutputFile;
 
 			// If the project has a DefaultCrypto.ini in a NoRedist folder, we want to copy the newly generated file into that location
@@ -159,7 +159,7 @@ namespace AutomationTool
 						}
 						else
 						{
-							var Branch = new BranchInfo();
+							var Branch = new BranchInfo(new List<UnrealTargetPlatform> { UnrealBuildTool.BuildHostPlatform.Current.Platform });
 							var GameProj = Branch.FindGame(OriginalProjectName);
 							if (GameProj != null)
 							{

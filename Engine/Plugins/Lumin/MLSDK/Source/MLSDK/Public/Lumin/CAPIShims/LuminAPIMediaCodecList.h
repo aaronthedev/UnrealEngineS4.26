@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,39 +11,31 @@ LUMIN_THIRD_PARTY_INCLUDES_START
 #include <ml_media_codeclist.h>
 LUMIN_THIRD_PARTY_INCLUDES_END
 
-namespace LUMIN_MLSDK_API
+namespace MLSDK_API
 {
 
 CREATE_FUNCTION_SHIM(ml_mediacodeclist, MLResult, MLMediaCodecListCountCodecs)
-#define MLMediaCodecListCountCodecs ::LUMIN_MLSDK_API::MLMediaCodecListCountCodecsShim
+#define MLMediaCodecListCountCodecs ::MLSDK_API::MLMediaCodecListCountCodecsShim
 CREATE_FUNCTION_SHIM(ml_mediacodeclist, MLResult, MLMediaCodecListIsSoftwareCodec)
-#define MLMediaCodecListIsSoftwareCodec ::LUMIN_MLSDK_API::MLMediaCodecListIsSoftwareCodecShim
+#define MLMediaCodecListIsSoftwareCodec ::MLSDK_API::MLMediaCodecListIsSoftwareCodecShim
 CREATE_FUNCTION_SHIM(ml_mediacodeclist, MLResult, MLMediaCodecListGetMatchingCodecs)
-#define MLMediaCodecListGetMatchingCodecs ::LUMIN_MLSDK_API::MLMediaCodecListGetMatchingCodecsShim
+#define MLMediaCodecListGetMatchingCodecs ::MLSDK_API::MLMediaCodecListGetMatchingCodecsShim
 CREATE_FUNCTION_SHIM(ml_mediacodeclist, MLResult, MLMediaCodecListGetCodecByType)
-#define MLMediaCodecListGetCodecByType ::LUMIN_MLSDK_API::MLMediaCodecListGetCodecByTypeShim
+#define MLMediaCodecListGetCodecByType ::MLSDK_API::MLMediaCodecListGetCodecByTypeShim
 CREATE_FUNCTION_SHIM(ml_mediacodeclist, MLResult, MLMediaCodecListGetCodecByName)
-#define MLMediaCodecListGetCodecByName ::LUMIN_MLSDK_API::MLMediaCodecListGetCodecByNameShim
+#define MLMediaCodecListGetCodecByName ::MLSDK_API::MLMediaCodecListGetCodecByNameShim
 CREATE_FUNCTION_SHIM(ml_mediacodeclist, MLResult, MLMediaCodecListIsEncoder)
-#define MLMediaCodecListIsEncoder ::LUMIN_MLSDK_API::MLMediaCodecListIsEncoderShim
+#define MLMediaCodecListIsEncoder ::MLSDK_API::MLMediaCodecListIsEncoderShim
 CREATE_FUNCTION_SHIM(ml_mediacodeclist, MLResult, MLMediaCodecListGetCodecName)
-#define MLMediaCodecListGetCodecName ::LUMIN_MLSDK_API::MLMediaCodecListGetCodecNameShim
+#define MLMediaCodecListGetCodecName ::MLSDK_API::MLMediaCodecListGetCodecNameShim
 CREATE_FUNCTION_SHIM(ml_mediacodeclist, MLResult, MLMediaCodecListGetSupportedMimes)
-#define MLMediaCodecListGetSupportedMimes ::LUMIN_MLSDK_API::MLMediaCodecListGetSupportedMimesShim
+#define MLMediaCodecListGetSupportedMimes ::MLSDK_API::MLMediaCodecListGetSupportedMimesShim
 CREATE_FUNCTION_SHIM(ml_mediacodeclist, MLResult, MLMediaCodecListGetCapabilityFlag)
-#define MLMediaCodecListGetCapabilityFlag ::LUMIN_MLSDK_API::MLMediaCodecListGetCapabilityFlagShim
+#define MLMediaCodecListGetCapabilityFlag ::MLSDK_API::MLMediaCodecListGetCapabilityFlagShim
 CREATE_FUNCTION_SHIM(ml_mediacodeclist, MLResult, MLMediaCodecListGetSecureCodecName)
-#define MLMediaCodecListGetSecureCodecName ::LUMIN_MLSDK_API::MLMediaCodecListGetSecureCodecNameShim
+#define MLMediaCodecListGetSecureCodecName ::MLSDK_API::MLMediaCodecListGetSecureCodecNameShim
 CREATE_FUNCTION_SHIM(ml_mediacodeclist, MLResult, MLMediaCodecListQueryResultsRelease)
-#define MLMediaCodecListQueryResultsRelease ::LUMIN_MLSDK_API::MLMediaCodecListQueryResultsReleaseShim
-CREATE_FUNCTION_SHIM(ml_mediacodeclist, MLResult, MLMediaCodecListGetSupportedProfileLevels)
-#define MLMediaCodecListGetSupportedProfileLevels ::LUMIN_MLSDK_API::MLMediaCodecListGetSupportedProfileLevelsShim
-CREATE_FUNCTION_SHIM(ml_mediacodeclist, MLResult, MLMediaCodecListProfileLevelsRelease)
-#define MLMediaCodecListProfileLevelsRelease ::LUMIN_MLSDK_API::MLMediaCodecListProfileLevelsReleaseShim
-CREATE_FUNCTION_SHIM(ml_mediacodeclist, MLResult, MLMediaCodecListGetSupportedColorFormats)
-#define MLMediaCodecListGetSupportedColorFormats ::LUMIN_MLSDK_API::MLMediaCodecListGetSupportedColorFormatsShim
-CREATE_FUNCTION_SHIM(ml_mediacodeclist, MLResult, MLMediaCodecListColorFormatsRelease)
-#define MLMediaCodecListColorFormatsRelease ::LUMIN_MLSDK_API::MLMediaCodecListColorFormatsReleaseShim
+#define MLMediaCodecListQueryResultsRelease ::MLSDK_API::MLMediaCodecListQueryResultsReleaseShim
 
 }
 

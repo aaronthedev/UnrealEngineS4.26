@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -271,19 +271,6 @@ public:
 	void SelectActors(bool bSelect, bool bNotify, bool bSelectEvenIfHidden, 
 						const TSharedPtr<ActorFilter>& Filter = TSharedPtr<ActorFilter>(NULL));
 	
-	/**
-	 * Set the level to use external actors and convert its actors to external packaging or vice versa
-	 * @param bUseExternal Convert to external if `bUseExternal` is true, convert to internal otherwise
-	 */
-	void ConvertLevelToExternalActors(bool bUseExternal);
-
-	/**
-	 * Return if the level can be converted to the specified external packaging mode.
-	 * @param bToExternal The packaging mode we want to convert to. (i.e true: external, false: internal)
-	 * @return true if we can convert the level to the `bToExternal` packaging mode.
-	 */
-	bool CanConvertLevelToExternalActors(bool bToExternal);
-
 	/** Updates cached value of level actors count */
 	void UpdateLevelActorsCount();
 

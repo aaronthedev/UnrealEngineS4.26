@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ExtensionLibraries/MovieScenePropertyTrackExtensions.h"
 #include "Tracks/MovieScenePropertyTrack.h"
@@ -6,7 +6,6 @@
 
 void UMovieScenePropertyTrackExtensions::SetPropertyNameAndPath(UMovieScenePropertyTrack* Track, const FName& InPropertyName, const FString& InPropertyPath)
 {
-	Track->Modify();
 	Track->SetPropertyNameAndPath(InPropertyName, InPropertyPath);
 }
 
@@ -17,7 +16,7 @@ FName UMovieScenePropertyTrackExtensions::GetPropertyName(UMovieScenePropertyTra
 
 FString UMovieScenePropertyTrackExtensions::GetPropertyPath(UMovieScenePropertyTrack* Track)
 {
-	return Track->GetPropertyPath().ToString();
+	return Track->GetPropertyPath();
 }
 
 FName UMovieScenePropertyTrackExtensions::GetUniqueTrackName(UMovieScenePropertyTrack* Track)

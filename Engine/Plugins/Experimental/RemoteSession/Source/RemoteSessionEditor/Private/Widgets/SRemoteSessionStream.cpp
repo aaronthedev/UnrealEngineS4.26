@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/SRemoteSessionStream.h"
 
@@ -18,7 +18,6 @@
 
 #include "AssetData.h"
 #include "AssetRegistryModule.h"
-#include "Editor.h"
 #include "Editor/EditorEngine.h"
 #include "EditorSupportDelegates.h"
 #include "Engine/TextureRenderTarget2D.h"
@@ -27,17 +26,15 @@
 #include "LevelEditor.h"
 #include "Modules/ModuleManager.h"
 #include "PropertyEditorModule.h"
-#include "RenderingThread.h"
 #include "ScopedTransaction.h"
 #include "Stats/Stats2.h"
 #include "WidgetBlueprint.h"
 #include "WorkspaceMenuStructure.h"
 #include "WorkspaceMenuStructureModule.h"
 
-#include "RemoteSession.h"
 #include "Channels/RemoteSessionImageChannel.h"
 #include "Channels/RemoteSessionInputChannel.h"
-#include "RemoteSession.h"
+#include "RemoteSession/RemoteSession.h"
 #include "ImageProviders/RemoteSessionMediaOutput.h"
 #include "RemoteSessionEditorStyle.h"
 
@@ -61,7 +58,8 @@ namespace RemoteSessionStream
 
 
 URemoteSessionStreamWidgetUserData::URemoteSessionStreamWidgetUserData()
-	: Size(1280, 720)
+	: WidgetBlueprint(nullptr)
+	, Size(1280, 720)
 	, Port(IRemoteSessionModule::kDefaultPort)
 {
 }
@@ -130,6 +128,7 @@ void SRemoteSessionStream::AddReferencedObjects(FReferenceCollector& Collector)
 	Collector.AddReferencedObject(RenderTarget2D);
 	Collector.AddReferencedObject(UserWidget);
 	Collector.AddReferencedObject(WidgetWorld);
+	Collector.AddReferencedObject(WidgetBlueprint);
 	Collector.AddReferencedObject(MediaOutput);
 	Collector.AddReferencedObject(MediaCapture);
 }
@@ -397,7 +396,7 @@ void SRemoteSessionStream::Tick(float InDeltaTime)
 		RemoteSessionHost->Tick(InDeltaTime);
 	}
 
-	if (UserWidget && !UserWidget->IsDesignTime() && WidgetRenderer && RenderTarget2D && VirtualWindow)
+	if (WidgetRenderer && RenderTarget2D && VirtualWindow)
 	{
 		WidgetRenderer->DrawWindow(RenderTarget2D, VirtualWindow->GetHittestGrid(), VirtualWindow.ToSharedRef(), 1.f, WidgetSize, InDeltaTime);
 	}
@@ -416,7 +415,7 @@ TStatId SRemoteSessionStream::GetStatId() const
 
 bool SRemoteSessionStream::CanStream() const
 {
-	return WidgetUserData && WidgetUserData->WidgetClass.Get() && WidgetUserData->Size.X > 1 && WidgetUserData->Size.Y > 1;
+	return WidgetUserData && WidgetUserData->WidgetBlueprint && WidgetUserData->Size.X > 1 && WidgetUserData->Size.Y > 1;
 }
 
 void SRemoteSessionStream::EnabledStreaming(bool bInStreaming)
@@ -427,14 +426,16 @@ void SRemoteSessionStream::EnabledStreaming(bool bInStreaming)
 		{
 			// Cache values
 			WidgetSize = WidgetUserData->Size;
+			WidgetBlueprint = WidgetUserData->WidgetBlueprint;
+			check(WidgetBlueprint);
 
 			// Create Widget
 			{
+				TSubclassOf<UUserWidget> WidgetClass = WidgetBlueprint->GeneratedClass.Get();
 				WidgetWorld = GEditor->GetEditorWorldContext().World();
-				if (WidgetWorld)
+				if (WidgetClass && WidgetWorld)
 				{
-					check(WidgetUserData->WidgetClass);
-					UserWidget = CreateWidget<UUserWidget>(WidgetWorld, WidgetUserData->WidgetClass);
+					UserWidget = CreateWidget<UUserWidget>(WidgetWorld, WidgetClass);
 				}
 			}
 
@@ -448,10 +449,9 @@ void SRemoteSessionStream::EnabledStreaming(bool bInStreaming)
 			if (IRemoteSessionModule* RemoteSession = FModuleManager::LoadModulePtr<IRemoteSessionModule>("RemoteSession"))
 			{
 				TArray<FRemoteSessionChannelInfo> SupportedChannels;
-				SupportedChannels.Emplace(FRemoteSessionInputChannel::StaticType(), ERemoteSessionChannelMode::Read);
-				SupportedChannels.Emplace(FRemoteSessionImageChannel::StaticType(), ERemoteSessionChannelMode::Write);
+				SupportedChannels.Emplace(FRemoteSessionInputChannel::StaticType(), ERemoteSessionChannelMode::Read, FOnRemoteSessionChannelCreated::CreateSP(this, &SRemoteSessionStream::OnInputChannelCreated));
+				SupportedChannels.Emplace(FRemoteSessionImageChannel::StaticType(), ERemoteSessionChannelMode::Write, FOnRemoteSessionChannelCreated::CreateSP(this, &SRemoteSessionStream::OnImageChannelCreated));
 				RemoteSessionHost = RemoteSession->CreateHost(MoveTemp(SupportedChannels), WidgetUserData->Port);
-				RemoteSessionHost->RegisterChannelChangeDelegate(FOnRemoteSessionChannelChange::FDelegate::CreateSP(this, &SRemoteSessionStream::OnRemoteSessionChannelChange));
 				RemoteSessionHost->Tick(0.f);
 			}
 
@@ -476,13 +476,7 @@ void SRemoteSessionStream::EnabledStreaming(bool bInStreaming)
 			VirtualWindow->SetContent(UserWidget->TakeWidget());
 			VirtualWindow->Resize(WidgetSize);
 
-			if (FSlateApplication::IsInitialized())
-			{
-				FSlateApplication::Get().RegisterVirtualWindow(VirtualWindow.ToSharedRef());
-			}
-
-			bool bApplyGammaCorrection = false;
-			WidgetRenderer = new FWidgetRenderer(bApplyGammaCorrection);
+			WidgetRenderer = MakeUnique<FWidgetRenderer>();
 			WidgetRenderer->DrawWindow(RenderTarget2D, VirtualWindow->GetHittestGrid(), VirtualWindow.ToSharedRef(), 1.f, WidgetSize, 0.1f);
 
 			// Register callback
@@ -492,13 +486,11 @@ void SRemoteSessionStream::EnabledStreaming(bool bInStreaming)
 			AssetRegistryModule.Get().OnAssetRemoved().AddRaw(this, &SRemoteSessionStream::HandleAssetRemoved);
 			FLevelEditorModule& LevelEditorModule = FModuleManager::LoadModuleChecked<FLevelEditorModule>(TEXT("LevelEditor"));
 			LevelEditorModule.OnMapChanged().AddRaw(this, &SRemoteSessionStream::OnMapChanged);
-			FEditorDelegates::OnAssetsCanDelete.AddRaw(this, &SRemoteSessionStream::CanDeleteAssets);
 		}
 		else
 		{
 			bInStreaming = false;
 
-			FEditorDelegates::OnAssetsCanDelete.RemoveAll(this);
 			if (FLevelEditorModule* LevelEditorModule = FModuleManager::GetModulePtr<FLevelEditorModule>(TEXT("LevelEditor")))
 			{
 				LevelEditorModule->OnMapChanged().RemoveAll(this);
@@ -510,17 +502,8 @@ void SRemoteSessionStream::EnabledStreaming(bool bInStreaming)
 			FEditorSupportDelegates::PrepareToCleanseEditorObject.RemoveAll(this);
 			GEditor->OnBlueprintPreCompile().RemoveAll(this);
 
-			if (VirtualWindow.IsValid() && FSlateApplication::IsInitialized())
-			{
-				FSlateApplication::Get().UnregisterVirtualWindow(VirtualWindow.ToSharedRef());
-			}
-
 			RenderTargetBrush.SetResourceObject(nullptr);
-			if (WidgetRenderer)
-			{
-				BeginCleanup(WidgetRenderer);
-				WidgetRenderer = nullptr;
-			}
+			WidgetRenderer.Reset();
 			VirtualWindow.Reset();
 			ResetUObject();
 			RemoteSessionHost.Reset();
@@ -536,6 +519,7 @@ void SRemoteSessionStream::ResetUObject()
 	RenderTarget2D = nullptr;
 	UserWidget = nullptr;
 	WidgetWorld = nullptr;
+	WidgetBlueprint = nullptr;
 	MediaOutput = nullptr;
 	if (MediaCapture)
 	{
@@ -544,26 +528,9 @@ void SRemoteSessionStream::ResetUObject()
 	}
 }
 
-void SRemoteSessionStream::OnRemoteSessionChannelChange(IRemoteSessionRole* Role, TWeakPtr<IRemoteSessionChannel> Channel, ERemoteSessionChannelChange Change)
+void SRemoteSessionStream::OnInputChannelCreated(TWeakPtr<IRemoteSessionChannel> Instance, const FString& Type, ERemoteSessionChannelMode Mode)
 {
-	TSharedPtr<IRemoteSessionChannel> Pinned = Channel.Pin();
-
-	if (Pinned && Change == ERemoteSessionChannelChange::Created)
-	{
-		if (Pinned->GetType() == FRemoteSessionInputChannel::StaticType())
-		{
-			OnInputChannelCreated(Pinned);
-		}
-		else if (Pinned->GetType() == FRemoteSessionImageChannel::StaticType())
-		{
-			OnImageChannelCreated(Pinned);
-		}
-	}
-}
-
-void SRemoteSessionStream::OnInputChannelCreated(TWeakPtr<IRemoteSessionChannel> Channel)
-{
-	TSharedPtr<FRemoteSessionInputChannel> InputChannel = StaticCastSharedPtr<FRemoteSessionInputChannel>(Channel.Pin());
+	TSharedPtr<FRemoteSessionInputChannel> InputChannel = StaticCastSharedPtr<FRemoteSessionInputChannel>(Instance.Pin());
 	if (InputChannel)
 	{
 		InputChannel->SetPlaybackWindow(VirtualWindow, nullptr);
@@ -571,9 +538,9 @@ void SRemoteSessionStream::OnInputChannelCreated(TWeakPtr<IRemoteSessionChannel>
 	}
 }
 
-void SRemoteSessionStream::OnImageChannelCreated(TWeakPtr<IRemoteSessionChannel> Channel)
+void SRemoteSessionStream::OnImageChannelCreated(TWeakPtr<IRemoteSessionChannel> Instance, const FString& Type, ERemoteSessionChannelMode Mode)
 {
-	TSharedPtr<FRemoteSessionImageChannel> ImageChannel = StaticCastSharedPtr<FRemoteSessionImageChannel>(Channel.Pin());
+	TSharedPtr<FRemoteSessionImageChannel> ImageChannel = StaticCastSharedPtr<FRemoteSessionImageChannel>(Instance.Pin());
 	if (ImageChannel)
 	{
 		ImageChannel->SetImageProvider(nullptr);
@@ -585,7 +552,7 @@ void SRemoteSessionStream::OnImageChannelCreated(TWeakPtr<IRemoteSessionChannel>
 
 void SRemoteSessionStream::OnBlueprintPreCompile(UBlueprint* Blueprint)
 {
-	if (Blueprint && UserWidget && Blueprint->GeneratedClass == UserWidget->GetClass())
+	if (Blueprint == WidgetBlueprint)
 	{
 		EnabledStreaming(false);
 	}
@@ -593,7 +560,7 @@ void SRemoteSessionStream::OnBlueprintPreCompile(UBlueprint* Blueprint)
 
 void SRemoteSessionStream::OnPrepareToCleanseEditorObject(UObject* Object)
 {
-	if (Object == RenderTarget2D || Object == UserWidget || Object == WidgetWorld || (UserWidget && Object == UserWidget->GetClass()) || Object == MediaCapture)
+	if (Object == RenderTarget2D || Object == UserWidget || Object == WidgetWorld || Object == WidgetBlueprint || Object == MediaCapture)
 	{
 		EnabledStreaming(false);
 	}
@@ -601,7 +568,7 @@ void SRemoteSessionStream::OnPrepareToCleanseEditorObject(UObject* Object)
 
 void SRemoteSessionStream::HandleAssetRemoved(const FAssetData& AssetData)
 {
-	if (FAssetData(RenderTarget2D) == AssetData || (UserWidget && AssetData.GetPackage() == UserWidget->GetClass()->GetOutermost()))
+	if (FAssetData(RenderTarget2D) == AssetData || FAssetData(WidgetBlueprint) == AssetData)
 	{
 		EnabledStreaming(false);
 	}
@@ -615,20 +582,5 @@ void SRemoteSessionStream::OnMapChanged(UWorld* World, EMapChangeType ChangeType
 	}
 }
 
-void SRemoteSessionStream::CanDeleteAssets(const TArray<UObject*>& InAssetsToDelete, FCanDeleteAssetResult& CanDeleteResult)
-{
-	if (UserWidget)
-	{
-		for (UObject* Obj : InAssetsToDelete)
-		{
-			if (UserWidget->GetClass()->GetOutermost() == Obj->GetOutermost())
-			{
-				UE_LOG(LogRemoteSession, Warning, TEXT("Asset '%s' can't be deleted because it is currently used by the Remote Session Stream."), *Obj->GetPathName());
-				CanDeleteResult.Set(false);
-				break;
-			}
-		}
-	}
-}
 
 #undef LOCTEXT_NAMESPACE

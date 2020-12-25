@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TrackEditors/ParticleTrackEditor.h"
 #include "Rendering/DrawElements.h"
@@ -239,13 +239,13 @@ TSharedRef<ISequencerSection> FParticleTrackEditor::MakeSectionInterface( UMovie
 
 void FParticleTrackEditor::BuildObjectBindingTrackMenu(FMenuBuilder& MenuBuilder, const TArray<FGuid>& ObjectBindings, const UClass* ObjectClass)
 {
-	if (ObjectClass->IsChildOf(AEmitter::StaticClass()) || ObjectClass->IsChildOf(UFXSystemComponent::StaticClass()))
+	if (ObjectClass->IsChildOf(AEmitter::StaticClass()) || ObjectClass->IsChildOf(UParticleSystemComponent::StaticClass()))
 	{
 		const TSharedPtr<ISequencer> ParentSequencer = GetSequencer();
 
 		MenuBuilder.AddMenuEntry(
-			LOCTEXT("AddParticleTrack", "FX System Toggle Track"),
-			LOCTEXT("TriggerParticlesTooltip", "Adds a track for controlling FX system state."),
+			LOCTEXT("AddParticleTrack", "Particle Toggle Track"),
+			LOCTEXT("TriggerParticlesTooltip", "Adds a track for controlling particle emitter state."),
 			FSlateIcon(),
 			FUIAction(FExecuteAction::CreateSP(this, &FParticleTrackEditor::AddParticleKey, ObjectBindings))
 		);
@@ -288,7 +288,7 @@ FKeyPropertyResult FParticleTrackEditor::AddKeyInternal( FFrameNumber KeyTime, U
 		{
 			UMovieSceneParticleTrack* ParticleTrack = Cast<UMovieSceneParticleTrack>(Track);
 			ParticleTrack->AddNewSection(KeyTime);
-			ParticleTrack->SetDisplayName(LOCTEXT("TrackName", "FX System"));
+			ParticleTrack->SetDisplayName(LOCTEXT("TrackName", "Particle System"));
 			KeyPropertyResult.bTrackModified = true;
 		}
 	}

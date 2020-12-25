@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================================
 SkyLight.usf: Light sampling functions for SkyLight implementation
@@ -7,7 +7,6 @@ SkyLight.usf: Light sampling functions for SkyLight implementation
 #pragma once
 
 #include "../../RayTracing/SkyLightMipTreeCommon.ush"
-#include "../../ReflectionEnvironmentShared.ush"
 
 #define USE_HIERARCHICAL_IMPORTANCE_SAMPLING
 
@@ -71,13 +70,10 @@ void SkyLight_EstimateLight(
 	out float OutIrradiance
 )
 {
-	float3 WorldNormal = Payload.WorldNormal;
-	// Modifying diffuse contribution to prevent false negatives with PDF estimation
-	float3 SkySHDiffuse = max(GetSkySHDiffuse(WorldNormal), 0.01);
-	float3 SkyLightIrradiance = GetColor(LightId) * SkySHDiffuse;
-	float SkyLightIlluminance = Luminance(SkyLightIrradiance);
-
-	OutIrradiance = SkyLightIlluminance * 2.0f * PI;
+	uint Width, Height, NumberOfLevels;
+	SkyLight.Texture.GetDimensions(0, Width, Height, NumberOfLevels);
+	float LightPower = Luminance(GetColor(LightId) * TextureCubeSampleLevel(SkyLight.Texture, SkyLight.TextureSampler, float3(0.0, 1.0, 0.0), NumberOfLevels - 1).xyz);
+	OutIrradiance = LightPower * 2.0 * PI;
 }
 
 void SkyLight_SampleLight(
@@ -150,7 +146,7 @@ void SkyLight_SampleLight(
 	// DEBUG: assert cached PDF is equivalent to re-evaluation
 	//MipPdf = PdfSkyLightOcclusionRay(WorldNormal, RayDirection);
 
-	float2 PixelOffset = RandSample.zw;
+	float2 PixelOffset = RandSample.yz;
 	float2 MipPixelUV = (MipPixel + PixelOffset) / float2(DimensionsAtLevel(SkyLight.MipDimensions.xy, StopLevel));
 
 	// Construct Cubemap coordinate

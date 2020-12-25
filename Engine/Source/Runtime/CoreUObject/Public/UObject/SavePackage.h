@@ -1,52 +1,78 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Containers/Array.h"
 #include "Containers/Set.h"
 #include "Containers/Map.h"
+#include "IO/IoDispatcher.h"
 #include "UObject/NameTypes.h"
-#include "Serialization/FileRegions.h"
-#include "Misc/DateTime.h"
-#include "ObjectMacros.h"
-
-#if !defined(UE_WITH_SAVEPACKAGE)
-#	define UE_WITH_SAVEPACKAGE 1
-#endif
 
 class FArchive;
-class FIoBuffer;
-class FPackageStoreBulkDataManifest;
-class FSavePackageContext;
-class FArchiveDiffMap;
-class FOutputDevice;
+class FLinkerLoad;
+class FLinkerSave;
 
-/**
- * Struct to encapsulate arguments specific to saving one package
- */
-struct FPackageSaveInfo
+class INameMapSaver
 {
-	class UPackage* Package = nullptr;
-	class UObject* Asset = nullptr;
-	FString Filename;
+public:
+	virtual ~INameMapSaver() = default;
+
+	virtual void Begin() = 0;
+	virtual void End() = 0;
+	virtual void BeginPackage() = 0;
+	virtual void EndPackage(FLinkerSave& Linker, FLinkerLoad* Conform, FArchive* BinarySaver) = 0;
+
+	virtual void MarkNameAsReferenced(FName Name) = 0;
+	virtual int32 MapName(FName Name) const = 0;
+	virtual bool NameExistsInCurrentPackage(FNameEntryId ComparisonId) const = 0;
 };
 
-/**
- * Struct to encapsulate UPackage::Save arguments. 
- * These arguments are shared between packages when saving multiple packages concurrently.
- */
-struct FSavePackageArgs
+class FSinglePackageNameMapSaver : public INameMapSaver
 {
-	class ITargetPlatform* TargetPlatform = nullptr;
-	EObjectFlags TopLevelFlags = RF_NoFlags;
-	uint32 SaveFlags = 0;
-	bool bForceByteSwapping = false; // for FLinkerSave
-	bool bWarnOfLongFilename = false;
-	bool bSlowTask = true;
-	FDateTime FinalTimeStamp;
-	FOutputDevice* Error = nullptr;
-	FArchiveDiffMap* DiffMap = nullptr;
-	FSavePackageContext* SavePackageContext = nullptr;
+public:
+	virtual void Begin() override {};
+	virtual void End() override {};
+	virtual void BeginPackage() override {};
+	virtual void EndPackage(FLinkerSave& Linker, FLinkerLoad* Conform, FArchive* BinarySaver) override;
+
+	virtual void MarkNameAsReferenced(FName Name) override;
+	virtual int32 MapName(FName Name) const override;
+	virtual bool NameExistsInCurrentPackage(FNameEntryId ComparisonId) const override;
+
+	void MarkNameAsReferenced(FNameEntryId Name);
+
+private:
+	TSet<FNameEntryId> ReferencedNames;
+	TMap<FNameEntryId, int32> NameIndices;
+};
+
+class FPackageStoreNameMapSaver : public INameMapSaver
+{
+public:
+	COREUOBJECT_API FPackageStoreNameMapSaver(const TCHAR* InFilename);
+
+	COREUOBJECT_API virtual void Begin() override {};
+	COREUOBJECT_API virtual void End() override;
+	virtual void BeginPackage();
+	virtual void EndPackage(FLinkerSave& Linker, FLinkerLoad* Conform, FArchive* BinarySaver) override {}
+
+	virtual void MarkNameAsReferenced(FName Name) override;
+	virtual int32 MapName(FName Name) const override;
+	virtual bool NameExistsInCurrentPackage(FNameEntryId ComparisonId) const override;
+
+private:
+	TMap<FNameEntryId, int32> NameIndices;
+	TArray<FNameEntryId> NameMap;
+	mutable TMap<FNameEntryId, TTuple<int32,int32,int32>> DebugNameCounts; // <Number0Count,OtherNumberCount,MaxNumber>
+	TSet<FNameEntryId> PackageReferencedNames;
+	const FString Filename;
+};
+
+class FPackageHeaderSaver
+{
+public:
+	FPackageHeaderSaver(INameMapSaver& InNameMapSaver) : NameMapSaver(InNameMapSaver) {}
+	INameMapSaver& NameMapSaver;
 };
 
 class FPackageStoreWriter
@@ -69,14 +95,13 @@ public:
 	{
 		FName	PackageName;
 		FString	LooseFilePath;
-		uint64  RegionsOffset;
 
 		TArray<FIoBuffer> Exports;
 	};
 
 	/** Write 'uexp' data
 	  */
-	virtual void WriteExports(const ExportsInfo& Info, const FIoBuffer& ExportsData, const TArray<FFileRegion>& FileRegions) = 0;
+	virtual void WriteExports(const ExportsInfo& Info, const FIoBuffer& ExportsData) = 0;
 
 	struct FBulkDataInfo
 	{
@@ -94,7 +119,7 @@ public:
 
 	/** Write 'ubulk' data
 	  */
-	virtual void WriteBulkdata(const FBulkDataInfo& Info, const FIoBuffer& BulkData, const TArray<FFileRegion>& FileRegions) = 0;
+	virtual void WriteBulkdata(const FBulkDataInfo& Info, const FIoBuffer& BulkData) = 0;
 };
 
 class FLooseFileWriter : public FPackageStoreWriter
@@ -104,8 +129,8 @@ public:
 	COREUOBJECT_API ~FLooseFileWriter();
 
 	COREUOBJECT_API virtual void WriteHeader(const HeaderInfo& Info, const FIoBuffer& HeaderData) override;
-	COREUOBJECT_API virtual void WriteExports(const ExportsInfo& Info, const FIoBuffer& ExportsData, const TArray<FFileRegion>& FileRegions) override;
-	COREUOBJECT_API virtual void WriteBulkdata(const FBulkDataInfo& Info, const FIoBuffer& BulkData, const TArray<FFileRegion>& FileRegions) override;
+	COREUOBJECT_API virtual void WriteExports(const ExportsInfo& Info, const FIoBuffer& ExportsData) override;
+	COREUOBJECT_API virtual void WriteBulkdata(const FBulkDataInfo& Info, const FIoBuffer& BulkData) override;
 
 private:
 };
@@ -113,16 +138,11 @@ private:
 class FSavePackageContext
 {
 public:
-	FSavePackageContext(FPackageStoreWriter* InPackageStoreWriter, FPackageStoreBulkDataManifest* InBulkDataManifest, bool InbForceLegacyOffsets)
-	: PackageStoreWriter(InPackageStoreWriter) 
-	, BulkDataManifest(InBulkDataManifest)
-	, bForceLegacyOffsets(InbForceLegacyOffsets)
+	FSavePackageContext(FPackageHeaderSaver& InHeaderSaver, FPackageStoreWriter& InPackageStoreWriter) 
+	: HeaderSaver(InHeaderSaver), PackageStoreWriter(InPackageStoreWriter) 
 	{
 	}
 
-	COREUOBJECT_API ~FSavePackageContext();
-
-	FPackageStoreWriter* PackageStoreWriter;
-	FPackageStoreBulkDataManifest* BulkDataManifest;
-	bool bForceLegacyOffsets;
+	FPackageHeaderSaver& HeaderSaver;
+	FPackageStoreWriter& PackageStoreWriter;
 };

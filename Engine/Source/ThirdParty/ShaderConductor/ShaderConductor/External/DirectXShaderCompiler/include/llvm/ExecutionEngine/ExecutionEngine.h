@@ -273,7 +273,7 @@ public:
   /// destructors for a particular module.
   ///
   /// \param isDtors - Run the destructors instead of constructors.
-  void runStaticConstructorsDestructors(Module &mod, bool isDtors);
+  void runStaticConstructorsDestructors(Module &module, bool isDtors);
 
 
   /// runFunctionAsMain - This is a helper function which wraps runFunction to

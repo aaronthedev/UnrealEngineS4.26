@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/SinglePropertyView.h"
 
@@ -58,7 +58,7 @@ void USinglePropertyView::BuildContentWidget()
 		}
 		else
 		{
-			FProperty* Property = ViewedObject->GetClass()->FindPropertyByName(PropertyName);
+			UProperty* Property = ViewedObject->GetClass()->FindPropertyByName(PropertyName);
 			if (Property == nullptr)
 			{
 				MissingWidgetText = FPropertyViewHelper::UnknownPropertyText;
@@ -67,8 +67,8 @@ void USinglePropertyView::BuildContentWidget()
 			{
 				MissingWidgetText = FPropertyViewHelper::InvalidPropertyText;
 			}
-			else if (CastField<FStructProperty>(Property) || CastField<FArrayProperty>(Property)
-				|| CastField<FMapProperty>(Property) || CastField<FSetProperty>(Property)
+			else if (Cast<UStructProperty>(Property) || Cast<UArrayProperty>(Property)
+				|| Cast<UMapProperty>(Property) || Cast<USetProperty>(Property)
 				)
 			{
 				MissingWidgetText = FPropertyViewHelper::UnsupportedPropertyText;
@@ -117,14 +117,14 @@ void USinglePropertyView::SetPropertyName(FName InPropertyName)
 	if (PropertyName != InPropertyName)
 	{
 		PropertyName = InPropertyName;
-		BuildContentWidget();
+		AsynBuildContentWidget();
 	}
 }
 
 
 void USinglePropertyView::OnObjectChanged()
 {
-	BuildContentWidget();
+	AsynBuildContentWidget();
 }
 
 
@@ -143,7 +143,7 @@ void USinglePropertyView::PostEditChangeProperty(FPropertyChangedEvent& Property
 		if (PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(USinglePropertyView, PropertyName)
 			|| PropertyChangedEvent.GetPropertyName() == GET_MEMBER_NAME_CHECKED(USinglePropertyView, NameOverride))
 		{
-			BuildContentWidget();
+			AsynBuildContentWidget();
 		}
 	}
 }

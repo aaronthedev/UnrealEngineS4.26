@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -68,12 +68,8 @@ public:
 	void NotifyTargetChanged();
 	/** Get current weight of this target in preview */
 	float GetTargetWeight() const;
-
 	/** Get index of target this represents on pose driver */
 	int32 GetTargetIndex() const;
-
-	/** If we should enable the display of override controls */
-	bool IsOverrideEnabled() const;
 
 	int32 GetTransRotWidgetIndex() const;
 	TOptional<float> GetTranslation(int32 BoneIndex, EAxis::Type Axis) const;
@@ -107,12 +103,6 @@ public:
 
 	/** Remove this target from  */
 	void RemoveTarget();
-
-	void SoloTargetStart();
-	void SoloTargetEnd();
-
-	// Returns true if the target is currently set to solo.
-	bool IsSoloTarget() const;
 
 	/** FCurveOwnerInterface interface */
 	virtual TArray<FRichCurveEditInfoConst> GetCurves() const override;
@@ -160,7 +150,6 @@ public:
 	void OnTargetSelectionChanged(TSharedPtr<FPDD_TargetInfo> InInfo, ESelectInfo::Type SelectInfo);
 	void OnPoseAssetChanged();
 	void OnSourceBonesChanged();
-	void OnSoloDrivenOnlyChanged(const ECheckBoxState NewCheckState);
 	void SelectedTargetChanged();
 
 	/** Get tools popup menu content */
@@ -169,17 +158,6 @@ public:
 
 	/** Remove a target from node */
 	void RemoveTarget(int32 TargetIndex);
-
-	/** Set this target to show at 100% and others at 0% until the next compile, unless
-	    it is already a solo target, in which case it will get un-soloed and the normal weight
-		computation applies. */
-	void SetSoloTarget(int32 TargetIndex);
-
-	/** Returns the current solo target index, or INDEX_NONE if no target is set to solo */
-	int32 GetSoloTarget() const;
-
-	/** Returns true if the solo is for driven poses/curves only. */
-	bool IsSoloDrivenOnly() const;
 
 	/** Set the currently selected Target */
 	void SelectTarget(int32 TargetIndex, bool bExpandTarget);

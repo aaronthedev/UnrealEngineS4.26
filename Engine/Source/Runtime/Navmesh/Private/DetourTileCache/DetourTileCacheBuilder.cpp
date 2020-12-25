@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 // Modified version of Recast/Detour's source file
 
 //
@@ -27,6 +27,7 @@ static const int MAX_VERTS_PER_POLY = 6;	// TODO: use the DT_VERTS_PER_POLYGON
 static const int MAX_REM_EDGES = 48;		// TODO: make this an expression.
 
 
+
 dtTileCacheContourSet* dtAllocTileCacheContourSet(dtTileCacheAlloc* alloc)
 {
 	dtAssert(alloc);
@@ -47,8 +48,6 @@ void dtFreeTileCacheContourSet(dtTileCacheAlloc* alloc, dtTileCacheContourSet* c
 	alloc->free(cset);
 }
 
-//@UE4 BEGIN
-#if WITH_NAVMESH_CLUSTER_LINKS
 dtTileCacheClusterSet* dtAllocTileCacheClusterSet(dtTileCacheAlloc* alloc)
 {
 	dtAssert(alloc);
@@ -67,8 +66,6 @@ void dtFreeTileCacheClusterSet(dtTileCacheAlloc* alloc, dtTileCacheClusterSet* c
 	alloc->free(clusters->regMap);
 	alloc->free(clusters);
 }
-#endif // WITH_NAVMESH_CLUSTER_LINKS
-//@UE4 END
 
 dtTileCachePolyMesh* dtAllocTileCachePolyMesh(dtTileCacheAlloc* alloc)
 {
@@ -201,7 +198,7 @@ static bool appendVertex(dtTempContour& cont, const int x, const int y, const in
 
 static void getNeighbourRegAndArea(dtTileCacheLayer& layer,
 	const int ax, const int ay, const int dir,
-	unsigned short& neiReg, unsigned char& neiArea, unsigned char& cornerNeiArea)
+	unsigned short& neiReg, unsigned char& neiArea)
 {
 	const int w = (int)layer.header->width;
 	const int ia = ax + ay*w;
@@ -209,8 +206,6 @@ static void getNeighbourRegAndArea(dtTileCacheLayer& layer,
 	const unsigned char con = layer.cons[ia] & 0xf;
 	const unsigned char portal = layer.cons[ia] >> 4;
 	const unsigned char mask = (unsigned char)(1<<dir);
-
-	cornerNeiArea = 0;
 
 	if ((con & mask) == 0)
 	{
@@ -234,27 +229,6 @@ static void getNeighbourRegAndArea(dtTileCacheLayer& layer,
 
 		neiReg = layer.regs[ib];
 		neiArea = layer.areas[ib];
-
-		// Get area type of the cell diagonal [c] to current cell [a]. Where [b] is direct neighbour in the direction of 'dir'.
-		//   ^
-		//  [b][c]
-		//  [a]
-		const int cdir = (dir + 1) & 0x3;
-		const unsigned char bcon = layer.cons[ib] & 0xf;
-		const unsigned char bportal = layer.cons[ib] >> 4;
-		const unsigned char bmask = (unsigned char)(1 << cdir);
-		if ((bcon & bmask) == 0)
-		{
-			cornerNeiArea = 0;
-		}
-		else
-		{
-			const int cx = bx + getDirOffsetX(cdir);
-			const int cy = by + getDirOffsetY(cdir);
-			const int ic = cx + cy * w;
-			cornerNeiArea = layer.areas[ic];
-		}
-
 	}
 }
 
@@ -273,40 +247,20 @@ static bool walkContour(dtTileCacheLayer& layer, int x, int y, int idx, unsigned
 
 	unsigned short neiReg = 0xffff;
 	unsigned char neiArea = 0;
-	unsigned char cornerNeiArea = 0;
-	unsigned short prevNeiArea = 0;
-	unsigned short prevCornerNeiArea = 0;
-	bool checkForPinning = false;
 
 	const int maxIter = w * h * 2;
 	int iter = 0;
 	while (iter < maxIter)
 	{
+		getNeighbourRegAndArea(layer, x, y, dir, neiReg, neiArea);
+
 		int nx = x;
 		int ny = y;
 		unsigned char ndir = dir;
 
-		getNeighbourRegAndArea(layer, x, y, dir, neiReg, neiArea, cornerNeiArea);
-
 		if (neiReg != layer.regs[x+y*w])
 		{
 			// Solid edge.
-			if (checkForPinning)
-			{
-				// Detect if there was 8-connected area type change during the turn.
-				// If it did, we need to make sure the vertex adde during turn does not get simplified.
-				// AB
-				// xC
-				// x = current location, A = prevNeiArea, B = prevCornerNeiArea, C = neiArea.
-				const bool shouldPinVertex = prevNeiArea == neiArea && prevCornerNeiArea != neiArea;
-				if (shouldPinVertex && cont.nverts > 0)
-				{
-					unsigned short* v = &cont.verts[(cont.nverts - 1) * 5];
-					v[4] |= 0x8000; // Use high bits in the area type to flag pinning of the vertex, will be removed in the contour simplification.
-				}
-			}
-
-			// Get corner vertex
 			int px = x;
 			int pz = y;
 			switch(dir)
@@ -322,7 +276,6 @@ static bool walkContour(dtTileCacheLayer& layer, int x, int y, int idx, unsigned
 
 			flags[idx] &= ~(1 << dir); // Remove visited edges
 			ndir = (dir+1) & 0x3;  // Rotate CW
-			checkForPinning = true;
 		}
 		else
 		{
@@ -330,14 +283,10 @@ static bool walkContour(dtTileCacheLayer& layer, int x, int y, int idx, unsigned
 			nx = x + getDirOffsetX(dir);
 			ny = y + getDirOffsetY(dir);
 			ndir = (dir+3) & 0x3;	// Rotate CCW
-			checkForPinning = false;
 		}
 
 		if (iter > 0 && idx == startIdx && dir == startDir)
 			break;
-
-		prevNeiArea = neiArea;
-		prevCornerNeiArea = cornerNeiArea;
 
 		x = nx;
 		y = ny;
@@ -394,11 +343,10 @@ static void simplifyContour(unsigned char area, dtTempContour& cont, const float
 	for (int i = 0; i < cont.nverts; ++i)
 	{
 		int j = (i+1) % cont.nverts;
-		// Check for start of a wall segment or pinned vertices.
-		const unsigned short ra = cont.verts[j*5+3];
-		const unsigned short rb = cont.verts[i*5+3];
-		const bool pinnedVertex = (cont.verts[i*5+4] & 0x8000) != 0;
-		if (ra != rb || pinnedVertex)
+		// Check for start of a wall segment.
+		unsigned short ra = cont.verts[j*5+3];
+		unsigned short rb = cont.verts[i*5+3];
+		if (ra != rb)
 			cont.poly[cont.npoly++] = (unsigned short)i;
 	}
 	if (cont.npoly < 2)
@@ -528,7 +476,7 @@ static void simplifyContour(unsigned char area, dtTempContour& cont, const float
 		dst[1] = src[1];
 		dst[2] = src[2];
 		dst[3] = src[3];
-		dst[4] = src[4] & 0xff; // Mask out pinned vertex flag.
+		dst[4] = src[4];
 		cont.nverts++;
 	}
 }
@@ -716,13 +664,7 @@ static void addUniqueRegion(unsigned short* arr, unsigned short v, int& n)
 dtStatus dtBuildTileCacheContours(dtTileCacheAlloc* alloc, dtTileCacheLayer& layer,
 	const int walkableClimb, const float maxError,
 	const float cs, const float ch,
-	dtTileCacheContourSet& lcset
-	//@UE4 BEGIN
-#if WITH_NAVMESH_CLUSTER_LINKS
-	, dtTileCacheClusterSet& clusters
-#endif //WITH_NAVMESH_CLUSTER_LINKS
-	//@UE4 END
-	)
+	dtTileCacheContourSet& lcset, dtTileCacheClusterSet& clusters)
 {
 	dtAssert(alloc);
 
@@ -940,8 +882,6 @@ dtStatus dtBuildTileCacheContours(dtTileCacheAlloc* alloc, dtTileCacheLayer& lay
 		}
 	}
 
-	//@UE4 BEGIN
-#if WITH_NAVMESH_CLUSTER_LINKS
 	// Build clusters
 	clusters.nregs = layer.regCount ? (layer.regCount + 1) : 0;
 	clusters.npolys = 0;
@@ -1033,8 +973,6 @@ dtStatus dtBuildTileCacheContours(dtTileCacheAlloc* alloc, dtTileCacheLayer& lay
 			memcpy(neiRegs, newNeiRegs, sizeof(unsigned short)* nnewNeiRegs);
 		}
 	}
-#endif // WITH_NAVMESH_CLUSTER_LINKS
-	//@UE4 END
 
 	return DT_SUCCESS;
 }	
@@ -2580,12 +2518,10 @@ dtStatus dtReplaceArea(dtTileCacheLayer& layer, const unsigned char areaId, cons
 	return DT_SUCCESS;
 }
 
-//@UE4 BEGIN
-#if WITH_NAVMESH_CLUSTER_LINKS
 dtStatus dtBuildTileCacheClusters(dtTileCacheAlloc* alloc, dtTileCacheClusterSet& lclusters, dtTileCachePolyMesh& lmesh)
 {
 	lclusters.npolys = lmesh.npolys;
-	// special handling of "no polys"
+// @UE4 BEGIN: special handling of "no polys"
 	if (lmesh.npolys == 0)
 	{
 		// treating this as success there's just nothing to do
@@ -2593,7 +2529,7 @@ dtStatus dtBuildTileCacheClusters(dtTileCacheAlloc* alloc, dtTileCacheClusterSet
 		// by dtAllocTileCacheClusterSet
 		return DT_SUCCESS;
 	}
-
+// @UE4 END
 	lclusters.polyMap = (unsigned short*)alloc->alloc(sizeof(unsigned short)*lclusters.npolys);
 	if (!lclusters.polyMap)
 		return DT_FAILURE | DT_OUT_OF_MEMORY;
@@ -2611,8 +2547,6 @@ dtStatus dtBuildTileCacheClusters(dtTileCacheAlloc* alloc, dtTileCacheClusterSet
 	
 	return DT_SUCCESS;
 }
-#endif // WITH_NAVMESH_CLUSTER_LINKS
-//@UE4 END
 
 dtStatus dtBuildTileCacheLayer(dtTileCacheCompressor* comp,
 							   dtTileCacheLayerHeader* header,

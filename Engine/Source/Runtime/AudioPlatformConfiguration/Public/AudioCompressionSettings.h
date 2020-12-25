@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 #include "CoreMinimal.h"
 #include "AudioCompressionSettings.generated.h"
@@ -30,19 +30,8 @@ struct FAudioStreamCachingSettings
 	// CacheSizeKB / 256.
 	int32 CacheSizeKB;
 
-	// Bool flag for keeping sounds flagged for streaming chunked in the style of the legacy streaming manager.
-	bool bForceLegacyStreamChunking;
-
-	int32 ZerothChunkSizeForLegacyStreamChunkingKB;
-
-	// will be ignored if < 0
-	int32 MaxChunkSizeOverrideKB;
-
 	FAudioStreamCachingSettings()
 		: CacheSizeKB(DefaultCacheSize)
-		, bForceLegacyStreamChunking(false)
-		, ZerothChunkSizeForLegacyStreamChunkingKB(256)
-		, MaxChunkSizeOverrideKB(INDEX_NONE)
 	{
 	}
 };
@@ -54,10 +43,10 @@ struct FAudioStreamCachingSettings
 /************************************************************************/
 struct FPlatformAudioCookOverrides
 {
-	// Increment this return value to force a recook on all Stream Caching assets.
+	// Increment this to force a recook on all Stream Caching assets.
 	// For testing, it's useful to set this to either a negative number or
 	// absurdly large number, to ensure you do not pollute the DDC.
-	static AUDIOPLATFORMCONFIGURATION_API int32 GetStreamCachingVersion();
+	static const int32 StreamCachingVersion = 5021;
 
 	bool bResampleForDevice;
 
@@ -70,6 +59,8 @@ struct FPlatformAudioCookOverrides
 	// If set, the cooker will keep only this level of quality
 	int32 SoundCueCookQualityIndex = INDEX_NONE;
 
+	int32 StreamChunkSizeKB;
+	
 	// When set to any platform > 0.0, this will automatically set any USoundWave beyond this value to be streamed from disk.
 	// If StreamCaching is set to true, this will be used 
 	float AutoStreamingThreshold;
@@ -77,18 +68,15 @@ struct FPlatformAudioCookOverrides
 	// Whether to use the experimental Load on Demand feature, which uses as little memory at runtime as possible.
 	bool bUseStreamCaching;
 
-	// Whether to put streamed audio chunks inline in the Pak file or not (only matters if bUseStreamCaching is true)
-	bool bInlineStreamedAudioChunks;
-
 	// If Load On Demand is enabled, these settings are used to determine chunks and cache sizes.
 	FAudioStreamCachingSettings StreamCachingSettings;
 
 	FPlatformAudioCookOverrides()
 		: bResampleForDevice(false)
 		, CompressionQualityModifier(1.0f)
+		, StreamChunkSizeKB(256)
 		, AutoStreamingThreshold(0.0f)
 		, bUseStreamCaching(false)
-		, bInlineStreamedAudioChunks(false)
 	{
 		PlatformSampleRates.Add(ESoundwaveSampleRateSettings::Max, 48000);
 		PlatformSampleRates.Add(ESoundwaveSampleRateSettings::High, 32000);
@@ -108,26 +96,20 @@ struct FPlatformAudioCookOverrides
 		int32 CompressionQualityHash = FMath::FloorToInt(InOverrides->CompressionQualityModifier * 100.0f);
 		OutSuffix.AppendInt(CompressionQualityHash);
 
+		OutSuffix.AppendInt(InOverrides->StreamChunkSizeKB);
+
 		int32 AutoStreamingThresholdHash = FMath::FloorToInt(InOverrides->AutoStreamingThreshold * 100.0f);
 		OutSuffix.AppendInt(AutoStreamingThresholdHash);
 
 		if (InOverrides->bUseStreamCaching)
 		{
 			OutSuffix.Append(TEXT("_StreamCache_Ver"));
-			OutSuffix.AppendInt(GetStreamCachingVersion());
+			OutSuffix.AppendInt(StreamCachingVersion);
 			OutSuffix.AppendChar('_');
 
 			// cache info:
 			OutSuffix.Append(TEXT("MEM_"));
 			OutSuffix.AppendInt(InOverrides->StreamCachingSettings.CacheSizeKB);
-			OutSuffix.Append(TEXT("MaxChnkSize_"));
-			OutSuffix.AppendInt(InOverrides->StreamCachingSettings.MaxChunkSizeOverrideKB);
-
-			if (InOverrides->StreamCachingSettings.bForceLegacyStreamChunking)
-			{
-				OutSuffix.Append(TEXT("_LegacyChunking_"));
-				OutSuffix.AppendInt(InOverrides->StreamCachingSettings.ZerothChunkSizeForLegacyStreamChunkingKB);
-			}
 		}
 		
 

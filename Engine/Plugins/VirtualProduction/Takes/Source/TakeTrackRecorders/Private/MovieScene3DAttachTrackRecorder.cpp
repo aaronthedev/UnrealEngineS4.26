@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TrackRecorders/MovieScene3DAttachTrackRecorder.h"
 #include "Tracks/MovieScene3DAttachTrack.h"
 #include "Sections/MovieScene3DAttachSection.h"
 #include "Modules/ModuleManager.h"
 #include "SequenceRecorderUtils.h"
-#include "MovieScene.h"
 
 bool FMovieScene3DAttachTrackRecorderFactory::CanRecordObject(UObject* InObjectToRecord) const
 {
@@ -22,12 +21,12 @@ void UMovieScene3DAttachTrackRecorder::RecordSampleImpl(const FQualifiedFrameTim
 	AActor* ActorToRecord = Cast<AActor>(ObjectToRecord.Get());
 	if (ActorToRecord)
 	{
-		FFrameRate TickResolution = MovieScene->GetTickResolution();
-		FFrameNumber CurrentFrame = CurrentTime.ConvertTo(TickResolution).FloorToFrame();
-
 		if (MovieSceneSection.IsValid())
 		{
-			MovieSceneSection->SetEndFrame(CurrentFrame);
+			FFrameRate TickResolution = MovieSceneSection->GetTypedOuter<UMovieScene>()->GetTickResolution();
+			FFrameNumber CurrentFrame = CurrentTime.ConvertTo(TickResolution).FloorToFrame();
+
+			MovieSceneSection->ExpandToFrame(CurrentFrame);
 		}
 
 		// get attachment and check if the actor we are attached to is being recorded
@@ -52,12 +51,10 @@ void UMovieScene3DAttachTrackRecorder::RecordSampleImpl(const FQualifiedFrameTim
 				MovieSceneSection->AttachSocketName = SocketName;
 				MovieSceneSection->AttachComponentName = ComponentName;
 
-				MovieSceneSection->TimecodeSource = MovieScene->TimecodeSource;
-				MovieSceneSection->SetRange(TRange<FFrameNumber>(CurrentFrame, CurrentFrame));
+				FFrameRate TickResolution = MovieSceneSection->GetTypedOuter<UMovieScene>()->GetTickResolution();
+				FFrameNumber CurrentFrame = CurrentTime.ConvertTo(TickResolution).FloorToFrame();
 
-				FMovieSceneSequenceID SequenceID;
-				SequenceID = OwningTakeRecorderSource->GetLevelSequenceID(AttachedToActor);
-				MovieSceneSection->SetConstraintId(Guid, SequenceID);
+				MovieSceneSection->TimecodeSource = FMovieSceneTimecodeSource(FTimecode::FromFrameNumber(CurrentFrame, TickResolution, false));
 			}
 
 			ActorAttachedTo = AttachedToActor;

@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef maya2hdf_AttributesWriter_h
-#define maya2hdf_AttributesWriter_h
+#ifndef _maya2hdf_AttributesWriter_h_
+#define _maya2hdf_AttributesWriter_h_
 
 #include "Foundation.h"
 #include "MayaUtility.h"
@@ -77,4 +77,4 @@ class AttributesWriter
 
 typedef Alembic::Util::shared_ptr<AttributesWriter> AttributesWriterPtr;
 
-#endif  // maya2hdf_AttributesWriter_h
+#endif  // _maya2hdf_AttributesWriter_h_

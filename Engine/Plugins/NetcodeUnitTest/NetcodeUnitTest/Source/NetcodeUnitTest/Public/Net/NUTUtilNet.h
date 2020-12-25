@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -336,25 +336,20 @@ public:
 private:
 	FRepLayoutCmd*		ParamRepCmd;
 
-	FProperty*			OriginalParam;
+	UProperty*			OriginalParam;
 };
 
 /**
  * Implements the actual hook for the above class
  */
-class FNetPropertyHook : public FProperty
+class UNetPropertyHook : public UProperty
 {
-	DECLARE_FIELD(FNetPropertyHook, FProperty, (CASTCLASS_FMulticastSparseDelegateProperty << 1))
+	DECLARE_CLASS_INTRINSIC(UNetPropertyHook, UProperty, 0, TEXT("/Script/NetcodeUnitTest"))
 
 private:
 	virtual bool NetSerializeItem(FArchive& Ar, UPackageMap* Map, void* Data, TArray<uint8>* MetaData /*=nullptr*/) const override;
 
 public:
-
-	FNetPropertyHook(FFieldVariant InOwner, const FName& InName, EObjectFlags InObjectFlags)
-		: FProperty(InOwner, InName, InObjectFlags)
-	{}
-
 	FOnNetSerializeItem SerializeHook;
 };
 

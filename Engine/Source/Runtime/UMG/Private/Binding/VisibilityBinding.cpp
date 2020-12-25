@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Binding/VisibilityBinding.h"
 #include "Components/SlateWrapperTypes.h"
@@ -9,20 +9,20 @@ UVisibilityBinding::UVisibilityBinding()
 {
 }
 
-bool UVisibilityBinding::IsSupportedSource(FProperty* Property) const
+bool UVisibilityBinding::IsSupportedSource(UProperty* Property) const
 {
 	return IsSupportedDestination(Property);
 }
 
-bool UVisibilityBinding::IsSupportedDestination(FProperty* Property) const
+bool UVisibilityBinding::IsSupportedDestination(UProperty* Property) const
 {
 	static const FName VisibilityEnum(TEXT("ESlateVisibility"));
 
-	if ( FEnumProperty* EnumProperty = CastField<FEnumProperty>(Property) )
+	if ( UEnumProperty* EnumProperty = Cast<UEnumProperty>(Property) )
 	{
 		return EnumProperty->GetEnum()->GetFName() == VisibilityEnum;
 	}
-	else if ( FByteProperty* ByteProperty = CastField<FByteProperty>(Property) )
+	else if ( UByteProperty* ByteProperty = Cast<UByteProperty>(Property) )
 	{
 		if ( ByteProperty->IsEnum() )
 		{

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UObject/StructScriptLoader.h"
 #include "HAL/ThreadSingleton.h"
@@ -6,7 +6,6 @@
 #include "UObject/LinkerLoad.h"
 #include "Serialization/ArchiveScriptReferenceCollector.h"
 #include "UObject/Package.h"
-#include "UObject/PropertyProxyArchive.h"
 
 /*******************************************************************************
  * FDeferredScriptTracker
@@ -265,30 +264,23 @@ bool FStructScriptLoader::LoadStructWithScript(UStruct* DestScriptContainer, FAr
 	DestScriptContainer->Script.AddUninitialized(BytecodeBufferSize);
 
 	int32 BytecodeIndex = 0;
+	while (BytecodeIndex < BytecodeBufferSize)
 	{
-		FPropertyProxyArchive PropertyAr(Ar, BytecodeIndex, DestScriptContainer);
-		while (BytecodeIndex < BytecodeBufferSize)
-		{
-			DestScriptContainer->SerializeExpr(BytecodeIndex, PropertyAr);
-		}
-
-		if (PropertyAr.UnresolvedProperties.Num())
-		{
-			DestScriptContainer->SetUnresolvedScriptProperties(PropertyAr.UnresolvedProperties);
-		}
-		else
-		{
-			// Make sure there's no stale properties in the array
-			DestScriptContainer->DeleteUnresolvedScriptProperties();
-		}
+		DestScriptContainer->SerializeExpr(BytecodeIndex, Ar);
 	}
 	ensure(ScriptEndOffset == Ar.Tell());
 	checkf(BytecodeIndex == BytecodeBufferSize, TEXT("'%s' script expression-count mismatch; Expected: %i, Got: %i"), *DestScriptContainer->GetName(), BytecodeBufferSize, BytecodeIndex);
 
 	if (!GUObjectArray.IsDisregardForGC(DestScriptContainer))
 	{
-		DestScriptContainer->ScriptAndPropertyObjectReferences.Empty();
-		DestScriptContainer->CollectBytecodeReferencedObjects(DestScriptContainer->ScriptAndPropertyObjectReferences);
+		DestScriptContainer->ScriptObjectReferences.Empty();
+		FArchiveScriptReferenceCollector ObjRefCollector(DestScriptContainer->ScriptObjectReferences);
+
+		BytecodeIndex = 0;
+		while (BytecodeIndex < BytecodeBufferSize)
+		{
+			DestScriptContainer->SerializeExpr(BytecodeIndex, ObjRefCollector);
+		}
 	}
 
 	// success! (we filled the target with serialized script code)
@@ -305,5 +297,5 @@ int32 FStructScriptLoader::ResolveDeferredScriptLoads(FLinkerLoad* Linker)
 void FStructScriptLoader::ClearScriptCode(UStruct* ScriptContainer)
 {
 	ScriptContainer->Script.Empty(BytecodeBufferSize);
-	ScriptContainer->ScriptAndPropertyObjectReferences.Empty();
+	ScriptContainer->ScriptObjectReferences.Empty();
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieSceneCapture.h"
 #include "Dom/JsonValue.h"
@@ -24,7 +24,6 @@
 #include "AssetRegistryModule.h"
 #include "UObject/UObjectIterator.h"
 #include "Protocols/AudioCaptureProtocol.h"
-#include "Misc/DateTime.h"
 
 #define LOCTEXT_NAMESPACE "MovieSceneCapture"
 
@@ -424,13 +423,6 @@ void UMovieSceneCapture::Initialize(TSharedPtr<FSceneViewport> InSceneViewport, 
 	FormatMappings.Add(TEXT("width"), FString::Printf(TEXT("%d"), CachedMetrics.Width));
 	FormatMappings.Add(TEXT("height"), FString::Printf(TEXT("%d"), CachedMetrics.Height));
 	FormatMappings.Add(TEXT("world"), InSceneViewport->GetClient()->GetWorld()->GetName());
-
-	FDateTime CurrentTime = FDateTime::Now();
-	FormatMappings.Add(TEXT("year"), CurrentTime.ToString(TEXT("%Y")));
-	FormatMappings.Add(TEXT("month"), CurrentTime.ToString(TEXT("%m")));
-	FormatMappings.Add(TEXT("day"), CurrentTime.ToString(TEXT("%d")));
-	FormatMappings.Add(TEXT("date"), CurrentTime.ToString(TEXT("%Y.%m.%d")));
-	FormatMappings.Add(TEXT("time"), CurrentTime.ToString(TEXT("%H.%M.%S")));
 
 	if( !CaptureStrategy.IsValid() )
 	{

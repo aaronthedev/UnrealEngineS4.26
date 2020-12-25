@@ -1,7 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Sections/MovieSceneCameraShakeSection.h"
 #include "Tracks/MovieSceneCameraShakeTrack.h"
+#include "Evaluation/MovieSceneCameraAnimTemplate.h"
 #include "UObject/SequencerObjectVersion.h"
 
 
@@ -10,7 +11,7 @@ UMovieSceneCameraShakeSection::UMovieSceneCameraShakeSection(const FObjectInitia
 {
 	ShakeClass_DEPRECATED = nullptr;
 	PlayScale_DEPRECATED = 1.f;
-	PlaySpace_DEPRECATED = ECameraShakePlaySpace::CameraLocal;
+	PlaySpace_DEPRECATED = ECameraAnimPlaySpace::CameraLocal;
 	UserDefinedPlaySpace_DEPRECATED = FRotator::ZeroRotator;
 
 	EvalOptions.EnableAndSetCompletionMode
@@ -31,7 +32,7 @@ void UMovieSceneCameraShakeSection::PostLoad()
 		ShakeData.PlayScale = PlayScale_DEPRECATED;
 	}
 
-	if (PlaySpace_DEPRECATED != ECameraShakePlaySpace::CameraLocal)
+	if (PlaySpace_DEPRECATED != ECameraAnimPlaySpace::CameraLocal)
 	{
 		ShakeData.PlaySpace = PlaySpace_DEPRECATED;
 	}
@@ -42,4 +43,13 @@ void UMovieSceneCameraShakeSection::PostLoad()
 	}
 
 	Super::PostLoad();
+}
+
+FMovieSceneEvalTemplatePtr UMovieSceneCameraShakeSection::GenerateTemplate() const
+{
+	if (*ShakeData.ShakeClass)
+	{
+		return FMovieSceneCameraShakeSectionTemplate(*this);
+	}
+	return FMovieSceneEvalTemplatePtr();
 }

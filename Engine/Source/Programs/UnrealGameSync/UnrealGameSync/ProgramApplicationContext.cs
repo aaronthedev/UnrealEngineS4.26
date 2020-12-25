@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -27,7 +27,6 @@ namespace UnrealGameSync
 		string UpdateSpawn;
 		bool bUnstable;
 		bool bIsClosing;
-		string Uri;
 
 		TimestampLogWriter Log;
 		UserSettings Settings;
@@ -48,7 +47,7 @@ namespace UnrealGameSync
 		ModalTaskWindow DetectStartupProjectSettingsWindow;
 		MainWindow MainWindowInstance;
 
-		public ProgramApplicationContext(PerforceConnection DefaultConnection, UpdateMonitor UpdateMonitor, string ApiUrl, string DataFolder, EventWaitHandle ActivateEvent, bool bRestoreState, string UpdateSpawn, string ProjectFileName, bool bUnstable, TimestampLogWriter Log, string Uri)
+		public ProgramApplicationContext(PerforceConnection DefaultConnection, UpdateMonitor UpdateMonitor, string ApiUrl, string DataFolder, EventWaitHandle ActivateEvent, bool bRestoreState, string UpdateSpawn, string ProjectFileName, bool bUnstable, TimestampLogWriter Log)
 		{
 			this.DefaultConnection = DefaultConnection;
 			this.UpdateMonitor = UpdateMonitor;
@@ -59,7 +58,6 @@ namespace UnrealGameSync
 			this.UpdateSpawn = UpdateSpawn;
 			this.bUnstable = bUnstable;
 			this.Log = Log;
-			this.Uri = Uri;
 
 			// Create the directories
 			Directory.CreateDirectory(DataFolder);
@@ -76,7 +74,7 @@ namespace UnrealGameSync
 			MainThreadSynchronizationContext = WindowsFormsSynchronizationContext.Current;
 
 			// Read the user's settings
-			Settings = new UserSettings(Path.Combine(DataFolder, "UnrealGameSync.ini"), Log);
+			Settings = new UserSettings(Path.Combine(DataFolder, "UnrealGameSync.ini"));
 			if(!String.IsNullOrEmpty(ProjectFileName))
 			{
 				string FullProjectFileName = Path.GetFullPath(ProjectFileName);
@@ -92,8 +90,7 @@ namespace UnrealGameSync
 				// Clear out the server settings for anything using the default server
 				if(Settings.Version < UserSettingsVersion.DefaultServerSettings)
 				{
-					Log.WriteLine("Clearing project settings for default server");
-					for (int Idx = 0; Idx < Settings.OpenProjects.Count; Idx++)
+					for(int Idx = 0; Idx < Settings.OpenProjects.Count; Idx++)
 					{
 						Settings.OpenProjects[Idx] = UpgradeSelectedProjectSettings(Settings.OpenProjects[Idx]);
 					}
@@ -176,8 +173,6 @@ namespace UnrealGameSync
 			List<DetectProjectSettingsTask> Tasks = new List<DetectProjectSettingsTask>();
 			foreach(UserSelectedProjectSettings OpenProject in Settings.OpenProjects)
 			{
-				Log.WriteLine("Opening existing project {0}", OpenProject);
-
 				BufferedTextWriter StartupLog = new BufferedTextWriter();
 				StartupLog.WriteLine("Detecting settings for {0}", OpenProject);
 				StartupLogs.Add(StartupLog);
@@ -239,7 +234,7 @@ namespace UnrealGameSync
 			DetectProjectSettingsResult[] StartupProjects = DetectStartupProjectSettingsTask.Results.Where(x => x != null).ToArray();
 
 			// Create the main window
-			MainWindowInstance = new MainWindow(UpdateMonitor, ApiUrl, DataFolder, CacheFolder, bRestoreState, UpdateSpawn ?? Assembly.GetExecutingAssembly().Location, bUnstable, StartupProjects, DefaultConnection, Log, Settings, Uri);
+			MainWindowInstance = new MainWindow(UpdateMonitor, ApiUrl, DataFolder, CacheFolder, bRestoreState, UpdateSpawn ?? Assembly.GetExecutingAssembly().Location, bUnstable, StartupProjects, DefaultConnection, Log, Settings);
 			if(bVisible)
 			{
 				MainWindowInstance.Show();
@@ -262,7 +257,7 @@ namespace UnrealGameSync
 
 		private void OnActivationListenerCallback()
 		{
-			if(MainWindowInstance != null && !MainWindowInstance.IsDisposed)
+			if(MainWindowInstance != null)
 			{
 				MainWindowInstance.ShowAndActivate();
 			}
@@ -281,7 +276,6 @@ namespace UnrealGameSync
 				{
 					bIsClosing = true;
 					MainWindowInstance.ForceClose();
-					MainWindowInstance = null;
 				}
 			}
 		}
@@ -294,6 +288,24 @@ namespace UnrealGameSync
 		protected override void Dispose(bool bDisposing)
 		{
 			base.Dispose(bDisposing);
+
+			if(Components != null)
+			{
+				Components.Dispose();
+				Components = null;
+			}
+
+			if(NotifyIcon != null)
+			{
+				NotifyIcon.Dispose();
+				NotifyIcon = null;
+			}
+
+			if(Log != null)
+			{
+				Log.Dispose();
+				Log = null;
+			}
 
 			if(UpdateMonitor != null)
 			{
@@ -308,24 +320,6 @@ namespace UnrealGameSync
 				ActivationListener.Stop();
 				ActivationListener.Dispose();
 				ActivationListener = null;
-			}
-
-			if (Components != null)
-			{
-				Components.Dispose();
-				Components = null;
-			}
-
-			if (NotifyIcon != null)
-			{
-				NotifyIcon.Dispose();
-				NotifyIcon = null;
-			}
-
-			if (Log != null)
-			{
-				Log.Dispose();
-				Log = null;
 			}
 
 			if(MainWindowInstance != null)

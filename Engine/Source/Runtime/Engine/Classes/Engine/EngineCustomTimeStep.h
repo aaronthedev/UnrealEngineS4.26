@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -44,7 +44,7 @@ public:
 	virtual void Shutdown(class UEngine* InEngine) PURE_VIRTUAL(UEngineCustomTimeStep::Shutdown, );
 
 	/**
-	 * Update FApp::CurrentTime/FApp::DeltaTime and optionally wait until the end of the frame.
+	 * Update FApp::CurrentTime/FApp::DeltaTime and optionnaly wait until the end of the frame.
 	 * @return	true if the Engine's TimeStep should also be performed; false otherwise.
 	 */
 	virtual bool UpdateTimeStep(class UEngine* InEngine) PURE_VIRTUAL(UEngineCustomTimeStep::UpdateTimeStep, return true;);

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 LandscapeEditInterface.cpp: Landscape editing interface
@@ -546,19 +546,16 @@ void FLandscapeEditDataInterface::RecalculateNormals()
 				{
 					for( int32 SubX=0;SubX<=SubsectionSizeQuads;SubX++ )
 					{
-						// Read from local VertexNormals cache which doesn't have duplicated values.
-						const int32 ReadX = (SubsectionSizeQuads) * SubIndexX + SubX;
-						const int32 ReadY = (SubsectionSizeQuads) * SubIndexY + SubY;
-						const int32 ReadIndex = (ReadX + 1) + (ReadY + 1) * Stride;
-						const FVector Normal = VertexNormals[ReadIndex].GetSafeNormal();
+						int32 X = (SubsectionSizeQuads+1) * SubIndexX + SubX;
+						int32 Y = (SubsectionSizeQuads+1) * SubIndexY + SubY;
+						int32 DataIndex = (X+1) + (Y+1) * Stride;
 
-						// Write to (shared) Heightmap texture which has duplicated values on subsection and section borders.
-						const int32 WriteX = HeightmapOffsetX + (SubsectionSizeQuads + 1) * SubIndexX + SubX;
-						const int32 WriteY = HeightmapOffsetY + (SubsectionSizeQuads + 1) * SubIndexY + SubY;
-						const int32 WriteIndex = WriteX + WriteY * SizeU;
-						FColor& TexData = HeightmapTextureData[WriteIndex];
+						int32 TexX = HeightmapOffsetX + X;
+						int32 TexY = HeightmapOffsetY + Y;
+						FColor& TexData = HeightmapTextureData[ TexX + TexY * SizeU ];
 
-						// Update the channels containing the normals
+						// Update the texture
+						FVector Normal = VertexNormals[DataIndex].GetSafeNormal();
 						TexData.B = FMath::RoundToInt( 127.5f * (Normal.X + 1.0f) );
 						TexData.A = FMath::RoundToInt( 127.5f * (Normal.Y + 1.0f) );
 					}
@@ -1742,12 +1739,7 @@ void ULandscapeComponent::DeleteLayer(ULandscapeLayerInfoObject* LayerInfo, FLan
 		ComponentWeightmapTextures[DeleteLayerWeightmapTextureIndex]->Modify(LandscapeEdit.GetShouldDirtyPackage());
 		ComponentWeightmapTextures[DeleteLayerWeightmapTextureIndex]->ClearFlags(RF_Standalone);
 
-		// possible that usages have not been built yet
-		if (ComponentWeightmapTexturesUsage.IsValidIndex(DeleteLayerWeightmapTextureIndex))
-		{
-			ComponentWeightmapTexturesUsage.RemoveAt(DeleteLayerWeightmapTextureIndex);
-		}
-
+		ComponentWeightmapTexturesUsage.RemoveAt(DeleteLayerWeightmapTextureIndex);
 		ComponentWeightmapTextures.RemoveAt(DeleteLayerWeightmapTextureIndex);
 
 		// Adjust WeightmapTextureIndex index for other layers
@@ -1918,11 +1910,11 @@ void ULandscapeComponent::FillLayer(ULandscapeLayerInfoObject* LayerInfo, FLands
 				Usage->ChannelUsage[Allocation.WeightmapTextureChannel] = nullptr;
 			}
 
-			Allocation.Free();
+			Allocation.WeightmapTextureIndex = 255;
 		}
 
 		ComponentWeightmapLayerAllocations.RemoveAll(
-			[](const FWeightmapLayerAllocationInfo& Allocation) { return !Allocation.IsAllocated(); });
+			[](const FWeightmapLayerAllocationInfo& Allocation) { return Allocation.WeightmapTextureIndex == 255; });
 
 		// remove any textures we're no longer using
 		for (int32 TextureIdx = 0; TextureIdx < ComponentWeightmapTextures.Num(); ++TextureIdx)
@@ -1972,11 +1964,11 @@ void ULandscapeComponent::FillLayer(ULandscapeLayerInfoObject* LayerInfo, FLands
 	// Update the shaders for this component
 	if (!Component->GetLandscapeProxy()->HasLayersContent())
 	{
-		Component->InvalidateLightingCache();
 		Component->UpdateMaterialInstances();
 		Component->EditToolRenderData.UpdateDebugColorMaterial(Component);
 		Component->UpdateEditToolRenderData();
 	}
+	Component->InvalidateLightingCache();
 	Component->RequestWeightmapUpdate();
 
 	// Update dominant layer info stored in collision component
@@ -2789,11 +2781,6 @@ void FLandscapeEditDataInterface::SetAlphaData(ULandscapeLayerInfoObject* const 
 
 			// if NULL, there is no component at this location
 			if (Component == NULL)
-			{
-				continue;
-			}
-
-			if (LayerInfo == ALandscape::VisibilityLayer && !Component->IsLandscapeHoleMaterialValid())
 			{
 				continue;
 			}
@@ -4641,7 +4628,7 @@ void FLandscapeEditDataInterface::SetDirtyData(int32 X1, int32 Y1, int32 X2, int
 		check(Component);
 		return Component->EditToolRenderData.DirtyTexture;
 	};
-	SetEditToolTextureData(X1, Y1, X2, Y2, Data, Stride, ReturnComponentTexture, TEXTUREGROUP_8BitData);
+	SetEditToolTextureData(X1, Y1, X2, Y2, Data, Stride, ReturnComponentTexture);
 }
 
 template<typename TStoreData>
@@ -4727,7 +4714,7 @@ void FLandscapeEditDataInterface::GetEditToolTextureData(const int32 X1, const i
 	}
 }
 
-void FLandscapeEditDataInterface::SetEditToolTextureData(int32 X1, int32 Y1, int32 X2, int32 Y2, const uint8* Data, int32 Stride, TFunctionRef<UTexture2D*&(ULandscapeComponent*)> GetComponentTexture, TextureGroup InTextureGroup)
+void FLandscapeEditDataInterface::SetEditToolTextureData(int32 X1, int32 Y1, int32 X2, int32 Y2, const uint8* Data, int32 Stride, TFunctionRef<UTexture2D*&(ULandscapeComponent*)> GetComponentTexture)
 {
 	if( Stride==0 )
 	{
@@ -4754,12 +4741,26 @@ void FLandscapeEditDataInterface::SetEditToolTextureData(int32 X1, int32 Y1, int
 			// if NULL, it was painted away
 			if (EditToolTexture == NULL)
 			{
+				//FlushRenderingCommands();
 				// Construct Texture...
 				int32 WeightmapSize = (Component->SubsectionSizeQuads+1) * Component->NumSubsections;
-				EditToolTexture = Component->GetLandscapeProxy()->CreateLandscapeToolTexture(WeightmapSize, WeightmapSize, InTextureGroup, TSF_G8);
+				EditToolTexture = Component->GetLandscapeProxy()->CreateLandscapeTexture(WeightmapSize, WeightmapSize, TEXTUREGROUP_Terrain_Weightmap, TSF_G8);
+				// Alloc dummy mips
+				ULandscapeComponent::CreateEmptyTextureMips(EditToolTexture, true);
 				EditToolTexture->PostEditChange();
 
+				//FlushRenderingCommands();
 				ZeroTexture(EditToolTexture);
+				FLandscapeTextureDataInfo* TexDataInfo = GetTextureDataInfo(EditToolTexture);
+				int32 NumMips = EditToolTexture->Source.GetNumMips();
+				TArray<uint8*> TextureMipData;
+				TextureMipData.AddUninitialized(NumMips);
+				for( int32 MipIdx=0;MipIdx<NumMips;MipIdx++ )
+				{
+					TextureMipData[MipIdx] = (uint8*)TexDataInfo->GetMipData(MipIdx);
+				}
+				ULandscapeComponent::UpdateDataMips(ComponentNumSubsections, SubsectionSizeQuads, EditToolTexture, TextureMipData, 0, 0, MAX_int32, MAX_int32, TexDataInfo);
+
 				Component->UpdateEditToolRenderData();
 			}
 
@@ -4824,6 +4825,15 @@ void FLandscapeEditDataInterface::SetEditToolTextureData(int32 X1, int32 Y1, int
 					TexDataInfo->AddMipUpdateRegion(0,TexX1,TexY1,TexX2,TexY2);
 				}
 			}
+			// Update mipmaps
+			int32 NumMips = EditToolTexture->Source.GetNumMips();
+			TArray<uint8*> TextureMipData;
+			TextureMipData.AddUninitialized(NumMips);
+			for( int32 MipIdx=0;MipIdx<NumMips;MipIdx++ )
+			{
+				TextureMipData[MipIdx] = (uint8*)TexDataInfo->GetMipData(MipIdx);
+			}
+			ULandscapeComponent::UpdateDataMips(ComponentNumSubsections, SubsectionSizeQuads, EditToolTexture, TextureMipData, ComponentX1, ComponentY1, ComponentX2, ComponentY2, TexDataInfo);
 		}
 	}
 }
@@ -5685,33 +5695,16 @@ bool FLandscapeTextureDataInfo::UpdateTextureData()
 	{
 		if (MipInfo[i].MipData && MipInfo[i].MipUpdateRegions.Num() > 0)
 		{
+			bNeedToWaitForUpdate = true;
 			if (bCompressed)
 			{
-				bNeedToWaitForUpdate = true;
 				// Cannot update regions on compressed textures so we will update the whole texture below.
 				break;
 			}
-
-			const uint32 SrcSizeX = (Texture->Source.GetSizeX()) >> i;
-			const uint32 SrcSizeY = (Texture->Source.GetSizeY()) >> i;
-			const uint32 SrcPitch = (SrcSizeX * DataSize);
-			const uint32 BufferSize = SrcSizeX * SrcSizeY * DataSize;
-
-			// Copy Mip update data so we can avoid waiting for Render thread in calling method
-			FMipInfo* CopyMipInfo = new FMipInfo();
-			CopyMipInfo->MipUpdateRegions = MipInfo[i].MipUpdateRegions;
-			CopyMipInfo->MipData = FMemory::Malloc(BufferSize);
-			FMemory::Memcpy(CopyMipInfo->MipData, MipInfo[i].MipData, BufferSize);
-
-			Texture->UpdateTextureRegions(i, CopyMipInfo->MipUpdateRegions.Num(), &CopyMipInfo->MipUpdateRegions[0], SrcPitch, DataSize, (uint8*)CopyMipInfo->MipData, 
-				[CopyMipInfo](uint8* SrcData, const FUpdateTextureRegion2D*) 
-				{ 
-					FMemory::Free(CopyMipInfo->MipData);
-					delete CopyMipInfo; 
-				});
+			Texture->UpdateTextureRegions(i, MipInfo[i].MipUpdateRegions.Num(), &MipInfo[i].MipUpdateRegions[0], ((Texture->Source.GetSizeX()) >> i)*DataSize, DataSize, (uint8*)MipInfo[i].MipData);
 		}
 	}
-	if (bNeedToWaitForUpdate)
+	if (bCompressed && bNeedToWaitForUpdate)
 	{
 		Texture->UpdateResource();
 	}

@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MRUList.h"
 #include "HAL/FileManager.h"
 #include "Misc/PackageName.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Logging/MessageLog.h"
-#include "AssetRegistryModule.h"
 
 FMRUList::FMRUList(const FString& InINISection, const int32 InitMaxItems)
 	:	MaxItems( InitMaxItems ),
@@ -166,26 +165,10 @@ void FMRUList::InternalWriteINI( const TArray<FString>& InItems, const FString& 
 }
 
 
-bool FMRUList::VerifyMRUFile(int32 InItem, FString& OutPackageName)
+bool FMRUList::VerifyMRUFile(int32 InItem)
 {
 	check( InItem > -1 && InItem < GetMaxItems() );
-
-	// Handle redirector
-	const FString OriginalPackageName = Items[InItem];
-	const FName OriginalObjectPath = FName(*(OriginalPackageName + TEXT('.') + FPackageName::GetShortName(OriginalPackageName)));
-	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-	const FName RedirectedObjectPath = AssetRegistryModule.Get().GetRedirectedObjectPath(OriginalObjectPath);
-
-	FString PackageName;
-	FString RedirectedPackageName;
-	if (RedirectedObjectPath != OriginalObjectPath && FPackageName::TryConvertFilenameToLongPackageName(RedirectedObjectPath.ToString(), RedirectedPackageName))
-	{
-		PackageName = RedirectedPackageName;
-	}
-	else
-	{
-		PackageName = OriginalPackageName;
-	}
+	const FString PackageName = Items[InItem];
 
 	FString Filename;
 	bool bSuccess = FPackageName::TryConvertLongPackageNameToFilename(PackageName, Filename, FPackageName::GetMapPackageExtension());
@@ -203,21 +186,10 @@ bool FMRUList::VerifyMRUFile(int32 InItem, FString& OutPackageName)
 
 		return false;
 	}
-	else if (!RedirectedPackageName.IsEmpty())
-	{
-		// Remove old path, add new path
-		RemoveMRUItem( InItem );
-		// Note: WriteToINI is called by AddMRUItem
-		AddMRUItem(PackageName);
-	}
-	else
-	{
-		// Otherwise, move the file to the top of the list
-		MoveToTop( InItem );
-		WriteToINI();
-	}
 
-	OutPackageName = PackageName;
+	// Otherwise, move the file to the top of the list
+	MoveToTop( InItem );
+	WriteToINI();
 
 	return true;
 }

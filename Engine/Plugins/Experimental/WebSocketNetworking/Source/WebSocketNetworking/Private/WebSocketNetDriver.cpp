@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 Unreal WebSocket network driver.
@@ -71,9 +71,9 @@ bool UWebSocketNetDriver::InitConnect(FNetworkNotify* InNotify, const FURL& Conn
 	UWebSocketConnection* Connection = (UWebSocketConnection*)ServerConnection;
 	Connection->SetWebSocket(WebSocket);
 
-	FWebSocketPacketReceivedCallBack CallBack;
+	FWebSocketPacketRecievedCallBack CallBack;
 	CallBack.BindUObject(Connection, &UWebSocketConnection::ReceivedRawPacket);
-	WebSocket->SetReceiveCallBack(CallBack);
+	WebSocket->SetRecieveCallBack(CallBack);
 
 	FWebSocketInfoCallBack  ConnectedCallBack;
 	ConnectedCallBack.BindUObject(this, &UWebSocketNetDriver::OnWebSocketServerConnected);
@@ -208,7 +208,7 @@ UWebSocketConnection* UWebSocketNetDriver::GetServerConnection()
 	return (UWebSocketConnection*)ServerConnection;
 }
 
-void UWebSocketNetDriver::OnWebSocketClientConnected(INetworkingWebSocket* ClientWebSocket)
+void UWebSocketNetDriver::OnWebSocketClientConnected(FWebSocket* ClientWebSocket)
 {
 	// Determine if allowing for client/server connections
 	const bool bAcceptingConnection = Notify->NotifyAcceptingConnection() == EAcceptConnection::Accept;
@@ -230,7 +230,7 @@ void UWebSocketNetDriver::OnWebSocketClientConnected(INetworkingWebSocket* Clien
 
 		AddClientConnection(Connection);
 
-		FWebSocketPacketReceivedCallBack CallBack;
+		FWebSocketPacketRecievedCallBack CallBack;
 		CallBack.BindUObject(Connection, &UWebSocketConnection::ReceivedRawPacket);
 		if (ConnectionlessHandler.IsValid() && StatelessConnectComponent.IsValid())
 		{
@@ -248,7 +248,7 @@ void UWebSocketNetDriver::OnWebSocketClientConnected(INetworkingWebSocket* Clien
 					TEXT("Invalid ConnectionlessHandler (%i) or StatelessConnectComponent (%i); can't accept connections."),
 					(int32)(ConnectionlessHandler.IsValid()), (int32)(StatelessConnectComponent.IsValid()));
 		}
-		ClientWebSocket->SetReceiveCallBack(CallBack);
+		ClientWebSocket->SetRecieveCallBack(CallBack);
 
 		UE_LOG(LogWebSocketNetworking, Log, TEXT(" WebSocket server running on %s Accepted Connection from %s "), *WebSocketServer->Info(),*ClientWebSocket->RemoteEndPoint(true));
 	}

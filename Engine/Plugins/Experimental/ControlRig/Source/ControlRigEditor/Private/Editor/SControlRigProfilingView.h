@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -34,7 +34,7 @@ private:
 	TWeakPtr<FStatsTreeElement> WeakTreeElement;
 
 	FText GetLabelText() const;
-	FText GetToolTipText() const;
+	FText GetTooltipText() const;
 	FSlateColor GetTextColor() const;
 	FText GetTotalTimeText(bool bInclusive) const;
 	FText GetAverageTimeText(bool bInclusive) const;

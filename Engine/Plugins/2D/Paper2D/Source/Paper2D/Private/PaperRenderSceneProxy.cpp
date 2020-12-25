@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PaperRenderSceneProxy.h"
 #include "Containers/ResourceArray.h"
@@ -101,44 +101,37 @@ public:
 		return Parent->GetMaterialWithFallback(InFeatureLevel, OutFallbackMaterialRenderProxy);
 	}
 
-	virtual FMaterial* GetMaterialNoFallback(ERHIFeatureLevel::Type InFeatureLevel) const override
-	{
-		return Parent->GetMaterialNoFallback(InFeatureLevel);
-	}
-
-	virtual bool GetVectorValue(const FHashedMaterialParameterInfo& ParameterInfo, FLinearColor* OutValue, const FMaterialRenderContext& Context) const override
+	virtual bool GetVectorValue(const FMaterialParameterInfo& ParameterInfo, FLinearColor* OutValue, const FMaterialRenderContext& Context) const override
 	{
 		return Parent->GetVectorValue(ParameterInfo, OutValue, Context);
 	}
 
-	virtual bool GetScalarValue(const FHashedMaterialParameterInfo& ParameterInfo, float* OutValue, const FMaterialRenderContext& Context) const override
+	virtual bool GetScalarValue(const FMaterialParameterInfo& ParameterInfo, float* OutValue, const FMaterialRenderContext& Context) const override
 	{
 		return Parent->GetScalarValue(ParameterInfo, OutValue, Context);
 	}
 
-	virtual bool GetTextureValue(const FHashedMaterialParameterInfo& ParameterInfo, const UTexture** OutValue, const FMaterialRenderContext& Context) const override
+	virtual bool GetTextureValue(const FMaterialParameterInfo& ParameterInfo, const UTexture** OutValue, const FMaterialRenderContext& Context) const override
 	{
 		if (ParameterInfo.Name == TextureParameterName)
 		{
 			*OutValue = ApplyEditorOverrides(BaseTexture);
 			return true;
 		}
-
-		for (int32 AdditionalSlotIndex = 0; AdditionalSlotIndex < AdditionalTextures.Num(); ++AdditionalSlotIndex)
+		else if (ParameterInfo.Name.GetComparisonIndex() == AdditionalTextureParameterRootName.GetComparisonIndex())
 		{
-			FName AdditionalSlotName = AdditionalTextureParameterRootName;
-			AdditionalSlotName.SetNumber(AdditionalSlotIndex + 1);
-			if (ParameterInfo.Name == AdditionalSlotName)
+			const int32 AdditionalSlotIndex = ParameterInfo.Name.GetNumber() - 1;
+			if (AdditionalTextures.IsValidIndex(AdditionalSlotIndex))
 			{
 				*OutValue = ApplyEditorOverrides(AdditionalTextures[AdditionalSlotIndex]);
 				return true;
 			}
 		}
-
+		
 		return Parent->GetTextureValue(ParameterInfo, OutValue, Context);
 	}
 
-	virtual bool GetTextureValue(const FHashedMaterialParameterInfo& ParameterInfo, const URuntimeVirtualTexture** OutValue, const FMaterialRenderContext& Context) const override
+	virtual bool GetTextureValue(const FMaterialParameterInfo& ParameterInfo, const URuntimeVirtualTexture** OutValue, const FMaterialRenderContext& Context) const override
 	{
 		return Parent->GetTextureValue(ParameterInfo, OutValue, Context);
 	}
@@ -183,8 +176,8 @@ FPaperRenderSceneProxy::FPaperRenderSceneProxy(const UPrimitiveComponent* InComp
 {
 	SetWireframeColor(FLinearColor::White);
 
-	bDrawTwoSided = CVarDrawSpritesAsTwoSided.GetValueOnAnyThread() != 0;
-	bSpritesUseVertexBufferPath = CVarDrawSpritesUsingPrebuiltVertexBuffers.GetValueOnAnyThread() != 0;
+	bDrawTwoSided = CVarDrawSpritesAsTwoSided.GetValueOnGameThread() != 0;
+	bSpritesUseVertexBufferPath = CVarDrawSpritesUsingPrebuiltVertexBuffers.GetValueOnGameThread() != 0;
 }
 
 SIZE_T FPaperRenderSceneProxy::GetTypeHash() const
@@ -544,10 +537,10 @@ FPrimitiveViewRelevance FPaperRenderSceneProxy::GetViewRelevance(const FSceneVie
 #endif
 		)
 	{
-		Result.bOpaque = true;
+		Result.bOpaqueRelevance = true;
 	}
 
-	Result.bVelocityRelevance = IsMovable() && Result.bOpaque && Result.bRenderInMainPass;
+	Result.bVelocityRelevance = IsMovable() && Result.bOpaqueRelevance && Result.bRenderInMainPass;
 
 	return Result;
 }

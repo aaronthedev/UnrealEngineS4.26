@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RailSdkWrapper.h"
 #include "OnlineSubsystemTencentPCH.h"
@@ -18,9 +18,9 @@
 #if WITH_TENCENT_RAIL_SDK
 
 #if PLATFORM_64BITS
-#define RAIL_SDK_MODULE_NAME	TEXT("rail_api64.dll")
+#define RAIL_SDK_MODULE_NAME	TEXT("rail_sdk_wegame_platform64.dll")
 #else
-#define RAIL_SDK_MODULE_NAME	TEXT("rail_api.dll")
+#define RAIL_SDK_MODULE_NAME	TEXT("rail_sdk_wegame_platform.dll")
 #endif
 
 RailSdkWrapper::RailSdkWrapper()

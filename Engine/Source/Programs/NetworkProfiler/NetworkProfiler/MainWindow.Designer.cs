@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
  namespace NetworkProfiler
 {
@@ -31,8 +31,8 @@
 		private void InitializeComponent()
 		{
             this.components = new System.ComponentModel.Container();
-            System.Windows.Forms.DataVisualization.Charting.ChartArea chartArea2 = new System.Windows.Forms.DataVisualization.Charting.ChartArea();
-            System.Windows.Forms.DataVisualization.Charting.Legend legend2 = new System.Windows.Forms.DataVisualization.Charting.Legend();
+            System.Windows.Forms.DataVisualization.Charting.ChartArea chartArea1 = new System.Windows.Forms.DataVisualization.Charting.ChartArea();
+            System.Windows.Forms.DataVisualization.Charting.Legend legend1 = new System.Windows.Forms.DataVisualization.Charting.Legend();
             this.OpenButton = new System.Windows.Forms.Button();
             this.NetworkChart = new System.Windows.Forms.DataVisualization.Charting.Chart();
             this.ChartListBox = new System.Windows.Forms.CheckedListBox();
@@ -79,18 +79,6 @@
             this.columnHeader8 = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.columnHeader9 = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.columnHeader10 = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.AllObjectsTabPage = new System.Windows.Forms.TabPage();
-            this.ObjectPropertyReplicationListView = new System.Windows.Forms.ListView();
-            this.PropertyColumn = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.PropertyComparedColumn = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.PropertyChangedColumn = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.PropertyReplicationsColumn = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.ObjectReplicationListView = new System.Windows.Forms.ListView();
-            this.ObjectClassColumn = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.ComparisonsColumn = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.ReplicationsColumn = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.ComparisonTime = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
-            this.ComparisonTimeAvgColumn = ((System.Windows.Forms.ColumnHeader)(new System.Windows.Forms.ColumnHeader()));
             this.CurrentProgress = new System.Windows.Forms.ProgressBar();
             this.ContextMenuStrip1 = new System.Windows.Forms.ContextMenuStrip(this.components);
             this.EarlyOutLabel = new System.Windows.Forms.Label();
@@ -106,7 +94,6 @@
             this.tabPage3.SuspendLayout();
             this.tabPage4.SuspendLayout();
             this.tabPage5.SuspendLayout();
-            this.AllObjectsTabPage.SuspendLayout();
             this.SuspendLayout();
             // 
             // OpenButton
@@ -128,25 +115,25 @@
             | System.Windows.Forms.AnchorStyles.Right)));
             this.NetworkChart.AntiAliasing = System.Windows.Forms.DataVisualization.Charting.AntiAliasingStyles.Graphics;
             this.NetworkChart.BackColor = System.Drawing.Color.Transparent;
-            chartArea2.AxisX.MajorGrid.LineColor = System.Drawing.Color.DarkGray;
-            chartArea2.AxisX.ScrollBar.IsPositionedInside = false;
-            chartArea2.AxisY.MajorGrid.LineColor = System.Drawing.Color.DarkGray;
-            chartArea2.AxisY.ScrollBar.IsPositionedInside = false;
-            chartArea2.BackColor = System.Drawing.Color.Transparent;
-            chartArea2.CursorX.IsUserEnabled = true;
-            chartArea2.CursorX.IsUserSelectionEnabled = true;
-            chartArea2.Name = "DefaultChartArea";
-            this.NetworkChart.ChartAreas.Add(chartArea2);
-            legend2.BackColor = System.Drawing.Color.Transparent;
-            legend2.DockedToChartArea = "DefaultChartArea";
-            legend2.Docking = System.Windows.Forms.DataVisualization.Charting.Docking.Top;
-            legend2.LegendStyle = System.Windows.Forms.DataVisualization.Charting.LegendStyle.Column;
-            legend2.Name = "DefaultLegend";
-            this.NetworkChart.Legends.Add(legend2);
+            chartArea1.AxisX.MajorGrid.LineColor = System.Drawing.Color.DarkGray;
+            chartArea1.AxisX.ScrollBar.IsPositionedInside = false;
+            chartArea1.AxisY.MajorGrid.LineColor = System.Drawing.Color.DarkGray;
+            chartArea1.AxisY.ScrollBar.IsPositionedInside = false;
+            chartArea1.BackColor = System.Drawing.Color.Transparent;
+            chartArea1.CursorX.IsUserEnabled = true;
+            chartArea1.CursorX.IsUserSelectionEnabled = true;
+            chartArea1.Name = "DefaultChartArea";
+            this.NetworkChart.ChartAreas.Add(chartArea1);
+            legend1.BackColor = System.Drawing.Color.Transparent;
+            legend1.DockedToChartArea = "DefaultChartArea";
+            legend1.Docking = System.Windows.Forms.DataVisualization.Charting.Docking.Top;
+            legend1.LegendStyle = System.Windows.Forms.DataVisualization.Charting.LegendStyle.Column;
+            legend1.Name = "DefaultLegend";
+            this.NetworkChart.Legends.Add(legend1);
             this.NetworkChart.Location = new System.Drawing.Point(15, 6);
             this.NetworkChart.Name = "NetworkChart";
             this.NetworkChart.Palette = System.Windows.Forms.DataVisualization.Charting.ChartColorPalette.Bright;
-            this.NetworkChart.Size = new System.Drawing.Size(998, 283);
+            this.NetworkChart.Size = new System.Drawing.Size(998, 356);
             this.NetworkChart.TabIndex = 2;
             this.NetworkChart.Text = "chart1";
             this.NetworkChart.CursorPositionChanged += new System.EventHandler<System.Windows.Forms.DataVisualization.Charting.CursorEventArgs>(this.NetworkChart_CursorPositionChanged);
@@ -163,14 +150,14 @@
             this.ChartListBox.FormattingEnabled = true;
             this.ChartListBox.Location = new System.Drawing.Point(1019, 36);
             this.ChartListBox.Name = "ChartListBox";
-            this.ChartListBox.Size = new System.Drawing.Size(198, 135);
+            this.ChartListBox.Size = new System.Drawing.Size(198, 330);
             this.ChartListBox.TabIndex = 3;
             this.ChartListBox.SelectedValueChanged += new System.EventHandler(this.ChartListBox_SelectedValueChanged);
             // 
             // ApplyFiltersButton
             // 
             this.ApplyFiltersButton.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
-            this.ApplyFiltersButton.Location = new System.Drawing.Point(893, 545);
+            this.ApplyFiltersButton.Location = new System.Drawing.Point(893, 723);
             this.ApplyFiltersButton.Name = "ApplyFiltersButton";
             this.ApplyFiltersButton.Size = new System.Drawing.Size(231, 23);
             this.ApplyFiltersButton.TabIndex = 10;
@@ -220,11 +207,10 @@
             this.tabControl1.Controls.Add(this.tabPage3);
             this.tabControl1.Controls.Add(this.tabPage4);
             this.tabControl1.Controls.Add(this.tabPage5);
-            this.tabControl1.Controls.Add(this.AllObjectsTabPage);
-            this.tabControl1.Location = new System.Drawing.Point(12, 78);
+            this.tabControl1.Location = new System.Drawing.Point(12, 56);
             this.tabControl1.Name = "tabControl1";
             this.tabControl1.SelectedIndex = 0;
-            this.tabControl1.Size = new System.Drawing.Size(1231, 600);
+            this.tabControl1.Size = new System.Drawing.Size(1231, 778);
             this.tabControl1.TabIndex = 14;
             // 
             // tabPage1
@@ -241,17 +227,15 @@
             this.tabPage1.Location = new System.Drawing.Point(4, 22);
             this.tabPage1.Name = "tabPage1";
             this.tabPage1.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage1.Size = new System.Drawing.Size(1223, 574);
+            this.tabPage1.Size = new System.Drawing.Size(1223, 752);
             this.tabPage1.TabIndex = 0;
             this.tabPage1.Text = "Chart, Filters, Details";
             this.tabPage1.UseVisualStyleBackColor = true;
             // 
             // checkAllConnectionsCheckBox
             // 
-            this.checkAllConnectionsCheckBox.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Right)));
-            this.checkAllConnectionsCheckBox.Checked = true;
             this.checkAllConnectionsCheckBox.AutoSize = true;
-            this.checkAllConnectionsCheckBox.Location = new System.Drawing.Point(896, 295);
+            this.checkAllConnectionsCheckBox.Location = new System.Drawing.Point(896, 369);
             this.checkAllConnectionsCheckBox.Name = "checkAllConnectionsCheckBox";
             this.checkAllConnectionsCheckBox.Size = new System.Drawing.Size(15, 14);
             this.checkAllConnectionsCheckBox.TabIndex = 23;
@@ -265,10 +249,10 @@
             this.Details.Controls.Add(this.tabPage2);
             this.Details.Controls.Add(this.tabPage6);
             this.Details.Controls.Add(this.tabPage8);
-            this.Details.Location = new System.Drawing.Point(15, 295);
+            this.Details.Location = new System.Drawing.Point(26, 368);
             this.Details.Name = "Details";
             this.Details.SelectedIndex = 0;
-            this.Details.Size = new System.Drawing.Size(875, 279);
+            this.Details.Size = new System.Drawing.Size(864, 384);
             this.Details.TabIndex = 22;
             // 
             // tabPage2
@@ -277,7 +261,7 @@
             this.tabPage2.Location = new System.Drawing.Point(4, 22);
             this.tabPage2.Name = "tabPage2";
             this.tabPage2.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage2.Size = new System.Drawing.Size(867, 253);
+            this.tabPage2.Size = new System.Drawing.Size(856, 358);
             this.tabPage2.TabIndex = 0;
             this.tabPage2.Text = "Summary";
             this.tabPage2.UseVisualStyleBackColor = true;
@@ -287,9 +271,9 @@
             this.ActorSummaryView.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
             this.ActorSummaryView.BorderStyle = System.Windows.Forms.BorderStyle.None;
             this.ActorSummaryView.Font = new System.Drawing.Font("Consolas", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.ActorSummaryView.Location = new System.Drawing.Point(3, 6);
+            this.ActorSummaryView.Location = new System.Drawing.Point(3, 2);
             this.ActorSummaryView.Name = "ActorSummaryView";
-            this.ActorSummaryView.Size = new System.Drawing.Size(864, 243);
+            this.ActorSummaryView.Size = new System.Drawing.Size(787, 355);
             this.ActorSummaryView.TabIndex = 19;
             // 
             // tabPage6
@@ -299,7 +283,7 @@
             this.tabPage6.Location = new System.Drawing.Point(4, 22);
             this.tabPage6.Name = "tabPage6";
             this.tabPage6.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage6.Size = new System.Drawing.Size(867, 253);
+            this.tabPage6.Size = new System.Drawing.Size(856, 358);
             this.tabPage6.TabIndex = 1;
             this.tabPage6.Text = "Actors";
             this.tabPage6.UseVisualStyleBackColor = true;
@@ -311,10 +295,9 @@
             this.ActorPerfPropsDetailsListView.Font = new System.Drawing.Font("Tahoma", 8.25F);
             this.ActorPerfPropsDetailsListView.FullRowSelect = true;
             this.ActorPerfPropsDetailsListView.GridLines = true;
-            this.ActorPerfPropsDetailsListView.HideSelection = false;
-            this.ActorPerfPropsDetailsListView.Location = new System.Drawing.Point(671, 0);
+            this.ActorPerfPropsDetailsListView.Location = new System.Drawing.Point(577, 0);
             this.ActorPerfPropsDetailsListView.Name = "ActorPerfPropsDetailsListView";
-            this.ActorPerfPropsDetailsListView.Size = new System.Drawing.Size(283, 262);
+            this.ActorPerfPropsDetailsListView.Size = new System.Drawing.Size(283, 359);
             this.ActorPerfPropsDetailsListView.TabIndex = 22;
             this.ActorPerfPropsDetailsListView.UseCompatibleStateImageBehavior = false;
             this.ActorPerfPropsDetailsListView.View = System.Windows.Forms.View.Details;
@@ -328,10 +311,9 @@
             this.ActorPerfPropsListView.Font = new System.Drawing.Font("Tahoma", 8.25F);
             this.ActorPerfPropsListView.FullRowSelect = true;
             this.ActorPerfPropsListView.GridLines = true;
-            this.ActorPerfPropsListView.HideSelection = false;
             this.ActorPerfPropsListView.Location = new System.Drawing.Point(-4, 0);
             this.ActorPerfPropsListView.Name = "ActorPerfPropsListView";
-            this.ActorPerfPropsListView.Size = new System.Drawing.Size(678, 262);
+            this.ActorPerfPropsListView.Size = new System.Drawing.Size(584, 359);
             this.ActorPerfPropsListView.TabIndex = 21;
             this.ActorPerfPropsListView.UseCompatibleStateImageBehavior = false;
             this.ActorPerfPropsListView.View = System.Windows.Forms.View.Details;
@@ -343,7 +325,7 @@
             this.tabPage8.Controls.Add(this.TokenDetailsView);
             this.tabPage8.Location = new System.Drawing.Point(4, 22);
             this.tabPage8.Name = "tabPage8";
-            this.tabPage8.Size = new System.Drawing.Size(867, 253);
+            this.tabPage8.Size = new System.Drawing.Size(856, 358);
             this.tabPage8.TabIndex = 3;
             this.tabPage8.Text = "Token Details";
             this.tabPage8.UseVisualStyleBackColor = true;
@@ -353,7 +335,7 @@
             this.TokenDetailsView.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Bottom | System.Windows.Forms.AnchorStyles.Left)));
             this.TokenDetailsView.BorderStyle = System.Windows.Forms.BorderStyle.None;
             this.TokenDetailsView.Font = new System.Drawing.Font("Consolas", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
-            this.TokenDetailsView.Location = new System.Drawing.Point(4, -93);
+            this.TokenDetailsView.Location = new System.Drawing.Point(4, 3);
             this.TokenDetailsView.Name = "TokenDetailsView";
             this.TokenDetailsView.Size = new System.Drawing.Size(787, 355);
             this.TokenDetailsView.TabIndex = 21;
@@ -364,9 +346,9 @@
             this.ConnectionListBox.CheckOnClick = true;
             this.ConnectionListBox.Font = new System.Drawing.Font("Consolas", 8.25F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
             this.ConnectionListBox.FormattingEnabled = true;
-            this.ConnectionListBox.Location = new System.Drawing.Point(893, 315);
+            this.ConnectionListBox.Location = new System.Drawing.Point(893, 388);
             this.ConnectionListBox.Name = "ConnectionListBox";
-            this.ConnectionListBox.Size = new System.Drawing.Size(322, 109);
+            this.ConnectionListBox.Size = new System.Drawing.Size(322, 229);
             this.ConnectionListBox.TabIndex = 21;
             this.ConnectionListBox.SelectedValueChanged += new System.EventHandler(this.ConnectionListBox_SelectedValueChanged);
             // 
@@ -405,7 +387,7 @@
             this.panel1.Controls.Add(this.label1);
             this.panel1.Controls.Add(this.label3);
             this.panel1.Controls.Add(this.label2);
-            this.panel1.Location = new System.Drawing.Point(893, 442);
+            this.panel1.Location = new System.Drawing.Point(893, 620);
             this.panel1.Name = "panel1";
             this.panel1.Size = new System.Drawing.Size(324, 98);
             this.panel1.TabIndex = 15;
@@ -448,7 +430,7 @@
             this.tabPage3.Controls.Add(this.ActorListView);
             this.tabPage3.Location = new System.Drawing.Point(4, 22);
             this.tabPage3.Name = "tabPage3";
-            this.tabPage3.Size = new System.Drawing.Size(1223, 574);
+            this.tabPage3.Size = new System.Drawing.Size(1223, 752);
             this.tabPage3.TabIndex = 2;
             this.tabPage3.Text = "All Actors";
             this.tabPage3.UseVisualStyleBackColor = true;
@@ -467,7 +449,6 @@
             this.ActorListView.Font = new System.Drawing.Font("Tahoma", 8.25F);
             this.ActorListView.FullRowSelect = true;
             this.ActorListView.GridLines = true;
-            this.ActorListView.HideSelection = false;
             this.ActorListView.Location = new System.Drawing.Point(1, 2);
             this.ActorListView.Name = "ActorListView";
             this.ActorListView.Size = new System.Drawing.Size(1220, 750);
@@ -502,7 +483,7 @@
             this.tabPage4.Controls.Add(this.PropertyListView);
             this.tabPage4.Location = new System.Drawing.Point(4, 22);
             this.tabPage4.Name = "tabPage4";
-            this.tabPage4.Size = new System.Drawing.Size(1223, 574);
+            this.tabPage4.Size = new System.Drawing.Size(1223, 752);
             this.tabPage4.TabIndex = 3;
             this.tabPage4.Text = "All Properties";
             this.tabPage4.UseVisualStyleBackColor = true;
@@ -521,7 +502,6 @@
             this.PropertyListView.Font = new System.Drawing.Font("Tahoma", 8.25F);
             this.PropertyListView.FullRowSelect = true;
             this.PropertyListView.GridLines = true;
-            this.PropertyListView.HideSelection = false;
             this.PropertyListView.Location = new System.Drawing.Point(3, 3);
             this.PropertyListView.Name = "PropertyListView";
             this.PropertyListView.Size = new System.Drawing.Size(1220, 750);
@@ -556,7 +536,7 @@
             this.tabPage5.Controls.Add(this.RPCListView);
             this.tabPage5.Location = new System.Drawing.Point(4, 22);
             this.tabPage5.Name = "tabPage5";
-            this.tabPage5.Size = new System.Drawing.Size(1223, 574);
+            this.tabPage5.Size = new System.Drawing.Size(1223, 752);
             this.tabPage5.TabIndex = 4;
             this.tabPage5.Text = "All RPCs";
             this.tabPage5.UseVisualStyleBackColor = true;
@@ -575,7 +555,6 @@
             this.RPCListView.Font = new System.Drawing.Font("Tahoma", 8.25F);
             this.RPCListView.FullRowSelect = true;
             this.RPCListView.GridLines = true;
-            this.RPCListView.HideSelection = false;
             this.RPCListView.Location = new System.Drawing.Point(1, 2);
             this.RPCListView.Name = "RPCListView";
             this.RPCListView.Size = new System.Drawing.Size(1220, 750);
@@ -605,126 +584,22 @@
             this.columnHeader10.Text = "RPC";
             this.columnHeader10.Width = 145;
             // 
-            // AllObjectsTabPage
-            // 
-            this.AllObjectsTabPage.Controls.Add(this.ObjectPropertyReplicationListView);
-            this.AllObjectsTabPage.Controls.Add(this.ObjectReplicationListView);
-            this.AllObjectsTabPage.Location = new System.Drawing.Point(4, 22);
-            this.AllObjectsTabPage.Margin = new System.Windows.Forms.Padding(2);
-            this.AllObjectsTabPage.Name = "AllObjectsTabPage";
-            this.AllObjectsTabPage.Size = new System.Drawing.Size(1223, 574);
-            this.AllObjectsTabPage.TabIndex = 5;
-            this.AllObjectsTabPage.Text = "All Objects";
-            this.AllObjectsTabPage.UseVisualStyleBackColor = true;
-            // 
-            // ObjectPropertyReplicationListView
-            // 
-            this.ObjectPropertyReplicationListView.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
-            | System.Windows.Forms.AnchorStyles.Left) 
-            | System.Windows.Forms.AnchorStyles.Right)));
-            this.ObjectPropertyReplicationListView.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {
-            this.PropertyColumn,
-            this.PropertyComparedColumn,
-            this.PropertyChangedColumn,
-            this.PropertyReplicationsColumn});
-            this.ObjectPropertyReplicationListView.Font = new System.Drawing.Font("Tahoma", 8.25F);
-            this.ObjectPropertyReplicationListView.FullRowSelect = true;
-            this.ObjectPropertyReplicationListView.GridLines = true;
-            this.ObjectPropertyReplicationListView.HideSelection = false;
-            this.ObjectPropertyReplicationListView.Location = new System.Drawing.Point(778, 3);
-            this.ObjectPropertyReplicationListView.Name = "ObjectPropertyReplicationListView";
-            this.ObjectPropertyReplicationListView.Size = new System.Drawing.Size(446, 750);
-            this.ObjectPropertyReplicationListView.TabIndex = 3;
-            this.ObjectPropertyReplicationListView.UseCompatibleStateImageBehavior = false;
-            this.ObjectPropertyReplicationListView.View = System.Windows.Forms.View.Details;
-            this.ObjectPropertyReplicationListView.ColumnClick += new System.Windows.Forms.ColumnClickEventHandler(this.ObjectPropertyReplicationListView_ColumnClick);
-            // 
-            // PropertyColumn
-            // 
-            this.PropertyColumn.Text = "Property";
-            this.PropertyColumn.Width = 233;
-            // 
-            // PropertyComparedColumn
-            // 
-            this.PropertyComparedColumn.Text = "# Comparisons";
-            this.PropertyComparedColumn.Width = 136;
-            // 
-            // PropertyChangedColumn
-            // 
-            this.PropertyChangedColumn.Text = "# Times Changed";
-            this.PropertyChangedColumn.Width = 158;
-            // 
-            // PropertyReplicationsColumn
-            // 
-            this.PropertyReplicationsColumn.Text = "# Replications";
-            this.PropertyReplicationsColumn.Width = 140;
-            // 
-            // ObjectReplicationListView
-            // 
-            this.ObjectReplicationListView.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) 
-            | System.Windows.Forms.AnchorStyles.Left) 
-            | System.Windows.Forms.AnchorStyles.Right)));
-            this.ObjectReplicationListView.Columns.AddRange(new System.Windows.Forms.ColumnHeader[] {
-            this.ObjectClassColumn,
-            this.ComparisonsColumn,
-            this.ReplicationsColumn,
-            this.ComparisonTime,
-            this.ComparisonTimeAvgColumn});
-            this.ObjectReplicationListView.Font = new System.Drawing.Font("Tahoma", 8.25F);
-            this.ObjectReplicationListView.FullRowSelect = true;
-            this.ObjectReplicationListView.GridLines = true;
-            this.ObjectReplicationListView.HideSelection = false;
-            this.ObjectReplicationListView.Location = new System.Drawing.Point(3, 3);
-            this.ObjectReplicationListView.Name = "ObjectReplicationListView";
-            this.ObjectReplicationListView.Size = new System.Drawing.Size(777, 750);
-            this.ObjectReplicationListView.TabIndex = 2;
-            this.ObjectReplicationListView.UseCompatibleStateImageBehavior = false;
-            this.ObjectReplicationListView.View = System.Windows.Forms.View.Details;
-            this.ObjectReplicationListView.ColumnClick += new System.Windows.Forms.ColumnClickEventHandler(this.ObjectReplicationListView_ColumnClick);
-            this.ObjectReplicationListView.SelectedIndexChanged += new System.EventHandler(this.ObjectReplicationListView_SelectedIndexChanged);
-            // 
-            // ObjectClassColumn
-            // 
-            this.ObjectClassColumn.Text = "Object Class";
-            this.ObjectClassColumn.Width = 263;
-            // 
-            // ComparisonsColumn
-            // 
-            this.ComparisonsColumn.Text = "# Comparisons";
-            this.ComparisonsColumn.Width = 129;
-            // 
-            // ReplicationsColumn
-            // 
-            this.ReplicationsColumn.Text = "# Replications";
-            this.ReplicationsColumn.Width = 124;
-            // 
-            // ComparisonTime
-            // 
-            this.ComparisonTime.Text = "Comparison Time";
-            this.ComparisonTime.Width = 146;
-            // 
-            // ComparisonTimeAvgColumn
-            // 
-            this.ComparisonTimeAvgColumn.Text = "Avg. Time Per Comparison";
-            this.ComparisonTimeAvgColumn.Width = 187;
-            // 
             // CurrentProgress
             // 
-            this.CurrentProgress.Location = new System.Drawing.Point(535, 49);
+            this.CurrentProgress.Location = new System.Drawing.Point(485, 49);
             this.CurrentProgress.Name = "CurrentProgress";
             this.CurrentProgress.Size = new System.Drawing.Size(548, 23);
             this.CurrentProgress.TabIndex = 19;
             // 
             // ContextMenuStrip1
             // 
-            this.ContextMenuStrip1.ImageScalingSize = new System.Drawing.Size(24, 24);
             this.ContextMenuStrip1.Name = "ContextMenuStrip1";
             this.ContextMenuStrip1.Size = new System.Drawing.Size(61, 4);
             // 
             // EarlyOutLabel
             // 
             this.EarlyOutLabel.AutoSize = true;
-            this.EarlyOutLabel.Location = new System.Drawing.Point(365, 56);
+            this.EarlyOutLabel.Location = new System.Drawing.Point(315, 55);
             this.EarlyOutLabel.Name = "EarlyOutLabel";
             this.EarlyOutLabel.Size = new System.Drawing.Size(102, 13);
             this.EarlyOutLabel.TabIndex = 20;
@@ -732,7 +607,7 @@
             // 
             // MaxProfileMinutesTextBox
             // 
-            this.MaxProfileMinutesTextBox.Location = new System.Drawing.Point(469, 51);
+            this.MaxProfileMinutesTextBox.Location = new System.Drawing.Point(419, 51);
             this.MaxProfileMinutesTextBox.Name = "MaxProfileMinutesTextBox";
             this.MaxProfileMinutesTextBox.Size = new System.Drawing.Size(58, 20);
             this.MaxProfileMinutesTextBox.TabIndex = 21;
@@ -742,7 +617,7 @@
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(1255, 690);
+            this.ClientSize = new System.Drawing.Size(1255, 846);
             this.Controls.Add(this.MaxProfileMinutesTextBox);
             this.Controls.Add(this.EarlyOutLabel);
             this.Controls.Add(this.CurrentProgress);
@@ -763,7 +638,6 @@
             this.tabPage3.ResumeLayout(false);
             this.tabPage4.ResumeLayout(false);
             this.tabPage5.ResumeLayout(false);
-            this.AllObjectsTabPage.ResumeLayout(false);
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -821,18 +695,6 @@
 		private System.Windows.Forms.Label EarlyOutLabel;
 		private System.Windows.Forms.TextBox MaxProfileMinutesTextBox;
         private System.Windows.Forms.CheckBox checkAllConnectionsCheckBox;
-		private System.Windows.Forms.TabPage AllObjectsTabPage;
-		private System.Windows.Forms.ListView ObjectPropertyReplicationListView;
-		private System.Windows.Forms.ColumnHeader PropertyColumn;
-		private System.Windows.Forms.ColumnHeader PropertyComparedColumn;
-		private System.Windows.Forms.ColumnHeader PropertyChangedColumn;
-		private System.Windows.Forms.ListView ObjectReplicationListView;
-		private System.Windows.Forms.ColumnHeader ObjectClassColumn;
-		private System.Windows.Forms.ColumnHeader ComparisonsColumn;
-		private System.Windows.Forms.ColumnHeader ReplicationsColumn;
-		private System.Windows.Forms.ColumnHeader ComparisonTime;
-		private System.Windows.Forms.ColumnHeader PropertyReplicationsColumn;
-		private System.Windows.Forms.ColumnHeader ComparisonTimeAvgColumn;
-	}
+    }
 }
 

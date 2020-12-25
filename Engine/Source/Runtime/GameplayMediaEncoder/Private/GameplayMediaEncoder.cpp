@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayMediaEncoder.h"
 #include "Engine/GameEngine.h"
@@ -12,6 +12,19 @@
 #include "ProfilingDebugging/CsvProfiler.h"
 #include "IbmLiveStreaming.h"
 
+#if PLATFORM_WINDOWS || PLATFORM_XBOXONE
+	#include "Microsoft/WmfAudioEncoder.h"
+#endif
+
+#if PLATFORM_WINDOWS
+	#include "Microsoft/Windows/EncoderDevice.h"
+	#include "Microsoft/Windows/NvVideoEncoder.h"
+	#include "Microsoft/Windows/WmfVideoEncoder.h"
+	#include "Microsoft/Windows/AmdAmfVideoEncoder.h"
+#elif PLATFORM_XBOXONE
+	#include "Microsoft/XboxOne/XboxOneVideoEncoder.h"
+#endif
+
 DEFINE_LOG_CATEGORY(GameplayMediaEncoder);
 CSV_DEFINE_CATEGORY(GameplayMediaEncoder, true);
 
@@ -23,7 +36,7 @@ const uint32 HardcodedAudioSamplerate = 48000;
 const uint32 HardcodedAudioNumChannels = 2;
 // currently neither IVideoRecordingSystem neither HighlightFeature APIs allow to configure
 // audio stream parameters
-const uint32 HardcodedAudioBitrate = 192000;
+const uint32 HardcodedAudioBitrate = 24000;
 
 // currently neither IVideoRecordingSystem neither HighlightFeature APIs allow to configure
 // video stream parameters
@@ -40,6 +53,8 @@ const uint32 MaxVideoFPS = 60;
 
 const uint32 MaxWidth = 1920;
 const uint32 MaxHeight = 1080;
+
+GAMEPLAYMEDIAENCODER_START
 
 FAutoConsoleCommand GameplayMediaEncoderInitialize(
 	TEXT("GameplayMediaEncoder.Initialize"),
@@ -71,24 +86,21 @@ FAutoConsoleCommand GameplayMediaEncoderShutdown(
 //
 //////////////////////////////////////////////////////////////////////////
 
-FGameplayMediaEncoder* FGameplayMediaEncoder::Singleton = nullptr;
-
 FGameplayMediaEncoder* FGameplayMediaEncoder::Get()
 {
-	if (!Singleton)
-	{
-		Singleton = new FGameplayMediaEncoder();
-	}
-	return Singleton;
+	static FGameplayMediaEncoder Singleton;
+	return &Singleton;
 }
 
 FGameplayMediaEncoder::FGameplayMediaEncoder()
 {
+#if PLATFORM_WINDOWS
+	EncoderDevice = MakeShared<FEncoderDevice>();
+#endif
 }
 
 FGameplayMediaEncoder::~FGameplayMediaEncoder()
 {
-	Shutdown();
 }
 
 bool FGameplayMediaEncoder::RegisterListener(IGameplayMediaEncoderListener* Listener)
@@ -114,8 +126,11 @@ void FGameplayMediaEncoder::UnregisterListener(IGameplayMediaEncoderListener* Li
 	check(IsInGameThread());
 
 	ListenersCS.Lock();
+
 	Listeners.Remove(Listener);
+
 	bool bAnyListenersLeft = Listeners.Num() > 0;
+
 	ListenersCS.Unlock();
 
 	if (bAnyListenersLeft == false)
@@ -123,6 +138,16 @@ void FGameplayMediaEncoder::UnregisterListener(IGameplayMediaEncoderListener* Li
 		UE_LOG(GameplayMediaEncoder, Log, TEXT("Unregistered the last listener"));
 		Stop();
 	}
+}
+
+bool FGameplayMediaEncoder::GetAudioOutputType(TRefCountPtr<IMFMediaType>& OutType)
+{
+	return AudioEncoder ? AudioEncoder->GetOutputType(OutType) : false;
+}
+
+bool FGameplayMediaEncoder::GetVideoOutputType(TRefCountPtr<IMFMediaType>& OutType)
+{
+	return VideoEncoder ? VideoEncoder->GetOutputType(OutType) : false;
 }
 
 bool FGameplayMediaEncoder::Initialize()
@@ -135,51 +160,33 @@ bool FGameplayMediaEncoder::Initialize()
 		return true;
 	}
 
-	// If some error occurs, call Shutdown to cleanup
-	bool bIsOk = false;
-	ON_SCOPE_EXIT
+	auto OnMediaSampleReadyCallback = [this](const FGameplayMediaEncoderSample& Sample)
 	{
-		if (!bIsOk)
-		{
-			Shutdown();
-		}
+		return OnMediaSampleReady(Sample);
 	};
 
 	//
 	// Audio
-	//
-	AVEncoder::FAudioEncoderFactory* AudioEncoderFactory = AVEncoder::FAudioEncoderFactory::FindFactory("aac");
-	if (!AudioEncoderFactory)
-	{
-		UE_LOG(GameplayMediaEncoder, Error, TEXT("No audio encoder for aac found"));
-		return false;
-	}
-
-	AudioEncoder = AudioEncoderFactory->CreateEncoder("aac");
-	if (!AudioEncoder)
-	{
-		UE_LOG(GameplayMediaEncoder, Error, TEXT("Could not create audio encoder"));
-		return false;
-	}
-
-	AVEncoder::FAudioEncoderConfig AudioConfig;
-	AudioConfig.Samplerate = HardcodedAudioSamplerate;
+	// 
+	AudioEncoder.Reset(new FWmfAudioEncoder(OnMediaSampleReadyCallback));
+	FWmfAudioEncoderConfig AudioConfig;
+	AudioConfig.SampleRate = HardcodedAudioSamplerate;
 	AudioConfig.NumChannels = HardcodedAudioNumChannels;
 	AudioConfig.Bitrate = HardcodedAudioBitrate;
 	if (!AudioEncoder->Initialize(AudioConfig))
 	{
-		UE_LOG(GameplayMediaEncoder, Error, TEXT("Could not initialize audio encoder"));
+		Stop();
 		return false;
 	}
 
-	AudioEncoder->RegisterListener(*this);
-
+	bAudioFormatChecked = false;
 	MemoryCheckpoint("Audio encoder initialized");
 
 	//
 	// Video
 	//
-	AVEncoder::FVideoEncoderConfig VideoConfig;
+	FVideoEncoderConfig VideoConfig;
+
 	FParse::Value(FCommandLine::Get(), TEXT("GameplayMediaEncoder.ResY="), VideoConfig.Height);
 	if (VideoConfig.Height == 0 || VideoConfig.Height == 720)
 	{
@@ -220,37 +227,46 @@ bool FGameplayMediaEncoder::Initialize()
 
 	UE_LOG(GameplayMediaEncoder, Log, TEXT("Using a config of {Width=%u, Height=%u, Framerate=%u, Bitrate=%u}"), VideoConfig.Width, VideoConfig.Height, VideoConfig.Framerate, VideoConfig.Bitrate);
 
-	AVEncoder::FVideoEncoderFactory* VideoEncoderFactory = AVEncoder::FVideoEncoderFactory::FindFactory("h264");
-	if (!VideoEncoderFactory)
-	{
-		UE_LOG(GameplayMediaEncoder, Error, TEXT("No encoder for h264 found"));
-		return false;
-	}
-
-	VideoEncoder = VideoEncoderFactory->CreateEncoder("h264");
-
-	if (!VideoEncoder)
-	{
-		UE_LOG(GameplayMediaEncoder, Error, TEXT("Could not create video encoder"));
-		return false;
-	}
-
+	//
+	// Try to initialize the best encoder for the current platform
+	//
+#if PLATFORM_WINDOWS
+	VideoEncoder.Reset(new FNvVideoEncoder(OnMediaSampleReadyCallback, EncoderDevice));
 	if (!VideoEncoder->Initialize(VideoConfig))
 	{
-		UE_LOG(GameplayMediaEncoder, Error, TEXT("Could not initialize video encoder"));
-		return false;
+		VideoEncoder.Reset(new FAmdAmfVideoEncoder(OnMediaSampleReadyCallback));
+		if (!VideoEncoder->Initialize(VideoConfig))
+		{
+			VideoEncoder.Reset(new FWmfVideoEncoder(OnMediaSampleReadyCallback));
+			if (!VideoEncoder->Initialize(VideoConfig))
+			{
+				Stop();
+				return false;
+			}
+		}
 	}
+#elif PLATFORM_XBOXONE
+	VideoEncoder.Reset(new FXboxOneVideoEncoder(OnMediaSampleReadyCallback));
+	verify(VideoEncoder->Initialize(VideoConfig));
+#endif
 
-	VideoEncoder->RegisterListener(*this);
+	StartTime = 0;
+	AudioClock = 0;
 
 	MemoryCheckpoint("Video encoder initialized");
 
-	bIsOk = true; // So Shutdown is not called due to the ON_SCOPE_EXIT
 	return true;
 }
 
 bool FGameplayMediaEncoder::Start()
 {
+	// Initialize if not initialized
+	if (!VideoEncoder)
+	{
+		if (!Initialize())
+			return false;
+	}
+
 	if (StartTime != 0)
 	{
 		UE_LOG(GameplayMediaEncoder, Log, TEXT("Already running"));
@@ -266,21 +282,21 @@ bool FGameplayMediaEncoder::Start()
 		}
 	}
 
-	StartTime = FTimespan::FromSeconds(QueryClock());
+	StartTime = FTimespan::FromSeconds(FPlatformTime::Seconds());
 	AudioClock = 0;
 	NumCapturedFrames = 0;
-	
+
 	//
 	// subscribe to engine delegates for audio output and back buffer
 	//
 
-	FAudioDeviceHandle AudioDevice = GEngine->GetMainAudioDevice();
+	FAudioDevice* AudioDevice = GEngine->GetMainAudioDevice();
 	if (AudioDevice)
 	{
-		bAudioFormatChecked = false;
 		AudioDevice->RegisterSubmixBufferListener(this);
 	}
 
+	VideoEncoder->Start();
 	FSlateApplication::Get().GetRenderer()->OnBackBufferReadyToPresent().AddRaw(this, &FGameplayMediaEncoder::OnBackBufferReady);
 
 	return true;
@@ -298,7 +314,7 @@ void FGameplayMediaEncoder::Stop()
 
 	if (UGameEngine* GameEngine = Cast<UGameEngine>(GEngine))
 	{
-		FAudioDevice* AudioDevice = GameEngine->GetMainAudioDeviceRaw();
+		FAudioDevice* AudioDevice = GameEngine->GetMainAudioDevice();
 		if (AudioDevice)
 		{
 			AudioDevice->UnregisterSubmixBufferListener(this);
@@ -310,6 +326,7 @@ void FGameplayMediaEncoder::Stop()
 		}
 	}
 
+	VideoEncoder->Stop();
 	StartTime = 0;
 	AudioClock = 0;
 }
@@ -324,26 +341,33 @@ void FGameplayMediaEncoder::Shutdown()
 
 	{
 		FScopeLock Lock(&AudioProcessingCS);
-		if (AudioEncoder)
-		{
-			AudioEncoder->Shutdown();
-			AudioEncoder.Reset();
-		}
+		AudioEncoder.Reset();
 	}
 	{
 		FScopeLock Lock(&VideoProcessingCS);
-		if (VideoEncoder)
+		VideoEncoder.Reset();
+	}
+}
+
+bool FGameplayMediaEncoder::OnMediaSampleReady(const FGameplayMediaEncoderSample& Sample)
+{
+	FScopeLock ProcessMediaSamplesLock(&ProcessMediaSamplesCS);
+	if (bProcessMediaSamples)
+	{
+		FScopeLock Lock(&ListenersCS);
+
+		for (auto&& Listener : Listeners)
 		{
-			VideoEncoder->Shutdown();
-			VideoEncoder.Reset();
+			Listener->OnMediaSample(Sample);
 		}
 	}
 
+	return true;
 }
 
 FTimespan FGameplayMediaEncoder::GetMediaTimestamp() const
 {
-	return FTimespan::FromSeconds(QueryClock()) - StartTime;
+	return FTimespan::FromSeconds(FPlatformTime::Seconds()) - StartTime;
 }
 
 void FGameplayMediaEncoder::OnNewSubmixBuffer(const USoundSubmix* OwningSubmix, float* AudioData, int32 NumSamples, int32 NumChannels, const int32 SampleRate, double /*AudioClock*/)
@@ -370,7 +394,7 @@ void FGameplayMediaEncoder::OnBackBufferReady(SWindow& SlateWindow, const FTextu
 	ProcessVideoFrame(BackBuffer);
 }
 
-void FGameplayMediaEncoder::ProcessAudioFrame(const float* AudioData, int32 NumSamples, int32 NumChannels, int32 SampleRate)
+bool FGameplayMediaEncoder::ProcessAudioFrame(const float* AudioData, int32 NumSamples, int32 NumChannels, int32 SampleRate)
 {
 	Audio::AlignedFloatBuffer InData;
 	InData.Append(AudioData, NumSamples);
@@ -382,6 +406,11 @@ void FGameplayMediaEncoder::ProcessAudioFrame(const float* AudioData, int32 NumS
 		FloatBuffer.MixBufferToChannels(HardcodedAudioNumChannels);
 	}
 
+	// First we need to clamp to [-1.0, 1.0], because the conversion to 16 bits doesn't clamp it,
+	// and we can end up with wrapping when playing loud sounds.
+	FloatBuffer.Clamp();
+	PCM16 = FloatBuffer;
+
 	// Adjust the AudioClock if for some reason it falls behind real time. This can happen if the game spikes, or if we break into the debugger.
 	FTimespan Now = GetMediaTimestamp();
 	if (AudioClock < Now.GetTotalSeconds())
@@ -391,17 +420,19 @@ void FGameplayMediaEncoder::ProcessAudioFrame(const float* AudioData, int32 NumS
 		AudioClock = Now.GetTotalSeconds() + (FloatBuffer.GetSampleDuration() / 2);
 	}
 
-	AVEncoder::FAudioFrame Frame;
-	Frame.Timestamp = FTimespan::FromSeconds(AudioClock);
-	Frame.Duration = FTimespan::FromSeconds(FloatBuffer.GetSampleDuration());
-	FloatBuffer.Clamp();
-	Frame.Data = FloatBuffer;
-	AudioEncoder->Encode(Frame);
+	{
+		FScopeLock Lock(&AudioProcessingCS);
+		FTimespan Timestamp = FTimespan::FromSeconds(AudioClock);
+		FTimespan Duration = FTimespan::FromSeconds(FloatBuffer.GetSampleDuration());
+		AudioEncoder->Process(reinterpret_cast<const int8*>(PCM16.GetData()), PCM16.GetNumSamples() * sizeof(*PCM16.GetData()), Timestamp, Duration);
+	}
 
 	AudioClock += FloatBuffer.GetSampleDuration();
+
+	return true;
 }
 
-void FGameplayMediaEncoder::ProcessVideoFrame(const FTexture2DRHIRef& BackBuffer)
+bool FGameplayMediaEncoder::ProcessVideoFrame(const FTexture2DRHIRef& BackBuffer)
 {
 	FScopeLock Lock(&VideoProcessingCS);
 
@@ -414,25 +445,24 @@ void FGameplayMediaEncoder::ProcessVideoFrame(const FTexture2DRHIRef& BackBuffer
 		if (NumCapturedFrames + 1 > NumExpectedFrames)
 		{
 			UE_LOG(GameplayMediaEncoder, Verbose, TEXT("Framerate control dropped captured frame"));
-			return;
+			return true;
 		}
 	}
 
 	if (!ChangeVideoConfig())
 	{
-		return;
+		return false;
 	}
 
-	AVEncoder::FBufferId BufferId;
-	if (!VideoEncoder->CopyTexture(BackBuffer, Now, Now - LastVideoInputTimestamp, BufferId))
+	FTimespan Duration = Now - LastVideoInputTimestamp;
+	if (!VideoEncoder->Process(BackBuffer, Now, Duration))
 	{
-		return;
+		return false;
 	}
-
-	VideoEncoder->Encode(BufferId, false, 0, nullptr);
 
 	LastVideoInputTimestamp = Now;
 	NumCapturedFrames++;
+	return true;
 }
 
 void FGameplayMediaEncoder::SetVideoBitrate(uint32 Bitrate)
@@ -445,11 +475,6 @@ void FGameplayMediaEncoder::SetVideoFramerate(uint32 Framerate)
 {
 	NewVideoFramerate = FMath::Clamp(Framerate, MinVideoFPS, MaxVideoFPS);
 	bChangeFramerate = true;
-}
-
-void FGameplayMediaEncoder::SetFramesShouldUseAppTime(bool bUseAppTime)
-{
-	bShouldFramesUseAppTime = bUseAppTime;
 }
 
 bool FGameplayMediaEncoder::ChangeVideoConfig()
@@ -472,56 +497,12 @@ bool FGameplayMediaEncoder::ChangeVideoConfig()
 			return false;
 		}
 		bChangeFramerate = false;
+		// reset framerate control
+		FramerateMonitoringStart = GetMediaTimestamp();
 		NumCapturedFrames = 0;
 	}
 
 	return true;
 }
 
-void FGameplayMediaEncoder::OnEncodedAudioFrame(const AVEncoder::FAVPacket& Packet)
-{
-	OnEncodedFrame(Packet);
-}
-
-void FGameplayMediaEncoder::OnEncodedVideoFrame(const AVEncoder::FAVPacket& Packet, AVEncoder::FEncoderVideoFrameCookie* Cookie)
-{
-	OnEncodedFrame(Packet);
-}
-
-void FGameplayMediaEncoder::OnEncodedFrame(const AVEncoder::FAVPacket& Packet)
-{
-	FScopeLock Lock(&ListenersCS);
-	for (auto&& Listener : Listeners)
-	{
-		Listener->OnMediaSample(Packet);
-	}
-}
-
-TPair<FString, AVEncoder::FAudioEncoderConfig> FGameplayMediaEncoder::GetAudioConfig() const
-{
-	if (AudioEncoder)
-	{
-		return TPair<FString,AVEncoder::FAudioEncoderConfig>(
-			AudioEncoder->GetType(),
-			AudioEncoder->GetConfig());
-	}
-	else
-	{
-		return {};
-	}
-}
-
-TPair<FString, AVEncoder::FVideoEncoderConfig> FGameplayMediaEncoder::GetVideoConfig() const
-{
-	if (AudioEncoder)
-	{
-		return TPair<FString,AVEncoder::FVideoEncoderConfig>(
-			VideoEncoder->GetType(),
-			VideoEncoder->GetConfig());
-	}
-	else
-	{
-		return {};
-	}
-}
-
+GAMEPLAYMEDIAENCODER_END

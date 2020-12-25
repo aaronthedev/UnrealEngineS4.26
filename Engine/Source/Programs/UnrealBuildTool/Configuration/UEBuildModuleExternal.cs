@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -14,9 +14,15 @@ namespace UnrealBuildTool
 	/// </summary>
 	class UEBuildModuleExternal : UEBuildModule
 	{
-		public UEBuildModuleExternal(ModuleRules Rules, DirectoryReference IntermediateDirectory)
-			: base(Rules, IntermediateDirectory)
+		public UEBuildModuleExternal(ModuleRules Rules)
+			: base(Rules)
 		{
+		}
+
+		// UEBuildModule interface.
+		public override List<FileItem> Compile(ReadOnlyTargetRules Target, UEToolChain ToolChain, CppCompileEnvironment CompileEnvironment, FileReference SingleFileToCompile, ISourceFileWorkingSet WorkingSet, TargetMakefile Makefile)
+		{
+			return new List<FileItem>();
 		}
 	}
 }

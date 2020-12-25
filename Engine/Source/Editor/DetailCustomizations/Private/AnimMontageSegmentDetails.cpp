@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimMontageSegmentDetails.h"
 #include "Widgets/SBoxPanel.h"
@@ -75,9 +75,9 @@ void FAnimMontageSegmentDetails::CustomizeDetails( IDetailLayoutBuilder& DetailB
 	IDetailCategoryBuilder& SegmentCategory = DetailBuilder.EditCategory("Animation Segment", LOCTEXT("AnimationSegmentCategoryTitle", "Animation Segment") );
 
 	TSharedRef<IPropertyHandle> TargetPropertyHandle = DetailBuilder.GetProperty("AnimSegment.AnimReference");
-	FProperty* TargetProperty = TargetPropertyHandle->GetProperty();
+	UProperty* TargetProperty = TargetPropertyHandle->GetProperty();
 
-	const FObjectPropertyBase* ObjectProperty = CastFieldChecked<const FObjectPropertyBase>(TargetProperty);
+	const UObjectPropertyBase* ObjectProperty = CastChecked<const UObjectPropertyBase>(TargetProperty);
 
 	IDetailPropertyRow& PropertyRow = SegmentCategory.AddProperty(TargetPropertyHandle);
 	PropertyRow.DisplayName(LOCTEXT("AnimationReferenceLabel", "Animation Reference"));

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -40,9 +40,7 @@ public:
 				{
 					if ((TickableEntry.TickType == ETickableTickType::Always) || TickableObject->IsTickable())
 					{
-						ObjectBeingTicked = TickableObject;
 						TickableObject->Tick(DeltaSeconds);
-						ObjectBeingTicked = nullptr;
 					}
 
 					// In case it was removed during tick
@@ -78,8 +76,6 @@ public:
 	/** Removes this instance from the static array of tickable objects. */
 	virtual ~FTickableEditorObject()
 	{
-		ensureMsgf(ObjectBeingTicked != this, TEXT("Detected possible memory stomp. We are in the Tickable objects Tick function but hit its deconstructor, the 'this' pointer for the Object will now be invalid"));
-
 		ensure(IsInGameThread() || IsInAsyncLoadingThread());
 		if (bCollectionIntact && GetPendingTickableObjects().Remove(this) == 0)
 		{
@@ -111,11 +107,15 @@ private:
 	/** True if currently ticking of tickable editor objects. */
 	static bool bIsTickingObjects;
 
-	/** Set if we are in the Tick function for an editor tickable object */
-	static FTickableObjectBase* ObjectBeingTicked;
+	static TArray<FTickableObjectEntry>& GetTickableObjects()
+	{
+		static TTickableObjectsCollection TickableObjects;
+		return TickableObjects;
+	}
 
-
-	static TArray<FTickableObjectEntry>& GetTickableObjects();
-
-	static TArray<FTickableEditorObject*>& GetPendingTickableObjects();
+	static TArray<FTickableEditorObject*>& GetPendingTickableObjects()
+	{
+		static TArray<FTickableEditorObject*> PendingTickableObjects;
+		return PendingTickableObjects;
+	}
 };

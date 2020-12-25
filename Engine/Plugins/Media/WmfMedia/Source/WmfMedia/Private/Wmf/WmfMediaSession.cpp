@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WmfMediaSession.h"
 
@@ -55,7 +55,6 @@ FWmfMediaSession::FWmfMediaSession()
 	, SessionState(EMediaState::Closed)
 	, ShouldLoop(false)
 	, Status(EMediaStatus::None)
-	, bShuttingDown(false)
 {
 	UE_LOG(LogWmfMedia, Verbose, TEXT("Session %p: Created"), this);
 	MediaSessionCloseEvent = FPlatformProcess::GetSynchEventFromPool();
@@ -128,7 +127,7 @@ bool FWmfMediaSession::Initialize(bool LowLatency)
 
 	if (LowLatency)
 	{
-		if (FPlatformMisc::VerifyWindowsVersion(6, 2))
+		if (FWindowsPlatformMisc::VerifyWindowsVersion(6, 2))
 		{
 			HRESULT Result = Attributes->SetUINT32(MF_LOW_LATENCY, TRUE);
 
@@ -241,7 +240,6 @@ void FWmfMediaSession::Shutdown()
 		// Scope needed since MediaSession->Close() cannot be locked, see below.
 		FScopeLock Lock(&CriticalSection);
 		DiscardPendingChanges();
-		bShuttingDown = true;
 	}
 
 	// When an error occurs we close the MediaSession in HandleError(), no need to Close it again.
@@ -284,8 +282,6 @@ void FWmfMediaSession::Shutdown()
 	Status = EMediaStatus::None;
 	ThinnedRates.Empty();
 	UnthinnedRates.Empty();
-
-	bShuttingDown = false;
 }
 
 
@@ -365,12 +361,6 @@ TRangeSet<float> FWmfMediaSession::GetSupportedRates(EMediaRateThinning Thinning
 FTimespan FWmfMediaSession::GetTime() const
 {
 	FScopeLock Lock(&CriticalSection);
-
-	if (bShuttingDown)
-	{
-		// Exit, as we could otherwise block close-event delivery while being blocked on PresentationClock calls below & keeping the CS locked
-		return FTimespan::Zero();
-	}
 
 	MFCLOCK_STATE ClockState;
 

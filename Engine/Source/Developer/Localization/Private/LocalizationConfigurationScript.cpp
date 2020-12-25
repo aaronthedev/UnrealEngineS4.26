@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LocalizationConfigurationScript.h"
 #include "LocalizationTargetTypes.h"
@@ -385,17 +385,6 @@ namespace LocalizationConfigurationScript
 				ConfigSection.Add( TEXT("CollectionFilters"), CollectionName.ToString() );
 			}
 
-			// Class filters
-			for (const FSoftClassPath& ExcludeClass : Target->Settings.GatherFromPackages.ExcludeClasses)
-			{
-				if (ExcludeClass.IsValid())
-				{
-					// These are expected to be the short class name (eg, Texture2D) rather than the path name (eg, /Script/Engine.Texture2D)
-					ConfigSection.Add(TEXT("ExcludeClasses"), ExcludeClass.GetAssetName());
-				}
-			}
-			ConfigSection.Add(TEXT("ShouldExcludeDerivedClasses"), Target->Settings.GatherFromPackages.ShouldExcludeDerivedClasses ? TEXT("true") : TEXT("false"));
-
 			ConfigSection.Add( TEXT("ShouldGatherFromEditorOnlyData"), Target->Settings.GatherFromPackages.ShouldGatherFromEditorOnlyData ? TEXT("true") : TEXT("false") );
 			ConfigSection.Add( TEXT("SkipGatherCache"), Target->Settings.GatherFromPackages.SkipGatherCache ? TEXT("true") : TEXT("false") );
 		}
@@ -568,10 +557,6 @@ namespace LocalizationConfigurationScript
 				UEnum* LocalizedTextCollapseModeEnum = FindObjectChecked<UEnum>(ANY_PACKAGE, TEXT("ELocalizedTextCollapseMode"));
 				const FName CollapseModeName = LocalizedTextCollapseModeEnum->GetNameByValue((int64)Target->Settings.ExportSettings.CollapseMode);
 				ConfigSection.Add(TEXT("LocalizedTextCollapseMode"), CollapseModeName.ToString());
-
-				UEnum* POFormatEnum = FindObjectChecked<UEnum>(ANY_PACKAGE, TEXT("EPortableObjectFormat"));
-				const FName POFormatName = POFormatEnum->GetNameByValue((int64)Target->Settings.ExportSettings.POFormat);
-				ConfigSection.Add(TEXT("POFormat"), POFormatName.ToString());
 			}
 		}
 
@@ -693,10 +678,6 @@ namespace LocalizationConfigurationScript
 				UEnum* LocalizedTextCollapseModeEnum = FindObjectChecked<UEnum>(ANY_PACKAGE, TEXT("ELocalizedTextCollapseMode"));
 				const FName CollapseModeName = LocalizedTextCollapseModeEnum->GetNameByValue((int64)Target->Settings.ExportSettings.CollapseMode);
 				ConfigSection.Add(TEXT("LocalizedTextCollapseMode"), CollapseModeName.ToString());
-
-				UEnum* POFormatEnum = FindObjectChecked<UEnum>(ANY_PACKAGE, TEXT("EPortableObjectFormat"));
-				const FName POFormatName = POFormatEnum->GetNameByValue((int64)Target->Settings.ExportSettings.POFormat);
-				ConfigSection.Add(TEXT("POFormat"), POFormatName.ToString());
 
 				ConfigSection.Add(TEXT("ShouldPersistCommentsOnExport"), Target->Settings.ExportSettings.ShouldPersistCommentsOnExport ? TEXT("true") : TEXT("false"));
 				ConfigSection.Add(TEXT("ShouldAddSourceLocationsAsComments"), Target->Settings.ExportSettings.ShouldAddSourceLocationsAsComments ? TEXT("true") : TEXT("false"));

@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Rendering/SkeletalMeshVertexClothBuffer.h"
 #include "Rendering/SkeletalMeshVertexBuffer.h"
 #include "EngineUtils.h"
 #include "SkeletalMeshTypes.h"
-#include "ProfilingDebugging/LoadTimeTracker.h"
 
 /**
 * Constructor
@@ -110,15 +109,11 @@ FVertexBufferRHIRef FSkeletalMeshVertexClothBuffer::CreateRHIBuffer_Async()
 */
 void FSkeletalMeshVertexClothBuffer::InitRHI()
 {
-	SCOPED_LOADTIMER(FSkeletalMeshVertexClothBuffer_InitRHI);
-
 	VertexBufferRHI = CreateRHIBuffer_RenderThread();
 
 	if (VertexBufferRHI)
 	{
-		// When VertexData is null, this buffer hasn't been streamed in yet. We still need to create a FRHIShaderResourceView which will be
-		// cached in a vertex factory uniform buffer later. The nullptr tells the RHI that the SRV doesn't view on anything yet.
-		VertexBufferSRV = RHICreateShaderResourceView(FShaderResourceViewInitializer(VertexData ? VertexBufferRHI : nullptr, PF_A32B32G32R32F));
+		VertexBufferSRV = RHICreateShaderResourceView(VertexData ? VertexBufferRHI : nullptr, sizeof(FVector4), PF_A32B32G32R32F);
 	}
 }
 

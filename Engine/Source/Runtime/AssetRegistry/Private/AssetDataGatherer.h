@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -66,10 +66,6 @@ struct FDiscoveredPackageFile
 	FDateTime PackageTimestamp;
 };
 
-namespace AssetDataDiscoveryUtil
-{
-	bool PassesScanFilters(const TArray<FString>& InBlacklistFilters, const FString& InPath);
-}
 
 /**
  * Async task for discovering files that FAssetDataGatherer should search
@@ -78,7 +74,7 @@ class FAssetDataDiscovery : public FRunnable
 {
 public:
 	/** Constructor */
-	FAssetDataDiscovery(const TArray<FString>& InPaths, const TArray<FString>& InBlacklistScanFilters, bool bInIsSynchronous);
+	FAssetDataDiscovery(const TArray<FString>& InPaths, bool bInIsSynchronous);
 	virtual ~FAssetDataDiscovery();
 
 	// FRunnable implementation
@@ -98,9 +94,6 @@ public:
 
 	/** If assets are currently being asynchronously scanned in the specified path, this will cause them to be scanned before other assets. */
 	void PrioritizeSearchPath(const FString& PathToPrioritize);
-
-	/** Set the blacklist filters to use during scanning. */
-	void SetBlacklistScanFilters(const TArray<FString>& InBlacklistScanFilters);
 
 private:
 	/** Sort the paths so that items belonging to the current priority path is processed first */
@@ -125,9 +118,6 @@ private:
 
 	/** The paths found during the search. It is not threadsafe to directly access this array */
 	TArray<FString> DiscoveredPaths;
-
-	/** List of filters that will be run on discovered paths to see if they should be scanned. */
-	TArray<FString> BlacklistScanFilters;
 
 	/** List of priority files that need to be processed by the gatherer. It is not threadsafe to directly access this array */
 	TArray<FDiscoveredPackageFile> PriorityDiscoveredFiles;
@@ -166,7 +156,7 @@ class FAssetDataGatherer : public FRunnable
 {
 public:
 	/** Constructor */
-	FAssetDataGatherer(const TArray<FString>& Paths, const TArray<FString>& SpecificFiles, const TArray<FString>& InBlacklistScanFilters, bool bInIsSynchronous, EAssetDataCacheMode AssetDataCacheMode);
+	FAssetDataGatherer(const TArray<FString>& Paths, const TArray<FString>& SpecificFiles, bool bInIsSynchronous, EAssetDataCacheMode AssetDataCacheMode);
 	virtual ~FAssetDataGatherer();
 
 	// FRunnable implementation
@@ -190,9 +180,6 @@ public:
 	/** If assets are currently being asynchronously scanned in the specified path, this will cause them to be scanned before other assets. */
 	void PrioritizeSearchPath(const FString& PathToPrioritize);
 
-	/** Set the blacklist filters to use during scanning. */
-	void SetBlacklistScanFilters(const TArray<FString>& InBlacklistScanFilters);
-
 private:
 	/** Sort the paths so that items belonging to the current priority path is processed first */
 	void SortPathsByPriority(const int32 MaxNumToSort);
@@ -211,9 +198,6 @@ private:
 
 	/** Serializes the timestamped cache of discovered assets. Used for quick loading of data for assets that have not changed on disk */
 	void SerializeCache(FArchive& Ar);
-
-	/* Adds the given PackageName,DiskCachedAssetData pair into NewCachedAssetDataMap, and detects collisions for multiple files with the same PackageName */
-	void AddToCache(FName PackageName, FDiskCachedAssetData* DiskCachedAssetData);
 
 private:
 	/** A critical section to protect data transfer to the main thread */
@@ -251,9 +235,6 @@ private:
 
 	/** The paths found during the search */
 	TArray<FString> DiscoveredPaths;
-
-	/** List of filters that will be run on discovered paths to see if they should be scanned. */
-	TArray<FString> BlacklistScanFilters;
 
 	/** True if dependency data should be gathered */
 	bool bGatherDependsData;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -104,6 +104,7 @@
 #include "Delegates/DelegateBase.h"
 #include "Delegates/IntegerSequence.h"
 #include "Templates/Tuple.h"
+#include "Templates/TypeWrapper.h"
 #include "UObject/ScriptDelegates.h"
 #include "Misc/Optional.h"
 #include "Templates/UniquePtr.h"
@@ -549,6 +550,7 @@
 #include "Curves/CurveBase.h"
 #include "Curves/CurveOwnerInterface.h"
 #include "Camera/CameraTypes.h"
+#include "Sound/SoundClass.h"
 #include "Curves/CurveFloat.h"
 #include "EditorFramework/AssetImportData.h"
 #include "Animation/Skeleton.h"
@@ -592,7 +594,7 @@
 #include "Engine/LevelStreaming.h"
 #include "LatentActions.h"
 #include "PreviewScene.h"
-#include "BodySetupEnums.h"
+#include "PhysicsEngine/BodySetupEnums.h"
 #include "Sound/SoundConcurrency.h"
 #include "AlphaBlend.h"
 #include "Engine/Font.h"

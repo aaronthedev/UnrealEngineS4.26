@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -13,25 +13,20 @@ public class ChaosNiagara : ModuleRules
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"Core",
 				"CoreUObject",
 				"Engine",
-				"Projects",
 				"Slate",
 				"SlateCore",
 				"NiagaraCore",
 				"Niagara",
 				"NiagaraShader",
 				"RenderCore",
-				"VectorVM",
-				"RHI",
-				"ChaosSolverEngine",
+                "ChaosSolverEngine",
                 "Chaos",
+                "ChaosSolvers",
                 "GeometryCollectionEngine",
-				"Chaos",
-				"PhysicsCore",
-				"FieldSystemEngine",
-			}
+                "GeometryCollectionCore"
+            }
         );
 					
 		PublicDependencyModuleNames.AddRange(
@@ -47,10 +42,8 @@ public class ChaosNiagara : ModuleRules
 				"NiagaraVertexFactories",
                 "ChaosSolverEngine",
                 "GeometryCollectionEngine",
-				"FieldSystemEngine"
+                "GeometryCollectionCore"
             }
         );
-
-		PrivateDefinitions.Add("CHAOS_INCLUDE_LEVEL_1=1");
-	}
+    }
 }

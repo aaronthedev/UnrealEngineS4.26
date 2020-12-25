@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/SSettingsEditor.h"
 #include "UObject/UnrealType.h"
@@ -74,8 +74,6 @@ void SSettingsEditor::Construct( const FArguments& InArgs, const ISettingsEditor
 	RootObjectCustomization->Initialize();
 	SettingsView->SetRootObjectCustomizationInstance(RootObjectCustomization);
 
-	TSharedPtr<SScrollBox> ScrollBox;
-
 	ChildSlot
 	[
 		SNew(SVerticalBox)
@@ -90,7 +88,7 @@ void SSettingsEditor::Construct( const FArguments& InArgs, const ISettingsEditor
 			.Padding(0.0f, 16.0f)
 			[
 				// categories menu
-				SAssignNew(ScrollBox, SScrollBox)
+				SNew(SScrollBox)
 				+ SScrollBox::Slot()
 				[
 					SNew(SHorizontalBox)
@@ -142,8 +140,6 @@ void SSettingsEditor::Construct( const FArguments& InArgs, const ISettingsEditor
 		]
 	];
 
-	ScrollBox->SetScrollBarRightClickDragAllowed(true);
-
 	FInternationalization::Get().OnCultureChanged().AddSP(this, &SSettingsEditor::HandleCultureChanged);
 	Model->OnSelectionChanged().AddSP(this, &SSettingsEditor::HandleModelSelectionChanged);
 	SettingsContainer->OnCategoryModified().AddSP(this, &SSettingsEditor::HandleSettingsContainerCategoryModified);
@@ -158,6 +154,8 @@ void SSettingsEditor::NotifyPostChange( const FPropertyChangedEvent& PropertyCha
 {
 	if (PropertyChangedEvent.ChangeType != EPropertyChangeType::Interactive)
 	{
+		UObject* Outer = PropertyChangedEvent.Property->GetOuter();
+
 		// Note while there could be multiple objects in the details panel, only one is ever edited at once.
 		// There could be zero objects being edited in the FStructOnScope case.
 		
@@ -201,15 +199,15 @@ void SSettingsEditor::NotifyPostChange( const FPropertyChangedEvent& PropertyCha
 				}
 
 				// Determine if the Property is an Array or Array Element
-				bool bIsArrayOrArrayElement = PropertyThatChanged->GetActiveMemberNode()->GetValue()->IsA(FArrayProperty::StaticClass()) 
+				bool bIsArrayOrArrayElement = PropertyThatChanged->GetActiveMemberNode()->GetValue()->IsA(UArrayProperty::StaticClass()) 
 					|| PropertyThatChanged->GetActiveMemberNode()->GetValue()->ArrayDim > 1
-					|| PropertyChangedEvent.Property->GetOwner<FArrayProperty>();
+					|| ((Outer != nullptr) && Outer->IsA(UArrayProperty::StaticClass()));
 
-				bool bIsSetOrSetElement = PropertyThatChanged->GetActiveMemberNode()->GetValue()->IsA(FSetProperty::StaticClass())
-					|| PropertyChangedEvent.Property->GetOwner<FSetProperty>();
+				bool bIsSetOrSetElement = PropertyThatChanged->GetActiveMemberNode()->GetValue()->IsA(USetProperty::StaticClass())
+					|| ((Outer != nullptr) && Outer->IsA(USetProperty::StaticClass()));
 
-				bool bIsMapOrMapElement = PropertyThatChanged->GetActiveMemberNode()->GetValue()->IsA(FMapProperty::StaticClass())
-					|| PropertyChangedEvent.Property->GetOwner<FMapProperty>();
+				bool bIsMapOrMapElement = PropertyThatChanged->GetActiveMemberNode()->GetValue()->IsA(UMapProperty::StaticClass())
+					|| ((Outer != nullptr) && Outer->IsA(UMapProperty::StaticClass()));
 
 				if (ObjectBeingEdited->GetClass()->HasAnyClassFlags(CLASS_DefaultConfig) && !bIsArrayOrArrayElement && !bIsSetOrSetElement && !bIsMapOrMapElement)
 				{
@@ -266,7 +264,7 @@ TSharedRef<SWidget> SSettingsEditor::MakeCategoryWidget( const ISettingsCategory
 	}
 
 	// list the sections
-	for (const ISettingsSectionPtr& Section : InSections)
+	for (const ISettingsSectionPtr Section : InSections)
 	{
 		SectionsBox->AddSlot()
 			.HAlign(HAlign_Left)
@@ -324,7 +322,7 @@ TSharedRef<SWidget> SSettingsEditor::MakeCategoryWidget( const ISettingsCategory
 
 void SSettingsEditor::RecordPreferenceChangedAnalytics( ISettingsSectionPtr SelectedSection, const FPropertyChangedEvent& PropertyChangedEvent ) const
 {
-	FProperty* ChangedProperty = PropertyChangedEvent.MemberProperty;
+	UProperty* ChangedProperty = PropertyChangedEvent.MemberProperty;
 	// submit analytics data
 	if(FEngineAnalytics::IsAvailable() && ChangedProperty != nullptr && ChangedProperty->GetOwnerClass() != nullptr)
 	{
@@ -374,7 +372,7 @@ void SSettingsEditor::ReloadCategories()
 	TArray<TSharedPtr<ISettingsSection>> CategorySettingsSections;
 
 	TArray<UObject*> SettingsObjects;
-	for (const ISettingsCategoryPtr& Category : Categories)
+	for (const ISettingsCategoryPtr Category : Categories)
 	{
 		CategorySettingsSections.Reset();
 

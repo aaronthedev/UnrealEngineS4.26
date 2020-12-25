@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,8 +7,6 @@
 #include "Framework/Application/IInputProcessor.h"
 
 class FSlateApplication;
-class FSlateUser;
-struct FInputEvent;
 struct FAnalogInputEvent;
 struct FKeyEvent;
 struct FPointerEvent;
@@ -47,10 +45,6 @@ public:
 	virtual bool HandleKeyUpEvent(FSlateApplication& SlateApp, const FKeyEvent& InKeyEvent) override;
 	virtual bool HandleAnalogInputEvent(FSlateApplication& SlateApp, const FAnalogInputEvent& InAnalogInputEvent) override;
 	virtual bool HandleMouseMoveEvent(FSlateApplication& SlateApp, const FPointerEvent& MouseEvent) override;
-	virtual const TCHAR* GetDebugName() const override { return TEXT("AnalogCursor"); }
-
-
-	virtual int32 GetOwnerUserIndex() const { return 0; };
 
 	void SetAcceleration(float NewAcceleration);
 	void SetMaxSpeed(float NewMaxSpeed);
@@ -59,11 +53,6 @@ public:
 	void SetMode(AnalogCursorMode::Type NewMode);
 
 protected:
-
-	virtual bool IsRelevantInput(const FInputEvent& InputEvent) const;
-	virtual bool IsRelevantInput(const FKeyEvent& KeyEvent) const;
-	virtual bool IsRelevantInput(const FAnalogInputEvent& AnalogInputEvent) const;
-	virtual bool IsRelevantInput(const FPointerEvent& MouseEvent) const;
 
 	/** Getter */
 	FORCEINLINE const FVector2D& GetAnalogValues( EAnalogStick Stick = EAnalogStick::Left ) const
@@ -75,10 +64,7 @@ protected:
 	void ClearAnalogValues();
 
 	/** Handles updating the cursor position and processing a Mouse Move Event */
-	UE_DEPRECATED(4.24, "FAnalogCursor now updates cursor position based on user, not the hardware cursor specifically.")
 	virtual void UpdateCursorPosition(FSlateApplication& SlateApp, TSharedRef<ICursor> Cursor, const FVector2D& NewPosition, bool bForce = false);
-
-	virtual void UpdateCursorPosition(FSlateApplication& SlateApp, TSharedRef<FSlateUser> SlateUser, const FVector2D& NewPosition, bool bForce = false);
 
 	/** Current speed of the cursor */
 	FVector2D CurrentSpeed;

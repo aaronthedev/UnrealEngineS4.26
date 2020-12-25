@@ -1,21 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieSceneTestObjects.h"
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
+#include "Compilation/MovieSceneCompiler.h"
 #include "Compilation/MovieSceneSegmentCompiler.h"
 #include "Compilation/MovieSceneCompilerRules.h"
 #include "Evaluation/MovieSceneEvaluationTrack.h"
 #include "Evaluation/MovieSceneEvaluationField.h"
 #include "UObject/Package.h"
 #include "MovieSceneTimeHelpers.h"
-
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-// TODO: Reimplement or remove segment blender automation tests
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-UE_MOVIESCENE_TODO(Reimplement or remove segment blender automation tests)
-
-#if 0
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -610,4 +604,45 @@ bool FMovieSceneCompilerTreeIteratorBoundsTest::RunTest(const FString& Parameter
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS
-#endif // #if 0
+
+
+
+FMovieSceneEvalTemplatePtr UTestMovieSceneTrack::CreateTemplateForSection(const UMovieSceneSection& InSection) const
+{
+	return FTestMovieSceneEvalTemplate();
+}
+
+FMovieSceneTrackSegmentBlenderPtr UTestMovieSceneTrack::GetTrackSegmentBlender() const
+{
+	struct FSegmentBlender : FMovieSceneTrackSegmentBlender
+	{
+		bool bHighPass;
+		bool bEvaluateNearest;
+
+		FSegmentBlender(bool bInHighPassFilter, bool bInEvaluateNearest)
+			: bHighPass(bInHighPassFilter)
+			, bEvaluateNearest(bInEvaluateNearest)
+		{
+			bCanFillEmptySpace = bEvaluateNearest;
+		}
+
+		virtual void Blend(FSegmentBlendData& BlendData) const
+		{
+			if (bHighPass)
+			{
+				MovieSceneSegmentCompiler::ChooseLowestRowIndex(BlendData);
+			}
+
+			// Always sort by priority
+			Algo::SortBy(BlendData, [](const FMovieSceneSectionData& In){ return In.Section->GetRowIndex(); });
+		}
+
+		virtual TOptional<FMovieSceneSegment> InsertEmptySpace(const TRange<FFrameNumber>& Range, const FMovieSceneSegment* PreviousSegment, const FMovieSceneSegment* NextSegment) const
+		{
+			return bEvaluateNearest ? MovieSceneSegmentCompiler::EvaluateNearestSegment(Range, PreviousSegment, NextSegment) : TOptional<FMovieSceneSegment>();
+		}
+	};
+
+	// Evaluate according to bEvalNearestSection preference
+	return FSegmentBlender(bHighPassFilter, EvalOptions.bCanEvaluateNearestSection && EvalOptions.bEvalNearestSection);
+}

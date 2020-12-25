@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Misc/CoreMisc.h"
@@ -27,39 +27,19 @@ bool FGameplayAbilitiesExec::Exec(UWorld* Inworld, const TCHAR* Cmd, FOutputDevi
 
 	bool bHandled = false;
 
-	UAbilitySystemGlobals& AbilitySystemGlobals = UAbilitySystemGlobals::Get();
-
 	if (FParse::Command(&Cmd, TEXT("ToggleIgnoreAbilitySystemCooldowns")))
 	{
+		UAbilitySystemGlobals& AbilitySystemGlobals = UAbilitySystemGlobals::Get();
 		AbilitySystemGlobals.ToggleIgnoreAbilitySystemCooldowns();
 		bHandled = true;
 	}
 	else if (FParse::Command(&Cmd, TEXT("ToggleIgnoreAbilitySystemCosts")))
 	{
+		UAbilitySystemGlobals& AbilitySystemGlobals = UAbilitySystemGlobals::Get();
 		AbilitySystemGlobals.ToggleIgnoreAbilitySystemCosts();
 		bHandled = true;
 	}
-	else if (FParse::Command(&Cmd, TEXT("ListPlayerAbilities")))
-	{
-		AbilitySystemGlobals.ListPlayerAbilities();
-		bHandled = true;
-	}
-	else if (FParse::Command(&Cmd, TEXT("ServerActivatePlayerAbility")))
-	{
-		AbilitySystemGlobals.ServerActivatePlayerAbility(FParse::Token(Cmd, false));
-		bHandled = true;
-	}
-	else if (FParse::Command(&Cmd, TEXT("ServerEndPlayerAbility")))
-	{
-		AbilitySystemGlobals.ServerEndPlayerAbility(FParse::Token(Cmd, false));
-		bHandled = true;
-	}
-	else if (FParse::Command(&Cmd, TEXT("ServerCancelPlayerAbility")))
-	{
-		AbilitySystemGlobals.ServerCancelPlayerAbility(FParse::Token(Cmd, false));
-		bHandled = true;
-	}
-	
+
 	return bHandled;
 }
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/RendererSettings.h"
 #include "PixelFormat.h"
@@ -69,10 +69,11 @@ URendererSettings::URendererSettings(const FObjectInitializer& ObjectInitializer
 	bSupportAtmosphericFog = true;
 	bSupportSkyAtmosphere = true;
 	bSupportSkinCacheShaders = false;
+	bSupportMaterialLayers = false;
 	GPUSimulationTextureSizeX = 1024;
 	GPUSimulationTextureSizeY = 1024;
 	bEnableRayTracing = 0;
-	bEnableRayTracingTextureLOD = 0;
+	bEnableRayTracingTextureLOD = 0; 
 	bLPV = 1;
 }
 
@@ -91,7 +92,7 @@ void URendererSettings::PostInitProperties()
 }
 
 #if WITH_EDITOR
-void URendererSettings::PreEditChange(FProperty* PropertyAboutToChange)
+void URendererSettings::PreEditChange(UProperty* PropertyAboutToChange)
 {
 	Super::PreEditChange(PropertyAboutToChange);
 
@@ -127,9 +128,9 @@ void URendererSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyCh
 			{
 				bSupportSkinCacheShaders = 1;
 
-				for (TFieldIterator<FProperty> PropIt(GetClass()); PropIt; ++PropIt)
+				for (TFieldIterator<UProperty> PropIt(GetClass()); PropIt; ++PropIt)
 				{
-					FProperty* Property = *PropIt;
+					UProperty* Property = *PropIt;
 					if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(URendererSettings, bSupportSkinCacheShaders))
 					{
 						UpdateSinglePropertyInConfigFile(Property, GetDefaultConfigFilename());
@@ -140,9 +141,9 @@ void URendererSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyCh
 			{
 				bEnableRayTracing = 0;
 
-				for (TFieldIterator<FProperty> PropIt(GetClass()); PropIt; ++PropIt)
+				for (TFieldIterator<UProperty> PropIt(GetClass()); PropIt; ++PropIt)
 				{
-					FProperty* Property = *PropIt;
+					UProperty* Property = *PropIt;
 					if (Property->GetFName() == GET_MEMBER_NAME_CHECKED(URendererSettings, bEnableRayTracing))
 					{
 						UpdateSinglePropertyInConfigFile(Property, GetDefaultConfigFilename());
@@ -171,32 +172,15 @@ void URendererSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyCh
 
 		ExportValuesToConsoleVariables(PropertyChangedEvent.Property);
 
-		if ((PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(URendererSettings, ReflectionCaptureResolution) ||
-			(PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(URendererSettings, bReflectionCaptureCompression))) &&
+		if (PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(URendererSettings, ReflectionCaptureResolution) && 
 			PropertyChangedEvent.ChangeType != EPropertyChangeType::Interactive)
 		{
-			if (GEditor != nullptr)
-			{
-				if (GWorld != nullptr && GWorld->FeatureLevel == ERHIFeatureLevel::ES3_1)
-				{
-					// When we feature change from SM5 to ES31 we call BuildReflectionCapture if we have Unbuilt Reflection Components, so no reason to call it again here
-					// This is to make sure that we have valid data for Mobile Preview.
-
-					// ES31->SM5 to be able to capture
-					GEditor->ToggleFeatureLevelPreview();
-					// SM5->ES31 BuildReflectionCaptures are triggered here on callback
-					GEditor->ToggleFeatureLevelPreview();
-				}
-				else
-				{
-					GEditor->BuildReflectionCaptures();
-				}
-			}
+			GEditor->BuildReflectionCaptures();
 		}
 	}
 }
 
-bool URendererSettings::CanEditChange(const FProperty* InProperty) const
+bool URendererSettings::CanEditChange(const UProperty* InProperty) const
 {
 	const bool ParentVal = Super::CanEditChange(InProperty);
 

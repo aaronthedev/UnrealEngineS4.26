@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
-[SupportedPlatforms("Win64")]
 public abstract class DatasmithMaxBaseTarget : TargetRules
 {
 	public DatasmithMaxBaseTarget(TargetInfo Target)
@@ -17,7 +16,6 @@ public abstract class DatasmithMaxBaseTarget : TargetRules
 		LinkType = TargetLinkType.Monolithic;
 
 		WindowsPlatform.ModuleDefinitionFile = "Programs/Enterprise/Datasmith/DatasmithMaxExporter/DatasmithMaxExporter.def";
-		WindowsPlatform.bStrictConformanceMode = false;
 
 		bBuildDeveloperTools = false;
 		bUseMallocProfiler = false;

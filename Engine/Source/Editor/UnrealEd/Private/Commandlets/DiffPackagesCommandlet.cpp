@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	DiffPackagesCommandlet.cpp: Commandlet used for comparing two packages.
@@ -30,7 +30,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogDiffPackagesCommandlet, Log, All);
 // whether to skip levels when building the initial diff sets (for debugging)
 #define OPTIMIZE_LEVEL_DIFFS 1
 
-UDEPRECATED_DiffPackagesCommandlet::UDEPRECATED_DiffPackagesCommandlet(const FObjectInitializer& ObjectInitializer)
+UDiffPackagesCommandlet::UDiffPackagesCommandlet(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	LogToConsole = false;
@@ -104,14 +104,14 @@ struct FPropertyComparison
 	{}
 
 	/** the property that was compared */
-	FProperty* Prop;
+	UProperty* Prop;
 
 	/**
 	 * The comparison result type for this property comparison.
 	 */
 	EObjectDiff DiffType;
 
-	/** The name of the property that was compared; only used when comparing native property data (which will have no corresponding FProperty) */
+	/** The name of the property that was compared; only used when comparing native property data (which will have no corresponding UProperty) */
 	FString PropText;
 
 	/**
@@ -167,11 +167,6 @@ FNativePropertyData::FNativePropertyData( UObject* InObject )
 	SetObject(InObject);
 }
 
-namespace DiffPackagesCommandletImpl
-{
-	void LoadNativePropertyData(UObject* Object, TArray<uint8>& out_NativePropertyData);
-}
-
 /**
  * Changes the UObject associated with this native property data container and re-initializes the
  * PropertyData and PropertyText members
@@ -184,7 +179,7 @@ void FNativePropertyData::SetObject( UObject* NewObject )
 
 	if ( Object != NULL )
 	{
-		DiffPackagesCommandletImpl::LoadNativePropertyData(Object, PropertyData);
+		UDiffPackagesCommandlet::LoadNativePropertyData(Object, PropertyData);
 		Object->GetNativePropertyValues(PropertyText, PPF_SimpleObjectText);
 	}
 }
@@ -351,7 +346,7 @@ UObject* CopyObjectToPackage(UPackage* Package, UObject* Object)
 		
 		// cretate the new pathname from package name and everything after the original package name
 		FString NewPathName = FString(*Package->GetName()) + OrigPathName.Right(OrigPathName.Len() - Dot);
-		NewOuter = CreatePackage( *NewPathName);
+		NewOuter = CreatePackage(NULL, *NewPathName);
 	}
 	else
 	{
@@ -398,7 +393,7 @@ void FixupObjectReferences(UPackage* Package, TMap<UObject*, UObject*>& ObjectRe
 }
 
 
-bool UDEPRECATED_DiffPackagesCommandlet::GenerateObjectComparison( UObject* RootObject, FObjectComparison& out_Comparison, TArray<FObjectComparison>* ObjectsToIgnore/*=NULL*/ )
+bool UDiffPackagesCommandlet::GenerateObjectComparison( UObject* RootObject, FObjectComparison& out_Comparison, TArray<FObjectComparison>* ObjectsToIgnore/*=NULL*/ )
 {
 	check(RootObject);
 
@@ -454,15 +449,9 @@ bool UDEPRECATED_DiffPackagesCommandlet::GenerateObjectComparison( UObject* Root
 }
 
 
-bool UDEPRECATED_DiffPackagesCommandlet::Initialize( const TCHAR* Parms )
+bool UDiffPackagesCommandlet::Initialize( const TCHAR* Parms )
 {
 	bool bResult = false;
-
-	SET_WARN_COLOR(COLOR_RED);
-	UE_LOG(LogDiffPackagesCommandlet, Warning, TEXT("#####################################################"));
-	UE_LOG(LogDiffPackagesCommandlet, Warning, TEXT("# DiffPackages is deprecated, use DiffAssets instead."));
-	UE_LOG(LogDiffPackagesCommandlet, Warning, TEXT("#####################################################"));
-	CLEAR_WARN_COLOR();
 
 	// parse the command line into tokens and switches
 	TArray<FString> Tokens, Switches;
@@ -566,7 +555,7 @@ bool UDEPRECATED_DiffPackagesCommandlet::Initialize( const TCHAR* Parms )
 					break;
 				}
 
-				MergePackage = CreatePackage( TEXT("MergePackage"));
+				MergePackage = CreatePackage(NULL, TEXT("MergePackage"));
 				// diff all properties if we are merging ?
 				// todo: ??
 				//		bDiffAllProps = true;
@@ -598,7 +587,7 @@ bool UDEPRECATED_DiffPackagesCommandlet::Initialize( const TCHAR* Parms )
 
 					// to avoid conflicts when loading packages from different locations that have the same name, create a dummy package to contain
 					// the file we're about the load - this will prevent the second/third versions of the file from replacing the first version when loaded.
-					Package = CreatePackage( TEXT("Package_A"));
+					Package = CreatePackage(NULL, TEXT("Package_A"));
 					Packages[0] = LoadPackage(Package, *Filename, LOAD_None);
 					PackageFilenames[0] = FPaths::GetBaseFilename(Filename);
 					NumPackages++;
@@ -609,7 +598,7 @@ bool UDEPRECATED_DiffPackagesCommandlet::Initialize( const TCHAR* Parms )
 
 					// to avoid conflicts when loading packages from different locations that have the same name, create a dummy package to contain
 					// the file we're about the load - this will prevent the second/third versions of the file from replacing the first version when loaded.
-					Package = CreatePackage( TEXT("Package_B"));
+					Package = CreatePackage(NULL, TEXT("Package_B"));
 					Packages[1] = LoadPackage(Package, *Filename, LOAD_None);
 					PackageFilenames[1] = FPaths::GetBaseFilename(Filename);
 					NumPackages++;
@@ -620,7 +609,7 @@ bool UDEPRECATED_DiffPackagesCommandlet::Initialize( const TCHAR* Parms )
 
 					// to avoid conflicts when loading packages from different locations that have the same name, create a dummy package to contain
 					// the file we're about the load - this will prevent the second/third versions of the file from replacing the first version when loaded.
-					Package = CreatePackage( TEXT("Package_C"));
+					Package = CreatePackage(NULL, TEXT("Package_C"));
 					Packages[2] = LoadPackage(Package, *Filename, LOAD_None);
 					PackageFilenames[2] = FPaths::GetBaseFilename(Filename);
 					NumPackages++;
@@ -706,7 +695,7 @@ bool UDEPRECATED_DiffPackagesCommandlet::Initialize( const TCHAR* Parms )
 	return bResult;
 }
 
-int32 UDEPRECATED_DiffPackagesCommandlet::Main(const FString& Params)
+int32 UDiffPackagesCommandlet::Main(const FString& Params)
 {
 	if ( !Initialize(*Params) )
 	{
@@ -917,7 +906,7 @@ void AppendComparisonResultText(FString& ExistingResultText, const FString& NewR
 	ExistingResultText += NewResultText + LINE_TERMINATOR;
 }
 
-bool UDEPRECATED_DiffPackagesCommandlet::ProcessDiff(FObjectComparison& Diff)
+bool UDiffPackagesCommandlet::ProcessDiff(FObjectComparison& Diff)
 {
 	// always diff the root objects against each other
 	Diff.OverallDiffType = DiffObjects(
@@ -982,7 +971,7 @@ bool UDEPRECATED_DiffPackagesCommandlet::ProcessDiff(FObjectComparison& Diff)
 	return Diff.OverallDiffType != OD_None;
 }
 
-EObjectDiff UDEPRECATED_DiffPackagesCommandlet::DiffObjects(UObject* ObjA, UObject* ObjB, UObject* ObjAncestor, FObjectComparison& Diff)
+EObjectDiff UDiffPackagesCommandlet::DiffObjects(UObject* ObjA, UObject* ObjB, UObject* ObjAncestor, FObjectComparison& Diff)
 {
 	// if all objects are NULL, there's no difference :)
 	if (!ObjA && !ObjB && !ObjAncestor)
@@ -1014,7 +1003,7 @@ EObjectDiff UDEPRECATED_DiffPackagesCommandlet::DiffObjects(UObject* ObjA, UObje
 
 	// @todo: don't make this ongoing, make this one for each different property
 	EObjectDiff OverallDiffType = OD_None;
-	for ( FProperty* Prop = ComparisonClass->PropertyLink; Prop; Prop = Prop->PropertyLinkNext )
+	for ( UProperty* Prop = ComparisonClass->PropertyLink; Prop; Prop = Prop->PropertyLinkNext )
 	{
 		// if this is not an editable property and -most or -full was not specified, then skip this property
 		if ( !bDiffNonEditProps && (Prop->PropertyFlags & CPF_Edit) == 0 )
@@ -1320,10 +1309,7 @@ EObjectDiff UDEPRECATED_DiffPackagesCommandlet::DiffObjects(UObject* ObjA, UObje
 
 
 
-namespace DiffPackagesCommandletImpl
-{
-
-void LoadNativePropertyData( UObject* Object, TArray<uint8>& out_NativePropertyData )
+void UDiffPackagesCommandlet::LoadNativePropertyData( UObject* Object, TArray<uint8>& out_NativePropertyData )
 {
 	// first, validate our input parameters
 	check(Object);
@@ -1364,10 +1350,8 @@ void LoadNativePropertyData( UObject* Object, TArray<uint8>& out_NativePropertyD
 	}
 }
 
-}
 
-
-EObjectDiff UDEPRECATED_DiffPackagesCommandlet::CompareNativePropertyValues( UObject* ObjA, UObject* ObjB, UObject* ObjAncestor, FObjectComparison& PropertyValueComparisons )
+EObjectDiff UDiffPackagesCommandlet::CompareNativePropertyValues( UObject* ObjA, UObject* ObjB, UObject* ObjAncestor, FObjectComparison& PropertyValueComparisons )
 {
 	FNativePropertyData PropertyDataA(ObjA), PropertyDataB(ObjB), PropertyDataAncestor(ObjAncestor);
 

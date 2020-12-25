@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Recorder/TakeRecorderParameters.h"
 
@@ -6,8 +6,8 @@ FTakeRecorderUserParameters::FTakeRecorderUserParameters()
 	: bMaximizeViewport(false)
 	, CountdownSeconds(0.f)
 	, EngineTimeDilation(1.f)
+	, SampleClock(nullptr)
 	, bRemoveRedundantTracks(true)
-	, ReduceKeysTolerance(KINDA_SMALL_NUMBER)
 	, bSaveRecordedAssets(false)
 	, bAutoSerialize(false)
 {
@@ -17,9 +17,7 @@ FTakeRecorderUserParameters::FTakeRecorderUserParameters()
 }
 
 FTakeRecorderProjectParameters::FTakeRecorderProjectParameters()
-	: bStartAtCurrentTimecode(true)
-	, bRecordTimecode(true)
-	, bRecordSourcesIntoSubSequences(false)
+	: bRecordSourcesIntoSubSequences(false)
 	, bRecordToPossessable(false)
 {}
 

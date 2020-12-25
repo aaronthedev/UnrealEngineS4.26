@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "AssetData.h"
-#include "AssetManagerEditorModule.h"
 #include "EdGraph/EdGraph.h"
 #include "Misc/AssetRegistryInterface.h"
 #include "EdGraph_ReferenceViewer.generated.h"
@@ -43,7 +42,6 @@ public:
 	bool IsSearchBreadthLimited() const;
 	bool IsShowSoftReferences() const;
 	bool IsShowHardReferences() const;
-	bool IsShowEditorOnlyReferences() const;
 	bool IsShowManagementReferences() const;
 	bool IsShowSearchableNames() const;
 	bool IsShowNativePackages() const;
@@ -54,7 +52,6 @@ public:
 	void SetSearchBreadthLimitEnabled(bool newEnabled);
 	void SetShowSoftReferencesEnabled(bool newEnabled);
 	void SetShowHardReferencesEnabled(bool newEnabled);
-	void SetShowEditorOnlyReferencesEnabled(bool newEnabled);
 	void SetShowManagementReferencesEnabled(bool newEnabled);
 	void SetShowSearchableNames(bool newEnabled);
 	void SetShowNativePackages(bool newEnabled);
@@ -82,7 +79,7 @@ private:
 
 	bool ExceedsMaxSearchDepth(int32 Depth) const;
 	bool ExceedsMaxSearchBreadth(int32 Breadth) const;
-	FAssetManagerDependencyQuery GetReferenceSearchFlags(bool bHardOnly) const;
+	EAssetRegistryDependencyType::Type GetReferenceSearchFlags(bool bHardOnly) const;
 
 	UEdGraphNode_Reference* CreateReferenceNode();
 
@@ -113,7 +110,6 @@ private:
 	bool bLimitSearchBreadth;
 	bool bIsShowSoftReferences;
 	bool bIsShowHardReferences;
-	bool bIsShowEditorOnlyReferences;
 	bool bIsShowManagementReferences;
 	bool bIsShowSearchableNames;
 	bool bIsShowNativePackages;

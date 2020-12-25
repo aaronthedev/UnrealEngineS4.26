@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,34 +9,22 @@
 class FConcertSyncClientLiveSession;
 class FConcertSandboxPlatformFile;
 class ISourceControlProvider;
-class IConcertFileSharingService;
 class UPackage;
 
 struct FAssetData;
 struct FConcertPackage;
 struct FConcertPackageInfo;
 struct FConcertPackageRejectedEvent;
-struct FConcertPackageDataStream;
 
 enum class EConcertPackageUpdateType : uint8;
-
-/** Invoked when a package is too large to be sent to the server if the transport protocol doesn't support large file. */
-DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnConcertClientPackageTooLargeError, const FConcertPackageInfo& /*PackageInfo*/, int64 /*PkgSize*/, int64 /*MaxSize*/);
 
 class FConcertClientPackageManager
 {
 public:
-	/**
-	 * Construct the package manager for the specified session.
-	 * @param InLiveSession The session for which the package manager will be used.
-	 * @param InPackageBridge The package bridge (used by the package manager to register itself for package events)
-	 * @param InFileSharingService Optional service (can be null) used by the client to exchange very large packages with the server.
-	 */
-	FConcertClientPackageManager(TSharedRef<FConcertSyncClientLiveSession> InLiveSession, IConcertClientPackageBridge* InPackageBridge, TSharedPtr<IConcertFileSharingService> InFileSharingService);
+	FConcertClientPackageManager(TSharedRef<FConcertSyncClientLiveSession> InLiveSession, IConcertClientPackageBridge* InPackageBridge);
 	~FConcertClientPackageManager();
 	
 	/**
-	 * Verify if a package dirty event should be ignored, mainly for the purpose of locking
 	 * @return true if dirty even should be ignored for InPackage
 	 */
 	bool ShouldIgnorePackageDirtyEvent(class UPackage* InPackage) const;
@@ -51,11 +39,6 @@ public:
 	 * @param PersistedFiles Map of persisted files to their package version to mark as persisted if their ledger version match.
 	 */
 	void SynchronizePersistedFiles(const TMap<FString, int64>& PersistedFiles);
-
-	/**
-	 * Discard dirty packages changes by queuing them for hot reload
-	 */
-	void QueueDirtyPackagesForReload();
 
 	/**
 	 * Synchronize any pending updates to in-memory packages (hot-reloads or purges) to keep them up-to-date with the on-disk state.
@@ -78,13 +61,6 @@ public:
 	void ApplyAllHeadPackageData();
 
 	/**
-	 * Run Package filters
-	 * @param InPackage The package to run the filters on
-	 * @return true if the package passes the filters (Is not filtered out)
-	 */
-	bool PassesPackageFilters(UPackage* InPackage) const;
-
-	/**
 	 * Tell if package changes happened during this session.
 	 * @return True if the session contains package changes.
 	 */
@@ -95,23 +71,11 @@ public:
 	 */
 	bool PersistSessionChanges(TArrayView<const FName> InPackagesToPersist, ISourceControlProvider* SourceControlProvider, TArray<FText>* OutFailureReasons = nullptr);
 
-	/**
-	 * Called when a package is too big to be handled by the system.
-	 */
-	FOnConcertClientPackageTooLargeError& OnConcertClientPackageTooLargeError() { return OnPackageTooLargeErrorDelegate; }
-
 private:
-
-	/**
-	 * Apply the package filters on the package info
-	 * @return true if the package info passes the filter.
-	 */
-	bool ApplyPackageFilters(const FConcertPackageInfo& InPackageInfo) const;
-
 	/**
 	 * Apply the data in the given package to disk and update the in-memory state.
 	 */
-	void ApplyPackageUpdate(const FConcertPackageInfo& InPackageInfo, FConcertPackageDataStream& InPackageDataStream);
+	void ApplyPackageUpdate(const FConcertPackage& InPackage);
 
 	/**
 	 * Handle a rejected package event, those are sent by the server when a package update is refused.
@@ -127,17 +91,17 @@ private:
 	/**
 	 * Called to handle a local package event.
 	 */
-	void HandleLocalPackageEvent(const FConcertPackageInfo& PackageInfo, const FString& PackagePathname);
+	void HandleLocalPackageEvent(const FConcertPackage& Package);
 
 	/**
 	 * Utility to save new package data to disk, and also queue if for hot-reload.
 	 */
-	void SavePackageFile(const FConcertPackageInfo& PackageInfo, FConcertPackageDataStream& InPackageDataStream);
+	void SavePackageFile(const FConcertPackage& Package);
 
 	/**
 	 * Utility to remove existing package data from disk, and also queue if for purging.
 	 */
-	void DeletePackageFile(const FConcertPackageInfo& PackageInfo);
+	void DeletePackageFile(const FConcertPackage& Package);
 
 	/**
 	 * Can we currently perform content hot-reloads or purges?
@@ -154,11 +118,6 @@ private:
 	 * Purge any pending in-memory packages to keep them up-to-date with the on-disk state.
 	 */
 	void PurgePendingPackages();
-
-	/**
-	 * Whether the package data is small enough to be exchanged using a single TArray<> data structure.
-	 */
-	bool CanExchangePackageDataAsByteArray(int64 PackageDataSize) const;
 
 #if WITH_EDITOR
 	/**
@@ -198,19 +157,4 @@ private:
 	 * Array of package names that are pending an in-memory purge.
 	 */
 	TArray<FName> PackagesPendingPurge;
-
-	/**
-	 * Called when a package is too large to be handled by the system.
-	 */
-	FOnConcertClientPackageTooLargeError OnPackageTooLargeErrorDelegate;
-
-	/**
-	 * Optional side channel to exchange large blobs (package data) with the server in a scalable way (ex. the request/response transport layer is not designed and doesn't support exchanging 3GB packages).
-	 */
-	TSharedPtr<IConcertFileSharingService> FileSharingService;
-
-	/**
-	 * Keep the list of package for which the pristine state was sent. Used if the session doesn't support live sync. 
-	 */
-	TSet<FName> EmittedPristinePackages;
 };

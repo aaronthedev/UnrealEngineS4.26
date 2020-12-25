@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -27,9 +27,6 @@ public:
 	/** UEdGraphNode interface */
 	ANIMGRAPH_API virtual void PinConnectionListChanged(UEdGraphPin* Pin) override;
 	ANIMGRAPH_API virtual void PinDefaultValueChanged(UEdGraphPin* Pin) override;
-
-	/** UAnimGraphNode_Base interface */
-	virtual void OnProcessDuringCompilation(IAnimBlueprintCompilationContext& InCompilationContext, IAnimBlueprintGeneratedClassCompiledData& OutCompiledData) override;
 
 	virtual void SetAnimationAsset(UAnimationAsset* Asset) { check(false); /*Base function called*/ }
 };

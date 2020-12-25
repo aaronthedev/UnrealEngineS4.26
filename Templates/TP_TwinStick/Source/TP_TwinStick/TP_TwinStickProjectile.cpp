@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserve
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserve
 
 #include "TP_TwinStickProjectile.h"
 #include "GameFramework/ProjectileMovementComponent.h"
@@ -36,7 +36,7 @@ ATP_TwinStickProjectile::ATP_TwinStickProjectile()
 void ATP_TwinStickProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
 	// Only add impulse and destroy projectile if we hit a physics
-	if ((OtherActor != nullptr) && (OtherActor != this) && (OtherComp != nullptr) && OtherComp->IsSimulatingPhysics())
+	if ((OtherActor != NULL) && (OtherActor != this) && (OtherComp != NULL) && OtherComp->IsSimulatingPhysics())
 	{
 		OtherComp->AddImpulseAtLocation(GetVelocity() * 20.0f, GetActorLocation());
 	}

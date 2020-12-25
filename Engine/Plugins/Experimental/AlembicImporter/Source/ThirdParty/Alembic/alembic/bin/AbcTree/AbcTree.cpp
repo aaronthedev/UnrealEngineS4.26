@@ -36,9 +36,7 @@
 
 #include <Alembic/Abc/All.h>
 #include <Alembic/AbcCoreAbstract/All.h>
-#ifdef ALEMBIC_WITH_HDF5
 #include <Alembic/AbcCoreHDF5/All.h>
-#endif
 #include <Alembic/AbcCoreOgawa/All.h>
 #include <Alembic/AbcCoreFactory/All.h>
 #include <Alembic/AbcCollection/All.h>

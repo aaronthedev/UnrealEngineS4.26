@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MaterialLayersFunctionsCustomization.h"
 #include "Materials/MaterialExpressionMaterialAttributeLayers.h"
@@ -52,7 +52,7 @@ FMaterialLayersFunctionsCustomization::FMaterialLayersFunctionsCustomization(con
 	LayerHandle->AsArray()->SetOnNumElementsChanged(RebuildChildrenDelegate);
 	BlendHandle->AsArray()->SetOnNumElementsChanged(RebuildChildrenDelegate);
 
-#if WITH_EDITOR
+#ifdef WITH_EDITOR
 	//Fixup for adding new bool arrays to the class
 	if (MaterialLayersFunctions)
 	{

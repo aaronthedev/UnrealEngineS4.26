@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcGeom_Basis_h
-#define Alembic_AbcGeom_Basis_h
+#ifndef _Alembic_AbcGeom_Basis_h_
+#define _Alembic_AbcGeom_Basis_h_
 
 #include <string>
 #include <Alembic/Util/Foundation.h>

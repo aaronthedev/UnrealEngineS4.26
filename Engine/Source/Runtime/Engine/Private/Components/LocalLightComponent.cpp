@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PointLightComponent.cpp: PointLightComponent implementation.
@@ -94,7 +94,7 @@ void ULocalLightComponent::Serialize(FArchive& Ar)
 
 #if WITH_EDITOR
 
-bool ULocalLightComponent::CanEditChange(const FProperty* InProperty) const
+bool ULocalLightComponent::CanEditChange(const UProperty* InProperty) const
 {
 	if (InProperty)
 	{
@@ -112,7 +112,7 @@ bool ULocalLightComponent::CanEditChange(const FProperty* InProperty) const
 /**
  * Called after property has changed via e.g. property window or set command.
  *
- * @param	PropertyThatChanged	FProperty that has been changed, NULL if unknown
+ * @param	PropertyThatChanged	UProperty that has been changed, NULL if unknown
  */
 void ULocalLightComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
@@ -124,7 +124,7 @@ void ULocalLightComponent::PostEditChangeProperty(FPropertyChangedEvent& Propert
 }
 #endif // WITH_EDITOR
 
-void ULocalLightComponent::PostInterpChange(FProperty* PropertyThatChanged)
+void ULocalLightComponent::PostInterpChange(UProperty* PropertyThatChanged)
 {
 	static FName RadiusName(TEXT("Radius"));
 	static FName AttenuationRadiusName(TEXT("AttenuationRadius"));
@@ -166,7 +166,7 @@ void ULocalLightComponent::PushRadiusToRenderThread()
 
 float ULocalLightComponent::GetUnitsConversionFactor(ELightUnits SrcUnits, ELightUnits TargetUnits, float CosHalfConeAngle)
 {
-	CosHalfConeAngle = FMath::Clamp<float>(CosHalfConeAngle, -1, 1 - KINDA_SMALL_NUMBER);
+	FMath::Clamp<float>(CosHalfConeAngle, -1, 1 - KINDA_SMALL_NUMBER);
 
 	if (SrcUnits == TargetUnits)
 	{

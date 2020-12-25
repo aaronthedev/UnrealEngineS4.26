@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -38,12 +38,6 @@ namespace UnrealBuildTool
 
 		public static string WhichClang()
 		{
-			string InternalSDKPath = LinuxPlatformSDK.GetInternalSDKPath();
-			if (!String.IsNullOrEmpty(InternalSDKPath))
-			{
-				return Path.Combine(InternalSDKPath, "bin", "clang++");
-			}
-
 			string[] ClangNames = { "clang++", "clang++-7.0", "clang++-6.0" };
 			string ClangPath;
 			foreach (string ClangName in ClangNames)
@@ -54,7 +48,6 @@ namespace UnrealBuildTool
 					return ClangPath;
 				}
 			}
-
 			return null;
 		}
 

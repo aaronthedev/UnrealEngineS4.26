@@ -1,11 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "IConcertClientTransactionBridge.h"
 #include "Misc/ITransaction.h"
 
-class CONCERTSYNCCLIENT_API FConcertClientTransactionBridge : public IConcertClientTransactionBridge
+class FConcertClientTransactionBridge : public IConcertClientTransactionBridge
 {
 public:
 	FConcertClientTransactionBridge();

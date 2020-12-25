@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 EditorLevelUtils.cpp: Editor-specific level management routines
@@ -49,19 +49,18 @@ EditorLevelUtils.cpp: Editor-specific level management routines
 #include "HAL/PlatformApplicationMisc.h"
 #include "IAssetTools.h"
 #include "AssetToolsModule.h"
-#include "Dialogs/Dialogs.h"
 
 DEFINE_LOG_CATEGORY(LogLevelTools);
 
 #define LOCTEXT_NAMESPACE "EditorLevelUtils"
 
 
-int32 UEditorLevelUtils::MoveActorsToLevel(const TArray<AActor*>& ActorsToMove, ULevelStreaming* DestStreamingLevel, bool bWarnAboutReferences, bool bWarnAboutRenaming)
+int32 UEditorLevelUtils::MoveActorsToLevel(const TArray<AActor*>& ActorsToMove, ULevelStreaming* DestStreamingLevel, bool bWarnAboutReferences)
 {
-	return MoveActorsToLevel(ActorsToMove, DestStreamingLevel ? DestStreamingLevel->GetLoadedLevel() : nullptr, bWarnAboutReferences, bWarnAboutRenaming);
+	return MoveActorsToLevel(ActorsToMove, DestStreamingLevel ? DestStreamingLevel->GetLoadedLevel() : nullptr, bWarnAboutReferences);
 }
 
-int32 UEditorLevelUtils::MoveActorsToLevel(const TArray<AActor*>& ActorsToMove, ULevel* DestLevel, bool bWarnAboutReferences, bool bWarnAboutRenaming)
+int32 UEditorLevelUtils::MoveActorsToLevel(const TArray<AActor*>& ActorsToMove, ULevel* DestLevel, bool bWarnAboutReferences)
 {
 	int32 NumMovedActors = 0;
 
@@ -140,26 +139,18 @@ int32 UEditorLevelUtils::MoveActorsToLevel(const TArray<AActor*>& ActorsToMove, 
 				const bool bIsMove = true;
 				GEditor->CopySelectedActorsToClipboard(OwningWorld, bShoudCut, bIsMove, bWarnAboutReferences);
 
+				// Set the new level and force it visible while we do the paste
+				OwningWorld->SetCurrentLevel(DestLevel);
 				const bool bLevelVisible = DestLevel->bIsVisible;
 				if (!bLevelVisible)
 				{
 					UEditorLevelUtils::SetLevelVisibility(DestLevel, true, false);
 				}
 
-				// Scope this so that Actors that have been pasted will have their final levels set before doing the actor mapping
-				{
-					// Set the new level and force it visible while we do the paste
-					FLevelPartitionOperationScope LevelPartitionScope(DestLevel);
-					OwningWorld->SetCurrentLevel(LevelPartitionScope.GetLevel());
-										
-					const bool bDuplicate = false;
-					const bool bOffsetLocations = false;
-					const bool bWarnIfHidden = false;
-					GEditor->edactPasteSelected(OwningWorld, bDuplicate, bOffsetLocations, bWarnIfHidden);
-
-					// Restore the original current level
-					OwningWorld->SetCurrentLevel(OldCurrentLevel);
-				}
+				const bool bDuplicate = false;
+				const bool bOffsetLocations = false;
+				const bool bWarnIfHidden = false;
+				GEditor->edactPasteSelected(OwningWorld, bDuplicate, bOffsetLocations, bWarnIfHidden);
 
 				// Build a remapping of old to new names so we can do a fixup
 				for (FSelectionIterator It(GEditor->GetSelectedActorIterator()); It; ++It)
@@ -222,14 +213,7 @@ int32 UEditorLevelUtils::MoveActorsToLevel(const TArray<AActor*>& ActorsToMove, 
 					
 				if (RenameData.Num() > 0)
 				{
-					if(bWarnAboutRenaming)
-					{
-						AssetToolsModule.Get().RenameAssetsWithDialog(RenameData);
-					}
-					else
-					{
-						AssetToolsModule.Get().RenameAssets(RenameData);
-					}
+					AssetToolsModule.Get().RenameAssetsWithDialog(RenameData);
 				}
 
 				// Restore new level visibility to previous state
@@ -237,6 +221,9 @@ int32 UEditorLevelUtils::MoveActorsToLevel(const TArray<AActor*>& ActorsToMove, 
 				{
 					UEditorLevelUtils::SetLevelVisibility(DestLevel, false, false);
 				}
+
+				// Restore the original current level
+				OwningWorld->SetCurrentLevel(OldCurrentLevel);
 			}
 
 			// The moved (pasted) actors will now be selected
@@ -327,10 +314,7 @@ ULevel* UEditorLevelUtils::AddLevelsToWorld(UWorld* InWorld, TArray<FString> Pac
 	FEditorDelegates::RefreshLevelBrowser.Broadcast();
 
 	// Update volume actor visibility for each viewport since we loaded a level which could potentially contain volumes
-	if (GUnrealEd)
-	{
-		GUnrealEd->UpdateVolumeActorVisibility(nullptr);
-	}
+	GUnrealEd->UpdateVolumeActorVisibility(nullptr);
 
 	return NewLevel;
 }
@@ -352,11 +336,6 @@ ULevelStreaming* UEditorLevelUtils::AddLevelToWorld(UWorld* InWorld, const TCHAR
 	ULevel* NewLevel = nullptr;
 
 	ULevelStreaming* NewStreamingLevel = AddLevelToWorld_Internal(InWorld, LevelPackageName, LevelStreamingClass, LevelTransform);
-
-	// Broadcast the levels have changed (new style)
-	InWorld->BroadcastLevelsChanged();
-	FEditorDelegates::RefreshLevelBrowser.Broadcast();
-
 	if (NewStreamingLevel)
 	{
 		NewLevel = NewStreamingLevel->GetLoadedLevel();
@@ -378,11 +357,12 @@ ULevelStreaming* UEditorLevelUtils::AddLevelToWorld(UWorld* InWorld, const TCHAR
 		GLevelEditorModeTools().ActivateDefaultMode();
 	}
 
+	// Broadcast the levels have changed (new style)
+	InWorld->BroadcastLevelsChanged();
+	FEditorDelegates::RefreshLevelBrowser.Broadcast();
+
 	// Update volume actor visibility for each viewport since we loaded a level which could potentially contain volumes
-	if (GUnrealEd)
-	{
-		GUnrealEd->UpdateVolumeActorVisibility(nullptr);
-	}
+	GUnrealEd->UpdateVolumeActorVisibility(nullptr);
 
 	return NewStreamingLevel;
 }
@@ -398,16 +378,12 @@ ULevelStreaming* UEditorLevelUtils::AddLevelToWorld_Internal(UWorld* InWorld, co
 		// Do nothing if the level already exists in the world.
 		const FString LevelName(LevelPackageName);
 		const FText MessageText = FText::Format(NSLOCTEXT("UnrealEd", "LevelAlreadyExistsInWorld", "A level with that name ({0}) already exists in the world."), FText::FromString(LevelName));
-
-		FSuppressableWarningDialog::FSetupInfo Info(MessageText, LOCTEXT("AddLevelToWorld_Title", "Add Level"), "LevelAlreadyExistsInWorldWarning");
-		Info.ConfirmText = LOCTEXT("AlreadyExist_Ok", "Ok");
-		FSuppressableWarningDialog RemoveLevelWarning(Info);
-		RemoveLevelWarning.ShowModal();
+		FMessageDialog::Open(EAppMsgType::Ok, MessageText);
 	}
 	else
 	{
-		// If the selected class is still NULL or the selected class is abstract, abort the operation.
-		if (LevelStreamingClass == nullptr || LevelStreamingClass->HasAnyClassFlags(CLASS_Abstract))
+		// If the selected class is still NULL, abort the operation.
+		if (LevelStreamingClass == nullptr)
 		{
 			return nullptr;
 		}
@@ -492,7 +468,6 @@ ULevelStreaming* UEditorLevelUtils::SetStreamingClassForLevel(ULevelStreaming* I
 		NewStreamingLevel->MinTimeBetweenVolumeUnloadRequests = InLevel->MinTimeBetweenVolumeUnloadRequests;
 		NewStreamingLevel->LevelColor = InLevel->LevelColor;
 		NewStreamingLevel->Keywords = InLevel->Keywords;
-		NewStreamingLevel->SetFolderPath(InLevel->GetFolderPath());
 	}
 
 	return NewStreamingLevel;
@@ -574,7 +549,7 @@ bool UEditorLevelUtils::PrivateRemoveInvalidLevelFromWorld(ULevelStreaming* InLe
 		if (UWorld* OwningWorld = InLevelStreaming->GetWorld())
 		{
 			OwningWorld->RemoveStreamingLevel(InLevelStreaming);
-			OwningWorld->RefreshStreamingLevels({});
+			OwningWorld->RefreshStreamingLevels();
 			bRemovedLevelStreaming = true;
 		}
 	}
@@ -650,7 +625,7 @@ ULevelStreaming* UEditorLevelUtils::CreateNewStreamingLevelForWorld(UWorld& InWo
 		// Create a new world
 		UWorldFactory* Factory = NewObject<UWorldFactory>();
 		Factory->WorldType = EWorldType::Inactive;
-		UPackage* Pkg = CreatePackage( NULL);
+		UPackage* Pkg = CreatePackage(NULL, NULL);
 		FName WorldName(TEXT("Untitled"));
 		EObjectFlags Flags = RF_Public | RF_Standalone;
 		NewLevelWorld = CastChecked<UWorld>(Factory->FactoryCreateNew(UWorld::StaticClass(), Pkg, WorldName, Flags, NULL, GWarn));
@@ -673,20 +648,17 @@ ULevelStreaming* UEditorLevelUtils::CreateNewStreamingLevelForWorld(UWorld& InWo
 	if (bNewWorldSaved)
 	{
 		NewStreamingLevel = AddLevelToWorld(WorldToAddLevelTo, *NewPackageName, LevelStreamingClass);
-		if (NewStreamingLevel != nullptr)
+		NewLevel = NewStreamingLevel->GetLoadedLevel();
+		// If we are moving the selected actors to the new level move them now
+		if (bMoveSelectedActorsIntoNewLevel)
 		{
-			NewLevel = NewStreamingLevel->GetLoadedLevel();
-			// If we are moving the selected actors to the new level move them now
-			if (bMoveSelectedActorsIntoNewLevel)
-			{
-				MoveSelectedActorsToLevel(NewStreamingLevel);
-			}
+			MoveSelectedActorsToLevel(NewStreamingLevel);
+		}
 
-			// Finally make the new level the current one
-			if (WorldToAddLevelTo->SetCurrentLevel(NewLevel))
-			{
-				FEditorDelegates::NewCurrentLevel.Broadcast();
-			}
+		// Finally make the new level the current one
+		if (WorldToAddLevelTo->SetCurrentLevel(NewLevel))
+		{
+			FEditorDelegates::NewCurrentLevel.Broadcast();
 		}
 	}
 
@@ -720,10 +692,7 @@ bool UEditorLevelUtils::RemoveLevelFromWorld(ULevel* InLevel)
 
 		FEditorSupportDelegates::PrepareToCleanseEditorObject.Broadcast(InLevel);
 
-		if (GEditor->Trans != nullptr)
-		{
-			GEditor->Trans->Reset(LOCTEXT("RemoveLevelTransReset", "Removing Levels from World"));
-		}
+		GEditor->Trans->Reset(LOCTEXT("RemoveLevelTransReset", "Removing Levels from World"));
 
 		EditorDestroyLevel(InLevel);
 
@@ -783,7 +752,7 @@ bool UEditorLevelUtils::PrivateRemoveLevelFromWorld(ULevel* InLevel)
 		ULevelStreaming* StreamingLevel = InLevel->OwningWorld->GetStreamingLevels()[StreamingLevelIndex];
 		StreamingLevel->MarkPendingKill();
 		InLevel->OwningWorld->RemoveStreamingLevel(StreamingLevel);
-		InLevel->OwningWorld->RefreshStreamingLevels({});
+		InLevel->OwningWorld->RefreshStreamingLevels();
 	}
 	else if (InLevel->bIsVisible)
 	{
@@ -796,10 +765,6 @@ bool UEditorLevelUtils::PrivateRemoveLevelFromWorld(ULevel* InLevel)
 	IStreamingManager::Get().RemoveLevel(InLevel);
 	UWorld* World = InLevel->OwningWorld;
 	World->RemoveLevel(InLevel);
-	if (InLevel->bIsLightingScenario)
-	{
-		World->PropagateLightingScenarioChange();
-	}
 	InLevel->ClearLevelComponents();
 
 	// remove all group actors from the world in the level we are removing
@@ -843,6 +808,9 @@ bool UEditorLevelUtils::EditorDestroyLevel(ULevel* InLevel)
 	UWorld* World = InLevel->OwningWorld;
 
 	UObject* Outer = InLevel->GetOuter();
+	Outer->MarkPendingKill();
+	InLevel->MarkPendingKill();
+	Outer->ClearFlags(RF_Public | RF_Standalone);
 
 	// Call cleanup on the outer world of the level so external hooks can be properly released, so that unloading the package isn't prevented.
 	UWorld* OuterWorld = Cast<UWorld>(Outer);
@@ -850,10 +818,6 @@ bool UEditorLevelUtils::EditorDestroyLevel(ULevel* InLevel)
 	{
 		OuterWorld->CleanupWorld();
 	}
-
-	Outer->MarkPendingKill();
-	InLevel->MarkPendingKill();
-	Outer->ClearFlags(RF_Public | RF_Standalone);
 
 	UPackage* Package = InLevel->GetOutermost();
 	// We want to unconditionally destroy the level, so clear the dirty flag here so it can be unloaded successfully
@@ -1231,8 +1195,10 @@ void UEditorLevelUtils::SetLevelsVisibility(const TArray<ULevel*>& Levels, const
 	}
 }
 
-void UEditorLevelUtils::ForEachWorlds(UWorld* InWorld, TFunctionRef<bool(UWorld*)> Operation, bool bIncludeInWorld, bool bOnlyEditorVisible)
+void UEditorLevelUtils::GetWorlds(UWorld* InWorld, TArray<UWorld*>& OutWorlds, bool bIncludeInWorld, bool bOnlyEditorVisible)
 {
+	OutWorlds.Empty();
+
 	if (!InWorld)
 	{
 		return;
@@ -1240,10 +1206,7 @@ void UEditorLevelUtils::ForEachWorlds(UWorld* InWorld, TFunctionRef<bool(UWorld*
 
 	if (bIncludeInWorld)
 	{
-		if (!Operation(InWorld))
-		{
-			return;
-		}
+		OutWorlds.AddUnique(InWorld);
 	}
 
 	// Iterate over the world's level array to find referenced levels ("worlds"). We don't 
@@ -1264,10 +1227,7 @@ void UEditorLevelUtils::ForEachWorlds(UWorld* InWorld, TFunctionRef<bool(UWorld*
 					UWorld* World = Cast<UWorld>(Level->GetOuter());
 					if (World)
 					{
-						if (!Operation(World))
-						{
-							return;
-						}
+						OutWorlds.AddUnique(World);
 					}
 				}
 			}
@@ -1283,19 +1243,10 @@ void UEditorLevelUtils::ForEachWorlds(UWorld* InWorld, TFunctionRef<bool(UWorld*
 			UWorld* World = Cast<UWorld>(Level->GetOuter());
 			if (World)
 			{
-				if (!Operation(World))
-				{
-					return;
-				}
+				OutWorlds.AddUnique(World);
 			}
 		}
 	}
-}
-
-void UEditorLevelUtils::GetWorlds(UWorld* InWorld, TArray<UWorld*>& OutWorlds, bool bIncludeInWorld, bool bOnlyEditorVisible)
-{
-	OutWorlds.Empty();
-	ForEachWorlds(InWorld, [&OutWorlds](UWorld* World) { OutWorlds.AddUnique(World); return true; }, bIncludeInWorld, bOnlyEditorVisible);
 }
 
 #undef LOCTEXT_NAMESPACE

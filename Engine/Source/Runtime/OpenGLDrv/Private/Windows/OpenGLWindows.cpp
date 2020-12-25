@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	OpenGLWindowsLoader.cpp: Manual loading of OpenGL functions from DLL.
@@ -201,14 +201,54 @@ static void PlatformCreateDummyGLWindow(FPlatformOpenGLContext* OutContext)
 }
 
 /**
- * Set OpenGL Context version to fixed version
+ * Determine OpenGL Context version based on command line arguments
  */
 
-static void GetOpenGLVersionForCoreProfile(int& OutMajorVersion, int& OutMinorVersion)
+static bool PlatformOpenGL3()
 {
-	// Always initialize GL context with version 4.3, it's the only GL desktop version we support now
-	OutMajorVersion = 4;
-	OutMinorVersion = 3;
+	// OpenGL3 is our default platform for Windows XP
+#if (WINVER < 0x0600)
+	return true;
+#else
+	return FParse::Param(FCommandLine::Get(),TEXT("opengl3"));
+#endif
+}
+
+static bool PlatformOpenGL4()
+{
+	return FParse::Param(FCommandLine::Get(), TEXT("opengl")) || FParse::Param(FCommandLine::Get(),TEXT("opengl4"));
+}
+
+static void PlatformOpenGLVersionFromCommandLine(int& OutMajorVersion, int& OutMinorVersion)
+{
+	bool bGL3 = PlatformOpenGL3();
+	bool bGL4 = PlatformOpenGL4();
+	if (!bGL3 && !bGL4)
+	{
+		if (GRequestedFeatureLevel >= ERHIFeatureLevel::SM5)
+		{
+			bGL4 = true;
+		}
+		else
+		{
+			bGL3 = true;
+		}
+	}
+
+	if (bGL3)
+	{
+		OutMajorVersion = 3;
+		OutMinorVersion = 2;
+	}
+	else if (bGL4)
+	{
+		OutMajorVersion = 4;
+		OutMinorVersion = 3;
+	}
+	else
+	{
+		verifyf(false, TEXT("OpenGLRHI initialized with invalid command line, must be one of: -opengl, -opengl3, -opengl4"));
+	}
 }
 
 /**
@@ -289,7 +329,7 @@ struct FPlatformOpenGLDevice
 
 		int MajorVersion = 0;
 		int MinorVersion = 0;
-		GetOpenGLVersionForCoreProfile(MajorVersion, MinorVersion);
+		PlatformOpenGLVersionFromCommandLine(MajorVersion, MinorVersion);
 	
 		// Need to call this before we set the debug callback, otherwise if we're not running under RD, the debug extension will assert (invalid enum)
 		GRunningUnderRenderDoc = glIsEnabled(GL_DEBUG_TOOL_EXT) != GL_FALSE;
@@ -368,7 +408,7 @@ FPlatformOpenGLContext* PlatformCreateOpenGLContext(FPlatformOpenGLDevice* Devic
 
 	int MajorVersion = 0;
 	int MinorVersion = 0;
-	GetOpenGLVersionForCoreProfile(MajorVersion, MinorVersion);
+	PlatformOpenGLVersionFromCommandLine(MajorVersion, MinorVersion);
 
 	PlatformCreateOpenGLContextCore(Context, MajorVersion, MinorVersion, Device->SharedContext.OpenGLContext);	
 	check(Context->OpenGLContext);
@@ -456,10 +496,8 @@ void PlatformDestroyOpenGLContext(FPlatformOpenGLDevice* Device, FPlatformOpenGL
  * Main function for transferring data to on-screen buffers.
  * On Windows it temporarily switches OpenGL context, on Mac only context's output view.
  */
-bool PlatformBlitToViewport( FPlatformOpenGLDevice* Device, const FOpenGLViewport& Viewport, uint32 BackbufferSizeX, uint32 BackbufferSizeY, bool bPresent,bool bLockToVsync)
+bool PlatformBlitToViewport( FPlatformOpenGLDevice* Device, const FOpenGLViewport& Viewport, uint32 BackbufferSizeX, uint32 BackbufferSizeY, bool bPresent,bool bLockToVsync, int32 SyncInterval )
 {
-	int32 SyncInterval = RHIGetSyncInterval();
-
 	FPlatformOpenGLContext* const Context = Viewport.GetGLContext();
 
 	check(Context && Context->DeviceContext);
@@ -794,7 +832,7 @@ bool PlatformInitOpenGL()
 
 			ContextMakeCurrent(NULL,NULL);
 			wglDeleteContext(DummyContext.OpenGLContext);
-			GetOpenGLVersionForCoreProfile(MajorVersion, MinorVersion);
+			PlatformOpenGLVersionFromCommandLine(MajorVersion, MinorVersion);
 			PlatformCreateOpenGLContextCore(&DummyContext, MajorVersion, MinorVersion, NULL);	
 			if (DummyContext.OpenGLContext)
 			{
@@ -1006,8 +1044,8 @@ FRHITexture* PlatformCreateBuiltinBackBuffer(FOpenGLDynamicRHI* OpenGLRHI, uint3
 {
 	if (FOpenGL::IsAndroidGLESCompatibilityModeEnabled())
 	{
-		ETextureCreateFlags Flags = TexCreate_RenderTargetable;
-		FOpenGLTexture2D* Texture2D = new FOpenGLTexture2D(OpenGLRHI, 0, GL_RENDERBUFFER, GL_COLOR_ATTACHMENT0, SizeX, SizeY, 0, 1, 1, 1, 1, PF_B8G8R8A8, false, false, Flags, FClearValueBinding::Transparent);
+		uint32 Flags = TexCreate_RenderTargetable;
+		FOpenGLTexture2D* Texture2D = new FOpenGLTexture2D(OpenGLRHI, 0, GL_RENDERBUFFER, GL_COLOR_ATTACHMENT0, SizeX, SizeY, 0, 1, 1, 1, 1, PF_B8G8R8A8, false, false, Flags, nullptr, FClearValueBinding::Transparent);
 		OpenGLTextureAllocated(Texture2D, Flags);
 		return Texture2D;
 	}

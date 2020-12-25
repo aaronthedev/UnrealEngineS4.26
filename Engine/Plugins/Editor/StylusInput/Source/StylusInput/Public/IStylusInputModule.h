@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -83,4 +83,7 @@ private:
 	TArray<IStylusMessageHandler*> MessageHandlers;
 
 	TSharedRef<SDockTab> OnSpawnPluginTab(const FSpawnTabArgs& Args);
+
+	/** FTickableEditorObject must be destroyed on the main thread. */
+	virtual bool IsDestructionThreadSafe() const override { return false; }
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OpenGL/SlateOpenGLTextureManager.h"
 #include "Misc/FileHelper.h"
@@ -142,8 +142,10 @@ bool FSlateOpenGLTextureManager::LoadTexture( const FSlateBrush& InBrush, uint32
 			OutHeight = ImageWrapper->GetHeight();
 
 			// Decode the png and get the data in raw rgb
-			if (ImageWrapper->GetRaw(ERGBFormat::RGBA, 8, OutDecodedImage))
+			const TArray<uint8>* RawData = NULL;
+			if (ImageWrapper->GetRaw(ERGBFormat::RGBA, 8, RawData))
 			{
+				OutDecodedImage = *RawData;
 				bSucceeded = true;
 			}
 			else
@@ -197,7 +199,7 @@ FSlateShaderResourceProxy* FSlateOpenGLTextureManager::GenerateTextureResource( 
 
 	// Create a representation of the texture for rendering
 	FSlateOpenGLTexture* NewTexture = new FSlateOpenGLTexture( Width, Height );
-#if !PLATFORM_USES_GLES
+#if !PLATFORM_USES_ES2
 	NewTexture->Init( Info.bSrgb ? GL_SRGB8_ALPHA8 : GL_RGBA8, Info.TextureData->GetRawBytes() );
 #else
 	NewTexture->Init( Info.bSrgb ? GL_SRGB8_ALPHA8_EXT : GL_RGBA8, Info.TextureData->GetRawBytes() );
@@ -270,7 +272,7 @@ FSlateShaderResourceProxy* FSlateOpenGLTextureManager::CreateDynamicTextureResou
 	FNewTextureInfo Info;
 	Info.bShouldAtlas = false;
 
-#if !PLATFORM_USES_GLES
+#if !PLATFORM_USES_ES2
 	LoadedTexture->Init(Info.bSrgb ? GL_SRGB8_ALPHA8 : GL_RGBA8, RawData);
 #else
 	LoadedTexture->Init(Info.bSrgb ? GL_SRGB8_ALPHA8_EXT : GL_RGBA8, RawData);

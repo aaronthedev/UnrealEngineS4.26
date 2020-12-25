@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SPropertyEditorLevelPackage.h"
 #include "Misc/TextFilter.h"
@@ -56,7 +56,7 @@ FText SPropertyEditorLevelPackage::GetDisplayPackageName() const
 			FString LongPackageName = PropertyValue.ToString();
 			if (LongPackageName.StartsWith(RootPath))
 			{
-				LongPackageName.RightChopInline(RootPath.Len()-1, false); // do not chop front '/' from display name
+				LongPackageName = LongPackageName.RightChop(RootPath.Len()-1); // do not chop front '/' from display name
 				return FText::FromString(LongPackageName);
 			}
 		}

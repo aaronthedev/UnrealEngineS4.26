@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PostProcessSubsurface.usf: Screenspace subsurface scattering shaders.
@@ -14,7 +14,7 @@
 
 #include "ScreenPass.ush"
 
-// x:Radius*DistanceToProjectionWindow/KernelSize*0.5, y:DistanceToProjectionWindow, z:OverrideNumSamples, w: unused
+// x:Radius*DistanceToProjectionWindow/KernelSize*0.5, y:DistanceToProjectionWindow, zw: unused
 float4 SubsurfaceParams;
 
 Texture2D SubsurfaceInput0_Texture;
@@ -37,9 +37,8 @@ SamplerState SubsurfaceSampler2;
 
 SCREEN_PASS_TEXTURE_VIEWPORT(SubsurfaceInput0)
 SCREEN_PASS_TEXTURE_VIEWPORT(SubsurfaceInput1)
+SCREEN_PASS_TEXTURE_VIEWPORT(SubsurfaceInput2)
 SCREEN_PASS_TEXTURE_VIEWPORT(Output)
-
-RWTexture2D<uint> ProfileIdTexture;
 
 #define SUBSURFACE_PASS_ONE 0
 #define SUBSURFACE_PASS_TWO 1
@@ -285,8 +284,14 @@ struct SDiffuseAndSpecular
 // can be moved/shared
 half3 LookupSceneColor(float2 SceneUV, int2 PixelOffset)
 {
+#if ES2_PROFILE && COMPILER_GLSL_ES2
+	// slower but always works
+	// to prevent "error: Texture offset not supported on GLSL ES"
+	return Texture2DSample(SubsurfaceInput0_Texture, SharedSubsurfaceSampler0, SceneUV + PixelOffset * SubsurfaceInput0_ExtentInverse).rgb;
+#else
 	// faster
 	return SubsurfaceInput0_Texture.SampleLevel(SharedSubsurfaceSampler0, SceneUV, 0, PixelOffset).rgb;
+#endif
 }
  
 // @param UVSceneColor for the full res rendertarget (BufferSize) e.g. SceneColor or GBuffers
@@ -358,7 +363,7 @@ SDiffuseAndSpecular ReconstructLighting(float2 UVSceneColor, uint ReconstructMet
 	  // If we're not doing checkerboard encoding, we just need to read a single pixel and decode (combined diffuse/spec in RGB)
 	  float4 CenterSample = SubsurfaceInput0_Texture.SampleLevel(SharedSubsurfaceSampler0, UVSceneColor, 0);
 	  float3 CombinedColor = CenterSample.rgb;
-	  float DiffuseLuminance = CenterSample.a;
+	  float DiffuseLuminance = CenterSample.a * View.PreExposure;
   
 	  float CombinedLuminance = Luminance(CombinedColor);
 	  float DiffuseFactor = saturate(DiffuseLuminance / CombinedLuminance);
@@ -503,7 +508,7 @@ void SetupIndirectCS(uint3 DT_ID : SV_DispatchThreadID,
 	{
 		SubsurfaceTypeFlag = 0;
 	}
-	GroupMemoryBarrierWithGroupSync();
+	GroupMemoryBarrier();
 
 	uint2 Pos = DT_ID.xy + Output_ViewportMin;
 	bool bHasSubsurface = false;
@@ -545,21 +550,13 @@ void SetupIndirectCS(uint3 DT_ID : SV_DispatchThreadID,
 	{
 		bHasSubsurface = true;
 
-		float SourceDepth = CalcSceneDepth(BufferUV);
-
-		float Noise = InterleavedGradientNoise(float2(Pos.x,Pos.y), View.StateFrameIndexMod8);
-		// Divide by 1024 because the mantissa is 10 bits.
-		OutColor.a = SourceDepth + Noise * (SourceDepth / 1024.0f);
+		OutColor.a = CalcSceneDepth(BufferUV);
 
 		//@TODO: sparkling
 		//supress the edge color lighting information at edge.
 		//with firefly elimination
 	}
 #endif // SUBSURFACE_HALF_RES
-
-#if !SUBSURFACE_FORCE_SEPARABLE && ENABLE_PROFILE_ID_CACHE
-	uint ProfileId = GetSubsurfaceProfileId(BufferUV);
-#endif
 
 	// setup the Subsurface type
 	uint SelectedProfile = 0;
@@ -605,10 +602,6 @@ void SetupIndirectCS(uint3 DT_ID : SV_DispatchThreadID,
 	if (all(Pos < Output_ViewportMax))
 	{
 		SetupTexture[Pos] = OutColor;
-
-#if !SUBSURFACE_FORCE_SEPARABLE && ENABLE_PROFILE_ID_CACHE
-		ProfileIdTexture[Pos] = ProfileId;
-#endif
 	}
 
 	AddSubsurfaceComputeGroup(GI, Type, G_ID.xy);
@@ -703,22 +696,6 @@ void SubsurfaceRecombinePS(noperspective float4 UVAndScreenPos : TEXCOORD0, floa
 	// Scalability requests no Scatter, but we still need to reconstruct a color
 	LerpFactor = 0;
 #endif // SUBSURFACE_RECOMBINE_MODE
-
-	float3 DirectColor = Texture2DSample(SubsurfaceInput0_Texture, SharedSubsurfaceSampler0, BufferUV).rgb;
-
-	uint ProfileId = ExtractSubsurfaceProfileInt(ScreenSpaceData.GBuffer);
-
-	bool bIsHalfResUpsample = false;
-	if (bIsHalfResUpsample && GetSubsurfaceProfileUseBurley(ProfileId))
-	{
-		FBurleyParameter BurleyParameter = GetBurleyParameters(ScreenSpaceData.GBuffer);
-		
-		float Depth = CalcSceneDepth(BufferUV);
-
-		float3 CenterSampleWeight = CalculateCenterSampleWeight(Depth, BurleyParameter);
-
-		SSSColor = lerp(SSSColor,DirectColor,CenterSampleWeight);
-	}
 
 	// we multiply the base color later in to get more crips human skin textures (scanned data always has Subsurface included)
 	float3 StoredBaseColor = ScreenSpaceData.GBuffer.StoredBaseColor;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -45,15 +45,15 @@ struct UMGEDITOR_API FEditorPropertyPathSegment
 
 public:
 	FEditorPropertyPathSegment();
-	FEditorPropertyPathSegment(const FProperty* InProperty);
+	FEditorPropertyPathSegment(const UProperty* InProperty);
 	FEditorPropertyPathSegment(const UFunction* InFunction);
 	FEditorPropertyPathSegment(const UEdGraph* InFunctionGraph);
 
 	UStruct* GetStruct() const { return Struct; }
-	FFieldVariant GetMember() const;
+	UField* GetMember() const;
 
 	void Rebase(UBlueprint* SegmentBase);
-	bool ValidateMember(FDelegateProperty* DelegateProperty, FText& OutError) const;
+	bool ValidateMember(UDelegateProperty* DelegateProperty, FText& OutError) const;
 
 	FName GetMemberName() const;
 	FText GetMemberDisplayText() const;
@@ -94,7 +94,7 @@ public:
 	FEditorPropertyPath();
 
 	/**  */
-	FEditorPropertyPath(const TArray<FFieldVariant>& BindingChain);
+	FEditorPropertyPath(const TArray<UField*>& BindingChain);
 
 	/**  */
 	bool Rebase(UBlueprint* SegmentBase);
@@ -103,7 +103,7 @@ public:
 	bool IsEmpty() const { return Segments.Num() == 0; }
 
 	/**  */
-	bool Validate(FDelegateProperty* Destination, FText& OutError) const;
+	bool Validate(UDelegateProperty* Destination, FText& OutError) const;
 
 	/**  */
 	FText GetDisplayText() const;
@@ -248,6 +248,18 @@ public:
 	UPROPERTY(AssetRegistrySearchable, AssetRegistrySearchable)
 	FString PaletteCategory;
 
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category=WidgetBlueprintOptions, AssetRegistrySearchable)
+	bool bForceSlowConstructionPath;
+
+private:
+	/**
+	 * Widgets by default all support calling CreateWidget for them, however for mobile games
+	 * you may want to disable this by default, or on a per widget basis as it can save several
+	 * MB on a large game from lots of widget templates being cooked ready to make dynamic
+	 * construction faster.
+	 */
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category=WidgetBlueprintOptions, AssetRegistrySearchable)
+	EWidgetSupportsDynamicCreation SupportDynamicCreation;
 #endif
 
 public:
@@ -263,8 +275,6 @@ public:
 #if WITH_EDITOR
 	virtual void GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const override;
 	virtual void NotifyGraphRenamed(class UEdGraph* Graph, FName OldName, FName NewName) override;
-	virtual EDataValidationResult IsDataValid(TArray<FText>& ValidationErrors) override;
-	bool DetectSlateWidgetLeaks(TArray<FText>& ValidationErrors);
 	virtual bool FindDiffs(const UBlueprint* OtherBlueprint, FDiffResults& Results) const override;
 #endif
 
@@ -295,6 +305,8 @@ public:
 	/** Returns true if the supplied user widget will not create a circular reference when added to this blueprint */
 	bool IsWidgetFreeFromCircularReferences(UUserWidget* UserWidget) const;
 
+	bool WidgetSupportsDynamicCreation() const;
+
 	static bool ValidateGeneratedClass(const UClass* InClass);
 	
 	static TSharedPtr<FKismetCompilerContext> GetCompilerForWidgetBP(UBlueprint* BP, FCompilerResultsLog& InMessageLog, const FKismetCompilerOptions& InCompileOptions);
@@ -309,6 +321,20 @@ public:
 protected:
 #if WITH_EDITOR
 	virtual void LoadModulesRequiredForCompilation() override;
+
+public:
+
+	/**
+	 * The total number of widgets this widget contains.  This is a good way to find the "largest" widgets.
+	 */
+	UPROPERTY(AssetRegistrySearchable)
+	int32 InclusiveWidgets;
+
+	/**
+	 * The estimated size in bytes of the template class.
+	 */
+	UPROPERTY(AssetRegistrySearchable)
+	int32 EstimatedTemplateSize;
 
 private:
 	/**

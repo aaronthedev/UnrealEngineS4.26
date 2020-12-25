@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraScriptInputCollectionViewModel.h"
 #include "NiagaraScript.h"
@@ -18,9 +18,9 @@
 
 FText DisplayNameFormat = NSLOCTEXT("ScriptInputCollection", "DisplayNameFormat", "{0} Inputs");
 
-FNiagaraScriptInputCollectionViewModel::FNiagaraScriptInputCollectionViewModel(TAttribute<FText> InDisplayName, ENiagaraParameterEditMode InParameterEditMode)
+FNiagaraScriptInputCollectionViewModel::FNiagaraScriptInputCollectionViewModel(FText InDisplayName, ENiagaraParameterEditMode InParameterEditMode)
 	: FNiagaraParameterCollectionViewModel(InParameterEditMode)
-	, DisplayName(InDisplayName)
+	, DisplayName(FText::Format(DisplayNameFormat, InDisplayName))
 	, bCanHaveNumericParameters(true)
 {
 }
@@ -82,7 +82,7 @@ void FNiagaraScriptInputCollectionViewModel::SetScripts(TArray<UNiagaraScript*> 
 
 FText FNiagaraScriptInputCollectionViewModel::GetDisplayName() const 
 {
-	return FText::Format(DisplayNameFormat, DisplayName.Get());
+	return DisplayName;
 }
 
 FVector2D GetNewNodeLocation(UNiagaraGraph* Graph, UNiagaraNode* NewInputNode, float VerticalNodeOffset, float HorizontalNodeOffset)
@@ -312,17 +312,6 @@ void FNiagaraScriptInputCollectionViewModel::RefreshParameterViewModels()
 
 bool FNiagaraScriptInputCollectionViewModel::SupportsType(const FNiagaraTypeDefinition& Type) const
 {
-	if (Type.IsUObject() && Type.IsDataInterface() == false)
-	{
-		// Don't allow generic objects as script inputs.
-		return false;
-	}
-
-	if (Type.IsInternalType())
-	{
-		return false;
-	}
-
 	if (Scripts.Num() == 1 && Scripts[0] != nullptr)
 	{
 		// We only support parameter map inputs for dynamic inputs and modules, with the ability to create data interfaces as needed for defaults.

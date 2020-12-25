@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -16,7 +16,7 @@ namespace Gauntlet
 	{
 		public UnrealTargetPlatform Platform { get { return BuildHostPlatform.Current.Platform; } }
 
-		public UnrealTargetConfiguration Configuration { get; protected set; }
+		public UnrealTargetConfiguration Configuration { get { return UnrealTargetConfiguration.Development; } }
 
 		public BuildFlags Flags { get { return BuildFlags.CanReplaceCommandLine | BuildFlags.Loose; } }
 
@@ -24,10 +24,9 @@ namespace Gauntlet
 
 		public string ExecutablePath { get; protected set; }
 
-		public EditorBuild(string InExecutablePath, UnrealTargetConfiguration InConfig)
+		public EditorBuild(string InExecutablePath)
 		{
 			ExecutablePath = InExecutablePath;
-			Configuration = InConfig;
 		}
 	}
 

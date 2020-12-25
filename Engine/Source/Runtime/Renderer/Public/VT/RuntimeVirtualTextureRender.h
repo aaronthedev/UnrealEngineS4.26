@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,9 +8,6 @@
 class FRHICommandListImmediate;
 class FRHITexture2D;
 class FRHIUnorderedAccessView;
-class FRDGBuilder;
-class FRDGTexture;
-class FRDGTextureUAV;
 class FScene;
 class URuntimeVirtualTextureComponent;
 
@@ -57,8 +54,6 @@ namespace RuntimeVirtualTexture
 		uint32 RuntimeVirtualTextureMask;
 		/** Virtual texture UV space to world space transform. */
 		FTransform UVToWorld;
-		/** Virtual texture world space bounds. */
-		FBox WorldBounds;
 		/** Material type of the runtime virtual texture that we are rendering. */
 		ERuntimeVirtualTextureMaterialType MaterialType;
 		/** Max mip level of the runtime virtual texture that we are rendering. */

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IdentifierTable/ConcertTransportArchives.h"
 #include "IdentifierTable/ConcertIdentifierTable.h"
@@ -56,13 +56,6 @@ FArchive& FConcertIdentifierWriter::operator<<(FName& Name)
 	int32 NameNumber = Name.GetNumber();
 	SerializeIndexValue(NameNumber);
 
-	return *this;
-}
-
-FArchive& FConcertIdentifierWriter::operator<<(FSoftObjectPath& AssetPtr)
-{
-	FName ObjPath = *AssetPtr.ToString();
-	*this << ObjPath;
 	return *this;
 }
 
@@ -134,15 +127,7 @@ FArchive& FConcertIdentifierReader::operator<<(FName& Name)
 	return *this;
 }
 
-FArchive& FConcertIdentifierReader::operator<<(FSoftObjectPath& AssetPtr)
-{
-	FName ObjPath = *AssetPtr.ToString();
-	*this << ObjPath;
-	return *this;
-}
-
 FString FConcertIdentifierReader::GetArchiveName() const
 {
 	return TEXT("FConcertIdentifierReader");
 }
-

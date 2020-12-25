@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SMaterialAnalyzer.h"
 #include "Widgets/Input/SSearchBox.h"
@@ -956,7 +956,8 @@ void FAnalyzeForIdenticalPermutationsAsyncTask::GatherSuggestions()
 				AllNames.Add(PermutationString);
 			}
 
-			FPermutationSuggestionData NewData = FPermutationSuggestionData(FText::Format(LOCTEXT("IdenticalStaticPermutationSuggestions", "The following {0} materials all have identical static parameter permutations."),
+			FPermutationSuggestionData NewData = FPermutationSuggestionData(FText::Format(LOCTEXT("IdenticalStaticPermutationSuggestions",
+				"The following {0} materials all have identical static parameter permutations."),
 				FText::AsNumber(AssetCount)),
 				AllNames);
 

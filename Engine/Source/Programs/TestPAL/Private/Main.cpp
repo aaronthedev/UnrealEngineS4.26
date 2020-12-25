@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "TestPALLog.h"
@@ -283,9 +283,6 @@ int32 SysInfoTest(const TCHAR* CommandLine)
 
 	FString UserDir = FPlatformProcess::UserDir();
 	UE_LOG(LogTestPAL, Display, TEXT("  FPlatformProcess::UserDir() = '%s'"), *UserDir);
-
-	FString UserTempDir = FPlatformProcess::UserTempDir();
-	UE_LOG(LogTestPAL, Display, TEXT("  FPlatformProcess::UserTempDir() = '%s'"), *UserTempDir);
 
 	FString ApplicationSettingsDir = FPlatformProcess::ApplicationSettingsDir();
 	UE_LOG(LogTestPAL, Display, TEXT("  FPlatformProcess::ApplicationSettingsDir() = '%s'"), *ApplicationSettingsDir);

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraDataInterfaceSimpleCounter.h"
 #include "NiagaraTypes.h"
@@ -84,12 +84,12 @@ void UNiagaraDataInterfaceSimpleCounter::GetFunctions(TArray<FNiagaraFunctionSig
 	OutFunctions.Add(Sig2);
 }
 
-bool UNiagaraDataInterfaceSimpleCounter::GetFunctionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, const FNiagaraDataInterfaceGeneratedFunction& FunctionInfo, int FunctionInstanceIndex, FString& OutHLSL)
+bool UNiagaraDataInterfaceSimpleCounter::GetFunctionHLSL(const FName& DefinitionFunctionName, FString InstanceFunctionName, FNiagaraDataInterfaceGPUParamInfo& ParamInfo, FString& OutHLSL)
 {
 	return false;
 }
 
-void UNiagaraDataInterfaceSimpleCounter::GetParameterDefinitionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, FString& OutHLSL)
+void UNiagaraDataInterfaceSimpleCounter::GetParameterDefinitionHLSL(FNiagaraDataInterfaceGPUParamInfo& ParamInfo, FString& OutHLSL)
 {
 }
 
@@ -118,6 +118,18 @@ void UNiagaraDataInterfaceSimpleCounter::GetNextValue(FVectorVMContext& Context)
 		*OutValue.GetDest() = FPlatformAtomics::InterlockedIncrement(&InstanceData->Counter);
 		OutValue.Advance();
 	}
+}
+
+
+bool UNiagaraDataInterfaceSimpleCounter::PerInstanceTick(void* PerInstanceData, FNiagaraSystemInstance* InSystemInstance, float DeltaSeconds)
+{
+	return false;
+}
+
+bool UNiagaraDataInterfaceSimpleCounter::PerInstanceTickPostSimulate(void* PerInstanceData, FNiagaraSystemInstance* InSystemInstance, float DeltaSeconds)
+{
+	CounterInstanceData *PIData = static_cast<CounterInstanceData*>(PerInstanceData);
+	return false;
 }
 
 #undef LOCTEXT_NAMESPACE

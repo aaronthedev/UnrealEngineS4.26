@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
@@ -630,12 +630,6 @@ bool FJsonAutomationTest::RunTest(const FString& Parameters)
 		TEXT(		"\"NestedObject\":{}")
 		TEXT(	"},")
 		TEXT(	"\"Value\":true"));
-
-	// Missing curly brace
-	FailureInputs.Add(TEXT("}"));
-
-	// Missing bracket
-	FailureInputs.Add(TEXT("]"));
 
 	// Extra last character
 	FailureInputs.Add(

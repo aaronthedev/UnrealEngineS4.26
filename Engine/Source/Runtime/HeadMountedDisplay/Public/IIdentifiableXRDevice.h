@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,7 +12,7 @@ class HEADMOUNTEDDISPLAY_API IXRSystemIdentifier
 public:
 	/**
 	 * Returns a unique identifier that's supposed to represent the third party 
-	 * system that this object is part of (Vive, Oculus, PSVR, etc.).
+	 * system that this object is part of (Vive, Oculus, PSVR, Gear VR, etc.).
 	 *
 	 * @return  A name unique to the system which this object belongs to.
 	 */

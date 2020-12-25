@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
-#include "UObject/FieldPath.h"
 #include "IPropertyTypeCustomization.h"
 
 
@@ -23,12 +22,12 @@ public:
 
 protected:
 
-	void OnChangeProperty(TFieldPath<FProperty> ItemSelected, ESelectInfo::Type SelectInfo);
+	void OnChangeProperty(UProperty* ItemSelected, ESelectInfo::Type SelectInfo);
 
-	FGuid GetPropertyGuid(TFieldPath<FProperty> Property) const;
-	FString GetPropertyName(TFieldPath<FProperty> Property) const;
+	FGuid GetPropertyGuid(UProperty* Property) const;
+	FString GetPropertyName(UProperty* Property) const;
 
-	TSharedRef<SWidget> GeneratePropertyWidget(TFieldPath<FProperty> Property);
+	TSharedRef<SWidget> GeneratePropertyWidget(UProperty* Property);
 
 	FText GetSelectedValueText() const;
 
@@ -37,7 +36,7 @@ protected:
 	TSharedPtr<IPropertyHandle> NamePropertyHandle;
 	TSharedPtr<IPropertyHandle> GuidPropertyHandle;
 
-	TArray<TFieldPath<FProperty>> PropertyOptions;
+	TArray<UProperty*> PropertyOptions;
 
-	TFieldPath<FProperty> SelectedProperty;
+	UProperty* SelectedProperty;
 };

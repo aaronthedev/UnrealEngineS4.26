@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayDebugger/GameplayDebuggerCategory_Perception.h"
 
@@ -19,25 +19,23 @@ TSharedRef<FGameplayDebuggerCategory> FGameplayDebuggerCategory_Perception::Make
 
 void FGameplayDebuggerCategory_Perception::CollectData(APlayerController* OwnerPC, AActor* DebugActor)
 {
-	UAIPerceptionComponent* PerceptionComponent = nullptr;
 	APawn* MyPawn = Cast<APawn>(DebugActor);
 	if (MyPawn)
 	{
-		AAIController* AIC = Cast<AAIController>(MyPawn->GetController());
-		if (AIC)
+		AAIController* BTAI = Cast<AAIController>(MyPawn->GetController());
+		if (BTAI)
 		{
-			PerceptionComponent = AIC->GetPerceptionComponent();
+			UAIPerceptionComponent* PerceptionComponent = BTAI->GetPerceptionComponent();
+			if (PerceptionComponent == nullptr)
+			{
+				PerceptionComponent = MyPawn->FindComponentByClass<UAIPerceptionComponent>();
+			}
+
+			if (PerceptionComponent)
+			{
+				PerceptionComponent->DescribeSelfToGameplayDebugger(this);
+			}
 		}
-	}
-
-	if (PerceptionComponent == nullptr && DebugActor != nullptr)
-	{
-		PerceptionComponent = DebugActor->FindComponentByClass<UAIPerceptionComponent>();
-	}
-
-	if (PerceptionComponent)
-	{
-		PerceptionComponent->DescribeSelfToGameplayDebugger(this);
 	}
 }
 

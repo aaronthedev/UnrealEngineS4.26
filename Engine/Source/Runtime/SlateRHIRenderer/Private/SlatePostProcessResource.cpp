@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SlatePostProcessResource.h"
 #include "RenderUtils.h"
@@ -49,7 +49,7 @@ void FSlatePostProcessResource::ResizeTargets(const FIntPoint& NewSize)
 				RenderTargetSize.Y,
 				PixelFormat,
 				1,
-				TexCreate_None,
+				/*TexCreateFlags=*/0,
 				TexCreate_RenderTargetable,
 				/*bNeedsTwoCopies=*/false,
 				CreateInfo,

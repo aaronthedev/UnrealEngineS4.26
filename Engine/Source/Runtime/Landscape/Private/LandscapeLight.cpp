@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 LandscapeLight.cpp: Static lighting for LandscapeComponents
@@ -472,7 +472,7 @@ void FLandscapeStaticLightingMesh::GetHeightmapData(int32 InLOD, int32 GeometryL
 				FMemory::Memcpy(&HeightData[X + ExpandQuadsX + (Y + ExpandQuadsY) * NumVertices], SubsectionData, SubsectionSizeVerts * sizeof(FColor));
 			}
 
-			if (bUseRenderedWPO && RenderedWPOData.Num())
+			if (bUseRenderedWPO)
 			{
 				const int32 HeightDataOffset = ExpandQuadsX + (Y + ExpandQuadsY) * NumVertices;
 				const int32 WPODataOffset    = Y * (ComponentSizeQuads + 1);
@@ -542,7 +542,7 @@ void FLandscapeStaticLightingMesh::GetHeightmapData(int32 InLOD, int32 GeometryL
 						FMemory::Memcpy(&HeightData[X + HeightDataOffset], SubsectionData, (FMath::Min(NextX, XSource + XNum) - X) * sizeof(FColor));
 					}
 
-					if (bUseRenderedWPO && RenderedWPOData.Num())
+					if (bUseRenderedWPO)
 					{
 						// All in component-space, no need to take texel duplication into account :)
 						const int32 WPODataOffset    = (YSource + Y) * (ComponentSizeQuads + 1);
@@ -752,6 +752,9 @@ void ULandscapeComponent::GetLightAndShadowMapMemoryUsage( int32& LightMapMemory
 void ULandscapeComponent::InvalidateLightingCacheDetailed(bool bInvalidateBuildEnqueuedLighting, bool bTranslationOnly)
 {
 	Modify();
+
+	// Block until the RT processes the unregister before modifying variables that it may need to access
+	FlushRenderingCommands();
 
 	FComponentReregisterContext ReregisterContext(this);
 

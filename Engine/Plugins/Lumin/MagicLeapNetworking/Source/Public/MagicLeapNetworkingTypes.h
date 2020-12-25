@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,7 +7,7 @@
 
 /** WiFi related data. */
 USTRUCT(BlueprintType)
-struct MAGICLEAPNETWORKING_API FMagicLeapNetworkingWiFiData
+struct FMagicLeapNetworkingWiFiData
 {
 	GENERATED_USTRUCT_BODY()
 

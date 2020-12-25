@@ -14,7 +14,11 @@
 		{
 			"Name": "IOSReplayKit",
 			"Type": "Runtime",
-			"LoadingPhase": "PreDefault"
+			"LoadingPhase": "PreDefault",
+			"WhitelistPlatforms": 
+			[
+				"IOS"
+			]
 		}
 	]
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -104,7 +104,7 @@ namespace MetadataTool
 			// Read the response
 			HttpWebResponse Response = (HttpWebResponse)Request.GetResponse();
 			Console.WriteLine("Response: {0} ({1})", (int)Response.StatusCode, Response.StatusDescription);
-			using (StreamReader ResponseReader = new StreamReader(Response.GetResponseStream(), Encoding.UTF8))
+			using (StreamReader ResponseReader = new StreamReader(Response.GetResponseStream(), Encoding.Default))
 			{
 				string ResponseContent = ResponseReader.ReadToEnd();
 				if (!String.IsNullOrEmpty(ResponseContent))

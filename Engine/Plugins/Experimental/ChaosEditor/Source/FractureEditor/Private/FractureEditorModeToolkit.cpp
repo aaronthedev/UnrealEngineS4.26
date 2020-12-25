@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "FractureEditorModeToolkit.h"
 
@@ -33,8 +33,6 @@
 #include "GeometryCollection/GeometryCollectionComponent.h"
 #include "GeometryCollection/GeometryCollectionActor.h"
 #include "GeometryCollection/GeometryCollection.h"
-#include "Engine/StaticMesh.h"
-#include "Engine/SkeletalMesh.h"
 
 #include "EditorStyleSet.h"
 #include "FractureEditor.h"
@@ -54,9 +52,17 @@
 #include "GeometryCollection/GeometryCollectionClusteringUtility.h"
 #include "Editor.h"
 #include "LevelEditorViewport.h"
-#include "Widgets/Layout/SUniformGridPanel.h"
 
 #define LOCTEXT_NAMESPACE "FFractureEditorModeToolkit"
+
+class FFractureRootObjectCustomization : public IDetailRootObjectCustomization
+{
+public:
+	/** IDetailRootObjectCustomization interface */
+	virtual TSharedPtr<SWidget> CustomizeObjectHeader(const UObject* InRootObject) override { return SNullWidget::NullWidget; }
+	virtual bool IsObjectVisible(const UObject* InRootObject) const override { return true; }
+	virtual bool ShouldDisplayHeader(const UObject* InRootObject) const override { return false; }
+};
 
 TArray<UClass*> FindFractureToolClasses()
 {
@@ -106,9 +112,10 @@ void FFractureEditorModeToolkit::Init(const TSharedPtr<IToolkitHost>& InitToolki
 	DetailsViewArgs.bShowAnimatedPropertiesOption = false;
 
 	DetailsView = EditModule.CreateDetailView(DetailsViewArgs);
+	DetailsView->SetRootObjectCustomizationInstance(MakeShareable(new FFractureRootObjectCustomization));
 
 	float Padding = 4.0f;
-	FMargin MorePadding = FMargin(10.0f, 2.0f);
+	float MorePadding = 10.0f;
 
 	SAssignNew(ExplodedViewWidget, SSpinBox<int32>)
 	.Style(&FFractureEditorStyle::Get().GetWidgetStyle<FSpinBoxStyle>("FractureEditor.SpinBox"))
@@ -118,7 +125,7 @@ void FFractureEditorModeToolkit::Init(const TSharedPtr<IToolkitHost>& InitToolki
 	.MinValue(0)
 	.MaxValue(100)
 	.Delta(1)
-	.Font(FCoreStyle::GetDefaultFontStyle("Regular", 11))
+	.Font(FCoreStyle::GetDefaultFontStyle("Regular", 14))
 	.MinDesiredWidth(36.f)
 	.Justification(ETextJustify::Center)
 	.ToolTipText(LOCTEXT("FractureEditor.Exploded_Tooltip", "How much to seperate the drawing of the bones to aid in setup.  Does not effect simulation"))
@@ -149,7 +156,7 @@ void FFractureEditorModeToolkit::Init(const TSharedPtr<IToolkitHost>& InitToolki
 				return FText::Format(NSLOCTEXT("FractureEditor", "CurrentLevel", "{0}"), FText::AsNumber(FractureLevel));
 
 			})
-			.Font(FCoreStyle::GetDefaultFontStyle("Regular", 11))
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", 12))
 			.ToolTipText(LOCTEXT("FractureEditor.Level_Tooltip", "Set the currently view level of the geometry collection"))
 		]
 
@@ -170,7 +177,7 @@ void FFractureEditorModeToolkit::Init(const TSharedPtr<IToolkitHost>& InitToolki
 	TSharedRef<SExpandableArea> OutlinerExpander = SNew(SExpandableArea)
 	.AreaTitle(FText(LOCTEXT("Outliner", "Outliner")))
 	.HeaderPadding(FMargin(2.0, 2.0))
-	.Padding(MorePadding)
+	.Padding(FMargin(MorePadding))
 	.BorderImage(FEditorStyle::Get().GetBrush("DetailsView.CategoryTop"))
 	.BorderBackgroundColor( FLinearColor( .6,.6,.6, 1.0f ) )
 	.BodyBorderBackgroundColor (FLinearColor( 1.0, 0.0, 0.0))
@@ -184,7 +191,7 @@ void FFractureEditorModeToolkit::Init(const TSharedPtr<IToolkitHost>& InitToolki
 	TSharedRef<SExpandableArea> StatisticsExpander = SNew(SExpandableArea)
 	.AreaTitle(FText(LOCTEXT("LevelStatistics", "Level Statistics")))
 	.HeaderPadding(FMargin(2.0, 2.0))
-	.Padding(MorePadding)
+	.Padding(FMargin(MorePadding))
 	.BorderImage(FEditorStyle::Get().GetBrush("DetailsView.CategoryTop"))
 	.BorderBackgroundColor( FLinearColor( .6,.6,.6, 1.0f ) )
 	.BodyBorderBackgroundColor (FLinearColor( 1.0, 0.0, 0.0))
@@ -196,8 +203,19 @@ void FFractureEditorModeToolkit::Init(const TSharedPtr<IToolkitHost>& InitToolki
 	];
 
 	SAssignNew(ToolkitWidget, SBox)
+	.Padding(8)
 	[
 		SNew(SVerticalBox)
+
+		+SVerticalBox::Slot()
+		.Padding(0.0f, Padding)
+		.AutoHeight()
+		.HAlign(HAlign_Center)
+		[
+			SNew(STextBlock)
+			.Text(FText(LOCTEXT("FractureEditorPanelLabel", "Fracture Editor")))
+			.Font(FCoreStyle::GetDefaultFontStyle("Regular", 12))
+		]
 
 		+SVerticalBox::Slot()
 		[
@@ -227,37 +245,53 @@ void FFractureEditorModeToolkit::Init(const TSharedPtr<IToolkitHost>& InitToolki
 					StatisticsExpander
 				]
 			]
+
 			+ SWidgetSwitcher::Slot()
 			[
+
 				SNew(SScrollBox)
+
 				+SScrollBox::Slot()
-				.Padding(0.0f, 10.0f, 0.0f, 0.0f)
+				.Padding(0.0f, MorePadding)
 				[
 					DetailsView.ToSharedRef()
 				]
+
 				+SScrollBox::Slot()
-				.HAlign(HAlign_Center)
+				.Padding(16.f)
 				[
-					SNew(SUniformGridPanel)
-					.MinDesiredSlotWidth(100.f)
-					.SlotPadding(10.f)
-					+SUniformGridPanel::Slot(0, 0)
+					SNew(SHorizontalBox)
+
+					+SHorizontalBox::Slot()
+					.FillWidth(1)
+
+					+SHorizontalBox::Slot()
+					.AutoWidth()
 					[
 						SNew( SButton )
 						.HAlign(HAlign_Center)
-						.ContentPadding(FMargin(10.f, Padding))
+						.ContentPadding(FMargin(MorePadding, Padding))
 						.OnClicked(this, &FFractureEditorModeToolkit::OnFractureClicked)
 						.IsEnabled( this, &FFractureEditorModeToolkit::CanExecuteFracture)
 						.Text_Lambda( [this] () -> FText { return ActiveTool ? ActiveTool->GetApplyText() :  LOCTEXT("FractureApplyButton", "Apply"); })
 					]
-					+ SUniformGridPanel::Slot(1, 0)
+
+					+SHorizontalBox::Slot()
+					.FillWidth(1)
+
+					+SHorizontalBox::Slot()
+					.AutoWidth()
 					[
 						SNew(SButton)
 						.HAlign(HAlign_Center)
-						.ContentPadding(FMargin(10.f, Padding))
+						.ContentPadding(FMargin(MorePadding, Padding))
 						.OnClicked_Lambda( [this] () -> FReply { SetActiveTool(0); return FReply::Handled(); } )
 						.Text(FText(LOCTEXT("FractureCancelButton", "Cancel")))
 					]
+
+
+					+SHorizontalBox::Slot()
+					.FillWidth(1)
 				]
 			]
 		]
@@ -272,7 +306,7 @@ void FFractureEditorModeToolkit::Init(const TSharedPtr<IToolkitHost>& InitToolki
 
 const TArray<FName> FFractureEditorModeToolkit::PaletteNames = { FName(TEXT("Fracture")), FName(TEXT("Cluster")) };
 
-FText FFractureEditorModeToolkit::GetToolPaletteDisplayName(FName Palette) const
+FText FFractureEditorModeToolkit::GetToolPaletteDisplayName(FName Palette) 
 { 
 	return FText::FromName(Palette);
 }
@@ -283,8 +317,10 @@ void FFractureEditorModeToolkit::BuildToolPalette(FName PaletteIndex, class FToo
 
 	if (PaletteIndex == PaletteNames[0])
 	{
+
+		ToolbarBuilder.AddWidget(SNew(SBox).WidthOverride(4));
+
 		ToolbarBuilder.AddToolBarButton(Commands.GenerateAsset);
-		ToolbarBuilder.AddToolBarButton(Commands.ResetAsset);
 
 		ToolbarBuilder.AddSeparator();
 		ToolbarBuilder.AddToolBarButton(Commands.SelectAll);
@@ -314,7 +350,6 @@ void FFractureEditorModeToolkit::BuildToolPalette(FName PaletteIndex, class FToo
 	{
 		ToolbarBuilder.AddWidget(SNew(SBox).WidthOverride(4));
 		ToolbarBuilder.AddToolBarButton(Commands.GenerateAsset);
-		ToolbarBuilder.AddToolBarButton(Commands.ResetAsset);
 		ToolbarBuilder.AddSeparator();
 
 		ToolbarBuilder.AddToolBarButton(Commands.SelectAll);
@@ -452,12 +487,6 @@ void FFractureEditorModeToolkit::BindCommands()
 		FExecuteAction::CreateSP(this, &FFractureEditorModeToolkit::GenerateAsset),
 		FCanExecuteAction::CreateLambda([] { return IsStaticMeshSelected(); })
 		);
-
-	ToolkitCommands->MapAction(
-		Commands.ResetAsset,
-		FExecuteAction::CreateSP(this, &FFractureEditorModeToolkit::ResetAsset),
-		FCanExecuteAction::CreateStatic(&FFractureEditorModeToolkit::IsGeometryCollectionSelected)
-	);
 
 
 	TArray<UClass*> SourceClasses = FindFractureToolClasses();
@@ -768,24 +797,6 @@ UFractureTool* FFractureEditorModeToolkit::GetActiveTool() const
 bool FFractureEditorModeToolkit::IsActiveTool(UFractureTool* InActiveTool)
 {
 	return bool(ActiveTool == InActiveTool);
-}
-
-FText FFractureEditorModeToolkit::GetActiveToolDisplayName() const
-{
-	if (ActiveTool != nullptr)
-	{
-		return ActiveTool->GetDisplayText();	
-	}
-	return LOCTEXT("FractureNoTool", "Fracture Editor");
-}
-
-FText FFractureEditorModeToolkit::GetActiveToolMessage() const
-{
-	if (ActiveTool != nullptr)
-	{
-		return ActiveTool->GetTooltipText();	
-	}
-	return LOCTEXT("FractureNoToolMessage", "Select geometry and use “New+” to create a new Geometry Collection to begin fracturing.  Choose one of the fracture tools to break apart the selected Geometry Collection.");
 }
 
 void FFractureEditorModeToolkit::SetOutlinerComponents(const TArray<UGeometryCollectionComponent*>& InNewComponents)
@@ -1447,16 +1458,8 @@ class AGeometryCollectionActor* FFractureEditorModeToolkit::CreateNewGeometryAct
 	FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools");
 	AssetToolsModule.Get().CreateUniqueAssetName(UniquePackageName, TEXT(""), UniquePackageName, UniqueAssetName);
 
-	UPackage* Package = CreatePackage(*UniquePackageName);
+	UPackage* Package = CreatePackage(NULL, *UniquePackageName);
 	UGeometryCollection* InGeometryCollection = static_cast<UGeometryCollection*>(NewObject<UGeometryCollection>(Package, UGeometryCollection::StaticClass(), FName(*UniqueAssetName), RF_Transactional | RF_Public | RF_Standalone));
-
-	// Set default collision type here in the factory instead of the geometry collection constructor to only
-	// affect new geometry collections and not update the default for previously created objects.
-	if(InGeometryCollection)
-	{
-		InGeometryCollection->CollisionType = ECollisionTypeEnum::Chaos_Surface_Volumetric;
-		InGeometryCollection->ImplicitType = EImplicitTypeEnum::Chaos_Implicit_LevelSet;
-	}
 
 	// Create the new Geometry Collection actor
 	AGeometryCollectionActor* NewActor = Cast<AGeometryCollectionActor>(AddActor(GetSelectedLevel(), AGeometryCollectionActor::StaticClass()));
@@ -1477,48 +1480,6 @@ class AGeometryCollectionActor* FFractureEditorModeToolkit::CreateNewGeometryAct
 	return NewActor;
 }
 
-
-void FFractureEditorModeToolkit::ResetAsset()
-{
-	TSet<UGeometryCollectionComponent*> GeomCompSelection;
-	GetSelectedGeometryCollectionComponents(GeomCompSelection);
-	for (UGeometryCollectionComponent* GeometryCollectionComponent : GeomCompSelection)
-	{
-		FGeometryCollectionEdit GeometryCollectionEdit = GeometryCollectionComponent->EditRestCollection();
-		if (UGeometryCollection* GeometryCollectionObject = GeometryCollectionEdit.GetRestCollection())
-		{
-			
-			TSharedPtr<FGeometryCollection, ESPMode::ThreadSafe> GeometryCollectionPtr = GeometryCollectionObject->GetGeometryCollection();
-			if (FGeometryCollection* GeometryCollection = GeometryCollectionPtr.Get())
-			{
-				GeometryCollectionObject->Reset();			
-
-				// Rebuild Collection from recorded source assets.
-				for (const FGeometryCollectionSource& Source : GeometryCollectionObject->GeometrySource)
-				{
-					const UObject* SourceMesh = Source.SourceGeometryObject.TryLoad();
-					if (const UStaticMesh* SourceStaticMesh = Cast<UStaticMesh>(SourceMesh))
-					{
-						FGeometryCollectionConversion::AppendStaticMesh(SourceStaticMesh, Source.SourceMaterial, Source.LocalTransform, GeometryCollectionObject, true);
-					}
-					else if (const USkeletalMesh* SourceSkeletalMesh = Cast<USkeletalMesh>(SourceMesh))
-					{
-						// #todo (bmiller) Once we've settled on the right approach with static meshes, we'll need to apply the same strategy to skeletal mesh reconstruction.
-						// FGeometryCollectionConversion::AppendSkeletalMesh(SourceSkeletalMesh, Source.SourceMaterial, Source.LocalTransform, GeometryCollectionObject, true);
-					}
-				}
-
-				GeometryCollectionObject->InitializeMaterials();
-				FGeometryCollectionClusteringUtility::UpdateHierarchyLevelOfChildren(GeometryCollection, -1);
-				
-				GeometryCollectionComponent->MarkRenderDynamicDataDirty();
-				GeometryCollectionComponent->MarkRenderStateDirty();
-			}
-			GeometryCollectionObject->MarkPackageDirty();
-		}
-	}
-	SetOutlinerComponents(GeomCompSelection.Array());
-}
 
 
 void FFractureEditorModeToolkit::ExecuteFracture(FFractureContext& FractureContext)
@@ -1773,15 +1734,9 @@ AGeometryCollectionActor*  FFractureEditorModeToolkit::ConvertStaticMeshToGeomet
 			if (StaticMeshComponent != nullptr)
 			{
 				UStaticMesh* ComponentStaticMesh = StaticMeshComponent->GetStaticMesh();
-				FTransform ComponentTransform(StaticMeshComponent->GetComponentTransform());
-				ComponentTransform.SetTranslation((ComponentTransform.GetTranslation() - ActorTransform.GetTranslation()) + ActorOffset);
-				
-				// Record the contributing source on the asset.
-				FSoftObjectPath SourceSoftObjectPath(ComponentStaticMesh);			
-				TArray<UMaterialInterface*> SourceMaterials = StaticMeshComponent->GetMaterials();
-				FracturedGeometryCollection->GeometrySource.Add({ SourceSoftObjectPath, ComponentTransform, SourceMaterials });
-
-				FGeometryCollectionConversion::AppendStaticMesh(ComponentStaticMesh, SourceMaterials, ComponentTransform, FracturedGeometryCollection, true);
+				FTransform ComponentTranform(StaticMeshComponent->GetComponentTransform());
+				ComponentTranform.SetTranslation((ComponentTranform.GetTranslation() - ActorTransform.GetTranslation()) + ActorOffset);
+				FGeometryCollectionConversion::AppendStaticMesh(ComponentStaticMesh, StaticMeshComponent, ComponentTranform, FracturedGeometryCollection, true);
 			}
 		}
 

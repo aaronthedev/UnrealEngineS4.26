@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TrackEditors/PropertyTrackEditors/StringPropertyTrackEditor.h"
 
@@ -9,19 +9,19 @@ TSharedRef<ISequencerTrackEditor> FStringPropertyTrackEditor::CreateTrackEditor(
 }
 
 
-void FStringPropertyTrackEditor::GenerateKeysFromPropertyChanged( const FPropertyChangedParams& PropertyChangedParams, UMovieSceneSection* SectionToKey, FGeneratedTrackKeys& OutGeneratedKeys )
+void FStringPropertyTrackEditor::GenerateKeysFromPropertyChanged( const FPropertyChangedParams& PropertyChangedParams, FGeneratedTrackKeys& OutGeneratedKeys )
 {
 	void* CurrentObject = PropertyChangedParams.ObjectsThatChanged[0];
 	void* PropertyValue = nullptr;
 	for (int32 i = 0; i < PropertyChangedParams.PropertyPath.GetNumProperties(); i++)
 	{
-		if (FProperty* Property = PropertyChangedParams.PropertyPath.GetPropertyInfo(i).Property.Get())
+		if (UProperty* Property = PropertyChangedParams.PropertyPath.GetPropertyInfo(i).Property.Get())
 		{
 			CurrentObject = Property->ContainerPtrToValuePtr<FString>(CurrentObject, 0);
 		}
 	}
 
-	const FStrProperty* StrProperty = CastField<const FStrProperty>( PropertyChangedParams.PropertyPath.GetLeafMostProperty().Property.Get() );
+	const UStrProperty* StrProperty = Cast<const UStrProperty>( PropertyChangedParams.PropertyPath.GetLeafMostProperty().Property.Get() );
 	if ( StrProperty )
 	{
 		FString StrPropertyValue = StrProperty->GetPropertyValue(CurrentObject);

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -191,27 +191,6 @@ namespace AutomationTool
 				Write(Writer);
 			}
 			return Builder.ToString();
-		}
-
-		/// <summary>
-		/// Gets the name of this task for tracing
-		/// </summary>
-		/// <returns>The trace name</returns>
-		public virtual string GetTraceName()
-		{
-			TaskElementAttribute TaskElement = GetType().GetCustomAttribute<TaskElementAttribute>();
-			return (TaskElement != null)? TaskElement.Name : "unknown";
-		}
-
-		/// <summary>
-		/// Get properties to include in tracing info
-		/// </summary>
-		/// <param name="Span">The scope to add properties to</param>
-		/// <param name="Prefix">Prefix for metadata entries</param>
-		public virtual void GetTraceMetadata(ITraceSpan Span, string Prefix)
-		{
-			Span.AddMetadata(Prefix + "source.file", SourceLocation.Item1.MakeRelativeTo(CommandUtils.RootDirectory));
-			Span.AddMetadata(Prefix + "source.line", SourceLocation.Item2.ToString());
 		}
 
 		/// <summary>

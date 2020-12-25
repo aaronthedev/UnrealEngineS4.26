@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Tracks/MovieSceneCameraAnimTrack.h"
 #include "Sections/MovieSceneCameraAnimSection.h"
@@ -34,15 +34,12 @@ UMovieSceneSection* UMovieSceneCameraAnimTrack::AddNewCameraAnim(FFrameNumber Ke
 /* UMovieSceneTrack interface
 *****************************************************************************/
 
-FMovieSceneEvalTemplatePtr UMovieSceneCameraAnimTrack::CreateTemplateForSection(const UMovieSceneSection& InSection) const
+
+FMovieSceneTrackSegmentBlenderPtr UMovieSceneCameraAnimTrack::GetTrackSegmentBlender() const
 {
-	const UMovieSceneCameraAnimSection* CameraAnimSection = CastChecked<const UMovieSceneCameraAnimSection>(&InSection);
-	if (CameraAnimSection->AnimData.CameraAnim)
-	{
-		return FMovieSceneCameraAnimSectionTemplate(*CameraAnimSection);
-	}
-	return FMovieSceneEvalTemplatePtr();
+	return FMovieSceneAdditiveCameraTrackBlender();
 }
+
 
 const TArray<UMovieSceneSection*>& UMovieSceneCameraAnimTrack::GetAllSections() const
 {

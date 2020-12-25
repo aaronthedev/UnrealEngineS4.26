@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NavModifierVolume.h"
 #include "NavigationSystem.h"
@@ -9,7 +9,6 @@
 #include "Components/BrushComponent.h"
 #include "AI/NavigationSystemHelpers.h"
 #include "Engine/CollisionProfile.h"
-#include "Model.h"
 
 //----------------------------------------------------------------------//
 // ANavModifierVolume
@@ -31,17 +30,6 @@ void ANavModifierVolume::GetNavigationData(FNavigationRelevantData& Data) const
 	{
 		FAreaNavModifier AreaMod(GetBrushComponent(), AreaClass);
 		Data.Modifiers.Add(AreaMod);
-	}
-
-	if (bMaskFillCollisionUnderneathForNavmesh)
-	{
-		if (GetBrushComponent()->Brush != nullptr)
-		{
-			const FBox& Box = GetBrushComponent()->Brush->Bounds.GetBox();
-			FAreaNavModifier AreaMod(Box, GetBrushComponent()->GetComponentTransform(), AreaClass);
-			Data.Modifiers.SetMaskFillCollisionUnderneathForNavmesh(true);
-			Data.Modifiers.Add(AreaMod);
-		}
 	}
 }
 

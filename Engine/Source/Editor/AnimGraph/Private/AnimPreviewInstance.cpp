@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "AnimPreviewInstance.h"
 #include "Animation/DebugSkelMeshComponent.h"
 #include "AnimationRuntime.h"
-#include "Animation/AnimSequence.h"
 
 #if WITH_EDITOR
 #include "ScopedTransaction.h"
@@ -413,7 +412,7 @@ void FAnimPreviewInstanceProxy::SetKeyImplementation(const FCompactPose& PreCont
 
 		ResetModifiedBone(false);
 
-		OnSetKeyCompleteDelegate.Broadcast();
+		OnSetKeyCompleteDelegate.ExecuteIfBound();
 	}
 #endif
 }
@@ -519,24 +518,20 @@ void UAnimPreviewInstance::ResetModifiedBone(bool bCurveController/*=false*/)
 	GetProxyOnGameThread<FAnimPreviewInstanceProxy>().ResetModifiedBone(bCurveController);
 }
 
-#if WITH_EDITOR	
+void UAnimPreviewInstance::SetKey(FSimpleDelegate InOnSetKeyCompleteDelegate)
+{
+	GetProxyOnGameThread<FAnimPreviewInstanceProxy>().SetKey(InOnSetKeyCompleteDelegate);
+}
 
 void UAnimPreviewInstance::SetKey()
 {
 	GetProxyOnGameThread<FAnimPreviewInstanceProxy>().SetKey();
 }
 
-FDelegateHandle UAnimPreviewInstance::AddKeyCompleteDelegate(FSimpleMulticastDelegate::FDelegate InOnSetKeyCompleteDelegate)
+void UAnimPreviewInstance::SetKeyCompleteDelegate(FSimpleDelegate InOnSetKeyCompleteDelegate)
 {
-	return GetProxyOnGameThread<FAnimPreviewInstanceProxy>().AddKeyCompleteDelegate(InOnSetKeyCompleteDelegate);
+	GetProxyOnGameThread<FAnimPreviewInstanceProxy>().SetKeyCompleteDelegate(InOnSetKeyCompleteDelegate);
 }
-
-void UAnimPreviewInstance::RemoveKeyCompleteDelegate(FDelegateHandle InDelegateHandle)
-{
-	GetProxyOnGameThread<FAnimPreviewInstanceProxy>().RemoveKeyCompleteDelegate(InDelegateHandle);
-}
-
-#endif
 
 void UAnimPreviewInstance::RefreshCurveBoneControllers()
 {
@@ -708,7 +703,7 @@ void UAnimPreviewInstance::MontagePreview_StepForward()
 		// Add DELTA to prefer next frame when we're close to the boundary
 		float CurrentFraction = Proxy.GetCurrentTime() / Montage->SequenceLength + DELTA;
 		float NextFrame = FMath::Clamp<float>(FMath::FloorToFloat(CurrentFraction * NumFrames) + 1.0f, 0, NumFrames);
-		float NewTime = Montage->SequenceLength * (NextFrame / (NumFrames-1));
+		float NewTime = Montage->SequenceLength * (NextFrame / NumFrames);
 
 		GetSkelMeshComponent()->GlobalAnimRateScale = 1.0f;
 		GetSkelMeshComponent()->TickAnimation(NewTime - Proxy.GetCurrentTime(), false);
@@ -764,7 +759,7 @@ void UAnimPreviewInstance::MontagePreview_StepBackward()
 		// Add DELTA to prefer next frame when we're close to the boundary
 		float CurrentFraction = Proxy.GetCurrentTime() / Montage->SequenceLength + DELTA;
 		float NextFrame = FMath::Clamp<float>(FMath::FloorToFloat(CurrentFraction * NumFrames) - 1.0f, 0, NumFrames);
-		float NewTime = Montage->SequenceLength * (NextFrame / (NumFrames-1));
+		float NewTime = Montage->SequenceLength * (NextFrame / NumFrames);
 
 		GetSkelMeshComponent()->GlobalAnimRateScale = 1.0f;
 		GetSkelMeshComponent()->TickAnimation(FMath::Abs(NewTime - Proxy.GetCurrentTime()), false);
@@ -1205,12 +1200,6 @@ bool UAnimPreviewInstance::GetForceRetargetBasePose() const
 FAnimInstanceProxy* UAnimPreviewInstance::CreateAnimInstanceProxy()
 {
 	return new FAnimPreviewInstanceProxy(this);
-}
-
-void UAnimPreviewInstance::AddImpulseAtLocation(FVector Impulse, FVector Location, FName BoneName)
-{
-	FAnimPreviewInstanceProxy& Proxy = GetProxyOnGameThread<FAnimPreviewInstanceProxy>();
-	Proxy.AddImpulseAtLocation(Impulse, Location, BoneName);
 }
 
 void UAnimPreviewInstance::SetDebugSkeletalMeshComponent(USkeletalMeshComponent* InSkeletalMeshComponent)

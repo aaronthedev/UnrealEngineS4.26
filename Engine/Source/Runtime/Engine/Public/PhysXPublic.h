@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PhysXSupport.h: PhysX support
@@ -8,7 +8,7 @@
 
 #include "CoreMinimal.h"
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 #include "PhysXPublicCore.h"
 
 /** Calculates correct impulse at the body's center of mass and adds the impulse to the body. */

@@ -1,14 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreTypes.h"
-#include "Containers/StringView.h"
 #include "Containers/UnrealString.h"
 #include "HAL/FileManager.h"
 #include "Containers/ArrayView.h"
 #include "Misc/EnumClassFlags.h"
-#include "Math/Color.h"
 
 /*-----------------------------------------------------------------------------
 	FFileHelper
@@ -33,15 +31,6 @@ struct CORE_API FFileHelper
 		ForceUTF8WithoutBOM
 	};
 
-	enum class EChannelMask
-	{
-		R = STRUCT_OFFSET(FColor, R),
-		G = STRUCT_OFFSET(FColor, G),
-		B = STRUCT_OFFSET(FColor, B),
-		A = STRUCT_OFFSET(FColor, A),
-		All = R|G|B|A
-	};
-
 	/**
 	 * Load a text file to an FString.
 	 * Supports all combination of ANSI/Unicode files and platforms.
@@ -58,24 +47,6 @@ struct CORE_API FFileHelper
 	static bool LoadFileToArray( TArray<uint8>& Result, const TCHAR* Filename, uint32 Flags = 0 );
 
 	/**
-	 * Load a binary file to a dynamic array with two uninitialized bytes at end as padding.
-	 *
-	 * @param Result    Receives the contents of the file
-	 * @param Filename  The file to read
-	 * @param Flags     Flags to pass to IFileManager::CreateFileReader
-	*/
-	static bool LoadFileToArray( TArray64<uint8>& Result, const TCHAR* Filename, uint32 Flags = 0 );
-
-	/**
-	 * Load a text file to an FString. Supports all combination of ANSI/Unicode files and platforms.
-	 *
-	 * @param Result       String representation of the loaded file
-	 * @param Archive      Name of the archive to load from
-	 * @param VerifyFlags  Flags controlling the hash verification behavior ( see EHashOptions )
-	 */
-	static bool LoadFileToString(FString& Result, FArchive& Reader, EHashOptions VerifyFlags = EHashOptions::None);
-
-	/**
 	 * Load a text file to an FString. Supports all combination of ANSI/Unicode files and platforms.
 	 *
 	 * @param Result       String representation of the loaded file
@@ -85,37 +56,13 @@ struct CORE_API FFileHelper
 	static bool LoadFileToString( FString& Result, const TCHAR* Filename, EHashOptions VerifyFlags = EHashOptions::None, uint32 ReadFlags = 0 );
 
 	/**
-	 * Load a text file to an FString. Supports all combination of ANSI/Unicode files and platforms.
-	 *
-	 * @param Result       String representation of the loaded file
-	 * @param PlatformFile PlatformFile interface to use
-	 * @param Filename     Name of the file to load
-	 * @param VerifyFlags  Flags controlling the hash verification behavior ( see EHashOptions )
-	 */
-	static bool LoadFileToString(FString& Result, IPlatformFile* PlatformFile, const TCHAR* Filename, EHashOptions VerifyFlags = EHashOptions::None);
-
-	/**
 	 * Load a text file to an array of strings. Supports all combination of ANSI/Unicode files and platforms.
 	 *
 	 * @param Result       String representation of the loaded file
 	 * @param Filename     Name of the file to load
+	 * @param VerifyFlags  Flags controlling the hash verification behavior ( see EHashOptions )
 	 */
-	static bool LoadFileToStringArray( TArray<FString>& Result, const TCHAR* Filename );
-
-	UE_DEPRECATED(4.26, "LoadFileToStringArray no longer supports VerifyFlags. You can use UE::String::ParseLines to split up a string loaded with LoadFileToString")
-	static bool LoadFileToStringArray(TArray<FString>& Result, const TCHAR* Filename, EHashOptions VerifyFlags);
-
-	/**
-	 * Load a text file to an array of strings, filtered by a user-defined predicate. Supports all combination of ANSI/Unicode files and platforms.
-	 *
-	 * @param Result       String representation of the loaded file
-	 * @param Filename     Name of the file to load
-	 * @param Predicate    Condition for whether or not to add the line to the array
-	 */
-	static bool LoadFileToStringArrayWithPredicate(TArray<FString>& Result, const TCHAR* Filename, TFunctionRef<bool(const FString&)> Predicate);
-
-	UE_DEPRECATED(4.26, "LoadFileToStringArrayWithPredicate no longer supports VerifyFlags. You can use UE::String::ParseLines to split up a string loaded with LoadFileToString")
-	static bool LoadFileToStringArrayWithPredicate(TArray<FString>& Result, const TCHAR* Filename, TFunctionRef<bool(const FString&)> Predicate, EHashOptions VerifyFlags);
+	static bool LoadFileToStringArray( TArray<FString>& Result, const TCHAR* Filename, EHashOptions VerifyFlags = EHashOptions::None );
 
 	/**
 	 * Save a binary array to a file.
@@ -123,15 +70,10 @@ struct CORE_API FFileHelper
 	static bool SaveArrayToFile(TArrayView<const uint8> Array, const TCHAR* Filename, IFileManager* FileManager=&IFileManager::Get(), uint32 WriteFlags = 0);
 
 	/**
-	 * Save a binary array to a file.
-	 */
-	static bool SaveArrayToFile( const TArray64<uint8>& Array, const TCHAR* Filename, IFileManager* FileManager = &IFileManager::Get(), uint32 WriteFlags = 0 );
-
-	/**
 	 * Write the FString to a file.
 	 * Supports all combination of ANSI/Unicode files and platforms.
 	 */
-	static bool SaveStringToFile( FStringView String, const TCHAR* Filename, EEncodingOptions EncodingOptions = EEncodingOptions::AutoDetect, IFileManager* FileManager = &IFileManager::Get(), uint32 WriteFlags = 0 );
+	static bool SaveStringToFile( const FString& String, const TCHAR* Filename, EEncodingOptions EncodingOptions = EEncodingOptions::AutoDetect, IFileManager* FileManager = &IFileManager::Get(), uint32 WriteFlags = 0 );
 
 	/**
 	 * Write the FString to a file.
@@ -150,11 +92,10 @@ struct CORE_API FFileHelper
 	 * @param FileManager must not be 0
 	 * @param OutFilename optional, if specified filename will be output
 	 * @param bInWriteAlpha optional, specifies whether to write out the alpha channel. Will force BMP V4 format.
-	 * @param ChannelMask optional, specifies a specific channel to write out (will be written out to all channels gray scale).
 	 *
 	 * @return true if success
 	 */
-	static bool CreateBitmap( const TCHAR* Pattern, int32 DataWidth, int32 DataHeight, const struct FColor* Data, struct FIntRect* SubRectangle = NULL, IFileManager* FileManager = &IFileManager::Get(), FString* OutFilename = NULL, bool bInWriteAlpha = false, EChannelMask ChannelMask = EChannelMask::All );
+	static bool CreateBitmap( const TCHAR* Pattern, int32 DataWidth, int32 DataHeight, const struct FColor* Data, struct FIntRect* SubRectangle = NULL, IFileManager* FileManager = &IFileManager::Get(), FString* OutFilename = NULL, bool bInWriteAlpha = false );
 
 	/**
 	 * Generates the next unique bitmap filename with a specified extension
@@ -167,7 +108,7 @@ struct CORE_API FFileHelper
 	 * @return true if success
 	 */
 	static bool GenerateNextBitmapFilename(const FString& Pattern, const FString& Extension, FString& OutFilename, IFileManager* FileManager = &IFileManager::Get());
-	
+
 	/**
 	 * Generates the next unique bitmap filename with a specified extension
 	 *

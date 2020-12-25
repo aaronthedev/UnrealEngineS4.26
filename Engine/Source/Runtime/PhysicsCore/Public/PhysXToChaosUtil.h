@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once 
 
-#if 0
 #include "CoreMinimal.h"
 
 #if WITH_PHYSX
@@ -24,7 +23,7 @@ inline TUniquePtr<Chaos::TImplicitObjectTransformed<float, 3>> PxShapeToChaosGeo
 {
 	using namespace Chaos;
 
-	TUniquePtr<FImplicitObject> InnerObj;
+	TUniquePtr<TImplicitObject<float, 3>> InnerObj;
 	PxTransform ShapeTM = Shape->getLocalPose();
 	PxGeometryHolder Geom = Shape->getGeometry();
 	switch (Geom.getType())
@@ -64,7 +63,7 @@ inline TUniquePtr<Chaos::TImplicitObjectTransformed<float, 3>> PxShapeToChaosGeo
 			Particles.X(Idx) = P2UVector(Vertices[Idx]);
 		}
 
-		TUniquePtr<FConvex> ConvexObj = MakeUnique<FConvex>(Particles);
+		TUniquePtr<TConvex<float, 3>> ConvexObj = MakeUnique<TConvex<float, 3>>(Particles);
 		if (ConvexMeshGeom.scale.isIdentity())
 		{
 			InnerObj = MoveTemp(ConvexObj);
@@ -72,7 +71,7 @@ inline TUniquePtr<Chaos::TImplicitObjectTransformed<float, 3>> PxShapeToChaosGeo
 		else
 		{
 			ensure(ConvexMeshGeom.scale.rotation == PxQuat(PxIdentity));
-			InnerObj = MakeUnique<TImplicitObjectScaled<FConvex, /*bInstanced=*/false>>(MoveTemp(ConvexObj), P2UVector(ConvexMeshGeom.scale.scale));	//todo: make instanced
+			InnerObj = MakeUnique<TImplicitObjectScaled<float, 3, /*bInstanced=*/false>>(MoveTemp(ConvexObj), P2UVector(ConvexMeshGeom.scale.scale));	//todo: make instanced
 		}
 		break;
 	}
@@ -89,15 +88,6 @@ inline TUniquePtr<Chaos::TImplicitObjectTransformed<float, 3>> PxShapeToChaosGeo
 
 		HeightField->saveCells(CellBuffer.GetData(), sizeof(CellBuffer[0]) * CellBuffer.Num());
 
-		const int32 NumTris = (NumCells - NumRows - NumCols + 1) * 2;
-		TArray<uint8> MaterialIndices;
-		MaterialIndices.Reserve(NumTris / 2);
-		for(int32 TriangleIndex = 0; TriangleIndex < NumTris; TriangleIndex += 2)
-		{
-			// We're only grabbing every other material because UE4 will only use one material per cell
-			MaterialIndices.Add((uint8)(HeightField->getTriangleMaterialIndex(TriangleIndex)));
-		}
-		
 		TArray<float> Height;
 		Height.AddUninitialized(NumRows * NumCols);
 		//PhysX and unreal have opposite handedness so we flip the data (see LandscapeComponent)
@@ -126,7 +116,7 @@ inline TUniquePtr<Chaos::TImplicitObjectTransformed<float, 3>> PxShapeToChaosGeo
 
 		ShapeTM = U2PTransform(FTransform(LandscapeComponentMatrix));
 
-		InnerObj = MakeUnique<FHeightField>(MoveTemp(Height), MoveTemp(MaterialIndices), NumRows, NumCols, TVector<float, 3>(HeightFieldGeom.columnScale, HeightFieldGeom.rowScale, HeightFieldGeom.heightScale));
+		InnerObj = MakeUnique<THeightField<float>>(MoveTemp(Height), NumRows, NumCols, TVector<float, 3>(HeightFieldGeom.columnScale, HeightFieldGeom.rowScale, HeightFieldGeom.heightScale));
 		break;
 	}
 	case PxGeometryType::eTRIANGLEMESH:
@@ -148,13 +138,8 @@ inline TUniquePtr<Chaos::TImplicitObjectTransformed<float, 3>> PxShapeToChaosGeo
 		const uint32 NumTriangles = TriangleMesh->getNbTriangles();
 		PxTriangleMeshFlags Flags = TriangleMesh->getTriangleMeshFlags();
 		TArray<TVector<int32, 3>> Triangles;
-		TArray<uint16> MaterialIndices;
 		Triangles.AddUninitialized(NumTriangles);
-		MaterialIndices.Reserve(NumTriangles);
-
-		const bool bHasMaterials = NumTriangles > 0 && TriangleMesh->getTriangleMaterialIndex(0) != TNumericLimits<uint16>::Max();
-
-		for(uint32 TriIdx = 0; TriIdx < NumTriangles; ++TriIdx)
+		for (uint32 TriIdx = 0; TriIdx < NumTriangles; ++TriIdx)
 		{
 			if (Flags & PxTriangleMeshFlag::e16_BIT_INDICES)
 			{
@@ -172,14 +157,9 @@ inline TUniquePtr<Chaos::TImplicitObjectTransformed<float, 3>> PxShapeToChaosGeo
 					static_cast<const int32*>(IndexBuffer)[TriIdx * 3+2] };
 				Triangles[TriIdx] = Triangle;
 			}
-
-			if(bHasMaterials)
-			{
-				MaterialIndices.Add(TriangleMesh->getTriangleMaterialIndex(TriIdx));
-			}
 		}
 
-		TUniquePtr<FTriangleMeshImplicitObject> TriMeshObj = MakeUnique<FTriangleMeshImplicitObject>(MoveTemp(Particles), MoveTemp(Triangles), MoveTemp(MaterialIndices));
+		TUniquePtr<TTriangleMeshImplicitObject<float>> TriMeshObj = MakeUnique<TTriangleMeshImplicitObject<float>>(MoveTemp(Particles), MoveTemp(Triangles));
 		if (TriMeshGeom.scale.isIdentity())
 		{
 			InnerObj = MoveTemp(TriMeshObj);
@@ -187,7 +167,7 @@ inline TUniquePtr<Chaos::TImplicitObjectTransformed<float, 3>> PxShapeToChaosGeo
 		else
 		{
 			ensure(TriMeshGeom.scale.rotation == PxQuat(PxIdentity));
-			InnerObj = MakeUnique<TImplicitObjectScaled<FTriangleMeshImplicitObject, /*bInstanced=*/false>>(MoveTemp(TriMeshObj), P2UVector(TriMeshGeom.scale.scale));	//todo: make instanced
+			InnerObj = MakeUnique<TImplicitObjectScaled<float, 3, /*bInstanced=*/false>>(MoveTemp(TriMeshObj), P2UVector(TriMeshGeom.scale.scale));	//todo: make instanced
 		}
 		break;
 	}
@@ -196,7 +176,5 @@ inline TUniquePtr<Chaos::TImplicitObjectTransformed<float, 3>> PxShapeToChaosGeo
 
 	return MakeUnique<TImplicitObjectTransformed<float, 3>>(MoveTemp(InnerObj), P2UTransform(ShapeTM));
 }
-
-#endif
 
 #endif

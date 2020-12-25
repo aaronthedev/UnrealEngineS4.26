@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcGeom_Tests_NurbsData_h
-#define Alembic_AbcGeom_Tests_NurbsData_h
+#ifndef _Alembic_AbcGeom_Tests_NurbsData_h_
+#define _Alembic_AbcGeom_Tests_NurbsData_h_
 
 #include <Alembic/AbcGeom/All.h>
 

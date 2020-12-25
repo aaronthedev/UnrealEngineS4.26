@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -80,5 +80,5 @@ protected:
 #endif // WITH_EDITOR
 
 	/** set next tick time */
-	virtual void ScheduleNextTick(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory);
+	void ScheduleNextTick(uint8* NodeMemory);
 };

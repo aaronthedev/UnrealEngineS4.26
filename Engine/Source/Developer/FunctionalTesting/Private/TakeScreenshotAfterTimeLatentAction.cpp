@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TakeScreenshotAfterTimeLatentAction.h"
 #include "AutomationBlueprintFunctionLibrary.h"
@@ -14,12 +14,11 @@ FTakeScreenshotAfterTimeLatentAction::FTakeScreenshotAfterTimeLatentAction(const
 	, ScreenshotName(InScreenshotName)
 	, Notes(InNotes)
 	, SecondsRemaining(InOptions.Delay)
-	, FinishedLoading(false)
 	, IssuedScreenshotCapture(false)
 	, TakenScreenshot(false)
 	, Options(InOptions)
 {
-
+	UAutomationBlueprintFunctionLibrary::FinishLoadingBeforeScreenshot();
 }
 
 FTakeScreenshotAfterTimeLatentAction::~FTakeScreenshotAfterTimeLatentAction()
@@ -34,12 +33,6 @@ void FTakeScreenshotAfterTimeLatentAction::OnScreenshotTakenAndCompared()
 
 void FTakeScreenshotAfterTimeLatentAction::UpdateOperation(FLatentResponse& Response)
 {
-	if (!FinishedLoading)
-	{
-		UAutomationBlueprintFunctionLibrary::FinishLoadingBeforeScreenshot();
-		FinishedLoading = true;
-	}
-
 	if ( !TakenScreenshot )
 	{
 		if ( !IssuedScreenshotCapture )

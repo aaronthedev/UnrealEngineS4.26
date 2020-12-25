@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TrackEditors/FadeTrackEditor.h"
 #include "Rendering/DrawElements.h"
@@ -44,7 +44,7 @@ public:
 		const double DurationSeconds  = EndTimeSeconds - StartTimeSeconds;
 
 		TArray<TTuple<double, double>> CurvePoints;
-		FadeSection->FloatCurve.PopulateCurvePoints(StartTimeSeconds, EndTimeSeconds, TimeThreshold, 0.1f, TickResolution, CurvePoints);
+		FadeSection->GetChannel().PopulateCurvePoints(StartTimeSeconds, EndTimeSeconds, TimeThreshold, 0.1f, TickResolution, CurvePoints);
 
 		TArray<FSlateGradientStop> GradientStops;
 		for (TTuple<double, double> Vector : CurvePoints)
@@ -111,8 +111,7 @@ void FFadeTrackEditor::BuildAddTrackMenu(FMenuBuilder& MenuBuilder)
 
 bool FFadeTrackEditor::SupportsSequence(UMovieSceneSequence* InSequence) const
 {
-	ETrackSupport TrackSupported = InSequence ? InSequence->IsTrackSupported(UMovieSceneFadeTrack::StaticClass()) : ETrackSupport::NotSupported;
-	return TrackSupported == ETrackSupport::Supported;
+	return (InSequence != nullptr) && (InSequence->GetClass()->GetName() == TEXT("LevelSequence"));
 }
 
 bool FFadeTrackEditor::SupportsType(TSubclassOf<UMovieSceneTrack> Type) const

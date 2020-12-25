@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/PostProcessComponent.h"
 #include "Components/SphereComponent.h"
@@ -20,6 +20,7 @@ bool UPostProcessComponent::EncompassesPoint(FVector Point, float SphereRadius/*
 	{
 		float Distance = -1.f;
 
+#if WITH_PHYSX
 		FVector ClosestPoint;
 		float DistanceSq = -1.f;
 
@@ -28,6 +29,7 @@ bool UPostProcessComponent::EncompassesPoint(FVector Point, float SphereRadius/*
 			Distance = FMath::Sqrt(DistanceSq);
 		}
 		else
+#endif
 		{
 			FBoxSphereBounds SphereBounds = ParentShape->CalcBounds(ParentShape->GetComponentTransform());	
 			if (ParentShape->IsA<USphereComponent>())

@@ -31,10 +31,7 @@ public:
   explicit OutputWrite(CallInst *call)
     : m_Call(call)
   {
-    assert(DxilInst_StoreOutput(call) ||
-           DxilInst_StoreVertexOutput(call) ||
-           DxilInst_StorePrimitiveOutput(call) ||
-           DxilInst_StorePatchConstant(call));
+    assert(DxilInst_StoreOutput(call) || DxilInst_StorePatchConstant(call));
   }
 
   unsigned GetSignatureID() const {
@@ -43,8 +40,8 @@ public:
   }
 
   DxilSignatureElement &GetSignatureElement(DxilModule &DM) const {
-    if (DxilInst_StorePatchConstant(m_Call) || DxilInst_StorePrimitiveOutput(m_Call))
-      return DM.GetPatchConstOrPrimSignature().GetElement(GetSignatureID());
+    if (DxilInst_StorePatchConstant(m_Call))
+      return DM.GetPatchConstantSignature().GetElement(GetSignatureID());
     else
       return DM.GetOutputSignature().GetElement(GetSignatureID());
   }
@@ -172,14 +169,8 @@ private:
   }
 
   DXIL::OpCode GetOutputOpCode() const {
-    if (m_OutputElement.IsPatchConstOrPrim()) {
-      if (m_OutputElement.GetSigPointKind() == DXIL::SigPointKind::PCOut)
-        return DXIL::OpCode::StorePatchConstant;
-      else {
-        assert(m_OutputElement.GetSigPointKind() == DXIL::SigPointKind::MSPOut);
-        return DXIL::OpCode::StorePrimitiveOutput;
-      }
-    }
+    if (m_OutputElement.IsPatchConstant())
+      return DXIL::OpCode::StorePatchConstant;
     else
       return DXIL::OpCode::StoreOutput;
   }
@@ -237,11 +228,9 @@ DxilPreserveAllOutputs::OutputVec DxilPreserveAllOutputs::collectOutputStores(Fu
   for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
     Instruction *inst = &*I;
     DxilInst_StoreOutput storeOutput(inst);
-    DxilInst_StoreVertexOutput storeVertexOutput(inst);
-    DxilInst_StorePrimitiveOutput storePrimitiveOutput(inst);
     DxilInst_StorePatchConstant storePatch(inst);
 
-    if (storeOutput || storeVertexOutput || storePrimitiveOutput || storePatch)
+    if (storeOutput || storePatch)
       calls.emplace_back(cast<CallInst>(inst));
   }
   return calls;

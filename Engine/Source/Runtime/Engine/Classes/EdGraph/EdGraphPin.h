@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -131,10 +131,6 @@ public:
 	UPROPERTY()
 	uint8 bIsWeakPointer:1;
 
-	/** Whether or not this is a "wrapped" Unreal object ptr type (e.g. TSubclassOf<T> instead of UClass*) */
-	UPROPERTY()
-	uint8 bIsUObjectWrapper:1;
-
 	FORCEINLINE bool IsContainer() const { return (ContainerType != EPinContainerType::None); }
 	FORCEINLINE bool IsArray() const { return (ContainerType == EPinContainerType::Array); }
 	FORCEINLINE bool IsSet() const { return (ContainerType == EPinContainerType::Set); }
@@ -147,8 +143,7 @@ public:
 		, bIsArray_DEPRECATED(false)
 		, bIsReference(false)
 		, bIsConst(false)
-		, bIsWeakPointer(false)
-		, bIsUObjectWrapper(false)
+		, bIsWeakPointer(false)	
 	{
 	}
 
@@ -382,9 +377,6 @@ public:
 	/** If true, the pin is displayed as ref. This is transient. */
 	uint8 bDisplayAsMutableRef:1;
 
-	/** If true, the pin's name will be allowed to be made friendly by the editor. */
-	uint8 bAllowFriendlyName:1;
-
 	/** 
 	* If true, this pin existed on an older version of the owning node, but when the node was reconstructed a matching pin was not found.
 	* This pin must be linked to other pins or have a non-default value and will be removed if disconnected, reset to default, or the node is refreshed.
@@ -560,7 +552,6 @@ public:
 		bDefaultValueIsIgnored = false;
 		bOrphanedPin = false;
 		bSavePinIfOrphaned = true;
-		bAllowFriendlyName = true;
 #endif // WITH_EDITORONLY_DATA
 	}
 

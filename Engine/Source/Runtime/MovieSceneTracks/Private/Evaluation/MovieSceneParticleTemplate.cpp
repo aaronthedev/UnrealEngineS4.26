@@ -1,17 +1,16 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Evaluation/MovieSceneParticleTemplate.h"
 #include "Sections/MovieSceneParticleSection.h"
 #include "Particles/Emitter.h"
 #include "Particles/ParticleSystemComponent.h"
 #include "Evaluation/MovieSceneEvaluation.h"
-#include "MovieSceneTimeHelpers.h"
 #include "IMovieScenePlayer.h"
 
 
 DECLARE_CYCLE_STAT(TEXT("Particle Track Token Execute"), MovieSceneEval_ParticleTrack_TokenExecute, STATGROUP_MovieSceneEval);
 
-static UFXSystemComponent* GetFXSystemComponentFromObject(UObject* Object)
+static UParticleSystemComponent* GetParticleSystemComponentFromObject(UObject* Object)
 {
 	if (AEmitter* Emitter = Cast<AEmitter>(Object))
 	{
@@ -19,7 +18,7 @@ static UFXSystemComponent* GetFXSystemComponentFromObject(UObject* Object)
 	}
 	else
 	{
-		return Cast<UFXSystemComponent>(Object);
+		return Cast<UParticleSystemComponent>(Object);
 	}
 }
 
@@ -34,22 +33,14 @@ struct FActivePreAnimatedToken : IMovieScenePreAnimatedToken
 		{
 			bCurrentlyActive = Emitter->bCurrentlyActive;
 		}
-		else
-		{
-			UFXSystemComponent* FXSystemComponent = GetFXSystemComponentFromObject(&InObject);
-			if (FXSystemComponent != nullptr)
-			{
-				bCurrentlyActive = FXSystemComponent->IsActive();
-			}
-		}
 	}
 
 	virtual void RestoreState(UObject& InObject, IMovieScenePlayer& Player) override
 	{
-		UFXSystemComponent* FXSystemComponent = GetFXSystemComponentFromObject(&InObject);
-		if (FXSystemComponent)
+		UParticleSystemComponent* ParticleSystemComponent = GetParticleSystemComponentFromObject(&InObject);
+		if (ParticleSystemComponent)
 		{
-			FXSystemComponent->SetActive(bCurrentlyActive, true);
+			ParticleSystemComponent->SetActive(bCurrentlyActive, true);
 		}
 	}
 
@@ -88,26 +79,26 @@ struct FParticleTrackExecutionToken
 		for (TWeakObjectPtr<> Object : Player.FindBoundObjects(Operand))
 		{
 			UObject* ObjectPtr = Object.Get();
-			UFXSystemComponent* FXSystemComponent = GetFXSystemComponentFromObject(ObjectPtr);
+			UParticleSystemComponent* ParticleSystemComponent = GetParticleSystemComponentFromObject(ObjectPtr);
 
-			if (FXSystemComponent)
+			if (ParticleSystemComponent)
 			{
 				Player.SavePreAnimatedState(*ObjectPtr, FActiveTokenProducer::GetAnimTypeID(), FActiveTokenProducer());
 
 				if ( ParticleKey == EParticleKey::Activate)
 				{
-					if ( !FXSystemComponent->IsActive() )
+					if ( !ParticleSystemComponent->IsActive() )
 					{
-						FXSystemComponent->SetActive(true, true);
+						ParticleSystemComponent->SetActive(true, true);
 					}
 				}
 				else if( ParticleKey == EParticleKey::Deactivate )
 				{
-					FXSystemComponent->SetActive(false, true);
+					ParticleSystemComponent->SetActive(false, true);
 				}
 				else if ( ParticleKey == EParticleKey::Trigger )
 				{
-					FXSystemComponent->ActivateSystem(true);
+					ParticleSystemComponent->ActivateSystem(true);
 				}
 			}
 		}
@@ -140,16 +131,7 @@ void FMovieSceneParticleSectionTemplate::Evaluate(const FMovieSceneEvaluationOpe
 		TArrayView<const FFrameNumber> Times = ChannelData.GetTimes();
 		TArrayView<const uint8>        Values = ChannelData.GetValues();
 
-		FFrameNumber ExclusiveEndFrame = UE::MovieScene::DiscreteExclusiveUpper(PlaybackRange.GetUpperBound());
-
-		int32 LastKeyIndex = Algo::UpperBound(Times, ExclusiveEndFrame)-1;
-
-		// If Algo::UpperBound returns a value greater or equal to the exclusive upper bound of the range, use the index before it
-		if (LastKeyIndex >= 0 && Times[LastKeyIndex] >= ExclusiveEndFrame)
-		{
-			--LastKeyIndex;
-		}
-
+		const int32 LastKeyIndex = Algo::UpperBound(Times, PlaybackRange.GetUpperBoundValue())-1;
 		if (LastKeyIndex >= 0)
 		{
 			EParticleKey ParticleKey((EParticleKey)Values[LastKeyIndex]);

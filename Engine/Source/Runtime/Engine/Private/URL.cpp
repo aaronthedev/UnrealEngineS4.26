@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	URL.cpp: Various file-management functions.
@@ -226,212 +226,108 @@ FURL::FURL( FURL* Base, const TCHAR* TextURL, ETravelType Type )
 		} while( s );
 	}
 
-
-	auto IsAnySlash = [](TCHAR Char) -> bool
-		{
-			return Char == '\\' || Char == '/';
-		};
-
-	auto FindProtocolDelim = [&IsAnySlash](TCHAR* InStr) -> TCHAR*
-		{
-			for (TCHAR* CurChar=InStr; *CurChar != '\0'; CurChar++)
-			{
-				if (CurChar[0] == ':' && IsAnySlash(CurChar[1]) && FCString::Strlen(CurChar) > 2 && IsAnySlash(CurChar[2]))
-				{
-					return CurChar;
-				}
-			}
-
-			return nullptr;
-		};
-
-	auto ValidateProtocol = [](const TCHAR* InStr) -> bool
-		{
-			bool bReturnVal = FChar::IsAlpha(*InStr);
-
-			if (bReturnVal)
-			{
-				for (const TCHAR* CurChar=InStr; *CurChar != '\0'; CurChar++)
-				{
-					if (!(FChar::IsAlnum(*CurChar) || *CurChar == '-' || *CurChar == '+' || *CurChar == '.'))
-					{
-						bReturnVal = false;
-						break;
-					}
-				}
-			}
-
-			return bReturnVal;
-		};
-
-	// Pre-parse protocols in the form unreal://, to allow proper validation
-	bool bParsedProtocol = false;
-
-	if (Valid == 1 && URL != nullptr)
-	{
-		TCHAR* ProtocolDelim = FindProtocolDelim(URL);
-
-		if (ProtocolDelim != nullptr)
-		{
-			*ProtocolDelim = '\0';
-
-			TCHAR* CurProtocol = URL;
-
-			Valid = ValidateProtocol(CurProtocol);
-
-			if (Valid == 1)
-			{
-				Protocol = CurProtocol;
-				URL = ProtocolDelim + 3;
-				bParsedProtocol = true;
-			}
-		}
-	}
-
-
-	// Don't allow double slashes/backslashes, in any combination (nor "\?")
-	if (Valid == 1 && URL != nullptr)
-	{
-		for (const TCHAR* CurChar=URL; *CurChar != '\0'; CurChar++)
-		{
-			if (IsAnySlash(CurChar[0]) && (IsAnySlash(CurChar[1]) || CurChar[1] == '?'))
-			{
-				Valid = 0;
-				break;
-			}
-		}
-	}
-
-
-	FString URLStr(Valid == 1 ? URL : TEXT(""));
-
 	if (Valid == 1)
 	{
 		// Handle pure filenames & Posix paths.
 		bool FarHost=0;
 		bool FarMap=0;
-
-		if (URLStr.Len() > 2 && ((URLStr[0] != '[' && URLStr[0] != ':' && URLStr[1]==':') || (URLStr[0]=='/' && !FPackageName::IsValidLongPackageName(URLStr, true))) )
+		if( FCString::Strlen(URL)>2 && ((URL[0] != '[' && URL[0] != ':' && URL[1]==':') || (URL[0]=='/' && !FPackageName::IsValidLongPackageName(URL, true))) )
 		{
 			// Pure filename.
-
-			if (!bParsedProtocol)
-			{
-				Protocol = UrlConfig.DefaultProtocol;
-			}
-
-			Map = URLStr;
+			Protocol = UrlConfig.DefaultProtocol;
+			Map = URL;
 			Portal = UrlConfig.DefaultPortal;
-			URLStr = TEXT("");
+			URL = NULL;
 			FarHost = 1;
 			FarMap = 1;
 			Host = TEXT("");
 		}
 		else
 		{
-			// Determine location of the first opening square bracket. Square brackets enclose an IPv6 address if they have a port.
-			bool bPotentialIPv6Address = false;
-			bool bMultipleColons = false;
+			// Determine location of the first opening square bracket.
+			// Square brackets enclose an IPv6 address if they have a port.
+			const TCHAR* SquareBracket = FCString::Strchr(URL, '[');
+			const TCHAR* FirstColonLocation = FCString::Strchr(URL, ':');
+			const TCHAR* LastColonLocation = FCString::Strrchr(URL, ':');
+			const bool bHasMultipleColons = FirstColonLocation != nullptr && LastColonLocation != nullptr && FirstColonLocation != LastColonLocation
+				&& FCString::Strchr(FirstColonLocation + 1, ':') != LastColonLocation;
 
-			auto FindCharIdx = [](const FString& Str, const TCHAR Char) -> int32
+			// Parse protocol. Don't consider colons that occur after the opening square
+			// brace, because they are valid characters in an IPv6 address.
+			if( (FirstColonLocation !=nullptr)
+			&&	(FirstColonLocation >URL+1)
+			&&  ((!SquareBracket && !bHasMultipleColons) || (FirstColonLocation <SquareBracket) || (bHasMultipleColons && *(FirstColonLocation+1) == '/'))
+			&&	(FCString::Strchr(URL,'.')==nullptr || FirstColonLocation <FCString::Strchr(URL,'.')) )
 			{
-				int32 ReturnVal;
-
-				Str.FindChar(Char, ReturnVal);
-
-				return ReturnVal;
-			};
-
-			{
-				int32 SquareBracketIdx;
-				int32 FirstColonIdx = FindCharIdx(URLStr, ':');
-				int32 LastColonIdx;
-				int32 DotIdx = FindCharIdx(URLStr, '.');
-
-				bPotentialIPv6Address = URLStr.FindChar('[', SquareBracketIdx);
-				URLStr.FindLastChar(':', LastColonIdx);
-
-				int32 SecondColonIdx = URLStr.Find(TEXT(":"), ESearchCase::CaseSensitive, ESearchDir::FromStart, FirstColonIdx + 1);
-				bMultipleColons = FirstColonIdx != INDEX_NONE && LastColonIdx != INDEX_NONE && FirstColonIdx != LastColonIdx && SecondColonIdx != LastColonIdx;
-
-				// Parse protocol. Don't consider colons that occur after the opening square brace,
-				// because they are valid characters in an IPv6 address.
-				if (!bParsedProtocol && FirstColonIdx != INDEX_NONE && FirstColonIdx > 1 &&
-					((SquareBracketIdx == INDEX_NONE && !bMultipleColons) || (FirstColonIdx < SquareBracketIdx) || (bMultipleColons && URLStr[FirstColonIdx+1] == '/')) &&
-					(DotIdx == INDEX_NONE || FirstColonIdx < DotIdx))
-				{
-					Protocol = URLStr.Left(FirstColonIdx);
-					URLStr = URLStr.Mid(FirstColonIdx + 1);
-				}
+				TCHAR* ss = URL;
+				URL      = FCString::Strchr(URL,':');
+				*(URL++)   = 0;
+				Protocol = ss;
 			}
 
 			// Parse optional leading double-slashes.
-			if (URLStr.Len() > 1 && (URLStr[0] == '/' && URLStr[1] =='/'))
+			if( *URL=='/' && *(URL+1) =='/' )
 			{
-				URLStr = URLStr.Mid(2);
+				URL += 2;
 				FarHost = 1;
 				Host = TEXT("");
 			}
 
 			// Parse optional host name and port.
-			int32 DotIdx = FindCharIdx(URLStr, '.');
-			int32 ColonIdx = FindCharIdx(URLStr, ':');
-			int32 LastColonIdx;
-			int32 MapExtIdx = URLStr.Find(FPackageName::GetMapPackageExtension());
-			int32 MapExtLen = FPackageName::GetMapPackageExtension().Len();
-			int32 SaveExtIdx = URLStr.Find(UrlConfig.DefaultSaveExt);
-			int32 SaveExtLen = UrlConfig.DefaultSaveExt.Len();
-			int32 DemoExtIdx = URLStr.Find(TEXT("demo"));
-			int32 DemoExtLen = 4;
+			const TCHAR* Dot = FCString::Strchr(URL,'.');
+			// This doesn't use FirstColonLocation as the URL could be modified by the Protocol code above
+			const TCHAR* Colon = FCString::Strchr(URL, ':');
+			const int32 ExtLen = FPackageName::GetMapPackageExtension().Len();
 
-			URLStr.FindLastChar(':', LastColonIdx);
-
-			auto IsAlnumChecked = [](const FString& Str, int32 Idx) -> bool
-				{
-					return Str.IsValidIndex(Idx) && FChar::IsAlnum(Str[Idx]);
-				};
-
-			bool bIsHostnameWithDot = DotIdx > 0 &&
-				// MapExtIdx includes the dot - .umap - other extensions don't
-				(DotIdx != MapExtIdx || IsAlnumChecked(URLStr, DotIdx+MapExtLen)) &&
-				((DotIdx + 1) != SaveExtIdx || IsAlnumChecked(URLStr, DotIdx+SaveExtLen+1)) &&
-				((DotIdx + 1) != DemoExtIdx || IsAlnumChecked(URLStr, DotIdx+4+1));
-
+			const bool bIsHostnameWithDot =
+					(Dot)
+				&&	(Dot-URL>0)
+				&&	(FCString::Strnicmp( Dot, *FPackageName::GetMapPackageExtension(), FPackageName::GetMapPackageExtension().Len() )!=0 || FChar::IsAlnum(Dot[ExtLen]) )
+				&&	(FCString::Strnicmp( Dot+1,*UrlConfig.DefaultSaveExt, UrlConfig.DefaultSaveExt.Len() )!=0 || FChar::IsAlnum(Dot[UrlConfig.DefaultSaveExt.Len()+1]) )
+				&&	(FCString::Strnicmp( Dot+1,TEXT("demo"), 4 ) != 0 || FChar::IsAlnum(Dot[5]));
 
 			// Square bracket indicates an IPv6 address, but IPv6 addresses can contain dots also
 			// They also typically have multiple colons in them as well.
-			if (bIsHostnameWithDot || bPotentialIPv6Address || (ColonIdx != INDEX_NONE && ColonIdx == LastColonIdx) || bMultipleColons)
+			if (bIsHostnameWithDot || SquareBracket || (Colon && Colon == LastColonLocation) || bHasMultipleColons)
 			{
-				int32 MapIdx = FindCharIdx(URLStr, '/');
-				FString HostAndPort = (MapIdx != INDEX_NONE ? URLStr.Left(MapIdx) : URLStr);
-
-				URLStr = (MapIdx != INDEX_NONE) ? URLStr.Mid(MapIdx) : TEXT("");
-
+				TCHAR* ss = URL;
+				// Clear out the URL such that all that should be left is the map
+				URL     = FCString::Strchr(URL,'/');
+				if( URL )
+				{
+					*(URL++) = 0;
+				}
 
 				// Skip past all the ':' characters in the IPv6 address to get to the port.
-				int32 ClosingBracketIdx = FindCharIdx(HostAndPort, ']');
-				int32 PortSearchIdx = HostAndPort.Find(":", ESearchCase::CaseSensitive, ESearchDir::FromStart, FMath::Max(ClosingBracketIdx, 0));
-				int32 NextColonIdx = HostAndPort.Find(":", ESearchCase::CaseSensitive, ESearchDir::FromStart, PortSearchIdx + 1);
+				TCHAR* ClosingSquareBracket = FCString::Strchr(ss, ']');
+				
+				TCHAR* PortText = ss;
+				if( ClosingSquareBracket )
+				{
+					PortText = ClosingSquareBracket;
+				}
 
 				// If we don't have a square bracket, check for another instance of a colon. This will tell us if we're dealing with an IPv6 address
 				// if there isn't one, then we're dealing with a port.
-				if (PortSearchIdx != INDEX_NONE && (ClosingBracketIdx != INDEX_NONE || NextColonIdx == INDEX_NONE))
+				TCHAR* PortData = FCString::Strchr(PortText, ':');
+				if (PortData && (ClosingSquareBracket || (!ClosingSquareBracket && FCString::Strchr(PortData + 1, ':') == nullptr)))
 				{
-					Port = FCString::Atoi(*HostAndPort.Mid(PortSearchIdx+1));
-					HostAndPort = HostAndPort.Left(PortSearchIdx);
+					// Port.
+					*(PortData++) = 0;
+					Port = FCString::Atoi(PortData);
 				}
 
-				int32 OpeningBracketIdx = FindCharIdx(HostAndPort, '[');
-
 				// If the input was an IPv6 address with a port, we need to remove the brackets then.
-				if (OpeningBracketIdx != INDEX_NONE && ClosingBracketIdx != INDEX_NONE)
+				if(SquareBracket && ClosingSquareBracket)
 				{
-					Host = HostAndPort.Mid(OpeningBracketIdx + 1, (ClosingBracketIdx - OpeningBracketIdx) - 1);
+					// Trim the brackets from the host address
+					*ClosingSquareBracket = 0;
+					Host = ss + 1;
 				}
 				else
 				{
 					// Otherwise, leave the address as is.
-					Host = HostAndPort;
+					Host = ss;
 				}
 
 				if( FCString::Stricmp(*Protocol,*UrlConfig.DefaultProtocol)==0 )
@@ -442,29 +338,27 @@ FURL::FURL( FURL* Base, const TCHAR* TextURL, ETravelType Type )
 				{
 					Map = TEXT("");
 				}
-
 				FarHost = 1;
 			}
 		}
 	}
 
 	// Parse optional map
-	if (Valid == 1 && URLStr.Len() > 0)
+	if (Valid == 1 && URL && *URL)
 	{
 		// Map.
-		if (URLStr[0] != '/')
+		if (*URL != '/')
 		{
 			// find full pathname from short map name
 			FString MapFullName;
 			FText MapNameError;
 			bool bFoundMap = false;
-
-			if (FPaths::FileExists(*URLStr) && FPackageName::TryConvertFilenameToLongPackageName(URLStr, MapFullName))
+			if (FPaths::FileExists(URL))
 			{
-				Map = MapFullName;
+				Map = FPackageName::FilenameToLongPackageName(URL);
 				bFoundMap = true;
 			}
-			else if (!FPackageName::DoesPackageNameContainInvalidCharacters(URLStr, &MapNameError))
+			else if (!FPackageName::DoesPackageNameContainInvalidCharacters(URL, &MapNameError))
 			{
 				// First try to use the asset registry if it is available and finished scanning
 				if (FModuleManager::Get().IsModuleLoaded("AssetRegistry"))
@@ -476,7 +370,7 @@ FURL::FURL( FURL* Base, const TCHAR* TextURL, ETravelType Type )
 						TArray<FAssetData> MapList;
 						if (AssetRegistry.GetAssetsByClass(UWorld::StaticClass()->GetFName(), /*out*/ MapList))
 						{
-							FName TargetTestName(*URLStr);
+							FName TargetTestName(URL);
 							for (const FAssetData& MapAsset : MapList)
 							{
 								if (MapAsset.AssetName == TargetTestName)
@@ -493,7 +387,7 @@ FURL::FURL( FURL* Base, const TCHAR* TextURL, ETravelType Type )
 				if (!bFoundMap)
 				{
 					// Fall back to incredibly slow disk scan for the package
-					if (FPackageName::SearchForPackageOnDisk(URLStr + FPackageName::GetMapPackageExtension(), &MapFullName))
+					if (FPackageName::SearchForPackageOnDisk(FString(URL) + FPackageName::GetMapPackageExtension(), &MapFullName))
 					{
 						Map = MapFullName;
 						bFoundMap = true;
@@ -504,7 +398,7 @@ FURL::FURL( FURL* Base, const TCHAR* TextURL, ETravelType Type )
 			if (!bFoundMap)
 			{
 				// can't find file, invalidate and bail
-				UE_CLOG(MapNameError.ToString().Len() > 0, LogLongPackageNames, Warning, TEXT("URL: %s: %s"), *URLStr, *MapNameError.ToString());
+				UE_CLOG(MapNameError.ToString().Len() > 0, LogLongPackageNames, Warning, TEXT("URL: %s: %s"), URL, *MapNameError.ToString());
 				*this = FURL();
 				Valid = 0;
 			}
@@ -512,7 +406,7 @@ FURL::FURL( FURL* Base, const TCHAR* TextURL, ETravelType Type )
 		else
 		{
 			// already a full pathname
-			Map = URLStr;
+			Map = URL;
 		}
 
 	}
@@ -520,7 +414,7 @@ FURL::FURL( FURL* Base, const TCHAR* TextURL, ETravelType Type )
 	// Validate everything.
 	// The FarHost check does not serve any purpose I can see, and will just cause valid URLs to fail (URLs with no options, why does a URL
 	// need an option to be valid?)
-	if (Valid == 1 && (!ValidateProtocol(*Protocol) || !ValidNetChar(*Host) /*|| !ValidNetChar(*Map)*/ || !ValidNetChar(*Portal) /*|| (!FarHost && !FarMap && !Op.Num())*/))
+	if (Valid == 1 && (!ValidNetChar(*Protocol) || !ValidNetChar(*Host) /*|| !ValidNetChar(*Map)*/ || !ValidNetChar(*Portal) /*|| (!FarHost && !FarMap && !Op.Num())*/))
 	{
 		*this = FURL();
 		Valid = 0;
@@ -538,7 +432,7 @@ FURL::FURL( FURL* Base, const TCHAR* TextURL, ETravelType Type )
 //
 // Convert this URL to text.
 //
-FString FURL::ToString(bool FullyQualified) const
+FString FURL::ToString (bool FullyQualified) const
 {
 	FString Result;
 
@@ -558,11 +452,7 @@ FString FURL::ToString(bool FullyQualified) const
 	if ((Host != UrlConfig.DefaultHost) || (Port != UrlConfig.DefaultPort))
 	{
 		Result += GetHostPortString();
-
-		if (!Map.StartsWith(TEXT("/")) && !Map.StartsWith(TEXT("\\")))
-		{
-			Result += TEXT("/");
-		}
+		Result += TEXT("/");
 	}
 
 	// Emit map.
@@ -661,7 +551,7 @@ void FURL::AddOption( const TCHAR* Str )
 
 void FURL::RemoveOption( const TCHAR* Key, const TCHAR* Section, const FString& Filename )
 {
-	if ( !Key || *Key == '\0')
+	if ( !Key )
 		return;
 
 	for ( int32 i = Op.Num() - 1; i >= 0; i-- )
@@ -800,51 +690,33 @@ static bool URLSerializationTests(UWorld* InWorld, const TCHAR* Cmd, FOutputDevi
 		bool bAllCasesPassed = true;
 		for (const auto& TestCase : TestCases)
 		{
-			for (int32 TestType=0; TestType<2; TestType++)
+			FURL TestURL(nullptr, *TestCase.QueryString, TRAVEL_Absolute);
+			// This is ugly, but we use it to report which cases failed and why.
+			const bool bHostMatched = (TestURL.Host == TestCase.Host);
+			const bool bPortMatched = (TestCase.Port == -1 || TestCase.Port == TestURL.Port);
+			const bool bProtocolMatched = (TestCase.Protocol.IsEmpty() || TestCase.Protocol == TestURL.Protocol);
+
+			if (bHostMatched && bPortMatched &&	bProtocolMatched)
 			{
-				bool bConversionTest = TestType == 1;
-				FString CurQueryString;
-
-				if (bConversionTest)
+				UE_LOG(LogCore, Log, TEXT("Test %s passed!"), *TestCase.QueryString);
+			}
+			else
+			{
+				bAllCasesPassed = false;
+				UE_LOG(LogCore, Warning, TEXT("Test %s failed! Matching flags: Host[%d] Port[%d] Protocol[%d]"), *TestCase.QueryString, bHostMatched, bPortMatched, bProtocolMatched);
+				if (!bHostMatched)
 				{
-					FURL ConversionURL(nullptr, *TestCase.QueryString, TRAVEL_Absolute);
-
-					CurQueryString = ConversionURL.ToString();
-				}
-				else
-				{
-					CurQueryString = TestCase.QueryString;
+					UE_LOG(LogCore, Warning, TEXT("URL had host %s, expected %s"), *TestURL.Host, *TestCase.Host);
 				}
 
-				FURL TestURL(nullptr, *CurQueryString, TRAVEL_Absolute);
-				// This is ugly, but we use it to report which cases failed and why.
-				const bool bHostMatched = (TestURL.Host == TestCase.Host);
-				const bool bPortMatched = (TestCase.Port == -1 || TestCase.Port == TestURL.Port);
-				const bool bProtocolMatched = (TestCase.Protocol.IsEmpty() || TestCase.Protocol == TestURL.Protocol);
-
-				if (bHostMatched && bPortMatched &&	bProtocolMatched)
+				if (!bPortMatched)
 				{
-					UE_LOG(LogCore, Log, TEXT("Test %s (%s) passed!"), *TestCase.QueryString, (bConversionTest ? *CurQueryString : TEXT("")));
+					UE_LOG(LogCore, Warning, TEXT("URL had port %d, expected %d"), TestURL.Port, TestCase.Port);
 				}
-				else
+
+				if (!bProtocolMatched)
 				{
-					bAllCasesPassed = false;
-					UE_LOG(LogCore, Warning, TEXT("Test %s (%s) failed! Matching flags: Host[%d] Port[%d] Protocol[%d]"), *TestCase.QueryString,
-							(bConversionTest ? *CurQueryString : TEXT("")), bHostMatched, bPortMatched, bProtocolMatched);
-					if (!bHostMatched)
-					{
-						UE_LOG(LogCore, Warning, TEXT("URL had host %s, expected %s"), *TestURL.Host, *TestCase.Host);
-					}
-
-					if (!bPortMatched)
-					{
-						UE_LOG(LogCore, Warning, TEXT("URL had port %d, expected %d"), TestURL.Port, TestCase.Port);
-					}
-
-					if (!bProtocolMatched)
-					{
-						UE_LOG(LogCore, Warning, TEXT("URL had protocol %s, expected %s"), *TestURL.Protocol, *TestCase.Protocol);
-					}
+					UE_LOG(LogCore, Warning, TEXT("URL had protocol %s, expected %s"), *TestURL.Protocol, *TestCase.Protocol);
 				}
 			}
 		}

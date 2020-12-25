@@ -3143,9 +3143,7 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
   case ICK_Lvalue_To_Rvalue: {
     assert(From->getObjectKind() != OK_ObjCProperty);
     ExprResult FromRes = DefaultLvalueConversion(From);
-    if (FromRes.isInvalid()) {
-      return ExprError();
-    }
+    assert(!FromRes.isInvalid() && "Can't perform deduced conversion?!");
     From = FromRes.get();
     FromType = From->getType();
     break;

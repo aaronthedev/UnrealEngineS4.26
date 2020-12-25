@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "IOculusInputModule.h"
@@ -6,7 +6,6 @@
 #if OCULUS_INPUT_SUPPORTED_PLATFORMS
 #include "IMotionController.h"
 #include "InputCoreTypes.h"
-#include "OculusInputFunctionLibrary.h"
 #include "GenericPlatform/GenericApplicationMessageHandler.h"
 
 namespace OculusInput
@@ -38,6 +37,11 @@ enum class EOculusTouchControllerButton
 	Trigger_Touch,
 	XA_Touch,
 	YB_Touch,
+
+	/** Oculus Go buttons */
+	Back,
+	Touchpad,
+	Touchpad_Touch,
 
 	/** Total number of controller buttons */
 	TotalButtonCount
@@ -74,27 +78,15 @@ enum class EOculusTouchCapacitiveAxes
 	TotalAxisCount
 };
 
-enum class EOculusHandButton
+enum class EOculusTouchpadButton // GearVR HMT side touchpad
 {
-	Thumb,
-	Index,
-	Middle,
-	Ring,
-	Pinky,
-	System,
-	Menu,
+	Touchpad,
+	Back,
+
+	/** Total number of touchpad buttons */
 	TotalButtonCount
 };
 
-enum class EOculusHandAxes
-{
-	Thumb,
-	Index,
-	Middle,
-	Ring,
-	Pinky,
-	TotalAxisCount
-};
 
 //-------------------------------------------------------------------------------------------------
 // FOculusKey
@@ -128,32 +120,10 @@ struct FOculusKey
 	static const FKey OculusRemote_VolumeDown;
 	static const FKey OculusRemote_Home;
 
-	static const FKey OculusHand_Left_ThumbPinch;
-	static const FKey OculusHand_Left_IndexPinch;
-	static const FKey OculusHand_Left_MiddlePinch;
-	static const FKey OculusHand_Left_RingPinch;
-	static const FKey OculusHand_Left_PinkyPinch;
-
-	static const FKey OculusHand_Right_ThumbPinch;
-	static const FKey OculusHand_Right_IndexPinch;
-	static const FKey OculusHand_Right_MiddlePinch;
-	static const FKey OculusHand_Right_RingPinch;
-	static const FKey OculusHand_Right_PinkyPinch;
-
-	static const FKey OculusHand_Left_SystemGesture;
-	static const FKey OculusHand_Right_SystemGesture;
-
-	static const FKey OculusHand_Left_ThumbPinchStrength;
-	static const FKey OculusHand_Left_IndexPinchStrength;
-	static const FKey OculusHand_Left_MiddlePinchStrength;
-	static const FKey OculusHand_Left_RingPinchStrength;
-	static const FKey OculusHand_Left_PinkyPinchStrength;
-
-	static const FKey OculusHand_Right_ThumbPinchStrength;
-	static const FKey OculusHand_Right_IndexPinchStrength;
-	static const FKey OculusHand_Right_MiddlePinchStrength;
-	static const FKey OculusHand_Right_RingPinchStrength;
-	static const FKey OculusHand_Right_PinkyPinchStrength;
+	static const FKey OculusTouchpad_Touchpad;
+	static const FKey OculusTouchpad_Touchpad_X;
+	static const FKey OculusTouchpad_Touchpad_Y;
+	static const FKey OculusTouchpad_Back;
 };
 
 
@@ -191,32 +161,10 @@ struct FOculusKeyNames
 	static const FName OculusRemote_VolumeDown;
 	static const FName OculusRemote_Home;
 
-	static const FName OculusHand_Left_ThumbPinch;
-	static const FName OculusHand_Left_IndexPinch;
-	static const FName OculusHand_Left_MiddlePinch;
-	static const FName OculusHand_Left_RingPinch;
-	static const FName OculusHand_Left_PinkyPinch;
-
-	static const FName OculusHand_Right_ThumbPinch;
-	static const FName OculusHand_Right_IndexPinch;
-	static const FName OculusHand_Right_MiddlePinch;
-	static const FName OculusHand_Right_RingPinch;
-	static const FName OculusHand_Right_PinkyPinch;
-
-	static const FName OculusHand_Left_SystemGesture;
-	static const FName OculusHand_Right_SystemGesture;
-
-	static const FName OculusHand_Left_ThumbPinchStrength;
-	static const FName OculusHand_Left_IndexPinchStrength;
-	static const FName OculusHand_Left_MiddlePinchStrength;
-	static const FName OculusHand_Left_RingPinchStrength;
-	static const FName OculusHand_Left_PinkyPinchStrength;
-
-	static const FName OculusHand_Right_ThumbPinchStrength;
-	static const FName OculusHand_Right_IndexPinchStrength;
-	static const FName OculusHand_Right_MiddlePinchStrength;
-	static const FName OculusHand_Right_RingPinchStrength;
-	static const FName OculusHand_Right_PinkyPinchStrength;
+	static const FName OculusTouchpad_Touchpad;
+	static const FName OculusTouchpad_Touchpad_X;
+	static const FName OculusTouchpad_Touchpad_Y;
+	static const FName OculusTouchpad_Back;
 };
 
 
@@ -254,7 +202,7 @@ struct FOculusButtonState
 // FOculusTouchCapacitiveState - Capacitive Axis State
 //-------------------------------------------------------------------------------------------------
 
-struct FOculusAxisState
+struct FOculusTouchCapacitiveState
 {
 	/** The axis that this button state maps to */
 	FName Axis;
@@ -262,14 +210,19 @@ struct FOculusAxisState
 	/** How close the finger is to this button, from 0.f to 1.f */
 	float State;
 
-	FOculusAxisState()
+	FOculusTouchCapacitiveState()
 		: Axis(NAME_None)
 		, State(0.f)
 	{
 	}
 };
 
-struct FOculusControllerState
+
+//-------------------------------------------------------------------------------------------------
+// FOculusTouchControllerState - Input state for an Oculus motion controller
+//-------------------------------------------------------------------------------------------------
+
+struct FOculusTouchControllerState
 {
 	/** True if the device is connected, otherwise false */
 	bool bIsConnected;
@@ -286,22 +239,6 @@ struct FOculusControllerState
 	/** True if orientation is valid (tracked or estimated), otherwise false */
 	bool bIsOrientationValid;
 
-	FOculusControllerState()
-		: bIsConnected(false),
-		bIsPositionTracked(false),
-		bIsPositionValid(false),
-		bIsOrientationTracked(false),
-		bIsOrientationValid(false)
-	{
-	}
-};
-
-//-------------------------------------------------------------------------------------------------
-// FOculusTouchControllerState - Input state for an Oculus motion controller
-//-------------------------------------------------------------------------------------------------
-
-struct FOculusTouchControllerState : FOculusControllerState
-{
 	/** Analog trigger */
 	float TriggerAxis;
 
@@ -318,7 +255,7 @@ struct FOculusTouchControllerState : FOculusControllerState
 	FOculusButtonState Buttons[ (int32)EOculusTouchControllerButton::TotalButtonCount ];
 
 	/** Capacitive Touch axes */
-	FOculusAxisState CapacitiveAxes[(int32)EOculusTouchCapacitiveAxes::TotalAxisCount];
+	FOculusTouchCapacitiveState CapacitiveAxes[(int32)EOculusTouchCapacitiveAxes::TotalAxisCount];
 
 	/** Whether or not we're playing a haptic effect.  If true, force feedback calls will be early-outed in favor of the haptic effect */
 	bool bPlayingHapticEffect;
@@ -341,7 +278,12 @@ struct FOculusTouchControllerState : FOculusControllerState
 
 	/** Explicit constructor sets up sensible defaults */
 	FOculusTouchControllerState( const EControllerHand Hand )
-		: TriggerAxis( 0.0f ),
+		: bIsConnected( false ),
+		  bIsPositionTracked( false ),
+		  bIsPositionValid( false ),
+		  bIsOrientationTracked( false ),
+		  bIsOrientationValid( false ),
+		  TriggerAxis( 0.0f ),
 		  GripAxis( 0.0f ),
 		  ThumbstickAxes( FVector2D::ZeroVector ),
 		  bPlayingHapticEffect( false ),
@@ -367,12 +309,29 @@ struct FOculusTouchControllerState : FOculusControllerState
 		Buttons[ (int32)EOculusTouchControllerButton::Thumbstick_Left ].Key = (Hand == EControllerHand::Left) ? EKeys::OculusTouch_Left_Thumbstick_Left.GetFName() : EKeys::OculusTouch_Right_Thumbstick_Left.GetFName();
 		Buttons[ (int32)EOculusTouchControllerButton::Thumbstick_Right ].Key = (Hand == EControllerHand::Left) ? EKeys::OculusTouch_Left_Thumbstick_Right.GetFName() : EKeys::OculusTouch_Right_Thumbstick_Right.GetFName();
 
-		Buttons[(int32)EOculusTouchControllerButton::Menu].Key = (Hand == EControllerHand::Left) ? EKeys::OculusTouch_Left_Menu_Click.GetFName() : EKeys::OculusTouch_Right_System_Click.GetFName();
+		Buttons[ (int32)EOculusTouchControllerButton::Trigger ].EmulatedKey = ( Hand == EControllerHand::Left ) ? FGamepadKeyNames::MotionController_Left_Trigger : FGamepadKeyNames::MotionController_Right_Trigger;
+		Buttons[ (int32)EOculusTouchControllerButton::Grip ].EmulatedKey = ( Hand == EControllerHand::Left ) ? FGamepadKeyNames::MotionController_Left_Grip1 : FGamepadKeyNames::MotionController_Right_Grip1;
+		Buttons[ (int32)EOculusTouchControllerButton::Thumbstick ].EmulatedKey = ( Hand == EControllerHand::Left ) ? FGamepadKeyNames::MotionController_Left_Thumbstick : FGamepadKeyNames::MotionController_Right_Thumbstick;
+		Buttons[ (int32)EOculusTouchControllerButton::XA ].EmulatedKey = (Hand == EControllerHand::Left) ? FGamepadKeyNames::MotionController_Left_FaceButton1 : FGamepadKeyNames::MotionController_Right_FaceButton1;
+		Buttons[ (int32)EOculusTouchControllerButton::YB ].EmulatedKey = (Hand == EControllerHand::Left) ? FGamepadKeyNames::MotionController_Left_FaceButton2 : FGamepadKeyNames::MotionController_Right_FaceButton2;
+		Buttons[ (int32)EOculusTouchControllerButton::Thumbstick_Up].EmulatedKey = (Hand == EControllerHand::Left) ? FGamepadKeyNames::MotionController_Left_Thumbstick_Up : FGamepadKeyNames::MotionController_Right_Thumbstick_Up;
+		Buttons[ (int32)EOculusTouchControllerButton::Thumbstick_Down].EmulatedKey = (Hand == EControllerHand::Left) ? FGamepadKeyNames::MotionController_Left_Thumbstick_Down : FGamepadKeyNames::MotionController_Right_Thumbstick_Down;
+		Buttons[ (int32)EOculusTouchControllerButton::Thumbstick_Left].EmulatedKey = (Hand == EControllerHand::Left) ? FGamepadKeyNames::MotionController_Left_Thumbstick_Left : FGamepadKeyNames::MotionController_Right_Thumbstick_Left;
+		Buttons[ (int32)EOculusTouchControllerButton::Thumbstick_Right].EmulatedKey = (Hand == EControllerHand::Left) ? FGamepadKeyNames::MotionController_Left_Thumbstick_Right : FGamepadKeyNames::MotionController_Right_Thumbstick_Right;
+
+		Buttons[ (int32)EOculusTouchControllerButton::Menu ].Key = (Hand == EControllerHand::Left) ? FGamepadKeyNames::SpecialLeft : FGamepadKeyNames::SpecialRight;
 
 		Buttons[ (int32)EOculusTouchControllerButton::Thumbstick_Touch ].Key = (Hand == EControllerHand::Left) ? EKeys::OculusTouch_Left_Thumbstick_Touch.GetFName() : EKeys::OculusTouch_Right_Thumbstick_Touch.GetFName();
 		Buttons[ (int32)EOculusTouchControllerButton::Trigger_Touch ].Key = (Hand == EControllerHand::Left) ? EKeys::OculusTouch_Left_Trigger_Touch.GetFName() : EKeys::OculusTouch_Right_Trigger_Touch.GetFName();
 		Buttons[ (int32)EOculusTouchControllerButton::XA_Touch ].Key = (Hand == EControllerHand::Left) ? EKeys::OculusTouch_Left_X_Touch.GetFName() : EKeys::OculusTouch_Right_A_Touch.GetFName();
 		Buttons[ (int32)EOculusTouchControllerButton::YB_Touch ].Key = (Hand == EControllerHand::Left) ? EKeys::OculusTouch_Left_Y_Touch.GetFName() : EKeys::OculusTouch_Right_B_Touch.GetFName();
+
+		Buttons[ (int32)EOculusTouchControllerButton::Back ].Key = (Hand == EControllerHand::Left) ? EKeys::OculusGo_Left_Back_Click.GetFName() : EKeys::OculusGo_Right_Back_Click.GetFName();
+		Buttons[ (int32)EOculusTouchControllerButton::Touchpad ].Key = (Hand == EControllerHand::Left) ? EKeys::OculusGo_Left_Trackpad_Click.GetFName() : EKeys::OculusGo_Right_Trackpad_Click.GetFName();
+		Buttons[ (int32)EOculusTouchControllerButton::Touchpad_Touch ].Key = (Hand == EControllerHand::Left) ? EKeys::OculusGo_Left_Trackpad_Touch.GetFName() : EKeys::OculusGo_Right_Trackpad_Touch.GetFName();
+
+		Buttons[ (int32)EOculusTouchControllerButton::Back ].EmulatedKey = (Hand == EControllerHand::Left) ? EKeys::MotionController_Left_FaceButton1.GetFName() : EKeys::MotionController_Right_FaceButton1.GetFName();
+		Buttons[ (int32)EOculusTouchControllerButton::Touchpad ].EmulatedKey = (Hand == EControllerHand::Left) ? EKeys::MotionController_Left_Thumbstick.GetFName() : EKeys::MotionController_Right_Thumbstick.GetFName();
 
 		CapacitiveAxes[(int32)EOculusTouchCapacitiveAxes::Thumbstick].Axis = (Hand == EControllerHand::Left) ? FOculusKeyNames::OculusTouch_Left_Thumbstick : FOculusKeyNames::OculusTouch_Right_Thumbstick;
 		CapacitiveAxes[(int32)EOculusTouchCapacitiveAxes::Trigger].Axis = (Hand == EControllerHand::Left) ? FOculusKeyNames::OculusTouch_Left_Trigger : FOculusKeyNames::OculusTouch_Right_Trigger;
@@ -384,74 +343,6 @@ struct FOculusTouchControllerState : FOculusControllerState
 
 	/** Default constructor does nothing.  Don't use it.  This only exists because we cannot initialize an array of objects with no default constructor on non-C++ 11 compliant compilers (VS 2013) */
 	FOculusTouchControllerState()
-	{
-	}
-};
-
-//-------------------------------------------------------------------------------------------------
-// FOculusHandControllerState - Input state for an Oculus Hands
-//-------------------------------------------------------------------------------------------------
-
-struct FOculusHandControllerState : FOculusControllerState
-{
-	/** True if the pointer pose for hands is valid */
-	bool bIsPointerPoseValid;
-
-	/** True if the current hand is the dominant hand */
-	bool bIsDominantHand;
-
-	/** Scale of the hand */
-	float HandScale;
-
-	/** Pose of the pointer */
-	FTransform PointerPose;
-
-	/** Tracking confidence of hand tracking */
-	ETrackingConfidence TrackingConfidence;
-
-	/** Finger Pinch States **/
-	FOculusButtonState HandButtons[(int32)EOculusHandButton::TotalButtonCount];
-
-	/** Finger Pinch Strength States **/
-	FOculusAxisState HandAxes[(int32)EOculusHandAxes::TotalAxisCount];
-
-	FQuat BoneRotations[(int32)EBone::Bone_Max];
-
-	FOculusHandControllerState(const EControllerHand Hand)
-	{
-		TrackingConfidence = ETrackingConfidence::Low;
-		bIsPointerPoseValid = false;
-		bIsDominantHand = false;
-		HandScale = 0.0f;
-		PointerPose = FTransform::Identity;
-
-		for (FOculusButtonState& Button : HandButtons)
-		{
-			Button.bIsPressed = false;
-			Button.NextRepeatTime = 0.0;
-		}
-
-		for (int32 i = 0; i < (int32)EBone::Bone_Max; i++)
-		{
-			BoneRotations[i] = FQuat::Identity;
-		}
-
-		HandButtons[(int32)EOculusHandButton::Thumb].Key = (Hand == EControllerHand::Left) ? FOculusKeyNames::OculusHand_Left_ThumbPinch : FOculusKeyNames::OculusHand_Right_ThumbPinch;
-		HandButtons[(int32)EOculusHandButton::Index].Key = (Hand == EControllerHand::Left) ? FOculusKeyNames::OculusHand_Left_IndexPinch : FOculusKeyNames::OculusHand_Right_IndexPinch;
-		HandButtons[(int32)EOculusHandButton::Middle].Key = (Hand == EControllerHand::Left) ? FOculusKeyNames::OculusHand_Left_MiddlePinch : FOculusKeyNames::OculusHand_Right_MiddlePinch;
-		HandButtons[(int32)EOculusHandButton::Ring].Key = (Hand == EControllerHand::Left) ? FOculusKeyNames::OculusHand_Left_RingPinch : FOculusKeyNames::OculusHand_Right_RingPinch;
-		HandButtons[(int32)EOculusHandButton::Pinky].Key = (Hand == EControllerHand::Left) ? FOculusKeyNames::OculusHand_Left_PinkyPinch : FOculusKeyNames::OculusHand_Right_PinkyPinch;
-		HandButtons[(int32)EOculusHandButton::System].Key = (Hand == EControllerHand::Left) ? FOculusKeyNames::OculusHand_Left_SystemGesture : FOculusKeyNames::OculusHand_Right_SystemGesture;
-		HandButtons[(int32)EOculusHandButton::Menu].Key = (Hand == EControllerHand::Left) ? FGamepadKeyNames::SpecialLeft : FGamepadKeyNames::SpecialRight;
-
-		HandAxes[(int32)EOculusHandAxes::Thumb].Axis = (Hand == EControllerHand::Left) ? FOculusKeyNames::OculusHand_Left_ThumbPinchStrength : FOculusKeyNames::OculusHand_Right_ThumbPinchStrength;
-		HandAxes[(int32)EOculusHandAxes::Index].Axis = (Hand == EControllerHand::Left) ? FOculusKeyNames::OculusHand_Left_IndexPinchStrength : FOculusKeyNames::OculusHand_Right_IndexPinchStrength;
-		HandAxes[(int32)EOculusHandAxes::Middle].Axis = (Hand == EControllerHand::Left) ? FOculusKeyNames::OculusHand_Left_MiddlePinchStrength : FOculusKeyNames::OculusHand_Right_MiddlePinchStrength;
-		HandAxes[(int32)EOculusHandAxes::Ring].Axis = (Hand == EControllerHand::Left) ? FOculusKeyNames::OculusHand_Left_RingPinchStrength : FOculusKeyNames::OculusHand_Right_RingPinchStrength;
-		HandAxes[(int32)EOculusHandAxes::Pinky].Axis = (Hand == EControllerHand::Left) ? FOculusKeyNames::OculusHand_Left_PinkyPinchStrength : FOculusKeyNames::OculusHand_Right_PinkyPinchStrength;
-	}
-
-	FOculusHandControllerState()
 	{
 	}
 };
@@ -497,33 +388,55 @@ struct FOculusRemoteControllerState
 	}
 };
 
+
 //-------------------------------------------------------------------------------------------------
-// FOculusControllerPair - A pair of Oculus controllers, hand/touch, one for either hand
+// FOculusTouchControllerPair - A pair of wireless motion controllers, one for either hand
 //-------------------------------------------------------------------------------------------------
 
-struct FOculusControllerPair
+struct FOculusTouchControllerPair
 {
 	/** The Unreal controller index assigned to this pair */
 	int32 UnrealControllerIndex;
 
 	/** Current device state for either hand */
-	FOculusTouchControllerState TouchControllerStates[2];
+	FOculusTouchControllerState ControllerStates[ 2 ];
 
-	FOculusHandControllerState HandControllerStates[2];
-
-	FOculusControllerPair()
-	  : UnrealControllerIndex(INDEX_NONE),
-		TouchControllerStates(),
-		HandControllerStates()
+	/** Default constructor that sets up sensible defaults */
+	FOculusTouchControllerPair()
+		: UnrealControllerIndex( INDEX_NONE ),
+		ControllerStates()
 	{
-		TouchControllerStates[(int32)EControllerHand::Left] = FOculusTouchControllerState(EControllerHand::Left);
-		TouchControllerStates[(int32)EControllerHand::Right] = FOculusTouchControllerState(EControllerHand::Right);
+		ControllerStates[ (int32)EControllerHand::Left ] = FOculusTouchControllerState( EControllerHand::Left );
+		ControllerStates[ (int32)EControllerHand::Right ] = FOculusTouchControllerState( EControllerHand::Right );	
+	}
+};
 
-		HandControllerStates[(int32)EControllerHand::Left] = FOculusHandControllerState(EControllerHand::Left);
-		HandControllerStates[(int32)EControllerHand::Right] = FOculusHandControllerState(EControllerHand::Right);
+//-------------------------------------------------------------------------------------------------
+// FOculusTouchpadState
+//-------------------------------------------------------------------------------------------------
+struct FOculusTouchpadState
+{
+	/** Button states */
+	FOculusButtonState Buttons[(int32)EOculusTouchpadButton::TotalButtonCount];
+
+	/** Touchpad state */
+	FVector2D TouchpadPosition;
+
+	FOculusTouchpadState()
+		: TouchpadPosition(FVector2D::ZeroVector)
+	{
+		for (FOculusButtonState& Button : Buttons)
+		{
+			Button.bIsPressed = false;
+			Button.NextRepeatTime = 0.0;
+		}
+
+		Buttons[(int32)EOculusTouchpadButton::Touchpad].Key = FOculusKeyNames::OculusTouchpad_Touchpad;
+		Buttons[(int32)EOculusTouchpadButton::Back].Key = FOculusKeyNames::OculusTouchpad_Back;
 	}
 };
 
 } // namespace OculusInput
 
 #endif	// OCULUS_INPUT_SUPPORTED_PLATFORMS
+

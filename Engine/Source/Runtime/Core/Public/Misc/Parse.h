@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreTypes.h"
-#include "Containers/StringFwd.h"
 #include "Containers/UnrealString.h"
 
 /*-----------------------------------------------------------------------------
@@ -71,7 +70,6 @@ struct CORE_API FParse
 	static bool Text( const TCHAR* Stream, FText& Value, const TCHAR* Namespace = nullptr );
 	/** Parse a quoted string token. */
 	static bool QuotedString( const TCHAR* Stream, FString& Value, int32* OutNumCharsRead = nullptr );
-	static bool QuotedString( const TCHAR* Stream, FStringBuilderBase& Value, int32* OutNumCharsRead = nullptr );
 
 	//
 	// Parse a hex digit.

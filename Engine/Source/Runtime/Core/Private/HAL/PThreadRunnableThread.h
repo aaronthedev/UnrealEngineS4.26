@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -53,10 +53,7 @@ protected:
 			case TPri_BelowNormal: return 5;
 			case TPri_Lowest: return 1;
 			case TPri_SlightlyBelowNormal: return 14;
-			case TPri_Num:
-			default:
-				UE_LOG(LogHAL, Fatal, TEXT("Unknown Priority passed to FRunnableThreadPThread::TranslateThreadPriority()"));
-				return 15;
+			default: UE_LOG(LogHAL, Fatal, TEXT("Unknown Priority passed to FRunnableThreadPThread::TranslateThreadPriority()"));
 		}
 	}
 
@@ -114,43 +111,38 @@ protected:
 		return InStackSize;
 	}
 
-	virtual bool SetThreadAttr(pthread_attr_t *ThreadAttr, uint32 InStackSize, EThreadCreateFlags InCreateFlags)
+	bool SpinPthread(pthread_t* HandlePtr, bool* OutThreadCreated, PthreadEntryPoint Proc, uint32 InStackSize, void *Arg)
 	{
+		*OutThreadCreated = false;
+		pthread_attr_t *AttrPtr = nullptr;
+		pthread_attr_t StackAttr;
+
 		// allow platform to adjust stack size
 		InStackSize = AdjustStackSize(InStackSize);
 
 		if (InStackSize != 0)
 		{
-			if (pthread_attr_init(ThreadAttr) == 0)
+			if (pthread_attr_init(&StackAttr) == 0)
 			{
 				// we'll use this the attribute if this succeeds, otherwise, we'll wing it without it.
-				const size_t StackSize = (size_t)InStackSize;
-				if (pthread_attr_setstacksize(ThreadAttr, StackSize) != 0)
+				const size_t StackSize = (size_t) InStackSize;
+				if (pthread_attr_setstacksize(&StackAttr, StackSize) == 0)
 				{
-					UE_LOG(LogHAL, Log, TEXT("Failed to change pthread stack size to %d bytes"), (int)InStackSize);
+					AttrPtr = &StackAttr;
 				}
-				return true;
 			}
-			else
+
+			if (AttrPtr == NULL)
 			{
-				UE_LOG(LogHAL, Log, TEXT("Failed to init thread attr"));
+				UE_LOG(LogHAL, Log, TEXT("Failed to change pthread stack size to %d bytes"), (int) InStackSize);
 			}
 		}
 
-		return false;
-	}
-
-	bool SpinPthread(pthread_t* HandlePtr, bool* OutThreadCreated, PthreadEntryPoint Proc, uint32 InStackSize, EThreadCreateFlags InCreateFlags, void *Arg)
-	{
-		*OutThreadCreated = false;
-		pthread_attr_t ThreadAttr;
-		pthread_attr_t *ThreadAttrPtr = SetThreadAttr(&ThreadAttr, InStackSize, InCreateFlags) ? &ThreadAttr : nullptr;
-
-		const int ThreadErrno = CreateThreadWithName(HandlePtr, ThreadAttrPtr, Proc, Arg, TCHAR_TO_ANSI(*ThreadName));
+		const int ThreadErrno = CreateThreadWithName(HandlePtr, AttrPtr, Proc, Arg, TCHAR_TO_ANSI(*ThreadName));
 		*OutThreadCreated = (ThreadErrno == 0);
-		if (ThreadAttrPtr)
+		if (AttrPtr != nullptr)
 		{
-			pthread_attr_destroy(ThreadAttrPtr);
+			pthread_attr_destroy(AttrPtr);
 		}
 
 		// Move the thread to the specified processors if requested
@@ -296,8 +288,7 @@ protected:
 
 	virtual bool CreateInternal(FRunnable* InRunnable, const TCHAR* InThreadName,
 		uint32 InStackSize = 0,
-		EThreadPriority InThreadPri = TPri_Normal, uint64 InThreadAffinityMask = 0,
-		EThreadCreateFlags InCreateFlags = EThreadCreateFlags::None) override
+		EThreadPriority InThreadPri = TPri_Normal, uint64 InThreadAffinityMask = 0) override
 	{
 		check(InRunnable);
 		Runnable = InRunnable;
@@ -306,11 +297,10 @@ protected:
 		ThreadInitSyncEvent	= FPlatformProcess::GetSynchEventFromPool(true);
 		// A name for the thread in for debug purposes. _ThreadProc will set it.
 		ThreadName = InThreadName ? InThreadName : TEXT("Unnamed UE4");
-		ThreadPriority = InThreadPri;
 		ThreadAffinityMask = InThreadAffinityMask;
 
 		// Create the new thread
-		const bool ThreadCreated = SpinPthread(&Thread, &bThreadStartedAndNotCleanedUp, GetThreadEntryPoint(), InStackSize, InCreateFlags, this);
+		const bool ThreadCreated = SpinPthread(&Thread, &bThreadStartedAndNotCleanedUp, GetThreadEntryPoint(), InStackSize, this);
 		// If it fails, clear all the vars
 		if (ThreadCreated)
 		{
@@ -318,7 +308,6 @@ protected:
 			ThreadInitSyncEvent->Wait((uint32)-1); // infinite wait
 
 			// set the priority
-			ThreadPriority = TPri_Normal; // set back to default as some impls check if calling syscalls is necessary 
 			SetThreadPriority(InThreadPri);
 		}
 		else // If it fails, clear all the vars

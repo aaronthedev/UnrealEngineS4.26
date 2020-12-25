@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,16 +13,10 @@
  */
 UCLASS(MinimalAPI)
 class UMovieSceneSlomoSection
-	: public UMovieSceneSection
+	: public UMovieSceneFloatSection
 {
 	GENERATED_BODY()
 
 	/** Default constructor. */
 	UMovieSceneSlomoSection();
-
-public:
-
-	/** Float data */
-	UPROPERTY()
-	FMovieSceneFloatChannel FloatCurve;
 };

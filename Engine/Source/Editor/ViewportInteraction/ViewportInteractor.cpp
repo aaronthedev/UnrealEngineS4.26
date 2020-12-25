@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ViewportInteractor.h"
 #include "CollisionQueryParams.h"
@@ -720,7 +720,7 @@ FHitResult UViewportInteractor::GetHitResultFromLaserPointer( TArray<AActor*>* O
 					TraceParams.AddIgnoredActors( *OptionalListOfIgnoredActors );
 				}
 
-				for( const TWeakObjectPtr<AActor>& ActorToIgnoreWeakPtr : WorldInteraction->GetActorsToExcludeFromHitTest() )
+				for( const TWeakObjectPtr<AActor> ActorToIgnoreWeakPtr : WorldInteraction->GetActorsToExcludeFromHitTest() )
 				{
 					AActor* ActorToIgnore = ActorToIgnoreWeakPtr.Get();
 					if( ActorToIgnore != nullptr )

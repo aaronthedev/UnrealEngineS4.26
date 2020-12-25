@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BehaviorTree/BlackboardComponent.h"
 #include "BrainComponent.h"
@@ -8,7 +8,7 @@
 #include "BehaviorTree/Blackboard/BlackboardKeyType_Object.h"
 #include "BehaviorTree/Blackboard/BlackboardKeyType_Vector.h"
 #include "BehaviorTree/Blackboard/BlackboardKeyType_Rotator.h"
-#include "VisualLogger/VisualLogger.h"
+#include "VisualLogger/VisualLoggerTypes.h"
 #include "BehaviorTree/Blackboard/BlackboardKeyType_Bool.h"
 #include "BehaviorTree/Blackboard/BlackboardKeyType_Class.h"
 #include "BehaviorTree/Blackboard/BlackboardKeyType_Float.h"
@@ -16,8 +16,6 @@
 #include "BehaviorTree/Blackboard/BlackboardKeyType_Name.h"
 #include "BehaviorTree/Blackboard/BlackboardKeyType_String.h"
 #include "Misc/RuntimeErrors.h"
-
-DEFINE_LOG_CATEGORY_STATIC(LogBlackboard, Log, All);
 
 UBlackboardComponent::UBlackboardComponent(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
@@ -43,14 +41,9 @@ void UBlackboardComponent::InitializeComponent()
 		}
 	}
 
-	if (!BlackboardAsset && DefaultBlackboardAsset)
+	if (BlackboardAsset)
 	{
-		InitializeBlackboard(*DefaultBlackboardAsset);
-	}
-	else
-	{
-		UE_CVLOG(BlackboardAsset, this, LogBlackboard, Log, TEXT("InitializeComponent called while BlackboardAsset is not null (set to %s). Assuming it's been set via InitializeBlackboard prior to RegisterComponent call. Ignoring DefaultBlackboardAsset %s")
-			, *GetNameSafe(BlackboardAsset), *GetNameSafe(DefaultBlackboardAsset));
+		InitializeBlackboard(*BlackboardAsset);
 	}
 }
 
@@ -112,7 +105,7 @@ bool UBlackboardComponent::InitializeBlackboard(UBlackboardData& NewAsset)
 	// in reseting, since we'd lose all the accumulated knowledge
 	if (&NewAsset == BlackboardAsset)
 	{
-		return true;
+		return false;
 	}
 
 	UAISystem* AISystem = UAISystem::GetCurrentSafe(GetWorld());
@@ -188,7 +181,7 @@ bool UBlackboardComponent::InitializeBlackboard(UBlackboardData& NewAsset)
 	else
 	{
 		bSuccess = false;
-		UE_LOG(LogBlackboard, Error, TEXT("Blackboard asset (%s) has errors and can't be used!"), *GetNameSafe(BlackboardAsset));
+		UE_LOG(LogBehaviorTree, Error, TEXT("Blackboard asset (%s) has errors and can't be used!"), *GetNameSafe(BlackboardAsset));
 	}
 
 	return bSuccess;
@@ -334,16 +327,7 @@ void UBlackboardComponent::UnregisterObserver(FBlackboard::FKey KeyID, FDelegate
 				}
 			}
 
-			// Make sure to not remove observer while iterating through them in the notification code
-			if (NotifyObserversRecursionCount == 0)
-			{
-				It.RemoveCurrent();
-			}
-			else if (!It.Value().bToBeRemoved)
-			{
-				It.Value().bToBeRemoved = true;
-				++ObserversToRemoveCount;
-			}
+			It.RemoveCurrent();
 			break;
 		}
 	}
@@ -357,16 +341,7 @@ void UBlackboardComponent::UnregisterObserversFrom(UObject* NotifyOwner)
 		{
 			if (ObsIt.Value().GetHandle() == It.Value())
 			{
-				// Make sure to not remove observer while iterating through them in the notification code
-				if (NotifyObserversRecursionCount == 0)
-				{
-					ObsIt.RemoveCurrent();
-				}
-				else if (!ObsIt.Value().bToBeRemoved)
-				{
-					ObsIt.Value().bToBeRemoved = true;
-					++ObserversToRemoveCount;
-				}
+				ObsIt.RemoveCurrent();
 				break;
 			}
 		}
@@ -416,7 +391,7 @@ void UBlackboardComponent::ResumeUpdates()
 
 void UBlackboardComponent::NotifyObservers(FBlackboard::FKey KeyID) const
 {
-	TMultiMap<uint8, FOnBlackboardChangeNotificationInfo>::TKeyIterator KeyIt(Observers, KeyID);
+	TMultiMap<uint8, FOnBlackboardChangeNotification>::TKeyIterator KeyIt(Observers, KeyID);
 
 	// checking it here mostly to avoid storing this update in QueuedUpdates while
 	// at this point no one observes it, and there can be someone added before QueuedUpdates
@@ -429,66 +404,15 @@ void UBlackboardComponent::NotifyObservers(FBlackboard::FKey KeyID) const
 		}
 		else
 		{
-			++NotifyObserversRecursionCount;
 			for (; KeyIt; ++KeyIt)
 			{
-				FOnBlackboardChangeNotificationInfo& ObserverDelegateInfo = KeyIt.Value();
-				if (ObserverDelegateInfo.bToBeRemoved)
-				{
-					continue;
-				}
-
-				const FOnBlackboardChangeNotification& ObserverDelegate = ObserverDelegateInfo.DelegateHandle;
+				const FOnBlackboardChangeNotification& ObserverDelegate = KeyIt.Value();
 				const bool bWantsToContinueObserving = ObserverDelegate.IsBound() && (ObserverDelegate.Execute(*this, KeyID) == EBlackboardNotificationResult::ContinueObserving);
 
 				if (bWantsToContinueObserving == false)
 				{
-					// Remove from the ObserverHandle map, if not already removed
-					if (!ObserverDelegateInfo.bToBeRemoved)
-					{
-						for (auto HandleIt = ObserverHandles.CreateIterator(); HandleIt; ++HandleIt)
-						{
-							if (HandleIt.Value() == ObserverDelegate.GetHandle())
-							{
-								HandleIt.RemoveCurrent();
-								break;
-							}
-						}
-					}
-
-					if (NotifyObserversRecursionCount == 1)
-					{
-						KeyIt.RemoveCurrent();
-
-						// If we are removing it and it was already queued up for removal, remove it from that count
-						if (ObserverDelegateInfo.bToBeRemoved)
-						{
-							--ObserversToRemoveCount;
-						}
-					}
-					else if(!ObserverDelegateInfo.bToBeRemoved)
-					{
-						ObserverDelegateInfo.bToBeRemoved = true;
-						++ObserversToRemoveCount;
-					}
+					KeyIt.RemoveCurrent();
 				}
-			}
-			--NotifyObserversRecursionCount;
-
-			if (NotifyObserversRecursionCount == 0 && ObserversToRemoveCount > 0)
-			{
-				for (auto ObsIt = Observers.CreateIterator(); ObsIt; ++ObsIt)
-				{
-					if (ObsIt.Value().bToBeRemoved)
-					{
-						ObsIt.RemoveCurrent();
-						if (--ObserversToRemoveCount == 0)
-                        {
-                            break;
-                        }
-					}
-				}
-				ObserversToRemoveCount = 0;
 			}
 		}
 	}

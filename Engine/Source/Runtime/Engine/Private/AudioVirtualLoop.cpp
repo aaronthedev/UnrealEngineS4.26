@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "AudioVirtualLoop.h"
 
 #include "ActiveSound.h"
@@ -182,9 +182,17 @@ void FAudioVirtualLoop::UpdateFocusData(float DeltaTime)
 
 	check(ActiveSound->AudioDevice);
 	const FAudioDevice& AudioDevice = *ActiveSound->AudioDevice;
-	const int32 ClosestListenerIndex = AudioDevice.FindClosestListenerIndex(ActiveSound->Transform);
 
-	FAttenuationListenerData ListenerData = FAttenuationListenerData::Create(AudioDevice, ClosestListenerIndex, ActiveSound->Transform, ActiveSound->AttenuationSettings);
+	FAttenuationFocusData FocusData;
+	FTransform ListenerTransform;
+	const TArray<FListener>& Listeners = AudioDevice.GetListeners();
+	if (Listeners.Num() > 0)
+	{
+		int32 ClosestListenerIndex = FAudioDevice::FindClosestListenerIndex(ActiveSound->Transform, Listeners);
+		ListenerTransform = Listeners[ClosestListenerIndex].Transform;
+	}
+
+	FAttenuationListenerData ListenerData = FAttenuationListenerData::Create(AudioDevice, ListenerTransform, ActiveSound->Transform, ActiveSound->AttenuationSettings);
 	ActiveSound->UpdateFocusData(DeltaTime, ListenerData);
 }
 
@@ -213,7 +221,7 @@ bool FAudioVirtualLoop::Update(float DeltaTime, bool bForceUpdate)
 	}
 
 #if ENABLE_AUDIO_DEBUG
-	Audio::FAudioDebugger::DrawDebugInfo(*this);
+	FAudioDebugger::DrawDebugInfo(*this);
 #endif // ENABLE_AUDIO_DEBUG
 
 	UpdateFocusData(UpdateDelta);

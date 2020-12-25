@@ -727,20 +727,19 @@ class BaseTestAPI(unittest.TestCase):
         server = TCPServer()
         t = threading.Thread(target=lambda: asyncore.loop(timeout=0.1, count=500))
         t.start()
-        try:
-            for x in xrange(20):
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(.2)
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER,
-                             struct.pack('ii', 1, 0))
-                try:
-                    s.connect(server.address)
-                except socket.error:
-                    pass
-                finally:
-                    s.close()
-        finally:
-            t.join()
+        self.addCleanup(t.join)
+
+        for x in xrange(20):
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(.2)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER,
+                         struct.pack('ii', 1, 0))
+            try:
+                s.connect(server.address)
+            except socket.error:
+                pass
+            finally:
+                s.close()
 
 
 class TestAPI_UseSelect(BaseTestAPI):

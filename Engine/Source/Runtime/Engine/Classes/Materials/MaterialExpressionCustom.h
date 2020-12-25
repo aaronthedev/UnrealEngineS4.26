@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -18,7 +18,6 @@ enum ECustomMaterialOutputType
 	CMOT_Float2,
 	CMOT_Float3,
 	CMOT_Float4,
-	CMOT_MaterialAttributes,
 	CMOT_MAX,
 };
 
@@ -32,30 +31,7 @@ struct FCustomInput
 
 	UPROPERTY()
 	FExpressionInput Input;
-};
 
-USTRUCT()
-struct FCustomOutput
-{
-	GENERATED_USTRUCT_BODY()
-
-	UPROPERTY(EditAnywhere, Category = CustomOutput)
-	FName OutputName;
-
-	UPROPERTY(EditAnywhere, Category = CustomOutput)
-	TEnumAsByte<enum ECustomMaterialOutputType> OutputType;
-};
-
-USTRUCT()
-struct FCustomDefine
-{
-	GENERATED_USTRUCT_BODY()
-
-	UPROPERTY(EditAnywhere, Category = CustomInput)
-	FString DefineName;
-
-	UPROPERTY(EditAnywhere, Category = CustomInput)
-	FString DefineValue;
 };
 
 UCLASS(collapsecategories, hidecategories=Object, MinimalAPI)
@@ -75,19 +51,10 @@ class UMaterialExpressionCustom : public UMaterialExpression
 	UPROPERTY(EditAnywhere, Category=MaterialExpressionCustom)
 	TArray<struct FCustomInput> Inputs;
 
-	UPROPERTY(EditAnywhere, Category = MaterialExpressionCustom)
-	TArray<struct FCustomOutput> AdditionalOutputs;
-
-	UPROPERTY(EditAnywhere, Category=MaterialExpressionCustom)
-	TArray<struct FCustomDefine> AdditionalDefines;
-
-	UPROPERTY(EditAnywhere, Category=MaterialExpressionCustom)
-	TArray<FString> IncludeFilePaths;
 
 	//~ Begin UObject Interface.
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
-	void RebuildOutputs();
 #endif // WITH_EDITOR
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
 	//~ End UObject Interface.
@@ -101,7 +68,6 @@ class UMaterialExpressionCustom : public UMaterialExpression
 	virtual FName GetInputName(int32 InputIndex) const override;
 	virtual uint32 GetInputType(int32 InputIndex) override {return MCT_Unknown;}
 	virtual uint32 GetOutputType(int32 OutputIndex) override;
-	virtual bool IsResultMaterialAttributes(int32 OutputIndex) override;
 #endif // WITH_EDITOR
 	//~ End UMaterialExpression Interface
 };

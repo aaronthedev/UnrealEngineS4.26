@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -65,12 +65,12 @@ class UK2Node_AddComponent : public UK2Node_CallFunction
 
 	UEdGraphPin* GetRelativeTransformPin() const
 	{
-		return FindPinChecked(NAME_RelativeTransform);
+		return FindPinChecked(TEXT("RelativeTransform"));
 	}
 
 	UEdGraphPin* GetManualAttachmentPin() const
 	{
-		return FindPinChecked(NAME_ManualAttachment);
+		return FindPinChecked(TEXT("bManualAttachment"));
 	}
 
 	/** Tries to get a template object from this node. */
@@ -92,9 +92,6 @@ private:
 	}
 
 	UClass* GetSpawnedType() const;	
-
-	static const FName NAME_RelativeTransform;
-	static const FName NAME_ManualAttachment;
 };
 
 

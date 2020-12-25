@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraEditorWidgetsUtilities.h"
 #include "ViewModels/Stack/NiagaraStackEntry.h"
@@ -6,9 +6,6 @@
 #include "ViewModels/Stack/NiagaraStackModuleItem.h"
 #include "Stack/SNiagaraStackItemGroupAddMenu.h"
 #include "NiagaraEditorWidgetsStyle.h"
-#include "NiagaraEditorCommon.h"
-#include "NiagaraClipboard.h"
-#include "NiagaraEditorModule.h"
 
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
@@ -64,10 +61,6 @@ FName FNiagaraStackEditorWidgetsUtilities::GetIconNameForExecutionSubcategory(FN
 		{
 			return "NiagaraEditor.Stack.EventIconHighlighted";
 		}
-		else if (ExecutionSubcategoryName == UNiagaraStackEntry::FExecutionSubcategoryNames::SimulationStage)
-		{
-			return "NiagaraEditor.Stack.SimulationStageIconHighlighted";
-		}
 		else if (ExecutionSubcategoryName == UNiagaraStackEntry::FExecutionSubcategoryNames::Render)
 		{
 			return "NiagaraEditor.Stack.RenderIconHighlighted";
@@ -90,10 +83,6 @@ FName FNiagaraStackEditorWidgetsUtilities::GetIconNameForExecutionSubcategory(FN
 		else if (ExecutionSubcategoryName == UNiagaraStackEntry::FExecutionSubcategoryNames::Event)
 		{
 			return "NiagaraEditor.Stack.EventIcon";
-		}
-		else if (ExecutionSubcategoryName == UNiagaraStackEntry::FExecutionSubcategoryNames::SimulationStage)
-		{
-			return "NiagaraEditor.Stack.SimulationStageIcon";
 		}
 		else if (ExecutionSubcategoryName == UNiagaraStackEntry::FExecutionSubcategoryNames::Render)
 		{
@@ -127,30 +116,6 @@ FName FNiagaraStackEditorWidgetsUtilities::GetIconColorNameForExecutionCategory(
 		return NAME_None;
 	}
 }
-
-FName FNiagaraStackEditorWidgetsUtilities::GetColorNameForParameterScope(ENiagaraParameterScope ParameterScope)
-{
-	switch (ParameterScope) {
-	case ENiagaraParameterScope::Engine:
-		return "NiagaraEditor.Scope.Engine";
-	case ENiagaraParameterScope::Owner:
-		return "NiagaraEditor.Scope.Owner";
-	case ENiagaraParameterScope::User:
-		return "NiagaraEditor.Scope.User";
-	case ENiagaraParameterScope::System:
-		return "NiagaraEditor.Scope.System";
-	case ENiagaraParameterScope::Emitter:
-		return "NiagaraEditor.Scope.Emitter";
-	case ENiagaraParameterScope::Particles:
-		return "NiagaraEditor.Scope.Particles";
-	case ENiagaraParameterScope::ScriptPersistent:
-		return "NiagaraEditor.Scope.ScriptPersistent";
-	case ENiagaraParameterScope::ScriptTransient:
-		return "NiagaraEditor.Scope.ScriptTransient";
-	};
-	return NAME_None;
-}
-
 
 void OpenSourceAsset(TWeakObjectPtr<UNiagaraStackEntry> StackEntryWeak)
 {
@@ -217,7 +182,7 @@ void ToggleEnabledState(TWeakObjectPtr<UNiagaraStackItem> StackItemWeak)
 
 bool FNiagaraStackEditorWidgetsUtilities::AddStackItemContextMenuActions(FMenuBuilder& MenuBuilder, UNiagaraStackItem& StackItem)
 {
-	if (StackItem.SupportsChangeEnabled())
+	if (StackItem.SupportsDelete() || StackItem.SupportsChangeEnabled())
 	{
 		MenuBuilder.BeginSection("ItemActions", LOCTEXT("ItemActions", "Item Actions"));
 		{
@@ -233,6 +198,20 @@ bool FNiagaraStackEditorWidgetsUtilities::AddStackItemContextMenuActions(FMenuBu
 					Action,
 					NAME_None,
 					EUserInterfaceActionType::Check);
+			}
+
+			if (StackItem.SupportsDelete())
+			{
+				FText CanDeleteMessage;
+				bool bCanDelete = StackItem.TestCanDeleteWithMessage(CanDeleteMessage);
+				MenuBuilder.AddMenuEntry(
+					LOCTEXT("DeleteModule", "Delete Item"),
+					CanDeleteMessage,
+					FSlateIcon(),
+					FUIAction(
+						FExecuteAction::CreateStatic(&DeleteItem, TWeakObjectPtr<UNiagaraStackItem>(&StackItem)),
+						FCanExecuteAction::CreateLambda([=]() { return bCanDelete; })));
+
 			}
 		}
 		MenuBuilder.EndSection();

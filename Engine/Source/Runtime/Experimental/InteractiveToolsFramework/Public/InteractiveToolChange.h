@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -79,54 +79,4 @@ public:
 };
 
 
-
-
-
-
-/**
- * Holds another Change and forwards Apply/Revert to it, with
- * calls to Before/After lambas, allowing client classes to
- * respond to a change without having to intercept it explicitly.
- * (Be very careful with these lambdas!)
- */
-template<typename ChangeType>
-class TWrappedToolCommandChange : public FToolCommandChange
-{
-public:
-	TUniquePtr<ChangeType> WrappedChange;
-
-	TUniqueFunction<void(bool bRevert)> BeforeModify;
-	TUniqueFunction<void(bool bRevert)> AfterModify;
-
-	virtual void Apply(UObject* Object) override
-	{
-		if (BeforeModify)
-		{
-			BeforeModify(false);
-		}
-		WrappedChange->Apply(Object);
-		if (AfterModify)
-		{
-			AfterModify(false);
-		}
-	}
-
-	virtual void Revert(UObject* Object) override
-	{
-		if (BeforeModify)
-		{
-			BeforeModify(true);
-		}
-		WrappedChange->Revert(Object);
-		if (AfterModify)
-		{
-			AfterModify(true);
-		}
-	}
-
-	virtual FString ToString() const override
-	{
-		return WrappedChange->ToString();
-	}
-};
 

@@ -1,11 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #if WITH_ACCESSIBILITY
 
 #include "CoreMinimal.h"
-#include "GenericPlatform/Accessibility/GenericAccessibleInterfaces.h"
+#include "GenericPlatform/GenericAccessibleInterfaces.h"
 
 class SWidget;
 class SWindow;

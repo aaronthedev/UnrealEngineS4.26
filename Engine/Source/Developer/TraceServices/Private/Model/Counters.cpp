@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TraceServices/Model/Counters.h"
 #include "Model/CountersPrivate.h"
@@ -9,22 +9,23 @@ namespace Trace
 
 const FName FCounterProvider::ProviderName("CounterProvider");
 
-FCounter::FCounter(ILinearAllocator& Allocator, const TArray64<double>& InFrameStartTimes)
+FCounter::FCounter(ILinearAllocator& Allocator, const TArray<double>& InFrameStartTimes, uint32 InId)
 	: FrameStartTimes(InFrameStartTimes)
 	, IntCounterData(Allocator)
 	, DoubleCounterData(Allocator)
+	, Id(InId)
 {
 
 }
 
 template<typename CounterType, typename EnumerationType>
-static void EnumerateCounterValuesInternal(const TCounterData<CounterType>& CounterData, const TArray64<double>& FrameStartTimes, bool bResetEveryFrame, double IntervalStart, double IntervalEnd, bool bIncludeExternalBounds, TFunctionRef<void(double, EnumerationType)> Callback)
+static void EnumerateCounterValuesInternal(const TCounterData<CounterType>& CounterData, const TArray<double>& FrameStartTimes, bool bResetEveryFrame, double IntervalStart, double IntervalEnd, TFunctionRef<void(double, EnumerationType)> Callback)
 {
 	if (!CounterData.Num())
 	{
 		return;
 	}
-	TArray64<double> NoFrameStartTimes;
+	TArray<double> NoFrameStartTimes;
 	auto CounterIterator = bResetEveryFrame ? CounterData.GetIterator(FrameStartTimes) : CounterData.GetIterator(NoFrameStartTimes);
 	bool bFirstValue = true;
 	bool bFirstEnumeratedValue = true;
@@ -39,21 +40,18 @@ static void EnumerateCounterValuesInternal(const TCounterData<CounterType>& Coun
 		{
 			if (bFirstEnumeratedValue)
 			{
-				if (!bFirstValue && bIncludeExternalBounds)
+				if (!bFirstValue)
 				{
 					Callback(LastTime, LastValue);
 				}
 				bFirstEnumeratedValue = false;
 			}
+			Callback(Time, CurrentValue);
+			bFirstEnumeratedValue = false;
 			if (Time > IntervalEnd)
 			{
-				if (bIncludeExternalBounds)
-				{
-					Callback(Time, CurrentValue);
-				}
 				break;
 			}
-			Callback(Time, CurrentValue);
 		}
 		LastTime = Time;
 		LastValue = CurrentValue;
@@ -68,27 +66,27 @@ void FCounter::SetIsFloatingPoint(bool bInIsFloatingPoint)
 	bIsFloatingPoint = bInIsFloatingPoint;
 }
 
-void FCounter::EnumerateValues(double IntervalStart, double IntervalEnd, bool bIncludeExternalBounds, TFunctionRef<void(double, int64)> Callback) const
+void FCounter::EnumerateValues(double IntervalStart, double IntervalEnd, TFunctionRef<void(double, int64)> Callback) const
 {
 	if (bIsFloatingPoint)
 	{
-		EnumerateCounterValuesInternal<double, int64>(DoubleCounterData, FrameStartTimes, bIsResetEveryFrame, IntervalStart, IntervalEnd, bIncludeExternalBounds, Callback);
+		EnumerateCounterValuesInternal<double, int64>(DoubleCounterData, FrameStartTimes, bIsResetEveryFrame, IntervalStart, IntervalEnd, Callback);
 	}
 	else
 	{
-		EnumerateCounterValuesInternal<int64, int64>(IntCounterData, FrameStartTimes, bIsResetEveryFrame, IntervalStart, IntervalEnd, bIncludeExternalBounds, Callback);
+		EnumerateCounterValuesInternal<int64, int64>(IntCounterData, FrameStartTimes, bIsResetEveryFrame, IntervalStart, IntervalEnd, Callback);
 	}
 }
 
-void FCounter::EnumerateFloatValues(double IntervalStart, double IntervalEnd, bool bIncludeExternalBounds, TFunctionRef<void(double, double)> Callback) const
+void FCounter::EnumerateFloatValues(double IntervalStart, double IntervalEnd, TFunctionRef<void(double, double)> Callback) const
 {
 	if (bIsFloatingPoint)
 	{
-		EnumerateCounterValuesInternal<double, double>(DoubleCounterData, FrameStartTimes, bIsResetEveryFrame, IntervalStart, IntervalEnd, bIncludeExternalBounds, Callback);
+		EnumerateCounterValuesInternal<double, double>(DoubleCounterData, FrameStartTimes, bIsResetEveryFrame, IntervalStart, IntervalEnd, Callback);
 	}
 	else
 	{
-		EnumerateCounterValuesInternal<int64, double>(IntCounterData, FrameStartTimes, bIsResetEveryFrame, IntervalStart, IntervalEnd, bIncludeExternalBounds, Callback);
+		EnumerateCounterValuesInternal<int64, double>(IntCounterData, FrameStartTimes, bIsResetEveryFrame, IntervalStart, IntervalEnd, Callback);
 	}
 }
 
@@ -152,18 +150,18 @@ FCounterProvider::FCounterProvider(IAnalysisSession& InSession, IFrameProvider& 
 
 FCounterProvider::~FCounterProvider()
 {
-	for (const ICounter* Counter : Counters)
+	for (FCounter* Counter : Counters)
 	{
 		delete Counter;
 	}
 }
 
-void FCounterProvider::EnumerateCounters(TFunctionRef<void(uint32, const ICounter&)> Callback) const
+void FCounterProvider::EnumerateCounters(TFunctionRef<void(const ICounter &)> Callback) const
 {
 	uint32 Id = 0;
-	for (const ICounter* Counter : Counters)
+	for (FCounter* Counter : Counters)
 	{
-		Callback(Id++, *Counter);
+		Callback(*Counter);
 	}
 }
 
@@ -177,16 +175,11 @@ bool FCounterProvider::ReadCounter(uint32 CounterId, TFunctionRef<void(const ICo
 	return true;
 }
 
-IEditableCounter* FCounterProvider::CreateCounter()
+ICounter* FCounterProvider::CreateCounter()
 {
-	FCounter* Counter = new FCounter(Session.GetLinearAllocator(), FrameProvider.GetFrameStartTimes(TraceFrameType_Game));
+	FCounter* Counter = new FCounter(Session.GetLinearAllocator(), FrameProvider.GetFrameStartTimes(TraceFrameType_Game), Counters.Num());
 	Counters.Add(Counter);
 	return Counter;
-}
-
-void FCounterProvider::AddCounter(const ICounter* Counter)
-{
-	Counters.Add(Counter);
 }
 
 const ICounterProvider& ReadCounterProvider(const IAnalysisSession& Session)

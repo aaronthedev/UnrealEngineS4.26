@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "StreamingLevels/StreamingLevelCustomization.h"
 #include "Misc/MessageDialog.h"
 #include "Widgets/Input/SButton.h"
@@ -215,11 +215,6 @@ bool FStreamingLevelCustomization::OnShouldSetEditorStreamingVolume(const FAsset
 		}
 
 		return bIsInPersistentLevel && bIsUnique;
-	}
-	else if (!AssetData.IsValid())
-	{
-		// Allow clear
-		return true;
 	}
 
 	return false;

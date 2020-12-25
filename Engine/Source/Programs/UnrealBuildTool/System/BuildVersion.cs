@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -205,14 +205,8 @@ namespace UnrealBuildTool
 			Writer.WriteValue("IsLicenseeVersion", IsLicenseeVersion? 1 : 0);
 			Writer.WriteValue("IsPromotedBuild", IsPromotedBuild? 1 : 0);
 			Writer.WriteValue("BranchName", BranchName);
-			if (!String.IsNullOrEmpty(BuildId))
-			{
-				Writer.WriteValue("BuildId", BuildId);
-			}
-			if (!String.IsNullOrEmpty(BuildVersionString))
-			{
-				Writer.WriteValue("BuildVersion", BuildVersionString);
-			}
+			Writer.WriteValue("BuildId", BuildId);
+			Writer.WriteValue("BuildVersion", BuildVersionString);
 		}
 	}
 

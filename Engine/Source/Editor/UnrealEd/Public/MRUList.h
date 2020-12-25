@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MRUList : Helper class for handling MRU lists
@@ -66,10 +66,9 @@ public:
 	 * from the list and return false.
 	 *
 	 * @param	ItemIndex		Index of the item to query
-	 * @param	OutPackageName	Long package name after following redirector
 	 * @return					true if the item exists, false if it doesn't
 	 */
-	bool VerifyMRUFile(int32 ItemIndex, FString& OutPackageName);
+	bool VerifyMRUFile(int32 ItemIndex);
 
 	/**
 	 * Accessor.

@@ -1,11 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 // Includes all necessary PhysX headers
 
 #pragma once
 
 #include "CoreMinimal.h"
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 
 #ifdef PHYSX_API
 #undef PHYSX_API	//Our build system treats PhysX as a module and automatically defines this. PhysX has its own way of defining this.
@@ -21,7 +21,9 @@ PRAGMA_DISABLE_SHADOW_VARIABLE_WARNINGS
 	MSVC_PRAGMA(warning(disable : ALL_CODE_ANALYSIS_WARNINGS))
 #endif	// USING_CODE_ANALYSIS
 
-#if PLATFORM_MICROSOFT
+#if PLATFORM_XBOXONE
+	#pragma pack(push,16)
+#elif PLATFORM_WINDOWS
 	#if PLATFORM_64BITS
 		#pragma pack(push,16)
 	#elif PLATFORM_32BITS
@@ -91,7 +93,9 @@ THIRD_PARTY_INCLUDES_END
 
 #endif // #if WITH_APEX
 
-#if PLATFORM_MICROSOFT
+#if PLATFORM_XBOXONE
+	#pragma pack(pop)
+#elif PLATFORM_WINDOWS
 	#if PLATFORM_64BITS
 		#pragma pack(pop)
 	#elif PLATFORM_32BITS

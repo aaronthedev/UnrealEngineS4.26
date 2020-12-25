@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	D3D12Shader.h: D3D12 Shaders
@@ -39,9 +39,6 @@ public:
 struct FD3D12ShaderData
 {
 	TArray<FShaderCodeVendorExtension> VendorExtensions;
-
-	/** The static slot associated with the resource table index in ShaderResourceTable. */
-	TArray<FUniformBufferStaticSlot> StaticSlots;
 };
 
 /** This represents a vertex shader that hasn't been combined with a specific declaration to create a bound shader. */
@@ -169,7 +166,7 @@ public:
 		FRHIHullShader* InHullShaderRHI,
 		FRHIDomainShader* InDomainShaderRHI,
 		FRHIGeometryShader* InGeometryShaderRHI,
-		FD3D12Adapter* InAdapter
+		FD3D12Device* InDevice
 		);
 
 	virtual ~FD3D12BoundShaderState();
@@ -190,8 +187,6 @@ public:
 class FD3D12RayTracingShader : public FRHIRayTracingShader, public FD3D12ShaderData
 {
 public:
-	explicit FD3D12RayTracingShader(EShaderFrequency InFrequency) : FRHIRayTracingShader(InFrequency) {}
-
 	/** The shader's bytecode. */
 	FD3D12ShaderBytecode ShaderBytecode;
 
@@ -204,7 +199,6 @@ public:
 	FString EntryPoint; // Primary entry point for all ray tracing shaders. Assumed to be closest hit shader for SF_RayHitGroup.
 	FString AnyHitEntryPoint; // Optional any-hit shader entry point for SF_RayHitGroup.
 	FString IntersectionEntryPoint; // Optional intersection shader entry point for SF_RayHitGroup.
-	bool bPrecompiledPSO = false;
 
 	FShaderCodePackedResourceCounts ResourceCounts;
 

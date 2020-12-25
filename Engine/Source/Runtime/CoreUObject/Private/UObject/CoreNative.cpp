@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UObject/CoreNative.h"
 #include "Misc/CoreDelegates.h"
@@ -218,14 +218,9 @@ UObject* FObjectInstancingGraph::GetInstancedSubobject( UObject* SourceSubobject
 							if (!InstancedSubobject)
 							{
 								// finally, create the component instance
-								FStaticConstructObjectParameters Params(SourceSubobject->GetClass());
-								Params.Outer = SubobjectOuter;
-								Params.Name = SubobjectName;
-								Params.SetFlags = SubobjectOuter->GetMaskedFlags(RF_PropagateToSubObjects);
-								Params.Template = SourceSubobject;
-								Params.bCopyTransientsFromClassDefaults = true;
-								Params.InstanceGraph = this;
-								InstancedSubobject = StaticConstructObject_Internal(Params);
+								InstancedSubobject = StaticConstructObject_Internal(SourceSubobject->GetClass(), SubobjectOuter,
+									SubobjectName, SubobjectOuter->GetMaskedFlags(RF_PropagateToSubObjects), EInternalObjectFlags::None, SourceSubobject,
+									true, this);
 							}
 						}
 					}

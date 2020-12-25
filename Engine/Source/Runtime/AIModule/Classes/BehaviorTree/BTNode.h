@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,7 +7,6 @@
 #include "UObject/Object.h"
 #include "BehaviorTree/BehaviorTreeTypes.h"
 #include "BehaviorTree/BehaviorTreeComponent.h"
-#include "BehaviorTree/BlackboardAssetProvider.h"
 #include "GameplayTaskOwnerInterface.h"
 #include "Tasks/AITask.h"
 #include "BTNode.generated.h"
@@ -300,22 +299,19 @@ const T* UBTNode::GetNodeMemory(const FBehaviorTreeSearchData& SearchData) const
 template<typename T>
 T* UBTNode::GetNodeMemory(FBehaviorTreeInstance& BTInstance) const
 {
-	return (T*)(BTInstance.GetInstanceMemory().GetData() + MemoryOffset);
+	return (T*)(BTInstance.InstanceMemory.GetData() + MemoryOffset);
 }
 
 template<typename T>
 const T* UBTNode::GetNodeMemory(const FBehaviorTreeInstance& BTInstance) const
 {
-	return (const T*)(BTInstance.GetInstanceMemory().GetData() + MemoryOffset);
+	return (const T*)(BTInstance.InstanceMemory.GetData() + MemoryOffset);
 }
 
 template<typename T>
 T* UBTNode::CastInstanceNodeMemory(uint8* NodeMemory) const
 {
-	// using '<=' rather than '==' to allow child classes to extend parent's
-	// memory class as well (which would make GetInstanceMemorySize return 
-	// a value equal or greater to sizeof(T)).
-	checkf(sizeof(T) <= GetInstanceMemorySize(), TEXT("Requesting type of %zu bytes but GetInstanceMemorySize returns %u. Make sure GetInstanceMemorySize is implemented properly in %s class hierarchy."), sizeof(T), GetInstanceMemorySize(), *GetFName().ToString());
+	checkf(sizeof(T) == GetInstanceMemorySize(), TEXT("Requesting type of %zu bytes but GetInstanceMemorySize returns %u. Make sure GetInstanceMemorySize is implemented properly in %s class hierarchy."), sizeof(T), GetInstanceMemorySize(), *GetFName().ToString());
 	return reinterpret_cast<T*>(NodeMemory);
 }
 

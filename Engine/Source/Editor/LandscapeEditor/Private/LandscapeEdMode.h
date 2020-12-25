@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,7 +13,6 @@
 #include "LandscapeLayerInfoObject.h"
 #include "LandscapeGizmoActiveActor.h"
 #include "LandscapeEdit.h"
-#include "Containers/Set.h"
 
 class ALandscape;
 class FCanvas;
@@ -318,9 +317,6 @@ public:
 	// UI callbacks for splines tool
 	FLandscapeToolSplines* SplinesTool;
 	void ShowSplineProperties();
-	bool HasSelectedSplineSegments() const;
-	void FlipSelectedSplineSegments();
-	void GetSelectedSplineOwners(TSet<ALandscapeProxy*>& SelectedSplineOwners) const;
 	virtual void SelectAllConnectedSplineControlPoints();
 	virtual void SelectAllConnectedSplineSegments();
 	virtual void SplineMoveToCurrentLevel();
@@ -487,7 +483,7 @@ public:
 	virtual bool PostConvertMouseMovement(FEditorViewportClient* InViewportClient) override;
 
 	/** Forces real-time perspective viewports */
-	void ForceRealTimeViewports(const bool bEnable);
+	void ForceRealTimeViewports(const bool bEnable, const bool bStoreCurrentState);
 
 	/** Trace under the mouse cursor and return the landscape hit and the hit location (in landscape quad space) */
 	bool LandscapeMouseTrace(FEditorViewportClient* ViewportClient, float& OutHitX, float& OutHitY);
@@ -545,8 +541,7 @@ public:
 	void OnLandscapeMaterialChangedDelegate();
 	void RefreshDetailPanel();
 
-	// Edit Layers
-	bool HasValidLandscapeEditLayerSelection() const;
+	// Layers
 	bool CanHaveLandscapeLayersContent() const;
 	bool HasLandscapeLayersContent() const;
 	int32 GetLayerCount() const;

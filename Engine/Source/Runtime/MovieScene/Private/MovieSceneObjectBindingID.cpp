@@ -1,20 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieSceneObjectBindingID.h"
 #include "Evaluation/MovieSceneSequenceHierarchy.h"
-#include "Evaluation/MovieSceneEvaluationTemplateInstance.h"
-#include "Compilation/MovieSceneCompiledDataManager.h"
-#include "IMovieScenePlayer.h"
 
-FMovieSceneObjectBindingID FMovieSceneObjectBindingID::ResolveLocalToRoot(FMovieSceneSequenceID LocalSequenceID, IMovieScenePlayer& Player) const
+FMovieSceneObjectBindingID FMovieSceneObjectBindingID::ResolveLocalToRoot(FMovieSceneSequenceID LocalSequenceID, const FMovieSceneSequenceHierarchy& Hierarchy) const
 {
 	FMovieSceneSequenceID NewSequenceID = FMovieSceneSequenceID(uint32(SequenceID));
 
 	if (Space == EMovieSceneObjectBindingSpace::Local && LocalSequenceID != MovieSceneSequenceID::Root)
 	{
-		FMovieSceneRootEvaluationTemplateInstance& Instance  = Player.GetEvaluationTemplate();
-		const FMovieSceneSequenceHierarchy&        Hierarchy = Instance.GetCompiledDataManager()->GetHierarchyChecked(Instance.GetCompiledDataID());
-
 		while (LocalSequenceID != MovieSceneSequenceID::Root)
 		{
 			const FMovieSceneSequenceHierarchyNode* CurrentNode = Hierarchy.FindNode(LocalSequenceID);

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,6 +7,7 @@
 #include "Lumin/CAPIShims/LuminAPICoordinateFrameUID.h"
 #include "CoreMinimal.h"
 #include "AppEventHandler.h"
+#include "AsyncDestroyer.h"
 #include "IMagicLeapPlugin.h"
 
 class FMagicLeapHMD;
@@ -25,13 +26,11 @@ public:
 
 	void ApplicationPauseDelegate();
 	void ApplicationResumeDelegate();
-	void OnApplicationStart();
 	void OnApplicationShutdown();
 
 	void OnDeviceActive();
 	void OnDeviceRealityMode();
 	void OnDeviceStandby();
-	void OnDeviceHeadposeLost();
 
 	FTransform GetDisplayCenterTransform() const { return FTransform::Identity; }; // HACK
 	uint32 GetViewportCount() const;
@@ -44,6 +43,7 @@ public:
 
 	static void AddEventHandler(MagicLeap::IAppEventHandler* InEventHandler);
 	static void RemoveEventHandler(MagicLeap::IAppEventHandler* InEventHandler);
+	static bool AsyncDestroy(MagicLeap::IAppEventHandler* InEventHandler);
 
 private:
 	const FTrackingFrame* GetCurrentFrame() const;
@@ -56,6 +56,7 @@ private:
 
 	static TArray<MagicLeap::IAppEventHandler*> EventHandlers;
 	static FCriticalSection EventHandlersCriticalSection;
+	static MagicLeap::FAsyncDestroyer* AsyncDestroyer;
 };
 
 // TODO: pull this out of here

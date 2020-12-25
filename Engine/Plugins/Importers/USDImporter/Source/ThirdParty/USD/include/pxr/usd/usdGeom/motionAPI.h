@@ -132,7 +132,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDGEOM_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -144,7 +144,7 @@ private:
 
     // override SchemaBase virtuals.
     USDGEOM_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -163,11 +163,10 @@ public:
     /// 
     /// See also ComputeVelocityScale()
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float motion:velocityScale = 1` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 1.0
     USDGEOM_API
     UsdAttribute GetVelocityScaleAttr() const;
 

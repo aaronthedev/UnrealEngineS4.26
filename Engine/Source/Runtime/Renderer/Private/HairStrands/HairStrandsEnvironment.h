@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	HairStrandsEnvironment.h: Hair strands environment lighting.
@@ -10,26 +10,16 @@
 #include "RendererInterface.h"
 #include "RenderGraphResources.h"
 
-class FScene;
-class FViewInfo;
-struct FHairStrandsRenderingData;
-
 void RenderHairStrandsAmbientOcclusion(
-	FRDGBuilder& GraphBuilder,
-	TArrayView<const FViewInfo> Views,
-	const FHairStrandsRenderingData* HairDatas,
-	const FRDGTextureRef& InAOTexture);
+	FRHICommandListImmediate& RHICmdList,
+	const TArray<FViewInfo>& Views,
+	const struct FHairStrandsDatas* HairDatas,
+	const TRefCountPtr<IPooledRenderTarget>& InAOTexture);
 
 void RenderHairStrandsEnvironmentLighting(
 	FRDGBuilder& GraphBuilder,
-	const FScene* Scene,
 	const uint32 ViewIndex,
-	TArrayView<const FViewInfo> Views,
-	FHairStrandsRenderingData* HairDatas);
-
-void RenderHairStrandsSceneColorScattering(
-	FRDGBuilder& GraphBuilder,
+	const TArray<FViewInfo>& Views,
+	const struct FHairStrandsDatas* HairDatas,
 	FRDGTextureRef SceneColorTexture,
-	const FScene* Scene,
-	TArrayView<const FViewInfo> Views,
-	FHairStrandsRenderingData* HairDatas);
+	FRDGTextureRef SceneColorSubPixelTexture);

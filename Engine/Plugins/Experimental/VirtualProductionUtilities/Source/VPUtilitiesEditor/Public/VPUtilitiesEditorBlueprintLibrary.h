@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -34,8 +34,4 @@ public:
 	/** Imports Image file into VirtualProduction/Snapshots/ folder */
 	UFUNCTION(BlueprintCallable, Category = "Virtual Production")
 	static UTexture* ImportSnapshotTexture(FString FileName, FString SubFolderName, FString AbsolutePathPackage);
-
-	/** Get the default OSC server. */
-	UFUNCTION(BlueprintCallable, Category = "Virtual Production")
-	static class UOSCServer* GetDefaultOSCServer();
 };

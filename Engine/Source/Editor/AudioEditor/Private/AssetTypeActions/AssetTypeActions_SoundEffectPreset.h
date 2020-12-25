@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,11 +10,7 @@
 #include "Developer/AssetTools/Public/IAssetTypeActions.h"
 #include "Sound/SoundEffectSubmix.h"
 #include "Sound/SoundEffectSource.h"
-#include "UObject/StrongObjectPtr.h"
 
-
-// Forward Declarations
-class IToolkitHost;
 class USoundEffectPreset;
 
 
@@ -57,15 +53,13 @@ public:
 	FAssetTypeActions_SoundEffectPreset(USoundEffectPreset* InEffectPreset);
 
 	//~ Begin FAssetTypeActions_Base
-	virtual bool CanFilter() override { return EffectPreset->CanFilter(); }
 	virtual FText GetName() const override;
 	virtual FColor GetTypeColor() const override { return EffectPreset->GetPresetColor(); }
 	virtual const TArray<FText>& GetSubMenus() const override;
 	virtual UClass* GetSupportedClass() const override;
 	virtual uint32 GetCategories() override { return EAssetTypeCategories::Sounds; }
-	virtual void OpenAssetEditor(const TArray<UObject*>& InObjects, TSharedPtr<IToolkitHost> ToolkitHost) override;
 	//~ End FAssetTypeActions_Base
 
 private:
-	TStrongObjectPtr<USoundEffectPreset> EffectPreset;
+	USoundEffectPreset* EffectPreset;
 };

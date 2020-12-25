@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_PY_SINGLETON_H
-#define PXR_BASE_TF_PY_SINGLETON_H
+#ifndef TF_PYSINGLETON_H
+#define TF_PYSINGLETON_H
 
 #include "pxr/pxr.h"
 
@@ -33,7 +33,7 @@
 #include "pxr/base/tf/singleton.h"
 #include "pxr/base/tf/weakPtr.h"
 
-#include <boost/mpl/vector/vector10.hpp>
+#include <boost/mpl/vector.hpp>
 
 #include <boost/python/class.hpp>
 #include <boost/python/default_call_policies.hpp>
@@ -101,8 +101,8 @@ struct Visitor : bp::def_visitor<Visitor> {
                   make_function(std::bind(
                                     _Repr, std::placeholders::_1, _reprPrefix),
                                 bp::default_call_policies(),
-                                boost::mpl::vector2<std::string,
-                                                    bp::object const &>()));
+                                boost::mpl::vector<std::string,
+                                                   bp::object const &>()));
     }
 private:
     std::string _reprPrefix;
@@ -117,4 +117,4 @@ Tf_PySingleton::Visitor TfPySingleton(std::string const &reprPrefix);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_PY_SINGLETON_H
+#endif // TF_PYSINGLETON_H

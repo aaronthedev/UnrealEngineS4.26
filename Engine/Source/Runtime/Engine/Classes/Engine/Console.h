@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -259,8 +259,6 @@ class ENGINE_API UConsole
 	virtual void FakeGotoState(FName NextStateName);
 
 	virtual bool ConsoleActive() const;
-
-	void InvalidateAutocomplete();
 
 	/** Delegate for registering hot-reloaded classes that have been added  */
 	DECLARE_MULTICAST_DELEGATE_OneParam(FRegisterConsoleAutoCompleteEntries, TArray<FAutoCompleteCommand>&);

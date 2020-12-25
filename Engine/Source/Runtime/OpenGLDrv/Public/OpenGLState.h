@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	OpenGLState.h: OpenGL state definitions.
@@ -165,11 +165,8 @@ struct FOpenGLBlendStateData
 	
 	TStaticArray<FRenderTarget,MaxSimultaneousRenderTargets> RenderTargets;
 
-	bool bUseAlphaToCoverage;
-
 	FOpenGLBlendStateData()
 	{
-		bUseAlphaToCoverage = false;
 		for (int32 i = 0; i < MaxSimultaneousRenderTargets; ++i)
 		{
 			FRenderTarget& Target = RenderTargets[i];
@@ -223,14 +220,12 @@ struct FUAVStage
 {
 	GLenum Format;
 	GLuint Resource;
-	GLenum Access;
 	GLint Layer;
 	bool bLayered;
 	
 	FUAVStage()
 	:	Format(GL_NONE)
 	,	Resource(0)
-	,	Access(GL_READ_WRITE)
 	,	Layer(0)
 	,	bLayered(false)
 	{
@@ -295,16 +290,16 @@ struct FOpenGLCommonState
 	}
 
 	// NumCombinedTextures must be greater than or equal to FOpenGL::GetMaxCombinedTextureImageUnits()
-	// NumCombinedUAVUnits must be greater than or equal to FOpenGL::GetMaxCombinedUAVUnits()
-	virtual void InitializeResources(int32 NumCombinedTextures, int32 NumCombinedUAVUnits)
+	// NumComputeUAVUnits must be greater than or equal to OGL_MAX_COMPUTE_STAGE_UAV_UNITS
+	virtual void InitializeResources(int32 NumCombinedTextures, int32 NumComputeUAVUnits)
 	{
 		check(NumCombinedTextures >= FOpenGL::GetMaxCombinedTextureImageUnits());
-		check(NumCombinedUAVUnits >= FOpenGL::GetMaxCombinedUAVUnits());
+		check(NumComputeUAVUnits >= OGL_MAX_COMPUTE_STAGE_UAV_UNITS);
 		check(!Textures && !SamplerStates && !UAVs);
 		Textures = new FTextureStage[NumCombinedTextures];
 		SamplerStates = new FOpenGLSamplerState*[NumCombinedTextures];
 		FMemory::Memset( SamplerStates, 0, NumCombinedTextures * sizeof(*SamplerStates) );
-		UAVs = new FUAVStage[NumCombinedUAVUnits];
+		UAVs = new FUAVStage[NumComputeUAVUnits];
 	}
 
 	virtual void CleanupResources()
@@ -348,14 +343,16 @@ struct FOpenGLContextState : public FOpenGLCommonState
 	uint16							ClearStencil;
 	float							ClearDepth;
 	int32							FirstNonzeroRenderTarget;
-	bool							bAlphaToCoverageEnabled;
-	
-	FOpenGLVertexDeclaration*		VertexDecl;
+	GLenum							DrawFramebuffers[MaxSimultaneousRenderTargets];
+
+	// @todo-mobile: Used to cache the last color attachment to optimize logical buffer loads
+	GLuint							LastES2ColorRTResource;
+	GLenum							LastES2ColorTargetType;
+
 	FOpenGLCachedAttr				VertexAttrs[NUM_OPENGL_VERTEX_STREAMS];
 	FOpenGLStream					VertexStreams[NUM_OPENGL_VERTEX_STREAMS];
-		
-	uint32							ActiveStreamMask;
-	uint32							VertexAttrs_EnabledBits;
+
+	uint32 VertexAttrs_EnabledBits;
 	FORCEINLINE bool GetVertexAttrEnabled(int32 Index) const
 	{
 		static_assert(NUM_OPENGL_VERTEX_STREAMS <= sizeof(VertexAttrs_EnabledBits) * 8, "Not enough bits in VertexAttrs_EnabledBits to store NUM_OPENGL_VERTEX_STREAMS");
@@ -373,7 +370,11 @@ struct FOpenGLContextState : public FOpenGLCommonState
 		}
 	}
 
-	uint32 ActiveUAVMask;
+
+	FOpenGLVertexDeclaration* VertexDecl;
+	uint32 ActiveAttribMask;
+	uint32 ActiveStreamMask;
+	uint32 MaxActiveAttrib;
 
 	FOpenGLContextState()
 	:	StencilRef(0)
@@ -392,25 +393,30 @@ struct FOpenGLContextState : public FOpenGLCommonState
 	,	ClearStencil(0xFFFF)
 	,	ClearDepth(-1.0f)
 	,	FirstNonzeroRenderTarget(0)
-	,	bAlphaToCoverageEnabled(false)
-	,	VertexDecl(0)
-	,	ActiveStreamMask(0)
-	,	VertexAttrs_EnabledBits(0)
-	,	ActiveUAVMask(0)
+#if PLATFORM_ANDROID && !PLATFORM_LUMINGL4
+	,	LastES2ColorRTResource(0xFFFFFFFF)
+#else
+	,	LastES2ColorRTResource(0)
+#endif
+	,	LastES2ColorTargetType(GL_NONE)
+	, VertexAttrs_EnabledBits(0)
+	, VertexDecl(0)
+	, ActiveAttribMask(0)
+	, ActiveStreamMask(0)
+	, MaxActiveAttrib(0)
 	{
 		Scissor.Min.X = Scissor.Min.Y = Scissor.Max.X = Scissor.Max.Y = 0;
 		Viewport.Min.X = Viewport.Min.Y = Viewport.Max.X = Viewport.Max.Y = 0;
 		FMemory::Memzero(UniformBuffers, sizeof(UniformBuffers));
 		FMemory::Memzero(UniformBufferOffsets, sizeof(UniformBufferOffsets));
+		FMemory::Memzero(DrawFramebuffers, sizeof(DrawFramebuffers));
 	}
 
-	virtual void InitializeResources(int32 NumCombinedTextures, int32 NumCombinedUAVUnits) override
+	virtual void InitializeResources(int32 NumCombinedTextures, int32 NumComputeUAVUnits) override
 	{
-		FOpenGLCommonState::InitializeResources(NumCombinedTextures, NumCombinedUAVUnits);
+		FOpenGLCommonState::InitializeResources(NumCombinedTextures, NumComputeUAVUnits);
 		CachedSamplerStates.Empty(NumCombinedTextures);
 		CachedSamplerStates.AddZeroed(NumCombinedTextures);
-
-		checkf(NumCombinedUAVUnits <= sizeof(ActiveUAVMask) * 8, TEXT("Not enough bits in ActiveUAVMask to store %d UAV units"), NumCombinedUAVUnits);
 	}
 
 	virtual void CleanupResources() override
@@ -436,7 +442,6 @@ struct FOpenGLRHIState : public FOpenGLCommonState
 	uint32							RenderTargetWidth;
 	uint32							RenderTargetHeight;
 	GLuint							RunningOcclusionQuery;
-	bool							bAlphaToCoverageEnabled;
 
 	// Pending framebuffer setup
 	int32							FirstNonzeroRenderTarget;
@@ -493,7 +498,6 @@ struct FOpenGLRHIState : public FOpenGLCommonState
 	,	RenderTargetWidth(0)
 	,	RenderTargetHeight(0)
 	,	RunningOcclusionQuery(0)
-	,	bAlphaToCoverageEnabled(false)
 	,	FirstNonzeroRenderTarget(-1)
 	,	DepthStencil(0)
 	,	StencilStoreAction(ERenderTargetStoreAction::ENoAction)

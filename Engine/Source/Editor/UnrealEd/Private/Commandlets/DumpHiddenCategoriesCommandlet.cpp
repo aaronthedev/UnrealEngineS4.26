@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Commandlets/DumpHiddenCategoriesCommandlet.h"
 #include "HAL/FileManager.h"
@@ -96,7 +96,7 @@ static int32 GetHiddenFunctions(uint32 Indent, UClass* Class, bool bShowFunLibs,
 			}
 		}
 
-		/*for (TFieldIterator<FObjectProperty> PropIt(FuncClass, EFieldIteratorFlags::IncludeSuper); PropIt; ++PropIt)
+		/*for (TFieldIterator<UObjectProperty> PropIt(FuncClass, EFieldIteratorFlags::IncludeSuper); PropIt; ++PropIt)
 		{
 			UClass* PropClass = PropIt->PropertyClass;
 			for (TFieldIterator<UFunction> FunctionIt(PropClass, EFieldIteratorFlags::IncludeSuper); FunctionIt; ++FunctionIt)
@@ -146,9 +146,9 @@ static int32 GetHiddenProperties(uint32 Indent, UClass* Class, FString& JsonOut)
 	FString IndentString = GetIndentString(Indent);
 	JsonOut += IndentString + TEXT("\"HiddenProperties\" : [");
 
-	for (TFieldIterator<FProperty> PropertyIt(Class, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
+	for (TFieldIterator<UProperty> PropertyIt(Class, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
 	{
-		FProperty* Property = *PropertyIt;
+		UProperty* Property = *PropertyIt;
 		if (FObjectEditorUtils::IsVariableCategoryHiddenFromClass(Property, Class))
 		{
 			++HiddenPropCount;

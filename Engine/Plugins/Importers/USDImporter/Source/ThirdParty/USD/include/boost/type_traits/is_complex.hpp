@@ -8,7 +8,6 @@
 #ifndef BOOST_TT_IS_COMPLEX_HPP
 #define BOOST_TT_IS_COMPLEX_HPP
 
-#include <boost/config.hpp>
 #include <complex>
 #include <boost/type_traits/integral_constant.hpp>
 

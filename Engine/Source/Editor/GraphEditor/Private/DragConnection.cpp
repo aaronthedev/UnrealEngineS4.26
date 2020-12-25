@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "DragConnection.h"
@@ -211,14 +211,8 @@ FReply FDragConnection::DroppedOnPin(FVector2D ScreenPosition, FVector2D GraphPo
 
 			if (MyGraphObj->GetSchema()->TryCreateConnection(PinA, PinB))
 			{
-				if (!PinA->IsPendingKill())
-				{
-					NodeList.Add(PinA->GetOwningNode());
-				}
-				if (!PinB->IsPendingKill())
-				{
-					NodeList.Add(PinB->GetOwningNode());
-				}
+				NodeList.Add(PinA->GetOwningNode());
+				NodeList.Add(PinB->GetOwningNode());
 			}
 		}
 		else

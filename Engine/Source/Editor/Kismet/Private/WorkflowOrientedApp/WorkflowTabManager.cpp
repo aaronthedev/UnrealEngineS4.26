@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WorkflowOrientedApp/WorkflowTabManager.h"
 #include "Widgets/Layout/SBorder.h"
@@ -10,7 +10,6 @@
 #include "EditorStyleSet.h"
 #include "WorkflowOrientedApp/WorkflowUObjectDocuments.h"
 #include "Widgets/Docking/SDockTab.h"
-#include "Misc/BlacklistNames.h"
 
 /////////////////////////////////////////////////////
 // FTabInfo
@@ -21,15 +20,15 @@ namespace WorkflowTabManagerHelpers
 	const int32 MaxHistoryEntries = 300;
 }
 
-FTabInfo::FTabInfo(const TSharedRef<SDockTab>& InTab, const TSharedPtr<FDocumentTabFactory>& InSpawner, const TSharedPtr<class FDocumentTracker>& InTracker)
+FTabInfo::FTabInfo(const TSharedRef<SDockTab>& InTab, const TSharedPtr<FDocumentTabFactory>& InSpawner)
 	: Tab(InTab)
-	, WeakTracker(InTracker)
+	, CurrentHistoryIndex(INDEX_NONE)
 {
 }
 
 bool FTabInfo::PayloadMatches(const TSharedPtr<FTabPayload> TestPayload) const
 {
-	return PayloadMatches(GetPayload(), TestPayload);
+	return PayloadMatches(History[CurrentHistoryIndex]->GetPayload(), TestPayload);
 }
 
 bool FTabInfo::PayloadMatches(TSharedPtr<FTabPayload> A, TSharedPtr<FTabPayload> B)
@@ -48,88 +47,55 @@ bool FTabInfo::PayloadMatches(TSharedPtr<FTabPayload> A, TSharedPtr<FTabPayload>
 	}
 }
 
-void FTabInfo::AddTabHistory(TSharedPtr< struct FGenericTabHistory > InHistoryNode, bool bInSaveHistory/* = true*/)
+void FTabInfo::AddTabHistory(TSharedPtr< struct FGenericTabHistory > InHistoryNode, bool bInSaveHistory/* = true*/, bool bPrevTabMatches/* = false*/)
 {
-	TSharedPtr<FDocumentTracker> Tracker = WeakTracker.Pin();
-
-	if (Tracker.IsValid())
+	// If the tab is not new, save the current history.
+	if(CurrentHistoryIndex >= 0 && bInSaveHistory)
 	{
-		if (Tracker->CurrentHistoryIndex == Tracker->History.Num() - 1)
-		{
-			// History added to the end
-			if (Tracker->History.Num() == WorkflowTabManagerHelpers::MaxHistoryEntries)
-			{
-				// If max history entries has been reached
-				// remove the oldest history
-				Tracker->History.RemoveAt(0);
-			}
-		}
-		else
-		{
-			// Clear out any history that is in front of the current location in the history list
-			Tracker->History.RemoveAt(Tracker->CurrentHistoryIndex + 1, Tracker->History.Num() - (Tracker->CurrentHistoryIndex + 1), true);
-		}
-
-		Tracker->History.Add(InHistoryNode);
-		Tracker->CurrentHistoryIndex = Tracker->History.Num() - 1;
-
-		SetCurrentHistory(InHistoryNode, bInSaveHistory, false);
+		History[CurrentHistoryIndex]->SaveHistory();
 	}
-}
 
-TSharedPtr<struct FGenericTabHistory> FTabInfo::GetCurrentHistory() const
-{
-	return CurrentHistory;
-}
-
-void FTabInfo::SetCurrentHistory(TSharedPtr<FGenericTabHistory> NewHistory, bool bInSaveHistory, bool bShouldRestore)
-{
-	bool bPayloadMatches = false;
-
-	if (CurrentHistory.IsValid() && NewHistory.IsValid())
+	if (CurrentHistoryIndex == History.Num() - 1)
 	{
-		if (bInSaveHistory)
+		// History added to the end
+		if (History.Num() == WorkflowTabManagerHelpers::MaxHistoryEntries)
 		{
-			CurrentHistory->SaveHistory();
+			// If max history entries has been reached
+			// remove the oldest history
+			History.RemoveAt(0);
 		}
-
-		bPayloadMatches = PayloadMatches(CurrentHistory->GetPayload(), NewHistory->GetPayload());
 	}
-	CurrentHistory = NewHistory;
-
-	if (CurrentHistory.IsValid())
+	else
 	{
-		CurrentHistory->BindToTab(AsShared());
-
-		// This creates the tab widget but does not foreground it
-		CurrentHistory->EvokeHistory(AsShared(), bPayloadMatches);
-		if (bShouldRestore)
-		{
-			CurrentHistory->RestoreHistory();
-		}
-		TSharedPtr<FDocumentTabFactory> Factory = CurrentHistory->GetFactory().Pin();
-		if (Factory.IsValid())
-		{
-			// Notify listeners that tab contents have changed
-			Factory->OnTabActivated(Tab.Pin());
-		}
-		
+		// Clear out any history that is in front of the current location in the history list
+		History.RemoveAt(CurrentHistoryIndex + 1, History.Num() - (CurrentHistoryIndex + 1), true);
 	}
+
+	History.Add(InHistoryNode);
+	CurrentHistoryIndex = History.Num() - 1;
+
+	// Evoke the history
+	InHistoryNode->EvokeHistory(AsShared(), bPrevTabMatches);
+	InHistoryNode->GetFactory().Pin()->OnTabActivated(Tab.Pin());
 }
 
 FReply FTabInfo::OnGoForwardInHistory()
 {
-	TSharedPtr<FDocumentTracker> Tracker = WeakTracker.Pin();
-
-	if (Tracker.IsValid())
+	if( CurrentHistoryIndex < History.Num() - 1 )
 	{
-		int32 NextHistoryIndex = Tracker->CurrentHistoryIndex;
-		while (NextHistoryIndex < Tracker->History.Num() - 1)
+		const int32 PreviousHistoryIndex = CurrentHistoryIndex;
+		History[CurrentHistoryIndex]->SaveHistory();
+
+		while( CurrentHistoryIndex < History.Num() - 1)
 		{
-			++NextHistoryIndex;
-				
-			if (Tracker->NavigateToTabHistory(NextHistoryIndex))
+			++CurrentHistoryIndex;
+
+			if( History[CurrentHistoryIndex]->IsHistoryValid() )
 			{
+				bool bPayloadMatches = PayloadMatches(History[PreviousHistoryIndex]->GetPayload(), History[CurrentHistoryIndex]->GetPayload());
+				History[CurrentHistoryIndex]->EvokeHistory(AsShared(), bPayloadMatches);
+				History[CurrentHistoryIndex]->RestoreHistory();
+				History[CurrentHistoryIndex]->GetFactory().Pin()->OnTabActivated(Tab.Pin());
 				break;
 			}
 		}
@@ -139,17 +105,22 @@ FReply FTabInfo::OnGoForwardInHistory()
 
 FReply FTabInfo::OnGoBackInHistory()
 {
-	TSharedPtr<FDocumentTracker> Tracker = WeakTracker.Pin();
-
-	if (Tracker.IsValid())
+	if( CurrentHistoryIndex > 0 )
 	{
-		int32 PreviousHistoryIndex = Tracker->CurrentHistoryIndex;
-		while (PreviousHistoryIndex > 0)
+		const int32 PreviousHistoryIndex = CurrentHistoryIndex;
+		History[CurrentHistoryIndex]->SaveHistory();
+
+		while( CurrentHistoryIndex > 0 )
 		{
-			--PreviousHistoryIndex;
+			--CurrentHistoryIndex;
 				
-			if (Tracker->NavigateToTabHistory(PreviousHistoryIndex))
+			if( History[CurrentHistoryIndex]->IsHistoryValid() )
 			{
+				bool bPayloadMatches = PayloadMatches(History[PreviousHistoryIndex]->GetPayload(), History[CurrentHistoryIndex]->GetPayload());
+				History[CurrentHistoryIndex]->EvokeHistory(AsShared(), bPayloadMatches);
+				History[CurrentHistoryIndex]->RestoreHistory();
+				History[CurrentHistoryIndex]->GetFactory().Pin()->OnTabActivated(Tab.Pin());
+
 				break;
 			}
 		}
@@ -159,61 +130,74 @@ FReply FTabInfo::OnGoBackInHistory()
 
 void FTabInfo::JumpToNearestValidHistoryData()
 {
-	// Each tab only knows current history, close if it's invalid
-	if (!CurrentHistory.IsValid() || !CurrentHistory->IsHistoryValid())
+	if(!History[CurrentHistoryIndex]->IsHistoryValid())
 	{
-		if (Tab.IsValid())
+		if(History.Num() == 1)
 		{
 			Tab.Pin()->RequestCloseTab();
+		}
+		else
+		{
+			OnGoBackInHistory();
+
+			if(!History[CurrentHistoryIndex]->IsHistoryValid())
+			{
+				OnGoForwardInHistory();
+
+				if(!History[CurrentHistoryIndex]->IsHistoryValid())
+				{
+					// There are no valid history nodes to switch to, delete the tab
+					Tab.Pin()->RequestCloseTab();
+					return;
+				}
+			}
+
+			History[CurrentHistoryIndex]->EvokeHistory(AsShared(), false);
+			History[CurrentHistoryIndex]->RestoreHistory();
+			History[CurrentHistoryIndex]->GetFactory().Pin()->OnTabActivated(Tab.Pin());
+			FGlobalTabmanager::Get()->SetActiveTab(nullptr);
+			FSlateApplication::Get().ClearKeyboardFocus(EFocusCause::SetDirectly);
 		}
 	}
 }
 
 TWeakPtr<FDocumentTabFactory> FTabInfo::GetFactory() const
 {
-	if (CurrentHistory.IsValid())
-	{
-		return CurrentHistory->GetFactory();
-	}
-	return nullptr;
+	return History[CurrentHistoryIndex]->GetFactory();
 }
 
 TSharedPtr<FTabPayload> FTabInfo::GetPayload() const
 {
-	if (CurrentHistory.IsValid())
-	{
-		return CurrentHistory->GetPayload();
-	}
-	return nullptr;
+	return History[CurrentHistoryIndex]->GetPayload();
 }
 
 void FTabInfo::GoToHistoryIndex(int32 InHistoryIdx)
 {
-	TSharedPtr<FDocumentTracker> Tracker = WeakTracker.Pin();
-	if (Tracker.IsValid())
+	if(History[InHistoryIdx]->IsHistoryValid())
 	{
-		Tracker->NavigateToTabHistory(InHistoryIdx);
+		const int32 PreviousHistoryIndex = CurrentHistoryIndex;
+		History[CurrentHistoryIndex]->SaveHistory();
+
+		CurrentHistoryIndex = InHistoryIdx;
+		
+		bool bPayloadMatches = PayloadMatches(History[PreviousHistoryIndex]->GetPayload(), History[CurrentHistoryIndex]->GetPayload());
+		History[CurrentHistoryIndex]->EvokeHistory(AsShared(), bPayloadMatches);
+		History[CurrentHistoryIndex]->RestoreHistory();
+		History[CurrentHistoryIndex]->GetFactory().Pin()->OnTabActivated(Tab.Pin());
 	}
 }
 
 TSharedRef<SWidget> FTabInfo::CreateHistoryMenu(bool bInBackHistory) const
 {
-	TSharedPtr<FDocumentTracker> Tracker = WeakTracker.Pin();
-	if (!Tracker.IsValid())
-	{
-		return SNullWidget::NullWidget;
-	}
-
-	FMenuBuilder MenuBuilder(true, nullptr);
+	FMenuBuilder MenuBuilder(true, NULL);
 	if(bInBackHistory)
 	{
-		int32 HistoryIdx = Tracker->CurrentHistoryIndex - 1;
+		int32 HistoryIdx = CurrentHistoryIndex - 1;
 		while( HistoryIdx >= 0 )
 		{
-			TSharedPtr<FGenericTabHistory> HistoryItem = Tracker->History[HistoryIdx];
-			if(HistoryItem->IsHistoryValid())
+			if(History[HistoryIdx]->IsHistoryValid())
 			{
-				MenuBuilder.AddMenuEntry(HistoryItem->GetHistoryTitle().Get(), FText(), FSlateIcon(), 
+				MenuBuilder.AddMenuEntry(History[HistoryIdx]->GetHistoryTitle().Get(), FText(), FSlateIcon(), 
 					FUIAction(
 					FExecuteAction::CreateRaw(const_cast<FTabInfo*>(this), &FTabInfo::GoToHistoryIndex, HistoryIdx)
 					), 
@@ -225,13 +209,12 @@ TSharedRef<SWidget> FTabInfo::CreateHistoryMenu(bool bInBackHistory) const
 	}
 	else
 	{
-		int32 HistoryIdx = Tracker->CurrentHistoryIndex + 1;
-		while( HistoryIdx < Tracker->History.Num() )
+		int32 HistoryIdx = CurrentHistoryIndex + 1;
+		while( HistoryIdx < History.Num() )
 		{
-			TSharedPtr<FGenericTabHistory> HistoryItem = Tracker->History[HistoryIdx];
-			if(HistoryItem->IsHistoryValid())
+			if(History[HistoryIdx]->IsHistoryValid())
 			{
-				MenuBuilder.AddMenuEntry(HistoryItem->GetHistoryTitle().Get(), FText(), FSlateIcon(), 
+				MenuBuilder.AddMenuEntry(History[HistoryIdx]->GetHistoryTitle().Get(), FText(), FSlateIcon(), 
 					FUIAction(
 					FExecuteAction::CreateRaw(const_cast<FTabInfo*>(this), &FTabInfo::GoToHistoryIndex, HistoryIdx)
 					), 
@@ -247,16 +230,10 @@ TSharedRef<SWidget> FTabInfo::CreateHistoryMenu(bool bInBackHistory) const
 
 bool FTabInfo::CanStepBackwardInHistory() const
 {
-	TSharedPtr<FDocumentTracker> Tracker = WeakTracker.Pin();
-	if (!Tracker.IsValid())
-	{
-		return false;
-	}
-
-	int32 HistoryIdx = Tracker->CurrentHistoryIndex - 1;
+	int32 HistoryIdx = CurrentHistoryIndex - 1;
 	while( HistoryIdx >= 0 )
 	{
-		if(Tracker->History[HistoryIdx]->IsHistoryValid())
+		if(History[HistoryIdx]->IsHistoryValid())
 		{
 			return true;
 		}
@@ -268,16 +245,10 @@ bool FTabInfo::CanStepBackwardInHistory() const
 
 bool FTabInfo::CanStepForwardInHistory() const
 {
-	TSharedPtr<FDocumentTracker> Tracker = WeakTracker.Pin();
-	if (!Tracker.IsValid())
+	int32 HistoryIdx = CurrentHistoryIndex + 1;
+	while( HistoryIdx < History.Num() )
 	{
-		return false;
-	}
-
-	int32 HistoryIdx = Tracker->CurrentHistoryIndex + 1;
-	while( HistoryIdx < Tracker->History.Num() )
-	{
-		if(Tracker->History[HistoryIdx]->IsHistoryValid())
+		if(History[HistoryIdx]->IsHistoryValid())
 		{
 			return true;
 		}
@@ -287,7 +258,7 @@ bool FTabInfo::CanStepForwardInHistory() const
 	return false;
 }
 
-FReply FTabInfo::OnMouseDownHistory( const FGeometry& MyGeometry, const FPointerEvent& MouseEvent, TWeakPtr< SMenuAnchor > InMenuAnchor )
+FReply FTabInfo::OnMouseDownHisory( const FGeometry& MyGeometry, const FPointerEvent& MouseEvent, TWeakPtr< SMenuAnchor > InMenuAnchor )
 {
 	if(MouseEvent.GetEffectingButton() == EKeys::RightMouseButton && InMenuAnchor.IsValid())
 	{
@@ -310,7 +281,7 @@ TSharedRef< SWidget > FTabInfo::CreateHistoryNavigationWidget()
 			.AutoWidth()
 			[
 				SNew(SBorder)
-				.OnMouseButtonDown(this, &FTabInfo::OnMouseDownHistory, BackMenuAnchorPtr)
+				.OnMouseButtonDown(this, &FTabInfo::OnMouseDownHisory, BackMenuAnchorPtr)
 				.BorderImage( FEditorStyle::GetBrush("NoBorder") )
 				[
 					SAssignNew(BackMenuAnchorPtr, SMenuAnchor)
@@ -334,7 +305,7 @@ TSharedRef< SWidget > FTabInfo::CreateHistoryNavigationWidget()
 			.AutoWidth()
 			[
 				SNew(SBorder)
-				.OnMouseButtonDown(this, &FTabInfo::OnMouseDownHistory, FwdMenuAnchorPtr)
+				.OnMouseButtonDown(this, &FTabInfo::OnMouseDownHisory, FwdMenuAnchorPtr)
 				.BorderImage( FEditorStyle::GetBrush("NoBorder") )
 				[
 					SAssignNew(FwdMenuAnchorPtr, SMenuAnchor)
@@ -418,8 +389,6 @@ FDocumentTracker::FDocumentTracker()
 	// Make sure we know when tabs become active
 	OnActiveTabChangedDelegateHandle = FGlobalTabmanager::Get()->OnActiveTabChanged_Subscribe( FOnActiveTabChanged::FDelegate::CreateRaw( this, &FDocumentTracker::OnActiveTabChanged ) );
 	TabForegroundedDelegateHandle = FGlobalTabmanager::Get()->OnTabForegrounded_Subscribe(FOnActiveTabChanged::FDelegate::CreateRaw(this, &FDocumentTracker::OnTabForegrounded));
-
-	CurrentHistoryIndex = INDEX_NONE;
 }
 
 FDocumentTracker::~FDocumentTracker()
@@ -441,7 +410,7 @@ void FDocumentTracker::OnActiveTabChanged(TSharedPtr<SDockTab> PreviouslyActive,
 			TSharedPtr<SDockTab> Tab = (*ListIt)->GetTab().Pin();
 			if (Tab == NewlyActivated)
 			{
-				WeakLastEditedTabInfo = *ListIt;
+				LastEditedTabInfo = *ListIt;
 				Factory->OnTabActivated(Tab);
 			}
 		}
@@ -450,21 +419,19 @@ void FDocumentTracker::OnActiveTabChanged(TSharedPtr<SDockTab> PreviouslyActive,
 
 void FDocumentTracker::OnTabForegrounded(TSharedPtr<SDockTab> ForegroundedTab, TSharedPtr<SDockTab> BackgroundedTab)
 {
-	TSharedPtr<FTabInfo> NewTabInfo;
 	TSharedPtr<SDockTab> OwnedForeground, OwnedBackground;
 	TSharedPtr<FDocumentTabFactory> ForegroundFactory, BackgroundFactory;
 
 	FTabList& List = GetSpawnedList();
-	for ( const TSharedPtr<FTabInfo>& TabInfo : List )
+	for ( auto ListIt = List.CreateIterator(); ListIt; ++ListIt )
 	{
 		// Get the factory (can't fail; the tabs had to come from somewhere; failing means a tab survived a mode transition to a mode where it is not allowed!)
-		TSharedPtr<FDocumentTabFactory> Factory = TabInfo->GetFactory().Pin();
+		TSharedPtr<FDocumentTabFactory> Factory = ( *ListIt )->GetFactory().Pin();
 		if ( ensure(Factory.IsValid()) )
 		{
-			TSharedPtr<SDockTab> Tab = TabInfo->GetTab().Pin();
+			TSharedPtr<SDockTab> Tab = ( *ListIt )->GetTab().Pin();
 			if ( Tab == ForegroundedTab )
 			{
-				NewTabInfo = TabInfo;
 				OwnedForeground = Tab;
 				ForegroundFactory = Factory;
 			}
@@ -484,19 +451,6 @@ void FDocumentTracker::OnTabForegrounded(TSharedPtr<SDockTab> ForegroundedTab, T
 	if ( OwnedForeground.IsValid() )
 	{
 		ForegroundFactory->OnTabForegrounded(OwnedForeground);
-	}
-
-	TSharedPtr<FGenericTabHistory> CurrentTabHistory = GetCurrentTabHistory();
-	TSharedPtr<FGenericTabHistory> NewTabHistory;
-	if (NewTabInfo.IsValid())
-	{
-		NewTabHistory = NewTabInfo->GetCurrentHistory();
-	}
-
-	if ( ForegroundFactory.IsValid() && NewTabHistory.IsValid() && NewTabHistory->IsHistoryValid() && NewTabHistory != CurrentTabHistory )
-	{
-		// If a tab was manually foregrounded, need to add tab history
-		NewTabInfo->AddTabHistory(ForegroundFactory->CreateTabHistoryNode(NewTabInfo->GetPayload()), true);
 	}
 }
 
@@ -518,18 +472,6 @@ FDocumentTracker::FTabList& FDocumentTracker::GetSpawnedList()
 	return SpawnedTabs;
 }
 
-TSharedPtr<FTabInfo> FDocumentTracker::GetLastEditedTabInfo()
-{
-	TSharedPtr<FTabInfo> LastEditedTabInfo = WeakLastEditedTabInfo.Pin();
-	if (!LastEditedTabInfo.IsValid() || !LastEditedTabInfo->GetTab().IsValid())
-	{
-		// Clear if either the info or actual tab are gone
-		WeakLastEditedTabInfo = nullptr;
-		return nullptr;
-	}
-	return LastEditedTabInfo;
-}
-
 void FDocumentTracker::Initialize(TSharedPtr<FAssetEditorToolkit> InHostingApp )
 {
 	check(!HostingAppPtr.IsValid());
@@ -548,59 +490,59 @@ TSharedPtr<SDockTab> FDocumentTracker::OpenDocument(TSharedPtr<FTabPayload> InPa
 		InOpenCause = FDocumentTracker::ForceOpenNewDocument;
 	}
 
-	if(InOpenCause == CreateHistoryEvent)
-	{
-		// Deprecated, all opens now save history
-		InOpenCause = FDocumentTracker::OpenNewDocument;
-	}
-
-	if(InOpenCause == NavigatingCurrentDocument || InOpenCause == QuickNavigateCurrentDocument || InOpenCause == NavigateBackwards || InOpenCause == NavigateForwards)
+	if(InOpenCause == NavigatingCurrentDocument || InOpenCause == QuickNavigateCurrentDocument)
 	{
 		return NavigateCurrentTab(InPayload, InOpenCause);
 	}
-
-	// Spawning or restoring a tab, so the factory has to be valid
-	TSharedPtr<FDocumentTabFactory> Factory = FindSupportingFactory(InPayload.ToSharedRef());
-	if(!Factory.IsValid())
+	else if(InOpenCause == OpenNewDocument || InOpenCause == CreateHistoryEvent)
 	{
-		return nullptr;
-	}
+		TSharedPtr< FTabInfo > TabInfo;
+		TSharedPtr<SDockTab> Tab;
+		bool bPrevTabMatches = false;
 
-	if(InOpenCause == OpenNewDocument || InOpenCause == RestorePreviousDocument)
-	{
 		// If the current tab matches we'll re-use it.
-		TSharedPtr<FTabInfo> LastEditedTabInfo = GetLastEditedTabInfo();
-		if(LastEditedTabInfo.IsValid() && LastEditedTabInfo->PayloadMatches(InPayload))
+		TSharedPtr<FTabInfo> LastEditedTabInfoPinned = LastEditedTabInfo.Pin();
+		if(LastEditedTabInfoPinned.IsValid() && LastEditedTabInfoPinned->PayloadMatches(InPayload))
 		{
-			TSharedPtr<SDockTab> Tab = LastEditedTabInfo->GetTab().Pin();
-			if (Tab.IsValid())
-			{
-				LastEditedTabInfo->AddTabHistory(Factory->CreateTabHistoryNode(InPayload), true);
-				// Ensure that the tab appears if the tab isn't currently in the foreground.
-				Tab->ActivateInParent(ETabActivationCause::SetDirectly);
-			}
-			return Tab;
+			TabInfo = LastEditedTabInfoPinned;
+			Tab = TabInfo->GetTab().Pin();
+			bPrevTabMatches = true;
 		}
 		else
 		{
 			// Check if the payload is currently open in any tab
 			FTabList& List = GetSpawnedList();
-			for (const TSharedPtr<FTabInfo>& TabInfo : List)
+			for (auto ListIt = List.CreateIterator(); ListIt; ++ListIt)
 			{
-				TSharedPtr<SDockTab> Tab = TabInfo->GetTab().Pin();
-				if (TabInfo->PayloadMatches(InPayload))
+				if ((*ListIt)->PayloadMatches(InPayload))
 				{
-					// Manually opening an existing tab, add to history
-					TabInfo->AddTabHistory(Factory->CreateTabHistoryNode(InPayload), true);
-					TabManager->DrawAttention(Tab.ToSharedRef());
-					return Tab;
+					TabInfo = (*ListIt);
+					Tab = TabInfo->GetTab().Pin();
+					TabManager->DrawAttention( TabInfo->GetTab().Pin().ToSharedRef() );
 				}
 			}
 		}
+		
+		if(!TabInfo.IsValid())
+		{
+			// If no tab was found with the payload
+			Tab = OpenNewTab(InPayload, OpenNewDocument);
+		}
+		else if(InOpenCause == CreateHistoryEvent)
+		{
+			TSharedPtr<FDocumentTabFactory> Factory = FindSupportingFactory(InPayload.ToSharedRef());
+			TabInfo->AddTabHistory(Factory->CreateTabHistoryNode(InPayload), true, true);
+		}
+		
+		return Tab;
+	}
+	else if(InOpenCause == NavigateBackwards || InOpenCause == NavigateForwards)
+	{
+		return NavigateCurrentTab(InPayload, InOpenCause);
 	}
 
-	// Occurs when forcing open a new tab, or if it failed to find existing one
-	return OpenNewTab(Factory->CreateTabHistoryNode(InPayload), InOpenCause);
+	// Occurs only when forcing open a new tab.
+	return OpenNewTab(InPayload, InOpenCause);
 }
 
 TWeakPtr< FTabInfo > FDocumentTracker::FindTabInForeground()
@@ -615,68 +557,7 @@ TWeakPtr< FTabInfo > FDocumentTracker::FindTabInForeground()
 		}
 	}
 
-	return nullptr;
-}
-
-bool FDocumentTracker::NavigateToTabHistory(int32 InHistoryIdx)
-{
-	if (History.IsValidIndex(InHistoryIdx))
-	{
-		TSharedPtr<FGenericTabHistory> NewHistory = History[InHistoryIdx];
-		if (NewHistory->IsHistoryValid())
-		{
-			CurrentHistoryIndex = InHistoryIdx;
-
-			TSharedPtr<FTabInfo> FoundPayloadTab, FoundBoundTab;
-			FTabList& List = GetSpawnedList();
-			for (TSharedPtr<FTabInfo>& TabInfo : List)
-			{
-				if (TabInfo->GetCurrentHistory() == NewHistory)
-				{
-					// If it's literally the same history item that is already active, just focus the tab
-					TabManager->DrawAttention(TabInfo->GetTab().Pin().ToSharedRef());
-					return true;
-				}
-				else if (TabInfo->GetCurrentHistory()->GetBoundTab() == NewHistory->GetBoundTab())
-				{
-					FoundBoundTab = TabInfo;
-				}
-				else if (TabInfo->PayloadMatches(NewHistory->GetPayload()))
-				{
-					FoundPayloadTab = TabInfo;
-				}
-			}
-
-			// If no bound tab but found matching payload, use that
-			if (!FoundBoundTab.IsValid() && FoundPayloadTab.IsValid())
-			{
-				FoundBoundTab = FoundPayloadTab;
-			}
-
-			if (FoundBoundTab.IsValid())
-			{
-				// Found a mostly matching tab we want to restore in
-				FoundBoundTab->SetCurrentHistory(NewHistory, true, true);
-				TabManager->DrawAttention(FoundBoundTab->GetTab().Pin().ToSharedRef());
-				return true;
-			}
-
-			// The tab was closed, so spawn a new one
-			OpenNewTab(NewHistory, EOpenDocumentCause::NavigatingHistory);
-			return true;
-		}
-	}
-
-	return false;
-}
-
-TSharedPtr<FGenericTabHistory> FDocumentTracker::GetCurrentTabHistory()
-{
-	if (History.IsValidIndex(CurrentHistoryIndex))
-	{
-		return History[CurrentHistoryIndex];
-	}
-	return nullptr;
+	return NULL;
 }
 
 TSharedPtr<SDockTab> FDocumentTracker::NavigateCurrentTab(TSharedPtr<FTabPayload> InPayload, EOpenDocumentCause InNavigateCause)
@@ -687,85 +568,67 @@ TSharedPtr<SDockTab> FDocumentTracker::NavigateCurrentTab(TSharedPtr<FTabPayload
 	if(List.Num())
 	{
 		// Make sure we find an available tab to navigate, there are ones available.
-		TSharedPtr<FTabInfo> LastEditedTabInfo = GetLastEditedTabInfo();
 		if(!LastEditedTabInfo.IsValid())
 		{
-			WeakLastEditedTabInfo = FindTabInForeground();
+			LastEditedTabInfo = FindTabInForeground();
 
 			// Check if we still do not have a valid tab, if we do not, activate the first tab
-			// Any invalid tabs would have been deleted inside GetSpawnedList so we know 0 is valid
-			if(!WeakLastEditedTabInfo.IsValid())
+			if(!LastEditedTabInfo.IsValid())
 			{
-				WeakLastEditedTabInfo = List[0];
-				List[0]->GetTab().Pin()->ActivateInParent(ETabActivationCause::SetDirectly);
+				LastEditedTabInfo = List[0];
+				LastEditedTabInfo.Pin()->GetTab().Pin()->ActivateInParent(ETabActivationCause::SetDirectly);
 			}
-
-			LastEditedTabInfo = GetLastEditedTabInfo();
 		}
 
 		check(LastEditedTabInfo.IsValid());
-		TSharedPtr<SDockTab> LastEditedTab = LastEditedTabInfo->GetTab().Pin();
+		TSharedPtr<FAssetEditorToolkit> HostingApp = HostingAppPtr.Pin();
+		FWorkflowTabSpawnInfo SpawnInfo;
+		SpawnInfo.Payload = InPayload;
+		SpawnInfo.TabInfo = LastEditedTabInfo.Pin();
 
 		if(InNavigateCause == NavigatingCurrentDocument || InNavigateCause == QuickNavigateCurrentDocument)
 		{
 			TSharedPtr<FDocumentTabFactory> Factory = FindSupportingFactory(InPayload.ToSharedRef());
-			if (Factory.IsValid())
-			{
-				// If doing a Quick navigate of the document, do not save history data as it's likely still at the default values. The object is always saved
-				LastEditedTabInfo->AddTabHistory(Factory->CreateTabHistoryNode(InPayload), InNavigateCause != QuickNavigateCurrentDocument);
-				// Ensure that the tab appears if the tab isn't currently in the foreground.
-				LastEditedTab->ActivateInParent(ETabActivationCause::SetDirectly);
-			}
+			// If doing a Quick navigate of the document, do not save history data as it's likely still at the default values. The object is always saved
+			LastEditedTabInfo.Pin()->AddTabHistory(Factory->CreateTabHistoryNode(InPayload), InNavigateCause != QuickNavigateCurrentDocument);
+			// Ensure that the tab appears if the tab isn't currently in the foreground.
+			LastEditedTabInfo.Pin()->GetTab().Pin()->ActivateInParent(ETabActivationCause::SetDirectly);
 		}
 		else if(InNavigateCause == NavigateBackwards)
 		{
-			LastEditedTabInfo->OnGoBackInHistory();
+			LastEditedTabInfo.Pin()->OnGoBackInHistory();
 		}
 		else if(InNavigateCause == NavigateForwards)
 		{
-			LastEditedTabInfo->OnGoForwardInHistory();
+			LastEditedTabInfo.Pin()->OnGoForwardInHistory();
 		}
 
-		return LastEditedTab;
+		return LastEditedTabInfo.Pin()->GetTab().Pin();
 	}
 	
 	// Open in new tab
-	TSharedPtr<FDocumentTabFactory> Factory = FindSupportingFactory(InPayload.ToSharedRef());
-	if (Factory.IsValid())
-	{
-		return OpenNewTab(Factory->CreateTabHistoryNode(InPayload), OpenNewDocument);
-	}
-	
-	return nullptr;
+	return OpenNewTab(InPayload, OpenNewDocument);
 }
 
-TSharedPtr<SDockTab> FDocumentTracker::OpenNewTab(TSharedPtr<FGenericTabHistory> InTabHistory, EOpenDocumentCause InOpenCause)
+TSharedPtr<SDockTab> FDocumentTracker::OpenNewTab(TSharedPtr<FTabPayload> InPayload, EOpenDocumentCause InOpenCause)
 {
-	ensure(InOpenCause == ForceOpenNewDocument || InOpenCause == OpenNewDocument || InOpenCause == RestorePreviousDocument || InOpenCause == NavigatingHistory);
+	ensure(InOpenCause == ForceOpenNewDocument ||InOpenCause == OpenNewDocument || InOpenCause == RestorePreviousDocument);
 
-	TSharedPtr<FDocumentTabFactory> Factory = InTabHistory->GetFactory().Pin();
+	TSharedPtr<FDocumentTabFactory> Factory = FindSupportingFactory(InPayload.ToSharedRef());
+
 	TSharedPtr<SDockTab> NewTab;
 
 	if(Factory.IsValid())
 	{
 		TSharedPtr<FAssetEditorToolkit> HostingApp = HostingAppPtr.Pin();
 		FWorkflowTabSpawnInfo SpawnInfo;
-		SpawnInfo.Payload = InTabHistory->GetPayload();
+		SpawnInfo.Payload = InPayload;
 
 		NewTab = Factory->SpawnBlankTab();
 
-		TSharedPtr<FTabInfo> NewTabInfo = MakeShareable( new FTabInfo(NewTab.ToSharedRef(), Factory, AsShared()) );
+		TSharedPtr<FTabInfo> NewTabInfo = MakeShareable( new FTabInfo(NewTab.ToSharedRef(), Factory) );
 		SpawnedTabs.Add( NewTabInfo );
-
-		if (InOpenCause == NavigatingHistory)
-		{
-			// Don't want to create a new history entry when going back/forward
-			NewTabInfo->SetCurrentHistory(InTabHistory, true, true);
-		}
-		else
-		{
-			NewTabInfo->AddTabHistory(InTabHistory);
-		}
+		NewTabInfo->AddTabHistory(Factory->CreateTabHistoryNode(InPayload));
 
 		if (InOpenCause == ForceOpenNewDocument  || InOpenCause == OpenNewDocument)
 		{
@@ -774,10 +637,6 @@ TSharedPtr<SDockTab> FDocumentTracker::OpenNewTab(TSharedPtr<FGenericTabHistory>
 		else if (InOpenCause == RestorePreviousDocument)
 		{
 			TabManager->RestoreDocumentTab( "Document", FTabManager::ESearchPreference::RequireClosedTab, NewTab.ToSharedRef() );
-
-			// Clear tab history before this so previous restores don't show up
-			History.RemoveAt(0, History.Num() - 1, true);
-			CurrentHistoryIndex = History.Num() - 1;
 		}
 	}
 
@@ -813,7 +672,7 @@ TSharedPtr<FDocumentTabFactory> FDocumentTracker::FindSupportingFactory(TSharedR
 	{
 		TSharedPtr<FDocumentTabFactory> Factory = FactoryIt.Value();
 
-		if (Factory->IsPayloadSupported(Payload) && TabManager->GetTabBlacklist()->PassesFilter(Factory->GetIdentifier()))
+		if (Factory->IsPayloadSupported(Payload))
 		{
 			return Factory;
 		}
@@ -934,16 +793,16 @@ TArray< TSharedPtr<SDockTab> > FDocumentTracker::GetAllDocumentTabs() const
 
 TSharedPtr<SDockTab> FDocumentTracker::GetActiveTab() const
 {
-	if(WeakLastEditedTabInfo.IsValid())
+	if(LastEditedTabInfo.IsValid())
 	{
-		return WeakLastEditedTabInfo.Pin()->GetTab().Pin();
+		return LastEditedTabInfo.Pin()->GetTab().Pin();
 	}
 
-	return nullptr;
+	return NULL;
 }
 
 FReply FDocumentTracker::OnNavigateTab(FDocumentTracker::EOpenDocumentCause InCause)
 {
-	NavigateCurrentTab(FTabPayload_UObject::Make(nullptr), InCause);
+	NavigateCurrentTab(FTabPayload_UObject::Make(NULL), InCause);
 	return FReply::Handled();
 }

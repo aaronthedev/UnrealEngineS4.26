@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Factories/FbxSceneImportOptionsSkeletalMesh.h"
 #include "Factories/FbxSkeletalMeshImportData.h"
@@ -17,15 +17,13 @@ UFbxSceneImportOptionsSkeletalMesh::UFbxSceneImportOptionsSkeletalMesh(const FOb
 	, ThresholdPosition(THRESH_POINTS_ARE_SAME)
 	, ThresholdTangentNormal(THRESH_NORMALS_ARE_SAME)
 	, ThresholdUV(THRESH_UVS_ARE_SAME)
-	, MorphThresholdPosition(THRESH_POINTS_ARE_NEAR)
 	, bImportAnimations(true)
-	, AnimationLength(EFBXAnimationLengthImportType::FBXALIT_AnimatedKey)
+	, AnimationLength(EFbxSceneVertexColorImportOption::Replace)
 	, FrameImportRange(0, 0)
 	, bUseDefaultSampleRate(false)
 	, CustomSampleRate(0)
 	, bImportCustomAttribute(true)
 	, bDeleteExistingCustomAttributeCurves(false)
-	, bDeleteExistingNonCurveCustomAttributes(false)
 	, bPreserveLocalTransform(false)
 	, bDeleteExistingMorphTargetCurves(false)
 {
@@ -39,7 +37,6 @@ void UFbxSceneImportOptionsSkeletalMesh::FillSkeletalMeshInmportData(UFbxSkeleta
 	SkeletalMeshImportData->ThresholdPosition = ThresholdPosition;
 	SkeletalMeshImportData->ThresholdTangentNormal = ThresholdTangentNormal;
 	SkeletalMeshImportData->ThresholdUV = ThresholdUV;
-	SkeletalMeshImportData->MorphThresholdPosition = MorphThresholdPosition;
 	SkeletalMeshImportData->bPreserveSmoothingGroups = bPreserveSmoothingGroups;
 	SkeletalMeshImportData->bUpdateSkeletonReferencePose = bUpdateSkeletonReferencePose;
 	SkeletalMeshImportData->bUseT0AsRefPose = bUseT0AsRefPose;
@@ -58,7 +55,6 @@ void UFbxSceneImportOptionsSkeletalMesh::FillSkeletalMeshInmportData(UFbxSkeleta
 	AnimSequenceImportData->bDeleteExistingMorphTargetCurves = bDeleteExistingMorphTargetCurves;
 	AnimSequenceImportData->bImportCustomAttribute = bImportCustomAttribute;
 	AnimSequenceImportData->bDeleteExistingCustomAttributeCurves = bDeleteExistingCustomAttributeCurves;
-	AnimSequenceImportData->bDeleteExistingNonCurveCustomAttributes = bDeleteExistingNonCurveCustomAttributes;
 	AnimSequenceImportData->bPreserveLocalTransform = bPreserveLocalTransform;
 	AnimSequenceImportData->bUseDefaultSampleRate = bUseDefaultSampleRate;
 	AnimSequenceImportData->CustomSampleRate = CustomSampleRate;

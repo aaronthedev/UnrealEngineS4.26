@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SAddNewGameplayTagWidget.h"
 #include "DetailLayoutBuilder.h"
@@ -7,7 +7,6 @@
 #include "GameplayTagsModule.h"
 #include "Widgets/Input/SButton.h"
 #include "Misc/MessageDialog.h"
-#include "Widgets/Images/SImage.h"
 
 #define LOCTEXT_NAMESPACE "AddNewGameplayTagWidget"
 
@@ -125,22 +124,6 @@ void SAddNewGameplayTagWidget::Construct(const FArguments& InArgs)
 					.Font(IDetailLayoutBuilder::GetDetailFont())
 				]
 			]
-
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			[
-				SNew( SButton )
-				.ButtonStyle( FEditorStyle::Get(), "NoBorder" )
-				.Visibility(this, &SAddNewGameplayTagWidget::OnGetTagSourceFavoritesVisibility)
-				.OnClicked(this, &SAddNewGameplayTagWidget::OnToggleTagSourceFavoriteClicked)
-				.ToolTipText(LOCTEXT("ToggleFavoriteTooltip", "Toggle whether or not this tag source is your favorite source (new tags will go into your favorite source by default)"))
-				.ContentPadding(0)
-				[
-					SNew(SImage)
-					.Image(this, &SAddNewGameplayTagWidget::OnGetTagSourceFavoriteImage)
-				]
-			]
 		]
 
 		// Add Tag Button
@@ -161,30 +144,7 @@ void SAddNewGameplayTagWidget::Construct(const FArguments& InArgs)
 		]
 	];
 
-	Reset(EResetType::ResetAll);
-}
-
-EVisibility SAddNewGameplayTagWidget::OnGetTagSourceFavoritesVisibility() const
-{
-	return (TagSources.Num() > 1) ? EVisibility::Visible : EVisibility::Collapsed;
-}
-
-FReply SAddNewGameplayTagWidget::OnToggleTagSourceFavoriteClicked()
-{
-	const FName ActiveTagSource = *TagSourcesComboBox->GetSelectedItem().Get();
-	const bool bWasFavorite = FGameplayTagSource::GetFavoriteName() == ActiveTagSource;
-
-	FGameplayTagSource::SetFavoriteName(bWasFavorite ? NAME_None : ActiveTagSource);
-
-	return FReply::Handled();
-}
-
-const FSlateBrush* SAddNewGameplayTagWidget::OnGetTagSourceFavoriteImage() const
-{
-	const FName ActiveTagSource = *TagSourcesComboBox->GetSelectedItem().Get();
-	const bool bIsFavoriteTagSource = FGameplayTagSource::GetFavoriteName() == ActiveTagSource;
-
-	return FEditorStyle::GetBrush(bIsFavoriteTagSource ? TEXT("PropertyWindow.Favorites_Enabled") : TEXT("PropertyWindow.Favorites_Disabled"));
+	Reset();
 }
 
 void SAddNewGameplayTagWidget::Tick( const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime )
@@ -216,21 +176,12 @@ void SAddNewGameplayTagWidget::PopulateTagSources()
 			TagSources.Add(MakeShareable(new FName(Source->SourceName)));
 		}
 	}
-
-	//Set selection to the latest added source
-	if (TagSourcesComboBox != nullptr)
-	{
-		TagSourcesComboBox->SetSelectedItem(TagSources.Last());
-	}	
 }
 
-void SAddNewGameplayTagWidget::Reset(EResetType ResetType)
+void SAddNewGameplayTagWidget::Reset()
 {
 	SetTagName();
-	if (ResetType != EResetType::DoNotResetSource)
-	{
-		SelectTagSource(FGameplayTagSource::GetFavoriteName());
-	}
+	SelectTagSource();
 	TagCommentTextBox->SetText(FText());
 }
 
@@ -295,11 +246,6 @@ void SAddNewGameplayTagWidget::CreateNewGameplayTag()
 		return;
 	}
 
-	if (TagSourcesComboBox->GetSelectedItem().Get() == nullptr)
-	{
-		return;
-	}
-
 	FText TagNameAsText = TagNameTextBox->GetText();
 	FString TagName = TagNameAsText.ToString();
 	FString TagComment = TagCommentTextBox->GetText().ToString();
@@ -329,7 +275,7 @@ void SAddNewGameplayTagWidget::CreateNewGameplayTag()
 
 	OnGameplayTagAdded.ExecuteIfBound(TagName, TagComment, TagSource);
 
-	Reset(EResetType::DoNotResetSource);
+	Reset();
 }
 
 TSharedRef<SWidget> SAddNewGameplayTagWidget::OnGenerateTagSourcesComboBox(TSharedPtr<FName> InItem)

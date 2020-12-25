@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,17 +9,8 @@
 
 THIRD_PARTY_INCLUDES_START
 	#include "ThirdParty/zlib/zlib-1.2.5/Inc/zlib.h"
-
-	// make sure no other versions of libpng headers are picked up
-#if WITH_LIBPNG_1_6
-	#include "ThirdParty/libPNG/libPNG-1.6.37/png.h"
-	#include "ThirdParty/libPNG/libPNG-1.6.37/pngstruct.h"
-	#include "ThirdParty/libPNG/libPNG-1.6.37/pnginfo.h"
-#else
 	#include "ThirdParty/libPNG/libPNG-1.5.2/png.h"
 	#include "ThirdParty/libPNG/libPNG-1.5.2/pnginfo.h"
-#endif
-
 	#include <setjmp.h>
 THIRD_PARTY_INCLUDES_END
 
@@ -47,7 +38,7 @@ public:
 
 	virtual void Compress(int32 Quality) override;
 	virtual void Reset() override;
-	virtual bool SetCompressed(const void* InCompressedData, int64 InCompressedSize) override;
+	virtual bool SetCompressed(const void* InCompressedData, int32 InCompressedSize) override;
 	virtual void Uncompress(const ERGBFormat InFormat, int32 InBitDepth) override;
 
 public:
@@ -83,7 +74,7 @@ protected:
 private:
 
 	/** The read offset into our array. */
-	int64 ReadOffset;
+	int32 ReadOffset;
 
 	/** The color type as defined in the header. */
 	int32 ColorType;

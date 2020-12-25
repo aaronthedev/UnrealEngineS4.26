@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -124,7 +124,7 @@ namespace UnrealBuildTool
 
 	class XcodeProjectFile : ProjectFile
 	{
-		//FileReference OnlyGameProject;
+		FileReference OnlyGameProject;
 
 		Dictionary<string, XcodeFileGroup> Groups = new Dictionary<string, XcodeFileGroup>();
 
@@ -135,14 +135,12 @@ namespace UnrealBuildTool
 		/// <param name="InOnlyGameProject"></param>
 		/// <param name="IsForDistribution">True for distribution builds</param>
 		/// <param name="BundleID">Override option for bundle identifier</param>
-		/// <param name="InAppName"></param>
-		public XcodeProjectFile(FileReference InitFilePath, FileReference InOnlyGameProject, bool IsForDistribution, string BundleID, string InAppName)
+		public XcodeProjectFile(FileReference InitFilePath, FileReference InOnlyGameProject, bool IsForDistribution, string BundleID)
 			: base(InitFilePath)
 		{
-			//OnlyGameProject = InOnlyGameProject;
+			OnlyGameProject = InOnlyGameProject;
 			bForDistribution = IsForDistribution;
 			BundleIdentifier = BundleID;
-			AppName = InAppName;
 		}
 
 		public override string ToString()
@@ -159,11 +157,6 @@ namespace UnrealBuildTool
 		/// Override for bundle identifier
 		/// </summary>
 		string BundleIdentifier = "";
-
-		/// <summary>
-		/// Override AppName
-		/// </summary>
-		string AppName = "";
 
 		/// <summary>
 		/// Gets Xcode file category based on its extension
@@ -362,7 +355,7 @@ namespace UnrealBuildTool
 			if (UProjectPath != null)
 			{
 				string ProjectExtensionsDir = Path.Combine(Path.GetDirectoryName(UProjectPath.FullName), "Build/IOS/Extensions");
-				//string ProjectIntermediateDir = Path.Combine(Path.GetDirectoryName(UProjectPath.FullName), "Intermediate/IOS/Extensions");
+				string ProjectIntermediateDir = Path.Combine(Path.GetDirectoryName(UProjectPath.FullName), "Intermediate/IOS/Extensions");
 
 				if (Directory.Exists(ProjectExtensionsDir))
 				{
@@ -635,9 +628,7 @@ namespace UnrealBuildTool
 
 			Content.Append("\t\t" + TargetGuid + " /* " + TargetName + " */ = {" + ProjectFileGenerator.NewLine);
 			Content.Append("\t\t\tisa = PBXLegacyTarget;" + ProjectFileGenerator.NewLine);
-			Content.Append("\t\t\tbuildArgumentsString = \"$(ACTION) $(UE_BUILD_TARGET_NAME) $(PLATFORM_NAME) $(UE_BUILD_TARGET_CONFIG)" 
-				+ (UProjectPath == null ? "" : " \\\"" + UProjectPath.FullName + "\\\"") 
-				+ "\";" + ProjectFileGenerator.NewLine);
+			Content.Append("\t\t\tbuildArgumentsString = \"$(ACTION) $(UE_BUILD_TARGET_NAME) $(PLATFORM_NAME) $(UE_BUILD_TARGET_CONFIG)" + (UProjectPath == null ? "" : " \\\"" + UProjectPath.FullName + "\\\"") + (bHasEditorConfiguration ? " -buildscw" : "") + "\";" + ProjectFileGenerator.NewLine);
 			Content.Append("\t\t\tbuildConfigurationList = "  + TargetBuildConfigGuid + " /* Build configuration list for PBXLegacyTarget \"" + TargetName + "\" */;" + ProjectFileGenerator.NewLine);
 			Content.Append("\t\t\tbuildPhases = (" + ProjectFileGenerator.NewLine);
 			Content.Append("\t\t\t);" + ProjectFileGenerator.NewLine);
@@ -751,7 +742,7 @@ namespace UnrealBuildTool
 			
 			// @todo: look also in Project/Build/Frameworks directory!
 			ProjectDescriptor Project = ProjectDescriptor.FromFile(UProjectPath);
-			List<PluginInfo> AvailablePlugins = Plugins.ReadAvailablePlugins(UnrealBuildTool.EngineDirectory, DirectoryReference.FromFile(UProjectPath), Project.AdditionalPluginDirectories);
+			List<PluginInfo> AvailablePlugins = Plugins.ReadAvailablePlugins(UnrealBuildTool.EngineDirectory, UProjectPath, Project.AdditionalPluginDirectories);
 
 			// look in each plugin for frameworks
 			// @todo: Cache this kind of things since every target will re-do this work!
@@ -773,11 +764,11 @@ namespace UnrealBuildTool
 					// look at each zip
 					foreach (FileInfo FI in new System.IO.DirectoryInfo(FrameworkDir.FullName).EnumerateFiles("*.framework.zip"))
 					{
-						//string Guid = XcodeProjectFileGenerator.MakeXcodeGuid();
-						//string RefGuid = XcodeProjectFileGenerator.MakeXcodeGuid();
+						string Guid = XcodeProjectFileGenerator.MakeXcodeGuid();
+						string RefGuid = XcodeProjectFileGenerator.MakeXcodeGuid();
 
 						// for FI of foo.framework.zip, this will give us foo.framework
-						//string Framework = Path.GetFileNameWithoutExtension(FI.FullName);
+						string Framework = Path.GetFileNameWithoutExtension(FI.FullName);
 
 						// unzip the framework right into the .app
 						FrameworkScript.AppendFormat("\\techo Unzipping {0}...\\n", FI.FullName);
@@ -851,7 +842,7 @@ namespace UnrealBuildTool
 			{
 				TVOSPlatform TVOSPlatform = ((TVOSPlatform)UEBuildPlatform.GetBuildPlatform(UnrealTargetPlatform.TVOS));
 				TVOSProjectSettings ProjectSettings = TVOSPlatform.ReadProjectSettings(ProjectFile);
-				//TVOSProvisioningData ProvisioningData = TVOSPlatform.ReadProvisioningData(ProjectSettings, bForDistribution);
+				TVOSProvisioningData ProvisioningData = TVOSPlatform.ReadProvisioningData(ProjectSettings, bForDistribution);
 				bAutomaticSigning = ProjectSettings.bAutomaticSigning;
 			}
 
@@ -1006,7 +997,7 @@ namespace UnrealBuildTool
 					IOSProvisioningData ProvisioningData = IOSPlatform.ReadProvisioningData(ProjectSettings, bForDistribution);
 					IOSRunTimeVersion = ProjectSettings.RuntimeVersion;
 					IOSRunTimeDevices = ProjectSettings.RuntimeDevices;
-					ValidArchs += " arm64";
+					ValidArchs += " arm64 armv7 armv7s";
 					SupportedPlatforms += " iphoneos";
 					bAutomaticSigning = ProjectSettings.bAutomaticSigning;
 					if (!bAutomaticSigning)
@@ -1025,6 +1016,10 @@ namespace UnrealBuildTool
 					TVOSProvisioningData ProvisioningData = TVOSPlatform.ReadProvisioningData(ProjectSettings, bForDistribution);
 					TVOSRunTimeVersion = ProjectSettings.RuntimeVersion;
 					TVOSRunTimeDevices = ProjectSettings.RuntimeDevices;
+					if (!ValidArchs.Contains("arm64"))
+					{
+						ValidArchs += " arm64 armv7 armv7s";
+					}
 					SupportedPlatforms += " appletvos";
 					if (!bAutomaticSigning)
 					{
@@ -1141,7 +1136,7 @@ namespace UnrealBuildTool
 			Content.Append("\t\t\tbuildSettings = {" + ProjectFileGenerator.NewLine);
 
 			string UE4Dir = ConvertPath(Path.GetFullPath(Directory.GetCurrentDirectory() + "../../.."));
-			//string MacExecutableDir = ConvertPath(Config.MacExecutablePath.Directory.FullName);
+			string MacExecutableDir = ConvertPath(Config.MacExecutablePath.Directory.FullName);
 			string MacExecutableFileName = Config.MacExecutablePath.GetFileName();
 
 			string IOSRunTimeVersion, TVOSRunTimeVersion;
@@ -1237,7 +1232,6 @@ namespace UnrealBuildTool
 						DirectoryReference ProjectPath = GameDir;
 						DirectoryReference EngineDir = DirectoryReference.Combine(new DirectoryReference(UE4Dir), "Engine");
 						string GameName = Config.BuildTarget;
-						bool bIsClient = false;
 						if (ProjectPath == null)
 						{
 							ProjectPath = EngineDir;
@@ -1246,7 +1240,6 @@ namespace UnrealBuildTool
 						{
 							ProjectPath = EngineDir;
 							GameName = "UE4Game";
-							bIsClient = (AppName == "UE4Client");
 						}
 
 						if (bCreateMacInfoPlist)
@@ -1271,13 +1264,12 @@ namespace UnrealBuildTool
 							TargetReceipt Receipt;
 							TargetReceipt.TryRead(ReceiptFilename, out Receipt);
 							VersionNumber SdkVersion = UEDeployIOS.GetSdkVersion(Receipt);
-							bool bBuildAsFramework = UEDeployIOS.GetCompileAsDll(Receipt);
-							UEDeployIOS.GenerateIOSPList(ProjectFile, Config.BuildConfig, ProjectPath.FullName, bIsUE4Game, GameName, bIsClient, Config.BuildTarget, EngineDir.FullName, ProjectPath + "/Binaries/IOS/Payload", SdkVersion, null, BundleIdentifier, bBuildAsFramework, out bSupportPortrait, out bSupportLandscape, out bSkipIcons);
+							UEDeployIOS.GenerateIOSPList(ProjectFile, Config.BuildConfig, ProjectPath.FullName, bIsUE4Game, GameName, Config.BuildTarget, EngineDir.FullName, ProjectPath + "/Binaries/IOS/Payload", SdkVersion, null, BundleIdentifier, out bSupportPortrait, out bSupportLandscape, out bSkipIcons);
 						}
 						if (bCreateTVOSInfoPlist)
 						{
 							Directory.CreateDirectory(Path.GetDirectoryName(TVOSInfoPlistPath));
-							UEDeployTVOS.GenerateTVOSPList(ProjectPath.FullName, bIsUE4Game, GameName, bIsClient, Config.BuildTarget, EngineDir.FullName, ProjectPath + "/Binaries/TVOS/Payload", null, BundleIdentifier);
+							UEDeployTVOS.GenerateTVOSPList(ProjectPath.FullName, bIsUE4Game, GameName, Config.BuildTarget, EngineDir.FullName, ProjectPath + "/Binaries/TVOS/Payload", null, BundleIdentifier);
 						}
 					}
 				}
@@ -1332,14 +1324,14 @@ namespace UnrealBuildTool
 				string SupportedPlatforms = "macosx";
 				if (InstalledPlatformInfo.IsValidPlatform(UnrealTargetPlatform.IOS, EProjectType.Code))
 				{
-					ValidArchs += " arm64";
+					ValidArchs += " arm64 armv7 armv7s";
 					SupportedPlatforms += " iphoneos";
 				}
 				if (InstalledPlatformInfo.IsValidPlatform(UnrealTargetPlatform.TVOS, EProjectType.Code))
 				{
 					if (ValidArchs == "x86_64")
 					{
-						ValidArchs += " arm64";
+						ValidArchs += " arm64 armv7 armv7s";
 					}
 					SupportedPlatforms += " appletvos";
 				}
@@ -1431,7 +1423,7 @@ namespace UnrealBuildTool
 		{
 			List<XcodeBuildConfig> BuildConfigs = new List<XcodeBuildConfig>();
 
-			//string ProjectName = ProjectFilePath.GetFileNameWithoutExtension();
+			string ProjectName = ProjectFilePath.GetFileNameWithoutExtension();
 
 			foreach (UnrealTargetConfiguration Configuration in Configurations)
 			{
@@ -1507,7 +1499,7 @@ namespace UnrealBuildTool
                                             {
                                                 string IOSExecutableName = MakeExecutableFileName(ExeName, UnrealTargetPlatform.IOS, Configuration, ProjectTarget.TargetRules.Architecture, ProjectTarget.TargetRules.UndecoratedConfiguration);
                                                 string TVOSExecutableName = IOSExecutableName.Replace("-IOS-", "-TVOS-");
-                                                //string MacExecutableName = IOSExecutableName.Replace("-IOS-", "-Mac-");
+                                                string MacExecutableName = IOSExecutableName.Replace("-IOS-", "-Mac-");
                                                 BuildConfigs.Add(new XcodeBuildConfig(ConfigName, TargetName, FileReference.Combine(OutputDirectory, "Mac", IOSExecutableName), FileReference.Combine(OutputDirectory, "IOS", IOSExecutableName), FileReference.Combine(OutputDirectory, "TVOS", TVOSExecutableName), ProjectTarget, Configuration));
                                             }
                                         }
@@ -1542,32 +1534,19 @@ namespace UnrealBuildTool
             return Result.ToString();
 		}
 
-		private FileReference GetUserSchemeManagementFilePath()
-		{
-			return new FileReference(ProjectFilePath.FullName + "/xcuserdata/" + Environment.UserName + ".xcuserdatad/xcschemes/xcschememanagement.plist");
-		}
-
-		private DirectoryReference GetProjectSchemeDirectory()
-		{
-			return new DirectoryReference(ProjectFilePath.FullName + "/xcshareddata/xcschemes");
-		}
-
-		private FileReference GetProjectSchemeFilePathForTarget(string TargetName)
-		{
-			return FileReference.Combine(GetProjectSchemeDirectory(), TargetName + ".xcscheme");
-		}
-
 		private void WriteSchemeFile(string TargetName, string TargetGuid, string BuildTargetGuid, string IndexTargetGuid, bool bHasEditorConfiguration, string GameProjectPath)
 		{
-		
-			FileReference SchemeFilePath = GetProjectSchemeFilePathForTarget(TargetName);
-
-			DirectoryReference.CreateDirectory(SchemeFilePath.Directory);
-
-			string OldCommandLineArguments = null;
-			if (FileReference.Exists(SchemeFilePath))
+			DirectoryReference SchemesDir = new DirectoryReference(ProjectFilePath.FullName + "/xcshareddata/xcschemes");
+			if (!DirectoryReference.Exists(SchemesDir))
 			{
-				string OldContents = File.ReadAllText(SchemeFilePath.FullName);
+				DirectoryReference.CreateDirectory(SchemesDir);
+			}
+
+			string SchemeFilePath = SchemesDir + "/" + TargetName + ".xcscheme";
+			string OldCommandLineArguments = null;
+			if (File.Exists(SchemeFilePath))
+			{
+				string OldContents = File.ReadAllText(SchemeFilePath);
 				int OldCommandLineArgumentsStart = OldContents.IndexOf("<CommandLineArguments>") + "<CommandLineArguments>".Length;
 				int OldCommandLineArgumentsEnd = OldContents.IndexOf("</CommandLineArguments>");
 				if (OldCommandLineArgumentsStart != -1 && OldCommandLineArgumentsEnd != -1)
@@ -1703,7 +1682,7 @@ namespace UnrealBuildTool
 			Content.Append("   </ArchiveAction>" + ProjectFileGenerator.NewLine);
 			Content.Append("</Scheme>" + ProjectFileGenerator.NewLine);
 
-			File.WriteAllText(SchemeFilePath.FullName, Content.ToString(), new UTF8Encoding());
+			File.WriteAllText(SchemeFilePath, Content.ToString(), new UTF8Encoding());
 
 			Content.Clear();
 
@@ -1740,70 +1719,14 @@ namespace UnrealBuildTool
 			Content.Append("</dict>" + ProjectFileGenerator.NewLine);
 			Content.Append("</plist>" + ProjectFileGenerator.NewLine);
 
-			FileReference ManagementFile = GetUserSchemeManagementFilePath();
-			if (!DirectoryReference.Exists(ManagementFile.Directory))
+			DirectoryReference ManagementFileDir = new DirectoryReference(ProjectFilePath.FullName + "/xcuserdata/" + Environment.UserName + ".xcuserdatad/xcschemes");
+			if (!DirectoryReference.Exists(ManagementFileDir))
 			{
-				DirectoryReference.CreateDirectory(ManagementFile.Directory);
+				DirectoryReference.CreateDirectory(ManagementFileDir);
 			}
 
-			File.WriteAllText(ManagementFile.FullName, Content.ToString(), new UTF8Encoding());
-		}
-
-		public static IEnumerable<UnrealTargetPlatform> GetSupportedPlatforms()
-		{
-			List<UnrealTargetPlatform> SupportedPlatforms = new List<UnrealTargetPlatform>();
-
-			if (XcodeProjectFileGenerator.ProjectFilePlatform.HasFlag(XcodeProjectFileGenerator.XcodeProjectFilePlatform.Mac))
-			{
-				SupportedPlatforms.Add(UnrealTargetPlatform.Mac);
-			}
-
-			if (XcodeProjectFileGenerator.ProjectFilePlatform.HasFlag(XcodeProjectFileGenerator.XcodeProjectFilePlatform.iOS))
-			{
-				SupportedPlatforms.Add(UnrealTargetPlatform.IOS);
-			}
-
-			if (XcodeProjectFileGenerator.ProjectFilePlatform.HasFlag(XcodeProjectFileGenerator.XcodeProjectFilePlatform.tvOS))
-			{
-				SupportedPlatforms.Add(UnrealTargetPlatform.TVOS);
-			}
-
-			return SupportedPlatforms;
-		}
-
-		public static IEnumerable<UnrealTargetConfiguration> GetSupportedConfigurations()
-		{
-			return new UnrealTargetConfiguration[] { 
-				UnrealTargetConfiguration.Debug,
-				UnrealTargetConfiguration.DebugGame,
-				UnrealTargetConfiguration.Development,
-				UnrealTargetConfiguration.Test,
-				UnrealTargetConfiguration.Shipping
-			};
-		}
-
-		public bool ShouldIncludeProjectInWorkspace()
-		{
-			return CanBuildProjectLocally();
-		}
-
-		public bool CanBuildProjectLocally()
-		{
-			foreach (ProjectTarget ProjectTarget in ProjectTargets)
-			{
-				foreach (UnrealTargetPlatform Platform in GetSupportedPlatforms())
-				{
-					foreach (UnrealTargetConfiguration Config in GetSupportedConfigurations())
-					{
-						if (MSBuildProjectFile.IsValidProjectPlatformAndConfiguration(ProjectTarget, Platform, Config, null))
-						{
-							return true;
-						}
-					}
-				}
-			}
-
-			return false;
+			string ManagementFilePath = ManagementFileDir + "/xcschememanagement.plist";
+			File.WriteAllText(ManagementFilePath, Content.ToString(), new UTF8Encoding());
 		}
 
 		/// Implements Project interface
@@ -1867,7 +1790,7 @@ namespace UnrealBuildTool
 				{
 					bHasEditorConfiguration = true;
 				}
-				else if (Config.ProjectTarget.TargetRules.bIsBuildingConsoleApplication || Config.ProjectTarget.TargetRules.bShouldCompileAsDLL)
+				else if (Config.ProjectTarget.TargetRules.bIsBuildingConsoleApplication)
 				{
 					bIsAppBundle = false;
 				}
@@ -1928,25 +1851,10 @@ namespace UnrealBuildTool
 				bSuccess = ProjectFileGenerator.WriteFileIfChanged(PBXProjFilePath.FullName, ProjectFileContent.ToString(), new UTF8Encoding());
 			}
 
-			bool bNeedScheme = CanBuildProjectLocally();
-
-			if (bNeedScheme)
+			if (bSuccess)
 			{
-				if (bSuccess)
-				{
-					WriteSchemeFile(TargetName, TargetGuid, BuildTargetGuid, IndexTargetGuid, bHasEditorConfiguration, GameProjectPath != null ? GameProjectPath.FullName : "");
-				}
+				WriteSchemeFile(TargetName, TargetGuid, BuildTargetGuid, IndexTargetGuid, bHasEditorConfiguration, GameProjectPath != null ? GameProjectPath.FullName : "");
 			}
-			else
-			{
-				// clean this up because we don't want it persisting if we narrow our project list
-				DirectoryReference SchemeDir = GetProjectSchemeDirectory();
-
-				if (DirectoryReference.Exists(SchemeDir))
-				{
-					DirectoryReference.Delete(SchemeDir, true);
-				}
-			}				
 
 			return bSuccess;
 		}

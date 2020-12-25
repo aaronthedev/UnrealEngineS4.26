@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -30,7 +30,7 @@ public:
 	virtual FIntPoint GetOutputDim() const override;
 	virtual uint32 GetStride() const override;
 	virtual FRHITexture* GetTexture() const override;
-	virtual FMediaTimeStamp GetTime() const override;
+	virtual FTimespan GetTime() const override;
 	virtual bool IsCacheable() const override;
 	virtual bool IsOutputSrgb() const override;
 

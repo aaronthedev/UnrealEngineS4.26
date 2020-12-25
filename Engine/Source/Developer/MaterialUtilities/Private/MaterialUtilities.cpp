@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "MaterialUtilities.h"
 #include "EngineDefines.h"
 #include "ShowFlags.h"
@@ -42,6 +42,7 @@
 #include "MaterialOptions.h"
 
 #include "StaticMeshAttributes.h"
+#include "MeshDescriptionOperations.h"
 
 #if WITH_EDITOR
 #include "DeviceProfiles/DeviceProfile.h"
@@ -138,11 +139,11 @@ UMaterialInterface* FMaterialUtilities::CreateProxyMaterialAndTextures(UPackage*
 
 			if (Property == MP_BaseColor || Property == MP_EmissiveColor)
 			{
-				Material->SetVectorParameterValueEditorOnly(ParameterInfo, FLinearColor::FromSRGBColor(ColorData[0]));
+				Material->SetVectorParameterValueEditorOnly(ParameterInfo, ColorData[0].ReinterpretAsLinear());
 			}
 			else
 			{
-				Material->SetScalarParameterValueEditorOnly(ParameterInfo, FLinearColor::FromSRGBColor(ColorData[0]).R);
+				Material->SetScalarParameterValueEditorOnly(ParameterInfo, ColorData[0].ReinterpretAsLinear().R);
 			}
 		}
 	}
@@ -180,7 +181,7 @@ UMaterialInterface* FMaterialUtilities::CreateProxyMaterialAndTextures(UPackage*
 
 UMaterialInterface* FMaterialUtilities::CreateProxyMaterialAndTextures(const FString& PackageName, const FString& AssetName, const FBakeOutput& BakeOutput, const FMeshData& MeshData, const FMaterialData& MaterialData, UMaterialOptions* Options)
 {
-	UPackage* MaterialPackage = CreatePackage( *PackageName);
+	UPackage* MaterialPackage = CreatePackage(nullptr, *PackageName);
 	check(MaterialPackage);
 	MaterialPackage->FullyLoad();
 	MaterialPackage->Modify();
@@ -300,16 +301,6 @@ struct FExportMaterialCompiler : public FProxyMaterialCompiler
 		return Compiler->VertexColor(); 
 	}
 
-	virtual int32 PreSkinVertexOffset() override
-	{
-		return Compiler->PreSkinVertexOffset();
-	}
-
-	virtual int32 PostSkinVertexOffset() override
-	{
-		return Compiler->PostSkinVertexOffset();
-	}
-
 	virtual int32 PreSkinnedPosition() override
 	{
 		return Compiler->PreSkinnedPosition();
@@ -410,7 +401,7 @@ public:
 	FExportMaterialProxy()
 		: FMaterial()
 	{
-		SetQualityLevelProperties(GMaxRHIFeatureLevel);
+		SetQualityLevelProperties(EMaterialQualityLevel::High, false, GMaxRHIFeatureLevel);
 	}
 
 	FExportMaterialProxy(UMaterialInterface* InMaterialInterface, EMaterialProperty InPropertyToCompile)
@@ -418,15 +409,18 @@ public:
 		, MaterialInterface(InMaterialInterface)
 		, PropertyToCompile(InPropertyToCompile)
 	{
-		SetQualityLevelProperties(GMaxRHIFeatureLevel);
+		SetQualityLevelProperties(EMaterialQualityLevel::High, false, GMaxRHIFeatureLevel);
 		Material = InMaterialInterface->GetMaterial();
-		ReferencedTextures = InMaterialInterface->GetReferencedTextures();
+		InMaterialInterface->AppendReferencedTextures(ReferencedTextures);
 		FPlatformMisc::CreateGuid(Id);
 
 		FMaterialResource* Resource = InMaterialInterface->GetMaterialResource(GMaxRHIFeatureLevel);
 
 		FMaterialShaderMapId ResourceId;
-		Resource->GetShaderMapId(GMaxRHIShaderPlatform, nullptr, ResourceId);
+		Resource->GetShaderMapId(GMaxRHIShaderPlatform, ResourceId);
+
+		FStaticParameterSet StaticParamSet;
+		Resource->GetStaticParameterSet(GMaxRHIShaderPlatform, StaticParamSet);
 
 		{
 			TArray<FShaderType*> ShaderTypes;
@@ -445,10 +439,8 @@ public:
 		case MP_BaseColor: ResourceId.Usage = EMaterialShaderMapUsage::MaterialExportBaseColor; break;
 		case MP_Specular: ResourceId.Usage = EMaterialShaderMapUsage::MaterialExportSpecular; break;
 		case MP_Normal: ResourceId.Usage = EMaterialShaderMapUsage::MaterialExportNormal; break;
-		case MP_Tangent: ResourceId.Usage = EMaterialShaderMapUsage::MaterialExportTangent; break;
 		case MP_Metallic: ResourceId.Usage = EMaterialShaderMapUsage::MaterialExportMetallic; break;
 		case MP_Roughness: ResourceId.Usage = EMaterialShaderMapUsage::MaterialExportRoughness; break;
-		case MP_Anisotropy: ResourceId.Usage = EMaterialShaderMapUsage::MaterialExportAnisotropy; break;
 		case MP_AmbientOcclusion: ResourceId.Usage = EMaterialShaderMapUsage::MaterialExportAO; break;
 		case MP_EmissiveColor: ResourceId.Usage = EMaterialShaderMapUsage::MaterialExportEmissive; break;
 		case MP_Opacity: ResourceId.Usage = EMaterialShaderMapUsage::MaterialExportOpacity; break;
@@ -459,7 +451,7 @@ public:
 			break;
 		};
 		
-		CacheShaders(ResourceId, GMaxRHIShaderPlatform);
+		CacheShaders(ResourceId, StaticParamSet, GMaxRHIShaderPlatform);
 	}
 
 	virtual bool IsUsedWithStaticLighting() const { return true; }
@@ -483,7 +475,7 @@ public:
 		return true;
 	}
 
-	virtual TArrayView<UObject* const> GetReferencedTextures() const override
+	virtual const TArray<UObject*>& GetReferencedTextures() const override
 	{
 		return ReferencedTextures;
 	}
@@ -503,22 +495,22 @@ public:
 		}
 	}
 
-	virtual bool GetVectorValue(const FHashedMaterialParameterInfo& ParameterInfo, FLinearColor* OutValue, const FMaterialRenderContext& Context) const override
+	virtual bool GetVectorValue(const FMaterialParameterInfo& ParameterInfo, FLinearColor* OutValue, const FMaterialRenderContext& Context) const override
 	{
 		return MaterialInterface->GetRenderProxy()->GetVectorValue(ParameterInfo, OutValue, Context);
 	}
 
-	virtual bool GetScalarValue(const FHashedMaterialParameterInfo& ParameterInfo, float* OutValue, const FMaterialRenderContext& Context) const override
+	virtual bool GetScalarValue(const FMaterialParameterInfo& ParameterInfo, float* OutValue, const FMaterialRenderContext& Context) const override
 	{
 		return MaterialInterface->GetRenderProxy()->GetScalarValue(ParameterInfo, OutValue, Context);
 	}
 
-	virtual bool GetTextureValue(const FHashedMaterialParameterInfo& ParameterInfo,const UTexture** OutValue, const FMaterialRenderContext& Context) const override
+	virtual bool GetTextureValue(const FMaterialParameterInfo& ParameterInfo,const UTexture** OutValue, const FMaterialRenderContext& Context) const override
 	{
 		return MaterialInterface->GetRenderProxy()->GetTextureValue(ParameterInfo,OutValue,Context);
 	}
 
-	virtual bool GetTextureValue(const FHashedMaterialParameterInfo& ParameterInfo, const URuntimeVirtualTexture** OutValue, const FMaterialRenderContext& Context) const override
+	virtual bool GetTextureValue(const FMaterialParameterInfo& ParameterInfo, const URuntimeVirtualTexture** OutValue, const FMaterialRenderContext& Context) const override
 	{
 		return MaterialInterface->GetRenderProxy()->GetTextureValue(ParameterInfo, OutValue, Context);
 	}
@@ -560,7 +552,6 @@ public:
 				break;
 			case MP_Specular: 
 			case MP_Roughness:
-			case MP_Anisotropy:
 			case MP_Metallic:
 			case MP_AmbientOcclusion:
 			case MP_SubsurfaceColor:
@@ -571,12 +562,11 @@ public:
 				}
 				break;
 			case MP_Normal:
-			case MP_Tangent:
 				// Only return for Opaque and Masked...
 				if (BlendMode == BLEND_Opaque || BlendMode == BLEND_Masked)
 				{
 					return Compiler->Add( 
-							Compiler->Mul(MaterialInterface->CompileProperty(&ProxyCompiler, PropertyToCompile, ForceCast_Exact_Replicate), Compiler->Constant(0.5f)), // [-1,1] * 0.5
+							Compiler->Mul(MaterialInterface->CompileProperty(&ProxyCompiler, MP_Normal, ForceCast_Exact_Replicate), Compiler->Constant(0.5f)), // [-1,1] * 0.5
 							Compiler->Constant(0.5f)); // [-0.5,0.5] + 0.5
 				}
 				break;
@@ -758,14 +748,12 @@ public:
 			{
 				switch (InMaterialProperty)
 				{
-				case MP_BaseColor:			return true;
-				case MP_Specular:			return true;
-				case MP_Normal:				return true;
-				case MP_Tangent:			return true;
-				case MP_Metallic:			return true;
-				case MP_Roughness:			return true;
-				case MP_Anisotropy:			return true;
-				case MP_AmbientOcclusion:	return true;
+				case MP_BaseColor:		return true;
+				case MP_Specular:		return true;
+				case MP_Normal:			return true;
+				case MP_Metallic:		return true;
+				case MP_Roughness:		return true;
+				case MP_AmbientOcclusion:		return true;
 				}
 			}
 			break;
@@ -1060,7 +1048,7 @@ UMaterial* FMaterialUtilities::CreateMaterial(const FFlattenMaterial& InFlattenM
 	UPackage* MaterialOuter = InOuter;
 	if (MaterialOuter == NULL)
 	{
-		MaterialOuter = CreatePackage( *(AssetBasePath / MaterialAssetName));
+		MaterialOuter = CreatePackage(NULL, *(AssetBasePath / MaterialAssetName));
 		MaterialOuter->FullyLoad();
 		MaterialOuter->Modify();
 	}
@@ -1466,7 +1454,7 @@ UMaterialInstanceConstant* FMaterialUtilities::CreateInstancedMaterial(UMaterial
 	UPackage* MaterialOuter = InOuter;
 	if (MaterialOuter == NULL)
 	{		
-		MaterialOuter = CreatePackage( *(AssetBasePath / MaterialAssetName));
+		MaterialOuter = CreatePackage(NULL, *(AssetBasePath / MaterialAssetName));
 		MaterialOuter->FullyLoad();
 		MaterialOuter->Modify();
 	}
@@ -1500,7 +1488,7 @@ UTexture2D* FMaterialUtilities::CreateTexture(UPackage* Outer, const FString& As
 
 	if (Outer == nullptr)
 	{
-		Outer = CreatePackage( *AssetLongName);
+		Outer = CreatePackage(NULL, *AssetLongName);
 		Outer->FullyLoad();
 		Outer->Modify();
 	}
@@ -1626,14 +1614,12 @@ void FMaterialUtilities::AnalyzeMaterial(UMaterialInterface* InMaterial, const s
 	OutRequiresVertexData = false;
 	OutNumTexCoords = 0;
 
-	bool PropertyBeingBaked[MP_Tangent + 1];
+	bool PropertyBeingBaked[MP_Normal + 1];	
 	PropertyBeingBaked[MP_BaseColor] = true;
 	PropertyBeingBaked[MP_Specular] = InMaterialSettings.bSpecularMap;
 	PropertyBeingBaked[MP_Roughness] = InMaterialSettings.bRoughnessMap;
-	PropertyBeingBaked[MP_Anisotropy] = InMaterialSettings.bAnisotropyMap;
 	PropertyBeingBaked[MP_Metallic] = InMaterialSettings.bMetallicMap;
 	PropertyBeingBaked[MP_Normal] = InMaterialSettings.bNormalMap;
-	PropertyBeingBaked[MP_Tangent] = InMaterialSettings.bTangentMap;
 	PropertyBeingBaked[MP_Metallic] = InMaterialSettings.bOpacityMap;
 	PropertyBeingBaked[MP_EmissiveColor] = InMaterialSettings.bEmissiveMap;
 
@@ -2342,7 +2328,6 @@ bool FMaterialUtilities::ExportMaterials(TArray<FMaterialMergeData*>& MergeData,
 
 		// Determine whether or not certain properties can be rendered
 		const bool bRenderNormal = (Material->GetMaterial()->HasNormalConnected() || Material->GetMaterial()->bUseMaterialAttributes) && FlattenMaterial->ShouldGenerateDataForProperty(EFlattenMaterialProperties::Normal);
-		const bool bRenderTangent = (Material->GetMaterial()->Tangent.IsConnected() || Material->GetMaterial()->bUseMaterialAttributes) && FlattenMaterial->ShouldGenerateDataForProperty(EFlattenMaterialProperties::Tangent);
 		const bool bRenderEmissive = (Material->GetMaterial()->EmissiveColor.IsConnected() || Material->GetMaterial()->bUseMaterialAttributes) && FlattenMaterial->ShouldGenerateDataForProperty(EFlattenMaterialProperties::Emissive);
 		const bool bRenderOpacityMask = Material->IsPropertyActive(MP_OpacityMask) && Material->GetBlendMode() == BLEND_Masked && FlattenMaterial->ShouldGenerateDataForProperty(EFlattenMaterialProperties::OpacityMask);
 		const bool bRenderOpacity = Material->IsPropertyActive(MP_Opacity) && IsTranslucentBlendMode(Material->GetBlendMode()) && FlattenMaterial->ShouldGenerateDataForProperty(EFlattenMaterialProperties::Opacity);
@@ -2350,7 +2335,6 @@ bool FMaterialUtilities::ExportMaterials(TArray<FMaterialMergeData*>& MergeData,
 		const bool bRenderMetallic = Material->IsPropertyActive(MP_Metallic) && FlattenMaterial->ShouldGenerateDataForProperty(EFlattenMaterialProperties::Metallic);
 		const bool bRenderSpecular = Material->IsPropertyActive(MP_Specular) && FlattenMaterial->ShouldGenerateDataForProperty(EFlattenMaterialProperties::Specular);
 		const bool bRenderRoughness = Material->IsPropertyActive(MP_Roughness) && FlattenMaterial->ShouldGenerateDataForProperty(EFlattenMaterialProperties::Roughness);
-		const bool bRenderAnisotropy = Material->IsPropertyActive(MP_Anisotropy) && FlattenMaterial->ShouldGenerateDataForProperty(EFlattenMaterialProperties::Anisotropy);
 
 
 		FMaterialData* MatSet = new FMaterialData();
@@ -2361,11 +2345,6 @@ bool FMaterialUtilities::ExportMaterials(TArray<FMaterialMergeData*>& MergeData,
 		if (bRenderNormal)
 		{
 			MatSet->PropertySizes.Add(MP_Normal, FlattenMaterial->RenderSize);
-		}
-
-		if (bRenderTangent)
-		{
-			MatSet->PropertySizes.Add(MP_Tangent, FlattenMaterial->RenderSize);
 		}
 
 		if (bRenderMetallic)
@@ -2381,11 +2360,6 @@ bool FMaterialUtilities::ExportMaterials(TArray<FMaterialMergeData*>& MergeData,
 		if (bRenderRoughness)
 		{
 			MatSet->PropertySizes.Add(MP_Roughness, FlattenMaterial->RenderSize);
-		}
-
-		if (bRenderAnisotropy)
-		{
-			MatSet->PropertySizes.Add(MP_Anisotropy, FlattenMaterial->RenderSize);
 		}
 		
 		if (bRenderSubSurface)
@@ -2452,14 +2426,6 @@ bool FMaterialUtilities::ExportMaterials(TArray<FMaterialMergeData*>& MergeData,
 			FlattenMaterial->SetPropertySize(EFlattenMaterialProperties::Roughness, DataSize);
 		}
 
-		if (Output.PropertyData.Contains(MP_Anisotropy))
-		{
-			const TArray<FColor>& ColorData = Output.PropertyData.FindChecked(MP_Anisotropy);
-			const FIntPoint& DataSize = Output.PropertySizes.FindChecked(MP_Anisotropy);
-			FlattenMaterial->GetPropertySamples(EFlattenMaterialProperties::Anisotropy) = ColorData;
-			FlattenMaterial->SetPropertySize(EFlattenMaterialProperties::Anisotropy, DataSize);
-		}
-
 		if (Output.PropertyData.Contains(MP_Normal))
 		{
 			const TArray<FColor>& ColorData = Output.PropertyData.FindChecked(MP_Normal);
@@ -2473,21 +2439,6 @@ bool FMaterialUtilities::ExportMaterials(TArray<FMaterialMergeData*>& MergeData,
 			TArray<FColor>& Samples = FlattenMaterial->GetPropertySamples(EFlattenMaterialProperties::Normal);
 			Samples.Add(FColor(128, 128, 255));
 			FlattenMaterial->SetPropertySize(EFlattenMaterialProperties::Normal, FIntPoint(1, 1));
-		}
-
-		if (Output.PropertyData.Contains(MP_Tangent))
-		{
-			const TArray<FColor>& ColorData = Output.PropertyData.FindChecked(MP_Tangent);
-			const FIntPoint& DataSize = Output.PropertySizes.FindChecked(MP_Tangent);
-			FlattenMaterial->GetPropertySamples(EFlattenMaterialProperties::Tangent) = ColorData;
-			FlattenMaterial->SetPropertySize(EFlattenMaterialProperties::Tangent, DataSize);
-		}
-		else
-		{
-			// Make sure we output a default tangent value in case the material does not generate one (to prevent issues with combining meshes with and without tangent maps being atlased together)
-			TArray<FColor>& Samples = FlattenMaterial->GetPropertySamples(EFlattenMaterialProperties::Tangent);
-			Samples.Add(FColor(255, 128, 128));
-			FlattenMaterial->SetPropertySize(EFlattenMaterialProperties::Tangent, FIntPoint(1, 1));
 		}
 
 		if (Output.PropertyData.Contains(MP_Opacity))
@@ -2556,7 +2507,6 @@ bool FMaterialUtilities::ExportMaterial(struct FMaterialMergeData& InMaterialDat
 
 	// Determine whether or not certain properties can be rendered
 	const bool bRenderNormal = (Material->GetMaterial()->HasNormalConnected() || Material->GetMaterial()->bUseMaterialAttributes) && OutFlattenMaterial.ShouldGenerateDataForProperty(EFlattenMaterialProperties::Normal);
-	const bool bRenderTangent = (Material->GetMaterial()->Tangent.IsConnected() || Material->GetMaterial()->bUseMaterialAttributes) && OutFlattenMaterial.ShouldGenerateDataForProperty(EFlattenMaterialProperties::Tangent);
 	const bool bRenderEmissive = (Material->GetMaterial()->EmissiveColor.IsConnected() || Material->GetMaterial()->bUseMaterialAttributes) && OutFlattenMaterial.ShouldGenerateDataForProperty(EFlattenMaterialProperties::Emissive);
 	const bool bRenderOpacityMask = Material->IsPropertyActive(MP_OpacityMask) && Material->GetBlendMode() == BLEND_Masked && OutFlattenMaterial.ShouldGenerateDataForProperty(EFlattenMaterialProperties::Opacity);
 	const bool bRenderOpacity = Material->IsPropertyActive(MP_Opacity) && IsTranslucentBlendMode(Material->GetBlendMode()) && OutFlattenMaterial.ShouldGenerateDataForProperty(EFlattenMaterialProperties::Opacity);
@@ -2564,7 +2514,6 @@ bool FMaterialUtilities::ExportMaterial(struct FMaterialMergeData& InMaterialDat
 	const bool bRenderMetallic = Material->IsPropertyActive(MP_Metallic) && OutFlattenMaterial.ShouldGenerateDataForProperty(EFlattenMaterialProperties::Metallic);
 	const bool bRenderSpecular = Material->IsPropertyActive(MP_Specular) && OutFlattenMaterial.ShouldGenerateDataForProperty(EFlattenMaterialProperties::Specular);
 	const bool bRenderRoughness = Material->IsPropertyActive(MP_Roughness) && OutFlattenMaterial.ShouldGenerateDataForProperty(EFlattenMaterialProperties::Roughness);
-	const bool bRenderAnisotropy = Material->IsPropertyActive(MP_Anisotropy) && OutFlattenMaterial.ShouldGenerateDataForProperty(EFlattenMaterialProperties::Anisotropy);
 
 	check(!bRenderOpacity || !bRenderOpacityMask);
 
@@ -2584,8 +2533,7 @@ bool FMaterialUtilities::ExportMaterial(struct FMaterialMergeData& InMaterialDat
 			OutFlattenMaterial.GetPropertySamples(EFlattenMaterialProperties::Metallic));
 		PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		OutFlattenMaterial.SetPropertySize(EFlattenMaterialProperties::Metallic, Size);
-	}
-
+	}	
 	if (bRenderSpecular)
 	{
 		Size = OutFlattenMaterial.GetPropertySize(EFlattenMaterialProperties::Specular);
@@ -2594,7 +2542,6 @@ bool FMaterialUtilities::ExportMaterial(struct FMaterialMergeData& InMaterialDat
 		PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		OutFlattenMaterial.SetPropertySize(EFlattenMaterialProperties::Specular, Size);
 	}
-
 	if (bRenderRoughness)
 	{
 		Size = OutFlattenMaterial.GetPropertySize(EFlattenMaterialProperties::Roughness);
@@ -2603,16 +2550,6 @@ bool FMaterialUtilities::ExportMaterial(struct FMaterialMergeData& InMaterialDat
 		PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		OutFlattenMaterial.SetPropertySize(EFlattenMaterialProperties::Roughness, Size);
 	}
-
-	if (bRenderAnisotropy)
-	{
-		Size = OutFlattenMaterial.GetPropertySize(EFlattenMaterialProperties::Anisotropy);
-		PRAGMA_DISABLE_DEPRECATION_WARNINGS
-		RenderMaterialPropertyToTexture(InMaterialData, MP_Anisotropy, false, PF_B8G8R8A8, OutFlattenMaterial.RenderSize, Size, OutFlattenMaterial.GetPropertySamples(EFlattenMaterialProperties::Anisotropy));
-		PRAGMA_ENABLE_DEPRECATION_WARNINGS
-		OutFlattenMaterial.SetPropertySize(EFlattenMaterialProperties::Anisotropy, Size);
-	}
-
 	if (bRenderNormal)
 	{
 		Size = OutFlattenMaterial.GetPropertySize(EFlattenMaterialProperties::Normal);
@@ -2627,22 +2564,6 @@ bool FMaterialUtilities::ExportMaterial(struct FMaterialMergeData& InMaterialDat
 		TArray<FColor>& Samples = OutFlattenMaterial.GetPropertySamples(EFlattenMaterialProperties::Normal);
 		Samples.Add(FColor(128, 128, 255));
 		OutFlattenMaterial.SetPropertySize(EFlattenMaterialProperties::Normal, FIntPoint(1,1));
-	}
-
-	if (bRenderTangent)
-	{
-		Size = OutFlattenMaterial.GetPropertySize(EFlattenMaterialProperties::Tangent);
-		PRAGMA_DISABLE_DEPRECATION_WARNINGS
-		RenderMaterialPropertyToTexture(InMaterialData, MP_Tangent, true, PF_B8G8R8A8, OutFlattenMaterial.RenderSize, Size, OutFlattenMaterial.GetPropertySamples(EFlattenMaterialProperties::Tangent));
-		PRAGMA_ENABLE_DEPRECATION_WARNINGS
-		OutFlattenMaterial.SetPropertySize(EFlattenMaterialProperties::Tangent, Size);
-	}
-	else
-	{
-		// Make sure we output a default tangent value in case the material does not generate one (to prevent issues with combining meshes with and without tangent maps being atlassed together)
-		TArray<FColor>& Samples = OutFlattenMaterial.GetPropertySamples(EFlattenMaterialProperties::Tangent);
-		Samples.Add(FColor(255, 128, 128));
-		OutFlattenMaterial.SetPropertySize(EFlattenMaterialProperties::Tangent, FIntPoint(1, 1));
 	}
 
 	if (bRenderOpacityMask)
@@ -2916,7 +2837,8 @@ void FMaterialUtilities::DetermineMaterialImportance(const TArray<UMaterialInter
 	int32 SummedSize = 0;
 	for (UMaterialInterface* Material : InMaterials)
 	{
-		TArray<UObject*> UsedTextures(Material->GetReferencedTextures());
+		TArray<UObject*> UsedTextures;
+		Material->AppendReferencedTextures(UsedTextures);
 		if (UMaterialInstance* MaterialInstance = Cast<UMaterialInstance>(Material))
 		{
 			for (const FTextureParameterValue& TextureParameter : MaterialInstance->TextureParameterValues)

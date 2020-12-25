@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraScriptOutputCollectionViewModel.h"
 #include "NiagaraScript.h"
@@ -200,11 +200,6 @@ void FNiagaraScriptOutputCollectionViewModel::RefreshParameterViewModels()
 
 bool FNiagaraScriptOutputCollectionViewModel::SupportsType(const FNiagaraTypeDefinition& Type) const
 {
-	if (Type.IsInternalType())
-	{
-		return false;
-	}
-
 	if (Scripts.Num() == 1 && Scripts[0] != nullptr)
 	{
 		// We only support parameter map outputs for modules.

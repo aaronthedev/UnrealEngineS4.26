@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,6 @@
 
 #include "HAL/ThreadSafeBool.h"
 #include "IMessageContext.h"
-#include "LiveLinkMessageBusSourceSettings.h"
 #include "LiveLinkRole.h"
 #include "MessageEndpoint.h"
 
@@ -21,10 +20,15 @@ class LIVELINK_API FLiveLinkMessageBusSource : public ILiveLinkSource
 {
 public:
 
-	FLiveLinkMessageBusSource(const FText& InSourceType, const FText& InSourceMachineName, const FMessageAddress& InConnectionAddress, double InMachineTimeOffset);
+	FLiveLinkMessageBusSource(const FText& InSourceType, const FText& InSourceMachineName, const FMessageAddress& InConnectionAddress, double InMachineTimeOffset)
+		: ConnectionAddress(InConnectionAddress)
+		, SourceType(InSourceType)
+		, SourceMachineName(InSourceMachineName)
+		, ConnectionLastActive(0.0)
+		, bIsValid(false)
+		, MachineTimeOffset(InMachineTimeOffset)
+	{}
 
-	//~ Begin ILiveLinkSource interface
-	virtual void InitializeSettings(ULiveLinkSourceSettings* Settings) override;
 	virtual void ReceiveClient(ILiveLinkClient* InClient, FGuid InSourceGuid) override;
 	virtual void Update() override;
 
@@ -35,9 +39,6 @@ public:
 	virtual FText GetSourceType() const override { return SourceType; }
 	virtual FText GetSourceMachineName() const override { return SourceMachineName; }
 	virtual FText GetSourceStatus() const override;
-
-	virtual TSubclassOf<ULiveLinkSourceSettings> GetSettingsClass() const override { return ULiveLinkMessageBusSourceSettings::StaticClass(); }
-	//~ End ILiveLinkSource interface
 
 private:
 	//~ Message bus message handlers

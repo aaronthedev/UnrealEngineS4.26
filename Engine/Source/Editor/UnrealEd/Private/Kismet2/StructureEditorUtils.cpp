@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Kismet2/StructureEditorUtils.h"
 #include "Misc/MessageDialog.h"
@@ -58,17 +58,17 @@ UUserDefinedStruct* FStructureEditorUtils::CreateUserDefinedStruct(UObject* InPa
 
 namespace 
 {
-	static bool IsObjPropertyValid(const FProperty* Property)
+	static bool IsObjPropertyValid(const UProperty* Property)
 	{
-		if (const FInterfaceProperty* InterfaceProperty = CastField<const FInterfaceProperty>(Property))
+		if (const UInterfaceProperty* InterfaceProperty = Cast<const UInterfaceProperty>(Property))
 		{
 			return InterfaceProperty->InterfaceClass != nullptr;
 		}
-		else if (const FArrayProperty* ArrayProperty = CastField<const FArrayProperty>(Property))
+		else if (const UArrayProperty* ArrayProperty = Cast<const UArrayProperty>(Property))
 		{
 			return ArrayProperty->Inner && IsObjPropertyValid(ArrayProperty->Inner);
 		}
-		else if (const FObjectProperty* ObjectProperty = CastField<const FObjectProperty>(Property))
+		else if (const UObjectProperty* ObjectProperty = Cast<const UObjectProperty>(Property))
 		{
 			return ObjectProperty->PropertyClass != nullptr;
 		}
@@ -119,14 +119,14 @@ FStructureEditorUtils::EStructureError FStructureEditorUtils::IsStructureValid(c
 			return EStructureError::NotCompiled;
 		}
 
-		for (const FProperty* P = Struct->PropertyLink; P; P = P->PropertyLinkNext)
+		for (const UProperty* P = Struct->PropertyLink; P; P = P->PropertyLinkNext)
 		{
-			const FStructProperty* StructProp = CastField<const FStructProperty>(P);
+			const UStructProperty* StructProp = Cast<const UStructProperty>(P);
 			if (NULL == StructProp)
 			{
-				if (const FArrayProperty* ArrayProp = CastField<const FArrayProperty>(P))
+				if (const UArrayProperty* ArrayProp = Cast<const UArrayProperty>(P))
 				{
-					StructProp = CastField<const FStructProperty>(ArrayProp->Inner);
+					StructProp = Cast<const UStructProperty>(ArrayProp->Inner);
 				}
 			}
 
@@ -444,7 +444,7 @@ bool FStructureEditorUtils::ChangeVariableDefaultValue(UUserDefinedStruct* Struc
 		bool bAdvancedValidation = true;
 		if (!NewDefaultValue.IsEmpty())
 		{
-			const FProperty* Property = FindFProperty<FProperty>(Struct, VarDesc->VarName);
+			const UProperty* Property = FindField<UProperty>(Struct, VarDesc->VarName);
 			FStructOnScope StructDefaultMem(Struct);
 			bAdvancedValidation = StructDefaultMem.IsValid() && Property &&
 				FBlueprintEditorUtils::PropertyValueFromString(Property, NewDefaultValue, StructDefaultMem.GetStructMemory(), Struct);
@@ -488,7 +488,7 @@ FString FStructureEditorUtils::GetVariableFriendlyName(const UUserDefinedStruct*
 	return VarDesc ? VarDesc->FriendlyName : FString();
 }
 
-FString FStructureEditorUtils::GetVariableFriendlyNameForProperty(const UUserDefinedStruct* Struct, const FProperty* Property)
+FString FStructureEditorUtils::GetVariableFriendlyNameForProperty(const UUserDefinedStruct* Struct, const UProperty* Property)
 {
 	if (Struct && Property)
 	{
@@ -505,7 +505,7 @@ FString FStructureEditorUtils::GetVariableFriendlyNameForProperty(const UUserDef
 	return FString();
 }
 
-FProperty* FStructureEditorUtils::GetPropertyByFriendlyName(const UUserDefinedStruct* Struct, FString DisplayName)
+UProperty* FStructureEditorUtils::GetPropertyByFriendlyName(const UUserDefinedStruct* Struct, FString DisplayName)
 {
 	if (Struct)
 	{
@@ -513,7 +513,7 @@ FProperty* FStructureEditorUtils::GetPropertyByFriendlyName(const UUserDefinedSt
 		{
 			if (VarDesc.FriendlyName == DisplayName)
 			{
-				return FindFProperty<FProperty>(Struct, VarDesc.VarName);
+				return FindField<UProperty>(Struct, VarDesc.VarName);
 			}
 		}
 	}
@@ -569,28 +569,16 @@ void FStructureEditorUtils::RemoveInvalidStructureMemberVariableFromBlueprint(UB
 		for (int32 VarIndex = 0; VarIndex < Blueprint->NewVariables.Num(); ++VarIndex)
 		{
 			const FBPVariableDescription& Var = Blueprint->NewVariables[VarIndex];
-
-			bool bIsInvalid = false;
-
 			if (Var.VarType.PinCategory == UEdGraphSchema_K2::PC_Struct)
 			{
-				// The variable is invalid if the struct object is null, or it points to the fallback struct
-				UScriptStruct* ScriptStruct = Cast<UScriptStruct>(Var.VarType.PinSubCategoryObject.Get());
-
-				bIsInvalid = (!ScriptStruct || (FallbackStruct == ScriptStruct));
-			}
-			else if (Var.VarType.IsMap() && Var.VarType.PinValueType.TerminalCategory == UEdGraphSchema_K2::PC_Struct)
-			{
-				// If there is no ValueType object then the variable is invalid
-				bIsInvalid = (!Var.VarType.PinValueType.TerminalSubCategoryObject.Get());
-			}
-
-			// If this variable is invalid then display a warning
-			if (bIsInvalid)
-			{
-				DislpayList += Var.FriendlyName.IsEmpty() ? Var.VarName.ToString() : Var.FriendlyName;
-				DislpayList += TEXT("\n");
-				ZombieMemberNames.Add(Var.VarName);
+				const UScriptStruct* ScriptStruct = Cast<const UScriptStruct>(Var.VarType.PinSubCategoryObject.Get());
+				const bool bInvalidStruct = (NULL == ScriptStruct) || (FallbackStruct == ScriptStruct);
+				if (bInvalidStruct)
+				{
+					DislpayList += Var.FriendlyName.IsEmpty() ? Var.VarName.ToString() : Var.FriendlyName;
+					DislpayList += TEXT("\n");
+					ZombieMemberNames.Add(Var.VarName);
+				}
 			}
 		}
 
@@ -617,7 +605,7 @@ void FStructureEditorUtils::RemoveInvalidStructureMemberVariableFromBlueprint(UB
 			{				
 				Blueprint->Modify();
 
-				for (const FName& Name : ZombieMemberNames)
+				for (const FName Name : ZombieMemberNames)
 				{
 					Blueprint->NewVariables.RemoveAll(FFindByNameHelper<FBPVariableDescription>(Name)); //TODO: Add RemoveFirst to TArray
 					FBlueprintEditorUtils::RemoveVariableNodes(Blueprint, Name);
@@ -709,7 +697,7 @@ bool FStructureEditorUtils::ChangeVariableTooltip(UUserDefinedStruct* Struct, FG
 		ModifyStructData(Struct);
 		VarDesc->ToolTip = InTooltip;
 
-		FProperty* Property = FindFProperty<FProperty>(Struct, VarDesc->VarName);
+		UProperty* Property = FindField<UProperty>(Struct, VarDesc->VarName);
 		if (Property)
 		{
 			Property->SetMetaData(FBlueprintMetadata::MD_Tooltip, *VarDesc->ToolTip);
@@ -792,10 +780,10 @@ bool FStructureEditorUtils::CanEnableMultiLineText(const UUserDefinedStruct* Str
 	const FStructVariableDescription* VarDesc = GetVarDescByGuid(Struct, VarGuid);
 	if (VarDesc)
 	{
-		FProperty* Property = FindFProperty<FProperty>(Struct, VarDesc->VarName);
+		UProperty* Property = FindField<UProperty>(Struct, VarDesc->VarName);
 
 		// If this is an array, we need to test its inner property as that's the real type
-		if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Property))
+		if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(Property))
 		{
 			Property = ArrayProperty->Inner;
 		}
@@ -803,8 +791,8 @@ bool FStructureEditorUtils::CanEnableMultiLineText(const UUserDefinedStruct* Str
 		if (Property)
 		{
 			// Can only set multi-line text on string and text properties
-			return Property->IsA(FStrProperty::StaticClass())
-				|| Property->IsA(FTextProperty::StaticClass());
+			return Property->IsA(UStrProperty::StaticClass())
+				|| Property->IsA(UTextProperty::StaticClass());
 		}
 	}
 	return false;
@@ -819,7 +807,7 @@ bool FStructureEditorUtils::ChangeMultiLineTextEnabled(UUserDefinedStruct* Struc
 		ModifyStructData(Struct);
 
 		VarDesc->bEnableMultiLineText = bIsEnabled;
-		FProperty* Property = FindFProperty<FProperty>(Struct, VarDesc->VarName);
+		UProperty* Property = FindField<UProperty>(Struct, VarDesc->VarName);
 		if (Property)
 		{
 			if (VarDesc->bEnableMultiLineText)
@@ -869,7 +857,7 @@ bool FStructureEditorUtils::Change3dWidgetEnabled(UUserDefinedStruct* Struct, FG
 		ModifyStructData(Struct);
 
 		VarDesc->bEnable3dWidget = bIsEnabled;
-		FProperty* Property = FindFProperty<FProperty>(Struct, VarDesc->VarName);
+		UProperty* Property = FindField<UProperty>(Struct, VarDesc->VarName);
 		if (Property)
 		{
 			if (VarDesc->bEnable3dWidget)
@@ -893,17 +881,17 @@ bool FStructureEditorUtils::Is3dWidgetEnabled(const UUserDefinedStruct* Struct, 
 	return VarDesc && VarDesc->bEnable3dWidget && FEdMode::CanCreateWidgetForStructure(PropertyStruct);
 }
 
-FGuid FStructureEditorUtils::GetGuidForProperty(const FProperty* Property)
+FGuid FStructureEditorUtils::GetGuidForProperty(const UProperty* Property)
 {
 	const UUserDefinedStruct* UDStruct = Property ? Cast<const UUserDefinedStruct>(Property->GetOwnerStruct()) : nullptr;
 	const FStructVariableDescription* VarDesc = UDStruct ? GetVarDesc(UDStruct).FindByPredicate(FFindByNameHelper<FStructVariableDescription>(Property->GetFName())) : nullptr;
 	return VarDesc ? VarDesc->VarGuid : FGuid();
 }
 
-FProperty* FStructureEditorUtils::GetPropertyByGuid(const UUserDefinedStruct* Struct, const FGuid VarGuid)
+UProperty* FStructureEditorUtils::GetPropertyByGuid(const UUserDefinedStruct* Struct, const FGuid VarGuid)
 {
 	const FStructVariableDescription* VarDesc = GetVarDescByGuid(Struct, VarGuid);
-	return VarDesc ? FindFProperty<FProperty>(Struct, VarDesc->VarName) : nullptr;
+	return VarDesc ? FindField<UProperty>(Struct, VarDesc->VarName) : nullptr;
 }
 
 FGuid FStructureEditorUtils::GetGuidFromPropertyName(const FName Name)

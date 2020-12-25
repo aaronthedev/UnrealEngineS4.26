@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,40 +14,34 @@ class FInternetAddrSteamSockets : public FInternetAddr
 PACKAGE_SCOPE:
 	SteamNetworkingIdentity Addr;
 	int32 P2PVirtualPort;
-	FName ProtocolType;
 
 public:
-	FInternetAddrSteamSockets(const FName RequestedProtocol = NAME_None) :
-		P2PVirtualPort(0),
-		ProtocolType(RequestedProtocol)
+	FInternetAddrSteamSockets() :
+		P2PVirtualPort(0)
 	{
 		Addr.Clear();
 	}
 
 	FInternetAddrSteamSockets(const FInternetAddrSteamSockets& In) :
 		Addr(In.Addr),
-		P2PVirtualPort(In.P2PVirtualPort),
-		ProtocolType(In.ProtocolType)
+		P2PVirtualPort(In.P2PVirtualPort)
 	{
 	}
 
 	FInternetAddrSteamSockets(const SteamNetworkingIdentity& NewAddress) :
 		Addr(NewAddress),
-		P2PVirtualPort(0),
-		ProtocolType(NewAddress.GetIPAddr() == nullptr ? FNetworkProtocolTypes::SteamSocketsP2P : FNetworkProtocolTypes::SteamSocketsIP)
+		P2PVirtualPort(0)
 	{
 	}
 
 	FInternetAddrSteamSockets(const SteamNetworkingIPAddr& IPAddr) :
-		P2PVirtualPort(0),
-		ProtocolType(FNetworkProtocolTypes::SteamSocketsIP)
+		P2PVirtualPort(0)
 	{
 		Addr.SetIPAddr(IPAddr);
 	}
 
 	explicit FInternetAddrSteamSockets(uint64& SteamID) :
-		P2PVirtualPort(0),
-		ProtocolType(FNetworkProtocolTypes::SteamSocketsP2P)
+		P2PVirtualPort(0)
 	{
 		Addr.SetSteamID64(SteamID);
 	}
@@ -167,7 +161,7 @@ public:
 
 	virtual TSharedRef<FInternetAddr> Clone() const override
 	{
-		TSharedRef<FInternetAddrSteamSockets> NewAddress = MakeShareable(new FInternetAddrSteamSockets(ProtocolType));
+		TSharedRef<FInternetAddrSteamSockets> NewAddress = MakeShareable(new FInternetAddrSteamSockets);
 		NewAddress->Addr = Addr;
 		NewAddress->P2PVirtualPort = P2PVirtualPort;
 		return NewAddress;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Extensions/UniformGridSlotExtension.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
@@ -75,10 +75,7 @@ FReply FUniformGridSlotExtension::HandleShiftRow(int32 ShiftAmount)
 
 	EndTransaction();
 
-	if (UWidgetBlueprint* BlueprintPtr = Blueprint.Get())
-	{
-		FBlueprintEditorUtils::MarkBlueprintAsModified(BlueprintPtr);
-	}
+	FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
 
 	return FReply::Handled();
 }
@@ -95,10 +92,7 @@ FReply FUniformGridSlotExtension::HandleShiftColumn(int32 ShiftAmount)
 
 	EndTransaction();
 
-	if (UWidgetBlueprint* BlueprintPtr = Blueprint.Get())
-	{
-		FBlueprintEditorUtils::MarkBlueprintAsModified(BlueprintPtr);
-	}
+	FBlueprintEditorUtils::MarkBlueprintAsModified(Blueprint);
 
 	return FReply::Handled();
 }

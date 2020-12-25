@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "HAL/PlatformProcess.h"
@@ -1206,14 +1206,26 @@ ECompilationResult::Type FHotReloadModule::RebindPackagesInternal(const TArray<U
 }
 
 #if WITH_ENGINE
+namespace {
+	static TArray<TPair<UClass*, UClass*> >& GetClassesToReinstance()
+	{
+		static TArray<TPair<UClass*, UClass*> > Data;
+		return Data;
+	}
+}
+
 void FHotReloadModule::RegisterForReinstancing(UClass* OldClass, UClass* NewClass, EHotReloadedClassFlags Flags)
 {
+	TPair<UClass*, UClass*> Pair;
+	
+	Pair.Key = OldClass;
+	Pair.Value = NewClass;
+
 	// Don't allow reinstancing of UEngine classes
 	if (!OldClass->IsChildOf(UEngine::StaticClass()))
 	{
-		TMap<UClass*, UClass*>& ClassesToReinstance = GetClassesToReinstanceForHotReload();
-		checkf(!ClassesToReinstance.Contains(OldClass) || ClassesToReinstance[OldClass] == NewClass, TEXT("Attempting to hot reload a class which is already being hot reloaded as a different class"));
-		ClassesToReinstance.Add(OldClass, NewClass);
+		TArray<TPair<UClass*, UClass*> >& ClassesToReinstance = GetClassesToReinstance();
+		ClassesToReinstance.Add(MoveTemp(Pair));
 	}
 	else if (EnumHasAnyFlags(Flags, EHotReloadedClassFlags::Changed))
 	{
@@ -1230,7 +1242,7 @@ void FHotReloadModule::ReinstanceClasses()
 	}
 #endif // WITH_HOT_RELOAD
 
-	TMap<UClass*, UClass*>& ClassesToReinstance = GetClassesToReinstanceForHotReload();
+	TArray<TPair<UClass*, UClass*> >& ClassesToReinstance = GetClassesToReinstance();
 
 	TMap<UClass*, UClass*> OldToNewClassesMap;
 	for (const TPair<UClass*, UClass*>& Pair : ClassesToReinstance)
@@ -1334,14 +1346,14 @@ void FHotReloadModule::StripModuleSuffixFromFilename(FString& InOutModuleFilenam
 		int32 SecondHyphenIndex = FirstHyphenIndex;
 		do
 		{
-			SecondHyphenIndex = InOutModuleFilename.Find(TEXT("-"), ESearchCase::CaseSensitive, ESearchDir::FromStart, SecondHyphenIndex + 1);
+			SecondHyphenIndex = InOutModuleFilename.Find(TEXT("-"), ESearchCase::IgnoreCase, ESearchDir::FromStart, SecondHyphenIndex + 1);
 			if (SecondHyphenIndex != INDEX_NONE)
 			{
 				// Make sure that the section between hyphens is the expected module name. This guards against cases where module name has a hyphen inside.
 				FString HotReloadedModuleName = InOutModuleFilename.Mid(FirstHyphenIndex + 1, SecondHyphenIndex - FirstHyphenIndex - 1);
 				if (HotReloadedModuleName == ModuleName)
 				{
-					InOutModuleFilename.MidInline(0, SecondHyphenIndex, false);
+					InOutModuleFilename = InOutModuleFilename.Mid(0, SecondHyphenIndex);
 					SecondHyphenIndex = INDEX_NONE;
 				}
 			}
@@ -1430,7 +1442,7 @@ bool FHotReloadModule::Tick(float DeltaTime)
 	if (GEditor)
 	{
 		// Don't try to do an IDE reload yet if we're PIE - wait until we leave
-		if (GEditor->IsPlaySessionInProgress())
+		if (GEditor->bIsPlayWorldQueued || GEditor->PlayWorld)
 		{
 			return true;
 		}
@@ -1596,7 +1608,6 @@ bool FHotReloadModule::StartCompilingModuleDLLs(const TArray< FModuleToRecompile
 
 	const TCHAR* BuildPlatformName = FPlatformMisc::GetUBTPlatform();
 	const TCHAR* BuildConfigurationName = FModuleManager::GetUBTConfiguration();
-	const TCHAR* BuildTargetName = FPlatformMisc::GetUBTTargetName();
 
 	RecompileModulesCallback = MoveTemp(InRecompileModulesCallback);
 
@@ -1625,6 +1636,10 @@ bool FHotReloadModule::StartCompilingModuleDLLs(const TArray< FModuleToRecompile
 	}
 
 	FString ExtraArg;
+#if UE_EDITOR
+	// When recompiling from the editor, we don't know the editor target name. Pass -TargetType=Editor to UBT to have it figure it out.
+	ExtraArg = TEXT( "-TargetType=Editor " );
+#endif
 
 	if (FPaths::IsProjectFilePathSet())
 	{
@@ -1637,9 +1652,9 @@ bool FHotReloadModule::StartCompilingModuleDLLs(const TArray< FModuleToRecompile
 		ExtraArg += TEXT( "-FailIfGeneratedCodeChanges " );
 	}
 
-	FString CmdLineParams = FString::Printf( TEXT( "%s %s %s %s %s%s -IgnoreJunk" ), 
+	FString CmdLineParams = FString::Printf( TEXT( "%s %s %s %s%s -IgnoreJunk" ), 
 		*ModuleArg, 
-		BuildTargetName, BuildPlatformName, BuildConfigurationName,
+		BuildPlatformName, BuildConfigurationName, 
 		*ExtraArg, *InAdditionalCmdLineArgs );
 
 	const bool bInvocationSuccessful = InvokeUnrealBuildToolForCompile(CmdLineParams, Ar);

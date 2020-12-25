@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/RuntimeOptionsBase.h"
 #include "UObject/PropertyPortFlags.h"
@@ -51,7 +51,7 @@ void URuntimeOptionsBase::ApplyCommandlineOverrides()
 {
 #if UE_RUNTIMEOPTIONSBASE_SUPPORT_COMMANDLINE
 	// In non-shipping builds check the commandline for overrides and register variables with the console
-	for (const FProperty* Property : TFieldRange<const FProperty>(GetClass()))
+	for (const UProperty* Property : TFieldRange<const UProperty>(GetClass()))
 	{
 		const FString FullyQualifiedName = FString::Printf(TEXT("%s.%s"), *OptionCommandPrefix, *Property->GetName());
 
@@ -69,7 +69,7 @@ void URuntimeOptionsBase::ApplyCommandlineOverrides()
 void URuntimeOptionsBase::RegisterSupportedConsoleVariables(bool bDuringReload)
 {
 #if UE_RUNTIMEOPTIONSBASE_SUPPORT_CVARS
-	for (const FProperty* Property : TFieldRange<const FProperty>(GetClass()))
+	for (const UProperty* Property : TFieldRange<const UProperty>(GetClass()))
 	{
 		const FString FullyQualifiedName = FString::Printf(TEXT("%s.%s"), *OptionCommandPrefix, *Property->GetName());
 
@@ -95,7 +95,7 @@ void URuntimeOptionsBase::RegisterSupportedConsoleVariables(bool bDuringReload)
 		}
 		else
 		{
-			if (const FNumericProperty* NumericProperty = CastField<const FNumericProperty>(Property))
+			if (const UNumericProperty* NumericProperty = Cast<const UNumericProperty>(Property))
 			{
 				if (NumericProperty->IsFloatingPoint())
 				{
@@ -106,11 +106,11 @@ void URuntimeOptionsBase::RegisterSupportedConsoleVariables(bool bDuringReload)
 					IConsoleManager::Get().RegisterConsoleVariableRef(*FullyQualifiedName, *(int32*)DataPtr, *DisplayName, ECVF_Default);
 				}
 			}
-			else if (const FBoolProperty* BoolProperty = CastField<FBoolProperty>(Property))
+			else if (const UBoolProperty* BoolProperty = Cast<UBoolProperty>(Property))
 			{
 				IConsoleManager::Get().RegisterConsoleVariableRef(*FullyQualifiedName, *(bool*)DataPtr, *DisplayName, ECVF_Default);
 			}
-			else if (const FStrProperty* StringProperty = CastField<FStrProperty>(Property))
+			else if (const UStrProperty* StringProperty = Cast<UStrProperty>(Property))
 			{
 				IConsoleManager::Get().RegisterConsoleVariableRef(*FullyQualifiedName, *(FString*)DataPtr, *DisplayName, ECVF_Default);
 			}
@@ -128,7 +128,7 @@ void URuntimeOptionsBase::PostInitProperties()
 	}
 }
 
-void URuntimeOptionsBase::PostReloadConfig(FProperty* PropertyThatWasLoaded)
+void URuntimeOptionsBase::PostReloadConfig(UProperty* PropertyThatWasLoaded)
 {
 	// Re-apply command line options
 	ApplyCommandlineOverrides();
@@ -140,7 +140,7 @@ void URuntimeOptionsBase::PostReloadConfig(FProperty* PropertyThatWasLoaded)
 	if (UE_LOG_ACTIVE(LogRuntimeOptionsBase, Verbose))
 	{
 		UE_LOG(LogRuntimeOptionsBase, Verbose, TEXT("After %s%s::PostReloadConfig:"), GetClass()->GetPrefixCPP(), *GetClass()->GetName());
-		for (const FProperty* Property : TFieldRange<const FProperty>(GetClass()))
+		for (const UProperty* Property : TFieldRange<const UProperty>(GetClass()))
 		{
 			FString	Value;
 			Property->ExportText_InContainer(0, Value, this, this, this, 0);

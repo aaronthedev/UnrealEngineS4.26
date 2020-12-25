@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -60,7 +60,7 @@ public:
 	/**
 	 * Dynamically set the font info for this text block
 	 * 
-	 * @param InFontInfo The new font info
+	 * @param InFontInfo THe new font info
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Appearance")
 	void SetFont(FSlateFontInfo InFontInfo);
@@ -88,14 +88,6 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Appearance")
 	void SetAutoWrapText(bool InAutoTextWrap);
-
-	/**
-	 * Set the text transformation policy for this text block.
-	 *
-	 * @param InTransformPolicy the new text transformation policy.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Appearance")
-	void SetTextTransformPolicy(ETextTransformPolicy InTransformPolicy);
 
 	/**  */
 	UFUNCTION(BlueprintCallable, Category="Appearance")
@@ -154,10 +146,6 @@ public:
 	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "bAutoWrapText is deprecated. Please use AutoWrapText instead."))
 	bool bAutoWrapText_DEPRECATED;
 
-	/** The text transformation policy to apply to this text block */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Appearance, meta=(DisplayName="Transform Policy"))
-	ETextTransformPolicy TextTransformPolicy;
-
 	/** 
 	 * Gets the widget text
 	 * @return The widget text
@@ -189,7 +177,7 @@ public:
 	//~ Begin UWidget Interface
 	virtual const FText GetPaletteCategory() override;
 	virtual void OnCreationFromPalette() override;
-	virtual bool CanEditChange(const FProperty* InProperty) const override;
+	virtual bool CanEditChange(const UProperty* InProperty) const override;
 	//~ End UWidget Interface
 
 	virtual FString GetLabelMetadata() const override;

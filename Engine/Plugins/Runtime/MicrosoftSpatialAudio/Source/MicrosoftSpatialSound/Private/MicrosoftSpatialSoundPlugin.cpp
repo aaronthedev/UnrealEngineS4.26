@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MicrosoftSpatialSoundPlugin.h"
 #include "Features/IModularFeatures.h"
@@ -168,9 +168,6 @@ FMicrosoftSpatialSound::FMicrosoftSpatialSound()
 {
 }
 
-//HACK: flag is static bool to avoid changing public header for 4.25.1.  It would be better as a member.
-static bool bWarnedMicrosoftSpatialSoundDynamicObjectCountIsZero = false;
-
 FMicrosoftSpatialSound::~FMicrosoftSpatialSound()
 {
 	Shutdown();
@@ -207,8 +204,6 @@ void FMicrosoftSpatialSound::Initialize(const FAudioPluginInitializationParams I
 			// Flag that we're rendering
 			bIsRendering = true;
 			bIsInitialized = true;
-
-			bWarnedMicrosoftSpatialSoundDynamicObjectCountIsZero = false;
 
 			SpatialAudioRenderThread = FRunnableThread::Create(this, TEXT("MicrosoftSpatialAudioThread"), 0, TPri_TimeCritical, FPlatformAffinity::GetAudioThreadMask());
 		}
@@ -324,12 +319,6 @@ uint32 FMicrosoftSpatialSound::Run()
 	// Wait until the SAC is active
 	while (!SAC->IsActive() && bIsRendering)
 	{
-		if (!bWarnedMicrosoftSpatialSoundDynamicObjectCountIsZero && SAC->GetMaxDynamicObjects() == 0)
-		{
-			UE_LOG(LogMicrosoftSpatialSound, Warning, TEXT("Microsoft Spatial Sound has zero MaxDynamicObjects.  No sounds can play!  You need to enable Spatial Sound (Windows Sonic for Headphones) in your PC audio settings then restart UE4."));
-			bWarnedMicrosoftSpatialSoundDynamicObjectCountIsZero = true;
-		}
-
 		FPlatformProcess::Sleep(0.01f);
 	}
 
@@ -428,7 +417,7 @@ void FMicrosoftSpatialSoundModule::StartupModule()
 #else // WINDOWS_MIXED_REALITY_DEBUG_DLL
 	FString DLLName(TEXT("MixedRealityInterop.dll"));
 #endif // WINDOWS_MIXED_REALITY_DEBUG_DLL
-	FString MRInteropLibraryPath = EngineDir / "Binaries/ThirdParty/Windows/x64" / DLLName;
+	FString MRInteropLibraryPath = EngineDir / "Binaries/ThirdParty/MixedRealityInteropLibrary" / BinariesSubDir / DLLName;
 
 #if PLATFORM_64BITS
 	// Load these dependencies first or MixedRealityInteropLibraryHandle fails to load since it doesn't look in the correct path for its dependencies automatically
@@ -437,9 +426,6 @@ void FMicrosoftSpatialSoundModule::StartupModule()
 	FPlatformProcess::GetDllHandle(_TEXT("PerceptionDevice.dll"));
 	FPlatformProcess::GetDllHandle(_TEXT("Microsoft.Holographic.AppRemoting.dll"));
 	FPlatformProcess::PopDllDirectory(*HoloLensLibraryDir);
-
-	FPlatformProcess::GetDllHandle(*(EngineDir / "Binaries" / BinariesSubDir / "HolographicStreamerDesktop.dll"));
-	FPlatformProcess::GetDllHandle(*(EngineDir / "Binaries" / BinariesSubDir / "Microsoft.Perception.Simulation.dll"));
 #endif // PLATFORM_64BITS && WITH_EDITOR	
 	
 	// Then finally try to load the WMR Interop Library

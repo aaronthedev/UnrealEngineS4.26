@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Frame/MainFrameHandler.h"
 #include "HAL/FileManager.h"
 #include "ThumbnailRendering/ThumbnailManager.h"
 #include "Frame/RootWindowLocation.h"
-#include "Framework/Application/SlateApplication.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "HAL/PlatformApplicationMisc.h"
 
@@ -28,8 +27,7 @@ void FMainFrameHandler::ShutDownEditor()
 	TSharedPtr<SWindow> RootWindow = RootWindowPtr.Pin();
 
 	// Save root window placement so we can restore it.
-	bool bRenderOffScreen = FSlateApplication::Get().IsRenderingOffScreen();
-	if (!GUsingNullRHI && !bRenderOffScreen && RootWindow.IsValid())
+	if (!GUsingNullRHI && RootWindow.IsValid())
 	{
 		FSlateRect WindowRect = RootWindow->GetNonMaximizedRectInScreen();
 

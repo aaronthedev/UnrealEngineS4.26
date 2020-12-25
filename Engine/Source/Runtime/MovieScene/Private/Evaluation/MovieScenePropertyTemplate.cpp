@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Evaluation/MovieScenePropertyTemplate.h"
 
@@ -10,9 +10,9 @@ PropertyTemplate::FSectionData::FSectionData()
 {
 }
 
-void PropertyTemplate::FSectionData::Initialize(FName InPropertyName, FString InPropertyPath)
+void PropertyTemplate::FSectionData::Initialize(FName InPropertyName, FString InPropertyPath, FName InFunctionName, FName InNotifyFunctionName)
 {
-	PropertyBindings = MakeShareable(new FTrackInstancePropertyBindings(InPropertyName, MoveTemp(InPropertyPath)));
+	PropertyBindings = MakeShareable(new FTrackInstancePropertyBindings(InPropertyName, MoveTemp(InPropertyPath), InFunctionName, InNotifyFunctionName));
 	PropertyID = PropertyTypeIDs.GetAnimTypeID(InPropertyPath);
 }
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,29 +13,20 @@ struct SLATE_API FLayoutSaveRestore
 	/**
 	 * Write the layout out into a named config file.
 	 *
-	 * @param InConfigFileName file to be saved to.
-	 * @param InLayoutToSave the layout to save.
+	 * @param ConfigFileName file to be saved to.
+	 * @param LayoutToSave the layout to save.
 	 */
-	static void SaveToConfig(const FString& InConfigFileName, const TSharedRef<FTabManager::FLayout>& InLayoutToSave );
+	static void SaveToConfig(const FString& ConfigFileName, const TSharedRef<FTabManager::FLayout>& LayoutToSave );
 
 	/**
 	 * Given a named DefaultLayout, return any saved version of it from the given ini file, otherwise return the default, also default to open tabs based on bool.
 	 *
-	 * @param InConfigFileName File to be used to load an existing layout.
-	 * @param InDefaultLayout The layout to be used if the file does not exist.
-	 * @param InPrimaryAreaOutputCanBeNullptr Analog to the EOutputCanBeNullptr argument of FTabManager::RestoreFrom(), but only applied to the PrimaryArea. It
-	 * specifies if the primary area can still be nullptr even if no valid tabs (or opened tabs) are found. By default, set to EOutputCanBeNullptr::Never.
-	 * @param InOutRemovedOlderLayoutVersions If this TArray is not added, default behavior. If it is added as an argument, older versions of this layout field
-	 * will be also cleaned from the layout ini file and their names returned in OutRemovedOlderLayoutVersions. To be precise, it will remove fields with a
-	 * name that contains the same characters, other than the final number(s) and dot(s). E.g., for "UnrealEd_Layout_v1.4", any layout field starting by
-	 * "UnrealEd_Layout_v" with some numbers and/or dots after the final "v".
+	 * @param ConfigFileName file to be used to load an existing layout.
+	 * @param DefaultLayout the layout to be used if the file does not exist.
 	 *
 	 * @return Loaded layout or the default.
 	 */
-	static TSharedRef<FTabManager::FLayout> LoadFromConfig(const FString& InConfigFileName, const TSharedRef<FTabManager::FLayout>& InDefaultLayout,
-		const EOutputCanBeNullptr InPrimaryAreaOutputCanBeNullptr = EOutputCanBeNullptr::Never);
-	static TSharedRef<FTabManager::FLayout> LoadFromConfig(const FString& InConfigFileName, const TSharedRef<FTabManager::FLayout>& InDefaultLayout,
-		const EOutputCanBeNullptr InPrimaryAreaOutputCanBeNullptr, TArray<FString>& OutRemovedOlderLayoutVersions);
+	static TSharedRef<FTabManager::FLayout> LoadFromConfig( const FString& ConfigFileName, const TSharedRef<FTabManager::FLayout>& DefaultLayout );
 
 	/**
 	 * Write the desired FText value into the desired section of a named config file.
@@ -87,14 +78,4 @@ private:
 	 * The opposite of PrepareLayoutStringForIni.
 	 */
 	static FString GetLayoutStringFromIni(const FString& LayoutString);
-
-	/**
-	 * Auxiliary function for both public versions of LoadFromConfig
-	 *
-	 * @param bInRemoveOlderLayoutVersions If true, it will be equivalent to use the public LoadFromConfig() with
-	 * "TArray<FString>& OutRemovedOlderLayoutVersions". If false, it won't search nor remove old versions (i.e.,
-	 * public LoadFromConfig() without the final TArray argument).
-	 */
-	static TSharedRef<FTabManager::FLayout> LoadFromConfigPrivate(const FString& InConfigFileName, const TSharedRef<FTabManager::FLayout>& InDefaultLayout,
-		const EOutputCanBeNullptr InPrimaryAreaOutputCanBeNullptr, const bool bInRemoveOlderLayoutVersions, TArray<FString>& OutRemovedOlderLayoutVersions);
 };

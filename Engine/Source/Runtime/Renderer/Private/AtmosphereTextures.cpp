@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	SystemTextures.cpp: System textures implementation.
@@ -24,8 +24,6 @@ void FAtmosphereTextures::InitDynamicRHI()
 		{
 			const FSceneRenderTargetItem& TransmittanceTarget = AtmosphereTransmittance->GetRenderTargetItem();
 
-			RHICmdList.Transition(FRHITransitionInfo(TransmittanceTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
-
 			FRHIRenderPassInfo RPInfo(TransmittanceTarget.TargetableTexture, ERenderTargetActions::Clear_Store);
 			RHICmdList.BeginRenderPass(RPInfo, TEXT("ClearTransmittance"));
 			RHICmdList.EndRenderPass();
@@ -38,8 +36,6 @@ void FAtmosphereTextures::InitDynamicRHI()
 		GRenderTargetPool.FindFreeElement(RHICmdList, IrradianceDesc, AtmosphereIrradiance, TEXT("AtmosphereIrradiance"));
 		{
 			const FSceneRenderTargetItem& IrradianceTarget = AtmosphereIrradiance->GetRenderTargetItem();
-
-			RHICmdList.Transition(FRHITransitionInfo(IrradianceTarget.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
 
 			FRHIRenderPassInfo RPInfo(IrradianceTarget.TargetableTexture, ERenderTargetActions::Clear_Store);
 			RHICmdList.BeginRenderPass(RPInfo, TEXT("ClearIrradiance"));

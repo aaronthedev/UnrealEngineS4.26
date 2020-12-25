@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Dialogs/Dialogs.h"
-#include "Dialogs/DialogsPrivate.h"
 #include "Misc/App.h"
 #include "Misc/AssertionMacros.h"
 #include "Misc/MessageDialog.h"
@@ -297,29 +296,7 @@ void CreateMsgDlgWindow(TSharedPtr<SWindow>& OutWindow, TSharedPtr<SChoiceDialog
 	OutWindow->SetContent(OutDialog.ToSharedRef());
 }
 
-EAppReturnType::Type OpenMessageDialog_Internal(EAppMsgType::Type InMessageType, EAppReturnType::Type InDefaultValue, const FText& InMessage, const FText& InTitle)
-{
-	EAppReturnType::Type Response = InDefaultValue;
-	if (FApp::IsUnattended() == true || GIsRunningUnattendedScript)
-	{
-		UE_LOG(LogDialogs, Log, TEXT("Message Dialog was triggered in unattended script mode without a default value. %d will be used."), (int32)InDefaultValue);
-	}
-	else
-	{
-		TSharedPtr<SWindow> MsgWindow = NULL;
-		TSharedPtr<SChoiceDialog> MsgDialog = NULL;
-
-		CreateMsgDlgWindow(MsgWindow, MsgDialog, InMessageType, InMessage, InTitle);
-
-		GEditor->EditorAddModalWindow(MsgWindow.ToSharedRef());
-
-		Response = MsgDialog->GetResponse();
-	}
-
-	return Response;
-}
-
-EAppReturnType::Type OpenMessageDialog_Internal(EAppMsgType::Type InMessageType, const FText& InMessage, const FText& InTitle)
+EAppReturnType::Type OpenMsgDlgInt(EAppMsgType::Type InMessageType, const FText& InMessage, const FText& InTitle)
 {
 	EAppReturnType::Type DefaultValue = EAppReturnType::Yes;
 	switch (InMessageType)
@@ -357,21 +334,33 @@ EAppReturnType::Type OpenMessageDialog_Internal(EAppMsgType::Type InMessageType,
 		}
 		else
 		{
-			FDebug::DumpStackTraceToLog(ELogVerbosity::Error);
+			FDebug::DumpStackTraceToLog();
 		}
 	}
 
-	return OpenMessageDialog_Internal(InMessageType, DefaultValue, InMessage, InTitle);
-}
-
-EAppReturnType::Type OpenMsgDlgInt(EAppMsgType::Type InMessageType, const FText& InMessage, const FText& InTitle)
-{
-	return OpenMessageDialog_Internal(InMessageType, InMessage, InTitle);
+	return OpenMsgDlgInt(InMessageType, DefaultValue, InMessage, InTitle);
 }
 
 EAppReturnType::Type OpenMsgDlgInt(EAppMsgType::Type InMessageType, EAppReturnType::Type InDefaultValue, const FText& InMessage, const FText& InTitle)
 {
-	return OpenMessageDialog_Internal(InMessageType, InDefaultValue, InMessage, InTitle);
+	if (FApp::IsUnattended() == true || GIsRunningUnattendedScript)
+	{
+		UE_LOG(LogDialogs, Log, TEXT("Message Dialog was triggered in unattended script mode without a default value. %d will be used."), (int32)InDefaultValue);
+		return InDefaultValue;
+	}
+	else
+	{
+		TSharedPtr<SWindow> MsgWindow = NULL;
+		TSharedPtr<SChoiceDialog> MsgDialog = NULL;
+
+		CreateMsgDlgWindow(MsgWindow, MsgDialog, InMessageType, InMessage, InTitle);
+
+		GEditor->EditorAddModalWindow(MsgWindow.ToSharedRef());
+
+		EAppReturnType::Type Response = MsgDialog->GetResponse();
+
+		return Response;
+	}
 }
 
 TSharedRef<SWindow> OpenMsgDlgInt_NonModal(EAppMsgType::Type InMessageType, const FText& InMessage, const FText& InTitle,
@@ -818,14 +807,13 @@ bool PromptUserForDirectory(FString& OutDirectory, const FString& Message, const
 	return bFolderSelected;
 }
 
-bool PromptUserIfExistingObject(const FString& Name, const FString& Package, const FString& Group, UPackage*& Pkg)
-{
-	return PromptUserIfExistingObject(Name, Package, Pkg);
-}
-
-bool PromptUserIfExistingObject(const FString& Name, const FString& Package, UPackage* &Pkg)
+bool PromptUserIfExistingObject( const FString& Name, const FString& Package, const FString& Group, UPackage* &Pkg )
 {
 	FString	QualifiedName = Package + TEXT(".");
+	if( Group.Len() > 0 )
+	{
+		QualifiedName += Group + TEXT(".");
+	}
 	QualifiedName += Name;
 
 	// Check for an existing object
@@ -853,7 +841,11 @@ bool PromptUserIfExistingObject(const FString& Name, const FString& Package, UPa
 				CollectGarbage( GARBAGE_COLLECTION_KEEPFLAGS );
 
 				// Old package will be GC'ed... create a new one here
-				Pkg = CreatePackage(*Package);
+				Pkg = CreatePackage(NULL,*Package);
+				if( Group.Len() )
+				{
+					Pkg = CreatePackage(Pkg,*Group);
+				}
 			}
 			else //failed to delete
 			{
@@ -912,7 +904,7 @@ void SGenericDialogWidget::Construct( const FArguments& InArgs )
 	];
 }
 
-void SGenericDialogWidget::OpenDialog(const FText& InDialogTitle, const TSharedRef< SWidget >& DisplayContent, const FArguments& InArgs, bool bAsModalDialog)
+void SGenericDialogWidget::OpenDialog(const FText& InDialogTitle, const TSharedRef< SWidget >& DisplayContent, const FArguments& InArgs)
 {
 	TSharedPtr< SWindow > Window;
 	TSharedPtr< SGenericDialogWidget > GenericDialogWidget;
@@ -938,14 +930,7 @@ void SGenericDialogWidget::OpenDialog(const FText& InDialogTitle, const TSharedR
 
 	GenericDialogWidget->SetWindow(Window);
 
-	if(bAsModalDialog)
-	{
-		GEditor->EditorAddModalWindow(Window.ToSharedRef());
-	}
-	else
-	{
-		FSlateApplication::Get().AddWindow( Window.ToSharedRef() );
-	}
+	FSlateApplication::Get().AddWindow( Window.ToSharedRef() );
 }
 
 FReply SGenericDialogWidget::OnOK_Clicked(void)

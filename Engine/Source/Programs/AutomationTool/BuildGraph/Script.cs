@@ -1,15 +1,19 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Text;
-using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using System.Xml;
-using System.Xml.Schema;
-using Tools.DotNETCommon;
+using System.Xml.Linq;
 using UnrealBuildTool;
+using AutomationTool;
+using System.Reflection;
+using System.Diagnostics;
+using System.Xml.Schema;
+using System.Text.RegularExpressions;
+using Tools.DotNETCommon;
 
 namespace AutomationTool
 {
@@ -243,11 +247,6 @@ namespace AutomationTool
 		int NumErrors;
 
 		/// <summary>
-		/// The name of the node if only a single node is going to be built, otherwise null.
-		/// </summary>
-		string SingleNodeName;
-
-		/// <summary>
 		/// Private constructor. Use ScriptReader.TryRead() to read a script file.
 		/// </summary>
 		/// <param name="DefaultProperties">Default properties available to the script</param>
@@ -275,9 +274,8 @@ namespace AutomationTool
 		/// <param name="bPreprocessOnly">Preprocess the file, but do not expand any values that are not portable (eg. paths on the local machine)</param>
 		/// <param name="Schema">Schema for the script</param>
 		/// <param name="Graph">If successful, the graph constructed from the given script</param>
-		/// <param name="SingleNodeName">If a single node will be processed, the name of that node.</param>
 		/// <returns>True if the graph was read, false if there were errors</returns>
-		public static bool TryRead(FileReference File, Dictionary<string, string> Arguments, Dictionary<string, string> DefaultProperties, bool bPreprocessOnly, ScriptSchema Schema, out Graph Graph, string SingleNodeName = null)
+		public static bool TryRead(FileReference File, Dictionary<string, string> Arguments, Dictionary<string, string> DefaultProperties, bool bPreprocessOnly, ScriptSchema Schema, out Graph Graph)
 		{
 			// Check the file exists before doing anything.
 			if (!FileReference.Exists(File))
@@ -289,7 +287,7 @@ namespace AutomationTool
 
 			// Read the file and build the graph
 			ScriptReader Reader = new ScriptReader(DefaultProperties, bPreprocessOnly, Schema);
-			if (!Reader.TryRead(File, Arguments, SingleNodeName) || Reader.NumErrors > 0)
+			if (!Reader.TryRead(File, Arguments) || Reader.NumErrors > 0)
 			{
 				Graph = null;
 				return false;
@@ -299,7 +297,7 @@ namespace AutomationTool
 			bool bInvalidArgument = false;
 			foreach(string InvalidArgumentName in Arguments.Keys.Except(Reader.Graph.Options.Select(x => x.Name), StringComparer.InvariantCultureIgnoreCase))
 			{
-				CommandUtils.LogError("Unknown argument '{0}' for '{1}'", InvalidArgumentName, File.FullName);
+				CommandUtils.LogWarning("Unknown argument '{0}' for '{1}'", InvalidArgumentName, File.FullName);
 				bInvalidArgument = true;
 			}
 			if(bInvalidArgument)
@@ -318,8 +316,7 @@ namespace AutomationTool
 		/// </summary>
 		/// <param name="File">File to read from</param>
 		/// <param name="Arguments">Arguments passed in to the graph on the command line</param>
-		/// <param name="SingleNodeName">The name of the node if only a single node is going to be built, otherwise null.</param>
-		bool TryRead(FileReference File, Dictionary<string, string> Arguments, string SingleNodeName = null)
+		bool TryRead(FileReference File, Dictionary<string, string> Arguments)
 		{
 			// Read the document and validate it against the schema
 			ScriptDocument Document;
@@ -330,7 +327,6 @@ namespace AutomationTool
 			}
 
 			// Read the root BuildGraph element
-			this.SingleNodeName = SingleNodeName;
 			ReadGraphBody(Document.DocumentElement, File.Directory, Arguments);
 			return true;
 		}
@@ -376,9 +372,6 @@ namespace AutomationTool
 						break;
 					case "Badge":
 						ReadBadge(ChildElement);
-						break;
-					case "Label":
-						ReadLabel(ChildElement);
 						break;
 					case "Notify":
 						ReadNotifier(ChildElement);
@@ -613,17 +606,14 @@ namespace AutomationTool
 		{
 			if (EvaluateCondition(Element))
 			{
-				foreach (string Script in ReadListAttribute(Element, "Script"))
+				FileReference Script = FileReference.Combine(BaseDir, ReadAttribute(Element, "Script"));
+				if (!FileReference.Exists(Script))
 				{
-					FileReference ScriptFile = FileReference.Combine(BaseDir, Script);
-					if (!FileReference.Exists(ScriptFile))
-					{
-						LogError(Element, "Cannot find included script '{0}'", ScriptFile.FullName);
-					}
-					else
-					{
-						TryRead(ScriptFile, Arguments);
-					}
+					LogError(Element, "Cannot find included script '{0}'", Script.FullName);
+				}
+				else
+				{
+					TryRead(Script, Arguments);
 				}
 			}
 		}
@@ -953,54 +943,7 @@ namespace AutomationTool
 			if (EvaluateCondition(Element) && TryReadObjectName(Element, out Name) && CheckNameIsUnique(Element, Name))
 			{
 				string[] RequiredNames = ReadListAttribute(Element, "Requires");
-
-				Aggregate NewAggregate = new Aggregate(Name);
-				foreach (Node ReferencedNode in ResolveReferences(Element, RequiredNames))
-				{
-					NewAggregate.RequiredNodes.Add(ReferencedNode);
-				}
-				Graph.NameToAggregate[Name] = NewAggregate;
-
-				string LabelCategoryName = ReadAttribute(Element, "Label");
-				if (!String.IsNullOrEmpty(LabelCategoryName))
-				{
-					Label Label;
-
-					// Create the label
-					int SlashIdx = LabelCategoryName.IndexOf('/');
-					if (SlashIdx != -1)
-					{
-						Label = new Label(LabelCategoryName.Substring(SlashIdx + 1), LabelCategoryName.Substring(0, SlashIdx), null, null, LabelChange.Current);
-					}
-					else
-					{
-						Label = new Label(LabelCategoryName, "Other", null, null, LabelChange.Current);
-					}
-
-					// Find all the included nodes
-					foreach (Node RequiredNode in NewAggregate.RequiredNodes)
-					{
-						Label.RequiredNodes.Add(RequiredNode);
-						Label.IncludedNodes.Add(RequiredNode);
-						Label.IncludedNodes.UnionWith(RequiredNode.OrderDependencies);
-					}
-
-					string[] IncludedNames = ReadListAttribute(Element, "Include");
-					foreach (Node IncludedNode in ResolveReferences(Element, IncludedNames))
-					{
-						Label.IncludedNodes.Add(IncludedNode);
-						Label.IncludedNodes.UnionWith(IncludedNode.OrderDependencies);
-					}
-
-					string[] ExcludedNames = ReadListAttribute(Element, "Exclude");
-					foreach (Node ExcludedNode in ResolveReferences(Element, ExcludedNames))
-					{
-						Label.IncludedNodes.Remove(ExcludedNode);
-						Label.IncludedNodes.ExceptWith(ExcludedNode.OrderDependencies);
-					}
-
-					Graph.Labels.Add(Label);
-				}
+				Graph.AggregateNameToNodes.Add(Name, ResolveReferences(Element, RequiredNames).ToArray());
 			}
 		}
 
@@ -1050,52 +993,6 @@ namespace AutomationTool
 					NewBadge.Nodes.UnionWith(ReferencedNode.OrderDependencies);
 				}
 				Graph.Badges.Add(NewBadge);
-			}
-		}
-
-		/// <summary>
-		/// Reads the definition for a label
-		/// </summary>
-		/// <param name="Element">Xml element to read the definition from</param>
-		void ReadLabel(ScriptElement Element)
-		{
-			if (EvaluateCondition(Element))
-			{
-				string Name = ReadAttribute(Element, "Name");
-				if (!String.IsNullOrEmpty(Name))
-				{
-					ValidateName(Element, Name);
-				}
-
-				string Category = ReadAttribute(Element, "Category");
-
-				string[] RequiredNames = ReadListAttribute(Element, "Requires");
-				string[] IncludedNames = ReadListAttribute(Element, "Include");
-				string[] ExcludedNames = ReadListAttribute(Element, "Exclude");
-
-				string UgsBadge = ReadAttribute(Element, "UgsBadge");
-				string UgsProject = ReadAttribute(Element, "UgsProject");
-
-				LabelChange Change = ReadEnumAttribute<LabelChange>(Element, "Change", LabelChange.Current);
-
-				Label NewLabel = new Label(Name, Category, UgsBadge, UgsProject, Change);
-				foreach (Node ReferencedNode in ResolveReferences(Element, RequiredNames))
-				{
-					NewLabel.RequiredNodes.Add(ReferencedNode);
-					NewLabel.IncludedNodes.Add(ReferencedNode);
-					NewLabel.IncludedNodes.UnionWith(ReferencedNode.OrderDependencies);
-				}
-				foreach (Node IncludedNode in ResolveReferences(Element, IncludedNames))
-				{
-					NewLabel.IncludedNodes.Add(IncludedNode);
-					NewLabel.IncludedNodes.UnionWith(IncludedNode.OrderDependencies);
-				}
-				foreach (Node ExcludedNode in ResolveReferences(Element, ExcludedNames))
-				{
-					NewLabel.IncludedNodes.Remove(ExcludedNode);
-					NewLabel.IncludedNodes.ExceptWith(ExcludedNode.OrderDependencies);
-				}
-				Graph.Labels.Add(NewLabel);
 			}
 		}
 
@@ -1382,7 +1279,7 @@ namespace AutomationTool
 					{
 						if(Arguments[Idx] == null)
 						{
-							LogWarning(Element, "Macro '{0}' is missing argument '{1}'", Macro.Name, Macro.ArgumentNameToIndex.First(x => x.Value == Idx).Key);
+							LogWarning(Element, "Macro '{0}' is missing argument '{1}'", Macro.ArgumentNameToIndex.First(x => x.Value == Idx).Key);
 							bHasMissingArguments = true;
 						}
 					}
@@ -1409,12 +1306,6 @@ namespace AutomationTool
 		/// <param name="ParentNode">The node which owns this task</param>
 		void ReadTask(ScriptElement Element, Node ParentNode)
 		{
-			// If we're running a single node and this element's parent isn't the single node to run, ignore the error and return.
-			if (!string.IsNullOrWhiteSpace(SingleNodeName) && ParentNode.Name != SingleNodeName)
-			{
-				return;
-			}
-
 			if (EvaluateCondition(Element))
 			{
 				// Get the reflection info for this element

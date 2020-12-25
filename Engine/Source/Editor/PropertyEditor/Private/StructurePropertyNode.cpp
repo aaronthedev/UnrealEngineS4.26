@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "StructurePropertyNode.h"
@@ -12,11 +12,11 @@ void FStructurePropertyNode::InitChildNodes()
 
 	const UStruct* Struct = StructData.IsValid() ? StructData->GetStruct() : NULL;
 
-	TArray<FProperty*> StructMembers;
+	TArray<UProperty*> StructMembers;
 
-	for (TFieldIterator<FProperty> It(Struct); It; ++It)
+	for (TFieldIterator<UProperty> It(Struct); It; ++It)
 	{
-		FProperty* StructMember = *It;
+		UProperty* StructMember = *It;
 
 		if (StructMember)
 		{
@@ -29,7 +29,7 @@ void FStructurePropertyNode::InitChildNodes()
 
 	PropertyEditorHelpers::OrderPropertiesFromMetadata(StructMembers);
 
-	for (FProperty* StructMember : StructMembers)
+	for (UProperty* StructMember : StructMembers)
 	{
 		TSharedPtr<FItemPropertyNode> NewItemNode(new FItemPropertyNode);//;//CreatePropertyItem(StructMember,INDEX_NONE,this);
 

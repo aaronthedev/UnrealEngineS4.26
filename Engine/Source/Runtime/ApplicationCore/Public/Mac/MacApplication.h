@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -142,16 +142,6 @@ public:
 public:
 
 	virtual void SetMessageHandler(const TSharedRef<class FGenericApplicationMessageHandler>& InMessageHandler) override;
-#if WITH_ACCESSIBILITY
-	virtual void SetAccessibleMessageHandler(const TSharedRef<FGenericAccessibleMessageHandler>& InAccessibleMessageHandler) override;
-	
-	/** Called when Voiceover is enabled. FMacAccessibilityManager should be the only class to call this */
-	void OnVoiceoverEnabled();
-	
-	/** Called when Voiceover is disabled. FMacAccessibilityManager should be the only class to call this */
-	void OnVoiceoverDisabled();
-#endif
-
 
 	virtual void PollGameDeviceState(const float TimeDelta) override;
 
@@ -322,10 +312,6 @@ private:
 	void RecordUsage(EGestureEvent Gesture) { }
 #endif
 
-#if WITH_ACCESSIBILITY
-	void OnAccessibleEventRaised(TSharedRef<IAccessibleWidget> Widget, EAccessibleEvent Event, FVariant OldValue, FVariant NewValue);
-	#endif
-
 private:
 
 	bool bUsingHighPrecisionMouseInput;
@@ -405,13 +391,6 @@ private:
 #endif
 
 	NSData* KeyBoardLayoutData;
-
-#if WITH_ACCESSIBILITY
-	/** Timer used to refresh the accessibility cache */
-	NSTimer* AccessibilityCacheTimer;
-	
-	NSTimer* AccessibilityAnnouncementDelayTimer;
-#endif
 
 	friend class FMacWindow;
 };

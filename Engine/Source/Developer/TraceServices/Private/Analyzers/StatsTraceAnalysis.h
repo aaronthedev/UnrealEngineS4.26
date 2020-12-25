@@ -1,14 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
+#include "Trace/Trace.h"
 #include "Trace/Analyzer.h"
 #include "Templates/SharedPointer.h"
 
 namespace Trace
 {
 	class IAnalysisSession;
-	class IEditableCounter;
+	class ICounter;
 	class ICounterProvider;
 }
 
@@ -18,7 +19,7 @@ class FStatsAnalyzer
 public:
 	FStatsAnalyzer(Trace::IAnalysisSession& Session, Trace::ICounterProvider& CounterProvider);
 	virtual void OnAnalysisBegin(const FOnAnalysisContext& Context) override;
-	virtual bool OnEvent(uint16 RouteId, EStyle Style, const FOnEventContext& Context) override;
+	virtual bool OnEvent(uint16 RouteId, const FOnEventContext& Context) override;
 
 private:
 	enum : uint16
@@ -36,6 +37,6 @@ private:
 
 	Trace::IAnalysisSession& Session;
 	Trace::ICounterProvider& CounterProvider;
-	TMap<uint32, Trace::IEditableCounter*> CountersMap;
+	TMap<uint32, Trace::ICounter*> CountersMap;
 	TMap<uint32, TSharedRef<FThreadState>> ThreadStatesMap;
 };

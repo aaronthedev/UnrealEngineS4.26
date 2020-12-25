@@ -1,170 +1,149 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
-#include "ClothingSimulation.h"
-#include "ClothingAsset.h"
-#include "ClothCollisionData.h"
-#include "Chaos/ChaosDebugDrawDeclares.h"
-#include "ChaosCloth/ChaosClothConfig.h"
-#include "Templates/Atomic.h"
-#include "Templates/UniquePtr.h"
+#include "ClothingSimulationInterface.h"
 
-class USkeletalMeshComponent;
-class FClothingSimulationContextCommon;
-#if WITH_EDITOR
-class UMaterial;
-#endif
+#include "ClothingAsset.h"
+#include "Chaos/ArrayCollectionArray.h"
+#include "Chaos/PBDEvolution.h"
+#include "Chaos/Transform.h"
+#include "Chaos/TriangleMesh.h"
+#include "Components/SkeletalMeshComponent.h"
 
 namespace Chaos
 {
-	template<class T, int d> class TPBDLongRangeConstraintsBase;
-	template<typename T> class TTriangleMesh;
-	template<typename T, int d> class TPBDEvolution;
-	class FClothingSimulationSolver;
-	class FClothingSimulationMesh;
-	class FClothingSimulationCloth;
-	class FClothingSimulationCollider;
+	class ClothingSimulationContext : public IClothingSimulationContext
+	{
+	public:
+		ClothingSimulationContext() {}
+		~ClothingSimulationContext() {}
 
-	typedef FClothingSimulationContextCommon FClothingSimulationContext;
+		float DeltaTime;
+		TArray<FMatrix> RefToLocals;
+		TArray<FTransform> BoneTransforms;
+		FTransform ComponentToWorld;
+	};
 
-	class FClothingSimulation : public FClothingSimulationCommon
+	class ClothingSimulation
+		: public IClothingSimulation
 #if WITH_EDITOR
 		, public FGCObject  // Add garbage collection for debug cloth material
 #endif  // #if WITH_EDITOR
 	{
 	public:
-		FClothingSimulation();
-		virtual ~FClothingSimulation() override;
-
-	protected:
-		// IClothingSimulation interface
-		virtual void Initialize() override;
-		virtual void Shutdown() override;
-
-		virtual IClothingSimulationContext* CreateContext() override;
-		virtual void DestroyContext(IClothingSimulationContext* InContext) override { delete InContext; }
-
-		virtual void CreateActor(USkeletalMeshComponent* InOwnerComponent, UClothingAssetBase* InAsset, int32 SimDataIndex) override;
-		virtual void DestroyActors() override;
-
-		virtual bool ShouldSimulate() const override;
-		virtual void Simulate(IClothingSimulationContext* InContext) override;
-		virtual void GetSimulationData(TMap<int32, FClothSimulData>& OutData, USkeletalMeshComponent* InOwnerComponent, USkinnedMeshComponent* InOverrideComponent) const override;
-
-		// Return bounds in local space (or in world space if InOwnerComponent is null).
-		virtual FBoxSphereBounds GetBounds(const USkeletalMeshComponent* InOwnerComponent) const override;
-
-		virtual void AddExternalCollisions(const FClothCollisionData& InData) override;
-		virtual void ClearExternalCollisions() override;
-		virtual void GetCollisions(FClothCollisionData& OutCollisions, bool bIncludeExternal = true) const override;
-		// End of IClothingSimulation interface
-
-	public:
-		// Set the animation drive stiffness for all actors
-		void SetAnimDriveSpringStiffness(float InAnimDriveSpringStiffness);
-		void SetGravityOverride(const FVector& InGravityOverride);
-		void DisableGravityOverride();
-
-		// Function to be called if any of the assets' configuration parameters have changed
-		void RefreshClothConfig(const IClothingSimulationContext* InContext);
-		// Function to be called if any of the assets' physics assets changes (colliders)
-		// This seems to only happen when UPhysicsAsset::RefreshPhysicsAssetChange is called with
-		// bFullClothRefresh set to false during changes created using the viewport manipulators.
-		void RefreshPhysicsAsset();
-
-		// IClothingSimulation interface
-		virtual int32 GetNumCloths() const override { return NumCloths; }
-		virtual int32 GetNumKinematicParticles() const override { return NumKinematicParticles; }
-		virtual int32 GetNumDynamicParticles() const override { return NumDynamicParticles; }
-		virtual int32 GetNumIterations() const override { return NumIterations; }
-		virtual int32 GetNumSubsteps() const override { return NumSubsteps; }
-		virtual float GetSimulationTime() const override { return SimulationTime; }
-		virtual bool IsTeleported() const override { return bIsTeleported; }
-		// End of IClothingSimulation interface
+		ClothingSimulation();
+		virtual ~ClothingSimulation();
 
 #if WITH_EDITOR
 		// FGCObject interface
-		virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
+		void AddReferencedObjects(FReferenceCollector& Collector) override;
 		// End of FGCObject interface
 
-		// Editor only debug draw function
-		CHAOSCLOTH_API void DebugDrawPhysMeshShaded(FPrimitiveDrawInterface* PDI) const;
-		CHAOSCLOTH_API void DebugDrawParticleIndices(FCanvas* Canvas, const FSceneView* SceneView) const;
-		CHAOSCLOTH_API void DebugDrawElementIndices(FCanvas* Canvas, const FSceneView* SceneView) const;
-		CHAOSCLOTH_API void DebugDrawMaxDistanceValues(FCanvas* Canvas, const FSceneView* SceneView) const;
+		CHAOSCLOTH_API void DebugDrawPhysMeshWired(USkeletalMeshComponent* OwnerComponent, FPrimitiveDrawInterface* PDI) const;
+		CHAOSCLOTH_API void DebugDrawPhysMeshShaded(USkeletalMeshComponent* OwnerComponent, FPrimitiveDrawInterface* PDI) const;
+		CHAOSCLOTH_API void DebugDrawPointNormals(USkeletalMeshComponent* OwnerComponent, FPrimitiveDrawInterface* PDI) const;
+		CHAOSCLOTH_API void DebugDrawInversedPointNormals(USkeletalMeshComponent* OwnerComponent, FPrimitiveDrawInterface* PDI) const;
+		CHAOSCLOTH_API void DebugDrawFaceNormals(USkeletalMeshComponent* OwnerComponent, FPrimitiveDrawInterface* PDI) const;
+		CHAOSCLOTH_API void DebugDrawInversedFaceNormals(USkeletalMeshComponent* OwnerComponent, FPrimitiveDrawInterface* PDI) const;
+		CHAOSCLOTH_API void DebugDrawCollision(USkeletalMeshComponent* OwnerComponent, FPrimitiveDrawInterface* PDI) const;
+		CHAOSCLOTH_API void DebugDrawBackstops(USkeletalMeshComponent* OwnerComponent, FPrimitiveDrawInterface* PDI) const;
+		CHAOSCLOTH_API void DebugDrawMaxDistances(USkeletalMeshComponent* OwnerComponent, FPrimitiveDrawInterface* PDI) const;
+		CHAOSCLOTH_API void DebugDrawSelfCollision(USkeletalMeshComponent* OwnerComponent, FPrimitiveDrawInterface* PDI) const;
+		CHAOSCLOTH_API void DebugDrawAnimDrive(USkeletalMeshComponent* OwnerComponent, FPrimitiveDrawInterface* PDI) const;
 #endif  // #if WITH_EDITOR
 
-#if WITH_EDITOR || CHAOS_DEBUG_DRAW
-		// Editor & runtime debug draw functions
-		CHAOSCLOTH_API void DebugDrawPhysMeshWired(FPrimitiveDrawInterface* PDI = nullptr) const;
-		CHAOSCLOTH_API void DebugDrawAnimMeshWired(FPrimitiveDrawInterface* PDI = nullptr) const;
-		CHAOSCLOTH_API void DebugDrawPointNormals(FPrimitiveDrawInterface* PDI = nullptr) const;
-		CHAOSCLOTH_API void DebugDrawInversedPointNormals(FPrimitiveDrawInterface* PDI = nullptr) const;
-		CHAOSCLOTH_API void DebugDrawCollision(FPrimitiveDrawInterface* PDI = nullptr) const;
-		CHAOSCLOTH_API void DebugDrawBackstops(FPrimitiveDrawInterface* PDI = nullptr) const;
-		CHAOSCLOTH_API void DebugDrawBackstopDistances(FPrimitiveDrawInterface* PDI = nullptr) const;
-		CHAOSCLOTH_API void DebugDrawMaxDistances(FPrimitiveDrawInterface* PDI = nullptr) const;
-		CHAOSCLOTH_API void DebugDrawAnimDrive(FPrimitiveDrawInterface* PDI = nullptr) const;
-		CHAOSCLOTH_API void DebugDrawBendingConstraint(FPrimitiveDrawInterface* PDI = nullptr) const;
-		CHAOSCLOTH_API void DebugDrawLongRangeConstraint(FPrimitiveDrawInterface* PDI = nullptr) const;
-		CHAOSCLOTH_API void DebugDrawWindForces(FPrimitiveDrawInterface* PDI = nullptr) const;
-		CHAOSCLOTH_API void DebugDrawLocalSpace(FPrimitiveDrawInterface* PDI = nullptr) const;
-#endif  // #if WITH_EDITOR || CHAOS_DEBUG_DRAW
+	protected:
+		// IClothingSimulation interface
+		void Initialize() override;
+		void CreateActor(USkeletalMeshComponent* InOwnerComponent, UClothingAssetBase* InAsset, int32 SimDataIndex) override;
+		IClothingSimulationContext* CreateContext() override { return new ClothingSimulationContext(); }
+		void FillContext(USkeletalMeshComponent* InComponent, float InDeltaTime, IClothingSimulationContext* InOutContext) override;
+		void Shutdown() override;
+		bool ShouldSimulate() const override { return true; }
+		void Simulate(IClothingSimulationContext* InContext) override;
+		void DestroyActors() override;
+		void DestroyContext(IClothingSimulationContext* InContext) override { delete InContext; }
+		void GetSimulationData(TMap<int32, FClothSimulData>& OutData, USkeletalMeshComponent* InOwnerComponent, USkinnedMeshComponent* InOverrideComponent) const override;
+
+		FBoxSphereBounds GetBounds(const USkeletalMeshComponent* InOwnerComponent) const override
+		{ return FBoxSphereBounds(Evolution->Particles().X().GetData(), Evolution->Particles().Size()); }
+
+		void AddExternalCollisions(const FClothCollisionData& InData) override;
+		void ClearExternalCollisions() override;
+		void GetCollisions(FClothCollisionData& OutCollisions, bool bIncludeExternal = true) const override;
+		// End of IClothingSimulation interface
 
 	private:
-		void ResetStats();
-		void UpdateStats(const FClothingSimulationCloth* Cloth);
-
-		void UpdateSimulationFromSharedSimConfig();
-
-#if CHAOS_DEBUG_DRAW
-		// Runtime only debug draw functions
-		void DebugDrawBounds() const;
-		void DebugDrawGravity() const;
-#endif  // #if CHAOS_DEBUG_DRAW
+		// Extract the collisions from the physics asset referenced by the specified clothing asset
+		void ExtractPhysicsAssetCollisions(UClothingAssetCommon* Asset);
+		// Extract the collisions from the specified clothing asset 
+		void ExtractLegacyAssetCollisions(UClothingAssetCommon* Asset, const USkeletalMeshComponent* InOwnerComponent);
+		// Create the bone mapping for all the bones used by collision
+		void RefreshBoneMapping(UClothingAssetCommon* Asset);
 
 	private:
-		// Simulation objects
-		TUniquePtr<FClothingSimulationSolver> Solver;  // Default solver
-		TArray<TUniquePtr<FClothingSimulationMesh>> Meshes;
-		TArray<TUniquePtr<FClothingSimulationCloth>> Cloths;
-		TArray<TUniquePtr<FClothingSimulationCollider>> Colliders;
+		// Assets
+		TArray<UClothingAssetCommon*> Assets;
 
-		// External collision Data
-		FClothCollisionData ExternalCollisionData;
+		// Collision Data
+		FClothCollisionData ExtractedCollisions;  // Collisions extracted from the referenced physics asset
+		FClothCollisionData ExternalCollisions;  // External collisions
+		TArray<FName> CollisionBoneNames;  // List of the bone names used by collision
+		TArray<int32> CollisionBoneIndices;  // List of the indices for the bones in UsedBoneNames, used for remapping
+		TArray<Chaos::TRigidTransform<float, 3>> OldCollisionTransforms;  // Used for the kinematic collision transform update
+		TArray<Chaos::TRigidTransform<float, 3>> CollisionTransforms;  // Used for the kinematic collision transform update
+		Chaos::TArrayCollectionArray<int32> BoneIndices;
+		Chaos::TArrayCollectionArray<Chaos::TRigidTransform<float, 3>> BaseTransforms;
 
-		// Shared cloth config
-		UChaosClothSharedSimConfig* ClothSharedSimConfig;
+		// Animation Data
+		TArray<Chaos::TVector<float, 3>> OldAnimationPositions;
+		TArray<Chaos::TVector<float, 3>> AnimationPositions;
+		TArray<Chaos::TVector<float, 3>> AnimationNormals;
 
-		// Properties that must be readable from all threads
-		TAtomic<int32> NumCloths;
-		TAtomic<int32> NumKinematicParticles;
-		TAtomic<int32> NumDynamicParticles;
-		TAtomic<int32> NumIterations;
-		TAtomic<int32> NumSubsteps;
-		TAtomic<float> SimulationTime;
-		TAtomic<bool> bIsTeleported;
+		// Sim Data
+		TArray<Chaos::TVector<uint32, 2>> IndexToRangeMap;
 
-		// Overrides
-		bool bUseLocalSpaceSimulation;
-		bool bUseGravityOverride;
-		FVector GravityOverride;
-		float MaxDistancesMultipliers;
-		float AnimDriveSpringStiffness;
+		TArray<TUniquePtr<Chaos::TTriangleMesh<float>>> Meshes;
+		mutable TArray<TArray<Chaos::TVector<float, 3>>> FaceNormals;
+		mutable TArray<TArray<Chaos::TVector<float, 3>>> PointNormals;
+
+		TUniquePtr<Chaos::TPBDEvolution<float, 3>> Evolution;
+
+		uint32 ExternalCollisionsOffset;  // External collisions first particle index
+
+		float Time;
+		float DeltaTime;
+		float MaxDeltaTime;
+		float ClampDeltaTime;
+		// Parameters that should be set in the ui
+		int32 NumIterations;
+
+		EClothMassMode MassMode;
+		float UniformMass;
+		float TotalMass;
+		float Density;
+		float MinMass;
+
+		float EdgeStiffness;
+		float BendingStiffness;
+		float AreaStiffness;
+		float VolumeStiffness;
+		float StrainLimitingStiffness;
+		float ShapeTargetStiffness;
+		float SelfCollisionThickness;
+		float CollisionThickness;
+		float CoefficientOfFriction;
+		float Damping;
+		float GravityMagnitude;
+		bool bUseBendingElements;
+		bool bUseTetrahedralConstraints;
+		bool bUseThinShellVolumeConstraints;
+		bool bUseSelfCollisions;
+		bool bUseContinuousCollisionDetection;
 
 #if WITH_EDITOR
 		// Visualization material
 		UMaterial* DebugClothMaterial;
-		UMaterial* DebugClothMaterialVertex;
 #endif  // #if WITH_EDITOR
 	};
 } // namespace Chaos
-
-// Support ISPC enable/disable in non-shipping builds
-#if !INTEL_ISPC
-const bool bChaos_GetSimData_ISPC_Enabled = false;
-#elif UE_BUILD_SHIPPING
-const bool bChaos_GetSimData_ISPC_Enabled = true;
-#else
-extern bool bChaos_GetSimData_ISPC_Enabled;
-#endif

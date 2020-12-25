@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Evaluation/MovieSceneColorTemplate.h"
 #include "Sections/MovieSceneColorSection.h"
@@ -114,7 +114,7 @@ private:
 			return true;
 		}
 
-		const FStructProperty* StructProp = CastField<const FStructProperty>(Bindings.GetProperty(InObject));
+		const UStructProperty* StructProp = Cast<const UStructProperty>(Bindings.GetProperty(InObject));
 		if (!StructProp || !StructProp->Struct)
 		{
 			return false;
@@ -209,7 +209,7 @@ struct FColorTokenActuator : TMovieSceneBlendingActuator<FLinearColor>
 };
 
 FMovieSceneColorSectionTemplate::FMovieSceneColorSectionTemplate(const UMovieSceneColorSection& Section, const UMovieSceneColorTrack& Track)
-	: FMovieScenePropertySectionTemplate(Track.GetPropertyName(), Track.GetPropertyPath().ToString())
+	: FMovieScenePropertySectionTemplate(Track.GetPropertyName(), Track.GetPropertyPath())
 	, BlendType(Section.GetBlendType().Get())
 {
 	Curves[0] = Section.GetRedChannel();
@@ -221,7 +221,7 @@ FMovieSceneColorSectionTemplate::FMovieSceneColorSectionTemplate(const UMovieSce
 void FMovieSceneColorSectionTemplate::Evaluate(const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const
 {
 	const FFrameTime Time = Context.GetTime();
-	UE::MovieScene::TMultiChannelValue<float, 4> AnimationData;
+	MovieScene::TMultiChannelValue<float, 4> AnimationData;
 
 	for (uint8 Index = 0; Index < 4; ++Index)
 	{
@@ -254,7 +254,7 @@ void FMovieSceneColorSectionTemplate::Evaluate(const FMovieSceneEvaluationOperan
 void FMovieSceneColorSectionTemplate::Interrogate(const FMovieSceneContext& Context, FMovieSceneInterrogationData& Container, UObject* BindingOverride) const
 {
 	const FFrameTime Time = Context.GetTime();
-	UE::MovieScene::TMultiChannelValue<float, 4> AnimationData;
+	MovieScene::TMultiChannelValue<float, 4> AnimationData;
 
 	for (uint8 Index = 0; Index < 4; ++Index)
 	{
@@ -271,7 +271,7 @@ void FMovieSceneColorSectionTemplate::Interrogate(const FMovieSceneContext& Cont
 	if (!Container.GetAccumulator().FindActuator<FLinearColor>(ActuatorTypeID))
 	{
 		PropertyTemplate::FSectionData SectionData;
-		SectionData.Initialize(PropertyData.PropertyName, PropertyData.PropertyPath);
+		SectionData.Initialize(PropertyData.PropertyName, PropertyData.PropertyPath, PropertyData.FunctionName, PropertyData.NotifyFunctionName);
 		Container.GetAccumulator().DefineActuator(ActuatorTypeID, MakeShared<TPropertyActuator<FLinearColor>>(SectionData));
 	}
 

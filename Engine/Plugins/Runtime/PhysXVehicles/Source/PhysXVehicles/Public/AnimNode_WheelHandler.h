@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,7 +13,6 @@
 /**
  *	Simple controller that replaces or adds to the translation/rotation of a single bone.
  */
-struct UE_DEPRECATED(4.26, "PhysX is deprecated. Use the FAnimNode_WheelController from the ChaosVehiclePhysics Plugin.") FAnimNode_WheelHandler;
 USTRUCT()
 struct PHYSXVEHICLES_API FAnimNode_WheelHandler : public FAnimNode_SkeletalControlBase
 {
@@ -43,7 +42,5 @@ private:
 	};
 
 	TArray<FWheelLookupData> Wheels;
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-		const FVehicleAnimInstanceProxy* AnimInstanceProxy;	//TODO: we only cache this to use in eval where it's safe. Should change API to pass proxy into eval
-PRAGMA_ENABLE_DEPRECATION_WARNINGS 
+	const FVehicleAnimInstanceProxy* AnimInstanceProxy;	//TODO: we only cache this to use in eval where it's safe. Should change API to pass proxy into eval
 };

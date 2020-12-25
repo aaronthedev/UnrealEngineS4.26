@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Analytics/CrashReportsPrivacySettings.h"
 #include "UObject/UnrealType.h"
@@ -27,7 +27,7 @@ void UCrashReportsPrivacySettings::GetToggleCategoryAndPropertyNames(FName& OutC
 
 FText UCrashReportsPrivacySettings::GetFalseStateLabel() const
 {
-	return LOCTEXT("FalseStateLabel", "Don't Send");
+	return LOCTEXT("FalseStateLabel", "Don't send");
 };
 
 FText UCrashReportsPrivacySettings::GetFalseStateTooltip() const
@@ -42,7 +42,7 @@ FText UCrashReportsPrivacySettings::GetFalseStateDescription() const
 
 FText UCrashReportsPrivacySettings::GetTrueStateLabel() const
 {
-	return LOCTEXT("TrueStateLabel", "Send Unattended Bug Reports");
+	return LOCTEXT("TrueStateLabel", "Send unattended bug reports");
 };
 
 FText UCrashReportsPrivacySettings::GetTrueStateTooltip() const

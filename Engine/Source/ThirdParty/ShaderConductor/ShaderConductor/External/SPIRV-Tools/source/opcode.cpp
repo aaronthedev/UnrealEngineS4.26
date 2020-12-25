@@ -1,6 +1,4 @@
-// Copyright (c) 2015-2020 The Khronos Group Inc.
-// Modifications Copyright (C) 2020 Advanced Micro Devices, Inc. All rights
-// reserved.
+// Copyright (c) 2015-2016 The Khronos Group Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -183,15 +181,11 @@ void spvInstructionCopy(const uint32_t* words, const SpvOp opcode,
   }
 }
 
-const char* spvOpcodeString(const uint32_t opcode) {
+const char* spvOpcodeString(const SpvOp opcode) {
   const auto beg = kOpcodeTableEntries;
   const auto end = kOpcodeTableEntries + ARRAY_SIZE(kOpcodeTableEntries);
-  spv_opcode_desc_t needle = {"",    static_cast<SpvOp>(opcode),
-                              0,     nullptr,
-                              0,     {},
-                              false, false,
-                              0,     nullptr,
-                              ~0u,   ~0u};
+  spv_opcode_desc_t needle = {"",    opcode, 0, nullptr, 0,   {},
+                              false, false,  0, nullptr, ~0u, ~0u};
   auto comp = [](const spv_opcode_desc_t& lhs, const spv_opcode_desc_t& rhs) {
     return lhs.opcode < rhs.opcode;
   };
@@ -335,9 +329,6 @@ int32_t spvOpcodeGeneratesType(SpvOp op) {
     case SpvOpTypeNamedBarrier:
     case SpvOpTypeAccelerationStructureNV:
     case SpvOpTypeCooperativeMatrixNV:
-    // case SpvOpTypeAccelerationStructureKHR: covered by
-    // SpvOpTypeAccelerationStructureNV
-    case SpvOpTypeRayQueryProvisionalKHR:
       return true;
     default:
       // In particular, OpTypeForwardPointer does not generate a type,
@@ -611,39 +602,6 @@ bool spvOpcodeIsDebug(SpvOp opcode) {
     case SpvOpString:
     case SpvOpLine:
     case SpvOpNoLine:
-      return true;
-    default:
-      return false;
-  }
-}
-
-bool spvOpcodeIsCommutativeBinaryOperator(SpvOp opcode) {
-  switch (opcode) {
-    case SpvOpPtrEqual:
-    case SpvOpPtrNotEqual:
-    case SpvOpIAdd:
-    case SpvOpFAdd:
-    case SpvOpIMul:
-    case SpvOpFMul:
-    case SpvOpDot:
-    case SpvOpIAddCarry:
-    case SpvOpUMulExtended:
-    case SpvOpSMulExtended:
-    case SpvOpBitwiseOr:
-    case SpvOpBitwiseXor:
-    case SpvOpBitwiseAnd:
-    case SpvOpOrdered:
-    case SpvOpUnordered:
-    case SpvOpLogicalEqual:
-    case SpvOpLogicalNotEqual:
-    case SpvOpLogicalOr:
-    case SpvOpLogicalAnd:
-    case SpvOpIEqual:
-    case SpvOpINotEqual:
-    case SpvOpFOrdEqual:
-    case SpvOpFUnordEqual:
-    case SpvOpFOrdNotEqual:
-    case SpvOpFUnordNotEqual:
       return true;
     default:
       return false;

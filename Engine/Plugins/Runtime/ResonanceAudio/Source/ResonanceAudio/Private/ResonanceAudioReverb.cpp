@@ -9,15 +9,6 @@
 #include "ResonanceAudioSettings.h"
 #include "Sound/SoundSubmix.h"
 
-static int32 IgnoreUserResonanceSubmixCVar = 0;
-FAutoConsoleVariableRef CVarIgnoreUserResonanceSubmix(
-	TEXT("au.IgnoreUserResonanceSubmix"),
-	IgnoreUserResonanceSubmixCVar,
-	TEXT("When set to 1, the resonance project setting will be bypassed.\n")
-	TEXT("1: Submix Effects are disabled."),
-	ECVF_Default);
-
-
 namespace ResonanceAudio
 {
 	/*********************************************/
@@ -72,16 +63,13 @@ namespace ResonanceAudio
 		UpdateRoomEffects();
 
 		// This is where we trigger Resonance Audio processing.
-		if (OutData.NumChannels == 2)
-		{
+		if (OutData.NumChannels == 2) {
 			ResonanceAudioApi->FillInterleavedOutputBuffer(2 /*num. output channels */, InData.NumFrames, OutData.AudioBuffer->GetData());
 		}
 		else if (OutData.NumChannels > 2)
 		{
-			// FillInterleavedOutputBuffer (below) can fail if the graph does not have any sources to process, so the temp buffer must be zeroed
-			TemporaryStereoBuffer.Reset();
-			TemporaryStereoBuffer.AddZeroed(2 * InData.NumFrames);
-
+			// If the output buffer has more than 2 channels we copy the interleaved stereo into it.
+			TemporaryStereoBuffer.SetNum(2 * InData.NumFrames, false /* allow shrinking */);
 			ResonanceAudioApi->FillInterleavedOutputBuffer(2 /*num. output channels */, InData.NumFrames, TemporaryStereoBuffer.GetData());
 			float* OutputBufferPtr = OutData.AudioBuffer->GetData();
 			for (int32 i = 0; i < InData.NumFrames; ++i)
@@ -95,11 +83,7 @@ namespace ResonanceAudio
 		else if (OutData.NumChannels == 1)
 		{
 			UE_LOG(LogResonanceAudio, Warning, TEXT("Resonance Audio Reverb connected to 1-channel output, down-mixing spatialized audio"));
-
-			// FillInterleavedOutputBuffer (below) can fail if the graph does not have any sources to process, so the temp buffer must be zeroed
-			TemporaryStereoBuffer.Reset();
-			TemporaryStereoBuffer.AddZeroed(2 * InData.NumFrames);
-
+			TemporaryStereoBuffer.SetNum(2 * InData.NumFrames, false /* allow shrinking */);
 			ResonanceAudioApi->FillInterleavedOutputBuffer(2 /*num. output channels */, InData.NumFrames, TemporaryStereoBuffer.GetData());
 			float* OutputBufferPtr = OutData.AudioBuffer->GetData();
 			for (int32 i = 0; i < InData.NumFrames; ++i)
@@ -124,10 +108,8 @@ namespace ResonanceAudio
 		}
 	}
 
-	void FResonanceAudioReverb::InitEffectSubmix()
+	FSoundEffectSubmix* FResonanceAudioReverb::GetEffectSubmix(USoundSubmix* Submix)
 	{
-		check(!SubmixEffect.IsValid());
-
 		// Load the global reverb preset settings:
 		const FSoftObjectPath ReverbPluginPresetName = GetDefault<UResonanceAudioSettings>()->GlobalReverbPreset;
 		if (ReverbPluginPresetName.IsValid())
@@ -138,7 +120,7 @@ namespace ResonanceAudio
 		// If loading of the Reverb Plugin Preset asset fails, create a temporary preset. No reverb will be applied.
 		if (GlobalReverbPluginPreset == nullptr)
 		{
-			GlobalReverbPluginPreset = NewObject<UResonanceAudioReverbPluginPreset>(UResonanceAudioReverbPluginPreset::StaticClass(), TEXT("Resonance Audio Reverb Plugin Preset"));
+			GlobalReverbPluginPreset = NewObject<UResonanceAudioReverbPluginPreset>(Submix, TEXT("Resonance Audio Reverb Plugin Preset"));
 		}
 
 		if (GlobalReverbPluginPreset)
@@ -146,78 +128,16 @@ namespace ResonanceAudio
 			GlobalReverbPluginPreset->AddToRoot();
 			ReverbPluginPreset = GlobalReverbPluginPreset;
 
-			SubmixEffect = USoundEffectPreset::CreateInstance<FSoundEffectSubmixInitData, FSoundEffectSubmix>(FSoundEffectSubmixInitData(), *ReverbPluginPreset);
-			StaticCastSharedPtr<FResonanceAudioReverbPlugin, FSoundEffectSubmix, ESPMode::ThreadSafe>(SubmixEffect)->SetResonanceAudioReverbPlugin(this);
-			SubmixEffect->SetEnabled(true);
+			FResonanceAudioReverbPlugin* Effect = static_cast<FResonanceAudioReverbPlugin*>(GlobalReverbPluginPreset->CreateNewEffect());
+			Effect->SetPreset(GlobalReverbPluginPreset);
+			Effect->SetResonanceAudioReverbPlugin(this);
+			return static_cast<FSoundEffectSubmix*>(Effect);
 		}
 		else
 		{
 			ReverbPluginPreset = nullptr;
+			return nullptr;
 		}
-	}
-
-	FSoundEffectSubmixPtr FResonanceAudioReverb::GetEffectSubmix()
-	{
-		if (!SubmixEffect.IsValid())
-		{
-			InitEffectSubmix();
-		}
-
-		return SubmixEffect;
-	}
-
-	USoundSubmix* FResonanceAudioReverb::GetSubmix()
-	{
-		const UResonanceAudioSettings* Settings = GetDefault<UResonanceAudioSettings>();
-		check(Settings);
-
-		USoundSubmix* ReverbSubmix = nullptr;
-		
-		if (!IgnoreUserResonanceSubmixCVar)
-		{
-			ReverbSubmix = Cast<USoundSubmix>(Settings->OutputSubmix.TryLoad());
-		}
-
-		if (!ReverbSubmix)
-		{
-			static const FString DefaultSubmixName = TEXT("Resonance Reverb Submix");
-			UE_LOG(LogResonanceAudio, Error, TEXT("Failed to load Resonance Reverb Submix from object path '%s' in ResonanceSettings. Creating '%s' as stub."),
-				*Settings->OutputSubmix.GetAssetPathString(),
-				*DefaultSubmixName);
-
-			ReverbSubmix = NewObject<USoundSubmix>(USoundSubmix::StaticClass(), *DefaultSubmixName);
-			ReverbSubmix->bMuteWhenBackgrounded = true;
-		}
-
-		// SubmixEffect is required to be initialized for ReverbPluginPreset to be set
-		if (!SubmixEffect.IsValid())
-		{
-			InitEffectSubmix();
-		}
-
-		if (ReverbPluginPreset)
-		{
-			bool bFoundPreset = false;
-			for (USoundEffectSubmixPreset* Preset : ReverbSubmix->SubmixEffectChain)
-			{
-				if (UResonanceAudioReverbPluginPreset* PluginPreset = Cast<UResonanceAudioReverbPluginPreset>(Preset))
-				{
-					bFoundPreset = true;
-					break;
-				}
-			}
-
-			if (!bFoundPreset)
-			{
-				static const FString DefaultPresetName = TEXT("ResonanceReverbDefault_0");
-				UE_LOG(LogResonanceAudio, Error, TEXT("Failed to find Resonance UResonanceAudioReverbPluginPreset on default reverb submix. Creating stub '%s'."),
-					*Settings->OutputSubmix.GetAssetPathString(),
-					*DefaultPresetName);
-				ReverbSubmix->SubmixEffectChain.Add(ReverbPluginPreset);
-			}
-		}
-
-		return ReverbSubmix;
 	}
 
 	void FResonanceAudioReverb::SetPreset(UResonanceAudioReverbPluginPreset* InPreset)

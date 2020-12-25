@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // This code is modified from that in the Mesa3D Graphics library available at
 // http://mesa3d.org/
@@ -630,7 +630,7 @@ private:
 	/** Constructor for image types */
 	glsl_type(
 	enum glsl_sampler_dim dim, bool array, bool is_sampler_buffer, bool is_shader_storage_buffer,
-		const struct glsl_type* type, const char *name, const char* InHlslName);
+		const struct glsl_type* type, const char *name);
 
 	/** Constructor for record types */
 	glsl_type(const glsl_struct_field *fields, unsigned num_fields,

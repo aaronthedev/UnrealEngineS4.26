@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -120,17 +120,11 @@ public:
 	/** Whether this level landscape based or not */
 	bool IsLandscapeBased() const;
 
-	UE_DEPRECATED(4.26, "No longer used; use CanReimportHeightmap instead.")
+	/** Whether this level based on tiled landscape or not */
 	bool IsTiledLandscapeBased() const;
-
-	/** Whether this level has a heightmap that can be reimported or not */
-	bool CanReimportHeightmap() const;
-
-	UE_DEPRECATED(4.26, "No longer used; use IsLandscapeStreamingProxy instead.")
+		
+	/** Whether this level has ALandscapeProxy or not */
 	bool IsLandscapeProxy() const;
-
-	/** Whether this level has ALandscapeStreamingProxy or not */
-	bool IsLandscapeStreamingProxy() const;
 
 	/** @return The landscape actor in case this level is landscape based */
 	ALandscapeProxy* GetLandscape() const;

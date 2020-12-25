@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Lightmass.h: lightmass import/export definitions.
@@ -116,12 +116,10 @@ public:
 		Portals.Add(InPortalComponent->GetComponentTransform().ToMatrixWithScale());
 	}
 
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	void SetAtmosphericComponent(const UAtmosphericFogComponent* AtmosphericFog)
 	{
 		AtmosphericFogComponent = AtmosphericFog;
 	}
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	void SetSkyAtmosphereComponent(const USkyAtmosphereComponent* SkyAtmosphere)
 	{
@@ -213,9 +211,7 @@ private:
 	TArray<FBox>				CharacterIndirectDetailVolumes;
 	TArray<FMatrix>				Portals;
 
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	const UAtmosphericFogComponent*	AtmosphericFogComponent;
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	const USkyAtmosphereComponent*	SkyAtmosphereComponent;
 
 	FLightmassWorldInfoSettings LevelSettings;
@@ -626,9 +622,7 @@ protected:
 	/** Whether lightmass has received a quit message from Swarm. */
 	bool						bQuitReceived;
 	/** Number of completed tasks, as reported from Swarm. */
-	volatile int32				NumCompletedTasks;
-	/** Number of completed volumetric lightmap tasks, for chasing down UE-80351. */
-	volatile int32				NumCompletedVolumetricLightmapTasks = 0;
+	int32							NumCompletedTasks;
 	/** Whether Lightmass is currently running. */
 	bool						bRunningLightmass;
 	/** Lightmass statistics*/

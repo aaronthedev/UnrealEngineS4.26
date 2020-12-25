@@ -1,17 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // Physics engine integration utilities
 
 #include "PhysTestSerializer.h"
 
-
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 #include "PhysXIncludes.h"
 #include "PhysXSupportCore.h"
-#include "PhysXToChaosUtil.h"
 #endif
 
-#include "PhysicsCore.h"
 #include "Chaos/PBDRigidsEvolution.h"
 #include "Chaos/PBDRigidParticles.h"
 #include "Chaos/Box.h"
@@ -20,11 +17,13 @@
 
 using namespace Chaos;
 
+#if WITH_PHYSX
+#include "PhysXToChaosUtil.h"
+#endif
+
 #include "PhysicsPublicCore.h"
-#include "PhysicsCore.h"
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
-#include "Serialization/MemoryWriter.h"
 
 FPhysTestSerializer::FPhysTestSerializer()
 	: bDiskDataIsChaos(false)
@@ -92,14 +91,8 @@ void FPhysTestSerializer::Serialize(Chaos::FChaosArchive& Ar)
 
 	if (Ar.IsLoading())
 	{
-#if PHYSICS_INTERFACE_PHYSX
 		CreatePhysXData();
-#endif
-
-#if 0
 		CreateChaosData();
-#endif
-
 		Ar.SetContext(MoveTemp(ChaosContext));	//make sure any context we created during load is used for sqcapture
 	}
 
@@ -119,22 +112,9 @@ void FPhysTestSerializer::Serialize(Chaos::FChaosArchive& Ar)
 	ChaosContext = Ar.StealContext();
 }
 
-void FPhysTestSerializer::SetPhysicsData(Chaos::FPBDRigidsEvolution& Evolution)
-{
-	bDiskDataIsChaos = true;
-	Data.Empty();
-	FMemoryWriter Ar(Data);
-	FChaosArchive ChaosAr(Ar);
-	Evolution.Serialize(ChaosAr);
-	ChaosContext = ChaosAr.StealContext();
-	ArchiveVersion = Ar.GetCustomVersions();
-}
-
-
-
-#if PHYSICS_INTERFACE_PHYSX
 void FPhysTestSerializer::SetPhysicsData(physx::PxScene& Scene)
 {
+#if WITH_PHYSX
 	check(AlignedDataHelper == nullptr || &Scene != AlignedDataHelper->PhysXScene);
 
 	PxSerializationRegistry* Registry = PxSerialization::createSerializationRegistry(*GPhysXSDK);
@@ -159,42 +139,21 @@ void FPhysTestSerializer::SetPhysicsData(physx::PxScene& Scene)
 	Registry->release();
 
 	bDiskDataIsChaos = false;
-}
-
-void FPhysTestSerializer::CreatePhysXData()
-{
-	if (bDiskDataIsChaos == false)	//For the moment we don't support chaos to physx direction
-	{
-		{
-			check(Data.Num());	//no data, was the physx scene set?
-			AlignedDataHelper = MakeUnique<FPhysXSerializerData>(Data.Num());
-			FMemory::Memcpy(AlignedDataHelper->Data, Data.GetData(), Data.Num());
-		}
-
-		PxSceneDesc Desc = CreateDummyPhysXSceneDescriptor();	//question: does it matter that this is default and not the one set by user settings?
-		AlignedDataHelper->PhysXScene = GPhysXSDK->createScene(Desc);
-
-		AlignedDataHelper->Registry = PxSerialization::createSerializationRegistry(*GPhysXSDK);
-		AlignedDataHelper->Collection = PxSerialization::createCollectionFromBinary(AlignedDataHelper->Data, *AlignedDataHelper->Registry);
-		AlignedDataHelper->PhysXScene->addCollection(*AlignedDataHelper->Collection);
-	}
-}
-
-physx::PxBase* FPhysTestSerializer::FindObject(uint64 Id)
-{
-	if (!AlignedDataHelper)
-	{
-		CreatePhysXData();
-	}
-
-	physx::PxBase* Ret = AlignedDataHelper->Collection->find(Id);
-	ensure(Ret);
-#if 0
-		CreateChaosData();
 #endif
-	return Ret;
 }
 
+void FPhysTestSerializer::SetPhysicsData(Chaos::TPBDRigidsEvolutionGBF<float,3>& Evolution)
+{
+	bDiskDataIsChaos = true;
+	Data.Empty();
+	FMemoryWriter Ar(Data);
+	FChaosArchive ChaosAr(Ar);
+	Evolution.Serialize(ChaosAr);
+	ChaosContext = ChaosAr.StealContext();
+	ArchiveVersion = Ar.GetCustomVersions();
+}
+
+#if WITH_PHYSX
 FPhysTestSerializer::FPhysXSerializerData::~FPhysXSerializerData()
 {
 	if (PhysXScene)
@@ -218,14 +177,46 @@ FPhysTestSerializer::FPhysXSerializerData::~FPhysXSerializerData()
 	}
 	FMemory::Free(Data);
 }
-
-
 #endif
 
-#if 0
+void FPhysTestSerializer::CreatePhysXData()
+{
+#if WITH_PHYSX
+	if (bDiskDataIsChaos == false)	//For the moment we don't support chaos to physx direction
+	{
+		{
+			check(Data.Num());	//no data, was the physx scene set?
+			AlignedDataHelper = MakeUnique<FPhysXSerializerData>(Data.Num());
+			FMemory::Memcpy(AlignedDataHelper->Data, Data.GetData(), Data.Num());
+		}
+
+		PxSceneDesc Desc = CreateDummyPhysXSceneDescriptor();	//question: does it matter that this is default and not the one set by user settings?
+		AlignedDataHelper->PhysXScene = GPhysXSDK->createScene(Desc);
+
+		AlignedDataHelper->Registry = PxSerialization::createSerializationRegistry(*GPhysXSDK);
+		AlignedDataHelper->Collection = PxSerialization::createCollectionFromBinary(AlignedDataHelper->Data, *AlignedDataHelper->Registry);
+		AlignedDataHelper->PhysXScene->addCollection(*AlignedDataHelper->Collection);
+	}
+#endif
+}
+
+#if WITH_PHYSX
+physx::PxBase* FPhysTestSerializer::FindObject(uint64 Id)
+{
+	if (!AlignedDataHelper)
+	{
+		CreatePhysXData();
+	}
+
+	physx::PxBase* Ret = AlignedDataHelper->Collection->find(Id);
+	ensure(Ret);
+	return Ret;
+}
+#endif
 
 void FPhysTestSerializer::CreateChaosData()
 {
+#if WITH_PHYSX
 	if (bDiskDataIsChaos == false)
 	{
 		if (bChaosDataReady)
@@ -278,17 +269,19 @@ void FPhysTestSerializer::CreateChaosData()
 			Particle->GTGeometryParticle()->SetX(Particle->X());
 			Particle->GTGeometryParticle()->SetR(Particle->R());
 
-			auto PBDRigid = Particle->CastToRigidParticle();
-			if(PBDRigid && PBDRigid->ObjectState() == EObjectStateType::Dynamic)
+			if (auto PBDRigid = Particle->AsDynamic())
 			{
 				PBDRigid->P() = Particle->X();
 				PBDRigid->Q() = Particle->R();
+
+				PBDRigid->GTGeometryParticle()->AsDynamic()->SetP(PBDRigid->P());
+				PBDRigid->GTGeometryParticle()->AsDynamic()->SetQ(PBDRigid->R());
 			}
 
 			PxActorToChaosHandle.Add(Act, Particle.Get());
 
 			//geometry
-			TArray<TUniquePtr<FImplicitObject>> Geoms;
+			TArray<TUniquePtr<TImplicitObject<float, 3>>> Geoms;
 			const int32 NumShapes = Actor->getNbShapes();
 			TArray<PxShape*> Shapes;
 			Shapes.AddUninitialized(NumShapes);
@@ -305,25 +298,14 @@ void FPhysTestSerializer::CreateChaosData()
 			{
 				if (Geoms.Num() == 1)
 				{
-					auto SharedGeom = TSharedPtr<FImplicitObject, ESPMode::ThreadSafe>(Geoms[0].Release());
+					auto SharedGeom = TSharedPtr<TImplicitObject<float, 3>, ESPMode::ThreadSafe>(Geoms[0].Release());
 					GTParticle->SetGeometry(SharedGeom);
 					Particle->SetSharedGeometry(SharedGeom);
 				}
 				else
 				{
-					GTParticle->SetGeometry(MakeUnique<FImplicitObjectUnion>(MoveTemp(Geoms)));
+					GTParticle->SetGeometry(MakeUnique<TImplicitObjectUnion<float, 3>>(MoveTemp(Geoms)));
 					Particle->SetGeometry(GTParticle->Geometry());
-				}
-
-				// Fixup bounds
-				auto Geom = GTParticle->Geometry();
-				if (Geom->HasBoundingBox())
-				{
-					auto& ShapeArray = GTParticle->ShapesArray();
-					for (auto& Shape : ShapeArray)
-					{
-						Shape->SetWorldSpaceInflatedShapeBounds(Geom->BoundingBox().TransformedAABB(TRigidTransform<FReal, 3>(Particle->X(), Particle->R())));
-					}
 				}
 			}
 
@@ -336,11 +318,11 @@ void FPhysTestSerializer::CreateChaosData()
 			++Idx;
 		}
 
-		ChaosEvolution = MakeUnique<FPBDRigidsEvolution>(Particles, PhysicalMaterials);
+		ChaosEvolution = MakeUnique<TPBDRigidsEvolutionGBF<float, 3>>(Particles);
 	}
 	else
 	{
-		ChaosEvolution = MakeUnique<FPBDRigidsEvolution>(Particles, PhysicalMaterials);
+		ChaosEvolution = MakeUnique<TPBDRigidsEvolutionGBF<float, 3>>(Particles);
 
 		FMemoryReader Ar(Data);
 		FChaosArchive ChaosAr(Ar);
@@ -351,5 +333,5 @@ void FPhysTestSerializer::CreateChaosData()
 		ChaosContext = ChaosAr.StealContext();
 	}
 	bChaosDataReady = true;
-}
 #endif
+}

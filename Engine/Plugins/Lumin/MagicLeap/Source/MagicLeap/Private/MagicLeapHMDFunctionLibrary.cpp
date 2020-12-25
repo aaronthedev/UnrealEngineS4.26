@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MagicLeapHMDFunctionLibrary.h"
 #include "MagicLeapHMD.h"
 #include "Engine/Engine.h"
 #include "Lumin/CAPIShims/LuminAPILifecycle.h"
-#include "MagicLeapPluginUtil.h"
 
 static const FName MLDeviceName(TEXT("MagicLeap"));
 
@@ -88,18 +87,6 @@ FString UMagicLeapHMDFunctionLibrary::GetMLSDKVersion()
 #endif //WITH_MLSDK
 }
 
-int32 UMagicLeapHMDFunctionLibrary::GetMinimumAPILevel()
-{
-	int MinimumAPILevel = 0;
-	GConfig->GetInt(TEXT("/Script/LuminRuntimeSettings.LuminRuntimeSettings"), TEXT("MinimumAPILevel"), MinimumAPILevel, GEngineIni);
-	return MinimumAPILevel;
-}
-
-int32 UMagicLeapHMDFunctionLibrary::GetPlatformAPILevel()
-{
-	return MagicLeapAPISetup::GetPlatformLevel();
-}
-
 bool UMagicLeapHMDFunctionLibrary::IsRunningOnMagicLeapHMD()
 {
 #if PLATFORM_LUMIN
@@ -146,38 +133,4 @@ bool UMagicLeapHMDFunctionLibrary::SetAppReady()
 #else
 	return true;
 #endif // WITH_MLSDK
-}
-
-bool UMagicLeapHMDFunctionLibrary::GetGraphicsClientPerformanceInfo(FMagicLeapGraphicsClientPerformanceInfo& PerformanceInfo)
-{
-#if WITH_MLSDK
-	FMagicLeapHMD* const HMD = GetMagicLeapHMD();
-	if (HMD)
-	{
-		MLGraphicsClientPerformanceInfo Info;
-		MLResult Result = MLGraphicsGetClientPerformanceInfo(HMD->GraphicsClient, &Info);
-		if (Result == MLResult_Ok)
-		{
-			constexpr float NanosecondsPerMillisecond = 1000000.f;
-			PerformanceInfo.FrameDurationCPUTimeMs = Info.frame_duration_cpu_ns / NanosecondsPerMillisecond;
-			PerformanceInfo.FrameDurationGPUTimeMs = Info.frame_duration_gpu_ns / NanosecondsPerMillisecond;
-			PerformanceInfo.FrameInternalDurationCPUTimeMs = Info.frame_internal_duration_cpu_ns / NanosecondsPerMillisecond;
-			PerformanceInfo.FrameInternalDurationGPUTimeMs = Info.frame_internal_duration_gpu_ns / NanosecondsPerMillisecond;
-			PerformanceInfo.FrameStartCPUCompAcquireCPUTimeMs = Info.frame_start_cpu_comp_acquire_cpu_ns / NanosecondsPerMillisecond;
-			PerformanceInfo.FrameStartCPUFrameEndGPUTimeMs = Info.frame_start_cpu_frame_end_gpu_ns / NanosecondsPerMillisecond;
-			PerformanceInfo.FrameStartCPUFrameStartCPUTimeMs = Info.frame_start_cpu_frame_start_cpu_ns / NanosecondsPerMillisecond;
-			return true;
-		}
-		else
-		{
-			UE_LOG(LogMagicLeap, Error, TEXT("MLGraphicsGetClientPerformanceInfo failed with error %s!"), UTF8_TO_TCHAR(MLGetResultString(Result)));
-		}
-	}
-	else
-	{
-		UE_LOG(LogMagicLeap, Warning, TEXT("GetGraphicsClientPerformanceInfo failed because there is no HMD!"));
-	}
-#endif
-
-	return false;
 }

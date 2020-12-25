@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  * Import data and options used when importing a static mesh from fbx
@@ -41,7 +41,7 @@ enum EImportLODType
 	ILT_IndividualActors UMETA(DisplayName = "Individual Actors")
 };
 
-UCLASS(BlueprintType, config=EditorPerProjectUserSettings, MinimalAPI)
+UCLASS(config=EditorPerProjectUserSettings, MinimalAPI)
 class USpeedTreeImportData : public UAssetImportData
 {
 	GENERATED_UCLASS_BODY()

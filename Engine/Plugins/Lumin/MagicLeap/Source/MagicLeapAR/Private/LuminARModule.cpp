@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LuminARModule.h"
 #include "Modules/ModuleManager.h"
@@ -6,14 +6,32 @@
 #include "Features/IModularFeature.h"
 
 #include "LuminARTrackingSystem.h"
-#include "LuminARTrackingSystem.h"
+#include "LuminARDevice.h"
 #include "Templates/SharedPointer.h"
+#include "IMagicLeapPlugin.h"
+
 
 #define LOCTEXT_NAMESPACE "LuminAR"
 
+class FLuminARModule : public ILuminARModule
+{
+	/** IModuleInterface implementation */
+	virtual void StartupModule() override;
+	virtual void ShutdownModule() override;
+
+	//create for mutual connection (regardless of construction order)
+	virtual TSharedPtr<IARSystemSupport, ESPMode::ThreadSafe> CreateARImplementation() override;
+	//Now connect (regardless of connection order)
+	virtual void ConnectARImplementationToXRSystem(FXRTrackingSystemBase* InXRTrackingSystem) override;
+	//Now initialize fully connected systems
+	virtual void InitializeARImplementation() override;
+
+private:
+	TSharedPtr<FLuminARImplementation, ESPMode::ThreadSafe> LuminARImplementation;
+};
+
 IMPLEMENT_MODULE(FLuminARModule, MagicLeapAR)
 
-TWeakPtr<FLuminARImplementation, ESPMode::ThreadSafe> FLuminARModule::LuminARImplmentationPtr;
 
 void FLuminARModule::StartupModule()
 {
@@ -21,6 +39,13 @@ void FLuminARModule::StartupModule()
 
 	FModuleManager::LoadModulePtr<IModuleInterface>("AugmentedReality");
 }
+
+void FLuminARModule::ShutdownModule()
+{
+	// Complete LuminAR teardown.
+	FLuminARDevice::GetInstance()->OnModuleUnloaded();
+}
+
 
 //create for mutual connection (regardless of construction order)
 TSharedPtr<IARSystemSupport, ESPMode::ThreadSafe> FLuminARModule::CreateARImplementation()
@@ -33,7 +58,6 @@ TSharedPtr<IARSystemSupport, ESPMode::ThreadSafe> FLuminARModule::CreateARImplem
 #endif // !PLATFORM_LUMIN
 	{
 		LuminARImplementation = MakeShareable(new FLuminARImplementation());
-		LuminARImplmentationPtr = LuminARImplementation;
 	}
 #endif //WITH_MLSDK
 	return LuminARImplementation;
@@ -43,16 +67,15 @@ void FLuminARModule::ConnectARImplementationToXRSystem(FXRTrackingSystemBase* In
 {
 	ensure(InXRTrackingSystem);
 
-	LuminARImplementation->SetARSystem(InXRTrackingSystem->GetARCompositionComponent());
+	FLuminARDevice::GetInstance()->SetLuminARImplementation(LuminARImplementation);
+	FLuminARDevice::GetInstance()->SetARSystem(InXRTrackingSystem->GetARCompositionComponent());
 	InXRTrackingSystem->GetARCompositionComponent()->InitializeARSystem();
 }
 
 void FLuminARModule::InitializeARImplementation()
-{}
-
-TSharedPtr<class FLuminARImplementation, ESPMode::ThreadSafe> FLuminARModule::GetLuminARSystem()
 {
-	return LuminARImplmentationPtr.Pin();
+	// Complete LuminAR setup.
+	FLuminARDevice::GetInstance()->OnModuleLoaded();
 }
 
 #undef LOCTEXT_NAMESPACE

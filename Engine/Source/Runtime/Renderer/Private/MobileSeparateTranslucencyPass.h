@@ -1,18 +1,19 @@
-// Copyright Epic Games, Inc.All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc.All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "ScreenPass.h"
+#include "PostProcess/RenderingCompositionGraph.h"
 
-struct FMobileSeparateTranslucencyInputs
+class FRCSeparateTranslucensyPassES2 : public TRenderingCompositePassBase<1, 1>
 {
-	FScreenPassTexture SceneColor;
-	FScreenPassTexture SceneDepth;
+public:
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+	virtual void Release() override { delete this; }
+	virtual FRenderingCompositeOutput* GetOutput(EPassOutputId InPassOutputId) override;
+	virtual const TCHAR* GetDebugName() { return TEXT("FRCSeparateTranslucensyPassES2"); }
 };
-
-void AddMobileSeparateTranslucencyPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FMobileSeparateTranslucencyInputs& Inputs);
 
 // Returns whether separate translucency is enabled and there primitives to draw in the view
 bool IsMobileSeparateTranslucencyActive(const FViewInfo& View);
-bool IsMobileSeparateTranslucencyActive(const FViewInfo* Views, int32 NumViews);

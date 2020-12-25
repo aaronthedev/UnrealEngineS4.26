@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -31,8 +31,7 @@ public:
 	//~ IImgMediaReader interface
 
 	virtual bool GetFrameInfo(const FString& ImagePath, FImgMediaFrameInfo& OutInfo) override;
-	virtual bool ReadFrame(const FString& ImagePath, TSharedPtr<FImgMediaFrame, ESPMode::ThreadSafe> OutFrame, int32 FrameId) override;
-	virtual void CancelFrame(int32 FrameNumber) override {};
+	virtual bool ReadFrame(const FString& ImagePath, FImgMediaFrame& OutFrame) override;
 
 private:
 

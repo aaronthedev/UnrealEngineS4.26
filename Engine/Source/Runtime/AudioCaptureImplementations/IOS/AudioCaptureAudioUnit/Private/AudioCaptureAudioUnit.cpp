@@ -1,9 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AudioCaptureAudioUnit.h"
 
-const int32 kInputBus = 1;
-const int32 kOutputBus = 0;
 
 Audio::FAudioCaptureAudioUnitStream::FAudioCaptureAudioUnitStream()
 	: NumChannels(0)
@@ -18,58 +16,22 @@ static OSStatus RecordingCallback(void *inRefCon,
 	UInt32 inNumberFrames,
 	AudioBufferList *ioData)
 {
-	Audio::FAudioCaptureAudioUnitStream* AudioCapture = (Audio::FAudioCaptureAudioUnitStream*)inRefCon;
-	return AudioCapture->OnCaptureCallback(ioActionFlags, inTimeStamp, inBusNumber, inNumberFrames, ioData);
-}
-
-OSStatus Audio::FAudioCaptureAudioUnitStream::OnCaptureCallback(AudioUnitRenderActionFlags* ioActionFlags, const AudioTimeStamp* inTimeStamp, UInt32 inBusNumber, UInt32 inNumberFrames, AudioBufferList* ioData)
-{
 	OSStatus status = noErr;
+	Audio::FAudioCaptureAudioUnitStream* AudioCapture = (Audio::FAudioCaptureAudioUnitStream*)inRefCon;
 
-	const int NeededBufferSize = inNumberFrames * NumChannels * sizeof(float);
-	if (CaptureBuffer.Num() == 0 || BufferSize < NeededBufferSize)
-	{
-		BufferSize = NeededBufferSize;
-		AllocateBuffer(BufferSize);
-	}
-	
-	AudioBufferList* BufferList = (AudioBufferList*) CaptureBuffer.GetData();
-	for (int i=0; i < BufferList->mNumberBuffers; ++i) {
-		BufferList->mBuffers[i].mDataByteSize = (UInt32) BufferSize;
-	}
-	
-	status = AudioUnitRender(IOUnit,
+	status = AudioUnitRender(AudioCapture->AudioUnit,
 		ioActionFlags,
 		inTimeStamp,
 		inBusNumber,
 		inNumberFrames,
-		BufferList);
+		ioData);
 	check(status == noErr);
 
-	void* InBuffer = (void*)BufferList->mBuffers[0].mData; // only first channel ?!
-	OnAudioCapture(InBuffer, inNumberFrames, 0.0, false); // need calculate timestamp
+
+	void* InBuffer = (void*)ioData->mBuffers[0].mData;
+	AudioCapture->OnAudioCapture(InBuffer, inNumberFrames, 0.0, false);
 
 	return noErr;
-}
-
-void Audio::FAudioCaptureAudioUnitStream::AllocateBuffer(int SizeInBytes)
-{
-	size_t NeedBytes = sizeof(AudioBufferList) + NumChannels * (sizeof(AudioBuffer) + SizeInBytes);
-
-	CaptureBuffer.SetNum(NeedBytes);
-
-	AudioBufferList* list = (AudioBufferList*) CaptureBuffer.GetData();
-	uint8* data = CaptureBuffer.GetData() + sizeof(AudioBufferList) + sizeof(AudioBuffer);
-	
-	list->mNumberBuffers = NumChannels;
-	for(int i=0; i < NumChannels; i++)
-	{
-		list->mBuffers[i].mNumberChannels = 1;
-		list->mBuffers[i].mDataByteSize   = (UInt32) SizeInBytes;
-		list->mBuffers[i].mData           = data;
-		
-		data += (SizeInBytes + sizeof(AudioBuffer));
-	}
 }
 
 bool Audio::FAudioCaptureAudioUnitStream::GetCaptureDeviceInfo(FCaptureDeviceInfo& OutInfo, int32 DeviceIndex)
@@ -83,107 +45,97 @@ bool Audio::FAudioCaptureAudioUnitStream::GetCaptureDeviceInfo(FCaptureDeviceInf
 
 bool Audio::FAudioCaptureAudioUnitStream::OpenCaptureStream(const FAudioCaptureDeviceParams& InParams, FOnCaptureFunction InOnCapture, uint32 NumFramesDesired)
 {
-	NumChannels = 1;
-	SampleRate = 48000;
-	OSStatus Status = noErr;
-	
-	OnCapture = MoveTemp(InOnCapture);
-	
-	// Source of info "Technical Note TN2091 - Device input using the HAL Output Audio Unit"
-	
 	AudioComponentDescription desc;
 	desc.componentType = kAudioUnitType_Output;
-	// We use processing element always for enable runtime changing HW AEC and AGC settings.
-	// When it's disable the unit work as RemoteIO
-	desc.componentSubType = kAudioUnitSubType_VoiceProcessingIO;
+	if (InParams.bUseHardwareAEC)
+	{
+		desc.componentSubType = kAudioUnitSubType_RemoteIO;
+	}
+	else
+	{
+		desc.componentSubType = kAudioUnitSubType_RemoteIO;
+	}
+
 	desc.componentManufacturer = kAudioUnitManufacturer_Apple;
 	desc.componentFlags = 0;
 	desc.componentFlagsMask = 0;
 
 	AudioComponent InputComponent = AudioComponentFindNext(NULL, &desc);
 
-	Status = AudioComponentInstanceNew(InputComponent, &IOUnit);
-	check(Status == noErr);
+	AudioUnitStatus = AudioComponentInstanceNew(InputComponent, &AudioUnit);
+	check(AudioUnitStatus == noErr);
 
-	// Enable recording
-	uint32 EnableIO = 1;
-	Status = AudioUnitSetProperty(IOUnit,
+	// Enable IO via AudioUnitSetProperty:
+	static const uint32 AudioUnitTrue = 1;
+	AudioUnitStatus = AudioUnitSetProperty(AudioUnit,
 		kAudioOutputUnitProperty_EnableIO,
 		kAudioUnitScope_Input,
-		kInputBus,
-		&EnableIO,
-		sizeof(EnableIO));
-	check(Status == noErr);
+		1,
+		&AudioUnitTrue,
+		sizeof(AudioUnitTrue));
+	check(AudioUnitStatus == noErr);
 
-	// Disable output part
-	EnableIO = 0;
-	Status = AudioUnitSetProperty(IOUnit,
+	AudioUnitStatus = AudioUnitSetProperty(AudioUnit,
 		kAudioOutputUnitProperty_EnableIO,
 		kAudioUnitScope_Output,
-		kOutputBus,
-		&EnableIO,
-		sizeof(EnableIO));
-	check(Status == noErr);
+		0,
+		&AudioUnitTrue,
+		sizeof(AudioUnitTrue));
+	check(AudioUnitStatus == noErr);
 
-	AudioStreamBasicDescription StreamDescription = {0};
-	const UInt32 BytesPerSample = sizeof(Float32);
-	
-	StreamDescription.mSampleRate       = SampleRate;
-	StreamDescription.mFormatID         = kAudioFormatLinearPCM;
-	StreamDescription.mFormatFlags      = kAudioFormatFlagsNativeFloatPacked;
-	StreamDescription.mChannelsPerFrame = NumChannels;
-	StreamDescription.mBitsPerChannel   = 8 * BytesPerSample;
-	StreamDescription.mBytesPerFrame    = BytesPerSample * StreamDescription.mChannelsPerFrame;
-	StreamDescription.mFramesPerPacket  = 1;
-	StreamDescription.mBytesPerPacket   = StreamDescription.mFramesPerPacket * StreamDescription.mBytesPerFrame;
-	
-	// Configure output format
-	Status = AudioUnitSetProperty(IOUnit,
+	AudioStreamBasicDescription StreamDescription;
+
+	StreamDescription.mSampleRate = 48000.00;
+	StreamDescription.mFormatID = kAudioFormatLinearPCM;
+	StreamDescription.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagsNativeEndian | kAudioFormatFlagIsPacked;
+	StreamDescription.mFramesPerPacket = NumFramesDesired;
+	StreamDescription.mChannelsPerFrame = 1;
+	StreamDescription.mBitsPerChannel = 8 * sizeof(float);
+	StreamDescription.mBytesPerPacket = NumFramesDesired * sizeof(float);
+	StreamDescription.mBytesPerFrame = sizeof(float);
+
+	AudioUnitStatus = AudioUnitSetProperty(AudioUnit,
 		kAudioUnitProperty_StreamFormat,
 		kAudioUnitScope_Output,
-		kInputBus,
+		0,
 		&StreamDescription,
 		sizeof(StreamDescription));
-	check(Status == noErr);
+	check(AudioUnitStatus == noErr);
 
-	// Setup capture callback
 	AURenderCallbackStruct CallbackInfo;
 	CallbackInfo.inputProc = RecordingCallback;
 	CallbackInfo.inputProcRefCon = this;
-	Status = AudioUnitSetProperty(IOUnit,
+	AudioUnitStatus = AudioUnitSetProperty(AudioUnit,
 		kAudioOutputUnitProperty_SetInputCallback,
 		kAudioUnitScope_Global,
-		kInputBus,
+		0,
 		&CallbackInfo,
 		sizeof(CallbackInfo));
-	check(Status == noErr);
-	
-	// Initialize audio unit
-	Status = AudioUnitInitialize(IOUnit);
-	check(Status == noErr);
+	check(AudioUnitStatus == noErr);
 
-	// Configure unit processing
-	SetHardwareFeatureEnabled(Audio::EHardwareInputFeature::EchoCancellation, InParams.bUseHardwareAEC);
-	SetHardwareFeatureEnabled(Audio::EHardwareInputFeature::AutomaticGainControl, InParams.bUseHardwareAEC);
+	AudioUnitStatus = AudioUnitInitialize(AudioUnit);
+	check(AudioUnitStatus == noErr);
 
-	return Status == noErr;
+	return AudioUnitStatus == noErr;
 }
 
 bool Audio::FAudioCaptureAudioUnitStream::CloseStream()
 {
 	StopStream();
-	AudioComponentInstanceDispose(IOUnit);
+	AudioComponentInstanceDispose(AudioUnit);
 	return true;
 }
 
 bool Audio::FAudioCaptureAudioUnitStream::StartStream()
 {
-	return (AudioOutputUnitStart(IOUnit) == noErr);
+	AudioUnitStatus = AudioOutputUnitStart(AudioUnit);
+	return AudioUnitStatus == noErr;
 }
 
 bool Audio::FAudioCaptureAudioUnitStream::StopStream()
 {
-	return (AudioOutputUnitStop(IOUnit) == noErr);
+	AudioUnitStatus = AudioOutputUnitStop(AudioUnit);
+	return AudioUnitStatus == noErr;
 }
 
 bool Audio::FAudioCaptureAudioUnitStream::AbortStream()
@@ -212,7 +164,7 @@ bool Audio::FAudioCaptureAudioUnitStream::IsCapturing() const
 void Audio::FAudioCaptureAudioUnitStream::OnAudioCapture(void* InBuffer, uint32 InBufferFrames, double StreamTime, bool bOverflow)
 {
 	float* InBufferData = (float*)InBuffer;
-	OnCapture(InBufferData, InBufferFrames, NumChannels, SampleRate, StreamTime, bOverflow);
+	OnCapture(InBufferData, InBufferFrames, NumChannels, StreamTime, bOverflow);
 }
 
 bool Audio::FAudioCaptureAudioUnitStream::GetInputDevicesAvailable(TArray<FCaptureDeviceInfo>& OutDevices)
@@ -224,43 +176,4 @@ bool Audio::FAudioCaptureAudioUnitStream::GetInputDevicesAvailable(TArray<FCaptu
 	GetCaptureDeviceInfo(DeviceInfo, 0);
 
 	return true;
-}
-
-void Audio::FAudioCaptureAudioUnitStream::SetHardwareFeatureEnabled(EHardwareInputFeature FeatureType, bool bEnabled)
-{
-	if (IOUnit == nil)
-	{
-		return;
-	}
-
-	// we ignore result those functions because sometime we can't set this parameters
-	OSStatus status = noErr;
-
-	switch(FeatureType)
-	{
-		case Audio::EHardwareInputFeature::EchoCancellation:
-		{
-			const UInt32 EnableParam = (bEnabled ? 0 : 1);
-			status = AudioUnitSetProperty(IOUnit,
-			  kAUVoiceIOProperty_BypassVoiceProcessing,
-			  kAudioUnitScope_Global,
-			  kInputBus,
-			  &EnableParam,
-			  sizeof(EnableParam)
-			);
-		}
-			break;
-		case Audio::EHardwareInputFeature::AutomaticGainControl:
-		{
-			const UInt32 EnableParam = (bEnabled ? 1 : 0);
-			status = AudioUnitSetProperty(IOUnit,
-			  kAUVoiceIOProperty_VoiceProcessingEnableAGC,
-			  kAudioUnitScope_Global,
-			  kInputBus,
-			  &EnableParam,
-			  sizeof(EnableParam)
-			);
-		}
-			break;
-	}
 }

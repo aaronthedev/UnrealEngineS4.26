@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -44,10 +44,10 @@ public class FractureEditor : ModuleRules
 				"InputCore",
 				"UnrealEd",
 				"LevelEditor",
+                "GeometryCollectionCore",
                 "GeometryCollectionEngine",
                 "GeometryCollectionEditor",
-				"PlanarCut",
-				"Chaos"
+				"PlanarCut"
 
 				// ... add private dependencies that you statically link with here ...	
 			}

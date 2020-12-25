@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "../Common.ush"
 #include "../RectLight.ush"
@@ -19,19 +19,17 @@
 
 RaytracingAccelerationStructure TLAS;
 RWTexture2D<float4> RWGlobalIlluminationUAV;
-RWTexture2D<float2> RWGlobalIlluminationRayDistanceUAV;
+RWTexture2D<float2> RWRayDistanceUAV;
 
 uint SamplesPerPixel;
 uint MaxBounces;
 uint UpscaleFactor;
 float MaxRayDistanceForGI;
 float MaxRayDistanceForAO;
-float MaxShadowDistance;
 float NextEventEstimationSamples;
 float DiffuseThreshold;
 uint EvalSkyLight;
 uint UseRussianRoulette;
-uint UseFireflySuppression;
 float MaxNormalBias;
 uint RenderTileOffsetX;
 uint RenderTileOffsetY;
@@ -62,7 +60,7 @@ RAY_TRACING_ENTRY_RAYGEN(GlobalIlluminationRGS)
 {
 	uint2 DispatchThreadId = DispatchRaysIndex().xy + View.ViewRectMin + uint2(RenderTileOffsetX, RenderTileOffsetY);
 	RWGlobalIlluminationUAV[DispatchThreadId] = 0.0;
-	RWGlobalIlluminationRayDistanceUAV[DispatchThreadId] = float2(-1.0, 0.0);
+	RWRayDistanceUAV[DispatchThreadId] = float2(-1.0, 0.0);
 
 	uint2 PixelCoord = GetPixelCoord(DispatchThreadId, UpscaleFactor);
 	uint LinearIndex = CalcLinearIndex(PixelCoord);
@@ -84,13 +82,15 @@ RAY_TRACING_ENTRY_RAYGEN(GlobalIlluminationRGS)
 	{
 		GBufferData.DiffuseColor = GBufferData.StoredBaseColor;
 	}
-	float DeviceZ = SceneDepthTexture.Load(int3(PixelCoord, 0)).r;
+	float DeviceZ = SceneDepthBuffer.Load(int3(PixelCoord, 0)).r;
 	float3 WorldPosition;
 	float3 CameraDirection;
 	ReconstructWorldPositionAndCameraDirectionFromDeviceZ(PixelCoord, DeviceZ, WorldPosition, CameraDirection);
 	float3 WorldNormal = GBufferData.WorldNormal;
 	uint ShadingModelID = GBufferData.ShadingModelID;
-	if (ShadingModelID == SHADINGMODELID_UNLIT)
+	if (ShadingModelID == SHADINGMODELID_UNLIT
+		|| ShadingModelID == SHADINGMODELID_TWOSIDED_FOLIAGE
+		)
 	{
 		return;
 	}
@@ -159,7 +159,6 @@ RAY_TRACING_ENTRY_RAYGEN(GlobalIlluminationRGS)
 			uint RayFlags = 0;
 			const uint InstanceInclusionMask = RAY_TRACING_MASK_OPAQUE;
 			const bool bEnableSkyLightContribution = true;
-			const bool bIgnoreTranslucentMaterials = false;
 
 #if !ENABLE_TWO_SIDED_GEOMETRY
 			RayFlags |= RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
@@ -172,9 +171,7 @@ RAY_TRACING_ENTRY_RAYGEN(GlobalIlluminationRGS)
 				InstanceInclusionMask,
 				Ray,
 				RayCone,
-				PixelCoord,
-				bEnableSkyLightContribution,
-				bIgnoreTranslucentMaterials);
+				bEnableSkyLightContribution);
 
 			// Environment hit
 			if (Payload.IsMiss())
@@ -238,14 +235,7 @@ RAY_TRACING_ENTRY_RAYGEN(GlobalIlluminationRGS)
 				{
 					RayDesc LightRay;
 					GenerateLightRay(Ray, LightId, LightUV, LightRay);
-					LightRay.TMax = min(LightRay.TMax, MaxShadowDistance);
-					bool bTransmission = HasTransmission(LightId);
-					float3 BiasNormal = Payload.WorldNormal;
-					if (bTransmission && dot(BiasNormal, LightRay.Direction) < 0.0)
-					{
-						BiasNormal = -BiasNormal;
-					}
-					ApplyPositionBias(LightRay, BiasNormal, MaxNormalBias);
+					ApplyPositionBias(LightRay, Payload.WorldNormal, MaxNormalBias);
 
 					// Trace visibility ray
 					uint NeeRayFlags = RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER;
@@ -259,7 +249,6 @@ RAY_TRACING_ENTRY_RAYGEN(GlobalIlluminationRGS)
 						TLAS,
 						NeeRayFlags,
 						NeeInstanceInclusionMask,
-						PixelCoord,
 						LightRay);
 
 					// No hit indicates successful next-event connection
@@ -282,10 +271,6 @@ RAY_TRACING_ENTRY_RAYGEN(GlobalIlluminationRGS)
 						FShadowTerms ShadowTerms = { 0.0, 0.0, 0.0, InitHairTransmittanceData() };
 						FDirectLighting LightingSample = EvaluateBxDF(GBufferData, N, V, L, NoL, ShadowTerms);
 						MaterialThroughput = LightingSample.Diffuse;
-						if (bTransmission)
-						{
-							MaterialThroughput += LightingSample.Transmission;
-						}
 						MaterialEvalPdf = 1.0;
 #endif
 						// Apply material Pdf for correct MIS weight
@@ -298,13 +283,6 @@ RAY_TRACING_ENTRY_RAYGEN(GlobalIlluminationRGS)
 #endif
 						// Record the contribution
 						float3 ExitantRadianceSample = Radiance * MaterialThroughput * RayThroughput * SplitFactor * MisWeight / (NeePdf * RayPdf);
-
-						// Tonemap for firefly suppression
-						if (UseFireflySuppression)
-						{
-							ExitantRadianceSample *= rcp(1.0 + Luminance(ExitantRadianceSample));
-						}
-
 						Irradiance += isfinite(ExitantRadianceSample) ? ExitantRadianceSample : 0.0;
 					}
 				}
@@ -352,12 +330,6 @@ RAY_TRACING_ENTRY_RAYGEN(GlobalIlluminationRGS)
 	if (SamplesPerPixel > 0)
 	{
 		Irradiance /= SamplesPerPixel;
-		// Tonemap inversion for firefly suppression
-		if (UseFireflySuppression)
-		{
-			Irradiance *= rcp(1 - Luminance(Irradiance));
-		}
-
 		AmbientOcclusion /= SamplesPerPixel;
 	}
 
@@ -378,7 +350,7 @@ RAY_TRACING_ENTRY_RAYGEN(GlobalIlluminationRGS)
 
 	Irradiance = ClampToHalfFloatRange(Irradiance);
 	RWGlobalIlluminationUAV[DispatchThreadId] = float4(Irradiance, AmbientOcclusion);
-	RWGlobalIlluminationRayDistanceUAV[DispatchThreadId] = float2(HitDistance, SamplesPerPixel);
+	RWRayDistanceUAV[DispatchThreadId] = float2(HitDistance, SamplesPerPixel);
 	// For AO denoiser..
-	//RWGlobalIlluminationRayDistanceUAV[DispatchThreadId] = float2(Luminance(Irradiance), HitDistance);
+	//RWRayDistanceUAV[DispatchThreadId] = float2(Luminance(Irradiance), HitDistance);
 }

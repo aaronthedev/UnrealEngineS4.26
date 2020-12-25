@@ -605,14 +605,6 @@ path_libcurl()
 	# ----------------------------------------
 	cd -
 }
-patch_libcurl()
-{
-	CUR_PATH=$(pwd)
-	CURL_PATCHES_PATH="$CUR_PATH/patches/$CURL_VERSION"
-	cd libcurl/$CURL_VERSION
-	find "$CURL_PATCHES_PATH" -type f -print0 | xargs -0 -n1 patch -p1 -i 
-	cd -
-}
 build_libcurl()
 {
 	path_zlib
@@ -1115,10 +1107,6 @@ get_openssl
 get_libcurl
 get_webrtc
 	#reset_hard
-
-# --------------------
-# patch
-patch_libcurl
 
 # --------------------
 # build

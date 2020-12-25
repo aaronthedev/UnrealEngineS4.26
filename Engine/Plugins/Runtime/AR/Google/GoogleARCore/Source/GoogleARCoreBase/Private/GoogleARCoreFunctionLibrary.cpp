@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GoogleARCoreFunctionLibrary.h"
 #include "UnrealEngine.h"
@@ -14,6 +14,16 @@
 
 namespace
 {
+	FGoogleARCoreXRTrackingSystem* GetARCoreHMD()
+	{
+		if (GEngine->XRSystem.IsValid() && (GEngine->XRSystem->GetSystemName() == FName("FGoogleARCoreXRTrackingSystem")))
+		{
+			return static_cast<FGoogleARCoreXRTrackingSystem*>(GEngine->XRSystem.Get());
+		}
+
+		return nullptr;
+	}
+
 	EGoogleARCoreInstallRequestResult ToAPKInstallStatus(EGoogleARCoreAPIStatus RequestStatus)
 	{
 		EGoogleARCoreInstallRequestResult OutRequestResult = EGoogleARCoreInstallRequestResult::FatalError;
@@ -176,14 +186,16 @@ EGoogleARCoreInstallRequestResult UGoogleARCoreSessionFunctionLibrary::GetARCore
 
 UGoogleARCoreEventManager* UGoogleARCoreSessionFunctionLibrary::GetARCoreEventManager()
 {
-	if (auto TrackingSystem = FGoogleARCoreXRTrackingSystem::GetInstance())
+	auto ARSystem = FGoogleARCoreDevice::GetInstance()->GetARSystem();
+	if (ARSystem.IsValid())
 	{
-		return TrackingSystem->GetEventManager();
+		return static_cast<FGoogleARCoreXRTrackingSystem*>(ARSystem->GetXRTrackingSystem())->GetEventManager();
 	}
 	else
 	{
 		return nullptr;
 	}
+
 }
 
 struct FARCoreStartSessionAction : public FPendingLatentAction
@@ -242,9 +254,10 @@ bool UGoogleARCoreSessionFunctionLibrary::GetARCoreCameraConfig(FGoogleARCoreCam
 /************************************************************************/
 bool UGoogleARCoreSessionFunctionLibrary::IsPassthroughCameraRenderingEnabled()
 {
-	if (auto TrackingSystem = FGoogleARCoreXRTrackingSystem::GetInstance())
+	FGoogleARCoreXRTrackingSystem* ARCoreHMD = GetARCoreHMD();
+	if (ARCoreHMD)
 	{
-		return TrackingSystem->GetColorCameraRenderingEnabled();
+		return ARCoreHMD->GetColorCameraRenderingEnabled();
 	}
 	else
 	{
@@ -255,9 +268,10 @@ bool UGoogleARCoreSessionFunctionLibrary::IsPassthroughCameraRenderingEnabled()
 
 void UGoogleARCoreSessionFunctionLibrary::SetPassthroughCameraRenderingEnabled(bool bEnable)
 {
-	if (auto TrackingSystem = FGoogleARCoreXRTrackingSystem::GetInstance())
+	FGoogleARCoreXRTrackingSystem* ARCoreHMD = GetARCoreHMD();
+	if (ARCoreHMD)
 	{
-		TrackingSystem->EnableColorCameraRendering(bEnable);
+		ARCoreHMD->EnableColorCameraRendering(bEnable);
 	}
 	else
 	{
@@ -299,9 +313,11 @@ void UGoogleARCoreSessionFunctionLibrary::GetAllTrackable(TArray<T*>& OutTrackab
 UARCandidateImage* UGoogleARCoreSessionFunctionLibrary::AddRuntimeCandidateImageFromRawbytes(UARSessionConfig* SessionConfig, const TArray<uint8>& ImageGrayscalePixels,
 	int ImageWidth, int ImageHeight, FString FriendlyName, float PhysicalWidth, UTexture2D* CandidateTexture /*= nullptr*/)
 {
-	if (auto TrackingSystem = FGoogleARCoreXRTrackingSystem::GetInstance())
+	auto ARSystem = FGoogleARCoreDevice::GetInstance()->GetARSystem();
+	if (ARSystem.IsValid())
 	{
-		if (TrackingSystem->AddRuntimeGrayscaleImage(SessionConfig, ImageGrayscalePixels, ImageWidth, ImageHeight, FriendlyName, PhysicalWidth))
+		FGoogleARCoreXRTrackingSystem* GoogleARCoreSystem = static_cast<FGoogleARCoreXRTrackingSystem*>(ARSystem->GetXRTrackingSystem());
+		if (GoogleARCoreSystem->AddRuntimeGrayscaleImage(SessionConfig, ImageGrayscalePixels, ImageWidth, ImageHeight, FriendlyName, PhysicalWidth))
 		{
 			float PhysicalHeight = PhysicalWidth / ImageWidth * ImageHeight;
 			UARCandidateImage* NewCandidateImage = UARCandidateImage::CreateNewARCandidateImage(CandidateTexture, FriendlyName, PhysicalWidth, PhysicalHeight, EARCandidateImageOrientation::Landscape);
@@ -418,7 +434,7 @@ template void UGoogleARCoreFrameFunctionLibrary::GetUpdatedTrackable<UARTrackedP
 
 UTexture* UGoogleARCoreFrameFunctionLibrary::GetCameraTexture()
 {
-	return nullptr;
+	return FGoogleARCoreDevice::GetInstance()->GetCameraTexture();
 }
 
 EGoogleARCoreFunctionStatus UGoogleARCoreFrameFunctionLibrary::AcquireCameraImage(UGoogleARCoreCameraImage *&OutLatestCameraImage)
@@ -431,26 +447,13 @@ void UGoogleARCoreFrameFunctionLibrary::TransformARCoordinates2D(EGoogleARCoreCo
 	return FGoogleARCoreDevice::GetInstance()->TransformARCoordinates2D(InputCoordinatesType, InputCoordinates, OutputCoordinatesType, OutputCoordinates);
 }
 
-EGoogleARCoreFunctionStatus UGoogleARCoreFrameFunctionLibrary::GetCameraImageIntrinsics(UGoogleARCoreCameraIntrinsics*& OutCameraIntrinsics)
+EGoogleARCoreFunctionStatus UGoogleARCoreFrameFunctionLibrary::GetCameraImageIntrinsics(UGoogleARCoreCameraIntrinsics *&OutCameraIntrinsics)
 {
-	FARCameraIntrinsics CameraIntrinsics;
-	const auto Result = FGoogleARCoreDevice::GetInstance()->GetCameraImageIntrinsics(CameraIntrinsics);
-	if (Result == EGoogleARCoreFunctionStatus::Success)
-	{
-		OutCameraIntrinsics = NewObject<UGoogleARCoreCameraIntrinsics>();
-		OutCameraIntrinsics->SetCameraIntrinsics(CameraIntrinsics);
-	}
-	return Result;
+	return FGoogleARCoreDevice::GetInstance()->GetCameraImageIntrinsics(OutCameraIntrinsics);
 }
 
-EGoogleARCoreFunctionStatus UGoogleARCoreFrameFunctionLibrary::GetCameraTextureIntrinsics(UGoogleARCoreCameraIntrinsics*& OutCameraIntrinsics)
+EGoogleARCoreFunctionStatus UGoogleARCoreFrameFunctionLibrary::GetCameraTextureIntrinsics(UGoogleARCoreCameraIntrinsics *&OutCameraIntrinsics)
 {
-	FARCameraIntrinsics CameraIntrinsics;
-	const auto Result = FGoogleARCoreDevice::GetInstance()->GetCameraTextureIntrinsics(CameraIntrinsics);
-	if (Result == EGoogleARCoreFunctionStatus::Success)
-	{
-		OutCameraIntrinsics = NewObject<UGoogleARCoreCameraIntrinsics>();
-		OutCameraIntrinsics->SetCameraIntrinsics(CameraIntrinsics);
-	}
-	return Result;
+	return FGoogleARCoreDevice::GetInstance()->GetCameraTextureIntrinsics(OutCameraIntrinsics);
 }
+

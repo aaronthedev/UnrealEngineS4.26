@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "ChaosInterfaceWrapperCore.h"
@@ -15,7 +15,8 @@ struct FCollisionQueryParams;
 
 namespace Chaos
 {
-	class FPerShapeData;
+	template <class T, int d>
+	class TPerShapeData;
 }
 
 namespace ChaosInterface
@@ -25,7 +26,7 @@ namespace ChaosInterface
 #if WITH_CHAOS
 struct FScopedSceneReadLock
 {
-	FScopedSceneReadLock(FPhysScene_Chaos& SceneIn);
+	FScopedSceneReadLock(FPhysScene_ChaosInterface& SceneIn);
 	~FScopedSceneReadLock();
 
 	FPhysScene_Chaos& Scene;
@@ -34,18 +35,16 @@ struct FScopedSceneReadLock
 
 inline FQueryFilterData MakeQueryFilterData(const FCollisionFilterData& FilterData, EQueryFlags QueryFlags, const FCollisionQueryParams& Params)
 {
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 	return PxQueryFilterData(U2PFilterData(FilterData), U2PQueryFlags(QueryFlags));
 #else
-	return FChaosQueryFilterData(U2CFilterData(FilterData), U2CQueryFlags(QueryFlags));
+	return FQueryFilterData();
 #endif
 }
 
 FBodyInstance* GetUserData(const Chaos::TGeometryParticle<float, 3>& Actor);
 
-#if WITH_CHAOS
-UPhysicalMaterial* GetUserData(const Chaos::FChaosPhysicsMaterial& Material);
-#endif
+UPhysicalMaterial* GetUserData(const FPhysTypeDummy& Material);
 
 }
 

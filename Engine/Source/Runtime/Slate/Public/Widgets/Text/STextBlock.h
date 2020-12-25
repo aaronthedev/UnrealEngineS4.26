@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
  
 #pragma once
 
@@ -55,7 +55,6 @@ public:
 		, _WrapTextAt(0.0f)
 		, _AutoWrapText(false)
 		, _WrappingPolicy(ETextWrappingPolicy::DefaultWrapping)
-		, _TransformPolicy(ETextTransformPolicy::None)
 		, _Margin()
 		, _LineHeightPercentage(1.0f)
 		, _Justification(ETextJustify::Left)
@@ -108,9 +107,6 @@ public:
 
 		/** The wrapping policy to use */
 		SLATE_ATTRIBUTE( ETextWrappingPolicy, WrappingPolicy )
-
-		/** The transform policy to use */
-		SLATE_ATTRIBUTE( ETextTransformPolicy, TransformPolicy )
 
 		/** The amount of blank space left around the edges of text area. */
 		SLATE_ATTRIBUTE( FMargin, Margin )
@@ -220,9 +216,6 @@ public:
 	/** Set WrappingPolicy attribute */
 	void SetWrappingPolicy(const TAttribute<ETextWrappingPolicy>& InWrappingPolicy);
 
-	/** Set TransformPolicy attribute */
-	void SetTransformPolicy(const TAttribute<ETextTransformPolicy>& InTransformPolicy);
-
 	/** See ShadowOffset attribute */
 	void SetShadowOffset(const TAttribute<FVector2D>& InShadowOffset);
 
@@ -323,9 +316,6 @@ private:
 
 	/** The wrapping policy we're using */
 	TAttribute<ETextWrappingPolicy> WrappingPolicy;
-
-	/** The transform policy we're using */
-	TAttribute<ETextTransformPolicy> TransformPolicy;
 
 	/** The amount of blank space left around the edges of text area. */
 	TAttribute< FMargin > Margin;

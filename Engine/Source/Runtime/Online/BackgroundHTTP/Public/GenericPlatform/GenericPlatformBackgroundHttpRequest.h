@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -55,7 +55,7 @@ protected:
 		TWeakPtr<class IBackgroundHttpRequest, ESPMode::ThreadSafe> OriginalRequest;
 
 		//Current Http Request being processed by this wrapper
-		TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> HttpRequest;
+		TSharedPtr<IHttpRequest> HttpRequest;
 
 		//Tracking retry number we are currently on
 		int32 CurrentRetryNumber;

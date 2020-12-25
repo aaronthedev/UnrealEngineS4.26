@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,16 +25,8 @@ class UMovieSceneNiagaraParameterTrack;
 struct IConsoleCommand;
 class INiagaraEditorOnlyDataUtilities;
 class FNiagaraEditorCommands;
-struct FNiagaraScriptHighlight;
-class FNiagaraClipboard;
-class UNiagaraScratchPadViewModel;
-class FHlslNiagaraCompiler;
-class FNiagaraComponentBroker;
-class INiagaraStackObjectIssueGenerator;
 
 DECLARE_STATS_GROUP(TEXT("Niagara Editor"), STATGROUP_NiagaraEditor, STATCAT_Advanced);
-
-extern NIAGARAEDITOR_API int32 GbShowNiagaraDeveloperWindows;
 
 /* Defines methods for allowing external modules to supply widgets to the core editor module. */
 class NIAGARAEDITOR_API INiagaraEditorWidgetProvider
@@ -43,10 +35,10 @@ public:
 	virtual TSharedRef<SWidget> CreateStackView(UNiagaraStackViewModel& StackViewModel) const = 0;
 	virtual TSharedRef<SWidget> CreateSystemOverview(TSharedRef<FNiagaraSystemViewModel> SystemViewModel) const = 0;
 	virtual TSharedRef<SWidget> CreateStackIssueIcon(UNiagaraStackViewModel& StackViewModel, UNiagaraStackEntry& StackEntry) const = 0;
-	virtual TSharedRef<SWidget> CreateScriptScratchPad(UNiagaraScratchPadViewModel& ScriptScratchPadViewModel) const = 0;
 	virtual FLinearColor GetColorForExecutionCategory(FName ExecutionCategory) const = 0;
-	virtual FLinearColor GetColorForParameterScope(ENiagaraParameterScope ParameterScope) const = 0;
 };
+
+extern int32 GbShowFastPathOptions;
 
 /** Niagara Editor module */
 class FNiagaraEditorModule : public IModuleInterface,
@@ -66,9 +58,8 @@ public:
 	/** Get the instance of this module. */
 	NIAGARAEDITOR_API static FNiagaraEditorModule& Get();
 
-	/** Start the compilation of the specified script. */
-	virtual int32 CompileScript(const FNiagaraCompileRequestDataBase* InCompileRequest, const FNiagaraCompileOptions& InCompileOptions);
-	virtual TSharedPtr<FNiagaraVMExecutableData> GetCompilationResult(int32 JobID, bool bWait);
+	/** Compile the specified script. */
+	virtual TSharedPtr<FNiagaraVMExecutableData> CompileScript(const FNiagaraCompileRequestDataBase* InCompileRequest, const FNiagaraCompileOptions& InCompileOptions);
 
 	TSharedPtr<FNiagaraCompileRequestDataBase, ESPMode::ThreadSafe> Precompile(UObject* Obj);
 
@@ -115,90 +106,17 @@ public:
 
 	NIAGARAEDITOR_API const FNiagaraEditorCommands& GetCommands() const;
 
-	void InvalidateCachedScriptAssetData();
-
-	const TArray<FNiagaraScriptHighlight>& GetCachedScriptAssetHighlights() const;
-
-	void GetScriptAssetsMatchingHighlight(const FNiagaraScriptHighlight& InHighlight, TArray<FAssetData>& OutMatchingScriptAssets) const;
-
-	NIAGARAEDITOR_API FNiagaraClipboard& GetClipboard() const;
-
-	template<typename T>
-	void EnqueueObjectForDeferredDestruction(TSharedRef<T> InObjectToDestruct)
-	{
-		TDeferredDestructionContainer<T>* ObjectInContainer = new TDeferredDestructionContainer<T>(InObjectToDestruct);
-		EnqueueObjectForDeferredDestructionInternal(ObjectInContainer);
-	}
-
-	/** Lookup a parameter scope info by name. Returns nullptr if the parameter scope info registered name cannot be found. */
-	static const FNiagaraParameterScopeInfo* FindParameterScopeInfo(const FName& ParameterScopeInfoName);
-
-	FORCEINLINE INiagaraStackObjectIssueGenerator* FindStackObjectIssueGenerator(FName StructName)
-	{
-		if (INiagaraStackObjectIssueGenerator** FoundGenerator = StackIssueGenerators.Find(StructName))
-		{
-			return *FoundGenerator;
-		}
-		return nullptr;
-	}
-
 private:
-	class FDeferredDestructionContainerBase
-	{
-	public:
-		virtual ~FDeferredDestructionContainerBase()
-		{
-		}
-	};
-
-	template<typename T>
-	class TDeferredDestructionContainer : public FDeferredDestructionContainerBase
-	{
-	public:
-		TDeferredDestructionContainer(TSharedRef<const T> InObjectToDestruct)
-			: ObjectToDestuct(InObjectToDestruct)
-		{
-		}
-
-		virtual ~TDeferredDestructionContainer()
-		{
-			ObjectToDestuct.Reset();
-		}
-
-		TSharedPtr<const T> ObjectToDestuct;
-	};
-
 	void RegisterAssetTypeAction(IAssetTools& AssetTools, TSharedRef<IAssetTypeActions> Action);
-	void OnNiagaraSettingsChangedEvent(const FName& PropertyName, const UNiagaraSettings* Settings);
+	void OnNiagaraSettingsChangedEvent(const FString& PropertyName, const UNiagaraSettings* Settings);
 	void OnPreGarbageCollection();
 	void OnExecParticleInvoked(const TCHAR* InStr);
 	void OnPostEngineInit();
-	void OnDeviceProfileManagerUpdated();
-	void OnPreviewPlatformChanged();
-	void OnPreExit();
 
 	/** FGCObject interface */
 	virtual void AddReferencedObjects( FReferenceCollector& Collector ) override;
-	virtual FString GetReferencerName() const override
-	{
-		return "FNiagaraEditorModule";
-	}
 
 	void TestCompileScriptFromConsole(const TArray<FString>& Arguments);
-	void ReinitializeStyle();
-
-	void EnqueueObjectForDeferredDestructionInternal(FDeferredDestructionContainerBase* InObjectToDestruct);
-
-	bool DeferredDestructObjects(float InDeltaTime);
-
-	/** Register a parameter scope info to lookup by name. */
-	static void RegisterParameterScopeInfo(const FName& ParameterScopeInfoName, const FNiagaraParameterScopeInfo& ParameterScopeInfo);
-
-	void RegisterStackIssueGenerator(FName StructName, INiagaraStackObjectIssueGenerator* Generator)
-	{
-		StackIssueGenerators.Add(StructName) = Generator;
-	}
-
 
 private:
 	TSharedPtr<FExtensibilityManager> MenuExtensibilityManager;
@@ -223,12 +141,7 @@ private:
 	FDelegateHandle CreateColorParameterTrackEditorHandle;
 
 	FDelegateHandle ScriptCompilerHandle;
-	FDelegateHandle CompileResultHandle;
 	FDelegateHandle PrecompilerHandle;
-
-	FDelegateHandle DeviceProfileManagerUpdatedHandle;
-
-	FDelegateHandle PreviewPlatformChangedHandle;
 
 	USequencerSettings* SequencerSettings;
 	
@@ -237,8 +150,6 @@ private:
 	TSharedPtr<FNiagaraScriptMergeManager> ScriptMergeManager;
 
 	TSharedPtr<INiagaraEditorOnlyDataUtilities> EditorOnlyDataUtilities;
-
-	TSharedPtr<FNiagaraComponentBroker> NiagaraComponentBroker;
 
 	TMap<const UScriptStruct*, FOnCreateMovieSceneTrackForParameter> TypeToParameterTrackCreatorMap;
 
@@ -251,19 +162,5 @@ private:
 
 	FOnCheckScriptToolkitsShouldFocusGraphElement OnCheckScriptToolkitsShouldFocusGraphElement;
 
-	mutable TOptional<TArray<FNiagaraScriptHighlight>> CachedScriptAssetHighlights;
-
 	bool bThumbnailRenderersRegistered;
-
-	TSharedRef<FNiagaraClipboard> Clipboard;
-
-	IConsoleCommand* ReinitializeStyleCommand;
-
-	TMap<int32, TSharedPtr<FHlslNiagaraCompiler>> ActiveCompilations;
-
-	TArray<TSharedRef<const FDeferredDestructionContainerBase>> EnqueuedForDeferredDestruction;
-
-	static TArray<TPair<FName, FNiagaraParameterScopeInfo>> RegisteredParameterScopeInfos;
-
-	TMap<FName, INiagaraStackObjectIssueGenerator*> StackIssueGenerators;
 };

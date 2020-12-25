@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -58,17 +58,14 @@ class NAVIGATIONSYSTEM_API UNavCollision : public UNavCollisionBase
 	UPROPERTY(EditAnywhere, Category=Navigation)
 	TArray<FNavCollisionBox> BoxCollision;
 
-	/** navigation area type that will be use when this static mesh is used as 
-	 *	a navigation obstacle. See bIsDynamicObstacle.
-	 *	Empty AreaClass means the default obstacle class will be used */
-	UPROPERTY(EditAnywhere, Category = Navigation, meta = (EditCondition = "bIsDynamicObstacle"))
+	/** navigation area type (empty = default obstacle) */
+	UPROPERTY(EditAnywhere, Category=Navigation)
 	TSubclassOf<class UNavArea> AreaClass;
 
 	/** If set, convex collisions will be exported offline for faster runtime navmesh building (increases memory usage) */
 	UPROPERTY(EditAnywhere, Category=Navigation, config)
 	uint32 bGatherConvexGeometry : 1;
 
-	/** If false, will not create nav collision when connecting as a client */
 	UPROPERTY(EditAnywhere, Category=Navigation, config)
 	uint32 bCreateOnClient : 1;
 

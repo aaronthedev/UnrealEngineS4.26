@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MagicLeapPrivilegesModule.h"
 #include "MagicLeapPrivilegeUtils.h"
 #include "Engine/Engine.h"
-#include "Stats/Stats.h"
 
 using namespace MagicLeap;
 
@@ -17,24 +16,6 @@ void FMagicLeapPrivilegesModule::StartupModule()
 	IMagicLeapPrivilegesModule::StartupModule();
 	TickDelegate = FTickerDelegate::CreateRaw(this, &FMagicLeapPrivilegesModule::Tick);
 	TickDelegateHandle = FTicker::GetCoreTicker().AddTicker(TickDelegate);
-
-	// Until there is a dedicated Lumin OnlineSubsystem, request the LAN privilege on module startup if the command line is requesting connection to a specified IP.
-#if PLATFORM_LUMIN && !UE_SERVER
-	const TCHAR* CmdLine = FCommandLine::Get();
-
-	FString PackageName;
-	if (FParse::Token(CmdLine, PackageName, 0))
-	{
-		FURL URL(nullptr, *PackageName, TRAVEL_Absolute);
-		// No need to specially account for cook on the fly (filehostip/streaminghostip) because in that case the URL will still be local (not an explicit ip address),
-		// so the privilege will not be requested, as expected.
-		if (URL.Valid && !URL.HasOption(TEXT("failed")) && !URL.HasOption(TEXT("closed")) && !URL.HasOption(TEXT("restart")) &&
-			!GDisallowNetworkTravel && !URL.HasOption(TEXT("listen")) && !URL.IsLocalInternal() && URL.IsInternal() && GIsClient)
-		{
-			RequestPrivilege(EMagicLeapPrivilege::LocalAreaNetwork);
-		}
-	}
-#endif // PLATFORM_LUMIN && !UE_SERVER
 }
 
 void FMagicLeapPrivilegesModule::ShutdownModule()
@@ -45,8 +26,6 @@ void FMagicLeapPrivilegesModule::ShutdownModule()
 
 bool FMagicLeapPrivilegesModule::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FMagicLeapPrivilegesModule_Tick);
-
 #if WITH_MLSDK
 	auto CopyPendingAsyncRequests(PendingAsyncRequests);
 

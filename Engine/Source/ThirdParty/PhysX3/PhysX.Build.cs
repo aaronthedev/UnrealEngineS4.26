@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System;
@@ -114,7 +114,7 @@ public class PhysX : ModuleRules
 		string EngineBinThirdPartyPath = Path.Combine("$(EngineDir)", "Binaries", "ThirdParty", "PhysX3");
 
 		// Libraries and DLLs for windows platform
-		if (Target.Platform.IsInGroup(UnrealPlatformGroup.Windows) && Target.Platform != UnrealTargetPlatform.Win32)
+		if (Target.Platform == UnrealTargetPlatform.Win64)
 		{
 			string[] StaticLibrariesX64 = new string[] {
 				"PhysX3{0}_x64.lib",
@@ -409,6 +409,59 @@ public class PhysX : ModuleRules
 			foreach (string PhysXLib in PhysXLibs)
 			{
 				PublicAdditionalLibraries.Add(Path.Combine(PhysXLibDir, "TVOS", "lib" + String.Format(PhysXLib, LibrarySuffix) + ".a"));
+			}
+		}
+		else if (Target.Platform == UnrealTargetPlatform.XboxOne)
+		{
+			PublicDefinitions.Add("PX_PHYSX_STATIC_LIB=1");
+			PublicDefinitions.Add("_XBOX_ONE=1");
+
+			string[] StaticLibrariesXB1 = new string[] {
+				"PhysX3{0}.lib",
+				"PhysX3Extensions{0}.lib",
+				"PhysX3Cooking{0}.lib",
+				"PhysX3Common{0}.lib",
+				"LowLevel{0}.lib",
+				"LowLevelAABB{0}.lib",
+				"LowLevelCloth{0}.lib",
+				"LowLevelDynamics{0}.lib",
+				"LowLevelParticles{0}.lib",
+				"SceneQuery{0}.lib",
+				"SimulationController{0}.lib",
+				"PxFoundation{0}.lib",
+				"PxTask{0}.lib",
+				"PxPvdSDK{0}.lib",
+				"PsFastXml{0}.lib"
+			};
+
+			foreach (string Lib in StaticLibrariesXB1)
+			{
+				PublicAdditionalLibraries.Add(Path.Combine(PhysXLibDir, "XboxOne", "VS2015", String.Format(Lib, LibrarySuffix)));
+			}
+		}
+		else if (Target.Platform == UnrealTargetPlatform.Switch)
+		{
+			string[] StaticLibrariesSwitch = new string[] {
+					"LowLevel{0}",
+					"LowLevelAABB{0}",
+					"LowLevelCloth{0}",
+					"LowLevelDynamics{0}",
+					"LowLevelParticles{0}",
+					"PhysX3{0}",
+					"PhysX3Common{0}",
+					"PhysX3Cooking{0}",
+					"PhysX3Extensions{0}",
+					"SceneQuery{0}",
+					"SimulationController{0}",
+					"PxFoundation{0}",
+					"PxTask{0}",
+					"PxPvdSDK{0}",
+					"PsFastXml{0}"
+			};
+
+			foreach (string Lib in StaticLibrariesSwitch)
+			{
+				PublicAdditionalLibraries.Add(Path.Combine(PhysXLibDir, "Switch", "lib" + String.Format(Lib, LibrarySuffix) + ".a"));
 			}
 		}
 	}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,17 +9,12 @@
 #include "ISoundSubmixEditor.h"
 #include "ISoundCueEditor.h"
 
-
-// Forward Declarations
 class UDialogueWave;
 class USoundClass;
 class USoundCue;
-class USoundEffectPreset;
-class USoundSubmixBase;
+class USoundSubmix;
 class USoundNode;
 class USoundWave;
-class UWidgetBlueprint;
-
 struct FDialogueContextMapping;
 
 AUDIOEDITOR_API DECLARE_LOG_CATEGORY_EXTERN(LogAudioEditor, Log, All);
@@ -43,7 +38,7 @@ public:
 	virtual TSharedRef<FAssetEditorToolkit> CreateSoundClassEditor( const EToolkitMode::Type Mode, const TSharedPtr< IToolkitHost >& InitToolkitHost, USoundClass* InSoundClass ) = 0;
 
 	/** Creates a new sound submix editor for a sound submix object. */
-	virtual TSharedRef<FAssetEditorToolkit> CreateSoundSubmixEditor(const EToolkitMode::Type Mode, const TSharedPtr< IToolkitHost >& InitToolkitHost, USoundSubmixBase* InSoundSubmix) = 0;
+	virtual TSharedRef<FAssetEditorToolkit> CreateSoundSubmixEditor(const EToolkitMode::Type Mode, const TSharedPtr< IToolkitHost >& InitToolkitHost, USoundSubmix* InSoundSubmix) = 0;
 
 	/** Returns the menu extensibility manager for the given audio editor type. */
 	virtual TSharedPtr<FExtensibilityManager> GetSoundClassMenuExtensibilityManager() = 0;
@@ -65,15 +60,6 @@ public:
 
 	/** Returns the toolbar extensibility manager for the given audio editor type. */
 	virtual TSharedPtr<FExtensibilityManager> GetSoundCueToolBarExtensibilityManager() = 0;
-
-	/** Registers a custom widget blueprint with a SoundEffectPreset class for editing. */
-	virtual void RegisterSoundEffectPresetWidget(TSubclassOf<USoundEffectPreset> PresetClass, UWidgetBlueprint* WidgetBlueprint) = 0;
-
-	/** Returns custom widget blueprint for a given SoundEffectPreset class (or null if unset). */
-	virtual UWidgetBlueprint* GetSoundEffectPresetWidget(TSubclassOf<USoundEffectPreset> PresetClass) = 0;
-
-	/** Unregisters a custom widget blueprint with a SoundEffectPreset class for editing. */
-	virtual void UnregisterSoundEffectPresetWidget(TSubclassOf<USoundEffectPreset> PresetClass) = 0;
 
 	/** Replaces sound cue nodes in the graph. */
 	virtual void ReplaceSoundNodesInGraph(USoundCue* SoundCue, UDialogueWave* DialogueWave, TArray<USoundNode*>& NodesToReplace, const FDialogueContextMapping& ContextMapping) = 0;

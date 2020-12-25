@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,7 +7,7 @@
 #include "EdGraph/EdGraphNode.h"
 #include "SoundSubmixGraphNode.generated.h"
 
-class USoundSubmixBase;
+class USoundSubmix;
 
 UCLASS(MinimalAPI)
 class USoundSubmixGraphNode : public UEdGraphNode
@@ -16,7 +16,7 @@ class USoundSubmixGraphNode : public UEdGraphNode
 
 	/** The SoundSubmix this represents */
 	UPROPERTY(VisibleAnywhere, instanced, Category=Sound)
-	USoundSubmixBase* SoundSubmix;
+	USoundSubmix* SoundSubmix;
 
 	/** Get the Pin that connects to all children */
 	UEdGraphPin* GetChildPin() const { return ChildPin; }

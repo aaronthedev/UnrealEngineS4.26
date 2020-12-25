@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RichCurveEditorModel.h"
 #include "RichCurveKeyProxy.h"
@@ -14,8 +14,9 @@
 #include "UObject/Package.h"
 
 
-void RefineCurvePoints(const FRichCurve& RichCurve, double TimeThreshold, float ValueThreshold, TArray<TTuple<double, double>>& InOutPoints)
+void RefineCurvePoints(const FRichCurve* RichCurve, double TimeThreshold, float ValueThreshold, TArray<TTuple<double, double>>& InOutPoints)
 {
+	check(RichCurve);
 	const float InterpTimes[] = { 0.25f, 0.5f, 0.6f };
 
 	for (int32 Index = 0; Index < InOutPoints.Num() - 1; ++Index)
@@ -27,7 +28,7 @@ void RefineCurvePoints(const FRichCurve& RichCurve, double TimeThreshold, float 
 		{
 			bool bSegmentIsLinear = true;
 
-			TTuple<double, double> Evaluated[UE_ARRAY_COUNT(InterpTimes)] = { TTuple<double, double>(0, 0) };
+			TTuple<double, double> Evaluated[UE_ARRAY_COUNT(InterpTimes)];
 
 			for (int32 InterpIndex = 0; InterpIndex < UE_ARRAY_COUNT(InterpTimes); ++InterpIndex)
 			{
@@ -35,7 +36,7 @@ void RefineCurvePoints(const FRichCurve& RichCurve, double TimeThreshold, float 
 
 				EvalTime = FMath::Lerp(Lower.Get<0>(), Upper.Get<0>(), InterpTimes[InterpIndex]);
 
-				float Value = RichCurve.Eval(EvalTime);
+				float Value = RichCurve->Eval(EvalTime);
 
 				const float LinearValue = FMath::Lerp(Lower.Get<1>(), Upper.Get<1>(), InterpTimes[InterpIndex]);
 				if (bSegmentIsLinear)
@@ -62,10 +63,10 @@ void RefineCurvePoints(const FRichCurve& RichCurve, double TimeThreshold, float 
 class FRichBufferedCurveModel : public IBufferedCurveModel
 {
 public:
-	FRichBufferedCurveModel(const FRichCurve& InRichCurve, TArray<FKeyPosition>&& InKeyPositions, TArray<FKeyAttributes>&& InKeyAttributes,
+	FRichBufferedCurveModel(FRichCurve* InRichCurve, TArray<FKeyPosition>&& InKeyPositions, TArray<FKeyAttributes>&& InKeyAttributes,
 		const FString& InIntentionName, const double InValueMin, const double InValueMax)
 		: IBufferedCurveModel(MoveTemp(InKeyPositions), MoveTemp(InKeyAttributes), InIntentionName, InValueMin, InValueMax)
-		, RichCurve(InRichCurve)
+		, RichCurve(*InRichCurve)
 	{}
 
 	virtual void DrawCurve(const FCurveEditor& CurveEditor, const FCurveEditorScreenSpace& ScreenSpace, TArray<TTuple<double, double>>& InterpolatingPoints) const override
@@ -91,7 +92,7 @@ public:
 		do
 		{
 			OldSize = InterpolatingPoints.Num();
-			RefineCurvePoints(RichCurve, TimeThreshold, ValueThreshold, InterpolatingPoints);
+			RefineCurvePoints(&RichCurve, TimeThreshold, ValueThreshold, InterpolatingPoints);
 		} while (OldSize != InterpolatingPoints.Num());
 	}
 
@@ -99,29 +100,23 @@ private:
 	FRichCurve RichCurve;
 };
 
-FRichCurveEditorModel::FRichCurveEditorModel( UObject* InOwner)
-	: WeakOwner(InOwner), ClampInputRange(TRange<double>(TNumericLimits<double>::Lowest(), TNumericLimits<double>::Max()))
+FRichCurveEditorModel::FRichCurveEditorModel(FRichCurve* InRichCurve, UObject* InOwner)
+	: RichCurve(InRichCurve), WeakOwner(InOwner)
 {
+	checkf(RichCurve, TEXT("If is not valid to provide a null rich curve to this class"));
 }
 
 const void* FRichCurveEditorModel::GetCurve() const
 {
-	if(IsValid())
-	{
-		return &GetReadOnlyRichCurve();
-	}
-	return nullptr;
+	return RichCurve;
 }
 
 void FRichCurveEditorModel::Modify()
 {
 	if (UObject* Owner = WeakOwner.Get())
 	{
-		if(IsValid())
-		{
-			Owner->SetFlags(RF_Transactional);
-			Owner->Modify();
-		}
+		Owner->SetFlags(RF_Transactional);
+		Owner->Modify();
 	}
 }
 
@@ -129,40 +124,32 @@ void FRichCurveEditorModel::AddKeys(TArrayView<const FKeyPosition> InKeyPosition
 {
 	check(InKeyPositions.Num() == InKeyAttributes.Num() && (!OutKeyHandles || OutKeyHandles->Num() == InKeyPositions.Num()));
 
-	if (UObject* Owner = WeakOwner.Get())
+	UObject* Owner = WeakOwner.Get();
+	if (Owner)
 	{
-		if(IsValid())
+		Owner->Modify();
+
+		TArray<FKeyHandle> NewKeyHandles;
+		NewKeyHandles.SetNumUninitialized(InKeyPositions.Num());
+
+		for (int32 Index = 0; Index < InKeyPositions.Num(); ++Index)
 		{
-			Owner->Modify();
+			FKeyPosition   Position   = InKeyPositions[Index];
+			FKeyAttributes Attributes = InKeyAttributes[Index];
 
-			TArray<FKeyHandle> NewKeyHandles;
-			NewKeyHandles.SetNumUninitialized(InKeyPositions.Num());
+			FKeyHandle     NewHandle = RichCurve->AddKey(Position.InputValue, Position.OutputValue);
+			FRichCurveKey* NewKey    = &RichCurve->GetKey(NewHandle);
 
-			FRichCurve& RichCurve = GetRichCurve();
-
-			for (int32 Index = 0; Index < InKeyPositions.Num(); ++Index)
+			NewKeyHandles[Index] = NewHandle;
+			if (OutKeyHandles)
 			{
-				FKeyPosition   Position   = InKeyPositions[Index];
-				FKeyAttributes Attributes = InKeyAttributes[Index];
-
-				const TRange<double> InputRange = ClampInputRange.Get();
-				FKeyHandle     NewHandle = RichCurve.UpdateOrAddKey(FMath::Clamp(Position.InputValue, InputRange.GetLowerBoundValue(), InputRange.GetUpperBoundValue()), Position.OutputValue);
-				if (NewHandle != FKeyHandle::Invalid())
-				{
-					NewKeyHandles[Index] = NewHandle;
-					if (OutKeyHandles)
-					{
-						(*OutKeyHandles)[Index] = NewHandle;
-					}
-				}
+				(*OutKeyHandles)[Index] = NewHandle;
 			}
-
-			// We reuse SetKeyAttributes here as there is complex logic determining which parts of the attributes are valid to pass on.
-			// For now we need to duplicate the new key handle array due to API mismatch. This will auto-calculate tangents if required.
-			SetKeyAttributes(NewKeyHandles, InKeyAttributes);
-
-			CurveModifiedDelegate.Broadcast();
 		}
+
+		// We reuse SetKeyAttributes here as there is complex logic determining which parts of the attributes are valid to pass on.
+		// For now we need to duplicate the new key handle array due to API mismatch. This will auto-calculate tangents if required.
+		SetKeyAttributes(NewKeyHandles, InKeyAttributes);
 	}
 }
 
@@ -170,11 +157,8 @@ bool FRichCurveEditorModel::Evaluate(double Time, double& OutValue) const
 {
 	if (UObject* Owner = WeakOwner.Get())
 	{
-		if(IsValid())
-		{
-			OutValue = GetReadOnlyRichCurve().Eval(Time);
-			return true;
-		}
+		OutValue = RichCurve->Eval(Time);
+		return true;
 	}
 
 	return false;
@@ -184,16 +168,10 @@ void FRichCurveEditorModel::RemoveKeys(TArrayView<const FKeyHandle> InKeys)
 {
 	if (UObject* Owner = WeakOwner.Get())
 	{
-		if(IsValid())
+		Owner->Modify();
+		for (FKeyHandle Handle : InKeys)
 		{
-			Owner->Modify();
-			FRichCurve& RichCurve = GetRichCurve();
-			for (FKeyHandle Handle : InKeys)
-			{
-				RichCurve.DeleteKey(Handle);
-			}
-
-			CurveModifiedDelegate.Broadcast();
+			RichCurve->DeleteKey(Handle);
 		}
 	}
 }
@@ -202,35 +180,30 @@ void FRichCurveEditorModel::DrawCurve(const FCurveEditor& CurveEditor, const FCu
 {
 	if (UObject* Owner = WeakOwner.Get())
 	{
-		if(IsValid())
+		const double StartTimeSeconds = ScreenSpace.GetInputMin();
+		const double EndTimeSeconds   = ScreenSpace.GetInputMax();
+		const double TimeThreshold    = FMath::Max(0.0001, 1.0 / ScreenSpace.PixelsPerInput());
+		const double ValueThreshold   = FMath::Max(0.0001, 1.0 / ScreenSpace.PixelsPerOutput());
+
+		InOutPoints.Add(MakeTuple(StartTimeSeconds, double(RichCurve->Eval(StartTimeSeconds))));
+
+		for (const FRichCurveKey& Key : RichCurve->GetConstRefOfKeys())
 		{
-			const double StartTimeSeconds = ScreenSpace.GetInputMin();
-			const double EndTimeSeconds   = ScreenSpace.GetInputMax();
-			const double TimeThreshold    = FMath::Max(0.0001, 1.0 / ScreenSpace.PixelsPerInput());
-			const double ValueThreshold   = FMath::Max(0.0001, 1.0 / ScreenSpace.PixelsPerOutput());
-
-			const FRichCurve& RichCurve = GetReadOnlyRichCurve();
-
-			InOutPoints.Add(MakeTuple(StartTimeSeconds, double(RichCurve.Eval(StartTimeSeconds))));
-
-			for (const FRichCurveKey& Key : RichCurve.GetConstRefOfKeys())
+			if (Key.Time > StartTimeSeconds && Key.Time < EndTimeSeconds)
 			{
-				if (Key.Time > StartTimeSeconds && Key.Time < EndTimeSeconds)
-				{
-					InOutPoints.Add(MakeTuple(double(Key.Time), double(Key.Value)));
-				}
+				InOutPoints.Add(MakeTuple(double(Key.Time), double(Key.Value)));
 			}
-
-			InOutPoints.Add(MakeTuple(EndTimeSeconds, double(RichCurve.Eval(EndTimeSeconds))));
-
-			int32 OldSize = InOutPoints.Num();
-			do
-			{
-				OldSize = InOutPoints.Num();
-				RefineCurvePoints(RichCurve, TimeThreshold, ValueThreshold, InOutPoints);
-			}
-			while(OldSize != InOutPoints.Num());
 		}
+
+		InOutPoints.Add(MakeTuple(EndTimeSeconds, double(RichCurve->Eval(EndTimeSeconds))));
+
+		int32 OldSize = InOutPoints.Num();
+		do
+		{
+			OldSize = InOutPoints.Num();
+			RefineCurvePoints(RichCurve, TimeThreshold, ValueThreshold, InOutPoints);
+		}
+		while(OldSize != InOutPoints.Num());
 	}
 }
 
@@ -238,19 +211,12 @@ void FRichCurveEditorModel::GetKeys(const FCurveEditor& CurveEditor, double MinT
 {
 	if (UObject* Owner = WeakOwner.Get())
 	{
-		if(IsValid())
+		for (auto It = RichCurve->GetKeyHandleIterator(); It; ++It)
 		{
-			const FRichCurve& RichCurve = GetReadOnlyRichCurve();
-			for (auto It = RichCurve.GetKeyHandleIterator(); It; ++It)
+			const FRichCurveKey& Key = RichCurve->GetKey(*It);
+			if (Key.Time >= MinTime && Key.Time <= MaxTime && Key.Value >= MinValue && Key.Value <= MaxValue)
 			{
-				if(RichCurve.IsKeyHandleValid(*It))
-				{
-					const FRichCurveKey& Key = RichCurve.GetKeyRef(*It);
-					if (Key.Time >= MinTime && Key.Time <= MaxTime && Key.Value >= MinValue && Key.Value <= MaxValue)
-					{
-						OutKeyHandles.Add(*It);
-					}
-				}
+				OutKeyHandles.Add(*It);
 			}
 		}
 	}
@@ -268,7 +234,7 @@ void FRichCurveEditorModel::GetKeyDrawInfo(ECurvePointType PointType, const FKey
 		// All keys are the same size by default
 		OutDrawInfo.ScreenSize = FVector2D(11, 11);
 
-		ERichCurveInterpMode KeyType = (IsValid() && GetReadOnlyRichCurve().IsKeyHandleValid(InKeyHandle)) ? GetReadOnlyRichCurve().GetKeyRef(InKeyHandle).InterpMode.GetValue() : RCIM_None;
+		ERichCurveInterpMode KeyType = RichCurve->IsKeyHandleValid(InKeyHandle) ? RichCurve->GetKey(InKeyHandle).InterpMode.GetValue() : RCIM_None;
 		switch (KeyType)
 		{
 		case ERichCurveInterpMode::RCIM_Constant:
@@ -295,24 +261,20 @@ void FRichCurveEditorModel::GetKeyPositions(TArrayView<const FKeyHandle> InKeys,
 {
 	if (UObject* Owner = WeakOwner.Get())
 	{
-		if(IsValid())
+		for (int32 Index = 0; Index < InKeys.Num(); ++Index)
 		{
-			const FRichCurve& RichCurve = GetReadOnlyRichCurve();
-			for (int32 Index = 0; Index < InKeys.Num(); ++Index)
+			if (RichCurve->IsKeyHandleValid(InKeys[Index]))
 			{
-				if (RichCurve.IsKeyHandleValid(InKeys[Index]))
-				{
-					const FRichCurveKey& Key = RichCurve.GetKeyRef(InKeys[Index]);
+				const FRichCurveKey& Key = RichCurve->GetKey(InKeys[Index]);
 
-					OutKeyPositions[Index].InputValue  = Key.Time;
-					OutKeyPositions[Index].OutputValue = Key.Value;
-				}
+				OutKeyPositions[Index].InputValue  = Key.Time;
+				OutKeyPositions[Index].OutputValue = Key.Value;
 			}
 		}
 	}
 }
 
-void FRichCurveEditorModel::SetKeyPositions(TArrayView<const FKeyHandle> InKeys, TArrayView<const FKeyPosition> InKeyPositions, EPropertyChangeType::Type ChangeType)
+void FRichCurveEditorModel::SetKeyPositions(TArrayView<const FKeyHandle> InKeys, TArrayView<const FKeyPosition> InKeyPositions)
 {
 	if (IsReadOnly())
 	{
@@ -321,28 +283,19 @@ void FRichCurveEditorModel::SetKeyPositions(TArrayView<const FKeyHandle> InKeys,
 
 	if (UObject* Owner = WeakOwner.Get())
 	{
-		if(IsValid())
+		Owner->Modify();
+
+		for (int32 Index = 0; Index < InKeys.Num(); ++Index)
 		{
-			Owner->Modify();
-
-			FRichCurve& RichCurve = GetRichCurve();
-			for (int32 Index = 0; Index < InKeys.Num(); ++Index)
+			FKeyHandle Handle = InKeys[Index];
+			if (RichCurve->IsKeyHandleValid(Handle))
 			{
-				FKeyHandle Handle = InKeys[Index];
-				if (RichCurve.IsKeyHandleValid(Handle))
-				{
-					// Set key time last so we don't have to worry about the key handle changing
-					RichCurve.GetKey(Handle).Value = InKeyPositions[Index].OutputValue;
-					const TRange<double> InputRange = ClampInputRange.Get();
-					RichCurve.SetKeyTime(Handle, FMath::Clamp(InKeyPositions[Index].InputValue, InputRange.GetLowerBoundValue(), InputRange.GetUpperBoundValue()));
-				}
+				// Set key time last so we don't have to worry about the key handle changing
+				RichCurve->GetKey(Handle).Value = InKeyPositions[Index].OutputValue;
+				RichCurve->SetKeyTime(Handle, InKeyPositions[Index].InputValue);
 			}
-			RichCurve.AutoSetTangents();
-			FPropertyChangedEvent PropertyChangeStruct(nullptr, ChangeType);
-			Owner->PostEditChangeProperty(PropertyChangeStruct);
-
-			CurveModifiedDelegate.Broadcast();
 		}
+		RichCurve->AutoSetTangents();
 	}
 }
 
@@ -350,47 +303,43 @@ void FRichCurveEditorModel::GetKeyAttributes(TArrayView<const FKeyHandle> InKeys
 {
 	if (UObject* Owner = WeakOwner.Get())
 	{
-		if(IsValid())
+		const TArray<FRichCurveKey>& AllKeys = RichCurve->GetConstRefOfKeys();
+		if (AllKeys.Num() == 0)
 		{
-			const FRichCurve& RichCurve = GetReadOnlyRichCurve();
-			const TArray<FRichCurveKey>& AllKeys = RichCurve.GetConstRefOfKeys();
-			if (AllKeys.Num() == 0)
-			{
-				return;
-			}
+			return;
+		}
 
-			const FRichCurveKey* FirstKey = &AllKeys[0];
-			const FRichCurveKey* LastKey  = &AllKeys.Last();
+		const FRichCurveKey* FirstKey = &AllKeys[0];
+		const FRichCurveKey* LastKey  = &AllKeys.Last();
 
-			for (int32 Index = 0; Index < InKeys.Num(); ++Index)
+		for (int32 Index = 0; Index < InKeys.Num(); ++Index)
+		{
+			if (RichCurve->IsKeyHandleValid(InKeys[Index]))
 			{
-				if (RichCurve.IsKeyHandleValid(InKeys[Index]))
+				const FRichCurveKey* ThisKey    = &RichCurve->GetKey(InKeys[Index]);
+				FKeyAttributes&      Attributes = OutAttributes[Index];
+
+				Attributes.SetInterpMode(ThisKey->InterpMode);
+
+				if (ThisKey->InterpMode != RCIM_Constant && ThisKey->InterpMode != RCIM_Linear)
 				{
-					const FRichCurveKey& ThisKey    = RichCurve.GetKeyRef(InKeys[Index]);
-					FKeyAttributes&      Attributes = OutAttributes[Index];
-
-					Attributes.SetInterpMode(ThisKey.InterpMode);
-
-					if (ThisKey.InterpMode != RCIM_Constant && ThisKey.InterpMode != RCIM_Linear)
+					Attributes.SetTangentMode(ThisKey->TangentMode);
+					if (ThisKey != FirstKey)
 					{
-						Attributes.SetTangentMode(ThisKey.TangentMode);
-						if (&ThisKey != FirstKey)
-						{
-							Attributes.SetArriveTangent(ThisKey.ArriveTangent);
-						}
+						Attributes.SetArriveTangent(ThisKey->ArriveTangent);
+					}
 
-						if (&ThisKey != LastKey)
+					if (ThisKey != LastKey)
+					{
+						Attributes.SetLeaveTangent(ThisKey->LeaveTangent);
+					}
+					if (ThisKey->InterpMode == RCIM_Cubic)
+					{
+						Attributes.SetTangentWeightMode(ThisKey->TangentWeightMode);
+						if (ThisKey->TangentWeightMode != RCTWM_WeightedNone)
 						{
-							Attributes.SetLeaveTangent(ThisKey.LeaveTangent);
-						}
-						if (ThisKey.InterpMode == RCIM_Cubic)
-						{
-							Attributes.SetTangentWeightMode(ThisKey.TangentWeightMode);
-							if (ThisKey.TangentWeightMode != RCTWM_WeightedNone)
-							{
-								Attributes.SetArriveTangentWeight(ThisKey.ArriveTangentWeight);
-								Attributes.SetLeaveTangentWeight(ThisKey.LeaveTangentWeight);
-							}
+							Attributes.SetArriveTangentWeight(ThisKey->ArriveTangentWeight);
+							Attributes.SetLeaveTangentWeight(ThisKey->LeaveTangentWeight);
 						}
 					}
 				}
@@ -399,7 +348,7 @@ void FRichCurveEditorModel::GetKeyAttributes(TArrayView<const FKeyHandle> InKeys
 	}
 }
 
-void FRichCurveEditorModel::SetKeyAttributes(TArrayView<const FKeyHandle> InKeys, TArrayView<const FKeyAttributes> InAttributes, EPropertyChangeType::Type ChangeType)
+void FRichCurveEditorModel::SetKeyAttributes(TArrayView<const FKeyHandle> InKeys, TArrayView<const FKeyAttributes> InAttributes)
 {
 	if (IsReadOnly())
 	{
@@ -408,144 +357,133 @@ void FRichCurveEditorModel::SetKeyAttributes(TArrayView<const FKeyHandle> InKeys
 
 	if (UObject* Owner = WeakOwner.Get())
 	{
-		if(IsValid())
+		const TArray<FRichCurveKey>& AllKeys = RichCurve->GetConstRefOfKeys();
+		if (AllKeys.Num() == 0)
 		{
-			FRichCurve& RichCurve = GetRichCurve();
-			const TArray<FRichCurveKey>& AllKeys = RichCurve.GetConstRefOfKeys();
-			if (AllKeys.Num() == 0)
+			return;
+		}
+
+		Owner->Modify();
+
+		const FRichCurveKey* FirstKey = &AllKeys[0];
+		const FRichCurveKey* LastKey  = &AllKeys.Last();
+
+		bool bAutoSetTangents = false;
+
+		for (int32 Index = 0; Index < InKeys.Num(); ++Index)
+		{
+			if (RichCurve->IsKeyHandleValid(InKeys[Index]))
 			{
-				return;
-			}
+				FRichCurveKey*        ThisKey    = &RichCurve->GetKey(InKeys[Index]);
+				const FKeyAttributes& Attributes = InAttributes[Index];
 
-			Owner->Modify();
-
-			const FRichCurveKey* FirstKey = &AllKeys[0];
-			const FRichCurveKey* LastKey  = &AllKeys.Last();
-
-			bool bAutoSetTangents = false;
-
-			for (int32 Index = 0; Index < InKeys.Num(); ++Index)
-			{
-				FKeyHandle KeyHandle = InKeys[Index];
-				if (RichCurve.IsKeyHandleValid(KeyHandle))
+				if (Attributes.HasInterpMode())    { ThisKey->InterpMode  = Attributes.GetInterpMode();  bAutoSetTangents = true; }
+				if (Attributes.HasTangentMode())
 				{
-					FRichCurveKey*        ThisKey    = &RichCurve.GetKey(KeyHandle);
-					const FKeyAttributes& Attributes = InAttributes[Index];
-
-					if (Attributes.HasInterpMode())    { ThisKey->InterpMode  = Attributes.GetInterpMode();  bAutoSetTangents = true; }
-					if (Attributes.HasTangentMode())
+					ThisKey->TangentMode = Attributes.GetTangentMode();
+					if (ThisKey->TangentMode == RCTM_Auto)
 					{
-						ThisKey->TangentMode = Attributes.GetTangentMode();
-						if (ThisKey->TangentMode == RCTM_Auto)
-						{
-							ThisKey->TangentWeightMode = RCTWM_WeightedNone;
-						}
-						bAutoSetTangents = true;
+						ThisKey->TangentWeightMode = RCTWM_WeightedNone;
 					}
-					if (Attributes.HasTangentWeightMode()) 
-					{ 
-						if (ThisKey->TangentWeightMode == RCTWM_WeightedNone) //set tangent weights to default use
-						{
-							const float OneThird = 1.0f / 3.0f;
+					bAutoSetTangents = true;
+				}
+				if (Attributes.HasTangentWeightMode()) 
+				{ 
+					if (ThisKey->TangentWeightMode == RCTWM_WeightedNone) //set tangent weights to default use
+					{
+						const float OneThird = 1.0f / 3.0f;
 
-							//calculate a tangent weight based upon tangent and time difference
-							//calculate arrive tangent weight
-							if (ThisKey != FirstKey)
-							{
-								const float X = ThisKey->Time - RichCurve.GetKey(RichCurve.GetPreviousKey(KeyHandle)).Time;
-								const float Y = ThisKey->ArriveTangent *X;
-								ThisKey->ArriveTangentWeight = FMath::Sqrt(X*X + Y*Y) * OneThird;
-							}
-							//calculate leave weight
-							if(ThisKey != LastKey)
-							{
-								const float X = RichCurve.GetKey(RichCurve.GetNextKey(KeyHandle)).Time - ThisKey->Time;
-								const float Y = ThisKey->LeaveTangent *X;
-								ThisKey->LeaveTangentWeight = FMath::Sqrt(X*X + Y*Y) * OneThird;
-							}
+						//calculate a tangent weight based upon tangent and time difference
+						//calculate arrive tangent weight
+						if (ThisKey != FirstKey)
+						{
+							const float Y = ThisKey->ArriveTangent;
+							ThisKey->ArriveTangentWeight = FMath::Sqrt(1.f + Y*Y) * OneThird;
 						}
-						ThisKey->TangentWeightMode = Attributes.GetTangentWeightMode();
-
-						if( ThisKey->TangentWeightMode != RCTWM_WeightedNone )
+						//calculate leave weight
+						if(ThisKey != LastKey)
 						{
-							if (ThisKey->TangentMode != RCTM_User && ThisKey->TangentMode != RCTM_Break)
-							{
-								ThisKey->TangentMode = RCTM_User;
-							}
+							const float Y = ThisKey->LeaveTangent;
+							ThisKey->LeaveTangentWeight = FMath::Sqrt(1.f + Y*Y) * OneThird;
 						}
 					}
+					ThisKey->TangentWeightMode = Attributes.GetTangentWeightMode();
 
-					if (Attributes.HasArriveTangent())
+					if( ThisKey->TangentWeightMode != RCTWM_WeightedNone )
 					{
-						if (ThisKey->TangentMode == RCTM_Auto)
+						if (ThisKey->TangentMode != RCTM_User && ThisKey->TangentMode != RCTM_Break)
 						{
 							ThisKey->TangentMode = RCTM_User;
-							ThisKey->TangentWeightMode = RCTWM_WeightedNone;
-						}
-
-						ThisKey->ArriveTangent = Attributes.GetArriveTangent();
-						if (ThisKey->InterpMode == RCIM_Cubic && ThisKey->TangentMode != RCTM_Break)
-						{
-							ThisKey->LeaveTangent = ThisKey->ArriveTangent;
-						}
-					}
-
-					if (Attributes.HasLeaveTangent())
-					{
-						if (ThisKey->TangentMode == RCTM_Auto)
-						{
-							ThisKey->TangentMode = RCTM_User;
-							ThisKey->TangentWeightMode = RCTWM_WeightedNone;
-						}
-
-						ThisKey->LeaveTangent = Attributes.GetLeaveTangent();
-						if (ThisKey->InterpMode == RCIM_Cubic && ThisKey->TangentMode != RCTM_Break)
-						{
-							ThisKey->ArriveTangent = ThisKey->LeaveTangent;
-						}
-					}
-
-					if (Attributes.HasArriveTangentWeight())
-					{
-						if (ThisKey->TangentMode == RCTM_Auto)
-						{
-							ThisKey->TangentMode = RCTM_User;
-							ThisKey->TangentWeightMode = RCTWM_WeightedNone;
-						}
-
-						ThisKey->ArriveTangentWeight = Attributes.GetArriveTangentWeight();
-						if (ThisKey->InterpMode == RCIM_Cubic && ThisKey->TangentMode != RCTM_Break)
-						{
-							ThisKey->LeaveTangentWeight = ThisKey->ArriveTangentWeight;
-						}
-					}
-
-					if (Attributes.HasLeaveTangentWeight())
-					{
-				
-						if (ThisKey->TangentMode == RCTM_Auto)
-						{
-							ThisKey->TangentMode = RCTM_User;
-							ThisKey->TangentWeightMode = RCTWM_WeightedNone;
-						}
-
-						ThisKey->LeaveTangentWeight = Attributes.GetLeaveTangentWeight();
-						if (ThisKey->InterpMode == RCIM_Cubic && ThisKey->TangentMode != RCTM_Break)
-						{
-							ThisKey->ArriveTangentWeight = ThisKey->LeaveTangentWeight;
 						}
 					}
 				}
-			}
 
-			if (bAutoSetTangents)
-			{
-				RichCurve.AutoSetTangents();
-			}
+				if (Attributes.HasArriveTangent())
+				{
+					if (ThisKey->TangentMode == RCTM_Auto)
+					{
+						ThisKey->TangentMode = RCTM_User;
+						ThisKey->TangentWeightMode = RCTWM_WeightedNone;
+					}
 
-			FPropertyChangedEvent PropertyChangeStruct(nullptr, ChangeType);
-			Owner->PostEditChangeProperty(PropertyChangeStruct);
-			CurveModifiedDelegate.Broadcast();
+					ThisKey->ArriveTangent = Attributes.GetArriveTangent();
+					if (ThisKey->InterpMode == RCIM_Cubic && ThisKey->TangentMode != RCTM_Break)
+					{
+						ThisKey->LeaveTangent = ThisKey->ArriveTangent;
+					}
+				}
+
+				if (Attributes.HasLeaveTangent())
+				{
+					if (ThisKey->TangentMode == RCTM_Auto)
+					{
+						ThisKey->TangentMode = RCTM_User;
+						ThisKey->TangentWeightMode = RCTWM_WeightedNone;
+					}
+
+					ThisKey->LeaveTangent = Attributes.GetLeaveTangent();
+					if (ThisKey->InterpMode == RCIM_Cubic && ThisKey->TangentMode != RCTM_Break)
+					{
+						ThisKey->ArriveTangent = ThisKey->LeaveTangent;
+					}
+				}
+
+				if (Attributes.HasArriveTangentWeight())
+				{
+					if (ThisKey->TangentMode == RCTM_Auto)
+					{
+						ThisKey->TangentMode = RCTM_User;
+						ThisKey->TangentWeightMode = RCTWM_WeightedNone;
+					}
+
+					ThisKey->ArriveTangentWeight = Attributes.GetArriveTangentWeight();
+					if (ThisKey->InterpMode == RCIM_Cubic && ThisKey->TangentMode != RCTM_Break)
+					{
+						ThisKey->LeaveTangentWeight = ThisKey->ArriveTangentWeight;
+					}
+				}
+
+				if (Attributes.HasLeaveTangentWeight())
+				{
+				
+					if (ThisKey->TangentMode == RCTM_Auto)
+					{
+						ThisKey->TangentMode = RCTM_User;
+						ThisKey->TangentWeightMode = RCTWM_WeightedNone;
+					}
+
+					ThisKey->LeaveTangentWeight = Attributes.GetLeaveTangentWeight();
+					if (ThisKey->InterpMode == RCIM_Cubic && ThisKey->TangentMode != RCTM_Break)
+					{
+						ThisKey->ArriveTangentWeight = ThisKey->LeaveTangentWeight;
+					}
+				}
+			}
+		}
+
+		if (bAutoSetTangents)
+		{
+			RichCurve->AutoSetTangents();
 		}
 	}
 }
@@ -554,12 +492,8 @@ void FRichCurveEditorModel::GetCurveAttributes(FCurveAttributes& OutCurveAttribu
 {
 	if (UObject* Owner = WeakOwner.Get())
 	{
-		if(IsValid())
-		{
-			const FRichCurve& RichCurve = GetReadOnlyRichCurve();
-			OutCurveAttributes.SetPreExtrapolation(RichCurve.PreInfinityExtrap);
-			OutCurveAttributes.SetPostExtrapolation(RichCurve.PostInfinityExtrap);
-		}
+		OutCurveAttributes.SetPreExtrapolation(RichCurve->PreInfinityExtrap);
+		OutCurveAttributes.SetPostExtrapolation(RichCurve->PostInfinityExtrap);
 	}
 }
 
@@ -567,43 +501,28 @@ void FRichCurveEditorModel::SetCurveAttributes(const FCurveAttributes& InCurveAt
 {
 	if (UObject* Owner = WeakOwner.Get())
 	{
-		if(IsValid())
+		Owner->Modify();
+
+		if (InCurveAttributes.HasPreExtrapolation())
 		{
-			Owner->Modify();
+			RichCurve->PreInfinityExtrap = InCurveAttributes.GetPreExtrapolation();
+		}
 
-			FRichCurve& RichCurve = GetRichCurve();
-
-			if (InCurveAttributes.HasPreExtrapolation())
-			{
-				RichCurve.PreInfinityExtrap = InCurveAttributes.GetPreExtrapolation();
-			}
-
-			if (InCurveAttributes.HasPostExtrapolation())
-			{
-				RichCurve.PostInfinityExtrap = InCurveAttributes.GetPostExtrapolation();
-			}
-
-			FPropertyChangedEvent PropertyChangeStruct(nullptr, EPropertyChangeType::ValueSet);
-			Owner->PostEditChangeProperty(PropertyChangeStruct);
-			CurveModifiedDelegate.Broadcast();
+		if (InCurveAttributes.HasPostExtrapolation())
+		{
+			RichCurve->PostInfinityExtrap = InCurveAttributes.GetPostExtrapolation();
 		}
 	}
 }
 
 void FRichCurveEditorModel::CreateKeyProxies(TArrayView<const FKeyHandle> InKeyHandles, TArrayView<UObject*> OutObjects)
 {
-	if (UObject* Owner = WeakOwner.Get())
+	for (int32 Index = 0; Index < InKeyHandles.Num(); ++Index)
 	{
-		if(IsValid())
-		{
-			for (int32 Index = 0; Index < InKeyHandles.Num(); ++Index)
-			{
-				URichCurveKeyProxy* NewProxy = NewObject<URichCurveKeyProxy>(GetTransientPackage(), NAME_None);
+		URichCurveKeyProxy* NewProxy = NewObject<URichCurveKeyProxy>(GetTransientPackage(), NAME_None);
 
-				NewProxy->Initialize(InKeyHandles[Index], this, WeakOwner);
-				OutObjects[Index] = NewProxy;
-			}
-		}
+		NewProxy->Initialize(InKeyHandles[Index], RichCurve, WeakOwner);
+		OutObjects[Index] = NewProxy;
 	}
 }
 
@@ -611,31 +530,23 @@ TUniquePtr<IBufferedCurveModel> FRichCurveEditorModel::CreateBufferedCurveCopy()
 {
 	if (UObject* Owner = WeakOwner.Get())
 	{
-		if(IsValid())
+		TArray<FKeyHandle> TargetKeyHandles;
+		for (auto It = RichCurve->GetKeyHandleIterator(); It; ++It)
 		{
-			const FRichCurve& RichCurve = GetReadOnlyRichCurve();
-
-			TArray<FKeyHandle> TargetKeyHandles;
-			for (auto It = RichCurve.GetKeyHandleIterator(); It; ++It)
-			{
-				if(RichCurve.IsKeyHandleValid(*It))
-				{
-					TargetKeyHandles.Add(*It);
-				}
-			}
-
-			TArray<FKeyPosition> KeyPositions;
-			KeyPositions.SetNumUninitialized(TargetKeyHandles.Num());
-			TArray<FKeyAttributes> KeyAttributes;
-			KeyAttributes.SetNumUninitialized(TargetKeyHandles.Num());
-			GetKeyPositions(TargetKeyHandles, KeyPositions);
-			GetKeyAttributes(TargetKeyHandles, KeyAttributes);
-
-			double ValueMin = 0.f, ValueMax = 1.f;
-			GetValueRange(ValueMin, ValueMax);
-
-			return MakeUnique<FRichBufferedCurveModel>(RichCurve, MoveTemp(KeyPositions), MoveTemp(KeyAttributes), GetIntentionName(), ValueMin, ValueMax);
+			TargetKeyHandles.Add(*It);
 		}
+
+		TArray<FKeyPosition> KeyPositions;
+		KeyPositions.SetNumUninitialized(TargetKeyHandles.Num());
+		TArray<FKeyAttributes> KeyAttributes;
+		KeyAttributes.SetNumUninitialized(TargetKeyHandles.Num());
+		GetKeyPositions(TargetKeyHandles, KeyPositions);
+		GetKeyAttributes(TargetKeyHandles, KeyAttributes);
+
+		double ValueMin = 0.f, ValueMax = 1.f;
+		GetValueRange(ValueMin, ValueMax);
+
+		return MakeUnique<FRichBufferedCurveModel>(RichCurve, MoveTemp(KeyPositions), MoveTemp(KeyAttributes), GetIntentionName(), ValueMin, ValueMax);
 	}
 
 	return nullptr;
@@ -645,15 +556,11 @@ void FRichCurveEditorModel::GetTimeRange(double& MinTime, double& MaxTime) const
 {
 	if (UObject* Owner = WeakOwner.Get())
 	{
-		if(IsValid())
-		{
-			float MinTimeFloat = 0.f, MaxTimeFloat = 0.f;
-			const FRichCurve& RichCurve = GetReadOnlyRichCurve();
-			RichCurve.GetTimeRange(MinTimeFloat, MaxTimeFloat);
+		float MinTimeFloat = 0.f, MaxTimeFloat = 0.f;
+		RichCurve->GetTimeRange(MinTimeFloat, MaxTimeFloat);
 
-			MinTime = MinTimeFloat;
-			MaxTime = MaxTimeFloat;
-		}
+		MinTime = MinTimeFloat;
+		MaxTime = MaxTimeFloat;
 	}
 }
 
@@ -661,70 +568,38 @@ void FRichCurveEditorModel::GetValueRange(double& MinValue, double& MaxValue) co
 {
 	if (UObject* Owner = WeakOwner.Get())
 	{
-		if(IsValid())
-		{
-			float MinValueFloat = 0.f, MaxValueFloat = 0.f;
-			const FRichCurve& RichCurve = GetReadOnlyRichCurve();
-			RichCurve.GetValueRange(MinValueFloat, MaxValueFloat);
+		float MinValueFloat = 0.f, MaxValueFloat = 0.f;
+		RichCurve->GetValueRange(MinValueFloat, MaxValueFloat);
 
-			MinValue = MinValueFloat;
-			MaxValue = MaxValueFloat;
-		}
+		MinValue = MinValueFloat;
+		MaxValue = MaxValueFloat;
 	}
 }
 
 int32 FRichCurveEditorModel::GetNumKeys() const
 {
-	if (UObject* Owner = WeakOwner.Get())
-	{
-		if(IsValid())
-		{
-			return GetReadOnlyRichCurve().GetNumKeys();
-		}
-	}
-	return 0;
+	return RichCurve->GetNumKeys();
 }
 
 void FRichCurveEditorModel::GetNeighboringKeys(const FKeyHandle InKeyHandle, TOptional<FKeyHandle>& OutPreviousKeyHandle, TOptional<FKeyHandle>& OutNextKeyHandle) const
 {
 	if (UObject* Owner = WeakOwner.Get())
 	{
-		if(IsValid())
+		if (RichCurve->IsKeyHandleValid(InKeyHandle))
 		{
-			const FRichCurve& RichCurve = GetReadOnlyRichCurve();
-			if (RichCurve.IsKeyHandleValid(InKeyHandle))
+			FKeyHandle NextKeyHandle = RichCurve->GetNextKey(InKeyHandle);
+
+			if (RichCurve->IsKeyHandleValid(NextKeyHandle))
 			{
-				FKeyHandle NextKeyHandle = RichCurve.GetNextKey(InKeyHandle);
+				OutNextKeyHandle = NextKeyHandle;
+			}
 
-				if (RichCurve.IsKeyHandleValid(NextKeyHandle))
-				{
-					OutNextKeyHandle = NextKeyHandle;
-				}
+			FKeyHandle PreviousKeyHandle = RichCurve->GetPreviousKey(InKeyHandle);
 
-				FKeyHandle PreviousKeyHandle = RichCurve.GetPreviousKey(InKeyHandle);
-
-				if (RichCurve.IsKeyHandleValid(PreviousKeyHandle))
-				{
-					OutPreviousKeyHandle = PreviousKeyHandle;
-				}
+			if (RichCurve->IsKeyHandleValid(PreviousKeyHandle))
+			{
+				OutPreviousKeyHandle = PreviousKeyHandle;
 			}
 		}
 	}
-}
-
-FRichCurveEditorModelRaw::FRichCurveEditorModelRaw(FRichCurve* InRichCurve, UObject* InOwner)
-	: FRichCurveEditorModel(InOwner)
-	, RichCurve(InRichCurve)
-{
-	checkf(RichCurve, TEXT("If is not valid to provide a null rich curve to this class"));
-}
-
-FRichCurve& FRichCurveEditorModelRaw::GetRichCurve()
-{
-	return *RichCurve;
-}
-
-const FRichCurve& FRichCurveEditorModelRaw::GetReadOnlyRichCurve() const
-{
-	return *RichCurve;
 }

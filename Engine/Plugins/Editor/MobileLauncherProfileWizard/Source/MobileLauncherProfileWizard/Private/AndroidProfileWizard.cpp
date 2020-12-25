@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AndroidProfileWizard.h"
 #include "GenericPlatform/GenericPlatformFile.h"
@@ -23,7 +23,7 @@ FText FAndroidProfileWizard::GetDescription() const
 
 namespace AndroidProfileConstants
 {
-	const FString AppPlatformName(TEXT("Android_ETC2"));
+	const FString AppPlatformName(TEXT("Android_ETC1"));
 	const FString AppReleaseName(TEXT("1.0"));
 	const FString DLCName(TEXT("DLC1.0"));
 }
@@ -35,13 +35,13 @@ static void SetupAndroidAppProfile(ILauncherProfileRef& AppProfile, const FProfi
 
 	AppProfile->SetBuildUAT(true);
 	// App build configuration
-	AppProfile->SetBuildMode(ELauncherProfileBuildModes::Auto);
+	AppProfile->SetBuildGame(true);
 	AppProfile->SetBuildConfiguration(Params.BuildConfiguration);
 	
 	//// Cooking
 	AppProfile->SetCookMode(ELauncherProfileCookModes::ByTheBook);
 	AppProfile->SetCookConfiguration(Params.BuildConfiguration);
-	for (const FString& MapName : Params.AppMaps)
+	for (const FString MapName : Params.AppMaps)
 	{
 		AppProfile->AddCookedMap(MapName);
 	}
@@ -85,7 +85,7 @@ static void SetupAndroidDLCProfile(ILauncherProfileRef& DLCProfile, const FProfi
 
 	DLCProfile->SetBuildUAT(true);
 	// App build configuration
-	DLCProfile->SetBuildMode(ELauncherProfileBuildModes::DoNotBuild);
+	DLCProfile->SetBuildGame(false);
 	DLCProfile->SetBuildConfiguration(Params.BuildConfiguration);
 		
 	//// Cooking

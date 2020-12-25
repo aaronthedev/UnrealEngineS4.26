@@ -1,13 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AbcImportUtilities.h"
 #include "Stats/StatsMisc.h"
 
-#include "AbcFile.h"
 #include "AbcImporter.h"
 #include "AbcPolyMesh.h"
-#include "AssetRegistryModule.h"
-#include "Materials/Material.h"
 
 #if PLATFORM_WINDOWS
 #include "Windows/WindowsHWrapper.h"
@@ -17,6 +14,7 @@
 #include "Windows/AllowWindowsPlatformTypes.h"
 #endif
 
+PRAGMA_DEFAULT_VISIBILITY_START
 THIRD_PARTY_INCLUDES_START
 #include <Alembic/AbcCoreHDF5/All.h>
 #include <Alembic/AbcCoreOgawa/All.h>
@@ -27,6 +25,7 @@ THIRD_PARTY_INCLUDES_START
 #include <Alembic/AbcGeom/All.h>
 #include <Alembic/Abc/IObject.h>
 THIRD_PARTY_INCLUDES_END
+PRAGMA_DEFAULT_VISIBILITY_END
 
 #if PLATFORM_WINDOWS
 #include "Windows/HideWindowsPlatformTypes.h"
@@ -184,11 +183,6 @@ ESampleReadFlags AbcImporterUtilities::GenerateAbcMeshSampleReadFlags(const Alem
 	if (Schema.getPositionsProperty().valid() && !Schema.getPositionsProperty().isConstant())
 	{
 		Flags |= ESampleReadFlags::Positions;
-	}
-
-	if (Schema.getVelocitiesProperty().valid() && !Schema.getVelocitiesProperty().isConstant())
-	{
-		Flags |= ESampleReadFlags::Velocities;
 	}
 
 	if (Schema.getFaceIndicesProperty().valid() && !Schema.getFaceIndicesProperty().isConstant())
@@ -424,17 +418,6 @@ bool AbcImporterUtilities::GenerateAbcMeshSampleDataForFrame(const Alembic::AbcG
 		bRetrievalResult &= RetrieveTypedAbcData<Alembic::Abc::P3fArraySamplePtr, FVector>(PositionsSample, Sample->Vertices);
 	}
 	
-	if (EnumHasAnyFlags(ReadFlags, ESampleReadFlags::Velocities))
-	{
-		const bool bVelocitiesAvailable = Schema.getVelocitiesProperty().valid();
-
-		if (bVelocitiesAvailable)
-		{
-			Alembic::Abc::V3fArraySamplePtr VelocitiesSample = MeshSample.getVelocities();
-			bRetrievalResult &= RetrieveTypedAbcData<Alembic::Abc::V3fArraySamplePtr, FVector>(VelocitiesSample, Sample->Velocities);
-		}
-	}
-
 	TArray<uint32> FaceCounts;	
 	if (EnumHasAnyFlags(ReadFlags, ESampleReadFlags::Indices | ESampleReadFlags::UVs | ESampleReadFlags::Normals | ESampleReadFlags::Colors | ESampleReadFlags::MaterialIndices))
 	{
@@ -488,18 +471,9 @@ bool AbcImporterUtilities::GenerateAbcMeshSampleDataForFrame(const Alembic::AbcG
 				auto PropertyHeader = GeomParams.getPropertyHeader(GeomParamIndex);
 				if (Alembic::AbcGeom::IV2fGeomParam::matches(PropertyHeader))
 				{
-					if (Sample->NumUVSets < MAX_TEXCOORDS)
-					{
-						UVSetProperty = Alembic::AbcGeom::IV2fGeomParam(GeomParams, PropertyHeader.getName());
-						ReadUVSetData(UVSetProperty, FrameSelector, Sample->UVs[Sample->NumUVSets], Sample->Indices, bNeedsTriangulation, FaceCounts, Sample->Vertices.Num());
-						++Sample->NumUVSets;
-					}
-					else
-					{
-						TSharedRef<FTokenizedMessage> Message = FTokenizedMessage::Create(EMessageSeverity::Warning, LOCTEXT("MaxUVs", "More than 4 UV sets found. The remaining UV sets will be ignored."));
-						FAbcImportLogger::AddImportMessage(Message);
-						break;
-					}
+					UVSetProperty = Alembic::AbcGeom::IV2fGeomParam(GeomParams, PropertyHeader.getName());
+					ReadUVSetData(UVSetProperty, FrameSelector, Sample->UVs[Sample->NumUVSets], Sample->Indices, bNeedsTriangulation, FaceCounts, Sample->Vertices.Num());
+					++Sample->NumUVSets;
 				}
 			}
 		}
@@ -518,39 +492,25 @@ bool AbcImporterUtilities::GenerateAbcMeshSampleDataForFrame(const Alembic::AbcG
 			Alembic::Abc::N3fArraySamplePtr NormalsSample = NormalParameter.getValueProperty().getValue(FrameSelector);
 			RetrieveTypedAbcData<Alembic::Abc::N3fArraySamplePtr, FVector>(NormalsSample, Sample->Normals);
 
-			if (Sample->Normals.Num() > 0)
+			// Can only retrieve normal indices when the Normals array is indexed
+			bool bIndexedNormals = NormalParameter.getIndexProperty().valid();
+			if (bIndexedNormals)
 			{
-				// Can only retrieve normal indices when the Normals array is indexed
-				bool bIndexedNormals = NormalParameter.getIndexProperty().valid();
-				if (bIndexedNormals)
-				{
-					Alembic::Abc::UInt32ArraySamplePtr NormalIndiceSample = NormalParameter.getIndexProperty().getValue(FrameSelector);
-					TArray<uint32> NormalIndices;
-					RetrieveTypedAbcData<Alembic::Abc::UInt32ArraySamplePtr, uint32>(NormalIndiceSample, NormalIndices);
+				Alembic::Abc::UInt32ArraySamplePtr NormalIndiceSample = NormalParameter.getIndexProperty().getValue(FrameSelector);
+				TArray<uint32> NormalIndices;
+				RetrieveTypedAbcData<Alembic::Abc::UInt32ArraySamplePtr, uint32>(NormalIndiceSample, NormalIndices);
 
-					if (bNeedsTriangulation)
-					{
-						TriangulateIndexBuffer(FaceCounts, NormalIndices);
-					}
-
-					// Expand Normal array
-					ExpandVertexAttributeArray<FVector>(NormalIndices, Sample->Normals);
-				}
-				else
+				if (bNeedsTriangulation)
 				{
-					ProcessVertexAttributeArray(Sample->Indices, FaceCounts, bNeedsTriangulation, Sample->Vertices.Num(), Sample->Normals);
+					TriangulateIndexBuffer(FaceCounts, NormalIndices);
 				}
 
-				// Make sure the normals from the Alembic are really normalized
-				ParallelFor(Sample->Normals.Num(), [&Sample](int32 Index)
-				{
-					Sample->Normals[Index].Normalize();
-				});
+				// Expand Normal array
+				ExpandVertexAttributeArray<FVector>(NormalIndices, Sample->Normals);
 			}
-			else if (bFirstFrame)
+			else
 			{
-				TSharedRef<FTokenizedMessage> Message = FTokenizedMessage::Create(EMessageSeverity::Warning, LOCTEXT("NoNormals", "Normals were supposed to be available but none were found."));
-				FAbcImportLogger::AddImportMessage(Message);
+				ProcessVertexAttributeArray(Sample->Indices, FaceCounts, bNeedsTriangulation, Sample->Vertices.Num(), Sample->Normals);
 			}
 		}
 	}
@@ -979,9 +939,10 @@ void AbcImporterUtilities::CalculateNormalsWithSampleData(FAbcMeshSample* Sample
 
 void AbcImporterUtilities::ComputeTangents(FAbcMeshSample* Sample, bool bIgnoreDegenerateTriangles, IMeshUtilities& MeshUtilities)
 {
-	// At this point, the normals are already computed/retrieved from the Alembic
-	// so directly call CalculateMikkTSpaceTangents, which won't compute normals
-	MeshUtilities.CalculateMikkTSpaceTangents(Sample->Vertices, Sample->Indices, Sample->UVs[0], Sample->Normals, bIgnoreDegenerateTriangles, Sample->TangentX, Sample->TangentY);
+	uint32 TangentOptions = 0x4;
+	TangentOptions |= bIgnoreDegenerateTriangles ? ETangentOptions::IgnoreDegenerateTriangles : 0;
+
+	MeshUtilities.CalculateTangents(Sample->Vertices, Sample->Indices, Sample->UVs[0], Sample->SmoothingGroupIndices, TangentOptions, Sample->TangentX, Sample->TangentY, Sample->Normals);
 }
 
 FAbcMeshSample* AbcImporterUtilities::MergeMeshSamples(const TArray<const FAbcMeshSample*>& Samples)
@@ -1072,8 +1033,6 @@ void AbcImporterUtilities::AppendMeshSample(FAbcMeshSample* MeshSampleOne, const
 	const uint32 VertexOffset = MeshSampleOne->Vertices.Num();
 	MeshSampleOne->Vertices.Append(MeshSampleTwo->Vertices);
 
-	MeshSampleOne->Velocities.Append(MeshSampleTwo->Velocities);
-
 	const uint32 IndicesOffset = MeshSampleOne->Indices.Num();
 	MeshSampleOne->Indices.Append(MeshSampleTwo->Indices);
 
@@ -1161,11 +1120,6 @@ void AbcImporterUtilities::PropogateMatrixTransformationToSample(FAbcMeshSample*
 		Position = Matrix.TransformPosition(Position);
 	}
 
-	for (FVector& Velocity : Sample->Velocities)
-	{
-		Velocity = Matrix.TransformVector(Velocity);
-	}
-
 	// TODO could make this a for loop and combine the transforms
 	for (FVector& Normal : Sample->Normals)
 	{
@@ -1186,7 +1140,7 @@ void AbcImporterUtilities::PropogateMatrixTransformationToSample(FAbcMeshSample*
 	}
 }
 
-void AbcImporterUtilities::GenerateDeltaFrameDataMatrix(const TArray<FVector>& FrameVertexData, const TArray<FVector>& AverageVertexData, const int32 SampleOffset, const int32 AverageVertexOffset, TArray<float>& OutGeneratedMatrix)
+void AbcImporterUtilities::GenerateDeltaFrameDataMatrix(const TArray<FVector>& FrameVertexData, TArray<FVector>& AverageVertexData, const int32 SampleOffset, const int32 AverageVertexOffset, TArray<float>& OutGeneratedMatrix)
 {
 	const uint32 NumVertices = FrameVertexData.Num();
 	for (uint32 VertexIndex = 0; VertexIndex < NumVertices; ++VertexIndex)
@@ -1199,7 +1153,7 @@ void AbcImporterUtilities::GenerateDeltaFrameDataMatrix(const TArray<FVector>& F
 	}
 }
 
-void AbcImporterUtilities::GenerateCompressedMeshData(FCompressedAbcData& CompressedData, const uint32 NumUsedSingularValues, const uint32 NumSamples, const TArrayView<float>& BasesMatrix, const TArray<float>& BasesWeights, const float SampleTimeStep, const float StartTime)
+void AbcImporterUtilities::GenerateCompressedMeshData(FCompressedAbcData& CompressedData, const uint32 NumUsedSingularValues, const uint32 NumSamples, const TArray<float>& BasesMatrix, const TArray<float>& BasesWeights, const float SampleTimeStep, const float StartTime)
 {
 	// Allocate base sample data	
 	CompressedData.BaseSamples.AddZeroed(NumUsedSingularValues);
@@ -1236,7 +1190,7 @@ void AbcImporterUtilities::GenerateCompressedMeshData(FCompressedAbcData& Compre
 		// Should be possible to rearrange the data so this can become a memcpy
 		for (uint32 CurveSampleIndex = 0; CurveSampleIndex < NumSamples; ++CurveSampleIndex)
 		{
-			CurveValues.Add(BasesWeights[BaseIndex + (OriginalNumberOfSingularValues * CurveSampleIndex)]);
+			CurveValues.Add(BasesWeights[BaseIndex + (OriginalNumberOfSingularValues* CurveSampleIndex)]);
 			TimeValues.Add(StartTime + (SampleTimeStep * CurveSampleIndex));
 		}
 	}
@@ -1471,211 +1425,6 @@ void AbcImporterUtilities::ApplyConversion(TArray<FMatrix>& InOutMatrices, const
 			SampleMatrix = SampleMatrix * ConversionMatrix;
 		}
 	}
-}
-
-void AbcImporterUtilities::GeometryCacheDataForMeshSample(FGeometryCacheMeshData &OutMeshData, const FAbcMeshSample* MeshSample,
-	const uint32 MaterialOffset, const float SecondsPerFrame, const bool bUseVelocitiesAsMotionVectors)
-{
-	OutMeshData.BoundingBox = FBox(MeshSample->Vertices);
-
-	// We currently always have everything except motion vectors
-	// and tangents are auto-configure based on their presence in the mesh sample data
-	const int32 NumNormals = MeshSample->Normals.Num();
-	const bool bHasTangents = MeshSample->TangentX.Num() == NumNormals && MeshSample->TangentY.Num() == NumNormals;
-	const bool bHasVelocities = bUseVelocitiesAsMotionVectors && (MeshSample->Velocities.Num() > 0);
-
-	OutMeshData.VertexInfo.bHasColor0 = true;
-	OutMeshData.VertexInfo.bHasTangentX = bHasTangents;
-	OutMeshData.VertexInfo.bHasTangentZ = NumNormals > 0;
-	OutMeshData.VertexInfo.bHasUV0 = true;
-	OutMeshData.VertexInfo.bHasMotionVectors = bHasVelocities;
-
-	uint32 NumMaterials = MaterialOffset;
-
-	const int32 NumTriangles = MeshSample->Indices.Num() / 3;
-	const uint32 NumSections = MeshSample->NumMaterials ? MeshSample->NumMaterials : 1;
-
-	TArray<TArray<uint32>> SectionIndices;
-	SectionIndices.AddDefaulted(NumSections);
-
-	OutMeshData.Positions.AddZeroed(NumNormals);
-
-	if (bHasVelocities)
-	{
-		OutMeshData.MotionVectors.AddZeroed(NumNormals);
-	}
-
-	if (bHasTangents)
-	{
-		OutMeshData.TangentsX.AddZeroed(NumNormals);
-	}
-
-	OutMeshData.TangentsZ.AddZeroed(NumNormals);
-	OutMeshData.TextureCoordinates.AddZeroed(NumNormals);
-	OutMeshData.Colors.AddZeroed(NumNormals);
-
-	for (int32 TriangleIndex = 0; TriangleIndex < NumTriangles; ++TriangleIndex)
-	{
-		const int32 SectionIndex = MeshSample->MaterialIndices[TriangleIndex];
-		TArray<uint32>& Section = SectionIndices[SectionIndex];
-
-		for (int32 VertexIndex = 0; VertexIndex < 3; ++VertexIndex)
-		{
-			const int32 CornerIndex = (TriangleIndex * 3) + VertexIndex;
-			const int32 Index = MeshSample->Indices[CornerIndex];
-
-			OutMeshData.Positions[CornerIndex] = MeshSample->Vertices[Index];
-
-			if (bHasVelocities)
-			{
-				FVector MotionVector = MeshSample->Velocities[Index];
-				MotionVector *= -1.f;
-				MotionVector *= SecondsPerFrame; // Velocity is per seconds but we need per frame for motion vectors
-				OutMeshData.MotionVectors[CornerIndex] = MotionVector;
-			}
-
-			OutMeshData.TangentsZ[CornerIndex] = MeshSample->Normals[CornerIndex];
-			// store determinant of basis in w component of normal vector
-			if (bHasTangents)
-			{
-				OutMeshData.TangentsX[CornerIndex] = MeshSample->TangentX[CornerIndex];
-				OutMeshData.TangentsZ[CornerIndex].Vector.W = GetBasisDeterminantSignByte(MeshSample->TangentX[CornerIndex], MeshSample->TangentY[CornerIndex], MeshSample->Normals[CornerIndex]);
-			}
-			else
-			{
-				OutMeshData.TangentsZ[CornerIndex].Vector.W = 127;
-			}
-			OutMeshData.TextureCoordinates[CornerIndex] = MeshSample->UVs[0][CornerIndex];
-			OutMeshData.Colors[CornerIndex] = MeshSample->Colors[CornerIndex].ToFColor(false);
-
-			Section.Add(CornerIndex);
-		}
-	}
-
-	TArray<uint32>& Indices = OutMeshData.Indices;
-	for (uint32 SectionIndex = 0; SectionIndex < NumSections; ++SectionIndex)
-	{
-		// Sometimes empty sections seem to be in the file, filter these out
-		// as empty batches are not allowed by the geometry cache (They ultimately trigger checks in the renderer)
-		// and it seems pretty nasty to filter them out post decode in-game
-		if (!SectionIndices[SectionIndex].Num())
-		{
-			continue;
-		}
-
-		FGeometryCacheMeshBatchInfo BatchInfo;
-		BatchInfo.StartIndex = Indices.Num();
-		BatchInfo.MaterialIndex = NumMaterials;
-		NumMaterials++;
-
-
-		BatchInfo.NumTriangles = SectionIndices[SectionIndex].Num() / 3;
-		Indices.Append(SectionIndices[SectionIndex]);
-		OutMeshData.BatchesInfo.Add(BatchInfo);
-	}
-}
-
-void AbcImporterUtilities::MergePolyMeshesToMeshData(int32 FrameIndex, int32 FrameStart, float SecondsPerFrame, bool bUseVelocitiesAsMotionVectors,
-	const TArray<FAbcPolyMesh*>& PolyMeshes, const TArray<FString>& UniqueFaceSetNames,
-	FGeometryCacheMeshData& MeshData, int32& PreviousNumVertices, bool& bConstantTopology)
-{
-	FAbcMeshSample MergedSample;
-
-	for (FAbcPolyMesh* PolyMesh : PolyMeshes)
-	{
-		if (PolyMesh->bShouldImport)
-		{
-			const int32 Offset = MergedSample.MaterialIndices.Num();
-			const int32 MaterialIndexOffset = MergedSample.NumMaterials;
-			bConstantTopology = bConstantTopology && PolyMesh->bConstantTopology;
-			if (PolyMesh->GetVisibility(FrameIndex))
-			{
-				const FAbcMeshSample* Sample = PolyMesh->GetSample(FrameIndex);
-				AbcImporterUtilities::AppendMeshSample(&MergedSample, Sample);
-				if (PolyMesh->FaceSetNames.Num() == 0)
-				{
-					FMemory::Memzero(MergedSample.MaterialIndices.GetData() + Offset, (MergedSample.MaterialIndices.Num() - Offset) * sizeof(int32));
-				}
-				else
-				{
-					for (int32 Index = Offset; Index < MergedSample.MaterialIndices.Num(); ++Index)
-					{
-						int32& MaterialIndex = MergedSample.MaterialIndices[Index];
-						if (PolyMesh->FaceSetNames.IsValidIndex(MaterialIndex - MaterialIndexOffset))
-						{
-							int32 FaceSetMaterialIndex = UniqueFaceSetNames.IndexOfByKey(PolyMesh->FaceSetNames[MaterialIndex - MaterialIndexOffset]);
-							MaterialIndex = FaceSetMaterialIndex != INDEX_NONE ? FaceSetMaterialIndex : 0;
-						}
-						else
-						{
-							MaterialIndex = 0;
-						}
-					}
-				}
-			}
-		}
-	}
-
-	if (FrameIndex > FrameStart)						
-	{
-		bConstantTopology &= (PreviousNumVertices == MergedSample.Vertices.Num());
-	}
-	PreviousNumVertices = MergedSample.Vertices.Num();
-
-	MergedSample.NumMaterials = UniqueFaceSetNames.Num();
-
-	// Generate the mesh data for this sample
-	AbcImporterUtilities::GeometryCacheDataForMeshSample(MeshData, &MergedSample, 0, SecondsPerFrame, bUseVelocitiesAsMotionVectors);
-}
-
-UMaterialInterface* AbcImporterUtilities::RetrieveMaterial(FAbcFile& AbcFile, const FString& MaterialName, UObject* InParent, EObjectFlags Flags)
-{
-	UMaterialInterface* Material = nullptr;
-	UMaterialInterface** CachedMaterial = AbcFile.GetMaterialByName(MaterialName);
-	if (CachedMaterial)
-	{
-		Material = *CachedMaterial;
-		// Material could have been deleted if we're overriding/reimporting an asset
-		if (Material->IsValidLowLevel())
-		{
-			if (Material->GetOuter() == GetTransientPackage())
-			{
-				UMaterial* ExistingTypedObject = FindObject<UMaterial>(InParent, *MaterialName);
-				if (!ExistingTypedObject)
-				{
-					// This is in for safety, as we do not expect this to happen
-					UObject* ExistingObject = FindObject<UObject>(InParent, *MaterialName);
-					if (ExistingObject)
-					{
-						return nullptr;
-					}
-
-					Material->Rename(*MaterialName, InParent);				
-					Material->SetFlags(Flags);
-					FAssetRegistryModule::AssetCreated(Material);
-				}
-				else
-				{
-					ExistingTypedObject->PreEditChange(nullptr);
-					Material = ExistingTypedObject;
-				}
-			}
-		}
-		else
-		{
-			// In this case recreate the material
-			Material = NewObject<UMaterial>(InParent, *MaterialName);
-			Material->SetFlags(Flags);
-			FAssetRegistryModule::AssetCreated(Material);
-		}
-	}
-	else
-	{
-		Material = UMaterial::GetDefaultMaterial(MD_Surface);
-		check(Material);
-	}
-
-	return Material;
 }
 
 #undef LOCTEXT_NAMESPACE // "AbcImporterUtilities"

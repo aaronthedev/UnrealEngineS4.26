@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 PerPlatformProperties.h: Property types that can be overridden on a per-platform basis at cook time
@@ -10,12 +10,6 @@ PerPlatformProperties.h: Property types that can be overridden on a per-platform
 #include "RHIDefinitions.h"
 #include "Containers/Map.h"
 #include "Algo/Find.h"
-#include "Serialization/MemoryLayout.h"
-
-#if WITH_EDITORONLY_DATA && WITH_EDITOR
-#include "Engine/Engine.h"
-#endif
-
 #include "PerPlatformProperties.generated.h"
 
 /** TPerPlatformProperty - template parent class for per-platform properties 
@@ -64,38 +58,23 @@ struct ENGINE_API TPerPlatformProperty
 
 #endif
 
-	_ValueType GetValue() const
-	{
-#if WITH_EDITORONLY_DATA && WITH_EDITOR
-		FName PlatformGroupName, VanillaPlatformName;
-		// Lookup the override preview platform info, if any
-		if (GEngine && GEngine->GetPreviewPlatformName(PlatformGroupName, VanillaPlatformName))
-		{
-			return GetValueForPlatformIdentifiers(PlatformGroupName, VanillaPlatformName);
-		}
-		else		
-#endif
-		{
-			const _StructType* This = StaticCast<const _StructType*>(this);
-			return This->Default;
-		}
-	}
-
-	UE_DEPRECATED(4.26, "GetValueForFeatureLevel is not needed for platform previewing and GetValue() should be used instead.")
 	_ValueType GetValueForFeatureLevel(ERHIFeatureLevel::Type FeatureLevel) const
 	{
 #if WITH_EDITORONLY_DATA
+		/* Temporary, we should replace this with something better using editor feature level preview system */
 		FName PlatformGroupName;
 		switch (FeatureLevel)
 		{
-		    case ERHIFeatureLevel::ES3_1:
-		    {
-			    PlatformGroupName = NAME_Mobile;
-			    break;
-		    }
-		    default:
-			    PlatformGroupName = NAME_None;
-			    break;
+			case ERHIFeatureLevel::ES2:
+			case ERHIFeatureLevel::ES3_1:
+			{
+				static FName NAME_Mobile("Mobile");
+				PlatformGroupName = NAME_Mobile;
+				break;
+			}
+			default:
+				PlatformGroupName = NAME_None;
+				break;
 		}
 		return GetValueForPlatformIdentifiers(PlatformGroupName);
 #else
@@ -138,8 +117,6 @@ ENGINE_API FArchive& operator<<(FArchive& Ar, TPerPlatformProperty<_StructType, 
 template<typename _StructType, typename _ValueType, EName _BasePropertyName>
 ENGINE_API void operator<<(FStructuredArchive::FSlot Slot, TPerPlatformProperty<_StructType, _ValueType, _BasePropertyName>& P);
 
-struct FFreezablePerPlatformInt;
-
 /** FPerPlatformInt - int32 property with per-platform overrides */
 USTRUCT()
 struct ENGINE_API FPerPlatformInt
@@ -168,46 +145,7 @@ struct ENGINE_API FPerPlatformInt
 	}
 
 	FString ToString() const;
-
-	FPerPlatformInt(const FFreezablePerPlatformInt& Other);
-
 };
-
-USTRUCT()
-struct ENGINE_API FFreezablePerPlatformInt
-#if CPP
-	: public TPerPlatformProperty<FFreezablePerPlatformInt, int32, NAME_IntProperty>
-#endif
-{
-	DECLARE_TYPE_LAYOUT(FFreezablePerPlatformInt, NonVirtual);
-
-	GENERATED_USTRUCT_BODY()
-
-public:
-	using FPerPlatformMap = TMemoryImageMap<FName, int32>;
-
-	LAYOUT_FIELD(int32, Default);
-	LAYOUT_FIELD_EDITORONLY(FPerPlatformMap, PerPlatform);
-
-	FFreezablePerPlatformInt() : Default(0) {}
-	FFreezablePerPlatformInt(int32 InDefaultValue) : Default(InDefaultValue) {}
-	FFreezablePerPlatformInt(const FPerPlatformInt& Other)
-		: Default(Other.Default)
-#if WITH_EDITORONLY_DATA
-		, PerPlatform(Other.PerPlatform)
-#endif
-	{}
-
-	FString ToString() const;
-};
-
-inline FPerPlatformInt::FPerPlatformInt(const FFreezablePerPlatformInt& Other)
-	: Default(Other.Default)
-#if WITH_EDITORONLY_DATA
-	, PerPlatform(Other.PerPlatform)
-#endif
-{}
-
 extern template ENGINE_API FArchive& operator<<(FArchive&, TPerPlatformProperty<FPerPlatformInt, int32, NAME_IntProperty>&);
 extern template ENGINE_API void operator<<(FStructuredArchive::FSlot Slot, TPerPlatformProperty<FPerPlatformInt, int32, NAME_IntProperty>&);
 
@@ -222,10 +160,8 @@ struct TStructOpsTypeTraits<FPerPlatformInt>
 	};
 };
 
-struct FFreezablePerPlatformFloat;
-
 /** FPerPlatformFloat - float property with per-platform overrides */
-USTRUCT(meta = (CanFlattenStruct))
+USTRUCT()
 struct ENGINE_API FPerPlatformFloat
 #if CPP
 :	public TPerPlatformProperty<FPerPlatformFloat, float, NAME_FloatProperty>
@@ -250,39 +186,8 @@ struct ENGINE_API FPerPlatformFloat
 	:	Default(InDefaultValue)
 	{
 	}
-
-	FPerPlatformFloat(const FFreezablePerPlatformFloat& Other);
 };
 extern template ENGINE_API FArchive& operator<<(FArchive&, TPerPlatformProperty<FPerPlatformFloat, float, NAME_FloatProperty>&);
-
-struct ENGINE_API FFreezablePerPlatformFloat
-#if CPP
-	: public TPerPlatformProperty<FFreezablePerPlatformFloat, float, NAME_FloatProperty>
-#endif
-{
-	DECLARE_TYPE_LAYOUT(FFreezablePerPlatformFloat, NonVirtual);
-public:
-	using FPerPlatformMap = TMemoryImageMap<FName, float>;
-	
-	LAYOUT_FIELD(float, Default);
-	LAYOUT_FIELD_EDITORONLY(FPerPlatformMap, PerPlatform);
-
-	FFreezablePerPlatformFloat() : Default(0.0f) {}
-	FFreezablePerPlatformFloat(float InDefaultValue) : Default(InDefaultValue) {}
-	FFreezablePerPlatformFloat(const FPerPlatformFloat& Other)
-		: Default(Other.Default)
-#if WITH_EDITORONLY_DATA
-		, PerPlatform(Other.PerPlatform)
-#endif
-	{}
-};
-
-inline FPerPlatformFloat::FPerPlatformFloat(const FFreezablePerPlatformFloat& Other)
-	: Default(Other.Default)
-#if WITH_EDITORONLY_DATA
-	, PerPlatform(Other.PerPlatform)
-#endif
-{}
 
 template<>
 struct TStructOpsTypeTraits<FPerPlatformFloat>

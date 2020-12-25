@@ -39,8 +39,8 @@
 // these functions before export.
 //
 
-#ifndef Alembic_Util_Naming_h
-#define Alembic_Util_Naming_h
+#ifndef _Alembic_Util_Naming_h_
+#define _Alembic_Util_Naming_h_
 
 #include <string>
 #include <Alembic/Util/Export.h>

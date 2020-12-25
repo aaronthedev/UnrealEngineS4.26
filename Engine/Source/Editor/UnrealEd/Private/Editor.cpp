@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Editor.h"
@@ -16,13 +16,13 @@
 #include "Factories/ReimportFbxStaticMeshFactory.h"
 #include "Factories/ReimportFbxSceneFactory.h"
 #include "Factories/ReimportSoundFactory.h"
+#include "Factories/ReimportSoundSurroundFactory.h"
 #include "Factories/ReimportTextureFactory.h"
-#include "Factories/PhysicalMaterialMaskFactory.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Misc/ScopedSlowTask.h"
 #include "UObject/UObjectIterator.h"
 #include "EngineUtils.h"
-#include "Misc/MessageDialog.h"
+#include "Dialogs/Dialogs.h"
 #include "UnrealEngine.h"
 
 // needed for the RemotePropagator
@@ -244,7 +244,7 @@ void FReimportManager::UpdateReimportPath(UObject* Obj, const FString& Filename,
 }
 
 
-bool FReimportManager::Reimport( UObject* Obj, bool bAskForNewFileIfMissing, bool bShowNotification, FString PreferredReimportFile, FReimportHandler* SpecifiedReimportHandler, int32 SourceFileIndex, bool bForceNewFile /*= false*/, bool bAutomated /*= false*/)
+bool FReimportManager::Reimport( UObject* Obj, bool bAskForNewFileIfMissing, bool bShowNotification, FString PreferredReimportFile, FReimportHandler* SpecifiedReimportHandler, int32 SourceFileIndex, bool bForceNewFile /*= false*/)
 {
 	// Warn that were about to reimport, so prep for it
 	PreReimport.Broadcast( Obj );
@@ -369,10 +369,7 @@ bool FReimportManager::Reimport( UObject* Obj, bool bAskForNewFileIfMissing, boo
 			if ( bValidSourceFilename )
 			{
 				// Do the reimport
-				const bool bOriginalAutomated = CanReimportHandler->IsAutomatedReimport();
-				CanReimportHandler->SetAutomatedReimport(bAutomated);
 				EReimportResult::Type Result = CanReimportHandler->Reimport( Obj, SourceFileIndex );
-				CanReimportHandler->SetAutomatedReimport(bOriginalAutomated);
 				if( Result == EReimportResult::Succeeded )
 				{
 					Obj->PostEditChange();
@@ -455,7 +452,7 @@ bool FReimportManager::Reimport( UObject* Obj, bool bAskForNewFileIfMissing, boo
 	return bSuccess;
 }
 
-void FReimportManager::ValidateAllSourceFileAndReimport(TArray<UObject*> &ToImportObjects, bool bShowNotification, int32 SourceFileIndex, bool bForceNewFile /*= false*/, bool bAutomated /*= false*/)
+void FReimportManager::ValidateAllSourceFileAndReimport(TArray<UObject*> &ToImportObjects, bool bShowNotification, int32 SourceFileIndex, bool bForceNewFile /*= false*/)
 {
 	//Copy the array to prevent iteration assert if a reimport factory change the selection
 	TArray<UObject*> CopyOfSelectedAssets;
@@ -481,7 +478,7 @@ void FReimportManager::ValidateAllSourceFileAndReimport(TArray<UObject*> &ToImpo
 				for (int32 FileIndex = 0; FileIndex < SourceFilenames.Num(); ++FileIndex)
 				{
 					FString SourceFilename = SourceFilenames[FileIndex];
-					if (SourceFilename.IsEmpty() || IFileManager::Get().FileSize(*SourceFilename) == INDEX_NONE || (bForceNewFile && (FileIndex == SourceFileIndex || SourceFileIndex == INDEX_NONE)))
+					if (SourceFilename.IsEmpty() || IFileManager::Get().FileSize(*SourceFilename) == INDEX_NONE || (bForceNewFile && FileIndex == SourceFileIndex))
 					{
 						TArray<int32>& SourceIndexArray = MissingFileSelectedAssets.FindOrAdd(Asset);
 						SourceIndexArray.Add(FileIndex);
@@ -499,12 +496,12 @@ void FReimportManager::ValidateAllSourceFileAndReimport(TArray<UObject*> &ToImpo
 
 	if (MissingFileSelectedAssets.Num() > 0)
 	{
-		// Ask the user how to handle missing files before doing the re-import when there is more then one missing file and the "force new file" parameter is false
+		// Ask the user how to handle missing files before doing the re-import when there is more then one missing file
 		// 1. Ask for missing file location for every missing file
 		// 2. Ignore missing file asset when doing the re-import
 		// 3. Cancel the whole reimport
 		EAppReturnType::Type UserChoice = EAppReturnType::Type::Yes;
-		if (!bForceNewFile && MissingFileSelectedAssets.Num() > 1)
+		if (MissingFileSelectedAssets.Num() > 1)
 		{
 			//Pop the dialog box asking the question
 			FFormatNamedArguments Arguments;
@@ -536,9 +533,8 @@ void FReimportManager::ValidateAllSourceFileAndReimport(TArray<UObject*> &ToImpo
 			}
 			Arguments.Add(TEXT("AssetToFileList"), FText::FromString(AssetToFileListString));
 			FText DialogText = FText::Format(LOCTEXT("ReimportMissingFileChoiceDialogMessage", "There is {MissingNumber} assets with missing source file path. Do you want to specify a new source file path for each asset?\n \"No\" will skip the reimport of all asset with a missing source file path.\n \"Cancel\" will cancel the whole reimport.\n{AssetToFileList}"), Arguments);
-			const FText Title = LOCTEXT("ReimportMissingFileChoiceDialogMessageTitle", "Reimport missing files");
 
-			UserChoice = FMessageDialog::Open(EAppMsgType::YesNoCancel, DialogText, &Title);
+			UserChoice = OpenMsgDlgInt(EAppMsgType::YesNoCancel, DialogText, LOCTEXT("ReimportMissingFileChoiceDialogMessageTitle", "Reimport missing files"));
 		}
 
 		//Ask missing file locations
@@ -554,14 +550,12 @@ void FReimportManager::ValidateAllSourceFileAndReimport(TArray<UObject*> &ToImpo
 				{
 					TArray<FString> SourceFilenames;
 					this->GetNewReimportPath(Asset, SourceFilenames, FileIndex);
-					if (!SourceFilenames.IsValidIndex(FileIndex) || SourceFilenames[FileIndex].IsEmpty())
+					if (SourceFilenames.Num() == 0 || SourceFilenames[0].IsEmpty())
 					{
 						continue;
 					}
 					bCancelAll = false;
-					this->UpdateReimportPath(Asset, SourceFilenames[FileIndex], FileIndex);
-					//We do not want to ask again the user for a file
-					bForceNewFile = false;
+					this->UpdateReimportPath(Asset, SourceFilenames[0], FileIndex);
 				}
 				//return if the operation is cancel and we have nothing to re-import
 				if (bCancelAll)
@@ -579,7 +573,7 @@ void FReimportManager::ValidateAllSourceFileAndReimport(TArray<UObject*> &ToImpo
 		//If user ignore those asset just not add them to CopyOfSelectedAssets
 	}
 
-	FReimportManager::Instance()->ReimportMultiple(CopyOfSelectedAssets, /*bAskForNewFileIfMissing=*/false, bShowNotification, TEXT(""), nullptr, SourceFileIndex, bForceNewFile, bAutomated);
+	FReimportManager::Instance()->ReimportMultiple(CopyOfSelectedAssets, /*bAskForNewFileIfMissing=*/false, bShowNotification, TEXT(""), nullptr, SourceFileIndex);
 }
 
 void FReimportManager::AddReferencedObjects( FReferenceCollector& Collector )
@@ -604,7 +598,7 @@ void FReimportManager::SortHandlersIfNeeded()
 	}
 }
 
-bool FReimportManager::ReimportMultiple(TArrayView<UObject*> Objects, bool bAskForNewFileIfMissing /*= false*/, bool bShowNotification /*= true*/, FString PreferredReimportFile /*= TEXT("")*/, FReimportHandler* SpecifiedReimportHandler /*= nullptr */, int32 SourceFileIndex /*= INDEX_NONE*/, bool bForceNewFile /*= false*/, bool bAutomated /*= false*/)
+bool FReimportManager::ReimportMultiple(TArrayView<UObject*> Objects, bool bAskForNewFileIfMissing /*= false*/, bool bShowNotification /*= true*/, FString PreferredReimportFile /*= TEXT("")*/, FReimportHandler* SpecifiedReimportHandler /*= nullptr */, int32 SourceFileIndex /*= INDEX_NONE*/)
 {
 	bool bBulkSuccess = true;
 
@@ -618,16 +612,10 @@ bool FReimportManager::ReimportMultiple(TArrayView<UObject*> Objects, bool bAskF
 			FScopedSlowTask SingleObjectTask(1.0f, SingleTaskTest);
 			SingleObjectTask.EnterProgressFrame(1.0f);
 
-			bBulkSuccess = bBulkSuccess && Reimport(CurrentObject, bAskForNewFileIfMissing, bShowNotification, PreferredReimportFile, SpecifiedReimportHandler, SourceFileIndex, bForceNewFile, bAutomated);
+			bBulkSuccess = bBulkSuccess && Reimport(CurrentObject, bAskForNewFileIfMissing, bShowNotification, PreferredReimportFile, SpecifiedReimportHandler, SourceFileIndex);
 		}
 
 		BulkReimportTask.EnterProgressFrame(1.0f);
-	}
-
-	//Cleanup the factories after using them
-	for (int32 HandlerIndex = 0; HandlerIndex < Handlers.Num(); ++HandlerIndex)
-	{
-		Handlers[HandlerIndex]->PostImportCleanUp();
 	}
 
 	return bBulkSuccess;
@@ -786,9 +774,6 @@ FReimportManager::FReimportManager()
 
 	// Create reimport handler for FBX scene
 	UReimportFbxSceneFactory::StaticClass();
-
-	// Create reimport handler for PhysicalMaterialMasks
-	UPhysicalMaterialMaskFactory::StaticClass();
 }
 
 FReimportManager::~FReimportManager()
@@ -961,16 +946,15 @@ namespace EditorUtilities
 		UActorComponent* TargetComponent = StartIndex < TargetComponents.Num() ? TargetComponents[ StartIndex ] : nullptr;
 
 		// If the source and target components do not match (e.g. context-specific), attempt to find a match in the target's array elsewhere
+		const int32 NumTargetComponents = TargetComponents.Num();
 		if( (SourceComponent != nullptr) 
 			&& ((TargetComponent == nullptr) 
-				|| (SourceComponent->GetClass() != TargetComponent->GetClass())
 				|| (SourceComponent->GetFName() != TargetComponent->GetFName()) ))
 		{
 			const bool bSourceIsArchetype = SourceComponent->HasAnyFlags(RF_ArchetypeObject);
 			// Reset the target component since it doesn't match the source
 			TargetComponent = nullptr;
 
-			const int32 NumTargetComponents = TargetComponents.Num();
 			if (NumTargetComponents > 0)
 			{
 				// Attempt to locate a match elsewhere in the target's component list
@@ -1138,14 +1122,14 @@ namespace EditorUtilities
 	}
 
 
-	void CopySinglePropertyRecursive(const void* const InSourcePtr, void* const InTargetPtr, UObject* const InTargetObject, FProperty* const InProperty)
+	void CopySinglePropertyRecursive(const void* const InSourcePtr, void* const InTargetPtr, UObject* const InTargetObject, UProperty* const InProperty)
 	{
 		// Properties that are *object* properties are tricky
 		// Sometimes the object will be a reference to a PIE-world object, and copying that reference back to an actor CDO asset is not a good idea
 		// If the property is referencing an actor or actor component in the PIE world, then we can try and fix that reference up to the equivalent
 		// from the editor world; otherwise we have to skip it
 		bool bNeedsGenericCopy = true;
-		if( FObjectPropertyBase* const ObjectProperty = CastField<FObjectPropertyBase>(InProperty) )
+		if( UObjectPropertyBase* const ObjectProperty = Cast<UObjectPropertyBase>(InProperty) )
 		{
 			const int32 PropertyArrayDim = InProperty->ArrayDim;
 			for (int32 ArrayIndex = 0; ArrayIndex < PropertyArrayDim; ArrayIndex++)
@@ -1185,7 +1169,7 @@ namespace EditorUtilities
 				}
 			}
 		}
-		else if (FStructProperty* const StructProperty = CastField<FStructProperty>(InProperty))
+		else if (UStructProperty* const StructProperty = Cast<UStructProperty>(InProperty))
 		{
 			// Ensure that the target struct is initialized before copying fields from the source.
 			StructProperty->InitializeValue_InContainer(InTargetPtr);
@@ -1196,25 +1180,25 @@ namespace EditorUtilities
 				const void* const SourcePtr = StructProperty->ContainerPtrToValuePtr<void>(InSourcePtr, ArrayIndex);
 				void* const TargetPtr = StructProperty->ContainerPtrToValuePtr<void>(InTargetPtr, ArrayIndex);
 
-				for (TFieldIterator<FProperty> It(StructProperty->Struct); It; ++It)
+				for (TFieldIterator<UProperty> It(StructProperty->Struct); It; ++It)
 				{
-					FProperty* const InnerProperty = *It;
+					UProperty* const InnerProperty = *It;
 					CopySinglePropertyRecursive(SourcePtr, TargetPtr, InTargetObject, InnerProperty);
 				}
 			}
 
 			bNeedsGenericCopy = false;
 		}
-		else if (FArrayProperty* const ArrayProperty = CastField<FArrayProperty>(InProperty))
+		else if (UArrayProperty* const ArrayProperty = Cast<UArrayProperty>(InProperty))
 		{
 			check(InProperty->ArrayDim == 1);
 			FScriptArrayHelper SourceArrayHelper(ArrayProperty, ArrayProperty->ContainerPtrToValuePtr<void>(InSourcePtr));
 			FScriptArrayHelper TargetArrayHelper(ArrayProperty, ArrayProperty->ContainerPtrToValuePtr<void>(InTargetPtr));
 
-			FProperty* InnerProperty = ArrayProperty->Inner;
+			UProperty* InnerProperty = ArrayProperty->Inner;
 			int32 Num = SourceArrayHelper.Num();
 
-			// here we emulate FArrayProperty::CopyValuesInternal()
+			// here we emulate UArrayProperty::CopyValuesInternal()
 			if (!(InnerProperty->PropertyFlags & CPF_IsPlainOldData))
 			{
 				TargetArrayHelper.EmptyAndAddValues(Num);
@@ -1239,7 +1223,7 @@ namespace EditorUtilities
 		}
 	}
 
-	void CopySingleProperty(const UObject* const InSourceObject, UObject* const InTargetObject, FProperty* const InProperty)
+	void CopySingleProperty(const UObject* const InSourceObject, UObject* const InTargetObject, UProperty* const InProperty)
 	{
 		CopySinglePropertyRecursive(InSourceObject, InTargetObject, InTargetObject, InProperty);
 	}
@@ -1277,7 +1261,7 @@ namespace EditorUtilities
 		// Copy non-component properties from the old actor to the new actor
 		// @todo sequencer: Most of this block of code was borrowed (pasted) from UEditorEngine::ConvertActors().  If we end up being able to share these code bodies, that would be nice!
 		TSet<UObject*> ModifiedObjects;
-		for( FProperty* Property = ActorClass->PropertyLink; Property != nullptr; Property = Property->PropertyLinkNext )
+		for( UProperty* Property = ActorClass->PropertyLink; Property != nullptr; Property = Property->PropertyLinkNext )
 		{
 			const bool bIsTransient = !!( Property->PropertyFlags & CPF_Transient );
 			const bool bIsComponentContainer = !!( Property->PropertyFlags & CPF_ContainsInstancedReference );
@@ -1356,238 +1340,186 @@ namespace EditorUtilities
 		}
 
 		// Copy component properties from source to target if they match. Note that the component lists may not be 1-1 due to context-specific components (e.g. editor-only sprites, etc.).
+		TInlineComponentArray<UActorComponent*> SourceComponents;
+		TInlineComponentArray<UActorComponent*> TargetComponents;
 
-		TArray<TPair<UActorComponent*, UActorComponent*>> SourceTargetComponentPairs;
+		SourceActor->GetComponents(SourceComponents);
+		TargetActor->GetComponents(TargetComponents);
 
-		auto BuildComponentPairs = [&SourceTargetComponentPairs, SourceActor](AActor* PrimaryActor, AActor* SecondaryActor)
+
+		int32 TargetComponentIndex = 0;
+		for( UActorComponent* SourceComponent : SourceComponents )
 		{
-			TInlineComponentArray<UActorComponent*> SecondaryComponents(SecondaryActor);
-
-			const bool bPrimaryIsSource = (PrimaryActor == SourceActor);
-			int32 SecondaryComponentIndex = 0;
-			for (UActorComponent* PrimaryComponent : PrimaryActor->GetComponents())
+			if (SourceComponent->CreationMethod == EComponentCreationMethod::UserConstructionScript)
 			{
-				if (PrimaryComponent->CreationMethod == EComponentCreationMethod::UserConstructionScript)
-				{
-					continue;
-				}
-				if (UActorComponent* SecondaryComponent = FindMatchingComponentInstance(PrimaryComponent, SecondaryActor, SecondaryComponents, SecondaryComponentIndex))
-				{
-					if (bPrimaryIsSource)
-					{
-						SourceTargetComponentPairs.Emplace(PrimaryComponent, SecondaryComponent);
-					}
-					else
-					{
-						SourceTargetComponentPairs.Emplace(SecondaryComponent, PrimaryComponent);
-					}
-				}
+				continue;
 			}
-		};
+			UActorComponent* TargetComponent = FindMatchingComponentInstance( SourceComponent, TargetActor, TargetComponents, TargetComponentIndex );
 
-		const bool bSourceActorIsCDO = SourceActor->HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject);
-		const bool bTargetActorIsCDO = TargetActor->HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject);
-		const bool bSourceActorIsBPCDO = bSourceActorIsCDO && ActorClass->HasAllClassFlags(CLASS_CompiledFromBlueprint);
-
-		// If the source actor is a CDO, then the target actor should drive the collection of components since FindMatchingComponentInstance
-		// does work to seek out SCS and ICH components for blueprints
-		if (bSourceActorIsCDO)
-		{
-			BuildComponentPairs(TargetActor, SourceActor);
-		}
-		else
-		{
-			BuildComponentPairs(SourceActor, TargetActor);
-		}
-
-		for (const TPair<UActorComponent*, UActorComponent*>& ComponentPair : SourceTargetComponentPairs)
-		{
-			UActorComponent* SourceComponent = ComponentPair.Key;
-			UActorComponent* TargetComponent = ComponentPair.Value;
-
-			UClass* ComponentClass = SourceComponent->GetClass();
-			check( ComponentClass == TargetComponent->GetClass() );
-
-			// Build a list of matching component archetype instances for propagation (if requested)
-			TArray<UActorComponent*> ComponentArchetypeInstances;
-			if( Options.Flags & ECopyOptions::PropagateChangesToArchetypeInstances )
+			if( TargetComponent != nullptr )
 			{
-				for( AActor* ArchetypeInstance : ArchetypeInstances )
+				UClass* ComponentClass = SourceComponent->GetClass();
+				check( ComponentClass == TargetComponent->GetClass() );
+
+				// Build a list of matching component archetype instances for propagation (if requested)
+				TArray<UActorComponent*> ComponentArchetypeInstances;
+				if( Options.Flags & ECopyOptions::PropagateChangesToArchetypeInstances )
 				{
-					if( ArchetypeInstance != nullptr )
+					for( AActor* ArchetypeInstance : ArchetypeInstances )
 					{
-						UActorComponent* ComponentArchetypeInstance = FindMatchingComponentInstance( TargetComponent, ArchetypeInstance );
-						if( ComponentArchetypeInstance != nullptr )
+						if( ArchetypeInstance != nullptr )
 						{
-							ComponentArchetypeInstances.AddUnique( ComponentArchetypeInstance );
+							UActorComponent* ComponentArchetypeInstance = FindMatchingComponentInstance( TargetComponent, ArchetypeInstance );
+							if( ComponentArchetypeInstance != nullptr )
+							{
+								ComponentArchetypeInstances.AddUnique( ComponentArchetypeInstance );
+							}
 						}
 					}
 				}
-			}
 
-			TSet<const FProperty*> SourceUCSModifiedProperties;
-			SourceComponent->GetUCSModifiedProperties(SourceUCSModifiedProperties);
+				TSet<const UProperty*> SourceUCSModifiedProperties;
+				SourceComponent->GetUCSModifiedProperties(SourceUCSModifiedProperties);
 
-			TArray<UActorComponent*> ComponentInstancesToReregister;
+				TArray<UActorComponent*> ComponentInstancesToReregister;
 
-			// Copy component properties
-			for( FProperty* Property = ComponentClass->PropertyLink; Property != nullptr; Property = Property->PropertyLinkNext )
-			{
-				const bool bIsTransient = !!( Property->PropertyFlags & CPF_Transient );
-				const bool bIsIdentical = Property->Identical_InContainer( SourceComponent, TargetComponent );
-				const bool bIsComponent = !!( Property->PropertyFlags & ( CPF_InstancedReference | CPF_ContainsInstancedReference ) );
-				const bool bIsTransform =
-					Property->GetFName() == USceneComponent::GetRelativeScale3DPropertyName() ||
-					Property->GetFName() == USceneComponent::GetRelativeLocationPropertyName() ||
-					Property->GetFName() == USceneComponent::GetRelativeRotationPropertyName();
-
-				auto SourceComponentIsRoot = [&]()
+				// Copy component properties
+				for( UProperty* Property = ComponentClass->PropertyLink; Property != nullptr; Property = Property->PropertyLinkNext )
 				{
-					USceneComponent* RootComponent = SourceActor->GetRootComponent();
-					if (SourceComponent == RootComponent)
-					{
-						return true;
-					}
-					else if (RootComponent == nullptr && bSourceActorIsBPCDO)
-					{
-						// If we're dealing with a BP CDO as source, then look at the target for whether this is the root component
-						return (TargetComponent == TargetActor->GetRootComponent());
-					}
-					return false;
-				};
+					const bool bIsTransient = !!( Property->PropertyFlags & CPF_Transient );
+					const bool bIsIdentical = Property->Identical_InContainer( SourceComponent, TargetComponent );
+					const bool bIsComponent = !!( Property->PropertyFlags & ( CPF_InstancedReference | CPF_ContainsInstancedReference ) );
+					const bool bIsTransform =
+						Property->GetFName() == USceneComponent::GetRelativeScale3DPropertyName() ||
+						Property->GetFName() == USceneComponent::GetRelativeLocationPropertyName() ||
+						Property->GetFName() == USceneComponent::GetRelativeRotationPropertyName();
 
-				if( !bIsTransient && !bIsIdentical && !bIsComponent && !SourceUCSModifiedProperties.Contains(Property)
-					&& ( !bIsTransform || (!bSourceActorIsCDO && !bTargetActorIsCDO) || !SourceComponentIsRoot() ) )
-				{
-					const bool bIsSafeToCopy = (!(Options.Flags & ECopyOptions::OnlyCopyEditOrInterpProperties) || (Property->HasAnyPropertyFlags(CPF_Edit | CPF_Interp)))
-						                    && (!(Options.Flags & ECopyOptions::SkipInstanceOnlyProperties) || (!Property->HasAllPropertyFlags(CPF_DisableEditOnTemplate)));
-					if( bIsSafeToCopy )
+					if( !bIsTransient && !bIsIdentical && !bIsComponent && !SourceUCSModifiedProperties.Contains(Property)
+						&& ( !bIsTransform || SourceComponent != SourceActor->GetRootComponent() || ( !SourceActor->HasAnyFlags( RF_ClassDefaultObject | RF_ArchetypeObject ) && !TargetActor->HasAnyFlags( RF_ClassDefaultObject | RF_ArchetypeObject ) ) ) )
 					{
-						if (!Options.CanCopyProperty(*Property, *SourceActor))
+						const bool bIsSafeToCopy = (!(Options.Flags & ECopyOptions::OnlyCopyEditOrInterpProperties) || (Property->HasAnyPropertyFlags(CPF_Edit | CPF_Interp)))
+						                        && (!(Options.Flags & ECopyOptions::SkipInstanceOnlyProperties) || (!Property->HasAllPropertyFlags(CPF_DisableEditOnTemplate)));
+						if( bIsSafeToCopy )
 						{
-							continue;
-						}
+							if (!Options.CanCopyProperty(*Property, *SourceActor))
+							{
+								continue;
+							}
 							
-						if( !bIsPreviewing )
-						{
-							if( !ModifiedObjects.Contains(TargetComponent) )
+							if( !bIsPreviewing )
 							{
-								TargetComponent->SetFlags(RF_Transactional);
-								TargetComponent->Modify();
-								ModifiedObjects.Add(TargetComponent);
-							}
-
-							if( Options.Flags & ECopyOptions::CallPostEditChangeProperty )
-							{
-								// @todo simulate: Should we be calling this on the component instead?
-								TargetActor->PreEditChange( Property );
-							}
-
-							// Determine which component archetype instances match the current property value of the target component (before it gets changed). We only want to propagate the change to those instances.
-							TArray<UActorComponent*> ComponentArchetypeInstancesToChange;
-							if( Options.Flags & ECopyOptions::PropagateChangesToArchetypeInstances )
-							{
-								for (UActorComponent* ComponentArchetypeInstance : ComponentArchetypeInstances)
+								if( !ModifiedObjects.Contains(TargetComponent) )
 								{
-									if( ComponentArchetypeInstance != nullptr && Property->Identical_InContainer( ComponentArchetypeInstance, TargetComponent ) )
+									TargetComponent->SetFlags(RF_Transactional);
+									TargetComponent->Modify();
+									ModifiedObjects.Add(TargetComponent);
+								}
+
+								if( Options.Flags & ECopyOptions::CallPostEditChangeProperty )
+								{
+									// @todo simulate: Should we be calling this on the component instead?
+									TargetActor->PreEditChange( Property );
+								}
+
+								// Determine which component archetype instances match the current property value of the target component (before it gets changed). We only want to propagate the change to those instances.
+								TArray<UActorComponent*> ComponentArchetypeInstancesToChange;
+								if( Options.Flags & ECopyOptions::PropagateChangesToArchetypeInstances )
+								{
+									for (UActorComponent* ComponentArchetypeInstance : ComponentArchetypeInstances)
 									{
-										bool bAdd = true;
-										// We also need to double check that either the direct archetype of the target is also identical
-										if (ComponentArchetypeInstance->GetArchetype() != TargetComponent)
+										if( ComponentArchetypeInstance != nullptr && Property->Identical_InContainer( ComponentArchetypeInstance, TargetComponent ) )
 										{
-											UActorComponent* CheckComponent = CastChecked<UActorComponent>(ComponentArchetypeInstance->GetArchetype());
-											while (CheckComponent != ComponentArchetypeInstance)
+											bool bAdd = true;
+											// We also need to double check that either the direct archetype of the target is also identical
+											if (ComponentArchetypeInstance->GetArchetype() != TargetComponent)
 											{
-												if (!Property->Identical_InContainer( CheckComponent, TargetComponent ))
+												UActorComponent* CheckComponent = CastChecked<UActorComponent>(ComponentArchetypeInstance->GetArchetype());
+												while (CheckComponent != ComponentArchetypeInstance)
 												{
-													bAdd = false;
-													break;
+													if (!Property->Identical_InContainer( CheckComponent, TargetComponent ))
+													{
+														bAdd = false;
+														break;
+													}
+													CheckComponent = CastChecked<UActorComponent>(CheckComponent->GetArchetype());
 												}
-												CheckComponent = CastChecked<UActorComponent>(CheckComponent->GetArchetype());
 											}
-										}
 											
-										if (bAdd)
-										{
-											ComponentArchetypeInstancesToChange.Add( ComponentArchetypeInstance );
+											if (bAdd)
+											{
+												ComponentArchetypeInstancesToChange.Add( ComponentArchetypeInstance );
+											}
 										}
 									}
 								}
-							}
 
-							CopySingleProperty(SourceComponent, TargetComponent, Property);
+								CopySingleProperty(SourceComponent, TargetComponent, Property);
 
-							if( Options.Flags & ECopyOptions::CallPostEditChangeProperty )
-							{
-								FPropertyChangedEvent PropertyChangedEvent( Property );
-								TargetActor->PostEditChangeProperty( PropertyChangedEvent );
-							}
-
-							if( Options.Flags & ECopyOptions::PropagateChangesToArchetypeInstances )
-							{
-								for( int32 InstanceIndex = 0; InstanceIndex < ComponentArchetypeInstancesToChange.Num(); ++InstanceIndex )
+								if( Options.Flags & ECopyOptions::CallPostEditChangeProperty )
 								{
-									UActorComponent* ComponentArchetypeInstance = ComponentArchetypeInstancesToChange[InstanceIndex];
-									if( ComponentArchetypeInstance != nullptr )
+									FPropertyChangedEvent PropertyChangedEvent( Property );
+									TargetActor->PostEditChangeProperty( PropertyChangedEvent );
+								}
+
+								if( Options.Flags & ECopyOptions::PropagateChangesToArchetypeInstances )
+								{
+									for( int32 InstanceIndex = 0; InstanceIndex < ComponentArchetypeInstancesToChange.Num(); ++InstanceIndex )
 									{
-										if( !ModifiedObjects.Contains(ComponentArchetypeInstance) )
+										UActorComponent* ComponentArchetypeInstance = ComponentArchetypeInstancesToChange[InstanceIndex];
+										if( ComponentArchetypeInstance != nullptr )
 										{
-											// Ensure that this instance will be included in any undo/redo operations, and record it into the transaction buffer.
-											// Note: We don't do this for components that originate from script, because they will be re-instanced from the template after an undo, so there is no need to record them.
-											if (!ComponentArchetypeInstance->IsCreatedByConstructionScript())
+											if( !ModifiedObjects.Contains(ComponentArchetypeInstance) )
 											{
-												ComponentArchetypeInstance->SetFlags(RF_Transactional);
-												ComponentArchetypeInstance->Modify();
-												ModifiedObjects.Add(ComponentArchetypeInstance);
+												// Ensure that this instance will be included in any undo/redo operations, and record it into the transaction buffer.
+												// Note: We don't do this for components that originate from script, because they will be re-instanced from the template after an undo, so there is no need to record them.
+												if (!ComponentArchetypeInstance->IsCreatedByConstructionScript())
+												{
+													ComponentArchetypeInstance->SetFlags(RF_Transactional);
+													ComponentArchetypeInstance->Modify();
+													ModifiedObjects.Add(ComponentArchetypeInstance);
+												}
+
+												// We must also modify the owner, because we'll need script components to be reconstructed as part of an undo operation.
+												AActor* Owner = ComponentArchetypeInstance->GetOwner();
+												if( Owner != nullptr && !ModifiedObjects.Contains(Owner))
+												{
+													Owner->Modify();
+													ModifiedObjects.Add(Owner);
+												}
 											}
 
-											// We must also modify the owner, because we'll need script components to be reconstructed as part of an undo operation.
-											AActor* Owner = ComponentArchetypeInstance->GetOwner();
-											if( Owner != nullptr && !ModifiedObjects.Contains(Owner))
+											if (ComponentArchetypeInstance->IsRegistered())
 											{
-												Owner->Modify();
-												ModifiedObjects.Add(Owner);
+												ComponentArchetypeInstance->UnregisterComponent();
+												ComponentInstancesToReregister.Add(ComponentArchetypeInstance);
 											}
-										}
 
-										if (ComponentArchetypeInstance->IsRegistered())
-										{
-											ComponentArchetypeInstance->UnregisterComponent();
-											ComponentInstancesToReregister.Add(ComponentArchetypeInstance);
+											CopySingleProperty( TargetComponent, ComponentArchetypeInstance, Property );
 										}
-
-										CopySingleProperty( TargetComponent, ComponentArchetypeInstance, Property );
 									}
 								}
 							}
-						}
 
-						++CopiedPropertyCount;
+							++CopiedPropertyCount;
 
-						if( bIsTransform )
-						{
-							bTransformChanged = true;
+							if( bIsTransform )
+							{
+								bTransformChanged = true;
+							}
 						}
 					}
 				}
-			}
 
-			for (UActorComponent* ModifiedComponentInstance : ComponentInstancesToReregister)
-			{
-				ModifiedComponentInstance->RegisterComponent();
+				for (UActorComponent* ModifiedComponentInstance : ComponentInstancesToReregister)
+				{
+					ModifiedComponentInstance->RegisterComponent();
+				}
 			}
 		}
 
-		if (!bIsPreviewing && CopiedPropertyCount > 0 && TargetActor->GetClass()->HasAllClassFlags(CLASS_CompiledFromBlueprint))
+		if (!bIsPreviewing && CopiedPropertyCount > 0 && TargetActor->HasAnyFlags(RF_ClassDefaultObject|RF_ArchetypeObject) && TargetActor->GetClass()->HasAllClassFlags(CLASS_CompiledFromBlueprint))
 		{
-			if (bTargetActorIsCDO)
-			{
-				FBlueprintEditorUtils::PostEditChangeBlueprintActors(CastChecked<UBlueprint>(TargetActor->GetClass()->ClassGeneratedBy));
-			}
-			else
-			{
-				TargetActor->RerunConstructionScripts();
-			}
+			FBlueprintEditorUtils::PostEditChangeBlueprintActors(CastChecked<UBlueprint>(TargetActor->GetClass()->ClassGeneratedBy));
 		}
 
 		// If one of the changed properties was part of the actor's transformation, then we'll call PostEditMove too.

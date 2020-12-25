@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MallocTTB.cpp: IntelTTB Malloc
@@ -30,12 +30,13 @@ THIRD_PARTY_INCLUDES_START
 #include <tbb/scalable_allocator.h>
 THIRD_PARTY_INCLUDES_END
 
-void* FMallocTBB::TryMalloc( SIZE_T Size, uint32 Alignment )
+void* FMallocTBB::Malloc( SIZE_T Size, uint32 Alignment )
 {
 #if !UE_BUILD_SHIPPING
 	uint64 LocalMaxSingleAlloc = MaxSingleAlloc.Load(EMemoryOrder::Relaxed);
 	if (LocalMaxSingleAlloc != 0 && Size > LocalMaxSingleAlloc)
 	{
+		FPlatformMemory::OnOutOfMemory(Size, Alignment);
 		return nullptr;
 	}
 #endif
@@ -62,34 +63,26 @@ void* FMallocTBB::TryMalloc( SIZE_T Size, uint32 Alignment )
 	}
 #endif
 
+	if( !NewPtr && Size )
+	{
+		OutOfMemory(Size, Alignment);
+	}
 #if UE_BUILD_DEBUG
-	if (Size && NewPtr != nullptr)
+	else if (Size)
 	{
 		FMemory::Memset(NewPtr, DEBUG_FILL_NEW, scalable_msize(NewPtr));
 	}
 #endif
-
 	return NewPtr;
 }
 
-void* FMallocTBB::Malloc(SIZE_T Size, uint32 Alignment)
-{
-	void* Result = TryMalloc(Size, Alignment);
-
-	if (Result == nullptr && Size)
-	{
-		OutOfMemory(Size, Alignment);
-	}
-
-	return Result;
-}
-
-void* FMallocTBB::TryRealloc( void* Ptr, SIZE_T NewSize, uint32 Alignment )
+void* FMallocTBB::Realloc( void* Ptr, SIZE_T NewSize, uint32 Alignment )
 {
 #if !UE_BUILD_SHIPPING
 	uint64 LocalMaxSingleAlloc = MaxSingleAlloc.Load(EMemoryOrder::Relaxed);
 	if (LocalMaxSingleAlloc != 0 && NewSize > LocalMaxSingleAlloc)
 	{
+		FPlatformMemory::OnOutOfMemory(NewSize, Alignment);
 		return nullptr;
 	}
 #endif
@@ -127,20 +120,11 @@ void* FMallocTBB::TryRealloc( void* Ptr, SIZE_T NewSize, uint32 Alignment )
 		FMemory::Memset((uint8*)NewPtr + OldSize, DEBUG_FILL_NEW, scalable_msize(NewPtr) -OldSize);
 	}
 #endif
-
-	return NewPtr;
-}
-
-void* FMallocTBB::Realloc(void* Ptr, SIZE_T NewSize, uint32 Alignment)
-{
-	void* Result = TryRealloc(Ptr, NewSize, Alignment);
-
-	if (Result == nullptr && NewSize)
+	if( !NewPtr && NewSize )
 	{
 		OutOfMemory(NewSize, Alignment);
 	}
-
-	return Result;
+	return NewPtr;
 }
 
 void FMallocTBB::Free( void* Ptr )
@@ -166,7 +150,9 @@ void FMallocTBB::Trim(bool bTrimThreadCaches)
 {
 // TBB memory trimming might impact performance so it is only enabled in editor for now where large thread pools are used
 // and more likely to do allocation migration between threads.
-#if WITH_EDITOR
+// Also disabled on other platform than Windows since they use an older TBB (i.e. MACOS).
+// Make sure to coordinate with IntelTBB.Build.cs if making changes here
+#if WITH_EDITOR && PLATFORM_WINDOWS
 	scalable_allocation_command(bTrimThreadCaches ? TBBMALLOC_CLEAN_ALL_BUFFERS : TBBMALLOC_CLEAN_THREAD_BUFFERS, 0);
 #endif
 }

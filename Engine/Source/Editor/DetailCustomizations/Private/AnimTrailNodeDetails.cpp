@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimTrailNodeDetails.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
@@ -42,6 +42,7 @@ void FAnimTrailNodeDetails::CustomizeDetails( IDetailLayoutBuilder& DetailBuilde
 
 	//Trail Relax curve
 	IDetailCategoryBuilder& TrailCategory = DetailBuilder.EditCategory("Trail");
+	TSharedPtr<class SCurveEditor> TrailRelaxCurveWidget;
 
 	DetailBuilder.HideProperty(TrailRelaxCurveHandle);
 
@@ -68,10 +69,6 @@ void FAnimTrailNodeDetails::CustomizeDetails( IDetailLayoutBuilder& DetailBuilde
 	TrailRelaxCurveWidget->SetCurveOwner(&TrailRelaxCurveEditor);
 }
 
-void FAnimTrailNodeDetails::PendingDelete()
-{
-	TrailRelaxCurveWidget->SetCurveOwner(nullptr);
-}
 
 TArray<FRichCurveEditInfoConst> FAnimTrailNodeDetails::FTrailRelaxCurveEditor::GetCurves() const
 {

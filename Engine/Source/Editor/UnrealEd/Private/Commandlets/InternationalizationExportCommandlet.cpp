@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Commandlets/InternationalizationExportCommandlet.h"
 #include "PortableObjectPipeline.h"
@@ -120,21 +120,6 @@ int32 UInternationalizationExportCommandlet::Main(const FString& Params)
 		}
 	}
 
-	// Read in the PO format to use
-	EPortableObjectFormat POFormat = EPortableObjectFormat::Unreal;
-	{
-		FString POFormatName;
-		if (GetStringFromConfig(*SectionName, TEXT("POFormat"), POFormatName, ConfigPath))
-		{
-			UEnum* POFormatEnum = FindObjectChecked<UEnum>(ANY_PACKAGE, TEXT("EPortableObjectFormat"));
-			const int64 POFormatInt = POFormatEnum->GetValueByName(*POFormatName);
-			if (POFormatInt != INDEX_NONE)
-			{
-				POFormat = (EPortableObjectFormat)POFormatInt;
-			}
-		}
-	}
-
 	bool bDoImport = false;
 	GetBoolFromConfig(*SectionName, TEXT("bImportLoc"), bDoImport, ConfigPath);
 
@@ -161,7 +146,7 @@ int32 UInternationalizationExportCommandlet::Main(const FString& Params)
 		}
 
 		// Import all PO files
-		if (!PortableObjectPipeline::ImportAll(LocTextHelper, SourcePath, Filename, TextCollapseMode, POFormat, bUseCultureDirectory))
+		if (!PortableObjectPipeline::ImportAll(LocTextHelper, SourcePath, Filename, TextCollapseMode, bUseCultureDirectory))
 		{
 			UE_LOG(LogInternationalizationExportCommandlet, Error, TEXT("Failed to import localization files."));
 			return -1;
@@ -185,7 +170,7 @@ int32 UInternationalizationExportCommandlet::Main(const FString& Params)
 		}
 
 		// Export all PO files
-		if (!PortableObjectPipeline::ExportAll(LocTextHelper, DestinationPath, Filename, TextCollapseMode, POFormat, bShouldPersistComments, bUseCultureDirectory))
+		if (!PortableObjectPipeline::ExportAll(LocTextHelper, DestinationPath, Filename, TextCollapseMode, bShouldPersistComments, bUseCultureDirectory))
 		{
 			UE_LOG(LogInternationalizationExportCommandlet, Error, TEXT("Failed to export localization files."));
 			return -1;

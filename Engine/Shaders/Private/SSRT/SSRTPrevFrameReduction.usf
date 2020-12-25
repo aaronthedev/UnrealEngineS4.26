@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #define CONFIG_COLOR_TILE_CLASSIFICATION 0
 
@@ -39,7 +39,6 @@ float4 PrevScreenPositionScaleBias;
 float2 ViewportUVToHZBBufferUV;
 float2 ReducedSceneColorSize;
 float2 ReducedSceneColorTexelSize;
-float2 HigherMipBufferBilinearMax;
 float PrevSceneColorPreExposureCorrection;
 float MinimumLuminance;
 float HigherMipDownScaleFactor;
@@ -121,7 +120,7 @@ void MainCS(
 				float SampleWeight = 0.25 * saturate(1 - SampleDist * SampleDist * InvSquareWorldBluringRadius);
 
 				float2 SampleUV = HigherMipDownScaleFactor * (2.0 * float2(DispatchThreadId) + 1.0 + TexelOffset) * 0.5 * ReducedSceneColorTexelSize;
-				SampleUV = min(SampleUV, HigherMipBufferBilinearMax);
+				SampleUV = clamp(SampleUV, View.BufferBilinearUVMinMax.xy, View.BufferBilinearUVMinMax.zw);
 
 				float4 SampleColor = float4(
 					HigherMipTexture.SampleLevel(HigherMipTextureSampler, SampleUV, 0).rgb,
@@ -149,10 +148,10 @@ void MainCS(
 
 		bool bIsSky = WorldDepth > 100 * 1000;
 
-		float4 EncodedVelocity = GBufferVelocityTexture.SampleLevel(GBufferVelocityTextureSampler, SceneBufferUV, 0);
+		float2 EncodedVelocity = SceneVelocityBuffer.SampleLevel(SceneVelocityBufferSampler, SceneBufferUV, 0).xy;
 		if (EncodedVelocity.x > 0.0)
 		{
-			PrevScreen = ThisClip.xy - DecodeVelocityFromTexture(EncodedVelocity).xy;
+			PrevScreen = ThisClip.xy - DecodeVelocityFromTexture(EncodedVelocity);
 		}
 
 		float2 PrevFrameUV = PrevScreen.xy * PrevScreenPositionScaleBias.xy + PrevScreenPositionScaleBias.zw;

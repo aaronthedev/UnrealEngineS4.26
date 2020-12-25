@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	UnrealExporter.h: Exporter class definition.
@@ -55,14 +55,6 @@ public:
 		return ObjectToInnerMap.Find(InObj);
 	}
 };
-
-#if WITH_EDITOR
-class ENGINE_API FSelectedActorExportObjectInnerContext : public FExportObjectInnerContext
-{
-public:
-	FSelectedActorExportObjectInnerContext();
-};
-#endif
 
 /**
  * Exports the property values for the specified object as text to the output device.

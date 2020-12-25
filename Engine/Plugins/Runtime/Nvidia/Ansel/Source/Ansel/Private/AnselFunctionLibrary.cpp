@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnselFunctionLibrary.h"
 
@@ -151,8 +151,8 @@ void UAnselFunctionLibrary::ConstrainCameraByGeometry(UObject* WorldContextObjec
 {
 	OutCameraLocation = NewCameraLocation; // accept new camera position by default
 
-	static IConsoleVariable* CVarConstrainCameraSizeLocal = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Photography.Constrain.CameraSize"));
-	const float CameraRadius = CVarConstrainCameraSizeLocal->GetFloat();
+	static IConsoleVariable* CVarConstrainCameraSize = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Photography.Constrain.CameraSize"));
+	const float CameraRadius = CVarConstrainCameraSize->GetFloat();
 
 	if (CameraRadius < 0.f)
 	{

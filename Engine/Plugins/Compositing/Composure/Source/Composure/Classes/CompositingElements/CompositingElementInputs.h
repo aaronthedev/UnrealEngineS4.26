@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -71,7 +71,7 @@ private:
 
 class UMediaTexture;
 
-UCLASS(BlueprintType, Blueprintable)
+UCLASS(BlueprintType, Blueprintable, meta = (DisplayName = "Media Texture Input"))
 class COMPOSURE_API UMediaTextureCompositingInput : public UCompositingMediaInput
 {
 	GENERATED_BODY()

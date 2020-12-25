@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/Input/SSlider.h"
 #include "Rendering/DrawElements.h"
@@ -91,15 +91,13 @@ int32 SSlider::OnPaint( const FPaintArgs& Args, const FGeometry& AllottedGeometr
 	// draw slider bar
 	auto BarTopLeft = FVector2D(SliderStartPoint.X, SliderStartPoint.Y - Style->BarThickness * 0.5f);
 	auto BarSize = FVector2D(SliderEndPoint.X - SliderStartPoint.X, Style->BarThickness);
-	auto BarImage = GetBarImage();
-	auto ThumbImage = GetThumbImage();
 	FSlateDrawElement::MakeBox(
 		OutDrawElements,
 		LayerId,
 		SliderGeometry.ToPaintGeometry(BarTopLeft, BarSize),
-		BarImage,
+		GetBarImage(),
 		DrawEffects,
-		BarImage->GetTint(InWidgetStyle) * SliderBarColor.Get().GetColor(InWidgetStyle) * InWidgetStyle.GetColorAndOpacityTint()
+		SliderBarColor.Get().GetColor(InWidgetStyle) * InWidgetStyle.GetColorAndOpacityTint()
 		);
 
 	++LayerId;
@@ -109,9 +107,9 @@ int32 SSlider::OnPaint( const FPaintArgs& Args, const FGeometry& AllottedGeometr
 		OutDrawElements,
 		LayerId,
 		SliderGeometry.ToPaintGeometry(HandleTopLeftPoint, GetThumbImage()->ImageSize),
-		ThumbImage,
+		GetThumbImage(),
 		DrawEffects,
-		ThumbImage->GetTint(InWidgetStyle) * SliderHandleColor.Get().GetColor(InWidgetStyle) * InWidgetStyle.GetColorAndOpacityTint()
+		SliderHandleColor.Get().GetColor(InWidgetStyle) * InWidgetStyle.GetColorAndOpacityTint()
 	);
 
 	return LayerId;
@@ -163,10 +161,9 @@ void SSlider::ResetControllerState()
 
 FNavigationReply SSlider::OnNavigation(const FGeometry& MyGeometry, const FNavigationEvent& InNavigationEvent)
 {
+	FNavigationReply Reply = FNavigationReply::Escape();
 	if (bControllerInputCaptured || !bRequiresControllerLock)
 	{
-		FNavigationReply Reply = FNavigationReply::Escape();
-
 		float NewValue = ValueAttribute.Get();
 		if (Orientation == EOrientation::Orient_Horizontal)
 		{
@@ -197,11 +194,15 @@ FNavigationReply SSlider::OnNavigation(const FGeometry& MyGeometry, const FNavig
 		if (ValueAttribute.Get() != NewValue)
 		{
 			CommitValue(FMath::Clamp(NewValue, MinValue, MaxValue));
-			return Reply;
 		}
 	}
 
-	return SLeafWidget::OnNavigation(MyGeometry, InNavigationEvent);
+	if (Reply.GetBoundaryRule() != EUINavigationRule::Escape)
+	{
+		Reply = SLeafWidget::OnNavigation(MyGeometry, InNavigationEvent);
+	}
+
+	return Reply;
 }
 
 FReply SSlider::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
@@ -314,12 +315,14 @@ FReply SSlider::OnTouchStarted(const FGeometry& MyGeometry, const FPointerEvent&
 {
 	if (!IsLocked())
 	{
+		CachedCursor = Cursor.Get().Get(EMouseCursor::Default);
+		OnMouseCaptureBegin.ExecuteIfBound();
+		CommitValue(PositionToValue(MyGeometry, InTouchEvent.GetLastScreenSpacePosition()));
+
 		// Release capture for controller/keyboard when switching to mouse.
 		ResetControllerState();
 
-		PressedScreenSpaceTouchDownPosition = InTouchEvent.GetScreenSpacePosition();
-
-		return FReply::Handled();
+		return FReply::Handled().CaptureMouse(SharedThis(this));
 	}
 
 	return FReply::Unhandled();
@@ -329,27 +332,12 @@ FReply SSlider::OnTouchMoved(const FGeometry& MyGeometry, const FPointerEvent& I
 {
 	if (HasMouseCaptureByUser(InTouchEvent.GetUserIndex(), InTouchEvent.GetPointerIndex()))
 	{
-		CommitValue(PositionToValue(MyGeometry, InTouchEvent.GetScreenSpacePosition()));
+		CommitValue(PositionToValue(MyGeometry, InTouchEvent.GetLastScreenSpacePosition()));
 
 		// Release capture for controller/keyboard when switching to mouse
 		ResetControllerState();
 
 		return FReply::Handled();
-	}
-	else if (!HasMouseCapture())
-	{
-		if (FSlateApplication::Get().HasTraveledFarEnoughToTriggerDrag(InTouchEvent, PressedScreenSpaceTouchDownPosition, Orientation))
-		{
-			CachedCursor = Cursor.Get().Get(EMouseCursor::Default);
-			OnMouseCaptureBegin.ExecuteIfBound();
-
-			CommitValue(PositionToValue(MyGeometry, InTouchEvent.GetScreenSpacePosition()));
-
-			// Release capture for controller/keyboard when switching to mouse
-			ResetControllerState();
-
-			return FReply::Handled().CaptureMouse(SharedThis(this));
-		}
 	}
 
 	return FReply::Unhandled();
@@ -361,8 +349,6 @@ FReply SSlider::OnTouchEnded(const FGeometry& MyGeometry, const FPointerEvent& I
 	{
 		SetCursor(CachedCursor);
 		OnMouseCaptureEnd.ExecuteIfBound();
-
-		CommitValue(PositionToValue(MyGeometry, InTouchEvent.GetScreenSpacePosition()));
 
 		// Release capture for controller/keyboard when switching to mouse.
 		ResetControllerState();

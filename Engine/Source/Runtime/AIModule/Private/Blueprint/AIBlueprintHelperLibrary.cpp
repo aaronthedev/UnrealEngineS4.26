@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Blueprint/AIBlueprintHelperLibrary.h"
 #include "EngineGlobals.h"
@@ -16,7 +16,6 @@
 #include "NavigationPath.h"
 #include "NavigationData.h"
 #include "NavigationSystem.h"
-#include "NavMesh/NavMeshPath.h"
 #include "Logging/MessageLog.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogAIBlueprint, Warning, All);
@@ -182,7 +181,7 @@ void UAIBlueprintHelperLibrary::SendAIMessage(APawn* Target, FName Message, UObj
 	FAIMessage::Send(Target, FAIMessage(Message, MessageSource, bSuccess));
 }
 
-APawn* UAIBlueprintHelperLibrary::SpawnAIFromClass(UObject* WorldContextObject, TSubclassOf<APawn> PawnClass, UBehaviorTree* BehaviorTree, FVector Location, FRotator Rotation, bool bNoCollisionFail, AActor *Owner)
+APawn* UAIBlueprintHelperLibrary::SpawnAIFromClass(UObject* WorldContextObject, TSubclassOf<APawn> PawnClass, UBehaviorTree* BehaviorTree, FVector Location, FRotator Rotation, bool bNoCollisionFail)
 {
 	APawn* NewPawn = NULL;
 
@@ -190,7 +189,6 @@ APawn* UAIBlueprintHelperLibrary::SpawnAIFromClass(UObject* WorldContextObject, 
 	if (World && *PawnClass)
 	{
 		FActorSpawnParameters ActorSpawnParams;
-		ActorSpawnParams.Owner = Owner;
 		ActorSpawnParams.SpawnCollisionHandlingOverride = bNoCollisionFail ? ESpawnActorCollisionHandlingMethod::AlwaysSpawn : ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding;
 
 		NewPawn = World->SpawnActor<APawn>(*PawnClass, Location, Rotation, ActorSpawnParams);
@@ -345,67 +343,6 @@ UNavigationPath* UAIBlueprintHelperLibrary::GetCurrentPath(AController* Controll
 	return ResultPath;
 }
 
-const TArray<FVector> UAIBlueprintHelperLibrary::GetCurrentPathPoints(AController* Controller)
-{
-	TArray<FVector> PathPoints;
-	
-	const UPathFollowingComponent* PFComp = GetPathComp(Controller);
-	if (PFComp && PFComp->GetPath().IsValid())
-	{
-		PathPoints.Reserve(PFComp->GetPath()->GetPathPoints().Num());
-		for (const FNavPathPoint& NavPathPoint : PFComp->GetPath()->GetPathPoints())
-		{
-			PathPoints.Add(NavPathPoint.Location);
-		}
-	}
-	return  PathPoints;
-}
-
-UPathFollowingComponent* UAIBlueprintHelperLibrary::GetPathComp(const AController* Controller)
-{	
-	if (Controller)
-	{
-		UPathFollowingComponent* PFComp = nullptr;
-		const AAIController* AIController = Cast<AAIController>(Controller);
-		if (AIController)
-		{
-			return AIController->GetPathFollowingComponent();
-		}
-		else
-		{
-			// No AI Controller means its a player controller, most probably moving using SimpleMove
-			return Controller->FindComponentByClass<UPathFollowingComponent>();
-		}
-	}
-	return nullptr;
-}
-
-int32 UAIBlueprintHelperLibrary::GetCurrentPathIndex(const AController* Controller)
-{
-	const UPathFollowingComponent* PFComp = GetPathComp(Controller);
-	return PFComp ? static_cast<int32>(PFComp->GetCurrentPathIndex()) : INDEX_NONE;
-}
-
-int32 UAIBlueprintHelperLibrary::GetNextNavLinkIndex(const AController* Controller)
-{
-	if (const UPathFollowingComponent* PFComp = GetPathComp(Controller))
-	{
-		const FNavPathSharedPtr Path = PFComp->GetPath();
-		if (Path.IsValid())
-		{
-			const TArray<FNavPathPoint>& PathPoints = Path->GetPathPoints();
-			for (int32 i = PFComp->GetCurrentPathIndex(); i < PathPoints.Num(); ++i)
-			{
-				if (FNavMeshNodeFlags(PathPoints[i].Flags).IsNavLink())
-				{
-					return i;
-				}
-			}
-		}
-	}
-
-	return INDEX_NONE;
-}
 
 namespace
 {

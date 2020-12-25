@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -22,9 +22,8 @@ public class SoundCueTemplates : ModuleRules
                 "CoreUObject",
                 "Engine",
                 "Slate",
-                "SlateCore",
-				"DeveloperSettings"
-			}
+                "SlateCore"
+            }
         );
     }
 }

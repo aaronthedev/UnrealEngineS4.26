@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "DSP/ModulationMatrix.h"
 #include "DSP/BiQuadFilter.h"
-
 
 namespace Audio
 {
@@ -19,11 +18,7 @@ namespace Audio
 			Bandpass,
 			Notch,
 			ParametricEQ,
-			LowShelf,
-			HighShelf,
 			AllPass,
-			ButterworthLowPass,
-			ButterworthHighPass
 		};
 	}
 

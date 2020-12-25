@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PostProcessMobile.h: Mobile uber post processing.
@@ -6,206 +6,186 @@
 
 #pragma once
 
-#include "ScreenPass.h"
-#include "PostProcessEyeAdaptation.h"
+#include "CoreMinimal.h"
+#include "RendererInterface.h"
+#include "PostProcess/RenderingCompositionGraph.h"
 
 class FViewInfo;
 
 // return Depth of Field Scale if Gaussian DoF mode is active. 0.0f otherwise.
 float GetMobileDepthOfFieldScale(const FViewInfo& View);
 
-struct FMobileBloomSetupInputs
-{
-	FScreenPassTexture SceneColor;
-	FScreenPassTexture SunShaftAndDof;
+// Used to indicate the final PP stage which needs to be flipped on platforms that 'RHINeedsToSwitchVerticalAxis'
+void SetMobilePassFlipVerticalAxis(const FRenderingCompositePass* FlipPass);
+bool ShouldMobilePassFlipVerticalAxis(const FRenderingCompositePassContext& Context, const FRenderingCompositePass* ShouldFlipPass);
 
-	bool bUseBloom = false;
-	bool bUseSun = false;
-	bool bUseDof = false;
-	bool bUseEyeAdaptation = false;
-	bool bUseMetalMSAAHDRDecode = false;
+class FRCPassPostProcessBloomSetupES2 : public TRenderingCompositePassBase<1, 1>
+{
+public:
+	FRCPassPostProcessBloomSetupES2(FIntRect InPrePostSourceViewportRect, bool bInUseViewRectSource) : PrePostSourceViewportRect(InPrePostSourceViewportRect), bUseViewRectSource(bInUseViewRectSource) { }
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+	virtual void Release() override { delete this; }
+private:
+	FIntRect PrePostSourceViewportRect;
+	bool bUseViewRectSource;
+	void SetShader(const FRenderingCompositePassContext& Context);
 };
 
-struct FMobileBloomSetupOutputs
+class FRCPassPostProcessBloomSetupSmallES2 : public TRenderingCompositePassBase<1, 1>
 {
-	FScreenPassTexture Bloom;
-	FScreenPassTexture SunShaftAndDof;
-	FScreenPassTexture EyeAdaptation;
+public:
+	FRCPassPostProcessBloomSetupSmallES2(FIntPoint InPrePostSourceViewportSize, bool bInUseViewRectSource) : PrePostSourceViewportSize(InPrePostSourceViewportSize), bUseViewRectSource(bInUseViewRectSource) { }
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+	virtual void Release() override { delete this; }
+private:
+	FIntPoint PrePostSourceViewportSize;
+	bool bUseViewRectSource;
+	void SetShader(const FRenderingCompositePassContext& Context);
 };
 
-FMobileBloomSetupOutputs AddMobileBloomSetupPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FEyeAdaptationParameters& EyeAdaptationParameters, const FMobileBloomSetupInputs& Inputs);
-
-struct FMobileDofNearInputs
+class FRCPassPostProcessDofNearES2 : public TRenderingCompositePassBase<1, 1>
 {
-	FScreenPassTexture BloomSetup_SunShaftAndDof;
-
-	bool bUseSun = false;
+public:
+	FRCPassPostProcessDofNearES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+	virtual void Release() override { delete this; }
+private:
+	FIntPoint PrePostSourceViewportSize;
+	void SetShader(const FRenderingCompositePassContext& Context);
 };
 
-struct FMobileDofNearOutputs
+class FRCPassPostProcessDofDownES2 : public TRenderingCompositePassBase<2, 1>
 {
-	FScreenPassTexture DofNear;
+public:
+	FRCPassPostProcessDofDownES2(FIntRect InPrePostSourceViewportRect, bool bInUseViewRectSource) : PrePostSourceViewportRect(InPrePostSourceViewportRect), bUseViewRectSource(bInUseViewRectSource) { }
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+	virtual void Release() override { delete this; }
+private:
+	FIntRect PrePostSourceViewportRect;
+	bool bUseViewRectSource;
+	void SetShader(const FRenderingCompositePassContext& Context);
 };
 
-FMobileDofNearOutputs AddMobileDofNearPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FMobileDofNearInputs& Inputs);
-
-struct FMobileDofDownInputs
+class FRCPassPostProcessDofBlurES2 : public TRenderingCompositePassBase<2, 1>
 {
-	FScreenPassTexture SceneColor;
-	FScreenPassTexture SunShaftAndDof;
-	FScreenPassTexture DofNear;
-
-	bool bUseSun = false;
+public:
+	FRCPassPostProcessDofBlurES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+	virtual void Release() override { delete this; }
+private:
+	FIntPoint PrePostSourceViewportSize;
 };
 
-struct FMobileDofDownOutputs
+class FRCPassPostProcessBloomDownES2 : public TRenderingCompositePassBase<1, 1>
 {
-	FScreenPassTexture DofDown;
+public:
+	FRCPassPostProcessBloomDownES2(FIntPoint InPrePostSourceViewportSize, float InScale) : PrePostSourceViewportSize(InPrePostSourceViewportSize), Scale(InScale) { }
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+	virtual void Release() override { delete this; }
+private:
+	FIntPoint PrePostSourceViewportSize;
+	float Scale;
 };
 
-FMobileDofDownOutputs AddMobileDofDownPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FMobileDofDownInputs& Inputs);
-
-struct FMobileDofBlurInputs
+class FRCPassPostProcessBloomUpES2 : public TRenderingCompositePassBase<2, 1>
 {
-	FScreenPassTexture DofDown;
-	FScreenPassTexture DofNear;
-};
-
-struct FMobileDofBlurOutputs
-{
-	FScreenPassTexture DofBlur;
-};
-
-FMobileDofBlurOutputs AddMobileDofBlurPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FMobileDofBlurInputs& Inputs);
-
-struct FMobileIntegrateDofInputs
-{
-	FScreenPassTexture SceneColor;
-	FScreenPassTexture DofBlur;
-	FScreenPassTexture SunShaftAndDof;
-};
-
-FScreenPassTexture AddMobileIntegrateDofPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FMobileIntegrateDofInputs& Inputs);
-
-struct FMobileBloomDownInputs
-{
-	FScreenPassTexture BloomDownSource;
-
-	float BloomDownScale = 0.66f * 4.0f;
-};
-
-FScreenPassTexture AddMobileBloomDownPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FMobileBloomDownInputs& Inputs);
-
-struct FMobileBloomUpInputs
-{
-	FScreenPassTexture BloomUpSourceA;
-	FScreenPassTexture BloomUpSourceB;
-
+public:
+	FRCPassPostProcessBloomUpES2(FIntPoint InPrePostSourceViewportSize, FVector2D InScaleAB, FVector4& InTintA, FVector4& InTintB) : PrePostSourceViewportSize(InPrePostSourceViewportSize), ScaleAB(InScaleAB), TintA(InTintA), TintB(InTintB) { }
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+	virtual void Release() override { delete this; }
+private:
+	FIntPoint PrePostSourceViewportSize;
 	FVector2D ScaleAB;
 	FVector4 TintA;
 	FVector4 TintB;
 };
 
-FScreenPassTexture AddMobileBloomUpPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FMobileBloomUpInputs& Inputs);
-
-struct FMobileSunMaskInputs
+class FRCPassPostProcessSunMaskES2 : public TRenderingCompositePassBase<1, 1>
 {
-	FScreenPassTexture SceneColor;
-	TRDGUniformBufferRef<FMobileSceneTextureUniformParameters> SceneTextures = nullptr;
-
-	bool bUseSun = false;
-	bool bUseDof = false;
-	bool bUseDepthTexture = false;
-	bool bUseMetalMSAAHDRDecode = false;
+public:
+	FRCPassPostProcessSunMaskES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+	virtual void Release() override { delete this; }
+private:
+	FIntPoint PrePostSourceViewportSize;
+	template <bool bUseDepthTexture>
+	void SetShader(const FRenderingCompositePassContext& Context);
 };
 
-struct FMobileSunMaskOutputs
+class FRCPassPostProcessSunAlphaES2 : public TRenderingCompositePassBase<1, 1>
 {
-	FScreenPassTexture SunMask;
-	FScreenPassTexture SceneColor;
+public:
+	FRCPassPostProcessSunAlphaES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+	virtual void Release() override { delete this; }
+private:
+	FIntPoint PrePostSourceViewportSize;
+	void SetShader(const FRenderingCompositePassContext& Context);
 };
 
-FMobileSunMaskOutputs AddMobileSunMaskPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FMobileSunMaskInputs& Inputs);
-
-struct FMobileSunAlphaInputs
+class FRCPassPostProcessSunBlurES2 : public TRenderingCompositePassBase<1, 1>
 {
-	FScreenPassTexture BloomSetup_SunShaftAndDof;
-	bool bUseMobileDof;
-};
-FScreenPassTexture AddMobileSunAlphaPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FMobileSunAlphaInputs& Inputs);
-
-struct FMobileSunBlurInputs
-{
-	FScreenPassTexture SunAlpha;
-};
-FScreenPassTexture AddMobileSunBlurPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FMobileSunBlurInputs& Inputs);
-
-struct FMobileSunMergeInputs
-{
-	FScreenPassTexture SunBlur;
-	FScreenPassTexture BloomSetup_Bloom;
-	FScreenPassTexture BloomUp;
-	bool bUseBloom;
-	bool bUseSun;
-	bool bUseAa;
+public:
+	FRCPassPostProcessSunBlurES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+	virtual void Release() override { delete this; }
+private:
+	FIntPoint PrePostSourceViewportSize;
 };
 
-FScreenPassTexture AddMobileSunMergePass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FMobileSunMergeInputs& Inputs);
-
-struct FMobileSunAvgInputs
+class FRCPassPostProcessSunMergeES2 : public TRenderingCompositePassBase<3, 1>
 {
-	FScreenPassTexture SunMerge;
-	FScreenPassTexture LastFrameSunMerge;
+public:
+	FRCPassPostProcessSunMergeES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+	virtual void Release() override { delete this; }
+private:
+	FIntPoint PrePostSourceViewportSize;
+	FShader* SetShader(const FRenderingCompositePassContext& Context);
 };
 
-FScreenPassTexture AddMobileSunAvgPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FMobileSunAvgInputs& Inputs);
-
-struct FMobileTAAInputs
+class FRCPassPostProcessSunMergeSmallES2 : public TRenderingCompositePassBase<2, 1>
 {
-	FScreenPassRenderTarget OverrideOutput;
-	FScreenPassTexture SceneColor;
-	FScreenPassTexture LastFrameSceneColor;
+public:
+	FRCPassPostProcessSunMergeSmallES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+	virtual void Release() override { delete this; }
+private:
+	FIntPoint PrePostSourceViewportSize;
+	void SetShader(const FRenderingCompositePassContext& Context);
 };
 
-FScreenPassTexture AddMobileTAAPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FMobileTAAInputs& Inputs);
-
-struct FMobileEyeAdaptationSetupInputs
+class FRCPassPostProcessSunAvgES2 : public TRenderingCompositePassBase<2, 1>
 {
-	FScreenPassTexture BloomSetup_EyeAdaptation;
-	bool bUseBasicEyeAdaptation;
-	bool bUseHistogramEyeAdaptation;
+public:
+	FRCPassPostProcessSunAvgES2(FIntPoint InPrePostSourceViewportSize) : PrePostSourceViewportSize(InPrePostSourceViewportSize) { }
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+	virtual void Release() override { delete this; }
+private:
+	FIntPoint PrePostSourceViewportSize;
+	void SetShader(const FRenderingCompositePassContext& Context);
 };
 
-struct FMobileEyeAdaptationSetupOutputs
+class FRCPassPostProcessAaES2 : public TRenderingCompositePassBase<2, 1>
 {
-	FRDGBufferSRVRef EyeAdaptationSetupSRV;
+public:
+	virtual void Process(FRenderingCompositePassContext& Context) override;
+	virtual FPooledRenderTargetDesc ComputeOutputDesc(EPassOutputId InPassOutputId) const override;
+	virtual void Release() override { delete this; }
+private:
+	void SetShader(const FRenderingCompositePassContext& Context);
 };
 
-FMobileEyeAdaptationSetupOutputs AddMobileEyeAdaptationSetupPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FEyeAdaptationParameters& EyeAdaptationParameters, const FMobileEyeAdaptationSetupInputs& Inputs);
-
-struct FMobileEyeAdaptationInputs
-{
-	FRDGBufferSRVRef EyeAdaptationSetupSRV;
-	bool bUseBasicEyeAdaptation;
-	bool bUseHistogramEyeAdaptation;
-};
-
-void AddMobileEyeAdaptationPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FEyeAdaptationParameters& EyeAdaptationParameters, const FMobileEyeAdaptationInputs& Inputs);
-
-/** Pixel shader to decode the input color and  copy pixels from src to dst only for mobile metal platform. */
-class FMSAADecodeAndCopyRectPS_Mobile : public FGlobalShader
-{
-	DECLARE_GLOBAL_SHADER(FMSAADecodeAndCopyRectPS_Mobile);
-	SHADER_USE_PARAMETER_STRUCT(FMSAADecodeAndCopyRectPS_Mobile, FGlobalShader);
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsMetalMobilePlatform(Parameters.Platform);
-	}
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, InputTexture)
-		SHADER_PARAMETER_SAMPLER(SamplerState, InputSampler)
-		RENDER_TARGET_BINDING_SLOTS()
-	END_SHADER_PARAMETER_STRUCT()
-};

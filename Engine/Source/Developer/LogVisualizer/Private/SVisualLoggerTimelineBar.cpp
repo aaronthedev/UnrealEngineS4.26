@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SVisualLoggerTimelineBar.h"
 #include "Layout/ArrangedChildren.h"
@@ -84,16 +84,6 @@ FReply SVisualLoggerTimelineBar::OnMouseMove(const FGeometry& MyGeometry, const 
 	}
 
 	return TimeSliderController->OnMouseMove(*this, MyGeometry, MouseEvent);
-}
-
-FReply SVisualLoggerTimelineBar::OnMouseWheel(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
-{
-	if (MouseEvent.IsLeftControlDown() || MouseEvent.IsLeftShiftDown())
-	{
-		return TimeSliderController->OnMouseWheel(*this, MyGeometry, MouseEvent);
-	}
-
-	return FReply::Unhandled();
 }
 
 FReply SVisualLoggerTimelineBar::OnMouseButtonDoubleClick(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)

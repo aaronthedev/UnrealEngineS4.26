@@ -1,9 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Interfaces/ITargetDevice.h"
+
 
 namespace PlatformInfo
 {
@@ -54,9 +55,6 @@ enum class ETargetPlatformFeatures
 	/** Mesh LOD streaming. */
 	MeshLODStreaming,
 
-	/** Landscape visual mesh LOD streaming. */
-	LandscapeMeshLODStreaming,
-
 	/** User credentials are required to use the device. */
 	UserCredentials,
 
@@ -92,17 +90,8 @@ enum class ETargetPlatformFeatures
 	
 	/* Can we use the virtual texture streaming system on this platform. */
 	VirtualTextureStreaming,
-
-	/* The platform makes use of extra cook-time file region metadata in its packaging process. */
-	CookFileRegionMetadata,
 };
 
-enum class EPlatformAuthentication
-{
-	Never,
-	Possible,
-	Always,
-};
 
 /**
  * Flags specifying what is needed to be able to complete and deploy a build.
@@ -158,18 +147,6 @@ public:
 	 * @return true if the device was added, false otherwise.
 	 */
 	virtual bool AddDevice( const FString& DeviceName, bool bDefault ) = 0;
-
-	/**
-	 * Add a target device.
-	 *
-	 * @param DeviceId The id of the device to add.
-	 * @param DeviceUserFriendlyName The user friendly name of the device to add.
-	 * @param Username The username for the device to add.
-	 * @param Password The password for the device to add.
-	 * @param bDefault Whether the added device should be the default.
-	 * @return true if the device was added, false otherwise.
-	 */
-	virtual bool AddDevice(const FString& DeviceId, const FString& DeviceUserFriendlyName, const FString& Username, const FString& Password, bool bDefault) = 0;
 
 	/**
 	* Returns the name of this platform
@@ -317,14 +294,7 @@ public:
 	*
 	* @return true if this platform can distribute shader compilation threads with XGE.
 	*/
-	virtual bool CanSupportRemoteShaderCompile() const = 0;
-
-	/**
-	* Provide platform specific file dependency patterns for SN-DBS shader compilation.
-	*
-	* @param OutDependencies Platform specific dependency file patterns are uniquely appended to this array.
-	*/
-	virtual void GetShaderCompilerDependencies(TArray<FString>& OutDependencies) const = 0;
+	virtual bool CanSupportXGEShaderCompile() const = 0;
 
 	/**
 	 * Checks whether the platform's SDK requirements are met so that we can do things like
@@ -349,13 +319,13 @@ public:
 	* @return true if this platform requires cooked data, false otherwise.
 	*/
 	virtual bool HasSecurePackageFormat() const = 0;
-	
+
 	/**
 	 * Checks whether this platform requires user credentials (typically server platforms).
 	 *
-	 * @return enum if this platform requires user credentials.
+	 * @return true if this platform requires user credentials, false otherwise.
 	 */
-	virtual EPlatformAuthentication RequiresUserCredentials() const = 0;
+	virtual bool RequiresUserCredentials() const = 0;
 
 	/**
 	 * Returns true if the platform supports the AutoSDK system
@@ -413,27 +383,11 @@ public:
 	virtual bool UsesDistanceFields() const = 0;
 
 	/**
-	* Gets whether the platform will use ray tracing.
-	*/
-	virtual bool UsesRayTracing() const = 0;
-
-	/**
-	* Gets whether the platform will use SH2 instead of SH3 for sky irradiance.
-	*/
-	virtual bool ForcesSimpleSkyDiffuse() const = 0;
-
-	/**
 	* Gets down sample mesh distance field divider.
 	*
 	* @return 1 if platform does not need to downsample mesh distance fields
 	*/
 	virtual float GetDownSampleMeshDistanceFieldDivider() const = 0;
-
-	/**
-	* Gets an integer representing the height fog mode for opaque materials on a platform.
-	* @return 0 if no override (i.e. use r.VertexFoggingForOpaque from project settings); 1 if pixel fog; 2 if vertex fog.
-	*/
-	virtual int32 GetHeightFogModeForOpaque() const = 0;
 
 #if WITH_ENGINE
 	/**
@@ -481,12 +435,6 @@ public:
 	virtual void GetAllTextureFormats( TArray<FName>& OutFormats ) const = 0;
 
 	/**
-	 * Platforms that support multiple texture compression variants 
-	 * might want to use a single specific variant for virtual textures to reduce fragmentation
-	 */
-	virtual FName FinalizeVirtualTextureLayerFormat(FName Format) const = 0;
-
-	/**
 	* Gets the texture format to use for a virtual texturing layer. In order to make a better guess
 	* some parameters are passed to this function.
 	*
@@ -514,6 +462,13 @@ public:
 	virtual FName GetWaveFormat( const class USoundWave* Wave ) const = 0;
 
 	/**
+	* Get the audio compression settings for this platform.
+	* 
+	* @return the compression overrides for this platform, or the default platform overrides.
+	*/
+	virtual const struct FPlatformAudioCookOverrides* GetAudioCompressionSettings() const = 0;
+
+	/**
 	* Gets all the formats which can be returned from GetWaveFormat
 	*
 	* @param output array of all the formats
@@ -538,14 +493,6 @@ public:
 	 * @return A static mesh LOD settings structure.
 	 */
 	virtual const class FStaticMeshLODSettings& GetStaticMeshLODSettings() const = 0;
-
-	/** 
-	 * Gets the name of the mesh builder module that is responsible for 
-	 * building static and skeletal mesh derived data for this platform.
-	 *
-	 * @return The name of a mesh builder module.
-	 */
-	virtual FName GetMeshBuilderModuleName() const = 0;
 #endif
 
 	/** 
@@ -563,7 +510,7 @@ public:
 
 	/**
 	 * Gets the variant display name of this platform.
-	 * eg. For Android: "ASTC", "ETC2", ...
+	 * eg. For Android: "ETC1", "ETC2", ...
 	 *
 	 * @return FText display name for this platform variant.
 	 */
@@ -619,16 +566,6 @@ public:
 	 * Returns custom DeviceManager widget creator for this platform
 	 */
 	virtual TSharedPtr<IDeviceManagerCustomPlatformWidgetCreator> GetCustomWidgetCreator() const = 0;
-
-	/**
-	 * Returns wheter or not this 16bit index buffer should be promoted to 32bit
-	 */
-	virtual bool ShouldExpandTo32Bit(const uint16* Indices, const int32 NumIndices) const = 0;
-
-	/**
-	 * Copy a file to the target
-	 */
-	virtual bool CopyFileToTarget(const FString& DeviceId, const FString& HostFilename, const FString& TargetFilename, const TMap<FString,FString>& CustomPlatformData) = 0;
 
 public:
 

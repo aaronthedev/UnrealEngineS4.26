@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -695,7 +695,7 @@ namespace EditorUtilities
 		FCopyOptions(const ECopyOptions::Type InFlags) : Flags(InFlags) {}
 
 		/** Check whether we can copy the specified property */
-		bool CanCopyProperty(FProperty& Property, UObject& Object) const
+		bool CanCopyProperty(UProperty& Property, UObject& Object) const
 		{
 			return !PropertyFilter || PropertyFilter(Property, Object);
 		}
@@ -704,11 +704,11 @@ namespace EditorUtilities
 		ECopyOptions::Type Flags;
 
 		/** User-specified custom property filter predicate */
-		TFunction<bool(FProperty&, UObject&)> PropertyFilter;
+		TFunction<bool(UProperty&, UObject&)> PropertyFilter;
 	};
 
 	/** Helper function for CopyActorProperties(). Copies a single property form a source object to a target object. */
-	UNREALED_API void CopySingleProperty(const UObject* const InSourceObject, UObject* const InTargetObject, FProperty* const InProperty);
+	UNREALED_API void CopySingleProperty(const UObject* const InSourceObject, UObject* const InTargetObject, UProperty* const InProperty);
 
 	/**
 	 * Copies properties from one actor to another.  Designed for propagating changes made to PIE actors back to their EditorWorld

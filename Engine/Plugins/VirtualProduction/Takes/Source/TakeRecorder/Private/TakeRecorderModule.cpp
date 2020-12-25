@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TakeRecorderModule.h"
 #include "TakeRecorderSettings.h"
@@ -30,7 +30,6 @@
 #include "LevelSequenceEditorModule.h"
 #include "SequencerSettings.h"
 #include "TakeMetaData.h"
-#include "MovieSceneTakeSettings.h"
 #include "FileHelpers.h"
 
 #include "IContentBrowserSingleton.h"
@@ -201,21 +200,18 @@ void FTakeRecorderModule::RegisterMenus()
 					[LevelSequence]
 					{
 						FLevelEditorModule& LevelEditorModule = FModuleManager::LoadModuleChecked<FLevelEditorModule>("LevelEditor");
-						TSharedPtr<SDockTab> DockTab = LevelEditorModule.GetLevelEditorTabManager()->TryInvokeTab(ITakeRecorderModule::TakeRecorderTabName);
-						if (DockTab.IsValid())
-						{
-							TSharedRef<STakeRecorderTabContent> TabContent = StaticCastSharedRef<STakeRecorderTabContent>(DockTab->GetContent());
+						TSharedRef<SDockTab> DockTab = LevelEditorModule.GetLevelEditorTabManager()->InvokeTab(ITakeRecorderModule::TakeRecorderTabName);
+						TSharedRef<STakeRecorderTabContent> TabContent = StaticCastSharedRef<STakeRecorderTabContent>(DockTab->GetContent());
 
-							// If this sequence has already been recorded, set it up for viewing, otherwise start recording from it.
-							UTakeMetaData* TakeMetaData = LevelSequence->FindMetaData<UTakeMetaData>();
-							if (!TakeMetaData || !TakeMetaData->Recorded())
-							{
-								TabContent->SetupForRecording(LevelSequence);
-							}
-							else
-							{
-								TabContent->SetupForViewing(LevelSequence);
-							}
+						// If this sequence has already been recorded, set it up for viewing, otherwise start recording from it.
+						UTakeMetaData* TakeMetaData = LevelSequence->FindMetaData<UTakeMetaData>();
+						if (!TakeMetaData || !TakeMetaData->Recorded())
+						{
+							TabContent->SetupForRecording(LevelSequence);
+						}
+						else
+						{
+							TabContent->SetupForViewing(LevelSequence);
 						}
 					}
 				)
@@ -228,11 +224,6 @@ void FTakeRecorderModule::RegisterMenus()
 FTakeRecorderModule::FTakeRecorderModule()
 	: SequencerSettings(nullptr)
 {
-}
-
-UTakePreset* FTakeRecorderModule::GetPendingTake() const
-{
-	return FindObject<UTakePreset>(nullptr, TEXT("/Temp/TakeRecorder/PendingTake.PendingTake"));
 }
 
 void FTakeRecorderModule::StartupModule()
@@ -381,8 +372,6 @@ void FTakeRecorderModule::UnregisterAssetTools()
 
 void FTakeRecorderModule::RegisterSettings()
 {
-	RegisterSettingsObject(GetMutableDefault<UMovieSceneTakeSettings>());
-
 	ISettingsModule& SettingsModule = FModuleManager::LoadModuleChecked<ISettingsModule>("Settings");
 
 	SettingsModule.RegisterSettings("Project", "Plugins", "Take Recorder",

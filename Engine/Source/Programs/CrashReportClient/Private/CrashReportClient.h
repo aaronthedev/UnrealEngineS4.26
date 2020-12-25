@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -130,9 +130,6 @@ public:
 	/** Returns true if user has elected to restart crashing process, and if it was a success */
 	bool GetIsSuccesfullRestart() const { return bIsSuccesfullRestart; }
 
-	/** Retruns true if user has elected to close without sending the report. */
-	bool WasClosedWithoutSending() const { return !bSendData; }
-
 	void AllowToBeContacted_OnCheckStateChanged( ECheckBoxState NewRadioState );
 	void SendLogFile_OnCheckStateChanged( ECheckBoxState NewRadioState );
 
@@ -196,9 +193,6 @@ private:
 
 	/** Is the uploading complete. */
 	bool bIsUploadComplete;
-
-	/** To know if the ticker was started.*/
-	FDelegateHandle TickHandle;
 
 };
 

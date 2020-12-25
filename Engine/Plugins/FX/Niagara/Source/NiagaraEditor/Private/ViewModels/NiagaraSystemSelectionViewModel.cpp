@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ViewModels/NiagaraSystemSelectionViewModel.h"
 #include "ViewModels/Stack/NiagaraStackEntry.h"
@@ -148,31 +148,10 @@ void  UNiagaraSystemSelectionViewModel::EmptySelection()
 	}
 }
 
-void UNiagaraSystemSelectionViewModel::RemoveEntriesFromSelection(const TArray<UNiagaraStackEntry*>& InEntriesToRemove)
-{
-	TArray<UNiagaraStackEntry*> EntriesToDeselect;
-	for (FSelectionEntry& SelectionEntry : SelectionEntries)
-	{
-		if (InEntriesToRemove.Contains(SelectionEntry.Entry.Get()))
-		{
-			EntriesToDeselect.Add(SelectionEntry.Entry.Get());
-		}
-	}
-
-	bool bSelectionChanged = EntriesToDeselect.Num() > 0;
-	for (UNiagaraStackEntry* EntryToDeselect : EntriesToDeselect)
-	{
-		RemoveEntryFromSelectionInternal(EntryToDeselect);
-	}
-
-	if (bSelectionChanged)
-	{
-		UpdateExternalSelectionState();
-	}
-}
-
 void UNiagaraSystemSelectionViewModel::RemoveEntryFromSelectionByDisplayedObject(const UObject* InObject)
 {
+	bool bSelectionChanged = false;
+
 	TArray<UNiagaraStackEntry*> EntriesToDeselect;
 	for (FSelectionEntry& SelectionEntry : SelectionEntries)
 	{
@@ -182,10 +161,10 @@ void UNiagaraSystemSelectionViewModel::RemoveEntryFromSelectionByDisplayedObject
 		}
 	}
 
-	bool bSelectionChanged = EntriesToDeselect.Num() > 0;
 	for (UNiagaraStackEntry* EntryToDeselect : EntriesToDeselect)
 	{
 		RemoveEntryFromSelectionInternal(EntryToDeselect);
+		bSelectionChanged = true;
 	}
 
 	if (bSelectionChanged)

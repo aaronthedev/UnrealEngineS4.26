@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 // Copyright 2016 Magic Leap, Inc. All Rights Reserved.
 
 #pragma once
@@ -12,7 +12,6 @@ struct CORE_API FLuminPlatformProcess : public FAndroidPlatformProcess
 	static const TCHAR* ComputerName();
 	static const TCHAR* UserSettingsDir();
 	static const TCHAR* ApplicationSettingsDir();
-	static const TCHAR* UserTempDir();
 	static const TCHAR* ExecutableName(bool bRemoveExtension=true);
 
 	static void LaunchURL(const TCHAR* URL, const TCHAR* Parms, FString* Error);

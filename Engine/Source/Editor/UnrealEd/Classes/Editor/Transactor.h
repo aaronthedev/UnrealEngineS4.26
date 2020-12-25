@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  * Base class for tracking transactions for undo/redo.
@@ -8,9 +8,7 @@
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
-#include "UObject/Package.h"
 #include "UObject/Object.h"
-#include "UObject/Package.h"
 #include "Serialization/ArchiveUObject.h"
 #include "Misc/ITransaction.h"
 #include "Serialization/ArchiveSerializedPropertyChain.h"
@@ -137,11 +135,9 @@ protected:
 
 			void SetObject(const UObject* InObject)
 			{
-				ObjectPackageName = InObject->GetPackage()->GetFName();
 				ObjectName = InObject->GetFName();
 				ObjectPathName = *InObject->GetPathName();
 				ObjectOuterPathName = InObject->GetOuter() ? FName(*InObject->GetOuter()->GetPathName()) : FName();
-				ObjectExternalPackageName = InObject->GetExternalPackage() ? InObject->GetExternalPackage()->GetFName() : FName();
 				ObjectClassPathName = FName(*InObject->GetClass()->GetPathName());
 				bIsPendingKill = InObject->IsPendingKill();
 				ObjectAnnotation = InObject->FindOrCreateTransactionAnnotation();
@@ -149,11 +145,9 @@ protected:
 
 			void Reset()
 			{
-				ObjectPackageName = FName();
 				ObjectName = FName();
 				ObjectPathName = FName();
 				ObjectOuterPathName = FName();
-				ObjectExternalPackageName = FName();
 				ObjectClassPathName = FName();
 				bIsPendingKill = false;
 				Data.Reset();
@@ -167,11 +161,9 @@ protected:
 
 			void Swap(FSerializedObject& Other)
 			{
-				Exchange(ObjectPackageName, Other.ObjectPackageName);
 				Exchange(ObjectName, Other.ObjectName);
 				Exchange(ObjectPathName, Other.ObjectPathName);
 				Exchange(ObjectOuterPathName, Other.ObjectOuterPathName);
-				Exchange(ObjectExternalPackageName, Other.ObjectExternalPackageName);
 				Exchange(ObjectClassPathName, Other.ObjectClassPathName);
 				Exchange(bIsPendingKill, Other.bIsPendingKill);
 				Exchange(Data, Other.Data);
@@ -183,16 +175,12 @@ protected:
 				Exchange(ObjectAnnotation, Other.ObjectAnnotation);
 			}
 
-			/** The package name of the object when it was serialized, can be dictated either by outer chain or external package */
-			FName ObjectPackageName;
 			/** The name of the object when it was serialized */
 			FName ObjectName;
 			/** The path name of the object when it was serialized */
 			FName ObjectPathName;
 			/** The outer path name of the object when it was serialized */
 			FName ObjectOuterPathName;
-			/** The external package name of the object when it was serialized, if any */
-			FName ObjectExternalPackageName;
 			/** The path name of the object's class. */
 			FName ObjectClassPathName;
 			/** The pending kill state of the object when it was serialized */
@@ -270,7 +258,7 @@ protected:
 		void Save( FTransaction* Owner );
 		void Load( FTransaction* Owner );
 		void Finalize( FTransaction* Owner, TSharedPtr<ITransactionObjectAnnotation>& OutFinalizedObjectAnnotation );
-		void Snapshot( FTransaction* Owner, TArrayView<const FProperty*> Properties );
+		void Snapshot( FTransaction* Owner, TArrayView<const UProperty*> Properties );
 		static void Diff( const FTransaction* Owner, const FSerializedObject& OldSerializedObect, const FSerializedObject& NewSerializedObject, FTransactionObjectDeltaChange& OutDeltaChange, const bool bFullDiff = true );
 
 		/** Used by GC to collect referenced objects. */
@@ -367,7 +355,7 @@ protected:
 			FWriter(
 				FSerializedObject& InSerializedObject,
 				bool bWantBinarySerialization,
-				TArrayView<const FProperty*> InPropertiesToSerialize = TArrayView<const FProperty*>()
+				TArrayView<const UProperty*> InPropertiesToSerialize = TArrayView<const UProperty*>()
 				)
 				: SerializedObject(InSerializedObject)
 				, PropertiesToSerialize(InPropertiesToSerialize)
@@ -395,7 +383,7 @@ protected:
 				Offset = InPos; 
 			}
 
-			virtual bool ShouldSkipProperty(const FProperty* InProperty) const override
+			virtual bool ShouldSkipProperty(const UProperty* InProperty) const override
 			{
 				return (PropertiesToSerialize.Num() > 0 && !PropertiesToSerialize.Contains(InProperty))
 					|| FArchiveUObject::ShouldSkipProperty(InProperty);
@@ -503,7 +491,7 @@ protected:
 				return (FArchive&)*this << ObjectIndex;
 			}
 			FSerializedObject& SerializedObject;
-			TArrayView<const FProperty*> PropertiesToSerialize;
+			TArrayView<const UProperty*> PropertiesToSerialize;
 			TMap<UObject*, int32> ObjectMap;
 			TMap<FName, int32> NameMap;
 			FCachedPropertyKey CachedSerializedTaggedPropertyKey;
@@ -590,7 +578,7 @@ public:
 	virtual void SaveArray( UObject* Object, FScriptArray* Array, int32 Index, int32 Count, int32 Oper, int32 ElementSize, STRUCT_DC DefaultConstructor, STRUCT_AR Serializer, STRUCT_DTOR Destructor ) override;
 	virtual void StoreUndo( UObject* Object, TUniquePtr<FChange> UndoChange ) override;
 	virtual void SetPrimaryObject(UObject* InObject) override;
-	virtual void SnapshotObject( UObject* InObject, TArrayView<const FProperty*> Properties ) override;
+	virtual void SnapshotObject( UObject* InObject, TArrayView<const UProperty*> Properties ) override;
 
 	/** BeginOperation should be called when a transaction or undo/redo starts */
 	virtual void BeginOperation() override;

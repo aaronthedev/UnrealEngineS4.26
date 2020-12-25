@@ -1,17 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "UObject/PropertyTag.h"
 #include "UObject/UnrealType.h"
-#include "UObject/UnrealTypePrivate.h"
 #include "UObject/LinkerLoad.h"
 #include "UObject/PropertyHelper.h"
 #include "Misc/ScopeExit.h"
 #include "Serialization/ArchiveUObjectFromStructuredArchive.h"
-
-// WARNING: This should always be the last include in any file that needs it (except .generated.h)
-#include "UObject/UndefineUPropertyMacros.h"
 
 namespace UE4SetProperty_Private
 {
@@ -24,7 +20,7 @@ namespace UE4SetProperty_Private
 	 */
 	bool AnyEqual(const FScriptSetHelper& SetHelper, int32 Index, int32 Num, const uint8* ElementToCompare, uint32 PortFlags)
 	{
-		FProperty* ElementProp = SetHelper.GetElementProperty();
+		UProperty* ElementProp = SetHelper.GetElementProperty();
 
 		for (; Num; --Num)
 		{
@@ -46,7 +42,7 @@ namespace UE4SetProperty_Private
 
 	bool RangesContainSameAmountsOfVal(const FScriptSetHelper& SetHelperA, int32 IndexA, const FScriptSetHelper& SetHelperB, int32 IndexB, int32 Num, const uint8* ElementToCompare, uint32 PortFlags)
 	{
-		FProperty* ElementProp = SetHelperA.GetElementProperty();
+		UProperty* ElementProp = SetHelperA.GetElementProperty();
 
 		// Ensure that both sets are the same type
 		check(ElementProp == SetHelperB.GetElementProperty());
@@ -90,7 +86,7 @@ namespace UE4SetProperty_Private
 
 	bool IsPermutation(const FScriptSetHelper& SetHelperA, const FScriptSetHelper& SetHelperB, uint32 PortFlags)
 	{
-		FProperty* ElementProp = SetHelperA.GetElementProperty();
+		UProperty* ElementProp = SetHelperA.GetElementProperty();
 
 		// Ensure that both maps are the same type
 		check(ElementProp == SetHelperB.GetElementProperty());
@@ -163,56 +159,22 @@ namespace UE4SetProperty_Private
 	}
 }
 
-IMPLEMENT_FIELD(FSetProperty)
-
-FSetProperty::FSetProperty(FFieldVariant InOwner, const FName& InName, EObjectFlags InObjectFlags)
-	: FSetProperty_Super(InOwner, InName, InObjectFlags)
+USetProperty::USetProperty(const FObjectInitializer& ObjectInitializer, ECppProperty, int32 InOffset, EPropertyFlags InFlags)
+: USetProperty_Super(ObjectInitializer, EC_CppProperty, InOffset, InFlags)
 {
 	// This is expected to be set post-construction by AddCppProperty
 	ElementProp = nullptr;
 }
 
-FSetProperty::FSetProperty(FFieldVariant InOwner, const FName& InName, EObjectFlags InObjectFlags, int32 InOffset, EPropertyFlags InFlags)
-: FSetProperty_Super(InOwner, InName, InObjectFlags, InOffset, InFlags)
-{
-	// This is expected to be set post-construction by AddCppProperty
-	ElementProp = nullptr;
-}
-
-#if WITH_EDITORONLY_DATA
-FSetProperty::FSetProperty(UField* InField)
-	: FSetProperty_Super(InField)
-{
-	USetProperty* SourceProperty = CastChecked<USetProperty>(InField);
-	SetLayout = SourceProperty->SetLayout;
-
-	ElementProp = CastField<FProperty>(SourceProperty->ElementProp->GetAssociatedFField());
-	if (!ElementProp)
-	{
-		ElementProp = CastField<FProperty>(CreateFromUField(SourceProperty->ElementProp));
-		SourceProperty->ElementProp->SetAssociatedFField(ElementProp);
-	}
-}
-#endif // WITH_EDITORONLY_DATA
-
-FSetProperty::~FSetProperty()
-{
-	delete ElementProp;
-	ElementProp = nullptr;
-}
-
-void FSetProperty::PostDuplicate(const FField& InField)
-{
-	const FSetProperty& Source = static_cast<const FSetProperty&>(InField);
-	ElementProp = CastFieldChecked<FProperty>(FField::Duplicate(Source.ElementProp, this));
-	SetLayout = Source.SetLayout;
-	Super::PostDuplicate(InField);
-}
-
-void FSetProperty::LinkInternal(FArchive& Ar)
+void USetProperty::LinkInternal(FArchive& Ar)
 {
 	check(ElementProp);
 
+	if (FLinkerLoad* MyLinker = GetLinker())
+	{
+		MyLinker->Preload(this);
+	}
+	Ar.Preload(ElementProp);
 	ElementProp->Link(Ar);
 
 	const int32 ElementPropSize = ElementProp->GetSize();
@@ -223,7 +185,7 @@ void FSetProperty::LinkInternal(FArchive& Ar)
 	Super::LinkInternal(Ar);
 }
 
-bool FSetProperty::Identical(const void* A, const void* B, uint32 PortFlags) const
+bool USetProperty::Identical(const void* A, const void* B, uint32 PortFlags) const
 {
 	checkSlow(ElementProp);
 
@@ -245,16 +207,13 @@ bool FSetProperty::Identical(const void* A, const void* B, uint32 PortFlags) con
 	return UE4SetProperty_Private::IsPermutation(SetHelperA, SetHelperB, PortFlags);
 }
 
-void FSetProperty::GetPreloadDependencies(TArray<UObject*>& OutDeps)
+void USetProperty::GetPreloadDependencies(TArray<UObject*>& OutDeps)
 {
 	Super::GetPreloadDependencies(OutDeps);
-	if (ElementProp)
-	{
-		ElementProp->GetPreloadDependencies(OutDeps);
-	}
+	OutDeps.Add(ElementProp);
 }
 
-void FSetProperty::SerializeItem(FStructuredArchive::FSlot Slot, void* Value, const void* Defaults) const
+void USetProperty::SerializeItem(FStructuredArchive::FSlot Slot, void* Value, const void* Defaults) const
 {
 	FArchive& UnderlyingArchive = Slot.GetUnderlyingArchive();
 	FStructuredArchive::FRecord Record = Slot.EnterRecord();
@@ -265,11 +224,11 @@ void FSetProperty::SerializeItem(FStructuredArchive::FSlot Slot, void* Value, co
 		Defaults = nullptr;
 	}
 
-	// Ar related calls in this function must be mirrored in FSetProperty::ConvertFromType
+	// Ar related calls in this function must be mirrored in USetProperty::ConvertFromType
 	checkSlow(ElementProp);
 
 	// Ensure that the element property has been loaded before calling SerializeItem() on it
-	//UnderlyingArchive.Preload(ElementProp);
+	UnderlyingArchive.Preload(ElementProp);
 
 	FScriptSetHelper SetHelper(this, Value);
 
@@ -439,36 +398,35 @@ void FSetProperty::SerializeItem(FStructuredArchive::FSlot Slot, void* Value, co
 	}
 }
 
-bool FSetProperty::NetSerializeItem( FArchive& Ar, UPackageMap* Map, void* Data, TArray<uint8>* MetaData ) const
+bool USetProperty::NetSerializeItem( FArchive& Ar, UPackageMap* Map, void* Data, TArray<uint8>* MetaData ) const
 {
 	UE_LOG( LogProperty, Error, TEXT( "Replicated TSets are not supported." ) );
 	return 1;
 }
 
-void FSetProperty::Serialize( FArchive& Ar )
+void USetProperty::Serialize( FArchive& Ar )
 {
 	Super::Serialize( Ar );
-
-	SerializeSingleField(Ar, ElementProp, this);
+	Ar << ElementProp;
 }
 
-void FSetProperty::AddReferencedObjects(FReferenceCollector& Collector)
+void USetProperty::AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector)
 {
-	Super::AddReferencedObjects(Collector);
-	if (ElementProp)
-	{
-		ElementProp->AddReferencedObjects(Collector);
-	}
+	USetProperty* This = CastChecked<USetProperty>(InThis);
+
+	Collector.AddReferencedObject(This->ElementProp, This);
+
+	Super::AddReferencedObjects(This, Collector);
 }
 
-FString FSetProperty::GetCPPMacroType(FString& ExtendedTypeText) const
+FString USetProperty::GetCPPMacroType(FString& ExtendedTypeText) const
 {
 	checkSlow(ElementProp);
 	ExtendedTypeText = FString::Printf(TEXT("%s"), *ElementProp->GetCPPType());
 	return TEXT("TSET");
 }
 
-FString FSetProperty::GetCPPTypeCustom(FString* ExtendedTypeText, uint32 CPPExportFlags, const FString& ElementTypeText, const FString& InElementExtendedTypeText) const
+FString USetProperty::GetCPPTypeCustom(FString* ExtendedTypeText, uint32 CPPExportFlags, const FString& ElementTypeText, const FString& InElementExtendedTypeText) const
 {
 	if (ExtendedTypeText)
 	{
@@ -486,7 +444,7 @@ FString FSetProperty::GetCPPTypeCustom(FString* ExtendedTypeText, uint32 CPPExpo
 	return TEXT("TSet");
 }
 
-FString FSetProperty::GetCPPType(FString* ExtendedTypeText, uint32 CPPExportFlags) const
+FString USetProperty::GetCPPType(FString* ExtendedTypeText, uint32 CPPExportFlags) const
 {
 	checkSlow(ElementProp);
 
@@ -501,13 +459,13 @@ FString FSetProperty::GetCPPType(FString* ExtendedTypeText, uint32 CPPExportFlag
 	return GetCPPTypeCustom(ExtendedTypeText, CPPExportFlags, ElementTypeText, ElementExtendedTypeText);
 }
 
-FString FSetProperty::GetCPPTypeForwardDeclaration() const
+FString USetProperty::GetCPPTypeForwardDeclaration() const
 {
 	checkSlow(ElementProp);
 	return ElementProp->GetCPPTypeForwardDeclaration();
 }
 
-void FSetProperty::ExportTextItem(FString& ValueStr, const void* PropertyValue, const void* DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope) const
+void USetProperty::ExportTextItem(FString& ValueStr, const void* PropertyValue, const void* DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope) const
 {
 	if (0 != (PortFlags & PPF_ExportCpp))
 	{
@@ -528,7 +486,7 @@ void FSetProperty::ExportTextItem(FString& ValueStr, const void* PropertyValue, 
 	const bool bExternalEditor = (0 != (PPF_ExternalEditor & PortFlags));
 
 	uint8* StructDefaults = nullptr;
-	if (FStructProperty* StructElementProp = CastField<FStructProperty>(ElementProp))
+	if (UStructProperty* StructElementProp = Cast<UStructProperty>(ElementProp))
 	{
 		checkSlow(StructElementProp->Struct);
 
@@ -620,7 +578,7 @@ void FSetProperty::ExportTextItem(FString& ValueStr, const void* PropertyValue, 
 	}
 }
 
-const TCHAR* FSetProperty::ImportText_Internal(const TCHAR* Buffer, void* Data, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText) const
+const TCHAR* USetProperty::ImportText_Internal(const TCHAR* Buffer, void* Data, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText) const
 {
 	checkSlow(ElementProp);
 
@@ -641,10 +599,12 @@ const TCHAR* FSetProperty::ImportText_Internal(const TCHAR* Buffer, void* Data, 
 	}
 
 	uint8* TempElementStorage = (uint8*)FMemory::Malloc(ElementProp->ElementSize);
+	ElementProp->InitializeValue(TempElementStorage);
 
 	bool bSuccess = false;
 	ON_SCOPE_EXIT
 	{
+		ElementProp->DestroyValue(TempElementStorage);
 		FMemory::Free(TempElementStorage);
 
 		// If we are returning because of an error, remove any already-added elements from the map before returning
@@ -657,12 +617,6 @@ const TCHAR* FSetProperty::ImportText_Internal(const TCHAR* Buffer, void* Data, 
 
 	for (;;)
 	{
-		ElementProp->InitializeValue(TempElementStorage);
-		ON_SCOPE_EXIT
-		{
-			ElementProp->DestroyValue(TempElementStorage);
-		};
-
 		// Read key into temporary storage
 		Buffer = ElementProp->ImportText(Buffer, TempElementStorage, PortFlags | PPF_Delimited, Parent, ErrorText);
 		if (!Buffer)
@@ -701,7 +655,7 @@ const TCHAR* FSetProperty::ImportText_Internal(const TCHAR* Buffer, void* Data, 
 	}
 }
 
-void FSetProperty::AddCppProperty(FProperty* Property)
+void USetProperty::AddCppProperty( UProperty* Property )
 {
 	check(!ElementProp);
 	check(Property);
@@ -710,7 +664,7 @@ void FSetProperty::AddCppProperty(FProperty* Property)
 	ElementProp = Property;
 }
 
-void FSetProperty::CopyValuesInternal(void* Dest, void const* Src, int32 Count) const
+void USetProperty::CopyValuesInternal(void* Dest, void const* Src, int32 Count) const
 {
 	check(Count == 1);
 
@@ -743,13 +697,13 @@ void FSetProperty::CopyValuesInternal(void* Dest, void const* Src, int32 Count) 
 	DestSetHelper.Rehash();
 }
 
-void FSetProperty::ClearValueInternal(void* Data) const
+void USetProperty::ClearValueInternal(void* Data) const
 {
 	FScriptSetHelper SetHelper(this, Data);
 	SetHelper.EmptyElements();
 }
 
-void FSetProperty::DestroyValueInternal(void* Data) const
+void USetProperty::DestroyValueInternal(void* Data) const
 {
 	FScriptSetHelper SetHelper(this, Data);
 	SetHelper.EmptyElements();
@@ -758,7 +712,7 @@ void FSetProperty::DestroyValueInternal(void* Data) const
 	((FScriptSet*)Data)->~FScriptSet();
 }
 
-bool FSetProperty::PassCPPArgsByRef() const
+bool USetProperty::PassCPPArgsByRef() const
 {
 	return true;
 }
@@ -771,7 +725,7 @@ bool FSetProperty::PassCPPArgsByRef() const
  * @param	Owner				the object that contains this property's data
  * @param	InstanceGraph		contains the mappings of instanced objects and components to their templates
  */
-void FSetProperty::InstanceSubobjects(void* Data, void const* DefaultData, UObject* InOwner, FObjectInstancingGraph* InstanceGraph)
+void USetProperty::InstanceSubobjects(void* Data, void const* DefaultData, UObject* Owner, FObjectInstancingGraph* InstanceGraph)
 {
 	if (!Data)
 	{
@@ -790,6 +744,7 @@ void FSetProperty::InstanceSubobjects(void* Data, void const* DefaultData, UObje
 	if (DefaultData)
 	{
 		FScriptSetHelper DefaultSetHelper(this, DefaultData);
+		const int32 DefaultNum = DefaultSetHelper.Num();
 
 		for (int32 Index = 0, Num = SetHelper.Num(); Num; ++Index)
 		{
@@ -798,7 +753,7 @@ void FSetProperty::InstanceSubobjects(void* Data, void const* DefaultData, UObje
 				uint8* ElementPtr        = SetHelper.GetElementPtr(Index);
 				uint8* DefaultElementPtr = DefaultSetHelper.FindElementPtr(ElementPtr, Index);
 
-				ElementProp->InstanceSubobjects(ElementPtr, DefaultElementPtr, InOwner, InstanceGraph);
+				ElementProp->InstanceSubobjects(ElementPtr, DefaultElementPtr, Owner, InstanceGraph);
 
 				--Num;
 			}
@@ -812,7 +767,7 @@ void FSetProperty::InstanceSubobjects(void* Data, void const* DefaultData, UObje
 			{
 				uint8* ElementPtr = SetHelper.GetElementPtr(Index);
 
-				ElementProp->InstanceSubobjects(ElementPtr, nullptr, InOwner, InstanceGraph);
+				ElementProp->InstanceSubobjects(ElementPtr, nullptr, Owner, InstanceGraph);
 
 				--Num;
 			}
@@ -820,20 +775,23 @@ void FSetProperty::InstanceSubobjects(void* Data, void const* DefaultData, UObje
 	}
 }
 
-bool FSetProperty::SameType(const FProperty* Other) const
+bool USetProperty::SameType(const UProperty* Other) const
 {
-	FSetProperty* SetProp = (FSetProperty*)Other;
+	USetProperty* SetProp = (USetProperty*)Other;
 	return Super::SameType(Other) && ElementProp && ElementProp->SameType(SetProp->ElementProp);
 }
 
-EConvertFromTypeResult FSetProperty::ConvertFromType(const FPropertyTag& Tag, FStructuredArchive::FSlot Slot, uint8* Data, UStruct* DefaultsStruct)
+EConvertFromTypeResult USetProperty::ConvertFromType(const FPropertyTag& Tag, FStructuredArchive::FSlot Slot, uint8* Data, UStruct* DefaultsStruct)
 {
 	FArchive& UnderlyingArchive = Slot.GetUnderlyingArchive();
 
-	// Ar related calls in this function must be mirrored in FSetProperty::ConvertFromType
+	// Ar related calls in this function must be mirrored in USetProperty::ConvertFromType
 	checkSlow(ElementProp);
 
-	// Ar related calls in this function must be mirrored in FSetProperty::SerializeItem
+	// Ensure that the element property has been loaded before calling SerializeItem() on it
+	UnderlyingArchive.Preload(ElementProp);
+
+	// Ar related calls in this function must be mirrored in USetProperty::SerializeItem
 	if (Tag.Type == NAME_SetProperty)
 	{
 		if (Tag.InnerType != NAME_None && Tag.InnerType != ElementProp->GetID())
@@ -956,13 +914,13 @@ EConvertFromTypeResult FSetProperty::ConvertFromType(const FPropertyTag& Tag, FS
 			return bConversionSucceeded ? EConvertFromTypeResult::Converted : EConvertFromTypeResult::CannotConvert;
 		}
 
-		if(FStructProperty* ElementPropAsStruct = CastField<FStructProperty>(ElementProp))
+		if(UStructProperty* ElementPropAsStruct = Cast<UStructProperty>(ElementProp))
 		{
 			if(!ElementPropAsStruct->Struct || (ElementPropAsStruct->Struct->GetCppStructOps() && !ElementPropAsStruct->Struct->GetCppStructOps()->HasGetTypeHash()) )
 			{
 				// If the type we contain is no longer hashable, we're going to drop the saved data here. This can
 				// happen if the native GetTypeHash function is removed.
-				ensureMsgf(false, TEXT("FSetProperty %s with tag %s has an unhashable type %s and will lose its saved data"), *GetName(), *Tag.Name.ToString(), *ElementProp->GetID().ToString());
+				ensureMsgf(false, TEXT("USetProperty %s with tag %s has an unhashable type %s and will lose its saved data"), *GetName(), *Tag.Name.ToString(), *ElementProp->GetID().ToString());
 
 				FScriptSetHelper ScriptSetHelper(this, ContainerPtrToValuePtr<void>(Data));
 				ScriptSetHelper.EmptyElements();
@@ -975,6 +933,17 @@ EConvertFromTypeResult FSetProperty::ConvertFromType(const FPropertyTag& Tag, FS
 	return EConvertFromTypeResult::UseSerializeItem;
 }
 
+
+IMPLEMENT_CORE_INTRINSIC_CLASS(USetProperty, UProperty,
+	{
+		Class->EmitObjectReference(STRUCT_OFFSET(USetProperty, ElementProp), TEXT("ElementProp"));
+
+		// Ensure that TArray and FScriptMap are interchangeable, as FScriptMap will be used to access a native array property
+		// from script that is declared as a TArray in C++.
+		static_assert(sizeof(FScriptSet) == sizeof(TMap<uint32, uint8>), "FScriptSet and TSet<uint32, uint8> must be interchangable.");
+	}
+);
+
 void FScriptSetHelper::Rehash()
 {
 	// Moved out-of-line to maybe fix a weird link error
@@ -982,23 +951,3 @@ void FScriptSetHelper::Rehash()
 		return ElementProp->GetValueTypeHash(Src);
 	});
 }
-
-FField* FSetProperty::GetInnerFieldByName(const FName& InName)
-{
-	if (ElementProp && ElementProp->GetFName() == InName)
-	{
-		return ElementProp;
-	}
-	return nullptr;
-}
-
-void FSetProperty::GetInnerFields(TArray<FField*>& OutFields)
-{
-	if (ElementProp)
-	{
-		OutFields.Add(ElementProp);
-		ElementProp->GetInnerFields(OutFields);
-	}
-}
-
-#include "UObject/DefineUPropertyMacros.h"

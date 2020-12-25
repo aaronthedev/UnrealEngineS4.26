@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,7 +10,6 @@
 #include "UObject/Linker.h"
 
 class FLinkerPlaceholderBase;
-class IPakFile;
 class ULinkerPlaceholderExportObject;
 struct FScopedSlowTask;
 struct FUntypedBulkData;
@@ -136,15 +135,7 @@ public:
 		return bIsAsyncLoader ? (FAsyncArchive*)Loader : nullptr;
 	}
 
-	FORCEINLINE const FLinkerInstancingContext& GetInstancingContext() const
-	{
-		return InstancingContext;
-	}
-
 private:
-
-	/** True if the linker is currently deleting loader */
-	bool					bIsDestroyingLoader;
 
 	/** Structured archive interface. Wraps underlying loader to provide contextual metadata to the values being written
 	 *  which ultimately allows text based serialization of the data
@@ -157,16 +148,9 @@ private:
 	/** The archive that actually reads the raw data from disk.																*/
 	FArchive*				Loader;
 
-	/** The linker instancing context. */
-	FLinkerInstancingContext InstancingContext;
-
-	// Helper function to access the InstancingContext IsInstanced, 
-	// returns false if WITH_EDITOR isn't defined.
-	bool IsContextInstanced() const;
-
-	// Helper function to access the InstancingContext, 
-	// return ObjectName directly  if WITH_EDITOR isn't defined.
-	FName InstancingContextRemap(FName ObjectName) const;
+	int32* LocalImportIndices = nullptr;
+	UObject** GlobalImportObjects = nullptr;
+	const TArray<FNameEntryId>* ActiveNameMap = &NameMap;
 
 protected:
 
@@ -189,15 +173,14 @@ public:
 		return Loader != nullptr;
 	}
 
-	void DestroyLoader();
-
-	FORCEINLINE bool IsDestroyingLoader() const
+	void DestroyLoader()
 	{
-		return bIsDestroyingLoader;
+		delete Loader;
+		Loader = nullptr;
 	}
 
 	/** The async package associated with this linker */
-	struct FAsyncPackage* AsyncRoot;
+	class FGCObject* AsyncRoot;
 #if WITH_EDITOR
 	/** Bulk data that does not need to be loaded when the linker is loaded.												*/
 	TArray<FUntypedBulkData*> BulkDataLoaders;
@@ -269,8 +252,6 @@ public:
 	 */
 	COREUOBJECT_API static void OnNewFileAdded(const FString& Filename);
 
-	COREUOBJECT_API static void OnPakFileMounted(const IPakFile& PakFile);
-
 	/** 
 	 * Checks if the linker has any objects in the export table that require loading.
 	 */
@@ -298,35 +279,34 @@ private:
 
 
 	/** Whether we already serialized the package file summary.																*/
-	bool					bHasSerializedPackageFileSummary:1;
+	bool					bHasSerializedPackageFileSummary;
 	/** Whether we have already reconstructed the import/export tables for a text asset */
-	bool					bHasReconstructedImportAndExportMap:1;
-	/** Whether we already serialized preload dependencies.																	*/
-	bool					bHasSerializedPreloadDependencies:1;
+	bool					bHasReconstructedImportAndExportMap;
+	/** Whether we already serialized preload dependencies.																*/
+	bool					bHasSerializedPreloadDependencies;
 	/** Whether we already fixed up import map.																				*/
-	bool					bHasFixedUpImportMap:1;
-	/** Whether we already fixed up import map.																				*/
-	bool					bHasPopulatedInstancingContext:1;
-	/** Used for ActiveClassRedirects functionality */
-	bool					bFixupExportMapDone:1;
+	bool					bHasFixedUpImportMap;
 	/** Whether we already matched up existing exports.																		*/
-	bool					bHasFoundExistingExports:1;
+	bool					bHasFoundExistingExports;
 	/** Whether we are already fully initialized.																			*/
-	bool					bHasFinishedInitialization:1;
+	bool					bHasFinishedInitialization;
 	/** Whether we are gathering dependencies, can be used to streamline VerifyImports, etc									*/
-	bool					bIsGatheringDependencies:1;
+	bool					bIsGatheringDependencies;
 	/** Whether time limit is/ has been exceeded in current/ last tick.														*/
-	bool					bTimeLimitExceeded:1;
+	bool					bTimeLimitExceeded;
 	/** Whether to use a time limit for async linker creation.																*/
-	bool					bUseTimeLimit:1;
+	bool					bUseTimeLimit;
 	/** Whether to use the full time limit, even if we're blocked on I/O													*/
-	bool					bUseFullTimeLimit:1;
+	bool					bUseFullTimeLimit;
 	/** Call count of IsTimeLimitExceeded.																					*/
 	int32					IsTimeLimitExceededCallCount;
 	/** Current time limit to use if bUseTimeLimit is true.																	*/
 	float					TimeLimit;
 	/** Time at begin of Tick function. Used for time limit determination.													*/
 	double					TickStartTime;
+
+	/** Used for ActiveClassRedirects functionality */
+	bool					bFixupExportMapDone;
 
 #if WITH_EDITOR
 	/** Check to avoid multiple export duplicate fixups in case we don't save asset. */
@@ -470,15 +450,14 @@ public:
 	/**
 	 * Creates and returns a FLinkerLoad object.
 	 *
-	 * @param	Parent				Parent object to load into, can be NULL (most likely case)
-	 * @param	Filename			Name of file on disk to load
-	 * @param	LoadFlags			Load flags determining behavior
-	 * @param	InLoader			Loader archive override
-	 * @param	InstancingContext	Context to remap package name when loading a package on disk into a package with a different name
+	 * @param	Parent		Parent object to load into, can be NULL (most likely case)
+	 * @param	Filename	Name of file on disk to load
+	 * @param	LoadFlags	Load flags determining behavior
+	 * @param InLoader	Loader archive override
 	 *
 	 * @return	new FLinkerLoad object for Parent/ Filename
 	 */
-	COREUOBJECT_API static FLinkerLoad* CreateLinker(FUObjectSerializeContext* LoadContext, UPackage* Parent, const TCHAR* Filename, uint32 LoadFlags, FArchive* InLoader = nullptr, const FLinkerInstancingContext* InstancingContext = nullptr);
+	COREUOBJECT_API static FLinkerLoad* CreateLinker(FUObjectSerializeContext* LoadContext, UPackage* Parent, const TCHAR* Filename, uint32 LoadFlags, FArchive* InLoader = nullptr);
 
 	void Verify();
 
@@ -576,15 +555,9 @@ public:
 	 * them.
 	 *
 	 * @param ExportIndex	The index of the export to hunt down
-	 * @return The object that was found, or null if it wasn't found
+	 * @return The object that was found, or NULL if it wasn't found
 	 */
 	UObject* FindExistingExport(int32 ExportIndex);
-
-	/**
-	 * @param ImportIndex	The index of the import to hunt down
-	 * @return The object that was found, or null if it wasn't found
-	 */
-	UObject* FindExistingImport(int32 ImportIndex);
 
 	/**
 	 * Builds a string containing the full path for a resource in the export table.
@@ -651,15 +624,6 @@ public:
 
 	/** Used by Matinee to fixup component renaming */
 	COREUOBJECT_API static FName FindSubobjectRedirectName(const FName& Name, UClass* Class);
-
-#if WITH_EDITOR
-	COREUOBJECT_API static bool GetPreloadingEnabled();
-	COREUOBJECT_API static void SetPreloadingEnabled(bool bEnabled);
-	COREUOBJECT_API static bool TryGetPreloadedLoader(FArchive*& OutLoader, const TCHAR* FileName);
-	private:
-		static bool bPreloadingEnabled;
-	public:
-#endif
 
 	/** 
 	 * Adds external read dependency 
@@ -859,10 +823,10 @@ private:
 		int32 Number = 0;
 		Ar << Number;
 
-		if (NameMap.IsValidIndex(NameIndex))
+		if (ActiveNameMap->IsValidIndex(NameIndex))
 		{
 			// if the name wasn't loaded (because it wasn't valid in this context)
-			FNameEntryId MappedName = NameMap[NameIndex];
+			FNameEntryId MappedName = (*ActiveNameMap)[NameIndex];
 
 			// simply create the name from the NameMap's name and the serialized instance number
 			Name = FName::CreateFromDisplayId(MappedName, Number);
@@ -871,7 +835,8 @@ private:
 		{
 			Name = FName();
 			BadNameIndexError(NameIndex);
-			SetCriticalError();
+			ArIsError = true;
+			ArIsCriticalError = true;
 		}
 
 		return *this;
@@ -897,14 +862,13 @@ private:
 	 * Creates a FLinkerLoad object for async creation. Tick has to be called manually till it returns
 	 * true in which case the returned linker object has finished the async creation process.
 	 *
-	 * @param	Parent				Parent object to load into, can be NULL (most likely case)
-	 * @param	Filename			Name of file on disk to load
-	 * @param	LoadFlags			Load flags determining behavior
-	 * @param	InstancingContext	Context to remap package name when loading a package on disk into a package with a different name
+	 * @param	Parent		Parent object to load into, can be NULL (most likely case)
+	 * @param	Filename	Name of file on disk to load
+	 * @param	LoadFlags	Load flags determining behavior
 	 *
 	 * @return	new FLinkerLoad object for Parent/ Filename
 	 */
-	COREUOBJECT_API static FLinkerLoad* CreateLinkerAsync(FUObjectSerializeContext* LoadContext, UPackage* Parent, const TCHAR* Filename, uint32 LoadFlags, const FLinkerInstancingContext* InstancingContext
+	COREUOBJECT_API static FLinkerLoad* CreateLinkerAsync(FUObjectSerializeContext* LoadContext, UPackage* Parent, const TCHAR* Filename, uint32 LoadFlags
 		, TFunction<void()>&& InSummaryReadyCallback
 	);
 
@@ -924,12 +888,11 @@ protected: // Daniel L: Made this protected so I can override the constructor an
 	/**
 	 * Private constructor, passing arguments through from CreateLinker.
 	 *
-	 * @param	Parent				Parent object to load into, can be NULL (most likely case)
-	 * @param	Filename			Name of file on disk to load
-	 * @param	LoadFlags			Load flags determining behavior
-	 * @param	InstancingContext	The instancing context for remapping imports if needed.
+	 * @param	Parent		Parent object to load into, can be NULL (most likely case)
+	 * @param	Filename	Name of file on disk to load
+	 * @param	LoadFlags	Load flags determining behavior
 	 */
-	FLinkerLoad(UPackage* InParent, const TCHAR* InFilename, uint32 InLoadFlags, FLinkerInstancingContext InstancingContext = FLinkerInstancingContext());
+	FLinkerLoad(UPackage* InParent, const TCHAR* InFilename, uint32 InLoadFlags);
 private:
 	/**
 	 * Returns whether the time limit allotted has been exceeded, if enabled.
@@ -949,14 +912,9 @@ protected: // Daniel L: Made this protected so I can override the constructor an
 	);
 private:
 	/**
-	 * Start the process of serializing the package file summary if needed
+	 * Serializes the package file summary.
 	 */
 	ELinkerStatus SerializePackageFileSummary();
-
-	/**
-	 * Does the actual serialization of  the package file summary.
-	 */
-	ELinkerStatus SerializePackageFileSummaryInternal();
 
 	/**
 	 * Updates the linker, loader and root package with data from the package file summary.
@@ -977,11 +935,6 @@ private:
 	 * Fixes up the import map, performing remapping for backward compatibility and such.
 	 */
 	ELinkerStatus FixupImportMap();
-
-	/**
-	 * Generate remapping for the instancing context if this is an instanced package.
-	 */
-	ELinkerStatus PopulateInstancingContext();
 
 	/**
 	 * Serializes the export map.
@@ -1200,7 +1153,7 @@ private:
 	/** Finds import, tries to fall back to dynamic class if the object could not be found */
 	UObject* FindImport(UClass* ImportClass, UObject* ImportOuter, const TCHAR* Name);
 	/** Finds import, tries to fall back to dynamic class if the object could not be found */
-	static UObject* FindImportFast(UClass* ImportClass, UObject* ImportOuter, FName Name, bool bAnyPackage = false);
+	static UObject* FindImportFast(UClass* ImportClass, UObject* ImportOuter, FName Name);
 
 	/** Fills all necessary information for constructing dynamic type package linker */
 	void CreateDynamicTypeLoader();
@@ -1230,7 +1183,7 @@ private:
 
 	/** 
 	 * Internal list to track imports that were deferred, but don't belong to 
-	 * the ImportMap (thinks ones loaded through config files via FProperty::ImportText).
+	 * the ImportMap (thinks ones loaded through config files via UProperty::ImportText).
 	 */
 	TMap<FName, FLinkerPlaceholderBase*> ImportPlaceholders;
 #endif // USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING

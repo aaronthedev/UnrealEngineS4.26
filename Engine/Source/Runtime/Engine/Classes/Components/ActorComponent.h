@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -22,31 +22,6 @@ class AActor;
 class UActorComponent;
 class UAssetUserData;
 class ULevel;
-class UWorld;
-class UPrimitiveComponent;
-
-
-ENGINE_API extern int32 GEnableDeferredPhysicsCreation;
-
-class FRegisterComponentContext
-{
-public:
-	FRegisterComponentContext(UWorld* InWorld)
-		: World(InWorld)
-	{}
-
-	void AddPrimitive(UPrimitiveComponent* PrimitiveComponent)
-	{
-		checkSlow(!AddPrimitiveBatches.Contains(PrimitiveComponent));
-		AddPrimitiveBatches.Add(PrimitiveComponent);
-	}
-
-	void Process();
-
-private:
-	UWorld* World;
-	TArray<UPrimitiveComponent*> AddPrimitiveBatches;
-};
 
 #if WITH_EDITOR
 class SWidget;
@@ -145,10 +120,6 @@ private:
 	/** Used for fast removal of end of frame update */
 	int32 MarkedForEndOfFrameUpdateArrayIndex;
 
-	/** Populated when the component is created and tracks the often used order of creation on a per archetype/per actor basis */
-	UPROPERTY()
-	int32 UCSSerializationIndex;
-
 protected:
 	/** 
 	 *  Indicates if this ActorComponent is currently registered with a scene. 
@@ -161,15 +132,16 @@ protected:
 	/** If the physics state is currently created for this component */
 	uint8 bPhysicsStateCreated:1;
 
+	/** Is this component currently replicating? Should the network code consider it for replication? Owning Actor must be replicating first! */
+	UE_DEPRECATED(4.24, "This member will be made private. Please use GetIsReplicated, SetIsReplicated, or SetIsReplicatedByDefault for constructors.")
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Replicated, Category=ComponentReplication,meta=(DisplayName = "Component Replicates"))
+	uint8 bReplicates:1;
+
 	/** Is this component safe to ID over the network by name?  */
 	UPROPERTY()
 	uint8 bNetAddressable:1;
 
 private:
-	/** Is this component currently replicating? Should the network code consider it for replication? Owning Actor must be replicating first! */
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Replicated, Category=ComponentReplication,meta=(DisplayName = "Component Replicates", AllowPrivateAccess = "true"))
-	uint8 bReplicates:1;
-
 	/** Is this component in need of its whole state being sent to the renderer? */
 	uint8 bRenderStateDirty:1;
 
@@ -217,12 +189,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Activation)
 	uint8 bAutoActivate:1;
 
-private:
 	/** Whether the component is currently active. */
+	UE_DEPRECATED(4.24, "This member will be made private. Please use IsActive or SetActive.")
 	UPROPERTY(transient, ReplicatedUsing=OnRep_IsActive)
 	uint8 bIsActive:1;
-
-public:
 
 	/** True if this component can be modified when it was inherited from a parent actor class */
 	UPROPERTY(EditDefaultsOnly, Category="Variable")
@@ -249,10 +219,6 @@ private:
 	/** True if this component is only used for visualization, usually a sprite or text */
 	UPROPERTY()
 	uint8 bIsVisualizationComponent : 1;
-
-	/** Marks this component pending kill once PostLoad occurs. Used to clean up old native default subobjects that were removed from code */
-	UPROPERTY()
-	uint8 bNeedsUCSSerializationIndexEvaluted : 1;
 #endif
 
 private:
@@ -285,48 +251,23 @@ private:
 	/** Tracks whether the component has been added to one of the world's end of frame update lists */
 	uint8 MarkedForEndOfFrameUpdateState:2;
 
-	/** Tracks whether the component has been added to the world's pre end of frame sync list */
-	uint8 bMarkedForPreEndOfFrameSync : 1;
-
 public:
 	/** Describes how a component instance will be created */
 	UPROPERTY()
 	EComponentCreationMethod CreationMethod;
 
 public:
-	/** Returns the UCS serialization index. This can be an expensive operation in the editor if you are dealing with a component that was saved before this information was present and it needs to be calculated. */
-	int32 GetUCSSerializationIndex() const
-	{
-#if WITH_EDITORONLY_DATA
-		if (bNeedsUCSSerializationIndexEvaluted)
-		{
-			const_cast<UActorComponent*>(this)->DetermineUCSSerializationIndexForLegacyComponent();
-		}
-#endif
-
-		return UCSSerializationIndex;
-	}
-
-private:
-	/** Calculate the UCS serialization index for a component that was saved before we started saving this data */
-	void DetermineUCSSerializationIndexForLegacyComponent();
-
-public:
-
 	/** Tracks whether the component has been added to one of the world's end of frame update lists */
 	uint32 GetMarkedForEndOfFrameUpdateState() const { return MarkedForEndOfFrameUpdateState; }
-
-	/** Tracks whether the component has been added to one of the world's end of frame update lists */
-	uint32 GetMarkedForPreEndOfFrameSync() const { return bMarkedForPreEndOfFrameSync; }
 
 	/** Initializes the list of properties that are modified by the UserConstructionScript */
 	void DetermineUCSModifiedProperties();
 
 	/** Returns the list of properties that are modified by the UserConstructionScript */
-	void GetUCSModifiedProperties(TSet<const FProperty*>& ModifiedProperties) const;
+	void GetUCSModifiedProperties(TSet<const UProperty*>& ModifiedProperties) const;
 
 	/** Removes specified properties from the list of UCS-modified properties */
-	void RemoveUCSModifiedProperties(const TArray<FProperty*>& Properties);
+	void RemoveUCSModifiedProperties(const TArray<UProperty*>& Properties);
 
 	/** True if this component can be modified when it was inherited from a parent actor class */
 	bool IsEditableWhenInherited() const;
@@ -363,13 +304,6 @@ public:
 	/** Follow the Outer chain to get the  AActor  that 'Owns' this component */
 	UFUNCTION(BlueprintCallable, Category="Components", meta=(Keywords = "Actor Owning Parent"))
 	AActor* GetOwner() const;
-
-	/** Templated version of GetOwner(), will return nullptr if cast fails */
-	template< class T >
-	T* GetOwner() const
-	{
-		return Cast<T>(GetOwner());
-	}
 
 	/** Getter for the cached world pointer, will return null if the component is not actually spawned in a level */
 	virtual UWorld* GetWorld() const override final { return (WorldPrivate ? WorldPrivate : GetWorld_Uncached()); }
@@ -421,12 +355,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Components|Activation", meta=(UnsafeDuringActorConstruction="true"))
 	virtual void ToggleActive();
 
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	/**
 	 * Returns whether the component is active or not
 	 * @return - The active state of the component.
 	 */
 	UFUNCTION(BlueprintCallable, Category="Components|Activation", meta=(UnsafeDuringActorConstruction="true"))
 	bool IsActive() const { return bIsActive; }
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	/**
 	 * Sets whether the component should be auto activate or not. Only safe during construction scripts.
@@ -440,7 +376,7 @@ public:
 	void SetTickableWhenPaused(bool bTickableWhenPaused);
 
 	/** Create any physics engine information for this component */
-	void CreatePhysicsState(bool bAllowDeferral = false);
+	void CreatePhysicsState();
 
 	/** Shut down any physics engine structure for this component */
 	void DestroyPhysicsState();
@@ -455,11 +391,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Components")
 	void SetIsReplicated(bool ShouldReplicate);
 
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	/** Returns whether replication is enabled or not. */
 	FORCEINLINE bool GetIsReplicated() const
 	{
 		return bReplicates;
 	}
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	/** Allows a component to replicate other subobject on the actor  */
 	virtual bool ReplicateSubobjects(class UActorChannel *Channel, class FOutBunch *Bunch, FReplicationFlags *RepFlags);
@@ -525,9 +463,6 @@ public:
 	/** Allows components to handle an EOF update happening mid tick. Can be used to block on in-flight async tasks etc. This should ensure the the component's tick is complete so that it's render update is correct. */
 	virtual void OnEndOfFrameUpdateDuringTick() {}
 
-	/** Allows components to wait on outstanding tasks prior to sending EOF update data. Executed on Game Thread and may await tasks. */
-	virtual void OnPreEndOfFrameSync() {}
-
 private:
 	/** Cached pointer to owning actor */
 	mutable AActor* OwnerPrivate;
@@ -553,7 +488,7 @@ private:
 	void ExecuteUnregisterEvents();
 
 	/** Calls OnRegister, CreateRenderState_Concurrent and OnCreatePhysicsState. */
-	void ExecuteRegisterEvents(FRegisterComponentContext* Context = nullptr);
+	void ExecuteRegisterEvents();
 
 	/** Utility function for each of the PostEditChange variations to call for the same behavior */
 	void ConsolidatedPostEditChange(const FPropertyChangedEvent& PropertyChangedEvent);
@@ -579,7 +514,7 @@ protected:
 	 * Used to create any rendering thread information for this component
 	 * @warning This is called concurrently on multiple threads (but never the same component concurrently)
 	 */
-	virtual void CreateRenderState_Concurrent(FRegisterComponentContext* Context);
+	virtual void CreateRenderState_Concurrent();
 
 	/** 
 	 * Called to send a transform update for this component to the rendering thread
@@ -707,13 +642,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Utilities")
 	void SetComponentTickInterval(float TickInterval);
 
-	/**
-	* Sets the tick interval for this component's primary tick function. Does not enable the tick interval. Takes effect imediately.
-	* @param TickInterval	The duration between ticks for this component's primary tick function
-	*/
-	UFUNCTION(BlueprintCallable, Category = "Utilities")
-	void SetComponentTickIntervalAndCooldown(float TickInterval);
-
 	/** Returns the tick interval for this component's primary tick function, which is the frequency in seconds at which it will be executed */
 	UFUNCTION(BlueprintCallable, Category="Utilities")
 	float GetComponentTickInterval() const;
@@ -722,7 +650,7 @@ public:
 	 * Registers a component with a specific world, which creates any visual/physical state
 	 * @param InWorld - The world to register the component with.
 	 */
-	void RegisterComponentWithWorld(UWorld* InWorld, FRegisterComponentContext* Context = nullptr);
+	void RegisterComponentWithWorld(UWorld* InWorld);
 
 	/** Overridable check for a component to indicate to its Owner that it should prevent the Actor from auto destroying when finished */
 	virtual bool IsReadyForOwnerToAutoDestroy() const { return true; }
@@ -806,9 +734,6 @@ public:
 	/** return true if this component requires end of frame recreates to happen from the game thread. */
 	virtual bool RequiresGameThreadEndOfFrameRecreate() const;
 
-	/** return true if this component needs to sync to tasks before end of frame updates are executed */
-	virtual bool RequiresPreEndOfFrameSync() const;
-
 	/** 
 	 * Recreate the render state right away. Generally you always want to call MarkRenderStateDirty instead. 
 	 * @warning This is called concurrently on multiple threads (but never the same component concurrently)
@@ -877,14 +802,13 @@ public:
 	virtual void Serialize(FArchive& Ar) override;
 #if WITH_EDITOR
 	virtual bool Modify( bool bAlwaysMarkDirty = true ) override;
-	virtual bool CanEditChange(const FProperty* InProperty) const override;
-	virtual void PreEditChange(FProperty* PropertyThatWillChange) override;
+	virtual bool CanEditChange(const UProperty* InProperty) const override;
+	virtual void PreEditChange(UProperty* PropertyThatWillChange) override;
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 	virtual void PostEditChangeChainProperty( FPropertyChangedChainEvent& PropertyChangedEvent ) override;
 	virtual void PreEditUndo() override;
 	virtual void PostEditUndo() override;
 	virtual bool IsSelectedInEditor() const override;
-	virtual void SetPackageExternal(bool bExternal, bool bShouldDirty) {}
 #endif // WITH_EDITOR
 	//~ End UObject Interface.
 
@@ -928,7 +852,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category="Components", meta=(Keywords = "Delete", HidePin="Object", DefaultToSelf="Object", DisplayName = "DestroyComponent", ScriptName = "DestroyComponent"))
 	void K2_DestroyComponent(UObject* Object);
 
-	/** Unregisters and immediately re-registers component. */
+	/** Unregisters and immediately re-registers component.  Handles bWillReregister properly. */
 	void ReregisterComponent();
 
 	/** Changes the ticking group for this component */
@@ -997,13 +921,13 @@ private:
 	void ClearNeedEndOfFrameUpdate_Internal();
 
 	friend struct FMarkComponentEndOfFrameUpdateState;
-	friend struct FSetUCSSerializationIndex;
 	friend struct FActorComponentInstanceData;
 	friend class FActorComponentDetails;
 	friend class FComponentReregisterContextBase;
 	friend class FComponentRecreateRenderStateContext;
 	friend struct FActorComponentTickFunction;
 
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	//~ Begin Methods for Replicated Members.
 protected:
 
@@ -1037,6 +961,7 @@ public:
 	void SetActiveFlag(const bool bNewIsActive);
 
 	//~ End Methods for Replicated Members.
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 protected:
 

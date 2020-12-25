@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -26,9 +26,9 @@ private:
 
 	void OnActionSelected(const TArray< TSharedPtr<FEdGraphSchemaAction> >& SelectedActions, ESelectInfo::Type InSelectionType);
 
-	bool GetLibraryOnly() const;
+	void OnLibraryToggleChanged(ECheckBoxState CheckState);
 
-	void SetLibraryOnly(bool bInLibraryOnly);
+	ECheckBoxState LibraryToggleIsChecked() const;
 
 private:
 	INiagaraStackItemGroupAddUtilities* AddUtilities;
@@ -39,5 +39,5 @@ private:
 
 	bool bSetFocusOnNextTick;
 	
-	static bool bLibraryOnly;
+	static bool bIncludeNonLibraryScripts;
 };

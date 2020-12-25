@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  * Here are a number of profiling helper functions so we do not have to duplicate a lot of the glue
@@ -163,7 +163,7 @@ FString CreateProfileFilename( const FString& InFilename, const FString& InFileE
 	{
 		// now create the string
 		FolderName = FString::Printf(TEXT("%s-%s-%s"), *MapNameStr, *PlatformStr, *FDateTime::Now().ToString(TEXT("%m.%d-%H.%M.%S")));
-		FolderName.RightInline(MaxFilenameLen, false);
+		FolderName = FolderName.Right(MaxFilenameLen);
 
 		ProfilingSessionFolderName = FolderName;
 		bSetProfilingSessionFolderName = true;
@@ -176,7 +176,7 @@ FString CreateProfileFilename( const FString& InFilename, const FString& InFileE
 	// now create the string
 	// NOTE: due to the changelist this is implicitly using the same directory
 	FString FolderNameOfProfileNoDate = FString::Printf( TEXT("%s-%s-%i"), *MapNameStr, *PlatformStr, GetChangeListNumberForPerfTesting() );
-	FolderNameOfProfileNoDate.RightInline(MaxFilenameLen, false);
+	FolderNameOfProfileNoDate = FolderNameOfProfileNoDate.Right(MaxFilenameLen);
 
 
 	FString NameOfProfile;
@@ -188,10 +188,10 @@ FString CreateProfileFilename( const FString& InFilename, const FString& InFileE
 	{
 		NameOfProfile = InFilename;
 	}
-	NameOfProfile.RightInline(MaxFilenameLen, false);
+	NameOfProfile = NameOfProfile.Right(MaxFilenameLen);
 
 	FString FileNameWithExtension = FString::Printf( TEXT("%s%s"), *NameOfProfile, *InFileExtension );
-	FileNameWithExtension.RightInline(MaxFilenameLen, false);
+	FileNameWithExtension = FileNameWithExtension.Right(MaxFilenameLen);
 
 	FString Filename;
 	if( bIncludeDateForDirectoryName == true )
@@ -228,7 +228,7 @@ FString CreateProfileDirectoryAndFilename( const FString& InSubDirectoryName, co
 
 	// create the directory name of this profile
 	FString NameOfProfile = FString::Printf(TEXT("%s-%s-%s"), *MapNameStr, *PlatformStr, *FDateTime::Now().ToString(TEXT("%m.%d-%H.%M")));	
-	NameOfProfile.RightInline(MaxFilenameLen, false);
+	NameOfProfile = NameOfProfile.Right(MaxFilenameLen);
 
 	IFileManager::Get().MakeDirectory( *(PathName+NameOfProfile) );
 	//UE_LOG(LogProfilingDebugging, Warning, TEXT( "CreateProfileDirectoryAndFilename: %s"), *(PathName+NameOfProfile) );
@@ -236,7 +236,7 @@ FString CreateProfileDirectoryAndFilename( const FString& InSubDirectoryName, co
 
 	// create the actual file name
 	FString FileNameWithExtension = FString::Printf( TEXT("%s%s"), *NameOfProfile, *InFileExtension );
-	FileNameWithExtension.LeftInline(MaxFilenameLen, false);
+	FileNameWithExtension = FileNameWithExtension.Left(MaxFilenameLen);
 	//UE_LOG(LogProfilingDebugging, Warning, TEXT( "CreateProfileDirectoryAndFilename: %s"), *FileNameWithExtension );
 
 

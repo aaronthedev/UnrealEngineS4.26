@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Misc/CoreMisc.h"
@@ -569,7 +569,7 @@ class FSequenceRecorderModule : public ISequenceRecorder, private FSelfRegisteri
 		UMovieScene*    MovieScene      = CurrentSequence ? CurrentSequence->GetMovieScene() : nullptr;
 		if (MovieScene)
 		{
-			return FQualifiedFrameTime(FFrameTime(UE::MovieScene::DiscreteSize(MovieScene->GetPlaybackRange())), MovieScene->GetTickResolution());
+			return FQualifiedFrameTime(FFrameTime(MovieScene::DiscreteSize(MovieScene->GetPlaybackRange())), MovieScene->GetTickResolution());
 		}
 		return FQualifiedFrameTime();
 	}
@@ -784,8 +784,6 @@ class FSequenceRecorderModule : public ISequenceRecorder, private FSelfRegisteri
 	static UAnimSequence* HandleCaptureSingleFrameAnimSequence(USkeletalMeshComponent* Component)
 	{
 		FAnimationRecorder Recorder;
-		Recorder.bRecordTransforms = true;
-		Recorder.bRecordCurves = true;
 		if (Recorder.TriggerRecordAnimation(Component))
 		{
 			class UAnimSequence * Sequence = Recorder.GetAnimationObject();

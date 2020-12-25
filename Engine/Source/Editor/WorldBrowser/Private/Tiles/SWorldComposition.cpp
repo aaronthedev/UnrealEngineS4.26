@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "Tiles/SWorldComposition.h"
 #include "Layout/ArrangedChildren.h"
 #include "Rendering/DrawElements.h"
@@ -18,7 +18,6 @@
 #include "Editor.h"
 #include "WorldBrowserModule.h"
 #include "SNodePanel.h"
-#include "LevelCollectionCommands.h"
 
 #include "Tiles/SWorldTileItem.h"
 #include "Tiles/SWorldLayers.h"
@@ -76,12 +75,6 @@ struct FWorldZoomLevelsContainer
 //
 //
 //----------------------------------------------------------------
-
-namespace WorldCompositionGridDefs
-{
-	static const float ZoomPaddingFraction = 0.125f;
-}
-
 class SWorldCompositionGrid 
 	: public SNodePanel
 {
@@ -92,6 +85,7 @@ public:
 
 	SWorldCompositionGrid()
 		: CommandList(MakeShareable(new FUICommandList))
+		, bHasScrollToRequest(false)
 		, bHasScrollByRequest(false)
 		, bIsFirstTickCall(true)
 		, bHasNodeInteraction(true)
@@ -113,8 +107,6 @@ public:
 
 		SNodePanel::Construct();
 
-		bTeleportInsteadOfScrollingWhenZoomingToFit = true;
-
 		// otherwise tiles will be drawn outside of this widget area
 		SetClipping(EWidgetClipping::ClipToBounds);
 
@@ -127,8 +119,6 @@ public:
 		SelectionManager.OnSelectionChanged.BindSP(this, &SWorldCompositionGrid::OnSelectionChanged);
 
 		FCoreDelegates::PreWorldOriginOffset.AddSP(this, &SWorldCompositionGrid::PreWorldOriginOffset);
-
-		BindCommands();
 
 		ThumbnailCollection = MakeShareable(new FTileThumbnailCollection());
 	
@@ -177,11 +167,11 @@ public:
 	{
 		SNodePanel::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
 
-		// fit view to selection on first tick
+		// scroll to world center on first open
 		if (bIsFirstTickCall)
 		{
 			bIsFirstTickCall = false;
-			FitToSelection_Executed();
+			ViewOffset-= AllottedGeometry.GetLocalSize()*0.5f/GetZoomAmount();
 		}
 
 		FVector2D CursorPosition = FSlateApplication::Get().GetCursorPos();
@@ -195,12 +185,50 @@ public:
 													AllottedGeometry.IsUnderLocation(CursorPosition);
 	
 		WorldModel->UpdateStreamingPreview(WorldMouseLocation, bShowPotentiallyVisibleLevels);
-
-		// deferred scroll by requests
-		if (bHasScrollByRequest)
+			
+		// deferred scroll and zooming requests
+		if (bHasScrollToRequest || bHasScrollByRequest)
 		{
-			bHasScrollByRequest = false;
-			ViewOffset += RequestedScrollByValue;
+			// zoom to
+			if (RequestedAllowZoomIn)
+			{
+				RequestedAllowZoomIn = false;
+				
+				FVector2D SizeWithZoom = RequestedZoomArea*ZoomLevels->GetZoomAmount(ZoomLevel);
+				
+				if (SizeWithZoom.X >= AllottedGeometry.GetLocalSize().X ||
+					SizeWithZoom.Y >= AllottedGeometry.GetLocalSize().Y)
+				{
+					// maximum zoom out by default
+					ZoomLevel = ZoomLevels->GetDefaultZoomLevel();
+					// expand zoom area little bit, so zooming will fit original area not so tight
+					RequestedZoomArea*= 1.2f;
+					// find more suitable zoom value
+					for (int32 Zoom = 0; Zoom < ZoomLevels->GetDefaultZoomLevel(); ++Zoom)
+					{
+						SizeWithZoom = RequestedZoomArea*ZoomLevels->GetZoomAmount(Zoom);
+						if (SizeWithZoom.X >= AllottedGeometry.GetLocalSize().X || SizeWithZoom.Y >= AllottedGeometry.GetLocalSize().Y)
+						{
+							ZoomLevel = Zoom;
+							break;
+						}
+					}
+				}
+			}
+
+			// scroll to
+			if (bHasScrollToRequest)
+			{
+				bHasScrollToRequest = false;
+				ViewOffset = RequestedScrollToValue - AllottedGeometry.GetLocalSize() * 0.5f / GetZoomAmount();
+			}
+
+			// scroll by
+			if (bHasScrollByRequest)
+			{
+				bHasScrollByRequest = false;
+				ViewOffset+= RequestedScrollByValue;
+			}
 		}
 	}
 	
@@ -463,16 +491,6 @@ public:
 	}
 
 protected:
-	/** Bind commands */
-	void BindCommands()
-	{
-		FUICommandList& CommandListRef = *CommandList;
-
-		const FLevelCollectionCommands& Commands = FLevelCollectionCommands::Get();
-
-		CommandListRef.MapAction(Commands.FitToSelection,
-			FExecuteAction::CreateSP(this, &SWorldCompositionGrid::FitToSelection_Executed));
-	}
 	/**  Draws background for grid view */
 	uint32 PaintBackground(const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, uint32 LayerId) const
 	{
@@ -766,7 +784,7 @@ protected:
 				if (!bIsVisible)
 				{
 					FVector2D TargetPosition = MaxCorner/2.f + MinCorner/2.f;
-					FitToSelection_Executed();
+					RequestScrollTo(TargetPosition, MaxCorner - MinCorner);
 				}
 			}
 		}
@@ -795,12 +813,7 @@ protected:
 		FVector2D MinCorner, MaxCorner;
 		if (GetBoundsForNodes(true, MinCorner, MaxCorner, 0.f))
 		{
-			// Calculate relative zoom padding, then get the padded bounds
-			ZoomPadding = FMath::Abs((MinCorner - MaxCorner).GetMax()) * WorldCompositionGridDefs::ZoomPaddingFraction;
-			if (GetBoundsForNodes(true, MinCorner, MaxCorner, ZoomPadding))
-			{
-				ZoomToTarget(MinCorner, MaxCorner);
-			}
+			RequestScrollTo((MaxCorner + MinCorner)*0.5f, MaxCorner - MinCorner, true);
 		}
 	}
 		
@@ -808,6 +821,19 @@ protected:
 	bool AreAnyItemsSelected() const
 	{
 		return SelectionManager.AreAnyNodesSelected();
+	}
+
+	/**  Requests view scroll to specified position and fit to specified area 
+	 *   @param	InLocation		The location to scroll to
+	 *   @param	InArea			The area to fit in view
+	 *   @param	bAllowZoomIn	Is zoom in allowed during fit to area calculations
+	 */
+	void RequestScrollTo(FVector2D InLocation, FVector2D InArea, bool bAllowZoomIn = false)
+	{
+		bHasScrollToRequest = true;
+		RequestedScrollToValue = InLocation;
+		RequestedZoomArea = InArea;
+		RequestedAllowZoomIn = bAllowZoomIn;
 	}
 
 	void RequestScrollBy(FVector2D InDelta)
@@ -893,8 +919,12 @@ private:
 	TArray<FIntRect>						OccupiedCells;
 	const TSharedRef<FUICommandList>		CommandList;
 
+	bool									bHasScrollToRequest;
 	bool									bHasScrollByRequest;
+	FVector2D								RequestedScrollToValue;
 	FVector2D								RequestedScrollByValue;
+	FVector2D								RequestedZoomArea;
+	bool									RequestedAllowZoomIn;
 
 	bool									bIsFirstTickCall;
 	// Is user interacting with a node now
@@ -979,7 +1009,7 @@ TSharedRef<SWidget> SWorldComposition::ConstructContentWidget()
 		.AutoHeight()
 		[
 			SAssignNew(LayersListWrapBox, SWrapBox)
-			.UseAllottedSize(true)
+			.UseAllottedWidth(true)
 		]
 				
 		+SVerticalBox::Slot()

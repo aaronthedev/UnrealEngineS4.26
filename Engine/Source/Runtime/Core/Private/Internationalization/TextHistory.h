@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreTypes.h"
@@ -144,12 +144,6 @@ public:
 	/** Get the type of this history */
 	virtual ETextHistoryType GetType() const = 0;
 
-	/**
-	 * Check whether this history is considered identical to the other history, based on the comparison flags provided.
-	 * @note You must ensure that both histories are the same type (via GetType) prior to calling this function!
-	 */
-	virtual bool IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const = 0;
-
 	/** Build the display string for the current culture */
 	virtual FString BuildLocalizedDisplayString() const = 0;
 
@@ -239,7 +233,6 @@ public:
 	//~ Begin FTextHistory Interface
 	OVERRIDE_TEXT_HISTORY_STRINGIFICATION;
 	virtual ETextHistoryType GetType() const override { return ETextHistoryType::Base; }
-	virtual bool IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const override;
 	virtual FString BuildLocalizedDisplayString() const override;
 	virtual FString BuildInvariantDisplayString() const override;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
@@ -275,7 +268,6 @@ public:
 	//~ Begin FTextHistory Interface
 	OVERRIDE_TEXT_HISTORY_STRINGIFICATION;
 	virtual ETextHistoryType GetType() const override { return ETextHistoryType::NamedFormat; }
-	virtual bool IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const override;
 	virtual FString BuildLocalizedDisplayString() const override;
 	virtual FString BuildInvariantDisplayString() const override;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
@@ -307,7 +299,6 @@ public:
 	//~ Begin FTextHistory Interface
 	OVERRIDE_TEXT_HISTORY_STRINGIFICATION;
 	virtual ETextHistoryType GetType() const override { return ETextHistoryType::OrderedFormat; }
-	virtual bool IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const override;
 	virtual FString BuildLocalizedDisplayString() const override;
 	virtual FString BuildInvariantDisplayString() const override;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
@@ -339,7 +330,6 @@ public:
 	//~ Begin FTextHistory Interface
 	OVERRIDE_TEXT_HISTORY_STRINGIFICATION;
 	virtual ETextHistoryType GetType() const override { return ETextHistoryType::ArgumentFormat; }
-	virtual bool IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const override;
 	virtual FString BuildLocalizedDisplayString() const override;
 	virtual FString BuildInvariantDisplayString() const override;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
@@ -369,7 +359,6 @@ public:
 	FTextHistory_FormatNumber& operator=(FTextHistory_FormatNumber&& Other);
 
 	//~ Begin FTextHistory Interface
-	virtual bool IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const override;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
 	//~ End FTextHistory interface
 
@@ -484,7 +473,6 @@ public:
 	//~ Begin FTextHistory Interface
 	OVERRIDE_TEXT_HISTORY_STRINGIFICATION;
 	virtual ETextHistoryType GetType() const override { return ETextHistoryType::AsDate; }
-	virtual bool IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const override;
 	virtual FString BuildLocalizedDisplayString() const override;
 	virtual FString BuildInvariantDisplayString() const override;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
@@ -519,7 +507,6 @@ public:
 	//~ Begin FTextHistory Interface
 	OVERRIDE_TEXT_HISTORY_STRINGIFICATION;
 	virtual ETextHistoryType GetType() const override { return ETextHistoryType::AsTime; }
-	virtual bool IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const override;
 	virtual FString BuildLocalizedDisplayString() const override;
 	virtual FString BuildInvariantDisplayString() const override;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
@@ -554,7 +541,6 @@ public:
 	//~ Begin FTextHistory Interface
 	OVERRIDE_TEXT_HISTORY_STRINGIFICATION;
 	virtual ETextHistoryType GetType() const override { return ETextHistoryType::AsDateTime; }
-	virtual bool IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const override;
 	virtual FString BuildLocalizedDisplayString() const override;
 	virtual FString BuildInvariantDisplayString() const override;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
@@ -599,7 +585,6 @@ public:
 	//~ Begin FTextHistory Interface
 	OVERRIDE_TEXT_HISTORY_STRINGIFICATION;
 	virtual ETextHistoryType GetType() const override { return ETextHistoryType::Transform; }
-	virtual bool IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const override;
 	virtual FString BuildLocalizedDisplayString() const override;
 	virtual FString BuildInvariantDisplayString() const override;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
@@ -632,7 +617,6 @@ public:
 	//~ Begin FTextHistory Interface
 	OVERRIDE_TEXT_HISTORY_STRINGIFICATION;
 	virtual ETextHistoryType GetType() const override { return ETextHistoryType::StringTableEntry; }
-	virtual bool IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const override;
 	virtual FString BuildLocalizedDisplayString() const override;
 	virtual FString BuildInvariantDisplayString() const override;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
@@ -671,12 +655,6 @@ private:
 		/** Initialize this data, immediately starting an asset load if required and possible */
 		void Initialize(uint16* InRevisionPtr, FName InTableId, FString&& InKey, const EStringTableLoadingPolicy InLoadingPolicy);
 
-		/** Update (or clear) the revision pointer (called when moving this data to a new owner instance) */
-		void SetRevisionPtr(uint16* InRevisionPtr);
-
-		/** Check whether this instance is considered identical to the other instance */
-		bool IsIdentical(const FStringTableReferenceData& Other) const;
-
 		/** Get the string table ID being referenced */
 		FName GetTableId() const;
 
@@ -687,7 +665,7 @@ private:
 		void GetTableIdAndKey(FName& OutTableId, FString& OutKey) const;
 
 		/** Collect any string table asset references */
-		void CollectStringTableAssetReferences(FStructuredArchive::FRecord Record);
+		void CollectStringTableAssetReferences(FStructuredArchive::FRecord Record) const;
 
 		/** Resolve the string table pointer, potentially re-caching it if it's missing or stale */
 		FStringTableEntryConstPtr ResolveStringTableEntry();
@@ -738,7 +716,6 @@ public:
 
 	//~ Begin FTextHistory Interface
 	virtual ETextHistoryType GetType() const override { return ETextHistoryType::TextGenerator; }
-	virtual bool IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const override;
 	virtual FString BuildLocalizedDisplayString() const override;
 	virtual FString BuildInvariantDisplayString() const override;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;

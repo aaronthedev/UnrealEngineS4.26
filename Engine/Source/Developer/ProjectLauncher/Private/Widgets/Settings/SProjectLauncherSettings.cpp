@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SProjectLauncherSettings.h"
 
@@ -301,7 +301,7 @@ void SProjectLauncherSettings::CreateCommands()
 
 TSharedRef<SWidget> SProjectLauncherSettings::MakeToolbar(const TSharedRef<FUICommandList>& InCommandList)
 {
-	FToolBarBuilder ToolBarBuilder(InCommandList, FMultiBoxCustomization::None);
+	FToolBarBuilder ToolBarBuilder(InCommandList, FMultiBoxCustomization::None, TSharedPtr<FExtender>(), EOrientation::Orient_Horizontal);
 
 	ToolBarBuilder.BeginSection("Tasks");
 	{

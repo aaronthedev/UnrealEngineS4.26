@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -52,7 +52,7 @@ public class OnlineSubsystemTencent : ModuleRules
 			PublicDefinitions.Add("WITH_TENCENTSDK=0");
 		}
 
-		if (System.IO.Directory.Exists(System.IO.Path.Combine(EngineDirectory, "Restricted/NotForLicensees/Source/ThirdParty/Tencent")))
+		if (System.IO.Directory.Exists(System.IO.Path.Combine(Target.UEThirdPartySourceDirectory, "NotForLicensees", "Tencent")))
 		{
 			AddEngineThirdPartyPrivateDynamicDependencies(Target, "Tencent");
 			PublicIncludePathModuleNames.Add("Tencent");

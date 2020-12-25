@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	WorldComposition.cpp: UWorldComposition implementation
@@ -29,10 +29,6 @@ UWorldComposition::FWorldCompositionChangedEvent UWorldComposition::WorldComposi
 
 UWorldComposition::UWorldComposition(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-#if WITH_EDITOR
-	, bTemporallyDisableOriginTracking(false)
-	, bTemporarilyDisableOriginTracking(false)
-#endif
 	, TilesStreamingTimeThreshold(1.0)
 	, bLoadAllTilesDuringCinematic(false)
 	, bRebaseOriginIn3DSpace(false)
@@ -829,7 +825,7 @@ bool UWorldComposition::IsDistanceDependentLevel(FName PackageName) const
 	return IsDistanceDependentLevel(TileIdx);
 }
 
-bool UWorldComposition::CommitTileStreamingState(UWorld* PersistentWorld, int32 TileIdx, bool bShouldBeLoaded, bool bShouldBeVisible, bool bShouldBlock, int32 LODIdx)
+bool UWorldComposition::CommitTileStreamingState(UWorld* PersistenWorld, int32 TileIdx, bool bShouldBeLoaded, bool bShouldBeVisible, bool bShouldBlock, int32 LODIdx)
 {
 	if (!Tiles.IsValidIndex(TileIdx))
 	{
@@ -850,7 +846,7 @@ bool UWorldComposition::CommitTileStreamingState(UWorld* PersistentWorld, int32 
 	}
 
 	// Quit early in case we have cooldown on streaming state changes
-	const bool bUseStreamingStateCooldown = (PersistentWorld->IsGameWorld() && PersistentWorld->FlushLevelStreamingType == EFlushLevelStreamingType::None);
+	const bool bUseStreamingStateCooldown = (PersistenWorld->IsGameWorld() && PersistenWorld->FlushLevelStreamingType == EFlushLevelStreamingType::None);
 	if (bUseStreamingStateCooldown && TilesStreamingTimeThreshold > 0.0)
 	{
 		const double CurrentTime = FPlatformTime::Seconds();
@@ -875,7 +871,7 @@ bool UWorldComposition::CommitTileStreamingState(UWorld* PersistentWorld, int32 
 void UWorldComposition::OnLevelAddedToWorld(ULevel* InLevel)
 {
 #if WITH_EDITOR
-	if (bTemporarilyDisableOriginTracking)
+	if (bTemporallyDisableOriginTracking)
 	{
 		return;
 	}
@@ -889,7 +885,7 @@ void UWorldComposition::OnLevelAddedToWorld(ULevel* InLevel)
 void UWorldComposition::OnLevelRemovedFromWorld(ULevel* InLevel)
 {
 #if WITH_EDITOR
-	if (bTemporarilyDisableOriginTracking)
+	if (bTemporallyDisableOriginTracking)
 	{
 		return;
 	}

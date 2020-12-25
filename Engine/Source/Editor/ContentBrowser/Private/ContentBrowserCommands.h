@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,6 +25,7 @@ public:
 public:
 
 	TSharedPtr<FUICommandInfo> CreateNewFolder;
+	TSharedPtr<FUICommandInfo> DirectoryUp;
 	TSharedPtr<FUICommandInfo> OpenAssetsOrFolders;
 	TSharedPtr<FUICommandInfo> PreviewAssets;
 	TSharedPtr<FUICommandInfo> SaveSelectedAsset;

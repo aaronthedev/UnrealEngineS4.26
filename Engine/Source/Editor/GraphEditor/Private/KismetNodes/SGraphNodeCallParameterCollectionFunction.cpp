@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "KismetNodes/SGraphNodeCallParameterCollectionFunction.h"
 #include "Materials/MaterialParameterCollection.h"
@@ -33,11 +33,6 @@ TSharedPtr<SGraphPin> SGraphNodeCallParameterCollectionFunction::CreatePinWidget
 				const bool bVectorParameters = CallFunctionNode->FunctionReference.GetMemberName().ToString().Contains(TEXT("Vector"));
 				Collection->GetParameterNames(NameList, bVectorParameters);
 			}
-
-			NameList.Sort([](const FName& A, const FName& B)
-			{
-				return A.LexicalLess(B);
-			});
 		}
 
 		TArray<TSharedPtr<FName>> NamePtrList;

@@ -3,72 +3,32 @@
 	"Version": 1,
 	"VersionName": "1.0",
 	"FriendlyName": "VirtualCamera",
-	"Description": "Actors, components, and utilities for controlling and viewing cameras via physical devices",
+	"Description": "",
 	"Category": "Virtual Production",
-	"CreatedBy": "Epic Games, Inc.",
-	"CreatedByURL": "http://epicgames.com",
+	"CreatedBy": "",
+	"CreatedByURL": "",
 	"DocsURL": "",
 	"MarketplaceURL": "",
 	"SupportURL": "",
 	"CanContainContent": true,
 	"IsBetaVersion": true,
-	"Installed": false,
-	"EnabledByDefault": false,
-	"Modules": [
-		{
-			"Name": "VCamCore",
-			"Type": "Runtime",
-			"LoadingPhase": "Default",
-			"BlacklistPlatforms": [
-				"TVOS"
-			]
-		},
-		{
-			"Name": "VCamCoreEditor",
-			"Type": "Editor",
-			"LoadingPhase": "Default",
-			"BlacklistPlatforms": [
-				"TVOS"
-			]
-		},
-		{
-			"Name": "VCamInput",
-			"Type": "Runtime",
-			"LoadingPhase": "PreDefault",
-			"BlacklistPlatforms": [
-				"TVOS"
-			]
-		},
-		{
-			"Name": "VirtualCamera",
-			"Type": "UncookedOnly",
-			"LoadingPhase": "PostDefault",
-			"WhitelistPlatforms": [
+  "Installed": false,
+  "EnabledByDefault": false,
+  "Modules": [
+    {
+      "Name": "VirtualCamera",
+      "Type": "UncookedOnly",
+      "LoadingPhase": "PostDefault",
+      "WhitelistPlatforms" :
+			[
 				"Win64",
 				"Win32",
 				"Linux",
 				"Mac"
 			]
-		},
-		{
-			"Name": "VirtualCameraEditor",
-			"Type": "Editor",
-			"LoadingPhase": "PostEngineInit"
-		}
-	],
+    }
+  ],
 	"Plugins": [
-		{
-			"Name": "MediaIOFramework",
-			"Enabled": true
-		},
-		{
-			"Name": "MediaFrameworkUtilities",
-			"Enabled": true
-		},
-		{
-			"Name": "LiveLink",
-			"Enabled": true
-		},
 		{
 			"Name": "RemoteSession",
 			"Enabled": true

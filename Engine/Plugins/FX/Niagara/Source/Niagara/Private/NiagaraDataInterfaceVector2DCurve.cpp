@@ -1,14 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraDataInterfaceVector2DCurve.h"
 #include "Curves/CurveVector.h"
 #include "Curves/CurveLinearColor.h"
 #include "Curves/CurveFloat.h"
 #include "NiagaraTypes.h"
-
-#if WITH_EDITORONLY_DATA
-#include "Interfaces/ITargetPlatform.h"
-#endif
+#include "NiagaraCustomVersion.h"
 
 //////////////////////////////////////////////////////////////////////////
 //Vector2D Curve
@@ -18,11 +15,8 @@ const FName UNiagaraDataInterfaceVector2DCurve::SampleCurveName("SampleVector2DC
 UNiagaraDataInterfaceVector2DCurve::UNiagaraDataInterfaceVector2DCurve(FObjectInitializer const& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	ExposedName = TEXT("Vector2 Curve");
-
-	SetDefaultLUT();
+	UpdateLUT();
 }
-
 void UNiagaraDataInterfaceVector2DCurve::PostInitProperties()
 {
 	Super::PostInitProperties();
@@ -32,44 +26,45 @@ void UNiagaraDataInterfaceVector2DCurve::PostInitProperties()
 		FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(GetClass()), true, false, false);
 	}
 
-#if WITH_EDITORONLY_DATA
 	UpdateLUT();
-#endif
 }
 
-void UNiagaraDataInterfaceVector2DCurve::Serialize(FArchive& Ar)
+void UNiagaraDataInterfaceVector2DCurve::PostLoad()
 {
-#if WITH_EDITORONLY_DATA
-	if (bUseLUT && Ar.IsCooking() && Ar.CookingTarget()->RequiresCookedData())
+	Super::PostLoad();
+
+	const int32 NiagaraVer = GetLinkerCustomVersion(FNiagaraCustomVersion::GUID);
+
+	if (NiagaraVer < FNiagaraCustomVersion::LatestVersion)
 	{
-		UpdateLUT(true);
-
-		FRichCurve TempXCurve;
-		FRichCurve TempYCurve;
-		Exchange(XCurve, TempXCurve);
-		Exchange(YCurve, TempYCurve);
-
-		Super::Serialize(Ar);
-
-		Exchange(XCurve, TempXCurve);
-		Exchange(YCurve, TempYCurve);
+		UpdateLUT();
 	}
 	else
-#endif
 	{
-		Super::Serialize(Ar);
+#if !UE_BUILD_SHIPPING
+		TArray<float> OldLUT = ShaderLUT;
+#endif
+		UpdateLUT();
+
+#if !UE_BUILD_SHIPPING
+		if (!CompareLUTS(OldLUT))
+		{
+			UE_LOG(LogNiagara, Log, TEXT("PostLoad LUT generation is out of sync. Please investigate. %s"), *GetPathName());
+		}
+#endif
 	}
 }
 
-void UNiagaraDataInterfaceVector2DCurve::UpdateTimeRanges()
+void UNiagaraDataInterfaceVector2DCurve::UpdateLUT()
 {
+	ShaderLUT.Empty();
 	if ((XCurve.GetNumKeys() > 0 || YCurve.GetNumKeys() > 0))
 	{
 		LUTMinTime = FLT_MAX;
 		LUTMinTime = FMath::Min(XCurve.GetNumKeys() > 0 ? XCurve.GetFirstKey().Time : LUTMinTime, LUTMinTime);
 		LUTMinTime = FMath::Min(YCurve.GetNumKeys() > 0 ? YCurve.GetFirstKey().Time : LUTMinTime, LUTMinTime);
 
-		LUTMaxTime = -FLT_MAX;
+		LUTMaxTime = FLT_MIN;
 		LUTMaxTime = FMath::Max(XCurve.GetNumKeys() > 0 ? XCurve.GetLastKey().Time : LUTMaxTime, LUTMaxTime);
 		LUTMaxTime = FMath::Max(YCurve.GetNumKeys() > 0 ? YCurve.GetLastKey().Time : LUTMaxTime, LUTMaxTime);
 		LUTInvTimeRange = 1.0f / (LUTMaxTime - LUTMinTime);
@@ -80,22 +75,16 @@ void UNiagaraDataInterfaceVector2DCurve::UpdateTimeRanges()
 		LUTMaxTime = 1.0f;
 		LUTInvTimeRange = 1.0f;
 	}
-}
 
-TArray<float> UNiagaraDataInterfaceVector2DCurve::BuildLUT(int32 NumEntries) const
-{
-	TArray<float> OutputLUT;
-	const float NumEntriesMinusOne = NumEntries - 1;
-
-	OutputLUT.Reserve(NumEntries * 2);
-	for (int32 i = 0; i < NumEntries; i++)
+	for (uint32 i = 0; i < CurveLUTWidth; i++)
 	{
-		float X = UnnormalizeTime(i / NumEntriesMinusOne);
+		float X = UnnormalizeTime(i / (float)CurveLUTWidthMinusOne);
 		FVector2D C(XCurve.Eval(X), YCurve.Eval(X));
-		OutputLUT.Add(C.X);
-		OutputLUT.Add(C.Y);
+		ShaderLUT.Add(C.X);
+		ShaderLUT.Add(C.Y);
 	}
-	return OutputLUT;
+
+	Super::PushToRenderThread();
 }
 
 bool UNiagaraDataInterfaceVector2DCurve::CopyToInternal(UNiagaraDataInterface* Destination) const
@@ -107,13 +96,11 @@ bool UNiagaraDataInterfaceVector2DCurve::CopyToInternal(UNiagaraDataInterface* D
 	UNiagaraDataInterfaceVector2DCurve* DestinationVector2DCurve = CastChecked<UNiagaraDataInterfaceVector2DCurve>(Destination);
 	DestinationVector2DCurve->XCurve = XCurve;
 	DestinationVector2DCurve->YCurve = YCurve;
-#if WITH_EDITORONLY_DATA
 	DestinationVector2DCurve->UpdateLUT();
 	if (!CompareLUTS(DestinationVector2DCurve->ShaderLUT))
 	{
 		UE_LOG(LogNiagara, Log, TEXT("Post CopyToInternal LUT generation is out of sync. Please investigate. %s"), *GetPathName());
 	}
-#endif
 	return true;
 }
 
@@ -151,17 +138,16 @@ void UNiagaraDataInterfaceVector2DCurve::GetFunctions(TArray<FNiagaraFunctionSig
 // the HLSL in the spirit of a static switch
 // TODO: need a way to identify each specific function here
 // 
-bool UNiagaraDataInterfaceVector2DCurve::GetFunctionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, const FNiagaraDataInterfaceGeneratedFunction& FunctionInfo, int FunctionInstanceIndex, FString& OutHLSL)
+bool UNiagaraDataInterfaceVector2DCurve::GetFunctionHLSL(const FName& DefinitionFunctionName, FString InstanceFunctionName, FNiagaraDataInterfaceGPUParamInfo& ParamInfo, FString& OutHLSL)
 {
 	FString TimeToLUTFrac = TEXT("TimeToLUTFraction_") + ParamInfo.DataInterfaceHLSLSymbol;
 	FString Sample = TEXT("SampleCurve_") + ParamInfo.DataInterfaceHLSLSymbol;
-	FString NumSamples = TEXT("CurveLUTNumMinusOne_") + ParamInfo.DataInterfaceHLSLSymbol;
 	OutHLSL += FString::Printf(TEXT("\
 void %s(in float In_X, out float2 Out_Value) \n\
 { \n\
-	float RemappedX = %s(In_X) * %s; \n\
+	float RemappedX = %s(In_X) * %u; \n\
 	float Prev = floor(RemappedX); \n\
-	float Next = Prev < %s ? Prev + 1.0 : Prev; \n\
+	float Next = Prev < %u ? Prev + 1.0 : Prev; \n\
 	float Interp = RemappedX - Prev; \n\
 	Prev *= %u; \n\
 	Next *= %u; \n\
@@ -169,7 +155,7 @@ void %s(in float In_X, out float2 Out_Value) \n\
 	float2 B = float2(%s(Next), %s(Next + 1)); \n\
 	Out_Value = lerp(A, B, Interp); \n\
 }\n")
-, *FunctionInfo.InstanceName, *TimeToLUTFrac, *NumSamples, *NumSamples, CurveLUTNumElems, CurveLUTNumElems, *Sample, *Sample, *Sample, *Sample);
+, *InstanceFunctionName, *TimeToLUTFrac, CurveLUTWidthMinusOne, CurveLUTWidthMinusOne, CurveLUTNumElems, CurveLUTNumElems, *Sample, *Sample, *Sample, *Sample);
 
 	return true;
 }
@@ -191,9 +177,9 @@ void UNiagaraDataInterfaceVector2DCurve::GetVMExternalFunction(const FVMExternal
 template<>
 FORCEINLINE_DEBUGGABLE FVector2D UNiagaraDataInterfaceVector2DCurve::SampleCurveInternal<TIntegralConstant<bool, true>>(float X)
 {
-	float RemappedX = FMath::Clamp(NormalizeTime(X) * LUTNumSamplesMinusOne, 0.0f, LUTNumSamplesMinusOne);
+	float RemappedX = FMath::Clamp(NormalizeTime(X) * CurveLUTWidthMinusOne, 0.0f, (float)CurveLUTWidthMinusOne);
 	float PrevEntry = FMath::TruncToFloat(RemappedX);
-	float NextEntry = PrevEntry < LUTNumSamplesMinusOne ? PrevEntry + 1.0f : PrevEntry;
+	float NextEntry = PrevEntry < (float)CurveLUTWidthMinusOne ? PrevEntry + 1.0f : PrevEntry;
 	float Interp = RemappedX - PrevEntry;
 
 	int32 AIndex = PrevEntry * CurveLUTNumElems;

@@ -26,10 +26,8 @@ if "%VS110COMNTOOLS%" neq "" (
   echo Installed visualizers for Visual Studio 2012
 )
 
-for /d %%i in (..\..\Platforms\*) do (
-	if exist "%%i\Extras\VisualStudioDebugging\InstallVisualizer.bat" (
-		call "%%i\Extras\VisualStudioDebugging\InstallVisualizer.bat"
-	)
+if exist PS4\InstallPS4Visualizer.bat (
+  call PS4\InstallPS4Visualizer.bat
 )
 
 if "%FoundVSInstance%" equ "0" (

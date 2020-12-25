@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DeviceProfiles/DeviceProfile.h"
 #include "Misc/Paths.h"
@@ -7,16 +7,6 @@
 #include "UObject/UObjectHash.h"
 #include "UObject/UObjectIterator.h"
 #include "HAL/IConsoleManager.h"
-
-#include "DeviceProfiles/DeviceProfileFragment.h"
-
-DEFINE_LOG_CATEGORY_STATIC(LogDeviceProfile, Log, All);
-
-UDeviceProfileFragment::UDeviceProfileFragment(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer)
-{
-}
-
 
 UDeviceProfile::UDeviceProfile(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -65,13 +55,6 @@ void UDeviceProfile::PostInitProperties()
 {
 	Super::PostInitProperties();
 	ValidateTextureLODGroups();
-}
-
-void UDeviceProfile::BeginDestroy()
-{
-	UE_LOG(LogDeviceProfile, Log, TEXT("Device profile begin destroy: [%p] %s"), this, *GetName());
-
-	Super::BeginDestroy();
 }
 
 void UDeviceProfile::ValidateProfile()
@@ -187,7 +170,7 @@ void UDeviceProfile::PostEditChangeProperty( FPropertyChangedEvent& PropertyChan
 							ParentProfile = ClassCDO;
 						}
 
-						for (TFieldIterator<FProperty> CurrentObjPropertyIter( GetClass() ); CurrentObjPropertyIter; ++CurrentObjPropertyIter)
+						for (TFieldIterator<UProperty> CurrentObjPropertyIter( GetClass() ); CurrentObjPropertyIter; ++CurrentObjPropertyIter)
 						{
 							bool bIsSameParent = CurrentObjPropertyIter->Identical_InContainer( ClassCDO, CurrentGenerationProfile );
 							if( bIsSameParent )
@@ -336,12 +319,8 @@ const TMap<FString, FString>& UDeviceProfile::GetConsolidatedCVars() const
 		{
 			FString CVarKey, CVarValue;
 			if (CurrentCVar.Split(TEXT("="), &CVarKey, &CVarValue))
-			{	
-				//Prevent parents from overwriting the values in child profiles.
-				if (InOutMap.Find(CVarKey) == nullptr)
-				{
-					InOutMap.Add(CVarKey, CVarValue);
-				}
+			{
+				InOutMap.Add(CVarKey, CVarValue);
 			}
 		}
 	};

@@ -1,18 +1,16 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Animation/AnimCompressionTypes.h"
 #include "AnimationUtils.h"
 #include "AnimEncoding.h"
 #include "Misc/SecureHash.h"
 #include "Interfaces/ITargetPlatform.h"
-#include "Animation/AnimBoneCompressionCodec.h"
-#include "Animation/AnimBoneCompressionSettings.h"
 #include "Animation/AnimCurveCompressionCodec.h"
 #include "Animation/AnimCurveCompressionSettings.h"
 #include "AnimationRuntime.h"
 #include "UObject/FortniteMainBranchObjectVersion.h"
 
-CSV_DECLARE_CATEGORY_MODULE_EXTERN(ENGINE_API, Animation);
+CSV_DEFINE_CATEGORY(Animation, false);
 
 DECLARE_CYCLE_STAT(TEXT("Build Anim Track Pairs"), STAT_BuildAnimTrackPairs, STATGROUP_Anim);
 DECLARE_CYCLE_STAT(TEXT("Extract Pose From Anim Data"), STAT_ExtractPoseFromAnimData, STATGROUP_Anim);
@@ -125,29 +123,24 @@ void StripFramesOdd(TArray<ArrayValue>& Keys, const int32 NumFrames)
 	}
 }
 
-FCompressibleAnimData::FCompressibleAnimData(class UAnimSequence* InSeq, const bool bPerformStripping)
-	: CurveCompressionSettings(InSeq->CurveCompressionSettings)
-	, BoneCompressionSettings(InSeq->BoneCompressionSettings)
+FCompressibleAnimData::FCompressibleAnimData(class UAnimSequence* InSeq, const bool bPerformStripping, const float InAltCompressionErrorThreshold) :
+#if WITH_EDITOR
+	RequestedCompressionScheme(InSeq->CompressionScheme) ,
+#endif
+	CurveCompressionSettings(InSeq->CurveCompressionSettings)
+	, Skeleton(InSeq->GetSkeleton())
 	, TrackToSkeletonMapTable(InSeq->GetRawTrackToSkeletonMapTable())
 	, Interpolation(InSeq->Interpolation)
 	, SequenceLength(InSeq->SequenceLength)
 	, NumFrames(InSeq->GetRawNumberOfFrames())
 	, bIsValidAdditive(InSeq->IsValidAdditive())
-#if WITH_EDITORONLY_DATA
-	, ErrorThresholdScale(InSeq->CompressionErrorThresholdScale)
-#else
-	, ErrorThresholdScale(1.f)
-#endif
+	, AltCompressionErrorThreshold(InAltCompressionErrorThreshold)
 	, Name(InSeq->GetName())
 	, FullName(InSeq->GetFullName())
 	, AnimFName(InSeq->GetFName())
 {
 #if WITH_EDITOR
-	USkeleton* Skeleton = InSeq->GetSkeleton();
 	FAnimationUtils::BuildSkeletonMetaData(Skeleton, BoneData);
-
-	RefLocalPoses = Skeleton->GetRefLocalPoses();
-	RefSkeleton = Skeleton->GetReferenceSkeleton();
 
 	const bool bHasVirtualBones = InSeq->GetSkeleton()->GetVirtualBones().Num() > 0;
 
@@ -205,31 +198,33 @@ FCompressibleAnimData::FCompressibleAnimData(class UAnimSequence* InSeq, const b
 #endif
 }
 
-FCompressibleAnimData::FCompressibleAnimData(UAnimBoneCompressionSettings* InBoneCompressionSettings, UAnimCurveCompressionSettings* InCurveCompressionSettings, USkeleton* InSkeleton, EAnimInterpolationType InInterpolation, float InSequenceLength, int32 InNumFrames)
-	: CurveCompressionSettings(InCurveCompressionSettings)
-	, BoneCompressionSettings(InBoneCompressionSettings)
+FCompressibleAnimData::FCompressibleAnimData(UAnimCompress* InRequestedCompressionScheme, UAnimCurveCompressionSettings* InCurveCompressionSettings, USkeleton* InSkeleton, EAnimInterpolationType InInterpolation, float InSequenceLength, int32 InNumFrames, const float InAltCompressionErrorThreshold) :
+#if WITH_EDITOR
+	RequestedCompressionScheme(InRequestedCompressionScheme) ,
+#endif
+	CurveCompressionSettings(InCurveCompressionSettings)
+	, Skeleton(InSkeleton)
 	, Interpolation(InInterpolation)
 	, SequenceLength(InSequenceLength)
 	, NumFrames(InNumFrames)
 	, bIsValidAdditive(false)
-	, ErrorThresholdScale(1.f)
+	, AltCompressionErrorThreshold(InAltCompressionErrorThreshold)
 {
 #if WITH_EDITOR
-	RefLocalPoses = InSkeleton->GetRefLocalPoses();
-	RefSkeleton = InSkeleton->GetReferenceSkeleton();
-	FAnimationUtils::BuildSkeletonMetaData(InSkeleton, BoneData);
+	FAnimationUtils::BuildSkeletonMetaData(Skeleton, BoneData);
 #endif
 }
 
-FCompressibleAnimData::FCompressibleAnimData()
-: CurveCompressionSettings(nullptr)
-, BoneCompressionSettings(nullptr)
+FCompressibleAnimData::FCompressibleAnimData() : RequestedCompressionScheme(nullptr)
+, CurveCompressionSettings(nullptr)
+, Skeleton(nullptr)
 , Interpolation((EAnimInterpolationType)0)
 , SequenceLength(0.f)
 , NumFrames(0)
 , bIsValidAdditive(false)
-, ErrorThresholdScale(1.f)
+, AltCompressionErrorThreshold(FAnimationUtils::GetAlternativeCompressionThreshold())
 {
+
 }
 
 void FCompressibleAnimData::Update(FCompressedAnimSequence& InOutCompressedData) const
@@ -254,11 +249,37 @@ void WriteArray(FMemoryWriter& MemoryWriter, TArray<T>& Array)
 	MemoryWriter.Serialize(Array.GetData(), NumBytes);
 }
 
+void FCompressibleAnimDataResult::BuildFinalBuffer(TArray<uint8>& OutBuffer)
+{
+	OutBuffer.Reset();
+	FMemoryWriter MemoryWriter(OutBuffer);
+
+	WriteArray(MemoryWriter, CompressedTrackOffsets);
+	WriteArray(MemoryWriter, CompressedScaleOffsets.OffsetData);
+	WriteArray(MemoryWriter, CompressedByteStream);
+}
+
 template<typename T>
 void InitArrayView(TArrayView<T>& View, uint8*& DataPtr)
 {
 	View = TArrayView<T>((T*)DataPtr, View.Num());
 	DataPtr += (View.Num() * View.GetTypeSize());
+}
+
+template<typename T>
+void ResetArrayView(TArrayView<T>& ArrayView)
+{
+	ArrayView = TArrayView<T>();
+}
+
+void FUECompressedAnimData::Reset()
+{
+	ResetArrayView(CompressedTrackOffsets);
+	ResetArrayView(CompressedScaleOffsets.OffsetData);
+	ResetArrayView(CompressedByteStream);
+
+	TranslationCompressionFormat = RotationCompressionFormat = ScaleCompressionFormat = ACF_None;
+	TranslationCodec = RotationCodec = ScaleCodec = nullptr;
 }
 
 void FUECompressedAnimData::InitViewsFromBuffer(const TArrayView<uint8> BulkData)
@@ -279,6 +300,19 @@ void InitArrayViewSize(TArrayView<T>& Dest, const TArray<T>& Src)
 {
 	Dest = TArrayView<T>((T*)nullptr, Src.Num());
 }
+
+#if WITH_EDITOR
+void FUECompressedAnimData::CopyFrom(const FCompressibleAnimDataResult& Other)
+{
+	InitArrayViewSize(CompressedTrackOffsets, Other.CompressedTrackOffsets);
+	InitArrayViewSize(CompressedScaleOffsets.OffsetData, Other.CompressedScaleOffsets.OffsetData);
+	InitArrayViewSize(CompressedByteStream, Other.CompressedByteStream);
+
+	CompressedScaleOffsets.StripSize = Other.CompressedScaleOffsets.StripSize;
+
+	CopyFromSettings(Other);
+}
+#endif
 
 template<typename T>
 void SerializeView(class FArchive& Ar, TArrayView<T>& View)
@@ -322,29 +356,21 @@ FArchive& operator<<(FArchive& Ar, AnimationKeyFormat& Fmt)
 	return Ar;
 }
 
-void FUECompressedAnimData::SerializeCompressedData(FArchive& Ar)
+void FUECompressedAnimData::SerializeCompressedData(class FArchive& Ar)
 {
-	ICompressedAnimData::SerializeCompressedData(Ar);
-
 	Ar << KeyEncodingFormat;
 	Ar << TranslationCompressionFormat;
 	Ar << RotationCompressionFormat;
 	Ar << ScaleCompressionFormat;
 
-	SerializeView(Ar, CompressedByteStream);
+	Ar << CompressedNumberOfFrames;
+
 	SerializeView(Ar, CompressedTrackOffsets);
 	SerializeView(Ar, CompressedScaleOffsets.OffsetData);
 	Ar << CompressedScaleOffsets.StripSize;
+	SerializeView(Ar, CompressedByteStream);
 
 	AnimationFormat_SetInterfaceLinks(*this);
-}
-
-FString FUECompressedAnimData::GetDebugString() const
-{
-	FString TranslationFormat = FAnimationUtils::GetAnimationCompressionFormatString(TranslationCompressionFormat);
-	FString RotationFormat = FAnimationUtils::GetAnimationCompressionFormatString(RotationCompressionFormat);
-	FString ScaleFormat = FAnimationUtils::GetAnimationCompressionFormatString(ScaleCompressionFormat);
-	return FString::Printf(TEXT("[%s, %s, %s]"), *TranslationFormat, *RotationFormat, *ScaleFormat);
 }
 
 template<typename TArchive, typename T>
@@ -403,34 +429,13 @@ void ValidateUObjectLoaded(UObject* Obj, UObject* Source)
 	checkf(!Obj->HasAnyFlags(RF_NeedLoad), TEXT("Failed to load %s in %s"), *Obj->GetFullName(), *Source->GetFullName()); // in non editor should have been preloaded by GetPreloadDependencies
 }
 
-void FUECompressedAnimDataMutable::BuildFinalBuffer(TArray<uint8>& OutCompressedByteStream)
-{
-	OutCompressedByteStream.Reset();
-
-	FMemoryWriter MemoryWriter(OutCompressedByteStream);
-
-	WriteArray(MemoryWriter, CompressedTrackOffsets);
-	WriteArray(MemoryWriter, CompressedScaleOffsets.OffsetData);
-	WriteArray(MemoryWriter, CompressedByteStream);
-}
-
-void ICompressedAnimData::SerializeCompressedData(class FArchive& Ar)
-{
-	Ar << CompressedNumberOfFrames;
-
-#if WITH_EDITORONLY_DATA
-	if (!Ar.IsFilterEditorOnly())
-	{
-		Ar << BoneCompressionErrorStats;
-	}
-#endif
-}
-
-void FCompressedAnimSequence::SerializeCompressedData(FArchive& Ar, bool bDDCData, UObject* DataOwner, USkeleton* Skeleton, UAnimBoneCompressionSettings* BoneCompressionSettings, UAnimCurveCompressionSettings* CurveCompressionSettings, bool bCanUseBulkData)
+void FCompressedAnimSequence::SerializeCompressedData(FArchive& Ar, bool bDDCData, UObject* DataOwner, USkeleton* Skeleton, UAnimCurveCompressionSettings* CurveCompressionSettings, bool bCanUseBulkData)
 {
 	Ar << CompressedRawDataSize;
 	Ar << CompressedTrackToSkeletonMapTable;
 	Ar << CompressedCurveNames;
+
+	CompressedDataStructure.SerializeCompressedData(Ar);
 
 	// Serialize the compressed byte stream from the archive to the buffer.
 	int32 NumBytes = CompressedByteStream.Num();
@@ -443,8 +448,6 @@ void FCompressedAnimSequence::SerializeCompressedData(FArchive& Ar, bool bDDCDat
 		{
 			Ar << bUseBulkDataForLoad;
 		}
-
-		TArray<uint8> SerializedData;
 		if (bUseBulkDataForLoad)
 		{
 #if !WITH_EDITOR
@@ -462,9 +465,6 @@ void FCompressedAnimSequence::SerializeCompressedData(FArchive& Ar, bool bDDCDat
 
 			FOwnedBulkDataPtr* OwnedPtr = OptionalBulk.StealFileMapping();
 
-			// Decompression will crash later if the data failed to load so assert now to make it easier to debug in the future.
-			checkf(OwnedPtr->GetPointer() != nullptr || Size == 0, TEXT("Compressed animation data failed to load")); 
-
 #if WITH_EDITOR
 			check(!bUseMapping && !OwnedPtr->GetMappedHandle());
 			CompressedByteStream.Empty(Size);
@@ -477,11 +477,18 @@ void FCompressedAnimSequence::SerializeCompressedData(FArchive& Ar, bool bDDCDat
 			CompressedByteStream.AcceptOwnedBulkDataPtr(OwnedPtr, Size);
 #endif
 			delete OwnedPtr;
+
+			CompressedDataStructure.InitViewsFromBuffer(CompressedByteStream);
 		}
 		else
 		{
 			CompressedByteStream.Empty(NumBytes);
 			CompressedByteStream.AddUninitialized(NumBytes);
+
+			if (CompressedByteStream.Num() > 0)
+			{
+				CompressedDataStructure.InitViewsFromBuffer(CompressedByteStream);
+			}
 
 			if (FPlatformProperties::RequiresCookedData())
 			{
@@ -489,19 +496,24 @@ void FCompressedAnimSequence::SerializeCompressedData(FArchive& Ar, bool bDDCDat
 			}
 			else
 			{
+				TArray<uint8> SerializedData;
 				SerializedData.Empty(NumBytes);
 				SerializedData.AddUninitialized(NumBytes);
 				Ar.Serialize(SerializedData.GetData(), NumBytes);
+
+				// Swap the buffer into the byte stream.
+				FMemoryReader MemoryReader(SerializedData, true);
+				MemoryReader.SetByteSwapping(Ar.ForceByteSwapping());
+
+				CompressedDataStructure.ByteSwapIn(CompressedByteStream, MemoryReader);
 			}
 		}
 
-		FString BoneCodecDDCHandle;
 		FString CurveCodecPath;
-
-		Ar << BoneCodecDDCHandle;
 		Ar << CurveCodecPath;
 
-		check(!BoneCodecDDCHandle.Equals(TEXT("None"), ESearchCase::IgnoreCase)); // Failed DDC data?
+		ValidateUObjectLoaded(CurveCompressionSettings, DataOwner);
+		CurveCompressionCodec = CurveCompressionSettings->GetCodec(CurveCodecPath);
 
 		int32 NumCurveBytes;
 		Ar << NumCurveBytes;
@@ -509,29 +521,6 @@ void FCompressedAnimSequence::SerializeCompressedData(FArchive& Ar, bool bDDCDat
 		CompressedCurveByteStream.Empty(NumCurveBytes);
 		CompressedCurveByteStream.AddUninitialized(NumCurveBytes);
 		Ar.Serialize(CompressedCurveByteStream.GetData(), NumCurveBytes);
-
-		// Lookup our codecs in our settings assets
-		ValidateUObjectLoaded(BoneCompressionSettings, DataOwner);
-		ValidateUObjectLoaded(CurveCompressionSettings, DataOwner);
-		BoneCompressionCodec = BoneCompressionSettings->GetCodec(BoneCodecDDCHandle);
-		CurveCompressionCodec = CurveCompressionSettings->GetCodec(CurveCodecPath);
-
-		if (BoneCompressionCodec != nullptr)
-		{
-			CompressedDataStructure = BoneCompressionCodec->AllocateAnimData();
-			CompressedDataStructure->SerializeCompressedData(Ar);
-			CompressedDataStructure->Bind(CompressedByteStream);
-
-			// The codec can be null if we are a default object, a sequence with no raw bone data (just curves),
-			// or if we are duplicating the sequence during compression (new settings are assigned)
-			if (SerializedData.Num() != 0)
-			{
-				// Swap the buffer into the byte stream.
-				FMemoryReader MemoryReader(SerializedData, true);
-				MemoryReader.SetByteSwapping(Ar.ForceByteSwapping());
-				BoneCompressionCodec->ByteSwapIn(*CompressedDataStructure, CompressedByteStream, MemoryReader);
-			}
-		}
 	}
 	else if (Ar.IsSaving() || Ar.IsCountingMemory())
 	{
@@ -540,13 +529,10 @@ void FCompressedAnimSequence::SerializeCompressedData(FArchive& Ar, bool bDDCDat
 
 		const bool bIsCooking = !bDDCData && Ar.IsCooking();
 
-		// The codec can be null if we are a default object or a sequence with no raw data, just curves
-		if (BoneCompressionCodec != nullptr)
-		{
-			FMemoryWriter MemoryWriter(SerializedData, true);
-			MemoryWriter.SetByteSwapping(Ar.ForceByteSwapping());
-			BoneCompressionCodec->ByteSwapOut(*CompressedDataStructure, CompressedByteStream, MemoryWriter);
-		}
+		// and then use the codecs to byte swap
+		FMemoryWriter MemoryWriter(SerializedData, true);
+		MemoryWriter.SetByteSwapping(Ar.ForceByteSwapping());
+		CompressedDataStructure.ByteSwapOut(CompressedByteStream, MemoryWriter);
 
 		// Make sure the entire byte stream was serialized.
 		check(NumBytes == SerializedData.Num());
@@ -622,21 +608,12 @@ void FCompressedAnimSequence::SerializeCompressedData(FArchive& Ar, bool bDDCDat
 			Ar.Serialize(SerializedData.GetData(), SerializedData.Num());
 		}
 
-		FString BoneCodecDDCHandle = BoneCompressionCodec != nullptr ? BoneCompressionCodec->GetCodecDDCHandle() : TEXT("");
-		check(!BoneCodecDDCHandle.Equals(TEXT("None"), ESearchCase::IgnoreCase)); // Will write broken DDC data to DDC!
-		Ar << BoneCodecDDCHandle;
-
 		FString CurveCodecPath = CurveCompressionCodec->GetPathName();
 		Ar << CurveCodecPath;
 
 		int32 NumCurveBytes = CompressedCurveByteStream.Num();
 		Ar << NumCurveBytes;
 		Ar.Serialize(CompressedCurveByteStream.GetData(), NumCurveBytes);
-
-		if (BoneCompressionCodec != nullptr)
-		{
-			CompressedDataStructure->SerializeCompressedData(Ar);
-		}
 	}
 
 #if WITH_EDITOR
@@ -659,21 +636,8 @@ SIZE_T FCompressedAnimSequence::GetMemorySize() const
 	return	  CompressedTrackToSkeletonMapTable.GetAllocatedSize()
 			+ CompressedCurveNames.GetAllocatedSize()
 			+ CompressedCurveByteStream.GetAllocatedSize()
-			+ CompressedDataStructure->GetApproxCompressedSize()
+			+ CompressedDataStructure.GetApproxBoneCompressedSize()
 			+ sizeof(FCompressedAnimSequence);
-}
-
-void FCompressedAnimSequence::ClearCompressedBoneData()
-{
-	CompressedByteStream.Empty(0);
-	CompressedDataStructure.Reset();
-	BoneCompressionCodec = nullptr;
-}
-
-void FCompressedAnimSequence::ClearCompressedCurveData()
-{
-	CompressedCurveByteStream.Empty(0);
-	CurveCompressionCodec = nullptr;
 }
 
 struct FGetBonePoseScratchArea : public TThreadSingleton<FGetBonePoseScratchArea>
@@ -767,7 +731,7 @@ void DecompressPose(FCompactPose& OutPose, const FCompressedAnimSequence& Compre
 		CSV_SCOPED_TIMING_STAT(Animation, ExtractPoseFromAnimData);
 		CSV_CUSTOM_STAT(Animation, NumberOfExtractedAnimations, 1, ECsvCustomStatOp::Accumulate);
 
-		FAnimSequenceDecompressionContext EvalDecompContext(SequenceLength, Interpolation, SourceName, *CompressedData.CompressedDataStructure);
+		FAnimSequenceDecompressionContext EvalDecompContext(SequenceLength, Interpolation, SourceName, CompressedData.CompressedDataStructure);
 		EvalDecompContext.Seek(ExtractionContext.CurrentTime);
 
 		// Handle Root Bone separately
@@ -777,7 +741,10 @@ void DecompressPose(FCompactPose& OutPose, const FCompressedAnimSequence& Compre
 			FCompactPoseBoneIndex RootBone(0);
 			FTransform& RootAtom = OutPose[RootBone];
 
-			CompressedData.BoneCompressionCodec->DecompressBone(EvalDecompContext, TrackIndex, RootAtom);
+			AnimationFormat_GetBoneAtom(
+				RootAtom,
+				EvalDecompContext,
+				TrackIndex);
 
 			// @laurent - we should look into splitting rotation and translation tracks, so we don't have to process translation twice.
 			FAnimationRuntime::RetargetBoneTransform(Skeleton, RetargetSource, RootAtom, 0, RootBone, RequiredBones, bIsBakedAdditive);
@@ -786,8 +753,17 @@ void DecompressPose(FCompactPose& OutPose, const FCompressedAnimSequence& Compre
 		if (RotationScalePairs.Num() > 0)
 		{
 			// get the remaining bone atoms
-			TArrayView<FTransform> OutPoseBones = OutPose.GetMutableBones();
-			CompressedData.BoneCompressionCodec->DecompressPose(EvalDecompContext, RotationScalePairs, TranslationPairs, RotationScalePairs, OutPoseBones);
+			FTransformArray LocalBones;
+			OutPose.MoveBonesTo(LocalBones);
+
+			AnimationFormat_GetAnimationPose(
+				LocalBones,
+				RotationScalePairs,
+				TranslationPairs,
+				RotationScalePairs,
+				EvalDecompContext);
+
+			OutPose.MoveBonesFrom(MoveTemp(LocalBones));
 		}
 	}
 
@@ -873,17 +849,3 @@ void DecompressPose(FCompactPose& OutPose, const FCompressedAnimSequence& Compre
 	}
 }
 
-FArchive& operator<<(FArchive& Ar, FCompressedOffsetData& D)
-{
-	Ar << D.OffsetData << D.StripSize;
-	return Ar;
-}
-
-FArchive& operator<<(FArchive& Ar, FAnimationErrorStats& ErrorStats)
-{
-	Ar << ErrorStats.AverageError;
-	Ar << ErrorStats.MaxError;
-	Ar << ErrorStats.MaxErrorTime;
-	Ar << ErrorStats.MaxErrorBone;
-	return Ar;
-}

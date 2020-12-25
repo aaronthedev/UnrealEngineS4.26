@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,13 +10,11 @@
 #include "UObject/Interface.h"
 #include "Animation/AnimTypes.h"
 #include "Animation/AnimStateMachineTypes.h"
-#include "UObject/FieldPath.h"
 
 #include "AnimClassInterface.generated.h"
 
 class USkeleton;
 struct FExposedValueHandler;
-struct FPropertyAccessLibrary;
 
 /** Describes the input and output of an anim blueprint 'function' */
 USTRUCT()
@@ -66,13 +64,16 @@ struct FAnimBlueprintFunction
 	TArray<int32> InputPoseNodeIndices;
 
 	/** The property of the output node, patched up during link */
-	FStructProperty* OutputPoseNodeProperty;
+	UPROPERTY(transient)
+	UStructProperty* OutputPoseNodeProperty;
 
 	/** The properties of the input nodes, patched up during link */
-	TArray< FStructProperty* > InputPoseNodeProperties;
+	UPROPERTY(transient)
+	TArray<UStructProperty*> InputPoseNodeProperties;
 
 	/** The input properties themselves */
-	TArray< FProperty* > InputProperties;
+	UPROPERTY(transient)
+	TArray<UProperty*> InputProperties;
 
 	/** Whether this function is actually implemented by this class - it could just be a stub */
 	UPROPERTY(transient)
@@ -137,25 +138,23 @@ class ENGINE_API UAnimClassInterface : public UInterface
 	GENERATED_BODY()
 };
 
-typedef TFieldPath<FStructProperty> FStructPropertyPath;
-
 class ENGINE_API IAnimClassInterface
 {
 	GENERATED_BODY()
 public:
 	virtual const TArray<FBakedAnimationStateMachine>& GetBakedStateMachines() const = 0;
 	virtual const TArray<FAnimNotifyEvent>& GetAnimNotifies() const = 0;
-	virtual const TArray<FStructProperty*>& GetAnimNodeProperties() const = 0;
+	virtual const TArray<UStructProperty*>& GetAnimNodeProperties() const = 0;
 	UE_DEPRECATED(4.24, "Function has been renamed, please use GetLinkedAnimGraphNodeProperties")
-	virtual const TArray<FStructProperty*>& GetSubInstanceNodeProperties() const { return GetLinkedAnimGraphNodeProperties(); }
-	virtual const TArray<FStructProperty*>& GetLinkedAnimGraphNodeProperties() const = 0;
+	virtual const TArray<UStructProperty*>& GetSubInstanceNodeProperties() const { return GetLinkedAnimGraphNodeProperties(); }
+	virtual const TArray<UStructProperty*>& GetLinkedAnimGraphNodeProperties() const = 0;
 	UE_DEPRECATED(4.24, "Function has been renamed, please use GetLinkedLayerNodeProperties")
-	virtual const TArray<FStructProperty*>& GetLayerNodeProperties() const { return GetLinkedAnimLayerNodeProperties(); }
-	virtual const TArray<FStructProperty*>& GetLinkedAnimLayerNodeProperties() const = 0;
-	virtual const TArray<FStructProperty*>& GetPreUpdateNodeProperties() const = 0;
-	virtual const TArray<FStructProperty*>& GetDynamicResetNodeProperties() const = 0;
-	virtual const TArray<FStructProperty*>& GetStateMachineNodeProperties() const = 0;
-	virtual const TArray<FStructProperty*>& GetInitializationNodeProperties() const = 0;
+	virtual const TArray<UStructProperty*>& GetLayerNodeProperties() const { return GetLinkedAnimLayerNodeProperties(); }
+	virtual const TArray<UStructProperty*>& GetLinkedAnimLayerNodeProperties() const = 0;
+	virtual const TArray<UStructProperty*>& GetPreUpdateNodeProperties() const = 0;
+	virtual const TArray<UStructProperty*>& GetDynamicResetNodeProperties() const = 0;
+	virtual const TArray<UStructProperty*>& GetStateMachineNodeProperties() const = 0;
+	virtual const TArray<UStructProperty*>& GetInitializationNodeProperties() const = 0;
 	virtual const TArray<FExposedValueHandler>& GetExposedValueHandlers() const = 0;
 	virtual const TArray<FName>& GetSyncGroupNames() const = 0;
 	virtual const TMap<FName, FCachedPoseIndices>& GetOrderedSavedPoseNodeIndicesMap() const = 0;
@@ -163,47 +162,8 @@ public:
 	virtual const TMap<FName, FGraphAssetPlayerInformation>& GetGraphAssetPlayerInformation() const = 0;
 	virtual const TMap<FName, FAnimGraphBlendOptions>& GetGraphBlendOptions() const = 0;
 	virtual USkeleton* GetTargetSkeleton() const = 0;
+
 	virtual int32 GetSyncGroupIndex(FName SyncGroupName) const = 0;
-	virtual const FPropertyAccessLibrary& GetPropertyAccessLibrary() const = 0;
-	
-protected:
-	friend class UAnimBlueprintGeneratedClass;
-
-	// These direct accessors are here to allow internal access that doesnt redirect to the root class
-	virtual const TArray<FBakedAnimationStateMachine>& GetBakedStateMachines_Direct() const = 0;
-	virtual const TArray<FAnimNotifyEvent>& GetAnimNotifies_Direct() const = 0;
-	virtual const TArray<FName>& GetSyncGroupNames_Direct() const = 0;
-	virtual const TMap<FName, FCachedPoseIndices>& GetOrderedSavedPoseNodeIndicesMap_Direct() const = 0;
-	virtual const TMap<FName, FGraphAssetPlayerInformation>& GetGraphAssetPlayerInformation_Direct() const = 0;
-	virtual const TMap<FName, FAnimGraphBlendOptions>& GetGraphBlendOptions_Direct() const = 0;
-	virtual const FPropertyAccessLibrary& GetPropertyAccessLibrary_Direct() const = 0;
-
-public:
-
-	// Get the root anim class interface (i.e. if this is a derived class).
-	// Some properties that are derived from the compiled anim graph are routed to the 'Root' class
-	// as child classes don't get fully compiled. Instead they just override various asset players leaving the
-	// full compilation up to the base class. 
-	const IAnimClassInterface* GetRootClass() const
-	{
-		auto GetSuperClassInterface = [](const IAnimClassInterface* InClass) -> const IAnimClassInterface*
-		{
-			if(const UClass* ActualClass = GetActualAnimClass(InClass))
-			{
-				return GetFromClass(ActualClass->GetSuperClass());
-			}
-
-			return nullptr;
-		};
-
-		const IAnimClassInterface* RootClass = this;
-		while(const IAnimClassInterface* NextClass = GetSuperClassInterface(RootClass))
-		{
-			RootClass = NextClass;
-		}
-
-		return RootClass;
-	}
 
 	static IAnimClassInterface* GetFromClass(UClass* InClass)
 	{
@@ -219,20 +179,6 @@ public:
 		return nullptr;
 	}
 
-	static const IAnimClassInterface* GetFromClass(const UClass* InClass)
-	{
-		if (auto AnimClassInterface = Cast<const IAnimClassInterface>(InClass))
-		{
-			return AnimClassInterface;
-		}
-		if (auto DynamicClass = Cast<const UDynamicClass>(InClass))
-		{
-			DynamicClass->GetDefaultObject(true);
-			return CastChecked<const IAnimClassInterface>(DynamicClass->AnimClassImplementation, ECastCheckedType::NullAllowed);
-		}
-		return nullptr;
-	}
-
 	static UClass* GetActualAnimClass(IAnimClassInterface* AnimClassInterface)
 	{
 		if (UClass* ActualAnimClass = Cast<UClass>(AnimClassInterface))
@@ -242,19 +188,6 @@ public:
 		if (UObject* AsObject = Cast<UObject>(AnimClassInterface))
 		{
 			return Cast<UClass>(AsObject->GetOuter());
-		}
-		return nullptr;
-	}
-
-	static const UClass* GetActualAnimClass(const IAnimClassInterface* AnimClassInterface)
-	{
-		if (const UClass* ActualAnimClass = Cast<const UClass>(AnimClassInterface))
-		{
-			return ActualAnimClass;
-		}
-		if (const UObject* AsObject = Cast<const UObject>(AnimClassInterface))
-		{
-			return Cast<const UClass>(AsObject->GetOuter());
 		}
 		return nullptr;
 	}
@@ -297,5 +230,5 @@ public:
 	virtual int32 GetRootAnimNodeIndex() const { return INDEX_NONE; }
 
 	UE_DEPRECATED(4.23, "Please use GetAnimBlueprintFunctions()")
-	virtual FStructProperty* GetRootAnimNodeProperty() const { return nullptr; }
+	virtual UStructProperty* GetRootAnimNodeProperty() const { return nullptr; }
 };

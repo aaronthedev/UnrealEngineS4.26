@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // djh using System.IO;
 using UnrealBuildTool;
@@ -81,15 +81,17 @@ public class OpenVDB : ModuleRules
             // Add TBB
             {
                 // store the compiled tbb library in the same area as the rest of the third party code
-                string TBBPath = Target.UEThirdPartySourceDirectory + "Intel/TBB/IntelTBB-2019u8";
-                PublicIncludePaths.Add(Path.Combine(TBBPath, "include"));
-                string TBBLibPath = TBBPath + "/lib/Win64/vc14";
+                string TBBLibPath = ModuleDirectory + "/Deploy/VS" + Target.WindowsPlatform.GetVisualStudioCompilerVersionName() + "/lib/x64/IntelTBB-4.4u3/";
+                PublicIncludePaths.Add(Target.UEThirdPartySourceDirectory + "IntelTBB/IntelTBB-4.4u3/include");
+               // string TBBLibPath = Target.UEThirdPartySourceDirectory + "IntelTBB/IntelTBB-4.4u3/build/Windows_vc14/x64/";
                 if (bDebug)
                 {
+                    TBBLibPath += "Debug-MT";
                     PublicAdditionalLibraries.Add(Path.Combine(TBBLibPath, "tbb_debug.lib"));
                 }
                 else
                 {
+                    TBBLibPath += "Release-MT";
                     PublicAdditionalLibraries.Add(Path.Combine(TBBLibPath, "tbb.lib"));
                 }
             }

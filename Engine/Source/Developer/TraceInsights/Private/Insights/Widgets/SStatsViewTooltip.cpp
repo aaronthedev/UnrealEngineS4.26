@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SStatsViewTooltip.h"
 
@@ -13,20 +13,19 @@
 
 // Insights
 #include "Insights/Common/TimeUtils.h"
-#include "Insights/Table/ViewModels/Table.h"
-#include "Insights/Table/ViewModels/TableColumn.h"
 #include "Insights/ViewModels/StatsNode.h"
+#include "Insights/ViewModels/StatsViewColumn.h"
 #include "Insights/ViewModels/StatsNodeHelper.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-#define LOCTEXT_NAMESPACE "SStatsView"
+#define LOCTEXT_NAMESPACE "SStatsViewTooltip"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 BEGIN_SLATE_FUNCTION_BUILD_OPTIMIZATION
 
-TSharedPtr<SToolTip> SStatsViewTooltip::GetTableTooltip(const Insights::FTable& Table)
+TSharedPtr<SToolTip> SStatsViewTooltip::GetColumnTooltip(const FStatsViewColumn& Column)
 {
 	TSharedPtr<SToolTip> ColumnTooltip =
 		SNew(SToolTip)
@@ -38,7 +37,7 @@ TSharedPtr<SToolTip> SStatsViewTooltip::GetTableTooltip(const Insights::FTable& 
 			.Padding(2.0f)
 			[
 				SNew(STextBlock)
-				.Text(Table.GetDisplayName())
+				.Text(Column.TitleName)
 				.TextStyle(FEditorStyle::Get(), TEXT("Profiler.TooltipBold"))
 			]
 
@@ -47,38 +46,7 @@ TSharedPtr<SToolTip> SStatsViewTooltip::GetTableTooltip(const Insights::FTable& 
 			.Padding(2.0f)
 			[
 				SNew(STextBlock)
-				.Text(Table.GetDescription())
-				.TextStyle(FEditorStyle::Get(), TEXT("Profiler.Tooltip"))
-			]
-		];
-
-	return ColumnTooltip;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-TSharedPtr<SToolTip> SStatsViewTooltip::GetColumnTooltip(const Insights::FTableColumn& Column)
-{
-	TSharedPtr<SToolTip> ColumnTooltip =
-		SNew(SToolTip)
-		[
-			SNew(SVerticalBox)
-
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			.Padding(2.0f)
-			[
-				SNew(STextBlock)
-				.Text(Column.GetTitleName())
-				.TextStyle(FEditorStyle::Get(), TEXT("Profiler.TooltipBold"))
-			]
-
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			.Padding(2.0f)
-			[
-				SNew(STextBlock)
-				.Text(Column.GetDescription())
+				.Text(Column.Description)
 				.TextStyle(FEditorStyle::Get(), TEXT("Profiler.Tooltip"))
 			]
 		];
@@ -139,7 +107,7 @@ TSharedPtr<SToolTip> SStatsViewTooltip::GetRowTooltip(const TSharedPtr<FStatsNod
 					.Padding(2.0f)
 					[
 						SNew(STextBlock)
-						.Text(FText::AsNumber(StatsNodePtr->GetCounterId()))
+						.Text(FText::AsNumber(StatsNodePtr->GetId()))
 						.TextStyle(FEditorStyle::Get(), TEXT("Profiler.Tooltip"))
 					]
 
@@ -155,8 +123,6 @@ TSharedPtr<SToolTip> SStatsViewTooltip::GetRowTooltip(const TSharedPtr<FStatsNod
 					.Padding(2.0f)
 					[
 						SNew(STextBlock)
-						.WrapTextAt(512.0f)
-						.WrappingPolicy(ETextWrappingPolicy::AllowPerCharacterWrapping)
 						.Text(FText::FromName(StatsNodePtr->GetName()))
 						.TextStyle(FEditorStyle::Get(), TEXT("Profiler.Tooltip"))
 					]
@@ -173,7 +139,7 @@ TSharedPtr<SToolTip> SStatsViewTooltip::GetRowTooltip(const TSharedPtr<FStatsNod
 					.Padding(2.0f)
 					[
 						SNew(STextBlock)
-						.Text(StatsNodeTypeHelper::ToText(StatsNodePtr->GetType()))
+						.Text(StatsNodeTypeHelper::ToName(StatsNodePtr->GetType()))
 						.TextStyle(FEditorStyle::Get(), TEXT("Profiler.Tooltip"))
 					]
 				]

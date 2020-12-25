@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SocialTypes.h"
 #include "OnlineSubsystemUtils.h"
@@ -7,72 +7,63 @@
 // FUserPlatform
 //////////////////////////////////////////////////////////////////////////
 
-#define PLATFORM_NAME_MOBILE	TEXT("MOBILE")
-#define PLATFORM_NAME_DESKTOP	TEXT("DESKTOP")
+#define PLATFORM_NAME_PC		TEXT("PC")
 #define PLATFORM_NAME_CONSOLE	TEXT("CONSOLE")
-
-FUserPlatform::FUserPlatform()
-{
-
-}
-
-FUserPlatform::FUserPlatform(const FString& InPlatform)
-{
-	const TArray<FSocialPlatformDescription>& SocialPlatformDescriptions = USocialSettings::GetSocialPlatformDescriptions();
-	for (const FSocialPlatformDescription& Entry : SocialPlatformDescriptions)
-	{
-		if (Entry.SocialPlatformName == InPlatform)
-		{
-			PlatformDescription = Entry;
-			break;
-		}
-	}
-
-	if (!ensure(IsValid()))
-	{
-		UE_LOG(LogParty, Warning, TEXT("[FUserPlatform] PlatformStr [%s] is not valid."), *InPlatform);
-	}
-}
+#define PLATFORM_NAME_MOBILE	TEXT("MOBILE")
 
 bool FUserPlatform::operator==(const FString& OtherStr) const
 {
-	return PlatformDescription.SocialPlatformName == OtherStr;
+	return PlatformStr == OtherStr;
 }
 
 bool FUserPlatform::operator==(const FUserPlatform& Other) const
 {
-	return PlatformDescription.SocialPlatformName == Other.PlatformDescription.SocialPlatformName;
+	return PlatformStr == Other.PlatformStr;
 }
 
 const FString FUserPlatform::GetTypeName() const
 {
-	return PlatformDescription.SocialPlatformTypeName;
+	if (IsDesktop())
+	{
+		return PLATFORM_NAME_PC;
+	}
 
-	/*FUserPlatform LocalPlatform = FUserPlatform(IOnlineSubsystem::GetLocalPlatformName());
+	if (IsMobile())
+	{
+		return PLATFORM_NAME_MOBILE;
+	}
+
+	FUserPlatform LocalPlatform = FUserPlatform(IOnlineSubsystem::GetLocalPlatformName());
 	if (IsConsole() && LocalPlatform.IsConsole() && PlatformStr != LocalPlatform)
 	{
 		return PLATFORM_NAME_CONSOLE;
-	}*/
+	}
+	return PlatformStr;
 }
 
 bool FUserPlatform::IsValid() const
 {
-	return !PlatformDescription.SocialPlatformName.IsEmpty();
+	return !PlatformStr.IsEmpty();
 }
 
 bool FUserPlatform::IsDesktop() const
 {
-	return PlatformDescription.SocialPlatformTypeName == PLATFORM_NAME_DESKTOP;
+	return PlatformStr == OSS_PLATFORM_NAME_WINDOWS || PlatformStr == OSS_PLATFORM_NAME_MAC || PlatformStr == OSS_PLATFORM_NAME_LINUX;
 }
 
 bool FUserPlatform::IsMobile() const
 {
-	return PlatformDescription.SocialPlatformTypeName == PLATFORM_NAME_MOBILE;
+	return PlatformStr == OSS_PLATFORM_NAME_ANDROID || PlatformStr == OSS_PLATFORM_NAME_IOS;
 }
 
 bool FUserPlatform::IsConsole() const
 {
-	return PlatformDescription.SocialPlatformTypeName == PLATFORM_NAME_CONSOLE;
+	return PlatformStr == OSS_PLATFORM_NAME_XBOX || PlatformStr == OSS_PLATFORM_NAME_PS4 || PlatformStr == OSS_PLATFORM_NAME_SWITCH;
+}
+
+bool FUserPlatform::RequiresCrossplayOptIn() const
+{
+	return PlatformStr == OSS_PLATFORM_NAME_XBOX || PlatformStr == OSS_PLATFORM_NAME_PS4;
 }
 
 bool FUserPlatform::IsCrossplayWith(const FUserPlatform& OtherPlatform) const

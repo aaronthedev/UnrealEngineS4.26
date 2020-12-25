@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "Vector4StructCustomization.h"
 #include "IPropertyUtilities.h"
 #include "Widgets/Input/SNumericEntryBox.h"
@@ -27,7 +27,7 @@ FVector4StructCustomization::~FVector4StructCustomization()
 
 void FVector4StructCustomization::CustomizeChildren(TSharedRef<IPropertyHandle> StructPropertyHandle, IDetailChildrenBuilder& StructBuilder, IPropertyTypeCustomizationUtils& StructCustomizationUtils)
 {
-	FProperty* Property = StructPropertyHandle->GetProperty();
+	UProperty* Property = StructPropertyHandle->GetProperty();
 	if (Property)
 	{
 		const FString& ColorGradingModeString = Property->GetMetaData(TEXT("ColorGradingMode"));
@@ -64,7 +64,7 @@ TSharedPtr<FColorGradingVectorCustomization> FVector4StructCustomization::GetOrC
 
 void FVector4StructCustomization::MakeHeaderRow(TSharedRef<IPropertyHandle>& StructPropertyHandle, FDetailWidgetRow& Row)
 {
-	FProperty* Property = StructPropertyHandle->GetProperty();
+	UProperty* Property = StructPropertyHandle->GetProperty();
 	if (Property)
 	{
 		const FString& ColorGradingModeString = Property->GetMetaData(TEXT("ColorGradingMode"));

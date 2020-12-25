@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ParticleHelper.h: Particle helper definitions/ macros.
@@ -21,7 +21,6 @@
 #include "MeshBatch.h"
 #include "MeshParticleVertexFactory.h"
 #include "PrimitiveSceneProxy.h"
-#include "Particles/ParticlePerfStats.h"
 
 #define _ENABLE_PARTICLE_LOD_INGAME_
 
@@ -259,6 +258,7 @@ DECLARE_CYCLE_STAT_EXTERN(TEXT("Sort Time RT"),STAT_SortingTime,STATGROUP_Partic
 DECLARE_CYCLE_STAT_EXTERN(TEXT("Sprite Render Time RT"),STAT_SpriteRenderingTime,STATGROUP_Particles, );
 DECLARE_CYCLE_STAT_EXTERN(TEXT("Sprite Tick Time GT"),STAT_SpriteTickTime,STATGROUP_Particles, );
 DECLARE_CYCLE_STAT_EXTERN(TEXT("Sprite Spawn Time GT"),STAT_SpriteSpawnTime,STATGROUP_Particles, );
+DECLARE_CYCLE_STAT_EXTERN(TEXT("Sprite Update Time GT"),STAT_SpriteUpdateTime,STATGROUP_Particles, );
 DECLARE_CYCLE_STAT_EXTERN(TEXT("PSys Comp Tick Time GT"),STAT_PSysCompTickTime,STATGROUP_Particles, );
 DECLARE_CYCLE_STAT_EXTERN(TEXT("Particle Collision Time GT"),STAT_ParticleCollisionTime,STATGROUP_Particles, );
 DECLARE_CYCLE_STAT_EXTERN(TEXT("Particle SkelMeshSurf Time GT"),STAT_ParticleSkelMeshSurfTime,STATGROUP_Particles, );
@@ -275,6 +275,7 @@ DECLARE_CYCLE_STAT_EXTERN(TEXT("Async Work Time"),STAT_ParticleAsyncTime,STATGRO
 DECLARE_CYCLE_STAT_EXTERN(TEXT("Wait For ASync Time"),STAT_ParticleAsyncWaitTime,STATGROUP_Particles, );   // can be either performed on this thread or a true wait
 DECLARE_CYCLE_STAT_EXTERN(TEXT("Update Bounds Time GT"),STAT_ParticleUpdateBounds,STATGROUP_Particles, );
 
+DECLARE_CYCLE_STAT_EXTERN(TEXT("Particle Memory Time"),STAT_ParticleMemTime,STATGROUP_ParticleMem, );
 DECLARE_MEMORY_STAT_EXTERN(TEXT("Ptcls Data GT Mem"),STAT_GTParticleData,STATGROUP_ParticleMem, );
 DECLARE_DWORD_COUNTER_STAT_EXTERN(TEXT("Ptcls Data GT Mem MAX"),STAT_GTParticleData_MAX,STATGROUP_ParticleMem, );
 DECLARE_DWORD_COUNTER_STAT_EXTERN(TEXT("Ptcls Data RT Mem"),STAT_RTParticleData,STATGROUP_ParticleMem, );
@@ -1683,7 +1684,8 @@ struct FDynamicSpriteEmitterData : public FDynamicSpriteEmitterDataBase
 	 */
 	virtual int32 GetDynamicVertexStride(ERHIFeatureLevel::Type InFeatureLevel) const override
 	{
-		return sizeof(FParticleSpriteVertex);
+		const bool bInstanced = GRHISupportsInstancing;
+		return bInstanced ? sizeof(FParticleSpriteVertex) : sizeof(FParticleSpriteVertexNonInstanced);
 	}
 
 	/**
@@ -1730,7 +1732,6 @@ struct FDynamicSpriteEmitterData : public FDynamicSpriteEmitterDataBase
 	 *
 	 *	@return	bool			true if successful, false if failed
 	 */
-	UE_DEPRECATED(4.25, "Non-instanced path is being removed")
 	bool GetVertexAndIndexDataNonInstanced(void* VertexData, void* DynamicParameterVertexData, void* FillIndexData, FParticleOrder* ParticleOrder, const FVector& InCameraPosition, const FMatrix& InLocalToWorld, int32 NumVerticesPerParticle) const;
 
 	/** Gathers simple lights for this emitter. */
@@ -2589,16 +2590,8 @@ public:
 
 	void MarkEmitterVertexFactoryDirty(uint32 EmitterIndex) const
 	{
-		for (TArray<FParticleVertexFactoryBase*>& PerViewEmitterVFs : EmitterVertexFactoryArray)
-		{
-			if ( PerViewEmitterVFs.IsValidIndex(EmitterIndex) )
-			{
-				if ( FParticleVertexFactoryBase *VertexFactory = PerViewEmitterVFs[EmitterIndex] )
-				{
-					VertexFactory->SetDirty();
-				}
-			}
-		}
+		check(EmitterVertexFactoryArray[EmitterIndex]);
+		EmitterVertexFactoryArray[EmitterIndex]->SetDirty();
 	}
 
 	void ClearVertexFactoriesIfDirty() const
@@ -2611,29 +2604,23 @@ public:
 		else
 		{
 			// selectively clear
-			for (TArray<FParticleVertexFactoryBase*>& PerViewEmitterVFs : EmitterVertexFactoryArray)
+			for (int32 Index = 0; Index < EmitterVertexFactoryArray.Num(); Index++)
 			{
-				for (int32 Index = 0; Index < PerViewEmitterVFs.Num(); Index++)
-				{
-					ClearEmitterVertexFactoryIfDirty(Index);
-				}
+				ClearEmitterVertexFactoryIfDirty(Index);
 			}
 		}
 	}
 
 	void ClearVertexFactories() const
 	{
-		for (TArray<FParticleVertexFactoryBase*>& PerViewEmitterVFs : EmitterVertexFactoryArray)
+		for (int32 Index = 0; Index < EmitterVertexFactoryArray.Num(); Index++)
 		{
-			for (int32 Index = 0; Index < PerViewEmitterVFs.Num(); Index++)
+			FParticleVertexFactoryBase *VertexFactory = EmitterVertexFactoryArray[Index];
+			if (VertexFactory)
 			{
-				FParticleVertexFactoryBase *VertexFactory = PerViewEmitterVFs[Index];
-				if (VertexFactory)
-				{
-					VertexFactory->ReleaseResource();
-					delete VertexFactory;
-					PerViewEmitterVFs[Index] = nullptr;
-				}
+				VertexFactory->ReleaseResource();
+				delete VertexFactory;
+				EmitterVertexFactoryArray[Index] = nullptr;
 			}
 		}
 		bVertexFactoriesDirty = false;
@@ -2641,41 +2628,25 @@ public:
 
 	void ClearEmitterVertexFactoryIfDirty(uint32 EmitterIndex) const
 	{
-		for (TArray<FParticleVertexFactoryBase*>& PerViewEmitterVFs : EmitterVertexFactoryArray)
+		FParticleVertexFactoryBase *VertexFactory = EmitterVertexFactoryArray[EmitterIndex];
+		if (VertexFactory && VertexFactory->IsDirty())
 		{
-			if (PerViewEmitterVFs.IsValidIndex(EmitterIndex))
-			{
-				FParticleVertexFactoryBase *VertexFactory = PerViewEmitterVFs[EmitterIndex];
-				if (VertexFactory && VertexFactory->IsDirty())
-				{
-					VertexFactory->ReleaseResource();
-					delete VertexFactory;
-					PerViewEmitterVFs[EmitterIndex] = nullptr;
-				}
-			}
+			VertexFactory->ReleaseResource();
+			delete VertexFactory;
+			EmitterVertexFactoryArray[EmitterIndex] = nullptr;
 		}
 	}
 
-	void AddEmitterVertexFactory(FDynamicEmitterDataBase *InDynamicData, int32 ViewIndex) const
+	void AddEmitterVertexFactory(FDynamicEmitterDataBase *InDynamicData) const
 	{
-		check(ViewIndex >= 0);
-
-		// Ensure view is allocated
-		while (ViewIndex >= EmitterVertexFactoryArray.Num())
+		while(InDynamicData->EmitterIndex >= EmitterVertexFactoryArray.Num())
 		{
-			EmitterVertexFactoryArray.AddDefaulted();
+			EmitterVertexFactoryArray.Add(nullptr);
 		}
 
-		// Allocate space for emitters
-		TArray<FParticleVertexFactoryBase*>& PerViewEmitterVFs = EmitterVertexFactoryArray[ViewIndex];
-		while (InDynamicData->EmitterIndex >= PerViewEmitterVFs.Num())
+		if (EmitterVertexFactoryArray[InDynamicData->EmitterIndex] == nullptr)
 		{
-			PerViewEmitterVFs.Add(nullptr);
-		}
-
-		if (PerViewEmitterVFs[InDynamicData->EmitterIndex] == nullptr)
-		{
-			PerViewEmitterVFs[InDynamicData->EmitterIndex] = InDynamicData->CreateVertexFactory(FeatureLevel, this);
+			EmitterVertexFactoryArray[InDynamicData->EmitterIndex] = InDynamicData->CreateVertexFactory(FeatureLevel, this);
 		}
 	}
 
@@ -2688,7 +2659,7 @@ public:
 	{
 		for (int32 Index = 0; Index < DynamicDataForThisFrame.Num(); Index++)
 		{
-			AddEmitterVertexFactory(DynamicDataForThisFrame[Index], 0);
+			AddEmitterVertexFactory(DynamicDataForThisFrame[Index]);
 		}
 		DynamicDataForThisFrame.Empty();
 	}
@@ -2754,15 +2725,10 @@ private:
 
 protected:
 	/** vertex factories for all emitters */
-	mutable TArray<TArray<FParticleVertexFactoryBase*>, TInlineAllocator<1>> EmitterVertexFactoryArray;
-	mutable TArray<FDynamicEmitterDataBase*> DynamicDataForThisFrame;
+	mutable TArray<FParticleVertexFactoryBase*> EmitterVertexFactoryArray;
+	mutable TArray<FDynamicEmitterDataBase*> DynamicDataForThisFrame; 
 
 	friend struct FDynamicSpriteEmitterDataBase;
-
-#if WITH_PARTICLE_PERF_STATS
-public:
-	UParticleSystem* PerfAsset;
-#endif
 };
 
 #if STATS

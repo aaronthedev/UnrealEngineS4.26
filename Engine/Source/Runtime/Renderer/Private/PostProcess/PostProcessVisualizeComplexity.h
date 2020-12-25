@@ -1,8 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "ScreenPass.h"
+#include "PostProcess/RenderingCompositionGraph.h"
 #include "DebugViewModeHelpers.h"
 #include "OverridePassSequence.h"
 
@@ -45,3 +46,11 @@ struct FVisualizeComplexityInputs
 };
 
 FScreenPassTexture AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FVisualizeComplexityInputs& Inputs);
+
+FRenderingCompositeOutputRef AddVisualizeComplexityPass(
+	FRenderingCompositionGraph& Graph,
+	FRenderingCompositeOutputRef Input,
+	const TArray<FLinearColor>& InColors,
+	FVisualizeComplexityInputs::EColorSamplingMethod InColorSampling,
+	float InComplexityScale,
+	bool bInLegend);

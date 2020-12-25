@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -62,10 +62,6 @@ public:
 	};	
 	/** List of offers being purchased */
 	TArray<FPurchaseOfferEntry> PurchaseOffers;
-
-	/** Optional AccountId to include with the purchase request (if supported) */
-	TOptional<FString> AccountId;
-
 };
 
 /**
@@ -306,20 +302,3 @@ public:
 	 */
 	DEFINE_ONLINE_DELEGATE_ONE_PARAM(OnUnexpectedPurchaseReceipt, const FUniqueNetId& /*UserId*/);
 };
-
-inline const TCHAR* LexToString(EPurchaseTransactionState State)
-{
-	switch (State)
-	{
-	case EPurchaseTransactionState::NotStarted: return TEXT("NotStarted");
-	case EPurchaseTransactionState::Processing: return TEXT("Processing");
-	case EPurchaseTransactionState::Purchased: return TEXT("Purchased");
-	case EPurchaseTransactionState::Failed: return TEXT("Failed");
-	case EPurchaseTransactionState::Deferred: return TEXT("Deferred");
-	case EPurchaseTransactionState::Canceled: return TEXT("Canceled");
-	case EPurchaseTransactionState::Restored: return TEXT("Restored");
-	case EPurchaseTransactionState::NotAllowed: return TEXT("NotAllowed");
-	case EPurchaseTransactionState::Invalid: return TEXT("Invalid");
-	default: return TEXT("Unknown");
-	}
-}

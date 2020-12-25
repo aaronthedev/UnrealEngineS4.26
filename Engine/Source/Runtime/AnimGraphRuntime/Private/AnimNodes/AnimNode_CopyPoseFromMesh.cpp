@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimNodes/AnimNode_CopyPoseFromMesh.h"
 #include "Animation/AnimInstanceProxy.h"
-#include "Animation/AnimTrace.h"
 
 /////////////////////////////////////////////////////
 // FAnimNode_CopyPoseFromMesh
@@ -11,8 +10,6 @@ FAnimNode_CopyPoseFromMesh::FAnimNode_CopyPoseFromMesh()
 	: SourceMeshComponent(nullptr)
 	, bUseAttachedParent (false)
 	, bCopyCurves (false)
-	, bCopyCustomAttributes(false)
-	, bUseMeshPose (false)
 {
 }
 
@@ -23,6 +20,8 @@ void FAnimNode_CopyPoseFromMesh::Initialize_AnyThread(const FAnimationInitialize
 
 	// Initial update of the node, so we dont have a frame-delay on setup
 	GetEvaluateGraphExposedInputs().Execute(Context);
+
+	RefreshMeshComponent(Context.AnimInstanceProxy->GetSkelMeshComponent());
 }
 
 void FAnimNode_CopyPoseFromMesh::CacheBones_AnyThread(const FAnimationCacheBonesContext& Context)
@@ -139,11 +138,6 @@ void FAnimNode_CopyPoseFromMesh::PreUpdate(const UAnimInstance* InAnimInstance)
 					SourceCurveList.Reset();
 				}
 			}
-
-			if (bCopyCustomAttributes)
-			{
-				SourceCustomAttributes.CopyFrom(CurrentMeshComponent->GetCustomAttributes());
-			}
 		}
 		else
 		{
@@ -158,9 +152,6 @@ void FAnimNode_CopyPoseFromMesh::Update_AnyThread(const FAnimationUpdateContext&
 	// This introduces a frame of latency in setting the pin-driven source component,
 	// but we cannot do the work to extract transforms on a worker thread as it is not thread safe.
 	GetEvaluateGraphExposedInputs().Execute(Context);
-
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Component"), *GetNameSafe(CurrentlyUsedSourceMeshComponent.IsValid() ? CurrentlyUsedSourceMeshComponent.Get() : nullptr));
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Mesh"), *GetNameSafe(CurrentlyUsedSourceMeshComponent.IsValid() ? CurrentlyUsedSourceMeshComponent.Get()->SkeletalMesh : nullptr));
 }
 
 void FAnimNode_CopyPoseFromMesh::Evaluate_AnyThread(FPoseContext& Output)
@@ -173,48 +164,26 @@ void FAnimNode_CopyPoseFromMesh::Evaluate_AnyThread(FPoseContext& Output)
 	{
 		const FBoneContainer& RequiredBones = OutPose.GetBoneContainer();
 
-		if (bUseMeshPose)
+		for(FCompactPoseBoneIndex PoseBoneIndex : OutPose.ForEachBoneIndex())
 		{
-			FCSPose<FCompactPose> MeshPoses;
-			MeshPoses.InitPose(OutPose);
-
-			for (FCompactPoseBoneIndex PoseBoneIndex : OutPose.ForEachBoneIndex())
+			const int32 SkeletonBoneIndex = RequiredBones.GetSkeletonIndex(PoseBoneIndex);
+			const int32 MeshBoneIndex = RequiredBones.GetSkeletonToPoseBoneIndexArray()[SkeletonBoneIndex];
+			const int32* Value = BoneMapToSource.Find(MeshBoneIndex);
+			if(Value && SourceMeshTransformArray.IsValidIndex(*Value))
 			{
-				const int32 SkeletonBoneIndex = RequiredBones.GetSkeletonIndex(PoseBoneIndex);
-				const int32 MeshBoneIndex = RequiredBones.GetSkeletonToPoseBoneIndexArray()[SkeletonBoneIndex];
-				const int32* Value = BoneMapToSource.Find(MeshBoneIndex);
- 				if (Value && SourceMeshTransformArray.IsValidIndex(*Value))
+				const int32 SourceBoneIndex = *Value;
+				const int32 ParentIndex = CurrentMesh->RefSkeleton.GetParentIndex(SourceBoneIndex);
+				const FCompactPoseBoneIndex MyParentIndex = RequiredBones.GetParentBoneIndex(PoseBoneIndex);
+				// only apply if I also have parent, otherwise, it should apply the space bases
+				if (SourceMeshTransformArray.IsValidIndex(ParentIndex) && MyParentIndex != INDEX_NONE)
 				{
-					const int32 SourceBoneIndex = *Value;
-					MeshPoses.SetComponentSpaceTransform(PoseBoneIndex, SourceMeshTransformArray[SourceBoneIndex]);
+					const FTransform& ParentTransform = SourceMeshTransformArray[ParentIndex];
+					const FTransform& ChildTransform = SourceMeshTransformArray[SourceBoneIndex];
+					OutPose[PoseBoneIndex] = ChildTransform.GetRelativeTransform(ParentTransform);
 				}
-			}
-
-			FCSPose<FCompactPose>::ConvertComponentPosesToLocalPosesSafe(MeshPoses, OutPose);
-		}
-		else
-		{
-			for (FCompactPoseBoneIndex PoseBoneIndex : OutPose.ForEachBoneIndex())
-			{
-				const int32 SkeletonBoneIndex = RequiredBones.GetSkeletonIndex(PoseBoneIndex);
-				const int32 MeshBoneIndex = RequiredBones.GetSkeletonToPoseBoneIndexArray()[SkeletonBoneIndex];
-				const int32* Value = BoneMapToSource.Find(MeshBoneIndex);
-				if (Value && SourceMeshTransformArray.IsValidIndex(*Value))
+				else
 				{
-					const int32 SourceBoneIndex = *Value;
-					const int32 ParentIndex = CurrentMesh->RefSkeleton.GetParentIndex(SourceBoneIndex);
-					const FCompactPoseBoneIndex MyParentIndex = RequiredBones.GetParentBoneIndex(PoseBoneIndex);
-					// only apply if I also have parent, otherwise, it should apply the space bases
-					if (SourceMeshTransformArray.IsValidIndex(ParentIndex) && MyParentIndex != INDEX_NONE)
-					{
-						const FTransform& ParentTransform = SourceMeshTransformArray[ParentIndex];
-						const FTransform& ChildTransform = SourceMeshTransformArray[SourceBoneIndex];
-						OutPose[PoseBoneIndex] = ChildTransform.GetRelativeTransform(ParentTransform);
-					}
-					else
-					{
-						OutPose[PoseBoneIndex] = SourceMeshTransformArray[SourceBoneIndex];
-					}
+					OutPose[PoseBoneIndex] = SourceMeshTransformArray[SourceBoneIndex];
 				}
 			}
 		}
@@ -231,12 +200,6 @@ void FAnimNode_CopyPoseFromMesh::Evaluate_AnyThread(FPoseContext& Output)
 				Output.Curve.Set(*UID, Iter.Value());
 			}
 		}
-	}
-
-	if (bCopyCustomAttributes)
-	{	
-		const FBoneContainer& RequiredBones = OutPose.GetBoneContainer();
-		FCustomAttributesRuntime::CopyAndRemapAttributes(SourceCustomAttributes, Output.CustomAttributes, BoneMapToSource, RequiredBones);		
 	}
 }
 
@@ -279,18 +242,13 @@ void FAnimNode_CopyPoseFromMesh::ReinitializeMeshComponent(USkeletalMeshComponen
 			}
 			else
 			{
-				const int32 SplitBoneIndex = (RootBoneToCopy != NAME_Name)? TargetSkelMesh->RefSkeleton.FindBoneIndex(RootBoneToCopy) : INDEX_NONE;
-				for (int32 ComponentSpaceBoneId = 0; ComponentSpaceBoneId < TargetSkelMesh->RefSkeleton.GetNum(); ++ComponentSpaceBoneId)
+				for (int32 ComponentSpaceBoneId=0; ComponentSpaceBoneId<TargetSkelMesh->RefSkeleton.GetNum(); ++ComponentSpaceBoneId)
 				{
-					if (SplitBoneIndex == INDEX_NONE || ComponentSpaceBoneId == SplitBoneIndex
-						|| TargetSkelMesh->RefSkeleton.BoneIsChildOf(ComponentSpaceBoneId, SplitBoneIndex))
-					{
-						FName BoneName = TargetSkelMesh->RefSkeleton.GetBoneName(ComponentSpaceBoneId);
-						BoneMapToSource.Add(ComponentSpaceBoneId, SourceSkelMesh->RefSkeleton.FindBoneIndex(BoneName));
-					}
+					FName BoneName = TargetSkelMesh->RefSkeleton.GetBoneName(ComponentSpaceBoneId);
+					BoneMapToSource.Add(ComponentSpaceBoneId, SourceSkelMesh->RefSkeleton.FindBoneIndex(BoneName));
 				}
 			}
-		
+
 			if (bCopyCurves)
 			{
 				USkeleton* SourceSkeleton = SourceSkelMesh->Skeleton;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -16,9 +16,7 @@
 #include "VREditorInteractor.h"
 #include "AI/NavigationSystemBase.h"
 #include "Landscape.h"
-#include "Logging/LogMacros.h"
 
-DECLARE_LOG_CATEGORY_EXTERN(LogLandscapeTools, Log, All);
 // VR Editor
 
 //
@@ -1533,7 +1531,6 @@ protected:
 
 	bool IsModifierPressed(const class FEditorViewportClient* ViewportClient = nullptr)
 	{
-		UE_LOG(LogLandscapeTools, VeryVerbose, TEXT("bExternalModifierPressed = %d, ViewportClient = %d, IsShiftDown = %d"), bExternalModifierPressed, (ViewportClient != nullptr), (ViewportClient != nullptr && IsShiftDown(ViewportClient->Viewport)));
 		return bExternalModifierPressed || (ViewportClient != nullptr && IsShiftDown(ViewportClient->Viewport));
 	}
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AvfMediaVideoSampler.h"
 #include "AvfMediaPrivate.h"
@@ -253,7 +253,7 @@ void FAvfMediaVideoSampler::ProcessFrame(CVPixelBufferRef Frame, FTimespan Sampl
 			// Expecting BiPlanar kCVPixelFormatType_420YpCbCr8BiPlanar Full/Video
 			check(CVPixelBufferGetPlaneCount(Frame) == 2);
 			
-			ETextureCreateFlags TexCreateFlags = TexCreate_Dynamic | TexCreate_NoTiling;
+			uint32 TexCreateFlags = TexCreate_Dynamic | TexCreate_NoTiling;
 			
 			int32 YWidth = CVPixelBufferGetWidthOfPlane(Frame, 0);
 			int32 YHeight = CVPixelBufferGetHeightOfPlane(Frame, 0);
@@ -305,8 +305,8 @@ void FAvfMediaVideoSampler::ProcessFrame(CVPixelBufferRef Frame, FTimespan Sampl
 					GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
 
 					GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GMediaVertexDeclaration.VertexDeclarationRHI;
-					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 					GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
 
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -340,7 +340,7 @@ void FAvfMediaVideoSampler::ProcessFrame(CVPixelBufferRef Frame, FTimespan Sampl
 			CreateInfo.BulkData = new FAvfTexture2DResourceWrapper(TextureRef);
 			CreateInfo.ResourceArray = nullptr;
 			
-			ETextureCreateFlags TexCreateFlags = TexCreate_SRGB;
+			uint32 TexCreateFlags = TexCreate_SRGB;
 			TexCreateFlags |= TexCreate_Dynamic | TexCreate_NoTiling;
 			
 			ShaderResource = RHICreateTexture2D(Width, Height, PF_B8G8R8A8, 1, 1, TexCreateFlags | TexCreate_ShaderResource, CreateInfo);

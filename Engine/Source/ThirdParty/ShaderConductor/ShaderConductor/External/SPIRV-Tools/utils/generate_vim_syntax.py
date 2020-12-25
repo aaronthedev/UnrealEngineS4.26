@@ -14,6 +14,8 @@
 # limitations under the License.
 """Generates Vim syntax rules for SPIR-V assembly (.spvasm) files"""
 
+from __future__ import print_function
+
 import json
 
 PREAMBLE="""" Vim syntax file

@@ -1,8 +1,29 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Util/SmallListSet.h"
 
 const int32 FSmallListSet::NullValue = -1;
+
+
+FSmallListSet::FSmallListSet()
+{
+	ListHeads = TDynamicVector<int32>();
+	LinkedListElements = TDynamicVector<int32>();
+	FreeHeadIndex = NullValue;
+	ListBlocks = TDynamicVector<int32>();
+	FreeBlocks = TDynamicVector<int32>();
+}
+
+
+FSmallListSet::FSmallListSet(const FSmallListSet& copy)
+{
+	LinkedListElements = TDynamicVector<int32>(copy.LinkedListElements);
+	FreeHeadIndex = copy.FreeHeadIndex;
+	ListHeads = TDynamicVector<int32>(copy.ListHeads);
+	ListBlocks = TDynamicVector<int32>(copy.ListBlocks);
+	FreeBlocks = TDynamicVector<int32>(copy.FreeBlocks);
+}
+
 
 void FSmallListSet::Resize(int32 NewSize)
 {
@@ -330,41 +351,6 @@ bool FSmallListSet::Replace(int32 ListIndex, const TFunction<bool(int32)>& Predi
 	return false;
 }
 
-
-
-
-
-void FSmallListSet::Enumerate(int32 ListIndex, TFunctionRef<void(int32)> ApplyFunc) const
-{
-	int32 block_ptr = ListHeads[ListIndex];
-	if (block_ptr != NullValue)
-	{
-		int32 N = ListBlocks[block_ptr];
-		if (N < BLOCKSIZE)
-		{
-			int32 iEnd = block_ptr + N;
-			for (int32 i = block_ptr + 1; i <= iEnd; ++i)
-			{
-				ApplyFunc(ListBlocks[i]);
-			}
-		}
-		else
-		{
-			// we spilled to linked list, have to iterate through it as well
-			int32 iEnd = block_ptr + BLOCKSIZE;
-			for (int32 i = block_ptr + 1; i <= iEnd; ++i)
-			{
-				ApplyFunc(ListBlocks[i]);
-			}
-			int32 cur_ptr = ListBlocks[block_ptr + BLOCK_LIST_OFFSET];
-			while (cur_ptr != NullValue)
-			{
-				ApplyFunc(LinkedListElements[cur_ptr]);
-				cur_ptr = LinkedListElements[cur_ptr + 1];
-			}
-		}
-	}
-}
 
 
 

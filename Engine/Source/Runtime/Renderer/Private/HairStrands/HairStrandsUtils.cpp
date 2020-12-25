@@ -1,31 +1,25 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "HairStrandsUtils.h"
 #include "ScenePrivate.h"
 #include "HairStrandsCluster.h"
-#include "Rendering/SkeletalMeshRenderData.h"
 
 static float GHairR = 1;
 static float GHairTT = 1;
 static float GHairTRT = 1;
 static float GHairGlobalScattering = 1;
 static float GHairLocalScattering = 1;
-static int32 GHairTTModel = 0;
 static FAutoConsoleVariableRef CVarHairR(TEXT("r.HairStrands.Components.R"), GHairR, TEXT("Enable/disable hair BSDF component R"));
 static FAutoConsoleVariableRef CVarHairTT(TEXT("r.HairStrands.Components.TT"), GHairTT, TEXT("Enable/disable hair BSDF component TT"));
 static FAutoConsoleVariableRef CVarHairTRT(TEXT("r.HairStrands.Components.TRT"), GHairTRT, TEXT("Enable/disable hair BSDF component TRT"));
 static FAutoConsoleVariableRef CVarHairGlobalScattering(TEXT("r.HairStrands.Components.GlobalScattering"), GHairGlobalScattering, TEXT("Enable/disable hair BSDF component global scattering"));
 static FAutoConsoleVariableRef CVarHairLocalScattering(TEXT("r.HairStrands.Components.LocalScattering"), GHairLocalScattering, TEXT("Enable/disable hair BSDF component local scattering"));
-static FAutoConsoleVariableRef CVarHairTTModel(TEXT("r.HairStrands.Components.TTModel"), GHairTTModel, TEXT("Select hair TT model"));
 
 static float GStrandHairRasterizationScale = 0.5f; // For no AA without TAA, a good value is: 1.325f (Empirical)
-static FAutoConsoleVariableRef CVarStrandHairRasterizationScale(TEXT("r.HairStrands.RasterizationScale"), GStrandHairRasterizationScale, TEXT("Rasterization scale to snap strand to pixel"), ECVF_Scalability | ECVF_RenderThreadSafe);
-
-static float GStrandHairStableRasterizationScale = 1.0f; // For no AA without TAA, a good value is: 1.325f (Empirical)
-static FAutoConsoleVariableRef CVarStrandHairStableRasterizationScale(TEXT("r.HairStrands.StableRasterizationScale"), GStrandHairStableRasterizationScale, TEXT("Rasterization scale to snap strand to pixel for 'stable' hair option. This value can't go below 1."), ECVF_Scalability | ECVF_RenderThreadSafe);
+static FAutoConsoleVariableRef CVarStrandHairRasterizationScale(TEXT("r.HairStrands.RasterizationScale"), GStrandHairRasterizationScale, TEXT("Rasterization scale to snap strand to pixel"));
 
 static float GStrandHairVelocityRasterizationScale = 1.5f; // Tuned based on heavy motion example (e.g., head shaking)
-static FAutoConsoleVariableRef CVarStrandHairMaxRasterizationScale(TEXT("r.HairStrands.VelocityRasterizationScale"), GStrandHairVelocityRasterizationScale, TEXT("Rasterization scale to snap strand to pixel under high velocity"), ECVF_Scalability | ECVF_RenderThreadSafe);
+static FAutoConsoleVariableRef CVarStrandHairMaxRasterizationScale(TEXT("r.HairStrands.VelocityRasterizationScale"), GStrandHairVelocityRasterizationScale, TEXT("Rasterization scale to snap strand to pixel under high velocity"));
 
 static float GStrandHairShadowRasterizationScale = 1.0f;
 static FAutoConsoleVariableRef CVarStrandHairShadowRasterizationScale(TEXT("r.HairStrands.ShadowRasterizationScale"), GStrandHairShadowRasterizationScale, TEXT("Rasterization scale to snap strand to pixel in shadow view"));
@@ -36,33 +30,12 @@ static FAutoConsoleVariableRef CVarDeepShadowAABBScale(TEXT("r.HairStrands.DeepS
 static int32 GHairVisibilityRectOptimEnable = 0;
 static FAutoConsoleVariableRef CVarHairVisibilityRectOptimEnable(TEXT("r.HairStrands.RectLightingOptim"), GHairVisibilityRectOptimEnable, TEXT("Hair Visibility use projected view rect to light only relevant pixels"));
 
-static int32 GHairStrandsComposeAfterTranslucency = 1;
-static FAutoConsoleVariableRef CVarHairStrandsComposeAfterTranslucency(TEXT("r.HairStrands.ComposeAfterTranslucency"), GHairStrandsComposeAfterTranslucency, TEXT("Compose hair rendering with scene color after the translucency pass if true. Otherwise compose hair defor the translucent objects are rendered."));
-
-static float GHairDualScatteringRoughnessOverride = 0;
-static FAutoConsoleVariableRef CVarHairDualScatteringRoughnessOverride(TEXT("r.HairStrands.DualScatteringRoughness"), GHairDualScatteringRoughnessOverride, TEXT("Override all roughness for the dual scattering evaluation. 0 means no override. Default:0"));
-float GetHairDualScatteringRoughnessOverride()
-{
-	return GHairDualScatteringRoughnessOverride;
-}
-
-bool IsHairStrandsComposeAfterTranslucency()
-{
-	return GHairStrandsComposeAfterTranslucency > 0;
-}
-
-float GetDeepShadowAABBScale()
-{
-	return FMath::Max(0.f, GDeepShadowAABBScale);
-}
-
 float SampleCountToSubPixelSize(uint32 SamplePerPixelCount)
 {
 	float Scale = 1;
 	switch (SamplePerPixelCount)
 	{
 	case 1: Scale = 1.f; break;
-	case 2: Scale = 8.f / 16.f; break;
 	case 4: Scale = 8.f / 16.f; break;
 	case 8: Scale = 4.f / 16.f; break;
 	}
@@ -76,7 +49,6 @@ FHairComponent GetHairComponents()
 	Out.TRT = GHairTRT > 0;
 	Out.LocalScattering = GHairLocalScattering > 0;
 	Out.GlobalScattering = GHairGlobalScattering > 0;
-	Out.TTModel = GHairTTModel > 0 ? 1 : 0;
 	return Out;
 }
 
@@ -87,21 +59,8 @@ uint32 ToBitfield(const FHairComponent& C)
 		(C.TT				? 1u : 0u) << 1 |
 		(C.TRT				? 1u : 0u) << 2 |
 		(C.LocalScattering  ? 1u : 0u) << 3 |
-		(C.GlobalScattering ? 1u : 0u) << 4 |
-		// Multiple scattering         << 5 (used only within shader)
-		(C.TTModel			? 1u : 0u) << 6;
+		(C.GlobalScattering ? 1u : 0u) << 4 ;
 }
-
-float GetPrimiartyRasterizationScale()
-{
-	return FMath::Max(0.f, GStrandHairRasterizationScale);
-}
-
-float GetDeepShadowRasterizationScale()
-{
-	return FMath::Max(0.f, GStrandHairShadowRasterizationScale ? GStrandHairShadowRasterizationScale : GStrandHairRasterizationScale);
-}
-
 FMinHairRadiusAtDepth1 ComputeMinStrandRadiusAtDepth1(
 	const FIntPoint& Resolution,
 	const float FOV,
@@ -122,10 +81,8 @@ FMinHairRadiusAtDepth1 ComputeMinStrandRadiusAtDepth1(
 	// Scales strand to covers a bit more than a pixel and insure at least one sample point is hit
 	const float PrimaryRasterizationScale = OverrideStrandHairRasterizationScale > 0 ? OverrideStrandHairRasterizationScale : GStrandHairRasterizationScale;
 	const float VelocityRasterizationScale = OverrideStrandHairRasterizationScale > 0 ? OverrideStrandHairRasterizationScale : GStrandHairVelocityRasterizationScale;
-	const float StableRasterizationScale = FMath::Max(1.f, GStrandHairStableRasterizationScale);
 	Out.Primary = InternalMinRadiusAtDepth1(PrimaryRasterizationScale);
 	Out.Velocity = InternalMinRadiusAtDepth1(VelocityRasterizationScale);
-	Out.Stable = InternalMinRadiusAtDepth1(StableRasterizationScale);
 
 	return Out;
 }
@@ -139,13 +96,13 @@ void ComputeWorldToLightClip(
 	const FIntPoint& ShadowResolution)
 {
 	const FSphere SphereBound = PrimitivesBounds.GetSphere();
-	const float SphereRadius = SphereBound.W * GetDeepShadowAABBScale();
+	const float SphereRadius = SphereBound.W * GDeepShadowAABBScale;
 	const FVector LightPosition = LightProxy.GetPosition();
 	const float MinZ = FMath::Max(0.1f, FVector::Distance(LightPosition, SphereBound.Center)) - SphereBound.W;
 	const float MaxZ = FMath::Max(0.2f, FVector::Distance(LightPosition, SphereBound.Center)) + SphereBound.W;
 
-	const float StrandHairRasterizationScale = GetDeepShadowRasterizationScale();
-	const float StrandHairStableRasterizationScale = FMath::Max(GStrandHairStableRasterizationScale, 1.0f);
+	const float StrandHairRasterizationScale = GStrandHairShadowRasterizationScale ? GStrandHairShadowRasterizationScale : GStrandHairRasterizationScale;
+
 	MinStrandRadiusAtDepth1 = FMinHairRadiusAtDepth1();
 	WorldToClipTransform = FMatrix::Identity;
 	if (LightType == LightType_Directional)
@@ -154,10 +111,7 @@ void ComputeWorldToLightClip(
 		FReversedZOrthoMatrix OrthoMatrix(SphereRadius, SphereRadius, 1.f / (2 * SphereRadius), 0);
 		FLookAtMatrix LookAt(SphereBound.Center - LightDirection * SphereRadius, SphereBound.Center, FVector(0, 0, 1));
 		WorldToClipTransform = LookAt * OrthoMatrix;
-
-		const float RadiusAtDepth1 = SphereRadius / FMath::Min(ShadowResolution.X, ShadowResolution.Y);
-		MinStrandRadiusAtDepth1.Stable = RadiusAtDepth1 * StrandHairStableRasterizationScale;
-		MinStrandRadiusAtDepth1.Primary = RadiusAtDepth1 * StrandHairRasterizationScale;
+		MinStrandRadiusAtDepth1.Primary = StrandHairRasterizationScale * SphereRadius / FMath::Min(ShadowResolution.X, ShadowResolution.Y);
 		MinStrandRadiusAtDepth1.Velocity = MinStrandRadiusAtDepth1.Primary;
 	}
 	else if (LightType == LightType_Spot || LightType == LightType_Point)
@@ -226,14 +180,14 @@ FIntRect ComputeProjectedScreenRect(const FBox& B, const FViewInfo& View)
 }
 
 
-FIntRect ComputeVisibleHairStrandsMacroGroupsRect(const FIntRect& ViewRect, const FHairStrandsMacroGroupDatas& Datas)
+FIntRect ComputeVisibleHairStrandsClustersRect(const FIntRect& ViewRect, const FHairStrandsClusterDatas& ClusterDatas)
 {
 	FIntRect TotalRect(INT_MAX, INT_MAX, -INT_MAX, -INT_MAX);
 	if (IsHairStrandsViewRectOptimEnable())
 	{
-		for (const FHairStrandsMacroGroupData& Data : Datas.Datas)
+		for (const FHairStrandsClusterData& ClusterData : ClusterDatas.Datas)
 		{
-			TotalRect.Union(Data.ScreenRect);
+			TotalRect.Union(ClusterData.ScreenRect);
 		}
 	}
 	else
@@ -247,6 +201,11 @@ FIntRect ComputeVisibleHairStrandsMacroGroupsRect(const FIntRect& ViewRect, cons
 bool IsHairStrandsViewRectOptimEnable()
 {
 	return GHairVisibilityRectOptimEnable > 0;
+}
+
+bool IsHairStrandsSupported(const EShaderPlatform Platform)
+{
+	return IsD3DPlatform(Platform, false) && IsPCPlatform(Platform) && GetMaxSupportedFeatureLevel(Platform) == ERHIFeatureLevel::SM5;
 }
 
 EHairVisibilityVendor GetVendor()
@@ -274,28 +233,4 @@ FIntPoint GetVendorOptimalGroupSize2D()
 	case HairVisibilityVendor_INTEL:	return FIntPoint(8, 8);
 	default:							return FIntPoint(8, 8);
 	}
-}
-
-FVector4 PackHairRenderInfo(
-	float PrimaryRadiusAtDepth1,
-	float StableRadiusAtDepth1,
-	float VelocityRadiusAtDepth1,
-	float VelocityMagnitudeScale)
-{
-	FVector4 Out;
-	Out.X = PrimaryRadiusAtDepth1;
-	Out.Y = StableRadiusAtDepth1;
-	Out.Z = VelocityRadiusAtDepth1;
-	Out.W = VelocityMagnitudeScale;
-	return Out;
-}
-
-uint32 PackHairRenderInfoBits(
-	bool  bIsOrtho,
-	bool  bIsGPUDriven)
-{
-	uint32 BitField = 0;
-	BitField |= bIsOrtho ? 0x1 : 0;
-	BitField |= bIsGPUDriven ? 0x2 : 0;
-	return BitField;
 }

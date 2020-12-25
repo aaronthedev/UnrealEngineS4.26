@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Widgets/SSettingsSectionHeader.h"
@@ -10,137 +10,157 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Text/STextBlock.h"
+#include "Widgets/Views/STableRow.h"
 #include "EditorStyleSet.h"
 #include "ISourceControlModule.h"
 #include "SSettingsEditorCheckoutNotice.h"
 #include "DesktopPlatformModule.h"
 #include "IDetailsView.h"
-#include "Widgets/Views/SExpanderArrow.h"
-#include "Widgets/Views/STableRow.h"
 
 #define LOCTEXT_NAMESPACE "SSettingsEditor"
 
-void SSettingsSectionHeader::Construct(const FArguments& InArgs, const UObject* InSettingsObject, ISettingsEditorModelPtr InModel, TSharedPtr<IDetailsView> InDetailsView, const TSharedPtr<ITableRow>& InTableRow)
+#define S_SETTINGS_SECTION_HEADER_CONSTRUCT_CHILD_SLOT_INIT \
+	ChildSlot \
+	.Padding(FMargin(0.0f, 8.0f, 0.0f, 5.0f)) \
+	[ \
+		SNew(SVerticalBox) \
+		+ SVerticalBox::Slot() \
+		.AutoHeight() \
+		[ \
+			SNew(SHorizontalBox) \
+			+ SHorizontalBox::Slot() \
+			.FillWidth(1.0f) \
+			[ \
+				SNew(SVerticalBox) \
+				+ SVerticalBox::Slot() \
+				.AutoHeight() \
+				[
+
+#define S_SETTINGS_SECTION_HEADER_CONSTRUCT_CHILD_SLOT_END \
+				] \
+				+ SVerticalBox::Slot() \
+				.AutoHeight() \
+				.Padding(0.0f, 8.0f, 0.0f, 0.0f) \
+				[ \
+					/* category description */ \
+					SNew(STextBlock) \
+					.ColorAndOpacity(FSlateColor::UseSubduedForeground()) \
+					.Text(GetSettingsBoxDescriptionText()) \
+				] \
+			] \
+			+ SHorizontalBox::Slot() \
+			.AutoWidth() \
+			.HAlign(HAlign_Right) \
+			.VAlign(VAlign_Bottom) \
+			.Padding(16.0f, 0.0f, 0.0f, 0.0f) \
+			[ \
+				SNew(SHorizontalBox) \
+				.Visibility(this, &SSettingsSectionHeader::HandleButtonRowVisibility) \
+				+SHorizontalBox::Slot() \
+				[ \
+					/* set as default button */ \
+					SNew(SButton) \
+					.Visibility(this, &SSettingsSectionHeader::HandleSetAsDefaultButtonVisibility) \
+					.IsEnabled(this, &SSettingsSectionHeader::HandleSetAsDefaultButtonEnabled) \
+					.OnClicked(this, &SSettingsSectionHeader::HandleSetAsDefaultButtonClicked) \
+					.Text(LOCTEXT("SaveDefaultsButtonText", "Set as Default")) \
+					.ToolTipText(LOCTEXT("SaveDefaultsButtonTooltip", "Save the values below as the new default settings")) \
+				] \
+				+ SHorizontalBox::Slot() \
+				.AutoWidth() \
+				.Padding(8.0f, 0.0f, 0.0f, 0.0f) \
+				[ \
+					/* export button */ \
+					SNew(SButton) \
+					.IsEnabled(this, &SSettingsSectionHeader::HandleExportButtonEnabled) \
+					.OnClicked(this, &SSettingsSectionHeader::HandleExportButtonClicked) \
+					.Text(LOCTEXT("ExportButtonText", "Export...")) \
+					.ToolTipText(LOCTEXT("ExportButtonTooltip", "Export these settings to a file on your computer")) \
+				] \
+				+ SHorizontalBox::Slot() \
+				.AutoWidth() \
+				.Padding(8.0f, 0.0f, 0.0f, 0.0f) \
+				[ \
+					/* import button */ \
+					SNew(SButton) \
+					.IsEnabled(this, &SSettingsSectionHeader::HandleImportButtonEnabled) \
+					.OnClicked(this, &SSettingsSectionHeader::HandleImportButtonClicked) \
+					.Text(LOCTEXT("ImportButtonText", "Import...")) \
+					.ToolTipText(LOCTEXT("ImportButtonTooltip", "Import these settings from a file on your computer")) \
+				] \
+				+ SHorizontalBox::Slot() \
+				.AutoWidth() \
+				.Padding(8.0f, 0.0f, 0.0f, 0.0f) \
+				[ \
+					/* reset defaults button */ \
+					SNew(SButton) \
+					.Visibility(this, &SSettingsSectionHeader::HandleSetAsDefaultButtonVisibility) \
+					.IsEnabled(this, &SSettingsSectionHeader::HandleResetToDefaultsButtonEnabled) \
+					.OnClicked(this, &SSettingsSectionHeader::HandleResetDefaultsButtonClicked) \
+					.Text(LOCTEXT("ResetDefaultsButtonText", "Reset to Defaults")) \
+					.ToolTipText(LOCTEXT("ResetDefaultsButtonTooltip", "Reset the settings below to their default values")) \
+				] \
+			] \
+		] \
+		+ SVerticalBox::Slot() \
+		.AutoHeight() \
+		.Padding(0.0f, 8.0f, 0.0f, 0.0f) \
+		[ \
+			FileWatcherWidget.ToSharedRef() \
+		] \
+	];
+
+void SSettingsSectionHeader::CommonConstruct(const UObject* InSettingsObject, ISettingsEditorModelPtr InModel, TSharedPtr<IDetailsView> InDetailsView)
 {
 	Model = InModel;
 	SettingsObject = MakeWeakObjectPtr(const_cast<UObject*>(InSettingsObject));
 	SettingsSection = Model->GetSectionFromSectionObject(InSettingsObject);
 	DetailsView = InDetailsView;
-	TableRow = InTableRow;
 
 	Model->OnSelectionChanged().AddSP(this, &SSettingsSectionHeader::OnSettingsSelectionChanged);
 
 	// Create the watcher widget for the default config file (checks file status / SCC state)
 	FileWatcherWidget =
 		SNew(SSettingsEditorCheckoutNotice)
-		.Visibility(this, &SSettingsSectionHeader::GetCheckoutNoticeVisibility)
+		.Visibility(this, &SSettingsSectionHeader::HandleCheckoutNoticeVisibility)
 		.OnFileProbablyModifiedExternally(this, &SSettingsSectionHeader::HandleCheckoutNoticeFileProbablyModifiedExternally)
 		.ConfigFilePath(this, &SSettingsSectionHeader::HandleCheckoutNoticeConfigFilePath);
+}
 
+void SSettingsSectionHeader::Construct(const FArguments& InArgs, const UObject* InSettingsObject, ISettingsEditorModelPtr InModel, TSharedPtr<IDetailsView> InDetailsView)
+{
+	CommonConstruct(InSettingsObject, InModel, InDetailsView);
 
-	ChildSlot
-	.Padding(FMargin(0.0f, 8.0f, 0.0f, 5.0f))
-	[
-		SNew(SVerticalBox)
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.FillWidth(1.0f)
-			[
-				SNew(SVerticalBox)
-				+ SVerticalBox::Slot()
-				.AutoHeight()
-				[
+	S_SETTINGS_SECTION_HEADER_CONSTRUCT_CHILD_SLOT_INIT
+					// category title
+					SNew(STextBlock)
+					.Font(FEditorStyle::GetFontStyle("SettingsEditor.CatgoryAndSectionFont"))
+					.Text(GetSettingsBoxTitleText())
+	S_SETTINGS_SECTION_HEADER_CONSTRUCT_CHILD_SLOT_END
+}
+
+void SSettingsSectionHeader::Construct(const FArguments& InArgs, const UObject* InSettingsObject, ISettingsEditorModelPtr InModel, TSharedPtr<IDetailsView> InDetailsView, const TSharedRef<ITableRow>& InTableRow)
+{
+	CommonConstruct(InSettingsObject, InModel, InDetailsView);
+
+	S_SETTINGS_SECTION_HEADER_CONSTRUCT_CHILD_SLOT_INIT
 					SNew(SHorizontalBox)
 					+ SHorizontalBox::Slot()
 					.VAlign(VAlign_Center)
-					.Padding(2.0f, 2.0f, 2.0f, 2.0f)
+					.HAlign(HAlign_Left)
 					.AutoWidth()
 					[
 						SNew(SExpanderArrow, InTableRow)
+						.Visibility(true ? EVisibility::Visible : EVisibility::Collapsed)
 					]
-					+ SHorizontalBox::Slot()// category title
+					+ SHorizontalBox::Slot()
 					[
-						SNew(STextBlock)
-						.Font(FEditorStyle::GetFontStyle("SettingsEditor.CatgoryAndSectionFont"))
-						.Text(GetSettingsBoxTitleText())
-					]
-				]
-				+ SVerticalBox::Slot()
-				.AutoHeight()
-				.Padding(16.0f, 8.0f, 0.0f, 0.0f)
-				[
-					// category description
+					// category title
 					SNew(STextBlock)
-					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
-					.Text(GetSettingsBoxDescriptionText())
-					.Visibility(this, &SSettingsSectionHeader::GetCategoryDescriptionVisibility)
-				]
-			]
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.HAlign(HAlign_Right)
-			.VAlign(VAlign_Bottom)
-			.Padding(16.0f, 0.0f, 0.0f, 0.0f)
-			[
-				SNew(SHorizontalBox)
-				.Visibility(this, &SSettingsSectionHeader::GetButtonRowVisibility)
-				+SHorizontalBox::Slot()
-				[
-					// set as default button
-					SNew(SButton)
-					.Visibility(this, &SSettingsSectionHeader::HandleSetAsDefaultButtonVisibility)
-					.IsEnabled(this, &SSettingsSectionHeader::HandleSetAsDefaultButtonEnabled)
-					.OnClicked(this, &SSettingsSectionHeader::HandleSetAsDefaultButtonClicked)
-					.Text(LOCTEXT("SaveDefaultsButtonText", "Set as Default"))
-					.ToolTipText(LOCTEXT("SaveDefaultsButtonTooltip", "Save the values below as the new default settings"))
-				]
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.Padding(8.0f, 0.0f, 0.0f, 0.0f)
-				[
-					// export button
-					SNew(SButton)
-					.IsEnabled(this, &SSettingsSectionHeader::HandleExportButtonEnabled)
-					.OnClicked(this, &SSettingsSectionHeader::HandleExportButtonClicked)
-					.Text(LOCTEXT("ExportButtonText", "Export..."))
-					.ToolTipText(LOCTEXT("ExportButtonTooltip", "Export these settings to a file on your computer"))
-				]
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.Padding(8.0f, 0.0f, 0.0f, 0.0f)
-				[
-					// import button
-					SNew(SButton)
-					.IsEnabled(this, &SSettingsSectionHeader::HandleImportButtonEnabled)
-					.OnClicked(this, &SSettingsSectionHeader::HandleImportButtonClicked)
-					.Text(LOCTEXT("ImportButtonText", "Import..."))
-					.ToolTipText(LOCTEXT("ImportButtonTooltip", "Import these settings from a file on your computer"))
-				]
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.Padding(8.0f, 0.0f, 0.0f, 0.0f)
-				[
-					// reset defaults button
-					SNew(SButton)
-					.Visibility(this, &SSettingsSectionHeader::HandleSetAsDefaultButtonVisibility)
-					.IsEnabled(this, &SSettingsSectionHeader::HandleResetToDefaultsButtonEnabled)
-					.OnClicked(this, &SSettingsSectionHeader::HandleResetDefaultsButtonClicked)
-					.Text(LOCTEXT("ResetDefaultsButtonText", "Reset to Defaults"))
-					.ToolTipText(LOCTEXT("ResetDefaultsButtonTooltip", "Reset the settings below to their default values"))
-				]
-			]
-		]
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(0.0f, 8.0f, 0.0f, 0.0f)
-		[
-			FileWatcherWidget.ToSharedRef()
-		]
-	];
-
+					.Font(FEditorStyle::GetFontStyle("SettingsEditor.CatgoryAndSectionFont"))
+					.Text(GetSettingsBoxTitleText())
+					]
+	S_SETTINGS_SECTION_HEADER_CONSTRUCT_CHILD_SLOT_END
 }
 
 FText SSettingsSectionHeader::GetSettingsBoxTitleText() const
@@ -164,14 +184,9 @@ FText SSettingsSectionHeader::GetSettingsBoxDescriptionText() const
 	return FText::GetEmpty();
 }
 
-EVisibility SSettingsSectionHeader::GetButtonRowVisibility() const
+EVisibility SSettingsSectionHeader::HandleButtonRowVisibility() const
 {
 	return DetailsView.Pin()->HasActiveSearch() ? EVisibility::Hidden : EVisibility::Visible;
-}
-
-EVisibility SSettingsSectionHeader::GetCategoryDescriptionVisibility() const
-{
-	return TableRow.IsValid() && TableRow.Pin()->IsItemExpanded() ? EVisibility::Visible : EVisibility::Collapsed;
 }
 
 FReply SSettingsSectionHeader::HandleExportButtonClicked()
@@ -247,13 +262,7 @@ bool SSettingsSectionHeader::HandleImportButtonEnabled() const
 {
 	if(SettingsSection.IsValid())
 	{
-		bool CanImport = SettingsSection->CanEdit() && SettingsSection->CanImport();
-
-		if (SettingsObject->GetClass()->HasAnyClassFlags(CLASS_DefaultConfig))
-		{
-			CanImport &= !IsDefaultConfigCheckOutNeeded();
-		}
-		return CanImport;
+		return SettingsSection->CanEdit() && SettingsSection->CanImport() && !IsDefaultConfigCheckOutNeeded();
 	}
 
 	return false;
@@ -279,7 +288,7 @@ FString SSettingsSectionHeader::GetDefaultConfigFilePath() const
 */
 bool SSettingsSectionHeader::IsDefaultConfigCheckOutNeeded(bool bForceSourceControlUpdate) const
 {
-	if(SettingsObject.IsValid() && SettingsObject->GetClass()->HasAnyClassFlags(CLASS_Config | CLASS_DefaultConfig))
+	if(SettingsObject.IsValid() && SettingsObject->GetClass()->HasAllClassFlags(CLASS_Config | CLASS_DefaultConfig))
 	{
 		// We can only fetch the file watcher if it's visible otherwise fallback to source control
 		if (FileWatcherWidget->GetVisibility().IsVisible())
@@ -504,7 +513,7 @@ void SSettingsSectionHeader::HandleCheckoutNoticeFileProbablyModifiedExternally(
 }
 
 /** Callback for determining the visibility of the 'Locked' notice. */
-EVisibility SSettingsSectionHeader::GetCheckoutNoticeVisibility() const
+EVisibility SSettingsSectionHeader::HandleCheckoutNoticeVisibility() const
 {
 	// Only DefaultConfig are under source control, so the checkout notice should not be visible for the other cases
 	if(SettingsObject.IsValid() && SettingsObject->GetClass()->HasAnyClassFlags(CLASS_DefaultConfig) && !DetailsView.Pin()->HasActiveSearch())
@@ -534,17 +543,22 @@ void FSettingsDetailRootObjectCustomization::Initialize()
 	OnSelectedSectionChanged();
 }
 
-TSharedPtr<SWidget> FSettingsDetailRootObjectCustomization::CustomizeObjectHeader(const FDetailsObjectSet& InRootObjectSet, const TSharedPtr<ITableRow>& InTableRow)
+TSharedPtr<SWidget> FSettingsDetailRootObjectCustomization::CustomizeObjectHeader(const UObject* InRootObject)
 {
-	return SNew(SSettingsSectionHeader, InRootObjectSet.RootObjects[0], Model, DetailsView.Pin(), InTableRow);
+	return SNew(SSettingsSectionHeader, InRootObject, Model, DetailsView.Pin());
 }
 
-bool FSettingsDetailRootObjectCustomization::AreObjectsVisible(const FDetailsObjectSet& InRootObjectSet) const
+TSharedPtr<SWidget> FSettingsDetailRootObjectCustomization::CustomizeObjectHeader(const UObject* InRootObject, const TSharedRef<ITableRow>& InTableRow)
 {
-	return SelectedSectionObject == nullptr || SelectedSectionObject == InRootObjectSet.RootObjects[0] || DetailsView.Pin()->HasActiveSearch();
+	return SNew(SSettingsSectionHeader, InRootObject, Model, DetailsView.Pin(), InTableRow);
 }
 
-bool FSettingsDetailRootObjectCustomization::ShouldDisplayHeader(const FDetailsObjectSet& InRootObjects) const
+bool FSettingsDetailRootObjectCustomization::IsObjectVisible(const UObject* InRootObject) const
+{
+	return SelectedSectionObject == nullptr || SelectedSectionObject == InRootObject || DetailsView.Pin()->HasActiveSearch();
+}
+
+bool FSettingsDetailRootObjectCustomization::ShouldDisplayHeader(const UObject* InRootObject) const
 {
 	return true;
 }

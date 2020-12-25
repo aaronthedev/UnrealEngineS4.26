@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Audio.h: Unreal base audio.
@@ -10,14 +10,12 @@
 #include "AudioDefines.h"
 #include "Stats/Stats.h"
 #include "HAL/ThreadSafeBool.h"
-#include "Sound/AudioOutputTarget.h"
-#include "Sound/QuartzQuantizationUtilities.h"
+#include "Sound/SoundClass.h"
 #include "Sound/SoundAttenuation.h"
 #include "Sound/SoundEffectSource.h"
 #include "Sound/SoundSubmixSend.h"
 #include "Sound/SoundSourceBusSend.h"
 #include "IAudioExtensionPlugin.h"
-#include "IAudioModulation.h"
 
 ENGINE_API DECLARE_LOG_CATEGORY_EXTERN(LogAudio, Display, All);
 
@@ -59,6 +57,7 @@ DECLARE_CYCLE_STAT_EXTERN(TEXT("Buffer Creation"), STAT_AudioResourceCreationTim
 
 class FAudioDevice;
 class USoundNode;
+struct FSoundModulationControls;
 class USoundWave;
 class USoundClass;
 class USoundSubmix;
@@ -148,9 +147,6 @@ private:
 ENGINE_API bool IsAudioPluginEnabled(EAudioPlugin PluginType);
 ENGINE_API UClass* GetAudioPluginCustomSettingsClass(EAudioPlugin PluginType);
 
-/** accessor for our Spatialization enabled CVar. */
-ENGINE_API bool IsSpatializationCVarEnabled();
-
 /** Bus send types */
 enum class EBusSendType : uint8
 {
@@ -174,14 +170,17 @@ struct ENGINE_API FWaveInstance
 	/** Sound class */
 	USoundClass* SoundClass;
 
+	/** Modulation controls */
+	FSoundModulationControls SoundModulationControls;
+
 	/** Sound submix object to send audio to for mixing in audio mixer.  */
-	USoundSubmixBase* SoundSubmix;
+	USoundSubmix* SoundSubmix;
 
 	/** Sound submix sends */
 	TArray<FSoundSubmixSendInfo> SoundSubmixSends;
 
-	/** The source bus and/or audio bus sends. */
-	TArray<FSoundSourceBusSendInfo> BusSends[(int32)EBusSendType::Count];
+	/** The sound source bus sends. */
+	TArray<FSoundSourceBusSendInfo> SoundSourceBusSends[(int32)EBusSendType::Count];
 
 	/** Sound effect chain */
 	USoundEffectSourcePresetChain* SourceEffectChain;
@@ -191,9 +190,6 @@ struct ENGINE_API FWaveInstance
 
 	/** Active Sound this wave instance belongs to */
 	FActiveSound* ActiveSound;
-
-	/** Quantized Request data */
-	TUniquePtr<Audio::FQuartzQuantizedRequestData> QuantizedRequestData;
 
 private:
 
@@ -229,7 +225,6 @@ public:
 	float RadioFilterVolumeThreshold;
 
 	/** The amount of stereo sounds to bleed to the rear speakers */
-	UE_DEPRECATED(4.25, "Stereo Bleed is no longer supported.")
 	float StereoBleed;
 
 	/** The amount of a sound to bleed to the LFE channel */
@@ -267,6 +262,9 @@ public:
 	/** Whether or not the sound is occluded. */
 	uint32 bIsOccluded:1;
 
+	/** Whether to apply audio effects */
+	uint32 bEQFilterApplied:1;
+
 	/** Whether or not this sound plays when the game is paused in the UI */
 	uint32 bIsUISound:1;
 
@@ -302,6 +300,9 @@ public:
 
 	/** The occlusion plugin settings to use for the wave instance. */
 	UReverbPluginSourceSettingsBase* ReverbPluginSettings;
+
+	/** The modulation plugin settings to use for the wave instance. */
+	USoundModulationPluginSourceSettingsBase* ModulationPluginSettings;
 
 	/** Which output target the sound should play on. */
 	EAudioOutputTarget::Type OutputTarget;
@@ -365,9 +366,6 @@ public:
 
 	/** The manual send level to use if the sound is set to use manual send level. */
 	float ManualReverbSendLevel;
-
-	/** The submix send settings to use. */
-	TArray<FAttenuationSubmixSendSettings> SubmixSendSettings;
 
 	/** Cached type hash */
 	uint32 TypeHash;
@@ -461,7 +459,7 @@ inline uint32 GetTypeHash(FWaveInstance* A) { return A->TypeHash; }
 	FSoundBuffer.
 -----------------------------------------------------------------------------*/
 
-class FSoundBuffer
+class ENGINE_VTABLE FSoundBuffer
 {
 public:
 	FSoundBuffer(class FAudioDevice * InAudioDevice)
@@ -537,7 +535,7 @@ public:
 FSoundSource.
 -----------------------------------------------------------------------------*/
 
-class FSoundSource
+class ENGINE_VTABLE FSoundSource
 {
 public:
 	/** Constructor */
@@ -545,6 +543,7 @@ public:
 		: AudioDevice(InAudioDevice)
 		, WaveInstance(nullptr)
 		, Buffer(nullptr)
+		, StereoBleed(0.0f)
 		, LFEBleed(0.5f)
 		, LPFFrequency(MAX_FILTER_FREQUENCY)
 		, HPFFrequency(MIN_FILTER_FREQUENCY)
@@ -633,11 +632,13 @@ public:
 	/** Returns true if reverb should be applied. */
 	bool IsReverbApplied() const { return bReverbApplied; }
 
+	/** Returns true if EQ should be applied. */
+	bool IsEQFilterApplied() const  { return WaveInstance->bEQFilterApplied; }
+
 	/** Set the bReverbApplied variable. */
 	ENGINE_API bool SetReverbApplied(bool bHardwareAvailable);
 
 	/** Set the StereoBleed variable. */
-	UE_DEPRECATED(4.25, "Stereo Bleed is no longer supported.")
 	ENGINE_API float SetStereoBleed();
 
 	/** Updates and sets the LFEBleed variable. */
@@ -701,6 +702,9 @@ protected:
 
 	/** Cached sound buffer associated with currently bound wave instance. */
 	FSoundBuffer* Buffer;
+
+	/** The amount of stereo sounds to bleed to the rear speakers */
+	float StereoBleed;
 
 	/** The amount of a sound to bleed to the LFE speaker */
 	float LFEBleed;

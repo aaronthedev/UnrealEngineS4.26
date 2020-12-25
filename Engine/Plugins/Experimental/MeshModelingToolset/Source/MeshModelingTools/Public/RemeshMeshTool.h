@@ -1,19 +1,20 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/NoExportTypes.h"
-#include "MultiSelectionTool.h"
+#include "SingleSelectionTool.h"
 #include "InteractiveToolBuilder.h"
 #include "DynamicMesh3.h"
 #include "DynamicMeshAABBTree3.h"
 #include "MeshOpPreviewHelpers.h"
 #include "CleaningOps/RemeshMeshOp.h"
 #include "Properties/MeshStatisticsProperties.h"
-#include "Properties/RemeshProperties.h"
-#include "UObject/UObjectGlobals.h"
+
 #include "RemeshMeshTool.generated.h"
+
+
 
 /**
  *
@@ -26,12 +27,7 @@ class MESHMODELINGTOOLS_API URemeshMeshToolBuilder : public UInteractiveToolBuil
 public:
 	IToolsContextAssetAPI* AssetAPI = nullptr;
 
-	/** 
-	 * Return true if we have one object selected. URemeshMeshTool is a UMultiSelectionTool, however we currently 
-	 * only ever apply it to a single mesh. (See comment at URemeshMeshTool definition below.)
-	 */
 	virtual bool CanBuildTool(const FToolBuilderState& SceneState) const override;
-
 	virtual UInteractiveTool* BuildTool(const FToolBuilderState& SceneState) const override;
 };
 
@@ -39,7 +35,7 @@ public:
  * Standard properties of the Remesh operation
  */
 UCLASS()
-class MESHMODELINGTOOLS_API URemeshMeshToolProperties : public URemeshProperties
+class MESHMODELINGTOOLS_API URemeshMeshToolProperties : public UInteractiveToolPropertySet
 {
 	GENERATED_BODY()
 
@@ -47,63 +43,74 @@ public:
 	URemeshMeshToolProperties();
 
 	/** Target triangle count */
-	UPROPERTY(EditAnywhere, Category = Remeshing, meta = (EditCondition = "bUseTargetEdgeLength == false"))
+	UPROPERTY(EditAnywhere, Category = Options, meta = (EditCondition = "bUseTargetEdgeLength == false"))
 	int TargetTriangleCount;
 
+
+	/** Smoothing speed */
+	UPROPERTY(EditAnywhere, Category = Options, meta = (UIMin = "0.0", UIMax = "1.0", ClampMin = "0.0", ClampMax = "1.0"))
+	float SmoothingSpeed;
+
 	/** Smoothing type */
-	UPROPERTY(EditAnywhere, Category = Remeshing)
+	UPROPERTY(EditAnywhere, Category = Options)
 	ERemeshSmoothingType SmoothingType;
 
-	/** If true, UVs and Normals are discarded  */
-	UPROPERTY(EditAnywhere, Category = Remeshing)
-	bool bDiscardAttributes;
-
-	/** If true, display wireframe */
-	UPROPERTY(EditAnywhere, Category = Display)
-	bool bShowWireframe = true;
-
-	/** Display colors corresponding to the mesh's polygon groups */
-	UPROPERTY(EditAnywhere, Category = Display)
-	bool bShowGroupColors = false;
-
-	/** Remeshing type */
-	UPROPERTY(EditAnywhere, Category = Remeshing, AdvancedDisplay)
-	ERemeshType RemeshType;
-
 	/** Number of Remeshing passes */
-	UPROPERTY(EditAnywhere, Category = Remeshing, AdvancedDisplay, meta = (EditCondition = "RemeshType == ERemeshType::FullPass", UIMin = "0", UIMax = "50", ClampMin = "0", ClampMax = "1000"))
+	UPROPERTY(EditAnywhere, Category = Options, meta = (UIMin = "0", UIMax = "50", ClampMin = "0", ClampMax = "1000"))
 	int RemeshIterations;
 
+
+	/** If true, UVs and Normals are discarded  */
+	UPROPERTY(EditAnywhere, Category = Options)
+	bool bDiscardAttributes;
+
+	/** If true, sharp edges are preserved  */
+	UPROPERTY(EditAnywhere, Category = Options)
+	bool bPreserveSharpEdges;
+
+
 	/** If true, the target count is ignored and the target edge length is used directly */
-	UPROPERTY(EditAnywhere, Category = Remeshing, AdvancedDisplay)
+	UPROPERTY(EditAnywhere, Category = Options, AdvancedDisplay)
 	bool bUseTargetEdgeLength;
 
 	/** Target edge length */
-	UPROPERTY(EditAnywhere, Category = Remeshing, AdvancedDisplay, meta = (NoSpinbox = "true", EditCondition = "bUseTargetEdgeLength == true"))
+	UPROPERTY(EditAnywhere, Category = Options, AdvancedDisplay, meta = (NoSpinbox = "true", EditCondition = "bUseTargetEdgeLength == true"))
 	float TargetEdgeLength;
 
+
+	/** Enable edge flips */
+	UPROPERTY(EditAnywhere, Category = Options, AdvancedDisplay)
+	bool bFlips;
+
+	/** Enable edge splits */
+	UPROPERTY(EditAnywhere, Category = Options, AdvancedDisplay)
+	bool bSplits;
+
+	/** Enable edge collapses */
+	UPROPERTY(EditAnywhere, Category = Options, AdvancedDisplay)
+	bool bCollapses;
+
 	/** Enable projection back to input mesh */
-	UPROPERTY(EditAnywhere, Category = Remeshing, AdvancedDisplay)
+	UPROPERTY(EditAnywhere, Category = Options, AdvancedDisplay)
 	bool bReproject;
+
+	/** Prevent normal flips */
+	UPROPERTY(EditAnywhere, Category = Options, AdvancedDisplay)
+	bool bPreventNormalFlips;
+
 };
 
 
 /**
  * Simple Mesh Remeshing Tool
- *
- * Note this is a subclass of UMultiSelectionTool, however we currently only ever apply it to one mesh at a time. The
- * function URemeshMeshToolBuilder::CanBuildTool will return true only when a single mesh is selected, and the tool will
- * only be applied to the first mesh in the selection list. The reason we inherit from UMultiSelectionTool is so 
- * that subclasses of this class can work with multiple meshes (see, for example, UProjectToTargetTool.)
  */
 UCLASS()
-class MESHMODELINGTOOLS_API URemeshMeshTool : public UMultiSelectionTool, public IDynamicMeshOperatorFactory
+class MESHMODELINGTOOLS_API URemeshMeshTool : public USingleSelectionTool, public IDynamicMeshOperatorFactory
 {
 	GENERATED_BODY()
 
 public:
-
-	URemeshMeshTool(const FObjectInitializer&);
+	URemeshMeshTool();
 
 	virtual void SetWorld(UWorld* World);
 	virtual void SetAssetAPI(IToolsContextAssetAPI* AssetAPI);
@@ -111,18 +118,19 @@ public:
 	virtual void Setup() override;
 	virtual void Shutdown(EToolShutdownType ShutdownType) override;
 
-	virtual void OnTick(float DeltaTime) override;
+	virtual void Tick(float DeltaTime) override;
 	virtual void Render(IToolsContextRenderAPI* RenderAPI) override;
 
 	virtual bool HasCancel() const override { return true; }
-	virtual bool HasAccept() const override { return true; }
+	virtual bool HasAccept() const override;
 	virtual bool CanAccept() const override;
 
-	virtual void OnPropertyModified(UObject* PropertySet, FProperty* Property) override;
+	virtual void OnPropertyModified(UObject* PropertySet, UProperty* Property) override;
 
 	// IDynamicMeshOperatorFactory API
-	virtual TUniquePtr<FDynamicMeshOperator> MakeNewOperator() override;
+	virtual TSharedPtr<FDynamicMeshOperator> MakeNewOperator() override;
 
+protected:
 	UPROPERTY()
 	URemeshMeshToolProperties* BasicProperties;
 
@@ -133,15 +141,13 @@ public:
 	UMeshOpPreviewWithBackgroundCompute* Preview;
 
 protected:
-
 	UWorld* TargetWorld;
 	IToolsContextAssetAPI* AssetAPI;
 
 	TSharedPtr<FDynamicMesh3> OriginalMesh;
 	TSharedPtr<FDynamicMeshAABBTree3> OriginalMeshSpatial;
 	double InitialMeshArea;
-
 	double CalculateTargetEdgeLength(int TargetTriCount);
+
 	void GenerateAsset(const FDynamicMeshOpResult& Result);
-	void UpdateVisualization();
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,7 +10,6 @@
 #include "Channels/MovieSceneFloatChannel.h"
 #include "Channels/MovieSceneEvent.h"
 #include "Channels/MovieSceneObjectPathChannel.h"
-#include "Channels/MovieSceneCameraShakeSourceTriggerChannel.h"
 #include "Sections/MovieSceneEventSection.h"
 #include "Sections/MovieSceneActorReferenceSection.h"
 #include "MovieSceneClipboard.h"
@@ -68,10 +67,6 @@ namespace MovieSceneClipboard
 	template<> inline FName GetKeyTypeName<FMovieSceneEvent>()
 	{
 		return "MovieSceneEvent";
-	}
-	template<> inline FName GetKeyTypeName<FMovieSceneCameraShakeSourceTrigger>()
-	{
-		return "FMovieSceneCameraShakeSourceTrigger";
 	}
 }
 

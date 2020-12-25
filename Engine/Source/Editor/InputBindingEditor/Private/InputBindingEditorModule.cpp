@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
@@ -7,7 +7,7 @@
 #include "Misc/Paths.h"
 #include "UnrealEdMisc.h"
 #include "Logging/MessageLog.h"
-#include "Misc/MessageDialog.h"
+#include "Dialogs/Dialogs.h"
 #include "IDetailCustomization.h"
 #include "ISettingsModule.h"
 #include "PropertyEditorModule.h"
@@ -24,7 +24,6 @@
 #include "DetailLayoutBuilder.h"
 #include "DetailCategoryBuilder.h"
 #include "DetailWidgetRow.h"
-#include "IDetailGroup.h"
 
 #define LOCTEXT_NAMESPACE "InputBindingEditor"
 
@@ -45,15 +44,8 @@ struct FChordSort
 	{
 		if( bSortName )
 		{
-			// Sort by command bundle, and then by command label. If a command has no bundle,
-			// it will compare its label to the other command's bundle.
-			const int32 CompareResult = GetPrimaryTextForCommand(A).CompareTo(GetPrimaryTextForCommand(B));
-			bool bFinalResult = CompareResult == -1;
-			if (CompareResult == 0)
-			{
-				bFinalResult = A->GetLabel().CompareTo(B->GetLabel()) == -1;
-			}
-			return bSortUp ? !bFinalResult : bFinalResult;
+			bool bResult = A->GetLabel().CompareTo( B->GetLabel() ) == -1;
+			return bSortUp ? !bResult : bResult;
 		}
 		else
 		{
@@ -64,19 +56,6 @@ struct FChordSort
 	}
 
 private:
-	/** Helper function to check if command is in a bundle, and if so, return the bundle description */
-	const FText& GetPrimaryTextForCommand(const TSharedPtr<FUICommandInfo>& Command) const
-	{
-		if (Command->GetBundle() != NAME_None)
-		{
-			TSharedPtr<FBindingContext> Context = FInputBindingManager::Get().GetContextByName(Command->GetBindingContext());
-			return Context->GetBundleLabel(Command->GetBundle());
-		}
-		else
-		{
-			return Command->GetLabel();
-		}
-	}
 
 	/** Whether or not to sort by name.  If false we sort by binding. */
 	bool bSortName;
@@ -192,41 +171,10 @@ public:
 			TArray<TSharedPtr<FUICommandInfo>> Commands;
 			GetCommandsForContext(TreeItem, Commands);
 
-			TMap<FName, IDetailGroup*> BundleMap;
-
 			for(TSharedPtr<FUICommandInfo>& CommandInfo : Commands)
 			{
-				FDetailWidgetRow* Row = nullptr;
-				const FName BundleName = CommandInfo->GetBundle();
-				if (!BundleName.IsNone())
-				{
-					if (!BundleMap.Contains(BundleName))
-					{
-						// TreeItem is guaranteed to have BindingContext due to check() above
-						const FText& BundleLabel = TreeItem->GetBindingContext()->GetBundleLabel(BundleName);
-						IDetailGroup* Group = BundleMap.Add(BundleName, &CategoryBuilder.AddGroup(BundleName, BundleLabel));
-						// Match this widget with the "Label" widget on non-bundled commands (see below)
-						Group->HeaderRow().NameContent()
-						.MaxDesiredWidth(0)
-						.MinDesiredWidth(500)
-						[
-							SNew(SBox)
-							.Padding(FMargin(0.0f, 3.0f, 0.0f, 3.0f))
-							[
-								SNew(STextBlock)
-								.Text(BundleLabel)
-							]
-						];
-					}
-					Row = &BundleMap[BundleName]->AddWidgetRow();
-					Row->FilterString(CommandInfo->GetLabel());
-				}
-				else
-				{
-					Row = &CategoryBuilder.AddCustomRow(CommandInfo->GetLabel());
-				}
-
-				Row->NameContent()
+				FDetailWidgetRow& Row = CategoryBuilder.AddCustomRow(CommandInfo->GetLabel());
+				Row.NameContent()
 				.MaxDesiredWidth(0)
 				.MinDesiredWidth(500)
 				[
@@ -249,7 +197,7 @@ public:
 					]
 				];
 
-				Row->ValueContent()
+				Row.ValueContent()
 				.MaxDesiredWidth(200)
 				.MinDesiredWidth(200)
 				.VAlign(VAlign_Center)
@@ -334,7 +282,7 @@ private:
 	// Show a warning that the editor will require a restart and return its result
 	EAppReturnType::Type ShowRestartWarning(const FText& Title) const
 	{
-		return FMessageDialog::Open(EAppMsgType::OkCancel, LOCTEXT("ActionRestartMsg", "Imported settings won't be applied until the editor is restarted. Do you wish to restart now (you will be prompted to save any changes)?"), &Title);
+		return OpenMsgDlgInt(EAppMsgType::OkCancel, LOCTEXT("ActionRestartMsg", "Imported settings won't be applied until the editor is restarted. Do you wish to restart now (you will be prompted to save any changes)?"), Title);
 	}
 
 	// Backup a file

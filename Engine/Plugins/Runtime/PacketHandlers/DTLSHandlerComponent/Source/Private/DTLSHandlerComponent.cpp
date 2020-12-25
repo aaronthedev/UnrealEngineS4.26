@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DTLSHandlerComponent.h"
 #include "Engine/NetConnection.h"
@@ -147,17 +147,10 @@ void FDTLSHandlerComponent::Incoming(FBitReader& Packet)
 			const int32 HandshakeBit = Packet.ReadBit();
 			const int32 PayloadBytes = Packet.GetBytesLeft();
 
-			if (PayloadBytes > 0 && PayloadBytes <= sizeof(TempBuffer))
-			{
-				TempBuffer[PayloadBytes - 1] = 0;
-			}
-			else
-			{
-				UE_LOG(LogDTLSHandler, Log, TEXT("FAESHandlerComponent::Incoming: invalid payload size"));
-				Packet.SetError();
-				return;
-			}
+			check(PayloadBytes > 0);
+			check(PayloadBytes <= sizeof(TempBuffer));
 
+			TempBuffer[PayloadBytes - 1] = 0;
 			Packet.SerializeBits(TempBuffer, Packet.GetBitsLeft());
 
 			if (InternalState == EDTLSHandlerState::Handshaking)

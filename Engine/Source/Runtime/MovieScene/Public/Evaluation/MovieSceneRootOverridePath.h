@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -43,7 +43,7 @@ struct MOVIESCENE_API FMovieSceneRootOverridePath
 	 * @param LeafID 			ID of the child-most sequence to include in this path
 	 * @param RootHierarchy 	Hierarchy to get unaccumulated sequence IDs from
 	 */
-	void Set(FMovieSceneSequenceID LeafID, const FMovieSceneSequenceHierarchy* RootHierarchy);
+	void Set(FMovieSceneSequenceID LeafID, const FMovieSceneSequenceHierarchy& RootHierarchy);
 
 	/**
 	 * Push a new child sequence ID into this path

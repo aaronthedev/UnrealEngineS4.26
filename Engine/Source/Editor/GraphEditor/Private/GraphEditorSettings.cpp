@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GraphEditorSettings.h"
 #include "UObject/UnrealType.h"
@@ -26,8 +26,6 @@ UGraphEditorSettings::UGraphEditorSettings( const FObjectInitializer& ObjectInit
 	, BackwardSplineVerticalDeltaRange(200.0f)
 	, BackwardSplineTangentFromHorizontalDelta(2.0f, 0.0f)
 	, BackwardSplineTangentFromVerticalDelta(1.5f, 0.0f)
-	, PaddingAutoCollateIncrement(20.0f)
-	, bOpenCreateMenuOnBlankGraphAreas(true)
 {
 	DataPinStyle = BPST_VariantA;
 

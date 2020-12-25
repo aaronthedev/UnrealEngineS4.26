@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -165,8 +165,7 @@ namespace Audio
 	 */
 	namespace ESoundFileChannelMap
 	{
-		// this is used to populate an array which is passed into a sound file API call so must be uint32
-		enum class Type : uint32
+		enum class Type : uint8
 		{
 			INVALID = 0,
 			MONO,

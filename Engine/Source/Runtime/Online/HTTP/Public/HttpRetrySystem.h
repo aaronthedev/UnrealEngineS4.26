@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -56,13 +56,21 @@ namespace FHttpRetrySystem
 	TOptional<double> HTTP_API ReadThrottledTimeFromResponseInSeconds(FHttpResponsePtr Response);
 };
 
+/**
+* Delegate called when an Http request will be retried in the future
+*
+* @param first parameter - original Http request that started things
+* @param second parameter - response received from the server if a successful connection was established
+* @param third parameter - seconds in the future when the response will be retried
+*/
+DECLARE_DELEGATE_ThreeParams(FHttpRequestWillRetryDelegate, FHttpRequestPtr, FHttpResponsePtr, float);
 
 namespace FHttpRetrySystem
 {
     /**
      * class FRequest is what the retry system accepts as inputs
      */
-    class FRequest 
+    class HTTP_VTABLE FRequest 
 		: public FHttpRequestAdapterBase
     {
     public:
@@ -84,6 +92,7 @@ namespace FHttpRetrySystem
 		// IHttpRequest interface
 		HTTP_API virtual bool ProcessRequest() override;
 		HTTP_API virtual void CancelRequest() override;
+		virtual FHttpRequestWillRetryDelegate& OnRequestWillRetry() { return OnRequestWillRetryDelegate; }
 		
 		// FRequest
 		EStatus::Type GetRetryStatus() const { return Status; }
@@ -93,7 +102,7 @@ namespace FHttpRetrySystem
 
 		HTTP_API FRequest(
 			class FManager& InManager,
-			const TSharedRef<IHttpRequest, ESPMode::ThreadSafe>& HttpRequest,
+			const TSharedRef<IHttpRequest>& HttpRequest,
 			const FRetryLimitCountSetting& InRetryLimitCountOverride = FRetryLimitCountSetting(),
 			const FRetryTimeoutRelativeSecondsSetting& InRetryTimeoutRelativeSecondsOverride = FRetryTimeoutRelativeSecondsSetting(),
             const FRetryResponseCodes& InRetryResponseCodes = FRetryResponseCodes(),
@@ -120,6 +129,8 @@ namespace FHttpRetrySystem
 		/** The original URL before replacing anything from RetryDomains */
 		FString								 OriginalUrl;
 
+		FHttpRequestWillRetryDelegate OnRequestWillRetryDelegate;
+
 		FManager& RetryManager;
     };
 }
@@ -135,7 +146,7 @@ namespace FHttpRetrySystem
 		/**
 		 * Create a new http request with retries
 		 */
-		HTTP_API TSharedRef<class FHttpRetrySystem::FRequest, ESPMode::ThreadSafe> CreateRequest(
+		HTTP_API TSharedRef<class FHttpRetrySystem::FRequest> CreateRequest(
 			const FRetryLimitCountSetting& InRetryLimitCountOverride = FRetryLimitCountSetting(),
 			const FRetryTimeoutRelativeSecondsSetting& InRetryTimeoutRelativeSecondsOverride = FRetryTimeoutRelativeSecondsSetting(),
 			const FRetryResponseCodes& InRetryResponseCodes = FRetryResponseCodes(),
@@ -167,18 +178,18 @@ namespace FHttpRetrySystem
 
         struct FHttpRetryRequestEntry
         {
-            FHttpRetryRequestEntry(TSharedRef<FRequest, ESPMode::ThreadSafe>& InRequest);
+            FHttpRetryRequestEntry(TSharedRef<FRequest>& InRequest);
 
             bool                    bShouldCancel;
             uint32                  CurrentRetryCount;
             double                  RequestStartTimeAbsoluteSeconds;
             double                  LockoutEndTimeAbsoluteSeconds;
 
-            TSharedRef<FRequest, ESPMode::ThreadSafe>	Request;
+            TSharedRef<FRequest>	Request;
         };
 
-		bool ProcessRequest(TSharedRef<FRequest, ESPMode::ThreadSafe>& HttpRequest);
-		void CancelRequest(TSharedRef<FRequest, ESPMode::ThreadSafe>& HttpRequest);
+		bool ProcessRequest(TSharedRef<FRequest>& HttpRequest);
+		void CancelRequest(TSharedRef<FRequest>& HttpRequest);
 
         // @return true if there is a no formal response to the request
         // @TODO return true if a variety of 5xx errors are the result of a formal response

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Misc/LevelSequenceEditorSpawnRegister.h"
 #include "Components/ActorComponent.h"
@@ -14,7 +14,7 @@
 #include "ISequencer.h"
 #include "LevelEditor.h"
 #include "AssetSelection.h"
-#include "EntitySystem/MovieSceneSpawnablesSystem.h"
+#include "Evaluation/MovieSceneSpawnTemplate.h"
 #include "Evaluation/MovieSceneEvaluationTemplateInstance.h"
 #include "Sections/MovieScene3DTransformSection.h"
 
@@ -169,8 +169,7 @@ void FLevelSequenceEditorSpawnRegister::SaveDefaultSpawnableState(const FGuid& B
 
 void FLevelSequenceEditorSpawnRegister::SaveDefaultSpawnableStateImpl(FMovieSceneSpawnable& Spawnable, UMovieSceneSequence* Sequence, UObject* SpawnedObject, IMovieScenePlayer& Player)
 {
-	FMovieSceneAnimTypeID SpawnablesTypeID = UMovieSceneSpawnablesSystem::GetAnimTypeID();
-	auto RestorePredicate = [SpawnablesTypeID](FMovieSceneAnimTypeID TypeID){ return TypeID != SpawnablesTypeID; };
+	auto RestorePredicate = [](FMovieSceneAnimTypeID TypeID){ return TypeID != FMovieSceneSpawnSectionTemplate::GetAnimTypeID(); };
 
 	if (AActor* Actor = Cast<AActor>(SpawnedObject))
 	{
@@ -193,13 +192,6 @@ void FLevelSequenceEditorSpawnRegister::SaveDefaultSpawnableStateImpl(FMovieScen
 	if (FTrackedObjectState* TrackedState = TrackedObjects.Find(SpawnedObject))
 	{
 		TrackedState->bHasBeenModified = false;
-	}
-
-	TSharedPtr<ISequencer> Sequencer = WeakSequencer.Pin();
-	if (Sequencer.IsValid())
-	{
-		Sequencer->RequestInvalidateCachedData();
-		Sequencer->RequestEvaluate();
 	}
 }
 

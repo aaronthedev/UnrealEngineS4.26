@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcCoreLayer_OrImpl_h
-#define Alembic_AbcCoreLayer_OrImpl_h
+#ifndef _Alembic_AbcCoreLayer_OrImpl_h_
+#define _Alembic_AbcCoreLayer_OrImpl_h_
 
 #include <Alembic/AbcCoreLayer/Foundation.h>
 #include <Alembic/AbcCoreLayer/ArImpl.h>
@@ -112,12 +112,10 @@ private:
     // each child is made up of the original parent objects and the index
     // in each of them where that child lives
     std::vector< std::vector< ObjectAndIndex > > m_children;
-    std::vector< Alembic::Util::weak_ptr< AbcA::ObjectReader > > m_children_ptrs;
-    Alembic::Util::mutex m_lock;
 
-    // all of our top properties, will be combined into m_top
+    // all of our top properties
+    // TODO should we replace this with the top compound CprImpl in a weak_ptr?
     std::vector< AbcA::CompoundPropertyReaderPtr > m_properties;
-    Alembic::Util::weak_ptr< AbcA::CompoundPropertyReader > m_top;
 
     ChildNameMap m_childNameMap;
 };

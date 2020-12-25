@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "StaticMeshLightingInfo.h"
 #include "UObject/Package.h"
@@ -37,10 +37,10 @@ void UStaticMeshLightingInfo::UpdateNames()
 			LevelName = TEXT("<None>");
 		}
 
-		const int32 NameIndex = LevelName.Find( TEXT("/"), ESearchCase::CaseSensitive);
+		const int32 NameIndex = LevelName.Find( TEXT("/") );
 		if ( NameIndex != INDEX_NONE )
 		{
-			LevelName.RightChopInline( NameIndex + 1, false );
+			LevelName = LevelName.RightChop( NameIndex + 1 );
 		}
 	}
 

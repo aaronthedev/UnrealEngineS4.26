@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,7 +9,7 @@
 class MODELINGOPERATORS_API  FIterativeSmoothingOp : public FSmoothingOpBase
 {
 public:
-	FIterativeSmoothingOp(const FDynamicMesh3* Mesh, const FSmoothingOpBase::FOptions& OptionsIn);
+	FIterativeSmoothingOp(const FDynamicMesh3* Mesh, float Speed, int32 Iterations);
 
 	~FIterativeSmoothingOp() override {};
 
@@ -18,17 +18,9 @@ public:
 
 private:
 
-	double GetSmoothAlpha(int32 VertexID, bool bIsBoundary);
-
-	// uniform iterative smoothing
-	void Smooth_Forward(bool bUniform);
-
-	// cotan smoothing iterations
-	void Smooth_Implicit_Cotan();
-
-	// mean value smoothing iterations
-	void Smooth_MeanValue();
-
+	// Does the actual interative smoothign. 
+	void Smooth();
+	
 private:
 	TArray<FVector3d> SmoothedBuffer;
 };

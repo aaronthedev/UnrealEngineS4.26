@@ -1,13 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Physics/Experimental/ChaosDerivedDataReader.h"
-
 #include "Chaos/ChaosArchive.h"
 #include "Chaos/TriangleMeshImplicitObject.h"
-#include "Chaos/Convex.h"
 
 template<typename T, int d>
-FChaosDerivedDataReader<T, d>::FChaosDerivedDataReader(FBulkDataInterface* InBulkData)
+FChaosDerivedDataReader<T, d>::FChaosDerivedDataReader(FUntypedBulkData* InBulkData)
 	: bReadSuccessful(false)
 {
 	const int32 DataTypeSize = sizeof(T);
@@ -27,16 +25,7 @@ FChaosDerivedDataReader<T, d>::FChaosDerivedDataReader(FBulkDataInterface* InBul
 	}
 	else
 	{
-		{
-			LLM_SCOPE(ELLMTag::ChaosConvex);
-			ChaosAr << ConvexImplicitObjects;
-		}
-
-		{
-			LLM_SCOPE(ELLMTag::ChaosTrimesh);
-			ChaosAr << TrimeshImplicitObjects << UVInfo << FaceRemap;
-		}
-		
+		ChaosAr << ConvexImplicitObjects << TrimeshImplicitObjects << UVInfo;
 
 		bReadSuccessful = true;
 	}

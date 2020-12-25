@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,7 +13,6 @@
 class IDetailLayoutBuilder;
 class IPropertyHandle;
 class SComboButton;
-class SSearchBox;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogAttributeDetails, Log, All);
 
@@ -60,7 +59,7 @@ private:
 	TSharedPtr<FString>	GetPropertyType() const;
 
 	void OnChangeProperty(TSharedPtr<FString> ItemSelected, ESelectInfo::Type SelectInfo);
-	void OnAttributeChanged(FProperty* SelectedAttribute);
+	void OnAttributeChanged(UProperty* SelectedAttribute);
 };
 
 class GAMEPLAYABILITIESEDITOR_API FScalableFloatDetails : public IPropertyTypeCustomization
@@ -95,31 +94,22 @@ protected:
 	FText GetRowValuePreviewText() const;
 	TSharedRef<ITableRow> HandleRowNameComboBoxGenarateWidget(TSharedPtr<FString> InItem, const TSharedRef<STableViewBase>& OwnerTable);
 	void OnFilterTextChanged(const FText& InFilterText);
-	void OnFilterTextCommitted(const FText& InText, ETextCommit::Type CommitInfo);
-
-	bool OnIsSelectableOrNavigableInternal(TSharedPtr<FString> SelectedItem) const;
-
-
-	class UCurveTable* GetCurveTable();
+	
+	class UCurveTable * GetCurveTable();
 
 	TSharedPtr<FString> InitWidgetContent();
 
 	void OnCurveTableChanged();
 
-	bool DoesPassFilter(const TSharedPtr<FString>& TestStringPtr) const;
-
 	TSharedPtr<SComboButton> RowNameComboButton;
 	TSharedPtr<SListView<TSharedPtr<FString> > > RowNameComboListView;
 	TSharedPtr<FString> CurrentSelectedItem;
 	TArray<TSharedPtr<FString> > RowNames;
-	TSharedPtr<SSearchBox> SearchBoxWidget;
 
 	TSharedPtr<IPropertyHandle> ValueProperty;
 	TSharedPtr<IPropertyHandle> CurveTableHandleProperty;
 	TSharedPtr<IPropertyHandle> CurveTableProperty;
 	TSharedPtr<IPropertyHandle> RowNameProperty;
-
-	TArray<FString> FilterTerms;
 
 	float PreviewLevel;
 	float MaxPreviewLevel;

@@ -3701,8 +3701,7 @@ VisitAbstractConditionalOperator(const AbstractConditionalOperator *E) {
     return tmp5;
   }
   // HLSL Change Starts
-  if (CGF.getLangOpts().HLSL &&
-      (hlsl::IsHLSLVecType(E->getType()) || E->getType()->isArithmeticType())) {
+  if (CGF.getLangOpts().HLSL && hlsl::IsHLSLVecType(E->getType())) {
     llvm::Value *CondV = CGF.EmitScalarExpr(condExpr);
     llvm::Value *LHS = Visit(lhsExpr);
     llvm::Value *RHS = Visit(rhsExpr);

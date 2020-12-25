@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -43,7 +43,7 @@ public:
 	void SetSelectionState(TSharedRef<FSequencerDisplayNode> OutlinerNode, ESelectionPreviewState InState);
 
 	/** Returns the selection state for the the specified key. */
-	ESelectionPreviewState GetSelectionState(const FSequencerSelectedKey& Key) const;
+	ESelectionPreviewState GetSelectionState(FSequencerSelectedKey Key) const;
 
 	/** Returns the selection state for the the specified section. */
 	ESelectionPreviewState GetSelectionState(UMovieSceneSection* Section) const;
@@ -63,15 +63,9 @@ public:
 	/** Empties the outliner node selection. */
 	void EmptyDefinedOutlinerNodeStates();
 
-	/** Hash the contents of this selection preview. */
-	uint32 GetSelectionHash() const;
-
 private:
 
 	TMap<FSequencerSelectedKey, ESelectionPreviewState> DefinedKeyStates;
 	TMap<TWeakObjectPtr<UMovieSceneSection>, ESelectionPreviewState> DefinedSectionStates;
 	TMap<TSharedRef<FSequencerDisplayNode>, ESelectionPreviewState> DefinedOutlinerNodeStates;
-
-	/** Cached hash of this whole selection preview state. */
-	mutable TOptional<uint32> CachedSelectionHash;
 };

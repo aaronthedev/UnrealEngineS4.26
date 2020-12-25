@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Materials/MaterialExpressionLandscapeLayerCoords.h"
 #include "LandscapePrivate.h"
@@ -77,9 +77,25 @@ int32 UMaterialExpressionLandscapeLayerCoords::Compile(class FMaterialCompiler* 
 		Compiler->Constant2(MappingPanU, MappingPanV)
 		);
 
-	ResultUV = TransformedUV;
-	
-	return TransformedUV;
+	if (Compiler->GetFeatureLevel() != ERHIFeatureLevel::ES2) // No need to localize UV
+	{
+		ResultUV = TransformedUV;
+	}
+	else
+	{
+		int32 Offset = Compiler->TextureCoordinateOffset();
+		int32 TransformedOffset =
+			Compiler->Floor(
+			Compiler->Mul(RealScale,
+			Compiler->AppendVector(
+			Compiler->Dot(Offset, Compiler->Constant2(+Cos, +Sin)),
+			Compiler->Dot(Offset, Compiler->Constant2(-Sin, +Cos)))
+			));
+
+		ResultUV = Compiler->Sub(TransformedUV, TransformedOffset);
+	}
+
+	return ResultUV;
 }
 
 
@@ -88,5 +104,10 @@ void UMaterialExpressionLandscapeLayerCoords::GetCaption(TArray<FString>& OutCap
 	OutCaptions.Add(FString(TEXT("LandscapeCoords")));
 }
 #endif // WITH_EDITOR
+
+bool UMaterialExpressionLandscapeLayerCoords::NeedsLoadForClient() const
+{
+	return true;
+}
 
 #undef LOCTEXT_NAMESPACE

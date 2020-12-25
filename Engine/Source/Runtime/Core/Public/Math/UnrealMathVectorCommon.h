@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -252,7 +252,7 @@ FORCEINLINE void VectorQuaternionInverseRotateVectorPtr(void* RESTRICT Result, c
  * @param Value the value to determine the number of leading zeros for
  * @return the number of zeros before the first "on" bit
  */
-#if defined(_MSC_VER)
+#if (((PLATFORM_WINDOWS || PLATFORM_HOLOLENS) && !PLATFORM_COMPILER_CLANG) || PLATFORM_XBOXONE)
 #pragma intrinsic( _BitScanForward )
 FORCEINLINE uint32 appCountTrailingZeros(uint32 Value)
 {
@@ -264,7 +264,7 @@ FORCEINLINE uint32 appCountTrailingZeros(uint32 Value)
 	_BitScanForward(&BitIndex, Value);	// Scans from LSB to MSB
 	return BitIndex;
 }
-#else // !defined(_MSC_VER)
+#else // ((PLATFORM_WINDOWS && !PLATFORM_COMPILER_CLANG) || PLATFORM_XBOXONE)
 FORCEINLINE uint32 appCountTrailingZeros(uint32 Value)
 {
 	if (Value == 0)
@@ -273,4 +273,4 @@ FORCEINLINE uint32 appCountTrailingZeros(uint32 Value)
 	}
 	return __builtin_ffs(Value) - 1;
 }
-#endif // _MSC_VER
+#endif // PLATFORM_WINDOWS

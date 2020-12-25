@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 Texture2DStreamIn_IO_AsyncCreate.cpp: Async create path for streaming in texture 2D mips.
@@ -7,8 +7,8 @@ Texture2DStreamIn_IO_AsyncCreate.cpp: Async create path for streaming in texture
 #include "Streaming/Texture2DStreamIn_IO_AsyncCreate.h"
 #include "RenderUtils.h"
 
-FTexture2DStreamIn_IO_AsyncCreate::FTexture2DStreamIn_IO_AsyncCreate(UTexture2D* InTexture, bool InPrioritizedIORequest)
-	: FTexture2DStreamIn_IO(InTexture, InPrioritizedIORequest) 
+FTexture2DStreamIn_IO_AsyncCreate::FTexture2DStreamIn_IO_AsyncCreate(UTexture2D* InTexture, int32 InRequestedMips, bool InPrioritizedIORequest)
+	: FTexture2DStreamIn_IO(InTexture, InRequestedMips, InPrioritizedIORequest) 
 {
 	PushTask(FContext(InTexture, TT_None), TT_Async, SRA_UPDATE_CALLBACK(AllocateAndLoadMips), TT_None, nullptr);
 }
@@ -22,6 +22,7 @@ void FTexture2DStreamIn_IO_AsyncCreate::AllocateAndLoadMips(const FContext& Cont
 	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("FTexture2DStreamIn_IO_AsyncCreate::AllocateAndLoadMips"), STAT_Texture2DStreamInIOAsyncCreate_AllocateAndLoadMips, STATGROUP_StreamingDetails);
 	check(Context.CurrentThread == TT_Async);
 
+	SetIOFilename(Context);
 	DoAllocateNewMips(Context);
 	SetIORequests(Context);
 
@@ -72,5 +73,4 @@ void FTexture2DStreamIn_IO_AsyncCreate::Cancel(const FContext& Context)
 
 	DoFreeNewMips(Context);
 	DoFinishUpdate(Context);
-	ReportIOError(Context);
 }

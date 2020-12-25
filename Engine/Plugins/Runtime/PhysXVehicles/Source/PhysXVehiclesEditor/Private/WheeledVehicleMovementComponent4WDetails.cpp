@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WheeledVehicleMovementComponent4WDetails.h"
 #include "WheeledVehicleMovementComponent4W.h"
@@ -12,8 +12,6 @@
 #include "IDocumentation.h"
 
 #define LOCTEXT_NAMESPACE "WheeledVehicleMovementComponent4WDetails"
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 //////////////////////////////////////////////////////////////
 // This class customizes various settings in WheeledVehicleMovementComponent4W
@@ -221,4 +219,3 @@ FWheeledVehicleMovementComponent4WDetails::FTorqueCurveEditor::FTorqueCurveEdito
 
 #undef LOCTEXT_NAMESPACE
 
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

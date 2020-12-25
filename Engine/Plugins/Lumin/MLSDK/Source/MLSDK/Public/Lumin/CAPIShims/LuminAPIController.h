@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,17 +10,17 @@ LUMIN_THIRD_PARTY_INCLUDES_START
 #include <ml_controller.h>
 LUMIN_THIRD_PARTY_INCLUDES_END
 
-namespace LUMIN_MLSDK_API
+namespace MLSDK_API
 {
 
-	CREATE_DEPRECATED_MSG_SHIM(ml_perception_client, MLResult, MLControllerCreate, "Replaced by MLControllerCreateEx.")
-#define MLControllerCreate ::LUMIN_MLSDK_API::MLControllerCreateShim
+CREATE_FUNCTION_SHIM(ml_perception_client, MLResult, MLControllerCreate)
+#define MLControllerCreate ::MLSDK_API::MLControllerCreateShim
 CREATE_FUNCTION_SHIM(ml_perception_client, MLResult, MLControllerCreateEx)
-#define MLControllerCreateEx ::LUMIN_MLSDK_API::MLControllerCreateExShim
+#define MLControllerCreateEx ::MLSDK_API::MLControllerCreateExShim
 CREATE_FUNCTION_SHIM(ml_perception_client, MLResult, MLControllerDestroy)
-#define MLControllerDestroy ::LUMIN_MLSDK_API::MLControllerDestroyShim
+#define MLControllerDestroy ::MLSDK_API::MLControllerDestroyShim
 CREATE_FUNCTION_SHIM(ml_perception_client, MLResult, MLControllerGetState)
-#define MLControllerGetState ::LUMIN_MLSDK_API::MLControllerGetStateShim
+#define MLControllerGetState ::MLSDK_API::MLControllerGetStateShim
 
 }
 

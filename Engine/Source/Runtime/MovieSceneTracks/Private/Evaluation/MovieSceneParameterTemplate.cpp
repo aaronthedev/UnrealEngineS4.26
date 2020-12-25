@@ -1,16 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Evaluation/MovieSceneParameterTemplate.h"
 #include "Tracks/MovieSceneMaterialTrack.h"
-#include "Components/DecalComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Evaluation/MovieSceneEvaluation.h"
 
 
 FMovieSceneParameterSectionTemplate::FMovieSceneParameterSectionTemplate(const UMovieSceneParameterSection& Section)
 	: Scalars(Section.GetScalarParameterNamesAndCurves())
-	, Bools(Section.GetBoolParameterNamesAndCurves())
-	, Vector2Ds(Section.GetVector2DParameterNamesAndCurves())
 	, Vectors(Section.GetVectorParameterNamesAndCurves())
 	, Colors(Section.GetColorParameterNamesAndCurves())
 	, Transforms(Section.GetTransformParameterNamesAndCurves())
@@ -29,30 +26,6 @@ void FMovieSceneParameterSectionTemplate::EvaluateCurves(const FMovieSceneContex
 			Values.ScalarValues.Emplace(Scalar.ParameterName, Value);
 		}
 	}
-
-	for (const FBoolParameterNameAndCurve& Bool : Bools)
-	{
-		bool Value = false;
-		if (Bool.ParameterCurve.Evaluate(Time, Value))
-		{
-			Values.BoolValues.Emplace(Bool.ParameterName, Value);
-		}
-	}
-
-	for (const FVector2DParameterNameAndCurves& Vector : Vector2Ds)
-	{
-		FVector2D Value(ForceInitToZero);
-
-		bool bAnyEvaluated = false;
-		bAnyEvaluated |= Vector.XCurve.Evaluate(Time, Value.X);
-		bAnyEvaluated |= Vector.YCurve.Evaluate(Time, Value.Y);
-
-		if (bAnyEvaluated)
-		{
-			Values.Vector2DValues.Emplace(Vector.ParameterName, Value);
-		}
-	}
-
 
 	for ( const FVectorParameterNameAndCurves& Vector : Vectors )
 	{
@@ -147,41 +120,14 @@ struct FComponentMaterialAccessor : FDefaultMaterialAccessor
 
 	UMaterialInterface* GetMaterialForObject(UObject& Object) const
 	{
-		if (UPrimitiveComponent* PrimitiveComponent = Cast<UPrimitiveComponent>(&Object))
-		{
-			return PrimitiveComponent->GetMaterial(MaterialIndex);
-		}
-		else if (UDecalComponent* DecalComponent = Cast<UDecalComponent>(&Object))
-		{
-			return DecalComponent->GetDecalMaterial();
-		}
-		return nullptr;
+		UPrimitiveComponent* Component = Cast<UPrimitiveComponent>(&Object);
+		return Component ? Component->GetMaterial(MaterialIndex) : nullptr;
 	}
 
 	void SetMaterialForObject(UObject& Object, UMaterialInterface& Material) const
 	{
-		if (UPrimitiveComponent* PrimitiveComponent = Cast<UPrimitiveComponent>(&Object))
-		{
-			PrimitiveComponent->SetMaterial(MaterialIndex, &Material);
-		}
-		else if (UDecalComponent* DecalComponent = Cast<UDecalComponent>(&Object))
-		{
-			DecalComponent->SetDecalMaterial(&Material);
-		}
-	}
-
-	UMaterialInstanceDynamic* CreateMaterialInstanceDynamic(UObject& Object, UMaterialInterface& Material, FName UniqueDynamicName)
-	{
-		if (UPrimitiveComponent* PrimitiveComponent = Cast<UPrimitiveComponent>(&Object))
-		{
-			return UMaterialInstanceDynamic::Create(&Material, &Object, UniqueDynamicName );
-		}
-		else if (UDecalComponent* DecalComponent = Cast<UDecalComponent>(&Object))
-		{
-			return DecalComponent->CreateDynamicMaterialInstance();
-		}
-
-		return nullptr;
+		UPrimitiveComponent* Component = CastChecked<UPrimitiveComponent>(&Object);
+		Component->SetMaterial(MaterialIndex, &Material);
 	}
 
 	int32 MaterialIndex;

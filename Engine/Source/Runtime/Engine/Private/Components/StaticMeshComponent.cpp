@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/StaticMeshComponent.h"
 #include "Modules/ModuleManager.h"
@@ -110,6 +110,9 @@ bool FStaticMeshComponentInstanceData::ApplyVertexColorData(UStaticMeshComponent
 			if(CachedStaticLighting.IsValidIndex(LODIndex))
 			{
 				LODInfo.MapBuildDataId = CachedStaticLighting[LODIndex];
+#if WITH_EDITOR
+				LODInfo.bMapBuildDataIdLoaded = true;
+#endif
 			}
 		}
 
@@ -179,7 +182,6 @@ UStaticMeshComponent::UStaticMeshComponent(const FObjectInitializer& ObjectIniti
 	StaticMeshImportVersion = BeforeImportStaticMeshVersionWasAdded;
 	bCustomOverrideVertexColorPerLOD = false;
 	bDisplayVertexColors = false;
-	bDisplayPhysicalMaterialMasks = false;
 #endif
 }
 
@@ -275,6 +277,16 @@ void UStaticMeshComponent::Serialize(FArchive& Ar)
 
 	Ar.UsingCustomVersion(FRenderingObjectVersion::GUID);
 
+#if WITH_EDITOR
+	const bool bCheckBuildGuids = false;//Ar.IsCooking() && !GetOutermost()->HasAnyPackageFlags(PKG_CompiledIn);
+
+	TArray<FGuid> MapBuildGuids;
+	if (bCheckBuildGuids)
+	{
+		Algo::Transform(LODData, MapBuildGuids, &FStaticMeshComponentLODInfo::MapBuildDataId);
+	}
+#endif
+
 #if WITH_EDITORONLY_DATA
 	if (Ar.IsCooking())
 	{
@@ -287,6 +299,14 @@ void UStaticMeshComponent::Serialize(FArchive& Ar)
 #endif
 
 	Ar << LODData;
+
+#if WITH_EDITOR
+	if (bCheckBuildGuids)
+	{
+		// If we're cooking, display a deterministic cook warning if we didn't overwrite the generated GUIDs at load time
+		UE_CLOG(bCheckBuildGuids && !Algo::AllOf(LODData, &FStaticMeshComponentLODInfo::bMapBuildDataIdLoaded), LogStaticMesh, Warning, TEXT("%s contains a legacy UStaticMeshComponent and is being non-deterministically cooked - please resave the asset and recook."), *GetOutermost()->GetName());
+	}
+#endif
 
 	if (Ar.IsLoading())
 	{
@@ -318,7 +338,7 @@ void UStaticMeshComponent::Serialize(FArchive& Ar)
 			}
 		}
 
-		GComponentsWithLegacyLightmaps.AddAnnotation(this, MoveTemp(LegacyComponentData));
+		GComponentsWithLegacyLightmaps.AddAnnotation(this, LegacyComponentData);
 	}
 
 	if (Ar.UE4Ver() < VER_UE4_AUTO_WELDING)
@@ -595,10 +615,10 @@ void UStaticMeshComponent::OnUnregister()
 	Super::OnUnregister();
 }
 
-void UStaticMeshComponent::CreateRenderState_Concurrent(FRegisterComponentContext* Context)
+void UStaticMeshComponent::CreateRenderState_Concurrent()
 {
 	LLM_SCOPE(ELLMTag::StaticMesh);
-	Super::CreateRenderState_Concurrent(Context);
+	Super::CreateRenderState_Concurrent();
 }
 
 void UStaticMeshComponent::OnCreatePhysicsState()
@@ -613,8 +633,8 @@ void UStaticMeshComponent::OnDestroyPhysicsState()
 {
 	Super::OnDestroyPhysicsState();
 
-	bNavigationRelevant = IsNavigationRelevant();
 	FNavigationSystem::UpdateComponentData(*this);
+	bNavigationRelevant = IsNavigationRelevant();
 }
 
 #if WITH_EDITORONLY_DATA
@@ -842,7 +862,7 @@ void UStaticMeshComponent::GetStreamingRenderAssetInfo(FStreamingTextureLevelCon
 		}
 	}
 
-	if (GetStaticMesh()->RenderResourceSupportsStreaming())
+	if (IsStreamingRenderAsset(GetStaticMesh()))
 	{
 		const float TexelFactor = ForcedLodModel > 0 ?
 			-(GetStaticMesh()->RenderData->LODResources.Num() - ForcedLodModel + 1) :
@@ -913,7 +933,7 @@ bool UStaticMeshComponent::DoesSocketExist(FName InSocketName) const
 bool UStaticMeshComponent::ShouldRenderSelected() const
 {
 	const bool bShouldRenderSelected = UMeshComponent::ShouldRenderSelected();
-	return bShouldRenderSelected || bDisplayVertexColors || bDisplayPhysicalMaterialMasks;
+	return bShouldRenderSelected || bDisplayVertexColors;
 }
 #endif // WITH_EDITOR
 
@@ -1232,11 +1252,6 @@ void UStaticMeshComponent::PrivateFixupOverrideColors()
 
 	const uint32 NumLODs = GetStaticMesh()->RenderData->LODResources.Num();
 
-	if (NumLODs == 0)
-	{
-		return;
-	}
-
 	// Initialize override vertex colors on any new LODs which have just been created
 	SetLODDataCount(NumLODs, LODData.Num());
 	bool UpdateStaticMeshDeriveDataKey = false;
@@ -1538,7 +1553,7 @@ void UStaticMeshComponent::PostEditChangeProperty(FPropertyChangedEvent& Propert
 	// Ensure that OverriddenLightMapRes is a factor of 4
 	OverriddenLightMapRes = FMath::Max(OverriddenLightMapRes + 3 & ~3,4);
 
-	FProperty* PropertyThatChanged = PropertyChangedEvent.Property;
+	UProperty* PropertyThatChanged = PropertyChangedEvent.Property;
 	if (PropertyThatChanged)
 	{
 		if (((PropertyThatChanged->GetName().Contains(TEXT("OverriddenLightMapRes")) ) && (bOverrideLightMapRes == true)) ||
@@ -1594,7 +1609,7 @@ void UStaticMeshComponent::PostEditChangeProperty(FPropertyChangedEvent& Propert
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
 
-bool UStaticMeshComponent::CanEditChange(const FProperty* InProperty) const
+bool UStaticMeshComponent::CanEditChange(const UProperty* InProperty) const
 {
 	if (InProperty)
 	{
@@ -1861,31 +1876,6 @@ void UStaticMeshComponent::SetDistanceFieldSelfShadowBias(float NewValue)
 	}
 }
 
-void UStaticMeshComponent::SetEvaluateWorldPositionOffsetInRayTracing(bool NewValue)
-{
-	if (bEvaluateWorldPositionOffset != NewValue && GetScene() != nullptr)
-	{
-		// Update game thread data
-		bEvaluateWorldPositionOffset = NewValue;
-
-		// Skip when this doesn't have a valid static mesh 
-		if (!GetStaticMesh())
-		{
-			return;
-		}
-
-		// Update render thread data
-		ENQUEUE_RENDER_COMMAND(UpdateDFSelfShadowBiasCmd)(
-			[NewValue, PrimitiveSceneProxy = (FStaticMeshSceneProxy*)SceneProxy](FRHICommandList&)
-			{
-				if (PrimitiveSceneProxy)
-				{
-					PrimitiveSceneProxy->SetEvaluateWorldPositionOffsetInRayTracing(NewValue);
-				}
-			});
-	}
-}
-
 void UStaticMeshComponent::SetReverseCulling(bool ReverseCulling)
 {
 	if (ReverseCulling != bReverseCulling)
@@ -1905,9 +1895,9 @@ void UStaticMeshComponent::GetLocalBounds(FVector& Min, FVector& Max) const
 	}
 }
 
-void UStaticMeshComponent::SetCollisionProfileName(FName InCollisionProfileName, bool bUpdateOverlaps)
+void UStaticMeshComponent::SetCollisionProfileName(FName InCollisionProfileName)
 {
-	Super::SetCollisionProfileName(InCollisionProfileName, bUpdateOverlaps);
+	Super::SetCollisionProfileName(InCollisionProfileName);
 	bUseDefaultCollision = false;
 }
 
@@ -2057,7 +2047,8 @@ bool UStaticMeshComponent::HasLightmapTextureCoordinates() const
 		Mesh->RenderData->LODResources.Num() > 0 &&
 		Mesh->LightMapCoordinateIndex >= 0)
 	{
-		int32 MeshMinLOD = Mesh->MinLOD.GetValue();
+		const ERHIFeatureLevel::Type FeatureLevel = GetScene() ? GetScene()->GetFeatureLevel() : GMaxRHIFeatureLevel;
+		int32 MeshMinLOD = Mesh->MinLOD.GetValueForFeatureLevel(FeatureLevel);
 		MeshMinLOD = FMath::Min(MeshMinLOD,  Mesh->RenderData->LODResources.Num() - 1);
 		
 		return ((uint32)Mesh->LightMapCoordinateIndex < Mesh->RenderData->LODResources[MeshMinLOD].VertexBuffers.StaticMeshVertexBuffer.GetNumTexCoords());
@@ -2274,8 +2265,7 @@ TStructOnScope<FActorComponentInstanceData> UStaticMeshComponent::GetComponentIn
 	{
 		const FStaticMeshComponentLODInfo& LODInfo = LODData[LODIndex];
 
-		// Note: we don't need to check LODInfo.PaintedVertices here since it's not always required.
-		if ( LODInfo.OverrideVertexColors && LODInfo.OverrideVertexColors->GetNumVertices() > 0 )
+		if ( LODInfo.OverrideVertexColors && LODInfo.OverrideVertexColors->GetNumVertices() > 0 && LODInfo.PaintedVertices.Num() > 0 )
 		{
 			StaticMeshInstanceData->AddVertexColorData(LODInfo, LODIndex);
 		}
@@ -2308,6 +2298,9 @@ void UStaticMeshComponent::ApplyComponentInstanceData(FStaticMeshComponentInstan
 			for (int32 i = 0; i < NumLODLightMaps; ++i)
 			{
 				LODData[i].MapBuildDataId = StaticMeshInstanceData->CachedStaticLighting[i];
+			#if WITH_EDITOR
+				LODData[i].bMapBuildDataIdLoaded = true;
+			#endif
 			}
 		}
 		else
@@ -2532,45 +2525,34 @@ FStaticMeshComponentLODInfo::FStaticMeshComponentLODInfo()
 	, OverrideVertexColors(NULL)
 	, OwningComponent(NULL)
 {
-	// MapBuildDataId will be deserialized
+	// Used by deserialization only, MapBuildDataId will be deserialized
 }
 
-FStaticMeshComponentLODInfo::FStaticMeshComponentLODInfo(UStaticMeshComponent* InOwningComponent)
+FStaticMeshComponentLODInfo::FStaticMeshComponentLODInfo(UStaticMeshComponent* InOwningComponent, int32 LodIndex)
 	: LegacyMapBuildData(NULL)
 	, OverrideVertexColors(NULL)
 	, OwningComponent(InOwningComponent)
-{
-	// MapBuildDataId is invalid for newly created FStaticMeshComponentLODInfo
-	// Will be assigned a valid GUID if we ever need to store data in the MapBuildData for it.
-	// See CreateMapBuildDataId()
-}
-
-bool FStaticMeshComponentLODInfo::CreateMapBuildDataId(int32 LodIndex)
-{
-	if (!MapBuildDataId.IsValid())
 	{
-		if (LodIndex == 0 || OwningComponent == nullptr)
-		{
-			MapBuildDataId = FGuid::NewGuid();
-		}
-		else
-		{
-			FString GuidBaseString = OwningComponent->LODData[0].MapBuildDataId.ToString(EGuidFormats::Digits);
-			GuidBaseString += TEXT("LOD_") + FString::FromInt(LodIndex);
-
-			FSHA1 Sha;
-			Sha.Update((uint8*)*GuidBaseString, GuidBaseString.Len() * sizeof(TCHAR));
-			Sha.Final();
-			// Retrieve the hash and use it to construct a pseudo-GUID.
-			uint32 Hash[5];
-			Sha.GetHash((uint8*)Hash);
-			MapBuildDataId = FGuid(Hash[0] ^ Hash[4], Hash[1], Hash[2], Hash[3]);
-		}
-
-		return true;
+	if (LodIndex == 0)
+	{
+		MapBuildDataId = FGuid::NewGuid();
 	}
-
-	return false;
+	else
+	{
+		FString GuidBaseString = OwningComponent->LODData[0].MapBuildDataId.ToString(EGuidFormats::Digits);
+		GuidBaseString += TEXT("LOD_") + FString::FromInt(LodIndex);
+		
+		FSHA1 Sha;
+		Sha.Update((uint8*)*GuidBaseString, GuidBaseString.Len() * sizeof(TCHAR));
+		Sha.Final();
+		// Retrieve the hash and use it to construct a pseudo-GUID.
+		uint32 Hash[5];
+		Sha.GetHash((uint8*)Hash);
+		MapBuildDataId = FGuid(Hash[0] ^ Hash[4], Hash[1], Hash[2], Hash[3]);
+	}
+#if WITH_EDITOR
+	bMapBuildDataIdLoaded = false;
+#endif
 }
 
 /** Destructor */
@@ -2739,6 +2721,9 @@ FArchive& operator<<(FArchive& Ar,FStaticMeshComponentLODInfo& I)
 		if (Ar.IsLoading() && Ar.CustomVer(FRenderingObjectVersion::GUID) < FRenderingObjectVersion::MapBuildDataSeparatePackage)
 		{
 			I.MapBuildDataId = FGuid::NewGuid();
+		#if WITH_EDITOR
+			I.bMapBuildDataIdLoaded = false;
+		#endif
 			I.LegacyMapBuildData = new FMeshMapBuildData();
 			Ar << I.LegacyMapBuildData->LightMap;
 			Ar << I.LegacyMapBuildData->ShadowMap;
@@ -2746,6 +2731,12 @@ FArchive& operator<<(FArchive& Ar,FStaticMeshComponentLODInfo& I)
 		else
 		{
 			Ar << I.MapBuildDataId;
+		#if WITH_EDITOR
+			if (Ar.IsLoading())
+			{
+				I.bMapBuildDataIdLoaded = true;
+			}
+		#endif
 		}
 	}
 

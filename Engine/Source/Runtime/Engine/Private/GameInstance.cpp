@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/GameInstance.h"
 #include "Misc/MessageDialog.h"
@@ -18,6 +18,7 @@
 #include "Engine/GameEngine.h"
 #include "GameFramework/GameModeBase.h"
 #include "Engine/DemoNetDriver.h"
+#include "Engine/NetworkObjectList.h"
 #include "Engine/LocalPlayer.h"
 #include "GameFramework/OnlineSession.h"
 #include "GameFramework/PlayerState.h"
@@ -28,7 +29,6 @@
 #include "GenericPlatform/GenericApplication.h"
 #include "Misc/PackageName.h"
 #include "Net/ReplayPlaylistTracker.h"
-#include "ReplaySubsystem.h"
 
 #if WITH_EDITOR
 #include "Settings/LevelEditorPlaySettings.h"
@@ -143,14 +143,14 @@ void UGameInstance::Shutdown()
 	WorldContext = nullptr;
 }
 
-void UGameInstance::InitializeStandalone(const FName InPackageName, UPackage* InWorldPackage)
+void UGameInstance::InitializeStandalone()
 {
 	// Creates the world context. This should be the only WorldContext that ever gets created for this GameInstance.
 	WorldContext = &GetEngine()->CreateNewWorldContext(EWorldType::Game);
 	WorldContext->OwningGameInstance = this;
 
 	// In standalone create a dummy world from the beginning to avoid issues of not having a world until LoadMap gets us our real world
-	UWorld* DummyWorld = UWorld::CreateWorld(EWorldType::Game, false, InPackageName, InWorldPackage);
+	UWorld* DummyWorld = UWorld::CreateWorld(EWorldType::Game, false);
 	DummyWorld->SetGameInstance(this);
 	WorldContext->SetCurrentWorld(DummyWorld);
 
@@ -202,40 +202,9 @@ void UGameInstance::CreateMinimalNetRPCWorld(const FName InPackageName, UPackage
 }
 
 #if WITH_EDITOR
-static ENetMode GetNetModeFromPlayNetMode(const EPlayNetMode InPlayNetMode, const bool bInDedicatedServer)
-{
-	switch (InPlayNetMode)
-	{
-		case EPlayNetMode::PIE_Client:
-		{
-			return NM_Client;
-		}
-		case EPlayNetMode::PIE_ListenServer:
-		{
-			if (bInDedicatedServer)
-			{
-				return NM_DedicatedServer;
-			}
-
-			return NM_ListenServer;
-		}
-		case EPlayNetMode::PIE_Standalone:
-		{
-			return NM_Standalone;
-		}
-		default:
-		{
-			break;
-		}
-	}
-
-	return NM_Standalone;
-}
 
 FGameInstancePIEResult UGameInstance::InitializeForPlayInEditor(int32 PIEInstanceIndex, const FGameInstancePIEParameters& Params)
 {
-	PIEStartTime = Params.PIEStartTime;
-
 	UEditorEngine* const EditorEngine = CastChecked<UEditorEngine>(GetEngine());
 
 	// Look for an existing pie world context, may have been created before
@@ -260,34 +229,23 @@ FGameInstancePIEResult UGameInstance::InitializeForPlayInEditor(int32 PIEInstanc
 	WorldContext->LastURL.Map = WorldPackageName;
 	WorldContext->PIEPrefix = WorldContext->PIEInstance != INDEX_NONE ? UWorld::BuildPIEPackagePrefix(WorldContext->PIEInstance) : FString();
 
-	
+	const ULevelEditorPlaySettings* PlayInSettings = GetDefault<ULevelEditorPlaySettings>();
+
 	// We always need to create a new PIE world unless we're using the editor world for SIE
 	UWorld* NewWorld = nullptr;
 
 	bool bNeedsGarbageCollection = false;
-
-	if (Params.NetMode == EPlayNetMode::PIE_Client)
+	const EPlayNetMode PlayNetMode = [&PlayInSettings]{ EPlayNetMode NetMode(PIE_Standalone); return (PlayInSettings->GetPlayNetMode(NetMode) ? NetMode : PIE_Standalone); }();
+	const bool CanRunUnderOneProcess = [&PlayInSettings]{ bool RunUnderOneProcess(false); return (PlayInSettings->GetRunUnderOneProcess(RunUnderOneProcess) && RunUnderOneProcess); }();
+	if (PlayNetMode == PIE_Client)
 	{
 		// We are going to connect, so just load an empty world
 		NewWorld = EditorEngine->CreatePIEWorldFromEntry(*WorldContext, EditorEngine->EditorWorld, PIEMapName);
 	}
 	else
 	{
-		if (Params.OverrideMapURL.Len() > 0)
-		{
-			// Attempt to load the target world asset
-			FSoftObjectPath TargetWorld = FSoftObjectPath(Params.OverrideMapURL);
-			UWorld* WorldToDuplicate = Cast<UWorld>(TargetWorld.TryLoad());
-			if (WorldToDuplicate)
-			{
-				NewWorld = EditorEngine->CreatePIEWorldByDuplication(*WorldContext, WorldToDuplicate, PIEMapName);
-			}
-		}
-		else
-		{
-			// Standard PIE path: just duplicate the EditorWorld
-			NewWorld = EditorEngine->CreatePIEWorldByDuplication(*WorldContext, EditorEngine->EditorWorld, PIEMapName);
-		}
+		// Standard PIE path: just duplicate the EditorWorld
+		NewWorld = EditorEngine->CreatePIEWorldByDuplication(*WorldContext, EditorEngine->EditorWorld, PIEMapName);
 
 		// Duplication can result in unreferenced objects, so indicate that we should do a GC pass after initializing the world context
 		bNeedsGarbageCollection = true;
@@ -299,7 +257,6 @@ FGameInstancePIEResult UGameInstance::InitializeForPlayInEditor(int32 PIEInstanc
 		return FGameInstancePIEResult::Failure(NSLOCTEXT("UnrealEd", "Error_FailedCreateEditorPreviewWorld", "Failed to create editor preview world."));
 	}
 
-	NewWorld->SetPlayInEditorInitialNetMode(GetNetModeFromPlayNetMode(Params.NetMode, Params.bRunAsDedicated));
 	NewWorld->SetGameInstance(this);
 	WorldContext->SetCurrentWorld(NewWorld);
 	WorldContext->AddRef(EditorEngine->PlayWorld);	// Tie this context to this UEngine::PlayWorld*		// @fixme, needed still?
@@ -340,38 +297,31 @@ bool UGameInstance::InitializePIE(bool bAnyBlueprintErrors, int32 PIEInstance, b
 
 FGameInstancePIEResult UGameInstance::StartPlayInEditorGameInstance(ULocalPlayer* LocalPlayer, const FGameInstancePIEParameters& Params)
 {
-	if (!Params.EditorPlaySettings)
-	{
-		return FGameInstancePIEResult::Failure(NSLOCTEXT("UnrealEd", "Error_InvalidEditorPlaySettings", "Invalid Editor Play Settings!"));
-	}
-
-	if (PIEStartTime == 0)
-	{
-		PIEStartTime = Params.PIEStartTime;
-	}
-
 	OnStart();
 
 	UEditorEngine* const EditorEngine = CastChecked<UEditorEngine>(GetEngine());
+	ULevelEditorPlaySettings const* PlayInSettings = GetDefault<ULevelEditorPlaySettings>();
+
+	const EPlayNetMode PlayNetMode = [&PlayInSettings]{ EPlayNetMode NetMode(PIE_Standalone); return (PlayInSettings->GetPlayNetMode(NetMode) ? NetMode : PIE_Standalone); }();
 
 	// for clients, just connect to the server
-	if (Params.NetMode == PIE_Client)
+	if (PlayNetMode == PIE_Client)
 	{
 		FString Error;
 		FURL BaseURL = WorldContext->LastURL;
 
 		FString URLString(TEXT("127.0.0.1"));
 		uint16 ServerPort = 0;
-		if (Params.EditorPlaySettings->GetServerPort(ServerPort))
+		if (PlayInSettings->GetServerPort(ServerPort))
 		{
 			URLString += FString::Printf(TEXT(":%hu"), ServerPort);
 		}
 
-		if (Params.EditorPlaySettings->IsNetworkEmulationEnabled())
+		if (PlayInSettings->IsNetworkEmulationEnabled())
 		{
-			if (Params.EditorPlaySettings->NetworkEmulationSettings.IsEmulationEnabledForTarget(NetworkEmulationTarget::Client))
+			if (PlayInSettings->NetworkEmulationSettings.IsEmulationEnabledForTarget(NetworkEmulationTarget::Client))
 			{
-				URLString += Params.EditorPlaySettings->NetworkEmulationSettings.BuildPacketSettingsForURL();
+				URLString += PlayInSettings->NetworkEmulationSettings.BuildPacketSettingsForURL();
 			}
 		}
 
@@ -390,21 +340,21 @@ FGameInstancePIEResult UGameInstance::StartPlayInEditorGameInstance(ULocalPlayer
 		UWorld* const PlayWorld = GetWorld();
 
 		FString ExtraURLOptions;
-		if (Params.EditorPlaySettings->IsNetworkEmulationEnabled())
+		if (PlayInSettings->IsNetworkEmulationEnabled())
 		{
-			NetworkEmulationTarget CurrentTarget = Params.NetMode == PIE_ListenServer ? NetworkEmulationTarget::Server : NetworkEmulationTarget::Client;
-			if (Params.EditorPlaySettings->NetworkEmulationSettings.IsEmulationEnabledForTarget(CurrentTarget))
+			NetworkEmulationTarget CurrentTarget = PlayNetMode == PIE_ListenServer ? NetworkEmulationTarget::Server : NetworkEmulationTarget::Client;
+			if (PlayInSettings->NetworkEmulationSettings.IsEmulationEnabledForTarget(CurrentTarget))
 			{
-				ExtraURLOptions += Params.EditorPlaySettings->NetworkEmulationSettings.BuildPacketSettingsForURL();
+				ExtraURLOptions += PlayInSettings->NetworkEmulationSettings.BuildPacketSettingsForURL();
 			}
 		}
 
 		// make a URL
 		FURL URL;
 		// If the user wants to start in spectator mode, do not use the custom play world for now
-		if (EditorEngine->UserEditedPlayWorldURL.Len() > 0 || Params.OverrideMapURL.Len() > 0)
+		if (EditorEngine->UserEditedPlayWorldURL.Len() > 0 && !Params.bStartInSpectatorMode)
 		{
-			FString UserURL = EditorEngine->UserEditedPlayWorldURL.Len() > 0 ? EditorEngine->UserEditedPlayWorldURL : Params.OverrideMapURL;
+			FString UserURL = EditorEngine->UserEditedPlayWorldURL;
 			UserURL += ExtraURLOptions;
 
 			// If the user edited the play world url. Verify that the map name is the same as the currently loaded map.
@@ -423,7 +373,7 @@ FGameInstancePIEResult UGameInstance::StartPlayInEditorGameInstance(ULocalPlayer
 
 		// If a start location is specified, spawn a temporary PlayerStartPIE actor at the start location and use it as the portal.
 		AActor* PlayerStart = NULL;
-		if (!EditorEngine->SpawnPlayFromHereStart(PlayWorld, PlayerStart))
+		if (EditorEngine->SpawnPlayFromHereStart(PlayWorld, PlayerStart, EditorEngine->PlayWorldLocation, EditorEngine->PlayWorldRotation) == false)
 		{
 			// failed to create "play from here" playerstart
 			return FGameInstancePIEResult::Failure(NSLOCTEXT("UnrealEd", "Error_FailedCreatePlayFromHerePlayerStart", "Failed to create PlayerStart at desired starting location."));
@@ -467,11 +417,11 @@ FGameInstancePIEResult UGameInstance::StartPlayInEditorGameInstance(ULocalPlayer
 			GEngine->BlockTillLevelStreamingCompleted(PlayWorld);
 		}
 		
-		if (Params.NetMode == PIE_ListenServer)
+		if (PlayNetMode == PIE_ListenServer)
 		{
 			// Add port
 			uint16 ServerPort = 0;
-			if (Params.EditorPlaySettings->GetServerPort(ServerPort))
+			if (PlayInSettings->GetServerPort(ServerPort))
 			{
 				URL.Port = ServerPort;
 			}
@@ -736,21 +686,17 @@ ULocalPlayer* UGameInstance::CreateLocalPlayer(int32 ControllerId, FString& OutE
 			}
 			else if (CurrentWorld->IsPlayingReplay())
 			{
-				if (UDemoNetDriver* DemoNetDriver = CurrentWorld->GetDemoNetDriver())
+				// demo playback; ask the replay driver to spawn a splitscreen client
+				if (!CurrentWorld->DemoNetDriver->SpawnSplitscreenViewer(NewPlayer, CurrentWorld))
 				{
-					// demo playback; ask the replay driver to spawn a splitscreen client
-					if (!DemoNetDriver->SpawnSplitscreenViewer(NewPlayer, CurrentWorld))
-					{
-						RemoveLocalPlayer(NewPlayer);
-						NewPlayer = nullptr;
-					}
+					RemoveLocalPlayer(NewPlayer);
+					NewPlayer = nullptr;
 				}
 			}
 			else
 			{
 				// client; ask the server to let the new player join
-				TArray<FString> Options;
-				NewPlayer->SendSplitJoin(Options);
+				NewPlayer->SendSplitJoin();
 			}
 		}
 	}
@@ -769,7 +715,7 @@ ULocalPlayer* UGameInstance::CreateLocalPlayer(int32 ControllerId, FString& OutE
 
 int32 UGameInstance::AddLocalPlayer(ULocalPlayer* NewLocalPlayer, int32 ControllerId)
 {
-	if (NewLocalPlayer == nullptr)
+	if (NewLocalPlayer == NULL)
 	{
 		return INDEX_NONE;
 	}
@@ -783,14 +729,10 @@ int32 UGameInstance::AddLocalPlayer(ULocalPlayer* NewLocalPlayer, int32 Controll
 	NewLocalPlayer->PlayerAdded(GetGameViewportClient(), ControllerId);
 
 	// Notify the viewport that we added a player (so it can update splitscreen settings, etc)
-	if ( GetGameViewportClient() != nullptr)
+	if ( GetGameViewportClient() != NULL )
 	{
 		GetGameViewportClient()->NotifyPlayerAdded(InsertIndex, NewLocalPlayer);
 	}
-
-	UE_LOG(LogPlayerManagement, Log, TEXT("UGameInstance::AddLocalPlayer: Added player %s with ControllerId %d at index %d (%d remaining players)"), *NewLocalPlayer->GetName(), NewLocalPlayer->GetControllerId(), InsertIndex, LocalPlayers.Num());
-
-	OnLocalPlayerAddedEvent.Broadcast(NewLocalPlayer);
 
 	return InsertIndex;
 }
@@ -806,17 +748,13 @@ bool UGameInstance::RemoveLocalPlayer(ULocalPlayer* ExistingPlayer)
 		ExistingPlayer->PlayerController->CleanupGameViewport();
 
 		UWorld* CurrentWorld = GetWorld();
-		if (CurrentWorld && CurrentWorld->IsPlayingReplay())
+		if (CurrentWorld && CurrentWorld->DemoNetDriver && CurrentWorld->IsPlayingReplay())
 		{
-			if (UDemoNetDriver* DemoNetDriver = CurrentWorld->GetDemoNetDriver())
+			if (!CurrentWorld->DemoNetDriver->RemoveSplitscreenViewer(ExistingPlayer->PlayerController))
 			{
-				if (!DemoNetDriver->RemoveSplitscreenViewer(ExistingPlayer->PlayerController))
-				{
-					UE_LOG(LogPlayerManagement, Warning, TEXT("UGameInstance::RemovePlayer: Did not remove player %s with ControllerId %i as it was unable to be removed from the demo"),
-						*ExistingPlayer->GetName(), ExistingPlayer->GetControllerId());
-				}
+				UE_LOG(LogPlayerManagement, Warning, TEXT("UGameInstance::RemovePlayer: Did not remove player %s with ControllerId %i as it was unable to be removed from the demo"), 
+					*ExistingPlayer->GetName(), ExistingPlayer->GetControllerId());
 			}
-
 			bShouldRemovePlayer = true;
 		}
 
@@ -848,8 +786,6 @@ bool UGameInstance::RemoveLocalPlayer(ULocalPlayer* ExistingPlayer)
 	ExistingPlayer->ViewportClient = nullptr;
 
 	UE_LOG(LogPlayerManagement, Log, TEXT("UGameInstance::RemovePlayer: Removed player %s with ControllerId %i at index %i (%i remaining players)"), *ExistingPlayer->GetName(), ExistingPlayer->GetControllerId(), OldIndex, LocalPlayers.Num());
-
-	OnLocalPlayerRemovedEvent.Broadcast(ExistingPlayer);
 
 	return true;
 }
@@ -885,15 +821,10 @@ int32 UGameInstance::GetNumLocalPlayers() const
 
 ULocalPlayer* UGameInstance::GetLocalPlayerByIndex(const int32 Index) const
 {
-	if (LocalPlayers.IsValidIndex(Index))
-	{
-		return LocalPlayers[Index];
-	}
-
-	return nullptr;
+	return LocalPlayers[Index];
 }
 
-APlayerController* UGameInstance::GetFirstLocalPlayerController(const UWorld* World) const
+APlayerController* UGameInstance::GetFirstLocalPlayerController(UWorld* World) const
 {
 	if (World == nullptr)
 	{
@@ -924,7 +855,7 @@ APlayerController* UGameInstance::GetFirstLocalPlayerController(const UWorld* Wo
 	return nullptr;
 }
 
-APlayerController* UGameInstance::GetPrimaryPlayerController(bool bRequiresValidUniqueId) const
+APlayerController* UGameInstance::GetPrimaryPlayerController() const
 {
 	UWorld* World = GetWorld();
 	check(World);
@@ -933,7 +864,7 @@ APlayerController* UGameInstance::GetPrimaryPlayerController(bool bRequiresValid
 	for (FConstPlayerControllerIterator Iterator = World->GetPlayerControllerIterator(); Iterator; ++Iterator)
 	{
 		APlayerController* NextPlayer = Iterator->Get();
-		if (NextPlayer && NextPlayer->PlayerState && NextPlayer->IsPrimaryPlayer() && (!bRequiresValidUniqueId || NextPlayer->PlayerState->GetUniqueId().IsValid()))
+		if (NextPlayer && NextPlayer->PlayerState && NextPlayer->PlayerState->UniqueId.IsValid() && NextPlayer->IsPrimaryPlayer())
 		{
 			PrimaryController = NextPlayer;
 			break;
@@ -1040,30 +971,166 @@ const TArray<class ULocalPlayer*>& UGameInstance::GetLocalPlayers() const
 	return LocalPlayers;
 }
 
-void UGameInstance::StartRecordingReplay(const FString& Name, const FString& FriendlyName, const TArray<FString>& AdditionalOptions, TSharedPtr<IAnalyticsProvider> AnalyticsProvider)
+void UGameInstance::StartRecordingReplay(const FString& Name, const FString& FriendlyName, const TArray<FString>& AdditionalOptions)
 {
-	if (UReplaySubsystem* ReplaySubsystem = GetSubsystem<UReplaySubsystem>())
+	LLM_SCOPE(ELLMTag::Networking);
+
+	if ( FParse::Param( FCommandLine::Get(),TEXT( "NOREPLAYS" ) ) )
 	{
-		ReplaySubsystem->RecordReplay(Name, FriendlyName, AdditionalOptions, AnalyticsProvider);
+		UE_LOG( LogDemo, Warning, TEXT( "UGameInstance::StartRecordingReplay: Rejected due to -noreplays option" ) );
+		return;
 	}
+
+	UWorld* CurrentWorld = GetWorld();
+
+	if ( CurrentWorld == nullptr )
+	{
+		UE_LOG( LogDemo, Warning, TEXT( "UGameInstance::StartRecordingReplay: GetWorld() is null" ) );
+		return;
+	}
+
+	if ( CurrentWorld->DemoNetDriver && CurrentWorld->DemoNetDriver->IsPlaying() )
+	{
+		UE_LOG(LogDemo, Warning, TEXT("UGameInstance::StartRecordingReplay: A replay is already playing, cannot begin recording another one."));
+		return;
+	}
+
+	FURL DemoURL;
+	FString DemoName = Name;
+	
+	DemoName.ReplaceInline( TEXT( "%m" ), *CurrentWorld->GetMapName() );
+
+	// replace the current URL's map with a demo extension
+	DemoURL.Map = DemoName;
+	DemoURL.AddOption( *FString::Printf( TEXT( "DemoFriendlyName=%s" ), *FriendlyName ) );
+
+	for ( const FString& Option : AdditionalOptions )
+	{
+		DemoURL.AddOption(*Option);
+	}
+
+	bool bDestroyedDemoNetDriver = false;
+	if (!CurrentWorld->DemoNetDriver || !CurrentWorld->DemoNetDriver->bRecordMapChanges || !CurrentWorld->DemoNetDriver->IsRecordingPaused())
+	{
+		CurrentWorld->DestroyDemoNetDriver();
+		bDestroyedDemoNetDriver = true; 
+
+		if (!GEngine->CreateNamedNetDriver(CurrentWorld, NAME_DemoNetDriver, NAME_DemoNetDriver))
+		{
+			UE_LOG(LogDemo, Warning, TEXT("RecordReplay: failed to create demo net driver!"));
+			return;
+		}
+
+		CurrentWorld->DemoNetDriver = Cast< UDemoNetDriver >(GEngine->FindNamedNetDriver(CurrentWorld, NAME_DemoNetDriver));
+	}
+
+	check(CurrentWorld->DemoNetDriver != nullptr);
+
+	CurrentWorld->DemoNetDriver->SetWorld( CurrentWorld );
+
+	// Set the new demo driver as the current collection's driver
+	FLevelCollection* CurrentLevelCollection = CurrentWorld->FindCollectionByType(ELevelCollectionType::DynamicSourceLevels);
+	if (CurrentLevelCollection)
+	{
+		CurrentLevelCollection->SetDemoNetDriver(CurrentWorld->DemoNetDriver);
+	}
+
+	FString Error;
+
+	if (bDestroyedDemoNetDriver)
+	{
+		if (!CurrentWorld->DemoNetDriver->InitListen(CurrentWorld, DemoURL, false, Error))
+		{
+			UE_LOG(LogDemo, Warning, TEXT("Demo recording - InitListen failed: %s"), *Error);
+			CurrentWorld->DemoNetDriver = NULL;
+			return;
+		}
+	}
+	else if (!CurrentWorld->DemoNetDriver->ContinueListen(DemoURL))
+	{
+		UE_LOG(LogDemo, Warning, TEXT("Demo recording - ContinueListen failed"));
+		CurrentWorld->DemoNetDriver = NULL;
+		return;
+	}
+
+	UE_LOG(LogDemo, Log, TEXT( "Num Network Actors: %i" ), CurrentWorld->DemoNetDriver->GetNetworkObjectList().GetActiveObjects().Num() );
 }
 
 void UGameInstance::StopRecordingReplay()
 {
-	if (UReplaySubsystem* ReplaySubsystem = GetSubsystem<UReplaySubsystem>())
+	UWorld* CurrentWorld = GetWorld();
+
+	if ( CurrentWorld == nullptr )
 	{
-		return ReplaySubsystem->StopReplay();
+		UE_LOG( LogDemo, Warning, TEXT( "UGameInstance::StopRecordingReplay: GetWorld() is null" ) );
+		return;
+	}
+
+	bool LoadDefaultMap = false;
+
+	if ( CurrentWorld->DemoNetDriver && CurrentWorld->DemoNetDriver->IsPlaying() )
+	{
+		LoadDefaultMap = true;
+	}
+
+	CurrentWorld->DestroyDemoNetDriver();
+
+	if ( LoadDefaultMap )
+	{
+		GEngine->BrowseToDefaultMap(*GetWorldContext());
 	}
 }
 
 bool UGameInstance::PlayReplay(const FString& Name, UWorld* WorldOverride, const TArray<FString>& AdditionalOptions)
 {
-	if (UReplaySubsystem* ReplaySubsystem = GetSubsystem<UReplaySubsystem>())
+	LLM_SCOPE(ELLMTag::Networking);
+
+	UWorld* CurrentWorld = WorldOverride != nullptr ? WorldOverride : GetWorld();
+
+	if ( CurrentWorld == nullptr )
 	{
-		return ReplaySubsystem->PlayReplay(Name, WorldOverride, AdditionalOptions);
+		UE_LOG( LogDemo, Warning, TEXT( "UGameInstance::PlayReplay: GetWorld() is null" ) );
+		return false;
 	}
+
+	CurrentWorld->DestroyDemoNetDriver();
+
+	FURL DemoURL;
+	UE_LOG( LogDemo, Log, TEXT( "PlayReplay: Attempting to play demo %s" ), *Name );
+
+	DemoURL.Map = Name;
 	
-	return false;
+	for ( const FString& Option : AdditionalOptions )
+	{
+		DemoURL.AddOption(*Option);
+	}
+
+	if ( !GEngine->CreateNamedNetDriver( CurrentWorld, NAME_DemoNetDriver, NAME_DemoNetDriver ) )
+	{
+		UE_LOG(LogDemo, Warning, TEXT( "PlayReplay: failed to create demo net driver!" ) );
+		return false;
+	}
+
+	CurrentWorld->DemoNetDriver = Cast< UDemoNetDriver >( GEngine->FindNamedNetDriver( CurrentWorld, NAME_DemoNetDriver ) );
+
+	check( CurrentWorld->DemoNetDriver != NULL );
+
+	CurrentWorld->DemoNetDriver->SetWorld( CurrentWorld );
+
+	FString Error;
+
+	if ( !CurrentWorld->DemoNetDriver->InitConnect( CurrentWorld, DemoURL, Error ) )
+	{
+		UE_LOG(LogDemo, Warning, TEXT( "Demo playback failed: %s" ), *Error );
+		CurrentWorld->DestroyDemoNetDriver();
+		return false;
+	}
+	else
+	{
+		FCoreUObjectDelegates::PostDemoPlay.Broadcast();
+	}
+
+	return true;
 }
 
 class FGameInstanceReplayPlaylistHelper
@@ -1089,9 +1156,11 @@ bool UGameInstance::PlayReplayPlaylist(const FReplayPlaylistParams& PlaylistPara
 
 void UGameInstance::AddUserToReplay(const FString& UserString)
 {
-	if (UReplaySubsystem* ReplaySubsystem = GetSubsystem<UReplaySubsystem>())
+	UWorld* CurrentWorld = GetWorld();
+
+	if ( CurrentWorld != nullptr && CurrentWorld->DemoNetDriver != nullptr )
 	{
-		ReplaySubsystem->AddUserToReplay(UserString);
+		CurrentWorld->DemoNetDriver->AddUserToReplay( UserString );
 	}
 }
 
@@ -1183,7 +1252,7 @@ void UGameInstance::PreloadContentForURL(FURL InURL)
 	// Preload game mode and other content if needed here
 }
 
-AGameModeBase* UGameInstance::CreateGameModeForURL(FURL InURL, UWorld* InWorld)
+AGameModeBase* UGameInstance::CreateGameModeForURL(FURL InURL)
 {
 	// Init the game info.
 	FString Options;
@@ -1195,7 +1264,7 @@ AGameModeBase* UGameInstance::CreateGameModeForURL(FURL InURL, UWorld* InWorld)
 		FParse::Value(*InURL.Op[i], TEXT("GAME="), GameParam);
 	}
 
-	UWorld* World = InWorld ? InWorld : GetWorld();
+	UWorld* World = GetWorld();
 	AWorldSettings* Settings = World->GetWorldSettings();
 	UGameEngine* const GameEngine = Cast<UGameEngine>(GEngine);
 
@@ -1233,7 +1302,7 @@ AGameModeBase* UGameInstance::CreateGameModeForURL(FURL InURL, UWorld* InWorld)
 		if (MapNameNoPath.StartsWith(PLAYWORLD_PACKAGE_PREFIX))
 		{
 			const int32 PrefixLen = UWorld::BuildPIEPackagePrefix(WorldContext->PIEInstance).Len();
-			MapNameNoPath.MidInline(PrefixLen, MAX_int32, false);
+			MapNameNoPath = MapNameNoPath.Mid(PrefixLen);
 		}
 
 		FString const GameClassName = UGameMapsSettings::GetGameModeForMapName(FString(MapNameNoPath));

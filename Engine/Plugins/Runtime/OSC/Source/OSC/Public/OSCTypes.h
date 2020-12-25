@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -6,86 +6,86 @@
 #include "Math/Color.h"
 
 
-enum class EOSCTypeTag : uint8
-{
-	OSC_INT32		= 'i',
-	OSC_FLOAT		= 'f',
-	OSC_DOUBLE		= 'd',
-	OSC_STRING		= 's',
-	OSC_BLOB		= 'b',
-	OSC_TIME		= 't',
-	OSC_INT64		= 'h',
-	OSC_CHAR		= 'c',
-	OSC_TRUE		= 'T',
-	OSC_FALSE		= 'F',
-	OSC_NIL			= 'N',
-	OSC_INFINITUM	= 'I',
-	OSC_COLOR		= 'r',
-	OSC_TERMINATE	= '\0'
+enum class EOSCTypeTag {
+
+	INT32 = 'i',
+	FLOAT = 'f',
+	DOUBLE = 'd',
+	STRING = 's',
+	BLOB = 'b',
+	TIME = 't',
+	INT64 = 'h',
+	CHAR = 'c',
+	TRUE = 'T',
+	FALSE = 'F',
+	NIL = 'N',
+	INFINITUM = 'I',
+	COLOR = 'r',
+	TERMINATE = '\0'
 };
 
 
-class OSC_API FOSCType
+class FOSCType
 {
 public:
 	explicit FOSCType(int32 Value)
-		: TypeTag(EOSCTypeTag::OSC_INT32)
+		: TypeTag(EOSCTypeTag::INT32)
 		, Data(Value)
 		, Blob()
 	{
 	}
 	explicit FOSCType(int64 Value)
-		: TypeTag(EOSCTypeTag::OSC_INT64)
+		: TypeTag(EOSCTypeTag::INT64)
 		, Data(Value)
 		, Blob()
 	{
 	}
 	explicit FOSCType(ANSICHAR Value)
-		: TypeTag(EOSCTypeTag::OSC_CHAR)
+		: TypeTag(EOSCTypeTag::CHAR)
 		, Data(Value)
 		, Blob()
 	{
 	}
 	explicit FOSCType(uint64 Value)
-		: TypeTag(EOSCTypeTag::OSC_TIME)
+		: TypeTag(EOSCTypeTag::TIME)
 		, Data(Value)
 		, Blob()
 	{
 	}
 	explicit FOSCType(float Value)
-		: TypeTag(EOSCTypeTag::OSC_FLOAT)
+		: TypeTag(EOSCTypeTag::FLOAT)
 		, Data(Value)
 		, Blob()
 	
 	{
 	}
 	explicit FOSCType(double Value)
-		: TypeTag(EOSCTypeTag::OSC_DOUBLE)
+		: TypeTag(EOSCTypeTag::DOUBLE)
 		, Data(Value)
 		, Blob()
 	{
 	}
 	explicit FOSCType(bool Value)
-		: TypeTag(Value ? EOSCTypeTag::OSC_TRUE : EOSCTypeTag::OSC_FALSE)
+		: TypeTag(Value ? EOSCTypeTag::TRUE : EOSCTypeTag::FALSE)
 		, Data(Value)
 		, Blob()
 	{
 	}
 	explicit FOSCType(const FString& Value)
-		: TypeTag(EOSCTypeTag::OSC_STRING)
+		: TypeTag(EOSCTypeTag::STRING)
 		, Data(0)
 		, String(Value)
 		, Blob()
 	{
 	}
 	explicit FOSCType(const TArray<uint8>& Value)
-		: TypeTag(EOSCTypeTag::OSC_BLOB)
+		: TypeTag(EOSCTypeTag::BLOB)
 		, Data(0)
 		, Blob(Value)
 	{
 	}
 	explicit FOSCType(FColor Value)
-		: TypeTag(EOSCTypeTag::OSC_COLOR)
+		: TypeTag(EOSCTypeTag::COLOR)
 		, Data(0)
 		, Blob()
 		, Color(Value)
@@ -101,38 +101,38 @@ public:
 
 	EOSCTypeTag GetTypeTag() const { return TypeTag; }
 
-	bool IsInt32() const { return TypeTag == EOSCTypeTag::OSC_INT32; }
+	bool IsInt32() const { return TypeTag == EOSCTypeTag::INT32; }
 	int32 GetInt32() const { return Data.Int32; }
 
-	bool IsInt64() const { return TypeTag == EOSCTypeTag::OSC_INT64; }
+	bool IsInt64() const { return TypeTag == EOSCTypeTag::INT64; }
 	int64 GetInt64() const { return Data.Int64; }
 
-	bool IsTimeTag() const { return TypeTag == EOSCTypeTag::OSC_TIME; }
+	bool IsTimeTag() const { return TypeTag == EOSCTypeTag::TIME; }
 	uint64 GetTimeTag() const { return Data.Time; }
 
-	bool IsBool() const { return TypeTag == EOSCTypeTag::OSC_TRUE || TypeTag == EOSCTypeTag::OSC_FALSE; }
+	bool IsBool() const { return TypeTag == EOSCTypeTag::TRUE || TypeTag == EOSCTypeTag::FALSE; }
 	bool GetBool() const { return Data.Bool; }
 
-	bool IsChar() const { return TypeTag == EOSCTypeTag::OSC_CHAR; }
+	bool IsChar() const { return TypeTag == EOSCTypeTag::CHAR; }
 	ANSICHAR GetChar() const { return Data.Char; }
 
-	bool IsFloat() const { return TypeTag == EOSCTypeTag::OSC_FLOAT; }
+	bool IsFloat() const { return TypeTag == EOSCTypeTag::FLOAT; }
 	float GetFloat() const { return Data.Float; }
 	
-	bool IsDouble() const { return TypeTag == EOSCTypeTag::OSC_DOUBLE; }
+	bool IsDouble() const { return TypeTag == EOSCTypeTag::DOUBLE; }
 	double GetDouble() const { return Data.Double; }
 
-	bool IsString() const { return TypeTag == EOSCTypeTag::OSC_STRING; }
+	bool IsString() const { return TypeTag == EOSCTypeTag::STRING; }
 	FString GetString() const { return String; }
 
-	bool IsBlob() const { return TypeTag == EOSCTypeTag::OSC_BLOB; }
+	bool IsBlob() const { return TypeTag == EOSCTypeTag::BLOB; }
 	TArray<uint8> GetBlob() const { return Blob; }
 
-	bool IsColor() const { return TypeTag == EOSCTypeTag::OSC_COLOR; }
+	bool IsColor() const { return TypeTag == EOSCTypeTag::COLOR; }
 	FColor GetColor()  const { return Color; }
 
-	bool IsNil() const { return TypeTag == EOSCTypeTag::OSC_NIL; }
-	bool IsInfinitum() const { return TypeTag == EOSCTypeTag::OSC_INFINITUM; }
+	bool IsNil() const { return TypeTag == EOSCTypeTag::NIL; }
+	bool IsInfinitum() const { return TypeTag == EOSCTypeTag::INFINITUM; }
 
 private:
 	union DataTypes

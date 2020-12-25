@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Tracks/MovieSceneCameraCutTrack.h"
 #include "Tracks/MovieSceneSpawnTrack.h"
@@ -6,8 +6,8 @@
 #include "MovieSceneCommonHelpers.h"
 #include "MovieSceneTimeHelpers.h"
 #include "Sections/MovieSceneCameraCutSection.h"
+#include "Evaluation/MovieSceneCameraCutTemplate.h"
 #include "Evaluation/MovieSceneEvaluationTrack.h"
-#include "Compilation/MovieSceneCompilerRules.h"
 #include "IMovieSceneTracksModule.h"
 
 #define LOCTEXT_NAMESPACE "MovieSceneCameraCutTrack"
@@ -16,21 +16,26 @@
  *****************************************************************************/
 UMovieSceneCameraCutTrack::UMovieSceneCameraCutTrack( const FObjectInitializer& ObjectInitializer )
 	: Super( ObjectInitializer )
-	, bCanBlend(false)
 {
 #if WITH_EDITORONLY_DATA
-	TrackTint = FColor(120, 120, 120, 65);
+	TrackTint = FColor(0, 0, 0, 65);
 #endif
 
 	// By default, don't evaluate camera cuts in pre and postroll
 	EvalOptions.bEvaluateInPreroll = EvalOptions.bEvaluateInPostroll = false;
-
-	SupportedBlendTypes.Add(EMovieSceneBlendType::Absolute);
 }
+
+void UMovieSceneCameraCutTrack::PostCompile(FMovieSceneEvaluationTrack& OutTrack, const FMovieSceneTrackCompilerArgs& Args) const
+{
+	// Evaluate camera cuts in the same flush group as spawnables, this ensures cameras are set before anything else happens (so tracks can check whether a camera cut has happened)
+	OutTrack.SetEvaluationGroup(IMovieSceneTracksModule::GetEvaluationGroupName(EBuiltInEvaluationGroup::SpawnObjects));
+}
+
 
 UMovieSceneCameraCutSection* UMovieSceneCameraCutTrack::AddNewCameraCut(const FMovieSceneObjectBindingID& CameraBindingID, FFrameNumber StartTime)
 {
 	Modify();
+
 
 	FFrameNumber NewSectionEndTime = FindEndTimeForCameraCut(StartTime);
 
@@ -56,21 +61,14 @@ UMovieSceneCameraCutSection* UMovieSceneCameraCutTrack::AddNewCameraCut(const FM
 		NewSection->SetRange(TRange<FFrameNumber>(StartTime, NewSectionEndTime));
 		NewSection->SetCameraBindingID(CameraBindingID);
 
-		AddSection(*NewSection);
+		Sections.Add(NewSection);
 	}
 
 	// When a new CameraCut is added, sort all CameraCuts to ensure they are in the correct order
 	MovieSceneHelpers::SortConsecutiveSections(Sections);
 
 	// Once CameraCuts are sorted fixup the surrounding CameraCuts to fix any gaps
-	if (bCanBlend)
-	{
-		MovieSceneHelpers::FixupConsecutiveBlendingSections(Sections, *NewSection, false);
-	}
-	else
-	{
-		MovieSceneHelpers::FixupConsecutiveSections(Sections, *NewSection, false);
-	}
+	MovieSceneHelpers::FixupConsecutiveSections(Sections, *NewSection, false);
 
 	return NewSection;
 }
@@ -81,9 +79,9 @@ UMovieSceneCameraCutSection* UMovieSceneCameraCutTrack::AddNewCameraCut(const FM
 
 void UMovieSceneCameraCutTrack::AddSection(UMovieSceneSection& Section)
 {
-	if (UMovieSceneCameraCutSection* CutSection = Cast<UMovieSceneCameraCutSection>(&Section))
+	if (Section.IsA<UMovieSceneCameraCutSection>())
 	{
-		Sections.Add(CutSection);
+		Sections.Add(&Section);
 	}
 }
 
@@ -97,56 +95,18 @@ UMovieSceneSection* UMovieSceneCameraCutTrack::CreateNewSection()
 	return NewObject<UMovieSceneCameraCutSection>(this, NAME_None, RF_Transactional);
 }
 
-bool UMovieSceneCameraCutTrack::SupportsMultipleRows() const
-{
-	return false;
-}
-
-EMovieSceneTrackEasingSupportFlags UMovieSceneCameraCutTrack::SupportsEasing(FMovieSceneSupportsEasingParams& Params) const
-{
-	if (!bCanBlend)
-	{
-		return EMovieSceneTrackEasingSupportFlags::None;
-	}
-	if (Params.ForSection != nullptr)
-	{
-		const int32 NumSections = Sections.Num();
-		if (NumSections == 1)
-		{
-			return EMovieSceneTrackEasingSupportFlags::AutomaticEasing | EMovieSceneTrackEasingSupportFlags::ManualEasing;
-		}
-		else if (NumSections > 1)
-		{
-			if (Params.ForSection == Sections[0])
-			{
-				return EMovieSceneTrackEasingSupportFlags::AutomaticEasing | EMovieSceneTrackEasingSupportFlags::ManualEaseIn;
-			}
-			if (Params.ForSection == Sections.Last())
-			{
-				return EMovieSceneTrackEasingSupportFlags::AutomaticEasing | EMovieSceneTrackEasingSupportFlags::ManualEaseOut;
-			}
-		}
-	}
-	return EMovieSceneTrackEasingSupportFlags::AutomaticEasing;
-}
 
 const TArray<UMovieSceneSection*>& UMovieSceneCameraCutTrack::GetAllSections() const
 {
 	return Sections;
 }
 
+
 void UMovieSceneCameraCutTrack::RemoveSection(UMovieSceneSection& Section)
 {
 	Sections.Remove(&Section);
-
-	if (bCanBlend)
-	{
-		MovieSceneHelpers::FixupConsecutiveSections(Sections, Section, true);
-	}
-	else
-	{
-		MovieSceneHelpers::FixupConsecutiveBlendingSections(Sections, Section, true);
-	}
+	MovieSceneHelpers::FixupConsecutiveSections(Sections, Section, true);
+	MovieSceneHelpers::SortConsecutiveSections(Sections);
 
 	// @todo Sequencer: The movie scene owned by the section is now abandoned.  Should we offer to delete it?  
 }
@@ -154,18 +114,12 @@ void UMovieSceneCameraCutTrack::RemoveSection(UMovieSceneSection& Section)
 void UMovieSceneCameraCutTrack::RemoveSectionAt(int32 SectionIndex)
 {
 	UMovieSceneSection* SectionToDelete = Sections[SectionIndex];
-	if (bCanBlend)
-	{
-		MovieSceneHelpers::FixupConsecutiveSections(Sections, *SectionToDelete, true);
-	}
-	else
-	{
-		MovieSceneHelpers::FixupConsecutiveBlendingSections(Sections, *SectionToDelete, true);
-	}
+	MovieSceneHelpers::FixupConsecutiveSections(Sections, *SectionToDelete, true);
 
 	Sections.RemoveAt(SectionIndex);
 	MovieSceneHelpers::SortConsecutiveSections(Sections);
 }
+
 
 void UMovieSceneCameraCutTrack::RemoveAllAnimationData()
 {
@@ -181,16 +135,9 @@ FText UMovieSceneCameraCutTrack::GetDefaultDisplayName() const
 
 
 #if WITH_EDITOR
-void UMovieSceneCameraCutTrack::OnSectionMoved(UMovieSceneSection& Section, const FMovieSceneSectionMovedParams& Params)
+void UMovieSceneCameraCutTrack::OnSectionMoved(UMovieSceneSection& Section)
 {
-	if (bCanBlend)
-	{
-		MovieSceneHelpers::FixupConsecutiveBlendingSections(Sections, Section, false);
-	}
-	else
-	{
-		MovieSceneHelpers::FixupConsecutiveSections(Sections, Section, false);
-	}
+	MovieSceneHelpers::FixupConsecutiveSections(Sections, Section, false);
 }
 #endif
 
@@ -199,7 +146,7 @@ FFrameNumber UMovieSceneCameraCutTrack::FindEndTimeForCameraCut( FFrameNumber St
 	UMovieScene* OwnerScene = GetTypedOuter<UMovieScene>();
 
 	// End time should default to end where the movie scene ends. Ensure it is at least the same as start time (this should only happen when the movie scene has an initial time range smaller than the start time)
-	FFrameNumber ExclusivePlayEnd = UE::MovieScene::DiscreteExclusiveUpper(OwnerScene->GetPlaybackRange());
+	FFrameNumber ExclusivePlayEnd = MovieScene::DiscreteExclusiveUpper(OwnerScene->GetPlaybackRange());
 	FFrameNumber ExclusiveEndTime = FMath::Max( ExclusivePlayEnd, StartTime );
 
 	for( UMovieSceneSection* Section : Sections )
@@ -218,17 +165,6 @@ FFrameNumber UMovieSceneCameraCutTrack::FindEndTimeForCameraCut( FFrameNumber St
 	}
 
 	return ExclusiveEndTime;
-}
-
-void UMovieSceneCameraCutTrack::PreCompileImpl()
-{
-	for (UMovieSceneSection* Section : Sections)
-	{
-		if (UMovieSceneCameraCutSection* CameraCutSection = CastChecked<UMovieSceneCameraCutSection>(Section))
-		{
-			CameraCutSection->ComputeInitialCameraCutTransform();
-		}
-	}
 }
 
 #undef LOCTEXT_NAMESPACE

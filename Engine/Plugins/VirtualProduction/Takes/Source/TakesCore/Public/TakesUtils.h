@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -22,7 +22,7 @@ namespace TakesUtils
 
 	TAKESCORE_API UWorld* GetFirstPIEWorld();
 
-	TAKESCORE_API void ClampPlaybackRangeToEncompassAllSections(UMovieScene* InMovieScene, bool bUpperBoundOnly);
+	TAKESCORE_API void ClampPlaybackRangeToEncompassAllSections(UMovieScene* InMovieScene);
 
 	TAKESCORE_API void SaveAsset(UObject* InObject);
 
@@ -72,7 +72,7 @@ namespace TakesUtils
 
 		// Create the asset to record into
 		const FString NewAssetName = FPackageName::GetLongPackageAssetName(InPackageName);
-		UPackage*     NewPackage = CreatePackage( *InPackageName);
+		UPackage*     NewPackage = CreatePackage(nullptr, *InPackageName);
 
 		if (OptionalBase)
 		{
@@ -125,7 +125,7 @@ namespace TakesUtils
 		FString FileName;
 		if (FPackageName::TryConvertLongPackageNameToFilename(AssetPath, FileName))
 		{
-			UObject* Package = CreatePackage( *AssetPath);
+			UObject* Package = CreatePackage(nullptr, *AssetPath);
 			return NewObject<AssetType>(Package, *AssetName, RF_Public | RF_Standalone);
 		}
 

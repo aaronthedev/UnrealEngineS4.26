@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -136,6 +136,15 @@ struct FMovieSceneBinding
 	{
 		Tracks = InTracks;
 	}
+
+#if WITH_EDITOR
+	/**
+	 * Perform cook-time optimization on this object binding
+	 * @param bShouldRemoveObject 		(Out) Boolean that will set to true if this whole binding should be considered redundant.
+	 */
+	void PerformCookOptimization(bool& bShouldRemoveObject);
+
+#endif
 
 #if WITH_EDITORONLY_DATA
 	/**

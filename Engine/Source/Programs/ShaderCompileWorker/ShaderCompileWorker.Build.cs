@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -14,10 +14,18 @@ public class ShaderCompileWorker : ModuleRules
 				"RenderCore",
 				"SandboxFile",
 				"TargetPlatform",
-				"ApplicationCore",
-				"TraceLog",
-				"ShaderCompilerCommon"
+				"ApplicationCore"
 			});
+
+		if (Target.Platform == UnrealTargetPlatform.Linux)
+		{
+			PrivateDependencyModuleNames.AddRange(
+			new string[] {
+				"NetworkFile",
+				"PakFile",
+				"StreamingFile",
+				});
+		}
 
 		PrivateIncludePathModuleNames.AddRange(
 			new string[] {

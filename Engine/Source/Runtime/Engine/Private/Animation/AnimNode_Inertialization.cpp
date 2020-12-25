@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Animation/AnimNode_Inertialization.h"
 #include "Animation/AnimInstanceProxy.h"
@@ -236,11 +236,6 @@ void FAnimNode_Inertialization::Evaluate_AnyThread(FPoseContext& Output)
 	// Reset the time accumulator and teleport state
 	DeltaTime = 0.0f;
 	TeleportType = ETeleportType::None;
-
-	TRACE_ANIM_NODE_VALUE(Output, TEXT("State"), *UEnum::GetValueAsString(InertializationState));
-	TRACE_ANIM_NODE_VALUE(Output, TEXT("Elapsed Time"), InertializationElapsedTime);
-	TRACE_ANIM_NODE_VALUE(Output, TEXT("Duration"), InertializationDuration);
-	TRACE_ANIM_NODE_VALUE(Output, TEXT("Normalized Time"), InertializationDuration > KINDA_SMALL_NUMBER ? (InertializationElapsedTime / InertializationDuration) : 0.0f);
 }
 
 
@@ -268,8 +263,6 @@ void FAnimNode_Inertialization::GatherDebugData(FNodeDebugData& DebugData)
 			InertializationDeficit);
 	}
 	DebugData.AddDebugItem(DebugLine);
-
-	Source.GatherDebugData(DebugData);
 }
 
 
@@ -575,19 +568,19 @@ void FInertializationPoseDiff::InitFrom(const FCompactPose& Pose, const FBlended
 			continue;
 		}
 
-		const float CurrWeight = Curves.CurveWeights[CurrIdx];
-		const float Prev1Weight = Prev1.Curves.CurveWeights[Prev1Idx];
+		const FCurveElement& CurrElement = Curves.Elements[CurrIdx];
+		const FCurveElement& Prev1Element = Prev1.Curves.Elements[Prev1Idx];
 		FInertializationCurveDiff& CurveDiff = CurveDiffs[CurveUID];
 
-		// Note we intentionally ignore FBlendedCurve::ValidCurveWeights. We want to ease in/out when only one
+		// Note we intentionally ignore FCurveElement::bValid. We want to ease in/out when only one
 		// curve is valid, and we'll compute a zero delta and derivative when both are invalid.
-		CurveDiff.Delta = Prev1Weight - CurrWeight;
+		CurveDiff.Delta = Prev1Element.Value - CurrElement.Value;
 
 		const int32 Prev2Idx = Prev2.Curves.GetArrayIndexByUID(CurveUID);
 		if (Prev2Idx != INDEX_NONE && Prev1.DeltaTime > KINDA_SMALL_NUMBER)
 		{
-			const float Prev2Weight = Prev2.Curves.CurveWeights[Prev2Idx];
-			CurveDiff.Derivative = (Prev1Weight - Prev2Weight) / Prev1.DeltaTime;
+			const FCurveElement& Prev2Element = Prev2.Curves.Elements[Prev2Idx];
+			CurveDiff.Derivative = (Prev1Element.Value - Prev2Element.Value) / Prev1.DeltaTime;
 		}
 	}
 }
@@ -640,12 +633,13 @@ void FInertializationPoseDiff::ApplyTo(FCompactPose& Pose, FBlendedCurve& Curves
 				continue;
 			}
 
+			FCurveElement& CurrElement = Curves.Elements[CurrIdx];
 			const FInertializationCurveDiff& CurveDiff = CurveDiffs[CurveUID];
 			const float C = CalcInertialFloat(CurveDiff.Delta, CurveDiff.Derivative, InertializationElapsedTime, InertializationDuration);
 			if (C != 0.0f)
 			{
-				Curves.CurveWeights[CurrIdx] += C;
-				Curves.ValidCurveWeights[CurrIdx] = true;
+				CurrElement.Value += C;
+				CurrElement.bValid = true;
 			}
 		}
 	}

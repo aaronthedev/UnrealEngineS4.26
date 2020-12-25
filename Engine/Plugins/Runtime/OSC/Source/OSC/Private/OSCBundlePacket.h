@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "OSCAddress.h"
@@ -7,7 +7,7 @@
 #include "OSCTypes.h"
 
 
-class OSC_API FOSCBundlePacket : public IOSCPacket
+class FOSCBundlePacket : public IOSCPacket
 {
 public:
 	FOSCBundlePacket();

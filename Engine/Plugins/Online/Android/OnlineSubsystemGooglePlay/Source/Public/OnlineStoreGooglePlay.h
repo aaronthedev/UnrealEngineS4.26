@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -70,13 +70,8 @@ private:
 	/** Reference to the parent subsystem */
 	FOnlineSubsystemGooglePlay* Subsystem;
 
-	void OnGooglePlayAvailableIAPQueryComplete(EGooglePlayBillingResponseCode InResponse, const TArray<FProvidedProductInformation>& InProvidedProductInformation);
+	void OnGooglePlayAvailableIAPQueryComplete(EGooglePlayBillingResponseCode InResponse, const TArray<FInAppPurchaseProductInfo>& InProvidedProductInformation);
 	FDelegateHandle AvailableIAPQueryDelegateHandle;
-
-#if !OSSGOOGLEPLAY_WITH_AIDL
-	/** Delegate fired when a query for purchases has completed, whether successful or unsuccessful */
-	FOnQueryForAvailablePurchasesComplete OnQueryForAvailablePurchasesCompleteDelegate;
-#endif
 };
 
 typedef TSharedPtr<FOnlineStoreGooglePlayV2, ESPMode::ThreadSafe> FOnlineStoreGooglePlayV2Ptr;

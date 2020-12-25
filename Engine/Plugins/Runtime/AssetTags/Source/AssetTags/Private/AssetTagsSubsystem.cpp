@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AssetTagsSubsystem.h"
 
@@ -392,7 +392,7 @@ TArray<FAssetData> UAssetTagsSubsystem::GetAssetsInCollection(const FName Name)
 			CollectionManager.GetAssetsInCollection(ResolvedNameAndType.Name, ResolvedNameAndType.Type, AssetPathNames);
 
 			Assets.Reserve(AssetPathNames.Num());
-			for (const FName& AssetPathName : AssetPathNames)
+			for (const FName AssetPathName : AssetPathNames)
 			{
 				FAssetData AssetData = AssetRegistry.GetAssetByObjectPath(AssetPathName);
 				if (AssetData.IsValid())

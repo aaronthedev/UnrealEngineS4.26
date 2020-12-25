@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 
@@ -27,7 +27,15 @@ class LEVELEDITOR_API FLevelEditorCommands : public TCommands<FLevelEditorComman
 {
 
 public:
-	FLevelEditorCommands();
+	FLevelEditorCommands() : TCommands<FLevelEditorCommands>
+	(
+		"LevelEditor", // Context name for fast lookup
+		NSLOCTEXT("Contexts", "LevelEditor", "Level Editor"), // Localized context name for displaying
+		"LevelViewport", // Parent
+		FEditorStyle::GetStyleSetName() // Icon Style Set
+	)
+	{
+	}
 	
 
 	/**
@@ -80,7 +88,6 @@ public:
 	TSharedPtr< FUICommandInfo > BuildLODsOnly;
 	TSharedPtr< FUICommandInfo > BuildTextureStreamingOnly;
 	TSharedPtr< FUICommandInfo > BuildVirtualTextureOnly;
-	TSharedPtr< FUICommandInfo > BuildGrassMapsOnly;
 	TSharedPtr< FUICommandInfo > LightingQuality_Production;
 	TSharedPtr< FUICommandInfo > LightingQuality_High;
 	TSharedPtr< FUICommandInfo > LightingQuality_Medium;
@@ -259,7 +266,6 @@ public:
 	TSharedPtr< FUICommandInfo > CreateNewOutlinerFolder;
 
 	TSharedPtr< FUICommandInfo > HoldToEnableVertexSnapping;
-	TSharedPtr< FUICommandInfo > HoldToEnablePivotVertexSnapping;
 
 	/**
 	 * Brush Commands                   
@@ -548,7 +554,8 @@ public:
 	TSharedPtr< FUICommandInfo > OpenLevelBlueprint;
 	TSharedPtr< FUICommandInfo > CheckOutProjectSettingsConfig;
 	TSharedPtr< FUICommandInfo > CreateBlankBlueprintClass;
-	TSharedPtr< FUICommandInfo > ConvertSelectionToBlueprint;
+	TSharedPtr< FUICommandInfo > ConvertSelectionToBlueprintViaHarvest;
+	TSharedPtr< FUICommandInfo > ConvertSelectionToBlueprintViaSubclass;
 
 	/** Editor mode commands */
 	TArray< TSharedPtr< FUICommandInfo > > EditorModeCommands;
@@ -580,13 +587,14 @@ public:
 	TSharedPtr< FUICommandInfo > MaterialQualityLevel_Low;
 	TSharedPtr< FUICommandInfo > MaterialQualityLevel_Medium;
 	TSharedPtr< FUICommandInfo > MaterialQualityLevel_High;
-	TSharedPtr< FUICommandInfo > MaterialQualityLevel_Epic;
 
 	TSharedPtr< FUICommandInfo > ToggleFeatureLevelPreview;
 
 	TSharedPtr< FUICommandInfo > PreviewPlatformOverride_SM5;
-
-	TMap <FName, TSharedPtr<FUICommandInfo>> PreviewPlatformOverrides;
+	TSharedPtr< FUICommandInfo > PreviewPlatformOverride_AndroidGLES2;
+	TSharedPtr< FUICommandInfo > PreviewPlatformOverride_AndroidGLES31;
+	TSharedPtr< FUICommandInfo > PreviewPlatformOverride_AndroidVulkanES31;
+	TSharedPtr< FUICommandInfo > PreviewPlatformOverride_IOSMetalES31;
 	
 	///**
 	// * Mode Commands                   
@@ -764,7 +772,6 @@ public:
 	static void BuildLODsOnly_Execute();
 	static void BuildTextureStreamingOnly_Execute();
 	static void BuildVirtualTextureOnly_Execute();
-	static void BuildGrassMapsOnly_Execute();
 	static void SetLightingQuality( ELightingBuildQuality NewQuality );
 	static bool IsLightingQualityChecked( ELightingBuildQuality TestQuality );
 	static float GetLightingDensityIdeal();
@@ -943,7 +950,7 @@ public:
 	 * @param bUsePlacement		Whether to use the placement editor. If not, the actor will be placed at the last click.
 	 * @param ActorLocation		[opt] If NULL, positions the actor at the mouse location, otherwise the location specified. Default is true.
 	 */
-	static void AddActor_Clicked( UActorFactory* ActorFactory, FAssetData AssetData);
+	static void AddActor_Clicked( UActorFactory* ActorFactory, FAssetData AssetData, bool bUsePlacement );
 	static AActor* AddActor( UActorFactory* ActorFactory, const FAssetData& AssetData, const FTransform* ActorLocation );
 
 	/**
@@ -1170,11 +1177,17 @@ public:
 	/** Helps the user create a Blueprint class */
 	static void CreateBlankBlueprintClass();
 
-	/** Can the selected actors be converted to a blueprint class in any of the supported ways? */
-	static bool CanConvertSelectedActorsIntoBlueprintClass();
+	/** Can call HarvestSelectedActorsIntoBlueprintClass right now?  (is anything selected) */
+	static bool CanHarvestSelectedActorsIntoBlueprintClass();
 
-	/** Bring up the convert actors to blueprint UI */
-	static void ConvertSelectedActorsIntoBlueprintClass();
+	/** Harvest all of the components in the selected actors into a Blueprint, and replace the instances with one new actor */
+	static void HarvestSelectedActorsIntoBlueprintClass();
+
+	/** Can call SubclassSelectedActorIntoBlueprintClass right now?  (is exactly one thing selected) */
+	static bool CanSubclassSelectedActorIntoBlueprintClass();
+
+	/** Convert the selected actor into a Blueprint (via subclassing) */
+	static void SubclassSelectedActorIntoBlueprintClass();
 
 	/** Shows only selected actors, hiding any unselected actors and unhiding any selected hidden actors. */
 	static void OnShowOnlySelectedActors();

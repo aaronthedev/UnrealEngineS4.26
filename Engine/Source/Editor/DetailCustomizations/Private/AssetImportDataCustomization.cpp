@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AssetImportDataCustomization.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
@@ -255,7 +255,7 @@ FReply FAssetImportDataCustomization::OnChangePathClicked(int32 Index) const
 
 	TArray<FString> OpenFilenames;
 	FReimportManager::Instance()->GetNewReimportPath(Obj, OpenFilenames);
-	if (OpenFilenames.Num() == 1 && !OpenFilenames[0].IsEmpty())
+	if (OpenFilenames.Num() == 1)
 	{
 		FImportDataSourceFileTransactionScope TransactionScope(LOCTEXT("SourceReimportChangePath", "Change source file path"), ImportData);
 		if (!Info || !Info->SourceFiles.IsValidIndex(Index))
@@ -276,10 +276,7 @@ FReply FAssetImportDataCustomization::OnClearPathClicked(int32 Index) const
 	if (ImportData && ImportData->SourceData.SourceFiles.IsValidIndex(Index))
 	{
 		FImportDataSourceFileTransactionScope TransactionScope(LOCTEXT("SourceReimportClearPath", "Clear Source file path"), ImportData);
-		//Clear the filename, Hash and timestamp. Leave the Display label.
-		ImportData->SourceData.SourceFiles[Index].RelativeFilename = FString();
-		ImportData->SourceData.SourceFiles[Index].FileHash = FMD5Hash();
-		ImportData->SourceData.SourceFiles[Index].Timestamp = 0;
+		ImportData->SourceData.SourceFiles[Index] = FAssetImportInfo::FSourceFile(FString());
 	}
 
 	return FReply::Handled();

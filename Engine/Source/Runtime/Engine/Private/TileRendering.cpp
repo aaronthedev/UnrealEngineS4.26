@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	TileRendering.cpp: Tile rendering implementation.
@@ -18,8 +18,6 @@
 #include "SceneUtils.h"
 #include "EngineModule.h"
 #include "MeshPassProcessor.h"
-
-DECLARE_GPU_STAT_NAMED(CanvasDrawTile, TEXT("CanvasDrawTile"));
 
 static const uint32 CanvasTileVertexCount = 4;
 static const uint32 CanvasTileIndexCount = 6;
@@ -167,19 +165,15 @@ void FCanvasTileRendererItem::FRenderData::RenderTiles(
 	FMeshPassProcessorRenderState& DrawRenderState,
 	const FSceneView& View,
 	bool bIsHitTesting,
-	bool bNeedsToSwitchVerticalAxis,
-	bool bUse128bitRT)
+	bool bNeedsToSwitchVerticalAxis)
 {
 	check(IsInRenderingThread());
-
-	SCOPED_GPU_STAT(RHICmdList, CanvasDrawTile);
-	SCOPED_DRAW_EVENTF(RHICmdList, CanvasDrawTile, *MaterialRenderProxy->GetMaterial(GMaxRHIFeatureLevel)->GetFriendlyName());
-	TRACE_CPUPROFILER_EVENT_SCOPE(CanvasDrawTile);
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_CanvasDrawTile)
 
 	IRendererModule& RendererModule = GetRendererModule();
 
 	InitTileMesh(View, bNeedsToSwitchVerticalAxis);
+
+	SCOPED_DRAW_EVENTF(RHICmdList, CanvasDrawTile, *MaterialRenderProxy->GetMaterial(GMaxRHIFeatureLevel)->GetFriendlyName());
 
 	for (int32 TileIdx = 0; TileIdx < Tiles.Num(); TileIdx++)
 	{
@@ -189,7 +183,7 @@ void FCanvasTileRendererItem::FRenderData::RenderTiles(
 		Mesh.MaterialRenderProxy = MaterialRenderProxy;
 		Mesh.Elements[0].FirstIndex = CanvasTileIndexCount * TileIdx;
 
-		RendererModule.DrawTileMesh(RHICmdList, DrawRenderState, View, Mesh, bIsHitTesting, Tile.HitProxyId, bUse128bitRT);
+		RendererModule.DrawTileMesh(RHICmdList, DrawRenderState, View, Mesh, bIsHitTesting, Tile.HitProxyId);
 	}
 
 	ReleaseTileMesh();
@@ -233,7 +227,7 @@ bool FCanvasTileRendererItem::Render_RenderThread(FRHICommandListImmediate& RHIC
 
 	TUniquePtr<const FSceneView> View = MakeUnique<const FSceneView>(ViewInitOptions);
 
-	const bool bNeedsToSwitchVerticalAxis = RHINeedsToSwitchVerticalAxis(Canvas->GetShaderPlatform()) && Canvas->GetAllowSwitchVerticalAxis(); 
+	const bool bNeedsToSwitchVerticalAxis = RHINeedsToSwitchVerticalAxis(Canvas->GetShaderPlatform()) && IsMobileHDR();
 
 	Data->RenderTiles(RHICmdList, DrawRenderState, *View, Canvas->IsHitTesting(), bNeedsToSwitchVerticalAxis);
 
@@ -261,63 +255,51 @@ bool FCanvasTileRendererItem::Render_GameThread(const FCanvas* Canvas, FRenderTh
 	checkSlow(Data);
 
 	const FRenderTarget* CanvasRenderTarget = Canvas->GetRenderTarget();
-	if (ensure(CanvasRenderTarget))
-	{
-		const FSceneViewFamily* ViewFamily = new FSceneViewFamily(FSceneViewFamily::ConstructionValues(
-			CanvasRenderTarget,
-			Canvas->GetScene(),
-			FEngineShowFlags(ESFIM_Game))
-			.SetWorldTimes(CurrentWorldTime, DeltaWorldTime, CurrentRealTime)
-			.SetGammaCorrection(CanvasRenderTarget->GetDisplayGamma()));
 
-		const FIntRect ViewRect(FIntPoint(0, 0), CanvasRenderTarget->GetSizeXY());
+	const FSceneViewFamily* ViewFamily = new FSceneViewFamily(FSceneViewFamily::ConstructionValues(
+		CanvasRenderTarget,
+		Canvas->GetScene(),
+		FEngineShowFlags(ESFIM_Game))
+		.SetWorldTimes(CurrentWorldTime, DeltaWorldTime, CurrentRealTime)
+		.SetGammaCorrection(CanvasRenderTarget->GetDisplayGamma()));
 
-		// make a temporary view
-		FSceneViewInitOptions ViewInitOptions;
-		ViewInitOptions.ViewFamily = ViewFamily;
-		ViewInitOptions.SetViewRectangle(ViewRect);
-		ViewInitOptions.ViewOrigin = FVector::ZeroVector;
-		ViewInitOptions.ViewRotationMatrix = FMatrix::Identity;
-		ViewInitOptions.ProjectionMatrix = Data->Transform.GetMatrix();
-		ViewInitOptions.BackgroundColor = FLinearColor::Black;
-		ViewInitOptions.OverlayColor = FLinearColor::White;
+	const FIntRect ViewRect(FIntPoint(0, 0), CanvasRenderTarget->GetSizeXY());
 
-		const FSceneView* View = new FSceneView(ViewInitOptions);
+	// make a temporary view
+	FSceneViewInitOptions ViewInitOptions;
+	ViewInitOptions.ViewFamily = ViewFamily;
+	ViewInitOptions.SetViewRectangle(ViewRect);
+	ViewInitOptions.ViewOrigin = FVector::ZeroVector;
+	ViewInitOptions.ViewRotationMatrix = FMatrix::Identity;
+	ViewInitOptions.ProjectionMatrix = Data->Transform.GetMatrix();
+	ViewInitOptions.BackgroundColor = FLinearColor::Black;
+	ViewInitOptions.OverlayColor = FLinearColor::White;
 
-		const bool bNeedsToSwitchVerticalAxis = RHINeedsToSwitchVerticalAxis(Canvas->GetShaderPlatform()) && Canvas->GetAllowSwitchVerticalAxis();
-		const bool bIsHitTesting = Canvas->IsHitTesting();
-		const bool bDeleteOnRender = Canvas->GetAllowedModes() & FCanvas::Allow_DeleteOnRender;
+	const FSceneView* View = new FSceneView(ViewInitOptions);
 
-		bool bRequiresExplicit128bitRT = false;
+	const bool bNeedsToSwitchVerticalAxis = RHINeedsToSwitchVerticalAxis(Canvas->GetShaderPlatform()) && IsMobileHDR();
+	const bool bIsHitTesting = Canvas->IsHitTesting();
+	const bool bDeleteOnRender = Canvas->GetAllowedModes() & FCanvas::Allow_DeleteOnRender;
 
-		FTexture2DRHIRef CanvasRTTexture = CanvasRenderTarget->GetRenderTargetTexture();
-		if (CanvasRTTexture)
-		{
-			bRequiresExplicit128bitRT = PlatformRequires128bitRT(CanvasRTTexture->GetFormat());
-		}
-
-		RenderScope.EnqueueRenderCommand(
-			[LocalData = Data, View, bIsHitTesting, bNeedsToSwitchVerticalAxis, bRequiresExplicit128bitRT]
+	RenderScope.EnqueueRenderCommand(
+		[LocalData = Data, View, bIsHitTesting, bNeedsToSwitchVerticalAxis]
 		(FRHICommandListImmediate& RHICmdList)
-		{
-			FMeshPassProcessorRenderState DrawRenderState(*View);
+	{
+		FMeshPassProcessorRenderState DrawRenderState(*View);
 
-			// disable depth test & writes
-			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_Always>::GetRHI());
+		// disable depth test & writes
+		DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_Always>::GetRHI());
 
-			LocalData->RenderTiles(RHICmdList, DrawRenderState, *View, bIsHitTesting, bNeedsToSwitchVerticalAxis, bRequiresExplicit128bitRT);
+		LocalData->RenderTiles(RHICmdList, DrawRenderState, *View, bIsHitTesting, bNeedsToSwitchVerticalAxis);
 
-			delete View->Family;
-			delete View;
-		});
+		delete View->Family;
+		delete View;
+	});
 
-		if (bDeleteOnRender)
-		{
-			Data = nullptr;
-		}
-
-		return true;
+	if (bDeleteOnRender)
+	{
+		Data = nullptr;
 	}
-		
-	return false;
+
+	return true;
 }

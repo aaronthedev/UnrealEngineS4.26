@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -31,7 +31,7 @@ class ENGINE_API UMaterialExpressionTextureSampleParameter : public UMaterialExp
 #if WITH_EDITORONLY_DATA
 	/** Controls where the this parameter is displayed in a material instance parameter list.  The lower the number the higher up in the parameter list. */
 	UPROPERTY(EditAnywhere, Category = MaterialExpressionTextureSampleParameter)
-	int32 SortPriority = 32;
+	int32 SortPriority;
 
 	UPROPERTY(EditAnywhere, Category = ParameterCustomization)
 	FParameterChannelNames ChannelNames;
@@ -55,12 +55,13 @@ class ENGINE_API UMaterialExpressionTextureSampleParameter : public UMaterialExp
 	//~ End UMaterialExpression Interface
 
 	/** Return whether this is the named parameter, and fill in its value */
-	bool IsNamedParameter(const FHashedMaterialParameterInfo& ParameterInfo, UTexture*& OutValue) const;
+	bool IsNamedParameter(const FMaterialParameterInfo& ParameterInfo, UTexture*& OutValue) const;
 
 #if WITH_EDITOR
 	bool SetParameterValue(FName InParameterName, UTexture* InValue);
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 	void ApplyChannelNames();
+#endif
 
 	/**
 	 * Return true if the texture is a movie texture
@@ -75,7 +76,6 @@ class ENGINE_API UMaterialExpressionTextureSampleParameter : public UMaterialExp
 	 *	Sets the default texture if none is set
 	 */
 	virtual void SetDefaultTexture();
-#endif // WITH_EDITOR
 
 	virtual FGuid& GetParameterExpressionId() override
 	{

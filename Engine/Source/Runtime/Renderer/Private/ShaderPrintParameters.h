@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // The ShaderPrint system uses a RWBuffer to capture any debug print from a shader.
 // This means that the buffer needs to be bound for the shader you wish to debug.
@@ -43,8 +43,6 @@ namespace ShaderPrint
 	// Legacy parameter binding helper for an FShader that doesn't use FParameters style parameter declaration
 	struct FShaderParametersLegacy
 	{
-		DECLARE_TYPE_LAYOUT(FShaderParametersLegacy, NonVirtual);
-	public:
 		// Call on shader construction to bind
 		void Bind(FShaderParameterMap const& ParameterMap);
 
@@ -60,7 +58,7 @@ namespace ShaderPrint
 		friend FArchive& operator<<(FArchive& Ar, FShaderParametersLegacy& P);
 
 		// Parameters
-		LAYOUT_FIELD(FShaderUniformBufferParameter, UniformBufferParameter);
-		LAYOUT_FIELD(FRWShaderParameter, ValuesBufferParameter);
+		FShaderUniformBufferParameter UniformBufferParameter;
+		FRWShaderParameter ValuesBufferParameter;
 	};
 }

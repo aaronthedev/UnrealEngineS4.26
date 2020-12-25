@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	OpenGLVertexBuffer.cpp: OpenGL vertex buffer RHI implementation.
@@ -11,11 +11,8 @@
 
 namespace OpenGLConsoleVariables
 {
-#if PLATFORM_ANDROID
-	int32 bUseStagingBuffer = 0;
-#else
+
 	int32 bUseStagingBuffer = 1;
-#endif
 
 	static FAutoConsoleVariableRef CVarUseStagingBuffer(
 		TEXT("OpenGL.UseStagingBuffer"),
@@ -23,8 +20,6 @@ namespace OpenGLConsoleVariables
 		TEXT("Enables maps of dynamic vertex buffers to go to a staging buffer"),
 		ECVF_ReadOnly
 		);
-
-	extern int32 bUsePersistentMappingStagingBuffer;
 };
 
 static const uint32 MAX_ALIGNMENT_BITS = 8;
@@ -176,13 +171,8 @@ void BeginFrame_VertexBufferCleanup()
 	FrameBytes = 0;
 }
 
-FVertexBufferRHIRef FOpenGLDynamicRHI::RHICreateVertexBuffer(uint32 Size, uint32 InUsage, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo)
+FVertexBufferRHIRef FOpenGLDynamicRHI::RHICreateVertexBuffer(uint32 Size, uint32 InUsage, FRHIResourceCreateInfo& CreateInfo)
 {
-	if (CreateInfo.bWithoutNativeResource)
-	{
-		return new FOpenGLVertexBuffer();
-	}
-
 	const void *Data = NULL;
 
 	// If a resource array was provided for the resource, create the resource pre-populated
@@ -248,50 +238,34 @@ void FOpenGLDynamicRHI::UnlockVertexBuffer_BottomOfPipe(FRHICommandListImmediate
 
 void FOpenGLDynamicRHI::RHICopyVertexBuffer(FRHIVertexBuffer* SourceBufferRHI, FRHIVertexBuffer* DestBufferRHI)
 {
-	check(SourceBufferRHI && DestBufferRHI && SourceBufferRHI->GetSize() == DestBufferRHI->GetSize());
-	RHICopyBufferRegion(DestBufferRHI, 0, SourceBufferRHI, 0, SourceBufferRHI->GetSize());
-}
-
-void FOpenGLDynamicRHI::RHITransferVertexBufferUnderlyingResource(FRHIVertexBuffer* DestVertexBuffer, FRHIVertexBuffer* SrcVertexBuffer)
-{
 	VERIFY_GL_SCOPE();
-	check(DestVertexBuffer);
-	FOpenGLVertexBuffer* Dest = ResourceCast(DestVertexBuffer);
-	if (!SrcVertexBuffer)
-	{
-		TRefCountPtr<FOpenGLVertexBuffer> Src = new FOpenGLVertexBuffer();
-		Dest->Swap(*Src);
-	}
-	else
-	{
-		FOpenGLVertexBuffer* Src = ResourceCast(SrcVertexBuffer);
-		Dest->Swap(*Src);
-	}
-}
-
-void FOpenGLDynamicRHI::RHICopyBufferRegion(FRHIVertexBuffer* DestBufferRHI, uint64 DstOffset, FRHIVertexBuffer* SourceBufferRHI, uint64 SrcOffset, uint64 NumBytes)
-{
-	VERIFY_GL_SCOPE();
+	check( FOpenGL::SupportsCopyBuffer() );
 	FOpenGLVertexBuffer* SourceBuffer = ResourceCast(SourceBufferRHI);
 	FOpenGLVertexBuffer* DestBuffer = ResourceCast(DestBufferRHI);
+	check(SourceBuffer->GetSize() == DestBuffer->GetSize());
 
-	glBindBuffer(GL_COPY_READ_BUFFER, SourceBuffer->Resource);
-	glBindBuffer(GL_COPY_WRITE_BUFFER, DestBuffer->Resource);
-	FOpenGL::CopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, SrcOffset, DstOffset, NumBytes);
-	glBindBuffer(GL_COPY_READ_BUFFER, 0);
-	glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
+	glBindBuffer(GL_COPY_READ_BUFFER,SourceBuffer->Resource);
+	glBindBuffer(GL_COPY_WRITE_BUFFER,DestBuffer->Resource);
+	FOpenGL::CopyBufferSubData(GL_COPY_READ_BUFFER,GL_COPY_WRITE_BUFFER,0,0,SourceBuffer->GetSize());
+	glBindBuffer(GL_COPY_READ_BUFFER,0);
+	glBindBuffer(GL_COPY_WRITE_BUFFER,0);
 }
 
 FStagingBufferRHIRef FOpenGLDynamicRHI::RHICreateStagingBuffer()
 {
+#if OPENGL_GL3
 	return new FOpenGLStagingBuffer();
+#else
+	UE_LOG(LogRHI, Fatal, TEXT("Staging Buffers are only available in OpenGL3 or later"));
+	return nullptr;
+#endif
 }
 
 void FOpenGLStagingBuffer::Initialize()
 {
 	ShadowBuffer = 0;
 	ShadowSize = 0;
-	Mapping = nullptr;
+
 	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
 	RHITHREAD_GLCOMMAND_PROLOGUE();
 	VERIFY_GL_SCOPE();
@@ -308,47 +282,43 @@ FOpenGLStagingBuffer::~FOpenGLStagingBuffer()
 	RHITHREAD_GLCOMMAND_EPILOGUE_NORETURN();
 }
 
-// If we do not support the BufferStorage extension or if PersistentMapping is set to false, this will send the command to the RHI and flush it
-// If we do support BufferStorage extension and PersistentMapping is set to true, we just return the pointer + offset
+// I don't see a way to do this without stalling the RHI thread.
 void* FOpenGLStagingBuffer::Lock(uint32 Offset, uint32 NumBytes)
 {
-	if (!FOpenGL::SupportsBufferStorage() || !OpenGLConsoleVariables::bUsePersistentMappingStagingBuffer)
-	{
-		FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
-		RHITHREAD_GLCOMMAND_PROLOGUE();
-		VERIFY_GL_SCOPE();
+#if OPENGL_GL3
+	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
+	RHITHREAD_GLCOMMAND_PROLOGUE();
+	VERIFY_GL_SCOPE();
 
-		check(ShadowBuffer != 0);
-		glBindBuffer(GL_COPY_WRITE_BUFFER, ShadowBuffer);
-		void* LocalMapping = FOpenGL::MapBufferRange(GL_COPY_WRITE_BUFFER, 0, NumBytes, FOpenGL::EResourceLockMode::RLM_ReadOnly);
-		check(LocalMapping);
-		return reinterpret_cast<uint8*>(LocalMapping) + Offset;
+	check(ShadowBuffer != 0);
+	glBindBuffer(GL_COPY_WRITE_BUFFER, ShadowBuffer);
+	void* Mapping = glMapBuffer(GL_COPY_WRITE_BUFFER, GL_READ_ONLY);
+	check(Mapping);
+	return reinterpret_cast<uint8*>(Mapping) + Offset;
 
-		RHITHREAD_GLCOMMAND_EPILOGUE_RETURN(void*);
-	}
-	else
-	{
-		check(Mapping != nullptr);
-		return reinterpret_cast<uint8*>(Mapping) + Offset;
-	}
+	RHITHREAD_GLCOMMAND_EPILOGUE_RETURN(void*);
+#else
+	UE_LOG(LogRHI, Fatal, TEXT("Staging Buffers are only available in OpenGL3 or later"));
+	return nullptr;
+#endif
 }
 
-// If we do not support the BufferStorage extension or if PersistentMapping is set to false, this will send the command to the RHI and flush it
-// If we do support BufferStorage extension and PersistentMapping is set to true, we do nothing
+// Unfortunately I think we have to stall the RHI thread here as well to play nice with OpenGL.
+// Since this will probably be close to a call to lock we've probably paid most of the cost already.
 void FOpenGLStagingBuffer::Unlock()
 {
-	if (!FOpenGL::SupportsBufferStorage() || !OpenGLConsoleVariables::bUsePersistentMappingStagingBuffer)
-	{
-		FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
-		RHITHREAD_GLCOMMAND_PROLOGUE();
-		FOpenGL::UnmapBuffer(GL_COPY_WRITE_BUFFER);
-		Mapping = nullptr;
-		glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
-		RHITHREAD_GLCOMMAND_EPILOGUE();
-	}
+#if OPENGL_GL3
+	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
+	RHITHREAD_GLCOMMAND_PROLOGUE();
+	glUnmapBuffer(GL_COPY_WRITE_BUFFER);
+	glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
+	RHITHREAD_GLCOMMAND_EPILOGUE();
+#else
+	UE_LOG(LogRHI, Fatal, TEXT("Staging Buffers are only available in OpenGL3 or later"));
+#endif
 }
 
-void* FOpenGLDynamicRHI::RHILockStagingBuffer(FRHIStagingBuffer* StagingBuffer, FRHIGPUFence* Fence, uint32 Offset, uint32 SizeRHI)
+void* FOpenGLDynamicRHI::RHILockStagingBuffer(FRHIStagingBuffer* StagingBuffer, uint32 Offset, uint32 SizeRHI)
 {
 	FOpenGLStagingBuffer* Buffer = ResourceCast(StagingBuffer);
 	return Buffer->Lock(Offset, SizeRHI);	
@@ -360,23 +330,12 @@ void FOpenGLDynamicRHI::RHIUnlockStagingBuffer(FRHIStagingBuffer* StagingBuffer)
 	Buffer->Unlock();
 }
 
-void* FOpenGLDynamicRHI::LockStagingBuffer_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHIStagingBuffer* StagingBuffer, FRHIGPUFence* Fence, uint32 Offset, uint32 SizeRHI)
+void* FOpenGLDynamicRHI::LockStagingBuffer_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHIStagingBuffer* StagingBuffer, uint32 Offset, uint32 SizeRHI)
 {
-	check(IsInRenderingThread());
-	if (!Fence || !Fence->Poll() || Fence->NumPendingWriteCommands.GetValue() != 0)
-	{
-		QUICK_SCOPE_CYCLE_COUNTER(STAT_FDynamicRHI_LockStagingBuffer_Flush);
-		RHICmdList.ImmediateFlush(EImmediateFlushType::FlushRHIThread);
-	}
-	{
-		QUICK_SCOPE_CYCLE_COUNTER(STAT_FDynamicRHI_LockStagingBuffer_RenderThread);
-		return GDynamicRHI->RHILockStagingBuffer(StagingBuffer, Fence, Offset, SizeRHI);
-	}
+	return RHILockStagingBuffer(StagingBuffer, Offset, SizeRHI);
 }
 
 void FOpenGLDynamicRHI::UnlockStagingBuffer_RenderThread(class FRHICommandListImmediate& RHICmdList, FRHIStagingBuffer* StagingBuffer)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FDynamicRHI_UnlockStagingBuffer_RenderThread);
-	check(IsInRenderingThread());
-	GDynamicRHI->RHIUnlockStagingBuffer(StagingBuffer);
+	RHIUnlockStagingBuffer(StagingBuffer);
 }

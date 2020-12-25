@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -49,14 +49,14 @@ class UNiagaraNodeInput : public UNiagaraNode
 	GENERATED_UCLASS_BODY()
 
 public:
-	UPROPERTY(EditAnywhere, Category = Input, meta = (SkipForCompileHash = "true"))
+	UPROPERTY(EditAnywhere, Category = Input) 
 	FNiagaraVariable Input;
 
 	UPROPERTY(EditAnywhere, Category = Input)
 	ENiagaraInputNodeUsage Usage;
 
 	/** Controls where this input is relative to others in the calling node. */
-	UPROPERTY(EditAnywhere, Category = Input, meta = (SkipForCompileHash = "true"))
+	UPROPERTY(EditAnywhere, Category = Input)
 	int32 CallSortPriority;
 
 	/** Controls this inputs exposure to callers. */
@@ -93,7 +93,6 @@ public:
 	bool ReferencesSameInput(UNiagaraNodeInput* Other) const;
 
 	virtual void BuildParameterMapHistory(FNiagaraParameterMapHistoryBuilder& OutHistory, bool bRecursive = true, bool bFilterForCompilation = true) const override;
-	virtual void AppendFunctionAliasForContext(const FNiagaraGraphFunctionAliasContext& InFunctionAliasContext, FString& InOutFunctionAlias, bool& OutOnlyOncePerNodeType) override;
 
 	static const FLinearColor TitleColor_Attribute;
 	static const FLinearColor TitleColor_Constant;
@@ -113,10 +112,9 @@ public:
 
 private:
 	void DataInterfaceChanged();
-	void ValidateDataInterface();
 
 private:
-	UPROPERTY(meta = (SkipForCompileHash = "true"))
+	UPROPERTY()
 	class UNiagaraDataInterface* DataInterface;
 };
 

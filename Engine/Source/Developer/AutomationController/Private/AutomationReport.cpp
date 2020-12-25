@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AutomationReport.h"
 #include "Misc/FilterCollection.h"
@@ -550,10 +550,15 @@ TSharedPtr<IAutomationReport> FAutomationReport::EnsureReportExists(FAutomationT
 			FAutomationTestInfo ParentTestInfo(NameToMatch, TEXT(""), TEXT(""), InTestInfo.GetTestFlags(), InTestInfo.GetNumParticipantsRequired());
 			MatchTest = MakeShareable(new FAutomationReport(ParentTestInfo, true));
 		}
+		//make new test
+		ChildReports.Add(MatchTest);
+		ChildReportNameHashes.Add(NameToMatchHash, NameToMatchHash);
 
 		// Sort tests alphabetically
-		const int32 InsertAt = Algo::UpperBound<>(ChildReports, MatchTest, [](const TSharedPtr<IAutomationReport>& ReportA, const TSharedPtr<IAutomationReport>& ReportB)
-			{
+		ChildReports.Sort
+		(
+			[](const TSharedPtr<IAutomationReport>& ReportA, const TSharedPtr<IAutomationReport>& ReportB) 
+			{ 
 				bool AIsLeafNode = !ReportA->IsParent();
 				bool BIsLeafNode = !ReportB->IsParent();
 
@@ -565,14 +570,9 @@ TSharedPtr<IAutomationReport> FAutomationReport::EnsureReportExists(FAutomationT
 				{
 					return BIsLeafNode;
 				}
-			}
+			} 
 		);
-
-		// Insert new test (sorted)
-		ChildReports.Insert(MatchTest, InsertAt);
-		ChildReportNameHashes.Add(NameToMatchHash, NameToMatchHash);
 	}
-
 	//mark this test as supported on a particular platform
 	MatchTest->SetSupport(ClusterIndex);
 

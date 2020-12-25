@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PrimitiveSceneInfo.h: Primitive scene info definitions.
@@ -14,7 +14,6 @@
 #include "Math/GenericOctreePublic.h"
 #include "Engine/Scene.h"
 #include "RendererInterface.h"
-#include "MeshPassProcessor.h"
 
 class FPrimitiveSceneInfo;
 class FPrimitiveSceneProxy;
@@ -24,7 +23,7 @@ class FScene;
 class FViewInfo;
 class UPrimitiveComponent;
 class FIndirectLightingCacheUniformParameters;
-template<typename ElementType,typename OctreeSemantics> class TOctree2;
+template<typename ElementType,typename OctreeSemantics> class TOctree;
 
 /** Data used to track a primitive's allocation in the volume texture atlas that stores indirect lighting. */
 class FIndirectLightingCacheAllocation
@@ -207,14 +206,13 @@ struct FPrimitiveVirtualTextureLodInfo
 };
 
 /** The type of the octree used by FScene to find primitives. */
-typedef TOctree2<FPrimitiveSceneInfoCompact,struct FPrimitiveOctreeSemantics> FScenePrimitiveOctree;
+typedef TOctree<FPrimitiveSceneInfoCompact,struct FPrimitiveOctreeSemantics> FScenePrimitiveOctree;
 
 /**
  * The renderer's internal state for a single UPrimitiveComponent.  This has a one to one mapping with FPrimitiveSceneProxy, which is in the engine module.
  */
 class FPrimitiveSceneInfo : public FDeferredCleanupInterface
 {
-	friend class FSceneRenderer;
 public:
 
 	/** The render proxy for the primitive. */
@@ -255,7 +253,7 @@ public:
 	TArray<class FStaticMeshBatch> StaticMeshes;
 
 	/** The identifier for the primitive in Scene->PrimitiveOctree. */
-	FOctreeElementId2 OctreeId;
+	FOctreeElementId OctreeId;
 
 	/** 
 	 * Caches the primitive's indirect lighting cache allocation.
@@ -310,14 +308,15 @@ public:
 	/** The number of movable point lights for mobile */
 	int32 NumMobileMovablePointLights;
 
-	/** Set to true for the primitive to be rendered in the main pass to be visible in a view. */
-	bool bShouldRenderInMainPass : 1;
-
-	/** Set to true for the primitive to be rendered into the real-time sky light reflection capture. */
-	bool bVisibleInRealTimeSkyCapture : 1;
+	/** This indicate that we should call the GetCustomLOD function on the proxy instead of the generic implementation. */
+	bool bIsUsingCustomLODRules : 1;
+	
+	/** This indicate that we should call the GetCustomWholeSceneShadowLOD function on the proxy instead of the generic implementation. */
+	bool bIsUsingCustomWholeSceneShadowLODRules : 1;
 
 #if RHI_RAYTRACING
 	bool bDrawInGame : 1;
+	bool bShouldRenderInMainPass : 1;
 	bool bIsVisibleInReflectionCaptures : 1;
 	bool bIsRayTracingRelevant : 1;
 	bool bIsRayTracingStaticRelevant : 1;
@@ -339,7 +338,7 @@ public:
 	~FPrimitiveSceneInfo();
 
 	/** Adds the primitive to the scene. */
-	static void AddToScene(FRHICommandListImmediate& RHICmdList, FScene* Scene, const TArrayView<FPrimitiveSceneInfo*>& SceneInfos, bool bUpdateStaticDrawLists, bool bAddToStaticDrawLists = true, bool bAsyncCreateLPIs = false);
+	void AddToScene(FRHICommandListImmediate& RHICmdList, bool bUpdateStaticDrawLists, bool bAddToStaticDrawLists = true);
 
 	/** Removes the primitive from the scene. */
 	void RemoveFromScene(bool bUpdateStaticDrawLists);
@@ -360,7 +359,16 @@ public:
 	}
 
 	/** Updates the primitive's static meshes in the scene. */
-	static void UpdateStaticMeshes(FRHICommandListImmediate& RHICmdList, FScene* Scene, const TArrayView<FPrimitiveSceneInfo*>& SceneInfos, bool bReAddToDrawLists = true);
+	void UpdateStaticMeshes(FRHICommandListImmediate& RHICmdList, bool bReAddToDrawLists = true);
+
+	/** Updates the primitive's static meshes in the scene. */
+	FORCEINLINE void ConditionalUpdateStaticMeshes(FRHICommandListImmediate& RHICmdList)
+	{
+		if (NeedsUpdateStaticMeshes())
+		{
+			UpdateStaticMeshes(RHICmdList);
+		}
+	}
 
 	/** Updates the primitive's uniform buffer. */
 	void UpdateUniformBuffer(FRHICommandListImmediate& RHICmdList);
@@ -381,7 +389,7 @@ public:
 	void BeginDeferredUpdateStaticMeshesWithoutVisibilityCheck();
 
 	/** Adds the primitive's static meshes to the scene. */
-	static void AddStaticMeshes(FRHICommandListImmediate& RHICmdList, FScene* Scene, const TArrayView<FPrimitiveSceneInfo*>& SceneInfos, bool bUpdateStaticDrawLists = true);
+	void AddStaticMeshes(FRHICommandListImmediate& RHICmdList, bool bUpdateStaticDrawLists = true);
 
 	/** Removes the primitive's static meshes from the scene. */
 	void RemoveStaticMeshes();
@@ -443,13 +451,11 @@ public:
 
 	FORCEINLINE void MarkIndirectLightingCacheBufferDirty()
 	{
-		if (!bIndirectLightingCacheBufferDirty)
-		{
-			bIndirectLightingCacheBufferDirty = true;
-		}
+		bIndirectLightingCacheBufferDirty = true;
 	}
 
 	void UpdateIndirectLightingCacheBuffer();
+	void ClearIndirectLightingCacheBuffer(bool bSingleFrameOnly);
 
 	/** Will output the LOD ranges of the static meshes used with this primitive. */
 	RENDERER_API void GetStaticMeshesLODRange(int8& OutMinLOD, int8& OutMaxLOD) const;
@@ -473,7 +479,7 @@ public:
 	void UpdateComponentLastRenderTime(float CurrentWorldTime, bool bUpdateLastRenderTimeOnScreen) const;
 
 	/** Updates static lighting uniform buffer, returns the number of entries needed for GPUScene */
-	RENDERER_API int32 UpdateStaticLightingBuffer();
+	int32 UpdateStaticLightingBuffer();
 
 	/** Update the cached runtime virtual texture flags for this primitive. Do this when runtime virtual textures are created or destroyed. */
 	void UpdateRuntimeVirtualTextureFlags();
@@ -485,7 +491,7 @@ public:
 	void FlushRuntimeVirtualTexture();
 
 #if RHI_RAYTRACING
-	RENDERER_API FRHIRayTracingGeometry* GetStaticRayTracingGeometryInstance(int LodLevel) const;
+	RENDERER_API FRayTracingGeometryRHIRef GetStaticRayTracingGeometryInstance(int LodLevel);
 #endif
 
 private:
@@ -531,7 +537,7 @@ private:
 		class FVolumetricLightmapSceneData* VolumetricLightmapSceneData);
 
 	/** Creates cached mesh draw commands for all meshes. */
-	static void CacheMeshDrawCommands(FRHICommandListImmediate& RHICmdList, FScene* Scene, const TArrayView<FPrimitiveSceneInfo*>& SceneInfos);
+	void CacheMeshDrawCommands(FRHICommandListImmediate& RHICmdList);
 
 	/** Removes cached mesh draw commands for all meshes. */
 	void RemoveCachedMeshDrawCommands();
@@ -564,7 +570,7 @@ struct FPrimitiveOctreeSemantics
 		return A.PrimitiveSceneInfo == B.PrimitiveSceneInfo;
 	}
 
-	FORCEINLINE static void SetElementId(const FPrimitiveSceneInfoCompact& Element,FOctreeElementId2 Id)
+	FORCEINLINE static void SetElementId(const FPrimitiveSceneInfoCompact& Element,FOctreeElementId Id)
 	{
 		Element.PrimitiveSceneInfo->OctreeId = Id;
 	}

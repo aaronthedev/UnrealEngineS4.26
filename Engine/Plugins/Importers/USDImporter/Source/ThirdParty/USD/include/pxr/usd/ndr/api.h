@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_NDR_API_H
-#define PXR_USD_NDR_API_H
+#ifndef NDR_API_H
+#define NDR_API_H
 
 #include "pxr/base/arch/export.h"
 

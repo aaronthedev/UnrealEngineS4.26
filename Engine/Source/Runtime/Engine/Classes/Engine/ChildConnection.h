@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -20,8 +20,6 @@ class UChildConnection
 	class UNetConnection* Parent;
 
 public:
-
-	UNetConnection* GetParentConnection() { return Parent; }
 
 	// UNetConnection interface.
 
@@ -64,12 +62,7 @@ public:
 		return Parent->IsNetReady(Saturate);
 	}
 
-	virtual bool IsEncryptionEnabled() const override
-	{
-		return Parent->IsEncryptionEnabled();
-	}
-
-	virtual void Tick(float DeltaSeconds) override
+	virtual void Tick() override
 	{
 		State = Parent->State;
 	}

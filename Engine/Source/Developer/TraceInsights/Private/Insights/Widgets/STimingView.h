@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,7 +7,6 @@
 #include "Input/CursorReply.h"
 #include "Input/Reply.h"
 #include "Layout/Geometry.h"
-#include "Styling/SlateTypes.h"
 #include "TraceServices/AnalysisService.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
@@ -15,9 +14,9 @@
 
 // Insights
 #include "Insights/Common/FixedCircularBuffer.h"
-#include "Insights/ITimingViewSession.h"
-#include "Insights/ViewModels/BaseTimingTrack.h"
+#include "Insights/ViewModels/MarkersTimingTrack.h"
 #include "Insights/ViewModels/TimerNode.h"
+#include "Insights/ViewModels/TimeRulerTrack.h"
 #include "Insights/ViewModels/TimingEvent.h"
 #include "Insights/ViewModels/TimingEventsTrack.h"
 #include "Insights/ViewModels/TimingTrackViewport.h"
@@ -25,26 +24,36 @@
 #include "Insights/ViewModels/TooltipDrawState.h"
 
 class FFileActivitySharedState;
-class FFrameSharedState;
 class FLoadingSharedState;
-class FMarkersTimingTrack;
 class FMenuBuilder;
-class FThreadTimingSharedState;
-class FTimeRulerTrack;
 class FTimingGraphTrack;
 class FTimingViewDrawHelper;
-class SOverlay;
 class SScrollBar;
 
-namespace Insights
-{
-	class ITimingViewExtender;
-	class FTimeMarker;
-}
+/** The delegate to be invoked when the selection have been changed. */
+DECLARE_DELEGATE_TwoParams(FSelectionChangedDelegate, double /*StartTime*/, double /*EndTime*/);
+
+/** The delegate to be invoked when the timing event being hovered by the mouse has changed. Returns id of timing event or -1 (if no event is hovered). */
+DECLARE_DELEGATE_RetVal(int32, FHoveredEventChangedDelegate);
+
+/** The delegate to be invoked when the selected timing event has changed. Returns id of timing event or -1 (if no event is hovered). */
+DECLARE_DELEGATE_RetVal(int32, FSelectedEventChangedDelegate);
 
 /** A custom widget used to display timing events. */
-class STimingView : public SCompoundWidget, public Insights::ITimingViewSession
+class STimingView : public SCompoundWidget
 {
+protected:
+	struct FAssetLoadingEventAggregationRow
+	{
+		FString Name;
+		int32 Count;
+		double Total;
+		double Min;
+		double Max;
+		double Avg;
+		double Med;
+	};
+
 public:
 	/** Default constructor. */
 	STimingView();
@@ -53,9 +62,16 @@ public:
 	virtual ~STimingView();
 
 	SLATE_BEGIN_ARGS(STimingView)
+		: _OnSelectionChanged()
+		, _OnHoveredEventChanged()
+		, _OnSelectedEventChanged()
 		{
 			_Clipping = EWidgetClipping::ClipToBounds;
 		}
+
+		SLATE_EVENT(FSelectionChangedDelegate, OnSelectionChanged)
+		SLATE_EVENT(FHoveredEventChangedDelegate, OnHoveredEventChanged)
+		SLATE_EVENT(FSelectedEventChangedDelegate, OnSelectedEventChanged)
 	SLATE_END_ARGS()
 
 	/**
@@ -65,13 +81,24 @@ public:
 	 */
 	void Construct(const FArguments& InArgs);
 
-	TSharedRef<SWidget> MakeAutoScrollOptionsMenu();
-
 	TSharedRef<SWidget> MakeTracksFilterMenu();
-	void CreateAllTracksMenu(FMenuBuilder& MenuBuilder);
+	void CreateThreadGroupsMenu(FMenuBuilder& MenuBuilder);
+	void CreateTracksMenu(FMenuBuilder& MenuBuilder);
 
 	bool ShowHideGraphTrack_IsChecked() const;
 	void ShowHideGraphTrack_Execute();
+
+	bool ShowHideAllCpuTracks_IsChecked() const;
+	void ShowHideAllCpuTracks_Execute();
+
+	bool ShowHideAllGpuTracks_IsChecked() const;
+	void ShowHideAllGpuTracks_Execute();
+
+	bool ShowHideAllLoadingTracks_IsChecked() const;
+	void ShowHideAllLoadingTracks_Execute();
+
+	bool ShowHideAllIoTracks_IsChecked() const;
+	void ShowHideAllIoTracks_Execute();
 
 	bool IsAutoHideEmptyTracksEnabled() const;
 	void ToggleAutoHideEmptyTracks();
@@ -79,18 +106,13 @@ public:
 	bool ToggleTrackVisibility_IsChecked(uint64 InTrackId) const;
 	void ToggleTrackVisibility_Execute(uint64 InTrackId);
 
-	TSharedPtr<FFrameSharedState> GetFrameSharedState() const { return FrameSharedState; }
-	TSharedPtr<FThreadTimingSharedState> GetThreadTimingSharedState() const { return ThreadTimingSharedState; }
-	TSharedPtr<FLoadingSharedState> GetLoadingSharedState() const { return LoadingSharedState; }
-	TSharedPtr<FFileActivitySharedState> GetFileActivitySharedState() const { return FileActivitySharedState; }
+	bool ToggleTrackVisibilityByGroup_IsChecked(const TCHAR* InGroupName) const;
+	void ToggleTrackVisibilityByGroup_Execute(const TCHAR* InGroupName);
 
-	bool IsAssetLoadingModeEnabled() const { return bAssetLoadingMode; }
-	void EnableAssetLoadingMode() { bAssetLoadingMode = true; }
-
-	void HideAllDefaultTracks();
+	void EnableAssetLoadingMode();
 
 	/** Resets internal widget's data to the default one. */
-	void Reset(bool bIsFirstReset = false);
+	void Reset();
 
 	/**
 	 * Ticks this widget.  Override in derived classes, but always call the parent implementation.
@@ -225,79 +247,11 @@ public:
 	virtual FReply OnKeyUp(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent) override;
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////
-	// ITimingViewSession interface
 
-	virtual void AddTopDockedTrack(TSharedPtr<FBaseTimingTrack> Track) override { AddTrack(Track, ETimingTrackLocation::TopDocked); }
-	virtual bool RemoveTopDockedTrack(TSharedPtr<FBaseTimingTrack> Track) override { return RemoveTrack(Track); }
-
-	virtual void AddBottomDockedTrack(TSharedPtr<FBaseTimingTrack> Track) override { AddTrack(Track, ETimingTrackLocation::BottomDocked); }
-	virtual bool RemoveBottomDockedTrack(TSharedPtr<FBaseTimingTrack> Track) override { return RemoveTrack(Track); }
-
-	virtual void AddScrollableTrack(TSharedPtr<FBaseTimingTrack> Track) override { AddTrack(Track, ETimingTrackLocation::Scrollable); }
-	virtual bool RemoveScrollableTrack(TSharedPtr<FBaseTimingTrack> Track) override { return RemoveTrack(Track); }
-	virtual void InvalidateScrollableTracksOrder() override;
-
-	virtual void AddForegroundTrack(TSharedPtr<FBaseTimingTrack> Track) override { AddTrack(Track, ETimingTrackLocation::Foreground); }
-	virtual bool RemoveForegroundTrack(TSharedPtr<FBaseTimingTrack> Track) override { return RemoveTrack(Track); }
-
-	virtual void AddTrack(TSharedPtr<FBaseTimingTrack> Track, ETimingTrackLocation Location) override;
-	virtual bool RemoveTrack(TSharedPtr<FBaseTimingTrack> Track) override;
-
-	virtual TSharedPtr<FBaseTimingTrack> FindTrack(uint64 InTrackId) override;
-
-	virtual double GetTimeMarker() const override;
-	virtual void SetTimeMarker(double InTimeMarker) override;
-	virtual void SetAndCenterOnTimeMarker(double InTimeMarker) override;
-
-	virtual Insights::FSelectionChangedDelegate& OnSelectionChanged() override { return OnSelectionChangedDelegate; }
-	virtual Insights::FTimeMarkerChangedDelegate& OnTimeMarkerChanged() override { return OnTimeMarkerChangedDelegate; }
-	virtual Insights::FHoveredTrackChangedDelegate& OnHoveredTrackChanged() override { return OnHoveredTrackChangedDelegate; }
-	virtual Insights::FHoveredEventChangedDelegate& OnHoveredEventChanged() override { return OnHoveredEventChangedDelegate; }
-	virtual Insights::FSelectedTrackChangedDelegate& OnSelectedTrackChanged() override { return OnSelectedTrackChangedDelegate; }
-	virtual Insights::FSelectedEventChangedDelegate& OnSelectedEventChanged() override { return OnSelectedEventChangedDelegate; }
-
-	virtual void PreventThrottling() override;
-	virtual void AddOverlayWidget(const TSharedRef<SWidget>& InWidget) override;
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	static const TCHAR* GetLocationName(ETimingTrackLocation Location);
-
-	const TArray<TSharedPtr<FBaseTimingTrack>>& GetTrackList(ETimingTrackLocation TrackLocation) const
-	{
-		static const TArray<TSharedPtr<FBaseTimingTrack>> EmptyTrackList;
-		switch (TrackLocation)
-		{
-			case ETimingTrackLocation::Scrollable:   return ScrollableTracks;
-			case ETimingTrackLocation::TopDocked:    return TopDockedTracks;
-			case ETimingTrackLocation::BottomDocked: return BottomDockedTracks;
-			case ETimingTrackLocation::Foreground:   return ForegroundTracks;
-			default:                                 return EmptyTrackList;
-		}
-	}
-
-	void UpdateScrollableTracksOrder();
-	int32 GetFirstScrollableTrackOrder() const;
-	int32 GetLastScrollableTrackOrder() const;
-
-	void HideAllScrollableTracks();
-
-	void OnTrackVisibilityChanged();
-
-	bool IsGpuTrackVisible() const;
-	bool IsCpuTrackVisible(uint32 InThreadId) const;
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	const FTimingTrackViewport& GetViewport() const { return Viewport; }
-
-	const FVector2D& GetMousePosition() const { return MousePosition; }
+	const FTimingTrackViewport& GetViewport() { return Viewport; }
 
 	double GetSelectionStartTime() const { return SelectionStartTime; }
 	double GetSelectionEndTime() const { return SelectionEndTime; }
-
-	bool IsPanning() const { return bIsPanning; }
-	bool IsSelecting() const { return bIsSelecting; }
 
 	bool IsTimeSelected(double Time) const { return Time >= SelectionStartTime && Time < SelectionEndTime; }
 	bool IsTimeSelectedInclusive(double Time) const { return Time >= SelectionStartTime && Time <= SelectionEndTime; }
@@ -307,27 +261,18 @@ public:
 	void CenterOnTimeInterval(double IntervalStartTime, double IntervalDuration);
 	void BringIntoView(double StartTime, double EndTime);
 	void SelectTimeInterval(double IntervalStartTime, double IntervalDuration);
-	void SelectToTimeMarker(double InTimeMarker);
+	void SetAndCenterOnTimeMarker(double Time);
+	void SelectToTimeMarker(double Time);
 
-	//bool AreTimeMarkersVisible() { return MarkersTrack->IsVisible(); }
+	bool AreTimeMarkersVisible() { return MarkersTrack.IsVisible(); }
 	void SetTimeMarkersVisible(bool bOnOff);
-	//bool IsDrawOnlyBookmarksEnabled() { return MarkersTrack->IsBookmarksTrack(); }
+	bool IsDrawOnlyBookmarksEnabled() { return MarkersTrack.IsBookmarksTrack(); }
 	void SetDrawOnlyBookmarks(bool bOnOff);
 
+	bool IsGpuTrackVisible() const;
+	bool IsCpuTrackVisible(uint32 ThreadId) const;
+
 	TSharedPtr<FTimingGraphTrack> GetMainTimingGraphTrack() { return GraphTrack; }
-
-	const TSharedPtr<FBaseTimingTrack> GetHoveredTrack() const { return HoveredTrack; }
-	const TSharedPtr<const ITimingEvent> GetHoveredEvent() const { return HoveredEvent; }
-
-	const TSharedPtr<FBaseTimingTrack> GetSelectedTrack() const { return SelectedTrack; }
-	const TSharedPtr<const ITimingEvent> GetSelectedEvent() const { return SelectedEvent; }
-
-	const TSharedPtr<ITimingEventFilter> GetEventFilter() const { return TimingEventFilter; }
-	void SetEventFilter(const TSharedPtr<ITimingEventFilter> InEventFilter);
-
-	void ToggleEventFilterByEventType(const uint64 EventType);
-
-	const TSharedPtr<FBaseTimingTrack> GetTrackAt(float InPosX, float InPosY) const;
 
 protected:
 	virtual FVector2D ComputeDesiredSize(float) const override
@@ -335,40 +280,14 @@ protected:
 		return FVector2D(16.0f, 16.0f);
 	}
 
-	void ShowContextMenu(const FPointerEvent& MouseEvent);
-	void CreateTrackLocationMenu(FMenuBuilder& MenuBuilder, TSharedRef<FBaseTimingTrack> Track);
+	void AddTimingEventsTrack(FTimingEventsTrack* Track);
 
-	void ChangeTrackLocation(TSharedRef<FBaseTimingTrack> Track, ETimingTrackLocation NewLocation);
-	bool CanChangeTrackLocation(TSharedRef<FBaseTimingTrack> Track, ETimingTrackLocation NewLocation) const;
+	void ShowContextMenu(const FPointerEvent& MouseEvent);
 
 	/** Binds our UI commands to delegates. */
 	void BindCommands();
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////
-	// Auto-Scroll
-
-	void AutoScroll_OnCheckStateChanged(ECheckBoxState NewRadioState);
-	ECheckBoxState AutoScroll_IsChecked() const;
-
-	void AutoScrollFrameAligned_Execute();
-	bool AutoScrollFrameAligned_IsChecked() const;
-
-	void AutoScrollFrameType_Execute(ETraceFrameType FrameType);
-	bool AutoScrollFrameType_CanExecute(ETraceFrameType FrameType) const;
-	bool AutoScrollFrameType_IsChecked(ETraceFrameType FrameType) const;
-
-	void AutoScrollViewportOffset_Execute(double Percent);
-	bool AutoScrollViewportOffset_IsChecked(double Percent) const;
-
-	void AutoScrollDelay_Execute(double Delay);
-	bool AutoScrollDelay_IsChecked(double Delay) const;
-
-	////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	void UpdatePositionForScrollableTracks();
-
-	double EnforceHorizontalScrollLimits(const double InStartTime);
-	float EnforceVerticalScrollLimits(const float InScrollPosY);
 
 	/**
 	 * Called when the user scrolls the horizontal scrollbar.
@@ -390,19 +309,12 @@ protected:
 
 	void RaiseSelectionChanging();
 	void RaiseSelectionChanged();
-
-	void RaiseTimeMarkerChanging();
-	void RaiseTimeMarkerChanged();
-
 	void UpdateAggregatedStats();
 
-	void UpdateHoveredTimingEvent(float InMousePosX, float InMousePosY);
+	void UpdateHoveredTimingEvent(float MX, float MY);
 
 	void OnSelectedTimingEventChanged();
-
-	void SelectHoveredTimingTrack();
 	void SelectHoveredTimingEvent();
-
 	void SelectLeftTimingEvent();
 	void SelectRightTimingEvent();
 	void SelectUpTimingEvent();
@@ -410,65 +322,112 @@ protected:
 
 	void FrameSelection();
 
-	// Get all the plugin extenders we care about
-	TArray<Insights::ITimingViewExtender*> GetExtenders() const;
+	void OnTimingEventsTrackVisibilityChanged();
 
-	FReply AllowTracksToProcessOnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent);
-	FReply AllowTracksToProcessOnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent);
-	FReply AllowTracksToProcessOnMouseButtonDoubleClick(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent);
+	////////////////////////////////////////////////////////////////////////////////////////////////////
+	// FrameSelectionChanged Event
+
+public:
+	/**
+	 * The event to execute when the selected frames have been changed.
+	 *
+	 * @param FrameStartIndex	- The index of the first frame selected.
+	 * @param FrameEndIndex		- The index of the last frame selected.
+	 *
+	 */
+	DECLARE_EVENT_TwoParams(STimingView, FFrameSelectionChangedEvent, int32 /*FrameStartIndex*/, int32 /*FrameEndIndex*/);
+	FFrameSelectionChangedEvent& OnFrameSelectionChanged()
+	{
+		return FrameSelectionChangedEvent;
+	}
 
 protected:
+	/** The event to execute when the selected frames have been changed. */
+	FFrameSelectionChangedEvent FrameSelectionChangedEvent;
+
+	////////////////////////////////////////////////////////////////////////////////////////////////////
+
+protected:
+	bool bShowHideAllGpuTracks;
+	bool bShowHideAllCpuTracks;
+	bool bShowHideAllLoadingTracks;
+	bool bShowHideAllIoTracks;
+
+	////////////////////////////////////////////////////////////
+
 	/** The track's viewport. Encapsulates info about position and scale. */
 	FTimingTrackViewport Viewport;
+
+	bool bIsViewportDirty;
+	bool bIsVerticalViewportDirty;
 
 	////////////////////////////////////////////////////////////
 
 	/** All created tracks.
 	  * Maps track id to track pointer.
 	  */
-	TMap<uint64, TSharedPtr<FBaseTimingTrack>> AllTracks;
+	TMap<uint64, FTimingEventsTrack*> CachedTimelines;
 
-	TArray<TSharedPtr<FBaseTimingTrack>> TopDockedTracks; /**< tracks docked on top, in the order to be displayed (top to bottom) */
-	TArray<TSharedPtr<FBaseTimingTrack>> BottomDockedTracks; /**< tracks docked on bottom, in the order to be displayed (top to bottom) */
-	TArray<TSharedPtr<FBaseTimingTrack>> ScrollableTracks; /**< tracks in scrollable area, in the order to be displayed (top to bottom) */
-	TArray<TSharedPtr<FBaseTimingTrack>> ForegroundTracks; /**< tracks to draw over top/scrollable/bottom tracks (can use entire area), in the order to be displayed (back to front) */
-
-	/** Whether the order of scrollable tracks is dirty and list need to be re-sorted */
-	bool bScrollableTracksOrderIsDirty;
+	//TODO: TArray<FBaseTimingTrack*> TopTracks; /**< tracks docked on top, in the order to be displayed (top to bottom) */
+	//TODO: TArray<FBaseTimingTrack*> ScrollableTracks; /**< tracks in scrollable area, in the order to be displayed (top to bottom) */
+	//TODO: TArray<FBaseTimingTrack*> BottomTracks; /**< tracks docked on bottom, in the order to be displayed (top to bottom) */
+	//TODO: TArray<FBaseTimingTrack*> ForegorundTracks; /**< tracks to draw over top/scrollable/bottom tracks (can use entire area), in the order to be displayed (back to front) */
 
 	////////////////////////////////////////////////////////////
 
-	// Shared state for Frame Thread tracks
-	TSharedPtr<FFrameSharedState> FrameSharedState;
+	TArray<FTimingEventsTrack*> TimingEventsTracks; /**< all timing events tracks, in the order to be displayed */
 
-	// Shared state for Cpu/Gpu Thread tracks
-	TSharedPtr<FThreadTimingSharedState> ThreadTimingSharedState;
+	bool bAreTimingEventsTracksDirty;
 
-	// Shared state for Asset Loading tracks
+	////////////////////////////////////////////////////////////
+	// Cpu/Gpu
+
+	FTimingEventsTrack* GpuTrack;
+	TMap<uint32, FTimingEventsTrack*> CpuTracks; /**< maps thread id to track pointer */
+
+	struct FThreadGroup
+	{
+		const TCHAR* Name; /**< The thread group name; pointer to string owned by ThreadProvider. */
+		bool bIsVisible;  /**< Toggle to show/hide all thread timelines associated with this group at once. Used also as default for new thread timelines. */
+		uint32 NumTimelines; /**< Number of thread timelines associated with this group. */
+		int32 Order; //**< Order index used for sorting. Inherited from last thread timeline associated with this group. **/
+
+		int32 GetOrder() const { return Order; }
+	};
+
+	TMap<const TCHAR*, FThreadGroup> ThreadGroups; /**< maps thread group name to thread group info */
+
+	////////////////////////////////////////////////////////////
+	// Asset Loading
+
 	TSharedPtr<FLoadingSharedState> LoadingSharedState;
+	FTimingEventsTrack* LoadingMainThreadTrack;
+	FTimingEventsTrack* LoadingAsyncThreadTrack;
+
+	uint32 LoadingMainThreadId;
+	uint32 LoadingAsyncThreadId;
+
 	bool bAssetLoadingMode;
 
-	// Shared state for File Activity (I/O) tracks
+	////////////////////////////////////////////////////////////
+	// File activity (I/O)
+
 	TSharedPtr<FFileActivitySharedState> FileActivitySharedState;
+	FTimingEventsTrack* IoOverviewTrack;
+	FTimingEventsTrack* IoActivityTrack;
 
 	////////////////////////////////////////////////////////////
 
-	/** The time ruler track. It includes the custom time markers (ones user can drag with mouse). */
-	TSharedRef<FTimeRulerTrack> TimeRulerTrack;
+	/** The time ruler track. */
+	FTimeRulerTrack TimeRulerTrack;
 
-	/** The default time marker (for backward compatibility). */
-	TSharedRef<Insights::FTimeMarker> DefaultTimeMarker;
+	/** The time markers track. */
+	FMarkersTimingTrack MarkersTrack;
 
-	/** The time markers track. It displayes fixed time markers based on bookmarks and log messages. */
-	TSharedRef<FMarkersTimingTrack> MarkersTrack;
-
-	/** A graph track for frame times and cpu/gpu timing graphs. */
+	/** A graph track for frame times. */
 	TSharedPtr<FTimingGraphTrack> GraphTrack;
 
 	////////////////////////////////////////////////////////////
-
-	/** The extension overlay containing external sub-widgets */
-	TSharedPtr<SOverlay> ExtensionOverlay;
 
 	/** Horizontal scroll bar, used for scrolling timing events' viewport. */
 	TSharedPtr<SScrollBar> HorizontalScrollBar;
@@ -489,8 +448,6 @@ protected:
 	/** Mouse position during the call on mouse button up. */
 	FVector2D MousePositionOnButtonUp;
 
-	float LastScrollPosY;
-
 	bool bIsLMB_Pressed;
 	bool bIsRMB_Pressed;
 
@@ -498,34 +455,13 @@ protected:
 	bool bIsDragging;
 
 	////////////////////////////////////////////////////////////
-	// Auto-Scroll
-
-	/** True if the viewport scrolls automatically. */
-	bool bAutoScroll;
-
-	/** True, if auto-scroll should align center of viewport with start of a frame. */
-	bool bIsAutoScrollFrameAligned;
-
-	/** Type of frame to align with (Game or Rendering), if bIsAutoScrollFrameAligned is enabled. */
-	ETraceFrameType AutoScrollFrameType;
-
-	/**
-	 * Viewport offset while auto-scrolling, as percent of viewport width.
-	 * If positive, it offsets the viewport forward, allowing an empty space at the right side of the viewport (i.e. after end of session).
-	 * If negative, it offsets the viewport backward (i.e. end of session will be outside viewport).
-	 */
-	double AutoScrollViewportOffsetPercent;
-
-	/** Minimum time between two auto-scroll updates, in [seconds]. */
-	double AutoScrollMinDelay;
-
-	/** Timestamp of last auto-scroll update, in [cycle64]. */
-	uint64 LastAutoScrollTime;
-
-	////////////////////////////////////////////////////////////
 	// Panning
 
-	/** True, if the user is currently interactively panning the view (horizontally and/or vertically). */
+	/**
+	 * True, if the user is currently interactively panning the view (horizontally and/or vertically),
+	 * either by holding the right mouse button and dragging
+	 * or by holding spacebar pressed and dragging with left mouse button.
+	 */
 	bool bIsPanning;
 
 	/** How to pan. */
@@ -538,27 +474,17 @@ protected:
 	};
 	EPanningMode PanningMode;
 
-	float OverscrollLeft;
-	float OverscrollRight;
-	float OverscrollTop;
-	float OverscrollBottom;
-
 	////////////////////////////////////////////////////////////
 	// Selection
 
-	/** True, if the user is currently changing the selection. */
+	/** True, if the user is currently changing the selection (by holding the left mouse button and dragging). */
 	bool bIsSelecting;
 
 	double SelectionStartTime;
 	double SelectionEndTime;
 
-	TSharedPtr<FBaseTimingTrack> HoveredTrack;
-	TSharedPtr<const ITimingEvent> HoveredEvent;
-
-	TSharedPtr<FBaseTimingTrack> SelectedTrack;
-	TSharedPtr<const ITimingEvent> SelectedEvent;
-
-	TSharedPtr<ITimingEventFilter> TimingEventFilter;
+	FTimingEvent HoveredTimingEvent;
+	FTimingEvent SelectedTimingEvent;
 
 	FTooltipDrawState Tooltip;
 
@@ -570,8 +496,7 @@ protected:
 	};
 	ESelectionType LastSelectionType;
 
-	/** Throttle flag, allowing tracks to control whether Slate throttle should take place */
-	bool bPreventThrottling;
+	double TimeMarker;
 
 	////////////////////////////////////////////////////////////
 	// Misc
@@ -581,29 +506,20 @@ protected:
 	const FSlateBrush* WhiteBrush;
 	const FSlateFontInfo MainFont;
 
-	bool bDrawTopSeparatorLine;
-	bool bDrawBottomSeparatorLine;
+	FTimingEventsTrackLayout Layout;
 
 	// Debug stats
 	int32 NumUpdatedEvents;
-	TFixedCircularBuffer<uint64, 32> PreUpdateTracksDurationHistory;
-	TFixedCircularBuffer<uint64, 32> UpdateTracksDurationHistory;
-	TFixedCircularBuffer<uint64, 32> PostUpdateTracksDurationHistory;
-	TFixedCircularBuffer<uint64, 32> TickDurationHistory;
-	mutable TFixedCircularBuffer<uint64, 32> PreDrawTracksDurationHistory;
-	mutable TFixedCircularBuffer<uint64, 32> DrawTracksDurationHistory;
-	mutable TFixedCircularBuffer<uint64, 32> PostDrawTracksDurationHistory;
-	mutable TFixedCircularBuffer<uint64, 32> TotalDrawDurationHistory;
-	mutable TFixedCircularBuffer<uint64, 32> OnPaintDeltaTimeHistory;
+	TFixedCircularBuffer<uint64, 32> TimelineCacheUpdateDurationHistory;
+	TFixedCircularBuffer<uint64, 32> TimeMarkerCacheUpdateDurationHistory;
+	mutable TFixedCircularBuffer<uint64, 32> DrawDurationHistory;
+	mutable TFixedCircularBuffer<uint64, 32> OnPaintDurationHistory;
 	mutable uint64 LastOnPaintTime;
 
 	////////////////////////////////////////////////////////////
 	// Delegates
 
-	Insights::FSelectionChangedDelegate OnSelectionChangedDelegate;
-	Insights::FTimeMarkerChangedDelegate OnTimeMarkerChangedDelegate;
-	Insights::FHoveredTrackChangedDelegate OnHoveredTrackChangedDelegate;
-	Insights::FHoveredEventChangedDelegate OnHoveredEventChangedDelegate;
-	Insights::FSelectedTrackChangedDelegate OnSelectedTrackChangedDelegate;
-	Insights::FSelectedEventChangedDelegate OnSelectedEventChangedDelegate;
+	FSelectionChangedDelegate OnSelectionChanged;
+	FHoveredEventChangedDelegate OnHoveredEventChanged;
+	FSelectedEventChangedDelegate OnSelectedEventChanged;
 };

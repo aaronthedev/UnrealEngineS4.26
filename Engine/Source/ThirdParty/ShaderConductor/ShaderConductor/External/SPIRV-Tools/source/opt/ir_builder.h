@@ -59,43 +59,27 @@ class InstructionBuilder {
                            preserved_analyses) {}
 
   Instruction* AddNullaryOp(uint32_t type_id, SpvOp opcode) {
-    uint32_t result_id = 0;
-    if (type_id != 0) {
-      result_id = GetContext()->TakeNextId();
-      if (result_id == 0) {
-        return nullptr;
-      }
-    }
-    std::unique_ptr<Instruction> new_inst(
-        new Instruction(GetContext(), opcode, type_id, result_id, {}));
-    return AddInstruction(std::move(new_inst));
+    // TODO(1841): Handle id overflow.
+    std::unique_ptr<Instruction> newUnOp(new Instruction(
+        GetContext(), opcode, type_id,
+        opcode == SpvOpReturn ? 0 : GetContext()->TakeNextId(), {}));
+    return AddInstruction(std::move(newUnOp));
   }
 
   Instruction* AddUnaryOp(uint32_t type_id, SpvOp opcode, uint32_t operand1) {
-    uint32_t result_id = 0;
-    if (type_id != 0) {
-      result_id = GetContext()->TakeNextId();
-      if (result_id == 0) {
-        return nullptr;
-      }
-    }
+    // TODO(1841): Handle id overflow.
     std::unique_ptr<Instruction> newUnOp(new Instruction(
-        GetContext(), opcode, type_id, result_id,
+        GetContext(), opcode, type_id, GetContext()->TakeNextId(),
         {{spv_operand_type_t::SPV_OPERAND_TYPE_ID, {operand1}}}));
     return AddInstruction(std::move(newUnOp));
   }
 
   Instruction* AddBinaryOp(uint32_t type_id, SpvOp opcode, uint32_t operand1,
                            uint32_t operand2) {
-    uint32_t result_id = 0;
-    if (type_id != 0) {
-      result_id = GetContext()->TakeNextId();
-      if (result_id == 0) {
-        return nullptr;
-      }
-    }
+    // TODO(1841): Handle id overflow.
     std::unique_ptr<Instruction> newBinOp(new Instruction(
-        GetContext(), opcode, type_id, opcode == SpvOpStore ? 0 : result_id,
+        GetContext(), opcode, type_id,
+        opcode == SpvOpStore ? 0 : GetContext()->TakeNextId(),
         {{spv_operand_type_t::SPV_OPERAND_TYPE_ID, {operand1}},
          {spv_operand_type_t::SPV_OPERAND_TYPE_ID, {operand2}}}));
     return AddInstruction(std::move(newBinOp));
@@ -103,15 +87,9 @@ class InstructionBuilder {
 
   Instruction* AddTernaryOp(uint32_t type_id, SpvOp opcode, uint32_t operand1,
                             uint32_t operand2, uint32_t operand3) {
-    uint32_t result_id = 0;
-    if (type_id != 0) {
-      result_id = GetContext()->TakeNextId();
-      if (result_id == 0) {
-        return nullptr;
-      }
-    }
+    // TODO(1841): Handle id overflow.
     std::unique_ptr<Instruction> newTernOp(new Instruction(
-        GetContext(), opcode, type_id, result_id,
+        GetContext(), opcode, type_id, GetContext()->TakeNextId(),
         {{spv_operand_type_t::SPV_OPERAND_TYPE_ID, {operand1}},
          {spv_operand_type_t::SPV_OPERAND_TYPE_ID, {operand2}},
          {spv_operand_type_t::SPV_OPERAND_TYPE_ID, {operand3}}}));
@@ -121,15 +99,9 @@ class InstructionBuilder {
   Instruction* AddQuadOp(uint32_t type_id, SpvOp opcode, uint32_t operand1,
                          uint32_t operand2, uint32_t operand3,
                          uint32_t operand4) {
-    uint32_t result_id = 0;
-    if (type_id != 0) {
-      result_id = GetContext()->TakeNextId();
-      if (result_id == 0) {
-        return nullptr;
-      }
-    }
+    // TODO(1841): Handle id overflow.
     std::unique_ptr<Instruction> newQuadOp(new Instruction(
-        GetContext(), opcode, type_id, result_id,
+        GetContext(), opcode, type_id, GetContext()->TakeNextId(),
         {{spv_operand_type_t::SPV_OPERAND_TYPE_ID, {operand1}},
          {spv_operand_type_t::SPV_OPERAND_TYPE_ID, {operand2}},
          {spv_operand_type_t::SPV_OPERAND_TYPE_ID, {operand3}},
@@ -137,19 +109,13 @@ class InstructionBuilder {
     return AddInstruction(std::move(newQuadOp));
   }
 
-  Instruction* AddIdLiteralOp(uint32_t type_id, SpvOp opcode, uint32_t id,
-                              uint32_t uliteral) {
-    uint32_t result_id = 0;
-    if (type_id != 0) {
-      result_id = GetContext()->TakeNextId();
-      if (result_id == 0) {
-        return nullptr;
-      }
-    }
+  Instruction* AddIdLiteralOp(uint32_t type_id, SpvOp opcode, uint32_t operand1,
+                              uint32_t operand2) {
+    // TODO(1841): Handle id overflow.
     std::unique_ptr<Instruction> newBinOp(new Instruction(
-        GetContext(), opcode, type_id, result_id,
-        {{spv_operand_type_t::SPV_OPERAND_TYPE_ID, {id}},
-         {spv_operand_type_t::SPV_OPERAND_TYPE_LITERAL_INTEGER, {uliteral}}}));
+        GetContext(), opcode, type_id, GetContext()->TakeNextId(),
+        {{spv_operand_type_t::SPV_OPERAND_TYPE_ID, {operand1}},
+         {spv_operand_type_t::SPV_OPERAND_TYPE_LITERAL_INTEGER, {operand2}}}));
     return AddInstruction(std::move(newBinOp));
   }
 
@@ -392,6 +358,16 @@ class InstructionBuilder {
     return uint_inst->result_id();
   }
 
+  uint32_t GetNullId(uint32_t type_id) {
+    analysis::TypeManager* type_mgr = GetContext()->get_type_mgr();
+    analysis::ConstantManager* const_mgr = GetContext()->get_constant_mgr();
+    const analysis::Type* type = type_mgr->GetType(type_id);
+    const analysis::Constant* null_const = const_mgr->GetConstant(type, {});
+    Instruction* null_inst =
+        const_mgr->GetDefiningInstruction(null_const, type_id);
+    return null_inst->result_id();
+  }
+
   // Adds either a signed or unsigned 32 bit integer constant to the binary
   // depedning on the |sign|. If |sign| is true then the value is added as a
   // signed constant otherwise as an unsigned constant. If |sign| is false the
@@ -489,64 +465,6 @@ class InstructionBuilder {
     return AddInstruction(std::move(new_inst));
   }
 
-  Instruction* AddFunctionCall(uint32_t result_type, uint32_t function,
-                               const std::vector<uint32_t>& parameters) {
-    std::vector<Operand> operands;
-    operands.push_back({SPV_OPERAND_TYPE_ID, {function}});
-    for (uint32_t id : parameters) {
-      operands.push_back({SPV_OPERAND_TYPE_ID, {id}});
-    }
-
-    uint32_t result_id = GetContext()->TakeNextId();
-    if (result_id == 0) {
-      return nullptr;
-    }
-    std::unique_ptr<Instruction> new_inst(new Instruction(
-        GetContext(), SpvOpFunctionCall, result_type, result_id, operands));
-    return AddInstruction(std::move(new_inst));
-  }
-
-  Instruction* AddVectorShuffle(uint32_t result_type, uint32_t vec1,
-                                uint32_t vec2,
-                                const std::vector<uint32_t>& components) {
-    std::vector<Operand> operands;
-    operands.push_back({SPV_OPERAND_TYPE_ID, {vec1}});
-    operands.push_back({SPV_OPERAND_TYPE_ID, {vec2}});
-    for (uint32_t id : components) {
-      operands.push_back({SPV_OPERAND_TYPE_LITERAL_INTEGER, {id}});
-    }
-
-    uint32_t result_id = GetContext()->TakeNextId();
-    if (result_id == 0) {
-      return nullptr;
-    }
-
-    std::unique_ptr<Instruction> new_inst(new Instruction(
-        GetContext(), SpvOpVectorShuffle, result_type, result_id, operands));
-    return AddInstruction(std::move(new_inst));
-  }
-
-  Instruction* AddNaryExtendedInstruction(
-      uint32_t result_type, uint32_t set, uint32_t instruction,
-      const std::vector<uint32_t>& ext_operands) {
-    std::vector<Operand> operands;
-    operands.push_back({SPV_OPERAND_TYPE_ID, {set}});
-    operands.push_back(
-        {SPV_OPERAND_TYPE_EXTENSION_INSTRUCTION_NUMBER, {instruction}});
-    for (uint32_t id : ext_operands) {
-      operands.push_back({SPV_OPERAND_TYPE_ID, {id}});
-    }
-
-    uint32_t result_id = GetContext()->TakeNextId();
-    if (result_id == 0) {
-      return nullptr;
-    }
-
-    std::unique_ptr<Instruction> new_inst(new Instruction(
-        GetContext(), SpvOpExtInst, result_type, result_id, operands));
-    return AddInstruction(std::move(new_inst));
-  }
-
   // Inserts the new instruction before the insertion point.
   Instruction* AddInstruction(std::unique_ptr<Instruction>&& insn) {
     Instruction* insn_ptr = &*insert_before_.InsertBefore(std::move(insn));
@@ -594,10 +512,6 @@ class InstructionBuilder {
 
   // Returns true if the users requested to update |analysis|.
   inline bool IsAnalysisUpdateRequested(IRContext::Analysis analysis) const {
-    if (!GetContext()->AreAnalysesValid(analysis)) {
-      // Do not try to update something that is not built.
-      return false;
-    }
     return preserved_analyses_ & analysis;
   }
 

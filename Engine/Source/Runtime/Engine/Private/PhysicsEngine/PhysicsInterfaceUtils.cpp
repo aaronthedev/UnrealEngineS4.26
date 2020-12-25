@@ -1,10 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Physics/PhysicsInterfaceUtils.h"
 #include "PhysXPublic.h"
 #include "WorldCollision.h"
 #include "Physics/PhysicsFiltering.h"
 #include "Physics/PhysicsInterfaceTypes.h"
+
+#if WITH_PHYSX
 
 FCollisionFilterData CreateObjectQueryFilterData(const bool bTraceComplex, const int32 MultiTrace/*=1 if multi. 0 otherwise*/, const struct FCollisionObjectQueryParams & ObjectParam)
 {
@@ -91,10 +93,12 @@ FCollisionFilterData CreateTraceQueryFilterData(const uint8 MyChannel, const boo
 #define TRACE_MULTI		1
 #define TRACE_SINGLE	0
 
+#endif
+
 /** Utility for creating a PhysX PxFilterData for performing a query (trace) against the scene */
 FCollisionFilterData CreateQueryFilterData(const uint8 MyChannel, const bool bTraceComplex, const FCollisionResponseContainer& InCollisionResponseContainer, const struct FCollisionQueryParams& QueryParam, const struct FCollisionObjectQueryParams & ObjectParam, const bool bMultitrace)
 {
-	//#TODO implement chaos
+#if WITH_PHYSX
 	if(ObjectParam.IsValid())
 	{
 		return CreateObjectQueryFilterData(bTraceComplex, (bMultitrace ? TRACE_MULTI : TRACE_SINGLE), ObjectParam);
@@ -103,4 +107,9 @@ FCollisionFilterData CreateQueryFilterData(const uint8 MyChannel, const bool bTr
 	{
 		return CreateTraceQueryFilterData(MyChannel, bTraceComplex, InCollisionResponseContainer, QueryParam);
 	}
+#else 
+	//#TODO implement chaos
+	ensure(false);
+	return FCollisionFilterData();
+#endif
 }

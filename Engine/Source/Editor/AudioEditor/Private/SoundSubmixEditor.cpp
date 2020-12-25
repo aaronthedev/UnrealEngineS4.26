@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SoundSubmixEditor.h"
 
@@ -93,7 +93,7 @@ void FSoundSubmixEditor::UnregisterTabSpawners(const TSharedRef<FTabManager>& In
 	InTabManager->UnregisterTabSpawner( PropertiesTabId );
 }
 
-void FSoundSubmixEditor::AddEditableSubmixChildren(USoundSubmixBase* RootSubmix)
+void FSoundSubmixEditor::AddEditableSubmixChildren(USoundSubmix* RootSubmix)
 {
 	if (!RootSubmix)
 	{
@@ -101,7 +101,7 @@ void FSoundSubmixEditor::AddEditableSubmixChildren(USoundSubmixBase* RootSubmix)
 	}
 
 	RootSubmix->SetFlags(RF_Transactional);
-	for (USoundSubmixBase* Child : RootSubmix->ChildSubmixes)
+	for (USoundSubmix* Child : RootSubmix->ChildSubmixes)
 	{
 		if (Child)
 		{
@@ -114,28 +114,22 @@ void FSoundSubmixEditor::AddEditableSubmixChildren(USoundSubmixBase* RootSubmix)
 
 void FSoundSubmixEditor::Init(const EToolkitMode::Type Mode, const TSharedPtr<IToolkitHost >& InitToolkitHost, UObject* ObjectToEdit)
 {
-	USoundSubmixBase* SoundSubmix = CastChecked<USoundSubmixBase>(ObjectToEdit);
+	USoundSubmix* SoundSubmix = CastChecked<USoundSubmix>(ObjectToEdit);
 
-	USoundSubmixWithParentBase* SubmixWithParent = Cast<USoundSubmixWithParentBase>(SoundSubmix);
-	while (SubmixWithParent && SubmixWithParent->ParentSubmix)
+	while (SoundSubmix->ParentSubmix)
 	{
-		SoundSubmix = SubmixWithParent->ParentSubmix;
-		SubmixWithParent = Cast<USoundSubmixWithParentBase>(SoundSubmix);
+		SoundSubmix = SoundSubmix->ParentSubmix;
 	}
 
 	GEditor->RegisterForUndo(this);
 
-	ToolkitCommands->MapAction
-	(
+	ToolkitCommands->MapAction(
 		FGenericCommands::Get().Undo,
-		FExecuteAction::CreateSP(this, &FSoundSubmixEditor::UndoGraphAction)
-	);
+		FExecuteAction::CreateSP(this, &FSoundSubmixEditor::UndoGraphAction));
 
-	ToolkitCommands->MapAction
-	(
+	ToolkitCommands->MapAction(
 		FGenericCommands::Get().Redo,
-		FExecuteAction::CreateSP(this, &FSoundSubmixEditor::RedoGraphAction)
-	);
+		FExecuteAction::CreateSP(this, &FSoundSubmixEditor::RedoGraphAction));
 
 	USoundSubmixGraph* SoundSubmixGraph = CastChecked<USoundSubmixGraph>(FBlueprintEditorUtils::CreateNewGraph(SoundSubmix, NAME_None, USoundSubmixGraph::StaticClass(), USoundSubmixGraphSchema::StaticClass()));
 	SoundSubmixGraph->SetRootSoundSubmix(SoundSubmix);
@@ -145,11 +139,10 @@ void FSoundSubmixEditor::Init(const EToolkitMode::Type Mode, const TSharedPtr<IT
 
 	CreateInternalWidgets(SoundSubmix);
 
-	TSharedRef<FTabManager::FLayout> StandaloneDefaultLayout = FTabManager::NewLayout("Standalone_SoundSubmixEditor_Layout_v3")
+	TSharedRef<FTabManager::FLayout> StandaloneDefaultLayout = FTabManager::NewLayout("Standalone_SoundSubmixEditor_Layout_v2")
 		->AddArea
 		(
-			FTabManager::NewPrimaryArea()
-			->SetOrientation(Orient_Vertical)
+			FTabManager::NewPrimaryArea()->SetOrientation(Orient_Vertical)
 			->Split
 			(
 				FTabManager::NewStack()
@@ -163,14 +156,12 @@ void FSoundSubmixEditor::Init(const EToolkitMode::Type Mode, const TSharedPtr<IT
 				->Split
 				(
 					FTabManager::NewStack()
-					->SetHideTabWell(true)
 					->SetSizeCoefficient(0.2f)
 					->AddTab(PropertiesTabId, ETabState::OpenedTab)
 				)
 				->Split
 				(
 					FTabManager::NewStack()
-					->SetHideTabWell(true)
 					->SetSizeCoefficient(0.8f)
 					->AddTab(GraphCanvasTabId, ETabState::OpenedTab)
 				)
@@ -218,7 +209,7 @@ void FSoundSubmixEditor::AddReferencedObjects(FReferenceCollector& Collector)
 
 TSharedRef<SDockTab> FSoundSubmixEditor::SpawnTab_GraphCanvas(const FSpawnTabArgs& Args)
 {
-	check(Args.GetTabId() == GraphCanvasTabId);
+	check( Args.GetTabId() == GraphCanvasTabId );
 
 	TSharedRef<SDockTab> SpawnedTab = SNew(SDockTab)
 		.Label(LOCTEXT("GraphCanvasTitle", "Graph"))
@@ -231,15 +222,15 @@ TSharedRef<SDockTab> FSoundSubmixEditor::SpawnTab_GraphCanvas(const FSpawnTabArg
 
 TSharedRef<SDockTab> FSoundSubmixEditor::SpawnTab_Properties(const FSpawnTabArgs& Args)
 {
-	check(Args.GetTabId() == PropertiesTabId);
+	check( Args.GetTabId() == PropertiesTabId );
 
 	TSharedRef<SDockTab> SpawnedTab = SNew(SDockTab)
-		.Icon(FEditorStyle::GetBrush("LevelEditor.Tabs.Details"))
-		.Label(LOCTEXT("SoundSubmixPropertiesTitle", "Details"))
+		.Icon( FEditorStyle::GetBrush("SoundSubmixEditor.Tabs.Properties") )
+		.Label( LOCTEXT( "SoundSubmixPropertiesTitle", "Details" ) )
 		[
 			DetailsView.ToSharedRef()
 		];
-
+	
 	return SpawnedTab;
 }
 
@@ -268,17 +259,17 @@ FLinearColor FSoundSubmixEditor::GetWorldCentricTabColorScale() const
 	return FLinearColor( 0.2f, 0.4f, 0.8f, 0.5f );
 }
 
-void FSoundSubmixEditor::CreateInternalWidgets(USoundSubmixBase* InSoundSubmix)
+void FSoundSubmixEditor::CreateInternalWidgets(USoundSubmix* InSoundSubmix)
 {
 	GraphEditor = CreateGraphEditorWidget(InSoundSubmix);
 
 	FPropertyEditorModule& PropertyEditorModule = FModuleManager::GetModuleChecked<FPropertyEditorModule>("PropertyEditor");
-	const FDetailsViewArgs DetailsViewArgs(false, false, true, FDetailsViewArgs::HideNameArea, false);
+	const FDetailsViewArgs DetailsViewArgs(false, false, true, FDetailsViewArgs::ObjectsUseNameArea, false);
 	DetailsView = PropertyEditorModule.CreateDetailView(DetailsViewArgs);
 	DetailsView->SetObject(InSoundSubmix);
 }
 
-TSharedRef<SGraphEditor> FSoundSubmixEditor::CreateGraphEditorWidget(USoundSubmixBase* InSoundSubmix)
+TSharedRef<SGraphEditor> FSoundSubmixEditor::CreateGraphEditorWidget(USoundSubmix* InSoundSubmix)
 {
 	if (!GraphEditorCommands.IsValid())
 	{
@@ -348,7 +339,7 @@ void FSoundSubmixEditor::SelectAllNodes()
 	GraphEditor->SelectAllNodes();
 }
 
-void FSoundSubmixEditor::SelectSubmixes(TSet<USoundSubmixBase*>& InSubmixes)
+void FSoundSubmixEditor::SelectSubmixes(TSet<USoundSubmix*>& InSubmixes)
 {
 	TArray<UObject*> ObjectsToSelect;
 
@@ -361,7 +352,7 @@ void FSoundSubmixEditor::SelectSubmixes(TSet<USoundSubmixBase*>& InSubmixes)
 		if (SelectedNode)
 		{
 			USoundSubmixGraphNode* GraphNode = CastChecked<USoundSubmixGraphNode>(SelectedNode);
-			if (USoundSubmixBase* Submix = GraphNode->SoundSubmix)
+			if (USoundSubmix* Submix = GraphNode->SoundSubmix)
 			{
 				if (InSubmixes.Contains(Submix))
 				{
@@ -437,7 +428,7 @@ void FSoundSubmixEditor::CreateSoundSubmix(UEdGraphPin* FromPin, const FVector2D
 	}
 
 	// Derive new package path from existing asset's path
-	USoundSubmixBase* SoundSubmix = CastChecked<USoundSubmixBase>(GetEditingObjects()[0]);
+	USoundSubmix* SoundSubmix = CastChecked<USoundSubmix>(GetEditingObjects()[0]);
 	FString PackagePath = SoundSubmix->GetPathName();
 	FString AssetName = FString::Printf(TEXT("/%s.%s"), *SoundSubmix->GetName(), *SoundSubmix->GetName());
 	PackagePath.RemoveFromEnd(AssetName);
@@ -480,7 +471,7 @@ void FSoundSubmixEditor::AddMissingEditableSubmixes()
 			for (UEdGraphNode* Node : Graph->Nodes)
 			{
 				USoundSubmixGraphNode* GraphNode = CastChecked<USoundSubmixGraphNode>(Node);
-				USoundSubmixBase* UntrackedSubmix = GraphNode->SoundSubmix;
+				USoundSubmix* UntrackedSubmix = GraphNode->SoundSubmix;
 				if (UntrackedSubmix && !GetEditingObjects().Contains(UntrackedSubmix))
 				{
 					bChanged = true;

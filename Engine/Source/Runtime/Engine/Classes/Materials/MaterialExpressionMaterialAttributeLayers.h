@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -44,6 +44,7 @@ class UMaterialExpressionMaterialAttributeLayers : public UMaterialExpression
 	}
 
 #if WITH_EDITOR
+
 	const TArray<FText>& GetLayerNames() const
 	{
 		return ParamLayers ? ParamLayers->LayerNames : DefaultLayers.LayerNames;
@@ -58,12 +59,7 @@ class UMaterialExpressionMaterialAttributeLayers : public UMaterialExpression
 	{
 		return ParamLayers ? ParamLayers->RestrictToBlendRelatives : DefaultLayers.RestrictToBlendRelatives;
 	}
-
-	const TArray<FGuid>& GetLayerGuids() const
-	{
-		return ParamLayers ? ParamLayers->LayerGuids : DefaultLayers.LayerGuids;
-	}
-#endif // WITH_EDITOR
+#endif
 
 	const TArray<bool>& GetLayerStates() const
 	{
@@ -90,26 +86,16 @@ class UMaterialExpressionMaterialAttributeLayers : public UMaterialExpression
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
+	virtual bool NeedsLoadForClient() const override { return true; };
 	//~ Begin UObject Interface
 
-#if WITH_EDITORONLY_DATA
 	ENGINE_API void RebuildLayerGraph(bool bReportErrors);
 	ENGINE_API void OverrideLayerGraph(const FMaterialLayersFunctions* OverrideLayers);
-#endif // WITH_EDITORONLY_DATA
-
-#if WITH_EDITOR
 	bool ValidateLayerConfiguration(FMaterialCompiler* Compiler, bool bReportErrors);
-#endif // WITH_EDITOR
 
-#if WITH_EDITORONLY_DATA
-	bool IterateDependentFunctions(TFunctionRef<bool(UMaterialFunctionInterface*)> Predicate) const;
 	void GetDependentFunctions(TArray<UMaterialFunctionInterface*>& DependentFunctions) const;
-#endif
-
-	UMaterialFunctionInterface* GetParameterAssociatedFunction(const FHashedMaterialParameterInfo& ParameterInfo) const;
-#if 0
+	UMaterialFunctionInterface* GetParameterAssociatedFunction(const FMaterialParameterInfo& ParameterInfo) const;
 	void GetParameterAssociatedFunctions(const FMaterialParameterInfo& ParameterInfo, TArray<UMaterialFunctionInterface*>& AssociatedFunctions) const;
-#endif
 
 	//~ Begin UMaterialExpression Interface
 #if WITH_EDITOR
@@ -135,7 +121,7 @@ class UMaterialExpressionMaterialAttributeLayers : public UMaterialExpression
 	//~ End UMaterialExpression Interface
 	
 	/** Return whether this is the named parameter, and fill in its value */
-	bool IsNamedParameter(const FHashedMaterialParameterInfo& ParameterInfo, FMaterialLayersFunctions& OutLayers, FGuid& OutExpressionGuid) const;
+	bool IsNamedParameter(const FMaterialParameterInfo& ParameterInfo, FMaterialLayersFunctions& OutLayers, FGuid& OutExpressionGuid) const;
 	
 	ENGINE_API virtual FGuid& GetParameterExpressionId() override
 	{

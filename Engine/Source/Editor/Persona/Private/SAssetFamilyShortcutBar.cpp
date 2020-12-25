@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SAssetFamilyShortcutBar.h"
 #include "Styling/SlateTypes.h"
@@ -192,16 +192,9 @@ public:
 	{
 		if(AssetData.IsValid())
 		{
-			if (UObject* AssetObject = AssetData.GetAsset())
-			{
-				TArray<UObject*> Assets;
-				Assets.Add(AssetObject);
-				GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->OpenEditorForAssets(Assets);
-			}
-			else
-			{
-				UE_LOG(LogAnimation, Error, TEXT("Asset cannot be opened: %s"), *AssetData.ObjectPath.ToString());
-			}
+			TArray<UObject*> Assets;
+			Assets.Add(AssetData.GetAsset());
+			GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->OpenEditorForAssets(Assets);
 		}
 	}
 
@@ -212,17 +205,14 @@ public:
 
 	ECheckBoxState GetCheckState() const
 	{
-		if(HostingApp.IsValid())
+		const TArray<UObject*>* Objects = HostingApp.Pin()->GetObjectsCurrentlyBeingEdited();
+		if (Objects != nullptr)
 		{
-			const TArray<UObject*>* Objects = HostingApp.Pin()->GetObjectsCurrentlyBeingEdited();
-			if (Objects != nullptr)
+			for (UObject* Object : *Objects)
 			{
-				for (UObject* Object : *Objects)
+				if (FAssetData(Object) == AssetData)
 				{
-					if (FAssetData(Object) == AssetData)
-					{
-						return ECheckBoxState::Checked;
-					}
+					return ECheckBoxState::Checked;
 				}
 			}
 		}
@@ -394,31 +384,28 @@ public:
 
 	void RefreshAsset()
 	{
-		if(HostingApp.IsValid())
+		// if this is the asset being edited by our hosting asset editor, don't switch it
+		bool bAssetBeingEdited = false;
+		const TArray<UObject*>* Objects = HostingApp.Pin()->GetObjectsCurrentlyBeingEdited();
+		if (Objects != nullptr)
 		{
-			// if this is the asset being edited by our hosting asset editor, don't switch it
-			bool bAssetBeingEdited = false;
-			const TArray<UObject*>* Objects = HostingApp.Pin()->GetObjectsCurrentlyBeingEdited();
-			if (Objects != nullptr)
+			for (UObject* Object : *Objects)
 			{
-				for (UObject* Object : *Objects)
+				if (FAssetData(Object) == AssetData)
 				{
-					if (FAssetData(Object) == AssetData)
-					{
-						bAssetBeingEdited = true;
-						break;
-					}
+					bAssetBeingEdited = true;
+					break;
 				}
 			}
+		}
 
-			// switch to new asset if needed
-			FAssetData NewAssetData = AssetFamily->FindAssetOfType(AssetData.GetClass());
-			if (!bAssetBeingEdited && NewAssetData.IsValid() && NewAssetData != AssetData)
-			{
-				AssetData = NewAssetData;
+		// switch to new asset if needed
+		FAssetData NewAssetData = AssetFamily->FindAssetOfType(AssetData.GetClass());
+		if (!bAssetBeingEdited && NewAssetData.IsValid() && NewAssetData != AssetData)
+		{
+			AssetData = NewAssetData;
 
-				RegenerateThumbnail();
-			}
+			RegenerateThumbnail();
 		}
 	}
 

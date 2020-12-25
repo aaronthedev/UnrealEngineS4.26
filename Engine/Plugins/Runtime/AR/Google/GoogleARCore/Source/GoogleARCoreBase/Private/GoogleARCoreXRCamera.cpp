@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GoogleARCoreXRCamera.h"
 #include "GoogleARCoreXRTrackingSystem.h"
@@ -35,6 +35,7 @@ void FGoogleARCoreXRCamera::SetupViewProjectionMatrix(FSceneViewProjectionData& 
 
 void FGoogleARCoreXRCamera::BeginRenderViewFamily(FSceneViewFamily& InViewFamily)
 {
+	PassthroughRenderer->InitializeOverlayMaterial();
 	FDefaultXRCamera::BeginRenderViewFamily(InViewFamily);
 }
 
@@ -46,7 +47,7 @@ void FGoogleARCoreXRCamera::PreRenderViewFamily_RenderThread(FRHICommandListImme
 
 	if (TS.ARCoreDeviceInstance->GetIsARCoreSessionRunning() && bEnablePassthroughCameraRendering_RT)
 	{
-		PassthroughRenderer->InitializeRenderer_RenderThread(InViewFamily);
+		PassthroughRenderer->InitializeRenderer_RenderThread(TS.ARCoreDeviceInstance->GetPassthroughCameraTexture());
 	}
 
 #if PLATFORM_ANDROID
@@ -63,7 +64,12 @@ void FGoogleARCoreXRCamera::PreRenderViewFamily_RenderThread(FRHICommandListImme
 
 void FGoogleARCoreXRCamera::PostRenderBasePass_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView)
 {
-	PassthroughRenderer->RenderVideoOverlay_RenderThread(RHICmdList, InView);
+	TArray<FVector2D> PassthroughUVs;
+	if (GetPassthroughCameraUVs_RenderThread(PassthroughUVs))
+	{
+		PassthroughRenderer->UpdateOverlayUVCoordinate_RenderThread(PassthroughUVs, InView);
+		PassthroughRenderer->RenderVideoOverlay_RenderThread(RHICmdList, InView);
+	}
 }
 
 bool FGoogleARCoreXRCamera::GetPassthroughCameraUVs_RenderThread(TArray<FVector2D>& OutUVs)
@@ -73,26 +79,14 @@ bool FGoogleARCoreXRCamera::GetPassthroughCameraUVs_RenderThread(TArray<FVector2
 	{
 		TArray<float> TransformedUVs;
 		// TODO save the transformed UVs and only calculate if uninitialized or FGoogleARCoreFrame::IsDisplayRotationChanged() returns true
-		static const TArray<float> OverlayQuadUVs = { 0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f };
-		GoogleARCoreTrackingSystem.ARCoreDeviceInstance->GetPassthroughCameraImageUVs(OverlayQuadUVs, TransformedUVs);
+		GoogleARCoreTrackingSystem.ARCoreDeviceInstance->GetPassthroughCameraImageUVs(PassthroughRenderer->OverlayQuadUVs, TransformedUVs);
 		
 		OutUVs.SetNumUninitialized(4);
 
-		bool bFlipCameraImageVertically = !IsMobileHDR();
-		if (bFlipCameraImageVertically)
-		{
-			OutUVs[1] = FVector2D(TransformedUVs[0], TransformedUVs[1]);
-			OutUVs[0] = FVector2D(TransformedUVs[2], TransformedUVs[3]);
-			OutUVs[3] = FVector2D(TransformedUVs[4], TransformedUVs[5]);
-			OutUVs[2] = FVector2D(TransformedUVs[6], TransformedUVs[7]);
-		}
-		else
-		{
-			OutUVs[0] = FVector2D(TransformedUVs[0], TransformedUVs[1]);
-			OutUVs[1] = FVector2D(TransformedUVs[2], TransformedUVs[3]);
-			OutUVs[2] = FVector2D(TransformedUVs[4], TransformedUVs[5]);
-			OutUVs[3] = FVector2D(TransformedUVs[6], TransformedUVs[7]);
-		}
+		OutUVs[0] = FVector2D(TransformedUVs[0], TransformedUVs[1]);
+		OutUVs[1] = FVector2D(TransformedUVs[2], TransformedUVs[3]);
+		OutUVs[2] = FVector2D(TransformedUVs[4], TransformedUVs[5]);
+		OutUVs[3] = FVector2D(TransformedUVs[6], TransformedUVs[7]);
 		return true;
 	}
 	else
@@ -116,12 +110,4 @@ void FGoogleARCoreXRCamera::ConfigXRCamera(bool bInMatchDeviceCameraFOV, bool bI
 			ARCoreXRCamera->bEnablePassthroughCameraRendering_RT = bInEnablePassthroughCameraRendering;
 		}
 	);
-}
-
-void FGoogleARCoreXRCamera::UpdateCameraTextures(UTexture* NewCameraTexture, UTexture* DepthTexture, bool bEnableOcclusion)
-{
-	if (PassthroughRenderer)
-	{
-		PassthroughRenderer->UpdateCameraTextures(NewCameraTexture, DepthTexture, bEnableOcclusion);
-	}
 }

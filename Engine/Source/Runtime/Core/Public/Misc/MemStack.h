@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -41,23 +41,19 @@ public:
 	typedef TLockFreeFixedSizeAllocator<PageSize, PLATFORM_CACHE_LINE_SIZE, FThreadSafeCounter> TPageAllocator;
 #endif
 
-	static FPageAllocator& Get();
-
-	void* Alloc();
-	void Free(void* Mem);
-	void* AllocSmall();
-	void FreeSmall(void* Mem);
-	uint64 BytesUsed();
-	uint64 BytesFree();
-	void LatchProtectedMode();
+	static void *Alloc();
+	static void Free(void *Mem);
+	static void *AllocSmall();
+	static void FreeSmall(void *Mem);
+	static uint64 BytesUsed();
+	static uint64 BytesFree();
+	static void LatchProtectedMode();
 private:
 
-	FPageAllocator() {}
-
 #if STATS
-	void UpdateStats();
+	static void UpdateStats();
 #endif
-	TPageAllocator TheAllocator;
+	static TPageAllocator TheAllocator;
 };
 
 
@@ -233,51 +229,39 @@ template <class T> inline T* NewOned(FMemStackBase& Mem, int32 Count = 1, int32 
 inline void* operator new(size_t Size, FMemStackBase& Mem, int32 Count = 1, int32 Align = DEFAULT_ALIGNMENT)
 {
 	// Get uninitialized memory.
-	const size_t SizeInBytes = Size * Count;
-	checkSlow(SizeInBytes <= (size_t)TNumericLimits<int32>::Max());
-	return Mem.PushBytes( (int32)SizeInBytes, Align );
+	return Mem.PushBytes( Size*Count, Align );
 }
 inline void* operator new(size_t Size, FMemStackBase& Mem, EMemZeroed Tag, int32 Count = 1, int32 Align = DEFAULT_ALIGNMENT)
 {
 	// Get zero-filled memory.
-	const size_t SizeInBytes = Size * Count;
-	checkSlow(SizeInBytes <= (size_t)TNumericLimits<int32>::Max());
-	uint8* Result = Mem.PushBytes( (int32)SizeInBytes, Align );
-	FMemory::Memzero( Result, SizeInBytes );
+	uint8* Result = Mem.PushBytes( Size*Count, Align );
+	FMemory::Memzero( Result, Size*Count );
 	return Result;
 }
 inline void* operator new(size_t Size, FMemStackBase& Mem, EMemOned Tag, int32 Count = 1, int32 Align = DEFAULT_ALIGNMENT)
 {
 	// Get one-filled memory.
-	const size_t SizeInBytes = Size * Count;
-	checkSlow(SizeInBytes <= (size_t)TNumericLimits<int32>::Max());
-	uint8* Result = Mem.PushBytes( (int32)SizeInBytes, Align );
-	FMemory::Memset( Result, 0xff, SizeInBytes );
+	uint8* Result = Mem.PushBytes( Size*Count, Align );
+	FMemory::Memset( Result, 0xff, Size*Count );
 	return Result;
 }
 inline void* operator new[](size_t Size, FMemStackBase& Mem, int32 Count = 1, int32 Align = DEFAULT_ALIGNMENT)
 {
 	// Get uninitialized memory.
-	const size_t SizeInBytes = Size * Count;
-	checkSlow(SizeInBytes <= (size_t)TNumericLimits<int32>::Max());
-	return Mem.PushBytes( (int32)SizeInBytes, Align );
+	return Mem.PushBytes( Size*Count, Align );
 }
 inline void* operator new[](size_t Size, FMemStackBase& Mem, EMemZeroed Tag, int32 Count = 1, int32 Align = DEFAULT_ALIGNMENT)
 {
 	// Get zero-filled memory.
-	const size_t SizeInBytes = Size * Count;
-	checkSlow(SizeInBytes <= (size_t)TNumericLimits<int32>::Max());
-	uint8* Result = Mem.PushBytes( (int32)SizeInBytes, Align );
-	FMemory::Memzero( Result, SizeInBytes );
+	uint8* Result = Mem.PushBytes( Size*Count, Align );
+	FMemory::Memzero( Result, Size*Count );
 	return Result;
 }
 inline void* operator new[](size_t Size, FMemStackBase& Mem, EMemOned Tag, int32 Count = 1, int32 Align = DEFAULT_ALIGNMENT)
 {
 	// Get one-filled memory.
-	const size_t SizeInBytes = Size * Count;
-	checkSlow(SizeInBytes <= (size_t)TNumericLimits<int32>::Max());
-	uint8* Result = Mem.PushBytes( (int32)SizeInBytes, Align );
-	FMemory::Memset( Result, 0xff, SizeInBytes );
+	uint8* Result = Mem.PushBytes( Size*Count, Align );
+	FMemory::Memset( Result, 0xff, Size*Count );
 	return Result;
 }
 
@@ -320,8 +304,6 @@ public:
 		{
 			return Data;
 		}
-
-		//@TODO: FLOATPRECISION: Takes SIZE_T input but doesn't actually support it
 		void ResizeAllocation(SizeType PreviousNumElements, SizeType NumElements,SIZE_T NumBytesPerElement)
 		{
 			void* OldData = Data;
@@ -329,7 +311,7 @@ public:
 			{
 				// Allocate memory from the stack.
 				Data = (ElementType*)FMemStack::Get().PushBytes(
-					(int32)(NumElements * NumBytesPerElement),
+					NumElements * NumBytesPerElement,
 					FMath::Max(Alignment,(uint32)alignof(ElementType))
 					);
 
@@ -362,11 +344,6 @@ public:
 		bool HasAllocation() const
 		{
 			return !!Data;
-		}
-
-		SizeType GetInitialCapacity() const
-		{
-			return 0;
 		}
 			
 	private:

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SSequencerTreeView.h"
 #include "SSequencerTrackLane.h"
@@ -10,7 +10,6 @@
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Framework/Application/SlateApplication.h"
 #include "SSequencerTreeView.h"
-#include "ScopedTransaction.h"
 
 static FName TrackAreaName = "TrackArea";
 
@@ -73,7 +72,7 @@ FReply SSequencerTreeViewRow::OnDragDetected( const FGeometry& InGeometry, const
 		if ( Sequencer.GetSelection().GetSelectedOutlinerNodes().Num() > 0 )
 		{
 			TArray<TSharedRef<FSequencerDisplayNode> > DraggableNodes;
-			for ( const TSharedRef<FSequencerDisplayNode>& SelectedNode : Sequencer.GetSelection().GetSelectedOutlinerNodes() )
+			for ( const TSharedRef<FSequencerDisplayNode> SelectedNode : Sequencer.GetSelection().GetSelectedOutlinerNodes() )
 			{
 				if ( SelectedNode->CanDrag() )
 				{
@@ -459,46 +458,6 @@ void SSequencerTreeView::OnRightMouseButtonUp(const FPointerEvent& MouseEvent)
 {
 	STreeView::OnRightMouseButtonUp(MouseEvent);
 	bRightMouseButtonDown = false;
-}
-
-FReply SSequencerTreeView::OnDragOver(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent)
-{
-	FReply Result = STreeView::OnDragOver(MyGeometry, DragDropEvent);
-
-	if (!Result.IsEventHandled())
-	{
-		TSharedPtr<FSequencerDisplayNodeDragDropOp> DragDropOp = DragDropEvent.GetOperationAs<FSequencerDisplayNodeDragDropOp>();
-		if (DragDropOp.IsValid())
-		{
-			// Reset tooltip to indicate that the dragged objects can be moved to the root (ie. unparented)
-			DragDropOp->ResetToDefaultToolTip();
-		}
-
-		return Result.Handled();
-	}
-	return Result;
-}
-
-FReply SSequencerTreeView::OnDrop(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent)
-{
-	FReply Result = STreeView::OnDrop(MyGeometry, DragDropEvent);
-
-	TSharedPtr<FSequencerDisplayNodeDragDropOp> DragDropOp = DragDropEvent.GetOperationAs<FSequencerDisplayNodeDragDropOp>();
-	if (!Result.IsEventHandled() && DragDropOp.IsValid() && DragDropOp->GetDraggedNodes().Num())
-	{
-		const FScopedTransaction Transaction(NSLOCTEXT("SequencerTrackNode", "MoveItems", "Move items."));
-
-		for (TSharedRef<FSequencerDisplayNode> DraggedNode : DragDropOp->GetDraggedNodes())
-		{
-			SequencerNodeTree->MoveDisplayNodeToRoot(DraggedNode);
-		}
-
-		SequencerNodeTree->GetSequencer().NotifyMovieSceneDataChanged(EMovieSceneDataChangeType::MovieSceneStructureItemsChanged);
-
-		return FReply::Handled();
-	}
-	
-	return Result;
 }
 
 FReply SSequencerTreeView::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)

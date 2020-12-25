@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -37,22 +37,13 @@ namespace Tools.DotNETCommon
 			else
 			{
 				ParentInfo = FindCorrectCase(ParentInfo);
-				try
+				foreach (DirectoryInfo ChildInfo in ParentInfo.EnumerateDirectories())
 				{
-					foreach (DirectoryInfo ChildInfo in ParentInfo.EnumerateDirectories())
+					if (String.Equals(ChildInfo.Name, Info.Name, DirectoryReference.Comparison))
 					{
-						if (String.Equals(ChildInfo.Name, Info.Name, DirectoryReference.Comparison))
-						{
-							return ChildInfo;
-						}
+						return ChildInfo;
 					}
 				}
-				catch (Exception)
-				{
-					// System.Security.SecurityException is expected here if we try to enumerate a directory
-					// we don't have permission to read, such as another user's mounted volume.
-				}
-
 				return new DirectoryInfo(Path.Combine(ParentInfo.FullName, Info.Name));
 			}
 		}

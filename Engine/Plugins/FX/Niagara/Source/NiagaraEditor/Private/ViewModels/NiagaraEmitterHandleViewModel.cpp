@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ViewModels/NiagaraEmitterHandleViewModel.h"
 #include "NiagaraSystem.h"
@@ -6,7 +6,7 @@
 #include "ViewModels/NiagaraSystemViewModel.h"
 #include "ViewModels/NiagaraEmitterViewModel.h"
 #include "ViewModels/Stack/NiagaraStackViewModel.h"
-#include "ViewModels/NiagaraScriptViewModel.h"
+#include "NiagaraScriptViewModel.h"
 #include "NiagaraScriptGraphViewModel.h"
 #include "NiagaraObjectSelection.h"
 #include "NiagaraScriptSource.h"
@@ -14,15 +14,11 @@
 #include "NiagaraGraph.h"
 #include "NiagaraNodeInput.h"
 #include "NiagaraScriptOutputCollectionViewModel.h"
-#include "Algo/Find.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
+
 #include "ScopedTransaction.h"
-#include "NiagaraRendererProperties.h"
-#include "ViewModels/Stack/NiagaraStackRoot.h"
-#include "ViewModels/Stack/NiagaraStackRenderItemGroup.h"
-#include "ViewModels/Stack/NiagaraStackRendererItem.h"
-#include "NiagaraMessages.h"
+
 
 #define LOCTEXT_NAMESPACE "EmitterHandleViewModel"
 
@@ -49,50 +45,11 @@ void FNiagaraEmitterHandleViewModel::Cleanup()
 	}
 }
 
-void FNiagaraEmitterHandleViewModel::GetRendererEntries(TArray<UNiagaraStackEntry*>& InRenderingEntries)
-{
-	InRenderingEntries.Empty();
-	UNiagaraEmitter* Emitter = GetEmitterHandle()->GetInstance();
-	UNiagaraStackRoot* StackRoot = Cast<UNiagaraStackRoot>(EmitterStackViewModel->GetRootEntry());
-	if (StackRoot)
-	{
-		TArray<UNiagaraStackEntry*> Children;
-		StackRoot->GetRenderGroup()->GetUnfilteredChildren(Children);
-		for (UNiagaraStackEntry* Child : Children)
-		{
-			if (UNiagaraStackRendererItem* RendererItem = Cast<UNiagaraStackRendererItem>(Child))
-			{
-				InRenderingEntries.Add(Child);
-			}
-		}
-	}
-}
-
 TSharedRef<FNiagaraSystemViewModel> FNiagaraEmitterHandleViewModel::GetOwningSystemViewModel() const
 {
 	TSharedPtr<FNiagaraSystemViewModel> OwningSystemViewModelPinned = OwningSystemViewModelWeak.Pin();
 	checkf(OwningSystemViewModelPinned.IsValid(), TEXT("Owning system view model was destroyed before child handle view model."));
 	return OwningSystemViewModelPinned.ToSharedRef();
-}
-
-FGuid FNiagaraEmitterHandleViewModel::AddMessage(UNiagaraMessageData* NewMessage, const FGuid& InNewGuid /*= FGuid()*/) const
-{
-	if (ensureMsgf(EmitterHandle != nullptr, TEXT("EmitterHandleViewModel had a null EmitterHandle!")))
-	{
-		const FGuid NewGuid = InNewGuid.IsValid() ? InNewGuid : FGuid::NewGuid();
-		
-		EmitterHandle->GetInstance()->AddMessage(NewGuid, static_cast<UNiagaraMessageDataBase*>(NewMessage));
-		return NewGuid;
-	}
-	return FGuid();
-}
-
-void FNiagaraEmitterHandleViewModel::RemoveMessage(const FGuid& MessageKey) const
-{
-	if (ensureMsgf(EmitterHandle != nullptr, TEXT("EmitterHandleViewModel had a null EmitterHandle!")))
-	{
-		EmitterHandle->GetInstance()->RemoveMessage(MessageKey);
-	}
 }
 
 FNiagaraEmitterHandleViewModel::~FNiagaraEmitterHandleViewModel()
@@ -140,6 +97,12 @@ FGuid FNiagaraEmitterHandleViewModel::GetId() const
 	return FGuid();
 }
 
+FText FNiagaraEmitterHandleViewModel::GetIdText() const
+{
+	return FText::FromString( GetId().ToString() );
+}
+
+
 FText FNiagaraEmitterHandleViewModel::GetErrorText() const
 {
 	switch (EmitterViewModel->GetLatestCompileStatus())
@@ -184,7 +147,7 @@ FName FNiagaraEmitterHandleViewModel::GetName() const
 
 void FNiagaraEmitterHandleViewModel::SetName(FName InName)
 {
-	if (EmitterHandle && EmitterHandle->GetName().IsEqual(InName, ENameCase::CaseSensitive, false))
+	if (EmitterHandle && EmitterHandle->GetName() == InName)
 	{
 		return;
 	}
@@ -223,27 +186,10 @@ void FNiagaraEmitterHandleViewModel::OnNameTextComitted(const FText& InText, ETe
 
 bool FNiagaraEmitterHandleViewModel::VerifyNameTextChanged(const FText& NewText, FText& OutErrorMessage)
 {
-	static const FString ReservedNames[] =
-	{
-		TEXT("Particles"),
-		TEXT("Local"),
-		TEXT("Engine"),
-		TEXT("Transient"),
-		TEXT("User"),
-		TEXT("Emitter"),
-		TEXT("Module"),
-		TEXT("NPC")
-	};
-
-	FString NewString = NewText.ToString();
-	if (NewText.IsEmptyOrWhitespace())
+	FName NewName = *NewText.ToString();
+	if (NewName == FName())
 	{
 		OutErrorMessage = NSLOCTEXT("NiagaraEmitterEditor", "NiagaraInputNameEmptyWarn", "Cannot have empty name!");
-		return false;
-	}
-	else if (Algo::Find(ReservedNames, NewString) != nullptr)
-	{
-		OutErrorMessage = FText::Format(NSLOCTEXT("NiagaraEmitterEditor", "NiagaraInputNameReservedWarn", "Cannot use reserved name \"{0}\"!"), NewText);
 		return false;
 	}
 	return true;
@@ -272,25 +218,6 @@ void FNiagaraEmitterHandleViewModel::SetIsEnabled(bool bInIsEnabled)
 bool FNiagaraEmitterHandleViewModel::GetIsIsolated() const
 {
 	return EmitterHandle != nullptr && EmitterHandle->IsIsolated();
-}
-
-void FNiagaraEmitterHandleViewModel::SetIsIsolated(bool bInIsIsolated)
-{
-	bool bWasIsolated = GetIsIsolated();
-
-	if (bWasIsolated == false && bInIsIsolated == true)
-	{
-		GetOwningSystemViewModel()->IsolateEmitters(TArray<FGuid> { EmitterHandle->GetId() });
-	}
-	else if (bWasIsolated == true && bInIsIsolated == false)
-	{
-		GetOwningSystemViewModel()->IsolateEmitters(TArray<FGuid> {});
-	}
-}
-
-ENiagaraSystemViewModelEditMode FNiagaraEmitterHandleViewModel::GetOwningSystemEditMode() const
-{
-	return GetOwningSystemViewModel()->GetEditMode();
 }
 
 ECheckBoxState FNiagaraEmitterHandleViewModel::GetIsEnabledCheckState() const

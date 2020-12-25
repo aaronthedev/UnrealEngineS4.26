@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MultiGPU.h: Multi-GPU support
@@ -16,7 +16,6 @@
 extern RHI_API uint32 GNumExplicitGPUsForRendering;
 extern RHI_API uint32 GNumAlternateFrameRenderingGroups;
 extern RHI_API uint32 GVirtualMGPU;
-extern RHI_API int32 GAllowMultiGPUInEditor;
 #else
 #define WITH_SLI 0
 #define WITH_MGPU 0
@@ -24,7 +23,6 @@ extern RHI_API int32 GAllowMultiGPUInEditor;
 #define GNumExplicitGPUsForRendering 1
 #define GNumAlternateFrameRenderingGroups 1
 #define GVirtualMGPU 0
-#define GAllowMultiGPUInEditor 0
 #endif
 
 /** A mask where each bit is a GPU index. Can not be empty so that non SLI platforms can optimize it to be always 1.  */
@@ -112,7 +110,6 @@ public:
 
 	FORCEINLINE static const FRHIGPUMask GPU0() { return FRHIGPUMask(1); }
 	FORCEINLINE static const FRHIGPUMask All() { return FRHIGPUMask((1 << GNumExplicitGPUsForRendering) - 1); }
-	FORCEINLINE static const FRHIGPUMask FilterGPUsBefore(uint32 GPUIndex) { return FRHIGPUMask(~((1u << GPUIndex) - 1)) & All(); }
 
 	struct FIterator
 	{

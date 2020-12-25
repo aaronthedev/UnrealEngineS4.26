@@ -1,6 +1,7 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2020 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2014 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 2016-2019 Epic Games, Inc.
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -24,8 +25,6 @@
 #if SDL_VIDEO_DRIVER_OFFSCREEN
 
 #include "SDL_offscreenopengl.h"
-
-#include "SDL_opengl.h"
 
 int
 OFFSCREEN_GL_SwapWindow(_THIS, SDL_Window* window)

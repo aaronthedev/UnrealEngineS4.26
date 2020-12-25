@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -95,6 +95,7 @@
 #include "Delegates/DelegateBase.h"
 #include "Delegates/IntegerSequence.h"
 #include "Templates/Tuple.h"
+#include "Templates/TypeWrapper.h"
 #include "UObject/ScriptDelegates.h"
 #include "Misc/Optional.h"
 #include "Misc/Parse.h"
@@ -559,6 +560,7 @@
 #include "Math/GenericOctreePublic.h"
 #include "GameFramework/OnlineReplStructs.h"
 #include "Audio.h"
+#include "Sound/SoundClass.h"
 #include "Sound/SoundAttenuation.h"
 #include "IAudioExtensionPlugin.h"
 #include "Tickable.h"

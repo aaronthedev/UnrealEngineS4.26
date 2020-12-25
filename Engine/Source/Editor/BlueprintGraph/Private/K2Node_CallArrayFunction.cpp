@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "K2Node_CallArrayFunction.h"
 #include "EdGraphSchema_K2.h"
@@ -58,9 +58,9 @@ void UK2Node_CallArrayFunction::PostReconstructNode()
 	Super::PostReconstructNode();
 }
 
-void UK2Node_CallArrayFunction::NotifyPinConnectionListChanged(UEdGraphPin* ChangedPin)
+void UK2Node_CallArrayFunction::NotifyPinConnectionListChanged(UEdGraphPin* Pin)
 {
-	Super::NotifyPinConnectionListChanged(ChangedPin);
+	Super::NotifyPinConnectionListChanged(Pin);
 
 	TArray<UEdGraphPin*> PinsToCheck;
 	GetArrayTypeDependentPins(PinsToCheck);
@@ -74,23 +74,22 @@ void UK2Node_CallArrayFunction::NotifyPinConnectionListChanged(UEdGraphPin* Chan
 		}
 	}
 
-	UEdGraphPin* TargetArray = GetTargetArrayPin();
+	PinsToCheck.Add(GetTargetArrayPin());
 
-	if (PinsToCheck.Contains(ChangedPin))
+	if (PinsToCheck.Contains(Pin))
 	{
 		bool bNeedToPropagate = false;
 
-		if(ChangedPin->LinkedTo.Num() > 0)
+		if( Pin->LinkedTo.Num() > 0 )
 		{
-			UEdGraphPin* LinkedTo = ChangedPin->LinkedTo[0];
-			check(LinkedTo);
-
-			// If the pin being changed is a WildCard or the array input itself, then we must propagate changes
-			if (ChangedPin->PinType.PinCategory == UEdGraphSchema_K2::PC_Wildcard || (ChangedPin == TargetArray && LinkedTo->PinType.PinCategory != UEdGraphSchema_K2::PC_Wildcard))
+			if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Wildcard)
 			{
-				ChangedPin->PinType.PinCategory = LinkedTo->PinType.PinCategory;
-				ChangedPin->PinType.PinSubCategory = LinkedTo->PinType.PinSubCategory;
-				ChangedPin->PinType.PinSubCategoryObject = LinkedTo->PinType.PinSubCategoryObject;
+				UEdGraphPin* LinkedTo = Pin->LinkedTo[0];
+				check(LinkedTo);
+
+				Pin->PinType.PinCategory = LinkedTo->PinType.PinCategory;
+				Pin->PinType.PinSubCategory = LinkedTo->PinType.PinSubCategory;
+				Pin->PinType.PinSubCategoryObject = LinkedTo->PinType.PinSubCategoryObject;
 
 				bNeedToPropagate = true;
 			}
@@ -110,15 +109,15 @@ void UK2Node_CallArrayFunction::NotifyPinConnectionListChanged(UEdGraphPin* Chan
 
 			if (bNeedToPropagate)
 			{
-				ChangedPin->PinType.PinCategory = UEdGraphSchema_K2::PC_Wildcard;
-				ChangedPin->PinType.PinSubCategory = NAME_None;
-				ChangedPin->PinType.PinSubCategoryObject = nullptr;
+				Pin->PinType.PinCategory = UEdGraphSchema_K2::PC_Wildcard;
+				Pin->PinType.PinSubCategory = NAME_None;
+				Pin->PinType.PinSubCategoryObject = nullptr;
 			}
 		}
 
 		if (bNeedToPropagate)
 		{
-			PropagateArrayTypeInfo(ChangedPin);
+			PropagateArrayTypeInfo(Pin);
 			GetGraph()->NotifyGraphChanged();
 		}
 	}
@@ -223,7 +222,7 @@ void UK2Node_CallArrayFunction::GetArrayPins(TArray< FArrayPropertyPinCombo >& O
 	}
 }
 
-bool UK2Node_CallArrayFunction::IsWildcardProperty(UFunction* InArrayFunction, const FProperty* InProperty)
+bool UK2Node_CallArrayFunction::IsWildcardProperty(UFunction* InArrayFunction, const UProperty* InProperty)
 {
 	if(InArrayFunction && InProperty)
 	{
@@ -272,12 +271,6 @@ void UK2Node_CallArrayFunction::GetArrayTypeDependentPins(TArray<UEdGraphPin*>& 
 			}
 		}
 	}
-
-	// Add the target array pin to make sure we get everything that depends on this type
-	if(UEdGraphPin* TargetPin = GetTargetArrayPin())
-	{
-		OutPins.Add(TargetPin);
-	}	
 }
 
 void UK2Node_CallArrayFunction::PropagateArrayTypeInfo(const UEdGraphPin* SourcePin)
@@ -289,12 +282,14 @@ void UK2Node_CallArrayFunction::PropagateArrayTypeInfo(const UEdGraphPin* Source
 
 		TArray<UEdGraphPin*> DependentPins;
 		GetArrayTypeDependentPins(DependentPins);
+		DependentPins.Add(GetTargetArrayPin());
 	
 		// Propagate pin type info (except for array info!) to pins with dependent types
 		for (UEdGraphPin* CurrentPin : DependentPins)
 		{
-			if (CurrentPin && CurrentPin != SourcePin)
+			if (CurrentPin != SourcePin)
 			{
+				CA_SUPPRESS(6011); // warning C6011: Dereferencing NULL pointer 'CurrentPin'.
 				FEdGraphPinType& CurrentPinType = CurrentPin->PinType;
 
 				bool const bHasTypeMismatch = (CurrentPinType.PinCategory != SourcePinType.PinCategory) ||

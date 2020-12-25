@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.Collections.Generic;
@@ -37,34 +37,26 @@ public class DatasmithSDKTarget : TargetRules
 		}
 	}
 
-	public void PostBuildCopy(string SrcPath, string DestPath)
-	{
-		PostBuildSteps.Add(string.Format("echo Copying {0} to {1}", SrcPath, DestPath));
-		PostBuildSteps.Add(string.Format("xcopy {0} {1} /R /Y /S", SrcPath, DestPath));
-	}
-
 	public void AddWindowsPostBuildSteps()
 	{
 		// Copy the documentation
-		PostBuildCopy(
-			@"$(EngineDir)\Source\Programs\Enterprise\Datasmith\DatasmithSDK\Documentation\*.*",
-			@"$(EngineDir)\Binaries\$(TargetPlatform)\DatasmithSDK\Documentation\"
-		);
+		string SrcPath = @"$(EngineDir)\Source\Programs\Enterprise\Datasmith\DatasmithSDK\Documentation\*.*";
+		string DestPath = @"$(EngineDir)\Binaries\$(TargetPlatform)\DatasmithSDK\Documentation\";
+
+		PostBuildSteps.Add(string.Format("echo Copying {0} to {1}", SrcPath, DestPath));
+		PostBuildSteps.Add(string.Format("xcopy {0} {1} /R /Y /S", SrcPath, DestPath));
 
 		// Copy the header files
-		PostBuildCopy(
-			@"$(EngineDir)\Source\Runtime\Datasmith\DatasmithCore\Public\*.h",
-			@"$(EngineDir)\Binaries\$(TargetPlatform)\DatasmithSDK\Public\"
-		);
+		SrcPath = @"$(EngineDir)\Source\Developer\Datasmith\DatasmithCore\Public\*.h";
+		DestPath = @"$(EngineDir)\Binaries\$(TargetPlatform)\DatasmithSDK\Public\";
 
-		PostBuildCopy(
-			@"$(EngineDir)\Source\Runtime\Datasmith\DirectLink\Public\*.h",
-			@"$(EngineDir)\Binaries\$(TargetPlatform)\DatasmithSDK\Public\"
-		);
+		PostBuildSteps.Add(string.Format("echo Copying {0} to {1}", SrcPath, DestPath));
+		PostBuildSteps.Add(string.Format("xcopy {0} {1} /R /Y /S", SrcPath, DestPath));
 
-		PostBuildCopy(
-			@"$(EngineDir)\Source\Developer\Datasmith\DatasmithExporter\Public\*.h",
-			@"$(EngineDir)\Binaries\$(TargetPlatform)\DatasmithSDK\Public\"
-		);
+		SrcPath = @"$(EngineDir)\Source\Developer\Datasmith\DatasmithExporter\Public\*.h";
+		DestPath = @"$(EngineDir)\Binaries\$(TargetPlatform)\DatasmithSDK\Public\";
+
+		PostBuildSteps.Add(string.Format("echo Copying {0} to {1}", SrcPath, DestPath));
+		PostBuildSteps.Add(string.Format("xcopy {0} {1} /R /Y /S", SrcPath, DestPath));
 	}
 }

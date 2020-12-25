@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -37,7 +37,7 @@ private:
 	FSlateFontInfo Font;
 
 	/** List of properties that this Custom Font Column should be used to display */
-	TArray<FProperty*> SupportedProperties;
+	TArray<UProperty*> SupportedProperties;
 
 	/** Function to call when Change Font button clicked */
 	FOnClicked OnChangeFontButtonClicked;
@@ -51,7 +51,7 @@ public:
 		Font = InFont;
 	}
 
-	void AddSupportedProperty(FProperty* Property)
+	void AddSupportedProperty(UProperty* Property)
 	{
 		SupportedProperties.Add(Property);
 	}

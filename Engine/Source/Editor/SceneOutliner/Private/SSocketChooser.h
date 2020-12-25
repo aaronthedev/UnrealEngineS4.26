@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -29,13 +29,36 @@ class SSocketChooserPopup : public SCompoundWidget
 public:
 	DECLARE_DELEGATE_OneParam( FOnSocketChosen, FName );
 
+	/** Filter utility class */
+	class FSocketFilterContext : public ITextFilterExpressionContext
+	{
+	public:
+		explicit FSocketFilterContext(FString&& InString)
+			: String(InString)
+		{
+		}
+
+		virtual bool TestBasicStringExpression(const FTextFilterString& InValue, const ETextFilterTextComparisonMode InTextComparisonMode) const override
+		{
+			return TextFilterUtils::TestBasicStringExpression(String, InValue, InTextComparisonMode);
+		}
+
+		virtual bool TestComplexExpression(const FName& InKey, const FTextFilterString& InValue, const ETextFilterComparisonOperation InComparisonOperation, const ETextFilterTextComparisonMode InTextComparisonMode) const override
+		{
+			return false;
+		}
+
+	private:
+		FString String;
+	};
+
 	/** Info about one socket */
 	struct FSocketInfo
 	{
 		FComponentSocketDescription Description;
 
 		/** Cached filter context for faster comparison */
-		FBasicStringFilterExpressionContext FilterContext;
+		FSocketFilterContext FilterContext;
 
 		static TSharedRef<FSocketInfo> Make(FComponentSocketDescription Description)
 		{
@@ -223,7 +246,7 @@ public:
 			FVector2D WindowLocation = Window->IsMorphing() ? Window->GetMorphTargetPosition() : Window->GetPositionInScreen();
 			FVector2D WindowSize = Window->GetDesiredSize();
 			FSlateRect Anchor(WindowLocation.X, WindowLocation.Y, WindowLocation.X, WindowLocation.Y);
-			WindowLocation = FSlateApplication::Get().CalculatePopupWindowPosition( Anchor, WindowSize, false );
+			WindowLocation = FSlateApplication::Get().CalculatePopupWindowPosition( Anchor, WindowSize );
 
 			// Update the window's position!
 			if( Window->IsMorphing() )

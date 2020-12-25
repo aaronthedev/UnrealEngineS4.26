@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -77,5 +77,29 @@ enum class ENetEventGroupingMode
 
 /** Type definition for shared pointers to instances of ENetEventGroupingMode. */
 typedef TSharedPtr<ENetEventGroupingMode> ENetEventGroupingModePtr;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/** Creates a group for each event type. */
+class FNetEventNodeGroupingByEventType : public Insights::FTreeNodeGrouping
+{
+public:
+	FNetEventNodeGroupingByEventType();
+	virtual ~FNetEventNodeGroupingByEventType() {}
+
+	virtual Insights::FTreeNodeGroupInfo GetGroupForNode(const Insights::FBaseTreeNodePtr InNode) const override;
+};
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/** Creates a group for each event level. */
+class FNetEventNodeGroupingByLevel : public Insights::FTreeNodeGrouping
+{
+public:
+	FNetEventNodeGroupingByLevel();
+	virtual ~FNetEventNodeGroupingByLevel() {}
+
+	virtual Insights::FTreeNodeGroupInfo GetGroupForNode(const Insights::FBaseTreeNodePtr InNode) const override;
+};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

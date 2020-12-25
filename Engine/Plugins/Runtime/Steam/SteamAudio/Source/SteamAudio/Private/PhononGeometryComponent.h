@@ -4,8 +4,7 @@
 
 #pragma once
 
-#include "Components/SceneComponent.h"
-#include "PhononCommon.h"
+#include "Components/ActorComponent.h"
 #include "PhononGeometryComponent.generated.h"
 
 /**
@@ -13,14 +12,13 @@
  * Should be placed on Static Mesh actors.
  */
 UCLASS(ClassGroup = (Audio), HideCategories = (Activation, Collision, Cooking), meta = (BlueprintSpawnableComponent))
-class UPhononGeometryComponent : public USceneComponent
+class UPhononGeometryComponent : public UActorComponent
 {
 	GENERATED_BODY()
 
 public:
 	UPhononGeometryComponent();
-	virtual void BeginPlay() override;
-	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+
 	void OnComponentCreated();
 
 #if WITH_EDITOR
@@ -39,11 +37,6 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = GeometryStatistics, meta = (DisplayName = "Triangles"))
 	uint32 NumTriangles;
 
-	// The handle to an instanced mesh if this component is attached to dynamic geometry
-	IPLhandle* InstancedMesh = nullptr;
-
 private:
 	void UpdateStatistics();
-	bool bHasDynamicParent = false;
-
 }; 

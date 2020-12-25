@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	OnlineReplStructs.cpp: Unreal networking serialization helpers
@@ -416,45 +416,25 @@ bool FUniqueNetIdRepl::ImportTextItem(const TCHAR*& Buffer, int32 PortFlags, UOb
 	bool bShouldWarn = true;
 	if (Buffer)
 	{
-		// An empty string, BP empty "()", or the word invalid are just considered expected invalid FUniqueNetIdRepls. No need to warn about those.
-		if (Buffer[0] == TEXT('\0'))
+		if (Buffer[0] == TEXT('\0') || (Buffer == FString(TEXT("()"))) || (Buffer == InvalidUniqueNetIdStr))
 		{
+			// An empty string, BP empty "()", or the word invalid are just considered expected invalid FUniqueNetIdRepls. No need to warn about those.
 			bShouldWarn = false;
-		}
-		else if (Buffer[0] == TEXT('(') && Buffer[1] == TEXT(')'))
-		{
-			bShouldWarn = false;
-			Buffer += 2;
 		}
 		else
 		{
 			checkf(UOnlineEngineInterface::Get() && UOnlineEngineInterface::Get()->IsLoaded(), TEXT("Attempted to ImportText to FUniqueNetIdRepl while OSS is not loaded. Parent:%s"), *GetPathNameSafe(Parent));
+			FString Contents(Buffer);
 
-			FString Token;
-			if (const TCHAR* NewBuffer1 = FPropertyHelpers::ReadToken(Buffer, Token))
+			TArray<FString> Tokens;
+			int32 NumTokens = Contents.ParseIntoArray(Tokens, TEXT(":"));
+			if (NumTokens == 2)
 			{
-				Buffer = NewBuffer1;
-
-				// Ids can be serialized with OSS prefix e.g.: PREFIX:48ac94b14ca949f3244f91f4a92afb86
-				if (Buffer[0] == TEXT(':'))
-				{
-					Buffer++;
-
-					FString IdStr;
-					if (const TCHAR* NewBuffer2 = FPropertyHelpers::ReadToken(Buffer, IdStr))
-					{
-						Buffer = NewBuffer2;
-						UniqueIdFromString(FName(*Token), IdStr);
-					}
-				}
-				else if (Token == InvalidUniqueNetIdStr)
-				{
-					bShouldWarn = false;
-				}
-				else
-				{
-					UniqueIdFromString(NAME_None, Token);
-				}
+				UniqueIdFromString(FName(*Tokens[0]), Tokens[1]);
+			}
+			else if (NumTokens == 1)
+			{
+				UniqueIdFromString(NAME_None, Tokens[0]);
 			}
 		}
 	}
@@ -542,8 +522,7 @@ void TestUniqueIdRepl(UWorld* InWorld)
 	FUniqueNetIdRepl UpperCaseStringIdIn(UOnlineEngineInterface::Get()->CreateUniquePlayerId(TEXT("abcDEF")));
 
 #if 1
-#define WAYTOOLONG TEXT(\
-		"deadbeefba5eba11deadbeefba5eba11 \
+#define WAYTOOLONG TEXT("deadbeefba5eba11deadbeefba5eba11 \
 		deadbeefba5eba11deadbeefba5eba11deadbeefba5eba11deadbeefba5eba11deadbeefba5eba11deadbeefba5eba11 \
 		deadbeefba5eba11deadbeefba5eba11deadbeefba5eba11deadbeefba5eba11deadbeefba5eba11deadbeefba5eba11 \
 		deadbeefba5eba11deadbeefba5eba11deadbeefba5eba11deadbeefba5eba11deadbeefba5eba11deadbeefba5eba11 \

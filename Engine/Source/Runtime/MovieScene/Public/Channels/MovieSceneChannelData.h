@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -38,8 +38,6 @@ struct TStructOpsTypeTraits<FMovieSceneKeyHandleMap>
 	};
 };
 
-namespace UE
-{
 namespace MovieScene
 {
 	/**
@@ -76,9 +74,7 @@ namespace MovieScene
 	 * @param OutMax         The latest index that met the conditions of the search
 	 */
 	MOVIESCENE_API void FindRange(TArrayView<const FFrameNumber> InTimes, FFrameNumber PredicateTime, FFrameNumber InTolerance, int32 MaxNum, int32& OutMin, int32& OutMax);
-
-} // namespace MovieScene
-} // namespace UE
+}
 
 
 /**
@@ -513,7 +509,7 @@ struct TMovieSceneChannelData<const ValueType>
 	int32 FindKey(FFrameNumber InTime, FFrameNumber InTolerance = 0) const
 	{
 		int32 MinIndex = 0, MaxIndex = 0;
-		UE::MovieScene::FindRange(*Times, InTime, InTolerance, 1, MinIndex, MaxIndex);
+		MovieScene::FindRange(*Times, InTime, InTolerance, 1, MinIndex, MaxIndex);
 		return MinIndex;
 	}
 
@@ -528,7 +524,7 @@ struct TMovieSceneChannelData<const ValueType>
 	 */
 	void FindKeys(FFrameNumber InTime, int32 MaxNum, int32& OutMinIndex, int32& OutMaxIndex, FFrameNumber InTolerance) const
 	{
-		UE::MovieScene::FindRange(*Times, InTime, InTolerance, MaxNum, OutMinIndex, OutMaxIndex);
+		MovieScene::FindRange(*Times, InTime, InTolerance, MaxNum, OutMinIndex, OutMaxIndex);
 	}
 
 	/**

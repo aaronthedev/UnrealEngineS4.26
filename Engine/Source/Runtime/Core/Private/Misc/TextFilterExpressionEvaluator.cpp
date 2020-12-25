@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Misc/TextFilterExpressionEvaluator.h"
 #include "Math/BasicMathExpressionEvaluator.h"
@@ -515,10 +515,7 @@ void FTextFilterExpressionEvaluator::SetupGrammar()
 	TokenDefinitions.DefineToken(&ConsumeOperator<FOr>);
 	TokenDefinitions.DefineToken(&ConsumeOperator<FAnd>);
 	TokenDefinitions.DefineToken(&ConsumeOperator<FNot>);
-	if (ExpressionEvaluatorMode == ETextFilterExpressionEvaluatorMode::Complex)
-	{
-		TokenDefinitions.DefineToken(&ConsumeNumber);
-	}
+	TokenDefinitions.DefineToken(&ConsumeNumber);
 	TokenDefinitions.DefineToken((ExpressionEvaluatorMode == ETextFilterExpressionEvaluatorMode::Complex) ? &ConsumeComplexText : &ConsumeBasicText);
 
 	Grammar.DefineGrouping<FSubExpressionStart, FSubExpressionEnd>();

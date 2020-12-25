@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Party/PartyDataReplicator.h"
 #include "Party/SocialParty.h"
@@ -17,21 +17,12 @@ void FPartyDataReplicatorHelper::ReplicateDataToMembers(const FOnlinePartyRepDat
 			if (RepDataType.IsChildOf(FPartyRepData::StaticStruct()))
 			{
 				UE_LOG(LogParty, VeryVerbose, TEXT("Sending rep data update for party [%s]."), *OwnerParty->ToDebugString());
-				PartyInterface->UpdatePartyData(*LocalUserId, OwnerParty->GetPartyId(), DefaultPartyDataNamespace, ReplicationPayload);
+				PartyInterface->UpdatePartyData(*LocalUserId, OwnerParty->GetPartyId(), ReplicationPayload);
 			}
 			else if (RepDataType.IsChildOf(FPartyMemberRepData::StaticStruct()))
 			{
-				if (const UPartyMember* Owner = static_cast<const FOnlinePartyRepDataBase*>(&RepDataInstance)->GetOwningMember())
-				{
-					LocalUserId = Owner->GetPrimaryNetId();
-					UE_LOG(LogParty, VeryVerbose, TEXT("Sending rep data update for member within party [%s]."), *OwnerParty->ToDebugString());
-					PartyInterface->UpdatePartyMemberData(*LocalUserId, OwnerParty->GetPartyId(), DefaultPartyDataNamespace, ReplicationPayload);
-				}
-				else
-				{
-					UE_LOG(LogParty, Warning, TEXT("Sending rep data update for member within party [%s] Could not identidy owner."), *OwnerParty->ToDebugString());
-					PartyInterface->UpdatePartyMemberData(*LocalUserId, OwnerParty->GetPartyId(), DefaultPartyDataNamespace, ReplicationPayload);
-				}				
+				UE_LOG(LogParty, VeryVerbose, TEXT("Sending rep data update for member within party [%s]."), *OwnerParty->ToDebugString());
+				PartyInterface->UpdatePartyMemberData(*LocalUserId, OwnerParty->GetPartyId(), ReplicationPayload);
 			}
 		}
 	}

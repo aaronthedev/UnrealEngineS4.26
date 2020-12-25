@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SSequencerSection.h"
 #include "Rendering/DrawElements.h"
@@ -6,7 +6,6 @@
 #include "SequencerSelectionPreview.h"
 #include "SequencerSettings.h"
 #include "Editor.h"
-#include "ScopedTransaction.h"
 #include "Sequencer.h"
 #include "SequencerSectionPainter.h"
 #include "MovieSceneSequence.h"
@@ -16,10 +15,7 @@
 #include "ISequencerHotspot.h"
 #include "SequencerHotspots.h"
 #include "Widgets/SOverlay.h"
-#include "SequencerAddKeyOperation.h"
 #include "SequencerObjectBindingNode.h"
-#include "SequencerSectionCategoryNode.h"
-#include "SequencerSectionKeyAreaNode.h"
 #include "MovieScene.h"
 #include "Fonts/FontCache.h"
 #include "Framework/Application/SlateApplication.h"
@@ -30,6 +26,41 @@
 double SSequencerSection::SectionSelectionThrobEndTime = 0;
 double SSequencerSection::KeySelectionThrobEndTime = 0;
 
+const FSectionLayoutElement& SSequencerSection::FLayoutElementKeyFuncs::GetSetKey(const TPair<FSectionLayoutElement, TArray<FSequencerCachedKeys, TInlineAllocator<1>>>& Element)
+{
+	return Element.Key;
+}
+
+bool SSequencerSection::FLayoutElementKeyFuncs::Matches(const FSectionLayoutElement& A, const FSectionLayoutElement& B)
+{
+	if (A.GetDisplayNode() != B.GetDisplayNode())
+	{
+		return false;
+	}
+	TArrayView<const TSharedRef<IKeyArea>> KeyAreasA = A.GetKeyAreas(), KeyAreasB = B.GetKeyAreas();
+	if (KeyAreasA.Num() != KeyAreasB.Num())
+	{
+		return false;
+	}
+	for (int32 Index = 0; Index < KeyAreasA.Num(); ++Index)
+	{
+		if (KeyAreasA[Index] != KeyAreasB[Index])
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+uint32 SSequencerSection::FLayoutElementKeyFuncs::GetKeyHash(const FSectionLayoutElement& Key)
+{
+	uint32 Hash = GetTypeHash(Key.GetDisplayNode()) ;
+	for (TSharedRef<IKeyArea> KeyArea : Key.GetKeyAreas())
+	{
+		Hash = HashCombine(GetTypeHash(KeyArea), Hash);
+	}
+	return Hash;
+}
 
 /** A point on an easing curve used for rendering */
 struct FEasingCurvePoint
@@ -415,8 +446,8 @@ struct FSequencerSectionPainterImpl : FSequencerSectionPainter
 	void DrawEasingForSegment(const FSequencerOverlapRange& Segment, const FGeometry& InnerSectionGeometry, const FLinearColor& FinalTint)
 	{
 		// @todo: sequencer-timecode: Test that start offset is not required here
-		const float RangeStartPixel = TimeToPixelConverter.FrameToPixel(UE::MovieScene::DiscreteInclusiveLower(Segment.Range));
-		const float RangeEndPixel = TimeToPixelConverter.FrameToPixel(UE::MovieScene::DiscreteExclusiveUpper(Segment.Range));
+		const float RangeStartPixel = TimeToPixelConverter.FrameToPixel(MovieScene::DiscreteInclusiveLower(Segment.Range));
+		const float RangeEndPixel = TimeToPixelConverter.FrameToPixel(MovieScene::DiscreteExclusiveUpper(Segment.Range));
 		const float RangeSizePixel = RangeEndPixel - RangeStartPixel;
 
 		FGeometry RangeGeometry = InnerSectionGeometry.MakeChild(FVector2D(RangeSizePixel, InnerSectionGeometry.Size.Y), FSlateLayoutTransform(FVector2D(RangeStartPixel, 0.f)));
@@ -480,8 +511,8 @@ struct FSequencerSectionPainterImpl : FSequencerSectionPainter
 
 			for (const FEasingCurvePoint& Point : CurvePoints)
 			{
-				float SegmentStartTime = UE::MovieScene::DiscreteInclusiveLower(Segment.Range) / TimeToPixelConverter.GetTickResolution();
-				float U = (Point.Location.X - SegmentStartTime) / ( FFrameNumber(UE::MovieScene::DiscreteSize(Segment.Range)) / TimeToPixelConverter.GetTickResolution() );
+				float SegmentStartTime = MovieScene::DiscreteInclusiveLower(Segment.Range) / TimeToPixelConverter.GetTickResolution();
+				float U = (Point.Location.X - SegmentStartTime) / ( FFrameNumber(MovieScene::DiscreteSize(Segment.Range)) / TimeToPixelConverter.GetTickResolution() );
 
 				// Add verts top->bottom
 				FVector2D UV(U, 0.f);
@@ -571,8 +602,8 @@ struct FSequencerSectionPainterImpl : FSequencerSectionPainter
 		{
 			const FSequencerOverlapRange& Segment = SectionWidget.UnderlappingSegments[SegmentIndex];
 
-			const float RangeStartPixel	= Segment.Range.GetLowerBound().IsOpen() ? 0.f							: TimeToPixelConverter.FrameToPixel(UE::MovieScene::DiscreteInclusiveLower(Segment.Range));
-			const float RangeEndPixel	= Segment.Range.GetUpperBound().IsOpen() ? InnerSectionGeometry.Size.X	: TimeToPixelConverter.FrameToPixel(UE::MovieScene::DiscreteExclusiveUpper(Segment.Range));
+			const float RangeStartPixel	= Segment.Range.GetLowerBound().IsOpen() ? 0.f							: TimeToPixelConverter.FrameToPixel(MovieScene::DiscreteInclusiveLower(Segment.Range));
+			const float RangeEndPixel	= Segment.Range.GetUpperBound().IsOpen() ? InnerSectionGeometry.Size.X	: TimeToPixelConverter.FrameToPixel(MovieScene::DiscreteExclusiveUpper(Segment.Range));
 			const float RangeSizePixel	= RangeEndPixel - RangeStartPixel;
 
 			FGeometry RangeGeometry = InnerSectionGeometry.MakeChild(FVector2D(RangeSizePixel, InnerSectionGeometry.Size.Y), FSlateLayoutTransform(FVector2D(RangeStartPixel - StartTimePixel, 0.f)));
@@ -679,6 +710,13 @@ FVector2D SSequencerSection::ComputeDesiredSize(float) const
 }
 
 
+FGeometry SSequencerSection::GetKeyAreaGeometry( const FSectionLayoutElement& LayoutElement, const FGeometry& SectionGeometry ) const
+{
+	// Compute the geometry for the key area
+	return SectionGeometry.MakeChild( FVector2D( 0, LayoutElement.GetOffset() ), FVector2D( SectionGeometry.GetLocalSize().X, LayoutElement.GetHeight()  ) );
+}
+
+
 void SSequencerSection::GetKeysUnderMouse( const FVector2D& MousePosition, const FGeometry& AllottedGeometry, TArray<FSequencerSelectedKey>& OutKeys ) const
 {
 	FGeometry SectionGeometry = MakeSectionGeometryWithoutHandles( AllottedGeometry, SectionInterface );
@@ -702,7 +740,7 @@ void SSequencerSection::GetKeysUnderMouse( const FVector2D& MousePosition, const
 	// Search every key area until we find the one under the mouse
 	for (const FSectionLayoutElement& Element : Layout->GetElements())
 	{
-		const FGeometry KeyAreaGeometry = Element.ComputeGeometry(AllottedGeometry);
+		const FGeometry KeyAreaGeometry = GetKeyAreaGeometry(Element, AllottedGeometry);
 		const FVector2D LocalMousePixel = KeyAreaGeometry.AbsoluteToLocal(MousePosition);
 		const float LocalKeyPosY = KeyAreaGeometry.GetLocalSize().Y * .5f;
 
@@ -768,19 +806,11 @@ void SSequencerSection::CreateKeysUnderMouse( const FVector2D& MousePosition, co
 
 		FGeometry SectionGeometry = MakeSectionGeometryWithoutHandles( AllottedGeometry, SectionInterface );
 
-		FTimeToPixel TimeToPixelConverter = ConstructTimeConverterForSection(SectionGeometry, Section, GetSequencer());
-		FVector2D LocalSpaceMousePosition = SectionGeometry.AbsoluteToLocal( MousePosition );
-		const FFrameTime CurrentTime = TimeToPixelConverter.PixelToFrame(LocalSpaceMousePosition.X);
-
-		ISequencerTrackEditor& TrackEditor = ParentSectionArea->GetTrackEditor();
-
-		TArray<TSharedRef<IKeyArea>> ValidKeyAreasUnderCursor;
-
 		// Search every key area until we find the one under the mouse
 		for (const FSectionLayoutElement& Element : Layout->GetElements())
 		{
 			// Compute the current key area geometry
-			FGeometry KeyAreaGeometryPadded = Element.ComputeGeometry(AllottedGeometry);
+			FGeometry KeyAreaGeometryPadded = GetKeyAreaGeometry( Element, AllottedGeometry );
 
 			// Is the key area under the mouse
 			if( !KeyAreaGeometryPadded.IsUnderLocation( MousePosition ) )
@@ -788,19 +818,22 @@ void SSequencerSection::CreateKeysUnderMouse( const FVector2D& MousePosition, co
 				continue;
 			}
 
+			FTimeToPixel TimeToPixelConverter = ConstructTimeConverterForSection(SectionGeometry, Section, GetSequencer());
+
+			FVector2D LocalSpaceMousePosition = SectionGeometry.AbsoluteToLocal( MousePosition );
+			const FFrameTime KeyTime = TimeToPixelConverter.PixelToFrame(LocalSpaceMousePosition.X);
+
+			Section.Modify();
+
 			for (TSharedPtr<IKeyArea> KeyArea : Element.GetKeyAreas())
 			{
 				if (KeyArea.IsValid())
 				{
-					ValidKeyAreasUnderCursor.Add(KeyArea.ToSharedRef());
+					FKeyHandle NewHandle = KeyArea->AddOrUpdateKey(KeyTime.FrameNumber, ObjectBinding, GetSequencer());
+					OutKeys.Add(FSequencerSelectedKey(Section, KeyArea, NewHandle));
 				}
 			}
 		}
-
-		using namespace UE::Sequencer;
-
-		FScopedTransaction Transaction(NSLOCTEXT("Sequencer", "CreateKeysUnderMouse", "Create keys under mouse"));
-		FAddKeyOperation::FromKeyAreas(&TrackEditor, ValidKeyAreasUnderCursor).Commit(CurrentTime.FrameNumber, GetSequencer());
 	}
 
 	if (OutKeys.Num())
@@ -820,13 +853,6 @@ bool SSequencerSection::CheckForEasingHandleInteraction( const FPointerEvent& Mo
 
 	UMovieSceneTrack* Track = ThisSection->GetTypedOuter<UMovieSceneTrack>();
 	if (!Track || Track->GetSupportedBlendTypes().Num() == 0)
-	{
-		return false;
-	}
-
-	FMovieSceneSupportsEasingParams SupportsEasingParams(ThisSection);
-	EMovieSceneTrackEasingSupportFlags EasingFlags = Track->SupportsEasing(SupportsEasingParams);
-	if (!EnumHasAnyFlags(EasingFlags, EMovieSceneTrackEasingSupportFlags::ManualEasing))
 	{
 		return false;
 	}
@@ -860,7 +886,7 @@ bool SSequencerSection::CheckForEasingHandleInteraction( const FPointerEvent& Mo
 		TSharedRef<ISequencerSection> EasingSection    =  Handle.GetSectionInterface();
 		UMovieSceneSection*           EasingSectionObj = EasingSection->GetSectionObject();
 
-		if (EasingSectionObj->HasStartFrame() && EnumHasAllFlags(EasingFlags, EMovieSceneTrackEasingSupportFlags::ManualEaseIn))
+		if (EasingSectionObj->HasStartFrame())
 		{
 			TRange<FFrameNumber> EaseInRange      = EasingSectionObj->GetEaseInRange();
 			double               HandlePositionIn = ( EaseInRange.IsEmpty() ? EasingSectionObj->GetInclusiveStartFrame() : EaseInRange.GetUpperBoundValue() ) / TimeToPixelConverter.GetTickResolution();
@@ -872,7 +898,7 @@ bool SSequencerSection::CheckForEasingHandleInteraction( const FPointerEvent& Mo
 			}
 		}
 
-		if (EasingSectionObj->HasEndFrame() && EnumHasAllFlags(EasingFlags, EMovieSceneTrackEasingSupportFlags::ManualEaseOut))
+		if (EasingSectionObj->HasEndFrame())
 		{
 			TRange<FFrameNumber> EaseOutRange      = EasingSectionObj->GetEaseOutRange();
 			double               HandlePositionOut = (EaseOutRange.IsEmpty() ? EasingSectionObj->GetExclusiveEndFrame() : EaseOutRange.GetLowerBoundValue() ) / TimeToPixelConverter.GetTickResolution();
@@ -1051,38 +1077,6 @@ int32 SSequencerSection::OnPaint( const FPaintArgs& Args, const FGeometry& Allot
 	auto& Selection = ParentSectionArea->GetSequencer().GetSelection();
 	Painter.bIsSelected = Selection.IsSelected(SectionObject);
 
-	for (const FSectionLayoutElement& Element : Layout->GetElements())
-	{
-		TSharedPtr<FSequencerDisplayNode> DisplayNode = Element.GetDisplayNode();
-		if (DisplayNode->GetType() == ESequencerNode::Category)
-		{
-			TArray<TSharedRef<IKeyArea>> ChildKeyAreas;
-			TSharedPtr<FSequencerSectionCategoryNode> CategoryNode = StaticCastSharedPtr<FSequencerSectionCategoryNode>(DisplayNode);
-			for (TSharedRef<FSequencerDisplayNode> ChildNode : CategoryNode->GetChildNodes())
-			{
-				TSharedRef<FSequencerSectionKeyAreaNode> KeyAreaNode = StaticCastSharedRef<FSequencerSectionKeyAreaNode>(ChildNode);
-				for (TSharedRef<IKeyArea> KeyArea : KeyAreaNode.Get().GetAllKeyAreas())
-				{
-					ChildKeyAreas.Add(KeyArea);
-				}
-			}
-			
-			FKeyAreaElement KeyAreaElement;
-			KeyAreaElement.KeyAreas = ChildKeyAreas;
-			KeyAreaElement.KeyAreaGeometry = Element.ComputeGeometry(AllottedGeometry);
-			KeyAreaElement.Type = (FKeyAreaElement::EType)Element.GetType();
-			Painter.KeyAreaElements.Add(KeyAreaElement);
-		}
-		else
-		{
-			FKeyAreaElement KeyAreaElement;
-			KeyAreaElement.KeyAreas = Element.GetKeyAreas();
-			KeyAreaElement.KeyAreaGeometry = Element.ComputeGeometry(AllottedGeometry);
-			KeyAreaElement.Type = (FKeyAreaElement::EType)Element.GetType();
-			Painter.KeyAreaElements.Add(KeyAreaElement);
-		}
-	}
-
 	FSlateClippingZone ClippingZone(Painter.SectionClippingRect);
 	OutDrawElements.PushClip(ClippingZone);
 
@@ -1096,14 +1090,7 @@ int32 SSequencerSection::OnPaint( const FPaintArgs& Args, const FGeometry& Allot
 
 	Painter.LayerId = LayerId;
 	PaintEasingHandles( Painter, SelectionColor, Hotspot );
-
-	{
-		UE::Sequencer::FKeyRendererPaintArgs KeyRenderArgs;
-		KeyRenderArgs.KeyThrobValue = GetKeySelectionThrobValue();
-		KeyRenderArgs.SectionThrobValue = GetSectionSelectionThrobValue();
-
-		KeyRenderer.Paint(Layout.GetValue(), InWidgetStyle, KeyRenderArgs, &GetSequencer(), Painter);
-	}
+	PaintKeys( Painter, InWidgetStyle );
 
 	LayerId = Painter.LayerId;
 	if (bLocked)
@@ -1193,6 +1180,421 @@ int32 SSequencerSection::OnPaint( const FPaintArgs& Args, const FGeometry& Allot
 }
 
 
+void SSequencerSection::PaintKeys( FSequencerSectionPainter& InPainter, const FWidgetStyle& InWidgetStyle ) const
+{
+	static const FName HighlightBrushName("Sequencer.AnimationOutliner.DefaultBorder");
+	static const FName StripeOverlayBrushName("Sequencer.Section.StripeOverlay");
+
+	static const FName SelectionColorName("SelectionColor");
+	static const FName SelectionInactiveColorName("SelectionColorInactive");
+	static const FName SelectionColorPressedName("SelectionColor_Pressed");
+
+	static const float BrushBorderWidth = 2.0f;
+
+	const FLinearColor PressedKeyColor = FEditorStyle::GetSlateColor(SelectionColorPressedName).GetColor( InWidgetStyle );
+	FLinearColor SelectionColor = FEditorStyle::GetSlateColor(SelectionColorName).GetColor( InWidgetStyle );
+	FLinearColor SelectedKeyColor = SelectionColor;
+	FSequencer& Sequencer = ParentSectionArea->GetSequencer();
+	TSharedPtr<ISequencerHotspot> Hotspot = Sequencer.GetHotspot();
+
+	const FSlateBrush* StripeOverlayBrush = FEditorStyle::GetBrush(StripeOverlayBrushName);
+	const FSlateBrush* HighlightBrush = FEditorStyle::GetBrush(HighlightBrushName);
+
+	// get hovered key
+	TArrayView<const FSequencerSelectedKey> HoveredKeys;
+
+	if (Hotspot.IsValid() && Hotspot->GetType() == ESequencerHotspot::Key)
+	{
+		HoveredKeys = static_cast<FKeyHotspot*>(Hotspot.Get())->Keys;
+	}
+
+	auto& Selection = Sequencer.GetSelection();
+	auto& SelectionPreview = Sequencer.GetSelectionPreview();
+
+	const float KeyThrobScaleValue = GetKeySelectionThrobValue();
+	const float SectionThrobScaleValue = GetSectionSelectionThrobValue();
+
+	// draw all keys in each key area
+	UMovieSceneSection& SectionObject = *SectionInterface->GetSectionObject();
+
+	// Use the sub sequence range to draw valid keys, else use the current sequence's playback range
+	TRange<FFrameNumber> ValidKeyRange = Sequencer.GetSubSequenceRange().Get(Sequencer.GetFocusedMovieSceneSequence()->GetMovieScene()->GetPlaybackRange());
+
+	const ESlateDrawEffect DrawEffects = InPainter.bParentEnabled
+		? ESlateDrawEffect::None
+		: ESlateDrawEffect::DisabledEffect;
+
+	const FTimeToPixel& TimeToPixelConverter = InPainter.GetTimeConverter();
+
+	for (const FSectionLayoutElement& LayoutElement : Layout->GetElements())
+	{
+		// get key handles
+		TArrayView<const TSharedRef<IKeyArea>> KeyAreas = LayoutElement.GetKeyAreas();
+
+		FGeometry KeyAreaGeometry = GetKeyAreaGeometry(LayoutElement, InPainter.SectionGeometry);
+
+		TOptional<FLinearColor> KeyAreaColor = KeyAreas.Num() == 1 ? KeyAreas[0]->GetColor() : TOptional<FLinearColor>();
+
+		// draw a box for the key area 
+		if (KeyAreaColor.IsSet() && Sequencer.GetSequencerSettings()->GetShowChannelColors())
+		{
+			static float BoxThickness = 5.f;
+			FVector2D KeyAreaSize = KeyAreaGeometry.GetLocalSize();
+			FSlateDrawElement::MakeBox( 
+				InPainter.DrawElements,
+				InPainter.LayerId,
+				KeyAreaGeometry.ToPaintGeometry(FVector2D(KeyAreaSize.X, BoxThickness), FSlateLayoutTransform(FVector2D(0.f, KeyAreaSize.Y*.5f - BoxThickness*.5f))),
+				StripeOverlayBrush,
+				DrawEffects,
+				KeyAreaColor.GetValue()
+			); 
+		}
+
+		if (LayoutElement.GetDisplayNode().IsValid())
+		{
+			FLinearColor HighlightColor;
+			bool bDrawHighlight = false;
+			if (Sequencer.GetSelection().NodeHasSelectedKeysOrSections(LayoutElement.GetDisplayNode().ToSharedRef()))
+			{
+				bDrawHighlight = true;
+				HighlightColor = FLinearColor(1.0f, 1.0f, 1.0f, 0.15f);
+			}
+			else if (LayoutElement.GetDisplayNode()->IsHovered())
+			{
+				bDrawHighlight = true;
+				HighlightColor = FLinearColor(1.0f, 1.0f, 1.0f, 0.05f);
+			}
+
+			if (bDrawHighlight)
+			{
+				FSlateDrawElement::MakeBox(
+					InPainter.DrawElements,
+					InPainter.LayerId,
+					KeyAreaGeometry.ToPaintGeometry(),
+					HighlightBrush,
+					DrawEffects,
+					HighlightColor
+				);
+			}
+		}
+
+		if (Selection.IsSelected(LayoutElement.GetDisplayNode().ToSharedRef()))
+		{
+			static const FName SelectedTrackTint("Sequencer.Section.SelectedTrackTint");
+
+			FLinearColor KeyAreaOutlineColor = SelectionColor;
+
+			FSlateDrawElement::MakeBox(
+				InPainter.DrawElements,
+				InPainter.LayerId,
+				KeyAreaGeometry.ToPaintGeometry(),
+				FEditorStyle::GetBrush(SelectedTrackTint),
+				DrawEffects,
+				KeyAreaOutlineColor
+			);
+		}
+
+		bool bSectionSelected = Selection.IsSelected(&SectionObject);
+		if (bSectionSelected && SectionThrobScaleValue != 0.f)
+		{
+			static const FName SelectedTrackTint("Sequencer.Section.BackgroundTint");
+
+			FLinearColor KeyAreaOutlineColor = SelectionColor;
+			KeyAreaOutlineColor.A = SectionThrobScaleValue;
+
+			FSlateDrawElement::MakeBox(
+				InPainter.DrawElements,
+				InPainter.LayerId,
+				KeyAreaGeometry.ToPaintGeometry(),
+				FEditorStyle::GetBrush(SelectedTrackTint),
+				DrawEffects,
+				KeyAreaOutlineColor
+			);
+		}
+
+		// Gather keys for a region larger than the view range to ensure we draw keys that are only just offscreen.
+		TRange<double> PaddedViewRange;
+		{
+			// Compute visible range taking into account a half-frame offset for keys, plus half a key width for keys that are partially offscreen
+			TRange<FFrameNumber> SectionRange   = SectionObject.GetRange();
+			const double         HalfKeyWidth   = 0.5f * (TimeToPixelConverter.PixelToSeconds(SequencerSectionConstants::KeySize.X) - TimeToPixelConverter.PixelToSeconds(0));
+			TRange<double>       VisibleRange   = MovieScene::DilateRange(GetSequencer().GetViewRange(), -HalfKeyWidth, HalfKeyWidth);
+
+			PaddedViewRange = TRange<double>::Intersection(SectionRange / Sequencer.GetFocusedTickResolution(), VisibleRange);
+		}
+
+		// For each key area, we gather draw params for the visible time range, then combine
+		
+		auto& Found = CachedKeyAreaPositions.FindChecked(LayoutElement);
+		TArrayView<const FSequencerCachedKeys> CachedKeys = Found;
+
+		// Can't do any of the rest if there are no keys, or there's no range to draw within
+		if (CachedKeys.Num() == 0 || PaddedViewRange.IsEmpty())
+		{
+			continue;
+		}
+
+		const int32 KeyLayer = InPainter.LayerId;
+
+		TOptional<FSlateClippingState> PreviousClipState = InPainter.DrawElements.GetClippingState();
+		InPainter.DrawElements.PopClip();
+
+		struct FKeyDrawInformation
+		{
+			FKeyDrawInformation()
+				: NextIndex(0)
+			{}
+
+			int32 NextIndex;
+			TArrayView<const double> TimesInRange;
+			TArrayView<const FFrameNumber> FramesInRange;
+			TArrayView<const FKeyHandle> HandlesInRange;
+			TArray<FKeyDrawParams> DrawParams;
+		};
+		TArray<FKeyDrawInformation> DrawInfoPerCache;
+		DrawInfoPerCache.Reserve(CachedKeys.Num());
+
+		for (const FSequencerCachedKeys& Cache : CachedKeys)
+		{
+			// Gather all the key handles in this view range
+			FKeyDrawInformation KeyDrawInfo;
+
+			Cache.GetKeysInRange(PaddedViewRange, &KeyDrawInfo.TimesInRange, &KeyDrawInfo.FramesInRange, &KeyDrawInfo.HandlesInRange);
+
+			// Generate draw data for this key area
+			if (KeyDrawInfo.TimesInRange.Num())
+			{
+				KeyDrawInfo.DrawParams.SetNum(KeyDrawInfo.TimesInRange.Num());
+				Cache.GetKeyArea()->DrawKeys(KeyDrawInfo.HandlesInRange, KeyDrawInfo.DrawParams);
+			}
+
+			check(KeyDrawInfo.DrawParams.Num() == KeyDrawInfo.TimesInRange.Num() && KeyDrawInfo.TimesInRange.Num() == KeyDrawInfo.HandlesInRange.Num());
+
+			// Add it to the array
+			DrawInfoPerCache.Add(MoveTemp(KeyDrawInfo));
+		}
+
+		static float PixelOverlapThreshold = 3.f;
+		const double TimeOverlapThreshold = TimeToPixelConverter.PixelToSeconds(PixelOverlapThreshold) - TimeToPixelConverter.PixelToSeconds(0.f);
+
+		auto AnythingLeftToDraw = [](const FKeyDrawInformation& In)
+		{
+			return In.NextIndex < In.TimesInRange.Num();
+		};
+
+		TArray<int32> KeyParamUpperBounds;
+		KeyParamUpperBounds.SetNum(DrawInfoPerCache.Num());
+
+		while (DrawInfoPerCache.ContainsByPredicate(AnythingLeftToDraw))
+		{
+			// Determine the next key position to draw
+			double CardinalKeyTime = TNumericLimits<double>::Max();
+			for (const FKeyDrawInformation& Info : DrawInfoPerCache)
+			{
+				if (Info.NextIndex < Info.TimesInRange.Num())
+				{
+					CardinalKeyTime = FMath::Min(CardinalKeyTime, Info.TimesInRange[Info.NextIndex]);
+				}
+			}
+
+			// Start grouping keys at the current key time plus 99% of the threshold to ensure that we group at the center of keys
+			// and that we avoid floating point precision issues where there is only one key [(KeyTime + TimeOverlapThreshold) - KeyTime != TimeOverlapThreshold] for some floats
+			CardinalKeyTime += TimeOverlapThreshold*0.9994f;
+
+			// Generate the hull of frame numbers that contribute to this key so we can draw it enabled/disabled depending on whether it is outside of the valid range or not
+			TRange<FFrameNumber> KeyRange = TRange<FFrameNumber>::Empty();
+
+			float AverageKeyTime = 0.f;
+			int32 NumKeyTimes = 0;
+			int32 NumOverlaps = 0;
+
+			// Determine the ranges of keys considered to reside at this position
+			for (int32 DrawIndex = 0; DrawIndex < DrawInfoPerCache.Num(); ++DrawIndex)
+			{
+				const FKeyDrawInformation& Info = DrawInfoPerCache[DrawIndex];
+				if (Info.NextIndex >= Info.TimesInRange.Num())
+				{
+					continue;
+				}
+
+				if (FMath::IsNearlyEqual(Info.TimesInRange[Info.NextIndex], CardinalKeyTime, TimeOverlapThreshold))
+				{
+					int32 FinalIndexInThreshold = Info.NextIndex + 1;
+
+					KeyRange = TRange<FFrameNumber>::Hull(KeyRange, TRange<FFrameNumber>(Info.FramesInRange[Info.NextIndex]));
+					AverageKeyTime += Info.TimesInRange[Info.NextIndex];
+					++NumKeyTimes;
+
+					// Count the number of overlapping keys
+					while (FinalIndexInThreshold < Info.TimesInRange.Num() && FMath::IsNearlyEqual(Info.TimesInRange[FinalIndexInThreshold], CardinalKeyTime, TimeOverlapThreshold))
+					{
+						KeyRange = TRange<FFrameNumber>::Hull(KeyRange, TRange<FFrameNumber>(Info.FramesInRange[FinalIndexInThreshold]));
+						AverageKeyTime += Info.TimesInRange[FinalIndexInThreshold];
+						++NumKeyTimes;
+
+						++FinalIndexInThreshold;
+						++NumOverlaps;
+					}
+
+					KeyParamUpperBounds[DrawIndex] = FinalIndexInThreshold;
+				}
+				else
+				{
+					KeyParamUpperBounds[DrawIndex] = Info.NextIndex;
+				}
+			}
+
+			const float FinalKeyPosition = TimeToPixelConverter.SecondsToPixel(AverageKeyTime / NumKeyTimes);
+
+			static const FSlateBrush* PartialKeyBrush = FEditorStyle::GetBrush("Sequencer.PartialKey");
+
+			TOptional<FKeyDrawParams> KeyDrawParam;
+
+			bool bPartialKey = false;
+
+			int32 NumPreviewSelected = 0;
+			int32 NumPreviewNotSelected = 0;
+			int32 NumSelected = 0;
+			int32 NumHovered = 0;
+			int32 TotalNumKeys = 0;
+
+			for (int32 DrawIndex = 0; DrawIndex < DrawInfoPerCache.Num(); ++DrawIndex)
+			{
+				FKeyDrawInformation& Info = DrawInfoPerCache[DrawIndex];
+				int32 UpperBound = KeyParamUpperBounds[DrawIndex];
+
+				if (Info.NextIndex >= Info.TimesInRange.Num() || UpperBound - Info.NextIndex == 0)
+				{
+					bPartialKey = true;
+					continue;
+				}
+
+				for (int32 KeyIndex = Info.NextIndex; KeyIndex < UpperBound; ++KeyIndex)
+				{
+					if (!KeyDrawParam.IsSet())
+					{
+						KeyDrawParam = Info.DrawParams[KeyIndex];
+					}
+					else if (Info.DrawParams[KeyIndex] != KeyDrawParam.GetValue())
+					{
+						bPartialKey = true;
+					}
+
+					FSequencerSelectedKey TestKey(SectionObject, CachedKeys[DrawIndex].GetKeyArea(), Info.HandlesInRange[KeyIndex]);
+
+					ESelectionPreviewState SelectionPreviewState = SelectionPreview.GetSelectionState(TestKey);
+					NumPreviewSelected += int32(SelectionPreviewState == ESelectionPreviewState::Selected);
+					NumPreviewNotSelected += int32(SelectionPreviewState == ESelectionPreviewState::NotSelected);
+					NumSelected += int32(Selection.IsSelected(TestKey));
+					NumHovered += int32(HoveredKeys.Contains(TestKey));
+					++TotalNumKeys;
+				}
+
+				Info.NextIndex = UpperBound;
+			}
+
+			if (bPartialKey)
+			{
+				KeyDrawParam->FillOffset = FVector2D(0.f, 0.f);
+				KeyDrawParam->FillTint   = KeyDrawParam->BorderTint = FLinearColor::White;
+				KeyDrawParam->FillBrush  = KeyDrawParam->BorderBrush = PartialKeyBrush;
+			}
+
+			const bool bSelected = NumSelected == TotalNumKeys;
+			ensure(KeyDrawParam.IsSet());
+
+			// Determine the key color based on its selection/hover states
+			if (NumPreviewSelected == TotalNumKeys)
+			{
+				FLinearColor PreviewSelectionColor = SelectionColor.LinearRGBToHSV();
+				PreviewSelectionColor.R += 0.1f; // +10% hue
+				PreviewSelectionColor.G = 0.6f; // 60% saturation
+				KeyDrawParam->BorderTint = KeyDrawParam->FillTint = PreviewSelectionColor.HSVToLinearRGB();
+			}
+			else if (NumPreviewNotSelected == TotalNumKeys)
+			{
+				KeyDrawParam->BorderTint = FLinearColor(0.05f, 0.05f, 0.05f, 1.0f);
+			}
+			else if (bSelected)
+			{
+				KeyDrawParam->BorderTint = SelectedKeyColor;
+				KeyDrawParam->FillTint = FLinearColor(0.05f, 0.05f, 0.05f, 1.0f);
+			}
+			else if (NumSelected != 0)
+			{
+				// partially selected
+				KeyDrawParam->BorderTint = SelectedKeyColor.CopyWithNewOpacity(0.5f);
+				KeyDrawParam->FillTint = FLinearColor(0.05f, 0.05f, 0.05f, 0.5f);
+			}
+			else if (NumHovered == TotalNumKeys)
+			{
+				KeyDrawParam->BorderTint = FLinearColor(1.0f, 1.0f, 1.0f, 1.0f);
+				KeyDrawParam->FillTint = FLinearColor(1.0f, 1.0f, 1.0f, 1.0f);
+			}
+			else
+			{
+				KeyDrawParam->BorderTint = FLinearColor(0.05f, 0.05f, 0.05f, 1.0f);
+			}
+
+			// Color keys with overlaps with a red border
+			if (NumOverlaps > 0)
+			{
+				KeyDrawParam->BorderTint = FLinearColor(0.83f, 0.12f, 0.12f, 1.0f); // Red
+			}
+
+			const ESlateDrawEffect KeyDrawEffects = ValidKeyRange.Contains(KeyRange) ? DrawEffects : ESlateDrawEffect::DisabledEffect;
+
+			// draw border
+			static FVector2D ThrobAmount(12.f, 12.f);
+			const FVector2D KeySize = bSelected ? SequencerSectionConstants::KeySize + ThrobAmount * KeyThrobScaleValue : SequencerSectionConstants::KeySize;
+
+			FSlateDrawElement::MakeBox(
+				InPainter.DrawElements,
+				// always draw selected keys on top of other keys
+				bSelected ? KeyLayer + 1 : KeyLayer,
+				// Center the key along Y.  Ensure the middle of the key is at the actual key time
+				KeyAreaGeometry.ToPaintGeometry(
+					FVector2D(
+						FinalKeyPosition - FMath::CeilToFloat(KeySize.X / 2.0f),
+						((KeyAreaGeometry.GetLocalSize().Y / 2.0f) - (KeySize.Y / 2.0f))
+					),
+					KeySize
+				),
+				KeyDrawParam->BorderBrush,
+				KeyDrawEffects,
+				KeyDrawParam->BorderTint
+			);
+
+			// draw fill
+			FSlateDrawElement::MakeBox(
+				InPainter.DrawElements,
+				// always draw selected keys on top of other keys
+				bSelected ? KeyLayer + 2 : KeyLayer + 1,
+				// Center the key along Y.  Ensure the middle of the key is at the actual key time
+				KeyAreaGeometry.ToPaintGeometry(
+					KeyDrawParam->FillOffset + 
+					FVector2D(
+						(FinalKeyPosition - FMath::CeilToFloat((KeySize.X / 2.0f) - BrushBorderWidth)),
+						((KeyAreaGeometry.GetLocalSize().Y / 2.0f) - ((KeySize.Y / 2.0f) - BrushBorderWidth))
+					),
+					KeySize - 2.0f * BrushBorderWidth
+				),
+				KeyDrawParam->FillBrush,
+				KeyDrawEffects,
+				KeyDrawParam->FillTint
+			);
+		}
+
+		if (PreviousClipState.IsSet())
+		{
+			InPainter.DrawElements.GetClippingManager().PushClippingState(PreviousClipState.GetValue());
+		}
+
+		InPainter.LayerId = KeyLayer + 2;
+	}
+}
+
+
 void SSequencerSection::PaintEasingHandles( FSequencerSectionPainter& InPainter, FLinearColor SelectionColor, const ISequencerHotspot* Hotspot ) const
 {
 	if (!SectionInterface->GetSectionObject()->GetBlendType().IsValid())
@@ -1266,11 +1668,7 @@ void SSequencerSection::PaintEasingHandles( FSequencerSectionPainter& InPainter,
 			}
 		}
 
-		const UMovieSceneTrack* Track = UnderlappingSectionObj->GetTypedOuter<UMovieSceneTrack>();
-		FMovieSceneSupportsEasingParams SupportsEasingParams(UnderlappingSectionObj);
-		EMovieSceneTrackEasingSupportFlags EasingSupportFlags = Track->SupportsEasing(SupportsEasingParams);
-
-		if (!bDrawThisSectionsHandles || !EnumHasAnyFlags(EasingSupportFlags, EMovieSceneTrackEasingSupportFlags::ManualEasing))
+		if (!bDrawThisSectionsHandles)
 		{
 			continue;
 		}
@@ -1280,11 +1678,11 @@ void SSequencerSection::PaintEasingHandles( FSequencerSectionPainter& InPainter,
 		const FSlateBrush* EasingHandle = FEditorStyle::GetBrush("Sequencer.Section.EasingHandle");
 		FVector2D HandleSize(10.f, 10.f);
 
-		if (UnderlappingSectionObj->HasStartFrame() && EnumHasAllFlags(EasingSupportFlags, EMovieSceneTrackEasingSupportFlags::ManualEaseIn))
+		if (UnderlappingSectionObj->HasStartFrame())
 		{
 			TRange<FFrameNumber> EaseInRange = UnderlappingSectionObj->GetEaseInRange();
 			// Always draw handles if the section is highlighted, even if there is no range (to allow manual adjustment)
-			FFrameNumber HandleFrame = EaseInRange.IsEmpty() ? UnderlappingSectionObj->GetInclusiveStartFrame() : UE::MovieScene::DiscreteExclusiveUpper(EaseInRange);
+			FFrameNumber HandleFrame = EaseInRange.IsEmpty() ? UnderlappingSectionObj->GetInclusiveStartFrame() : MovieScene::DiscreteExclusiveUpper(EaseInRange);
 			FVector2D HandlePos(TimeToPixelConverter.FrameToPixel(HandleFrame), 0.f);
 			FSlateDrawElement::MakeBox(
 				InPainter.DrawElements,
@@ -1301,12 +1699,12 @@ void SSequencerSection::PaintEasingHandles( FSequencerSectionPainter& InPainter,
 			);
 		}
 
-		if (UnderlappingSectionObj->HasEndFrame() && EnumHasAllFlags(EasingSupportFlags, EMovieSceneTrackEasingSupportFlags::ManualEaseOut))
+		if (UnderlappingSectionObj->HasEndFrame())
 		{
 			TRange<FFrameNumber> EaseOutRange = UnderlappingSectionObj->GetEaseOutRange();
 
 			// Always draw handles if the section is highlighted, even if there is no range (to allow manual adjustment)
-			FFrameNumber HandleFrame = EaseOutRange.IsEmpty() ? UnderlappingSectionObj->GetExclusiveEndFrame() : UE::MovieScene::DiscreteInclusiveLower(EaseOutRange);
+			FFrameNumber HandleFrame = EaseOutRange.IsEmpty() ? UnderlappingSectionObj->GetExclusiveEndFrame() : MovieScene::DiscreteInclusiveLower(EaseOutRange);
 			FVector2D    HandlePos   = FVector2D(TimeToPixelConverter.FrameToPixel(HandleFrame), 0.f);
 
 			FSlateDrawElement::MakeBox(
@@ -1451,10 +1849,42 @@ void SSequencerSection::Tick( const FGeometry& AllottedGeometry, const double In
 	{
 		Layout = FSectionLayout(*ParentSectionArea, SectionIndex);
 
+		// Update cached key area key positions by retaining existing caches where possible
+		TMap<FSectionLayoutElement, TArray<FSequencerCachedKeys, TInlineAllocator<1>>, FDefaultSetAllocator, FLayoutElementKeyFuncs> OldCachedKeyAreaPositions;
+		Swap(OldCachedKeyAreaPositions, CachedKeyAreaPositions);
+
+		FFrameRate TickResolution = GetSequencer().GetFocusedTickResolution();
+
+		// Move over any existing still valid caches 
+		for (const FSectionLayoutElement& LayoutElement : Layout->GetElements())
+		{
+			TArray<FSequencerCachedKeys, TInlineAllocator<1>>* CacheArray = CachedKeyAreaPositions.Find(LayoutElement);
+			if (!CacheArray)
+			{
+				// A new cache needs to be created
+				TArray<FSequencerCachedKeys, TInlineAllocator<1>> NewCachedKeys;
+				for (TSharedRef<IKeyArea> KeyArea : LayoutElement.GetKeyAreas())
+				{
+					NewCachedKeys.Emplace();
+					NewCachedKeys.Last().Update(KeyArea, TickResolution);
+				}
+				CachedKeyAreaPositions.Add(LayoutElement, MoveTemp(NewCachedKeys));
+			}
+			else
+			{
+				// We can reuse this one
+				for (FSequencerCachedKeys& CachedKeys : *CacheArray)
+				{
+					CachedKeys.Update(CachedKeys.GetKeyArea().ToSharedRef(), TickResolution);
+				}
+				CachedKeyAreaPositions.Add(LayoutElement, MoveTemp(*CacheArray));
+			}
+		}
+
 		UMovieSceneSection* Section = SectionInterface->GetSectionObject();
 		if (Section && Section->HasStartFrame() && Section->HasEndFrame())
 		{
-			FTimeToPixel TimeToPixelConverter(ParentGeometry, GetSequencer().GetViewRange(), Section->GetTypedOuter<UMovieScene>()->GetTickResolution());
+			FTimeToPixel TimeToPixelConverter(ParentGeometry, GetSequencer().GetViewRange(), TickResolution);
 
 			const int32 SectionLengthPx = FMath::Max(0,
 				FMath::RoundToInt(
@@ -1549,17 +1979,9 @@ FReply SSequencerSection::OnMouseButtonDoubleClick( const FGeometry& MyGeometry,
 	{
 		TArray<FSequencerSelectedKey> Keys;
 		GetKeysUnderMouse(MouseEvent.GetScreenSpacePosition(), MyGeometry, Keys);
-		TArray<FKeyHandle> KeyHandles;
-		for (FSequencerSelectedKey Key : Keys)
+		if (Keys.Num() == 1 && Keys[0].KeyHandle.IsSet())
 		{
-			if (Key.KeyHandle.IsSet())
-			{
-				KeyHandles.Add(Key.KeyHandle.GetValue());
-			}
-		}
-		if (KeyHandles.Num() > 0)
-		{
-			return SectionInterface->OnKeyDoubleClicked(KeyHandles);
+			return SectionInterface->OnKeyDoubleClicked(Keys[0].KeyHandle.GetValue());
 		}
 
 		FReply Reply = SectionInterface->OnSectionDoubleClicked( MyGeometry, MouseEvent );
@@ -1584,7 +2006,7 @@ FReply SSequencerSection::OnMouseButtonDoubleClick( const FGeometry& MyGeometry,
 			return Reply;
 		}
 
-		GetSequencer().ZoomToFit();
+		GetSequencer().ZoomToSelectedSections();
 
 		return FReply::Handled();
 	}

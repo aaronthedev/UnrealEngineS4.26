@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -32,10 +32,6 @@ class UParticleSystemAuditCommandlet : public UCommandlet
 	TSet<FString> ParticleSystemsWithFarLODDistance;
 	/** All particle systems w/ bone location sources that do not match between LODs */
 	TSet<FString> ParticleSystemsWithBoneLocationMismatches;
-	/** All particle systems with warmup time on them */
-	TSet<FString> ParticleSystemsWithWarmupTime;
-	/** All particle systems with lights and the details */
-	TSet<FString> ParticleSystemsWithLights;
 
 	/** If a particle system has a spawn rate or burst count greater than this value, it will be reported */
 	UPROPERTY(config)
@@ -50,9 +46,6 @@ class UParticleSystemAuditCommandlet : public UCommandlet
 
 	/** Only assets in this collection will be considered. If this is left blank, no assets will be filtered by collection */
 	FString FilterCollection;
-
-	/** Package paths to include */
-	TArray<FName> PackagePaths;
 
 	/** Entry point */
 	int32 Main(const FString& Params) override;
@@ -71,10 +64,10 @@ class UParticleSystemAuditCommandlet : public UCommandlet
 	 *
 	 *	@return	bool			true if successful, false if not
 	 */
-	bool DumpSimplePSysSet(TSet<FString>& InPSysSet, const TCHAR* InShortFilename, const TCHAR* OptionalHeader = nullptr);
+	bool DumpSimplePSysSet(TSet<FString>& InPSysSet, const TCHAR* InShortFilename);
 
 	/** Generic function to handle dumping values to a CSV file */
-	bool DumpSimpleSet(TSet<FString>& InSet, const TCHAR* InShortFilename, const TCHAR* InObjectClassName, const TCHAR* OptionalHeader = nullptr);
+	bool DumpSimpleSet(TSet<FString>& InSet, const TCHAR* InShortFilename, const TCHAR* InObjectClassName);
 
 	/** Gets an archive to write to an output file */
 	FArchive* GetOutputFile(const TCHAR* InShortFilename);

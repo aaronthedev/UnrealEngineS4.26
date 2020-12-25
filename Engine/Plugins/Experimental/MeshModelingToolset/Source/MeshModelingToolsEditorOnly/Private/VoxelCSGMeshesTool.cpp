@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VoxelCSGMeshesTool.h"
 #include "InteractiveToolManager.h"
@@ -74,16 +74,13 @@ void UVoxelCSGMeshesTool::Setup()
 	UInteractiveTool::Setup();
 
 	CSGProps = NewObject<UVoxelCSGMeshesToolProperties>();
-	CSGProps->RestoreProperties(this);
+	CSGProps->VoxelCount = 128;
+	CSGProps->MeshAdaptivity = 0.01f;
+	CSGProps->OffsetDistance = 0.0f;
 	AddToolPropertySource(CSGProps);
 
 	MeshStatisticsProperties = NewObject<UMeshStatisticsProperties>(this);
 	AddToolPropertySource(MeshStatisticsProperties);
-
-	HandleSourcesProperties = NewObject<UOnAcceptHandleSourcesProperties>(this);
-	HandleSourcesProperties->RestoreProperties(this);
-	AddToolPropertySource(HandleSourcesProperties);
-
 
 	// Hide the source meshes
 	for (auto& ComponentTarget : ComponentTargets)
@@ -104,50 +101,53 @@ void UVoxelCSGMeshesTool::Setup()
 	CreateLowQualityPreview();
 
 	Preview->ConfigureMaterials(
-		ToolSetupUtil::GetDefaultSculptMaterial(GetToolManager()),
+		// TODO : Probably multi-select bug - MCD
+		ToolSetupUtil::GetDefaultMaterial(GetToolManager(), ComponentTargets[0]->GetMaterial(0)),
 		ToolSetupUtil::GetDefaultWorkingMaterial(GetToolManager())
 	);
 	
 	Preview->InvalidateResult();    // start compute
-
-	GetToolManager()->DisplayMessage(
-		LOCTEXT("OnStartTool", "This Tool computes a CSG Boolean of the input meshes using voxelization techniques. UVs, sharp edges, and small/thin features will be lost. Increase Voxel Count to enhance accuracy."),
-		EToolMessageLevel::UserNotification);
 }
 
 
 void UVoxelCSGMeshesTool::Shutdown(EToolShutdownType ShutdownType)
 {
-	CSGProps->SaveProperties(this);
-	HandleSourcesProperties->SaveProperties(this);
-
-	FDynamicMeshOpResult Result = Preview->Shutdown();
-	// Restore (unhide) the source meshes
-	for (auto& ComponentTarget : ComponentTargets)
-	{
-		ComponentTarget->SetOwnerVisibility(true);
-	}
+	TUniquePtr<FDynamicMeshOpResult> Result = Preview->Shutdown();
 	if (ShutdownType == EToolShutdownType::Accept)
 	{
-		GetToolManager()->BeginUndoTransaction(LOCTEXT("BooleanMeshes", "Boolean Meshes"));
+		GetToolManager()->BeginUndoTransaction(LOCTEXT("VoxelCSGMeshes", "Boolean Meshes"));
 
-		// Generate the result
 		GenerateAsset(Result);
 
-		TArray<AActor*> Actors;
 		for (auto& ComponentTarget : ComponentTargets)
 		{
-			Actors.Add(ComponentTarget->GetOwnerActor());
+			ComponentTarget->SetOwnerVisibility(true);
+			AActor* Actor = ComponentTarget->GetOwnerActor();
+			if (CSGProps->bDeleteInputActors)
+			{
+				Actor->Destroy();
+			}
+			else
+			{
+				Actor->SetIsTemporarilyHiddenInEditor(true);
+			}
 		}
-		HandleSourcesProperties->ApplyMethod(Actors, GetToolManager());
 
 		GetToolManager()->EndUndoTransaction();
+	}
+	else
+	{
+		// Restore (unhide) the source meshes
+		for (auto& ComponentTarget : ComponentTargets)
+		{
+			ComponentTarget->SetOwnerVisibility(true);
+		}
 	}
 }
 
 
 
-void UVoxelCSGMeshesTool::OnTick(float DeltaTime)
+void UVoxelCSGMeshesTool::Tick(float DeltaTime)
 {
 	Preview->Tick(DeltaTime);
 }
@@ -156,19 +156,24 @@ void UVoxelCSGMeshesTool::Render(IToolsContextRenderAPI* RenderAPI)
 {
 }
 
-bool UVoxelCSGMeshesTool::CanAccept() const
+bool UVoxelCSGMeshesTool::HasAccept() const
 {
-	return Super::CanAccept() && Preview->HaveValidResult();
+	return true;
 }
 
-void UVoxelCSGMeshesTool::OnPropertyModified(UObject* PropertySet, FProperty* Property)
+bool UVoxelCSGMeshesTool::CanAccept() const
+{
+	return Preview->HaveValidResult();
+}
+
+void UVoxelCSGMeshesTool::OnPropertyModified(UObject* PropertySet, UProperty* Property)
 {
 	Preview->InvalidateResult();
 }
 
-TUniquePtr<FDynamicMeshOperator> UVoxelCSGMeshesTool::MakeNewOperator()
+TSharedPtr<FDynamicMeshOperator> UVoxelCSGMeshesTool::MakeNewOperator()
 {
-	TUniquePtr<FVoxelBooleanMeshesOp> CSGOp = MakeUnique<FVoxelBooleanMeshesOp>();
+	TSharedPtr<FVoxelBooleanMeshesOp> CSGOp = MakeShared<FVoxelBooleanMeshesOp>();
 	CSGOp->Operation      = (FVoxelBooleanMeshesOp::EBooleanOperation)(int)CSGProps->Operation;
 	CSGOp->VoxelCount     = CSGProps->VoxelCount;
 	CSGOp->AdaptivityD    = CSGProps->MeshAdaptivity;
@@ -213,17 +218,21 @@ void UVoxelCSGMeshesTool::CreateLowQualityPreview()
 	Preview->SetVisibility(true);
 }
 
-void UVoxelCSGMeshesTool::GenerateAsset(const FDynamicMeshOpResult& Result)
+void UVoxelCSGMeshesTool::GenerateAsset(const TUniquePtr<FDynamicMeshOpResult>& Result)
 {
-	check(Result.Mesh.Get() != nullptr);
+	check(Result->Mesh.Get() != nullptr);
+
+	//GetToolManager()->BeginUndoTransaction(LOCTEXT("VoxelCSGMeshes", "Boolean Meshes"));
 
 	AActor* NewActor = AssetGenerationUtil::GenerateStaticMeshActor(
 		AssetAPI, TargetWorld,
-		Result.Mesh.Get(), Result.Transform, TEXT("CSGMesh"));
-	if (NewActor != nullptr)
-	{
-		ToolSelectionUtil::SetNewActorSelection(GetToolManager(), NewActor);
-	}
+		Result->Mesh.Get(), Result->Transform, TEXT("CSGMesh"),
+		AssetGenerationUtil::GetDefaultAutoGeneratedAssetPath());
+
+	// select newly-created object
+	ToolSelectionUtil::SetNewActorSelection(GetToolManager(), NewActor);
+
+	//GetToolManager()->EndUndoTransaction();
 }
 
 #undef LOCTEXT_NAMESPACE

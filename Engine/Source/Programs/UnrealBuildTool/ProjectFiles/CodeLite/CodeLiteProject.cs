@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -38,7 +38,7 @@ namespace UnrealBuildTool
 		{
 			bool bSuccess = false;
 			string ProjectNameRaw = ProjectFilePath.GetFileNameWithoutExtension();
-			//string ProjectPath = ProjectFilePath.FullName;
+			string ProjectPath = ProjectFilePath.FullName;
 			string ProjectExtension = ProjectFilePath.GetExtension();
 			string ProjectPlatformName = BuildHostPlatform.Current.Platform.ToString();
 
@@ -413,24 +413,14 @@ namespace UnrealBuildTool
 					XElement CustomBuildCommand = new XElement("BuildCommand");
 					CodeLiteConfigurationCustomBuild.Add(CustomBuildCommand);
 
-					string BuildTarget = TargetName + " " + ProjectPlatformName + " " + CurConf.ToString();
+					string BuildTarget = UnrealBuildTool.GetUBTPath().GetFileName() + " " + TargetName + " " + ProjectPlatformName + " " + CurConf.ToString();
 					if( (BuildHostPlatform.Current.Platform != UnrealTargetPlatform.Win64) &&
 						(BuildHostPlatform.Current.Platform != UnrealTargetPlatform.Win32))
 					{
-						string PlatformName = "Linux";
-						if (BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Mac)
-						{
-							PlatformName = "Mac";
-						}
-
-						BuildTarget = Path.Combine(UnrealBuildTool.EngineDirectory.FullName, "Build/BatchFiles", PlatformName, "Build.sh") + " " + BuildTarget;
-					}
-					else
-					{
-						BuildTarget = UnrealBuildTool.GetUBTPath().GetFileName() + " " + BuildTarget;
+						BuildTarget = "mono " + BuildTarget;
 					}
 
-					if (GameProjectFile.Length > 0)
+					if (GameProjectFile.Length > 0) 
 					{
 						BuildTarget += " -project=" + "\"" + GameProjectFile + "\"";
 					}

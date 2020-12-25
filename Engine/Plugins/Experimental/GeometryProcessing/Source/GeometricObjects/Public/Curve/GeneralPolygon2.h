@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // port of geometry3Sharp Polygon
 
@@ -83,6 +83,7 @@ public:
 				return false;
 			}
 
+			// [RMS] segment/segment intersection broken?
 			for (const TPolygon2<T>& ExistingHole : Holes)
 			{
 				if (Hole.Overlaps(ExistingHole))

@@ -1,19 +1,18 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/InputDelegateBinding.h"
 #include "UObject/Class.h"
 #include "Engine/BlueprintGeneratedClass.h"
-
-TSet<UClass*> UInputDelegateBinding::InputBindingClasses;
+#include "Engine/InputActionDelegateBinding.h"
+#include "Engine/InputAxisDelegateBinding.h"
+#include "Engine/InputKeyDelegateBinding.h"
+#include "Engine/InputTouchDelegateBinding.h"
+#include "Engine/InputAxisKeyDelegateBinding.h"
+#include "Engine/InputVectorAxisDelegateBinding.h"
 
 UInputDelegateBinding::UInputDelegateBinding(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	if (IsTemplate())
-	{
-		// Auto register the class
-		InputBindingClasses.Emplace(GetClass());
-	}
 }
 
 bool UInputDelegateBinding::SupportsInputDelegate(const UClass* InClass)
@@ -23,14 +22,23 @@ bool UInputDelegateBinding::SupportsInputDelegate(const UClass* InClass)
 
 void UInputDelegateBinding::BindInputDelegates(const UClass* InClass, UInputComponent* InputComponent)
 {
+	static UClass* InputBindingClasses[] = { 
+												UInputActionDelegateBinding::StaticClass(), 
+												UInputAxisDelegateBinding::StaticClass(), 
+												UInputKeyDelegateBinding::StaticClass(),
+												UInputTouchDelegateBinding::StaticClass(),
+												UInputAxisKeyDelegateBinding::StaticClass(),
+												UInputVectorAxisDelegateBinding::StaticClass(),
+										   };
+
 	if (SupportsInputDelegate(InClass))
 	{
 		BindInputDelegates(InClass->GetSuperClass(), InputComponent);
 
-		for(UClass* BindingClass : InputBindingClasses)
+		for (int32 Index = 0; Index < UE_ARRAY_COUNT(InputBindingClasses); ++Index)
 		{
 			UInputDelegateBinding* BindingObject = CastChecked<UInputDelegateBinding>(
-				UBlueprintGeneratedClass::GetDynamicBindingObject(InClass, BindingClass)
+				UBlueprintGeneratedClass::GetDynamicBindingObject(InClass, InputBindingClasses[Index])
 				, ECastCheckedType::NullAllowed);
 			if (BindingObject)
 			{

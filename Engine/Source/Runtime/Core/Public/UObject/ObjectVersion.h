@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -509,7 +509,7 @@ enum EUnrealEngineObjectUE4Version
 	VER_UE4_CONSTRAINT_INSTANCE_MOTOR_FLAGS,
 	// Serialize bIsConst in FEdGraphPinType
 	VER_UE4_SERIALIZE_PINTYPE_CONST,
-	// Change UMaterialFunction::LibraryCategories to LibraryCategoriesText (old assets were saved before auto-conversion of FArrayProperty was possible)
+	// Change UMaterialFunction::LibraryCategories to LibraryCategoriesText (old assets were saved before auto-conversion of UArrayProperty was possible)
 	VER_UE4_LIBRARY_CATEGORIES_AS_FTEXT,
 	// Check for duplicate exports while saving packages.
 	VER_UE4_SKIP_DUPLICATE_EXPORTS_ON_SAVE_PACKAGE,
@@ -633,14 +633,6 @@ enum EUnrealEngineObjectUE4Version
 	VER_UE4_FIX_WIDE_STRING_CRC,
 	// Added package owner to allow private references
 	VER_UE4_ADDED_PACKAGE_OWNER,
-	// Changed the data layout for skin weight profile data
-	VER_UE4_SKINWEIGHT_PROFILE_DATA_LAYOUT_CHANGES,
-	// Added import that can have package different than their outer
-	VER_UE4_NON_OUTER_PACKAGE_IMPORT,
-	// Added DependencyFlags to AssetRegistry
-	VER_UE4_ASSETREGISTRY_DEPENDENCYFLAGS,
-	// Fixed corrupt licensee flag in 4.26 assets
-	VER_UE4_CORRECT_LICENSEE_FLAG,
 
 	// -----<new versions can be added before this line>-------------------------------------------------
 	// - this needs to be the last line (see note below)

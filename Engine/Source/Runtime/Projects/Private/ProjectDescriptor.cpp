@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ProjectDescriptor.h"
 #include "HAL/FileManager.h"
@@ -6,8 +6,6 @@
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
-#include "Interfaces/IProjectManager.h"
-#include "Misc/DataDrivenPlatformInfoRegistry.h"
 
 #define LOCTEXT_NAMESPACE "ProjectDescriptor"
 
@@ -16,7 +14,6 @@ FProjectDescriptor::FProjectDescriptor()
 	FileVersion = EProjectDescriptorVersion::Latest;
 	EpicSampleNameHash = 0;
 	bIsEnterpriseProject = false;
-	bDisableEnginePluginsByDefault = false;
 }
 
 void FProjectDescriptor::Sign(const FString& FilePath)
@@ -51,6 +48,11 @@ void FProjectDescriptor::UpdateSupportedTargetPlatforms(const FName& InPlatformN
 	{
 		TargetPlatforms.Remove(InPlatformName);
 	}
+}
+
+static bool IsRootedPath(const FString& Path)
+{
+	return Path[0] == TEXT('\\') || Path[0] == TEXT('/') || Path[1] == TEXT(':');
 }
 
 bool FProjectDescriptor::Load(const FString& FileName, FText& OutFailReason)
@@ -108,7 +110,6 @@ bool FProjectDescriptor::Read(const FJsonObject& Object, const FString& PathToPr
 	Object.TryGetStringField(TEXT("Category"), Category);
 	Object.TryGetStringField(TEXT("Description"), Description);
 	Object.TryGetBoolField(TEXT("Enterprise"), bIsEnterpriseProject);
-	Object.TryGetBoolField(TEXT("DisableEnginePluginsByDefault"), bDisableEnginePluginsByDefault);
 
 	// Read the modules
 	if(!FModuleDescriptor::ReadArray(Object, TEXT("Modules"), Modules, OutFailReason))
@@ -126,20 +127,24 @@ bool FProjectDescriptor::Read(const FJsonObject& Object, const FString& PathToPr
 	const TArray< TSharedPtr<FJsonValue> >* AdditionalPluginDirectoriesValue;
 	if (Object.TryGetArrayField(TEXT("AdditionalPluginDirectories"), AdditionalPluginDirectoriesValue))
 	{
-#if WITH_EDITOR || (IS_PROGRAM && WITH_PLUGIN_SUPPORT)
+#if WITH_EDITOR
 		for (int32 Idx = 0; Idx < AdditionalPluginDirectoriesValue->Num(); Idx++)
 		{
-			FString AdditionalPluginDir;
-			if ((*AdditionalPluginDirectoriesValue)[Idx]->TryGetString(AdditionalPluginDir))
+			FString AdditionalDir;
+			if ((*AdditionalPluginDirectoriesValue)[Idx]->TryGetString(AdditionalDir))
 			{
-				if (FPaths::IsRelative(AdditionalPluginDir))
+				if (IsRootedPath(AdditionalDir))
 				{
-					AdditionalPluginDir = IFileManager::Get().ConvertToAbsolutePathForExternalAppForWrite(*(PathToProject / AdditionalPluginDir));
+					AddPluginDirectory(AdditionalDir);
 				}
-				AddPluginDirectory(AdditionalPluginDir);
+				else
+				{
+					// This is path relative to the project, so convert to absolute
+					AddPluginDirectory(IFileManager::Get().ConvertToAbsolutePathForExternalAppForWrite(*(PathToProject / AdditionalDir)));
+				}
 			}
 		}
-#endif //if WITH_EDITOR
+#endif
 		// If this is a packaged build and there are additional directories, they need to be remapped to the packaged location
 		if (FPlatformProperties::RequiresCookedData() && AdditionalPluginDirectoriesValue->Num() > 0)
 		{
@@ -148,26 +153,6 @@ bool FProjectDescriptor::Read(const FJsonObject& Object, const FString& PathToPr
 			AddPluginDirectory(RemappedDir);
 		}
 	}
-
-#if WITH_EDITOR
-	// Read the list of additional root directories to scan
-	const TArray< TSharedPtr<FJsonValue> >* AdditionalRootDirectoriesValue;
-	if (Object.TryGetArrayField(TEXT("AdditionalRootDirectories"), AdditionalRootDirectoriesValue))
-	{
-		for (const TSharedPtr<FJsonValue>& AdditionalRootDirectoryValue : *AdditionalRootDirectoriesValue)
-		{
-			FString AdditionalRoot;
-			if (AdditionalRootDirectoryValue->TryGetString(AdditionalRoot))
-			{
-				if (FPaths::IsRelative(AdditionalRoot))
-				{
-					AdditionalRoot = IFileManager::Get().ConvertToAbsolutePathForExternalAppForWrite(*(PathToProject / AdditionalRoot));
-				}
-				AddRootDirectory(AdditionalRoot);
-			}
-		}
-	}
-#endif //if WITH_EDITOR
 
 	// Read the target platforms
 	const TArray< TSharedPtr<FJsonValue> > *TargetPlatformsValue;
@@ -183,27 +168,6 @@ bool FProjectDescriptor::Read(const FJsonObject& Object, const FString& PathToPr
 		}
 	}
 
-	// check if the project has directories for extended platforms, and assume support if it does
-	TArray<FString> ExtendedPlatforms;
-	IFileManager::Get().IterateDirectory(*(FPaths::Combine(PathToProject, TEXT("Platforms"))), [&ExtendedPlatforms](const TCHAR* InFilenameOrDirectory, const bool bInIsDirectory) -> bool
-	{
-		if (bInIsDirectory)
-		{
-			FString LastDirectory = FPaths::GetBaseFilename(FString(InFilenameOrDirectory));
-			ExtendedPlatforms.Emplace(LastDirectory);
-		}
-		return true;
-	});
-
-	const TMap<FString, FDataDrivenPlatformInfoRegistry::FPlatformInfo>& AllPlatformInfos = FDataDrivenPlatformInfoRegistry::GetAllPlatformInfos();
-	for (const FString& ExtendedPlatform : ExtendedPlatforms)
-	{
-		if (AllPlatformInfos.Contains(ExtendedPlatform))
-		{
-			TargetPlatforms.AddUnique(*ExtendedPlatform);
-		}
-	}
-
 	// Get the sample name hash
 	Object.TryGetNumberField(TEXT("EpicSampleNameHash"), EpicSampleNameHash);
 
@@ -216,12 +180,6 @@ bool FProjectDescriptor::Read(const FJsonObject& Object, const FString& PathToPr
 
 bool FProjectDescriptor::Save(const FString& FileName, FText& OutFailReason)
 {
-	if (IProjectManager::Get().IsSuppressingProjectFileWrite())
-	{
-		OutFailReason = FText::Format( LOCTEXT("FailedToWriteOutputFileSuppressed", "Failed to write output file '{0}'. Project file saving is suppressed."), FText::FromString(FileName) );
-		return false;
-	}
-
 	// Write the contents of the descriptor to a string. Make sure the writer is destroyed so that the contents are flushed to the string.
 	FString Text;
 	TSharedRef< TJsonWriter<> > Writer = TJsonWriterFactory<>::Create(&Text);
@@ -267,18 +225,6 @@ void FProjectDescriptor::Write(TJsonWriter<>& Writer, const FString& PathToProje
 	{
 		Writer.WriteArrayStart(TEXT("AdditionalPluginDirectories"));
 		for (const FString& Dir : AdditionalPluginDirectories)
-		{
-			// Convert to relative path if possible before writing it out
-			Writer.WriteValue(MakePathRelativeToProject(Dir, PathToProject));
-		}
-		Writer.WriteArrayEnd();
-	}
-
-	// Write out the additional root directories to scan
-	if (AdditionalRootDirectories.Num() > 0)
-	{
-		Writer.WriteArrayStart(TEXT("AdditionalRootDirectories"));
-		for (const FString& Dir : AdditionalRootDirectories)
 		{
 			// Convert to relative path if possible before writing it out
 			Writer.WriteValue(MakePathRelativeToProject(Dir, PathToProject));
@@ -332,44 +278,24 @@ const FString FProjectDescriptor::MakePathRelativeToProject(const FString& Dir, 
 	return ModifiedDir;
 }
 
-bool FProjectDescriptor::AddPluginDirectory(const FString& Dir)
+void FProjectDescriptor::AddPluginDirectory(const FString& AdditionalDir)
 {
-	checkf(!FPaths::IsRelative(Dir), TEXT("%s is not an absolute path"), *Dir);
-	check(!Dir.StartsWith(IFileManager::Get().ConvertToAbsolutePathForExternalAppForWrite(*FPaths::ProjectPluginsDir())));
-	check(!Dir.StartsWith(IFileManager::Get().ConvertToAbsolutePathForExternalAppForWrite(*FPaths::EnginePluginsDir())));
+	check(!AdditionalDir.StartsWith(IFileManager::Get().ConvertToAbsolutePathForExternalAppForWrite(*FPaths::ProjectPluginsDir())));
+	check(!AdditionalDir.StartsWith(IFileManager::Get().ConvertToAbsolutePathForExternalAppForWrite(*FPaths::EnginePluginsDir())));
 
-	if (!AdditionalPluginDirectories.Contains(Dir))
-	{
-		AdditionalPluginDirectories.Add(Dir);
-		return true;
-	}
-	return false;
+	// Detect calls where the path is not absolute
+#if WITH_EDITOR
+	checkf(IsRootedPath(AdditionalDir), TEXT("%s is not rooted"), *AdditionalDir);
+#endif
+	
+	AdditionalPluginDirectories.AddUnique(AdditionalDir);
 }
 
-bool FProjectDescriptor::RemovePluginDirectory(const FString& Dir)
+void FProjectDescriptor::RemovePluginDirectory(const FString& Dir)
 {
-	checkf(!FPaths::IsRelative(Dir), TEXT("%s is not an absolute path"), *Dir);
-	return AdditionalPluginDirectories.RemoveSingle(Dir) > 0;
-}
-
-bool FProjectDescriptor::AddRootDirectory(const FString& Dir)
-{
-	checkf(!FPaths::IsRelative(Dir), TEXT("%s is not an absolute path"), *Dir);
-	check(!Dir.StartsWith(IFileManager::Get().ConvertToAbsolutePathForExternalAppForWrite(*FPaths::EngineDir())));
-	check(!Dir.StartsWith(IFileManager::Get().ConvertToAbsolutePathForExternalAppForWrite(*FPaths::ProjectDir())));
-
-	if (!AdditionalRootDirectories.Contains(Dir))
-	{
-		AdditionalRootDirectories.Add(Dir);
-		return true;
-	}
-	return false;
-}
-
-bool FProjectDescriptor::RemoveRootDirectory(const FString& Dir)
-{
-	checkf(!FPaths::IsRelative(Dir), TEXT("%s is not an absolute path"), *Dir);
-	return AdditionalRootDirectories.RemoveSingle(Dir) > 0;
+	// Detect calls where the path is not absolute
+	checkf(IsRootedPath(Dir), TEXT("%s is not rooted"), *Dir);
+	AdditionalPluginDirectories.RemoveSingle(Dir);
 }
 
 #undef LOCTEXT_NAMESPACE

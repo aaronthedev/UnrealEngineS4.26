@@ -1,12 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Containers/Ticker.h"
 #include "OnlineSubsystem.h"
 #include "SocialToolkit.h"
-#include "Misc/ConfigCacheIni.h"
-#include "Stats/Stats.h"
 
 DECLARE_DELEGATE_TwoParams(FOnQueryCompleted, FName, const TSharedRef<class FSocialQueryBase>&);
 
@@ -32,7 +30,7 @@ class TSocialQuery : public FSocialQueryBase
 {
 public:
 	using FQueryId = QueryUserIdT;
-	using FOnQueryComplete = TDelegate<void(ESocialSubsystem, bool, CompletionCallbackArgs...)>;
+	using FOnQueryComplete = TBaseDelegate<void, ESocialSubsystem, bool, CompletionCallbackArgs...>;
 
 	// All subclasses of TSocialQuery must implement this static method
 	// Intentionally not implemented here to catch errors at compile time
@@ -90,7 +88,6 @@ public:
 
 	bool HandleExecuteQueries(float)
 	{
-		QUICK_SCOPE_CYCLE_COUNTER(STAT_FSocialQueryManager_HandleExecuteQueries);
 		// Execute all pending queries
 		TArray<TArray<TSharedRef<FSocialQueryBase>>> AllQueries;
 		CurrentQueriesById.GenerateValueArray(AllQueries);
@@ -107,8 +104,6 @@ public:
 		}
 
 		TickExecuteHandle.Reset();
-
-		// Returning false ensures the ticker removes this delegate
 		return false;
 	}
 
@@ -140,14 +135,10 @@ private:
 		NewQuery->Initialize(Toolkit, SubsystemType, FOnQueryCompleted::CreateRaw(this, &FSocialQueryManager::HandleQueryComplete));
 		Queries.Add(NewQuery);
 
-		float UserInfoQueryAggregationTime = 0.0f;
-		
-		GConfig->GetFloat(TEXT("Social"), TEXT("UserInfoQueryAggregationTime"), UserInfoQueryAggregationTime, GGameIni);
-
 		// If we aren't already registered to execute our queries next tick, do so now
 		if (!TickExecuteHandle.IsValid())
 		{
-			TickExecuteHandle = FTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FSocialQueryManager::HandleExecuteQueries), UserInfoQueryAggregationTime);
+			TickExecuteHandle = FTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FSocialQueryManager::HandleExecuteQueries));
 		}
 
 		return NewQuery;

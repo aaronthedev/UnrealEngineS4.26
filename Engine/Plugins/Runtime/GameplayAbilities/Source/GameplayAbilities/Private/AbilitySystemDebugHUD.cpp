@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AbilitySystemDebugHUD.h"
 #include "GameFramework/PlayerController.h"
@@ -10,7 +10,6 @@
 #include "Engine/LocalPlayer.h"
 #include "EngineUtils.h"
 #include "AbilitySystemComponent.h"
-#include "AbilitySystemInterface.h"
 
 AAbilitySystemDebugHUD::AAbilitySystemDebugHUD(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
@@ -66,15 +65,6 @@ void AAbilitySystemDebugHUD::DrawDebugHUD(UCanvas* InCanvas, APlayerController*)
 		return;
 	}
 
-	if (IAbilitySystemInterface* Pawn = Cast<IAbilitySystemInterface>(PC->GetPawn()))
-	{
-		if (UAbilitySystemComponent* AbilitySystemComponent = Pawn->GetAbilitySystemComponent())
-		{
-			DrawDebugAbilitySystemComponent(AbilitySystemComponent);
-			return;
-		}
-	}
-
 	if (PC->GetPawn())
 	{
 		UAbilitySystemComponent * AbilitySystemComponent = PC->GetPawn()->FindComponentByClass<UAbilitySystemComponent>();
@@ -106,12 +96,11 @@ void AAbilitySystemDebugHUD::DrawDebugAbilitySystemComponent(UAbilitySystemCompo
 	DrawWithBackground(Font, String, Color, EAlignHorizontal::Left, X, EAlignVertical::Top, Y);
 
 
-	for (const UAttributeSet* Set : Component->GetSpawnedAttributes())
+	for (const UAttributeSet* Set : Component->SpawnedAttributes)
 	{
 		if (!Set)
-		{
 			continue;
-		}
+		check(Set);
 
 		// Draw Attribute Set
 		DrawWithBackground(Font, FString::Printf(TEXT("%s (%d)"), *Set->GetName(), Set->IsDefaultSubobject()), Color, EAlignHorizontal::Left, X, EAlignVertical::Top, Y);
@@ -119,9 +108,9 @@ void AAbilitySystemDebugHUD::DrawDebugAbilitySystemComponent(UAbilitySystemCompo
 		String = FString::Printf(TEXT("%s == %s"), *Set->GetArchetype()->GetPathName(), *Set->GetClass()->GetDefaultObject()->GetPathName());
 		DrawWithBackground(Font, String, Color, EAlignHorizontal::Left, X, EAlignVertical::Top, Y);
 
-		for (TFieldIterator<FProperty> PropertyIt(Set->GetClass(), EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
+		for (TFieldIterator<UProperty> PropertyIt(Set->GetClass(), EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
 		{
-			FProperty *Prop = *PropertyIt;			
+			UProperty *Prop = *PropertyIt;			
 
 			FString ValueString;
 			const void *PropertyValue = Prop->ContainerPtrToValuePtr<void>(Set);

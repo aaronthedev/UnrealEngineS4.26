@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 /** Project specific configuration for content encryption */
@@ -13,17 +13,10 @@ public:
 		All,
 	};
 
-	enum class EGroupType
-	{
-		Root,
-		Explicit
-	};
-
 	struct FGroup
 	{
 		TSet<FName> PackageNames;
-		TSet<FString> NonAssetFiles;
-		EGroupType GroupType = EGroupType::Root;
+		bool bStageTimeOnly = false;
 		EAllowedReferences AllowedReferences = EAllowedReferences::None;
 	};
 
@@ -34,14 +27,9 @@ public:
 		PackageGroups.FindOrAdd(InGroupName).PackageNames.Add(InPackageName);
 	}
 
-	void AddNonAssetFile(FName InGroupName, const FString& InFilename)
+	void SetGroupAsStageTimeOnly(FName InGroupName, bool bInStageTimeOnly)
 	{
-		PackageGroups.FindOrAdd(InGroupName).NonAssetFiles.Add(InFilename);
-	}
-
-	void SetGroupType(FName InGroupName, EGroupType InGroupType)
-	{
-		PackageGroups.FindOrAdd(InGroupName).GroupType = InGroupType;
+		PackageGroups.FindOrAdd(InGroupName).bStageTimeOnly = bInStageTimeOnly;
 	}
 
 	void SetAllowedReferences(FName InGroupName, EAllowedReferences InAllowedReferences)

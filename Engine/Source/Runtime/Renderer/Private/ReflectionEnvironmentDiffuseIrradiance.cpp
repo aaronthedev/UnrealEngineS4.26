@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Functionality for computing SH diffuse irradiance from a cubemap
@@ -51,8 +51,8 @@ public:
 	{
 		CubeFace.Bind(Initializer.ParameterMap,TEXT("CubeFace"));
 		SourceMipIndex.Bind(Initializer.ParameterMap,TEXT("SourceMipIndex"));
-		SourceCubemapTexture.Bind(Initializer.ParameterMap,TEXT("SourceCubemapTexture"));
-		SourceCubemapSampler.Bind(Initializer.ParameterMap,TEXT("SourceCubemapSampler"));
+		SourceTexture.Bind(Initializer.ParameterMap,TEXT("SourceTexture"));
+		SourceTextureSampler.Bind(Initializer.ParameterMap,TEXT("SourceTextureSampler"));
 		CoefficientMask0.Bind(Initializer.ParameterMap,TEXT("CoefficientMask0"));
 		CoefficientMask1.Bind(Initializer.ParameterMap,TEXT("CoefficientMask1"));
 		CoefficientMask2.Bind(Initializer.ParameterMap,TEXT("CoefficientMask2"));
@@ -62,36 +62,50 @@ public:
 
 	void SetParameters(FRHICommandList& RHICmdList, int32 CubeFaceValue, int32 SourceMipIndexValue, int32 CoefficientIndex, int32 FaceResolution, FTextureRHIRef& SourceTextureValue)
 	{
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), CubeFace, CubeFaceValue);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), SourceMipIndex, SourceMipIndexValue);
+		SetShaderValue(RHICmdList, GetPixelShader(), CubeFace, CubeFaceValue);
+		SetShaderValue(RHICmdList, GetPixelShader(), SourceMipIndex, SourceMipIndexValue);
 
 		SetTextureParameter(
 			RHICmdList, 
-			RHICmdList.GetBoundPixelShader(),
-			SourceCubemapTexture,
-			SourceCubemapSampler,
+			GetPixelShader(), 
+			SourceTexture, 
+			SourceTextureSampler, 
 			TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), 
 			SourceTextureValue);
 
 		const FVector4 Mask0(CoefficientIndex == 0, CoefficientIndex == 1, CoefficientIndex == 2, CoefficientIndex == 3);
 		const FVector4 Mask1(CoefficientIndex == 4, CoefficientIndex == 5, CoefficientIndex == 6, CoefficientIndex == 7);
 		const float Mask2 = CoefficientIndex == 8;
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), CoefficientMask0, Mask0);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), CoefficientMask1, Mask1);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), CoefficientMask2, Mask2);
+		SetShaderValue(RHICmdList, GetPixelShader(), CoefficientMask0, Mask0);
+		SetShaderValue(RHICmdList, GetPixelShader(), CoefficientMask1, Mask1);
+		SetShaderValue(RHICmdList, GetPixelShader(), CoefficientMask2, Mask2);
 
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), NumSamples, FaceResolution * FaceResolution * 6);
+		SetShaderValue(RHICmdList, GetPixelShader(), NumSamples, FaceResolution * FaceResolution * 6);
+	}
+
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << CubeFace;
+		Ar << SourceMipIndex;
+		Ar << SourceTexture;
+		Ar << SourceTextureSampler;
+		Ar << CoefficientMask0;
+		Ar << CoefficientMask1;
+		Ar << CoefficientMask2;
+		Ar << NumSamples;
+		return bShaderHasOutdatedParameters;
 	}
 
 private:
-	LAYOUT_FIELD(FShaderParameter, CubeFace)
-	LAYOUT_FIELD(FShaderParameter, SourceMipIndex)
-	LAYOUT_FIELD(FShaderResourceParameter, SourceCubemapTexture)
-	LAYOUT_FIELD(FShaderResourceParameter, SourceCubemapSampler)
-	LAYOUT_FIELD(FShaderParameter, CoefficientMask0)
-	LAYOUT_FIELD(FShaderParameter, CoefficientMask1)
-	LAYOUT_FIELD(FShaderParameter, CoefficientMask2)
-	LAYOUT_FIELD(FShaderParameter, NumSamples)
+	FShaderParameter CubeFace;
+	FShaderParameter SourceMipIndex;
+	FShaderResourceParameter SourceTexture;
+	FShaderResourceParameter SourceTextureSampler;
+	FShaderParameter CoefficientMask0;
+	FShaderParameter CoefficientMask1;
+	FShaderParameter CoefficientMask2;
+	FShaderParameter NumSamples;
 };
 
 IMPLEMENT_SHADER_TYPE(,FCopyDiffuseIrradiancePS,TEXT("/Engine/Private/ReflectionEnvironmentShaders.usf"),TEXT("DiffuseIrradianceCopyPS"),SF_Pixel)
@@ -112,8 +126,8 @@ public:
 	{
 		CubeFace.Bind(Initializer.ParameterMap,TEXT("CubeFace"));
 		SourceMipIndex.Bind(Initializer.ParameterMap,TEXT("SourceMipIndex"));
-		SourceCubemapTexture.Bind(Initializer.ParameterMap,TEXT("SourceCubemapTexture"));
-		SourceCubemapSampler.Bind(Initializer.ParameterMap,TEXT("SourceCubemapSampler"));
+		SourceTexture.Bind(Initializer.ParameterMap,TEXT("SourceTexture"));
+		SourceTextureSampler.Bind(Initializer.ParameterMap,TEXT("SourceTextureSampler"));
 		Sample01.Bind(Initializer.ParameterMap,TEXT("Sample01"));
 		Sample23.Bind(Initializer.ParameterMap,TEXT("Sample23"));
 	}
@@ -121,14 +135,14 @@ public:
 
 	void SetParameters(FRHICommandList& RHICmdList, int32 CubeFaceValue, int32 NumMips, int32 SourceMipIndexValue, int32 CoefficientIndex, FTextureRHIRef& SourceTextureValue)
 	{
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), CubeFace, CubeFaceValue);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), SourceMipIndex, SourceMipIndexValue);
+		SetShaderValue(RHICmdList, GetPixelShader(), CubeFace, CubeFaceValue);
+		SetShaderValue(RHICmdList, GetPixelShader(), SourceMipIndex, SourceMipIndexValue);
 
 		SetTextureParameter(
 			RHICmdList, 
-			RHICmdList.GetBoundPixelShader(),
-			SourceCubemapTexture,
-			SourceCubemapSampler,
+			GetPixelShader(), 
+			SourceTexture, 
+			SourceTextureSampler, 
 			TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), 
 			SourceTextureValue);
 
@@ -136,17 +150,29 @@ public:
 		const float HalfSourceTexelSize = .5f / MipSize;
 		const FVector4 Sample01Value(-HalfSourceTexelSize, -HalfSourceTexelSize, HalfSourceTexelSize, -HalfSourceTexelSize);
 		const FVector4 Sample23Value(-HalfSourceTexelSize, HalfSourceTexelSize, HalfSourceTexelSize, HalfSourceTexelSize);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), Sample01, Sample01Value);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), Sample23, Sample23Value);
+		SetShaderValue(RHICmdList, GetPixelShader(), Sample01, Sample01Value);
+		SetShaderValue(RHICmdList, GetPixelShader(), Sample23, Sample23Value);
+	}
+
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << CubeFace;
+		Ar << SourceMipIndex;
+		Ar << SourceTexture;
+		Ar << SourceTextureSampler;
+		Ar << Sample01;
+		Ar << Sample23;
+		return bShaderHasOutdatedParameters;
 	}
 
 private:
-	LAYOUT_FIELD(FShaderParameter, CubeFace)
-	LAYOUT_FIELD(FShaderParameter, SourceMipIndex)
-	LAYOUT_FIELD(FShaderResourceParameter, SourceCubemapTexture)
-	LAYOUT_FIELD(FShaderResourceParameter, SourceCubemapSampler)
-	LAYOUT_FIELD(FShaderParameter, Sample01)
-	LAYOUT_FIELD(FShaderParameter, Sample23)
+	FShaderParameter CubeFace;
+	FShaderParameter SourceMipIndex;
+	FShaderResourceParameter SourceTexture;
+	FShaderResourceParameter SourceTextureSampler;
+	FShaderParameter Sample01;
+	FShaderParameter Sample23;
 };
 
 IMPLEMENT_SHADER_TYPE(,FAccumulateDiffuseIrradiancePS,TEXT("/Engine/Private/ReflectionEnvironmentShaders.usf"),TEXT("DiffuseIrradianceAccumulatePS"),SF_Pixel)
@@ -166,28 +192,37 @@ public:
 		FGlobalShader(Initializer)
 	{
 		SourceMipIndex.Bind(Initializer.ParameterMap,TEXT("SourceMipIndex"));
-		SourceCubemapTexture.Bind(Initializer.ParameterMap,TEXT("SourceCubemapTexture"));
-		SourceCubemapSampler.Bind(Initializer.ParameterMap,TEXT("SourceCubemapSampler"));
+		SourceTexture.Bind(Initializer.ParameterMap,TEXT("SourceTexture"));
+		SourceTextureSampler.Bind(Initializer.ParameterMap,TEXT("SourceTextureSampler"));
 	}
 	FAccumulateCubeFacesPS() {}
 
 	void SetParameters(FRHICommandList& RHICmdList, int32 SourceMipIndexValue, FTextureRHIRef& SourceTextureValue)
 	{
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), SourceMipIndex, SourceMipIndexValue);
+		SetShaderValue(RHICmdList, GetPixelShader(), SourceMipIndex, SourceMipIndexValue);
 
 		SetTextureParameter(
 			RHICmdList, 
-			RHICmdList.GetBoundPixelShader(),
-			SourceCubemapTexture,
-			SourceCubemapSampler,
+			GetPixelShader(), 
+			SourceTexture, 
+			SourceTextureSampler, 
 			TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), 
 			SourceTextureValue);
 	}
 
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << SourceMipIndex;
+		Ar << SourceTexture;
+		Ar << SourceTextureSampler;
+		return bShaderHasOutdatedParameters;
+	}
+
 private:
-	LAYOUT_FIELD(FShaderParameter, SourceMipIndex)
-	LAYOUT_FIELD(FShaderResourceParameter, SourceCubemapTexture)
-	LAYOUT_FIELD(FShaderResourceParameter, SourceCubemapSampler)
+	FShaderParameter SourceMipIndex;
+	FShaderResourceParameter SourceTexture;
+	FShaderResourceParameter SourceTextureSampler;
 };
 
 IMPLEMENT_SHADER_TYPE(,FAccumulateCubeFacesPS,TEXT("/Engine/Private/ReflectionEnvironmentShaders.usf"),TEXT("AccumulateCubeFacesPS"),SF_Pixel)
@@ -210,7 +245,7 @@ void ComputeDiffuseIrradiance(FRHICommandListImmediate& RHICmdList, ERHIFeatureL
 			const int32 MipSize = GDiffuseIrradianceCubemapSize;
 			FSceneRenderTargetItem& EffectiveRT = GetEffectiveDiffuseIrradianceRenderTarget(SceneContext, MipIndex);			
 
-			RHICmdList.Transition(FRHITransitionInfo(EffectiveRT.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EffectiveRT.TargetableTexture);
 
 			for (int32 CubeFace = 0; CubeFace < CubeFace_MAX; CubeFace++)
 			{
@@ -219,14 +254,14 @@ void ComputeDiffuseIrradiance(FRHICommandListImmediate& RHICmdList, ERHIFeatureL
 				RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
 
 				const FIntRect ViewRect(0, 0, MipSize, MipSize);
-				RHICmdList.SetViewport(0.0f, 0.0f, 0.0f, (float)MipSize, (float)MipSize, 1.0f);
+				RHICmdList.SetViewport(0, 0, 0.0f, MipSize, MipSize, 1.0f);
 				TShaderMapRef<FCopyDiffuseIrradiancePS> PixelShader(ShaderMap);
 					
 				TShaderMapRef<FScreenVS> VertexShader(GetGlobalShaderMap(FeatureLevel));
 
 				GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 				GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 				SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -241,12 +276,12 @@ void ComputeDiffuseIrradiance(FRHICommandListImmediate& RHICmdList, ERHIFeatureL
 					ViewRect.Width(), ViewRect.Height(),
 					FIntPoint(ViewRect.Width(), ViewRect.Height()),
 					FIntPoint(MipSize, MipSize),
-					VertexShader);
+					*VertexShader);
 					
 				RHICmdList.EndRenderPass();
 			}
 
-			RHICmdList.Transition(FRHITransitionInfo(EffectiveRT.TargetableTexture, ERHIAccess::RTV, ERHIAccess::SRVGraphics));
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EffectiveRT.TargetableTexture);
 		}
 
 		const int32 NumMips = FMath::CeilLogTwo(GDiffuseIrradianceCubemapSize) + 1;
@@ -262,7 +297,7 @@ void ComputeDiffuseIrradiance(FRHICommandListImmediate& RHICmdList, ERHIFeatureL
 				FSceneRenderTargetItem& EffectiveSource = GetEffectiveDiffuseIrradianceSourceTexture(SceneContext, MipIndex);
 				check(EffectiveRT.TargetableTexture != EffectiveSource.ShaderResourceTexture);
 
-				RHICmdList.Transition(FRHITransitionInfo(EffectiveRT.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
+				RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EffectiveRT.TargetableTexture);
 
 				for (int32 CubeFace = 0; CubeFace < CubeFace_MAX; CubeFace++)
 				{
@@ -271,14 +306,14 @@ void ComputeDiffuseIrradiance(FRHICommandListImmediate& RHICmdList, ERHIFeatureL
 					RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
 
 					const FIntRect ViewRect(0, 0, MipSize, MipSize);
-					RHICmdList.SetViewport(0.0f, 0.0f, 0.0f, (float)MipSize, (float)MipSize, 1.0f);
+					RHICmdList.SetViewport(0, 0, 0.0f, MipSize, MipSize, 1.0f);
 					TShaderMapRef<FAccumulateDiffuseIrradiancePS> PixelShader(ShaderMap);
 						
 					TShaderMapRef<FScreenVS> VertexShader(GetGlobalShaderMap(FeatureLevel));
 						
 					GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 					GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -293,12 +328,12 @@ void ComputeDiffuseIrradiance(FRHICommandListImmediate& RHICmdList, ERHIFeatureL
 						ViewRect.Width(), ViewRect.Height(),
 						FIntPoint(ViewRect.Width(), ViewRect.Height()),
 						FIntPoint(MipSize, MipSize),
-						VertexShader);
+						*VertexShader);
 						
 					RHICmdList.EndRenderPass();
 				}				
 
-				RHICmdList.Transition(FRHITransitionInfo(EffectiveRT.TargetableTexture, ERHIAccess::RTV, ERHIAccess::SRVGraphics));
+				RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EffectiveRT.TargetableTexture);
 			}
 		}
 
@@ -307,20 +342,20 @@ void ComputeDiffuseIrradiance(FRHICommandListImmediate& RHICmdList, ERHIFeatureL
 			FSceneRenderTargetItem& EffectiveRT = FSceneRenderTargets::Get(RHICmdList).SkySHIrradianceMap->GetRenderTargetItem();
 
 			//load/store actions so we don't lose results as we render one pixel at a time on tile renderers.
-			RHICmdList.Transition(FRHITransitionInfo(EffectiveRT.TargetableTexture, ERHIAccess::Unknown, ERHIAccess::RTV));
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EffectiveRT.TargetableTexture);
 			FRHIRenderPassInfo RPInfo(EffectiveRT.TargetableTexture, ERenderTargetActions::Load_Store, nullptr);
 			RHICmdList.BeginRenderPass(RPInfo, TEXT("GatherCoeffRP"));
 			RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
 
 			const FIntRect ViewRect(CoefficientIndex, 0, CoefficientIndex + 1, 1);
-			RHICmdList.SetViewport(0.0f, 0.0f, 0.0f, (float)FSHVector3::MaxSHBasis, 1.0f, 1.0f);
+			RHICmdList.SetViewport(0, 0, 0.0f, FSHVector3::MaxSHBasis, 1, 1.0f);
 
 			TShaderMapRef<FScreenVS> VertexShader(ShaderMap);
 			TShaderMapRef<FAccumulateCubeFacesPS> PixelShader(ShaderMap);
 
 			GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 			GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -338,10 +373,10 @@ void ComputeDiffuseIrradiance(FRHICommandListImmediate& RHICmdList, ERHIFeatureL
 				MipSize, MipSize,
 				FIntPoint(FSHVector3::MaxSHBasis, 1),
 				FIntPoint(MipSize, MipSize),
-				VertexShader);
+				*VertexShader);
 
 			RHICmdList.EndRenderPass();
-			RHICmdList.Transition(FRHITransitionInfo(EffectiveRT.TargetableTexture, ERHIAccess::RTV, ERHIAccess::SRVGraphics));
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EffectiveRT.TargetableTexture);
 		}
 	}
 

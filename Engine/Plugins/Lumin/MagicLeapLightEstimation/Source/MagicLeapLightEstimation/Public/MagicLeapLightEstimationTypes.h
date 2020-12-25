@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Engine/Engine.h"
@@ -24,7 +24,7 @@ enum class EMagicLeapLightEstimationCamera : uint8
 	causing the retrieved data to be stale (old timestamps).
 */
 USTRUCT(BlueprintType)
-struct MAGICLEAPLIGHTESTIMATION_API FMagicLeapLightEstimationAmbientGlobalState
+struct FMagicLeapLightEstimationAmbientGlobalState
 {
 	GENERATED_BODY()
 
@@ -43,7 +43,7 @@ public:
 	causing the retrieved data to be stale (old timestamps).
 */
 USTRUCT(BlueprintType)
-struct MAGICLEAPLIGHTESTIMATION_API FMagicLeapLightEstimationColorTemperatureState
+struct FMagicLeapLightEstimationColorTemperatureState
 {
 	GENERATED_BODY()
 

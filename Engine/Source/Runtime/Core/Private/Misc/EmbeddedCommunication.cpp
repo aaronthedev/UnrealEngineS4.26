@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // Core includes.
 #include "Misc/EmbeddedCommunication.h"
@@ -15,11 +15,9 @@
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/OutputDeviceRedirector.h"
 #include "Misc/FeedbackContext.h"
-#include "Stats/Stats.h"
 
 TMap<FName, FEmbeddedDelegates::FEmbeddedCommunicationParamsDelegate> FEmbeddedDelegates::NativeToEmbeddedDelegateMap;
 TMap<FName, FEmbeddedDelegates::FEmbeddedCommunicationParamsDelegate> FEmbeddedDelegates::EmbeddedToNativeDelegateMap;
-FSimpleMulticastDelegate FEmbeddedDelegates::SleepTickDelegate;
 FCriticalSection FEmbeddedDelegates::NamedObjectRegistryLock;
 TMap<FString, void*> FEmbeddedDelegates::NamedObjectRegistry;
 
@@ -32,13 +30,6 @@ FEmbeddedDelegates::FEmbeddedCommunicationParamsDelegate& FEmbeddedDelegates::Ge
 FEmbeddedDelegates::FEmbeddedCommunicationParamsDelegate& FEmbeddedDelegates::GetEmbeddedToNativeParamsDelegateForSubsystem(FName SubsystemName)
 {
 	return EmbeddedToNativeDelegateMap.FindOrAdd(SubsystemName);
-}
-
-bool FEmbeddedDelegates::IsEmbeddedSubsystemAvailable(FName SubsystemName)
-{
-	FEmbeddedCommunicationParamsDelegate* NativeToEmbeddedDelegate = NativeToEmbeddedDelegateMap.Find(SubsystemName);
-
-	return NativeToEmbeddedDelegate && NativeToEmbeddedDelegate->IsBound();
 }
 
 void FEmbeddedDelegates::SetNamedObject(const FString& Name, void* Object)
@@ -222,16 +213,6 @@ DEFINE_LOG_CATEGORY_STATIC(LogBridge, Log, All);
 
 #endif // BUILD_EMBEDDED_APP
 
-void FEmbeddedCommunication::UELogFatal(const TCHAR* String)
-{
-#if BUILD_EMBEDDED_APP
-	if (GWarn && UE_LOG_ACTIVE(LogBridge, Fatal))
-	{
-		GWarn->Log("LogBridge", ELogVerbosity::Fatal, String);
-	}
-#endif
-}
-
 void FEmbeddedCommunication::UELogError(const TCHAR* String)
 {
 #if BUILD_EMBEDDED_APP
@@ -248,16 +229,6 @@ void FEmbeddedCommunication::UELogWarning(const TCHAR* String)
 	if (GWarn && UE_LOG_ACTIVE(LogBridge, Warning))
 	{
 		GWarn->Log("LogBridge", ELogVerbosity::Warning, String);
-	}
-#endif
-}
-
-void FEmbeddedCommunication::UELogDisplay(const TCHAR* String)
-{
-#if BUILD_EMBEDDED_APP
-	if (GLog && UE_LOG_ACTIVE(LogBridge, Display))
-	{
-		GLog->Log("LogBridge", ELogVerbosity::Display, String);
 	}
 #endif
 }
@@ -339,8 +310,6 @@ void FEmbeddedCommunication::WakeGameThread()
 
 bool FEmbeddedCommunication::TickGameThread(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FEmbeddedCommunication_TickGameThread);
-
 #if BUILD_EMBEDDED_APP
 	bool bEnableTickMultipleFunctors = false;
 	GConfig->GetBool(TEXT("EmbeddedCommunication"), TEXT("bEnableTickMultipleFunctors"), bEnableTickMultipleFunctors, GEngineIni);
@@ -386,49 +355,10 @@ bool FEmbeddedCommunication::TickGameThread(float DeltaTime)
 		&& GTickWakeMap.Num() == 0
 		&& GTickWithoutSleepCount <= 0)
  	{
-		double IdleSleepTimeSeconds = 5.0;
-		GConfig->GetDouble(TEXT("EmbeddedCommunication"), TEXT("IdleSleepTimeSeconds"), IdleSleepTimeSeconds, GEngineIni);
-
-		if (FEmbeddedDelegates::SleepTickDelegate.IsBound())
-		{
-			// Sleep in small bursts until 5 seconds has elapsed, or we are triggered, ticking the SleepTickDelegate between each one.
-
-			double IdleSleepTickIntervalSeconds = 1.0 / 60;
-			GConfig->GetDouble(TEXT("EmbeddedCommunication"), TEXT("IdleSleepTickIntervalSeconds"), IdleSleepTickIntervalSeconds, GEngineIni);
-
-			bool bWasTriggered = false;
-			double SleepTickTimeSliceEnd = FPlatformTime::Seconds() + IdleSleepTimeSeconds;
-			do 
-			{
-				const double PlatformTimeBefore = FPlatformTime::Seconds();
-
-				FEmbeddedDelegates::SleepTickDelegate.Broadcast();
-
-				const double PlatformTimeNow = FPlatformTime::Seconds();
-				const double TimeSpentInSleepTickDelegate = PlatformTimeNow - PlatformTimeBefore;
-				const double TimeUntilTimeSliceEnd = SleepTickTimeSliceEnd - PlatformTimeNow;
-				const double TimeRemainingThisSleepTickInterval = IdleSleepTickIntervalSeconds - TimeSpentInSleepTickDelegate;
-				// Can be negative if we spent longer than the interval time in Broadcast, or if we're already past the SleepTickTimeSliceEnd.
-				const double SleepTimeSeconds = FMath::Min(TimeUntilTimeSliceEnd, TimeRemainingThisSleepTickInterval);
-
-				if (SleepTimeSeconds > 0.0)
-				{
-					UE_LOG(LogInit, VeryVerbose, TEXT("FEmbeddedCommunication Sleeping GameThread for %s seconds..."), *FString::SanitizeFloat(SleepTimeSeconds));
-					const uint32 SleepTimeMilliseconds = 1000 * SleepTimeSeconds;
-					bWasTriggered = GSleepEvent->Wait(SleepTimeMilliseconds);
-					UE_LOG(LogInit, VeryVerbose, TEXT("FEmbeddedCommunication Woke up. Reason=[%s]"), bWasTriggered ? TEXT("Triggered") : TEXT("TimedOut"));
-				}
-			} while (!bWasTriggered &&
-				FPlatformTime::Seconds() < SleepTickTimeSliceEnd);
-		}
-		else
-		{
-			// Sleep for 5 seconds or until triggered
-			UE_LOG(LogInit, VeryVerbose, TEXT("FEmbeddedCommunication Sleeping GameThread for %s seconds..."), *FString::SanitizeFloat(IdleSleepTimeSeconds));
-			const uint32 IdleSleepTimeMilliseconds = 1000 * IdleSleepTimeSeconds;
-			bool bWasTriggered = GSleepEvent->Wait(IdleSleepTimeMilliseconds);
-			UE_LOG(LogInit, VeryVerbose, TEXT("FEmbeddedCommunication Woke up. Reason=[%s]"), bWasTriggered ? TEXT("Triggered") : TEXT("TimedOut"));
-		}
+		// wake up every 5 seconds even if nothing to do
+		UE_LOG(LogInit, VeryVerbose, TEXT("FEmbeddedCommunication Sleeping GameThread..."));
+		bool bWasTriggered = GSleepEvent->Wait(5000);
+		UE_LOG(LogInit, VeryVerbose, TEXT("FEmbeddedCommunication Woke up. Reason=[%s]"), bWasTriggered ? TEXT("Triggered") : TEXT("TimedOut"));
  	}
 	if (GTickWithoutSleepCount > 0)
 	{

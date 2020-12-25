@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "SynthComponents/SynthComponentMonoWaveTable.h"
@@ -488,12 +488,12 @@ void USynthComponentMonoWaveTable::SetSynthPreset(UMonoWaveTableSynthPreset* Syn
 }
 
 
-void USynthComponentMonoWaveTable::SetLowPassFilterFrequency(float InLowPassFilterFrequency)
+void USynthComponentMonoWaveTable::SetLowPassFilterFrequency(float InNewFrequency)
 {
-	InLowPassFilterFrequency = FMath::Max(InLowPassFilterFrequency, 5.0f);
-	SynthCommand([this, InLowPassFilterFrequency]
+	InNewFrequency = FMath::Max(InNewFrequency, 5.0f);
+	SynthCommand([this, InNewFrequency]
 	{
-		Synth.SetLpfFreq(InLowPassFilterFrequency);
+		Synth.SetLpfFreq(InNewFrequency);
 	});
 }
 

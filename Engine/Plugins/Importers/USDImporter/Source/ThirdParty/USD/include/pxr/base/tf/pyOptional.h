@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_PY_OPTIONAL_H
-#define PXR_BASE_TF_PY_OPTIONAL_H
+#ifndef TF_PYOPTIONAL_H
+#define TF_PYOPTIONAL_H
 
 /// \file tf/pyOptional.h
 
@@ -118,4 +118,4 @@ struct python_optional : public boost::noncopyable
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_PY_OPTIONAL_H
+#endif // TF_PYOPTIONAL_H

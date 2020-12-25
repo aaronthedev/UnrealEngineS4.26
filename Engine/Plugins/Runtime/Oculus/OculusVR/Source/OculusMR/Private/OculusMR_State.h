@@ -1,9 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "UObject/ObjectMacros.h"
 #include "OculusFunctionLibrary.h"
-#include "OculusPluginWrapper.h"
+#include "OVR_Plugin_Types.h"
 
 #include "OculusMR_State.generated.h"
 
@@ -21,10 +21,6 @@ struct FTrackedCamera
 	/** The external camera name set through the CameraTool */
 	UPROPERTY()
 	FString Name;
-
-	/** The time that this camera was updated */
-	UPROPERTY()
-	double UpdateTime;
 
 	/** The horizontal FOV, in degrees */
 	UPROPERTY(meta = (UIMin = "5.0", UIMax = "170", ClampMin = "0.001", ClampMax = "360.0", Units = deg))
@@ -58,18 +54,17 @@ struct FTrackedCamera
 	UPROPERTY()
 	FVector UserOffset;
 
-	/** The raw pose of the camera to the attached tracking device (Deprecated) */
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "All camera pose info is now in stage space, do not use raw pose data."))
-	FRotator RawRotation_DEPRECATED;
+	/** The raw pose of the camera to the attached tracking device */
+	UPROPERTY()
+	FRotator RawRotation;
 
-	/** The raw pose of the camera to the attached tracking device (Deprecated) */
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "All camera pose info is now in stage space, do not use raw pose data."))
-	FVector RawOffset_DEPRECATED;
+	/** The raw pose of the camera to the attached tracking device */
+	UPROPERTY()
+	FVector RawOffset;
 
 	FTrackedCamera()
 		: Index(-1)
 		, Name(TEXT("Unknown"))
-		, UpdateTime(0.0f)
 		, FieldOfView(90.0f)
 		, SizeX(1280)
 		, SizeY(720)
@@ -78,8 +73,8 @@ struct FTrackedCamera
 		, CalibratedOffset(EForceInit::ForceInitToZero)
 		, UserRotation(EForceInit::ForceInitToZero)
 		, UserOffset(EForceInit::ForceInitToZero)
-		, RawRotation_DEPRECATED(EForceInit::ForceInitToZero)
-		, RawOffset_DEPRECATED(EForceInit::ForceInitToZero)
+		, RawRotation(EForceInit::ForceInitToZero)
+		, RawOffset(EForceInit::ForceInitToZero)
 	{}
 };
 
@@ -98,13 +93,8 @@ public:
 	UPROPERTY()
 	FTrackedCamera TrackedCamera;
 
-	// Component at the tracking origin that the camera calibration is applied to
 	UPROPERTY()
 	class USceneComponent* TrackingReferenceComponent;
-
-	// A multiplier on the camera distance, should be based on the scaling of the player component
-	UPROPERTY()
-	double ScalingFactor;
 
 	ovrpCameraDevice CurrentCapturingCamera;
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreTypes.h"
 #include "Misc/AssertionMacros.h"
@@ -14,50 +14,17 @@
 #include "Algo/IsSorted.h"
 #include "Algo/Sort.h"
 #include "Algo/Transform.h"
-#include "Algo/IndexOf.h"
 #include "Algo/LevenshteinDistance.h"
 #include "Templates/Greater.h"
 
-namespace UE
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAlgosTest, "System.Core.Misc.Algos", EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::SmokeFilter)
+
+#define NUM_TEST_OBJECTS      32
+
+
+
+bool FAlgosTest::RunTest(const FString& Parameters)
 {
-namespace Impl
-{
-
-	struct FFixedTestRangeUnsigned
-	{
-		using SizeType = uint8;
-
-		FFixedTestRangeUnsigned()
-		{
-			uint8 Count = 0;
-			for (uint8& N : Numbers)
-			{
-				N = Count++;
-			}
-		}
-		uint8 Num() const
-		{
-			return UE_ARRAY_COUNT(Numbers);
-		}
-		const uint8* GetData() const
-		{
-			return Numbers;
-		}
-		uint8 Numbers[255];
-	};
-
-} // namespace Impl
-} // namespace UE
-
-template<> struct TIsContiguousContainer<UE::Impl::FFixedTestRangeUnsigned>{ enum { Value = true }; };
-
-class FAlgosTestBase : public FAutomationTestBase
-{
-public:
-	using FAutomationTestBase::FAutomationTestBase;
-
-	static constexpr int32 NumTestObjects = 32;
-
 	struct FTestData
 	{
 		FTestData(FString&& InName, int32 InAge, bool bInRetired = false)
@@ -67,10 +34,6 @@ public:
 		{
 		}
 
-		friend bool operator==(const FTestData& A, const FTestData&B)
-		{
-			return A.Name == B.Name && A.Age == B.Age && A.bRetired == B.bRetired;
-		}
 		bool IsTeenager() const
 		{
 			return Age >= 13 && Age <= 19;
@@ -86,25 +49,19 @@ public:
 		bool bRetired;
 	};
 
-	void Initialize()
+	// setup
+	TArray<int> TestData;
+	for (int i = 0; i < NUM_TEST_OBJECTS; ++i)
 	{
-		for (int i = 0; i < NumTestObjects; ++i)
-		{
-			TestData.Add(i);
-		}
-		for (int i = 0; i < NumTestObjects; ++i)
-		{
-			TestData2.Add(FMath::Rand());
-		}
+		TestData.Add(i);
+	}
+	TArray<int> TestData2;
+	for (int i = 0; i < NUM_TEST_OBJECTS; ++i)
+	{
+		TestData2.Add(FMath::Rand());
 	}
 
-	void Cleanup()
-	{
-		TestData2.Empty();
-		TestData.Empty();
-	}
-
-	void TestCopy()
+	// copy
 	{
 		TArray<int> TestArray;
 		// empty array
@@ -112,24 +69,24 @@ public:
 		check(TestArray == TestData);
 		// existing data
 		Algo::Copy(TestData2, TestArray);
-		check(TestArray.Num() == NumTestObjects * 2);
-		for (int i = 0; i < NumTestObjects; ++i)
+		check(TestArray.Num() == NUM_TEST_OBJECTS * 2);
+		for (int i = 0; i < NUM_TEST_OBJECTS; ++i)
 		{
 			check(TestArray[i] == TestData[i]);
 		}
-		for (int i = 0; i < NumTestObjects; ++i)
+		for (int i = 0; i < NUM_TEST_OBJECTS; ++i)
 		{
-			check(TestArray[i + NumTestObjects] == TestData2[i]);
+			check(TestArray[i + NUM_TEST_OBJECTS] == TestData2[i]);
 		}
 	}
 
-	void TestCopyIf()
+	// copy if
 	{
 		TArray<int> TestArray;
 		// empty array
 		Algo::CopyIf(TestData, TestArray, [](int i) { return (i % 2) == 0; });
 		int j = 0;
-		for (int i = 0; i < NumTestObjects; ++i)
+		for (int i = 0; i < NUM_TEST_OBJECTS; ++i)
 		{
 			if (TestData[i] % 2 == 0)
 			{
@@ -140,7 +97,7 @@ public:
 		// existing data
 		Algo::CopyIf(TestData2, TestArray, [](int i) { return (i % 2) == 0; });
 		j = 0;
-		for (int i = 0; i < NumTestObjects; ++i)
+		for (int i = 0; i < NUM_TEST_OBJECTS; ++i)
 		{
 			if (TestData[i] % 2 == 0)
 			{
@@ -148,7 +105,7 @@ public:
 				++j;
 			}
 		}
-		for (int i = 0; i < NumTestObjects; ++i)
+		for (int i = 0; i < NUM_TEST_OBJECTS; ++i)
 		{
 			if (TestData2[i] % 2 == 0)
 			{
@@ -159,31 +116,31 @@ public:
 		check(j == TestArray.Num())
 	}
 
-	void TestTransform()
+	// transform
 	{
 		TArray<float> TestArray;
 
 		// empty array
 		{
-			Algo::Transform(TestData, TestArray, [](int i) { return FMath::DegreesToRadians((float)i); });
-			check(TestArray.Num() == NumTestObjects);
+			Algo::Transform(TestData, TestArray, [](int i) { return FMath::DegreesToRadians(i); });
+			check(TestArray.Num() == NUM_TEST_OBJECTS);
 			for (int i = 0; i < TestArray.Num(); ++i)
 			{
-				check(TestArray[i] == FMath::DegreesToRadians((float)TestData[i]));
+				check(TestArray[i] == FMath::DegreesToRadians(TestData[i]));
 			}
 		}
 
 		// existing data
 		{
-			Algo::Transform(TestData2, TestArray, [](int i) { return FMath::DegreesToRadians((float)i); });
-			check(TestArray.Num() == NumTestObjects * 2);
-			for (int i = 0; i < NumTestObjects; ++i)
+			Algo::Transform(TestData2, TestArray, [](int i) { return FMath::DegreesToRadians(i); });
+			check(TestArray.Num() == NUM_TEST_OBJECTS * 2);
+			for (int i = 0; i < NUM_TEST_OBJECTS; ++i)
 			{
-				check(TestArray[i] == FMath::DegreesToRadians((float)TestData[i]));
+				check(TestArray[i] == FMath::DegreesToRadians(TestData[i]));
 			}
-			for (int i = 0; i < NumTestObjects; ++i)
+			for (int i = 0; i < NUM_TEST_OBJECTS; ++i)
 			{
-				check(TestArray[i + NumTestObjects] == FMath::DegreesToRadians((float)TestData2[i]));
+				check(TestArray[i + NUM_TEST_OBJECTS] == FMath::DegreesToRadians(TestData2[i]));
 			}
 		}
 
@@ -235,19 +192,19 @@ public:
 		}
 	}
 
-	void TestTransformIf()
+	// transform if
 	{
 		TArray<float> TestArray;
 
 		// empty array
 		{
-			Algo::TransformIf(TestData, TestArray, [](int i) { return (i % 2) == 0; }, [](int i) { return FMath::DegreesToRadians((float)i); });
+			Algo::TransformIf(TestData, TestArray, [](int i) { return (i % 2) == 0; }, [](int i) { return FMath::DegreesToRadians(i); });
 			int j = 0;
-			for (int i = 0; i < NumTestObjects; ++i)
+			for (int i = 0; i < NUM_TEST_OBJECTS; ++i)
 			{
 				if (TestData[i] % 2 == 0)
 				{
-					check(TestArray[j] == FMath::DegreesToRadians((float)TestData[i]));
+					check(TestArray[j] == FMath::DegreesToRadians(TestData[i]));
 					++j;
 				}
 			}
@@ -255,21 +212,21 @@ public:
 
 		// existing data
 		{
-			Algo::TransformIf(TestData2, TestArray, [](int i) { return (i % 2) == 0; }, [](int i) { return FMath::DegreesToRadians((float)i); });
+			Algo::TransformIf(TestData2, TestArray, [](int i) { return (i % 2) == 0; }, [](int i) { return FMath::DegreesToRadians(i); });
 			int j = 0;
-			for (int i = 0; i < NumTestObjects; ++i)
+			for (int i = 0; i < NUM_TEST_OBJECTS; ++i)
 			{
 				if (TestData[i] % 2 == 0)
 				{
-					check(TestArray[j] == FMath::DegreesToRadians((float)TestData[i]));
+					check(TestArray[j] == FMath::DegreesToRadians(TestData[i]));
 					++j;
 				}
 			}
-			for (int i = 0; i < NumTestObjects; ++i)
+			for (int i = 0; i < NUM_TEST_OBJECTS; ++i)
 			{
 				if (TestData2[i] % 2 == 0)
 				{
-					check(TestArray[j] == FMath::DegreesToRadians((float)TestData2[i]));
+					check(TestArray[j] == FMath::DegreesToRadians(TestData2[i]));
 					++j;
 				}
 			}
@@ -300,7 +257,7 @@ public:
 		}
 	}
 
-	void TestBinarySearch()
+	// binary search
 	{
 		// Verify static array case
 		int StaticArray[] = { 2,4,6,6,6,8 };
@@ -336,45 +293,7 @@ public:
 		check(Algo::UpperBoundBy(IntArray, 6, FIdentityFunctor()) == 7);
 	}
 
-	void TestIndexOf()
-	{
-		TArray<FTestData> Data = {
-			FTestData(TEXT("Alice"), 31),
-			FTestData(TEXT("Bob"), 25),
-			FTestData(TEXT("Charles"), 19),
-			FTestData(TEXT("Donna"), 13)
-		};
-
-		int FixedArray[] = { 2,4,6,6,6,8 };
-		check(Algo::IndexOf(FixedArray, 2) == 0);
-		check(Algo::IndexOf(FixedArray, 6) == 2);
-		check(Algo::IndexOf(FixedArray, 8) == 5);
-		check(Algo::IndexOf(FixedArray, 0) == INDEX_NONE);
-
-		check(Algo::IndexOf(Data, FTestData(TEXT("Alice"), 31)) == 0);
-		check(Algo::IndexOf(Data, FTestData(TEXT("Alice"), 32)) == INDEX_NONE);
-
-		check(Algo::IndexOfBy(Data, TEXT("Donna"), &FTestData::Name) == 3);
-		check(Algo::IndexOfBy(Data, 19, &FTestData::Age) == 2);
-		check(Algo::IndexOfBy(Data, 0, &FTestData::Age) == INDEX_NONE);
-
-		auto GetAge = [](const FTestData& In) { return In.Age; };
-		check(Algo::IndexOfBy(Data, 19, GetAge) == 2);
-		check(Algo::IndexOfBy(Data, 0, GetAge) == INDEX_NONE);
-
-		check(Algo::IndexOfByPredicate(Data, [](const FTestData& In) { return In.Age < 25; }) == 2);
-		check(Algo::IndexOfByPredicate(Data, [](const FTestData& In) { return In.Age > 19; }) == 0);
-		check(Algo::IndexOfByPredicate(Data, [](const FTestData& In) { return In.Age > 31; }) == INDEX_NONE);
-
-		static const uint8 InvalidIndex = (uint8)-1;
-		UE::Impl::FFixedTestRangeUnsigned TestRange;
-		check(Algo::IndexOf(TestRange, 25) == 25);
-		check(Algo::IndexOf(TestRange, 254) == 254);
-		check(Algo::IndexOf(TestRange, 255) == InvalidIndex);
-		check(Algo::IndexOf(TestRange, 1024) == InvalidIndex);
-	}
-
-	void TestHeapify()
+	// heapify
 	{
 		TArray<int> TestArray = TestData2;
 		Algo::Heapify(TestArray);
@@ -382,7 +301,7 @@ public:
 		check(Algo::IsHeap(TestArray));
 	}
 
-	void TestHeapSort()
+	// heap sort
 	{
 		TArray<int> TestArray = TestData2;
 		Algo::HeapSort(TestArray);
@@ -392,7 +311,7 @@ public:
 		check(Algo::IsSorted(TestArray));
 	}
 
-	void TestIntroSort()
+	// intro sort
 	{
 		TArray<int> TestArray = TestData2;
 		Algo::IntroSort(TestArray);
@@ -400,7 +319,7 @@ public:
 		check(Algo::IsSorted(TestArray));
 	}
 
-	void TestSort()
+	// sort
 	{
 		// regular Sort
 		TArray<int> TestArray = TestData2;
@@ -436,159 +355,106 @@ public:
 		check(Algo::IsSortedBy(TestArray, Projection, Predicate));
 	}
 
-	void TestEditDistance()
+	// Edit distance test
 	{
-		struct FEditDistanceTestData
+		auto RunEditDistanceTest = [this](const FString& A, const FString& B, const ESearchCase::Type SearchCase, const int32 ExpectedResultDistance)
 		{
-			const TCHAR* A;
-			const TCHAR* B;
-			ESearchCase::Type SearchCase;
-			int32 ExpectedResultDistance;
+			// Run test
+			int32 ResultDistance = MAX_int32;
+			if (SearchCase == ESearchCase::IgnoreCase)
+			{
+				ResultDistance = Algo::LevenshteinDistance(A.ToLower(), B.ToLower());
+			}
+			else
+			{
+				ResultDistance = Algo::LevenshteinDistance(A, B);
+			}
+
+			if (ResultDistance != ExpectedResultDistance)
+			{
+				FString SearchCaseStr = SearchCase == ESearchCase::CaseSensitive ? TEXT("CaseSensitive") : TEXT("IgnoreCase");
+				AddError(FString::Printf(TEXT("Algo::EditDistance return the wrong distance between 2 string (A '%s', B '%s', case '%s', result '%d', expected '%d')."), *A, *B, *SearchCaseStr, ResultDistance, ExpectedResultDistance));
+			}
+		};
+		//Empty tests
+		RunEditDistanceTest(TEXT(""), TEXT("Saturday"), ESearchCase::CaseSensitive, 8);
+		RunEditDistanceTest(TEXT(""), TEXT("Saturday"), ESearchCase::IgnoreCase, 8);
+		RunEditDistanceTest(TEXT("Saturday"), TEXT(""), ESearchCase::CaseSensitive, 8);
+		RunEditDistanceTest(TEXT("Saturday"), TEXT(""), ESearchCase::IgnoreCase, 8);
+		//One letter tests
+		RunEditDistanceTest(TEXT("a"), TEXT("a"), ESearchCase::CaseSensitive, 0);
+		RunEditDistanceTest(TEXT("a"), TEXT("b"), ESearchCase::CaseSensitive, 1);
+		//Equal tests
+		RunEditDistanceTest(TEXT("Saturday"), TEXT("Saturday"), ESearchCase::CaseSensitive, 0);
+		RunEditDistanceTest(TEXT("Saturday"), TEXT("Saturday"), ESearchCase::IgnoreCase, 0);
+		//Simple casing test
+		RunEditDistanceTest(TEXT("Saturday"), TEXT("saturday"), ESearchCase::CaseSensitive, 1);
+		RunEditDistanceTest(TEXT("Saturday"), TEXT("saturday"), ESearchCase::IgnoreCase, 0);
+		RunEditDistanceTest(TEXT("saturday"), TEXT("Saturday"), ESearchCase::CaseSensitive, 1);
+		RunEditDistanceTest(TEXT("saturday"), TEXT("Saturday"), ESearchCase::IgnoreCase, 0);
+		RunEditDistanceTest(TEXT("SaturdaY"), TEXT("saturday"), ESearchCase::CaseSensitive, 2);
+		RunEditDistanceTest(TEXT("SaturdaY"), TEXT("saturday"), ESearchCase::IgnoreCase, 0);
+		RunEditDistanceTest(TEXT("saturdaY"), TEXT("Saturday"), ESearchCase::CaseSensitive, 2);
+		RunEditDistanceTest(TEXT("saturdaY"), TEXT("Saturday"), ESearchCase::IgnoreCase, 0);
+		RunEditDistanceTest(TEXT("SATURDAY"), TEXT("saturday"), ESearchCase::CaseSensitive, 8);
+		RunEditDistanceTest(TEXT("SATURDAY"), TEXT("saturday"), ESearchCase::IgnoreCase, 0);
+		//First char diff
+		RunEditDistanceTest(TEXT("Saturday"), TEXT("baturday"), ESearchCase::CaseSensitive, 1);
+		RunEditDistanceTest(TEXT("Saturday"), TEXT("baturday"), ESearchCase::IgnoreCase, 1);
+		//Last char diff
+		RunEditDistanceTest(TEXT("Saturday"), TEXT("Saturdai"), ESearchCase::CaseSensitive, 1);
+		RunEditDistanceTest(TEXT("Saturday"), TEXT("Saturdai"), ESearchCase::IgnoreCase, 1);
+		//Middle char diff
+		RunEditDistanceTest(TEXT("Satyrday"), TEXT("Saturday"), ESearchCase::CaseSensitive, 1);
+		RunEditDistanceTest(TEXT("Satyrday"), TEXT("Saturday"), ESearchCase::IgnoreCase, 1);
+		//Real cases
+		RunEditDistanceTest(TEXT("Copy_Body"), TEXT("Body"), ESearchCase::CaseSensitive, 5);
+		RunEditDistanceTest(TEXT("Copy_Body"), TEXT("Body"), ESearchCase::IgnoreCase, 5);
+		RunEditDistanceTest(TEXT("copy_Body"), TEXT("Paste_Body"), ESearchCase::CaseSensitive, 5);
+		RunEditDistanceTest(TEXT("copy_Body"), TEXT("Paste_Body"), ESearchCase::IgnoreCase, 5);
+		RunEditDistanceTest(TEXT("legs"), TEXT("Legs_1"), ESearchCase::CaseSensitive, 3);
+		RunEditDistanceTest(TEXT("legs"), TEXT("Legs_1"), ESearchCase::IgnoreCase, 2);
+		RunEditDistanceTest(TEXT("arms"), TEXT("Arms"), ESearchCase::CaseSensitive, 1);
+		RunEditDistanceTest(TEXT("arms"), TEXT("Arms"), ESearchCase::IgnoreCase, 0);
+		RunEditDistanceTest(TEXT("Saturday"), TEXT("Sunday"), ESearchCase::CaseSensitive, 3);
+		RunEditDistanceTest(TEXT("Saturday"), TEXT("Sunday"), ESearchCase::IgnoreCase, 3);
+		RunEditDistanceTest(TEXT("Saturday"), TEXT("suNday"), ESearchCase::CaseSensitive, 4);
+		RunEditDistanceTest(TEXT("Saturday"), TEXT("suNday"), ESearchCase::IgnoreCase, 3);
+		RunEditDistanceTest(TEXT("Saturday"), TEXT("sUnday"), ESearchCase::CaseSensitive, 5);
+		RunEditDistanceTest(TEXT("Saturday"), TEXT("sUnday"), ESearchCase::IgnoreCase, 3);
+
+		auto RunEditDistanceTestArray = [this](const FString& ArrayDescriptionA, const FString& ArrayDescriptionB, const TArray<int32>& A, const TArray<int32>& B, const int32 ExpectedResultDistance)
+		{
+			// Run test
+			int32 ResultDistance = Algo::LevenshteinDistance(A, B);
+
+			if (ResultDistance != ExpectedResultDistance)
+			{
+				AddError(FString::Printf(TEXT("Algo::EditDistance return the wrong distance between 2 array (A '%s', B '%s', result '%d', expected '%d')."), *ArrayDescriptionA, *ArrayDescriptionB, ResultDistance, ExpectedResultDistance));
+			}
 		};
 
-		const FEditDistanceTestData EditDistanceTests[] =
-		{
-			//Empty tests
-			{ TEXT(""), TEXT("Saturday"), ESearchCase::CaseSensitive, 8 },
-			{ TEXT(""), TEXT("Saturday"), ESearchCase::IgnoreCase, 8 },
-			{ TEXT("Saturday"), TEXT(""), ESearchCase::CaseSensitive, 8 },
-			{ TEXT("Saturday"), TEXT(""), ESearchCase::IgnoreCase, 8 },
-			//One letter tests
-			{ TEXT("a"), TEXT("a"), ESearchCase::CaseSensitive, 0 },
-			{ TEXT("a"), TEXT("b"), ESearchCase::CaseSensitive, 1 },
-			//Equal tests
-			{ TEXT("Saturday"), TEXT("Saturday"), ESearchCase::CaseSensitive, 0 },
-			{ TEXT("Saturday"), TEXT("Saturday"), ESearchCase::IgnoreCase, 0 },
-			//Simple casing test
-			{ TEXT("Saturday"), TEXT("saturday"), ESearchCase::CaseSensitive, 1 },
-			{ TEXT("Saturday"), TEXT("saturday"), ESearchCase::IgnoreCase, 0 },
-			{ TEXT("saturday"), TEXT("Saturday"), ESearchCase::CaseSensitive, 1 },
-			{ TEXT("saturday"), TEXT("Saturday"), ESearchCase::IgnoreCase, 0 },
-			{ TEXT("SaturdaY"), TEXT("saturday"), ESearchCase::CaseSensitive, 2 },
-			{ TEXT("SaturdaY"), TEXT("saturday"), ESearchCase::IgnoreCase, 0 },
-			{ TEXT("saturdaY"), TEXT("Saturday"), ESearchCase::CaseSensitive, 2 },
-			{ TEXT("saturdaY"), TEXT("Saturday"), ESearchCase::IgnoreCase, 0 },
-			{ TEXT("SATURDAY"), TEXT("saturday"), ESearchCase::CaseSensitive, 8 },
-			{ TEXT("SATURDAY"), TEXT("saturday"), ESearchCase::IgnoreCase, 0 },
-			//First char diff
-			{ TEXT("Saturday"), TEXT("baturday"), ESearchCase::CaseSensitive, 1 },
-			{ TEXT("Saturday"), TEXT("baturday"), ESearchCase::IgnoreCase, 1 },
-			//Last char diff
-			{ TEXT("Saturday"), TEXT("Saturdai"), ESearchCase::CaseSensitive, 1 },
-			{ TEXT("Saturday"), TEXT("Saturdai"), ESearchCase::IgnoreCase, 1 },
-			//Middle char diff
-			{ TEXT("Satyrday"), TEXT("Saturday"), ESearchCase::CaseSensitive, 1 },
-			{ TEXT("Satyrday"), TEXT("Saturday"), ESearchCase::IgnoreCase, 1 },
-			//Real cases
-			{ TEXT("Copy_Body"), TEXT("Body"), ESearchCase::CaseSensitive, 5 },
-			{ TEXT("Copy_Body"), TEXT("Body"), ESearchCase::IgnoreCase, 5 },
-			{ TEXT("copy_Body"), TEXT("Paste_Body"), ESearchCase::CaseSensitive, 5 },
-			{ TEXT("copy_Body"), TEXT("Paste_Body"), ESearchCase::IgnoreCase, 5 },
-			{ TEXT("legs"), TEXT("Legs_1"), ESearchCase::CaseSensitive, 3 },
-			{ TEXT("legs"), TEXT("Legs_1"), ESearchCase::IgnoreCase, 2 },
-			{ TEXT("arms"), TEXT("Arms"), ESearchCase::CaseSensitive, 1 },
-			{ TEXT("arms"), TEXT("Arms"), ESearchCase::IgnoreCase, 0 },
-			{ TEXT("Saturday"), TEXT("Sunday"), ESearchCase::CaseSensitive, 3 },
-			{ TEXT("Saturday"), TEXT("Sunday"), ESearchCase::IgnoreCase, 3 },
-			{ TEXT("Saturday"), TEXT("suNday"), ESearchCase::CaseSensitive, 4 },
-			{ TEXT("Saturday"), TEXT("suNday"), ESearchCase::IgnoreCase, 3 },
-			{ TEXT("Saturday"), TEXT("sUnday"), ESearchCase::CaseSensitive, 5 },
-			{ TEXT("Saturday"), TEXT("sUnday"), ESearchCase::IgnoreCase, 3 },
-		};
-
-		for (const FEditDistanceTestData& Test : EditDistanceTests)
-		{
-			RunEditDistanceTest(Test.A, Test.B, Test.SearchCase, Test.ExpectedResultDistance);
-		}
+		TArray<int32> A = { 1, 2, 3, 4 };
+		TArray<int32> B = { 1, 2, 3, 4 };
+		//Identical array
+		RunEditDistanceTestArray(FString("{1, 2, 3, 4}"), FString("{1, 2, 3, 4}"), A, B, 0);
+		//1 difference
+		B[3] = 10;
+		RunEditDistanceTestArray(FString("{1, 2, 3, 4}"), FString("{1, 2, 3, 10}"), A, B, 1);
+		//1 character less
+		B.RemoveAt(3);
+		RunEditDistanceTestArray(FString("{1, 2, 3, 4}"), FString("{1, 2, 3}"), A, B, 1);
+		//1 character more
+		B.Add(4);
+		B.Add(5);
+		RunEditDistanceTestArray(FString("{1, 2, 3, 4}"), FString("{1, 2, 3, 4, 5}"), A, B, 1);
+		//2 character more
+		B.Add(6);
+		RunEditDistanceTestArray(FString("{1, 2, 3, 4}"), FString("{1, 2, 3, 4, 5, 6}"), A, B, 2);
+		//B string empty 
+		B.Empty();
+		RunEditDistanceTestArray(FString("{1, 2, 3, 4}"), FString("{}"), A, B, A.Num());
 	}
-
-	void RunEditDistanceTest(const FString& A, const FString& B, const ESearchCase::Type SearchCase, const int32 ExpectedResultDistance)
-	{
-		// Run test
-		int32 ResultDistance = MAX_int32;
-		if (SearchCase == ESearchCase::IgnoreCase)
-		{
-			ResultDistance = Algo::LevenshteinDistance(A.ToLower(), B.ToLower());
-		}
-		else
-		{
-			ResultDistance = Algo::LevenshteinDistance(A, B);
-		}
-
-		if (ResultDistance != ExpectedResultDistance)
-		{
-			FString SearchCaseStr = SearchCase == ESearchCase::CaseSensitive ? TEXT("CaseSensitive") : TEXT("IgnoreCase");
-			AddError(FString::Printf(TEXT("Algo::EditDistance return the wrong distance between 2 string (A '%s', B '%s', case '%s', result '%d', expected '%d')."), *A, *B, *SearchCaseStr, ResultDistance, ExpectedResultDistance));
-		}
-	}
-
-	void TestEditDistanceArray()
-	{
-		struct FEditDistanceArrayTestData
-		{
-			const TCHAR* ArrayDescriptionA;
-			const TCHAR* ArrayDescriptionB;
-			TArray<int32> A;
-			TArray<int32> B;
-			int32 ExpectedResultDistance;
-		};
-
-		const FEditDistanceArrayTestData EditDistanceArrayTests[] =
-		{
-			//Identical array
-			{ TEXT("{1, 2, 3, 4}"), TEXT("{1, 2, 3, 4}"), {1, 2, 3, 4}, {1, 2, 3, 4}, 0 },
-			//1 difference
-			{ TEXT("{1, 2, 3, 4}"), TEXT("{1, 2, 3, 10}"), {1, 2, 3, 4}, {1, 2, 3, 10}, 1 },
-			//1 character less
-			{ TEXT("{1, 2, 3, 4}"), TEXT("{1, 2, 3}"), {1, 2, 3, 4}, {1, 2, 3}, 1 },
-			//1 character more
-			{ TEXT("{1, 2, 3, 4}"), TEXT("{1, 2, 3, 4, 5}"), {1, 2, 3, 4}, {1, 2, 3, 4, 5}, 1 },
-			//2 character more
-			{ TEXT("{1, 2, 3, 4}"), TEXT("{1, 2, 3, 4, 5, 6}"), {1, 2, 3, 4}, {1, 2, 3, 4, 5, 6}, 2 },
-			//B string empty
-			{ TEXT("{1, 2, 3, 4}"), TEXT("{}"), {1, 2, 3, 4}, {}, 4 },
-		};
-
-		for (const FEditDistanceArrayTestData& Test : EditDistanceArrayTests)
-		{
-			RunEditDistanceTestArray(Test.ArrayDescriptionA, Test.ArrayDescriptionB, Test.A, Test.B, Test.ExpectedResultDistance);
-		}
-	}
-
-	void RunEditDistanceTestArray(const FString& ArrayDescriptionA, const FString& ArrayDescriptionB, const TArray<int32>& A, const TArray<int32>& B, const int32 ExpectedResultDistance)
-	{
-		// Run test
-		int32 ResultDistance = Algo::LevenshteinDistance(A, B);
-
-		if (ResultDistance != ExpectedResultDistance)
-		{
-			AddError(FString::Printf(TEXT("Algo::EditDistance return the wrong distance between 2 array (A '%s', B '%s', result '%d', expected '%d')."), *ArrayDescriptionA, *ArrayDescriptionB, ResultDistance, ExpectedResultDistance));
-		}
-	}
-
-private:
-	TArray<int> TestData;
-	TArray<int> TestData2;
-};
-
-IMPLEMENT_CUSTOM_SIMPLE_AUTOMATION_TEST(FAlgosTest, FAlgosTestBase, "System.Core.Misc.Algos", EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::SmokeFilter)
-
-bool FAlgosTest::RunTest(const FString& Parameters)
-{
-	Initialize();
-	TestCopy();
-	TestCopyIf();
-	TestTransform();
-	TestTransformIf();
-	TestBinarySearch();
-	TestIndexOf();
-	TestHeapify();
-	TestHeapSort();
-	TestIntroSort();
-	TestSort();
-	TestEditDistance();
-	TestEditDistanceArray();
-	Cleanup();
 
 	return true;
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NavigationBuildingNotification.h"
 #include "NavigationSystem.h"
@@ -155,7 +155,7 @@ void FNavigationBuildingNotificationImpl::Tick(float DeltaTime)
 		
 		UNavigationSystemV1* NavSys = FNavigationSystem::GetCurrent<UNavigationSystemV1>(EditorContext.World());
 		const bool bBuildInProgress = NavSys != nullptr
-			&& (GetDefault<ULevelEditorMiscSettings>()->bNavigationAutoUpdate ? NavSys->IsNavigationBuildInProgress() : NavSys->GetNumRunningBuildTasks() > 0)
+			&& NavSys->IsNavigationBuildInProgress( GetDefault<ULevelEditorMiscSettings>()->bNavigationAutoUpdate ? true : false) == true
 			&& NavSys->GetNumRemainingBuildTasks() > 0;
 
 		if (!bPreviouslyDetectedBuild && bBuildInProgress)

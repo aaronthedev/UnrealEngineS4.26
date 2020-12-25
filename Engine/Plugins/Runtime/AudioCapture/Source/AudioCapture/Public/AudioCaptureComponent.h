@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,6 +18,8 @@ protected:
 
 	//~ Begin USynthComponent interface
 	virtual bool Init(int32& SampleRate) override;
+	virtual void OnStart() override;
+	virtual void OnStop() override;
 	virtual int32 OnGenerateAudio(float* OutAudio, int32 NumSamples) override;
 	virtual void OnBeginGenerate() override;
 	virtual void OnEndGenerate() override;

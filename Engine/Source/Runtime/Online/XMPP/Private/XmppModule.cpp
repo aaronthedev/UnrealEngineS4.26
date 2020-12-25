@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "XmppModule.h"
 #include "Misc/CommandLine.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Modules/ModuleManager.h"
-#include "Stats/Stats.h"
 #include "XmppMessages.h"
 #include "XmppPubSub.h"
 #include "XmppLog.h"
@@ -111,7 +110,7 @@ bool FXmppModule::HandleXmppCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 		{
 			TSharedPtr<IXmppConnection> Connection = GetConnection(UserName);
 			if (Connection.IsValid() &&
-				(Connection->GetLoginStatus() == EXmppLoginStatus::LoggedIn || Connection->GetLoginStatus() == EXmppLoginStatus::ProcessingLogin))
+				Connection->GetLoginStatus() == EXmppLoginStatus::LoggedIn)
 			{
 				UE_LOG(LogXmpp, Warning, TEXT("Already logged in as <%s>"), *UserName);
 			}
@@ -735,11 +734,7 @@ TSharedRef<IXmppConnection> FXmppModule::CreateConnection(const FString& UserId)
 			Connection = FXmppNull::CreateConnection();
 		}
 
-		TSharedRef<IXmppConnection> ConnectionRef = Connection.ToSharedRef();
-		ActiveConnections.Add(UserId, ConnectionRef);
-		OnXmppConnectionCreated.Broadcast(ConnectionRef);
-		
-		return ConnectionRef;
+		return ActiveConnections.Add(UserId, Connection.ToSharedRef());
 	}
 }
 
@@ -767,13 +762,6 @@ void FXmppModule::RemoveConnection(const FString& UserId)
 	}
 
 	ActiveConnections.Remove(UserId);
-}
-
-bool FXmppModule::Tick(float DeltaTime)
-{
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FXmppModule_Tick);
-	ProcessPendingRemovals();
-	return true;
 }
 
 void FXmppModule::ProcessPendingRemovals()

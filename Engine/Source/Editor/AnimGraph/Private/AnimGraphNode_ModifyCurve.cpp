@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimGraphNode_ModifyCurve.h"
 #include "Textures/SlateIcon.h"
@@ -84,7 +84,7 @@ void UAnimGraphNode_ModifyCurve::GetNodeContextMenuActions(UToolMenu* Menu, UGra
 		if (Context->Pin != NULL)
 		{
 			// Get proeprty from pin
-			FProperty* AssociatedProperty;
+			UProperty* AssociatedProperty;
 			int32 ArrayIndex;
 			GetPinAssociatedProperty(GetFNodeType(), Context->Pin, /*out*/ AssociatedProperty, /*out*/ ArrayIndex);
 			FName PinPropertyName = AssociatedProperty->GetFName();

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -67,6 +67,7 @@ public:
 	 * and immediately after any undo/redo.
 	 */
 	virtual void PostLoad() override;
+	virtual bool NeedsLoadForClient() const override;
 	//~ End UObject Interface
 };
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -147,9 +147,9 @@ private:
 	void Tick(float DeltaTime);
 
 	/**
-	 * Called if we're currently recording a PIE world that has been shut down or if we start PIE in a non-PIE world. Bound in Initialize, and unbound in Stop.
+	 * Called if we're currently recording a PIE world that has been shut down. Bound in Initialize, and unbound in Stop.
 	 */
-	void HandlePIE(bool bIsSimulating);
+	void HandleEndPIE(bool bIsSimulating);
 
 	/**
 	 * Create a new destination asset to record into based on the parameters

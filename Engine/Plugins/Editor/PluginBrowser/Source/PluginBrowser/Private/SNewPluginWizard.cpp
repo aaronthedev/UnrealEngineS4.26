@@ -1,9 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SNewPluginWizard.h"
 #include "Misc/Paths.h"
 #include "HAL/PlatformFilemanager.h"
 #include "Misc/MessageDialog.h"
+#include "Misc/FeedbackContext.h"
 #include "HAL/FileManager.h"
 #include "Misc/App.h"
 #include "Widgets/SBoxPanel.h"
@@ -25,6 +26,7 @@
 #include "Widgets/Views/SListView.h"
 #include "Widgets/Views/STileView.h"
 #include "PluginStyle.h"
+#include "PluginHelpers.h"
 #include "DesktopPlatformModule.h"
 #include "Widgets/Docking/SDockTab.h"
 #include "Framework/Notifications/NotificationManager.h"
@@ -35,11 +37,13 @@
 #include "SFilePathBlock.h"
 #include "Interfaces/IProjectManager.h"
 #include "ProjectDescriptor.h"
-#include "PluginUtils.h"
 #include "Interfaces/IMainFrameModule.h"
+#include "Interfaces/IProjectManager.h"
 #include "GameProjectGenerationModule.h"
 #include "DefaultPluginWizardDefinition.h"
 #include "UnrealEdMisc.h"
+#include "IContentBrowserSingleton.h"
+#include "ContentBrowserModule.h"
 #include "PropertyEditorModule.h"
 #include "IDetailsView.h"
 #include "Framework/Notifications/NotificationManager.h"
@@ -97,13 +101,6 @@ void SNewPluginWizard::Construct(const FArguments& Args, TSharedPtr<SDockTab> In
 	PluginWizardDefinition->ClearTemplateSelection();
 
 	IPluginWizardDefinition* WizardDef = PluginWizardDefinition.Get();
-	
-	// Check if the Plugin Wizard is trying to make mods instead of generic plugins. This will slightly change in 4.26
-	if (PluginWizardDefinition->IsMod())
-	{
-		AbsoluteGamePluginPath = IFileManager::Get().ConvertToAbsolutePathForExternalAppForWrite(*FPaths::ProjectModsDir());
-		FPaths::MakePlatformFilename(AbsoluteGamePluginPath);
-	}
 
 	LastBrowsePath = AbsoluteGamePluginPath;
 	PluginFolderPath = AbsoluteGamePluginPath;
@@ -648,7 +645,10 @@ FString SNewPluginWizard::GetPluginFilenameWithPath() const
 	}
 	else
 	{
-		return FPluginUtils::GetPluginFilePath(PluginFolderPath, PluginNameText.ToString());
+		const FString& TestPluginName = PluginNameText.ToString();
+		FString TestPluginPath = PluginFolderPath / TestPluginName / (TestPluginName + TEXT(".uplugin"));
+		FPaths::MakePlatformFilename(TestPluginPath);
+		return TestPluginPath;
 	}
 }
 
@@ -678,40 +678,88 @@ void SNewPluginWizard::OnEnginePluginCheckboxChanged(ECheckBoxState NewCheckedSt
 
 FReply SNewPluginWizard::OnCreatePluginClicked()
 {
-	if (!ensure(!PluginFolderPath.IsEmpty() && !PluginNameText.IsEmpty()))
-	{
-		// Don't even try to assemble the path or else it may be relative to the binaries folder!
-		return FReply::Unhandled();
-	}
+	const FString AutoPluginName = PluginNameText.ToString();
 
-	const FString PluginName = PluginNameText.ToString();
+	// Plugin thumbnail image
+	FString PluginEditorIconPath;
+	bool bRequiresDefaultIcon = PluginWizardDefinition->GetPluginIconPath(PluginEditorIconPath);
+
+	TArray<FString> CreatedFiles;
+
+	FText LocalFailReason;
+
+	bool bSucceeded = true;
+
 	const bool bHasModules = PluginWizardDefinition->HasModules();
 
-	FPluginUtils::FNewPluginParams CreationParams;
-	CreationParams.TemplateFolders = PluginWizardDefinition->GetFoldersForSelection();
-	CreationParams.bCanContainContent = PluginWizardDefinition->CanContainContent();
-	CreationParams.bHasModules = bHasModules;
-	CreationParams.ModuleDescriptorType = PluginWizardDefinition->GetPluginModuleDescriptor();
-	CreationParams.LoadingPhase = PluginWizardDefinition->GetPluginLoadingPhase();
-	PluginWizardDefinition->GetPluginIconPath(CreationParams.PluginIconPath);
-	if (DescriptorData.IsValid())
+	// Save descriptor file as .uplugin file
+	const FString UPluginFilePath = GetPluginFilenameWithPath();
+
+	// Define additional parameters to write out the plugin descriptor
+	FWriteDescriptorParams DescriptorParams;
 	{
-		CreationParams.CreatedBy = DescriptorData->CreatedBy;
-		CreationParams.CreatedByURL = DescriptorData->CreatedByURL;
-		CreationParams.Description = DescriptorData->Description;
-		CreationParams.bIsBetaVersion = DescriptorData->bIsBetaVersion;
+		DescriptorParams.bCanContainContent = PluginWizardDefinition->CanContainContent();
+		DescriptorParams.bHasModules = bHasModules;
+		DescriptorParams.ModuleDescriptorType = PluginWizardDefinition->GetPluginModuleDescriptor();
+		DescriptorParams.LoadingPhase = PluginWizardDefinition->GetPluginLoadingPhase();
 	}
 
-	FPluginUtils::FMountPluginParams MountParams;
-	MountParams.bEnablePluginInProject = true;
-	MountParams.bUpdateProjectPluginSearchPath = true;
-	MountParams.bSelectInContentBrowser = ShowPluginContentDirectoryCheckBox->IsChecked();
-	
-	FText FailReason;
-	TSharedPtr<IPlugin> NewPlugin = FPluginUtils::CreateAndMountNewPlugin(PluginName, PluginFolderPath, CreationParams, MountParams, FailReason);
-	const bool bSucceeded = NewPlugin.IsValid();
+	const FString PluginModuleName = AutoPluginName;
+	bSucceeded = bSucceeded && WritePluginDescriptor(PluginModuleName, UPluginFilePath, DescriptorParams);
 
-	PluginWizardDefinition->PluginCreated(PluginName, bSucceeded);
+	// Main plugin dir
+	const FString BasePluginFolder = GetPluginDestinationPath().ToString();
+	const FString PluginFolder = BasePluginFolder / AutoPluginName;
+
+	// Resource folder
+	const FString ResourcesFolder = PluginFolder / TEXT("Resources");
+
+	if (bRequiresDefaultIcon)
+	{
+		// Copy the icon
+		bSucceeded = bSucceeded && CopyFile(ResourcesFolder / TEXT("Icon128.png"), PluginEditorIconPath, /*inout*/ CreatedFiles);
+	}
+
+	TArray<FString> TemplateFolders = PluginWizardDefinition->GetFoldersForSelection();
+	if (TemplateFolders.Num() == 0)
+	{
+		PopErrorNotification(LOCTEXT("FailedTemplateCopy_NoFolders", "No templates were selected to create the plugin"));
+		bSucceeded = false;
+	}
+
+	GWarn->BeginSlowTask(LOCTEXT("CopyingData", "Copying data..."), true, false);
+	for (FString TemplateFolderName : TemplateFolders)
+	{
+		if (bSucceeded && !FPluginHelpers::CopyPluginTemplateFolder(*PluginFolder, *TemplateFolderName, AutoPluginName))
+		{
+			PopErrorNotification(FText::Format(LOCTEXT("FailedTemplateCopy", "Failed to copy plugin Template: {0}"), FText::FromString(TemplateFolderName)));
+			bSucceeded = false;
+			break;
+		}
+	}
+	GWarn->EndSlowTask();
+
+	// If it contains code, we need the user to restart to enable it. Otherwise, we can just mount it now.
+	if (bSucceeded && bHasModules)
+	{
+		FString ProjectFileName = IFileManager::Get().ConvertToAbsolutePathForExternalAppForWrite(*FPaths::GetProjectFilePath());
+		FString Arguments = FString::Printf(TEXT("%s %s -TargetType=Editor -Plugin=\"%s\" -Project=\"%s\" -Progress -NoHotReloadFromIDE"), FModuleManager::Get().GetUBTConfiguration(), FPlatformMisc::GetUBTPlatform(), *UPluginFilePath, *ProjectFileName);
+		if (!FDesktopPlatformModule::Get()->RunUnrealBuildTool(LOCTEXT("Compiling", "Compiling..."), FPaths::RootDir(), Arguments, GWarn))
+		{
+			PopErrorNotification(LOCTEXT("FailedToCompile", "Failed to compile source code."));
+			bSucceeded = false;
+		}
+
+		// Reset the module paths cache. For unique build environments, the modules may be generated to the project binaries directory.
+		FModuleManager::Get().ResetModulePathsCache();
+
+		// Generate project files if we happen to be using a project file.
+		if (bSucceeded && !FDesktopPlatformModule::Get()->GenerateProjectFiles(FPaths::RootDir(), FPaths::GetProjectFilePath(), GWarn))
+		{
+			PopErrorNotification(LOCTEXT("FailedToGenerateProjectFiles", "Failed to generate project files."));
+			bSucceeded = false;
+		}
+	}
 
 	if (bSucceeded)
 	{
@@ -719,7 +767,70 @@ FReply SNewPluginWizard::OnCreatePluginClicked()
 		FPluginBrowserModule& PluginBrowserModule = FPluginBrowserModule::Get();
 		PluginBrowserModule.BroadcastNewPluginCreated();
 
-		FNotificationInfo Info(FText::Format(LOCTEXT("PluginCreatedSuccessfully", "'{0}' was created successfully."), FText::FromString(PluginName)));
+		// Enable game plugins immediately
+		if (!bIsEnginePlugin)
+		{
+			// If this path isn't in the Engine/Plugins dir and isn't in Project/Plugins dir,
+			// add the directory to the list of ones we additionally scan
+			
+			// There have been issues with ProjectDir can be relative and BasePluginFolder absolute, causing our
+			// tests to fail below. We now normalize on absolute paths prior to performing the check to ensure
+			// that we don't add the folder to the additional plugin directory unnecessarily (which can result in build failures).
+			FString ProjectDirFull = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+			FString BasePluginFolderFull = FPaths::ConvertRelativePathToFull(BasePluginFolder);
+			if (!BasePluginFolderFull.StartsWith(ProjectDirFull))
+			{
+				GameProjectUtils::UpdateAdditionalPluginDirectory(BasePluginFolderFull, true);
+			}
+		}
+
+		// Update the list of known plugins
+		IPluginManager::Get().RefreshPluginsList();
+
+		// Enable this plugin in the project, if necessary
+		FText FailReason;
+		if (!IProjectManager::Get().SetPluginEnabled(AutoPluginName, true, FailReason))
+		{
+			PopErrorNotification(FText::Format(LOCTEXT("FailedToEnablePlugin", "Couldn't enable plugin: {0}"), FailReason));
+			bSucceeded = false;
+		}
+
+		// Mount the plugin
+		if (bSucceeded)
+		{
+			GWarn->BeginSlowTask(LOCTEXT("MountingFiles", "Mounting files..."), true, false);
+			IPluginManager::Get().MountNewlyCreatedPlugin(AutoPluginName);
+			GWarn->EndSlowTask();
+		}
+	}
+
+	// Set the content browser to show the plugin's content directory
+	if (bSucceeded && PluginWizardDefinition->CanContainContent() && ShowPluginContentDirectoryCheckBox->IsChecked())
+	{
+		TArray<FString> SelectedDirectories;
+		SelectedDirectories.Add(TEXT("/") + AutoPluginName);
+
+		const bool bContentBrowserNeedsRefresh = true;
+
+		IContentBrowserSingleton& ContentBrowser = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser").Get();
+
+		ContentBrowser.ForceShowPluginContent( bIsEnginePlugin );
+		ContentBrowser.SetSelectedPaths(SelectedDirectories, bContentBrowserNeedsRefresh);
+	}
+
+	if (bSucceeded && PluginWizardDefinition->CanContainContent())
+	{
+		GWarn->BeginSlowTask(LOCTEXT("LoadingContent", "Loading Content..."), true, false);
+		// Attempt to fix any content that was added by the plugin
+		bSucceeded = FPluginHelpers::FixupPluginTemplateAssets(AutoPluginName);
+		GWarn->EndSlowTask();
+	}
+
+	PluginWizardDefinition->PluginCreated(AutoPluginName, bSucceeded);
+	// Trigger the plugin manager to mount the new plugin, or delete the partially created plugin and abort
+	if (bSucceeded)
+	{
+		FNotificationInfo Info(FText::Format(LOCTEXT("PluginCreatedSuccessfully", "'{0}' was created successfully."), FText::FromString(AutoPluginName)));
 		Info.bUseThrobber = false;
 		Info.ExpireDuration = 8.0f;
 		FSlateNotificationManager::Get().AddNotification(Info)->SetCompletionState(SNotificationItem::CS_Success);
@@ -735,10 +846,69 @@ FReply SNewPluginWizard::OnCreatePluginClicked()
 	}
 	else
 	{
-		const FText Title = LOCTEXT("UnableToCreatePlugin", "Unable to create plugin");
-		FMessageDialog::Open(EAppMsgType::Ok, FailReason, &Title);
+		DeletePluginDirectory(*PluginFolder);
 		return FReply::Unhandled();
 	}
+}
+
+bool SNewPluginWizard::CopyFile(const FString& DestinationFile, const FString& SourceFile, TArray<FString>& InOutCreatedFiles)
+{
+	if (IFileManager::Get().Copy(*DestinationFile, *SourceFile, /*bReplaceExisting=*/ false) != COPY_OK)
+	{
+		const FText ErrorMessage = FText::Format(LOCTEXT("ErrorCopyingFile", "Error: Couldn't copy file '{0}' to '{1}'"), FText::AsCultureInvariant(SourceFile), FText::AsCultureInvariant(DestinationFile));
+		PopErrorNotification(ErrorMessage);
+		return false;
+	}
+	else
+	{
+		InOutCreatedFiles.Add(DestinationFile);
+		return true;
+	}
+}
+
+bool SNewPluginWizard::WritePluginDescriptor(const FString& PluginModuleName, const FString& UPluginFilePath, const FWriteDescriptorParams& Params)
+{
+	FPluginDescriptor Descriptor;
+
+	Descriptor.FriendlyName = PluginModuleName;
+	Descriptor.Version = 1;
+	Descriptor.VersionName = TEXT("1.0");
+	Descriptor.Category = TEXT("Other");
+
+	if (DescriptorData.IsValid())
+	{
+		Descriptor.CreatedBy = DescriptorData->CreatedBy;
+		Descriptor.CreatedByURL = DescriptorData->CreatedByURL;
+		Descriptor.Description = DescriptorData->Description;
+		Descriptor.bIsBetaVersion = DescriptorData->bIsBetaVersion;
+	}
+
+	if (Params.bHasModules)
+	{
+		Descriptor.Modules.Add(FModuleDescriptor(*PluginModuleName, Params.ModuleDescriptorType, Params.LoadingPhase));
+	}
+	Descriptor.bCanContainContent = Params.bCanContainContent;
+
+	// Save the descriptor using JSon
+	FText FailReason;
+	if (!Descriptor.Save(UPluginFilePath, FailReason))
+	{
+		PopErrorNotification(FText::Format(LOCTEXT("FailedToWriteDescriptor", "Couldn't save plugin descriptor under {0}"), FText::AsCultureInvariant(UPluginFilePath)));
+		return false;
+	}
+
+	return true;
+}
+
+void SNewPluginWizard::PopErrorNotification(const FText& ErrorMessage)
+{
+	FText Title = LOCTEXT("UnableToCreatePlugin", "Unable to create plugin");
+	FMessageDialog::Open(EAppMsgType::Ok, ErrorMessage, &Title);
+}
+
+void SNewPluginWizard::DeletePluginDirectory(const FString& InPath)
+{
+	IFileManager::Get().DeleteDirectory(*InPath, false, true);
 }
 
 EVisibility SNewPluginWizard::GetShowPluginContentDirectoryVisibility() const

@@ -1,15 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-
-#include <atomic>
-
 #include "UObject/ObjectMacros.h"
 #include "Math/RandomStream.h"
-#include "Misc/ByteSwap.h"
-#include "Templates/AlignmentTemplates.h"
 
 //TODO: move to a per platform header and have VM scale vectorization according to vector width.
 #define VECTOR_WIDTH (128)
@@ -128,15 +123,9 @@ enum class EVectorVMOp : uint8
 	b2i,
 
 	// data read/write
-	inputdata_float,
-	inputdata_int32,
-	inputdata_half,
-	inputdata_noadvance_float,
-	inputdata_noadvance_int32,
-	inputdata_noadvance_half,
-	outputdata_float,
-	outputdata_int32,
-	outputdata_half,
+	inputdata_32bit,
+	inputdata_noadvance_32bit,
+	outputdata_32bit,
 	acquireindex,
 
 	external_func_call,
@@ -159,55 +148,19 @@ enum class EVectorVMOp : uint8
 	NumOpcodes
 };
 
-#if STATS
-struct FVMCycleCounter
-{
-	int32 ScopeIndex;
-	uint64 ScopeEnterCycles;
-};
-
-struct FStatScopeData
-{
-	TStatId StatId;
-	std::atomic<uint64> ExecutionCycleCount;
-
-	FStatScopeData(TStatId InStatId) : StatId(InStatId)
-	{
-		ExecutionCycleCount.store(0);
-	}
-	
-	FStatScopeData(const FStatScopeData& InObj)
-	{
-		StatId = InObj.StatId;
-		ExecutionCycleCount.store(InObj.ExecutionCycleCount.load());
-	}
-};
-
-struct FStatStackEntry
-{
-	FCycleCounter CycleCounter;
-	FVMCycleCounter VmCycleCounter;
-};
-#endif
 
 //TODO: 
 //All of this stuff can be handled by the VM compiler rather than dirtying the VM code.
 //Some require RWBuffer like support.
 struct FDataSetMeta
 {
-	TArrayView<uint8 const* RESTRICT const> InputRegisters;
-	TArrayView<uint8 const* RESTRICT const> OutputRegisters;
-
-	uint32 InputRegisterTypeOffsets[3];
-	uint32 OutputRegisterTypeOffsets[3];
-
+	int32 RegisterOffset;
 	int32 DataSetAccessIndex;	// index for individual elements of this set
 
 	int32 InstanceOffset;		// offset of the first instance processed 
 	
 	TArray<int32>*RESTRICT IDTable;
 	TArray<int32>*RESTRICT FreeIDTable;
-	TArray<int32>*RESTRICT SpawnedIDsTable;
 
 	/** Number of free IDs in the FreeIDTable */
 	int32* NumFreeIDs;
@@ -226,46 +179,16 @@ struct FDataSetMeta
 	FORCEINLINE void LockFreeTable();
 	FORCEINLINE void UnlockFreeTable();
 
-	FDataSetMeta()
-		: DataSetAccessIndex(INDEX_NONE)
-		, InstanceOffset(INDEX_NONE)
-		, IDTable(nullptr)
-		, FreeIDTable(nullptr)
-		, SpawnedIDsTable(nullptr)
-		, NumFreeIDs(nullptr)
-		, MaxUsedID(nullptr)
-		, IDAcquireTag(INDEX_NONE)
+	FDataSetMeta(int32 InRegisterOffset, int32 InInstanceOffset, TArray<int32>* InIDTable, TArray<int32>* InFreeIDTable, int32* InNumFreeIDs, int32* InMaxUsedID, int32 InIDAcquireTag)
+		: RegisterOffset(InRegisterOffset), DataSetAccessIndex(INDEX_NONE), InstanceOffset(InInstanceOffset)
+		, IDTable(InIDTable), FreeIDTable(InFreeIDTable), NumFreeIDs(InNumFreeIDs), MaxUsedID(InMaxUsedID), IDAcquireTag(InIDAcquireTag)
 	{
-	}	
-
-	FORCEINLINE void Reset()
-	{
-		InputRegisters = TArrayView<uint8 const* RESTRICT const>();
-		OutputRegisters = TArrayView<uint8 const* RESTRICT const>();
-		DataSetAccessIndex = INDEX_NONE;
-		InstanceOffset = INDEX_NONE;
-		IDTable = nullptr;
-		FreeIDTable = nullptr;
-		SpawnedIDsTable = nullptr;
-		NumFreeIDs = nullptr;
-		MaxUsedID = nullptr;
-		IDAcquireTag = INDEX_NONE;
 	}
 
-	FORCEINLINE void Init(const TArrayView<uint8 const* RESTRICT const>& InInputRegisters, const TArrayView<uint8 const* RESTRICT const>& InOutputRegisters, int32 InInstanceOffset, TArray<int32>* InIDTable, TArray<int32>* InFreeIDTable, int32* InNumFreeIDs, int32* InMaxUsedID, int32 InIDAcquireTag, TArray<int32>* InSpawnedIDsTable)
-	{
-		InputRegisters = InInputRegisters;
-		OutputRegisters = InOutputRegisters;
-
-		DataSetAccessIndex = INDEX_NONE;
-		InstanceOffset = InInstanceOffset;
-		IDTable = InIDTable;
-		FreeIDTable = InFreeIDTable;
-		NumFreeIDs = InNumFreeIDs;
-		MaxUsedID = InMaxUsedID;
-		IDAcquireTag = InIDAcquireTag;
-		SpawnedIDsTable = InSpawnedIDsTable;
-	}
+	FDataSetMeta() 
+		: RegisterOffset(0), DataSetAccessIndex(INDEX_NONE), InstanceOffset(0)
+		, IDTable(nullptr), FreeIDTable(nullptr), NumFreeIDs(nullptr), MaxUsedID(nullptr), IDAcquireTag(0)
+	{}
 
 private:
 	// Non-copyable and non-movable
@@ -275,19 +198,28 @@ private:
 	FDataSetMeta& operator=(const FDataSetMeta&) = delete;
 };
 
+namespace VectorVM
+{
+	/** Constants. */
+	enum
+	{
+		NumTempRegisters = 400,
+		MaxInputRegisters = 400,
+		MaxOutputRegisters = MaxInputRegisters,
+		MaxConstants = 256,
+		FirstTempRegister = 0,
+		FirstInputRegister = NumTempRegisters,
+		FirstOutputRegister = FirstInputRegister + MaxInputRegisters,
+		MaxRegisters = NumTempRegisters + MaxInputRegisters + MaxOutputRegisters + MaxConstants,
+	};
+}
+
 //Data the VM will keep on each dataset locally per thread which is then thread safely pushed to it's destination at the end of execution.
 struct FDataSetThreadLocalTempData
 {
 	FDataSetThreadLocalTempData()
-	{
-		Reset();
-	}
-
-	FORCEINLINE void Reset()
-	{
-		IDsToFree.Reset();
-		MaxID = INDEX_NONE;
-	}
+		:MaxID(INDEX_NONE)
+	{}
 
 	TArray<int32> IDsToFree;
 	int32 MaxID;
@@ -303,54 +235,41 @@ struct FDataSetThreadLocalTempData
 */
 struct FVectorVMContext : TThreadSingleton<FVectorVMContext>
 {
-private:
-
-	friend struct FVectorVMCodeOptimizerContext;
-
-public:
-
 	/** Pointer to the next element in the byte code. */
 	uint8 const* RESTRICT Code;
-
 	/** Pointer to the constant table. */
-	const uint8* const* RESTRICT ConstantTable;
-	const int32* ConstantTableSizes;
-	int32 ConstantTableCount;
-
+	uint8 const* RESTRICT ConstantTable;
 	/** Num temp registers required by this script. */
 	int32 NumTempRegisters;
-
+	/** Num input required by this script. */
+	int32 NumInputRegisters;
+	/** Num output required by this script. */
+	int32 NumOutputRegisters;
+	/** Pointer to the data set index counter table */
+	int32* RESTRICT DataSetIndexTable;
+	int32* RESTRICT DataSetOffsetTable;
+	int32 NumSecondaryDataSets;
 	/** Pointer to the shared data table. */
-	const FVMExternalFunction* const* RESTRICT ExternalFunctionTable;
+	FVMExternalFunction* RESTRICT ExternalFunctionTable;
 	/** Table of user pointers.*/
 	void** UserPtrTable;
-
 	/** Number of instances to process. */
 	int32 NumInstances;
-	/** Number of instances to process when doing batches of VECTOR_WIDTH_FLOATS. */
-	int32 NumInstancesVectorFloats;
 	/** Start instance of current chunk. */
 	int32 StartInstance;
-	
-	/** HACK: An additional instance offset to allow external functions direct access to specific instances in the buffers. */
-	int32 ExternalFunctionInstanceOffset;
 
 	/** Array of meta data on data sets. TODO: This struct should be removed and all features it contains be handled by more general vm ops and the compiler's knowledge of offsets etc. */
-	TArrayView<FDataSetMeta> DataSetMetaTable;
+	TArray<FDataSetMeta>* RESTRICT DataSetMetaTable;
 
 	TArray<FDataSetThreadLocalTempData> ThreadLocalTempData;
 
 #if STATS
-	TArray<FStatStackEntry, TInlineAllocator<64>> StatCounterStack;
-	TArrayView<FStatScopeData> StatScopes;
-	TArray<uint64, TInlineAllocator<64>> ScopeExecCycles;
-#elif ENABLE_STATNAMEDEVENTS
-	TArrayView<const FString> StatNamedEventScopes;
+	TArray<FCycleCounter, TInlineAllocator<64>> StatCounterStack;
+	const TArray<TStatId>* StatScopes;
 #endif
 
 	TArray<uint8, TAlignedHeapAllocator<VECTOR_WIDTH_BYTES>> TempRegTable;
-	uint32 TempRegisterSize;
-	uint32 TempBufferSize;
+	uint8*RESTRICT RegisterTable[VectorVM::MaxRegisters];
 
 	/** Thread local random stream for use in external functions needing non-deterministic randoms. */
 	FRandomStream RandStream;
@@ -358,30 +277,26 @@ public:
 	/** Thread local per instance random counters for use in external functions needing deterministic randoms. */
 	TArray<int32> RandCounters;
 
-	bool bIsParallelExecution;
-
-	int32 ValidInstanceIndexStart = INDEX_NONE;
-	int32 ValidInstanceCount = 0;
-	bool ValidInstanceUniform = false;
-
 	FVectorVMContext();
 
 	void PrepareForExec(
+		uint8*RESTRICT*RESTRICT InputRegisters,
+		uint8*RESTRICT*RESTRICT OutputRegisters,
 		int32 InNumTempRegisters,
-		int32 ConstantTableCount,
-		const uint8* const* InConstantTables,
-		const int32* InConstantTableSizes,
-		const FVMExternalFunction* const* InExternalFunctionTable,
+		int32 NumInputRegisters,
+		int32 NumOutputRegisters,
+		const uint8* InConstantTable,
+		int32 *InDataSetIndexTable,
+		int32 *InDataSetOffsetTable,
+		int32 InNumSecondaryDatasets,
+		FVMExternalFunction* InExternalFunctionTable,
 		void** InUserPtrTable,
-		TArrayView<FDataSetMeta> InDataSetMetaTable,
-		int32 MaxNumInstances,
-		bool bInParallelExecution);
-
+		TArray<FDataSetMeta>& RESTRICT InDataSetMetaTable,
+		int32 MaxNumInstances
 #if STATS
-	void SetStatScopes(TArrayView<FStatScopeData> InStatScopes);
-#elif ENABLE_STATNAMEDEVENTS
-	void SetStatNamedEventScopes(TArrayView<const FString> InStatNamedEventScopes);
+		, const TArray<TStatId>* InStatScopes
 #endif
+	);
 
 	void FinishExec();
 
@@ -389,92 +304,10 @@ public:
 	{
 		Code = InCode;
 		NumInstances = InNumInstances;
-		NumInstancesVectorFloats = (NumInstances + VECTOR_WIDTH_FLOATS - 1) / VECTOR_WIDTH_FLOATS;
 		StartInstance = InStartInstance;
-		
-		ExternalFunctionInstanceOffset = 0;
-
-		ValidInstanceCount = 0;
-		ValidInstanceIndexStart = INDEX_NONE;
-		ValidInstanceUniform = false;
 
 		RandCounters.Reset();
 		RandCounters.SetNumZeroed(InNumInstances);
-	}
-
-	FORCEINLINE FDataSetMeta& GetDataSetMeta(int32 DataSetIndex) { return DataSetMetaTable[DataSetIndex]; }
-	FORCEINLINE uint8 * RESTRICT GetTempRegister(int32 RegisterIndex) { return TempRegTable.GetData() + TempRegisterSize * RegisterIndex; }
-	template<typename T, int TypeOffset>
-	FORCEINLINE T* RESTRICT GetInputRegister(int32 DataSetIndex, int32 RegisterIndex) 
-	{
-		FDataSetMeta& Meta = GetDataSetMeta(DataSetIndex);
-		uint32 Offset = Meta.InputRegisterTypeOffsets[TypeOffset];
-		return ((T*)Meta.InputRegisters[Offset + RegisterIndex]) + Meta.InstanceOffset;
-	}
-	template<typename T, int TypeOffset>
-	FORCEINLINE T* RESTRICT GetOutputRegister(int32 DataSetIndex, int32 RegisterIndex) 
-	{ 
-		FDataSetMeta& Meta = GetDataSetMeta(DataSetIndex);
-		uint32 Offset = Meta.OutputRegisterTypeOffsets[TypeOffset];
-		return  ((T*)Meta.OutputRegisters[Offset + RegisterIndex]) + Meta.InstanceOffset;
-	}
-
-	int32 GetNumInstances() const { return NumInstances; }
-	int32 GetStartInstance() const { return StartInstance; }
-
-	template<uint32 InstancesPerOp>
-	int32 GetNumLoops() const { return (InstancesPerOp == VECTOR_WIDTH_FLOATS) ? NumInstancesVectorFloats : ((InstancesPerOp == 1) ? NumInstances : Align(NumInstances, InstancesPerOp));	}
-
-	FORCEINLINE uint8 DecodeU8() { return *Code++; }
-#if PLATFORM_SUPPORTS_UNALIGNED_LOADS
-	FORCEINLINE uint16 DecodeU16() { uint16 v = *reinterpret_cast<const uint16*>(Code); Code += sizeof(uint16); return INTEL_ORDER16(v); }
-	FORCEINLINE uint32 DecodeU32() { uint32 v = *reinterpret_cast<const uint32*>(Code); Code += sizeof(uint32); return INTEL_ORDER32(v); }
-	FORCEINLINE uint64 DecodeU64() { uint64 v = *reinterpret_cast<const uint64*>(Code); Code += sizeof(uint64); return INTEL_ORDER64(v); }
-#else
-	FORCEINLINE uint16 DecodeU16() { uint16 v = Code[1]; v = v << 8 | Code[0]; Code += 2; return INTEL_ORDER16(v); }
-	FORCEINLINE uint32 DecodeU32() { uint32 v = Code[3]; v = v << 8 | Code[2]; v = v << 8 | Code[1]; v = v << 8 | Code[0]; Code += 4; return INTEL_ORDER32(v); }
-	FORCEINLINE uint64 DecodeU64() { uint64 v = Code[7]; v = v << 8 | Code[6]; v = v << 8 | Code[5]; v = v << 8 | Code[4]; v = v << 8 | Code[3]; v = v << 8 | Code[2]; v = v << 8 | Code[1]; v = v << 8 | Code[0]; Code += 8; return INTEL_ORDER64(v); }
-#endif
-	FORCEINLINE uintptr_t DecodePtr() { return (sizeof(uintptr_t) == 4) ? DecodeU32() : DecodeU64(); }
-	FORCEINLINE void SkipCode(int64 Count) { Code += Count; }
-
-	/** Decode the next operation contained in the bytecode. */
-	FORCEINLINE EVectorVMOp DecodeOp()
-	{
-		return static_cast<EVectorVMOp>(DecodeU8());
-	}
-
-	FORCEINLINE uint8 DecodeSrcOperandTypes()
-	{
-		return DecodeU8();
-	}
-
-	FORCEINLINE bool IsParallelExecution()
-	{
-		return bIsParallelExecution;
-	}
-
-	template<typename T = uint8>
-	FORCEINLINE const T* GetConstant(int32 TableIndex, int32 TableOffset) const
-	{
-		check(TableIndex < ConstantTableCount);
-		return reinterpret_cast<const T*>(ConstantTable[TableIndex] + TableOffset);
-	}
-
-	template<typename T = uint8>
-	FORCEINLINE const T* GetConstant(int32 Offset) const
-	{
-		int32 TableIndex = 0;
-
-		while (Offset >= ConstantTableSizes[TableIndex])
-		{
-			Offset -= ConstantTableSizes[TableIndex];
-			++TableIndex;
-		}
-
-		check(TableIndex < ConstantTableCount);
-		check(Offset < ConstantTableSizes[TableIndex]);
-		return reinterpret_cast<const T*>(ConstantTable[TableIndex] + Offset);
 	}
 };
 
@@ -490,37 +323,56 @@ namespace VectorVM
 
 	VECTORVM_API uint8 CreateSrcOperandMask(EVectorVMOperandLocation Type0, EVectorVMOperandLocation Type1 = EVectorVMOperandLocation::Register, EVectorVMOperandLocation Type2 = EVectorVMOperandLocation::Register);
 
-	struct FVectorVMExecArgs
-	{
-		uint8 const* ByteCode = nullptr;
-		uint8 const* OptimizedByteCode = nullptr;
-		int32 NumTempRegisters = 0;
-		int32 ConstantTableCount = 0;
-		const uint8* const* ConstantTable = nullptr;
-		const int32* ConstantTableSizes = nullptr;
-		TArrayView<FDataSetMeta> DataSetMetaTable;
-		const FVMExternalFunction* const* ExternalFunctionTable = nullptr;
-		void** UserPtrTable = nullptr;
-		int32 NumInstances = 0;
-		bool bAllowParallel = true;
-#if STATS
-		TArrayView<FStatScopeData> StatScopes;
-#elif ENABLE_STATNAMEDEVENTS
-		TArrayView<const FString> StatNamedEventsScopes;
-#endif
-	};
-
 	/**
 	 * Execute VectorVM bytecode.
 	 */
-	VECTORVM_API void Exec(FVectorVMExecArgs& Args);
-
-	VECTORVM_API void OptimizeByteCode(const uint8* ByteCode, TArray<uint8>& OptimizedCode, TArrayView<uint8> ExternalFunctionRegisterCounts);
+	VECTORVM_API void Exec(
+		uint8 const* Code,
+		int32 NumTempRegisters,
+		uint8** InputRegisters,
+		int32 NumInputRegisters,
+		uint8** OutputRegisters,
+		int32 NumOutputRegisters,
+		uint8 const* ConstantTable,
+		TArray<FDataSetMeta> &DataSetMetaTable,
+		FVMExternalFunction* ExternalFunctionTable,
+		void** UserPtrTable,
+		int32 NumInstances
+#if STATS
+		, const TArray<TStatId>& StatScopes
+#endif
+	);
 
 	VECTORVM_API void Init();
 
-	#define VVM_EXT_FUNC_INPUT_LOC_BIT (unsigned short)(1<<15)
-	#define VVM_EXT_FUNC_INPUT_LOC_MASK (unsigned short)~VVM_EXT_FUNC_INPUT_LOC_BIT
+	FORCEINLINE uint8 DecodeU8(FVectorVMContext& Context)
+	{
+		return *Context.Code++;
+	}
+
+	FORCEINLINE uint16 DecodeU16(FVectorVMContext& Context)
+	{
+		return ((uint16)DecodeU8(Context) << 8) + DecodeU8(Context);
+	}
+
+	FORCEINLINE uint32 DecodeU32(FVectorVMContext& Context)
+	{
+		return ((uint32)DecodeU8(Context) << 24) + (uint32)(DecodeU8(Context) << 16) + (uint32)(DecodeU8(Context) << 8) + DecodeU8(Context);
+	}
+
+	/** Decode the next operation contained in the bytecode. */
+	FORCEINLINE EVectorVMOp DecodeOp(FVectorVMContext& Context)
+	{
+		return static_cast<EVectorVMOp>(DecodeU8(Context));
+	}
+
+	FORCEINLINE uint8 DecodeSrcOperandTypes(FVectorVMContext& Context)
+	{
+		return DecodeU8(Context);
+	}
+
+#define VVM_EXT_FUNC_INPUT_LOC_BIT (unsigned short)(1<<15)
+#define VVM_EXT_FUNC_INPUT_LOC_MASK (unsigned short)~VVM_EXT_FUNC_INPUT_LOC_BIT
 
 	template<typename T>
 	struct FUserPtrHandler
@@ -528,17 +380,11 @@ namespace VectorVM
 		int32 UserPtrIdx;
 		T* Ptr;
 		FUserPtrHandler(FVectorVMContext& Context)
+			: UserPtrIdx(*(int32*)(Context.ConstantTable + (DecodeU16(Context))))
+			, Ptr((T*)Context.UserPtrTable[UserPtrIdx])
 		{
-			const uint16 VariableOffset = Context.DecodeU16();
-			check(!(VariableOffset & VVM_EXT_FUNC_INPUT_LOC_BIT));
-
-			const uint16 ConstantTableOffset = VariableOffset & VVM_EXT_FUNC_INPUT_LOC_MASK;
-			UserPtrIdx = *Context.GetConstant<int32>(ConstantTableOffset);
 			check(UserPtrIdx != INDEX_NONE);
-
-			Ptr = reinterpret_cast<T*>(Context.UserPtrTable[UserPtrIdx]);
 		}
-
 		FORCEINLINE T* Get() { return Ptr; }
 		FORCEINLINE T* operator->() { return Ptr; }
 		FORCEINLINE operator T*() { return Ptr; }
@@ -551,7 +397,7 @@ namespace VectorVM
 	private:
 		/** Either byte offset into constant table or offset into register table deepening on VVM_INPUT_LOCATION_BIT */
 		int32 InputOffset;
-		const T* RESTRICT InputPtr;
+		T* RESTRICT InputPtr;
 		int32 AdvanceOffset;
 
 	public:
@@ -568,14 +414,9 @@ namespace VectorVM
 
 		void Init(FVectorVMContext& Context)
 		{
-			InputOffset = Context.DecodeU16();
-
-			const int32 Offset = GetOffset();
-			InputPtr = IsConstant() ? Context.GetConstant<T>(Offset) : reinterpret_cast<T*>(Context.GetTempRegister(Offset));
+			InputOffset = DecodeU16(Context);
+			InputPtr = IsConstant() ? (T*)(Context.ConstantTable + GetOffset()) : (T*)Context.RegisterTable[GetOffset()];
 			AdvanceOffset = IsConstant() ? 0 : 1;
-
-			//Hack: Offset into the buffer by the instance offset.
-			InputPtr += Context.ExternalFunctionInstanceOffset * AdvanceOffset;
 		}
 
 		FORCEINLINE bool IsConstant()const { return !IsRegister(); }
@@ -583,17 +424,17 @@ namespace VectorVM
 		FORCEINLINE int32 GetOffset()const { return InputOffset & VVM_EXT_FUNC_INPUT_LOC_MASK; }
 
 		FORCEINLINE const T Get() { return *InputPtr; }
-		FORCEINLINE const T* GetDest() { return InputPtr; }
+		FORCEINLINE T* GetDest() { return InputPtr; }
 		FORCEINLINE void Advance() { InputPtr += AdvanceOffset; }
 		FORCEINLINE const T GetAndAdvance()
 		{
-			const T* Ret = InputPtr;
+			T* Ret = InputPtr;
 			InputPtr += AdvanceOffset;
 			return *Ret;
 		}
-		FORCEINLINE const T* GetDestAndAdvance()
+		FORCEINLINE T* GetDestAndAdvance()
 		{
-			const T* Ret = InputPtr;
+			T* Ret = InputPtr;
 			InputPtr += AdvanceOffset;
 			return Ret;
 		}
@@ -609,16 +450,13 @@ namespace VectorVM
 		T* RESTRICT Register;
 	public:
 		FORCEINLINE FExternalFuncRegisterHandler(FVectorVMContext& Context)
-			: RegisterIndex(Context.DecodeU16() & VVM_EXT_FUNC_INPUT_LOC_MASK)
+			: RegisterIndex(DecodeU16(Context) & VVM_EXT_FUNC_INPUT_LOC_MASK)
 			, AdvanceOffset(IsValid() ? 1 : 0)
 		{
 			if (IsValid())
 			{
-				checkSlow(RegisterIndex < Context.NumTempRegisters);
-				Register = (T*)Context.GetTempRegister(RegisterIndex);
-
-				//Hack: Offset into the buffer by the instance offset.
-				Register += Context.ExternalFunctionInstanceOffset * AdvanceOffset;
+				check(RegisterIndex < VectorVM::MaxRegisters);
+				Register = (T*)Context.RegisterTable[RegisterIndex];
 			}
 			else
 			{
@@ -651,8 +489,8 @@ namespace VectorVM
 		uint16 ConstantIndex;
 		T Constant;
 		FExternalFuncConstHandler(FVectorVMContext& Context)
-			: ConstantIndex(Context.DecodeU16() & VVM_EXT_FUNC_INPUT_LOC_MASK)
-			, Constant(*Context.GetConstant<T>(ConstantIndex))
+			: ConstantIndex(VectorVM::DecodeU16(Context) & VVM_EXT_FUNC_INPUT_LOC_MASK)
+			, Constant(*((T*)(Context.ConstantTable + ConstantIndex)))
 		{}
 		FORCEINLINE const T& Get() { return Constant; }
 		FORCEINLINE const T& GetAndAdvance() { return Constant; }

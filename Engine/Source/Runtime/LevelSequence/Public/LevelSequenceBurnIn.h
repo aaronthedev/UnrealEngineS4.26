@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -31,7 +31,7 @@ public:
 	/** Get the settings class to use for this burn in */
 	UFUNCTION(BlueprintNativeEvent, Category="Burn In")
 	TSubclassOf<ULevelSequenceBurnInInitSettings> GetSettingsClass() const;
-	virtual TSubclassOf<ULevelSequenceBurnInInitSettings> GetSettingsClass_Implementation() const { return nullptr; }
+	TSubclassOf<ULevelSequenceBurnInInitSettings> GetSettingsClass_Implementation() const { return nullptr; }
 
 protected:
 

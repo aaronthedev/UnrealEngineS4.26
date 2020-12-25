@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,16 +6,13 @@
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "Components/ActorComponent.h"
-#include "PhysicsEngine/ConstraintInstance.h"
 #include "PhysicsHandleComponent.generated.h"
 
-#if PHYSICS_INTERFACE_PHYSX
 namespace physx
 {
 	class PxD6Joint;
 	class PxRigidDynamic;
 }
-#endif
 
 /**
  *	Utility object for moving physics objects around.
@@ -45,19 +42,19 @@ class ENGINE_API UPhysicsHandleComponent : public UActorComponent
 	uint32 bInterpolateTarget : 1;
 
 	/** Linear damping of the handle spring. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=PhysicsHandle, meta = (EditCondition = "bSoftLinearConstraint"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=PhysicsHandle, meta = (EditCondition = "bSoftConstraint"))
 	float LinearDamping;
 
 	/** Linear stiffness of the handle spring */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=PhysicsHandle, meta = (EditCondition = "bSoftLinearConstraint"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=PhysicsHandle, meta = (EditCondition = "bSoftConstraint"))
 	float LinearStiffness;
 
 	/** Angular damping of the handle spring */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=PhysicsHandle, meta = (EditCondition = "bSoftAngularConstraint"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=PhysicsHandle, meta = (EditCondition = "bSoftConstraint"))
 	float AngularDamping;
 
 	/** Angular stiffness of the handle spring */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=PhysicsHandle, meta = (EditCondition = "bSoftAngularConstraint"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=PhysicsHandle, meta = (EditCondition = "bSoftConstraint"))
 	float AngularStiffness;
 
 	/** Target transform */
@@ -71,24 +68,10 @@ class ENGINE_API UPhysicsHandleComponent : public UActorComponent
 
 
 protected:
-
-#if PHYSICS_INTERFACE_PHYSX
 	/** Pointer to PhysX joint used by the handle*/
 	physx::PxD6Joint* HandleData;
 	/** Pointer to kinematic actor jointed to grabbed object */
 	physx::PxRigidDynamic* KinActorData;
-#elif WITH_CHAOS
-	FTransform PreviousTransform;
-	bool bPendingConstraint;
-
-	FPhysicsUserData PhysicsUserData;
-	FConstraintInstanceBase ConstraintInstance;
-	FPhysicsActorHandle GrabbedHandle;
-	FPhysicsActorHandle KinematicHandle;
-	FPhysicsConstraintHandle ConstraintHandle;
-	FVector ConstraintLocalPosition; // Position of constraint in the grabbed body local space (updated when grabbing)
-	FRotator ConstraintLocalRotation;
-#endif
 
 	//~ Begin UActorComponent Interface.
 	virtual void OnUnregister() override;
@@ -156,7 +139,7 @@ public:
 
 protected:
 	/** Move the kinematic handle to the specified */
-	virtual void UpdateHandleTransform(const FTransform& NewTransform);
+	void UpdateHandleTransform(const FTransform& NewTransform);
 
 	/** Update the underlying constraint drive settings from the params in this component */
 	virtual void UpdateDriveSettings();

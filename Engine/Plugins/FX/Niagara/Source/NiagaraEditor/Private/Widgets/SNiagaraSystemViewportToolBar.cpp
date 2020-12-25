@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SNiagaraSystemViewportToolBar.h"
 #include "Widgets/Layout/SBorder.h"
@@ -14,7 +14,7 @@
 
 void SNiagaraSystemViewportToolBar::Construct(const FArguments& InArgs, TSharedPtr<class SNiagaraSystemViewport> InViewport)
 {
-	SCommonEditorViewportToolbarBase::Construct(SCommonEditorViewportToolbarBase::FArguments().AddRealtimeButton(true), InViewport);
+	SCommonEditorViewportToolbarBase::Construct(SCommonEditorViewportToolbarBase::FArguments(), InViewport);
 }
 
 TSharedRef<SWidget> SNiagaraSystemViewportToolBar::GenerateShowMenu() const
@@ -35,8 +35,6 @@ TSharedRef<SWidget> SNiagaraSystemViewportToolBar::GenerateShowMenu() const
 
 		ShowMenuBuilder.AddMenuEntry(Commands.TogglePreviewGrid);
 		ShowMenuBuilder.AddMenuEntry(Commands.ToggleInstructionCounts);
-		ShowMenuBuilder.AddMenuEntry(Commands.ToggleParticleCounts);
-		ShowMenuBuilder.AddMenuEntry(Commands.ToggleEmitterExecutionOrder);
 		//ShowMenuBuilder.AddMenuEntry(Commands.TogglePreviewBackground);
 	}
 

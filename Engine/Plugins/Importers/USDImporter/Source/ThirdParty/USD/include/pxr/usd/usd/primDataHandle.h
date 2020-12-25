@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_PRIM_DATA_HANDLE_H
-#define PXR_USD_USD_PRIM_DATA_HANDLE_H
+#ifndef USD_PRIMDATAHANDLE_H
+#define USD_PRIMDATAHANDLE_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/usd/api.h"
@@ -76,6 +76,12 @@ public:
     // Convert/construct a handle from a prim data raw ptr.
     Usd_PrimDataHandle(Usd_PrimDataConstPtr primData)
         : _p(Usd_PrimDataConstIPtr(primData)) {}
+
+    // Assignment.
+    Usd_PrimDataHandle &operator=(const Usd_PrimDataHandle &other) {
+        Usd_PrimDataHandle(other).swap(*this);
+        return *this;
+    }
 
     // Reset this handle to null.
     void reset() { _p.reset(); }
@@ -138,4 +144,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_USD_PRIM_DATA_HANDLE_H
+#endif // USD_PRIMDATAHANDLE_H

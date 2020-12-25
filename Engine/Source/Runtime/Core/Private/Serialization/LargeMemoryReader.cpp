@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Serialization/LargeMemoryReader.h"
 #include "Logging/LogMacros.h"
@@ -22,7 +22,7 @@ FLargeMemoryReader::FLargeMemoryReader(const uint8* InData, const int64 Num, ELa
 
 void FLargeMemoryReader::Serialize(void* OutData, int64 Num)
 {
-	if (Num && !IsError())
+	if (Num && !ArIsError)
 	{
 		// Only serialize if we have the requested amount of data
 		if (Offset + Num <= NumBytes)
@@ -32,7 +32,7 @@ void FLargeMemoryReader::Serialize(void* OutData, int64 Num)
 		}
 		else
 		{
-			SetError();
+			ArIsError = true;
 		}
 	}
 }

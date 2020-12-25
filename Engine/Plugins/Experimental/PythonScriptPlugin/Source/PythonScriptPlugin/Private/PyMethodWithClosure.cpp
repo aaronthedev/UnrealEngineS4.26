@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PyMethodWithClosure.h"
 #include "PyUtil.h"
@@ -203,7 +203,7 @@ PyObject* FPyMethodWithClosureDef::Call(FPyMethodWithClosureDef* InDef, PyObject
 
 FPyCFunctionWithClosureObject* FPyCFunctionWithClosureObject::New(FPyMethodWithClosureDef* InMethod, PyObject* InSelf, PyObject* InModule)
 {
-	FPyCFunctionWithClosureObject* Self = PyCFunctionWithClosureObjectFreeList ? PyCFunctionWithClosureObjectFreeList->Pop() : nullptr;
+	FPyCFunctionWithClosureObject* Self = PyCFunctionWithClosureObjectFreeList->Pop();
 	if (!Self)
 	{
 		Self = PyObject_GC_New(FPyCFunctionWithClosureObject, &PyCFunctionWithClosureType);
@@ -237,7 +237,7 @@ void FPyCFunctionWithClosureObject::Free(FPyCFunctionWithClosureObject* InSelf)
 	Py_XDECREF(InSelf->ModuleAttr);
 	InSelf->ModuleAttr = nullptr;
 
-	if (!PyCFunctionWithClosureObjectFreeList || !PyCFunctionWithClosureObjectFreeList->Push(InSelf))
+	if (!PyCFunctionWithClosureObjectFreeList->Push(InSelf))
 	{
 		PyObject_GC_Del(InSelf);
 	}

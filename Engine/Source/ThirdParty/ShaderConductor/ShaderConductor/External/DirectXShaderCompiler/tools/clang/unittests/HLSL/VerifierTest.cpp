@@ -11,8 +11,8 @@
 #include <memory>
 #include <vector>
 #include <string>
-#include "dxc/Test/CompilationResult.h"
-#include "dxc/Test/HLSLTestData.h"
+#include "CompilationResult.h"
+#include "HLSLTestData.h"
 
 #include <fstream>
 
@@ -22,7 +22,7 @@
 #else
 #define TEST_CLASS_DERIVATION : public ::testing::Test
 #endif
-#include "dxc/Test/HlslTestUtils.h"
+#include "HlslTestUtils.h"
 
 using namespace std;
 

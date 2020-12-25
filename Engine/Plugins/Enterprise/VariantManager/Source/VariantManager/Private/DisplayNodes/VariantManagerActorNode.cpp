@@ -1,32 +1,27 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DisplayNodes/VariantManagerActorNode.h"
 
-#include "SVariantManager.h"
-#include "Variant.h"
-#include "VariantManager.h"
-#include "VariantManagerDragDropOp.h"
-#include "VariantManagerEditorCommands.h"
-#include "VariantManagerSelection.h"
-#include "VariantObjectBinding.h"
-
-#include "Containers/ArrayBuilder.h"
-#include "DragAndDrop/ActorDragDropGraphEdOp.h"
-#include "EditorStyleSet.h"
+#include "Widgets/DeclarativeSyntaxSupport.h"
+#include "Textures/SlateIcon.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/Commands/UIAction.h"
 #include "Framework/Commands/UICommandList.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
+#include "EditorStyleSet.h"
 #include "GameFramework/Actor.h"
-#include "Input/DragAndDrop.h"
-#include "Modules/ModuleManager.h"
-#include "SceneOutlinerModule.h"
-#include "SceneOutlinerPublicTypes.h"
-#include "ScopedTransaction.h"
+#include "Containers/ArrayBuilder.h"
 #include "Styling/SlateIconFinder.h"
-#include "Textures/SlateIcon.h"
+#include "VariantManager.h"
+#include "VariantObjectBinding.h"
+#include "ScopedTransaction.h"
+#include "VariantManagerEditorCommands.h"
+#include "Input/DragAndDrop.h"
+#include "DragAndDrop/ActorDragDropGraphEdOp.h"
+#include "VariantManagerDragDropOp.h"
+#include "Variant.h"
 #include "UObject/StrongObjectPtr.h"
-#include "Widgets/DeclarativeSyntaxSupport.h"
+#include "SVariantManager.h"
 
 #define LOCTEXT_NAMESPACE "FVariantManagerActorNode"
 
@@ -35,11 +30,6 @@ FVariantManagerActorNode::FVariantManagerActorNode(UVariantObjectBinding* InObje
 	, ObjectBinding(InObjectBinding)
 	, VariantManager(InVariantManager)
 {
-}
-
-TWeakObjectPtr<UVariantObjectBinding> FVariantManagerActorNode::GetObjectBinding() const
-{
-	return ObjectBinding;
 }
 
 void FVariantManagerActorNode::BuildContextMenu(FMenuBuilder& MenuBuilder)
@@ -53,52 +43,33 @@ void FVariantManagerActorNode::BuildContextMenu(FMenuBuilder& MenuBuilder)
 	MenuBuilder.BeginSection("Actor", LOCTEXT("ActorSectionText", "Actor"));
 	MenuBuilder.AddMenuEntry(FVariantManagerEditorCommands::Get().AddPropertyCaptures);
 	MenuBuilder.AddMenuEntry(FVariantManagerEditorCommands::Get().AddFunction);
-
-	int32 NumSelectedNodes = 0;
-	if (TSharedPtr<FVariantManager> PinnedVariantManager = VariantManager.Pin())
-	{
-		FVariantManagerSelection& Selection = PinnedVariantManager->GetSelection();
-		NumSelectedNodes = Selection.GetSelectedActorNodes().Num();
-	}
-
-	if (NumSelectedNodes > 1)
-	{
-		MenuBuilder.AddMenuEntry(FVariantManagerEditorCommands::Get().RebindActorDisabled);
-	}
-	else
-	{
-		MenuBuilder.AddSubMenu(
-			LOCTEXT("RebindActorName", "Rebind to other Actor"),
-			LOCTEXT("RebindActorName_Tooltip", "Connect this binding to a different actor and try reusing the captured properties"),
-			FNewMenuDelegate::CreateSP(this, &FVariantManagerActorNode::AddAssignActorSubMenu));
-	}
-
 	MenuBuilder.EndSection();
 }
 
 FText FVariantManagerActorNode::GetDisplayNameToolTipText() const
 {
-	if (const UClass* BindingClass = GetClassForObjectBinding())
-	{
-		return FText::FromString(BindingClass->GetName());
-	}
+	//FSequencer& Sequencer = ParentTree.GetSequencer();
+	//if (Sequencer.FindObjectsInCurrentSequence(ObjectBinding).Num() == 0)
+	//{
+	//	return LOCTEXT("InvalidBoundObjectToolTip", "The object bound to this track is missing.");
+	//}
 
-	return LOCTEXT("FailedToResolveTooltip", "Binding can't be resolved. Right-click to rebind to another actor");
+	return FText();
 }
 
 const FSlateBrush* FVariantManagerActorNode::GetIconBrush() const
 {
-	if (const UClass* BindingClass = GetClassForObjectBinding())
-	{
-		return FSlateIconFinder::FindIconBrushForClass(BindingClass);
-	}
-
-	return FEditorStyle::Get().GetBrush(TEXT("MessageLog.Warning"));
+	return FSlateIconFinder::FindIconBrushForClass(GetClassForObjectBinding());
 }
 
 const FSlateBrush* FVariantManagerActorNode::GetIconOverlayBrush() const
 {
 	return nullptr;
+}
+
+FText FVariantManagerActorNode::GetIconToolTipText() const
+{
+	return LOCTEXT("PossessableToolTip", "This item is a possessable reference to an existing object.");
 }
 
 EVariantManagerNodeType FVariantManagerActorNode::GetType() const
@@ -115,7 +86,8 @@ FText FVariantManagerActorNode::GetDisplayName() const
 	// we stop showing properties if our actor doesn't resolve anymore, though
 	if (NewDisplayText.ToString() != OldDisplayText.ToString())
 	{
-		if (TSharedPtr<FVariantManager> VarMan = GetVariantManager().Pin())
+		TSharedPtr<FVariantManager> VarMan = GetVariantManager().Pin();
+		if (VarMan.IsValid())
 		{
 			VarMan->GetVariantManagerWidget()->RefreshPropertyList();
 		}
@@ -125,21 +97,12 @@ FText FVariantManagerActorNode::GetDisplayName() const
 	return NewDisplayText;
 }
 
-FSlateColor FVariantManagerActorNode::GetDisplayNameColor() const
-{
-	if (GetClassForObjectBinding())
-	{
-		return FSlateColor(FLinearColor(1.0f, 1.0f, 1.0f, 1.0f));
-	}
-
-	return FSlateColor(FLinearColor(0.6f, 0.6f, 0.6f, 1.0f));
-}
-
 void FVariantManagerActorNode::SetDisplayName(const FText& NewDisplayName)
 {
 	UObject* Obj = ObjectBinding->GetObject();
 
-	if (AActor* ObjAsActor = Cast<AActor>(Obj))
+	AActor* ObjAsActor = Cast<AActor>(Obj);
+	if (ObjAsActor != nullptr)
 	{
 		ObjAsActor->SetActorLabel(*NewDisplayName.ToString());
 	}
@@ -157,11 +120,6 @@ bool FVariantManagerActorNode::IsSelectable() const
 bool FVariantManagerActorNode::CanDrag() const
 {
 	return true;
-}
-
-TWeakPtr<FVariantManager> FVariantManagerActorNode::GetVariantManager() const
-{
-	return VariantManager;
 }
 
 TOptional<EItemDropZone> FVariantManagerActorNode::CanDrop(const FDragDropEvent& DragDropEvent, EItemDropZone ItemDropZone) const
@@ -220,9 +178,11 @@ TOptional<EItemDropZone> FVariantManagerActorNode::CanDrop(const FDragDropEvent&
 		{
 			if (DraggedNode->GetType() == EVariantManagerNodeType::Actor)
 			{
-				if (TSharedPtr<FVariantManagerActorNode> DraggedActorNode = StaticCastSharedRef<FVariantManagerActorNode>(DraggedNode))
+				TSharedPtr<FVariantManagerActorNode> DraggedActorNode = StaticCastSharedRef<FVariantManagerActorNode>(DraggedNode);
+				if (DraggedActorNode.IsValid())
 				{
-					if (UVariantObjectBinding* DraggedBinding = DraggedActorNode->GetObjectBinding().Get())
+					UVariantObjectBinding* DraggedBinding = DraggedActorNode->GetObjectBinding().Get();
+					if (DraggedBinding)
 					{
 						UObject* DraggedActor = DraggedBinding->GetObject();
 						if (!DraggedActors.Contains(DraggedActor))
@@ -254,7 +214,8 @@ TOptional<EItemDropZone> FVariantManagerActorNode::CanDrop(const FDragDropEvent&
 		TArray<TWeakObjectPtr<AActor>> ActorsToCheck;
 		for (UObject* Actor : DraggedActors)
 		{
-			if (AActor* ActualActor = Cast<AActor>(Actor))
+			AActor* ActualActor = Cast<AActor>(Actor);
+			if (ActualActor)
 			{
 				ActorsToCheck.Add(ActualActor);
 			}
@@ -461,120 +422,34 @@ void FVariantManagerActorNode::Drop(const FDragDropEvent& DragDropEvent, EItemDr
 
 const UClass* FVariantManagerActorNode::GetClassForObjectBinding() const
 {
-	if (ObjectBinding.IsValid())
+	UObject* Obj = ObjectBinding->GetObject();
+	if (Obj != nullptr)
 	{
-		if (UObject* Obj = ObjectBinding->GetObject())
-		{
-			return Obj->GetClass();
-		}
+		return Obj->GetClass();
 	}
 
 	return nullptr;
 }
 
-void FVariantManagerActorNode::AddAssignActorSubMenu(FMenuBuilder& MenuBuilder)
-{
-	// Copied from FSequencer::AssignActor
-	using namespace SceneOutliner;
-
-	// If we're showing this menu, we know for a fact only our actor node is selected,
-	// so we only have to check our variant
-	TSet<const AActor*> BoundActors;
-	if (ObjectBinding.IsValid())
-	{
-		if (UVariant* ParentVariant = ObjectBinding->GetParent())
-		{
-			for (UVariantObjectBinding* Binding : ParentVariant->GetBindings())
-			{
-				if (AActor* BoundActor = Cast<AActor>(Binding->GetObject()))
-				{
-					BoundActors.Add(BoundActor);
-				}
-			}
-		}
-	}
-
-	auto IsActorValidForAssignment = [BoundActors](const AActor* InActor)
-	{
-		return !BoundActors.Contains(InActor);
-	};
-
-	MenuBuilder.AddMenuEntry(FVariantManagerEditorCommands::Get().RebindToSelected,
-							 NAME_None,
-							 TAttribute<FText>(),
-							 TAttribute<FText>(this, &FVariantManagerActorNode::GetRebindToSelectedTooltip));
-
-	// Set up a menu entry to assign an actor to the object binding node
-	FInitializationOptions InitOptions;
-	{
-		InitOptions.Mode = ESceneOutlinerMode::ActorPicker;
-
-		// We hide the header row to keep the UI compact.
-		InitOptions.bShowHeaderRow = false;
-		InitOptions.bShowSearchBox = true;
-		InitOptions.bShowCreateNewFolder = false;
-		InitOptions.bFocusSearchBoxWhenOpened = true;
-		// Only want the actor label column
-		InitOptions.ColumnMap.Add(FBuiltInColumnTypes::Label(), FColumnInfo(EColumnVisibility::Visible, 0));
-
-		// Only display actors that are not possessed already
-		InitOptions.Filters->AddFilterPredicate( FActorFilterPredicate::CreateLambda( IsActorValidForAssignment ) );
-	}
-
-	// actor selector to allow the user to choose an actor
-	FSceneOutlinerModule& SceneOutlinerModule = FModuleManager::LoadModuleChecked<FSceneOutlinerModule>("SceneOutliner");
-	TSharedRef< SWidget > MiniSceneOutliner =
-		SNew( SBox )
-		.MaxDesiredHeight(400.0f)
-		.WidthOverride(300.0f)
-		[
-			SceneOutlinerModule.CreateSceneOutliner(
-				InitOptions,
-				FOnActorPicked::CreateLambda([&](AActor* Actor)
-				{
-					FSlateApplication::Get().DismissAllMenus();
-
-					if (Actor && ObjectBinding.IsValid())
-					{
-						FScopedTransaction Transaction(FText::Format(
-							LOCTEXT("RebindToActorTransaction", "Rebind variant to actor '{0}'"),
-							FText::FromString(Actor->GetActorLabel())));
-
-						ObjectBinding->SetObject(Actor);
-					}
-				})
-			)
-		];
-
-	MenuBuilder.AddMenuSeparator();
-	MenuBuilder.AddWidget(MiniSceneOutliner, FText::GetEmpty(), true);
-}
-
-FText FVariantManagerActorNode::GetRebindToSelectedTooltip() const
-{
-	if (TSharedPtr<FVariantManager> PinnedVariantManager = VariantManager.Pin())
-	{
-		if(TSharedPtr<SVariantManager> VariantManagerWidget = PinnedVariantManager->GetVariantManagerWidget())
-		{
-			UVariantObjectBinding* SelectedBinding = nullptr;
-			UObject* SelectedObject = nullptr;
-			VariantManagerWidget->GetSelectedBindingAndEditorActor(SelectedBinding, SelectedObject);
-
-			AActor* SelectedActor = Cast<AActor>(SelectedObject);
-
-			if (SelectedBinding && SelectedActor)
-			{
-				return FText::Format(LOCTEXT("RebindToThisActorTooltipFound", "Rebind to '{0}'"), FText::FromString(SelectedActor->GetActorLabel()));
-			}
-		}
-	}
-
-	// If we reach here, then so did SVariantManager::CanRebindToSelectedActor, so the button will be disabled
-	return LOCTEXT("RebindToThisActorTooltipDisabled", "Cannot rebind to this selected actor");
-}
-
 TSharedRef<SWidget> FVariantManagerActorNode::GetCustomOutlinerContent(TSharedPtr<SVariantManagerTableRow> InTableRow)
 {
+	FSlateFontInfo NodeFont = FEditorStyle::GetFontStyle("Sequencer.AnimationOutliner.RegularFont");
+
+	EditableLabel = SNew(SInlineEditableTextBlock)
+		.IsReadOnly(this, &FVariantManagerDisplayNode::IsReadOnly)
+		.Font(NodeFont)
+		.ColorAndOpacity(this, &FVariantManagerDisplayNode::GetDisplayNameColor)
+		.OnTextCommitted(this, &FVariantManagerDisplayNode::HandleNodeLabelTextChanged)
+		.Text(this, &FVariantManagerDisplayNode::GetDisplayName)
+		.ToolTipText(this, &FVariantManagerDisplayNode::GetDisplayNameToolTipText)
+		.Clipping(EWidgetClipping::ClipToBounds);
+
+	FText Tooltip;
+	if (const UClass* BindingClass = GetClassForObjectBinding())
+	{
+		Tooltip = FText::FromString(BindingClass->GetName());
+	}
+
 	return
 	SNew(SBox)
 	[
@@ -589,7 +464,6 @@ TSharedRef<SWidget> FVariantManagerActorNode::GetCustomOutlinerContent(TSharedPt
 			.HAlign(HAlign_Left)
 			.Padding(FMargin( 4.0, 0.0f, 0.0f, 0.0f ))
 			.HeightOverride(26)
-			.ToolTipText(this, &FVariantManagerActorNode::GetDisplayNameToolTipText)
 			[
 				SNew(SHorizontalBox)
 
@@ -604,6 +478,7 @@ TSharedRef<SWidget> FVariantManagerActorNode::GetCustomOutlinerContent(TSharedPt
 					[
 						SNew(SImage)
 						.Image(this, &FVariantManagerActorNode::GetIconBrush)
+						.ToolTipText(Tooltip)
 					]
 				]
 
@@ -611,14 +486,7 @@ TSharedRef<SWidget> FVariantManagerActorNode::GetCustomOutlinerContent(TSharedPt
 				.FillWidth(1.0f)
 				.VAlign(VAlign_Center)
 				[
-					SAssignNew(EditableLabel, SInlineEditableTextBlock)
-					.IsReadOnly(this, &FVariantManagerDisplayNode::IsReadOnly)
-					.Font(FEditorStyle::GetFontStyle("Sequencer.AnimationOutliner.RegularFont"))
-					.ColorAndOpacity(this, &FVariantManagerDisplayNode::GetDisplayNameColor)
-					.OnTextCommitted(this, &FVariantManagerDisplayNode::HandleNodeLabelTextChanged)
-					.Text(this, &FVariantManagerDisplayNode::GetDisplayName)
-					.ToolTipText(this, &FVariantManagerDisplayNode::GetDisplayNameToolTipText)
-					.Clipping(EWidgetClipping::ClipToBounds)
+					EditableLabel.ToSharedRef()
 				]
 			]
 		]

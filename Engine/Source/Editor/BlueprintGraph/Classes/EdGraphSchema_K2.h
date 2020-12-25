@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -91,21 +91,12 @@ public:
 	/// [ClassMetadata] Used to make the first subclass of a class ignore all inherited showCategories and hideCategories commands
 	static const FName MD_IgnoreCategoryKeywordsInSubclasses;
 
-	/** Specifies which struct implements the custom thunk functions for this class */
-	static const FName MD_CustomThunkTemplates;
-
 	//    function metadata
 	/** Specifies a UFUNCTION as Kismet protected, which can only be called from itself */
 	static const FName MD_Protected;
 
 	/** Marks a UFUNCTION as latent execution */
 	static const FName MD_Latent;
-
-	/** Indicates that the UFUNCTION implements its own thunk function */
-	static const FName MD_CustomThunk;
-
-	/** Marks a UFUNCTION as accepting variadic arguments */
-	static const FName MD_Variadic;
 
 	/** Marks a UFUNCTION as unsafe for use in the UCS, which prevents it from being called from the UCS.  Useful for things that spawn actors, etc that should never happen in the UCS */
 	static const FName MD_UnsafeForConstructionScripts;
@@ -166,13 +157,9 @@ public:
 	/** If true, the hidden world context pin will be visible when the function is placed in a child blueprint of the class. */
 	static const FName MD_ShowWorldContextPin;
 
-	/** Comma delimited list of pins that should be hidden on this function. */
-	static const FName MD_HidePin;
-
 	static const FName MD_BlueprintInternalUseOnly;
 	static const FName MD_NeedsLatentFixup;
 
-	static const FName MD_LatentInfo;
 	static const FName MD_LatentCallbackTarget;
 
 	/** If true, properties defined in the C++ private scope will be accessible to blueprints */
@@ -191,9 +178,6 @@ public:
 	/** Indicates that during compile we want to create multiple exec pins from an enum param */
 	static const FName MD_ExpandEnumAsExecs;
 
-	/** Synonym for MD_ExpandEnumAsExecs */
-	static const FName MD_ExpandBoolAsExecs;
-
 	static const FName MD_CommutativeAssociativeBinaryOperator;
 
 	/** Metadata string that indicates to use the MaterialParameterCollectionFunction node. */
@@ -211,14 +195,11 @@ public:
 	/** Metadata that flags make/break functions for specific struct types. */
 	static const FName MD_NativeMakeFunction;
 	static const FName MD_NativeBreakFunction;
-	static const FName MD_NativeDisableSplitPin;
 
 	/** Metadata that flags function params that govern what type of object the function returns */
 	static const FName MD_DynamicOutputType;
 	/** Metadata that flags the function output param that will be controlled by the "MD_DynamicOutputType" pin */
 	static const FName MD_DynamicOutputParam;
-
-	static const FName MD_CustomStructureParam;
 
 	static const FName MD_ArrayParam;
 	static const FName MD_ArrayDependentParam;
@@ -242,9 +223,6 @@ public:
 	
 	/** Stub function used internally by animation blueprints */
 	static const FName MD_AnimBlueprintFunction;
-
-	/** Metadata that should be used with UPARAM to specify whether a TSubclassOf argument allows abstract classes */
-	static const FName MD_AllowAbstractClasses;
 
 private:
 	// This class should never be instantiated
@@ -325,7 +303,6 @@ class BLUEPRINTGRAPH_API UEdGraphSchema_K2 : public UEdGraphSchema
 	static const FName PC_Struct;    // SubCategoryObject is the ScriptStruct of the struct passed thru this pin, 'self' is not a valid SubCategory. DefaultObject should always be empty, the DefaultValue string may be used for supported structs.
 	static const FName PC_Wildcard;    // Special matching rules are imposed by the node itself
 	static const FName PC_Enum;    // SubCategoryObject is the UEnum object passed thru this pin
-	static const FName PC_FieldPath;		// SubCategoryObject is the Class of the property passed thru this pin.
 
 	// Common PinType.PinSubCategory values
 	static const FName PSC_Self;    // Category=PC_Object or PC_Class, indicates the class being compiled
@@ -528,7 +505,6 @@ public:
 	virtual int32 GetCurrentVisualizationCacheID() const override;
 	virtual void ForceVisualizationCacheClear() const override;
 	virtual bool SafeDeleteNodeFromGraph(UEdGraph* Graph, UEdGraphNode* NodeToDelete) const override;
-	virtual bool CanVariableBeDropped(UEdGraph* InGraph, FProperty* InVariableToDrop) const override { return true; }
 	//~ End EdGraphSchema Interface
 
 	/**
@@ -749,27 +725,27 @@ public:
 	bool CanRecombineStructPin(const UEdGraphPin& Pin) const;
 
 	/** 
-	 * Helper function for filling out Category, SubCategory, and SubCategoryObject based on a FProperty 
+	 * Helper function for filling out Category, SubCategory, and SubCategoryObject based on a UProperty 
 	 * 
 	 * @return	true on success, false if the property is unsupported or invalid.
 	 */
-	static bool GetPropertyCategoryInfo(const FProperty* TestProperty, FName& OutCategory, FName& OutSubCategory, UObject*& OutSubCategoryObject, bool& bOutIsWeakPointer);
+	static bool GetPropertyCategoryInfo(const UProperty* TestProperty, FName& OutCategory, FName& OutSubCategory, UObject*& OutSubCategoryObject, bool& bOutIsWeakPointer);
 
 	/**
-	 * Convert the type of a FProperty to the corresponding pin type.
+	 * Convert the type of a UProperty to the corresponding pin type.
 	 *
 	 * @param		Property	The property to convert.
 	 * @param [out]	TypeOut		The resulting pin type.
 	 *
 	 * @return	true on success, false if the property is unsupported or invalid.
 	 */
-	bool ConvertPropertyToPinType(const FProperty* Property, /*out*/ FEdGraphPinType& TypeOut) const;
+	bool ConvertPropertyToPinType(const UProperty* Property, /*out*/ FEdGraphPinType& TypeOut) const;
 
 	/** Returns true if the function has wildcard parameters, e.g. uses runtime type information that may require safe failure handling */
 	static bool HasWildcardParams(const UFunction* Function);
 
 	/** Determines if the specified param property is intended to be used as a wildcard (for custom thunk functions, like in our array library, etc.)*/
-	static bool IsWildcardProperty(const FProperty* ParamProperty);
+	static bool IsWildcardProperty(const UProperty* ParamProperty);
 
 	/** Flags to indicate different types of blueprint callable functions */
 	enum EFunctionType
@@ -827,7 +803,7 @@ public:
 	};
 
 	/** Can this variable be accessed by kismet code */
-	static bool CanUserKismetAccessVariable(const FProperty* Property, const UClass* InClass, EDelegateFilterMode FilterMode);
+	static bool CanUserKismetAccessVariable(const UProperty* Property, const UClass* InClass, EDelegateFilterMode FilterMode);
 
 	/** Can this function be overridden by kismet (either placed as event or new function graph created) */
 	static bool CanKismetOverrideFunction(const UFunction* Function);
@@ -835,24 +811,11 @@ public:
 	/** returns friendly signature name if possible or Removes any mangling to get the unmangled signature name of the function */
 	static FText GetFriendlySignatureName(const UFunction* Function);
 
-	/** Returns true if this enum is safe to be used as a variable in blueprints */
 	static bool IsAllowableBlueprintVariableType(const UEnum* InEnum);
-
-	/** 
-	 * Returns true if this class is safe to be used as a variable in blueprints
-	 *
-	 * @param	bImpliedBlueprintType	If true, the class is implied to be a blueprint type and will be allowed unless it is specifically forbidden
-	 */
-	static bool IsAllowableBlueprintVariableType(const UClass* InClass, bool bAssumeBlueprintType = false);
-
-	/**
-	 * Returns true if this struct is safe to to be used as a variable in blueprints
-	 *
-	 * @param	bForInternalUse			If true, the struct is for internal usage so BlueprintInternalUseOnly is allowed
-	 */
+	static bool IsAllowableBlueprintVariableType(const UClass* InClass);
 	static bool IsAllowableBlueprintVariableType(const UScriptStruct *InStruct, bool bForInternalUse = false);
 
-	static bool IsPropertyExposedOnSpawn(const FProperty* Property);
+	static bool IsPropertyExposedOnSpawn(const UProperty* Property);
 
 	/**
 	 * Returns a list of parameters for the function that are specified as automatically emitting terms for unconnected ref parameters in the compiler (MD_AutoCreateRefTerm)
@@ -921,7 +884,7 @@ public:
 	 *
 	 * @return	The converted type string.
 	 */
-	static FText TypeToText(FProperty* const Property);
+	static FText TypeToText(UProperty* const Property);
 
 	/**
 	* Converts a terminal type into a fully qualified FText (e.g., object'ObjectName').
@@ -1021,8 +984,14 @@ public:
 	/** Call to let blueprint and UI know that parameters have changed for a function/macro/etc */
 	virtual void HandleParameterDefaultValueChanged(UK2Node* TargetNode) const;
 
+	UE_DEPRECATED(4.17, "SetPinDefaultValue is deprecated due to confusing name, call SetPinAutogeneratedDefaultValue")
+	virtual void SetPinDefaultValue(UEdGraphPin* Pin, const UFunction* Function = nullptr, const UProperty* Param = nullptr) const;
+
+	UE_DEPRECATED(4.17, "SetPinDefaultValueBasedOnType is deprecated due to confusing name, call SetPinAutogeneratedDefaultValue")
+	virtual void SetPinDefaultValueBasedOnType(UEdGraphPin* Pin) const;
+
 	/** Given a function and property, return the default value */
-	static bool FindFunctionParameterDefaultValue(const UFunction* Function, const FProperty* Param, FString& OutString);
+	static bool FindFunctionParameterDefaultValue(const UFunction* Function, const UProperty* Param, FString& OutString);
 
 	/** Utility that makes sure existing connections are valid, breaking any that are now illegal. */
 	static void ValidateExistingConnections(UEdGraphPin* Pin);
@@ -1035,6 +1004,18 @@ public:
 
 	/** Find an appropriate node that can convert from one pin type to another (not a cast; e.g. "MakeLiteralArray" node) */
 	virtual bool FindSpecializedConversionNode(const UEdGraphPin* OutputPin, const UEdGraphPin* InputPin, bool bCreateNode, /*out*/ class UK2Node*& TargetNode) const;
+
+	/** Get menu for breaking links to specific nodes*/
+	void GetBreakLinkToSubMenuActions(UToolMenu* Menu, class UEdGraphPin* InGraphPin);
+
+	/** Get menu for jumping to specific pin links */
+	void GetJumpToConnectionSubMenuActions(UToolMenu* Menu, class UEdGraphPin* InGraphPin);
+
+	/** Get menu for straightening links to specific nodes*/
+	void GetStraightenConnectionToSubMenuActions(UToolMenu* Menu, UEdGraphPin* InGraphPin) const;
+
+	/** Get the destination pin for a straighten operation */
+	static UEdGraphPin* GetAndResetStraightenDestinationPin();
 
 	/** Create menu for variable get/set nodes which refer to a variable which does not exist. */
 	void GetNonExistentVariableMenu(FToolMenuSection& Section, const UEdGraphNode* InGraphNode, UBlueprint* OwnerBlueprint) const;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AnimationGraphSchema.cpp
@@ -9,7 +9,6 @@
 #include "Animation/AnimBlueprint.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "ToolMenus.h"
-#include "ObjectEditorUtils.h"
 #include "K2Node.h"
 #include "EdGraphSchema_K2_Actions.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -206,21 +205,7 @@ bool UAnimationGraphSchema::TryCreateConnection(UEdGraphPin* A, UEdGraphPin* B) 
 		}
 	}
 
-	if(Super::TryCreateConnection(A, B))
-	{
-		// Connection made - remove any bindings on the input pin
-		if(UAnimGraphNode_Base* AnimGraphNode = Cast<UAnimGraphNode_Base>(InputPin->GetOwningNode()))
-		{
-			// Compare FName without number to make sure we catch array properties that are split into multiple pins
-			FName ComparisonName = InputPin->GetFName();
-			ComparisonName.SetNumber(0);
-			AnimGraphNode->PropertyBindings.Remove(ComparisonName);
-		}
-
-		return true;
-	}
-
-	return false;
+	return Super::TryCreateConnection(A, B);
 }
 
 const FPinConnectionResponse UAnimationGraphSchema::DetermineConnectionResponseOfCompatibleTypedPins(const UEdGraphPin* PinA, const UEdGraphPin* PinB, const UEdGraphPin* InputPin, const UEdGraphPin* OutputPin) const
@@ -282,7 +267,7 @@ void UAnimationGraphSchema::CreateFunctionGraphTerminators(UEdGraph& Graph, UCla
 		RootNodeCreator.Finalize();
 		SetNodeMetaData(RootNode, FNodeMetadata::DefaultGraphNode);
 
-		UFunction* InterfaceToImplement = FindUField<UFunction>(Class, GraphName);
+		UFunction* InterfaceToImplement = FindField<UFunction>(Class, GraphName);
 		if (InterfaceToImplement)
 		{
 			// Propagate group from metadata
@@ -290,12 +275,12 @@ void UAnimationGraphSchema::CreateFunctionGraphTerminators(UEdGraph& Graph, UCla
 			Graph.GetNodesOfClass<UAnimGraphNode_Root>(RootNodes);
 
 			check(RootNodes.Num() == 1);
-			RootNodes[0]->Node.Group = *FObjectEditorUtils::GetCategoryText(InterfaceToImplement).ToString();
+			RootNodes[0]->Node.Group = *InterfaceToImplement->GetMetaDataText(TEXT("Category"), TEXT("UObjectCategory"), InterfaceToImplement->GetFullGroupName(false)).ToString();
 
 			int32 CurrentPoseIndex = 0;
-			for (TFieldIterator<FProperty> PropIt(InterfaceToImplement); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
+			for (TFieldIterator<UProperty> PropIt(InterfaceToImplement); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
 			{
-				FProperty* Param = *PropIt;
+				UProperty* Param = *PropIt;
 
 				const bool bIsFunctionInput = !Param->HasAnyPropertyFlags(CPF_OutParm) || Param->HasAnyPropertyFlags(CPF_ReferenceParm);
 
@@ -720,7 +705,7 @@ void UAnimationGraphSchema::ConformAnimGraphToInterface(UBlueprint* InBlueprint,
 		InGraph.GetNodesOfClass<UAnimGraphNode_Root>(RootNodes);
 
 		check(RootNodes.Num() == 1);
-		RootNodes[0]->Node.Group = *FObjectEditorUtils::GetCategoryText(InFunction).ToString();
+		RootNodes[0]->Node.Group = *InFunction->GetMetaDataText(TEXT("Category"), TEXT("UObjectCategory"), InFunction->GetFullGroupName(false)).ToString();
 
 		TArray<UAnimGraphNode_LinkedInputPose*> LinkedInputPoseNodes;
 		InGraph.GetNodesOfClass<UAnimGraphNode_LinkedInputPose>(LinkedInputPoseNodes);
@@ -741,9 +726,9 @@ void UAnimationGraphSchema::ConformAnimGraphToInterface(UBlueprint* InBlueprint,
 
 		// Add any inputs that are not present in the graph (matching by pose index)
 		int32 CurrentPoseIndex = 0;
-		for (TFieldIterator<FProperty> PropIt(InFunction); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
+		for (TFieldIterator<UProperty> PropIt(InFunction); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
 		{
-			FProperty* Param = *PropIt;
+			UProperty* Param = *PropIt;
 
 			const bool bIsFunctionInput = !Param->HasAnyPropertyFlags(CPF_OutParm) || Param->HasAnyPropertyFlags(CPF_ReferenceParm);
 

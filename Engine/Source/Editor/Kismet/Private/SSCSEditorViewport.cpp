@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SSCSEditorViewport.h"
 #include "Framework/Application/SlateApplication.h"
@@ -351,8 +351,7 @@ void SSCSEditorViewport::BindCommands()
 		Commands.EnableSimulation,
 		FExecuteAction::CreateSP(this, &SSCSEditorViewport::ToggleIsSimulateEnabled),
 		FCanExecuteAction(),
-		FIsActionChecked::CreateSP(ViewportClient.Get(), &FSCSEditorViewportClient::GetIsSimulateEnabled),
-		FIsActionButtonVisible::CreateSP(this, &SSCSEditorViewport::ShouldShowViewportCommands));
+		FIsActionChecked::CreateSP(ViewportClient.Get(), &FSCSEditorViewportClient::GetIsSimulateEnabled));
 
 	// Toggle camera lock on/off
 	CommandList->MapAction(
@@ -384,7 +383,7 @@ void SSCSEditorViewport::ToggleIsSimulateEnabled()
 	{
 		if ( GetDefault<UBlueprintEditorSettings>()->bShowViewportOnSimulate )
 		{
-			BlueprintEditorPtr.Pin()->GetTabManager()->TryInvokeTab(FBlueprintEditorTabs::SCSViewportID);
+			BlueprintEditorPtr.Pin()->GetTabManager()->InvokeTab(FBlueprintEditorTabs::SCSViewportID);
 		}
 	}
 
@@ -393,17 +392,15 @@ void SSCSEditorViewport::ToggleIsSimulateEnabled()
 
 void SSCSEditorViewport::EnablePreview(bool bEnable)
 {
-	const FText SystemDisplayName = NSLOCTEXT("BlueprintEditor", "RealtimeOverrideMessage_Blueprints", "the active blueprint mode");
 	if(bEnable)
 	{
 		// Restore the previously-saved realtime setting
-		ViewportClient->RemoveRealtimeOverride(SystemDisplayName);
+		ViewportClient->RestoreRealtime();
 	}
 	else
 	{
 		// Disable and store the current realtime setting. This will bypass real-time rendering in the preview viewport (see UEditorEngine::UpdateSingleViewportClient).
-		const bool bShouldBeRealtime = false;
-		ViewportClient->AddRealtimeOverride(bShouldBeRealtime, SystemDisplayName);
+		ViewportClient->SetRealtime(false, true);
 	}
 }
 
@@ -436,12 +433,6 @@ void SSCSEditorViewport::OnComponentSelectionChanged()
 void SSCSEditorViewport::OnFocusViewportToSelection()
 {
 	ViewportClient->FocusViewportToSelection();
-}
-
-bool SSCSEditorViewport::ShouldShowViewportCommands() const
-{
-	// Hide if actively debugging
-	return !GIntraFrameDebuggingGameThread;
 }
 
 bool SSCSEditorViewport::GetIsSimulateEnabled()

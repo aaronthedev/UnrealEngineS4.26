@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_LAYER_H
-#define PXR_USD_SDF_LAYER_H
+#ifndef SDF_LAYER_H
+#define SDF_LAYER_H
 
 /// \file sdf/layer.h
 
@@ -31,6 +31,7 @@
 #include "pxr/usd/sdf/data.h"
 #include "pxr/usd/sdf/declareHandles.h"
 #include "pxr/usd/sdf/identity.h"
+#include "pxr/usd/sdf/layerBase.h"
 #include "pxr/usd/sdf/layerOffset.h"
 #include "pxr/usd/sdf/namespaceEdit.h"
 #include "pxr/usd/sdf/path.h"
@@ -43,9 +44,8 @@
 
 #include <boost/optional.hpp>
 
-#include <atomic>
-#include <functional>
 #include <memory>
+#include <mutex>
 #include <set>
 #include <string>
 #include <vector>
@@ -66,12 +66,12 @@ struct Sdf_AssetInfo;
 /// filesystem in .menva files.  Currently the supported file format is 
 /// <c>.menva</c>, the ASCII file format. 
 ///
-/// The FindOrOpen() method returns a new SdfLayer object with scene description
-/// from a <c>.menva</c> file. Once read, a layer remembers which asset it was
-/// read from. The Save() method saves the layer back out to the original file.
-/// You can use the Export() method to write the layer to a different
-/// location. You can use the GetIdentifier() method to get the layer's Id or
-/// GetRealPath() to get the resolved, full file path.
+/// The FindOrOpen() method returns a new SdfLayer object with scene 
+/// description from a <c>.menva</c> file. Once read, a layer remembers which 
+/// asset it was read from. The Save() method saves the layer back out to the 
+/// original file.  You can use the Export() method to write the layer to a 
+/// different location. You can use the GetIdentifier() method to get the layer's
+/// Id or GetRealPath() to get the resolved, full file path.
 ///
 /// Layers can have a timeCode range (startTimeCode and endTimeCode). This range
 /// represents the suggested playback range, but has no impact on the extent of 
@@ -90,37 +90,20 @@ struct Sdf_AssetInfo;
 /// \todo
 /// \li Should have validate... methods for rootPrims
 ///
-class SdfLayer 
-    : public TfRefBase
-    , public TfWeakBase
+class SdfLayer : public SdfLayerBase
 {
+    typedef SdfLayerBase Parent;
+    typedef SdfLayer This;
 public:
-    /// Destructor
+    /// Destructor.
     SDF_API
     virtual ~SdfLayer(); 
-
-    /// Noncopyable
-    SdfLayer(const SdfLayer&) = delete;
-    SdfLayer& operator=(const SdfLayer&) = delete;
 
     ///
     /// \name Primary API
     /// @{
 
-    /// Returns the schema this layer adheres to. This schema provides details
-    /// about the scene description that may be authored in this layer.
-    SDF_API const SdfSchemaBase& GetSchema() const;
-
-    /// Returns the file format used by this layer.
-    SDF_API const SdfFileFormatConstPtr& GetFileFormat() const;
-
-    /// Type for specifying additional file format-specific arguments to
-    /// layer API.
-    typedef std::map<std::string, std::string> FileFormatArguments;
-
-    /// Returns the file format-specific arguments used during the construction
-    /// of this layer.
-    SDF_API const FileFormatArguments& GetFileFormatArguments() const;
+    using SdfLayerBase::FileFormatArguments;
 
     /// Creates a new empty layer with the given identifier.
     ///
@@ -219,6 +202,10 @@ public:
         bool metadataOnly = false,
         const std::string& tag = std::string());
 
+    /// Returns the scene description schema for this layer.
+    SDF_API
+    virtual const SdfSchemaBase& GetSchema() const;
+
     /// Returns the data from the absolute root path of this layer.
     SDF_API
     SdfDataRefPtr GetMetadata() const;
@@ -239,27 +226,20 @@ public:
     /// Creates a new \e anonymous layer with an optional \p tag. An anonymous
     /// layer is a layer with a system assigned identifier, that cannot be
     /// saved to disk via Save(). Anonymous layers have an identifier, but no
-    /// real path or other asset information fields.
-    ///
+    /// repository, overlay, real path, or other asset information fields.
     /// Anonymous layers may be tagged, which can be done to aid debugging
     /// subsystems that make use of anonymous layers.  The tag becomes the
     /// display name of an anonymous layer, and is also included in the
     /// generated identifier. Untagged anonymous layers have an empty display
     /// name.
-    ///
-    /// Additional arguments may be supplied via the \p args parameter.
-    /// These arguments may control behavior specific to the layer's
-    /// file format.
     SDF_API
     static SdfLayerRefPtr CreateAnonymous(
-        const std::string& tag = std::string(),
-        const FileFormatArguments& args = FileFormatArguments());
+        const std::string& tag = std::string());
 
     /// Create an anonymous layer with a specific \p format.
     SDF_API
     static SdfLayerRefPtr CreateAnonymous(
-        const std::string &tag, const SdfFileFormatConstPtr &format,
-        const FileFormatArguments& args = FileFormatArguments());
+        const std::string &tag, const SdfFileFormatConstPtr &format);
 
     /// Returns true if this layer is an anonymous layer.
     SDF_API
@@ -501,46 +481,48 @@ public:
     /// those fields, though most clients should use the Spec API to ensure
     /// data consistency.
     ///
-    /// These methods all take SdfPath to identify the queried spec.
+    /// These methods all take SdfAbstractDataSpecId to identify the spec
+    /// being queried. Note that these are implicitly convertible from
+    /// SdPath.
     ///
     /// @{
 
-    /// Return the specifiers for \a path. This returns default constructed
-    /// specifiers if no spec exists at \a path.
+    /// Return the specifiers for \a id. This returns default constructed
+    /// specifiers if no spec exists at \a id.
     SDF_API
-    SdfSpecType GetSpecType(const SdfPath& path) const;
+    SdfSpecType GetSpecType(const SdfAbstractDataSpecId& id) const;
 
-    /// Return whether a spec exists at \a path.
+    /// Return whether a spec exists at \a id.
     SDF_API
-    bool HasSpec(const SdfPath& path) const;
+    bool HasSpec(const SdfAbstractDataSpecId& id) const;
 
-    /// Return the names of all the fields that are set at \p path.
+    /// Return the names of all the fields that are set at \p id.
     SDF_API
-    std::vector<TfToken> ListFields(const SdfPath& path) const;
+    std::vector<TfToken> ListFields(const SdfAbstractDataSpecId& id) const;
 
-    /// Return whether a value exists for the given \a path and \a fieldName.
+    /// Return whether a value exists for the given \a id and \a fieldName.
     /// Optionally returns the value if it exists.
     SDF_API
-    bool HasField(const SdfPath& path, const TfToken& fieldName,
-                  VtValue *value=NULL) const;
+    bool HasField(const SdfAbstractDataSpecId& id, const TfToken& fieldName,
+        VtValue *value=NULL) const;
     SDF_API
-    bool HasField(const SdfPath& path, const TfToken& fieldName,
-                  SdfAbstractDataValue *value) const;
+    bool HasField(const SdfAbstractDataSpecId& id, const TfToken& fieldName,
+        SdfAbstractDataValue *value) const;
 
     /// Returns \c true if the object has a non-empty value with name
     /// \p name and type \p T.  If value ptr is provided, returns the
     /// value found.
     template <class T>
-    bool HasField(const SdfPath& path, const TfToken &name, 
+    bool HasField(const SdfAbstractDataSpecId& id, const TfToken &name, 
         T* value) const
     {
         if (!value) {
-            return HasField(path, name, static_cast<VtValue *>(NULL));
+            return HasField(id, name, static_cast<VtValue *>(NULL));
         }
 
         SdfAbstractDataTypedValue<T> outValue(value);
         const bool hasValue = HasField(
-            path, name, static_cast<SdfAbstractDataValue *>(&outValue));
+            id, name, static_cast<SdfAbstractDataValue *>(&outValue));
 
         if (std::is_same<T, SdfValueBlock>::value) {
             return hasValue && outValue.isValueBlock;
@@ -549,23 +531,23 @@ public:
         return hasValue && (!outValue.isValueBlock);
     }
 
-    /// Return the type of the value for \p name on spec \p path.  If no such
+    /// Return the type of the value for \p name on spec \p id.  If no such
     /// field exists, return typeid(void).
     std::type_info const &GetFieldTypeid(
-        const SdfPath &path, const TfToken &name) const {
-        return _data->GetTypeid(path, name);
+        const SdfAbstractDataSpecId &id, const TfToken &name) const {
+        return _data->GetTypeid(id, name);
     }
 
-    /// Return whether a value exists for the given \a path and \a fieldName and
+    /// Return whether a value exists for the given \a id and \a fieldName and
     /// \a keyPath.  The \p keyPath is a ':'-separated path addressing an
     /// element in sub-dictionaries.  Optionally returns the value if it exists.
     SDF_API
-    bool HasFieldDictKey(const SdfPath& path,
+    bool HasFieldDictKey(const SdfAbstractDataSpecId& id,
                          const TfToken &fieldName,
                          const TfToken &keyPath,
                          VtValue *value=NULL) const;
     SDF_API
-    bool HasFieldDictKey(const SdfPath& path,
+    bool HasFieldDictKey(const SdfAbstractDataSpecId& id,
                          const TfToken &fieldName,
                          const TfToken &keyPath,
                          SdfAbstractDataValue *value) const;
@@ -575,54 +557,54 @@ public:
     /// value found.  The \p keyPath is a ':'-separated path addressing an
     /// element in sub-dictionaries.
     template <class T>
-    bool HasFieldDictKey(const SdfPath& path, const TfToken &name,
+    bool HasFieldDictKey(const SdfAbstractDataSpecId& id, const TfToken &name,
                          const TfToken &keyPath, T* value) const
     {
         if (!value) {
-            return HasFieldDictKey(path, name, keyPath,
+            return HasFieldDictKey(id, name, keyPath,
                                    static_cast<VtValue *>(NULL));
         }
 
         SdfAbstractDataTypedValue<T> outValue(value);
-        return HasFieldDictKey(path, name, keyPath,
+        return HasFieldDictKey(id, name, keyPath,
                                static_cast<SdfAbstractDataValue *>(&outValue));
     }
 
 
-    /// Return the value for the given \a path and \a fieldName. Returns an
+    /// Return the value for the given \a id and \a fieldName. Returns an
     /// empty value if none is set.
     SDF_API
-    VtValue GetField(const SdfPath& path,
+    VtValue GetField(const SdfAbstractDataSpecId& id,
                      const TfToken& fieldName) const;
 
-    /// Return the value for the given \a path and \a fieldName. Returns the
+    /// Return the value for the given \a id and \a fieldName. Returns the
     /// provided \a defaultValue value if none is set.
     template <class T>
-    inline T GetFieldAs(const SdfPath& path, 
+    inline T GetFieldAs(const SdfAbstractDataSpecId& id, 
         const TfToken& fieldName, const T& defaultValue = T()) const
     {
-        return _data->GetAs<T>(path, fieldName, defaultValue);
+        return _data->GetAs<T>(id, fieldName, defaultValue);
     }
 
-    /// Return the value for the given \a path and \a fieldName at \p
+    /// Return the value for the given \a id and \a fieldName at \p
     /// keyPath. Returns an empty value if none is set.  The \p keyPath is a
     /// ':'-separated path addressing an element in sub-dictionaries.
     SDF_API
-    VtValue GetFieldDictValueByKey(const SdfPath& path,
+    VtValue GetFieldDictValueByKey(const SdfAbstractDataSpecId& id,
                                    const TfToken& fieldName,
                                    const TfToken& keyPath) const;
 
-    /// Set the value of the given \a path and \a fieldName.
+    /// Set the value of the given \a id and \a fieldName.
     SDF_API
-    void SetField(const SdfPath& path, const TfToken& fieldName,
+    void SetField(const SdfAbstractDataSpecId& id, const TfToken& fieldName,
         const VtValue& value);
     SDF_API
-    void SetField(const SdfPath& path, const TfToken& fieldName,
+    void SetField(const SdfAbstractDataSpecId& id, const TfToken& fieldName,
         const SdfAbstractDataConstValue& value);
 
-    /// Set the value of the given \a path and \a fieldName.
+    /// Set the value of the given \a id and \a fieldName.
     template <class T>
-    void SetField(const SdfPath& path, const TfToken& fieldName, 
+    void SetField(const SdfAbstractDataSpecId& id, const TfToken& fieldName, 
         const T& val) 
     {
         // Ideally, this would make use of the SdfAbstractDataConstValue
@@ -632,26 +614,26 @@ public:
         // VtValue, using the SdfAbstractDataConstValue API would cause
         // another copy to be made. So, it's more efficient to just create 
         // the VtValue once here and push that along.
-        SetField(path, fieldName, VtValue(val));
+        SetField(id, fieldName, VtValue(val));
     }
 
-    /// Set the value of the given \a path and \a fieldName.  The \p keyPath is a
+    /// Set the value of the given \a id and \a fieldName.  The \p keyPath is a
     /// ':'-separated path addressing an element in sub-dictionaries.
     SDF_API
-    void SetFieldDictValueByKey(const SdfPath& path,
+    void SetFieldDictValueByKey(const SdfAbstractDataSpecId& id,
                                 const TfToken& fieldName,
                                 const TfToken& keyPath,
                                 const VtValue& value);
     SDF_API
-    void SetFieldDictValueByKey(const SdfPath& path,
+    void SetFieldDictValueByKey(const SdfAbstractDataSpecId& id,
                                 const TfToken& fieldName,
                                 const TfToken& keyPath,
                                 const SdfAbstractDataConstValue& value);
 
-    /// Set the value of the given \a path and \a fieldName.  The \p keyPath is
-    /// a ':'-separated path addressing an element in sub-dictionaries.
+    /// Set the value of the given \a id and \a fieldName.  The \p keyPath is a
+    /// ':'-separated path addressing an element in sub-dictionaries.
     template <class T>
-    void SetFieldDictValueByKey(const SdfPath& path,
+    void SetFieldDictValueByKey(const SdfAbstractDataSpecId& id,
                                 const TfToken& fieldName,
                                 const TfToken& keyPath,
                                 const T& val)
@@ -663,20 +645,72 @@ public:
         // VtValue, using the SdfAbstractDataConstValue API would cause
         // another copy to be made. So, it's more efficient to just create
         // the VtValue once here and push that along.
-        SetFieldDictValueByKey(path, fieldName, keyPath, VtValue(val));
+        SetFieldDictValueByKey(id, fieldName, keyPath, VtValue(val));
     }
 
-    /// Remove the field at \p path and \p fieldName, if one exists.
+    /// Remove the field at \p id and \p fieldName, if one exists.
     SDF_API
-    void EraseField(const SdfPath& path, const TfToken& fieldName);
+    void EraseField(const SdfAbstractDataSpecId& id, const TfToken& fieldName);
 
-    /// Remove the field at \p path and \p fieldName and \p keyPath, if one
+    /// Remove the field at \p id and \p fieldName and \p keyPath, if one
     /// exists.  The \p keyPath is a ':'-separated path addressing an
     /// element in sub-dictionaries.
     SDF_API
-    void EraseFieldDictValueByKey(const SdfPath& path,
+    void EraseFieldDictValueByKey(const SdfAbstractDataSpecId& id,
                                   const TfToken& fieldName,
                                   const TfToken& keyPath);
+
+    /// Convenience API that takes an SdfPath instead of an
+    /// SdfAbstractDataSpecId. See documentation above for details.
+    SDF_API
+    SdfSpecType GetSpecType(const SdfPath& path) const;
+    SDF_API
+    bool HasSpec(const SdfPath& path) const;
+
+    SDF_API
+    std::vector<TfToken> ListFields(const SdfPath& path) const;
+
+    template <class T>
+    bool HasField(const SdfPath& path,
+                  const TfToken& fieldName, T* value) const;
+    SDF_API
+    bool HasField(const SdfPath& path, const TfToken& fieldName) const;
+
+    std::type_info const &GetFieldTypeid(
+        const SdfPath &path, const TfToken &fieldName) const {
+        SdfAbstractDataSpecId specId(&path);
+        return GetFieldTypeid(specId, fieldName);
+    }
+
+    template <class T>
+    bool HasFieldDictKey(const SdfPath& path, const TfToken& fieldName,
+                         const TfToken &keyPath, T* value) const;
+    SDF_API
+    bool HasFieldDictKey(const SdfPath& path, const TfToken& fieldName,
+                         const TfToken &keyPath) const;
+
+    SDF_API
+    VtValue GetField(const SdfPath& path, const TfToken& fieldName) const;
+    SDF_API
+    VtValue GetFieldDictValueByKey(
+        const SdfPath& path, const TfToken& fieldName,
+        const TfToken &keyPath) const;
+
+    template <class T>
+    T GetFieldAs(const SdfPath& path, const TfToken& fieldName, 
+                 const T& defaultValue = T()) const;
+
+    template <class T>
+    void SetField(const SdfPath& path, const TfToken& fieldName, const T& val);
+    template <class T>
+    void SetFieldDictValueByKey(const SdfPath& path, const TfToken& fieldName,
+                                const TfToken &keyPath, const T& val);
+
+    SDF_API
+    void EraseField(const SdfPath& path, const TfToken& fieldName);
+    SDF_API
+    void EraseFieldDictValueByKey(const SdfPath& path, const TfToken& fieldName,
+                                  const TfToken &keyPath);
 
     /// \name Traversal
     /// @{
@@ -684,7 +718,7 @@ public:
     /// Callback function for Traverse. This callback will be invoked with
     /// the path of each spec that is visited.
     /// \sa Traverse
-    typedef std::function<void(const SdfPath&)> TraversalFunction;
+    typedef boost::function<void(const SdfPath&)> TraversalFunction;
 
     // Traverse will perform a traversal of the scene description hierarchy
     // rooted at \a path, calling \a func on each spec that it finds.
@@ -834,17 +868,9 @@ public:
     /// 
     /// Scales the time ordinate for samples contained in the file to seconds.  
     /// If timeCodesPerSecond is 24, then a sample at time ordinate 24 should 
-    /// be viewed exactly one second after the sample at time ordinate 0.
-    ///
-    /// If this layer doesn't have an authored value for timeCodesPerSecond, but
-    /// it does have an authored value for framesPerSecond, this method will
-    /// return the value of framesPerSecond.  This "dynamic fallback" allows
-    /// layers to lock framesPerSecond and timeCodesPerSecond to the same value
-    /// by specifying only framesPerSecond.
+    /// be viewed exactly one second after the sample at time ordinate 0. 
     /// 
-    /// The default value of timeCodesPerSecond (which is used only if there is
-    /// no authored value for either timeCodesPerSecond or framesPerSecond) is
-    /// 24.
+    /// The default value of timeCodesPerSecond is 24.
     SDF_API
     double GetTimeCodesPerSecond() const;
 
@@ -1288,37 +1314,37 @@ public:
     
     SDF_API
     std::set<double> 
-    ListTimeSamplesForPath(const SdfPath& path) const;
+    ListTimeSamplesForPath(const SdfAbstractDataSpecId& id) const;
 
     SDF_API
     bool GetBracketingTimeSamples(double time, double* tLower, double* tUpper);
 
     SDF_API
-    size_t GetNumTimeSamplesForPath(const SdfPath& path) const;
+    size_t GetNumTimeSamplesForPath(const SdfAbstractDataSpecId& id) const;
 
     SDF_API
-    bool GetBracketingTimeSamplesForPath(const SdfPath& path, 
+    bool GetBracketingTimeSamplesForPath(const SdfAbstractDataSpecId& id, 
                                          double time,
                                          double* tLower, double* tUpper);
 
     SDF_API
-    bool QueryTimeSample(const SdfPath& path, double time, 
+    bool QueryTimeSample(const SdfAbstractDataSpecId& id, double time, 
                          VtValue *value=NULL) const;
     SDF_API
-    bool QueryTimeSample(const SdfPath& path, double time, 
+    bool QueryTimeSample(const SdfAbstractDataSpecId& id, double time, 
                          SdfAbstractDataValue *value) const;
 
     template <class T>
-    bool QueryTimeSample(const SdfPath& path, double time, 
+    bool QueryTimeSample(const SdfAbstractDataSpecId& id, double time, 
                          T* data) const
     {
         if (!data) {
-            return QueryTimeSample(path, time);
+            return QueryTimeSample(id, time);
         }
 
         SdfAbstractDataTypedValue<T> outValue(data);
         const bool hasValue = QueryTimeSample(
-            path, time, static_cast<SdfAbstractDataValue *>(&outValue));
+            id, time, static_cast<SdfAbstractDataValue *>(&outValue));
 
         if (std::is_same<T, SdfValueBlock>::value) {
             return hasValue && outValue.isValueBlock;
@@ -1328,20 +1354,41 @@ public:
     }
 
     SDF_API
-    void SetTimeSample(const SdfPath& path, double time, 
+    void SetTimeSample(const SdfAbstractDataSpecId& id, double time, 
                        const VtValue & value);
     SDF_API
-    void SetTimeSample(const SdfPath& path, double time, 
+    void SetTimeSample(const SdfAbstractDataSpecId& id, double time, 
                        const SdfAbstractDataConstValue& value);
 
     template <class T>
-    void SetTimeSample(const SdfPath& path, double time, 
+    void SetTimeSample(const SdfAbstractDataSpecId& id, double time, 
                        const T& value)
     {
         const SdfAbstractDataConstTypedValue<T> inValue(&value);
         const SdfAbstractDataConstValue& untypedInValue = inValue;
-        return SetTimeSample(path, time, untypedInValue);
+        return SetTimeSample(id, time, untypedInValue);
     }
+
+    SDF_API
+    void EraseTimeSample(const SdfAbstractDataSpecId& id, double time);
+
+    /// Convenience API that takes an SdfPath instead of an 
+    /// SdfAbstractDataSpecId. See documentation above for details.
+    SDF_API
+    size_t GetNumTimeSamplesForPath(const SdfPath& path) const;
+    SDF_API
+    std::set<double> ListTimeSamplesForPath(const SdfPath& path) const;
+    SDF_API
+    bool GetBracketingTimeSamplesForPath(const SdfPath& path, double time,
+                                         double* tLower, double* tUpper);
+
+    template <class T>
+    bool QueryTimeSample(const SdfPath& path, double time, T* data) const;
+    SDF_API
+    bool QueryTimeSample(const SdfPath& path, double time) const;
+
+    template <class T>
+    void SetTimeSample(const SdfPath& path, double time, const T& value);
 
     SDF_API
     void EraseTimeSample(const SdfPath& path, double time);
@@ -1361,14 +1408,17 @@ public:
     // @}
 
 protected:
+    static SdfLayerRefPtr _CreateAnonymousWithFormat(
+        const SdfFileFormatConstPtr &fileFormat,
+        const std::string& tag = std::string());
+
     // Private constructor -- use New(), FindOrCreate(), etc.
     // Precondition: _layerRegistryMutex must be locked.
     SdfLayer(const SdfFileFormatConstPtr& fileFormat,
              const std::string &identifier,
              const std::string &realPath = std::string(),
              const ArAssetInfo& assetInfo = ArAssetInfo(),
-             const FileFormatArguments &args = FileFormatArguments(),
-             bool validateAuthoring = false);
+             const FileFormatArguments &args = FileFormatArguments());
 
 private:
     // Create a new layer.
@@ -1386,11 +1436,6 @@ private:
         const std::string& realPath,
         const ArAssetInfo& assetInfo = ArAssetInfo(),
         const FileFormatArguments& args = FileFormatArguments());
-
-    static SdfLayerRefPtr _CreateAnonymousWithFormat(
-        const SdfFileFormatConstPtr &fileFormat,
-        const std::string& tag,
-        const FileFormatArguments& args);
 
     // Finish initializing this layer (which may have succeeded or not)
     // and publish the results to other threads by unlocking the mutex.
@@ -1432,7 +1477,7 @@ private:
     bool _CanGetSpecAtPath(const SdfPath& path, 
                            SdfPath* canonicalPath, SdfSpecType* specType) const;
 
-    /// Initialize layer internals that are based on it's path.
+    /// Initialize layer internals that are based on it's id.
     /// This includes the asset path and show path the layer to be loaded
     /// reflects at the point of initialization.
     void _InitializeFromIdentifier(
@@ -1511,9 +1556,6 @@ private:
     /// prunes inert parent prims back to the root.
     void _RemoveInertToRootmost(SdfPrimSpecHandle prim);
 
-    /// Returns whether this layer is validating authoring operations.
-    bool _ValidateAuthoring() const { return _validateAuthoring; }
-
     /// Returns the path used in the muted layers set.
     std::string _GetMutedPath() const;
 
@@ -1527,11 +1569,24 @@ private:
     void _MarkCurrentStateAsClean() const;
 
     // Return the field definition for \p fieldName if \p fieldName is a
-    // required field for the spec type identified by \p path.
+    // required field for the spec type identified by \p id.
     inline SdfSchema::FieldDefinition const *
-    _GetRequiredFieldDef(const SdfPath &path,
-                         const TfToken &fieldName,
-                         SdfSpecType specType = SdfSpecTypeUnknown) const;
+    _GetRequiredFieldDef(const SdfAbstractDataSpecId &id,
+                         const TfToken &fieldName) const {
+        SdfSchemaBase const &schema = GetSchema();
+        if (ARCH_UNLIKELY(schema.IsRequiredFieldName(fieldName))) {
+            // Get the spec definition.
+            if (SdfSchema::SpecDefinition const *specDef =
+                schema.GetSpecDefinition(GetSpecType(id))) {
+                // If this field is required for this spec type, look up the
+                // field definition.
+                if (specDef->IsRequiredField(fieldName)) {
+                    return schema.GetFieldDefinition(fieldName);
+                }
+            }
+        }
+        return NULL;
+    }
 
     // Set a value.
     template <class T>
@@ -1580,7 +1635,7 @@ private:
 
     // Inverse primitive for setting a single field.
     template <class T>
-    void _PrimSetField(const SdfPath& path, 
+    void _PrimSetField(const SdfAbstractDataSpecId& id, 
                        const TfToken& fieldName,
                        const T& value,
                        const VtValue *oldValue = NULL,
@@ -1588,7 +1643,7 @@ private:
 
     // Inverse primitive for setting a single key in a dict-valued field.
     template <class T>
-    void _PrimSetFieldDictValueByKey(const SdfPath& path,
+    void _PrimSetFieldDictValueByKey(const SdfAbstractDataSpecId& id,
                                      const TfToken& fieldName,
                                      const TfToken& keyPath,
                                      const T& value,
@@ -1633,7 +1688,7 @@ private:
 
     // Inverse primitive for setting time samples.
     template <class T>
-    void _PrimSetTimeSample(const SdfPath& path, double time,
+    void _PrimSetTimeSample(const SdfAbstractDataSpecId& id, double time,
                             const T& value,
                             bool useDelegate = true);
 
@@ -1643,12 +1698,6 @@ private:
     void _TraverseChildren(const SdfPath &path, const TraversalFunction &func);
 
 private:
-    SdfLayerHandle _self;
-
-    // File format and arguments for this layer.
-    SdfFileFormatConstPtr _fileFormat;
-    FileFormatArguments _fileFormatArgs;
-
     // Registry of Sdf Identities
     mutable Sdf_IdentityRegistry _idRegistry;
 
@@ -1658,13 +1707,13 @@ private:
     // The state delegate for this layer.
     SdfLayerStateDelegateBaseRefPtr _stateDelegate;
 
-    // Atomic variable protecting layer initialization -- the interval between
-    // adding a layer to the layer registry and finishing the process of
-    // initializing its contents, at which point we can truly publish the layer
-    // for consumption by concurrent threads. We add the layer to the registry
-    // before initialization completes so that other threads can discover and
-    // wait for it to finish initializing.
-    std::atomic<bool> _initializationComplete;
+    // Mutex protecting layer initialization -- the interval between
+    // adding a layer to the layer registry, and finishing the process
+    // of initialization its contents, at which point we can truly publish
+    // the layer. We add the layer to the registry before initialization
+    // completes so that other threads can discover and block on the
+    // same layer while it is being initialized.
+    std::mutex _initializationMutex;
 
     // This is an optional<bool> that is only set once initialization
     // is complete, while _initializationMutex is locked.  If the
@@ -1691,13 +1740,9 @@ private:
     bool _permissionToEdit;
     bool _permissionToSave;
 
-    // Whether layer edits are validated.
-    bool _validateAuthoring;
-
-    // Allow access to _ValidateAuthoring() and _IsInert().
+    // Allow access to _FindLayerForData() and _IsInert().
     friend class SdfSpec;
     friend class SdfPropertySpec;
-    friend class SdfAttributeSpec;
 
     friend class Sdf_ChangeManager;
 
@@ -1712,8 +1757,159 @@ private:
     // Give layer state delegates access to our data as well as to
     // the various _Prim functions.
     friend class SdfLayerStateDelegateBase;
+
+    // Give SdSpec access to _MoveSpec
+    friend class SdSpec;
 };
+
+// Inlined implementations for convenience field and time sample API.
+// These all simply wrap the given SdfPath in an SdfAbstractDataSpecId
+// and forward to the corresponding function.
+
+inline SdfSpecType
+SdfLayer::GetSpecType(const SdfPath& path) const
+{ 
+    return GetSpecType(SdfAbstractDataSpecId(&path)); 
+}
+
+inline bool
+SdfLayer::HasSpec(const SdfPath& path) const
+{ 
+    return HasSpec(SdfAbstractDataSpecId(&path)); 
+}
+
+inline std::vector<TfToken>
+SdfLayer::ListFields(const SdfPath& path) const
+{ 
+    return ListFields(SdfAbstractDataSpecId(&path)); 
+}
+
+template <class T>
+inline bool 
+SdfLayer::HasField(const SdfPath& path, const TfToken &name, T* value) const
+{ 
+    return HasField(SdfAbstractDataSpecId(&path), name, value); 
+}
+
+inline bool 
+SdfLayer::HasField(const SdfPath& path, const TfToken &name) const
+{ 
+    return HasField(SdfAbstractDataSpecId(&path), name); 
+}
+
+template <class T>
+inline bool 
+SdfLayer::HasFieldDictKey(const SdfPath& path, const TfToken &name,
+                          const TfToken &keyPath, T* value) const
+{ 
+    return HasFieldDictKey(SdfAbstractDataSpecId(&path), name, keyPath, value);
+}
+
+inline bool 
+SdfLayer::HasFieldDictKey(const SdfPath& path, const TfToken &name,
+                          const TfToken &keyPath) const
+{ 
+    return HasFieldDictKey(SdfAbstractDataSpecId(&path), name, keyPath);
+}
+
+inline VtValue 
+SdfLayer::GetField(const SdfPath& path, const TfToken& fieldName) const
+{ 
+    return GetField(SdfAbstractDataSpecId(&path), fieldName); 
+}
+
+inline VtValue
+SdfLayer::GetFieldDictValueByKey(const SdfPath& path, const TfToken& fieldName,
+                                 const TfToken &keyPath) const
+{
+    return GetFieldDictValueByKey(
+        SdfAbstractDataSpecId(&path), fieldName, keyPath);
+}
+
+template <class T>
+inline T 
+SdfLayer::GetFieldAs(
+    const SdfPath& path, const TfToken& fieldName, const T& defaultValue) const
+{ 
+    return GetFieldAs(SdfAbstractDataSpecId(&path), fieldName, defaultValue); 
+}
+
+template <class T>
+inline void
+SdfLayer::SetField(const SdfPath& path, const TfToken& fieldName, const T& val) 
+{ 
+    SetField(SdfAbstractDataSpecId(&path), fieldName, val); 
+}
+
+template <class T>
+inline void
+SdfLayer::SetFieldDictValueByKey(const SdfPath& path, const TfToken& fieldName,
+                                 const TfToken &keyPath, const T& val)
+{ 
+    SetFieldDictValueByKey(
+        SdfAbstractDataSpecId(&path), fieldName, keyPath, val);
+}
+
+inline void 
+SdfLayer::EraseField(const SdfPath& path, const TfToken& fieldName)
+{ 
+    EraseField(SdfAbstractDataSpecId(&path), fieldName); 
+}
+
+inline void 
+SdfLayer::EraseFieldDictValueByKey(const SdfPath& path,
+                                   const TfToken& fieldName,
+                                   const TfToken &keyPath)
+{ 
+    EraseFieldDictValueByKey(SdfAbstractDataSpecId(&path), fieldName, keyPath);
+}
+
+inline size_t
+SdfLayer::GetNumTimeSamplesForPath(const SdfPath& path) const
+{
+    return GetNumTimeSamplesForPath(SdfAbstractDataSpecId(&path));
+}
+
+inline std::set<double> 
+SdfLayer::ListTimeSamplesForPath(const SdfPath& path) const
+{
+    return ListTimeSamplesForPath(SdfAbstractDataSpecId(&path));
+}
+
+inline bool 
+SdfLayer::GetBracketingTimeSamplesForPath(
+    const SdfPath& path, double time, double* tLower, double* tUpper)
+{
+    return GetBracketingTimeSamplesForPath(
+        SdfAbstractDataSpecId(&path), time, tLower, tUpper);
+}
+
+template <class T>
+inline bool 
+SdfLayer::QueryTimeSample(const SdfPath& path, double time, T* data) const
+{
+    return QueryTimeSample(SdfAbstractDataSpecId(&path), time, data);
+}
+
+inline bool
+SdfLayer::QueryTimeSample(const SdfPath& path, double time) const
+{
+    return QueryTimeSample(SdfAbstractDataSpecId(&path), time);
+}
+
+template <class T>
+inline void
+SdfLayer::SetTimeSample(const SdfPath& path, double time, const T& value)
+{
+    SetTimeSample(SdfAbstractDataSpecId(&path), time, value);
+}
+
+inline void
+SdfLayer::EraseTimeSample(const SdfPath& path, double time)
+{
+    EraseTimeSample(SdfAbstractDataSpecId(&path), time);
+}
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_LAYER_H
+#endif // SDF_LAYER_H

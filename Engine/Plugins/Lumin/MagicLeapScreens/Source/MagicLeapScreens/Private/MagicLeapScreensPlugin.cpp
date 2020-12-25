@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MagicLeapScreensPlugin.h"
 #include "Async/Async.h"
@@ -10,7 +10,6 @@
 #include "MagicLeapMath.h"
 #include "MagicLeapHandle.h"
 #include "Misc/CommandLine.h"
-#include "Stats/Stats.h"
 
 #define MAX_TEXTURE_SIZE 450 * 450 * 4 // currently limited by binder implementation
 
@@ -412,8 +411,6 @@ FScreensTask FMagicLeapScreensPlugin::UpdateWatchHistoryEntry(const FMagicLeapSc
 
 bool FMagicLeapScreensPlugin::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FMagicLeapScreensPlugin_Tick);
-
 	if (!Runnable->CompletedTaskQueueIsEmpty())
 	{
 		FScreensTask CompletedTask;

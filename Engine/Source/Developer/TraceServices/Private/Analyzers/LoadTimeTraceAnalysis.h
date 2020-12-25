@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -16,7 +16,8 @@ inline bool operator!=(const Trace::FLoadTimeProfilerCpuEvent& Lhs, const Trace:
 {
 	return Lhs.Package != Rhs.Package ||
 		Lhs.Export != Rhs.Export ||
-		Lhs.EventType != Rhs.EventType;
+		Lhs.PackageEventType != Rhs.PackageEventType ||
+		Lhs.ExportEventType != Rhs.ExportEventType;
 }
 
 class FAsyncLoadingTraceAnalyzer : public Trace::IAnalyzer
@@ -26,7 +27,7 @@ public:
 	virtual ~FAsyncLoadingTraceAnalyzer();
 
 	virtual void OnAnalysisBegin(const FOnAnalysisContext& Context) override;
-	virtual bool OnEvent(uint16 RouteId, EStyle Style, const FOnEventContext& Context) override;
+	virtual bool OnEvent(uint16 RouteId, const FOnEventContext& Context) override;
 	
 private:
 	struct FRequestState;
@@ -35,7 +36,7 @@ private:
 	struct FRequestGroupState
 	{
 		FString Name;
-		TArray<FRequestState*> Requests;
+		TArray<TSharedRef<FRequestState>> Requests;
 		Trace::FLoadRequest* LoadRequest = nullptr;
 		uint64 LatestEndCycle = 0;
 		uint64 ActiveRequestsCount = 0;
@@ -48,16 +49,20 @@ private:
 		uint64 WallTimeEndCycle;
 		uint32 ThreadId;
 		TSharedPtr<FRequestGroupState> Group;
-		TArray<FAsyncPackageState*> AsyncPackages;
+		TArray<TSharedRef<FAsyncPackageState>> AsyncPackages;
+	};
+
+	struct FLinkerState
+	{
+		TSharedPtr<FAsyncPackageState> AsyncPackageState;
+		Trace::FPackageInfo* PackageInfo = nullptr;
 	};
 
 	struct FAsyncPackageState
 	{
 		Trace::FPackageInfo* PackageInfo = nullptr;
-		FRequestState* Request = nullptr;
-		uint64 LoadHandle = uint64(-1);
-		uint64 LoadStartCycle = 0;
-		uint64 LoadEndCycle = 0;
+		TSharedPtr<FLinkerState> LinkerState;
+		TSharedPtr<FRequestState> Request;
 	};
 
 	struct FScopeStackEntry
@@ -75,14 +80,14 @@ private:
 		
 		Trace::FLoadTimeProfilerProvider::CpuTimelineInternal* CpuTimeline;
 
-		void EnterExportScope(double Time, const Trace::FPackageExportInfo* ExportInfo, Trace::ELoadTimeProfilerObjectEventType EventType);
-		void LeaveExportScope(double Time);
-		Trace::ELoadTimeProfilerObjectEventType GetCurrentExportScopeEventType();
+		void EnterPackageScope(double Time, const Trace::FPackageInfo* PackageInfo, ELoadTimeProfilerPackageEventType EventType);
+		void EnterExportScope(double Time, const Trace::FPackageExportInfo* ExportInfo, ELoadTimeProfilerObjectEventType EventType);
+		void LeaveScope(double Time);
 		Trace::FPackageExportInfo* GetCurrentExportScope();
 	};
 
-	void PackageRequestAssociation(const FOnEventContext& Context, FAsyncPackageState* AsyncPackageState, FRequestState* RequestState);
-	FThreadState& GetThreadState(uint32 ThreadId);
+	void PackageRequestAssociation(const FOnEventContext& Context, TSharedRef<FAsyncPackageState> AsyncPackageState, TSharedRef<FRequestState> RequestState);
+	TSharedRef<FThreadState> GetThreadState(uint32 ThreadId);
 	const Trace::FClassInfo* GetClassInfo(uint64 ClassPtr) const;
 
 	enum : uint16
@@ -90,9 +95,9 @@ private:
 		RouteId_StartAsyncLoading,
 		RouteId_SuspendAsyncLoading,
 		RouteId_ResumeAsyncLoading,
+		RouteId_NewLinker,
+		RouteId_DestroyLinker,
 		RouteId_NewAsyncPackage,
-		RouteId_BeginLoadAsyncPackage,
-		RouteId_EndLoadAsyncPackage,
 		RouteId_DestroyAsyncPackage,
 		RouteId_BeginRequest,
 		RouteId_EndRequest,
@@ -100,21 +105,15 @@ private:
 		RouteId_EndRequestGroup,
 		RouteId_PackageSummary,
 		RouteId_AsyncPackageRequestAssociation,
+		RouteId_AsyncPackageLinkerAssociation,
 		RouteId_AsyncPackageImportDependency,
+		RouteId_BeginAsyncPackageScope,
+		RouteId_EndAsyncPackageScope,
 		RouteId_BeginCreateExport,
 		RouteId_EndCreateExport,
-		RouteId_BeginSerializeExport,
-		RouteId_EndSerializeExport,
-		RouteId_BeginPostLoadExport,
-		RouteId_EndPostLoadExport,
-		RouteId_ClassInfo,
-		RouteId_BatchIssued,
-		RouteId_BatchResolved,
-
-		// Backwards compatibility
 		RouteId_BeginObjectScope,
 		RouteId_EndObjectScope,
-		RouteId_AsyncPackageLinkerAssociation,
+		RouteId_ClassInfo,
 	};
 
 	enum
@@ -127,41 +126,15 @@ private:
 	Trace::IAnalysisSession& Session;
 	Trace::FLoadTimeProfilerProvider& LoadTimeProfilerProvider;
 
-	template<typename ValueType>
-	struct FPointerMapKeyFuncs
-	{
-		typedef uint64 KeyType;
-		typedef uint64 KeyInitType;
-		typedef const TPairInitializer<uint64, ValueType>& ElementInitType;
+	//TArray<TSharedRef<FRequestState>> Requests;
 
-		enum { bAllowDuplicateKeys = false };
+	TMap<uint64, TSharedRef<FLinkerState>> ActiveLinkersMap;
+	TMap<uint64, TSharedRef<FAsyncPackageState>> ActiveAsyncPackagesMap;
+	TMap<uint64, Trace::FPackageExportInfo*> ExportsMap;
+	TMap<uint64, TSharedRef<FRequestState>> ActiveRequestsMap;
+	TMap<uint32, TSharedRef<FThreadState>> ThreadStatesMap;
+	TMap<uint64, const Trace::FClassInfo*> ClassInfosMap;
 
-		static FORCEINLINE bool Matches(uint64 A, uint64 B)
-		{
-			return A == B;
-		}
-
-		static FORCEINLINE uint32 GetKeyHash(uint64 Key)
-		{
-			return PointerHash((const void*)Key);
-		}
-
-		static FORCEINLINE KeyInitType GetSetKey(ElementInitType Element)
-		{
-			return Element.Key;
-		}
-	};
-
-	template<typename ValueType>
-	using TPointerMap = TMap<uint64, ValueType, FDefaultSetAllocator, FPointerMapKeyFuncs<ValueType>>;
-
-	TPointerMap<FAsyncPackageState*> ActiveAsyncPackagesMap;
-	TPointerMap<Trace::FPackageExportInfo*> ExportsMap;
-	TMap<uint64, FRequestState*> ActiveRequestsMap;
-	TPointerMap<uint64> ActiveBatchesMap;
-	TMap<uint32, FThreadState*> ThreadStatesMap;
-	TPointerMap<const Trace::FClassInfo*> ClassInfosMap;
-
-	// Backwards compatibility
-	TPointerMap<FAsyncPackageState*> LinkerToAsyncPackageMap;
+	int64 MainThreadId = -1;
+	int64 AsyncLoadingThreadId = -1;
 };

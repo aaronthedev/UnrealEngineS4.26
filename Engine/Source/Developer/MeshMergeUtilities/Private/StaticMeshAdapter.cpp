@@ -1,13 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "StaticMeshAdapter.h"
-
-#include "Engine/StaticMesh.h"
 #include "MaterialBakingStructures.h"
-#include "MeshMergeHelpers.h"
-#include "MeshUtilities.h"
-#include "Modules/ModuleManager.h"
+#include "Engine/StaticMesh.h"
 #include "UObject/Package.h"
+#include "MeshMergeHelpers.h"
 
 FStaticMeshAdapter::FStaticMeshAdapter(UStaticMesh* InStaticMesh)
 	: StaticMesh(InStaticMesh)
@@ -51,20 +48,9 @@ FString FStaticMeshAdapter::GetBaseName() const
 	return StaticMesh->GetOutermost()->GetName();
 }
 
-FName FStaticMeshAdapter::GetMaterialSlotName(int32 MaterialIndex) const
-{
-	return StaticMesh->StaticMaterials[MaterialIndex].MaterialSlotName;
-}
-
-FName FStaticMeshAdapter::GetImportedMaterialSlotName(int32 MaterialIndex) const
-{
-	return StaticMesh->StaticMaterials[MaterialIndex].ImportedMaterialSlotName;
-}
-
 void FStaticMeshAdapter::SetMaterial(int32 MaterialIndex, UMaterialInterface* Material)
 {
-	const FStaticMaterial& OriginalMaterialSlot = StaticMesh->StaticMaterials[MaterialIndex];
-	StaticMesh->StaticMaterials[MaterialIndex] = FStaticMaterial(Material, OriginalMaterialSlot.MaterialSlotName, OriginalMaterialSlot.ImportedMaterialSlotName);
+	StaticMesh->StaticMaterials[MaterialIndex] = Material;
 }
 
 void FStaticMeshAdapter::RemapMaterialIndex(int32 LODIndex, int32 SectionIndex, int32 NewMaterialIndex)
@@ -76,18 +62,7 @@ void FStaticMeshAdapter::RemapMaterialIndex(int32 LODIndex, int32 SectionIndex, 
 
 int32 FStaticMeshAdapter::AddMaterial(UMaterialInterface* Material)
 {
-	int32 Index = StaticMesh->StaticMaterials.Emplace(Material);
-	IMeshUtilities& MeshUtilities = FModuleManager::Get().LoadModuleChecked<IMeshUtilities>("MeshUtilities");
-	MeshUtilities.FixupMaterialSlotNames(StaticMesh);
-	return Index;
-}
-
-int32 FStaticMeshAdapter::AddMaterial(UMaterialInterface* Material, const FName& SlotName, const FName& ImportedSlotName)
-{
-	int32 Index = StaticMesh->StaticMaterials.Emplace(Material, SlotName, ImportedSlotName);
-	IMeshUtilities& MeshUtilities = FModuleManager::Get().LoadModuleChecked<IMeshUtilities>("MeshUtilities");
-	MeshUtilities.FixupMaterialSlotNames(StaticMesh);
-	return Index;
+	return StaticMesh->StaticMaterials.Add(Material);
 }
 
 void FStaticMeshAdapter::UpdateUVChannelData()

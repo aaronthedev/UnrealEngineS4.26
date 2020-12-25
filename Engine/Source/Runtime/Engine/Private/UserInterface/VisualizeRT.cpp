@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	VisualizeRT.cpp: Implements the VisualizeRT Slate window
@@ -61,12 +61,12 @@ struct FRTInfo : public FRefCountedObject
 		Type = TEXT("-");
 
 		// Current Desc Info format: (DIM W[xH[xD]] FMT[ RT]) NUM NAME SIZEkB
-		if ( !Text.IsEmpty() && Text.Split(TEXT(" "), &Dimensions, &Text, ESearchCase::CaseSensitive))
+		if ( !Text.IsEmpty() && Text.Split(TEXT(" "), &Dimensions, &Text))
 		{
-			Dimensions.MidInline(1, MAX_int32, false);
+			Dimensions = Dimensions.Mid(1);
 			if (Dimensions.StartsWith(TEXT("Cube")))
 			{
-				if (!Text.Split(TEXT(" "), &Width, &Text, ESearchCase::CaseSensitive))
+				if (!Text.Split(TEXT(" "), &Width, &Text))
 				{
 					return false;
 				}
@@ -84,14 +84,14 @@ struct FRTInfo : public FRefCountedObject
 							return false;
 						}
 
-						if (!Text.Split(TEXT(" "), &Depth, &Text, ESearchCase::CaseSensitive))
+						if (!Text.Split(TEXT(" "), &Depth, &Text))
 						{
 							return false;
 						}
 					}
 					else
 					{
-						if (!Text.Split(TEXT(" "), &Height, &Text, ESearchCase::CaseSensitive))
+						if (!Text.Split(TEXT(" "), &Height, &Text))
 						{
 							return false;
 						}
@@ -100,18 +100,18 @@ struct FRTInfo : public FRefCountedObject
 			}
 
 			// Might or not have Type
-			if (Text.Split(TEXT(") "), &Format, &Text, ESearchCase::CaseSensitive))
+			if (Text.Split(TEXT(") "), &Format, &Text))
 			{
-				if (Text.Split(TEXT(" "), &Number, &Text, ESearchCase::CaseSensitive))
+				if (Text.Split(TEXT(" "), &Number, &Text))
 				{
-					if (Text.Split(TEXT(" "), &Name, &Size, ESearchCase::CaseSensitive))
+					if (Text.Split(TEXT(" "), &Name, &Size))
 					{
 						// Get the type if found
-						int32 Found = Format.Find(TEXT(" "), ESearchCase::CaseSensitive);
+						int32 Found = Format.Find(TEXT(" "));
 						if (Found > 0)
 						{
 							Type = Format.Mid(Found + 1);
-							Format.MidInline(0, Found, false);
+							Format = Format.Mid(0, Found);
 						}
 						return true;
 					}
@@ -220,14 +220,15 @@ public:
 		];
 
 		// Get List from Renderer
-		TArray<FString> VisTextureEntries;
-		GVisualizeTexture.GetTextureInfos_GameThread(VisTextureEntries);
-
+		FQueryVisualizeTexureInfo VisTextureInfo;
+		{
+			GVisualizeTexture.QueryInfo_GameThread(VisTextureInfo);
+		}
 		uint32 TotalSize = 0;
-		for (int32 Index = 0; Index < VisTextureEntries.Num(); ++Index)
+		for (int32 Index = 0; Index < VisTextureInfo.Entries.Num(); ++Index)
 		{
 			TSharedPtr<FRTInfo> RTInfo = MakeShareable(new FRTInfo);
-			if (RTInfo->Parse(VisTextureEntries[Index]))
+			if (RTInfo->Parse(VisTextureInfo.Entries[Index]))
 			{
 #if ENABLE_IMAGES
 				FColor Color(0x80808080 + (Index << 9) +  ((Index&3) << 2));

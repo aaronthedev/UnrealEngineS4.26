@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ParameterCollection.h"
 #include "UObject/UObjectHash.h"
@@ -20,11 +20,10 @@ FAutoConsoleVariableRef CVarDeferUpdateRenderStates(
 	ECVF_RenderThreadSafe
 );
 
-TMultiMap<FGuid, FMaterialParameterCollectionInstanceResource*> GDefaultMaterialParameterCollectionInstances;
+TMap<FGuid, FMaterialParameterCollectionInstanceResource*> GDefaultMaterialParameterCollectionInstances;
 
 UMaterialParameterCollection::UMaterialParameterCollection(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-	, ReleasedByRT(true)
 {
 	DefaultResource = nullptr;
 }
@@ -64,27 +63,23 @@ void UMaterialParameterCollection::BeginDestroy()
 {
 	if (DefaultResource)
 	{
-		ReleasedByRT = false;
-
-		FMaterialParameterCollectionInstanceResource* Resource = DefaultResource;
 		FGuid Id = StateId;
-		FThreadSafeBool* Released = &ReleasedByRT;
 		ENQUEUE_RENDER_COMMAND(RemoveDefaultResourceCommand)(
-			[Resource, Id, Released](FRHICommandListImmediate& RHICmdList)
+			[Id](FRHICommandListImmediate& RHICmdList)
 			{	
-				GDefaultMaterialParameterCollectionInstances.RemoveSingle(Id, Resource);
-				*Released = true;
+				GDefaultMaterialParameterCollectionInstances.Remove(Id);			
 			}
 		);
 	}
 
+	ReleaseFence.BeginFence();
 	Super::BeginDestroy();
 }
 
 bool UMaterialParameterCollection::IsReadyForFinishDestroy()
 {
 	bool bIsReady = Super::IsReadyForFinishDestroy();
-	return bIsReady && ReleasedByRT;
+	return bIsReady && ReleaseFence.IsFenceComplete();
 }
 
 void UMaterialParameterCollection::FinishDestroy()
@@ -164,7 +159,7 @@ void SanitizeParameters(TArray<ParameterType>& Parameters)
 int32 PreviousNumScalarParameters = 0;
 int32 PreviousNumVectorParameters = 0;
 
-void UMaterialParameterCollection::PreEditChange(FProperty* PropertyThatWillChange)
+void UMaterialParameterCollection::PreEditChange(UProperty* PropertyThatWillChange)
 {
 	Super::PreEditChange(PropertyThatWillChange);
 
@@ -222,9 +217,9 @@ void UMaterialParameterCollection::PostEditChangeProperty(FPropertyChangedEvent&
 				}
 				else
 				{
-					for (int32 FunctionIndex = 0; FunctionIndex < CurrentMaterial->GetCachedExpressionData().ParameterCollectionInfos.Num() && !bRecompile; FunctionIndex++)
+					for (int32 FunctionIndex = 0; FunctionIndex < CurrentMaterial->MaterialParameterCollectionInfos.Num() && !bRecompile; FunctionIndex++)
 					{
-						if (CurrentMaterial->GetCachedExpressionData().ParameterCollectionInfos[FunctionIndex].ParameterCollection == this)
+						if (CurrentMaterial->MaterialParameterCollectionInfos[FunctionIndex].ParameterCollection == this)
 						{
 							bRecompile = true;
 							break;
@@ -413,17 +408,17 @@ void UMaterialParameterCollection::CreateBufferStruct()
 	new(Members) FShaderParametersMetadata::FMember(TEXT("Vectors"),TEXT(""),NextMemberOffset,UBMT_FLOAT32,EShaderPrecisionModifier::Half,1,4,NumVectors, nullptr);
 	const uint32 VectorArraySize = NumVectors * sizeof(FVector4);
 	NextMemberOffset += VectorArraySize;
+	static FName LayoutName(TEXT("MaterialCollection"));
 	const uint32 StructSize = Align(NextMemberOffset, SHADER_PARAMETER_STRUCT_ALIGNMENT);
 
 	// If Collections ever get non-numeric resources (eg Textures), OutEnvironment.ResourceTableMap has a map by name
 	// and the N ParameterCollection Uniform Buffers ALL are named "MaterialCollection" with different hashes!
 	// (and the hlsl cbuffers are named MaterialCollection0, etc, so the names don't match the layout)
 	UniformBufferStruct = MakeUnique<FShaderParametersMetadata>(
-		FShaderParametersMetadata::EUseCase::DataDrivenUniformBuffer,
+		FShaderParametersMetadata::EUseCase::DataDrivenShaderParameterStruct,
+		LayoutName,
 		TEXT("MaterialCollection"),
 		TEXT("MaterialCollection"),
-		TEXT("MaterialCollection"),
-		nullptr,
 		StructSize,
 		Members
 		);
@@ -606,8 +601,6 @@ void UMaterialParameterCollectionInstance::UpdateRenderState(bool bRecreateUnifo
 	{
 		DeferredUpdateRenderState(bRecreateUniformBuffer);
 	}
-
-	ParametersUpdatedDelegate.Broadcast();
 }
 
 void UMaterialParameterCollectionInstance::DeferredUpdateRenderState(bool bRecreateUniformBuffer)
@@ -686,27 +679,21 @@ void FMaterialParameterCollectionInstanceResource::GameThread_Destroy()
 	ENQUEUE_RENDER_COMMAND(DestroyCollectionCommand)(
 		[Resource](FRHICommandListImmediate& RHICmdList)
 		{
-			Resource->UniformBuffer.SafeRelease();
-
-			// FRHIUniformBuffer instances take raw pointers to the layout struct.
-			// Delete the resource instance (and its layout) on the RHI thread to avoid deleting the layout
-			// whilst the RHI is using it, and also avoid having to completely flush the RHI thread.
-			RHICmdList.EnqueueLambda([Resource](FRHICommandListImmediate&)
-			{
-				delete Resource;
-			});
+			delete Resource;
 		}
 	);
 }
 
+static FName MaterialParameterCollectionInstanceResourceName(TEXT("MaterialParameterCollectionInstanceResource"));
 FMaterialParameterCollectionInstanceResource::FMaterialParameterCollectionInstanceResource() :
-	UniformBufferLayout(TEXT("MaterialParameterCollectionInstanceResource"))
+	UniformBufferLayout(MaterialParameterCollectionInstanceResourceName)
 {
 }
 
 FMaterialParameterCollectionInstanceResource::~FMaterialParameterCollectionInstanceResource()
 {
-	check(!UniformBuffer.IsValid());
+	check(IsInRenderingThread());
+	UniformBuffer.SafeRelease();
 }
 
 void FMaterialParameterCollectionInstanceResource::UpdateContents(const FGuid& InId, const TArray<FVector4>& Data, const FName& InOwnerName, bool bRecreateUniformBuffer)

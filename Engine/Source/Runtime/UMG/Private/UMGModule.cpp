@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
@@ -6,13 +6,9 @@
 #include "UMGStyle.h"
 #include "UMGPrivate.h"
 
-#include "EntitySystem/MovieSceneEntityManager.h"
+
 
 DEFINE_LOG_CATEGORY(LogUMG);
-
-#if !IS_MONOLITHIC
-	UE::MovieScene::FEntityManager*& GEntityManagerForDebugging = UE::MovieScene::GEntityManagerForDebuggingVisualizers;
-#endif
 
 class FUMGModule : public IUMGModule
 {
@@ -25,7 +21,7 @@ public:
 	/** Called right after the module DLL has been loaded and the module object has been created */
 	virtual void StartupModule() override
 	{
-#if WITH_EDITOR
+#if WITH_EDITOR	
 		if (GIsEditor)
 		{
 			FUMGStyle::Initialize();
@@ -47,9 +43,6 @@ public:
 		}
 #endif
 	}
-
-	TArray<int32> CustomFloatPropertyIDs;
-	TArray<int32> CustomTransformPropertyIDs;
 };
 
 IMPLEMENT_MODULE(FUMGModule, UMG);

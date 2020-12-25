@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -69,12 +69,6 @@ namespace nDisplayLauncher.Cluster
 				commandCmd = string.Format("{0} {1}", commandCmd, ArgUseAllAvailableCores);
 			}
 
-			// Set custom GPU selection policy
-			if (Node.GPU != int.MinValue)
-			{
-				commandCmd = string.Format("{0} {1}={2}", commandCmd, ArgGpu, Node.GPU);
-			}
-
 			if (!Config.Windows.ContainsKey(Node.Window))
 			{
 				throw new Exception(string.Format("Node {0} has no windows property specified", Node.Id));
@@ -85,12 +79,6 @@ namespace nDisplayLauncher.Cluster
 
 			// Fullscreen/windowed
 			commandCmd = string.Format("{0} {1}", commandCmd, Window.IsFullscreen ? ArgFullscreen : ArgWindowed );
-
-			// If windowed, we need to add -ForceRes parameter
-			if (!Window.IsFullscreen)
-			{
-				commandCmd = string.Format("{0} {1}", commandCmd, ArgForceRes);
-			}
 
 			// Window location and size
 			if (Window.ResX > 0 && Window.ResY > 0)
@@ -105,9 +93,6 @@ namespace nDisplayLauncher.Cluster
 
 			// Node ID
 			commandCmd = string.Format("{0} {1}={2}", commandCmd, ArgNode, Node.Id);
-
-			// additional launch arguments
-			commandCmd = string.Format("{0} {1}", commandCmd, "-noxrstereo -messaging -concertisheadless");
 
 			// Log file
 			commandCmd = string.Format("{0} Log={1}.log", commandCmd, Node.Id);

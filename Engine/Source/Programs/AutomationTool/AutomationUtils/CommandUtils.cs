@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -662,43 +662,10 @@ namespace AutomationTool
 		}
 
 		/// <summary>
-		/// Renames/moves a directory.
-		/// If the rename of the directory fails, this function throws an Exception.
-		/// </summary>
-		/// <param name="OldName">Old name</param>
-		/// <param name="NewName">new name</param>
-		public static void RenameDirectory(string OldName, string NewName)
-		{
-			var OldNormalized = ConvertSeparators(PathSeparator.Default, OldName);
-			var NewNormalized = ConvertSeparators(PathSeparator.Default, NewName);
-			Directory.Move(OldNormalized, NewNormalized);
-		}
-
-		/// <summary>
-		/// Renames/moves a directory.
-		/// If the rename of the directory fails, this function prints a warning.
-		/// </summary>
-		/// <param name="OldName">Old name</param>
-		/// <param name="NewName">new name</param>
-		public static bool RenameDirectory_NoExceptions(string OldName, string NewName)
-		{
-			try
-			{
-				RenameDirectory(OldName, NewName);
-			}
-			catch (Exception)
-			{
-				LogWarning("Failed to rename/move file '{0}' to '{1}'", OldName, NewName);
-				return false;
-			}
-			return true;
-		}
-
-		/// <summary>
 		/// Creates a directory. Throws an exception on failure.
 		/// </summary>
-		/// <param name="DirectoryName">Name of the directory to create</param>
-		public static void CreateDirectory(string DirectoryName)
+        /// <param name="DirectoryName">Name of the directory to create</param>
+        public static void CreateDirectory(string DirectoryName)
 		{
 			string NormalizedDirectory = ConvertSeparators(PathSeparator.Default, DirectoryName);
 			try
@@ -1424,20 +1391,8 @@ namespace AutomationTool
 		/// </summary>
 		/// <param name="Source"></param>
 		/// <param name="Dest"></param>
-		/// <param name="bQuiet">When true, logging is suppressed.</param>
-		/// <returns>True if the operation was successful, false otherwise.</returns>
-		public static bool CopyDirectory_NoExceptions(DirectoryReference Source, DirectoryReference Dest, bool bQuiet = false)
-		{
-			return CopyDirectory_NoExceptions(Source.FullName, Dest.FullName, bQuiet);
-		}
-
-		/// <summary>
-		/// Copies a directory and all of it's contents recursively. Does not throw exceptions.
-		/// </summary>
-		/// <param name="Source"></param>
-		/// <param name="Dest"></param>
-		/// <param name="bQuiet">When true, logging is suppressed.</param>
-		/// <returns>True if the operation was successful, false otherwise.</returns>
+        /// <param name="bQuiet">When true, logging is suppressed.</param>
+        /// <returns>True if the operation was successful, false otherwise.</returns>
 		public static bool CopyDirectory_NoExceptions(string Source, string Dest, bool bQuiet = false)
 		{
 			Source = ConvertSeparators(PathSeparator.Default, Source);

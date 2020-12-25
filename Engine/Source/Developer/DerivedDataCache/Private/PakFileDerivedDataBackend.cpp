@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PakFileDerivedDataBackend.h"
 #include "Misc/Compression.h"
@@ -68,12 +68,6 @@ bool FPakFileDerivedDataBackend::IsWritable()
 	return bWriting && !bClosed;
 }
 
-/** Returns a class of speed for this interface **/
-FDerivedDataBackendInterface::ESpeedClass FPakFileDerivedDataBackend::GetSpeedClass() 
-{
-	return ESpeedClass::Local;
-}
-
 bool FPakFileDerivedDataBackend::BackfillLowerCacheLevels()
 {
 	return false;
@@ -137,7 +131,7 @@ bool FPakFileDerivedDataBackend::GetCachedData(const TCHAR* CacheKey, TArray<uin
 	return false;
 }
 
-void FPakFileDerivedDataBackend::PutCachedData(const TCHAR* CacheKey, TArrayView<const uint8> InData, bool bPutEvenIfExists)
+void FPakFileDerivedDataBackend::PutCachedData(const TCHAR* CacheKey, TArray<uint8>& InData, bool bPutEvenIfExists)
 {
 	COOK_STAT(auto Timer = UsageStats.TimePut());
 	if (!bWriting || bClosed)
@@ -165,8 +159,7 @@ void FPakFileDerivedDataBackend::PutCachedData(const TCHAR* CacheKey, TArrayView
 			else
 			{
 				COOK_STAT(Timer.AddHit(InData.Num()));
-				// NOTE: Gross that FArchive doesn't have a const version just for saving...
-				FileHandle->Serialize(const_cast<uint8*>(InData.GetData()), int64(InData.Num()));
+				FileHandle->Serialize(InData.GetData(), int64(InData.Num()));
 				UE_LOG(LogDerivedDataCache, Verbose, TEXT("FPakFileDerivedDataBackend: Put %s"), CacheKey);
 				CacheItems.Add(Key,FCacheValue(Offset, InData.Num(), Crc));
 			}
@@ -246,7 +239,7 @@ bool FPakFileDerivedDataBackend::LoadCache(const TCHAR* InFilename)
 	check(FileSize >= 0);
 	if (FileSize < sizeof(int64) + sizeof(uint32) * 5)
 	{
-		UE_LOG(LogDerivedDataCache, Error, TEXT("Pak cache was corrupted (short) %s."), InFilename);
+		UE_LOG(LogDerivedDataCache, Error, TEXT("Pak cache was corrputed (short) %s."), InFilename);
 		return false;
 	}
 	int64 IndexOffset = -1;
@@ -258,7 +251,7 @@ bool FPakFileDerivedDataBackend::LoadCache(const TCHAR* InFilename)
 		Trailer = FileHandle->Tell();
 		if (Trailer != SeekPos)
 		{
-			UE_LOG(LogDerivedDataCache, Error, TEXT("Pak cache was corrupted (bad seek) %s."), InFilename);
+			UE_LOG(LogDerivedDataCache, Error, TEXT("Pak cache was corrputed (bad seek) %s."), InFilename);
 			return false;
 		}
 		check(Trailer >= 0 && Trailer < FileSize);
@@ -270,7 +263,7 @@ bool FPakFileDerivedDataBackend::LoadCache(const TCHAR* InFilename)
 		Loader << IndexOffset;
 		if (Magic != PakCache_Magic || IndexOffset < 0 || IndexOffset + int64(sizeof(uint32) * 4) > Trailer)
 		{
-			UE_LOG(LogDerivedDataCache, Error, TEXT("Pak cache was corrupted (bad footer) %s."), InFilename);
+			UE_LOG(LogDerivedDataCache, Error, TEXT("Pak cache was corrputed (bad footer) %s."), InFilename);
 			return false;
 		}
 	}
@@ -282,7 +275,7 @@ bool FPakFileDerivedDataBackend::LoadCache(const TCHAR* InFilename)
 		FileHandle->Seek(IndexOffset);
 		if (FileHandle->Tell() != IndexOffset)
 		{
-			UE_LOG(LogDerivedDataCache, Error, TEXT("Pak cache was corrupted (bad seek index) %s."), InFilename);
+			UE_LOG(LogDerivedDataCache, Error, TEXT("Pak cache was corrputed (bad seek index) %s."), InFilename);
 			return false;
 		}
 		Buffer.AddUninitialized(sizeof(uint32) * 4);
@@ -295,12 +288,12 @@ bool FPakFileDerivedDataBackend::LoadCache(const TCHAR* InFilename)
 		Loader << SizeIndex;
 		if (Magic != PakCache_Magic || (SizeIndex != 0 && NumIndex == 0) || (SizeIndex == 0 && NumIndex != 0)) 
 		{
-			UE_LOG(LogDerivedDataCache, Error, TEXT("Pak cache was corrupted (bad index header) %s."), InFilename);
+			UE_LOG(LogDerivedDataCache, Error, TEXT("Pak cache was corrputed (bad index header) %s."), InFilename);
 			return false;
 		}
 		if (IndexOffset + sizeof(uint32) * 4 + SizeIndex != Trailer) 
 		{
-			UE_LOG(LogDerivedDataCache, Error, TEXT("Pak cache was corrupted (bad index size) %s."), InFilename);
+			UE_LOG(LogDerivedDataCache, Error, TEXT("Pak cache was corrputed (bad index size) %s."), InFilename);
 			return false;
 		}
 	}
@@ -321,14 +314,14 @@ bool FPakFileDerivedDataBackend::LoadCache(const TCHAR* InFilename)
 			Loader << Crc;
 			if (!Key.Len() || Offset < 0 || Offset >= IndexOffset || !Size)
 			{
-				UE_LOG(LogDerivedDataCache, Error, TEXT("Pak cache was corrupted (bad index entry) %s."), InFilename);
+				UE_LOG(LogDerivedDataCache, Error, TEXT("Pak cache was corrputed (bad index entry) %s."), InFilename);
 				return false;
 			}
 			CacheItems.Add(Key, FCacheValue(Offset, Size, Crc));
 		}
 		if (CacheItems.Num() != NumIndex)
 		{
-			UE_LOG(LogDerivedDataCache, Error, TEXT("Pak cache was corrupted (bad index count) %s."), InFilename);
+			UE_LOG(LogDerivedDataCache, Error, TEXT("Pak cache was corrputed (bad index count) %s."), InFilename);
 			return false;
 		}
 	}
@@ -410,7 +403,7 @@ FCompressedPakFileDerivedDataBackend::FCompressedPakFileDerivedDataBackend(const
 {
 }
 
-void FCompressedPakFileDerivedDataBackend::PutCachedData(const TCHAR* CacheKey, TArrayView<const uint8> InData, bool bPutEvenIfExists)
+void FCompressedPakFileDerivedDataBackend::PutCachedData(const TCHAR* CacheKey, TArray<uint8>& InData, bool bPutEvenIfExists)
 {
 	int32 UncompressedSize = InData.Num();
 	int32 CompressedSize = FCompression::CompressMemoryBound(CompressionFormat, UncompressedSize, CompressionFlags);

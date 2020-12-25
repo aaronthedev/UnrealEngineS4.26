@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CompositingElement.h"
 #include "HAL/IConsoleManager.h"
@@ -11,7 +11,6 @@
 #include "UObject/UObjectGlobals.h"
 #include "EditorSupport/ICompositingEditor.h"
 #include "Engine/Blueprint.h"
-
 
 namespace CompositingElementEditorSupport_Impl
 {
@@ -100,7 +99,7 @@ void ACompositingElement::OnEndPreview()
 bool ACompositingElement::UseImplicitGammaForPreview() const 
 {
 	UCompositingElementTransform* PreviewPass = GetPreviewPass();
-	return (PreviewPass == nullptr) || !PreviewPass->IsPassEnabled();
+	return (PreviewPass == nullptr) || !PreviewPass->bEnabled;
 }
 
 UTexture* ACompositingElement::GetColorPickerDisplayImage()
@@ -232,10 +231,6 @@ void ACompositingElement::PostEditChangeProperty(FPropertyChangedEvent& Property
 			}
 			RefreshInternalOutputsList();
 		}
-	}
-	else if (PropertyName == GET_MEMBER_NAME_CHECKED(ACompositingElement, bAutoRunChildElementsAndSelf))
-	{
-		SetAutoRunChildrenAndSelf(bAutoRunChildElementsAndSelf);
 	}
 
 	if (ICompositingEditor* CompositingEditor = ICompositingEditor::Get())

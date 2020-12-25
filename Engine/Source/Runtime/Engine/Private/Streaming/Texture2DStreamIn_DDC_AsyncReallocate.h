@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 Texture2DStreamIn_DDC_AsyncReallocate.h: Load texture 2D mips from the DDC using async reallocate.
@@ -15,7 +15,7 @@ class FTexture2DStreamIn_DDC_AsyncReallocate : public FTexture2DStreamIn_DDC
 {
 public:
 
-	FTexture2DStreamIn_DDC_AsyncReallocate(UTexture2D* InTexture);
+	FTexture2DStreamIn_DDC_AsyncReallocate(UTexture2D* InTexture, int32 InRequestedMips);
 
 protected:
 

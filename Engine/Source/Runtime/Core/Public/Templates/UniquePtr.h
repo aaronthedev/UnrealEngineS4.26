@@ -1,12 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreTypes.h"
+#include "Templates/PointerIsConvertibleFromTo.h"
 #include "Templates/UnrealTemplate.h"
 #include "Templates/IsArray.h"
 #include "Templates/RemoveExtent.h"
-#include "Serialization/MemoryLayout.h"
 
 // Single-ownership smart pointer in the vein of std::unique_ptr.
 // Use this when you need an object's lifetime to be strictly bound to the lifetime of a single smart pointer.
@@ -16,16 +16,10 @@
 // TUniquePtr<MyClass> Ptr1(new MyClass);    // The MyClass object is owned by Ptr1.
 // TUniquePtr<MyClass> Ptr2(Ptr1);           // Error - TUniquePtr is not copyable
 // TUniquePtr<MyClass> Ptr3(MoveTemp(Ptr1)); // Ptr3 now owns the MyClass object - Ptr1 is now nullptr.
-//
-// If you provide a custom deleter, it is up to your deleter to handle null pointers.  This is a departure
-// from std::unique_ptr which will not invoke the deleter if the owned pointer is null:
-// https://en.cppreference.com/w/cpp/memory/unique_ptr/~unique_ptr
 
 template <typename T>
 struct TDefaultDelete
 {
-	DECLARE_INLINE_TYPE_LAYOUT(TDefaultDelete, NonVirtual);
-
 	TDefaultDelete() = default;
 	TDefaultDelete(const TDefaultDelete&) = default;
 	TDefaultDelete& operator=(const TDefaultDelete&) = default;
@@ -33,7 +27,7 @@ struct TDefaultDelete
 
 	template <
 		typename U,
-		typename = decltype(ImplicitConv<T*>((U*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<U, T>::Value>::Type
 	>
 	TDefaultDelete(const TDefaultDelete<U>&)
 	{
@@ -41,7 +35,7 @@ struct TDefaultDelete
 
 	template <
 		typename U,
-		typename = decltype(ImplicitConv<T*>((U*)nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<U, T>::Value>::Type
 	>
 	TDefaultDelete& operator=(const TDefaultDelete<U>&)
 	{
@@ -50,17 +44,6 @@ struct TDefaultDelete
 
 	void operator()(T* Ptr) const
 	{
-		// If you get an error here when trying to use a TUniquePtr<FForwardDeclaredType> inside a UObject then:
-		//
-		// * Declare all your UObject's constructors and destructor in the .h file.
-		// * Define all of them in the .cpp file.  You can use UMyObject::UMyObject() = default; to auto-generate
-		//   the default constructor and destructor so that they don't have to be manually maintained.
-		// * Define a UMyObject(FVTableHelper& Helper) constructor too, otherwise it will be defined in the
-		//   .gen.cpp file where your pimpl type doesn't exist.  It cannot be defaulted, but it need not
-		//   contain any particular implementation; the object just needs to be garbage collectable.
-		//
-		// If this is efficiency is less important than simplicity, you may want to consider
-		// using a TPimplPtr instead, though this is also pretty efficient too.
 		delete Ptr;
 	}
 };
@@ -75,7 +58,7 @@ struct TDefaultDelete<T[]>
 
 	template <
 		typename U,
-		typename = decltype(ImplicitConv<T(*)[]>((U(*)[])nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<U[], T[]>::Value>::Type
 	>
 	TDefaultDelete(const TDefaultDelete<U[]>&)
 	{
@@ -83,44 +66,34 @@ struct TDefaultDelete<T[]>
 
 	template <
 		typename U,
-		typename = decltype(ImplicitConv<T(*)[]>((U(*)[])nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<U[], T[]>::Value>::Type
 	>
 	TDefaultDelete& operator=(const TDefaultDelete<U[]>&)
 	{
 		return *this;
 	}
 
-	template <
-		typename U,
-		typename = decltype(ImplicitConv<T(*)[]>((U(*)[])nullptr))
-	>
-	void operator()(U* Ptr) const
+	template <typename U>
+	typename TEnableIf<TPointerIsConvertibleFromTo<U[], T[]>::Value>::Type operator()(U* Ptr) const
 	{
 		delete [] Ptr;
 	}
 };
 
 template <typename T, typename Deleter = TDefaultDelete<T>>
-class TUniquePtr : public /*private*/ Deleter // @todo loadtime: can we go back to private? I get this: error C2243: 'static_cast': conversion from 'T *' to 'Base *' exists, but is inaccessible
+class TUniquePtr : private Deleter
 {
-	DECLARE_INLINE_TYPE_LAYOUT_EXPLICIT_BASES(TUniquePtr, NonVirtual, Deleter);
-
 	template <typename OtherT, typename OtherDeleter>
 	friend class TUniquePtr;
 
 public:
 	using ElementType = T;
 
-	// Non-copyable
-	TUniquePtr(const TUniquePtr&) = delete;
-	TUniquePtr& operator=(const TUniquePtr&) = delete;
-
 	/**
 	 * Default constructor - initializes the TUniquePtr to null.
 	 */
 	FORCEINLINE TUniquePtr()
-		: Deleter()
-		, Ptr    (nullptr)
+		: Ptr(nullptr)
 	{
 	}
 
@@ -129,43 +102,8 @@ public:
 	 *
 	 * @param InPtr The pointed-to object to take ownership of.
 	 */
-	template <
-		typename U,
-		typename = decltype(ImplicitConv<T*>((U*)nullptr))
-	>
-	explicit FORCEINLINE TUniquePtr(U* InPtr)
-		: Deleter()
-		, Ptr    (InPtr)
-	{
-	}
-
-	/**
-	 * Pointer constructor - takes ownership of the pointed-to object
-	 *
-	 * @param InPtr The pointed-to object to take ownership of.
-	 */
-	template <
-		typename U,
-		typename = decltype(ImplicitConv<T*>((U*)nullptr))
-	>
-	explicit FORCEINLINE TUniquePtr(U* InPtr, Deleter&& InDeleter)
-		: Deleter(MoveTemp(InDeleter))
-		, Ptr    (InPtr)
-	{
-	}
-
-	/**
-	 * Pointer constructor - takes ownership of the pointed-to object
-	 *
-	 * @param InPtr The pointed-to object to take ownership of.
-	 */
-	template <
-		typename U,
-		typename = decltype(ImplicitConv<T*>((U*)nullptr))
-	>
-	explicit FORCEINLINE TUniquePtr(U* InPtr, const Deleter& InDeleter)
-		: Deleter(InDeleter)
-		, Ptr    (InPtr)
+	explicit FORCEINLINE TUniquePtr(T* InPtr)
+		: Ptr(InPtr)
 	{
 	}
 
@@ -173,8 +111,7 @@ public:
 	 * nullptr constructor - initializes the TUniquePtr to null.
 	 */
 	FORCEINLINE TUniquePtr(TYPE_OF_NULLPTR)
-		: Deleter()
-		, Ptr    (nullptr)
+		: Ptr(nullptr)
 	{
 	}
 
@@ -194,8 +131,7 @@ public:
 	template <
 		typename OtherT,
 		typename OtherDeleter,
-		typename = typename TEnableIf<!TIsArray<OtherT>::Value>::Type,
-		typename = decltype(ImplicitConv<T*>((OtherT*)nullptr))
+		typename = typename TEnableIf<!TIsArray<OtherT>::Value>::Type
 	>
 	FORCEINLINE TUniquePtr(TUniquePtr<OtherT, OtherDeleter>&& Other)
 		: Deleter(MoveTemp(Other.GetDeleter()))
@@ -226,13 +162,8 @@ public:
 	/**
 	 * Assignment operator for rvalues of other (usually derived) types
 	 */
-	template <
-		typename OtherT,
-		typename OtherDeleter,
-		typename = typename TEnableIf<!TIsArray<OtherT>::Value>::Type,
-		typename = decltype(ImplicitConv<T*>((OtherT*)nullptr))
-	>
-	FORCEINLINE TUniquePtr& operator=(TUniquePtr<OtherT, OtherDeleter>&& Other)
+	template <typename OtherT, typename OtherDeleter>
+	FORCEINLINE typename TEnableIf<!TIsArray<OtherT>::Value, TUniquePtr&>::Type operator=(TUniquePtr<OtherT, OtherDeleter>&& Other)
 	{
 		// We delete last, because we don't want odd side effects if the destructor of T relies on the state of this or Other
 		T* OldPtr = Ptr;
@@ -375,8 +306,11 @@ public:
 	}
 
 private:
-	using PtrType = T*;
-	LAYOUT_FIELD(PtrType, Ptr);
+	// Non-copyable
+	TUniquePtr(const TUniquePtr&);
+	TUniquePtr& operator=(const TUniquePtr&);
+
+	T* Ptr;
 };
 
 template <typename T, typename Deleter>
@@ -388,16 +322,11 @@ class TUniquePtr<T[], Deleter> : private Deleter
 public:
 	using ElementType = T;
 
-	// Non-copyable
-	TUniquePtr(const TUniquePtr&) = delete;
-	TUniquePtr& operator=(const TUniquePtr&) = delete;
-
 	/**
 	 * Default constructor - initializes the TUniquePtr to null.
 	 */
 	FORCEINLINE TUniquePtr()
-		: Deleter()
-		, Ptr    (nullptr)
+		: Ptr(nullptr)
 	{
 	}
 
@@ -408,41 +337,10 @@ public:
 	 */
 	template <
 		typename U,
-		typename = decltype(ImplicitConv<T(*)[]>((U(*)[])nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<U[], T[]>::Value>::Type
 	>
 	explicit FORCEINLINE TUniquePtr(U* InPtr)
-		: Deleter()
-		, Ptr    (InPtr)
-	{
-	}
-
-	/**
-	 * Pointer constructor - takes ownership of the pointed-to array
-	 *
-	 * @param InPtr The pointed-to array to take ownership of.
-	 */
-	template <
-		typename U,
-		typename = decltype(ImplicitConv<T(*)[]>((U(*)[])nullptr))
-	>
-	explicit FORCEINLINE TUniquePtr(U* InPtr, Deleter&& InDeleter)
-		: Deleter(MoveTemp(InDeleter))
-		, Ptr    (InPtr)
-	{
-	}
-
-	/**
-	 * Pointer constructor - takes ownership of the pointed-to array
-	 *
-	 * @param InPtr The pointed-to array to take ownership of.
-	 */
-	template <
-		typename U,
-		typename = decltype(ImplicitConv<T(*)[]>((U(*)[])nullptr))
-	>
-	explicit FORCEINLINE TUniquePtr(U* InPtr, const Deleter& InDeleter)
-		: Deleter(InDeleter)
-		, Ptr    (InPtr)
+		: Ptr(InPtr)
 	{
 	}
 
@@ -450,8 +348,7 @@ public:
 	 * nullptr constructor - initializes the TUniquePtr to null.
 	 */
 	FORCEINLINE TUniquePtr(TYPE_OF_NULLPTR)
-		: Deleter()
-		, Ptr    (nullptr)
+		: Ptr(nullptr)
 	{
 	}
 
@@ -471,7 +368,7 @@ public:
 	template <
 		typename OtherT,
 		typename OtherDeleter,
-		typename = decltype(ImplicitConv<T(*)[]>((OtherT(*)[])nullptr))
+		typename = typename TEnableIf<TPointerIsConvertibleFromTo<OtherT[], T[]>::Value>::Type
 	>
 	FORCEINLINE TUniquePtr(TUniquePtr<OtherT, OtherDeleter>&& Other)
 		: Deleter(MoveTemp(Other.GetDeleter()))
@@ -502,12 +399,8 @@ public:
 	/**
 	 * Assignment operator for rvalues of other (usually less qualified) types
 	 */
-	template <
-		typename OtherT,
-		typename OtherDeleter,
-		typename = decltype(ImplicitConv<T(*)[]>((OtherT(*)[])nullptr))
-	>
-	FORCEINLINE TUniquePtr& operator=(TUniquePtr<OtherT, OtherDeleter>&& Other)
+	template <typename OtherT, typename OtherDeleter>
+	FORCEINLINE typename TEnableIf<TPointerIsConvertibleFromTo<OtherT[], T[]>::Value, TUniquePtr&>::Type operator=(TUniquePtr<OtherT>&& Other)
 	{
 		// We delete last, because we don't want odd side effects if the destructor of T relies on the state of this or Other
 		T* OldPtr = Ptr;
@@ -608,11 +501,8 @@ public:
 	 *
 	 * @param InPtr A pointer to the array to take ownership of.
 	 */
-	template <
-		typename U,
-		typename = decltype(ImplicitConv<T(*)[]>((U(*)[])nullptr))
-	>
-	FORCEINLINE void Reset(U* InPtr)
+	template <typename U>
+	FORCEINLINE typename TEnableIf<TPointerIsConvertibleFromTo<U[], T[]>::Value>::Type Reset(U* InPtr)
 	{
 		// We delete last, because we don't want odd side effects if the destructor of T relies on the state of this
 		T* OldPtr = Ptr;
@@ -649,6 +539,10 @@ public:
 	}
 
 private:
+	// Non-copyable
+	TUniquePtr(const TUniquePtr&);
+	TUniquePtr& operator=(const TUniquePtr&);
+
 	T* Ptr;
 };
 

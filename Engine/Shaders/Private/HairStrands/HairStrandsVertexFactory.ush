@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	StrandHairFactory.usf
@@ -6,29 +6,14 @@
 #include "../VertexFactoryCommon.ush"
 #include "../LocalVertexFactoryCommon.ush"
 #include "HairStrandsVisibilityCommon.ush"
-#include "HairStrandsVertexFactoryCommon.ush"
 
 #include "/Engine/Generated/UniformBuffers/PrecomputedLightingBuffer.ush"
 
 #include "HairStrandsVisibilityCommon.ush"
 
-#define USE_HAIR_COMPLEX_TRANSMITTANCE 1
-
 #if MANUAL_VERTEX_FETCH
 	Buffer<float4> VertexFetch_InstanceOriginBuffer;
 	Buffer<float4> VertexFetch_InstanceTransformBuffer;
-#endif
-
-// Enable cluster culling by default as the output of the strands interpolation output culled data, 
-// and this allows to support other rendered (e.g., hit proxy, shadow rendering), for which it is not 
-// possible to provide custom defines
-#ifndef USE_CULLED_CLUSTER
-#define USE_CULLED_CLUSTER 1
-#endif
-
-#if USE_CULLED_CLUSTER == 1
-	Buffer<uint> CulledVertexIdsBuffer;
-	Buffer<float> CulledVertexRadiusScaleBuffer;
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -43,9 +28,6 @@ float3 HairStrandsVF_PreviousPositionOffset;	// Vertex position (3x16bits) are r
 float  HairStrandsVF_Density;
 float  HairStrandsVF_Radius;
 float  HairStrandsVF_Length;
-uint   HairStrandsVF_CullingEnable;
-uint   HairStrandsVF_bUseStableRasterization;
-uint   HairStrandsVF_bScatterSceneLighing;
 
 Buffer<uint4>  HairStrandsVF_PositionBuffer;
 Buffer<uint4>  HairStrandsVF_PreviousPositionBuffer;
@@ -136,16 +118,6 @@ FHairVertexAttributes GetHairStrandsAttributes(uint HairPrimitiveId, float2 Vert
 	return Out; 
 }
 
-float GetHairStrandsDepth(float2 InUV)
-{
-	return 0; // TODO: what should we do for the strands cards as we don't want to override the depth output, but we still want to share the same shader than the non cards one
-}
-
-float GetHairStrandsCoverage(uint HairPrimitiveId, float2 HairPrimitiveUV)
-{
-	return 1;
-}
-
 float2 GetHairStrandsUV(uint HairPrimitiveId, float2 HairPrimitiveUV)
 {
 	return GetHairStrandsAttributes(HairPrimitiveId, HairPrimitiveUV).HairUV;
@@ -176,16 +148,6 @@ float GetHairStrandsRoughness(uint HairPrimitiveId, float2 HairPrimitiveUV)
 	return GetHairStrandsAttributes(HairPrimitiveId, HairPrimitiveUV).HairRoughness;
 }
 
-bool UseStableRasterization()
-{
-	return HairStrandsVF_bUseStableRasterization > 0;
-}
-
-bool UseScatterSceneLighting()
-{
-	return HairStrandsVF_bScatterSceneLighing > 0;
-}
-
 struct FVertexFactoryInput
 {
 #if VF_USE_PRIMITIVE_SCENE_DATA
@@ -193,44 +155,6 @@ struct FVertexFactoryInput
 #endif	
 	uint VertexId : SV_VertexID;
 };
-
-struct FVertexInfo
-{
-	uint QuadIndex;
-	uint BaseIndex;
-	uint VertexIndex;
-	uint HairPrimitiveId;
-	uint IsTip;				// The vertex is on the quad side toward the tip of the strand.
-	uint IsLeft;
-	float LodRadiusScale;
-	bool bForceInvalidQuad;
-};
-FVertexInfo GetVertexInfo(FVertexFactoryInput Input)
-{
-	uint VertexId = Input.VertexId;
-
-	FVertexInfo VertexInfo;
-	VertexInfo.QuadIndex	= VertexId % 6;
-	VertexInfo.BaseIndex	= VertexId / 6;
-	VertexInfo.IsTip		= VertexInfo.QuadIndex == 0 || VertexInfo.QuadIndex == 2 || VertexInfo.QuadIndex == 4 ? 0 : 1;
-	VertexInfo.IsLeft		= VertexInfo.QuadIndex == 0 || VertexInfo.QuadIndex == 1 || VertexInfo.QuadIndex == 5 ? 1 : 0;
-
-	VertexInfo.HairPrimitiveId = VertexInfo.BaseIndex;
-	VertexInfo.VertexIndex = VertexInfo.BaseIndex + VertexInfo.IsTip;
-	VertexInfo.LodRadiusScale = 1.0f;
-	VertexInfo.bForceInvalidQuad = false;
-#if USE_CULLED_CLUSTER == 1
-	if (HairStrandsVF_CullingEnable)
-	{
-		VertexInfo.VertexIndex = CulledVertexIdsBuffer[VertexInfo.BaseIndex + VertexInfo.IsTip];
-		VertexInfo.LodRadiusScale = CulledVertexRadiusScaleBuffer[VertexInfo.BaseIndex + VertexInfo.IsTip];
-		VertexInfo.HairPrimitiveId = VertexInfo.VertexIndex - VertexInfo.IsTip;
-		VertexInfo.bForceInvalidQuad = VertexInfo.LodRadiusScale <= 0.0f;
-	}
-#endif
-
-	return VertexInfo;
-}
 
 #if RAYHITGROUPSHADER
 FVertexFactoryInput LoadVertexFactoryInput(uint TriangleIndex, int VertexIndex)
@@ -257,7 +181,7 @@ struct FVertexFactoryIntermediates
 	half3x3 TangentToWorld;
 	half TangentToWorldSign;
 	uint PrimitiveId;
-	uint HairPrimitiveId;
+	uint   HairPrimitiveId;
 	float2 HairPrimitiveUV;
 	float2 HairDimensions;  // This is kept on the intermediate as this is used in several vertex shader for the actual coverage.
 	float  HairDensity;
@@ -274,30 +198,37 @@ uint GetPrimitiveId(FVertexFactoryInput Input)
 
 uint GetHairPrimitiveId(FVertexFactoryInput Input)
 {
-	return GetVertexInfo(Input).HairPrimitiveId;
+	return Input.VertexId / 6;
 }
 
-FHairControlPoint GetVertexPosition(const FVertexInfo VertexInfo, bool bInvalidJointVertex=true)
+struct FControlPoint
 {
-	const uint4 PackedData = HairStrandsVF_PositionBuffer[VertexInfo.VertexIndex];
-	FHairControlPoint Out = UnpackHairControlPoint(
-		PackedData, 
-		HairStrandsVF_PositionOffset, 
-		HairStrandsVF_Radius * VertexInfo.LodRadiusScale, 
-		HairStrandsVF_Length);
+	float3 Position;
+	float  WorldRadius;
+	float  WorldLength;
+};
+
+FControlPoint GetVertexPosition(FVertexFactoryInput Input)
+{
+	const uint QuadIndex	= Input.VertexId % 6;
+	const uint BaseIndex	= Input.VertexId / 6;
+	const uint OffsetIndex	= QuadIndex == 0 || QuadIndex == 2 || QuadIndex == 4 ? 0 : 1;
+	const uint4 PackedData = HairStrandsVF_PositionBuffer[BaseIndex + OffsetIndex];
+	
+	FControlPoint Output = (FControlPoint)0;
+
+	const float3 ControlPoint	= f16tof32(PackedData.xyz) + HairStrandsVF_PositionOffset;
+	const uint PackedAlpha		= asuint(PackedData.a);
+	const uint ControlPointType = PackedAlpha & 0x3;
+	Output.WorldRadius			= ((PackedAlpha & 0x00FC) >> 2) / 63.f * HairStrandsVF_Radius;
+	Output.WorldLength			= ((PackedAlpha & 0xFF00) >> 8) / 255.f * HairStrandsVF_Length;
 	
 	// Create a degenerated quad the end of each strand to cut between each strands
 	// #hair_todo: This is not efficient for short strand like fur for instance. Need to revisit that at some point
-	const bool bIsInvalidQuad = (bInvalidJointVertex && Out.Type == HAIR_CONTROLPOINT_START && VertexInfo.IsTip == 1) || (bInvalidJointVertex && Out.Type == HAIR_CONTROLPOINT_END && VertexInfo.IsTip == 0) || VertexInfo.bForceInvalidQuad;
-	Out.Position = bIsInvalidQuad ? float3(INFINITE_FLOAT, INFINITE_FLOAT, INFINITE_FLOAT) : Out.Position;
+	const bool bIsInvalidQuad = (ControlPointType == 1 && OffsetIndex == 1) || (ControlPointType == 2 && OffsetIndex == 0);
+	Output.Position = bIsInvalidQuad ? float3(1.#INF, 1.#INF, 1.#INF) : ControlPoint;
 
-	return Out;
-}
-
-FHairControlPoint GetVertexPosition(FVertexFactoryInput Input, bool bInvalidJointVertex=true)
-{
-	const FVertexInfo VertexInfo = GetVertexInfo(Input);
-	return GetVertexPosition(VertexInfo, bInvalidJointVertex);
+	return Output;
 }
 
 float GetWorldStrandRadius(FVertexFactoryInput Input)
@@ -310,30 +241,31 @@ float GetWorldStrandLength(FVertexFactoryInput Input)
 	return GetVertexPosition(Input).WorldLength;
 }
 
-float3 GetVertexPreviousPosition(FVertexFactoryInput Input, bool bInvalidJointVertex = true)
+float3 GetVertexPreviousPosition(FVertexFactoryInput Input)
 {
-	FVertexInfo VertexInfo = GetVertexInfo(Input);
-	const uint4 PackedData = HairStrandsVF_PreviousPositionBuffer[VertexInfo.VertexIndex];
-	FHairControlPoint Out = UnpackHairControlPoint(
-		PackedData,
-		HairStrandsVF_PreviousPositionOffset,
-		HairStrandsVF_Radius * VertexInfo.LodRadiusScale,
-		HairStrandsVF_Length);
+	const uint QuadIndex = Input.VertexId % 6;
+	const uint BaseIndex = Input.VertexId / 6;
+	const uint OffsetIndex = QuadIndex == 0 || QuadIndex == 2 || QuadIndex == 4 ? 0 : 1;
+	const uint4 PackedData = HairStrandsVF_PreviousPositionBuffer[BaseIndex + OffsetIndex];
+
+	const float3 ControlPoint = f16tof32(PackedData.xyz) + HairStrandsVF_PreviousPositionOffset;
+	const uint PackedAlpha = asuint(PackedData.a);
+	const uint ControlPointType = PackedAlpha & 0x3;
 
 	// Create a degenerated quad the end of each strand to cut between each strands
 	// #hair_todo: This is not efficient for short strand like fur for instance. Need to revisit that at some point
-	const bool bIsInvalidQuad = (bInvalidJointVertex && Out.Type == HAIR_CONTROLPOINT_START && VertexInfo.IsTip == 1) || (bInvalidJointVertex && Out.Type == HAIR_CONTROLPOINT_END && VertexInfo.IsTip == 0) || VertexInfo.bForceInvalidQuad;
-	Out.Position = bIsInvalidQuad ? float3(INFINITE_FLOAT, INFINITE_FLOAT, INFINITE_FLOAT) : Out.Position;
+	const bool bIsInvalidQuad = (ControlPointType == 1 && OffsetIndex == 1) || (ControlPointType == 2 && OffsetIndex == 0);
+	const float3 Position = bIsInvalidQuad ? float3(1.#INF, 1.#INF, 1.#INF) : ControlPoint;
 
-	return Out.Position;
+	return Position;
 }
 
 // Segment UV coord of an hair segment. This is different from the UV coord of the hair strands
 float2 GetSegmentUVCoord(FVertexFactoryInput Input)
 {
-	FVertexInfo VertexInfo = GetVertexInfo(Input);
-	const float VCoord = VertexInfo.IsLeft ? 0.0f : 1.0f;
-	const float UCoord = VertexInfo.IsTip  ? 1.0f : 0.0f;
+	const uint QuadIndex = Input.VertexId % 6;
+	const float VCoord = QuadIndex == 0 || QuadIndex == 1 || QuadIndex == 5 ? 0.0f : 1.0f;
+	const float UCoord = QuadIndex == 0 || QuadIndex == 2 || QuadIndex == 4 ? 0.0f : 1.0f;
 	return float2(UCoord, VCoord);
 }
 
@@ -400,9 +332,11 @@ float4 CalcWorldPosition(float3 Position, uint PrimitiveId)
 
 half3x3 CalcTangentToLocal(FVertexFactoryInput Input, inout float TangentSign)
 {
-	FVertexInfo VertexInfo = GetVertexInfo(Input);
-	const half3 TangentInputX = HairStrandsVF_TangentBuffer[VertexInfo.VertexIndex * 2 + 0].xyz;
-	const half4 TangentInputZ = HairStrandsVF_TangentBuffer[VertexInfo.VertexIndex * 2 + 1];
+	const uint QuadIndex = Input.VertexId % 6;
+	const uint BaseIndex = Input.VertexId / 6;
+	const uint OffsetIndex = QuadIndex == 0 || QuadIndex == 2 || QuadIndex == 4 ? 0 : 1;
+	const half3 TangentInputX = HairStrandsVF_TangentBuffer[(BaseIndex + OffsetIndex) * 2 + 0].xyz;
+	const half4 TangentInputZ = HairStrandsVF_TangentBuffer[(BaseIndex + OffsetIndex) * 2 + 1];
 
 	half3 TangentX = TangentBias(TangentInputX);
 	half4 TangentZ = TangentBias(TangentInputZ);
@@ -424,8 +358,8 @@ half3x3 CalcTangentToLocal(FVertexFactoryInput Input, inout float TangentSign)
 
 half3x3 CalcTangentToWorld(FVertexFactoryIntermediates Intermediates, half3x3 TangentToLocal)
 {
-	half3x3 LocalTangentToWorld = CalcTangentToWorldNoScale(Intermediates, TangentToLocal);
-	return LocalTangentToWorld;
+	half3x3 TangentToWorld = CalcTangentToWorldNoScale(Intermediates, TangentToLocal);
+	return TangentToWorld;
 }
 
 float3 GetTangent(FVertexFactoryInput Input)
@@ -473,86 +407,39 @@ half3x3 VertexFactoryGetTangentToLocal( FVertexFactoryInput Input, FVertexFactor
 	return Intermediates.TangentToLocal;
 }
 
-float4 ComputeViewAlignedWorldPosition(FVertexFactoryInput Input, float3 WorldTangent, float4 WorldPosition, float WorldStrandRadius, FHairViewInfo HairViewInfo)
+float4 ComputeViewAlignedWorldPosition(FVertexFactoryInput Input, float3 WorldTangent, float4 WorldPosition, float WorldStrandRadius, float VelocityScale)
 {
-	FVertexInfo VertexInfo = GetVertexInfo(Input);
+	const uint LocalVertexId = Input.VertexId % 6;
+	const bool bIsLeft = LocalVertexId == 0 || LocalVertexId == 1 || LocalVertexId == 5;
+
+	FHairRenderInfo HairRenderInfo = GetHairRenderInfo(ResolvedView.HairRenderInfo);
 
 	// Minimal radius to snap the strand to a sample/pixel center (to avoid aliasing)
-	const float DistanceToCamera = length(HairViewInfo.TranslatedWorldCameraOrigin - WorldPosition.xyz);
-	const float MinStrandHairRadius = HairViewInfo.bIsOrthoView ? HairViewInfo.RadiusAtDepth1 : (DistanceToCamera * HairViewInfo.RadiusAtDepth1);
-	const float3 ViewDir = -HairViewInfo.ViewForward;
+	const float RadiusAtDepth1 = lerp(HairRenderInfo.RadiusAtDepth1Primary, HairRenderInfo.RadiusAtDepth1Velocity, VelocityScale);
+	const float DistanceToCamera = length(ResolvedView.TranslatedWorldCameraOrigin - WorldPosition.xyz);
+	const float MinStrandHairRadius = HairRenderInfo.bIsOrthoView ? RadiusAtDepth1 : (DistanceToCamera * RadiusAtDepth1);
+	const float3 ViewDir = -ResolvedView.ViewForward;
 	const float3 Right = normalize(cross(WorldTangent, ViewDir));
-	const float3 OutWorldPosition = WorldPosition.xyz + (VertexInfo.IsLeft ? -Right : Right) * max(WorldStrandRadius, MinStrandHairRadius);
+	const float3 OutWorldPosition = WorldPosition.xyz + (bIsLeft ? -Right : Right) * max(WorldStrandRadius, MinStrandHairRadius);
 	
 	return float4(OutWorldPosition, 1);
 }
 
-// @return translated world position 
-// Specialized version of VertexFactoryGetWorldPosition & ComputeViewAlignedWorldPosition, for visibility VS shader.
-float4 VertexFactoryGetWorldPosition_Visibility(FVertexFactoryInput Input, FHairViewInfo HairViewInfo, inout uint OutHairPrimitiveId)
-{
-	const FVertexInfo VertexInfo = GetVertexInfo(Input);
-	OutHairPrimitiveId = VertexInfo.HairPrimitiveId;
-
-	FHairControlPoint ControlPoint = GetVertexPosition(VertexInfo);
-	const float4 WorldPosition = CalcWorldPosition(ControlPoint.Position, GetPrimitiveId(Input));
-	const float3 WorldTangent = GetTangent(Input);
-
-	// Minimal radius to snap the strand to a sample/pixel center (to avoid aliasing)
-	const float DistanceToCamera = length(HairViewInfo.TranslatedWorldCameraOrigin - WorldPosition.xyz);
-	const float MinStrandHairRadius = DistanceToCamera * HairViewInfo.RadiusAtDepth1;
-	const float3 ViewDir = -HairViewInfo.ViewForward;
-	const float3 Right = normalize(cross(WorldTangent, ViewDir));
-	const float3 OutWorldPosition = WorldPosition.xyz + (VertexInfo.IsLeft ? -Right : Right) * max(ControlPoint.WorldRadius, MinStrandHairRadius);
-
-	return float4(OutWorldPosition, 1);
-}
-
-// @return translated world position 
-// Specialized version of VertexFactoryGetWorldPosition & ComputeViewAlignedWorldPosition, for voxelization VS shader.
-float4 VertexFactoryGetWorldPosition_Voxelization(FVertexFactoryInput Input, FHairViewInfo HairViewInfo, inout float OutHairWorldRadius, inout float OutHairDensity)
-{
-	const FVertexInfo VertexInfo = GetVertexInfo(Input);
-
-	FHairControlPoint ControlPoint = GetVertexPosition(VertexInfo);
-	OutHairWorldRadius = ControlPoint.WorldRadius;
-	OutHairDensity = HairStrandsVF_Density;
-
-	const float4 WorldPosition = CalcWorldPosition(ControlPoint.Position, GetPrimitiveId(Input));
-	const float3 WorldTangent = GetTangent(Input);
-
-	// Minimal radius to snap the strand to a sample/pixel center (to avoid aliasing)
-	const float3 ViewDir = -HairViewInfo.ViewForward;
-	const float3 Right = normalize(cross(WorldTangent, ViewDir));
-	const float3 OutWorldPosition = WorldPosition.xyz + (VertexInfo.IsLeft ? -Right : Right) * max(ControlPoint.WorldRadius, HairViewInfo.RadiusAtDepth1);
-
-	return float4(OutWorldPosition, 1);
-}
-
 // @return translated world position
-float4 VertexFactoryGetWorldPosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates, FHairViewInfo HairViewInfo)
+float4 VertexFactoryGetWorldPosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates, float VelocityScale)
 {
-	FHairControlPoint ControlPoint = GetVertexPosition(Input);
+	FControlPoint ControlPoint = GetVertexPosition(Input);
 	const float3 VertexPosition = ControlPoint.Position;
 	const float4 WorldPosition = CalcWorldPosition(VertexPosition, Intermediates.PrimitiveId);
 
 	// Hair shader expect the WorldNormal to be the tangent vector
 	const float3 WorldTangent = GetTangent(Input);
-	return ComputeViewAlignedWorldPosition(Input, WorldTangent, WorldPosition, ControlPoint.WorldRadius, HairViewInfo);
+	return ComputeViewAlignedWorldPosition(Input, WorldTangent, WorldPosition, ControlPoint.WorldRadius, VelocityScale);
 }
 
-// This function is referenced by several "system" shaders, but none of these shaders (apart HitProxy, are actually used)
 float4 VertexFactoryGetWorldPosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates)
 {
-	const FHairRenderInfo HairRenderInfo = GetHairRenderInfo(ResolvedView.HairRenderInfo, ResolvedView.HairRenderInfoBits, UseStableRasterization());
-
-	FHairViewInfo HairViewInfo;
-	HairViewInfo.TranslatedWorldCameraOrigin = ResolvedView.TranslatedWorldCameraOrigin;
-	HairViewInfo.ViewForward = ResolvedView.ViewForward;
-	HairViewInfo.RadiusAtDepth1 = HairRenderInfo.RadiusAtDepth1Primary;
-	HairViewInfo.bIsOrthoView = HairRenderInfo.bIsOrthoView;
-
-	return VertexFactoryGetWorldPosition(Input, Intermediates, HairViewInfo);
+	return VertexFactoryGetWorldPosition(Input, Intermediates, 0);
 }
 
 float4 VertexFactoryGetRasterizedWorldPosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates, float4 InWorldPosition)
@@ -586,27 +473,33 @@ FVertexFactoryInterpolantsVSToPS VertexFactoryGetInterpolantsVSToPS(FVertexFacto
 	return Interpolants;
 }
 
-/** for depth-only pass (Not used by the actual hair shaders)*/
+/** for depth-only pass */
 float4 VertexFactoryGetWorldPosition(FPositionOnlyVertexFactoryInput Input)
 {
-	return 0;
+	const FControlPoint ControlPoint = GetVertexPosition(Input);
+	const float3 Position = ControlPoint.Position;
+	const uint PrimitiveId = GetPrimitiveId(Input);
+
+	const float4 WorldPosition = CalcWorldPosition(Position, PrimitiveId);
+    const float3 WorldTangent = GetTangent(Input);
+	return ComputeViewAlignedWorldPosition(Input, WorldTangent, WorldPosition, ControlPoint.WorldRadius, 0);
 }
 
 // @return translated world position (without quad extension/reorientation).This is used only for velocity computation
-float4 VertexFactoryGetWorldPositionRaw(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates, bool bInvalidJointVertex = true)
+float4 VertexFactoryGetWorldPositionRaw(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates)
 {
-	return CalcWorldPosition(GetVertexPosition(Input, bInvalidJointVertex).Position, Intermediates.PrimitiveId);
+	return CalcWorldPosition(GetVertexPosition(Input).Position, Intermediates.PrimitiveId);
 }
 
 // @return previous translated world position
-float4 VertexFactoryGetPreviousWorldPosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates, bool bInvalidJointVertex = true)
+float4 VertexFactoryGetPreviousWorldPosition(FVertexFactoryInput Input, FVertexFactoryIntermediates Intermediates)
 {
 	float4x4 PreviousLocalToWorldTranslated = GetPrimitiveData(Intermediates.PrimitiveId).PreviousLocalToWorld;
 	PreviousLocalToWorldTranslated[3][0] += ResolvedView.PrevPreViewTranslation.x;
 	PreviousLocalToWorldTranslated[3][1] += ResolvedView.PrevPreViewTranslation.y;
 	PreviousLocalToWorldTranslated[3][2] += ResolvedView.PrevPreViewTranslation.z;
 
-	const float3 VertexPosition = GetVertexPreviousPosition(Input, bInvalidJointVertex);
+	const float3 VertexPosition = GetVertexPreviousPosition(Input);
 	return mul(float4(VertexPosition,1), PreviousLocalToWorldTranslated);
 }
 

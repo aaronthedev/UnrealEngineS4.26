@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_ATTRIBUTE_QUERY_H
-#define PXR_USD_USD_ATTRIBUTE_QUERY_H
+#ifndef USD_ATTRIBUTE_QUERY_H
+#define USD_ATTRIBUTE_QUERY_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/usd/api.h"
@@ -206,24 +206,12 @@ public:
     USD_API
     bool HasValue() const;
 
-    /// \deprecated This method is deprecated because it returns `true` even when
-    /// an attribute is blocked.  Please use HasAuthoredValue() instead. If 
-    /// you truly need to know whether the attribute has **any** authored
-    /// value opinions, *including blocks*, you can make the following query:
-    /// `query.GetAttribute().GetResolveInfo().HasAuthoredValueOpinion()`
+    /// Return true if the attribute associated with this query has either an 
+    /// authored default value or authored time samples.
     ///
-    ///
-    /// Return true if this attribute has either an authored default value or
-    /// authored time samples.
+    /// \sa UsdAttribute::HasAuthoredValueOpinion
     USD_API
     bool HasAuthoredValueOpinion() const;
-
-    /// Return true if this attribute has either an authored default value or
-    /// authored time samples.  If the attribute has been 
-    /// \ref Usd_AttributeBlocking "blocked", then return `false`
-    /// \sa UsdAttribute::HasAuthoredValue()
-    USD_API
-    bool HasAuthoredValue() const;
 
     /// Return true if the attribute associated with this query has a 
     /// fallback value provided by a registered schema.
@@ -255,4 +243,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_USD_ATTRIBUTE_QUERY_H
+#endif // USD_ATTRIBUTE_QUERY_H

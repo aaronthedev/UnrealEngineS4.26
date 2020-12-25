@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Abilities/Tasks/AbilityTask_WaitGameplayEffectApplied.h"
 #include "AbilitySystemGlobals.h"
@@ -22,7 +22,7 @@ void UAbilityTask_WaitGameplayEffectApplied::OnApplyGameplayEffectCallback(UAbil
 {
 	bool PassedComparison = false;
 
-	AActor* AvatarActor = Target ? Target->GetAvatarActor_Direct() : nullptr;
+	AActor* AvatarActor = Target ? Target->AvatarActor : nullptr;
 
 	if (!Filter.FilterPassesForActor(AvatarActor))
 	{

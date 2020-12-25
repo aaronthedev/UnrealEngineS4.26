@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreTypes.h"
 #include "Misc/AutomationTest.h"
@@ -98,12 +98,6 @@ bool FTCharToUTF8Test::RunTest(const FString& Parameters)
 			const bool bIsNullTerminated = *(ConvertedValue.Get() + ConvertedValue.Length()) == 0;
 			TestTrue(TEXT("Expected converted value to be null-terminated"), bIsNullTerminated);
 		}
-	}
-
-	{
-		// Verify that we handle invalid UTF-16 strings that ends in half a surrogate pair w/o crashing
-		TCHAR EndWithIllegalSurrogatePair[] = TEXT("ab\xD800");
-		TestEqual("IllegalSurrogatePair", TCHAR_TO_UTF8(EndWithIllegalSurrogatePair), "ab?");
 	}
 
 	return !HasAnyErrors();

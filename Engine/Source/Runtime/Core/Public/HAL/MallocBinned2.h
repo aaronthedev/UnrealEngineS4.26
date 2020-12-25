@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,7 +11,6 @@
 #include "HAL/CriticalSection.h"
 #include "HAL/PlatformTLS.h"
 #include "HAL/Allocators/CachedOSPageAllocator.h"
-#include "HAL/Allocators/CachedOSVeryLargePageAllocator.h"
 #include "HAL/Allocators/PooledVirtualMemoryAllocator.h"
 #include "HAL/PlatformMath.h"
 #include "HAL/LowLevelMemTracker.h"
@@ -109,7 +108,7 @@ class CORE_API FMallocBinned2 final : public FMalloc
 			CANARY_VALUE = 0xe3
 		};
 
-		FORCEINLINE FFreeBlock(uint32 InPageSize, uint16 InBlockSize, uint8 InPoolIndex)
+		FORCEINLINE FFreeBlock(uint32 InPageSize, uint32 InBlockSize, uint32 InPoolIndex)
 			: BlockSize(InBlockSize)
 			, PoolIndex(InPoolIndex)
 			, Canary(CANARY_VALUE)
@@ -206,7 +205,7 @@ class CORE_API FMallocBinned2 final : public FMalloc
 
 		void Init(uint32 InPageSize, uint64 InNumPoolsPerPage, uint64 AddressLimit)
 		{
-			uint64 PoolPageToPoolBitShift = FPlatformMath::CeilLogTwo64(InNumPoolsPerPage);
+			uint64 PoolPageToPoolBitShift = FPlatformMath::CeilLogTwo(InNumPoolsPerPage);
 
 			PtrToPoolPageBitShift = FPlatformMath::CeilLogTwo(InPageSize);
 			HashKeyShift          = PtrToPoolPageBitShift + PoolPageToPoolBitShift;
@@ -218,7 +217,7 @@ class CORE_API FMallocBinned2 final : public FMalloc
 		{
 			OutBucketCollision = (UPTRINT)InPtr >> HashKeyShift;
 			OutBucketIndex = uint32(OutBucketCollision & (MaxHashBuckets - 1));
-			OutPoolIndex   = (uint32)(((UPTRINT)InPtr >> PtrToPoolPageBitShift) & PoolMask);
+			OutPoolIndex   = ((UPTRINT)InPtr >> PtrToPoolPageBitShift) & PoolMask;
 		}
 
 		FORCEINLINE uint64 GetMaxHashBuckets() const
@@ -250,24 +249,16 @@ class CORE_API FMallocBinned2 final : public FMalloc
 	uint64 NumPoolsPerPage;
 
 #if !PLATFORM_UNIX
-#if UE_USE_VERYLARGEPAGEALLOCATOR
-	FCachedOSVeryLargePageAllocator CachedOSPageAllocator;
-#else
 	TCachedOSPageAllocator<BINNED2_MAX_CACHED_OS_FREES, BINNED2_MAX_CACHED_OS_FREES_BYTE_LIMIT> CachedOSPageAllocator;
-#endif
 #else
 	FPooledVirtualMemoryAllocator CachedOSPageAllocator;
 #endif
 
 	FCriticalSection Mutex;
 
-	FORCEINLINE bool IsOSAllocation(const void* Ptr)
+	FORCEINLINE static bool IsOSAllocation(const void* Ptr)
 	{
-#if UE_USE_VERYLARGEPAGEALLOCATOR && !PLATFORM_UNIX
-		return !CachedOSPageAllocator.IsPartOf(Ptr);
-#else
 		return IsAligned(Ptr, BINNED2_LARGE_ALLOC);
-#endif
 	}
 
 	struct FBundleNode
@@ -684,7 +675,6 @@ public:
 	virtual void SetupTLSCachesOnCurrentThread() override;
 	virtual void ClearAndDisableTLSCachesOnCurrentThread() override;
 	virtual const TCHAR* GetDescriptiveName() override;
-	virtual void UpdateStats() override;
 	// End FMalloc interface.
 
 	void FlushCurrentThreadCache();
@@ -731,4 +721,3 @@ public:
 		#include "FMemory.inl"
 	#endif
 #endif
-

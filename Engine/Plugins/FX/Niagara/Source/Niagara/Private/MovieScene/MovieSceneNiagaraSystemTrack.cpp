@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieScene/MovieSceneNiagaraSystemTrack.h"
 #include "CoreMinimal.h"
@@ -34,18 +34,25 @@ void UMovieSceneNiagaraSystemTrack::PostCompile(FMovieSceneEvaluationTrack& OutT
 	{
 		UMovieSceneNiagaraSystemSpawnSection* SpawnSection = CastChecked<UMovieSceneNiagaraSystemSpawnSection>(*SpawnSectionPtr);
 		UMovieScene* ParentMovieScene = GetTypedOuter<UMovieScene>();
-		OutTrack.SetTrackImplementation(FMovieSceneNiagaraSystemTrackImplementation(
-			SpawnSection->GetInclusiveStartFrame(), SpawnSection->GetExclusiveEndFrame(),
-			SpawnSection->GetSectionStartBehavior(), SpawnSection->GetSectionEvaluateBehavior(),
-			SpawnSection->GetSectionEndBehavior(), SpawnSection->GetAgeUpdateMode()));
+		OutTrack.SetTrackImplementation(FMovieSceneNiagaraSystemTrackImplementation(SpawnSection->GetInclusiveStartFrame(), SpawnSection->GetExclusiveEndFrame()));
 	}
 }
 
-bool UMovieSceneNiagaraSystemTrack::PopulateEvaluationTree(TMovieSceneEvaluationTree<FMovieSceneTrackEvaluationData>& OutData) const
+struct FNiagaraSystemTrackSegmentBlender : public FMovieSceneTrackSegmentBlender
 {
-	UMovieSceneNiagaraSystemTrack* This = const_cast<UMovieSceneNiagaraSystemTrack*>(this);
-	// We always just evaluate everything
-	OutData.Add(TRange<FFrameNumber>::All(), FMovieSceneTrackEvaluationData::FromTrack(This));
+	FNiagaraSystemTrackSegmentBlender()
+	{
+		bAllowEmptySegments = true;
+		bCanFillEmptySpace = true;
+	}
 
-	return true;
+	virtual TOptional<FMovieSceneSegment> InsertEmptySpace(const TRange<FFrameNumber>& Range, const FMovieSceneSegment* PreviousSegment, const FMovieSceneSegment* NextSegment) const override
+	{
+		return MovieSceneSegmentCompiler::EvaluateNearestSegment(Range, PreviousSegment, NextSegment);
+	}
+};
+
+FMovieSceneTrackSegmentBlenderPtr UMovieSceneNiagaraSystemTrack::GetTrackSegmentBlender() const
+{
+	return FNiagaraSystemTrackSegmentBlender();
 }

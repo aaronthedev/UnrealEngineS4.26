@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SSourceControlSubmit.h"
 #include "ISourceControlOperation.h"
@@ -18,7 +18,6 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Notifications/SErrorText.h"
 #include "Widgets/Input/SCheckBox.h"
-#include "UObject/UObjectHash.h"
 #include "EditorStyleSet.h"
 #include "AssetToolsModule.h"
 #include "AssetRegistryModule.h"
@@ -33,7 +32,6 @@ namespace SSourceControlSubmitWidgetDefs
 {
 	const FName ColumnID_CheckBoxLabel("CheckBox");
 	const FName ColumnID_IconLabel("Icon");
-	const FName ColumnID_AssetLabel("Asset");
 	const FName ColumnID_FileLabel("File");
 
 	const float CheckBoxColumnWidth = 23.0f;
@@ -45,27 +43,7 @@ FSubmitItem::FSubmitItem(const FSourceControlStateRef& InItem)
 	: Item(InItem)
 {
 	CheckBoxState = ECheckBoxState::Checked;
-
-	AssetName = FText::FromString(TEXT("None"));
-	PackageName = FText::FromString(Item->GetFilename());
-	FileName = PackageName;
-
-	FString LongPackageName;
-	if (FPackageName::TryConvertFilenameToLongPackageName(InItem->GetFilename(), LongPackageName))
-	{
-		PackageName = FText::FromString(LongPackageName);
-
-		TArray<FAssetData> Assets;
-		FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
-		AssetRegistryModule.Get().GetAssetsByPackageName(*LongPackageName, Assets);
-
-		if (Assets.Num())
-		{
-			const FAssetData& AssetData = Assets[0];
-			PackageName = FText::FromString(AssetData.PackageName.ToString());
-			AssetName = FText::FromString(AssetData.AssetName.ToString());
-		}
-	}
+	DisplayName = FText::FromString(Item->GetFilename());
 }
 
 
@@ -101,7 +79,7 @@ SSourceControlSubmitWidget::~SSourceControlSubmitWidget()
 void SSourceControlSubmitWidget::Construct(const FArguments& InArgs)
 {
 	ParentFrame = InArgs._ParentWindow.Get();
-	SortByColumn = SSourceControlSubmitWidgetDefs::ColumnID_AssetLabel;
+	SortByColumn = SSourceControlSubmitWidgetDefs::ColumnID_FileLabel;
 	SortMode = EColumnSortMode::Ascending;
 
 	for (const auto& Item : InArgs._Items.Get())
@@ -129,14 +107,6 @@ void SSourceControlSubmitWidget::Construct(const FArguments& InArgs)
 		.SortMode(this, &SSourceControlSubmitWidget::GetColumnSortMode, SSourceControlSubmitWidgetDefs::ColumnID_IconLabel)
 		.OnSort(this, &SSourceControlSubmitWidget::OnColumnSortModeChanged)
 		.FixedWidth(SSourceControlSubmitWidgetDefs::IconColumnWidth)
-	);
-
-	HeaderRowWidget->AddColumn(
-		SHeaderRow::Column(SSourceControlSubmitWidgetDefs::ColumnID_AssetLabel)
-		.DefaultLabel(LOCTEXT("AssetColumnLabel", "Asset"))
-		.SortMode(this, &SSourceControlSubmitWidget::GetColumnSortMode, SSourceControlSubmitWidgetDefs::ColumnID_AssetLabel)
-		.OnSort(this, &SSourceControlSubmitWidget::OnColumnSortModeChanged)
-		.FillWidth(5.0f)
 	);
 
 	HeaderRowWidget->AddColumn(
@@ -205,7 +175,7 @@ void SSourceControlSubmitWidget::Construct(const FArguments& InArgs)
 			.Padding(5)
 			[
 				SNew(SWrapBox)
-				.UseAllottedSize(true)
+				.UseAllottedWidth(true)
 				+SWrapBox::Slot()
 				.Padding(0.0f, 0.0f, 16.0f, 0.0f)
 				[
@@ -310,7 +280,7 @@ void SSourceControlSubmitWidget::OnDiffAgainstDepot()
 void SSourceControlSubmitWidget::OnDiffAgainstDepotSelected(TSharedPtr<FSubmitItem> InSelectedItem)
 {
 	FString PackageName;
-	if (FPackageName::TryConvertFilenameToLongPackageName(InSelectedItem->GetFileName().ToString(), PackageName))
+	if (FPackageName::TryConvertFilenameToLongPackageName(InSelectedItem->GetFilename(), PackageName))
 	{
 		TArray<FAssetData> Assets;
 		FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
@@ -371,16 +341,6 @@ TSharedRef<SWidget> SSourceControlSubmitWidget::GenerateWidgetForItemAndColumn(T
 				.ToolTipText(Item->GetIconTooltip())
 			];
 	}
-	else if (ColumnID == SSourceControlSubmitWidgetDefs::ColumnID_AssetLabel)
-	{
-		ItemContentWidget = SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.Padding(RowPadding)
-			[
-				SNew(STextBlock)
-				.Text(Item->GetAssetName())
-			];
-	}
 	else if (ColumnID == SSourceControlSubmitWidgetDefs::ColumnID_FileLabel)
 	{
 		ItemContentWidget = SNew(SHorizontalBox)
@@ -388,8 +348,7 @@ TSharedRef<SWidget> SSourceControlSubmitWidget::GenerateWidgetForItemAndColumn(T
 			.Padding(RowPadding)
 			[
 				SNew(STextBlock)
-				.Text(Item->GetPackageName())
-				.ToolTipText(Item->GetFileName())
+				.Text(Item->GetDisplayName())
 			];
 	}
 
@@ -442,11 +401,11 @@ void SSourceControlSubmitWidget::FillChangeListDescription(FChangeListDescriptio
 		{
 			if (Item->CanCheckIn())
 			{
-				OutDesc.FilesForSubmit.Add(Item->GetFileName().ToString());
+				OutDesc.FilesForSubmit.Add(Item->GetFilename());
 			}
 			else if (Item->NeedsAdding())
 			{
-				OutDesc.FilesForAdd.Add(Item->GetFileName().ToString());
+				OutDesc.FilesForAdd.Add(Item->GetFilename());
 			}
 		}
 	}
@@ -555,30 +514,17 @@ void SSourceControlSubmitWidget::RequestSort()
 
 void SSourceControlSubmitWidget::SortTree()
 {
-	if (SortByColumn == SSourceControlSubmitWidgetDefs::ColumnID_AssetLabel)
+	if (SortByColumn == SSourceControlSubmitWidgetDefs::ColumnID_FileLabel)
 	{
 		if (SortMode == EColumnSortMode::Ascending)
 		{
 			ListViewItems.Sort([](const TSharedPtr<FSubmitItem>& A, const TSharedPtr<FSubmitItem>& B) {
-				return A->GetAssetName().ToString() < B->GetAssetName().ToString(); });
+				return A->GetDisplayName().ToString() < B->GetDisplayName().ToString(); });
 		}
 		else if (SortMode == EColumnSortMode::Descending)
 		{
 			ListViewItems.Sort([](const TSharedPtr<FSubmitItem>& A, const TSharedPtr<FSubmitItem>& B) {
-				return A->GetAssetName().ToString() >= B->GetAssetName().ToString(); });
-		}
-	}
-	else if (SortByColumn == SSourceControlSubmitWidgetDefs::ColumnID_FileLabel)
-	{
-		if (SortMode == EColumnSortMode::Ascending)
-		{
-			ListViewItems.Sort([](const TSharedPtr<FSubmitItem>& A, const TSharedPtr<FSubmitItem>& B) {
-				return A->GetPackageName().ToString() < B->GetPackageName().ToString(); });
-		}
-		else if (SortMode == EColumnSortMode::Descending)
-		{
-			ListViewItems.Sort([](const TSharedPtr<FSubmitItem>& A, const TSharedPtr<FSubmitItem>& B) {
-				return A->GetPackageName().ToString() >= B->GetPackageName().ToString(); });
+				return A->GetDisplayName().ToString() >= B->GetDisplayName().ToString(); });
 		}
 	}
 	else if (SortByColumn == SSourceControlSubmitWidgetDefs::ColumnID_IconLabel)

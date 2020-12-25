@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AbcFile.h"
 #include "Misc/Paths.h"
@@ -21,10 +21,12 @@
 #include "Windows/AllowWindowsPlatformTypes.h"
 #endif
 
+PRAGMA_DEFAULT_VISIBILITY_START
 THIRD_PARTY_INCLUDES_START
 #include <Alembic/AbcGeom/All.h>
 #include "Materials/MaterialInstance.h"
 THIRD_PARTY_INCLUDES_END
+PRAGMA_DEFAULT_VISIBILITY_END
 
 #if PLATFORM_WINDOWS
 #include "Windows/HideWindowsPlatformTypes.h"
@@ -45,7 +47,7 @@ FAbcFile::FAbcFile(const FString& InFilePath)
 	, EndFrameIndex(0)
 	, ArchiveBounds(EForceInit::ForceInitToZero)
 	, MinTime(TNumericLimits<float>::Max())
-	, MaxTime(TNumericLimits<float>::Lowest())
+	, MaxTime(TNumericLimits<float>::Min())
 	, ImportTimeOffset(0.0f)
 	, ImportLength(0.0f)
 {
@@ -87,15 +89,6 @@ EAbcImportError FAbcFile::Open()
 
 	TraverseAbcHierarchy(TopObject, nullptr);
 
-	// Fallback values for 0/1 frame Alembic
-	if (NumFrames < 2)
-	{
-		MinTime = 0.f;
-		MaxTime = 0.f;
-		MinFrameIndex = 0;
-		MaxFrameIndex = NumFrames;
-	}
-
 	Alembic::Abc::ObjectHeader Header = TopObject.getHeader();
 
 	// Determine top level archive bounding box
@@ -128,14 +121,8 @@ EAbcImportError FAbcFile::Import(UAbcImportSettings* InImportSettings)
 
 	FAbcSamplingSettings& SamplingSettings = ImportSettings->SamplingSettings;
 
-	// Compute start/end frames based on the settings and report back the computed values to the settings for display and serialization
-	StartFrameIndex = SamplingSettings.bSkipEmpty ? (FMath::Max(SamplingSettings.FrameStart, MinFrameIndex)) : SamplingSettings.FrameStart;
-	SamplingSettings.FrameStart = StartFrameIndex;
-
-	int32 LowerFrameIndex = FMath::Min((StartFrameIndex + 1), MaxFrameIndex);
-	int32 UpperFrameIndex = FMath::Max((StartFrameIndex + 1), MaxFrameIndex);
-	EndFrameIndex = SamplingSettings.FrameEnd == 0 ? MaxFrameIndex : FMath::Clamp(SamplingSettings.FrameEnd, LowerFrameIndex, UpperFrameIndex);
-	SamplingSettings.FrameEnd = EndFrameIndex;
+	StartFrameIndex = SamplingSettings.bSkipEmpty ? (SamplingSettings.FrameStart > MinFrameIndex ? SamplingSettings.FrameStart : MinFrameIndex) : SamplingSettings.FrameStart;
+	EndFrameIndex = SamplingSettings.FrameEnd;
 
 	if (ImportSettings->ImportType == EAlembicImportType::StaticMesh)
 	{
@@ -192,7 +179,6 @@ EAbcImportError FAbcFile::Import(UAbcImportSettings* InImportSettings)
 	}
 
 	SecondsPerFrame = TimeStep;
-	FramesPerSecond = TimeStep > 0.f ? FMath::RoundToInt(1.f / TimeStep) : 30;
 	ImportLength = FrameSpan * TimeStep;
 
 	// Calculate time offset from start of import animation range
@@ -272,16 +258,9 @@ EAbcImportError FAbcFile::Import(UAbcImportSettings* InImportSettings)
 
 							if (BaseMaterial)
 							{
-								bool bNeedsRecompile = false;
-								if (ImportSettings->ImportType == EAlembicImportType::Skeletal)
-								{
-									BaseMaterial->SetMaterialUsage(bNeedsRecompile, MATUSAGE_SkeletalMesh);
-									BaseMaterial->SetMaterialUsage(bNeedsRecompile, MATUSAGE_MorphTargets);
-								}
-								else if (ImportSettings->ImportType == EAlembicImportType::GeometryCache)
-								{
-									BaseMaterial->SetMaterialUsage(bNeedsRecompile, MATUSAGE_GeometryCache);
-								}
+								BaseMaterial->bUsedWithSkeletalMesh |= ImportSettings->ImportType == EAlembicImportType::Skeletal;
+								BaseMaterial->bUsedWithMorphTargets |= ImportSettings->ImportType == EAlembicImportType::Skeletal;
+								BaseMaterial->bUsedWithGeometryCache |= ImportSettings->ImportType == EAlembicImportType::GeometryCache;
 							}							
 						}
 					}
@@ -314,25 +293,6 @@ EAbcImportError FAbcFile::Import(UAbcImportSettings* InImportSettings)
 		}
 	}
 
-	// Populate the list of unique face set names from the meshes that should be imported regardless of the import material settings
-	bool bRequiresDefaultMaterial = false;
-	for (FAbcPolyMesh* PolyMesh : PolyMeshes)
-	{
-		if (PolyMesh->bShouldImport)
-		{
-			for (const FString& FaceSetName : PolyMesh->FaceSetNames)
-			{
-				UniqueFaceSetNames.AddUnique(FaceSetName);
-			}
-			bRequiresDefaultMaterial |= PolyMesh->FaceSetNames.Num() == 0;
-		}
-	}
-
-	if (bRequiresDefaultMaterial)
-	{
-		UniqueFaceSetNames.Insert(TEXT("DefaultMaterial"), 0);
-	}
-
 	return AbcImportError_NoError;
 }
 
@@ -342,6 +302,8 @@ void FAbcFile::TraverseAbcHierarchy(const Alembic::Abc::IObject& InObject, IAbcO
 	Alembic::AbcCoreAbstract::ObjectHeader Header = InObject.getHeader();
 	const Alembic::Abc::MetaData ObjectMetaData = InObject.getMetaData();
 	const uint32 NumChildren = InObject.getNumChildren();
+
+	bool bHandled = false;
 
 	IAbcObject* CreatedObject = nullptr;
 
@@ -354,17 +316,13 @@ void FAbcFile::TraverseAbcHierarchy(const Alembic::Abc::IObject& InObject, IAbcO
 		CreatedObject = PolyMesh;
 		Objects.Add(CreatedObject);
 
-		// Ignore constant nodes for the computation of the animation time/index range
-		// Note that a constant mesh could be animated through its parent transform
-		// in which case, the animation range will reflect that of the IXform
-		if (PolyMesh->GetNumberOfSamples() > 1)
-		{
-			MinTime = FMath::Min(MinTime, PolyMesh->GetTimeForFirstData());
-			MaxTime = FMath::Max(MaxTime, PolyMesh->GetTimeForLastData());
-			NumFrames = FMath::Max(NumFrames, PolyMesh->GetNumberOfSamples());
-			MinFrameIndex = FMath::Min(MinFrameIndex, PolyMesh->GetFrameIndexForFirstData());
-			MaxFrameIndex = FMath::Max(MaxFrameIndex, PolyMesh->GetFrameIndexForFirstData() + PolyMesh->GetNumberOfSamples());
-		}
+		MinTime = FMath::Min(MinTime, PolyMesh->GetTimeForFirstData());
+		MaxTime = FMath::Max(MaxTime, PolyMesh->GetTimeForLastData());
+		NumFrames = FMath::Max(NumFrames, PolyMesh->GetNumberOfSamples());
+		MinFrameIndex = FMath::Min(MinFrameIndex, PolyMesh->GetFrameIndexForFirstData());
+		MaxFrameIndex = FMath::Max(MaxFrameIndex, PolyMesh->GetFrameIndexForFirstData() + PolyMesh->GetNumberOfSamples());
+
+		bHandled = true;
 	}
 	else if (AbcImporterUtilities::IsType<Alembic::AbcGeom::IXform>(ObjectMetaData))
 	{
@@ -373,18 +331,14 @@ void FAbcFile::TraverseAbcHierarchy(const Alembic::Abc::IObject& InObject, IAbcO
 		Transforms.Add(Transform);
 		CreatedObject = Transform;
 		Objects.Add(CreatedObject);
+		
+		MinTime = FMath::Min(MinTime, Transform->GetTimeForFirstData());
+		MaxTime = FMath::Max(MaxTime, Transform->GetTimeForLastData());
+		NumFrames = FMath::Max(NumFrames, Transform->GetNumberOfSamples());
+		MinFrameIndex = FMath::Min(MinFrameIndex, Transform->GetFrameIndexForFirstData());
+		MaxFrameIndex = FMath::Max(MaxFrameIndex, Transform->GetFrameIndexForFirstData() + Transform->GetNumberOfSamples());
 
-		// Ignore constant nodes for the computation of the animation time/index range
-		// A constant identity transform has 0 frame while a constant non-identity transform has 1 frame
-		// In either case, the min/max times are invalid and irrelevant
-		if (Transform->GetNumberOfSamples() > 1)
-		{
-			MinTime = FMath::Min(MinTime, Transform->GetTimeForFirstData());
-			MaxTime = FMath::Max(MaxTime, Transform->GetTimeForLastData());
-			NumFrames = FMath::Max(NumFrames, Transform->GetNumberOfSamples());
-			MinFrameIndex = FMath::Min(MinFrameIndex, Transform->GetFrameIndexForFirstData());
-			MaxFrameIndex = FMath::Max(MaxFrameIndex, Transform->GetFrameIndexForFirstData() + Transform->GetNumberOfSamples());
-		}
+		bHandled = true;
 	}
 
 	if (RootObject == nullptr && CreatedObject != nullptr)
@@ -479,16 +433,6 @@ const int32 FAbcFile::GetMaxFrameIndex() const
 	return MaxFrameIndex;
 }
 
-const int32 FAbcFile::GetStartFrameIndex() const
-{
-	return StartFrameIndex;
-}
-
-const int32 FAbcFile::GetEndFrameIndex() const
-{
-	return EndFrameIndex;
-}
-
 const UAbcImportSettings* FAbcFile::GetImportSettings() const 
 {
 	return ImportSettings;
@@ -524,29 +468,9 @@ const float FAbcFile::GetImportLength() const
 	return ImportLength;
 }
 
-const int32 FAbcFile::GetImportNumFrames() const
-{
-	return EndFrameIndex - StartFrameIndex;
-}
-
 const int32 FAbcFile::GetFramerate() const
 {
 	return FramesPerSecond;
-}
-
-const float FAbcFile::GetSecondsPerFrame() const
-{
-	return SecondsPerFrame;
-}
-
-int32 FAbcFile::GetFrameIndex(float Time)
-{
-	if (SecondsPerFrame > 0.f)
-	{
-		int32 FrameIndex = StartFrameIndex + FMath::RoundToInt(Time / SecondsPerFrame);
-		return FMath::Clamp(FrameIndex, StartFrameIndex, EndFrameIndex);
-	}
-	return 0;
 }
 
 const FBoxSphereBounds& FAbcFile::GetArchiveBounds() const

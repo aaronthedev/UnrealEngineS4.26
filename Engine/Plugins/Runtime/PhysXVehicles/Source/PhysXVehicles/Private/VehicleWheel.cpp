@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VehicleWheel.h"
 #include "UObject/ConstructorHelpers.h"
@@ -11,8 +11,6 @@
 #include "TireConfig.h"
 #include "PhysXVehicleManager.h"
 #include "PhysXPublic.h"
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 UVehicleWheel::UVehicleWheel(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -194,6 +192,3 @@ UPhysicalMaterial* UVehicleWheel::GetContactSurfaceMaterial()
 
 	return PhysMaterial;
 }
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
-

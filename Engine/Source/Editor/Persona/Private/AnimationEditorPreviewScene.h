@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -34,11 +34,10 @@ public:
 	virtual UDebugSkelMeshComponent* GetPreviewMeshComponent() const override { return SkeletalMeshComponent; }
 	virtual void SetPreviewMeshComponent(UDebugSkelMeshComponent* InSkeletalMeshComponent) override;
 	virtual void SetAdditionalMeshes(class UDataAsset* InAdditionalMeshes) override;
-	virtual void SetAdditionalMeshesSelectable(bool bSelectable) override;
 	virtual void RefreshAdditionalMeshes(bool bAllowOverrideBaseMesh) override;
 	virtual void ShowReferencePose(bool bShowRefPose, bool bResetBoneTransforms = false) override;
 	virtual bool IsShowReferencePoseEnabled() const override;
-	virtual void SetSelectedBone(const FName& BoneName, ESelectInfo::Type InSelectInfo) override;
+	virtual void SetSelectedBone(const FName& BoneName) override;
 	virtual void ClearSelectedBone() override;
 	virtual void SetSelectedSocket(const FSelectedSocketInfo& SocketInfo) override;
 	virtual void ClearSelectedSocket() override;
@@ -74,24 +73,6 @@ public:
 	virtual void UnregisterOnLODChanged(void* Thing) override
 	{
 		OnLODChanged.RemoveAll(Thing);
-	}
-
-	virtual void RegisterOnMorphTargetsChanged(const FSimpleDelegate& Delegate) override
-	{
-		OnMorphTargetsChanged.Add(Delegate);
-	}
-
-	virtual void UnregisterOnMorphTargetsChanged(void* Thing) override
-	{
-		OnMorphTargetsChanged.RemoveAll(Thing);
-	}
-
-	virtual void BroadcastOnMorphTargetsChanged() override
-	{
-		if (OnMorphTargetsChanged.IsBound())
-		{
-			OnMorphTargetsChanged.Broadcast();
-		}
 	}
 
 	virtual void RegisterOnInvalidateViews(const FSimpleDelegate& Delegate) override
@@ -341,18 +322,6 @@ private:
 
 	TSharedPtr<class IEditableSkeleton> GetEditableSkeleton() const { return EditableSkeletonPtr.Pin(); }
 
-	/* setter/getter for can remove attach component */
-	virtual void SetRemoveAttachedComponentFilter(const FOnRemoveAttachedComponentFilter& Delegate) override
-	{
-		OnRemoveAttachedComponentFilter = Delegate;
-	}
-	virtual void ClearRemoveAttachedComponentFilter() override
-	{
-		if (OnRemoveAttachedComponentFilter.IsBound())
-		{
-			OnRemoveAttachedComponentFilter.Unbind();
-		}
-	}
 private:
 	/** The one and only actor we have */
 	AActor* Actor;
@@ -413,9 +382,6 @@ private:
 	/** LOD changed delegate */
 	FSimpleMulticastDelegate OnLODChanged;
 
-	/** Morph target changed delegate */
-	FSimpleMulticastDelegate OnMorphTargetsChanged;
-
 	/** View invalidation delegate */
 	FSimpleMulticastDelegate OnInvalidateViews;
 
@@ -457,10 +423,4 @@ private:
 
 	/** Allow additional meshes to be attached */
 	bool bAllowAdditionalMeshes;
-
-	/** Allow additional meshes to be selectable */
-	bool bAdditionalMeshesSelectable;
-
-	/** Delegate Remove attach component */
-	FOnRemoveAttachedComponentFilter OnRemoveAttachedComponentFilter;
 };

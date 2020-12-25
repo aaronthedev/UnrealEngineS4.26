@@ -304,7 +304,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDGEOM_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -316,7 +316,7 @@ private:
 
     // override SchemaBase virtuals.
     USDGEOM_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -332,12 +332,10 @@ public:
     /// SetXformOpOrder(), and consulted by GetOrderedXformOps() and
     /// GetLocalTransformation().
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform token[] xformOpOrder` |
-    /// | C++ Type | VtArray<TfToken> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->TokenArray |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+    /// \n  C++ Type: VtArray<TfToken>
+    /// \n  Usd Type: SdfValueTypeNames->TokenArray
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: No Fallback
     USDGEOM_API
     UsdAttribute GetXformOpOrderAttr() const;
 
@@ -831,10 +829,14 @@ public:
     static bool IsTransformationAffectedByAttrNamed(const TfToken &attrName);
 
 private:
+    // XXX: Only exists for temporary backwards compatibility.
+    UsdAttribute _GetTransformAttr() const;
+
     // Extracts the value of the xformOpOrder attribute. Returns false if 
     // the xformOpOrder attribute doesn't exist on the prim (eg. when the prim 
     // type is incompatible or if it's a pure over). 
-    bool _GetXformOpOrderValue(VtTokenArray *xformOpOrder) const;
+    bool _GetXformOpOrderValue(VtTokenArray *xformOpOrder, 
+                               bool *hasAuthoredValue=NULL) const;
 
     // Helper function for getting xformops with or without attribute queries.
     std::vector<UsdGeomXformOp>

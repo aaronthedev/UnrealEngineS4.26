@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 Texture2DStreamIn_IO_AsyncCreate.cpp: Async create path for streaming in texture 2D mips.
@@ -7,8 +7,8 @@ Texture2DStreamIn_IO_AsyncCreate.cpp: Async create path for streaming in texture
 #include "Streaming/Texture2DStreamIn_IO_Virtual.h"
 #include "RenderUtils.h"
 
-FTexture2DStreamIn_IO_Virtual::FTexture2DStreamIn_IO_Virtual(UTexture2D* InTexture, bool InPrioritizedIORequest) 
-	: FTexture2DStreamIn_IO(InTexture, InPrioritizedIORequest)
+FTexture2DStreamIn_IO_Virtual::FTexture2DStreamIn_IO_Virtual(UTexture2D* InTexture, int32 InRequestedMips, bool InPrioritizedIORequest) 
+	: FTexture2DStreamIn_IO(InTexture, InRequestedMips, InPrioritizedIORequest)
 {
 	PushTask(FContext(InTexture, TT_None), TT_Render, SRA_UPDATE_CALLBACK(LockMips), TT_None, nullptr);
 }
@@ -18,6 +18,7 @@ void FTexture2DStreamIn_IO_Virtual::LockMips(const FContext& Context)
 	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("FTexture2DStreamIn_IO_Virtual::LockMips"), STAT_Texture2DStreamInIOVirtual_LockMips, STATGROUP_StreamingDetails);
 	check(Context.CurrentThread == TT_Render);
 
+	SetIOFilename(Context);
 	DoConvertToVirtualWithNewMips(Context);
 	DoLockNewMips(Context);
 
@@ -53,7 +54,7 @@ void FTexture2DStreamIn_IO_Virtual::Finalize(const FContext& Context)
 	DoUnlockNewMips(Context);
 	if (IntermediateTextureRHI)
 	{
-		RHIVirtualTextureSetFirstMipVisible(IntermediateTextureRHI, PendingFirstLODIdx);
+		RHIVirtualTextureSetFirstMipVisible(IntermediateTextureRHI, PendingFirstMip);
 	}
 	DoFinishUpdate(Context);
 }
@@ -80,8 +81,7 @@ void FTexture2DStreamIn_IO_Virtual::Cancel(const FContext& Context)
 	DoUnlockNewMips(Context);
 	if (IntermediateTextureRHI)
 	{
-		RHIVirtualTextureSetFirstMipInMemory(IntermediateTextureRHI, CurrentFirstLODIdx);
+		RHIVirtualTextureSetFirstMipInMemory(IntermediateTextureRHI, Context.Resource->GetCurrentFirstMip());
 	}
 	DoFinishUpdate(Context);
-	ReportIOError(Context);
 }

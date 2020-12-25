@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -7,8 +7,6 @@
 #include "UObject/ObjectMacros.h"
 #include "Engine/Texture2D.h"
 #include "VolumeTexture.generated.h"
-
-extern bool GSupportsVolumeTextureStreaming;
 
 class FTextureResource;
 
@@ -86,7 +84,6 @@ public:
 	virtual float GetSurfaceHeight() const override { return GetSizeY(); }
 	virtual FTextureResource* CreateResource() override;
 #if WITH_EDITOR
-	ENGINE_API void SetDefaultSource2DTileSize();
 	ENGINE_API virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif // WITH_EDITOR
 	virtual void UpdateResource() override;
@@ -119,14 +116,7 @@ public:
 
 #endif
 
-	ENGINE_API static bool ShaderPlatformSupportsCompression(FStaticShaderPlatform ShaderPlatform);
-
-
-	//~ Begin UStreamableRenderAsset Interface
-	virtual int32 CalcCumulativeLODSize(int32 NumLODs) const final override { return CalcTextureMemorySize(NumLODs); }
-	virtual bool StreamOut(int32 NewMipCount) final override;
-	virtual bool StreamIn(int32 NewMipCount, bool bHighPrio) final override;
-	//~ End UStreamableRenderAsset Interface
+	ENGINE_API static bool ShaderPlatformSupportsCompression(EShaderPlatform ShaderPlatform);
 
 protected:
 

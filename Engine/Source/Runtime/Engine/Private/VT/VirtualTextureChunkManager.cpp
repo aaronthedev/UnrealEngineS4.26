@@ -1,10 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VirtualTextureChunkManager.h"
 
 #include "RHI.h"
 #include "ScreenRendering.h"
 #include "UploadingVirtualTexture.h"
+#include "VT/VirtualTexture.h"
 #include "VirtualTextureBuiltData.h"
 #include "BlockCodingHelpers.h"
 #include "CrunchCompression.h"
@@ -22,41 +23,47 @@ static FAutoConsoleVariableRef CVarNumTranscodeRequests(
 	TEXT("Number of transcode request that can be in flight. default 32\n"),
 	ECVF_Default);
 
+static FVirtualTextureChunkStreamingManager* VirtualTexturePageStreamingManager = nullptr;
+struct FVirtualTextureChunkStreamingManager& FVirtualTextureChunkStreamingManager::Get()
+{
+	if (VirtualTexturePageStreamingManager == nullptr)
+	{
+		VirtualTexturePageStreamingManager = new FVirtualTextureChunkStreamingManager();
+	}
+	return *VirtualTexturePageStreamingManager;
+}
+
 FVirtualTextureChunkStreamingManager::FVirtualTextureChunkStreamingManager()
 {
+	IStreamingManager::Get().AddStreamingManager(this);
 #if WITH_EDITOR
 	GetVirtualTextureChunkDDCCache()->Initialize();
 #endif
-	BeginInitResource(&UploadCache);
 }
 
 FVirtualTextureChunkStreamingManager::~FVirtualTextureChunkStreamingManager()
 {
-	UploadCache.ReleaseResource(); // Must be called from rendering thread
 #if WITH_EDITOR
 	GetVirtualTextureChunkDDCCache()->ShutDown();
 #endif
+	IStreamingManager::Get().RemoveStreamingManager(this);
 }
 
 void FVirtualTextureChunkStreamingManager::UpdateResourceStreaming(float DeltaTime, bool bProcessEverything /*= false*/)
 {
-	// It's OK to execute update if virtual texturing is disabled but we early out anyway to avoid an unnecessary render thread task.
-	if (UseVirtualTexturing(GMaxRHIFeatureLevel))
+	FVirtualTextureChunkStreamingManager* StreamingManager = this;
+
+	ENQUEUE_RENDER_COMMAND(UpdateVirtualTextureStreaming)(
+		[StreamingManager](FRHICommandListImmediate& RHICmdList)
 	{
-		FVirtualTextureChunkStreamingManager* StreamingManager = this;
-
-		ENQUEUE_RENDER_COMMAND(UpdateVirtualTextureStreaming)(
-			[StreamingManager](FRHICommandListImmediate& RHICmdList)
-			{
 #if WITH_EDITOR
-				GetVirtualTextureChunkDDCCache()->UpdateRequests();
+		GetVirtualTextureChunkDDCCache()->UpdateRequests();
 #endif // WITH_EDITOR
-				StreamingManager->TranscodeCache.RetireOldTasks(StreamingManager->UploadCache);
-				StreamingManager->UploadCache.UpdateFreeList();
+		StreamingManager->TranscodeCache.RetireOldTasks(StreamingManager->UploadCache);
+		StreamingManager->UploadCache.UpdateFreeList();
 
-				FVirtualTextureCodec::RetireOldCodecs();
-			});
-	}
+		FVirtualTextureCodec::RetireOldCodecs();
+	});
 }
 
 int32 FVirtualTextureChunkStreamingManager::BlockTillAllRequestsFinished(float TimeLimit /*= 0.0f*/, bool bLogResults /*= false*/)
@@ -67,6 +74,17 @@ int32 FVirtualTextureChunkStreamingManager::BlockTillAllRequestsFinished(float T
 
 void FVirtualTextureChunkStreamingManager::CancelForcedResources()
 {
+
+}
+
+static EAsyncIOPriorityAndFlags GetAsyncIOPriority(EVTRequestPagePriority Priority)
+{
+	switch (Priority)
+	{
+	case EVTRequestPagePriority::High: return AIOP_High;
+	case EVTRequestPagePriority::Normal: return AIOP_Normal;
+	default: check(false); return AIOP_Normal;
+	}
 }
 
 FVTRequestPageResult FVirtualTextureChunkStreamingManager::RequestTile(FUploadingVirtualTexture* VTexture, const FVirtualTextureProducerHandle& ProducerHandle, uint8 LayerMask, uint8 vLevel, uint32 vAddress, EVTRequestPagePriority Priority)
@@ -103,8 +121,9 @@ FVTRequestPageResult FVirtualTextureChunkStreamingManager::RequestTile(FUploadin
 		return EVTRequestPageStatus::Saturated;
 	}
 
+	const EAsyncIOPriorityAndFlags AsyncIOPriority = GetAsyncIOPriority(Priority);
 	FGraphEventArray GraphCompletionEvents;
-	const FVTCodecAndStatus CodecResult = VTexture->GetCodecForChunk(GraphCompletionEvents, ChunkIndex, Priority);
+	const FVTCodecAndStatus CodecResult = VTexture->GetCodecForChunk(GraphCompletionEvents, ChunkIndex, AsyncIOPriority);
 	if (!VTRequestPageStatus_HasData(CodecResult.Status))
 	{
 		// May fail to get codec if the file cache is saturated
@@ -127,7 +146,7 @@ FVTRequestPageResult FVirtualTextureChunkStreamingManager::RequestTile(FUploadin
 	const uint32 OffsetEnd = VTData->GetTileOffset(ChunkIndex, TileIndex + MaxLayerIndex + 1u);
 	const uint32 RequestSize = OffsetEnd - OffsetStart;
 
-	const FVTDataAndStatus TileDataResult = VTexture->ReadData(GraphCompletionEvents, ChunkIndex, OffsetStart, RequestSize, Priority);
+	const FVTDataAndStatus TileDataResult = VTexture->ReadData(GraphCompletionEvents, ChunkIndex, OffsetStart, RequestSize, AsyncIOPriority);
 	if (!VTRequestPageStatus_HasData(TileDataResult.Status))
 	{
 		return TileDataResult.Status;

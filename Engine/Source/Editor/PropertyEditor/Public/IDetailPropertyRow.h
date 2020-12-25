@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,8 +9,6 @@
 #include "PropertyHandle.h"
 
 class FDetailWidgetRow;
-class FDetailWidgetDecl;
-
 
 DECLARE_DELEGATE_RetVal_OneParam(bool, FIsResetToDefaultVisible, TSharedPtr<IPropertyHandle> /* PropertyHandle */);
 DECLARE_DELEGATE_OneParam(FResetToDefaultHandler, TSharedPtr<IPropertyHandle> /* PropertyHandle*/);
@@ -186,24 +184,10 @@ public:
 	virtual void GetDefaultWidgets( TSharedPtr<SWidget>& OutNameWidget, TSharedPtr<SWidget>& OutValueWidget, FDetailWidgetRow& Row, bool bAddWidgetDecoration = false ) = 0;
 
 	/**
-	 * Overrides the property widget. Destroys any existing custom property widgets.
+	 * Overrides the property widget
 	 *
 	 * @param bShowChildren	Whether or not to still show any children of this property
 	 * @return a row for the property that custom widgets can be added to
 	 */
 	virtual FDetailWidgetRow& CustomWidget( bool bShowChildren = false ) = 0;
-
-	/**
-	 * Gives a non-owning pointer to name widget on existing custom property widget if it exists.
-	 *
-	 * @return	Pointer to name widget if custom property widget already exists, nullptr otherwise
-	 */
-	virtual FDetailWidgetDecl* CustomNameWidget() = 0;
-
-	/**
-	 * Gives a non-owning pointer to value widget on existing custom property widget if it exists.
-	 *
-	 * @return	Pointer to value widget if custom property widget already exists, nullptr otherwise
-	 */
-	virtual FDetailWidgetDecl* CustomValueWidget() = 0;
 };

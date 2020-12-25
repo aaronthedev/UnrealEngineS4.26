@@ -97,11 +97,11 @@ void addString(MObject & iParent, const std::string & iAttrName,
     MObject attrObj = attr.create(attrName, attrName, MFnData::kString,
         strAttrObject);
     MFnDependencyNode parentFn(iParent);
-    parentFn.addAttribute(attrObj);
+    parentFn.addAttribute(attrObj, MFnDependencyNode::kLocalDynamicAttr);
 
     // work around bug where this string wasn't getting saved to a file when
     // it is the default value
-    MPlug plug = parentFn.findPlug(attrName, true);
+    MPlug plug = parentFn.findPlug(attrName);
     if (!plug.isNull())
     {
         plug.setString(attrValue);
@@ -161,7 +161,7 @@ bool addArrayProp(Alembic::Abc::IArrayProperty & iProp, MObject & iParent)
 {
     MFnDependencyNode parentFn(iParent);
     MString attrName(iProp.getName().c_str());
-    MPlug plug = parentFn.findPlug(attrName, true);
+    MPlug plug = parentFn.findPlug(attrName);
 
     MFnTypedAttribute typedAttr;
     MFnNumericAttribute numAttr;
@@ -866,9 +866,10 @@ bool addArrayProp(Alembic::Abc::IArrayProperty & iProp, MObject & iParent)
                 attrObj = typedAttr.create(attrName, attrName, MFnData::kString,
                         MObject::kNullObj);
 
-                parentFn.addAttribute(attrObj);
+                parentFn.addAttribute(attrObj,
+                    MFnDependencyNode::kLocalDynamicAttr);
 
-                plug = parentFn.findPlug(attrName, true);
+                plug = parentFn.findPlug(attrName);
                 if (!plug.isNull())
                 {
                     plug.setValue(strAttrObject);
@@ -951,9 +952,9 @@ bool addArrayProp(Alembic::Abc::IArrayProperty & iProp, MObject & iParent)
                 attrObj = typedAttr.create(attrName, attrName, MFnData::kString,
                         MObject::kNullObj);
 
-                parentFn.addAttribute(attrObj);
+                parentFn.addAttribute(attrObj,  MFnDependencyNode::kLocalDynamicAttr);
 
-                plug = parentFn.findPlug(attrName, true);
+                plug = parentFn.findPlug(attrName);
                 if (!plug.isNull())
                 {
                     plug.setValue(strAttrObject);
@@ -982,7 +983,7 @@ bool addArrayProp(Alembic::Abc::IArrayProperty & iProp, MObject & iParent)
 
     if ( ! parentFn.hasAttribute( attrName ) )
     {
-        parentFn.addAttribute(attrObj);
+        parentFn.addAttribute(attrObj,  MFnDependencyNode::kLocalDynamicAttr);
     }
 
     addArbAttrAndScope(iParent, iProp.getName(),
@@ -1058,9 +1059,6 @@ addScalarExtentThreeProp(Alembic::Abc::IScalarProperty& iProp,
         {
             if (numChildren > extent)
                 numChildren = extent;
-
-            if (numChildren > 3)
-                numChildren = 3;
 
             for (unsigned int i = 0; i < numChildren; ++i)
                 plug.child(i).setValue(val[i]);
@@ -1158,7 +1156,7 @@ bool addScalarProp(Alembic::Abc::IScalarProperty & iProp, MObject & iParent)
 {
     MFnDependencyNode parentFn(iParent);
     MString attrName(iProp.getName().c_str());
-    MPlug plug = parentFn.findPlug(attrName, true);
+    MPlug plug = parentFn.findPlug(attrName);
 
     MFnTypedAttribute typedAttr;
     MFnNumericAttribute numAttr;
@@ -1293,9 +1291,9 @@ bool addScalarProp(Alembic::Abc::IScalarProperty & iProp, MObject & iParent)
           attrObj = typedAttr.create(attrName, attrName, MFnData::kString,
                         MObject::kNullObj);
 
-          parentFn.addAttribute(attrObj);
+          parentFn.addAttribute(attrObj,  MFnDependencyNode::kLocalDynamicAttr);
 
-          plug = parentFn.findPlug(attrName, true);
+          plug = parentFn.findPlug(attrName);
           if (!plug.isNull())
           {
              plug.setValue(strAttrObject);
@@ -1320,7 +1318,7 @@ bool addScalarProp(Alembic::Abc::IScalarProperty & iProp, MObject & iParent)
 
     if ( ! parentFn.hasAttribute( attrName ) )
     {
-        parentFn.addAttribute(attrObj);
+        parentFn.addAttribute(attrObj,  MFnDependencyNode::kLocalDynamicAttr);
     }
 
     addArbAttrAndScope(iParent, iProp.getName(),
@@ -2599,23 +2597,6 @@ void readProp(double iFrame,
         iHandle.set(attrObj);
 }
 
-PointsSampleData::PointsSampleData()
-{
-	name = "default";
-	extent = 0;
-}
-
-PointsSampleData & PointsSampleData::operator=(const PointsSampleData & other)
-{
-	arrayProp = other.arrayProp;
-	origName = other.origName;
-	name = other.name;
-	extent = other.extent;
-	scope = other.scope;
-
-	return *this;
-}
-
 WriterData::WriterData()
 {
 }
@@ -2658,9 +2639,6 @@ WriterData & WriterData::operator=(const WriterData & rhs)
     mLocObjList = rhs.mLocObjList;
 
     mNumCurves = rhs.mNumCurves;
-
-	mPointsDataList = rhs.mPointsDataList;
-	mPointsListInitializedConstant = rhs.mPointsListInitializedConstant;
 
     return *this;
 }
@@ -2809,18 +2787,6 @@ void WriterData::getFrameRange(double & oMin, double & oMax)
         }
     }
 
-    iEnd = mPointsList.size();
-    for (i = 0; i < iEnd; ++i)
-    {
-        ts = mPointsList[i].getSchema().getTimeSampling();
-        std::size_t numSamples = mPointsList[i].getSchema().getNumSamples();
-        if (numSamples > 1)
-        {
-            oMin = std::min(ts->getSampleTime(0), oMin);
-            oMax = std::max(ts->getSampleTime(numSamples-1), oMax);
-        }
-    }
-
     iEnd = mPropList.size();
     for (i = 0; i < iEnd; ++i)
     {
@@ -2956,7 +2922,6 @@ MString connectAttr(ArgData & iArgData)
     MPlug srcPlug, dstPlug;
 
     MObject alembicNodeObj = modifier.createNode("AlembicNode", &status);
-    modifier.doIt();
     MFnDependencyNode alembicNodeFn(alembicNodeObj, &status);
 
     AlembicNode *alembicNodePtr =
@@ -2974,14 +2939,15 @@ MString connectAttr(ArgData & iArgData)
         MFnNumericAttribute numAttr;
         MObject attrObj = numAttr.create("allColorSets", "allColorSets",
             MFnNumericData::kBoolean);
-        alembicNodeFn.addAttribute(attrObj);
+        alembicNodeFn.addAttribute(attrObj,
+            MFnDependencyNode::kLocalDynamicAttr);
     }
 
     // set AlembicNode name
     MString fileName;
     stripFileName((*iArgData.mFileNames.begin()).c_str(), fileName);
     MString alembicNodeName = fileName +"_AlembicNode";
-    alembicNodeFn.setName(alembicNodeName, false, &status);
+    alembicNodeFn.setName(alembicNodeName, &status);
 
     // set input file name (Deprecated but leaving here for legacy support)
     MPlug plug = alembicNodeFn.findPlug("abc_File", true, &status);
@@ -3002,7 +2968,7 @@ MString connectAttr(ArgData & iArgData)
 
         MObject updatedFilenameData = MFnStringArrayData().create( filenameStorage, &status );
 
-        if( status == MStatus::kSuccess )
+        if( status = MStatus::kSuccess )
         {
             layerFilesPlug.setValue( updatedFilenameData );
         }
@@ -3283,56 +3249,7 @@ MString connectAttr(ArgData & iArgData)
 
     if (particleSize > 0)
     {
-        MPlug compoundArrayPlug = alembicNodeFn.findPlug( "outPoints", true, &status);
-        MPlug arrayPlug = alembicNodeFn.findPlug( "outPoints", true, &status);
-		MCHECKERROR_NO_RET(status);
-
-//        MPlug compoundPlug;
-        MObject srcObj;
-        MObject dstObj;
-        MPlugArray inPlugToDisconnect;
-        for (unsigned int i = 0; i < particleSize; i++)
-        {
-            MFnDependencyNode fnParticle(iArgData.mData.mPointsObjList[i]);
-
-		// Play From Cache
-            dstPlug = fnParticle.findPlug("playFromCache", true);
-            srcPlug = alembicNodeFn.findPlug("playFromCache", true);
-            status = modifier.connect(srcPlug, dstPlug);
-			MCHECKERROR_NO_RET(status);
-
-		// Time
-            dstPlug = fnParticle.findPlug("currentTime", true);
-            srcPlug = alembicNodeFn.findPlug("time", true);
-
-			// Disconnect input connection
-            if ( dstPlug.isDestination() )
-            {
-            	status = disconnectAllPlugsTo(dstPlug);
-            	MCHECKERROR_NO_RET(status);
-            }
-            status = modifier.connect(srcPlug, dstPlug);
-            MCHECKERROR_NO_RET(status);
-
-		// Cache Array
-            dstPlug = fnParticle.findPlug("cacheArrayData", true);
-            srcPlug = arrayPlug.elementByLogicalIndex( i, &status);
-            MCHECKERROR_NO_RET(status);
-
-			// Disconnect input connection
-            if ( dstPlug.isDestination() )
-            {
-            	status = disconnectAllPlugsTo(dstPlug);
-            	MCHECKERROR_NO_RET(status);
-            }
-
-            status = modifier.connect(srcPlug, dstPlug);
-            MCHECKERROR_NO_RET(status);
-
-            status = modifier.doIt();
-            MCHECKERROR_NO_RET(status);
-        }
-
+        printWarning("Currently no support for animated particle system");
     }
 
     if (nSurfaceSize > 0)

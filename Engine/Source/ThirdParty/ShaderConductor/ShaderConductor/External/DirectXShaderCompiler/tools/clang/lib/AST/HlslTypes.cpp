@@ -223,20 +223,6 @@ bool HasHLSLUNormSNorm(clang::QualType type, bool *pIsSNorm) {
   return false;
 }
 
-bool HasHLSLGloballyCoherent(clang::QualType type) {
-  const AttributedType *AT = type->getAs<AttributedType>();
-  while (AT) {
-    AttributedType::Kind kind = AT->getAttrKind();
-    switch (kind) {
-    case AttributedType::attr_hlsl_globallycoherent:
-      return true;
-    }
-    AT = AT->getLocallyUnqualifiedSingleStepDesugaredType()
-             ->getAs<AttributedType>();
-  }
-  return false;
-}
-
 /// Checks whether the pAttributes indicate a parameter is inout or out; if
 /// inout, pIsIn will be set to true.
 bool IsParamAttributedAsOut(_In_opt_ clang::AttributeList *pAttributes,
@@ -525,9 +511,6 @@ bool IsHLSLResourceType(clang::QualType type) {
     if (name == "TextureCubeArray" || name == "RWTextureCubeArray")
       return true;
 
-    if (name == "FeedbackTexture2D" || name == "FeedbackTexture2DArray")
-      return true;
-
     if (name == "ByteAddressBuffer" || name == "RWByteAddressBuffer")
       return true;
 
@@ -576,8 +559,6 @@ bool GetHLSLSubobjectKind(clang::QualType type, DXIL::SubobjectKind &subobjectKi
       return name == "RaytracingShaderConfig" ? (subobjectKind = DXIL::SubobjectKind::RaytracingShaderConfig, true) : false;
     case 24:
       return name == "RaytracingPipelineConfig" ? (subobjectKind = DXIL::SubobjectKind::RaytracingPipelineConfig, true) : false;
-    case 25:
-      return name == "RaytracingPipelineConfig1" ? (subobjectKind = DXIL::SubobjectKind::RaytracingPipelineConfig1, true) : false;
     case 16:
       if (name == "TriangleHitGroup") {
         subobjectKind = DXIL::SubobjectKind::HitGroup;
@@ -597,20 +578,6 @@ bool GetHLSLSubobjectKind(clang::QualType type, DXIL::SubobjectKind &subobjectKi
   return false;
 }
 
-bool IsHLSLRayQueryType(clang::QualType type) {
-  type = type.getCanonicalType();
-  if (const RecordType *RT = dyn_cast<RecordType>(type)) {
-    if (const ClassTemplateSpecializationDecl *templateDecl =
-            dyn_cast<ClassTemplateSpecializationDecl>(
-                RT->getAsCXXRecordDecl())) {
-      StringRef name = templateDecl->getName();
-      if (name == "RayQuery")
-        return true;
-    }
-  }
-  return false;
-}
-
 QualType GetHLSLResourceResultType(QualType type) {
   // Don't canonicalize the type as to not lose snorm in Buffer<snorm float>
   const RecordType *RT = type->getAs<RecordType>();
@@ -618,40 +585,29 @@ QualType GetHLSLResourceResultType(QualType type) {
 
   if (const ClassTemplateSpecializationDecl *templateDecl =
     dyn_cast<ClassTemplateSpecializationDecl>(RD)) {
-    
-    if (RD->getName().startswith("FeedbackTexture")) {
-      // Feedback textures are write-only and the data is opaque,
-      // so there is no result type per se.
-      return {};
-    }
-    
-    // Type-templated resource types
+    // Templated resource types
 
-    // Prefer getting the template argument from the TemplateSpecializationType sugar,
+    // First attempt to get the template argument from the TemplateSpecializationType sugar,
     // since this preserves 'snorm' from 'Buffer<snorm float>' which is lost on the
     // ClassTemplateSpecializationDecl since it's considered type sugar.
-    const TemplateArgument* templateArg = &templateDecl->getTemplateArgs()[0];
     if (const TemplateSpecializationType *specializationType = type->getAs<TemplateSpecializationType>()) {
       if (specializationType->getNumArgs() >= 1) {
-        templateArg = &specializationType->getArg(0);
+        const TemplateArgument& templateArg = specializationType->getArg(0);
+        return templateArg.getAsType();
       }
     }
 
-    if (templateArg->getKind() == TemplateArgument::ArgKind::Type)
-      return templateArg->getAsType();
+    const TemplateArgumentList& argList = templateDecl->getTemplateArgs();
+    DXASSERT(argList.size() >= 1, "Templated resource must have at least one argument");
+    return argList[0].getAsType();
   }
-
-  // Non-type-templated resource types like [RW][RasterOrder]ByteAddressBuffer
-  // Get the result type from handle field.
-  FieldDecl* HandleFieldDecl = *(RD->field_begin());
-  DXASSERT(HandleFieldDecl->getName() == "h", "Resource must have a handle field");
-  return HandleFieldDecl->getType();
-}
-
-unsigned GetHLSLResourceTemplateUInt(clang::QualType type) {
-  const ClassTemplateSpecializationDecl* templateDecl = cast<ClassTemplateSpecializationDecl>(
-    type->castAs<RecordType>()->getDecl());
-  return (unsigned)templateDecl->getTemplateArgs()[0].getAsIntegral().getZExtValue();
+  else {
+    // Non-templated resource types like [RW][RasterOrder]ByteAddressBuffer
+    // Get the result type from handle field.
+    FieldDecl* HandleFieldDecl = *(RD->field_begin());
+    DXASSERT(HandleFieldDecl->getName() == "h", "Resource must have a handle field");
+    return HandleFieldDecl->getType();
+  }
 }
 
 bool IsIncompleteHLSLResourceArrayType(clang::ASTContext &context,

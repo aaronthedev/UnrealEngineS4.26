@@ -1,12 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraNodeAssignment.h"
 #include "UObject/UnrealType.h"
 #include "NiagaraGraph.h"
 #include "NiagaraScriptSource.h"
 #include "NiagaraScript.h"
-#include "NiagaraSystem.h"
-#include "NiagaraSystemEditorData.h"
 #include "NiagaraNodeInput.h"
 #include "NiagaraNodeOutput.h"
 #include "EdGraphSchema_Niagara.h"
@@ -23,9 +21,6 @@
 #include "ScopedTransaction.h"
 #include "ViewModels/Stack/INiagaraStackItemGroupAddUtilities.h"
 #include "ViewModels/Stack/NiagaraStackGraphUtilities.h"
-#include "Widgets/Layout/SBox.h"
-#include "Widgets/SNiagaraParameterName.h"
-#include "NiagaraCustomVersion.h"
 
 #define LOCTEXT_NAMESPACE "NiagaraNodeAssigment"
 
@@ -37,37 +32,7 @@ void UNiagaraNodeAssignment::AllocateDefaultPins()
 
 FText UNiagaraNodeAssignment::GetNodeTitle(ENodeTitleType::Type TitleType) const
 {
-	return Title;
-}
-
-void UNiagaraNodeAssignment::RefreshTitle()
-{
-	if (AssignmentTargets.Num() == 1)
-	{
-		Title = FText::Format(LOCTEXT("NodeTitleSingle", "Set {0}"), FNiagaraParameterUtilities::FormatParameterNameForTextDisplay(AssignmentTargets[0].GetName()));
-	}
-	else if (AssignmentTargets.Num() > 1)
-	{
-		Title = FText::Format(LOCTEXT("NodeTitleMultiple", "Set {0} (+{1})"), FNiagaraParameterUtilities::FormatParameterNameForTextDisplay(AssignmentTargets[0].GetName()), AssignmentTargets.Num() - 1);
-	}
-	else
-	{
-		Title = LOCTEXT("NodeTitle", "Set Parameters");
-	}
-}
-
-FText UNiagaraNodeAssignment::GetTooltipText() const
-{
-	FText BaseText = LOCTEXT("NodeTooltipFormat", "Sets these parameters in the stack:");
-
-	TArray<FText> TargetNames;
-	TargetNames.Add(BaseText);
-	for (const FNiagaraVariable& Var : AssignmentTargets)
-	{
-		TargetNames.Add(FText::Format(LOCTEXT("Indent", "\t{0}"), FNiagaraParameterUtilities::FormatParameterNameForTextDisplay(Var.GetName())));
-	}
-
-	return FText::Join(FText::FromString("\n"), TargetNames);
+	return LOCTEXT("NodeTitle", "Set Variables");
 }
 
 bool UNiagaraNodeAssignment::RefreshFromExternalChanges()
@@ -75,8 +40,6 @@ bool UNiagaraNodeAssignment::RefreshFromExternalChanges()
 	FunctionScript = nullptr;
 	GenerateScript();
 	ReallocatePins();
-	RefreshTitle();
-	OnInputsChangedDelegate.Broadcast();
 	return true;
 }
 
@@ -105,7 +68,7 @@ void UNiagaraNodeAssignment::PostLoad()
 		TMap<FString, FString> AliasMap;
 		AliasMap.Add(OldFunctionCallName, FunctionDisplayName + TEXT(".") + VarNamespace);
 		FNiagaraVariable RemapVar = FNiagaraVariable(AssignmentTarget_DEPRECATED.GetType(), *(OldFunctionCallName + TEXT(".") + TargetHandle.GetName().ToString()));
-		FNiagaraVariable NewVar = FNiagaraParameterMapHistory::ResolveAliases(RemapVar, AliasMap);
+		FNiagaraVariable NewVar = FNiagaraParameterMapHistory::ResolveAliases(RemapVar, AliasMap, TEXT("."));
 		Converted.Add(RemapVar, NewVar);
 
 		bool bConvertedAnything = false;
@@ -120,7 +83,7 @@ void UNiagaraNodeAssignment::PostLoad()
 			{
 				SetNode->ConditionalPostLoad();
 
-				FPinCollectorArray InputPins;
+				TArray<UEdGraphPin*> InputPins;
 				SetNode->GetInputPins(InputPins);
 
 				const UEdGraphSchema_Niagara* NiagaraSchema = GetDefault<UEdGraphSchema_Niagara>();
@@ -212,20 +175,6 @@ void UNiagaraNodeAssignment::PostLoad()
 			}
 		}
 	}
-
-	const int32 NiagaraVer = GetLinkerCustomVersion(FNiagaraCustomVersion::GUID);
-	if (NiagaraVer < FNiagaraCustomVersion::StandardizeParameterNames)
-	{
-		for (FNiagaraVariable& AssignmentTarget : AssignmentTargets)
-		{
-			FName CurrentName = AssignmentTarget.GetName();
-			FName NewName = UNiagaraGraph::StandardizeName(CurrentName, ENiagaraScriptUsage::Module, false, true);
-			AssignmentTarget.SetName(NewName);
-		}
-		RefreshFromExternalChanges();
-	}
-
-	RefreshTitle();
 }
 
 void UNiagaraNodeAssignment::BuildParameterMapHistory(FNiagaraParameterMapHistoryBuilder& OutHistory, bool bRecursive /*= true*/, bool bFilterForCompilation /*= true*/) const
@@ -233,7 +182,7 @@ void UNiagaraNodeAssignment::BuildParameterMapHistory(FNiagaraParameterMapHistor
 	Super::BuildParameterMapHistory(OutHistory, bRecursive, bFilterForCompilation);
 }
 
-void UNiagaraNodeAssignment::GatherExternalDependencyData(ENiagaraScriptUsage InMasterUsage, const FGuid& InMasterUsageId, TArray<FNiagaraCompileHash>& InReferencedCompileHashes, TArray<FString>& InReferencedObjs) const
+void UNiagaraNodeAssignment::GatherExternalDependencyData(ENiagaraScriptUsage InMasterUsage, const FGuid& InMasterUsageId, TArray<FNiagaraCompileHash>& InReferencedCompileHashes, TArray<UObject*>& InReferencedObjs) const
 {
 	// Assignment nodes own their function graphs and therefore have no external dependencies so we override the default function behavior here to avoid 
 	// adding additional non-deterministic guids to the compile id generation which can invalid the DDC for compiled scripts, especially during emitter merging.
@@ -243,7 +192,7 @@ void UNiagaraNodeAssignment::GenerateScript()
 {
 	if (FunctionScript == nullptr)
 	{
-		FunctionScript = NewObject<UNiagaraScript>(this, FName(*(TRANSLATOR_SET_VARIABLES_UNDERSCORE_STR + NodeGuid.ToString())), RF_Transactional);
+		FunctionScript = NewObject<UNiagaraScript>(this, FName(*(TEXT("SetVariables_") + NodeGuid.ToString())), RF_Transactional);
 		FunctionScript->SetUsage(ENiagaraScriptUsage::Module);
 		FunctionScript->Description = LOCTEXT("AssignmentNodeDesc", "Sets one or more variables in the stack.");
 		InitializeScript(FunctionScript);
@@ -257,100 +206,36 @@ void UNiagaraNodeAssignment::MergeUp()
 	//NiagaraStackUtilities::
 }
 
-void UNiagaraNodeAssignment::CollectAddExistingActions(ENiagaraScriptUsage InUsage, UNiagaraNodeOutput* InGraphOutputNode, TArray<TSharedPtr<FNiagaraMenuAction>>& OutAddExistingActions)
+void UNiagaraNodeAssignment::BuildAddParameterMenu(FMenuBuilder& MenuBuilder, ENiagaraScriptUsage InUsage, UNiagaraNodeOutput* InGraphOutputNode)
 {
-	UNiagaraSystem* OwningSystem = GetTypedOuter<UNiagaraSystem>();
-	if (OwningSystem == nullptr)
-	{
-		return;
-	}
-
-	UNiagaraSystemEditorData* OwningSystemEditorData = Cast<UNiagaraSystemEditorData>(OwningSystem->GetEditorData());
-	if (OwningSystemEditorData == nullptr)
-	{
-		return;
-	}
-
-	bool bOwningSystemIsPlaceholder = OwningSystemEditorData->GetOwningSystemIsPlaceholder();
-
-	TOptional<FName> StackContextOverride = InGraphOutputNode->GetStackContextOverride();
-
 	TArray<FNiagaraVariable> AvailableParameters;
-	TArray<FName> CustomIterationNamespaces;
-	FNiagaraStackGraphUtilities::GetAvailableParametersForScript(*InGraphOutputNode, AvailableParameters, CustomIterationNamespaces);
-
-	TArray<FName> AvailableWriteNamespaces;
-	FNiagaraStackGraphUtilities::GetNamespacesForNewWriteParameters(
-		bOwningSystemIsPlaceholder ? FNiagaraStackGraphUtilities::EStackEditContext::Emitter : FNiagaraStackGraphUtilities::EStackEditContext::System,
-		InUsage, StackContextOverride, AvailableWriteNamespaces);
-
-	// Now check to see if any of the available write namespaces have overlap with the iteration namespaces. If so, we need to exclude them if they aren't the active stack context.
-	// This is for situations like Emitter.Grid2DCollection.TestValue which should only be written if in the sim stage scripts and not emitter scripts, which would normally be allowed.
-	TArray<FName> ExclusionList;
-	for (const FName& IterationNamespace : CustomIterationNamespaces)
-	{
-		FNiagaraVariableBase TempVar(FNiagaraTypeDefinition::GetFloatDef(), IterationNamespace);
-		for (const FName& AvailableWriteNamespace : AvailableWriteNamespaces)
-		{
-			if (TempVar.IsInNameSpace(AvailableWriteNamespace))
-			{
-				if (!StackContextOverride.IsSet() || (StackContextOverride.IsSet() && IterationNamespace != StackContextOverride.GetValue()))
-					ExclusionList.AddUnique(IterationNamespace);
-			}
-		}
-	}
+	FNiagaraStackGraphUtilities::GetAvailableParametersForScript(*InGraphOutputNode, AvailableParameters);
 
 	for (const FNiagaraVariable& AvailableParameter : AvailableParameters)
 	{
-		bool bFound = false;
-		// Now check to see if the variable is possible to write to
-		for (const FName& AvailableWriteNamespace : AvailableWriteNamespaces)
-		{
-			if (AvailableParameter.IsInNameSpace(AvailableWriteNamespace))
-			{
-				bFound = true;
-				break;
-			}
-		}
-
-		if (!bFound)
-			continue;
-
-		// Now double-check that it doesn't overlap with a sub-namespace we're not allowed to write to
-		bFound = false;
-		for (const FName& ExcludedNamespace : ExclusionList)
-		{
-			if (AvailableParameter.IsInNameSpace(ExcludedNamespace))
-			{
-				bFound = true;
-				break;
-			}
-		}
-
-		if (bFound)
-			continue;
-
-		const FText NameText = FText::FromName(AvailableParameter.GetName());
+		FString DisplayNameString = FName::NameToDisplayString(AvailableParameter.GetName().ToString(), false);
+		const FText NameText = FText::FromString(DisplayNameString);
 		FText VarDesc = FNiagaraConstants::GetAttributeDescription(AvailableParameter);
 		FString VarDefaultValue = FNiagaraConstants::GetAttributeDefaultValue(AvailableParameter);
-		const FText TooltipDesc = FText::Format(LOCTEXT("SetFunctionPopupTooltip", "Description: Set the parameter {0}. {1}"), NameText, VarDesc);
-		FText Category = LOCTEXT("ModuleSetCategory", "Set Specific Parameters");
+		const FText TooltipDesc = FText::Format(LOCTEXT("SetFunctionPopupTooltip", "Description: Set the parameter {0}. {1}"), FText::FromName(AvailableParameter.GetName()), VarDesc);
+		FText CategoryName = LOCTEXT("ModuleSetCategory", "Set Specific Parameters");
 		bool bCanExecute = AssignmentTargets.Contains(AvailableParameter) == false; 
 
-		TSharedRef<FNiagaraMenuAction> AddExistingAction = MakeShareable<FNiagaraMenuAction>(new FNiagaraMenuAction(
-			Category, NameText, TooltipDesc,
-			0, FText(),
-			FNiagaraMenuAction::FOnExecuteStackAction::CreateUObject(this, &UNiagaraNodeAssignment::AddParameter, AvailableParameter, VarDefaultValue),
-			FNiagaraMenuAction::FCanExecuteStackAction::CreateLambda([bCanExecute] { return bCanExecute; })));
-		AddExistingAction->SetParamterVariable(AvailableParameter);
-		OutAddExistingActions.Add(AddExistingAction);
+		MenuBuilder.AddMenuEntry(
+			NameText,
+			TooltipDesc,
+			FSlateIcon(),
+			FUIAction(
+				FExecuteAction::CreateUObject(this, &UNiagaraNodeAssignment::AddParameter, AvailableParameter, VarDefaultValue),
+				FCanExecuteAction::CreateLambda([bCanExecute] { return bCanExecute; })));
 	}
+
 }
 
-void UNiagaraNodeAssignment::CollectCreateNewActions(ENiagaraScriptUsage InUsage, UNiagaraNodeOutput* InGraphOutputNode, TArray<TSharedPtr<FNiagaraMenuAction>>& OutCreateNewActions)
+void UNiagaraNodeAssignment::BuildCreateParameterMenu(FMenuBuilder& MenuBuilder, ENiagaraScriptUsage InUsage, UNiagaraNodeOutput* InGraphOutputNode)
 {
 	// Generate actions for creating new typed parameters.
-	TOptional<FName> NewParameterNamespace = FNiagaraStackGraphUtilities::GetNamespaceForOutputNode(InGraphOutputNode);
+	TOptional<FName> NewParameterNamespace = FNiagaraStackGraphUtilities::GetNamespaceForScriptUsage(InGraphOutputNode->GetUsage());
 	if (NewParameterNamespace.IsSet())
 	{
 		// Collect all parameter names for ensuring new param has unique name
@@ -385,14 +270,13 @@ void UNiagaraNodeAssignment::CollectCreateNewActions(ENiagaraScriptUsage InUsage
 			const FText TypeText = AvailableType.GetNameText();
 			const FText TooltipDesc = FText::Format(LOCTEXT("NewParameterModuleDescriptionFormat", "Description: Create a new {0} parameter. {1}"), TypeText, VarDesc);
 			FText Category = LOCTEXT("NewParameterModuleCategory", "Create New Parameter");
-			FText SubCategory = FNiagaraEditorUtilities::GetVariableTypeCategory(NewParameter);
-			FText FullCategory = SubCategory.IsEmpty() ? Category : FText::Format(FText::FromString("{0}|{1}"), Category, SubCategory);
 
-			TSharedRef<FNiagaraMenuAction> CreateNewAction = MakeShareable<FNiagaraMenuAction>(new FNiagaraMenuAction(
-				FullCategory, TypeText, TooltipDesc,
-				0, FText(),
-				FNiagaraMenuAction::FOnExecuteStackAction::CreateUObject(this, &UNiagaraNodeAssignment::AddParameter, NewParameter, VarDefaultValue)));
-			OutCreateNewActions.Add(CreateNewAction);
+			MenuBuilder.AddMenuEntry(
+				TypeText,
+				TooltipDesc,
+				FSlateIcon(),
+				FUIAction(
+					FExecuteAction::CreateUObject(this, &UNiagaraNodeAssignment::AddParameter, NewParameter, VarDefaultValue)));
 		}
 	}
 }
@@ -417,9 +301,7 @@ void UNiagaraNodeAssignment::AddParameter(FNiagaraVariable InVar, FString InDefa
 
 	RefreshFromExternalChanges();
 	MarkNodeRequiresSynchronization(__FUNCTION__, true);
-
-	RefreshTitle();
-	AssignmentTargetsChangedDelegate.Broadcast();
+	OnInputsChangedDelegate.Broadcast();
 }
 
 void UNiagaraNodeAssignment::RemoveParameter(const FNiagaraVariable& InVar)
@@ -447,9 +329,7 @@ void UNiagaraNodeAssignment::RemoveParameter(const FNiagaraVariable& InVar)
 
 	RefreshFromExternalChanges();
 	MarkNodeRequiresSynchronization(__FUNCTION__, true);
-
-	RefreshTitle();
-	AssignmentTargetsChangedDelegate.Broadcast();
+	OnInputsChangedDelegate.Broadcast();
 }
 
 void UNiagaraNodeAssignment::UpdateUsageBitmaskFromOwningScript()
@@ -640,8 +520,6 @@ void UNiagaraNodeAssignment::InitializeScript(UNiagaraScript* NewScript)
 			}
 		}
 	}
-
-	RefreshTitle();
 }
 
 int32 UsageToBitmask(ENiagaraScriptUsage Usage)
@@ -671,14 +549,12 @@ int32 UNiagaraNodeAssignment::CalculateScriptUsageBitmask()
 		}
 		if (UNiagaraScript::IsEquivalentUsage(OutputNode->GetUsage(), ENiagaraScriptUsage::ParticleSpawnScript) ||
 			UNiagaraScript::IsEquivalentUsage(OutputNode->GetUsage(), ENiagaraScriptUsage::ParticleUpdateScript) ||
-			UNiagaraScript::IsEquivalentUsage(OutputNode->GetUsage(), ENiagaraScriptUsage::ParticleEventScript) ||
-			UNiagaraScript::IsEquivalentUsage(OutputNode->GetUsage(), ENiagaraScriptUsage::ParticleSimulationStageScript))
+			UNiagaraScript::IsEquivalentUsage(OutputNode->GetUsage(), ENiagaraScriptUsage::ParticleEventScript))
 		{
 			UsageBitmask =
 				UsageToBitmask(ENiagaraScriptUsage::ParticleSpawnScript) |
 				UsageToBitmask(ENiagaraScriptUsage::ParticleUpdateScript) |
-				UsageToBitmask(ENiagaraScriptUsage::ParticleEventScript) |
-				UsageToBitmask(ENiagaraScriptUsage::ParticleSimulationStageScript);
+				UsageToBitmask(ENiagaraScriptUsage::ParticleEventScript);
 		}
 	}
 	return UsageBitmask;
@@ -722,7 +598,6 @@ int32 UNiagaraNodeAssignment::AddAssignmentTarget(const FNiagaraVariable& InVar,
 	int32 IdxB = AssignmentDefaultValues.AddDefaulted();
 	check(IdxA == IdxB);
 	SetAssignmentTarget(IdxA, InVar, InDefaultValue);
-	AssignmentTargetsChangedDelegate.Broadcast();
 	return IdxA;
 }
 
@@ -744,33 +619,20 @@ bool UNiagaraNodeAssignment::SetAssignmentTarget(int32 Idx, const FNiagaraVariab
 		MarkNodeRequiresSynchronization(__FUNCTION__, true);
 		bRetValue = true;
 	}
-
-	AssignmentTargetsChangedDelegate.Broadcast();
 	return bRetValue;
 }
 
-bool UNiagaraNodeAssignment::RenameAssignmentTarget(FName OldName, FName NewName)
+bool UNiagaraNodeAssignment::SetAssignmentTargetName(int32 Idx, const FName& InName)
 {
-	for (FNiagaraVariable& AssignmentTarget : AssignmentTargets)
+	check(Idx < AssignmentTargets.Num());
+	if (AssignmentTargets[Idx].GetName() != InName)
 	{
-
-		if (AssignmentTarget.GetName() == OldName)
-		{
-			Modify();
-			if (FunctionScript != nullptr)
-			{
-				FunctionScript->Modify();
-				FunctionScript->GetSource()->Modify();
-			}
-
-			AssignmentTarget.SetName(NewName);
-			RefreshTitle();
-			AssignmentTargetsChangedDelegate.Broadcast();
-			return true;
-		}
+		AssignmentTargets[Idx].SetName(InName);
+		MarkNodeRequiresSynchronization(__FUNCTION__, true);
+		return true;
 	}
-
 	return false;
 }
+
 
 #undef LOCTEXT_NAMESPACE

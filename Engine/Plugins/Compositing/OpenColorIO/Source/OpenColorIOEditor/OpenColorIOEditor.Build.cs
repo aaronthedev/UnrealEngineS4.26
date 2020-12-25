@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -23,18 +23,13 @@ namespace UnrealBuildTool.Rules
 					"DesktopWidgets",
 					"EditorStyle",
 					"Engine",
-					"LevelEditor",
 					"OpenColorIO",
 					"OpenColorIOLib",
 					"Projects",
 					"PropertyEditor",
-					"Renderer",
-					"RenderCore",
-					"RHI",
 					"Settings",
 					"Slate",
 					"SlateCore",
-					"ToolMenus",
 					"UnrealEd",
 				});
 

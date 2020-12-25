@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 /**
@@ -28,7 +28,6 @@
 #include "UObject/CoreNet.h"
 #include "Net/DataBunch.h"
 #include "Net/NetAnalyticsTypes.h"
-#include "ProfilingDebugging/CsvProfiler.h"
 #include "PackageMapClient.generated.h"
 
 class UNetConnection;
@@ -310,18 +309,14 @@ private:
 
 	struct FPendingAsyncLoadRequest
 	{
-		FPendingAsyncLoadRequest(const FNetworkGUID InNetGUID, const double InRequestStartTime):
+		FPendingAsyncLoadRequest(const FNetworkGUID InNetGUID, const float InRequestStartTime):
 			NetGUID(InNetGUID),
 			RequestStartTime(InRequestStartTime)
 		{
 		}
 
 		FNetworkGUID NetGUID;
-		double RequestStartTime;
-
-#if CSV_PROFILER
-		bool bWasRequestedByOwnerOrPawn = false;
-#endif
+		float RequestStartTime;
 	};
 
 	/** Set of packages that are currently pending Async loads, referenced by package name. */
@@ -341,53 +336,6 @@ private:
 	 * pending guids. 
 	 */
 	TMap<FNetworkGUID, TWeakPtr<FQueuedBunchObjectReference>> QueuedBunchObjectReferences;
-
-#if CSV_PROFILER
-public:
-
-	bool IsTrackingOwnerOrPawn() const;
-
-	struct FIsOwnerOrPawnHelper
-	{
-	private:
-		friend class UActorChannel;
-
-		FIsOwnerOrPawnHelper(
-			class FNetGUIDCache* const InGuidCache,
-			const class AActor* InConnectionActor,
-			const class AActor* ChannelActor);
-
-	public:
-
-		~FIsOwnerOrPawnHelper();
-
-		bool IsOwnerOrPawn() const;
-
-	private:
-
-		class FNetGUIDCache* const GuidCache;
-		const class AActor* ConnectionActor;
-		const class AActor* ChannelActor;
-		mutable int8 CachedResult = INDEX_NONE;
-
-		// No copying, moving, or constructing off stack.
-		// References or pointers to this class should never be kept alive.
-		FIsOwnerOrPawnHelper(const FIsOwnerOrPawnHelper&) = delete;
-		FIsOwnerOrPawnHelper(FIsOwnerOrPawnHelper&&) = delete;
-
-		FIsOwnerOrPawnHelper& operator=(const FIsOwnerOrPawnHelper&) = delete;
-		FIsOwnerOrPawnHelper& operator=(FIsOwnerOrPawnHelper&&) = delete;
-
-		void* operator new (size_t) = delete;
-		void* operator new[](size_t) = delete;
-		void operator delete (void *) = delete;
-		void operator delete[](void*) = delete;
-	};
-
-private:
-
-	FIsOwnerOrPawnHelper* TrackingOwnerOrPawnHelper = nullptr;
-#endif
 };
 
 class ENGINE_API FPackageMapAckState
@@ -500,18 +448,6 @@ public:
 
 	virtual void Serialize(FArchive& Ar) override;
 
-	FString GetFullNetGUIDPath(const FNetworkGUID& NetGUID) const
-	{
-		FString FullGuidCachePath;
-
-		if (const FNetGUIDCache * const GuidCacheLocal = GuidCache.Get())
-		{
-			FullGuidCachePath = GuidCacheLocal->FullNetGUIDPath(NetGUID);
-		}
-
-		return FullGuidCachePath;
-	}
-
 protected:
 
 	/** Functions to help with exporting/importing net field export info */
@@ -544,7 +480,7 @@ protected:
 	TSet< FNetworkGUID >				CurrentExportNetGUIDs;				// Current list of NetGUIDs being written to the Export Bunch.
 
 	/** Set of Actor NetGUIDs with currently queued bunches and the time they were first queued. */
-	TMap<FNetworkGUID, double> CurrentQueuedBunchNetGUIDs;
+	TMap<FNetworkGUID, float> CurrentQueuedBunchNetGUIDs;
 
 	TArray< FNetworkGUID >				PendingAckGUIDs;					// Quick access to all GUID's that haven't been acked
 
@@ -571,7 +507,6 @@ private:
 
 public:
 
-	int32 GetNumQueuedBunchNetGUIDs() const;
 	void ConsumeQueuedActorDelinquencyAnalytics(FNetQueuedActorDelinquencyAnalytics& Out);
 	const FNetQueuedActorDelinquencyAnalytics& GetQueuedActorDelinquencyAnalytics() const;
 	void ResetQueuedActorDelinquencyAnalytics();

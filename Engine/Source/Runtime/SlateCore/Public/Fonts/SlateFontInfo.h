@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -160,10 +160,6 @@ struct SLATECORE_API FSlateFontInfo
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=SlateStyleRules, meta=(ClampMin=1, ClampMax=1000))
 	int32 Size;
 
-	/** The uniform spacing (or tracking) between all characters in the text. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=SlateStyleRules, meta=(ClampMin=-1000, ClampMax=10000))
-	int32 LetterSpacing = 0;
-
 	/** The font fallback level. Runtime only, don't set on shared FSlateFontInfo, as it may change the font elsewhere (make a copy). */
 	EFontFallback FontFallback;
 
@@ -256,8 +252,7 @@ public:
 			&& OutlineSettings.IsIdenticalTo(Other.OutlineSettings)
 			&& CompositeFont == Other.CompositeFont
 			&& TypefaceFontName == Other.TypefaceFontName
-			&& Size == Other.Size
-			&& LetterSpacing == Other.LetterSpacing;
+			&& Size == Other.Size;
 	}
 
 	inline bool operator==(const FSlateFontInfo& Other) const

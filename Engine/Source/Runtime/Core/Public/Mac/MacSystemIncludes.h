@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 // Set up compiler pragmas, etc
@@ -49,6 +49,9 @@
 #include <signal.h>
 #include <sys/sysctl.h>
 #include <malloc/malloc.h>
+
+// SIMD intrinsics
+#include <xmmintrin.h>
 
 struct tagRECT
 {

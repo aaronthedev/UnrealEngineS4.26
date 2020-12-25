@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -20,7 +20,6 @@ struct FAbcMeshSample
 	FAbcMeshSample(const FAbcMeshSample& InSample)
 	{
 		Vertices = InSample.Vertices;
-		Velocities = InSample.Velocities;
 		Indices = InSample.Indices;
 		Normals = InSample.Normals;
 		TangentX = InSample.TangentX;
@@ -45,7 +44,6 @@ struct FAbcMeshSample
 	void Copy(const FAbcMeshSample* InSample, const ESampleReadFlags ReadFlags);
 
 	TArray<FVector> Vertices;
-	TArray<FVector> Velocities;
 	TArray<uint32> Indices;
 
 	// Vertex attributes (per index based)

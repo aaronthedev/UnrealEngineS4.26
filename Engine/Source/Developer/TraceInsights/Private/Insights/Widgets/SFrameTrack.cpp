@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SFrameTrack.h"
 
@@ -10,6 +10,7 @@
 #include "Rendering/DrawElements.h"
 #include "Styling/CoreStyle.h"
 #include "TraceServices/AnalysisService.h"
+#include "TraceServices/SessionService.h"
 #include "Widgets/Layout/SScrollBar.h"
 
 // Insights
@@ -48,9 +49,6 @@ SFrameTrack::~SFrameTrack()
 void SFrameTrack::Reset()
 {
 	Viewport.Reset();
-	FAxisViewportInt32& ViewportX = Viewport.GetHorizontalAxisViewport();
-	ViewportX.SetScaleLimits(0.0001f, 16.0f); // 10000 [sample/px] to 16 [px/sample]
-	ViewportX.SetScale(16.0f);
 	FAxisViewportDouble& ViewportY = Viewport.GetVerticalAxisViewport();
 	ViewportY.SetScaleLimits(0.01, 1000000.0);
 	ViewportY.SetScale(1500.0);
@@ -65,11 +63,7 @@ void SFrameTrack::Reset()
 
 	bShowGameFrames = true;
 	bShowRenderingFrames = true;
-
 	bIsAutoZoomEnabled = true;
-	AutoZoomViewportPos = ViewportX.GetPos();
-	AutoZoomViewportScale = ViewportX.GetScale();
-	AutoZoomViewportSize = 0.0f;
 
 	AnalysisSyncNextTimestamp = 0;
 
@@ -154,17 +148,7 @@ void SFrameTrack::Tick(const FGeometry& AllottedGeometry, const double InCurrent
 		}
 	}
 
-	// Disable auto-zoom if viewport's position or scale has changed.
-	if (AutoZoomViewportPos != ViewportX.GetPos() ||
-		AutoZoomViewportScale != ViewportX.GetScale())
-	{
-		bIsAutoZoomEnabled = false;
-	}
-
-	// Update auto-zoom if viewport size has changed.
-	bool bAutoZoom = bIsAutoZoomEnabled && AutoZoomViewportSize != ViewportX.GetSize();
-
-	const uint64 Time = FPlatformTime::Cycles64();
+	uint64 Time = FPlatformTime::Cycles64();
 	if (Time > AnalysisSyncNextTimestamp)
 	{
 		const uint64 WaitTime = static_cast<uint64>(0.1 / FPlatformTime::GetSecondsPerCycle64()); // 100ms
@@ -185,21 +169,29 @@ void SFrameTrack::Tick(const FGeometry& AllottedGeometry, const double InCurrent
 				if (NumFrames > ViewportX.GetMaxValue())
 				{
 					ViewportX.SetMinMaxInterval(0, NumFrames);
-					UpdateHorizontalScrollBar();
-					bIsStateDirty = true;
 
 					if (bIsAutoZoomEnabled)
 					{
-						bAutoZoom = true;
+						if (ViewportX.GetPos() == 0.0f) // only if the view is unchanged
+						{
+							// Auto zoom out (until entire session time range fits into view).
+							while (ViewportX.GetMaxPos() - ViewportX.GetMinPos() > ViewportX.GetSize())
+							{
+								ZoomHorizontally(-0.1f, 0.0f);
+								ViewportX.ScrollAtPos(0.0f);
+							}
+						}
+						else
+						{
+							bIsAutoZoomEnabled = false;
+						}
 					}
+
+					UpdateHorizontalScrollBar();
+					bIsStateDirty = true;
 				}
 			}
 		}
-	}
-
-	if (bAutoZoom)
-	{
-		AutoZoom();
 	}
 
 	if (bIsStateDirty)
@@ -211,19 +203,19 @@ void SFrameTrack::Tick(const FGeometry& AllottedGeometry, const double InCurrent
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-TSharedRef<FFrameTrackSeries> SFrameTrack::FindOrAddSeries(int32 FrameType)
+TSharedPtr<FFrameTrackSeries> SFrameTrack::FindOrAddSeries(int32 FrameType)
 {
 	TSharedPtr<FFrameTrackSeries>* SeriesPtrPtr = SeriesMap.Find(FrameType);
 	if (SeriesPtrPtr)
 	{
 		ensure((**SeriesPtrPtr).FrameType == FrameType);
-		return (*SeriesPtrPtr).ToSharedRef();
+		return *SeriesPtrPtr;
 	}
 	else
 	{
-		TSharedRef<FFrameTrackSeries> SeriesRef = MakeShared<FFrameTrackSeries>(FrameType);
-		SeriesMap.Add(FrameType, SeriesRef);
-		return SeriesRef;
+		TSharedPtr<FFrameTrackSeries> SeriesPtr = MakeShareable(new FFrameTrackSeries(FrameType));
+		SeriesMap.Add(FrameType, SeriesPtr);
+		return SeriesPtr;
 	}
 }
 
@@ -341,7 +333,7 @@ FFrameTrackSampleRef SFrameTrack::GetSampleAtMousePosition(float X, float Y)
 
 							if (Y >= TopY && Y < BottomY)
 							{
-								return FFrameTrackSampleRef(SeriesPtr, MakeShared<FFrameTrackSample>(Sample));
+								return FFrameTrackSampleRef(SeriesPtr, MakeShareable(new FFrameTrackSample(Sample)));
 							}
 						}
 					}
@@ -381,6 +373,18 @@ void SFrameTrack::SelectFrameAtMousePosition(float X, float Y)
 				FSlateApplication::Get().SetKeyboardFocus(TimingView);
 			}
 		}
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+const TCHAR* FrameTypeToString(int32 FrameType)
+{
+	switch (FrameType)
+	{
+		case TraceFrameType_Game:      return TEXT("Game");
+		case TraceFrameType_Rendering: return TEXT("Rendering");
+		default:                       return TEXT("Misc");
 	}
 }
 
@@ -457,7 +461,7 @@ int32 SFrameTrack::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeom
 
 			const FString Text = FString::Format(TEXT("{0} frame {1} ({2})"),
 				{
-					FFrameTrackDrawHelper::FrameTypeToString(HoveredSample.Series->FrameType),
+					::FrameTypeToString(HoveredSample.Series->FrameType),
 					FText::AsNumber(HoveredSample.Sample->LargestFrameIndex).ToString(),
 					TimeUtils::FormatTimeAuto(HoveredSample.Sample->LargestFrameDuration)
 				});
@@ -614,9 +618,6 @@ void SFrameTrack::DrawVerticalAxisGrid(FDrawContext& DrawContext, const FSlateBr
 	{
 		0.0,
 		1.0 / 200.0, //    5 ms (200 fps)
-		1.0 / 120.0, //  8.3 ms (120 fps)
-		1.0 / 90.0,  // 11.1 ms (90 fps)
-		1.0 / 72.0,  // 13.9 ms (72 fps)
 		1.0 / 60.0,  // 16.7 ms (60 fps)
 		1.0 / 30.0,  // 33.3 ms (30 fps)
 		1.0 / 20.0,  //   50 ms (20 fps)
@@ -670,18 +671,16 @@ void SFrameTrack::DrawVerticalAxisGrid(FDrawContext& DrawContext, const FSlateBr
 		// Draw horizontal grid line.
 		DrawContext.DrawBox(0, Y, ViewWidth, 1, Brush, GridColor);
 
-		const FString LabelText = (Value == 0.0) ? TEXT("0") :
-								  (Value <= 1.0) ? FString::Printf(TEXT("%s (%.0f fps)"), *TimeUtils::FormatTimeAuto(Value), 1.0 / Value) :
-												   TimeUtils::FormatTimeAuto(Value);
-		const FVector2D LabelTextSize = FontMeasureService->Measure(LabelText, Font);
-		float LabelX = ViewWidth - LabelTextSize.X - 4.0f;
-		float LabelY = FMath::Clamp(Y - TextH / 2, 0.0f, RoundedViewHeight - TextH);
+		const FString Text = (Value == 0.0) ? TEXT("0") :
+							 (Value <= 1.0) ? FString::Printf(TEXT("%s (%.0f fps)"), *TimeUtils::FormatTimeAuto(Value), 1.0 / Value) :
+											  TimeUtils::FormatTimeAuto(Value);
+		const FVector2D TextSize = FontMeasureService->Measure(Text, Font);
 
 		// Draw background for value text.
-		DrawContext.DrawBox(LabelX, LabelY, LabelTextSize.X + 4.0f, TextH, Brush, TextBgColor);
+		DrawContext.DrawBox(ViewWidth - TextSize.X - 4.0f, Y - TextH, TextSize.X + 4.0f, TextH, Brush, TextBgColor);
 
 		// Draw value text.
-		DrawContext.DrawText(LabelX + 2.0f, LabelY + 1.0f, LabelText, Font, TextColor);
+		DrawContext.DrawText(ViewWidth - TextSize.X - 2.0f, Y - TextH + 1.0f, Text, Font, TextColor);
 	}
 	DrawContext.LayerId++;
 }
@@ -732,7 +731,11 @@ void SFrameTrack::DrawHorizontalAxisGrid(FDrawContext& DrawContext, const FSlate
 		const float ViewHeight = Viewport.GetHeight();
 
 		const FLinearColor GridColor(0.0f, 0.0f, 0.0f, 0.1f);
+		//const FLinearColor TextBgColor(0.05f, 0.05f, 0.05f, 1.0f);
+		//const FLinearColor TextColor(1.0f, 1.0f, 1.0f, 1.0f);
 		const FLinearColor TopTextColor(1.0f, 1.0f, 1.0f, 0.7f);
+
+		//const TSharedRef<FSlateFontMeasure> FontMeasureService = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
 
 		for (int32 Index = StartIndex; Index < RightIndex; Index += Grid)
 		{
@@ -741,9 +744,17 @@ void SFrameTrack::DrawHorizontalAxisGrid(FDrawContext& DrawContext, const FSlate
 			// Draw vertical grid line.
 			DrawContext.DrawBox(X, 0, 1, ViewHeight, Brush, GridColor);
 
-			// Draw label.
-			const FString LabelText = FText::AsNumber(Index).ToString();
-			DrawContext.DrawText(X + 2.0f, 10.0f, LabelText, Font, TopTextColor);
+			const FString Text = FText::AsNumber(Index).ToString();
+			//const FVector2D TextSize = FontMeasureService->Measure(Text, Font);
+			//constexpr float TextH = 14.0f;
+
+			// Draw background for index text.
+			//DrawContext.DrawBox(X, ViewHeight - TextH, TextSize.X + 4.0f, TextH, Brush, TextBgColor);
+
+			// Draw index text.
+			//DrawContext.DrawText(X + 2.0f, ViewHeight - TextH + 1.0f, Text, Font, TextColor);
+
+			DrawContext.DrawText(X + 2.0f, 10.0f, Text, Font, TopTextColor);
 		}
 		DrawContext.LayerId++;
 	}
@@ -1101,11 +1112,29 @@ bool SFrameTrack::ContextMenu_ShowRenderingFrames_IsChecked()
 
 void SFrameTrack::ContextMenu_AutoZoom_Execute()
 {
-	bIsAutoZoomEnabled = !bIsAutoZoomEnabled;
+	FAxisViewportInt32& ViewportX = Viewport.GetHorizontalAxisViewport();
 
+	bIsAutoZoomEnabled = !(bIsAutoZoomEnabled && ViewportX.GetPos() == 0.0f);
 	if (bIsAutoZoomEnabled)
 	{
-		AutoZoom();
+		ViewportX.ScrollAtPos(0.0f);
+
+		// Auto zoom in.
+		while (ViewportX.GetMaxPos() - ViewportX.GetMinPos() < ViewportX.GetSize())
+		{
+			ZoomHorizontally(+0.1f, 0.0f);
+			ViewportX.ScrollAtPos(0.0f);
+		}
+
+		// Auto zoom out (until entire session time range fits into view).
+		while (ViewportX.GetMaxPos() - ViewportX.GetMinPos() > ViewportX.GetSize())
+		{
+			ZoomHorizontally(-0.1f, 0.0f);
+			ViewportX.ScrollAtPos(0.0f);
+		}
+
+		UpdateHorizontalScrollBar();
+		bIsStateDirty = true;
 	}
 }
 
@@ -1120,56 +1149,7 @@ bool SFrameTrack::ContextMenu_AutoZoom_CanExecute()
 
 bool SFrameTrack::ContextMenu_AutoZoom_IsChecked()
 {
-	return bIsAutoZoomEnabled;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void SFrameTrack::AutoZoom()
-{
-	FAxisViewportInt32& ViewportX = Viewport.GetHorizontalAxisViewport();
-
-	AutoZoomViewportPos = ViewportX.GetMinPos();
-	ViewportX.ScrollAtPos(AutoZoomViewportPos);
-
-	AutoZoomViewportSize = ViewportX.GetSize();
-
-	if (AutoZoomViewportSize > 0.0f &&
-		ViewportX.GetMaxValue() - ViewportX.GetMinValue() > 0)
-	{
-		float DX = ViewportX.GetMaxPos() - ViewportX.GetMinPos();
-
-		// Auto zoom in.
-		while (DX < AutoZoomViewportSize)
-		{
-			const float OldScale = ViewportX.GetScale();
-			ViewportX.RelativeZoomWithFixedOffset(+0.1f, 0.0f);
-			ViewportX.ScrollAtPos(AutoZoomViewportPos);
-			DX = ViewportX.GetMaxPos() - ViewportX.GetMinPos();
-			if (OldScale == ViewportX.GetScale())
-			{
-				break;
-			}
-		}
-
-		// Auto zoom out (until entire session frame range fits into view).
-		while (DX > AutoZoomViewportSize)
-		{
-			const float OldScale = ViewportX.GetScale();
-			ViewportX.RelativeZoomWithFixedOffset(-0.1f, 0.0f);
-			ViewportX.ScrollAtPos(AutoZoomViewportPos);
-			DX = ViewportX.GetMaxPos() - ViewportX.GetMinPos();
-			if (OldScale == ViewportX.GetScale())
-			{
-				break;
-			}
-		}
-	}
-
-	AutoZoomViewportScale = ViewportX.GetScale();
-
-	UpdateHorizontalScrollBar();
-	bIsStateDirty = true;
+	return bIsAutoZoomEnabled && Viewport.GetHorizontalAxisViewport().GetPos() == 0.0f;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

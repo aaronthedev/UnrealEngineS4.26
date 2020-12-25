@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/SimpleConstructionScript.h"
 #include "Engine/Blueprint.h"
@@ -17,7 +17,7 @@
 //////////////////////////////////////////////////////////////////////////
 // USimpleConstructionScript
 
-// We append this suffix to template object names because the FObjectProperty we create at compile time will also be outered to the generated Blueprint class, and because we need cooking to be deterministic with respect to template object names.
+// We append this suffix to template object names because the UObjectProperty we create at compile time will also be outered to the generated Blueprint class, and because we need cooking to be deterministic with respect to template object names.
 const FString USimpleConstructionScript::ComponentTemplateNameSuffix(TEXT("_GEN_VARIABLE"));
 
 USimpleConstructionScript::USimpleConstructionScript(const FObjectInitializer& ObjectInitializer)
@@ -132,16 +132,7 @@ void USimpleConstructionScript::PostLoad()
 {
 	Super::PostLoad();
 
-	// Get the BlueprintGeneratedClass that owns the SCS
-	const UClass* BPGeneratedClass = GetOwnerClass();
-
 #if WITH_EDITOR
-	// Skip fixup logic in the editor context if the owner class is already cooked.
-	if (BPGeneratedClass && BPGeneratedClass->bCooked)
-	{
-		return;
-	}
-
 	// Get the Blueprint that owns the SCS
 	UBlueprint* Blueprint = GetBlueprint();
 	if (!Blueprint)
@@ -243,6 +234,8 @@ void USimpleConstructionScript::PostLoad()
 	// way older, existing Blueprint actor instances won't start unexpectedly getting scaled.
 	if(GetLinkerUE4Version() < VER_UE4_BLUEPRINT_USE_SCS_ROOTCOMPONENT_SCALE)
 	{
+		// Get the BlueprintGeneratedClass that owns the SCS
+		UClass* BPGeneratedClass = GetOwnerClass();
 		if(BPGeneratedClass != nullptr)
 		{
 			// Get the Blueprint class default object
@@ -303,7 +296,7 @@ void USimpleConstructionScript::FixupSceneNodeHierarchy()
 	// by this SCS; it could be from a super SCS, or (if SceneRootNode and 
 	// SceneRootComponentTemplate is not) it could be a native component
 	USCS_Node* SceneRootNode = nullptr;
-	USceneComponent* SceneRootComponentTemplate = GetSceneRootComponentTemplate(true, &SceneRootNode);
+	USceneComponent* SceneRootComponentTemplate = GetSceneRootComponentTemplate(&SceneRootNode);
 
 	if (SceneRootComponentTemplate == nullptr)
 	{
@@ -673,7 +666,7 @@ void USimpleConstructionScript::ExecuteScriptOnActor(AActor* Actor, const TInlin
 					else
 					{
 						// In the non-native case, the SCS node's variable name property is used as the parent identifier
-						FObjectPropertyBase* Property = FindFProperty<FObjectPropertyBase>(ActorClass, RootNode->ParentComponentOrVariableName);
+						UObjectPropertyBase* Property = FindField<UObjectPropertyBase>(ActorClass, RootNode->ParentComponentOrVariableName);
 						if(Property != nullptr)
 						{
 							// If we found a matching property, grab its value and use that as the parent for this node
@@ -992,7 +985,7 @@ USCS_Node* USimpleConstructionScript::FindSCSNodeByGuid(const FGuid Guid) const
 }
 
 #if WITH_EDITOR
-USceneComponent* USimpleConstructionScript::GetSceneRootComponentTemplate(bool bShouldUseDefaultRoot, USCS_Node** OutSCSNode) const
+USceneComponent* USimpleConstructionScript::GetSceneRootComponentTemplate(USCS_Node** OutSCSNode) const
 {
 	UClass* GeneratedClass = GetOwnerClass();
 	UClass* ParentClass = GetParentClass();
@@ -1066,7 +1059,7 @@ USceneComponent* USimpleConstructionScript::GetSceneRootComponentTemplate(bool b
 		{
 			const TArray<USCS_Node*>& SCSRootNodes = SCSStack[StackIndex]->GetRootNodes();
 
-			const bool bCanUseDefaultSceneRoot = bShouldUseDefaultRoot && DefaultSceneRootNode && DefaultSceneRootNode->ComponentTemplate && SCSRootNodes.Contains(DefaultSceneRootNode);
+			const bool bCanUseDefaultSceneRoot = DefaultSceneRootNode && DefaultSceneRootNode->ComponentTemplate && SCSRootNodes.Contains(DefaultSceneRootNode);
 			// Check for any scene component nodes in the root set that are not the default scene root
 			for (int32 RootNodeIndex = 0; RootNodeIndex < SCSRootNodes.Num() && RootComponentTemplate == nullptr; ++RootNodeIndex)
 			{

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Evaluation/MovieSceneFadeTemplate.h"
 #include "Tracks/MovieSceneFadeTrack.h"
@@ -121,7 +121,7 @@ struct FFadeExecutionToken : IMovieSceneExecutionToken, FFadeTrackToken
 };
 
 FMovieSceneFadeSectionTemplate::FMovieSceneFadeSectionTemplate(const UMovieSceneFadeSection& Section)
-	: FadeCurve(Section.FloatCurve)
+	: FadeCurve(Section.GetChannel())
 	, FadeColor(Section.FadeColor)
 	, bFadeAudio(Section.bFadeAudio)
 {

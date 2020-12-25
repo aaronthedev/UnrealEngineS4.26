@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MagicLeapMediaCodecPlayer.h"
 #include "IMagicLeapMediaCodecModule.h"
@@ -296,10 +296,10 @@ FString FMagicLeapMediaCodecPlayer::GetInfo() const
 	return Info;
 }
 
-FGuid FMagicLeapMediaCodecPlayer::GetPlayerPluginGUID() const
+FName FMagicLeapMediaCodecPlayer::GetPlayerName() const
 {
-	static FGuid PlayerPluginGUID(0x40370fc0, 0x7d604bd9, 0x9dc0e686, 0x93f84380);
-	return PlayerPluginGUID;
+	static FName PlayerName(TEXT("MagicLeapMediaCodec"));
+	return PlayerName;
 }
 
 IMediaSamples& FMagicLeapMediaCodecPlayer::GetSamples()
@@ -364,7 +364,7 @@ bool FMagicLeapMediaCodecPlayer::Open(const FString& Url, const IMediaOptions* O
 		// This module is only for Lumin so this is fine for now.
 		FLuminPlatformFile* LuminPlatformFile = static_cast<FLuminPlatformFile*>(&PlatformFile);
 		// make sure the file exists
-		if (!LuminPlatformFile->FileExistsWithPath(*FilePath, FilePath))
+		if (!LuminPlatformFile->FileExists(*FilePath, FilePath))
 		{
 			UE_LOG(LogMagicLeapMediaCodec, Error, TEXT("File doesn't exist %s."), *FilePath);
 			EventSink.ReceiveMediaEvent(EMediaEvent::MediaOpenFailed);
@@ -763,7 +763,7 @@ void FMagicLeapMediaCodecPlayer::TickFetch(FTimespan DeltaTime, FTimespan Timeco
 						if (TextureDataPtr->VideoTexture == nullptr)
 						{
 							FRHIResourceCreateInfo CreateInfo;
-							TextureDataPtr->VideoTexture = RHICreateTextureExternal2D(1, 1, PF_R8G8B8A8, 1, 1, TexCreate_None, CreateInfo);
+							TextureDataPtr->VideoTexture = RHICmdList.CreateTextureExternal2D(1, 1, PF_R8G8B8A8, 1, 1, 0, CreateInfo);
 						}
 
 						FMagicLeapHelperVulkan::AliasMediaTexture(TextureDataPtr->VideoTexture, NewMediaTexture);
@@ -814,7 +814,7 @@ void FMagicLeapMediaCodecPlayer::TickFetch(FTimespan DeltaTime, FTimespan Timeco
 					if (MediaVideoTexture == nullptr)
 					{
 						FRHIResourceCreateInfo CreateInfo;
-						MediaVideoTexture = RHICreateTextureExternal2D(1, 1, PF_R8G8B8A8, 1, 1, TexCreate_None, CreateInfo);
+						MediaVideoTexture = RHICmdList.CreateTextureExternal2D(1, 1, PF_R8G8B8A8, 1, 1, 0, CreateInfo);
 						TextureDataPtr->VideoTexture = MediaVideoTexture;
 
 						if (MediaVideoTexture == nullptr)
@@ -866,9 +866,9 @@ void FMagicLeapMediaCodecPlayer::TickFetch(FTimespan DeltaTime, FTimespan Timeco
 	}
 }
 
-bool FMagicLeapMediaCodecPlayer::UpdateTransformMatrix_RenderThread(MLHandle InMediaCodecHandle)
+bool FMagicLeapMediaCodecPlayer::UpdateTransformMatrix_RenderThread(MLHandle InVideoCodecHandle)
 {
-	MLResult Result = MLMediaCodecGetFrameTransformationMatrix(InMediaCodecHandle, FrameTransformationMatrix);
+	MLResult Result = MLMediaCodecGetFrameTransformationMatrix(InVideoCodecHandle, FrameTransformationMatrix);
 	if (UScale != FrameTransformationMatrix[0] ||
 		UOffset != FrameTransformationMatrix[12] ||
 		VScale != -FrameTransformationMatrix[5] ||
@@ -1419,10 +1419,10 @@ bool FMagicLeapMediaCodecPlayer::IsBufferAvailable_RenderThread(MLHandle InMedia
 	return bIsBufferAvailable;
 }
 
-bool FMagicLeapMediaCodecPlayer::GetNativeBuffer_RenderThread(const MLHandle InMediaCodecHandle, MLHandle& NativeBuffer)
+bool FMagicLeapMediaCodecPlayer::GetNativeBuffer_RenderThread(const MLHandle InVideoCodecHandle, MLHandle& NativeBuffer)
 {
 	ensureMsgf(IsInRenderingThread(), TEXT("GetNativeBuffer_RenderThread called outside of render thread"));
-	MLResult Result = MLMediaCodecAcquireNextAvailableFrame(InMediaCodecHandle, &NativeBuffer);
+	MLResult Result = MLMediaCodecAcquireNextAvailableFrame(InVideoCodecHandle, &NativeBuffer);
 	if (Result != MLResult_Ok)
 	{
 		UE_LOG(LogMagicLeapMediaCodec, Error, TEXT("MLMediaCodecAcquireNextAvailableFrame failed with error %s"), UTF8_TO_TCHAR(MLMediaResultGetString(Result)));
@@ -1431,10 +1431,10 @@ bool FMagicLeapMediaCodecPlayer::GetNativeBuffer_RenderThread(const MLHandle InM
 	return true;
 }
 
-bool FMagicLeapMediaCodecPlayer::ReleaseNativeBuffer_RenderThread(const MLHandle InMediaCodecHandle, MLHandle NativeBuffer)
+bool FMagicLeapMediaCodecPlayer::ReleaseNativeBuffer_RenderThread(const MLHandle InVideoCodecHandle, MLHandle NativeBuffer)
 {
 	ensureMsgf(IsInRenderingThread(), TEXT("ReleaseNativeBuffer_RenderThread called outside of render thread"));
-	MLResult Result = MLMediaCodecReleaseFrame(InMediaCodecHandle, NativeBuffer);
+	MLResult Result = MLMediaCodecReleaseFrame(InVideoCodecHandle, NativeBuffer);
 	if (Result != MLResult_Ok)
 	{
 		UE_LOG(LogMagicLeapMediaCodec, Error, TEXT("MLMediaCodecReleaseFrame failed with error %s"), UTF8_TO_TCHAR(MLMediaResultGetString(Result)));
@@ -1443,7 +1443,7 @@ bool FMagicLeapMediaCodecPlayer::ReleaseNativeBuffer_RenderThread(const MLHandle
 	return true;
 }
 
-bool FMagicLeapMediaCodecPlayer::GetCurrentPosition_RenderThread(const MLHandle InMediaCodecHandle, int32& CurrentPosition)
+bool FMagicLeapMediaCodecPlayer::GetCurrentPosition_RenderThread(const MLHandle InVideoCodecHandle, int32& CurrentPosition)
 {
 	return true;
 }

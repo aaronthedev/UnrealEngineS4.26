@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SControlRigGraphNodeComment.h"
 #include "EdGraphNode_Comment.h"
@@ -7,8 +7,7 @@
 #include "UObject/PropertyPortFlags.h"
 #include "ControlRigBlueprint.h"
 #include "Graph/ControlRigGraph.h"
-#include "Graph/ControlRigGraphSchema.h"
-#include "RigVMModel/RigVMController.h"
+#include "ControlRigController.h"
 #if WITH_EDITOR
 #include "Editor.h"
 #endif
@@ -35,10 +34,10 @@ FReply SControlRigGraphNodeComment::OnMouseButtonUp(const FGeometry& MyGeometry,
 				{
 					FVector2D Position(CommentNode->NodePosX, CommentNode->NodePosY);
 					FVector2D Size(CommentNode->NodeWidth, CommentNode->NodeHeight);
-					Blueprint->Controller->OpenUndoBracket(TEXT("Resize Comment Box"));
-					Blueprint->Controller->SetNodePositionByName(CommentNode->GetFName(), Position, true);
-					Blueprint->Controller->SetNodeSizeByName(CommentNode->GetFName(), Size, true);
-					Blueprint->Controller->CloseUndoBracket();
+					Blueprint->ModelController->OpenUndoBracket(TEXT("Resize Comment Box"));
+					Blueprint->ModelController->SetNodePosition(CommentNode->GetFName(), Position, true);
+					Blueprint->ModelController->SetNodeSize(CommentNode->GetFName(), Size, true);
+					Blueprint->ModelController->CloseUndoBracket();
 				}
 			}
 		}
@@ -57,9 +56,45 @@ void SControlRigGraphNodeComment::EndUserInteraction() const
 
 	if (GraphNode)
 	{
-		if (const UControlRigGraphSchema* RigSchema = Cast<UControlRigGraphSchema>(GraphNode->GetSchema()))
+		UEdGraphNode_Comment* CommentNode = CastChecked<UEdGraphNode_Comment>(GraphNode);
+		if (UControlRigGraph* Graph = Cast<UControlRigGraph>(CommentNode->GetOuter()))
 		{
-			RigSchema->EndGraphNodeInteraction(GraphNode);
+			if (UControlRigBlueprint* Blueprint = Cast<UControlRigBlueprint>(Graph->GetOuter()))
+			{
+				if (CommentNode->MoveMode == ECommentBoxMode::GroupMovement)
+				{
+					Blueprint->ModelController->OpenUndoBracket(TEXT("Move Comment Box"));
+
+					for (FCommentNodeSet::TConstIterator NodeIt(CommentNode->GetNodesUnderComment()); NodeIt; ++NodeIt)
+					{
+						if (UEdGraphNode* EdNode = Cast<UEdGraphNode>(*NodeIt))
+						{
+							FName NodeName = EdNode->GetFName();
+							if (UControlRigGraphNode* RigNode = Cast<UControlRigGraphNode>(EdNode))
+							{
+								NodeName = RigNode->GetPropertyName();
+							}
+
+							if (const FControlRigModelNode* ModelNode = Blueprint->Model->FindNode(NodeName))
+							{
+								if (!Blueprint->Model->IsNodeSelected(ModelNode->Name))
+								{
+									FVector2D Position(EdNode->NodePosX, EdNode->NodePosY);
+									Blueprint->ModelController->SetNodePosition(ModelNode->Name, Position, true);
+								}
+							}
+						}
+					}
+					FVector2D Position(CommentNode->NodePosX, CommentNode->NodePosY);
+					Blueprint->ModelController->SetNodePosition(CommentNode->GetFName(), Position, true);
+					Blueprint->ModelController->CloseUndoBracket();
+				}
+				else
+				{
+					FVector2D Position(CommentNode->NodePosX, CommentNode->NodePosY);
+					Blueprint->ModelController->SetNodePosition(CommentNode->GetFName(), Position, true);
+				}
+			}
 		}
 	}
 
@@ -80,7 +115,7 @@ void SControlRigGraphNodeComment::Tick(const FGeometry& AllottedGeometry, const 
 			{
 				if (UControlRigBlueprint* Blueprint = Cast<UControlRigBlueprint>(Graph->GetOuter()))
 				{
-					Blueprint->Controller->SetCommentTextByName(CommentNode->GetFName(), CurrentCommentTitle, true);
+					Blueprint->ModelController->SetCommentText(CommentNode->GetFName(), CurrentCommentTitle, true);
 				}
 			}
 		}
@@ -99,7 +134,7 @@ void SControlRigGraphNodeComment::Tick(const FGeometry& AllottedGeometry, const 
 					if (UControlRigBlueprint* Blueprint = Cast<UControlRigBlueprint>(Graph->GetOuter()))
 					{
 						// for now we won't use our undo for this kind of change
-						Blueprint->Controller->SetNodeColorByName(GraphNode->GetFName(), CurrentNodeCommentColor, false, true);
+						Blueprint->ModelController->SetNodeColor(GraphNode->GetFName(), CurrentNodeCommentColor, false);
 						CachedNodeCommentColor = CurrentNodeCommentColor;
 					}
 				}
@@ -135,14 +170,5 @@ void SControlRigGraphNodeComment::OnCommentTextCommitted(const FText& NewComment
 }
 */
 
-bool SControlRigGraphNodeComment::IsNodeUnderComment(UEdGraphNode_Comment* InCommentNode, const TSharedRef<SGraphNode> InNodeWidget) const
-{
-	const FVector2D NodePosition = GetPosition();
-	const FVector2D NodeSize = GetDesiredSize();
-	const FSlateRect CommentRect(NodePosition.X, NodePosition.Y, NodePosition.X + NodeSize.X, NodePosition.Y + NodeSize.Y);
-
-	const FVector2D InNodePosition = InNodeWidget->GetPosition();
-	return CommentRect.ContainsPoint(InNodePosition);
-}
 
 #undef LOCTEXT_NAMESPACE

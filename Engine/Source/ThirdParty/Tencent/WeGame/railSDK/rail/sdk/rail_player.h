@@ -1,4 +1,4 @@
-// Copyright (C) 2020, Entropy Game Global Limited.
+// Copyright (C) 2016, Entropy Game Global Limited.
 // All rights reserved.
 
 #ifndef RAIL_SDK_RAIL_PLAYER_H
@@ -57,18 +57,11 @@ class IRailPlayer {
     // query current player's banned status for anti cheat
     virtual RailResult AsyncQueryPlayerBannedStatus(const RailString& user_data) = 0;
 
-    // get an authenticate URL for the specified URL.
-    // Callback is GetAuthenticateURLResult.
-    virtual RailResult AsyncGetAuthenticateURL(const RailGetAuthenticateURLOptions& options,
+    // get an authenticate URL for the specified URL. Callback is GetAuthenticateURLResult.
+    virtual RailResult AsyncGetAuthenticateURL(const RailString& url,
                         const RailString& user_data) = 0;
 
-    // Callback is RailGetPlayerMetadataResult.
-    virtual RailResult AsyncGetPlayerMetadata(const RailArray<RailString>& keys,
-                        const RailString& user_data) = 0;
-
-    // callback is RailGetEncryptedGameTicketResult
-    virtual RailResult AsyncGetEncryptedGameTicket(const RailString& set_metadata,
-                        const RailString& user_data) = 0;
+    virtual RailResult GetPlayerMetadata(const RailString& key, RailString* value) = 0;
 };
 
 #pragma pack(pop)

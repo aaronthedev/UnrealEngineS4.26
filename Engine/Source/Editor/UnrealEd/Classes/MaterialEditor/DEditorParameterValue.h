@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -27,7 +27,7 @@ class UNREALED_API UDEditorParameterValue : public UObject
 #if WITH_EDITORONLY_DATA
 	/** Controls where this parameter is displayed in a material instance parameter list.  The lower the number the higher up in the parameter list. */
 	UPROPERTY()
-	int32 SortPriority = 32;
+	int32 SortPriority;
 #endif
 };
 

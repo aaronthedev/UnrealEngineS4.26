@@ -1,10 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "CADData.h"
 
 #include "CADOptions.h"
 
 #include "Misc/FileHelper.h"
-#include "Misc/Paths.h"
+#include "Serialization/Archive.h"
+#include "Serialization/MemoryWriter.h"
+#include "Serialization/MemoryReader.h"
 
 namespace CADLibrary
 {
@@ -61,25 +63,23 @@ FArchive& operator<<(FArchive& Ar, FCADMaterial& Material)
 	return Ar;
 }
 
-FArchive& operator<<(FArchive& Ar, FFileDescription& File)
-{
-	Ar << File.Path;
-	Ar << File.Name;
-	Ar << File.Extension;
-	Ar << File.Configuration;
-	return Ar;
-}
-
 FArchive& operator<<(FArchive& Ar, FTessellationData& TessellationData)
 {
-	Ar << TessellationData.PatchId;
-
 	Ar << TessellationData.VertexArray;
 	Ar << TessellationData.NormalArray;
 	Ar << TessellationData.IndexArray;
 	Ar << TessellationData.TexCoordArray;
+	Ar << TessellationData.VertexCount;
+	Ar << TessellationData.NormalCount;
+	Ar << TessellationData.IndexCount;
+	Ar << TessellationData.TexCoordCount;
 
 	Ar << TessellationData.StartVertexIndex;
+
+	Ar << TessellationData.SizeOfVertexType;
+	Ar << TessellationData.SizeOfTexCoordType;
+	Ar << TessellationData.SizeOfNormalType;
+	Ar << TessellationData.SizeOfIndexType;
 
 	Ar << TessellationData.ColorName;
 	Ar << TessellationData.MaterialName;
@@ -94,8 +94,6 @@ FArchive& operator<<(FArchive& Ar, FBodyMesh& BodyMesh)
 	Ar << BodyMesh.MeshActorName;
 	Ar << BodyMesh.Faces;
 
-	Ar << BodyMesh.BBox;
-
 	Ar << BodyMesh.MaterialSet;
 	Ar << BodyMesh.ColorSet;
 
@@ -104,57 +102,30 @@ FArchive& operator<<(FArchive& Ar, FBodyMesh& BodyMesh)
 
 void SerializeBodyMeshSet(const TCHAR* Filename, TArray<FBodyMesh>& InBodySet)
 {
-	TUniquePtr<FArchive> Archive(IFileManager::Get().CreateFileWriter(Filename));
-
+	TArray<uint8> OutBuffer;
+	FMemoryWriter ArWriter(OutBuffer);
 	uint32 type = 234561;
-	*Archive << type;
+	ArWriter << type;
 
-	*Archive << InBodySet;
+	ArWriter << InBodySet;
 
-	Archive->Close();
+	FFileHelper::SaveArrayToFile(OutBuffer, Filename);
 }
 
 void DeserializeBodyMeshFile(const TCHAR* Filename, TArray<FBodyMesh>& OutBodySet)
 {
-	TUniquePtr<FArchive> Archive(IFileManager::Get().CreateFileReader(Filename));
+	TArray<uint8> InBuffer;
+	FFileHelper::LoadFileToArray(InBuffer, Filename);
 
+	FMemoryReader ArReader(InBuffer);
 	uint32 type = 0;
-	*Archive << type;
+	ArReader << type;
 	if (type != 234561)
 	{
-		Archive->Close();
 		return;
 	}
 
-	*Archive << OutBodySet;
-	Archive->Close();
-}
-
-// Duplicated with FDatasmithUtils::GetCleanFilenameAndExtension, to delete as soon as possible
-void GetCleanFilenameAndExtension(const FString& InFilePath, FString& OutFilename, FString& OutExtension)
-{
-	if (InFilePath.IsEmpty())
-	{
-		OutFilename.Empty();
-		OutExtension.Empty();
-		return;
-	}
-
-	FString BaseFile = FPaths::GetCleanFilename(InFilePath);
-	BaseFile.Split(TEXT("."), &OutFilename, &OutExtension, ESearchCase::CaseSensitive, ESearchDir::FromEnd);
-
-	if (!OutExtension.IsEmpty() && FCString::IsNumeric(*OutExtension))
-	{
-		BaseFile = OutFilename;
-		BaseFile.Split(TEXT("."), &OutFilename, &OutExtension, ESearchCase::CaseSensitive, ESearchDir::FromEnd);
-		OutExtension = OutExtension + TEXT(".*");
-		return;
-	}
-
-	if (OutExtension.IsEmpty())
-	{
-		OutFilename = BaseFile;
-	}
+	ArReader << OutBodySet;
 }
 
 }

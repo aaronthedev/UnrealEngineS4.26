@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Evaluation/MovieSceneSlomoTemplate.h"
 #include "Tracks/MovieSceneSlomoTrack.h"
@@ -101,7 +101,7 @@ struct FSlomoExecutionToken : IMovieSceneExecutionToken, FSlomoTrackToken
 };
 
 FMovieSceneSlomoSectionTemplate::FMovieSceneSlomoSectionTemplate(const UMovieSceneSlomoSection& Section)
-	: SlomoCurve(Section.FloatCurve)
+	: SlomoCurve(Section.GetChannel())
 {
 }
 

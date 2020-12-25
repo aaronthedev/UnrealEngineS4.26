@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SNetStatsTableRow.h"
 
@@ -33,7 +33,7 @@ void SNetStatsTableRow::Construct(const FArguments& InArgs, const TSharedRef<STa
 	TablePtr = InArgs._TablePtr;
 	NetEventNodePtr = InArgs._NetEventNodePtr;
 
-	RowToolTip = MakeShared<SNetEventTableRowToolTip>(NetEventNodePtr);
+	RowToolTip = MakeShareable(new SNetEventTableRowToolTip(NetEventNodePtr));
 
 	SetEnabled(TAttribute<bool>(this, &SNetStatsTableRow::HandleShouldBeEnabled));
 
@@ -145,7 +145,7 @@ const FSlateBrush* SNetStatsTableRow::GetOutlineBrush(const FName ColumnId) cons
 	{
 		Brush = FEditorStyle::GetBrush("Profiler.EventGraph.Border.L");
 	}
-	else if (Result == HAlign_Right)
+	else if(Result == HAlign_Right)
 	{
 		Brush = FEditorStyle::GetBrush("Profiler.EventGraph.Border.R");
 	}
@@ -170,7 +170,7 @@ bool SNetStatsTableRow::HandleShouldBeEnabled() const
 	{
 		if (OnShouldBeEnabled.IsBound())
 		{
-			bResult = OnShouldBeEnabled.Execute(NetEventNodePtr);
+			bResult = OnShouldBeEnabled.Execute(NetEventNodePtr->GetId());
 		}
 	}
 
@@ -193,7 +193,7 @@ EVisibility SNetStatsTableRow::IsColumnVisible(const FName ColumnId) const
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void SNetStatsTableRow::OnSetHoveredCell(TSharedPtr<Insights::FTable> InTablePtr, TSharedPtr<Insights::FTableColumn> InColumnPtr, FNetEventNodePtr InNetEventNodePtr)
+void SNetStatsTableRow::OnSetHoveredCell(TSharedPtr<Insights::FTable> InTablePtr, TSharedPtr<Insights::FTableColumn> InColumnPtr, const FNetEventNodePtr InNetEventNodePtr)
 {
 	SetHoveredCellDelegate.ExecuteIfBound(InTablePtr, InColumnPtr, InNetEventNodePtr);
 }

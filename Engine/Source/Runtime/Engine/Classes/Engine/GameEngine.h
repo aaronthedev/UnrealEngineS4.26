@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,9 +14,6 @@ class Error;
 class FSceneViewport;
 class UGameViewportClient;
 class UNetDriver;
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-// disabled for: virtual bool NetworkRemapPath(UNetDriver* Driver, FString& Str, bool bReading = true) override;
 
 /**
  * Engine that manages core systems that enable a game.
@@ -131,7 +128,6 @@ public:
 	virtual void ProcessToggleFreezeCommand( UWorld* InWorld ) override;
 	virtual void ProcessToggleFreezeStreamingCommand( UWorld* InWorld ) override;
 	virtual bool NetworkRemapPath(UNetDriver* Driver, FString& Str, bool bReading = true) override;
-	virtual bool NetworkRemapPath(UNetConnection* Connection, FString& Str, bool bReading = true) override;
 	virtual bool ShouldDoAsyncEndOfFrameTasks() const override;
 
 public:
@@ -183,5 +179,3 @@ private:
 	/** Last time the logs have been flushed. */
 	double LastTimeLogsFlushed;
 };
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

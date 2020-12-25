@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "K2Node_Timeline.h"
@@ -89,31 +89,26 @@ void UK2Node_Timeline::AllocateDefaultPins()
 		// Ensure the timeline template is fully loaded or the node representation will be wrong.
 		PreloadObject(Timeline);
 
-		for (int32 OutputDisplayIndex = 0; OutputDisplayIndex < Timeline->GetNumDisplayTracks(); ++OutputDisplayIndex)
+		for (const FTTFloatTrack& FloatTrack : Timeline->FloatTracks)
 		{
-			FTTTrackId TrackId = Timeline->GetDisplayTrackId(OutputDisplayIndex);
-			if (TrackId.TrackType == FTTTrackBase::TT_Event)
-			{
-				const FTTEventTrack& EventTrack = Timeline->EventTracks[TrackId.TrackIndex];
-				CreatePin(EGPD_Output, UEdGraphSchema_K2::PC_Exec, EventTrack.GetTrackName());
-			}
-			else if (TrackId.TrackType == FTTTrackBase::TT_FloatInterp)
-			{
-				const FTTFloatTrack& FloatTrack = Timeline->FloatTracks[TrackId.TrackIndex];
-				CreatePin(EGPD_Output, UEdGraphSchema_K2::PC_Float, FloatTrack.GetTrackName());
-			}
-			else if (TrackId.TrackType == FTTTrackBase::TT_VectorInterp)
-			{
-				UScriptStruct* VectorStruct = TBaseStructure<FVector>::Get();
-				const FTTVectorTrack& VectorTrack = Timeline->VectorTracks[TrackId.TrackIndex];
-				CreatePin(EGPD_Output, UEdGraphSchema_K2::PC_Struct, VectorStruct, VectorTrack.GetTrackName());
-			}
-			else if (TrackId.TrackType == FTTTrackBase::TT_LinearColorInterp)
-			{
-				UScriptStruct* LinearColorStruct = TBaseStructure<FLinearColor>::Get();
-				const FTTLinearColorTrack& LinearColorTrack = Timeline->LinearColorTracks[TrackId.TrackIndex];
-				CreatePin(EGPD_Output, UEdGraphSchema_K2::PC_Struct, LinearColorStruct, LinearColorTrack.GetTrackName());
-			}
+			CreatePin(EGPD_Output, UEdGraphSchema_K2::PC_Float, FloatTrack.GetTrackName());			
+		}
+
+		UScriptStruct* VectorStruct = TBaseStructure<FVector>::Get();
+		for (const FTTVectorTrack& VectorTrack : Timeline->VectorTracks)
+		{
+			CreatePin(EGPD_Output, UEdGraphSchema_K2::PC_Struct, VectorStruct, VectorTrack.GetTrackName());			
+		}
+
+		UScriptStruct* LinearColorStruct = TBaseStructure<FLinearColor>::Get();
+		for (const FTTLinearColorTrack& LinearColorTrack : Timeline->LinearColorTracks)
+		{
+			CreatePin(EGPD_Output, UEdGraphSchema_K2::PC_Struct, LinearColorStruct, LinearColorTrack.GetTrackName());			
+		}
+
+		for (const FTTEventTrack& EventTrack : Timeline->EventTracks)
+		{
+			CreatePin(EGPD_Output, UEdGraphSchema_K2::PC_Exec, EventTrack.GetTrackName());
 		}
 
 		// cache play status

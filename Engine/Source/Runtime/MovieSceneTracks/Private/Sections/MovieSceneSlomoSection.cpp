@@ -1,14 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Sections/MovieSceneSlomoSection.h"
 #include "UObject/SequencerObjectVersion.h"
-#include "Channels/MovieSceneChannelProxy.h"
 
 
 /* UMovieSceneSlomoSection structors
  *****************************************************************************/
 
 UMovieSceneSlomoSection::UMovieSceneSlomoSection()
+	: UMovieSceneFloatSection()
 {
 #if WITH_EDITORONLY_DATA
 	bIsInfinite_DEPRECATED = true;
@@ -21,14 +21,4 @@ UMovieSceneSlomoSection::UMovieSceneSlomoSection()
 		(GetLinkerCustomVersion(FSequencerObjectVersion::GUID) < FSequencerObjectVersion::WhenFinishedDefaultsToProjectDefault ? 
 			EMovieSceneCompletionMode::RestoreState : 
 			EMovieSceneCompletionMode::ProjectDefault);
-
-#if WITH_EDITOR
-
-	ChannelProxy = MakeShared<FMovieSceneChannelProxy>(FloatCurve, FMovieSceneChannelMetaData(), TMovieSceneExternalValue<float>::Make());
-
-#else
-
-	ChannelProxy = MakeShared<FMovieSceneChannelProxy>(FloatCurve);
-
-#endif
 }

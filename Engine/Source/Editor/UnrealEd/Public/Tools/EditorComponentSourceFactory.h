@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -17,21 +17,9 @@ public:
 class UNREALED_API FStaticMeshComponentTarget : public FPrimitiveComponentTarget
 {
 public:
-
 	FStaticMeshComponentTarget( UPrimitiveComponent* Component )
 		: FPrimitiveComponentTarget( Cast<UStaticMeshComponent>(Component) ){}
-
-	virtual bool IsValid() const override;
-
-	virtual void GetMaterialSet(FComponentMaterialSet& MaterialSetOut, bool bAssetMaterials) const override;
-
 	FMeshDescription* GetMesh() override;
-
 	void CommitMesh( const FCommitter& ) override;
-
-	virtual void CommitMaterialSetUpdate(const FComponentMaterialSet& MaterialSet, bool bApplyToAsset) override;
-
-	virtual bool HasSameSourceData(const FPrimitiveComponentTarget& OtherTarget) const override;
-
 	static const int LODIndex{0};
 };

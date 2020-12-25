@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "CoreMinimal.h"
@@ -368,61 +368,35 @@ AActor* UWorld::SpawnActor( UClass* Class, FTransform const* UserTransformPtr, c
 		UE_LOG(LogSpawn, Warning, TEXT("SpawnActor failed because the given transform (%s) is invalid"), *(UserTransformPtr->ToString()));
 		return NULL;
 	}
-	
-#if WITH_EDITOR
-	if (SpawnParameters.OverridePackage && SpawnParameters.bCreateActorPackage)
-	{
-		UE_LOG(LogSpawn, Warning, TEXT("SpawnActor failed because both the OverridePackage and bCreateActorPackage are set"));
-		return nullptr;
-	}
-#endif
 
 	ULevel* LevelToSpawnIn = SpawnParameters.OverrideLevel;
 	if (LevelToSpawnIn == NULL)
 	{
-		// Spawn in the same level as the owner if we have one.
-		LevelToSpawnIn = (SpawnParameters.Owner != NULL) ? SpawnParameters.Owner->GetLevel() : CurrentLevel;
+		// Spawn in the same level as the owner if we have one. @warning: this relies on the outer of an actor being the level.
+		LevelToSpawnIn = (SpawnParameters.Owner != NULL) ? CastChecked<ULevel>(SpawnParameters.Owner->GetOuter()) : CurrentLevel;
 	}
 
 	FName NewActorName = SpawnParameters.Name;
 	AActor* Template = SpawnParameters.Template;
-		
+
 	if( !Template )
 	{
 		// Use class's default actor as a template.
 		Template = Class->GetDefaultObject<AActor>();
 	}
-	check(Template);
-
-	if (NewActorName.IsNone())
+	else if (!Template->HasAnyFlags(RF_ClassDefaultObject))
 	{
-		// If we are using a template object and haven't specified a name, create a name relative to the template, otherwise let the default object naming behavior in Stat
-		if (!Template->HasAnyFlags(RF_ClassDefaultObject))
+		if (NewActorName.IsNone())
 		{
 			NewActorName = MakeUniqueObjectName(LevelToSpawnIn, Template->GetClass(), *Template->GetFName().GetPlainNameString());
 		}
-	}
-	else if (StaticFindObjectFast(nullptr, LevelToSpawnIn, NewActorName))
-	{
-		// If the supplied name is already in use, then either fail in the requested manner or determine a new name to use if the caller indicates that's ok
-
-		if (SpawnParameters.NameMode == FActorSpawnParameters::ESpawnActorNameMode::Requested)
+		else if (StaticFindObjectFast(nullptr, LevelToSpawnIn, NewActorName))
 		{
-			NewActorName = MakeUniqueObjectName(LevelToSpawnIn, Template->GetClass(), *NewActorName.GetPlainNameString());
-		}
-		else
-		{
-			if (SpawnParameters.NameMode == FActorSpawnParameters::ESpawnActorNameMode::Required_Fatal)
-			{
-				UE_LOG(LogSpawn, Fatal, TEXT("An actor of name '%s' already exists in level '%s'."), *NewActorName.ToString(), *LevelToSpawnIn->GetFullName());
-			}
-			else if (SpawnParameters.NameMode == FActorSpawnParameters::ESpawnActorNameMode::Required_ErrorAndReturnNull)
-			{
-				UE_LOG(LogSpawn, Error, TEXT("An actor of name '%s' already exists in level '%s'."), *NewActorName.ToString(), *LevelToSpawnIn->GetFullName());
-			}
+			UE_LOG(LogSpawn, Fatal, TEXT("An actor of name '%s' already exists in level '%s'."), *NewActorName.ToString(), *LevelToSpawnIn->GetFullName());
 			return nullptr;
 		}
 	}
+	check(Template);
 
 	// See if we can spawn on ded.server/client only etc (check NeedsLoadForClient & NeedsLoadForServer)
 	if(!CanCreateInCurrentContext(Template))
@@ -476,39 +450,9 @@ AActor* UWorld::SpawnActor( UClass* Class, FTransform const* UserTransformPtr, c
 		}
 	}
 
-	EObjectFlags ActorFlags = SpawnParameters.ObjectFlags;
-
-	UPackage* ExternalPackage = nullptr;
-#if WITH_EDITOR
-	// Generate the actor's Guid
-	FGuid ActorGuid;
-	if (SpawnParameters.OverrideActorGuid.IsValid())
-	{
-		ActorGuid = SpawnParameters.OverrideActorGuid;
-	}
-	else
-	{
-		ActorGuid = FGuid::NewGuid();
-	}
-
-	// Generate and set the actor's external package if needed
-	// Set actor's package
-	if (SpawnParameters.OverridePackage)
-	{
-		ExternalPackage = SpawnParameters.OverridePackage;
-	}
-	else if (LevelToSpawnIn->IsUsingExternalActors() && SpawnParameters.bCreateActorPackage && !(SpawnParameters.ObjectFlags & RF_Transient))
-	{
-		// @todo FH: needs to handle mark package dirty and asset creation notification
-		ExternalPackage = ULevel::CreateActorPackage(LevelToSpawnIn->GetPackage(), ActorGuid);
-	}
-#endif
-
 	// actually make the actor object
-	AActor* const Actor = NewObject<AActor>(LevelToSpawnIn, Class, NewActorName, ActorFlags, Template, false/*bCopyTransientsFromClassDefaults*/, nullptr/*InInstanceGraph*/, ExternalPackage);
-	
+	AActor* const Actor = NewObject<AActor>(LevelToSpawnIn, Class, NewActorName, SpawnParameters.ObjectFlags, Template);
 	check(Actor);
-	check(Actor->GetLevel() == LevelToSpawnIn);
 
 #if ENABLE_SPAWNACTORTIMER
 	SpawnTimer.SetActorName(Actor->GetFName());
@@ -516,24 +460,10 @@ AActor* UWorld::SpawnActor( UClass* Class, FTransform const* UserTransformPtr, c
 
 #if WITH_EDITOR
 	Actor->ClearActorLabel(); // Clear label on newly spawned actors
-
-	// Set the actor's guid
-	FSetActorGuid SetActorGuid(Actor, ActorGuid);
-
-	if (SpawnParameters.OverrideParentComponent)
-	{
-		FActorParentComponentSetter::Set(Actor, SpawnParameters.OverrideParentComponent);
-	}
 #endif // WITH_EDITOR
 
 	if ( GUndo )
 	{
-		// if we are spawning an external actor, clear the dirty flag without capturing in the transaction beforehand
-		// This allows the transaction to capture the package as not being dirty when capturing its current state, which is what we need for proper external actor behavior
-		if (ExternalPackage)
-		{
-			LevelToSpawnIn->GetPackage()->ClearDirtyFlag();
-		}
 		ModifyLevel( LevelToSpawnIn );
 	}
 	LevelToSpawnIn->Actors.Add( Actor );
@@ -558,16 +488,7 @@ AActor* UWorld::SpawnActor( UClass* Class, FTransform const* UserTransformPtr, c
 	Actor->bIsEditorPreviewActor = SpawnParameters.bTemporaryEditorActor;
 #endif //WITH_EDITOR
 
-	// Broadcast delegate before the actor and its contained components are initialized
-	OnActorPreSpawnInitialization.Broadcast(Actor);
-
 	Actor->PostSpawnInitialize(UserTransform, SpawnParameters.Owner, SpawnParameters.Instigator, SpawnParameters.IsRemoteOwned(), SpawnParameters.bNoFail, SpawnParameters.bDeferConstruction);
-
-	// if we are spawning an external actor, clear the dirty flag after post spawn initialize which might have dirtied the level package through running construction scripts
-	if (ExternalPackage)
-	{
-		LevelToSpawnIn->GetPackage()->ClearDirtyFlag();
-	}
 
 	if (Actor->IsPendingKill() && !SpawnParameters.bNoFail)
 	{
@@ -593,6 +514,7 @@ AActor* UWorld::SpawnActor( UClass* Class, FTransform const* UserTransformPtr, c
 	return Actor;
 }
 
+
 ABrush* UWorld::SpawnBrush()
 {
 	FActorSpawnParameters SpawnInfo;
@@ -612,10 +534,7 @@ bool UWorld::EditorDestroyActor( AActor* ThisActor, bool bShouldModifyLevel )
 	FNavigationSystem::OnActorUnregistered(*ThisActor);
 
 	bool bReturnValue = DestroyActor( ThisActor, false, bShouldModifyLevel );
-	if (UWorld* World = ThisActor->GetWorld())
-	{
-		World->BroadcastLevelsChanged();
-	}
+	ThisActor->GetWorld()->BroadcastLevelsChanged();
 	return bReturnValue;
 }
 
@@ -802,7 +721,7 @@ bool UWorld::DestroyActor( AActor* ThisActor, bool bNetForce, bool bShouldModify
 		GEngine->BroadcastLevelActorDeleted(ThisActor);
 #endif
 	}
-
+		
 	// Clean up the actor's components.
 	ThisActor->UnregisterAllComponents();
 
@@ -1483,7 +1402,7 @@ void UWorld::RefreshStreamingLevels( const TArray<class ULevelStreaming*>& InLev
 		FlushLevelStreaming();
 
 		bIsRefreshingStreamingLevels = true;
-		bool bLevelRefreshed = false;
+
 		// Remove all currently visible levels.
 		for (ULevelStreaming* StreamingLevel : InLevelsToRefresh)
 		{
@@ -1494,15 +1413,11 @@ void UWorld::RefreshStreamingLevels( const TArray<class ULevelStreaming*>& InLev
 				RemoveFromWorld( LoadedLevel );
 				FStreamingLevelPrivateAccessor::OnLevelAdded(StreamingLevel); // Sketchy way to get the CurrentState correctly set to LoadedNotVisible
 				StreamingLevelsToConsider.Add(StreamingLevel); // Need to ensure this level is reconsidered during the flush to get it made visible again
-				bLevelRefreshed = true;
 			}
 		}
 
-		if (bLevelRefreshed)
-		{
-			// Load and associate levels if necessary.
-			FlushLevelStreaming();
-		}
+		// Load and associate levels if necessary.
+		FlushLevelStreaming();
 
 		// Update the level browser so it always contains valid data
 		FEditorSupportDelegates::WorldChange.Broadcast();
@@ -1590,6 +1505,28 @@ AAudioVolume* UWorld::GetAudioSettings( const FVector& ViewLocation, FReverbSett
 	return nullptr;
 }
 
+void UWorld::SetAudioDeviceHandle(const uint32 InAudioDeviceHandle)
+{
+	AudioDeviceHandle = InAudioDeviceHandle;
+}
+
+FAudioDevice* UWorld::GetAudioDevice()
+{
+	FAudioDevice* AudioDevice = nullptr;
+	if (GEngine)
+	{
+		class FAudioDeviceManager* AudioDeviceManager = GEngine->GetAudioDeviceManager();
+		if (AudioDeviceManager != nullptr)
+		{
+			AudioDevice = AudioDeviceManager->GetAudioDevice(AudioDeviceHandle);
+			if (AudioDevice == nullptr)
+			{
+				AudioDevice = GEngine->GetMainAudioDevice();
+			}
+		}
+	}
+	return AudioDevice;
+}
 
 /**
  * Sets bMapNeedsLightingFullyRebuild to the specified value.  Marks the worldsettings package dirty if the value changed.

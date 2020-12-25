@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Tracks/MovieScenePrimitiveMaterialTrack.h"
 #include "Tracks/MovieSceneMaterialTrack.h"
@@ -19,11 +19,6 @@ UMovieScenePrimitiveMaterialTrack::UMovieScenePrimitiveMaterialTrack(const FObje
 UMovieSceneSection* UMovieScenePrimitiveMaterialTrack::CreateNewSection()
 {
 	return NewObject<UMovieScenePrimitiveMaterialSection>(this, NAME_None, RF_Transactional);
-}
-
-bool UMovieScenePrimitiveMaterialTrack::SupportsType(TSubclassOf<UMovieSceneSection> SectionClass) const
-{
-	return SectionClass == UMovieScenePrimitiveMaterialSection::StaticClass();
 }
 
 FMovieSceneEvalTemplatePtr UMovieScenePrimitiveMaterialTrack::CreateTemplateForSection(const UMovieSceneSection& InSection) const

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameFramework/RootMotionSource.h"
 #include "DrawDebugHelpers.h"
@@ -163,7 +163,6 @@ FRootMotionSource::FRootMotionSource()
 	, Duration(-1.0f)
 	, bInLocalSpace(false)
 	, bNeedsSimulatedCatchup(false)
-	, bSimulatedNeedsSmoothing(false)
 {
 }
 
@@ -1266,7 +1265,6 @@ void FRootMotionSource_JumpForce::AddReferencedObjects(class FReferenceCollector
 FRootMotionSourceGroup::FRootMotionSourceGroup()
 	: bHasAdditiveSources(false)
 	, bHasOverrideSources(false)
-	, bHasOverrideSourcesWithIgnoreZAccumulate(false)
 	, bIsAdditiveVelocityApplied(false)
 	, LastPreAdditiveVelocity(ForceInitToZero)
 {
@@ -1280,11 +1278,6 @@ bool FRootMotionSourceGroup::HasActiveRootMotionSources() const
 bool FRootMotionSourceGroup::HasOverrideVelocity() const
 {
 	return bHasOverrideSources;
-}
-
-bool FRootMotionSourceGroup::HasOverrideVelocityWithIgnoreZAccumulate() const
-{
-	return bHasOverrideSourcesWithIgnoreZAccumulate;
 }
 
 bool FRootMotionSourceGroup::HasAdditiveVelocity() const
@@ -1426,7 +1419,6 @@ void FRootMotionSourceGroup::PrepareRootMotion(float DeltaTime, const ACharacter
 	// Prepare active sources
 	{
 		bHasOverrideSources = false;
-		bHasOverrideSourcesWithIgnoreZAccumulate = false;
 		bHasAdditiveSources = false;
 		LastAccumulatedSettings.Clear();
 
@@ -1563,7 +1555,6 @@ void FRootMotionSourceGroup::PrepareRootMotion(float DeltaTime, const ACharacter
 					SimulationTime = FMath::Max(SimulationTime, 0.f);
 
 					// Do the Preparation (calculates root motion transforms to be applied)
-					RootMotionSource->bSimulatedNeedsSmoothing = false;
 					RootMotionSource->PrepareRootMotion(SimulationTime, DeltaTime, Character, MoveComponent);
 					LastAccumulatedSettings += RootMotionSource->Settings;
 					RootMotionSource->Status.SetFlag(ERootMotionSourceStatusFlags::Prepared);
@@ -1598,11 +1589,6 @@ void FRootMotionSourceGroup::PrepareRootMotion(float DeltaTime, const ACharacter
 				else if (RootMotionSource->AccumulateMode == ERootMotionAccumulateMode::Override)
 				{
 					bHasOverrideSources = true;
-
-					if (RootMotionSource->Settings.HasFlag(ERootMotionSourceSettingsFlags::IgnoreZAccumulate))
-					{
-						bHasOverrideSourcesWithIgnoreZAccumulate = true;
-					}
 				}
 			}
 		}
@@ -1677,7 +1663,6 @@ void FRootMotionSourceGroup::AccumulateRootMotionVelocityFromSource
 
 	const FVector RootMotionVelocity = RootMotionParams.GetRootMotionTransform().GetTranslation();
 
-	const FVector InputVelocity = InOutVelocity;
 	if (RootMotionSource.AccumulateMode == ERootMotionAccumulateMode::Override)
 	{
 		InOutVelocity = RootMotionVelocity;
@@ -1686,41 +1671,6 @@ void FRootMotionSourceGroup::AccumulateRootMotionVelocityFromSource
 	{
 		InOutVelocity += RootMotionVelocity;
 	}
-	if (RootMotionSource.Settings.HasFlag(ERootMotionSourceSettingsFlags::IgnoreZAccumulate))
-	{
-		InOutVelocity.Z = InputVelocity.Z;
-	}
-}
-
-bool FRootMotionSourceGroup::GetOverrideRootMotionRotation
-	(
-		float DeltaTime, 
-		const ACharacter& Character, 
-		const UCharacterMovementComponent& MoveComponent, 
-		FQuat& OutRotation
-	) const
-{
-	for (const auto& RootMotionSource : RootMotionSources)
-	{
-		if (RootMotionSource.IsValid() && RootMotionSource->AccumulateMode == ERootMotionAccumulateMode::Override)
-		{
-			OutRotation = RootMotionSource->RootMotionParams.GetRootMotionTransform().GetRotation();
-			return !OutRotation.IsIdentity();
-		}
-	}
-	return false;
-}
-
-bool FRootMotionSourceGroup::NeedsSimulatedSmoothing() const
-{
-	for (const auto& RootMotionSource : RootMotionSources)
-	{
-		if (RootMotionSource.IsValid() && RootMotionSource->bSimulatedNeedsSmoothing)
-		{
-			return true;
-		}
-	}
-	return false;
 }
 
 void FRootMotionSourceGroup::SetPendingRootMotionSourceMinStartTimes(float NewStartTime)
@@ -1765,9 +1715,9 @@ void FRootMotionSourceGroup::ApplyTimeStampReset(float DeltaTime)
 	}
 }
 
-uint16 FRootMotionSourceGroup::ApplyRootMotionSource(TSharedPtr<FRootMotionSource> SourcePtr)
+uint16 FRootMotionSourceGroup::ApplyRootMotionSource(FRootMotionSource* SourcePtr)
 {
-	if (ensure(SourcePtr.IsValid()))
+	if (SourcePtr != nullptr)
 	{
 		// Get valid localID
 		// Note: Current ID method could produce duplicate IDs "in flight" at one time
@@ -1784,10 +1734,14 @@ uint16 FRootMotionSourceGroup::ApplyRootMotionSource(TSharedPtr<FRootMotionSourc
 		SourcePtr->LocalID = LocalID;
 
 		// Apply to pending so that next Prepare it gets added to "active"
-		PendingAddRootMotionSources.Add(SourcePtr);
+		PendingAddRootMotionSources.Add(TSharedPtr<FRootMotionSource>(SourcePtr));
 		UE_LOG(LogRootMotion, VeryVerbose, TEXT("RootMotionSource added to Pending: [%u] %s"), LocalID, *SourcePtr->ToSimpleString());
 
 		return LocalID;
+	}
+	else
+	{
+		checkf(false, TEXT("Passing nullptr into FRootMotionSourceGroup::ApplyRootMotionSource"));
 	}
 
 	return (uint16)ERootMotionSourceID::Invalid;
@@ -1970,126 +1924,64 @@ void FRootMotionSourceGroup::UpdateStateFrom(const FRootMotionSourceGroup& Group
 	}
 }
 
-void FRootMotionSourceGroup::NetSerializeRMSArray(FArchive& Ar, class UPackageMap* Map, bool& bOutSuccess, TArray< TSharedPtr<FRootMotionSource> >& RootMotionSourceArray)
+bool FRootMotionSourceGroup::NetSerialize(FArchive& Ar, class UPackageMap* Map, bool& bOutSuccess)
 {
 	uint8 SourcesNum;
 	if (Ar.IsSaving())
 	{
-		UE_CLOG(RootMotionSourceArray.Num() > MAX_uint8, LogRootMotion, Warning, TEXT("Too many root motion sources (%d!) to net serialize. Clamping to %d"), 
-			RootMotionSourceArray.Num(), MAX_uint8);
-		SourcesNum = FMath::Min<int32>(RootMotionSourceArray.Num(), MAX_uint8);
+		UE_CLOG(RootMotionSources.Num() > MAX_uint8, LogRootMotion, Warning, TEXT("Too many root motion sources (%d!) to net serialize. Clamping to %d"), RootMotionSources.Num(), MAX_uint8);
+		SourcesNum = FMath::Min<int32>(RootMotionSources.Num(), MAX_uint8);
 	}
 	Ar << SourcesNum;
 	if (Ar.IsLoading())
 	{
-		RootMotionSourceArray.SetNumZeroed(SourcesNum);
+		RootMotionSources.SetNumZeroed(SourcesNum);
 	}
 
-	for (int32 i = 0; i < SourcesNum && !Ar.IsError(); ++i)
-	{
-		TCheckedObjPtr<UScriptStruct> ScriptStruct = RootMotionSourceArray[i].IsValid() ? RootMotionSourceArray[i]->GetScriptStruct() : nullptr;
-		UScriptStruct* ScriptStructLocal = ScriptStruct.Get();
-		Ar << ScriptStruct;
-
-		if (ScriptStruct.IsValid())
-		{
-			// Restrict replication to derived classes of FRootMotionSource for security reasons:
-			// If FRootMotionSourceGroup is replicated through a Server RPC, we need to prevent clients from sending us
-			// arbitrary ScriptStructs due to the allocation/reliance on GetCppStructOps below which could trigger a server crash
-			// for invalid structs. All provided sources are direct children of RMS and we never expect to have deep hierarchies
-			// so this should not be too costly
-			bool bIsDerivedFromBaseRMS = false;
-			UStruct* CurrentSuperStruct = ScriptStruct->GetSuperStruct();
-			while (CurrentSuperStruct)
-			{
-				if (CurrentSuperStruct == FRootMotionSource::StaticStruct())
-				{
-					bIsDerivedFromBaseRMS = true;
-					break;
-				}
-				CurrentSuperStruct = CurrentSuperStruct->GetSuperStruct();
-			}
-
-			if (bIsDerivedFromBaseRMS)
-			{
-				if (Ar.IsLoading())
-				{
-					if (RootMotionSourceArray[i].IsValid() && ScriptStructLocal == ScriptStruct.Get())
-					{
-						// What we have locally is the same type as we're being serialized into, so we don't need to
-						// reallocate - just use existing structure
-					}
-					else
-					{
-						// For now, just reset/reallocate the data when loading.
-						// Longer term if we want to generalize this and use it for property replication, we should support
-						// only reallocating when necessary
-						FRootMotionSource* NewSource = (FRootMotionSource*)FMemory::Malloc(ScriptStruct->GetCppStructOps()->GetSize());
-						ScriptStruct->InitializeStruct(NewSource);
-
-						RootMotionSourceArray[i] = TSharedPtr<FRootMotionSource>(NewSource);
-					}
-				}
-
-				void* ContainerPtr = RootMotionSourceArray[i].Get();
-
-				if (ScriptStruct->StructFlags & STRUCT_NetSerializeNative)
-				{
-					ScriptStruct->GetCppStructOps()->NetSerialize(Ar, Map, bOutSuccess, RootMotionSourceArray[i].Get());
-				}
-				else
-				{
-					checkf(false, TEXT("Serializing RootMotionSource without NetSerializeNative - not supported!"));
-				}
-			}
-			else
-			{
-				UE_LOG(LogRootMotion, Error, TEXT("FRootMotionSourceGroup::NetSerialize: ScriptStruct not derived from FRootMotionSource attempted to serialize."));
-				Ar.SetError();
-				break;
-			}
-		}
-		else if (ScriptStruct.IsError())
-		{
-			UE_LOG(LogRootMotion, Error, TEXT("FRootMotionSourceGroup::NetSerialize: Invalid ScriptStruct serialized."));
-			Ar.SetError();
-			break;
-		}
-	}
-
-}
-
-bool FRootMotionSourceGroup::NetSerialize(FArchive& Ar, class UPackageMap* Map, bool& bOutSuccess)
-{
 	FArchive_Serialize_BitfieldBool(Ar, bHasAdditiveSources);
 	FArchive_Serialize_BitfieldBool(Ar, bHasOverrideSources);
-	FArchive_Serialize_BitfieldBool(Ar, bHasOverrideSourcesWithIgnoreZAccumulate);
 	LastPreAdditiveVelocity.NetSerialize(Ar, Map, bOutSuccess);
 	FArchive_Serialize_BitfieldBool(Ar, bIsAdditiveVelocityApplied);
 	Ar << LastAccumulatedSettings.Flags;
 
-	NetSerializeRMSArray(Ar, Map, bOutSuccess, RootMotionSources);
-	NetSerializeRMSArray(Ar, Map, bOutSuccess, PendingAddRootMotionSources);
-
-	if (Ar.IsError())
+	for (int32 i = 0; i < SourcesNum && !Ar.IsError(); ++i)
 	{
-		// Something bad happened, make sure to not return invalid shared ptrs
-		for (int32 i = RootMotionSources.Num() - 1; i >= 0; --i)
+		UScriptStruct* ScriptStruct = RootMotionSources[i].IsValid() ? RootMotionSources[i]->GetScriptStruct() : nullptr;
+		UScriptStruct* ScriptStructLocal = ScriptStruct;
+		Ar << ScriptStruct;
+
+		if (ScriptStruct)
 		{
-			if (RootMotionSources[i].IsValid() == false)
+			if (Ar.IsLoading())
 			{
-				RootMotionSources.RemoveAt(i);
+				if (RootMotionSources[i].IsValid() && ScriptStructLocal == ScriptStruct)
+				{
+					// What we have locally is the same type as we're being serialized into, so we don't need to
+					// reallocate - just use existing structure
+				}
+				else
+				{
+					// For now, just reset/reallocate the data when loading.
+					// Longer term if we want to generalize this and use it for property replication, we should support
+					// only reallocating when necessary
+					FRootMotionSource* NewSource = (FRootMotionSource*)FMemory::Malloc(ScriptStruct->GetCppStructOps()->GetSize());
+					ScriptStruct->InitializeStruct(NewSource);
+
+					RootMotionSources[i] = TSharedPtr<FRootMotionSource>(NewSource);
+				}
+			}
+
+			void* ContainerPtr = RootMotionSources[i].Get();
+
+			if (ScriptStruct->StructFlags & STRUCT_NetSerializeNative)
+			{
+				ScriptStruct->GetCppStructOps()->NetSerialize(Ar, Map, bOutSuccess, RootMotionSources[i].Get());
+			}
+			else
+			{
+				checkf(false, TEXT("Serializing RootMotionSource without NetSerializeNative - not supported!"));
 			}
 		}
-		for (int32 i = PendingAddRootMotionSources.Num() - 1; i >= 0; --i)
-		{
-			if (PendingAddRootMotionSources[i].IsValid() == false)
-			{
-				PendingAddRootMotionSources.RemoveAt(i);
-			}
-		}
-		bOutSuccess = false;
-		return false;
 	}
 
 	bOutSuccess = true;
@@ -2119,7 +2011,6 @@ void FRootMotionSourceGroup::Clear()
 	bIsAdditiveVelocityApplied = false;
 	bHasAdditiveSources = false;
 	bHasOverrideSources = false;
-	bHasOverrideSourcesWithIgnoreZAccumulate = false;
 	LastAccumulatedSettings.Clear();
 }
 
@@ -2160,7 +2051,6 @@ FRootMotionSourceGroup& FRootMotionSourceGroup::operator=(const FRootMotionSourc
 
 		bHasAdditiveSources = Other.bHasAdditiveSources;
 		bHasOverrideSources = Other.bHasOverrideSources;
-		bHasOverrideSourcesWithIgnoreZAccumulate = Other.bHasOverrideSourcesWithIgnoreZAccumulate;
 		LastPreAdditiveVelocity = Other.LastPreAdditiveVelocity;
 		bIsAdditiveVelocityApplied = Other.bIsAdditiveVelocityApplied;
 		LastAccumulatedSettings = Other.LastAccumulatedSettings;
@@ -2172,7 +2062,6 @@ bool FRootMotionSourceGroup::operator==(const FRootMotionSourceGroup& Other) con
 {
 	if (bHasAdditiveSources != Other.bHasAdditiveSources || 
 		bHasOverrideSources != Other.bHasOverrideSources ||
-		bHasOverrideSourcesWithIgnoreZAccumulate != Other.bHasOverrideSourcesWithIgnoreZAccumulate ||
 		bIsAdditiveVelocityApplied != Other.bIsAdditiveVelocityApplied ||
 		!LastPreAdditiveVelocity.Equals(Other.LastPreAdditiveVelocity, 1.f))
 	{
@@ -2181,10 +2070,6 @@ bool FRootMotionSourceGroup::operator==(const FRootMotionSourceGroup& Other) con
 
 	// Both invalid structs or both valid and Pointer compare (???) // deep comparison equality
 	if (RootMotionSources.Num() != Other.RootMotionSources.Num())
-	{
-		return false;
-	}
-	if (PendingAddRootMotionSources.Num() != Other.PendingAddRootMotionSources.Num())
 	{
 		return false;
 	}
@@ -2205,23 +2090,6 @@ bool FRootMotionSourceGroup::operator==(const FRootMotionSourceGroup& Other) con
 			return false; // Mismatch in validity
 		}
 	}
-	for (int32 i = 0; i < PendingAddRootMotionSources.Num(); ++i)
-	{
-		if (PendingAddRootMotionSources[i].IsValid() == Other.PendingAddRootMotionSources[i].IsValid())
-		{
-			if (PendingAddRootMotionSources[i].IsValid())
-			{
-				if (!PendingAddRootMotionSources[i]->MatchesAndHasSameState(Other.PendingAddRootMotionSources[i].Get()))
-				{
-					return false; // They're valid and don't match/have same state
-				}
-			}
-		}
-		else
-		{
-			return false; // Mismatch in validity
-		}
-	}
 	return true;
 }
 
@@ -2230,21 +2098,15 @@ bool FRootMotionSourceGroup::operator!=(const FRootMotionSourceGroup& Other) con
 	return !(FRootMotionSourceGroup::operator==(Other));
 }
 
-void FRootMotionSourceGroup::AddStructReferencedObjects(class FReferenceCollector& Collector)
+void FRootMotionSourceGroup::AddStructReferencedObjects(class FReferenceCollector& Collector) const
 {
-	for (TSharedPtr<FRootMotionSource>& RootMotionSource : RootMotionSources)
+	for (const auto& RootMotionSource : RootMotionSources)
 	{
-		if (RootMotionSource.IsValid())
-		{
-			RootMotionSource->AddReferencedObjects(Collector);
-		}
+		RootMotionSource->AddReferencedObjects(Collector);
 	}
 
-	for (TSharedPtr<FRootMotionSource>& RootMotionSource : PendingAddRootMotionSources)
+	for (const auto& RootMotionSource : PendingAddRootMotionSources)
 	{
-		if (RootMotionSource.IsValid())
-		{
-			RootMotionSource->AddReferencedObjects(Collector);
-		}
+		RootMotionSource->AddReferencedObjects(Collector);
 	}
 }

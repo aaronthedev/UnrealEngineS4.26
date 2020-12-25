@@ -1,19 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
-#include "SNiagaraStackItem.h"
+#include "SNiagaraStackEntryWidget.h"
 #include "Styling/SlateTypes.h"
 #include "Layout/Visibility.h"
-#include "Types/SlateEnums.h"
 
 class UNiagaraStackModuleItem;
 class UNiagaraStackViewModel;
-class SNiagaraStackDisplayName;
-struct FGraphActionListBuilderBase;
-class SComboButton;
 
-class SNiagaraStackModuleItem : public SNiagaraStackItem
+class SNiagaraStackModuleItem : public SNiagaraStackEntryWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SNiagaraStackModuleItem) { }
@@ -21,31 +17,38 @@ public:
 
 	void Construct(const FArguments& InArgs, UNiagaraStackModuleItem& InModuleItem, UNiagaraStackViewModel* InStackViewModel);
 
+	void SetEnabled(bool bInIsEnabled);
+
+	bool CheckEnabledStatus(bool bIsEnabled);
+
 	void FillRowContextMenu(class FMenuBuilder& MenuBuilder);
 
 	//~ SWidget interface
 	virtual FReply OnMouseButtonDoubleClick(const FGeometry& InMyGeometry, const FPointerEvent& InMouseEvent) override;
 	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
 
-protected:
-	virtual void AddCustomRowWidgets(TSharedRef<SHorizontalBox> HorizontalBox) override;
-
-	virtual TSharedRef<SWidget> AddContainerForRowWidgets(TSharedRef<SWidget> RowWidgets) override;
-
 private:
+	ECheckBoxState GetCheckState() const;
+
+	void OnCheckStateChanged(ECheckBoxState InCheckState);
+
 	bool GetButtonsEnabled() const;
+
+	FText GetDeleteButtonToolTipText() const;
+
+	bool GetDeleteButtonEnabled() const;
+
+	bool GetEnabledCheckBoxEnabled() const;
 
 	EVisibility GetRaiseActionMenuVisibility() const;
 
 	EVisibility GetRefreshVisibility() const;
 
-	FReply ScratchButtonPressed() const;
+	FReply DeleteClicked();
 	
 	TSharedRef<SWidget> RaiseActionMenuClicked();
 
 	bool CanRaiseActionMenu() const;
-
-	static TSharedRef<SExpanderArrow> CreateCustomActionExpander(const struct FCustomExpanderData& ActionMenuData);
 
 	FReply RefreshClicked();
 
@@ -53,20 +56,8 @@ private:
 
 	bool OnModuleItemAllowDrop(TSharedPtr<class FDragDropOperation> DragDropOperation);
 
-	void CollectParameterActions(FGraphActionListBuilderBase& ModuleActions);
-
-	void CollectModuleActions(FGraphActionListBuilderBase& ModuleActions);
-
 	void ShowReassignModuleScriptMenu();
-
-	bool GetLibraryOnly() const;
-
-	void SetLibraryOnly(bool bInLibraryOnly);
 
 private:
 	UNiagaraStackModuleItem* ModuleItem;
-
-	TSharedPtr<SComboButton> AddButton;
-
-	static bool bLibraryOnly;
 };

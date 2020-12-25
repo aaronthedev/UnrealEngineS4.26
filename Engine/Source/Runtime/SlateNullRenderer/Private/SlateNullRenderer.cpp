@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SlateNullRenderer.h"
 #include "Rendering/SlateDrawBuffer.h"
@@ -73,7 +73,7 @@ void FSlateNullRenderer::ReleaseDynamicResource( const FSlateBrush& InBrush )
 {
 }
 
-void FSlateNullRenderer::PrepareToTakeScreenshot(const FIntRect& Rect, TArray<FColor>* OutColorData, SWindow* InScreenshotWindow)
+void FSlateNullRenderer::PrepareToTakeScreenshot(const FIntRect& Rect, TArray<FColor>* OutColorData)
 {
 	if (OutColorData)
 	{

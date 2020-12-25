@@ -257,7 +257,7 @@ void init(std::vector< IObject > & iObjects, OObject & oParentObj,
 // node if there's no gap in the frame range for animated nodes
 //
 void visitObjects(std::vector< IObject > & iObjects, OObject & oParentObj,
-                  const TimeAndSamplesMap & iTimeMap, bool atRoot)
+                  const TimeAndSamplesMap & iTimeMap)
 {
     OObject outObj;
 
@@ -273,11 +273,6 @@ void visitObjects(std::vector< IObject > & iObjects, OObject & oParentObj,
     }
 
     assert(inObj.valid());
-
-    if (iTimeMap.isVerbose())
-    {
-        std::cout << inObj.getFullName() << std::endl;
-    }
 
     const AbcA::ObjectHeader & header = inObj.getHeader();
     std::size_t totalSamples = 0;
@@ -451,7 +446,7 @@ void visitObjects(std::vector< IObject > & iObjects, OObject & oParentObj,
 
                 Abc::FloatArraySamplePtr cornerSpPtr = iSamp.getCornerSharpnesses();
                 if (cornerSpPtr)
-                    oSamp.setCornerSharpnesses(*cornerSpPtr);
+                    oSamp.setCreaseSharpnesses(*cornerSpPtr);
 
                 Abc::Int32ArraySamplePtr holePtr = iSamp.getHoles();
                 if (holePtr)
@@ -898,7 +893,7 @@ void visitObjects(std::vector< IObject > & iObjects, OObject & oParentObj,
     }
     else
     {
-        if (!atRoot)
+        if (oParentObj.getParent().valid())
         {
             outObj = OObject(oParentObj, header.getName(), header.getMetaData());
         }
@@ -948,7 +943,7 @@ void visitObjects(std::vector< IObject > & iObjects, OObject & oParentObj,
                 childObjects.push_back(iObjects[k].getChild(childName));
             }
 
-            visitObjects(childObjects, outObj, iTimeMap, false);
+            visitObjects(childObjects, outObj, iTimeMap);
         }
     }
 
@@ -963,30 +958,15 @@ int main( int argc, char *argv[] )
 {
     if (argc < 4)
     {
-        std::cerr << "USAGE: " << argv[0] << " [-v] outFile.abc inFile1.abc"
+        std::cerr << "USAGE: " << argv[0] << " outFile.abc inFile1.abc"
             << " inFile2.abc (inFile3.abc ...)" << std::endl;
-        std::cerr << "Where -v is a verbosity flag which prints the IObject"
-            << " being processed." << std::endl;
         return -1;
     }
 
     {
         size_t numInputs = argc - 2;
-
-        std::string fileName = argv[1];
-
-        // look for optional verbose
-        int inStart = 2;
-        TimeAndSamplesMap timeMap;
-        if (fileName == "-v")
-        {
-            timeMap.setVerbose(true);
-            fileName = argv[2];
-            inStart ++;
-            numInputs --;
-        }
-
         std::vector< chrono_t > minVec;
+
         minVec.reserve(numInputs);
 
         std::vector< IArchive > iArchives;
@@ -997,9 +977,11 @@ int main( int argc, char *argv[] )
         Alembic::AbcCoreFactory::IFactory factory;
         factory.setPolicy(ErrorHandler::kThrowPolicy);
         Alembic::AbcCoreFactory::IFactory::CoreType coreType;
+        TimeAndSamplesMap timeMap;
 
-        for (int i = inStart; i < argc; ++i)
+        for (int i = 2; i < argc; ++i)
         {
+
             IArchive archive = factory.getArchive(argv[i], coreType);
             if (!archive.valid())
             {
@@ -1017,25 +999,42 @@ int main( int argc, char *argv[] )
             if (numSamplings > 1)
             {
                 // timesampling index 0 is special, so it will be skipped
-                // use the first time on the next time sampling to determine
-                // our archive order the archive order
+                //
+                // make sure all the other timesampling objects start at
+                // the same time or throw here
+                //
                 min = archive.getTimeSampling(1)->getSampleTime(0);
 
-                for (Alembic::Util::uint32_t s = 1; s < numSamplings; ++s)
+                timeMap.add(archive.getTimeSampling(1),
+                    archive.getMaxNumSamplesForTimeSamplingIndex(1));
+
+                for (Alembic::Util::uint32_t s = 2; s < numSamplings; ++s)
                 {
                     timeMap.add(archive.getTimeSampling(s),
                         archive.getMaxNumSamplesForTimeSamplingIndex(s));
+
+                    chrono_t thisMin =
+                        archive.getTimeSampling(s)->getSampleTime(0);
+
+                    if (fabs(thisMin - min) > 1e-5)
+                    {
+                        std::cerr << "ERROR: " << argv[i]
+                            << " has non-default TimeSampling objects"
+                            << " that don't start at the same time."
+                            << std::endl;
+                        return 1;
+                    }
                 }
 
                 minVec.push_back(min);
                 if (minIndexMap.count(min) == 0)
                 {
-                    minIndexMap.insert(std::make_pair(min, i-inStart));
+                    minIndexMap.insert(std::make_pair(min, i-2));
                 }
-                else if (argv[inStart] != argv[i])
+                else if (argv[2] != argv[i])
                 {
                     std::cerr << "ERROR: overlapping frame range between "
-                        << argv[inStart] << " and " << argv[i] << std::endl;
+                        << argv[2] << " and " << argv[i] << std::endl;
                     return 1;
                 }
             }
@@ -1056,6 +1055,7 @@ int main( int argc, char *argv[] )
         }
 
         std::string appWriter = "AbcStitcher";
+        std::string fileName = argv[1];
         std::string userStr;
 
         // Create an archive with the default writer
@@ -1088,7 +1088,7 @@ int main( int argc, char *argv[] )
             iRoots[e] = iOrderedArchives[e].getTop();
         }
 
-        visitObjects(iRoots, oRoot, timeMap, true);
+        visitObjects(iRoots, oRoot, timeMap);
     }
 
     return 0;

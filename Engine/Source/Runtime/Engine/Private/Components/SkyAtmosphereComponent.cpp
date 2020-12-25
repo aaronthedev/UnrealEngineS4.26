@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/SkyAtmosphereComponent.h"
 
@@ -21,6 +21,8 @@
 
 #define LOCTEXT_NAMESPACE "SkyAtmosphereComponent"
 
+//#pragma optimize( "", off )
+
 
 
 /*=============================================================================
@@ -38,12 +40,11 @@ USkyAtmosphereComponent::USkyAtmosphereComponent(const FObjectInitializer& Objec
 	const float EarthMieScaleHeight = 1.2f;
 	
 	// Default: Earth like atmosphere
-	TransformMode = ESkyAtmosphereTransformMode::PlanetTopAtAbsoluteWorldOrigin;
 	BottomRadius = EarthBottomRadius;
 	AtmosphereHeight = EarthTopRadius - EarthBottomRadius;
 	GroundAlbedo = FColor(170, 170, 170); // 170 => 0.4f linear
 
-	// Float to a u8 rgb + float length can lose some precision but it is better UI wise.
+	// FLoat to a u8 rgb + float length can lose some precision but it is better UI wise.
 	const FLinearColor RayleightScatteringRaw = FLinearColor(0.005802f, 0.013558f, 0.033100f);
 	RayleighScattering = RayleightScatteringRaw * (1.0f / RayleightScatteringRaw.B);
 	RayleighScatteringScale = RayleightScatteringRaw.B;
@@ -68,10 +69,8 @@ USkyAtmosphereComponent::USkyAtmosphereComponent(const FObjectInitializer& Objec
 	MultiScatteringFactor = 1.0f;
 	AerialPespectiveViewDistanceScale = 1.0f;
 	HeightFogContribution = 1.0f;
-	TransmittanceMinLightElevationAngle = -90.0f;
-	AerialPerspectiveStartDepth = 0.1f;
 
-	TraceSampleCountScale = 1.0f;
+	TransmittanceMinLightElevationAngle = -90.0f;
 
 	memset(OverrideAtmosphericLight, 0, sizeof(OverrideAtmosphericLight));
 
@@ -118,24 +117,9 @@ static bool SkyAtmosphereComponentStaticLightingBuilt(const USkyAtmosphereCompon
 	return true;	// The component has not been spawned in any world yet so let's mark it as built for now.
 }
 
-void USkyAtmosphereComponent::SendRenderTransformCommand()
+void USkyAtmosphereComponent::CreateRenderState_Concurrent()
 {
-	if (SkyAtmosphereSceneProxy)
-	{
-		FTransform ComponentTransform = GetComponentTransform();
-		uint8 TrsfMode = uint8(TransformMode);
-		FSkyAtmosphereSceneProxy* SceneProxy = SkyAtmosphereSceneProxy;
-		ENQUEUE_RENDER_COMMAND(FUpdateSkyAtmosphereSceneProxyTransformCommand)(
-			[SceneProxy, ComponentTransform, TrsfMode](FRHICommandList& RHICmdList)
-		{
-			SceneProxy->UpdateTransform(ComponentTransform, TrsfMode);
-		});
-	}
-}
-
-void USkyAtmosphereComponent::CreateRenderState_Concurrent(FRegisterComponentContext* Context)
-{
-	Super::CreateRenderState_Concurrent(Context);
+	Super::CreateRenderState_Concurrent();
 	// If one day we need to look up lightmass built data, lookup it up here using the guid from the correct MapBuildData.
 
 	bool bHidden = false;
@@ -155,12 +139,6 @@ void USkyAtmosphereComponent::CreateRenderState_Concurrent(FRegisterComponentCon
 		GetWorld()->Scene->AddSkyAtmosphere(SkyAtmosphereSceneProxy, SkyAtmosphereComponentStaticLightingBuilt(this));
 	}
 
-}
-
-void USkyAtmosphereComponent::SendRenderTransform_Concurrent()
-{
-	Super::SendRenderTransform_Concurrent();
-	SendRenderTransformCommand();
 }
 
 void USkyAtmosphereComponent::DestroyRenderState_Concurrent()
@@ -224,7 +202,6 @@ void USkyAtmosphereComponent::CheckForErrors()
 					break;
 				}
 			}
-			PRAGMA_DISABLE_DEPRECATION_WARNINGS 
 			for (TObjectIterator<UAtmosphericFogComponent> ComponentIt; ComponentIt; ++ComponentIt)
 			{
 				UAtmosphericFogComponent* Component = *ComponentIt;
@@ -239,7 +216,6 @@ void USkyAtmosphereComponent::CheckForErrors()
 					break;
 				}
 			}
-			PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		}
 
 		if (bMultipleFound)
@@ -277,17 +253,12 @@ void USkyAtmosphereComponent::PostEditChangeProperty(FPropertyChangedEvent& Prop
 			// If we have changed an atmosphere property and the lighyting has already been built, we need to ask for a rebuild by updating the static lighting GUIDs.
 			UpdateStaticLightingGUIDs();
 		}
-
-		if (PropertyChangedEvent.MemberProperty && PropertyChangedEvent.MemberProperty->GetFName() == GET_MEMBER_NAME_CHECKED(USkyAtmosphereComponent, TransformMode))
-		{
-			SendRenderTransformCommand();
-		}
 	}
 }
 
 #endif // WITH_EDITOR
 
-void USkyAtmosphereComponent::PostInterpChange(FProperty* PropertyThatChanged)
+void USkyAtmosphereComponent::PostInterpChange(UProperty* PropertyThatChanged)
 {
 	Super::PostInterpChange(PropertyThatChanged);
 	MarkRenderStateDirty();
@@ -430,8 +401,6 @@ FSkyAtmosphereSceneProxy::FSkyAtmosphereSceneProxy(const USkyAtmosphereComponent
 	SkyLuminanceFactor = InComponent->SkyLuminanceFactor;
 	AerialPespectiveViewDistanceScale = InComponent->AerialPespectiveViewDistanceScale;
 	HeightFogContribution = InComponent->HeightFogContribution;
-	AerialPerspectiveStartDepthKm = InComponent->AerialPerspectiveStartDepth;
-	TraceSampleCountScale = InComponent->TraceSampleCountScale;
 
 	InComponent->GetOverrideLightStatus(OverrideAtmosphericLight, OverrideAtmosphericLightDirection);
 

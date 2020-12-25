@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Factories/SoundSubmixEffectFactory.h"
 #include "Sound/SoundSubmix.h"
@@ -62,7 +62,7 @@ UObject* USoundSubmixEffectFactory::FactoryCreateNew(UClass* InClass, UObject* I
 
 bool USoundSubmixEffectFactory::CanCreateNew() const
 {
-	return true;
+	return GetDefault<UAudioSettings>()->IsAudioMixerEnabled();
 }
 
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreTypes.h"
 #include "Math/NumericLimits.h"
@@ -17,8 +17,6 @@
 #include "Math/Quat.h"
 #include "Math/QuatRotationTranslationMatrix.h"
 #include "Misc/AutomationTest.h"
-#include <limits>
-#include <cmath>
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -159,56 +157,6 @@ bool TestQuatsEqual(const FQuat& Q0, const FQuat& Q1, float Tolerance)
 	const bool bEqual = Q0.Equals(Q1, Tolerance);
 	GPassing = GPassing && bEqual;
 	return bEqual;
-}
-
-/**
- * Tests if a vector (xyz) is normalized (length 1) within a tolerance
- *
- * @param Vec0 Vector
- * @param Tolerance Error allowed for the comparison
- *
- * @return true if normalized(ish)
- */
-bool TestFVector3Normalized(const FVector& Vec0, float Tolerance)
-{
-	GScratch[0] = Vec0.X;
-	GScratch[1] = Vec0.Y;
-	GScratch[2] = Vec0.Z;
-	GScratch[3] = 0.0f;
-	GScratch[4] = 0.0f;
-	GScratch[5] = 0.0f;
-	GScratch[6] = 0.0f;
-	GScratch[7] = 0.0f;
-	GSum = FMath::Sqrt(Vec0.X * Vec0.X + Vec0.Y * Vec0.Y + Vec0.Z * Vec0.Z);
-
-	const bool bNormalized = FMath::IsNearlyEqual(GSum, 1.0f, Tolerance);
-	GPassing = GPassing && bNormalized;
-	return bNormalized;
-}
-
-/**
- * Tests if a quaternion (xyzw) is normalized (length 1) within a tolerance
- *
- * @param Q0 Quaternion
- * @param Tolerance Error allowed for the comparison
- *
- * @return true if normalized(ish)
- */
-bool TestQuatNormalized(const FQuat& Q0, float Tolerance)
-{
-	GScratch[0] = Q0.X;
-	GScratch[1] = Q0.Y;
-	GScratch[2] = Q0.Z;
-	GScratch[3] = Q0.W;
-	GScratch[4] = 0.0f;
-	GScratch[5] = 0.0f;
-	GScratch[6] = 0.0f;
-	GScratch[7] = 0.0f;
-	GSum = FMath::Sqrt(Q0.X*Q0.X + Q0.Y*Q0.Y + Q0.Z*Q0.Z + Q0.W*Q0.W);
-
-	const bool bNormalized = FMath::IsNearlyEqual(GSum, 1.0f, Tolerance);
-	GPassing = GPassing && bNormalized;
-	return bNormalized;
 }
 
 /**
@@ -1138,50 +1086,6 @@ bool FVectorRegisterAbstractionTest::RunTest(const FString& Parameters)
 	V3 = VectorStep(V0);
 	LogTest(TEXT("VectorStep"), TestVectorsEqual(V2, V3));
 
-	// VectorTruncate
-	V0 = MakeVectorRegister(-1.8f, -1.0f, -0.8f, 0.0f);
-	V2 = MakeVectorRegister(-1.0f, -1.0f, 0.0f, 0.0f);
-	V3 = VectorTruncate(V0);
-	LogTest(TEXT("VectorTruncate"), TestVectorsEqual(V2, V3, KINDA_SMALL_NUMBER));
-
-	V0 = MakeVectorRegister(0.0f, 0.8f, 1.0f, 1.8f);
-	V2 = MakeVectorRegister(0.0f, 0.0f, 1.0f, 1.0f);
-	V3 = VectorTruncate(V0);
-	LogTest(TEXT("VectorTruncate"), TestVectorsEqual(V2, V3, KINDA_SMALL_NUMBER));
-
-	// VectorFractional
-	V0 = MakeVectorRegister(-1.8f, -1.0f, -0.8f, 0.0f);
-	V2 = MakeVectorRegister(-0.8f, 0.0f, -0.8f, 0.0f);
-	V3 = VectorFractional(V0);
-	LogTest(TEXT("VectorFractional"), TestVectorsEqual(V2, V3, KINDA_SMALL_NUMBER));
-
-	V0 = MakeVectorRegister(0.0f, 0.8f, 1.0f, 1.8f);
-	V2 = MakeVectorRegister(0.0f, 0.8f, 0.0f, 0.8f);
-	V3 = VectorFractional(V0);
-	LogTest(TEXT("VectorFractional"), TestVectorsEqual(V2, V3, KINDA_SMALL_NUMBER));
-
-	// VectorCeil
-	V0 = MakeVectorRegister(-1.8f, -1.0f, -0.8f, 0.0f);
-	V2 = MakeVectorRegister(-1.0f, -1.0f, -0.0f, 0.0f);
-	V3 = VectorCeil(V0);
-	LogTest(TEXT("VectorCeil"), TestVectorsEqual(V2, V3, KINDA_SMALL_NUMBER));
-
-	V0 = MakeVectorRegister(0.0f, 0.8f, 1.0f, 1.8f);
-	V2 = MakeVectorRegister(0.0f, 1.0f, 1.0f, 2.0f);
-	V3 = VectorCeil(V0);
-	LogTest(TEXT("VectorCeil"), TestVectorsEqual(V2, V3, KINDA_SMALL_NUMBER));
-
-	// VectorFloor
-	V0 = MakeVectorRegister(-1.8f, -1.0f, -0.8f, 0.0f);
-	V2 = MakeVectorRegister(-2.0f, -1.0f, -1.0f, 0.0f);
-	V3 = VectorFloor(V0);
-	LogTest(TEXT("VectorFloor"), TestVectorsEqual(V2, V3, KINDA_SMALL_NUMBER));
-
-	V0 = MakeVectorRegister(0.0f, 0.8f, 1.0f, 1.8f);
-	V2 = MakeVectorRegister(0.0f, 0.0f, 1.0f, 1.0f);
-	V3 = VectorFloor(V0);
-	LogTest(TEXT("VectorFloor"), TestVectorsEqual(V2, V3));
-
 	FMatrix	M0, M1, M2, M3;
 	FVector Eye, LookAt, Up;	
 	// Create Look at Matrix
@@ -1378,31 +1282,6 @@ bool FVectorRegisterAbstractionTest::RunTest(const FString& Parameters)
 		}
 	}
 
-	// Quat -> Axis and Angle
-	{
-		FVector Axis;
-		float Angle;
-
-		// Identity -> X Axis
-		Axis = FQuat::Identity.GetRotationAxis();
-		LogTest(TEXT("FQuat::Identity.GetRotationAxis() == FVector::XAxisVector"), TestFVector3Equal(Axis, FVector::XAxisVector));
-
-		const FQuat QuatArray[] = {
-			FQuat(0.0f, 0.0f, 0.0f, 1.0f),
-			FQuat(1.0f, 0.0f, 0.0f, 0.0f),
-			FQuat(0.0f, 1.0f, 0.0f, 0.0f),
-			FQuat(0.0f, 0.0f, 1.0f, 0.0f),
-			FQuat(0.000046571717f, -0.000068426132f, 0.000290602446f, 0.999999881000f) // length = 0.99999992665
-		};
-
-		for (const FQuat& Q : QuatArray)
-		{
-			Q.ToAxisAndAngle(Axis, Angle);
-			LogTest(TEXT("Quat -> Axis and Angle: Q is Normalized"), TestQuatNormalized(Q, 1e-6f));
-			LogTest(TEXT("Quat -> Axis and Angle: Axis is Normalized"), TestFVector3Normalized(Axis, 1e-6f));
-		}
-	}
-
 	// Quat / Rotator conversion to vectors, matrices
 	{
 		FRotator Rotator0;
@@ -1574,34 +1453,34 @@ bool FVectorRegisterAbstractionTest::RunTest(const FString& Parameters)
 		static XYPair XYArray[] =
 		{		
 			// Test normal ranges
-			{ 0.0f,	 1.0f},
-			{ 1.5f,	 1.0f},
-			{ 2.8f,	 0.3f},
-			{-2.8f,	 0.3f},
-			{ 2.8f,	-0.3f},
-			{-2.8f,	-0.3f},
-			{-0.4f,	 5.5f},
-			{ 0.4f,	-5.5f},
-			{ 2.8f,	 2.0f + KINDA_SMALL_NUMBER},
-			{-2.8f,	 2.0f - KINDA_SMALL_NUMBER},
+			{ 0.0,	 1.0},
+			{ 1.5,	 1.0},
+			{ 2.8,	 0.3},
+			{-2.8,	 0.3},
+			{ 2.8,	-0.3},
+			{-2.8,	-0.3},
+			{-0.4,	 5.5},
+			{ 0.4,	-5.5},
+			{ 2.8,	 2.0 + KINDA_SMALL_NUMBER},
+			{-2.8,	 2.0 - KINDA_SMALL_NUMBER},
 
 			// Analytically should be zero but floating point precision can cause results close to Y (or erroneously negative) depending on the method used.
-			{55.8f,	 9.3f},
-			{1234.1234f, 0.1234f},
+			{55.8,	 9.3},
+			{1234.1234, 0.1234},
 
 			// Commonly used for FRotators and angles
-			{725.2f,		360.0f},
-			{179.9f,		 90.0f},
-			{ 5.3f*PI,	2.f*PI},
-			{-5.3f*PI,	2.f*PI},
+			{725.2,		360.0},
+			{179.9,		 90.0},
+			{ 5.3*PI,	2.*PI},
+			{-5.3*PI,	2.*PI},
 
 			// Test extreme ranges
-			{ 1.0f,			 KINDA_SMALL_NUMBER},
-			{ 1.0f,			-KINDA_SMALL_NUMBER},
+			{ 1.0,			 KINDA_SMALL_NUMBER},
+			{ 1.0,			-KINDA_SMALL_NUMBER},
 			{-SMALL_NUMBER,  SMALL_NUMBER},
 			{ SMALL_NUMBER, -SMALL_NUMBER},
-			{ 1.0f,			 MIN_flt},
-			{ 1.0f,			-MIN_flt},
+			{ 1.0,			 MIN_flt},
+			{ 1.0,			-MIN_flt},
 			{ MAX_flt,		 MIN_flt},
 			{ MAX_flt,		-MIN_flt},
 
@@ -1621,7 +1500,7 @@ bool FVectorRegisterAbstractionTest::RunTest(const FString& Parameters)
 			//UE_LOG(LogUnrealMathTest, Warning, TEXT("fmodf(%f, %f) Ours: %f Theirs: %f"), X, Y, Ours, Theirs);
 
 			// A compiler bug causes stock fmodf() to rarely return NaN for valid input, we don't want to report this as a fatal error.
-			if (Y != 0.0f && FMath::IsNaN(Theirs))
+			if (Y != 0 && FMath::IsNaN(Theirs))
 			{
 				UE_LOG(LogUnrealMathTest, Warning, TEXT("fmodf(%f, %f) with valid input resulted in NaN!"), X, Y);
 				continue;
@@ -1880,352 +1759,6 @@ bool FMathRoundHalfFromZeroTests::RunTest(const FString& Parameters)
 
 	TestEqual(TEXT("RoundHalfFromZero64-ZeroBitPrecision"), FMath::RoundHalfToZero(9007199254740991.0), 9007199254740991.0);
 	TestEqual(TEXT("RoundHalfFromZero64-NegZeroBitPrecision"), FMath::RoundHalfToZero(-9007199254740991.0), -9007199254740991.0);
-
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FIsNearlyEqualByULPTest, "System.Core.Math.IsNearlyEqualByULP", EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::SmokeFilter)
-bool FIsNearlyEqualByULPTest::RunTest(const FString& Parameters)
-{
-	static float FloatNan = FMath::Sqrt(-1.0f);
-	static double DoubleNan = double(FloatNan);
-
-	static float FloatInf = 1.0f / 0.0f;
-	static double DoubleInf = 1.0 / 0.0;
-
-	float FloatTrueMin;
-	double DoubleTrueMin;
-
-	// Construct our own true minimum float constants (aka FLT_TRUE_MIN), bypassing any value parsing.
-	{
-		uint32 FloatTrueMinInt = 0x00000001U;
-		uint64 DoubleTrueMinInt = 0x0000000000000001ULL;
-
-		::memcpy(&FloatTrueMin, &FloatTrueMinInt, sizeof(FloatTrueMinInt));
-		::memcpy(&DoubleTrueMin, &DoubleTrueMinInt, sizeof(DoubleTrueMinInt));
-	}
-
-
-	static struct TestItem
-	{
-		const FString &Name;
-		bool Predicate;
-		struct 
-		{
-			float A;
-			float B;
-		} F;
-		struct
-		{
-			double A;
-			double B;
-		} D;
-
-		int ULP = 4;
-	} TestItems[] = {
-		{"ZeroEqual",		true, {0.0f, 0.0f}, {0.0, 0.0}},
-		{"OneEqual",		true, {1.0f, 1.0f}, {1.0, 1.0}},
-		{"MinusOneEqual",	true, {-1.0f, -1.0f}, {-1.0, -1.0}},
-		{"PlusMinusOneNotEqual", false, {-1.0f, 1.0f}, {-1.0, 1.0}},
-
-		{"NanEqualFail",	false, {FloatNan, FloatNan}, {DoubleNan, DoubleNan}},
-
-		// FLT_EPSILON is the smallest quantity that can be added to 1.0 and still be considered a distinct number
-		{"OneULPDistUp",	true, {1.0f, 1.0f + FLT_EPSILON}, {1.0, 1.0 + DBL_EPSILON}, 1},
-
-		// Going below one, we need to halve the epsilon, since the exponent has been lowered by one and hence the 
-		// numerical density doubles between 0.5 and 1.0.
-		{"OneULPDistDown",	true, {1.0f, 1.0f - (FLT_EPSILON / 2.0f)}, {1.0, 1.0 - (DBL_EPSILON / 2.0)}, 1},
-
-		// Make sure the ULP distance is computed correctly for double epsilon.
-		{"TwoULPDist",		true, {1.0f, 1.0f + 2 * FLT_EPSILON}, {1.0, 1.0 + 2 * DBL_EPSILON}, 2},
-		{"TwoULPDistFail",	false, {1.0f, 1.0f + 2 * FLT_EPSILON}, {1.0, 1.0 + 2 * DBL_EPSILON}, 1},
-
-		// Check if the same test works for higher exponents on both sides.
-		{"ONeULPDistEight",	true, {8.0f, 8.0f + 8.0f * FLT_EPSILON}, {8.0, 8.0 + 8.0 * DBL_EPSILON}, 1},
-		{"ONeULPDistFailEight",	false, {8.0f, 8.0f + 16.0f * FLT_EPSILON}, {8.0, 8.0 + 16.0 * DBL_EPSILON}, 1},
-
-		// Test for values around the zero point.
-		{"AroundZero",		true, {-FloatTrueMin, FloatTrueMin}, {-DoubleTrueMin, DoubleTrueMin}, 2},
-		{"AroundZeroFail",	false, {-FloatTrueMin, FloatTrueMin}, {-DoubleTrueMin, DoubleTrueMin}, 1},
-
-		// Test for values close to zero and zero.
-		{"PosNextToZero",	true, {0, FloatTrueMin}, {0, DoubleTrueMin}, 1},
-		{"NegNextToZero",	true, {-FloatTrueMin, 0}, {-DoubleTrueMin, 0}, 1},
-
-		// Should fail, even for maximum ULP distance.
-		{"InfAndMaxFail",	false, {FLT_MAX, FloatInf}, {DBL_MAX, DoubleInf}, INT32_MAX},
-		{"InfAndNegInfFail", false, {-FloatInf, FloatInf}, {-DoubleInf, DoubleInf}, INT32_MAX},
-
-		// Two infinities of the same sign should compare the same, regardless of ULP.
-		{"InfAndInf",		true, {FloatInf, FloatInf}, {DoubleInf, DoubleInf}, 0},
-
-	};
-
-	bool(FAutomationTestBase::*FuncTrue)(const FString &, bool) = &FAutomationTestBase::TestTrue;
-	bool(FAutomationTestBase::*FuncFalse)(const FString &, bool) = &FAutomationTestBase::TestFalse;
-
-	for (const TestItem& Item : TestItems)
-	{
-		auto Func = Item.Predicate ? FuncTrue : FuncFalse;
-
-		(this->*Func)(Item.Name + "-Float", FMath::IsNearlyEqualByULP(Item.F.A, Item.F.B, Item.ULP));
-		(this->*Func)(Item.Name + "-Double", FMath::IsNearlyEqualByULP(Item.D.A, Item.D.B, Item.ULP));
-	}
-
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMathTruncationTests, "System.Core.Math.TruncationFunctions", EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::EngineFilter)
-bool FMathTruncationTests::RunTest(const FString& Parameters)
-{
-	// Float: 1-bit Sign, 8-bit exponent, 23-bit mantissa, implicit 1
-	float FloatTestCases[][5] {
-		//Value				Trunc				Ceil				Floor				Round		
-		{-1.5f,				-1.0f,				-1.0f,				-2.0f,				-1.0f,				}, // We do not use round half to even, we always round .5 up (towards +inf)
-		{-1.0f,				-1.0f,				-1.0f,				-1.0f,				-1.0f,				},
-		{-0.75f,			-0.0f,				-0.0f,				-1.0f,				-1.0f,				},
-		{-0.5f,				-0.0f,				-0.0f,				-1.0f,				-0.0f,				}, // We do not use round half to even, we always round .5 up (towards +inf)
-		{-0.25f,			-0.0f,				-0.0f,				-1.0f,				-0.0f,				},
-		{0.0f,				0.0f,				0.0f,				0.0f,				0.0f,				},
-		{0.25f,				0.0f,				1.0f,				0.0f,				0.0f,				},
-		{0.5f,				0.0f,				1.0f,				0.0f,				1.0f,				}, // We do not use round half to even, we always round .5 up (towards +inf)
-		{0.75f,				0.0f,				1.0f,				0.0f,				1.0f,				},
-		{1.0f,				1.0f,				1.0f,				1.0f,				1.0f,				},
-		{1.5f,				1.0f,				2.0f,				1.0f,				2.0f,				},
-		{17179869184.0f,	17179869184.0f,		17179869184.0f,		17179869184.0f,		17179869184.0f,		}, // 2^34.  Note that 2^34 + 1 is not representable, but 2^34 is the string of bits 0, 00100010, 10000000000000000000000,
-		{-17179869184.0f,	-17179869184.0f,	-17179869184.0f,	-17179869184.0f,	-17179869184.0f,	}, // -2^34
-		{1048576.6f,		1048576.0f,			1048577.0f,			1048576.0f,			1048577.0f,			}, // 2^20 + 0.6
-		{-1048576.6f,		-1048576.0f,		-1048576.0f,		-1048577.0f,		-1048577.0f,		}, // -2^20 - 0.6
-	};
-	int IntTestCases[][4]{
-		//					Trunc				Ceil				Floor				Round
-		{					-1,					-1,					-2,					-1,					},
-		{					-1,					-1,					-1,					-1,					},
-		{					0,					0,					-1,					-1,					},
-		{					0,					0,					-1,					0,					},
-		{					0,					0,					-1,					0,					},
-		{					0,					0,					0,					0,					},
-		{					0,					1,					0,					0,					},
-		{					0,					1,					0,					1,					},
-		{					0,					1,					0,					1,					},
-		{					1,					1,					1,					1,					},
-		{					1,					2,					1,					2,					},
-		{					0,					0,					0,					0,					}, // undefined, > MAX_INT32
-		{					0,					0,					0,					0,					}, // undefined, < MIN_INT32
-		{					1048576,			1048577,			1048576,			1048577,			},
-		{					-1048576,			-1048576,			-1048577,			-1048577,			},
-	};
-	static_assert(UE_ARRAY_COUNT(FloatTestCases) == UE_ARRAY_COUNT(IntTestCases), "IntTestCases use the value from FloatTestCases and must be the same length");
-
-	TCHAR TestNameBuffer[128];
-	auto SubTestName = [&TestNameBuffer] (const TCHAR* FunctionName, double Input) {
-		FCString::Snprintf(TestNameBuffer, UE_ARRAY_COUNT(TestNameBuffer), TEXT("%s(%lf)"), FunctionName, Input);
-		return TestNameBuffer;
-	};
-
-	for (uint32 TestCaseIndex = 0; TestCaseIndex < UE_ARRAY_COUNT(FloatTestCases); TestCaseIndex++)
-	{
-		float* FloatValues = FloatTestCases[TestCaseIndex];
-		float Input = FloatValues[0];
-
-		TestEqual(SubTestName(TEXT("TruncToFloat"), Input), FMath::TruncToFloat(Input), FloatValues[1]);
-		TestEqual(SubTestName(TEXT("CeilToFloat"), Input), FMath::CeilToFloat(Input), FloatValues[2]);
-		TestEqual(SubTestName(TEXT("FloorToFloat"), Input), FMath::FloorToFloat(Input), FloatValues[3]);
-		TestEqual(SubTestName(TEXT("RoundToFloat"), Input), FMath::RoundToFloat(Input), FloatValues[4]);
-
-		int* IntValues = IntTestCases[TestCaseIndex];
-		if ((float)MIN_int32 <= Input && Input <= (float)MAX_int32)
-		{
-			TestEqual(SubTestName(TEXT("TruncToInt"), Input), FMath::TruncToInt(Input), IntValues[0]);
-			TestEqual(SubTestName(TEXT("CeilToInt"), Input), FMath::CeilToInt(Input), IntValues[1]);
-			TestEqual(SubTestName(TEXT("FloorToInt"), Input), FMath::FloorToInt(Input), IntValues[2]);
-			TestEqual(SubTestName(TEXT("RoundToInt"), Input), FMath::RoundToInt(Input), IntValues[3]);
-		}
-	}
-
-	// Double: 1-bit sign, 11-bit exponent, 52-bit mantissa, implicit 1
-	double DoubleTestCases[][5]{
-		//Value						Trunc					Ceil					Floor					Round		
-		{-1.5,						-1.0,					-1.0,					-2.0,					-1.0,					}, // We do not use round half to even, we always round .5 up (towards +inf)
-		{-1.0,						-1.0,					-1.0,					-1.0,					-1.0,					},
-		{-0.75,						-0.0,					-0.0,					-1.0,					-1.0,					},
-		{-0.5,						-0.0,					-0.0,					-1.0,					-0.0,					}, // We do not use round half to even, we always round .5 up (towards +inf)
-		{-0.25,						-0.0,					-0.0,					-1.0,					-0.0,					},
-		{0.0,						0.0,					0.0,					0.0,					0.0,					},
-		{0.25,						0.0,					1.0,					0.0,					0.0,					},
-		{0.5,						0.0,					1.0,					0.0,					1.0,					}, // We do not use round half to even, we always round .5 up (towards +inf)
-		{0.75,						0.0,					1.0,					0.0,					1.0,					},
-		{1.0,						1.0,					1.0,					1.0,					1.0,					},
-		{1.5,						1.0,					2.0,					1.0,					2.0,					},
-		{17179869184.0,				17179869184.0,			17179869184.0,			17179869184.0,			17179869184.0			}, // 2^34
-		{-17179869184.0,			-17179869184.0,			-17179869184.0,			-17179869184.0,			-17179869184.0			},
-		{1048576.6,					1048576.0,				1048577.0,				1048576.0,				1048577.0,				},
-		{-1048576.6,				-1048576.0,				-1048576.0,				-1048577.0,				-1048577.0,				},
-		{73786976294838206464.,		73786976294838206464.,	73786976294838206464.,	73786976294838206464.,	73786976294838206464.	}, // 2^66
-		{-73786976294838206464.,	-73786976294838206464.,	-73786976294838206464.,	-73786976294838206464.,	-73786976294838206464.	},
-		{281474976710656.6,			281474976710656.0,		281474976710657.0,		281474976710656.0,		281474976710657.0		}, // 2^48 + 0.6
-		{-281474976710656.6,		-281474976710656.0,		-281474976710656.0,		-281474976710657.0,		-281474976710657.0		},
-	};
-
-	for (uint32 TestCaseIndex = 0; TestCaseIndex < UE_ARRAY_COUNT(DoubleTestCases); TestCaseIndex++)
-	{
-		double* DoubleValues = DoubleTestCases[TestCaseIndex];
-		double Input = DoubleValues[0];
-
-		TestEqual(SubTestName(TEXT("TruncToDouble"), Input), FMath::TruncToDouble(Input), DoubleValues[1]);
-		TestEqual(SubTestName(TEXT("CeilToDouble"), Input), FMath::CeilToDouble(Input), DoubleValues[2]);
-		TestEqual(SubTestName(TEXT("FloorToDouble"), Input), FMath::FloorToDouble(Input), DoubleValues[3]);
-		TestEqual(SubTestName(TEXT("RoundToDouble"), Input), FMath::RoundToDouble(Input), DoubleValues[4]);
-	}
-
-#define MATH_TRUNCATION_SPEED_TEST
-#ifdef MATH_TRUNCATION_SPEED_TEST
-	volatile static float ForceCompileFloat;
-	volatile static int ForceCompileInt;
-
-	auto TimeIt = [](const TCHAR* SubFunctionName, float(*ComputeMath)(float Input), float(*ComputeGeneric)(float Input))
-	{
-		double StartTime = FPlatformTime::Seconds();
-		const float StartInput = 0.6f;
-		const float NumTrials = 10.f*1000.f*1000.f;
-		const float MicroSecondsPerSecond = 1000 * 1000.f;
-		for (float Input = StartInput; Input < NumTrials; Input += 1.0f)
-		{
-			ForceCompileFloat += ComputeMath(Input);
-		}
-		double EndTime = FPlatformTime::Seconds();
-		double FMathDuration = EndTime - StartTime;
-		StartTime = FPlatformTime::Seconds();
-		for (float Input = 0.6f; Input < 10 * 1000 * 1000; Input += 1.0f)
-		{
-			ForceCompileFloat += ComputeGeneric(Input);
-		}
-		EndTime = FPlatformTime::Seconds();
-		double GenericDuration = EndTime - StartTime;
-
-		UE_LOG(LogInit, Log, TEXT("%s: FMath time: %lfus, Generic: %lfus"), SubFunctionName, FMathDuration*MicroSecondsPerSecond / NumTrials, GenericDuration*MicroSecondsPerSecond / NumTrials);
-	};
-
-	TimeIt(TEXT("TruncToInt"), [](float Input) { return (float)FMath::TruncToInt(Input); }, [](float Input) { return (float)FGenericPlatformMath::TruncToInt(Input); });
-	TimeIt(TEXT("CeilToInt"), [](float Input) { return (float)FMath::CeilToInt(Input); }, [](float Input) { return (float)FGenericPlatformMath::CeilToInt(Input); });
-	TimeIt(TEXT("FloorToInt"), [](float Input) { return (float)FMath::FloorToInt(Input); }, [](float Input) { return (float)FGenericPlatformMath::FloorToInt(Input); });
-	TimeIt(TEXT("RoundToInt"), [](float Input) { return (float)FMath::RoundToInt(Input); }, [](float Input) { return (float)FGenericPlatformMath::RoundToInt(Input); });
-
-	TimeIt(TEXT("TruncToFloat"), [](float Input) { return FMath::TruncToFloat(Input); }, [](float Input) { return FGenericPlatformMath::TruncToFloat(Input); });
-	TimeIt(TEXT("CeilToFloat"), [](float Input) { return FMath::CeilToFloat(Input); }, [](float Input) { return FGenericPlatformMath::CeilToFloat(Input); });
-	TimeIt(TEXT("FloorToFloat"), [](float Input) { return FMath::FloorToFloat(Input); }, [](float Input) { return FGenericPlatformMath::FloorToFloat(Input); });
-	TimeIt(TEXT("RoundToFloat"), [](float Input) { return FMath::RoundToFloat(Input); }, [](float Input) { return FGenericPlatformMath::RoundToFloat(Input); });
-
-	TimeIt(TEXT("TruncToDouble"), [](float Input) { return (float)FMath::TruncToDouble((double)Input); }, [](float Input) { return (float)FGenericPlatformMath::TruncToDouble((double)Input); });
-	TimeIt(TEXT("CeilToDouble"), [](float Input) { return (float)FMath::CeilToDouble((double)Input); }, [](float Input) { return (float)FGenericPlatformMath::CeilToDouble((double)Input); });
-	TimeIt(TEXT("FloorToDouble"), [](float Input) { return (float)FMath::FloorToDouble((double)Input); }, [](float Input) { return (float)FGenericPlatformMath::FloorToDouble((double)Input); });
-	TimeIt(TEXT("RoundToDouble"), [](float Input) { return (float)FMath::RoundToDouble((double)Input); }, [](float Input) { return (float)FGenericPlatformMath::RoundToDouble((double)Input); });
-#endif
-
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMathIntegerTests, "System.Core.Math.IntegerFunctions", EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::SmokeFilter)
-bool FMathIntegerTests::RunTest(const FString& Parameters)
-{
-	// Test CountLeadingZeros8
-	TestEqual(TEXT("CountLeadingZeros8(0)"), FMath::CountLeadingZeros8(0), 8);
-	TestEqual(TEXT("CountLeadingZeros8(1)"), FMath::CountLeadingZeros8(1), 7);
-	TestEqual(TEXT("CountLeadingZeros8(2)"), FMath::CountLeadingZeros8(2), 6);
-	TestEqual(TEXT("CountLeadingZeros8(0x7f)"), FMath::CountLeadingZeros8(0x7f), 1);
-	TestEqual(TEXT("CountLeadingZeros8(0x80)"), FMath::CountLeadingZeros8(0x80), 0);
-	TestEqual(TEXT("CountLeadingZeros8(0xff)"), FMath::CountLeadingZeros8(0xff), 0);
-
-	// Test CountLeadingZeros
-	TestEqual(TEXT("CountLeadingZeros(0)"), FMath::CountLeadingZeros(0), 32);
-	TestEqual(TEXT("CountLeadingZeros(1)"), FMath::CountLeadingZeros(1), 31);
-	TestEqual(TEXT("CountLeadingZeros(2)"), FMath::CountLeadingZeros(2), 30);
-	TestEqual(TEXT("CountLeadingZeros(0x7fffffff)"), FMath::CountLeadingZeros(0x7fffffff), 1);
-	TestEqual(TEXT("CountLeadingZeros(0x80000000)"), FMath::CountLeadingZeros(0x80000000), 0);
-	TestEqual(TEXT("CountLeadingZeros(0xffffffff)"), FMath::CountLeadingZeros(0xffffffff), 0);
-
-	// Test CountLeadingZeros64
-	TestEqual(TEXT("CountLeadingZeros64(0)"), FMath::CountLeadingZeros64(0), uint64(64));
-	TestEqual(TEXT("CountLeadingZeros64(1)"), FMath::CountLeadingZeros64(1), uint64(63));
-	TestEqual(TEXT("CountLeadingZeros64(2)"), FMath::CountLeadingZeros64(2), uint64(62));
-	TestEqual(TEXT("CountLeadingZeros64(0x7fffffff'ffffffff)"), FMath::CountLeadingZeros64(0x7fffffff'ffffffff), uint64(1));
-	TestEqual(TEXT("CountLeadingZeros64(0x80000000'00000000)"), FMath::CountLeadingZeros64(0x80000000'00000000), uint64(0));
-	TestEqual(TEXT("CountLeadingZeros64(0xffffffff'ffffffff)"), FMath::CountLeadingZeros64(0xffffffff'ffffffff), uint64(0));
-
-	// Test FloorLog2
-	TestEqual(TEXT("FloorLog2(0)"), FMath::FloorLog2(0), 0);
-	TestEqual(TEXT("FloorLog2(1)"), FMath::FloorLog2(1), 0);
-	TestEqual(TEXT("FloorLog2(2)"), FMath::FloorLog2(2), 1);
-	TestEqual(TEXT("FloorLog2(3)"), FMath::FloorLog2(3), 1);
-	TestEqual(TEXT("FloorLog2(4)"), FMath::FloorLog2(4), 2);
-	TestEqual(TEXT("FloorLog2(0x7fffffff)"), FMath::FloorLog2(0x7fffffff), 30);
-	TestEqual(TEXT("FloorLog2(0x80000000)"), FMath::FloorLog2(0x80000000), 31);
-	TestEqual(TEXT("FloorLog2(0xffffffff)"), FMath::FloorLog2(0xffffffff), 31);
-
-	// Test FloorLog2_64
-	TestEqual(TEXT("FloorLog2_64(0)"), FMath::FloorLog2_64(0), uint64(0));
-	TestEqual(TEXT("FloorLog2_64(1)"), FMath::FloorLog2_64(1), uint64(0));
-	TestEqual(TEXT("FloorLog2_64(2)"), FMath::FloorLog2_64(2), uint64(1));
-	TestEqual(TEXT("FloorLog2_64(3)"), FMath::FloorLog2_64(3), uint64(1));
-	TestEqual(TEXT("FloorLog2_64(4)"), FMath::FloorLog2_64(4), uint64(2));
-	TestEqual(TEXT("FloorLog2_64(0x7fffffff)"), FMath::FloorLog2_64(0x7fffffff), uint64(30));
-	TestEqual(TEXT("FloorLog2_64(0x80000000)"), FMath::FloorLog2_64(0x80000000), uint64(31));
-	TestEqual(TEXT("FloorLog2_64(0xffffffff)"), FMath::FloorLog2_64(0xffffffff), uint64(31));
-	TestEqual(TEXT("FloorLog2_64(0x7fffffff'ffffffff)"), FMath::FloorLog2_64(0x7fffffff'ffffffff), uint64(62));
-	TestEqual(TEXT("FloorLog2_64(0x80000000'00000000)"), FMath::FloorLog2_64(0x80000000'00000000), uint64(63));
-	TestEqual(TEXT("FloorLog2_64(0xffffffff'ffffffff)"), FMath::FloorLog2_64(0xffffffff'ffffffff), uint64(63));
-
-	return true;
-}
-
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FNanInfVerificationTest, "System.Core.Math.NaNandInfTest", EAutomationTestFlags::ApplicationContextMask | EAutomationTestFlags::SmokeFilter)
-bool FNanInfVerificationTest::RunTest(const FString& Parameters)
-{
-	static float FloatNan = FMath::Sqrt(-1.0f);
-	static double DoubleNan = double(FloatNan);
-
-	static float FloatInf = 1.0f / 0.0f;
-	static double DoubleInf = 1.0 / 0.0;
-
-	static float FloatStdNan = std::numeric_limits<float>::quiet_NaN();
-	static double DoubleStdNan = std::numeric_limits<double>::quiet_NaN();
-
-	static float FloatStdInf = std::numeric_limits<float>::infinity();
-	static double DoubleStdInf = std::numeric_limits<double>::infinity();
-
-	static double DoubleMax = std::numeric_limits<double>::max();
-	static float FloatMax = std::numeric_limits<float>::max();
-
-	TestTrue(TEXT("HasQuietNaNFloat"), std::numeric_limits<float>::has_quiet_NaN);
-	TestTrue(TEXT("HasQuietNaNDouble"), std::numeric_limits<double>::has_quiet_NaN);
-	TestTrue(TEXT("HasInfinityFloat"), std::numeric_limits<float>::has_infinity);
-	TestTrue(TEXT("HasInfinityDouble"), std::numeric_limits<double>::has_infinity);
-
-	TestTrue(TEXT("SqrtNegOneIsNanFloat"), std::isnan(FloatNan));
-	TestTrue(TEXT("SqrtNegOneIsNanDouble"), std::isnan(DoubleNan));
-	TestTrue(TEXT("OneOverZeroIsInfFloat"), !std::isfinite(FloatInf) && !std::isnan(FloatInf));
-	TestTrue(TEXT("OneOverZeroIsInfDouble"), !std::isfinite(DoubleInf) && !std::isnan(DoubleInf));
-
-	TestTrue(TEXT("UE4IsNanTrueFloat"), FPlatformMath::IsNaN(FloatNan));
-	TestTrue(TEXT("UE4IsNanFalseFloat"), !FPlatformMath::IsNaN(0.0f));
-	TestTrue(TEXT("UE4IsNanTrueDouble"), FPlatformMath::IsNaN(DoubleNan));
-	TestTrue(TEXT("UE4IsNanFalseDouble"), !FPlatformMath::IsNaN(0.0));
-
-	TestTrue(TEXT("UE4IsFiniteTrueFloat"), FPlatformMath::IsFinite(0.0f) && !FPlatformMath::IsNaN(0.0f));
-	TestTrue(TEXT("UE4IsFiniteFalseFloat"), !FPlatformMath::IsFinite(FloatInf) && !FPlatformMath::IsNaN(FloatInf));
-	TestTrue(TEXT("UE4IsFiniteTrueDouble"), FPlatformMath::IsFinite(0.0) && !FPlatformMath::IsNaN(0.0));
-	TestTrue(TEXT("UE4IsFiniteFalseDouble"), !FPlatformMath::IsFinite(DoubleInf) && !FPlatformMath::IsNaN(DoubleInf));
-
-	TestTrue(TEXT("UE4IsNanStdFloat"), FPlatformMath::IsNaN(FloatStdNan));
-	TestTrue(TEXT("UE4IsNanStdDouble"), FPlatformMath::IsNaN(DoubleStdNan));
-
-	TestTrue(TEXT("UE4IsFiniteStdFloat"), !FPlatformMath::IsFinite(FloatStdInf) && !FPlatformMath::IsNaN(FloatStdInf));
-	TestTrue(TEXT("UE4IsFiniteStdDouble"), !FPlatformMath::IsFinite(DoubleStdInf) && !FPlatformMath::IsNaN(DoubleStdInf));
-
-	// test for Mac/Linux regression where IsFinite did not have a double equivalent so would downcast to a float and return INF.
-	TestTrue(TEXT("UE4IsFiniteDoubleMax"), FPlatformMath::IsFinite(DoubleMax) && !FPlatformMath::IsNaN(DoubleMax));
-	TestTrue(TEXT("UE4IsFiniteFloatMax"), FPlatformMath::IsFinite(FloatMax) && !FPlatformMath::IsNaN(FloatMax));
 
 	return true;
 }

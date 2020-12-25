@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,26 +10,32 @@ namespace mpcdi
 	struct DataMap;
 };
 
-
-class FMPCDIBlendTexture
-	: public FMPCDITexture
+namespace MPCDI
 {
-public:
-	FMPCDIBlendTexture()
-		: FMPCDITexture()
-		, EmbeddedGamma(1.0)
-	{ }
 
-public:
-	void LoadBlendMap(mpcdi::DataMap* SourceDataMap, float InEmbeddedGamma);
-	void CreateDummyAlphaMap();
+	class FMPCDIBlendTexture
+		: public FMPCDITexture
+	{
+	public:
+		FMPCDIBlendTexture()
+			: FMPCDITexture()
+			, EmbeddedGamma(1.0)
+		{ 
+		}
 
-	inline float GetEmbeddedGamma() const
-	{ return EmbeddedGamma; }
+	public:
+		void LoadBlendMap(mpcdi::DataMap* SourceDataMap, float InEmbeddedGamma);
+		void CreateDummyAlphaMap();
 
-private:
-	void LoadCustomMap(EPixelFormat PixelFormat, int Width, int Height, int BufferSize, void *TextureData);
+		inline float GetEmbeddedGamma() const
+		{ 
+			return EmbeddedGamma; 
+		};
 
-private:
-	float EmbeddedGamma;
+	private:
+		void LoadCustomMap(EPixelFormat PixelFormat, int Width, int Height, int BufferSize, void *TextureData);
+
+	private:
+		float EmbeddedGamma;
+	};
 };

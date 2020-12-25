@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -70,11 +70,6 @@ public:
 	 * Returns the list of active clients.
 	 */
 	virtual TArray<TSharedRef<IConcertSyncClient>> GetClients() const = 0;
-
-	/**
-	 * Find a concert sync client.
-	 */
-	virtual TSharedPtr<IConcertSyncClient> GetClient(const FString& InRole) const = 0;
 
 	/**
 	 * Delegate invoked when a new concert sync client is created.

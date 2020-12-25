@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_GF_HALF_H
-#define PXR_BASE_GF_HALF_H
+#ifndef GF_HALF_H
+#define GF_HALF_H
 
 /// \file gf/half.h
 ///
@@ -49,14 +49,7 @@ namespace pxr_half {
     hash_value(const Half& h) { return h.bits(); }
 }
 
-/// Returns the dot (inner) product of two vectors.
-/// For scalar types, this is just the regular product.
-/// \ingroup group_gf_BasicMath
-inline GfHalf GfDot(GfHalf a, GfHalf b) {
-    return a * b;
-}
-
 PXR_NAMESPACE_CLOSE_SCOPE
 
 
-#endif // PXR_BASE_GF_HALF_H
+#endif // GF_HALF_H

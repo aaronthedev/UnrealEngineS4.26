@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "HAL/Event.h"
@@ -6,7 +6,6 @@
 #include "Async/TaskGraphInterfaces.h"
 
 #include "UdpMessagingPrivate.h"
-#include "UdpMessagingSettings.h"
 #include "Transport/UdpSerializedMessage.h"
 #include "IMessageContext.h"
 #include "Transport/UdpSerializeMessageTask.h"
@@ -26,51 +25,42 @@ bool FUdpSerializeMessageTaskTest::RunTest(const FString& Parameters)
 {
 	using namespace UdpSerializeMessageTaskTest;
 
-	auto RunTestWithMessageFormat = [&](EUdpMessageFormat MessageFormat, uint8 ProtocolVersion)
+	const auto TimeSent = FDateTime(2015, 9, 17, 10, 59, 23, 666);
+	const auto Context = MakeShared<FUdpMockMessageContext, ESPMode::ThreadSafe>(new FUdpMockMessage, TimeSent);
+
+	// synchronous reference serialization
+	const auto Message1 = MakeShared<FUdpSerializedMessage, ESPMode::ThreadSafe>(UDP_MESSAGING_TRANSPORT_PROTOCOL_VERSION, Context->GetFlags());
+
+	FUdpSerializeMessageTask Task1(Context, Message1, nullptr);
 	{
-		const auto TimeSent = FDateTime(2015, 9, 17, 10, 59, 23, 666);
-		const auto Context = MakeShared<FUdpMockMessageContext, ESPMode::ThreadSafe>(new FUdpMockMessage, TimeSent);
+		Task1.DoTask(FTaskGraphInterface::Get().GetCurrentThreadIfKnown(), FGraphEventRef());
+	}
 
-		// synchronous reference serialization
-		const auto Message1 = MakeShared<FUdpSerializedMessage, ESPMode::ThreadSafe>(MessageFormat, ProtocolVersion, Context->GetFlags());
+	// asynchronous serialization
+	TSharedRef<FEvent, ESPMode::ThreadSafe> CompletionEvent = MakeShareable(FPlatformProcess::GetSynchEventFromPool(), [](FEvent* EventToDelete)
+	{
+		FPlatformProcess::ReturnSynchEventToPool(EventToDelete);
+	});
 
-		FUdpSerializeMessageTask Task1(Context, Message1, nullptr);
-		{
-			Task1.DoTask(FTaskGraphInterface::Get().GetCurrentThreadIfKnown(), FGraphEventRef());
-		}
+	TSharedRef<FUdpSerializedMessage, ESPMode::ThreadSafe> Message2 = MakeShared<FUdpSerializedMessage, ESPMode::ThreadSafe>(UDP_MESSAGING_TRANSPORT_PROTOCOL_VERSION, Context->GetFlags());
+	TGraphTask<FUdpSerializeMessageTask>::CreateTask().ConstructAndDispatchWhenReady(Context, Message2, CompletionEvent);
 
-		// asynchronous serialization
-		TSharedRef<FEvent, ESPMode::ThreadSafe> CompletionEvent = MakeShareable(FPlatformProcess::GetSynchEventFromPool(), [](FEvent* EventToDelete)
-		{
-			FPlatformProcess::ReturnSynchEventToPool(EventToDelete);
-		});
+	const bool Completed = CompletionEvent->Wait(MaxWaitTime);
 
-		TSharedRef<FUdpSerializedMessage, ESPMode::ThreadSafe> Message2 = MakeShared<FUdpSerializedMessage, ESPMode::ThreadSafe>(MessageFormat, ProtocolVersion, Context->GetFlags());
-		TGraphTask<FUdpSerializeMessageTask>::CreateTask().ConstructAndDispatchWhenReady(Context, Message2, CompletionEvent);
+	const TArray<uint8>& DataArray1 = Message1->GetDataArray();
+	const TArray<uint8>& DataArray2 = Message2->GetDataArray();
 
-		const bool Completed = CompletionEvent->Wait(MaxWaitTime);
+	const void* Data1 = DataArray1.GetData();
+	const void* Data2 = DataArray2.GetData();
 
-		const TArray<uint8>& DataArray1 = Message1->GetDataArray();
-		const TArray<uint8>& DataArray2 = Message2->GetDataArray();
+	const bool Equal = (FMemory::Memcmp(Data1, Data2, DataArray1.Num()) == 0);
 
-		const void* Data1 = DataArray1.GetData();
-		const void* Data2 = DataArray2.GetData();
+	TestEqual(TEXT("Synchronous message serialization must succeed"), Message1->GetState(), EUdpSerializedMessageState::Complete);
+	TestTrue(TEXT("Asynchronous message serialization must complete"), Completed);
+	TestEqual(TEXT("Asynchronous message serialization must succeed"), Message2->GetState(), EUdpSerializedMessageState::Complete);
+	TestTrue(TEXT("Synchronous and asynchronous message serialization must yield same results"), Equal);
 
-		const bool Equal = (FMemory::Memcmp(Data1, Data2, DataArray1.Num()) == 0);
-
-		TestEqual(TEXT("Synchronous message serialization must succeed"), Message1->GetState(), EUdpSerializedMessageState::Complete);
-		TestTrue(TEXT("Asynchronous message serialization must complete"), Completed);
-		TestEqual(TEXT("Asynchronous message serialization must succeed"), Message2->GetState(), EUdpSerializedMessageState::Complete);
-		TestTrue(TEXT("Synchronous and asynchronous message serialization must yield same results"), Equal);
-
-		return (Completed && Equal);
-	};
-
-	bool JsonTest = RunTestWithMessageFormat(EUdpMessageFormat::Json, 10); // Json was supported by UDP message protocol up to version 10.
-	bool PlatformEndianTest = RunTestWithMessageFormat(EUdpMessageFormat::CborPlatformEndianness, UDP_MESSAGING_TRANSPORT_PROTOCOL_VERSION); // CBOR using platform endianness was added at version 11.
-	bool StandardEndianTest = RunTestWithMessageFormat(EUdpMessageFormat::CborStandardEndianness, UDP_MESSAGING_TRANSPORT_PROTOCOL_VERSION); // CBOR using standard endianness was added at version 14.
-
-	return JsonTest && PlatformEndianTest && StandardEndianTest;
+	return (Completed && Equal);
 }
 
 void EmptyLinkFunctionForStaticInitializationUdpSerializeMessageTaskTest()

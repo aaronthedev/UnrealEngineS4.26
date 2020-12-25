@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,22 +9,24 @@ class FMenuBuilder;
 
 struct FSelectionData
 {
-	/** Virtual paths (for both folders and files) of the selected items */
-	TSet<FName> SelectedVirtualPaths;
+	TSet<FName> SelectedAssets;
+	TSet<FString> SelectedFolders;
 
 	int32 Num() const
 	{
-		return SelectedVirtualPaths.Num();
+		return SelectedAssets.Num() + SelectedFolders.Num();
 	}
 
 	void Reset()
 	{
-		SelectedVirtualPaths.Reset();
+		SelectedAssets.Reset();
+		SelectedFolders.Reset();
 	}
 
 	void Empty()
 	{
-		SelectedVirtualPaths.Empty();
+		SelectedAssets.Empty();
+		SelectedFolders.Empty();
 	}
 };
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -38,11 +38,6 @@ public:
 
 	/** Pointer to linked URuntimeVirtualTexture. Not for dereferencing, just for pointer comparison. */
 	URuntimeVirtualTexture* VirtualTexture;
-
-	/** Hide primitives in the main pass in editor mode. */
-	bool bHidePrimitivesInEditor;
-	/** Hide primitives in the main pass in game mode. */
-	bool bHidePrimitivesInGame;
 
 private:
 	/** UVToWorld transform for the URuntimeVirtualTexture object. */

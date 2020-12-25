@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -19,7 +19,8 @@ class UInterpTrackInstBoolProp : public UInterpTrackInstProperty
 	void* BoolPropertyAddress;
 
 	/** Mask that indicates which bit the boolean property actually uses of the value pointed to by BoolProp. */
-	FBoolProperty* BoolProperty;
+	UPROPERTY(transient)
+	UBoolProperty* BoolProperty;
 
 	/** Saved value for restoring state when exiting Matinee. */
 	UPROPERTY()

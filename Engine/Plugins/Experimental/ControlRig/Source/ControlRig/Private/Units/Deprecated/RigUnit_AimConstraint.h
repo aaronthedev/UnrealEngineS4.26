@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -49,23 +49,14 @@ struct FAimTarget
 	FVector AlignVector;
 };
 
-USTRUCT()
-struct FRigUnit_AimConstraint_WorkData
-{
-	GENERATED_BODY()
-
-	// note that Targets.Num () != ConstraintData.Num()
-	UPROPERTY()
-	TArray<FConstraintData>	ConstraintData;
-};
-
 USTRUCT(meta=(DisplayName="Aim Constraint", Category="Transforms", Deprecated = "4.23.0"))
 struct FRigUnit_AimConstraint : public FRigUnitMutable
 {
 	GENERATED_BODY()
 
-	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;
+
+private:
 
 	UPROPERTY(EditAnywhere, Category = FRigUnit_AimConstraint, meta = (Input))
 	FName Joint;
@@ -93,6 +84,5 @@ struct FRigUnit_AimConstraint : public FRigUnitMutable
 	TArray<FAimTarget> UpTargets;
 
 	// note that Targets.Num () != ConstraintData.Num()
-	UPROPERTY()
-	FRigUnit_AimConstraint_WorkData WorkData;
+	TArray<FConstraintData>	ConstraintData;
 };

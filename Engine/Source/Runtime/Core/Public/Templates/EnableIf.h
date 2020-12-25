@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -23,8 +23,7 @@ template <typename Result>
 class TEnableIf<true, Result>
 {
 public:
-	using type = Result;
-	using Type = Result;
+	typedef Result Type;
 };
 
 template <typename Result>
@@ -53,11 +52,9 @@ template <typename Func>
 class TLazyEnableIf<true, Func>
 {
 public:
-	using type = typename Func::Type;
-	using Type = typename Func::Type;
+	typedef typename Func::Type Type;
 };
 
 template <typename Func>
 class TLazyEnableIf<false, Func>
-{
-};
+{ };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ScreenPixelShader.usf: Filter pixel shader source.
@@ -8,23 +8,13 @@
 
 Texture2D InTexture;
 SamplerState InTextureSampler;
-int MipLevel;
 
 void Main(
 	FScreenVertexOutput Input,
 	out float4 OutColor : SV_Target0
 	)
 {
-	OutColor = Texture2DSample(InTexture, InTextureSampler, Input.UV);
-}
-
-void MainInvertAlpha(
-	FScreenVertexOutput Input,
-	out float4 OutColor : SV_Target0
-	)
-{
-	OutColor = Texture2DSample(InTexture, InTextureSampler, Input.UV);
-	OutColor.a = 1.f - OutColor.a;
+    OutColor = Texture2DSample(InTexture, InTextureSampler, Input.UV);
 }
 
 void MainsRGBSource(
@@ -32,23 +22,6 @@ void MainsRGBSource(
 	out float4 OutColor : SV_Target0
 	)
 {
-	OutColor = Texture2DSample(InTexture, InTextureSampler, Input.UV);
-	OutColor.rgb = pow( OutColor.rgb, 1.0f / 2.2f );
-}
-
-void MainMipLevel(
-	FScreenVertexOutput Input,
-	out float4 OutColor : SV_Target0
-	)
-{
-	OutColor = Texture2DSampleLevel(InTexture, InTextureSampler, Input.UV, MipLevel);
-}
-
-void MainsRGBSourceMipLevel(
-	FScreenVertexOutput Input,
-	out float4 OutColor : SV_Target0
-	)
-{
-	OutColor = Texture2DSampleLevel(InTexture, InTextureSampler, Input.UV, MipLevel);
+    OutColor = Texture2DSample(InTexture, InTextureSampler, Input.UV);
 	OutColor.rgb = pow( OutColor.rgb, 1.0f / 2.2f );
 }

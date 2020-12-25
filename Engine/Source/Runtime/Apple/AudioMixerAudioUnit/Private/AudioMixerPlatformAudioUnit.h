@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -51,9 +51,6 @@ namespace Audio
 		virtual bool DisablePCMAudioCaching() const override { return true; }
 		
 		//~ End IAudioMixerPlatformInterface
-        
-        static void IncrementSuspendCounter();
-        static void DecrementSuspendCounter();
 		
 	private:
 		AudioStreamBasicDescription OutputFormat;

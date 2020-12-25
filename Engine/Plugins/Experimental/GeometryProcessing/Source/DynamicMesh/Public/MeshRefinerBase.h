@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // Port of geometry3cpp FMeshRefinerBase
 
@@ -8,7 +8,6 @@
 #include "MeshConstraints.h"
 #include "Util/ProgressCancel.h"
 
-class FDynamicMeshChangeTracker;
 
 /**
  * This is a base class that implements common functionality for various triangle mesh resampling strategies
@@ -21,10 +20,11 @@ protected:
 	FDynamicMesh3* Mesh = nullptr;
 
 	/** Constraints are used to control how certain edges and vertices can be modified */
-	TOptional<FMeshConstraints> Constraints;
+	FMeshConstraints* Constraints = nullptr;
 
 	/** Vertices can be projected onto this surface when they are modified */
 	IProjectionTarget* ProjTarget = nullptr;
+
 
 	FMeshRefinerBase(FDynamicMesh3* MeshIn)
 	{
@@ -85,28 +85,24 @@ public:
 	/** Set to true to profile various passes @todo re-enable this! */
 	bool ENABLE_PROFILING = false;
 
-	/** 0 = no checking, 1 = check constraints each pass, 2 = and check validity each pass, 3 = and check validity after every mesh change (v slow but best for debugging) */
+	/** 0 = no checking, 1 = check constraints and validity each pass, 2 = check validity after every mesh change (v slow but best for debugging) */
 	int DEBUG_CHECK_LEVEL = 0;
 
 
 public:
-	FMeshRefinerBase(const FMeshRefinerBase&) = delete;
-	FMeshRefinerBase(FMeshRefinerBase&&) = delete;
-	FMeshRefinerBase& operator=(const FMeshRefinerBase&) = delete;
-	FMeshRefinerBase& operator=(FMeshRefinerBase&&) = delete;
 	virtual ~FMeshRefinerBase() {}
 
 	/** Get the current mesh we are operating on */
 	FDynamicMesh3* GetMesh() { return Mesh; }
 
 	/** Get the current mesh constraints */
-	const TOptional<FMeshConstraints>& GetConstraints() { return Constraints; }
+	FMeshConstraints* GetConstraints() { return Constraints; }
 
 	/**
 	 * Set external constraints.
 	 * Note that this object will be updated during computation.
 	 */
-	void SetExternalConstraints(TOptional<FMeshConstraints> ConstraintsIn) { Constraints = MoveTemp(ConstraintsIn); }
+	void SetExternalConstraints(FMeshConstraints* ConstraintsIn) { Constraints = ConstraintsIn; }
 
 
 	/** Get the current Projection Target */
@@ -130,7 +126,7 @@ public:
 
 
 	/** If this returns true, abort computation.  */
-	virtual bool Cancelled()
+	virtual bool Cancelled() 
 	{
 		return (Progress == nullptr) ? false : Progress->Cancelled();
 	}
@@ -147,14 +143,13 @@ protected:
 	 */
 	inline double ComputeEdgeFlipMetric(const FVector3d& Direction0, const FVector3d& Direction1) const
 	{
-		if (EdgeFlipTolerance == 0)
+		if (EdgeFlipTolerance == 0) 
 		{
 			return Direction0.Dot(Direction1);
 		}
-		else
+		else 
 		{
-			double ZeroTolerance = FMathd::ZeroTolerance;
-			return Direction0.Normalized(ZeroTolerance).Dot(Direction1.Normalized(ZeroTolerance));
+			return Direction0.Normalized().Dot(Direction1.Normalized());
 		}
 	}
 
@@ -211,16 +206,24 @@ protected:
 	 */
 	bool CanCollapseVertex(int eid, int a, int b, int& collapse_to) const;
 
+	/**
+	 * @return true if given vertex is Fixed under current constraints
+	 */
+	inline bool IsVertexFixed(int VertexID)
+	{
+		return (Constraints != nullptr && Constraints->GetVertexConstraint(VertexID).Fixed);
+	}
+
 
 	/**
-	 * @return true if given vertex can't move, or has a projection target
+	 * @return true if given vertex is Fixed or has a projection target
 	 */
-	inline bool IsVertexPositionConstrained(int VertexID)
+	inline bool IsVertexConstrained(int VertexID)
 	{
-		if (Constraints)
+		if (Constraints != nullptr)
 		{
 			FVertexConstraint vc = Constraints->GetVertexConstraint(VertexID);
-			return (!vc.bCanMove || vc.Target != nullptr);
+			return (vc.Fixed || vc.Target != nullptr);
 		}
 		return false;
 	}
@@ -230,7 +233,7 @@ protected:
 	 */
 	inline FVertexConstraint GetVertexConstraint(int VertexID)
 	{
-		if (Constraints)
+		if (Constraints != nullptr)
 		{
 			return Constraints->GetVertexConstraint(VertexID);
 		}
@@ -242,27 +245,14 @@ protected:
 	 */
 	inline bool GetVertexConstraint(int VertexID, FVertexConstraint& OutConstraint)
 	{
-		return Constraints &&
+		return (Constraints == nullptr) ? false :
 			Constraints->GetVertexConstraint(VertexID, OutConstraint);
 	}
 
 
 
-public:
-	//
-	// Mesh Change Tracking support
-	//
-
-	void SetMeshChangeTracker(FDynamicMeshChangeTracker* Tracker);
-
-protected:
-	FDynamicMeshChangeTracker* ActiveChangeTracker = nullptr;
-	virtual void SaveTriangleBeforeModify(int32 TriangleID);
-	virtual void SaveEdgeBeforeModify(int32 EdgeID);
-	virtual void SaveVertexTrianglesBeforeModify(int32 VertexID);
 
 
-protected:
 	/*
 	 * testing/debug/profiling stuff
 	 */

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // Port of WildMagic IntrSegment2Segment2
 
@@ -139,7 +139,7 @@ public:
 			return (Result == EIntersectionResult::Intersects);
 		}
 
-		// if either segment direction is not a normalized vector, 
+		// [RMS] if either segment direction is not a normalized vector, 
 		//   results are garbage, so fail query
 		if (Segment1.Direction.IsNormalized() == false || Segment2.Direction.IsNormalized() == false)
 		{
@@ -210,7 +210,7 @@ public:
 		Result = (Type != EIntersectionType::Empty) ?
 			EIntersectionResult::Intersects : EIntersectionResult::NoIntersection;
 
-		// for debugging...
+		// [RMS] for debugging...
 		//SanityCheck();
 
 		return (Result == EIntersectionResult::Intersects);

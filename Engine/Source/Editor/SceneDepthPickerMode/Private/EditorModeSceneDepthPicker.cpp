@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EditorModeSceneDepthPicker.h"
 #include "Framework/Application/SlateApplication.h"
@@ -6,7 +6,6 @@
 #include "LevelEditorViewport.h"
 #include "EditorModes.h"
 #include "Editor/ActorPositioning.h"
-#include "Widgets/SWindow.h"
 
 
 #define LOCTEXT_NAMESPACE "SceneDepthPicker"

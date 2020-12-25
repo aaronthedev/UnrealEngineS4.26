@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.Collections.Generic;
@@ -26,7 +26,7 @@ public class UnrealPakTarget : TargetRules
 		// ICU is not needed
 		bCompileICU = false;
 
-		// UnrealPak is a console application, not a Windows app (sets entry point to main(), instead of WinMain())
+		// UnrealHeaderTool is a console application, not a Windows app (sets entry point to main(), instead of WinMain())
 		bCompileAgainstApplicationCore = false;
 		bIsBuildingConsoleApplication = true;
 	}

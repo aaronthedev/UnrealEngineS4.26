@@ -1,13 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-#pragma once 
+#pragma once
+
 #include "CoreMinimal.h"
 #include "Layout/Visibility.h"
 #include "Input/Reply.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SWidget.h"
 #include "Widgets/SCompoundWidget.h"
-#include "Framework/MultiBox/MultiBoxBuilder.h"
 
 class FEdModeFoliage;
 class SFoliagePalette;
@@ -45,12 +45,6 @@ public:
 	/** Get the error message for this editing mode */
 	FText GetFoliageEditorErrorText() const;
 
-	/** Modes Panel Header Information **/
-	void CustomizeToolBarPalette(FToolBarBuilder& ToolBarBuilder);
-	FText GetActiveToolName() const;
-	FText GetActiveToolMessage() const;
-
-
 private:
 	/** Creates the toolbar. */
 	TSharedRef<SWidget> BuildToolBar();
@@ -69,19 +63,13 @@ private:
 	/** Checks if the tool mode is Paint Bucket. */
 	bool IsPaintFillTool() const;
 
-	/** Checks if the tool mode is Erase */
-	bool IsEraseTool() const;
+	FText GetActiveToolName() const;
 
-	/** Checks if the tool mode is Place Single Instance */
-	bool IsPlaceTool() const;
-
-
-public:	// BRUSH SETTINGS
+private:	// BRUSH SETTINGS
 	/** Sets the brush Radius for the brush. */
 	void SetRadius(float InRadius);
 
 	/** Retrieves the brush Radius for the brush. */
-	// TOptional<float> GetRadius() const;
 	TOptional<float> GetRadius() const;
 
 	/** Checks if the brush size should appear. Dependant on the current tool being used. */
@@ -108,12 +96,6 @@ public:	// BRUSH SETTINGS
 	/** Retrieves the text for the filters option */
 	FText GetFilterText() const;
 
-	/** Create a menu for the filter options */
-	TSharedRef<SWidget> MakeFilterMenu();
-
-	/** Create a menu for the settings option */
-	TSharedRef<SWidget> MakeSettingsMenu();
-
 	/** Sets the filter settings for if painting will occur on Landscapes. */
 	void OnCheckStateChanged_Landscape(ECheckBoxState InState);
 
@@ -121,10 +103,10 @@ public:	// BRUSH SETTINGS
 	ECheckBoxState GetCheckState_Landscape() const;
 
 	/** Sets the instantiation mode settings */
-	void OnCheckStateChanged_SingleInstantiationMode(bool InState);
+	void OnCheckStateChanged_SingleInstantiationMode(ECheckBoxState InState);
 
 	/** Retrieves the instantiation mode settings */
-	bool GetCheckState_SingleInstantiationMode() const;
+	ECheckBoxState GetCheckState_SingleInstantiationMode() const;
 
 	/** Sets the instantiation mode settings */
 	void OnCheckStateChanged_SpawnInCurrentLevelMode(ECheckBoxState InState);
@@ -222,19 +204,19 @@ public:	// BRUSH SETTINGS
 	/** @return display text for current placement type */
 	FText GetCurrentSingleInstantiationPlacementModeText() const;
 
-public:	// SELECTION
+private:	// SELECTION
 
 	/** Handler for 'Select All' command  */
-	void OnSelectAllInstances();
+	FReply OnSelectAllInstances();
 
 	/** Handler for 'Select Invalid Instances' command  */
-	void OnSelectInvalidInstances();
+	FReply OnSelectInvalidInstances();
 
 	/** Handler for 'Deselect All' command  */
-	void OnDeselectAllInstances();
+	FReply OnDeselectAllInstances();
 
 	/** Handler for 'Move to Current Level' command*/
-	void OnMoveSelectedInstancesToCurrentLevel();
+	FReply OnMoveSelectedInstancesToCurrentLevel();
 
 	/** Tooltip text for 'Instance Count" column */
 	FText GetTotalInstanceCountTooltipText() const;

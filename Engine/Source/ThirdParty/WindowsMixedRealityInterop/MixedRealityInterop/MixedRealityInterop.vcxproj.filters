@@ -48,12 +48,6 @@
     <ClInclude Include="CxDataFromBuffer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="AzureSpatialAnchors.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="HandMeshObserver.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -80,17 +74,10 @@
     <ClCompile Include="SpatialAudioClientInterop.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="AzureSpatialAnchors.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="HandMeshObserver.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="MixedRealityInteropBuildInfo.tt">
       <Filter>Source Files</Filter>
     </None>
-    <None Include="packages.config" />
   </ItemGroup>
 </Project>

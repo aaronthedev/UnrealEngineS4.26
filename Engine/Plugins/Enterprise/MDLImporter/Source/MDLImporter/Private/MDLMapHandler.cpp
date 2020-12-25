@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #ifdef USE_MDLSDK
 
@@ -67,7 +67,7 @@ void FMDLMapHandler::SetupNormalExpression(const FString& MapName)
 	}
 	else
 	{
-		if ((CurrentNormalExpression != FirstNormalExpression) && FirstNormalExpression)
+		if (CurrentNormalExpression != FirstNormalExpression)
 		{
 			// from now on, the normal expression is what we've got out of the Geometry field
 			CurrentNormalExpression = FirstNormalExpression;

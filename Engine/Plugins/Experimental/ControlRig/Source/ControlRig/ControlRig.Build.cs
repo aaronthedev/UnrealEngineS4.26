@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -22,8 +22,7 @@ namespace UnrealBuildTool.Rules
                     "MovieSceneTracks",
                     "PropertyPath",
 					"TimeManagement",
-					"DeveloperSettings"
-				}
+                }
             );
 
             PublicDependencyModuleNames.AddRange(
@@ -32,30 +31,17 @@ namespace UnrealBuildTool.Rules
                     "AnimationCore",
                     "LevelSequence",
                     "RigVM",
-                    "RHI",
                 }
             );
 
             if (Target.bBuildEditor == true)
             {
-                PublicDependencyModuleNames.AddRange(
-				    new string[]
-					{
-						"Slate",
-						"SlateCore",
-						"EditorStyle",
-						"RigVMDeveloper",
-                        "AnimGraph",
-                    }
-                );
-
                 PrivateDependencyModuleNames.AddRange(
                     new string[]
                     {
                         "UnrealEd",
                         "BlueprintGraph",
                         "PropertyEditor",
-                        "RigVMDeveloper",
                     }
                 );
 

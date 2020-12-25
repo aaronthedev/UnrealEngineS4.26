@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SDetailsViewBase.h"
 #include "GameFramework/Actor.h"
@@ -24,7 +24,6 @@
 #include "Classes/EditorStyleSettings.h"
 #include "DetailLayoutHelpers.h"
 #include "EditConditionParser.h"
-#include "Editor.h"
 
 SDetailsViewBase::~SDetailsViewBase()
 {
@@ -233,17 +232,10 @@ EVisibility SDetailsViewBase::GetTreeVisibility() const
 	return EVisibility::Collapsed;
 }
 
-EVisibility SDetailsViewBase::GetScrollBarVisibility() const
-{
-	const bool bHasAnythingToShow = RootTreeNodes.Num() > 0;
-	const bool bShowScrollBar = DetailsViewArgs.bShowScrollBar && bHasAnythingToShow;
-	return bShowScrollBar ? EVisibility::Visible : EVisibility::Collapsed;
-}
-
 /** Returns the image used for the icon on the filter button */
 const FSlateBrush* SDetailsViewBase::OnGetFilterButtonImageResource() const
 {
-	if (HasActiveSearch())
+	if (bHasActiveFilter)
 	{
 		return FEditorStyle::GetBrush(TEXT("PropertyWindow.FilterCancel"));
 	}
@@ -269,7 +261,7 @@ void SDetailsViewBase::CreateColorPickerWindow(const TSharedRef< FPropertyEditor
 	const TSharedRef< FPropertyNode > PinnedColorPropertyNode = PropertyEditor->GetPropertyNode();
 	ColorPropertyNode = PinnedColorPropertyNode;
 
-	FProperty* Property = PinnedColorPropertyNode->GetProperty();
+	UProperty* Property = PinnedColorPropertyNode->GetProperty();
 	check(Property);
 
 	FReadAddressList ReadAddresses;
@@ -282,13 +274,13 @@ void SDetailsViewBase::CreateColorPickerWindow(const TSharedRef< FPropertyEditor
 		const uint8* Addr = ReadAddresses.GetAddress(ColorIndex);
 		if (Addr)
 		{
-			if (CastField<FStructProperty>(Property)->Struct->GetFName() == NAME_Color)
+			if (Cast<UStructProperty>(Property)->Struct->GetFName() == NAME_Color)
 			{
 				DWORDColor.Add((FColor*)Addr);
 			}
 			else
 			{
-				check(CastField<FStructProperty>(Property)->Struct->GetFName() == NAME_LinearColor);
+				check(Cast<UStructProperty>(Property)->Struct->GetFName() == NAME_LinearColor);
 				LinearColor.Add((FLinearColor*)Addr);
 			}
 		}
@@ -313,7 +305,7 @@ void SDetailsViewBase::SetColorPropertyFromColorPicker(FLinearColor NewColor)
 	const TSharedPtr< FPropertyNode > PinnedColorPropertyNode = ColorPropertyNode.Pin();
 	if (ensure(PinnedColorPropertyNode.IsValid()))
 	{
-		FProperty* Property = PinnedColorPropertyNode->GetProperty();
+		UProperty* Property = PinnedColorPropertyNode->GetProperty();
 		check(Property);
 
 		FObjectPropertyNode* ObjectNode = PinnedColorPropertyNode->FindObjectItemParent();
@@ -355,12 +347,6 @@ void SDetailsViewBase::UpdatePropertyMaps()
 
 		// All the current detail layouts need to be deleted when it is safe
 		DetailLayoutsPendingDelete.Add(LayoutData.DetailLayout);
-	}
-
-	if (DetailLayouts.Num() > 0)
-	{
-		// Set timer to free memory even when widget is not visible or ticking
-		SetPendingCleanupTimer();
 	}
 
 	FRootPropertyNodeList& RootPropertyNodes = GetRootNodes();
@@ -420,7 +406,7 @@ void SDetailsViewBase::OnColorPickerWindowClosed(const TSharedRef<SWindow>& Wind
 	const TSharedPtr< FPropertyNode > PinnedColorPropertyNode = ColorPropertyNode.Pin();
 	if (ensure(PinnedColorPropertyNode.IsValid()))
 	{
-		FProperty* Property = PinnedColorPropertyNode->GetProperty();
+		UProperty* Property = PinnedColorPropertyNode->GetProperty();
 		if (Property && PropertyUtilities.IsValid())
 		{
 			FPropertyChangedEvent ChangeEvent(Property, EPropertyChangeType::ArrayAdd);
@@ -642,7 +628,14 @@ void SDetailsViewBase::OnShowAnimatedClicked()
 /** Called when the filter text changes.  This filters specific property nodes out of view */
 void SDetailsViewBase::OnFilterTextChanged(const FText& InFilterText)
 {
-	FilterView(InFilterText.ToString());
+	FString InFilterString = InFilterText.ToString();
+	InFilterString.TrimStartAndEndInline();
+
+	// Was the filter just cleared
+	bool bFilterCleared = InFilterString.Len() == 0 && CurrentFilter.FilterStrings.Num() > 0;
+
+	FilterView(InFilterString);
+
 }
 
 void SDetailsViewBase::OnFilterTextCommitted(const FText& InSearchText, ETextCommit::Type InCommitType)
@@ -683,37 +676,24 @@ void SDetailsViewBase::SetHostTabManager(TSharedPtr<FTabManager> InTabManager)
 /** 
  * Hides or shows properties based on the passed in filter text
  * 
- * @param InFilter The filter text
+ * @param InFilterText	The filter text
  */
-void SDetailsViewBase::FilterView(const FString& InFilter)
+void SDetailsViewBase::FilterView(const FString& InFilterText)
 {
-	bool bHadActiveFilter = CurrentFilter.FilterStrings.Num() > 0;
-
 	TArray<FString> CurrentFilterStrings;
 
-	FString ParseString = InFilter;
+	FString ParseString = InFilterText;
 	// Remove whitespace from the front and back of the string
 	ParseString.TrimStartAndEndInline();
 	ParseString.ParseIntoArray(CurrentFilterStrings, TEXT(" "), true);
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	bHasActiveFilter = CurrentFilterStrings.Num() > 0;
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
-	
+
 	CurrentFilter.FilterStrings = CurrentFilterStrings;
 
-	if (!bHadActiveFilter && CurrentFilter.FilterStrings.Num() > 0)
-	{
-		SavePreSearchExpandedItems();
-	}
-
 	UpdateFilteredDetails();
-	
-	if (bHadActiveFilter && CurrentFilter.FilterStrings.Num() == 0)
-	{
-		RestorePreSearchExpandedItems();
-	}
 }
+
 
 EVisibility SDetailsViewBase::GetFilterBoxVisibility() const
 {
@@ -747,34 +727,8 @@ FReply SDetailsViewBase::OnFocusReceived(const FGeometry& MyGeometry, const FFoc
 	return Reply;
 }
 
-void SDetailsViewBase::SetPendingCleanupTimer()
-{
-	if (!bPendingCleanupTimerSet)
-	{
-		if (GEditor && GEditor->IsTimerManagerValid())
-		{
-			bPendingCleanupTimerSet = true;
-			GEditor->GetTimerManager()->SetTimerForNextTick(FTimerDelegate::CreateSP(this, &SDetailsViewBase::HandlePendingCleanupTimer));
-		}
-	}
-}
-
-void SDetailsViewBase::HandlePendingCleanupTimer()
-{
-	bPendingCleanupTimerSet = false;
-
-	HandlePendingCleanup();
-
-	for (auto It = FilteredNodesRequestingExpansionState.CreateIterator(); It; ++It)
-	{
-		if (!It->Key.IsValid())
-		{
-			It.RemoveCurrent();
-		}
-	}
-}
-
-void SDetailsViewBase::HandlePendingCleanup()
+/** Ticks the property view.  This function performs a data consistency check */
+void SDetailsViewBase::Tick( const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime )
 {
 	for (int32 i = 0; i < CustomizationClassInstancesPendingDelete.Num(); ++i)
 	{
@@ -797,12 +751,6 @@ void SDetailsViewBase::HandlePendingCleanup()
 
 	// Empty all the detail layouts that need to be deleted
 	DetailLayoutsPendingDelete.Empty();
-}
-
-/** Ticks the property view.  This function performs a data consistency check */
-void SDetailsViewBase::Tick( const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime )
-{
-	HandlePendingCleanup();
 
 	FRootPropertyNodeList& RootPropertyNodes = GetRootNodes();
 
@@ -812,14 +760,14 @@ void SDetailsViewBase::Tick( const FGeometry& AllottedGeometry, const double InC
 		check(RootPropertyNode.IsValid());
 
 		// Purge any objects that are marked pending kill from the object list
-		if (FObjectPropertyNode* ObjectRoot = RootPropertyNode->AsObjectNode())
+		if(auto ObjectRoot = RootPropertyNode->AsObjectNode())
 		{
 			ObjectRoot->PurgeKilledObjects();
 		}
 
-		if (bHadDeferredActions)
+		if(bHadDeferredActions)
 		{		
-			// Any deferred actions are likely to cause the node tree to be at least partially rebuilt
+			// Any deferred actions are likely to cause the node  tree to be at least partially rebuilt
 			// Save the expansion state of existing nodes so we can expand them later
 			SaveExpandedItems(RootPropertyNode.ToSharedRef());
 		}
@@ -842,9 +790,9 @@ void SDetailsViewBase::Tick( const FGeometry& AllottedGeometry, const double InC
 	if (DeferredActions.Num() > 0)
 	{
 		// Execute any deferred actions
-		for (const FSimpleDelegate& DeferredAction : DeferredActions)
+		for (int32 ActionIndex = 0; ActionIndex < DeferredActions.Num(); ++ActionIndex)
 		{
-			DeferredAction.ExecuteIfBound();
+			DeferredActions[ActionIndex].ExecuteIfBound();
 		}
 		DeferredActions.Empty();
 	}
@@ -965,13 +913,9 @@ void SDetailsViewBase::Tick( const FGeometry& AllottedGeometry, const double InC
 	if (FilteredNodesRequestingExpansionState.Num() > 0)
 	{
 		// change expansion state on the nodes that request it
-		for (TMap<TWeakPtr<FDetailTreeNode>, bool >::TConstIterator It(FilteredNodesRequestingExpansionState); It; ++It)
+		for (TMap<TSharedRef<FDetailTreeNode>, bool >::TConstIterator It(FilteredNodesRequestingExpansionState); It; ++It)
 		{
-			TWeakPtr<FDetailTreeNode> DetailTreeNode = It.Key();
-			if (DetailTreeNode.IsValid())
-			{
-				DetailTree->SetItemExpansion(DetailTreeNode.Pin().ToSharedRef(), It.Value());
-			}
+			DetailTree->SetItemExpansion(It.Key(), It.Value());
 		}
 
 		FilteredNodesRequestingExpansionState.Empty();
@@ -984,7 +928,7 @@ void SDetailsViewBase::Tick( const FGeometry& AllottedGeometry, const double InC
 * @param InPropertyNode			The node to get expanded items from
 * @param OutExpandedItems	List of expanded items that were found
 */
-static void GetExpandedItems(TSharedPtr<FPropertyNode> InPropertyNode, TSet<FString>& OutExpandedItems)
+void GetExpandedItems(TSharedPtr<FPropertyNode> InPropertyNode, TArray<FString>& OutExpandedItems)
 {
 	if (InPropertyNode->HasNodeFlags(EPropertyNodeFlags::Expanded))
 	{
@@ -1000,6 +944,7 @@ static void GetExpandedItems(TSharedPtr<FPropertyNode> InPropertyNode, TSet<FStr
 	{
 		GetExpandedItems(InPropertyNode->GetChildNode(ChildIndex), OutExpandedItems);
 	}
+
 }
 
 /**
@@ -1008,108 +953,36 @@ static void GetExpandedItems(TSharedPtr<FPropertyNode> InPropertyNode, TSet<FStr
 * @param InNode			The node to set expanded items on
 * @param OutExpandedItems	List of expanded items to set
 */
-static void SetExpandedItems(TSharedPtr<FPropertyNode> InPropertyNode, const TSet<FString>& InExpandedItems, bool bCollapseRest)
+void SetExpandedItems(TSharedPtr<FPropertyNode> InPropertyNode, const TSet<FString>& InExpandedItems)
 {
-	const bool bWithArrayIndex = true;
-	FString Path;
-	Path.Empty(128);
-	InPropertyNode->GetQualifiedName(Path, bWithArrayIndex);
-
-	if (InExpandedItems.Contains(Path))
+	if (InExpandedItems.Num() > 0)
 	{
-		InPropertyNode->SetNodeFlags(EPropertyNodeFlags::Expanded, true);
-	}
-	else if (bCollapseRest)
-	{
-		InPropertyNode->SetNodeFlags(EPropertyNodeFlags::Expanded, false);
-	}
+		const bool bWithArrayIndex = true;
+		FString Path;
+		Path.Empty(128);
+		InPropertyNode->GetQualifiedName(Path, bWithArrayIndex);
 
-	for (int32 NodeIndex = 0; NodeIndex < InPropertyNode->GetNumChildNodes(); ++NodeIndex)
-	{
-		SetExpandedItems(InPropertyNode->GetChildNode(NodeIndex), InExpandedItems, bCollapseRest);
-	}
-}
-
-void SDetailsViewBase::SavePreSearchExpandedItems()
-{
-	PreSearchExpandedItems.Reset();
-
-	FRootPropertyNodeList& RootPropertyNodes = GetRootNodes();
-
-	for (TSharedPtr<FComplexPropertyNode>& RootPropertyNode : RootPropertyNodes)
-	{
-		GetExpandedItems(RootPropertyNode.ToSharedRef(), PreSearchExpandedItems);
-	}
-
-	for (FDetailLayoutData& LayoutData : DetailLayouts)
-	{
-		FRootPropertyNodeList& ExternalRootPropertyNodes = LayoutData.DetailLayout->GetExternalRootPropertyNodes();
-		for (TSharedPtr<FComplexPropertyNode>& ExternalRootPropertyNode : ExternalRootPropertyNodes)
+		if (InExpandedItems.Contains(Path))
 		{
-			GetExpandedItems(ExternalRootPropertyNode.ToSharedRef(), PreSearchExpandedItems);
+			InPropertyNode->SetNodeFlags(EPropertyNodeFlags::Expanded, true);
 		}
-	}
 
-	PreSearchExpandedCategories.Reset();
-
-	for (const TSharedRef<FDetailTreeNode>& RootNode : RootTreeNodes)
-	{
-		if (RootNode->GetNodeType() == EDetailNodeType::Category)
+		for (int32 NodeIndex = 0; NodeIndex < InPropertyNode->GetNumChildNodes(); ++NodeIndex)
 		{
-			FDetailCategoryImpl& Category = (FDetailCategoryImpl&) RootNode.Get();
-			if (Category.ShouldBeExpanded())
-			{
-				PreSearchExpandedCategories.Add(Category.GetCategoryPathName());
-			}
+			SetExpandedItems(InPropertyNode->GetChildNode(NodeIndex), InExpandedItems);
 		}
 	}
 }
 
-void SDetailsViewBase::RestorePreSearchExpandedItems()
-{
-	FRootPropertyNodeList& RootPropertyNodes = GetRootNodes();
-
-	for (TSharedPtr<FComplexPropertyNode>& RootPropertyNode : RootPropertyNodes)
-	{
-		SetExpandedItems(RootPropertyNode, PreSearchExpandedItems, true);
-	}
-
-	for (FDetailLayoutData& LayoutData : DetailLayouts)
-	{
-		FRootPropertyNodeList& ExternalRootPropertyNodes = LayoutData.DetailLayout->GetExternalRootPropertyNodes();
-		for (TSharedPtr<FComplexPropertyNode>& ExternalRootPropertyNode : ExternalRootPropertyNodes)
-		{
-			SetExpandedItems(ExternalRootPropertyNode, PreSearchExpandedItems, true);
-		}
-	}
-
-	PreSearchExpandedItems.Reset();
-
-	for (const TSharedRef<FDetailTreeNode>& RootNode : RootTreeNodes)
-	{
-		if (RootNode->GetNodeType() == EDetailNodeType::Category)
-		{
-			FDetailCategoryImpl& Category = (FDetailCategoryImpl&) RootNode.Get();
-			
-			bool bShouldBeExpanded = PreSearchExpandedCategories.Contains(Category.GetCategoryPathName());
-			RequestItemExpanded(RootNode, bShouldBeExpanded);
-		}
-	}
-
-	PreSearchExpandedCategories.Reset();
-}
-
-void SDetailsViewBase::SaveExpandedItems(TSharedRef<FPropertyNode> StartNode)
+void SDetailsViewBase::SaveExpandedItems( TSharedRef<FPropertyNode> StartNode )
 {
 	UStruct* BestBaseStruct = StartNode->FindComplexParent()->GetBaseStructure();
 
-	TSet<FString> ExpandedPropertyItemSet;
-	GetExpandedItems(StartNode, ExpandedPropertyItemSet);
-
-	TArray<FString> ExpandedPropertyItems = ExpandedPropertyItemSet.Array();
+	TArray<FString> ExpandedPropertyItems;
+	GetExpandedItems(StartNode, ExpandedPropertyItems);
 
 	// Handle spaces in expanded node names by wrapping them in quotes
-	for (FString& String : ExpandedPropertyItems)
+	for( FString& String : ExpandedPropertyItems )
 	{
 		String.InsertAt(0, '"');
 		String.AppendChar('"');
@@ -1117,12 +990,12 @@ void SDetailsViewBase::SaveExpandedItems(TSharedRef<FPropertyNode> StartNode)
 
 	TArray<FString> ExpandedCustomItems = ExpandedDetailNodes.Array();
 
-	// Expanded custom items may have spaces but SetSingleLineArray doesn't support spaces (treats it as another element in the array)
+	// Expanded custom items may have spaces but SetSingleLineArray doesnt support spaces (treats it as another element in the array)
 	// Append a '|' after each element instead
 	FString ExpandedCustomItemsString;
-	for (const FString& DetailNode : ExpandedDetailNodes)
+	for (auto It = ExpandedDetailNodes.CreateConstIterator(); It; ++It)
 	{
-		ExpandedCustomItemsString += DetailNode;
+		ExpandedCustomItemsString += *It;
 		ExpandedCustomItemsString += TEXT(",");
 	}
 
@@ -1162,8 +1035,10 @@ void SDetailsViewBase::SaveExpandedItems(TSharedRef<FPropertyNode> StartNode)
 	}
 }
 
-void SDetailsViewBase::RestoreExpandedItems(TSharedRef<FPropertyNode> StartNode)
+void SDetailsViewBase::RestoreExpandedItems(TSharedRef<FPropertyNode> InitialStartNode)
 {
+	TSharedPtr<FPropertyNode> StartNode = InitialStartNode;
+
 	FString ExpandedCustomItems;
 
 	UStruct* BestBaseStruct = StartNode->FindComplexParent()->GetBaseStructure();
@@ -1177,7 +1052,7 @@ void SDetailsViewBase::RestoreExpandedItems(TSharedRef<FPropertyNode> StartNode)
 
 	TSet<FString> ExpandedPropertyItems;
 	ExpandedPropertyItems.Append(DetailPropertyExpansionStrings);
-	SetExpandedItems(StartNode, ExpandedPropertyItems, false);
+	SetExpandedItems(StartNode, ExpandedPropertyItems);
 
 	if (BestBaseStruct)
 	{
@@ -1215,7 +1090,7 @@ void SDetailsViewBase::UpdateFilteredDetails()
 			if(DetailLayout.IsValid())
 			{
 				FRootPropertyNodeList& ExternalRootPropertyNodes = DetailLayout->GetExternalRootPropertyNodes();
-				for (const TSharedPtr<FComplexPropertyNode>& ExternalRootNode : ExternalRootPropertyNodes)
+				for (auto ExternalRootNode : ExternalRootPropertyNodes)
 				{
 					if (ExternalRootNode.IsValid())
 					{
@@ -1254,6 +1129,8 @@ void SDetailsViewBase::UpdateFilteredDetails()
 
 	RefreshTree();
 }
+
+
 
 void SDetailsViewBase::RegisterInstancedCustomPropertyLayout(UStruct* Class, FOnGetDetailCustomizationInstance DetailLayoutDelegate)
 {

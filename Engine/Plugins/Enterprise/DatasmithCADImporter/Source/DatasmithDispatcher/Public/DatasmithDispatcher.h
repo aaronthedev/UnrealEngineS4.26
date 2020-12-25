@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "DatasmithDispatcherTask.h"
@@ -16,18 +16,16 @@ namespace DatasmithDispatcher
 class DATASMITHDISPATCHER_API FDatasmithDispatcher
 {
 public:
-	FDatasmithDispatcher(const CADLibrary::FImportParameters& InImportParameters, const FString& InCacheDir, int32 InNumberOfWorkers, TMap<uint32, FString>& CADFileToUnrealFileMap, TMap<uint32, FString>& CADFileToUnrealGeomMap);
+	FDatasmithDispatcher(const CADLibrary::FImportParameters& InImportParameters, const FString& InCacheDir, int32 InNumberOfWorkers, TMap<FString, FString>& CADFileToUnrealFileMap, TMap<FString, FString>& CADFileToUnrealGeomMap);
 
-	void AddTask(const CADLibrary::FFileDescription & FileDescription);
+	void AddTask(const FString& FileName);
 	TOptional<FTask> GetNextTask();
 	void SetTaskState(int32 TaskIndex, ETaskState TaskState);
 
 	void Process(bool bWithProcessor);
 	bool IsOver();
 
-	void LinkCTFileToUnrealCacheFile(const CADLibrary::FFileDescription& CTFileDescription, const FString& UnrealSceneGraphFile, const FString& UnrealGeomFile);
-
-	void LogWarningMessages(const TArray<FString>& Warnings) const;
+	void LinkCTFileToUnrealCacheFile(const FString& CTFile, const FString& UnrealSceneGraphFile, const FString& UnrealGeomFile);
 
 private:
 	void SpawnHandlers();
@@ -45,8 +43,8 @@ private:
 	int32 CompletedTaskCount;
 
 	// Scene wide state
-	TMap<uint32, FString>& CADFileToUnrealFileMap;
-	TMap<uint32, FString>& CADFileToUnrealGeomMap;
+	TMap<FString, FString>& CADFileToUnrealFileMap;
+	TMap<FString, FString>& CADFileToUnrealGeomMap;
 	FString ProcessCacheFolder;
 	CADLibrary::FImportParameters ImportParameters;
 

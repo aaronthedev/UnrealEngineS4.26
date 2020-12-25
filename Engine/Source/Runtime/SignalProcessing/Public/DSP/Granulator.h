@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -42,14 +42,14 @@ namespace Audio
 	};
 
 	// Simple class that generates an envelope and lets you retrieve interpolated values at any given fraction
-	class SIGNALPROCESSING_API FGrainEnvelope
+	class FGrainEnvelope
 	{
 	public:
 		FGrainEnvelope();
 		~FGrainEnvelope();
 
 		void GenerateEnvelope(const EGrainEnvelopeType EnvelopeType, const int32 NumFrames);
-		float GetValue(const float Fraction) const;
+		float GetValue(const float Fraction);
 
 	private:
 		EGrainEnvelopeType CurrentType;
@@ -83,7 +83,7 @@ namespace Audio
 	class FGranularSynth;
 
 	// Class representing a grain of audio
-	class SIGNALPROCESSING_API FGrain
+	class FGrain
 	{
 	public:
 		FGrain(const int32 InGrainId, FGranularSynth* InParent);

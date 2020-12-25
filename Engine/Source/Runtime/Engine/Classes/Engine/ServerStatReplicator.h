@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -40,7 +40,7 @@ public:
 	uint32 OutRate;
 
 	/** @see Network stats counters in EngineStats.h */
-	UE_DEPRECATED(4.25, "Saturation is not calculated anymore and is now deprecated.")
+	UPROPERTY(Replicated)
 	uint32 OutSaturation;
 
 	/** @see Network stats counters in EngineStats.h */

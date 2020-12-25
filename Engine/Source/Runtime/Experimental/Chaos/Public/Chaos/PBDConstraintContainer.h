@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Chaos/ConstraintHandle.h"
@@ -11,19 +11,17 @@ namespace Chaos
 	 * A Constraint Container holds an array of constraints and provides methods to allocate and deallocate constraints
 	 *as well as the API required to plug into Constraint Rules.
 	 */
-	class CHAOS_API FPBDConstraintContainer
+	template<class T, int d>
+	class CHAOS_API TPBDConstraintContainer
 	{
 	public:
-		FPBDConstraintContainer();
+		TPBDConstraintContainer();
 
-		virtual ~FPBDConstraintContainer();
-
-		virtual void SetConstraintEnabled(int32 ConstraintIndex, bool bEnabled) { }
-		virtual bool IsConstraintEnabled(int32 ConstraintIndex) const { return true; }
+		virtual ~TPBDConstraintContainer();
 
 	protected:
 		// friend access to the Constraint Handle's container API
-		int32 GetConstraintIndex(const FConstraintHandle* ConstraintHandle) const;
-		void SetConstraintIndex(FConstraintHandle* ConstraintHandle, int32 ConstraintIndex) const;
+		int32 GetConstraintIndex(const TConstraintHandle<T, d>* ConstraintHandle) const;
+		void SetConstraintIndex(TConstraintHandle<T, d>* ConstraintHandle, int32 ConstraintIndex) const;
 	};
 }

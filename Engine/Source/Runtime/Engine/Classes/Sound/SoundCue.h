@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -7,19 +7,7 @@
 #include "Sound/SoundAttenuation.h"
 #include "Sound/SoundBase.h"
 #include "Sound/SoundNode.h"
-#include "Sound/SoundWave.h"
-
-#if WITH_EDITOR
-#include "EdGraph/EdGraph.h"
-#endif
-
 #include "SoundCue.generated.h"
-
-
-// Forward Declarations
-#if WITH_EDITORONLY_DATA
-class UEdGraph;
-#endif // WITH_EDITORONLY_DATA
 
 class USoundCue;
 class USoundNode;
@@ -90,22 +78,22 @@ class ENGINE_API USoundCue : public USoundBase
 	GENERATED_UCLASS_BODY()
 
 	/* Makes this sound cue automatically load any sound waves it can play into the cache when it is loaded. */
-	UPROPERTY(EditAnywhere, Category = Memory)
+	UPROPERTY(EditAnywhere, Category = Caching)
 	uint32 bPrimeOnLoad : 1;
 
 	UPROPERTY()
 	USoundNode* FirstNode;
 
-	/* Base volume multiplier */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Sound, AssetRegistrySearchable)
+	/* Volume multiplier for the Sound Cue */
+	UPROPERTY(EditAnywhere, Category=Sound, AssetRegistrySearchable)
 	float VolumeMultiplier;
 
-	/* Base pitch multiplier */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Sound, AssetRegistrySearchable)
+	/* Pitch multiplier for the Sound Cue */
+	UPROPERTY(EditAnywhere, Category=Sound, AssetRegistrySearchable)
 	float PitchMultiplier;
 
 	/* Attenuation settings to use if Override Attenuation is set to true */
-	UPROPERTY(EditAnywhere, Category = Attenuation)
+	UPROPERTY(EditAnywhere, Category=AttenuationSettings, meta=(EditCondition="bOverrideAttenuation"))
 	FSoundAttenuationSettings AttenuationOverrides;
 
 #if WITH_EDITORONLY_DATA
@@ -113,12 +101,12 @@ class ENGINE_API USoundCue : public USoundBase
 	TArray<USoundNode*> AllNodes;
 
 	UPROPERTY()
-	UEdGraph* SoundCueGraph;
+	class UEdGraph* SoundCueGraph;
 #endif
 
 protected:
 	// NOTE: Use GetSubtitlePriority() to fetch this value for external use.
-	UPROPERTY(EditAnywhere, Category = "Voice Management|Priority", Meta = (Tooltip = "The priority of the subtitle.  Defaults to 10000.  Higher values will play instead of lower values."))
+	UPROPERTY(EditAnywhere, Category = Subtitles, Meta = (Tooltip = "The priority of the subtitle.  Defaults to 10000.  Higher values will play instead of lower values."))
 	float SubtitlePriority;
 
 private:
@@ -126,16 +114,14 @@ private:
 
 public:
 	/* Indicates whether attenuation should use the Attenuation Overrides or the Attenuation Settings asset */
-	UPROPERTY(EditAnywhere, Category = Attenuation)
+	UPROPERTY(EditAnywhere, Category=Attenuation)
 	uint8 bOverrideAttenuation : 1;
 
-	/* Ignore per-platform random node culling for memory purposes */
-	UPROPERTY(EditAnywhere, Category = Memory, Meta = (DisplayName = "Disable Random Branch Culling"))
+	/* Makes this sound cue ignore per-platform random node culling for memory purposes */
+	UPROPERTY(EditAnywhere, Category=Culling)
 	uint8 bExcludeFromRandomNodeBranchCulling : 1;
 
 private:
-	UPROPERTY()
-	int32 CookedQualityIndex = INDEX_NONE;
 	
 	/** Whether a sound has play when silent enabled (i.e. for a sound cue, if any sound wave player has it enabled). */
 	UPROPERTY()
@@ -145,7 +131,6 @@ private:
 	uint8 bHasAttenuationNodeInitialized : 1;
 	uint8 bShouldApplyInteriorVolumes : 1;
 	uint8 bShouldApplyInteriorVolumesCached : 1;
-	uint8 bIsRetainingAudio : 1;
 
 public:
 
@@ -160,7 +145,6 @@ public:
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
 	virtual bool CanBeClusterRoot() const override;
 	virtual bool CanBeInCluster() const override;
-	virtual void BeginDestroy() override;
 	//~ End UObject Interface.
 
 	//~ Begin USoundBase Interface.
@@ -255,22 +239,12 @@ public:
 	static void StaticAudioQualityChanged(int32 NewQualityLevel);
 
 	FORCEINLINE static int32 GetCachedQualityLevel() { return CachedQualityLevel; }
-	
-	/** Set the Quality level that the Cue was cooked at, called by the SoundQualityNodes */
-	int32 GetCookedQualityIndex() const { return CookedQualityIndex; }
 
 	/** Call to cache any values which need to be computed from the sound cue graph. e.g. MaxDistance, Duration, etc. */
 	void CacheAggregateValues();
 
 	/** Call this when stream caching is enabled to prime all SoundWave assets referenced by this Sound Cue. */
 	void PrimeSoundCue();
-
-	/** Call this when stream caching is enabled to retain all soundwave assets referenced by this sound cue. */
-	void RetainSoundCue();
-	void ReleaseRetainedAudio();
-
-	/** Call this when stream caching is enabled to update sound waves of loading behavior they are inheriting via SoundCue */
-	void CacheLoadingBehavior(ESoundWaveLoadingBehavior InBehavior);
 
 protected:
 	bool RecursiveFindPathToNode(USoundNode* CurrentNode, const UPTRINT CurrentHash, const UPTRINT NodeHashToFind, TArray<USoundNode*>& OutPath) const;
@@ -279,16 +253,12 @@ private:
 	void AudioQualityChanged();
 	void OnPostEngineInit();
 	void EvaluateNodes(bool bAddToRoot);
-
 	float FindMaxDistanceInternal() const;
 
 	FDelegateHandle OnPostEngineInitHandle;
 	static int32 CachedQualityLevel;
 
 public:
-
-	// This is used to cache the quality level if it has not been cached yet.
-	static void CacheQualityLevel();
 
 	/**
 	 * Instantiate certain functions to work around a linker issue
@@ -312,7 +282,7 @@ public:
 	void CompileSoundNodesFromGraphNodes();
 
 	/** Get the EdGraph of SoundNodes */
-	UEdGraph* GetGraph();
+	class UEdGraph* GetGraph();
 
 	/** Resets all graph data and nodes */
 	void ResetGraph();
@@ -330,7 +300,5 @@ private:
 
 	/** Ptr to interface to sound cue editor operations. */
 	static TSharedPtr<ISoundCueAudioEditor> SoundCueAudioEditor;
-
-	FCriticalSection EditorOnlyCs;
 #endif // WITH_EDITOR
 };

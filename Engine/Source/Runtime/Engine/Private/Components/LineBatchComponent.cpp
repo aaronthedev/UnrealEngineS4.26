@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*-----------------------------------------------------------------------------
 	ULineBatchComponent implementation.
@@ -89,7 +89,7 @@ FPrimitiveViewRelevance FLineBatcherSceneProxy::GetViewRelevance(const FSceneVie
 	ViewRelevance.bDrawRelevance = IsShown(View);
 	ViewRelevance.bDynamicRelevance = true;
 	// ideally the TranslucencyRelevance should be filled out by the material, here we do it conservative
-	ViewRelevance.bSeparateTranslucency = ViewRelevance.bNormalTranslucency = true;
+	ViewRelevance.bSeparateTranslucencyRelevance = ViewRelevance.bNormalTranslucencyRelevance = true;
 	return ViewRelevance;
 }
 

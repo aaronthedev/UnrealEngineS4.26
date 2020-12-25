@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,7 +11,7 @@ class FSequencerSectionLayoutBuilder
 	: public ISectionLayoutBuilder
 {
 public:
-	FSequencerSectionLayoutBuilder(TSharedRef<FSequencerTrackNode> InRootTrackNode, TSharedRef<ISequencerSection> InSection);
+	FSequencerSectionLayoutBuilder(TSharedRef<FSequencerTrackNode> InRootTrackNode, UMovieSceneSection* InSection);
 
 public:
 
@@ -39,7 +39,7 @@ private:
 	TSharedRef<FSequencerDisplayNode> CurrentNode;
 
 	/** The section that we are building a layout for */
-	TSharedRef<ISequencerSection> Section;
+	UMovieSceneSection* Section;
 
 	/** Boolean indicating whether this section layout builder has been given any layout or not */
 	bool bHasAnyLayout;

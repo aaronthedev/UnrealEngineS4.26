@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -52,10 +52,6 @@ struct UNREALED_API FActorFolders : public FGCObject
 
 	// FGCObject Interface
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
-	virtual FString GetReferencerName() const override
-	{
-		return "FActorFolders";
-	}
 	// End FGCObject Interface
 
 	/** Check whether the singleton is valid */

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineSubsystemNull.h"
 #include "HAL/RunnableThread.h"
@@ -11,8 +11,6 @@
 #include "OnlineAchievementsInterfaceNull.h"
 #include "OnlineStoreV2InterfaceNull.h"
 #include "OnlinePurchaseInterfaceNull.h"
-#include "OnlineMessageSanitizerNull.h"
-#include "Stats/Stats.h"
 
 FThreadSafeCounter FOnlineSubsystemNull::TaskCounter;
 
@@ -91,6 +89,11 @@ IOnlineTitleFilePtr FOnlineSubsystemNull::GetTitleFileInterface() const
 	return nullptr;
 }
 
+IOnlineStorePtr FOnlineSubsystemNull::GetStoreInterface() const
+{
+	return nullptr;
+}
+
 IOnlineStoreV2Ptr FOnlineSubsystemNull::GetStoreV2Interface() const
 {
 	return StoreV2Interface;
@@ -151,15 +154,8 @@ IOnlineTournamentPtr FOnlineSubsystemNull::GetTournamentInterface() const
 	return nullptr;
 }
 
-IMessageSanitizerPtr FOnlineSubsystemNull::GetMessageSanitizer(int32 LocalUserNum, FString& OutAuthTypeToExclude) const
-{
-	return MessageSanitizerInterface;
-}
-
 bool FOnlineSubsystemNull::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FOnlineSubsystemNull_Tick);
-
 	if (!FOnlineSubsystemImpl::Tick(DeltaTime))
 	{
 		return false;
@@ -203,7 +199,6 @@ bool FOnlineSubsystemNull::Init()
 		VoiceInterface = MakeShareable(new FOnlineVoiceImpl(this));
 		StoreV2Interface = MakeShareable(new FOnlineStoreV2Null(*this));
 		PurchaseInterface = MakeShareable(new FOnlinePurchaseNull(*this));
-		MessageSanitizerInterface = MakeShareable(new FMessageSanitizerNull());
 	}
 	else
 	{
@@ -252,8 +247,7 @@ bool FOnlineSubsystemNull::Shutdown()
 	DESTRUCT_INTERFACE(IdentityInterface);
 	DESTRUCT_INTERFACE(LeaderboardsInterface);
 	DESTRUCT_INTERFACE(SessionInterface);
-	DESTRUCT_INTERFACE(MessageSanitizerInterface);
-
+	
 #undef DESTRUCT_INTERFACE
 	
 	return true;

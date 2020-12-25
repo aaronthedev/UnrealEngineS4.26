@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -2402,8 +2402,7 @@ namespace UnrealBuildTool
 			return GlobalContext.StringVariables["Output"];
 		}
 
-		public void Init(List<string> Architectures, bool bDistribution, string EngineDirectory, string BuildDirectory, string ProjectDirectory, string Configuration, bool bIsEmbedded,
-			bool bPerArchBuildDir=false, Dictionary<string, string> ArchRemapping = null)
+		public void Init(List<string> Architectures, bool bDistribution, string EngineDirectory, string BuildDirectory, string ProjectDirectory, string Configuration, bool bIsEmbedded)
 		{
 			GlobalContext.BoolVariables["Distribution"] = bDistribution;
 			GlobalContext.BoolVariables["IsEmbedded"] = bIsEmbedded;
@@ -2440,26 +2439,6 @@ namespace UnrealBuildTool
 
 			foreach (string Arch in Architectures)
 			{
-				if (bPerArchBuildDir)
-				{
-					String ActiveArch = Arch;
-					if (ArchRemapping != null && ArchRemapping.ContainsKey(ActiveArch))
-					{
-						ActiveArch = ArchRemapping[ActiveArch];
-					}
-					String ArchBuildDirectory = Path.Combine(GlobalContext.StringVariables["BuildDir"], ActiveArch.Replace("-", "_"));
-					String ArchBuildDir = ArchBuildDirectory.Replace("\\", "/");
-					String ArchAbsBuildDir = Path.GetFullPath(ArchBuildDir).Replace("\\", "/");
-
-					// add it to all the architecture contexts (overrides global context)
-					for (int Index = 1; Index <= ContextIndex; Index++)
-					{
-						UPLContext ArchContext = Contexts[Arch + "_" + Index];
-						ArchContext.StringVariables["BuildDir"] = ArchBuildDir;
-						ArchContext.StringVariables["AbsBuildDir"] = ArchAbsBuildDir;
-					}
-				}
-
 				Log.TraceInformation("UPL Init: {0}", Arch);
 				ProcessPluginNode(Arch, "init", "");
 			}
@@ -3236,7 +3215,7 @@ namespace UnrealBuildTool
 			yield return FileReference.Combine(EngineDirectory, "Config", "Base" + BaseIniName + ".ini");
 
 			// Engine/Config/NotForLicensees/Base* ini
-			yield return FileReference.Combine(EngineDirectory, "Restricted", "NotForLicensees", "Config", "Base" + BaseIniName + ".ini");
+			yield return FileReference.Combine(EngineDirectory, "Config", "NotForLicensees", "Base" + BaseIniName + ".ini");
 		}
 
 
@@ -3254,10 +3233,10 @@ namespace UnrealBuildTool
 				yield return FileReference.Combine(EngineDirectory, "Config", "Base" + BaseIniName + ".ini");
 
 				// Engine/Config/NotForLicensees/Base* ini
-				yield return FileReference.Combine(EngineDirectory, "Restricted", "NotForLicensees", "Config", "Base" + BaseIniName + ".ini");
+				yield return FileReference.Combine(EngineDirectory, "Config", "NotForLicensees", "Base" + BaseIniName + ".ini");
 
 				// Engine/Config/NoRedist/Base* ini
-				yield return FileReference.Combine(EngineDirectory, "Restricted", "NoRedist", "Config", "Base" + BaseIniName + ".ini");
+				yield return FileReference.Combine(EngineDirectory, "Config", "NoRedist", "Base" + BaseIniName + ".ini");
 			}
 
 			if (ProjectDirectory != null)
@@ -3266,10 +3245,10 @@ namespace UnrealBuildTool
 				yield return FileReference.Combine(ProjectDirectory, "Config", "Default" + BaseIniName + ".ini");
 
 				// Game/Config/NotForLicensees/Default* ini
-				yield return FileReference.Combine(ProjectDirectory, "Restricted", "NotForLicensees", "Config", "Default" + BaseIniName + ".ini");
+				yield return FileReference.Combine(ProjectDirectory, "Config", "NotForLicensees", "Default" + BaseIniName + ".ini");
 
 				// Game/Config/NoRedist/Default* ini
-				yield return FileReference.Combine(ProjectDirectory, "Restricted", "NoRedist", "Config", "Default" + BaseIniName + ".ini");
+				yield return FileReference.Combine(ProjectDirectory, "Config", "NoRedist", "Default" + BaseIniName + ".ini");
 			}
 
 			string PlatformName = GetIniPlatformName(Platform);

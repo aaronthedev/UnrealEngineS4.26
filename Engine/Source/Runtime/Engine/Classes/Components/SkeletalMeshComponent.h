@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -23,17 +23,13 @@
 #include "ClothingSystemRuntimeTypes.h"
 #include "ClothingSimulationInterface.h"
 #include "ClothingSimulationFactory.h"
-#include "ClothCollisionPrim.h"
 #include "PhysicsEngine/PhysicsAsset.h"
-#include "Animation/CustomAttributesRuntime.h"
 
 #include "SkeletalMeshComponent.generated.h"
 
 
 class Error;
 class FPrimitiveDrawInterface;
-class FCanvas;
-class FSceneView;
 class UAnimInstance;
 class UPhysicalMaterial;
 class USkeletalMeshComponent;
@@ -53,12 +49,10 @@ typedef FOnSkelMeshTeleportedMultiCast::FDelegate FOnSkelMeshTeleported;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnBoneTransformsFinalized);
 
-#if PHYSICS_INTERFACE_PHYSX
 namespace physx
 {
 	class PxAggregate;
 }
-#endif
 
 UENUM()
 enum class EAnimCurveType : uint8 
@@ -70,8 +64,6 @@ enum class EAnimCurveType : uint8
 	MaxAnimCurveType UMETA(Hidden)
 };
 
-ENUM_RANGE_BY_COUNT(EAnimCurveType, EAnimCurveType::MaxAnimCurveType);
-
 UENUM()
 enum class EClothMassMode : uint8
 {
@@ -79,18 +71,6 @@ enum class EClothMassMode : uint8
 	TotalMass,
 	Density,
 	MaxClothMassMode UMETA(Hidden)
-};
-
-/** Method used when retrieving a Custom Attribute value*/
-UENUM()
-enum class ECustomBoneAttributeLookup : uint8
-{
-	/** Only look for the attribute using the provided bone (name) */
-	BoneOnly,
-	/** Look for the attribute using the provided bone (name) and its direct parent bone */
-	ImmediateParent,
-	/** Look for the attribute using the provided bone (name) and its direct bone parent hierarchy up and until the root bone */
-	ParentHierarchy
 };
 
 struct FAnimationEvaluationContext
@@ -123,16 +103,9 @@ struct FAnimationEvaluationContext
 	// duplicate the cache curves
 	bool bDuplicateToCacheCurve;
 
-	// duplicate the cached attributes
-	bool bDuplicateToCachedAttributes;
-
 	// Curve data, swapped in from the component when we are running parallel eval
 	FBlendedHeapCurve	Curve;
 	FBlendedHeapCurve	CachedCurve;
-
-	// Custom attribute data, swapped in from the component when we are running parallel eval
-	FHeapCustomAttributes CustomAttributes;
-	FHeapCustomAttributes CachedCustomAttributes;
 
 	FAnimationEvaluationContext()
 	{
@@ -159,10 +132,6 @@ struct FAnimationEvaluationContext
 		bDoEvaluation = Other.bDoEvaluation;
 		bDuplicateToCacheBones = Other.bDuplicateToCacheBones;
 		bDuplicateToCacheCurve = Other.bDuplicateToCacheCurve;
-		bDuplicateToCachedAttributes = Other.bDuplicateToCachedAttributes;
-
-		CustomAttributes.CopyFrom(Other.CustomAttributes);
-		CachedCustomAttributes.CopyFrom(Other.CachedCustomAttributes);
 	}
 
 	void Clear()
@@ -326,7 +295,6 @@ class ENGINE_API USkeletalMeshComponent : public USkinnedMeshComponent, public I
 	friend class UAnimInstance;
 	friend struct FAnimNode_LinkedAnimGraph;
 	friend struct FAnimNode_LinkedAnimLayer;
-	friend struct FLinkedInstancesAdapter;
 
 	/**
 	 * Animation 
@@ -363,7 +331,7 @@ public:
 #endif
 
 	/** An instance created from the PostPhysicsBlueprint property of the skeletal mesh we're using,
-	 *  Runs after (and receives pose from) the main anim instance.
+	 *  Runs after physics has been blended
 	 */
 	UPROPERTY(transient)
 	UAnimInstance* PostProcessAnimInstance;
@@ -431,94 +399,6 @@ private:
 	/** Cached Curve result for Update Rate optimization */
 	FBlendedHeapCurve CachedCurve;
 
-	/** Current and cached custom attribute evaluation data, used for Update Rate optimization */
-	FHeapCustomAttributes CachedAttributes;
-	FHeapCustomAttributes CustomAttributes;
-public:
-	/** 
-	 * Get float type custom attribute value.
-
-	 * @param BoneName Name of the bone to retrieve try and retrieve the attribute from
-	 * @param AttributeName Name of the attribute to retrieve
-	 * @param DefaultValue In case the attribute could not be found
-     * @param OutValue (reference) Retrieved attribute value if found, otherwise is set to DefaultValue
-	 * @param LookupType Determines how the attribute is retrieved from the specified BoneName (see ECustomBoneAttributeLookup)
-	 * @return Whether or not the atttribute was successfully retrieved
-	*/
-	UFUNCTION(BlueprintCallable, Category=CustomAttributes)
-	bool GetFloatAttribute_Ref(const FName& BoneName, const FName& AttributeName, UPARAM(ref) float& OutValue, ECustomBoneAttributeLookup LookupType = ECustomBoneAttributeLookup::BoneOnly);
-
-	/** 
-	 * Get integer type custom attribute value.
-
-	 * @param BoneName Name of the bone to retrieve try and retrieve the attribute from
-	 * @param AttributeName Name of the attribute to retrieve
-	 * @param DefaultValue In case the attribute could not be found
-     * @param OutValue (reference) Retrieved attribute value if found, otherwise is set to DefaultValue
-	 * @param LookupType Determines how the attribute is retrieved from the specified BoneName (see ECustomBoneAttributeLookup)
-	 * @return Whether or not the atttribute was successfully retrieved
-	*/
-	UFUNCTION(BlueprintCallable, Category = CustomAttributes)
-	bool GetIntegerAttribute_Ref(const FName& BoneName, const FName& AttributeName, UPARAM(ref) int32& OutValue, ECustomBoneAttributeLookup LookupType = ECustomBoneAttributeLookup::BoneOnly);
-
-	/** 
-	 * Get string type custom attribute value.
-
-	 * @param BoneName Name of the bone to retrieve try and retrieve the attribute from
-	 * @param AttributeName Name of the attribute to retrieve
-	 * @param DefaultValue In case the attribute could not be found
-     * @param OutValue (reference) Retrieved attribute value if found, otherwise is set to DefaultValue
-	 * @param LookupType Determines how the attribute is retrieved from the specified BoneName (see ECustomBoneAttributeLookup)
-	 * @return Whether or not the atttribute was successfully retrieved
-	*/
-	UFUNCTION(BlueprintCallable, Category = CustomAttributes)
-	bool GetStringAttribute_Ref(const FName& BoneName, const FName& AttributeName, UPARAM(ref) FString& OutValue, ECustomBoneAttributeLookup LookupType = ECustomBoneAttributeLookup::BoneOnly);
-
-
-	/** 
-	 * Get float type custom attribute value.
-
-	 * @param BoneName Name of the bone to retrieve try and retrieve the attribute from
-	 * @param AttributeName Name of the attribute to retrieve
-	 * @param DefaultValue In case the attribute could not be found
-     * @param OutValue Retrieved attribute value if found, otherwise is set to DefaultValue
-	 * @param LookupType Determines how the attribute is retrieved from the specified BoneName (see ECustomBoneAttributeLookup)
-	 * @return Whether or not the atttribute was successfully retrieved
-	*/
-	UFUNCTION(BlueprintCallable, Category = CustomAttributes)
-	bool GetFloatAttribute(const FName& BoneName, const FName& AttributeName, float DefaultValue, float& OutValue, ECustomBoneAttributeLookup LookupType = ECustomBoneAttributeLookup::BoneOnly);
-
-	/** 
-	 * Get integer type custom attribute value.
-
-	 * @param BoneName Name of the bone to retrieve try and retrieve the attribute from
-	 * @param AttributeName Name of the attribute to retrieve
-	 * @param DefaultValue In case the attribute could not be found
-     * @param OutValue Retrieved attribute value if found, otherwise is set to DefaultValue
-	 * @param LookupType Determines how the attribute is retrieved from the specified BoneName (see ECustomBoneAttributeLookup)
-	 * @return Whether or not the atttribute was successfully retrieved
-	*/
-	UFUNCTION(BlueprintCallable, Category = CustomAttributes)
-	bool GetIntegerAttribute(const FName& BoneName, const FName& AttributeName, int32 DefaultValue, int32& OutValue, ECustomBoneAttributeLookup LookupType = ECustomBoneAttributeLookup::BoneOnly);
-
-	/** 
-	 * Get string type custom attribute value.
-
-	 * @param BoneName Name of the bone to retrieve try and retrieve the attribute from
-	 * @param AttributeName Name of the attribute to retrieve
-	 * @param DefaultValue In case the attribute could not be found
-     * @param OutValue Retrieved attribute value if found, otherwise is set to DefaultValue
-	 * @param LookupType Determines how the attribute is retrieved from the specified BoneName (see ECustomBoneAttributeLookup)
-	 * @return Whether or not the atttribute was successfully retrieved
-	*/
-	UFUNCTION(BlueprintCallable, Category = CustomAttributes)
-	bool GetStringAttribute(const FName& BoneName, const FName& AttributeName, FString DefaultValue, FString& OutValue, ECustomBoneAttributeLookup LookupType = ECustomBoneAttributeLookup::BoneOnly);
-
-protected:
-	/** Templated version to try and retrieve a typed bone attribute's value */
-	template<typename DataType>
-	bool GetBoneAttribute(const FName& BoneName, const FName& AttributeName, DataType DefaultValue, DataType& OutValue, ECustomBoneAttributeLookup LookupType);	
-
 public:
 	/** Used to scale speed of all animations on this skeletal mesh. */
 	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadWrite, Category=Animation)
@@ -539,7 +419,7 @@ protected:
 	/** Whether to use Animation Blueprint or play Single Animation Asset. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=Animation)
 	TEnumAsByte<EAnimationMode::Type>	AnimationMode;
-	
+
 private:
 	/** Teleport type to use on the next update */
 	ETeleportType PendingTeleportType;
@@ -551,6 +431,7 @@ private:
 	uint8 bDisablePostProcessBlueprint:1;
 
 public:
+
 	/** Indicates that simulation (if it's enabled) is entirely responsible for children transforms. This is only ok if you are not animating attachment points relative to the simulation */
 	uint8 bSimulationUpdatesChildTransforms:1;
 
@@ -565,6 +446,8 @@ public:
 	UPROPERTY(transient)
 	uint8 bHasValidBodies:1;
 
+	/** Indicates that this SkeletalMeshComponent has deferred kinematic bone updates until next physics sim.  */
+	uint8 bDeferredKinematicUpdate:1;
 
 	/** Enables blending in of physics bodies whether Simulate or not*/
 	UPROPERTY(transient)
@@ -589,18 +472,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Clothing)
 	uint8 bDisableClothSimulation:1;
 
-	/** Indicates that this SkeletalMeshComponent has deferred kinematic bone updates until next physics sim if not INDEX_NONE. */
-	int32 DeferredKinematicUpdateIndex;
-#if PHYSICS_INTERFACE_PHYSX
-	/** Indicates that this SkeletalMeshComponent has deferred kinematic bone updates until next physics sim.  */
-	uint8 bDeferredKinematicUpdate:1;
-#endif
-
 private:
-	/** Disable rigid body animation nodes and play original animation without simulation */
-	UPROPERTY(EditAnywhere, Category=Clothing)
-	uint8 bDisableRigidBodyAnimNode:1;
-
 	/** Disable animation curves for this component. If this is set true, no curves will be processed */
 	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = SkeletalMesh)
 	uint8 bAllowAnimCurveEvaluation : 1;
@@ -711,20 +583,20 @@ public:
 	UPROPERTY()
 	uint8 bEnableLineCheckWithBounds:1;
 
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "This property is deprecated, please set it on the Clothing Asset / ClothConfig instead."))
-	uint8 bUseBendingElements_DEPRECATED :1;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	uint8 bUseBendingElements:1;
 	
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "This property is deprecated, please set it on the Clothing Asset / ClothConfig instead."))
-	uint8 bUseTetrahedralConstraints_DEPRECATED :1;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	uint8 bUseTetrahedralConstraints:1;
 	
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "This property is deprecated, please set it on the Clothing Asset / ClothConfig instead."))
-	uint8 bUseThinShellVolumeConstraints_DEPRECATED :1;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	uint8 bUseThinShellVolumeConstraints:1;
 	
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "This property is deprecated, please set it on the Clothing Asset / ClothConfig instead."))
-	uint8 bUseSelfCollisions_DEPRECATED :1;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	uint8 bUseSelfCollisions:1;
 	
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "This property is deprecated, please set it on the Clothing Asset / ClothConfig instead."))
-	uint8 bUseContinuousCollisionDetection_DEPRECATED :1;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	uint8 bUseContinuousCollisionDetection:1;
 
 	/** If true, propagates calls to ApplyAnimationCurvesToComponent for slave components, only needed if slave components do not tick themselves */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = MasterPoseComponent)
@@ -747,13 +619,7 @@ protected:
 	/** If true, this will Tick until disabled */
 	UPROPERTY(AdvancedDisplay, EditInstanceOnly, transient, Category = SkeletalMesh)
 	uint8 bUpdateAnimationInEditor : 1;
-	/** If true, will play cloth in editor */
-	UPROPERTY(AdvancedDisplay, EditInstanceOnly, transient, Category = SkeletalMesh)
-	uint8 bUpdateClothInEditor : 1;
 #endif
-
-	/** If true, OnSyncComponentToRBPhysics() notify will be called */
-	uint8 bNotifySyncComponentToRBPhysics : 1;
 
 private:
 
@@ -768,14 +634,14 @@ public:
 	UPROPERTY(transient)
 	uint16 CachedAnimCurveUidVersion;
 
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "This property is deprecated, please set it on the Clothing Asset / ClothConfig instead."))
-	EClothMassMode MassMode_DEPRECATED;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	EClothMassMode MassMode;
 
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "This property is deprecated, please set it on the Clothing Asset / ClothConfig instead."))
-	float UniformMass_DEPRECATED;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	float UniformMass;
 
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "This property is deprecated, please set it on the Clothing Asset / ClothConfig instead."))
-	float TotalMass_DEPRECATED;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	float TotalMass;
 	
 	/**
 	 * Water: 1.0
@@ -783,43 +649,37 @@ public:
 	 * Wool: 0.13
 	 * Silk: 0.133
 	 */
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "This property is deprecated, please set it on the Clothing Asset / ClothConfig instead."))
-	float Density_DEPRECATED;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	float Density;
 
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "This property is deprecated, please set it on the Clothing Asset / ClothConfig instead."))
-	float MinPerParticleMass_DEPRECATED;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	float MinPerParticleMass;
 
 
 	/**
 	 * weight to blend between simulated results and key-framed positions
 	 * if weight is 1.0, shows only cloth simulation results and 0.0 will show only skinned results
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Interp, Category = Clothing)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
 	float ClothBlendWeight;
 
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "This property is deprecated, please set it on the Clothing Asset / ClothConfig instead."))
-	float EdgeStiffness_DEPRECATED;
-	
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "This property is deprecated, please set it on the Clothing Asset / ClothConfig instead."))
-	float BendingStiffness_DEPRECATED;
-	
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "This property is deprecated, please set it on the Clothing Asset / ClothConfig instead."))
-	float AreaStiffness_DEPRECATED;
-	
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "This property is deprecated, please set it on the Clothing Asset / ClothConfig instead."))
-	float VolumeStiffness_DEPRECATED;
-	
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "This property is deprecated, please set it on the Clothing Asset / ClothConfig instead."))
-	float StrainLimitingStiffness_DEPRECATED;
-	
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "This property is deprecated, please set it on the Clothing Asset / ClothConfig instead."))
-	float ShapeTargetStiffness_DEPRECATED;
-
-	/** Whether we should stall the Cloth tick task until the cloth simulation is complete. This is required if we want up-to-date
-	 * cloth data on the game thread, for example if we want to generate particles at cloth vertices.
-	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
-	bool bWaitForParallelClothTask;
+	float EdgeStiffness;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	float BendingStiffness;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	float AreaStiffness;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	float VolumeStiffness;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	float StrainLimitingStiffness;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Clothing)
+	float ShapeTargetStiffness;
 
 private:
 
@@ -913,7 +773,7 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category="Components|SkeletalMesh", meta=(Keywords = "AnimBlueprint", UnsafeDuringActorConstruction = "true"))
 	class UAnimInstance * GetAnimInstance() const;
-	
+
 	/**
 	 * Returns the active post process instance is one is available. This is set on the mesh that this
 	 * component is using, and is evaluated immediately after the main instance.
@@ -1000,9 +860,6 @@ public:
 	/** Gets the first layer linked instance corresponding to the specified class */
 	UFUNCTION(BlueprintPure, Category = "Components|SkeletalMesh|Animation Blueprint Linking")
 	UAnimInstance* GetLinkedAnimLayerInstanceByClass(TSubclassOf<UAnimInstance> InClass) const;
-
-	/** Calls a function on each of the anim instances that this mesh component hosts, including linked and post-process instances */
-	void ForEachAnimInstance(TFunctionRef<void(UAnimInstance*)> InFunction);
 
 	/** 
 	 * Returns whether there are any valid instances to run, currently this means whether we have
@@ -1147,7 +1004,7 @@ public:
 	 * Get/Set the max distance scale of clothing mesh vertices
 	 */
 	UFUNCTION(BlueprintCallable, Category="Components|SkeletalMesh")
-	float GetClothMaxDistanceScale() const;
+	float GetClothMaxDistanceScale();
 	UFUNCTION(BlueprintCallable, Category="Components|SkeletalMesh")
 	void SetClothMaxDistanceScale(float Scale);
 
@@ -1202,27 +1059,11 @@ public:
 	void UnbindClothFromMasterPoseComponent(bool bRestoreSimulationSpace = true);
 
 	/**
-	 * Sets whether or not to allow rigid body animation nodes for this component
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Components|SkeletalMesh")
-	void SetAllowRigidBodyAnimNode(bool bInAllow, bool bReinitAnim = true);
-
-	UFUNCTION(BlueprintCallable, Category = "Components|SkeletalMesh")
-	bool GetAllowRigidBodyAnimNode() const { return !bDisableRigidBodyAnimNode; }
-
-	/**
 	* Sets whether or not to force tick component in order to update animation and refresh transform for this component
 	* This is supported only in the editor
 	*/
 	UFUNCTION(BlueprintCallable, Category = "Components|SkeletalMesh", meta = (DevelopmentOnly, UnsafeDuringActorConstruction = "true"))
 	void SetUpdateAnimationInEditor(const bool NewUpdateState);
-
-	/**
-	* Sets whether or not to animate cloth in the editor. Requires Update Animation In Editor to also be true.
-	* This is supported only in the editor
-	*/
-	UFUNCTION(BlueprintCallable, Category = "Components|SkeletalMesh", meta = (DevelopmentOnly, UnsafeDuringActorConstruction = "true"))
-	void SetUpdateClothInEditor(const bool NewUpdateState);
 
 #if WITH_EDITOR
 	/**
@@ -1232,11 +1073,6 @@ public:
 	bool GetUpdateAnimationInEditor() const 
 	{		
 		return bUpdateAnimationInEditor;	
-	}
-
-	bool GetUpdateClothInEditor() const
-	{
-		return bUpdateClothInEditor;
 	}
 #endif 
 
@@ -1400,9 +1236,6 @@ public:
 	/** Get the current clothing simulation (read only) */
 	const IClothingSimulation* GetClothingSimulation() const;
 
-	/** Get the current clothing simulation context (read only) */
-	const IClothingSimulationContext* GetClothingSimulationContext() const;
-
 	/** Get the current interactor for a clothing simulation, if the current simulation supports runtime interaction. */
 	UFUNCTION(BlueprintCallable, Category=ClothingSimulation)
 	UClothingSimulationInteractor* GetClothingSimulationInteractor() const;
@@ -1410,11 +1243,11 @@ public:
 	/** Callback when the parallel clothing task finishes, copies needed data back to component for gamethread */
 	void CompleteParallelClothSimulation();
 
-	/** Get the current simulation data map for the clothing on this component. For use on the game thread and only valid if bWaitForParallelClothTask is true. */
-	const TMap<int32, FClothSimulData>& GetCurrentClothingData_GameThread() const;
-
-	/** Get the current simulation data map for the clothing on this component. This will stall until the cloth simulation is complete. */
-	const TMap<int32, FClothSimulData>& GetCurrentClothingData_AnyThread() const;
+	/** Get the current simulation data map for the clothing on this component. Only valid on the game thread */
+	const TMap<int32, FClothSimulData>& GetCurrentClothingData_GameThread() const
+	{
+		return CurrentSimulationData_GameThread;
+	}
 
 private:
 
@@ -1481,13 +1314,7 @@ private:
 	/** Ref for the clothing parallel task, so we can detect whether or not a sim is running */
 	FGraphEventRef ParallelClothTask;
 
-	/** Whether we should stall the Cloth tick task until the cloth simulation is complete. This is required if we want up-to-date
-	 * cloth data on the game thread, for example if we want to generate particles at cloth vertices. When the data is not required
-	 * except for rendering, we can set this to false to eliminate a potential game thread stall while we wait for the cloth sim 
-	 */
-	bool ShouldWaitForClothInTickFunction() const;
-
-	/** Stalls on any currently running clothing simulations, needed when changing core sim state, or to access the clothing data */
+	/** Stalls on any currently running clothing simulations, needed when changing core sim state */
 	void HandleExistingParallelClothSimulation();
 
 	/** Called by the clothing completion event to perform a writeback of the simulation data 
@@ -1501,12 +1328,11 @@ private:
 
 protected:
 
-	/** Simulation data written back to the component after the simulation has taken place. If this data is required
-	 * by any system other than rendering, bWaitForParallelClothTask must be true. If bWaitForParallelClothTask is false,
-	 * this data cannot be read on the game thread, and there must be a call to HandleExistingParallelClothSimulation() prior
-	 * to accessing it. 
+	/** Simulation data written back to the component after the simulation has taken place
+	* This should only ever be written to during the clothing completion task. Then subsequently
+	* only ever read on the game thread
 	*/
-	TMap<int32, FClothSimulData> CurrentSimulationData;
+	TMap<int32, FClothSimulData> CurrentSimulationData_GameThread;
 
 private:
 
@@ -1564,13 +1390,6 @@ public:
 	 * @param PDI The draw interface to use
 	 */
 	void DebugDrawClothing(FPrimitiveDrawInterface* PDI);
-
-	/**
-	 * Draw the currently clothing state, using the editor extender interface
-	 * @param Canvas The canvas to draw the text on
-	 * @param SceneView The view to project the text with
-	 */
-	void DebugDrawClothingTexts(FCanvas* Canvas, const FSceneView* SceneView);
 
 	/** Changes the value of bNotifyRigidBodyCollision
 	* @param bNewNotifyRigidBodyCollision - The value to assign to bNotifyRigidBodyCollision
@@ -1649,10 +1468,7 @@ public:
 	virtual void BeginPlay() override;
 
 	//Handle registering our end physics tick function
-	virtual void RegisterEndPhysicsTick(bool bRegister);
-
-	virtual bool RequiresPreEndOfFrameSync() const override;
-	virtual void OnPreEndOfFrameSync() override;
+	void RegisterEndPhysicsTick(bool bRegister);
 
 	//Handle registering our pre cloth tick function
 	void RegisterClothTick(bool bRegister);
@@ -1699,7 +1515,7 @@ public:
 	virtual bool IsAnyRigidBodyAwake() override;
 	virtual void SetEnableGravity(bool bGravityEnabled);
 	virtual bool IsGravityEnabled() const override;
-	virtual void OnComponentCollisionSettingsChanged(bool bUpdateOverlaps=true) override;
+	virtual void OnComponentCollisionSettingsChanged(bool bDeferUpdateOverlaps = false) override;
 	virtual void SetPhysMaterialOverride(UPhysicalMaterial* NewPhysMaterial) override;
 	virtual bool GetSquaredDistanceToCollision(const FVector& Point, float& OutSquaredDistance, FVector& OutClosestPointOnCollision) const override;
 
@@ -1847,12 +1663,9 @@ public:
 	virtual void SetPhysicsAsset(class UPhysicsAsset* NewPhysicsAsset,bool bForceReInit = false) override;
 	virtual void SetSkeletalMesh(class USkeletalMesh* NewMesh, bool bReinitPose = true) override;
 
-	static FVector GetSkinnedVertexPosition(USkeletalMeshComponent* Component, int32 VertexIndex, const FSkeletalMeshLODRenderData& Model, const FSkinWeightVertexBuffer& SkinWeightBuffer);
-	static FVector GetSkinnedVertexPosition(USkeletalMeshComponent* Component, int32 VertexIndex, const FSkeletalMeshLODRenderData& Model, const FSkinWeightVertexBuffer& SkinWeightBuffer, TArray<FMatrix>& CachedRefToLocals);
-	static void ComputeSkinnedPositions(USkeletalMeshComponent* Component, TArray<FVector> & OutPositions, TArray<FMatrix>& CachedRefToLocals, const FSkeletalMeshLODRenderData& Model, const FSkinWeightVertexBuffer& SkinWeightBuffer);
-
-	static void GetSkinnedTangentBasis(USkeletalMeshComponent* Component, int32 VertexIndex, const FSkeletalMeshLODRenderData& Model, const FSkinWeightVertexBuffer& SkinWeightBuffer, TArray<FMatrix>& CachedRefToLocals, FVector& OutTangentX, FVector& OutTangentZ);
-	static void ComputeSkinnedTangentBasis(USkeletalMeshComponent* Component, TArray<FVector>& OutTangenXZ, TArray<FMatrix>& CachedRefToLocals, const FSkeletalMeshLODRenderData& Model, const FSkinWeightVertexBuffer& SkinWeightBuffer);
+	static FVector GetSkinnedVertexPosition(USkeletalMeshComponent* Component, int32 VertexIndex, const FSkeletalMeshLODRenderData& Model, FSkinWeightVertexBuffer& SkinWeightBuffer);
+	static FVector GetSkinnedVertexPosition(USkeletalMeshComponent* Component, int32 VertexIndex, const FSkeletalMeshLODRenderData& Model, FSkinWeightVertexBuffer& SkinWeightBuffer, TArray<FMatrix>& CachedRefToLocals);
+	static void ComputeSkinnedPositions(USkeletalMeshComponent* Component, TArray<FVector> & OutPositions, TArray<FMatrix>& CachedRefToLocals, const FSkeletalMeshLODRenderData& Model, FSkinWeightVertexBuffer& SkinWeightBuffer);
 
 	void SetSkeletalMeshWithoutResettingAnimation(class USkeletalMesh* NewMesh);
 
@@ -1866,7 +1679,7 @@ public:
 
 	FOnBoneTransformsFinalized OnBoneTransformsFinalized;
 
-	void GetCurrentRefToLocalMatrices(TArray<FMatrix>& OutRefToLocals, int32 InLodIdx) const;
+	void GetCurrentRefToLocalMatrices(TArray<FMatrix>& OutRefToLocals, int32 InLodIdx);
 
 	// Conditions used to gate when post process events happen
 	bool ShouldUpdatePostProcessInstance() const;
@@ -1892,47 +1705,30 @@ public:
 	* @param	OutCurves				Blended Curve
 	*/
 #if WITH_EDITOR
-	void PerformAnimationEvaluation(const USkeletalMesh* InSkeletalMesh, UAnimInstance* InAnimInstance, TArray<FTransform>& OutSpaceBases, TArray<FTransform>& OutBoneSpaceTransforms, FVector& OutRootBoneTranslation, FBlendedHeapCurve& OutCurve, FHeapCustomAttributes& OutAttributes);
-
-	UE_DEPRECATED(4.26, "Please use PerformAnimationEvaluation with different signature")
 	void PerformAnimationEvaluation(const USkeletalMesh* InSkeletalMesh, UAnimInstance* InAnimInstance, TArray<FTransform>& OutSpaceBases, TArray<FTransform>& OutBoneSpaceTransforms, FVector& OutRootBoneTranslation, FBlendedHeapCurve& OutCurve);
 #endif
-	void PerformAnimationProcessing(const USkeletalMesh* InSkeletalMesh, UAnimInstance* InAnimInstance, bool bInDoEvaluation, TArray<FTransform>& OutSpaceBases, TArray<FTransform>& OutBoneSpaceTransforms, FVector& OutRootBoneTranslation, FBlendedHeapCurve& OutCurve, FHeapCustomAttributes& OutAttributes);
-
-	UE_DEPRECATED(4.26, "Please use PerformAnimationEvaluation with different signature")
 	void PerformAnimationProcessing(const USkeletalMesh* InSkeletalMesh, UAnimInstance* InAnimInstance, bool bInDoEvaluation, TArray<FTransform>& OutSpaceBases, TArray<FTransform>& OutBoneSpaceTransforms, FVector& OutRootBoneTranslation, FBlendedHeapCurve& OutCurve);
 
 	/**
 	 * Evaluates the post process instance from the skeletal mesh this component is using.
 	 */
-	void EvaluatePostProcessMeshInstance(TArray<FTransform>& OutBoneSpaceTransforms, FCompactPose& InOutPose, FBlendedHeapCurve& OutCurve, const USkeletalMesh* InSkeletalMesh, FVector& OutRootBoneTranslation, FHeapCustomAttributes& OutAttributes) const;
-
-	UE_DEPRECATED(4.26, "Please use EvaluatePostProcessMeshInstance with different signature")
 	void EvaluatePostProcessMeshInstance(TArray<FTransform>& OutBoneSpaceTransforms, FCompactPose& InOutPose, FBlendedHeapCurve& OutCurve, const USkeletalMesh* InSkeletalMesh, FVector& OutRootBoneTranslation) const;
 
 	void PostAnimEvaluation(FAnimationEvaluationContext& EvaluationContext);
-
-	/** */
-	void InitCollisionRelationships();
-
-	/** */
-	void TermCollisionRelationships();
 
 	/**
 	 * Blend of Physics Bones with PhysicsWeight and Animated Bones with (1-PhysicsWeight)
 	 *
 	 * @param	RequiredBones	List of bones to be blend
 	 */
-	UE_DEPRECATED(4.26, "This function is deprecated and should not be called directly. Please use the mechanism provided in USkeletalMeshComponent::EndPhysicsTickComponent")
 	void BlendPhysicsBones( TArray<FBoneIndexType>& Bones )
 	{
-		PerformBlendPhysicsBones(Bones, AnimEvaluationContext.BoneSpaceTransforms, AnimEvaluationContext.BoneSpaceTransforms);
+		PerformBlendPhysicsBones(Bones, AnimEvaluationContext.BoneSpaceTransforms);
 	}
 
 
 	/** Take the results of the physics and blend them with the animation state (based on the PhysicsWeight parameter), and update the SpaceBases array. */
-	UE_DEPRECATED(4.26, "Public access to this function is deprecated. Please use the mechanism provided in USkeletalMeshComponent::EndPhysicsTickComponent")
-	void BlendInPhysics(FTickFunction& ThisTickFunction) { BlendInPhysicsInternal(ThisTickFunction); }
+	void BlendInPhysics(FTickFunction& ThisTickFunction);	
 
 	/** 
 	 * Initialize PhysicsAssetInstance for the physicsAsset 
@@ -1945,7 +1741,7 @@ public:
 	void InstantiatePhysicsAsset(const UPhysicsAsset& PhysAsset, const FVector& Scale3D, TArray<FBodyInstance*>& OutBodies, TArray<FConstraintInstance*>& OutConstraints, FPhysScene* PhysScene = nullptr, USkeletalMeshComponent* OwningComponent = nullptr, int32 UseRootBodyIndex = INDEX_NONE, const FPhysicsAggregateHandle& UseAggregate = FPhysicsAggregateHandle()) const;
 
 	/** Instantiates bodies given a physics asset like InstantiatePhysicsAsset but instead of reading the current component state, this reads the ref-pose from the reference skeleton of the mesh. Useful if trying to create bodies to be used during any evaluation work */
-	void InstantiatePhysicsAssetRefPose(const UPhysicsAsset& PhysAsset, const FVector& Scale3D, TArray<FBodyInstance*>& OutBodies, TArray<FConstraintInstance*>& OutConstraints, FPhysScene* PhysScene = nullptr, USkeletalMeshComponent* OwningComponent = nullptr, int32 UseRootBodyIndex = INDEX_NONE, const FPhysicsAggregateHandle& UseAggregate = FPhysicsAggregateHandle(), bool bCreateBodiesInRefPose = false) const;
+	void InstantiatePhysicsAssetRefPose(const UPhysicsAsset& PhysAsset, const FVector& Scale3D, TArray<FBodyInstance*>& OutBodies, TArray<FConstraintInstance*>& OutConstraints, FPhysScene* PhysScene = nullptr, USkeletalMeshComponent* OwningComponent = nullptr, int32 UseRootBodyIndex = INDEX_NONE, const FPhysicsAggregateHandle& UseAggregate = FPhysicsAggregateHandle()) const;
 
 	/** Turn off all physics and remove the instance. */
 	void TermArticulated();
@@ -2220,20 +2016,16 @@ protected:
 	/** Extract collisions for cloth from this component (given a component we want to apply the data to) */
 	static void ExtractCollisionsForCloth(USkeletalMeshComponent* SourceComponent,  UPhysicsAsset* PhysicsAsset, USkeletalMeshComponent* DestClothComponent, FClothCollisionData& OutCollisions, FClothCollisionSource& ClothCollisionSource);
 
-	/** Notify called just before syncing physics update, called only if bNotifySyncComponentToRBPhysics flag is set */
-	virtual void OnSyncComponentToRBPhysics() { }
-
-	FSkeletalMeshComponentEndPhysicsTickFunction EndPhysicsTickFunction;
-
 private:
 
+	FSkeletalMeshComponentEndPhysicsTickFunction EndPhysicsTickFunction;
 	friend struct FSkeletalMeshComponentEndPhysicsTickFunction;
 
 	/** Update systems after physics sim is done */
 	void EndPhysicsTickComponent(FSkeletalMeshComponentEndPhysicsTickFunction& ThisTickFunction);
 
 	/** Evaluate Anim System **/
-	void EvaluateAnimation(const USkeletalMesh* InSkeletalMesh, UAnimInstance* InAnimInstance, FVector& OutRootBoneTranslation, FBlendedHeapCurve& OutCurve, FCompactPose& OutPose, FHeapCustomAttributes& OutAttributes) const;
+	void EvaluateAnimation(const USkeletalMesh* InSkeletalMesh, UAnimInstance* InAnimInstance, FVector& OutRootBoneTranslation, FBlendedHeapCurve& OutCurve, FCompactPose& OutPose) const;
 
 	/** Queues up tasks for parallel update/evaluation, as well as the chained game thread completion task */
 	void DispatchParallelEvaluationTasks(FActorComponentTickFunction* TickFunction);
@@ -2321,12 +2113,10 @@ private:
 
 	friend class FParallelBlendPhysicsTask;
 	
-	void BlendInPhysicsInternal(FTickFunction& ThisTickFunction);
-
 	//wrapper for parallel blend physics
-	void ParallelBlendPhysics() { PerformBlendPhysicsBones(RequiredBones, AnimEvaluationContext.ComponentSpaceTransforms, AnimEvaluationContext.BoneSpaceTransforms); }
+	void ParallelBlendPhysics() { PerformBlendPhysicsBones(RequiredBones, AnimEvaluationContext.BoneSpaceTransforms); }
 
-	void PerformBlendPhysicsBones(const TArray<FBoneIndexType>& InRequiredBones, TArray<FTransform>& InOutComponentSpaceTransforms, TArray<FTransform>& InOutBoneSpaceTransforms);
+	void PerformBlendPhysicsBones(const TArray<FBoneIndexType>& InRequiredBones, TArray<FTransform>& InBoneSpaceTransforms);
 
 	friend class FParallelClothTask;
 	// This is the parallel function that updates the cloth data and runs the simulation. This is safe to call from worker threads.
@@ -2339,7 +2129,7 @@ private:
 	/** See UpdateClothTransform for documentation. */
 	void UpdateClothTransformImp();
 
-	friend class FClothingSimulationContextCommon;
+	friend class FClothingSimulationBase;
 
 	friend class FTickClothingTask;
 
@@ -2408,15 +2198,6 @@ public:
 	const FBlendedHeapCurve& GetEditableAnimationCurves() const { return CurvesArray[CurrentEditableComponentTransforms]; }
 #endif 
 
-
-private:
-	/** Temporary array of custom attributes that are active on this component - keeps same buffer index as SpaceBases - Please check SkinnedMeshComponent*/
-	FHeapCustomAttributes AttributesArray[2];
-
-	FHeapCustomAttributes& GetEditableCustomAttributes() { return AttributesArray[CurrentEditableComponentTransforms]; }
-
-public:
-	const FHeapCustomAttributes& GetCustomAttributes() const { return AttributesArray[CurrentReadComponentTransforms]; }
 public:
 	/** Skeletal mesh component should not be able to have its mobility set to static */
 	virtual const bool CanHaveStaticMobility() const override { return false; }
@@ -2454,31 +2235,4 @@ public:
 
 	// Are we currently within PostAnimEvaluation
 	bool IsPostEvaluatingAnimation() const { return bPostEvaluatingAnimation; }
-};
-
-struct FLinkedInstancesAdapter
-{
-	static void AddLinkedInstance(USkeletalMeshComponent* InComponent, UAnimInstance* InAnimInstance)
-	{
-		if (InComponent && InAnimInstance)
-		{
-			InComponent->LinkedInstances.Add(InAnimInstance);
-		}
-	}
-
-	static void RemoveLinkedInstance(USkeletalMeshComponent* InComponent, UAnimInstance* InAnimInstance)
-	{
-		if (InComponent && InAnimInstance)
-		{
-			InComponent->LinkedInstances.Remove(InAnimInstance);
-		}
-	}
-
-	static void ResetLinkedInstance(USkeletalMeshComponent* InComponent)
-	{
-		if (InComponent)
-		{
-			InComponent->LinkedInstances.Reset();
-		}
-	}
 };

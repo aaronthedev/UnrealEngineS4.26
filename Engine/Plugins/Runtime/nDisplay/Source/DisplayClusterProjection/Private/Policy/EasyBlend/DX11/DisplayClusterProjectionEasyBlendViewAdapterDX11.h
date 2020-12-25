@@ -1,13 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Policy/EasyBlend/DisplayClusterProjectionEasyBlendViewAdapterBase.h"
 
-THIRD_PARTY_INCLUDES_START
 #include "EasyBlendSDKFrustum.h"
 #include "EasyBlendSDKDXStructs.h"
-THIRD_PARTY_INCLUDES_END
 
 
 class FDisplayClusterProjectionEasyBlendViewAdapterDX11

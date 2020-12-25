@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OculusInput.h"
 
 #if OCULUS_INPUT_SUPPORTED_PLATFORMS
 #include "OculusHMD.h"
-#include "OculusHandTracking.h"
 #include "OculusMRFunctionLibrary.h"
 #include "Misc/CoreDelegates.h"
 #include "Features/IModularFeatures.h"
@@ -41,32 +40,10 @@ const FKey FOculusKey::OculusRemote_VolumeUp("OculusRemote_VolumeUp");
 const FKey FOculusKey::OculusRemote_VolumeDown("OculusRemote_VolumeDown");
 const FKey FOculusKey::OculusRemote_Home("OculusRemote_Home");
 
-const FKey FOculusKey::OculusHand_Left_ThumbPinch("OculusHand_Left_ThumbPinch");
-const FKey FOculusKey::OculusHand_Left_IndexPinch("OculusHand_Left_IndexPinch");
-const FKey FOculusKey::OculusHand_Left_MiddlePinch("OculusHand_Left_MiddlePinch");
-const FKey FOculusKey::OculusHand_Left_RingPinch("OculusHand_Left_RingPinch");
-const FKey FOculusKey::OculusHand_Left_PinkyPinch("OculusHand_Left_PinkPinch");
-
-const FKey FOculusKey::OculusHand_Right_ThumbPinch("OculusHand_Right_ThumbPinch");
-const FKey FOculusKey::OculusHand_Right_IndexPinch("OculusHand_Right_IndexPinch");
-const FKey FOculusKey::OculusHand_Right_MiddlePinch("OculusHand_Right_MiddlePinch");
-const FKey FOculusKey::OculusHand_Right_RingPinch("OculusHand_Right_RingPinch");
-const FKey FOculusKey::OculusHand_Right_PinkyPinch("OculusHand_Right_PinkPinch");
-
-const FKey FOculusKey::OculusHand_Left_SystemGesture("OculusHand_Left_SystemGesture");
-const FKey FOculusKey::OculusHand_Right_SystemGesture("OculusHand_Right_SystemGesture");
-
-const FKey FOculusKey::OculusHand_Left_ThumbPinchStrength("OculusHand_Left_ThumbPinchStrength");
-const FKey FOculusKey::OculusHand_Left_IndexPinchStrength("OculusHand_Left_IndexPinchStrength");
-const FKey FOculusKey::OculusHand_Left_MiddlePinchStrength("OculusHand_Left_MiddlePinchStrength");
-const FKey FOculusKey::OculusHand_Left_RingPinchStrength("OculusHand_Left_RingPinchStrength");
-const FKey FOculusKey::OculusHand_Left_PinkyPinchStrength("OculusHand_Left_PinkPinchStrength");
-
-const FKey FOculusKey::OculusHand_Right_ThumbPinchStrength("OculusHand_Right_ThumbPinchStrength");
-const FKey FOculusKey::OculusHand_Right_IndexPinchStrength("OculusHand_Right_IndexPinchStrength");
-const FKey FOculusKey::OculusHand_Right_MiddlePinchStrength("OculusHand_Right_MiddlePinchStrength");
-const FKey FOculusKey::OculusHand_Right_RingPinchStrength("OculusHand_Right_RingPinchStrength");
-const FKey FOculusKey::OculusHand_Right_PinkyPinchStrength("OculusHand_Right_PinkPinchStrength");
+const FKey FOculusKey::OculusTouchpad_Touchpad("OculusTouchpad_Touchpad");
+const FKey FOculusKey::OculusTouchpad_Touchpad_X("OculusTouchpad_Touchpad_X");
+const FKey FOculusKey::OculusTouchpad_Touchpad_Y("OculusTouchpad_Touchpad_Y");
+const FKey FOculusKey::OculusTouchpad_Back("OculusTouchpad_Back");
 
 const FOculusKeyNames::Type FOculusKeyNames::OculusTouch_Left_Thumbstick("OculusTouch_Left_Thumbstick");
 const FOculusKeyNames::Type FOculusKeyNames::OculusTouch_Left_Trigger("OculusTouch_Left_Trigger");
@@ -92,38 +69,17 @@ const FOculusKeyNames::Type FOculusKeyNames::OculusRemote_VolumeUp("OculusRemote
 const FOculusKeyNames::Type FOculusKeyNames::OculusRemote_VolumeDown("OculusRemote_VolumeDown");
 const FOculusKeyNames::Type FOculusKeyNames::OculusRemote_Home("OculusRemote_Home");
 
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Left_ThumbPinch("OculusHand_Left_ThumbPinch");
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Left_IndexPinch("OculusHand_Left_IndexPinch");
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Left_MiddlePinch("OculusHand_Left_MiddlePinch");
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Left_RingPinch("OculusHand_Left_RingPinch");
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Left_PinkyPinch("OculusHand_Left_PinkPinch");
-
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Right_ThumbPinch("OculusHand_Right_ThumbPinch");
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Right_IndexPinch("OculusHand_Right_IndexPinch");
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Right_MiddlePinch("OculusHand_Right_MiddlePinch");
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Right_RingPinch("OculusHand_Right_RingPinch");
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Right_PinkyPinch("OculusHand_Right_PinkPinch");
-
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Left_SystemGesture("OculusHand_Left_SystemGesture");
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Right_SystemGesture("OculusHand_Right_SystemGesture");
-
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Left_ThumbPinchStrength("OculusHand_Left_ThumbPinchStrength");
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Left_IndexPinchStrength("OculusHand_Left_IndexPinchStrength");
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Left_MiddlePinchStrength("OculusHand_Left_MiddlePinchStrength");
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Left_RingPinchStrength("OculusHand_Left_RingPinchStrength");
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Left_PinkyPinchStrength("OculusHand_Left_PinkPinchStrength");
-
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Right_ThumbPinchStrength("OculusHand_Right_ThumbPinchStrength");
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Right_IndexPinchStrength("OculusHand_Right_IndexPinchStrength");
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Right_MiddlePinchStrength("OculusHand_Right_MiddlePinchStrength");
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Right_RingPinchStrength("OculusHand_Right_RingPinchStrength");
-const FOculusKeyNames::Type FOculusKeyNames::OculusHand_Right_PinkyPinchStrength("OculusHand_Right_PinkPinchStrength");
+const FOculusKeyNames::Type FOculusKeyNames::OculusTouchpad_Touchpad("OculusTouchpad_Touchpad");
+const FOculusKeyNames::Type FOculusKeyNames::OculusTouchpad_Touchpad_X("OculusTouchpad_Touchpad_X");
+const FOculusKeyNames::Type FOculusKeyNames::OculusTouchpad_Touchpad_Y("OculusTouchpad_Touchpad_Y");
+const FOculusKeyNames::Type FOculusKeyNames::OculusTouchpad_Back("OculusTouchpad_Back");
 
 /** Threshold for treating trigger pulls as button presses, from 0.0 to 1.0 */
 float FOculusInput::TriggerThreshold = 0.8f;
 
 /** Are Remote keys mapped to gamepad or not. */
 bool FOculusInput::bRemoteKeysMappedToGamepad = true;
+bool FOculusInput::bGoKeysMappedToTouch = false;
 
 float FOculusInput::InitialButtonRepeatDelay = 0.2f;
 float FOculusInput::ButtonRepeatDelay = 0.1f;
@@ -133,7 +89,7 @@ FOculusInput::FOculusInput( const TSharedRef< FGenericApplicationMessageHandler 
 	, MessageHandler( InMessageHandler )
 	, ControllerPairs()
 {
-	// take care of backward compatibility of Remote with Gamepad
+	// take care of backward compatibility of Remote with Gamepad 
 	if (bRemoteKeysMappedToGamepad)
 	{
 		Remote.MapKeysToGamepad();
@@ -141,14 +97,12 @@ FOculusInput::FOculusInput( const TSharedRef< FGenericApplicationMessageHandler 
 
 	OVRPluginHandle = FOculusHMDModule::GetOVRPluginHandle();
 
-	FOculusControllerPair& ControllerPair = *new(ControllerPairs) FOculusControllerPair();
+	FOculusTouchControllerPair& ControllerPair = *new(ControllerPairs) FOculusTouchControllerPair();
 
 	// @todo: Unreal controller index should be assigned to us by the engine to ensure we don't contest with other devices
 	ControllerPair.UnrealControllerIndex = 0; //???? NextUnrealControllerIndex++;
 
 	IModularFeatures::Get().RegisterModularFeature( GetModularFeatureName(), this );
-
-	LocalTrackingSpaceRecenterCount = 0;
 
 	UE_LOG(LogOcInput, Log, TEXT("OculusInput is initialized"));
 }
@@ -171,19 +125,19 @@ void FOculusInput::PreInit()
 	LoadConfig();
 
 	// Register the FKeys
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Left_Thumbstick, LOCTEXT("OculusTouch_Left_Thumbstick", "Oculus Touch (L) Thumbstick CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Left_FaceButton1, LOCTEXT("OculusTouch_Left_FaceButton1", "Oculus Touch (L) X Button CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Left_Trigger, LOCTEXT("OculusTouch_Left_Trigger", "Oculus Touch (L) Trigger CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Left_FaceButton2, LOCTEXT("OculusTouch_Left_FaceButton2", "Oculus Touch (L) Y Button CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Left_IndexPointing, LOCTEXT("OculusTouch_Left_IndexPointing", "Oculus Touch (L) Pointing CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D | FKeyDetails::NotBlueprintBindableKey, "OculusTouch"));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Left_ThumbUp, LOCTEXT("OculusTouch_Left_ThumbUp", "Oculus Touch (L) Thumb Up CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D | FKeyDetails::NotBlueprintBindableKey, "OculusTouch"));
+	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Left_Thumbstick, LOCTEXT("OculusTouch_Left_Thumbstick", "Oculus Touch (L) Thumbstick CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis | FKeyDetails::Deprecated));
+	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Left_FaceButton1, LOCTEXT("OculusTouch_Left_FaceButton1", "Oculus Touch (L) X Button CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis | FKeyDetails::Deprecated));
+	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Left_Trigger, LOCTEXT("OculusTouch_Left_Trigger", "Oculus Touch (L) Trigger CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis | FKeyDetails::Deprecated));
+	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Left_FaceButton2, LOCTEXT("OculusTouch_Left_FaceButton2", "Oculus Touch (L) Y Button CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis | FKeyDetails::Deprecated));
+	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Left_IndexPointing, LOCTEXT("OculusTouch_Left_IndexPointing", "Oculus Touch (L) Pointing CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis | FKeyDetails::NotBlueprintBindableKey, "OculusTouch"));
+	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Left_ThumbUp, LOCTEXT("OculusTouch_Left_ThumbUp", "Oculus Touch (L) Thumb Up CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis | FKeyDetails::NotBlueprintBindableKey, "OculusTouch"));
 
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Right_Thumbstick, LOCTEXT("OculusTouch_Right_Thumbstick", "Oculus Touch (R) Thumbstick CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D | FKeyDetails::NotBlueprintBindableKey));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Right_FaceButton1, LOCTEXT("OculusTouch_Right_FaceButton1", "Oculus Touch (R) A Button CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D | FKeyDetails::NotBlueprintBindableKey));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Right_Trigger, LOCTEXT("OculusTouch_Right_Trigger", "Oculus Touch (R) Trigger CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D | FKeyDetails::NotBlueprintBindableKey));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Right_FaceButton2, LOCTEXT("OculusTouch_Right_FaceButton2", "Oculus Touch (R) B Button CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D | FKeyDetails::NotBlueprintBindableKey));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Right_IndexPointing, LOCTEXT("OculusTouch_Right_IndexPointing", "Oculus Touch (R) Pointing CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D | FKeyDetails::NotBlueprintBindableKey, "OculusTouch"));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Right_ThumbUp, LOCTEXT("OculusTouch_Right_ThumbUp", "Oculus Touch (R) Thumb Up CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D | FKeyDetails::NotBlueprintBindableKey, "OculusTouch"));
+	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Right_Thumbstick, LOCTEXT("OculusTouch_Right_Thumbstick", "Oculus Touch (R) Thumbstick CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis | FKeyDetails::NotBlueprintBindableKey));
+	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Right_FaceButton1, LOCTEXT("OculusTouch_Right_FaceButton1", "Oculus Touch (R) A Button CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis | FKeyDetails::NotBlueprintBindableKey));
+	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Right_Trigger, LOCTEXT("OculusTouch_Right_Trigger", "Oculus Touch (R) Trigger CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis | FKeyDetails::NotBlueprintBindableKey));
+	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Right_FaceButton2, LOCTEXT("OculusTouch_Right_FaceButton2", "Oculus Touch (R) B Button CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis | FKeyDetails::NotBlueprintBindableKey));
+	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Right_IndexPointing, LOCTEXT("OculusTouch_Right_IndexPointing", "Oculus Touch (R) Pointing CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis | FKeyDetails::NotBlueprintBindableKey, "OculusTouch"));
+	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouch_Right_ThumbUp, LOCTEXT("OculusTouch_Right_ThumbUp", "Oculus Touch (R) Thumb Up CapTouch"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis | FKeyDetails::NotBlueprintBindableKey, "OculusTouch"));
 
 	EKeys::AddMenuCategoryDisplayInfo("OculusRemote", LOCTEXT("OculusRemoteSubCategory", "Oculus Remote"), TEXT("GraphEditor.PadEvent_16x"));
 
@@ -199,34 +153,10 @@ void FOculusInput::PreInit()
 	EKeys::AddKey(FKeyDetails(FOculusKey::OculusRemote_VolumeDown, LOCTEXT("OculusRemote_VolumeDown", "Oculus Remote Volume Down"), FKeyDetails::GamepadKey, "OculusRemote"));
 	EKeys::AddKey(FKeyDetails(FOculusKey::OculusRemote_Home, LOCTEXT("OculusRemote_Home", "Oculus Remote Home"), FKeyDetails::GamepadKey, "OculusRemote"));
 
-	EKeys::AddMenuCategoryDisplayInfo("OculusHand", LOCTEXT("OculusHandSubCategory", "Oculus Hand"), TEXT("GraphEditor.PadEvent_16x"));
-
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Left_ThumbPinch, LOCTEXT("OculusHand_Left_ThumbPinch", "Oculus Hand (L) Thumb Pinch"), FKeyDetails::GamepadKey | FKeyDetails::NotBlueprintBindableKey, "OculusHand"));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Left_IndexPinch, LOCTEXT("OculusHand_Left_IndexPinch", "Oculus Hand (L) Index Pinch"), FKeyDetails::GamepadKey | FKeyDetails::NotBlueprintBindableKey, "OculusHand"));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Left_MiddlePinch, LOCTEXT("OculusHand_Left_MiddlePinch", "Oculus Hand (L) Middle Pinch"), FKeyDetails::GamepadKey | FKeyDetails::NotBlueprintBindableKey, "OculusHand"));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Left_RingPinch, LOCTEXT("OculusHand_Left_RingPinch", "Oculus Hand (L) Ring Pinch"), FKeyDetails::GamepadKey | FKeyDetails::NotBlueprintBindableKey, "OculusHand"));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Left_PinkyPinch, LOCTEXT("OculusHand_Left_PinkyPinch", "Oculus Hand (L) Pinky Pinch"), FKeyDetails::GamepadKey | FKeyDetails::NotBlueprintBindableKey, "OculusHand"));
-
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Right_ThumbPinch, LOCTEXT("OculusHand_Right_ThumbPinch", "Oculus Hand (R) Thumb Pinch"), FKeyDetails::GamepadKey | FKeyDetails::NotBlueprintBindableKey, "OculusHand"));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Right_IndexPinch, LOCTEXT("OculusHand_Right_IndexPinch", "Oculus Hand (R) Index Pinch"), FKeyDetails::GamepadKey | FKeyDetails::NotBlueprintBindableKey, "OculusHand"));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Right_MiddlePinch, LOCTEXT("OculusHand_Right_MiddlePinch", "Oculus Hand (R) Middle Pinch"), FKeyDetails::GamepadKey | FKeyDetails::NotBlueprintBindableKey, "OculusHand"));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Right_RingPinch, LOCTEXT("OculusHand_Right_RingPinch", "Oculus Hand (R) Ring Pinch"), FKeyDetails::GamepadKey | FKeyDetails::NotBlueprintBindableKey, "OculusHand"));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Right_PinkyPinch, LOCTEXT("OculusHand_Right_PinkyPinch", "Oculus Hand (R) Pinky Pinch"), FKeyDetails::GamepadKey | FKeyDetails::NotBlueprintBindableKey, "OculusHand"));
-
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Left_SystemGesture, LOCTEXT("OculusHand_Left_SystemGesture", "Oculus Hand (L) System Gesture"), FKeyDetails::GamepadKey | FKeyDetails::NotBlueprintBindableKey, "OculusHand"));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Right_SystemGesture, LOCTEXT("OculusHand_Right_SystemGesture", "Oculus Hand (R) System Gesture"), FKeyDetails::GamepadKey | FKeyDetails::NotBlueprintBindableKey, "OculusHand"));
-
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Left_ThumbPinchStrength, LOCTEXT("OculusHand_Left_ThumbPinchStrength", "Oculus Hand (L) Thumb Pinch Strength"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D, "OculusHand"));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Left_IndexPinchStrength, LOCTEXT("OculusHand_Left_IndexPinchStrength", "Oculus Hand (L) Index Pinch Strength"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D, "OculusHand"));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Left_MiddlePinchStrength, LOCTEXT("OculusHand_Left_MiddlePinchStrength", "Oculus Hand (L) Middle Pinch Strength"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D, "OculusHand"));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Left_RingPinchStrength, LOCTEXT("OculusHand_Left_RingPinchStrength", "Oculus Hand (L) Ring Pinch Strength"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D, "OculusHand"));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Left_PinkyPinchStrength, LOCTEXT("OculusHand_Left_PinkyPinchStrength", "Oculus Hand (L) Pinky Pinch Strength"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D, "OculusHand"));
-
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Right_ThumbPinchStrength, LOCTEXT("OculusHand_Right_ThumbPinchStrength", "Oculus Hand (R) Thumb Pinch Strength"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D, "OculusHand"));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Right_IndexPinchStrength, LOCTEXT("OculusHand_Right_IndexPinchStrength", "Oculus Hand (R) Index Pinch Strength"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D, "OculusHand"));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Right_MiddlePinchStrength, LOCTEXT("OculusHand_Right_MiddlePinchStrength", "Oculus Hand (R) Middle Pinch Strength"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D, "OculusHand"));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Right_RingPinchStrength, LOCTEXT("OculusHand_Right_RingPinchStrength", "Oculus Hand (R) Ring Pinch Strength"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D, "OculusHand"));
-	EKeys::AddKey(FKeyDetails(FOculusKey::OculusHand_Right_PinkyPinchStrength, LOCTEXT("OculusHand_Right_PinkyPinchStrength", "Oculus Hand (R) Pinky Pinch Strength"), FKeyDetails::GamepadKey | FKeyDetails::Axis1D, "OculusHand"));
+	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouchpad_Touchpad, LOCTEXT("OculusTouchpad_Touchpad", "Oculus Touchpad Button"), FKeyDetails::GamepadKey | FKeyDetails::Deprecated));
+	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouchpad_Touchpad_X, LOCTEXT("OculusTouchpad_Touchpad_X", "Oculus Touchpad X-Axis"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis | FKeyDetails::Deprecated));
+	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouchpad_Touchpad_Y, LOCTEXT("OculusTouchpad_Touchpad_Y", "Oculus Touchpad Y-Axis"), FKeyDetails::GamepadKey | FKeyDetails::FloatAxis | FKeyDetails::Deprecated));
+	EKeys::AddKey(FKeyDetails(FOculusKey::OculusTouchpad_Back, LOCTEXT("OculusTouchpad_Back", "Oculus Touchpad Back"), FKeyDetails::GamepadKey | FKeyDetails::Deprecated));
 
 	UE_LOG(LogOcInput, Log, TEXT("OculusInput pre-init called"));
 }
@@ -238,6 +168,12 @@ void FOculusInput::LoadConfig()
 	if (GConfig->GetFloat(OculusTouchSettings, TEXT("TriggerThreshold"), ConfigThreshold, GEngineIni))
 	{
 		TriggerThreshold = ConfigThreshold;
+	}
+
+	bool bConfigGoKeysMappedToTouch;
+	if (GConfig->GetBool(OculusTouchSettings, TEXT("bGoKeysMappedToTouch"), bConfigGoKeysMappedToTouch, GEngineIni))
+	{
+		bGoKeysMappedToTouch = bConfigGoKeysMappedToTouch;
 	}
 
 	const TCHAR* OculusRemoteSettings = TEXT("OculusRemote.Settings");
@@ -262,7 +198,7 @@ void FOculusInput::SendControllerEvents()
 	const double CurrentTime = FPlatformTime::Seconds();
 	const float AnalogButtonPressThreshold = TriggerThreshold;
 
-	if(IOculusHMDModule::IsAvailable() && FOculusHMDModule::GetPluginWrapper().GetInitialized() && FApp::HasVRFocus())
+	if(IOculusHMDModule::IsAvailable() && ovrp_GetInitialized() && FApp::HasVRFocus())
 	{
 		if (MessageHandler.IsValid() && GEngine->XRSystem->GetHMDDevice())
 		{
@@ -270,8 +206,8 @@ void FOculusInput::SendControllerEvents()
 			OculusHMD->StartGameFrame_GameThread();
 
 			ovrpControllerState4 OvrpControllerState;
-
-			if (OVRP_SUCCESS(FOculusHMDModule::GetPluginWrapper().GetControllerState4(ovrpController_Remote, &OvrpControllerState)) &&
+			
+			if (OVRP_SUCCESS(ovrp_GetControllerState4(ovrpController_Remote, &OvrpControllerState)) &&
 				(OvrpControllerState.ConnectedControllerTypes & ovrpController_Remote))
 			{
 				for (int32 ButtonIndex = 0; ButtonIndex < (int32)EOculusRemoteControllerButton::TotalButtonCount; ++ButtonIndex)
@@ -339,7 +275,7 @@ void FOculusInput::SendControllerEvents()
 							OnControllerButtonPressed(ButtonState, 0, false);
 
 							// Set the timer for the first repeat
-							ButtonState.NextRepeatTime = CurrentTime + InitialButtonRepeatDelay;
+							ButtonState.NextRepeatTime = CurrentTime + ButtonRepeatDelay;
 						}
 						else
 						{
@@ -358,30 +294,84 @@ void FOculusInput::SendControllerEvents()
 				}
 			}
 
-			if (OVRP_SUCCESS(FOculusHMDModule::GetPluginWrapper().GetControllerState4((ovrpController)(ovrpController_LTrackedRemote | ovrpController_RTrackedRemote | ovrpController_Touch), &OvrpControllerState)))
+			if (OVRP_SUCCESS(ovrp_GetControllerState4(ovrpController_Touchpad, &OvrpControllerState)) && 
+				(OvrpControllerState.ConnectedControllerTypes & ovrpController_Touchpad))
+			{
+				ovrpVector2f ThumbstickValue = OvrpControllerState.Touchpad[0];
+
+				if (ThumbstickValue.x != Touchpad.TouchpadPosition.X)
+				{
+					Touchpad.TouchpadPosition.X = ThumbstickValue.x;
+					MessageHandler->OnControllerAnalog(FOculusKeyNames::OculusTouchpad_Touchpad_X, 0, Touchpad.TouchpadPosition.X);
+				}
+
+				if (ThumbstickValue.y != Touchpad.TouchpadPosition.Y)
+				{
+					Touchpad.TouchpadPosition.Y = ThumbstickValue.y;
+					// we need to negate Y value to match XBox controllers
+					MessageHandler->OnControllerAnalog(FOculusKeyNames::OculusTouchpad_Touchpad_Y, 0, Touchpad.TouchpadPosition.Y);
+				}
+
+				for (int32 ButtonIndex = 0; ButtonIndex < (int32)EOculusTouchpadButton::TotalButtonCount; ++ButtonIndex)
+				{
+					FOculusButtonState& ButtonState = Touchpad.Buttons[ButtonIndex];
+					check(!ButtonState.Key.IsNone()); // is button's name initialized?
+
+					bool bButtonPressed = false;
+					switch ((EOculusTouchpadButton)ButtonIndex)
+					{
+					case EOculusTouchpadButton::Back:
+						bButtonPressed = (OvrpControllerState.Buttons & ovrpButton_Back) != 0;
+						break;
+
+					case EOculusTouchpadButton::Touchpad:
+						bButtonPressed = (OvrpControllerState.Touches & ovrpTouch_LTouchpad) != 0;
+						break;
+
+					default:
+						check(0); // unhandled button, shouldn't happen
+						break;
+					}
+
+					// Update button state
+					if (bButtonPressed != ButtonState.bIsPressed)
+					{
+						ButtonState.bIsPressed = bButtonPressed;
+						if (ButtonState.bIsPressed)
+						{
+							OnControllerButtonPressed(ButtonState, 0, false);
+
+							// Set the timer for the first repeat
+							ButtonState.NextRepeatTime = CurrentTime + ButtonRepeatDelay;
+						}
+						else
+						{
+							OnControllerButtonReleased(ButtonState, 0, false);
+						}
+					}
+
+					// Apply key repeat, if its time for that
+					if (ButtonState.bIsPressed && ButtonState.NextRepeatTime <= CurrentTime)
+					{
+						OnControllerButtonPressed(ButtonState, 0, true);
+
+						// Set the timer for the next repeat
+						ButtonState.NextRepeatTime = CurrentTime + ButtonRepeatDelay;
+					}
+				}
+			}
+
+			if (OVRP_SUCCESS(ovrp_GetControllerState4((ovrpController)(ovrpController_LTrackedRemote | ovrpController_RTrackedRemote | ovrpController_Touch), &OvrpControllerState)))
 			{
 				UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("SendControllerEvents: ButtonState = 0x%X"), OvrpControllerState.Buttons);
 				UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("SendControllerEvents: Touches = 0x%X"), OvrpControllerState.Touches);
 
-				// If using touch controllers (Quest) use the local tracking space recentering as a signal for recenter
-				if ((OvrpControllerState.ConnectedControllerTypes & ovrpController_LTouch) != 0 || (OvrpControllerState.ConnectedControllerTypes & ovrpController_RTouch) != 0)
+				for (FOculusTouchControllerPair& ControllerPair : ControllerPairs)
 				{
-					int32 recenterCount = 0;
-					if (OVRP_SUCCESS(FOculusHMDModule::GetPluginWrapper().GetLocalTrackingSpaceRecenterCount(&recenterCount)))
+					for( int32 HandIndex = 0; HandIndex < UE_ARRAY_COUNT( ControllerPair.ControllerStates ); ++HandIndex )
 					{
-						if (LocalTrackingSpaceRecenterCount != recenterCount)
-						{
-							FCoreDelegates::VRControllerRecentered.Broadcast();
-							LocalTrackingSpaceRecenterCount = recenterCount;
-						}
-					}
-				}
+						FOculusTouchControllerState& State = ControllerPair.ControllerStates[ HandIndex ];
 
-				for (FOculusControllerPair& ControllerPair : ControllerPairs)
-				{
-					for (int32 HandIndex = 0; HandIndex < UE_ARRAY_COUNT(ControllerPair.TouchControllerStates); ++HandIndex)
-					{
-						FOculusTouchControllerState& State = ControllerPair.TouchControllerStates[HandIndex];
 						bool bIsLeft = (HandIndex == (int32)EControllerHand::Left);
 
 						bool bIsMobileController = bIsLeft ? (OvrpControllerState.ConnectedControllerTypes & ovrpController_LTrackedRemote) != 0 : (OvrpControllerState.ConnectedControllerTypes & ovrpController_RTrackedRemote) != 0;
@@ -394,36 +384,35 @@ void FOculusInput::SendControllerEvents()
 
 							State.bIsConnected = true;
 							ovrpBool bResult = true;
-							State.bIsPositionTracked = OVRP_SUCCESS(FOculusHMDModule::GetPluginWrapper().GetNodePositionTracked2(OvrpNode, &bResult)) && bResult;
-							State.bIsPositionValid = OVRP_SUCCESS(FOculusHMDModule::GetPluginWrapper().GetNodePositionValid(OvrpNode, &bResult)) && bResult;
-							State.bIsOrientationTracked = OVRP_SUCCESS(FOculusHMDModule::GetPluginWrapper().GetNodeOrientationTracked2(OvrpNode, &bResult)) && bResult;
-							State.bIsOrientationValid = OVRP_SUCCESS(FOculusHMDModule::GetPluginWrapper().GetNodeOrientationValid(OvrpNode, &bResult)) && bResult;
+							State.bIsPositionTracked = OVRP_SUCCESS(ovrp_GetNodePositionTracked2(OvrpNode, &bResult)) && bResult;
+							State.bIsPositionValid = OVRP_SUCCESS(ovrp_GetNodePositionValid(OvrpNode, &bResult)) && bResult;
+							State.bIsOrientationTracked = OVRP_SUCCESS(ovrp_GetNodeOrientationTracked2(OvrpNode, &bResult)) && bResult;
+							State.bIsOrientationValid = OVRP_SUCCESS(ovrp_GetNodeOrientationValid(OvrpNode, &bResult)) && bResult;
 
 							const float OvrTriggerAxis = OvrpControllerState.IndexTrigger[HandIndex];
 							const float OvrGripAxis = OvrpControllerState.HandTrigger[HandIndex];
 
 							UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("SendControllerEvents: IndexTrigger[%d] = %f"), int(HandIndex), OvrTriggerAxis);
 							UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("SendControllerEvents: HandTrigger[%d] = %f"), int(HandIndex), OvrGripAxis);
-							UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("SendControllerEvents: ThumbStick[%d] = { %f, %f }"), int(HandIndex), OvrpControllerState.Thumbstick[HandIndex].x, OvrpControllerState.Thumbstick[HandIndex].y);
+							UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("SendControllerEvents: ThumbStick[%d] = { %f, %f }"), int(HandIndex), OvrpControllerState.Thumbstick[HandIndex].x, OvrpControllerState.Thumbstick[HandIndex].y );
 
-							if (bIsMobileController)
+							if (OvrpControllerState.RecenterCount[HandIndex] != State.RecenterCount)
 							{
-								if (OvrpControllerState.RecenterCount[HandIndex] != State.RecenterCount)
-								{
-									State.RecenterCount = OvrpControllerState.RecenterCount[HandIndex];
-									FCoreDelegates::VRControllerRecentered.Broadcast();
-								}
+								State.RecenterCount = OvrpControllerState.RecenterCount[HandIndex];
+								FCoreDelegates::VRControllerRecentered.Broadcast();
 							}
-
+							
 							if (OvrTriggerAxis != State.TriggerAxis)
 							{
 								State.TriggerAxis = OvrTriggerAxis;
+								MessageHandler->OnControllerAnalog(bIsLeft ? FGamepadKeyNames::MotionController_Left_TriggerAxis : FGamepadKeyNames::MotionController_Right_TriggerAxis, ControllerPair.UnrealControllerIndex, State.TriggerAxis);
 								MessageHandler->OnControllerAnalog(bIsLeft ? EKeys::OculusTouch_Left_Trigger_Axis.GetFName() : EKeys::OculusTouch_Right_Trigger_Axis.GetFName(), ControllerPair.UnrealControllerIndex, State.TriggerAxis);
 							}
 
 							if (OvrGripAxis != State.GripAxis)
 							{
 								State.GripAxis = OvrGripAxis;
+								MessageHandler->OnControllerAnalog(bIsLeft ? FGamepadKeyNames::MotionController_Left_Grip1Axis : FGamepadKeyNames::MotionController_Right_Grip1Axis, ControllerPair.UnrealControllerIndex, State.GripAxis);
 								MessageHandler->OnControllerAnalog(bIsLeft ? EKeys::OculusTouch_Left_Grip_Axis.GetFName() : EKeys::OculusTouch_Right_Grip_Axis.GetFName(), ControllerPair.UnrealControllerIndex, State.GripAxis);
 							}
 
@@ -433,23 +422,43 @@ void FOculusInput::SendControllerEvents()
 							if (ThumbstickValue.x != State.ThumbstickAxes.X)
 							{
 								State.ThumbstickAxes.X = ThumbstickValue.x;
+								MessageHandler->OnControllerAnalog(bIsLeft ? FGamepadKeyNames::MotionController_Left_Thumbstick_X : FGamepadKeyNames::MotionController_Right_Thumbstick_X, ControllerPair.UnrealControllerIndex, State.ThumbstickAxes.X);
 								MessageHandler->OnControllerAnalog(bIsLeft ? EKeys::OculusTouch_Left_Thumbstick_X.GetFName() : EKeys::OculusTouch_Right_Thumbstick_X.GetFName(), ControllerPair.UnrealControllerIndex, State.ThumbstickAxes.X);
+								if (bGoKeysMappedToTouch)
+								{
+									MessageHandler->OnControllerAnalog(bIsLeft ? EKeys::OculusGo_Left_Trackpad_X.GetFName() : EKeys::OculusGo_Right_Trackpad_X.GetFName(), ControllerPair.UnrealControllerIndex, State.ThumbstickAxes.Y);
+								}
 							}
 
 							if (ThumbstickValue.y != State.ThumbstickAxes.Y)
 							{
 								State.ThumbstickAxes.Y = ThumbstickValue.y;
+								// we need to negate Y value to match XBox controllers
+								MessageHandler->OnControllerAnalog(bIsLeft ? FGamepadKeyNames::MotionController_Left_Thumbstick_Y : FGamepadKeyNames::MotionController_Right_Thumbstick_Y, ControllerPair.UnrealControllerIndex, -State.ThumbstickAxes.Y);
+
+								// new keys no longer need negation
 								MessageHandler->OnControllerAnalog(bIsLeft ? EKeys::OculusTouch_Left_Thumbstick_Y.GetFName() : EKeys::OculusTouch_Right_Thumbstick_Y.GetFName(), ControllerPair.UnrealControllerIndex, State.ThumbstickAxes.Y);
+								if (bGoKeysMappedToTouch)
+								{
+									MessageHandler->OnControllerAnalog(bIsLeft ? EKeys::OculusGo_Left_Trackpad_Y.GetFName() : EKeys::OculusGo_Right_Trackpad_Y.GetFName(), ControllerPair.UnrealControllerIndex, State.ThumbstickAxes.Y);
+								}
 							}
 
 							if (TouchpadValue.x != State.TouchpadAxes.X)
 							{
 								State.TouchpadAxes.X = TouchpadValue.x;
+								MessageHandler->OnControllerAnalog(bIsLeft ? FGamepadKeyNames::MotionController_Left_Thumbstick_X : FGamepadKeyNames::MotionController_Right_Thumbstick_X, ControllerPair.UnrealControllerIndex, State.ThumbstickAxes.X);
+								MessageHandler->OnControllerAnalog(bIsLeft ? EKeys::OculusGo_Left_Trackpad_X.GetFName() : EKeys::OculusGo_Right_Trackpad_X.GetFName(), ControllerPair.UnrealControllerIndex, State.ThumbstickAxes.X);
 							}
 
 							if (TouchpadValue.y != State.TouchpadAxes.Y)
 							{
 								State.TouchpadAxes.Y = TouchpadValue.y;
+								// we need to negate Y value to match XBox controllers
+								MessageHandler->OnControllerAnalog(bIsLeft ? FGamepadKeyNames::MotionController_Left_Thumbstick_Y : FGamepadKeyNames::MotionController_Right_Thumbstick_Y, ControllerPair.UnrealControllerIndex, -State.ThumbstickAxes.Y);
+
+								// new keys no longer need negation
+								MessageHandler->OnControllerAnalog(bIsLeft ? EKeys::OculusGo_Left_Trackpad_Y.GetFName() : EKeys::OculusGo_Right_Trackpad_Y.GetFName(), ControllerPair.UnrealControllerIndex, State.ThumbstickAxes.Y);
 							}
 
 							for (int32 ButtonIndex = 0; ButtonIndex < (int32)EOculusTouchControllerButton::TotalButtonCount; ++ButtonIndex)
@@ -480,7 +489,7 @@ void FOculusInput::SendControllerEvents()
 								case EOculusTouchControllerButton::Thumbstick:
 									bButtonPressed = bIsLeft ? (OvrpControllerState.Buttons & ovrpButton_LThumb) != 0 : (OvrpControllerState.Buttons & ovrpButton_RThumb) != 0;
 									break;
-
+									
 								case EOculusTouchControllerButton::Thumbstick_Up:
 									if (bIsTouchController && State.ThumbstickAxes.Size() > 0.7f ||
 										bIsMobileController && State.Buttons[(int)EOculusTouchControllerButton::Thumbstick].bIsPressed && State.ThumbstickAxes.Size() > 0.5f)
@@ -537,6 +546,21 @@ void FOculusInput::SendControllerEvents()
 									bButtonPressed = bIsLeft ? (OvrpControllerState.Touches & ovrpTouch_Y) != 0 : (OvrpControllerState.Touches & ovrpTouch_B) != 0;
 									break;
 
+								case EOculusTouchControllerButton::Back:
+									bButtonPressed = (OvrpControllerState.Buttons & ovrpButton_Back) != 0 || (bGoKeysMappedToTouch &&
+										(bIsLeft ? (OvrpControllerState.Buttons & ovrpButton_X) != 0 : (OvrpControllerState.Buttons & ovrpButton_A) != 0));
+									break;
+
+								case EOculusTouchControllerButton::Touchpad:
+									bButtonPressed = (bIsLeft ? (OvrpControllerState.Buttons & ovrpButton_LTouchpad) != 0 : (OvrpControllerState.Buttons & ovrpButton_RTouchpad) != 0) ||
+										(bGoKeysMappedToTouch && (bIsLeft ? (OvrpControllerState.Buttons & ovrpButton_LThumb) != 0 : (OvrpControllerState.Buttons & ovrpButton_RThumb) != 0));
+									break;
+
+								case EOculusTouchControllerButton::Touchpad_Touch:
+									bButtonPressed = (bIsLeft ? (OvrpControllerState.Buttons & ovrpTouch_LTouchpad) != 0 : (OvrpControllerState.Buttons & ovrpTouch_RTouchpad) != 0) ||
+										(bGoKeysMappedToTouch && (bIsLeft ? (OvrpControllerState.Touches & ovrpTouch_LThumb) != 0 : (OvrpControllerState.Touches & ovrpTouch_RThumb) != 0));
+									break;
+								
 								default:
 									check(0);
 									break;
@@ -551,7 +575,7 @@ void FOculusInput::SendControllerEvents()
 										OnControllerButtonPressed(ButtonState, ControllerPair.UnrealControllerIndex, false);
 
 										// Set the timer for the first repeat
-										ButtonState.NextRepeatTime = CurrentTime + InitialButtonRepeatDelay;
+										ButtonState.NextRepeatTime = CurrentTime + ButtonRepeatDelay;
 									}
 									else
 									{
@@ -572,7 +596,7 @@ void FOculusInput::SendControllerEvents()
 							// Handle Capacitive States
 							for (int32 CapTouchIndex = 0; CapTouchIndex < (int32)EOculusTouchCapacitiveAxes::TotalAxisCount; ++CapTouchIndex)
 							{
-								FOculusAxisState& CapState = State.CapacitiveAxes[CapTouchIndex];
+								FOculusTouchCapacitiveState& CapState = State.CapacitiveAxes[CapTouchIndex];
 
 								float CurrentAxisVal = 0.f;
 								switch ((EOculusTouchCapacitiveAxes)CapTouchIndex)
@@ -616,7 +640,7 @@ void FOculusInput::SendControllerEvents()
 								default:
 									check(0);
 								}
-
+							
 								if (CurrentAxisVal != CapState.State)
 								{
 									MessageHandler->OnControllerAnalog(CapState.Axis, ControllerPair.UnrealControllerIndex, CurrentAxisVal);
@@ -631,154 +655,6 @@ void FOculusInput::SendControllerEvents()
 							State = FOculusTouchControllerState((EControllerHand)HandIndex);
 							UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("SendControllerEvents: Controller for the hand %d is not tracked"), int(HandIndex));
 						}
-					}
-				}
-			}
-			else
-			{
-				// Controller isn't available right now.  Zero out input state, so that if it comes back it will send fresh event deltas
-				for (FOculusControllerPair& ControllerPair : ControllerPairs)
-				{
-					for (int32 HandIndex = 0; HandIndex < UE_ARRAY_COUNT(ControllerPair.TouchControllerStates); ++HandIndex)
-					{
-						FOculusTouchControllerState& State = ControllerPair.TouchControllerStates[HandIndex];
-						State = FOculusTouchControllerState((EControllerHand)HandIndex);
-					}
-				}
-			}
-
-			if (OVRP_SUCCESS(FOculusHMDModule::GetPluginWrapper().GetControllerState4((ovrpController)(ovrpController_LHand | ovrpController_RHand | ovrpController_Hands), &OvrpControllerState)))
-			{
-				for (FOculusControllerPair& ControllerPair : ControllerPairs)
-				{
-					for (int32 HandIndex = 0; HandIndex < UE_ARRAY_COUNT(ControllerPair.HandControllerStates); ++HandIndex)
-					{
-						FOculusHandControllerState& State = ControllerPair.HandControllerStates[HandIndex];
-
-						bool bIsLeft = (HandIndex == (int32)EControllerHand::Left);
-						bool bIsCurrentlyTracked = bIsLeft ? (OvrpControllerState.ConnectedControllerTypes & ovrpController_LHand) != 0 : (OvrpControllerState.ConnectedControllerTypes & ovrpController_RHand) != 0;
-
-						if (bIsCurrentlyTracked)
-						{
-							State.bIsConnected = true;
-							ovrpBool bResult = true;
-
-							// Hand Tracking requires the frame number for accurate results
-							OculusHMD::FGameFrame* CurrentFrame;
-							if (IsInGameThread())
-							{
-								CurrentFrame = OculusHMD->GetNextFrameToRender();
-							}
-							else
-							{
-								CurrentFrame = OculusHMD->GetFrame_RenderThread();
-							}
-
-							// Poll for Hand Tracking State
-							ovrpHandState HandState;
-							if (OVRP_SUCCESS(FOculusHMDModule::GetPluginWrapper().GetHandState2(ovrpStep_Render, CurrentFrame ? CurrentFrame->FrameNumber : OVRP_CURRENT_FRAMEINDEX, (ovrpHand)HandIndex, &HandState)))
-							{
-								// Update various data about hands
-								State.HandScale = HandState.HandScale;
-
-								// Update Bone Rotations
-								for (uint32 BoneIndex = 0; BoneIndex < UE_ARRAY_COUNT(State.BoneRotations); BoneIndex++)
-								{
-									ovrpQuatf RawRotation = HandState.BoneRotations[BoneIndex];
-									FQuat BoneRotation = FOculusHandTracking::OvrBoneQuatToFQuat(RawRotation);
-									BoneRotation.Normalize();
-									State.BoneRotations[BoneIndex] = BoneRotation;
-								}
-								
-								// Update Pinch State and Pinch Strength
-								bool bTracked = (HandState.Status & ovrpHandStatus_HandTracked) != 0;
-								State.TrackingConfidence = FOculusHandTracking::ToETrackingConfidence(HandState.HandConfidence);
-
-								State.bIsPositionTracked = bTracked && State.TrackingConfidence == ETrackingConfidence::High;
-								State.bIsPositionValid = bTracked;
-								State.bIsOrientationTracked = bTracked && State.TrackingConfidence == ETrackingConfidence::High;
-								State.bIsOrientationValid = bTracked;
-
-								State.bIsPointerPoseValid = (HandState.Status & ovrpHandStatus_InputValid) != 0;
-
-								ovrpPosef PointerPose = HandState.PointerPose;
-								State.PointerPose.SetTranslation(OculusHMD::ToFVector(PointerPose.Position));
-								State.PointerPose.SetRotation(OculusHMD::ToFQuat(PointerPose.Orientation));
-
-								State.bIsDominantHand = (HandState.Status & ovrpHandStatus_DominantHand) != 0;
-								
-								// Poll for finger pinches
-								for (uint32 FingerIndex = 0; FingerIndex < (uint32)EOculusHandButton::TotalButtonCount; FingerIndex++)
-								{
-									FOculusButtonState& PinchState = State.HandButtons[FingerIndex];
-									check(!PinchState.Key.IsNone());
-
-									bool bPressed = false;
-									if (FingerIndex < (uint32)EOculusHandButton::System)
-									{
-										bPressed = (((uint32)HandState.Pinches & (1 << FingerIndex)) != 0);
-										bPressed &= (HandState.HandConfidence == ovrpTrackingConfidence_High) && (HandState.FingerConfidences[FingerIndex] == ovrpTrackingConfidence_High);
-									}
-									else if(FingerIndex == (uint32)EOculusHandButton::System)
-									{
-										bPressed = (HandState.Status & ovrpHandStatus_SystemGestureInProgress) != 0;
-									}
-									else
-									{
-										bPressed = (OvrpControllerState.Buttons & ovrpButton_Start) != 0 && !State.bIsDominantHand;
-									}
-
-									if (bPressed != PinchState.bIsPressed)
-									{
-										PinchState.bIsPressed = bPressed;
-										if (PinchState.bIsPressed)
-										{
-											OnControllerButtonPressed(PinchState, ControllerPair.UnrealControllerIndex, false);
-										}
-										else
-										{
-											OnControllerButtonReleased(PinchState, ControllerPair.UnrealControllerIndex, false);
-										}
-									}
-								}
-
-								// Poll for finger strength
-								for (uint32 FingerIndex = 0; FingerIndex < (uint32)EOculusHandAxes::TotalAxisCount; FingerIndex++)
-								{
-									FOculusAxisState& PinchStrength = State.HandAxes[FingerIndex];
-									check(!PinchStrength.Axis.IsNone());
-
-									float PinchValue = 0.0f;
-									if (HandState.HandConfidence == ovrpTrackingConfidence_High)
-									{
-										PinchValue = HandState.PinchStrength[FingerIndex];
-									}
-
-									if (PinchValue != PinchStrength.State)
-									{
-										MessageHandler->OnControllerAnalog(PinchStrength.Axis, ControllerPair.UnrealControllerIndex, PinchValue);
-										PinchStrength.State = PinchValue;
-									}
-								}
-							}
-						}
-						else
-						{
-							State = FOculusHandControllerState((EControllerHand)HandIndex);
-							UE_CLOG(OVR_DEBUG_LOGGING, LogOcInput, Log, TEXT("SendControllerEvents: Hand for the hand %d is not tracked"), int32(HandIndex));
-						}
-					}
-				}
-			}
-			else
-			{
-				// Hands are not availble right now, zero out the hand state
-				for (FOculusControllerPair& ControllerPair : ControllerPairs)
-				{
-					for (int32 HandIndex = 0; HandIndex < UE_ARRAY_COUNT(ControllerPair.HandControllerStates); ++HandIndex)
-					{
-						FOculusHandControllerState& State = ControllerPair.HandControllerStates[HandIndex];
-						State = FOculusHandControllerState((EControllerHand)HandIndex);
 					}
 				}
 			}
@@ -804,11 +680,11 @@ void FOculusInput::SetChannelValue( int32 ControllerId, FForceFeedbackChannelTyp
 {
 	const EControllerHand Hand = ( ChannelType == FForceFeedbackChannelType::LEFT_LARGE || ChannelType == FForceFeedbackChannelType::LEFT_SMALL ) ? EControllerHand::Left : EControllerHand::Right;
 
-	for( FOculusControllerPair& ControllerPair : ControllerPairs )
+	for( FOculusTouchControllerPair& ControllerPair : ControllerPairs )
 	{
 		if( ControllerPair.UnrealControllerIndex == ControllerId )
 		{
-			FOculusTouchControllerState& ControllerState = ControllerPair.TouchControllerStates[ (int32)Hand ];
+			FOculusTouchControllerState& ControllerState = ControllerPair.ControllerStates[ (int32)Hand ];
 
 			if (ControllerState.bPlayingHapticEffect)
 			{
@@ -834,12 +710,12 @@ void FOculusInput::SetChannelValue( int32 ControllerId, FForceFeedbackChannelTyp
 
 void FOculusInput::SetChannelValues( int32 ControllerId, const FForceFeedbackValues& Values )
 {
-	for( FOculusControllerPair& ControllerPair : ControllerPairs )
+	for( FOculusTouchControllerPair& ControllerPair : ControllerPairs )
 	{
 		if( ControllerPair.UnrealControllerIndex == ControllerId )
 		{
 			// @todo: The SMALL channel controls frequency, the LARGE channel controls amplitude.  This is a bit of a weird fit.
-			FOculusTouchControllerState& LeftControllerState = ControllerPair.TouchControllerStates[ (int32)EControllerHand::Left ];
+			FOculusTouchControllerState& LeftControllerState = ControllerPair.ControllerStates[ (int32)EControllerHand::Left ];
 			if (!LeftControllerState.bPlayingHapticEffect)
 			{
 				LeftControllerState.ForceFeedbackHapticFrequency = Values.LeftSmall;
@@ -847,7 +723,7 @@ void FOculusInput::SetChannelValues( int32 ControllerId, const FForceFeedbackVal
 				UpdateForceFeedback(ControllerPair, EControllerHand::Left);
 			}
 
-			FOculusTouchControllerState& RightControllerState = ControllerPair.TouchControllerStates[(int32)EControllerHand::Right];
+			FOculusTouchControllerState& RightControllerState = ControllerPair.ControllerStates[(int32)EControllerHand::Right];
 			if (!RightControllerState.bPlayingHapticEffect)
 			{
 				RightControllerState.ForceFeedbackHapticFrequency = Values.RightSmall;
@@ -858,17 +734,17 @@ void FOculusInput::SetChannelValues( int32 ControllerId, const FForceFeedbackVal
 	}
 }
 
-void FOculusInput::UpdateForceFeedback( const FOculusControllerPair& ControllerPair, const EControllerHand Hand )
+void FOculusInput::UpdateForceFeedback( const FOculusTouchControllerPair& ControllerPair, const EControllerHand Hand )
 {
-	const FOculusTouchControllerState& ControllerState = ControllerPair.TouchControllerStates[ (int32)Hand ];
+	const FOculusTouchControllerState& ControllerState = ControllerPair.ControllerStates[ (int32)Hand ];
 
 	if( ControllerState.bIsConnected && !ControllerState.bPlayingHapticEffect)
 	{
-		if(IOculusHMDModule::IsAvailable() && FOculusHMDModule::GetPluginWrapper().GetInitialized() && FApp::HasVRFocus())
+		if(IOculusHMDModule::IsAvailable() && ovrp_GetInitialized() && FApp::HasVRFocus())
 		{
 			ovrpControllerState4 OvrpControllerState;
-
-			if (OVRP_SUCCESS(FOculusHMDModule::GetPluginWrapper().GetControllerState4((ovrpController)(ovrpController_Active | ovrpController_LTrackedRemote | ovrpController_RTrackedRemote), &OvrpControllerState)) &&
+			
+			if (OVRP_SUCCESS(ovrp_GetControllerState4((ovrpController)(ovrpController_Active | ovrpController_LTrackedRemote | ovrpController_RTrackedRemote), &OvrpControllerState)) &&
 				(OvrpControllerState.ConnectedControllerTypes & (ovrpController_Touch | ovrpController_LTrackedRemote | ovrpController_RTrackedRemote)))
 			{
 				float FreqMin, FreqMax = 0.f;
@@ -893,7 +769,7 @@ void FOculusInput::UpdateForceFeedback( const FOculusControllerPair& ControllerP
 				static float LastAmplitudeSent = -1;
 				if (ActualAmplitude != LastAmplitudeSent)
 				{
-					FOculusHMDModule::GetPluginWrapper().SetControllerVibration2(OvrController, ActualFrequency, ActualAmplitude);
+					ovrp_SetControllerVibration2(OvrController, ActualFrequency, ActualAmplitude);
 					LastAmplitudeSent = ActualAmplitude;
 				}
 			}
@@ -936,20 +812,20 @@ bool FOculusInput::GetControllerOrientationAndPosition( const int32 ControllerIn
 	// Don't do renderthread pose update if MRC is active due to controller jitter issues with SceneCaptures
 	if (IsInGameThread() || !UOculusMRFunctionLibrary::IsMrcActive())
 	{
-		for (const FOculusControllerPair& ControllerPair : ControllerPairs)
+		for (const FOculusTouchControllerPair& ControllerPair : ControllerPairs)
 		{
 			if (ControllerPair.UnrealControllerIndex == ControllerIndex)
 			{
 				if ((DeviceHand == EControllerHand::Left) || (DeviceHand == EControllerHand::Right))
 				{
-					if (IOculusHMDModule::IsAvailable() && FOculusHMDModule::GetPluginWrapper().GetInitialized())
+					if (IOculusHMDModule::IsAvailable() && ovrp_GetInitialized())
 					{
 						OculusHMD::FOculusHMD* OculusHMD = static_cast<OculusHMD::FOculusHMD*>(GEngine->XRSystem->GetHMDDevice());
 						ovrpNode Node = DeviceHand == EControllerHand::Left ? ovrpNode_HandLeft : ovrpNode_HandRight;
 
 						ovrpBool bResult = true;
-						bool bIsPositionValid = OVRP_SUCCESS(FOculusHMDModule::GetPluginWrapper().GetNodePositionValid(Node, &bResult)) && bResult;
-						bool bIsOrientationValid = OVRP_SUCCESS(FOculusHMDModule::GetPluginWrapper().GetNodeOrientationValid(Node, &bResult)) && bResult;
+						bool bIsPositionValid = OVRP_SUCCESS(ovrp_GetNodePositionValid(Node, &bResult)) && bResult;
+						bool bIsOrientationValid = OVRP_SUCCESS(ovrp_GetNodeOrientationValid(Node, &bResult)) && bResult;
 
 						if (bIsPositionValid || bIsOrientationValid)
 						{
@@ -972,7 +848,7 @@ bool FOculusInput::GetControllerOrientationAndPosition( const int32 ControllerIn
 								ovrpPoseStatef InPoseState;
 								OculusHMD::FPose OutPose;
 
-								if (OVRP_SUCCESS(FOculusHMDModule::GetPluginWrapper().GetNodePoseState3(ovrpStep_Render, CurrentFrame ? CurrentFrame->FrameNumber : OVRP_CURRENT_FRAMEINDEX, Node, &InPoseState)) &&
+								if (OVRP_SUCCESS(ovrp_GetNodePoseState3(ovrpStep_Render, CurrentFrame ? CurrentFrame->FrameNumber : OVRP_CURRENT_FRAMEINDEX, Node, &InPoseState)) &&
 									OculusHMD->ConvertPose_Internal(InPoseState.Pose, OutPose, Settings, WorldToMetersScale))
 								{
 									if (bIsPositionValid)
@@ -1008,36 +884,23 @@ ETrackingStatus FOculusInput::GetControllerTrackingStatus(const int32 Controller
 	{
 		return TrackingStatus;
 	}
-	
-	for( const FOculusControllerPair& ControllerPair : ControllerPairs )
+
+	for( const FOculusTouchControllerPair& ControllerPair : ControllerPairs )
 	{
 		if( ControllerPair.UnrealControllerIndex == ControllerIndex )
 		{
-			const FOculusTouchControllerState& ControllerState = ControllerPair.TouchControllerStates[ (int32)DeviceHand ];
-			if (ControllerState.bIsConnected)
-			{
-				if (ControllerState.bIsPositionTracked && ControllerState.bIsOrientationTracked)
-				{
-					TrackingStatus = ETrackingStatus::Tracked;
-				}
-				else if (ControllerState.bIsPositionValid && ControllerState.bIsOrientationValid)
-				{
-					TrackingStatus = ETrackingStatus::InertialOnly;
-				}
+			const FOculusTouchControllerState& ControllerState = ControllerPair.ControllerStates[ (int32)DeviceHand ];
 
-				break;
+			if( ControllerState.bIsPositionTracked && ControllerState.bIsOrientationTracked )
+			{
+				TrackingStatus = ETrackingStatus::Tracked;
+			}
+			else if( ControllerState.bIsPositionValid && ControllerState.bIsOrientationValid )
+			{
+				TrackingStatus = ETrackingStatus::InertialOnly;
 			}
 
-			const FOculusHandControllerState& HandState = ControllerPair.HandControllerStates[(int32)DeviceHand];
-			if (HandState.bIsConnected)
-			{
-				if (HandState.bIsPositionTracked && HandState.bIsOrientationTracked)
-				{
-					TrackingStatus = ETrackingStatus::Tracked;
-				}
-
-				break;
-			}
+			break;
 		}
 	}
 
@@ -1046,32 +909,32 @@ ETrackingStatus FOculusInput::GetControllerTrackingStatus(const int32 Controller
 
 void FOculusInput::SetHapticFeedbackValues(int32 ControllerId, int32 Hand, const FHapticFeedbackValues& Values)
 {
-	for (FOculusControllerPair& ControllerPair : ControllerPairs)
+	for (FOculusTouchControllerPair& ControllerPair : ControllerPairs)
 	{
 		if (ControllerPair.UnrealControllerIndex == ControllerId)
 		{
-			FOculusTouchControllerState& ControllerState = ControllerPair.TouchControllerStates[Hand];
+			FOculusTouchControllerState& ControllerState = ControllerPair.ControllerStates[Hand];
 			if (ControllerState.bIsConnected)
 			{
-				if(IOculusHMDModule::IsAvailable() && FOculusHMDModule::GetPluginWrapper().GetInitialized() && FApp::HasVRFocus())
+				if(IOculusHMDModule::IsAvailable() && ovrp_GetInitialized() && FApp::HasVRFocus())
 				{
 					static bool pulledHapticsDesc = false;
 					if (!pulledHapticsDesc)
 					{
 						// Buffered haptics is currently only supported on Touch
-						FOculusHMDModule::GetPluginWrapper().GetControllerHapticsDesc2(ovrpController_RTouch, &OvrpHapticsDesc);
+						ovrp_GetControllerHapticsDesc2(ovrpController_RTouch, &OvrpHapticsDesc);
 						pulledHapticsDesc = true;
 					}
 
 					ovrpControllerState4 OvrpControllerState;
-
+					
 					ovrpController ControllerTypes = (ovrpController)(ovrpController_Active | ovrpController_LTrackedRemote | ovrpController_RTrackedRemote);
 
 #ifdef USE_ANDROID_INPUT
 					ControllerTypes = (ovrpController)(ControllerTypes | ovrpController_Touch);
 #endif
 
-					if (OVRP_SUCCESS(FOculusHMDModule::GetPluginWrapper().GetControllerState4(ControllerTypes, &OvrpControllerState)) &&
+					if (OVRP_SUCCESS(ovrp_GetControllerState4(ControllerTypes, &OvrpControllerState)) &&
 						(OvrpControllerState.ConnectedControllerTypes & (ovrpController_Touch | ovrpController_LTrackedRemote | ovrpController_RTrackedRemote)))
 					{
 						// Buffered haptics is currently only supported on Touch
@@ -1082,10 +945,10 @@ void FOculusInput::SetHapticFeedbackValues(int32 ControllerId, int32 Hand, const
 							const ovrpController OvrpController = (EControllerHand(Hand) == EControllerHand::Left) ? ovrpController_LTouch : ovrpController_RTouch;
 
 							ovrpHapticsState OvrpHapticsState;
-							if (OVRP_SUCCESS(FOculusHMDModule::GetPluginWrapper().GetControllerHapticsState2(OvrpController, &OvrpHapticsState)))
+							if (OVRP_SUCCESS(ovrp_GetControllerHapticsState2(OvrpController, &OvrpHapticsState)))
 							{
 								float appFrameRate = 90.f;
-								FOculusHMDModule::GetPluginWrapper().GetAppFramerate2(&appFrameRate);
+								ovrp_GetAppFramerate2(&appFrameRate);
 
 								int wanttosend = (int)ceil((float)OvrpHapticsDesc.SampleRateHz / appFrameRate) + 1;
 								wanttosend = FMath::Min(wanttosend, OvrpHapticsDesc.MaximumBufferSamplesCount);
@@ -1137,7 +1000,7 @@ void FOculusInput::SetHapticFeedbackValues(int32 ControllerId, int32 Hand, const
 											OvrpHapticsBuffer.Samples = bufferToFree = samples;
 										}
 
-										FOculusHMDModule::GetPluginWrapper().SetControllerHaptics2(OvrpController, OvrpHapticsBuffer);
+										ovrp_SetControllerHaptics2(OvrpController, OvrpHapticsBuffer);
 
 										if (bufferToFree)
 										{
@@ -1151,7 +1014,7 @@ void FOculusInput::SetHapticFeedbackValues(int32 ControllerId, int32 Hand, const
 									}
 								}
 							}
-						}
+						} 
 						else
 						{
 							// Buffered haptics is currently only supported on Touch
@@ -1182,7 +1045,7 @@ void FOculusInput::SetHapticFeedbackValues(int32 ControllerId, int32 Hand, const
 									OvrController = (EControllerHand(Hand) == EControllerHand::Left) ? ovrpController_LTrackedRemote : ovrpController_RTrackedRemote;
 								}
 
-								FOculusHMDModule::GetPluginWrapper().SetControllerVibration2(OvrController, Frequency, Amplitude);
+								ovrp_SetControllerVibration2(OvrController, Frequency, Amplitude);
 
 								ControllerState.bPlayingHapticEffect = (Amplitude != 0.f) && (Frequency != 0.f);
 							}
@@ -1211,23 +1074,10 @@ uint32 FOculusInput::GetNumberOfTouchControllers() const
 {
 	uint32 RetVal = 0;
 
-	for (FOculusControllerPair Pair : ControllerPairs)
+	for (FOculusTouchControllerPair Pair : ControllerPairs)
 	{
-		RetVal += (Pair.TouchControllerStates[0].bIsConnected ? 1 : 0);
-		RetVal += (Pair.TouchControllerStates[1].bIsConnected ? 1 : 0);
-	}
-
-	return RetVal;
-}
-
-uint32 FOculusInput::GetNumberOfHandControllers() const
-{
-	uint32 RetVal = 0;
-
-	for (FOculusControllerPair Pair : ControllerPairs)
-	{
-		RetVal += (Pair.HandControllerStates[0].bIsConnected ? 1 : 0);
-		RetVal += (Pair.HandControllerStates[1].bIsConnected ? 1 : 0);
+		RetVal += (Pair.ControllerStates[0].bIsConnected ? 1 : 0);
+		RetVal += (Pair.ControllerStates[1].bIsConnected ? 1 : 0);
 	}
 
 	return RetVal;

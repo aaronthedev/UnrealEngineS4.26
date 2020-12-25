@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -273,10 +273,7 @@ namespace Gauntlet
 		{
 			if (ECSuspendCount++ == 0)
 			{
-				if (CommandUtils.IsBuildMachine)
-				{
-					OutputMessage("<-- Suspend Log Parsing -->");
-				}
+				OutputMessage("<-- Suspend Log Parsing -->");
 			}
 		}
 
@@ -284,10 +281,7 @@ namespace Gauntlet
 		{
 			if (--ECSuspendCount == 0)
 			{
-				if (CommandUtils.IsBuildMachine)
-				{
-					OutputMessage("<-- Resume Log Parsing -->");
-				}
+				OutputMessage("<-- Resume Log Parsing -->");
 			}
 		}
 
@@ -995,11 +989,6 @@ namespace Gauntlet
 					{
 						FileInfo DestInfo = new FileInfo(Path.Combine(DestDir.FullName, RelativePath));
 
-						if (!DestInfo.Exists)
-						{
-							continue;
-						}
-
 						if (Options.Verbose)
 						{
 							Log.Info("Deleting extra file {0}", DestInfo.FullName);
@@ -1139,36 +1128,7 @@ namespace Gauntlet
 								{
 									Log.Error("File Copy failed with {0}.", ex.Message);
 								}
-
-								// Warn with message if we're exceeding long path, otherwise throw an exception
-								const int MAX_PATH = 260;
-								bool LongPath = BuildHostPlatform.Current.Platform == UnrealTargetPlatform.Win64 && (SourcePath.Length >= MAX_PATH || DestFile.Length >= MAX_PATH);
-
-								if (!LongPath)
-								{
-									throw new Exception(string.Format("File Copy failed with {0}.", ex.Message));
-								}
-								else
-								{
-									string LongPathMessage = (Environment.OSVersion.Version.Major > 6) ?
-										"Long path detected, check that long paths are enabled." :
-										"Long path detected, OS version doesn't support long paths.";
-
-									// Break out of loop with warning
-									Copied = true;
-
-									// Filter out some known unneeded files which can cause this warning, and log the message instead
-									string[] Blacklist = new string[]{ "UE4CC-XboxOne", "PersistentDownloadDir" };
-									string Message = string.Format("Long path file copy failed with {0}.  Please verify that this file is not required.", ex.Message);
-									if ( Blacklist.FirstOrDefault(B => { return SourcePath.IndexOf(B, StringComparison.OrdinalIgnoreCase) >= 0; }) == null)
-									{
-										Log.Warning(Message); 
-									}
-									else
-									{
-										Log.Info(Message);
-									}
-								}
+								throw new Exception(string.Format("File Copy failed with {0}.", ex.Message));
 							}
 						}
 					} while (Copied == false);
@@ -1233,18 +1193,6 @@ namespace Gauntlet
 				}
 
 				return false;
-			}
-
-			public static bool IsNetworkPath(string InPath)
-			{
-				if (InPath.StartsWith("//") || InPath.StartsWith(@"\\"))
-				{
-					return true;
-				}
-				
-				string RootPath = Path.GetPathRoot(InPath); // get drive's letter
-				DriveInfo driveInfo = new System.IO.DriveInfo(RootPath); // get info about the drive
-				return driveInfo.DriveType == DriveType.Network; // return true if a network drive
 			}
 
 			/// <summary>
@@ -1385,7 +1333,7 @@ namespace Gauntlet
 
 				if (Files.Count() == 0)
 				{
-					Log.Info("Could not find files at {0} to Gif-ify", InDirectory);
+					Log.Warning("Could not find files at {0} to Gif-ify", InDirectory);
 					return false;
 				}
 
@@ -1442,44 +1390,24 @@ namespace Gauntlet
 
 				try
 				{
-					List<FileInfo> FilesToCleanUp = new List<FileInfo>();
 					foreach (FileInfo File in Files)
 					{
 						using (MagickImage Image = new MagickImage(File.FullName))
 						{
 							string OutFile = Path.Combine(OutDirectory, File.Name);
-							OutFile = Path.ChangeExtension(OutFile, OutExtension);
-							// If we're trying to convert something to itself in place, skip the step.
-							if (OutFile != File.FullName)
-							{
-								Image.Write(OutFile);
-								if (DeleteOriginals)
-								{
-									FilesToCleanUp.Add(File);
-								}
-							}
+							OutFile = Path.ChangeExtension(OutFile, OutExtension);	
+							Image.Write(OutFile);
 						}
 					}
 
-					foreach (FileInfo File in FilesToCleanUp)
+					if (DeleteOriginals)
 					{
-						File.Delete();
+						Files.ToList().ForEach(F => F.Delete());
 					}
 				}
 				catch (System.Exception Ex)
 				{
 					Log.Warning("ConvertImages failed: {0}", Ex);
-					try
-					{
-						if (DeleteOriginals)
-						{
-							Files.ToList().ForEach(F => F.Delete());
-						}
-					}
-					catch (System.Exception e)
-					{
-						Log.Warning("Cleaning up original files failed: {0}", e);
-					}
 					return false;
 				}
 

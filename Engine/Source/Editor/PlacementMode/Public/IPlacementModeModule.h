@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -13,7 +13,6 @@
 #include "ActorPlacementInfo.h"
 #include "IPlacementMode.h"
 #include "GameFramework/Volume.h"
-#include "Editor.h"
 
 /**
  * Struct that defines an identifier for a particular placeable item in this module.
@@ -128,24 +127,15 @@ struct FPlaceableItem
 		UClass* Class = AssetData.GetClass() == UClass::StaticClass() ? Cast<UClass>(AssetData.GetAsset()) : nullptr;
 		const bool bIsVolume = Class && Class->IsChildOf<AVolume>();
 		const bool bIsShape = Class ? false : AssetData.GetClass()->IsChildOf(UStaticMesh::StaticClass());
+		const bool bIsActor = Class ? Class->IsChildOf<AActor>() : false;
 
 		// Use the factory unless its a volume or shape.  Those need custom names as the factory that spawns them does not properly represent what is being spawned.
 		if (Factory && !bIsVolume && !bIsShape) 
 		{
-			if (Factory->NewActorClassName.IsEmpty() == false)
-			{
-				NativeName = Factory->NewActorClassName;
-			}
-			else if (Factory->NewActorClass != nullptr)
-			{
-				Factory->NewActorClass->GetName(NativeName);
-			}
-
 			DisplayName = Factory->GetDisplayName();
 		}
 		else if (Class)
 		{
-			Class->GetName(NativeName);
 			DisplayName = Class->GetDisplayNameText();
 		}
 		else
@@ -159,9 +149,6 @@ struct FPlaceableItem
 
 	/** Asset data pertaining to the class */
 	FAssetData AssetData;
-	
-	/** This item's native name */
-	FString NativeName;
 
 	/** This item's display name */
 	FText DisplayName;
@@ -262,10 +249,6 @@ public:
 	virtual FOnStoppedPlacingEvent& OnStoppedPlacing() = 0;
 	virtual void BroadcastStoppedPlacing( bool bWasSuccessfullyPlaced ) = 0;
 
-	/**
-	 * Creates the placement browser widget
-	 */
-	virtual TSharedRef<SWidget> CreatePlacementModeBrowser() = 0;
 public:
 
 	/**
@@ -338,3 +321,4 @@ public:
 	 */
 	virtual void RegenerateItemsForCategory(FName Category) = 0;
 };
+

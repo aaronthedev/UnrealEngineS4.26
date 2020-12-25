@@ -1,10 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CurveModel.h"
 #include "Containers/Array.h"
 #include "CurveDataAbstraction.h"
 
-void FCurveModel::SetKeyAttributes(TArrayView<const FKeyHandle> InKeys, const FKeyAttributes& InKeyAttributes, EPropertyChangeType::Type ChangeType)
+void FCurveModel::SetKeyAttributes(TArrayView<const FKeyHandle> InKeys, const FKeyAttributes& InKeyAttributes)
 {
 	TArray<FKeyAttributes> ExpandedAttributes;
 	ExpandedAttributes.Reserve(InKeys.Num());

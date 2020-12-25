@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/STextureEditorViewport.h"
 #include "Framework/Application/SlateApplication.h"
@@ -11,12 +11,10 @@
 #include "Widgets/Input/SSlider.h"
 #include "Engine/Texture.h"
 #include "Engine/VolumeTexture.h"
-#include "Engine/TextureRenderTargetVolume.h"
 #include "Slate/SceneViewport.h"
 #include "TextureEditorConstants.h"
 #include "Widgets/STextureEditorViewportToolbar.h"
 #include "Widgets/Input/SNumericEntryBox.h"
-#include "TextureEditorSettings.h"
 
 
 #define LOCTEXT_NAMESPACE "STextureEditorViewport"
@@ -64,18 +62,11 @@ void STextureEditorViewport::Construct( const FArguments& InArgs, const TSharedR
 		ZoomMenuBuilder.AddMenuSeparator();
 
 		FUIAction ZoomFitAction(
-			FExecuteAction::CreateSP(this, &STextureEditorViewport::HandleZoomMenuFitClicked),
-			FCanExecuteAction(),
+			FExecuteAction::CreateSP(this, &STextureEditorViewport::HandleZoomMenuFitClicked), 
+			FCanExecuteAction(), 
 			FIsActionChecked::CreateSP(this, &STextureEditorViewport::IsZoomMenuFitChecked)
-		);
-		ZoomMenuBuilder.AddMenuEntry(LOCTEXT("ZoomFitAction", "Scale To Fit"), LOCTEXT("ZoomFitActionHint", "Scales the texture down to fit within the viewport if needed."), FSlateIcon(), ZoomFitAction, NAME_None, EUserInterfaceActionType::RadioButton);
-
-		FUIAction ZoomFillAction(
-			FExecuteAction::CreateSP(this, &STextureEditorViewport::HandleZoomMenuFillClicked),
-			FCanExecuteAction(),
-			FIsActionChecked::CreateSP(this, &STextureEditorViewport::IsZoomMenuFillChecked)
-		);
-		ZoomMenuBuilder.AddMenuEntry(LOCTEXT("ZoomFillAction", "Scale To Fill"), LOCTEXT("ZoomFillActionHint", "Scales the texture up and down to fill the viewport."), FSlateIcon(), ZoomFillAction, NAME_None, EUserInterfaceActionType::RadioButton);
+			);
+		ZoomMenuBuilder.AddMenuEntry(LOCTEXT("ZoomFitAction", "Scale To Fit"), LOCTEXT("ZoomFillActionHint", "Scale the texture to fit the viewport."), FSlateIcon(), ZoomFitAction, NAME_None, EUserInterfaceActionType::ToggleButton);
 	}
 
 	FText TextureName = FText::GetEmpty();
@@ -86,7 +77,7 @@ void STextureEditorViewport::Construct( const FArguments& InArgs, const TSharedR
 		FText FormattedText = InToolkit->HasValidTextureResource() ? FText::FromString(TEXT("{0}")) : LOCTEXT( "InvalidTexture", "{0} (Invalid Texture)");
 		TextureName = FText::Format(FormattedText, FText::FromName(InToolkit->GetTexture()->GetFName()));
 
-		bIsVolumeTexture = InToolkit->GetTexture()->IsA<UVolumeTexture>() || InToolkit->GetTexture()->IsA<UTextureRenderTargetVolume>();
+		bIsVolumeTexture = InToolkit->GetTexture()->IsA<UVolumeTexture>();
 	}
 
 
@@ -275,7 +266,7 @@ void STextureEditorViewport::Construct( const FArguments& InArgs, const TSharedR
 
 			+ SHorizontalBox::Slot()
 				.AutoWidth()
-				.Padding(4.0f, 0.0f, 0.0f, 0.0f)
+				.Padding(2.0f, 0.0f, 0.0f, 0.0f)
 				.VAlign(VAlign_Center)
 				[
 					SNew(SComboButton)
@@ -428,29 +419,19 @@ EVisibility STextureEditorViewport::HandleVerticalScrollBarVisibility( ) const
 
 void STextureEditorViewport::HandleZoomMenuEntryClicked( double ZoomValue )
 {
-	ToolkitPtr.Pin()->SetCustomZoomLevel(ZoomValue);
+	ToolkitPtr.Pin()->SetZoom(ZoomValue);
 }
 
-
-void STextureEditorViewport::HandleZoomMenuFillClicked()
-{
-	ToolkitPtr.Pin()->SetZoomMode(ETextureEditorZoomMode::Fill);
-}
 
 void STextureEditorViewport::HandleZoomMenuFitClicked()
 {
-	ToolkitPtr.Pin()->SetZoomMode(ETextureEditorZoomMode::Fit);
+	ToolkitPtr.Pin()->ToggleFitToViewport();
 }
 
-
-bool STextureEditorViewport::IsZoomMenuFillChecked() const
-{
-	return ToolkitPtr.Pin()->IsCurrentZoomMode(ETextureEditorZoomMode::Fill);
-}
 
 bool STextureEditorViewport::IsZoomMenuFitChecked() const
 {
-	return ToolkitPtr.Pin()->IsCurrentZoomMode(ETextureEditorZoomMode::Fit);
+	return ToolkitPtr.Pin()->GetFitToViewport();
 }
 
 bool STextureEditorViewport::HasValidTextureResource() const
@@ -460,37 +441,25 @@ bool STextureEditorViewport::HasValidTextureResource() const
 
 FText STextureEditorViewport::HandleZoomPercentageText( ) const
 {
-	double DisplayedZoomLevel = ToolkitPtr.Pin()->CalculateDisplayedZoomLevel();
-	FText ZoomLevelPercent = FText::AsPercent(DisplayedZoomLevel);
-
-	// For fit and fill, show the effective zoom level in parenthesis - eg. "Fill (220%)"
-	static const FText ZoomModeWithPercentFormat = LOCTEXT("ZoomModeWithPercentFormat", "{ZoomMode} ({ZoomPercent})");
-	if (ToolkitPtr.Pin()->GetZoomMode() == ETextureEditorZoomMode::Fit)
+	const bool bFitToViewport = ToolkitPtr.Pin()->GetFitToViewport();
+	if(bFitToViewport)
 	{
-		static const FText ZoomModeFit = LOCTEXT("ZoomModeFit", "Fit");
-		return FText::FormatNamed(ZoomModeWithPercentFormat, TEXT("ZoomMode"), ZoomModeFit, TEXT("ZoomPercent"), ZoomLevelPercent);
+		return LOCTEXT("ZoomFitText", "Fit");
 	}
 
-	if (ToolkitPtr.Pin()->GetZoomMode() == ETextureEditorZoomMode::Fill)
-	{
-		static const FText ZoomModeFill = LOCTEXT("ZoomModeFill", "Fill");
-		return FText::FormatNamed(ZoomModeWithPercentFormat, TEXT("ZoomMode"), ZoomModeFill, TEXT("ZoomPercent"), ZoomLevelPercent);
-	}
-
-	// If custom, then just the percent is enough
-	return ZoomLevelPercent;
+	return FText::AsPercent(ToolkitPtr.Pin()->GetZoom());
 }
 
 
 void STextureEditorViewport::HandleZoomSliderChanged( float NewValue )
 {
-	ToolkitPtr.Pin()->SetCustomZoomLevel(NewValue * MaxZoom);
+	ToolkitPtr.Pin()->SetZoom(NewValue * MaxZoom);
 }
 
 
 float STextureEditorViewport::HandleZoomSliderValue( ) const
 {
-	return (ToolkitPtr.Pin()->CalculateDisplayedZoomLevel() / MaxZoom);
+	return (ToolkitPtr.Pin()->GetZoom() / MaxZoom);
 }
 
 void STextureEditorViewport::HandleOpacitySliderChanged(float NewValue)

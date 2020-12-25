@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Common.ush"
 #include "ScreenPass.ush"
@@ -66,6 +66,7 @@ void FxaaVS(
 #endif
 	
 	#define DECLARE_PARAMETER(a, b, c)
+	float4 fxaaConstDir = float4(1.0, -1.0, 0.25, -0.25);
 
 	// see Fxaa.. header file for more details
 	float4 fxaaConsoleRcpFrameOpt;

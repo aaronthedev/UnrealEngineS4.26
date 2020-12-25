@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WindowsPlatformFeatures.h"
 #include "WmfPrivate.h"
@@ -11,6 +11,8 @@ WINDOWSPLATFORMFEATURES_START
 
 FWindowsPlatformFeaturesModule::FWindowsPlatformFeaturesModule()
 {
+	// load generic modules
+	StartupModules();
 }
 
 IVideoRecordingSystem* FWindowsPlatformFeaturesModule::GetVideoRecordingSystem()
@@ -19,9 +21,10 @@ IVideoRecordingSystem* FWindowsPlatformFeaturesModule::GetVideoRecordingSystem()
 	return &VideoRecordingSystem;
 }
 
-void FWindowsPlatformFeaturesModule::StartupModule()
+bool FWindowsPlatformFeaturesModule::StartupModules()
 {
 	FModuleManager::Get().LoadModule(TEXT("GameplayMediaEncoder"));
+	return true;
 }
 
 WINDOWSPLATFORMFEATURES_END

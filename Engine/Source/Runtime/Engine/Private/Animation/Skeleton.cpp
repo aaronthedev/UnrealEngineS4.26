@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Skeleton.cpp: Skeleton features
@@ -7,8 +7,6 @@
 #include "Animation/Skeleton.h"
 #include "UObject/UObjectHash.h"
 #include "UObject/UObjectIterator.h"
-#include "UObject/UObjectGlobals.h"
-#include "UObject/PackageReload.h"
 #include "Misc/MessageDialog.h"
 #include "Modules/ModuleManager.h"
 #include "Components/SkinnedMeshComponent.h"
@@ -91,19 +89,14 @@ const TCHAR* SkipPrefix(const FString& InName)
 	return &InName[PrefixLength];
 }
 
-namespace VirtualBoneNameHelpers
+FString VirtualBoneNameHelpers::AddVirtualBonePrefix(const FString& InName)
 {
-	const FString VirtualBonePrefix(TEXT("VB "));
+	return VirtualBoneNameHelpers::VirtualBonePrefix + InName;
+}
 
-	FString AddVirtualBonePrefix(const FString& InName)
-	{
-		return VirtualBonePrefix + InName;
-	}
-
-	FName RemoveVirtualBonePrefix(const FString& InName)
-	{
-		return FName(SkipPrefix(InName));
-	}
+FName VirtualBoneNameHelpers::RemoveVirtualBonePrefix(const FString& InName)
+{
+	return FName(SkipPrefix(InName));
 }
 
 USkeleton::USkeleton(const FObjectInitializer& ObjectInitializer)
@@ -113,20 +106,6 @@ USkeleton::USkeleton(const FObjectInitializer& ObjectInitializer)
 	AnimCurveMapping = SmartNames.AddContainer(AnimCurveMappingName);
 
 	AnimCurveUidVersion = 0;
-
-	if (HasAnyFlags(RF_ClassDefaultObject))
-	{
-		FCoreUObjectDelegates::OnPackageReloaded.AddStatic(&USkeleton::HandlePackageReloaded);
-	}
-}
-
-void USkeleton::BeginDestroy()
-{
-	Super::BeginDestroy();
-	if (HasAnyFlags(RF_ClassDefaultObject))
-	{
-		FCoreUObjectDelegates::OnPackageReloaded.RemoveAll(this);
-	}
 }
 
 void USkeleton::PostInitProperties()
@@ -161,8 +140,6 @@ void USkeleton::PostLoad()
 
 	// Cache smart name uids for animation curve names
 	IncreaseAnimCurveUidVersion();
-
-	SmartNames.PostLoad();
 
 	// refresh linked bone indices
 	FSmartNameMapping* CurveMappingTable = SmartNames.GetContainerInternal(USkeleton::AnimCurveMappingName);
@@ -250,7 +227,7 @@ void USkeleton::Serialize( FArchive& Ar )
 	// If we should be using smartnames, serialize the mappings
 	if(Ar.UE4Ver() >= VER_UE4_SKELETON_ADD_SMARTNAMES)
 	{
-		SmartNames.Serialize(Ar, IsTemplate());
+		SmartNames.Serialize(Ar);
 
 		AnimCurveMapping = SmartNames.GetContainerInternal(USkeleton::AnimCurveMappingName);
 	}
@@ -537,10 +514,6 @@ int32 USkeleton::BuildLinkup(const USkeletalMesh* InSkelMesh)
 			// Fix missing bone.
 			SkeletonBoneIndex = SkeletonRefSkel.FindBoneIndex(MeshBoneName);
 		}
-#else
-		// If we're not in editor, we still want to know which skeleton is missing a bone.
-		ensureMsgf(SkeletonBoneIndex != INDEX_NONE, TEXT("USkeleton::BuildLinkup: The Skeleton %s, is missing bones that SkeletalMesh %s needs. MeshBoneName %s"),
-				*GetNameSafe(this), *GetNameSafe(InSkelMesh), *MeshBoneName.ToString());
 #endif
 
 		NewMeshLinkup.MeshToSkeletonTable[MeshBoneIndex] = SkeletonBoneIndex;
@@ -1057,13 +1030,11 @@ void USkeleton::HandleSkeletonHierarchyChange()
 	for (int i = VirtualBones.Num() - 1; i >= 0; --i)
 	{
 		FVirtualBone& VB = VirtualBones[i];
-
-		// Note: here virtual bones can have source bound to other virtual bones
-		if (ReferenceSkeleton.FindBoneIndex(VB.SourceBoneName) == INDEX_NONE ||
-			ReferenceSkeleton.FindBoneIndex(VB.TargetBoneName) == INDEX_NONE)
+		if (ReferenceSkeleton.FindRawBoneIndex(VB.SourceBoneName) == INDEX_NONE ||
+			ReferenceSkeleton.FindRawBoneIndex(VB.TargetBoneName) == INDEX_NONE)
 		{
 			//Virtual Bone no longer valid
-			VirtualBones.RemoveAt(i);
+			VirtualBones.RemoveAtSwap(i, 1, false);
 		}
 	}
 
@@ -1177,16 +1148,13 @@ bool USkeleton::ContainsSlotName(const FName& InSlotName) const
 	return SlotToGroupNameMap.Contains(InSlotName);
 }
 
-bool USkeleton::RegisterSlotNode(const FName& InSlotName)
+void USkeleton::RegisterSlotNode(const FName& InSlotName)
 {
 	// verify the slot name exists, if not create it in the default group.
 	if (!ContainsSlotName(InSlotName))
 	{
 		SetSlotGroupName(InSlotName, FAnimSlotGroup::DefaultGroupName);
-		return true;
 	}
-
-	return false;
 }
 
 void USkeleton::SetSlotGroupName(const FName& InSlotName, const FName& InGroupName)
@@ -1346,7 +1314,7 @@ void USkeleton::RemoveSmartnamesAndModify(FName ContainerName, const TArray<FNam
 	if (RequestedMapping)
 	{
 		bool bModified = false;
-		for (const FName& CurveName : Names)
+		for (const FName CurveName : Names)
 		{
 			if (RequestedMapping->Exists(CurveName))
 			{
@@ -1740,10 +1708,6 @@ void USkeleton::HandleVirtualBoneChanges()
 			FComponentReregisterContext Context(MeshComponent);
 		}
 	}
-
-#if WITH_EDITOR
-	OnSkeletonHierarchyChanged.Broadcast();
-#endif
 }
 
 #if WITH_EDITOR
@@ -2002,20 +1966,6 @@ void USkeleton::RemoveUserDataOfClass(TSubclassOf<UAssetUserData> InUserDataClas
 const TArray<UAssetUserData*>* USkeleton::GetAssetUserDataArray() const
 {
 	return &AssetUserData;
-}
-
-void USkeleton::HandlePackageReloaded(const EPackageReloadPhase InPackageReloadPhase, FPackageReloadedEvent* InPackageReloadedEvent)
-{
-	if (InPackageReloadPhase == EPackageReloadPhase::PostPackageFixup)
-	{
-		for (const auto& RepointedObjectPair : InPackageReloadedEvent->GetRepointedObjects())
-		{
-			if (USkeleton* NewObject = Cast<USkeleton>(RepointedObjectPair.Value))
-			{
-				NewObject->HandleVirtualBoneChanges(); // Reloading Skeletons can invalidate virtual bones so refresh
-			}
-		}
-	}
 }
 
 #undef LOCTEXT_NAMESPACE 

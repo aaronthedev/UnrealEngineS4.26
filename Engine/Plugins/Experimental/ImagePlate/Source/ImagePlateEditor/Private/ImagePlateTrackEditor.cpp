@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ImagePlateTrackEditor.h"
 #include "ImagePlateFileSequence.h"
@@ -23,7 +23,6 @@
 #include "Engine/Texture2D.h"
 #include "Engine/Texture2DDynamic.h"
 #include "Rendering/DrawElements.h"
-#include "LevelSequence.h"
 
 #include "Widgets/SBoxPanel.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
@@ -218,17 +217,11 @@ UMovieSceneTrack* FImagePlateTrackEditor::AddTrack(UMovieScene* FocusedMovieScen
 	}
 	return Track;
 }
-PRAGMA_DISABLE_OPTIMIZATION
+
 void FImagePlateTrackEditor::OnAnimatedPropertyChanged(const FPropertyChangedParams& PropertyChangedParams)
 {
-	const FProperty* ChangedProperty = PropertyChangedParams.PropertyPath.GetLeafMostProperty().Property.Get();
+	const UProperty* ChangedProperty = PropertyChangedParams.PropertyPath.GetLeafMostProperty().Property.Get();
 	if (!ChangedProperty)
-	{
-		return;
-	}
-
-	// Only animate a texture if it is on an image plate
-	if (!ChangedProperty->GetTypedOwner(FImagePlateParameters::StaticStruct()->StaticClass()))
 	{
 		return;
 	}
@@ -240,9 +233,9 @@ void FImagePlateTrackEditor::OnAnimatedPropertyChanged(const FPropertyChangedPar
 	for (int32 PropertyIndex = PropertyChangedParams.PropertyPath.GetNumProperties() - 1; PropertyIndex >= 0; --PropertyIndex)
 	{
 		const FPropertyInfo& Info = PropertyChangedParams.PropertyPath.GetPropertyInfo(PropertyIndex);
-		const FArrayProperty* ParentArrayProperty = PropertyIndex > 0 ? CastField<FArrayProperty>(PropertyChangedParams.PropertyPath.GetPropertyInfo(PropertyIndex-1).Property.Get()) : nullptr;
+		const UArrayProperty* ParentArrayProperty = PropertyIndex > 0 ? Cast<UArrayProperty>(PropertyChangedParams.PropertyPath.GetPropertyInfo(PropertyIndex-1).Property.Get()) : nullptr;
 
-		FProperty* Property = Info.Property.Get();
+		UProperty* Property = Info.Property.Get();
 		if (Property && Info.ArrayIndex != INDEX_NONE)
 		{
 			DisplayText = FText::Format(LOCTEXT("VideoTrackNameFormat", "{0} ({1}[{2}])"),
@@ -274,7 +267,7 @@ void FImagePlateTrackEditor::OnAnimatedPropertyChanged(const FPropertyChangedPar
 		GetSequencer()->NotifyMovieSceneDataChanged(EMovieSceneDataChangeType::MovieSceneStructureItemAdded);
 	}
 }
-PRAGMA_ENABLE_OPTIMIZATION
+
 void FImagePlateTrackEditor::BuildObjectBindingTrackMenu(FMenuBuilder& MenuBuilder, const TArray<FGuid>& ObjectBindings, const UClass* ObjectClass)
 {
 	// We only know how to add specific properties for image plates and components. Anything else must be keyed through the generic MediaPlayer property
@@ -294,8 +287,8 @@ void FImagePlateTrackEditor::BuildObjectBindingTrackMenu(FMenuBuilder& MenuBuild
 	{
 		check(ImagePlateComponent);
 
-		FStructProperty* ImagePlateProperty = ImagePlateComponent->GetImagePlateProperty();
-		FProperty* RenderTargetProperty = FindFProperty<FProperty>(FImagePlateParameters::StaticStruct(), GET_MEMBER_NAME_CHECKED(FImagePlateParameters, RenderTexture));
+		UStructProperty* ImagePlateProperty = ImagePlateComponent->GetImagePlateProperty();
+		UProperty* RenderTargetProperty = FindField<UProperty>(FImagePlateParameters::StaticStruct(), GET_MEMBER_NAME_CHECKED(FImagePlateParameters, RenderTexture));
 
 		check(ImagePlateProperty);
 		check(RenderTargetProperty);
@@ -333,7 +326,7 @@ void FImagePlateTrackEditor::BuildObjectBindingTrackMenu(FMenuBuilder& MenuBuild
 		const FMovieSceneBinding* Binding = MovieScene->GetBindings().FindByPredicate([=](const FMovieSceneBinding& InBinding){ return InBinding.GetObjectGuid() == ObjectBindings[0]; });
 		if (Binding)
 		{
-			FName PredicatePath(*Path->ToString(TEXT(".")));
+			FString PredicatePath = Path->ToString(TEXT("."));
 
 			bCanAddTrack = !Binding->GetTracks().ContainsByPredicate(
 				[&](UMovieSceneTrack* Track)
@@ -444,14 +437,10 @@ TSharedRef<ISequencerSection> FImagePlateTrackEditor::MakeSectionInterface(UMovi
 	return MakeShared<FImagePlateSection>(*CastChecked<UMovieSceneImagePlateSection>(&SectionObject), ThumbnailPool, GetSequencer());
 }
 
-bool FImagePlateTrackEditor::SupportsSequence(UMovieSceneSequence* InSequence) const
-{
-	return InSequence && InSequence->IsA(ULevelSequence::StaticClass());
-}
-
 bool FImagePlateTrackEditor::SupportsType(TSubclassOf<UMovieSceneTrack> TrackClass) const
 {
 	return TrackClass.Get() && TrackClass.Get()->IsChildOf(UMovieSceneImagePlateTrack::StaticClass());
 }
+
 
 #undef LOCTEXT_NAMESPACE

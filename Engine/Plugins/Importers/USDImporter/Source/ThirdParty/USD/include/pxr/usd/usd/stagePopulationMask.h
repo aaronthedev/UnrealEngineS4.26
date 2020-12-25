@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_STAGE_POPULATION_MASK_H
-#define PXR_USD_USD_STAGE_POPULATION_MASK_H
+#ifndef USD_STAGEPOPULATIONMASK_H
+#define USD_STAGEPOPULATIONMASK_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/usd/api.h"
@@ -193,8 +193,6 @@ public:
     }
 
 private:
-    friend USD_API size_t hash_value(UsdStagePopulationMask const &);
-
     USD_API void _ValidateAndNormalize();
     
     std::vector<SdfPath> _paths;
@@ -210,9 +208,7 @@ inline void swap(UsdStagePopulationMask &l, UsdStagePopulationMask &r)
     l.swap(r);
 }
 
-USD_API
-size_t hash_value(UsdStagePopulationMask const &);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_USD_STAGE_POPULATION_MASK_H
+#endif // USD_STAGEPOPULATIONMASK_H

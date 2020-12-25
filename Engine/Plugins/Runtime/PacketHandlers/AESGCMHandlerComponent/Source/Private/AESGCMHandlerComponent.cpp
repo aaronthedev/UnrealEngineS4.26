@@ -1,14 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AESGCMHandlerComponent.h"
 
 IMPLEMENT_MODULE( FAESGCMHandlerComponentModule, AESGCMHandlerComponent )
-
-
-const int32 FAESGCMHandlerComponent::KeySizeInBytes;
-const int32 FAESGCMHandlerComponent::BlockSizeInBytes;
-const int32 FAESGCMHandlerComponent::IVSizeInBytes;
-const int32 FAESGCMHandlerComponent::AuthTagSizeInBytes;
 
 TSharedPtr<HandlerComponent> FAESGCMHandlerComponentModule::CreateComponentInstance(FString& Options)
 {

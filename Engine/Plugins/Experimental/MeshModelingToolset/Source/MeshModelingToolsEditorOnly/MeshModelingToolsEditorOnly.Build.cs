@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -33,13 +33,12 @@ public class MeshModelingToolsEditorOnly : ModuleRules
 				"DynamicMesh",
 				"MeshConversion",
 				"MeshModelingTools",
+                "MeshSolverUtilities",
 				"ModelingComponents",
 				"ModelingOperators",
 				"ModelingOperatorsEditorOnly",
                 "ProxyLODMeshReduction", // currently required to be public due to IVoxelBasedCSG API
 				// ... add other public dependencies that you statically link with here ...
-
-				"HairStrandsCore"		// required for Hair toolset
 			}
             );
 			
@@ -53,9 +52,10 @@ public class MeshModelingToolsEditorOnly : ModuleRules
                 "RHI",
 				"InputCore",
 
-				"MeshUtilities",		// tangents calculation
+				"MeshUtilities",    // temp for saving mesh asset
 				"UnrealEd",
 				"MeshBuilder",
+                "MeshDescriptionOperations",
 				"MeshUtilitiesCommon",  
 				"MeshReductionInterface", // for UE4 standard simplification 
                 "ProxyLODMeshReduction", // for mesh merging voxel-based csg

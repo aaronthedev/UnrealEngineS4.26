@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PaperSprite.h"
 #include "UObject/ConstructorHelpers.h"
@@ -349,7 +349,6 @@ void UPaperSprite::ExtractSourceRegionFromTexturePoint(const FVector2D& SourcePo
 				SourceUV = FVector2D(Origin.X, Origin.Y);
 				SourceDimension = FVector2D(Dimension.X, Dimension.Y);
 				PostEditChange();
-				RefreshBakedData();
 			}
 		}
 	}
@@ -558,27 +557,13 @@ void UPaperSprite::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
 
 	if (PropertyName == GET_MEMBER_NAME_CHECKED(UPaperSprite, SourceTexture))
 	{
-		const bool bResizeSprite = 
-			(SourceTexture != nullptr) &&
-			// If this is a brand new sprite that didn't have a texture set previously, act like we were factoried with the texture
-			// If this sprite belongs to an AtlasGroup, then we should resize everything, since we want the entire new texture to be
-			// added to the atlas, rather than a subuv.
-			(SourceDimension.IsNearlyZero() || (AtlasGroup != nullptr));
-
-		if (bResizeSprite)
+		if ((SourceTexture != nullptr) && SourceDimension.IsNearlyZero())
 		{
 			// If this is a brand new sprite that didn't have a texture set previously, act like we were factoried with the texture
 			SourceUV = FVector2D::ZeroVector;
 			SourceDimension = FVector2D(SourceTexture->GetImportedSize());
 			SourceTextureDimension = SourceDimension;
 		}
-
-		// Rebuild atlas group, if we have one.
-		if (AtlasGroup != nullptr)
-		{
-			AtlasGroup->PostEditChange();
-		}
-
 		bBothModified = true;
 	}
 
@@ -644,11 +629,6 @@ void UPaperSprite::PostEditChangeProperty(FPropertyChangedEvent& PropertyChanged
 	if (bRenderDataModified || bBothModified)
 	{
 		RebuildRenderData();
-	}
-
-	if (bBothModified)
-	{
-		RefreshBakedData();
 	}
 
 	Super::PostEditChangeProperty(PropertyChangedEvent);
@@ -744,8 +724,6 @@ void UPaperSprite::RescaleSpriteData(UTexture2D* Texture)
 		Translation.Z = PivotSpaceSocketPosition.Y;
 		Socket.LocalTransform.SetTranslation(Translation);
 	}
-
-	RefreshBakedData();
 }
 
 bool UPaperSprite::NeedRescaleSpriteData()
@@ -1451,8 +1429,6 @@ void UPaperSprite::InitializeSprite(const FSpriteAssetInitParameters& InitParams
 	{
 		RebuildData();
 	}
-
-	RefreshBakedData();
 }
 
 void UPaperSprite::SetTrim(bool bTrimmed, const FVector2D& OriginInSourceImage, const FVector2D& SourceImageDimension, bool bRebuildData /*= true*/)
@@ -1925,14 +1901,6 @@ void UPaperSprite::PostLoad()
 		RebuildRenderData();
 	}
 
-	RefreshBakedData();
-#endif
-}
-
-#if WITH_EDITOR
-
-void UPaperSprite::RefreshBakedData()
-{
 	/** If we don't have an atlas group make sure we assign the source texture to our baked texture. */
 	if (AtlasGroup == nullptr)
 	{
@@ -1940,8 +1908,8 @@ void UPaperSprite::RefreshBakedData()
 		BakedSourceUV = SourceUV;
 		BakedSourceDimension = SourceDimension;
 	}
-}
 #endif
+}
 
 UTexture2D* UPaperSprite::GetBakedTexture() const
 {

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SDeviceBrowserDefaultPlatformAddWidget.h"
 
@@ -23,7 +23,7 @@ void SDeviceBrowserDefaultPlatformAddWidget::Construct(const FArguments& InArgs,
 	auto CredentialsBoxVisibility = [this, InPlatformName]() -> EVisibility {
 		ITargetPlatform* Platform = GetTargetPlatformManager()->FindTargetPlatform(*InPlatformName);
 
-		if ((Platform != nullptr) && Platform->RequiresUserCredentials() != EPlatformAuthentication::Never)
+		if ((Platform != nullptr) && Platform->RequiresUserCredentials())
 		{
 			return EVisibility::Visible;
 		}
@@ -159,7 +159,7 @@ bool SDeviceBrowserDefaultPlatformAddWidget::IsInputValid(const FString& InPlatf
 	{
 		ITargetPlatform* Platform = GetTargetPlatformManager()->FindTargetPlatform(*InPlatformName);
 
-		if (!Platform || Platform->RequiresUserCredentials() != EPlatformAuthentication::Always)
+		if (!Platform || !Platform->RequiresUserCredentials())
 		{
 			return true;
 		}

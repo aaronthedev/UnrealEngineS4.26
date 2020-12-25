@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -152,7 +152,7 @@ namespace UnrealBuildTool
 		/// <param name="WorkingSet">Interface to query files which belong to the working set</param>
 		/// <param name="BaseName">Base name to use for the Unity files</param>
 		/// <param name="IntermediateDirectory">Intermediate directory for unity cpp files</param>
-		/// <param name="Graph">The makefile being built</param>
+		/// <param name="Makefile">The makefile being built</param>
 		/// <param name="SourceFileToUnityFile">Receives a mapping of source file to unity file</param>
 		/// <returns>The "unity" C++ files.</returns>
 		public static List<FileItem> GenerateUnityCPPs(
@@ -162,13 +162,13 @@ namespace UnrealBuildTool
 			ISourceFileWorkingSet WorkingSet,
 			string BaseName,
 			DirectoryReference IntermediateDirectory,
-			IActionGraphBuilder Graph,
+			TargetMakefile Makefile,
 			Dictionary<FileItem, FileItem> SourceFileToUnityFile
 			)
 		{
 			List<FileItem> NewCPPFiles = new List<FileItem>();
 
-			//UEBuildPlatform BuildPlatform = UEBuildPlatform.GetBuildPlatform(CompileEnvironment.Platform);
+			UEBuildPlatform BuildPlatform = UEBuildPlatform.GetBuildPlatform(CompileEnvironment.Platform);
 
 			// Figure out size of all input files combined. We use this to determine whether to use larger unity threshold or not.
 			long TotalBytesInCPPFiles = CPPFiles.Sum(F => F.Length);
@@ -202,7 +202,6 @@ namespace UnrealBuildTool
 
 				// Figure out whether we REALLY want to use adaptive unity for this module.  If nearly every file in the module appears in the working
 				// set, we'll just go ahead and let unity build do its thing.
-				HashSet<FileItem> FilesInWorkingSet = new HashSet<FileItem>();
 				if (bUseAdaptiveUnityBuild)
 				{
 					int CandidateWorkingSetSourceFileCount = 0;
@@ -219,8 +218,7 @@ namespace UnrealBuildTool
 							// Mark this file as part of the working set.  This will be saved into the UBT Makefile so that
 							// the assembler can automatically invalidate the Makefile when the working set changes (allowing this
 							// code to run again, to build up new unity blobs.)
-							FilesInWorkingSet.Add(CPPFile);
-							Graph.AddFileToWorkingSet(CPPFile);
+							Makefile.WorkingSet.Add(CPPFile);
 						}
 					}
 
@@ -242,7 +240,7 @@ namespace UnrealBuildTool
 					}
 
 					// When adaptive unity is enabled, go ahead and exclude any source files that we're actively working with
-					if (bUseAdaptiveUnityBuild && FilesInWorkingSet.Contains(CPPFile))
+					if (bUseAdaptiveUnityBuild && Makefile.WorkingSet.Contains(CPPFile))
 					{
 						// Just compile this file normally, not as part of the unity blob
 						NewCPPFiles.Add(CPPFile);
@@ -268,7 +266,7 @@ namespace UnrealBuildTool
 						// If adaptive unity build is enabled for this module, add this source file to the set that will invalidate the makefile
 						if(bUseAdaptiveUnityBuild)
 						{
-							Graph.AddCandidateForWorkingSet(CPPFile);
+							Makefile.CandidatesForWorkingSet.Add(CPPFile);
 						}
 
 						// Compile this file as part of the unity blob
@@ -280,23 +278,23 @@ namespace UnrealBuildTool
 				{
 					if (Target.bAdaptiveUnityCreatesDedicatedPCH)
 					{
-						Graph.AddDiagnostic("[Adaptive unity build] Creating dedicated PCH for each excluded file. Set bAdaptiveUnityCreatesDedicatedPCH to false in BuildConfiguration.xml to change this behavior.");
+						AddUniqueDiagnostic(Makefile, "[Adaptive unity build] Creating dedicated PCH for each excluded file. Set bAdaptiveUnityCreatesDedicatedPCH to false in BuildConfiguration.xml to change this behavior.");
 					}
 					else if (Target.bAdaptiveUnityDisablesPCH)
 					{
-						Graph.AddDiagnostic("[Adaptive unity build] Disabling PCH for excluded files. Set bAdaptiveUnityDisablesPCH to false in BuildConfiguration.xml to change this behavior.");
+						AddUniqueDiagnostic(Makefile, "[Adaptive unity build] Disabling PCH for excluded files. Set bAdaptiveUnityDisablesPCH to false in BuildConfiguration.xml to change this behavior.");
 					}
 
 					if (Target.bAdaptiveUnityDisablesOptimizations)
 					{
-						Graph.AddDiagnostic("[Adaptive unity build] Disabling optimizations for excluded files. Set bAdaptiveUnityDisablesOptimizations to false in BuildConfiguration.xml to change this behavior.");
+						AddUniqueDiagnostic(Makefile, "[Adaptive unity build] Disabling optimizations for excluded files. Set bAdaptiveUnityDisablesOptimizations to false in BuildConfiguration.xml to change this behavior.");
 					}
 					if (Target.bAdaptiveUnityEnablesEditAndContinue)
 					{
-						Graph.AddDiagnostic("[Adaptive unity build] Enabling Edit & Continue for excluded files. Set bAdaptiveUnityEnablesEditAndContinue to false in BuildConfiguration.xml to change this behavior.");
+						AddUniqueDiagnostic(Makefile, "[Adaptive unity build] Enabling Edit & Continue for excluded files. Set bAdaptiveUnityEnablesEditAndContinue to false in BuildConfiguration.xml to change this behavior.");
 					}
 
-					Graph.AddDiagnostic(AdaptiveUnityBuildInfoString.ToString());
+					Makefile.Diagnostics.Add(AdaptiveUnityBuildInfoString.ToString());
 				}
 
 				AllUnityFiles = CPPUnityFileBuilder.GetUnityFiles();
@@ -332,7 +330,7 @@ namespace UnrealBuildTool
 				FileReference UnityCPPFilePath = FileReference.Combine(IntermediateDirectory, UnityCPPFileName);
 
 				// Write the unity file to the intermediate folder.
-				FileItem UnityCPPFile = Graph.CreateIntermediateTextFile(UnityCPPFilePath, OutputUnityCPPWriter.ToString());
+				FileItem UnityCPPFile = FileItem.CreateIntermediateTextFile(UnityCPPFilePath, OutputUnityCPPWriter.ToString());
 				NewCPPFiles.Add(UnityCPPFile);
 
 				// Store the mapping of source files to unity files in the makefile

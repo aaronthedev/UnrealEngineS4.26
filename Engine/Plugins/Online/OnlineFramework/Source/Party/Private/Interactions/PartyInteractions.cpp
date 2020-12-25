@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Interactions/PartyInteractions.h"
 #include "User/SocialUser.h"
@@ -7,7 +7,6 @@
 #include "Party/SocialParty.h"
 #include "Party/PartyMember.h" 
 #include "Interfaces/OnlinePartyInterface.h"
-#include "Engine/LocalPlayer.h"
 
 #define LOCTEXT_NAMESPACE "PartyInteractions"
 
@@ -127,13 +126,6 @@ bool FSocialInteraction_LeaveParty::CanExecute(const USocialUser& User)
 {
 	if (User.IsLocalUser())
 	{
-		USocialToolkit& OwningToolkit = User.GetOwningToolkit();
-		ULocalPlayer& LocalPlayer = OwningToolkit.GetOwningLocalPlayer();
-		if (!LocalPlayer.IsPrimaryPlayer())
-		{
-			return false;
-		}
-
 		const UPartyMember* LocalMember = User.GetPartyMember(IOnlinePartySystem::GetPrimaryPartyTypeId());
 		return LocalMember && LocalMember->GetParty().GetNumPartyMembers() > 1;
 	}

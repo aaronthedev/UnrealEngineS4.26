@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TessellatePolygon.h"
 #include "IMeshEditorModeEditingContract.h"
@@ -68,7 +68,7 @@ void UTessellatePolygonCommand::Execute( IMeshEditorModeEditingContract& MeshEdi
 		EditableMesh->TessellatePolygons( PolygonsToTessellate, TriangleTessellationMode, /* Out */ NewPolygonIDs );
 
 		// Select the new polygons
-		for( const FPolygonID& NewPolygonID : NewPolygonIDs )
+		for( const FPolygonID NewPolygonID : NewPolygonIDs )
 		{
 			FMeshElement NewPolygonMeshElement;
 			{

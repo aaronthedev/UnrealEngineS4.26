@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "InAppPurchaseQueryCallbackProxy.h"
 #include "Async/TaskGraphInterfaces.h"
@@ -23,7 +23,6 @@ void UInAppPurchaseQueryCallbackProxy::TriggerQuery(APlayerController* PlayerCon
 	{
 		if (IOnlineSubsystem* const OnlineSub = IOnlineSubsystem::IsLoaded() ? IOnlineSubsystem::Get() : nullptr)
 		{
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			IOnlineStorePtr StoreInterface = OnlineSub->GetStoreInterface();
 			if (StoreInterface.IsValid())
 			{
@@ -37,7 +36,6 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 				ReadObject = MakeShareable(new FOnlineProductInformationRead());
 				FOnlineProductInformationReadRef ReadObjectRef = ReadObject.ToSharedRef();
 				StoreInterface->QueryForAvailablePurchases(ProductIdentifiers, ReadObjectRef);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 			}
 			else
 			{
@@ -109,7 +107,6 @@ void UInAppPurchaseQueryCallbackProxy::RemoveDelegate()
 {
 	if (!bFailedToEvenSubmit)
 	{
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		if (IOnlineSubsystem* OnlineSub = IOnlineSubsystem::IsLoaded() ? IOnlineSubsystem::Get() : nullptr)
 		{
 			IOnlineStorePtr InAppPurchases = OnlineSub->GetStoreInterface();
@@ -118,7 +115,6 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 				InAppPurchases->ClearOnQueryForAvailablePurchasesCompleteDelegate_Handle(InAppPurchaseReadCompleteDelegateHandle);
 			}
 		}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	}
 }
 

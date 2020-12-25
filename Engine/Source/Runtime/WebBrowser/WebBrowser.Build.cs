@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -38,16 +38,14 @@ public class WebBrowser : ModuleRules
 			PrivateDependencyModuleNames.AddRange(
 				new string[]
 				{
+					"WebBrowserTexture",
 					"Engine",
-					"Launch",
-					"WebBrowserTexture"
+					"Launch"
 				}
 			);
 
 			// We need this one on Android for URL decoding
 			PrivateDependencyModuleNames.Add("HTTP");
-
-			CircularlyReferencedDependentModules.Add("WebBrowserTexture");
 		}
 
 		if (Target.Platform == UnrealTargetPlatform.Win64

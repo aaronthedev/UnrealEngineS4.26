@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MobileJSStructDeserializerBackend.h"
 
@@ -21,11 +21,11 @@ namespace
 	 * @return true on success, false otherwise.
 	 * @see ClearPropertyValue
 	 */
-	template<typename FPropertyType, typename PropertyType>
-	bool SetPropertyValue( FProperty* Property, FProperty* Outer, void* Data, int32 ArrayIndex, const PropertyType& Value )
+	template<typename UPropertyType, typename PropertyType>
+	bool SetPropertyValue( UProperty* Property, UProperty* Outer, void* Data, int32 ArrayIndex, const PropertyType& Value )
 	{
 		PropertyType* ValuePtr = nullptr;
-		FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Outer);
+		UArrayProperty* ArrayProperty = Cast<UArrayProperty>(Outer);
 
 		if (ArrayProperty != nullptr)
 		{
@@ -41,7 +41,7 @@ namespace
 		}
 		else
 		{
-			FPropertyType* TypedProperty = CastField<FPropertyType>(Property);
+			UPropertyType* TypedProperty = Cast<UPropertyType>(Property);
 
 			if (TypedProperty == nullptr || ArrayIndex >= TypedProperty->ArrayDim)
 			{
@@ -62,15 +62,15 @@ namespace
 	}
 }
 
-bool FMobileJSStructDeserializerBackend::ReadProperty( FProperty* Property, FProperty* Outer, void* Data, int32 ArrayIndex )
+bool FMobileJSStructDeserializerBackend::ReadProperty( UProperty* Property, UProperty* Outer, void* Data, int32 ArrayIndex )
 {
 	switch (GetLastNotation())
 	{
 		case EJsonNotation::String:
 		{
-			if (Property->IsA<FStructProperty>())
+			if (Property->IsA<UStructProperty>())
 			{
-				FStructProperty* StructProperty = CastField<FStructProperty>(Property);
+				UStructProperty* StructProperty = Cast<UStructProperty>(Property);
 
 				if ( StructProperty->Struct == FWebJSFunction::StaticStruct())
 				{
@@ -82,7 +82,7 @@ bool FMobileJSStructDeserializerBackend::ReadProperty( FProperty* Property, FPro
 					}
 
 					FWebJSFunction CallbackObject(Scripting, CallbackID);
-					return SetPropertyValue<FStructProperty, FWebJSFunction>(Property, Outer, Data, ArrayIndex, CallbackObject);
+					return SetPropertyValue<UStructProperty, FWebJSFunction>(Property, Outer, Data, ArrayIndex, CallbackObject);
 				}
 			}
 		}

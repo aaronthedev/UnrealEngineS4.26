@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -33,9 +33,11 @@
 #endif
 
 #ifndef MRMESH_INDEX_TYPE
-	#if PLATFORM_HOLOLENS
-		#define MRMESH_INDEX_TYPE uint16
-	#else
+	#if PLATFORM_WINDOWS
 		#define MRMESH_INDEX_TYPE uint32
+	#elif PLATFORM_HOLOLENS
+		#define MRMESH_INDEX_TYPE uint16
+	#elif PLATFORM_IOS
+		#define MRMESH_INDEX_TYPE uint16
 	#endif
 #endif

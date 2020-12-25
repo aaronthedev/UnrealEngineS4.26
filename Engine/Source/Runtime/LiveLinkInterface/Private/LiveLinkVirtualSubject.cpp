@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LiveLinkVirtualSubject.h"
 
@@ -22,7 +22,19 @@ void ULiveLinkVirtualSubject::Update()
 	FrameSnapshot.StaticData.Reset();
 	FrameSnapshot.FrameData.Reset();
 
-	UpdateTranslatorsForThisFrame();
+	// Create the new translator for this frame
+	CurrentFrameTranslators.Reset();
+	for (ULiveLinkFrameTranslator* Translator : FrameTranslators)
+	{
+		if (Translator)
+		{
+			ULiveLinkFrameTranslator::FWorkerSharedPtr NewTranslator = Translator->FetchWorker();
+			if (NewTranslator.IsValid())
+			{
+				CurrentFrameTranslators.Add(NewTranslator);
+			}
+		}
+	}
 }
 
 
@@ -52,21 +64,4 @@ TArray<FLiveLinkTime> ULiveLinkVirtualSubject::GetFrameTimes() const
 bool ULiveLinkVirtualSubject::DependsOnSubject(FName SubjectName) const
 {
 	return Subjects.Contains(SubjectName);
-}
-
-void ULiveLinkVirtualSubject::UpdateTranslatorsForThisFrame()
-{
-	// Create the new translator for this frame
-	CurrentFrameTranslators.Reset();
-	for (ULiveLinkFrameTranslator* Translator : FrameTranslators)
-	{
-		if (Translator)
-		{
-			ULiveLinkFrameTranslator::FWorkerSharedPtr NewTranslator = Translator->FetchWorker();
-			if (NewTranslator.IsValid())
-			{
-				CurrentFrameTranslators.Add(NewTranslator);
-			}
-		}
-	}
 }

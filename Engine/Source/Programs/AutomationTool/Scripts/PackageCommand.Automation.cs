@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -11,7 +11,7 @@ public partial class Project : CommandUtils
 {
 	public static void Package(ProjectParams Params, int WorkingCL=-1)
 	{
-		if ((!Params.SkipStage || Params.Package) && !Params.SkipPackage)
+		if (!Params.SkipStage || Params.Package)
 		{
 			Params.ValidateAndLog();
 			List<DeploymentContext> DeployContextList = new List<DeploymentContext>();

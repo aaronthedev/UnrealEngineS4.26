@@ -13,7 +13,6 @@
 #include "llvm/Support/Signals.h"
 
 #include "SpirvTestOptions.h"
-#include "dxc/Support/Global.h"
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -138,10 +137,5 @@ int main(int argc, char **argv) {
 #endif
 #endif
 
-  // DxcInitThreadMalloc()/DxcCleanupThreadMalloc() only once for module.
-  DxcInitThreadMalloc();
-  int result = RUN_ALL_TESTS();
-  DxcCleanupThreadMalloc();
-
-  return result;
+  return RUN_ALL_TESTS();
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SnappingUtils.h"
 #include "Modules/ModuleManager.h"
@@ -42,7 +42,7 @@ public:
 	/**
 	 * @return true if snapping to vertices is enabled
 	 */
-	bool IsSnapToVertexEnabled(bool bIsPivot = false);
+	bool IsSnapToVertexEnabled();
 
 	/**
 	 * @return true if snapping actors to other actors is enabled
@@ -83,7 +83,7 @@ public:
 	 * @param ViewportClient	The viewport client being dragged in.
 	 * @return true if anything was snapped
 	 */
-	bool SnapDragLocationToNearestVertex( const FVector& BaseLocation, FVector& DragDelta, FLevelEditorViewportClient* ViewportClient, bool bIsPivot = false );
+	bool SnapDragLocationToNearestVertex( const FVector& BaseLocation, FVector& DragDelta, FLevelEditorViewportClient* ViewportClient );
 
 	/**
 	 * Snaps a location to the nearest vertex
@@ -123,7 +123,7 @@ bool FEditorViewportSnapping::IsSnapScaleEnabled()
 	return GetDefault<ULevelEditorViewportSettings>()->SnapScaleEnabled;
 }
 
-bool FEditorViewportSnapping::IsSnapToVertexEnabled(bool bIsPivot)
+bool FEditorViewportSnapping::IsSnapToVertexEnabled()
 {
 	if( GetDefault<ULevelEditorViewportSettings>()->bSnapVertices )
 	{
@@ -137,7 +137,7 @@ bool FEditorViewportSnapping::IsSnapToVertexEnabled(bool bIsPivot)
 		for (uint32 i = 0; i < static_cast<uint8>(EMultipleKeyBindingIndex::NumChords); ++i)
 		{
 			EMultipleKeyBindingIndex ChordIndex = static_cast<EMultipleKeyBindingIndex> (i);
-			const FInputChord& Chord = bIsPivot ? (*Commands.HoldToEnablePivotVertexSnapping->GetActiveChord(ChordIndex)) : (*Commands.HoldToEnableVertexSnapping->GetActiveChord(ChordIndex));
+			const FInputChord& Chord = *Commands.HoldToEnableVertexSnapping->GetActiveChord(ChordIndex);
 
 			bIsChordPressed |= (Chord.NeedsControl() == GCurrentLevelEditingViewportClient->IsCtrlPressed())
 				&& (Chord.NeedsAlt() == GCurrentLevelEditingViewportClient->IsAltPressed())
@@ -396,10 +396,10 @@ bool FEditorViewportSnapping::SnapDraggedActorsToNearestVertex( FVector& DragDel
 	return bSnapped;
 }
 
-bool FEditorViewportSnapping::SnapDragLocationToNearestVertex( const FVector& BaseLocation, FVector& DragDelta, FLevelEditorViewportClient* ViewportClient, bool bIsPivot )
+bool FEditorViewportSnapping::SnapDragLocationToNearestVertex( const FVector& BaseLocation, FVector& DragDelta, FLevelEditorViewportClient* ViewportClient )
 {
 	bool bSnapped = false;
-	if( IsSnapToVertexEnabled(bIsPivot) && !DragDelta.IsNearlyZero() )
+	if( IsSnapToVertexEnabled() && !DragDelta.IsNearlyZero() )
 	{
 		bSnapped = VertexSnappingImpl.SnapDragLocationToNearestVertex( BaseLocation, DragDelta, ViewportClient );
 	}
@@ -462,9 +462,9 @@ bool FSnappingUtils::SnapDraggedActorsToNearestVertex(FVector& DragDelta, FLevel
 	return EditorViewportSnapper.IsValid() ? EditorViewportSnapper->SnapDraggedActorsToNearestVertex(DragDelta, ViewportClient) : false;
 }
 
-bool FSnappingUtils::SnapDragLocationToNearestVertex(const FVector& BaseLocation, FVector& DragDelta, FLevelEditorViewportClient* ViewportClient, bool bIsPivot)
+bool FSnappingUtils::SnapDragLocationToNearestVertex(const FVector& BaseLocation, FVector& DragDelta, FLevelEditorViewportClient* ViewportClient)
 {
-	return EditorViewportSnapper.IsValid() ? EditorViewportSnapper->SnapDragLocationToNearestVertex(BaseLocation, DragDelta, ViewportClient, bIsPivot) : false;
+	return EditorViewportSnapper.IsValid() ? EditorViewportSnapper->SnapDragLocationToNearestVertex(BaseLocation, DragDelta, ViewportClient) : false;
 }
 
 bool FSnappingUtils::SnapLocationToNearestVertex(FVector& Location, const FVector2D& MouseLocation, FLevelEditorViewportClient* ViewportClient, FVector& OutVertexNormal, bool bDrawVertHelpers )

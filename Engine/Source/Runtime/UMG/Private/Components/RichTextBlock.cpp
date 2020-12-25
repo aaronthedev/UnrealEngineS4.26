@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/RichTextBlock.h"
 #include "UObject/ConstructorHelpers.h"
@@ -47,7 +47,6 @@ URichTextBlock::URichTextBlock(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	Visibility = ESlateVisibility::SelfHitTestInvisible;
-	TextTransformPolicy = ETextTransformPolicy::None;
 }
 
 void URichTextBlock::ReleaseSlateResources(bool bReleaseChildren)
@@ -80,8 +79,6 @@ void URichTextBlock::SynchronizeProperties()
 	Super::SynchronizeProperties();
 
 	MyRichTextBlock->SetText(Text);
-	MyRichTextBlock->SetTransformPolicy(TextTransformPolicy);
-	MyRichTextBlock->SetMinDesiredWidth(MinDesiredWidth);
 
 	Super::SynchronizeTextLayoutProperties( *MyRichTextBlock );
 }
@@ -159,11 +156,8 @@ void URichTextBlock::SetTextStyleSet(class UDataTable* NewTextStyleSet)
 
 		RebuildStyleInstance();
 
-		if (MyRichTextBlock.IsValid())
-		{
-			MyRichTextBlock->SetDecoratorStyleSet(StyleInstance.Get());
-			MyRichTextBlock->SetTextStyle(DefaultTextStyle);
-		}
+		MyRichTextBlock->SetDecoratorStyleSet(StyleInstance.Get());
+		MyRichTextBlock->SetTextStyle(DefaultTextStyle);
 	}
 }
 
@@ -175,15 +169,8 @@ const FTextBlockStyle& URichTextBlock::GetDefaultTextStyle() const
 
 const FTextBlockStyle& URichTextBlock::GetCurrentDefaultTextStyle() const
 {
-	if (bOverrideDefaultStyle)
-	{
-		return DefaultTextStyleOverride;
-	}
-	else
-	{
-		ensure(StyleInstance.IsValid());
-		return DefaultTextStyle;
-	}
+	ensure(StyleInstance.IsValid());
+	return bOverrideDefaultStyle ? DefaultTextStyleOverride : DefaultTextStyle;
 }
 
 URichTextBlockDecorator* URichTextBlock::GetDecoratorByClass(TSubclassOf<URichTextBlockDecorator> DecoratorClass)
@@ -337,15 +324,6 @@ void URichTextBlock::SetAutoWrapText(bool InAutoTextWrap)
 	if (MyRichTextBlock.IsValid())
 	{
 		MyRichTextBlock->SetAutoWrapText(InAutoTextWrap);
-	}
-}
-
-void URichTextBlock::SetTextTransformPolicy(ETextTransformPolicy InTransformPolicy)
-{
-	TextTransformPolicy = InTransformPolicy;
-	if (MyRichTextBlock.IsValid())
-	{
-		MyRichTextBlock->SetTransformPolicy(TextTransformPolicy);
 	}
 }
 

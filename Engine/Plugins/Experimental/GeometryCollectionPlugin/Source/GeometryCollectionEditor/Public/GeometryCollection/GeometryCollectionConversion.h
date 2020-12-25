@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "Engine/World.h"
@@ -16,15 +16,6 @@ typedef TTuple<const USkeletalMesh *, const USkeletalMeshComponent *, FTransform
 class GEOMETRYCOLLECTIONEDITOR_API FGeometryCollectionConversion
 {
 public:
-
-	/**
-	*  Appends a static mesh to a GeometryCollectionComponent.
-	*  @param StaticMesh : Const mesh to read vertex/normals/index data from
-	*  @param Materials : Materials fetched from the StaticMeshComponent used to configure this geometry
-	*  @param StaticMeshTransform : Mesh transform.
-	*  @param GeometryCollection  : Collection to append the mesh into.
-	*/
-	static void AppendStaticMesh(const UStaticMesh* StaticMesh, const TArray<UMaterialInterface*>& Materials, const FTransform& StaticMeshTransform, UGeometryCollection* GeometryCollectionObject, bool ReindexMaterials = true);
 
 	/**
 	*  Appends a static mesh to a GeometryCollectionComponent.

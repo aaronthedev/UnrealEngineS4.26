@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "CoreMinimal.h"
@@ -6,17 +6,13 @@
 #include "Containers/ArrayView.h"
 #include "RHI.h"	// for GShaderPlatformForFeatureLevel and its friends
 
-#include "VulkanLoader.h"
-
 struct FOptionalVulkanDeviceExtensions;
 class FVulkanDevice;
 
 // the platform interface, and empty implementations for platforms that don't need em
-class FVulkanGenericPlatform
+class FVulkanGenericPlatform 
 {
 public:
-	static void SetupMaxRHIFeatureLevelAndShaderPlatform(ERHIFeatureLevel::Type InRequestedFeatureLevel);
-
 	static bool IsSupported() { return true; }
 	static void CheckDeviceDriver(uint32 DeviceIndex, EGpuVendorId VendorId, const VkPhysicalDeviceProperties& Props) {}
 
@@ -45,7 +41,6 @@ public:
 	static void SetupFeatureLevels();
 
 	static bool SupportsStandardSwapchain() { return true; }
-	static bool RequiresRenderingBackBuffer() { return true; }
 	static EPixelFormat GetPixelFormatForNonDefaultSwapchain()
 	{
 		checkf(0, TEXT("Platform Requires Standard Swapchain!"));
@@ -96,24 +91,13 @@ public:
 	/** The status quo is false, so the default is chosen to not change it. As platforms opt in it may be better to flip the default. */
 	static bool SupportsDynamicResolution() { return false; }
 
-	static bool SupportsVolumeTextureRendering() { return true; }
-
 	// Allow platforms to add extension features to the DeviceInfo pNext chain
 	static void EnablePhysicalDeviceFeatureExtensions(VkDeviceCreateInfo& DeviceInfo) {}
 
 	static bool RequiresSwapchainGeneralInitialLayout() { return false; }
-
-	// Allow platforms to perform their own frame pacing, called before Present. Returns true if the platform has done framepacing, false otherwise.
-	static bool FramePace(FVulkanDevice& Device, VkSwapchainKHR Swapchain, uint32 PresentID, VkPresentInfoKHR& Info) { return false; }
-
+	
 	// Allow platforms to do extra work on present
 	static VkResult Present(VkQueue Queue, VkPresentInfoKHR& PresentInfo);
-
-	// Allow platforms to track swapchain creation
-	static VkResult CreateSwapchainKHR(VkDevice Device, const VkSwapchainCreateInfoKHR* CreateInfo, const VkAllocationCallbacks* Allocator, VkSwapchainKHR* Swapchain);
-	
-	// Allow platforms to track swapchain destruction
-	static void DestroySwapchainKHR(VkDevice Device, VkSwapchainKHR Swapchain, const VkAllocationCallbacks* Allocator);
 
 	// Ensure the last frame completed on the GPU
 	static bool RequiresWaitingForFrameCompletionEvent() { return true; }
@@ -121,8 +105,8 @@ public:
 	// Does the platform allow a nullptr Pixelshader on the pipeline
 	static bool SupportsNullPixelShader() { return true; }
 
-	// Does the platform require depth to be written on stencil clear
-	static bool RequiresDepthWriteOnStencilClear() { return false; }
+	// Does the platform require resolve attachments in its MSAA renderpasses
+	static bool RequiresRenderPassResolveAttachments() { return false; }
 
 	// Checks if the PSO cache matches the expected vulkan device properties
 	static bool PSOBinaryCacheMatches(FVulkanDevice* Device, const TArray<uint8>& DeviceCache);

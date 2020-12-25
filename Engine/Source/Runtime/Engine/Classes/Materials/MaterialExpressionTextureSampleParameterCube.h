@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -15,15 +15,21 @@ class UMaterialExpressionTextureSampleParameterCube : public UMaterialExpression
 {
 	GENERATED_UCLASS_BODY()
 
-#if WITH_EDITOR
+
+
+
 	//~ Begin UMaterialExpression Interface
+#if WITH_EDITOR
 	virtual void GetCaption(TArray<FString>& OutCaptions) const override;
 	virtual int32 Compile(class FMaterialCompiler* Compiler, int32 OutputIndex) override;
+#endif
 	//~ End UMaterialExpression Interface
 
 	//~ Begin UMaterialExpressionTextureSampleParameter Interface
 	virtual bool TextureIsValid(UTexture* InTexture, FString& OutMessage) override;
 	virtual void SetDefaultTexture() override;
 	//~ End UMaterialExpressionTextureSampleParameter Interface
-#endif // WITH_EDITOR
 };
+
+
+

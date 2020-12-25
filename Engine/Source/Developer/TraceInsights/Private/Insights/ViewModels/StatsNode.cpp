@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "StatsNode.h"
 
@@ -18,7 +18,7 @@ void FStatsNode::ResetAggregatedStats()
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void FStatsNode::SetAggregatedStats(const FAggregatedStats& InAggregatedStats)
+void FStatsNode::SetAggregatedStats(FAggregatedStats& InAggregatedStats)
 {
 	AggregatedStats = InAggregatedStats;
 }
@@ -32,7 +32,7 @@ void FStatsNode::ResetAggregatedIntegerStats()
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void FStatsNode::SetAggregatedIntegerStats(const FAggregatedIntegerStats& InAggregatedIntegerStats)
+void FStatsNode::SetAggregatedIntegerStats(FAggregatedIntegerStats& InAggregatedIntegerStats)
 {
 	AggregatedIntegerStats = InAggregatedIntegerStats;
 

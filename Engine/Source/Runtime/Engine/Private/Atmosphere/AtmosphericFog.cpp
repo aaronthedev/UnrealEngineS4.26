@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Atmosphere/AtmosphericFog.h"
 #include "Atmosphere/AtmosphericFogComponent.h"
@@ -18,8 +18,6 @@
 #if WITH_EDITOR
 #include "ObjectEditorUtils.h"
 #endif
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 AAtmosphericFog::AAtmosphericFog(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -90,5 +88,3 @@ void AAtmosphericFog::PostActorCreated()
 }
 
 #endif
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

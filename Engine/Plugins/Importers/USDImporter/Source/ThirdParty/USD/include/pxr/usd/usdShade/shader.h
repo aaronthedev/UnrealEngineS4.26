@@ -37,6 +37,7 @@
 #include "pxr/usd/usdShade/output.h"
 #include "pxr/usd/ndr/declare.h"
 #include "pxr/usd/sdr/shaderNode.h"
+    
 
 #include "pxr/base/vt/value.h"
 
@@ -166,7 +167,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDSHADE_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -178,7 +179,7 @@ private:
 
     // override SchemaBase virtuals.
     USDSHADE_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -191,22 +192,17 @@ public:
     /// determine the shader source from the shader registry.
     /// * If set to "sourceAsset", the resolved value of the "info:sourceAsset" 
     /// attribute corresponding to the desired implementation (or source-type)
-    /// is used to locate the shader source.  A source asset file may also
-    /// specify multiple shader definitions, so there is an optional attribute
-    /// "info:sourceAsset:subIdentifier" whose value should be used to indicate
-    /// a particular shader definition from a source asset file.
+    /// is used to locate the shader source.
     /// * If set to "sourceCode", the value of "info:sourceCode" attribute 
     /// corresponding to the desired implementation (or source type) is used as 
     /// the shader source.
     /// 
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform token info:implementationSource = "id"` |
-    /// | C++ Type | TfToken |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
-    /// | \ref UsdShadeTokens "Allowed Values" | id, sourceAsset, sourceCode |
+    /// \n  C++ Type: TfToken
+    /// \n  Usd Type: SdfValueTypeNames->Token
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: id
+    /// \n  \ref UsdShadeTokens "Allowed Values": [id, sourceAsset, sourceCode]
     USDSHADE_API
     UsdAttribute GetImplementationSourceAttr() const;
 
@@ -231,12 +227,10 @@ public:
     /// \sa SetShaderId()
     /// 
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform token info:id` |
-    /// | C++ Type | TfToken |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+    /// \n  C++ Type: TfToken
+    /// \n  Usd Type: SdfValueTypeNames->Token
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: No Fallback
     USDSHADE_API
     UsdAttribute GetIdAttr() const;
 
@@ -281,7 +275,7 @@ public:
     // -------------------------------------------------------------------------
     /// \name Outputs API
     ///
-    /// Outputs represent a typed attribute on a shader or node-graph whose value 
+    /// Outputs represent a typed property on a shader or node-graph whose value 
     /// is computed externally. 
     /// 
     /// When they exist on a node-graph, they are connectable and are typically 
@@ -314,7 +308,7 @@ public:
 
     /// \name Inputs API
     ///
-    /// Inputs are connectable attribute with a typed value. 
+    /// Inputs are connectable properties with a typed value. 
     /// 
     /// On shaders, the shader parameters are encoded as inputs. On node-graphs,
     /// interface attributes are represented as inputs.
@@ -433,36 +427,6 @@ public:
     USDSHADE_API
     bool GetSourceAsset(
         SdfAssetPath *sourceAsset,
-        const TfToken &sourceType=UsdShadeTokens->universalSourceType) const;
-
-    /// Set a sub-identifier to be used with a source asset of the given source
-    /// type.  This sets the <b>info:<i>sourceType:</i>sourceAsset:subIdentifier
-    /// </b>.
-    ///
-    /// This also sets the <i>info:implementationSource</i> attribute on the
-    /// shader to <b>UsdShadeTokens->sourceAsset</b>
-    USDSHADE_API
-    bool SetSourceAssetSubIdentifier(
-        const TfToken &subIdentifier,
-        const TfToken &sourceType=UsdShadeTokens->universalSourceType) const;
-
-    /// Fetches the shader's sub-identifier for the source asset with the
-    /// specified \p sourceType value from the <b>info:<i>sourceType:</i>
-    /// sourceAsset:subIdentifier</b> attribute, if the shader's <i>info:
-    /// implementationSource</i> is <b>sourceAsset</b>.
-    ///
-    /// If the <i>subIdentifier</i> attribute corresponding to the requested
-    /// <i>sourceType</i> isn't present on the shader, then the <i>universal</i>
-    /// <i>fallback</i> sub-identifier attribute, i.e. <i>info:sourceAsset:
-    /// subIdentifier</i> is consulted, if present, to get the sub-identifier
-    /// name.
-    ///
-    /// Returns <b>true</b> if the shader's implementation source is
-    /// <b>sourceAsset</b> and the sub-identifier for the given source type was
-    /// fetched successfully into \p subIdentifier. Returns false otherwise.
-    USDSHADE_API
-    bool GetSourceAssetSubIdentifier(
-        TfToken *subIdentifier,
         const TfToken &sourceType=UsdShadeTokens->universalSourceType) const;
 
     /// Sets the shader's source-code value to \p sourceCode for the given 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VREditorModeManager.h"
 #include "InputCoreTypes.h"
@@ -21,9 +21,6 @@
 #include "ProjectDescriptor.h"
 #include "Interfaces/IProjectManager.h"
 #include "UnrealEdMisc.h"
-#include "Classes/EditorStyleSettings.h"
-#include "VREditorInteractor.h"
-#include "Editor/UnrealEd/Classes/Settings/LevelEditorMiscSettings.h"
 
 #define LOCTEXT_NAMESPACE "VREditor"
 
@@ -81,26 +78,14 @@ void FVREditorModeManager::Tick( const float DeltaTime )
 	{
 		// Shutdown PIE if we came from the VR Editor and we are not already requesting to start the VR Editor and when any of the players is holding down the required input
 		const float ShutDownInputKeyTime = 1.0f;
-		const float ShutDownTriggerValue = 0.7f;
 		TArray<APlayerController*> PlayerControllers;
 		GEngine->GetAllLocalPlayerControllers(PlayerControllers);
 		for(APlayerController* PlayerController : PlayerControllers)
 		{
-			const float LeftGripTimeDown = FMath::Max3(PlayerController->GetInputKeyTimeDown(EKeys::Vive_Left_Grip_Click),
-				PlayerController->GetInputKeyTimeDown(EKeys::ValveIndex_Left_Trackpad_Touch),
-				PlayerController->GetInputKeyTimeDown(EKeys::OculusTouch_Left_Grip_Click));
-			const float RightGripTimeDown = FMath::Max3(PlayerController->GetInputKeyTimeDown(EKeys::Vive_Right_Grip_Click),
-				PlayerController->GetInputKeyTimeDown(EKeys::ValveIndex_Right_Trackpad_Touch),
-				PlayerController->GetInputKeyTimeDown(EKeys::OculusTouch_Right_Grip_Click));
-			const float LeftTriggerValue = FMath::Max3(PlayerController->GetInputKeyTimeDown(EKeys::Vive_Left_Trigger_Axis.GetFName()),
-				PlayerController->GetInputKeyTimeDown(EKeys::ValveIndex_Left_Trigger_Axis.GetFName()),
-				PlayerController->GetInputKeyTimeDown(EKeys::OculusTouch_Left_Trigger_Axis.GetFName()));
-			const float RightTriggerValue = FMath::Max3(PlayerController->GetInputKeyTimeDown(EKeys::Vive_Right_Trigger_Axis.GetFName()),
-				PlayerController->GetInputKeyTimeDown(EKeys::ValveIndex_Right_Trigger_Axis.GetFName()),
-				PlayerController->GetInputKeyTimeDown(EKeys::OculusTouch_Right_Trigger_Axis.GetFName()));
-
-			if(LeftGripTimeDown > ShutDownInputKeyTime && RightGripTimeDown > ShutDownInputKeyTime &&
-				LeftTriggerValue > ShutDownTriggerValue && RightTriggerValue > ShutDownTriggerValue)
+			if((PlayerController->GetInputKeyTimeDown( EKeys::MotionController_Left_Grip1 ) > ShutDownInputKeyTime || PlayerController->GetInputKeyTimeDown( EKeys::MotionController_Left_Grip2 ) > ShutDownInputKeyTime ) &&
+				(PlayerController->GetInputKeyTimeDown( EKeys::MotionController_Right_Grip1 ) > ShutDownInputKeyTime || PlayerController->GetInputKeyTimeDown( EKeys::MotionController_Right_Grip2 ) > ShutDownInputKeyTime ) &&
+				PlayerController->GetInputKeyTimeDown( EKeys::MotionController_Right_Trigger ) > ShutDownInputKeyTime &&
+				PlayerController->GetInputKeyTimeDown( EKeys::MotionController_Left_Trigger ) > ShutDownInputKeyTime)
 			{
 				CurrentVREditorMode->TogglePIEAndVREditor();
 				// We need to clear the input of the playercontroller when exiting PIE. 
@@ -134,65 +119,17 @@ void FVREditorModeManager::EnableVREditor( const bool bEnable, const bool bForce
 	{
 		if( bEnable && ( IsVREditorAvailable() || bForceWithoutHMD ))
 		{
-			UEditorStyleSettings* StyleSettings = GetMutableDefault<UEditorStyleSettings>();
-			ULevelEditorMiscSettings* LevelEditorSettings = GetMutableDefault<ULevelEditorMiscSettings>();
-			const UVRModeSettings* VRModeSettings = GetDefault<UVRModeSettings>();
-			bool bUsingDefaultInteractors = true;
-			if (VRModeSettings)
+			FSuppressableWarningDialog::FSetupInfo SetupInfo(LOCTEXT("VRModeEntry_Message", "VR Mode enables you to work on your project in virtual reality using motion controllers. This feature is still under development, so you may experience bugs or crashes while using it."),
+				LOCTEXT("VRModeEntry_Title", "Entering VR Mode - Experimental"), "Warning_VRModeEntry", GEditorSettingsIni);
+
+			SetupInfo.ConfirmText = LOCTEXT("VRModeEntry_ConfirmText", "Continue");
+			SetupInfo.CancelText = LOCTEXT("VRModeEntry_CancelText", "Cancel");
+			SetupInfo.bDefaultToSuppressInTheFuture = true;
+			FSuppressableWarningDialog VRModeEntryWarning(SetupInfo);
+
+			if (VRModeEntryWarning.ShowModal() != FSuppressableWarningDialog::Cancel)
 			{
-				const TSoftClassPtr<UVREditorInteractor> InteractorClassSoft = VRModeSettings->InteractorClass;
-				InteractorClassSoft.LoadSynchronous();
-
-				if (InteractorClassSoft.IsValid())
-				{
-					bUsingDefaultInteractors = (InteractorClassSoft.Get() == UVREditorInteractor::StaticClass());
-				}
-			}
-			if ( bUsingDefaultInteractors && 
-				((StyleSettings && !StyleSettings->bEnableLegacyEditorModeUI)
-					|| (LevelEditorSettings && !LevelEditorSettings->bEnableLegacyMeshPaintMode)))
-			{
-				FSuppressableWarningDialog::FSetupInfo SetupInfo(LOCTEXT("VRModeLegacyModeUIEntry_Message", "VR Mode currently requires that legacy editor mode UI be enabled.  Without this, modes like mesh paint, landscape, and foliage will not function.  Enable Legacy editor mode UI and legacy mesh paint (Requires restart)?"),
-					LOCTEXT("VRModeEntry_Title", "Entering VR Mode - Experimental"), "Warning_VRModeLegacyModeUIEntry", GEditorSettingsIni);
-
-				SetupInfo.ConfirmText = LOCTEXT("VRModeLegacyModeUIEntry_ConfirmText", "Enable and Restart");
-				SetupInfo.CancelText = LOCTEXT("VRModeLegacyModeUIEntry_CancelText", "Don't Enable");
-				SetupInfo.bDefaultToSuppressInTheFuture = false;
-
-				FSuppressableWarningDialog VRModeVRModeLegacyModeUIWarning(SetupInfo);
-
-				if (VRModeVRModeLegacyModeUIWarning.ShowModal() != FSuppressableWarningDialog::Cancel)
-				{
-					if (StyleSettings)
-					{
-						StyleSettings->bEnableLegacyEditorModeUI = true;
-						StyleSettings->SaveConfig();
-					}
-					if (LevelEditorSettings)
-					{
-						LevelEditorSettings->bEnableLegacyMeshPaintMode = true;
-						LevelEditorSettings->SaveConfig();
-					}
-					FUnrealEdMisc::Get().RestartEditor(true);
-					return;
-				}
-
-			}
-
-
-			{
-				FSuppressableWarningDialog::FSetupInfo SetupInfo(LOCTEXT("VRModeEntry_Message", "VR Mode enables you to work on your project in virtual reality using motion controllers. This feature is still under development, so you may experience bugs or crashes while using it."),
-					LOCTEXT("VRModeEntry_Title", "Entering VR Mode - Experimental"), "Warning_VRModeEntry", GEditorSettingsIni);
-
-				SetupInfo.ConfirmText = LOCTEXT("VRModeEntry_ConfirmText", "Continue");
-				SetupInfo.CancelText = LOCTEXT("VRModeEntry_CancelText", "Cancel");
-				SetupInfo.bDefaultToSuppressInTheFuture = true;
-				FSuppressableWarningDialog VRModeEntryWarning(SetupInfo);
-
-				if (VRModeEntryWarning.ShowModal() != FSuppressableWarningDialog::Cancel)
-				{
-					StartVREditorMode(bForceWithoutHMD);
-				}
+				StartVREditorMode(bForceWithoutHMD);
 			}
 		}
 		else if( !bEnable )

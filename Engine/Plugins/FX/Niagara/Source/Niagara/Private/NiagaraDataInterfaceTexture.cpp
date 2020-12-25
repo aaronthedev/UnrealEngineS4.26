@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraDataInterfaceTexture.h"
 #include "NiagaraShader.h"
@@ -16,38 +16,12 @@ const FString UNiagaraDataInterfaceTexture::TextureName(TEXT("Texture_"));
 const FString UNiagaraDataInterfaceTexture::SamplerName(TEXT("Sampler_"));
 const FString UNiagaraDataInterfaceTexture::DimensionsBaseName(TEXT("Dimensions_"));
 
-struct FNiagaraDataInterfaceProxyTexture : public FNiagaraDataInterfaceProxy
-{
-	FSamplerStateRHIRef SamplerStateRHI;
-	FTextureReferenceRHIRef TextureReferenceRHI;
-	FVector2D TexDims;
-
-	virtual void ConsumePerInstanceDataFromGameThread(void* PerInstanceData, const FNiagaraSystemInstanceID& Instance) override
-	{
-		checkNoEntry();
-	}
-
-	virtual int32 PerInstanceDataPassedToRenderThreadSize() const override
-	{
-		return 0;
-	}
-
-	virtual void PreStage(FRHICommandList& RHICmdList, const FNiagaraDataInterfaceStageArgs& Context) override
-	{
-		if (TextureReferenceRHI.IsValid())
-		{
-			// Make sure the texture is readable, we don't know where it's coming from.
-			RHICmdList.Transition(FRHITransitionInfo(TextureReferenceRHI->GetReferencedTexture(), ERHIAccess::Unknown, ERHIAccess::SRVMask));
-		}
-	}
-};
-
 UNiagaraDataInterfaceTexture::UNiagaraDataInterfaceTexture(FObjectInitializer const& ObjectInitializer)
 	: Super(ObjectInitializer)
 	, Texture(nullptr)
 {
-	Proxy.Reset(new FNiagaraDataInterfaceProxyTexture());
-	MarkRenderDataDirty();
+	Proxy = MakeShared<FNiagaraDataInterfaceProxyTexture, ESPMode::ThreadSafe>();
+	PushToRenderThread();
 }
 
 void UNiagaraDataInterfaceTexture::PostInitProperties()
@@ -59,7 +33,7 @@ void UNiagaraDataInterfaceTexture::PostInitProperties()
 		FNiagaraTypeRegistry::Register(FNiagaraTypeDefinition(GetClass()), true, false, false);
 	}
 
-	MarkRenderDataDirty();
+	PushToRenderThread();
 }
 
 void UNiagaraDataInterfaceTexture::PostLoad()
@@ -77,7 +51,7 @@ void UNiagaraDataInterfaceTexture::PostLoad()
 #endif
 	// Not safe since the UTexture might not have yet PostLoad() called and so UpdateResource() called.
 	// This will affect whether the SamplerStateRHI will be available or not.
-	MarkRenderDataDirty();
+	PushToRenderThread();
 }
 
 #if WITH_EDITOR
@@ -85,7 +59,7 @@ void UNiagaraDataInterfaceTexture::PostLoad()
 void UNiagaraDataInterfaceTexture::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
-	MarkRenderDataDirty();
+	PushToRenderThread();
 }
 
 
@@ -111,7 +85,7 @@ bool UNiagaraDataInterfaceTexture::CopyToInternal(UNiagaraDataInterface* Destina
 	}
 	UNiagaraDataInterfaceTexture* DestinationTexture = CastChecked<UNiagaraDataInterfaceTexture>(Destination);
 	DestinationTexture->Texture = Texture;
-	DestinationTexture->MarkRenderDataDirty();
+	DestinationTexture->PushToRenderThread();
 
 	return true;
 }
@@ -132,9 +106,7 @@ void UNiagaraDataInterfaceTexture::GetFunctions(TArray<FNiagaraFunctionSignature
 		FNiagaraFunctionSignature Sig;
 		Sig.Name = SampleTexture2DName;
 		Sig.bMemberFunction = true;
-		Sig.bRequiresContext = false;		
-		Sig.bSupportsCPU = false;
-		Sig.bSupportsGPU = true;
+		Sig.bRequiresContext = false;
 		Sig.Inputs.Add(FNiagaraVariable(FNiagaraTypeDefinition(GetClass()), TEXT("Texture")));
 		Sig.Inputs.Add(FNiagaraVariable(FNiagaraTypeDefinition::GetVec2Def(), TEXT("UV")));
 		Sig.SetDescription(LOCTEXT("TextureSampleTexture2DDesc", "Sample mip level 0 of the input 2d texture at the specified UV coordinates. The UV origin (0,0) is in the upper left hand corner of the image."));
@@ -163,8 +135,6 @@ void UNiagaraDataInterfaceTexture::GetFunctions(TArray<FNiagaraFunctionSignature
 		Sig.Name = SamplePseudoVolumeTextureName;
 		Sig.bMemberFunction = true;
 		Sig.bRequiresContext = false;
-		Sig.bSupportsCPU = false;
-		Sig.bSupportsGPU = true;
 		Sig.Inputs.Add(FNiagaraVariable(FNiagaraTypeDefinition(GetClass()), TEXT("Texture")));
 		Sig.Inputs.Add(FNiagaraVariable(FNiagaraTypeDefinition::GetVec3Def(), TEXT("UVW")));
 		Sig.Inputs.Add(FNiagaraVariable(FNiagaraTypeDefinition::GetVec2Def(), TEXT("XYNumFrames")));
@@ -174,7 +144,16 @@ void UNiagaraDataInterfaceTexture::GetFunctions(TArray<FNiagaraFunctionSignature
 		Sig.Inputs.Add(FNiagaraVariable(FNiagaraTypeDefinition::GetVec2Def(), TEXT("DDX")));
 		Sig.Inputs.Add(FNiagaraVariable(FNiagaraTypeDefinition::GetVec2Def(), TEXT("DDY")));
 		
-		Sig.SetDescription(LOCTEXT("TextureSamplePseudoVolumeTextureDesc", "Return a pseudovolume texture sample.\nUseful for simulating 3D texturing with a 2D texture or as a texture flipbook with lerped transitions.\nTreats 2d layout of frames as a 3d texture and performs bilinear filtering by blending with an offset Z frame.\nTexture = Input Texture Object storing Volume Data\nUVW = Input float3 for Position, 0 - 1\nXYNumFrames = Input float for num frames in x, y directions\nTotalNumFrames = Input float for num total frames\nMipMode = Sampling mode : 0 = use miplevel, 1 = use UV computed gradients, 2 = Use gradients(default = 0)\nMipLevel = MIP level to use in mipmode = 0 (default 0)\nDDX, DDY = Texture gradients in mipmode = 2\n"));
+		Sig.SetDescription(LOCTEXT("TextureSamplePseudoVolumeTextureDesc", "Return a pseudovolume texture sample.\n"
+			"Useful for simulating 3D texturing with a 2D texture or as a texture flipbook with lerped transitions.\n"
+			"Treats 2d layout of frames as a 3d texture and performs bilinear filtering by blending with an offset Z frame.\n"
+			"Texture = Input Texture Object storing Volume Data\n"
+			"UVW = Input float3 for Position, 0 - 1\n"
+			"XYNumFrames = Input float for num frames in x, y directions\n"
+			"TotalNumFrames = Input float for num total frames\n"
+			"MipMode = Sampling mode : 0 = use miplevel, 1 = use UV computed gradients, 2 = Use gradients(default = 0)\n"
+			"MipLevel = MIP level to use in mipmode = 0 (default 0)\n"
+			"DDX, DDY = Texture gradients in mipmode = 2\n"));
 		Sig.Outputs.Add(FNiagaraVariable(FNiagaraTypeDefinition::GetVec4Def(), TEXT("Value")));
 		//Sig.Owner = *GetName();
 
@@ -317,39 +296,39 @@ void UNiagaraDataInterfaceTexture::SamplePseudoVolumeTexture(FVectorVMContext& C
 	}
 }
 
-bool UNiagaraDataInterfaceTexture::GetFunctionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, const FNiagaraDataInterfaceGeneratedFunction& FunctionInfo, int FunctionInstanceIndex, FString& OutHLSL)
+bool UNiagaraDataInterfaceTexture::GetFunctionHLSL(const FName& DefinitionFunctionName, FString InstanceFunctionName, FNiagaraDataInterfaceGPUParamInfo& ParamInfo, FString& OutHLSL)
 {
-	if (FunctionInfo.DefinitionName == SampleTexture2DName)
+	if (DefinitionFunctionName == SampleTexture2DName)
 	{
 		FString HLSLTextureName = TextureName + ParamInfo.DataInterfaceHLSLSymbol;
 		FString HLSLSamplerName = SamplerName + ParamInfo.DataInterfaceHLSLSymbol;
-		OutHLSL += TEXT("void ") + FunctionInfo.InstanceName + TEXT("(in float2 In_UV, out float4 Out_Value) \n{\n");
+		OutHLSL += TEXT("void ") + InstanceFunctionName + TEXT("(in float2 In_UV, out float4 Out_Value) \n{\n");
 		OutHLSL += TEXT("\t Out_Value = ") + HLSLTextureName + TEXT(".SampleLevel(") + HLSLSamplerName + TEXT(", In_UV, 0);\n");
 		OutHLSL += TEXT("\n}\n");
 		return true;
 	}
-	/*else if (FunctionInfo.DefinitionName == SampleVolumeTextureName)
+	/*else if (DefinitionFunctionName == SampleVolumeTextureName)
 	{
 		FString HLSLTextureName = TextureName + ParamInfo.DataInterfaceHLSLSymbol;
 		FString HLSLSamplerName = SamplerName + ParamInfo.DataInterfaceHLSLSymbol;
-		OutHLSL += TEXT("void ") + FunctionInfo.InstanceName + TEXT("(in float3 In_UV, out float4 Out_Value) \n{\n");
+		OutHLSL += TEXT("void ") + InstanceFunctionName + TEXT("(in float3 In_UV, out float4 Out_Value) \n{\n");
 		OutHLSL += TEXT("\t Out_Value = ") + HLSLTextureName + TEXT(".SampleLevel(") + HLSLSamplerName + TEXT(", In_UV, 0);\n");
 		OutHLSL += TEXT("\n}\n");
 		return true;
 	}*/
-	else if (FunctionInfo.DefinitionName == SamplePseudoVolumeTextureName)
+	else if (DefinitionFunctionName == SamplePseudoVolumeTextureName)
 	{
 		FString HLSLTextureName = TextureName + ParamInfo.DataInterfaceHLSLSymbol;
 		FString HLSLSamplerName = SamplerName + ParamInfo.DataInterfaceHLSLSymbol;
-		OutHLSL += TEXT("void ") + FunctionInfo.InstanceName + TEXT("(in float3 In_UVW, in float2 In_XYNumFrames, in float In_TotalNumFrames, in int In_MipMode, in float In_MipLevel, in float2 In_DDX, in float2 In_DDY, out float4 Out_Value) \n{\n");
+		OutHLSL += TEXT("void ") + InstanceFunctionName + TEXT("(in float3 In_UVW, in float2 In_XYNumFrames, in float In_TotalNumFrames, in int In_MipMode, in float In_MipLevel, in float2 In_DDX, in float2 In_DDY, out float4 Out_Value) \n{\n");
 		OutHLSL += TEXT("\t Out_Value = PseudoVolumeTexture(") + HLSLTextureName + TEXT(", ") + HLSLSamplerName + TEXT(", In_UVW, In_XYNumFrames, In_TotalNumFrames, (uint) In_MipMode, In_MipLevel, In_DDX, In_DDY); \n");
 		OutHLSL += TEXT("\n}\n");
 		return true;
 	}
-	else if (FunctionInfo.DefinitionName == TextureDimsName)
+	else if (DefinitionFunctionName == TextureDimsName)
 	{
 		FString DimsVar = DimensionsBaseName + ParamInfo.DataInterfaceHLSLSymbol;
-		OutHLSL += TEXT("void ") + FunctionInfo.InstanceName + TEXT("(out float2 Out_Value) \n{\n");
+		OutHLSL += TEXT("void ") + InstanceFunctionName + TEXT("(out float2 Out_Value) \n{\n");
 		OutHLSL += TEXT("\t Out_Value = ") + DimsVar + TEXT(";\n");
 		OutHLSL += TEXT("\n}\n");
 		return true;
@@ -357,7 +336,7 @@ bool UNiagaraDataInterfaceTexture::GetFunctionHLSL(const FNiagaraDataInterfaceGP
 	return false;
 }
 
-void UNiagaraDataInterfaceTexture::GetParameterDefinitionHLSL(const FNiagaraDataInterfaceGPUParamInfo& ParamInfo, FString& OutHLSL)
+void UNiagaraDataInterfaceTexture::GetParameterDefinitionHLSL(FNiagaraDataInterfaceGPUParamInfo& ParamInfo, FString& OutHLSL)
 {
 	FString HLSLTextureName = TextureName + ParamInfo.DataInterfaceHLSLSymbol;
 	FString HLSLSamplerName = SamplerName + ParamInfo.DataInterfaceHLSLSymbol;
@@ -371,46 +350,61 @@ void UNiagaraDataInterfaceTexture::GetParameterDefinitionHLSL(const FNiagaraData
 
 struct FNiagaraDataInterfaceParametersCS_Texture : public FNiagaraDataInterfaceParametersCS
 {
-	DECLARE_TYPE_LAYOUT(FNiagaraDataInterfaceParametersCS_Texture, NonVirtual);
-public:
-	void Bind(const FNiagaraDataInterfaceGPUParamInfo& ParameterInfo, const class FShaderParameterMap& ParameterMap)
+	virtual void Bind(const FNiagaraDataInterfaceParamRef& ParamRef, const class FShaderParameterMap& ParameterMap) override
 	{
-		FString TexName = UNiagaraDataInterfaceTexture::TextureName + ParameterInfo.DataInterfaceHLSLSymbol;
-		FString SampleName = (UNiagaraDataInterfaceTexture::SamplerName + ParameterInfo.DataInterfaceHLSLSymbol);
+		FString TexName = UNiagaraDataInterfaceTexture::TextureName + ParamRef.ParameterInfo.DataInterfaceHLSLSymbol;
+		FString SampleName = (UNiagaraDataInterfaceTexture::SamplerName + ParamRef.ParameterInfo.DataInterfaceHLSLSymbol);
 		TextureParam.Bind(ParameterMap, *TexName);
 		SamplerParam.Bind(ParameterMap, *SampleName);
 		
-		
+		if (!TextureParam.IsBound())
+		{
+			UE_LOG(LogNiagara, Warning, TEXT("Binding failed for FNiagaraDataInterfaceParametersCS_Texture Texture %s. Was it optimized out?"), *TexName)
+		}
 
-		Dimensions.Bind(ParameterMap, *(UNiagaraDataInterfaceTexture::DimensionsBaseName + ParameterInfo.DataInterfaceHLSLSymbol));
+		if (!SamplerParam.IsBound())
+		{
+			UE_LOG(LogNiagara, Warning, TEXT("Binding failed for FNiagaraDataInterfaceParametersCS_Texture Sampler %s. Was it optimized out?"), *SampleName)
+		}
+
+		Dimensions.Bind(ParameterMap, *(UNiagaraDataInterfaceTexture::DimensionsBaseName + ParamRef.ParameterInfo.DataInterfaceHLSLSymbol));
 
 	}
 
-	void Set(FRHICommandList& RHICmdList, const FNiagaraDataInterfaceSetArgs& Context) const
+	virtual void Serialize(FArchive& Ar)override
+	{
+		Ar << TextureParam;
+		Ar << SamplerParam;
+		if (Ar.IsLoading() == false || Ar.CustomVer(FNiagaraCustomVersion::GUID) >= FNiagaraCustomVersion::TextureDataInterfaceSizeSerialize)
+		{
+			Ar << Dimensions;
+		}
+	}
+
+	virtual void Set(FRHICommandList& RHICmdList, const FNiagaraDataInterfaceSetArgs& Context) const override
 	{
 		check(IsInRenderingThread());
 
-		FRHIComputeShader* ComputeShaderRHI = Context.Shader.GetComputeShader();
+		FRHIComputeShader* ComputeShaderRHI = Context.Shader->GetComputeShader();
 		FNiagaraDataInterfaceProxyTexture* TextureDI = static_cast<FNiagaraDataInterfaceProxyTexture*>(Context.DataInterface);
 
-		
-		if (TextureDI && TextureDI->TextureReferenceRHI.IsValid())
+		FRHITexture* TextureRHI = (TextureDI && TextureDI->TextureReferenceRHI) ? TextureDI->TextureReferenceRHI->GetReferencedTexture() : nullptr;
+		if (TextureRHI)
 		{
 			FRHISamplerState* SamplerStateRHI = TextureDI->SamplerStateRHI;
 			if (!SamplerStateRHI)
 			{
 				// Fallback required because PostLoad() order affects whether RHI resources 
-				// are initalized in UNiagaraDataInterfaceTexture::PushToRenderThreadImpl().
+				// are initalized in UNiagaraDataInterfaceTexture::PushToRenderThread().
 				SamplerStateRHI = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 			}
-
 			SetTextureParameter(
 				RHICmdList,
 				ComputeShaderRHI,
 				TextureParam,
 				SamplerParam,
 				SamplerStateRHI,
-				TextureDI->TextureReferenceRHI->GetReferencedTexture()
+				TextureRHI
 			);
 			SetShaderValue(RHICmdList, ComputeShaderRHI, Dimensions, TextureDI->TexDims);
 		}
@@ -424,56 +418,54 @@ public:
 				GBlackTexture->SamplerStateRHI,
 				GBlackTexture->TextureRHI
 			);
-			FVector2D TexDims(EForceInit::ForceInitToZero);
+			float TexDims[] = { 0.0f, 0.0f };
 			SetShaderValue(RHICmdList, ComputeShaderRHI, Dimensions, TexDims);
 		}
 	}
-
 private:
-	LAYOUT_FIELD(FShaderResourceParameter, TextureParam);
-	LAYOUT_FIELD(FShaderResourceParameter, SamplerParam);
-	LAYOUT_FIELD(FShaderParameter, Dimensions);
+
+	FShaderResourceParameter TextureParam;
+	FShaderResourceParameter SamplerParam;
+	FShaderParameter Dimensions;
 };
 
-IMPLEMENT_TYPE_LAYOUT(FNiagaraDataInterfaceParametersCS_Texture);
-
-IMPLEMENT_NIAGARA_DI_PARAMETER(UNiagaraDataInterfaceTexture, FNiagaraDataInterfaceParametersCS_Texture);
-
-void UNiagaraDataInterfaceTexture::PushToRenderThreadImpl()
+void UNiagaraDataInterfaceTexture::PushToRenderThread()
 {
 	FNiagaraDataInterfaceProxyTexture* RT_Proxy = GetProxyAs<FNiagaraDataInterfaceProxyTexture>();
 
-	FVector2D RT_TexDims(EForceInit::ForceInitToZero);
+	float DimX = 0.0f;
+	float DimY = 0.0f;
+	FTextureReferenceRHIRef  RT_TextureReference;
+	FSamplerStateRHIRef RT_SamplerState;
 
-	if (Texture)
+	if (Texture && Texture->TextureReference.TextureReferenceRHI.IsValid())
 	{
-		RT_TexDims.X = Texture->GetSurfaceWidth();
-		RT_TexDims.Y = Texture->GetSurfaceHeight();
+		if (Texture->TextureReference.TextureReferenceRHI)
+		{
+			RT_TextureReference = Texture->TextureReference.TextureReferenceRHI;
+		}
+		if (Texture->Resource)
+		{
+			RT_SamplerState = Texture->Resource->SamplerStateRHI;
+		}
+		DimX = Texture->GetSurfaceWidth();
+		DimY = Texture->GetSurfaceHeight();
 	}
 
-	ENQUEUE_RENDER_COMMAND(FPushDITextureToRT)
-	(
-		[RT_Proxy, RT_Texture=Texture, RT_TexDims](FRHICommandListImmediate& RHICmdList)
+	ENQUEUE_RENDER_COMMAND(FPushDITextureToRT) (
+		[RT_Proxy, RT_TextureReference, RT_SamplerState, DimX, DimY](FRHICommandListImmediate& RHICmdList)
 		{
-			if (RT_Texture)
-			{
-				RT_Proxy->TextureReferenceRHI = RT_Texture->TextureReference.TextureReferenceRHI;
-				RT_Proxy->SamplerStateRHI = RT_Texture->Resource ? RT_Texture->Resource->SamplerStateRHI : nullptr;
-			}
-			else
-			{
-				RT_Proxy->TextureReferenceRHI = nullptr;
-				RT_Proxy->SamplerStateRHI = nullptr;
-			}
-			RT_Proxy->TexDims = RT_TexDims;
+			RT_Proxy->TextureReferenceRHI = RT_TextureReference;
+			RT_Proxy->SamplerStateRHI = RT_SamplerState;
+			RT_Proxy->TexDims[0] = DimX;
+			RT_Proxy->TexDims[1] = DimY;
 		}
 	);
 }
 
-void UNiagaraDataInterfaceTexture::SetTexture(UTexture* InTexture)
+FNiagaraDataInterfaceParametersCS* UNiagaraDataInterfaceTexture::ConstructComputeParameters()const
 {
-	Texture = InTexture;
-	MarkRenderDataDirty();
+	return new FNiagaraDataInterfaceParametersCS_Texture();
 }
 
 #undef LOCTEXT_NAMESPACE

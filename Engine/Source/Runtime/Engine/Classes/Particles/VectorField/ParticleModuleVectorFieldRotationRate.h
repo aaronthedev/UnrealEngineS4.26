@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*==============================================================================
 	ParticleModuleVectorFieldRotationRate: Rotation rate for vector fields.
@@ -11,7 +11,7 @@
 #include "Particles/VectorField/ParticleModuleVectorFieldBase.h"
 #include "ParticleModuleVectorFieldRotationRate.generated.h"
 
-UCLASS(editinlinenew, hidecategories=Object, meta=(DisplayName = "VF Rotation Rate"), MinimalAPI)
+UCLASS(editinlinenew, hidecategories=Object, meta=(DisplayName = "VF Rotation Rate"))
 class UParticleModuleVectorFieldRotationRate : public UParticleModuleVectorFieldBase
 {
 	GENERATED_UCLASS_BODY()

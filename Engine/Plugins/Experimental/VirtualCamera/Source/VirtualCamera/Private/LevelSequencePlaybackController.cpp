@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LevelSequencePlaybackController.h"
 
@@ -26,6 +26,14 @@ ULevelSequencePlaybackController::ULevelSequencePlaybackController(const FObject
 	, ActiveLevelSequence(nullptr)
 {
 
+}
+
+void ULevelSequencePlaybackController::ResumeLevelSequencePlay()
+{
+	if (ActiveLevelSequence)
+	{
+		PlayLevelSequence();
+	}
 }
 
 void ULevelSequencePlaybackController::GetLevelSequences(TArray<FLevelSequenceData>& OutLevelSequenceNames)
@@ -159,7 +167,7 @@ FFrameNumber ULevelSequencePlaybackController::GetCurrentSequenceDuration() cons
 {
 	if (ActiveLevelSequence)
 	{
-		FFrameNumber Value = UE::MovieScene::DiscreteSize(ActiveLevelSequence->GetMovieScene()->GetPlaybackRange());
+		FFrameNumber Value = MovieScene::DiscreteSize(ActiveLevelSequence->GetMovieScene()->GetPlaybackRange());
 		if (ActiveLevelSequence->GetMovieScene()->GetDisplayRate() != ActiveLevelSequence->GetMovieScene()->GetTickResolution())
 		{
 			const FFrameTime ConvertedTime = FFrameRate::TransformTime(FFrameTime(Value), ActiveLevelSequence->GetMovieScene()->GetTickResolution(), ActiveLevelSequence->GetMovieScene()->GetDisplayRate());
@@ -197,7 +205,7 @@ FTimecode ULevelSequencePlaybackController::GetCurrentSequencePlaybackTimecode()
 		if (Sequencer)
 		{
 			const FFrameTime DisplayTime = Sequencer->GetLocalTime().ConvertTo(Sequencer->GetFocusedDisplayRate());
-			return FTimecode::FromFrameNumber(DisplayTime.FrameNumber, Sequencer->GetFocusedDisplayRate());
+			return FTimecode::FromFrameNumber(DisplayTime.FrameNumber, Sequencer->GetFocusedDisplayRate(), FTimecode::IsDropFormatTimecodeSupported(Sequencer->GetFocusedDisplayRate()));
 		}
 	}
 #endif //WITH_EDITOR
@@ -335,6 +343,15 @@ void ULevelSequencePlaybackController::ClearActiveLevelSequence()
 #if WITH_EDITOR
 		WeakSequencer = nullptr;
 #endif
+	}
+}
+
+void ULevelSequencePlaybackController::PlayFromBeginning()
+{
+	if (ActiveLevelSequence)
+	{
+		JumpToPlaybackPosition(GetCurrentSequencePlaybackStart());
+		PlayLevelSequence();
 	}
 }
 

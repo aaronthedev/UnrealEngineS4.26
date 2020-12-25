@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GeometryCollection/GeometryCollectionDebugDrawComponent.h"
 
@@ -737,7 +737,7 @@ void UGeometryCollectionDebugDrawComponent::DebugDrawChaosTick()
 	const FGeometryCollectionPhysicsProxy* const PhysicsProxy = GeometryCollectionComponent->GetPhysicsProxy();
 	if (PhysicsProxy)
 	{
-		ParticlesData.Sync(PhysicsProxy->GetSolver<Chaos::FPhysicsSolver>(), RigidBodyIds);
+		ParticlesData.Sync(PhysicsProxy->GetSolver(), RigidBodyIds);
 	}
 
 	// Visualize single rigid body

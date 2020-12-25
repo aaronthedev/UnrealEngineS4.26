@@ -5,7 +5,16 @@
 #include "LC_VirtualMemory.h"
 #include "LC_Platform.h"
 #include "LC_Logging.h"
-#include "LC_BitUtil.h"
+
+
+namespace freelist
+{
+	template <typename T>
+	inline T RoundUpToMultiple(T numToRound, T multipleOf)
+	{
+		return (numToRound + (multipleOf - 1u)) & ~(multipleOf - 1u);
+	}
+}
 
 
 namespace freeList
@@ -29,7 +38,7 @@ namespace freeList
 		// the alignment will always satisfy restrictions while producing the least amount of wasted/unused memory.
 		// furthermore, we must always be able to store a Freelist* in each entry.
 		const size_t minimumSize = sizeof(Slot*) > originalElementSize ? sizeof(Slot*) : originalElementSize;
-		const size_t elementSize = bitUtil::RoundUpToMultiple(minimumSize, alignment);
+		const size_t elementSize = freelist::RoundUpToMultiple(minimumSize, alignment);
 
 		// in order to satisfy alignment restrictions, it suffices to offset the start of the free list only
 		as_void = memoryBlock;

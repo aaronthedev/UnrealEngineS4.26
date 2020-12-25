@@ -1,10 +1,9 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LiveLinkComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Features/IModularFeatures.h"
 #include "GameFramework/Actor.h"
-#include "Misc/App.h"
 #include "Roles/LiveLinkAnimationRole.h"
 
 // Sets default values for this component's properties
@@ -152,7 +151,7 @@ void ULiveLinkComponent::GetSubjectDataAtSceneTime(const FName SubjectName, cons
 	if (HasLiveLinkClient())
 	{
 		FLiveLinkSubjectFrameData FrameData;
-		if (LiveLinkClient->EvaluateFrameAtSceneTime_AnyThread(SubjectName, FQualifiedFrameTime(SceneTime, FApp::GetTimecodeFrameRate()), ULiveLinkAnimationRole::StaticClass(), FrameData))
+		if (LiveLinkClient->EvaluateFrameAtSceneTime_AnyThread(SubjectName, SceneTime, ULiveLinkAnimationRole::StaticClass(), FrameData))
 		{
 			const FLiveLinkSkeletonStaticData* SkeletonData = FrameData.StaticData.Cast<FLiveLinkSkeletonStaticData>();
 			const FLiveLinkAnimationFrameData* AnimationFrameData = FrameData.FrameData.Cast<FLiveLinkAnimationFrameData>();

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MetalRHIPrivate.h: Private Metal RHI definitions.
@@ -12,6 +12,8 @@
 #include "PixelFormat.h"
 
 // Dependencies
+#include "MetalRHI.h"
+#include "RHI.h"
 #import <Metal/Metal.h>
 #import <QuartzCore/CAMetalLayer.h>
 
@@ -42,10 +44,6 @@ const uint32 MetalBufferBytesSize = BufferOffsetAlignment * 2;
 const uint32 MetalBufferBytesSize = BufferOffsetAlignment * 32;
 #endif
 
-#include "MetalRHI.h"
-#include "MetalDynamicRHI.h"
-#include "RHI.h"
-
 #define BUFFER_CACHE_MODE mtlpp::ResourceOptions::CpuCacheModeDefaultCache
 
 #if PLATFORM_MAC
@@ -62,6 +60,10 @@ const uint32 MaxMetalStreams = 31;
 #define BUFFER_DYNAMIC_REALLOC BUF_AnyDynamic
 // How many possible vertex streams are allowed
 const uint32 MaxMetalStreams = 30;
+#endif
+
+#ifndef METAL_STATISTICS
+#define METAL_STATISTICS 0
 #endif
 
 // Unavailable on iOS, but dealing with this clutters the code.
@@ -108,13 +110,21 @@ extern bool GMetalCommandBufferDebuggingEnabled;
 #ifndef ENABLE_METAL_GPUEVENTS_IN_TEST
 	#define ENABLE_METAL_GPUEVENTS_IN_TEST 0
 #endif
-#define ENABLE_METAL_GPUEVENTS	(UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT || (UE_BUILD_TEST && ENABLE_METAL_GPUEVENTS_IN_TEST))
+#define ENABLE_METAL_GPUEVENTS	(UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT || (UE_BUILD_TEST && ENABLE_METAL_GPUEVENTS_IN_TEST) || METAL_STATISTICS)
 #define ENABLE_METAL_GPUPROFILE	(ENABLE_METAL_GPUEVENTS && 1)
 
 #if ENABLE_METAL_GPUPROFILE
 #define METAL_GPUPROFILE(Code) Code
 #else
 #define METAL_GPUPROFILE(Code) 
+#endif
+
+#if METAL_STATISTICS
+#define METAL_STATISTIC(Code) if (GIsMetalInitialized) { Code; }
+#define METAL_STATISTICS_ONLY(Code) Code
+#else
+#define METAL_STATISTIC(Code)
+#define METAL_STATISTICS_ONLY(Code)
 #endif
 
 #define UNREAL_TO_METAL_BUFFER_INDEX(Index) ((MaxMetalStreams - 1) - Index)
@@ -156,7 +166,7 @@ mtlpp::ComputePipelineState GetMetalCopyIndex16Function();
 FMetalDeviceContext& GetMetalDeviceContext();
 
 // Safely release a metal object, correctly handling the case where the RHI has been destructed first
-void METALRHI_API SafeReleaseMetalObject(id Object);
+void SafeReleaseMetalObject(id Object);
 
 // Safely release a metal texture, correctly handling the case where the RHI has been destructed first
 void SafeReleaseMetalTexture(FMetalTexture& Object);
@@ -173,21 +183,7 @@ void SafeReleaseMetalRenderPassDescriptor(mtlpp::RenderPassDescriptor& Desc);
 // Access the underlying surface object from any kind of texture
 FMetalSurface* GetMetalSurfaceFromRHITexture(FRHITexture* Texture);
 
-#define NOT_SUPPORTED(Func) UE_LOG(LogMetal, Fatal, TEXT("'%s' is not supported"), TEXT(Func));
-
-// Verifies we are on the correct thread to mutate internal MetalRHI resources.
-FORCEINLINE void CheckMetalThread()
-{
-    check((IsInRenderingThread() && (!IsRunningRHIInSeparateThread() || !FRHICommandListExecutor::IsRHIThreadActive())) || IsInRHIThread());
-}
-
-FORCEINLINE bool MetalIsSafeToUseRHIThreadResources()
-{
-	// we can use RHI thread resources if we are on the RHIThread or on RenderingThread when there's no RHI thread, or the RHI thread is stalled or inactive
-	return (GIsMetalInitialized && !GIsRHIInitialized) ||
-			IsInRHIThread() ||
-			(IsInRenderingThread() && (!IsRunningRHIInSeparateThread() || !FRHICommandListExecutor::IsRHIThreadActive() || FRHICommandListImmediate::IsStalled() || FRHICommandListExecutor::IsRHIThreadCompletelyFlushed()));
-}
+#define NOT_SUPPORTED(Func) UE_LOG(LogMetal, Fatal, TEXT("'%s' is not supported"), L##Func);
 
 FORCEINLINE mtlpp::IndexType GetMetalIndexType(EMetalIndexType IndexType)
 {
@@ -239,6 +235,8 @@ FORCEINLINE mtlpp::LoadAction GetMetalRTLoadAction(ERenderTargetLoadAction LoadA
 		default: return mtlpp::LoadAction::DontCare;
 	}
 }
+
+uint32 TranslateElementTypeToSize(EVertexElementType Type);
 
 mtlpp::PrimitiveType TranslatePrimitiveType(uint32 PrimitiveType);
 
@@ -328,6 +326,16 @@ FORCEINLINE EMetalShaderStages GetMetalShaderFrequency(EShaderFrequency Stage)
 			return EMetalShaderStages::Num;
 	}
 }
+
+@interface FMetalIAB : FApplePlatformObject<NSObject>
+{
+@public
+	FMetalBuffer IndirectArgumentBuffer;
+	FMetalBuffer IndirectArgumentBufferSideTable;
+	mtlpp::ArgumentEncoder IndirectArgumentEncoder;
+	int64 UpdateIAB;
+}
+@end
 
 #include "MetalStateCache.h"
 #include "MetalContext.h"

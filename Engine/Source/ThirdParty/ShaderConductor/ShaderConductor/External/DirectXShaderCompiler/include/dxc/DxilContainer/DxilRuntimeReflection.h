@@ -137,7 +137,6 @@ public:
   const char *Get(uint32_t offset) const {
     _Analysis_assume_(offset < m_size && m_table &&
                       m_table[m_size - 1] == '\0');
-    (void)m_size; // avoid unused private warning if use above is ignored.
     return m_table + offset;
   }
 };
@@ -186,7 +185,6 @@ public:
       : m_table(table), m_size(size) {}
   const void *Get(uint32_t offset) const {
     _Analysis_assume_(offset < m_size && m_table);
-    (void)m_size; // avoid unused private warning if use above is ignored.
     return (const void*)(((const char*)m_table) + offset);
   }
 };
@@ -221,10 +219,6 @@ struct RuntimeDataSubobjectInfo {
     uint32_t ClosestHit;
     uint32_t Intersection;
   };
-  struct RaytracingPipelineConfig1_t {
-    uint32_t MaxTraceRecursionDepth;
-    uint32_t Flags;
-  };
 
   union {
     StateObjectConfig_t StateObjectConfig;
@@ -233,7 +227,6 @@ struct RuntimeDataSubobjectInfo {
     RaytracingShaderConfig_t RaytracingShaderConfig;
     RaytracingPipelineConfig_t RaytracingPipelineConfig;
     HitGroup_t HitGroup;
-    RaytracingPipelineConfig1_t RaytracingPipelineConfig1;
   };
 };
 
@@ -539,17 +532,6 @@ public:
       m_SubobjectInfo->RaytracingPipelineConfig.MaxTraceRecursionDepth : 0;
   }
 
-  // RaytracingPipelineConfig1
-  uint32_t GetRaytracingPipelineConfig1_MaxTraceRecursionDepth() const {
-    return (GetKind() == DXIL::SubobjectKind::RaytracingPipelineConfig1) ?
-      m_SubobjectInfo->RaytracingPipelineConfig1.MaxTraceRecursionDepth : 0;
-  }
-
-  uint32_t GetRaytracingPipelineConfig1_Flags() const {
-    return (GetKind() == DXIL::SubobjectKind::RaytracingPipelineConfig1) ?
-      m_SubobjectInfo->RaytracingPipelineConfig1.Flags : (uint32_t)0;
-  }
-
   // HitGroup
   DXIL::HitGroupType GetHitGroup_Type() const {
     return (GetKind() == DXIL::SubobjectKind::HitGroup) ?
@@ -590,6 +572,7 @@ public:
 
 class DxilRuntimeData {
 private:
+  uint32_t m_TableCount;
   StringTableReader m_StringReader;
   IndexTableReader m_IndexTableReader;
   RawBytesReader m_RawBytesReader;
@@ -603,6 +586,8 @@ public:
   DxilRuntimeData(const void *ptr, size_t size);
   // initializing reader from RDAT. return true if no error has occured.
   bool InitFromRDAT(const void *pRDAT, size_t size);
+  // read prerelease data:
+  bool InitFromRDAT_Prerelease(const void *pRDAT, size_t size);
   FunctionTableReader *GetFunctionTableReader();
   ResourceTableReader *GetResourceTableReader();
   SubobjectTableReader *GetSubobjectTableReader();
@@ -669,11 +654,6 @@ struct DxilSubobjectDesc {
     LPCWSTR Intersection;
   };
 
-  struct RaytracingPipelineConfig1_t {
-    uint32_t MaxTraceRecursionDepth;
-    uint32_t Flags; // DXIL::RaytracingPipelineFlags / D3D12_RAYTRACING_PIPELINE_FLAGS
-  };
-
   union {
     StateObjectConfig_t StateObjectConfig;
     RootSignature_t RootSignature;    // GlobalRootSignature or LocalRootSignature
@@ -681,7 +661,6 @@ struct DxilSubobjectDesc {
     RaytracingShaderConfig_t RaytracingShaderConfig;
     RaytracingPipelineConfig_t RaytracingPipelineConfig;
     HitGroup_t HitGroup;
-    RaytracingPipelineConfig1_t RaytracingPipelineConfig1;
   };
 };
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -29,7 +29,7 @@ public:
 	 * @param  SignatureObj	
 	 * @return 
 	 */
-	void AddSubObject(FFieldVariant SignatureObj);
+	void AddSubObject(UObject const* SignatureObj);
 
 	/**
 	 * 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BufferVisualizationMenuCommands.h"
 #include "Containers/UnrealString.h"
@@ -16,7 +16,7 @@ namespace
 {
 	struct FMaterialIteratorWithLambda
 	{
-		typedef TFunction<void(const FString&, const UMaterialInterface*, const FText&)> LambdaFunctionType;
+		typedef TFunction<void(const FString&, const UMaterial*, const FText&)> LambdaFunctionType;
 		LambdaFunctionType Lambda;
 
 		inline FMaterialIteratorWithLambda(const LambdaFunctionType& InLambda)
@@ -24,7 +24,7 @@ namespace
 		{
 		}
 
-		inline void ProcessValue(const FString& InMaterialName, const UMaterialInterface* InMaterial, const FText& InDisplayName)
+		inline void ProcessValue(const FString& InMaterialName, const UMaterial* InMaterial, const FText& InDisplayName)
 		{
 			Lambda(InMaterialName, InMaterial, InDisplayName);
 		}
@@ -67,21 +67,21 @@ void FBufferVisualizationMenuCommands::CreateOverviewCommand()
 
 	FBufferVisualizationRecord& OverviewRecord = CommandMap.Add(CommandName, FBufferVisualizationRecord());
 	OverviewRecord.Name = NAME_None;
-	const FText MaterialDisplayDefaultName = FBufferVisualizationData::GetMaterialDefaultDisplayName();
-	OverviewRecord.Command = FUICommandInfoDecl(this->AsShared(), CommandName, MaterialDisplayDefaultName, MaterialDisplayDefaultName)
+	OverviewRecord.Command = FUICommandInfoDecl(this->AsShared(), CommandName, LOCTEXT("BufferVisualization", "Overview"), LOCTEXT("BufferVisualization", "Overview"))
 		.UserInterfaceType(EUserInterfaceActionType::RadioButton)
 		.DefaultChord(FInputChord());
 }
 
 void FBufferVisualizationMenuCommands::CreateVisualizationCommands()
 {
-	FMaterialIteratorWithLambda Iterator([this](const FString& InMaterialName, const UMaterialInterface* InMaterial, const FText& InDisplayName)
+	FMaterialIteratorWithLambda Iterator([this](const FString& InMaterialName, const UMaterial* InMaterial, const FText& InDisplayName)
 	{
 		const FName CommandName = NameFromMaterial(InMaterialName);
 
 		FBufferVisualizationRecord& Record = CommandMap.Add(CommandName, FBufferVisualizationRecord());
 		Record.Name = *InMaterialName;
-		Record.Command = FUICommandInfoDecl(this->AsShared(), CommandName, InDisplayName, InDisplayName)
+		const FText MaterialNameText = FText::FromString(InMaterialName);
+		Record.Command = FUICommandInfoDecl(this->AsShared(), CommandName, MaterialNameText, MaterialNameText)
 			.UserInterfaceType(EUserInterfaceActionType::RadioButton)
 			.DefaultChord(FInputChord());
 	});
@@ -106,7 +106,7 @@ void FBufferVisualizationMenuCommands::AddOverviewCommandToMenu(FMenuBuilder& Me
 {
 	check(CommandMap.Num() > 0);
 
-	Menu.AddMenuEntry(OverviewCommand().Command, NAME_None, FBufferVisualizationData::GetMaterialDefaultDisplayName());
+	Menu.AddMenuEntry(OverviewCommand().Command, NAME_None, LOCTEXT("BufferVisualization", "Overview"));
 }
 
 void FBufferVisualizationMenuCommands::AddVisualizationCommandsToMenu(FMenuBuilder& Menu) const
@@ -115,7 +115,7 @@ void FBufferVisualizationMenuCommands::AddVisualizationCommandsToMenu(FMenuBuild
 
 	const TBufferVisualizationModeCommandMap& Commands = CommandMap;
 
-	FMaterialIteratorWithLambda Iterator([&Menu, &Commands](const FString& InMaterialName, const UMaterialInterface* InMaterial, const FText& InDisplayName)
+	FMaterialIteratorWithLambda Iterator([&Menu, &Commands](const FString& InMaterialName, const UMaterial* InMaterial, const FText& InDisplayName)
 	{
 		const FName CommandName = NameFromMaterial(InMaterialName);
 

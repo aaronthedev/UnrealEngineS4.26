@@ -1,24 +1,19 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PackageDependencyData.h"
 
 FName FPackageDependencyData::GetImportPackageName(int32 ImportIndex)
 {
-	FPackageIndex LinkerIndex = FPackageIndex::FromImport(ImportIndex);
-	while (LinkerIndex.IsImport())
+	FName Result;
+	for (FPackageIndex LinkerIndex = FPackageIndex::FromImport(ImportIndex); !LinkerIndex.IsNull();)
 	{
-		FObjectImport& Resource = Imp(LinkerIndex);
-		// If the import has a package name set, then that's the import package name,
-		if (Resource.HasPackageName())
+		FObjectResource* Resource = &ImpExp(LinkerIndex);
+		LinkerIndex = Resource->OuterIndex;
+		if ( LinkerIndex.IsNull() )
 		{
-			return Resource.GetPackageName();
+			Result = Resource->ObjectName;
 		}
-		// If our outer is null, then we have a package
-		else if (Resource.OuterIndex.IsNull())
-		{
-			return Resource.ObjectName;
-		}
-		LinkerIndex = Resource.OuterIndex;
 	}
-	return NAME_None;
+
+	return Result;
 }

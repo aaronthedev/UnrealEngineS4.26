@@ -1,12 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "../Common.ush"
 #include "../CommonViewUniformBuffer.ush"
 #include "../SceneTextureParameters.ush"
 #include "../DeferredShadingCommon.ush"
 #include "HairStrandsCommon.ush"
-
-#if SHADER_HAIRLUT
 
 #include "../ShadingModels.ush"
 
@@ -32,10 +30,9 @@ RWTexture3D<float4>	OutputColor;
 	return float(bits) * 2.3283064365386963e-10; // / 0x100000000
  }
 
-float2 hammersley2d(uint i, uint N) 
-{
-	return float2(float(i)/float(N), radicalInverse_VdC(i));
-}
+ float2 hammersley2d(uint i, uint N) {
+     return float2(float(i)/float(N), radicalInverse_VdC(i));
+ }
 
 #define TILE_PIXEL_SIZE 8
 #define JITTER_VIEW 0
@@ -90,10 +87,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	FGBufferData GBufferData;
 	GBufferData.Specular  	= 0.5f;
-	GBufferData.BaseColor	= ToLinearAbsorption(Absorption.xxx);	// Perceptual absorption
-	GBufferData.Metallic	= 0;		 							// This disable the fake multiple scattering
-	GBufferData.Roughness 	= Roughness; 							// Perceptual roughness
-	GBufferData.CustomData  = float4(0, 0, 1, 0); 					// Backlit
+	GBufferData.BaseColor	= Absorption.xxx;		// Perceptual absorption
+	GBufferData.Metallic	= 0;		 			// This disable the fake multiple scattering
+	GBufferData.Roughness 	= Roughness; 			// Perceptual roughness
 
 	float FrontHemisphereOutput = 0;
 	float BackHemisphereOutput  = 0;
@@ -110,8 +106,7 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float3 N = float3(0,0,1); // N is the vector parallel to hair pointing toward root. I.e., the tangent T is up
 	const float3 V = float3(CosAngle, 0, SinAngle);
 	const float OpaqueVisibility = 1;
-	FHairTransmittanceData TransmittanceData = InitHairStrandsTransmittanceData();
-	TransmittanceData.bUseSeparableR = true;
+	const FHairTransmittanceData TransmittanceData = InitHairTransmittanceData();
 
 	const float MaxCosThetaRadius = cos(0.25f * PI / float(ThetaCount)); // [0, Pi/2] / ThetaCount which is divided by 2 for getting the actual radius
 	float3x3 ToViewBasis = GetTangentBasis(V);
@@ -143,21 +138,18 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 		const float3 L = SampleDirection.xyz;
         const float3 BSDFValue = HairShading(GBufferData, L, JitteredV, N, OpaqueVisibility, TransmittanceData, Backlit, Area, 0);
 		
-		// As in the original paper "Dual scattering approximation for fast multiple-scattering in hair", the average front/back scatter are cos-weighted (eq. 12). 
-		const float CosL = 1.f;// abs(SampleDirection.x);
-
 		// The view direction is aligned with the positive X Axis. This means:
 		// * the back hemisphere (R / TRT) is on the positive side of X
 		// * the front hemisphere (TT) is on the negative side of X
 		const bool bIsBackHemisphere = SampleDirection.x > 0;
 		if (bIsBackHemisphere)
 		{
-			BackHemisphereOutput += CosL * BSDFValue.x / SamplePdf;
+			BackHemisphereOutput += BSDFValue.x / SamplePdf;
 			++BackHemisphereCount;
 		}
 		else
 		{
-			FrontHemisphereOutput += CosL * BSDFValue.x / SamplePdf;
+			FrontHemisphereOutput += BSDFValue.x / SamplePdf;
 			++FrontHemisphereCount;
 		}
 	}
@@ -204,10 +196,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 
 	FGBufferData GBufferData;
 	GBufferData.Specular = 0.5f;
-	GBufferData.BaseColor = ToLinearAbsorption(Absorption.xxx);	// Perceptual absorption
-	GBufferData.Metallic = 0;		 							// This disable the fake multiple scattering
-	GBufferData.Roughness = Roughness; 							// Perceptual roughness
-	GBufferData.CustomData = float4(0,0,1,0); 					// Backlit
+	GBufferData.BaseColor = Absorption.xxx;		// Perceptual absorption
+	GBufferData.Metallic = 0;		 			// This disable the fake multiple scattering
+	GBufferData.Roughness = Roughness; 			// Perceptual roughness
 
 	float R_Output = 0;
 	float TT_Output = 0;
@@ -223,9 +214,9 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 	const float3 N = float3(0, 0, 1); // N is the vector parallel to hair pointing toward root. I.e., the tangent T is up
 	const float3 V = float3(CosAngle, 0, SinAngle);
 	const float OpaqueVisibility = 1;
-	FHairTransmittanceData Setting_R   = InitHairStrandsTransmittanceData(); Setting_R.ScatteringComponent		= HAIR_COMPONENT_R;
-	FHairTransmittanceData Setting_TT  = InitHairStrandsTransmittanceData(); Setting_TT.ScatteringComponent		= HAIR_COMPONENT_TT;
-	FHairTransmittanceData Setting_TRT = InitHairStrandsTransmittanceData(); Setting_TRT.ScatteringComponent	= HAIR_COMPONENT_TRT;
+	FHairTransmittanceData Setting_R   = InitHairTransmittanceData(); Setting_R.ScatteringComponent		= HAIR_COMPONENT_R;
+	FHairTransmittanceData Setting_TT  = InitHairTransmittanceData(); Setting_TT.ScatteringComponent	= HAIR_COMPONENT_TT;
+	FHairTransmittanceData Setting_TRT = InitHairTransmittanceData(); Setting_TRT.ScatteringComponent	= HAIR_COMPONENT_TRT;
 
 	const float MaxCosThetaRadius = cos(0.25f * PI / float(ThetaCount)); // [0, Pi/2] / ThetaCount which is divided by 2 for getting the actual radius
 	float3x3 ToViewBasis = GetTangentBasis(V);
@@ -273,28 +264,3 @@ void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
 }
 
 #endif
-
-#endif // SHADER_HAIRLUT
-
-
-#if SHADER_HAIRCOVERAGE
-
-int2 OutputResolution;
-StructuredBuffer<float> InputBuffer;
-RWTexture2D<float> OutputTexture;
-
-#define TILE_PIXEL_SIZE 8
-
-[numthreads(TILE_PIXEL_SIZE, TILE_PIXEL_SIZE, 1)]
-void MainCS(uint3 DispatchThreadId : SV_DispatchThreadID)
-{
-	const int2 PixelCoord = DispatchThreadId.xy;
-	if (any(PixelCoord > OutputResolution))
-	{
-		return;
-	}
-
-	const uint Index = PixelCoord.x + PixelCoord.y * OutputResolution.x;
-	OutputTexture[PixelCoord] = InputBuffer[Index];
-}
-#endif // SHADER_HAIRCOVERAGE

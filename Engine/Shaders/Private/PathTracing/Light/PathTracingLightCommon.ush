@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================================
 LightCommon.usf: Common utility functions for light sampling
@@ -87,9 +87,9 @@ float GetDepth(int LightId)
 	return SceneLightsData.Dimensions[LightId].z;
 }
 
-float2 GetCosConeAngles(int LightId)
+float GetCosConeAngle(int LightId)
 {
-	return SceneLightsData.Dimensions[LightId].xy;
+	return SceneLightsData.Dimensions[LightId].x;
 }
 
 float3 GetColor(int LightId)
@@ -130,14 +130,4 @@ float ComputeAttenuationFalloff(float Distance, float Attenuation)
 #else
 	return 1.0;
 #endif
-}
-
-bool HasTransmission(int LightId)
-{
-	return SceneLightsData.Flags[LightId] & 0x01;
-}
-
-uint GetLightingChannelMask(int LightId)
-{
-	return (SceneLightsData.Flags[LightId] >> 1) & 0x7;
 }

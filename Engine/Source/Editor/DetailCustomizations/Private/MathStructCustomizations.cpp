@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Customizations/MathStructCustomizations.h"
 #include "UObject/UnrealType.h"
@@ -87,12 +87,6 @@ void FMathStructCustomization::MakeHeaderRow(TSharedRef<class IPropertyHandle>& 
 		TSharedRef<SWidget> NumericEntryBox = MakeChildWidget(StructPropertyHandle, ChildHandle);
 		NumericEntryBoxWidgetList.Add(NumericEntryBox);
 
-		NumericEntryBox->SetToolTipText(MakeAttributeLambda([StructPropertyHandle] {
-			FText result;
-			StructPropertyHandle->GetValueAsDisplayText(result);
-			return result;
-		}));
-
 		HorizontalBox->AddSlot()
 		.Padding(FMargin(0.0f, 2.0f, bLastChild ? 0.0f : 3.0f, 2.0f))
 		[
@@ -166,7 +160,7 @@ void FMathStructCustomization::GetSortedChildren(TSharedRef<IPropertyHandle> Str
 template<typename NumericType>
 void FMathStructCustomization::ExtractNumericMetadata(TSharedRef<IPropertyHandle>& PropertyHandle, TOptional<NumericType>& MinValue, TOptional<NumericType>& MaxValue, TOptional<NumericType>& SliderMinValue, TOptional<NumericType>& SliderMaxValue, NumericType& SliderExponent, NumericType& Delta, int32 &ShiftMouseMovePixelPerDelta, bool& SupportDynamicSliderMaxValue, bool& SupportDynamicSliderMinValue)
 {
-	FProperty* Property = PropertyHandle->GetProperty();
+	UProperty* Property = PropertyHandle->GetProperty();
 
 	const FString& MetaUIMinString = Property->GetMetaData(TEXT("UIMin"));
 	const FString& MetaUIMaxString = Property->GetMetaData(TEXT("UIMax"));
@@ -364,33 +358,33 @@ TSharedRef<SWidget> FMathStructCustomization::MakeChildWidget(
 	TSharedRef<IPropertyHandle>& StructurePropertyHandle,
 	TSharedRef<IPropertyHandle>& PropertyHandle)
 {
-	const FFieldClass* PropertyClass = PropertyHandle->GetPropertyClass();
+	const UClass* PropertyClass = PropertyHandle->GetPropertyClass();
 	
-	if (PropertyClass == FFloatProperty::StaticClass())
+	if (PropertyClass == UFloatProperty::StaticClass())
 	{
 		return MakeNumericWidget<float>(StructurePropertyHandle, PropertyHandle);
 	}
 	
-	if (PropertyClass == FIntProperty::StaticClass())
+	if (PropertyClass == UIntProperty::StaticClass())
 	{
 		return MakeNumericWidget<int32>(StructurePropertyHandle, PropertyHandle);
 	}
 
-	if (PropertyClass == FByteProperty::StaticClass())
+	if (PropertyClass == UByteProperty::StaticClass())
 	{
 		return MakeNumericWidget<uint8>(StructurePropertyHandle, PropertyHandle);
 	}
 
-	if (PropertyClass == FEnumProperty::StaticClass())
+	if (PropertyClass == UEnumProperty::StaticClass())
 	{
-		const FEnumProperty* EnumPropertyClass = static_cast<const FEnumProperty*>(PropertyHandle->GetProperty());
-		const FProperty* Enum = EnumPropertyClass->GetUnderlyingProperty();
-		const FFieldClass* EnumClass = Enum->GetClass();
-		if (EnumClass == FByteProperty::StaticClass())
+		const UEnumProperty* EnumPropertyClass = static_cast<const UEnumProperty*>(PropertyHandle->GetProperty());
+		const UProperty* Enum = EnumPropertyClass->GetUnderlyingProperty();
+		const UClass* EnumClass = Enum->GetClass();
+		if (EnumClass == UByteProperty::StaticClass())
 		{
 			return MakeNumericWidget<uint8>(StructurePropertyHandle, PropertyHandle);
 		}
-		else if (EnumClass == FIntProperty::StaticClass())
+		else if (EnumClass == UIntProperty::StaticClass())
 		{
 			return MakeNumericWidget<int32>(StructurePropertyHandle, PropertyHandle);
 		}

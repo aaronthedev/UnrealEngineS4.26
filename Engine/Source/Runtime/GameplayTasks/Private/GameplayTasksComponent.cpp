@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayTasksComponent.h"
 #include "UObject/Package.h"
@@ -9,7 +9,6 @@
 #include "VisualLogger/VisualLogger.h"
 #include "GameplayTasksPrivate.h"
 #include "Logging/MessageLog.h"
-#include "Net/Core/PushModel/PushModel.h"
 
 #define LOCTEXT_NAMESPACE "GameplayTasksComponent"
 
@@ -77,9 +76,8 @@ void UGameplayTasksComponent::OnGameplayTaskActivated(UGameplayTask& Task)
 	
 	if (Task.IsSimulatedTask())
 	{
-		TArray<UGameplayTask*>& MutableSimulatedTasks = GetSimulatedTasks_Mutable();
-		check(MutableSimulatedTasks.Contains(&Task) == false);
-		MutableSimulatedTasks.Add(&Task);
+		check(SimulatedTasks.Contains(&Task) == false);
+		SimulatedTasks.Add(&Task);
 		bIsNetDirty = true;
 	}
 
@@ -124,7 +122,7 @@ void UGameplayTasksComponent::OnGameplayTaskDeactivated(UGameplayTask& Task)
 
 	if (Task.IsSimulatedTask())
 	{
-		GetSimulatedTasks_Mutable().RemoveSingleSwap(&Task);
+		SimulatedTasks.RemoveSingleSwap(&Task);
 		bIsNetDirty = true;
 	}
 
@@ -154,11 +152,7 @@ void UGameplayTasksComponent::GetLifetimeReplicatedProps(TArray< FLifetimeProper
 	// Intentionally not calling super: We do not want to replicate bActive which controls ticking. We sometimes need to tick on client predictively.
 	DISABLE_ALL_CLASS_REPLICATED_PROPERTIES(Super, EFieldIteratorFlags::IncludeSuper);
 
-	FDoRepLifetimeParams Params;
-	Params.bIsPushBased = true;
-	Params.Condition = COND_SkipOwner;
-
-	DOREPLIFETIME_WITH_PARAMS_FAST(UGameplayTasksComponent, SimulatedTasks, Params);
+	DOREPLIFETIME_CONDITION(UGameplayTasksComponent, SimulatedTasks, COND_SkipOwner);
 }
 
 bool UGameplayTasksComponent::ReplicateSubobjects(UActorChannel* Channel, class FOutBunch *Bunch, FReplicationFlags *RepFlags)
@@ -167,7 +161,7 @@ bool UGameplayTasksComponent::ReplicateSubobjects(UActorChannel* Channel, class 
 	
 	if (!RepFlags->bNetOwner)
 	{
-		for (UGameplayTask* SimulatedTask : GetSimulatedTasks())
+		for (UGameplayTask* SimulatedTask : SimulatedTasks)
 		{
 			if (SimulatedTask && !SimulatedTask->IsPendingKill())
 			{
@@ -181,7 +175,7 @@ bool UGameplayTasksComponent::ReplicateSubobjects(UActorChannel* Channel, class 
 
 void UGameplayTasksComponent::OnRep_SimulatedTasks()
 {
-	for (UGameplayTask* SimulatedTask : GetSimulatedTasks())
+	for (UGameplayTask* SimulatedTask : SimulatedTasks)
 	{
 		// Temp check 
 		if (SimulatedTask && SimulatedTask->IsTickingTask() && TickingTasks.Contains(SimulatedTask) == false)
@@ -679,19 +673,6 @@ EGameplayTaskRunResult UGameplayTasksComponent::RunGameplayTask(IGameplayTaskOwn
 	}
 
 	return EGameplayTaskRunResult::Error;
-}
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-TArray<UGameplayTask*>& UGameplayTasksComponent::GetSimulatedTasks_Mutable()
-{
-	MARK_PROPERTY_DIRTY_FROM_NAME(UGameplayTasksComponent, SimulatedTasks, this);
-	return SimulatedTasks;
-}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
-void UGameplayTasksComponent::SetSimulatedTasks(const TArray<UGameplayTask*>& NewSimulatedTasks)
-{
-	GetSimulatedTasks_Mutable() = NewSimulatedTasks;
 }
 
 //----------------------------------------------------------------------//

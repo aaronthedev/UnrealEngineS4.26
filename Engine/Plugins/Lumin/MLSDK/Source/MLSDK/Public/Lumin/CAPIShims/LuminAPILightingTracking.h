@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,19 +10,19 @@ LUMIN_THIRD_PARTY_INCLUDES_START
 #include <ml_lighting_tracking.h>
 LUMIN_THIRD_PARTY_INCLUDES_END
 
-namespace LUMIN_MLSDK_API
+namespace MLSDK_API
 {
 
 CREATE_FUNCTION_SHIM(ml_perception_client, MLResult, MLLightingTrackingCreate)
-#define MLLightingTrackingCreate ::LUMIN_MLSDK_API::MLLightingTrackingCreateShim
+#define MLLightingTrackingCreate ::MLSDK_API::MLLightingTrackingCreateShim
 CREATE_FUNCTION_SHIM(ml_perception_client, MLResult, MLLightingTrackingDestroy)
-#define MLLightingTrackingDestroy ::LUMIN_MLSDK_API::MLLightingTrackingDestroyShim
+#define MLLightingTrackingDestroy ::MLSDK_API::MLLightingTrackingDestroyShim
 CREATE_FUNCTION_SHIM(ml_perception_client, MLResult, MLLightingTrackingGetAmbientGlobalState)
-#define MLLightingTrackingGetAmbientGlobalState ::LUMIN_MLSDK_API::MLLightingTrackingGetAmbientGlobalStateShim
+#define MLLightingTrackingGetAmbientGlobalState ::MLSDK_API::MLLightingTrackingGetAmbientGlobalStateShim
 CREATE_FUNCTION_SHIM(ml_perception_client, MLResult, MLLightingTrackingGetAmbientGridState)
-#define MLLightingTrackingGetAmbientGridState ::LUMIN_MLSDK_API::MLLightingTrackingGetAmbientGridStateShim
+#define MLLightingTrackingGetAmbientGridState ::MLSDK_API::MLLightingTrackingGetAmbientGridStateShim
 CREATE_FUNCTION_SHIM(ml_perception_client, MLResult, MLLightingTrackingGetColorTemperatureState)
-#define MLLightingTrackingGetColorTemperatureState ::LUMIN_MLSDK_API::MLLightingTrackingGetColorTemperatureStateShim
+#define MLLightingTrackingGetColorTemperatureState ::MLSDK_API::MLLightingTrackingGetColorTemperatureStateShim
 
 }
 

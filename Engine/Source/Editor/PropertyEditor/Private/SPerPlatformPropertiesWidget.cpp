@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SPerPlatformPropertiesWidget.h"
 #include "Layout/Margin.h"
@@ -40,7 +40,7 @@ void SPerPlatformPropertiesWidget::ConstructChildren()
 	.HAlign(HAlign_Fill)
 	[
 		SAssignNew(WrapBox, SWrapBox)
-		.UseAllottedSize(true)
+		.UseAllottedWidth(true)
 	];
 
 	if (OnGenerateWidget.IsBound())

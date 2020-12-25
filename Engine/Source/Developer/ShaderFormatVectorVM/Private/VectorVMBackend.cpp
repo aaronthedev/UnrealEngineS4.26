@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VectorVMBackend.h"
 #include "ShaderFormatVectorVM.h"
@@ -140,16 +140,6 @@ class ir_remove_empty_stat_scopes : public ir_hierarchical_visitor
 				EnterCall->remove();
 				call->remove();
 			}
-			else if (StatScopeAssingmentCounts.Num() > 0)
-			{
-				// On leaving a non-empty scope, we add their assignments to the outer scope.
-				// Without this, nested scopes can be removed although they are not empty.
-				StatScopeAssingmentCounts.Last() += NumAssignments;
-			}
-		}
-		else if (StatScopeAssingmentCounts.Num() > 0)
-		{
-			++StatScopeAssingmentCounts.Last();
 		}
 		return visit_continue_with_parent;
 	}
@@ -189,10 +179,6 @@ char* FVectorVMCodeBackend::GenerateCode(exec_list* ir, _mesa_glsl_parse_state* 
 	ir_make_external_funcs_builtin::run(ir, state);
 
 	FlattenUniformBufferStructures(ir, state);
-
-	// The vector VM doesn't support dynamic loops, and the codegen panics if it sees loops. We'll just set the unroll threshold
-	// to a very large value, to make sure loops are always unrolled.
-	state->maxunrollcount = 16384;
 
 	state->conservative_propagation = false;
 	{

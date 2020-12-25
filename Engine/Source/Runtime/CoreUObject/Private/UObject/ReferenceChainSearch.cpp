@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UObject/ReferenceChainSearch.h"
 #include "HAL/PlatformStackWalk.h"
@@ -11,14 +11,12 @@
 DEFINE_LOG_CATEGORY_STATIC(LogReferenceChain, Log, All);
 
 // Returns true if the object can't be collected by GC
-static FORCEINLINE bool IsNonGCObject(UObject* Object, EReferenceChainSearchMode SearchMode)
+static FORCEINLINE bool IsNonGCObject(UObject* Object)
 {
 	FUObjectItem* ObjectItem = GUObjectArray.ObjectToObjectItem(Object);
 	return (ObjectItem->IsRootSet() ||
 		ObjectItem->HasAnyFlags(EInternalObjectFlags::GarbageCollectionKeepFlags) ||
-		(GARBAGE_COLLECTION_KEEPFLAGS != RF_NoFlags && Object->HasAnyFlags(GARBAGE_COLLECTION_KEEPFLAGS) && !(SearchMode & EReferenceChainSearchMode::FullChain))
-		
-		);
+		(GARBAGE_COLLECTION_KEEPFLAGS != RF_NoFlags && Object->HasAnyFlags(GARBAGE_COLLECTION_KEEPFLAGS)));
 }
 
 FReferenceChainSearch::FGraphNode* FReferenceChainSearch::FindOrAddNode(TMap<UObject*, FGraphNode*>& AllNodes, UObject* InObjectToFindNodeFor)
@@ -39,7 +37,7 @@ FReferenceChainSearch::FGraphNode* FReferenceChainSearch::FindOrAddNode(TMap<UOb
 	return ObjectNode;
 }
 
-int32 FReferenceChainSearch::BuildReferenceChains(FGraphNode* TargetNode, TArray<FReferenceChain*>& ProducedChains, int32 ChainDepth, const int32 VisitCounter, EReferenceChainSearchMode SearchMode)
+int32 FReferenceChainSearch::BuildReferenceChains(FGraphNode* TargetNode, TArray<FReferenceChain*>& ProducedChains, int32 ChainDepth, const int32 VisitCounter)
 {
 	int32 ProducedChainsCount = 0;
 	if (TargetNode->Visited != VisitCounter)
@@ -47,7 +45,7 @@ int32 FReferenceChainSearch::BuildReferenceChains(FGraphNode* TargetNode, TArray
 		TargetNode->Visited = VisitCounter;
 
 		// Stop at root objects
-		if (!IsNonGCObject(TargetNode->Object, SearchMode))
+		if (!IsNonGCObject(TargetNode->Object))
 		{			
 			for (FGraphNode* ReferencedByNode : TargetNode->ReferencedByObjects)
 			{
@@ -55,7 +53,7 @@ int32 FReferenceChainSearch::BuildReferenceChains(FGraphNode* TargetNode, TArray
 				if (ReferencedByNode->Visited != VisitCounter)
 				{
 					int32 OldChainsCount = ProducedChains.Num();
-					int32 NewChainsCount = BuildReferenceChains(ReferencedByNode, ProducedChains, ChainDepth + 1, VisitCounter, SearchMode);
+					int32 NewChainsCount = BuildReferenceChains(ReferencedByNode, ProducedChains, ChainDepth + 1, VisitCounter);
 					// Insert the current node to all chains produced recursively
 					for (int32 NewChainIndex = OldChainsCount; NewChainIndex < (NewChainsCount + OldChainsCount); ++NewChainIndex)
 					{
@@ -141,7 +139,7 @@ void FReferenceChainSearch::BuildReferenceChains(FGraphNode* TargetNode, TArray<
 		
 		AllChains.Reset();
 		const int32 MinChainDepth = 2; // The chain will contain at least the TargetNode and the ReferencedByNode
-		BuildReferenceChains(ReferencedByNode, AllChains, MinChainDepth, VisitCounter, SearchMode);
+		BuildReferenceChains(ReferencedByNode, AllChains, MinChainDepth, VisitCounter);
 		for (FReferenceChain* Chain : AllChains)
 		{
 			Chain->InsertNode(TargetNode);
@@ -368,7 +366,7 @@ public:
 #if ENABLE_GC_OBJECT_CHECKS
 			if (TokenIndex >= 0)
 			{
-				FTokenInfo TokenInfo = ReferencingObject->GetClass()->ReferenceTokenStream.GetTokenInfo(TokenIndex);
+				const FTokenInfo& TokenInfo = ReferencingObject->GetClass()->DebugTokenMap.GetTokenInfo(TokenIndex);
 				RefInfo.ReferencerName = TokenInfo.Name;
 				RefInfo.Type = FReferenceChainSearch::EReferenceType::Property;
 			}
@@ -445,12 +443,7 @@ void FReferenceChainSearch::FindDirectReferencesForObjects()
 {
 	TSet<FObjectReferenceInfo> ReferencedObjects;
 	FDirectReferenceProcessor Processor(ObjectToFindReferencesTo, ReferencedObjects);
-	TFastReferenceCollector<
-		FDirectReferenceProcessor, 
-		FDirectReferenceCollector, 
-		FGCArrayPool, 
-		EFastReferenceCollectorOptions::AutogenerateTokenStream | EFastReferenceCollectorOptions::ProcessNoOpTokens
-	> ReferenceCollector(Processor, FGCArrayPool::Get());
+	TFastReferenceCollector<false, FDirectReferenceProcessor, FDirectReferenceCollector, FGCArrayPool, true> ReferenceCollector(Processor, FGCArrayPool::Get());
 	FGCArrayStruct ArrayStruct;
 	TArray<UObject*>& ObjectsToProcess = ArrayStruct.ObjectsToSerialize;
 

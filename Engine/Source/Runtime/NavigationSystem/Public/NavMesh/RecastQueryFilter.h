@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once 
 
@@ -29,7 +29,6 @@ public:
 	virtual void GetAllAreaCosts(float* CostArray, float* FixedCostArray, const int32 Count) const override;
 	virtual void SetBacktrackingEnabled(const bool bBacktracking) override;
 	virtual bool IsBacktrackingEnabled() const override;
-	virtual float GetHeuristicScale() const override;
 	virtual bool IsEqual(const INavigationQueryFilterInterface* Other) const override;
 	virtual void SetIncludeFlags(uint16 Flags) override;
 	virtual uint16 GetIncludeFlags() const override;
@@ -40,8 +39,7 @@ public:
 
 	const dtQueryFilter* GetAsDetourQueryFilter() const { return this; }
 
-	/** Changes whether the filter will use virtual set of filtering functions (getVirtualCost and passVirtualFilter)
-	 *	or the inlined ones (getInlineCost and passInlineFilter) */
+	/** note that it results in losing all area cost setup. Call it before setting anything else */
 	void SetIsVirtual(bool bIsVirtual);
 
 	/** Instruct filter whether it can reopen nodes already on closed list */

@@ -15,13 +15,12 @@
 #include "test/unit_spirv.h"
 
 #include "gmock/gmock.h"
-#include "source/util/string_utils.h"
 #include "test/test_fixture.h"
 
 namespace spvtools {
 namespace {
 
-using utils::MakeVector;
+using spvtest::MakeVector;
 using ::testing::Eq;
 using Words = std::vector<uint32_t>;
 

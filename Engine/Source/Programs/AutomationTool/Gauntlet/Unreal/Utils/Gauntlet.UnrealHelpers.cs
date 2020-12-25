@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -223,7 +223,7 @@ namespace Gauntlet
 			// todo , how to find this?
 			if (Platform == UnrealTargetPlatform.Android)
 			{
-				ExeName += "-arm64";
+				ExeName += "-arm64-es2";
 			}
 
 			// not all platforms use an extension

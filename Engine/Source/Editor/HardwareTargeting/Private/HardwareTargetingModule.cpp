@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "HardwareTargetingModule.h"
 #include "HAL/FileManager.h"
@@ -43,7 +43,7 @@ struct FMetaSettingGatherer
 	{
 	}
 
-	void AddEntry(UObject* SettingsObject, FProperty* Property, FText NewValue, bool bModified)
+	void AddEntry(UObject* SettingsObject, UProperty* Property, FText NewValue, bool bModified)
 	{
 		if (bModified || bIncludeUnmodifiedProperties)
 		{
@@ -125,7 +125,7 @@ static FName HardwareTargetingConsoleVariableMetaFName(TEXT("ConsoleVariable"));
 { \
 	Class* SettingsObject = GetMutableDefault<Class>(); \
 	bool bModified = SettingsObject->PropertyName != (TargetValue); \
-	FProperty* Property = FindFieldChecked<FProperty>(Class::StaticClass(), GET_MEMBER_NAME_CHECKED(Class, PropertyName)); \
+	UProperty* Property = FindFieldChecked<UProperty>(Class::StaticClass(), GET_MEMBER_NAME_CHECKED(Class, PropertyName)); \
 	if (!Builder.bReadOnly) { \
 		const FString& CVarName = Property->GetMetaData(HardwareTargetingConsoleVariableMetaFName); \
 		if (!CVarName.IsEmpty()) { IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(*CVarName); \
@@ -222,18 +222,21 @@ void FHardwareTargetingModule::GatherSettings(FMetaSettingGatherer& Builder)
 	const bool bAnyScalable = Settings->DefaultGraphicsPerformance == EGraphicsPreset::Scalable;
 
 	{
+		// Based roughly on https://docs.unrealengine.com/latest/INT/Platforms/Mobile/PostProcessEffects/index.html
+		UE_META_SETTING_ENTRY(Builder, URendererSettings, bMobileHDR, !bLowEndMobile);
+
 		// Bloom works and isn't terribly expensive on anything beyond low-end
 		UE_META_SETTING_ENTRY(Builder, URendererSettings, bDefaultFeatureBloom, !bLowEndMobile);
 
-		// Separate translucency
+		// Separate translucency does nothing in the ES2 renderer
 		UE_META_SETTING_ENTRY(Builder, URendererSettings, bSeparateTranslucency, !bAnyMobile);
 
-		// Motion blur, auto-exposure, and ambient occlusion
+		// Motion blur, auto-exposure, and ambient occlusion don't work in the ES2 renderer
 		UE_META_SETTING_ENTRY(Builder, URendererSettings, bDefaultFeatureMotionBlur, bHighEndPC);
 		UE_META_SETTING_ENTRY(Builder, URendererSettings, bDefaultFeatureAutoExposure, bHighEndPC);
 		UE_META_SETTING_ENTRY(Builder, URendererSettings, bDefaultFeatureAmbientOcclusion, bAnyPC);
 
-		// lens flare
+		// lens flare doesn't work in the ES2 renderer, the quality is low and the feature is controversial
 		UE_META_SETTING_ENTRY(Builder, URendererSettings, bDefaultFeatureLensFlare, false);
 
 		// DOF and AA work on mobile but are expensive, keeping them off by default

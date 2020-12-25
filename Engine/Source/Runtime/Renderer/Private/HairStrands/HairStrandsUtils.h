@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	HairStrandsUtils.h: Hair strands utils.
@@ -10,8 +10,6 @@
 #include "RendererInterface.h"
 #include "HairStrandsInterface.h"
 #include "SceneTypes.h"
-
-class FViewInfo;
 
 FIntRect ComputeProjectedScreenRect(const FBox& B, const FViewInfo& View);
 
@@ -30,16 +28,13 @@ struct FHairComponent
 	bool TRT = true;
 	bool GlobalScattering = true;
 	bool LocalScattering = true;
-	bool TTModel = false;
 };
 FHairComponent GetHairComponents();
 uint32 ToBitfield(const FHairComponent& Component);
 
-float GetHairDualScatteringRoughnessOverride();
-
 float SampleCountToSubPixelSize(uint32 SamplePerPixelCount);
 
-FIntRect ComputeVisibleHairStrandsMacroGroupsRect(const FIntRect& ViewRect, const struct FHairStrandsMacroGroupDatas& Datas);
+FIntRect ComputeVisibleHairStrandsClustersRect(const FIntRect& ViewRect, const struct FHairStrandsClusterDatas& ClusterDatas);
 
 bool IsHairStrandsViewRectOptimEnable();
 
@@ -55,14 +50,5 @@ EHairVisibilityVendor GetVendor();
 uint32 GetVendorOptimalGroupSize1D();
 FIntPoint GetVendorOptimalGroupSize2D();
 
-bool IsHairStrandsComposeAfterTranslucency();
+RENDERER_API bool IsHairStrandsSupported(const EShaderPlatform Platform);
 
-FVector4 PackHairRenderInfo(
-	float PrimaryRadiusAtDepth1,
-	float StableRadiusAtDepth1,
-	float VelocityRadiusAtDepth1,
-	float VelocityScale);
-
-uint32 PackHairRenderInfoBits(
-	bool bIsOrtho,
-	bool bIsGPUDriven);

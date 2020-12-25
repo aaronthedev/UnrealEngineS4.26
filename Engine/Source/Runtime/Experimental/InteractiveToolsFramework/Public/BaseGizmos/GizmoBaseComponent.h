@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -20,18 +20,9 @@ class INTERACTIVETOOLSFRAMEWORK_API UGizmoBaseComponent : public UPrimitiveCompo
 public:
 	UGizmoBaseComponent()
 	{
-		bUseEditorCompositing = false;
+		bUseEditorCompositing = true;
 	}
 
-	/**
-	 * Currently this must be called if you change UProps on Base or subclass,
-	 * to recreate render proxy which has a local copy of those settings
-	 */
-	void NotifyExternalPropertyUpdates()
-	{
-		MarkRenderStateDirty();
-		UpdateBounds();
-	}
 
 public:
 	UPROPERTY(EditAnywhere, Category = Options)

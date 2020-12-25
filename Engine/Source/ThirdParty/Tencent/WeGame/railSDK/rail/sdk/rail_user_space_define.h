@@ -1,5 +1,6 @@
-﻿// Copyright (C) 2020, Entropy Game Global Limited.
+﻿// Copyright (c) 2016, Entropy Game Global Limited.
 // All rights reserved.
+// User space define
 
 #ifndef RAIL_SDK_RAIL_USER_SPACE_DEFINE_H
 #define RAIL_SDK_RAIL_USER_SPACE_DEFINE_H
@@ -48,15 +49,11 @@ enum EnumRailSpaceWorkOrderBy {
     kRailSpaceWorkOrderByLastUpdateTime = 0,   // ordered by last update time
     kRailSpaceWorkOrderByCreateTime = 1,       // ordered by create time
     kRailSpaceWorkOrderByDownloadCount = 2,    // ordered by download count
-    kRailSpaceWorkOrderByScore = 3,            // deprecated, use kRailSpaceWorkOrderByRate
-                                               // instead. ordered by score of this space work
+    kRailSpaceWorkOrderByScore = 3,            // ordered by score of this space work
     kRailSpaceWorkOrderBySubscribedCount = 4,  // ordered by subscribed count
-    kRailSpaceWorkOrderByRate = 10,            // ordered by score
-    kRailSpaceWorkOrderByBestMatch = 11,       // only supported in search
 };
 
-// deprecated, use EnumRailSpaceWorkRateValue instead.
-// the score can be used to vote a space work.
+// the score can be used to vote a space work
 enum EnumRailSpaceWorkVoteValue {
     kRailSpaceWorkVoteZero = 0,
     kRailSpaceWorkVoteOne = 1,
@@ -64,11 +61,6 @@ enum EnumRailSpaceWorkVoteValue {
     kRailSpaceWorkVoteThree = 3,
     kRailSpaceWorkVoteFour = 4,
     kRailSpaceWorkVoteFive = 5,
-};
-
-enum EnumRailSpaceWorkRateValue {
-    kRailSpaceWorkVoteDown = 1,
-    kRailSpaceWorkVoteUp = 5,
 };
 
 enum EnumRailWorkFileClass {
@@ -84,12 +76,6 @@ enum EnumRailSpaceWorkSyncState {
 enum EnumRailModifyFavoritesSpaceWorkType {
     kRailModifyFavoritesSpaceWorkTypeAdd = 1,
     kRailModifyFavoritesSpaceWorkTypeRemove = 2,
-};
-
-enum EnumRailSpaceworkQueryType {
-    kRailSpaceworkQueryMySubscribed = 1,
-    kRailSpaceworkQueryMyFavorite = 2,
-    kRailSpaceworkQueryByUsers = 3,
 };
 
 // the filter used by space work query
@@ -112,14 +98,12 @@ struct RailQueryWorkFileOptions {
     bool with_uploader_ids;  // get uploader rail id list, it may not the real author
     bool with_preview_url;   // get primary preview url
     bool with_vote_detail;   // get vote detail
-    int preview_scaling_rate;   // set to 1~100 to return a url of preview whose size is scaled.
     RailQueryWorkFileOptions() {
         with_url = false;
         with_description = false;
         query_total_only = false;
         with_uploader_ids = false;
         with_preview_url = false;
-        preview_scaling_rate = 100;
         with_vote_detail = false;
     }
 };
@@ -144,10 +128,10 @@ struct RailSpaceWorkSyncProgress {
 // But if game allows user to vote other scores, it will also return number those scores.
 // How to calculate the final score is totally denpend on game itself.
 struct RailSpaceWorkVoteDetail {
-    EnumRailSpaceWorkRateValue vote_value;
+    EnumRailSpaceWorkVoteValue vote_value;
     uint32_t voted_players;
     RailSpaceWorkVoteDetail() {
-        vote_value = kRailSpaceWorkVoteDown;
+        vote_value = kRailSpaceWorkVoteZero;
         voted_players = 0;
     }
 };
@@ -157,33 +141,10 @@ struct RailSpaceWorkDescriptor {
     RailString name;
     RailString description;
     RailString detail_url;
-    uint32_t create_time;
     RailArray<RailID> uploader_ids;
     RailString preview_url;
-    RailString preview_scaling_url;
     RailArray<RailSpaceWorkVoteDetail> vote_details;
-    RailSpaceWorkDescriptor() {
-        create_time = 0;
-    }
-};
-
-struct RailUserSpaceDownloadProgress {
-    SpaceWorkID id;
-    uint32_t progress;  // 0~100
-    uint64_t total;     // bytes
-    uint64_t finidshed; // bytes
-    uint32_t speed;     // kbps
-};
-
-
-struct RailUserSpaceDownloadResult {
-    SpaceWorkID id;
-    uint32_t err_code;          //  成功情况下为0， 失败情况下为具体错误码
-    uint64_t total_bytes;
-    uint64_t finished_bytes;
-    uint32_t total_files;
-    uint32_t finished_files;
-    RailString err_msg;
+    RailSpaceWorkDescriptor() {}
 };
 
 namespace rail_event {
@@ -244,31 +205,10 @@ struct AsyncVoteSpaceWorkResult : public RailEvent<kRailEventUserSpaceVoteSpaceW
     AsyncVoteSpaceWorkResult() {}
 };
 
-struct AsyncRateSpaceWorkResult : public RailEvent<kRailEventUserSpaceRateSpaceWorkResult> {
-    SpaceWorkID id;
-    AsyncRateSpaceWorkResult() {}
-};
-
 struct AsyncSearchSpaceWorksResult : public RailEvent<kRailEventUserSpaceSearchSpaceWorkResult> {
     RailArray<RailSpaceWorkDescriptor> spacework_descriptors;
     uint32_t total_available_works;  // total count could be queried in this condition
     AsyncSearchSpaceWorksResult() { total_available_works = 0; }
-};
-
-struct UserSpaceDownloadProgress : public RailEvent<kRailEventUserSpaceDownloadProgress> {
-    RailArray<RailUserSpaceDownloadProgress> progress;
-    uint32_t total_progress;
-    UserSpaceDownloadProgress() {
-        total_progress = 0;
-    }
-};
-
-struct UserSpaceDownloadResult : public RailEvent<kRailEventUserSpaceDownloadResult> {
-    RailArray<RailUserSpaceDownloadResult> results;
-    uint32_t total_results;
-    UserSpaceDownloadResult() {
-        total_results = 0;
-    }
 };
 
 }  // namespace rail_event
@@ -319,10 +259,7 @@ enum EnumRailSpaceWorkStatistic {
 };
 
 struct RailSpaceWorkSearchFilter {
-    RailSpaceWorkSearchFilter() {
-        match_all_required_metadata = false;
-        match_all_required_tags = false;
-    }
+    RailSpaceWorkSearchFilter() { match_all_required_metadata = false; }
     RailString search_text;  // search text in spaceworks' data like name, max length is 128
     // let following array to emtpy to make it has no effect
     // max length of array is 10
@@ -334,8 +271,6 @@ struct RailSpaceWorkSearchFilter {
     RailArray<RailKeyValue> excluded_metadata;
     // set to true to return spacework match all meta in required_metadata
     bool match_all_required_metadata;
-    // set to true to return spacework match all tags in required_tags
-    bool match_all_required_tags;
 };
 
 // Used by GetState

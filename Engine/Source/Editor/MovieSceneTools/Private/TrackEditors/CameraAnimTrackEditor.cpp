@@ -1,7 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TrackEditors/CameraAnimTrackEditor.h"
-#include "TrackEditors/CameraAnimTrackEditorHelper.h"
 #include "Widgets/SBoxPanel.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "GameFramework/Actor.h"
@@ -72,6 +71,32 @@ TSharedRef<ISequencerSection> FCameraAnimTrackEditor::MakeSectionInterface( UMov
 }
 
 
+void FCameraAnimTrackEditor::AddKey(const FGuid& ObjectGuid)
+{
+	// Load the asset registry module
+	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+
+	// Collect a full list of assets with the specified class
+	TArray<FAssetData> AssetDataList;
+	AssetRegistryModule.Get().GetAssetsByClass(UCameraAnim::StaticClass()->GetFName(), AssetDataList);
+
+	if (AssetDataList.Num())
+	{
+		TSharedPtr< SWindow > Parent = FSlateApplication::Get().GetActiveTopLevelWindow();
+		if (Parent.IsValid())
+		{
+			FSlateApplication::Get().PushMenu(
+				Parent.ToSharedRef(),
+				FWidgetPath(),
+				BuildCameraAnimSubMenu(ObjectGuid),
+				FSlateApplication::Get().GetCursorPos(),
+				FPopupTransitionEffect(FPopupTransitionEffect::TypeInPopup)
+				);
+		}
+	}
+}
+
+
 bool FCameraAnimTrackEditor::HandleAssetAdded(UObject* Asset, const FGuid& TargetObjectGuid)
 {
 	UCameraAnim* const CameraAnim = Cast<UCameraAnim>(Asset);
@@ -97,16 +122,9 @@ bool FCameraAnimTrackEditor::HandleAssetAdded(UObject* Asset, const FGuid& Targe
 }
 
 
+
 void FCameraAnimTrackEditor::BuildObjectBindingTrackMenu(FMenuBuilder& MenuBuilder, const TArray<FGuid>& ObjectBindings, const UClass* ObjectClass)
 {
-	IModuleInterface* TemplateSequenceEditorModule = FModuleManager::Get().GetModule("TemplateSequenceEditor");
-	if (TemplateSequenceEditorModule != nullptr)
-	{
-		// The template sequence plugin will add a new menu which lets people add CameraAnim assets as
-		// "legacy" assets, with a way to upgrade them to a template sequence.
-		return;
-	}
-
 	// only offer this track if we can find a camera component
 	UCameraComponent const* const CamComponent = AcquireCameraComponentFromObjectGuid(ObjectBindings[0]);
 	if (CamComponent)
@@ -213,25 +231,18 @@ void FCameraAnimTrackEditor::OnCameraAnimAssetEnterPressed(const TArray<FAssetDa
 
 FKeyPropertyResult FCameraAnimTrackEditor::AddKeyInternal(FFrameNumber KeyTime, const TArray<TWeakObjectPtr<UObject>> Objects, UCameraAnim* CameraAnim)
 {
-	return FCameraAnimTrackEditorHelper::AddCameraAnimKey(*this, KeyTime, Objects, CameraAnim);
-}
-
-
-FKeyPropertyResult FCameraAnimTrackEditorHelper::AddCameraAnimKey(FMovieSceneTrackEditor& TrackEditor, FFrameNumber KeyTime, const TArray<TWeakObjectPtr<UObject>> Objects, UCameraAnim* CameraAnim)
-{
 	FKeyPropertyResult KeyPropertyResult;
-	const TSharedPtr<ISequencer> Sequencer = TrackEditor.GetSequencer();
 
 	for (int32 ObjectIndex = 0; ObjectIndex < Objects.Num(); ++ObjectIndex)
 	{
 		UObject* Object = Objects[ObjectIndex].Get();
 
-		FMovieSceneTrackEditor::FFindOrCreateHandleResult HandleResult = TrackEditor.FindOrCreateHandleToObject(Object);
+		FFindOrCreateHandleResult HandleResult = FindOrCreateHandleToObject(Object);
 		FGuid ObjectHandle = HandleResult.Handle;
 		KeyPropertyResult.bHandleCreated |= HandleResult.bWasCreated;
 		if (ObjectHandle.IsValid())
 		{
-			FMovieSceneTrackEditor::FFindOrCreateTrackResult TrackResult = TrackEditor.FindOrCreateTrackForObject(ObjectHandle, UMovieSceneCameraAnimTrack::StaticClass());
+			FFindOrCreateTrackResult TrackResult = FindOrCreateTrackForObject(ObjectHandle, UMovieSceneCameraAnimTrack::StaticClass());
 			UMovieSceneTrack* Track = TrackResult.Track;
 			KeyPropertyResult.bTrackCreated |= TrackResult.bWasCreated;
 
@@ -239,17 +250,17 @@ FKeyPropertyResult FCameraAnimTrackEditorHelper::AddCameraAnimKey(FMovieSceneTra
 			{
 				UMovieSceneSection* NewSection = Cast<UMovieSceneCameraAnimTrack>(Track)->AddNewCameraAnim(KeyTime, CameraAnim);
 				KeyPropertyResult.bTrackModified = true;
-				KeyPropertyResult.SectionsCreated.Add(NewSection);
 
-				Sequencer->EmptySelection();
-				Sequencer->SelectSection(NewSection);
-				Sequencer->ThrobSectionSelection();
+				GetSequencer()->EmptySelection();
+				GetSequencer()->SelectSection(NewSection);
+				GetSequencer()->ThrobSectionSelection();
 			}
 		}
 	}
 
 	return KeyPropertyResult;
 }
+
 
 UCameraComponent* FCameraAnimTrackEditor::AcquireCameraComponentFromObjectGuid(const FGuid& Guid)
 {

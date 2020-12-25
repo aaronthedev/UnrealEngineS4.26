@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -82,10 +82,6 @@ public:
 	void OnSequencerReceivedFocus(TSharedRef<ISequencer> InSequencer);
 
 	void RemoveSequencer(TSharedRef<ISequencer> InSequencer);
-
-	TArray<TWeakPtr<ISequencer>> GetSequencers();
-	DECLARE_MULTICAST_DELEGATE(FOnSequencersChanged);
-	FOnSequencersChanged& GetOnSequencersChanged() { return OnSequencersChanged; };
 
 private:
 
@@ -203,6 +199,4 @@ private:
 	TSharedPtr<class FDetailKeyframeHandlerWrapper> KeyFrameHandler;
 
 	bool bDeferUpdates;
-
-	FOnSequencersChanged OnSequencersChanged;
 };

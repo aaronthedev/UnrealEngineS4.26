@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -20,10 +20,10 @@ struct FRigUnit_SlideChain_WorkData
 	float ChainLength;
 
 	UPROPERTY()
-	TArray<float> ItemSegments;
+	TArray<float> BoneSegments;
 
 	UPROPERTY()
-	TArray<FCachedRigElement> CachedItems;
+	TArray<int32> BoneIndices;
 
 	UPROPERTY()
 	TArray<FTransform> Transforms;
@@ -35,7 +35,7 @@ struct FRigUnit_SlideChain_WorkData
 /**
  * Slides an existing chain along itself with control over extrapolation.
  */
-USTRUCT(meta=(DisplayName="Slide Chain", Category="Hierarchy", Keywords="Fit,Refit", Deprecated = "4.25"))
+USTRUCT(meta=(DisplayName="Slide Chain", Category="Hierarchy", Keywords="Fit,Refit"))
 struct FRigUnit_SlideChain: public FRigUnit_HighlevelBaseMutable
 {
 	GENERATED_BODY()
@@ -53,13 +53,13 @@ struct FRigUnit_SlideChain: public FRigUnit_HighlevelBaseMutable
 	/** 
 	 * The name of the first bone to slide
 	 */
-	UPROPERTY(meta = (Input))
+	UPROPERTY(meta = (Input, Constant, BoneName))
 	FName StartBone;
 
 	/** 
 	 * The name of the last bone to slide
 	 */
-	UPROPERTY(meta = (Input))
+	UPROPERTY(meta = (Input, Constant, BoneName))
 	FName EndBone;
 
 	/** 
@@ -73,48 +73,7 @@ struct FRigUnit_SlideChain: public FRigUnit_HighlevelBaseMutable
 	 * of this bone will be recalculated based on their local transforms.
 	 * Note: This is computationally more expensive than turning it off.
 	 */
-	UPROPERTY(meta = (Input, Constant))
-	bool bPropagateToChildren;
-
-	UPROPERTY(transient)
-	FRigUnit_SlideChain_WorkData WorkData;
-};
-
-/**
- * Slides an existing chain along itself with control over extrapolation.
- */
-USTRUCT(meta=(DisplayName="Slide Chain", Category="Hierarchy", Keywords="Fit,Refit"))
-struct FRigUnit_SlideChainPerItem: public FRigUnit_HighlevelBaseMutable
-{
-	GENERATED_BODY()
-
-	FRigUnit_SlideChainPerItem()
-	{
-		SlideAmount = 0.f;
-		bPropagateToChildren = false;
-	}
-
-	RIGVM_METHOD()
-	virtual void Execute(const FRigUnitContext& Context) override;
-
-	/** 
-	 * The items to slide
-	 */
 	UPROPERTY(meta = (Input))
-	FRigElementKeyCollection Items;
-
-	/** 
-	 * The amount of sliding. This unit is multiple of the chain length.
-	 */
-	UPROPERTY(meta = (Input))
-	float SlideAmount;
-
-	/**
-	 * If set to true all of the global transforms of the children
-	 * of this bone will be recalculated based on their local transforms.
-	 * Note: This is computationally more expensive than turning it off.
-	 */
-	UPROPERTY(meta = (Input, Constant))
 	bool bPropagateToChildren;
 
 	UPROPERTY(transient)

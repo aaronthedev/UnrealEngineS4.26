@@ -1,10 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
-#include "AnimCustomInstanceHelper.h"
+#include "AnimCustomInstance.h"
 #include "Animation/AnimInstanceProxy.h"
 #include "AnimNodes/AnimNode_CopyPoseFromMesh.h"
 #include "AnimPreviewAttacheInstance.generated.h"
@@ -41,7 +41,7 @@ private:
  */
 
 UCLASS(transient, NotBlueprintable, noteditinlinenew)
-class ANIMGRAPH_API UAnimPreviewAttacheInstance : public UAnimInstance
+class ANIMGRAPH_API UAnimPreviewAttacheInstance : public UAnimCustomInstance
 {
 	GENERATED_UCLASS_BODY()
 

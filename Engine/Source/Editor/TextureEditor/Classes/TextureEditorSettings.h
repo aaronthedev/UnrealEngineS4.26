@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,14 +25,6 @@ enum ETextureEditorVolumeViewMode
 {
 	TextureEditorVolumeViewMode_DepthSlices UMETA(DisplayName="Depth Slices"),
 	TextureEditorVolumeViewMode_VolumeTrace UMETA(DisplayName="Trace Into Volume"),
-};
-
-UENUM()
-enum class ETextureEditorZoomMode : uint8
-{
-	Custom    UMETA(DisplayName = "Specific Zoom Level"), // First so that any new modes added don't change serialized value
-	Fit       UMETA(DisplayName = "Scale Down to Fit"),
-	Fill      UMETA(DisplayName = "Scale to Fill"),
 };
 
 /**
@@ -73,13 +65,8 @@ public:
 public:
 
 	/** Whether the texture should scale to fit the view port. */
-	UE_DEPRECATED(4.26, "There are now more than 2 zoom modes, so this value is no longer used. Please use ZoomMode instead.")
 	UPROPERTY(config)
 	bool FitToViewport;
-
-	/** Whether the texture should scale to fit or fill the view port, or use a custom zoom level. */
-	UPROPERTY(config)
-	ETextureEditorZoomMode ZoomMode;
 
 	/** Color to use for the texture border, if enabled. */
 	UPROPERTY(config, EditAnywhere, Category=TextureBorder)

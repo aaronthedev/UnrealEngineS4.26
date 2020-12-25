@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -202,13 +202,13 @@ namespace BuildPatchServices
 		{
 			FFileManifestList NewFileManifestList;
 			NewFileManifestList.FileList.Reserve(FileLinkedList.Num());
-			for (const FFileNode& FileNode : FileLinkedList)
+			for (const FFileDListNode& FileNode : FileLinkedList)
 			{
-				FFileManifest& FileManifest = NewFileManifestList.FileList.Add_GetRef(*FileNode.Manifest);
-				FileManifest.ChunkParts.Empty(FileNode.ChunkParts.Num());
-				for (const FChunkNode& ChunkNode : FileNode.ChunkParts)
+				FFileManifest& FileManifest = NewFileManifestList.FileList.Add_GetRef(*FileNode.GetValue().Manifest);
+				FileManifest.ChunkParts.Empty(FileNode.GetValue().ChunkParts.Num());
+				for (const FChunkDListNode& ChunkNode : FileNode.GetValue().ChunkParts)
 				{
-					FileManifest.ChunkParts.Add(ChunkNode.ChunkPart);
+					FileManifest.ChunkParts.Add(ChunkNode.GetValue().ChunkPart);
 				}
 			}
 			return NewFileManifestList;

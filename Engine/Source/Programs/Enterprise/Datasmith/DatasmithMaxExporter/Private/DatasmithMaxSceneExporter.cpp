@@ -1,15 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "DatasmithMaxSceneExporter.h"
 
 #include "DatasmithMaxAttributes.h"
-#include "DatasmithMaxCameraExporter.h"
 #include "DatasmithMaxExporterDefines.h"
-#include "DatasmithMaxHelper.h"
-#include "DatasmithMaxLogger.h"
+#include "DatasmithSceneFactory.h"
+#include "DatasmithSceneExporter.h"
+#include "DatasmithMaxCameraExporter.h"
 #include "DatasmithMaxSceneParser.h"
 #include "DatasmithMaxWriter.h"
-#include "DatasmithSceneExporter.h"
-#include "DatasmithSceneFactory.h"
+#include "DatasmithMaxLogger.h"
 #include "VRayLights.h"
 
 #include "GenericPlatform/GenericPlatformFile.h"
@@ -198,7 +197,6 @@ int FDatasmithMaxSceneExporter::GetSeedFromMaterial(Mtl* Material)
 				Seed = ParamBlock2->GetInt(ParamDefinition.ID);
 			}
 		}
-		ParamBlock2->ReleaseDesc();
 	}
 	return Seed;
 }
@@ -333,57 +331,28 @@ void FDatasmithMaxSceneExporter::ExportMeshActor(TSharedRef< IDatasmithScene > D
 }
 
 TSharedRef< IDatasmithActorElement > FDatasmithMaxSceneExporter::ExportHierarchicalInstanceStaticMeshActor(TSharedRef< IDatasmithScene > DatasmithScene, INode* Node, INode* CustomMeshNode, const TCHAR* Label, TSet<uint16>& SupportedChannels, Mtl* StaticMeshMtl, const TArray<Matrix3>* Instances,
-	const TCHAR* MeshName, float UnitMultiplier, const EStaticMeshExportMode& ExportMode, TSharedPtr< IDatasmithActorElement >& OutInversedHISMActor)
+	const TCHAR* MeshName, float UnitMultiplier, const EStaticMeshExportMode& ExportMode)
 {
 	check( Node && Instances && MeshName);
 
 	TSharedPtr< IDatasmithMeshActorElement > MeshActor;
-	FVector Pos, Scale;
-	FQuat Rotation;
-
-	const FVector RandomSeed(FMath::Rand(), FMath::Rand(), FMath::Rand());
-	auto FinalizeHISMActor = [&](TSharedPtr< IDatasmithMeshActorElement >& FinalizingActor, FVector Seed, const TCHAR* ActorLabel)
-	{
-		FinalizingActor->SetStaticMeshPathName(MeshName);
-
-		INode* MeshNode = CustomMeshNode ? CustomMeshNode : Node;
-
-		if (ExportMode == EStaticMeshExportMode::Default && StaticMeshMtl != MeshNode->GetMtl())
-		{
-			TSharedRef< IDatasmithMeshActorElement > MeshActorRef = FinalizingActor.ToSharedRef();
-			ParseMaterialForMeshActor(StaticMeshMtl, MeshActorRef, SupportedChannels, Seed);
-		}
-
-		if (ActorLabel)
-		{
-			FinalizingActor->SetLabel(ActorLabel);
-		}
-
-		FinalizingActor->SetIsAComponent(true);
-
-		switch (ExportMode)
-		{
-		case EStaticMeshExportMode::BoundingBox:
-			FinalizingActor->AddTag(TEXT("Datasmith.Attributes.Geometry: BoundingBox"));
-			break;
-		default:
-			break;
-		}
-	};
-
-	if (Node->GetWSMDerivedObject() != nullptr)
-	{
-		MaxToUnrealCoordinates(Node->GetObjTMAfterWSM(GetCOREInterface()->GetTime()), Pos, Rotation, Scale, UnitMultiplier);
-	}
-	else
-	{
-		MaxToUnrealCoordinates(Node->GetObjectTM(GetCOREInterface()->GetTime()), Pos, Rotation, Scale, UnitMultiplier);
-	}
 
 	const int32 InstancesCount = Instances->Num();
-	if ( InstancesCount == 1 )
+	if (InstancesCount == 1)
 	{
 		// Export the the hism as a normal static mesh
+		FVector Pos, Scale;
+		FQuat Rotation;
+
+		if (Node->GetWSMDerivedObject() != nullptr)
+		{
+			MaxToUnrealCoordinates(Node->GetObjTMAfterWSM(GetCOREInterface()->GetTime()), Pos, Rotation, Scale, UnitMultiplier);
+		}
+		else
+		{
+			MaxToUnrealCoordinates(Node->GetObjectTM(GetCOREInterface()->GetTime()), Pos, Rotation, Scale, UnitMultiplier);
+		}
+
 		MeshActor = FDatasmithSceneFactory::CreateMeshActor(MeshName);
 
 		// Apply the relative transfrom of the instance to the forest world transform
@@ -392,70 +361,71 @@ TSharedRef< IDatasmithActorElement > FDatasmithMaxSceneExporter::ExportHierarchi
 		FQuat InstanceRotation;
 		MaxToUnrealCoordinates((*Instances)[0], InstancePos, InstanceRotation, InstanceScale, UnitMultiplier);
 		FTransform WithInstance(WithoutInstance * FTransform(InstanceRotation, InstancePos, InstanceScale));
+		Pos = WithInstance.GetLocation();
+		Scale = WithInstance.GetScale3D();
+		Rotation = WithInstance.GetRotation();
 
-		MeshActor->SetTranslation(WithInstance.GetLocation());
-		MeshActor->SetScale(WithInstance.GetScale3D());
-		MeshActor->SetRotation(WithInstance.GetRotation());
+		MeshActor->SetTranslation(Pos);
+		MeshActor->SetScale(Scale);
+		MeshActor->SetRotation(Rotation);
 	}
-	else
+	else 
 	{
-		TSharedRef< IDatasmithHierarchicalInstancedStaticMeshActorElement > HierarchicalInstanceStaticMeshActor = FDatasmithSceneFactory::CreateHierarchicalInstanceStaticMeshActor(MeshName);
+		TSharedRef< IDatasmithHierarchicalInstancedStaticMeshActorElement > HierarchicalInstanceStaticMeshActor = FDatasmithSceneFactory::CreateHierarchicalInstanceStaticMeshActor( MeshName );
+
 		MeshActor = HierarchicalInstanceStaticMeshActor;
 
-		FTransform HISMActorTransform(Rotation, Pos, Scale);
+		FVector Pos, Scale;
+		FQuat Rotation;
+		if (Node->GetWSMDerivedObject() != nullptr)
+		{
+			MaxToUnrealCoordinates(Node->GetObjTMAfterWSM(GetCOREInterface()->GetTime()), Pos, Rotation, Scale, UnitMultiplier);
+		}
+		else
+		{
+			MaxToUnrealCoordinates(Node->GetObjectTM(GetCOREInterface()->GetTime()), Pos, Rotation, Scale, UnitMultiplier);
+		}
+
 		MeshActor->SetTranslation(Pos);
 		MeshActor->SetScale(Scale);
 		MeshActor->SetRotation(Rotation);
 
-		TArray< FTransform > InstancesTransform;
-		InstancesTransform.Reserve(InstancesCount);
-		for (int32 i = 0; i < InstancesCount; i++)
+
+		HierarchicalInstanceStaticMeshActor->ReserveSpaceForInstances( InstancesCount );
+
+		for ( int32 i = 0; i < InstancesCount; i++ )
 		{
-			MaxToUnrealCoordinates((*Instances)[i], Pos, Rotation, Scale, UnitMultiplier);
-			InstancesTransform.Emplace(Rotation, Pos, Scale);
-		}
+			MaxToUnrealCoordinates( (*Instances)[i], Pos, Rotation, Scale, UnitMultiplier );
 
-		TArray< FTransform > NonInvertedTransforms, InvertedTransforms;
-		DatasmithMaxHelper::FilterInvertedScaleTransforms(InstancesTransform, NonInvertedTransforms, InvertedTransforms);
-
-		HierarchicalInstanceStaticMeshActor->ReserveSpaceForInstances(NonInvertedTransforms.Num());
-		for (const FTransform& InstanceTransform : NonInvertedTransforms)
-		{
-			HierarchicalInstanceStaticMeshActor->AddInstance(InstanceTransform);
-		}
-
-		//Adding an inverted HierarchicalInstancedStaticMeshActorElement for the instances with an inverted mesh due to negative scaling.
-		if (InvertedTransforms.Num() > 0)
-		{
-			FString InvertedHISMName = FString(MeshName).Append("_inv");
-			TSharedPtr< IDatasmithHierarchicalInstancedStaticMeshActorElement > InvertedHierarchicalInstanceStaticMeshActor = FDatasmithSceneFactory::CreateHierarchicalInstanceStaticMeshActor(*InvertedHISMName);
-			OutInversedHISMActor = InvertedHierarchicalInstanceStaticMeshActor;
-
-			OutInversedHISMActor->SetTranslation( HISMActorTransform.GetTranslation() );
-			OutInversedHISMActor->SetScale( -1 * HISMActorTransform.GetScale3D() );
-			OutInversedHISMActor->SetRotation( HISMActorTransform.GetRotation() );
-			
-			InvertedHierarchicalInstanceStaticMeshActor->ReserveSpaceForInstances(InvertedTransforms.Num());
-			for (const FTransform& InstanceTransform : InvertedTransforms)
-			{
-				//Correcting the instance transform to reverse the negative scaling of the parent.
-				InvertedHierarchicalInstanceStaticMeshActor->AddInstance( FTransform( InstanceTransform.GetRotation(), -1 * InstanceTransform.GetTranslation(), -1 * InstanceTransform.GetScale3D() ) );
-			}
-
-			TSharedPtr< IDatasmithMeshActorElement > InvertedMeshActor = InvertedHierarchicalInstanceStaticMeshActor;
-			if (Label)
-			{
-				FString InversedLabelString = FString(Label).Append("_inv");
-				FinalizeHISMActor(InvertedMeshActor, RandomSeed, *InversedLabelString);
-			}
-			else
-			{
-				FinalizeHISMActor(InvertedMeshActor, RandomSeed, nullptr);
-			}
+			HierarchicalInstanceStaticMeshActor->AddInstance( FTransform(Rotation, Pos, Scale) );
 		}
 	}
+	
+	MeshActor->SetStaticMeshPathName( MeshName );
 
-	FinalizeHISMActor(MeshActor, RandomSeed, Label);
+	INode* MeshNode = CustomMeshNode ? CustomMeshNode : Node;
+
+	if (ExportMode == EStaticMeshExportMode::Default && StaticMeshMtl != MeshNode->GetMtl())
+	{
+		TSharedRef< IDatasmithMeshActorElement > MeshActorRef = MeshActor.ToSharedRef();
+		ParseMaterialForMeshActor( StaticMeshMtl, MeshActorRef, SupportedChannels, FVector( FMath::Rand(), FMath::Rand(), FMath::Rand() ) );
+	}
+
+	if (Label)
+	{
+		MeshActor->SetLabel( Label );
+	}
+
+	MeshActor->SetIsAComponent( true );
+
+	switch ( ExportMode )
+	{
+	case EStaticMeshExportMode::BoundingBox:
+		MeshActor->AddTag(TEXT("Datasmith.Attributes.Geometry: BoundingBox"));
+		break;
+	default:
+		break;
+	}
 
 	return MeshActor.ToSharedRef();
 }
@@ -510,7 +480,7 @@ void FDatasmithMaxSceneExporter::ParseMaterialForMeshActor(Mtl* Material, TShare
 		}
 		else
 		{
-			int ActualSubObj = 1;
+			int ActualSubObj = 0;
 			SupportedChannels.Sort([](const uint16& A, const uint16& B) { return (A < B); });
 			for (const uint16 Mid : SupportedChannels)
 			{
@@ -535,12 +505,11 @@ void FDatasmithMaxSceneExporter::ParseMaterialForMeshActor(Mtl* Material, TShare
 					{
 						if (FDatasmithMaxMatHelper::GetMaterialClass(SubMaterial) != EDSMaterialType::TheaRandom)
 						{
-							//Material slots in Max are not zero-based, so we serialize our SlotID starting from 1 for better visual consistency.
-							MeshActor->AddMaterialOverride(SubMaterial->GetName().data(), Mid + 1);
+							MeshActor->AddMaterialOverride(SubMaterial->GetName().data(), Mid);
 						}
 						else
 						{
-							MeshActor->AddMaterialOverride( *GetRandomSubMaterial(SubMaterial, RandomSeed), MaterialIndex + 1 );
+							MeshActor->AddMaterialOverride( *GetRandomSubMaterial(SubMaterial, RandomSeed), MaterialIndex );
 						}
 					}
 				}
@@ -708,8 +677,6 @@ TSharedPtr< IDatasmithLightActorElement > FDatasmithMaxSceneExporter::CreateLigh
 				}
 			}
 		}
-
-		ParamBlock2->ReleaseDesc();
 	}
 
 	TSharedPtr< IDatasmithElement > Element = FDatasmithSceneFactory::CreateElement( LightType, Name );
@@ -1125,13 +1092,13 @@ bool FDatasmithMaxSceneExporter::ParseCoronaLight(LightObject& Light, TSharedRef
 				{
 				case ECoronaLightShapes::Disk:
 					AreaLightElement->SetLightShape( EDatasmithLightShape::Disc );
-					AreaLightElement->SetLightType( EDatasmithAreaLightType::Rect );
+					AreaLightElement->SetLightType(EDatasmithAreaLightType::Rect);
 
 					break;
 
 				case ECoronaLightShapes::Rectangle:
 					AreaLightElement->SetLightShape( EDatasmithLightShape::Rectangle );
-					AreaLightElement->SetLightType( EDatasmithAreaLightType::Rect );
+					AreaLightElement->SetLightType(EDatasmithAreaLightType::Rect);
 
 					break;
 
@@ -1216,8 +1183,11 @@ bool FDatasmithMaxSceneExporter::ParseCoronaLight(LightObject& Light, TSharedRef
 				}
 			}
 		}
+	}
 
-		ParamBlock2->ReleaseDesc();
+	if ( !bLightShapeVisible)
+	{
+		AreaLightElement->SetLightShape( EDatasmithLightShape::None );
 	}
 
 	if ( AreaLightElement->GetUseTemperature() )
@@ -1239,92 +1209,35 @@ bool FDatasmithMaxSceneExporter::ParseCoronaLight(LightObject& Light, TSharedRef
 		}
 	}
 
-	if ( AreaLightElement->GetLightShape() == EDatasmithLightShape::Disc || AreaLightElement->GetLightShape() == EDatasmithLightShape::Sphere )
-	{
-		AreaLightElement->SetLength( AreaLightElement->GetWidth() );
-	}
-
 	if ((bLightIntensityIsInDefaultCoronaUnit || bLightIntensityIsInLux) && IntensityID != -1 && IntensityBlockID != -1 && IntensityUnitID != -1)
 	{
-		if ( bLightIntensityIsInDefaultCoronaUnit )
+		// Here we make use of the automatic unit conversion of the corona unit properties, the reason why we do this instead of doing the conversion manually
+		// is because Corona default light intensity unit (and lux) is actually a unit of the intensity of the surface of the light's shape, so not only changing the width and height 
+		// have an effect on the intensity in other unit types, but the transform scale too. So unless we go through each triangle of the light's shape to determine its surface
+		// there is no easy way to convert the intensity value to a standardized unit type since we must take into account the transform.
+		IParamBlock2* ParamBlock2 = Light.GetParamBlockByID((short)IntensityBlockID);
+		const float InitialIntensityValue = ParamBlock2->GetFloat(IntensityID, GetCOREInterface()->GetTime());
+
+		switch (AreaLightElement->GetLightShape())
 		{
-			const FVector LightScale = AreaLightElement->GetScale();
-
-			double Area = 0.0;
-			const double LightWidthInMeters = AreaLightElement->GetWidth() * LightScale.X * 0.01;
-			const double LightLengthInMeters = AreaLightElement->GetLength() * LightScale.Y * 0.01;
-			const double LightHeightInMeters = AreaLightElement->GetWidth() * LightScale.Z * 0.01; // Only used for spheres which can become ellipsoids when scaled
-
-			switch ( AreaLightElement->GetLightShape() )
-			{
-			case EDatasmithLightShape::Rectangle:
-				Area = LightWidthInMeters * LightLengthInMeters;
-
-				break;
-
-			case EDatasmithLightShape::Disc:
-				// Area of a disc = Pi * Radius * Radius
-				Area = LightWidthInMeters * LightLengthInMeters * PI;
-
-				break;
-
-			case EDatasmithLightShape::Sphere:
-				// Area of an ellipsoid = 4 * Pi ( ( ( width * length ) ^ 1.6075 + (width * height) ^ 1.6075 + (length * height) ^ 1.6075 ) / 3 ) ^ ( 1 / 1.6075 )
-				Area = FMath::Pow( LightWidthInMeters * LightLengthInMeters, 1.6075 ) + FMath::Pow( LightWidthInMeters * LightHeightInMeters, 1.6075 ) + FMath::Pow( LightLengthInMeters * LightHeightInMeters, 1.6075 );
-				Area /= 3.0;
-				Area = FMath::Pow( Area, 1.0 / 1.6075 );
-				Area *= 4.0 * PI;
-
-				break;
-
-			case EDatasmithLightShape::Cylinder:
-				// Area of a cylinder = ( 2 * Pi * radius * height ) + ( 2 * Pi * radius^2 )
-				Area = ( 2.0 * PI * LightWidthInMeters * LightLengthInMeters ) + ( 2.0 * PI * FMath::Square( LightWidthInMeters ) );
-				break;
-			}
-
-			// Default Corona units: watts / steradian * square meters (w / sr * m^2)
-			// w / sr * m^2 => candela / m^2
-			// 683 w / sr * m^2 = 1 candela / m^2
-
-			if ( !FMath::IsNearlyZero( Area ) )
-			{
-				AreaLightElement->SetIntensityUnits( EDatasmithLightUnits::Candelas );
-
-				const double Intensity = AreaLightElement->GetIntensity();
-				double IntensityInCandelasPerSqMeters = Intensity * 683.0;
-				double IntensityInCandelas = IntensityInCandelasPerSqMeters * Area;
-
-				AreaLightElement->SetIntensity( IntensityInCandelas );
-			}
+		case EDatasmithLightShape::Disc:
+		case EDatasmithLightShape::Rectangle:
+			ParamBlock2->SetValue(IntensityUnitID, GetCOREInterface()->GetTime(), (int)ECoronaIntensityUnits::Lumen);
+			AreaLightElement->SetIntensityUnits(EDatasmithLightUnits::Lumens);
+			AreaLightElement->SetIntensity(ParamBlock2->GetFloat(IntensityID, GetCOREInterface()->GetTime()));
+			break;
+		
+		case EDatasmithLightShape::Sphere:
+		case EDatasmithLightShape::Cylinder:
+			ParamBlock2->SetValue(IntensityUnitID, GetCOREInterface()->GetTime(), (int)ECoronaIntensityUnits::Candelas);
+			AreaLightElement->SetIntensityUnits(EDatasmithLightUnits::Candelas);
+			AreaLightElement->SetIntensity(ParamBlock2->GetFloat(IntensityID, GetCOREInterface()->GetTime()));
+			break;
 		}
-		else
-		{
-			// Here we make use of the automatic unit conversion of the corona unit properties.
-			IParamBlock2* ParamBlock2 = Light.GetParamBlockByID((short)IntensityBlockID);
-			const float InitialIntensityValue = ParamBlock2->GetFloat(IntensityID, GetCOREInterface()->GetTime());
 
-			switch (AreaLightElement->GetLightShape())
-			{
-			case EDatasmithLightShape::Disc:
-			case EDatasmithLightShape::Rectangle:
-				ParamBlock2->SetValue(IntensityUnitID, GetCOREInterface()->GetTime(), (int)ECoronaIntensityUnits::Lumen);
-				AreaLightElement->SetIntensityUnits(EDatasmithLightUnits::Lumens);
-				AreaLightElement->SetIntensity(ParamBlock2->GetFloat(IntensityID, GetCOREInterface()->GetTime()));
-				break;
-
-			case EDatasmithLightShape::Sphere:
-			case EDatasmithLightShape::Cylinder:
-				ParamBlock2->SetValue(IntensityUnitID, GetCOREInterface()->GetTime(), (int)ECoronaIntensityUnits::Candelas);
-				AreaLightElement->SetIntensityUnits(EDatasmithLightUnits::Candelas);
-				AreaLightElement->SetIntensity(ParamBlock2->GetFloat(IntensityID, GetCOREInterface()->GetTime()));
-				break;
-			}
-
-			ParamBlock2->SetValue(IntensityUnitID, GetCOREInterface()->GetTime(), bLightIntensityIsInDefaultCoronaUnit ? (int)ECoronaIntensityUnits::Default : (int)ECoronaIntensityUnits::Lux);
-			//Making sure there is no floating point calculation artifact by restoring the exact same value.
-			ParamBlock2->SetValue(IntensityID, GetCOREInterface()->GetTime(), InitialIntensityValue);
-		}
+		ParamBlock2->SetValue(IntensityUnitID, GetCOREInterface()->GetTime(), bLightIntensityIsInDefaultCoronaUnit ? (int)ECoronaIntensityUnits::Default : (int)ECoronaIntensityUnits::Lux);
+		//Making sure there is no floating point calculation artifact by restoring the exact same value.
+		ParamBlock2->SetValue(IntensityID, GetCOREInterface()->GetTime(), InitialIntensityValue); 
 	}
 
 	// For disc and sphere shapes, width is radius so set both length and width to 2 * radius
@@ -1332,16 +1245,11 @@ bool FDatasmithMaxSceneExporter::ParseCoronaLight(LightObject& Light, TSharedRef
 		AreaLightElement->GetLightShape() == EDatasmithLightShape::Cylinder )
 	{
 		AreaLightElement->SetWidth( AreaLightElement->GetWidth() * 2.f );
-
-		if ( AreaLightElement->GetLightShape() == EDatasmithLightShape::Disc || AreaLightElement->GetLightShape() == EDatasmithLightShape::Sphere )
-		{
-			AreaLightElement->SetLength( AreaLightElement->GetWidth() );
-		}
 	}
 
-	if ( !bLightShapeVisible)
+	if ( AreaLightElement->GetLightShape() == EDatasmithLightShape::Disc || AreaLightElement->GetLightShape() == EDatasmithLightShape::Sphere )
 	{
-		AreaLightElement->SetLightShape( EDatasmithLightShape::None );
+		AreaLightElement->SetLength( AreaLightElement->GetWidth() );
 	}
 
 	return true;
@@ -1706,8 +1614,6 @@ bool FDatasmithMaxSceneExporter::ParseVRayLightIES(LightObject& Light, TSharedRe
 				PointLightElement->SetTemperature( ParamBlock2->GetFloat( ParamDefinition.ID, GetCOREInterface()->GetTime() ) );
 			}
 		}
-
-		ParamBlock2->ReleaseDesc();
 	}
 
 	if ( PointLightElement->GetUseTemperature() )
@@ -1783,8 +1689,6 @@ bool FDatasmithMaxSceneExporter::ParseVRayLightIES(LightObject& Light, TSharedRe
 					}
 				}
 			}
-
-			ParamBlock2->ReleaseDesc();
 		}
 
 		if ( bUseLightShape  )
@@ -1913,8 +1817,6 @@ bool FDatasmithMaxSceneExporter::ParseLightParameters(EMaxLightClass LightClass,
 				}
 			}
 		}
-
-		ParamBlock2->ReleaseDesc();
 	}
 
 	if ( LightElement->GetUseTemperature() )

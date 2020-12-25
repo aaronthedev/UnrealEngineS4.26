@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -251,12 +251,6 @@ public:
 	/** Find index of customization settings for a menu */
 	int32 FindMenuCustomizationIndex(const FName InName);
 
-	/** Find runtime customization settings for a menu */
-	FCustomizedToolMenu* FindRuntimeMenuCustomization(const FName InName);
-
-	/** Find or add runtime customization settings for a menu */
-	FCustomizedToolMenu* AddRuntimeMenuCustomization(const FName InName);
-
 	/** Generates sub menu by entry name in the given generated menu parent */
 	UToolMenu* GenerateSubMenu(const UToolMenu* InGeneratedParent, const FName InBlockName);
 
@@ -265,15 +259,6 @@ public:
 
 	/** Enables adding command to open edit menu dialog to each menu */
 	void SetEditMenusMode(bool bEnable);
-
-	/* Substitute one menu for another during generate but not during find or extend */
-	void AddMenuSubstitutionDuringGenerate(const FName OriginalMenu, const FName NewMenu);
-
-	/* Remove substitute one menu for another during generate */
-	void RemoveSubstitutionDuringGenerate(const FName InMenu);
-
-	/** Release references to UObjects of widgets that have been deleted. Combines multiple requests in one frame together for improved performance. */
-	void CleanupStaleWidgetsNextTick(bool bGarbageCollect = false);
 
 	/** Displaying extension points is for debugging menus */
 	DECLARE_DELEGATE_RetVal(bool, FShouldDisplayExtensionPoints);
@@ -295,25 +280,25 @@ public:
 	/** Break apart a menu path into components */
 	static bool SplitMenuPath(const FName MenuPath, FName& OutLeft, FName& OutRight);
 
-	/** Returns true if safe to call into script */
-	static bool CanSafelyRouteCall();
-
 	friend struct FToolMenuOwnerScoped;
 	friend struct FToolMenuStringCommand;
 
 	//~ Begin UObject Interface
 	static void AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector);
 	virtual void BeginDestroy() override;
+	virtual bool IsDestructionThreadSafe() const override { return false; }
 	//~ End UObject Interface
 
 private:
-	friend class FPopulateMenuBuilderWithToolMenuEntry;
 
 	/** Create a finalized menu that combines given hierarchy array that will generate a widget. Advanced special use cases only. */
 	UToolMenu* GenerateMenuFromHierarchy(const TArray<UToolMenu*>& Hierarchy, const FToolMenuContext& InMenuContext);
 
 	/** Sets a timer to be called next engine tick so that multiple repeated actions can be combined together. */
 	void SetNextTickTimer();
+
+	/** Release references to UObjects of widgets that have been deleted. Combines multiple requests in one frame together for improved performance. */
+	void CleanupStaleWidgetsNextTick();
 
 	/** Release references to UObjects of widgets that have been deleted */
 	void CleanupStaleWidgets();
@@ -332,13 +317,14 @@ private:
 
 	UToolMenu* FindSubMenuToGenerateWith(const FName InParentName, const FName InChildName);
 
+	void FillMenuBarDropDown(FMenuBuilder& MenuBuilder, FName InParentName, FName InChildName, FToolMenuContext InMenuContext);
 	void PopulateMenuBuilder(FMenuBuilder& MenuBuilder, UToolMenu* MenuData);
 	void PopulateMenuBarBuilder(FMenuBarBuilder& MenuBarBuilder, UToolMenu* MenuData);
 	void PopulateToolBarBuilder(FToolBarBuilder& ToolBarBuilder, UToolMenu* MenuData);
 
-	TSharedRef<SWidget> GenerateToolbarComboButtonMenu(TWeakObjectPtr<UToolMenu> InParent, const FName InBlockName);
+	TSharedRef<SWidget> GenerateToolbarComboButtonMenu(const FName SubMenuFullName, FToolMenuContext InContext);
 
-	FOnGetContent ConvertWidgetChoice(const FNewToolMenuChoice& Choice, const FToolMenuContext& Context) const;
+	FOnGetContent ConvertWidgetChoice(const FNewToolMenuWidgetChoice& Choice, const FToolMenuContext& Context) const;
 
 	/** Converts a string command to a FUIAction */
 	static FUIAction ConvertUIAction(const FToolMenuEntry& Block, const FToolMenuContext& Context);
@@ -351,7 +337,6 @@ private:
 
 	void PopulateSubMenu(FMenuBuilder& Builder, TWeakObjectPtr<UToolMenu> InParent, const FName InBlockName);
 	void PopulateSubMenuWithoutName(FMenuBuilder& MenuBuilder, TWeakObjectPtr<UToolMenu> InParent, const FNewToolMenuDelegate InNewToolMenuDelegate);
-	TArray<UToolMenu*> CollectHierarchy(const FName Name, const TMap<FName, FName>& UnregisteredParentNames);
 
 	void ListAllParents(const FName Name, TArray<FName>& AllParents);
 
@@ -370,16 +355,10 @@ private:
 
 	static void ModifyEntryForEditDialog(FToolMenuEntry& Entry);
 
-	UToolMenu* NewToolMenuObject(const FName NewBaseName, const FName InMenuName);
-
 private:
 
-	UPROPERTY(EditAnywhere, Category = Misc)
+	UPROPERTY(config, EditAnywhere, Category = Misc)
 	TArray<FCustomizedToolMenu> CustomizedMenus;
-
-	/* Allow substituting one menu for another during generate but not during find or extend */
-	UPROPERTY(EditAnywhere, Category = Misc)
-	TMap<FName, FName> MenuSubstitutionsDuringGenerate;
 
 	UPROPERTY()
 	TMap<FName, UToolMenu*> Menus;
@@ -392,15 +371,11 @@ private:
 
 	TMap<FName, FToolMenuExecuteString> StringCommandHandlers;
 
-	/** Transient customizations made during runtime that will not be saved */
-	TArray<FCustomizedToolMenu> RuntimeCustomizedMenus;
-
 	FSimpleDelegate SetTimerForNextTickDelegate;
 
 	bool bNextTickTimerIsSet;
 	bool bRefreshWidgetsNextTick;
 	bool bCleanupStaleWidgetsNextTick;
-	bool bCleanupStaleWidgetsNextTickGC;
 	bool bEditMenusMode;
 
 	static UToolMenus* Singleton;

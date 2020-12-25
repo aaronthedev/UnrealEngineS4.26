@@ -1,100 +1,82 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Controllers/LiveLinkLightController.h"
 
-#include "Components/LightComponent.h"
-#include "Components/SpotLightComponent.h"
-#include "Controllers/LiveLinkTransformController.h"
-#include "GameFramework/Actor.h"
 #include "ILiveLinkClient.h"
-#include "LiveLinkComponentController.h"
 #include "Roles/LiveLinkLightRole.h"
 #include "Roles/LiveLinkLightTypes.h"
-#include "UObject/EnterpriseObjectVersion.h"
+
+#include "Components/LightComponent.h"
+#include "Components/SpotLightComponent.h"
+#include "Features/IModularFeatures.h"
+#include "GameFramework/Actor.h"
 
 #if WITH_EDITOR
 #include "Kismet2/ComponentEditorUtils.h"
 #endif
 
 
-void ULiveLinkLightController::Tick(float DeltaTime, const FLiveLinkSubjectFrameData& SubjectData)
+void ULiveLinkLightController::OnEvaluateRegistered()
 {
-	const FLiveLinkLightStaticData* StaticData = SubjectData.StaticData.Cast<FLiveLinkLightStaticData>();
-	const FLiveLinkLightFrameData* FrameData = SubjectData.FrameData.Cast<FLiveLinkLightFrameData>();
+	AActor* OuterActor = GetOuterActor();
+	TransformData.CheckForError(OuterActor ? OuterActor->GetFName() : NAME_None, Cast<USceneComponent>(ComponentToControl.GetComponent(OuterActor)));
+}
 
-	if (StaticData && FrameData)
+
+void ULiveLinkLightController::Tick(float DeltaTime, const FLiveLinkSubjectRepresentation& SubjectRepresentation)
+{
+	if (ULightComponent* LightComponent = Cast<ULightComponent>(ComponentToControl.GetComponent(GetOuterActor())))
 	{
-		if (ULightComponent* LightComponent = Cast<ULightComponent>(AttachedComponent))
+		ILiveLinkClient& LiveLinkClient = IModularFeatures::Get().GetModularFeature<ILiveLinkClient>(ILiveLinkClient::ModularFeatureName);
+
+		FLiveLinkSubjectFrameData SubjectData;
+		if (LiveLinkClient.EvaluateFrame_AnyThread(SubjectRepresentation.Subject, SubjectRepresentation.Role, SubjectData))
 		{
-			if (StaticData->bIsTemperatureSupported) { LightComponent->SetTemperature(FrameData->Temperature); }
-			if (StaticData->bIsIntensitySupported) { LightComponent->SetIntensity(FrameData->Intensity); }
-			if (StaticData->bIsLightColorSupported) { LightComponent->SetLightColor(FrameData->LightColor); }
+			FLiveLinkLightStaticData* StaticData = SubjectData.StaticData.Cast<FLiveLinkLightStaticData>();
+			FLiveLinkLightFrameData* FrameData = SubjectData.FrameData.Cast<FLiveLinkLightFrameData>();
 
-			if (UPointLightComponent* PointLightComponent = Cast<UPointLightComponent>(LightComponent))
+			if (StaticData && FrameData)
 			{
-				if (StaticData->bIsAttenuationRadiusSupported) { PointLightComponent->SetAttenuationRadius(FrameData->AttenuationRadius); }
-				if (StaticData->bIsSourceRadiusSupported) { PointLightComponent->SetSourceRadius(FrameData->SourceRadius); }
-				if (StaticData->bIsSoftSourceRadiusSupported) { PointLightComponent->SetSoftSourceRadius(FrameData->SoftSourceRadius); }
-				if (StaticData->bIsSourceLenghtSupported) { PointLightComponent->SetSourceLength(FrameData->SourceLength); }
+				TransformData.ApplyTransform(LightComponent, FrameData->Transform);
 
-				if (USpotLightComponent* SpotlightComponent = Cast<USpotLightComponent>(LightComponent))
+				if (StaticData->bIsTemperatureSupported) { LightComponent->SetTemperature(FrameData->Temperature); }
+				if (StaticData->bIsIntensitySupported) { LightComponent->SetIntensity(FrameData->Intensity); }
+				if (StaticData->bIsLightColorSupported) { LightComponent->SetLightColor(FrameData->LightColor); }
+
+				if (UPointLightComponent* PointLightComponent = Cast<UPointLightComponent>(LightComponent))
 				{
-					if (StaticData->bIsInnerConeAngleSupported) { SpotlightComponent->SetInnerConeAngle(FrameData->InnerConeAngle); }
-					if (StaticData->bIsOuterConeAngleSupported) { SpotlightComponent->SetOuterConeAngle(FrameData->OuterConeAngle); }
+					if (StaticData->bIsAttenuationRadiusSupported) { PointLightComponent->SetAttenuationRadius(FrameData->AttenuationRadius); }
+					if (StaticData->bIsSourceRadiusSupported) { PointLightComponent->SetSourceRadius(FrameData->SourceRadius); }
+					if (StaticData->bIsSoftSourceRadiusSupported) { PointLightComponent->SetSoftSourceRadius(FrameData->SoftSourceRadius); }
+					if (StaticData->bIsSourceLenghtSupported) { PointLightComponent->SetSourceLength(FrameData->SourceLength); }
+
+					if (USpotLightComponent* SpotlightComponent = Cast<USpotLightComponent>(LightComponent))
+					{
+						if (StaticData->bIsInnerConeAngleSupported) { SpotlightComponent->SetInnerConeAngle(FrameData->InnerConeAngle); }
+						if (StaticData->bIsOuterConeAngleSupported) { SpotlightComponent->SetOuterConeAngle(FrameData->OuterConeAngle); }
+					}
 				}
 			}
 		}
 	}
 }
+
 
 bool ULiveLinkLightController::IsRoleSupported(const TSubclassOf<ULiveLinkRole>& RoleToSupport)
 {
-	return RoleToSupport == ULiveLinkLightRole::StaticClass();
+	return RoleToSupport->IsChildOf(ULiveLinkLightRole::StaticClass());
 }
 
-TSubclassOf<UActorComponent> ULiveLinkLightController::GetDesiredComponentClass() const
-{
-	return ULightComponent::StaticClass();
-}
-
-void ULiveLinkLightController::PostLoad()
-{
-	Super::PostLoad();
 
 #if WITH_EDITOR
-	const int32 Version = GetLinkerCustomVersion(FEnterpriseObjectVersion::GUID);
-	if (Version < FEnterpriseObjectVersion::LiveLinkControllerSplitPerRole)
+void ULiveLinkLightController::InitializeInEditor()
+{
+	if (AActor* Actor = GetOuterActor())
 	{
-		AActor* MyActor = GetOuterActor();
-		if (MyActor)
+		if (ULightComponent* LightComponent = Actor->FindComponentByClass<ULightComponent>())
 		{
-			//Make sure all UObjects we use in our post load have been postloaded
-			MyActor->ConditionalPostLoad();
-
-			ULiveLinkComponentController* LiveLinkComponent = Cast<ULiveLinkComponentController>(MyActor->GetComponentByClass(ULiveLinkComponentController::StaticClass()));
-			if (LiveLinkComponent)
-			{
-				LiveLinkComponent->ConditionalPostLoad();
-
-				//If the transform controller that was created to drive the TransformRole is the built in one, set its data structure with the one that we had internally
-				if (LiveLinkComponent->ControllerMap.Contains(ULiveLinkTransformRole::StaticClass()))
-				{
-					ULiveLinkTransformController* TransformController = Cast<ULiveLinkTransformController>(LiveLinkComponent->ControllerMap[ULiveLinkTransformRole::StaticClass()]);
-					if (TransformController)
-					{
-						TransformController->ConditionalPostLoad();
-						TransformController->TransformData = TransformData_DEPRECATED;
-					}
-				}
-
-				//if Subjects role direct controller is us, set the component to control to what we had
-				if (LiveLinkComponent->SubjectRepresentation.Role == ULiveLinkLightRole::StaticClass())
-				{
-					LiveLinkComponent->ComponentToControl = ComponentToControl_DEPRECATED;
-				}
-			}
+			ComponentToControl = FComponentEditorUtils::MakeComponentReference(Actor, LightComponent);
 		}
 	}
-#endif //WITH_EDITOR
 }
-
+#endif

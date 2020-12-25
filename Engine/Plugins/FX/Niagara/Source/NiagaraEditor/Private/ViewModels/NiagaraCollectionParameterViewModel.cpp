@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraCollectionParameterViewModel.h"
 #include "NiagaraEditorUtilities.h"
@@ -28,14 +28,7 @@ void FNiagaraCollectionParameterViewModel::Reset()
 
 FName FNiagaraCollectionParameterViewModel::GetName() const
 {
-	if (CollectionInst && CollectionInst->GetParent())
-	{
-		return *CollectionInst->GetParent()->FriendlyNameFromParameterName(Parameter.GetName().ToString());
-	}
-	else
-	{
-		return FName();
-	}
+	return *CollectionInst->GetParent()->FriendlyNameFromParameterName(Parameter.GetName().ToString());
 }
 
 FText FNiagaraCollectionParameterViewModel::GetTypeDisplayName() const

@@ -1,24 +1,21 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "InputCoreTypes.h"
 #include "IPersonaEditMode.h"
-#include "IControlRigObjectBinding.h"
-#include "RigVMModel/RigVMGraph.h"
+#include "ControlRigModel.h"
 #include "Rigs/RigHierarchyContainer.h"
+#include "Drawing/ControlRigDrawInterface.h"
 #include "Units/RigUnitContext.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
-#include "UObject/StrongObjectPtr.h"
-#include "ControlRigEditMode.generated.h"
 
 class FEditorViewportClient;
 class FViewport;
 class UActorFactory;
 struct FViewportClick;
 class UControlRig;
-class FControlRigInteractionScope;
 class ISequencer;
 class UControlRigEditModeSettings;
 class UControlManipulator;
@@ -29,38 +26,10 @@ class FExtender;
 class IMovieScenePlayer;
 class AControlRigGizmoActor;
 class UDefaultControlRigManipulationLayer;
-class UControlRigDetailPanelControlProxies;
-class UControlRigControlsProxy;
-struct FRigControl;
-class IControlRigManipulatable;
-class ISequencer;
-enum class EControlRigSetKey : uint8;
 
-DECLARE_DELEGATE_RetVal_ThreeParams(FTransform, FOnGetRigElementTransform, const FRigElementKey& /*RigElementKey*/, bool /*bLocal*/, bool /*bOnDebugInstance*/);
+DECLARE_DELEGATE_RetVal_TwoParams(FTransform, FOnGetRigElementTransform, const FRigElementKey& /*RigElementKey*/, bool /*bLocal*/);
 DECLARE_DELEGATE_ThreeParams(FOnSetRigElementTransform, const FRigElementKey& /*RigElementKey*/, const FTransform& /*Transform*/, bool /*bLocal*/);
 DECLARE_DELEGATE_RetVal(TSharedPtr<FUICommandList>, FNewMenuCommandsDelegate);
-
-class FControlRigEditMode;
-
-UCLASS()
-class UControlRigEditModeDelegateHelper : public UObject
-{
-	GENERATED_BODY()
-
-public:
-
-	UFUNCTION()
-	void OnPoseInitialized();
-
-	UFUNCTION()
-	void PostPoseUpdate();
-
-	void AddDelegates(USkeletalMeshComponent* InSkeletalMeshComponent);
-	void RemoveDelegates();
-
-	TWeakObjectPtr<USkeletalMeshComponent> BoundComponent;
-	FControlRigEditMode* EditMode = nullptr;
-};
 
 class FControlRigEditMode : public IPersonaEditMode
 {
@@ -71,7 +40,7 @@ public:
 	~FControlRigEditMode();
 
 	/** Set the objects to be displayed in the details panel */
-	void SetObjects(const TWeakObjectPtr<>& InSelectedObject,  UObject* BindingObject, TWeakPtr<ISequencer> InSequencer);
+	void SetObjects(const TWeakObjectPtr<>& InSelectedObject, const FGuid& InObjectBinding, UObject* BindingObject);
 
 	/** This edit mode is re-used between the level editor and the control rig editor. Calling this indicates which context we are in */
 	virtual bool IsInLevelEditor() const { return true; }
@@ -124,7 +93,6 @@ public:
 	/** Context Menu Delegates */
 	FNewMenuDelegate& OnContextMenu() { return OnContextMenuDelegate; }
 	FNewMenuCommandsDelegate& OnContextMenuCommands() { return OnContextMenuCommandsDelegate; }
-	FSimpleMulticastDelegate& OnAnimSystemInitialized() { return OnAnimSystemInitializedDelegate; }
 
 	// callback that gets called when rig element is selected in other view
 	void OnRigElementAdded(FRigHierarchyContainer* Container, const FRigElementKey& InKey);
@@ -134,14 +102,12 @@ public:
 	void OnRigElementSelected(FRigHierarchyContainer* Container, const FRigElementKey& InKey, bool bSelected);
 	void OnRigElementChanged(FRigHierarchyContainer* Container, const FRigElementKey& InKey);
 	void OnControlUISettingChanged(FRigHierarchyContainer* Container, const FRigElementKey& InKey);
-	void OnControlModified(UControlRig* Subject, const FRigControl& Control, const FRigControlModifiedContext& Context);
 
-	/** return true if it can be removed from preview scene 
-	- this is to ensure preview scene doesn't remove Gizmo actors */
-	bool CanRemoveFromPreviewScene(const USceneComponent* InComponent);
+	/** Enable RigElement Editing */
+	void EnableRigElementEditing(bool bEnabled);
 
-	FUICommandList* GetCommandBindings() const { return CommandBindings.Get(); }
-
+	/** Get Control Rig, could be more than one later,  we are animating. Currently used by Sequencer for cross selection.*/
+	UControlRig*  GetControlRig() { return WeakControlRigEditing.IsValid() ? WeakControlRigEditing.Get() : nullptr; }
 protected:
 
 	// Gizmo related functions wrt enable/selection
@@ -151,9 +117,6 @@ protected:
 protected:
 	/** Helper function: set ControlRigs array to the details panel */
 	void SetObjects_Internal();
-
-	/** Set up Details Panel based upon Selected Objects*/
-	void SetUpDetailPanel();
 
 	/** Updates cached pivot transform */
 	void RecalcPivotTransform();
@@ -167,54 +130,38 @@ protected:
 	/** Toggles visibility of manipulators in the viewport */
 	void ToggleManipulators();
 
-	/** Frame to current Control Selection*/
-	void FrameSelection();
-
-	/** Whether or not we should Frame Selection or not*/
-	bool CanFrameSelection();
-
-	/** Reset Transforms */
-	void ResetTransforms(bool bSelectionOnly);
-
-	/** Increase Gizmo Size */
-	void IncreaseGizmoSize();
-
-	/** Decrease Gizmo Size */
-	void DecreaseGizmoSize();
-
-	/** Reset Gizmo Size */
-	void ResetGizmoSize();
-
 	/** Bind our keyboard commands */
 	void BindCommands();
 
 	/** It creates if it doesn't have it */
-	void RecreateGizmoActors(const TArray<FRigElementKey>& InSelectedElements = TArray<FRigElementKey>());
+	void RecreateManipulationLayer();
 
-	/** Requests to recreate the gizmo actors in the next tick */
-	void RequestToRecreateGizmoActors() { bRecreateGizmosRequired = true; }
+	/** Requests to recreate the manipulation layer in the next tick */
+	void RequestToRecreateManipulationLayer() { bRecreateManipulationLayerRequired = true; }
 
 	/** Let the preview scene know how we want to select components */
 	bool GizmoSelectionOverride(const UPrimitiveComponent* InComponent) const;
 
 protected:
-
-	TWeakPtr<ISequencer> WeakSequencer;
-
 	/** Settings object used to insert controls into the details panel */
 	UControlRigEditModeSettings* Settings;
 
-	/** The scope for the interaction */
-	FControlRigInteractionScope* InteractionScope;
+	/** Whether we are in the middle of a transaction */
+	bool bIsTransacting;
 
 	/** Whether a manipulator actually made a change when transacting */
 	bool bManipulatorMadeChange;
 
+	/** The ControlRig we are animating as a main. This is the main editing object we're working on */
+	TWeakObjectPtr<UControlRig> WeakControlRigEditing;
+	/** The sequencer GUID of the object we are animating */
+	FGuid ControlRigGuid;
+
+	/** The draw interface to use for the control rig */
+	FControlRigDrawInterface DrawInterface;
+
 	/** Guard value for selection */
 	bool bSelecting;
-
-	/** If selection was changed, we set up proxies on next tick */
-	bool bSelectionChanged;
 
 	/** Cached transform of pivot point for selected Bones */
 	FTransform PivotTransform;
@@ -232,19 +179,22 @@ protected:
 	FOnSetRigElementTransform OnSetRigElementTransformDelegate;
 	FNewMenuDelegate OnContextMenuDelegate;
 	FNewMenuCommandsDelegate OnContextMenuCommandsDelegate;
-	FSimpleMulticastDelegate OnAnimSystemInitializedDelegate;
 	
 	TArray<FRigElementKey> SelectedRigElements;
 
-	/* Flag to recreate gizmos during tick */
-	bool bRecreateGizmosRequired;
+	/* Flag to enable element init pose editing @Todo: */
+	bool bEnableRigElementDefaultPoseEditing;
 
-	/** Gizmo actors */
+	/* Flag to recreate manipulation layer during tick */
+	bool bRecreateManipulationLayerRequired;
+
+	/** Default Manipulation Layer */
+	UDefaultControlRigManipulationLayer* ManipulationLayer;
 	TArray<AControlRigGizmoActor*> GizmoActors;
-	UControlRigDetailPanelControlProxies* ControlProxy;
 
 	/** Utility functions for UI/Some other viewport manipulation*/
 	bool IsControlSelected() const;
+	bool IsControlOrSpaceOrBoneSelected() const;
 	bool AreRigElementSelectedAndMovable() const;
 	
 	/** Set initial transform handlers */
@@ -260,8 +210,6 @@ public:
 	/** Set a RigElement's selection state */
 	void SetRigElementSelection(ERigElementType Type, const FName& InRigElementName, bool bSelected);
 
-	void SetSelectedRigElement(const FName& InElementName, ERigElementType InRigElementType);
-
 	/** Set multiple RigElement's selection states */
 	void SetRigElementSelection(ERigElementType Type, const TArray<FName>& InRigElementNames, bool bSelected);
 
@@ -271,65 +219,13 @@ public:
 	/** Get the number of selected RigElements */
 	int32 GetNumSelectedRigElements(uint32 InTypes) const;
 
-	UControlRig* GetControlRig(bool bInteractionRig, int32 InIndex = 0) const;
-
 private:
 	/** Set a RigElement's selection state */
 	void SetRigElementSelectionInternal(ERigElementType Type, const FName& InRigElementName, bool bSelected);
-	
+
 	FEditorViewportClient* CurrentViewportClient;
 
-/* store coordinate system per widget mode*/
-private:
-	void OnWidgetModeChanged(FWidget::EWidgetMode InWidgetMode);
-	void OnCoordSystemChanged(ECoordSystem InCoordSystem);
-	TArray<ECoordSystem> CoordSystemPerWidgetMode;
-	bool bIsChangingCoordSystem;
-
-private:
-
-	bool CreateGizmoActors(UWorld* World);
-	void DestroyGizmosActors();
-
-	void AddControlRig(UControlRig* InControlRig);
-	void RemoveControlRig(UControlRig* InControlRig);
-	void TickManipulatableObjects(float DeltaTime);
-
-	void SetGizmoTransform(AControlRigGizmoActor* GizmoActor, const FTransform& InTransform);
-	FTransform GetGizmoTransform(AControlRigGizmoActor* GizmoActor) const;
-	void MoveGizmo(AControlRigGizmoActor* GizmoActor, const bool bTranslation, FVector& InDrag, 
-		const bool bRotation, FRotator& InRot, const bool bScale, FVector& InScale, const FTransform& ToWorldTransform,
-		bool bUseLocal, bool bCalcLocal, FTransform& InOutLocal);
-	void TickGizmo(AControlRigGizmoActor* GizmoActor, const FTransform& ComponentTransform);
-	bool ModeSupportedByGizmoActor(const AControlRigGizmoActor* GizmoActor, FWidget::EWidgetMode InMode) const;
-
-	// Object binding
-	/** Setup bindings to a runtime object (or clear by passing in nullptr). */
-	void SetObjectBinding(TSharedPtr<IControlRigObjectBinding> InObjectBinding);
-	/** Get bindings to a runtime object */
-	TSharedPtr<IControlRigObjectBinding> GetObjectBinding() const;
-
-	USceneComponent* GetHostingSceneComponent() const;
-	FTransform	GetHostingSceneComponentTransform() const;
-
-private:
-
-	// Post pose update handler
-	void OnPoseInitialized();
-	void PostPoseUpdate();
-
-	// world clean up handlers
-	FDelegateHandle OnWorldCleanupHandle;
-	void OnWorldCleanup(UWorld* World, bool bSessionEnded, bool bCleanupResources);
-	UWorld* WorldPtr = nullptr;
-
-	TArray<TWeakObjectPtr<UControlRig>> RuntimeControlRigs;
-
-	TStrongObjectPtr<UControlRigEditModeDelegateHelper> DelegateHelper;
-
 	friend class FControlRigEditorModule;
+	friend class UControlRigPickerWidget;
 	friend class FControlRigEditor;
-	friend class FControlRigEditModeGenericDetails;
-	friend class UControlRigEditModeDelegateHelper;
-	friend class SControlRigEditModeTools;
 };

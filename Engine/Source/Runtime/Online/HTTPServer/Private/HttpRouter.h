@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "IHttpRouter.h"
@@ -13,8 +13,12 @@ class FHttpRouter final : public IHttpRouter
 {
 public:
 
+	/**
+	 * Constructor
+	 */
+	FHttpRouter();
+
 	// IHttpRouter Overrides
-	bool Query(const TSharedPtr<FHttpServerRequest>& Request, const FHttpResultCallback& OnProcessingComplete) override;
 	FHttpRouteHandle BindRoute(const FHttpPath& HttpPath, const EHttpServerRequestVerbs& RequestVerbs, const FHttpRequestHandler& Handler) override;
 	void UnbindRoute(const FHttpRouteHandle& RouteHandle) override;
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -51,7 +51,6 @@ public:
 		, _IsPassword( false )
 		, _IsCaretMovedWhenGainFocus( true )
 		, _SelectAllTextWhenFocused( false )
-		, _SelectWordOnMouseDoubleClick(true)
 		, _RevertTextOnEscape( false )
 		, _ClearKeyboardFocusOnCommit(true)
 		, _Justification(ETextJustify::Left)
@@ -106,9 +105,6 @@ public:
 
 		/** Whether to select all text when the user clicks to give focus on the widget */
 		SLATE_ATTRIBUTE( bool, SelectAllTextWhenFocused )
-
-		/** Whether to select word on mouse double click on the widget */
-		SLATE_ATTRIBUTE(bool, SelectWordOnMouseDoubleClick)
 
 		/** Whether to allow the user to back out of changes when they press the escape key */
 		SLATE_ATTRIBUTE( bool, RevertTextOnEscape )
@@ -277,13 +273,6 @@ public:
 	 */
 	void SetSelectAllTextOnCommit(const TAttribute<bool>& InSelectAllTextOnCommit);
 
-	/**
-	 * Sets whether to select word on the mouse double click
-	 *
-	 * @param  InSelectWordOnMouseDoubleClick		Select word on the mouse double click
-	 */
-	void SetSelectWordOnMouseDoubleClick(const TAttribute<bool>& InSelectWordOnMouseDoubleClick);
-
 	/** See Justification attribute */
 	void SetJustification(const TAttribute<ETextJustify::Type>& InJustification);
 	/**
@@ -391,7 +380,6 @@ protected:
 	virtual bool ShouldRevertTextOnEscape() const override;
 	virtual bool ShouldClearKeyboardFocusOnCommit() const override;
 	virtual bool ShouldSelectAllTextOnCommit() const override;
-	virtual bool ShouldSelectWordOnMouseDoubleClick() const override;
 	virtual bool CanInsertCarriageReturn() const override;
 	virtual bool CanTypeCharacter(const TCHAR InChar) const override;
 	virtual void EnsureActiveTick() override;
@@ -445,9 +433,6 @@ protected:
 
 	/** Whether to select all text when pressing enter to commit changes */
 	TAttribute<bool> bSelectAllTextOnCommit;
-
-	/** Whether to select word on mouse double click */
-	TAttribute<bool> bSelectWordOnMouseDoubleClick;
 
 	/** Whether to disable the context menu */
 	TAttribute<bool> bAllowContextMenu;

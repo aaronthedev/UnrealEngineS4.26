@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PrecomputedVolumetricLightmap.cpp
@@ -31,7 +31,7 @@ void FVolumetricLightmapDataLayer::CreateTexture(FIntVector Dimensions)
 		Dimensions.Z, 
 		Format,
 		1,
-		TexCreate_ShaderResource | TexCreate_UAV,
+		TexCreate_ShaderResource | TexCreate_DisableAutoDefrag | TexCreate_UAV,
 		CreateInfo);
 }
 
@@ -46,7 +46,7 @@ void FVolumetricLightmapDataLayer::CreateTargetTexture(FIntVector Dimensions)
 		Dimensions.Z,
 		Format,
 		1,
-		TexCreate_ShaderResource | TexCreate_UAV,
+		TexCreate_ShaderResource | TexCreate_DisableAutoDefrag | TexCreate_UAV,
 		CreateInfo);
 }
 
@@ -57,7 +57,97 @@ void FVolumetricLightmapDataLayer::CreateUAV()
 	UAV = RHICreateUnorderedAccessView(Texture);
 }
 
-TGlobalResource<FVolumetricLightmapBrickAtlas> GVolumetricLightmapBrickAtlas;
+struct FVolumetricLightmapBrickTextureSet
+{
+	FIntVector BrickDataDimensions;
+
+	FVolumetricLightmapDataLayer AmbientVector;
+	FVolumetricLightmapDataLayer SHCoefficients[6];
+	FVolumetricLightmapDataLayer SkyBentNormal;
+	FVolumetricLightmapDataLayer DirectionalLightShadowing;
+
+	template<class VolumetricLightmapBrickDataType> // Can be either FVolumetricLightmapBrickData or FVolumetricLightmapBrickTextureSet
+	void Initialize(FIntVector InBrickDataDimensions, VolumetricLightmapBrickDataType& BrickData)
+	{
+		BrickDataDimensions = InBrickDataDimensions;
+
+		AmbientVector.Format = BrickData.AmbientVector.Format;
+		SkyBentNormal.Format = BrickData.SkyBentNormal.Format;
+		DirectionalLightShadowing.Format = BrickData.DirectionalLightShadowing.Format;
+
+		for (int32 i = 0; i < UE_ARRAY_COUNT(SHCoefficients); i++)
+		{
+			SHCoefficients[i].Format = BrickData.SHCoefficients[i].Format;
+		}
+
+		AmbientVector.CreateTargetTexture(BrickDataDimensions);
+		AmbientVector.CreateUAV();
+
+		for (int32 i = 0; i < UE_ARRAY_COUNT(SHCoefficients); i++)
+		{
+			SHCoefficients[i].CreateTargetTexture(BrickDataDimensions);
+			SHCoefficients[i].CreateUAV();
+		}
+
+		if (BrickData.SkyBentNormal.Texture.IsValid())
+		{
+			SkyBentNormal.CreateTargetTexture(BrickDataDimensions);
+			SkyBentNormal.CreateUAV();
+		}
+
+		DirectionalLightShadowing.CreateTargetTexture(BrickDataDimensions);
+		DirectionalLightShadowing.CreateUAV();
+	}
+
+	void Release()
+	{
+		AmbientVector.Texture.SafeRelease();
+		for (int32 i = 0; i < UE_ARRAY_COUNT(SHCoefficients); i++)
+		{
+			SHCoefficients[i].Texture.SafeRelease();
+		}
+		SkyBentNormal.Texture.SafeRelease();
+		DirectionalLightShadowing.Texture.SafeRelease();
+
+		AmbientVector.UAV.SafeRelease();
+		for (int32 i = 0; i < UE_ARRAY_COUNT(SHCoefficients); i++)
+		{
+			SHCoefficients[i].UAV.SafeRelease();
+		}
+		SkyBentNormal.UAV.SafeRelease();
+		DirectionalLightShadowing.UAV.SafeRelease();
+	}
+};
+
+class ENGINE_API FVolumetricLightmapBrickAtlas : public FRenderResource
+{
+public:
+	FVolumetricLightmapBrickAtlas();
+
+	FVolumetricLightmapBrickTextureSet TextureSet;
+
+	virtual void ReleaseRHI() override;
+
+	struct Allocation
+	{
+		// The data being allocated, as an identifier for the entry
+		class FPrecomputedVolumetricLightmapData* Data = nullptr;
+
+		int32 Size = 0;
+		int32 StartOffset = 0;
+	};
+
+	TArray<Allocation> Allocations;
+
+	void Insert(int32 Index, FPrecomputedVolumetricLightmapData* Data);
+	void Remove(FPrecomputedVolumetricLightmapData* Data);
+
+private:
+	bool bInitialized;
+	int32 PaddedBrickSize;
+};
+
+TGlobalResource<FVolumetricLightmapBrickAtlas> GVolumetricLightmapBrickAtlas = TGlobalResource<FVolumetricLightmapBrickAtlas>();
 
 inline void ConvertBGRA8ToRGBA8ForLayer(FVolumetricLightmapDataLayer& Layer)
 {
@@ -241,7 +331,7 @@ void FPrecomputedVolumetricLightmapData::FinalizeImport()
 
 ENGINE_API void FPrecomputedVolumetricLightmapData::InitRHI()
 {
-	if (GetFeatureLevel() >= ERHIFeatureLevel::SM5)
+	if (FeatureLevel >= ERHIFeatureLevel::SM5)
 	{
 		if (IndirectionTextureDimensions.GetMax() > 0)
 		{
@@ -295,15 +385,15 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::InitRHIForSubLevelResources(
 
 ENGINE_API void FPrecomputedVolumetricLightmapData::ReleaseRHI()
 {
-	if (GetFeatureLevel() >= ERHIFeatureLevel::SM5)
+	if (FeatureLevel >= ERHIFeatureLevel::SM5)
 	{
-		GVolumetricLightmapBrickAtlas.Remove(this);
-
 		{
 			IndirectionTexture.Texture.SafeRelease();
 			IndirectionTexture.UAV.SafeRelease();
 			BrickData.ReleaseRHI();
 		}
+
+		GVolumetricLightmapBrickAtlas.Remove(this);
 	}
 }
 
@@ -331,35 +421,32 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::HandleDataMovementInAtlas(in
 
 		for (FPrecomputedVolumetricLightmapData* SceneData : SceneDataAdded)
 		{
-			if (SceneData->IndirectionTexture.Texture.IsValid())
-			{
-				FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(GetFeatureLevel());
+			TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 
-				TShaderMapRef<FMoveWholeIndirectionTextureCS> ComputeShader(GlobalShaderMap);
+			TShaderMapRef<FMoveWholeIndirectionTextureCS> ComputeShader(GlobalShaderMap);
 
-				FVolumetricLightmapDataLayer NewIndirectionTexture = SceneData->IndirectionTexture;
-				NewIndirectionTexture.CreateTargetTexture(IndirectionTextureDimensions);
-				NewIndirectionTexture.CreateUAV();
+			FVolumetricLightmapDataLayer NewIndirectionTexture = SceneData->IndirectionTexture;
+			NewIndirectionTexture.CreateTargetTexture(IndirectionTextureDimensions);
+			NewIndirectionTexture.CreateUAV();
 
-				FMoveWholeIndirectionTextureCS::FParameters Parameters;
-				Parameters.NumBricks = NumBricks;
-				Parameters.StartPosInOldVolume = OldOffset;
-				Parameters.StartPosInNewVolume = BrickDataBaseOffsetInAtlas;
-				Parameters.OldIndirectionTexture = SceneData->IndirectionTexture.Texture;
-				Parameters.IndirectionTexture = NewIndirectionTexture.UAV;
+			FMoveWholeIndirectionTextureCS::FParameters Parameters;
+			Parameters.NumBricks = NumBricks;
+			Parameters.StartPosInOldVolume = OldOffset;
+			Parameters.StartPosInNewVolume = BrickDataBaseOffsetInAtlas;
+			Parameters.OldIndirectionTexture = SceneData->IndirectionTexture.Texture;
+			Parameters.IndirectionTexture = NewIndirectionTexture.UAV;
 
-				FComputeShaderUtils::Dispatch(RHICmdList, ComputeShader, Parameters,
-					FIntVector(
-						FMath::DivideAndRoundUp(IndirectionTextureDimensions.X, 4),
-						FMath::DivideAndRoundUp(IndirectionTextureDimensions.Y, 4),
-						FMath::DivideAndRoundUp(IndirectionTextureDimensions.Z, 4))
-				);
+			FComputeShaderUtils::Dispatch(RHICmdList, *ComputeShader, Parameters,
+				FIntVector(
+					FMath::DivideAndRoundUp(IndirectionTextureDimensions.X, 4),
+					FMath::DivideAndRoundUp(IndirectionTextureDimensions.Y, 4),
+					FMath::DivideAndRoundUp(IndirectionTextureDimensions.Z, 4))
+			);
 
-				SceneData->IndirectionTexture = NewIndirectionTexture;
+			SceneData->IndirectionTexture = NewIndirectionTexture;
 
-				FRHIUnorderedAccessView* UAV = NewIndirectionTexture.UAV;
-				RHICmdList.Transition(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask));
-			}
+ 			FRHIUnorderedAccessView* UAV = NewIndirectionTexture.UAV;
+ 			RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, &UAV, 1);
 		}
 	}
 	else
@@ -370,7 +457,7 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::HandleDataMovementInAtlas(in
 		{
 			if (SceneData->IndirectionTexture.Texture.IsValid())
 			{
-				FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(GetFeatureLevel());
+				TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 
 				TShaderMapRef<FPatchIndirectionTextureCS> ComputeShader(GlobalShaderMap);
 
@@ -382,10 +469,10 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::HandleDataMovementInAtlas(in
 				Parameters.IndirectionTexture = SceneData->IndirectionTexture.UAV;
 				Parameters.SubLevelBrickPositions = SubLevelBrickPositionsSRV;
 
-				FComputeShaderUtils::Dispatch(RHICmdList, ComputeShader, Parameters, FIntVector(FMath::DivideAndRoundUp(NumBricks, 64), 1, 1));
+				FComputeShaderUtils::Dispatch(RHICmdList, *ComputeShader, Parameters, FIntVector(FMath::DivideAndRoundUp(NumBricks, 64), 1, 1));
 
 				FRHIUnorderedAccessView* UAV = SceneData->IndirectionTexture.UAV;
-				RHICmdList.Transition(FRHITransitionInfo(UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+				RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, &UAV, 1);
 			}
 		}
 
@@ -410,12 +497,12 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::AddToSceneData(FPrecomputedV
 		return;
 	}
 
+	SceneDataAdded.Add(SceneData);
+
 	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
 
 	if (IndirectionTextureDimensions.GetMax() > 0)
 	{
-		SceneDataAdded.Add(SceneData);
-
 		// Copy parameters from the persistent level VLM
 		SceneData->Bounds = Bounds;
 		SceneData->BrickSize = BrickSize;
@@ -424,36 +511,20 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::AddToSceneData(FPrecomputedV
 		SceneData->IndirectionTexture.Format = IndirectionTexture.Format;
 		SceneData->IndirectionTextureDimensions = IndirectionTextureDimensions;
 
-		if (GetFeatureLevel() >= ERHIFeatureLevel::SM5)
+		if (FeatureLevel >= ERHIFeatureLevel::SM5)
 		{
-			// Tracking down UE-88573
-			ensureMsgf(IsInitialized(), TEXT("FPrecomputedVolumetricLightmapData is being added to a scene data without initialization"));
-
-			if (!IsInitialized())
-			{
-				InitResource();
-			}
-
-			if (!IndirectionTexture.Texture)
-		{
-				ensureMsgf(IsInitialized(), TEXT("FPrecomputedVolumetricLightmapData IndirectionTexture is still invalid after manual initialization, returning"));
-				return;
-			}
-
 			// GPU Path
 
 			const int32 PaddedBrickSize = BrickSize + 1;
 			int32 NumBricks = BrickDataDimensions.X * BrickDataDimensions.Y * BrickDataDimensions.Z / (PaddedBrickSize * PaddedBrickSize * PaddedBrickSize);
 
-			FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(GetFeatureLevel());
+			TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 
 			TShaderMapRef<FMoveWholeIndirectionTextureCS> ComputeShader(GlobalShaderMap);
 
 			FVolumetricLightmapDataLayer NewIndirectionTexture = SceneData->IndirectionTexture;
 			NewIndirectionTexture.CreateTargetTexture(IndirectionTextureDimensions);
 			NewIndirectionTexture.CreateUAV();
-
-			RHICmdList.Transition(FRHITransitionInfo(NewIndirectionTexture.UAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
 
 			FMoveWholeIndirectionTextureCS::FParameters Parameters;
 			Parameters.NumBricks = NumBricks;
@@ -462,25 +533,23 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::AddToSceneData(FPrecomputedV
 			Parameters.OldIndirectionTexture = IndirectionTexture.Texture;
 			Parameters.IndirectionTexture = NewIndirectionTexture.UAV;
 
-			FComputeShaderUtils::Dispatch(RHICmdList, ComputeShader, Parameters,
+			FComputeShaderUtils::Dispatch(RHICmdList, *ComputeShader, Parameters,
 				FIntVector(
 					FMath::DivideAndRoundUp(IndirectionTextureDimensions.X, 4),
 					FMath::DivideAndRoundUp(IndirectionTextureDimensions.Y, 4),
 					FMath::DivideAndRoundUp(IndirectionTextureDimensions.Z, 4))
 			);
 
-			RHICmdList.Transition(FRHITransitionInfo(NewIndirectionTexture.UAV, ERHIAccess::UAVCompute, ERHIAccess::SRVMask));
-
 			SceneData->IndirectionTexture = NewIndirectionTexture;
 
 			if (!GIsEditor)
 			{
 				// Steal the indirection texture. When the sublevels are unloaded the values will be restored.
-				IndirectionTexture = SceneData->IndirectionTexture;			
+				IndirectionTexture = SceneData->IndirectionTexture;
 			}
 
-			RHICmdList.Transition(FRHITransitionInfo(IndirectionTexture.Texture, ERHIAccess::Unknown, ERHIAccess::SRVMask));
-			RHICmdList.Transition(FRHITransitionInfo(NewIndirectionTexture.UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+			FRHIUnorderedAccessView* UAV = NewIndirectionTexture.UAV;
+			RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, &UAV, 1);
 		}
 		else
 		{
@@ -494,16 +563,14 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::AddToSceneData(FPrecomputedV
 	}
 	else
 	{
-		if (GetFeatureLevel() >= ERHIFeatureLevel::SM5)
+		if (FeatureLevel >= ERHIFeatureLevel::SM5)
 		{
 			// GPU Path
 			if (SceneData->IndirectionTexture.Texture.IsValid())
 			{
-				SceneDataAdded.Add(SceneData);
-
 				InitRHIForSubLevelResources();
 
-				FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(GetFeatureLevel());
+				TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 
 				TShaderMapRef<FPatchIndirectionTextureCS> ComputeShader(GlobalShaderMap);
 
@@ -515,11 +582,10 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::AddToSceneData(FPrecomputedV
 				Parameters.IndirectionTexture = SceneData->IndirectionTexture.UAV;
 				Parameters.SubLevelBrickPositions = SubLevelBrickPositionsSRV;
 
-				RHICmdList.Transition(FRHITransitionInfo(SceneData->IndirectionTexture.UAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
+				FComputeShaderUtils::Dispatch(RHICmdList, *ComputeShader, Parameters, FIntVector(FMath::DivideAndRoundUp(NumBricks, 64), 1, 1));
 
-				FComputeShaderUtils::Dispatch(RHICmdList, ComputeShader, Parameters, FIntVector(FMath::DivideAndRoundUp(NumBricks, 64), 1, 1));
-
-				RHICmdList.Transition(FRHITransitionInfo(SceneData->IndirectionTexture.UAV, ERHIAccess::UAVCompute, ERHIAccess::SRVMask));
+				FRHIUnorderedAccessView* UAV = SceneData->IndirectionTexture.UAV;
+				RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, &UAV, 1);
 
 				ReleaseRHIForSubLevelResources();
 			}
@@ -529,16 +595,9 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::AddToSceneData(FPrecomputedV
 			// CPU Path
 			if (SceneData->IndirectionTexture.Data.Num() > 0)
 			{
-				SceneDataAdded.Add(SceneData);
-				// Find empty spot or Add new
-				int32 IndexInCPUSubLevelBrickDataList = SceneData->CPUSubLevelBrickDataList.Find(nullptr);
-				if (IndexInCPUSubLevelBrickDataList == INDEX_NONE)
-				{
-					IndexInCPUSubLevelBrickDataList = SceneData->CPUSubLevelBrickDataList.Add(nullptr);
-				}
-				check(IndexInCPUSubLevelBrickDataList < UINT8_MAX);
-				uint8 Value = (uint8)IndexInCPUSubLevelBrickDataList;
-				SceneData->CPUSubLevelBrickDataList[IndexInCPUSubLevelBrickDataList] = this;
+				int32 Index = SceneData->CPUSubLevelBrickDataList.Add(this);
+				check(Index < UINT8_MAX);
+				uint8 Value = (uint8)Index;
 
 				for (int32 BrickIndex = 0; BrickIndex < SubLevelBrickPositions.Num(); BrickIndex++)
 				{
@@ -565,6 +624,15 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::AddToSceneData(FPrecomputedV
 			}
 		}
 	}
+
+	SceneData->BrickDataDimensions = GVolumetricLightmapBrickAtlas.TextureSet.BrickDataDimensions;
+	SceneData->BrickData.AmbientVector = GVolumetricLightmapBrickAtlas.TextureSet.AmbientVector;
+	for (int32 i = 0; i < UE_ARRAY_COUNT(SceneData->BrickData.SHCoefficients); i++)
+	{
+		SceneData->BrickData.SHCoefficients[i] = GVolumetricLightmapBrickAtlas.TextureSet.SHCoefficients[i];
+	}
+	SceneData->BrickData.SkyBentNormal = GVolumetricLightmapBrickAtlas.TextureSet.SkyBentNormal;
+	SceneData->BrickData.DirectionalLightShadowing = GVolumetricLightmapBrickAtlas.TextureSet.DirectionalLightShadowing;
 }
 
 ENGINE_API void FPrecomputedVolumetricLightmapData::RemoveFromSceneData(FPrecomputedVolumetricLightmapData* SceneData, int32 PersistentLevelBrickDataBaseOffset)
@@ -584,7 +652,7 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::RemoveFromSceneData(FPrecomp
 	}
 	else
 	{
-		if (GetFeatureLevel() >= ERHIFeatureLevel::SM5)
+		if (FeatureLevel >= ERHIFeatureLevel::SM5)
 		{
 			if (SceneData->IndirectionTexture.Texture.IsValid())
 			{
@@ -592,7 +660,7 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::RemoveFromSceneData(FPrecomp
 
 				InitRHIForSubLevelResources();
 
-				FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(GetFeatureLevel());
+				TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 
 				TShaderMapRef<FRemoveSubLevelBricksCS> ComputeShader(GlobalShaderMap);
 
@@ -603,11 +671,10 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::RemoveFromSceneData(FPrecomp
 				Parameters.IndirectionTextureOriginalValues = IndirectionTextureOriginalValuesSRV;
 				Parameters.PersistentLevelBrickDataBaseOffset = PersistentLevelBrickDataBaseOffset;
 
-				RHICmdList.Transition(FRHITransitionInfo(SceneData->IndirectionTexture.UAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
+				FComputeShaderUtils::Dispatch(RHICmdList, *ComputeShader, Parameters, FIntVector(FMath::DivideAndRoundUp(SubLevelBrickPositions.Num(), 64), 1, 1));
 
-				FComputeShaderUtils::Dispatch(RHICmdList, ComputeShader, Parameters, FIntVector(FMath::DivideAndRoundUp(SubLevelBrickPositions.Num(), 64), 1, 1));
-
-				RHICmdList.Transition(FRHITransitionInfo(SceneData->IndirectionTexture.UAV, ERHIAccess::UAVCompute, ERHIAccess::SRVMask));
+				FRHIUnorderedAccessView* UAV = SceneData->IndirectionTexture.UAV;
+				RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, &UAV, 1);
 
 				ReleaseRHIForSubLevelResources();
 			}
@@ -617,42 +684,42 @@ ENGINE_API void FPrecomputedVolumetricLightmapData::RemoveFromSceneData(FPrecomp
 			// CPU Path
 			if (SceneData->IndirectionTexture.Data.Num() > 0)
 			{
-				for (int32 Index = 0; Index < SceneData->CPUSubLevelBrickDataList.Num(); ++Index)
+				SceneData->CPUSubLevelBrickDataList.Remove(this);
+
+				for (int32 BrickIndex = 0; BrickIndex < SubLevelBrickPositions.Num(); BrickIndex++)
 				{
-					if (SceneData->CPUSubLevelBrickDataList[Index] == this)
+					const FColor OriginalValue = IndirectionTextureOriginalValues[BrickIndex];
+
+					const FIntVector IndirectionDestDataCoordinate = SubLevelBrickPositions[BrickIndex];
+					const int32 IndirectionDestDataIndex =
+						((IndirectionDestDataCoordinate.Z * SceneData->IndirectionTextureDimensions.Y) + IndirectionDestDataCoordinate.Y) *
+						SceneData->IndirectionTextureDimensions.X + IndirectionDestDataCoordinate.X;
+
 					{
-						SceneData->CPUSubLevelBrickDataList[Index] = nullptr;
-				
-						for (int32 BrickIndex = 0; BrickIndex < SubLevelBrickPositions.Num(); BrickIndex++)
-						{
-							const FColor OriginalValue = IndirectionTextureOriginalValues[BrickIndex];
+						const int32 IndirectionTextureDataStride = GPixelFormats[SceneData->IndirectionTexture.Format].BlockBytes;
+						uint8* IndirectionVoxelPtr = (uint8*)&SceneData->IndirectionTexture.Data[IndirectionDestDataIndex * IndirectionTextureDataStride];
+						*(IndirectionVoxelPtr + 0) = OriginalValue.R;
+						*(IndirectionVoxelPtr + 1) = OriginalValue.G;
+						*(IndirectionVoxelPtr + 2) = OriginalValue.B;
+						*(IndirectionVoxelPtr + 3) = 1;
+					}
 
-							const FIntVector IndirectionDestDataCoordinate = SubLevelBrickPositions[BrickIndex];
-							const int32 IndirectionDestDataIndex =
-								((IndirectionDestDataCoordinate.Z * SceneData->IndirectionTextureDimensions.Y) + IndirectionDestDataCoordinate.Y) *
-								SceneData->IndirectionTextureDimensions.X + IndirectionDestDataCoordinate.X;
-
-							{
-								const int32 IndirectionTextureDataStride = GPixelFormats[SceneData->IndirectionTexture.Format].BlockBytes;
-								uint8* IndirectionVoxelPtr = (uint8*)&SceneData->IndirectionTexture.Data[IndirectionDestDataIndex * IndirectionTextureDataStride];
-								*(IndirectionVoxelPtr + 0) = OriginalValue.R;
-								*(IndirectionVoxelPtr + 1) = OriginalValue.G;
-								*(IndirectionVoxelPtr + 2) = OriginalValue.B;
-								*(IndirectionVoxelPtr + 3) = 1;
-							}
-
-							{
-								SceneData->CPUSubLevelIndirectionTable[IndirectionDestDataIndex] = 0;
-							}
-						}
-					
-						// we don't expect duplicates in CPUSubLevelBrickDataList
-						break;
+					{
+						SceneData->CPUSubLevelIndirectionTable[IndirectionDestDataIndex] = 0;
 					}
 				}
 			}
 		}
 	}
+
+	SceneData->BrickDataDimensions = GVolumetricLightmapBrickAtlas.TextureSet.BrickDataDimensions;
+	SceneData->BrickData.AmbientVector = GVolumetricLightmapBrickAtlas.TextureSet.AmbientVector;
+	for (int32 i = 0; i < UE_ARRAY_COUNT(SceneData->BrickData.SHCoefficients); i++)
+	{
+		SceneData->BrickData.SHCoefficients[i] = GVolumetricLightmapBrickAtlas.TextureSet.SHCoefficients[i];
+	}
+	SceneData->BrickData.SkyBentNormal = GVolumetricLightmapBrickAtlas.TextureSet.SkyBentNormal;
+	SceneData->BrickData.DirectionalLightShadowing = GVolumetricLightmapBrickAtlas.TextureSet.DirectionalLightShadowing;
 }
 
 SIZE_T FPrecomputedVolumetricLightmapData::GetAllocatedBytes() const
@@ -742,7 +809,7 @@ void FPrecomputedVolumetricLightmap::SetData(FPrecomputedVolumetricLightmapData*
 
 	if (Data)
 	{
-		Data->SetFeatureLevel(Scene->GetFeatureLevel());
+		Data->FeatureLevel = Scene->GetFeatureLevel();
 		Data->IndirectionTexture.bNeedsCPUAccess = GIsEditor;
 		Data->BrickData.SetNeedsCPUAccess(GIsEditor);
 
@@ -839,23 +906,10 @@ FVolumetricLightmapBrickAtlas::FVolumetricLightmapBrickAtlas()
 }
 
 template<class VolumetricLightmapBrickDataType>
-void CopyDataIntoAtlas(FRHICommandList& RHICmdList, int32 SrcOffset, int32 DestOffset, int32 NumBricks, const VolumetricLightmapBrickDataType& SrcData, FVolumetricLightmapBrickTextureSet DestTextureSet)
+void CopyDataIntoAtlas(FRHICommandList& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, int32 SrcOffset, int32 DestOffset, int32 NumBricks, const VolumetricLightmapBrickDataType& SrcData, FVolumetricLightmapBrickTextureSet DestTextureSet)
 {
-	FMemMark Mark(FMemStack::Get());
-	TArray<FRHITransitionInfo, SceneRenderingAllocator> Infos;
-	Infos.Reserve(3 + UE_ARRAY_COUNT(SrcData.SHCoefficients));
-	Infos.Emplace(DestTextureSet.AmbientVector.UAV,             ERHIAccess::Unknown, ERHIAccess::UAVCompute);
-	Infos.Emplace(DestTextureSet.SkyBentNormal.UAV,             ERHIAccess::Unknown, ERHIAccess::UAVCompute);
-	Infos.Emplace(DestTextureSet.DirectionalLightShadowing.UAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
-
-	for (int32 i = 0; i < UE_ARRAY_COUNT(SrcData.SHCoefficients); i++)
 	{
-		Infos.Emplace(DestTextureSet.SHCoefficients[i].UAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute);
-	}
-	RHICmdList.Transition(Infos);
-
-	{
-		FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(ERHIFeatureLevel::SM5);
+		TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 
 		FCopyResidentBricksCS::FPermutationDomain PermutationVector;
 		PermutationVector.Set<FCopyResidentBricksCS::FHasSkyBentNormal>(SrcData.SkyBentNormal.Texture.IsValid());
@@ -875,12 +929,18 @@ void CopyDataIntoAtlas(FRHICommandList& RHICmdList, int32 SrcOffset, int32 DestO
 		Parameters.OutSkyBentNormal = DestTextureSet.SkyBentNormal.UAV;
 		Parameters.OutDirectionalLightShadowing = DestTextureSet.DirectionalLightShadowing.UAV;
 
-		FComputeShaderUtils::Dispatch(RHICmdList, ComputeShader, Parameters, FIntVector(NumBricks, 1, 1));
+		FComputeShaderUtils::Dispatch(RHICmdList, *ComputeShader, Parameters, FIntVector(NumBricks, 1, 1));
+
+		FRHIUnorderedAccessView* UAVs[3];
+		UAVs[0] = Parameters.OutAmbientVector;
+		UAVs[1] = Parameters.OutSkyBentNormal;
+		UAVs[2] = Parameters.OutDirectionalLightShadowing;
+		RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, UAVs, 3);
 	}
 
 	for (int32 i = 0; i < UE_ARRAY_COUNT(SrcData.SHCoefficients); i++)
 	{
-		FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(ERHIFeatureLevel::SM5);
+		TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 
 		TShaderMapRef<FCopyResidentBrickSHCoefficientsCS> ComputeShader(GlobalShaderMap);
 
@@ -892,32 +952,24 @@ void CopyDataIntoAtlas(FRHICommandList& RHICmdList, int32 SrcOffset, int32 DestO
 		Parameters.SHCoefficients = SrcData.SHCoefficients[i].Texture;
 		Parameters.OutSHCoefficients = DestTextureSet.SHCoefficients[i].UAV;
 
-		FComputeShaderUtils::Dispatch(RHICmdList, ComputeShader, Parameters, FIntVector(NumBricks, 1, 1));
-	}
+		FComputeShaderUtils::Dispatch(RHICmdList, *ComputeShader, Parameters, FIntVector(NumBricks, 1, 1));
 
-	// Make all the resources readable again
-	for (FRHITransitionInfo& Info : Infos)
-	{
-		Info.AccessBefore = Info.AccessAfter;
-		Info.AccessAfter = ERHIAccess::SRVMask;
+		FRHIUnorderedAccessView* UAV = Parameters.OutSHCoefficients;
+		RHICmdList.TransitionResources(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, &UAV, 1);
 	}
-	RHICmdList.Transition(Infos);
 }
 
 void FVolumetricLightmapBrickAtlas::Insert(int32 Index, FPrecomputedVolumetricLightmapData* Data)
 {
 	check(!Allocations.FindByPredicate([Data](const Allocation& Other) { return Other.Data == Data; }));
 
-	bool bReadAfterCreate = false;
-
 	if (!bInitialized)
 	{
-		SetFeatureLevel(ERHIFeatureLevel::SM5);
+		FeatureLevel = ERHIFeatureLevel::SM5;
 		check(Data->BrickSize > 0);
 		PaddedBrickSize = Data->BrickSize + 1;
 		TextureSet.Initialize(Data->BrickDataDimensions, Data->BrickData);
 		bInitialized = true;
-		bReadAfterCreate = true;
 	}
 	else
 	{
@@ -935,25 +987,7 @@ void FVolumetricLightmapBrickAtlas::Insert(int32 Index, FPrecomputedVolumetricLi
 		{
 			TextureSet.SkyBentNormal.CreateTargetTexture(TextureSet.BrickDataDimensions);
 			TextureSet.SkyBentNormal.CreateUAV();
-			bReadAfterCreate = true;
 		}
-	}
-
-	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
-
-	if (bReadAfterCreate)
-	{
-		FRHITransitionInfo Transitions[UE_ARRAY_COUNT(TextureSet.SHCoefficients) + 3] =
-		{
-			FRHITransitionInfo(TextureSet.AmbientVector.Texture, ERHIAccess::Unknown, ERHIAccess::SRVMask),
-			FRHITransitionInfo(TextureSet.SkyBentNormal.Texture, ERHIAccess::Unknown, ERHIAccess::SRVMask),
-			FRHITransitionInfo(TextureSet.DirectionalLightShadowing.Texture, ERHIAccess::Unknown, ERHIAccess::SRVMask)
-		};
-		for (int32 i = 0; i < UE_ARRAY_COUNT(TextureSet.SHCoefficients); i++)
-		{
-			Transitions[i + 3] = FRHITransitionInfo(TextureSet.SHCoefficients[i].Texture, ERHIAccess::Unknown, ERHIAccess::SRVMask);
-		}
-		RHICmdList.Transition(MakeArrayView(Transitions, UE_ARRAY_COUNT(Transitions)));
 	}
 
 	int32 NumTotalBricks = 0;
@@ -981,6 +1015,8 @@ void FVolumetricLightmapBrickAtlas::Insert(int32 Index, FPrecomputedVolumetricLi
 
 		NewTextureSet.Initialize(BrickDataDimensions, TextureSet);
 	}
+
+	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
 
 	// Dry run to handle persistent level data movement properly
 	{
@@ -1011,27 +1047,12 @@ void FVolumetricLightmapBrickAtlas::Insert(int32 Index, FPrecomputedVolumetricLi
 	}
 
 	{
-		{
-			// Transition all the UAVs to writable
-			FRHITransitionInfo Transitions[UE_ARRAY_COUNT(NewTextureSet.SHCoefficients) + 3] =
-			{
-				FRHITransitionInfo(NewTextureSet.AmbientVector.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier),
-				FRHITransitionInfo(NewTextureSet.SkyBentNormal.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier),
-				FRHITransitionInfo(NewTextureSet.DirectionalLightShadowing.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier)
-			};
-			for (int32 i = 0; i < UE_ARRAY_COUNT(NewTextureSet.SHCoefficients); i++)
-			{
-				Transitions[i + 3] = FRHITransitionInfo(NewTextureSet.SHCoefficients[i].UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier);
-			}
-			RHICmdList.Transition(MakeArrayView(Transitions, UE_ARRAY_COUNT(Transitions)));
-		}
-
 		int32 BrickStartAllocation = 0;
 
 		// Copy old allocations
 		for (int32 AllocationIndex = 0; AllocationIndex < Index && AllocationIndex < Allocations.Num(); AllocationIndex++)
 		{
-			CopyDataIntoAtlas(RHICmdList, Allocations[AllocationIndex].StartOffset, BrickStartAllocation, Allocations[AllocationIndex].Size, TextureSet, NewTextureSet);
+			CopyDataIntoAtlas(RHICmdList, FeatureLevel, Allocations[AllocationIndex].StartOffset, BrickStartAllocation, Allocations[AllocationIndex].Size, TextureSet, NewTextureSet);
 
 			NewAllocations.Add(Allocation{ Allocations[AllocationIndex].Data, Allocations[AllocationIndex].Size, BrickStartAllocation });
 			BrickStartAllocation += Allocations[AllocationIndex].Size;
@@ -1041,7 +1062,7 @@ void FVolumetricLightmapBrickAtlas::Insert(int32 Index, FPrecomputedVolumetricLi
 		{
 			int32 NumBricks = Data->BrickDataDimensions.X * Data->BrickDataDimensions.Y * Data->BrickDataDimensions.Z / (PaddedBrickSize * PaddedBrickSize * PaddedBrickSize);
 
-			CopyDataIntoAtlas(RHICmdList, 0, BrickStartAllocation, NumBricks, Data->BrickData, NewTextureSet);
+			CopyDataIntoAtlas(RHICmdList, FeatureLevel, 0, BrickStartAllocation, NumBricks, Data->BrickData, NewTextureSet);
 
 			NewAllocations.Add(Allocation{ Data, NumBricks, BrickStartAllocation });
 			Data->BrickDataBaseOffsetInAtlas = BrickStartAllocation;
@@ -1051,7 +1072,7 @@ void FVolumetricLightmapBrickAtlas::Insert(int32 Index, FPrecomputedVolumetricLi
 		// Copy the rest of allocations
 		for (int32 AllocationIndex = Index; AllocationIndex < Allocations.Num(); AllocationIndex++)
 		{
-			CopyDataIntoAtlas(RHICmdList, Allocations[AllocationIndex].StartOffset, BrickStartAllocation, Allocations[AllocationIndex].Size, TextureSet, NewTextureSet);
+			CopyDataIntoAtlas(RHICmdList, FeatureLevel, Allocations[AllocationIndex].StartOffset, BrickStartAllocation, Allocations[AllocationIndex].Size, TextureSet, NewTextureSet);
 
 			NewAllocations.Add(Allocation{ Allocations[AllocationIndex].Data, Allocations[AllocationIndex].Size, BrickStartAllocation });
 			// Handle the sub level data movements
@@ -1060,21 +1081,6 @@ void FVolumetricLightmapBrickAtlas::Insert(int32 Index, FPrecomputedVolumetricLi
 				Allocations[AllocationIndex].Data->HandleDataMovementInAtlas(Allocations[AllocationIndex].StartOffset, BrickStartAllocation);
 			}
 			BrickStartAllocation += Allocations[AllocationIndex].Size;
-		}
-
-		{
-			// Transition all UAVs in the new set to readable
-			FRHITransitionInfo Transitions[UE_ARRAY_COUNT(NewTextureSet.SHCoefficients) + 3] =
-			{
-				FRHITransitionInfo(NewTextureSet.AmbientVector.UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask),
-				FRHITransitionInfo(NewTextureSet.SkyBentNormal.UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask),
-				FRHITransitionInfo(NewTextureSet.DirectionalLightShadowing.UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask)
-			};
-			for (int32 i = 0; i < UE_ARRAY_COUNT(NewTextureSet.SHCoefficients); i++)
-			{
-				Transitions[i + 3] = FRHITransitionInfo(NewTextureSet.SHCoefficients[i].UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask);
-			}
-			RHICmdList.Transition(MakeArrayView(Transitions, UE_ARRAY_COUNT(Transitions)));
 		}
 	}
 
@@ -1125,27 +1131,12 @@ void FVolumetricLightmapBrickAtlas::Remove(FPrecomputedVolumetricLightmapData* D
 		FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
 
 		{
-			{
-				// Transition all the UAVs to writable
-				FRHITransitionInfo Transitions[UE_ARRAY_COUNT(NewTextureSet.SHCoefficients) + 3] =
-				{
-					FRHITransitionInfo(NewTextureSet.AmbientVector.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier),
-					FRHITransitionInfo(NewTextureSet.SkyBentNormal.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier),
-					FRHITransitionInfo(NewTextureSet.DirectionalLightShadowing.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier)
-				};
-				for (int32 i = 0; i < UE_ARRAY_COUNT(NewTextureSet.SHCoefficients); i++)
-				{
-					Transitions[i + 3] = FRHITransitionInfo(NewTextureSet.SHCoefficients[i].UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier);
-				}
-				RHICmdList.Transition(MakeArrayView(Transitions, UE_ARRAY_COUNT(Transitions)));
-			}
-
 			int32 BrickStartAllocation = 0;
 
 			// Copy old allocations
 			for (int32 AllocationIndex = 0; AllocationIndex < Index && AllocationIndex < Allocations.Num(); AllocationIndex++)
 			{
-				CopyDataIntoAtlas(RHICmdList, Allocations[AllocationIndex].StartOffset, BrickStartAllocation, Allocations[AllocationIndex].Size, TextureSet, NewTextureSet);
+				CopyDataIntoAtlas(RHICmdList, FeatureLevel, Allocations[AllocationIndex].StartOffset, BrickStartAllocation, Allocations[AllocationIndex].Size, TextureSet, NewTextureSet);
 
 				NewAllocations.Add(Allocation{ Allocations[AllocationIndex].Data, Allocations[AllocationIndex].Size, BrickStartAllocation });
 				BrickStartAllocation += Allocations[AllocationIndex].Size;
@@ -1156,26 +1147,11 @@ void FVolumetricLightmapBrickAtlas::Remove(FPrecomputedVolumetricLightmapData* D
 			// Copy the rest of allocations
 			for (int32 AllocationIndex = Index + 1; AllocationIndex < Allocations.Num(); AllocationIndex++)
 			{
-				CopyDataIntoAtlas(RHICmdList, Allocations[AllocationIndex].StartOffset, BrickStartAllocation, Allocations[AllocationIndex].Size, TextureSet, NewTextureSet);
+				CopyDataIntoAtlas(RHICmdList, FeatureLevel, Allocations[AllocationIndex].StartOffset, BrickStartAllocation, Allocations[AllocationIndex].Size, TextureSet, NewTextureSet);
 
 				NewAllocations.Add(Allocation{ Allocations[AllocationIndex].Data, Allocations[AllocationIndex].Size, BrickStartAllocation });
 				Allocations[AllocationIndex].Data->HandleDataMovementInAtlas(Allocations[AllocationIndex].StartOffset, BrickStartAllocation);
 				BrickStartAllocation += Allocations[AllocationIndex].Size;
-			}
-
-			{
-				// Transition all UAVs in the new set to readable
-				FRHITransitionInfo Transitions[UE_ARRAY_COUNT(NewTextureSet.SHCoefficients) + 3] =
-				{
-					FRHITransitionInfo(NewTextureSet.AmbientVector.UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask),
-					FRHITransitionInfo(NewTextureSet.SkyBentNormal.UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask),
-					FRHITransitionInfo(NewTextureSet.DirectionalLightShadowing.UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask)
-				};
-				for (int32 i = 0; i < UE_ARRAY_COUNT(NewTextureSet.SHCoefficients); i++)
-				{
-					Transitions[i + 3] = FRHITransitionInfo(NewTextureSet.SHCoefficients[i].UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask);
-				}
-				RHICmdList.Transition(MakeArrayView(Transitions, UE_ARRAY_COUNT(Transitions)));
 			}
 		}
 	}
@@ -1191,11 +1167,5 @@ void FVolumetricLightmapBrickAtlas::Remove(FPrecomputedVolumetricLightmapData* D
 
 void FVolumetricLightmapBrickAtlas::ReleaseRHI()
 {
-	TArray<Allocation> AllocationList = Allocations;
-	for (Allocation& Alloc : AllocationList)
-	{
-		Remove(Alloc.Data);
-	}
-
 	TextureSet.Release();
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Textures/TextureAtlas.h"
 #include "Stats/Stats.h"
@@ -95,6 +95,7 @@ const FAtlasedTextureSlot* FSlateTextureAtlas::AddTexture( uint32 TextureWidth, 
 
 	return NewSlot;
 }
+
 
 void FSlateTextureAtlas::MarkTextureDirty()
 {
@@ -245,26 +246,6 @@ void FSlateTextureAtlas::CopyDataIntoSlot( const FAtlasedTextureSlot* SlotToCopy
 		}
 	}
 }
-
-#if WITH_ATLAS_DEBUGGING
-const FAtlasedTextureSlot* FSlateTextureAtlas::GetSlotAtPosition(FIntPoint InPosition) const
-{
-	for (FAtlasedTextureSlot::TIterator SlotIt(AtlasUsedSlots); SlotIt; SlotIt++)
-	{
-		FAtlasedTextureSlot& CurSlot = *SlotIt;
-
-		FSlateRect CurSlotRect(FVector2D(CurSlot.X, CurSlot.Y), FVector2D(CurSlot.X + CurSlot.Width, CurSlot.Y + CurSlot.Height));
-
-		if (CurSlotRect.ContainsPoint(InPosition))
-		{
-			return &CurSlot;
-		}
-
-	}
-
-	return nullptr;
-}
-#endif
 
 const FAtlasedTextureSlot* FSlateTextureAtlas::FindSlotForTexture(uint32 InWidth, uint32 InHeight)
 {

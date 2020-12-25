@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Binding/BrushBinding.h"
 #include "Engine/Texture2D.h"
@@ -11,16 +11,16 @@ UBrushBinding::UBrushBinding()
 {
 }
 
-bool UBrushBinding::IsSupportedDestination(FProperty* Property) const
+bool UBrushBinding::IsSupportedDestination(UProperty* Property) const
 {
 	return IsConcreteTypeCompatibleWithReflectedType<FSlateBrush>(Property);
 }
 
-bool UBrushBinding::IsSupportedSource(FProperty* Property) const
+bool UBrushBinding::IsSupportedSource(UProperty* Property) const
 {
 	if ( IsConcreteTypeCompatibleWithReflectedType<UObject*>(Property) )
 	{
-		if ( FObjectProperty* ObjectProperty = CastField<FObjectProperty>(Property) )
+		if ( UObjectProperty* ObjectProperty = Cast<UObjectProperty>(Property) )
 		{
 			return ObjectProperty->PropertyClass->IsChildOf(UTexture2D::StaticClass());
 		}

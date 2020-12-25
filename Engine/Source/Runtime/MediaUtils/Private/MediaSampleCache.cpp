@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MediaSampleCache.h"
 #include "MediaUtilsPrivate.h"
@@ -74,7 +74,7 @@ void FMediaSampleCache::GetCachedAudioSampleRanges(TRangeSet<FTimespan>& OutTime
 
 	for (const TSharedPtr<IMediaAudioSample, ESPMode::ThreadSafe>& Sample : AudioSamples)
 	{
-		const FTimespan SampleTime = Sample->GetTime().Time;
+		const FTimespan SampleTime = Sample->GetTime();
 		OutTimeRanges.Add(TRange<FTimespan>(SampleTime, SampleTime + Sample->GetDuration()));
 	}
 }
@@ -86,7 +86,7 @@ void FMediaSampleCache::GetCachedVideoSampleRanges(TRangeSet<FTimespan>& OutTime
 
 	for (const TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& Sample : VideoSamples)
 	{
-		const FTimespan SampleTime = Sample->GetTime().Time;
+		const FTimespan SampleTime = Sample->GetTime();
 		OutTimeRanges.Add(TRange<FTimespan>(SampleTime, SampleTime + Sample->GetDuration()));
 	}
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	DataReplication.h:
@@ -23,14 +23,14 @@ class UNetConnection;
 class UNetDriver;
 class AActor;
 
-bool FORCEINLINE IsCustomDeltaProperty(const FStructProperty* StructProperty)
+bool FORCEINLINE IsCustomDeltaProperty(const UStructProperty* StructProperty)
 {
 	return EnumHasAnyFlags(StructProperty->Struct->StructFlags, STRUCT_NetDeltaSerializeNative);
 }
 
-bool FORCEINLINE IsCustomDeltaProperty(const FProperty* Property)
+bool FORCEINLINE IsCustomDeltaProperty(const UProperty* Property)
 {
-	const FStructProperty* StructProperty = CastField<FStructProperty>(Property);
+	const UStructProperty* StructProperty = Cast<UStructProperty>(Property);
 	return StructProperty && IsCustomDeltaProperty(StructProperty);
 }
 
@@ -41,9 +41,9 @@ struct FReplicatedActorProperty
 	int32 Offset;
 
 	/** Reference to property object */
-	const class FObjectPropertyBase* Property;
+	const class UObjectPropertyBase* Property;
 
-	FReplicatedActorProperty(int32 InOffset, const FObjectPropertyBase* InProperty)
+	FReplicatedActorProperty(int32 InOffset, const UObjectPropertyBase* InProperty)
 		: Offset(InOffset)
 		, Property(InProperty)
 	{}
@@ -78,11 +78,7 @@ public:
 	{
 		FName FuncName;
 		int32 Calls;
-
-		UE_DEPRECATED(4.25, "Please use LastCallTimestamp instead")
 		float LastCallTime;
-
-		double LastCallTimestamp;
 	};
 
 	struct FRPCPendingLocalCall
@@ -138,7 +134,7 @@ public:
 
 	bool SendCustomDeltaProperty(
 		UObject* InObject,
-		FProperty* Property,
+		UProperty* Property,
 		uint32 ArrayIndex,
 		FNetBitWriter& OutBunch,
 		TSharedPtr<INetDeltaBaseState>& NewFullState,
@@ -230,13 +226,13 @@ public:
 
 	void QueuePropertyRepNotify(
 		UObject* Object,
-		FProperty* Property,
+		UProperty* Property,
 		const int32 ElementIndex,
 		TArray<uint8>& MetaData);
 		
 	void WritePropertyHeaderAndPayload(
 		UObject* Object,
-		FProperty*				Property,
+		UProperty* Property,
 		FNetFieldExportGroup* NetFieldExportGroup,
 		FNetBitWriter& Bunch,
 		FNetBitWriter& Payload) const;	
@@ -301,26 +297,11 @@ private:
 	TWeakObjectPtr<UObject> WeakObjectPtr;
 };
 
-class ENGINE_API FScopedActorRoleSwap
+class FScopedActorRoleSwap : public FNoncopyable
 {
 public:
 	FScopedActorRoleSwap(AActor* InActor);
 	~FScopedActorRoleSwap();
-
-	FScopedActorRoleSwap(const FScopedActorRoleSwap&) = delete;
-	FScopedActorRoleSwap& operator=(const FScopedActorRoleSwap&) = delete;
-
-	FScopedActorRoleSwap(FScopedActorRoleSwap&& Other)
-	{
-		Actor = Other.Actor;
-		Other.Actor = nullptr;
-	}
-	FScopedActorRoleSwap& operator=(FScopedActorRoleSwap&& Other)
-	{
-		Actor = Other.Actor;
-		Other.Actor = nullptr;
-		return *this;
-	}
 
 private:
 	AActor* Actor;

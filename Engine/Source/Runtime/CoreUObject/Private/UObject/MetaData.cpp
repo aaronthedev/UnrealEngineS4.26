@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UObject/MetaData.h"
 #include "Misc/ConfigCacheIni.h"
@@ -277,32 +277,44 @@ const FString& UMetaData::GetValue(const UObject* Object, const TCHAR* Key)
 	return GetValue(Object, FName(Key, FNAME_Find));
 }
 
-const FString* UMetaData::FindValue(const UObject* Object, FName Key)
+/**
+ * Return whether or not the Key is in the meta data
+ * @param Object the object to lookup the metadata for
+ * @param Key The key to query for existence
+ * @return true if found
+ */
+bool UMetaData::HasValue(const UObject* Object, FName Key)
 {
 	// every key needs to be valid
 	if (Key == NAME_None)
 	{
-		return nullptr;
+		return false;
 	}
 
 	// look up the existing map if we have it
 	TMap<FName, FString>* ObjectValues = ObjectMetaDataMap.Find(Object);
 
 	// if not, return false
-	if (ObjectValues == nullptr)
+	if (ObjectValues == NULL)
 	{
-		return nullptr;
+		return false;
 	}
 
 	// if we had the map, see if we had the key
-	return ObjectValues->Find(Key);
+	return ObjectValues->Find(Key) != NULL;
 }
 
-const FString* UMetaData::FindValue(const UObject* Object, const TCHAR* Key)
+/**
+ * Return whether or not the Key is in the meta data
+ * @param Object the object to lookup the metadata for
+ * @param Key The key to query for existence
+ * @return true if found
+ */
+bool UMetaData::HasValue(const UObject* Object, const TCHAR* Key)
 {
 	// only find names, don't bother creating a name if it's not already there
 	// (HasValue will return false if Key is NAME_None)
-	return FindValue(Object, FName(Key, FNAME_Find));
+	return HasValue(Object, FName(Key, FNAME_Find));
 }
 
 /**
@@ -323,16 +335,6 @@ bool UMetaData::HasObjectValues(const UObject* Object)
 void UMetaData::SetObjectValues(const UObject* Object, const TMap<FName, FString>& ObjectValues)
 {
 	ObjectMetaDataMap.Add(const_cast<UObject*>(Object), ObjectValues);
-}
-
-/**
- * Set the key/value pair in the Property's metadata
- * @param Object the object to set the metadata for
- * @Values The metadata key/value pairs
- */
-void UMetaData::SetObjectValues(const UObject* Object, TMap<FName, FString>&& ObjectValues)
-{
-	ObjectMetaDataMap.Add(const_cast<UObject*>(Object), MoveTemp(ObjectValues));
 }
 
 /**

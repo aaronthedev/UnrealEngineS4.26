@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SStructViewer.h"
 #include "StructViewerNode.h"
@@ -35,7 +35,7 @@
 #include "AssetData.h"
 #include "AssetRegistryModule.h"
 
-#include "ContentBrowserDataDragDropOp.h"
+#include "DragAndDrop/AssetDragDropOp.h"
 
 #include "Editor/UnrealEdEngine.h"
 #include "Engine/UserDefinedStruct.h"
@@ -245,7 +245,29 @@ namespace StructViewer
 		 */
 		bool PassesFilter(const FString& InTestString, const FTextFilterExpressionEvaluator& InTextFilter)
 		{
-			return InTextFilter.TestTextFilter(FBasicStringFilterExpressionContext(InTestString));
+			class FStructFilterContext : public ITextFilterExpressionContext
+			{
+			public:
+				explicit FStructFilterContext(const FString& InStr)
+					: StrPtr(&InStr)
+				{
+				}
+
+				virtual bool TestBasicStringExpression(const FTextFilterString& InValue, const ETextFilterTextComparisonMode InTextComparisonMode) const override
+				{
+					return TextFilterUtils::TestBasicStringExpression(*StrPtr, InValue, InTextComparisonMode);
+				}
+
+				virtual bool TestComplexExpression(const FName& InKey, const FTextFilterString& InValue, const ETextFilterComparisonOperation InComparisonOperation, const ETextFilterTextComparisonMode InTextComparisonMode) const override
+				{
+					return false;
+				}
+
+			private:
+				const FString* StrPtr;
+			};
+
+			return InTextFilter.TestTextFilter(FStructFilterContext(InTestString));
 		}
 
 		/**
@@ -1586,10 +1608,11 @@ FReply SStructViewer::OnDragDetected(const FGeometry& Geometry, const FPointerEv
 			FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
 
 			// Spawn a loaded user defined struct just like any other asset from the Content Browser.
-			const FAssetData AssetData = AssetRegistryModule.Get().GetAssetByObjectPath(Item->GetStructPath());
-			if (AssetData.IsValid())
+			TArray<FAssetData> InAssetData;
+			InAssetData.Add(AssetRegistryModule.Get().GetAssetByObjectPath(Item->GetStructPath()));
+			if (InAssetData[0].IsValid())
 			{
-				return FReply::Handled().BeginDragDrop(FContentBrowserDataDragDropOp::Legacy_New(MakeArrayView(&AssetData, 1)));
+				return FReply::Handled().BeginDragDrop(FAssetDragDropOp::New(InAssetData));
 			}
 		}
 	}

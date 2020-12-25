@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -94,6 +94,7 @@
 #include "Delegates/DelegateBase.h"
 #include "Delegates/IntegerSequence.h"
 #include "Templates/Tuple.h"
+#include "Templates/TypeWrapper.h"
 #include "UObject/ScriptDelegates.h"
 #include "Misc/Parse.h"
 #include "Misc/Optional.h"

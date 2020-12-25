@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
@@ -39,7 +39,7 @@ void UVerticalBox::OnSlotAdded(UPanelSlot* InSlot)
 void UVerticalBox::OnSlotRemoved(UPanelSlot* InSlot)
 {
 	// Remove the widget from the live slot if it exists.
-	if ( MyVerticalBox.IsValid() && InSlot->Content)
+	if ( MyVerticalBox.IsValid() )
 	{
 		TSharedPtr<SWidget> Widget = InSlot->Content->GetCachedWidget();
 		if ( Widget.IsValid() )

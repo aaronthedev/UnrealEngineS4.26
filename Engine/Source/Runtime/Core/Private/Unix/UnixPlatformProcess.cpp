@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Unix/UnixPlatformProcess.h"
 #include "Unix/UnixPlatformCrashContext.h"
@@ -28,7 +28,6 @@
 #include "Misc/OutputDeviceRedirector.h"
 #include "Misc/CoreDelegates.h"
 #include "Misc/App.h"
-#include "Misc/Fork.h"
 
 namespace PlatformProcessLimits
 {
@@ -188,30 +187,6 @@ const TCHAR* FUnixPlatformProcess::UserName(bool bOnlyAlphaNumeric)
 	return Name;
 }
 
-const TCHAR* FUnixPlatformProcess::UserTempDir()
-{
-	// Use $TMPDIR if its set otherwise fallback to /var/tmp as Windows defaults to %TEMP% which does not get cleared on reboot.
-	static bool bHaveTemp = false;
-	static TCHAR CachedResult[PlatformProcessLimits::MaxUserHomeDirLength] = { 0 };
-
-	if (!bHaveTemp)
-	{
-		const char* TmpDirValue = secure_getenv("TMPDIR");
-		if (TmpDirValue)
-		{
-			FCString::Strcpy(CachedResult, UTF8_TO_TCHAR(TmpDirValue));
-		}
-		else
-		{
-			FCString::Strcpy(CachedResult, TEXT("/var/tmp"));
-		}
-
-		bHaveTemp = true;
-	}
-
-	return CachedResult;
-}
-
 const TCHAR* FUnixPlatformProcess::UserDir()
 {
 	// The UserDir is where user visible files (such as game projects) live.
@@ -344,16 +319,6 @@ bool FUnixPlatformProcess::SetProcessLimits(EProcessResource::Type Resource, uin
 	return true;
 }
 
-const FString FUnixPlatformProcess::GetModulesDirectory()
-{
-	static FString CachedModulePath;
-	if (CachedModulePath.IsEmpty())
-	{
-		CachedModulePath = FPaths::GetPath(FString(ExecutablePath()));
-	}
-
-	return CachedModulePath;
-}
 
 const TCHAR* FUnixPlatformProcess::ExecutablePath()
 {
@@ -1361,23 +1326,6 @@ FGenericPlatformProcess::EWaitAndForkResult FUnixPlatformProcess::WaitAndFork()
 	UE_LOG(LogHAL, Log, TEXT("   *** WaitAndFork awaiting signal %d to create child processes... ***"), WAIT_AND_FORK_QUEUE_SIGNAL);
 	GLog->Flush();
 
-	struct FMemoryStatsHolder
-	{
-		float AvailablePhysical;
-		float PeakUsedPhysical;
-		float PeakUsedVirtual;
-
-		constexpr float ByteToMiB(uint64 InBytes) { return InBytes / (1024.f * 1024.f); }
-
-		FMemoryStatsHolder(const FPlatformMemoryStats& PlatformStats)
-			: AvailablePhysical(ByteToMiB(PlatformStats.AvailablePhysical))
-			, PeakUsedPhysical(ByteToMiB(PlatformStats.PeakUsedPhysical))
-			, PeakUsedVirtual(ByteToMiB(PlatformStats.PeakUsedVirtual))
-		{ }
-	};
-
-	FMemoryStatsHolder PreviousMasterMemStats(FPlatformMemory::GetStats());
-
 	EWaitAndForkResult RetVal = EWaitAndForkResult::Parent;
 	struct FPidAndSignal
 	{
@@ -1396,14 +1344,6 @@ FGenericPlatformProcess::EWaitAndForkResult FUnixPlatformProcess::WaitAndFork()
 		{
 			// Sleep for a short while to avoid spamming new processes to the OS all at once
 			FPlatformProcess::Sleep(WAIT_AND_FORK_CHILD_SPAWN_DELAY);
-
-			FMemoryStatsHolder CurrentMasterMemStats(FPlatformMemory::GetStats());
-			UE_LOG(LogHAL, Log, TEXT("MemoryStats PreFork: AvailablePhysical: %.02fMiB (%+.02fMiB), PeakPhysical: %.02fMiB, PeakVirtual: %.02fMiB"),
-				CurrentMasterMemStats.AvailablePhysical, (CurrentMasterMemStats.AvailablePhysical - PreviousMasterMemStats.AvailablePhysical),
-				CurrentMasterMemStats.PeakUsedPhysical,
-				CurrentMasterMemStats.PeakUsedVirtual				
-			);
-			PreviousMasterMemStats = CurrentMasterMemStats;
 			
 			// Make sure there are no pending messages in the log.
 			GLog->Flush();
@@ -1423,8 +1363,6 @@ FGenericPlatformProcess::EWaitAndForkResult FUnixPlatformProcess::WaitAndFork()
 			}
 			else if (ChildPID == 0)
 			{
-				FForkProcessHelper::SetIsForkedChildProcess();
-
 				// Child
 				uint16 Cookie = (SignalValue >> 16) & 0xffff;
 				uint16 ChildIdx = SignalValue & 0xffff;
@@ -1888,9 +1826,9 @@ bool FUnixPlatformProcess::IsFirstInstance()
 		{
 			FString LockFileName(TEXT("/tmp/"));
 			FString ExecPath(FPlatformProcess::ExecutableName());
-			ExecPath.ReplaceInline(TEXT("/"), TEXT("-"), ESearchCase::CaseSensitive);
+			ExecPath.ReplaceInline(TEXT("/"), TEXT("-"));
 			// [RCL] 2015-09-20: can run out of filename limits (256 bytes) due to a long path, be conservative and assume 4-char UTF-8 name like e.g. Japanese
-			ExecPath.RightInline(80, false);
+			ExecPath = ExecPath.Right(80);
 
 			LockFileName += ExecPath;
 

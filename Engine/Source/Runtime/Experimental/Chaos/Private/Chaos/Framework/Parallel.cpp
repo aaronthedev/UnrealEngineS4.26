@@ -1,29 +1,16 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Chaos/Framework/Parallel.h"
 #include "Async/ParallelFor.h"
 
 using namespace Chaos;
 
-namespace Chaos
-{
-#if !UE_BUILD_SHIPPING
-	bool bDisablePhysicsParallelFor = false;
-	CHAOS_API bool bDisableParticleParallelFor = false;
-	CHAOS_API bool bDisableCollisionParallelFor = false;
-
-	FAutoConsoleVariableRef CVarDisablePhysicsParallelFor(TEXT("p.Chaos.DisablePhysicsParallelFor"), bDisablePhysicsParallelFor, TEXT("Disable parallel execution in Chaos Evolution"));
-	FAutoConsoleVariableRef CVarDisableParticleParallelFor(TEXT("p.Chaos.DisableParticleParallelFor"), bDisableParticleParallelFor, TEXT("Disable parallel execution for Chaos Particles (Collisions, "));
-	FAutoConsoleVariableRef CVarDisableCollisionParallelFor(TEXT("p.Chaos.DisableCollisionParallelFor"), bDisableCollisionParallelFor, TEXT("Disable parallel execution for Chaos Collisions (also disabled by DisableParticleParallelFor)"));
-#else
-	const bool bDisablePhysicsParallelFor = false;
-#endif
-}
+static bool GNoParallelFor = false;
 
 void Chaos::PhysicsParallelFor(int32 InNum, TFunctionRef<void(int32)> InCallable, bool bForceSingleThreaded)
 {
 	// Passthrough for now, except with global flag to disable parallel
-	::ParallelFor(InNum, InCallable, bDisablePhysicsParallelFor || bForceSingleThreaded);
+	::ParallelFor(InNum, InCallable, GNoParallelFor || bForceSingleThreaded);
 }
 
 //class FRecursiveDivideTask

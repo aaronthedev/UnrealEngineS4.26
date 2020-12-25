@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraNodeUsageSelector.h"
 #include "NiagaraEditorUtilities.h"
@@ -94,9 +94,9 @@ bool UNiagaraNodeUsageSelector::RefreshFromExternalChanges()
 
 void UNiagaraNodeUsageSelector::Compile(class FHlslNiagaraTranslator* Translator, TArray<int32>& Outputs)
 {
-	FPinCollectorArray InputPins;
+	TArray<UEdGraphPin*> InputPins;
 	GetInputPins(InputPins);
-	FPinCollectorArray OutputPins;
+	TArray<UEdGraphPin*> OutputPins;
 	GetOutputPins(OutputPins);
 
 	ENiagaraScriptUsage CurrentUsage = Translator->GetCurrentUsage();
@@ -164,10 +164,8 @@ UEdGraphPin* UNiagaraNodeUsageSelector::GetPassThroughPin(const UEdGraphPin* Loc
 	return nullptr;
 }
 
-void UNiagaraNodeUsageSelector::AppendFunctionAliasForContext(const FNiagaraGraphFunctionAliasContext& InFunctionAliasContext, FString& InOutFunctionAlias, bool& OutOnlyOncePerNodeType)
+void UNiagaraNodeUsageSelector::AppendFunctionAliasForContext(const FNiagaraGraphFunctionAliasContext& InFunctionAliasContext, FString& InOutFunctionAlias)
 {
-	OutOnlyOncePerNodeType = true;
-	
 	FString UsageString;
 	switch (InFunctionAliasContext.CompileUsage)
 	{
@@ -182,7 +180,6 @@ void UNiagaraNodeUsageSelector::AppendFunctionAliasForContext(const FNiagaraGrap
 	case ENiagaraScriptUsage::ParticleSpawnScript:
 	case ENiagaraScriptUsage::ParticleUpdateScript:
 	case ENiagaraScriptUsage::ParticleEventScript:
-	case ENiagaraScriptUsage::ParticleSimulationStageScript:
 	case ENiagaraScriptUsage::ParticleGPUComputeScript:
 		UsageString = "Particle";
 		break;
@@ -198,9 +195,9 @@ void UNiagaraNodeUsageSelector::BuildParameterMapHistory(FNiagaraParameterMapHis
 {
 	const UEdGraphSchema_Niagara* Schema = CastChecked<UEdGraphSchema_Niagara>(GetSchema());
 
-	FPinCollectorArray InputPins;
+	TArray<UEdGraphPin*> InputPins;
 	GetInputPins(InputPins);
-	FPinCollectorArray OutputPins;
+	TArray<UEdGraphPin*> OutputPins;
 	GetOutputPins(OutputPins);
 
 	ENiagaraScriptUsage BaseUsage = OutHistory.GetBaseUsageContext();

@@ -1,12 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OpenColorIOColorTransform.h"
 
+#include "IOpenColorIOModule.h"
 #include "Materials/MaterialInterface.h"
 #include "Math/PackedVector.h"
 #include "Modules/ModuleManager.h"
 #include "OpenColorIOConfiguration.h"
-#include "OpenColorIOModule.h"
 #include "UObject/UObjectIterator.h"
 
 
@@ -77,6 +77,11 @@ void UOpenColorIOColorTransform::ProcessSerializedShaderMaps(UOpenColorIOColorTr
 {
 	check(IsInGameThread());
 
+	for (FOpenColorIOTransformResource& Resource : LoadedResources)
+	{
+		Resource.RegisterShaderMap();
+	}
+
 	for (int32 ResourceIndex = 0; ResourceIndex < LoadedResources.Num(); ResourceIndex++)
 	{
 		FOpenColorIOTransformResource& LoadedResource = LoadedResources[ResourceIndex];
@@ -139,17 +144,12 @@ void UOpenColorIOColorTransform::Serialize(FArchive& Ar)
 }
 
 
-void UOpenColorIOColorTransform::CacheResourceShadersForCooking(EShaderPlatform InShaderPlatform, const ITargetPlatform* TargetPlatform, const FString& InShaderHash, const FString& InShaderCode, TArray<FOpenColorIOTransformResource*>& OutCachedResources)
+void UOpenColorIOColorTransform::CacheResourceShadersForCooking(EShaderPlatform InShaderPlatform, const FString& InShaderHash, const FString& InShaderCode, TArray<FOpenColorIOTransformResource*>& OutCachedResources)
 {
 	const ERHIFeatureLevel::Type TargetFeatureLevel = GetMaxSupportedFeatureLevel(InShaderPlatform);
 
 	FOpenColorIOTransformResource* NewResource = AllocateResource();
-#if WITH_EDITOR
-	FString AssetFilePath = FPackageName::LongPackageNameToFilename(GetOutermost()->GetName(), TEXT(".uasset"));
-#else
-	FString AssetFilePath;
-#endif
-	NewResource->SetupResource((ERHIFeatureLevel::Type)TargetFeatureLevel, InShaderHash, InShaderCode, GetTransformFriendlyName(), AssetFilePath);
+	NewResource->SetupResource((ERHIFeatureLevel::Type)TargetFeatureLevel, InShaderHash, InShaderCode, GetTransformFriendlyName());
 
 	const bool bApplyCompletedShaderMap = false;
 	const bool bIsCooking = true;
@@ -247,6 +247,11 @@ void UOpenColorIOColorTransform::CacheResourceTextures()
 		}
 #endif
 	}
+	else
+	{
+		//This is the path for cooked data where the 3dLut is serialized in the transform asset.
+		Lut3dTexture->UpdateResource();
+	}
 }
 
 void UOpenColorIOColorTransform::CacheResourceShadersForRendering(bool bRegenerateId)
@@ -276,12 +281,7 @@ void UOpenColorIOColorTransform::CacheResourceShadersForRendering(bool bRegenera
 					TransformResource = AllocateResource();
 				}
 
-#if WITH_EDITOR
-				FString AssetFilePath = FPackageName::LongPackageNameToFilename(GetOutermost()->GetName(), TEXT(".uasset"));
-#else
-				FString AssetFilePath;
-#endif
-				TransformResource->SetupResource(CacheFeatureLevel, ShaderCodeHash, ShaderCode, GetTransformFriendlyName(), AssetFilePath);
+				TransformResource->SetupResource(CacheFeatureLevel, ShaderCodeHash, ShaderCode, GetTransformFriendlyName());
 
 				const bool bApplyCompletedShaderMap = true;
 				const bool bIsCooking = false;
@@ -291,9 +291,9 @@ void UOpenColorIOColorTransform::CacheResourceShadersForRendering(bool bRegenera
 	}
 }
 
-void UOpenColorIOColorTransform::CacheShadersForResources(EShaderPlatform InShaderPlatform, FOpenColorIOTransformResource* InResourceToCache, bool bApplyCompletedShaderMapForRendering, bool bIsCooking, const ITargetPlatform* TargetPlatform)
+void UOpenColorIOColorTransform::CacheShadersForResources(EShaderPlatform InShaderPlatform, FOpenColorIOTransformResource* InResourceToCache, bool bApplyCompletedShaderMapForRendering, bool bIsCooking)
 {
-	const bool bSuccess = InResourceToCache->CacheShaders(InShaderPlatform, TargetPlatform, bApplyCompletedShaderMapForRendering, bIsCooking);
+	const bool bSuccess = InResourceToCache->CacheShaders(InShaderPlatform, bApplyCompletedShaderMapForRendering, bIsCooking);
 
 	if (!bSuccess)
 	{
@@ -424,12 +424,10 @@ bool UOpenColorIOColorTransform::UpdateShaderInfo(FString& OutShaderCodeHash, FS
 	return false;
 #else
 	//Avoid triggering errors when building maps on build machine.
-#if PLATFORM_WINDOWS
 	if (!GIsBuildMachine)
 	{
 		UE_LOG(LogOpenColorIO, Error, TEXT("Can't update shader, OCIO library isn't present."));
 	}
-#endif //PLATFORM_WINDOWS
 	return false;
 #endif //WITH_OCIO
 #else
@@ -550,10 +548,15 @@ void UOpenColorIOColorTransform::BeginCacheForCookedPlatformData(const ITargetPl
 	TArray<FName> DesiredShaderFormats;
 	TargetPlatform->GetAllTargetedShaderFormats(DesiredShaderFormats);
 
-	TArray<FOpenColorIOTransformResource*>* CachedColorTransformResourceForPlatformPtr = &CachedColorTransformResourcesForCooking.FindOrAdd(TargetPlatform);
+	TArray<FOpenColorIOTransformResource*>* CachedColorTransformResourceForPlatformPtr = CachedColorTransformResourcesForCooking.Find(TargetPlatform);
 
-	if (DesiredShaderFormats.Num() > 0)
+	if (DesiredShaderFormats.Num() > 0 && CachedColorTransformResourceForPlatformPtr == nullptr)
 	{
+		CachedColorTransformResourcesForCooking.Add(TargetPlatform);
+		CachedColorTransformResourceForPlatformPtr = CachedColorTransformResourcesForCooking.Find(TargetPlatform);
+
+		check(CachedColorTransformResourceForPlatformPtr != nullptr);
+
 		//Need to re-update shader data when cooking. They won't have been previously fetched.
 		FString ShaderCodeHash;
 		FString ShaderCode;
@@ -563,8 +566,9 @@ void UOpenColorIOColorTransform::BeginCacheForCookedPlatformData(const ITargetPl
 			for (int32 FormatIndex = 0; FormatIndex < DesiredShaderFormats.Num(); FormatIndex++)
 			{
 				const EShaderPlatform LegacyShaderPlatform = ShaderFormatToLegacyShaderPlatform(DesiredShaderFormats[FormatIndex]);
+
 				// Begin caching shaders for the target platform and store the FOpenColorIOTransformResource being compiled into CachedColorTransformResourcesForCooking
-				CacheResourceShadersForCooking(LegacyShaderPlatform, TargetPlatform, ShaderCodeHash, ShaderCode, *CachedColorTransformResourceForPlatformPtr);
+				CacheResourceShadersForCooking(LegacyShaderPlatform, ShaderCodeHash, ShaderCode, *CachedColorTransformResourceForPlatformPtr);
 			}
 		}
 	}
@@ -572,19 +576,24 @@ void UOpenColorIOColorTransform::BeginCacheForCookedPlatformData(const ITargetPl
 
 bool UOpenColorIOColorTransform::IsCachedCookedPlatformDataLoaded(const ITargetPlatform* TargetPlatform)
 {
+	TArray<FName> DesiredShaderFormats;
+	TargetPlatform->GetAllTargetedShaderFormats(DesiredShaderFormats);
+
 	const TArray<FOpenColorIOTransformResource*>* CachedColorTransformResourcesForPlatform = CachedColorTransformResourcesForCooking.Find(TargetPlatform);
 
-	if (CachedColorTransformResourcesForPlatform)
+	if (CachedColorTransformResourcesForPlatform != nullptr) // this should always succeed if BeginCacheForCookedPlatformData is called first
 	{
-		for (const FOpenColorIOTransformResource* const TransformResource : *CachedColorTransformResourcesForPlatform)
+		for (const FOpenColorIOTransformResource* const& TransformResource : *CachedColorTransformResourcesForPlatform)
 		{
 			if (TransformResource->IsCompilationFinished() == false)
 			{
 				return false;
 			}
 		}
+
 		return true;
 	}
+
 	return false;
 }
 
@@ -593,7 +602,7 @@ void UOpenColorIOColorTransform::ClearCachedCookedPlatformData(const ITargetPlat
 	TArray<FOpenColorIOTransformResource*>* CachedColorTransformResourcesForPlatform = CachedColorTransformResourcesForCooking.Find(TargetPlatform);
 	if (CachedColorTransformResourcesForPlatform != nullptr)
 	{
-		for (const FOpenColorIOTransformResource* const TransformResource : *CachedColorTransformResourcesForPlatform)
+		for (const FOpenColorIOTransformResource* const& TransformResource : *CachedColorTransformResourcesForPlatform)
 		{
 			delete TransformResource;
 		}

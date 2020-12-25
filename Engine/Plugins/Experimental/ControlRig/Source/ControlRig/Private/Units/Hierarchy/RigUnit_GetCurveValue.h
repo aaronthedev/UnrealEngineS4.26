@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,9 +6,9 @@
 #include "RigUnit_GetCurveValue.generated.h"
 
 /**
- * GetCurveValue is used to retrieve a single float from a Curve
+ * GetCurveValue is used to retrieve a single transform from a Curve.
  */
-USTRUCT(meta=(DisplayName="Get Curve Value", Category="Curve", Keywords="GetCurveValue,float", Varying))
+USTRUCT(meta=(DisplayName="Get Curve Value", Category="Curve", Keywords="GetCurveValue"))
 struct FRigUnit_GetCurveValue : public FRigUnit
 {
 	GENERATED_BODY()
@@ -16,16 +16,17 @@ struct FRigUnit_GetCurveValue : public FRigUnit
 	FRigUnit_GetCurveValue()
 		: Curve(NAME_None)
 		, Value(0.f)
-		, CachedCurveIndex(FCachedRigElement())
+		, CachedCurveIndex(INDEX_NONE)
 	{}
 
+	virtual FString GetUnitLabel() const override;
 	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;
 
 	/**
 	 * The name of the Curve to retrieve the transform for.
 	 */
-	UPROPERTY(meta = (Input, CustomWidget = "CurveName"))
+	UPROPERTY(meta = (Input, CurveName, Constant))
 	FName Curve;
 
 	// The current transform of the given Curve - or identity in case it wasn't found.
@@ -35,5 +36,5 @@ struct FRigUnit_GetCurveValue : public FRigUnit
 private:
 	// Used to cache the internally used Curve index
 	UPROPERTY()
-	FCachedRigElement CachedCurveIndex;
+	int32 CachedCurveIndex;
 };

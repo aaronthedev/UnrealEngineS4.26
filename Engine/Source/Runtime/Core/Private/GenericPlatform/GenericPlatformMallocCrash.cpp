@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GenericPlatform/GenericPlatformMallocCrash.h"
 #include "HAL/PlatformProcess.h"
@@ -291,7 +291,7 @@ void* FGenericPlatformMallocCrash::Malloc( SIZE_T Size, uint32 Alignment )
 				PtrInfo->Size = Size32;
 				PtrInfo->Ptr = LargeMemoryPool+ReturnMemoryPoolOffset+PER_ALLOC_OVERHEAD;
 
-				FPlatformMisc::LowLevelOutputDebugStringf( TEXT( "Malloc Size=%d LargeMemoryPoolOffset=%d \n" ), Size32, LargeMemoryPoolOffset );
+				FPlatformMisc::LowLevelOutputDebugStringf( TEXT( "Malloc Size=%u LargeMemoryPoolOffset=%u \n" ), Size32, LargeMemoryPoolOffset );
 				return (void*)PtrInfo->Ptr;
 			}
 			else
@@ -517,7 +517,7 @@ uint8* FGenericPlatformMallocCrash::AllocateFromSmallPool( uint32 AllocationSize
 uint32 FGenericPlatformMallocCrash::GetAllocationSize( void *Original )
 {
 	FPtrInfo* PtrInfo = (FPtrInfo*)((uint8*)Original-PER_ALLOC_OVERHEAD);
-	return (uint32)(PtrInfo->Size);
+	return PtrInfo->Size;
 }
 
 uint32 FGenericPlatformMallocCrash::SafePageSize()

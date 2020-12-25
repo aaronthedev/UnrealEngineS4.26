@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -105,12 +105,6 @@ public:
 	 */
 	virtual bool LoadModulesForProject( const ELoadingPhase::Type LoadingPhase ) = 0;
 
-	/**
-	 * Callback for when modules for when LoadModulesForProject() completes loading for a specific phase.
-	 */
-	DECLARE_EVENT_TwoParams(IProjectManager, FLoadingModulesForPhaseEvent, ELoadingPhase::Type /*LoadingPhase*/, bool /*bSuccess*/);
-	virtual FLoadingModulesForPhaseEvent& OnLoadingPhaseComplete() = 0;
-
 #if !IS_MONOLITHIC
 	/**
 	 * Checks if the modules for a project are up to date
@@ -196,14 +190,12 @@ public:
 	virtual bool HasDefaultPluginSettings() const = 0;
 
 	/**
-	 * Sets whether a plugin is enabled for the current project configuration.
-	 * Potentially updates the current project descriptor, but does not save to disk and may require restarting to load it.
-	 * @note Use IsCurrentProjectDirty() to tell whether the project was actually modified.
+	 * Sets whether a plugin is enabled, and updates the current project descriptor. Does not save to disk and may require restarting to load it.
 	 * 
 	 * @param	PluginName		Name of the plugin
 	 * @param	bEnabled		Whether to enable or disable the plugin
 	 * @param	OutFailReason	On failure, gives an error message
-	 * @return	False on failure to update the current project descriptor.
+	 * @return	True if the plugin has been marked as enabled, and the project descriptor has been updated.
 	 */
 	virtual bool SetPluginEnabled(const FString& PluginName, bool bEnabled, FText& OutFailReason) = 0;
 
@@ -217,12 +209,8 @@ public:
 	 *
 	 * @param Dir the directory to scan
 	 * @param bAddOrRemove whether to add or remove the directory
-	 * @return Whether the plugin directory list was changed.
 	 */
-	virtual bool UpdateAdditionalPluginDirectory(const FString& Dir, const bool bAddOrRemove) = 0;
-
-	/** Returns the list of additional directories to be scanned for plugins (aside from the engine and project plugin directories). */
-	virtual const TArray<FString>& GetAdditionalPluginDirectories() const = 0;
+	virtual void UpdateAdditionalPluginDirectory(const FString& Dir, const bool bAddOrRemove) = 0;
 
 	/**
 	 * Checks whether the current loaded project has been modified but not saved to disk
@@ -255,13 +243,4 @@ public:
 	 * Access array used to cache current project's list of module context infos
 	 */
 	virtual TArray<FModuleContextInfo>& GetCurrentProjectModuleContextInfos() = 0;
-
-	/** Returns true if project file write should be suppressed. */
-	virtual bool IsSuppressingProjectFileWrite() const = 0;
-
-	/** Suppress project file writes. */
-	PROJECTS_API virtual void AddSuppressProjectFileWrite(const FName InName) = 0;
-
-	/** Removes suppression of project file writes. */
-	PROJECTS_API virtual void RemoveSuppressProjectFileWrite(const FName InName) = 0;
 };

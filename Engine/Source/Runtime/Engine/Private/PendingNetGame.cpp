@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
   PendingNetGame.cpp: Unreal pending net game class.
@@ -233,8 +233,6 @@ void UPendingNetGame::NotifyControlMessage(UNetConnection* Connection, uint8 Mes
 				FURL PartialURL(URL);
 				PartialURL.Host = TEXT("");
 				PartialURL.Port = PartialURL.UrlConfig.DefaultPort; // HACK: Need to fix URL parsing 
-				PartialURL.Map = TEXT("");
-
 				for (int32 i = URL.Op.Num() - 1; i >= 0; i--)
 				{
 					if (URL.Op[i].Left(5) == TEXT("game="))

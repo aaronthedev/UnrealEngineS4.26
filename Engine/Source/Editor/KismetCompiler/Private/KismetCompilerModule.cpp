@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	KismetCompilerModule.cpp
@@ -18,6 +18,8 @@
 #include "Kismet2/CompilerResultsLog.h"
 #include "KismetCompilerMisc.h"
 #include "KismetCompiler.h"
+
+#include "AnimBlueprintCompiler.h"
 
 #include "Kismet2/KismetDebugUtilities.h"
 #include "Kismet2/KismetReinstanceUtilities.h"
@@ -123,8 +125,8 @@ void FKismet2CompilerModule::RefreshVariables(UBlueprint* Blueprint)
 
 	for (int32 VarIndex = 0; VarIndex < Blueprint->NewVariables.Num(); ++VarIndex)
 	{
-		FProperty* ExistingVariable = Blueprint->GeneratedClass->FindPropertyByName(Blueprint->NewVariables[VarIndex].VarName);
-		if( ExistingVariable == nullptr || ExistingVariable->GetOwner<UObject>() != Blueprint->GeneratedClass)
+		UProperty* ExistingVariable = Blueprint->GeneratedClass->FindPropertyByName(Blueprint->NewVariables[VarIndex].VarName);
+		if( ExistingVariable == nullptr || ExistingVariable->GetOuter() != Blueprint->GeneratedClass)
 		{
 			MissingVariables.Add(VarIndex);
 		}
@@ -145,7 +147,7 @@ void FKismet2CompilerModule::RefreshVariables(UBlueprint* Blueprint)
 		// add missing properties:
 		for( int32 MissingVarIndex : MissingVariables)
 		{
-			FProperty* NewProperty = FKismetCompilerUtilities::CreatePropertyOnScope(
+			UProperty* NewProperty = FKismetCompilerUtilities::CreatePropertyOnScope(
 				Blueprint->GeneratedClass, 
 				Blueprint->NewVariables[MissingVarIndex].VarName, 
 				Blueprint->NewVariables[MissingVarIndex].VarType, 
@@ -168,7 +170,6 @@ void FKismet2CompilerModule::RefreshVariables(UBlueprint* Blueprint)
 
 		// cpfuo:
 		UEngine::FCopyPropertiesForUnrelatedObjectsParams Params;
-		Params.bNotifyObjectReplacement = true;
 		UEngine::CopyPropertiesForUnrelatedObjects(OldCDO, Blueprint->GeneratedClass->ClassDefaultObject, Params);
 	}
 }

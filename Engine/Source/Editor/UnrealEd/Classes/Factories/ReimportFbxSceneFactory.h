@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 //~=============================================================================
 // ReimportFbxSceneFactory
@@ -20,7 +20,7 @@ class UBlueprint;
 class USceneComponent;
 class USimpleConstructionScript;
 
-UCLASS(BlueprintType)
+UCLASS()
 class UReimportFbxSceneFactory : public UFbxSceneImportFactory, public FReimportHandler
 {
 	GENERATED_UCLASS_BODY()
@@ -35,16 +35,6 @@ class UReimportFbxSceneFactory : public UFbxSceneImportFactory, public FReimport
 	//~ Begin UFactory Interface
 	virtual bool FactoryCanImport(const FString& Filename) override;
 	//~ End UFactory Interface
-
-public:
-	/* Script helper to allow fbx scene reimport from scripted language
-	 * @param Obj: type must be one of the following type
-	 * UFbxSceneImportData
-	 * UStaticMesh, USkeletalMesh, UAnimSequence: It must have been imported with the scene import so the AssetImportData point on a UFbxSceneImportData
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Editor Scripting | Fbx Scene Reimport")
-	void ScriptReimportHelper(UObject* Obj);
-
 private:
 	EReimportResult::Type ReimportStaticMesh(void* VoidFbxImporter, TSharedPtr<FFbxMeshInfo> MeshInfo);
 	EReimportResult::Type ReimportSkeletalMesh(void* VoidFbxImporter, TSharedPtr<FFbxMeshInfo> MeshInfo);

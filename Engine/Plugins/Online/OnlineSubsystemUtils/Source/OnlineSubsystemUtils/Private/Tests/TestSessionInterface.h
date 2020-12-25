@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -267,15 +267,6 @@ class TestOnlineSearchSettings;
 	 * @param bWasSuccessful true if the async action completed without error, false if there was an error
 	 */
 	void OnFindSessionsComplete(bool bWasSuccessful);
-
-	/**
-	 * Delegate fired when the search for an online session has completed
-	 *
-	 * @param LocalUserNum the controller number of the accepting user
-	 * @param bWasSuccessful the session was found and is joinable, false otherwise
-	 * @param SearchResult the search/settings for the session result we've been given
-	 */
-	void OnFindSessionByIdComplete(int32 LocalUserNum, bool bWasSuccessful, const FOnlineSessionSearchResult& SearchResult);
 
 	/**
 	 * Delegate fired when the cancellation of a search for an online session has completed

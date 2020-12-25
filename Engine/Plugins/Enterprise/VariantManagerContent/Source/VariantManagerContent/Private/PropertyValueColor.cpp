@@ -1,14 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PropertyValueColor.h"
 
-#include "VariantManagerContentLog.h"
-#include "VariantObjectBinding.h"
-
-#include "Atmosphere/AtmosphericFogComponent.h"
-#include "Components/LightComponent.h"
 #include "CoreMinimal.h"
+#include "Components/LightComponent.h"
+#include "Atmosphere/AtmosphericFogComponent.h"
 #include "HAL/UnrealMemory.h"
+#include "VariantObjectBinding.h"
 #include "UObject/Package.h"
 
 #define LOCTEXT_NAMESPACE "PropertyValueColor"
@@ -45,7 +43,6 @@ TArray<uint8> UPropertyValueColor::GetDataFromResolvedObject() const
 	// Used by UAtmosphericFogComponent
 	else if (PropertySetterName == TEXT("SetDefaultLightColor"))
 	{
-		PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		UAtmosphericFogComponent* ContainerObject = (UAtmosphericFogComponent*) ParentContainerAddress;
 		if (!ContainerObject || !ContainerObject->IsValidLowLevel())
 		{
@@ -54,8 +51,7 @@ TArray<uint8> UPropertyValueColor::GetDataFromResolvedObject() const
 		}
 
 		FLinearColor Col = FLinearColor(ContainerObject->DefaultLightColor);
-		FMemory::Memcpy(CurrentData.GetData(), &Col, PropertySizeBytes); 
-		PRAGMA_ENABLE_DEPRECATION_WARNINGS
+		FMemory::Memcpy(CurrentData.GetData(), &Col, PropertySizeBytes);
 	}
 
 	return CurrentData;

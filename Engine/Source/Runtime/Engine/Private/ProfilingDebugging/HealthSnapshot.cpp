@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ProfilingDebugging/HealthSnapshot.h"
 #include "Performance/EnginePerformanceTargets.h"
@@ -9,23 +9,12 @@
 #include "HAL/MemoryMisc.h"
 #include "HAL/LowLevelMemTracker.h"
 #include "HAL/ThreadSafeCounter64.h"
-#include "HAL/IConsoleManager.h"
 #include "Engine/Engine.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHealthSnapshot, Log, All);
 
 //////////////////////////////////////////////////////////////////////
 // FFortHealthSnapshot
-
-namespace HealthSnapshot
-{
-	static int32 GLogHealthSnapshot = 1;
-	static FAutoConsoleVariableRef CVarHealthSnapshot(
-		TEXT("health.logHealthSnapshot"),
-		GLogHealthSnapshot,
-		TEXT("Log health snapshot)\n"),
-		ECVF_Default);
-}
 
 TSharedPtr<FPerformanceTrackingChart> UHealthSnapshotBlueprintLibrary::PerformanceChart;
 
@@ -57,7 +46,8 @@ void FHealthSnapshot::CaptureMemoryStats()
 #if ENABLE_LOW_LEVEL_MEM_TRACKER
 	if (FLowLevelMemTracker::Get().IsEnabled())
 	{
-		LLMTotalMemoryMB = FLowLevelMemTracker::Get().GetTagAmountForTracker(ELLMTracker::Default, ELLMTag::TrackedTotal) * InvToMb;
+		LLMTotalMemoryMB += FLowLevelMemTracker::Get().GetTotalTrackedMemory(ELLMTracker::Default) * InvToMb;
+		LLMTotalMemoryMB += FLowLevelMemTracker::Get().GetTotalTrackedMemory(ELLMTracker::Platform) * InvToMb;
 	}
 #endif
 
@@ -90,7 +80,11 @@ void FHealthSnapshot::CaptureMemoryStats()
 		}
 	}
 
-	PlatformMemoryStats = MemoryStats.GetPlatformSpecificStats();
+#if PLATFORM_PS4
+	// New memory system doesn't have fixed sized Garlic and Onion pools, so "size" values are 0.
+	GarlicMemoryMB.Used = MemoryStats.Garlic * InvToMb;
+	OnionMemoryMB.Used = MemoryStats.Onion * InvToMb;
+#endif //PLATFORM_PS4
 
 	if (FPlatformProperties::SupportsTextureStreaming() && IStreamingManager::Get().IsTextureStreamingEnabled())
 	{
@@ -133,16 +127,6 @@ void FHealthSnapshot::CapturePerformanceStats(const FPerformanceTrackingChart* G
 		DynamicResolution.Max = GameplayFPSChart->DynamicResHistogram.GetMaxOfAllMeasures();
 		DynamicResolution.Avg = GameplayFPSChart->DynamicResHistogram.GetAverageOfAllMeasures();
 
-		PhysicalMemory.Max = GameplayFPSChart->MaxPhysicalMemory;
-		PhysicalMemory.Min = GameplayFPSChart->MinPhysicalMemory;
-		VirtualMemory.Max = GameplayFPSChart->MaxVirtualMemory;
-		VirtualMemory.Min = GameplayFPSChart->MinVirtualMemory;
-		if (FramesCounted > 0)
-		{
-			PhysicalMemory.Avg = GameplayFPSChart->TotalPhysicalMemoryUsed / static_cast<uint64>(FramesCounted);
-			VirtualMemory.Avg = GameplayFPSChart->TotalVirtualMemoryUsed / static_cast<uint64>(FramesCounted);
-		}
-
 		// What % of frames were bound
 		GameThread.PercentFramesBound = FramesCounted > 0 ? (GameplayFPSChart->NumFramesBound_GameThread * 100.0) / FramesCounted : 0;
 
@@ -171,20 +155,17 @@ void FHealthSnapshot::CapturePerformanceStats(const FPerformanceTrackingChart* G
 
 void FHealthSnapshot::Dump(FOutputDevice& Ar)
 {
-	if (HealthSnapshot::GLogHealthSnapshot)
-	{
 #if !NO_LOGGING
-		const FName CategoryName(LogHealthSnapshot.GetCategoryName());
+	const FName CategoryName(LogHealthSnapshot.GetCategoryName());
 #else
-		const FName CategoryName(TEXT("LogHealthSnapshot"));
+	const FName CategoryName(TEXT("LogHealthSnapshot"));
 #endif
 
-		Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("======= Snapshot: %s ======="), *Title);
+	Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("======= Snapshot: %s ======="), *Title);
 
-		DumpStats(Ar, CategoryName);
+	DumpStats(Ar, CategoryName);
 
-		Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("========================================================="));
-	}
+	Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("========================================================="));
 }
 
 void FHealthSnapshot::DumpStats(FOutputDevice& Ar, FName CategoryName)
@@ -201,23 +182,15 @@ void FHealthSnapshot::DumpStats(FOutputDevice& Ar, FName CategoryName)
 		Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("GPU: Avg %.02fms, Hitches/Min: %.02f, Bound Frames: %.02f%%"), GPU.AvgTime * 1000, GPU.HitchesPerMinute, GPU.PercentFramesBound);
 		Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("DrawCalls: Avg: %d, Max: %d, Min: %d"), DrawCalls.Avg, DrawCalls.Max, DrawCalls.Min);
 		Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("DrawnPrims: Avg: %d, Max: %d, Min: %d"), PrimitivesDrawn.Avg, PrimitivesDrawn.Max, PrimitivesDrawn.Min);
-		Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("PhysicalMemoryMB: Avg: %d, Max: %d, Min: %d"), PhysicalMemory.Avg, PhysicalMemory.Max, PhysicalMemory.Min);
-		Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("VirtualMemoryMB: Avg: %d, Max: %d, Min: %d"), VirtualMemory.Avg, VirtualMemory.Max, VirtualMemory.Min);
 	}
 
 	Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("CPU Memory: Used %.2fMB, Peak %.2fMB"), CPUMemoryMB.Used, CPUMemoryMB.Peak);
 	Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("Physical Memory: Used %.2fMB, Peak %.2fMB"), PhysicalMemoryMB.Used, PhysicalMemoryMB.Peak);
-#if ENABLE_LOW_LEVEL_MEM_TRACKER
-	if (FLowLevelMemTracker::Get().IsEnabled())
-	{
-		Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("Low Level Memory : TrackedTotal %.2fMB"), LLMTotalMemoryMB);
-}
-#endif
 
-	for (int32 StatIdx = 0; StatIdx < PlatformMemoryStats.Num(); ++StatIdx)
-	{
-		Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("%s: Used %.2f MB"), PlatformMemoryStats[StatIdx].Name, PlatformMemoryStats[StatIdx].Value / (1024.f * 1024.f));
-	}
+#if PLATFORM_PS4
+	Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("Garlic: Used %.2f MB"), GarlicMemoryMB.Used);
+	Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("Onion: Used %.2f MB"), OnionMemoryMB.Used);
+#endif //PLATFORM_PS4
 }
 
 UHealthSnapshotBlueprintLibrary::UHealthSnapshotBlueprintLibrary(const FObjectInitializer& ObjectInitializer)

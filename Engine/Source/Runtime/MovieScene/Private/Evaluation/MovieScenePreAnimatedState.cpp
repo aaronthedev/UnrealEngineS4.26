@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Evaluation/MovieScenePreAnimatedState.h"
 #include "GameFramework/Actor.h"
@@ -111,7 +111,7 @@ void TMovieSceneSavedTokens<TokenType>::OnPreAnimated(ECapturePreAnimatedState C
 		return;
 	}
 
-	auto ResolvedPayload = Payload.Get(true);
+	auto ResolvedPayload = Payload.Get();
 
 	// Attempt to locate an existing animated state token for this type ID
 	int32 TokenIndex = AllAnimatedTypeIDs.IndexOfByKey(InAnimTypeID);
@@ -176,38 +176,9 @@ void TMovieSceneSavedTokens<TokenType>::OnPreAnimated(ECapturePreAnimatedState C
 }
 
 template<typename TokenType>
-void TMovieSceneSavedTokens<TokenType>::CopyFrom(TMovieSceneSavedTokens& OtherTokens)
-{
-	for (const FMovieSceneEntityAndAnimTypeID& Entity : OtherTokens.AnimatedEntities)
-	{
-		if (!AnimatedEntities.Contains(Entity))
-		{
-			AnimatedEntities.Add(Entity);
-		}
-	}
-
-	for (int32 OtherIndex = 0; OtherIndex < OtherTokens.AllAnimatedTypeIDs.Num(); ++OtherIndex)
-	{
-		FMovieSceneAnimTypeID OtherTypeID = OtherTokens.AllAnimatedTypeIDs[OtherIndex];
-
-		const int32 ExistingIndex = AllAnimatedTypeIDs.IndexOfByKey(OtherTypeID);
-		if (ExistingIndex != INDEX_NONE)
-		{
-			PreAnimatedTokens[ExistingIndex] = MoveTemp(OtherTokens.PreAnimatedTokens[OtherIndex]);
-		}
-		else
-		{
-			AllAnimatedTypeIDs.Add(OtherTypeID);
-			PreAnimatedTokens.Add(MoveTemp(OtherTokens.PreAnimatedTokens[OtherIndex]));
-		}
-	}
-}
-
-
-template<typename TokenType>
 void TMovieSceneSavedTokens<TokenType>::Restore(IMovieScenePlayer& Player)
 {
-	auto ResolvedPayload = Payload.Get(true);
+	auto ResolvedPayload = Payload.Get();
 
 	// Restore in reverse
 	for (int32 Index = PreAnimatedTokens.Num() - 1; Index >= 0; --Index)
@@ -221,7 +192,7 @@ void TMovieSceneSavedTokens<TokenType>::Restore(IMovieScenePlayer& Player)
 template<typename TokenType>
 void TMovieSceneSavedTokens<TokenType>::Restore(IMovieScenePlayer& Player, TFunctionRef<bool(FMovieSceneAnimTypeID)> InFilter)
 {
-	auto ResolvedPayload = Payload.Get(true);
+	auto ResolvedPayload = Payload.Get();
 	
 	for (int32 TokenIndex = AllAnimatedTypeIDs.Num() - 1; TokenIndex >= 0; --TokenIndex)
 	{
@@ -269,7 +240,7 @@ bool TMovieSceneSavedTokens<TokenType>::RestoreEntity(IMovieScenePlayer& Player,
 		}
 	}
 
-	auto ResolvedPayload = Payload.Get(true);
+	auto ResolvedPayload = Payload.Get();
 	for (int32 TokenIndex = AllAnimatedTypeIDs.Num() - 1; TokenIndex >= 0; --TokenIndex)
 	{
 		FMovieSceneAnimTypeID ThisTokenID = AllAnimatedTypeIDs[TokenIndex];
@@ -441,34 +412,24 @@ void FMovieScenePreAnimatedState::OnObjectsReplaced(const TMap<UObject*, UObject
 	{
 		UObject* OldObject = Iter->Key;
 		UObject* NewObject = Iter->Value;
-		if (!OldObject || !NewObject)
-		{
-			continue;
-		}
 
 		FObjectKey OldKey = FObjectKey(OldObject);
-		if (!ObjectTokens.Contains(OldKey))
+		if (OldObject && NewObject && ObjectTokens.Contains(OldKey))
 		{
-			continue;
-		}
+			FObjectKey NewKey = FObjectKey(NewObject);
 
-		FObjectKey NewKey = FObjectKey(NewObject);
+			ObjectTokens.Add(NewKey, MoveTemp(ObjectTokens[OldKey]));
+			ObjectTokens[NewKey].SetPayload(NewObject);
 
-		{
-			TMovieSceneSavedTokens<IMovieScenePreAnimatedTokenPtr>& NewTokens = ObjectTokens.FindOrAdd(NewKey, TMovieSceneSavedTokens<IMovieScenePreAnimatedTokenPtr>(NewObject));
-			TMovieSceneSavedTokens<IMovieScenePreAnimatedTokenPtr>& OldTokens = ObjectTokens.FindChecked(OldKey);
-
-			NewTokens.CopyFrom(OldTokens);
 			ObjectTokens.Remove(OldKey);
-			// NewTokens is not invalid
-		}
 
-		for (auto& Pair : EntityToAnimatedObjects)
-		{
-			if (Pair.Value.Contains(OldKey))
+			for (auto& Pair : EntityToAnimatedObjects)
 			{
-				Pair.Value.AddUnique(NewKey);
-				Pair.Value.Remove(OldKey);
+				if (Pair.Value.Contains(OldKey))
+				{
+					Pair.Value.AddUnique(NewKey);
+					Pair.Value.Remove(OldKey);
+				}
 			}
 		}
 	}

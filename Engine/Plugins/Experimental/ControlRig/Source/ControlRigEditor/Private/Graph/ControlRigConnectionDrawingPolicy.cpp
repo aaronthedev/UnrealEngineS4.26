@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ControlRigConnectionDrawingPolicy.h"
 #include "Graph/ControlRigGraph.h"
 #include "Graph/ControlRigGraphNode.h"
-#include "ControlRig.h"
 #include "ControlRigBlueprint.h"
-#include "RigVMModel/RigVMController.h"
+#include "ControlRigController.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 
 void FControlRigConnectionDrawingPolicy::SetIncompatiblePinDrawState(const TSharedPtr<SGraphPin>& StartPin, const TSet< TSharedRef<SWidget> >& VisiblePins)
@@ -13,13 +12,13 @@ void FControlRigConnectionDrawingPolicy::SetIncompatiblePinDrawState(const TShar
 	UEdGraphPin* Pin = StartPin->GetPinObj();
 	if (Pin != nullptr)
 	{
-		UControlRigGraphNode* RigNode = Cast<UControlRigGraphNode>(Pin->GetOwningNode());
-		if(RigNode)
+		UBlueprint* Blueprint = FBlueprintEditorUtils::FindBlueprintForNodeChecked(Pin->GetOwningNode());
+		UControlRigBlueprint* RigBlueprint = Cast<UControlRigBlueprint>(Blueprint);
+		if (RigBlueprint != nullptr)
 		{
-			if(URigVMPin* ModelPin = RigNode->GetModelPinFromPinPath(Pin->GetName()))
-			{
-				ModelPin->GetGraph()->PrepareCycleChecking(ModelPin->GetPinForLink(), Pin->Direction == EGPD_Input);
-			}
+			FString Left, Right;
+			RigBlueprint->Model->SplitPinPath(Pin->GetName(), Left, Right);
+			RigBlueprint->ModelController->PrepareCycleCheckingForPin(*Left, *Right, Pin->Direction == EGPD_Input);
 		}
 	}
 	FKismetConnectionDrawingPolicy::SetIncompatiblePinDrawState(StartPin, VisiblePins);
@@ -38,7 +37,7 @@ void FControlRigConnectionDrawingPolicy::ResetIncompatiblePinDrawState(const TSe
 			UControlRigBlueprint* RigBlueprint = Cast<UControlRigBlueprint>(Blueprint);
 			if (RigBlueprint != nullptr)
 			{
-				RigBlueprint->Model->PrepareCycleChecking(nullptr, true);
+				RigBlueprint->ModelController->ResetCycleCheck();
 			}
 		}
 	}
@@ -141,180 +140,5 @@ void FControlRigConnectionDrawingPolicy::DetermineLinkGeometry(
 	if (TSharedPtr<SGraphPin>* pInputWidget = PinToPinWidgetMap.Find(InputPin))
 	{
 		EndWidgetGeometry = PinGeometries->Find((*pInputWidget).ToSharedRef());
-	}
-}
-
-bool FControlRigConnectionDrawingPolicy::ShouldChangeTangentForReouteControlPoint(UControlRigGraphNode* Node)
-{
-	bool bPinReversed = false;
-	int32 InputPin = 0, OutputPin = 0;
-	if (Node->ShouldDrawNodeAsControlPointOnly(InputPin, OutputPin))
-	{
-		if (bool* pResult = RerouteNodeToReversedDirectionMap.Find(Node))
-		{
-			// This case triggers if multiple wires share the same reroute node
-			return *pResult;
-		}
-		else
-		{
-			FVector2D AverageLeftPin;
-			FVector2D AverageRightPin;
-			FVector2D CenterPin;
-
-			const TArray<UEdGraphPin*>& Pins = Node->GetAllPins();
-
-			// InputPin and OutputPin shared the same position, it does not matter which one we use.
-			bool bCenterValid = FindPinCenter(Pins[OutputPin], /*out*/ CenterPin);
-
-			bool bLeftValid = GetAverageConnectedPositionForPin(Pins[InputPin], AverageLeftPin);
-			bool bRightValid = GetAverageConnectedPositionForPin(Pins[OutputPin], AverageRightPin);
-
-			if (bLeftValid && bRightValid)
-			{
-				bPinReversed = AverageRightPin.X < AverageLeftPin.X;
-			}
-			else if (bCenterValid)
-			{
-				if (bLeftValid)
-				{
-					bPinReversed = CenterPin.X < AverageLeftPin.X;
-				}
-				else if (bRightValid)
-				{
-					bPinReversed = AverageRightPin.X < CenterPin.X;
-				}
-			}
-
-			// We don't need to clear the map because Drawing Policy is generated/deleted for each OnPaint()
-			RerouteNodeToReversedDirectionMap.Add(Node, bPinReversed);
-		} 
-	}
-
-	return bPinReversed;
-}
-
-// Average of the positions of all pins connected to InPin
-bool FControlRigConnectionDrawingPolicy::GetAverageConnectedPositionForPin(UEdGraphPin* InPin, FVector2D& OutPos) const
-{
-	FVector2D Result = FVector2D::ZeroVector;
-	int32 ResultCount = 0;
-
-	for (UEdGraphPin* LinkedPin : InPin->LinkedTo)
-	{
-		FVector2D CenterPoint;
-		if (FindPinCenter(LinkedPin, /*out*/ CenterPoint))
-		{
-			Result += CenterPoint;
-			ResultCount++;
-		}
-	}
-
-	if (ResultCount > 0)
-	{
-		OutPos = Result * (1.0f / ResultCount);
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
-
-void FControlRigConnectionDrawingPolicy::DetermineWiringStyle(UEdGraphPin* OutputPin, UEdGraphPin* InputPin, /*inout*/ FConnectionParams& Params)
-{
-	FKismetConnectionDrawingPolicy::DetermineWiringStyle(OutputPin, InputPin, Params);
-	if (OutputPin == nullptr || InputPin == nullptr)
-	{
-		return;
-	}
-
-	UControlRigGraphNode* OutputNode = Cast<UControlRigGraphNode>(OutputPin->GetOwningNode());
-	UControlRigGraphNode* InputNode = Cast<UControlRigGraphNode>(InputPin->GetOwningNode());
-	if (OutputNode && InputNode)
-	{
-		// If the output or input connect to a Reroute Node(Node Knot/Control Point) that is going backwards, we will flip the direction on values going into them
-		{
-			if (ShouldChangeTangentForReouteControlPoint(OutputNode))
-			{
-				Params.StartDirection = EGPD_Input;
-			}
-
-			if (ShouldChangeTangentForReouteControlPoint(InputNode))
-			{
-				Params.EndDirection = EGPD_Output;
-			}
-		}
-
-		bool bInjectionIsSelected = false;
-		URigVMPin* OutputModelPin = OutputNode->GetModelPinFromPinPath(OutputPin->GetName());
-		URigVMPin* InputModelPin = InputNode->GetModelPinFromPinPath(InputPin->GetName());
-
-		if (OutputModelPin)
-		{
-			OutputModelPin = OutputModelPin->GetPinForLink();
-			if (URigVMInjectionInfo* OutputInjection = OutputModelPin->GetNode()->GetInjectionInfo())
-			{
-				if (OutputModelPin->GetNode()->IsSelected())
-				{
-					bInjectionIsSelected = true;
-				}
-			}
-		}
-
-		if (!bInjectionIsSelected)
-		{
-			if (InputModelPin)
-			{
-				InputModelPin = InputModelPin->GetPinForLink();
-				if (URigVMInjectionInfo* InputInjection = InputModelPin->GetNode()->GetInjectionInfo())
-				{
-					if (InputModelPin->GetNode()->IsSelected())
-					{
-						bInjectionIsSelected = true;
-					}
-				}
-			}
-		}
-
-		if (bInjectionIsSelected)
-		{
-			Params.WireThickness = Settings->TraceAttackWireThickness;
-			Params.WireColor = Settings->TraceAttackColor;
-		}
-
-		if (OutputModelPin && InputModelPin)
-		{
-			int32 OutputInstructionIndex = OutputModelPin->GetNode()->GetInstructionIndex();
-			int32 InputInstructionIndex = InputModelPin->GetNode()->GetInstructionIndex();
-			bool bVisited = false;
-
-			if (OutputInstructionIndex != INDEX_NONE && InputInstructionIndex != INDEX_NONE)
-			{
-				if (UControlRigBlueprint* RigBlueprint = Cast<UControlRigBlueprint>(FBlueprintEditorUtils::FindBlueprintForNodeChecked(OutputNode)))
-				{
-					if (UControlRig* ControlRig = Cast<UControlRig>(RigBlueprint->GetObjectBeingDebugged()))
-					{
-						if (const URigVM* VM = ControlRig->GetVM())
-						{
-							if (VM->WasInstructionVisitedDuringLastRun(OutputInstructionIndex) &&
-								VM->WasInstructionVisitedDuringLastRun(InputInstructionIndex))
-							{
-								bVisited = true;
-							}
-						}
-					}
-				}
-			}
-
-			if (bVisited)
-			{
-				//Params.bDrawBubbles = true;
-				Params.WireThickness = Settings->DefaultExecutionWireThickness;
-			}
-			else
-			{
-				Params.WireColor = Params.WireColor * 0.5f;
-			}
-		}
 	}
 }

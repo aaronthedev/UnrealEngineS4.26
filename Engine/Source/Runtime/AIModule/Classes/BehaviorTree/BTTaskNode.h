@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -55,13 +55,8 @@ public:
 	/** wrapper for node instancing: AbortTask */
 	EBTNodeResult::Type WrappedAbortTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory) const;
 
-	/** wrapper for node instancing: TickTask
-	  * @param OwnerComp	The behavior tree owner of this node
-	  * @param NodeMemory	The instance memory of the current node
-	  * @param DeltaSeconds		DeltaTime since last call
-	  * @param NextNeededDeltaTime		In out parameter, if this node needs a smaller DeltaTime it is his responsibility to change it
-	  * @returns	True if it actually done some processing or false if it was skipped because of not ticking or in between time interval */
-	bool WrappedTickTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, float DeltaSeconds, float& NextNeededDeltaTime) const;
+	/** wrapper for node instancing: TickTask */
+	void WrappedTickTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, float DeltaSeconds) const;
 
 	/** wrapper for node instancing: OnTaskFinished */
 	void WrappedOnTaskFinished(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory, EBTNodeResult::Type TaskResult) const;

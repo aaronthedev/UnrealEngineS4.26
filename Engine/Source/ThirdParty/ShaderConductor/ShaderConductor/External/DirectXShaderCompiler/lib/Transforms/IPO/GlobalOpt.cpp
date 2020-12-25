@@ -42,7 +42,6 @@
 #include "llvm/Transforms/Utils/CtorUtils.h"
 #include "llvm/Transforms/Utils/GlobalStatus.h"
 #include "llvm/Transforms/Utils/ModuleUtils.h"
-#include "dxc/DXIL/DxilModule.h" // HLSL Change - Entrypoint testing
 #include <algorithm>
 #include <deque>
 using namespace llvm;
@@ -1723,23 +1722,12 @@ bool GlobalOpt::ProcessGlobal(GlobalVariable *GV,
   return ProcessInternalGlobal(GV, GVI, GS);
 }
 
-// HLSL Change Begin
-static bool isEntryPoint(const llvm::Function* Func) {
-  const llvm::Module* Mod = Func->getParent();
-  return Mod->HasDxilModule()
-    ? Mod->GetDxilModule().IsEntryOrPatchConstantFunction(Func)
-    : Func->getName() == "main"; // Original logic for non-HLSL
-}
-// HLSL Change End
-
 /// ProcessInternalGlobal - Analyze the specified global variable and optimize
 /// it if possible.  If we make a change, return true.
 bool GlobalOpt::ProcessInternalGlobal(GlobalVariable *GV,
                                       Module::global_iterator &GVI,
                                       const GlobalStatus &GS) {
   auto &DL = GV->getParent()->getDataLayout();
-
-
   // If this is a first class global and has only one accessing function
   // and this function is main (which we know is not recursive), we replace
   // the global with a local alloca in this function.
@@ -1751,7 +1739,7 @@ bool GlobalOpt::ProcessInternalGlobal(GlobalVariable *GV,
   if (!GS.HasMultipleAccessingFunctions &&
       GS.AccessingFunction && !GS.HasNonInstructionUser &&
       GV->getType()->getElementType()->isSingleValueType() &&
-      isEntryPoint(GS.AccessingFunction) && // HLSL Change - Generalize entrypoint testing
+      GS.AccessingFunction->getName() == "main" &&
       GS.AccessingFunction->hasExternalLinkage() &&
       GV->getType()->getAddressSpace() == 0) {
     DEBUG(dbgs() << "LOCALIZING GLOBAL: " << *GV);

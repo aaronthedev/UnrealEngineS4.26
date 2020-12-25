@@ -1,22 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Delegates/Delegate.h"
-#include "FastUpdate/WidgetUpdateFlags.h"
 #include "Input/Reply.h"
-#include "ProfilingDebugging/CsvProfiler.h"
-#include "Widgets/InvalidateWidgetReason.h"
 
 #include "SlateDebugging.generated.h"
 
 #ifndef WITH_SLATE_DEBUGGING
 	#define WITH_SLATE_DEBUGGING !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-#endif
-
-#ifndef SLATE_CSV_TRACKER
-	#define SLATE_CSV_TRACKER CSV_PROFILER
 #endif
 
 class SWindow;
@@ -34,33 +27,27 @@ class FSlateInvalidationRoot;
 UENUM()
 enum class ESlateDebuggingInputEvent : uint8
 {
-	MouseMove = 0,
+	MouseMove,
 	MouseEnter,
 	MouseLeave,
-	PreviewMouseButtonDown,
 	MouseButtonDown,
 	MouseButtonUp,
 	MouseButtonDoubleClick,
 	MouseWheel,
 	TouchStart,
 	TouchEnd,
-	TouchForceChanged,
-	TouchFirstMove,
-	TouchMoved,
 	DragDetected,
 	DragEnter,
 	DragLeave,
 	DragOver,
 	DragDrop,
 	DropMessage,
-	PreviewKeyDown,
 	KeyDown,
 	KeyUp,
 	KeyChar,
 	AnalogInput,
 	TouchGesture,
-	MotionDetected,
-	MAX,
+	COUNT
 };
 
 UENUM()
@@ -90,28 +77,14 @@ public:
 	const FReply& Reply;
 	const TSharedPtr<SWidget>& HandlerWidget;
 	const FString& AdditionalContent;
-
-	FText ToText() const;
-};
-
-struct SLATECORE_API FSlateDebuggingCursorQueryEventArgs
-{
-public:
-	FSlateDebuggingCursorQueryEventArgs(const TSharedPtr<const SWidget>& InWidgetOverridingCursor, const FCursorReply& InReply);
-
-	const TSharedPtr<const SWidget>& WidgetOverridingCursor;
-	const FCursorReply& Reply;
-
-	FText ToText() const;
 };
 
 UENUM()
 enum class ESlateDebuggingFocusEvent : uint8
 {
-	FocusChanging = 0,
+	FocusChanging,
 	FocusLost,
-	FocusReceived,
-	MAX
+	FocusReceived
 };
 
 
@@ -136,8 +109,6 @@ public:
 	const TSharedPtr<SWidget>& OldFocusedWidget;
 	const FWidgetPath& NewFocusedWidgetPath;
 	const TSharedPtr<SWidget>& NewFocusedWidget;
-
-	FText ToText() const;
 };
 
 struct SLATECORE_API FSlateDebuggingNavigationEventArgs
@@ -156,8 +127,6 @@ public:
 	const FWidgetPath& NavigationSource;
 	const TSharedPtr<SWidget>& DestinationWidget;
 	const ESlateDebuggingNavigationMethod NavigationMethod;
-
-	FText ToText() const;
 };
 
 struct SLATECORE_API FSlateDebuggingExecuteNavigationEventArgs
@@ -175,8 +144,6 @@ public:
 
 	const FText& Warning;
 	const TSharedPtr<SWidget>& OptionalContextWidget;
-
-	FText ToText() const;
 };
 
 struct SLATECORE_API FSlateDebuggingMouseCaptureEventArgs
@@ -193,55 +160,8 @@ public:
 	uint32 UserIndex;
 	uint32 PointerIndex;
 	const TSharedPtr<const SWidget>& CaptureWidget;
-
-	FText ToText() const;
 };
 
-enum class ESlateDebuggingInvalidateRootReason
-{
-	None = 0,
-	ChildOrder = 1 << 0,
-	Root = 1 << 1,
-	ScreenPosition = 1 << 2,
-};
-
-ENUM_CLASS_FLAGS(ESlateDebuggingInvalidateRootReason)
-
-struct SLATECORE_API FSlateDebuggingInvalidateArgs
-{
-	FSlateDebuggingInvalidateArgs(
-		const SWidget* WidgetInvalidated,
-		const SWidget* WidgetInvalidateInvestigator,
-		EInvalidateWidgetReason InvalidateReason);
-
-	FSlateDebuggingInvalidateArgs(
-		const SWidget* WidgetInvalidated,
-		const SWidget* WidgetInvalidateInvestigator,
-		ESlateDebuggingInvalidateRootReason InvalidateReason);
-
-	const SWidget* WidgetInvalidated;
-	const SWidget* WidgetInvalidateInvestigator;
-	EInvalidateWidgetReason InvalidateWidgetReason;
-	ESlateDebuggingInvalidateRootReason InvalidateInvalidationRootReason;
-};
-
-struct SLATECORE_API FSlateDebuggingWidgetUpdatedEventArgs
-{
-public:
-	FSlateDebuggingWidgetUpdatedEventArgs(
-		const SWidget* Widget,
-		EWidgetUpdateFlags UpdateFlags,
-		bool bFromPaint
-	);
-
-	const SWidget* Widget;
-	/** Flag that was set by an invalidation or on the widget directly. */
-	EWidgetUpdateFlags UpdateFlags;
-	/** The widget got painted as a side effect of another widget that got painted */
-	bool bFromPaint;
-
-	FText ToText() const;
-};
 
 /**
  * 
@@ -265,10 +185,6 @@ public:
 	DECLARE_MULTICAST_DELEGATE_ThreeParams(FEndWidgetPaint, const SWidget* /*Widget*/, const FSlateWindowElementList& /*OutDrawElements*/, int32 /*LayerId*/);
 	static FEndWidgetPaint EndWidgetPaint;
 
-	/** Called once the window is drawn (including PaintDeferred). It can be used to draw additional debug info on top of the window. */
-	DECLARE_MULTICAST_DELEGATE_FourParams(FPaintDebugElements, const FPaintArgs& /*InArgs*/, const FGeometry& /*InAllottedGeometry*/, FSlateWindowElementList& /*InOutDrawElements*/, int32& /*InOutLayerId*/);
-	static FPaintDebugElements PaintDebugElements;
-
 	/**
 	 * Called as soon as the element is added to the element list.
 	 * NOTE: These elements are not valid until the widget finishes painting, or you can resolve them all after the window finishes painting.
@@ -291,43 +207,6 @@ public:
 	static void BroadcastInputEvent(ESlateDebuggingInputEvent InputEventType, const TSharedPtr<SWidget>& HandlerWidget);
 	static void BroadcastInputEvent(ESlateDebuggingInputEvent InputEventType, const FReply& InReply, const TSharedPtr<SWidget>& HandlerWidget);
 	static void BroadcastInputEvent(ESlateDebuggingInputEvent InputEventType, const FReply& InReply, const TSharedPtr<SWidget>& HandlerWidget, const FString& AdditionalContent);
-	static void BroadcastInputEvent(ESlateDebuggingInputEvent InputEventType, const FReply& InReply, const TSharedPtr<SWidget>& HandlerWidget, const FName& AdditionalContent);
-	static void BroadcastInputEvent(ESlateDebuggingInputEvent InputEventType, const FReply& InReply, const TSharedPtr<SWidget>& HandlerWidget, const TCHAR AdditionalContent);
-	static void BroadcastNoReplyInputEvent(ESlateDebuggingInputEvent InputEventType, const TSharedPtr<SWidget>& HandlerWidget);
-
-public:
-	/** */
-	struct SLATECORE_API FScopeProcessInputEvent
-	{
-		ESlateDebuggingInputEvent InputEvent;
-		FScopeProcessInputEvent(ESlateDebuggingInputEvent InputEvent, const FInputEvent& Event);
-		~FScopeProcessInputEvent();
-	};
-
-	/** */
-	struct SLATECORE_API FScopeRouteInputEvent
-	{
-		ESlateDebuggingInputEvent InputEvent;
-		FScopeRouteInputEvent(ESlateDebuggingInputEvent InputEvent, const FName& RoutingType);
-		~FScopeRouteInputEvent();
-	};
-
-	/** */
-	static void BroadcastPreProcessInputEvent(ESlateDebuggingInputEvent InputEventType, const TCHAR* InputPrecessorName, bool bHandled);
-
-	/** */
-	struct IWidgetInputRoutingEvent
-	{
-		virtual void OnProcessInput(ESlateDebuggingInputEvent InputEventType, const FInputEvent& Event) = 0;
-		virtual void OnPreProcessInput(ESlateDebuggingInputEvent InputEventType, const TCHAR* InputPrecessorName, bool bHandled) = 0;
-		virtual void OnRouteInput(ESlateDebuggingInputEvent InputEventType, const FName& RoutedType) = 0;
-		virtual void OnInputEvent(ESlateDebuggingInputEvent InputEventType, const FReply& InReply, const TSharedPtr<SWidget>& HandlerWidget) = 0;
-		virtual void OnInputRouted(ESlateDebuggingInputEvent InputEventType) = 0;
-		virtual void OnInputProcessed(ESlateDebuggingInputEvent InputEventType) = 0;
-	};
-
-	static void RegisterWidgetInputRoutingEvent(IWidgetInputRoutingEvent* Event);
-	static void UnregisterWidgetInputRoutingEvent(IWidgetInputRoutingEvent* Event);
 
 public:
 	/**  */
@@ -360,44 +239,23 @@ public:
 	static void BroadcastMouseCaptureLost(uint32 UserIndex, uint32 PointerIndex, TSharedPtr<const SWidget> InWidgetLostCapture);
 
 public:
-	DECLARE_MULTICAST_DELEGATE_OneParam(FWidgetCursorQuery, const FSlateDebuggingCursorQueryEventArgs& /*EventArgs*/);
-	static FWidgetCursorQuery CursorChangedEvent;
-
-	static void BroadcastCursorQuery(TSharedPtr<const SWidget> InWidgetOverridingCursor, const FCursorReply& InReply);
-
-public:
-	DECLARE_MULTICAST_DELEGATE_OneParam(FWidgetInvalidate, const FSlateDebuggingInvalidateArgs& /*EventArgs*/);
-	static FWidgetInvalidate WidgetInvalidateEvent;
-
-	static void BroadcastWidgetInvalidate(const SWidget* WidgetInvalidated, const SWidget* WidgetInvalidateInvestigator, EInvalidateWidgetReason InvalidateReason);
-	static void BroadcastInvalidationRootInvalidate(const SWidget* WidgetInvalidated, const SWidget* WidgetInvalidateInvestigator, ESlateDebuggingInvalidateRootReason InvalidateReason);
-
-public:
-	DECLARE_MULTICAST_DELEGATE_OneParam(FWidgetUpdatedEvent, const FSlateDebuggingWidgetUpdatedEventArgs& /*Args*/);
-	static FWidgetUpdatedEvent WidgetUpdatedEvent;
-
-	static void BroadcastWidgetUpdated(const SWidget* Invalidated, EWidgetUpdateFlags UpdateFlags);
-	static void BroadcastWidgetUpdatedByPaint(const SWidget* Invalidated, EWidgetUpdateFlags UpdateFlags);
-
-public:
 	/**  */
 	DECLARE_MULTICAST_DELEGATE_TwoParams(FUICommandRun, const FName& /*CommandName*/, const FText& /*CommandLabel*/);
 	static FUICommandRun CommandRun;
 
+	static void WidgetInvalidated(FSlateInvalidationRoot& InvalidationRoot, const class FWidgetProxy& WidgetProxy, const FLinearColor* CustomInvalidationColor = nullptr);
+
+	static void DrawInvalidationRoot(const SWidget& RootWidget, int32 LayerId, FSlateWindowElementList& OutDrawElements);
+
+	static void DrawInvalidatedWidgets(const FSlateInvalidationRoot& Root, const FPaintArgs& PaintArgs, FSlateWindowElementList& OutDrawElements);
+
+	static void ClearInvalidatedWidgets(const FSlateInvalidationRoot& Root);
 private:
 
 	// This class is only for namespace use
-	FSlateDebugging() = default;
+	FSlateDebugging() {}
 
-	struct FLastCursorQuery
-	{
-		const SWidget* WidgetThatOverrideCursorLast_UnsafeToUseForAnythingButCompare = nullptr;
-		TWeakPtr<SWidget> CursorWidget;
-		EMouseCursor::Type MouseCursor;
-	};
-	static FLastCursorQuery LastCursorQuery;
-
-	static TArray<IWidgetInputRoutingEvent*> RoutingEvents;
+	static TArray<struct FInvalidatedWidgetDrawer> InvalidatedWidgetDrawers;
 };
 
 #endif

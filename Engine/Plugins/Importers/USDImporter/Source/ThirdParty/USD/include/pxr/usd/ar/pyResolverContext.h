@@ -21,15 +21,14 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_AR_PY_RESOLVER_CONTEXT_H
-#define PXR_USD_AR_PY_RESOLVER_CONTEXT_H
+#ifndef AR_PY_RESOLVER_CONTEXT_H
+#define AR_PY_RESOLVER_CONTEXT_H
 
 /// \file ar/pyResolverContext.h
 /// Macros for creating Python bindings for objects used with 
 /// ArResolverContext.
 
-#include "pxr/base/tf/pySafePython.h"
-
+#include <Python.h>
 #include <boost/python/extract.hpp>
 #include <boost/python/object.hpp>
 
@@ -40,7 +39,7 @@
 #include "pxr/base/tf/pyLock.h"
 #include "pxr/base/tf/pyObjWrapper.h"
 
-#include <functional>
+#include <boost/function.hpp>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -89,9 +88,9 @@ Ar_ConvertResolverContextToPython(
     return false;
 }
 
-typedef std::function<bool(PyObject*, ArResolverContext*)> 
+typedef boost::function<bool(PyObject*, ArResolverContext*)> 
     Ar_MakeResolverContextFromPythonFn;
-typedef std::function<bool(const ArResolverContext&, TfPyObjWrapper*)>
+typedef boost::function<bool(const ArResolverContext&, TfPyObjWrapper*)>
     Ar_ResolverContextToPythonFn;
 
 AR_API
@@ -125,4 +124,4 @@ ArWrapResolverContextForPython()
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_AR_PY_RESOLVER_CONTEXT_H
+#endif // AR_PY_RESOLVER_CONTEXT_H

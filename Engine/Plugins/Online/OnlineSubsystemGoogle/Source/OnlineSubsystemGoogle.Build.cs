@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System.IO;
 using UnrealBuildTool;
@@ -71,6 +71,14 @@ public class OnlineSubsystemGoogle : ModuleRules
 		else if (Target.Platform == UnrealTargetPlatform.Win32 || Target.Platform == UnrealTargetPlatform.Win64)
 		{
 			bUsesRestfulImpl = true;
+		}
+		else if (Target.Platform == UnrealTargetPlatform.XboxOne)
+		{
+			PrivateIncludePaths.Add("Private/XboxOne");
+		}
+		else if (Target.Platform == UnrealTargetPlatform.PS4)
+		{
+			PrivateIncludePaths.Add("Private/PS4");
 		}
 		else if (Target.Platform == UnrealTargetPlatform.Mac)
 		{

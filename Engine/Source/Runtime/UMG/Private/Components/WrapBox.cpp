@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/WrapBox.h"
 #include "Components/WrapBoxSlot.h"
@@ -13,26 +13,8 @@ UWrapBox::UWrapBox(const FObjectInitializer& ObjectInitializer)
 {
 	bIsVariable = false;
 	Visibility = ESlateVisibility::SelfHitTestInvisible;
-	WrapSize = 500;
-	bExplicitWrapSize = false;
-	Orientation = EOrientation::Orient_Horizontal;
-}
-
-void UWrapBox::PostLoad()
-{
-	Super::PostLoad();
-
-	if (WrapWidth_DEPRECATED != 0.0f)
-	{
-		WrapSize = WrapWidth_DEPRECATED;
-		WrapWidth_DEPRECATED = 0.0f;
-	}
-
-	if (bExplicitWrapWidth_DEPRECATED)
-	{
-		bExplicitWrapSize = bExplicitWrapWidth_DEPRECATED;
-		bExplicitWrapWidth_DEPRECATED = false;
-	}
+	WrapWidth = 500;
+	bExplicitWrapWidth = false;
 }
 
 void UWrapBox::ReleaseSlateResources(bool bReleaseChildren)
@@ -59,7 +41,7 @@ void UWrapBox::OnSlotAdded(UPanelSlot* InSlot)
 void UWrapBox::OnSlotRemoved(UPanelSlot* InSlot)
 {
 	// Remove the widget from the live slot if it exists.
-	if ( MyWrapBox.IsValid() && InSlot->Content)
+	if ( MyWrapBox.IsValid() )
 	{
 		TSharedPtr<SWidget> Widget = InSlot->Content->GetCachedWidget();
 		if ( Widget.IsValid() )
@@ -82,9 +64,8 @@ UWrapBoxSlot* UWrapBox::AddChildToWrapBox(UWidget* Content)
 TSharedRef<SWidget> UWrapBox::RebuildWidget()
 {
 	MyWrapBox = SNew(SWrapBox)
-		.UseAllottedSize(!bExplicitWrapSize)
-		.PreferredSize(WrapSize)
-		.Orientation(Orientation);
+		.UseAllottedWidth(!bExplicitWrapWidth)
+		.PreferredWidth(WrapWidth);
 
 	for ( UPanelSlot* PanelSlot : Slots )
 	{
@@ -103,9 +84,8 @@ void UWrapBox::SynchronizeProperties()
 	Super::SynchronizeProperties();
 
 	MyWrapBox->SetInnerSlotPadding(InnerSlotPadding);
-	MyWrapBox->SetUseAllottedSize(!bExplicitWrapSize);
-	MyWrapBox->SetWrapSize(WrapSize);
-	MyWrapBox->SetOrientation(Orientation);
+	MyWrapBox->SetUseAllottedWidth(!bExplicitWrapWidth);
+	MyWrapBox->SetWrapWidth(WrapWidth);
 }
 
 void UWrapBox::SetInnerSlotPadding(FVector2D InPadding)

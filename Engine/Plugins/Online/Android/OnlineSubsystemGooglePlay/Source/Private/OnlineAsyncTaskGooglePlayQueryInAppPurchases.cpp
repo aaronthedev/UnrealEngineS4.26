@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineAsyncTaskGooglePlayQueryInAppPurchases.h"
 #include "OnlineSubsystemGooglePlay.h"
@@ -29,10 +29,7 @@ void FOnlineAsyncTaskGooglePlayQueryInAppPurchases::Finalize()
 void FOnlineAsyncTaskGooglePlayQueryInAppPurchases::TriggerDelegates()
 {
 	UE_LOG_ONLINE(Verbose, TEXT("FOnlineAsyncTaskGooglePlayQueryInAppPurchases::TriggerDelegates"));
-
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	Subsystem->GetStoreInterface()->TriggerOnQueryForAvailablePurchasesCompleteDelegates(bWasSuccessful);
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 void FOnlineAsyncTaskGooglePlayQueryInAppPurchases::Tick()

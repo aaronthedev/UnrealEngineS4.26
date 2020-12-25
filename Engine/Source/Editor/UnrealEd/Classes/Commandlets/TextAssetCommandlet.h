@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	TextAssetCommandlet.cpp: Commandlet for saving assets in text asset format
@@ -10,18 +10,6 @@
 
 UNREALED_API DECLARE_LOG_CATEGORY_EXTERN(LogTextAsset, Log, All);
 
-UENUM()
-enum class ETextAssetCommandletMode
-{
-	ResaveText,
-	ResaveBinary,
-	RoundTrip,
-	LoadBinary,
-	LoadText,
-	FindMismatchedSerializers,
-	GenerateSchema
-};
-
 UCLASS(config=Editor)
 class UTextAssetCommandlet
 	: public UCommandlet
@@ -30,9 +18,19 @@ class UTextAssetCommandlet
 
 public:
 
+	enum class EProcessingMode
+	{
+		ResaveText,
+		ResaveBinary,
+		RoundTrip,
+		LoadBinary,
+		LoadText,
+		FindMismatchedSerializers,
+	};
+
 	struct FProcessingArgs
 	{
-		ETextAssetCommandletMode ProcessingMode = ETextAssetCommandletMode::ResaveText;
+		EProcessingMode ProcessingMode = EProcessingMode::ResaveText;
 		int32 NumSaveIterations = 1;
 		bool bIncludeEngineContent = false;
 		bool bFilenameIsFilter = true;

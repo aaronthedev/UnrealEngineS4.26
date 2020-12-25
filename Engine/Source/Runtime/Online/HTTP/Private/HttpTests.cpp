@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "HttpTests.h"
 #include "HttpModule.h"
@@ -22,7 +22,7 @@ void FHttpTest::Run(void)
 
 	for (int Idx=0; Idx < TestsToRun; Idx++)
 	{
-		TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
+		TSharedPtr<IHttpRequest> Request = FHttpModule::Get().CreateRequest();
 		Request->OnProcessRequestComplete().BindRaw(this, &FHttpTest::RequestComplete);
 		Request->SetURL(Url);
 		if (Payload.Len() > 0)

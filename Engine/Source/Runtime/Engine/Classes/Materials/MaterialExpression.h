@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,7 +7,6 @@
 #include "UObject/Object.h"
 #include "Misc/Guid.h"
 #include "MaterialShared.h"
-#include "MaterialCachedData.h"
 #include "MaterialExpressionIO.h"
 
 #include "MaterialExpression.generated.h"
@@ -96,6 +95,29 @@ struct FExpressionOutput
 #endif
 };
 #endif
+
+USTRUCT()
+struct FParameterChannelNames
+{
+	GENERATED_USTRUCT_BODY()
+
+		UPROPERTY(EditAnywhere, Category = MaterialExpressionVectorParameter)
+		FText R;
+
+	UPROPERTY(EditAnywhere, Category = MaterialExpressionVectorParameter)
+		FText G;
+
+	UPROPERTY(EditAnywhere, Category = MaterialExpressionVectorParameter)
+		FText B;
+
+	UPROPERTY(EditAnywhere, Category = MaterialExpressionVectorParameter)
+		FText A;
+
+	FParameterChannelNames()
+	{
+
+	};
+};
 
 UCLASS(abstract, BlueprintType, hidecategories=Object)
 class ENGINE_API UMaterialExpression : public UObject
@@ -202,12 +224,13 @@ class ENGINE_API UMaterialExpression : public UObject
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 	virtual void PostEditImport() override;
-	virtual bool CanEditChange( const FProperty* InProperty ) const override;
+	virtual bool CanEditChange( const UProperty* InProperty ) const override;
 	
 	virtual bool Modify( bool bAlwaysMarkDirty=true ) override;
 #endif // WITH_EDITOR
 	virtual void Serialize( FStructuredArchive::FRecord Record ) override;
-	virtual bool IsEditorOnly() const
+	virtual bool NeedsLoadForClient() const override;
+	virtual bool NeedsLoadForEditorGame() const override
 	{
 		return true;
 	}
@@ -282,7 +305,7 @@ class ENGINE_API UMaterialExpression : public UObject
 	virtual void GetConnectorToolTip(int32 InputIndex, int32 OutputIndex, TArray<FString>& OutToolTip);
 
 	/** Get a tooltip for the expression itself. */
-	virtual void GetExpressionToolTip(TArray<FString>& OutToolTip);
+	virtual void GetExpressionToolTip(TArray<FString>& OutToolTip) {}
 	/**
 	 *	Returns the amount of padding to use for the label.
 	 *
@@ -420,6 +443,8 @@ class ENGINE_API UMaterialExpression : public UObject
 
 	virtual bool HasConnectedOutputs() const;
 
+#endif // WITH_EDITOR
+
 	/** Checks whether any inputs to this expression create a loop */
 	bool ContainsInputLoop(const bool bStopOnFunctionCall = true);
 
@@ -432,7 +457,6 @@ protected:
 	 * @param VisitedExpressions List of all expression keys that have been visited
 	 */
 	bool ContainsInputLoopInternal(TArray<class FMaterialExpressionKey>& ExpressionStack, TSet<class FMaterialExpressionKey>& VisitedExpressions, const bool bStopOnFunctionCall);
-#endif // WITH_EDITOR
 };
 
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 UnrealEngine.cpp: Implements the UEngine class and helpers.
@@ -65,8 +65,6 @@ UnrealEngine.cpp: Implements the UEngine class and helpers.
 #include "GameFramework/WorldSettings.h"
 #include "Components/AudioComponent.h"
 #include "Particles/ParticleSystem.h"
-#include "Performance/LatencyMarkerModule.h"
-#include "Performance/MaxTickRateHandlerModule.h"
 #include "Engine/SkeletalMesh.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/Texture.h"
@@ -131,26 +129,20 @@ UnrealEngine.cpp: Implements the UEngine class and helpers.
 #include "HAL/LowLevelMemTracker.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "DynamicResolutionState.h"
-#include "Engine/ViewportStatsSubsystem.h"
-
-#include "Chaos/TriangleMeshImplicitObject.h"
 
 #include "Particles/Spawn/ParticleModuleSpawn.h"
 #include "Particles/TypeData/ParticleModuleTypeDataMesh.h"
 #include "Particles/ParticleLODLevel.h"
 #include "Particles/ParticleModuleRequired.h"
-#include "Particles/ParticlePerfStats.h"
 
 #include "Components/TextRenderComponent.h"
 #include "Sound/AudioSettings.h"
 #include "Streaming/Texture2DUpdate.h"
 #include "Rendering/SkeletalMeshRenderData.h"
 #include "Serialization/LoadTimeTrace.h"
-#include "Async/ParallelFor.h"
 
 #if WITH_EDITOR
 #include "Settings/LevelEditorPlaySettings.h"
-#include "LandscapeSubsystem.h"
 #endif
 // @todo this is here only due to circular dependency to AIModule. To be removed
 
@@ -236,11 +228,6 @@ UnrealEngine.cpp: Implements the UEngine class and helpers.
 
 #include "Particles/ParticleSystemManager.h"
 #include "Components/SkinnedMeshComponent.h"
-#include "Net/Core/Trace/NetTrace.h"
-#include "ObjectTrace.h"
-#include "StudioAnalytics.h"
-#include "TraceFilter.h"
-#include "Animation/SkinWeightProfileManager.h"
 
 DEFINE_LOG_CATEGORY(LogEngine);
 IMPLEMENT_MODULE( FEngineModule, Engine );
@@ -277,31 +264,11 @@ void FEngineModule::StartupModule()
 #if WITH_EDITOR
 	USkinnedMeshComponent::BindWorldDelegates();
 #endif
-
-#if OBJECT_TRACE_ENABLED
-	FObjectTrace::Init();
-#endif
-
-#if TRACE_FILTERING_ENABLED
-	FTraceFilter::Init();
-#endif
-
-	FSkinWeightProfileManager::OnStartup();
 }
 
 void FEngineModule::ShutdownModule()
 {
-#if TRACE_FILTERING_ENABLED
-	FTraceFilter::Destroy();
-#endif
-
-#if OBJECT_TRACE_ENABLED
-	FObjectTrace::Destroy();
-#endif
-
 	FParticleSystemWorldManager::OnShutdown();
-
-	FSkinWeightProfileManager::OnShutdown();
 }
 
 /* Global variables
@@ -401,11 +368,6 @@ ENGINE_API FString GPlayInEditorContextString(TEXT("invalid"));
 ENGINE_API void UpdatePlayInEditorWorldDebugString(const FWorldContext* WorldContext)
 {
 #if WITH_EDITOR
-	if (!GIsEditor)
-	{
-		return;
-	}
-
 	if (WorldContext == nullptr)
 	{
 		ensure(GPlayInEditorID == INDEX_NONE);
@@ -431,8 +393,7 @@ ENGINE_API void UpdatePlayInEditorWorldDebugString(const FWorldContext* WorldCon
 				break;
 
 			case NM_Client:
-				// 0 is always the server, use PIEInstance so it matches the in-editor UI
-				WorldName = FText::Format(NSLOCTEXT("Engine", "PlayWorldIsClient", "Client {0}"), FText::AsNumber(WorldContext->PIEInstance)).ToString();
+				WorldName = FText::Format(NSLOCTEXT("Engine", "PlayWorldIsClient", "Client {0}"), FText::AsNumber(WorldContext->PIEInstance - 1)).ToString();
 				break;
 
 			default:
@@ -473,6 +434,10 @@ void FTemporaryPlayInEditorIDOverride::SetID(int32 NewID)
 		UpdatePlayInEditorWorldDebugString(GEngine->GetWorldContextFromPIEInstance(GPlayInEditorID));
 	}
 }
+
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+FSimpleMulticastDelegate UEngine::OnPostEngineInit;
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 // We expose these variables to everyone as we need to access them in other files via an extern
 ENGINE_API float GAverageFPS = 0.0f;
@@ -610,13 +575,11 @@ void ScalabilityCVarsSinkCallback()
 
 		if (bRecreateRenderstate || bCacheResourceShaders)
 		{
-			// Make the render state rebuild object before updating the cached values, because its constructor calls UpdateAllPrimitiveSceneInfos(), which
-			// may end up using the material shader maps for the quality level stored in GCachedScalabilityCVars.MaterialQualityLevel. If that value already
-			// points to the new quality level, the shader maps won't exist, and we'll crash.
-			FGlobalComponentRecreateRenderStateContext Recreate;
-
 			// after FlushRenderingCommands() to not have render thread pick up the data partially
 			GCachedScalabilityCVars = LocalScalabilityCVars;
+
+			// Note: constructor and destructor has side effect
+			FGlobalComponentRecreateRenderStateContext Recreate;
 
 			if (bCacheResourceShaders)
 			{
@@ -683,8 +646,7 @@ bool ParseResolution(const TCHAR* InResolution, uint32& OutX, uint32& OutY, int3
 					StringTripLen = 1;
 				}
 
-				YString.LeftInline(YString.Len() - StringTripLen, false);
-				YString.TrimStartAndEndInline();
+				YString = YString.Left(YString.Len() - StringTripLen).TrimStartAndEnd();
 			}
 
 			if (YString.IsNumeric())
@@ -938,7 +900,7 @@ namespace
 		FSoftObjectPath::AddPIEPackageName(PIEPackageFName);
 
 		uint32 LoadFlags = LOAD_None;
-		UPackage* NewPackage = CreatePackage( *PIEPackageName);
+		UPackage* NewPackage = CreatePackage(NULL, *PIEPackageName);
 		if (NewPackage != nullptr && WorldContext.WorldType == EWorldType::PIE)
 		{
 			NewPackage->SetPackageFlags(PKG_PlayInEditor);
@@ -1046,8 +1008,10 @@ public:
 			{
 				check( ImageWrapper->GetWidth() == InWidth );
 				check( ImageWrapper->GetHeight() == InHeight );
-				if ( ImageWrapper->GetRaw( ERGBFormat::RGBA, 8, OutUncompressedData) )
+				const TArray<uint8>* RawData = NULL;
+				if ( ImageWrapper->GetRaw( ERGBFormat::RGBA, 8, RawData ) )	// @todo CB: Eliminate image copy here? (decompress straight to buffer)
 				{
+					OutUncompressedData = *RawData;
 					bSucceeded = true;
 				}
 			}
@@ -1108,14 +1072,11 @@ FWorldContext
 
 void FWorldContext::SetCurrentWorld(UWorld* World)
 {
-	if (World != nullptr && AudioDeviceID != INDEX_NONE)
+	if (World != nullptr)
 	{
-		if (FAudioDeviceManager* DeviceManager = FAudioDeviceManager::Get())
-		{
-			// Set the world's audio device handle so that audio components playing in the 
-			// world will use the correct audio device instance.
-			DeviceManager->SetAudioDevice(*World, AudioDeviceID);
-		}
+		// Set the world's audio device handle so that audio components playing in the 
+		// world will use the correct audio device instance.
+		World->SetAudioDeviceHandle(AudioDeviceHandle);
 	}
 
 	for (int32 idx = 0; idx < ExternalReferences.Num(); ++idx)
@@ -1305,10 +1266,7 @@ float UEngine::GetTimeBetweenGarbageCollectionPasses() const
 	if ( GLowMemoryMemoryThresholdMB > 0.0 )
 	{
 		float MBFree = float(FPlatformMemory::GetStats().AvailablePhysical / 1024 / 1024);
-#if !UE_BUILD_SHIPPING
-		MBFree -= float(FPlatformMemory::GetExtraDevelopmentMemorySize() / 1024 / 1024);
-#endif
-		if (MBFree <= GLowMemoryMemoryThresholdMB)
+		if ( MBFree <= GLowMemoryMemoryThresholdMB)
 		{
 			if (GLowMemoryTimeBetweenPurgingPendingKillObjects < TimeBetweenGC)
 			{
@@ -1509,14 +1467,11 @@ void UEngine::Init(IEngineLoop* InEngineLoop)
 
 	FCoreUObjectDelegates::GetPreGarbageCollectDelegate().AddStatic(UEngine::PreGarbageCollect);
 
-	if (!FApp::IsProjectNameEmpty())
-	{
-		// Initialize the HMDs and motion controllers, if any
-		InitializeHMDDevice();
+	// Initialize the HMDs and motion controllers, if any
+	InitializeHMDDevice();
 
-		// Initialize attached eye tracking devices, if any
-		InitializeEyeTrackingDevice();
-	}
+	// Initialize attached eye tracking devices, if any
+	InitializeEyeTrackingDevice();
 
 	// Disable the screensaver when running the game.
 	if( GIsClient && !GIsEditor )
@@ -1603,50 +1558,23 @@ void UEngine::Init(IEngineLoop* InEngineLoop)
 	FString ExecCmds;
 	if( FParse::Value(FCommandLine::Get(), TEXT("ExecCmds="), ExecCmds, false) )
 	{
-		// Read the command array, ignoring any commas in single-quotes. 
-		// Convert any single-quotes to double-quotes and skip leading whitespace
-		// This allows passing of strings, e:g -execcmds="exampleCvar '0,1,2,3'"
 		TArray<FString> CommandArray;
-		FString CurrentCommand = "";
-		bool bInQuotes = false;
-		bool bSkippingWhitespace = true;
-		for (int i = 0; i < ExecCmds.Len(); i++)
-		{
-			TCHAR CurrentChar = ExecCmds[i];
-			if (CurrentChar == '\'')
-			{
-				bInQuotes = !bInQuotes;
-				CurrentCommand += "\"";
-			}
-			else if (CurrentChar == ',' && !bInQuotes)
-			{
-				if (CurrentCommand.Len() > 0)
-				{
-					CommandArray.Add(CurrentCommand);
-					CurrentCommand = "";
-				}
-				bSkippingWhitespace = true;
-			}
-			else
-			{
-				if (bSkippingWhitespace)
-				{
-					bSkippingWhitespace = FChar::IsWhitespace(CurrentChar);
-				}
-				if (!bSkippingWhitespace)
-				{
-					CurrentCommand += CurrentChar;
-				}
-			}
-		}
-		if (CurrentCommand.Len() > 0)
-		{
-			CommandArray.Add(CurrentCommand);
-		}
+		ExecCmds.ParseIntoArray( CommandArray, TEXT(","), true );
 
 		for( int32 Cx = 0; Cx < CommandArray.Num(); ++Cx )
 		{
-			new(GEngine->DeferredCommands) FString(*CommandArray[Cx]);
+			const FString& Command = CommandArray[Cx];
+			// Skip leading whitespaces in the command.
+			int32 Index = 0;
+			while( FChar::IsWhitespace( Command[Index] ) )
+			{
+				Index++;
+			}
+
+			if( Index < Command.Len()-1 )
+			{
+				new(GEngine->DeferredCommands) FString(*Command+Index);
+			}
 		}
 	}
 
@@ -1667,7 +1595,12 @@ void UEngine::Init(IEngineLoop* InEngineLoop)
 	{
 		GetDerivedDataCacheRef().NotifyBootComplete();
 	}
-	
+
+	// Manually delete any potential leftover crash videos in case we can't access the module
+	// because the crash reporter will upload any leftover crash video from last session
+	FString CrashVideoPath = FPaths::ProjectLogDir() + TEXT("CrashVideo.avi");
+	IFileManager::Get().Delete(*CrashVideoPath);
+
 	// register the engine with the travel and network failure broadcasts
 	// games can override these to provide proper behavior in each error case
 	OnTravelFailure().AddUObject(this, &UEngine::HandleTravelFailure);
@@ -1727,7 +1660,6 @@ void UEngine::Init(IEngineLoop* InEngineLoop)
 	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_FPS"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatFPS, &UEngine::ToggleStatFPS, bIsRHS));
 	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_Summary"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatSummary, NULL, bIsRHS));
 	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_Unit"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatUnit, &UEngine::ToggleStatUnit, bIsRHS));
-	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_DrawCount"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatDrawCount, NULL, bIsRHS));
 	/* @todo Slate Rendering
 	#if STATS
 	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_SlateBatches"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatSlateBatches, NULL, true));
@@ -1736,18 +1668,17 @@ void UEngine::Init(IEngineLoop* InEngineLoop)
 	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_Hitches"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatHitches, &UEngine::ToggleStatHitches, bIsRHS));
 	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_AI"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatAI, NULL, bIsRHS));
 	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_Timecode"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatTimecode, NULL, bIsRHS));
-	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_FrameCounter"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatFrameCounter, NULL, bIsRHS));
 
 	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_ColorList"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatColorList, NULL));
 	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_Levels"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatLevels, NULL));
 #if !UE_BUILD_SHIPPING
-	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_SoundMixes"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatSoundMixes, &UEngine::ToggleStatSoundMixes));
-	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_SoundModulators"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatSoundModulators, &UEngine::ToggleStatSoundModulators));
-	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_SoundModulatorsHelp"), TEXT("STATCAT_Engine"), FText::GetEmpty(), nullptr, &UEngine::PostStatSoundModulatorHelp));
-	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_AudioStreaming"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatAudioStreaming, &UEngine::ToggleStatAudioStreaming));
-	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_SoundReverb"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatSoundReverb, nullptr));
 	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_Sounds"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatSounds, &UEngine::ToggleStatSounds));
 	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_SoundCues"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatSoundCues, &UEngine::ToggleStatSoundCues));
+	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_SoundMixes"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatSoundMixes, &UEngine::ToggleStatSoundMixes));
+	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_AudioStreaming"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatAudioStreaming, &UEngine::ToggleStatAudioStreaming));
+	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_SoundModulators"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatSoundModulators, &UEngine::ToggleStatSoundModulators));
+	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_SoundModulatorsHelp"), TEXT("STATCAT_Engine"), FText::GetEmpty(), nullptr, &UEngine::PostStatSoundModulatorHelp));
+	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_SoundReverb"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatSoundReverb, nullptr));
 	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_SoundWaves"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatSoundWaves, &UEngine::ToggleStatSoundWaves));
 #endif // !UE_BUILD_SHIPPING
 	/* @todo UE4 physx fix this once we have convexelem drawing again
@@ -1759,9 +1690,6 @@ void UEngine::Init(IEngineLoop* InEngineLoop)
 	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_UnitGraph"), TEXT("STATCAT_Engine"), FText::GetEmpty(), NULL, &UEngine::ToggleStatUnitGraph));
 	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_UnitTime"), TEXT("STATCAT_Engine"), FText::GetEmpty(), NULL, &UEngine::ToggleStatUnitTime));
 	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_Raw"), TEXT("STATCAT_Engine"), FText::GetEmpty(), NULL, &UEngine::ToggleStatRaw));
-#endif
-#if WITH_PARTICLE_PERF_STATS
-	EngineStats.Add(FEngineStatFuncs(TEXT("STAT_ParticlePerf"), TEXT("STATCAT_Engine"), FText::GetEmpty(), &UEngine::RenderStatParticlePerf, nullptr, bIsRHS));
 #endif
 
 	// Let any listeners know about the new stats
@@ -1777,20 +1705,8 @@ void UEngine::Init(IEngineLoop* InEngineLoop)
 		GCycleStatsShouldEmitNamedEvents = 1;
 	}
 
-#if UE_NET_TRACE_ENABLED
-	uint32 NetTraceVerbosity;
-	if(FParse::Value(FCommandLine::Get(), TEXT("NetTrace="), NetTraceVerbosity))
-	{
-		FNetTrace::SetTraceVerbosity(NetTraceVerbosity);
-	}
-#endif
-
 	// Record the analytics for any attached HMD devices
 	RecordHMDAnalytics();
-
-#if !UE_BUILD_SHIPPING
-	UE_CLOG(FPlatformMemory::IsExtraDevelopmentMemoryAvailable(), LogInit, Warning, TEXT("Running with %dMB of extra development memory!"),FPlatformMemory::GetExtraDevelopmentMemorySize()/1024ull/1024ull);
-#endif
 }
 
 void UEngine::Start()
@@ -1813,21 +1729,26 @@ void UEngine::OnExternalUIChange(bool bInIsOpening)
 	FSlateApplication::Get().ExternalUIChange(bInIsOpening);
 }
 
-void UEngine::ReleaseAudioDeviceManager()
+void UEngine::ShutdownAudioDeviceManager()
 {
-	// Release the main audio device handle.
-	MainAudioDeviceHandle.Reset();
-	AudioDeviceManager = nullptr;
+	// Shutdown the main audio device in the UEEngine
+	if (AudioDeviceManager)
+	{
+		FAudioCommandFence Fence;
+		Fence.BeginFence();
+		Fence.Wait();
+
+		FAudioThread::StopAudioThread();
+
+		AudioDeviceManager->ShutdownAllAudioDevices();
+
+		delete AudioDeviceManager;
+		AudioDeviceManager = NULL;
+	}
 }
 
 void UEngine::PreExit()
 {
-	FCoreDelegates::OnEnginePreExit.Broadcast();
-
-#if UE_NET_TRACE_ENABLED
-	FNetTrace::SetTraceVerbosity(0);
-#endif
-
 	if (IMovieSceneCaptureModule* Module = FModuleManager::GetModulePtr<IMovieSceneCaptureModule>( "MovieSceneCapture" ))
 	{
 		Module->DestroyAllActiveCaptures();
@@ -1838,7 +1759,6 @@ void UEngine::PreExit()
 	ShutdownRenderingCVarsCaching();
 	const bool bIsEngineShutdown = true;
 	FEngineAnalytics::Shutdown(bIsEngineShutdown);
-	FStudioAnalytics::Shutdown();
 	if (ScreenSaverInhibitor)
 	{
 		// Resume the thread to avoid a deadlock while waiting for finish.
@@ -1849,19 +1769,14 @@ void UEngine::PreExit()
 
 	delete ScreenSaverInhibitorRunnable;
 
-	// Shutdown Timecode Provider
-	if (bIsCurrentTimecodeProviderInitialized && TimecodeProvider)
-	{
-		TimecodeProvider->Shutdown(this);
-	}
-	TimecodeProvider = nullptr;
+	GetTimecodeProviderProtected()->Shutdown(this);
+	CustomTimecodeProvider = nullptr;
 
-	// Shutdown CustomTimeStep
-	if (bIsCurrentCustomTimeStepInitialized && CustomTimeStep)
-	{
-		CustomTimeStep->Shutdown(this);
-	}
-	CustomTimeStep = nullptr;
+	// Don't clear the pointer to DefaultTimecodeProvider, as other systems shutting down may try to reference it
+	// for validation.
+	DefaultTimecodeProvider->RemoveFromRoot();
+
+	SetCustomTimeStep(nullptr);
 
 	ShutdownHMD();
 
@@ -2008,46 +1923,6 @@ double UEngine::CorrectNegativeTimeDelta(double DeltaRealTime)
 	return 0.01;
 }
 
-void UEngine::SetGameLatencyMarkerStart(uint64 FrameNumber)
-{
-	TArray<ILatencyMarkerModule*> LatencyMarkerModules = IModularFeatures::Get().GetModularFeatureImplementations<ILatencyMarkerModule>(ILatencyMarkerModule::GetModularFeatureName());
-
-	for (ILatencyMarkerModule* LatencyMarkerModule : LatencyMarkerModules)
-	{
-		LatencyMarkerModule->SetGameLatencyMarkerStart(FrameNumber);
-	}
-}
-
-void UEngine::SetGameLatencyMarkerEnd(uint64 FrameNumber)
-{
-	TArray<ILatencyMarkerModule*> LatencyMarkerModules = IModularFeatures::Get().GetModularFeatureImplementations<ILatencyMarkerModule>(ILatencyMarkerModule::GetModularFeatureName());
-
-	for (ILatencyMarkerModule* LatencyMarkerModule : LatencyMarkerModules)
-	{
-		LatencyMarkerModule->SetGameLatencyMarkerEnd(FrameNumber);
-	}
-}
-
-void UEngine::SetRenderLatencyMarkerStart(uint64 FrameNumber)
-{
-	TArray<ILatencyMarkerModule*> LatencyMarkerModules = IModularFeatures::Get().GetModularFeatureImplementations<ILatencyMarkerModule>(ILatencyMarkerModule::GetModularFeatureName());
-
-	for (ILatencyMarkerModule* LatencyMarkerModule : LatencyMarkerModules)
-	{
-		LatencyMarkerModule->SetRenderLatencyMarkerStart(FrameNumber);
-	}
-}
-
-void UEngine::SetRenderLatencyMarkerEnd(uint64 FrameNumber)
-{
-	TArray<ILatencyMarkerModule*> LatencyMarkerModules = IModularFeatures::Get().GetModularFeatureImplementations<ILatencyMarkerModule>(ILatencyMarkerModule::GetModularFeatureName());
-
-	for (ILatencyMarkerModule* LatencyMarkerModule : LatencyMarkerModules)
-	{
-		LatencyMarkerModule->SetRenderLatencyMarkerEnd(FrameNumber);
-	}
-}
-
 void UEngine::UpdateTimeAndHandleMaxTickRate()
 {
 	PumpABTest();
@@ -2055,9 +1930,9 @@ void UEngine::UpdateTimeAndHandleMaxTickRate()
 	FTimedMemReport::Get().PumpTimedMemoryReports();
 #endif
 
-	if (CustomTimeStep)
+	if (CurrentCustomTimeStep)
 	{
-		bool bRunEngineCode = CustomTimeStep->UpdateTimeStep(this);
+		bool bRunEngineCode = CurrentCustomTimeStep->UpdateTimeStep(this);
 		if (!bRunEngineCode)
 		{
 			UpdateTimecode();
@@ -2130,18 +2005,6 @@ void UEngine::UpdateTimeAndHandleMaxTickRate()
 			WaitTime = FMath::Max( 1.f / MaxTickRate - DeltaRealTime, 0.f );
 		}
 
-		bool bMaxTickRateHandled = false;
-		TArray<IMaxTickRateHandlerModule*> MaxTickRateHandlerModules = IModularFeatures::Get().GetModularFeatureImplementations<IMaxTickRateHandlerModule>(IMaxTickRateHandlerModule::GetModularFeatureName());
-
-		for (IMaxTickRateHandlerModule* MaxTickRateHandler : MaxTickRateHandlerModules)
-		{
-			if (MaxTickRateHandler->HandleMaxTickRate(MaxTickRate))
-			{
-				bMaxTickRateHandled = true;
-				break;
-			}
-		}
-
 		// Enforce maximum framerate and smooth framerate by waiting.
 		double ActualWaitTime = 0.f;
 		if( WaitTime > 0 )
@@ -2155,39 +2018,36 @@ void UEngine::UpdateTimeAndHandleMaxTickRate()
 			SCOPE_CYCLE_COUNTER(STAT_GameTickWaitTime);
 			SCOPE_CYCLE_COUNTER(STAT_GameIdleTime);
 
-			if (!bMaxTickRateHandled)
+			if (IsRunningDedicatedServer()) // We aren't so concerned about wall time with a server, lots of CPU is wasted spinning. I suspect there is more to do with sleeping and time on dedicated servers.
 			{
-				if (IsRunningDedicatedServer()) // We aren't so concerned about wall time with a server, lots of CPU is wasted spinning. I suspect there is more to do with sleeping and time on dedicated servers.
+				FPlatformProcess::SleepNoStats(WaitTime);
+			}
+			else
+			{
+				// Sleep if we're waiting more than 5 ms. We set the scheduler granularity to 1 ms
+				// at startup on PC. We reserve 2 ms of slack time which we will wait for by giving
+				// up our timeslice.
+				if( WaitTime > 5 / 1000.f )
 				{
-					FPlatformProcess::SleepNoStats(WaitTime);
+					// For improved handling of drag and drop, continue to pump messages while throttled down
+					if (GIsEditor && ShouldThrottleCPUUsage())
+					{
+						do
+						{
+							FPlatformProcess::SleepNoStats(0.005f);
+							FPlatformApplicationMisc::PumpMessages(true);
+						} while (ShouldThrottleCPUUsage() && FPlatformTime::Seconds() < (WaitEndTime - 0.005f));
+					}
+					else
+					{
+						FPlatformProcess::SleepNoStats( WaitTime - 0.002f );
+					}
 				}
-				else
-				{
-					// Sleep if we're waiting more than 5 ms. We set the scheduler granularity to 1 ms
-					// at startup on PC. We reserve 2 ms of slack time which we will wait for by giving
-					// up our timeslice.
-					if (WaitTime > 5 / 1000.f)
-					{
-						// For improved handling of drag and drop, continue to pump messages while throttled down
-						if (GIsEditor && ShouldThrottleCPUUsage())
-						{
-							do
-							{
-								FPlatformProcess::SleepNoStats(0.005f);
-								FPlatformApplicationMisc::PumpMessages(true);
-							} while (ShouldThrottleCPUUsage() && FPlatformTime::Seconds() < (WaitEndTime - 0.005f));
-						}
-						else
-						{
-							FPlatformProcess::SleepNoStats(WaitTime - 0.002f);
-						}
-					}
 
-					// Give up timeslice for remainder of wait time.
-					while (FPlatformTime::Seconds() < WaitEndTime)
-					{
-						FPlatformProcess::SleepNoStats(0);
-					}
+				// Give up timeslice for remainder of wait time.
+				while( FPlatformTime::Seconds() < WaitEndTime )
+				{
+					FPlatformProcess::SleepNoStats( 0 );
 				}
 			}
 			CurrentRealTime = FPlatformTime::Seconds();
@@ -2288,88 +2148,129 @@ void UEngine::UpdateTimeAndHandleMaxTickRate()
 
 void UEngine::ReinitializeCustomTimeStep()
 {
+	UEngineCustomTimeStep* CustomTimeStep = GetCustomTimeStep();
 	if (CustomTimeStep)
 	{
-		if (bIsCurrentCustomTimeStepInitialized)
-		{
 		CustomTimeStep->Shutdown(this);
+		if (!CustomTimeStep->Initialize(this))
+		{
+			UE_LOG(LogEngine, Warning, TEXT("Failed reinitializing CustomTimeStep %s"), *GetPathName(CustomTimeStep));
 		}
-		bIsCurrentCustomTimeStepInitialized = CustomTimeStep->Initialize(this);
 	}
 }
 
 bool UEngine::SetCustomTimeStep(UEngineCustomTimeStep* InCustomTimeStep)
 {
-	if (InCustomTimeStep != CustomTimeStep)
+	bool bResult = true;
+
+	UEngineCustomTimeStep* Previous = GetCustomTimeStep();
+	if (InCustomTimeStep != Previous)
 	{
-		if (CustomTimeStep && bIsCurrentCustomTimeStepInitialized)
+		if (Previous)
 		{
-			CustomTimeStep->Shutdown(this);
+			Previous->Shutdown(this);
 		}
 
-		bIsCurrentCustomTimeStepInitialized = false;
-		CustomTimeStep = InCustomTimeStep && !InCustomTimeStep->IsPendingKill() ? InCustomTimeStep : nullptr;
+		CurrentCustomTimeStep = InCustomTimeStep;
 
-		if (CustomTimeStep)
+		if (CurrentCustomTimeStep)
+		{
+			bResult = CurrentCustomTimeStep->Initialize(this);
+			if (!bResult)
 			{
-			bIsCurrentCustomTimeStepInitialized = CustomTimeStep->Initialize(this);
+				UE_LOG(LogEngine, Warning, TEXT("SetCustomTimeStep - Failed to intialize CustomTimeStep %s"), *GetPathName(CurrentCustomTimeStep));
+				CurrentCustomTimeStep = nullptr;
+			}
 		}
-		OnCustomTimeStepChanged().Broadcast();
 	}
-	return bIsCurrentCustomTimeStepInitialized;
+
+	return bResult;
 }
 
 void UEngine::ReinitializeTimecodeProvider()
 {
-	UTimecodeProvider* Provider = GetTimecodeProvider();
-	if (Provider)
-	{
-		if (bIsCurrentTimecodeProviderInitialized)
-		{
+	UTimecodeProvider* Provider = GetTimecodeProviderProtected();
 	Provider->Shutdown(this);
-		}
-		bIsCurrentTimecodeProviderInitialized = Provider->Initialize(this);
+	if (!Provider->Initialize(this))
+	{
+		UE_LOG(LogEngine, Warning, TEXT("Failed reinitializing TimecodeProvider %s"), *GetPathName(Provider));
 	}
 }
 
 bool UEngine::SetTimecodeProvider(UTimecodeProvider* InTimecodeProvider)
 {
-	if (InTimecodeProvider != TimecodeProvider)
-			{
-		if (TimecodeProvider && bIsCurrentTimecodeProviderInitialized)
+	bool bResult = true;
+
+	if (InTimecodeProvider != CustomTimecodeProvider)
+	{
+		const bool bCurrentlyUsingDefault = !CustomTimecodeProvider;
+		if (bCurrentlyUsingDefault)
 		{
-			TimecodeProvider->Shutdown(this);
-		}
-
-		bIsCurrentTimecodeProviderInitialized = false;
-		TimecodeProvider = InTimecodeProvider && !InTimecodeProvider->IsPendingKill() ? InTimecodeProvider : nullptr;
-
-		if (TimecodeProvider)
+			// If we're already using the default, and we're resetting to the default, we don't need to do anything.
+			if (InTimecodeProvider == DefaultTimecodeProvider || InTimecodeProvider == nullptr)
 			{
-			bIsCurrentTimecodeProviderInitialized = TimecodeProvider->Initialize(this);
+				return bResult;
+			}
+			else
+			{
+				DefaultTimecodeProvider->Shutdown(this);
+			}
 		}
-		OnTimecodeProviderChanged().Broadcast();
+		else
+		{
+			CustomTimecodeProvider->Shutdown(this);
+			CustomTimecodeProvider = nullptr;
+		}
+
+		if (InTimecodeProvider != nullptr)
+		{
+			bResult = InTimecodeProvider->Initialize(this);
+			if (bResult)
+			{
+				CustomTimecodeProvider = InTimecodeProvider;
+			}
+		}
+
+		// If the new provider failed to initialized (or was null), then
+		// re-initialize the default provider.
+		if (!CustomTimecodeProvider)
+		{
+			if (!ensure(DefaultTimecodeProvider->Initialize(this)))
+			{
+				UE_LOG(LogEngine, Warning, TEXT("SetTimecodeProvider - Failed to intialize DefaultTimecodeProvider %s"), *GetPathName(DefaultTimecodeProvider));
+			}
+		}
 	}
-	return bIsCurrentTimecodeProviderInitialized;
+	
+	return bResult;
 }
 
 void UEngine::UpdateTimecode()
 {
-	FApp::InvalidateCurrentFrameTime();
-
-	if (UTimecodeProvider* Provider = GetTimecodeProvider())
+	const UTimecodeProvider* Provider = GetTimecodeProvider();
+	if (Provider->GetSynchronizationState() == ETimecodeProviderSynchronizationState::Synchronized)
 	{
-		Provider->FetchAndUpdate();
-
-		if (Provider->GetSynchronizationState() == ETimecodeProviderSynchronizationState::Synchronized)
-		{
-			FApp::SetCurrentFrameTime(Provider->GetDelayedQualifiedFrameTime());
-		}
+		FApp::SetTimecodeAndFrameRate(Provider->GetDelayedTimecode(), Provider->GetFrameRate());
+	}
+	else
+	{
+		FApp::SetTimecodeAndFrameRate(FTimecode(), FFrameRate());
 	}
 }
 
 void UEngine::ParseCommandline()
 {
+	// If dedicated server, the -nosound, or -benchmark parameters are used, disable sound.
+	if(FParse::Param(FCommandLine::Get(),TEXT("nosound")) || FApp::IsBenchmarking() || IsRunningDedicatedServer() || (IsRunningCommandlet() && !IsAllowCommandletAudio()))
+	{
+		bUseSound = false;
+	}
+
+	if (FParse::Param(FCommandLine::Get(), TEXT("enablesound")))
+	{
+		bUseSound = true;
+	}
+
 	if( FParse::Param( FCommandLine::Get(), TEXT("noailogging")) )
 	{
 		bDisableAILogging = true;
@@ -2477,63 +2378,23 @@ static void LoadEngineTexture(TextureType*& InOutTexture, const TCHAR* InName)
 	}
 }
 
-static void LoadCustomTimeStep(UEngine* Engine)
+UEngineCustomTimeStep* InitializeCustomTimeStep(UEngine* InEngine, FSoftClassPath InCustomTimeStepClassName)
 {
-	if (Engine->CustomTimeStepClassName.IsValid())
+	UEngineCustomTimeStep* NewCustomTimeStep = nullptr;
+	if (InEngine->GetCustomTimeStep() == nullptr && InCustomTimeStepClassName.IsValid())
 	{
-		if (UClass* CustomTimeStepClass = Engine->CustomTimeStepClassName.TryLoadClass<UEngineCustomTimeStep>())
+		UClass* CustomTimeStepClass = LoadClass<UObject>(nullptr, *InCustomTimeStepClassName.ToString());
+		if (CustomTimeStepClass)
 		{
-			UEngineCustomTimeStep* NewCustomTimeStep = NewObject<UEngineCustomTimeStep>(Engine, CustomTimeStepClass);
-			if (!Engine->SetCustomTimeStep(NewCustomTimeStep))
-			{
-				UE_LOG(LogEngine, Warning, TEXT("InitializeCustomTimeStep - Failed to intialize CustomTimeStep '%s'."), *NewCustomTimeStep->GetPathName());
-			}
+			NewCustomTimeStep = NewObject<UEngineCustomTimeStep>(InEngine, CustomTimeStepClass);
+			InEngine->SetCustomTimeStep(NewCustomTimeStep);
 		}
 		else
 		{
-			Engine->SetCustomTimeStep(nullptr);
-			UE_LOG(LogEngine, Error, TEXT("Engine config value CustomTimeStepClassName '%s' is not a valid class name."), *Engine->CustomTimeStepClassName.ToString());
+			UE_LOG(LogEngine, Error, TEXT("Engine config value CustomTimeStepClassName '%s' is not a valid class name."), *InCustomTimeStepClassName.ToString());
 		}
 	}
-	else
-	{
-		Engine->SetCustomTimeStep(nullptr);
-	}
-}
-
-static void LoadTimecodeProvider(UEngine* Engine)
-{
-	if (Engine->TimecodeProviderClassName.IsValid())
-{
-		if (UClass* TimecodeProviderClass = Engine->TimecodeProviderClassName.TryLoadClass<UTimecodeProvider>())
-	{
-			UTimecodeProvider* NewTimecodeProvider = NewObject<UTimecodeProvider>(Engine, TimecodeProviderClass);
-			if (!Engine->SetTimecodeProvider(NewTimecodeProvider))
-		{
-				UE_LOG(LogEngine, Warning, TEXT("InitializeTimecodeProvider - Failed to intialize TimecodeProvider '%s'."), *NewTimecodeProvider->GetPathName());
-			}
-		}
-		else
-		{
-			Engine->SetTimecodeProvider(nullptr);
-			UE_LOG(LogEngine, Error, TEXT("Engine config value TimecodeProviderClassName '%s' is not a valid class name."), *Engine->TimecodeProviderClassName.ToString());
-		}
-	}
-	else if (Engine->bGenerateDefaultTimecode)
-	{
-		FName ObjectName = MakeUniqueObjectName(Engine, USystemTimeTimecodeProvider::StaticClass(), "DefaultTimecodeProvider");
-		USystemTimeTimecodeProvider* NewTimecodeProvider = NewObject<USystemTimeTimecodeProvider>(Engine, ObjectName);
-		NewTimecodeProvider->FrameRate = Engine->GenerateDefaultTimecodeFrameRate;
-		NewTimecodeProvider->FrameDelay = Engine->GenerateDefaultTimecodeFrameDelay;
-		NewTimecodeProvider->bGenerateFullFrame = false;
-#if PLATFORM_DESKTOP
-		NewTimecodeProvider->bUseHighPerformanceClock = false;
-#else
-		//If a user wish to have an accurate TC value on console, he should set an accurate TC provider in his project settings.
-		NewTimecodeProvider->bUseHighPerformanceClock = true;
-#endif
-		Engine->SetTimecodeProvider(NewTimecodeProvider);
-	}
+	return NewCustomTimeStep;
 }
 
 /**
@@ -2553,6 +2414,7 @@ void UEngine::InitializeObjectReferences()
 	{
 		// Materials that are needed in-game if debug viewmodes are allowed
 		LoadSpecialMaterial(TEXT("WireframeMaterialName"), WireframeMaterialName, WireframeMaterial, true);
+		LoadSpecialMaterial(TEXT("HairDebugMaterialName"), HairDebugMaterialName, HairDebugMaterial, true);
 		LoadSpecialMaterial(TEXT("LevelColorationLitMaterialName"), LevelColorationLitMaterialName, LevelColorationLitMaterial, true);
 		LoadSpecialMaterial(TEXT("LevelColorationUnlitMaterialName"), LevelColorationUnlitMaterialName, LevelColorationUnlitMaterial, true);
 		LoadSpecialMaterial(TEXT("LightingTexelDensityName"), LightingTexelDensityName, LightingTexelDensityMaterial, false);
@@ -2570,6 +2432,7 @@ void UEngine::InitializeObjectReferences()
 	LoadSpecialMaterial(TEXT("RemoveSurfaceMaterialName"), RemoveSurfaceMaterialName.ToString(), RemoveSurfaceMaterial, false);
 
 	// these one's are needed both editor and standalone 
+	LoadSpecialMaterial(TEXT("HairDefaultMaterialName"), HairDefaultMaterialName, HairDefaultMaterial, false);
 	LoadSpecialMaterial(TEXT("DebugMeshMaterialName"), DebugMeshMaterialName.ToString(), DebugMeshMaterial, false);
 	LoadSpecialMaterial(TEXT("EmissiveMeshMaterialName"), EmissiveMeshMaterialName.ToString(), EmissiveMeshMaterial, false);
 	LoadSpecialMaterial(TEXT("InvalidLightmapSettingsMaterialName"), InvalidLightmapSettingsMaterialName.ToString(), InvalidLightmapSettingsMaterial, false);
@@ -2614,7 +2477,6 @@ void UEngine::InitializeObjectReferences()
 		LoadSpecialMaterial(TEXT("ClothPaintMaterialName"), ClothPaintMaterialName.ToString(), ClothPaintMaterial, false);
 		LoadSpecialMaterial(TEXT("ClothPaintMaterialWireframeName"), ClothPaintMaterialWireframeName.ToString(), ClothPaintMaterialWireframe, false);
 		LoadSpecialMaterial(TEXT("DebugEditorMaterialName"), DebugEditorMaterialName.ToString(), DebugEditorMaterial, false);
-		LoadSpecialMaterial(TEXT("PhysicalMaterialMaskMaterialName"), PhysicalMaterialMaskMaterialName.ToString(), PhysicalMaterialMaskMaterial, false);
 
 		ClothPaintMaterialInstance = UMaterialInstanceDynamic::Create(ClothPaintMaterial, nullptr);
 		ClothPaintMaterialWireframeInstance = UMaterialInstanceDynamic::Create(ClothPaintMaterialWireframe, nullptr);
@@ -2656,8 +2518,6 @@ void UEngine::InitializeObjectReferences()
 			DefaultPhysMaterial = NewObject<UPhysicalMaterial>();
 		}
 	}
-
-	UPhysicalMaterial::SetEngineDefaultPhysMaterial(DefaultPhysMaterial);
 
 	LoadEngineClass<UConsole>(ConsoleClassName, ConsoleClass);
 	LoadEngineClass<UGameViewportClient>(GameViewportClientClassName, GameViewportClientClass);
@@ -2735,8 +2595,43 @@ void UEngine::InitializeObjectReferences()
 		}
 	}
 
-	LoadCustomTimeStep(this);
-	LoadTimecodeProvider(this);
+	DefaultCustomTimeStep = InitializeCustomTimeStep(this, CustomTimeStepClassName);
+
+	// Setup the timecode providers.
+	{
+		if (DefaultTimecodeProvider == nullptr)
+		{
+			UClass* DefaultTimecodeProviderClass = DefaultTimecodeProviderClassName.TryLoadClass<UTimecodeProvider>();
+			if (DefaultTimecodeProviderClass == nullptr)
+			{
+				DefaultTimecodeProviderClass = USystemTimeTimecodeProvider::StaticClass();
+			}
+
+			DefaultTimecodeProvider = NewObject<UTimecodeProvider>(this, DefaultTimecodeProviderClass);
+			if (!ensure(DefaultTimecodeProvider->Initialize(this)))
+			{
+				UE_LOG(LogEngine, Warning, TEXT("InitializeObjectReferences - Failed to intialize DefaultTimecodeProvider %s"), *GetPathName(DefaultTimecodeProvider));
+			}
+
+			DefaultTimecodeProvider->AddToRoot();
+			if (USystemTimeTimecodeProvider* LocalSystemTimeProvider = Cast<USystemTimeTimecodeProvider>(DefaultTimecodeProvider))
+			{
+				LocalSystemTimeProvider->SetFrameRate(DefaultTimecodeFrameRate);
+			}
+		}
+
+		if (CustomTimecodeProvider == nullptr && TimecodeProviderClassName.IsValid())
+		{
+			if (UClass* TimecodeProviderClass = TimecodeProviderClassName.TryLoadClass<UTimecodeProvider>())
+			{
+				SetTimecodeProvider(NewObject<UTimecodeProvider>(this, TimecodeProviderClass));
+			}
+			else
+			{
+				UE_LOG(LogEngine, Error, TEXT("Engine config value TimecodeProviderClassName '%s' is not a valid class name."), *TimecodeProviderClassName.ToString());
+			}
+		}
+	}
 
 	if (GameSingleton == nullptr && GameSingletonClassName.ToString().Len() > 0)
 	{
@@ -2848,7 +2743,7 @@ void UEngine::FinishDestroy()
 	{
 		// shut down all subsystems.
 		GEngine = NULL;
-		ReleaseAudioDeviceManager();
+		ShutdownAudioDeviceManager();
 
 		FURL::StaticExit();
 	}
@@ -2864,7 +2759,7 @@ void UEngine::Serialize(FArchive& Ar)
 	if (Ar.IsCountingMemory())
 	{
 		// Only use the main audio device when counting memory
-		if (FAudioDeviceHandle AudioDevice = GetMainAudioDevice())
+		if (FAudioDevice* AudioDevice = GetMainAudioDevice())
 		{
 			AudioDevice->CountBytes(Ar);
 		}
@@ -2971,52 +2866,48 @@ class FAudioDeviceManager* UEngine::GetAudioDeviceManager()
 	return AudioDeviceManager;
 }
 
-uint32 UEngine::GetMainAudioDeviceID() const
+uint32 UEngine::GetAudioDeviceHandle() const
 {
-	return MainAudioDeviceHandle.GetDeviceID();
+	return MainAudioDeviceHandle;
 }
 
-FAudioDeviceHandle UEngine::GetMainAudioDevice()
+FAudioDevice* UEngine::GetMainAudioDevice()
 {
 	if (AudioDeviceManager != nullptr)
 	{
-		return AudioDeviceManager->GetMainAudioDeviceHandle();
-	}
-	return FAudioDeviceHandle();
-}
-
-FAudioDevice* UEngine::GetMainAudioDeviceRaw()
-{
-	if (AudioDeviceManager != nullptr && MainAudioDeviceHandle.IsValid())
-	{
-		return AudioDeviceManager->GetMainAudioDeviceHandle().GetAudioDevice();
+		return AudioDeviceManager->GetAudioDevice(MainAudioDeviceHandle);
 	}
 	return nullptr;
 }
 
-FAudioDeviceHandle UEngine::GetActiveAudioDevice()
+FAudioDevice* UEngine::GetActiveAudioDevice()
 {
 	if (AudioDeviceManager != nullptr)
 	{
 		return AudioDeviceManager->GetActiveAudioDevice();
 	}
-	return FAudioDeviceHandle();
+	return nullptr;
 }
 
 void UEngine::InitializeAudioDeviceManager()
 {
-	FAudioDeviceManager::Initialize();
-	AudioDeviceManager = FAudioDeviceManager::Get();
-	if (AudioDeviceManager)
+	if (AudioDeviceManager == nullptr && bUseSound)
 	{
-		AudioDeviceManager->CreateMainAudioDevice();
-		MainAudioDeviceHandle = AudioDeviceManager->GetMainAudioDeviceHandle();
+		AudioDeviceManager = new FAudioDeviceManager();
+		if (AudioDeviceManager->Initialize())
+		{
+			MainAudioDeviceHandle = AudioDeviceManager->GetMainAudioDeviceHandle();
+		}
+		else
+		{
+			ShutdownAudioDeviceManager();
+		}
 	}
 }
 
 bool UEngine::UseSound() const
 {
-	return AudioDeviceManager != nullptr;
+	return (bUseSound && AudioDeviceManager != nullptr);
 }
 /**
 * A fake stereo rendering device used to test stereo rendering without an attached device.
@@ -3082,9 +2973,8 @@ public:
 	{
 		if (StereoPassType != eSSP_FULL)
 		{
-			// 32mm, 1/2 average interpupillary distance
-			float EyeOffset = .0320000005f * WorldToMeters;
-			const float PassOffset = (StereoPassType == eSSP_LEFT_EYE) ? -EyeOffset : EyeOffset;
+			float EyeOffset = 3.20000005f;
+			const float PassOffset = (StereoPassType == eSSP_LEFT_EYE) ? EyeOffset : -EyeOffset;
 			ViewLocation += ViewRotation.Quaternion().RotateVector(FVector(0,PassOffset,0));
 		}
 	}
@@ -3227,7 +3117,7 @@ bool UEngine::InitializeHMDDevice()
 			}
 
 			// If we found a valid XRSystem, use it to get a stereo rendering device, if available
-			if (XRSystem.IsValid() && !FParse::Param(FCommandLine::Get(), TEXT("noxrstereo")))
+			if (XRSystem.IsValid())
 			{
 				StereoRenderingDevice = XRSystem->GetStereoRenderingDevice();
 				const bool bShouldStartInVR = StereoRenderingDevice.IsValid() && (FParse::Param(FCommandLine::Get(), TEXT("vr")) || GetDefault<UGeneralProjectSettings>()->bStartInVR);
@@ -3438,11 +3328,11 @@ void UEngine::SwapControllerId(ULocalPlayer *NewPlayer, const int32 CurrentContr
 	}
 }
 
-APlayerController* UEngine::GetFirstLocalPlayerController(const UWorld* InWorld)
+APlayerController* UEngine::GetFirstLocalPlayerController(UWorld *InWorld)
 {
 	const FWorldContext &Context = GetWorldContextFromWorldChecked(InWorld);
 
-	return (Context.OwningGameInstance ? Context.OwningGameInstance->GetFirstLocalPlayerController(InWorld) : nullptr);
+	return ( Context.OwningGameInstance != NULL ) ? Context.OwningGameInstance->GetFirstLocalPlayerController(InWorld) : NULL;
 }
 
 void UEngine::GetAllLocalPlayerControllers(TArray<APlayerController*> & PlayerList)
@@ -3532,9 +3422,7 @@ struct FSortedStaticMesh
 	int32			ResKBExc;
 	int32			ResKBInc;
 	int32			ResKBIncMobile;
-	int32			ResKBResident;
 	int32			LodCount;
-	int32			ResidentLodCount;
 	int32			MobileMinLOD;
 	int32			VertexCountLod0;
 	int32			VertexCountLod1;
@@ -3548,15 +3436,13 @@ struct FSortedStaticMesh
 	FString			Name;
 
 	/** Constructor, initializing every member variable with passed in values. */
-	FSortedStaticMesh(UStaticMesh* InMesh, int32 InNumKB, int32 InMaxKB, int32 InResKBExc, int32 InResKBInc, int32 InResKBIncMobile, int32 InResKBResident, int32 InLodCount, int32 InResidentLodCount, int32 InMobileMinLOD, int32 InVertexCountLod0, int32 InVertexCountLod1, int32 InVertexCountLod2, int32 InVertexCountTotal, int32 InVertexCountTotalMobile, int32 InVertexCountCollision, int32 InShapeCountCollision, int32 InUsageCount, FString InName)
+	FSortedStaticMesh(UStaticMesh* InMesh, int32 InNumKB, int32 InMaxKB, int32 InResKBExc, int32 InResKBInc, int32 InResKBIncMobile, int32 InLodCount, int32 InMobileMinLOD, int32 InVertexCountLod0, int32 InVertexCountLod1, int32 InVertexCountLod2, int32 InVertexCountTotal, int32 InVertexCountTotalMobile, int32 InVertexCountCollision, int32 InShapeCountCollision, int32 InUsageCount, FString InName)
 		: NumKB(InNumKB)
 		, MaxKB(InMaxKB)
 		, ResKBExc(InResKBExc)
 		, ResKBInc(InResKBInc)
 		, ResKBIncMobile(InResKBIncMobile)
-		, ResKBResident(InResKBResident)
 		, LodCount(InLodCount)
-		, ResidentLodCount(InResidentLodCount)
 		, MobileMinLOD(InMobileMinLOD)
 		, VertexCountLod0(InVertexCountLod0)
 		, VertexCountLod1(InVertexCountLod1)
@@ -3616,15 +3502,12 @@ struct FSortedSkeletalMesh
 	int32		VertexCountTotal;
 	int32		VertexCountTotalMobile;
 	int32		VertexCountCollision;
-	int32		ResidentLodCount;
-	int32		ResidentResKBExc;
 	FString		Name;
 
 	/** Constructor, initializing every member variable with passed in values. */
 	FSortedSkeletalMesh(int32 InNumKB, int32 InMaxKB, int32 InResKBExc, int32 InResKBInc, int32 InResKBIncMobile, int32 InLodCount, int32 InMobileMinLOD,
 		int32 InMeshDisablesMinLODStripping, int32 bInSupportLODStreaming, int32 InMaxNumStreamedLODs, int32 InMaxNumOptionalLODs, int32 InVertexCountLod0,
-		int32 InVertexCountLod1, int32 InVertexCountLod2, int32 InVertexCountTotal, int32 InVertexCountTotalMobile, int32 InVertexCountCollision,
-		int32 InResidentLodCount, int32 InResidentResKBExc, FString InName)
+		int32 InVertexCountLod1, int32 InVertexCountLod2, int32 InVertexCountTotal, int32 InVertexCountTotalMobile, int32 InVertexCountCollision, FString InName)
 		: NumKB(InNumKB)
 		, MaxKB(InMaxKB)
 		, ResKBExc(InResKBExc)
@@ -3642,8 +3525,6 @@ struct FSortedSkeletalMesh
 		, VertexCountTotal(InVertexCountTotal)
 		, VertexCountTotalMobile(InVertexCountTotalMobile)
 		, VertexCountCollision(InVertexCountCollision)
-		, ResidentLodCount(InResidentLodCount)
-		, ResidentResKBExc(InResidentResKBExc)
 		, Name(InName)
 	{}
 };
@@ -3686,9 +3567,11 @@ struct FSortedAnimAsset
 	float		SequenceLength;
 	float		RateScale;
 	int32		NumCurves;
-	FString		DebugString;
+	FString		TranslationFormat;
+	FString		RotationFormat;
+	FString		ScaleFormat;
 
-	FSortedAnimAsset(int32 InNumKB, int32 InMaxKB, int32 InResKBExc, int32 InResKBInc, FName InAnimAssetType, FString InName, int32 InNumKeys, float InSequenceLength, float InRateScale, int32 InNumCurves, const FString& InDebugString)
+	FSortedAnimAsset(int32 InNumKB, int32 InMaxKB, int32 InResKBExc, int32 InResKBInc, FName InAnimAssetType, FString InName, int32 InNumKeys, float InSequenceLength, float InRateScale, int32 InNumCurves, FString InTranslationFormat, FString InRotationFormat, FString InScaleFormat)
 		: NumKB(InNumKB)
 		, MaxKB(InMaxKB)
 		, ResKBExc(InResKBExc)
@@ -3699,7 +3582,9 @@ struct FSortedAnimAsset
 		, SequenceLength(InSequenceLength)
 		, RateScale(InRateScale)
 		, NumCurves(InNumCurves)
-		, DebugString(InDebugString)
+		, TranslationFormat(InTranslationFormat)
+		, RotationFormat(InRotationFormat)
+		, ScaleFormat(InScaleFormat)
 	{}
 };
 struct FCompareFSortedAnimAsset
@@ -3914,16 +3799,6 @@ int InfiniteRecursionFunction(int B)
 	return GInfiniteRecursionCount;
 }
 
-// used to test CRT invalid parameter handling
-void CauseCrtError()
-{
-#if PLATFORM_WINDOWS
-	CA_SUPPRESS(6387);	// Suppress the warning about nullptr not being valid for printf as we are trying
-						// to invoke this exact error for testing purposes.
-	printf((const char*)nullptr); //-V575
-#endif
-}
-
 #if defined (__clang__) 
 #pragma clang diagnostic pop
 #endif
@@ -3979,11 +3854,11 @@ bool UEngine::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 	FAudioDevice* AudioDevice = nullptr;
 	if (InWorld)
 	{
-		AudioDevice = InWorld->GetAudioDeviceRaw();
+		AudioDevice = InWorld->GetAudioDevice();
 	}
 	else
 	{
-		AudioDevice = GetMainAudioDeviceRaw();
+		AudioDevice = GetMainAudioDevice();
 	}
 
 	if (AudioDevice && AudioDevice->Exec(InWorld, Cmd, Ar) == true)
@@ -4858,11 +4733,6 @@ bool UEngine::HandleShaderComplexityCommand( const TCHAR* Cmd, FOutputDevice& Ar
 
 bool UEngine::HandleProfileGPUHitchesCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 {
-	if (!FApp::CanEverRender())
-	{
-		return true;
-	}
-
 	GTriggerGPUHitchProfile = !GTriggerGPUHitchProfile;
 	if (GTriggerGPUHitchProfile)
 	{
@@ -4968,11 +4838,6 @@ bool UEngine::HandleProfileCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 {
 	if ( FParse::Command(&Cmd,TEXT("GPU")) )
 	{
-		if (!FApp::CanEverRender())
-		{
-			return true;
-		}
-
 		if (!GTriggerGPUHitchProfile)
 		{
 			GTriggerGPUProfile = true;
@@ -4992,11 +4857,6 @@ bool UEngine::HandleProfileCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 #if WITH_PROFILEGPU
 bool UEngine::HandleProfileGPUCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 {
-	if (!FApp::CanEverRender())
-	{
-		return true;
-	}
-
 	if (FParse::Command(&Cmd, TEXT("TRACE")))
 	{
 		FString Filename = CreateProfileDirectoryAndFilename(TEXT(""), TEXT(".rtt"));
@@ -5051,9 +4911,9 @@ bool UEngine::HandleDumpLevelScriptActorsCommand( UWorld* InWorld, const TCHAR* 
 			if( LSActor )
 			{
 				UE_LOG(LogEngine, Log, TEXT("--- %s (%s) ---"), *LSActor->GetName(), *LSActor->GetOutermost()->GetName())
-					for( TFieldIterator<FProperty> PropertyIt(LSActor->GetClass(), EFieldIteratorFlags::ExcludeSuper); PropertyIt; ++PropertyIt )
+					for( TFieldIterator<UProperty> PropertyIt(LSActor->GetClass(), EFieldIteratorFlags::ExcludeSuper); PropertyIt; ++PropertyIt )
 					{
-						FObjectPropertyBase* MyProperty = CastField<FObjectPropertyBase>(*PropertyIt);
+						UObjectPropertyBase* MyProperty = Cast<UObjectPropertyBase>(*PropertyIt);
 						if( MyProperty )
 						{
 							UObject* PointedObject = NULL;
@@ -5078,44 +4938,17 @@ bool UEngine::HandleKismetEventCommand(UWorld* InWorld, const TCHAR* Cmd, FOutpu
 	FString const ObjectName = FParse::Token(Cmd, 0);
 	if (ObjectName == TEXT("*"))
 	{
-		// TObjectIterator excludes RF_ClassDefaultObjects but not default SubObjects which belong to them, so we'll see if this object belongs to a CDO.
-		const auto IsCDOOwnedArchtype = [](UObject* InObject)
-		{
-			if (!InObject->HasAnyFlags(RF_ArchetypeObject))
-			{
-				return false;
-			}
-
-			InObject = InObject->GetOuter();
-			while (InObject)
-			{
-				if (InObject->HasAnyFlags(RF_ClassDefaultObject))
-				{
-					return true;
-				}
-
-				InObject = InObject->GetOuter();
-			}
-
-			return false;
-		};
-
 		// Send the command to everything in the world we're dealing with...
 		int32 NumInstanceCallsSucceeded = 0;
 		for (TObjectIterator<UObject> It; It; ++It)
 		{
 			UObject* const Obj = *It;
-
-			const bool bIsCDOOwnedArchtype = IsCDOOwnedArchtype(Obj);
-			if (!bIsCDOOwnedArchtype)
-			{
 			UWorld const* const ObjWorld = Obj->GetWorld();
 			if (ObjWorld == InWorld)
 			{
 				const bool bSucceeded = Obj->CallFunctionByNameWithArguments(Cmd, Ar, nullptr, true);
 				NumInstanceCallsSucceeded += bSucceeded ? 1 : 0;
 			}
-		}
 		}
 
 		Ar.Logf(TEXT("Called '%s' on everything in the world and %d instances succeeded"), Cmd, NumInstanceCallsSucceeded);
@@ -5443,39 +5276,20 @@ bool UEngine::HandleListStaticMeshesCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 
 		int32		VertexCountTotal = 0;
 		int32		VertexCountTotalMobile = 0;
-		int32 ResidentLodCount = 0;
-		int32 ResidentResKBExc = 0;
-		int32 NumMissingLODs = 0;
-		FResourceSizeEx EvictedResourceSize(EResourceSizeMode::Exclusive);
-		if (Mesh->RenderData)
-		{
-			NumMissingLODs = Mesh->RenderData->CurrentFirstLODIdx;
-			ResidentLodCount = LodCount - NumMissingLODs;
-		}
 		for(int32 i = 0; i < LodCount; i++)
 		{
 			VertexCountTotal += Mesh->GetNumVertices(i);
 			VertexCountTotalMobile += i >= MobileMinLOD ? Mesh->GetNumVertices(i) : 0;
-			if (i < NumMissingLODs)
-			{
-				Mesh->RenderData->LODResources[i].GetResourceSizeEx(EvictedResourceSize);
-			}
 		}
-		ResidentResKBExc = (ResourceSizeExc.GetTotalMemoryBytes() - EvictedResourceSize.GetTotalMemoryBytes() + 512) / 1024;
 
 		int32		VertexCountCollision = 0;
 		if(Mesh->BodySetup)
 		{
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 			// Count PhysX trimesh mem usage
 			for (physx::PxTriangleMesh* TriMesh : Mesh->BodySetup->TriMeshes)
 			{
 				VertexCountCollision += TriMesh->getNbVertices();
-			}
-#elif WITH_CHAOS
-			for (auto& TriMesh : Mesh->BodySetup->ChaosTriMeshes)
-			{
-				VertexCountCollision += TriMesh->Particles().Size();
 			}
 #endif
 		}
@@ -5489,9 +5303,7 @@ bool UEngine::HandleListStaticMeshesCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 			ResKBExc,
 			ResKBInc,
 			ResKBIncMobile,
-			ResidentResKBExc,
 			LodCount,
-			ResidentLodCount,
 			MobileMinLOD,
 			VertexCountLod0,
 			VertexCountLod1,
@@ -5512,12 +5324,11 @@ bool UEngine::HandleListStaticMeshesCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 	int64 TotalMaxKB = 0;
 	int64 TotalResKBExc = 0;
 	int64 TotalResKBInc = 0;
-	int64 TotalResKBResident = 0;
 	int64 TotalResKBIncMobile = 0;
 	int32 TotalVertexCount = 0;
 	int32 TotalVertexCountMobile = 0;
 
-	FString HeaderString(TEXT(",       NumKB,       MaxKB,    ResKBExc,    ResKBInc,    ResKBResident,    LODCount,    ResidentLODCount,   VertsLOD0,   VertsLOD1,   VertsLOD2, Verts Total,  Verts Coll, Coll Shapes,     NumUsed"));
+	FString HeaderString(TEXT(",       NumKB,       MaxKB,    ResKBExc,    ResKBInc,    LODCount,   VertsLOD0,   VertsLOD1,   VertsLOD2, Verts Total,  Verts Coll, Coll Shapes,     NumUsed"));
 	FString MobileHeaderString = bHasMobileColumns ? FString(TEXT(", ResKBIncMob,Verts Mobile,MobileMinLOD")) : FString();
 	
 	Ar.Logf(TEXT("%s%s, Name"), *HeaderString, *MobileHeaderString);	
@@ -5528,14 +5339,12 @@ bool UEngine::HandleListStaticMeshesCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 
 		if (bHasMobileColumns)
 		{
-			Ar.Logf(TEXT(", %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %s"),
+			Ar.Logf(TEXT(", %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %s"),
 				SortedMesh.NumKB,
 				SortedMesh.MaxKB,
 				SortedMesh.ResKBExc,
 				SortedMesh.ResKBInc,
-				SortedMesh.ResKBResident,
 				SortedMesh.LodCount,
-				SortedMesh.ResidentLodCount,
 				SortedMesh.VertexCountLod0,
 				SortedMesh.VertexCountLod1,
 				SortedMesh.VertexCountLod2,
@@ -5550,14 +5359,12 @@ bool UEngine::HandleListStaticMeshesCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 		}
 		else
 		{
-			Ar.Logf(TEXT(" ,%11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %s"),
+			Ar.Logf(TEXT(" ,%11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %11i, %s"),
 				SortedMesh.NumKB,
 				SortedMesh.MaxKB,
 				SortedMesh.ResKBExc,
 				SortedMesh.ResKBInc,
-				SortedMesh.ResKBResident,
 				SortedMesh.LodCount,
-				SortedMesh.ResidentLodCount,
 				SortedMesh.VertexCountLod0,
 				SortedMesh.VertexCountLod1,
 				SortedMesh.VertexCountLod2,
@@ -5572,13 +5379,12 @@ bool UEngine::HandleListStaticMeshesCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 		TotalMaxKB += SortedMesh.MaxKB;
 		TotalResKBExc += SortedMesh.ResKBExc;
 		TotalResKBInc += SortedMesh.ResKBInc;
-		TotalResKBResident += SortedMesh.ResKBResident;
 		TotalResKBIncMobile += SortedMesh.ResKBIncMobile;
 		TotalVertexCount += SortedMesh.VertexCountTotal;
 		TotalVertexCountMobile += SortedMesh.VertexCountTotalMobile;
 	}
 
-	Ar.Logf(TEXT("Total NumKB: %lld KB, Total MaxKB: %lld KB, Total ResKB Exc: %lld KB, Total ResKB Inc %lld KB,  Total ResKB Inc Mobile %lld KB, Total ResKB Resident %lld KB, Total Vertex Count: %i, Total Vertex Count Mobile: %i, Static Mesh Count=%d"), TotalNumKB, TotalMaxKB, TotalResKBExc, TotalResKBInc, TotalResKBIncMobile, TotalResKBResident, TotalVertexCount, TotalVertexCountMobile, SortedMeshes.Num());
+	Ar.Logf(TEXT("Total NumKB: %lld KB, Total MaxKB: %lld KB, Total ResKB Exc: %lld KB, Total ResKB Inc %lld KB,  Total ResKB Inc Mobile %lld KB, Total Vertex Count: %i, Total Vertex Count Mobile: %i, Static Mesh Count=%d"), TotalNumKB, TotalMaxKB, TotalResKBExc, TotalResKBInc, TotalResKBIncMobile, TotalVertexCount, TotalVertexCountMobile, SortedMeshes.Num());
 
 	if (bUsedComponents)
 	{
@@ -5674,17 +5480,11 @@ bool UEngine::HandleListSkeletalMeshesCommand(const TCHAR* Cmd, FOutputDevice& A
 		int32 VertexCountTotal = 0;
 		int32 VertexCountTotalMobile = 0;
 
-		int32 ResidentLodCount = 0;
-		int32 ResidentResKBExc = 0;
-
 		if(Mesh->GetResourceForRendering() && Mesh->GetResourceForRendering()->LODRenderData.Num() > 0)
 		{
 			TIndirectArray<FSkeletalMeshLODRenderData>& LodRenderData = Mesh->GetResourceForRendering()->LODRenderData;
-			const int32 NumMissingLODs = Mesh->GetResourceForRendering()->CurrentFirstLODIdx;
-			FResourceSizeEx EvictedResSize(EResourceSizeMode::Exclusive);
 
 			LodCount = LodRenderData.Num();
-			ResidentLodCount = LodCount - NumMissingLODs;
 			VertexCountLod0 = LodCount > 0 ? LodRenderData[0].GetNumVertices() : 0;
 			VertexCountLod1 = LodCount > 1 ? LodRenderData[1].GetNumVertices() : 0;
 			VertexCountLod2 = LodCount > 2 ? LodRenderData[2].GetNumVertices() : 0;
@@ -5693,29 +5493,17 @@ bool UEngine::HandleListSkeletalMeshesCommand(const TCHAR* Cmd, FOutputDevice& A
 			{
 				VertexCountTotal += LodRenderData[i].GetNumVertices();
 				VertexCountTotalMobile += i >= MobileMinLOD || MeshDisablesMinLODStripping == 1 ? LodRenderData[i].GetNumVertices() : 0;
-
-				if (i < NumMissingLODs)
-				{
-					LodRenderData[i].GetResourceSizeEx(EvictedResSize);
-				}
 			}
-
-			ResidentResKBExc = (ResourceSizeExc.GetTotalMemoryBytes() - EvictedResSize.GetTotalMemoryBytes() + 512) / 1024;
 		}
 
 		int32 VertexCountCollision = 0;
 		if (Mesh->BodySetup)
 		{
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 			// Count PhysX trimesh mem usage
 			for (physx::PxTriangleMesh* TriMesh : Mesh->BodySetup->TriMeshes)
 			{
 				VertexCountCollision += TriMesh->getNbVertices();
-			}
-#elif WITH_CHAOS
-			for (auto& TriMesh : Mesh->BodySetup->ChaosTriMeshes)
-			{
-				VertexCountCollision += TriMesh->Particles().Size();
 			}
 #endif
 		}
@@ -5740,8 +5528,6 @@ bool UEngine::HandleListSkeletalMeshesCommand(const TCHAR* Cmd, FOutputDevice& A
 			VertexCountTotal,
 			VertexCountTotalMobile,
 			VertexCountCollision,
-			ResidentLodCount,
-			ResidentResKBExc,
 			Name);
 	}
 
@@ -5753,18 +5539,17 @@ bool UEngine::HandleListSkeletalMeshesCommand(const TCHAR* Cmd, FOutputDevice& A
 	int64 TotalMaxKB = 0;
 	int64 TotalResKBExc = 0;
 	int64 TotalResKBInc = 0;
-	int64 TotalResKBResident = 0;
 	int64 TotalResKBIncMobile = 0;
 	int32 TotalVertexCount = 0;
 	int32 TotalVertexCountMobile = 0;
 
 	if (bCSV)
 	{
-		Ar.Logf(TEXT(",NumKB, MaxKB, ResKBExc, ResKBInc, ResKBIncMobile, ResKBResident, LOD Count, Resident LOD Count, MobileMinLOD, DisableMinLODStripping, bSupportLODStreaming, MaxNumStreamedLODs, MaxNumOptionalLODs, Verts LOD0, Verts LOD1, Verts LOD2, Verts Total, Verts Total Mobile, Verts Collision, Name"));
+		Ar.Logf(TEXT(",NumKB, MaxKB, ResKBExc, ResKBInc, ResKBIncMobile, LOD Count, MobileMinLOD, DisableMinLODStripping, bSupportLODStreaming, MaxNumStreamedLODs, MaxNumOptionalLODs, Verts LOD0, Verts LOD1, Verts LOD2, Verts Total, Verts Total Mobile, Verts Collision, Name"));
 	}
 	else
 	{
-		Ar.Logf(TEXT("       NumKB       MaxKB    ResKBExc    ResKBInc  ResKBIncMobile  ResKBResident  NumLODs  NumResidentLODs  MobileMinLOD  DisableMinLODStripping  bSupportLODStreaming  MaxNumStreamedLODs  MaxNumOptionalLODs  VertsLOD0   VertsLOD1   VertsLOD2   VertsTotal  VertsTotalMobile  VertsColl  Name"));
+		Ar.Logf(TEXT("       NumKB       MaxKB    ResKBExc    ResKBInc  ResKBIncMobile    NumLODs   MobileMinLOD  DisableMinLODStripping  bSupportLODStreaming  MaxNumStreamedLODs  MaxNumOptionalLODs  VertsLOD0   VertsLOD1   VertsLOD2   VertsTotal  VertsTotalMobile  VertsColl  Name"));
 	}
 
 	for (int32 MeshIndex = 0; MeshIndex<SortedMeshes.Num(); MeshIndex++)
@@ -5773,16 +5558,16 @@ bool UEngine::HandleListSkeletalMeshesCommand(const TCHAR* Cmd, FOutputDevice& A
 
 		if (bCSV)
 		{
-			Ar.Logf(TEXT(",%i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %s"),
-				SortedMesh.NumKB, SortedMesh.MaxKB, SortedMesh.ResKBExc, SortedMesh.ResKBInc, SortedMesh.ResKBIncMobile, SortedMesh.ResidentResKBExc, SortedMesh.LodCount, SortedMesh.ResidentLodCount, SortedMesh.MobileMinLOD,
+			Ar.Logf(TEXT(",%i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %i, %s"),
+				SortedMesh.NumKB, SortedMesh.MaxKB, SortedMesh.ResKBExc, SortedMesh.ResKBInc, SortedMesh.ResKBIncMobile, SortedMesh.LodCount, SortedMesh.MobileMinLOD,
 				SortedMesh.MeshDisablesMinLODStripping, SortedMesh.bSupportLODStreaming, SortedMesh.MaxNumStreamedLODs, SortedMesh.MaxNumOptionalLODs,
 				SortedMesh.VertexCountLod0, SortedMesh.VertexCountLod1, SortedMesh.VertexCountLod2, SortedMesh.VertexCountTotal, SortedMesh.VertexCountTotalMobile, SortedMesh.VertexCountCollision,
 				*SortedMesh.Name);
 		}
 		else
 		{
-			Ar.Logf(TEXT("%9i KB %8i KB %8i KB %8i KB  %11i KB %10i KB %10i %10i %14i %23i %21i %19i %19i %10i %11i %11i %12i %17i %10i  %s"),
-				SortedMesh.NumKB, SortedMesh.MaxKB, SortedMesh.ResKBExc, SortedMesh.ResKBInc, SortedMesh.ResKBIncMobile, SortedMesh.ResidentResKBExc, SortedMesh.LodCount, SortedMesh.ResidentLodCount, SortedMesh.MobileMinLOD,
+			Ar.Logf(TEXT("%9i KB %8i KB %8i KB %8i KB  %11i KB %10i %14i %23i %21i %19i %19i %10i %11i %11i %12i %17i %10i  %s"),
+				SortedMesh.NumKB, SortedMesh.MaxKB, SortedMesh.ResKBExc, SortedMesh.ResKBInc, SortedMesh.ResKBIncMobile, SortedMesh.LodCount, SortedMesh.MobileMinLOD,
 				SortedMesh.MeshDisablesMinLODStripping, SortedMesh.bSupportLODStreaming, SortedMesh.MaxNumStreamedLODs, SortedMesh.MaxNumOptionalLODs,
 				SortedMesh.VertexCountLod0, SortedMesh.VertexCountLod1, SortedMesh.VertexCountLod2, SortedMesh.VertexCountTotal, SortedMesh.VertexCountTotalMobile, SortedMesh.VertexCountCollision,
 				*SortedMesh.Name);
@@ -5792,13 +5577,12 @@ bool UEngine::HandleListSkeletalMeshesCommand(const TCHAR* Cmd, FOutputDevice& A
 		TotalMaxKB += SortedMesh.MaxKB;
 		TotalResKBExc += SortedMesh.ResKBExc;
 		TotalResKBInc += SortedMesh.ResKBInc;
-		TotalResKBResident += SortedMesh.ResidentResKBExc;
 		TotalResKBIncMobile += SortedMesh.ResKBIncMobile;
 		TotalVertexCount += SortedMesh.VertexCountTotal;
 		TotalVertexCountMobile += SortedMesh.VertexCountTotalMobile;
 	}
 
-	Ar.Logf(TEXT("Total NumKB: %lld KB, Total MaxKB: %lld KB, Total ResKB Exc: %lld KB, Total ResKB Inc %lld KB,  Total ResKB Inc Mobile %lld KB, Total ResKB Resident %lld KB, Total Vertex Count: %i, Total Vertex Count Mobile: %i, Static Mesh Count=%d"), TotalNumKB, TotalMaxKB, TotalResKBExc, TotalResKBInc, TotalResKBIncMobile, TotalResKBResident, TotalVertexCount, TotalVertexCountMobile, SortedMeshes.Num());
+	Ar.Logf(TEXT("Total NumKB: %lld KB, Total MaxKB: %lld KB, Total ResKB Exc: %lld KB, Total ResKB Inc %lld KB,  Total ResKB Inc Mobile %lld KB, Total Vertex Count: %i, Total Vertex Count Mobile: %i, Static Mesh Count=%d"), TotalNumKB, TotalMaxKB, TotalResKBExc, TotalResKBInc, TotalResKBIncMobile, TotalVertexCount, TotalVertexCountMobile, SortedMeshes.Num());
 
 	return true;
 }
@@ -5835,7 +5619,9 @@ bool UEngine::HandleListAnimsCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 		float SequenceLength = 0.f;
 		float RateScale = 1.f;
 		int32 NumCurves = 0;
-		FString DebugString;
+		FString TranslationFormat;
+		FString RotationFormat;
+		FString ScaleFormat;
 
 		if (UAnimSequence* AnimSeq = Cast<UAnimSequence>(AnimAsset))
 		{
@@ -5844,14 +5630,10 @@ bool UEngine::HandleListAnimsCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 			RateScale = AnimSeq->RateScale;
 			NumCurves = AnimSeq->RawCurveData.FloatCurves.Num();
 
-			if (AnimSeq->CompressedData.CompressedDataStructure != nullptr)
-			{
-				DebugString = AnimSeq->CompressedData.CompressedDataStructure->GetDebugString();
-			}
-			else
-			{
-				DebugString = TEXT("Missing CompressedDataStructure");
-			}
+			const FUECompressedAnimData& CompressedData = AnimSeq->CompressedData.CompressedDataStructure;
+			TranslationFormat = FAnimationUtils::GetAnimationCompressionFormatString(CompressedData.TranslationCompressionFormat);
+			RotationFormat = FAnimationUtils::GetAnimationCompressionFormatString(CompressedData.RotationCompressionFormat);
+			ScaleFormat = FAnimationUtils::GetAnimationCompressionFormatString(CompressedData.ScaleCompressionFormat);
 		}
 
 		new(SortedAnimAssets) FSortedAnimAsset(
@@ -5865,7 +5647,9 @@ bool UEngine::HandleListAnimsCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 			SequenceLength,
 			RateScale,
 			NumCurves,
-			DebugString
+			TranslationFormat,
+			RotationFormat,
+			ScaleFormat
 		);
 	}
 
@@ -5883,9 +5667,9 @@ bool UEngine::HandleListAnimsCommand(const TCHAR* Cmd, FOutputDevice& Ar)
 	for (const FSortedAnimAsset& SortedAsset : SortedAnimAssets)
 	{
 
-		Ar.Logf(TEXT(",%i, %i, %i, %i, %s, %s, %f, %f, %d, %s"),
+		Ar.Logf(TEXT(",%i, %i, %i, %i, %s, %s, %f, %f, %d, %s, %s, %s"),
 			SortedAsset.NumKB, SortedAsset.MaxKB, SortedAsset.ResKBExc, SortedAsset.ResKBInc, *SortedAsset.AnimAssetType.ToString(), *SortedAsset.Name, SortedAsset.SequenceLength, 
-			SortedAsset.RateScale, SortedAsset.NumCurves, *SortedAsset.DebugString);
+			SortedAsset.RateScale, SortedAsset.NumCurves, *SortedAsset.TranslationFormat, *SortedAsset.RotationFormat, *SortedAsset.ScaleFormat);
 
 		TotalNumKB += SortedAsset.NumKB;
 		TotalMaxKB += SortedAsset.MaxKB;
@@ -6670,7 +6454,7 @@ bool UEngine::HandleMemCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 	{
 		Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("Memory Stats:") );
 		Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("FMemStack (gamethread) current size = %.2f MB"), FMemStack::Get().GetByteCount() / (1024.0f * 1024.0f));
-		Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("FPageAllocator (all threads) allocation size [used/ unused] = [%.2f / %.2f] MB"), (FPageAllocator::Get().BytesUsed()) / (1024.0f * 1024.0f), (FPageAllocator::Get().BytesFree()) / (1024.0f * 1024.0f));
+		Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("FPageAllocator (all threads) allocation size [used/ unused] = [%.2f / %.2f] MB"), (FPageAllocator::BytesUsed()) / (1024.0f * 1024.0f), (FPageAllocator::BytesFree()) / (1024.0f * 1024.0f));
 		Ar.CategorizedLogf(CategoryName, ELogVerbosity::Log, TEXT("Nametable memory usage = %.2f MB"), FName::GetNameTableMemorySize() / (1024.0f * 1024.0f));
 
 		FAssetRegistryModule* AssetRegistryModule = FModuleManager::LoadModulePtr<FAssetRegistryModule>(AssetRegistryConstants::ModuleName);
@@ -6725,7 +6509,7 @@ bool UEngine::HandleMergeMeshCommand( const TCHAR* Cmd, FOutputDevice& Ar, UWorl
 		const TCHAR* LocalCmd = *CmdCopy;
 		FString Token = FParse::Token( LocalCmd, true );
 		Tokens.Add( Token );
-		CmdCopy.RightInline( CmdCopy.Len() - Token.Len() - 1, false);
+		CmdCopy = CmdCopy.Right( CmdCopy.Len() - Token.Len() - 1 );
 	}
 
 	// array of source meshes that will be merged
@@ -6883,10 +6667,10 @@ static int32 FindAmountSavedWithCutoff(UClass* AnalyzedClass, int32 PercentageAl
 		bool bIsOnChoppingBlock;
 	};
 
-	TMap<FProperty*, FPerPropInfo> PropertyDiffCount;
+	TMap<UProperty*, FPerPropInfo> PropertyDiffCount;
 
 	// work on each property of the class
-	for (TFieldIterator<FProperty> It(AnalyzedClass); It; ++It)
+	for (TFieldIterator<UProperty> It(AnalyzedClass); It; ++It)
 	{
 		PropertyDiffCount.Add(*It, FPerPropInfo(It->GetSize()));
 	}
@@ -7692,8 +7476,6 @@ bool UEngine::HandleObjCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 
 		const bool bAlphaSort = FParse::Param( Cmd, TEXT("ALPHASORT") );
 		const bool bCountSort = FParse::Param( Cmd, TEXT("COUNTSORT") );
-		const bool bCSV = FParse::Param(Cmd, TEXT("CSV"));
-		const bool bShowFullClassName = FParse::Param(Cmd, TEXT("FULLCLASSNAME"));
 
 		if( Objects.Num() )
 		{
@@ -7716,59 +7498,33 @@ bool UEngine::HandleObjCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 			};
 			Objects.Sort( FCompareFSubItem( bAlphaSort ) );
 
-			if (bCSV)
-			{
-				Ar.Logf(TEXT(", Object, NumKB, MaxKB, ResExcKB, ResExcDedSysKB, ResExcShrSysKB, ResExcDedVidKB, ResExcShrVidKB, ResExcUnkKB"));
-			}
-			else
-			{
-				Ar.Logf(
-					TEXT("%140s %10s %10s %10s %15s %15s %15s %15s %15s"),
-					TEXT("Object"),
-					TEXT("NumKB"),
-					TEXT("MaxKB"),
-					TEXT("ResExcKB"),
-					TEXT("ResExcDedSysKB"),
-					TEXT("ResExcShrSysKB"),
-					TEXT("ResExcDedVidKB"),
-					TEXT("ResExcShrVidKB"),
-					TEXT("ResExcUnkKB")
-				);
-			}
+			Ar.Logf( 
+				TEXT("%140s %10s %10s %10s %15s %15s %15s %15s %15s"), 
+				TEXT("Object"), 
+				TEXT("NumKB"), 
+				TEXT("MaxKB"), 
+				TEXT("ResExcKB"),
+				TEXT("ResExcDedSysKB"),
+				TEXT("ResExcShrSysKB"),
+				TEXT("ResExcDedVidKB"),
+				TEXT("ResExcShrVidKB"),
+				TEXT("ResExcUnkKB")
+			);
 
 			for (const FSubItem& ObjItem : Objects)
 			{
-				if (bCSV)
-				{
-					Ar.Logf(
-						TEXT(", %s, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f, %.2f"),
-						*ObjItem.Object->GetFullName(),
-						ObjItem.Num / 1024.0f,
-						ObjItem.Max / 1024.0f,
-						ObjItem.TrueResourceSize.GetTotalMemoryBytes() / 1024.0f,
-						ObjItem.TrueResourceSize.GetDedicatedSystemMemoryBytes() / 1024.0f,
-						ObjItem.TrueResourceSize.GetSharedSystemMemoryBytes() / 1024.0f,
-						ObjItem.TrueResourceSize.GetDedicatedVideoMemoryBytes() / 1024.0f,
-						ObjItem.TrueResourceSize.GetSharedVideoMemoryBytes() / 1024.0f,
-						ObjItem.TrueResourceSize.GetUnknownMemoryBytes() / 1024.0f
-					);
-
-				}
-				else
-				{
-					Ar.Logf(
-						TEXT("%140s %10.2f %10.2f %10.2f %15.2f %15.2f %15.2f %15.2f %15.2f"),
-						*ObjItem.Object->GetFullName(),
-						ObjItem.Num / 1024.0f,
-						ObjItem.Max / 1024.0f,
-						ObjItem.TrueResourceSize.GetTotalMemoryBytes() / 1024.0f,
-						ObjItem.TrueResourceSize.GetDedicatedSystemMemoryBytes() / 1024.0f,
-						ObjItem.TrueResourceSize.GetSharedSystemMemoryBytes() / 1024.0f,
-						ObjItem.TrueResourceSize.GetDedicatedVideoMemoryBytes() / 1024.0f,
-						ObjItem.TrueResourceSize.GetSharedVideoMemoryBytes() / 1024.0f,
-						ObjItem.TrueResourceSize.GetUnknownMemoryBytes() / 1024.0f
-					);
-				}
+				Ar.Logf(
+					TEXT("%140s %10.2f %10.2f %10.2f %15.2f %15.2f %15.2f %15.2f %15.2f"), 
+					*ObjItem.Object->GetFullName(), 
+					ObjItem.Num / 1024.0f, 
+					ObjItem.Max / 1024.0f, 
+					ObjItem.TrueResourceSize.GetTotalMemoryBytes() / 1024.0f, 
+					ObjItem.TrueResourceSize.GetDedicatedSystemMemoryBytes() / 1024.0f, 
+					ObjItem.TrueResourceSize.GetSharedSystemMemoryBytes() / 1024.0f, 
+					ObjItem.TrueResourceSize.GetDedicatedVideoMemoryBytes() / 1024.0f, 
+					ObjItem.TrueResourceSize.GetSharedVideoMemoryBytes() / 1024.0f, 
+					ObjItem.TrueResourceSize.GetUnknownMemoryBytes() / 1024.0f
+				);
 			}
 			Ar.Log(TEXT(""));
 		}
@@ -7788,7 +7544,8 @@ bool UEngine::HandleObjCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 				}
 			};
 			List.Sort( FCompareFItem( bAlphaSort, bCountSort ) );
-			
+			const bool bCSV = FParse::Param(Cmd, TEXT("CSV"));
+
 			if (bCSV)
 			{
 				Ar.Logf(TEXT(", Class, Count, NumKB, MaxKB, ResExcKB, ResExcDedSysKB, ResExcShrSysKB, ResExcDedVidKB, ResExcShrVidKB, ResExcUnkKB"));
@@ -7815,7 +7572,7 @@ bool UEngine::HandleObjCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 				if (bCSV)
 				{
 					Ar.Logf(TEXT(", %s, %i, %f, %f, %f, %f, %f, %f, %f, %f"),
-						bShowFullClassName ? *List[i].Class->GetFullName() : *List[i].Class->GetName(),
+						*List[i].Class->GetName(),
 						(int32)List[i].Count,
 						List[i].Num / 1024.0f,
 						List[i].Max / 1024.0f,
@@ -7830,7 +7587,7 @@ bool UEngine::HandleObjCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 				else
 				{
 					Ar.Logf(TEXT(" %100s %8i %10.2f %10.2f %10.2f %15.2f %15.2f %15.2f %15.2f %15.2f"),
-						bShowFullClassName ? *List[i].Class->GetFullName() : *List[i].Class->GetName(),
+						*List[i].Class->GetName(),
 						(int32)List[i].Count,
 						List[i].Num / 1024.0f,
 						List[i].Max / 1024.0f,
@@ -7946,7 +7703,7 @@ bool UEngine::HandleObjCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 				}
 #endif
 				UClass* LastOwnerClass = NULL;
-				for ( TFieldIterator<FProperty> It(Obj->GetClass()); It; ++It )
+				for ( TFieldIterator<UProperty> It(Obj->GetClass()); It; ++It )
 				{
 					UClass* Owner = It->GetOwnerClass();
 
@@ -8014,7 +7771,7 @@ bool UEngine::HandleObjCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 					}
 					else
 					{
-						FArrayProperty* ArrayProp = CastField<FArrayProperty>(*It);
+						UArrayProperty* ArrayProp = Cast<UArrayProperty>(*It);
 						if ( ArrayProp != NULL )
 						{
 							FScriptArrayHelper_InContainer ArrayHelper(ArrayProp, Obj);
@@ -8072,12 +7829,6 @@ bool UEngine::HandleObjCommand( const TCHAR* Cmd, FOutputDevice& Ar )
 	{
 		const bool bShowHashBucketCollisionInfo = FParse::Param(Cmd, TEXT("SHOWBUCKETCOLLISIONS"));
 		LogHashOuterStatistics(Ar, bShowHashBucketCollisionInfo);
-		return true;
-	}
-	else if (FParse::Command(&Cmd, TEXT("OVERHEAD")))
-	{
-		const bool bShowIndividualStats = FParse::Param(Cmd, TEXT("DETAILED"));
-		LogHashMemoryOverheadStatistics(Ar, bShowIndividualStats);
 		return true;
 	}
 #endif
@@ -8521,31 +8272,7 @@ bool UEngine::PerformError(const TCHAR* Cmd, FOutputDevice& Ar)
 		);
 		return true;
 	}
-
-	if (FParse::Command(&Cmd, TEXT("THREADEDCHECKS")))
-	{
-		UE_LOG(LogEngine, Warning, TEXT("Queuing several multi-thread checks."));
-		for (int32 Index = 0; Index < 16; ++Index)
-		{
-			Async(
-				EAsyncExecution::ThreadPool,
-				[]()
-				{
-					FGenericCrashContext::SetCrashTrigger(ECrashTrigger::Debug);
-
-					// We now test if assert behavior is deterministic when called from different threads or
-					// if one thread could end up with a different behavior due to a race condition.
-					// We expect that the result will always be the assert being reported and not end-up
-					// with an Int 3 being handled by the exception handler.
-					const bool CrashingTheWorkerThreadAtYourRequest = false;
-					check(CrashingTheWorkerThreadAtYourRequest);
-				}
-			);
-		};
-
-		return true;
-	}
-	else if (FParse::Command(&Cmd, TEXT("TWOTHREADSCRASH")))
+	if (FParse::Command(&Cmd, TEXT("TWOTHREADSCRASH")))
 	{
 		class FThreadPoolCrash : public IQueuedWork
 		{
@@ -8728,8 +8455,8 @@ bool UEngine::PerformError(const TCHAR* Cmd, FOutputDevice& Ar)
 	}
 	else if (FParse::Command(&Cmd, TEXT("CRTINVALID")))
 	{
-		FGenericCrashContext::SetCrashTrigger(ECrashTrigger::Debug);
-		CauseCrtError();
+	FGenericCrashContext::SetCrashTrigger(ECrashTrigger::Debug);
+		FString::Printf(TEXT("%s"), (const char*)nullptr);
 		return true;
 	}
 	else if (FParse::Command(&Cmd, TEXT("HITCH")))
@@ -9327,17 +9054,6 @@ void UEngine::AddOnScreenDebugMessage(uint64 Key, float TimeToDisplay, FColor Di
 #endif
 }
 
-void UEngine::RemoveOnScreenDebugMessage(uint64 Key)
-{
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	{
-		// Because some components add their message in concurrent work, we need a CS here.
-		FScopeLock ScopeLock(&GOnScreenMessageCS);
-		ScreenMessages.Remove((int32)Key);
-	}
-#endif
-}
-
 UEngine::FErrorsAndWarningsCollector::FErrorsAndWarningsCollector()
 {
 }
@@ -9449,14 +9165,9 @@ bool UEngine::OnScreenDebugMessageExists(uint64 Key)
 
 void UEngine::ClearOnScreenDebugMessages()
 {
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-
-	{	
-		// Because some components add their message in concurrent work, we need a CS here.
-		FScopeLock ScopeLock(&GOnScreenMessageCS);
+#if !UE_BUILD_SHIPPING
 	ScreenMessages.Empty();
 	PriorityScreenMessages.Empty();
-	}
 #endif // !UE_BUILD_SHIPPING
 }
 
@@ -9781,7 +9492,7 @@ struct FCompareFSoundInfoByWaveInstNum
 };
 
 /** draws a property of the given object on the screen similarly to stats */
-static void DrawProperty(UCanvas* CanvasObject, UObject* Obj, const FDebugDisplayProperty& PropData, FProperty* Prop, int32 X, int32& Y)
+static void DrawProperty(UCanvas* CanvasObject, UObject* Obj, const FDebugDisplayProperty& PropData, UProperty* Prop, int32 X, int32& Y)
 {
 #if !UE_BUILD_SHIPPING
 	checkSlow(PropData.bSpecialProperty || Prop != NULL);
@@ -9885,11 +9596,11 @@ static void DrawProperty(UCanvas* CanvasObject, UObject* Obj, const FDebugDispla
 	do
 	{
 		FString Str = ValueText;
-		CommaIdx = ValueText.Find( TEXT(","), ESearchCase::CaseSensitive);
+		CommaIdx = ValueText.Find( TEXT(",") );
 		if( CommaIdx >= 0 )
 		{
 			Str = ValueText.Left(CommaIdx);
-			ValueText.MidInline( CommaIdx+1, MAX_int32, false );
+			ValueText = ValueText.Mid( CommaIdx+1 );
 		}
 
 		int32 XL, YL;
@@ -10119,19 +9830,6 @@ float DrawMapWarnings(UWorld* World, FViewport* Viewport, FCanvas* Canvas, UCanv
 #endif
 	}
 
-#if WITH_EDITOR && !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	if (ULandscapeSubsystem* LandscapeSubsystem = World->GetSubsystem<ULandscapeSubsystem>())
-	{
-		if (int32 OutdatedGrassMapCount = LandscapeSubsystem->GetOutdatedGrassMapCount())
-		{
-			SmallTextItem.SetColor(FLinearColor::Red);
-			SmallTextItem.Text = FText::Format(LOCTEXT("GRASS_MAPS_NEED_TO_BE_REBUILT_FMT", "GRASS MAPS NEED TO BE REBUILT ({0} {0}|plural(one=object,other=objects))"), OutdatedGrassMapCount);
-			Canvas->DrawItem(SmallTextItem, FVector2D(MessageX, MessageY));
-			MessageY += FontSizeY;
-		}
-	}
-#endif
-
 	if (World->NumTextureStreamingUnbuiltComponents > 0 || World->NumTextureStreamingDirtyResources > 0)
 	{
 		SmallTextItem.SetColor(FLinearColor::Red);
@@ -10257,24 +9955,19 @@ float DrawMapWarnings(UWorld* World, FViewport* Viewport, FCanvas* Canvas, UCanv
 *
 *	@return The Y position in the canvas after the last drawn string
 */
-float UEngine::DrawOnscreenDebugMessages(UWorld* World, FViewport* Viewport, FCanvas* Canvas, UCanvas* CanvasObject, float MessageX, float MessageY)
+float DrawOnscreenDebugMessages(UWorld* World, FViewport* Viewport, FCanvas* Canvas, UCanvas* CanvasObject, float MessageX, float MessageY)
 {
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	static TFrameValue<bool> HasUpdatedScreenDebugMessages;
 
 	int32 YPos = MessageY;
 	const int32 MaxYPos = CanvasObject ? CanvasObject->SizeY : 700;
+	if (GEngine->PriorityScreenMessages.Num() > 0)
 	{
-		// Because some components add their message in concurrent work, we need a CS here.
-		FScopeLock ScopeLock(&GOnScreenMessageCS);
-
-		if (PriorityScreenMessages.Num() > 0)
-		{
-			FCanvasTextItem MessageTextItem(FVector2D(0, 0), FText::GetEmpty(), GetSmallFont(), FLinearColor::White);
+		FCanvasTextItem MessageTextItem(FVector2D(0, 0), FText::GetEmpty(), GEngine->GetSmallFont(), FLinearColor::White);
 		MessageTextItem.EnableShadow(FLinearColor::Black);
-			for (int32 PrioIndex = PriorityScreenMessages.Num() - 1; PrioIndex >= 0; PrioIndex--)
+		for (int32 PrioIndex = GEngine->PriorityScreenMessages.Num() - 1; PrioIndex >= 0; PrioIndex--)
 		{
-				FScreenMessageString& Message = PriorityScreenMessages[PrioIndex];
+			FScreenMessageString& Message = GEngine->PriorityScreenMessages[PrioIndex];
 			if (YPos < MaxYPos)
 			{
 				MessageTextItem.Text = FText::FromString(Message.ScreenMessage);
@@ -10288,17 +9981,17 @@ float UEngine::DrawOnscreenDebugMessages(UWorld* World, FViewport* Viewport, FCa
 				Message.CurrentTimeDisplayed += World->GetDeltaSeconds();
 				if (Message.CurrentTimeDisplayed >= Message.TimeToDisplay)
 				{
-						PriorityScreenMessages.RemoveAt(PrioIndex);
+					GEngine->PriorityScreenMessages.RemoveAt(PrioIndex);
 				}
 			}
 		}
 	}
 
-		if (ScreenMessages.Num() > 0)
+	if (GEngine->ScreenMessages.Num() > 0)
 	{
-			FCanvasTextItem MessageTextItem(FVector2D(0, 0), FText::GetEmpty(), GetSmallFont(), FLinearColor::White);
+		FCanvasTextItem MessageTextItem(FVector2D(0, 0), FText::GetEmpty(), GEngine->GetSmallFont(), FLinearColor::White);
 		MessageTextItem.EnableShadow(FLinearColor::Black);
-			for (TMap<int32, FScreenMessageString>::TIterator MsgIt(ScreenMessages); MsgIt; ++MsgIt)
+		for (TMap<int32, FScreenMessageString>::TIterator MsgIt(GEngine->ScreenMessages); MsgIt; ++MsgIt)
 		{
 			FScreenMessageString& Message = MsgIt.Value();
 			if (YPos < MaxYPos)
@@ -10319,10 +10012,9 @@ float UEngine::DrawOnscreenDebugMessages(UWorld* World, FViewport* Viewport, FCa
 			}
 		}
 	}
-	}
+
 	// Flag variable that the update has already been done this frame
 	HasUpdatedScreenDebugMessages = true;
-#endif //#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 
 	return MessageY;
 }
@@ -10331,7 +10023,7 @@ float UEngine::DrawOnscreenDebugMessages(UWorld* World, FViewport* Viewport, FCa
 /**
 *	Renders stats
 *
-*   @param World			The World to render stats about
+*  @param World			The World to render stats about
 *	@param Viewport			The viewport to render to
 *	@param Canvas			Canvas object to use for rendering
 *	@param CanvasObject		Optional canvas object for visualizing properties
@@ -10361,7 +10053,7 @@ void DrawStatsHUD( UWorld* World, FViewport* Viewport, FCanvas* Canvas, UCanvas*
 	const int32 FPSXOffset	= (FPlatformProperties::SupportsWindowedMode() ? 110 : 250);
 	const int32 StatsXOffset = 100;// FPlatformProperties::SupportsWindowedMode() ? 4 : 100;
 
-	static const int32 MessageStartY = GIsEditor ? 45 : 100; // Account for safe frame
+	static const int32 MessageStartY = GIsEditor ? 35 : 100; // Account for safe frame
 	int32 MessageY = MessageStartY;
 
 	const FVector2D FontScale(1, 1);
@@ -10380,10 +10072,6 @@ void DrawStatsHUD( UWorld* World, FViewport* Viewport, FCanvas* Canvas, UCanvas*
 		{
 			MessageY = DrawMapWarnings(World, Viewport, Canvas, CanvasObject, MessageX, MessageY);
 		}
-
-#if ENABLE_AUDIO_DEBUG
-		MessageY = Audio::FAudioDebugger::DrawDebugStats(*World, Viewport, Canvas, MessageY);
-#endif // ENABLE_AUDIO_DEBUG
 
 #if ENABLE_VISUAL_LOG
 		if (FVisualLogger::Get().IsRecording() || FVisualLogger::Get().IsRecordingOnServer())
@@ -10479,7 +10167,6 @@ void DrawStatsHUD( UWorld* World, FViewport* Viewport, FCanvas* Canvas, UCanvas*
 #endif
 
 #if TRACING_PROFILER
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		if (FTracingProfiler::Get()->IsCapturing())
 		{
 			SmallTextItem.SetColor(FLinearColor(0.0f, 1.0f, 0.0f, 1.0f));
@@ -10490,13 +10177,12 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			MessageY += FontSizeY;
 
 		}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 #endif
 
 #if !(UE_BUILD_TEST)
 		if (GEngine->bEnableOnScreenDebugMessagesDisplay && GEngine->bEnableOnScreenDebugMessages)
 		{
-			MessageY = GEngine->DrawOnscreenDebugMessages(World, Viewport, Canvas, CanvasObject, MessageX, MessageY);
+			MessageY = DrawOnscreenDebugMessages(World, Viewport, Canvas, CanvasObject, MessageX, MessageY);
 		}
 #endif // UE_BUILD_TEST
 
@@ -10542,14 +10228,6 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 		RenderStats( Viewport, Canvas, StatsXOffset, Y, FMath::FloorToInt(PixelSizeX / Canvas->GetDPIScale()));
 #endif
-	}
-
-	// Use the new Viewport stats subsystem to draw any additional items that the user may want to
-	{
-		if (UViewportStatsSubsystem* ViewportSubsystem = World->GetSubsystem<UViewportStatsSubsystem>())
-		{
-			ViewportSubsystem->Draw(Viewport, Canvas, CanvasObject, MessageY);
-		}
 	}
 
 	// draw debug properties
@@ -10621,7 +10299,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 			UClass* Cls = Cast<UClass>(DebugProperties[i].Obj);
 			if (Cls != NULL)
 			{
-				FProperty* Prop = FindFProperty<FProperty>(Cls, DebugProperties[i].PropertyName);
+				UProperty* Prop = FindField<UProperty>(Cls, DebugProperties[i].PropertyName);
 				if (Prop != NULL || DebugProperties[i].bSpecialProperty)
 				{
 					// getall
@@ -10642,7 +10320,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 			}
 			else
 			{
-				FProperty* Prop = FindFProperty<FProperty>(DebugProperties[i].Obj->GetClass(), DebugProperties[i].PropertyName);
+				UProperty* Prop = FindField<UProperty>(DebugProperties[i].Obj->GetClass(), DebugProperties[i].PropertyName);
 				if (Prop != NULL || DebugProperties[i].bSpecialProperty)
 				{
 					DrawProperty(CanvasObject, DebugProperties[i].Obj, DebugProperties[i], Prop, X, Y);
@@ -10668,17 +10346,9 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		{
 			UWorld* ServerWorld = *It;
 			if (ServerWorld->WorldType == EWorldType::PIE && ServerWorld->GetNetMode() == NM_DedicatedServer)
-			{
-				FString WorldDesc = TEXT("[Server]");
-
-				FWorldContext& WorldContext = GEngine->GetWorldContextFromWorldChecked(ServerWorld);
-				if (!WorldContext.CustomDescription.IsEmpty())
-				{
-					WorldDesc += TEXT("[") + WorldContext.CustomDescription + TEXT("]");
-				}
-
+			{				
 				Y += 20;
-				Y += Canvas->DrawShadowedString( X, Y, *WorldDesc, GEngine->GetSmallFont(), FLinearColor::Gray);
+				Y += Canvas->DrawShadowedString( X, Y, TEXT("[Server]"), GEngine->GetSmallFont(), FLinearColor::Gray);
 				DrawDebugPropertiesForWorld(ServerWorld, X, Y);
 			}
 		}
@@ -10835,13 +10505,7 @@ FScopedConditionalWorldSwitcher::FScopedConditionalWorldSwitcher( FViewportClien
 	: ViewportClient( InViewportClient )
 	, OldWorld( nullptr )
 {
-	UWorld* InWorld = nullptr;
-	if (InViewportClient)
-	{
-		InWorld = InViewportClient->GetWorld();
-	}
-
-	ConditionalSwitchWorld( ViewportClient, InWorld );
+	ConditionalSwitchWorld( ViewportClient, nullptr );
 }
 
 FScopedConditionalWorldSwitcher::FScopedConditionalWorldSwitcher(UWorld* InWorld)
@@ -10860,29 +10524,24 @@ void FScopedConditionalWorldSwitcher::ConditionalSwitchWorld( FViewportClient* I
 {
 	if( GIsEditor )
 	{
-		if ( InWorld && InWorld->WorldType == EWorldType::PIE && !GIsPlayInEditorWorld )
-		{
-			// We don't want to restore using Viewport client so clear it
-			ViewportClient = nullptr;
-
-			OldWorld = GWorld;
-			const bool bSwitchToPIEWorld = true;
-
-			// First check if we are being told to switch to a PIE world, if so always switch regardless of viewport
-			SwitchWorldForPIEDelegate.ExecuteIfBound( bSwitchToPIEWorld, InWorld );
-		}
-		else if( ViewportClient && ViewportClient == GEngine->GameViewport && !GIsPlayInEditorWorld )
+		if( ViewportClient && ViewportClient == GEngine->GameViewport && !GIsPlayInEditorWorld )
 		{
 			OldWorld = GWorld; 
 			const bool bSwitchToPIEWorld = true;
-
-			// If this is the main game viewport delegate will handle finding new world
+			// Delegate must be valid
 			SwitchWorldForPIEDelegate.ExecuteIfBound( bSwitchToPIEWorld, nullptr );
 		}
 		else if( ViewportClient )
 		{
 			// Tell the viewport client to set the correct world and store what the world used to be
 			OldWorld = ViewportClient->ConditionalSetWorld();
+		}
+		else if ( InWorld && !GIsPlayInEditorWorld )
+		{
+			OldWorld = GWorld;
+			const bool bSwitchToPIEWorld = true;
+			// No viewport so set the world directly
+			SwitchWorldForPIEDelegate.ExecuteIfBound( bSwitchToPIEWorld, InWorld );
 		}
 	}
 }
@@ -11670,8 +11329,22 @@ void DestroyNamedNetDriver_Local(FWorldContext &Context, FName NetDriverName)
 			NetDriver->Shutdown();
 			NetDriver->LowLevelDestroy();
 			Context.ActiveNetDrivers.RemoveAtSwap(Index);
-			
-			Context.World()->ClearNetDriver(NetDriver);
+
+			// Remove this driver from the main level collection
+			const ELevelCollectionType DriverType = NetDriver->GetDuplicateLevelID() == INDEX_NONE ? ELevelCollectionType::DynamicSourceLevels : ELevelCollectionType::DynamicDuplicatedLevels;
+			FLevelCollection* const LevelCollection = Context.World()->FindCollectionByType(DriverType);
+			if (LevelCollection)
+			{
+				if (LevelCollection->GetNetDriver() == NetDriver)
+				{
+					LevelCollection->SetNetDriver(nullptr);
+				}
+
+				if (LevelCollection->GetDemoNetDriver() == NetDriver)
+				{
+					LevelCollection->SetDemoNetDriver(nullptr);
+				}
+			}
 
 			break;
 		}
@@ -11886,7 +11559,7 @@ void UEngine::SpawnServerActors(UWorld *World)
 				if( Value )
 				{
 					*Value++ = 0;
-					for( TFieldIterator<FProperty> It(Actor->GetClass()); It; ++It )
+					for( TFieldIterator<UProperty> It(Actor->GetClass()); It; ++It )
 					{
 						if(	FCString::Stricmp(*It->GetName(),Str)==0
 							&&	(It->PropertyFlags & CPF_Config) )
@@ -12649,7 +12322,7 @@ bool UEngine::LoadMap( FWorldContext& WorldContext, FURL URL, class UPendingNetG
 	GInitRunaway();
 
 #if !UE_BUILD_SHIPPING
-	const bool bOldWorldWasShowingCollisionForHiddenComponents = WorldContext.World() && WorldContext.World()->bCreateRenderStateForHiddenComponentsWithCollsion;
+	const bool bOldWorldWasShowingCollisionForHiddenComponents = WorldContext.World() && WorldContext.World()->bCreateRenderStateForHiddenComponents;
 #endif
 
 	// Unload the current world
@@ -12757,7 +12430,7 @@ bool UEngine::LoadMap( FWorldContext& WorldContext, FURL URL, class UPendingNetG
 		}
 
 		// Stop all audio to remove references to current level.
-		if (FAudioDevice* AudioDevice = WorldContext.World()->GetAudioDeviceRaw())
+		if (FAudioDevice* AudioDevice = WorldContext.World()->GetAudioDevice())
 		{
 			AudioDevice->Flush(WorldContext.World());
 			AudioDevice->SetTransientMasterVolume(1.0f);
@@ -12923,7 +12596,7 @@ bool UEngine::LoadMap( FWorldContext& WorldContext, FURL URL, class UPendingNetG
 				GIsPlayInEditorWorld = true;
 			}
 			// Otherwise we are probably loading new map while in PIE, so we need to rename world package and all streaming levels
-			else if (WorldContext.PIEInstance != -1 && ((Pending == nullptr) || (Pending->GetDemoNetDriver() != nullptr)))
+			else if (WorldContext.PIEInstance != -1 && ((Pending == nullptr) || (Pending->DemoNetDriver != nullptr)))
 			{
 				NewWorld->RenameToPIEWorld(WorldContext.PIEInstance);
 			}
@@ -12963,7 +12636,7 @@ bool UEngine::LoadMap( FWorldContext& WorldContext, FURL URL, class UPendingNetG
 	WorldContext.World()->WorldType = WorldContext.WorldType;
 
 #if !UE_BUILD_SHIPPING
-	GWorld->bCreateRenderStateForHiddenComponentsWithCollsion = bOldWorldWasShowingCollisionForHiddenComponents;
+	GWorld->bCreateRenderStateForHiddenComponents = bOldWorldWasShowingCollisionForHiddenComponents;
 #endif
 
 	// Fixme: hacky but we need to set PackageFlags here if we are in a PIE Context.
@@ -12997,7 +12670,7 @@ bool UEngine::LoadMap( FWorldContext& WorldContext, FURL URL, class UPendingNetG
 
 	WorldContext.World()->SetGameMode(URL);
 
-	if (FAudioDevice* AudioDevice = WorldContext.World()->GetAudioDeviceRaw())
+	if (FAudioDevice* AudioDevice = WorldContext.World()->GetAudioDevice())
 	{
 		AudioDevice->SetDefaultBaseSoundMix(WorldContext.World()->GetWorldSettings()->DefaultBaseSoundMix);
 	}
@@ -13051,11 +12724,7 @@ bool UEngine::LoadMap( FWorldContext& WorldContext, FURL URL, class UPendingNetG
 	WorldContext.World()->CreateAISystem();
 
 	// Initialize gameplay for the level.
-	{
-		FRegisterComponentContext Context(WorldContext.World());
-		WorldContext.World()->InitializeActorsForPlay(URL, true, &Context);
-		Context.Process();
-	}
+	WorldContext.World()->InitializeActorsForPlay(URL);		
 
 	// calling it after InitializeActorsForPlay has been called to have all potential bounding boxed initialized
 	FNavigationSystem::AddNavigationSystemToWorld(*WorldContext.World(), FNavigationSystemRunMode::GameMode);
@@ -13258,7 +12927,7 @@ void UEngine::MovePendingLevel(FWorldContext &Context)
 	Context.World()->SetNetDriver(Context.PendingNetGame->NetDriver);
 
 	UNetDriver* NetDriver = Context.PendingNetGame->NetDriver;
-	if (NetDriver)
+	if( NetDriver )
 	{
 		// The pending net driver is renamed to the current "game net driver"
 		NetDriver->SetNetDriverName(NAME_GameNetDriver);
@@ -13272,17 +12941,17 @@ void UEngine::MovePendingLevel(FWorldContext &Context)
 	}
 
 	// Attach the DemoNetDriver to the world if there is one
-	if (UDemoNetDriver* DemoNetDriver = Context.PendingNetGame->GetDemoNetDriver())
+	if ( Context.PendingNetGame->DemoNetDriver != NULL )
 	{
-		DemoNetDriver->SetWorld(Context.World());
-		Context.World()->SetDemoNetDriver(DemoNetDriver);
+		Context.PendingNetGame->DemoNetDriver->SetWorld( Context.World() );
+		Context.World()->DemoNetDriver = Context.PendingNetGame->DemoNetDriver;
 
 		FLevelCollection& MainLevels = Context.World()->FindOrAddCollectionByType(ELevelCollectionType::DynamicSourceLevels);
-		MainLevels.SetDemoNetDriver(DemoNetDriver);
+		MainLevels.SetDemoNetDriver(Context.PendingNetGame->DemoNetDriver);
 	}
 
 	// Reset the Navigation System
-	Context.World()->SetNavigationSystem(nullptr);
+	Context.World()->SetNavigationSystem(NULL);
 }
 
 void UEngine::LoadPackagesFully(UWorld * InWorld, EFullyLoadPackageType FullyLoadType, const FString& Tag)
@@ -13691,62 +13360,6 @@ const FWorldContext& UEngine::GetWorldContextFromPIEInstanceChecked(const int32 
 	return HandleInvalidWorldContext();
 }
 
-UWorld* UEngine::GetCurrentPlayWorld(UWorld* PossiblePlayWorld) const
-{
-	UWorld* BestWorld = nullptr;
-	for (const FWorldContext& WorldContext : WorldList)
-	{
-		if (PossiblePlayWorld && WorldContext.World() == PossiblePlayWorld)
-		{
-			// This is a game world and matches passed in world, return it
-			if (WorldContext.WorldType == EWorldType::Game)
-			{
-				return WorldContext.World();
-			}
-
-#if WITH_EDITOR
-			if (WorldContext.WorldType == EWorldType::PIE)
-			{
-				// This is a PIE world, and PIE instance is either not set or matches this world
-				if (GPlayInEditorID == -1 || GPlayInEditorID == WorldContext.PIEInstance)
-				{
-					return WorldContext.World();
-				}
-				else
-				{
-					// If you see this warning, game code is traversing PIE world boundaries in an unsafe way. That should be fixed or GPlayInEditorID needs to be set properly
-					UE_LOG(LogEngine, Warning, TEXT("GetCurrentPlayWorld failed with ambiguous PIE world! GPlayInEditorID %d does not match %s"), GPlayInEditorID, *PossiblePlayWorld->GetPathName());
-				}
-			}
-#endif
-
-			// We found the possible play world but it is is definitely not the current world, so return null due to ambiguity
-			return nullptr;
-		}
-
-		if (BestWorld)
-		{
-			// We want to use the first found world unless it's the specified world to check
-			continue;
-		}
-
-		// If it's a game world, try and set BestWorld. If World() is null, this won't do anything
-		if (WorldContext.WorldType == EWorldType::Game)
-		{
-			BestWorld = WorldContext.World();
-		}
-#if WITH_EDITOR
-		// This is a PIE world, PIE instance is set, and it matches this world
-		else if (WorldContext.WorldType == EWorldType::PIE && GPlayInEditorID != -1 && GPlayInEditorID == WorldContext.PIEInstance)
-		{
-			BestWorld = WorldContext.World();
-		}
-#endif
-	}
-
-	return BestWorld;
-}
-
 UPendingNetGame* UEngine::PendingNetGameFromWorld( UWorld* InWorld )
 {
 	return GetWorldContextFromWorldChecked(InWorld).PendingNetGame;
@@ -13890,7 +13503,7 @@ bool UEngine::PrepareMapChange(FWorldContext &Context, const TArray<FName>& Leve
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 		// Verify that all levels specified are in the package file cache.
-		for (const FName& LevelName : Context.LevelsToLoadForPendingMapChange)
+		for (const FName LevelName : Context.LevelsToLoadForPendingMapChange)
 		{
 			if( !FPackageName::DoesPackageExist( LevelName.ToString() ) )
 			{
@@ -13916,7 +13529,7 @@ bool UEngine::PrepareMapChange(FWorldContext &Context, const TArray<FName>& Leve
 		}
 
 		// Kick off async loading of packages.
-		for (const FName& LevelName : Context.LevelsToLoadForPendingMapChange)
+		for (const FName LevelName : Context.LevelsToLoadForPendingMapChange)
 		{
 			STAT_ADD_CUSTOMMESSAGE_NAME( STAT_NamedMarker, *(FString( TEXT( "PrepareMapChange - " ) + LevelName.ToString() )) );
 			TRACE_BOOKMARK(TEXT("PrepareMapChange - %s"), *LevelName.ToString());
@@ -14182,7 +13795,7 @@ bool UEngine::CommitMapChange( FWorldContext &Context )
 
 		// make sure any looping sounds, etc are stopped
 
-		if (FAudioDevice* AudioDevice = Context.World()->GetAudioDeviceRaw())
+		if (FAudioDevice* AudioDevice = Context.World()->GetAudioDevice())
 		{
 			AudioDevice->StopAllSounds();
 		}
@@ -14341,10 +13954,6 @@ private:
 	int32 TaggedDataScope;
 };
 
-#if WITH_EDITOR
-static FName BlueprintCompilerGeneratedDefaultsName(TEXT("BlueprintCompilerGeneratedDefaults"));
-#endif
-
 /* Serializes and stores property data from a specified 'source' object. Only stores data compatible with a target destination object. */
 struct FCPFUOWriter : public FObjectWriter, public FCPFUOArchive
 {
@@ -14389,9 +13998,10 @@ public:
 	virtual void MarkScriptSerializationEnd(const UObject* Object) override   { CloseTaggedDataScope(); }
 
 #if WITH_EDITOR
-	virtual bool ShouldSkipProperty(const class FProperty* InProperty) const override
+	virtual bool ShouldSkipProperty(const class UProperty* InProperty) const override
 	{
-		return (bSkipCompilerGeneratedDefaults && InProperty->HasMetaData(BlueprintCompilerGeneratedDefaultsName));
+		static FName BlueprintCompilerGeneratedDefaultsName(TEXT("BlueprintCompilerGeneratedDefaults"));
+		return bSkipCompilerGeneratedDefaults && InProperty->HasMetaData(BlueprintCompilerGeneratedDefaultsName);
 	}
 #endif 
 	//~ End FArchive Interface
@@ -14484,10 +14094,10 @@ void UEngine::CopyPropertiesForUnrelatedObjects(UObject* OldObject, UObject* New
 
 	// If the new object is an Actor, save the root component reference, to be restored later
 	USceneComponent* SavedRootComponent = nullptr;
-	FObjectProperty* RootComponentProperty = nullptr;
+	UObjectProperty* RootComponentProperty = nullptr;
 	if (NewActor != nullptr && Params.bPreserveRootComponent)
 	{
-		RootComponentProperty = FindFProperty<FObjectProperty>(NewActor->GetClass(), "RootComponent");
+		RootComponentProperty = FindField<UObjectProperty>(NewActor->GetClass(), "RootComponent");
 		if (RootComponentProperty != nullptr)
 		{
 			SavedRootComponent = Cast<USceneComponent>(RootComponentProperty->GetObjectPropertyValue_InContainer(NewActor));
@@ -14605,14 +14215,14 @@ void UEngine::CopyPropertiesForUnrelatedObjects(UObject* OldObject, UObject* New
 
 	FFindInstancedReferenceSubobjectHelper::Duplicate(OldObject, NewObject, ReferenceReplacementMap, ComponentsOnNewObject);
 
-	// Replace anything with an outer of the old object with NULL, unless it already has a replacement or is marked pending kill
+	// Replace anything with an outer of the old object with NULL, unless it already has a replacement
 	ForEachObjectWithOuter(OldObject, [&ReferenceReplacementMap](UObject* ObjectInOuter)
 	{
 		if (!ReferenceReplacementMap.Contains(ObjectInOuter))
 		{
 			ReferenceReplacementMap.Add(ObjectInOuter, nullptr);
 		}
-	}, true, RF_NoFlags, EInternalObjectFlags::PendingKill);
+	});
 
 	if(Params.bClearReferences)
 	{
@@ -14655,77 +14265,63 @@ void UEngine::CopyPropertiesForUnrelatedObjects(UObject* OldObject, UObject* New
 	}
 }
 
-int32 UEngine::GetGlobalFunctionCallspace(UFunction* Function, UObject* FunctionTarget, FFrame* Stack)
-{
-	check(Function);
-
-	const bool bIsAuthoritativeFunc = Function->HasAnyFunctionFlags(FUNC_BlueprintAuthorityOnly);
-	const bool bIsCosmeticFunc = Function->HasAnyFunctionFlags(FUNC_BlueprintCosmetic);
-
-	// If this is an authority/cosmetic function, we need to try and find the global context to see if it's a dedicated server/client
-	if (bIsAuthoritativeFunc || bIsCosmeticFunc)
-	{
-		UWorld* CurrentWorld = nullptr;
-#if !WITH_EDITOR
-		// In cooked builds there is only one active game world, so this will find it
-		CurrentWorld = GetCurrentPlayWorld();
-#else
-		// In the editor there can be multiple possible PIE worlds at once due to client/server testing and globals not being set, so we need to look for a world to use as context
-		UWorld* PossibleWorld = nullptr;
-
-		// First look at function target, this will fail if it's a static function
-		if (FunctionTarget)
-		{
-			PossibleWorld = FunctionTarget->GetWorld();
-		}
-
-		// Next check BP stack
-		if (!PossibleWorld && Stack && Stack->Object)
-		{
-			PossibleWorld = Stack->Object->GetWorld();
-		}
-
-		CurrentWorld = GetCurrentPlayWorld(PossibleWorld);
-#endif
-
-		// If we found a game world context, check it for networking mode
-		if (CurrentWorld)
-		{
-			ENetMode WorldNetMode = CurrentWorld->GetNetMode();
-			if (WorldNetMode == NM_DedicatedServer && bIsCosmeticFunc)
-			{
-				return FunctionCallspace::Absorbed;
-			}
-			if (WorldNetMode == NM_Client && bIsAuthoritativeFunc)
-			{
-				return FunctionCallspace::Absorbed;
-			}
-		}
-	}
-
-	// If we can't find a net mode always call locally
-	return FunctionCallspace::Local;
-}
-
+// This is a really bad hack for UBlueprintFunctionLibrary::GetFunctionCallspace. See additional comments there.
 bool UEngine::ShouldAbsorbAuthorityOnlyEvent()
 {
-	UWorld* CurrentWorld = GetCurrentPlayWorld();
-	if (CurrentWorld)
+	for (auto It = WorldList.CreateIterator(); It; ++It)
 	{
-		return (CurrentWorld->GetNetMode() == NM_Client);
-	}
+		FWorldContext &Context = *It;
+		bool useIt = false;
+		if (GPlayInEditorID != -1)
+		{
+			if (Context.WorldType == EWorldType::PIE && Context.PIEInstance == GPlayInEditorID)
+			{
+				useIt = true;
+			}
+		}
+		else
+		{
+			if (Context.WorldType == EWorldType::Game)
+			{
+				useIt = true;
+			}
+		}
 
+		if (useIt && (Context.World() != nullptr))
+		{
+			return (Context.World()->GetNetMode() ==  NM_Client);
+		}
+	}
 	return false;
 }
 
+
 bool UEngine::ShouldAbsorbCosmeticOnlyEvent()
 {
-	UWorld* CurrentWorld = GetCurrentPlayWorld();
-	if (CurrentWorld)
+	for (auto It = WorldList.CreateIterator(); It; ++It)
 	{
-		return (CurrentWorld->GetNetMode() == NM_DedicatedServer);
-	}
+		FWorldContext &Context = *It;
+		bool useIt = false;
+		if (GPlayInEditorID != -1)
+		{
+			if (Context.WorldType == EWorldType::PIE && Context.PIEInstance == GPlayInEditorID)
+			{
+				useIt = true;
+			}
+		}
+		else
+		{
+			if (Context.WorldType == EWorldType::Game)
+			{
+				useIt = true;
+			}
+		}
 
+		if (useIt && (Context.World() != nullptr))
+		{
+			return (Context.World()->GetNetMode() == NM_DedicatedServer);
+		}
+	}
 	return false;
 }
 
@@ -14749,7 +14345,7 @@ static TAutoConsoleVariable<int32> CVarAllowHighQualityLightMaps(
 	ECVF_RenderThreadSafe | ECVF_ReadOnly);
 
 
-bool AllowHighQualityLightmaps(const FStaticFeatureLevel FeatureLevel)
+bool AllowHighQualityLightmaps(ERHIFeatureLevel::Type FeatureLevel)
 {
 	return FPlatformProperties::SupportsHighQualityLightmaps()
 		&& (FeatureLevel > ERHIFeatureLevel::ES3_1)
@@ -14959,6 +14555,7 @@ int32 UEngine::RenderStatFPS(UWorld* World, FViewport* Viewport, FCanvas* Canvas
 	// Start drawing the various counters.
 	const int32 RowHeight = FMath::TruncToInt(Font->GetMaxCharHeight() * 1.1f);
 
+	UEngineCustomTimeStep* CustomTimeStep = GetCustomTimeStep();
 	if (CustomTimeStep)
 	{
 		ECustomTimeStepSynchronizationState State = CustomTimeStep->GetSynchronizationState();
@@ -15157,12 +14754,6 @@ int32 UEngine::RenderStatColorList(UWorld* World, FViewport* Viewport, FCanvas* 
 }
 
 // LEVELS
-TAutoConsoleVariable<int32> CVarStatLevelsColumnWidth(
-	TEXT("stats.StatLevelsColumnWidth"),
-	350,
-	TEXT("The width in pixels of a column in stat levels.")
-);
-
 int32 UEngine::RenderStatLevels(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation)
 {
 	int32 MaxY = Y;
@@ -15205,7 +14796,7 @@ int32 UEngine::RenderStatLevels(UWorld* World, FViewport* Viewport, FCanvas* Can
 		{
 			MaxY = FMath::Max(MaxY, Y);
 			Y = BaseY;
-			X += CVarStatLevelsColumnWidth.GetValueOnGameThread();
+			X += 350;
 		}
 
 		FColor	Color = GetColorForLevelStatus(LevelStatus.StreamingStatus);
@@ -15363,42 +14954,6 @@ int32 UEngine::RenderStatUnit(UWorld* World, FViewport* Viewport, FCanvas* Canva
 		checkf(Viewport->GetClient()->GetStatUnitData(), TEXT("StatUnitData must be allocated for this viewport if you wish to display stat."));
 		Y = Viewport->GetClient()->GetStatUnitData()->DrawStat(Viewport, Canvas, X, Y);
 	}
-
-	return Y;
-}
-
-// DRAWCOUNT
-int32 UEngine::RenderStatDrawCount(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation)
-{
-#if CSV_PROFILER
-	int32 TotalCount = 0;
-	// Display all the categories of draw counts. This may always report 0 in some modes if AreGPUStatsEnabled is not enabled.
-	// Most likely because we are not currently capturing a CSV.
-	for (int32 Index = 0; Index < FDrawCallCategoryName::NumCategory; ++Index)
-	{
-		TotalCount += FDrawCallCategoryName::DisplayCounts[Index];
-		FDrawCallCategoryName* CategoryName = FDrawCallCategoryName::Array[Index];
-		Canvas->DrawShadowedString(X - 50,
-			Y,
-			*FString::Printf(TEXT("%s: %i"), *CategoryName->Name.ToString(), FDrawCallCategoryName::DisplayCounts[Index]),
-			GetSmallFont(),
-			FColor::Green);
-		Y += 12;
-	}
-	Canvas->DrawShadowedString(X - 50,
-		Y,
-		*FString::Printf(TEXT("Total: %i"), TotalCount),
-		GetSmallFont(),
-		FColor::Green);
-	Y += 12;
-#else
-	Canvas->DrawShadowedString(X - 200,
-		Y,
-		*FString::Printf(TEXT("DrawCount only supported with CSV_PROFILER")),
-		GetSmallFont(),
-		FColor::Red);
-#endif
-
 	return Y;
 }
 
@@ -15728,7 +15283,7 @@ static void SetupThreadAffinity(const TArray<FString>& Args)
 	FSimpleDelegateGraphTask::CreateAndDispatchWhenReady(
 		FSimpleDelegateGraphTask::FDelegate::CreateStatic(&SetAffinityOnThread),
 		TStatId(), NULL, ENamedThreads::GetRenderThread());
-	if (IsRHIThreadRunning())
+	if (GRHIThread_InternalUseOnly)
 	{
 		FSimpleDelegateGraphTask::CreateAndDispatchWhenReady(
 			FSimpleDelegateGraphTask::FDelegate::CreateStatic(&SetAffinityOnThread),
@@ -16058,11 +15613,7 @@ static FAutoConsoleCommand PakFileTestCmd(
 int32 UEngine::RenderStatSoundReverb(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation)
 {
 #if ENABLE_AUDIO_DEBUG
-	const int32 FontHeight = GetStatsFont()->GetMaxCharHeight() + 2.0f;
-	Canvas->DrawShadowedString(X, Y, TEXT("'stat soundreverb' is deprecated. Please use au.Debug.SoundReverb"), GetStatsFont(), FLinearColor::Yellow);
-	Y += FontHeight;
-
-	return Audio::FAudioDebugger::RenderStatReverb(World, Viewport, Canvas, X, Y);
+	return FAudioDebugger::RenderStatReverb(World, Viewport, Canvas, X, Y, ViewLocation, ViewRotation);
 #else // !ENABLE_AUDIO_DEBUG
 	return Y;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -16072,11 +15623,7 @@ int32 UEngine::RenderStatSoundReverb(UWorld* World, FViewport* Viewport, FCanvas
 int32 UEngine::RenderStatSoundMixes(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation)
 {
 #if ENABLE_AUDIO_DEBUG
-	const int32 FontHeight = GetStatsFont()->GetMaxCharHeight() + 2.0f;
-	Canvas->DrawShadowedString(X, Y, TEXT("'stat soundmixes' is deprecated. Use au.Debug.SoundMixes"), GetStatsFont(), FLinearColor::Yellow);
-	Y += FontHeight;
-
-	return Audio::FAudioDebugger::RenderStatMixes(World, Viewport, Canvas, X, Y);
+	return FAudioDebugger::RenderStatMixes(World, Viewport, Canvas, X, Y, ViewLocation, ViewRotation);
 #else // !ENABLE_AUDIO_DEBUG
 	return Y;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -16086,11 +15633,7 @@ int32 UEngine::RenderStatSoundMixes(UWorld* World, FViewport* Viewport, FCanvas*
 int32 UEngine::RenderStatSoundModulators(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation)
 {
 #if ENABLE_AUDIO_DEBUG
-	const int32 FontHeight = GetStatsFont()->GetMaxCharHeight() + 2.0f;
-	Canvas->DrawShadowedString(X, Y, TEXT("'stat soundmodulators' is deprecated. Use au.Debug.SoundModulators"), GetStatsFont(), FLinearColor::Yellow);
-	Y += FontHeight;
-
-	return Audio::FAudioDebugger::RenderStatModulators(World, Viewport, Canvas, X, Y, ViewLocation, ViewRotation);
+	return FAudioDebugger::RenderStatModulators(World, Viewport, Canvas, X, Y, ViewLocation, ViewRotation);
 #else // !ENABLE_AUDIO_DEBUG
 	return Y;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -16100,7 +15643,7 @@ int32 UEngine::RenderStatSoundModulators(UWorld* World, FViewport* Viewport, FCa
 bool UEngine::ToggleStatSoundWaves(UWorld* World, FCommonViewportClient* ViewportClient, const TCHAR* Stream)
 {
 #if ENABLE_AUDIO_DEBUG
-	return Audio::FAudioDebugger::ToggleStatWaves(World, ViewportClient, Stream);
+	return FAudioDebugger::ToggleStatWaves(World, ViewportClient, Stream);
 #else // !ENABLE_AUDIO_DEBUG
 	return false;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -16110,7 +15653,7 @@ bool UEngine::ToggleStatSoundWaves(UWorld* World, FCommonViewportClient* Viewpor
 bool UEngine::ToggleStatSoundCues(UWorld* World, FCommonViewportClient* ViewportClient, const TCHAR* Stream)
 {
 #if ENABLE_AUDIO_DEBUG
-	return Audio::FAudioDebugger::ToggleStatCues(World, ViewportClient, Stream);
+	return FAudioDebugger::ToggleStatCues(World, ViewportClient, Stream);
 #else // !ENABLE_AUDIO_DEBUG
 	return false;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -16126,7 +15669,7 @@ bool UEngine::ToggleStatAudioStreaming(UWorld* World, FCommonViewportClient* Vie
 bool UEngine::ToggleStatSoundMixes(UWorld* World, FCommonViewportClient* ViewportClient, const TCHAR* Stream)
 {
 #if ENABLE_AUDIO_DEBUG
-	return Audio::FAudioDebugger::ToggleStatMixes(World, ViewportClient, Stream);
+	return FAudioDebugger::ToggleStatMixes(World, ViewportClient, Stream);
 #else // !ENABLE_AUDIO_DEBUG
 	return false;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -16136,7 +15679,7 @@ bool UEngine::ToggleStatSoundMixes(UWorld* World, FCommonViewportClient* Viewpor
 bool UEngine::PostStatSoundModulatorHelp(UWorld* World, FCommonViewportClient* ViewportClient, const TCHAR* Stream)
 {
 #if ENABLE_AUDIO_DEBUG
-	return Audio::FAudioDebugger::PostStatModulatorHelp(World, ViewportClient, Stream);
+	return FAudioDebugger::PostStatModulatorHelp(World, ViewportClient, Stream);
 #else // !ENABLE_AUDIO_DEBUG
 	return false;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -16146,7 +15689,7 @@ bool UEngine::PostStatSoundModulatorHelp(UWorld* World, FCommonViewportClient* V
 bool UEngine::ToggleStatSoundModulators(UWorld* World, FCommonViewportClient* ViewportClient, const TCHAR* Stream)
 {
 #if ENABLE_AUDIO_DEBUG
-	return Audio::FAudioDebugger::ToggleStatModulators(World, ViewportClient, Stream);
+	return FAudioDebugger::ToggleStatModulators(World, ViewportClient, Stream);
 #else // !ENABLE_AUDIO_DEBUG
 	return false;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -16156,11 +15699,7 @@ bool UEngine::ToggleStatSoundModulators(UWorld* World, FCommonViewportClient* Vi
 int32 UEngine::RenderStatSoundWaves(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation)
 {
 #if ENABLE_AUDIO_DEBUG
-	const int32 FontHeight = GetStatsFont()->GetMaxCharHeight() + 2.0f;
-	Canvas->DrawShadowedString(X, Y, TEXT("'stat soundwaves' is deprecated. Use au.Debug.SoundWaves"), GetStatsFont(), FLinearColor::Yellow);
-	Y += FontHeight;
-
-	return Audio::FAudioDebugger::RenderStatWaves(World, Viewport, Canvas, X, Y);
+	return FAudioDebugger::RenderStatWaves(World, Viewport, Canvas, X, Y, ViewLocation, ViewRotation);
 #else // !ENABLE_AUDIO_DEBUG
 	return Y;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -16176,11 +15715,7 @@ int32 UEngine::RenderStatAudioStreaming(UWorld* World, FViewport* Viewport, FCan
 int32 UEngine::RenderStatSoundCues(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation)
 {
 #if ENABLE_AUDIO_DEBUG
-	const int32 FontHeight = GetStatsFont()->GetMaxCharHeight() + 2.0f;
-	Canvas->DrawShadowedString(X, Y, TEXT("'stat soundcues' is deprecated. Use au.Debug.SoundCues"), GetStatsFont(), FLinearColor::Yellow);
-	Y += FontHeight;
-
-	return Audio::FAudioDebugger::RenderStatCues(World, Viewport, Canvas, X, Y);
+	return FAudioDebugger::RenderStatCues(World, Viewport, Canvas, X, Y, ViewLocation, ViewRotation);
 #else // !ENABLE_AUDIO_DEBUG
 	return Y;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -16190,7 +15725,7 @@ int32 UEngine::RenderStatSoundCues(UWorld* World, FViewport* Viewport, FCanvas* 
 bool UEngine::ToggleStatSounds(UWorld* World, FCommonViewportClient* ViewportClient, const TCHAR* Stream)
 {
 #if ENABLE_AUDIO_DEBUG
-	return Audio::FAudioDebugger::ToggleStatSounds(World, ViewportClient, Stream);
+	return FAudioDebugger::ToggleStatSounds(World, ViewportClient, Stream);
 #else // !ENABLE_AUDIO_DEBUG
 	return false;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -16199,11 +15734,7 @@ bool UEngine::ToggleStatSounds(UWorld* World, FCommonViewportClient* ViewportCli
 int32 UEngine::RenderStatSounds(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation)
 {
 #if ENABLE_AUDIO_DEBUG
-	const int32 FontHeight = GetStatsFont()->GetMaxCharHeight() + 2.0f;
-	Canvas->DrawShadowedString(X, Y, TEXT("'stat sounds' is deprecated. Use au.Debug.Sounds"), GetStatsFont(), FLinearColor::Yellow);
-	Y += FontHeight;
-
-	return Audio::FAudioDebugger::RenderStatSounds(World, Viewport, Canvas, X, Y);
+	return FAudioDebugger::RenderStatSounds(World, Viewport, Canvas, X, Y, ViewLocation, ViewRotation);
 #else // !ENABLE_AUDIO_DEBUG
 	return Y;
 #endif // !ENABLE_AUDIO_DEBUG
@@ -16280,8 +15811,6 @@ int32 UEngine::RenderStatTimecode(UWorld* World, FViewport* Viewport, FCanvas* C
 	const int32 RowHeight = FMath::TruncToInt(Font->GetMaxCharHeight() * 1.1f);
 
 	const UTimecodeProvider* Provider = GetTimecodeProvider();
-	if (Provider)
-	{
 	ETimecodeProviderSynchronizationState State = Provider->GetSynchronizationState();
 	FString ProviderName = Provider->GetName();
 	float CharWidth, CharHeight;
@@ -16305,21 +15834,8 @@ int32 UEngine::RenderStatTimecode(UWorld* World, FViewport* Viewport, FCanvas* C
 		check(false);
 		break;
 	}
-	}
 	Y += RowHeight;
 	Canvas->DrawShadowedString(X, Y, *FString::Printf(TEXT("TC: %s"), *FApp::GetTimecode().ToString()), Font, FColor::Green);
-	Y += RowHeight;
-
-	return Y;
-}
-
-// FRAMECOUNTER
-int32 UEngine::RenderStatFrameCounter(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation)
-{
-	UFont* Font = FPlatformProperties::SupportsWindowedMode() ? GetSmallFont() : GetMediumFont();
-	const int32 RowHeight = FMath::TruncToInt(Font->GetMaxCharHeight() * 1.1f);
-
-	Canvas->DrawShadowedString(X, Y, *FString::Printf(TEXT("FC: %d"), GFrameCounter), Font, FColor::Green);
 	Y += RowHeight;
 
 	return Y;
@@ -16367,81 +15883,6 @@ int32 UEngine::RenderStatSlateBatches(UWorld* World, FViewport* Viewport, FCanva
 	}*/
 	return Y;
 }
-#endif
-
-int32 UEngine::RenderStatParticlePerf(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation)
-{
-#if WITH_PARTICLE_PERF_STATS
-	Y = FParticlePerfStats::RenderStats(World, Viewport, Canvas, X, Y, ViewLocation, ViewRotation);
-#endif
-	return Y;
-}
-
-ERHIFeatureLevel::Type UEngine::GetDefaultWorldFeatureLevel() const
-{
-	return GMaxRHIFeatureLevel;
-}
-
-#if WITH_EDITOR
-void UEngine::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
-{
-	if (!HasAnyFlags(RF_ArchetypeObject|RF_ClassDefaultObject))
-	{
-		FName PropertyName = PropertyChangedEvent.GetPropertyName();
-		if (PropertyName == GET_MEMBER_NAME_CHECKED(UEngine, TimecodeProviderClassName)
-			|| PropertyName == GET_MEMBER_NAME_CHECKED(UEngine, bGenerateDefaultTimecode)
-			|| PropertyName == GET_MEMBER_NAME_CHECKED(UEngine, GenerateDefaultTimecodeFrameRate)
-			|| PropertyName == GET_MEMBER_NAME_CHECKED(UEngine, GenerateDefaultTimecodeFrameDelay))
-		{
-			// Only reload the timecode provider if the current was created by the engine
-			UTimecodeProvider* CurrentTimecodeProvider = GetTimecodeProvider();
-			if (CurrentTimecodeProvider == nullptr || CurrentTimecodeProvider->GetOuter() == this)
-			{
-				LoadTimecodeProvider(this);
-			}
-		}
-
-		if (PropertyName == GET_MEMBER_NAME_CHECKED(UEngine, CustomTimeStepClassName))
-		{
-			// Only reload the custom time step if the current was created by the engine
-			UEngineCustomTimeStep* CurrentCustomTimeStep = GetCustomTimeStep();
-			if (CurrentCustomTimeStep == nullptr || CurrentCustomTimeStep->GetOuter() == this)
-			{
-				LoadCustomTimeStep(this);
-			}
-		}
-	}
-
-	Super::PostEditChangeProperty(PropertyChangedEvent);
-}
-
-bool UEngine::GetPreviewPlatformName(FName& PlatformGroupName, FName& VanillaPlatformName) const
-{
-	// Support returning "Mobile" when started with -featureleveles31 etc
-
-	static bool bHasCachedResult = false;
-	static bool bCachedMobile = false;
-
-	if (!bHasCachedResult)
-	{
-		bHasCachedResult = true;
-		ERHIFeatureLevel::Type FeatureLevel;
-
-		bCachedMobile = (RHIGetPreviewFeatureLevel(FeatureLevel) && FeatureLevel <= ERHIFeatureLevel::ES3_1);
-	}
-
-	if (bCachedMobile)
-	{
-		PlatformGroupName = NAME_Mobile;
-		PlatformGroupName = NAME_None;
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
-
 #endif
 
 #undef LOCTEXT_NAMESPACE

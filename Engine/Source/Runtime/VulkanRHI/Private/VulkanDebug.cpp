@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	VulkanDebug.cpp: Vulkan device RHI implementation.
@@ -482,8 +482,6 @@ static TMap<VkImage, FTrackingImage> GVulkanTrackingImageLayouts;
 static TMap<VkImageView, TTrackingResource<VkImageViewCreateInfo>> GVulkanTrackingImageViews;
 static VkImage GBreakOnTrackImage = VK_NULL_HANDLE;
 
-static VkImage GDumpTrackImage = VK_NULL_HANDLE;
-
 static FORCEINLINE void BreakOnTrackingImage(VkImage InImage)
 {
 	if (GBreakOnTrackImage != VK_NULL_HANDLE)
@@ -491,11 +489,6 @@ static FORCEINLINE void BreakOnTrackingImage(VkImage InImage)
 		ensureAlways(InImage != GBreakOnTrackImage);
 	}
 }
-static FORCEINLINE bool DumpTrackImage(VkImage InImage)
-{
-	return (GDumpTrackImage != VK_NULL_HANDLE) && (InImage == GDumpTrackImage);
-}
-
 
 static VkImage FindTrackingImage(VkImageView InView)
 {
@@ -509,7 +502,7 @@ static FORCEINLINE void BreakOnTrackingImageView(VkImageView InView)
 }
 #endif
 
-#if VULKAN_ENABLE_BUFFER_TRACKING_LAYER || VULKAN_ENABLE_DUMP_LAYER || VULKAN_ENABLE_IMAGE_TRACKING_LAYER 
+#if VULKAN_ENABLE_BUFFER_TRACKING_LAYER || VULKAN_ENABLE_DUMP_LAYER
 static TMap<VkBuffer, TTrackingResource<VkBufferCreateInfo>> GVulkanTrackingBuffers;
 static TMap<VkBuffer, TArray<VkBufferView>> GVulkanTrackingBufferToBufferViews;
 static TMap<VkBufferView, TTrackingResource<VkBufferViewCreateInfo>> GVulkanTrackingBufferViews;
@@ -526,8 +519,7 @@ static void ValidationFail()
 	ensure(0);
 }
 
-
-#if VULKAN_ENABLE_DUMP_LAYER || VULKAN_ENABLE_IMAGE_TRACKING_LAYER
+#if VULKAN_ENABLE_DUMP_LAYER
 #include "Misc/OutputDeviceRedirector.h"
 namespace VulkanRHI
 {
@@ -648,7 +640,7 @@ namespace VulkanRHI
 		switch (Format)
 		{
 			// + 10 to skip "VK_FORMAT"
-#define VKSWITCHCASE(x)	case x: return &TEXT(#x)[10];
+#define VKSWITCHCASE(x)	case x: return TEXT(#x) + 10;
 			VKSWITCHCASE(VK_FORMAT_UNDEFINED)
 			VKSWITCHCASE(VK_FORMAT_R4G4_UNORM_PACK8)
 			VKSWITCHCASE(VK_FORMAT_R4G4B4A4_UNORM_PACK16)
@@ -846,7 +838,7 @@ namespace VulkanRHI
 		switch (Result)
 		{
 			// + 3 to skip "VK_"
-#define VKSWITCHCASE(x)	case x: return &TEXT(#x)[3];
+#define VKSWITCHCASE(x)	case x: return TEXT(#x) + 3;
 			VKSWITCHCASE(VK_SUCCESS)
 			VKSWITCHCASE(VK_NOT_READY)
 			VKSWITCHCASE(VK_TIMEOUT)
@@ -896,7 +888,7 @@ namespace VulkanRHI
 		switch (Tiling)
 		{
 			// + 16 to skip "VK_IMAGE_TILING_"
-#define VKSWITCHCASE(x)	case x: return &TEXT(#x)[16];
+#define VKSWITCHCASE(x)	case x: return TEXT(#x) + 16;
 			VKSWITCHCASE(VK_IMAGE_TILING_OPTIMAL)
 			VKSWITCHCASE(VK_IMAGE_TILING_LINEAR)
 #undef VKSWITCHCASE
@@ -912,7 +904,7 @@ namespace VulkanRHI
 		switch (Layout)
 		{
 			// + 16 to skip "VK_IMAGE_LAYOUT"
-#define VKSWITCHCASE(x)	case x: return &TEXT(#x)[16];
+#define VKSWITCHCASE(x)	case x: return TEXT(#x) + 16;
 			VKSWITCHCASE(VK_IMAGE_LAYOUT_UNDEFINED)
 			VKSWITCHCASE(VK_IMAGE_LAYOUT_GENERAL)
 			VKSWITCHCASE(VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
@@ -936,7 +928,7 @@ namespace VulkanRHI
 		switch (Type)
 		{
 			// + 19 to skip "VK_IMAGE_VIEW_TYPE_"
-#define VKSWITCHCASE(x)	case x: return &TEXT(#x)[19];
+#define VKSWITCHCASE(x)	case x: return TEXT(#x) + 19;
 		VKSWITCHCASE(VK_IMAGE_VIEW_TYPE_1D)
 		VKSWITCHCASE(VK_IMAGE_VIEW_TYPE_2D)
 		VKSWITCHCASE(VK_IMAGE_VIEW_TYPE_3D)
@@ -957,7 +949,7 @@ namespace VulkanRHI
 		switch (Type)
 		{
 			// + 14 to skip "VK_IMAGE_TYPE_1D"
-#define VKSWITCHCASE(x)	case x: return &TEXT(#x)[14];
+#define VKSWITCHCASE(x)	case x: return TEXT(#x) + 14;
 		VKSWITCHCASE(VK_IMAGE_TYPE_1D)
 		VKSWITCHCASE(VK_IMAGE_TYPE_2D)
 		VKSWITCHCASE(VK_IMAGE_TYPE_3D)
@@ -974,7 +966,7 @@ namespace VulkanRHI
 		switch (Type)
 		{
 			// + 19 to skip "VK_DESCRIPTOR_TYPE_"
-#define VKSWITCHCASE(x)	case x: return &TEXT(#x)[19];
+#define VKSWITCHCASE(x)	case x: return TEXT(#x) + 19;
 		VKSWITCHCASE(VK_DESCRIPTOR_TYPE_SAMPLER)
 		VKSWITCHCASE(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
 		VKSWITCHCASE(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)
@@ -999,7 +991,7 @@ namespace VulkanRHI
 		switch (Op)
 		{
 			// + 14 to skip "VK_STENCIL_OP_"
-#define VKSWITCHCASE(x)	case x: return &TEXT(#x)[14];
+#define VKSWITCHCASE(x)	case x: return TEXT(#x) + 14;
 			VKSWITCHCASE(VK_STENCIL_OP_KEEP)
 			VKSWITCHCASE(VK_STENCIL_OP_ZERO)
 			VKSWITCHCASE(VK_STENCIL_OP_REPLACE)
@@ -1021,7 +1013,7 @@ namespace VulkanRHI
 		switch (Op)
 		{
 			// + 14 to skip "VK_COMPARE_OP_"
-#define VKSWITCHCASE(x)	case x: return &TEXT(#x)[14];
+#define VKSWITCHCASE(x)	case x: return TEXT(#x) + 14;
 			VKSWITCHCASE(VK_COMPARE_OP_NEVER)
 			VKSWITCHCASE(VK_COMPARE_OP_LESS)
 			VKSWITCHCASE(VK_COMPARE_OP_EQUAL)
@@ -1802,7 +1794,7 @@ void FWrapLayer::EnumeratePhysicalDevices(VkResult Result, VkInstance Instance, 
 	}
 }
 
-#if VULKAN_ENABLE_DUMP_LAYER || VULKAN_ENABLE_IMAGE_TRACKING_LAYER
+#if VULKAN_ENABLE_DUMP_LAYER
 static void DumpImageMemoryBarriers(uint32 ImageMemoryBarrierCount, const VkImageMemoryBarrier* ImageMemoryBarriers)
 {
 	for (uint32 Index = 0; Index < ImageMemoryBarrierCount; ++Index)
@@ -1831,13 +1823,6 @@ void FWrapLayer::CmdPipelineBarrier(VkResult Result, VkCommandBuffer CommandBuff
 			for (uint32 Index = 0; Index < ImageMemoryBarrierCount; ++Index)
 			{
 				BreakOnTrackingImage(ImageMemoryBarriers[Index].image);
-				if(DumpTrackImage(ImageMemoryBarriers[Index].image))
-				{
-					CmdPrintfBegin(CommandBuffer, FString::Printf(TEXT("vkCmdPipelineBarrier(SrcMask=%s, DestMask=%s, Flags=%d, NumMemB=%d, MemB=0x%p,"), *GetStageMaskString(SrcStageMask), *GetStageMaskString(DstStageMask), (uint32)DependencyFlags, MemoryBarrierCount, MemoryBarriers));
-					DebugLog += FString::Printf(TEXT("%s\tNumBufferB=%d, BufferB=0x%p, NumImageB=%d, ImageB=0x%p)[...]\n"), Tabs, BufferMemoryBarrierCount, BufferMemoryBarriers, ImageMemoryBarrierCount, ImageMemoryBarriers);
-					DumpImageMemoryBarriers(ImageMemoryBarrierCount, ImageMemoryBarriers);
-					FlushDebugWrapperLog();
-				}
 				FTrackingImage* TrackingImage = GVulkanTrackingImageLayouts.Find(ImageMemoryBarriers[Index].image);
 				check(TrackingImage);
 #if VULKAN_ENABLE_TRACKING_CALLSTACK
@@ -3754,17 +3739,6 @@ void FWrapLayer::QueueBindSparse(VkResult Result, VkQueue Queue, uint32_t BindIn
 	}
 }
 
-void FWrapLayer::GetPhysicalDeviceMemoryProperties2(VkResult Result, VkPhysicalDevice PhysicalDevice, VkPhysicalDeviceMemoryProperties2* MemoryProperties)
-{
-	if (Result == VK_RESULT_MAX_ENUM)
-	{
-#if VULKAN_ENABLE_DUMP_LAYER
-		PrintfBegin(FString::Printf(TEXT("vkGetPhysicalDeviceMemoryProperties2(PhysicalDevice=0x%p, Properties=0x%p)[...]"), PhysicalDevice, MemoryProperties));
-#endif
-	}
-}
-
-
 #if VULKAN_SUPPORTS_PHYSICAL_DEVICE_PROPERTIES2
 void FWrapLayer::GetPhysicalDeviceProperties2KHR(VkResult Result, VkPhysicalDevice PhysicalDevice, VkPhysicalDeviceProperties2KHR* Properties)
 {
@@ -3772,16 +3746,6 @@ void FWrapLayer::GetPhysicalDeviceProperties2KHR(VkResult Result, VkPhysicalDevi
 	{
 #if VULKAN_ENABLE_DUMP_LAYER
 		PrintfBegin(FString::Printf(TEXT("vkGetPhysicalDeviceProperties2KHR(PhysicalDevice=0x%p, Properties=0x%p)[...]"), PhysicalDevice, Properties));
-#endif
-	}
-}
-
-void FWrapLayer::GetPhysicalDeviceFeatures2KHR(VkResult Result, VkPhysicalDevice PhysicalDevice, VkPhysicalDeviceFeatures2KHR* Features)
-{
-	if (Result == VK_RESULT_MAX_ENUM)
-	{
-#if VULKAN_ENABLE_DUMP_LAYER
-		PrintfBegin(FString::Printf(TEXT("vkGetPhysicalDeviceFeatures2KHR(PhysicalDevice=0x%p, Features=0x%p)[...]"), PhysicalDevice, Features));
 #endif
 	}
 }
@@ -4167,10 +4131,6 @@ namespace VulkanRHI
 {
 	void BindDebugLabelName(VkImage Image, const TCHAR* Name)
 	{
-		if(Image == VK_NULL_HANDLE)
-		{
-			return;
-		}
 		FScopeLock ScopeLock(&GTrackingCS);
 		FTrackingImage* Found = GVulkanTrackingImageLayouts.Find(Image);
 		if (Found)

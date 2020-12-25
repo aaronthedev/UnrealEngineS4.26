@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MagicLeapPrivilegeUtils.h"
 #include "MagicLeapPrivilegeTypes.h"
@@ -14,7 +14,6 @@ namespace MagicLeap
 		{
 			PRIVCASE(BatteryInfo)
 			PRIVCASE(CameraCapture)
-			PRIVCASE(ComputerVision)
 			PRIVCASE(WorldReconstruction)
 			PRIVCASE(InAppPurchase)
 			PRIVCASE(AudioCaptureMic)
@@ -34,21 +33,18 @@ namespace MagicLeap
 			PRIVCASE(Documents)
 			PRIVCASE(ConnectBackgroundMusicService)
 			PRIVCASE(RegisterBackgroundMusicService)
-			PRIVCASE(PcfRead)
+			PRIVCASE(PwFoundObjRead)
 			PRIVCASE(NormalNotificationsUsage)
 			PRIVCASE(MusicService)
 			PRIVCASE(ControllerPose)
+			PRIVCASE(ScreensProvider)
 			PRIVCASE(GesturesSubscribe)
 			PRIVCASE(GesturesConfig)
 			PRIVCASE(AddressBookRead)
 			PRIVCASE(AddressBookWrite)
-			PRIVCASE(AddressBookBasicAccess)
 			PRIVCASE(CoarseLocation)
-			PRIVCASE(FineLocation)
 			PRIVCASE(HandMesh)
 			PRIVCASE(WifiStatusRead)
-			PRIVCASE(SocialConnectionsInvitesAccess)
-			PRIVCASE(SecureBrowserWindow)
 		default:
 			UE_LOG(LogMagicLeapPrivileges, Error, TEXT("Unmapped privilege %d"), static_cast<int32>(Privilege));
 			break;
@@ -64,7 +60,6 @@ namespace MagicLeap
 		PRIV_TO_STR_CASE(MLPrivilegeID_Invalid)
 		PRIV_TO_STR_CASE(MLPrivilegeID_BatteryInfo)
 		PRIV_TO_STR_CASE(MLPrivilegeID_CameraCapture)
-		PRIV_TO_STR_CASE(MLPrivilegeID_ComputerVision)
 		PRIV_TO_STR_CASE(MLPrivilegeID_WorldReconstruction)
 		PRIV_TO_STR_CASE(MLPrivilegeID_InAppPurchase)
 		PRIV_TO_STR_CASE(MLPrivilegeID_AudioCaptureMic)
@@ -84,21 +79,19 @@ namespace MagicLeap
 		PRIV_TO_STR_CASE(MLPrivilegeID_Documents)
 		PRIV_TO_STR_CASE(MLPrivilegeID_ConnectBackgroundMusicService)
 		PRIV_TO_STR_CASE(MLPrivilegeID_RegisterBackgroundMusicService)
-		PRIV_TO_STR_CASE(MLPrivilegeID_PcfRead)
+		PRIV_TO_STR_CASE(MLPrivilegeID_PwFoundObjRead)
 		PRIV_TO_STR_CASE(MLPrivilegeID_NormalNotificationsUsage)
 		PRIV_TO_STR_CASE(MLPrivilegeID_MusicService)
 		PRIV_TO_STR_CASE(MLPrivilegeID_ControllerPose)
+		PRIV_TO_STR_CASE(MLPrivilegeID_ScreensProvider)
 		PRIV_TO_STR_CASE(MLPrivilegeID_GesturesSubscribe)
 		PRIV_TO_STR_CASE(MLPrivilegeID_GesturesConfig)
 		PRIV_TO_STR_CASE(MLPrivilegeID_AddressBookRead)
 		PRIV_TO_STR_CASE(MLPrivilegeID_AddressBookWrite)
-		PRIV_TO_STR_CASE(MLPrivilegeID_AddressBookBasicAccess)
 		PRIV_TO_STR_CASE(MLPrivilegeID_CoarseLocation)
-		PRIV_TO_STR_CASE(MLPrivilegeID_FineLocation)
-		PRIV_TO_STR_CASE(MLPrivilegeID_HandMesh)
+		// TODO: @njain uncomment after enum is added to c-api
+		// PRIV_TO_STR_CASE(MLPrivilegeID_HandMesh)
 		PRIV_TO_STR_CASE(MLPrivilegeID_WifiStatusRead)
-		PRIV_TO_STR_CASE(MLPrivilegeID_SocialConnectionsInvitesAccess)
-		PRIV_TO_STR_CASE(MLPrivilegeID_SecureBrowserWindow)
 		default:
 			UE_LOG(LogMagicLeapPrivileges, Error, TEXT("Unmapped privilege %d"), static_cast<int32>(PrivilegeID));
 			break;

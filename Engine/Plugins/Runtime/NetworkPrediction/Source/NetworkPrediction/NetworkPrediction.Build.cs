@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -9,8 +9,7 @@ namespace UnrealBuildTool.Rules
 			PublicIncludePaths.AddRange(
 				new string[] {
                     ModuleDirectory + "/Public",
-                    "Runtime/TraceLog/Public",
-                }
+				}
 				);
 
 			PrivateIncludePaths.AddRange(
@@ -26,16 +25,13 @@ namespace UnrealBuildTool.Rules
 					"CoreUObject",
                     "Engine",
                     "RenderCore",
-					"PhysicsCore",
-					"Chaos",
 				}
 				);
 
 			PrivateDependencyModuleNames.AddRange(
 				new string[]
 				{
-					"TraceLog"					
-                }
+				}
 				);
 
 			DynamicallyLoadedModuleNames.AddRange(
@@ -44,17 +40,6 @@ namespace UnrealBuildTool.Rules
 				}
 				);
 
-
-
-            // Only needed for the PIE delegate in FNetworkPredictionModule::StartupModule
-            if (Target.Type == TargetType.Editor) {
-                PrivateDependencyModuleNames.AddRange(
-                new string[]
-                {
-                    "UnrealEd",
-                });
-            }
-
-        }
+		}
 	}
 }

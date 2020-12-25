@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Modules/ModuleInterface.h"
@@ -71,6 +71,8 @@ UGeneralProjectSettings::UGeneralProjectSettings( const FObjectInitializer& Obje
 	, bShouldWindowPreserveAspectRatio(true)
 	, bUseBorderlessWindow(false)
 	, bStartInVR(false)
+	, bStartInAR_DEPRECATED(false)
+	, bSupportAR_DEPRECATED(false)
 	, bAllowWindowResize(true)
 	, bAllowClose(true)
 	, bAllowMaximize(true)
@@ -251,7 +253,7 @@ void UGameMapsSettings::PostInitProperties()
 	FixMapAssetRef(TransitionMap);
 }
 
-void UGameMapsSettings::PostReloadConfig( FProperty* PropertyThatWasLoaded )
+void UGameMapsSettings::PostReloadConfig( UProperty* PropertyThatWasLoaded )
 {
 	if (PropertyThatWasLoaded)
 	{

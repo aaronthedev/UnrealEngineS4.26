@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PackageTools.h: Object-related utilities
@@ -15,26 +15,12 @@ class ULevel;
 class FPackageReloadedEvent;
 enum class EPackageReloadPhase : uint8;
 
-UENUM()
-enum class EReloadPackagesInteractionMode : uint8
-{
-	/** Interactive, ask the user what to do */
-	Interactive,
-
-	/** Non-interactive, assume a positive response */
-	AssumePositive,
-
-	/** Non-interactive, assume a negative response */
-	AssumeNegative,
-};
-
 UCLASS(Abstract)
 class UNREALED_API UPackageTools : public UObject
 {
 	GENERATED_UCLASS_BODY()
 
 public:
-	using EReloadPackagesInteractionMode = ::EReloadPackagesInteractionMode;
 
 	/**
 	 * Filters the global set of packages.
@@ -91,6 +77,18 @@ public:
 	 * @return	true if the set of loaded packages was changed
 	 */
 	static bool UnloadPackages( const TArray<UPackage*>& PackagesToUnload, FText& OutErrorMessage );
+
+	enum class EReloadPackagesInteractionMode : uint8
+	{
+		/** Interactive, ask the user what to do */
+		Interactive,
+
+		/** Non-interactive, assume a positive response */
+		AssumePositive,
+
+		/** Non-interactive, assume a negative response */
+		AssumeNegative,
+	};
 
 	/**
 	 * Helper function that attempts to reload the specified top-level packages.
@@ -180,15 +178,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Editor Scripting | Package Tools")
 	static FString SanitizePackageName(const FString& InPackageName);
 
-	/**
-	 * Find or create a package at the desired path
-	 * If a package already exist but was made for another type of asset,
-	 * this function will create another one with a modified unique name
-	 * @param LongPackageName The package path in unreal asset path
-	 * @param AssetClass The class of asset the package should be for.
-	 */
-	static UPackage* FindOrCreatePackageForAssetType(const FName LongPackageName, UClass* AssetClass);
-
 private:
 	static void RestoreStandaloneOnReachableObjects();
 
@@ -201,3 +190,4 @@ private:
 
 UE_DEPRECATED(4.21, "PackageTools namespace has been deprecated. Please use UPackageTools instead.") 
 typedef UPackageTools PackageTools;
+

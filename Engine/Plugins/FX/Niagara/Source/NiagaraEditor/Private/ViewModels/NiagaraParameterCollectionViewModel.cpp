@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraParameterCollectionViewModel.h"
 #include "NiagaraParameterViewModel.h"
@@ -24,17 +24,6 @@ void INiagaraParameterCollectionViewModel::SortViewModels(TArray<TSharedRef<INia
 		return A->GetName().ToString() < B->GetName().ToString();
 	};
 	InOutViewModels.Sort(SortVars);
-}
-
-TArray<TSharedPtr<FNiagaraTypeDefinition>> INiagaraParameterCollectionViewModel::GetAvailableTypesSorted()
-{
-	TArray<TSharedPtr<FNiagaraTypeDefinition>> AvailableTypes = GetAvailableTypes();
-	FText::FSortPredicate SortPredicate;
-	AvailableTypes.Sort([SortPredicate](const TSharedPtr<FNiagaraTypeDefinition>& A, const TSharedPtr<FNiagaraTypeDefinition>& B)
-    {
-        return SortPredicate(A->GetNameText(), B->GetNameText());
-    });
-	return AvailableTypes;
 }
 
 FNiagaraParameterCollectionViewModel::FNiagaraParameterCollectionViewModel(ENiagaraParameterEditMode InParameterEditMode)

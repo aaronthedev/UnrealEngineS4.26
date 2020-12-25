@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -17,21 +17,21 @@ struct FMovieSceneCameraShakeSectionData
 	FMovieSceneCameraShakeSectionData()
 		: ShakeClass(nullptr)
 		, PlayScale(1.f)
-		, PlaySpace(ECameraShakePlaySpace::CameraLocal)
+		, PlaySpace(ECameraAnimPlaySpace::CameraLocal)
 		, UserDefinedPlaySpace(ForceInitToZero)
 	{
 	}
 
 	/** Class of the camera shake to play */
 	UPROPERTY(EditAnywhere, Category = "Camera Shake")
-	TSubclassOf<UMatineeCameraShake> ShakeClass;
+	TSubclassOf<UCameraShake> ShakeClass;
 
 	/** Scalar that affects shake intensity */
 	UPROPERTY(EditAnywhere, Category = "Camera Shake")
 	float PlayScale;
 
 	UPROPERTY(EditAnywhere, Category = "Camera Shake")
-	ECameraShakePlaySpace PlaySpace;
+	TEnumAsByte<ECameraAnimPlaySpace::Type> PlaySpace;
 
 	UPROPERTY(EditAnywhere, Category = "Camera Shake")
 	FRotator UserDefinedPlaySpace;
@@ -49,6 +49,7 @@ public:
 
 	UMovieSceneCameraShakeSection(const FObjectInitializer& ObjectInitializer);
 
+	virtual FMovieSceneEvalTemplatePtr GenerateTemplate() const override;
 	virtual void PostLoad() override;
 	
 	UPROPERTY(EditAnywhere, Category="Camera Shake", meta=(ShowOnlyInnerProperties))
@@ -56,13 +57,13 @@ public:
 
 public:
 	UPROPERTY()
-	TSubclassOf<UMatineeCameraShake> ShakeClass_DEPRECATED;
+	TSubclassOf<UCameraShake> ShakeClass_DEPRECATED;
 	
 	UPROPERTY()
 	float PlayScale_DEPRECATED;
 
 	UPROPERTY()
-	ECameraShakePlaySpace PlaySpace_DEPRECATED;
+	TEnumAsByte<ECameraAnimPlaySpace::Type> PlaySpace_DEPRECATED;
 
 	UPROPERTY()
 	FRotator UserDefinedPlaySpace_DEPRECATED;

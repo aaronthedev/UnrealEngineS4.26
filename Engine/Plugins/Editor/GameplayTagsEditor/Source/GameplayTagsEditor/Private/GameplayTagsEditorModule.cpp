@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayTagsEditorModule.h"
 #include "Misc/Paths.h"
@@ -19,7 +19,6 @@
 #include "GameplayTagsSettingsCustomization.h"
 #include "GameplayTagsModule.h"
 #include "ISettingsModule.h"
-#include "ISettingsEditorModule.h"
 #include "Widgets/Notifications/SNotificationList.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "AssetRegistryModule.h"
@@ -29,7 +28,9 @@
 #include "HAL/PlatformFile.h"
 #include "HAL/PlatformFilemanager.h"
 #include "Stats/StatsMisc.h"
+#include "GameplayTagReferenceHelperDetails.h"
 #include "UObject/UObjectHash.h"
+#include "GameplayTagReferenceHelperDetails.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/FileHelper.h"
 
@@ -56,9 +57,11 @@ public:
 			PropertyModule.RegisterCustomPropertyTypeLayout("GameplayTagContainer", FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FGameplayTagContainerCustomization::MakeInstance));
 			PropertyModule.RegisterCustomPropertyTypeLayout("GameplayTag", FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FGameplayTagCustomizationPublic::MakeInstance));
 			PropertyModule.RegisterCustomPropertyTypeLayout("GameplayTagQuery", FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FGameplayTagQueryCustomization::MakeInstance));
-			PropertyModule.RegisterCustomPropertyTypeLayout("GameplayTagCreationWidgetHelper", FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FGameplayTagCreationWidgetHelperDetails::MakeInstance));
 
 			PropertyModule.RegisterCustomClassLayout(UGameplayTagsSettings::StaticClass()->GetFName(), FOnGetDetailCustomizationInstance::CreateStatic(&FGameplayTagsSettingsCustomization::MakeInstance));
+
+			PropertyModule.RegisterCustomPropertyTypeLayout("GameplayTagReferenceHelper", FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FGameplayTagReferenceHelperDetails::MakeInstance));
+			PropertyModule.RegisterCustomPropertyTypeLayout("GameplayTagCreationWidgetHelper", FOnGetPropertyTypeCustomizationInstance::CreateStatic(&FGameplayTagCreationWidgetHelperDetails::MakeInstance));
 
 			PropertyModule.NotifyCustomizationModuleChanged();
 		}
@@ -135,15 +138,6 @@ public:
 		MigrateSettings();
 	}
 
-	void WarnAboutRestart()
-	{
-		ISettingsEditorModule* SettingsEditorModule = FModuleManager::GetModulePtr<ISettingsEditorModule>("SettingsEditor");
-		if (SettingsEditorModule)
-		{
-			SettingsEditorModule->OnApplicationRestartRequired();
-		}
-	}
-
 	void OnPackageSaved(const FString& PackageFileName, UObject* PackageObj)
 	{
 		if (GIsEditor && !IsRunningCommandlet())
@@ -154,7 +148,7 @@ public:
 
 			TArray<UObject*> Objects;
 			const bool bIncludeNestedObjects = false;
-			GetObjectsWithPackage(Cast<UPackage>(PackageObj), Objects, bIncludeNestedObjects);
+			GetObjectsWithOuter(PackageObj, Objects, bIncludeNestedObjects);
 			for (UObject* Entry : Objects)
 			{
 				if (UDataTable* DataTable = Cast<UDataTable>(Entry))
@@ -321,8 +315,6 @@ public:
 				Manager.EditorRefreshGameplayTagTree();
 
 				ShowNotification(FText::Format(LOCTEXT("RemoveTagRedirect", "Deleted tag redirect {0}"), FText::FromName(TagToDelete)), 5.0f);
-
-				WarnAboutRestart();
 
 				return true;
 			}
@@ -581,7 +573,7 @@ public:
 			TArray<FAssetIdentifier> Referencers;
 
 			FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
-			AssetRegistryModule.Get().GetReferencers(TagId, Referencers, UE::AssetRegistry::EDependencyCategory::SearchableName);
+			AssetRegistryModule.Get().GetReferencers(TagId, Referencers, EAssetRegistryDependencyType::SearchableName);
 
 			if (Referencers.Num() > 0)
 			{
@@ -784,8 +776,6 @@ public:
 
 		Manager.EditorRefreshGameplayTagTree();
 
-		WarnAboutRestart();
-
 		return true;
 	}
 
@@ -866,7 +856,7 @@ public:
 		{
 			TArray<FAssetIdentifier> Referencers;
 			FAssetIdentifier TagId = FAssetIdentifier(FGameplayTag::StaticStruct(), Tag.GetTagName());
-			AssetRegistryModule.Get().GetReferencers(TagId, Referencers, UE::AssetRegistry::EDependencyCategory::SearchableName);
+			AssetRegistryModule.Get().GetReferencers(TagId, Referencers, EAssetRegistryDependencyType::SearchableName);
 
 			FString Comment;
 			FName TagSource;

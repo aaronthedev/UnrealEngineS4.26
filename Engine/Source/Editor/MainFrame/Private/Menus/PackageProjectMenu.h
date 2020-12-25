@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -16,7 +16,6 @@
 #include "Interfaces/IProjectManager.h"
 #include "InstalledPlatformInfo.h"
 #include "Misc/DataDrivenPlatformInfoRegistry.h"
-#include "Misc/ConfigCacheIni.h"
 #include "DesktopPlatformModule.h"
 
 #define LOCTEXT_NAMESPACE "FPackageProjectMenu"
@@ -65,15 +64,6 @@ public:
 
 			// Make sure we're able to run this platform
 			if (VanillaPlatform.PlatformInfo->bIsConfidential && !ConfidentalPlatforms.Contains(VanillaPlatform.PlatformInfo->IniPlatformName))
-			{
-				continue;
-			}
-
-			// windows target version needs special handling
-			bool bTargetWin32 = false;
-			GConfig->GetBool(TEXT("/Script/WindowsTargetPlatform.WindowsTargetSettings"), TEXT("bTarget32Bit"), bTargetWin32, GEngineIni);
-			// if we are targeting 32-bit, only show 32-bit option, for Windows
-			if ((VanillaPlatform.PlatformInfo->UBTTargetId == TEXT("Win32") && !bTargetWin32) || (VanillaPlatform.PlatformInfo->UBTTargetId == TEXT("Win64") && bTargetWin32))
 			{
 				continue;
 			}

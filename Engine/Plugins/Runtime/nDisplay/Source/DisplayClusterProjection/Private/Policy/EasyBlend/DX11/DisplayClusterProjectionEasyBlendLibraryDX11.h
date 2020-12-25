@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,20 +7,16 @@
 #include "RHI.h"
 #include "RHIResources.h"
 
-#if PLATFORM_WINDOWS
 #include "Windows/AllowWindowsPlatformTypes.h"
 #include "DirectX/Include/DXGI.h"
 #include "Windows/HideWindowsPlatformTypes.h"
-#endif
 
 #include "D3D11RHI/Private/Windows/D3D11RHIBasePrivate.h"
 
-THIRD_PARTY_INCLUDES_START
 #include "EasyBlendSDKDXVer.h"
 #include "EasyBlendSDKDXErrors.h"
 #include "EasyBlendSDKFrustum.h"
 #include "EasyBlendSDKDXStructs.h"
-THIRD_PARTY_INCLUDES_END
 
 
 struct EasyBlendSDKDX_Mesh;

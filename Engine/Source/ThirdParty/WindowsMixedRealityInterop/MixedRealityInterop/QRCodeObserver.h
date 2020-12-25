@@ -1,15 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
-#include <winrt/base.h>
 #include <winrt/Windows.Perception.Spatial.h>
 #include <winrt/Windows.Perception.Spatial.Surfaces.h>
-#include <winrt/Microsoft.MixedReality.QR.h>
 
-using namespace winrt::Windows::Perception::Spatial;
-using namespace winrt::Windows::Perception::Spatial::Surfaces;
-using namespace winrt::Microsoft::MixedReality::QR;
+using namespace Windows::Perception::Spatial;
+using namespace Windows::Perception::Spatial::Surfaces;
+using namespace Platform;
 
 /**
  * The QR code observer singleton that notifies UE4 of changes
@@ -24,7 +22,7 @@ public:
 	void SetOnLog(void(*FunctionPointer)(const wchar_t* LogMsg));
 
 	void StartQRCodeObserver(void(*AddedFunctionPointer)(QRCodeData*), void(*UpdatedFunctionPointer)(QRCodeData*), void(*RemovedFunctionPointer)(QRCodeData*));
-	void UpdateCoordinateSystem(winrt::Windows::Perception::Spatial::SpatialCoordinateSystem InCoordinateSystem);
+	void UpdateCoordinateSystem(Windows::Perception::Spatial::SpatialCoordinateSystem^ InCoordinateSystem);
 	void StopQRCodeObserver();
 
 	void Log(const wchar_t* LogMsg);
@@ -46,9 +44,9 @@ private:
 	static QRCodeUpdateObserver* ObserverInstance;
 
 	// WinRT handlers
-	static void OnAdded(QRCodeWatcher sender, QRCodeAddedEventArgs args);
-	static void OnUpdated(QRCodeWatcher sender, QRCodeUpdatedEventArgs args);
-	static void OnRemoved(QRCodeWatcher sender, QRCodeRemovedEventArgs args);
+	static void OnAdded(QRCodesTrackerPlugin::QRCodeAddedEventArgs ^args);
+	static void OnUpdated(QRCodesTrackerPlugin::QRCodeUpdatedEventArgs ^args);
+	static void OnRemoved(QRCodesTrackerPlugin::QRCodeRemovedEventArgs ^args);
 
-	QRCodeWatcher QRTrackerInstance = nullptr;
+	QRCodesTrackerPlugin::QRTracker^ QRTrackerInstance;
 };

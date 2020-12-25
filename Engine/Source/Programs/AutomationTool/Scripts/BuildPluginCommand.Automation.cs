@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -20,7 +20,6 @@ using System.Text;
 class BuildPlugin : BuildCommand
 {
 	const string AndroidArchitectures = "armv7+arm64";
-	const string HoloLensArchitecture = "arm64+x64";
 
 	public override void ExecuteBuild()
 	{
@@ -47,9 +46,6 @@ class BuildPlugin : BuildCommand
 
 		// Option for verifying that all include directive s
 		bool bStrictIncludes = ParseParam("StrictIncludes");
-
-		// Whether to use VS2019 for compiling all targets. By default, we currently use 2017 for compiling static libraries for maximum compatibility.
-		bool bVS2019 = ParseParam("VS2019");
 
 		// Make sure the packaging directory is valid
 		DirectoryReference PackageDir = new DirectoryReference(PackageParam);
@@ -108,7 +104,7 @@ class BuildPlugin : BuildCommand
 		// Compile the plugin for all the target platforms
 		List<UnrealTargetPlatform> HostPlatforms = ParseParam("NoHostPlatform")? new List<UnrealTargetPlatform>() : new List<UnrealTargetPlatform> { BuildHostPlatform.Current.Platform };
 		List<UnrealTargetPlatform> TargetPlatforms = GetTargetPlatforms(this, BuildHostPlatform.Current.Platform);
-		FileReference[] BuildProducts = CompilePlugin(HostProjectFile, HostProjectPluginFile, Plugin, HostPlatforms, TargetPlatforms, AdditionalArgs.ToString(), bVS2019);
+		FileReference[] BuildProducts = CompilePlugin(HostProjectFile, HostProjectPluginFile, Plugin, HostPlatforms, TargetPlatforms, AdditionalArgs.ToString());
 
 		// Package up the final plugin data
 		PackagePlugin(HostProjectPluginFile, BuildProducts, PackageDir, ParseParam("unversioned"));
@@ -137,7 +133,7 @@ class BuildPlugin : BuildCommand
 		return FileReference.Combine(HostProjectPluginDir, PluginFile.GetFileName());
 	}
 
-	FileReference[] CompilePlugin(FileReference HostProjectFile, FileReference HostProjectPluginFile, PluginDescriptor Plugin, List<UnrealTargetPlatform> HostPlatforms, List<UnrealTargetPlatform> TargetPlatforms, string AdditionalArgs, bool bVS2019)
+	FileReference[] CompilePlugin(FileReference HostProjectFile, FileReference HostProjectPluginFile, PluginDescriptor Plugin, List<UnrealTargetPlatform> HostPlatforms, List<UnrealTargetPlatform> TargetPlatforms, string AdditionalArgs)
 	{
 		List<FileReference> ManifestFileNames = new List<FileReference>();
 
@@ -163,9 +159,8 @@ class BuildPlugin : BuildCommand
 			{
 				if(Plugin.SupportsTargetPlatform(TargetPlatform))
 				{
-					string AdditionalTargetArgs = AdditionalArgs + (bVS2019 ? "" : " -2017");
-					CompilePluginWithUBT(HostProjectFile, HostProjectPluginFile, Plugin, "UE4Game", TargetType.Game, TargetPlatform, UnrealTargetConfiguration.Development, ManifestFileNames, AdditionalTargetArgs);
-					CompilePluginWithUBT(HostProjectFile, HostProjectPluginFile, Plugin, "UE4Game", TargetType.Game, TargetPlatform, UnrealTargetConfiguration.Shipping, ManifestFileNames, AdditionalTargetArgs);
+					CompilePluginWithUBT(HostProjectFile, HostProjectPluginFile, Plugin, "UE4Game", TargetType.Game, TargetPlatform, UnrealTargetConfiguration.Development, ManifestFileNames, AdditionalArgs);
+					CompilePluginWithUBT(HostProjectFile, HostProjectPluginFile, Plugin, "UE4Game", TargetType.Game, TargetPlatform, UnrealTargetConfiguration.Shipping, ManifestFileNames, AdditionalArgs);
 				}
 			}
 		}
@@ -186,11 +181,10 @@ class BuildPlugin : BuildCommand
 		bool bCompilePlatform = false;
 		if (Plugin.Modules != null)
 		{
-			bool bBuildDeveloperTools = (TargetType == TargetType.Editor || TargetType == TargetType.Program || (Configuration != UnrealTargetConfiguration.Test && Configuration != UnrealTargetConfiguration.Shipping));
-			bool bBuildRequiresCookedData = (TargetType != TargetType.Editor && TargetType != TargetType.Program);
-
 			foreach (ModuleDescriptor Module in Plugin.Modules)
 			{
+				bool bBuildDeveloperTools = (TargetType == TargetType.Editor || TargetType == TargetType.Program);
+				bool bBuildRequiresCookedData = (TargetType != TargetType.Editor && TargetType != TargetType.Program);
 				if (Module.IsCompiledInConfiguration(Platform, Configuration, TargetName, TargetType, bBuildDeveloperTools, bBuildRequiresCookedData))
 				{
 					bCompilePlatform = true;
@@ -201,42 +195,20 @@ class BuildPlugin : BuildCommand
 		// Add these modules to the build agenda
 		if(bCompilePlatform)
 		{
-			if (Platform == UnrealTargetPlatform.HoloLens)
+			FileReference ManifestFileName = FileReference.Combine(HostProjectFile.Directory, "Saved", String.Format("Manifest-{0}-{1}-{2}.xml", TargetName, Platform, Configuration));
+			ManifestFileNames.Add(ManifestFileName);
+			
+			string Arguments = String.Format("-plugin={0} -iwyu -noubtmakefiles -manifest={1} -nohotreload", CommandUtils.MakePathSafeToUseWithCommandLine(HostProjectPluginFile.FullName), CommandUtils.MakePathSafeToUseWithCommandLine(ManifestFileName.FullName));
+			if (Platform == UnrealTargetPlatform.Android)
 			{
-				// Make sure to save the manifests for each architecture with unique names so they don't get overwritten.
-				// This fixes packaging issues when building from binary engine releases, where the build produces a manifest for the plugin for ARM64, which
-				// then gets overwritten by the manifest for x64. Then during packaging, the plugin is referencing a manifest for the wrong architecture.
-				foreach (string Arch in HoloLensArchitecture.Split('+'))
-				{
-					FileReference ManifestFileName = FileReference.Combine(HostProjectFile.Directory, "Saved", String.Format("Manifest-{0}-{1}-{2}-{3}.xml", TargetName, Platform, Configuration, Arch));
-					ManifestFileNames.Add(ManifestFileName);
-					string Arguments = String.Format("-plugin={0} -iwyu -noubtmakefiles -manifest={1} -nohotreload", CommandUtils.MakePathSafeToUseWithCommandLine(HostProjectPluginFile.FullName), CommandUtils.MakePathSafeToUseWithCommandLine(ManifestFileName.FullName));
-					Arguments += String.Format(" -Architecture={0}", Arch);
-					if (!String.IsNullOrEmpty(InAdditionalArgs))
-					{
-						Arguments += InAdditionalArgs;
-					}
-					CommandUtils.RunUBT(CmdEnv, UE4Build.GetUBTExecutable(), HostProjectFile, TargetName, Platform, Configuration, Arguments);
-				}
+				Arguments += String.Format(" -architectures={0}", AndroidArchitectures);
 			}
-			else
+			if(!String.IsNullOrEmpty(InAdditionalArgs))
 			{
-				FileReference ManifestFileName = FileReference.Combine(HostProjectFile.Directory, "Saved", String.Format("Manifest-{0}-{1}-{2}.xml", TargetName, Platform, Configuration));
-				ManifestFileNames.Add(ManifestFileName);
-				
-				string Arguments = String.Format("-plugin={0} -iwyu -noubtmakefiles -manifest={1} -nohotreload", CommandUtils.MakePathSafeToUseWithCommandLine(HostProjectPluginFile.FullName), CommandUtils.MakePathSafeToUseWithCommandLine(ManifestFileName.FullName));
-				if (Platform == UnrealTargetPlatform.Android)
-				{
-					Arguments += String.Format(" -architectures={0}", AndroidArchitectures);
-				}
-
-				if (!String.IsNullOrEmpty(InAdditionalArgs))
-				{
-					Arguments += InAdditionalArgs;
-				}
-
-				CommandUtils.RunUBT(CmdEnv, UE4Build.GetUBTExecutable(), HostProjectFile, TargetName, Platform, Configuration, Arguments);
+				Arguments += InAdditionalArgs;
 			}
+
+			CommandUtils.RunUBT(CmdEnv, UE4Build.GetUBTExecutable(), HostProjectFile, TargetName, Platform, Configuration, Arguments);
 		}
 	}
 
@@ -339,7 +311,7 @@ class BuildPlugin : BuildCommand
 					UnrealTargetPlatform TargetPlatform;
 					if (!UnrealTargetPlatform.TryParse(TargetPlatformName, out TargetPlatform))
 					{
-						throw new AutomationException("Unknown target platform '{0}' specified on command line", TargetPlatformName);
+						throw new AutomationException("Unknown target platform '{0}' specified on command line");
 					}
 					if(TargetPlatforms.Contains(TargetPlatform))
 					{

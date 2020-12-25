@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -11,9 +11,6 @@
 #include "Widgets/SCompoundWidget.h"
 #include "SViewportToolBar.h"
 #include "Framework/SlateDelegates.h"
-#include "Styling/SlateTypes.h"
-#include "EditorStyleSet.h"
-#include "Styling/SlateWidgetStyleAsset.h"
 
 class SMenuAnchor;
 struct FSlateBrush;
@@ -35,13 +32,9 @@ namespace EMenuItemType
 class UNREALED_API SEditorViewportToolbarMenu : public SCompoundWidget
 {
 public:
-	SLATE_BEGIN_ARGS( SEditorViewportToolbarMenu )
-		: _MenuStyle(&FEditorStyle::Get().GetWidgetStyle<FButtonStyle>("EditorViewportToolBar.MenuButton"))
-	{}
+	SLATE_BEGIN_ARGS( SEditorViewportToolbarMenu ){}
 		/** We need to know about the toolbar we are in */
 		SLATE_ARGUMENT( TSharedPtr<class SViewportToolBar>, ParentToolBar );
-		/** Style to use */
-		SLATE_STYLE_ARGUMENT(FButtonStyle, MenuStyle)
 		/** The label to show in the menu */
 		SLATE_ATTRIBUTE( FText, Label )
 		/** Optional icon to display next to the label */
@@ -56,12 +49,6 @@ public:
 	 * Constructs the menu
 	 */
 	void Construct( const FArguments& Declaration );
-
-	/**
-	 * Returns parent tool bar
-	 */
-	TWeakPtr<class SViewportToolBar> GetParentToolBar() const;
-
 private:
 	/**
 	 * Called when the menu button is clicked.  Will toggle the visibility of the menu content                   
@@ -79,9 +66,6 @@ private:
 protected:
 	/** Parent tool bar for querying other open menus */
 	TWeakPtr<class SViewportToolBar> ParentToolBar;
-
-	/** Name of tool menu */
-	FName MenuName;
 
 private:
 	/** Our menus anchor */

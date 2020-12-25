@@ -210,8 +210,6 @@ void AbcReader::makeCurrentObject()
     }
 
     m_indices.clear();
-    m_texIndices.clear();
-    m_normIndices.clear();
     m_counts.clear();
     m_currentObjectName = "";
 }

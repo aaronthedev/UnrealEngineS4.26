@@ -1,6 +1,6 @@
 /*
   Simple DirectMedia Layer
-  Copyright (C) 1997-2020 Sam Lantinga <slouken@libsdl.org>
+  Copyright (C) 1997-2019 Sam Lantinga <slouken@libsdl.org>
 
   This software is provided 'as-is', without any express or implied
   warranty.  In no event will the authors be held liable for any damages
@@ -39,9 +39,6 @@ static SDL_SensorDriver *SDL_sensor_drivers[] = {
 #ifdef SDL_SENSOR_COREMOTION
     &SDL_COREMOTION_SensorDriver,
 #endif
-#ifdef SDL_SENSOR_WINDOWS
-	&SDL_WINDOWS_SensorDriver,
-#endif
 #if defined(SDL_SENSOR_DUMMY) || defined(SDL_SENSOR_DISABLED)
     &SDL_DUMMY_SensorDriver
 #endif
@@ -51,7 +48,7 @@ static SDL_bool SDL_updating_sensor = SDL_FALSE;
 static SDL_mutex *SDL_sensor_lock = NULL; /* This needs to support recursive locks */
 static SDL_atomic_t SDL_next_sensor_instance_id;
 
-void
+static void
 SDL_LockSensors(void)
 {
     if (SDL_sensor_lock) {
@@ -59,7 +56,7 @@ SDL_LockSensors(void)
     }
 }
 
-void
+static void
 SDL_UnlockSensors(void)
 {
     if (SDL_sensor_lock) {
@@ -489,7 +486,7 @@ SDL_PrivateSensorUpdate(SDL_Sensor *sensor, float *data, int num_values)
     /* Post the event, if desired */
     posted = 0;
 #if !SDL_EVENTS_DISABLED
-    if (SDL_GetEventState(SDL_SENSORUPDATE) == SDL_ENABLE) {
+    if (SDL_GetEventState(SDL_JOYAXISMOTION) == SDL_ENABLE) {
         SDL_Event event;
         event.type = SDL_SENSORUPDATE;
         event.sensor.which = sensor->instance_id;
@@ -506,7 +503,7 @@ void
 SDL_SensorUpdate(void)
 {
     int i;
-    SDL_Sensor *sensor, *next;
+    SDL_Sensor *sensor;
 
     if (!SDL_WasInit(SDL_INIT_SENSOR)) {
         return;
@@ -534,8 +531,7 @@ SDL_SensorUpdate(void)
     SDL_updating_sensor = SDL_FALSE;
 
     /* If any sensors were closed while updating, free them here */
-    for (sensor = SDL_sensors; sensor; sensor = next) {
-        next = sensor->next;
+    for (sensor = SDL_sensors; sensor; sensor = sensor->next) {
         if (sensor->ref_count <= 0) {
             SDL_SensorClose(sensor);
         }

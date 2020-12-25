@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "StereoRendering.h"
 #include "SceneView.h"
@@ -104,18 +104,4 @@ bool IStereoRendering::IsAnAdditionalView(const FSceneView& View)
 bool IStereoRendering::DeviceIsAnAdditionalView(const FSceneView& View)
 {
 	return View.StereoPass > EStereoscopicPass::eSSP_RIGHT_EYE;
-}
-
-uint32 IStereoRendering::GetLODViewIndex()
-{
-	if (GEngine->StereoRenderingDevice.IsValid())
-	{
-		return GEngine->StereoRenderingDevice->DeviceGetLODViewIndex();
-	}
-	return 0;
-}
-
-uint32 IStereoRendering::DeviceGetLODViewIndex() const
-{
-	return 0;
 }

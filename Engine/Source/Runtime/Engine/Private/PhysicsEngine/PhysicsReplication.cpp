@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PhysicsReplication.cpp: Code for updating body instance physics state based on replication
@@ -191,8 +191,7 @@ bool FPhysicsReplication::ApplyRigidBodyState(float DeltaSeconds, FBodyInstance*
 	float AngDiff;
 	const FQuat DeltaQuat = InvCurrentQuat * TargetQuat;
 	DeltaQuat.ToAxisAndAngle(AngDiffAxis, AngDiff);
-	AngDiff = FMath::RadiansToDegrees(FMath::UnwindRadians(AngDiff));
-	const float AngDiffSize = FMath::Abs(AngDiff);
+	AngDiff = FMath::Abs(FMath::RadiansToDegrees(FMath::UnwindRadians(AngDiff)));
 
 	/////// ACCUMULATE ERROR IF NOT APPROACHING SOLUTION ///////
 
@@ -201,7 +200,7 @@ bool FPhysicsReplication::ApplyRigidBodyState(float DeltaSeconds, FBodyInstance*
 	const bool bWasAwake = BI->IsInstanceAwake();
 	const bool bAutoWake = false;
 
-	const float Error = (LinDiffSize * ErrorPerLinearDiff) + (AngDiffSize * ErrorPerAngularDiff);
+	const float Error = (LinDiffSize * ErrorPerLinearDiff) + (AngDiff * ErrorPerAngularDiff);
 	bRestoredState = Error < MaxRestoredStateError;
 	if (bRestoredState)
 	{

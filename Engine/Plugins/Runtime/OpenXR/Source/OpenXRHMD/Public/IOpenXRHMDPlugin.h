@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,7 +10,7 @@
  * The public interface to this module.  In most cases, this interface is only public to sibling modules 
  * within this plugin.
  */
-class OPENXRHMD_API IOpenXRHMDPlugin : public IHeadMountedDisplayModule
+class IOpenXRHMDPlugin : public IHeadMountedDisplayModule
 {
 
 public:
@@ -35,10 +35,4 @@ public:
 	{
 		return FModuleManager::Get().IsModuleLoaded( "OpenXRHMD" );
 	}
-
-	virtual bool IsExtensionAvailable(const FString& Name) const = 0;
-	virtual bool IsExtensionEnabled(const FString& Name) const = 0;
-
-	virtual bool IsLayerAvailable(const FString& Name) const = 0;
-	virtual bool IsLayerEnabled(const FString& Name) const = 0;
 };

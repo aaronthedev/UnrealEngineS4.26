@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TranslationPickerFloatingWindow.h"
 #include "Internationalization/Culture.h"
@@ -48,8 +48,6 @@ public:
 
 		return false;
 	}
-
-	virtual const TCHAR* GetDebugName() const override { return TEXT("TranslationPicker"); }
 
 private:
 	STranslationPickerFloatingWindow* Owner;

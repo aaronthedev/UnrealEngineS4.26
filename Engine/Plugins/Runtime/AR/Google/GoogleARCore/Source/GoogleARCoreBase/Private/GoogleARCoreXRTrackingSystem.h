@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "XRTrackingSystemBase.h"
@@ -8,19 +8,14 @@
 #include "Slate/SceneViewport.h"
 #include "SceneView.h"
 #include "GoogleARCoreDevice.h"
-#include "ARSystemSupportBase.h"
+#include "ARSystem.h"
 #include "ARLightEstimate.h"
 
-class UARTrackedGeometry;
-class FGoogleARCoreXRCamera;
-
-class FGoogleARCoreXRTrackingSystem : public FARSystemSupportBase, public FXRTrackingSystemBase, public FGCObject, public TSharedFromThis<FGoogleARCoreXRTrackingSystem, ESPMode::ThreadSafe>
+class FGoogleARCoreXRTrackingSystem : public IARSystemSupport, public FXRTrackingSystemBase, public FGCObject, public TSharedFromThis<FGoogleARCoreXRTrackingSystem, ESPMode::ThreadSafe>
 {
 	friend class FGoogleARCoreXRCamera;
 
 public:
-	static FGoogleARCoreXRTrackingSystem* GetInstance();
-	
 	FGoogleARCoreXRTrackingSystem();
 	~FGoogleARCoreXRTrackingSystem();
 
@@ -31,7 +26,6 @@ public:
 
 	// IXRTrackingSystem
 	virtual FName GetSystemName() const override;
-	virtual int32 GetXRSystemFlags() const override;
 	virtual bool GetCurrentPose(int32 DeviceId, FQuat& OutOrientation, FVector& OutPosition) override;
 	virtual FString GetVersionString() const override;
 	virtual bool EnumerateTrackedDevices(TArray<int32>& OutDevices, EXRTrackedDeviceType Type = EXRTrackedDeviceType::Any) override;
@@ -51,10 +45,6 @@ public:
 
 	bool AddRuntimeGrayscaleImage(UARSessionConfig* SessionConfig, const TArray<uint8>& ImageGrayscalePixels, int ImageWidth, int ImageHeight,
 		FString FriendlyName, float PhysicalWidth);
-	
-	void OnTrackableAdded(UARTrackedGeometry* InTrackedGeometry);
-	void OnTrackableUpdated(UARTrackedGeometry* InTrackedGeometry);
-	void OnTrackableRemoved(UARTrackedGeometry* InTrackedGeometry);
 
 protected:
 	// IARSystemSupport
@@ -74,26 +64,20 @@ protected:
 	virtual bool OnIsTrackingTypeSupported(EARSessionType SessionType) const override;
 	virtual UARLightEstimate* OnGetCurrentLightEstimate() const override;
 
-	virtual UARPin* FindARPinByComponent(const USceneComponent* Component) const override;
 	virtual UARPin* OnPinComponent(USceneComponent* ComponentToPin, const FTransform& PinToWorldTransform, UARTrackedGeometry* TrackedGeometry = nullptr, const FName DebugName = NAME_None) override;
 	virtual void OnRemovePin(UARPin* PinToRemove) override;
-	virtual bool OnTryGetOrCreatePinForNativeResource(void* InNativeResource, const FString& InPinName, UARPin*& OutPin) override;
-
+	virtual UARTextureCameraImage* OnGetCameraImage() override { return nullptr; }
+	virtual UARTextureCameraDepth* OnGetCameraDepth() override { return nullptr; }
 	virtual bool OnAddManualEnvironmentCaptureProbe(FVector Location, FVector Extent) override { return false; }
 	virtual TSharedPtr<FARGetCandidateObjectAsyncTask, ESPMode::ThreadSafe> OnGetCandidateObject(FVector Location, FVector Extent) const override { return TSharedPtr<FARGetCandidateObjectAsyncTask, ESPMode::ThreadSafe>(); }
 	virtual TSharedPtr<FARSaveWorldAsyncTask, ESPMode::ThreadSafe> OnSaveWorld() const override { return TSharedPtr<FARSaveWorldAsyncTask, ESPMode::ThreadSafe>(); }
 // @todo -- support these properly
 	virtual EARWorldMappingState OnGetWorldMappingStatus() const override { return EARWorldMappingState::StillMappingNotRelocalizable; }
-	virtual TArray<FARVideoFormat> OnGetSupportedVideoFormats(EARSessionType SessionType) const override;
+	virtual TArray<FARVideoFormat> OnGetSupportedVideoFormats(EARSessionType SessionType) const override { return TArray<FARVideoFormat>(); }
 	virtual TArray<FVector> OnGetPointCloud() const override;
-	virtual UARTexture* OnGetARTexture(EARTextureType TextureType) const override;
-	bool OnGetCameraIntrinsics(FARCameraIntrinsics& OutCameraIntrinsics) const override;
-	bool OnIsSessionTrackingFeatureSupported(EARSessionType SessionType, EARSessionTrackingFeature SessionTrackingFeature) const override;
 	//~IARSystemSupport
 
 	virtual bool OnAddRuntimeCandidateImage(UARSessionConfig* SessionConfig, UTexture2D* CandidateTexture, FString FriendlyName, float PhysicalWidth) override;
-	
-	FGoogleARCoreXRCamera* GetARCoreCamera();
 
 private:
 	//~ FGCObject
@@ -106,7 +90,6 @@ private:
 	bool bMatchDeviceCameraFOV;
 	bool bEnablePassthroughCameraRendering;
 	bool bHasValidPose;
-	bool bWantsDepthOcclusion = false;
 
 	FVector CachedPosition;
 	FQuat CachedOrientation;

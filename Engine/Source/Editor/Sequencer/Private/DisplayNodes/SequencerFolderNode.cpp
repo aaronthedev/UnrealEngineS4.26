@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DisplayNodes/SequencerFolderNode.h"
 #include "Textures/SlateIcon.h"
@@ -97,8 +97,6 @@ void FSequencerFolderNode::SetDisplayName( const FText& NewDisplayName )
 
 		const FScopedTransaction Transaction( NSLOCTEXT( "SequencerFolderNode", "RenameFolder", "Rename folder." ) );
 		MovieSceneFolder.SetFolderName( UniqueName );
-
-		SetNodeName( UniqueName );
 	}
 }
 

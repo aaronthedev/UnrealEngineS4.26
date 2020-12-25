@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "SAnimCompositePanel.h"
@@ -8,24 +8,14 @@
 #include "SAnimSegmentsPanel.h"
 #include "SAnimCompositeEditor.h"
 #include "Widgets/Layout/SExpandableArea.h"
-#include "AnimModel.h"
-#include "AssetToolsModule.h"
-#include "IAssetTypeActions.h"
-#include "Animation/AnimSequence.h"
-#include "Animation/AnimMontage.h"
 
 #define LOCTEXT_NAMESPACE "AnimCompositePanel"
 
 //////////////////////////////////////////////////////////////////////////
 // SAnimCompositePanel
 
-void SAnimCompositePanel::Construct(const FArguments& InArgs, const TSharedRef<FAnimModel>& InModel)
+void SAnimCompositePanel::Construct(const FArguments& InArgs)
 {
-	if(GEditor)
-	{
-		GEditor->RegisterForUndo(this);
-	}
-
 	SAnimTrackPanel::Construct( SAnimTrackPanel::FArguments()
 		.WidgetWidth(InArgs._WidgetWidth)
 		.ViewInputMin(InArgs._ViewInputMin)
@@ -34,47 +24,51 @@ void SAnimCompositePanel::Construct(const FArguments& InArgs, const TSharedRef<F
 		.InputMax(InArgs._InputMax)
 		.OnSetInputViewRange(InArgs._OnSetInputViewRange));
 
-	WeakModel = InModel;
 	Composite = InArgs._Composite;
-	bIsActiveTimerRegistered = false;
-	bIsSelecting = false;
-
-	InModel->OnHandleObjectsSelected().AddSP(this, &SAnimCompositePanel::HandleObjectsSelected);
+	CompositeEditor = InArgs._CompositeEditor;
 
 	this->ChildSlot
 	[
-		SAssignNew( PanelArea, SBorder )
-		.BorderImage( FEditorStyle::GetBrush("NoBorder") )
-		.Padding(0.0f)
-		.ColorAndOpacity( FLinearColor::White )
+		SNew(SVerticalBox)
+		+SVerticalBox::Slot()
+		.FillHeight(1)
+		[
+			SNew( SExpandableArea )
+			.AreaTitle( LOCTEXT( "CompositeLabel", "Composite" ) )
+			.BodyContent()
+			[
+				SAssignNew( PanelArea, SBorder )
+				.BorderImage( FEditorStyle::GetBrush("NoBorder") )
+				.Padding( FMargin(2.0f, 2.0f) )
+				.ColorAndOpacity( FLinearColor::White )
+			]
+		]
 	];
 
 	Update();
-
-	CollapseComposite();
-}
-
-SAnimCompositePanel::~SAnimCompositePanel()
-{
-	if(GEditor)
-	{
-		GEditor->UnregisterForUndo(this);
-	}
 }
 
 void SAnimCompositePanel::Update()
 {
 	ClearSelected();
 	if ( Composite != NULL )
-	{		
+	{
+		SAnimCompositeEditor* Editor = CompositeEditor.Pin().Get();
+
+		TSharedPtr<FTrackColorTracker> ColourTracker = MakeShareable(new FTrackColorTracker);
+		ColourTracker->AddColor(FLinearColor(0.9f, 0.9f, 0.9f, 0.9f));
+		ColourTracker->AddColor(FLinearColor(0.5f, 0.5f, 0.5f));
+
+		FLinearColor NodeColor = FLinearColor(0.f, 0.5f, 0.0f, 0.5f);
+		
 		TSharedPtr<SVerticalBox> CompositeSlots;
 		PanelArea->SetContent(
 			SAssignNew( CompositeSlots, SVerticalBox )
 			);
 
-		UAnimMontage* AnimMontage = Cast<UAnimMontage>(Composite);
+		TSharedRef<S2ColumnWidget> SectionTrack = Create2ColumnWidget(CompositeSlots.ToSharedRef());
 
-		CompositeSlots->AddSlot()
+		SectionTrack->LeftColumn->AddSlot()
 			.AutoHeight()
 			.VAlign(VAlign_Center)
 			[
@@ -83,160 +77,32 @@ void SAnimCompositePanel::Update()
 				.NodeSelectionSet(&SelectionSet)
 				.ViewInputMin(ViewInputMin)
 				.ViewInputMax(ViewInputMax)
-				.OnGetNodeColor(this,  &SAnimCompositePanel::HandleGetNodeColor)
+				.ColorTracker(ColourTracker)
+				.NodeColor(NodeColor)
+				.ScrubPosition( Editor, &SAnimCompositeEditor::GetScrubValue )
 				.TrackMaxValue(Composite->SequenceLength)
 				.TrackNumDiscreteValues(Composite->GetNumberOfFrames())
-				.bChildAnimMontage(AnimMontage && AnimMontage->HasParentAsset())
+
 				.OnAnimSegmentNodeClicked( this, &SAnimCompositePanel::ShowSegmentInDetailsView )
-				.OnPreAnimUpdate( this, &SAnimCompositePanel::PreAnimUpdate )
-				.OnPostAnimUpdate( this, &SAnimCompositePanel::PostAnimUpdate )
+				.OnPreAnimUpdate( Editor, &SAnimCompositeEditor::PreAnimUpdate )
+				.OnPostAnimUpdate( Editor, &SAnimCompositeEditor::PostAnimUpdate )
 			];
 	}
 }
 
-void SAnimCompositePanel::OnCompositeChange(class UObject *EditorAnimBaseObj, bool bRebuild)
-{
-	if ( Composite != nullptr )
-	{
-		if(bRebuild && !bIsActiveTimerRegistered)
-		{
-			// sometimes crashes because the timer delay but animation still renders, so invalidating here before calling timer
-			Composite->InvalidateRecursiveAsset();
-			bIsActiveTimerRegistered = true;
-			RegisterActiveTimer(0.f, FWidgetActiveTimerDelegate::CreateSP(this, &SAnimCompositePanel::TriggerRebuildPanel));
-		} 
-		else
-		{
-			CollapseComposite();
-		}
-
-		Composite->MarkPackageDirty();
-	}
-}
-
-EActiveTimerReturnType SAnimCompositePanel::TriggerRebuildPanel(double InCurrentTime, float InDeltaTime)
-{
-	// we should not update any property related within PostEditChange, 
-	// so this is deferred to Tick, when it needs to rebuild, just mark it and this will update in the next tick
-	SortAndUpdateComposite();
-
-	bIsActiveTimerRegistered = false;
-	return EActiveTimerReturnType::Stop;
-}
-
 void SAnimCompositePanel::ShowSegmentInDetailsView(int32 SegmentIndex)
 {
-	if(!bIsSelecting)
+	UEditorAnimCompositeSegment *Obj = Cast<UEditorAnimCompositeSegment>(CompositeEditor.Pin()->ShowInDetailsView(UEditorAnimCompositeSegment::StaticClass()));
+	if(Obj != NULL)
 	{
-		TGuardValue<bool> GuardValue(bIsSelecting, true);
-
-		UEditorAnimCompositeSegment *Obj = Cast<UEditorAnimCompositeSegment>(WeakModel.Pin()->ShowInDetailsView(UEditorAnimCompositeSegment::StaticClass()));
-		if(Obj != nullptr)
-		{
-			Obj->InitFromAnim(Composite, FOnAnimObjectChange::CreateSP( this, &SAnimCompositePanel::OnCompositeChange ));
-			Obj->InitAnimSegment(SegmentIndex);
-		}
+		Obj->InitAnimSegment(SegmentIndex);
 	}
 }
 
 void SAnimCompositePanel::ClearSelected()
 {
-	if(!bIsSelecting)
-	{
-		TGuardValue<bool> GuardValue(bIsSelecting, true);
-
-		SelectionSet.Empty();
-		WeakModel.Pin()->ClearDetailsView();
-	}
-}
-
-void SAnimCompositePanel::PreAnimUpdate()
-{
-	Composite->Modify();
-}
-
-void SAnimCompositePanel::PostAnimUpdate()
-{
-	Composite->MarkPackageDirty();
-	SortAndUpdateComposite();
-}
-
-void SAnimCompositePanel::SortAndUpdateComposite()
-{
-	if (Composite == nullptr)
-	{
-		return;
-	}
-
-	Composite->AnimationTrack.SortAnimSegments();
-
-	WeakModel.Pin()->RecalculateSequenceLength();
-
-	// Update view (this will recreate everything)
-	Update();
-
-	// Range may have changed
-	WeakModel.Pin()->UpdateRange();
-}
-
-void SAnimCompositePanel::CollapseComposite()
-{
-	if ( Composite == nullptr )
-	{
-		return;
-	}
-
-	Composite->AnimationTrack.CollapseAnimSegments();
-
-	WeakModel.Pin()->RecalculateSequenceLength();
-}
-
-void SAnimCompositePanel::PostUndo( bool bSuccess )
-{
-	PostUndoRedo();
-}
-
-void SAnimCompositePanel::PostRedo( bool bSuccess )
-{
-	PostUndoRedo();
-}
-
-void SAnimCompositePanel::PostUndoRedo()
-{
-	if (!bIsActiveTimerRegistered)
-	{
-		bIsActiveTimerRegistered = true;
-		RegisterActiveTimer(0.f, FWidgetActiveTimerDelegate::CreateSP(this, &SAnimCompositePanel::TriggerRebuildPanel));
-	}
-
-	// when undo or redo happens, we still have to recalculate length, so we can't rely on sequence length changes or not
-	if (Composite->SequenceLength)
-	{
-		Composite->SequenceLength = 0.f;
-	}
-}
-
-FLinearColor SAnimCompositePanel::HandleGetNodeColor(const FAnimSegment& InSegment) const
-{
-	static const FLinearColor DisabledColor(64, 64, 64);
-
-	if(InSegment.AnimReference != nullptr)
-	{
-		FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>(TEXT("AssetTools"));
-		TWeakPtr<IAssetTypeActions> AssetTypeActions = AssetToolsModule.Get().GetAssetTypeActionsForClass(InSegment.AnimReference->GetClass());
-		check(AssetTypeActions.IsValid());
-		return AssetTypeActions.Pin()->GetTypeColor().ReinterpretAsLinear();
-	}
-
-	return DisabledColor;
-}
-
-void SAnimCompositePanel::HandleObjectsSelected(const TArray<UObject*>& InObjects)
-{
-	if(!bIsSelecting)
-	{
-		ClearSelected();
-	}
+	SelectionSet.Empty();
+	CompositeEditor.Pin()->ClearDetailsView();
 }
 
 #undef LOCTEXT_NAMESPACE

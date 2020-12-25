@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 //
 // Unreal networking serialization helpers
@@ -36,6 +36,11 @@ struct FUniqueNetIdRepl : public FUniqueNetIdWrapper
 
 	FUniqueNetIdRepl(const FUniqueNetIdWrapper& InWrapper)
 		: FUniqueNetIdWrapper(InWrapper)
+	{
+	}
+
+	FUniqueNetIdRepl(const FUniqueNetId& InUniqueNetId)
+		: FUniqueNetIdWrapper(InUniqueNetId)
 	{
 	}
 

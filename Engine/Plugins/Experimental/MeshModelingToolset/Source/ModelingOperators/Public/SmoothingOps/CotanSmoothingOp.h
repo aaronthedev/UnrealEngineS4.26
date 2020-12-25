@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,7 +9,7 @@
 class MODELINGOPERATORS_API  FCotanSmoothingOp : public FSmoothingOpBase
 {
 public:
-	FCotanSmoothingOp(const FDynamicMesh3* Mesh, const FSmoothingOpBase::FOptions& OptionsIn);
+	FCotanSmoothingOp(const FDynamicMesh3* Mesh, float Speed, int32 Iterations);
 
 	~FCotanSmoothingOp() override {};
 
@@ -18,6 +18,4 @@ public:
 private:
 	// Compute the smoothed result by using Cotan Biharmonic
 	void Smooth();	
-
-	double GetSmoothPower(int32 VertexID, bool bIsBoundary);
 };

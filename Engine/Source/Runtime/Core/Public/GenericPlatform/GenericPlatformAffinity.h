@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreTypes.h"
-#include "Misc/EnumClassFlags.h"
 
 #define		MAKEAFFINITYMASK1(x)					(1<<x)
 #define		MAKEAFFINITYMASK2(x,y)					((1<<x)+(1<<y))
@@ -27,17 +26,8 @@ enum EThreadPriority
 	TPri_Highest,
 	TPri_Lowest,
 	TPri_SlightlyBelowNormal,
-	TPri_TimeCritical,
-	TPri_Num,
+	TPri_TimeCritical
 };
-
-enum class EThreadCreateFlags : int8
-{
-	None = 0,
-	SMTExclusive = (1 << 0),
-};
-
-ENUM_CLASS_FLAGS(EThreadCreateFlags);
 
 class FGenericPlatformAffinity
 {
@@ -53,11 +43,6 @@ public:
 	}
 
 	static const CORE_API uint64 GetRHIThreadMask()
-	{
-		return 0xFFFFFFFFFFFFFFFF;
-	}
-
-	static const CORE_API uint64 GetRHIFrameOffsetThreadMask()
 	{
 		return 0xFFFFFFFFFFFFFFFF;
 	}
@@ -107,36 +92,16 @@ public:
 		return 0xFFFFFFFFFFFFFFFF;
 	}
 
-	static const CORE_API uint64 GetIoDispatcherThreadMask()
-	{
-		return 0xFFFFFFFFFFFFFFFF;
-	}
-
-	static const CORE_API uint64 GetTraceThreadMask()
-	{
-		return 0xFFFFFFFFFFFFFFFF;
-	}
-
 	// @todo what do we think about having this as a function in this class? Should be make a whole new one? 
 	// scrap it and force the priority like before?
 	static EThreadPriority GetRenderingThreadPriority()
 	{
 		return TPri_Normal;
 	}
-
-	static EThreadCreateFlags GetRenderingThreadFlags()
-	{
-		return EThreadCreateFlags::None;
-	}
 	
 	static EThreadPriority GetRHIThreadPriority()
 	{
 		return TPri_SlightlyBelowNormal;
-	}
-
-	static EThreadCreateFlags GetRHIThreadFlags()
-	{
-		return EThreadCreateFlags::None;
 	}
 };
 

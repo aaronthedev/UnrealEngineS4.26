@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EditorModeRegistry.h"
 #include "Modules/ModuleManager.h"
@@ -9,37 +9,15 @@
 
 #include "Editor/PlacementMode/Public/IPlacementModeModule.h"
 #include "Editor/LandscapeEditor/Public/LandscapeEditorModule.h"
+#include "Editor/BspMode/Public/IBspModeModule.h"
 #include "Editor/MeshPaint/Public/MeshPaintModule.h"
+#include "Editor/GeometryMode/Public/GeometryEdMode.h"
 #include "Editor/ActorPickerMode/Public/ActorPickerMode.h"
 #include "Editor/SceneDepthPickerMode/Public/SceneDepthPickerMode.h"
+#include "Editor/TextureAlignMode/Public/TextureAlignEdMode.h"
 #include "Editor/FoliageEdit/Public/FoliageEditModule.h"
 #include "Editor/VirtualTexturingEditor/Public/VirtualTexturingEditorModule.h"
-#include "Classes/EditorStyleSettings.h"
-#include "Subsystems/AssetEditorSubsystem.h"
-
-FEditorModeFactory::FEditorModeFactory(const FEditorModeInfo& InModeInfo)
-	: ModeInfo(InModeInfo)
-{
-}
-
-FEditorModeFactory::FEditorModeFactory(FEditorModeInfo&& InModeInfo)
-	: ModeInfo(InModeInfo)
-{
-}
-
-FEditorModeFactory::~FEditorModeFactory()
-{
-}
-
-FEditorModeInfo FEditorModeFactory::GetModeInfo() const
-{
-	return ModeInfo;
-}
-
-TSharedRef<FEdMode> FEditorModeFactory::CreateMode() const
-{
-	return FactoryCallback.Execute();
-}
+#include "Tools/UEdMode.h"
 
 FEditorModeInfo::FEditorModeInfo()
 	: ID(NAME_None)
@@ -64,75 +42,74 @@ FEditorModeInfo::FEditorModeInfo(
 {
 	if (!InIconBrush.IsSet())
 	{
-		FModuleManager::Get().LoadModule("EditorStyle"); // Need to ensure the EditorStyle module is loaded before we access static functions from one of its headers
 		IconBrush = FSlateIcon(FEditorStyle::GetStyleSetName(), "LevelEditor.EditorModes");
 	}
 }
 
+FEditorModeRegistry* GModeRegistry = nullptr;
+
 void FEditorModeRegistry::Initialize()
 {
-	// Send notifications for any legacy modes that were registered before the asset subsytem started up
-	UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
-	for (const FactoryMap::ElementType& ModeEntry : ModeFactories)
-	{
-		AssetEditorSubsystem->OnEditorModeRegistered().Broadcast(ModeEntry.Key);
-	}
+	Get();
 
-	if(!GetDefault<UEditorStyleSettings>()->bEnableLegacyEditorModeUI)
-	{
-		// Add default editor modes
-		RegisterMode<FEdModeDefault>(
-			FBuiltinEditorModes::EM_Default,
-			NSLOCTEXT("DefaultMode", "DisplayName", "Select"),
-			FSlateIcon(FEditorStyle::GetStyleSetName(), "LevelEditor.SelectMode", "LevelEditor.SelectMode.Small"),
-			true, 0);
-	}
-	else
-	{
-		RegisterMode<FEdModeDefault>(FBuiltinEditorModes::EM_Default);
-	}
+	// Add default editor modes
+	GModeRegistry->RegisterMode<FEdModeDefault>(FBuiltinEditorModes::EM_Default);
+	GModeRegistry->RegisterMode<FEdModeInterpEdit>(FBuiltinEditorModes::EM_InterpEdit);
 
-	RegisterMode<FEdModeInterpEdit>(FBuiltinEditorModes::EM_InterpEdit);
-
+	// Load editor mode modules that will automatically register their editor modes, and clean themselves up on unload.
+	//@TODO: ROCKET: These are probably good plugin candidates, that shouldn't have to be force-loaded here but discovery loaded somehow
 	FModuleManager::LoadModuleChecked<IPlacementModeModule>(TEXT("PlacementMode"));
+	FModuleManager::LoadModuleChecked<IBspModeModule>(TEXT("BspMode"));
+	FModuleManager::LoadModuleChecked<FTextureAlignModeModule>(TEXT("TextureAlignMode"));
+	FModuleManager::LoadModuleChecked<FGeometryModeModule>(TEXT("GeometryMode"));
 	FModuleManager::LoadModuleChecked<FActorPickerModeModule>(TEXT("ActorPickerMode"));
 	FModuleManager::LoadModuleChecked<FSceneDepthPickerModeModule>(TEXT("SceneDepthPickerMode"));
 	FModuleManager::LoadModuleChecked<IMeshPaintModule>(TEXT("MeshPaintMode"));
 	FModuleManager::LoadModuleChecked<ILandscapeEditorModule>(TEXT("LandscapeEditor"));
 	FModuleManager::LoadModuleChecked<IFoliageEditModule>(TEXT("FoliageEdit"));
 	FModuleManager::LoadModuleChecked<IVirtualTexturingEditorModule>(TEXT("VirtualTexturingEditor"));
-
-	bInitialized = true;
 }
 
 void FEditorModeRegistry::Shutdown()
 {
-	bInitialized = false;
-
-	UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
-	for (auto& ModeEntry : ModeFactories)
-	{
-		AssetEditorSubsystem->OnEditorModeUnregistered().Broadcast(ModeEntry.Key);
-	}
-
-	ModeFactories.Empty();
+	delete GModeRegistry;
+	GModeRegistry = nullptr;
 }
 
 FEditorModeRegistry& FEditorModeRegistry::Get()
 {
-	static TSharedRef<FEditorModeRegistry> GModeRegistry = MakeShared<FEditorModeRegistry>();
-	return GModeRegistry.Get();	
+	if (!GModeRegistry)
+	{
+		GModeRegistry = new FEditorModeRegistry;
+	}
+	return *GModeRegistry;	
 }
 
 TArray<FEditorModeInfo> FEditorModeRegistry::GetSortedModeInfo() const
 {
-	return GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->GetEditorModeInfoOrderedByPriority();
+	TArray<FEditorModeInfo> ModeInfoArray;
+	
+	for (const auto& Pair : ModeFactories)
+	{
+		ModeInfoArray.Add(Pair.Value->GetModeInfo());
+	}
+
+	ModeInfoArray.Sort([](const FEditorModeInfo& A, const FEditorModeInfo& B){
+		return A.PriorityOrder < B.PriorityOrder;
+	});
+
+	return ModeInfoArray;
 }
 
 FEditorModeInfo FEditorModeRegistry::GetModeInfo(FEditorModeID ModeID) const
 {
 	FEditorModeInfo Result;
-	GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->FindEditorModeInfo(ModeID, Result);
+	const TSharedRef<IEditorModeFactory>* ModeFactory = ModeFactories.Find(ModeID);
+	if (ModeFactory)
+	{
+		Result = (*ModeFactory)->GetModeInfo();
+	}
+	
 	return Result;
 }
 
@@ -147,6 +124,9 @@ TSharedPtr<FEdMode> FEditorModeRegistry::CreateMode(FEditorModeID ModeID, FEdito
 		Instance->Info = (*ModeFactory)->GetModeInfo();
 		Instance->Owner = &Owner;
 
+		// This binding ensures the mode is destroyed if the type is unregistered
+		OnModeUnregistered().AddSP(Instance, &FEdMode::OnModeUnregistered);
+
 		Instance->Initialize();
 
 		return Instance;
@@ -155,6 +135,29 @@ TSharedPtr<FEdMode> FEditorModeRegistry::CreateMode(FEditorModeID ModeID, FEdito
 	return nullptr;
 }
 
+UEdMode* FEditorModeRegistry::CreateScriptableMode(FEditorModeID ModeID, FEditorModeTools& Owner)
+{
+	const TSharedRef<IEditorModeFactory>* ModeFactory = ModeFactories.Find(ModeID);
+	if (ModeFactory)
+	{
+		UEdMode* Instance = (*ModeFactory)->CreateScriptableMode();
+
+		// Assign the mode info from the factory before we initialize
+		Instance->Info = (*ModeFactory)->GetModeInfo();
+		Instance->Owner = &Owner;
+
+		// This binding ensures the mode is destroyed if the type is unregistered
+		OnModeUnregistered().AddUObject(Instance, &UEdMode::OnModeUnregistered);
+
+		Instance->Initialize();
+
+		return Instance;
+	}
+
+	return nullptr;
+}
+
+
 void FEditorModeRegistry::RegisterMode(FEditorModeID ModeID, TSharedRef<IEditorModeFactory> Factory)
 {
 	check(ModeID != FBuiltinEditorModes::EM_None);
@@ -162,38 +165,16 @@ void FEditorModeRegistry::RegisterMode(FEditorModeID ModeID, TSharedRef<IEditorM
 
 	ModeFactories.Add(ModeID, Factory);
 
-	if (bInitialized)
-	{
-		UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
-		AssetEditorSubsystem->OnEditorModeRegistered().Broadcast(ModeID);
-		AssetEditorSubsystem->OnEditorModesChanged().Broadcast();
-	}
+	OnModeRegisteredEvent.Broadcast(ModeID);
+	RegisteredModesChanged.Broadcast();
 }
 
 void FEditorModeRegistry::UnregisterMode(FEditorModeID ModeID)
 {
 	// First off delete the factory
-	if (ModeFactories.Remove(ModeID) > 0 && bInitialized)
+	if (ModeFactories.Remove(ModeID) > 0)
 	{
-		UAssetEditorSubsystem* AssetEditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>();
-		AssetEditorSubsystem->OnEditorModeUnregistered().Broadcast(ModeID);
-		AssetEditorSubsystem->OnEditorModesChanged().Broadcast();
+		OnModeUnregisteredEvent.Broadcast(ModeID);
+		RegisteredModesChanged.Broadcast();
 	}
-}
-
-FRegisteredModesChangedEvent& FEditorModeRegistry::OnRegisteredModesChanged()
-{
-	return GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->OnEditorModesChanged();
-}
-
-
-FOnModeRegistered& FEditorModeRegistry::OnModeRegistered()
-{
-	return GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->OnEditorModeRegistered();
-}
-
-
-FOnModeUnregistered& FEditorModeRegistry::OnModeUnregistered()
-{
-	return GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->OnEditorModeUnregistered();
 }

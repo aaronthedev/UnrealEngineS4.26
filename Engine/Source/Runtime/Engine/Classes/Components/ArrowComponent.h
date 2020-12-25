@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -20,17 +20,11 @@ class ENGINE_API UArrowComponent : public UPrimitiveComponent
 {
 	GENERATED_UCLASS_BODY()
 
-	/** Color to draw arrow */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=ArrowComponent)
 	FColor ArrowColor;
 
-	/** Relative size to scale drawn arrow by */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=ArrowComponent)
 	float ArrowSize;
-
-	/** Total length of drawn arrow including head */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=ArrowComponent)
-	float ArrowLength;
 
 	/** The size on screen to limit this arrow to (in screen space) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ArrowComponent)

@@ -45,32 +45,32 @@ public:
 
     AlembicImportFileTranslator() : MPxFileTranslator() {}
 
-    ~AlembicImportFileTranslator() override {}
+    virtual ~AlembicImportFileTranslator() {}
 
     MStatus reader (const MFileObject& file,
                     const MString& optionsString,
-                    MPxFileTranslator::FileAccessMode mode) override;
+                    MPxFileTranslator::FileAccessMode mode);
 
     MFileKind identifyFile(const MFileObject& filename,
                            const char* buffer,
-                           short size) const override;
+                           short size) const;
 
-    bool haveReadMethod() const override
+    bool haveReadMethod() const
     {
         return true;
     }
 
-    bool haveNamespaceSupport() const override
+    bool haveNamespaceSupport() const
     {
         return true;
     }
 
-    MString defaultExtension() const override
+    MString defaultExtension() const
     {
         return "abc";
     }
 
-    MString filter() const override
+    MString filter() const
     {
         return "*.abc";
     }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -23,11 +23,9 @@ public:
 
 	virtual FText GetDisplayName() const override;
 
-	virtual bool SupportsResetToBase() const override { return true; }
-	virtual bool TestCanResetToBaseWithMessage(FText& OutCanResetToBaseMessage) const override;
-	virtual void ResetToBase() override;
+	bool CanResetToBase() const;
 
-	FGuid GetEventScriptUsageId() const { return EventScriptUsageId; };
+	void ResetToBase();
 
 protected:
 	virtual void FinalizeInternal() override;
@@ -50,6 +48,8 @@ private:
 
 	TWeakObjectPtr<UNiagaraEmitter> Emitter;
 
+	FNiagaraEventScriptProperties* LastUsedEventScriptProperties;
+
 	UPROPERTY()
 	UNiagaraStackObject* EmitterObject;
 };
@@ -68,29 +68,23 @@ public:
 		FRequiredEntryData InRequiredEntryData,
 		TSharedRef<FNiagaraScriptViewModel> InScriptViewModel,
 		ENiagaraScriptUsage InScriptUsage,
-		FGuid InScriptUsageId,
-		FGuid InEventSourceEmitterId);
+		FGuid InScriptUsageId);
 
 	void SetOnModifiedEventHandlers(FOnModifiedEventHandlers OnModifiedEventHandlers);
-
-	virtual bool SupportsDelete() const override { return true; }
-	virtual bool TestCanDeleteWithMessage(FText& OutCanDeleteMessage) const override;
-	virtual void Delete() override;
-
-	FGuid GetEventSourceEmitterId() const {return EventSourceEmitterId; };
 
 protected:
 	FOnModifiedEventHandlers OnModifiedEventHandlersDelegate;
 
 	virtual void RefreshChildrenInternal(const TArray<UNiagaraStackEntry*>& CurrentChildren, TArray<UNiagaraStackEntry*>& NewChildren, TArray<FStackIssue>& NewIssues) override;
 
+	virtual bool CanDelete() const override;
+	virtual bool Delete() override;
+
 private:
 	bool HasBaseEventHandler() const;
 	
 private:
 	mutable TOptional<bool> bHasBaseEventHandlerCache;
-
-	FGuid EventSourceEmitterId;
 
 	UPROPERTY()
 	UNiagaraStackEventHandlerPropertiesItem* EventHandlerProperties;

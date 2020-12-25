@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PhysXCooking.h"
-#include "Core/Public/Modules/ModuleManager.h"
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 
 #include "Serialization/MemoryWriter.h"
 #include "Modules/ModuleManager.h"

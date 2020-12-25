@@ -88,6 +88,7 @@ bool util::isAncestorDescendentRelationship(const MDagPath & path1,
 }
 
 
+
 // returns 0 if static, 1 if sampled, and 2 if a curve
 int util::getSampledType(const MPlug& iPlug)
 {
@@ -283,7 +284,7 @@ bool util::isAnimated(MObject & object, bool checkParent)
     NodesToCheckStruct nodeStruct;
     for (; !iter.isDone(); iter.next())
     {
-        MObject node = iter.currentItem();
+        MObject node = iter.thisNode();
 
         if (node.hasFn(MFn::kPluginDependNode) ||
                 node.hasFn( MFn::kConstraint ) ||
@@ -380,7 +381,7 @@ bool util::isDrivenBySplineIK(const MFnIkJoint & iJoint)
         if (!ikHandle.object().hasFn(MFn::kIkHandle)) continue;
 
         // find the ikSolver node.
-        MPlug ikSolverPlug = ikHandle.findPlug("ikSolver", true);
+        MPlug ikSolverPlug = ikHandle.findPlug("ikSolver");
         MPlugArray ikSolverDst;
         ikSolverPlug.connectedTo(ikSolverDst, true, false);
         for (unsigned int j = 0; j < ikSolverDst.length(); j++) {

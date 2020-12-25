@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "HLODOutliner.h"
 #include "GameFramework/Actor.h"
@@ -57,15 +57,12 @@
 
 namespace HLODOutliner
 {
-	const int32 LOD_AUTO = -1;
-	const int32 LOD_DISABLED = -2;
-
 	SHLODOutliner::SHLODOutliner()		
 	{
 		bNeedsRefresh = true;
 		CurrentWorld = nullptr;
 		CurrentWorldSettings = nullptr;
-		ForcedLODLevel = LOD_AUTO;
+		ForcedLODLevel = -1;
 		bArrangeHorizontally = false;
 
 		FHierarchicalLODUtilitiesModule& Module = FModuleManager::LoadModuleChecked<FHierarchicalLODUtilitiesModule>("HierarchicalLODUtilities");
@@ -74,10 +71,7 @@ namespace HLODOutliner
 
 	SHLODOutliner::~SHLODOutliner()
 	{
-		DeregisterDelegates();
-		FEditorDelegates::BeginPIE.RemoveAll(this);
-		FEditorDelegates::EndPIE.RemoveAll(this);
-
+		DeregisterDelegates();	
 		DestroySelectionActors();
 		CurrentWorld = nullptr;
 		HLODTreeRoot.Empty();
@@ -302,13 +296,7 @@ namespace HLODOutliner
 				]
 			];
 
-		if (!CurrentWorld.IsValid() || !CurrentWorld->IsPlayInEditor())
-		{
-			RegisterDelegates();
-		}
-
-		FEditorDelegates::BeginPIE.AddRaw(this, &SHLODOutliner::OnBeginPieEvent);
-		FEditorDelegates::EndPIE.AddRaw(this, &SHLODOutliner::OnEndPieEvent);
+		RegisterDelegates();
 	}
 
 	TSharedRef<SWidget> SHLODOutliner::CreateMainButtonWidgets()
@@ -318,7 +306,7 @@ namespace HLODOutliner
 			.Padding(FMargin(0.0f, 2.0f))
 			[
 				SNew(SWrapBox)
-				.UseAllottedSize(true)
+				.UseAllottedWidth(true)
 
 				+ SWrapBox::Slot()
 				.Padding(FMargin(2.0f))
@@ -886,31 +874,18 @@ namespace HLODOutliner
 
 	END_SLATE_FUNCTION_BUILD_OPTIMIZATION
 
-	void SHLODOutliner::OnBeginPieEvent(bool bIsSimulating)
-	{
-		DeregisterDelegates();
-		FullRefresh();
-	}
-
-	void SHLODOutliner::OnEndPieEvent(bool bIsSimulating)
-	{
-		RegisterDelegates();
-		FullRefresh();
-	}
-
 	void SHLODOutliner::RegisterDelegates()
 	{
 		FEditorDelegates::MapChange.AddSP(this, &SHLODOutliner::OnMapChange);
 		FEditorDelegates::NewCurrentLevel.AddSP(this, &SHLODOutliner::OnNewCurrentLevel);
 		FEditorDelegates::OnMapOpened.AddSP(this, &SHLODOutliner::OnMapLoaded);
-
 		FWorldDelegates::LevelAddedToWorld.AddSP(this, &SHLODOutliner::OnLevelAdded);
 		FWorldDelegates::LevelRemovedFromWorld.AddSP(this, &SHLODOutliner::OnLevelRemoved);
-
 		GEngine->OnLevelActorListChanged().AddSP(this, &SHLODOutliner::FullRefresh);
 		GEngine->OnLevelActorAdded().AddSP(this, &SHLODOutliner::OnLevelActorsAdded);
 		GEngine->OnLevelActorDeleted().AddSP(this, &SHLODOutliner::OnLevelActorsRemoved);
 		GEngine->OnActorMoved().AddSP(this, &SHLODOutliner::OnActorMovedEvent);
+
 
 		// Selection change
 		USelection::SelectionChangedEvent.AddRaw(this, &SHLODOutliner::OnLevelSelectionChanged);
@@ -926,7 +901,7 @@ namespace HLODOutliner
 		// Register to update when an undo/redo operation has been called to update our list of actors
 		GEditor->RegisterForUndo(this);
 
-		ActiveTimerHandle = RegisterActiveTimer(0.1f, FWidgetActiveTimerDelegate::CreateSP(this, &SHLODOutliner::UpdateNeedsBuildFlagTimer));
+		RegisterActiveTimer(0.1f, FWidgetActiveTimerDelegate::CreateSP(this, &SHLODOutliner::UpdateNeedsBuildFlagTimer));
 	}
 
 	void SHLODOutliner::DeregisterDelegates()
@@ -937,7 +912,6 @@ namespace HLODOutliner
 
 		FWorldDelegates::LevelAddedToWorld.RemoveAll(this);
 		FWorldDelegates::LevelRemovedFromWorld.RemoveAll(this);
-
 		USelection::SelectionChangedEvent.RemoveAll(this);
 		USelection::SelectObjectEvent.RemoveAll(this);
 
@@ -953,15 +927,12 @@ namespace HLODOutliner
 		{
 			GEditor->OnHLODActorMoved().RemoveAll(this);
 			GEditor->OnHLODActorAdded().RemoveAll(this);
-			GEditor->OnHLODTransitionScreenSizeChanged().RemoveAll(this);
 			GEditor->OnHLODLevelsArrayChanged().RemoveAll(this);
 			GEditor->OnHLODActorRemovedFromCluster().RemoveAll(this);
 
 			// Deregister for Undo callbacks
 			GEditor->UnregisterForUndo(this);
 		}
-
-		UnRegisterActiveTimer(ActiveTimerHandle.ToSharedRef());
 	}
 
 	void SHLODOutliner::ForceViewLODActor()
@@ -1000,9 +971,7 @@ namespace HLODOutliner
 
 	FText SHLODOutliner::HandleForceLevelText() const
 	{
-		return ForcedLODLevel == LOD_AUTO ? LOCTEXT("AutoLOD", "LOD Auto") : 
-			   ForcedLODLevel == LOD_DISABLED ? LOCTEXT("DisabledLOD", "LOD Disabled") : 
-			   FText::Format(LOCTEXT("LODLevelFormat", "LOD {0}"), FText::AsNumber(ForcedLODLevel));
+		return ForcedLODLevel == -1 ? LOCTEXT("AutoLOD", "LOD Auto") : FText::Format(LOCTEXT("LODLevelFormat", "LOD {0}"), FText::AsNumber(ForcedLODLevel));
 	}
 
 	TSharedRef<SWidget> SHLODOutliner::GetForceLevelMenuContent() const
@@ -1015,21 +984,9 @@ namespace HLODOutliner
 			LOCTEXT("AutoLODTooltip", "Determine LOD level automatically"),
 			FSlateIcon(),
 			FUIAction(
-				FExecuteAction::CreateSP(const_cast<SHLODOutliner*>(this), &SHLODOutliner::SetForcedLODLevel, LOD_AUTO), 
+				FExecuteAction::CreateSP(const_cast<SHLODOutliner*>(this), &SHLODOutliner::SetForcedLODLevel, -1), 
 				FCanExecuteAction(), 
-				FGetActionCheckState::CreateLambda([this](){ return ForcedLODLevel == LOD_AUTO ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })),
-			NAME_None,
-			EUserInterfaceActionType::RadioButton);
-
-		// Auto LOD
-		MenuBuilder.AddMenuEntry(
-			LOCTEXT("DisabledLOD", "LOD Disabled"),
-			LOCTEXT("DisabledLODTooltip", "Disable LOD and show original scene"),
-			FSlateIcon(),
-			FUIAction(
-				FExecuteAction::CreateSP(const_cast<SHLODOutliner*>(this), &SHLODOutliner::SetForcedLODLevel, LOD_DISABLED),
-				FCanExecuteAction(),
-				FGetActionCheckState::CreateLambda([this]() { return ForcedLODLevel == LOD_DISABLED ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })),
+				FGetActionCheckState::CreateLambda([this](){ return ForcedLODLevel == -1 ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })),
 			NAME_None,
 			EUserInterfaceActionType::RadioButton);
 
@@ -1060,7 +1017,7 @@ namespace HLODOutliner
 
 	void SHLODOutliner::RestoreForcedLODLevel(int32 LODLevel)
 	{
-		if (LODLevel == LOD_AUTO)
+		if (LODLevel == -1)
 		{
 			return;
 		}
@@ -1088,7 +1045,7 @@ namespace HLODOutliner
 	{
 		RestoreForcedLODLevel(ForcedLODLevel);
 
-		if (LODLevel == LOD_AUTO)
+		if (LODLevel == -1)
 		{
 			ForcedLODLevel = LODLevel;
 			return;
@@ -1118,7 +1075,7 @@ namespace HLODOutliner
 	void SHLODOutliner::ResetLODLevelForcing()
 	{
 		RestoreForcedLODLevel(ForcedLODLevel);
-		SetForcedLODLevel(LOD_AUTO);
+		SetForcedLODLevel(-1);
 	}
 
 	void SHLODOutliner::CreateHierarchicalVolumeForActor()
@@ -1689,8 +1646,6 @@ namespace HLODOutliner
 	{
 		ResetCachedData();
 		FullRefresh();
-
-		SelectedLODActors.RemoveAll([InLevel](const AActor* Actor) { return Actor->GetLevel() == InLevel; });
 	}
 
 	void SHLODOutliner::OnLevelActorsAdded(AActor* InActor)
@@ -1704,13 +1659,7 @@ namespace HLODOutliner
 	void SHLODOutliner::OnLevelActorsRemoved(AActor* InActor)
 	{
 		if (!InActor->IsA<AWorldSettings>())
-		{
-			// If actor is a LODActor, make sure it isn't part of the selection array.
-			if (InActor->IsA<ALODActor>())
-			{
-				SelectedLODActors.Remove(InActor);
-			}
-
+		{			
 			// Remove InActor from LOD actor which contains it
 			for (TArray<TWeakObjectPtr<ALODActor>>& ActorArray : LODLevelActors)
 			{				
@@ -1916,7 +1865,7 @@ namespace HLODOutliner
 		checkf(bUpdatedWorld == true, TEXT("Could not find UWorld* instance in Engine world contexts"));
 
 		TArray<FTreeItemRef> LevelNodes;
-		if (OutlinerEnabled())
+		if (CurrentWorldSettings)
 		{
 			// Iterate over all LOD levels (Number retrieved from world settings) and add Treeview items for them
 			const TArray<struct FHierarchicalSimplification>& HierarchicalLODSetups = CurrentWorldSettings->GetHierarchicalLODSetup();
@@ -2150,21 +2099,18 @@ namespace HLODOutliner
 	{
 		bool bHLODEnabled = false;
 
-		if (CurrentWorldSettings != nullptr)
+		if (!bNeedsRefresh)
 		{
-			bHLODEnabled = CurrentWorldSettings->bEnableHierarchicalLODSystem;
-		}
+			if (CurrentWorldSettings != nullptr)
+			{
+				bHLODEnabled = CurrentWorldSettings->bEnableHierarchicalLODSystem;
+			}
 
-		if (bHLODEnabled && CurrentWorld.IsValid())
-		{
-			bHLODEnabled = !HierarchicalLODUtilities->IsWorldUsedForStreaming(CurrentWorld.Get());
-		}
-
-		// Disable outliner in PIE
-		if (bHLODEnabled && CurrentWorld.IsValid())
-		{
-			bHLODEnabled = !CurrentWorld->IsPlayInEditor();
-		}
+			if (bHLODEnabled && CurrentWorld.IsValid())
+			{
+				bHLODEnabled = !HierarchicalLODUtilities->IsWorldUsedForStreaming(CurrentWorld.Get());
+			}
+		}	
 
 		return bHLODEnabled;
 	}

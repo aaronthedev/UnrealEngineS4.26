@@ -1,9 +1,10 @@
 // -*- C++ -*-
 //===---------------------------- math.h ----------------------------------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//                     The LLVM Compiler Infrastructure
+//
+// This file is dual licensed under the MIT and the University of Illinois Open
+// Source Licenses. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
 
@@ -297,9 +298,6 @@ long double    truncl(long double x);
 #pragma GCC system_header
 #endif
 
-#define _LIBCPP_STDLIB_INCLUDE_NEXT
-#include <stdlib.h>
-
 #include_next <math.h>
 
 #ifdef __cplusplus
@@ -510,11 +508,7 @@ _LIBCPP_INLINE_VISIBILITY
 bool
 __libcpp_isnan(_A1 __lcpp_x) _NOEXCEPT
 {
-#if __has_builtin(__builtin_isnan)
-    return __builtin_isnan(__lcpp_x);
-#else
     return isnan(__lcpp_x);
-#endif
 }
 
 #undef isnan
@@ -761,60 +755,19 @@ isunordered(_A1 __lcpp_x, _A2 __lcpp_y) _NOEXCEPT
 
 // abs
 
-#undef abs
-#undef labs
-#ifndef _LIBCPP_HAS_NO_LONG_LONG
-#undef llabs
-#endif
-
-// MSVCRT already has the correct prototype in <stdlib.h> if __cplusplus is defined
-#if !defined(_LIBCPP_MSVCRT) && !defined(__sun__) && !defined(_AIX)
-inline _LIBCPP_INLINE_VISIBILITY long abs(long __x) _NOEXCEPT {
-  return ::labs(__x);
-}
-#ifndef _LIBCPP_HAS_NO_LONG_LONG
-inline _LIBCPP_INLINE_VISIBILITY long long abs(long long __x) _NOEXCEPT {
-  return ::llabs(__x);
-}
-#endif // _LIBCPP_HAS_NO_LONG_LONG
-#endif // !defined(_LIBCPP_MSVCRT) && !defined(__sun__) && !defined(_AIX)
-
-
 #if !(defined(_AIX) || defined(__sun__))
-inline _LIBCPP_INLINE_VISIBILITY float abs(float __lcpp_x) _NOEXCEPT {
-  return ::fabsf(__lcpp_x);
-}
+inline _LIBCPP_INLINE_VISIBILITY
+float
+abs(float __lcpp_x) _NOEXCEPT {return ::fabsf(__lcpp_x);}
 
-inline _LIBCPP_INLINE_VISIBILITY double abs(double __lcpp_x) _NOEXCEPT {
-  return ::fabs(__lcpp_x);
-}
+inline _LIBCPP_INLINE_VISIBILITY
+double
+abs(double __lcpp_x) _NOEXCEPT {return ::fabs(__lcpp_x);}
 
-inline _LIBCPP_INLINE_VISIBILITY long double
-abs(long double __lcpp_x) _NOEXCEPT {
-  return ::fabsl(__lcpp_x);
-}
+inline _LIBCPP_INLINE_VISIBILITY
+long double
+abs(long double __lcpp_x) _NOEXCEPT {return ::fabsl(__lcpp_x);}
 #endif // !(defined(_AIX) || defined(__sun__))
-
-// div
-
-#undef div
-#undef ldiv
-#ifndef _LIBCPP_HAS_NO_LONG_LONG
-#undef lldiv
-#endif
-
-// MSVCRT already has the correct prototype in <stdlib.h> if __cplusplus is defined
-#if !defined(_LIBCPP_MSVCRT) && !defined(__sun__) && !defined(_AIX)
-inline _LIBCPP_INLINE_VISIBILITY ldiv_t div(long __x, long __y) _NOEXCEPT {
-  return ::ldiv(__x, __y);
-}
-#ifndef _LIBCPP_HAS_NO_LONG_LONG
-inline _LIBCPP_INLINE_VISIBILITY lldiv_t div(long long __x,
-                                             long long __y) _NOEXCEPT {
-  return ::lldiv(__x, __y);
-}
-#endif // _LIBCPP_HAS_NO_LONG_LONG
-#endif // _LIBCPP_MSVCRT / __sun__ / _AIX
 
 // acos
 
@@ -861,7 +814,7 @@ inline _LIBCPP_INLINE_VISIBILITY long double atan2(long double __lcpp_y, long do
 
 template <class _A1, class _A2>
 inline _LIBCPP_INLINE_VISIBILITY
-typename std::_EnableIf
+typename std::__lazy_enable_if
 <
     std::is_arithmetic<_A1>::value &&
     std::is_arithmetic<_A2>::value,
@@ -870,8 +823,8 @@ typename std::_EnableIf
 atan2(_A1 __lcpp_y, _A2 __lcpp_x) _NOEXCEPT
 {
     typedef typename std::__promote<_A1, _A2>::type __result_type;
-    static_assert((!(std::_IsSame<_A1, __result_type>::value &&
-                     std::_IsSame<_A2, __result_type>::value)), "");
+    static_assert((!(std::is_same<_A1, __result_type>::value &&
+                     std::is_same<_A2, __result_type>::value)), "");
     return ::atan2((__result_type)__lcpp_y, (__result_type)__lcpp_x);
 }
 
@@ -956,7 +909,7 @@ inline _LIBCPP_INLINE_VISIBILITY long double fmod(long double __lcpp_x, long dou
 
 template <class _A1, class _A2>
 inline _LIBCPP_INLINE_VISIBILITY
-typename std::_EnableIf
+typename std::__lazy_enable_if
 <
     std::is_arithmetic<_A1>::value &&
     std::is_arithmetic<_A2>::value,
@@ -965,8 +918,8 @@ typename std::_EnableIf
 fmod(_A1 __lcpp_x, _A2 __lcpp_y) _NOEXCEPT
 {
     typedef typename std::__promote<_A1, _A2>::type __result_type;
-    static_assert((!(std::_IsSame<_A1, __result_type>::value &&
-                     std::_IsSame<_A2, __result_type>::value)), "");
+    static_assert((!(std::is_same<_A1, __result_type>::value &&
+                     std::is_same<_A2, __result_type>::value)), "");
     return ::fmod((__result_type)__lcpp_x, (__result_type)__lcpp_y);
 }
 
@@ -1034,7 +987,7 @@ inline _LIBCPP_INLINE_VISIBILITY long double pow(long double __lcpp_x, long doub
 
 template <class _A1, class _A2>
 inline _LIBCPP_INLINE_VISIBILITY
-typename std::_EnableIf
+typename std::__lazy_enable_if
 <
     std::is_arithmetic<_A1>::value &&
     std::is_arithmetic<_A2>::value,
@@ -1043,8 +996,8 @@ typename std::_EnableIf
 pow(_A1 __lcpp_x, _A2 __lcpp_y) _NOEXCEPT
 {
     typedef typename std::__promote<_A1, _A2>::type __result_type;
-    static_assert((!(std::_IsSame<_A1, __result_type>::value &&
-                     std::_IsSame<_A2, __result_type>::value)), "");
+    static_assert((!(std::is_same<_A1, __result_type>::value &&
+                     std::is_same<_A2, __result_type>::value)), "");
     return ::pow((__result_type)__lcpp_x, (__result_type)__lcpp_y);
 }
 
@@ -1161,7 +1114,7 @@ copysign(long double __lcpp_x, long double __lcpp_y) _NOEXCEPT {
 
 template <class _A1, class _A2>
 inline _LIBCPP_INLINE_VISIBILITY
-typename std::_EnableIf
+typename std::__lazy_enable_if
 <
     std::is_arithmetic<_A1>::value &&
     std::is_arithmetic<_A2>::value,
@@ -1170,8 +1123,8 @@ typename std::_EnableIf
 copysign(_A1 __lcpp_x, _A2 __lcpp_y) _NOEXCEPT
 {
     typedef typename std::__promote<_A1, _A2>::type __result_type;
-    static_assert((!(std::_IsSame<_A1, __result_type>::value &&
-                     std::_IsSame<_A2, __result_type>::value)), "");
+    static_assert((!(std::is_same<_A1, __result_type>::value &&
+                     std::is_same<_A2, __result_type>::value)), "");
     return ::copysign((__result_type)__lcpp_x, (__result_type)__lcpp_y);
 }
 
@@ -1222,7 +1175,7 @@ inline _LIBCPP_INLINE_VISIBILITY long double fdim(long double __lcpp_x, long dou
 
 template <class _A1, class _A2>
 inline _LIBCPP_INLINE_VISIBILITY
-typename std::_EnableIf
+typename std::__lazy_enable_if
 <
     std::is_arithmetic<_A1>::value &&
     std::is_arithmetic<_A2>::value,
@@ -1231,8 +1184,8 @@ typename std::_EnableIf
 fdim(_A1 __lcpp_x, _A2 __lcpp_y) _NOEXCEPT
 {
     typedef typename std::__promote<_A1, _A2>::type __result_type;
-    static_assert((!(std::_IsSame<_A1, __result_type>::value &&
-                     std::_IsSame<_A2, __result_type>::value)), "");
+    static_assert((!(std::is_same<_A1, __result_type>::value &&
+                     std::is_same<_A2, __result_type>::value)), "");
     return ::fdim((__result_type)__lcpp_x, (__result_type)__lcpp_y);
 }
 
@@ -1243,7 +1196,7 @@ inline _LIBCPP_INLINE_VISIBILITY long double fma(long double __lcpp_x, long doub
 
 template <class _A1, class _A2, class _A3>
 inline _LIBCPP_INLINE_VISIBILITY
-typename std::_EnableIf
+typename std::__lazy_enable_if
 <
     std::is_arithmetic<_A1>::value &&
     std::is_arithmetic<_A2>::value &&
@@ -1253,9 +1206,9 @@ typename std::_EnableIf
 fma(_A1 __lcpp_x, _A2 __lcpp_y, _A3 __lcpp_z) _NOEXCEPT
 {
     typedef typename std::__promote<_A1, _A2, _A3>::type __result_type;
-    static_assert((!(std::_IsSame<_A1, __result_type>::value &&
-                     std::_IsSame<_A2, __result_type>::value &&
-                     std::_IsSame<_A3, __result_type>::value)), "");
+    static_assert((!(std::is_same<_A1, __result_type>::value &&
+                     std::is_same<_A2, __result_type>::value &&
+                     std::is_same<_A3, __result_type>::value)), "");
     return ::fma((__result_type)__lcpp_x, (__result_type)__lcpp_y, (__result_type)__lcpp_z);
 }
 
@@ -1266,7 +1219,7 @@ inline _LIBCPP_INLINE_VISIBILITY long double fmax(long double __lcpp_x, long dou
 
 template <class _A1, class _A2>
 inline _LIBCPP_INLINE_VISIBILITY
-typename std::_EnableIf
+typename std::__lazy_enable_if
 <
     std::is_arithmetic<_A1>::value &&
     std::is_arithmetic<_A2>::value,
@@ -1275,8 +1228,8 @@ typename std::_EnableIf
 fmax(_A1 __lcpp_x, _A2 __lcpp_y) _NOEXCEPT
 {
     typedef typename std::__promote<_A1, _A2>::type __result_type;
-    static_assert((!(std::_IsSame<_A1, __result_type>::value &&
-                     std::_IsSame<_A2, __result_type>::value)), "");
+    static_assert((!(std::is_same<_A1, __result_type>::value &&
+                     std::is_same<_A2, __result_type>::value)), "");
     return ::fmax((__result_type)__lcpp_x, (__result_type)__lcpp_y);
 }
 
@@ -1287,7 +1240,7 @@ inline _LIBCPP_INLINE_VISIBILITY long double fmin(long double __lcpp_x, long dou
 
 template <class _A1, class _A2>
 inline _LIBCPP_INLINE_VISIBILITY
-typename std::_EnableIf
+typename std::__lazy_enable_if
 <
     std::is_arithmetic<_A1>::value &&
     std::is_arithmetic<_A2>::value,
@@ -1296,8 +1249,8 @@ typename std::_EnableIf
 fmin(_A1 __lcpp_x, _A2 __lcpp_y) _NOEXCEPT
 {
     typedef typename std::__promote<_A1, _A2>::type __result_type;
-    static_assert((!(std::_IsSame<_A1, __result_type>::value &&
-                     std::_IsSame<_A2, __result_type>::value)), "");
+    static_assert((!(std::is_same<_A1, __result_type>::value &&
+                     std::is_same<_A2, __result_type>::value)), "");
     return ::fmin((__result_type)__lcpp_x, (__result_type)__lcpp_y);
 }
 
@@ -1308,7 +1261,7 @@ inline _LIBCPP_INLINE_VISIBILITY long double hypot(long double __lcpp_x, long do
 
 template <class _A1, class _A2>
 inline _LIBCPP_INLINE_VISIBILITY
-typename std::_EnableIf
+typename std::__lazy_enable_if
 <
     std::is_arithmetic<_A1>::value &&
     std::is_arithmetic<_A2>::value,
@@ -1317,8 +1270,8 @@ typename std::_EnableIf
 hypot(_A1 __lcpp_x, _A2 __lcpp_y) _NOEXCEPT
 {
     typedef typename std::__promote<_A1, _A2>::type __result_type;
-    static_assert((!(std::_IsSame<_A1, __result_type>::value &&
-                     std::_IsSame<_A2, __result_type>::value)), "");
+    static_assert((!(std::is_same<_A1, __result_type>::value &&
+                     std::is_same<_A2, __result_type>::value)), "");
     return ::hypot((__result_type)__lcpp_x, (__result_type)__lcpp_y);
 }
 
@@ -1431,7 +1384,7 @@ inline _LIBCPP_INLINE_VISIBILITY long double nextafter(long double __lcpp_x, lon
 
 template <class _A1, class _A2>
 inline _LIBCPP_INLINE_VISIBILITY
-typename std::_EnableIf
+typename std::__lazy_enable_if
 <
     std::is_arithmetic<_A1>::value &&
     std::is_arithmetic<_A2>::value,
@@ -1440,8 +1393,8 @@ typename std::_EnableIf
 nextafter(_A1 __lcpp_x, _A2 __lcpp_y) _NOEXCEPT
 {
     typedef typename std::__promote<_A1, _A2>::type __result_type;
-    static_assert((!(std::_IsSame<_A1, __result_type>::value &&
-                     std::_IsSame<_A2, __result_type>::value)), "");
+    static_assert((!(std::is_same<_A1, __result_type>::value &&
+                     std::is_same<_A2, __result_type>::value)), "");
     return ::nextafter((__result_type)__lcpp_x, (__result_type)__lcpp_y);
 }
 
@@ -1462,7 +1415,7 @@ inline _LIBCPP_INLINE_VISIBILITY long double remainder(long double __lcpp_x, lon
 
 template <class _A1, class _A2>
 inline _LIBCPP_INLINE_VISIBILITY
-typename std::_EnableIf
+typename std::__lazy_enable_if
 <
     std::is_arithmetic<_A1>::value &&
     std::is_arithmetic<_A2>::value,
@@ -1471,8 +1424,8 @@ typename std::_EnableIf
 remainder(_A1 __lcpp_x, _A2 __lcpp_y) _NOEXCEPT
 {
     typedef typename std::__promote<_A1, _A2>::type __result_type;
-    static_assert((!(std::_IsSame<_A1, __result_type>::value &&
-                     std::_IsSame<_A2, __result_type>::value)), "");
+    static_assert((!(std::is_same<_A1, __result_type>::value &&
+                     std::is_same<_A2, __result_type>::value)), "");
     return ::remainder((__result_type)__lcpp_x, (__result_type)__lcpp_y);
 }
 
@@ -1483,7 +1436,7 @@ inline _LIBCPP_INLINE_VISIBILITY long double remquo(long double __lcpp_x, long d
 
 template <class _A1, class _A2>
 inline _LIBCPP_INLINE_VISIBILITY
-typename std::_EnableIf
+typename std::__lazy_enable_if
 <
     std::is_arithmetic<_A1>::value &&
     std::is_arithmetic<_A2>::value,
@@ -1492,8 +1445,8 @@ typename std::_EnableIf
 remquo(_A1 __lcpp_x, _A2 __lcpp_y, int* __lcpp_z) _NOEXCEPT
 {
     typedef typename std::__promote<_A1, _A2>::type __result_type;
-    static_assert((!(std::_IsSame<_A1, __result_type>::value &&
-                     std::_IsSame<_A2, __result_type>::value)), "");
+    static_assert((!(std::is_same<_A1, __result_type>::value &&
+                     std::is_same<_A2, __result_type>::value)), "");
     return ::remquo((__result_type)__lcpp_x, (__result_type)__lcpp_y, __lcpp_z);
 }
 

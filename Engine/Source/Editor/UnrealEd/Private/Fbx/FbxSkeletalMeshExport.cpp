@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Implementation of Skeletal Mesh export related functionality from FbxExporter
@@ -103,7 +103,7 @@ void FFbxExporter::GetSkeleton(FbxNode* RootNode, TArray<FbxNode*>& BoneNodes)
 /**
  * Adds an Fbx Mesh to the FBX scene based on the data in the given FSkeletalMeshLODModel
  */
-FbxNode* FFbxExporter::CreateMesh(const USkeletalMesh* SkelMesh, const TCHAR* MeshName, int32 LODIndex, const UAnimSequence* AnimSeq /*= nullptr*/, const TArray<UMaterialInterface*>* OverrideMaterials /*= nullptr*/)
+FbxNode* FFbxExporter::CreateMesh(const USkeletalMesh* SkelMesh, const TCHAR* MeshName, int32 LODIndex, const UAnimSequence* AnimSeq)
 {
 	const FSkeletalMeshModel* SkelMeshResource = SkelMesh->GetImportedModel();
 	if (!SkelMeshResource->LODModels.IsValidIndex(LODIndex))
@@ -263,7 +263,6 @@ FbxNode* FFbxExporter::CreateMesh(const USkeletalMesh* SkelMesh, const TCHAR* Me
 			// The original BlendShape Name was not saved during import, so we need to come up with a new one.
 			const FString BlendShapeName(SkelMesh->GetName() + TEXT("_blendShapes"));
 			FbxBlendShape* BlendShape = FbxBlendShape::Create(Mesh, TCHAR_TO_UTF8(*BlendShapeName));
-			bool bHasBadMorphTarget = false;
 
 			for (UMorphTarget* MorphTarget : SkelMesh->MorphTargets)
 			{
@@ -299,14 +298,7 @@ FbxNode* FFbxExporter::CreateMesh(const USkeletalMesh* SkelMesh, const TCHAR* Me
 							RemappedSourceIndex -= VertexIndexOffsetPairArray[UpperBoundIndex - 1].Value;
 						}
 
-						if ( RemappedSourceIndex < static_cast<uint32>( VertexCount ) )
-						{
-							ShapeControlPoints[RemappedSourceIndex] = Converter.ConvertToFbxPos(Vertices[RemappedSourceIndex].Position + CurrentDelta.PositionDelta);
-						}
-						else
-						{
-							bHasBadMorphTarget = true;
-						}
+						ShapeControlPoints[RemappedSourceIndex] = Converter.ConvertToFbxPos(Vertices[RemappedSourceIndex].Position + CurrentDelta.PositionDelta);
 					}
 
 					BlendShapeChannel->AddTargetShape(Shape);
@@ -317,11 +309,6 @@ FbxNode* FFbxExporter::CreateMesh(const USkeletalMesh* SkelMesh, const TCHAR* Me
 						BlendShapeCurvesMap.Add(MorphTargetName, AnimCurve);
 					}
 				}
-			}
-
-			if ( bHasBadMorphTarget )
-			{
-				UE_LOG( LogFbx, Warning, TEXT( "Encountered corrupted morphtarget(s) during export of SkeletalMesh %s, bad vertices were ignored." ), *SkelMesh->GetName() );
 			}
 		}
 
@@ -346,16 +333,7 @@ FbxNode* FFbxExporter::CreateMesh(const USkeletalMesh* SkelMesh, const TCHAR* Me
 
 	for(int32 MaterialIndex = 0; MaterialIndex < MaterialCount; ++MaterialIndex)
 	{
-		UMaterialInterface* MatInterface = nullptr;
-
-		if (OverrideMaterials && OverrideMaterials->IsValidIndex(MaterialIndex))
-		{
-			MatInterface = (*OverrideMaterials)[MaterialIndex];
-		}
-		else
-		{
-			MatInterface = SkelMesh->Materials[MaterialIndex].MaterialInterface;
-		}
+		UMaterialInterface* MatInterface = SkelMesh->Materials[MaterialIndex].MaterialInterface;
 
 		FbxSurfaceMaterial* FbxMaterial = NULL;
 		if (LODIndex == 0)
@@ -367,10 +345,7 @@ FbxNode* FFbxExporter::CreateMesh(const USkeletalMesh* SkelMesh, const TCHAR* Me
 		}
 		else if(MatInterface)
 		{
-			if ( FbxSurfaceMaterial** FbxMaterialPtr = FbxMaterials.Find( MatInterface ) )
-			{
-				FbxMaterial = *FbxMaterialPtr;
-			}
+			FbxMaterial = *(FbxMaterials.Find(MatInterface));
 		}
 
 		if(!FbxMaterial)
@@ -590,7 +565,7 @@ void FFbxExporter::ExportSkeletalMeshComponent(USkeletalMeshComponent* SkelMeshC
 	{
 		UAnimSequence* AnimSeq = (bSaveAnimSeq && SkelMeshComp->GetAnimationMode() == EAnimationMode::AnimationSingleNode) ? 
 			Cast<UAnimSequence>(SkelMeshComp->AnimationData.AnimToPlay) : NULL;
-		FbxNode* SkeletonRootNode = ExportSkeletalMeshToFbx(SkelMeshComp->SkeletalMesh, AnimSeq, MeshName, ActorRootNode, &SkelMeshComp->OverrideMaterials);
+		FbxNode* SkeletonRootNode = ExportSkeletalMeshToFbx(SkelMeshComp->SkeletalMesh, AnimSeq, MeshName, ActorRootNode);
 		if(SkeletonRootNode)
 		{
 			FbxSkeletonRoots.Add(SkelMeshComp, SkeletonRootNode);
@@ -633,7 +608,7 @@ void ExportObjectMetadataToBones(const UObject* ObjectToExport, const TArray<Fbx
 					NodeName = TagAsString.Left(CharPos);
 
 					// The remaining part is the actual metadata tag
-					TagAsString.RightChopInline(CharPos + 1, false); // exclude the period
+					TagAsString = TagAsString.RightChop(CharPos + 1); // exclude the period
 				}
 
 				// Try to attach the metadata to its associated node by name
@@ -665,11 +640,11 @@ void ExportObjectMetadataToBones(const UObject* ObjectToExport, const TArray<Fbx
 /**
  * Add the given skeletal mesh to the Fbx scene in preparation for exporting.  Makes all new nodes a child of the given node
  */
-FbxNode* FFbxExporter::ExportSkeletalMeshToFbx(const USkeletalMesh* SkeletalMesh, const UAnimSequence* AnimSeq, const TCHAR* MeshName, FbxNode* ActorRootNode, const TArray<UMaterialInterface*>* OverrideMaterials /*= nullptr*/)
+FbxNode* FFbxExporter::ExportSkeletalMeshToFbx(const USkeletalMesh* SkeletalMesh, const UAnimSequence* AnimSeq, const TCHAR* MeshName, FbxNode* ActorRootNode)
 {
 	if(AnimSeq)
 	{
-		return ExportAnimSequence(AnimSeq, SkeletalMesh, GetExportOptions()->bExportPreviewMesh, MeshName, ActorRootNode, OverrideMaterials);
+		return ExportAnimSequence(AnimSeq, SkeletalMesh, GetExportOptions()->bExportPreviewMesh, MeshName, ActorRootNode);
 
 	}
 	else
@@ -711,8 +686,7 @@ FbxNode* FFbxExporter::ExportSkeletalMeshToFbx(const USkeletalMesh* SkeletalMesh
 					double LodScreenSize = (double)(10.0f / SkeletalMesh->GetLODInfo(CurrentLodIndex)->ScreenSize.Default);
 					FbxLodGroupAttribute->AddThreshold(LodScreenSize);
 				}
-				const UAnimSequence* NullAnimSeq = nullptr;
-				FbxNode* FbxActorLOD = CreateMesh(SkeletalMesh, *FbxLODNodeName, CurrentLodIndex, NullAnimSeq, OverrideMaterials);
+				FbxNode* FbxActorLOD = CreateMesh(SkeletalMesh, *FbxLODNodeName, CurrentLodIndex);
 				if (FbxActorLOD)
 				{
 					MeshRootNode->AddChild(FbxActorLOD);
@@ -728,9 +702,7 @@ FbxNode* FFbxExporter::ExportSkeletalMeshToFbx(const USkeletalMesh* SkeletalMesh
 		}
 		else
 		{
-			const int32 LODIndex = 0;
-			const UAnimSequence* NullAnimSeq = nullptr;
-			MeshRootNode = CreateMesh(SkeletalMesh, MeshName, LODIndex, NullAnimSeq, OverrideMaterials);
+			MeshRootNode = CreateMesh(SkeletalMesh, MeshName, 0);
 			if (MeshRootNode)
 			{
 				TmpNodeNoTransform->AddChild(MeshRootNode);

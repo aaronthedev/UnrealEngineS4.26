@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DefaultGameMoviePlayer.h"
 #include "HAL/PlatformSplash.h"
@@ -8,7 +8,6 @@
 #include "Widgets/SViewport.h"
 #include "Engine/GameEngine.h"
 #include "Framework/Application/SlateApplication.h"
-#include "Input/HittestGrid.h"
 #include "Widgets/Layout/SBox.h"
 #include "GlobalShader.h"
 #include "MoviePlayerThreading.h"
@@ -611,8 +610,7 @@ void FDefaultGameMoviePlayer::TickStreamer(float DeltaTime)
 			MovieStreamingIsDone.Set(1);
 		}
 
-		// commenting loading screen currently as we don't support changing/adding/removing splash screens on the renderthread
-		/*IXRLoadingScreen* LoadingScreen;
+		IXRLoadingScreen* LoadingScreen;
 		if (GEngine && GEngine->XRSystem.IsValid() && (LoadingScreen = GEngine->XRSystem->GetLoadingScreen()) != nullptr)
 		{
 			FTexture2DRHIRef Movie2DTexture = ActiveMovieStreamer->GetTexture();
@@ -630,7 +628,7 @@ void FDefaultGameMoviePlayer::TickStreamer(float DeltaTime)
 				Splash.QuadSize = FVector2D(8.0f, 8.0f*InvAspectRatio);
 				LoadingScreen->AddSplash(Splash);
 			}
-		}*/
+		}
 	}
 }
 
@@ -842,11 +840,11 @@ void FMoviePlayerWidgetRenderer::DrawWindow(float DeltaTime)
 		return;
 	}
 
-	const float Scale = FSlateApplication::Get().GetApplicationScale() * MainWindow->GetDPIScaleFactor();
-	FVector2D DrawSize = VirtualRenderWindow->GetClientSizeInScreen() / Scale;
+	FVector2D DrawSize = VirtualRenderWindow->GetClientSizeInScreen();
 
-	FSlateApplication::Get().Tick(ESlateTickType::Time);
+	FSlateApplication::Get().Tick(ESlateTickType::TimeOnly);
 
+	const float Scale = 1.0f;
 	FGeometry WindowGeometry = FGeometry::MakeRoot(DrawSize, FSlateLayoutTransform(Scale));
 
 	VirtualRenderWindow->SlatePrepass(WindowGeometry.Scale);

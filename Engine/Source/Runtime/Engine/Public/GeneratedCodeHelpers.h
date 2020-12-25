@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,11 +7,9 @@
 
 // Common includes
 #include "UObject/Stack.h"
-#include "UObject/WeakFieldPtr.h"
 #include "Blueprint/BlueprintSupport.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "Engine/UserDefinedStruct.h"
-#include "Algo/Reverse.h"
 
 // Common libraries
 #include "Kismet/KismetArrayLibrary.h"
@@ -19,8 +17,6 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Kismet/BlueprintFunctionLibrary.h"
 #include "Kismet/KismetMathLibrary.h"
-#include "Kismet/BlueprintSetLibrary.h"
-#include "Kismet/BlueprintMapLibrary.h"
 
 // Special libraries
 #include "Kismet/DataTableFunctionLibrary.h"
@@ -116,24 +112,12 @@ public:
 		int32 LastIndex = TargetArray.Num() - 1;
 		for (int32 i = 0; i < LastIndex; ++i)
 		{
-			int32 Index = FMath::RandRange(i, LastIndex);
+			int32 Index = FMath::RandRange(0, LastIndex);
 			if (i != Index)
 			{
 				const_cast<TArray<T>*>(&TargetArray)->Swap(i, Index);
 			}
 		}
-	}
-
-	template<typename T>
-	static void Array_Swap(const TArray<T>& TargetArray, int32 FirstIndex, int32 SecondIndex)
-	{
-		const_cast<TArray<T>*>(&TargetArray)->Swap(FirstIndex, SecondIndex);
-	}
-
-	template<typename T>
-	static bool Array_Identical(const TArray<T>& ArrayA, const TArray<T>& ArrayB)
-	{
-		return (ArrayA == ArrayB);
 	}
 
 	template<typename T, typename U>
@@ -188,7 +172,7 @@ public:
 	{
 		return TargetArray.IndexOfByPredicate([&](const FText& Element) -> bool
 		{
-			return FTextProperty::Identical_Implementation(Element, ItemToFind, 0);
+			return UTextProperty::Identical_Implementation(Element, ItemToFind, 0);
 		});
 	}
 
@@ -212,7 +196,7 @@ public:
 	{
 		return TargetArray.ContainsByPredicate([&](const FText& Element) -> bool
 		{
-			return FTextProperty::Identical_Implementation(Element, ItemToFind, 0);
+			return UTextProperty::Identical_Implementation(Element, ItemToFind, 0);
 		});
 	}
 
@@ -267,7 +251,7 @@ public:
 
 		return const_cast<TArray<FText>*>(&TargetArray)->RemoveAll([&](const FText& Element) -> bool
 		{
-			return FTextProperty::Identical_Implementation(Element, Item, 0);
+			return UTextProperty::Identical_Implementation(Element, Item, 0);
 		}) != 0;
 	}
 
@@ -288,12 +272,6 @@ public:
 		{
 			ExecutionMessage(*FString::Printf(TEXT("Attempted to resize an array using negative size: Size = %d!"), Size), ELogVerbosity::Warning);
 		}
-	}
-	
-	template<typename T>
-	static void Array_Reverse(const TArray<T>& TargetArray)
-	{
-		Algo::Reverse(*const_cast<TArray<T>*>(&TargetArray));
 	}
 
 	template<typename T>
@@ -338,40 +316,6 @@ public:
 		else
 		{
 			ExecutionMessage(*FString::Printf(TEXT("Attempted to set an invalid index on array [%d/%d]!"), Index, LastIndexForLog(TargetArray)), ELogVerbosity::Warning);
-		}
-	}
-
-	template<typename T, typename U>
-	static void Array_Random(const TArray<T>& TargetArray, U& OutItem, int32& OutIndex)
-	{
-		if (TargetArray.Num() > 0)
-		{
-			const int32 Index = FMath::RandRange(0, TargetArray.Num() - 1);
-
-			OutItem = TargetArray[Index];
-			OutIndex = Index;
-		}
-		else
-		{
-			OutItem = U{};
-			OutIndex = INDEX_NONE;
-		}
-	}
-
-	template<typename T, typename U>
-	static void Array_RandomFromStream(const TArray<T>& TargetArray, FRandomStream& RandomStream, U& OutItem, int32& OutIndex)
-	{
-		if (TargetArray.Num() > 0)
-		{
-			const int32 Index = RandomStream.RandRange(0, TargetArray.Num() - 1);
-
-			OutItem = TargetArray[Index];
-			OutIndex = Index;
-		}
-		else
-		{
-			OutItem = U{};
-			OutIndex = INDEX_NONE;
 		}
 	}
 
@@ -464,12 +408,6 @@ public:
 		Result = A.Difference(B);
 	}
 
-	template<typename T>
-	static void SetSetPropertyByName(UObject* Object, FName PropertyName, const TSet<T>& Value)
-	{
-		UBlueprintSetLibrary::GenericSet_SetSetPropertyByName(Object, PropertyName, &Value);
-	}
-
 	//Replacements for CustomThunk functions from UBlueprintMapLibrary
 	template<typename T, typename U, typename V, typename W>
 	static void Map_Add(TMap<T, U>& TargetMap, const V& Key, const W& Value)
@@ -525,12 +463,6 @@ public:
 	static void Map_Clear(TMap<T, U>& TargetMap)
 	{
 		TargetMap.Empty();
-	}
-
-	template<typename T, typename U>
-	static void SetMapPropertyByName(UObject* Object, FName PropertyName, const TMap<T, U>& Value)
-	{
-		UBlueprintMapLibrary::GenericMap_SetMapPropertyByName(Object, PropertyName, &Value);
 	}
 
 	//Replacements for CustomThunk functions from UDataTableFunctionLibrary

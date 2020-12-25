@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_TEXT_FILE_FORMAT_H
-#define PXR_USD_SDF_TEXT_FILE_FORMAT_H
+#ifndef SD_MENVA_FILE_FORMAT_H
+#define SD_MENVA_FILE_FORMAT_H
 
 /// \file sdf/textFileFormat.h
 
@@ -46,6 +46,7 @@ TF_DECLARE_PUBLIC_TOKENS(SdfTextFileFormatTokens,
                          SDF_API, SDF_TEXT_FILE_FORMAT_TOKENS);
 
 TF_DECLARE_WEAK_AND_REF_PTRS(SdfTextFileFormat);
+TF_DECLARE_WEAK_AND_REF_PTRS(SdfLayerBase);
 
 SDF_DECLARE_HANDLES(SdfSpec);
 
@@ -56,58 +57,58 @@ SDF_DECLARE_HANDLES(SdfSpec);
 class SdfTextFileFormat : public SdfFileFormat
 {
 public:
-    /// Writes the content of the layer \p layer to the stream \p ostr. If
+    /// Writes the content of the layer \p layerBase to the stream \p ostr. If
     /// \p comment is non-empty, the supplied text is written into the stream
     /// instead of any existing layer comment, without changing the existing
     /// comment. Returns true if the content is successfully written to
     /// stream. Otherwise, false is returned and errors are posted.
     SDF_API
     bool Write(
-        const SdfLayer& layer,
+        const SdfLayerBase* layerBase,
         std::ostream& ostr,
         const std::string& comment = std::string()) const;
 
-    /// Writes the content in \p layer into the stream \p ostr. If the
+    /// Writes the content in \p layerBase into the stream \p ostr. If the
     /// content is successfully written, this method returns true. Otherwise,
     /// false is returned and errors are posted. 
     SDF_API
     bool WriteToStream(
-        const SdfLayer& layer,
+        const SdfLayerBase* layerBase,
         std::ostream& ostr) const;
 
     // SdfFileFormat overrides.
     SDF_API
-    virtual bool CanRead(const std::string &file) const override;
+    virtual bool CanRead(const std::string &file) const;
 
     SDF_API
     virtual bool Read(
-        SdfLayer* layer,
+        const SdfLayerBasePtr& layerBase,
         const std::string& resolvedPath,
-        bool metadataOnly) const override;
+        bool metadataOnly) const;
 
     SDF_API
     virtual bool WriteToFile(
-        const SdfLayer& layer,
+        const SdfLayerBase* layerBase,
         const std::string& filePath,
         const std::string& comment = std::string(),
-        const FileFormatArguments& args = FileFormatArguments()) const override;
+        const FileFormatArguments& args = FileFormatArguments()) const;
 
     SDF_API
     virtual bool ReadFromString(
-        SdfLayer* layer,
-        const std::string& str) const override;
+        const SdfLayerBasePtr& layerBase,
+        const std::string& str) const;
 
     SDF_API
     virtual bool WriteToString(
-        const SdfLayer& layer,
+        const SdfLayerBase* layerBase,
         std::string* str,
-        const std::string& comment = std::string()) const override;
+        const std::string& comment = std::string()) const;
 
     SDF_API
     virtual bool WriteToStream(
         const SdfSpecHandle &spec,
         std::ostream& out,
-        size_t indent) const override;
+        size_t indent) const;
 
 protected:
     SDF_FILE_FORMAT_FACTORY_ACCESS;
@@ -133,7 +134,10 @@ private:
 
     // Override to return false.  Reloading anonymous menva files clears their
     // content.
-    SDF_API virtual bool _ShouldSkipAnonymousReload() const override;
+    SDF_API virtual bool _ShouldSkipAnonymousReload() const;
+
+    SDF_API virtual bool _IsStreamingLayer(const SdfLayerBase& layer) const;
+
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE

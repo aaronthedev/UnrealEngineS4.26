@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AndroidCameraFactoryPrivate.h"
 
@@ -6,7 +6,6 @@
 #include "Containers/Array.h"
 #include "Containers/UnrealString.h"
 #include "Internationalization/Internationalization.h"
-#include "Misc/Guid.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleInterface.h"
 #include "Modules/ModuleManager.h"
@@ -93,12 +92,6 @@ public:
 	{
 		static FName PlayerName(TEXT("AndroidCamera"));
 		return PlayerName;
-	}
-
-	virtual FGuid GetPlayerPluginGUID() const override
-	{
-		static FGuid PlayerPluginGUID(0x94f59418, 0xb93d4f40, 0xa441b4fd, 0x2ac7c313);
-		return PlayerPluginGUID;
 	}
 
 	virtual const TArray<FString>& GetSupportedPlatforms() const override

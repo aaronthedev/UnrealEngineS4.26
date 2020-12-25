@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,13 +10,13 @@ LUMIN_THIRD_PARTY_INCLUDES_START
 #include <ml_snapshot.h>
 LUMIN_THIRD_PARTY_INCLUDES_END
 
-namespace LUMIN_MLSDK_API
+namespace MLSDK_API
 {
 
 CREATE_FUNCTION_SHIM(ml_perception_client, MLResult, MLSnapshotGetTransform)
-#define MLSnapshotGetTransform ::LUMIN_MLSDK_API::MLSnapshotGetTransformShim
+#define MLSnapshotGetTransform ::MLSDK_API::MLSnapshotGetTransformShim
 CREATE_FUNCTION_SHIM(ml_perception_client, const char*, MLSnapshotGetResultString)
-#define MLSnapshotGetResultString ::LUMIN_MLSDK_API::MLSnapshotGetResultStringShim
+#define MLSnapshotGetResultString ::MLSDK_API::MLSnapshotGetResultStringShim
 
 }
 

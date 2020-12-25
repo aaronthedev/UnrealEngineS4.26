@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -47,7 +47,6 @@ class BLUEPRINTGRAPH_API UK2Node_Tunnel : public UK2Node_EditablePinBase
 	virtual UObject* GetJumpTargetForDoubleClick() const override;
 	virtual FName CreateUniquePinName(FName SourcePinName) const override;
 	virtual void ReallocatePinsDuringReconstruction(TArray<UEdGraphPin*>& OldPins) override;
-	virtual bool IsCompatibleWithGraph(const UEdGraph* InGraph) const override;
 	//~ End UEdGraphNode Interface
 
 	//~ Begin UK2Node Interface.
@@ -56,8 +55,6 @@ class BLUEPRINTGRAPH_API UK2Node_Tunnel : public UK2Node_EditablePinBase
 	virtual bool DrawNodeAsExit() const override;
 	virtual bool NodeCausesStructuralBlueprintChange() const override { return true; }
 	virtual void ClearCachedBlueprintData(UBlueprint* Blueprint) override;
-	virtual void ValidateNodeDuringCompilation(FCompilerResultsLog& MessageLog) const override;
-	virtual void FixupPinStringDataReferences(FArchive* SavingArchive) override;
 	//~ End UK2Node Interface
 
 	//~ Begin UK2Node_EditablePinBase Interface.

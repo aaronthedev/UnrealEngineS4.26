@@ -1,9 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineIdentityTencent.h"
 #include "OnlineSubsystemTencentPCH.h"
 
-#if WITH_TENCENT_RAIL_SDK
+#if WITH_TENCENT_RAIL_SDK || WITH_TENCENT_TCLS
 bool FOnlineIdentityTencent::GetLocalUserIdx(const FUniqueNetId& UserId, int32& OutLocalIdx) const
 {
 	for (TMap<int32, TSharedPtr<const FUniqueNetId> >::TConstIterator It(UserIds); It; ++It)
@@ -19,7 +19,7 @@ bool FOnlineIdentityTencent::GetLocalUserIdx(const FUniqueNetId& UserId, int32& 
 #endif
 
 
-#if !WITH_TENCENT_RAIL_SDK
+#if !WITH_TENCENT_RAIL_SDK && !WITH_TENCENT_TCLS
 FOnlineIdentityTencent::FOnlineIdentityTencent(FOnlineSubsystemTencent* InSubsystem) {}
 FOnlineIdentityTencent::~FOnlineIdentityTencent() {}
 TSharedPtr<FUserOnlineAccountTencent> FOnlineIdentityTencent::GetUserAccountTencent(const FUniqueNetId& UserId) const { return nullptr; }
@@ -42,4 +42,4 @@ FString FOnlineIdentityTencent::GetAuthType() const{ return FString(); }
 void FOnlineIdentityTencent::RevokeAuthToken(const FUniqueNetId& UserId, const FOnRevokeAuthTokenCompleteDelegate& Delegate){ }
 bool FOnlineIdentityTencent::GetLocalUserIdx(const FUniqueNetId& UserId, int32& OutLocalIdx) const { return false; }
 
-#endif // !WITH_TENCENT_RAIL_SDK
+#endif // !WITH_TENCENT_RAIL_SDK && !WITH_TENCENT_TCLS

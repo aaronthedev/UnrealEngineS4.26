@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -110,26 +110,20 @@ namespace UnrealBuildTool
 		/// </summary>
 		static void ScanEngineDirectory()
 		{
-			foreach (DirectoryReference ExtensionDir in UnrealBuildTool.GetExtensionDirs(UnrealBuildTool.EngineDirectory))
-			{
-				DirectoryItem BaseDirectory = DirectoryItem.GetItemByDirectoryReference(ExtensionDir);
-				BaseDirectory.CacheDirectories();
+			DirectoryItem EngineDirectory = DirectoryItem.GetItemByDirectoryReference(UnrealBuildTool.EngineDirectory);
+			EngineDirectory.CacheDirectories();
 
-				DirectoryItem BasePluginsDirectory = DirectoryItem.Combine(BaseDirectory, "Plugins");
-				Enqueue(() => ScanPluginFolder(BasePluginsDirectory));
+			DirectoryItem EnginePluginsDirectory = DirectoryItem.Combine(EngineDirectory, "Plugins");
+			Enqueue(() => ScanPluginFolder(EnginePluginsDirectory));
 
-				DirectoryItem BaseSourceDirectory = DirectoryItem.Combine(BaseDirectory, "Source");
-				BaseSourceDirectory.CacheDirectories();
+			DirectoryItem EngineRuntimeDirectory = DirectoryItem.GetItemByDirectoryReference(UnrealBuildTool.EngineSourceRuntimeDirectory);
+			Enqueue(() => ScanDirectoryTree(EngineRuntimeDirectory));
 
-				DirectoryItem BaseSourceRuntimeDirectory = DirectoryItem.Combine(BaseSourceDirectory, "Runtime");
-				Enqueue(() => ScanDirectoryTree(BaseSourceRuntimeDirectory));
+			DirectoryItem EngineDeveloperDirectory = DirectoryItem.GetItemByDirectoryReference(UnrealBuildTool.EngineSourceDeveloperDirectory);
+			Enqueue(() => ScanDirectoryTree(EngineDeveloperDirectory));
 
-				DirectoryItem BaseSourceDeveloperDirectory = DirectoryItem.Combine(BaseSourceDirectory, "Developer");
-				Enqueue(() => ScanDirectoryTree(BaseSourceDeveloperDirectory));
-
-				DirectoryItem BaseSourceEditorDirectory = DirectoryItem.Combine(BaseSourceDirectory, "Editor");
-				Enqueue(() => ScanDirectoryTree(BaseSourceEditorDirectory));
-			}
+			DirectoryItem EngineEditorDirectory = DirectoryItem.GetItemByDirectoryReference(UnrealBuildTool.EngineSourceEditorDirectory);
+			Enqueue(() => ScanDirectoryTree(EngineEditorDirectory));
 		}
 
 		/// <summary>
@@ -138,17 +132,11 @@ namespace UnrealBuildTool
 		/// <param name="ProjectDirectory">The project directory to search</param>
 		static void ScanProjectDirectory(DirectoryItem ProjectDirectory)
 		{
-			foreach (DirectoryReference ExtensionDir in UnrealBuildTool.GetExtensionDirs(UnrealBuildTool.EngineDirectory))
-			{
-				DirectoryItem BaseDirectory = DirectoryItem.GetItemByDirectoryReference(ExtensionDir);
-				BaseDirectory.CacheDirectories();
+			DirectoryItem ProjectPluginsDirectory = DirectoryItem.Combine(ProjectDirectory, "Plugins");
+			Enqueue(() => ScanPluginFolder(ProjectPluginsDirectory));
 
-				DirectoryItem BasePluginsDirectory = DirectoryItem.Combine(ProjectDirectory, "Plugins");
-				Enqueue(() => ScanPluginFolder(BasePluginsDirectory));
-
-				DirectoryItem BaseSourceDirectory = DirectoryItem.Combine(ProjectDirectory, "Source");
-				Enqueue(() => ScanDirectoryTree(BaseSourceDirectory));
-			}
+			DirectoryItem ProjectSourceDirectory = DirectoryItem.Combine(ProjectDirectory, "Source");
+			Enqueue(() => ScanDirectoryTree(ProjectSourceDirectory));
 		}
 
 		/// <summary>

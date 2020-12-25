@@ -160,10 +160,7 @@ class RobotFileParser:
 
 
     def __str__(self):
-        entries = self.entries
-        if self.default_entry is not None:
-            entries = entries + [self.default_entry]
-        return '\n'.join(map(str, entries)) + '\n'
+        return ''.join([str(entry) + "\n" for entry in self.entries])
 
 
 class RuleLine:

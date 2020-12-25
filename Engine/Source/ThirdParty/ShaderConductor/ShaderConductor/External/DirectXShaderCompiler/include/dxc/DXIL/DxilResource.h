@@ -45,9 +45,6 @@ public:
   unsigned GetElementStride() const;
   void SetElementStride(unsigned ElemStride);
 
-  DXIL::SamplerFeedbackType GetSamplerFeedbackType() const;
-  void SetSamplerFeedbackType(DXIL::SamplerFeedbackType Value);
-
   bool IsGloballyCoherent() const;
   void SetGloballyCoherent(bool b);
   bool HasCounter() const;
@@ -64,7 +61,6 @@ public:
   bool IsTypedBuffer() const;
   bool IsRawBuffer() const;
   bool IsTBuffer() const;
-  bool IsFeedbackTexture() const;
 
   static bool classof(const DxilResourceBase *R) {
     return R->GetClass() == DXIL::ResourceClass::SRV || R->GetClass() == DXIL::ResourceClass::UAV;
@@ -74,7 +70,6 @@ private:
   unsigned m_SampleCount;
   unsigned m_ElementStride; // in bytes
   CompType m_CompType;
-  DXIL::SamplerFeedbackType m_SamplerFeedbackType;
   bool m_bGloballyCoherent;
   bool m_bHasCounter;
   bool m_bROV;

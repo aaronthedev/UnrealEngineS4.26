@@ -1,24 +1,24 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Chaos/ArrayCollectionArray.h"
-#include "Chaos/PBDRigidClusteredParticles.h"
+#include "Chaos/PBDRigidParticles.h"
 
 namespace Chaos
 {
 	template<class T, int d>
-	class TPBDGeometryCollectionParticles : public TPBDRigidClusteredParticles<T, d>
+	class TPBDGeometryCollectionParticles : public TPBDRigidParticles<T, d>
 	{
 	public:
 		TPBDGeometryCollectionParticles()
-		    : TPBDRigidClusteredParticles<T, d>()
+		    : TPBDRigidParticles<T, d>()
 		{
 			InitHelper();
 		}
-		TPBDGeometryCollectionParticles(const TPBDRigidClusteredParticles<T, d>& Other) = delete;
+		TPBDGeometryCollectionParticles(const TPBDRigidParticles<T, d>& Other) = delete;
 
-		TPBDGeometryCollectionParticles(TPBDRigidClusteredParticles<T, d>&& Other)
-		    : TPBDRigidClusteredParticles<T, d>(MoveTemp(Other))
+		TPBDGeometryCollectionParticles(TPBDRigidParticles<T, d>&& Other)
+		    : TPBDRigidParticles<T, d>(MoveTemp(Other))
 		{
 			InitHelper();
 		}

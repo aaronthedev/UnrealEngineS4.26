@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -62,7 +62,7 @@ namespace MetadataTool
 					try
 					{
 						Dictionary<string, object> Response;
-						using (StreamReader ResponseReader = new StreamReader(WebEx.Response.GetResponseStream(), Encoding.UTF8))
+						using (StreamReader ResponseReader = new StreamReader(WebEx.Response.GetResponseStream(), Encoding.Default))
 						{
 							string ResponseContent = ResponseReader.ReadToEnd();
 							Response = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(ResponseContent);

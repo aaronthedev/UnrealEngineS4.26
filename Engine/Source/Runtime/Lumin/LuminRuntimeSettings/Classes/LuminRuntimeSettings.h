@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,6 +25,8 @@ enum class ELuminComponentType : uint8
 	Fullscreen,
 	SearchProvider,
 	MusicService,
+	Screens,
+	ScreensImmersive,
 	Console,
 	SystemUI,
 };
@@ -82,7 +84,6 @@ enum class ELuminPrivilege : uint8
 	Invalid,
 	BatteryInfo,
 	CameraCapture,
-	ComputerVision,
 	WorldReconstruction,
 	InAppPurchase,
 	AudioCaptureMic,
@@ -102,62 +103,18 @@ enum class ELuminPrivilege : uint8
 	Documents,
 	ConnectBackgroundMusicService,
 	RegisterBackgroundMusicService,
-	PcfRead,
-	PwFoundObjRead = ELuminPrivilege::PcfRead,
+	PwFoundObjRead,
 	NormalNotificationsUsage,
 	MusicService,
 	ControllerPose,
+	ScreensProvider,
 	GesturesSubscribe,
 	GesturesConfig,
 	AddressBookRead,
 	AddressBookWrite,
-	AddressBookBasicAccess,
 	CoarseLocation,
-	FineLocation,
 	HandMesh,
 	WifiStatusRead,
-	SocialConnectionsInvitesAccess,
-	SocialConnectionsSelectAccess,
-	SecureBrowserWindow,
-	BluetoothAdapterExternalApp,
-	BluetoothAdapterUser,
-	BluetoothGattWrite,
-};
-
-USTRUCT(BlueprintType)
-struct FLocalizedAppName
-{
-	GENERATED_BODY()
-	
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Localization", Meta = (DisplayName = "Language Code"))
-	FString LanguageCode;
-
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Localization", Meta = (DisplayName = "App Name"))
-	FString AppName;
-};
-
-USTRUCT(BlueprintType)
-struct FLocalizedIconInfo
-{
-	GENERATED_BODY()
-
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Localization", Meta = (DisplayName = "Language Code"))
-	FString LanguageCode;
-
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Localization", Meta = (DisplayName = "Icon Model Path"))
-	FDirectoryPath IconModelPath;
-
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Localization", Meta = (DisplayName = "Icon Portal Path"))
-	FDirectoryPath IconPortalPath;
-};
-
-USTRUCT(BlueprintType)
-struct FLocalizedIconInfos 
-{
-	GENERATED_BODY()
-
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Localization", Meta = (DisplayName = "Icon Data"))
-	TArray<FLocalizedIconInfo> IconData;
 };
 
 /**
@@ -181,6 +138,10 @@ public:
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "MPK Packaging", Meta = (DisplayName = "Application Display Name (project name if blank)"))
 	FString ApplicationDisplayName;
 
+	/** Is a Screens type (Magic TV) app. */
+	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Build", Meta = (DisplayName = "Is Screens App"))
+	bool bIsScreensApp;
+
 	/** Indicates to the Lumin OS what the application's target framerate is, to improve prediction and reprojection */
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Runtime", Meta = (DisplayName = "Frame timing hint"))
 	ELuminFrameTimingHint FrameTimingHint;
@@ -188,14 +149,6 @@ public:
 	/** Content for this app is protected and should not be recorded or captured outside the graphics system. */
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Runtime", Meta = (DisplayName = "Protected Content"))
 	bool bProtectedContent;
-
-	/**
-	 * Check this if you wish to manually control when the start up loading animation is dismissed.
-	 * @note If this is checked, the developer MUST call MagicLeapHMDFunctionLibrary::SetAppReady
-	 *       in order for their application to finish booting.
-	 */
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Runtime", Meta = (DisplayName = "Manual call to 'set ready indication'"))
-	bool bManualCallToAppReady;
 
 	/** If checked, use Mobile Rendering. Otherwise, use Desktop Rendering. */
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Build", Meta = (DisplayName = "Use Mobile Rendering (otherwise, Desktop Rendering)"))
@@ -215,9 +168,6 @@ public:
 	/** Folder containing the assets (FBX / OBJ / MTL / PNG files) used for the Magic Leap App Icon portal. */
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Magic Leap App Tile", Meta = (DisplayName = "Icon Portal"))
 	FDirectoryPath IconPortalPath;
-
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Magic Leap App Tile", Meta = (DisplayName = "Localized Icon Infos"))
-	FLocalizedIconInfos LocalizedIconInfos;
 
 	/** Used as an internal version number. This number is used only to determine whether one version is more recent than another, with higher numbers indicating more recent versions. This is not the version number shown to users. */
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Advanced MPK Packaging", Meta = (DisplayName = "Version Code", ClampMin = 0))
@@ -266,9 +216,6 @@ public:
 	/** Render frame vignette. */
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Rendering", Meta = (DisplayName = "Render frame vignette"))
 	bool bFrameVignette;
-
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Advanced MPK Packaging", Meta = (DisplayName = "Localized App Names"))
-	TArray<FLocalizedAppName> LocalizedAppNames;
 
 	TArray<FString> ExtraApplicationNodes_DEPRECATED;
 	TArray<FString> ExtraComponentNodes_DEPRECATED;

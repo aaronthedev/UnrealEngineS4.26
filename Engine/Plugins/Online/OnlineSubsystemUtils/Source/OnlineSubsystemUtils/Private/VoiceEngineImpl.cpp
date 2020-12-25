@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VoiceEngineImpl.h"
 #include "Components/AudioComponent.h"
@@ -50,11 +50,10 @@ FRemoteTalkerDataImpl::FRemoteTalkerDataImpl() :
 	LastSeen(0.0),
 	NumFramesStarved(0),
 	VoipSynthComponent(nullptr),
-	VoiceDecoder(nullptr),
-	MicrophoneAmplitude(0.0f)
+	VoiceDecoder(nullptr)
 {
 	int32 SampleRate = UVOIPStatics::GetVoiceSampleRate();
-	int32 NumChannels = UVOIPStatics::GetVoiceNumChannels();
+	int32 NumChannels = DEFAULT_NUM_VOICE_CHANNELS;
 	VoiceDecoder = FVoiceModule::Get().CreateVoiceDecoder(SampleRate, NumChannels);
 	check(VoiceDecoder.IsValid());
 
@@ -76,7 +75,6 @@ FRemoteTalkerDataImpl::FRemoteTalkerDataImpl(const FRemoteTalkerDataImpl& Other)
 	MaxUncompressedDataSize = Other.MaxUncompressedDataSize;
 	MaxUncompressedDataQueueSize = Other.MaxUncompressedDataQueueSize;
 	CurrentUncompressedDataQueueSize = Other.CurrentUncompressedDataQueueSize;
-	MicrophoneAmplitude = Other.MicrophoneAmplitude;
 
 	{
 		FScopeLock ScopeLock(&Other.QueueLock);
@@ -107,9 +105,6 @@ FRemoteTalkerDataImpl::FRemoteTalkerDataImpl(FRemoteTalkerDataImpl&& Other)
 	CurrentUncompressedDataQueueSize = Other.CurrentUncompressedDataQueueSize;
 	Other.CurrentUncompressedDataQueueSize = 0;
 
-	MicrophoneAmplitude = Other.MicrophoneAmplitude;
-	Other.MicrophoneAmplitude = 0.0f;
-
 	{
 		FScopeLock ScopeLock(&Other.QueueLock);
 		UncompressedDataQueue = MoveTemp(Other.UncompressedDataQueue);
@@ -120,7 +115,12 @@ FRemoteTalkerDataImpl::~FRemoteTalkerDataImpl()
 {
 	VoiceDecoder = nullptr;
 
-	Reset();
+	CurrentUncompressedDataQueueSize = 0;
+
+	{
+		FScopeLock ScopeLock(&QueueLock);
+		UncompressedDataQueue.Empty();
+	}
 }
 
 void FRemoteTalkerDataImpl::Reset()
@@ -134,7 +134,7 @@ void FRemoteTalkerDataImpl::Reset()
 		VoipSynthComponent->Stop();
 
 		UAudioComponent* AudioComponent = VoipSynthComponent->GetAudioComponent();
-		if (AudioComponent && AudioComponent->IsRegistered())
+		if (AudioComponent->IsRegistered())
 		{
 			AudioComponent->UnregisterComponent();
 		}
@@ -146,17 +146,9 @@ void FRemoteTalkerDataImpl::Reset()
 		}
 
 		bIsActive = false;
-		
-		if (VoipSynthComponent->IsRegistered())
-		{
-			VoipSynthComponent->UnregisterComponent();
-		}
-
-		VoipSynthComponent = nullptr;
 	}
 
 	CurrentUncompressedDataQueueSize = 0;
-	MicrophoneAmplitude = 0.0f;
 
 	{
 		FScopeLock ScopeLock(&QueueLock);
@@ -176,7 +168,7 @@ void FRemoteTalkerDataImpl::Cleanup()
 }
 
 FVoiceEngineImpl ::FVoiceEngineImpl()
-	: OnlineInstanceName(NAME_None)
+	: OnlineSubsystem(nullptr)
 	, VoiceCapture(nullptr)
 	, VoiceEncoder(nullptr)
 	, OwningUserIndex(INVALID_INDEX)
@@ -188,13 +180,12 @@ FVoiceEngineImpl ::FVoiceEngineImpl()
 	, SerializeHelper(nullptr)
 #if PLATFORM_WINDOWS
 	, bAudioDeviceChanged(false)
-	, bDeviceChangeListenerRegistered(false)
 #endif
 {
 }
 
 FVoiceEngineImpl::FVoiceEngineImpl(IOnlineSubsystem* InSubsystem) :
-	OnlineInstanceName(NAME_None),
+	OnlineSubsystem(InSubsystem),
 	VoiceCapture(nullptr),
 	VoiceEncoder(nullptr),
 	OwningUserIndex(INVALID_INDEX),
@@ -209,11 +200,6 @@ FVoiceEngineImpl::FVoiceEngineImpl(IOnlineSubsystem* InSubsystem) :
 #endif
 {
 	FCoreUObjectDelegates::PostLoadMapWithWorld.AddRaw(this, &FVoiceEngineImpl::OnPostLoadMap);
-
-	if (InSubsystem)
-	{
-		OnlineInstanceName = InSubsystem->GetInstanceName();
-	}
 }
 
 FVoiceEngineImpl::~FVoiceEngineImpl()
@@ -229,13 +215,6 @@ FVoiceEngineImpl::~FVoiceEngineImpl()
 	VoiceEncoder = nullptr;
 
 	delete SerializeHelper;
-
-#if PLATFORM_WINDOWS
-	if (bDeviceChangeListenerRegistered)
-	{
-		UnregisterDeviceChangedListener();
-	}
-#endif
 }
 
 void FVoiceEngineImpl::VoiceCaptureUpdate() const
@@ -296,9 +275,7 @@ bool FVoiceEngineImpl::Init(int32 MaxLocalTalkers, int32 MaxRemoteTalkers)
 {
 	bool bSuccess = false;
 
-	IOnlineSubsystem* OnlineSub = GetOnlineSubSystem();
-
-	if (OnlineSub && !OnlineSub->IsDedicated())
+	if (!OnlineSubsystem->IsDedicated())
 	{
 		FVoiceModule& VoiceModule = FVoiceModule::Get();
 		if (VoiceModule.IsVoiceEnabled())
@@ -354,6 +331,10 @@ uint32 FVoiceEngineImpl::StartLocalVoiceProcessing(uint32 LocalUserNum)
 
 		Return = ONLINE_SUCCESS;
 	}
+	else
+	{
+		UE_LOG_ONLINE_VOICEENGINE(Error, TEXT("StartLocalVoiceProcessing(): Device is currently owned by another user"));
+	}
 
 	return Return;
 }
@@ -377,6 +358,10 @@ uint32 FVoiceEngineImpl::StopLocalVoiceProcessing(uint32 LocalUserNum)
 
 		Return = ONLINE_SUCCESS;
 	}
+	else
+	{
+		UE_LOG_ONLINE_VOICEENGINE(Error, TEXT("StopLocalVoiceProcessing: Ignoring stop request for non-owning user"));
+	}
 
 	return Return;
 }
@@ -385,7 +370,7 @@ uint32 FVoiceEngineImpl::RegisterLocalTalker(uint32 LocalUserNum)
 {
 	if (!VoiceCapture.IsValid())
 	{
-		VoiceCapture = FVoiceModule::Get().CreateVoiceCapture("");
+		VoiceCapture = FVoiceModule::Get().CreateVoiceCapture();
 
 		if (!VoiceCapture.IsValid())
 		{
@@ -422,7 +407,6 @@ uint32 FVoiceEngineImpl::UnregisterRemoteTalker(const FUniqueNetId& UniqueId)
 		// Dump the whole talker
 		RemoteData->Cleanup();
 		RemoteTalkerBuffers.Remove(FUniqueNetIdWrapper(UniqueId.AsShared()));
-		VoiceAmplitudes.Remove(FUniqueNetIdWrapper(UniqueId.AsShared()));
 	}
 
 	return ONLINE_SUCCESS;
@@ -494,11 +478,10 @@ uint32 FVoiceEngineImpl::ReadLocalVoiceData(uint32 LocalUserNum, uint8* Data, ui
 		}
 
 		// Get new uncompressed data
-		uint8* const RemainingDecompressedBufferPtr = DecompressedVoiceBuffer.GetData() + PlayerVoiceData[LocalUserNum].VoiceRemainderSize;
-		const uint32 RemainingDecompressedBufferSize = DecompressedVoiceBuffer.Num() - PlayerVoiceData[LocalUserNum].VoiceRemainderSize;
+		uint8* RemainingDecompressedBufferPtr = DecompressedVoiceBuffer.GetData() + PlayerVoiceData[LocalUserNum].VoiceRemainderSize;
 		uint32 ByteWritten = 0;
 		uint64 NewSampleCount = 0;
-		VoiceResult = VoiceCapture->GetVoiceData(RemainingDecompressedBufferPtr, RemainingDecompressedBufferSize, ByteWritten, NewSampleCount);
+		VoiceResult = VoiceCapture->GetVoiceData(DecompressedVoiceBuffer.GetData() + PlayerVoiceData[LocalUserNum].VoiceRemainderSize, NewVoiceDataBytes, ByteWritten, NewSampleCount);
 		
 		TotalVoiceBytes = ByteWritten + PlayerVoiceData[LocalUserNum].VoiceRemainderSize;
 
@@ -587,21 +570,8 @@ uint32 FVoiceEngineImpl::SubmitRemoteVoiceData(const FUniqueNetIdWrapper& Remote
 	if (QueuedData.VoipSynthComponent == nullptr || QueuedData.VoipSynthComponent->IsPendingKill())
 	{
 		CreateSerializeHelper();
-		
-		if (QueuedData.VoipSynthComponent && QueuedData.VoipSynthComponent->IsPendingKill())
-		{
-			QueuedData.VoipSynthComponent->Stop();
-			QueuedData.VoipSynthComponent->ClosePacketStream();
-		}
 
-		if (GetOnlineSubSystem())
-		{
-			if (UWorld* World = GetWorldForOnline(GetOnlineSubSystem()->GetInstanceName()))
-			{
-				QueuedData.VoipSynthComponent = CreateVoiceSynthComponent(World, UVOIPStatics::GetVoiceSampleRate());
-			}
-		}
-
+		QueuedData.VoipSynthComponent = CreateVoiceSynthComponent(UVOIPStatics::GetVoiceSampleRate());
 		if (QueuedData.VoipSynthComponent)
 		{
 			//TODO, make buffer size and buffering delay runtime-controllable parameters.
@@ -643,12 +613,6 @@ uint32 FVoiceEngineImpl::SubmitRemoteVoiceData(const FUniqueNetIdWrapper& Remote
 		}
 
 		QueuedData.VoipSynthComponent->SubmitPacket((float*)DecompressedVoiceBuffer.GetData(), BytesWritten, InSampleCount, EVoipStreamDataFormat::Int16);
-
-		// Try to start the VoipSynthComponent if it has been killed by the audio engine.
-		if (!QueuedData.VoipSynthComponent->IsPlaying())
-		{
-			QueuedData.VoipSynthComponent->Start();
-		}
 	}
 
 	return ONLINE_SUCCESS;
@@ -701,7 +665,7 @@ void FVoiceEngineImpl::GenerateVoiceData(USoundWaveProcedural* InProceduralWave,
 	FRemoteTalkerDataImpl* QueuedData = RemoteTalkerBuffers.Find(FUniqueNetIdWrapper(TalkerId.AsShared()));
 	if (QueuedData)
 	{
-		const int32 SampleSize = sizeof(uint16) * UVOIPStatics::GetVoiceNumChannels();
+		const int32 SampleSize = sizeof(uint16) * DEFAULT_NUM_VOICE_CHANNELS;
 
 		{
 			FScopeLock ScopeLock(&QueuedData->QueueLock);
@@ -744,7 +708,10 @@ void FVoiceEngineImpl::OnPostLoadMap(UWorld*)
 	for (FRemoteTalkerData::TIterator It(RemoteTalkerBuffers); It; ++It)
 	{
 		FRemoteTalkerDataImpl& RemoteData = It.Value();
-		RemoteData.Reset();
+		if (RemoteData.VoipSynthComponent && RemoteData.VoipSynthComponent->GetAudioComponent() != nullptr)
+		{
+			RemoteData.VoipSynthComponent->GetAudioComponent()->Play();
+		}
 	}
 }
 
@@ -863,49 +830,6 @@ Audio::FPatchOutputStrongPtr FVoiceEngineImpl::GetRemoteTalkerOutput()
 	return AllRemoteTalkerAudio.AddNewOutput(4096 * 2, 1.0f);
 }
 
-float FVoiceEngineImpl::GetMicrophoneAmplitude(int32 LocalUserNum)
-{
-	if (VoiceCapture.IsValid())
-	{
-		return VoiceCapture->GetCurrentAmplitude();
-	}
-	else
-	{
-		return 0.0f;
-	}
-}
-
-float FVoiceEngineImpl::GetIncomingAudioAmplitude(const FUniqueNetIdWrapper& RemoteUserId)
-{
-	FVoiceAmplitudeData* VoiceAmplitude = VoiceAmplitudes.Find(RemoteUserId);
-
-	if (VoiceAmplitude != nullptr)
-	{
-		// Timeout and default to 0 if we haven't received data recently
-		double CurrentTime = FPlatformTime::Seconds();
-		if (CurrentTime - VoiceAmplitude->LastSeen > UVOIPStatics::GetRemoteTalkerTimeoutDuration())
-		{
-			return 0.0f;
-		}
-
-		return VoiceAmplitude->Amplitude;
-	}
-	else
-	{
-		return -1.0f;
-	}
-}
-
-uint32 FVoiceEngineImpl::SetRemoteVoiceAmplitude(const FUniqueNetIdWrapper& RemoteTalkerId, float InAmplitude)
-{
-	FVoiceAmplitudeData& VoiceAmplitude = VoiceAmplitudes.FindOrAdd(RemoteTalkerId);
-
-	VoiceAmplitude.Amplitude = InAmplitude;
-	VoiceAmplitude.LastSeen = FPlatformTime::Seconds();
-
-	return 0;
-}
-
 bool FVoiceEngineImpl::PatchRemoteTalkerOutputToEndpoint(const FString& InDeviceName, bool bMuteInGameOutput /*= true*/)
 {
 	if (bMuteInGameOutput)
@@ -915,7 +839,7 @@ bool FVoiceEngineImpl::PatchRemoteTalkerOutputToEndpoint(const FString& InDevice
 		MuteAudioEngineOutputCVar->Set(1, ECVF_SetByGameSetting);
 	}
 	
-	TUniquePtr<FVoiceEndpoint>& Endpoint = ExternalEndpoints.Emplace_GetRef(new FVoiceEndpoint(InDeviceName, UVOIPStatics::GetVoiceSampleRate(), UVOIPStatics::GetVoiceNumChannels()));
+	TUniquePtr<FVoiceEndpoint>& Endpoint = ExternalEndpoints.Emplace_GetRef(new FVoiceEndpoint(InDeviceName, UVOIPStatics::GetVoiceSampleRate(), DEFAULT_NUM_VOICE_CHANNELS));
 	Audio::FPatchOutputStrongPtr OutputPatch = AllRemoteTalkerAudio.AddNewOutput(4096 * 2, 1.0f);
 	Endpoint->PatchInOutput(OutputPatch);
 	return true;
@@ -923,8 +847,7 @@ bool FVoiceEngineImpl::PatchRemoteTalkerOutputToEndpoint(const FString& InDevice
 
 bool FVoiceEngineImpl::PatchLocalTalkerOutputToEndpoint(const FString& InDeviceName)
 {
-	// Local talker patched output is always mixed down to mono.
-	TUniquePtr<FVoiceEndpoint>& Endpoint = ExternalEndpoints.Emplace_GetRef(new FVoiceEndpoint(InDeviceName, UVOIPStatics::GetVoiceSampleRate(), 1));
+	TUniquePtr<FVoiceEndpoint>& Endpoint = ExternalEndpoints.Emplace_GetRef(new FVoiceEndpoint(InDeviceName, UVOIPStatics::GetVoiceSampleRate(), DEFAULT_NUM_VOICE_CHANNELS));
 	Audio::FPatchOutputStrongPtr OutputPatch = VoiceCapture->GetMicrophoneAudio(4096 * 2, 1.0f);
 	Endpoint->PatchInOutput(OutputPatch);
 	return true;
@@ -961,8 +884,6 @@ void FVoiceEngineImpl::RegisterDeviceChangedListener()
 	}
 
 	NotificationClient::WindowsNotificationClient->RegisterDeviceChangedListener(this);
-
-	bDeviceChangeListenerRegistered = true;
 }
 
 void FVoiceEngineImpl::UnregisterDeviceChangedListener()
@@ -971,8 +892,6 @@ void FVoiceEngineImpl::UnregisterDeviceChangedListener()
 	{
 		NotificationClient::WindowsNotificationClient->UnRegisterDeviceDeviceChangedListener(this);
 	}
-
-	bDeviceChangeListenerRegistered = false;
 }
 
 void FVoiceEngineImpl::HandleDeviceChange()
@@ -1002,16 +921,6 @@ void FVoiceEngineImpl::OnDefaultDeviceChanged()
 	TimeDeviceChaned = FPlatformTime::Seconds();
 }
 #endif
-
-IOnlineSubsystem* FVoiceEngineImpl::GetOnlineSubSystem()
-{
-	if (UWorld* World = GetWorldForOnline(OnlineInstanceName))
-	{
-		return Online::GetSubsystem(World);
-	}
-
-	return nullptr;
-}
 
 FVoiceEndpoint::FVoiceEndpoint(const FString& InEndpointName, float InSampleRate, int32 InNumChannels)
 	: NumChannelsComingIn(InNumChannels)

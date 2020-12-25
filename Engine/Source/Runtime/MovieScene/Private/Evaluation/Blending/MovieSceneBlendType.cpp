@@ -1,14 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Evaluation/Blending/MovieSceneBlendType.h"
 #include "Misc/EnumClassFlags.h"
 
-namespace UE
-{
 namespace MovieScene
 {
 	ENUM_CLASS_FLAGS(EMovieSceneBlendType)
-}
 }
 
 FMovieSceneBlendTypeField::FMovieSceneBlendTypeField()
@@ -19,8 +16,7 @@ FMovieSceneBlendTypeField::FMovieSceneBlendTypeField()
 FMovieSceneBlendTypeField FMovieSceneBlendTypeField::All()
 {
 	FMovieSceneBlendTypeField New;
-	New.Add(EMovieSceneBlendType::Absolute, EMovieSceneBlendType::Additive, EMovieSceneBlendType::Relative,
-			EMovieSceneBlendType::AdditiveFromBase);
+	New.Add(EMovieSceneBlendType::Absolute, EMovieSceneBlendType::Additive, EMovieSceneBlendType::Relative);
 	return New;
 }
 
@@ -32,31 +28,31 @@ FMovieSceneBlendTypeField FMovieSceneBlendTypeField::None()
 
 void FMovieSceneBlendTypeField::Add(EMovieSceneBlendType Type)
 {
-	using namespace UE::MovieScene;
+	using namespace MovieScene;
 	BlendTypeField |= Type;
 }
 
 void FMovieSceneBlendTypeField::Add(FMovieSceneBlendTypeField Field)
 {
-	using namespace UE::MovieScene;
+	using namespace MovieScene;
 	BlendTypeField |= Field.BlendTypeField;
 }
 
 void FMovieSceneBlendTypeField::Remove(EMovieSceneBlendType Type)
 {
-	using namespace UE::MovieScene;
+	using namespace MovieScene;
 	BlendTypeField |= Type;
 }
 
 void FMovieSceneBlendTypeField::Remove(FMovieSceneBlendTypeField Field)
 {
-	using namespace UE::MovieScene;
+	using namespace MovieScene;
 	BlendTypeField &= ~Field.BlendTypeField;
 }
 
 FMovieSceneBlendTypeField FMovieSceneBlendTypeField::Invert() const
 {
-	using namespace UE::MovieScene;
+	using namespace MovieScene;
 	return FMovieSceneBlendTypeField(~BlendTypeField);
 }
 
@@ -70,8 +66,7 @@ int32 FMovieSceneBlendTypeField::Num() const
 	return
 		(Contains(EMovieSceneBlendType::Absolute) ? 1 : 0) +
 		(Contains(EMovieSceneBlendType::Relative) ? 1 : 0) +
-		(Contains(EMovieSceneBlendType::Additive) ? 1 : 0) +
-		(Contains(EMovieSceneBlendType::AdditiveFromBase) ? 1 : 0);
+		(Contains(EMovieSceneBlendType::Additive) ? 1 : 0);
 }
 
 void FMovieSceneBlendTypeFieldIterator::IterateToNext()
@@ -100,6 +95,6 @@ FMovieSceneBlendTypeFieldIterator end(const FMovieSceneBlendTypeField& InField)
 {
 	FMovieSceneBlendTypeFieldIterator It;
 	It.Field = InField;
-	It.Offset = FMovieSceneBlendTypeFieldIterator::MaxValidOffset() + 1;
+	It.Offset = 3;
 	return It;
 }

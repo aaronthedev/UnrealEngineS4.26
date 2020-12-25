@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MessageRpcClient.h"
 
@@ -17,23 +17,14 @@
  *****************************************************************************/
 
 FMessageRpcClient::FMessageRpcClient()
-	: FMessageRpcClient(FMessageEndpoint::Builder(TEXT("FMessageRpcClient")))
-{ 
-}
-
-FMessageRpcClient::FMessageRpcClient(const FString& InDebugName, const TSharedRef<IMessageBus, ESPMode::ThreadSafe>& InMessageBus)
-	: FMessageRpcClient(FMessageEndpoint::Builder(*InDebugName, InMessageBus))
 {
-}
-
-FMessageRpcClient::FMessageRpcClient(FMessageEndpointBuilder&& InEndpointBuilder)
-{
-	MessageEndpoint = InEndpointBuilder
+	MessageEndpoint = FMessageEndpoint::Builder("FMessageRpcClient")
 		.Handling<FMessageRpcProgress>(this, &FMessageRpcClient::HandleProgressMessage)
 		.WithCatchall(this, &FMessageRpcClient::HandleRpcMessages);
 
 	TickerHandle = FTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FMessageRpcClient::HandleTicker), MESSAGE_RPC_RETRY_INTERVAL);
 }
+
 
 FMessageRpcClient::~FMessageRpcClient()
 {

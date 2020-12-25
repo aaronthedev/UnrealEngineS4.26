@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	VolumeLighting.h
@@ -9,85 +9,11 @@
 #include "RHIDefinitions.h"
 #include "SceneView.h"
 #include "SceneRendering.h"
-#include "ShadowRendering.h"
 #include "Components/LightComponent.h"
 #include "Engine/MapBuildDataRegistry.h"
 
-BEGIN_SHADER_PARAMETER_STRUCT(FVolumeShadowingShaderParameters, )
-	SHADER_PARAMETER(FMatrix, WorldToShadowMatrix)
-	SHADER_PARAMETER(FVector4, ShadowmapMinMax)
-	SHADER_PARAMETER(FVector4, DepthBiasParameters)
-	SHADER_PARAMETER(FVector4, ShadowInjectParams)
-	SHADER_PARAMETER_ARRAY(FVector4, ClippingPlanes, [2])
-	SHADER_PARAMETER_TEXTURE(Texture2D, ShadowDepthTexture)
-	SHADER_PARAMETER_SAMPLER(SamplerState, ShadowDepthTextureSampler)
-	SHADER_PARAMETER_STRUCT_INCLUDE(FOnePassPointShadowProjection, OnePassPointShadowProjection)
-	SHADER_PARAMETER(uint32, bStaticallyShadowed)
-	SHADER_PARAMETER_TEXTURE(Texture2D, StaticShadowDepthTexture)
-	SHADER_PARAMETER_SAMPLER(SamplerState, StaticShadowDepthTextureSampler)
-	SHADER_PARAMETER(FMatrix, WorldToStaticShadowMatrix)
-	SHADER_PARAMETER(FVector4, StaticShadowBufferSize)
-END_SHADER_PARAMETER_STRUCT()
-
-extern void GetVolumeShadowingShaderParameters(
-	const FViewInfo& View,
-	const FLightSceneInfo* LightSceneInfo,
-	const FProjectedShadowInfo* ShadowMap,
-	int32 InnerSplitIndex,
-	bool bDynamicallyShadowed,
-	FVolumeShadowingShaderParameters& OutParameters);
-
-
-
-///
-///
-///
-
-
-
-BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FVolumeShadowingShaderParametersGlobal0, )
-	SHADER_PARAMETER(FVector, Position)
-	SHADER_PARAMETER(float, InvRadius)
-	SHADER_PARAMETER_STRUCT_INCLUDE(FVolumeShadowingShaderParameters, VolumeShadowingShaderParameters)
-END_GLOBAL_SHADER_PARAMETER_STRUCT()
-
-BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FVolumeShadowingShaderParametersGlobal1, )
-	SHADER_PARAMETER(FVector, Position)
-	SHADER_PARAMETER(float, InvRadius)
-	SHADER_PARAMETER_STRUCT_INCLUDE(FVolumeShadowingShaderParameters, VolumeShadowingShaderParameters)
-END_GLOBAL_SHADER_PARAMETER_STRUCT()
-
-class FVisibleLightInfo;
-
-void SetVolumeShadowingShaderParameters(
-	FVolumeShadowingShaderParametersGlobal0& ShaderParams,
-	const FViewInfo& View,
-	const FLightSceneInfo* LightSceneInfo,
-	const FProjectedShadowInfo* ShadowInfo,
-	int32 InnerSplitIndex);
-void SetVolumeShadowingShaderParameters(
-	FVolumeShadowingShaderParametersGlobal1& ShaderParams,
-	const FViewInfo& View,
-	const FLightSceneInfo* LightSceneInfo,
-	const FProjectedShadowInfo* ShadowInfo,
-	int32 InnerSplitIndex);
-
-void SetVolumeShadowingDefaultShaderParameters(FVolumeShadowingShaderParametersGlobal0& ShaderParams);
-void SetVolumeShadowingDefaultShaderParameters(FVolumeShadowingShaderParametersGlobal1& ShaderParams);
-
-const FProjectedShadowInfo* GetLastCascadeShadowInfo(const FLightSceneProxy* LightProxy, const FVisibleLightInfo& VisibleLightInfo);
-
-
-
-///
-///
-///
-
-
-
 class FVolumeShadowingParameters
 {
-	DECLARE_TYPE_LAYOUT(FVolumeShadowingParameters, NonVirtual);
 public:
 
 	void Bind(const FShaderParameterMap& ParameterMap)
@@ -131,12 +57,11 @@ public:
 		// .zw:DistanceFadeMAD to use MAD for efficiency in the shader, default to ignore the plane
 		FVector4 ShadowInjectParamValue(1, 1, 0, 0);
 
-		if (InnerSplitIndex != INDEX_NONE)
+		if (InnerSplitIndex >= 0)
 		{
 			FShadowCascadeSettings ShadowCascadeSettings;
 
-			LightSceneInfo->Proxy->GetShadowSplitBounds(View, InnerSplitIndex, LightSceneInfo->IsPrecomputedLightingValid(), &ShadowCascadeSettings);
-			ensureMsgf(ShadowCascadeSettings.ShadowSplitIndex != INDEX_NONE, TEXT("FLightSceneProxy::GetShadowSplitBounds did not return an initialized ShadowCascadeSettings"));
+			LightSceneInfo->Proxy->GetShadowSplitBounds(View, (uint32)InnerSplitIndex, LightSceneInfo->IsPrecomputedLightingValid(), &ShadowCascadeSettings);
 
 			// near cascade plane
 			{
@@ -217,7 +142,7 @@ public:
 	}
 
 	/** Serializer. */ 
-	/*friend FArchive& operator<<(FArchive& Ar,FVolumeShadowingParameters& P)
+	friend FArchive& operator<<(FArchive& Ar,FVolumeShadowingParameters& P)
 	{
 		Ar << P.WorldToShadowMatrix;
 		Ar << P.ShadowmapMinMax;
@@ -233,22 +158,21 @@ public:
 		Ar << P.WorldToStaticShadowMatrix;
 		Ar << P.StaticShadowBufferSize;
 		return Ar;
-	}*/
+	}
 
 private:
-	
-		LAYOUT_FIELD(FShaderParameter, WorldToShadowMatrix)
-		LAYOUT_FIELD(FShaderParameter, ShadowmapMinMax)
-		LAYOUT_FIELD(FShaderParameter, DepthBiasParameters)
-		LAYOUT_FIELD(FShaderParameter, ShadowInjectParams)
-		LAYOUT_FIELD(FShaderParameter, ClippingPlanes)
-		LAYOUT_FIELD(FShaderResourceParameter, ShadowDepthTexture)
-		LAYOUT_FIELD(FShaderResourceParameter, ShadowDepthTextureSampler)
-		LAYOUT_FIELD(FOnePassPointShadowProjectionShaderParameters, OnePassShadowParameters)
-		LAYOUT_FIELD(FShaderParameter, bStaticallyShadowed)
-		LAYOUT_FIELD(FShaderResourceParameter, StaticShadowDepthTexture)
-		LAYOUT_FIELD(FShaderResourceParameter, StaticShadowDepthTextureSampler)
-		LAYOUT_FIELD(FShaderParameter, WorldToStaticShadowMatrix)
-		LAYOUT_FIELD(FShaderParameter, StaticShadowBufferSize)
-	
+
+	FShaderParameter WorldToShadowMatrix;
+	FShaderParameter ShadowmapMinMax;
+	FShaderParameter DepthBiasParameters;
+	FShaderParameter ShadowInjectParams;
+	FShaderParameter ClippingPlanes;
+	FShaderResourceParameter ShadowDepthTexture;
+	FShaderResourceParameter ShadowDepthTextureSampler;
+	FOnePassPointShadowProjectionShaderParameters OnePassShadowParameters;
+	FShaderParameter bStaticallyShadowed;
+	FShaderResourceParameter StaticShadowDepthTexture;
+	FShaderResourceParameter StaticShadowDepthTextureSampler;
+	FShaderParameter WorldToStaticShadowMatrix;
+	FShaderParameter StaticShadowBufferSize;
 };

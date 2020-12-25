@@ -1,13 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Abilities/GameplayAbilityTypes.h"
-
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/MovementComponent.h"
 #include "Abilities/GameplayAbility.h"
 #include "AbilitySystemComponent.h"
-#include "Animation/AnimMontage.h"
-#include "GameplayPrediction.h"
 
 //----------------------------------------------------------------------
 
@@ -19,8 +16,7 @@ void FGameplayAbilityActorInfo::InitFromActor(AActor *InOwnerActor, AActor *InAv
 	OwnerActor = InOwnerActor;
 	AvatarActor = InAvatarActor;
 	AbilitySystemComponent = InAbilitySystemComponent;
-	AffectedAnimInstanceTag = InAbilitySystemComponent->AffectedAnimInstanceTag; 
-	
+
 	APlayerController* OldPC = PlayerController.Get();
 
 	// Look for a player controller or pawn in the owner chain.
@@ -210,7 +206,6 @@ FGameplayAbilitySpec::FGameplayAbilitySpec(UGameplayAbility* InAbility, int32 In
 	, InputPressed(false)
 	, RemoveAfterActivation(false)
 	, PendingRemove(false)
-	, bActivateOnce(false) 
 {
 	Handle.GenerateNewHandle();
 }
@@ -224,7 +219,6 @@ FGameplayAbilitySpec::FGameplayAbilitySpec(TSubclassOf<UGameplayAbility> InAbili
 	, InputPressed(false)
 	, RemoveAfterActivation(false)
 	, PendingRemove(false)
-	, bActivateOnce(false)
 {
 	Handle.GenerateNewHandle();
 }
@@ -237,7 +231,6 @@ FGameplayAbilitySpec::FGameplayAbilitySpec(FGameplayAbilitySpecDef& InDef, int32
 	, InputPressed(false)
 	, RemoveAfterActivation(false)
 	, PendingRemove(false)
-	, bActivateOnce(false)
 {
 	Handle.GenerateNewHandle();
 	InDef.AssignedHandle = Handle;
@@ -375,67 +368,3 @@ void FGameplayAbilityReplicatedDataContainer::PrintDebug()
 	ABILITY_LOG(Warning, TEXT("============================="));
 }
 
-bool FGameplayAbilityRepAnimMontage::NetSerialize(FArchive& Ar, class UPackageMap* Map, bool& bOutSuccess)
-{
-	uint8 RepPosition = bRepPosition;
-	Ar.SerializeBits(&RepPosition, 1);
-	if (RepPosition)
-	{
-		bRepPosition = true;
-
-		// when rep'ing position, we don't want to skip correction
-		// and we don't need to force the section id to play
-		SectionIdToPlay = 0;
-		SkipPositionCorrection = false;
-
-		// @note: section frames have such a high amount of precision they use, when
-		// removing some of the position precision and packing it into a uint32 caused
-		// issues where ability code would pick the end of a previous section instead of
-		// the start of a new section. For now serializing the full position again.
-		Ar << Position;
-	}
-	else
-	{
-		bRepPosition = false;
-
-		// when rep'ing the section to play id, we want to skip
-		// correction, and don't want a position
-		SkipPositionCorrection = true;
-		Position = 0.0f;
-		Ar.SerializeBits(&SectionIdToPlay, 7);
-	}
-
-	uint8 bIsStopped = IsStopped;
-	Ar.SerializeBits(&bIsStopped, 1);
-	IsStopped = bIsStopped & 1;
-
-	uint8 bForcePlayBit = ForcePlayBit;
-	Ar.SerializeBits(&bForcePlayBit, 1);
-	ForcePlayBit = bForcePlayBit & 1;
-
-	uint8 bSkipPositionCorrection = SkipPositionCorrection;
-	Ar.SerializeBits(&bSkipPositionCorrection, 1);
-	SkipPositionCorrection = bSkipPositionCorrection & 1;
-
-	uint8 SkipPlayRate = bSkipPlayRate;
-	Ar.SerializeBits(&SkipPlayRate, 1);
-	bSkipPlayRate = SkipPlayRate & 1;
-
-	Ar << AnimMontage;
-	Ar << PlayRate;
-	Ar << BlendTime;
-	Ar << NextSectionID;
-	PredictionKey.NetSerialize(Ar, Map, bOutSuccess);
-
-	bOutSuccess = true;
-	return true;
-}
-
-void FGameplayAbilityRepAnimMontage::SetRepAnimPositionMethod(ERepAnimPositionMethod InMethod)
-{
-	switch (InMethod)
-	{
-	case ERepAnimPositionMethod::Position: bRepPosition = true; break;
-	case ERepAnimPositionMethod::CurrentSectionId: bRepPosition = false; break;
-	}
-}

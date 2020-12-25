@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -67,26 +67,6 @@ public:
 	virtual bool GetTrackingSensorProperties(int32 DeviceId, FQuat& OutOrientation, FVector& OutPosition, FXRSensorProperties& OutSensorProperties) override
 	{
 		return false;
-	}
-
-	/**
-	 * If the device id represents a tracking sensor, reports the device type.
-	 * @param DeviceId the device to request information for.
-	 * @return the device type enum.
-	 */
-	virtual EXRTrackedDeviceType GetTrackedDeviceType(int32 DeviceId) const override
-	{
-		return EXRTrackedDeviceType::Invalid;
-	}
-
-	/**
-	 * If the device id represents a tracking sensor, reports the serial number as a string if the device supports it.
-	 * @param DeviceId the device to request information for.
-	 * @return the serial number of the device if it's available.
-	 */
-	virtual FString GetTrackedDevicePropertySerialNumber(int32 DeviceId) override
-	{
-		return FString(TEXT("NoSerial"));
 	}
 
 	/**
@@ -160,9 +140,6 @@ public:
 	virtual void UpdateExternalTrackingPosition(const FTransform& ExternalTrackingTransform) override;
 	virtual class IXRLoadingScreen* GetLoadingScreen() override final;
 
-	virtual void GetMotionControllerData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerData& MotionControllerData) override;
-
-	virtual bool ConfigureGestures(const FXRGestureConfig& GestureConfig) override { return false; }
 
 	TSharedPtr<FARSupportInterface , ESPMode::ThreadSafe> GetARCompositionComponent();
 	const TSharedPtr<const FARSupportInterface , ESPMode::ThreadSafe> GetARCompositionComponent() const;

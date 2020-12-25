@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreTypes.h"
 #include "Misc/AssertionMacros.h"
 #include "Serialization/Archive.h"
-#include "Serialization/MemoryLayout.h"
 #include "HAL/PlatformAtomics.h"
 
 /** A virtual interface for ref counted objects to implement. */
@@ -37,11 +36,8 @@ public:
 
 	inline uint32 Release() const
 	{
-#if DO_GUARD_SLOW
-		if (NumRefs == 0)
-		{
-			CheckRefCount();
-		}
+#if DO_CHECK
+		CheckRefCount();
 #endif
 
 		const int32 Refs = FPlatformAtomics::InterlockedDecrement(&NumRefs);
@@ -97,36 +93,6 @@ private:
 	mutable int32 NumRefs;
 };
 
-/**
- * Like FRefCountedObject, but internal ref count is thread safe
- */
-class CORE_API FThreadSafeRefCountedObject
-{
-public:
-	FThreadSafeRefCountedObject() : NumRefs(0) {}
-	virtual ~FThreadSafeRefCountedObject() { check(NumRefs.GetValue() == 0); }
-	uint32 AddRef() const
-	{
-		return uint32(NumRefs.Increment());
-	}
-	uint32 Release() const
-	{
-		uint32 Refs = uint32(NumRefs.Decrement());
-		if (Refs == 0)
-		{
-			delete this;
-		}
-		return Refs;
-	}
-	uint32 GetRefCount() const
-	{
-		return uint32(NumRefs.GetValue());
-	}
-private:
-	mutable FThreadSafeCounter NumRefs;
-};
-
-
 
 /**
  * A smart pointer to an object which implements AddRef/Release.
@@ -160,27 +126,10 @@ public:
 		}
 	}
 
-	template<typename CopyReferencedType>
-	explicit TRefCountPtr(const TRefCountPtr<CopyReferencedType>& Copy)
+	FORCEINLINE TRefCountPtr(TRefCountPtr&& Copy)
 	{
-		Reference = static_cast<ReferencedType*>(Copy.GetReference());
-		if (Reference)
-		{
-			Reference->AddRef();
-		}
-	}
-
-	FORCEINLINE TRefCountPtr(TRefCountPtr&& Move)
-	{
-		Reference = Move.Reference;
-		Move.Reference = nullptr;
-	}
-
-	template<typename MoveReferencedType>
-	explicit TRefCountPtr(TRefCountPtr<MoveReferencedType>&& Move)
-	{
-		Reference = static_cast<ReferencedType*>(Move.GetReference());
-		Move.Reference = nullptr;
+		Reference = Copy.Reference;
+		Copy.Reference = nullptr;
 	}
 
 	~TRefCountPtr()
@@ -210,12 +159,6 @@ public:
 	FORCEINLINE TRefCountPtr& operator=(const TRefCountPtr& InPtr)
 	{
 		return *this = InPtr.Reference;
-	}
-
-	template<typename CopyReferencedType>
-	FORCEINLINE TRefCountPtr& operator=(const TRefCountPtr<CopyReferencedType>& InPtr)
-	{
-		return *this = InPtr.GetReference();
 	}
 
 	TRefCountPtr& operator=(TRefCountPtr&& InPtr)
@@ -306,12 +249,7 @@ public:
 private:
 
 	ReferencedType* Reference;
-
-	template <typename OtherType>
-	friend class TRefCountPtr;
 };
-
-ALIAS_TEMPLATE_TYPE_LAYOUT(template<typename T>, TRefCountPtr<T>, void*);
 
 template<typename ReferencedType>
 FORCEINLINE bool operator==(const TRefCountPtr<ReferencedType>& A, const TRefCountPtr<ReferencedType>& B)

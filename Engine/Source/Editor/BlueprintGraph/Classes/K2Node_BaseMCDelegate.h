@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -43,14 +43,14 @@ public:
 	virtual bool IsCompatibleWithGraph(const UEdGraph* TargetGraph) const override;
 	// End of UEdGraphNode interface
 
-	BLUEPRINTGRAPH_API void SetFromProperty(const FProperty* Property, bool bSelfContext, UClass* OwnerClass)
+	BLUEPRINTGRAPH_API void SetFromProperty(const UProperty* Property, bool bSelfContext, UClass* OwnerClass)
 	{
-		DelegateReference.SetFromField<FProperty>(Property, bSelfContext, OwnerClass);
+		DelegateReference.SetFromField<UProperty>(Property, bSelfContext, OwnerClass);
 	}
 
-	BLUEPRINTGRAPH_API FProperty* GetProperty() const
+	BLUEPRINTGRAPH_API UProperty* GetProperty() const
 	{
-		return DelegateReference.ResolveMember<FMulticastDelegateProperty>(GetBlueprintClassFromNode());
+		return DelegateReference.ResolveMember<UMulticastDelegateProperty>(GetBlueprintClassFromNode());
 	}
 
 	BLUEPRINTGRAPH_API FName GetPropertyName() const
@@ -60,7 +60,7 @@ public:
 
 	BLUEPRINTGRAPH_API FText GetPropertyDisplayName() const
 	{
-		FProperty* Prop = GetProperty();
+		UProperty* Prop = GetProperty();
 		return (Prop ? Prop->GetDisplayNameText() : FText::FromName(GetPropertyName()));
 	}
 

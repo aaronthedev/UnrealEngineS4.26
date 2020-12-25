@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SAdvancedPreviewDetailsTab.h"
 #include "Editor/EditorPerProjectUserSettings.h"
@@ -54,7 +54,6 @@ void SAdvancedPreviewDetailsTab::Construct(const FArguments& InArgs, const TShar
 	ProfileIndex = PerProjectSettings->AssetViewerProfileIndex;
 	DetailCustomizations = InArgs._DetailCustomizations;
 	PropertyTypeCustomizations = InArgs._PropertyTypeCustomizations;
-	Delegates = InArgs._Delegates;
 
 	CreateSettingsView();
 
@@ -139,7 +138,6 @@ void SAdvancedPreviewDetailsTab::ComboBoxSelectionChanged(TSharedPtr<FString> Ne
 		ProfileIndex = NewSelectionIndex;
 		PerProjectSettings->AssetViewerProfileIndex = ProfileIndex;
 		UpdateSettingsView();	
-		check(PreviewScenePtr.IsValid());
 		PreviewScenePtr.Pin()->SetProfileIndex(ProfileIndex);
 	}
 }
@@ -266,10 +264,14 @@ void SAdvancedPreviewDetailsTab::CreateSettingsView()
 		SettingsView->RegisterInstancedCustomPropertyTypeLayout(PropertyTypeCustomizationInfo.StructName, PropertyTypeCustomizationInfo.OnGetPropertyTypeCustomizationInstance);
 	}
 
-	for (FAdvancedPreviewSceneModule::FDetailDelegates& DetailDelegate : Delegates)
+	class FDetailRootObjectCustomization : public IDetailRootObjectCustomization
 	{
-		DetailDelegate.OnPreviewSceneChangedDelegate.AddSP(this, &SAdvancedPreviewDetailsTab::OnPreviewSceneChanged);
-	}
+		virtual TSharedPtr<SWidget> CustomizeObjectHeader(const UObject* InRootObject) { return SNullWidget::NullWidget; }
+		virtual bool IsObjectVisible(const UObject* InRootObject) const { return true; }
+		virtual bool ShouldDisplayHeader(const UObject* InRootObject) const { return false; }
+	};
+
+	SettingsView->SetRootObjectCustomizationInstance(MakeShareable(new FDetailRootObjectCustomization));
 
 	UpdateSettingsView();
 }
@@ -287,13 +289,6 @@ void SAdvancedPreviewDetailsTab::OnAssetViewerSettingsPostUndo()
 {
 	Refresh();
 	PreviewScenePtr.Pin()->UpdateScene(DefaultSettings->Profiles[ProfileIndex]);
-}
-
-void SAdvancedPreviewDetailsTab::OnPreviewSceneChanged(TSharedRef<FAdvancedPreviewScene> PreviewScene)
-{
-  	PreviewScenePtr = PreviewScene;
-	Refresh();
-
 }
 
 #undef LOCTEXT_NAMESPACE

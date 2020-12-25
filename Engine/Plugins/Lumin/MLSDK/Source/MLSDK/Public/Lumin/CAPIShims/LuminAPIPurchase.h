@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,35 +10,35 @@ LUMIN_THIRD_PARTY_INCLUDES_START
 #include <ml_purchase.h>
 LUMIN_THIRD_PARTY_INCLUDES_END
 
-namespace LUMIN_MLSDK_API
+namespace MLSDK_API
 {
 
 CREATE_FUNCTION_SHIM(ml_purchase, MLResult, MLPurchaseItemDetailsCreate)
-#define MLPurchaseItemDetailsCreate ::LUMIN_MLSDK_API::MLPurchaseItemDetailsCreateShim
+#define MLPurchaseItemDetailsCreate ::MLSDK_API::MLPurchaseItemDetailsCreateShim
 CREATE_FUNCTION_SHIM(ml_purchase, MLResult, MLPurchaseItemDetailsGet)
-#define MLPurchaseItemDetailsGet ::LUMIN_MLSDK_API::MLPurchaseItemDetailsGetShim
+#define MLPurchaseItemDetailsGet ::MLSDK_API::MLPurchaseItemDetailsGetShim
 CREATE_FUNCTION_SHIM(ml_purchase, MLResult, MLPurchaseItemDetailsGetResult)
-#define MLPurchaseItemDetailsGetResult ::LUMIN_MLSDK_API::MLPurchaseItemDetailsGetResultShim
+#define MLPurchaseItemDetailsGetResult ::MLSDK_API::MLPurchaseItemDetailsGetResultShim
 CREATE_FUNCTION_SHIM(ml_purchase, MLResult, MLPurchaseItemDetailsDestroy)
-#define MLPurchaseItemDetailsDestroy ::LUMIN_MLSDK_API::MLPurchaseItemDetailsDestroyShim
+#define MLPurchaseItemDetailsDestroy ::MLSDK_API::MLPurchaseItemDetailsDestroyShim
 CREATE_FUNCTION_SHIM(ml_purchase, MLResult, MLPurchaseCreate)
-#define MLPurchaseCreate ::LUMIN_MLSDK_API::MLPurchaseCreateShim
+#define MLPurchaseCreate ::MLSDK_API::MLPurchaseCreateShim
 CREATE_FUNCTION_SHIM(ml_purchase, MLResult, MLPurchaseSubmit)
-#define MLPurchaseSubmit ::LUMIN_MLSDK_API::MLPurchaseSubmitShim
+#define MLPurchaseSubmit ::MLSDK_API::MLPurchaseSubmitShim
 CREATE_FUNCTION_SHIM(ml_purchase, MLResult, MLPurchaseGetResult)
-#define MLPurchaseGetResult ::LUMIN_MLSDK_API::MLPurchaseGetResultShim
+#define MLPurchaseGetResult ::MLSDK_API::MLPurchaseGetResultShim
 CREATE_FUNCTION_SHIM(ml_purchase, MLResult, MLPurchaseDestroy)
-#define MLPurchaseDestroy ::LUMIN_MLSDK_API::MLPurchaseDestroyShim
+#define MLPurchaseDestroy ::MLSDK_API::MLPurchaseDestroyShim
 CREATE_FUNCTION_SHIM(ml_purchase, MLResult, MLPurchaseHistoryQueryCreate)
-#define MLPurchaseHistoryQueryCreate ::LUMIN_MLSDK_API::MLPurchaseHistoryQueryCreateShim
+#define MLPurchaseHistoryQueryCreate ::MLSDK_API::MLPurchaseHistoryQueryCreateShim
 CREATE_FUNCTION_SHIM(ml_purchase, MLResult, MLPurchaseHistoryQueryGetPage)
-#define MLPurchaseHistoryQueryGetPage ::LUMIN_MLSDK_API::MLPurchaseHistoryQueryGetPageShim
+#define MLPurchaseHistoryQueryGetPage ::MLSDK_API::MLPurchaseHistoryQueryGetPageShim
 CREATE_FUNCTION_SHIM(ml_purchase, MLResult, MLPurchaseHistoryQueryGetPageResult)
-#define MLPurchaseHistoryQueryGetPageResult ::LUMIN_MLSDK_API::MLPurchaseHistoryQueryGetPageResultShim
+#define MLPurchaseHistoryQueryGetPageResult ::MLSDK_API::MLPurchaseHistoryQueryGetPageResultShim
 CREATE_FUNCTION_SHIM(ml_purchase, MLResult, MLPurchaseHistoryQueryDestroy)
-#define MLPurchaseHistoryQueryDestroy ::LUMIN_MLSDK_API::MLPurchaseHistoryQueryDestroyShim
+#define MLPurchaseHistoryQueryDestroy ::MLSDK_API::MLPurchaseHistoryQueryDestroyShim
 CREATE_FUNCTION_SHIM(ml_purchase, const char*, MLPurchaseGetResultString)
-#define MLPurchaseGetResultString ::LUMIN_MLSDK_API::MLPurchaseGetResultStringShim
+#define MLPurchaseGetResultString ::MLSDK_API::MLPurchaseGetResultStringShim
 
 }
 

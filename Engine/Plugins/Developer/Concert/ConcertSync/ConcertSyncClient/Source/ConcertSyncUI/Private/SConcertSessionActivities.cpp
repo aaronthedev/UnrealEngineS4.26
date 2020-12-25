@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SConcertSessionActivities.h"
 
@@ -43,12 +43,9 @@ const FName ClientNameColumnId  = TEXT("Client");
 const FName AvatarColorColumnId = TEXT("Client AvatarColor");
 
 // The View Options check boxes.
-const FName DisplayRelativeTimeCheckBoxId       = TEXT("DisplayRelativeTime");
-const FName ShowConnectionActivitiesCheckBoxId  = TEXT("ShowConnectionActivities");
-const FName ShowLockActivitiesCheckBoxId        = TEXT("ShowLockActivities");
-const FName ShowPackageActivitiesCheckBoxId     = TEXT("ShowPackageActivities");
-const FName ShowTransactionActivitiesCheckBoxId = TEXT("ShowTransactionActivities");
-const FName ShowIgnoredActivitiesCheckBoxId     = TEXT("ShowIgnoredActivities");
+const FName DisplayRelativeTimeCheckBoxId      = TEXT("DisplayRelativeTime");
+const FName ShowConnectionActivitiesCheckBoxId = TEXT("ShowConnectionActivities");
+const FName ShowLockActivitiesCheckBoxId       = TEXT("ShowLockActivities");
 
 FText GetActivityDateTime(const FConcertClientSessionActivity& Activity, SConcertSessionActivities::ETimeFormat TimeFormat)
 {
@@ -64,22 +61,13 @@ FText GetOperationName(const FConcertClientSessionActivity& Activity)
 
 	if (const FConcertSyncPackageActivitySummary* PackageSummary = Activity.ActivitySummary.Cast<FConcertSyncPackageActivitySummary>())
 	{
-		auto GetSavedOperationNameFn = [](const FConcertSyncPackageActivitySummary* PackageSummary)
-		{
-			if (PackageSummary->bAutoSave)
-			{
-				return LOCTEXT("AutoSavePackageOperation", "Auto-Save Package");
-			}
-			return PackageSummary->bPreSave ? LOCTEXT("PreSavePackageOperation", "Pre-Save Package") : LOCTEXT("SavePackageOperation", "Save Package");
-		};
-
 		switch (PackageSummary->PackageUpdateType)
 		{
 		case EConcertPackageUpdateType::Added   : return LOCTEXT("NewPackageOperation",    "New Package");
 		case EConcertPackageUpdateType::Deleted : return LOCTEXT("DeletePackageOperation", "Delete Package");
 		case EConcertPackageUpdateType::Renamed : return LOCTEXT("RenamePackageOperation", "Rename Package");
-		case EConcertPackageUpdateType::Saved   : return GetSavedOperationNameFn(PackageSummary);
-		case EConcertPackageUpdateType::Dummy   : return LOCTEXT("DiscardPackageOperation", "Discard Changes");
+		case EConcertPackageUpdateType::Saved   : return LOCTEXT("SavePackageOperation",   "Save Package");
+		case EConcertPackageUpdateType::Dummy: // Fall-Through
 		default: break;
 		}
 	}
@@ -332,7 +320,7 @@ FText SConcertSessionActivityRow::MakeTooltipText() const
 		if (ActivityPin->Activity.bIgnored)
 		{
 			TextBuilder.AppendLine();
-			TextBuilder.AppendLine(LOCTEXT("IgnoredActivity", "** This activity cannot be recovered (likely recorded during a Multi-User session). It is displayed for crash inspection only. It will be ignored on restore."));
+			TextBuilder.AppendLine(LOCTEXT("IgnoredActivity", "** This activities was marked as 'non-replayable' on the clients and is displayed for inspection purpose only. The clients will not replay this activity."));
 		}
 
 		return TextBuilder.ToText();
@@ -365,9 +353,6 @@ void SConcertSessionActivities::Construct(const FArguments& InArgs)
 	PackageColumnVisibility = InArgs._PackageColumnVisibility;
 	ConnectionActivitiesVisibility = InArgs._ConnectionActivitiesVisibility;
 	LockActivitiesVisibility = InArgs._LockActivitiesVisibility;
-	PackageActivitiesVisibility = InArgs._PackageActivitiesVisibility;
-	TransactionActivitiesVisibility = InArgs._TransactionActivitiesVisibility;
-	IgnoredActivitiesVisibility = InArgs._IgnoredActivitiesVisibility;
 	DetailsAreaVisibility = InArgs._DetailsAreaVisibility;
 	bAutoScrollDesired = InArgs._IsAutoScrollEnabled;
 
@@ -375,7 +360,15 @@ void SConcertSessionActivities::Construct(const FArguments& InArgs)
 	SearchTextFilter->OnChanged().AddSP(this, &SConcertSessionActivities::OnActivityFilterUpdated);
 
 	// Set the initial filter state.
-	ActiveFilterFlags = QueryActiveActivityFilters();
+	ActiveFilterFlags = EConcertActivityFilterFlags::ShowAll;
+	if (ConnectionActivitiesVisibility.Get() != EVisibility::Visible)
+	{
+		ActiveFilterFlags |= EConcertActivityFilterFlags::HideConnectionActivities;
+	}
+	if (LockActivitiesVisibility.Get() != EVisibility::Visible)
+	{
+		ActiveFilterFlags |= EConcertActivityFilterFlags::HideLockActivities;
+	}
 
 	// Create the table header. (Setting visibility on the column itself doesn't show/hide the column as one would expect, unfortunately)
 	TSharedRef<SHeaderRow> HeaderRow = SNew(SHeaderRow);
@@ -394,7 +387,7 @@ void SConcertSessionActivities::Construct(const FArguments& InArgs)
 	{
 		HeaderRow->AddColumn(SHeaderRow::Column(ConcertSessionActivityUtils::ClientNameColumnId)
 			.DefaultLabel(LOCTEXT("Client", "Client"))
-			.ManualWidth(80));
+			.ManualWidth(60));
 	}
 
 	if (InArgs._OperationColumnVisibility.Get() == EVisibility::Visible)
@@ -408,7 +401,7 @@ void SConcertSessionActivities::Construct(const FArguments& InArgs)
 	{
 		HeaderRow->AddColumn(SHeaderRow::Column(ConcertSessionActivityUtils::PackageColumnId)
 			.DefaultLabel(LOCTEXT("Package", "Package"))
-			.ManualWidth(200));
+			.ManualWidth(160));
 	}
 
 	HeaderRow->AddColumn(SHeaderRow::Column(ConcertSessionActivityUtils::SummaryColumnId)
@@ -423,34 +416,19 @@ void SConcertSessionActivities::Construct(const FArguments& InArgs)
 		+SSplitter::Slot()
 		.Value(0.75)
 		[
-			SNew(SOverlay)
-
-			+SOverlay::Slot() // Activity list itself.
+			SNew(SBorder)
+			.BorderImage(FEditorStyle::GetBrush("ToolPanel.GroupBorder"))
+			.BorderBackgroundColor(FSlateColor(FLinearColor(0.6, 0.6, 0.6)))
+			.Padding(0)
 			[
-				SNew(SBorder)
-				.BorderImage(FEditorStyle::GetBrush("ToolPanel.GroupBorder"))
-				.BorderBackgroundColor(FSlateColor(FLinearColor(0.6, 0.6, 0.6)))
-				.Padding(0)
-				[
-					SAssignNew(ActivityView, SListView<TSharedPtr<FConcertClientSessionActivity>>)
-					.ListItemsSource(&Activities)
-					.OnGenerateRow(this, &SConcertSessionActivities::OnGenerateActivityRowWidget)
-					.SelectionMode(ESelectionMode::Single)
-					.AllowOverscroll(EAllowOverscroll::No)
-					.OnListViewScrolled(this, &SConcertSessionActivities::OnListViewScrolled)
-					.OnSelectionChanged(this, &SConcertSessionActivities::OnListViewSelectionChanged)
-					.HeaderRow(HeaderRow)
-				]
-			]
-
-			+SOverlay::Slot() // Display a reason why no activities are shown.
-			.HAlign(HAlign_Center)
-			.VAlign(VAlign_Center)
-			[
-				SNew(STextBlock)
-				.Visibility_Lambda([TextAttr = InArgs._NoActivitiesReasonText](){ return TextAttr.Get().IsEmptyOrWhitespace() ? EVisibility::Collapsed : EVisibility::Visible; })
-				.Text(InArgs._NoActivitiesReasonText)
-				.Justification(ETextJustify::Center)
+				SAssignNew(ActivityView, SListView<TSharedPtr<FConcertClientSessionActivity>>)
+				.ListItemsSource(&Activities)
+				.OnGenerateRow(this, &SConcertSessionActivities::OnGenerateActivityRowWidget)
+				.SelectionMode(ESelectionMode::Single)
+				.AllowOverscroll(EAllowOverscroll::No)
+				.OnListViewScrolled(this, &SConcertSessionActivities::OnListViewScrolled)
+				.OnSelectionChanged(this, &SConcertSessionActivities::OnListViewSelectionChanged)
+				.HeaderRow(HeaderRow)
 			]
 		]
 
@@ -534,10 +512,28 @@ void SConcertSessionActivities::Construct(const FArguments& InArgs)
 
 void SConcertSessionActivities::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)
 {
-	EConcertActivityFilterFlags LatestFilterFlags = QueryActiveActivityFilters();
-	if (ActiveFilterFlags != LatestFilterFlags)
+	bool bFilterChanged = false;
+
+	EVisibility ConnectionActivitiesCurrentVisibility = (ActiveFilterFlags & EConcertActivityFilterFlags::HideConnectionActivities) == EConcertActivityFilterFlags::HideConnectionActivities ? EVisibility::Hidden : EVisibility::Visible;
+	EVisibility ConnectionActivitiesLatestVisility = ConnectionActivitiesVisibility.Get();
+
+	if (ConnectionActivitiesLatestVisility != ConnectionActivitiesCurrentVisibility) // Filter changed?
 	{
-		ActiveFilterFlags = LatestFilterFlags;
+		ActiveFilterFlags = ConnectionActivitiesLatestVisility == EVisibility::Visible ? (ActiveFilterFlags & ~EConcertActivityFilterFlags::HideConnectionActivities) : (ActiveFilterFlags | EConcertActivityFilterFlags::HideConnectionActivities);
+		bFilterChanged = true;
+	}
+
+	EVisibility LockActivitiesCurrentVisibility = (ActiveFilterFlags & EConcertActivityFilterFlags::HideLockActivities) == EConcertActivityFilterFlags::HideLockActivities ? EVisibility::Hidden : EVisibility::Visible;
+	EVisibility LockActivitiesLatestVisibility = LockActivitiesVisibility.Get();
+
+	if (LockActivitiesLatestVisibility != LockActivitiesCurrentVisibility)
+	{
+		ActiveFilterFlags = LockActivitiesLatestVisibility == EVisibility::Visible ? (ActiveFilterFlags & ~EConcertActivityFilterFlags::HideLockActivities) : (ActiveFilterFlags | EConcertActivityFilterFlags::HideLockActivities);
+		bFilterChanged = true;
+	}
+
+	if (bFilterChanged)
+	{
 		OnActivityFilterUpdated();
 	}
 
@@ -622,8 +618,7 @@ void SConcertSessionActivities::UpdateDetailArea(TSharedPtr<FConcertClientSessio
 		{
 			FConcertSyncPackageEvent PackageEvent;
 			InSelectedActivity->EventPayload->GetTypedPayload(PackageEvent);
-			checkf(!PackageEvent.Package.HasPackageData(), TEXT("UI should only request the package meta data because the package data is not useful and can be very large"));
-			DisplayPackageDetails(*InSelectedActivity, PackageEvent.PackageRevision, PackageEvent.Package.Info);
+			DisplayPackageDetails(*InSelectedActivity, PackageEvent);
 		}
 		else // Other activity types (lock/connection) don't have details panel.
 		{
@@ -657,49 +652,31 @@ void SConcertSessionActivities::UpdateDetailArea(TSharedPtr<FConcertClientSessio
 	else if (InSelectedActivity->Activity.EventType == EConcertSyncActivityEventType::Package && GetPackageEventFn) // A function is bound to get the package event?
 	{
 		SetDetailsPanelVisibility(LoadingDetailsPanel.Get());
-		FConcertSyncPackageEventMetaData PackageEventMetaData;
-		if (GetPackageEventFn(*InSelectedActivity, PackageEventMetaData))
+		TWeakPtr<SConcertSessionActivities> WeakSelf = SharedThis(this);
+		GetPackageEventFn(*InSelectedActivity).Next([WeakSelf, InSelectedActivity](const TOptional<FConcertSyncPackageEvent>& PackageEvent)
 		{
-			DisplayPackageDetails(*InSelectedActivity, PackageEventMetaData.PackageRevision, PackageEventMetaData.PackageInfo);
-		}
-		else
-		{
-			SetDetailsPanelVisibility(NoDetailsPanel.Get());
-		}
+			if (TSharedPtr<SConcertSessionActivities> Self = WeakSelf.Pin()) // If 'this' object hasn't been deleted.
+			{
+				if (Self->GetSelectedActivity() == InSelectedActivity) // Ensure the activity is still selected.
+				{
+					if (PackageEvent.IsSet())
+					{
+						Self->DisplayPackageDetails(*InSelectedActivity, PackageEvent.GetValue());
+					}
+					else
+					{
+						Self->SetDetailsPanelVisibility(Self->NoDetailsPanel.Get());
+					}
+				}
+				// else -> The details panel is presenting information for another activity (or no activity).
+			}
+			// else -> The widget was deleted.
+		});
 	}
 	else
 	{
 		SetDetailsPanelVisibility(NoDetailsPanel.Get());
 	}
-}
-
-EConcertActivityFilterFlags SConcertSessionActivities::QueryActiveActivityFilters() const
-{
-	// The visibility attributes are externally provided. (In practice, they are controlled from the 'View Options' check boxes).
-	EConcertActivityFilterFlags ActiveFlags = EConcertActivityFilterFlags::ShowAll;
-
-	if (ConnectionActivitiesVisibility.Get() != EVisibility::Visible)
-	{
-		ActiveFlags |= EConcertActivityFilterFlags::HideConnectionActivities;
-	}
-	if (LockActivitiesVisibility.Get() != EVisibility::Visible)
-	{
-		ActiveFlags |= EConcertActivityFilterFlags::HideLockActivities;
-	}
-	if (PackageActivitiesVisibility.Get() != EVisibility::Visible)
-	{
-		ActiveFlags |= EConcertActivityFilterFlags::HidePackageActivities;
-	}
-	if (TransactionActivitiesVisibility.Get() != EVisibility::Visible)
-	{
-		ActiveFlags |= EConcertActivityFilterFlags::HideTransactionActivities;
-	}
-	if (IgnoredActivitiesVisibility.Get() != EVisibility::Visible)
-	{
-		ActiveFlags |= EConcertActivityFilterFlags::HideIgnoredActivities;
-	}
-
-	return ActiveFlags;
 }
 
 void SConcertSessionActivities::OnActivityFilterUpdated()
@@ -761,11 +738,6 @@ void SConcertSessionActivities::FetchActivities()
 						Activities.Add(AllActivities[Index]);
 						bRefresh = true;
 					}
-
-					if (AllActivities[Index]->Activity.bIgnored)
-					{
-						++IgnoredActivityNum;
-					}
 				}
 			}
 		}
@@ -799,11 +771,6 @@ void SConcertSessionActivities::FetchActivities()
 
 void SConcertSessionActivities::Append(TSharedPtr<FConcertClientSessionActivity> Activity)
 {
-	if (Activity->Activity.bIgnored)
-	{
-		++IgnoredActivityNum;
-	}
-
 	AllActivities.Add(Activity);
 	if (PassesFilters(*Activity))
 	{
@@ -831,7 +798,6 @@ void SConcertSessionActivities::Reset()
 	bAllActivitiesFetched = false;
 	bUserScrolling = false;
 	DesiredActivitiesCount = ActivitiesPerRequest;
-	IgnoredActivityNum = 0;
 }
 
 bool SConcertSessionActivities::PassesFilters(const FConcertClientSessionActivity& Activity)
@@ -844,19 +810,6 @@ bool SConcertSessionActivities::PassesFilters(const FConcertClientSessionActivit
 	{
 		return false;
 	}
-	else if (Activity.Activity.EventType == EConcertSyncActivityEventType::Package && PackageActivitiesVisibility.Get() != EVisibility::Visible) // Filter out 'package' activities?
-	{
-		return false;
-	}
-	else if (Activity.Activity.EventType == EConcertSyncActivityEventType::Transaction && TransactionActivitiesVisibility.Get() != EVisibility::Visible) // Filter out 'transaction' activities?
-	{
-		return false;
-	}
-	else if (Activity.Activity.bIgnored && IgnoredActivitiesVisibility.Get() != EVisibility::Visible) // Filter out 'ignored' activities?
-	{
-		return false;
-	}
-
 	return SearchTextFilter->PassesFilter(Activity);
 }
 
@@ -937,19 +890,12 @@ void SConcertSessionActivities::DisplayTransactionDetails(const FConcertClientSe
 		FTransactionObjectDeltaChange DeltaChange;
 		Algo::Transform(ExportedObject.PropertyDatas, DeltaChange.ChangedProperties, [](const FConcertSerializedPropertyData& PropertyData) { return PropertyData.PropertyName; });
 
-		DeltaChange.bHasNameChange = ExportedObject.ObjectData.NewName != FName();
+		DeltaChange.bHasNameChange = ExportedObject.ObjectData.NewOuterPathName != FName();
 		DeltaChange.bHasOuterChange = ExportedObject.ObjectData.NewOuterPathName != FName();
-		DeltaChange.bHasExternalPackageChange = ExportedObject.ObjectData.NewExternalPackageName != FName();
 		DeltaChange.bHasPendingKillChange = ExportedObject.ObjectData.bIsPendingKill;
 
 		FString ObjectPathName = ExportedObject.ObjectId.ObjectOuterPathName.ToString() + TEXT(".") + ExportedObject.ObjectId.ObjectName.ToString();
-		TSharedPtr<FTransactionObjectEvent> Event = MakeShared<FTransactionObjectEvent>(InTransaction.TransactionId, InTransaction.OperationId, ETransactionObjectEventType::Finalized, MoveTemp(DeltaChange), nullptr
-			, ExportedObject.ObjectId.ObjectPackageName
-			, ExportedObject.ObjectId.ObjectName
-			, FName(*MoveTemp(ObjectPathName))
-			, ExportedObject.ObjectId.ObjectOuterPathName
-			, ExportedObject.ObjectId.ObjectExternalPackageName
-			, ExportedObject.ObjectId.ObjectClassPathName);
+		TSharedPtr<FTransactionObjectEvent> Event = MakeShared<FTransactionObjectEvent>(InTransaction.TransactionId, InTransaction.OperationId, ETransactionObjectEventType::Finalized, MoveTemp(DeltaChange), nullptr, ExportedObject.ObjectId.ObjectName, FName(*MoveTemp(ObjectPathName)), ExportedObject.ObjectId.ObjectOuterPathName, ExportedObject.ObjectId.ObjectClassPathName);
 
 		TransactionDiff.DiffMap.Emplace(FName(*ObjectPathName), MoveTemp(Event));
 	}
@@ -958,7 +904,7 @@ void SConcertSessionActivities::DisplayTransactionDetails(const FConcertClientSe
 	SetDetailsPanelVisibility(TransactionDetailsPanel.Get());
 }
 
-void SConcertSessionActivities::DisplayPackageDetails(const FConcertClientSessionActivity& Activity, int64 PackageRevision, const FConcertPackageInfo& PackageInfo)
+void SConcertSessionActivities::DisplayPackageDetails(const FConcertClientSessionActivity& Activity, const FConcertSyncPackageEvent& PackageEvent)
 {
 	const FConcertClientInfo* ClientInfo = nullptr;
 	if (GetActivityUserFn)
@@ -966,7 +912,7 @@ void SConcertSessionActivities::DisplayPackageDetails(const FConcertClientSessio
 		ClientInfo = GetActivityUserFn(Activity.Activity.EndpointId);
 	}
 
-	PackageDetailsPanel->SetPackageInfo(PackageInfo, PackageRevision, ClientInfo ? ClientInfo->DisplayName : FString());
+	PackageDetailsPanel->SetPackageInfo(PackageEvent.Package.Info, PackageEvent.PackageRevision, ClientInfo ? ClientInfo->DisplayName : FString());
 	SetDetailsPanelVisibility(PackageDetailsPanel.Get());
 }
 
@@ -994,36 +940,6 @@ TSharedRef<SWidget> FConcertSessionActivitiesOptions::MakeMenuWidget()
 		EUserInterfaceActionType::ToggleButton
 	);
 
-	if (bEnablePackageActivityFiltering)
-	{
-		MenuBuilder.AddMenuEntry(
-			LOCTEXT("ShowPackageActivities", "Show Package Activities"),
-			LOCTEXT("ShowPackageActivities_Tooltip", "Displays create/save/rename/delete package events."),
-			FSlateIcon(),
-			FUIAction(
-				FExecuteAction::CreateSP(this, &FConcertSessionActivitiesOptions::OnOptionToggled, ConcertSessionActivityUtils::ShowPackageActivitiesCheckBoxId),
-				FCanExecuteAction::CreateLambda([] { return true; }),
-				FIsActionChecked::CreateLambda([this] { return bDisplayPackageActivities; })),
-			NAME_None,
-			EUserInterfaceActionType::ToggleButton
-		);
-	}
-
-	if (bEnableTransactionActivityFiltering)
-	{
-		MenuBuilder.AddMenuEntry(
-			LOCTEXT("ShowTransactionActivities", "Show Transaction Activities"),
-			LOCTEXT("ShowTransactionActivities_Tooltip", "Displays changes performed on assets."),
-			FSlateIcon(),
-			FUIAction(
-				FExecuteAction::CreateSP(this, &FConcertSessionActivitiesOptions::OnOptionToggled, ConcertSessionActivityUtils::ShowTransactionActivitiesCheckBoxId),
-				FCanExecuteAction::CreateLambda([] { return true; }),
-				FIsActionChecked::CreateLambda([this] { return bDisplayTransactionActivities; })),
-			NAME_None,
-			EUserInterfaceActionType::ToggleButton
-		);
-	}
-
 	if (bEnableConnectionActivityFiltering)
 	{
 		MenuBuilder.AddMenuEntry(
@@ -1043,7 +959,7 @@ TSharedRef<SWidget> FConcertSessionActivitiesOptions::MakeMenuWidget()
 	{
 		MenuBuilder.AddMenuEntry(
 			LOCTEXT("ShowLockActivities", "Show Lock Activities"),
-			LOCTEXT("ShowLockActivities_Tooltip", "Displays lock/unlock events"),
+			LOCTEXT("ShowLockActivities_Tooltip", "Displays when client locked/unlocked an asset"),
 			FSlateIcon(),
 			FUIAction(
 				FExecuteAction::CreateSP(this, &FConcertSessionActivitiesOptions::OnOptionToggled, ConcertSessionActivityUtils::ShowLockActivitiesCheckBoxId),
@@ -1054,21 +970,6 @@ TSharedRef<SWidget> FConcertSessionActivitiesOptions::MakeMenuWidget()
 		);
 	}
 
-	if (bEnableIgnoredActivityFiltering)
-	{
-		MenuBuilder.AddMenuEntry(
-			LOCTEXT("ShowIgnoredActivities", "Show Unrecoverable Activities"),
-			LOCTEXT("ShowIgnoredActivities_Tooltip", "Displays activities that were recorded, but could not be recovered in this context."),
-			FSlateIcon(),
-			FUIAction(
-				FExecuteAction::CreateSP(this, &FConcertSessionActivitiesOptions::OnOptionToggled, ConcertSessionActivityUtils::ShowIgnoredActivitiesCheckBoxId),
-				FCanExecuteAction::CreateLambda([] { return true; }),
-				FIsActionChecked::CreateLambda([this] { return bDisplayIgnoredActivities; })),
-			NAME_None,
-			EUserInterfaceActionType::ToggleButton
-		);
-	}
-	
 	return MenuBuilder.MakeWidget();
 }
 
@@ -1159,18 +1060,6 @@ void FConcertSessionActivitiesOptions::OnOptionToggled(const FName CheckBoxId)
 	{
 		bDisplayLockActivities = !bDisplayLockActivities;
 	}
-	else if (CheckBoxId == ConcertSessionActivityUtils::ShowPackageActivitiesCheckBoxId)
-	{
-		bDisplayPackageActivities = !bDisplayPackageActivities;
-	}
-	else if (CheckBoxId == ConcertSessionActivityUtils::ShowTransactionActivitiesCheckBoxId)
-	{
-		bDisplayTransactionActivities = !bDisplayTransactionActivities;
-	}
-	else if (CheckBoxId == ConcertSessionActivityUtils::ShowIgnoredActivitiesCheckBoxId)
-	{
-		bDisplayIgnoredActivities = !bDisplayIgnoredActivities;
-	}	
 }
 
 #undef LOCTEXT_NAMESPACE

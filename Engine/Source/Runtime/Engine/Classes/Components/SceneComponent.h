@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -98,7 +98,6 @@ FORCEINLINE void operator&=(EMoveComponentFlags& Dest,EMoveComponentFlags Arg)		
 FORCEINLINE void operator|=(EMoveComponentFlags& Dest,EMoveComponentFlags Arg)					{ Dest = EMoveComponentFlags(Dest | Arg); }
 
 DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_OneParam(FPhysicsVolumeChanged, USceneComponent, PhysicsVolumeChangedDelegate, class APhysicsVolume*, NewVolume);
-DECLARE_DYNAMIC_MULTICAST_SPARSE_DELEGATE_TwoParams(FIsRootComponentChanged, USceneComponent, IsRootComponentChanged, USceneComponent*, UpdatedComponent, bool, bIsRootComponent);
 DECLARE_EVENT_ThreeParams(USceneComponent, FTransformUpdated, USceneComponent* /*UpdatedComponent*/, EUpdateTransformFlags /*UpdateTransformFlags*/, ETeleportType /*Teleport*/);
 
 /**
@@ -149,23 +148,24 @@ public:
 	/** Current bounds of the component */
 	FBoxSphereBounds Bounds;
 
-private:
 	/** Location of the component relative to its parent */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, ReplicatedUsing=OnRep_Transform, Category = Transform, meta=(AllowPrivateAccess="true"))
+	UE_DEPRECATED(4.24, "This member will be made private. Please use GetRelativeLocation or SetRelativeLocation.")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, ReplicatedUsing=OnRep_Transform, Category = Transform)
 	FVector RelativeLocation;
 
 	/** Rotation of the component relative to its parent */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, ReplicatedUsing=OnRep_Transform, Category=Transform, meta=(AllowPrivateAccess="true"))
+	UE_DEPRECATED(4.24, "This member will be made private. Please use GetRelativeRotation or SetRelativeRotation.")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, ReplicatedUsing=OnRep_Transform, Category=Transform)
 	FRotator RelativeRotation;
 
 	/**
 	*	Non-uniform scaling of the component relative to its parent.
 	*	Note that scaling is always applied in local space (no shearing etc)
 	*/
-	UPROPERTY(BlueprintReadOnly, ReplicatedUsing=OnRep_Transform, interp, Category=Transform, meta=(AllowPrivateAccess="true"))
+	UE_DEPRECATED(4.24, "This member will be made private. Please use GetRelativeScale3D or SetRelativeScale3D.")
+	UPROPERTY(BlueprintReadOnly, ReplicatedUsing=OnRep_Transform, interp, Category=Transform)
 	FVector RelativeScale3D;
 
-public:
 	/**
 	* Velocity of the component.
 	* @see GetComponentVelocity()
@@ -182,22 +182,32 @@ private:
 	* This should only be set to true as a result of UpdateOverlaps. To dirty this flag see ClearSkipUpdateOverlaps() which is expected when state affecting UpdateOverlaps changes (attachment, Collision settings, etc...) */
 	uint8 bSkipUpdateOverlaps : 1;
 
+public:
 	/** If RelativeLocation should be considered relative to the world, rather than the parent */
-	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadWrite, ReplicatedUsing=OnRep_Transform, Category=Transform, meta=(AllowPrivateAccess="true"))
+	UE_DEPRECATED(4.24, "This member will be made private. Please use IsUsingAbsoluteLocation or SetUsingAbsoluteLocation.")
+	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadWrite, ReplicatedUsing=OnRep_Transform, Category=Transform)
 	uint8 bAbsoluteLocation:1;
 
 	/** If RelativeRotation should be considered relative to the world, rather than the parent */
-	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadWrite, ReplicatedUsing=OnRep_Transform, Category=Transform, meta=(AllowPrivateAccess="true"))
+	UE_DEPRECATED(4.24, "This member will be made private. Please use IsUsingAbsoluteRotation or SetUsingAbsoluteRotation.")
+	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadWrite, ReplicatedUsing=OnRep_Transform, Category=Transform)
 	uint8 bAbsoluteRotation:1;
 
 	/** If RelativeScale3D should be considered relative to the world, rather than the parent */
-	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadWrite, ReplicatedUsing=OnRep_Transform, Category=Transform, meta=(AllowPrivateAccess="true"))
+	UE_DEPRECATED(4.24, "This member will be made private. Please use IsUsingAbsoluteScale or SetUsingAbsoluteScale.")
+	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadWrite, ReplicatedUsing=OnRep_Transform, Category=Transform)
 	uint8 bAbsoluteScale:1;
 
 	/** Whether to completely draw the primitive; if false, the primitive is not drawn, does not cast a shadow. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, ReplicatedUsing=OnRep_Visibility,  Category = Rendering, meta=(AllowPrivateAccess="true"))
+	UE_DEPRECATED(4.24, "This member will be made private. Please use IsVisible or SetVisibility.")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, ReplicatedUsing=OnRep_Visibility,  Category = Rendering)
 	uint8 bVisible:1;
 
+	/** Whether to hide the primitive in game, if the primitive is Visible. */
+	UPROPERTY(Interp, EditAnywhere, BlueprintReadOnly, Category=Rendering, meta=(SequencerTrackClass = "MovieSceneVisibilityTrack"))
+	uint8 bHiddenInGame:1;
+
+private:
 	/** Whether or not we should be attached. */
 	UPROPERTY(Transient, Replicated)
 	uint8 bShouldBeAttached : 1;
@@ -216,10 +226,6 @@ private:
 	uint8 bShouldUpdatePhysicsVolume:1;
 
 public:
-	/** Whether to hide the primitive in game, if the primitive is Visible. */
-	UPROPERTY(Interp, EditAnywhere, BlueprintReadOnly, Category=Rendering, meta=(SequencerTrackClass = "MovieSceneVisibilityTrack"))
-	uint8 bHiddenInGame:1;
-
 	/** If true, a change in the bounds of the component will call trigger a streaming data rebuild */
 	UPROPERTY()
 	uint8 bBoundsChangeTriggersStreamingDataRebuild:1;
@@ -563,8 +569,8 @@ public:
 	void AddWorldRotation(const FQuat& DeltaRotation, bool bSweep=false, FHitResult* OutSweepHitResult=nullptr, ETeleportType Teleport = ETeleportType::None);
 
 	/**
-	 * Adds a delta to the transform of the component in world space. Ignores scale and sets it to (1,1,1).
-	 * @param DeltaTransform	Change in transform in world space for the component. Scale is ignored.
+	 * Adds a delta to the transform of the component in world space. Scale is unchanged.
+	 * @param DeltaTransform	Change in transform in world space for the component. Scale is unchanged.
 	 * @param SweepHitResult	Hit result from any impact if sweep is true.
 	 * @param bSweep			Whether we sweep to the destination location, triggering overlaps along the way and stopping short of the target if blocked by something.
 	 *							Only the root component is swept and checked for blocking collision, child components move without sweeping. If collision is off, this has no effect.
@@ -577,23 +583,8 @@ public:
 	void K2_AddWorldTransform(const FTransform& DeltaTransform, bool bSweep, FHitResult& SweepHitResult, bool bTeleport);
 	void AddWorldTransform(const FTransform& DeltaTransform, bool bSweep=false, FHitResult* OutSweepHitResult=nullptr, ETeleportType Teleport = ETeleportType::None);
 
-	/**
-	 * Adds a delta to the transform of the component in world space. Scale is unchanged.
-	 * @param DeltaTransform	Change in transform in world space for the component. Scale is ignored since we preserve the original scale.
-	 * @param SweepHitResult	Hit result from any impact if sweep is true.
-	 * @param bSweep			Whether we sweep to the destination location, triggering overlaps along the way and stopping short of the target if blocked by something.
-	 *							Only the root component is swept and checked for blocking collision, child components move without sweeping. If collision is off, this has no effect.
-	 * @param bTeleport			Whether we teleport the physics state (if physics collision is enabled for this object).
-	 *							If true, physics velocity for this object is unchanged (so ragdoll parts are not affected by change in location).
-	 *							If false, physics velocity is updated based on the change in position (affecting ragdoll parts).
-	 *							If CCD is on and not teleporting, this will affect objects along the entire sweep volume.
-	 */
-	UFUNCTION(BlueprintCallable, Category="Utilities|Transformation", meta=(DisplayName="AddWorldTransformKeepScale", ScriptName="AddWorldTransformKeepScale"))
-	void K2_AddWorldTransformKeepScale(const FTransform& DeltaTransform, bool bSweep, FHitResult& SweepHitResult, bool bTeleport);
-	void AddWorldTransformKeepScale(const FTransform& DeltaTransform, bool bSweep=false, FHitResult* OutSweepHitResult=nullptr, ETeleportType Teleport = ETeleportType::None);
-
 	/** Return location of the component, in world space */
-	UFUNCTION(BlueprintCallable, meta=(DisplayName = "GetWorldLocation", ScriptName = "GetWorldLocation", Keywords = "position"), Category="Utilities|Transformation")
+	UFUNCTION(BlueprintCallable, meta=(DisplayName = "GetWorldLocation", ScriptName = "GetWorldLocation"), Category="Utilities|Transformation")
 	FVector K2_GetComponentLocation() const;
 
 	/** Returns rotation of the component, in world space. */
@@ -680,26 +671,26 @@ public:
 	bool K2_AttachTo(USceneComponent* InParent, FName InSocketName = NAME_None, EAttachLocation::Type AttachType = EAttachLocation::KeepRelativeOffset, bool bWeldSimulatedBodies = true);
 
 	/**
-	* Attach this component to another scene component, optionally at a named socket. It is valid to call this on components whether or not they have been Registered, however from
-	* constructor or when not registered it is preferable to use SetupAttachment.
-	* @param  Parent				Parent to attach to.
-	* @param  AttachmentRules		How to handle transforms & welding when attaching.
-	* @param  SocketName			Optional socket to attach to on the parent.
-	* @return True if attachment is successful (or already attached to requested parent/socket), false if attachment is rejected and there is no change in AttachParent.
-	*/
+	 * Attach this component to another scene component, optionally at a named socket. It is valid to call this on components whether or not they have been Registered, however from
+	 * constructor or when not registered it is preferable to use SetupAttachment.
+	 * @param  Parent				Parent to attach to.
+	 * @param  AttachmentRules		How to handle transforms & welding when attaching.
+	 * @param  SocketName			Optional socket to attach to on the parent.
+	 * @return True if attachment is successful (or already attached to requested parent/socket), false if attachment is rejected and there is no change in AttachParent.
+	 */
 	bool AttachToComponent(USceneComponent* InParent, const FAttachmentTransformRules& AttachmentRules, FName InSocketName = NAME_None );
 
 	/**
-	* Attach this component to another scene component, optionally at a named socket. It is valid to call this on components whether or not they have been Registered.
-	* @param  Parent					Parent to attach to.
-	* @param  SocketName				Optional socket to attach to on the parent.
-	* @param  LocationRule				How to handle translation when attaching.
-	* @param  RotationRule				How to handle rotation when attaching.
-	* @param  ScaleRule					How to handle scale when attaching.
-	* @param  bWeldSimulatedBodies		Whether to weld together simulated physics bodies.
-	* @return True if attachment is successful (or already attached to requested parent/socket), false if attachment is rejected and there is no change in AttachParent.
-	*/
-	UFUNCTION(BlueprintCallable, Category = "Utilities|Transformation", meta = (DisplayName = "AttachComponentToComponent", ScriptName = "AttachToComponent", bWeldSimulatedBodies=true))
+	 * Attach this component to another scene component, optionally at a named socket. It is valid to call this on components whether or not they have been Registered.
+	 * @param  Parent					Parent to attach to.
+	 * @param  SocketName				Optional socket to attach to on the parent.
+	 * @param  LocationRule				How to handle translation when attaching.
+	 * @param  RotationRule				How to handle rotation when attaching.
+	 * @param  ScaleRule					How to handle scale when attaching.
+	 * @param  bWeldSimulatedBodies		Whether to weld together simulated physics bodies.
+	 * @return True if attachment is successful (or already attached to requested parent/socket), false if attachment is rejected and there is no change in AttachParent.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Utilities|Transformation", meta = (DisplayName = "AttachToComponent", ScriptName = "AttachToComponent", bWeldSimulatedBodies=true))
 	bool K2_AttachToComponent(USceneComponent* Parent, FName SocketName, EAttachmentRule LocationRule, EAttachmentRule RotationRule, EAttachmentRule ScaleRule, bool bWeldSimulatedBodies);
 
 	/** DEPRECATED - Use AttachToComponent() instead */
@@ -877,7 +868,7 @@ public:
 	//~ End ActorComponent Interface
 
 	//~ Begin UObject Interface
-	virtual void PostInterpChange(FProperty* PropertyThatChanged) override;
+	virtual void PostInterpChange(UProperty* PropertyThatChanged) override;
 	virtual void BeginDestroy() override;
 	virtual bool IsPostLoadThreadSafe() const override;
 	virtual void PreNetReceive() override;
@@ -891,7 +882,7 @@ public:
 	virtual bool NeedsLoadForTargetPlatform(const ITargetPlatform* TargetPlatform) const;
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 	virtual void PostEditChangeChainProperty(FPropertyChangedChainEvent& PropertyChangedEvent) override;
-	virtual bool CanEditChange(const FProperty* Property) const override;
+	virtual bool CanEditChange(const UProperty* Property) const override;
 #endif
 	//~ End UObject Interface
 
@@ -1219,14 +1210,6 @@ public:
 	/** Get the extent used when placing this component in the editor, used for 'pulling back' hit. */
 	virtual FBoxSphereBounds GetPlacementExtent() const;
 
-	/** Delegate invoked when this scene component becomes the actor's root component or when it no longer is. */
-	FIsRootComponentChanged IsRootComponentChanged;
-
-private:
-	friend class AActor;
-
-	void NotifyIsRootComponentChanged(bool bIsRootComponent) { IsRootComponentChanged.Broadcast(this, bIsRootComponent); }
-
 protected:
 	/**
 	 * Called after a child scene component is attached to this component.
@@ -1275,6 +1258,7 @@ private:
 	friend class FScopedPreventAttachedComponentMove;
 	friend struct FDirectAttachChildrenAccessor;
 
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	//~ Begin Methods for Replicated Members.
 private:
 
@@ -1428,18 +1412,6 @@ public:
 	void SetRelativeScale3D_Direct(const FVector NewRelativeScale3D);
 
 	/**
-	 * Helper function to set the location, rotation, and scale without causing other side effects to this instance.
-	 *
-	 * You should not use this method. The standard SetRelativeTransform variants should be used.
-	 */
-	void SetRelativeTransform_Direct(const FTransform& NewRelativeTransform)
-	{
-		SetRelativeLocation_Direct(NewRelativeTransform.GetLocation());
-		SetRelativeRotation_Direct(NewRelativeTransform.Rotator());
-		SetRelativeScale3D_Direct(NewRelativeTransform.GetScale3D());
-	}
-
-	/**
 	 * Gets the property name for bAbsoluteLocation.
 	 *
 	 * This exists so subclasses don't need to have direct access to the bAbsoluteLocation property so it
@@ -1544,6 +1516,7 @@ public:
 	void SetVisibleFlag(const bool bInVisible);
 	
 	//~ End Methods for Replicated Members.
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 };
 
 /** 
@@ -1806,7 +1779,7 @@ protected:
 	FRotator InitialRelativeRotation;
 	FVector InitialRelativeScale;
 
-	int32 FinalOverlapCandidatesIndex;		// If not INDEX_NONE, overlaps at this index and beyond in PendingOverlaps are at the final destination
+	int32 FinalOverlapCandidatesIndex;			// If not INDEX_NONE, overlaps at this index and beyond in PendingOverlaps are at the final destination
 	TScopedOverlapInfoArray PendingOverlaps;	// All overlaps encountered during the scope of moves.
 	TScopedBlockingHitArray BlockingHits;		// All blocking hits encountered during the scope of moves.
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SNiagaraParameterMapPaletteItem.h"
 #include "NiagaraActions.h"
@@ -9,11 +9,6 @@
 #include "Widgets/Input/SComboButton.h"
 #include "Widgets/Images/SImage.h"
 #include "ScopedTransaction.h"
-#include "Widgets/SNiagaraParameterName.h"
-#include "Widgets/SNiagaraParameterMapView.h"
-#include "NiagaraEditorSettings.h"
-#include "EditorFontGlyphs.h"
-#include "EditorStyleSet.h"
 
 #define LOCTEXT_NAMESPACE "NiagaraParameterMapPalleteItem"
 
@@ -44,60 +39,14 @@ void SNiagaraParameterMapPalleteItem::Construct(const FArguments& InArgs, FCreat
 	static const FName ItalicFontName = FName("Italic");
 	const FName FontType = ItalicFontName;
 	FSlateFontInfo Font = FCoreStyle::GetDefaultFontStyle(FontType, 10);
-
-	if (InCreateData->bHandleMouseButtonDown)
-	{
-		MouseButtonDownDelegate = InCreateData->MouseButtonDownDelegate;
-	}
-
-	TAttribute<FText> ParameterToolTipText;
-	ParameterToolTipText.Bind(this, &SNiagaraParameterMapPalleteItem::GetItemTooltip);
-	SetToolTipText(ParameterToolTipText);
-
-	TArray<FName> Namespaces;
-	NiagaraParameterMapSectionID::OnGetSectionNamespaces((NiagaraParameterMapSectionID::Type)InCreateData->Action->SectionID, Namespaces);
-	FNiagaraNamespaceMetadata NamespaceMetadata = GetDefault<UNiagaraEditorSettings>()->GetMetaDataForNamespaces(Namespaces);
-	bool bForceReadOnly = NamespaceMetadata.IsValid() == false || NamespaceMetadata.Options.Contains(ENiagaraNamespaceMetadataOptions::PreventEditingName);
-
-	ParameterNameTextBlock = SNew(SNiagaraParameterNameTextBlock)
-		.ParameterText(FText::FromName(ParameterAction->Parameter.GetName()))
-		.HighlightText(InCreateData->HighlightText)
-		.OnTextCommitted(this, &SNiagaraParameterMapPalleteItem::OnNameTextCommitted)
-		.OnVerifyTextChanged(this, &SNiagaraParameterMapPalleteItem::OnNameTextVerifyChanged)
-		.IsSelected(InCreateData->IsRowSelectedDelegate)
-		.IsReadOnly(InCreateData->bIsReadOnly || bForceReadOnly || ParameterAction->bIsExternallyReferenced)
-		.Decorator()
-		[
-			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.Padding(0, 0, 5, 0)
-			[
-				SNew(STextBlock)
-				.Visibility(ParameterAction->bIsExternallyReferenced ? EVisibility::Visible : EVisibility::Collapsed)
-				.Font(FEditorStyle::Get().GetFontStyle("FontAwesome.8"))
-				.Text(FEditorFontGlyphs::Lock)
-				.ToolTipText(LOCTEXT("LockedToolTip", "This parameter is used in a referenced external graph and can't be edited directly."))
-			]
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.Padding(0, 0, 5, 0)
-			[
-				SNew(STextBlock)
-				.Visibility(ParameterAction->bIsSourcedFromCustomStackContext ? EVisibility::Visible : EVisibility::Collapsed)
-				.Font(FEditorStyle::Get().GetFontStyle("FontAwesome.8"))
-				.Text(FEditorFontGlyphs::Database)
-				.ToolTipText(LOCTEXT("DataInterfaceSourceToolTip", "This parameter is a child variable of an existing Data Interface, meant to be used in Simulation Stage based stacks where the parent Data Interface is the Iteration Source.") )
-			]
-		];
-
-	InCreateData->OnRenameRequest->BindSP(ParameterNameTextBlock.ToSharedRef(), &SNiagaraParameterNameTextBlock::EnterEditingMode);
+	TSharedRef<SWidget> NameSlotWidget = CreateTextSlotWidget(Font, InCreateData, bIsReadOnly);
 
 	// now, create the actual widget
 	ChildSlot
 	[
 		SNew(SHorizontalBox)
 		.AddMetaData<FTutorialMetaData>(TagMeta)
+		.ToolTipText(ParameterAction->GetTooltipDescription())
 		// icon slot
 		+SHorizontalBox::Slot()
 		.AutoWidth()
@@ -106,12 +55,13 @@ void SNiagaraParameterMapPalleteItem::Construct(const FArguments& InArgs, FCreat
 		]
 		// name slot
 		+SHorizontalBox::Slot()
+		.FillWidth(1.f)
 		.VAlign(VAlign_Center)
-		.Padding(5,0)
+		.Padding(3,0)
 		[
-			ParameterNameTextBlock.ToSharedRef()
+			NameSlotWidget
 		]
-		// reference count
+		// name slot
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
 		.VAlign(VAlign_Center)
@@ -135,32 +85,11 @@ void SNiagaraParameterMapPalleteItem::Construct(const FArguments& InArgs, FCreat
 	];
 }
 
-void SNiagaraParameterMapPalleteItem::Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime)
-{
-	SGraphPaletteItem::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
-	if (ParameterNameTextBlock.IsValid())
-	{
-		TSharedPtr<FNiagaraParameterAction> ParameterAction = StaticCastSharedPtr<FNiagaraParameterAction>(ActionPtr.Pin());
-		if (ParameterAction.IsValid() && ParameterAction->GetIsNamespaceModifierRenamePending())
-		{
-			ParameterAction->SetIsNamespaceModifierRenamePending(false);
-			ParameterNameTextBlock->EnterNamespaceModifierEditingMode();
-		}
-	}
-}
-
-FText SNiagaraParameterMapPalleteItem::GetItemTooltip() const
-{
-	return SGraphPaletteItem::GetItemTooltip();
-}
-
 void SNiagaraParameterMapPalleteItem::OnNameTextCommitted(const FText& NewText, ETextCommit::Type InTextCommit)
 {
 	TSharedPtr<FNiagaraParameterAction> ParameterAction = StaticCastSharedPtr<FNiagaraParameterAction>(ActionPtr.Pin());
-	if (ParameterAction.IsValid())
-	{
-		OnItemRenamed.ExecuteIfBound(NewText, ParameterAction.ToSharedRef());
-	}
+	FScopedTransaction RenameParametersWithPins(LOCTEXT("RenameParameter", "Rename parameter, referenced pins and metadata"));
+	OnItemRenamed.ExecuteIfBound(NewText, *ParameterAction.Get());
 }
 
 FText SNiagaraParameterMapPalleteItem::GetReferenceCount() const

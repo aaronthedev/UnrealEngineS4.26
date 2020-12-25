@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,11 +25,6 @@ public:
 	void AddPoint(int PointID, const FVector3d& Position);
 	/** Add a polycurve with given CurveID and the give Polyline */
 	void AddCurve(int CurveID, const FPolyline3d& Polyline);
-
-	/** Remove a point with given PointID. */
-	void RemovePoint(int PointID);
-	/** Remove a curve with given CurveID. */
-	void RemoveCurve(int CurveID);
 
 	/** Update the Position of previously-added PointID */
 	void UpdatePoint(int PointID, const FVector3d& Position);
@@ -72,18 +67,6 @@ public:
 		TFunction<bool(const FVector3d&, const FVector3d&)> PointWithinToleranceTest) const;
 
 	/**
-	 * Like FindNearestPointToRay, but gives all elements within tolerance, rather than just the closest.
-	 *
-	 * @param Ray query ray
-	 * @param ResultsOut populated with information about successful nearest point results. Not cleared in advance.
-	 * @param PointWithinToleranceTest should return true if two 3D points are "close enough" to be considered a hit
-	 * @return true if at least one result was added (ie, passed PointWithinToleranceTest).
-	 * @warning PointWithinToleranceTest is called in parallel and hence must be thread-safe/re-entrant!
-	 */
-	bool CollectPointsNearRay(const FRay3d& Ray, TArray<FNearest>& ResultsOut,
-		TFunction<bool(const FVector3d&, const FVector3d&)> PointWithinToleranceTest) const;
-
-	/**
 	 * @param Ray query ray
 	 * @param ResultOut populated with information about successful nearest point result
 	 * @param PointWithinToleranceTest should return true if two 3D points are "close enough" to be considered a hit
@@ -93,17 +76,6 @@ public:
 	bool FindNearestCurveToRay(const FRay3d& Ray, FNearest& ResultOut,
 		TFunction<bool(const FVector3d&, const FVector3d&)> PointWithinToleranceTest) const;
 
-	/**
-	 * Like FindNearestCurveToRay, but gives all elements within tolerance, rather than just the closest.
-	 *
-	 * @param Ray query ray
-	 * @param ResultsOut populated with information about successful nearest point results. Not cleared in advance.
-	 * @param PointWithinToleranceTest should return true if two 3D points are "close enough" to be considered a hit
-	 * @return true if at least one result was added (ie, passed PointWithinToleranceTest).
-	 * @warning PointWithinToleranceTest is called in parallel and hence must be thread-safe/re-entrant!
-	 */
-	bool CollectCurvesNearRay(const FRay3d& Ray, TArray<FNearest>& ResultsOut,
-		TFunction<bool(const FVector3d&, const FVector3d&)> PointWithinToleranceTest) const;
 
 protected:
 

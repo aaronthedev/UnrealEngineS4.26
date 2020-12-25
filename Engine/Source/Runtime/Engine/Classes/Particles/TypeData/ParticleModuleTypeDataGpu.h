@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ParticleModuleTypeDataGpu: Type data definition for GPU particle simulation.
@@ -229,7 +229,6 @@ struct FGPUSpriteEmitterInfo
 		, bRemoveHMDRoll(0)
 		, MinFacingCameraBlendDistance(0.f)
 		, MaxFacingCameraBlendDistance(0.f)
-		, Resources(nullptr)
 	{
 	}
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MaterialTexCoordScalesPixelShader.usf: Pixel shader to analyse coordinate scale per texture
@@ -165,10 +165,6 @@ void Main(
 		half Opacity = GetMaterialOpacityRaw(PixelMaterialInputs);
 #if MATERIALBLENDING_MASKED || (DECAL_BLEND_MODE == DECALBLENDMODEID_VOLUMETRIC)
 		half Mask = GetMaterialMask(PixelMaterialInputs);
-		if (!bOutputScales)
-		{
-			clip(GetMaterialMask(PixelMaterialInputs));
-		}
 #endif
 		half4 SSData = GetMaterialSubsurfaceDataRaw(PixelMaterialInputs);
 		float Custom0 = GetMaterialCustomData0(MaterialParameters);

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -84,9 +84,6 @@ private:
 
 	/** Root list of categories */
 	TArray<TSharedPtr<FPluginCategory>> RootCategories;
-
-	/** Category that includes all plugins */
-	TSharedPtr<FPluginCategory> AllCategory;
 
 	/** Category for built-in plugins */
 	TSharedPtr<FPluginCategory> BuiltInCategory;

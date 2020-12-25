@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -19,7 +19,6 @@ public class KismetWidgets : ModuleRules
                 "EditorStyle",
 				"UnrealEd",
 				"BlueprintGraph",
-				"ClassViewer"
 			}
 		);
 
@@ -34,13 +33,6 @@ public class KismetWidgets : ModuleRules
             new string[] {
 			    "ContentBrowser",
                 "AssetTools",
-			}
-		);
-
-		// Circular references that need to be cleaned up
-		CircularlyReferencedDependentModules.AddRange(
-			new string[] {
-				"BlueprintGraph",
 			}
 		);
 	}

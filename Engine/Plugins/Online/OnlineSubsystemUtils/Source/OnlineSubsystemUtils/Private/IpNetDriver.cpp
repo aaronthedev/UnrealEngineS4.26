@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	IpNetDriver.cpp: Unreal IP network driver.
@@ -21,7 +21,6 @@ Notes:
 #include "HAL/LowLevelMemTracker.h"
 
 #include "Net/Core/Misc/PacketAudit.h"
-#include "Misc/ScopeExit.h"
 
 #include "IPAddress.h"
 #include "Sockets.h"
@@ -94,45 +93,14 @@ TAutoConsoleVariable<int32> CVarNetUseRecvTimestamps(
 	TEXT("If true and if net.UseRecvMulti is also true, on a Unix/Linux platform, ")
 		TEXT("the kernel timestamp will be retrieved for each packet received, providing more accurate ping calculations."));
 
-TAutoConsoleVariable<float> CVarRcvThreadSleepTimeForWaitableErrorsInSeconds(
-	TEXT("net.RcvThreadSleepTimeForWaitableErrorsInSeconds"),
-	0.0f, // When > 0 => sleep. When == 0 => yield (if platform supports it). When < 0 => disabled
-	TEXT("Time the receive thread will sleep when a waitable error is returned by a socket operation."));
 
-#if !UE_BUILD_SHIPPING
-TAutoConsoleVariable<int32> CVarNetDebugDualIPs(
-	TEXT("net.DebugDualIPs"),
-	0,
-	TEXT("If true, will duplicate every packet received, and process with a new (deterministic) IP, ")
-		TEXT("to emulate receiving client packets from dual IP's - which can happen under real-world network conditions")
-		TEXT("(only supports a single client on the server)."));
-
-TSharedPtr<FInternetAddr> GCurrentDuplicateIP;
-
-TAutoConsoleVariable<FString> CVarNetDebugAddResolverAddress(
-	TEXT("net.DebugAppendResolverAddress"),
-	TEXT(""),
-	TEXT("If this is set, all IP address resolution methods will add the value of this CVAR to the list of results.")
-		TEXT("This allows for testing resolution functionality across all multiple addresses with the end goal of having a successful result")
-		TEXT("(being the value of this CVAR)"),
-	ECVF_Default | ECVF_Cheat);
-#endif
-
-namespace IPNetDriverInternal
-{
-	bool ShouldSleepOnWaitError(ESocketErrors SocketError)
-	{
-		return SocketError == ESocketErrors::SE_NO_ERROR || SocketError == ESocketErrors::SE_EWOULDBLOCK || SocketError == ESocketErrors::SE_TRY_AGAIN;
-	}
-}
 
 /**
  * FPacketItrator
  *
  * Encapsulates the NetDriver TickDispatch code required for executing all variations of packet receives
  * (FSocket::RecvFrom, FSocket::RecvMulti, and the Receive Thread),
- * as well as implementing/abstracting-away some of the outermost (non-NetConnection-related) parts of the DDoS detection code,
- * and code for timing receives/iterations (which affects control flow).
+ * as well as implementing/abstracting-away some of the outermost (non-NetConnection-related) parts of the DDoS detection code.
  */
 class FPacketIterator
 {
@@ -156,66 +124,32 @@ private:
 		/** Error if receiving a packet failed */
 		ESocketErrors Error;
 	};
-
-
+	
 private:
 	FPacketIterator(UIpNetDriver* InDriver)
-		: FPacketIterator(InDriver, InDriver->RecvMultiState.Get(), FPlatformTime::Seconds(),
-							(InDriver->MaxSecondsInReceive > 0.0 && InDriver->NbPacketsBetweenReceiveTimeTest > 0))
-	{
-	}
-
-	FPacketIterator(UIpNetDriver* InDriver, FRecvMulti* InRMState, double InStartReceiveTime, bool bInCheckReceiveTime)
 		: bBreak(false)
-		, IterationCount(0)
 		, Driver(InDriver)
-		, DDoS(InDriver->DDoS)
-		, SocketSubsystem(InDriver->GetSocketSubsystem())
-		, SocketReceiveThreadRunnable(InDriver->SocketReceiveThreadRunnable.Get())
+		, DDoS(Driver->DDoS)
+		, SocketSubsystem(Driver->GetSocketSubsystem())
+		, Socket(Driver->Socket)
+		, SocketReceiveThreadRunnable(Driver->SocketReceiveThreadRunnable.Get())
 		, CurrentPacket()
-#if !UE_BUILD_SHIPPING
-		, bDebugDualIPs(CVarNetDebugDualIPs.GetValueOnAnyThread() != 0)
-		, DuplicatePacket()
-#endif
-		, RMState(InRMState)
-		, bUseRecvMulti(CVarNetUseRecvMulti.GetValueOnAnyThread() != 0 && InRMState != nullptr)
 		, RecvMultiIdx(0)
 		, RecvMultiPacketCount(0)
-		, StartReceiveTime(InStartReceiveTime)
-		, bCheckReceiveTime(bInCheckReceiveTime)
-		, CheckReceiveTimePacketCountMask(bInCheckReceiveTime ? (FMath::RoundUpToPowerOfTwo(InDriver->NbPacketsBetweenReceiveTimeTest)-1) : 0)
-		, BailOutTime(InStartReceiveTime + InDriver->MaxSecondsInReceive)
-		, bSlowFrameChecks(UIpNetDriver::OnNetworkProcessingCausingSlowFrame.IsBound())
-		, AlarmTime(InStartReceiveTime + GIpNetDriverMaxDesiredTimeSliceBeforeAlarmSecs)
 	{
+		RMState = Driver->RecvMultiState.Get();
+		bUseRecvMulti = CVarNetUseRecvMulti.GetValueOnAnyThread() != 0 && RMState != nullptr;
+
 		if (!bUseRecvMulti && SocketSubsystem != nullptr)
 		{
 			CurrentPacket.Address = SocketSubsystem->CreateInternetAddr();
 		}
 
-#if !UE_BUILD_SHIPPING
-		if (bDebugDualIPs && !bUseRecvMulti)
-		{
-			DuplicatePacket = MakeUnique<FCachedPacket>();
-		}
-#endif
-
 		AdvanceCurrentPacket();
-	}
-
-	~FPacketIterator()
-	{
-		const float DeltaReceiveTime = FPlatformTime::Seconds() - StartReceiveTime;
-
-		if (DeltaReceiveTime > GIpNetDriverLongFramePrintoutThresholdSecs)
-		{
-			UE_LOG(LogNet, Warning, TEXT("Took too long to receive packets. Time: %2.2f %s"), DeltaReceiveTime, *Driver->GetName());
-		}
 	}
 
 	FORCEINLINE FPacketIterator& operator++()
 	{
-		IterationCount++;
 		AdvanceCurrentPacket();
 
 		return *this;
@@ -244,23 +178,11 @@ private:
 		}
 		else
 		{
-			OutPacket.DataView = {CurrentPacket.Data.GetData(), CurrentPacket.Data.Num(), ECountUnits::Bytes};
+			OutPacket.Data = MakeArrayView(CurrentPacket.Data);
 			OutPacket.Error = CurrentPacket.Error;
 			OutPacket.Address = CurrentPacket.Address;
 			bRecvSuccess = CurrentPacket.bRecvSuccess;
 		}
-
-#if !UE_BUILD_SHIPPING
-		if (IsDuplicatePacket() && OutPacket.Address.IsValid())
-		{
-			TSharedRef<FInternetAddr> NewAddr = OutPacket.Address->Clone();
-
-			NewAddr->SetPort((NewAddr->GetPort() + 9876) & 0xFFFF);
-
-			OutPacket.Address = NewAddr;
-			GCurrentDuplicateIP = NewAddr;
-		}
-#endif
 
 		return bRecvSuccess;
 	}
@@ -308,69 +230,22 @@ private:
 	 */
 	void AdvanceCurrentPacket()
 	{
-		// @todo: Remove the slow frame checks, eventually - potential DDoS and Switch platform constraint
-		if (bSlowFrameChecks)
+		if (bUseRecvMulti)
 		{
-			const double CurrentTime = FPlatformTime::Seconds();
-
-			if (CurrentTime > AlarmTime)
+			if (RecvMultiPacketCount == 0 || ((RecvMultiIdx + 1) >= RecvMultiPacketCount))
 			{
-				Driver->OnNetworkProcessingCausingSlowFrame.Broadcast();
-
-				AlarmTime = CurrentTime + GIpNetDriverMaxDesiredTimeSliceBeforeAlarmSecs;
-			}
-		}
-
-		if (bCheckReceiveTime)
-		{
-			if ((IterationCount & CheckReceiveTimePacketCountMask) == 0 && IterationCount > 0)
-			{
-				const double CurrentTime = FPlatformTime::Seconds();
-
-				if (CurrentTime > BailOutTime)
-				{
-					// NOTE: For RecvMulti, this will mass-dump packets, leading to packetloss. Avoid using with RecvMulti.
-					bBreak = true;
-
-					UE_LOG(LogNet, Warning, TEXT("Stopping packet reception after processing for more than %f seconds. %s"),
-							Driver->MaxSecondsInReceive, *Driver->GetName());
-				}
-			}
-		}
-
-		if (!bBreak)
-		{
-#if !UE_BUILD_SHIPPING
-			if (IsDuplicatePacket())
-			{
-				CurrentPacket = *DuplicatePacket;
-			}
-			else
-#endif
-			if (bUseRecvMulti)
-			{
-				if (RecvMultiPacketCount == 0 || ((RecvMultiIdx + 1) >= RecvMultiPacketCount))
-				{
-					AdvanceRecvMultiState();
-				}
-				else
-				{
-					RecvMultiIdx++;
-				}
-
-				// At this point, bBreak will be set, or RecvMultiPacketCount will be > 0
+				AdvanceRecvMultiState();
 			}
 			else
 			{
-				bBreak = !ReceiveSinglePacket();
-
-#if !UE_BUILD_SHIPPING
-				if (bDebugDualIPs && !bBreak)
-				{
-					(*DuplicatePacket) = CurrentPacket;
-				}
-#endif
+				RecvMultiIdx++;
 			}
+
+			// At this point, bBreak will be set, or RecvMultiPacketCount will be > 0
+		}
+		else
+		{
+			bBreak = !ReceiveSinglePacket();
 		}
 	}
 
@@ -460,12 +335,12 @@ private:
 					}
 				}
 			}
-			else if (Driver->GetSocket() != nullptr && SocketSubsystem != nullptr)
+			else if (Socket != nullptr && SocketSubsystem != nullptr)
 			{
 				SCOPE_CYCLE_COUNTER(STAT_IpNetDriver_RecvFromSocket);
 
 				int32 BytesRead = 0;
-				bool bReceivedPacket = Driver->GetSocket()->RecvFrom(CurrentPacket.Data.GetData(), MAX_PACKET_SIZE, BytesRead, *CurrentPacket.Address);
+				bool bReceivedPacket = Socket->RecvFrom(CurrentPacket.Data.GetData(), MAX_PACKET_SIZE, BytesRead, *CurrentPacket.Address);
 
 				CurrentPacket.bRecvSuccess = bReceivedPacket;
 				bReceivedPacketOrError = bReceivedPacket;
@@ -516,18 +391,11 @@ private:
 		RecvMultiIdx = 0;
 		RecvMultiPacketCount = 0;
 
-		bBreak = Driver->GetSocket() == nullptr;
-
-		while (!bBreak)
+		while (true)
 		{
 			SCOPE_CYCLE_COUNTER(STAT_IpNetDriver_RecvFromSocket);
 
-			if (Driver->GetSocket() == nullptr)
-			{
-				break;
-			}
-
-			bool bRecvMultiOk = Driver->GetSocket()->RecvMulti(*RMState);
+			bool bRecvMultiOk = Socket != nullptr ? Socket->RecvMulti(*RMState) : false;
 
 			if (!bRecvMultiOk)
 			{
@@ -574,133 +442,38 @@ private:
 		}
 	}
 
-#if !UE_BUILD_SHIPPING
-	/**
-	 * Whether or not the current packet being iterated, is a duplicate of the previous packet
-	 */
-	FORCEINLINE bool IsDuplicatePacket() const
-	{
-		// When doing Dual IP debugging, every other packet is a duplicate of the previous packet
-		return bDebugDualIPs && (IterationCount % 2) == 1;
-	}
-#endif
-
 
 private:
 	/** Specified internally, when the packet iterator should break/stop (no packets, DDoS limits triggered, etc.) */
 	bool bBreak;
 
-	/** The number of packets iterated thus far */
-	int64 IterationCount;
-
 
 	/** Cached reference to the NetDriver, and NetDriver variables/values */
 
-	UIpNetDriver* const Driver;
+	UIpNetDriver* Driver;
 
 	FDDoSDetection& DDoS;
 
-	ISocketSubsystem* const SocketSubsystem;
+	ISocketSubsystem* SocketSubsystem;
 
-	UIpNetDriver::FReceiveThreadRunnable* const SocketReceiveThreadRunnable;
+	FSocket*& Socket;
+
+	UIpNetDriver::FReceiveThreadRunnable* SocketReceiveThreadRunnable;
 
 	/** Stores information for the current packet being received (when using single-receive mode) */
 	FCachedPacket CurrentPacket;
 
-#if !UE_BUILD_SHIPPING
-	/** Whether or not to enable Dual IP debugging */
-	const bool bDebugDualIPs;
-
-	/** When performing Dual IP tests, a duplicate copy of every packet, is stored here */
-	TUniquePtr<FCachedPacket> DuplicatePacket;
-#endif
-
 	/** Stores information for receiving packets using RecvMulti */
-	FRecvMulti* const RMState;
+	FRecvMulti* RMState;
 
 	/** Whether or not RecvMulti is enabled/supported */
-	const bool bUseRecvMulti;
+	bool bUseRecvMulti;
 
 	/** The RecvMulti index of the next packet to be received (if RecvMultiPacketCount > 0) */
 	int32 RecvMultiIdx;
 
 	/** The number of packets waiting to be read from the FRecvMulti state */
 	int32 RecvMultiPacketCount;
-
-	/** The time at which packet iteration/receiving began */
-	const double StartReceiveTime;
-
-	/** Whether or not to perform receive time limit checks */
-	const bool bCheckReceiveTime;
-
-	/** Receive time is checked every 'x' number of packets, with this mask used to count the packets ('x' is a power of 2) */
-	const int32 CheckReceiveTimePacketCountMask;
-
-	/** The time at which to bail out of the receive loop, if it's time limited */
-	const double BailOutTime;
-
-	/** Whether or not checks for slow frames are active */
-	const bool bSlowFrameChecks;
-
-	/** Cached time at which to trigger a slow frame alarm */
-	double AlarmTime;
-};
-
-class FIpConnectionHelper
-{
-private:
-	friend class UIpNetDriver;
-	static void HandleSocketRecvError(UIpNetDriver* Driver, UIpConnection* Connection, const FString& ErrorString)
-	{
-		Connection->HandleSocketRecvError(Driver, ErrorString);
-	}
-
-	static void PushSocketsToConnection(UIpConnection* Connection, TArray<TSharedPtr<FSocket>>& Sockets)
-	{
-		UE_LOG(LogNet, Verbose, TEXT("Pushed %d sockets to net connection %s"), Sockets.Num(), *Connection->GetName());
-		Connection->BindSockets = Sockets;
-	}
-
-	static void PushResolverResultsToConnection(UIpConnection* Connection, TArray<TSharedRef<FInternetAddr>>& ResolverResults)
-	{
-		UE_LOG(LogNet, Verbose, TEXT("Pushed %d resolver results to net connection %s"), ResolverResults.Num(), *Connection->GetName());
-		Connection->ResolverResults = ResolverResults;
-		Connection->ResolutionState = EAddressResolutionState::TryNextAddress;
-	}
-
-	static void CleanUpConnectionSockets(UIpConnection* Connection)
-	{
-		if (Connection != nullptr)
-		{
-			Connection->CleanupResolutionSockets();
-		}
-	}
-
-	static void HandleResolverError(UIpConnection* Connection)
-	{
-		Connection->ResolutionState = EAddressResolutionState::Error;
-		Connection->Close();
-	}
-
-	static bool IsAddressResolutionEnabledForConnection(const UIpConnection* Connection)
-	{
-		if (Connection != nullptr)
-		{
-			return Connection->IsAddressResolutionEnabled();
-		}
-
-		return false;
-	}
-
-	static bool HasAddressResolutionFailedForConnection(const UIpConnection* Connection)
-	{
-		if (Connection != nullptr)
-		{
-			return Connection->HasAddressResolutionFailed();
-		}
-
-		return false;
-	}
 };
 
 /**
@@ -731,12 +504,6 @@ ISocketSubsystem* UIpNetDriver::GetSocketSubsystem()
 
 FSocket * UIpNetDriver::CreateSocket()
 {
-	// This is a deprecated function with unsafe socket lifetime management. The Release call is intentional and for backwards compatiblity only.
-	return CreateSocketForProtocol((LocalAddr.IsValid() ? LocalAddr->GetProtocolType() : NAME_None)).Release();
-}
-
-FUniqueSocket UIpNetDriver::CreateSocketForProtocol(const FName& ProtocolType)
-{
 	// Create UDP socket and enable broadcasting.
 	ISocketSubsystem* SocketSubsystem = GetSocketSubsystem();
 
@@ -746,128 +513,12 @@ FUniqueSocket UIpNetDriver::CreateSocketForProtocol(const FName& ProtocolType)
 		return NULL;
 	}
 
-	return SocketSubsystem->CreateUniqueSocket(NAME_DGram, TEXT("Unreal"), ProtocolType);
+	return SocketSubsystem->CreateSocket(NAME_DGram, TEXT("Unreal"), ( LocalAddr.IsValid() ? LocalAddr->GetProtocolType() : NAME_None) );
 }
 
 int UIpNetDriver::GetClientPort()
 {
 	return 0;
-}
-
-FUniqueSocket UIpNetDriver::CreateAndBindSocket(TSharedRef<FInternetAddr> BindAddr, int32 Port, bool bReuseAddressAndPort, int32 DesiredRecvSize, int32 DesiredSendSize, FString& Error)
-{
-	ISocketSubsystem* SocketSubsystem = GetSocketSubsystem();
-	if (SocketSubsystem == nullptr)
-	{
-		Error = TEXT("Unable to find socket subsystem");
-		return nullptr;
-	}
-
-	// Create the socket that we will use to communicate with
-	FUniqueSocket NewSocket = CreateSocketForProtocol(BindAddr->GetProtocolType());
-
-	if (!NewSocket.IsValid())
-	{
-		Error = FString::Printf(TEXT("%s: socket failed (%i)"), SocketSubsystem->GetSocketAPIName(), (int32)SocketSubsystem->GetLastErrorCode());
-		return nullptr;
-	}
-
-	/* Make sure to cleanly destroy any sockets we do not mean to use. */
-	ON_SCOPE_EXIT
-	{
-		if (Error.IsEmpty() == false)
-		{
-			NewSocket.Reset();
-		}
-	};
-
-	if (SocketSubsystem->RequiresChatDataBeSeparate() == false && NewSocket->SetBroadcast() == false)
-	{
-		Error = FString::Printf(TEXT("%s: setsockopt SO_BROADCAST failed (%i)"), SocketSubsystem->GetSocketAPIName(), (int32)SocketSubsystem->GetLastErrorCode());
-		return nullptr;
-	}
-
-	if (NewSocket->SetReuseAddr(bReuseAddressAndPort) == false)
-	{
-		UE_LOG(LogNet, Log, TEXT("setsockopt with SO_REUSEADDR failed"));
-	}
-
-	if (NewSocket->SetRecvErr() == false)
-	{
-		UE_LOG(LogNet, Log, TEXT("setsockopt with IP_RECVERR failed"));
-	}
-
-	int32 ActualRecvSize(0);
-	int32 ActualSendSize(0);
-	NewSocket->SetReceiveBufferSize(DesiredRecvSize, ActualRecvSize);
-	NewSocket->SetSendBufferSize(DesiredSendSize, ActualSendSize);
-	UE_LOG(LogInit, Log, TEXT("%s: Socket queue. Rx: %i (config %i) Tx: %i (config %i)"), SocketSubsystem->GetSocketAPIName(),
-		ActualRecvSize, DesiredRecvSize, ActualSendSize, DesiredSendSize);
-
-	// Bind socket to our port.
-	BindAddr->SetPort(Port);
-
-	int32 AttemptPort = BindAddr->GetPort();
-	int32 BoundPort = SocketSubsystem->BindNextPort(NewSocket.Get(), *BindAddr, MaxPortCountToTry + 1, 1);
-	if (BoundPort == 0)
-	{
-		Error = FString::Printf(TEXT("%s: binding to port %i failed (%i)"), SocketSubsystem->GetSocketAPIName(), AttemptPort,
-			(int32)SocketSubsystem->GetLastErrorCode());
-		return nullptr;
-	}
-	if (NewSocket->SetNonBlocking() == false)
-	{
-		Error = FString::Printf(TEXT("%s: SetNonBlocking failed (%i)"), SocketSubsystem->GetSocketAPIName(),
-			(int32)SocketSubsystem->GetLastErrorCode());
-		return nullptr;
-	}
-
-	return NewSocket;
-}
-
-void UIpNetDriver::SetSocketAndLocalAddress(FSocket* NewSocket)
-{
-	SetSocketAndLocalAddress(TSharedPtr<FSocket>(NewSocket, FSocketDeleter(GetSocketSubsystem())));
-}
-
-void UIpNetDriver::SetSocketAndLocalAddress(const TSharedPtr<FSocket>& SharedSocket)
-{
-	SocketPrivate = SharedSocket;
-
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	Socket = SocketPrivate.Get();
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
-	if (SocketPrivate.IsValid())
-	{
-		// Allocate any LocalAddrs if they haven't been allocated yet.
-		if (!LocalAddr.IsValid())
-		{
-			LocalAddr = GetSocketSubsystem()->CreateInternetAddr();
-		}
-
-		SocketPrivate->GetAddress(*LocalAddr);
-	}
-}
-
-void UIpNetDriver::ClearSockets()
-{
-	// For backwards compatability with the public Socket member. Destroy it manually if it won't be destroyed by the reset below.
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	if(!ensureMsgf(Socket == SocketPrivate.Get(), TEXT("UIpNetDriver::ClearSockets: Socket and SocketPrivate point to different sockets! %s"), *GetDescription()))
-	{
-		ISocketSubsystem* const SocketSubsystem = GetSocketSubsystem();
-
-		if (SocketSubsystem)
-		{
-			SocketSubsystem->DestroySocket(Socket);
-		}
-	}
-	Socket = nullptr;
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
-	SocketPrivate.Reset();
-	BoundSockets.Reset();
 }
 
 bool UIpNetDriver::InitBase( bool bInitAsClient, FNetworkNotify* InNotify, const FURL& URL, bool bReuseAddressAndPort, FString& Error )
@@ -884,75 +535,84 @@ bool UIpNetDriver::InitBase( bool bInitAsClient, FNetworkNotify* InNotify, const
 		return false;
 	}
 
-	const int32 BindPort = bInitAsClient ? GetClientPort() : URL.Port;
+	// Derived types may have already allocated a socket
+	const TCHAR* MultiHomeBindAddr = URL.GetOption(TEXT("multihome="), nullptr);
+	if (MultiHomeBindAddr != nullptr)
+	{
+		LocalAddr = SocketSubsystem->GetAddressFromString(MultiHomeBindAddr);
+		if (!LocalAddr.IsValid())
+		{
+			UE_LOG(LogNet, Warning, TEXT("Failed to created valid address from multihome address: %s"), MultiHomeBindAddr);
+		}
+	}
+
+	if (!LocalAddr.IsValid())
+	{
+		LocalAddr = SocketSubsystem->GetLocalBindAddr(*GLog);
+	}
+
+	// Create the socket that we will use to communicate with
+	Socket = CreateSocket();
+
+	if(Socket == nullptr)
+	{
+		Socket = 0;
+		Error = FString::Printf( TEXT("%s: socket failed (%i)"), SocketSubsystem->GetSocketAPIName(), (int32)SocketSubsystem->GetLastErrorCode() );
+		return false;
+	}
+	if (SocketSubsystem->RequiresChatDataBeSeparate() == false &&
+		Socket->SetBroadcast() == false)
+	{
+		Error = FString::Printf( TEXT("%s: setsockopt SO_BROADCAST failed (%i)"), SocketSubsystem->GetSocketAPIName(), (int32)SocketSubsystem->GetLastErrorCode() );
+		return false;
+	}
+
+	if (Socket->SetReuseAddr(bReuseAddressAndPort) == false)
+	{
+		UE_LOG(LogNet, Log, TEXT("setsockopt with SO_REUSEADDR failed"));
+	}
+
+	if (Socket->SetRecvErr() == false)
+	{
+		UE_LOG(LogNet, Log, TEXT("setsockopt with IP_RECVERR failed"));
+	}
+
 	// Increase socket queue size, because we are polling rather than threading
 	// and thus we rely on the OS socket to buffer a lot of data.
-	const int32 DesiredRecvSize = bInitAsClient ? ClientDesiredSocketReceiveBufferBytes : ServerDesiredSocketReceiveBufferBytes;
-	const int32 DesiredSendSize = bInitAsClient ? ClientDesiredSocketSendBufferBytes : ServerDesiredSocketSendBufferBytes;
+	const int32 DesiredRecvSize = bInitAsClient ? ClientDesiredSocketReceiveBufferBytes	: ServerDesiredSocketReceiveBufferBytes;
+	const int32 DesiredSendSize = bInitAsClient ? ClientDesiredSocketSendBufferBytes	: ServerDesiredSocketSendBufferBytes;
+	int32 ActualRecvSize(0);
+	int32 ActualSendSize(0);
+	Socket->SetReceiveBufferSize(DesiredRecvSize, ActualRecvSize);
+	Socket->SetSendBufferSize(DesiredSendSize, ActualSendSize);
+	UE_LOG(LogInit, Log, TEXT("%s: Socket queue. Rx: %i (config %i) Tx: %i (config %i)"), SocketSubsystem->GetSocketAPIName(),
+		ActualRecvSize, DesiredRecvSize, ActualSendSize, DesiredSendSize);
 
-	TArray<TSharedRef<FInternetAddr>> BindAddresses = SocketSubsystem->GetLocalBindAddresses();
-
-	// Handle potentially empty arrays
-	if (BindAddresses.Num() == 0)
-	{
-		Error = TEXT("No binding addresses could be found or grabbed for this platform! Sockets could not be created!");
-		UE_LOG(LogNet, Error, TEXT("%s"), *Error);
-		return false;
-	}
-
-	// Create sockets for every bind address
-	for (TSharedRef<FInternetAddr>& BindAddr : BindAddresses)
-	{
-		FUniqueSocket NewSocket = CreateAndBindSocket(BindAddr, BindPort, bReuseAddressAndPort, DesiredRecvSize, DesiredSendSize, Error);
-		if (NewSocket.IsValid())
-		{
-			UE_LOG(LogNet, Log, TEXT("Created socket for bind address: %s on port %d"), *BindAddr->ToString(false), BindPort);
-			BoundSockets.Emplace(NewSocket.Release(), FSocketDeleter(NewSocket.GetDeleter()));
-		}
-		else
-		{
-			UE_LOG(LogNet, Warning, TEXT("Could not create socket for bind address %s, got error %s"), *BindAddr->ToString(false), *Error);
-			Error = TEXT("");
-			continue;
-		}
-
-		// Servers should only have one socket that they bind on in our code.
-		if (!bInitAsClient)
-		{
-			break;
-		}
-	}
-
-	if (!Error.IsEmpty() || BoundSockets.Num() == 0)
-	{
-		UE_LOG(LogNet, Warning, TEXT("Encountered an error while creating sockets for the bind addresses. %s"), *Error);
-		
-		// Make sure to destroy all sockets that we don't end up using.
-		BoundSockets.Reset();
-
-		return false;
-	}
-
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	// Some derived drivers might have already set a socket, so don't override their values
-	if (Socket == nullptr)
-	{
-		// However if they haven't set a socket, go ahead and set one now.
-		SetSocketAndLocalAddress(BoundSockets[0]);
-	}
-	else if (!LocalAddr.IsValid()) // If they have set the socket but not the LocalAddr, do so now.
-	{
-		LocalAddr = SocketSubsystem->CreateInternetAddr();
-		Socket->GetAddress(*LocalAddr);
-	}
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
+	// Bind socket to our port.
+	LocalAddr->SetPort(bInitAsClient ? GetClientPort() : URL.Port);
 	
+	int32 AttemptPort = LocalAddr->GetPort();
+	int32 BoundPort = SocketSubsystem->BindNextPort( Socket, *LocalAddr, MaxPortCountToTry + 1, 1 );
+	if (BoundPort == 0)
+	{
+		Error = FString::Printf( TEXT("%s: binding to port %i failed (%i)"), SocketSubsystem->GetSocketAPIName(), AttemptPort,
+			(int32)SocketSubsystem->GetLastErrorCode() );
+		return false;
+	}
+	if( Socket->SetNonBlocking() == false )
+	{
+		Error = FString::Printf( TEXT("%s: SetNonBlocking failed (%i)"), SocketSubsystem->GetSocketAPIName(),
+			(int32)SocketSubsystem->GetLastErrorCode());
+		return false;
+	}
+
 	// If the cvar is set and the socket subsystem supports it, create the receive thread.
 	if (CVarNetIpNetDriverUseReceiveThread.GetValueOnAnyThread() != 0 && SocketSubsystem->IsSocketWaitSupported())
 	{
 		SocketReceiveThreadRunnable = MakeUnique<FReceiveThreadRunnable>(this);
 		SocketReceiveThread.Reset(FRunnableThread::Create(SocketReceiveThreadRunnable.Get(), *FString::Printf(TEXT("IpNetDriver Receive Thread"), *NetDriverName.ToString())));
 	}
+
 
 	bool bRecvMultiEnabled = CVarNetUseRecvMulti.GetValueOnAnyThread() != 0;
 	bool bRecvThreadEnabled = CVarNetIpNetDriverUseReceiveThread.GetValueOnAnyThread() != 0;
@@ -967,17 +627,15 @@ bool UIpNetDriver::InitBase( bool bInitAsClient, FNetworkNotify* InNotify, const
 
 			if (bRetrieveTimestamps)
 			{
-				// Properly set this flag for every socket for each bind address.
-				for (TSharedPtr<FSocket>& SubSocket : BoundSockets)
-				{
-					SubSocket->SetRetrieveTimestamp(true);
-				}
+				Socket->SetRetrieveTimestamp(true);
 			}
+
 
 			ERecvMultiFlags RecvMultiFlags = bRetrieveTimestamps ? ERecvMultiFlags::RetrieveTimestamps : ERecvMultiFlags::None;
 			int32 MaxRecvMultiPackets = FMath::Max(32, CVarRecvMultiCapacity.GetValueOnAnyThread());
 
 			RecvMultiState = SocketSubsystem->CreateRecvMulti(MaxRecvMultiPackets, MAX_PACKET_SIZE, RecvMultiFlags);
+
 
 			FArchiveCountMem MemArc(nullptr);
 
@@ -991,7 +649,7 @@ bool UIpNetDriver::InitBase( bool bInitAsClient, FNetworkNotify* InNotify, const
 			UE_LOG(LogNet, Warning, TEXT("NetDriver could not enable RecvMulti, as current socket subsystem does not support it."));
 		}
 	}
-	else if (bRecvMultiEnabled && bRecvThreadEnabled)
+	else if (bRecvThreadEnabled)
 	{
 		UE_LOG(LogNet, Warning, TEXT("NetDriver RecvMulti is not yet supported with the Receive Thread enabled."));
 	}
@@ -1002,13 +660,6 @@ bool UIpNetDriver::InitBase( bool bInitAsClient, FNetworkNotify* InNotify, const
 
 bool UIpNetDriver::InitConnect( FNetworkNotify* InNotify, const FURL& ConnectURL, FString& Error )
 {
-	ISocketSubsystem* SocketSubsystem = GetSocketSubsystem();
-	if (SocketSubsystem == nullptr)
-	{
-		UE_LOG(LogNet, Warning, TEXT("Unable to find socket subsystem"));
-		return false;
-	}
-
 	if( !InitBase( true, InNotify, ConnectURL, false, Error ) )
 	{
 		UE_LOG(LogNet, Warning, TEXT("Failed to init net driver ConnectURL: %s: %s"), *ConnectURL.ToString(), *Error);
@@ -1017,84 +668,9 @@ bool UIpNetDriver::InitConnect( FNetworkNotify* InNotify, const FURL& ConnectURL
 
 	// Create new connection.
 	ServerConnection = NewObject<UNetConnection>(GetTransientPackage(), NetConnectionClass);
-	UIpConnection* IPConnection = CastChecked<UIpConnection>(ServerConnection);
+	ServerConnection->InitLocalConnection( this, Socket, ConnectURL, USOCK_Pending);
+	UE_LOG(LogNet, Log, TEXT("Game client on port %i, rate %i"), ConnectURL.Port, ServerConnection->CurrentNetSpeed );
 
-	if (IPConnection == nullptr)
-	{
-		Error = TEXT("Could not cast the ServerConnection into the base connection class for this netdriver!");
-		return false;
-	}
-
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	ServerConnection->InitLocalConnection(this, Socket, ConnectURL, USOCK_Pending);
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-	const bool bResolutionEnabled = FIpConnectionHelper::IsAddressResolutionEnabledForConnection(IPConnection);
-
-	int32 DestinationPort = ConnectURL.Port;
-	if (bResolutionEnabled)
-	{
-		FIpConnectionHelper::PushSocketsToConnection(IPConnection, BoundSockets);
-		BoundSockets.Empty();
-
-		// Create a weakobj so that we can pass the Connection safely to the lambda for later
-		TWeakObjectPtr<UIpConnection> SafeConnectionPtr(IPConnection);
-
-		auto AsyncResolverHandler = [SafeConnectionPtr, SocketSubsystem, DestinationPort](FAddressInfoResult Results) {
-
-			// Check if we still have a valid pointer
-			if (!SafeConnectionPtr.IsValid())
-			{
-				// If we got in here, we are already in some sort of exiting state typically.
-				// We shouldn't have to do any more other than not do any sort of operations on the connection
-				UE_LOG(LogNet, Warning, TEXT("GAI Resolver Lambda: The NetConnection class has become invalid after results for %s were grabbed."), *Results.QueryHostName);
-				return;
-			}
-			
-			if (Results.ReturnCode == SE_NO_ERROR)
-			{
-				TArray<TSharedRef<FInternetAddr>> AddressResults;
-				for (auto& Result : Results.Results)
-				{
-					AddressResults.Add(Result.Address);
-				}
-
-#if !UE_BUILD_SHIPPING
-				// This is useful for injecting a good result into the array to test the resolution system
-				const FString DebugAddressAddition = CVarNetDebugAddResolverAddress.GetValueOnAnyThread();
-				if (!DebugAddressAddition.IsEmpty())
-				{
-					TSharedPtr<FInternetAddr> SpecialResultAddr = SocketSubsystem->GetAddressFromString(DebugAddressAddition);
-					if (SpecialResultAddr.IsValid())
-					{
-						SpecialResultAddr->SetPort(DestinationPort);
-						AddressResults.Add(SpecialResultAddr.ToSharedRef());
-						UE_LOG(LogNet, Log, TEXT("Added additional result address %s to resolver list"), *SpecialResultAddr->ToString(false));
-					}
-				}
-#endif
-				FIpConnectionHelper::PushResolverResultsToConnection(SafeConnectionPtr.Get(), AddressResults);
-			}
-			else
-			{
-				FIpConnectionHelper::HandleResolverError(SafeConnectionPtr.Get());
-			}
-		};
-
-		SocketSubsystem->GetAddressInfoAsync(AsyncResolverHandler, *ConnectURL.Host, *FString::Printf(TEXT("%d"), DestinationPort),
-			EAddressInfoFlags::AllResultsWithMapping | EAddressInfoFlags::OnlyUsableAddresses, NAME_None, ESocketType::SOCKTYPE_Datagram);
-	}
-	else if (BoundSockets.Num() > 1)
-	{
-		// Clean up any potential multiple sockets we have created when resolution was disabled.
-		// InitBase could have created multiple sockets and if so, we'll want to clean them up.
-		UE_LOG(LogNet, Verbose, TEXT("Cleaning up additional sockets created as address resolution is disabled."));
-		BoundSockets.RemoveAll([InSocket = GetSocket()](const TSharedPtr<FSocket>& CurSocket)
-		{
-			return CurSocket.Get() != InSocket;
-		});
-	}
-	
-	UE_LOG(LogNet, Log, TEXT("Game client on port %i, rate %i"), DestinationPort, ServerConnection->CurrentNetSpeed );
 	CreateInitialClientChannels();
 
 	return true;
@@ -1108,6 +684,7 @@ bool UIpNetDriver::InitListen( FNetworkNotify* InNotify, FURL& LocalURL, bool bR
 		return false;
 	}
 
+
 	InitConnectionlessHandler();
 
 	// Update result URL.
@@ -1117,6 +694,16 @@ bool UIpNetDriver::InitListen( FNetworkNotify* InNotify, FURL& LocalURL, bool bR
 
 	return true;
 }
+
+class FIpConnectionHelper
+{
+private:
+	friend class UIpNetDriver;
+	static void HandleSocketRecvError(UIpNetDriver* Driver, UIpConnection* Connection, const FString& ErrorString)
+	{
+		Connection->HandleSocketRecvError(Driver, ErrorString);
+	}
+};
 
 void UIpNetDriver::TickDispatch(float DeltaTime)
 {
@@ -1145,13 +732,49 @@ void UIpNetDriver::TickDispatch(float DeltaTime)
 	DDoS.PreFrameReceive(DeltaTime);
 
 	ISocketSubsystem* SocketSubsystem = GetSocketSubsystem();
+	const double StartReceiveTime = FPlatformTime::Seconds();
+	double AlarmTime = StartReceiveTime + GIpNetDriverMaxDesiredTimeSliceBeforeAlarmSecs;
+	const bool bSlowFrameChecks = OnNetworkProcessingCausingSlowFrame.IsBound();
 	bool bRetrieveTimestamps = CVarNetUseRecvTimestamps.GetValueOnAnyThread() != 0;
 
+	const bool bCheckReceiveTime = (MaxSecondsInReceive > 0.0) && (NbPacketsBetweenReceiveTimeTest > 0);
+	const double BailOutTime = StartReceiveTime + MaxSecondsInReceive;
+	int32 PacketsLeftUntilTimeTest = NbPacketsBetweenReceiveTimeTest;
+
+	bool bContinueProcessing(true);
+
 	// Process all incoming packets
-	for (FPacketIterator It(this); It; ++It)
+	for (FPacketIterator It(this); It && bContinueProcessing; ++It)
 	{
+		// @todo: Remove the slow frame checks, eventually - potential DDoS and Switch platform constraint
+		if (bSlowFrameChecks)
+		{
+			const double CurrentTime = FPlatformTime::Seconds();
+			if (CurrentTime > AlarmTime)
+			{
+				OnNetworkProcessingCausingSlowFrame.Broadcast();
+
+				AlarmTime = CurrentTime + GIpNetDriverMaxDesiredTimeSliceBeforeAlarmSecs;
+			}
+		}
+
+		if (bCheckReceiveTime)
+		{
+			--PacketsLeftUntilTimeTest;
+			if (PacketsLeftUntilTimeTest <= 0)
+			{
+				PacketsLeftUntilTimeTest = NbPacketsBetweenReceiveTimeTest;
+
+				const double CurrentTime = FPlatformTime::Seconds();
+				if (CurrentTime > BailOutTime)
+				{
+					bContinueProcessing = false;
+					UE_LOG(LogNet, Warning, TEXT("UIpNetDriver::TickDispatch: Stopping packet reception after processing for more than %f seconds. %s"), MaxSecondsInReceive, *GetName());
+				}
+			}
+		}
+
 		FReceivedPacketView ReceivedPacket;
-		FInPacketTraits& ReceivedTraits = ReceivedPacket.Traits;
 		bool bOk = It.GetCurrentPacket(ReceivedPacket);
 		const TSharedRef<const FInternetAddr> FromAddr = ReceivedPacket.Address.ToSharedRef();
 		UNetConnection* Connection = nullptr;
@@ -1160,13 +783,13 @@ void UIpNetDriver::TickDispatch(float DeltaTime)
 		if (bOk)
 		{
 			// Immediately stop processing (continuing to next receive), for empty packets (usually a DDoS)
-			if (ReceivedPacket.DataView.NumBits() == 0)
+			if (ReceivedPacket.Data.Num() == 0)
 			{
 				DDoS.IncBadPacketCounter();
 				continue;
 			}
 
-			FPacketAudit::NotifyLowLevelReceive((uint8*)ReceivedPacket.DataView.GetData(), ReceivedPacket.DataView.NumBytes());
+			FPacketAudit::NotifyLowLevelReceive((uint8*)ReceivedPacket.Data.GetData(), ReceivedPacket.Data.Num());
 		}
 		else
 		{
@@ -1253,6 +876,8 @@ void UIpNetDriver::TickDispatch(float DeltaTime)
 			}
 		}
 
+		bool bRecentlyDisconnectedClient = false;
+
 		if (Connection == nullptr)
 		{
 			UNetConnection** Result = MappedClientConnections.Find(FromAddr);
@@ -1267,7 +892,7 @@ void UIpNetDriver::TickDispatch(float DeltaTime)
 				}
 				else
 				{
-					ReceivedTraits.bFromRecentlyDisconnected = true;
+					bRecentlyDisconnectedClient = true;
 				}
 			}
 			check(Connection == nullptr || CastChecked<UIpConnection>(Connection)->RemoteAddr->CompareEndpoints(*FromAddr));
@@ -1303,7 +928,7 @@ void UIpNetDriver::TickDispatch(float DeltaTime)
 			}
 			else
 			{
-				ReceivedTraits.bFromRecentlyDisconnected ? DDoS.IncDisconnPacketCounter() : DDoS.IncNonConnPacketCounter();
+				bRecentlyDisconnectedClient ? DDoS.IncDisconnPacketCounter() : DDoS.IncNonConnPacketCounter();
 
 				if (LogPortUnreach && !DDoS.CheckLogRestrictions())
 				{
@@ -1329,7 +954,7 @@ void UIpNetDriver::TickDispatch(float DeltaTime)
 					}
 
 
-					ReceivedTraits.bFromRecentlyDisconnected ? DDoS.IncDisconnPacketCounter() : DDoS.IncNonConnPacketCounter();
+					bRecentlyDisconnectedClient ? DDoS.IncDisconnPacketCounter() : DDoS.IncNonConnPacketCounter();
 
 					DDoS.CondCheckNonConnQuotasAndLimits();
 				}
@@ -1345,7 +970,7 @@ void UIpNetDriver::TickDispatch(float DeltaTime)
 					FPacketBufferView WorkingBuffer = It.GetWorkingBuffer();
 
 					Connection = ProcessConnectionlessPacket(ReceivedPacket, WorkingBuffer);
-					bIgnorePacket = ReceivedPacket.DataView.NumBytes() == 0;
+					bIgnorePacket = ReceivedPacket.Data.Num() == 0;
 				}
 				else
 				{
@@ -1367,32 +992,26 @@ void UIpNetDriver::TickDispatch(float DeltaTime)
 					It.GetCurrentPacketTimestamp(Connection);
 				}
 
-				Connection->ReceivedRawPacket((uint8*)ReceivedPacket.DataView.GetData(), ReceivedPacket.DataView.NumBytes());
+				Connection->ReceivedRawPacket((uint8*)ReceivedPacket.Data.GetData(), ReceivedPacket.Data.Num());
 			}
 		}
 	}
 
 	DDoS.PostFrameReceive();
-}
 
-FSocket* UIpNetDriver::GetSocket()
-{
-	UIpConnection* IpServerConnection = Cast<UIpConnection>(ServerConnection);
-	if (FIpConnectionHelper::IsAddressResolutionEnabledForConnection(IpServerConnection))
+	const float DeltaReceiveTime = FPlatformTime::Seconds() - StartReceiveTime;
+
+	if (DeltaReceiveTime > GIpNetDriverLongFramePrintoutThresholdSecs)
 	{
-		return IpServerConnection->Socket;
+		UE_LOG( LogNet, Warning, TEXT( "UIpNetDriver::TickDispatch: Took too long to receive packets. Time: %2.2f %s" ), DeltaReceiveTime, *GetName() );
 	}
-
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	return Socket;
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 UNetConnection* UIpNetDriver::ProcessConnectionlessPacket(FReceivedPacketView& PacketRef, const FPacketBufferView& WorkingBuffer)
 {
 	UNetConnection* ReturnVal = nullptr;
 	TSharedPtr<StatelessConnectHandlerComponent> StatelessConnect;
-	const TSharedPtr<const FInternetAddr>& Address = PacketRef.Address;
+	const TSharedPtr<FInternetAddr>& Address = PacketRef.Address;
 	FString IncomingAddress = Address->ToString(true);
 	bool bPassedChallenge = false;
 	bool bRestartedHandshake = false;
@@ -1402,9 +1021,10 @@ UNetConnection* UIpNetDriver::ProcessConnectionlessPacket(FReceivedPacketView& P
 	{
 		StatelessConnect = StatelessConnectComponent.Pin();
 
-		EIncomingResult Result = ConnectionlessHandler->IncomingConnectionless(PacketRef);
+		const ProcessedPacket HandlerResult = ConnectionlessHandler->IncomingConnectionless(Address,
+																		(uint8*)PacketRef.Data.GetData(), PacketRef.Data.Num());
 
-		if (Result == EIncomingResult::Success)
+		if (!HandlerResult.bError)
 		{
 			bPassedChallenge = StatelessConnect->HasPassedChallenge(Address, bRestartedHandshake);
 
@@ -1473,22 +1093,16 @@ UNetConnection* UIpNetDriver::ProcessConnectionlessPacket(FReceivedPacketView& P
 				}
 
 
-				int32 NewCountBytes = PacketRef.DataView.NumBytes();
-				uint8* WorkingData = WorkingBuffer.Buffer.GetData();
+				int32 NewCountBytes = FMath::DivideAndRoundUp(HandlerResult.CountBits, 8);
 
 				if (NewCountBytes > 0)
 				{
-					const uint8* NewData = PacketRef.DataView.GetData();
-
-					if (NewData != WorkingData)
-					{
-						FMemory::Memcpy(WorkingData, NewData, NewCountBytes);
-					}
+					FMemory::Memcpy(WorkingBuffer.Buffer.GetData(), HandlerResult.Data, NewCountBytes);
 
 					bIgnorePacket = false;
 				}
 
-				PacketRef.DataView = {WorkingData, NewCountBytes, ECountUnits::Bytes};
+				PacketRef.Data = MakeArrayView(WorkingBuffer.Buffer.GetData(), NewCountBytes);
 			}
 		}
 	}
@@ -1530,9 +1144,8 @@ UNetConnection* UIpNetDriver::ProcessConnectionlessPacket(FReceivedPacketView& P
 				ReturnVal->InitSequence(ClientSequence, ServerSequence);
 			}
 #endif
-			PRAGMA_DISABLE_DEPRECATION_WARNINGS
+
 			ReturnVal->InitRemoteConnection(this, Socket, World ? World->URL : FURL(), *Address, USOCK_Open);
-			PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 			if (ReturnVal->Handler.IsValid())
 			{
@@ -1555,7 +1168,7 @@ UNetConnection* UIpNetDriver::ProcessConnectionlessPacket(FReceivedPacketView& P
 
 	if (bIgnorePacket)
 	{
-		PacketRef.DataView = {PacketRef.DataView.GetData(), 0, ECountUnits::Bits};
+		PacketRef.Data = MakeArrayView(PacketRef.Data.GetData(), 0);
 	}
 
 	return ReturnVal;
@@ -1565,18 +1178,6 @@ void UIpNetDriver::LowLevelSend(TSharedPtr<const FInternetAddr> Address, void* D
 {
 	if (Address.IsValid() && Address->IsValid())
 	{
-#if !UE_BUILD_SHIPPING
-		if (GCurrentDuplicateIP.IsValid() && Address->CompareEndpoints(*GCurrentDuplicateIP))
-		{
-			TSharedRef<FInternetAddr> NewAddr = Address->Clone();
-			int32 NewPort = NewAddr->GetPort() - 9876;
-
-			NewAddr->SetPort(NewPort >= 0 ? NewPort : (65536 + NewPort));
-
-			Address = NewAddr;
-		}
-#endif
-
 		const uint8* DataToSend = reinterpret_cast<uint8*>(Data);
 
 		if (ConnectionlessHandler.IsValid())
@@ -1601,7 +1202,7 @@ void UIpNetDriver::LowLevelSend(TSharedPtr<const FInternetAddr> Address, void* D
 		if (CountBits > 0)
 		{
 			CLOCK_CYCLES(SendCycles);
-			GetSocket()->SendTo(DataToSend, FMath::DivideAndRoundUp(CountBits, 8), BytesSent, *Address);
+			Socket->SendTo(DataToSend, FMath::DivideAndRoundUp(CountBits, 8), BytesSent, *Address);
 			UNCLOCK_CYCLES(SendCycles);
 		}
 
@@ -1629,8 +1230,7 @@ void UIpNetDriver::LowLevelDestroy()
 	Super::LowLevelDestroy();
 
 	// Close the socket.
-	FSocket* CurrentSocket = GetSocket();
-	if(CurrentSocket != nullptr && !HasAnyFlags(RF_ClassDefaultObject))
+	if( Socket && !HasAnyFlags(RF_ClassDefaultObject) )
 	{
 		// Wait for send tasks if needed before closing the socket,
 		// since at this point CleanUp() may not have been called on the server connection.
@@ -1649,7 +1249,7 @@ void UIpNetDriver::LowLevelDestroy()
 
 			SocketReceiveThreadRunnable->bIsRunning = false;
 			
-			if (!CurrentSocket->Shutdown(ESocketShutdownMode::Read))
+			if (!Socket->Shutdown(ESocketShutdownMode::Read))
 			{
 				const ESocketErrors ShutdownError = SocketSubsystem->GetLastErrorCode();
 				UE_LOG(LogNet, Log, TEXT("UIpNetDriver::LowLevelDestroy Socket->Shutdown returned error %s (%d) for %s"), SocketSubsystem->GetSocketError(ShutdownError), static_cast<int>(ShutdownError), *GetDescription());
@@ -1659,17 +1259,13 @@ void UIpNetDriver::LowLevelDestroy()
 			SocketReceiveThread->WaitForCompletion();
 		}
 
-		if(!CurrentSocket->Close())
+		if( !Socket->Close() )
 		{
 			UE_LOG(LogExit, Log, TEXT("closesocket error (%i)"), (int32)SocketSubsystem->GetLastErrorCode() );
 		}
-
-		if (FIpConnectionHelper::IsAddressResolutionEnabledForConnection(IpServerConnection))
-		{
-			FIpConnectionHelper::CleanUpConnectionSockets(IpServerConnection);
-		}
-
-		ClearSockets();
+		// Free the memory the OS allocated for this socket
+		SocketSubsystem->DestroySocket(Socket);
+		Socket = nullptr;
 
 		UE_LOG(LogExit, Log, TEXT("%s shut down"),*GetDescription() );
 	}
@@ -1680,11 +1276,10 @@ void UIpNetDriver::LowLevelDestroy()
 bool UIpNetDriver::HandleSocketsCommand( const TCHAR* Cmd, FOutputDevice& Ar, UWorld* InWorld )
 {
 	Ar.Logf(TEXT(""));
-	FSocket* CmdSocket = GetSocket();
-	if (CmdSocket != nullptr)
+	if (Socket != NULL)
 	{
 		TSharedRef<FInternetAddr> LocalInternetAddr = GetSocketSubsystem()->CreateInternetAddr();
-		CmdSocket->GetAddress(*LocalInternetAddr);
+		Socket->GetAddress(*LocalInternetAddr);
 		Ar.Logf(TEXT("%s Socket: %s"), *GetDescription(), *LocalInternetAddr->ToString(true));
 	}		
 	else
@@ -1725,22 +1320,20 @@ void UIpNetDriver::TestSuddenPortChange(uint32 NumConnections)
 			// Reset the connection's port to pretend that we used to be sending traffic on an old connection. This is
 			// done because once the test is complete, we need to be back onto the port we started with. This
 			// fakes what happens in live with clients randomly sending traffic on a new port.
-			if (UIpConnection* const TestConnection = Cast<UIpConnection>(ClientConnections[i]))
-			{
-				TSharedRef<FInternetAddr> RemoteAddrRef = TestConnection->RemoteAddr.ToSharedRef();
+			UIpConnection* const TestConnection = (UIpConnection*)ClientConnections[i];
+			TSharedRef<FInternetAddr> RemoteAddrRef = TestConnection->RemoteAddr.ToSharedRef();
 
-				MappedClientConnections.Remove(RemoteAddrRef);
+			MappedClientConnections.Remove(RemoteAddrRef);
 
-				TestConnection->RemoteAddr->SetPort(i + 9876);
+			TestConnection->RemoteAddr->SetPort(i + 9876);
 
-				MappedClientConnections.Add(RemoteAddrRef, TestConnection);
+			MappedClientConnections.Add(RemoteAddrRef, TestConnection);
 
-				// We need to set AllowPlayerPortUnreach to true because the net driver will try sending traffic
-				// to the IP/Port we just set which is invalid. On Windows, this causes an error to be returned in
-				// RecvFrom (WSAECONNRESET). When AllowPlayerPortUnreach is true, these errors are ignored.
-				AllowPlayerPortUnreach = true;
-				UE_LOG(LogNet, Log, TEXT("TestSuddenPortChange - Changed this connection: %s."), *TestConnection->Describe());
-			}
+			// We need to set AllowPlayerPortUnreach to true because the net driver will try sending traffic
+			// to the IP/Port we just set which is invalid. On Windows, this causes an error to be returned in
+			// RecvFrom (WSAECONNRESET). When AllowPlayerPortUnreach is true, these errors are ignored.
+			AllowPlayerPortUnreach = true;
+			UE_LOG(LogNet, Log, TEXT("TestSuddenPortChange - Changed this connection: %s."), *TestConnection->Describe());
 		}
 	}
 }
@@ -1762,7 +1355,7 @@ bool UIpNetDriver::Exec( UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar )
 
 UIpConnection* UIpNetDriver::GetServerConnection() 
 {
-	return Cast<UIpConnection>(ServerConnection);
+	return (UIpConnection*)ServerConnection;
 }
 
 UIpNetDriver::FReceiveThreadRunnable::FReceiveThreadRunnable(UIpNetDriver* InOwningNetDriver)
@@ -1773,44 +1366,17 @@ UIpNetDriver::FReceiveThreadRunnable::FReceiveThreadRunnable(UIpNetDriver* InOwn
 	SocketSubsystem = OwningNetDriver->GetSocketSubsystem();
 }
 
-bool UIpNetDriver::FReceiveThreadRunnable::DispatchPacket(FReceivedPacket&& IncomingPacket, int32 NbBytesRead)
-{
-	IncomingPacket.PacketBytes.SetNum(FMath::Max(NbBytesRead, 0), false);
-	IncomingPacket.PlatformTimeSeconds = FPlatformTime::Seconds();
-
-	// Add packet to queue. Since ReceiveQueue is a TCircularQueue, if the queue is full, this will simply return false without adding anything.
-	return ReceiveQueue.Enqueue(MoveTemp(IncomingPacket));
-}
-
 uint32 UIpNetDriver::FReceiveThreadRunnable::Run()
 {
 	const FTimespan Timeout = FTimespan::FromMilliseconds(CVarNetIpNetDriverReceiveThreadPollTimeMS.GetValueOnAnyThread());
-	const float SleepTimeForWaitableErrorsInSec = CVarRcvThreadSleepTimeForWaitableErrorsInSeconds.GetValueOnAnyThread();
 
 	UE_LOG(LogNet, Log, TEXT("UIpNetDriver::FReceiveThreadRunnable::Run starting up."));
 
-	FSocket* CurSocket;
-	while (bIsRunning)
+	while (bIsRunning && OwningNetDriver->Socket)
 	{
-		// If we've encountered any errors during address resolution (this flag will not have the error state on it if resolution is disabled)
-		// Then stop running this thread. This stomps out any potential infinite loops caused by undefined behavior.
-		if (FIpConnectionHelper::HasAddressResolutionFailedForConnection(OwningNetDriver->GetServerConnection()))
-		{
-			break;
-		}
-
-		CurSocket = OwningNetDriver->GetSocket();
-		if (CurSocket == nullptr)
-		{
-			const float NoSocketSetSleep = .03f;
-			FPlatformProcess::SleepNoStats(NoSocketSetSleep);
-			continue;
-		}
-
 		FReceivedPacket IncomingPacket;
 
-		bool bReceiveQueueFull = false;
-		if (CurSocket->Wait(ESocketWaitConditions::WaitForRead, Timeout))
+		if (OwningNetDriver->Socket->Wait(ESocketWaitConditions::WaitForRead, Timeout))
 		{
 			bool bOk = false;
 			int32 BytesRead = 0;
@@ -1821,57 +1387,47 @@ uint32 UIpNetDriver::FReceiveThreadRunnable::Run()
 
 			{
 				SCOPE_CYCLE_COUNTER(STAT_IpNetDriver_RecvFromSocket);
-				bOk = CurSocket->RecvFrom(IncomingPacket.PacketBytes.GetData(), IncomingPacket.PacketBytes.Num(), BytesRead, *IncomingPacket.FromAddress);
+				bOk = OwningNetDriver->Socket->RecvFrom(IncomingPacket.PacketBytes.GetData(), IncomingPacket.PacketBytes.Num(), BytesRead, *IncomingPacket.FromAddress);
 			}
 
 			if (bOk)
 			{
-				// Don't even queue empty packets, they can be ignored.
-				if (BytesRead != 0)
+				if (BytesRead == 0)
 				{
-					const bool bSuccess = DispatchPacket(MoveTemp(IncomingPacket), BytesRead);
-					bReceiveQueueFull = !bSuccess;
+					// Don't even queue empty packets, they can be ignored.
+					continue;
 				}
 			}
 			else
 			{
 				// This relies on the platform's implementation using thread-local storage for the last socket error code.
-				ESocketErrors RecvFromError = SocketSubsystem->GetLastErrorCode();
+				IncomingPacket.Error = SocketSubsystem->GetLastErrorCode();
 
-				if (IsRecvFailBlocking(RecvFromError) == false)
+				// Pass all other errors back to the Game Thread
+				if (IsRecvFailBlocking(IncomingPacket.Error))
 				{
-					// Only non-blocking errors are dispatched to the Game Thread
-					IncomingPacket.Error = RecvFromError;
-					const bool bSuccess = DispatchPacket(MoveTemp(IncomingPacket), BytesRead);
-					bReceiveQueueFull = !bSuccess;
+					continue;
 				}
 			}
+
+
+			IncomingPacket.PacketBytes.SetNum(FMath::Max(BytesRead, 0), false);
+			IncomingPacket.PlatformTimeSeconds = FPlatformTime::Seconds();
+
+			// Add packet to queue. Since ReceiveQueue is a TCircularQueue, if the queue is full, this will simply return false without adding anything.
+			ReceiveQueue.Enqueue(MoveTemp(IncomingPacket));
 		}
 		else
 		{
-			ESocketErrors WaitError = SocketSubsystem->GetLastErrorCode();
-
-			if (IPNetDriverInternal::ShouldSleepOnWaitError(WaitError))
+			const ESocketErrors WaitError = SocketSubsystem->GetLastErrorCode();
+			if(WaitError != ESocketErrors::SE_NO_ERROR)
 			{
-				if (SleepTimeForWaitableErrorsInSec >= 0.0)
-				{
-					FPlatformProcess::SleepNoStats(SleepTimeForWaitableErrorsInSec);
-				}
-			}
-			else if (IsRecvFailBlocking(WaitError) == false)
-			{
-				// Only non-blocking errors are dispatched to the Game Thread
 				IncomingPacket.Error = WaitError;
-				const bool bSuccess = DispatchPacket(MoveTemp(IncomingPacket), 0);
-				bReceiveQueueFull = !bSuccess;
-			}
-		}
+				IncomingPacket.PlatformTimeSeconds = FPlatformTime::Seconds();
 
-		if (bReceiveQueueFull)
-		{
-			if (SleepTimeForWaitableErrorsInSec >= 0.0)
-			{
-				FPlatformProcess::SleepNoStats(SleepTimeForWaitableErrorsInSec);
+				UE_LOG(LogNet, Log, TEXT("UIpNetDriver::FReceiveThreadRunnable::Run: Socket->Wait returned error %s (%d)"), SocketSubsystem->GetSocketError(IncomingPacket.Error), static_cast<int>(IncomingPacket.Error));
+
+				ReceiveQueue.Enqueue(MoveTemp(IncomingPacket));
 			}
 		}
 	}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -75,6 +75,10 @@ public:
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction) override;
 	// End UActorComponent
 	
+	// Begin UObject interface
+	virtual bool IsDestructionThreadSafe() const override { return false; }
+	// End UObject
+
 	/**
 	 * Presses a key as if the mouse/pointer were the source of it.  Normally you would just use
 	 * Left/Right mouse button for the Key.  However - advanced uses could also be imagined where you
@@ -180,7 +184,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
 	void SetFocus(UWidget* FocusWidget);
 
-protected:
+private:
 	/**
 	 * Represents the virtual user in slate.  When this component is registered, it gets a handle to the 
 	 * virtual slate user it will be, so virtual slate user 0, is probably real slate user 8, as that's the first
@@ -205,7 +209,7 @@ public:
 	 * Each user virtual controller or virtual finger tips being simulated should use a different pointer index.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Interaction", meta=( ClampMin = "0", UIMin = "0", UIMax = "9", ExposeOnSpawn = true ))
-	int32 PointerIndex;
+	float PointerIndex;
 
 public:
 
@@ -247,21 +251,9 @@ public:
 	bool bShowDebug;
 
 	/**
-	 * Determines the line thickness of the debug sphere.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Debugging", AdvancedDisplay, meta=( ClampMin = "0.001" ))
-	float DebugSphereLineThickness;
-
-	/**
-	 * Determines the thickness of the debug lines.
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Debugging", AdvancedDisplay, meta=( ClampMin = "0.001", ClampMax = "50"))
-	float DebugLineThickness;
-
-	/**
 	 * Determines the color of the debug lines.
 	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Debugging", AdvancedDisplay)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Debugging")
 	FLinearColor DebugColor;
 
 protected:

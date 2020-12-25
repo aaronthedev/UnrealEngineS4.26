@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using UnrealBuildTool;
 using System.IO;
 
@@ -21,7 +21,7 @@ public class SpeedTree : ModuleRules
             string SpeedTreePath = Target.UEThirdPartySourceDirectory + "SpeedTree/SpeedTreeSDK-v7.0/";
             PublicIncludePaths.Add(SpeedTreePath + "Include");
 
-            string SpeedTree8Path = Target.UEThirdPartySourceDirectory + "SpeedTree/SpeedTreeDataBuffer/";
+            string SpeedTree8Path = Target.UEThirdPartySourceDirectory + "SpeedTree/SpeedTree8/";
             PublicIncludePaths.Add(SpeedTree8Path);
 
             if (Target.Platform == UnrealTargetPlatform.Win64)

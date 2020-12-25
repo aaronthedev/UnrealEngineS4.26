@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 
-#include "InputState.h"
 
 /**
  * IModifierToggleBehaviorTarget is an interface that InputBehaviors can use to notify
@@ -39,9 +38,9 @@ public:
 	/**
 	 * Test if target is hit by a click
 	 * @param ClickPos device position/ray at click point
-	 * @return hit information at this point
+	 * @return true if target was hit by click ray/point
 	 */
-	virtual FInputRayHit IsHitByClick(const FInputDeviceRay& ClickPos) = 0;
+	virtual bool IsHitByClick(const FInputDeviceRay& ClickPos) = 0;
 
 
 	/**
@@ -116,15 +115,14 @@ public:
 	virtual void OnBeginSequencePreview(const FInputDeviceRay& ClickPos) { }
 
 	/**
-	 * Test if target would like to begin sequence based on this click. Gets checked both 
-	 * on mouse down and mouse up.
+	 * Test if target would like to begin sequence based on this click
 	 * @param ClickPos device position/ray at click point
 	 * @return true if target wants to begin sequence
 	 */
 	virtual bool CanBeginClickSequence(const FInputDeviceRay& ClickPos) = 0;
 
 	/**
-	 * Notify Target about the first click in the sequence.
+	 * Notify Target that click sequence can begin at click point
 	 * @param ClickPos device position/ray at click point
 	 */
 	virtual void OnBeginClickSequence(const FInputDeviceRay& ClickPos) = 0;
@@ -143,8 +141,7 @@ public:
 	virtual bool OnNextSequenceClick(const FInputDeviceRay& ClickPos) = 0;
 
 	/**
-	 * Notify Target that click sequence has been explicitly terminated (eg by escape key, cancel tool, etc).
-	 * Also called if sequence is terminated from querying target with RequestAbortClickSequence().
+	 * Notify Target that click sequence has been explicitly terminated (eg by escape key, cancel tool, etc)
 	 */
 	virtual void OnTerminateClickSequence() = 0;
 

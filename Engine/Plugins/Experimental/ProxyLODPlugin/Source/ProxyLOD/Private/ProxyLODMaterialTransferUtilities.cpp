@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "ProxyLODMaterialTransferUtilities.h"
@@ -24,15 +24,14 @@ namespace
 	float EvaluateHit(const FVector& HitPoint, const uint32 SrcPolyId, const FMeshDescriptionArrayAdapter& MeshAdapter,
 		ProxyLOD::FSrcMeshData& HitPayload, TestFunctorType& TestFunctor)
 	{
+
+
 		int32 MeshId; int32 LocalFaceNumber;
-		const FMeshDescriptionArrayAdapter::FRawPoly SrcPoly = MeshAdapter.GetRawPoly(SrcPolyId, MeshId, LocalFaceNumber, ERawPolyValues::WedgeTexCoords | ERawPolyValues::VertexPositions | ERawPolyValues::WedgeTangents);
+		const FMeshDescriptionArrayAdapter::FRawPoly SrcPoly = MeshAdapter.GetRawPoly(SrcPolyId, MeshId, LocalFaceNumber);
 		int32 MaterialIdx = SrcPoly.FaceMaterialIndex;
 
 		FVector2D UVs[3];
-		for (int i = 0; i < 3; ++i)
-		{
-			UVs[i] = SrcPoly.WedgeTexCoords[0][i];
-		}
+		for (int i = 0; i < 3; ++i) UVs[i] = SrcPoly.WedgeTexCoords[0][i];
 
 		// Get Additional data about this poly - might have alternate UVs that we need to use
 		const FMeshMergeData& MeshMergeData = MeshAdapter.GetMeshMergeData(MeshId);
@@ -43,12 +42,8 @@ namespace
 		{
 			const TArray<FVector2D>& NewUVs = MeshMergeData.NewUVs;
 
-			for (int32 i = 0, Offset = LocalFaceNumber * 3; i < 3; ++i)
-			{
-				UVs[i] = NewUVs[Offset + i];
-			}
+			for (int32 i = 0, Offset = LocalFaceNumber * 3; i < 3; ++i) UVs[i] = NewUVs[Offset + i];
 		}
-
 		// might need to rescale old uvs instead.
 		if (!bHasNewUVs && MeshMergeData.TexCoordBounds.IsValidIndex(MaterialIdx))
 		{
@@ -57,6 +52,7 @@ namespace
 			{
 				const FVector2D MinUV = Bounds.Min;
 				const FVector2D ScaleUV(1.0f / (Bounds.Max.X - Bounds.Min.X), 1.0f / (Bounds.Max.Y - Bounds.Min.Y));
+
 
 				for (int32 i = 0; i < 3; ++i)
 				{
@@ -143,16 +139,12 @@ namespace
 // Generate a map between UV locations on the simplified geometry and points on the Src geometry
 // Inactive texels in the result have MaterialId = -1;
 
-ProxyLOD::FSrcDataGrid::Ptr ProxyLOD::CreateCorrespondence(
-	const FMeshDescriptionArrayAdapter& SrcMesh,
-	const FkDOPTree& SrckDOPTree,
-	const FVertexDataMesh& ReducedMesh,
-	const ProxyLOD::FRasterGrid& UVGrid,
-	const int32 TransferType,
-	float MaxRayLength)
+ProxyLOD::FSrcDataGrid::Ptr ProxyLOD::CreateCorrespondence( const FMeshDescriptionArrayAdapter& SrcMesh,
+															const FVertexDataMesh& ReducedMesh, 
+															const ProxyLOD::FRasterGrid& UVGrid, 
+															const int32 TransferType, 
+															float MaxRayLength)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(ProxyLOD::CreateCorrespondence)
-
 	const int32 TestTransferType = TransferType;
 
 	// The dimensions of the resulting buffer match the UV Grid.
@@ -164,6 +156,14 @@ ProxyLOD::FSrcDataGrid::Ptr ProxyLOD::CreateCorrespondence(
 	ProxyLOD::FSrcDataGrid::Ptr TargetGridPtr = ProxyLOD::FSrcDataGrid::Create(Size.X, Size.Y);
 	ProxyLOD::FSrcDataGrid& TargetGrid = *TargetGridPtr;
 
+	// Construct a k-DOP tree that holds the src geometry.
+	// This is used later when we have to form a correspondence between
+	// simplified geometry and src geometry by shooting rays.
+
+	// NB: This construction could be done earlier in parallel with the UV generation or simplification.
+
+	FkDOPTree SrckDOPTree;
+	BuildkDOPTree(SrcMesh, SrckDOPTree);
 	FUnitTransformDataProvider kDOPDataProvider(SrckDOPTree);
 
 	// Access to the simplified mesh data.
@@ -378,14 +378,12 @@ ProxyLOD::FSrcDataGrid::Ptr ProxyLOD::CreateCorrespondence(
 
 // Generate a map between UV locations on the simplified geometry and points on the Src geometry
 // Inactive texels in the result have MaterialId = -1;
-ProxyLOD::FSrcDataGrid::Ptr ProxyLOD::CreateCorrespondence(
-	const openvdb::Int32Grid& ClosestPolyGrid,
-	const FMeshDescriptionArrayAdapter& SrcMesh,
-	const FkDOPTree& SrckDOPTree,
-	const FVertexDataMesh& ReducedMesh,
-	const ProxyLOD::FRasterGrid& UVGrid,
-	const int32 TransferType, 
-	float MaxRayLength)
+ProxyLOD::FSrcDataGrid::Ptr ProxyLOD::CreateCorrespondence( const openvdb::Int32Grid& ClosestPolyGrid, 
+															const FMeshDescriptionArrayAdapter& SrcMesh,
+															const FVertexDataMesh& ReducedMesh, 
+															const ProxyLOD::FRasterGrid& UVGrid,
+															const int32 TransferType, 
+															float MaxRayLength)
 {
 
 	const int32 TestTransferType = TransferType;
@@ -399,9 +397,14 @@ ProxyLOD::FSrcDataGrid::Ptr ProxyLOD::CreateCorrespondence(
 	ProxyLOD::FSrcDataGrid::Ptr TargetGridPtr = ProxyLOD::FSrcDataGrid::Create(Size.X, Size.Y);
 	ProxyLOD::FSrcDataGrid& TargetGrid = *TargetGridPtr;
 
-	// Use already constructed k-DOP tree that holds the src geometry.
+	// Construct a k-DOP tree that holds the src geometry.
 	// This is used later when we have to form a correspondence between
 	// simplified geometry and src geometry by shooting rays.
+
+	// NB: This construction could be done earlier in parallel with the UV generation or simplification.
+
+	FkDOPTree SrckDOPTree;
+	BuildkDOPTree(SrcMesh, SrckDOPTree);
 	FUnitTransformDataProvider kDOPDataProvider(SrckDOPTree);
 
 	// Access to the simplified mesh data.
@@ -1070,8 +1073,9 @@ namespace
 
 			auto ComputeSrcTangentSpace = [&SrcMeshAdapter](const int32 TriangleId, const ProxyLOD::DArray3d& BarycentricCoords, FTangentSpace& TangentSpace)
 			{
+
 				int32 MeshId; int32 LocalFaceNumber;
-				const FMeshDescriptionArrayAdapter::FRawPoly SrcPoly = SrcMeshAdapter.GetRawPoly(TriangleId, MeshId, LocalFaceNumber, ERawPolyValues::WedgeTangents);
+				const FMeshDescriptionArrayAdapter::FRawPoly SrcPoly = SrcMeshAdapter.GetRawPoly(TriangleId, MeshId, LocalFaceNumber);
 
 				// Get the tangent space:  We try to compute this in a way that is consistent with LocalVertexFactory.usf (CalcTangentToLocal).
 

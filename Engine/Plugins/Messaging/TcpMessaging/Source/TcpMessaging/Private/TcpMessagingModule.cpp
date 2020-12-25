@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TcpMessagingPrivate.h"
 
@@ -127,12 +127,8 @@ public:
 #endif // WITH_EDITOR
 
 		// register application events
-		const UTcpMessagingSettings* Settings = GetDefault<UTcpMessagingSettings>();
-		if (Settings->ShouldStopServiceWhenAppDeactivates())
-		{
-			FCoreDelegates::ApplicationHasReactivatedDelegate.AddRaw(this, &FTcpMessagingModule::HandleApplicationHasReactivated);
-			FCoreDelegates::ApplicationWillDeactivateDelegate.AddRaw(this, &FTcpMessagingModule::HandleApplicationWillDeactivate);
-		}
+		FCoreDelegates::ApplicationHasReactivatedDelegate.AddRaw(this, &FTcpMessagingModule::HandleApplicationHasReactivated);
+		FCoreDelegates::ApplicationWillDeactivateDelegate.AddRaw(this, &FTcpMessagingModule::HandleApplicationWillDeactivate);
 
 		RestartServices();
 	}
@@ -272,7 +268,7 @@ protected:
 	 */
 	bool SupportsNetworkedTransport() const
 	{
-#if UE_BUILD_SHIPPING && !(defined(ALLOW_TCP_MESSAGING_SHIPPING) && ALLOW_TCP_MESSAGING_SHIPPING)
+#if UE_BUILD_SHIPPING
 		return false;
 #else
 		// disallow unsupported platforms
@@ -384,11 +380,6 @@ void UTcpMessagingSettings::GetConnectToEndpoints(TArray<FString>& Endpoints) co
 int32 UTcpMessagingSettings::GetConnectionRetryDelay() const
 {
 	return ConnectionRetryDelay;
-}
-
-bool UTcpMessagingSettings::ShouldStopServiceWhenAppDeactivates() const
-{
-	return bStopServiceWhenAppDeactivates;
 }
 
 #undef LOCTEXT_NAMESPACE

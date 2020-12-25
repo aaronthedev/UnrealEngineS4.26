@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System;
@@ -8,7 +8,6 @@ public class MeshProcessingLibrary : ModuleRules
 {
 	public MeshProcessingLibrary(ReadOnlyTargetRules Target) : base(Target)
 	{
-		OptimizeCode = CodeOptimization.InShippingBuildsOnly;
 		bLegalToDistributeObjectCode = true;
 
 		PrivateDependencyModuleNames.AddRange(
@@ -20,6 +19,7 @@ public class MeshProcessingLibrary : ModuleRules
 				"InputCore",
 				"MainFrame",
 				"MeshDescription",
+				"MeshDescriptionOperations",
 				"Slate",
 				"SlateCore",
 				"StaticMeshDescription",
@@ -43,14 +43,17 @@ public class MeshProcessingLibrary : ModuleRules
 		}
 
 		// Setup MeshSimplifier
-		string MeshSimplifierPath = Path.Combine(EngineDirectory, "Restricted/NotForLicensees/Source/ThirdParty/Enterprise/MeshSimplifier");
+		string MeshSimplifierPath = Path.Combine(ModuleDirectory, "ThirdParty/NotForLicensees/MeshSimplifier");
 		bool bWithMeshSimplifier = Directory.Exists(MeshSimplifierPath) && Target.Platform == UnrealTargetPlatform.Win64;
 		PublicDefinitions.Add("WITH_MESH_SIMPLIFIER=" + (bWithMeshSimplifier ? '1' : '0'));
 
 		if (bWithMeshSimplifier)
 		{
 			PrivateIncludePaths.Add(MeshSimplifierPath + "/Include");
-			PublicAdditionalLibraries.Add(MeshSimplifierPath + "/lib/x64/MeshSimplifier.lib");
+
+			bool bUseMeshSimplifierVC141 = Target.WindowsPlatform.Compiler == WindowsCompiler.VisualStudio2017;
+			string libSuffix = bUseMeshSimplifierVC141 ? "_vc141" : "";
+			PublicAdditionalLibraries.Add(MeshSimplifierPath + "/lib/x64/MeshSimplifier" + libSuffix + ".lib");
 		}
 	}
 }

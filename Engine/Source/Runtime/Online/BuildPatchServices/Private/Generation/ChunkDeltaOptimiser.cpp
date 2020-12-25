@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Generation/ChunkDeltaOptimiser.h"
 
@@ -1196,10 +1196,9 @@ namespace BuildPatchServices
 					}
 				}
 				DeltaManifest.InitLookups();
-				// For save format, we'll pick the newest of two input manifests, or EFeatureLevel::FirstOptimisedDelta if manifests are older.
-				EFeatureLevel DeltaOutputFormat = FMath::Max3(EFeatureLevel::FirstOptimisedDelta, ManifestA->GetFeatureLevel(), ManifestB->GetFeatureLevel());
+				// Currently we just save out as the first version for delta support. If we change the delta version later we'd take this as commandline selection.
 				const FString TmpOutputDeltaFilename = OutputDeltaFilename + TEXT("tmp");
-				DeltaManifest.SaveToFile(TmpOutputDeltaFilename, DeltaOutputFormat);
+				DeltaManifest.SaveToFile(TmpOutputDeltaFilename, EFeatureLevel::FirstOptimisedDelta);
 				FileSystem->MoveFile(*OutputDeltaFilename, *TmpOutputDeltaFilename);
 				FinalStatLogs.Add(FString::Printf(TEXT("Saved new optimised delta file %s"), *OutputDeltaFilename));
 			}

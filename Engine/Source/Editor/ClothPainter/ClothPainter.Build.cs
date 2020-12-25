@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -22,6 +22,7 @@ public class ClothPainter : ModuleRules
                 "Kismet",
                 "AssetTools",
                 "ClassViewer",
+                "Persona",
                 "SkeletalMeshEditor",                
                 "AssetRegistry",
                 "MeshPaint",
@@ -30,8 +31,7 @@ public class ClothPainter : ModuleRules
                 "ClothingSystemRuntimeInterface",
                 "ClothingSystemEditorInterface",
                 "SkeletalMeshEditor",
-                "AdvancedPreviewScene",
-				"ToolMenus",
+                "AdvancedPreviewScene"
             }
 		);
     }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PhysXSupport.h: PhysX support
@@ -10,7 +10,7 @@
 #include "PhysicsCore.h"
 #include "PhysicsPublicCore.h"
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 #include "PhysXPublicCore.h"
 #include "HAL/IConsoleManager.h"
 
@@ -158,7 +158,6 @@ public:
 
 		return (uint8*)AllocationHeader + sizeof(FPhysXAllocationHeader);
 #else
-		LLM_SCOPE(ELLMTag::PhysXAllocator);
 		void* ptr = FMemory::Malloc(size, 16);
 #if PHYSX_MEMORY_STAT_ONLY
 		INC_DWORD_STAT_BY(STAT_MemoryPhysXTotalAllocationSize, FMemory::GetAllocSize(ptr));

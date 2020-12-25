@@ -1,13 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
-	Property.cpp: FProperty implementation
+	Property.cpp: UProperty implementation
 =============================================================================*/
 
 #include "CoreMinimal.h"
-#include "Misc/AsciiSet.h"
 #include "Misc/Guid.h"
-#include "Misc/StringBuilder.h"
 #include "Math/RandomStream.h"
 #include "Logging/LogScopedCategoryAndVerbosityOverride.h"
 #include "UObject/ObjectMacros.h"
@@ -15,15 +13,11 @@
 #include "UObject/Class.h"
 #include "Templates/Casts.h"
 #include "UObject/UnrealType.h"
-#include "UObject/UnrealTypePrivate.h"
 #include "UObject/PropertyHelper.h"
 #include "UObject/CoreRedirects.h"
 #include "UObject/SoftObjectPath.h"
 #include "Math/Box2D.h"
 #include "UObject/ReleaseObjectVersion.h"
-
-// WARNING: This should always be the last include in any file that needs it (except .generated.h)
-#include "UObject/UndefineUPropertyMacros.h"
 
 DEFINE_LOG_CATEGORY(LogProperty);
 
@@ -33,7 +27,6 @@ struct TStructOpsTypeTraits<FVector> : public TStructOpsTypeTraitsBase2<FVector>
 {
 	enum 
 	{
-		WithIdenticalViaEquality = true,
 		WithNoInitConstructor = true,
 		WithZeroConstructor = true,
 		WithNetSerializer = true,
@@ -48,7 +41,6 @@ struct TStructOpsTypeTraits<FIntPoint> : public TStructOpsTypeTraitsBase2<FIntPo
 {
 	enum 
 	{
-		WithIdenticalViaEquality = true,
 		WithNoInitConstructor = true,
 		WithZeroConstructor = true,
 		WithSerializer = true,
@@ -61,7 +53,6 @@ struct TStructOpsTypeTraits<FIntVector> : public TStructOpsTypeTraitsBase2<FIntV
 {
 	enum
 	{
-		WithIdenticalViaEquality = true,
 		WithNoInitConstructor = true,
 		WithZeroConstructor = true,
 		WithSerializer = true,
@@ -74,7 +65,6 @@ struct TStructOpsTypeTraits<FVector2D> : public TStructOpsTypeTraitsBase2<FVecto
 {
 	enum 
 	{
-		WithIdenticalViaEquality = true,
 		WithNoInitConstructor = true,
 		WithZeroConstructor = true,
 		WithNetSerializer = true,
@@ -89,7 +79,6 @@ struct TStructOpsTypeTraits<FVector4> : public TStructOpsTypeTraitsBase2<FVector
 {
 	enum 
 	{
-		WithIdenticalViaEquality = true,
 		WithNoInitConstructor = true,
 		WithZeroConstructor = true,
 		WithSerializer = true,
@@ -102,7 +91,6 @@ struct TStructOpsTypeTraits<FPlane> : public TStructOpsTypeTraitsBase2<FPlane>
 {
 	enum 
 	{
-		WithIdenticalViaEquality = true,
 		WithNoInitConstructor = true,
 		WithZeroConstructor = true,
 		WithNetSerializer = true,
@@ -117,7 +105,6 @@ struct TStructOpsTypeTraits<FRotator> : public TStructOpsTypeTraitsBase2<FRotato
 {
 	enum 
 	{
-		WithIdenticalViaEquality = true,
 		WithNoInitConstructor = true,
 		WithZeroConstructor = true,
 		WithNetSerializer = true,
@@ -132,7 +119,6 @@ struct TStructOpsTypeTraits<FBox> : public TStructOpsTypeTraitsBase2<FBox>
 {
 	enum 
 	{
-		WithIdenticalViaEquality = true,
 		WithNoInitConstructor = true,
 		WithZeroConstructor = true,
 		WithSerializer = true,
@@ -145,7 +131,6 @@ struct TStructOpsTypeTraits<FBox2D> : public TStructOpsTypeTraitsBase2<FBox2D>
 {
 	enum
 	{
-		WithIdenticalViaEquality = true,
 		WithNoInitConstructor = true,
 		WithZeroConstructor = true,
 	};
@@ -157,7 +142,6 @@ struct TStructOpsTypeTraits<FMatrix> : public TStructOpsTypeTraitsBase2<FMatrix>
 {
 	enum 
 	{
-		WithIdenticalViaEquality = true,
 		WithNoInitConstructor = true,
 		WithZeroConstructor = true,
 		WithSerializer = true,
@@ -170,7 +154,6 @@ struct TStructOpsTypeTraits<FBoxSphereBounds> : public TStructOpsTypeTraitsBase2
 {
 	enum 
 	{
-		WithIdenticalViaEquality = true,
 		WithNoInitConstructor = true,
 		WithZeroConstructor = true,
 	};
@@ -188,7 +171,6 @@ struct TStructOpsTypeTraits<FLinearColor> : public TStructOpsTypeTraitsBase2<FLi
 {
 	enum 
 	{
-		WithIdenticalViaEquality = true,
 		WithNoInitConstructor = true,
 		WithZeroConstructor = true,
 		WithStructuredSerializer = true,
@@ -201,7 +183,6 @@ struct TStructOpsTypeTraits<FColor> : public TStructOpsTypeTraitsBase2<FColor>
 {
 	enum 
 	{
-		WithIdenticalViaEquality = true,
 		WithNoInitConstructor = true,
 		WithZeroConstructor = true,
 		WithSerializer = true,
@@ -219,7 +200,6 @@ struct TStructOpsTypeTraits<FQuat> : public TStructOpsTypeTraitsBase2<FQuat>
 		WithNoInitConstructor = true,
 		WithNetSerializer = true,
 		WithNetSharedSerialization = true,
-		WithIdentical = true,
 	};
 };
 IMPLEMENT_STRUCT(Quat);
@@ -229,7 +209,6 @@ struct TStructOpsTypeTraits<FTwoVectors> : public TStructOpsTypeTraitsBase2<FTwo
 {
 	enum 
 	{
-		WithIdenticalViaEquality = true,
 		WithZeroConstructor = true,
 		WithSerializer = true,
 		WithNoDestructor = true,
@@ -242,7 +221,6 @@ struct TStructOpsTypeTraits<FGuid> : public TStructOpsTypeTraitsBase2<FGuid>
 {
 	enum 
 	{
-		WithIdenticalViaEquality = true,
 		WithExportTextItem = true,
 		WithImportTextItem = true,
 		WithZeroConstructor = true,
@@ -255,10 +233,6 @@ IMPLEMENT_STRUCT(Guid);
 template<>
 struct TStructOpsTypeTraits<FTransform> : public TStructOpsTypeTraitsBase2<FTransform>
 {
-	enum
-	{
-		WithIdentical = true,
-	};
 };
 IMPLEMENT_STRUCT(Transform);
 
@@ -390,28 +364,10 @@ IMPLEMENT_STRUCT(FallbackStruct);
 	Helpers.
 -----------------------------------------------------------------------------*/
 
-constexpr FAsciiSet AlphaNumericChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-
-FORCEINLINE constexpr bool IsValidTokenStart(TCHAR FirstChar, bool bDottedNames)
-{
-	return AlphaNumericChars.Test(FirstChar) || (bDottedNames && FirstChar == '/') || FirstChar > 255;
-}
-
-FORCEINLINE constexpr FStringView ParsePropertyToken(const TCHAR* Str, bool DottedNames)
-{
-	constexpr FAsciiSet RegularTokenChars = AlphaNumericChars  + '_' + '-' + '+';
-	constexpr FAsciiSet RegularNonTokenChars = ~RegularTokenChars;
-	constexpr FAsciiSet DottedNonTokenChars = ~(RegularTokenChars + '.' + '/' + SUBOBJECT_DELIMITER_CHAR);
-	FAsciiSet CurrentNonTokenChars = DottedNames ? DottedNonTokenChars : RegularNonTokenChars;
-
-	const TCHAR* TokenEnd = FAsciiSet::FindFirstOrEnd(Str, CurrentNonTokenChars);
-	return FStringView(Str, TokenEnd - Str);
-}
-
 //
 // Parse a token.
 //
-const TCHAR* FPropertyHelpers::ReadToken( const TCHAR* Buffer, FString& String, bool bDottedNames)
+const TCHAR* UPropertyHelpers::ReadToken( const TCHAR* Buffer, FString& String, bool DottedNames )
 {
 	if( *Buffer == TCHAR('"') )
 	{
@@ -423,11 +379,20 @@ const TCHAR* FPropertyHelpers::ReadToken( const TCHAR* Buffer, FString& String, 
 		}
 		Buffer += NumCharsRead;
 	}
-	else if (IsValidTokenStart(*Buffer, bDottedNames))
+	else if( FChar::IsAlnum( *Buffer ) || (DottedNames && (*Buffer==TCHAR('/'))) || (*Buffer > 255) )
 	{
-		FStringView Token = ParsePropertyToken(Buffer, bDottedNames);
-		String += Token;
-		Buffer += Token.Len();
+		const TCHAR* StartIdentifier = Buffer;
+		// Get identifier.
+		while ((FChar::IsAlnum(*Buffer) || (*Buffer > 255) || *Buffer == TCHAR('_') || *Buffer == TCHAR('-') || *Buffer == TCHAR('+') || (DottedNames && (*Buffer == TCHAR('.') || *Buffer == TCHAR('/') || *Buffer == SUBOBJECT_DELIMITER_CHAR))))
+		{
+			Buffer++;
+		}
+
+		if (StartIdentifier != Buffer)
+		{
+			// Efficiently copy/allocate
+			String.AppendChars(StartIdentifier, Buffer - StartIdentifier);
+		}
 	}
 	else
 	{
@@ -437,200 +402,120 @@ const TCHAR* FPropertyHelpers::ReadToken( const TCHAR* Buffer, FString& String, 
 	return Buffer;
 }
 
-const TCHAR* FPropertyHelpers::ReadToken( const TCHAR* Buffer, FStringBuilderBase& Out, bool bDottedNames)
-{
-	if( *Buffer == TCHAR('"') )
-	{
-		int32 NumCharsRead = 0;
-		if (!FParse::QuotedString(Buffer, Out, &NumCharsRead))
-		{
-			UE_LOG(LogProperty, Warning, TEXT("ReadToken: Bad quoted string: %s"), Buffer );
-			return nullptr;
-		}
-		Buffer += NumCharsRead;
-
-		// TODO special handling of null-terminator here?
-	}
-	else if (IsValidTokenStart(*Buffer, bDottedNames))
-	{
-		FStringView Token = ParsePropertyToken(Buffer, bDottedNames);
-		Out << Token;
-		Buffer += Token.Len();
-	}
-	else
-	{
-		// Get just one.
-		if (*Buffer)
-		{
-			Out << *Buffer;
-		}
-	}
-	return Buffer;
-}
 
 /*-----------------------------------------------------------------------------
-	FProperty implementation.
+	UProperty implementation.
 -----------------------------------------------------------------------------*/
-
-IMPLEMENT_FIELD(FProperty)
 
 //
 // Constructors.
 //
-FProperty::FProperty(FFieldVariant InOwner, const FName& InName, EObjectFlags InObjectFlags)
-	: FField(InOwner, InName, InObjectFlags)
-	, ArrayDim(1)
-	, ElementSize(0)
-	, PropertyFlags(CPF_None)
-	, RepIndex(0)
-	, BlueprintReplicationCondition(COND_None)
-	, Offset_Internal(0)
-	, PropertyLinkNext(nullptr)
-	, NextRef(nullptr)
-	, DestructorLinkNext(nullptr)
-	, PostConstructLinkNext(nullptr)
+UProperty::UProperty(const FObjectInitializer& ObjectInitializer)
+: UField(ObjectInitializer)	
+, ArrayDim(1)
 {
 }
 
-FProperty::FProperty(FFieldVariant InOwner, const FName& InName, EObjectFlags InObjectFlags, int32 InOffset, EPropertyFlags InFlags)
-	: FField(InOwner, InName, InObjectFlags)
+UProperty::UProperty(ECppProperty, int32 InOffset, EPropertyFlags InFlags)
+	: UField(FObjectInitializer::Get())
 	, ArrayDim(1)
-	, ElementSize(0)
 	, PropertyFlags(InFlags)
-	, RepIndex(0)
-	, BlueprintReplicationCondition(COND_None)
 	, Offset_Internal(InOffset)
-	, PropertyLinkNext(nullptr)
-	, NextRef(nullptr)
-	, DestructorLinkNext(nullptr)
-	, PostConstructLinkNext(nullptr)
 {
 	Init();
 }
 
-#if WITH_EDITORONLY_DATA
-FProperty::FProperty(UField* InField)
-	: Super(InField)
-	, PropertyLinkNext(nullptr)
-	, NextRef(nullptr)
-	, DestructorLinkNext(nullptr)
-	, PostConstructLinkNext(nullptr)
+UProperty::UProperty(const FObjectInitializer& ObjectInitializer, ECppProperty, int32 InOffset, EPropertyFlags InFlags )
+: UField(ObjectInitializer)	
+, ArrayDim(1)
+, PropertyFlags(InFlags)
+, Offset_Internal(InOffset)
 {
-	UProperty* SourceProperty = CastChecked<UProperty>(InField);
-	ArrayDim = SourceProperty->ArrayDim;
-	ElementSize = SourceProperty->ElementSize;
-	PropertyFlags = SourceProperty->PropertyFlags;
-	RepIndex = SourceProperty->RepIndex;
-	Offset_Internal = SourceProperty->Offset_Internal;
-	BlueprintReplicationCondition = SourceProperty->BlueprintReplicationCondition;
+	Init();
 }
-#endif // WITH_EDITORONLY_DATA
 
-void FProperty::Init()
+void UProperty::Init()
 {
 #if !WITH_EDITORONLY_DATA
 	//@todo.COOKER/PACKAGER: Until we have a cooker/packager step, this can fire when WITH_EDITORONLY_DATA is not defined!
 	//	checkSlow(!HasAnyPropertyFlags(CPF_EditorOnly));
 #endif // WITH_EDITORONLY_DATA
-	checkSlow(GetOwnerUField()->HasAllFlags(RF_Transient));
+	checkSlow(GetOuterUField()->HasAllFlags(RF_Transient));
 	checkSlow(HasAllFlags(RF_Transient));
 
-	if (GetOwner<UObject>())
-	{
-		UField* OwnerField = GetOwnerChecked<UField>();
-		OwnerField->AddCppProperty(this);
-	}
-	else
-	{
-		FField* OwnerField = GetOwnerChecked<FField>();
-		OwnerField->AddCppProperty(this);
-	}
+	GetOuterUField()->AddCppProperty(this);
 }
 
 //
 // Serializer.
 //
-void FProperty::Serialize( FArchive& Ar )
+void UProperty::Serialize( FArchive& Ar )
 {
 	// Make sure that we aren't saving a property to a package that shouldn't be serialised.
 #if WITH_EDITORONLY_DATA
-	check(!Ar.IsFilterEditorOnly() || !IsEditorOnlyProperty());
+	check( !Ar.IsFilterEditorOnly() || !IsEditorOnlyProperty() );
 #endif // WITH_EDITORONLY_DATA
 
-	Super::Serialize(Ar);
-
-	Ar << ArrayDim;
-	Ar << ElementSize;
+	Super::Serialize( Ar );
 
 	EPropertyFlags SaveFlags = PropertyFlags & ~CPF_ComputedFlags;
 	// Archive the basic info.
-	Ar << (uint64&)SaveFlags;
+	Ar << ArrayDim << (uint64&)SaveFlags;
 	if (Ar.IsLoading())
 	{
 		PropertyFlags = (SaveFlags & ~CPF_ComputedFlags) | (PropertyFlags & CPF_ComputedFlags);
 	}
-
+	
 	if (FPlatformProperties::HasEditorOnlyData() == false)
 	{
 		// Make sure that we aren't saving a property to a package that shouldn't be serialised.
 		check( !IsEditorOnlyProperty() );
 	}
 
-	Ar << RepIndex;
 	Ar << RepNotifyFunc;
 
-	if (Ar.IsLoading())
+	if( Ar.IsLoading() )
 	{
 		Offset_Internal = 0;
-		DestructorLinkNext = nullptr;
+		DestructorLinkNext = NULL;
 	}
 
-	Ar << BlueprintReplicationCondition;
+	Ar.UsingCustomVersion(FReleaseObjectVersion::GUID);
+	if (Ar.IsSaving() || Ar.CustomVer(FReleaseObjectVersion::GUID) >= FReleaseObjectVersion::PropertiesSerializeRepCondition)
+	{
+		Ar << BlueprintReplicationCondition;
+	}
 }
 
-void FProperty::PostDuplicate(const FField& InField)
-{
-	const FProperty& Source = static_cast<const FProperty&>(InField);
-	ArrayDim = Source.ArrayDim;
-	ElementSize = Source.ElementSize;
-	PropertyFlags = Source.PropertyFlags;
-	RepIndex = Source.RepIndex;
-	Offset_Internal = Source.Offset_Internal;
-	RepNotifyFunc = Source.RepNotifyFunc;
-	BlueprintReplicationCondition = Source.BlueprintReplicationCondition;
-
-	Super::PostDuplicate(InField);
-}
-
-void FProperty::CopySingleValueToScriptVM( void* Dest, void const* Src ) const
+void UProperty::CopySingleValueToScriptVM( void* Dest, void const* Src ) const
 {
 	CopySingleValue(Dest, Src);
 }
 
-void FProperty::CopyCompleteValueToScriptVM( void* Dest, void const* Src ) const
+void UProperty::CopyCompleteValueToScriptVM( void* Dest, void const* Src ) const
 {
 	CopyCompleteValue(Dest, Src);
 }
 
-void FProperty::CopySingleValueFromScriptVM( void* Dest, void const* Src ) const
+void UProperty::CopySingleValueFromScriptVM( void* Dest, void const* Src ) const
 {
 	CopySingleValue(Dest, Src);
 }
 
-void FProperty::CopyCompleteValueFromScriptVM( void* Dest, void const* Src ) const
+void UProperty::CopyCompleteValueFromScriptVM( void* Dest, void const* Src ) const
 {
 	CopyCompleteValue(Dest, Src);
 }
 
-void FProperty::ClearValueInternal( void* Data ) const
+void UProperty::ClearValueInternal( void* Data ) const
 {
 	checkf(0, TEXT("%s failed to handle ClearValueInternal, but it was not CPF_NoDestructor | CPF_ZeroConstructor"), *GetFullName());
 }
-void FProperty::DestroyValueInternal( void* Dest ) const
+void UProperty::DestroyValueInternal( void* Dest ) const
 {
 	checkf(0, TEXT("%s failed to handle DestroyValueInternal, but it was not CPF_NoDestructor"), *GetFullName());
 }
-void FProperty::InitializeValueInternal( void* Dest ) const
+void UProperty::InitializeValueInternal( void* Dest ) const
 {
 	checkf(0, TEXT("%s failed to handle InitializeValueInternal, but it was not CPF_ZeroConstructor"), *GetFullName());
 }
@@ -642,7 +527,7 @@ void FProperty::InitializeValueInternal( void* Dest ) const
  *
  * @return	true if ImportText should be allowed
  */
-bool FProperty::ValidateImportFlags( uint32 PortFlags, FOutputDevice* ErrorHandler ) const
+bool UProperty::ValidateImportFlags( uint32 PortFlags, FOutputDevice* ErrorHandler ) const
 {
 	// PPF_RestrictImportTypes is set when importing defaultproperties; it indicates that
 	// we should not allow config/localized properties to be imported here
@@ -665,29 +550,29 @@ bool FProperty::ValidateImportFlags( uint32 PortFlags, FOutputDevice* ErrorHandl
 	return true;
 }
 
-FString FProperty::GetNameCPP() const
+FString UProperty::GetNameCPP() const
 {
 	return HasAnyPropertyFlags(CPF_Deprecated) ? GetName() + TEXT("_DEPRECATED") : GetName();
 }
 
-FString FProperty::GetCPPMacroType( FString& ExtendedTypeText ) const
+FString UProperty::GetCPPMacroType( FString& ExtendedTypeText ) const
 {
-	ExtendedTypeText = TEXT("F");
+	ExtendedTypeText = TEXT("U");
 	ExtendedTypeText += GetClass()->GetName();
 	return TEXT("PROPERTY");
 }
 
-bool FProperty::PassCPPArgsByRef() const
+bool UProperty::PassCPPArgsByRef() const
 {
 	return false;
 }
 
 
-void FProperty::ExportCppDeclaration(FOutputDevice& Out, EExportedDeclaration::Type DeclarationType, const TCHAR* ArrayDimOverride, uint32 AdditionalExportCPPFlags
+void UProperty::ExportCppDeclaration(FOutputDevice& Out, EExportedDeclaration::Type DeclarationType, const TCHAR* ArrayDimOverride, uint32 AdditionalExportCPPFlags
 	, bool bSkipParameterName, const FString* ActualCppType, const FString* ActualExtendedType, const FString* ActualParameterName) const
 {
 	const bool bIsParameter = (DeclarationType == EExportedDeclaration::Parameter) || (DeclarationType == EExportedDeclaration::MacroParameter);
-	const bool bIsInterfaceProp = CastField<const FInterfaceProperty>(this) != nullptr;
+	const bool bIsInterfaceProp = dynamic_cast<const UInterfaceProperty*>(this) != nullptr;
 
 	// export the property type text (e.g. FString; int32; TArray, etc.)
 	FString ExtendedTypeText;
@@ -709,9 +594,9 @@ void FProperty::ExportCppDeclaration(FOutputDevice& Out, EExportedDeclaration::T
 
 	const bool bCanHaveRef = 0 == (AdditionalExportCPPFlags & CPPF_NoRef);
 	const bool bCanHaveConst = 0 == (AdditionalExportCPPFlags & CPPF_NoConst);
-	if (!CastField<const FBoolProperty>(this) && bCanHaveConst) // can't have const bitfields because then we cannot determine their offset and mask from the compiler
+	if (!dynamic_cast<const UBoolProperty*>(this) && bCanHaveConst) // can't have const bitfields because then we cannot determine their offset and mask from the compiler
 	{
-		const FObjectProperty* ObjectProp = CastField<FObjectProperty>(this);
+		const UObjectProperty* ObjectProp = dynamic_cast<const UObjectProperty*>(this);
 
 		// export 'const' for parameters
 		const bool bIsConstParam   = bIsParameter && (HasAnyPropertyFlags(CPF_ConstParm) || (bIsInterfaceProp && !HasAllPropertyFlags(CPF_OutParm)));
@@ -724,7 +609,7 @@ void FProperty::ExportCppDeclaration(FOutputDevice& Out, EExportedDeclaration::T
 			TypeText = FString::Printf(TEXT("const %s"), *TypeText);
 		}
 
-		const UClass* const MyPotentialConstClass = (DeclarationType == EExportedDeclaration::Member) ? GetOwner<UClass>() : nullptr;
+		const UClass* const MyPotentialConstClass = (DeclarationType == EExportedDeclaration::Member) ? dynamic_cast<UClass*>(GetOuter()) : nullptr;
 		const bool bFromConstClass = MyPotentialConstClass && MyPotentialConstClass->HasAnyClassFlags(CLASS_Const);
 		const bool bConstAtTheEnd = bFromConstClass || (bIsConstParam && bShouldHaveRef);
 		if (bConstAtTheEnd)
@@ -758,7 +643,7 @@ void FProperty::ExportCppDeclaration(FOutputDevice& Out, EExportedDeclaration::T
 		}
 	}
 
-	if(auto BoolProperty = CastField<const FBoolProperty>(this) )
+	if(auto BoolProperty = dynamic_cast<const UBoolProperty*>(this) )
 	{
 		// if this is a member variable, export it as a bitfield
 		if( ArrayDim==1 && DeclarationType == EExportedDeclaration::Member )
@@ -823,7 +708,7 @@ void FProperty::ExportCppDeclaration(FOutputDevice& Out, EExportedDeclaration::T
 	}
 }
 
-bool FProperty::ExportText_Direct
+bool UProperty::ExportText_Direct
 	(
 	FString&	ValueStr,
 	const void*	Data,
@@ -850,7 +735,12 @@ bool FProperty::ExportText_Direct
 	return false;
 }
 
-bool FProperty::ShouldSerializeValue( FArchive& Ar ) const
+bool UProperty::IsPostLoadThreadSafe() const
+{
+	return true;
+}
+
+bool UProperty::ShouldSerializeValue( FArchive& Ar ) const
 {
 	if (Ar.ShouldSkipProperty(this))
 	{
@@ -884,13 +774,13 @@ bool FProperty::ShouldSerializeValue( FArchive& Ar ) const
 //
 // Net serialization.
 //
-bool FProperty::NetSerializeItem( FArchive& Ar, UPackageMap* Map, void* Data, TArray<uint8> * MetaData ) const
+bool UProperty::NetSerializeItem( FArchive& Ar, UPackageMap* Map, void* Data, TArray<uint8> * MetaData ) const
 {
 	SerializeItem( FStructuredArchiveFromArchive(Ar).GetSlot(), Data, NULL );
 	return 1;
 }
 
-bool FProperty::SupportsNetSharedSerialization() const
+bool UProperty::SupportsNetSharedSerialization() const
 {
 	return true;
 }
@@ -898,7 +788,7 @@ bool FProperty::SupportsNetSharedSerialization() const
 //
 // Return whether the property should be exported.
 //
-bool FProperty::ShouldPort( uint32 PortFlags/*=0*/ ) const
+bool UProperty::ShouldPort( uint32 PortFlags/*=0*/ ) const
 {
 	// if no size, don't export
 	if (GetSize() <= 0)
@@ -947,16 +837,16 @@ bool FProperty::ShouldPort( uint32 PortFlags/*=0*/ ) const
 //
 // Return type id for encoding properties in .u files.
 //
-FName FProperty::GetID() const
+FName UProperty::GetID() const
 {
 	return GetClass()->GetFName();
 }
 
-void FProperty::InstanceSubobjects( void* Data, void const* DefaultData, UObject* InOwner, struct FObjectInstancingGraph* InstanceGraph )
+void UProperty::InstanceSubobjects( void* Data, void const* DefaultData, UObject* Owner, struct FObjectInstancingGraph* InstanceGraph )
 {
 }
 
-int32 FProperty::GetMinAlignment() const
+int32 UProperty::GetMinAlignment() const
 {
 	return 1;
 }
@@ -965,40 +855,31 @@ int32 FProperty::GetMinAlignment() const
 //
 // Link property loaded from file.
 //
-void FProperty::LinkInternal(FArchive& Ar)
+void UProperty::LinkInternal(FArchive& Ar)
 {
 	check(0); // Link shouldn't call super...and we should never link an abstract property, like this base class
 }
 
-EConvertFromTypeResult FProperty::ConvertFromType(const FPropertyTag& Tag, FStructuredArchive::FSlot Slot, uint8* Data, UStruct* DefaultsStruct)
+EConvertFromTypeResult UProperty::ConvertFromType(const FPropertyTag& Tag, FStructuredArchive::FSlot Slot, uint8* Data, UStruct* DefaultsStruct)
 {
 	return EConvertFromTypeResult::UseSerializeItem;
 }
 
 
-int32 FProperty::SetupOffset()
+int32 UProperty::SetupOffset()
 {
-	UObject* OwnerUObject = GetOwner<UObject>();
-	if (OwnerUObject && (OwnerUObject->GetClass()->ClassCastFlags & CASTCLASS_UStruct))
-	{
-		UStruct* OwnerStruct = (UStruct*)OwnerUObject;
-		Offset_Internal = Align(OwnerStruct->GetPropertiesSize(), GetMinAlignment());
-	}
-	else
-	{
-		Offset_Internal = Align(0, GetMinAlignment());
-	}
+	Offset_Internal = Align((GetOuter()->GetClass()->ClassCastFlags & CASTCLASS_UStruct) ? ((UStruct*)GetOuter())->GetPropertiesSize() : 0, GetMinAlignment());
 	return Offset_Internal + GetSize();
 }
 
-void FProperty::SetOffset_Internal(int32 NewOffset)
+void UProperty::SetOffset_Internal(int32 NewOffset)
 {
 	Offset_Internal = NewOffset;
 }
 
-bool FProperty::SameType(const FProperty* Other) const
+bool UProperty::SameType(const UProperty* Other) const
 {
-	return Other && (GetClass() == Other->GetClass());
+	return Other && (this->GetClass() == Other->GetClass());
 }
 
 /**
@@ -1101,30 +982,38 @@ static bool IsPropertyValueSpecified( const TCHAR* Buffer )
 	return Buffer && *Buffer && *Buffer != TCHAR(',') && *Buffer != TCHAR(')');
 }
 
-const TCHAR* FProperty::ImportSingleProperty( const TCHAR* Str, void* DestData, UStruct* ObjectStruct, UObject* SubobjectOuter, int32 PortFlags,
+const TCHAR* UProperty::ImportSingleProperty( const TCHAR* Str, void* DestData, UStruct* ObjectStruct, UObject* SubobjectOuter, int32 PortFlags,
 											FOutputDevice* Warn, TArray<FDefinedProperty>& DefinedProperties )
 {
 	check(ObjectStruct);
 
-	constexpr FAsciiSet Whitespaces(" \t");
-	constexpr FAsciiSet Delimiters("=([.");
+	while (*Str == ' ' || *Str == 9)
+	{
+		Str++;
+	}
+			
+	const TCHAR* Start = Str;
+			
+	while (*Str && *Str != '=' && *Str != '(' && *Str != '[' && *Str != '.')
+	{
+		Str++;
+	}
 
-	// strip leading whitespace
-	const TCHAR* Start = FAsciiSet::Skip(Str, Whitespaces);
-	// find first delimiter
-	Str = FAsciiSet::FindFirstOrEnd(Start, Delimiters);
-	// check if delimiter was found...
 	if (*Str)
 	{
-		// strip trailing whitespace
-		int32 Len = Str - Start;
-		while (Len > 0 && Whitespaces.Contains(Start[Len - 1]))
+		TCHAR* Token = new TCHAR[Str - Start + 1];
+		FCString::Strncpy(Token, Start, Str - Start + 1);
+
+		// strip trailing whitespace on token
+		int32 l = FCString::Strlen(Token);
+		while (l > 0 && (Token[l - 1] == ' ' || Token[l - 1] == 9))
 		{
-			--Len;
+			Token[l - 1] = 0;
+			--l;
 		}
 
-		const FName PropertyName(Len, Start);
-		FProperty* Property = FindFProperty<FProperty>(ObjectStruct, PropertyName);
+		const FName PropertyName(Token);
+		UProperty* Property = FindField<UProperty>(ObjectStruct, PropertyName);
 
 		if (Property == nullptr)
 		{
@@ -1133,7 +1022,7 @@ const TCHAR* FProperty::ImportSingleProperty( const TCHAR* Str, void* DestData, 
 
 			if (NewPropertyName != NAME_None)
 			{
-				Property = FindFProperty<FProperty>(ObjectStruct, NewPropertyName);
+				Property = FindField<UProperty>(ObjectStruct, NewPropertyName);
 			}
 
 			if (!Property)
@@ -1141,6 +1030,9 @@ const TCHAR* FProperty::ImportSingleProperty( const TCHAR* Str, void* DestData, 
 				Property = ObjectStruct->CustomFindProperty(PropertyName);
 			}
 		}		
+
+		delete[] Token;
+		Token = NULL;
 
 		if (Property == NULL)
 		{
@@ -1186,8 +1078,8 @@ const TCHAR* FProperty::ImportSingleProperty( const TCHAR* Str, void* DestData, 
 			}
 		}
 
-		FArrayProperty* const ArrayProperty = ExactCastField<FArrayProperty>(Property);
-		FMulticastDelegateProperty* const MulticastDelegateProperty = CastField<FMulticastDelegateProperty>(Property);
+		UArrayProperty* const ArrayProperty = ExactCast<UArrayProperty>(Property);
+		UMulticastDelegateProperty* const MulticastDelegateProperty = Cast<UMulticastDelegateProperty>(Property);
 		if( MulticastDelegateProperty != NULL && ArrayOp != ADO_None )
 		{
 			// Allow Add(), Remove() and Empty() on multi-cast delegates
@@ -1415,7 +1307,7 @@ const TCHAR* FProperty::ImportSingleProperty( const TCHAR* Str, void* DestData, 
 
 			// disallow importing of an object's name from here
 			// not done above with ShouldPort() check because this is intentionally exported so we don't want it to cause errors on import
-			if (Property->GetFName() != NAME_Name || !Property->GetOwnerVariant().IsUObject() || Property->GetOwner<UObject>()->GetFName() != NAME_Object)
+			if (Property->GetFName() != NAME_Name || Property->GetOuter()->GetFName() != NAME_Object)
 			{
 				if (Index > -1 && ArrayProperty != NULL) //set single dynamic array element
 				{
@@ -1484,9 +1376,9 @@ const TCHAR* FProperty::ImportSingleProperty( const TCHAR* Str, void* DestData, 
 	return Str;
 }
 
-FName FProperty::FindRedirectedPropertyName(UStruct* ObjectStruct, FName OldName)
+FName UProperty::FindRedirectedPropertyName(UStruct* ObjectStruct, FName OldName)
 {
-	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("FProperty::FindRedirectedPropertyName"), STAT_LinkerLoad_FindRedirectedPropertyName, STATGROUP_LoadTimeVerbose);
+	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("UProperty::FindRedirectedPropertyName"), STAT_LinkerLoad_FindRedirectedPropertyName, STATGROUP_LoadTimeVerbose);
 
 	// ObjectStruct may be a nested struct, so extract path
 	UPackage* StructPackage = ObjectStruct->GetOutermost();
@@ -1508,62 +1400,31 @@ FName FProperty::FindRedirectedPropertyName(UStruct* ObjectStruct, FName OldName
 /**
  * Returns the hash value for an element of this property.
  */
-uint32 FProperty::GetValueTypeHash(const void* Src) const
+uint32 UProperty::GetValueTypeHash(const void* Src) const
 {
 	check(PropertyFlags & CPF_HasGetValueTypeHash); // make sure the type is hashable
 	check(Src);
 	return GetValueTypeHashInternal(Src);
 }
 
-void FProperty::CopyValuesInternal( void* Dest, void const* Src, int32 Count  ) const
+void UProperty::CopyValuesInternal( void* Dest, void const* Src, int32 Count  ) const
 {
 	check(0); // if you are not memcpyable, then you need to deal with the virtual call
 }
 
-uint32 FProperty::GetValueTypeHashInternal(const void* Src) const
+uint32 UProperty::GetValueTypeHashInternal(const void* Src) const
 {
 	check(false); // you need to deal with the virtual call
 	return 0;
 }
 
-#if WITH_EDITORONLY_DATA
-UPropertyWrapper* FProperty::GetUPropertyWrapper()
-{
-	UStruct* OwnerStruct = GetOwnerStruct();
-	UPropertyWrapper* Wrapper = nullptr;
-	if (OwnerStruct)
-	{
-		// Find an existing wrapper object
-		for (UPropertyWrapper* ExistingWrapper : OwnerStruct->PropertyWrappers)
-		{
-			if (ExistingWrapper->GetProperty() == this)
-			{
-				Wrapper = ExistingWrapper;
-				break;
-			}
-		}
-		if (!Wrapper)
-		{
-			// Try to find the class of a new wrapper object mathich this property's class
-			FString WrapperClassName = GetClass()->GetName();
-			WrapperClassName += TEXT("Wrapper");
-			UClass* WrapperClass = Cast<UClass>(StaticFindObjectFast(UClass::StaticClass(), UPackage::StaticClass()->GetOutermost(), *WrapperClassName));
-			if (!WrapperClass)
-			{
-				// Default to generic wrapper class
-				WrapperClass = UPropertyWrapper::StaticClass();
-			}
-			Wrapper = NewObject<UPropertyWrapper>(OwnerStruct, WrapperClass, *FString::Printf(TEXT("%sWrapper"), *GetName()));
-			check(Wrapper);
-			Wrapper->SetProperty(this);
-			OwnerStruct->PropertyWrappers.Add(Wrapper);
-		}
-	}
-	return Wrapper;
-}
-#endif //  WITH_EDITORONLY_DATA
 
-void FFloatProperty::ExportTextItem(FString& ValueStr, const void* PropertyValue, const void* DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope) const
+IMPLEMENT_CORE_INTRINSIC_CLASS(UProperty, UField,
+	{
+	}
+);
+
+void UFloatProperty::ExportTextItem(FString& ValueStr, const void* PropertyValue, const void* DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope) const
 {
 	Super::ExportTextItem(ValueStr, PropertyValue, DefaultValue, Parent, PortFlags, ExportRootScope);
 
@@ -1574,9 +1435,9 @@ void FFloatProperty::ExportTextItem(FString& ValueStr, const void* PropertyValue
 }
 
 
-FProperty* UStruct::FindPropertyByName(FName InName) const
+UProperty* UStruct::FindPropertyByName(FName InName) const
 {
-	for (FProperty* Property = PropertyLink; Property != NULL; Property = Property->PropertyLinkNext)
+	for (UProperty* Property = PropertyLink; Property != NULL; Property = Property->PropertyLinkNext)
 	{
 		if (Property->GetFName() == InName)
 		{
@@ -1586,6 +1447,3 @@ FProperty* UStruct::FindPropertyByName(FName InName) const
 
 	return NULL;
 }
-
-
-#include "UObject/DefineUPropertyMacros.h"

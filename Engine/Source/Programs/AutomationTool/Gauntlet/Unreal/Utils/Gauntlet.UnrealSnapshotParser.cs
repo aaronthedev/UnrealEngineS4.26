@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -13,28 +13,27 @@ namespace Gauntlet
 		public string Name;
 		public float ProfileLength;
 
-		public float? CpuUsedMemory;
-		public float? CpuPeakMemory;
-		public float? PhysicalUsedMemory;
-		public float? PhysicalPeakMemory;
-		public float? MVP;
-		public float? AvgFps;
-		public float? Hitches;
-		public float? AvgHitches;
-		public float? DynamicRes;
-		public float? GTTime;
-		public float? RTTime;
-		public float? GPUTime;
-		public float? FTTime;
-		public float? RHIT;
-		public int? DrawCalls;
-		public int? DrawnPrims;
-		public int? UnbuiltHLODs;
+		public float CpuUsedMemory;
+		public float CpuPeakMemory;
+		public float PhysicalUsedMemory;
+		public float PhysicalPeakMemory;
+		public float MVP;
+		public float AvgFps;
+		public float Hitches;
+		public float AvgHitches;
+		public float DynamicRes;
+		public float GTTime;
+		public float RTTime;
+		public float GPUTime;
+		public float FTTime;
+		public float RHIT;
+		public int DrawCalls;
+		public int DrawnPrims;
+		public int UnbuiltHLODs;
 
 		public UnrealHealthSnapshot()
 		{
 			Name = "Unknown";
-			ProfileLength = 0;
 		}
 
 		public override string ToString()
@@ -46,62 +45,20 @@ namespace Gauntlet
 				SB.AppendFormat("Snapshot {0}\n", Name);
 				SB.AppendFormat("Duration\t{0}\n", ProfileLength);
 
-				if (CpuUsedMemory.HasValue)
-				{
-					SB.AppendFormat("Memory:\t\t{0} MB\n", CpuUsedMemory.Value);
-				}
-				if (MVP.HasValue)
-				{
-					SB.AppendFormat("MVP:\t\t{0:0.00}\n", MVP.Value);
-				}
-				if (AvgFps.HasValue)
-				{
-					SB.AppendFormat("AvgFps:\t\t{0:0.00}\n", AvgFps.Value);
-				}
-				if (Hitches.HasValue)
-				{
-					SB.AppendFormat("HPM:\t\t{0:0.00}\n", Hitches.Value);
-				}
-				if (AvgHitches.HasValue)
-				{
-					SB.AppendFormat("AvgH:\t\t{0:0.00}ms\n", AvgHitches.Value);
-				}
-				if (DynamicRes.HasValue)
-				{
-					SB.AppendFormat("DynRes:\t\t{0:0.00}\n", DynamicRes.Value);
-				}
-				if (GTTime.HasValue)
-				{
-					SB.AppendFormat("GT:\t\t{0:0.00}ms\n", GTTime.Value);
-				}
-				if (RTTime.HasValue)
-				{
-					SB.AppendFormat("RT:\t\t{0:0.00}ms\n", RTTime.Value);
-				}
-				if (GPUTime.HasValue)
-				{
-					SB.AppendFormat("GPU:\t\t{0:0.00}ms\n", GPUTime.Value);
-				}
-				if (FTTime.HasValue)
-				{
-					SB.AppendFormat("FT:\t\t{0:0.00}ms\n", FTTime.Value);
-				}
-				if (RHIT.HasValue)
-				{
-					SB.AppendFormat("RHIT:\t\t{0:0.00}ms\n", RHIT.Value);
-				}
-				if (DrawCalls.HasValue)
-				{
-					SB.AppendFormat("DrawCalls:\t{0}\n", DrawCalls.Value);
-				}
-				if (DrawnPrims.HasValue)
-				{
-					SB.AppendFormat("DrawnPrims:\t{0}\n", DrawnPrims.Value);
-				}
-				if (UnbuiltHLODs.HasValue)
-				{
-					SB.AppendFormat("UnbuiltHLODs:\t{0}\n", UnbuiltHLODs.Value);
-				}
+				SB.AppendFormat("Memory:\t\t{0} MB\n", CpuUsedMemory);
+				SB.AppendFormat("MVP:\t\t{0:0.00}\n", MVP);
+				SB.AppendFormat("AvgFps:\t\t{0:0.00}\n", AvgFps);
+				SB.AppendFormat("HPM:\t\t{0:0.00}\n", Hitches);
+				SB.AppendFormat("AvgH:\t\t{0:0.00}ms\n", AvgHitches);
+				SB.AppendFormat("DynRes:\t\t{0:0.00}\n", DynamicRes);
+				SB.AppendFormat("GT:\t\t{0:0.00}ms\n", GTTime);
+				SB.AppendFormat("RT:\t\t{0:0.00}ms\n", RTTime);
+				SB.AppendFormat("GPU:\t\t{0:0.00}ms\n", GPUTime);
+				SB.AppendFormat("FT:\t\t{0:0.00}ms\n", FTTime);
+				SB.AppendFormat("RHIT:\t\t{0:0.00}ms\n", RHIT);
+				SB.AppendFormat("DrawCalls:\t{0}\n", DrawCalls);
+				SB.AppendFormat("DrawnPrims:\t{0}\n", DrawnPrims);
+				SB.AppendFormat("UnbuiltHLODs:\t{0}\n", UnbuiltHLODs);
 			}
 			else
 			{
@@ -117,21 +74,21 @@ namespace Gauntlet
 				Name = Groups[1];
 			});
 
-			RegexUtil.MatchAndApplyGroups(InContent, @"MeasuredPerfTime:\s(\d.+) S", (Groups) =>
-			{
-				ProfileLength = Convert.ToSingle(Groups[1]);
-			});
-
 			RegexUtil.MatchAndApplyGroups(InContent, @"CPU Memory:[\s\w]+?([\d\.]+)MB,[\s\w]+?([\d\.]+)MB", (Groups) =>
 			{
-				CpuUsedMemory = Convert.ToSingle(Groups[1]);
-				CpuPeakMemory = Convert.ToSingle(Groups[2]);
+				CpuUsedMemory += Convert.ToSingle(Groups[1]);
+				CpuPeakMemory += Convert.ToSingle(Groups[2]);
 			});
 
 			RegexUtil.MatchAndApplyGroups(InContent, @"Physical Memory:[\s\w]+?([\d\.]+)MB,[\s\w:]+?([\d\.]+)MB", (Groups) =>
 			{
-				PhysicalUsedMemory = Convert.ToSingle(Groups[1]);
-				PhysicalPeakMemory = Convert.ToSingle(Groups[2]);
+				PhysicalUsedMemory += Convert.ToSingle(Groups[1]);
+				PhysicalPeakMemory += Convert.ToSingle(Groups[2]);
+			});
+
+			RegexUtil.MatchAndApplyGroups(InContent, @"MeasuredPerfTime:\s(\d.+) S", (Groups) =>
+			{
+				ProfileLength += Convert.ToSingle(Groups[1]);
 			});
 
 			RegexUtil.MatchAndApplyGroups(InContent, @"MVP:\s(\d.+)%,\s.*AvgFPS:(\d.+),\s.*HitchesPerMinute:\s(\d.+),\sAvg\sHitch\s(\d.+)ms", (Groups) =>
@@ -232,7 +189,6 @@ namespace Gauntlet
 
 			CreateFromLog(LogContents, SnapshotTitles);
 		}
-
 		protected virtual void CreateFromLog(string LogContents, string InTitle)
 		{
 			UnrealLogParser Parser = new UnrealLogParser(LogContents);
@@ -264,69 +220,54 @@ namespace Gauntlet
 				{
 					SessionTime += Snap.ProfileLength;
 
-					if (Snap.MVP.HasValue)
+					MVP.Add(Snap.MVP);
+
+					if (Snap.AvgFps > 0)
 					{
-						MVP.Add(Snap.MVP.Value);
+						AvgFps.Add(Snap.AvgFps);
 					}
 
-					if (Snap.AvgFps.HasValue)
+					Hitches.Add(Snap.Hitches);
+					AvgHitches.Add(Snap.AvgHitches);
+
+					if (Snap.DynamicRes > 0)
 					{
-						AvgFps.Add(Snap.AvgFps.Value);
+						DynamicRes.Add(Snap.DynamicRes);
 					}
 
-					if (Snap.Hitches.HasValue)
+					if (Snap.GTTime > 0)
 					{
-						Hitches.Add(Snap.Hitches.Value);
+						GTTime.Add(Snap.GTTime);
 					}
 
-					if (Snap.AvgHitches.HasValue)
+					if (Snap.RTTime > 0)
 					{
-						AvgHitches.Add(Snap.AvgHitches.Value);
+						RTTime.Add(Snap.RTTime);
 					}
 
-					if (Snap.DynamicRes.HasValue)
+					if (Snap.GPUTime > 0)
 					{
-						DynamicRes.Add(Snap.DynamicRes.Value);
+						GPUTime.Add(Snap.GPUTime);
 					}
 
-					if (Snap.GTTime.HasValue)
+					if (Snap.FTTime > 0)
 					{
-						GTTime.Add(Snap.GTTime.Value);
+						FTTime.Add(Snap.FTTime);
 					}
 
-					if (Snap.RTTime.HasValue)
+					if (Snap.RHIT > 0)
 					{
-						RTTime.Add(Snap.RTTime.Value);
+						RHIT.Add(Snap.RHIT);
 					}
 
-					if (Snap.GPUTime.HasValue)
+					if (Snap.DrawCalls > 0)
 					{
-						GPUTime.Add(Snap.GPUTime.Value);
+						DrawCalls.Add(Snap.DrawCalls);
+						DrawnPrims.Add(Snap.DrawnPrims);
 					}
-
-					if (Snap.FTTime.HasValue)
+					if (Snap.UnbuiltHLODs > 0)
 					{
-						FTTime.Add(Snap.FTTime.Value);
-					}
-
-					if (Snap.RHIT.HasValue)
-					{
-						RHIT.Add(Snap.RHIT.Value);
-					}
-
-					if (Snap.DrawCalls.HasValue)
-					{
-						DrawCalls.Add(Snap.DrawCalls.Value);
-					}
-
-					if (Snap.DrawnPrims.HasValue)
-					{
-						DrawnPrims.Add(Snap.DrawnPrims.Value);
-					}
-
-					if (Snap.UnbuiltHLODs.HasValue)
-					{
-						UnbuiltHLODs.Add(Snap.UnbuiltHLODs.Value);
+						UnbuiltHLODs.Add(Snap.UnbuiltHLODs);
 					}
 				}
 
@@ -335,16 +276,16 @@ namespace Gauntlet
 				{
 					var LastSnapshot = Snapshots.Last();
 
-					float? SnapshotPeakMemory = LastSnapshot.PhysicalPeakMemory;
+					float SnapshotPeakMemory = LastSnapshot.PhysicalPeakMemory;
 
 					//if PeakMemory is reporting as 0, use Memory if it's higher than our last
-					if (SnapshotPeakMemory.HasValue)
+					if (SnapshotPeakMemory == 0)
 					{
-						PeakMemory = SnapshotPeakMemory.Value;
+						Log.Info("PeakMemory reported as 0mb");
 					}
 					else
 					{
-						Log.Info("PeakMemory reported as 0mb");
+						PeakMemory = SnapshotPeakMemory;
 					}
 				}
 			}
@@ -361,8 +302,8 @@ namespace Gauntlet
 			if (SampleCount > 0)
 			{
 				SB.AppendFormat("Performance report from {0} samples and {1} seconds\n", SampleCount, SessionTime);
-				SB.AppendFormat("Peak Memory: {0} MB\n", PeakMemory);
 
+				SB.AppendFormat("Peak Memory: {0} MB\n", PeakMemory);
 				if (MVP.Count > 0)
 				{
 					SB.AppendFormat("MVP:\t{0:0.00} (Min: {1:0.00}, Max: {2:0.00})\n", MVP.Average(), MVP.Min(), MVP.Max());

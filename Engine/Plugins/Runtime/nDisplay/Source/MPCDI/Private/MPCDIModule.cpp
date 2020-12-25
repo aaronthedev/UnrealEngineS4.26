@@ -1,22 +1,22 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MPCDIModule.h"
 
-#include "MPCDICommon.h"
 #include "MPCDIData.h"
-#include "MPCDILog.h"
-#include "MPCDIRegion.h"
 #include "MPCDIShader.h"
-#include "MPCDIStrings.h"
 
 #include "Interfaces/IPluginManager.h"
 #include "Misc/Paths.h"
 #include "ShaderCore.h"
 
-#include "Misc/DisplayClusterHelpers.h"
 #include "Misc/FileHelper.h"
 
 #include "RHICommandList.h"
+
+#include "MPCDIHelpers.h"
+#include "MPCDILog.h"
+#include "MPCDIStrings.h"
+
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -33,6 +33,7 @@ void FMPCDIModule::ShutdownModule()
 	ReleaseMPCDIData();
 }
 
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 // IMPCDI
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -45,7 +46,7 @@ bool FMPCDIModule::Load(const FString& LocalMPCDIFile)
 		return true;
 	}
 
-	TSharedPtr<FMPCDIData> DataItem = MakeShared<FMPCDIData>();
+	TSharedPtr<FMPCDIData> DataItem = MakeShareable(new FMPCDIData);
 	if (!DataItem->LoadFromFile(LocalMPCDIFile))
 	{
 		//! Handle error
@@ -75,6 +76,7 @@ bool FMPCDIModule::GetRegionLocator(const FString& LocalMPCDIFile, const FString
 	OutRegionLocator = IMPCDI::FRegionLocator();
 	
 	FMPCDIData* DataItemPtr = nullptr;
+	IMPCDI::FRegionLocator TmpRegionLocator;
 
 	// Find the file index
 	for (int FileIndex = 0; FileIndex < MPCDIData.Num(); ++FileIndex)
@@ -82,31 +84,27 @@ bool FMPCDIModule::GetRegionLocator(const FString& LocalMPCDIFile, const FString
 		if (FPaths::IsSamePath(MPCDIData[FileIndex]->GetLocalMPCIDIFile(), LocalMPCDIFile))
 		{
 			DataItemPtr = MPCDIData[FileIndex].Get();
-			OutRegionLocator.FileIndex = FileIndex;
+			TmpRegionLocator.FileIndex = FileIndex;
 			break;
 		}
 	}
 
-	return DataItemPtr && DataItemPtr->FindRegion(BufferName, RegionName, OutRegionLocator);
-}
-
-bool FMPCDIModule::SetStaticMeshWarp(const IMPCDI::FRegionLocator& InRegionLocator, UStaticMeshComponent* MeshComponent, USceneComponent* OriginComponent)
-{
-	FScopeLock lock(&DataGuard);
-
-	if (InRegionLocator.RegionIndex >= 0)
+	if (!DataItemPtr)
 	{
-		if (MPCDIData.Num() > InRegionLocator.FileIndex && MPCDIData[InRegionLocator.FileIndex].IsValid())
-		{
-			FMPCDIRegion* DstRegion = MPCDIData[InRegionLocator.FileIndex]->GetRegion(InRegionLocator);
-			if (DstRegion)
-			{
-				return DstRegion->SetStaticMeshWarp(MeshComponent, OriginComponent);
-			}
-		}
+		//! handle error: file not loaded
+		return false;
 	}
 
-	return false;
+	// Try to find the requested region
+	if (!DataItemPtr->FindRegion(BufferName, RegionName, TmpRegionLocator))
+	{
+		//! Handle error: BufferName + RegionName not defined for LocalMPCDIFile
+		return false;
+	}
+
+	// Return handler to warp data region
+	OutRegionLocator = TmpRegionLocator;
+	return true;
 }
 
 bool FMPCDIModule::ComputeFrustum(const IMPCDI::FRegionLocator& RegionLocator, float WorldScale, float ZNear, float ZFar, IMPCDI::FFrustum &InOutFrustum)
@@ -120,6 +118,8 @@ bool FMPCDIModule::ComputeFrustum(const IMPCDI::FRegionLocator& RegionLocator, f
 			return MPCDIData[RegionLocator.FileIndex]->ComputeFrustum(RegionLocator, InOutFrustum, WorldScale, ZNear, ZFar);
 		}
 	}
+
+	//@todo log
 
 	return false;
 }
@@ -180,7 +180,7 @@ bool FMPCDIModule::CreateCustomRegion(const FString& LocalMPCDIFile, const FStri
 	if (OutRegionLocator.FileIndex < 0)
 	{
 		//Create new file:
-		TSharedPtr<FMPCDIData> DataItem = MakeShared<FMPCDIData>();
+		TSharedPtr<FMPCDIData> DataItem = MakeShareable(new FMPCDIData);
 		DataItem->Initialize(LocalMPCDIFile, EMPCDIProfileType::mpcdi_A3D); // Use a3d as default profile
 		// Load and cache the file
 		MPCDIData.Add(DataItem);
@@ -199,10 +199,8 @@ bool FMPCDIModule::SetMPCDIProfileType(const IMPCDI::FRegionLocator& InRegionLoc
 		FMPCDIData& Dst = *MPCDIData[InRegionLocator.FileIndex];
 		FString LocalMPCIDIFile = Dst.GetLocalMPCIDIFile();
 		Dst.Initialize(LocalMPCIDIFile, ProfileType);
-
 		return true;
 	}
-
 	return false;
 }
 
@@ -215,14 +213,13 @@ bool FMPCDIModule::LoadPFM(const IMPCDI::FRegionLocator& InRegionLocator, const 
 		if (MPCDIData.Num() > InRegionLocator.FileIndex)
 		{
 			FMPCDIData& Dst = *MPCDIData[InRegionLocator.FileIndex];
-			FMPCDIRegion* DstRegion = Dst.GetRegion(InRegionLocator);
+			MPCDI::FMPCDIRegion* DstRegion = Dst.GetRegion(InRegionLocator);
 			if (DstRegion)
 			{
 				return DstRegion->LoadExtPFMFile(LocalPFMFile, Dst.GetProfileType(), PFMFileScale, bIsUnrealGameSpace);
 			}
 		}
 	}
-
 	return false;
 }
 
@@ -235,14 +232,13 @@ bool FMPCDIModule::LoadPFMGeometry(const IMPCDI::FRegionLocator& InRegionLocator
 		if (MPCDIData.Num() > InRegionLocator.FileIndex)
 		{
 			FMPCDIData& Dst = *MPCDIData[InRegionLocator.FileIndex];
-			FMPCDIRegion* DstRegion = Dst.GetRegion(InRegionLocator);
+			MPCDI::FMPCDIRegion* DstRegion = Dst.GetRegion(InRegionLocator);
 			if (DstRegion)
 			{
 				return DstRegion->LoadExtGeometry(PFMPoints, DimW, DimH, Dst.GetProfileType(), PFMScale, bIsUnrealGameSpace);
 			}
 		}
 	}
-
 	return false;
 }
 
@@ -255,14 +251,13 @@ bool FMPCDIModule::LoadAlphaMap(const IMPCDI::FRegionLocator& InRegionLocator, c
 		if (MPCDIData.Num() > InRegionLocator.FileIndex)
 		{
 			FMPCDIData& Dst = *MPCDIData[InRegionLocator.FileIndex];
-			FMPCDIRegion* DstRegion = Dst.GetRegion(InRegionLocator);
+			MPCDI::FMPCDIRegion* DstRegion = Dst.GetRegion(InRegionLocator);
 			if (DstRegion)
-			{
+			{				
 				return DstRegion->LoadExtAlphaMap(LocalPNGFile,GammaValue);
 			}
 		}
 	}
-
 	return false;
 }
 
@@ -275,14 +270,13 @@ bool FMPCDIModule::LoadBetaMap(const IMPCDI::FRegionLocator& InRegionLocator, co
 		if (MPCDIData.Num() > InRegionLocator.FileIndex)
 		{
 			FMPCDIData& Dst = *MPCDIData[InRegionLocator.FileIndex];
-			FMPCDIRegion* DstRegion = Dst.GetRegion(InRegionLocator);
+			MPCDI::FMPCDIRegion* DstRegion = Dst.GetRegion(InRegionLocator);
 			if (DstRegion)
-			{
+			{				
 				return DstRegion->LoadExtBetaMap(LocalPNGFile);
 			}
 		}
 	}
-
 	return false;
 }
 
@@ -373,41 +367,46 @@ void FMPCDIModule::ReloadAll_RenderThread()
 	}
 }
 
-bool FMPCDIModule::LoadConfig(const TMap<FString, FString>& InConfigParameters, ConfigParser& OutConfig)
+
+//@todo: Move config parsing and logic to policy mpcdi+picp
+// virtual bool LoadConfig(const FString& InConfigLineStr, ConfigParser& OutCfgData) override;
+// virtual bool Load(const ConfigParser& CfgData, IMPCDI::FRegionLocator& OutRegionLocator) override;
+
+bool FMPCDIModule::LoadConfig(const FString& ConfigLineStr, ConfigParser& OutConfig)
 {
-	OutConfig.ConfigParameters = InConfigParameters;
+	OutConfig.ConfigLineStr = ConfigLineStr;
 
 	// PFM file (optional)
 	FString LocalPFMFile;
-	if (DisplayClusterHelpers::map::template ExtractValue(InConfigParameters, DisplayClusterMPCDIStrings::cfg::FilePFM, LocalPFMFile))
+	if (DisplayClusterHelpers::str::ExtractValue(ConfigLineStr, DisplayClusterStrings::cfg::data::mpcdi::FilePFM, LocalPFMFile))
 	{
-		UE_LOG(LogMPCDI, Log, TEXT("Found Argument '%s'='%s'"), DisplayClusterMPCDIStrings::cfg::FilePFM, *LocalPFMFile);
+		UE_LOG(LogMPCDI, Log, TEXT("Found Argument '%s'='%s'"), DisplayClusterStrings::cfg::data::mpcdi::FilePFM,*LocalPFMFile);
 		OutConfig.PFMFile = LocalPFMFile;
 	}
 
 	// Buffer
-	if (!DisplayClusterHelpers::map::template ExtractValue(InConfigParameters, DisplayClusterMPCDIStrings::cfg::Buffer, OutConfig.BufferId))
+	if (!DisplayClusterHelpers::str::ExtractValue(ConfigLineStr, DisplayClusterStrings::cfg::data::mpcdi::Buffer, OutConfig.BufferId))
 	{
 		if (OutConfig.PFMFile.IsEmpty())
 		{
-			UE_LOG(LogMPCDI, Error, TEXT("Argument '%s' not found in the config file"), DisplayClusterMPCDIStrings::cfg::Buffer);
+			UE_LOG(LogMPCDI, Error, TEXT("Argument '%s' not found in the config file"), DisplayClusterStrings::cfg::data::mpcdi::Buffer);
 			return false;
 		}
 	}
 
 	// Region
-	if (!DisplayClusterHelpers::map::template ExtractValue(InConfigParameters, DisplayClusterMPCDIStrings::cfg::Region, OutConfig.RegionId))
+	if (!DisplayClusterHelpers::str::ExtractValue(ConfigLineStr, DisplayClusterStrings::cfg::data::mpcdi::Region, OutConfig.RegionId))
 	{
 		if (OutConfig.PFMFile.IsEmpty())
 		{
-			UE_LOG(LogMPCDI, Error, TEXT("Argument '%s' not found in the config file"), DisplayClusterMPCDIStrings::cfg::Region);
+			UE_LOG(LogMPCDI, Error, TEXT("Argument '%s' not found in the config file"), DisplayClusterStrings::cfg::data::mpcdi::Region);
 			return false;
 		}
 	}
 
 	// Filename
 	FString LocalMPCDIFileName;
-	if (DisplayClusterHelpers::map::template ExtractValue(InConfigParameters, DisplayClusterMPCDIStrings::cfg::File, LocalMPCDIFileName))
+	if (DisplayClusterHelpers::str::ExtractValue(ConfigLineStr, DisplayClusterStrings::cfg::data::mpcdi::File, LocalMPCDIFileName))
 	{
 		UE_LOG(LogMPCDI, Log, TEXT("Found mpcdi file name for %s:%s - %s"), *OutConfig.BufferId, *OutConfig.RegionId, *LocalMPCDIFileName);
 		OutConfig.MPCDIFileName = LocalMPCDIFileName;
@@ -423,17 +422,18 @@ bool FMPCDIModule::LoadConfig(const TMap<FString, FString>& InConfigParameters, 
 
 		if (OutConfig.BufferId.IsEmpty())
 		{
-			OutConfig.BufferId = DisplayClusterMPCDIStrings::cfg::PFMFileDefaultID;
+			OutConfig.BufferId = DisplayClusterStrings::cfg::data::mpcdi::PFMFileDefaultID;
 		}
 
 		if (OutConfig.MPCDIFileName.IsEmpty())
 		{
-			OutConfig.MPCDIFileName = DisplayClusterMPCDIStrings::cfg::PFMFileDefaultID;
+			OutConfig.MPCDIFileName = DisplayClusterStrings::cfg::data::mpcdi::PFMFileDefaultID;
 		}
 	}
 
+
 	// Origin node (optional)
-	if (DisplayClusterHelpers::map::template ExtractValue(InConfigParameters, DisplayClusterMPCDIStrings::cfg::Origin, OutConfig.OriginType))
+	if (DisplayClusterHelpers::str::ExtractValue(ConfigLineStr, DisplayClusterStrings::cfg::data::mpcdi::Origin, OutConfig.OriginType))
 	{
 		UE_LOG(LogMPCDI, Log, TEXT("Found origin node for %s:%s - %s"), *OutConfig.BufferId, *OutConfig.RegionId, *OutConfig.OriginType);
 	}
@@ -445,7 +445,7 @@ bool FMPCDIModule::LoadConfig(const TMap<FString, FString>& InConfigParameters, 
 	{
 		// MPCDIType (optional)
 		FString MPCDITypeStr;
-		if (!DisplayClusterHelpers::map::template ExtractValue(InConfigParameters, DisplayClusterMPCDIStrings::cfg::MPCDIType, MPCDITypeStr))
+		if (!DisplayClusterHelpers::str::ExtractValue(ConfigLineStr, DisplayClusterStrings::cfg::data::mpcdi::MPCDIType, MPCDITypeStr))
 		{
 			OutConfig.MPCDIType = IMPCDI::EMPCDIProfileType::mpcdi_A3D;
 		}
@@ -453,10 +453,10 @@ bool FMPCDIModule::LoadConfig(const TMap<FString, FString>& InConfigParameters, 
 		{
 			OutConfig.MPCDIType = IMPCDI::EMPCDIProfileType::Invalid;
 
-			static const TArray<FString> Profiles({"2d","3d","a3d","sl"});
-			for (int i = 0; i < Profiles.Num(); ++i)
+			static const TArray<FString> strEnum({"2d","3d","a3d","sl"});
+			for (int i = 0; i < strEnum.Num(); ++i)
 			{
-				if (!MPCDITypeStr.Compare(Profiles[i], ESearchCase::IgnoreCase))
+				if (!MPCDITypeStr.Compare(strEnum[i], ESearchCase::IgnoreCase))
 				{
 					OutConfig.MPCDIType = (EMPCDIProfileType)i;
 					break;
@@ -465,70 +465,50 @@ bool FMPCDIModule::LoadConfig(const TMap<FString, FString>& InConfigParameters, 
 
 			if (OutConfig.MPCDIType == IMPCDI::EMPCDIProfileType::Invalid)
 			{
-				UE_LOG(LogMPCDI, Error, TEXT("Argument '%s' has unknown value '%s'"), DisplayClusterMPCDIStrings::cfg::MPCDIType, *MPCDITypeStr);
+				UE_LOG(LogMPCDI, Error, TEXT("Argument '%s' has unknown value '%s'"), DisplayClusterStrings::cfg::data::mpcdi::MPCDIType, *MPCDITypeStr);
 				return false;
 			}
 		}
 		
 		// Default is UE scale, cm
 		OutConfig.PFMFileScale = 1;
-		if (DisplayClusterHelpers::map::template ExtractValueFromString(InConfigParameters, DisplayClusterMPCDIStrings::cfg::WorldScale, OutConfig.PFMFileScale))
+		if (DisplayClusterHelpers::str::ExtractValue(ConfigLineStr, DisplayClusterStrings::cfg::data::mpcdi::WorldScale, OutConfig.PFMFileScale))
 		{
 			UE_LOG(LogMPCDI, Log, TEXT("Found WorldScale value for %s:%s - %.f"), *OutConfig.BufferId, *OutConfig.RegionId, OutConfig.PFMFileScale);
 		}
-
 		OutConfig.bIsUnrealGameSpace = false;
-		if (DisplayClusterHelpers::map::template ExtractValueFromString(InConfigParameters, DisplayClusterMPCDIStrings::cfg::UseUnrealAxis, OutConfig.bIsUnrealGameSpace))
+		if (DisplayClusterHelpers::str::ExtractValue(ConfigLineStr, DisplayClusterStrings::cfg::data::mpcdi::UseUnrealAxis, OutConfig.bIsUnrealGameSpace))
 		{
 			UE_LOG(LogMPCDI, Log, TEXT("Found bIsUnrealGameSpace value for %s:%s - %s"), *OutConfig.BufferId, *OutConfig.RegionId, OutConfig.bIsUnrealGameSpace?"true":"false");
 		}
 
+
 		// AlphaFile file (optional)
 		FString LocalAlphaFile;
-		if (DisplayClusterHelpers::map::template ExtractValueFromString(InConfigParameters, DisplayClusterMPCDIStrings::cfg::FileAlpha, LocalAlphaFile))
+		if (DisplayClusterHelpers::str::ExtractValue(ConfigLineStr, DisplayClusterStrings::cfg::data::mpcdi::FileAlpha, LocalAlphaFile))
 		{
 			UE_LOG(LogMPCDI, Log, TEXT("Found external AlphaMap file for %s:%s - %s"), *OutConfig.BufferId, *OutConfig.RegionId, *LocalAlphaFile);
 			OutConfig.AlphaFile = LocalAlphaFile;
 		}
-
 		OutConfig.AlphaGamma = 1;
-		if (DisplayClusterHelpers::map::template ExtractValueFromString(InConfigParameters, DisplayClusterMPCDIStrings::cfg::AlphaGamma, OutConfig.AlphaGamma))
+		if (DisplayClusterHelpers::str::ExtractValue(ConfigLineStr, DisplayClusterStrings::cfg::data::mpcdi::AlphaGamma, OutConfig.AlphaGamma))
 		{
 			UE_LOG(LogMPCDI, Log, TEXT("Found AlphaGamma value for %s:%s - %.f"), *OutConfig.BufferId, *OutConfig.RegionId, OutConfig.AlphaGamma);
 		}
 
 		// BetaFile file (optional)
 		FString LocalBetaFile;
-		if (DisplayClusterHelpers::map::template ExtractValueFromString(InConfigParameters, DisplayClusterMPCDIStrings::cfg::FileBeta, LocalBetaFile))
+		if (DisplayClusterHelpers::str::ExtractValue(ConfigLineStr, DisplayClusterStrings::cfg::data::mpcdi::FileBeta, LocalBetaFile))
 		{
 			UE_LOG(LogMPCDI, Log, TEXT("Found external BetaMap file for %s:%s - %s"), *OutConfig.BufferId, *OutConfig.RegionId, *LocalBetaFile);
 			OutConfig.BetaFile = LocalBetaFile;
 		}
+		
 	}
 
 	return true;
 }
 
-bool FMPCDIModule::GetMPCDIMeshData(const FString& MPCDIFile, const FString& BufferName, const FString& RegionName, FMPCDIGeometryExportData& MeshData)
-{
-	IMPCDI::FRegionLocator RegionLocator;
-	const bool bResult = GetRegionLocator(MPCDIFile, BufferName, RegionName, RegionLocator);
-	if (bResult)
-	{
-		IMPCDI::FShaderInputData ShaderInputData;
-		ShaderInputData.RegionLocator = RegionLocator;
-		
-		TSharedPtr<FMPCDIData> MpcdiData = GetMPCDIData(ShaderInputData);
-		if (MpcdiData.IsValid())
-		{
-			if (FMPCDIRegion* Region = MpcdiData.Get()->GetRegion(RegionLocator))
-			{
-				return ExportMeshData(Region, MeshData);
-			}
-		}
-	}
-
-	return false;
-}
 
 IMPLEMENT_MODULE(FMPCDIModule, MPCDI);
+

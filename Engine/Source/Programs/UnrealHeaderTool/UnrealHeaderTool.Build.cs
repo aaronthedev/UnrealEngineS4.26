@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -21,14 +21,11 @@ public class UnrealHeaderTool : ModuleRules
 		PrivateIncludePaths.AddRange(
 			new string[]
 			{
-				// For LaunchEngineLoop.cpp includes
+				// For LaunchEngineLoop.cpp include
 				"Runtime/Launch/Private",
-				"Runtime/RHI/Public",
 				"Programs/UnrealHeaderTool/Private",
 			});
 		
 		bEnableExceptions = true;
-
-		UnsafeTypeCastWarningLevel = WarningLevel.Warning;
 	}
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Commandlets/GatherTextFromAssetsCommandlet.h"
 #include "UObject/Class.h"
@@ -795,8 +795,7 @@ int32 UGatherTextFromAssetsCommandlet::Main(const FString& Params)
 				{
 					// Look for any structurally significant changes (missing, added, or changed texts) in the cache
 					// Ignore insignificant things (like source changes caused by assets moving or being renamed)
-					if (EnumHasAnyFlags(GatherableTextResultFlags, EPropertyLocalizationGathererResultFlags::HasTextWithInvalidPackageLocalizationID) 
-						|| !IsGatherableTextDataIdentical(GatherableTextDataArray, PackagePendingGather.GatherableTextDataArray))
+					if (!IsGatherableTextDataIdentical(GatherableTextDataArray, PackagePendingGather.GatherableTextDataArray))
 					{
 						PackagesWithStaleGatherCache.Add(PackagePendingGather.PackageName);
 						

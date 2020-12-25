@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -95,7 +95,6 @@ namespace mi
 	{
 		class INeuray;
 		class IMdl_compiler;
-		class IMdl_configuration;
 		class IDatabase;
 		class IMdl_factory;
 	}
@@ -134,14 +133,13 @@ namespace Mdl
 		void LogInfo();
 
 	private:
-		void*										        DsoHandle;
-		mi::base::Handle<mi::neuraylib::INeuray>	        NeurayHandle;
-		mi::base::Handle<mi::neuraylib::IMdl_configuration> ConfigHandle;
-		mi::base::Handle<mi::neuraylib::IMdl_compiler>      CompilerHandle;
-		mi::base::Handle<mi::neuraylib::IDatabase>          DatabaseHandle;
-		mi::base::Handle<mi::neuraylib::IMdl_factory>       FactoryHandle;
-		TUniquePtr<FMaterialDistiller>                      DistillerPtr;
-		FLogger*                                            LoggerPtr;
+		void*                                          DsoHandle;
+		mi::base::Handle<mi::neuraylib::INeuray>       NeurayHandle;
+		mi::base::Handle<mi::neuraylib::IMdl_compiler> CompilerHandle;
+		mi::base::Handle<mi::neuraylib::IDatabase>     DatabaseHandle;
+		mi::base::Handle<mi::neuraylib::IMdl_factory>  FactoryHandle;
+		TUniquePtr<FMaterialDistiller>                 DistillerPtr;
+		FLogger*                                       LoggerPtr;
 
 		friend mi::neuraylib::IMdl_factory* Detail::GetFactory(const IApiContext& Context);
 	};

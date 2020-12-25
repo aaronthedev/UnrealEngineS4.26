@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -36,7 +36,7 @@ namespace EAnimLinkMethod
  *		@see FAnimNotifyEvent
  */
 USTRUCT()
-struct FAnimLinkableElement
+struct ENGINE_VTABLE FAnimLinkableElement
 {
 	GENERATED_USTRUCT_BODY()
 

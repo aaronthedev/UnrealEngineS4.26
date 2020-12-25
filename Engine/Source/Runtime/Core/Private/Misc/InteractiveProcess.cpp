@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Misc/InteractiveProcess.h"
 #include "HAL/RunnableThread.h"
@@ -32,18 +32,11 @@ static FORCEINLINE bool CreatePipeWrite(void*& ReadPipe, void*& WritePipe)
 DEFINE_LOG_CATEGORY(LogInteractiveProcess);
 
 FInteractiveProcess::FInteractiveProcess(const FString& InURL, const FString& InParams, bool InHidden, bool LongTime)
-	: FInteractiveProcess(InURL, InParams, FString(), InHidden, LongTime)
-{
-
-}
-
-FInteractiveProcess::FInteractiveProcess(const FString& InURL, const FString& InParams, const FString& InWorkingDir, bool InHidden, bool LongTime)
 	: bCanceling(false)
 	, bHidden(InHidden)
 	, bKillTree(false)
 	, URL(InURL)
 	, Params(InParams)
-	, WorkingDir(InWorkingDir)
 	, ReadPipeParent(nullptr)
 	, WritePipeParent(nullptr)
 	, ReadPipeChild(nullptr)
@@ -105,7 +98,7 @@ bool FInteractiveProcess::Launch()
 		return false;
 	}
 
-	ProcessHandle = FPlatformProcess::CreateProc(*URL, *Params, false, bHidden, bHidden, nullptr, 0, WorkingDir.IsEmpty() ? nullptr : *WorkingDir, WritePipeChild, ReadPipeChild);
+	ProcessHandle = FPlatformProcess::CreateProc(*URL, *Params, false, bHidden, bHidden, nullptr, 0, nullptr, WritePipeChild, ReadPipeChild);
 
 	if (ProcessHandle.IsValid() == false)
 	{

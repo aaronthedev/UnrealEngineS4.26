@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -10,24 +10,6 @@ namespace UnrealBuildTool.Rules
 			PrivateIncludePaths.Add("Runtime/Navmesh/Private");
 
             PrivateDependencyModuleNames.AddRange(new string[] { "Core" });
-
-			if (Target.bCompileNavmeshSegmentLinks)
-			{
-				PublicDefinitions.Add("WITH_NAVMESH_SEGMENT_LINKS=1");
-			}
-			else
-			{
-				PublicDefinitions.Add("WITH_NAVMESH_SEGMENT_LINKS=0");
-			}
-
-			if (Target.bCompileNavmeshClusterLinks)
-			{
-				PublicDefinitions.Add("WITH_NAVMESH_CLUSTER_LINKS=1");
-			}
-			else
-			{
-				PublicDefinitions.Add("WITH_NAVMESH_CLUSTER_LINKS=0");
-			}
 		}
 	}
 }

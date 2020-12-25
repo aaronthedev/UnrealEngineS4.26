@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #if WITH_EDITOR
 
@@ -106,6 +106,7 @@ void RenderEditorPrimitives(FRHICommandListImmediate& RHICmdList, const FViewInf
 		for (int32 MeshIndex = 0; MeshIndex < NumDynamicEditorMeshBatches; MeshIndex++)
 		{
 			const FMeshBatchAndRelevance& MeshAndRelevance = View.DynamicEditorMeshElements[MeshIndex];
+			check(!MeshAndRelevance.Mesh->bRequiresPerElementVisibility);
 
 			if (MeshAndRelevance.GetHasOpaqueOrMaskedMaterial() || View.Family->EngineShowFlags.Wireframe)
 			{
@@ -132,6 +133,8 @@ void RenderEditorPrimitives(FRHICommandListImmediate& RHICmdList, const FViewInf
 
 void RenderForegroundEditorPrimitives(FRHICommandListImmediate& RHICmdList, const FViewInfo& View, FMeshPassProcessorRenderState& DrawRenderState)
 {
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+
 	const auto FeatureLevel = View.GetFeatureLevel();
 	const auto ShaderPlatform = GShaderPlatformForFeatureLevel[FeatureLevel];
 	const bool bNeedToSwitchVerticalAxis = RHINeedsToSwitchVerticalAxis(ShaderPlatform);
@@ -226,15 +229,15 @@ const FViewInfo* UpdateEditorPrimitiveView(
 	TUniquePtr<FViewUniformShaderParameters> ViewParameters = MakeUnique<FViewUniformShaderParameters>();
 	EditorView->SetupUniformBufferParameters(SceneContext, VolumeBounds, TVC_MAX, *ViewParameters);
 	ViewParameters->NumSceneColorMSAASamples = SceneContext.GetEditorMSAACompositingSampleCount();
+
 	EditorView->CachedViewUniformShaderParameters = MoveTemp(ViewParameters);
+
+	SceneUniformBuffers.UpdateViewUniformBufferImmediate(*EditorView->CachedViewUniformShaderParameters);
+
 	EditorView->ViewUniformBuffer = SceneUniformBuffers.ViewUniformBuffer;
+
 	return EditorView;
 }
-
-BEGIN_SHADER_PARAMETER_STRUCT(FEditorPrimitivesPassParameters, )
-	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FOpaqueBasePassUniformParameters, BasePass)
-	RENDER_TARGET_BINDING_SLOTS()
-END_SHADER_PARAMETER_STRUCT()
 
 FScreenPassTexture AddEditorPrimitivePass(
 	FRDGBuilder& GraphBuilder,
@@ -248,21 +251,21 @@ FScreenPassTexture AddEditorPrimitivePass(
 	RDG_EVENT_SCOPE(GraphBuilder, "CompositeEditorPrimitives");
 
 	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
-	FPersistentUniformBuffers& SceneUniformBuffers = View.Family->Scene->GetRenderScene()->UniformBuffers;
 
-	const FViewInfo* EditorView = UpdateEditorPrimitiveView(SceneUniformBuffers, SceneContext, View, Inputs.SceneColor.ViewRect);
+	FScene* Scene = View.Family->Scene->GetRenderScene();
+
+	const FViewInfo* EditorView = UpdateEditorPrimitiveView(Scene->UniformBuffers, SceneContext, View, Inputs.SceneColor.ViewRect);
 
 	const uint32 MSAASampleCount = SceneContext.GetEditorMSAACompositingSampleCount();
 
-	// Load the color target if it already exists.
-	const ERenderTargetLoadAction CompositeLoadAction = SceneContext.EditorPrimitivesColor ? ERenderTargetLoadAction::ELoad : ERenderTargetLoadAction::EClear;
+	const ERenderTargetLoadAction CompositeLoadAction = IsValidRef(SceneContext.EditorPrimitivesColor) ? ERenderTargetLoadAction::ELoad : ERenderTargetLoadAction::EClear;
 
 	// These get calls will initialize the targets if they are null.
 	SceneContext.GetEditorPrimitivesColor(GraphBuilder.RHICmdList);
 	SceneContext.GetEditorPrimitivesDepth(GraphBuilder.RHICmdList);
 
-	FRDGTextureRef EditorPrimitivesColor = GraphBuilder.RegisterExternalTexture(SceneContext.EditorPrimitivesColor);
-	FRDGTextureRef EditorPrimitivesDepth = GraphBuilder.RegisterExternalTexture(SceneContext.EditorPrimitivesDepth);
+	FRDGTextureRef EditorPrimitivesColor = GraphBuilder.RegisterExternalTexture(SceneContext.EditorPrimitivesColor, TEXT("EditorPrimitivesColor"));
+	FRDGTextureRef EditorPrimitivesDepth = GraphBuilder.RegisterExternalTexture(SceneContext.EditorPrimitivesDepth, TEXT("EditorPrimitivesDepth"));
 
 	SceneContext.CleanUpEditorPrimitiveTargets();
 
@@ -274,93 +277,100 @@ FScreenPassTexture AddEditorPrimitivePass(
 	{
 		const FScreenPassTextureViewport SceneDepthViewport(Inputs.SceneDepth);
 
-		const bool bPopulateDepth = EditorPrimitivesDepth && CompositeLoadAction == ERenderTargetLoadAction::EClear;
+		const bool bPopulateEditorDepth = EditorPrimitivesDepth && CompositeLoadAction == ERenderTargetLoadAction::EClear;
 
-		if (bPopulateDepth)
+		FPopulateEditorDepthPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FPopulateEditorDepthPS::FParameters>();
+		PassParameters->View = View.ViewUniformBuffer;
+
+		if (bPopulateEditorDepth)
 		{
-			FPopulateEditorDepthPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FPopulateEditorDepthPS::FParameters>();
-			PassParameters->View = View.ViewUniformBuffer;
 			PassParameters->Depth = GetScreenPassTextureViewportParameters(SceneDepthViewport);
 			PassParameters->DepthTexture = Inputs.SceneDepth.Texture;
 			PassParameters->DepthSampler = TStaticSamplerState<SF_Point, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
-			PassParameters->RenderTargets[0] = FRenderTargetBinding(EditorPrimitivesColor, ERenderTargetLoadAction::EClear);
-			PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(EditorPrimitivesDepth, ERenderTargetLoadAction::EClear, ERenderTargetLoadAction::EClear, FExclusiveDepthStencil::DepthWrite_StencilWrite);
-
-			FPopulateEditorDepthPS::FPermutationDomain PermutationVector;
-			PermutationVector.Set<FPopulateEditorDepthPS::FUseMSAADimension>(MSAASampleCount > 1);
-			TShaderMapRef<FPopulateEditorDepthPS> PopulateDepthPixelShader(View.ShaderMap, PermutationVector);
-			TShaderMapRef<FScreenPassVS> PopulateDepthVertexShader(View.ShaderMap);
-
-			AddDrawScreenPass(
-				GraphBuilder,
-				RDG_EVENT_NAME("PopulateDepth"),
-				View,
-				EditorPrimitivesViewport,
-				SceneDepthViewport,
-				PopulateDepthVertexShader,
-				PopulateDepthPixelShader,
-				TStaticDepthStencilState<true, CF_Always>::GetRHI(),
-				PassParameters);
 		}
 
-		{
-			FEditorPrimitivesPassParameters* PassParameters = GraphBuilder.AllocParameters<FEditorPrimitivesPassParameters>();
-			PassParameters->RenderTargets[0] = FRenderTargetBinding(EditorPrimitivesColor, bPopulateDepth ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad);
+		PassParameters->RenderTargets[0] = FRenderTargetBinding(EditorPrimitivesColor, CompositeLoadAction);
 
-			if (EditorPrimitivesDepth)
+		if (EditorPrimitivesDepth)
+		{
+			PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(
+				EditorPrimitivesDepth,
+				CompositeLoadAction,
+				CompositeLoadAction,
+				FExclusiveDepthStencil::DepthWrite_StencilWrite);
+		}
+
+		FPopulateEditorDepthPS::FPermutationDomain PermutationVector;
+		PermutationVector.Set<FPopulateEditorDepthPS::FUseMSAADimension>(MSAASampleCount > 1);
+		TShaderMapRef<FPopulateEditorDepthPS> PopulateDepthPixelShader(View.ShaderMap, PermutationVector);
+
+		const FEditorPrimitiveInputs::EBasePassType BasePassType = Inputs.BasePassType;
+
+		GraphBuilder.AddPass(
+			RDG_EVENT_NAME("EditorPrimitives"),
+			PassParameters,
+			ERDGPassFlags::Raster,
+			[&View, PassParameters, EditorView, EditorPrimitivesViewport, SceneDepthViewport, bPopulateEditorDepth, PopulateDepthPixelShader, BasePassType, MSAASampleCount] (FRHICommandListImmediate& RHICmdList)
+		{
+			if (bPopulateEditorDepth)
 			{
-				PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(EditorPrimitivesDepth, ERenderTargetLoadAction::ELoad, ERenderTargetLoadAction::ELoad, FExclusiveDepthStencil::DepthWrite_StencilWrite);
+				TShaderMapRef<FScreenPassVS> PopulateDepthVertexShader(View.ShaderMap);
+				DrawScreenPass(
+					RHICmdList,
+					View,
+					EditorPrimitivesViewport,
+					SceneDepthViewport,
+					FScreenPassPipelineState(*PopulateDepthVertexShader, *PopulateDepthPixelShader, FScreenPassPipelineState::FDefaultBlendState::GetRHI(), TStaticDepthStencilState<true, CF_Always>::GetRHI()),
+					EScreenPassDrawFlags::None,
+					[&](FRHICommandList&)
+				{
+					SetShaderParameters(RHICmdList, *PopulateDepthPixelShader, PopulateDepthPixelShader->GetPixelShader(), *PassParameters);
+				});
+			}
+			else
+			{
+				RHICmdList.SetViewport(EditorPrimitivesViewport.Rect.Min.X, EditorPrimitivesViewport.Rect.Min.Y, 0.0f, EditorPrimitivesViewport.Rect.Max.X, EditorPrimitivesViewport.Rect.Max.Y, 1.0f);
 			}
 
-			const FEditorPrimitiveInputs::EBasePassType BasePassType = Inputs.BasePassType;
+			TUniformBufferRef<FOpaqueBasePassUniformParameters> OpaqueBasePassUniformBuffer;
+			TUniformBufferRef<FMobileBasePassUniformParameters> MobileBasePassUniformBuffer;
+			FRHIUniformBuffer* BasePassUniformBuffer = nullptr;
 
 			if (BasePassType == FEditorPrimitiveInputs::EBasePassType::Deferred)
 			{
-				PassParameters->BasePass = CreateOpaqueBasePassUniformBuffer(GraphBuilder, *EditorView, nullptr, nullptr, 0);
+				CreateOpaqueBasePassUniformBuffer(RHICmdList, *EditorView, nullptr, nullptr, nullptr, nullptr, OpaqueBasePassUniformBuffer);
+				BasePassUniformBuffer = OpaqueBasePassUniformBuffer;
+			}
+			else
+			{
+				CreateMobileBasePassUniformBuffer(RHICmdList, *EditorView, true, MobileBasePassUniformBuffer);
+				BasePassUniformBuffer = MobileBasePassUniformBuffer;
 			}
 
-			GraphBuilder.AddPass(
-				RDG_EVENT_NAME("EditorPrimitives"),
-				PassParameters,
-				ERDGPassFlags::Raster,
-				[&View, PassParameters, EditorView, &SceneUniformBuffers, EditorPrimitivesViewport, SceneDepthViewport, BasePassType, MSAASampleCount](FRHICommandListImmediate& RHICmdList)
+			FMeshPassProcessorRenderState DrawRenderState(*EditorView, BasePassUniformBuffer);
+			DrawRenderState.SetDepthStencilAccess(FExclusiveDepthStencil::DepthWrite_StencilWrite);
+			DrawRenderState.SetBlendState(TStaticBlendStateWriteMask<CW_RGBA>::GetRHI());
+
+			RenderEditorPrimitives(RHICmdList, *EditorView, DrawRenderState);
+
+			// Draw editor primitives.
 			{
-				SceneUniformBuffers.UpdateViewUniformBufferImmediate(*EditorView->CachedViewUniformShaderParameters);
+				SCOPED_DRAW_EVENTF(RHICmdList, EditorPrimitives,
+					TEXT("RenderViewEditorPrimitives %dx%d msaa=%d"),
+					EditorPrimitivesViewport.Rect.Width(), EditorPrimitivesViewport.Rect.Height(), MSAASampleCount);
 
-				RHICmdList.SetViewport(EditorPrimitivesViewport.Rect.Min.X, EditorPrimitivesViewport.Rect.Min.Y, 0.0f, EditorPrimitivesViewport.Rect.Max.X, EditorPrimitivesViewport.Rect.Max.Y, 1.0f);
+				RenderEditorPrimitives(RHICmdList, *EditorView, DrawRenderState);
+			}
 
-				TUniformBufferRef<FMobileBasePassUniformParameters> MobileBasePassUniformBuffer;
-				FRHIUniformBuffer* BasePassUniformBuffer = nullptr;
+			// Draw foreground editor primitives.
+			{
+				SCOPED_DRAW_EVENTF(RHICmdList, EditorPrimitives,
+					TEXT("RenderViewEditorForegroundPrimitives %dx%d msaa=%d"),
+					EditorPrimitivesViewport.Rect.Width(), EditorPrimitivesViewport.Rect.Height(), MSAASampleCount);
 
-				if (BasePassType == FEditorPrimitiveInputs::EBasePassType::Mobile)
-				{
-					CreateMobileBasePassUniformBuffer(RHICmdList, *EditorView, true, false, MobileBasePassUniformBuffer);
-					BasePassUniformBuffer = MobileBasePassUniformBuffer;
-				}
-
-				FMeshPassProcessorRenderState DrawRenderState(*EditorView, BasePassUniformBuffer);
-				DrawRenderState.SetDepthStencilAccess(FExclusiveDepthStencil::DepthWrite_StencilWrite);
-				DrawRenderState.SetBlendState(TStaticBlendStateWriteMask<CW_RGBA>::GetRHI());
-
-				// Draw editor primitives.
-				{
-					SCOPED_DRAW_EVENTF(RHICmdList, EditorPrimitives,
-						TEXT("RenderViewEditorPrimitives %dx%d msaa=%d"),
-						EditorPrimitivesViewport.Rect.Width(), EditorPrimitivesViewport.Rect.Height(), MSAASampleCount);
-
-					RenderEditorPrimitives(RHICmdList, *EditorView, DrawRenderState);
-				}
-
-				// Draw foreground editor primitives.
-				{
-					SCOPED_DRAW_EVENTF(RHICmdList, EditorPrimitives,
-						TEXT("RenderViewEditorForegroundPrimitives %dx%d msaa=%d"),
-						EditorPrimitivesViewport.Rect.Width(), EditorPrimitivesViewport.Rect.Height(), MSAASampleCount);
-
-					RenderForegroundEditorPrimitives(RHICmdList, *EditorView, DrawRenderState);
-				}
-			});
-		}
+				RenderForegroundEditorPrimitives(RHICmdList, *EditorView, DrawRenderState);
+			}
+		});
 	}
 
 	FScreenPassRenderTarget Output = Inputs.OverrideOutput;
@@ -403,10 +413,51 @@ FScreenPassTexture AddEditorPrimitivePass(
 		View,
 		OutputViewport,
 		ColorViewport,
-		PixelShader,
+		*PixelShader,
 		PassParameters);
 
 	return MoveTemp(Output);
+}
+
+FRenderingCompositeOutputRef AddEditorPrimitivePass(
+	FRenderingCompositionGraph& Graph,
+	FRenderingCompositeOutputRef Input,
+	FEditorPrimitiveInputs::EBasePassType BasePassType)
+{
+	FRenderingCompositePass* Pass = Graph.RegisterPass(
+		new(FMemStack::Get()) TRCPassForRDG<1, 1>(
+			[BasePassType](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
+	{
+		FRDGBuilder GraphBuilder(InContext.RHICmdList);
+
+		FRDGTextureRef SceneColorTexture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
+		const FIntRect SceneColorViewRect = InContext.GetSceneColorDestRect(InPass);
+
+		const FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
+		FRDGTextureRef SceneDepthTexture = GraphBuilder.RegisterExternalTexture(SceneContext.SceneDepthZ, TEXT("SceneDepthZ"));
+
+		FEditorPrimitiveInputs Inputs;
+		Inputs.SceneColor.Texture = SceneColorTexture;
+		Inputs.SceneColor.ViewRect = SceneColorViewRect;
+		Inputs.SceneDepth.Texture = SceneDepthTexture;
+		Inputs.SceneDepth.ViewRect = InContext.View.ViewRect;
+		Inputs.BasePassType = BasePassType;
+
+		if (FRDGTextureRef OutputTexture = InPass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("BackBuffer")))
+		{
+			Inputs.OverrideOutput.Texture = OutputTexture;
+			Inputs.OverrideOutput.ViewRect = InContext.GetSceneColorDestRect(InPass->GetOutput(ePId_Output0)->PooledRenderTarget->GetRenderTargetItem());
+			Inputs.OverrideOutput.LoadAction = InContext.View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
+		}
+
+		FScreenPassTexture Outputs = AddEditorPrimitivePass(GraphBuilder, InContext.View, Inputs);
+
+		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, Outputs.Texture);
+
+		GraphBuilder.Execute();
+	}));
+	Pass->SetInput(ePId_Input0, Input);
+	return Pass;
 }
 
 #endif

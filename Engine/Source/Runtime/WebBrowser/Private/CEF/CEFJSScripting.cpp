@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CEF/CEFJSScripting.h"
 
@@ -250,8 +250,8 @@ bool FCEFJSScripting::HandleExecuteUObjectMethodMessage(CefRefPtr<CefListValue> 
 	// Coerce arguments to function arguments.
 	uint16 ParamsSize = Function->ParmsSize;
 	uint8* Params  = nullptr;
-	FProperty* ReturnParam = nullptr;
-	FProperty* PromiseParam = nullptr;
+	UProperty* ReturnParam = nullptr;
+	UProperty* PromiseParam = nullptr;
 
 	if (ParamsSize > 0)
 	{
@@ -259,9 +259,9 @@ bool FCEFJSScripting::HandleExecuteUObjectMethodMessage(CefRefPtr<CefListValue> 
 		CefRefPtr<CefDictionaryValue> NamedArgs = CefDictionaryValue::Create();
 		int32 CurrentArg = 0;
 		CefRefPtr<CefListValue> CefArgs = MessageArguments->GetList(3);
-		for ( TFieldIterator<FProperty> It(Function); It; ++It )
+		for ( TFieldIterator<UProperty> It(Function); It; ++It )
 		{
-			FProperty* Param = *It;
+			UProperty* Param = *It;
 			if (Param->PropertyFlags & CPF_Parm)
 			{
 				if (Param->PropertyFlags & CPF_ReturnParm)
@@ -270,7 +270,7 @@ bool FCEFJSScripting::HandleExecuteUObjectMethodMessage(CefRefPtr<CefListValue> 
 				}
 				else
 				{
-					FStructProperty *StructProperty = CastField<FStructProperty>(Param);
+					UStructProperty *StructProperty = Cast<UStructProperty>(Param);
 					if (StructProperty && StructProperty->Struct->IsChildOf(FWebJSResponse::StaticStruct()))
 					{
 						PromiseParam = Param;
@@ -309,7 +309,7 @@ bool FCEFJSScripting::HandleExecuteUObjectMethodMessage(CefRefPtr<CefListValue> 
 		if ( ReturnParam )
 		{
 			FStructSerializerPolicies ReturnPolicies;
-			ReturnPolicies.PropertyFilter = [&](const FProperty* CandidateProperty, const FProperty* ParentProperty)
+			ReturnPolicies.PropertyFilter = [&](const UProperty* CandidateProperty, const UProperty* ParentProperty)
 			{
 				return ParentProperty != nullptr || CandidateProperty == ReturnParam;
 			};

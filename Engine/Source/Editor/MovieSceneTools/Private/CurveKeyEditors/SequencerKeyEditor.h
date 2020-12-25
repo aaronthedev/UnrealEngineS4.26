@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -63,7 +63,7 @@ struct TSequencerKeyEditor
 
 	ValueType GetCurrentValue() const
 	{
-		using namespace UE::MovieScene;
+		using namespace MovieScene;
 
 		ChannelType* Channel = ChannelHandle.Get();
 		ISequencer* Sequencer = WeakSequencer.Pin().Get();
@@ -73,7 +73,7 @@ struct TSequencerKeyEditor
 
 		if (Channel && Sequencer && OwningSection)
 		{
-			const FFrameTime CurrentTime = UE::MovieScene::ClampToDiscreteRange(Sequencer->GetLocalTime().Time, OwningSection->GetRange());
+			const FFrameTime CurrentTime = MovieScene::ClampToDiscreteRange(Sequencer->GetLocalTime().Time, OwningSection->GetRange());
 			//If we have no keys and no default, key with the external value if it exists
 			if (!EvaluateChannel(Channel, CurrentTime, Result))
 			{
@@ -92,7 +92,7 @@ struct TSequencerKeyEditor
 
 	void SetValue(const ValueType& InValue)
 	{
-		using namespace UE::MovieScene;
+		using namespace MovieScene;
 		using namespace Sequencer;
 
 		UMovieSceneSection* OwningSection = WeakSection.Get();
@@ -153,10 +153,6 @@ struct TSequencerKeyEditor
 		{
 			SetChannelDefault(Channel, InValue);
 		}
-		 
-		const FMovieSceneChannelMetaData* MetaData = ChannelHandle.GetMetaData();
-		Sequencer->OnChannelChanged().Broadcast(MetaData, OwningSection);
-
 	}
 
 	void SetValueWithNotify(const ValueType& InValue, EMovieSceneDataChangeType NotifyType = EMovieSceneDataChangeType::TrackValueChanged)

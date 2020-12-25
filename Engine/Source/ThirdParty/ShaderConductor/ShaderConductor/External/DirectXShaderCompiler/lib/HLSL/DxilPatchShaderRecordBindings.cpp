@@ -91,7 +91,7 @@ struct ShaderRecordEntry {
   unsigned int RecordOffsetInBytes;
   unsigned int OffsetInDescriptors; // Only valid for descriptor tables
 
-  static ShaderRecordEntry InvalidEntry() { return { (DxilRootParameterType)-1, (unsigned int)-1, 0 }; }
+  static ShaderRecordEntry InvalidEntry() { return { (DxilRootParameterType)-1, (unsigned int)-1 }; }
   bool IsInvalid() { return (unsigned int)ParameterType == (unsigned int)-1; }
 };
 
@@ -176,7 +176,7 @@ private:
   llvm::Function *EntryPointFunction;
 
   ShaderInfo *pInputShaderInfo;
-  const DxilVersionedRootSignatureDesc *pRootSignatureDesc;
+  DxilVersionedRootSignatureDesc *pRootSignatureDesc;
   DXIL::ShaderKind ShaderKind;
 };
 
@@ -222,7 +222,7 @@ void DxilPatchShaderRecordBindings::applyOptions(PassOptions O) {
     if (0 == option.first.compare("root-signature")) {
       unsigned int cHexRadix = 16;
       pInputShaderInfo = (ShaderInfo*)strtoull(option.second.data(), nullptr, cHexRadix);
-      pRootSignatureDesc = (const DxilVersionedRootSignatureDesc*)pInputShaderInfo->pRootSignatureDesc;
+      pRootSignatureDesc = (DxilVersionedRootSignatureDesc*)pInputShaderInfo->pRootSignatureDesc;
     }
   }
 }
@@ -386,6 +386,11 @@ DXIL::ShaderKind GetRayShaderKindCopy(Function* F)
     return DXIL::ShaderKind::Invalid;
 }
 
+static std::string ws2s(const std::wstring& wide)
+{
+    return std::string(wide.begin(), wide.end());
+}
+
 bool DxilPatchShaderRecordBindings::runOnModule(Module &M) {
   DxilModule &DM = M.GetOrCreateDxilModule();
   EntryPointFunction = pInputShaderInfo->ExportName ? getFunctionFromName(M, pInputShaderInfo->ExportName) : DM.GetEntryFunction();
@@ -457,7 +462,7 @@ llvm::Value *DxilPatchShaderRecordBindings::GetAliasedDescriptorHeapHandle(Modul
     
     ViewKey key = {};
     key.ViewType = (unsigned int)resKind;
-    if (DXIL::IsStructuredBuffer(resKind))
+    if (resKind == DXIL::ResourceKind::StructuredBuffer)
     {
       key.StructuredStride = type->getPrimitiveSizeInBits();
     } else if (resKind != DXIL::ResourceKind::RawBuffer)
@@ -519,6 +524,7 @@ llvm::Value *DxilPatchShaderRecordBindings::GetAliasedDescriptorHeapHandle(Modul
 
 
         llvm::ArrayType *descriptorHeapType = ArrayType::get(type, 0);
+        static unsigned int i = 0;
         unsigned int id = AddAliasedHandle(M, FallbackLayerDescriptorHeapTable, FallbackLayerRegisterSpace + FallbackLayerDescriptorHeapSpaceOffset + registerSpaceOffset, resClass, resKind, HandleName, descriptorHeapType);
         
         TypeToAliasedDescriptorHeap[resClassIndex][key] = GetResourceFromID(DM, resClass, id).GetGlobalSymbol();
@@ -689,7 +695,7 @@ bool DxilPatchShaderRecordBindings::IsCBufferLoad(llvm::Instruction *instruction
   return cbufferLoad || cbufferLoadLegacy;
 }
 
-unsigned int GetResolvedRangeID(DXIL::ResourceClass resClass, Value *rangeIdVal)
+const unsigned int GetResolvedRangeID(DXIL::ResourceClass resClass, Value *rangeIdVal)
 {
   if (auto CI = dyn_cast<ConstantInt>(rangeIdVal))
   {
@@ -848,6 +854,7 @@ void DxilPatchShaderRecordBindings::PatchShaderBindings(Module &M) {
   std::vector<llvm::Instruction *> instructionsToRemove;
   for (BasicBlock &block : EntryPointFunction->getBasicBlockList()) {
     auto & Instructions = block.getInstList();
+    auto It = Instructions.begin();
 
     for (auto &instr : Instructions) {
       DxilInst_CreateHandleForLib createHandleForLib(&instr);
@@ -1076,7 +1083,7 @@ ShaderRecordEntry FindRootSignatureDescriptorHelper(
                                                        dxilParamType) &&
             baseRegisterIndex == rootParam.Constants.ShaderRegister &&
             registerSpace == rootParam.Constants.RegisterSpace) {
-          return {dxilParamType, recordOffset, 0};
+          return {dxilParamType, recordOffset};
         }
         recordOffset += rootParam.Constants.Num32BitValues * sizeof(uint32_t);
         break;
@@ -1087,7 +1094,7 @@ ShaderRecordEntry FindRootSignatureDescriptorHelper(
         for (unsigned int rangeIndex = 0;
              rangeIndex < descriptorTable.NumDescriptorRanges; rangeIndex++) {
           auto &range = descriptorTable.pDescriptorRanges[rangeIndex];
-          if (range.OffsetInDescriptorsFromTableStart != (unsigned)-1) {
+          if (range.OffsetInDescriptorsFromTableStart != -1) {
             rangeOffsetInDescriptors = range.OffsetInDescriptorsFromTableStart;
           }
 
@@ -1114,7 +1121,7 @@ ShaderRecordEntry FindRootSignatureDescriptorHelper(
                                                        dxilParamType) &&
             baseRegisterIndex == rootParam.Descriptor.ShaderRegister &&
             registerSpace == rootParam.Descriptor.RegisterSpace) {
-          return {dxilParamType, recordOffset, 0};
+          return {dxilParamType, recordOffset};
         }
 
         recordOffset += SizeofD3D12GpuVA;

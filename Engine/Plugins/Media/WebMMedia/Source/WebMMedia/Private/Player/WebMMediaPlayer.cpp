@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WebMMediaPlayer.h"
 
@@ -78,10 +78,10 @@ FString FWebMMediaPlayer::GetInfo() const
 	return TEXT("WebMMedia information not implemented yet");
 }
 
-FGuid FWebMMediaPlayer::GetPlayerPluginGUID() const
+FName FWebMMediaPlayer::GetPlayerName() const
 {
-	static FGuid PlayerPluginGUID(0xdfbb4e57, 0x07dc4b4a, 0xa25b5cba, 0x0f963ac3);
-	return PlayerPluginGUID;
+	static FName PlayerName(TEXT("WebMMedia"));
+	return PlayerName;
 }
 
 IMediaSamples& FWebMMediaPlayer::GetSamples()

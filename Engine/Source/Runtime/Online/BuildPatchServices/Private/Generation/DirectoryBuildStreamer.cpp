@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "Generation/BuildStreamer.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -84,7 +84,6 @@ namespace BuildPatchServices
 		virtual TArray<FString> GetAllFilenames() const override;
 		virtual uint64 GetBuildSize() const override;
 		virtual TArray<FFileSpan> GetAllFiles() const override;
-		virtual bool HasAborted() const override;
 		// IDirectoryBuildStreamer interface end.
 
 	private:
@@ -275,11 +274,6 @@ namespace BuildPatchServices
 		return AllFiles;
 	}
 
-	bool FDirectoryBuildStreamer::HasAborted() const
-	{
-		return bShouldAbort;
-	}
-
 	void FDirectoryBuildStreamer::ReadData()
 	{
 		// Stats
@@ -337,13 +331,7 @@ namespace BuildPatchServices
 			FString SymlinkTarget = GetSymlinkTarget(*SourceFile);
 			FStatsCollector::AccumulateTimeEnd(StatFileOpenTime, TempValue);
 			// Not being able to load a required file from the build would be fatal, hard fault.
-			if(!FileReader.IsValid())
-			{
-				UE_LOG(LogBuildStreamer, Error, TEXT("Failed to open file reader for %s"), *SourceFile);
-				bShouldAbort = true;
-				break;
-			}
-
+			checkf(FileReader.IsValid(), TEXT("Could not open file from build! %s"), *SourceFile);
 			// Make SourceFile the format we want it in and start a new file.
 			FPaths::MakePathRelativeTo(SourceFile, *(Config.BuildRoot + TEXT("/")));
 			int64 FileSize = FileReader->TotalSize();
@@ -466,11 +454,11 @@ namespace BuildPatchServices
 		}
 		for (FString& Filename : IgnoreFiles)
 		{
-			int32 TabLocation = Filename.Find(TEXT("\t"), ESearchCase::CaseSensitive);
+			int32 TabLocation = Filename.Find(TEXT("\t"));
 			if (TabLocation != INDEX_NONE)
 			{
 				// Strip tab separated timestamp if it exists
-				Filename.LeftInline(TabLocation, false);
+				Filename = Filename.Left(TabLocation);
 			}
 			Filename = Config.BuildRoot / Filename;
 			FPaths::NormalizeFilename(Filename);

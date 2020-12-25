@@ -129,11 +129,13 @@ namespace VivoxClientApi {
         ///
         /// @param accountName - the Vivox account for the user
         /// @param password - the password associated with that account
+        /// @captureDevice - currently unused
+        /// @renderDevice - currently unused
         ///
         /// @return - 0 on success, non-zero on error. Error Codes can be translated to string by the function VivoxClientApi::GetErrorString(), which is located in util.h
         ///           VX_E_FAILED will be returned if the a prior call to Connect() did not succeed.
         ///
-        VCSStatus Login(const AccountName &accountName, const char *password);
+        VCSStatus Login(const AccountName &accountName, const char *password, const char *captureDevice = NULL, const char *renderDevice = NULL);
 
         ///
         /// This method begins the logout process for the specific user. If that user is in the process of logging in, or that user is logged in, the
@@ -288,13 +290,13 @@ namespace VivoxClientApi {
         ///
         /// Returns the full list of audio input devices
         ///
-        void GetAvailableAudioInputDevices(const AccountName &accountName, const AudioDeviceId* &deviceIds, int& numDeviceIds) const;
+        void GetAvailableAudioInputDevices(const AudioDeviceId* &deviceIds, int& numDeviceIds) const;
 
         ///
         /// This function tells the voice subsystem to the use the operating system chose audio input device for 
         /// voice input.
         ///
-        void UseOperatingSystemChosenAudioInputDevice(const AccountName &accountName);
+        void UseOperatingSystemChosenAudioInputDevice();
 
         ///
         /// This function indicates to the application whether the voice subsystem will be using
@@ -302,7 +304,7 @@ namespace VivoxClientApi {
         ///
         /// @return true if the voice subsystem is using the operating system chosen audio input device.
         ///
-        bool IsUsingOperatingSystemChosenAudioInputDevice(const AccountName &accountName) const;
+        bool IsUsingOperatingSystemChosenAudioInputDevice() const;
 
         ///
         /// This function returns the operating system's current audio input device. It should be noted
@@ -311,7 +313,7 @@ namespace VivoxClientApi {
         ///
         /// @return the operating systems current audio input device.
         ///
-        const AudioDeviceId &GetOperatingSystemChosenAudioInputDevice(const AccountName &accountName) const;
+        const AudioDeviceId &GetOperatingSystemChosenAudioInputDevice() const;
 
         ///
         /// This function tells this voice subsystem to always use the audio input device chosen by the application.
@@ -319,14 +321,14 @@ namespace VivoxClientApi {
         /// @param deviceId - the device id to always use for voice communication
         /// @return 0 on success, non-zero if failure.
         ///
-        VCSStatus SetApplicationChosenAudioInputDevice(const AccountName &accountName, const AudioDeviceId &deviceId);
+        VCSStatus SetApplicationChosenAudioInputDevice(const AudioDeviceId &deviceId);
 
         ///
         /// This function returns the AudioDeviceId that the application has chosen using SetApplicationChosenAudioInputDevice.
         /// If the application has most recently called UseOperatingSystemChosenAudioInputDevice, then this function will return
         /// an invalid AudioDeviceId() (which can be tested for using AudioDeviceId.IsInvalid(); 
         ///
-        AudioDeviceId GetApplicationChosenAudioInputDevice(const AccountName &accountName) const;
+        AudioDeviceId GetApplicationChosenAudioInputDevice() const;
 
 
         /// Audio Output Device Management
@@ -334,13 +336,13 @@ namespace VivoxClientApi {
         ///
         /// Returns the full list of audio output devices
         ///
-        void GetAvailableAudioOutputDevices(const AccountName &accountName, const AudioDeviceId* &deviceIds, int& numDeviceIds) const;
+        void GetAvailableAudioOutputDevices(const AudioDeviceId* &deviceIds, int& numDeviceIds) const;
 
         ///
         /// This function tells the voice subsystem to the use the operating system chose audio output device for 
         /// voice input.
         ///
-        void UseOperatingSystemChosenAudioOutputDevice(const AccountName &accountName);
+        void UseOperatingSystemChosenAudioOutputDevice();
 
         ///
         /// This function indicates to the application whether the voice subsystem will be using
@@ -348,7 +350,7 @@ namespace VivoxClientApi {
         ///
         /// @return true if the voice subsystem is using the operating system chosen audio input device.
         ///
-        bool IsUsingOperatingSystemChosenAudioOutputDevice(const AccountName &accountName) const;
+        bool IsUsingOperatingSystemChosenAudioOutputDevice() const;
 
         ///
         /// This function returns the operating system's current audio output device. It should be noted
@@ -357,7 +359,7 @@ namespace VivoxClientApi {
         ///
         /// @return the operating systems current audio output device.
         ///
-        const AudioDeviceId &GetOperatingSystemChosenAudioOutputDevice(const AccountName &accountName) const;
+        const AudioDeviceId &GetOperatingSystemChosenAudioOutputDevice() const;
 
         ///
         /// This function tells this voice subsystem to always use the audio output device chosen by the application.
@@ -365,14 +367,14 @@ namespace VivoxClientApi {
         /// @param deviceId - the device id to always use for voice communication
         /// @return 0 on success, non-zero if failure.
         ///
-        VCSStatus SetApplicationChosenAudioOutputDevice(const AccountName &accountName, const AudioDeviceId &deviceId);
+        VCSStatus SetApplicationChosenAudioOutputDevice(const AudioDeviceId &deviceId);
 
         ///
         /// This function returns the AudioDeviceId that the application has chosen using SetApplicationChosenAudioOutputDevice.
         /// If the application has most recently called UseOperatingSystemChosenAudioOutputDevice, then this function will return
         /// an invalid AudioDeviceId() (which can be tested for using AudioDeviceId.IsInvalid(); 
         ///
-        AudioDeviceId GetApplicationChosenAudioOutputDevice(const AccountName &accountName) const;
+        AudioDeviceId GetApplicationChosenAudioOutputDevice() const;
 
 
         /// Volume Controls
@@ -380,21 +382,21 @@ namespace VivoxClientApi {
         /// 
         /// Get the master audio input device volume
         ///
-        int GetMasterAudioInputDeviceVolume(const AccountName &accountName) const;
+        int GetMasterAudioInputDeviceVolume() const;
 
         /// 
         /// Set the master audio input device volume
         ///
         /// @param volume - the master audio input device volume (recommended range 30-70)
         ///
-        VCSStatus SetMasterAudioInputDeviceVolume(const AccountName &accountName, int volume);
+        VCSStatus SetMasterAudioInputDeviceVolume(int volume);
 
         /// 
         /// Get the master audio output device volume
         ///
         /// @return the current master output device volume
         ///
-        int GetMasterAudioOutputDeviceVolume(const AccountName &accountName) const;
+        int GetMasterAudioOutputDeviceVolume() const;
 
         /// 
         /// Set the master audio output device volume
@@ -402,11 +404,11 @@ namespace VivoxClientApi {
         /// @param volume - the volume for the master output device. The recommended range for this is 30-70.
         /// @return 0 for success, non zero for failure
         ///
-        VCSStatus SetMasterAudioOutputDeviceVolume(const AccountName &accountName, int volume);
+        VCSStatus SetMasterAudioOutputDeviceVolume(int volume);
 
-		VCSStatus SetVoiceActivateDetectionSensitivity(const AccountName &accountName, int volume);
+		VCSStatus SetVoiceActivateDetectionSensitivity(int volume);
 
-		VCSStatus SetVADAutomaticParameterSelection(const AccountName &accountName, bool enabled);
+		VCSStatus SetVADAutomaticParameterSelection(bool enabled);
 
         ///
         /// Start playing a wav file through the currently selected audio output device.
@@ -461,22 +463,22 @@ namespace VivoxClientApi {
         ///
         /// Stops audio from playing out the audio output device
         /// 
-        void SetAudioOutputDeviceMuted(const AccountName &accountName, bool value);
+        void SetAudioOutputDeviceMuted(bool value);
 
         ///
         /// Indicates whether or not audio can play through the output device
         ///
-        bool GetAudioOutputDeviceMuted(const AccountName &accountName) const;
+        bool GetAudioOutputDeviceMuted() const;
 
         ///
         /// Stops audio from being read from the audio input device
         /// 
-        void SetAudioInputDeviceMuted(const AccountName &accountName, bool value);
+        void SetAudioInputDeviceMuted(bool value);
 
         ///
         /// Indicates whether or not audio is being read from the audio input device
         ///
-        bool GetAudioInputDeviceMuted(const AccountName &accountName) const;
+        bool GetAudioInputDeviceMuted() const;
 
         /// 
         /// Returns audio output volume for a particular accountName, channelUri pair. 

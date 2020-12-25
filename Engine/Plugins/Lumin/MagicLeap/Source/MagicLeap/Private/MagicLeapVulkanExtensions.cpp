@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MagicLeapVulkanExtensions.h"
 #include "Lumin/CAPIShims/LuminAPIRemote.h"
@@ -10,47 +10,39 @@
 
 #include "MagicLeapHelperVulkan.h"
 
-#if PLATFORM_WINDOWS
-struct FMagicLeapVulkanExtensionsImpl
+struct FMagicLeapVulkanExtensions::Implementation
 {
+#if PLATFORM_WINDOWS
 	TArray<VkExtensionProperties> InstanceExtensions;
 	TArray<VkExtensionProperties> DeviceExtensions;
-};
 #endif
+};
 
-FMagicLeapVulkanExtensions::FMagicLeapVulkanExtensions()
-#if PLATFORM_WINDOWS
-: ImpPtr(new FMagicLeapVulkanExtensionsImpl())
-#endif // PLATFORM_WINDOWS
-{
-}
-
-FMagicLeapVulkanExtensions::~FMagicLeapVulkanExtensions()
-{
-#if PLATFORM_WINDOWS
-	delete ImpPtr;
-	ImpPtr = nullptr;
-#endif // PLATFORM_WINDOWS
-}
+FMagicLeapVulkanExtensions::FMagicLeapVulkanExtensions() {}
+FMagicLeapVulkanExtensions::~FMagicLeapVulkanExtensions() {}
 
 bool FMagicLeapVulkanExtensions::GetVulkanInstanceExtensionsRequired(TArray<const ANSICHAR*>& Out)
 {
+	if (!ImpPtr.IsValid())
+	{
+		ImpPtr.Reset(new Implementation);
+	}
 #if PLATFORM_LUMIN
 	return FMagicLeapHelperVulkan::GetVulkanInstanceExtensionsRequired(Out);
 #else
-#if PLATFORM_WINDOWS && WITH_MLSDK
-
-	// Retrieve the extensions we need for MLRemote only once.
-	if (ImpPtr->InstanceExtensions.Num() == 0)
+#if (PLATFORM_WINDOWS && WITH_MLSDK)
+	// Interrogate the extensions we need for MLRemote.
+	TArray<VkExtensionProperties> Extensions;
 	{
+		MLResult Result = MLResult_Ok;
 		uint32_t Count = 0;
-		MLResult Result = MLRemoteEnumerateRequiredVkInstanceExtensions(nullptr, &Count);
+		Result = MLRemoteEnumerateRequiredVkInstanceExtensions(nullptr, &Count);
 		if (Result != MLResult_Ok)
 		{
 			UE_LOG(LogMagicLeap, Error, TEXT("MLRemoteEnumerateRequiredVkInstanceExtensions failed with status %d"), Result);
 			return false;
 		}
-
+		ImpPtr->InstanceExtensions.Empty();
 		if (Count > 0)
 		{
 			ImpPtr->InstanceExtensions.AddDefaulted(Count);
@@ -62,9 +54,7 @@ bool FMagicLeapVulkanExtensions::GetVulkanInstanceExtensionsRequired(TArray<cons
 			}
 		}
 	}
-
-	// Give pointers from storage
-	for (auto& Extension : ImpPtr->InstanceExtensions)
+	for (auto & Extension : ImpPtr->InstanceExtensions)
 	{
 		Out.Add(Extension.extensionName);
 	}
@@ -73,24 +63,28 @@ bool FMagicLeapVulkanExtensions::GetVulkanInstanceExtensionsRequired(TArray<cons
 #endif // PLATFORM_LUMIN
 }
 
-bool FMagicLeapVulkanExtensions::GetVulkanDeviceExtensionsRequired(struct VkPhysicalDevice_T* pPhysicalDevice, TArray<const ANSICHAR*>& Out)
+bool FMagicLeapVulkanExtensions::GetVulkanDeviceExtensionsRequired(struct VkPhysicalDevice_T *pPhysicalDevice, TArray<const ANSICHAR*>& Out)
 {
+	if (!ImpPtr.IsValid())
+	{
+		ImpPtr.Reset(new Implementation);
+	}
 #if PLATFORM_LUMIN
 	return FMagicLeapHelperVulkan::GetVulkanDeviceExtensionsRequired(pPhysicalDevice, Out);
 #else
-#if PLATFORM_WINDOWS && WITH_MLSDK
-
-	// Retrieve the extensions we need for MLRemote only once.
-	if (ImpPtr->DeviceExtensions.Num() == 0)
+#if (PLATFORM_WINDOWS && WITH_MLSDK)
+	// Interrogate the extensions we need for MLRemote.
+	TArray<VkExtensionProperties> Extensions;
 	{
+		MLResult Result = MLResult_Ok;
 		uint32_t Count = 0;
-		MLResult Result = MLRemoteEnumerateRequiredVkDeviceExtensions(nullptr, &Count);
+		Result = MLRemoteEnumerateRequiredVkDeviceExtensions(nullptr, &Count);
 		if (Result != MLResult_Ok)
 		{
 			UE_LOG(LogMagicLeap, Error, TEXT("MLRemoteEnumerateRequiredVkDeviceExtensions failed with status %d"), Result);
 			return false;
 		}
-
+		ImpPtr->DeviceExtensions.Empty();
 		if (Count > 0)
 		{
 			ImpPtr->DeviceExtensions.AddDefaulted(Count);
@@ -102,9 +96,7 @@ bool FMagicLeapVulkanExtensions::GetVulkanDeviceExtensionsRequired(struct VkPhys
 			}
 		}
 	}
-
-	// Give pointers from storage
-	for (auto& Extension : ImpPtr->DeviceExtensions)
+	for (auto & Extension : ImpPtr->DeviceExtensions)
 	{
 		Out.Add(Extension.extensionName);
 	}

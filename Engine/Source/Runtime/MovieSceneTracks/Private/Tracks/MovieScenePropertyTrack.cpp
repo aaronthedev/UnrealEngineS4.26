@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Tracks/MovieScenePropertyTrack.h"
 #include "MovieSceneCommonHelpers.h"
@@ -15,12 +15,13 @@ void UMovieScenePropertyTrack::SetPropertyNameAndPath(FName InPropertyName, cons
 {
 	check((InPropertyName != NAME_None) && !InPropertyPath.IsEmpty());
 
-	PropertyBinding = FMovieScenePropertyBinding(InPropertyName, InPropertyPath);
-
+	PropertyName = InPropertyName;
+	PropertyPath = InPropertyPath;
+	
 #if WITH_EDITORONLY_DATA
 	if (UniqueTrackName == NAME_None)
 	{
-		UniqueTrackName = *InPropertyPath;
+		UniqueTrackName = *PropertyPath;
 	}
 #endif
 }
@@ -35,40 +36,19 @@ const TArray<UMovieSceneSection*>& UMovieScenePropertyTrack::GetAllSections() co
 void UMovieScenePropertyTrack::PostLoad()
 {
 #if WITH_EDITORONLY_DATA
-
 	if (UniqueTrackName.IsNone())
 	{
-		UniqueTrackName = PropertyBinding.PropertyPath;
+		UniqueTrackName = *PropertyPath;
 	}
-
 #endif
 
 	Super::PostLoad();
 }
 
-void UMovieScenePropertyTrack::Serialize(FArchive& Ar)
-{
-	Ar.UsingCustomVersion(FMovieSceneEvaluationCustomVersion::GUID);
-
-	Super::Serialize(Ar);
-#if WITH_EDITORONLY_DATA
-	if (Ar.IsLoading())
-	{
-		if (Ar.CustomVer(FMovieSceneEvaluationCustomVersion::GUID) < FMovieSceneEvaluationCustomVersion::EntityManager)
-		{
-			if (PropertyName_DEPRECATED != NAME_None && !PropertyPath_DEPRECATED.IsEmpty())
-			{
-				PropertyBinding = FMovieScenePropertyBinding(PropertyName_DEPRECATED, PropertyPath_DEPRECATED);
-			}
-		}
-	}
-#endif
-}
-
 #if WITH_EDITORONLY_DATA
 FText UMovieScenePropertyTrack::GetDefaultDisplayName() const
 {
-	return FText::FromName(PropertyBinding.PropertyName);
+	return FText::FromName(PropertyName);
 }
 
 FName UMovieScenePropertyTrack::GetTrackName() const
@@ -218,63 +198,50 @@ UMovieSceneSection* UMovieScenePropertyTrack::FindOrExtendSection(FFrameNumber T
 	}
 
 	// Find a spot for the section so that they are sorted by start time
-	TOptional<int32> MinDiff;
-	int32 ClosestSectionIndex = -1;
-	bool bStartFrame = false;
 	for(int32 SectionIndex = 0; SectionIndex < Sections.Num(); ++SectionIndex)
 	{
 		UMovieSceneSection* Section = Sections[SectionIndex];
 
-		if (Section->HasStartFrame())
+		// Check if there are no more sections that would overlap the time 
+		if(!Sections.IsValidIndex(SectionIndex+1) || (Sections[SectionIndex+1]->HasEndFrame() && Sections[SectionIndex+1]->GetExclusiveEndFrame() > Time))
 		{
-			int32 Diff = FMath::Abs(Time.Value - Section->GetInclusiveStartFrame().Value);
-
-			if (!MinDiff.IsSet())
+			// No sections overlap the time
+		
+			if(SectionIndex > 0)
 			{
-				MinDiff = Diff;
-				ClosestSectionIndex = SectionIndex;
-				bStartFrame = true;
+				// Append and grow the previous section
+				UMovieSceneSection* PreviousSection = Sections[ SectionIndex ? SectionIndex-1 : 0 ];
+		
+				PreviousSection->SetEndFrame(Time);
+				return PreviousSection;
 			}
-			else if (Diff < MinDiff.GetValue())
+			else if(Sections.IsValidIndex(SectionIndex+1))
 			{
-				MinDiff = Diff;
-				ClosestSectionIndex = SectionIndex;
-				bStartFrame = true;
+				// Prepend and grow the next section because there are no sections before this one
+				UMovieSceneSection* NextSection = Sections[SectionIndex+1];
+				NextSection->SetStartFrame(Time);
+				return NextSection;
+			}	
+			else
+			{
+				// SectionIndex == 0 
+				UMovieSceneSection* PreviousSection = Sections[0];
+				if(PreviousSection->HasEndFrame() && PreviousSection->GetExclusiveEndFrame() <= Time)
+				{
+					// Append and grow the section
+					if (PreviousSection->GetExclusiveEndFrame() != Time)
+					{
+						PreviousSection->SetEndFrame(Time);
+					}
+				}
+				else
+				{
+					// Prepend and grow the section
+					PreviousSection->SetStartFrame(Time);
+				}
+				return PreviousSection;
 			}
 		}
-
-		if (Section->HasEndFrame())
-		{
-			int32 Diff = FMath::Abs(Time.Value - Section->GetExclusiveEndFrame().Value);
-
-			if (!MinDiff.IsSet())
-			{
-				MinDiff = Diff;
-				ClosestSectionIndex = SectionIndex;
-				bStartFrame = false;
-			}
-			else if (Diff < MinDiff.GetValue())
-			{
-				MinDiff = Diff;
-				ClosestSectionIndex = SectionIndex;
-				bStartFrame = false;
-			}
-		}
-	}
-
-	if (ClosestSectionIndex != -1)
-	{
-		UMovieSceneSection* ClosestSection = Sections[ClosestSectionIndex];
-		if (bStartFrame)
-		{
-			ClosestSection->SetStartFrame(Time);
-		}
-		else
-		{
-			ClosestSection->SetEndFrame(Time);
-		}
-
-		return ClosestSection;
 	}
 
 	return nullptr;

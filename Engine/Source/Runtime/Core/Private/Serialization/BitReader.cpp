@@ -1,11 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Serialization/BitReader.h"
 #include "Math/UnrealMathUtility.h"
 #include "Logging/LogMacros.h"
 #include "CoreGlobals.h"
-
-PRAGMA_DISABLE_UNSAFE_TYPECAST_WARNINGS
 
 // Table.
 extern const uint8 GShift[8]={0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80};
@@ -144,7 +142,7 @@ void FBitReader::SetData( uint8* Src, int64 CountBits )
 {
 	Num			= CountBits;
 	Pos			= 0;
-	ClearError();
+	ArIsError	= 0;
 
 	Buffer.Empty();
 	Buffer.AddUninitialized( (Num+7)>>3 );
@@ -164,7 +162,7 @@ void FBitReader::SetData( TArray<uint8>&& Src, int64 CountBits )
 {
 	Num			= CountBits;
 	Pos			= 0;
-	ClearError();
+	ArIsError	= 0;
 
 	Buffer = MoveTemp(Src);
 
@@ -178,7 +176,7 @@ void FBitReader::SetData( FBitReader& Src, int64 CountBits )
 {
 	Num			= CountBits;
 	Pos			= 0;
-	ClearError();
+	ArIsError	= 0;
 
 	// Setup network version
 	this->SetEngineNetVer(Src.EngineNetVer());
@@ -226,12 +224,12 @@ void FBitReader::CountMemory(FArchive& Ar) const
 	Ar.CountBytes(sizeof(*this), sizeof(*this));
 }
 
-void FBitReader::SetOverflowed(int64 LengthBits)
+void FBitReader::SetOverflowed(int32 LengthBits)
 {
 	UE_LOG(LogNetSerialization, Error, TEXT("FBitReader::SetOverflowed() called! (ReadLen: %i, Remaining: %i, Max: %i)"),
 			LengthBits, (Num - Pos), Num);
 
-	SetError();
+	ArIsError = 1;
 }
 
 void FBitReader::SerializeBitsWithOffset( void* Dest, int32 DestBit, int64 LengthBits )
@@ -247,7 +245,7 @@ void FBitReader::SerializeBitsWithOffset( void* Dest, int32 DestBit, int64 Lengt
 
 	if (LengthBits != 0)
 	{
-		appBitsCpy((uint8*)Dest, DestBit, Buffer.GetData(), (int32)Pos, (int32)LengthBits);
+		appBitsCpy((uint8*)Dest, DestBit, Buffer.GetData(), Pos, LengthBits);
 		Pos += LengthBits;
 	}
 }
@@ -310,5 +308,3 @@ void FBitReaderMark::Copy( FBitReader& Reader, TArray<uint8> &Buffer )
 		appBitsCpy(Buffer.GetData(), 0, Reader.Buffer.GetData(), Pos, Reader.Pos - Pos);
 	}
 }
-
-PRAGMA_ENABLE_UNSAFE_TYPECAST_WARNINGS

@@ -1,11 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimationDataSource.h"
 
 bool UAnimationDataSourceRegistry::RegisterDataSource(const FName& InName, UObject* InDataSource)
 {
-	ClearInvalidDataSource();
-
 	if (DataSources.Contains(InName))
 	{
 		return false;
@@ -16,7 +14,6 @@ bool UAnimationDataSourceRegistry::RegisterDataSource(const FName& InName, UObje
 
 bool UAnimationDataSourceRegistry::UnregisterDataSource(const FName& InName)
 {
-	ClearInvalidDataSource();
 	return DataSources.Remove(InName) > 0;
 }
 
@@ -27,38 +24,18 @@ bool UAnimationDataSourceRegistry::ContainsSource(const FName& InName) const
 
 UObject* UAnimationDataSourceRegistry::RequestSource(const FName& InName, UClass* InExpectedClass) const
 {
-	TWeakObjectPtr<UObject> const* DataSource = DataSources.Find(InName);
+	UObject* const* DataSource = DataSources.Find(InName);
 	if (DataSource == nullptr)
 	{
 		return nullptr;
 	}
-
-	UObject* DataSourcePtr = DataSource->Get();
-	if (!DataSourcePtr)
+	if (*DataSource == nullptr)
 	{
 		return nullptr;
 	}
-	if (!DataSourcePtr->IsA(InExpectedClass))
+	if (!(*DataSource)->IsA(InExpectedClass))
 	{
 		return nullptr;
 	}
-
-	return DataSourcePtr;
-}
-
-void UAnimationDataSourceRegistry::ClearInvalidDataSource()
-{
-	TArray<FName> InvalidNames;
-	for (auto Iter = DataSources.CreateIterator(); Iter; ++Iter)
-	{
-		if (!Iter.Value().IsValid())
-		{
-			InvalidNames.Add(Iter.Key());
-		}
-	}
-
-	for (const FName& NameToRemove : InvalidNames)
-	{
-		DataSources.Remove(NameToRemove);
-	}
+	return *DataSource;
 }

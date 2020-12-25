@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MeasureDistanceSampleTool.h"
 #include "InteractiveToolManager.h"
@@ -43,6 +43,11 @@ UMeasureDistanceProperties::UMeasureDistanceProperties()
 	StartPoint = FVector(0,0,0);
 	EndPoint = FVector(0,0,100);
 	Distance = 100;
+}
+
+
+UMeasureDistanceSampleTool::UMeasureDistanceSampleTool()
+{
 }
 
 
@@ -140,7 +145,7 @@ void UMeasureDistanceSampleTool::UpdateDistance()
 }
 
 
-void UMeasureDistanceSampleTool::OnPropertyModified(UObject* PropertySet, FProperty* Property)
+void UMeasureDistanceSampleTool::OnPropertyModified(UObject* PropertySet, UProperty* Property)
 {
 	// if the user updated any of the property fields, update the distance
 	UpdateDistance();

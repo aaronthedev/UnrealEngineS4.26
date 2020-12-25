@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_PCP_LAYER_STACK_H
-#define PXR_USD_PCP_LAYER_STACK_H
+#ifndef PCP_LAYER_STACK_H
+#define PCP_LAYER_STACK_H
 
 /// \file pcp/layerStack.h
 
@@ -34,7 +34,7 @@
 #include "pxr/usd/sdf/layerTree.h"
 #include "pxr/base/tf/declarePtrs.h"
 
-#include <tbb/spin_mutex.h>
+#include <boost/noncopyable.hpp>
 #include <iosfwd>
 #include <memory>
 #include <string>
@@ -62,10 +62,7 @@ class PcpLifeboat;
 ///
 /// PcpLayerStacks are constructed and managed by a Pcp_LayerStackRegistry.
 ///
-class PcpLayerStack : public TfRefBase, public TfWeakBase {
-    PcpLayerStack(const PcpLayerStack&) = delete;
-    PcpLayerStack& operator=(const PcpLayerStack&) = delete;
-
+class PcpLayerStack : public TfRefBase, public TfWeakBase, boost::noncopyable {
 public:
     // See Pcp_LayerStackRegistry for creating layer stacks.
     PCP_API
@@ -105,6 +102,11 @@ public:
     /// layer stack. Returns NULL if the offset is the identity.
     PCP_API
     const SdfLayerOffset* GetLayerOffsetForLayer(size_t layerIdx) const;
+
+    /// Returns the set of asset paths resolved while building the
+    /// layer stack.
+    PCP_API
+    const std::set<std::string>& GetResolvedAssetPaths() const;
 
     /// Returns the set of layers that were muted in this layer
     /// stack.
@@ -203,13 +205,13 @@ private:
 
     // It's a coding error to construct a layer stack with a NULL root layer.
     PcpLayerStack(const PcpLayerStackIdentifier &identifier,
-                  const std::string &fileFormatTarget,
+                  const std::string &targetSchema,
                   const Pcp_MutedLayers &mutedLayers,
                   bool isUsd);
 
     void _BlowLayers();
     void _BlowRelocations();
-    void _Compute(const std::string &fileFormatTarget,
+    void _Compute(const std::string &targetSchema,
                   const Pcp_MutedLayers &mutedLayers);
 
     SdfLayerTreeHandle _BuildLayerStack(
@@ -270,6 +272,10 @@ private:
     /// List of source info for sublayer asset path computations.
     std::vector<_SublayerSourceInfo> _sublayerSourceInfo;
 
+    /// Set of asset paths resolved while building the layer stack.
+    /// This is used to handle updates.
+    std::set<std::string> _assetPaths;
+
     /// Set of asset paths that were muted in this layer stack.
     std::set<std::string> _mutedAssetPaths;
 
@@ -287,10 +293,9 @@ private:
     /// the current value of relocations given out by
     /// GetExpressionForRelocatesAtPath().  This map is used to update
     /// those values when relocations change.
-    typedef std::map<SdfPath, PcpMapExpression::VariableUniquePtr,
+    typedef std::map<SdfPath, PcpMapExpression::VariableRefPtr,
             SdfPath::FastLessThan> _RelocatesVarMap;
     _RelocatesVarMap _relocatesVariables;
-    tbb::spin_mutex _relocatesVariablesMutex;
 
     /// List of all prim spec paths where relocations were found.
     SdfPathVector _relocatesPrimPaths;
@@ -325,4 +330,4 @@ Pcp_NeedToRecomputeDueToAssetPathChange(const PcpLayerStackPtr& layerStack);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_PCP_LAYER_STACK_H
+#endif // PCP_LAYER_STACK_H

@@ -1,14 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DragOperations/CurveEditorDragOperation_MoveKeys.h"
 #include "CurveEditorScreenSpace.h"
 #include "CurveEditor.h"
 #include "SCurveEditorView.h"
 
-void FCurveEditorDragOperation_MoveKeys::OnInitialize(FCurveEditor* InCurveEditor, const TOptional<FCurvePointHandle>& InCardinalPoint)
+void FCurveEditorDragOperation_MoveKeys::OnInitialize(FCurveEditor* InCurveEditor, const TOptional<FCurvePointHandle>& CardinalPoint)
 {
 	CurveEditor = InCurveEditor;
-	CardinalPoint = InCardinalPoint;
 }
 
 void FCurveEditorDragOperation_MoveKeys::OnBeginDrag(FVector2D InitialPosition, FVector2D CurrentPosition, const FPointerEvent& MouseEvent)
@@ -35,7 +34,6 @@ void FCurveEditorDragOperation_MoveKeys::OnBeginDrag(FVector2D InitialPosition, 
 
 			KeyData.StartKeyPositions.SetNumZeroed(KeyData.Handles.Num());
 			Curve->GetKeyPositions(KeyData.Handles, KeyData.StartKeyPositions);
-			KeyData.LastDraggedKeyPositions = KeyData.StartKeyPositions;
 		}
 	}
 
@@ -47,7 +45,7 @@ void FCurveEditorDragOperation_MoveKeys::OnDrag(FVector2D InitialPosition, FVect
 	TArray<FKeyPosition> NewKeyPositionScratch;
 	FVector2D MousePosition = CurveEditor->GetAxisSnap().GetSnappedPosition(InitialPosition, CurrentPosition, MouseEvent, SnappingState);
 
-	for (FKeyData& KeyData : KeysByCurve)
+	for (const FKeyData& KeyData : KeysByCurve)
 	{
 		const SCurveEditorView* View = CurveEditor->FindFirstInteractiveView(KeyData.CurveID);
 		if (!View)
@@ -71,45 +69,18 @@ void FCurveEditorDragOperation_MoveKeys::OnDrag(FVector2D InitialPosition, FVect
 
 		FCurveSnapMetrics SnapMetrics = CurveEditor->GetCurveSnapMetrics(KeyData.CurveID);
 
-		// If view is not absolute, snap based on the key that was grabbed, not all keys individually.
-		if (CardinalPoint.IsSet() && (View->IsTimeSnapEnabled() || View->IsValueSnapEnabled()) && View->ViewTypeID != ECurveEditorViewID::Absolute)
-		{
-			for (int KeyIndex = 0; KeyIndex < KeyData.StartKeyPositions.Num(); ++KeyIndex)
-			{
-				FKeyHandle KeyHandle = KeyData.Handles[KeyIndex];
-				if (CardinalPoint->KeyHandle == KeyHandle)
-				{
-					FKeyPosition StartPosition = KeyData.StartKeyPositions[KeyIndex];
-
-					if (View->IsTimeSnapEnabled())
-					{
-						DeltaInput = SnapMetrics.SnapInputSeconds(StartPosition.InputValue + DeltaInput) - StartPosition.InputValue;
-					}
-					if (View->IsValueSnapEnabled())
-					{
-						DeltaOutput = SnapMetrics.SnapOutput(StartPosition.OutputValue + DeltaOutput) - StartPosition.OutputValue;
-					}
-				}
-			}
-		}
-
 		for (FKeyPosition StartPosition : KeyData.StartKeyPositions)
 		{
 			StartPosition.InputValue  += DeltaInput;
 			StartPosition.OutputValue += DeltaOutput;
 
-			// Snap keys individually if view mode is absolute.
-			if (View->ViewTypeID == ECurveEditorViewID::Absolute)
-			{
-				StartPosition.InputValue  = View->IsTimeSnapEnabled() ? SnapMetrics.SnapInputSeconds(StartPosition.InputValue) : StartPosition.InputValue;
-				StartPosition.OutputValue = View->IsValueSnapEnabled() ? SnapMetrics.SnapOutput(StartPosition.OutputValue) : StartPosition.OutputValue;
-			}
-			
+			StartPosition.InputValue  = View->IsTimeSnapEnabled() ? SnapMetrics.SnapInputSeconds(StartPosition.InputValue) : StartPosition.InputValue;
+			StartPosition.OutputValue = View->IsValueSnapEnabled() ? SnapMetrics.SnapOutput(StartPosition.OutputValue) : StartPosition.OutputValue;
+
 			NewKeyPositionScratch.Add(StartPosition);
 		}
 
-		Curve->SetKeyPositions(KeyData.Handles, NewKeyPositionScratch, EPropertyChangeType::Interactive);
-		KeyData.LastDraggedKeyPositions = NewKeyPositionScratch;
+		Curve->SetKeyPositions(KeyData.Handles, NewKeyPositionScratch);
 	}
 }
 
@@ -121,7 +92,7 @@ void FCurveEditorDragOperation_MoveKeys::OnCancelDrag()
 	{
 		if (FCurveModel* Curve = CurveEditor->FindCurve(KeyData.CurveID))
 		{
-			Curve->SetKeyPositions(KeyData.Handles, KeyData.StartKeyPositions, EPropertyChangeType::ValueSet);
+			Curve->SetKeyPositions(KeyData.Handles, KeyData.StartKeyPositions);
 		}
 	}
 
@@ -131,14 +102,5 @@ void FCurveEditorDragOperation_MoveKeys::OnCancelDrag()
 void FCurveEditorDragOperation_MoveKeys::OnEndDrag(FVector2D InitialPosition, FVector2D CurrentPosition, const FPointerEvent& MouseEvent)
 {
 	ICurveEditorKeyDragOperation::OnEndDrag(InitialPosition, CurrentPosition, MouseEvent);
-
-	for (const FKeyData& KeyData : KeysByCurve)
-	{
-		if (FCurveModel* Curve = CurveEditor->FindCurve(KeyData.CurveID))
-		{
-			Curve->SetKeyPositions(KeyData.Handles, KeyData.LastDraggedKeyPositions, EPropertyChangeType::ValueSet);
-		}
-	}
-
 	CurveEditor->SuppressBoundTransformUpdates(false);
 }

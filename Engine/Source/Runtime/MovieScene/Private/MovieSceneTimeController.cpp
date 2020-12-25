@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieSceneTimeController.h"
 #include "Engine/World.h"
@@ -104,36 +104,23 @@ double FMovieSceneTimeController_PlatformClock::GetCurrentTime() const
 
 double FMovieSceneTimeController_AudioClock::GetCurrentTime() const
 {
-	FAudioDevice* AudioDevice = GEngine ? GEngine->GetMainAudioDevice().GetAudioDevice() : nullptr;
+	FAudioDevice* AudioDevice = GEngine ? GEngine->GetMainAudioDevice() : nullptr;
 	return AudioDevice ? AudioDevice->GetAudioClock() : FPlatformTime::Seconds();
 }
 
-double FMovieSceneTimeController_RelativeTimecodeClock::GetCurrentTime() const
-{
-	const TOptional<FQualifiedFrameTime> CurrentFrameTime = FApp::GetCurrentFrameTime();
-	if (CurrentFrameTime.IsSet())
-	{
-		return CurrentFrameTime.GetValue().AsSeconds();
-	}
-	else
-	{
-		return FPlatformTime::Seconds();
-	}
-}
-
-FFrameTime FMovieSceneTimeController_TimecodeClock::OnRequestCurrentTime(const FQualifiedFrameTime& InCurrentTime, float InPlayRate)
+double FMovieSceneTimeController_TimecodeClock::GetCurrentTime() const
 {
 	if (GEngine && GEngine->GetTimecodeProvider() && GEngine->GetTimecodeProvider()->GetSynchronizationState() == ETimecodeProviderSynchronizationState::Synchronized)
 	{
 		FTimecode Timecode = FApp::GetTimecode();
 		FFrameRate FrameRate = FApp::GetTimecodeFrameRate();
-
-		// Convert timecode to raw number of frames at the timecode's framerate.
 		FFrameNumber FrameNumber = Timecode.ToFrameNumber(FrameRate);
-		return FFrameRate::TransformTime(FFrameTime(FrameNumber), FrameRate, InCurrentTime.Rate);
+		return FrameRate.AsSeconds(FrameNumber);
 	}
-
-	return FFrameTime(0);
+	else
+	{
+		return FPlatformTime::Seconds();
+	}
 }
 
 void FMovieSceneTimeController_Tick::OnStartPlaying(const FQualifiedFrameTime& InStartTime)

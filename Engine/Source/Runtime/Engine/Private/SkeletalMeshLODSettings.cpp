@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/SkeletalMeshLODSettings.h"
 #include "Engine/SkeletalMesh.h"
@@ -168,7 +168,6 @@ int32 USkeletalMeshLODSettings::SetLODSettingsToMesh(USkeletalMesh* InMesh) cons
 		InMesh->MinLod = MinLod;
 		InMesh->DisableBelowMinLodStripping = DisableBelowMinLodStripping;
 #if WITH_EDITORONLY_DATA
-		InMesh->bOverrideLODStreamingSettings = bOverrideLODStreamingSettings;
 		InMesh->bSupportLODStreaming = bSupportLODStreaming;
 		InMesh->MaxNumStreamedLODs = MaxNumStreamedLODs;
 		InMesh->MaxNumOptionalLODs = MaxNumOptionalLODs;
@@ -194,7 +193,6 @@ int32 USkeletalMeshLODSettings::SetLODSettingsFromMesh(USkeletalMesh* InMesh)
 		MinLod = InMesh->MinLod;
 		DisableBelowMinLodStripping = InMesh->DisableBelowMinLodStripping;
 #if WITH_EDITORONLY_DATA
-		bOverrideLODStreamingSettings = InMesh->bOverrideLODStreamingSettings;
 		bSupportLODStreaming = InMesh->bSupportLODStreaming;
 		MaxNumStreamedLODs = InMesh->MaxNumStreamedLODs;
 		MaxNumOptionalLODs = InMesh->MaxNumOptionalLODs;
@@ -293,3 +291,4 @@ const float FSkeletalMeshLODGroupSettings::GetScreenSize() const
 {
 	return ScreenSize.Default;
 }
+

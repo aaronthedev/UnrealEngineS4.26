@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PostProcess/PostProcessDownsample.h"
 #include "PostProcess/PostProcessEyeAdaptation.h"
@@ -125,9 +125,10 @@ FScreenPassTexture AddDownsamplePass(
 		Desc.Extent = FIntPoint::DivideAndRoundUp(Desc.Extent, 2);
 		Desc.Extent.X = FMath::Max(1, Desc.Extent.X);
 		Desc.Extent.Y = FMath::Max(1, Desc.Extent.Y);
-		Desc.Flags &= ~(TexCreate_RenderTargetable | TexCreate_UAV);
-		Desc.Flags |= bIsComputePass ? TexCreate_UAV : TexCreate_RenderTargetable;
+		Desc.TargetableFlags &= ~(TexCreate_RenderTargetable | TexCreate_UAV);
+		Desc.TargetableFlags |= bIsComputePass ? TexCreate_UAV : TexCreate_RenderTargetable;
 		Desc.Flags |= GFastVRamConfig.Downsample;
+		Desc.DebugName = Inputs.Name;
 		Desc.ClearValue = FClearValueBinding(FLinearColor(0, 0, 0, 0));
 
 		if (Inputs.FormatOverride != PF_Unknown)
@@ -157,7 +158,7 @@ FScreenPassTexture AddDownsamplePass(
 		FComputeShaderUtils::AddPass(
 			GraphBuilder,
 			RDG_EVENT_NAME("Downsample.%s %dx%d (CS)", Inputs.Name, Inputs.SceneColor.ViewRect.Width(), Inputs.SceneColor.ViewRect.Height()),
-			ComputeShader,
+			*ComputeShader,
 			PassParameters,
 			FComputeShaderUtils::GetGroupCount(OutputViewport.Rect.Size(), FIntPoint(GDownsampleTileSizeX, GDownsampleTileSizeY)));
 	}
@@ -173,7 +174,7 @@ FScreenPassTexture AddDownsamplePass(
 			GraphBuilder,
 			View.ShaderMap,
 			RDG_EVENT_NAME("Downsample.%s %dx%d (PS)", Inputs.Name, Inputs.SceneColor.ViewRect.Width(), Inputs.SceneColor.ViewRect.Height()),
-			PixelShader,
+			*PixelShader,
 			PassParameters,
 			OutputViewport.Rect);
 	}
@@ -227,4 +228,40 @@ void FSceneDownsampleChain::Init(
 	}
 
 	bInitialized = true;
+}
+
+FRenderingCompositeOutputRef AddDownsamplePass(
+	FRenderingCompositionGraph& Graph,
+	const TCHAR *InName,
+	FRenderingCompositeOutputRef Input,
+	uint32 SceneColorDownsampleFactor,
+	EDownsampleQuality InQuality,
+	EDownsampleFlags InFlags,
+	EPixelFormat InFormatOverride)
+{
+	FRenderingCompositePass* DownsamplePass = Graph.RegisterPass(
+		new(FMemStack::Get()) TRCPassForRDG<1, 1>(
+			[InFormatOverride, InQuality, SceneColorDownsampleFactor, InFlags, InName](FRenderingCompositePass* Pass, FRenderingCompositePassContext& InContext)
+	{
+		FRDGBuilder GraphBuilder(InContext.RHICmdList);
+
+		const FIntRect SceneColorViewRect = InContext.GetDownsampledSceneColorViewRect(SceneColorDownsampleFactor);
+
+		FRDGTextureRef InputTexture = Pass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("DownsampleInput"));
+
+		FDownsamplePassInputs PassInputs;
+		PassInputs.Name = InName;
+		PassInputs.SceneColor = FScreenPassTexture(InputTexture, SceneColorViewRect);
+		PassInputs.FormatOverride = InFormatOverride;
+		PassInputs.Quality = InQuality;
+		PassInputs.Flags = InFlags;
+
+		FScreenPassTexture PassOutput = AddDownsamplePass(GraphBuilder, InContext.View, PassInputs);
+
+		Pass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, PassOutput.Texture);
+
+		GraphBuilder.Execute();
+	}));
+	DownsamplePass->SetInput(ePId_Input0, Input);
+	return DownsamplePass;
 }

@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_PCP_TYPES_H
-#define PXR_USD_PCP_TYPES_H
+#ifndef PCP_TYPES_H
+#define PCP_TYPES_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/pcp/api.h"
@@ -44,36 +44,40 @@ PXR_NAMESPACE_OPEN_SCOPE
 /// Describes the type of arc connecting two nodes in the prim index.
 ///
 enum PcpArcType {
-    // The root arc is a special value used for the root node of 
+    // The root arc is a special value used for the direct/root node of 
     // the prim index. Unlike the following arcs, it has no parent node.
     PcpArcTypeRoot,
     
     // The following arcs are listed in strength order.
-    PcpArcTypeInherit,
+    PcpArcTypeLocalInherit,
+    PcpArcTypeGlobalInherit,
     PcpArcTypeVariant,
     PcpArcTypeRelocate,
     PcpArcTypeReference,
     PcpArcTypePayload,
-    PcpArcTypeSpecialize,
+    PcpArcTypeLocalSpecializes,
+    PcpArcTypeGlobalSpecializes,
     
     PcpNumArcTypes
 };
 
 /// \enum PcpRangeType
 enum PcpRangeType {
-    // Range including just the root node.
+    // Ranges including direct arcs of the specified type.
     PcpRangeTypeRoot,
-
-    // Ranges including child arcs, from the root node, of the specified type 
-    // as well as all descendants of those arcs.
-    PcpRangeTypeInherit,
+    PcpRangeTypeLocalInherit,
+    PcpRangeTypeGlobalInherit,
     PcpRangeTypeVariant,
     PcpRangeTypeReference,
     PcpRangeTypePayload,
-    PcpRangeTypeSpecialize,
+    PcpRangeTypeLocalSpecializes,
+    PcpRangeTypeGlobalSpecializes,
 
     // Range including all nodes.
     PcpRangeTypeAll,
+
+    // Range including all direct local and global inherits.
+    PcpRangeTypeAllInherits,
 
     // Range including all nodes weaker than the root node.
     PcpRangeTypeWeakerThanRoot,
@@ -90,15 +94,17 @@ enum PcpRangeType {
 inline bool 
 PcpIsInheritArc(PcpArcType arcType)
 {
-    return (arcType == PcpArcTypeInherit);
+    return (arcType == PcpArcTypeLocalInherit ||
+            arcType == PcpArcTypeGlobalInherit);
 }
 
-/// Returns true if \p arcType represents a specialize arc, false
+/// Returns true if \p arcType represents a specializes arc, false
 /// otherwise.
 inline bool 
-PcpIsSpecializeArc(PcpArcType arcType)
+PcpIsSpecializesArc(PcpArcType arcType)
 {
-    return (arcType == PcpArcTypeSpecialize);
+    return (arcType == PcpArcTypeLocalSpecializes ||
+            arcType == PcpArcTypeGlobalSpecializes);
 }
 
 /// Returns true if \p arcType represents a class-based 
@@ -110,7 +116,16 @@ PcpIsSpecializeArc(PcpArcType arcType)
 inline bool
 PcpIsClassBasedArc(PcpArcType arcType)
 {
-    return PcpIsInheritArc(arcType) || PcpIsSpecializeArc(arcType);
+    return PcpIsInheritArc(arcType) || PcpIsSpecializesArc(arcType);
+}
+
+/// Returns true if \p arcType represents a local class-based
+/// composition arc, false otherwise.
+inline bool
+PcpIsLocalClassBasedArc(PcpArcType arcType)
+{
+    return (arcType == PcpArcTypeLocalInherit ||
+            arcType == PcpArcTypeLocalSpecializes);
 }
 
 /// \struct PcpSiteTrackerSegment
@@ -119,7 +134,7 @@ PcpIsClassBasedArc(PcpArcType arcType)
 /// what type of arcs. 
 ///
 struct PcpSiteTrackerSegment {
-    PcpSiteStr site;
+    PcpLayerStackSite site;
     PcpArcType arcType;
 };
 
@@ -201,4 +216,4 @@ constexpr size_t PCP_INVALID_INDEX = std::numeric_limits<size_t>::max();
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_PCP_TYPES_H
+#endif // PCP_TYPES_H

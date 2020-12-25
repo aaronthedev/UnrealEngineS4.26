@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ProjectionTargets.h"
 #include "Distance/DistPoint3Triangle3.h"
@@ -7,7 +7,7 @@ FVector3d FMeshProjectionTarget::Project(const FVector3d& Point, int Identifier)
 {
 	double fDistSqr;
 	int tNearestID = Spatial->FindNearestTriangle(Point, fDistSqr);
-	if (tNearestID < 0)
+	if (tNearestID <= 0)
 	{
 		return Point;
 	}
@@ -33,7 +33,7 @@ FVector3d FMeshProjectionTarget::Project(const FVector3d& Point, FVector3d& Proj
 {
 	double fDistSqr;
 	int tNearestID = Spatial->FindNearestTriangle(Point, fDistSqr);
-	if (tNearestID < 0)
+	if (tNearestID <= 0)
 	{
 		return Point;
 	}

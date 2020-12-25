@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -43,19 +43,17 @@ typedef TWeakPtr<class FNetEventNode> FNetEventNodeWeak;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 /**
- * Class used to store information about a timer node (used in the SNetStatsView).
+ * Class used to store information about a timer node (used in the STimersView).
  */
 class FNetEventNode : public Insights::FBaseTreeNode
 {
 public:
 	static const FName TypeName;
-	static constexpr uint32 InvalidEventTypeIndex = uint32(-1);
 
 public:
 	/** Initialization constructor for the NetEvent node. */
-	FNetEventNode(uint32 InEventTypeIndex, const FName InName, ENetEventNodeType InType, uint32 InLevel)
-		: FBaseTreeNode(InName, InType == ENetEventNodeType::Group)
-		, EventTypeIndex(InEventTypeIndex)
+	FNetEventNode(uint64 InId, const FName InName, ENetEventNodeType InType, uint32 InLevel)
+		: FBaseTreeNode(InId, InName, InType == ENetEventNodeType::Group)
 		, Type(InType)
 		, Level(InLevel)
 	{
@@ -63,9 +61,8 @@ public:
 	}
 
 	/** Initialization constructor for the group node. */
-	explicit FNetEventNode(const FName InGroupName)
-		: FBaseTreeNode(InGroupName, true)
-		, EventTypeIndex(InvalidEventTypeIndex)
+	FNetEventNode(const FName InGroupName)
+		: FBaseTreeNode(0, InGroupName, true)
 		, Type(ENetEventNodeType::Group)
 		, Level(0)
 	{
@@ -73,8 +70,6 @@ public:
 	}
 
 	virtual const FName& GetTypeName() const override { return TypeName; }
-
-	uint32 GetEventTypeIndex() const { return EventTypeIndex; }
 
 	/**
 	 * @return a type of this NetEvent node or ENetEventNodeType::Group for group nodes.
@@ -93,9 +88,6 @@ public:
 	void SetAggregatedStats(const Trace::FNetProfilerAggregatedStats& AggregatedStats);
 
 private:
-	/** The NetEvent type index. */
-	const uint32 EventTypeIndex;
-
 	/** Holds the type of this NetEvent node. */
 	const ENetEventNodeType Type;
 

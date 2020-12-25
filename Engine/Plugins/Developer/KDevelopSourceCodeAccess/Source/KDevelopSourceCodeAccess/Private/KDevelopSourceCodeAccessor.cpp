@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "KDevelopSourceCodeAccessor.h"
 #include "HAL/PlatformProcess.h"
@@ -161,7 +161,7 @@ FString FKDevelopSourceCodeAccessor::GetSolutionPath() const
 	{
 		CachedSolutionPath = FPaths::ProjectDir();
 		
-		if (!FUProjectDictionary::GetDefault().IsForeignProject(CachedSolutionPath))
+		if (!FUProjectDictionary(FPaths::RootDir()).IsForeignProject(CachedSolutionPath))
 		{
 			CachedSolutionPath = FPaths::Combine(FPaths::RootDir(), TEXT("UE4.kdev4"));
 		}

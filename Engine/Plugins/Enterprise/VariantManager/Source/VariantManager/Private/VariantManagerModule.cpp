@@ -1,13 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VariantManagerModule.h"
 
 #include "LevelVariantSets.h"
 #include "LevelVariantSetsEditorToolkit.h"
 #include "VariantManager.h"
-#include "VariantManagerContentEditorModule.h"
 #include "VariantManagerEditorCommands.h"
-#include "VariantManagerStyle.h"
+#include "VariantManagerContentEditorModule.h"
 
 #include "Editor.h"
 #include "Framework/Docking/TabManager.h"
@@ -29,8 +28,6 @@ public:
 	{
 		FVariantManagerEditorCommands::Register();
 
-		FVariantManagerStyle::Initialize();
-
 		FLevelEditorModule& LevelEditorModule = FModuleManager::LoadModuleChecked<FLevelEditorModule>(TEXT("LevelEditor"));
 
 		// Register a delegate to detect whenever we should open an editor for a LevelVariantSets asset, and relay the
@@ -48,7 +45,7 @@ public:
 			RegisterTabSpawner( LevelEditorModule.GetLevelEditorTabManager() );
 		});
 
-		// Make sure we update the cached FProperty pointers we use for exception properties whenever hot reload happens to a relevant class
+		// Make sure we update the cached UProperty pointers we use for exception properties whenever hot reload happens to a relevant class
 		FVariantManagerUtils::RegisterForHotReload();
 	}
 
@@ -63,8 +60,6 @@ public:
 		UnregisterTabSpawner( LevelEditorModule.GetLevelEditorTabManager() );
 
 		FVariantManagerUtils::UnregisterForHotReload();
-
-		FVariantManagerStyle::Shutdown();
 
 		FVariantManagerEditorCommands::Unregister();
 	}
@@ -110,7 +105,6 @@ public:
 		return SNew(SDockTab)
 			.Label(LOCTEXT("VariantManagerMainTitle", "VariantManager"))
 			.TabColorScale( FLevelVariantSetsEditorToolkit::GetWorldCentricTabColorScaleStatic() )
-			.ContentPadding(FMargin(0))
 			.TabRole(ETabRole::PanelTab);
 	}
 

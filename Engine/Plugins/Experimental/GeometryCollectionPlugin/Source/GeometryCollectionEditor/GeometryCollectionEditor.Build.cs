@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -21,18 +21,18 @@ namespace UnrealBuildTool.Rules
 				    "PropertyEditor",
 				    "RenderCore",
 				    "RHI",
+				    "GeometryCollectionCore",
                     "GeometryCollectionEngine",
+                    "GeometryCollectionSimulationCore",
                     "RawMesh",
 				    "AssetTools",
 				    "AssetRegistry",
 				    "SceneOutliner",
+				    "FieldSystemCore",
 					"EditorStyle",
 					"ToolMenus",
-					"Chaos"
 				}
 			);
-
-			PrivateDefinitions.Add("CHAOS_INCLUDE_LEVEL_1=1");
 		}
 	}
 }

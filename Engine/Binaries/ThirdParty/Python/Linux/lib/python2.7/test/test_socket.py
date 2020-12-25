@@ -21,9 +21,6 @@ except ImportError:
     _socket = None
 
 
-MAIN_TIMEOUT = 60.0
-
-
 def try_address(host, port=0, family=socket.AF_INET):
     """Try to bind a socket on the given host:port and return True
     if that has been possible."""
@@ -38,7 +35,7 @@ def try_address(host, port=0, family=socket.AF_INET):
 
 HOST = test_support.HOST
 MSG = b'Michael Gilfix was here\n'
-SUPPORTS_IPV6 = test_support.IPV6_ENABLED
+SUPPORTS_IPV6 = socket.has_ipv6 and try_address('::1', family=socket.AF_INET6)
 
 try:
     import thread
@@ -736,7 +733,6 @@ class GeneralModuleTests(unittest.TestCase):
                 self.assertRaises(socket.timeout, c.sendall,
                                   b"x" * test_support.SOCK_MAX_SIZE)
         finally:
-            signal.alarm(0)
             signal.signal(signal.SIGALRM, old_alarm)
             c.close()
             s.close()
@@ -950,7 +946,6 @@ class BasicSocketPairTest(SocketPairTest):
 class NonBlockingTCPTests(ThreadedTCPSocketTest):
 
     def __init__(self, methodName='runTest'):
-        self.event = threading.Event()
         ThreadedTCPSocketTest.__init__(self, methodName=methodName)
 
     def testSetBlocking(self):
@@ -986,27 +981,21 @@ class NonBlockingTCPTests(ThreadedTCPSocketTest):
     def testAccept(self):
         # Testing non-blocking accept
         self.serv.setblocking(0)
-
-        # connect() didn't start: non-blocking accept() fails
-        with self.assertRaises(socket.error):
+        try:
             conn, addr = self.serv.accept()
-
-        self.event.set()
-
-        read, write, err = select.select([self.serv], [], [], MAIN_TIMEOUT)
-        if self.serv not in read:
+        except socket.error:
+            pass
+        else:
+            self.fail("Error trying to do non-blocking accept.")
+        read, write, err = select.select([self.serv], [], [])
+        if self.serv in read:
+            conn, addr = self.serv.accept()
+            conn.close()
+        else:
             self.fail("Error trying to do accept after select.")
 
-        # connect() completed: non-blocking accept() doesn't block
-        conn, addr = self.serv.accept()
-        self.addCleanup(conn.close)
-        self.assertIsNone(conn.gettimeout())
-
     def _testAccept(self):
-        # don't connect before event is set to check
-        # that non-blocking accept() raises socket.error
-        self.event.wait()
-
+        time.sleep(0.1)
         self.cli.connect((HOST, self.port))
 
     def testConnect(self):
@@ -1021,32 +1010,25 @@ class NonBlockingTCPTests(ThreadedTCPSocketTest):
     def testRecv(self):
         # Testing non-blocking recv
         conn, addr = self.serv.accept()
-        self.addCleanup(conn.close)
         conn.setblocking(0)
-
-        # the server didn't send data yet: non-blocking recv() fails
-        with self.assertRaises(socket.error):
+        try:
             msg = conn.recv(len(MSG))
-
-        self.event.set()
-
-        read, write, err = select.select([conn], [], [], MAIN_TIMEOUT)
-        if conn not in read:
+        except socket.error:
+            pass
+        else:
+            self.fail("Error trying to do non-blocking recv.")
+        read, write, err = select.select([conn], [], [])
+        if conn in read:
+            msg = conn.recv(len(MSG))
+            conn.close()
+            self.assertEqual(msg, MSG)
+        else:
             self.fail("Error during select call to non-blocking socket.")
-
-        # the server sent data yet: non-blocking recv() doesn't block
-        msg = conn.recv(len(MSG))
-        self.assertEqual(msg, MSG)
 
     def _testRecv(self):
         self.cli.connect((HOST, self.port))
-
-        # don't send anything before event is set to check
-        # that non-blocking recv() raises socket.error
-        self.event.wait()
-
-        # send data: recv() will no longer block
-        self.cli.sendall(MSG)
+        time.sleep(0.1)
+        self.cli.send(MSG)
 
 @unittest.skipUnless(thread, 'Threading required for this test.')
 class FileObjectClassTestCase(SocketConnectedTest):
@@ -1375,10 +1357,6 @@ class NetworkConnectionNoServer(unittest.TestCase):
         expected_errnos = [ errno.ECONNREFUSED, ]
         if hasattr(errno, 'ENETUNREACH'):
             expected_errnos.append(errno.ENETUNREACH)
-        if hasattr(errno, 'EADDRNOTAVAIL'):
-            # bpo-31910: socket.create_connection() fails randomly
-            # with EADDRNOTAVAIL on Travis CI
-            expected_errnos.append(errno.EADDRNOTAVAIL)
 
         self.assertIn(cm.exception.errno, expected_errnos)
 
@@ -1551,8 +1529,8 @@ class TCPTimeoutTest(SocketTCPTest):
             raise Alarm
         old_alarm = signal.signal(signal.SIGALRM, alarm_handler)
         try:
+            signal.alarm(2)    # POSIX allows alarm to be up to 1 second early
             try:
-                signal.alarm(2)    # POSIX allows alarm to be up to 1 second early
                 foo = self.serv.accept()
             except socket.timeout:
                 self.fail("caught timeout instead of Alarm")

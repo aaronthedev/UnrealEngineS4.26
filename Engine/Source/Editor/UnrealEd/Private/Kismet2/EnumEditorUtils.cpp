@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Kismet2/EnumEditorUtils.h"
 #include "UObject/UObjectHash.h"
@@ -16,9 +16,6 @@
 #include "Internationalization/TextNamespaceUtil.h"
 #include "Internationalization/TextPackageNamespaceUtil.h"
 #include "ScopedTransaction.h"
-#include "UObject/PropertyIterator.h"
-#include "Engine/UserDefinedStruct.h"
-#include "Kismet2/StructureEditorUtils.h"
 
 #define LOCTEXT_NAMESPACE "Enum"
 
@@ -283,55 +280,26 @@ void FEnumEditorUtils::BroadcastChanges(const UUserDefinedEnum* Enum, const TArr
 	{
 		FArchiveEnumeratorResolver EnumeratorResolver(Enum, OldNames);
 
-		// Track any user defined structs that may have been modified during this enum update
-		TSet<UUserDefinedStruct*> EffectedUserStructs;
-		
-		// Helper lambda to get the class of a UStruct off of a property
-		auto GetStructClass = [&EffectedUserStructs](const FProperty* Prop) -> UClass*
+		TArray<UClass*> ClassesToCheck;
+		for (const UByteProperty* ByteProperty : TObjectRange<UByteProperty>())
 		{
-			if(Prop)
-			{
-				// Attempt to use this property's default owner class
-				if(UClass* OwnerClass = Prop->GetOwnerClass())
-				{
-					return OwnerClass;	
-				}
-				// Otherwise check for UserDefinedStructs that may have this property
-				else if (UStruct* OwnerStruct = Prop->GetOwnerStruct())
-				{
-					if(UUserDefinedStruct* UserStruct = Cast<UUserDefinedStruct>(OwnerStruct))
-					{
-						EffectedUserStructs.Add(UserStruct);
-					}
-					return OwnerStruct->GetClass();
-				}
-			}
-			return nullptr;
-		};
-
-		TSet<UClass*> ClassesToCheck;
-
-		for (TPropertyIterator<FByteProperty> It; It; ++It)
-		{
-			const FByteProperty* ByteProperty = *It;
 			if (ByteProperty && (Enum == ByteProperty->GetIntPropertyEnum()))
 			{
-				if(UClass* StructClass = GetStructClass(ByteProperty))
-				{					
-					ClassesToCheck.Add(StructClass);
+				UClass* OwnerClass = ByteProperty->GetOwnerClass();
+				if (OwnerClass)
+				{
+					ClassesToCheck.Add(OwnerClass);
 				}
 			}
 		}
-
-		for (TPropertyIterator<FEnumProperty> It; It; ++It)
+		for (const UEnumProperty* EnumProperty : TObjectRange<UEnumProperty>())
 		{
-			const FEnumProperty* EnumProperty = *It;
 			if (EnumProperty && (Enum == EnumProperty->GetEnum()))
 			{
-				// Check for user defined structs that may have this property
-				if (UClass* StructClass = GetStructClass(EnumProperty))
+				UClass* OwnerClass = EnumProperty->GetOwnerClass();
+				if (OwnerClass)
 				{
-					ClassesToCheck.Add(StructClass);
+					ClassesToCheck.Add(OwnerClass);
 				}
 			}
 		}
@@ -346,14 +314,6 @@ void FEnumEditorUtils::BroadcastChanges(const UUserDefinedEnum* Enum, const TArr
 					break;
 				}
 			}
-		}
-
-		// User defined structs have to be notified that their structure has been changed after 
-		// serialization in order for the structure editor to get updated properly
-		for(UUserDefinedStruct* Struct : EffectedUserStructs)
-		{
-			FStructureEditorUtils::ModifyStructData(Struct);
-			FStructureEditorUtils::OnStructureChanged(Struct);
 		}
 	}
 
@@ -423,9 +383,9 @@ void FEnumEditorUtils::BroadcastChanges(const UUserDefinedEnum* Enum, const TArr
 	}
 
 	// Modify any properties that are using the enum as a bitflags type for bitmask values inside a Blueprint class.
-	for (TPropertyIterator<FIntProperty> PropertyIter; PropertyIter; ++PropertyIter)
+	for (TObjectIterator<UIntProperty> PropertyIter; PropertyIter; ++PropertyIter)
 	{
-		const FIntProperty* IntProperty = *PropertyIter;
+		const UIntProperty* IntProperty = *PropertyIter;
 		if (IntProperty && IntProperty->HasMetaData(*FBlueprintMetadata::MD_Bitmask.ToString()))
 		{
 			UClass* OwnerClass = IntProperty->GetOwnerClass();
@@ -444,7 +404,7 @@ void FEnumEditorUtils::BroadcastChanges(const UUserDefinedEnum* Enum, const TArr
 						FBlueprintEditorUtils::RemoveBlueprintVariableMetaData(Blueprint, VarName, nullptr, FBlueprintMetadata::MD_BitmaskEnum);
 
 						// Need to reassign the property since the skeleton class will have been regenerated at this point.
-						IntProperty = FindFieldChecked<FIntProperty>(Blueprint->SkeletonGeneratedClass, VarName);
+						IntProperty = FindFieldChecked<UIntProperty>(Blueprint->SkeletonGeneratedClass, VarName);
 
 						// Reconstruct any nodes that reference the variable that was just modified.
 						for (TObjectIterator<UK2Node_Variable> VarNodeIt; VarNodeIt; ++VarNodeIt)

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PaperTileMapComponent.h"
 #include "UObject/ConstructorHelpers.h"
@@ -69,14 +69,12 @@ FPrimitiveSceneProxy* UPaperTileMapComponent::CreateSceneProxy()
 
 void UPaperTileMapComponent::PostInitProperties()
 {
-	EObjectFlags Flags = HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject) ? 
-		GetMaskedFlags(RF_PropagateToSubObjects) : RF_NoFlags;
-	// In a post GFastPathUniqueNameGeneration world we have to provide a stable name
-	// for all archetypes, here I'm using PaperTileMap_0 to match old content:
-	TileMap = NewObject<UPaperTileMap>(this, TEXT("PaperTileMap_0"), Flags);
-
+	TileMap = NewObject<UPaperTileMap>(this);
 	TileMap->SetFlags(RF_Transactional);
-
+	if (HasAnyFlags(RF_ClassDefaultObject|RF_ArchetypeObject))
+	{
+		TileMap->SetFlags(GetMaskedFlags(RF_PropagateToSubObjects));
+	}
 	Super::PostInitProperties();
 }
 

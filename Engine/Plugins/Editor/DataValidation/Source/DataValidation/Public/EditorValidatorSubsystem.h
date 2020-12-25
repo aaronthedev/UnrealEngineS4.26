@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,23 +19,6 @@
 struct FAssetData;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogContentValidation, Log, All);
-
-/**
-* Implements the settings for Data Validation 
-*/
-UCLASS(config = Editor)
-class DATAVALIDATION_API UDataValidationSettings : public UObject
-{
-	GENERATED_BODY()
-
-public:
-	/** Default constructor that sets up CDO properties */
-	UDataValidationSettings();
-
-	/** Whether or not to validate assets on save */
-	UPROPERTY(EditAnywhere, config, Category = "Validation Scenarios")
-	uint32 bValidateOnSave : 1;
-};
 
 /**
  * UEditorValidatorSubsystem manages all the asset validation in the engine. 
@@ -68,19 +51,19 @@ public:
 	 * @return Returns Valid if the object contains valid data; returns Invalid if the object contains invalid data; returns NotValidated if no validations was performed on the object
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Asset Validation")
-	virtual EDataValidationResult IsObjectValid(UObject* InObject, TArray<FText>& ValidationErrors, TArray<FText>& ValidationWarnings) const;
+	virtual EDataValidationResult IsObjectValid(UObject* InObject, TArray<FText>& ValidationErrors) const;
 
 	/**
 	 * @return Returns Valid if the object pointed to by AssetData contains valid data; returns Invalid if the object contains invalid data or does not exist; returns NotValidated if no validations was performed on the object
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Asset Validation")
-	virtual EDataValidationResult IsAssetValid(FAssetData& AssetData, TArray<FText>& ValidationErrors, TArray<FText>& ValidationWarnings) const;
+	virtual EDataValidationResult IsAssetValid(FAssetData& AssetData, TArray<FText>& ValidationErrors) const;
 
 	/**
 	 * Called to validate assets from either the UI or a commandlet
 	 * @param bSkipExcludedDirectories If true, will not validate files in excluded directories
 	 * @param bShowIfNoFailures If true, will add notifications for files with no validation and display even if everything passes
-	 * @returns Number of assets with validation failures or warnings
+	 * @returns Number of assets with validation failures
 	 */
 	UFUNCTION(BlueprintCallable, Category = "Asset Validation")
 	virtual int32 ValidateAssets(TArray<FAssetData> AssetDataList, bool bSkipExcludedDirectories = true, bool bShowIfNoFailures = true) const;
@@ -120,7 +103,7 @@ protected:
 	/**
 	 * Whether it should validate assets on save inside the editor
 	 */
-	UPROPERTY(config, meta = (DeprecatedProperty, DeprecationMessage = "Use bValidateOnSave on UDataValidationSettings instead."))
+	UPROPERTY(config)
 	bool bValidateOnSave;
 
 	/** List of saved package names to validate next frame */

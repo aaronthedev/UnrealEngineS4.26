@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,29 +15,22 @@
 class IToolTip;
 class SStatsCounterTableRowToolTip;
 
-namespace Insights
-{
-	class FTable;
-	class FTableColumn;
-}
-
-DECLARE_DELEGATE_RetVal_OneParam(bool, FStatsNodeShouldBeEnabledDelegate, FStatsNodePtr /*NodePtr*/);
+DECLARE_DELEGATE_RetVal_OneParam(bool, FShouldBeEnabledDelegate, const uint32 /*StatsId*/);
 DECLARE_DELEGATE_RetVal_OneParam(bool, FIsColumnVisibleDelegate, const FName /*ColumnId*/);
 DECLARE_DELEGATE_RetVal_OneParam(EHorizontalAlignment, FGetColumnOutlineHAlignmentDelegate, const FName /*ColumnId*/);
-DECLARE_DELEGATE_ThreeParams(FSetHoveredStatsTableCell, TSharedPtr<Insights::FTable> /*TablePtr*/, TSharedPtr<Insights::FTableColumn> /*ColumnPtr*/, FStatsNodePtr /*StatsNodePtr*/);
+DECLARE_DELEGATE_TwoParams(FSetHoveredStatsTableCell, const FName /*ColumnId*/, const FStatsNodePtr /*StatsNodePtr*/);
 
 /** Widget that represents a table row in the Stats Counters' tree control. Generates widgets for each column on demand. */
 class SStatsTableRow : public SMultiColumnTableRow<FStatsNodePtr>
 {
 public:
 	SLATE_BEGIN_ARGS(SStatsTableRow) {}
-		SLATE_EVENT(FStatsNodeShouldBeEnabledDelegate, OnShouldBeEnabled)
+		SLATE_EVENT(FShouldBeEnabledDelegate, OnShouldBeEnabled)
 		SLATE_EVENT(FIsColumnVisibleDelegate, OnIsColumnVisible)
 		SLATE_EVENT(FGetColumnOutlineHAlignmentDelegate, OnGetColumnOutlineHAlignmentDelegate)
-		SLATE_EVENT(FSetHoveredStatsTableCell, OnSetHoveredCell)
+		SLATE_EVENT(FSetHoveredStatsTableCell, OnSetHoveredTableCell)
 		SLATE_ATTRIBUTE(FText, HighlightText)
 		SLATE_ATTRIBUTE(FName, HighlightedNodeName)
-		SLATE_ARGUMENT(TSharedPtr<Insights::FTable>, TablePtr)
 		SLATE_ARGUMENT(FStatsNodePtr, StatsNodePtr)
 	SLATE_END_ARGS()
 
@@ -72,18 +65,15 @@ protected:
 	const FSlateBrush* GetOutlineBrush(const FName ColumnId) const;
 	bool HandleShouldBeEnabled() const;
 	EVisibility IsColumnVisible(const FName ColumnId) const;
-	void OnSetHoveredCell(TSharedPtr<Insights::FTable> InTablePtr, TSharedPtr<Insights::FTableColumn> InColumnPtr, FStatsNodePtr InStatsNodePtr);
+	void OnSetHoveredTableCell(const FName ColumnId, const FStatsNodePtr SamplePtr);
 
 protected:
-	/** A shared pointer to the table view model. */
-	TSharedPtr<Insights::FTable> TablePtr;
-
 	/** Data context for this table row. */
 	FStatsNodePtr StatsNodePtr;
 
-	FStatsNodeShouldBeEnabledDelegate OnShouldBeEnabled;
+	FShouldBeEnabledDelegate OnShouldBeEnabled;
 	FIsColumnVisibleDelegate IsColumnVisibleDelegate;
-	FSetHoveredStatsTableCell SetHoveredCellDelegate;
+	FSetHoveredStatsTableCell SetHoveredTableCellDelegate;
 	FGetColumnOutlineHAlignmentDelegate GetColumnOutlineHAlignmentDelegate;
 
 	/** Text to be highlighted on stats counter name. */

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -28,7 +28,7 @@ namespace SkeletalSimplifier
 		*/
 		void RegisterMesh(const FSimplifierMeshManager& Mesh)
 		{
-			RegisterCache(Mesh.VertArray, Mesh.TriArray);
+			RegisterCache(Mesh.VertArray, Mesh.NumSrcVerts, Mesh.TriArray, Mesh.NumSrcTris);
 		}
 
 		/**
@@ -88,10 +88,12 @@ namespace SkeletalSimplifier
 		* Associate the cache with the simplifier vert and triangle arrays.
 		* This must be done before the cache can be used.
 		*
-		* @param VertArray   Array of verts in the source mesh
-		* @param TriArray    Array of Tris in the source mesh
+		* @param VertOffset  Pointer to the array of verts in the source mesh
+		* @param NumVerts    Number of Verts in the source mesh
+		* @param TriOffset   Pointer to the array of Tris in the source mesh
+		* @param NumTris     Number of tris in the source mesh
 		*/
-		void RegisterCache(const TArray<SimpVertType>& VertArray, const TArray<SimpTriType>& TriArray);
+		void RegisterCache(const SimpVertType* VertOffset, const int32 NumVerts, const SimpTriType* TriOffset, const int32 NumTris);
 
 		/**
 		* Allocate the member arrays with the size required
@@ -146,13 +148,10 @@ namespace SkeletalSimplifier
 
 
 	template <typename WedgeQuadricType>
-	void TQuadricCache< WedgeQuadricType>::RegisterCache(const TArray<SimpVertType>& VertArray,  const TArray<SimpTriType>& TriArray )
+	void TQuadricCache< WedgeQuadricType>::RegisterCache(const SimpVertType* VertOffset, const int32 NumVerts, const SimpTriType* TriOffset, const int32 NumTris)
 	{
-		const int32 NumVerts = VertArray.Num();
-		const int32 NumTris  = TriArray.Num();
-	
-		sVerts = VertArray.GetData();
-		sTris  = TriArray.GetData();
+		sVerts = VertOffset;
+		sTris = TriOffset;
 
 		AllocateCacheArrays(NumVerts, NumTris);
 	}

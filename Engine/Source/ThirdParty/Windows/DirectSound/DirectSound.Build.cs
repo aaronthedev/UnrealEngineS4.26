@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using UnrealBuildTool;
 
 public class DirectSound : ModuleRules
@@ -18,6 +18,7 @@ public class DirectSound : ModuleRules
 		{
 			DirectXSDKDir = Target.UEThirdPartySourceDirectory + "Windows/DirectX";
 		}
+		PublicSystemIncludePaths.Add(DirectXSDKDir + "/include");
 
 		string LibDir = null;
 		if (Target.Platform == UnrealTargetPlatform.Win64)
@@ -29,16 +30,11 @@ public class DirectSound : ModuleRules
 			LibDir = DirectXSDKDir + "/Lib/x86/";
 		}
 
-		if (LibDir != null)
-		{
-			PublicSystemIncludePaths.Add(DirectXSDKDir + "/include");
-
-			PublicAdditionalLibraries.AddRange(
-				new string[] {
-					 LibDir + "dxguid.lib",
-					 LibDir + "dsound.lib"
-				}
-			);
-		}
+        PublicAdditionalLibraries.AddRange(
+			new string[] {
+                 LibDir + "dxguid.lib",
+                 LibDir + "dsound.lib"
+			}
+		);
 	}
 }

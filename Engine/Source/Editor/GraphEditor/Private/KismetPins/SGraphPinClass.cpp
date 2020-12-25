@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "KismetPins/SGraphPinClass.h"
@@ -10,8 +10,6 @@
 #include "ClassViewerFilter.h"
 #include "ScopedTransaction.h"
 #include "AssetRegistryModule.h"
-#include "K2Node_Variable.h"
-#include "EdGraphSchema_K2.h"
 
 #define LOCTEXT_NAMESPACE "SGraphPinClass"
 
@@ -21,7 +19,7 @@
 void SGraphPinClass::Construct(const FArguments& InArgs, UEdGraphPin* InGraphPinObj)
 {
 	SGraphPin::Construct(SGraphPin::FArguments(), InGraphPinObj);
-	bAllowAbstractClasses = false;
+	bAllowAbstractClasses = true;
 }
 
 FReply SGraphPinClass::OnClickUse()
@@ -69,7 +67,6 @@ public:
 		
 			// Don't allow classes from a loaded map (e.g. LSBPs) unless we're already working inside that package context. Otherwise, choosing the class would lead to a GLEO at save time.
 			Result &= !ClassPackage->ContainsMap() || ClassPackage == GraphPinOutermostPackage;
-			Result &= !InClass->HasAnyClassFlags(CLASS_Hidden | CLASS_HideDropDown);
 			Result &= bAllowAbstractClasses || !InClass->HasAnyClassFlags(CLASS_Abstract);
 		}
 
@@ -78,9 +75,7 @@ public:
 
 	virtual bool IsUnloadedClassAllowed(const FClassViewerInitializationOptions& InInitOptions, const TSharedRef< const IUnloadedBlueprintData > InUnloadedClassData, TSharedRef< FClassViewerFilterFuncs > InFilterFuncs) override
 	{
-		return (InFilterFuncs->IfInChildOfClassesSet( AllowedChildrenOfClasses, InUnloadedClassData) != EFilterReturn::Failed) 
-			&& (!InUnloadedClassData->HasAnyClassFlags(CLASS_Hidden | CLASS_HideDropDown))
-			&& (bAllowAbstractClasses || !InUnloadedClassData->HasAnyClassFlags(CLASS_Abstract));
+		return (InFilterFuncs->IfInChildOfClassesSet( AllowedChildrenOfClasses, InUnloadedClassData) != EFilterReturn::Failed) && (bAllowAbstractClasses || !InUnloadedClassData->HasAnyClassFlags(CLASS_Abstract));
 	}
 };
 
@@ -103,24 +98,6 @@ TSharedRef<SWidget> SGraphPinClass::GenerateAssetPicker()
 
 	TSharedPtr<FGraphPinFilter> Filter = MakeShareable(new FGraphPinFilter);
 	Filter->bAllowAbstractClasses = bAllowAbstractClasses;
-
-	if (UK2Node_Variable* VarNode = Cast<UK2Node_Variable>(GraphPinObj->GetOwningNode()))
-	{
-		const FString* AllowAbstractString = VarNode->GetPropertyForVariable()->FindMetaData(FBlueprintMetadata::MD_AllowAbstractClasses);
-		Filter->bAllowAbstractClasses = AllowAbstractString && AllowAbstractString->ToBool();
-	}
-	else
-	{
-		// Check with the node to see if there is any "AllowAbstract" metadata for the pin
-		FString AllowAbstractString = GraphPinObj->GetOwningNode()->GetPinMetaData(GraphPinObj->PinName, FBlueprintMetadata::MD_AllowAbstractClasses);
-
-		// Override bAllowAbstractClasses is the AllowAbstract metadata was set
-		if (!AllowAbstractString.IsEmpty())
-		{
-			Filter->bAllowAbstractClasses = AllowAbstractString.ToBool();
-		}
-	}
-
 	Options.ClassFilter = Filter;
 
 	Filter->AllowedChildrenOfClasses.Add(PinRequiredParentClass);

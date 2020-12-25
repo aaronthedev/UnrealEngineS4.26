@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	RenderingCompositionGraph.h: Scene pass order and dependency system.
@@ -23,6 +23,8 @@ struct FRenderingCompositeOutput;
 struct FRenderingCompositeOutputRef;
 struct FRenderingCompositePass;
 struct FRenderingCompositePassContext;
+
+template<typename ShaderMetaType> class TShaderMap;
 
 class FRenderingCompositionGraph
 {
@@ -112,7 +114,7 @@ struct FRenderingCompositePassContext
 	{
 		ViewPortRect = InViewPortRect;
 
-		RHICmdList.SetViewport((float)ViewPortRect.Min.X, (float)ViewPortRect.Min.Y, InMinZ, (float)ViewPortRect.Max.X, (float)ViewPortRect.Max.Y, InMaxZ);
+		RHICmdList.SetViewport(ViewPortRect.Min.X, ViewPortRect.Min.Y, InMinZ, ViewPortRect.Max.X, ViewPortRect.Max.Y, InMaxZ);
 	}
 
 	// call this method instead of RHISetViewport() so we can cache the values and use them to map beteen ScreenPos and pixels
@@ -204,7 +206,7 @@ struct FRenderingCompositePassContext
 
 	ERHIFeatureLevel::Type GetFeatureLevel() const { return FeatureLevel; }
 	EShaderPlatform GetShaderPlatform() const { return GShaderPlatformForFeatureLevel[FeatureLevel]; }
-	FGlobalShaderMap* GetShaderMap() const { check(ShaderMap); return ShaderMap; }
+	TShaderMap<FGlobalShaderType>* GetShaderMap() const { check(ShaderMap); return ShaderMap; }
 
 	//
 	const FViewInfo& View;
@@ -222,16 +224,15 @@ struct FRenderingCompositePassContext
 	FRenderingCompositionGraph Graph;
 	//
 	FRHICommandListImmediate& RHICmdList;
-	//
-	FUniformBufferRHIRef SceneTexturesUniformBuffer;
 
 private:
+
 	// cached state to map between ScreenPos and pixels
 	FIntRect ViewPortRect;
 	//
 	ERHIFeatureLevel::Type FeatureLevel;
 	//
-	FGlobalShaderMap* ShaderMap;
+	TShaderMap<FGlobalShaderType>* ShaderMap;
 	// to ensure we only process the graph once
 	bool bWasProcessed;
 	// updated once a frame in Process()
@@ -418,7 +419,7 @@ struct FRenderingCompositePass
 		return bIsComputePass && bPreferAsyncCompute && GSupportsEfficientAsyncCompute;
 #endif
 	};
-	virtual const FRHITransition* GetComputePassEndFence() const { return nullptr; }
+	virtual FRHIComputeFence* GetComputePassEndFence() const { return nullptr; }
 
 protected:
 	/** to avoid wasteful recomputation and to support graph/DAG traversal, if ComputeOutputDesc() was called */
@@ -428,9 +429,6 @@ protected:
 
 	bool bIsComputePass;
 	bool bPreferAsyncCompute;
-
-	/** Whether the pass requires that global uniform buffers be bound. */
-	bool bBindGlobalUniformBuffers = true;
 
 	friend class FRenderingCompositionGraph;
 };
@@ -467,7 +465,7 @@ struct FRenderingCompositeOutputRef
 		return IsValid() && Source->IsAsyncComputePass();
 	}
 
-	const FRHITransition* GetComputePassEndFence() const
+	FRHIComputeFence* GetComputePassEndFence() const
 	{
 		return IsValid() ? Source->GetComputePassEndFence() : nullptr;
 	}
@@ -717,10 +715,10 @@ protected:
 		{
 			if (IsAsyncComputePass() != Input.IsAsyncComputePass())
 			{
-				const FRHITransition* InputComputePassEndFence = Input.GetComputePassEndFence();
+				FRHIComputeFence* InputComputePassEndFence = Input.GetComputePassEndFence();
 				if (InputComputePassEndFence)
 				{
-					RHICmdList.EndTransition(InputComputePassEndFence);
+					RHICmdList.WaitComputeFence(InputComputePassEndFence);
 				}
 			}
 		}
@@ -754,9 +752,7 @@ class TRCPassForRDG : public TRenderingCompositePassBase<InputCount, OutputCount
 public:
 	TRCPassForRDG(TFunction<void (FRenderingCompositePass*, FRenderingCompositePassContext&)>&& InProcessLambda)
 		: ProcessLambda(InProcessLambda)
-	{
-		FRenderingCompositePass::bBindGlobalUniformBuffers = false;
-	}
+	{ }
 
 	// interface FRenderingCompositePass ---------
 	virtual void Process(FRenderingCompositePassContext& Context) override

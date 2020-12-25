@@ -21,19 +21,18 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_PCP_MAP_EXPRESSION_H
-#define PXR_USD_PCP_MAP_EXPRESSION_H
+#ifndef PCP_MAP_EXPRESSION_H
+#define PCP_MAP_EXPRESSION_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/pcp/api.h"
 #include "pxr/usd/pcp/mapFunction.h"
 
-#include <boost/intrusive_ptr.hpp>
+#include <boost/optional.hpp>
 
 #include <tbb/atomic.h>
-#include <tbb/spin_mutex.h>
+#include <tbb/spin_rw_mutex.h>
 
-#include <atomic>
 #include <memory>
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -102,14 +101,14 @@ public:
         virtual const Value & GetValue() const = 0;
         /// Mutate the variable to have the new value.
         /// This will also invalidate dependant expressions.
-        virtual void SetValue(Value && value) = 0;
+        virtual void SetValue(const Value & value) = 0;
         /// Return an expression representing the value of this variable.
         /// This lets you use the variable as a sub-term in other expressions.
         virtual PcpMapExpression GetExpression() const = 0;
     };
 
     /// Variables are held by reference.
-    typedef std::unique_ptr<Variable> VariableUniquePtr;
+    typedef std::shared_ptr<Variable> VariableRefPtr;
 
     /// Create a new variable.
     /// The client is expected to retain the reference for as long as
@@ -118,7 +117,7 @@ public:
     /// will continue to be valid, but there will be no way to further
     /// change the value of the variable.
     PCP_API
-    static VariableUniquePtr NewVariable(Value && initialValue);
+    static VariableRefPtr NewVariable( const Value & initialValue );
 
     /// Create a new PcpMapExpression representing the application of
     /// f's value, followed by the application of this expression's value.
@@ -238,7 +237,7 @@ private: // data
         const Value & EvaluateAndCache() const;
 
         // For _OpVariable nodes, sets the variable's value.
-        void SetValueForVariable(Value &&newValue);
+        void SetValueForVariable(const Value &newValue);
 
         // For _OpVariable nodes, returns the variable's value.
         const Value & GetValueForVariable() const {
@@ -265,11 +264,10 @@ private: // data
         static TfStaticData<_NodeMap> _nodeRegistry;
 
         mutable tbb::atomic<int> _refCount;
-        mutable Value _cachedValue;
+        mutable boost::optional<Value> _cachedValue;
         mutable std::set<_Node*> _dependentExpressions;
         Value _valueForVariable;
-        mutable tbb::spin_mutex _mutex;
-        mutable std::atomic<bool> _hasCachedValue;
+        mutable tbb::spin_rw_mutex _mutex;
     };
 
     // Need to friend them here to have visibility to private class _Node.
@@ -281,4 +279,4 @@ private: // data
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_PCP_MAP_EXPRESSION_H
+#endif // PCP_MAP_EXPRESSION_H

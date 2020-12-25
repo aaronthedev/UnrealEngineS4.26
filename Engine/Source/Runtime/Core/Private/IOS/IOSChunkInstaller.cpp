@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IOSChunkInstaller.h"
 #include "Misc/CallbackDevice.h"
@@ -151,11 +151,11 @@ bool FIOSChunkInstall::PrioritizeChunk( uint32 ChunkID, EChunkPriority::Type Pri
             {
                 FIOSChunkStatus* FoundStatus = ChunkStatus.Find(BlockID);
                 NSBundle* Bundle = FoundStatus->Request.bundle;
-                FString PakFileName = FString::Printf(TEXT("pakchunk%i-ios.pak"), BlockID);
-                NSString* ResourcePath = [Bundle pathForResource: PakFileName.GetNSString() ofType:nil];
+                FString PakFile = FString::Printf(TEXT("pakchunk%i-ios.pak"), BlockID);
+                NSString* ResourcePath = [Bundle pathForResource:PakFile.GetNSString() ofType:nil];
                 NSLog(@"ResourcePath: %@", ResourcePath);
-                IPakFile* PakFile = FCoreDelegates::MountPak.Execute(FString(ResourcePath), 0);
-                if (PakFile)
+                bool bMounted = FCoreDelegates::OnMountPak.Execute(FString(ResourcePath), 0, nullptr);
+                if (bMounted)
                 {
                     MountedChunks.Add(BlockID);
 					InstallDelegate.Broadcast(BlockID, true);

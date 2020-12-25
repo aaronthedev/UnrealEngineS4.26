@@ -1,13 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "SGraphPin.h"
 #include "NiagaraNode.h"
-#include "NiagaraNodeParameterMapBase.h"
 #include "Widgets/Text/SInlineEditableTextBlock.h"
-#include "Widgets/SNiagaraParameterName.h"
-#include "NiagaraNodeCustomHlsl.h"
 
 /** A graph pin widget for allowing a pin to have an editable name for a pin. */
 template< class BaseClass >
@@ -71,25 +68,9 @@ protected:
 
 	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override
 	{
-		if (bPendingRename == false)
+		if (bPendingRename && CreatedTextBlock.IsValid())
 		{
-			UNiagaraNode* ParentNode = Cast<UNiagaraNode>(this->GraphPinObj->GetOwningNode());
-			if (ParentNode != nullptr && ParentNode->GetIsPinRenamePending(this->GraphPinObj))
-			{
-				bPendingRename = true;
-				ParentNode->SetIsPinRenamePending(this->GraphPinObj, false);
-			}
-		}
-		if (bPendingRename)
-		{
-			if (CreatedTextBlock.IsValid())
-			{
-				CreatedTextBlock->EnterEditingMode();
-			}
-			else if (CreatedParameterNamePinLabel.IsValid())
-			{
-				CreatedParameterNamePinLabel->EnterEditingMode();
-			}
+			CreatedTextBlock->EnterEditingMode();
 			bPendingRename = false;
 		}
 		BaseClass::Tick(AllottedGeometry, InCurrentTime, InDeltaTime);
@@ -98,23 +79,8 @@ protected:
 	virtual TSharedRef<SWidget> GetLabelWidget(const FName& InLabelStyle) override
 	{
 		UNiagaraNode* ParentNode = Cast<UNiagaraNode>(this->GraphPinObj->GetOwningNode());
-
-		auto CreateLabelTextBlock = [&]()->TSharedRef<SWidget> {
-			CreatedTextBlock = SNew(SInlineEditableTextBlock)
-				.Style(&FEditorStyle::Get().GetWidgetStyle<FInlineEditableTextBlockStyle>("Graph.Node.InlineEditablePinName"))
-				.Text(this, &TNiagaraGraphPinEditableName<BaseClass>::GetParentPinLabel)
-				.Visibility(this, &TNiagaraGraphPinEditableName<BaseClass>::GetParentPinVisibility)
-				.ColorAndOpacity(this, &TNiagaraGraphPinEditableName<BaseClass>::GetParentPinTextColor)
-				.IsReadOnly(true);
-			return CreatedTextBlock.ToSharedRef();
-		};
-
-		auto CreateRenamableLabelTextBlock = [&]()->TSharedRef<SWidget> {
-			if (ParentNode->IsPinNameEditableUponCreation(this->GraphPinObj))
-			{
-				bPendingRename = true;
-			}
-			
+		if (ParentNode && ParentNode->IsPinNameEditable(this->GraphPinObj))
+		{
 			CreatedTextBlock = SNew(SInlineEditableTextBlock)
 				.Style(&FEditorStyle::Get().GetWidgetStyle<FInlineEditableTextBlockStyle>("Graph.Node.InlineEditablePinName"))
 				.Text(this, &TNiagaraGraphPinEditableName<BaseClass>::GetParentPinLabel)
@@ -122,45 +88,21 @@ protected:
 				.ColorAndOpacity(this, &TNiagaraGraphPinEditableName<BaseClass>::GetParentPinTextColor)
 				.OnVerifyTextChanged(this, &TNiagaraGraphPinEditableName<BaseClass>::OnVerifyTextChanged)
 				.OnTextCommitted(this, &TNiagaraGraphPinEditableName<BaseClass>::OnTextCommitted);
-			return CreatedTextBlock.ToSharedRef();
-		};
 
-		bool bIsPinEditable = ParentNode && ParentNode->IsPinNameEditable(this->GraphPinObj);
-		if (ParentNode && ParentNode->IsA<UNiagaraNodeParameterMapBase>())
-		{
-			UNiagaraGraph* NiagaraGraph = ParentNode->GetNiagaraGraph();
-			if (NiagaraGraph->IsPinVisualWidgetProviderRegistered())
+			TSharedRef<SWidget> EditableTextBlock = CreatedTextBlock.ToSharedRef();
+
+			if (ParentNode->IsPinNameEditableUponCreation(this->GraphPinObj))
 			{
-				return NiagaraGraph->GetPinVisualWidget(this->GraphPinObj);
+				bPendingRename = true;
 			}
-			else
-			{
-				return SNew(SBox)
-					.Padding(FMargin(0.0f, 1.0f, 0.0f, 1.0f))
-					[
-						SAssignNew(CreatedParameterNamePinLabel, SNiagaraParameterNamePinLabel, this->GraphPinObj)
-						.EditableTextStyle(&FEditorStyle::Get().GetWidgetStyle<FInlineEditableTextBlockStyle>("Graph.Node.InlineEditablePinName"))
-						.ParameterText(this, &TNiagaraGraphPinEditableName<BaseClass>::GetParentPinLabel)
-						.IsReadOnly(bIsPinEditable == false)
-						.Visibility(this, &TNiagaraGraphPinEditableName<BaseClass>::GetParentPinVisibility)
-						.OnVerifyTextChanged(this, &TNiagaraGraphPinEditableName<BaseClass>::OnVerifyTextChanged)
-						.OnTextCommitted(this, &TNiagaraGraphPinEditableName<BaseClass>::OnTextCommitted)
-					];
-				return CreatedParameterNamePinLabel.ToSharedRef();
-			}
-		}
-		else if (bIsPinEditable)
-		{
-			return CreateRenamableLabelTextBlock();
+			return EditableTextBlock;
 		}
 		else
-		{	
+		{
 			return BaseClass::GetLabelWidget(InLabelStyle);
 		}
 	}
 
 	bool bPendingRename;
-	bool bPendingEditNamespaceModifier;
 	TSharedPtr<SInlineEditableTextBlock> CreatedTextBlock;
-	TSharedPtr<SNiagaraParameterNamePinLabel> CreatedParameterNamePinLabel;
 };

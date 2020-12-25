@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,7 +7,6 @@
 #include "HAL/ThreadSafeBool.h"
 #include "Containers/Queue.h"
 #include "Containers/Map.h"
-#include "UObject/GCObject.h"
 
 #include "GoogleARCoreTypes.h"
 #include "GoogleARCoreAPI.h"
@@ -16,23 +15,11 @@
 #include "GoogleARCoreOpenGLContext.h"
 
 
-class UARTexture;
-class UARCoreCameraTexture;
-class UARCoreDepthTexture;
-
-enum class EARCorePermissionStatus : uint8
-{
-	Unknown,
-	Requested,
-	Granted,
-	Denied,
-};
-
 class FGoogleARCoreDevice
 {
 public:
 	static FGoogleARCoreDevice* GetInstance();
-	
+
 	FGoogleARCoreDevice();
 
 	EGoogleARCoreAvailability CheckARCoreAPKAvailability();
@@ -73,7 +60,8 @@ public:
 
 	void ResetARCoreSession();
 
-	void AllocatePassthroughCameraTextures();
+	void AllocatePassthroughCameraTexture_RenderThread();
+	FTextureRHIRef GetPassthroughCameraTexture();
 
 	// Passthrough Camera
 	FMatrix GetPassthroughCameraProjectionMatrix(FIntPoint ViewRectSize) const;
@@ -81,7 +69,6 @@ public:
 	int64 GetPassthroughCameraTimestamp() const;
 
 	// Frame
-	void UpdateGameFrame(UWorld* World);
 	EGoogleARCoreTrackingState GetTrackingState() const;
 	EGoogleARCoreTrackingFailureReason GetTrackingFailureReason() const;
 	FTransform GetLatestPose() const;
@@ -91,6 +78,7 @@ public:
 #if PLATFORM_ANDROID
 	EGoogleARCoreFunctionStatus GetLatestCameraMetadata(const ACameraMetadata*& OutCameraMetadata) const;
 #endif
+	UTexture* GetCameraTexture();
 	EGoogleARCoreFunctionStatus AcquireCameraImage(UGoogleARCoreCameraImage *&OutLatestCameraImage);
 
 	void TransformARCoordinates2D(EGoogleARCoreCoordinates2DType InputCoordinatesType, const TArray<FVector2D>& InputCoordinates,
@@ -102,7 +90,6 @@ public:
 
 	// Anchor, Planes
 	EGoogleARCoreFunctionStatus CreateARPin(const FTransform& PinToWorldTransform, UARTrackedGeometry* TrackedGeometry, USceneComponent* ComponentToPin, const FName DebugName, UARPin*& OutARAnchorObject);
-	bool TryGetOrCreatePinForNativeResource(void* InNativeResource, const FString& InPinName, UARPin*& OutPin);
 	void RemoveARPin(UARPin* ARAnchorObject);
 
 	void GetAllARPins(TArray<UARPin*>& ARCoreAnchorList);
@@ -129,8 +116,8 @@ public:
 	}
 
 	// Camera Intrinsics
-	EGoogleARCoreFunctionStatus GetCameraImageIntrinsics(FARCameraIntrinsics& OutCameraIntrinsics);
-	EGoogleARCoreFunctionStatus GetCameraTextureIntrinsics(FARCameraIntrinsics& OutCameraIntrinsics);
+	EGoogleARCoreFunctionStatus GetCameraImageIntrinsics(UGoogleARCoreCameraIntrinsics *&OutCameraIntrinsics);
+	EGoogleARCoreFunctionStatus GetCameraTextureIntrinsics(UGoogleARCoreCameraIntrinsics *&OutCameraIntrinsics);
 
 	void RunOnGameThread(TFunction<void()> Func)
 	{
@@ -153,11 +140,6 @@ public:
 
 	void* GetARSessionRawPointer();
 	void* GetGameThreadARFrameRawPointer();
-	
-	UARTexture* GetLastCameraTexture() const;
-	UARTexture* GetDepthTexture() const;
-	
-	EARCorePermissionStatus CheckAndRequrestPermission(const UARSessionConfig& ConfigurationData);
 
 private:
 	// Android lifecycle events.
@@ -173,6 +155,10 @@ private:
 	void OnModuleLoaded();
 	void OnModuleUnloaded();
 
+	void OnWorldTickStart(UWorld* World, ELevelTick TickType, float DeltaTime);
+
+	void CheckAndRequrestPermission(const UARSessionConfig& ConfigurationData);
+
 	TSharedPtr<FGoogleARCoreSession> CreateSession(bool bUseFrontCamera);
 	void StartSession();
 
@@ -185,21 +171,15 @@ private:
 	TSharedPtr<FGoogleARCoreSession> ARCoreSession;
 	TSharedPtr<FGoogleARCoreSession> FrontCameraARCoreSession;
 	TSharedPtr<FGoogleARCoreSession> BackCameraARCoreSession;
-	
-	TMap<uint32, UARCoreCameraTexture*> PassthroughCameraTextures;
-	
-	UARCoreDepthTexture* DepthTexture;
-	
-	FTextureRHIRef LastCameraTexture;
-	
-	FCriticalSection LastCameraTextureLock;
-	
-	uint32 LastCameraTextureId = 0;
-	
+
+	FTextureRHIRef PassthroughCameraTexture;
+	uint32 PassthroughCameraTextureId;
 	bool bIsARCoreSessionRunning;
-	
-	EARCorePermissionStatus PermissionStatus = EARCorePermissionStatus::Unknown;
-	
+	bool bForceLateUpdateEnabled; // A debug flag to force use late update.
+	bool bSessionConfigChanged;
+	bool bAndroidRuntimePermissionsRequested;
+	bool bAndroidRuntimePermissionsGranted;
+	bool bPermissionDeniedByUser;
 	bool bStartSessionRequested; // User called StartSession
 	bool bShouldSessionRestart; // Start tracking on activity start
 	bool bARCoreInstallRequested;
@@ -212,23 +192,11 @@ private:
 
 	FGoogleARCoreCameraConfig SessionCameraConfig;
 	
+	TSharedPtr<FGoogleARCoreDeviceCameraBlitter, ESPMode::ThreadSafe> CameraBlitter;
+
 	TQueue<TFunction<void()>> RunOnGameThreadQueue;
 
 	TSharedPtr<FARSupportInterface, ESPMode::ThreadSafe> ARSystem;
 	
 	TSharedPtr<FGoogleARCoreOpenGLContext, ESPMode::ThreadSafe> GLContext;
-	
-	// FGoogleARCoreDevice itself cannot be a FGCObject since it's initialize too early.
-	// So we use an internal class instead, which can be created only when it's needed.
-	class FInternalGCObject : FGCObject
-	{
-	public:
-		FInternalGCObject(FGoogleARCoreDevice* InARCoreDevice) : ARCoreDevice(InARCoreDevice) {}
-		void AddReferencedObjects(FReferenceCollector& Collector) override;
-	private:
-		FGoogleARCoreDevice* ARCoreDevice = nullptr;
-	};
-	friend class FInternalGCObject;
-	
-	TSharedPtr<FInternalGCObject, ESPMode::ThreadSafe> GCObject;
 };

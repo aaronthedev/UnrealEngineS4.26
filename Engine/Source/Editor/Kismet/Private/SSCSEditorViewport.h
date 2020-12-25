@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -82,11 +82,6 @@ protected:
 	 * @return true if the viewport is visible; false otherwise.
 	 */
 	bool IsVisible() const override;
-
-	/**
-	 * Returns true if the viewport commands should be shown
-	 */
-	bool ShouldShowViewportCommands() const;
 
 	/** Called when the simulation toggle command is fired */
 	void ToggleIsSimulateEnabled();

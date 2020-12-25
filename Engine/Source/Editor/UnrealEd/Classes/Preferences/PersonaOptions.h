@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 //=============================================================================
 // PersonaOptions
@@ -14,8 +14,6 @@
 #include "UObject/Object.h"
 #include "Engine/EngineBaseTypes.h"
 #include "PersonaOptions.generated.h"
-
-enum class EFrameNumberDisplayFormats : uint8;
 
 /** Persisted camera follow mode */
 UENUM()
@@ -43,12 +41,6 @@ struct FViewportConfigOptions
 	UPROPERTY(EditAnywhere, config, Category = "Viewport")
 	float ViewFOV;
 
-	UPROPERTY(EditAnywhere, config, Category = "Viewport")
-	int32 CameraSpeedSetting;
-
-	UPROPERTY(EditAnywhere, config, Category = "Viewport")
-	float CameraSpeedScalar;
-
 	/** Persisted camera follow mode for a viewport */
 	UPROPERTY(config)
 	EAnimationViewportCameraFollowMode CameraFollowMode;
@@ -59,8 +51,6 @@ struct FViewportConfigOptions
 	FViewportConfigOptions()
 		: ViewModeIndex(EViewModeIndex::VMI_Lit)
 		, ViewFOV(53.43)
-		, CameraSpeedSetting(4)
-		, CameraSpeedScalar(1.0)
 		, CameraFollowMode(EAnimationViewportCameraFollowMode::None)
 	{}
 
@@ -175,34 +165,6 @@ class UNREALED_API UPersonaOptions : public UObject
 	UPROPERTY(config)
 	TArray<FAssetEditorOptions> AssetEditorOptions;
 
-	/** Snap value used to determine scrub resolution of the curve timeline */
-	UPROPERTY(config)
-	float CurveEditorSnapInterval;
-
-	/** Snap value used to determine scrub resolution of the anim timeline */
-	UPROPERTY(config)
-	int32 TimelineScrubSnapValue;
-
-	/** Display format for the anim timeline */
-	UPROPERTY(config)
-	EFrameNumberDisplayFormats TimelineDisplayFormat;
-
-	/** Whether to display percentage in the anim timeline */
-	UPROPERTY(config)
-	bool bTimelineDisplayPercentage;
-
-	/** Whether to display secondary format (times/frames) in the anim timeline */
-	UPROPERTY(config)
-	bool bTimelineDisplayFormatSecondary;
-
-	/** Whether to display keys in the timeline's curve tracks */
-	UPROPERTY(config)
-	bool bTimelineDisplayCurveKeys;
-
-	/** Whether to snap to various things */
-	UPROPERTY(config)
-	TArray<FName> TimelineEnabledSnaps;
-
 public:
 	void SetShowGrid( bool bInShowGrid );
 	void SetHighlightOrigin( bool bInHighlightOrigin );
@@ -211,8 +173,6 @@ public:
 	void SetUseAudioAttenuation( bool bInUseAudioAttenuation );
 	void SetViewModeIndex( FName InContext, EViewModeIndex InViewModeIndex, int32 InViewportIndex );
 	void SetViewFOV( FName InContext, float InViewFOV, int32 InViewportIndex );
-	void SetCameraSpeed(FName InContext, int32 InCameraSpeed, int32 InViewportIndex);
-	void SetCameraSpeedScalar(FName InContext, float InCameraSpeedScalar, int32 InViewportIndex);
 	void SetViewCameraFollow( FName InContext, EAnimationViewportCameraFollowMode InCameraFollowMode, FName InCameraFollowBoneName, int32 InViewportIndex );
 	void SetDefaultLocalAxesSelection( uint32 InDefaultLocalAxesSelection );
 	void SetDefaultBoneDrawSelection(uint32 InDefaultBoneAxesSelection);

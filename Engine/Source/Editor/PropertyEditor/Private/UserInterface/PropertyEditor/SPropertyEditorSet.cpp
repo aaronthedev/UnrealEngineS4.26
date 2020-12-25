@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UserInterface/PropertyEditor/SPropertyEditorSet.h"
 #include "UObject/UnrealType.h"
@@ -30,10 +30,10 @@ void SPropertyEditorSet::Construct( const FArguments& InArgs, const TSharedRef< 
 bool SPropertyEditorSet::Supports( const TSharedRef< FPropertyEditor >& InPropertyEditor)
 {
 	const TSharedRef< FPropertyNode > PropertyNode = InPropertyEditor->GetPropertyNode();
-	const FProperty* Property = InPropertyEditor->GetProperty();
+	const UProperty* Property = InPropertyEditor->GetProperty();
 
 	if (!PropertyNode->HasNodeFlags(EPropertyNodeFlags::EditInlineNew)
-		&& Property->IsA<FSetProperty>())
+		&& Property->IsA<USetProperty>())
 	{
 		return true;
 	}
@@ -43,8 +43,8 @@ bool SPropertyEditorSet::Supports( const TSharedRef< FPropertyEditor >& InProper
 
 void SPropertyEditorSet::GetDesiredWidth( float& OutMinDesiredWidth, float& OutMaxDesiredWidth )
 {
-	OutMinDesiredWidth = 170.0f;
-	OutMaxDesiredWidth = 170.0f;
+	OutMinDesiredWidth = 190.0f;
+	OutMaxDesiredWidth = 190.0f;
 }
 
 FText SPropertyEditorSet::GetSetTextValue() const

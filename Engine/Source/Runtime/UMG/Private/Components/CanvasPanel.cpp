@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/CanvasPanel.h"
 #include "Layout/ArrangedChildren.h"
@@ -40,7 +40,7 @@ void UCanvasPanel::OnSlotAdded(UPanelSlot* InSlot)
 void UCanvasPanel::OnSlotRemoved(UPanelSlot* InSlot)
 {
 	// Remove the widget from the live slot if it exists.
-	if ( MyCanvas.IsValid() && InSlot->Content)
+	if ( MyCanvas.IsValid() )
 	{
 		TSharedPtr<SWidget> Widget = InSlot->Content->GetCachedWidget();
 		if ( Widget.IsValid() )

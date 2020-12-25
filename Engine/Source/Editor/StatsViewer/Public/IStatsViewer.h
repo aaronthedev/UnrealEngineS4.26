@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -22,7 +22,5 @@ public:
 
 	/** Get the currently selected object set */
 	virtual int32 GetObjectSetIndex() const = 0;
-
-	virtual void SwitchAndFilterPage(int32 Table, const FString& FilterValue, const FString& FilterProperty) = 0;
 };
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UVProjectionTool.h"
 #include "InteractiveToolManager.h"
@@ -102,7 +102,6 @@ void UUVProjectionTool::Setup()
 	}
 
 	BasicProperties = NewObject<UUVProjectionToolProperties>(this, TEXT("UV Projection Settings"));
-	BasicProperties->RestoreProperties(this);
 	AdvancedProperties = NewObject<UUVProjectionAdvancedProperties>(this, TEXT("Advanced Settings"));
 
 	// initialize our properties
@@ -110,8 +109,7 @@ void UUVProjectionTool::Setup()
 	AddToolPropertySource(AdvancedProperties);
 
 	MaterialSettings = NewObject<UExistingMeshMaterialProperties>(this);
-	MaterialSettings->RestoreProperties(this);
-
+	MaterialSettings->Setup();
 	AddToolPropertySource(MaterialSettings);
 
 	// initialize the PreviewMesh+BackgroundCompute object
@@ -126,11 +124,6 @@ void UUVProjectionTool::Setup()
 	{
 		Preview->InvalidateResult();
 	}
-	UpdateVisualization();
-
-	GetToolManager()->DisplayMessage(
-		LOCTEXT("UVProjectionToolDescription", "Generate UVs for a Mesh by projecting onto simple geometric shapes."),
-		EToolMessageLevel::UserNotification);
 }
 
 
@@ -160,6 +153,7 @@ void UUVProjectionTool::UpdateNumPreviews()
 			OpFactory->ComponentIndex = PreviewIdx;
 			OriginalDynamicMeshes[PreviewIdx] = MakeShared<FDynamicMesh3>();
 			FMeshDescriptionToDynamicMesh Converter;
+			Converter.bPrintDebugMessages = true;
 			Converter.Convert(ComponentTargets[PreviewIdx]->GetMesh(), *OriginalDynamicMeshes[PreviewIdx]);
 
 			FVector Center, Extents;
@@ -170,24 +164,19 @@ void UUVProjectionTool::UpdateNumPreviews()
 
 			UMeshOpPreviewWithBackgroundCompute* Preview = Previews.Add_GetRef(NewObject<UMeshOpPreviewWithBackgroundCompute>(OpFactory, "Preview"));
 			Preview->Setup(this->TargetWorld, OpFactory);
-			Preview->PreviewMesh->SetTangentsMode(EDynamicMeshTangentCalcType::AutoCalculated);
-
-			FComponentMaterialSet MaterialSet;
-			ComponentTargets[PreviewIdx]->GetMaterialSet(MaterialSet);
-			Preview->ConfigureMaterials(MaterialSet.Materials,
+			Preview->ConfigureMaterials(
+				ToolSetupUtil::GetDefaultMaterial(GetToolManager(), ComponentTargets[PreviewIdx]->GetMaterial(0)),
 				ToolSetupUtil::GetDefaultWorkingMaterial(GetToolManager())
 			);
-			Preview->PreviewMesh->UpdatePreview(OriginalDynamicMeshes[PreviewIdx].Get());
-			Preview->PreviewMesh->SetTransform(ComponentTargets[PreviewIdx]->GetWorldTransform());
-
 			Preview->SetVisibility(true);
+
 
 			UTransformProxy* TransformProxy = TransformProxies.Add_GetRef(NewObject<UTransformProxy>(this));
 			TransformProxy->SetTransform(LocalXF * ComponentTargets[PreviewIdx]->GetWorldTransform());
 			TransformProxy->OnTransformChanged.AddUObject(this, &UUVProjectionTool::TransformChanged);
 
 			UTransformGizmo* TransformGizmo = TransformGizmos.Add_GetRef(GizmoManager->Create3AxisTransformGizmo(this));
-			TransformGizmo->SetActiveTarget(TransformProxy, GetToolManager());
+			TransformGizmo->SetActiveTarget(TransformProxy);
 		}
 		check(TransformProxies.Num() == TargetNumPreview);
 		check(TransformGizmos.Num() == TargetNumPreview);
@@ -197,16 +186,13 @@ void UUVProjectionTool::UpdateNumPreviews()
 
 void UUVProjectionTool::Shutdown(EToolShutdownType ShutdownType)
 {
-	BasicProperties->SaveProperties(this);
-	MaterialSettings->SaveProperties(this);
-
 	// Restore (unhide) the source meshes
 	for (TUniquePtr<FPrimitiveComponentTarget>& ComponentTarget : ComponentTargets)
 	{
 		ComponentTarget->SetOwnerVisibility(true);
 	}
 
-	TArray<FDynamicMeshOpResult> Results;
+	TArray<TUniquePtr<FDynamicMeshOpResult>> Results;
 	for (UMeshOpPreviewWithBackgroundCompute* Preview : Previews)
 	{
 		Results.Emplace(Preview->Shutdown());
@@ -225,9 +211,9 @@ void UUVProjectionTool::SetAssetAPI(IToolsContextAssetAPI* AssetAPIIn)
 	this->AssetAPI = AssetAPIIn;
 }
 
-TUniquePtr<FDynamicMeshOperator> UUVProjectionOperatorFactory::MakeNewOperator()
+TSharedPtr<FDynamicMeshOperator> UUVProjectionOperatorFactory::MakeNewOperator()
 {
-	TUniquePtr<FUVProjectionOp> Op = MakeUnique<FUVProjectionOp>();
+	TSharedPtr<FUVProjectionOp> Op = MakeShared<FUVProjectionOp>();
 	Op->ProjectionMethod = Tool->BasicProperties->UVProjectionMethod;
 
 	// TODO: de-dupe this logic (it's also in Render, below)
@@ -235,8 +221,8 @@ TUniquePtr<FDynamicMeshOperator> UUVProjectionOperatorFactory::MakeNewOperator()
 	LocalScale.SetScale3D(Tool->BasicProperties->ProjectionPrimitiveScale);
 	Op->ProjectionTransform = LocalScale * Tool->TransformProxies[ComponentIndex]->GetTransform();
 	Op->CylinderProjectToTopOrBottomAngleThreshold = Tool->BasicProperties->CylinderProjectToTopOrBottomAngleThreshold;
-	Op->UVScale = (FVector2f)Tool->BasicProperties->UVScale;
-	Op->UVOffset = (FVector2f)Tool->BasicProperties->UVOffset;
+	Op->UVScale = Tool->BasicProperties->UVScale;
+	Op->UVOffset = Tool->BasicProperties->UVOffset;
 	Op->bWorldSpaceUVScale = Tool->BasicProperties->bWorldSpaceUVScale;
 
 	FTransform LocalToWorld = Tool->ComponentTargets[ComponentIndex]->GetWorldTransform();
@@ -276,7 +262,7 @@ void UUVProjectionTool::Render(IToolsContextRenderAPI* RenderAPI)
 	ProjectionShapeVisualizer.EndFrame();
 }
 
-void UUVProjectionTool::OnTick(float DeltaTime)
+void UUVProjectionTool::Tick(float DeltaTime)
 {
 	for (UMeshOpPreviewWithBackgroundCompute* Preview : Previews)
 	{
@@ -297,25 +283,24 @@ void UUVProjectionTool::PostEditChangeProperty(FPropertyChangedEvent& PropertyCh
 }
 #endif
 
-void UUVProjectionTool::UpdateVisualization()
+void UUVProjectionTool::OnPropertyModified(UObject* PropertySet, UProperty* Property)
 {
+	// if we don't know what changed, or we know checker density changed, update checker material
 	MaterialSettings->UpdateMaterials();
 	for (int PreviewIdx = 0; PreviewIdx < Previews.Num(); PreviewIdx++)
 	{
 		UMeshOpPreviewWithBackgroundCompute* Preview = Previews[PreviewIdx];
-		Preview->OverrideMaterial = MaterialSettings->GetActiveOverrideMaterial();
+		MaterialSettings->SetMaterialIfChanged(ComponentTargets[PreviewIdx]->GetMaterial(0), Preview->StandardMaterial, [&Preview, this](UMaterialInterface* Material)
+		{
+			Preview->ConfigureMaterials(ToolSetupUtil::GetDefaultMaterial(GetToolManager(), Material), Preview->WorkingMaterial);
+		});
 	}
-
+	
 	UpdateNumPreviews();
 	for (UMeshOpPreviewWithBackgroundCompute* Preview : Previews)
 	{
 		Preview->InvalidateResult();
 	}
-}
-
-void UUVProjectionTool::OnPropertyModified(UObject* PropertySet, FProperty* Property)
-{
-	UpdateVisualization();
 }
 
 
@@ -329,6 +314,11 @@ void UUVProjectionTool::TransformChanged(UTransformProxy* Proxy, FTransform Tran
 }
 
 
+bool UUVProjectionTool::HasAccept() const
+{
+	return true;
+}
+
 bool UUVProjectionTool::CanAccept() const
 {
 	for (UMeshOpPreviewWithBackgroundCompute* Preview : Previews)
@@ -338,11 +328,11 @@ bool UUVProjectionTool::CanAccept() const
 			return false;
 		}
 	}
-	return Super::CanAccept();
+	return true;
 }
 
 
-void UUVProjectionTool::GenerateAsset(const TArray<FDynamicMeshOpResult>& Results)
+void UUVProjectionTool::GenerateAsset(const TArray<TUniquePtr<FDynamicMeshOpResult>>& Results)
 {
 	GetToolManager()->BeginUndoTransaction(LOCTEXT("UVProjectionToolTransactionName", "UV Projection Tool"));
 
@@ -350,14 +340,14 @@ void UUVProjectionTool::GenerateAsset(const TArray<FDynamicMeshOpResult>& Result
 	
 	for (int32 ComponentIdx = 0; ComponentIdx < ComponentTargets.Num(); ComponentIdx++)
 	{
-		check(Results[ComponentIdx].Mesh.Get() != nullptr);
-		ComponentTargets[ComponentIdx]->CommitMesh([&Results, &ComponentIdx, this](const FPrimitiveComponentTarget::FCommitParams& CommitParams)
+		check(Results[ComponentIdx]->Mesh.Get() != nullptr);
+		ComponentTargets[ComponentIdx]->CommitMesh([&Results, &ComponentIdx, this](FMeshDescription* MeshDescription)
 		{
 			FDynamicMeshToMeshDescription Converter;
 			//if (??) // TODO check if UV topology changed?  or remove all traces of this if statement (may be safe to assume it almost always changes w/ a uv projection op)
 			{
 				// full conversion if topology changed
-				Converter.Convert(Results[ComponentIdx].Mesh.Get(), *CommitParams.MeshDescription);
+				Converter.Convert(Results[ComponentIdx]->Mesh.Get(), *MeshDescription);
 			}
 			//else
 			//{

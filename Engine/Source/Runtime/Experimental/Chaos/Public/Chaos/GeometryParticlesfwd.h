@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -9,24 +9,6 @@ namespace Chaos
 	{
 		RigidBodySim,
 		Other
-	};
-
-	enum class ESyncState: uint8
-	{
-		InSync,	    //in sync with recorded data
-		SoftDesync, //recorded data still matches, but may interact with hard desynced particles
-		HardDesync, //recorded data mismatches, must run collision detection again
-	};
-
-	struct FSyncState
-	{
-		ESyncState State;
-
-		FSyncState()
-		: State(ESyncState::InSync)
-		{
-
-		}
 	};
 
 	template<class T, int d, EGeometryParticlesSimType SimType>
@@ -52,30 +34,8 @@ namespace Chaos
 		}
 	};
 
-	inline uint32 GetTypeHash(const FSpatialAccelerationIdx& Idx)
-	{
-		return ::GetTypeHash((const uint16&) Idx);
-	}
-
 	inline FArchive& operator<<(FArchive& Ar, FSpatialAccelerationIdx& Idx)
 	{
 		return Ar << (uint16&)Idx;
-	}
-
-
-	struct FUniqueIdx
-	{
-		int32 Idx;
-		FUniqueIdx(): Idx(INDEX_NONE){}
-		explicit FUniqueIdx(int32 InIdx): Idx(InIdx){}
-
-		bool IsValid() const { return Idx != INDEX_NONE; }
-		bool operator<(const FUniqueIdx& Other) const { return Idx < Other.Idx; }
-		bool operator==(const FUniqueIdx& Other) const { return Idx == Other.Idx; }
-	};
-
-	FORCEINLINE uint32 GetTypeHash(const FUniqueIdx& Unique)
-	{
-		return ::GetTypeHash(Unique.Idx);
 	}
 }

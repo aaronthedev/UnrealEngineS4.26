@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "HttpRequestHandler.h"
@@ -9,14 +9,6 @@ struct FHttpPath;
 class IHttpRouter : public TSharedFromThis<IHttpRouter>
 {
 public:
-
-	/**
-	 * Query the router with a request.
-	 * @param Request the request to route.
-	 * @param OnComplete the callback called when 
-	 * @return	 An FHttpRouteHandle on success, nullptr otherwise.
-	 */
-	virtual bool Query(const TSharedPtr<FHttpServerRequest>& Request, const FHttpResultCallback& OnProcessingComplete) = 0;
 
 	/**
 	 * Binds the caller-supplied Uri to the caller-supplied handler

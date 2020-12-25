@@ -1,8 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
+
+/*=============================================================================
+	MallocBinned.cpp: Binned memory allocator
+=============================================================================*/
 
 #include "HAL/MallocBinnedArena.h"
-
-PRAGMA_DISABLE_UNSAFE_TYPECAST_WARNINGS
 
 #if PLATFORM_64BITS && PLATFORM_HAS_FPlatformVirtualMemoryBlock
 #include "Logging/LogMacros.h"
@@ -434,7 +436,7 @@ struct FMallocBinnedArena::Private
 					NodePool->SetCanary(FPoolInfoSmall::ECanary::SmallUnassigned, true, false);
 					Table.BlockOfBlockAllocationBits.FreeBit(OutBlockOfBlocksIndex);
 
-					uint64 AllocSize = static_cast<uint64>(Allocator.SmallPoolTables[InPoolIndex].PagesPlatformForBlockOfBlocks) * Allocator.ArenaParams.AllocationGranularity;
+					uint64 AllocSize = Allocator.SmallPoolTables[InPoolIndex].PagesPlatformForBlockOfBlocks * Allocator.ArenaParams.AllocationGranularity;
 
 					if (!bWasExhaused)
 					{
@@ -937,7 +939,7 @@ void* FMallocBinnedArena::ReallocExternal(void* Ptr, SIZE_T NewSize, uint32 Alig
 		check(Ptr); // null is an OS allocation because it will not fall in our VM block
 		uint32 BlockSize = PoolIndexToBlockSize(PoolIndex);
 		if (
-			((int)(NewSize <= BlockSize) & (int)IsAligned(Ptr, Alignment)) &&
+			((NewSize <= BlockSize) & IsAligned(Ptr, Alignment)) && //-V792
 			(PoolIndex == 0 || NewSize > PoolIndexToBlockSize(PoolIndex - 1)))
 		{
 			return Ptr;
@@ -1352,5 +1354,3 @@ void FMallocBinnedArena::DumpAllocatorStats(class FOutputDevice& Ar)
 	}
 }
 #endif
-
-PRAGMA_ENABLE_UNSAFE_TYPECAST_WARNINGS

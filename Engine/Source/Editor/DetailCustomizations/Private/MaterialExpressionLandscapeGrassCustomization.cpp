@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MaterialExpressionLandscapeGrassCustomization.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
@@ -9,7 +9,7 @@
 #include "DetailCategoryBuilder.h"
 #include "IDetailChildrenBuilder.h"
 #include "ContentBrowserDelegates.h"
-#include "AssetRegistry/AssetData.h"
+#include "AssetRegistry/Public/AssetData.h"
 #include "PropertyCustomizationHelpers.h"
 #include "LandscapeGrassType.h"
 #include "Materials/MaterialExpressionLandscapeGrassOutput.h"

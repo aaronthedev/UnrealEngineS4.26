@@ -12,7 +12,7 @@
 #include <boost/type_traits/is_pod.hpp>
 #include <boost/static_assert.hpp>
 #include <boost/config.hpp>
-#include <cstddef> // size_t
+#include <cstddef>
 #include <boost/detail/workaround.hpp>
 
 #ifdef BOOST_MSVC
@@ -25,8 +25,9 @@
 #endif
 
 namespace boost {
-#ifndef __BORLANDC__
    namespace detail{
+
+#ifndef __BORLANDC__
 
       union max_align
       {
@@ -75,7 +76,7 @@ template <std::size_t Target> struct short_alignment<Target, false>{ typedef typ
 template <std::size_t Target, bool check> struct char_alignment{ typedef char type; };
 template <std::size_t Target> struct char_alignment<Target, false>{ typedef typename short_alignment<Target, boost::alignment_of<short>::value >= Target>::type type; };
 
-} // namespace detail
+}
 
 template <std::size_t Align>
 struct type_with_alignment 

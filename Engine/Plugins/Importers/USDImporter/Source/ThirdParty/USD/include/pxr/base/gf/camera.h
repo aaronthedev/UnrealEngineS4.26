@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_GF_CAMERA_H
-#define PXR_BASE_GF_CAMERA_H
+#ifndef GF_CAMERA_H
+#define GF_CAMERA_H
 
 /// \file gf/camera.h
 /// \ingroup group_gf_BasicGeometry
@@ -243,4 +243,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_GF_CAMERA_H
+#endif // GF_CAMERA_H

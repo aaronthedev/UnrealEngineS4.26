@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
@@ -10,7 +10,6 @@
 #include "SequencerCommands.h"
 #include "ISequencerObjectChangeListener.h"
 #include "Sequencer.h"
-#include "SequencerCustomizationManager.h"
 #include "SequencerEdMode.h"
 #include "SequencerObjectChangeListener.h"
 #include "IDetailKeyframeHandler.h"
@@ -22,11 +21,6 @@
 #include "FileHelpers.h"
 #include "LevelSequence.h"
 #include "AssetRegistryModule.h"
-
-#if !IS_MONOLITHIC
-	UE::MovieScene::FEntityManager*& GEntityManagerForDebugging = UE::MovieScene::GEntityManagerForDebuggingVisualizers;
-#endif
-
 
 
 #define LOCTEXT_NAMESPACE "SequencerEditor"
@@ -239,8 +233,6 @@ public:
 		ObjectBindingContextMenuExtensibilityManager = MakeShareable( new FExtensibilityManager );
 		AddTrackMenuExtensibilityManager = MakeShareable( new FExtensibilityManager );
 		ToolBarExtensibilityManager = MakeShareable(new FExtensibilityManager);
-
-		SequencerCustomizationManager = MakeShareable(new FSequencerCustomizationManager);
 	}
 
 	virtual void ShutdownModule() override
@@ -263,18 +255,18 @@ public:
 		PropertyAnimators.Remove(Key);
 	}
 
-	virtual bool CanAnimateProperty(FProperty* Property) override
+	virtual bool CanAnimateProperty(UProperty* Property) override
 	{
 		if (PropertyAnimators.Contains(FAnimatedPropertyKey::FromProperty(Property)))
 		{
 			return true;
 		}
 
-		FObjectPropertyBase* ObjectProperty = CastField<FObjectPropertyBase>(Property);
+		UObjectPropertyBase* ObjectProperty = Cast<UObjectPropertyBase>(Property);
 
 		// Check each level of the property hierarchy
-		FFieldClass* PropertyType = Property->GetClass();
-		while (PropertyType && PropertyType != FProperty::StaticClass())
+		UClass* PropertyType = Property->GetClass();
+		while (PropertyType && PropertyType != UProperty::StaticClass())
 		{
 			FAnimatedPropertyKey Key = FAnimatedPropertyKey::FromPropertyTypeName(PropertyType->GetFName());
 
@@ -307,8 +299,6 @@ public:
 	virtual TSharedPtr<FExtensibilityManager> GetAddTrackMenuExtensibilityManager() const override { return AddTrackMenuExtensibilityManager; }
 	virtual TSharedPtr<FExtensibilityManager> GetToolBarExtensibilityManager() const override { return ToolBarExtensibilityManager; }
 
-	virtual TSharedPtr<FSequencerCustomizationManager> GetSequencerCustomizationManager() const override { return SequencerCustomizationManager; }
-
 private:
 
 	TSet<FAnimatedPropertyKey> PropertyAnimators;
@@ -337,8 +327,6 @@ private:
 	TSharedPtr<FExtensibilityManager> ObjectBindingContextMenuExtensibilityManager;
 	TSharedPtr<FExtensibilityManager> AddTrackMenuExtensibilityManager;
 	TSharedPtr<FExtensibilityManager> ToolBarExtensibilityManager;
-
-	TSharedPtr<FSequencerCustomizationManager> SequencerCustomizationManager;
 };
 
 IMPLEMENT_MODULE(FSequencerModule, Sequencer);

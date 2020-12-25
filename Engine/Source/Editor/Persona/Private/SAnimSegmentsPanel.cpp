@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "SAnimSegmentsPanel.h"
@@ -18,7 +18,6 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "Editor.h"
-#include "Widgets/Layout/SBox.h"
 
 #define LOCTEXT_NAMESPACE "AnimSegmentPanel"
 
@@ -41,7 +40,6 @@ void SAnimSegmentsPanel::Construct(const FArguments& InArgs)
 	OnAnimSegmentRemovedDelegate		= InArgs._OnAnimSegmentRemoved;
 	OnAnimReplaceMapping				= InArgs._OnAnimReplaceMapping;
 	OnDiffFromParentAsset				= InArgs._OnDiffFromParentAsset;
-	OnGetNodeColor						= InArgs._OnGetNodeColor;
 
 	bChildAnimMontage = InArgs._bChildAnimMontage;
 
@@ -55,7 +53,7 @@ void SAnimSegmentsPanel::Construct(const FArguments& InArgs)
 	// Animation Segment tracks
 	TArray<TSharedPtr<STrackNode>> AnimNodes;
 
-	FLinearColor SelectedColor = FEditorStyle::GetSlateColor("SelectionColor").GetSpecifiedColor();
+	FLinearColor SelectedColor = FLinearColor(1.0f,0.65,0.0f);
 
 	TSharedPtr<SVerticalBox> AnimSegmentTracks;
 
@@ -63,6 +61,8 @@ void SAnimSegmentsPanel::Construct(const FArguments& InArgs)
 	[
 		SAssignNew(AnimSegmentTracks, SVerticalBox)
 	];
+
+	FLinearColor TrackColor = InArgs._ColorTracker->GetNextColor();
 
 	for (int32 TrackIdx=0; TrackIdx < NumTracks; TrackIdx++)
 	{
@@ -73,14 +73,16 @@ void SAnimSegmentsPanel::Construct(const FArguments& InArgs)
 			AnimSegmentTracks->AddSlot()
 				.AutoHeight()
 				.VAlign(VAlign_Center)
-				.Padding(0.0f)
+				.Padding(FMargin(0.5f, 0.5f))
 				[
 					SAssignNew(AnimSegmentTrack, STrack)
+					.TrackColor(TrackColor)
 					.ViewInputMin(ViewInputMin)
 					.ViewInputMax(ViewInputMax)
 					.TrackMaxValue(InArgs._TrackMaxValue)
 					.TrackNumDiscreteValues(InArgs._TrackNumDiscreteValues)
 					.OnTrackRightClickContextMenu(InArgs._OnTrackRightClickContextMenu)
+					.ScrubPosition(InArgs._ScrubPosition)
 					.OnTrackDragDrop(this, &SAnimSegmentsPanel::OnTrackDragDrop)
 				];
 		}
@@ -89,9 +91,10 @@ void SAnimSegmentsPanel::Construct(const FArguments& InArgs)
 			AnimSegmentTracks->AddSlot()
 				.AutoHeight()
 				.VAlign(VAlign_Center)
-				.Padding(0.0f)
+				.Padding(FMargin(0.5f, 0.5f))
 				[
 					SAssignNew(AnimSegmentTrack, STrack)
+					.TrackColor(TrackColor)
 					.ViewInputMin(ViewInputMin)
 					.ViewInputMax(ViewInputMax)
 					.TrackMaxValue(InArgs._TrackMaxValue)
@@ -103,12 +106,15 @@ void SAnimSegmentsPanel::Construct(const FArguments& InArgs)
 					.DraggableBarSnapPositions(InArgs._DraggableBarSnapPositions)
 					.TrackNumDiscreteValues(InArgs._TrackNumDiscreteValues)
 					.OnTrackRightClickContextMenu(InArgs._OnTrackRightClickContextMenu)
+					.ScrubPosition(InArgs._ScrubPosition)
 					.OnTrackDragDrop(this, &SAnimSegmentsPanel::OnTrackDragDrop)
 				];
 		}
 
 		TrackWidgets.Add(AnimSegmentTrack);
 	}
+
+	DefaultNodeColor = InArgs._NodeColor;
 
 	// Generate Nodes and map them to tracks
 	for ( int32 SegmentIdx=0; SegmentIdx < AnimTrack->AnimSegments.Num(); SegmentIdx++ )
@@ -171,9 +177,9 @@ FLinearColor	SAnimSegmentsPanel::GetNodeColor(int32 AnimSegmentIndex) const
 		{
 			return ChildMontageColor;
 		}
-		else if(OnGetNodeColor.IsBound())
+		else
 		{
-			return OnGetNodeColor.Execute(AnimTrack->AnimSegments[AnimSegmentIndex]);
+			return DefaultNodeColor.Get();
 		}
 	}
 
@@ -259,7 +265,7 @@ void SAnimSegmentsPanel::SetSegmentStartPos(float NewStartPos, int32 AnimSegment
 		if(!bDragging)
 		{
 			const FScopedTransaction Transaction( LOCTEXT("AnimSegmentPanel_SetSegmentStart", "Edit Segment Start Time") );
-			OnPreAnimUpdateDelegate.ExecuteIfBound();
+			OnPreAnimUpdateDelegate.Execute();
 			bDragging = true;
 		}
 
@@ -273,7 +279,7 @@ void SAnimSegmentsPanel::OnSegmentDropped(int32 AnimSegmentIndex)
 	if(bDragging)
 	{
 		bDragging = false;
-		OnPostAnimUpdateDelegate.ExecuteIfBound();
+		OnPostAnimUpdateDelegate.Execute();
 	}
 }
 
@@ -315,7 +321,7 @@ void SAnimSegmentsPanel::SummonSegmentNodeContextMenu(FMenuBuilder& MenuBuilder,
 void SAnimSegmentsPanel::AddAnimSegment( UAnimSequenceBase* NewSequenceBase, float NewStartPos )
 {
 	const FScopedTransaction Transaction( LOCTEXT("AnimSegmentPanel_AddSegment", "Add Segment") );
-	OnPreAnimUpdateDelegate.ExecuteIfBound();
+	OnPreAnimUpdateDelegate.Execute();
 
 	FAnimSegment NewSegment;
 	NewSegment.AnimReference = NewSequenceBase;
@@ -326,7 +332,7 @@ void SAnimSegmentsPanel::AddAnimSegment( UAnimSequenceBase* NewSequenceBase, flo
 	NewSegment.StartPos = NewStartPos;
 
 	AnimTrack->AnimSegments.Add(NewSegment);
-	OnPostAnimUpdateDelegate.ExecuteIfBound();
+	OnPostAnimUpdateDelegate.Execute();
 }
 
 void SAnimSegmentsPanel::ReplaceAnimSegment(int32 AnimSegmentIndex, UAnimSequenceBase* NewSequenceBase)
@@ -337,9 +343,9 @@ void SAnimSegmentsPanel::ReplaceAnimSegment(int32 AnimSegmentIndex, UAnimSequenc
 		UAnimSequenceBase* OldSequenceBase = AnimTrack->AnimSegments[AnimSegmentIndex].AnimReference;
 		if (OldSequenceBase != NewSequenceBase)
 		{
-			OnPreAnimUpdateDelegate.ExecuteIfBound();
+			OnPreAnimUpdateDelegate.Execute();
 			OnAnimReplaceMapping.ExecuteIfBound(SlotName, AnimSegmentIndex, OldSequenceBase, NewSequenceBase);
-			OnPostAnimUpdateDelegate.ExecuteIfBound();
+			OnPostAnimUpdateDelegate.Execute();
 		}
 	}
 
@@ -377,12 +383,12 @@ void SAnimSegmentsPanel::RemoveAnimSegment(int32 AnimSegmentIndex)
 	if(ValidIndex(AnimSegmentIndex))
 	{
 		const FScopedTransaction Transaction( LOCTEXT("AnimSegmentseEditor", "Remove Segment") );
-		OnPreAnimUpdateDelegate.ExecuteIfBound();
+		OnPreAnimUpdateDelegate.Execute();
 
 		AnimTrack->AnimSegments.RemoveAt(AnimSegmentIndex);
 
 		OnAnimSegmentRemovedDelegate.ExecuteIfBound(AnimSegmentIndex);
-		OnPostAnimUpdateDelegate.ExecuteIfBound();
+		OnPostAnimUpdateDelegate.Execute();
 	}
 }
 
@@ -438,13 +444,8 @@ void SAnimSegmentsPanel::FillSubMenu(FMenuBuilder& MenuBuilder, int32 AnimSegmen
 			FContentBrowserModule& ContentBrowserModule = FModuleManager::Get().LoadModuleChecked<FContentBrowserModule>(TEXT("ContentBrowser"));
 
 			MenuBuilder.AddWidget(
-				SNew(SBox)
-				.MaxDesiredHeight(600.0f)
-				[
-					ContentBrowserModule.Get().CreateAssetPicker(AssetPickerConfig)
-				], 
-				FText(),
-				true
+				ContentBrowserModule.Get().CreateAssetPicker(AssetPickerConfig), 
+				LOCTEXT("ReplaceAnimation_Label", "Replace")
 			);
 		}
 	}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CrashReportClientApp.h"
 #include "CrashReportClientDefines.h"
@@ -10,9 +10,6 @@
 #include "Misc/ConfigCacheIni.h"
 #include "GenericPlatform/GenericApplication.h"
 #include "Misc/App.h"
-#include "Misc/CString.h"
-#include "Misc/Paths.h"
-#include "Misc/FileHelper.h"
 #include "CrashReportCoreConfig.h"
 #include "GenericPlatform/GenericPlatformCrashContext.h"
 #include "CrashDescription.h"
@@ -20,20 +17,14 @@
 #include "Modules/ModuleManager.h"
 #include "HAL/PlatformApplicationMisc.h"
 #include "HAL/PlatformCrashContext.h"
-#include "HAL/PlatformProcess.h"
-#include "HAL/FileManager.h"
 #include "IAnalyticsProviderET.h"
 #include "XmlParser.h"
-#include "Containers/Map.h"
-#include "DiagnosticLogger.h"
 
 #if !CRASH_REPORT_UNATTENDED_ONLY
 	#include "SCrashReportClient.h"
 	#include "CrashReportClient.h"
 	#include "CrashReportClientStyle.h"
-#if !UE_BUILD_SHIPPING
 	#include "ISlateReflectorModule.h"
-#endif
 	#include "Framework/Application/SlateApplication.h"
 #endif // !CRASH_REPORT_UNATTENDED_ONLY
 
@@ -94,8 +85,7 @@ enum SubmitCrashReportResult {
 	Failed,				// Failed to send report
 	SuccessClosed,		// Succeeded sending report, user has not elected to relaunch
 	SuccessRestarted,	// Succeeded sending report, user has elected to restart process
-	SuccessContinue,	// Succeeded sending report, continue running (if monitor mode).
-	SuccessDiscarded,	// User declined sending the report.
+	SuccessContinue		// Succeeded sending report, continue running (if monitor mode).
 };
 
 /**
@@ -299,7 +289,7 @@ SubmitCrashReportResult RunWithUI(FPlatformErrorReport ErrorReport)
 	FCrashReportClientStyle::Initialize();
 
 	// Create the main implementation object
-	TSharedRef<FCrashReportClient> CrashReportClient = MakeShared<FCrashReportClient>(ErrorReport);
+	TSharedRef<FCrashReportClient> CrashReportClient = MakeShareable(new FCrashReportClient(ErrorReport));
 
 	// open up the app window	
 	TSharedRef<SCrashReportClient> ClientControl = SNew(SCrashReportClient, CrashReportClient);
@@ -318,13 +308,11 @@ SubmitCrashReportResult RunWithUI(FPlatformErrorReport ErrorReport)
 	// Setting focus seems to have to happen after the Window has been added
 	FSlateApplication::Get().ClearKeyboardFocus(EFocusCause::Cleared);
 
-#if !UE_BUILD_SHIPPING
 	// Debugging code
 	if (RunWidgetReflector)
 	{
 		FModuleManager::LoadModuleChecked<ISlateReflectorModule>("SlateReflector").DisplayWidgetReflector();
 	}
-#endif
 
 	// Bring the window to the foreground as it may be behind the crashed process
 	Window->HACK_ForceToFront();
@@ -353,17 +341,8 @@ SubmitCrashReportResult RunWithUI(FPlatformErrorReport ErrorReport)
 	// Close down the Slate application
 	FSlateApplication::Shutdown();
 
-	// Detect if ensure, if user has selected to restart or close.
-	if (CrashReportClient->WasClosedWithoutSending())
-	{
-		return SuccessDiscarded;
-	}
-	else if (CrashReportClient->IsUploadComplete())
-	{
-		return CrashReportClient->GetIsSuccesfullRestart() ? SuccessRestarted : (FPrimaryCrashProperties::Get()->bIsEnsure ? SuccessContinue : SuccessClosed);
-	}
-	
-	return Failed;
+	// Detect if ensure, if user has selected to restart or close.	
+	return CrashReportClient->GetIsSuccesfullRestart() ? SuccessRestarted : (FPrimaryCrashProperties::Get()->bIsEnsure ? SuccessContinue : SuccessClosed);
 }
 #endif // !CRASH_REPORT_UNATTENDED_ONLY
 
@@ -384,7 +363,7 @@ class FMessageBoxThread : public FRunnable
 	}
 };
 
-SubmitCrashReportResult RunUnattended(FPlatformErrorReport ErrorReport, bool bImplicitSend)
+SubmitCrashReportResult RunUnattended(FPlatformErrorReport ErrorReport)
 {
 	// Set up the main ticker
 	FMainLoopTiming MainLoop(IdealTickRate, EMainLoopOptions::CoreTickerOnly);
@@ -396,7 +375,7 @@ SubmitCrashReportResult RunUnattended(FPlatformErrorReport ErrorReport, bool bIm
 	FMessageBoxThread MessageBox;
 	FRunnableThread* MessageBoxThread = nullptr;
 
-	if (bImplicitSend)
+	if (bImplicitSendFromCmd)
 	{
 		MessageBoxThread = FRunnableThread::Create(&MessageBox, TEXT("CrashReporter_MessageBox"));
 	}
@@ -407,7 +386,7 @@ SubmitCrashReportResult RunUnattended(FPlatformErrorReport ErrorReport, bool bIm
 		MainLoop.Tick();
 	}
 
-	if (bImplicitSend && MessageBoxThread)
+	if (bImplicitSendFromCmd && MessageBoxThread)
 	{
 		MessageBoxThread->WaitForCompletion();
 	}
@@ -458,7 +437,7 @@ FPlatformErrorReport CollectErrorReport(FRecoveryService* RecoveryService, uint3
 		if (ThreadId == SharedCrashContext.CrashingThreadId)
 		{
 			CrashContext.SetPortableCallStack(
-				StackFrames,
+				StackFrames + SharedCrashContext.NumStackFramesToIgnore,
 				StackFrameCount - SharedCrashContext.NumStackFramesToIgnore
 			);
 		}
@@ -510,9 +489,6 @@ FPlatformErrorReport CollectErrorReport(FRecoveryService* RecoveryService, uint3
 
 	FPlatformErrorReport ErrorReport(ReportDirectoryAbsolutePath);
 
-	// Link the crash to the Editor summary event to help diagnose the abnormal termination quickly.
-	FDiagnosticLogger::Get().LogEvent(*FPrimaryCrashProperties::Get()->CrashGUID);
-
 #if CRASH_REPORT_UNATTENDED_ONLY
 	return ErrorReport;
 #else
@@ -529,25 +505,22 @@ FPlatformErrorReport CollectErrorReport(FRecoveryService* RecoveryService, uint3
 #endif
 }
 
-SubmitCrashReportResult SendErrorReport(FPlatformErrorReport& ErrorReport, 
-	TOptional<bool> bNoDialogOpt = TOptional<bool>(), 
-	TOptional<bool> bImplicitSendOpt = TOptional<bool>())
+SubmitCrashReportResult SendErrorReport(FPlatformErrorReport& ErrorReport, TOptional<bool> bNoDialog = TOptional<bool>())
 {
 	if (!IsEngineExitRequested() && ErrorReport.HasFilesToUpload() && FPrimaryCrashProperties::Get() != nullptr)
 	{
-		const bool bImplicitSend = bImplicitSendOpt.Get(false);
 		const bool bUnattended =
 #if CRASH_REPORT_UNATTENDED_ONLY
 			true;
 #else
-			bNoDialogOpt.Get(FApp::IsUnattended()) || bImplicitSend;
+			bNoDialog.IsSet() ? bNoDialog.GetValue() : FApp::IsUnattended();
 #endif // CRASH_REPORT_UNATTENDED_ONLY
 
 		ErrorReport.SetCrashReportClientVersion(FCrashReportCoreConfig::Get().GetVersion());
 
 		if (bUnattended)
 		{
-			return RunUnattended(ErrorReport, bImplicitSend);
+			return RunUnattended(ErrorReport);
 		}
 #if !CRASH_REPORT_UNATTENDED_ONLY
 		else
@@ -560,7 +533,7 @@ SubmitCrashReportResult SendErrorReport(FPlatformErrorReport& ErrorReport,
 				GConfig->GetBool(TEXT("CrashReportClient"), TEXT("CanSendWhenUIFailedToInitialize"), bCanSendWhenUIFailedToInitialize, GEngineIni);
 				if (bCanSendWhenUIFailedToInitialize && !FCrashReportCoreConfig::Get().IsAllowedToCloseWithoutSending())
 				{
-					return RunUnattended(ErrorReport, bImplicitSend);
+					return RunUnattended(ErrorReport);
 				}
 			}
 			return Result;
@@ -573,73 +546,14 @@ SubmitCrashReportResult SendErrorReport(FPlatformErrorReport& ErrorReport,
 
 bool IsCrashReportAvailable(uint32 WatchedProcess, FSharedCrashContext& CrashContext, void* ReadPipe)
 {
-	TArray<uint8> Buffer;
+	static TArray<uint8> Buffer;
+	Buffer.Reserve(8 * 1024); // This allocates only once because Buffer is static.
 
-	// Is data available on the pipe.
 	if (FPlatformProcess::ReadPipeToArray(ReadPipe, Buffer))
 	{
-		FDiagnosticLogger::Get().LogEvent(TEXT("Pipe/Read"));
-
-		// This is to ensure the FSharedCrashContext compiled in the monitored process and this process has the same size.
-		int32 TotalRead = Buffer.Num();
-
-		// Utility function to copy bytes from a source to a destination buffer.
-		auto CopyFn = [](const TArray<uint8>& SrcData, uint8* DstIt, uint8* DstEndIt)
-		{
-			int32 CopyCount = FMath::Min(SrcData.Num(), static_cast<int32>(DstEndIt - DstIt)); // Limit the number of byte to copy to avoid writing passed the end of the destination.
-			FPlatformMemory::Memcpy(DstIt, SrcData.GetData(), CopyCount);
-			return DstIt + CopyCount; // Returns the updated position.
-		};
-
-		// Iterators to defines the boundaries of the destination buffer in memory.
-		uint8* SharedCtxIt = reinterpret_cast<uint8*>(&CrashContext);
-		uint8* SharedCtxEndIt = SharedCtxIt + sizeof(FSharedCrashContext);
-
-		// Copy the data already read and update the destination iterator.
-		SharedCtxIt = CopyFn(Buffer, SharedCtxIt, SharedCtxEndIt);
-
-		// Try to consume all the expected data within a defined period of time.
-		double WaitEndTime = FPlatformTime::Seconds() + 5;
-		while (SharedCtxIt != SharedCtxEndIt && FPlatformTime::Seconds() <= WaitEndTime)
-		{
-			if (FPlatformProcess::ReadPipeToArray(ReadPipe, Buffer)) // This is false if no data is available, but the writer may be still be writing.
-			{
-				TotalRead += Buffer.Num();
-				SharedCtxIt = CopyFn(Buffer, SharedCtxIt, SharedCtxEndIt); // Copy the data read.
-			}
-			else
-			{
-				FPlatformProcess::Sleep(0.1); // Give the writer some time.
-			}
-		}
-
-		if (TotalRead < sizeof(FSharedCrashContext))
-		{
-			FDiagnosticLogger::Get().LogEvent(TEXT("Pipe/NotEnoughData"));
-		}
-		else if (TotalRead > sizeof(FSharedCrashContext))
-		{
-			FDiagnosticLogger::Get().LogEvent(TEXT("Pipe/TooMuchData"));
-		}
-		else
-		{
-			// Record the history of events sent by the Editor to help diagnose abnormal terminations.
-			switch (CrashContext.CrashType)
-			{
-				case ECrashContextType::Assert:           FDiagnosticLogger::Get().LogEvent(TEXT("Pipe/Assert"));          break;
-				case ECrashContextType::Ensure:           FDiagnosticLogger::Get().LogEvent(TEXT("Pipe/Ensure"));          break;
-				case ECrashContextType::Crash:            FDiagnosticLogger::Get().LogEvent(TEXT("Pipe/Crash"));           break;
-				case ECrashContextType::GPUCrash:         FDiagnosticLogger::Get().LogEvent(TEXT("Pipe/GPUCrash"));        break;
-				case ECrashContextType::Hang:             FDiagnosticLogger::Get().LogEvent(TEXT("Pipe/Hang"));            break;
-				case ECrashContextType::OutOfMemory:      FDiagnosticLogger::Get().LogEvent(TEXT("Pipe/OOM"));             break;
-				case ECrashContextType::AbnormalShutdown: FDiagnosticLogger::Get().LogEvent(TEXT("Pipe/AbnormalShutdown"));break;
-				default:                                  FDiagnosticLogger::Get().LogEvent(TEXT("Pipe/Unknown"));         break;
-			}
-		}
-
-		return SharedCtxIt == SharedCtxEndIt;
+		FPlatformMemory::Memcpy(&CrashContext, Buffer.GetData(), Buffer.Num());
+		return true;
 	}
-
 	return false;
 }
 
@@ -749,13 +663,6 @@ static void HandleAbnormalShutdown(FSharedCrashContext& CrashContext, uint64 Pro
 {
 	CrashContext.CrashType = ECrashContextType::AbnormalShutdown;
 
-	// Normally, the CrashGUIDRoot is generated by the Editor/Engine and a counter is appended to it. Starting at zero, the counter is incremented after each ensure/crash by the Editor/Engine.
-	// In this cases, the crash doesn't originate from the Editor/Engine, but CRC. The Editor/Engine CrashGUIDRoot isn't serialized in the temp context file so we need to generate  a new one.
-	// This also ensure we don't collide with the one emitted by the Editor as the counter part in this process would also start at zero.
-	FGuid CrashGUID = FGuid::NewGuid();
-	FString IniPlatformName(FPlatformProperties::IniPlatformName()); // To convert from char* to TCHAR*
-	FCString::Strcpy(CrashContext.SessionContext.CrashGUIDRoot, *FString::Printf(TEXT("%s%s-%s"), FGenericCrashContext::CrashGUIDRootPrefix, *IniPlatformName, *CrashGUID.ToString(EGuidFormats::Digits)));
-
 	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
 
 	// create a temporary crash directory
@@ -768,11 +675,8 @@ static void HandleAbnormalShutdown(FSharedCrashContext& CrashContext, uint64 Pro
 		const FString LogDestination = TempCrashDirectory / FPaths::GetCleanFilename(CrashContext.UserSettings.LogFilePath);
 		PlatformFile.CopyFile(*LogDestination, CrashContext.UserSettings.LogFilePath);
 
-		// This crash is not a real one, but one to capture the Editor logs in case of abnormal termination.
-		FDiagnosticLogger::Get().LogEvent(TEXT("SyntheticCrash"));
-
 		FPlatformErrorReport ErrorReport = CollectErrorReport(RecoveryService.Get(), ProcessID, CrashContext, WritePipe);
-		SendErrorReport(ErrorReport, /*bNoDialog*/ true);
+		SubmitCrashReportResult Result = SendErrorReport(ErrorReport, /*bNoDialog*/ true);
 
 		// delete the temporary directory
 		PlatformFile.DeleteDirectoryRecursively(*TempCrashDirectory);
@@ -785,24 +689,34 @@ static void HandleAbnormalShutdown(FSharedCrashContext& CrashContext, uint64 Pro
 	}
 }
 
-static bool WasAbnormalShutdown(const FEditorAnalyticsSession& AnalyticSession)
+static bool WasAbnormalShutdown(const FEditorSessionSummarySender& SessionSummarySender)
 {
-	// Check if this was an abnormal shutdown (aka. none of the known shutdown types, and not debugged)
-	return AnalyticSession.bCrashed == false &&
-		AnalyticSession.bGPUCrashed == false &&
-		AnalyticSession.bWasShutdown == false &&
-		AnalyticSession.bIsTerminating == false &&
-		AnalyticSession.bWasEverDebugger == false;
+	FEditorAnalyticsSession AnalyticsSession;
+	if (SessionSummarySender.FindCurrentSession(AnalyticsSession))
+	{
+		// check if this was an abnormal shutdown (aka. none of the known shutdown types, and not debugged)
+		if (AnalyticsSession.bCrashed == false &&
+			AnalyticsSession.bGPUCrashed == false &&
+			AnalyticsSession.bWasShutdown == false &&
+			AnalyticsSession.bIsTerminating == false &&
+			AnalyticsSession.bWasEverDebugger == false)
+		{
+			return true;
+		}
+	}
+
+	return false;
 }
 
-#endif
+#endif 
 
 void RunCrashReportClient(const TCHAR* CommandLine)
 {
-	FDiagnosticLogger::Get().LogEvent(FString::Printf(TEXT("CRC/Init:%s"), *FDateTime::UtcNow().ToString()));
-
 	// Override the stack size for the thread pool.
 	FQueuedThreadPool::OverrideStackSize = 256 * 1024;
+
+	// Increase the HttpSendTimeout to 5 minutes
+	GConfig->SetFloat(TEXT("HTTP"), TEXT("HttpSendTimeout"), 5 * 60.0f, GEngineIni);
 
 	// Initialize the engine. -Messaging enables MessageBus transports required by Concert (Recovery Service).
 	FString FinalCommandLine(CommandLine);
@@ -811,13 +725,6 @@ void RunCrashReportClient(const TCHAR* CommandLine)
 #endif
 	GEngineLoop.PreInit(*FinalCommandLine);
 	check(GConfig && GConfig->IsReadyForUse());
-
-	// Increase the HttpSendTimeout to 5 minutes
-	GConfig->SetFloat(TEXT("HTTP"), TEXT("HttpSendTimeout"), 5 * 60.0f, GEngineIni);
-
-	// Pipe UE logs into the diagnostic logger. The diagnostic log is attached to the Editor session summary analytics event (if enabled) and can help diagnose CRC crashes.
-	GLog->AddOutputDevice(&FDiagnosticLogger::Get());
-	FDiagnosticLogger::Get().LogEvent(TEXT("CRC/Load"));
 
 	// Make sure all UObject classes are registered and default properties have been initialized
 	ProcessNewlyLoadedUObjects();
@@ -831,19 +738,16 @@ void RunCrashReportClient(const TCHAR* CommandLine)
 	// Load Concert Sync plugins in default phase
 	IPluginManager::Get().LoadModulesForEnabledPlugins(ELoadingPhase::Default);
 
-	FDiagnosticLogger::Get().LogEvent(TEXT("CRC/Config"));
-
 	// Initialize config.
 	FCrashReportCoreConfig::Get();
 
 	// Find the report to upload in the command line arguments
 	ParseCommandLine(CommandLine);
+
 	FPlatformErrorReport::Init();
 
 	if (MonitorPid == 0) // Does not monitor any process.
 	{
-		FDiagnosticLogger::Get().LogEvent(TEXT("NoMonitor/Start"));
-
 		if (AnalyticsEnabledFromCmd)
 		{
 			FCrashReportAnalytics::Initialize();
@@ -851,7 +755,8 @@ void RunCrashReportClient(const TCHAR* CommandLine)
 
 		// Load error report generated by the process from disk
 		FPlatformErrorReport ErrorReport = LoadErrorReport();
-		SendErrorReport(ErrorReport, FApp::IsUnattended(), bImplicitSendFromCmd);
+		const SubmitCrashReportResult Result = SendErrorReport(ErrorReport);
+		// We are not interested in the result of this
 
 		if (AnalyticsEnabledFromCmd)
 		{
@@ -860,50 +765,25 @@ void RunCrashReportClient(const TCHAR* CommandLine)
 	}
 	else // Launched in 'service mode - watches/serves a process'
 	{
-		FDiagnosticLogger::Get().LogEvent(FString::Printf(TEXT("Monitor/Start:%d"), FPlatformProcess::GetCurrentProcessId()));
-
-		if (!MonitorWritePipe)
-		{
-			FDiagnosticLogger::Get().LogEvent(TEXT("CRC/NoWritePipe"));
-		}
-		if (!MonitorReadPipe)
-		{
-			FDiagnosticLogger::Get().LogEvent(TEXT("CRC/NoReadPipe"));
-		}
-
-		// Log any termination occurring in CRC (no sub-system should terminate CRC)
-		FDelegateHandle TerminateHandle = FCoreDelegates::ApplicationWillTerminateDelegate.AddLambda([]()
-		{
-			FDiagnosticLogger::Get().LogEvent(FString::Printf(TEXT("CRC/Terminate:%s"), *FDateTime::UtcNow().ToString()));
-		});
-
-		// Log any system error occurring in CRC.
-		FDelegateHandle SystemErrorHandle = FCoreDelegates::OnHandleSystemError.AddLambda([]()
-		{
-			FDiagnosticLogger::Get().LogEvent(FString::Printf(TEXT("CRC/SysError:%s"), *FDateTime::UtcNow().ToString()));
-		});
-
-		const int32 IdealFramerate = 10;
-		double PrevLoopStartTime = FPlatformTime::Seconds();
+		const int32 IdealFramerate = 30;
+		double LastTime = FPlatformTime::Seconds();
 		const float IdealFrameTime = 1.0f / IdealFramerate;
 
 		TSharedPtr<FRecoveryService> RecoveryServicePtr; // Note: Shared rather than Unique due to FRecoveryService only being a forward declaration in some builds
-
 #if CRASH_REPORT_WITH_RECOVERY
 		// Starts the disaster recovery service. This records transactions and allows users to recover from previous crashes.
 		RecoveryServicePtr = MakeShared<FRecoveryService>(MonitorPid);
-		FDiagnosticLogger::Get().LogEvent(TEXT("Recovery/Started"));
 #endif
-
-		// Try to open the process.
 #if PLATFORM_WINDOWS
-		// We do not need to open a full access.
+		// We do not need to open a full access process handle when monitoring process health.
 		FProcHandle MonitoredProcess = FProcHandle(::OpenProcess(PROCESS_DUP_HANDLE | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE | SYNCHRONIZE, 0, MonitorPid));
 #else
 		FProcHandle MonitoredProcess = FPlatformProcess::OpenProcess(MonitorPid);
 #endif
-
-		FDiagnosticLogger::Get().LogEvent(MonitoredProcess.IsValid() ? TEXT("OpenProcess/Done") : TEXT("OpenProcess/Failed"));
+		if (!MonitoredProcess.IsValid())
+		{
+			UE_LOG(CrashReportClientLog, Error, TEXT("Failed to open monitor process handle!"));
+		}
 
 		auto GetProcessStatus = [](FProcHandle& ProcessHandle) -> TTuple<bool/*Running*/, TOptional<int32>/*ReturnCode*/>
 		{
@@ -919,43 +799,31 @@ void RunCrashReportClient(const TCHAR* CommandLine)
 				int32 ProcessReturnCode = 0;
 				if (FPlatformProcess::GetProcReturnCode(ProcessHandle, &ProcessReturnCode)) // Is the return code available? (Not supported on all platforms)
 				{
-					FDiagnosticLogger::Get().LogEvent(FString::Printf(TEXT("Editor/ExitCode:%d"), ProcessReturnCode));
 					ProcessReturnCodeOpt.Emplace(ProcessReturnCode);
-				}
-				else
-				{
-					FDiagnosticLogger::Get().LogEvent(TEXT("Editor/ExitCode:N/A"));
 				}
 			}
 
 			return MakeTuple(bRunning, ProcessReturnCodeOpt);
 		};
 
-		// The approximative time of death of the monitored application.
-		FDateTime MonitoredProcessDeathTime;
-
-		// Loop until the monitored process dies.
+		// This GetProcessStatus() call is expensive, perform it at low frequency.
 		TTuple<bool/*bRunning*/, TOptional<int32>/*ExitCode*/> ProcessStatus = GetProcessStatus(MonitoredProcess);
-		while (ProcessStatus.Get<0>())
+		while (ProcessStatus.Get<0>() && !IsEngineExitRequested())
 		{
-			const double CurrLoopStartTime = FPlatformTime::Seconds();
+			const double CurrentTime = FPlatformTime::Seconds();
 
+			// If 'out-of-process' crash reporting was enabled.
 			if (MonitorWritePipe && MonitorReadPipe)
 			{
-				// Check if the monitored process signaled a crash or an ensure, read the pipe data to avoid blocking the writer, but process the data only if CRC wasn't requested to exit.
-				// This purposedly ignores any ensure that could be piped out just after a crash. (The way concurrent crash/ensures are handled/reported make this unlikely, but possible).
+				// Check if the monitored process signaled a crash or an ensure.
 				FSharedCrashContext CrashContext;
-				if (IsCrashReportAvailable(MonitorPid, CrashContext, MonitorReadPipe) && !IsEngineExitRequested())
+				if (IsCrashReportAvailable(MonitorPid, CrashContext, MonitorReadPipe))
 				{
-					FDiagnosticLogger::Get().LogEvent(TEXT("Report/Start"));
-
 					const bool bReportCrashAnalyticInfo = CrashContext.UserSettings.bSendUsageData;
 					if (bReportCrashAnalyticInfo)
 					{
 						FCrashReportAnalytics::Initialize();
 					}
-
-					FDiagnosticLogger::Get().LogEvent(TEXT("Report/Collect"));
 
 					// Build error report in memory.
 					FPlatformErrorReport ErrorReport = CollectErrorReport(RecoveryServicePtr.Get(), MonitorPid, CrashContext, MonitorWritePipe);
@@ -963,24 +831,13 @@ void RunCrashReportClient(const TCHAR* CommandLine)
 #if CRASH_REPORT_WITH_RECOVERY
 					if (RecoveryServicePtr && !FPrimaryCrashProperties::Get()->bIsEnsure)
 					{
-						// Shutdown the recovery service. This will releases the recovery database file lock (not sharable) and let a new instance take it and offer the user to recover.
-						FDiagnosticLogger::Get().LogEvent(TEXT("Recovery/Shutdown"));
+						// Shutdown the recovery service, releasing the recovery database file lock (not sharable) as soon as possible to let a new instance take it and offer the user to recover.
 						RecoveryServicePtr.Reset();
 					}
 #endif
-					FDiagnosticLogger::Get().LogEvent(TEXT("Report/Sending"));
 
-					const bool bNoDialog = (CrashContext.UserSettings.bNoDialog || CrashContext.UserSettings.bImplicitSend) && CrashContext.UserSettings.bSendUnattendedBugReports;
-					const SubmitCrashReportResult Result = SendErrorReport(ErrorReport, bNoDialog, CrashContext.UserSettings.bImplicitSend);
-
-					FDiagnosticLogger::Get().LogEvent(Result == SubmitCrashReportResult::SuccessDiscarded ? TEXT("Report/Discarded") :
-					                                 (Result == SubmitCrashReportResult::Failed ? TEXT("Report/Failed") : TEXT("Report/Sent")));
-
-					// Log the assert condition/file/line/message to the diagnostic log gathered by the analytics to enable grouping asserts later on.
-					if (CrashContext.CrashType == ECrashContextType::Assert)
-					{
-						FDiagnosticLogger::Get().LogEvent(FString::Printf(TEXT("Assert/Msg: %s"), CrashContext.ErrorMessage));
-					}
+					const bool bNoDialog = CrashContext.UserSettings.bNoDialog && CrashContext.UserSettings.bSendUnattendedBugReports;
+					const SubmitCrashReportResult Result = SendErrorReport(ErrorReport, bNoDialog);
 
 					if (bReportCrashAnalyticInfo)
 					{
@@ -991,145 +848,96 @@ void RunCrashReportClient(const TCHAR* CommandLine)
 						}
 						FCrashReportAnalytics::Shutdown();
 					}
-
-					FDiagnosticLogger::Get().LogEvent(TEXT("Report/Done"));
 				}
 			}
 
-#if CRASH_REPORT_WITH_RECOVERY
 			FTaskGraphInterface::Get().ProcessThreadUntilIdle(ENamedThreads::GameThread);
 
 			// Pump & Tick objects
-			const double DeltaTime = CurrLoopStartTime - PrevLoopStartTime;
+			const double DeltaTime = CurrentTime - LastTime;
 			FTicker::GetCoreTicker().Tick(DeltaTime);
 
 			GFrameCounter++;
 			FStats::AdvanceFrame(false);
-
-			// Run garbage collection for the UObjects for the rest of the frame or at least to 2 ms, but never more than 1 second.
-			const float PurgeSeconds = IdealFrameTime - static_cast<float>(FPlatformTime::Seconds() - CurrLoopStartTime);
-			IncrementalPurgeGarbage(true, FMath::Clamp(PurgeSeconds, 0.002f, 1.0f)));
-#endif
 			GLog->FlushThreadedLogs();
 
-			// Throttle main thread fps by sleeping if we still have time.
-			const float SleepSeconds = IdealFrameTime - static_cast<float>(FPlatformTime::Seconds() - CurrLoopStartTime);
-			FPlatformProcess::Sleep(FMath::Clamp(SleepSeconds, 0.0f, 1.0f));
+			// Run garbage collection for the UObjects for the rest of the frame or at least to 2 ms
+			IncrementalPurgeGarbage(true, FMath::Max<float>(0.002f, IdealFrameTime - (FPlatformTime::Seconds() - LastTime)));
 
-			// Refresh the monitored application status.
-			ProcessStatus = GetProcessStatus(MonitoredProcess);
-			if (!ProcessStatus.Get<0>()) // Not running anymore.
+			// Throttle main thread main fps by sleeping if we still have time
+			FPlatformProcess::Sleep(FMath::Max<float>(0.0f, IdealFrameTime - (FPlatformTime::Seconds() - LastTime)));
+
+			// Check if the application is alive about every second. (This is an expensive call)
+			if (GFrameCounter % IdealFramerate == 0)
 			{
-				MonitoredProcessDeathTime = FDateTime::UtcNow();
+				ProcessStatus = GetProcessStatus(MonitoredProcess);
 			}
 
-			PrevLoopStartTime = CurrLoopStartTime;
-
-			// Tick the logger so that it periodically timestamp the mini-log file to detect approximatively when CRC exited (or hang).
-			FDiagnosticLogger::Get().Tick();
+			LastTime = CurrentTime;
 		}
 
-#if CRASH_REPORT_WITH_MTBF // Expected to be 1 when compiling CrashReportClientEditor.
+#if CRASH_REPORT_WITH_MTBF
 		{
-			FDiagnosticLogger::Get().LogEvent(FString::Printf(TEXT("MTBF/Start:%s"), *FDateTime::UtcNow().ToString()));
-
-			// Get the status of the Editor process.
-			TOptional<int32> MonitoredProcessExitCode = ProcessStatus.Get<1>();
-			bool bMonitoredProcessExited = !ProcessStatus.Get<0>();
-			bool bMonitoredSessionLoaded = false;
-
-			FDiagnosticLogger::Get().LogEvent(TEXT("MTBF/LoadSession"));
-
-			// Try to persist an exit code in session summary.
-			FEditorAnalyticsSession MonitoredSession;
-			double WaitEndTime = FPlatformTime::Seconds() + 60;
-			FTimespan LockTimeout = FTimespan::FromMilliseconds(5);
-			bool bSessionLockAcquired = false;
-			while (FPlatformTime::Seconds() <= WaitEndTime)
+			// The loop above can exit before the Editor (monitored process) exits (because of IsEngineExitRequested()) if the user clicks 'Close Without Sending' very quickly, but for MTBF,
+			// it is desirable to have the Editor process return code. Give some extra time to the Editor to exit. If it doesn't exit within 60 seconds the next CRC instance will sent the
+			// current analytic report delayed, not ideal, but supported.
+			float WaitTimeSeconds = 0;
+			while (ProcessStatus.Get<0>() && WaitTimeSeconds < 60.f)
 			{
-				if (FEditorAnalyticsSession::Lock(LockTimeout)) // Don't block for a long time to keep ticking the diagnostic logger regularly.
-				{
-					bSessionLockAcquired = true;
-					if (FEditorAnalyticsSession::FindSession(MonitorPid, MonitoredSession))
-					{
-						bMonitoredSessionLoaded = true;
-						if (!MonitoredSession.SaveExitCode(MonitoredProcessExitCode.IsSet() ? MonitoredProcessExitCode.GetValue() : ECrashExitCodes::MonitoredApplicationExitCodeNotAvailable, MonitoredProcessDeathTime))
-						{
-							FDiagnosticLogger::Get().LogEvent(TEXT("MTBF/ExitCodeNotSaved"));
-						}
-					}
-					else
-					{
-						FDiagnosticLogger::Get().LogEvent(TEXT("MTBF/NoSessionFound"));
-					}
-					FEditorAnalyticsSession::Unlock();
-					break;
-				}
-
-				// Periodically timestamp the mini-log and check if the application is about to die (user logging off/shutting down the computer).
-				FDiagnosticLogger::Get().Tick();
+				FPlatformProcess::Sleep(0.1f);
+				WaitTimeSeconds += 0.1f;
+				ProcessStatus = GetProcessStatus(MonitoredProcess);
 			}
 
-			if (!bSessionLockAcquired) // Too much contention on the session lock (or the lock is corrupted).
+			// load our temporary crash context file
+			FSharedCrashContext TempCrashContext;
+			FMemory::Memzero(TempCrashContext);
+			if (LoadTempCrashContextFromFile(TempCrashContext, MonitorPid))
 			{
-				FDiagnosticLogger::Get().LogEvent(TEXT("MTBF/LockSessionFail"));
-			}
+				TempCrashContext.SessionContext.ProcessId = MonitorPid;
 
-			if (bMonitoredProcessExited)
-			{
-				// Load the temporary crash context file.
-				FSharedCrashContext TempCrashContext;
-				FMemory::Memzero(TempCrashContext);
-				if (LoadTempCrashContextFromFile(TempCrashContext, MonitorPid) && TempCrashContext.UserSettings.bSendUsageData)
+				if (TempCrashContext.UserSettings.bSendUsageData)
 				{
-					FCrashReportAnalytics::Initialize();
-					if (FCrashReportAnalytics::IsAvailable())
+					// Query this again, as the crash reporting loop above may have exited before setting this information (via IsEngineExitRequested)
+					ProcessStatus = GetProcessStatus(MonitoredProcess);
+					if (!ProcessStatus.Get<0>()) // Process is 'not running' anymore?
 					{
-						FDiagnosticLogger::Get().LogEvent(TEXT("MTBF/Done"));
+						FCrashReportAnalytics::Initialize();
 
-						// If the Editor thinks the session ended up abnormally, generate a crash report (to get the Editor logs and figure out why this happened).
-						if (bMonitoredSessionLoaded && TempCrashContext.UserSettings.bSendUnattendedBugReports)
+						if (FCrashReportAnalytics::IsAvailable())
 						{
-							// Check what the Editor knows about the exit. Was the proper handlers called and the flag(s) set in the summary event?
-							if (WasAbnormalShutdown(MonitoredSession) && !MonitoredSession.bIsUserLoggingOut)
+							// initialize analytics
+							TUniquePtr<FEditorSessionSummarySender> EditorSessionSummarySender = MakeUnique<FEditorSessionSummarySender>(FCrashReportAnalytics::GetProvider(), TEXT("CrashReportClient"), MonitorPid);
+							TOptional<int32> ExitCodeOpt = ProcessStatus.Get<1>();
+							if (ExitCodeOpt.IsSet()) // Is it known?
+							{
+								EditorSessionSummarySender->SetCurrentSessionExitCode(MonitorPid, ExitCodeOpt.GetValue());
+							}
+
+							if (TempCrashContext.UserSettings.bSendUnattendedBugReports)
 							{
 								// Send a spoofed crash report in the case that we detect an abnormal shutdown has occurred
-								HandleAbnormalShutdown(TempCrashContext, MonitorPid, MonitorWritePipe, RecoveryServicePtr);
+								if (WasAbnormalShutdown(*EditorSessionSummarySender.Get()))
+								{
+									HandleAbnormalShutdown(TempCrashContext, MonitorPid, MonitorWritePipe, RecoveryServicePtr);
+								}
 							}
+
+							// send analytics and shutdown
+							EditorSessionSummarySender->Shutdown();
 						}
 
-						// Stop the logging so that LoadAllLogs() and ClearAllLogs() can access this mini-log file.
-						FDiagnosticLogger::Get().Close();
-
-						// Send this session summary event (and the orphan ones if any).
-						FEditorSessionSummarySender EditorSessionSummarySender(FCrashReportAnalytics::GetProvider(), TEXT("CrashReportClient"), MonitorPid);
-						EditorSessionSummarySender.SetMonitorDiagnosticLogs(FDiagnosticLogger::LoadAllLogs());
-						EditorSessionSummarySender.Shutdown();
-						FDiagnosticLogger::ClearAllLogs(); // Logs (if any) were attached and sent if required and are not longer required.
+						FCrashReportAnalytics::Shutdown();
 					}
-					FCrashReportAnalytics::Shutdown();
 				}
-				else
-				{
-					FDiagnosticLogger::Get().LogEvent(TEXT("MTBF/NoTempCrash"));
-				}
-			}
-			else
-			{
-				FDiagnosticLogger::Get().LogEvent(TEXT("MTBF/StillRunning"));
 			}
 		}
 #endif
-		// Clean up the context file
+		// clean up the context file
 		DeleteTempCrashContextFile(MonitorPid);
 
 		FPlatformProcess::CloseProc(MonitoredProcess);
-
-		FCoreDelegates::ApplicationWillTerminateDelegate.Remove(TerminateHandle);
-		FCoreDelegates::OnHandleSystemError.Remove(SystemErrorHandle);
 	}
-
-	GLog->RemoveOutputDevice(&FDiagnosticLogger::Get());
 
 	FPrimaryCrashProperties::Shutdown();
 	FPlatformErrorReport::ShutDown();

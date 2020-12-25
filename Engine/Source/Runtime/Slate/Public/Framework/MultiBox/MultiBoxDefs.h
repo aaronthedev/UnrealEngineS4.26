@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -26,14 +26,14 @@ enum class EMultiBoxType : uint8
 	/** Vertical tool bar */
 	VerticalToolBar,
 
-	/** A toolbar that tries to arrange all toolbar items uniformly (supports only horizontal toolbars for now) */
-	UniformToolBar,
-
 	/** Vertical menu (pull-down menu, or context menu) */
 	Menu,
 
 	/** Buttons arranged in rows, with a maximum number of buttons per row, like a toolbar but can have multiple rows*/
 	ButtonRow,
+
+	/** Horizontal menu bar used as a tool bar */
+	ToolMenuBar
 };
 
 
@@ -48,9 +48,10 @@ enum class EMultiBlockType : uint8
 	EditableText,
 	Heading,
 	MenuEntry,
-	Separator,
+	MenuSeparator,
 	ToolBarButton,
 	ToolBarComboButton,
+	ToolBarSeparator,
 	Widget,
 };
 

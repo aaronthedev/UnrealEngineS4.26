@@ -1,20 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "HAL/PlatformTime.h"
 
-struct ENGINE_API FInGameCycleHistory
+struct FInGameCycleHistory
 {
-	FInGameCycleHistory()
-		: FrameIdx(0)
-		, TotalCycles(0)
-		, ValidFrames(0)
-		, CurrFrameCycles(0)
-	{
-	}
-
 	FInGameCycleHistory(int32 InNumSamples)
 	: FrameIdx(0)
 	, TotalCycles(0)
@@ -72,7 +64,7 @@ struct ENGINE_API FInGameCycleHistory
 Helper class to track code timings.
 Similar to stats but much more minimal as they're intended to be used at InGame. Though it's still not free so use wisely.
 */
-class ENGINE_API FInGamePerformanceTracker
+class FInGamePerformanceTracker
 {
 private:
 
@@ -108,9 +100,9 @@ public:
 	/** Enters a timed section of code. Can be re-entrant and will take the final exit point time. Only callable from game thread. */
 	void ExitTimedSection();
 	
-	static class IConsoleVariable* Enabled;
-	static int32 CachedEnabled;
-	static class IConsoleVariable* HistorySize;
+	ENGINE_API static class IConsoleVariable* Enabled;
+	ENGINE_API static int32 CachedEnabled;
+	ENGINE_API static class IConsoleVariable* HistorySize;
 };
 
 class FInGameCycleCounter

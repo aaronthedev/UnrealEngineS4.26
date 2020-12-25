@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Internationalization/TextHistory.h"
 #include "UObject/ObjectVersion.h"
@@ -550,10 +550,10 @@ const TCHAR* ReadDateTimeFromBuffer(const TCHAR* Buffer, const FString& TokenMar
 			OutDateTime = FDateTime::FromUnixTimestamp(UnixTimestampValue.GetUIntValue());
 			break;
 		case EFormatArgumentType::Float:
-			OutDateTime = FDateTime::FromUnixTimestamp((int64)UnixTimestampValue.GetFloatValue());
+			OutDateTime = FDateTime::FromUnixTimestamp(UnixTimestampValue.GetFloatValue());
 			break;
 		case EFormatArgumentType::Double:
-			OutDateTime = FDateTime::FromUnixTimestamp((int64)UnixTimestampValue.GetDoubleValue());
+			OutDateTime = FDateTime::FromUnixTimestamp(UnixTimestampValue.GetDoubleValue());
 			break;
 		default:
 			return nullptr;
@@ -676,7 +676,7 @@ bool FTextHistory::GetHistoricNumericData(const FText& InText, FHistoricTextNume
 
 void FTextHistory::SerializeForDisplayString(FStructuredArchive::FRecord Record, FTextDisplayStringPtr& InOutDisplayString)
 {
-	if(Record.GetArchiveState().IsLoading())
+	if(Record.GetUnderlyingArchive().IsLoading())
 	{
 		PrepareDisplayStringForRebuild(InOutDisplayString);
 	}
@@ -749,12 +749,6 @@ FTextHistory_Base& FTextHistory_Base::operator=(FTextHistory_Base&& Other)
 	return *this;
 }
 
-bool FTextHistory_Base::IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const
-{
-	const FTextHistory_Base& CastOther = static_cast<const FTextHistory_Base&>(Other);
-	return false; // No further comparison needed as FText::IdenticalTo already handles this case
-}
-
 FString FTextHistory_Base::BuildLocalizedDisplayString() const
 {
 	// This should never be called for base text (CanRebuildLocalizedDisplayString is false)
@@ -791,12 +785,11 @@ void FTextHistory_Base::SerializeForDisplayString(FStructuredArchive::FRecord Re
 		// We will definitely need to do a rebuild later
 		Revision = 0;
 
-		FTextKey Namespace;
-		Namespace.SerializeAsString(Record.EnterField(SA_FIELD_NAME(TEXT("Namespace"))));
+		FString Namespace;
+		FString Key;
 
-		FTextKey Key;
-		Key.SerializeAsString(Record.EnterField(SA_FIELD_NAME(TEXT("Key"))));
-
+		Record << SA_VALUE(TEXT("Namespace"), Namespace);
+		Record << SA_VALUE(TEXT("Key"), Key);
 		Record << SA_VALUE(TEXT("SourceString"), SourceString);
 
 #if USE_STABLE_LOCALIZATION_KEYS
@@ -807,9 +800,8 @@ void FTextHistory_Base::SerializeForDisplayString(FStructuredArchive::FRecord Re
 			const FString PackageNamespace = TextNamespaceUtil::GetPackageNamespace(BaseArchive);
 			if (!PackageNamespace.IsEmpty())
 			{
-				const FString NamespaceStr = Namespace.GetChars();
-				const FString FullNamespace = TextNamespaceUtil::BuildFullNamespace(NamespaceStr, PackageNamespace);
-				if (!NamespaceStr.Equals(FullNamespace, ESearchCase::CaseSensitive))
+				const FString FullNamespace = TextNamespaceUtil::BuildFullNamespace(Namespace, PackageNamespace);
+				if (!Namespace.Equals(FullNamespace, ESearchCase::CaseSensitive))
 				{
 					// We may assign a new key when loading if we don't have the correct package namespace in order to avoid identity conflicts when instancing (which duplicates without any special flags)
 					// This can happen if an asset was duplicated (and keeps the same keys) but later both assets are instanced into the same world (causing them to both take the worlds package id, and conflict with each other)
@@ -823,7 +815,7 @@ void FTextHistory_Base::SerializeForDisplayString(FStructuredArchive::FRecord Re
 		if (!GIsEditor)
 		{
 			// Strip the package localization ID to match how text works at runtime (properties do this when saving during cook)
-			Namespace = TextNamespaceUtil::StripPackageNamespace(Namespace.GetChars());
+			TextNamespaceUtil::StripPackageNamespaceInline(Namespace);
 		}
 #endif // WITH_EDITOR
 
@@ -834,14 +826,14 @@ void FTextHistory_Base::SerializeForDisplayString(FStructuredArchive::FRecord Re
 	{
 		check(InOutDisplayString.IsValid());
 
-		FTextKey Namespace;
-		FTextKey Key;
+		FString Namespace;
+		FString Key;
 		const bool bFoundNamespaceAndKey = FTextLocalizationManager::Get().FindNamespaceAndKeyFromDisplayString(InOutDisplayString.ToSharedRef(), Namespace, Key);
 
 		if (BaseArchive.IsCooking())
 		{
 			// We strip the package localization off the serialized text for a cooked game, as they're not used at runtime
-			Namespace = TextNamespaceUtil::StripPackageNamespace(Namespace.GetChars());
+			TextNamespaceUtil::StripPackageNamespaceInline(Namespace);
 		}
 		else
 		{
@@ -852,9 +844,8 @@ void FTextHistory_Base::SerializeForDisplayString(FStructuredArchive::FRecord Re
 				const FString PackageNamespace = TextNamespaceUtil::GetPackageNamespace(BaseArchive);
 				if (!PackageNamespace.IsEmpty())
 				{
-					const FString NamespaceStr = Namespace.GetChars();
-					const FString FullNamespace = TextNamespaceUtil::BuildFullNamespace(NamespaceStr, PackageNamespace);
-					if (!NamespaceStr.Equals(FullNamespace, ESearchCase::CaseSensitive))
+					const FString FullNamespace = TextNamespaceUtil::BuildFullNamespace(Namespace, PackageNamespace);
+					if (!Namespace.Equals(FullNamespace, ESearchCase::CaseSensitive))
 					{
 						// We may assign a new key when saving if we don't have the correct package namespace in order to avoid identity conflicts when instancing (which duplicates without any special flags)
 						// This can happen if an asset was duplicated (and keeps the same keys) but later both assets are instanced into the same world (causing them to both take the worlds package id, and conflict with each other)
@@ -866,23 +857,23 @@ void FTextHistory_Base::SerializeForDisplayString(FStructuredArchive::FRecord Re
 #endif // USE_STABLE_LOCALIZATION_KEYS
 
 			// If this has no key, give it a GUID for a key
-			if (GIsEditor && !bFoundNamespaceAndKey && (BaseArchive.IsPersistent() && !BaseArchive.HasAnyPortFlags(PPF_Duplicate)))
+			if (!bFoundNamespaceAndKey && GIsEditor && (BaseArchive.IsPersistent() && !BaseArchive.HasAnyPortFlags(PPF_Duplicate)))
 			{
 				Key = FGuid::NewGuid().ToString();
 				if (!FTextLocalizationManager::Get().AddDisplayString(InOutDisplayString.ToSharedRef(), Namespace, Key))
 				{
 					// Could not add display string, reset namespace and key.
-					Namespace.Reset();
-					Key.Reset();
+					Namespace.Empty();
+					Key.Empty();
 				}
 			}
 		}
 
 		// Serialize the Namespace
-		Namespace.SerializeAsString(Record.EnterField(SA_FIELD_NAME(TEXT("Namespace"))));
+		Record << SA_VALUE(TEXT("Namespace"), Namespace);
 
 		// Serialize the Key
-		Key.SerializeAsString(Record.EnterField(SA_FIELD_NAME(TEXT("Key"))));
+		Record << SA_VALUE(TEXT("Key"), Key);
 
 		// Serialize the SourceString
 		Record << SA_VALUE(TEXT("SourceString"), SourceString);
@@ -1072,33 +1063,6 @@ FTextHistory_NamedFormat& FTextHistory_NamedFormat::operator=(FTextHistory_Named
 	return *this;
 }
 
-bool FTextHistory_NamedFormat::IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const
-{
-	const FTextHistory_NamedFormat& CastOther = static_cast<const FTextHistory_NamedFormat&>(Other);
-
-	if (!SourceFmt.IdenticalTo(CastOther.SourceFmt, CompareModeFlags))
-	{
-		return false;
-	}
-
-	if (Arguments.Num() == CastOther.Arguments.Num())
-	{
-		bool bMatchesAllArgs = true;
-		for (const auto& ArgNameDataPair : Arguments)
-		{
-			const FFormatArgumentValue* OtherArgData = CastOther.Arguments.Find(ArgNameDataPair.Key);
-			bMatchesAllArgs &= (OtherArgData && ArgNameDataPair.Value.IdenticalTo(*OtherArgData, CompareModeFlags));
-			if (!bMatchesAllArgs)
-			{
-				break;
-			}
-		}
-		return bMatchesAllArgs;
-	}
-
-	return false;
-}
-
 FString FTextHistory_NamedFormat::BuildLocalizedDisplayString() const
 {
 	return FTextFormatter::FormatStr(SourceFmt, Arguments, true, false);
@@ -1250,28 +1214,6 @@ FTextHistory_OrderedFormat& FTextHistory_OrderedFormat::operator=(FTextHistory_O
 		Arguments = MoveTemp(Other.Arguments);
 	}
 	return *this;
-}
-
-bool FTextHistory_OrderedFormat::IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const
-{
-	const FTextHistory_OrderedFormat& CastOther = static_cast<const FTextHistory_OrderedFormat&>(Other);
-
-	if (!SourceFmt.IdenticalTo(CastOther.SourceFmt, CompareModeFlags))
-	{
-		return false;
-	}
-
-	if (Arguments.Num() == CastOther.Arguments.Num())
-	{
-		bool bMatchesAllArgs = true;
-		for (int32 ArgIndex = 0; ArgIndex < Arguments.Num() && bMatchesAllArgs; ++ArgIndex)
-		{
-			bMatchesAllArgs &= Arguments[ArgIndex].IdenticalTo(CastOther.Arguments[ArgIndex], CompareModeFlags);
-		}
-		return bMatchesAllArgs;
-	}
-
-	return false;
 }
 
 FString FTextHistory_OrderedFormat::BuildLocalizedDisplayString() const
@@ -1426,28 +1368,6 @@ FTextHistory_ArgumentDataFormat& FTextHistory_ArgumentDataFormat::operator=(FTex
 	return *this;
 }
 
-bool FTextHistory_ArgumentDataFormat::IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const
-{
-	const FTextHistory_ArgumentDataFormat& CastOther = static_cast<const FTextHistory_ArgumentDataFormat&>(Other);
-
-	if (!SourceFmt.IdenticalTo(CastOther.SourceFmt, CompareModeFlags))
-	{
-		return false;
-	}
-
-	if (Arguments.Num() == CastOther.Arguments.Num())
-	{
-		bool bMatchesAllArgs = true;
-		for (int32 ArgIndex = 0; ArgIndex < Arguments.Num() && bMatchesAllArgs; ++ArgIndex)
-		{
-			bMatchesAllArgs &= Arguments[ArgIndex].ToArgumentValue().IdenticalTo(CastOther.Arguments[ArgIndex].ToArgumentValue(), CompareModeFlags);
-		}
-		return bMatchesAllArgs;
-	}
-
-	return false;
-}
-
 FString FTextHistory_ArgumentDataFormat::BuildLocalizedDisplayString() const
 {
 	return FTextFormatter::FormatStr(SourceFmt, Arguments, true, false);
@@ -1578,15 +1498,6 @@ FTextHistory_FormatNumber& FTextHistory_FormatNumber::operator=(FTextHistory_For
 		TargetCulture = MoveTemp(Other.TargetCulture);
 	}
 	return *this;
-}
-
-bool FTextHistory_FormatNumber::IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const
-{
-	const FTextHistory_FormatNumber& CastOther = static_cast<const FTextHistory_FormatNumber&>(Other);
-
-	return SourceValue.IdenticalTo(CastOther.SourceValue, CompareModeFlags)
-		&& FormatOptions.Get(FNumberFormattingOptions::DefaultWithGrouping()).IsIdentical(CastOther.FormatOptions.Get(FNumberFormattingOptions::DefaultWithGrouping()))
-		&& TargetCulture == CastOther.TargetCulture;
 }
 
 void FTextHistory_FormatNumber::Serialize(FStructuredArchive::FRecord Record)
@@ -1920,10 +1831,10 @@ const TCHAR* FTextHistory_AsCurrency::ReadFromBuffer(const TCHAR* Buffer, const 
 		switch (SourceValue.GetType())
 		{
 		case EFormatArgumentType::Int:
-			BaseValue = (double)SourceValue.GetIntValue();
+			BaseValue = SourceValue.GetIntValue();
 			break;
 		case EFormatArgumentType::UInt:
-			BaseValue = (double)SourceValue.GetUIntValue();
+			BaseValue = SourceValue.GetUIntValue();
 			break;
 		case EFormatArgumentType::Float:
 			BaseValue = SourceValue.GetFloatValue();
@@ -1938,7 +1849,7 @@ const TCHAR* FTextHistory_AsCurrency::ReadFromBuffer(const TCHAR* Buffer, const 
 		// We need to convert the "base" value back to its pre-divided version
 		const FDecimalNumberFormattingRules& FormattingRules = Culture.GetCurrencyFormattingRules(CurrencyCode);
 		const FNumberFormattingOptions& FormattingOptions = FormattingRules.CultureDefaultFormattingOptions;
-		SourceValue = BaseValue / static_cast<double>(FastDecimalFormat::Pow10(FormattingOptions.MaximumFractionalDigits));
+		SourceValue = BaseValue / FMath::Pow(10.0f, FormattingOptions.MaximumFractionalDigits);
 
 		PrepareDisplayStringForRebuild(OutDisplayString);
 		return Buffer;
@@ -1958,10 +1869,10 @@ bool FTextHistory_AsCurrency::WriteToBuffer(FString& Buffer, FTextDisplayStringP
 	switch (SourceValue.GetType())
 	{
 	case EFormatArgumentType::Int:
-		DividedValue = (double)SourceValue.GetIntValue();
+		DividedValue = SourceValue.GetIntValue();
 		break;
 	case EFormatArgumentType::UInt:
-		DividedValue = (double)SourceValue.GetUIntValue();
+		DividedValue = SourceValue.GetUIntValue();
 		break;
 	case EFormatArgumentType::Float:
 		DividedValue = SourceValue.GetFloatValue();
@@ -1976,7 +1887,7 @@ bool FTextHistory_AsCurrency::WriteToBuffer(FString& Buffer, FTextDisplayStringP
 	// We need to convert the value back to its "base" version
 	const FDecimalNumberFormattingRules& FormattingRules = Culture.GetCurrencyFormattingRules(CurrencyCode);
 	const FNumberFormattingOptions& FormattingOptions = FormattingRules.CultureDefaultFormattingOptions;
-	const int64 BaseVal = static_cast<int64>(DividedValue * static_cast<double>(FastDecimalFormat::Pow10(FormattingOptions.MaximumFractionalDigits)));
+	const int64 BaseVal = static_cast<int64>(DividedValue * FMath::Pow(10.0f, FormattingOptions.MaximumFractionalDigits));
 
 	// Produces LOCGEN_CURRENCY(..., "...", "...")
 	Buffer += TEXT("LOCGEN_CURRENCY(");
@@ -2083,16 +1994,6 @@ bool FTextHistory_AsDate::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr D
 	return true;
 }
 
-bool FTextHistory_AsDate::IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const
-{
-	const FTextHistory_AsDate& CastOther = static_cast<const FTextHistory_AsDate&>(Other);
-
-	return SourceDateTime == CastOther.SourceDateTime
-		&& DateStyle == CastOther.DateStyle
-		&& TimeZone == CastOther.TimeZone
-		&& TargetCulture == CastOther.TargetCulture;
-}
-
 FString FTextHistory_AsDate::BuildLocalizedDisplayString() const
 {
 	FInternationalization& I18N = FInternationalization::Get();
@@ -2196,16 +2097,6 @@ bool FTextHistory_AsTime::WriteToBuffer(FString& Buffer, FTextDisplayStringPtr D
 {
 	TextStringificationUtil::WriteDateTimeToBuffer(Buffer, TextStringificationUtil::LocGenTimeMarker, SourceDateTime, nullptr, &TimeStyle, TimeZone, TargetCulture);
 	return true;
-}
-
-bool FTextHistory_AsTime::IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const
-{
-	const FTextHistory_AsTime& CastOther = static_cast<const FTextHistory_AsTime&>(Other);
-	
-	return SourceDateTime == CastOther.SourceDateTime
-		&& TimeStyle == CastOther.TimeStyle
-		&& TimeZone == CastOther.TimeZone
-		&& TargetCulture == CastOther.TargetCulture;
 }
 
 FString FTextHistory_AsTime::BuildLocalizedDisplayString() const
@@ -2318,17 +2209,6 @@ bool FTextHistory_AsDateTime::WriteToBuffer(FString& Buffer, FTextDisplayStringP
 {
 	TextStringificationUtil::WriteDateTimeToBuffer(Buffer, TextStringificationUtil::LocGenDateTimeMarker, SourceDateTime, &DateStyle, &TimeStyle, TimeZone, TargetCulture);
 	return true;
-}
-
-bool FTextHistory_AsDateTime::IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const
-{
-	const FTextHistory_AsDateTime& CastOther = static_cast<const FTextHistory_AsDateTime&>(Other);
-	
-	return SourceDateTime == CastOther.SourceDateTime
-		&& DateStyle == CastOther.DateStyle
-		&& TimeStyle == CastOther.TimeStyle
-		&& TimeZone == CastOther.TimeZone
-		&& TargetCulture == CastOther.TargetCulture;
 }
 
 FString FTextHistory_AsDateTime::BuildLocalizedDisplayString() const
@@ -2450,14 +2330,6 @@ bool FTextHistory_Transform::WriteToBuffer(FString& Buffer, FTextDisplayStringPt
 	return true;
 }
 
-bool FTextHistory_Transform::IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const
-{
-	const FTextHistory_Transform& CastOther = static_cast<const FTextHistory_Transform&>(Other);
-	
-	return SourceText.IdenticalTo(CastOther.SourceText, CompareModeFlags)
-		&& TransformType == CastOther.TransformType;
-}
-
 FString FTextHistory_Transform::BuildLocalizedDisplayString() const
 {
 	SourceText.Rebuild();
@@ -2513,10 +2385,6 @@ FTextHistory_StringTableEntry::FTextHistory_StringTableEntry(FTextHistory_String
 	: FTextHistory(MoveTemp(Other))
 	, StringTableReferenceData(MoveTemp(Other.StringTableReferenceData))
 {
-	if (StringTableReferenceData)
-	{
-		StringTableReferenceData->SetRevisionPtr(&Revision);
-	}
 	Other.StringTableReferenceData.Reset();
 }
 
@@ -2526,20 +2394,9 @@ FTextHistory_StringTableEntry& FTextHistory_StringTableEntry::operator=(FTextHis
 	if (this != &Other)
 	{
 		StringTableReferenceData = MoveTemp(Other.StringTableReferenceData);
-		if (StringTableReferenceData)
-		{
-			StringTableReferenceData->SetRevisionPtr(&Revision);
-		}
 		Other.StringTableReferenceData.Reset();
 	}
 	return *this;
-}
-
-bool FTextHistory_StringTableEntry::IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const
-{
-	const FTextHistory_StringTableEntry& CastOther = static_cast<const FTextHistory_StringTableEntry&>(Other);
-
-	return StringTableReferenceData->IsIdentical(*CastOther.StringTableReferenceData);
 }
 
 FString FTextHistory_StringTableEntry::BuildLocalizedDisplayString() const
@@ -2607,9 +2464,8 @@ void FTextHistory_StringTableEntry::Serialize(FStructuredArchive::FRecord Record
 		Record << SA_VALUE(TEXT("Key"), Key);
 
 		// String Table assets should already have been created via dependency loading when using the EDL (although they may not be fully loaded yet)
-		const bool bIsLoadingViaEDL = GEventDrivenLoaderEnabled && EVENT_DRIVEN_ASYNC_LOAD_ACTIVE_AT_RUNTIME && BaseArchive.GetLinker();
 		StringTableReferenceData = MakeShared<FStringTableReferenceData, ESPMode::ThreadSafe>();
-		StringTableReferenceData->Initialize(&Revision, TableId, MoveTemp(Key), bIsLoadingViaEDL ? EStringTableLoadingPolicy::Find : EStringTableLoadingPolicy::FindOrLoad);
+		StringTableReferenceData->Initialize(&Revision, TableId, MoveTemp(Key), GEventDrivenLoaderEnabled ? EStringTableLoadingPolicy::Find : EStringTableLoadingPolicy::FindOrLoad);
 	}
 	else if (BaseArchive.IsSaving())
 	{
@@ -2633,7 +2489,7 @@ void FTextHistory_StringTableEntry::Serialize(FStructuredArchive::FRecord Record
 
 void FTextHistory_StringTableEntry::SerializeForDisplayString(FStructuredArchive::FRecord Record, FTextDisplayStringPtr& InOutDisplayString)
 {
-	if (Record.GetArchiveState().IsLoading())
+	if (Record.GetUnderlyingArchive().IsLoading())
 	{
 		// We will definitely need to do a rebuild later
 		Revision = 0;
@@ -2738,21 +2594,6 @@ void FTextHistory_StringTableEntry::FStringTableReferenceData::Initialize(uint16
 	}
 }
 
-void FTextHistory_StringTableEntry::FStringTableReferenceData::SetRevisionPtr(uint16* InRevisionPtr)
-{
-	FScopeLock ScopeLock(&DataCS);
-	RevisionPtr = InRevisionPtr;
-}
-
-bool FTextHistory_StringTableEntry::FStringTableReferenceData::IsIdentical(const FStringTableReferenceData& Other) const
-{
-	FScopeLock ScopeLock(&DataCS);
-	FScopeLock OtherScopeLock(&Other.DataCS);
-
-	return TableId == Other.TableId
-		&& Key.Equals(Other.Key, ESearchCase::CaseSensitive);
-}
-
 FName FTextHistory_StringTableEntry::FStringTableReferenceData::GetTableId() const
 {
 	FScopeLock ScopeLock(&DataCS);
@@ -2772,20 +2613,12 @@ void FTextHistory_StringTableEntry::FStringTableReferenceData::GetTableIdAndKey(
 	OutKey = Key;
 }
 
-void FTextHistory_StringTableEntry::FStringTableReferenceData::CollectStringTableAssetReferences(FStructuredArchive::FRecord Record)
+void FTextHistory_StringTableEntry::FStringTableReferenceData::CollectStringTableAssetReferences(FStructuredArchive::FRecord Record) const
 {
 	if (Record.GetUnderlyingArchive().IsObjectReferenceCollector())
 	{
 		FScopeLock ScopeLock(&DataCS);
-
-		const FName OldTableId = TableId;
 		IStringTableEngineBridge::CollectStringTableAssetReferences(TableId, Record.EnterField(SA_FIELD_NAME(TEXT("AssetReferences"))));
-
-		if (TableId != OldTableId)
-		{
-			// This String Table asset was redirected, so we'll need to re-resolve the String Table entry later
-			StringTableEntry.Reset();
-		}
 	}
 }
 
@@ -2892,13 +2725,7 @@ FTextHistory_TextGenerator::FTextHistory_TextGenerator(const TSharedRef<ITextGen
 {
 }
 
-bool FTextHistory_TextGenerator::IdenticalTo(const FTextHistory& Other, const ETextIdenticalModeFlags CompareModeFlags) const
-{
-	const FTextHistory_TextGenerator& CastOther = static_cast<const FTextHistory_TextGenerator&>(Other);
-	// TODO: Could add this to the ITextGenerator API
-	return false;
-}
-
+//~ Begin FTextHistory Interface
 FString FTextHistory_TextGenerator::BuildLocalizedDisplayString() const
 {
 	return TextGenerator

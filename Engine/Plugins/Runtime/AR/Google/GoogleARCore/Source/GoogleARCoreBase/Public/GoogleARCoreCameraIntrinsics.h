@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Engine/EngineBaseTypes.h"
 
 #include "GoogleARCoreTypes.h"
-#include "ARTypes.h"
 #include "GoogleARCoreCameraIntrinsics.generated.h"
 
 class FGoogleARCoreSession;
@@ -21,8 +20,10 @@ UCLASS(BlueprintType)
 class GOOGLEARCOREBASE_API UGoogleARCoreCameraIntrinsics : public UObject
 {
 	GENERATED_BODY()
-
 public:
+
+	virtual ~UGoogleARCoreCameraIntrinsics();
+
 	/**
 	 * Get the focal length in pixels.
 	 *
@@ -49,10 +50,13 @@ public:
 	 */
 	UFUNCTION(BlueprintPure, Category = "GoogleARCore|CameraIntrinsics")
 	void GetImageDimensions(int32 &OutWidth, int32 &OutHeight);
-	
-	void SetCameraIntrinsics(const FARCameraIntrinsics& InCameraIntrinsics);
 
 private:
-	FARCameraIntrinsics CameraIntrinsics;
+#if PLATFORM_ANDROID
+	ArCameraIntrinsics *NativeCameraIntrinsics = nullptr;
+	TWeakPtr<FGoogleARCoreSession> Session;
+	friend class FGoogleARCoreSession;
+	friend class FGoogleARCoreFrame;
+#endif
 };
 

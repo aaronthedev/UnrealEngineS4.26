@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ViewModels/Stack/NiagaraStackRenderItemGroup.h"
 #include "ViewModels/Stack/NiagaraStackRendererItem.h"
@@ -7,7 +7,6 @@
 #include "NiagaraEmitterEditorData.h"
 #include "ViewModels/NiagaraSystemViewModel.h"
 #include "NiagaraRendererProperties.h"
-#include "NiagaraClipboard.h"
 
 #include "ScopedTransaction.h"
 #include "Widgets/Notifications/SNotificationList.h"
@@ -129,37 +128,6 @@ void UNiagaraStackRenderItemGroup::Initialize(FRequiredEntryData InRequiredEntry
 	EmitterWeak->OnRenderersChanged().AddUObject(this, &UNiagaraStackRenderItemGroup::EmitterRenderersChanged);
 }
 
-bool UNiagaraStackRenderItemGroup::TestCanPasteWithMessage(const UNiagaraClipboardContent* ClipboardContent, FText& OutMessage) const
-{
-	if (ClipboardContent->Renderers.Num() > 0)
-	{
-		OutMessage = LOCTEXT("PasteRenderers", "Paste renderers from the clipboard.");
-		return true;
-	}
-	OutMessage = FText();
-	return false;
-}
-
-FText UNiagaraStackRenderItemGroup::GetPasteTransactionText(const UNiagaraClipboardContent* ClipboardContent) const
-{
-	return LOCTEXT("PasteRenderersTransactionText", "Paste renderers");
-}
-
-void UNiagaraStackRenderItemGroup::Paste(const UNiagaraClipboardContent* ClipboardContent, FText& OutPasteWarning)
-{
-	if (EmitterWeak.IsValid())
-	{
-		UNiagaraEmitter* Emitter = EmitterWeak.Get();
-		for (const UNiagaraRendererProperties* ClipboardRenderer : ClipboardContent->Renderers)
-		{
-			if (ClipboardRenderer != nullptr)
-			{
-				EmitterWeak->AddRenderer(ClipboardRenderer->StaticDuplicateWithNewMergeId(Emitter));
-			}
-		}
-	}
-}
-
 void UNiagaraStackRenderItemGroup::RefreshChildrenInternal(const TArray<UNiagaraStackEntry*>& CurrentChildren, TArray<UNiagaraStackEntry*>& NewChildren, TArray<FStackIssue>& NewIssues)
 {
 	int32 RendererIndex = 0;
@@ -172,8 +140,6 @@ void UNiagaraStackRenderItemGroup::RefreshChildrenInternal(const TArray<UNiagara
 		{
 			RendererItem = NewObject<UNiagaraStackRendererItem>(this);
 			RendererItem->Initialize(CreateDefaultChildRequiredData(), RendererProperties);
-			RendererItem->SetOnRequestCanPaste(UNiagaraStackRendererItem::FOnRequestCanPaste::CreateUObject(this, &UNiagaraStackRenderItemGroup::ChildRequestCanPaste));
-			RendererItem->SetOnRequestPaste(UNiagaraStackRendererItem::FOnRequestPaste::CreateUObject(this, &UNiagaraStackRenderItemGroup::ChildRequestPaste));
 		}
 
 		NewChildren.Add(RendererItem);
@@ -192,16 +158,6 @@ void UNiagaraStackRenderItemGroup::EmitterRenderersChanged()
 		OnDataObjectModified().Broadcast(nullptr);
 		RefreshChildren();
 	}
-}
-
-bool UNiagaraStackRenderItemGroup::ChildRequestCanPaste(const UNiagaraClipboardContent* ClipboardContent, FText& OutCanPasteMessage)
-{
-	return TestCanPasteWithMessage(ClipboardContent, OutCanPasteMessage);
-}
-
-void UNiagaraStackRenderItemGroup::ChildRequestPaste(const UNiagaraClipboardContent* ClipboardContent, int32 PasteIndex, FText& OutPasteWarning)
-{
-	Paste(ClipboardContent, OutPasteWarning);
 }
 
 void UNiagaraStackRenderItemGroup::FinalizeInternal()

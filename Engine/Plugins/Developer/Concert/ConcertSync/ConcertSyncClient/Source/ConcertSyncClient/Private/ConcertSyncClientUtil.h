@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,7 +7,6 @@
 #include "Containers/ArrayView.h"
 
 class UObject;
-class UPackage;
 class UStruct;
 class ULevel;
 class AActor;
@@ -20,9 +19,6 @@ struct FConcertObjectId;
 struct FConcertWorldNodeId;
 struct FConcertSessionVersionInfo;
 struct FConcertSerializedPropertyData;
-struct FConcertPackageInfo;
-
-enum class EConcertPackageUpdateType : uint8;
 
 namespace ConcertSyncClientUtil
 {
@@ -70,17 +66,17 @@ namespace ConcertSyncClientUtil
 
 	int32 GetObjectPathDepth(UObject* InObjToTest);
 
-	FGetObjectResult GetObject(const FConcertObjectId& InObjectId, const FName InNewName, const FName InNewOuterPath, const FName InNewPackageName, const bool bAllowCreate);
+	FGetObjectResult GetObject(const FConcertObjectId& InObjectId, const FName InNewName, const FName InNewOuterPath, const bool bAllowCreate);
 	
 	bool ImportPropertyData(const FConcertLocalIdentifierTable* InLocalIdentifierTable, const FConcertSyncWorldRemapper& InWorldRemapper, const FConcertSessionVersionInfo* InVersionInfo, UObject* InObj, const FName InPropertyName, const TArray<uint8>& InSerializedData);
 
 	TArray<FName> GetRootProperties(const TArray<FName>& InChangedProperties);
 
-	FProperty* GetExportedProperty(const UStruct* InStruct, const FName InPropertyName, const bool InIncludeEditorOnlyData);
+	UProperty* GetExportedProperty(const UStruct* InStruct, const FName InPropertyName, const bool InIncludeEditorOnlyData);
 
 	void SerializeProperties(FConcertLocalIdentifierTable* InLocalIdentifierTable, const UObject* InObject, const TArray<FName>& InChangedProperties, const bool InIncludeEditorOnlyData, TArray<FConcertSerializedPropertyData>& OutPropertyDatas);
 
-	void SerializeProperty(FConcertLocalIdentifierTable* InLocalIdentifierTable, const UObject* InObject, const FProperty* InProperty, const bool InIncludeEditorOnlyData, TArray<uint8>& OutSerializedData);
+	void SerializeProperty(FConcertLocalIdentifierTable* InLocalIdentifierTable, const UObject* InObject, const UProperty* InProperty, const bool InIncludeEditorOnlyData, TArray<uint8>& OutSerializedData);
 
 	void SerializeObject(FConcertLocalIdentifierTable* InLocalIdentifierTable, const UObject* InObject, const TArray<FName>* InChangedProperties, const bool InIncludeEditorOnlyData, TArray<uint8>& OutSerializedData);
 
@@ -91,8 +87,4 @@ namespace ConcertSyncClientUtil
 	void HotReloadPackages(TArrayView<const FName> InPackageNames);
 
 	void PurgePackages(TArrayView<const FName> InPackageNames);
-
-	UWorld* GetCurrentWorld();
-
-	void FillPackageInfo(UPackage* InPackage, UObject* InAsset, const EConcertPackageUpdateType InPackageUpdateType, FConcertPackageInfo& OutPackageInfo);
 }

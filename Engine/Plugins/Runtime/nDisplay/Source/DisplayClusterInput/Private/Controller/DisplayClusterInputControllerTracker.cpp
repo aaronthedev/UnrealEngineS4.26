@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DisplayClusterInputControllerTracker.h"
 #include "IDisplayClusterInputModule.h"
@@ -10,27 +10,23 @@
 
 #include "IDisplayClusterInputModule.h"
 
-#include "DisplayClusterConfigurationTypes.h"
-
 
 void FTrackerController::Initialize()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputTracker);
+
 	//todo: Register new trackers for nDisplayCluster
 }
 
 void FTrackerController::ProcessStartSession()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputTracker);
+
 	// Clear old binds
 	ResetAllBindings();
 
 	IDisplayClusterInputManager&  InputMgr  = *IDisplayCluster::Get().GetInputMgr();
 	IDisplayClusterConfigManager& ConfigMgr = *IDisplayCluster::Get().GetConfigMgr();
-
-	const UDisplayClusterConfigurationData* ConfigData = ConfigMgr.GetConfig();
-	if (!ConfigData)
-	{
-		return;
-	}
 
 	TArray<FString> DeviceNames;
 	InputMgr.GetTrackerDeviceIds(DeviceNames);
@@ -38,12 +34,12 @@ void FTrackerController::ProcessStartSession()
 	{
 		AddDevice(DeviceName);
 
-		for (auto& it : ConfigData->Input->InputBinding)
+		TArray<FDisplayClusterConfigInputSetup> Records = ConfigMgr.GetInputSetupRecords();
+		for (const FDisplayClusterConfigInputSetup& Record : Records)
 		{
-			if (DeviceName.Equals(it.DeviceId, ESearchCase::IgnoreCase))
+			if (DeviceName.Compare(Record.Id, ESearchCase::IgnoreCase) == 0)
 			{
-				UE_LOG(LogDisplayClusterInputTracker, Verbose, TEXT("Binding %s:%d to %s..."), *DeviceName, it.Channel, *it.BindTo);
-				BindTracker(DeviceName, it.Channel, it.BindTo);
+				BindTracker(DeviceName, Record.Channel, Record.BindName);
 			}
 		}
 	}
@@ -51,6 +47,8 @@ void FTrackerController::ProcessStartSession()
 
 void FTrackerController::ProcessEndSession()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputTracker);
+
 	UE_LOG(LogDisplayClusterInputTracker, Verbose, TEXT("Removing all tracker bindings..."));
 
 	ResetAllBindings();
@@ -58,6 +56,8 @@ void FTrackerController::ProcessEndSession()
 
 void FTrackerController::ProcessPreTick()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputTracker);
+
 	// Get data from VRPN devices
 	IDisplayClusterInputManager& InputMgr = *IDisplayCluster::Get().GetInputMgr();
 	for (auto& DeviceIt : BindMap)
@@ -78,6 +78,8 @@ void FTrackerController::ProcessPreTick()
 
 bool FTrackerController::BindTracker(const FString& DeviceID, uint32 VrpnChannel, const FString& TargetName)
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputTracker);
+
 	// Find target TargetName analog value from user-friendly TargetName:
 	EControllerHand TargetHand;
 	if (!FControllerDeviceHelper::FindTrackerByName(TargetName, TargetHand))
@@ -92,6 +94,8 @@ bool FTrackerController::BindTracker(const FString& DeviceID, uint32 VrpnChannel
 }
 bool FTrackerController::BindTracker(const FString& DeviceID, uint32 VrpnChannel, const EControllerHand TargetHand)
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputTracker);
+
 	// Create new bind:
 	dev_channel_data_type& BindData = AddDeviceChannelBind(DeviceID, VrpnChannel);
 	return BindData.BindTarget(TargetHand);
@@ -99,6 +103,8 @@ bool FTrackerController::BindTracker(const FString& DeviceID, uint32 VrpnChannel
 
 const FTrackerState* FTrackerController::GetDeviceBindData(const EControllerHand DeviceHand) const
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputTracker);
+
 	for (const auto& DeviceIt : BindMap)
 	{
 		const FChannelBinds& ChannelBinds = DeviceIt.Value;
@@ -119,11 +125,15 @@ const FTrackerState* FTrackerController::GetDeviceBindData(const EControllerHand
 
 bool FTrackerController::IsTrackerConnected(const EControllerHand DeviceHand) const
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputTracker);
+
 	return GetDeviceBindData(DeviceHand) != nullptr;
 }
 
 void FTrackerController::ApplyTrackersChanges()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputTracker);
+
 	for (auto& DeviceIt : BindMap)
 	{
 		for (auto& ChannelIt : DeviceIt.Value)
@@ -135,6 +145,8 @@ void FTrackerController::ApplyTrackersChanges()
 
 int FTrackerController::GetTrackersCount() const
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputTracker);
+
 	int Result = 0;
 	for (auto& DeviceIt : BindMap)
 	{
@@ -149,6 +161,8 @@ int FTrackerController::GetTrackersCount() const
 
 bool FTrackerController::GetTrackerOrientationAndPosition(const EControllerHand DeviceHand, FRotator& OutOrientation, FVector& OutPosition) const
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputTracker);
+
 	const FTrackerState* TrackerData = GetDeviceBindData(DeviceHand);
 	if (TrackerData!=nullptr)
 	{

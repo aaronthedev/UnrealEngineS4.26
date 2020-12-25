@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimNodes/AnimNode_BlendListBase.h"
 #include "AnimationRuntime.h"
 #include "Animation/BlendProfile.h"
 #include "Animation/AnimInstanceProxy.h"
 #include "Animation/AnimNode_Inertialization.h"
-#include "Animation/AnimTrace.h"
 
 /////////////////////////////////////////////////////
 // FAnimNode_BlendListBase
@@ -227,13 +226,6 @@ void FAnimNode_BlendListBase::Update_AnyThread(const FAnimationUpdateContext& Co
 			FBlendSampleData::NormalizeDataWeight(PerBoneSampleData);
 		}
 	}
-
-#if ANIM_TRACE_ENABLED
-	const int32 ChildIndex = GetActiveChildIndex();
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Active Index"), ChildIndex);
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Active Weight"), BlendWeights[ChildIndex]);
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Active Blend Time"), BlendTime[ChildIndex]);
-#endif
 }
 
 void FAnimNode_BlendListBase::Evaluate_AnyThread(FPoseContext& Output)
@@ -248,11 +240,8 @@ void FAnimNode_BlendListBase::Evaluate_AnyThread(FPoseContext& Output)
 		// Scratch arrays for evaluation, stack allocated
 		TArray<FCompactPose, TInlineAllocator<8>> FilteredPoses;
 		TArray<FBlendedCurve, TInlineAllocator<8>> FilteredCurve;
-		TArray<FStackCustomAttributes, TInlineAllocator<8>> FilteredAttributes;
-
 		FilteredPoses.SetNum(NumPoses, false);
 		FilteredCurve.SetNum(NumPoses, false);
-		FilteredAttributes.SetNum(NumPoses, false);
 
 		int32 NumActivePoses = 0;
 		for (int32 i = 0; i < PosesToEvaluate.Num(); ++i)
@@ -266,19 +255,16 @@ void FAnimNode_BlendListBase::Evaluate_AnyThread(FPoseContext& Output)
 
 			FilteredPoses[i].MoveBonesFrom(EvaluateContext.Pose);
 			FilteredCurve[i].MoveFrom(EvaluateContext.Curve);
-			FilteredAttributes[i].MoveFrom(EvaluateContext.CustomAttributes);
 		}
-
-		FAnimationPoseData OutAnimationPoseData(Output);
 
 		// Use the calculated blend sample data if we're blending per-bone
 		if (BlendProfile)
 		{
-			FAnimationRuntime::BlendPosesTogetherPerBone(FilteredPoses, FilteredCurve, FilteredAttributes, BlendProfile, PerBoneSampleData, PosesToEvaluate, OutAnimationPoseData);
+			FAnimationRuntime::BlendPosesTogetherPerBone(FilteredPoses, FilteredCurve, BlendProfile, PerBoneSampleData, PosesToEvaluate, Output.Pose, Output.Curve);
 		}
 		else
 		{
-			FAnimationRuntime::BlendPosesTogether(FilteredPoses, FilteredCurve, FilteredAttributes, BlendWeights, PosesToEvaluate, OutAnimationPoseData);
+			FAnimationRuntime::BlendPosesTogether(FilteredPoses, FilteredCurve, BlendWeights, PosesToEvaluate, Output.Pose, Output.Curve);
 		}		
 	}
 	else

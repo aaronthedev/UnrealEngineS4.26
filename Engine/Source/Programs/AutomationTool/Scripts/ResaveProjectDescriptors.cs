@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -58,7 +58,7 @@ namespace AutomationTool
 				ProjectDescriptor Descriptor;
 				try
 				{
-					Descriptor = new ProjectDescriptor(JsonObject.Parse(InputText), ProjectFile.Directory);
+					Descriptor = new ProjectDescriptor(JsonObject.Parse(InputText));
 				}
 				catch(JsonParseException Ex)
 				{
@@ -106,7 +106,7 @@ namespace AutomationTool
 				using (JsonWriter Writer = new JsonWriter(new StringWriter(Output)))
 				{
 					Writer.WriteObjectStart();
-					Descriptor.Write(Writer, ProjectFile.Directory);
+					Descriptor.Write(Writer);
 					Writer.WriteObjectEnd();
 				}
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Details/SWidgetDetailsView.h"
 #include "Widgets/Text/STextBlock.h"
@@ -142,7 +142,6 @@ void SWidgetDetailsView::Construct(const FArguments& InArgs, TSharedPtr<FWidgetB
 							.SelectAllTextWhenFocused(true)
 							.HintText(LOCTEXT("Name", "Name"))
 							.Text(this, &SWidgetDetailsView::GetNameText)
-							.IsEnabled(this, &SWidgetDetailsView::IsSingleObjectSelected)
 							.OnTextChanged(this, &SWidgetDetailsView::HandleNameTextChanged)
 							.OnTextCommitted(this, &SWidgetDetailsView::HandleNameTextCommitted)
 						]
@@ -281,7 +280,7 @@ void SWidgetDetailsView::OnEditorSelectionChanged()
 	PropertyView->SetObjects(SelectedObjects, bForceRefresh);
 }
 
-void SWidgetDetailsView::OnPropertyViewObjectArrayChanged(const FString& InTitle, const TArray<UObject*>& InObjects)
+void SWidgetDetailsView::OnPropertyViewObjectArrayChanged(const FString& InTitle, const TArray<TWeakObjectPtr<UObject>>& InObjects)
 {
 	// Update the package remapping for all selected objects so that we can find the correct localization ID when editing text properties (since we edit a copy of the real data, not connected to the asset package)
 	UBlueprint* UMGBlueprint = BlueprintEditor.Pin()->GetBlueprintObj();
@@ -292,7 +291,7 @@ void SWidgetDetailsView::OnPropertyViewObjectArrayChanged(const FString& InTitle
 		{
 			TMap<TWeakObjectPtr<UObject>, TWeakObjectPtr<UPackage>> ObjectToPackageMapping;
 
-			for (const TWeakObjectPtr<UObject> Object : InObjects)
+			for (const TWeakObjectPtr<UObject>& Object : InObjects)
 			{
 				ObjectToPackageMapping.Add(Object, UMGPackage);
 			}
@@ -423,18 +422,8 @@ FText SWidgetDetailsView::GetNameText() const
 			return Widget->IsGeneratedName() ? FText::FromName(Widget->GetFName()) : Widget->GetLabelText();
 		}
 	}
-
-	if (SelectedObjects.Num() > 1)
-	{
-		return LOCTEXT("MultipleWidgetsSelected", "Multiple Values");
-	}
 	
 	return FText::GetEmpty();
-}
-
-bool SWidgetDetailsView::IsSingleObjectSelected() const
-{
-	return SelectedObjects.Num() == 1;
 }
 
 void SWidgetDetailsView::HandleNameTextChanged(const FText& Text)
@@ -495,51 +484,38 @@ void SWidgetDetailsView::HandleNameTextCommitted(const FText& Text, ETextCommit:
 
 ECheckBoxState SWidgetDetailsView::GetIsVariable() const
 {
-	TOptional<ECheckBoxState> Result;
-	for (const TWeakObjectPtr<UObject>& Obj : SelectedObjects)
+	if ( SelectedObjects.Num() == 1 )
 	{
-		if (UWidget* Widget = Cast<UWidget>(Obj.Get()))
+		UWidget* Widget = Cast<UWidget>(SelectedObjects[0].Get());
+		if ( Widget )
 		{
-			ECheckBoxState WidgetState = Widget->bIsVariable ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
-			if (Result.IsSet() && WidgetState != Result.GetValue())
-			{
-				return ECheckBoxState::Undetermined;
-			}
-			Result = WidgetState;
+			return Widget->bIsVariable ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
 		}
 	}
-	return Result.IsSet() ? Result.GetValue() : ECheckBoxState::Unchecked;
+
+	return ECheckBoxState::Unchecked;
 }
 
 void SWidgetDetailsView::HandleIsVariableChanged(ECheckBoxState CheckState)
 {
-	if (SelectedObjects.Num() > 0)
+	if ( SelectedObjects.Num() == 1 )
 	{
-		UWidgetBlueprint* Blueprint = BlueprintEditor.Pin()->GetWidgetBlueprintObj();
-		check(Blueprint);
 		TSharedPtr<FWidgetBlueprintEditor> BPEditor = BlueprintEditor.Pin();
-		check(BPEditor);
 
-		TArray<UWidget*, TInlineAllocator<16>> WidgetToModify;
-		for (const TWeakObjectPtr<UObject>& SelectedObject : SelectedObjects)
+		UWidget* Widget = Cast<UWidget>(SelectedObjects[0].Get());
+		UWidgetBlueprint* Blueprint = BlueprintEditor.Pin()->GetWidgetBlueprintObj();
+		
+		FWidgetReference WidgetRef = BPEditor->GetReferenceFromTemplate(Blueprint->WidgetTree->FindWidget(Widget->GetFName()));
+		if ( WidgetRef.IsValid() )
 		{
-			UWidget* Widget = Cast<UWidget>(SelectedObject.Get());
-			FWidgetReference WidgetRef = BPEditor->GetReferenceFromTemplate(Blueprint->WidgetTree->FindWidget(Widget->GetFName()));
-			if (WidgetRef.IsValid())
-			{
-				WidgetToModify.Add(WidgetRef.GetTemplate());
-				WidgetToModify.Add(WidgetRef.GetPreview());
-			}
-		}
+			UWidget* Template = WidgetRef.GetTemplate();
+			UWidget* Preview = WidgetRef.GetPreview();
 
-		if (WidgetToModify.Num() > 0)
-		{
 			const FScopedTransaction Transaction(LOCTEXT("VariableToggle", "Variable Toggle"));
-			for (UWidget* Widget : WidgetToModify)
-			{
-				Widget->Modify();
-				Widget->bIsVariable = (CheckState == ECheckBoxState::Checked);
-			}
+			Template->Modify();
+			Preview->Modify();
+
+			Template->bIsVariable = Preview->bIsVariable = CheckState == ECheckBoxState::Checked ? true : false;
 
 			// Refresh references and flush editors
 			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);

@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 // Datasmith SDK.
 #include "DatasmithSceneFactory.h"
 
-class FDatasmithFacadeScene;
 
 class DATASMITHFACADE_API FDatasmithFacadeElement
 {
@@ -35,18 +34,20 @@ public:
 		ECoordinateSystemType InWorldCoordinateSystemType // world coordinate system type
 	);
 
-	/** 
-	 * Set the scale factor from world units to Datasmith centimeters.
-	 * If the given value is too close to 0, it is clamped to SMALL_NUMBER value.
-	 */
+	// Set the scale factor from world units to Datasmith centimeters.
 	static void SetWorldUnitScale(
 		float InWorldUnitScale // scale factor from world units to Datasmith centimeters
 	);
 
+	FDatasmithFacadeElement(
+		const TCHAR* InElementName, // Datasmith element name
+		const TCHAR* InElementLabel // Datasmith element label
+	);
+
 	virtual ~FDatasmithFacadeElement() {}
 
-	// Hash the given InString and fills the OutBuffer up to the BufferSize. A string hash has 32 character (+ null character).
-	static void GetStringHash( const TCHAR* InString, TCHAR OutBuffer[33], size_t BufferSize );
+	// Hash the Datasmith element name.
+	void HashName();
 
 	// Set the Datasmith element name.
 	void SetName(
@@ -64,6 +65,12 @@ public:
 	// Return the Datasmith element label.
 	const TCHAR* GetLabel() const;
 
+	// Add a metadata string property to the Datasmith element.
+	virtual void AddMetadataString(
+		const TCHAR* InPropertyName, // property name
+		const TCHAR* InPropertyValue // property value
+	);
+
 #ifdef SWIG_FACADE
 protected:
 #endif
@@ -79,6 +86,15 @@ protected:
 		FVector const& InVertex // translation in world unit coordinates
 	);
 
+	// Return the optimized Datasmith scene element.
+	virtual TSharedPtr<FDatasmithFacadeElement> Optimize(
+		TSharedPtr<FDatasmithFacadeElement> InElementPtr,           // this Datasmith scene element
+		bool                                bInNoSingleChild = true // remove intermediate Datasmith actors having a single child
+	);
+
+	// Build the Datasmith scene element asset when required.
+	virtual void BuildAsset();
+
 	// Build and export the Datasmith scene element asset when required.
 	// This must be done before building a Datasmith scene element.
 	virtual void ExportAsset(
@@ -87,12 +103,8 @@ protected:
 
 	// Build a Datasmith scene element and add it to the Datasmith scene.
 	virtual void BuildScene(
-		FDatasmithFacadeScene& SceneRef // Datasmith scene
+		TSharedRef<IDatasmithScene> IOSceneRef // Datasmith scene
 	) = 0;
-
-	TSharedRef<IDatasmithElement>& GetDatasmithElement() { return InternalDatasmithElement;	}
-
-	const TSharedRef<IDatasmithElement>& GetDatasmithElement() const { return InternalDatasmithElement;	}
 
 private:
 
@@ -140,15 +152,15 @@ private:
 
 protected:
 
-	FDatasmithFacadeElement(
-		const TSharedRef<IDatasmithElement>& InElement
-	);
-
 	// Coordinate system type of the world geometries and transforms.
 	static ECoordinateSystemType WorldCoordinateSystemType;
 
 	// Scale factor from world units to Datasmith centimeters.
 	static float WorldUnitScale;
 
-	TSharedRef<IDatasmithElement> InternalDatasmithElement;
+	// Datasmith scene element name (i.e. ID).
+	FString ElementName;
+
+	// Datasmith scene element label (i.e. UI name).
+	FString ElementLabel;
 };

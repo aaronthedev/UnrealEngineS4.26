@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ComponentMaterialCategory.h"
 #include "UObject/UnrealType.h"
@@ -257,7 +257,7 @@ void FComponentMaterialCategory::OnMaterialChanged( UMaterialInterface* NewMater
 	struct FObjectAndProperty
 	{
 		UObject* Object;
-		FProperty* PropertyThatChanged;
+		UProperty* PropertyThatChanged;
 	};
 	TArray<FObjectAndProperty> ObjectsThatChanged;
 	// Scan the selected actors mesh components for the old material and swap it with the new material 
@@ -289,23 +289,23 @@ void FComponentMaterialCategory::OnMaterialChanged( UMaterialInterface* NewMater
 					bMadeTransaction = true;
 				}
 
-				FProperty* MaterialProperty = NULL;
+				UProperty* MaterialProperty = NULL;
 				UObject* EditChangeObject = CurrentComponent;
 				if( CurrentComponent->IsA( UMeshComponent::StaticClass() ) )
 				{
-					MaterialProperty = FindFProperty<FProperty>( UMeshComponent::StaticClass(), "OverrideMaterials" );
+					MaterialProperty = FindField<UProperty>( UMeshComponent::StaticClass(), "OverrideMaterials" );
 				}
 				else if( CurrentComponent->IsA( UDecalComponent::StaticClass() ) )
 				{
-					MaterialProperty = FindFProperty<FProperty>( UDecalComponent::StaticClass(), "DecalMaterial" );
+					MaterialProperty = FindField<UProperty>( UDecalComponent::StaticClass(), "DecalMaterial" );
 				}
 				else if( CurrentComponent->IsA( UTextRenderComponent::StaticClass() ) )
 				{
-					MaterialProperty = FindFProperty<FProperty>( UTextRenderComponent::StaticClass(), "TextMaterial" );
+					MaterialProperty = FindField<UProperty>( UTextRenderComponent::StaticClass(), "TextMaterial" );
 				}
 				else if (CurrentComponent->IsA<ULandscapeComponent>() )
 				{
-					MaterialProperty = FindFProperty<FProperty>( ALandscapeProxy::StaticClass(), "LandscapeMaterial" );
+					MaterialProperty = FindField<UProperty>( ALandscapeProxy::StaticClass(), "LandscapeMaterial" );
 					EditChangeObject = CastChecked<ULandscapeComponent>(CurrentComponent)->GetLandscapeProxy();
 				}
 

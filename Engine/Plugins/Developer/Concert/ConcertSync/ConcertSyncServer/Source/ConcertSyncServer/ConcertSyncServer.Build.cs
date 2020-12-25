@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -6,9 +6,6 @@ namespace UnrealBuildTool.Rules
 	{
 		public ConcertSyncServer(ReadOnlyTargetRules Target) : base(Target)
 		{
-			// Make the linking path shorter (to prevent busting the Windows limit) when linking ConcertSyncServer.lib against an executable that have a long name.
-			ShortName = "CncrtSyncSvr";
-
 			PublicDependencyModuleNames.AddRange(
 				new string[]
 				{

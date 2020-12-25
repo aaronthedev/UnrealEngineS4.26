@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -34,7 +34,7 @@ class UK2Node_MakeStruct : public UK2Node_StructMemberSet
 	BLUEPRINTGRAPH_API static bool CanBeMade(const UScriptStruct* Struct, bool bForInternalUse = false);
 	
 	/** Can this struct be used as a split pin */
-	BLUEPRINTGRAPH_API static bool CanBeSplit(const UScriptStruct* Struct, UBlueprint* InBP);
+	BLUEPRINTGRAPH_API static bool CanBeSplit(const UScriptStruct* Struct);
 
 	// UObject interface
 	virtual void Serialize(FArchive& Ar) override;
@@ -66,15 +66,14 @@ protected:
 	struct FMakeStructPinManager : public FStructOperationOptionalPinManager
 	{
 		const uint8* const SampleStructMemory;
-		UBlueprint* OwningBP;
 	public:
-		FMakeStructPinManager(const uint8* InSampleStructMemory, UBlueprint* InOwningBP);
+		FMakeStructPinManager(const uint8* InSampleStructMemory);
 
 		bool HasAdvancedPins() const { return bHasAdvancedPins; }
 	protected:
-		virtual void GetRecordDefaults(FProperty* TestProperty, FOptionalPinFromProperty& Record) const override;
-		virtual void CustomizePinData(UEdGraphPin* Pin, FName SourcePropertyName, int32 ArrayIndex, FProperty* Property) const override;
-		virtual bool CanTreatPropertyAsOptional(FProperty* TestProperty) const override;
+		virtual void GetRecordDefaults(UProperty* TestProperty, FOptionalPinFromProperty& Record) const override;
+		virtual void CustomizePinData(UEdGraphPin* Pin, FName SourcePropertyName, int32 ArrayIndex, UProperty* Property) const override;
+		virtual bool CanTreatPropertyAsOptional(UProperty* TestProperty) const override;
 
 		/** set by GetRecordDefaults(), mutable as it is a const function */
 		mutable bool bHasAdvancedPins;

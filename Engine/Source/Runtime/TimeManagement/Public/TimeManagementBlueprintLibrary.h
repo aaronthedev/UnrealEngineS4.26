@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -80,10 +80,10 @@ public:
 
 public:
 	/** Get the current timecode of the engine. */
-	UFUNCTION(BlueprintPure, Category = "Utilities|Time Management")
+	UFUNCTION(BlueprintPure, Category = "Utilities|Timecode Provider")
 	static FTimecode GetTimecode();
 
 	/** Gets the current timecode frame rate. */
-	UFUNCTION(BlueprintPure, Category = "Utilities|Time Management")
+	UFUNCTION(BlueprintPure, Category = "Utilities|Timecode Provider")
 	static FFrameRate GetTimecodeFrameRate();
 };

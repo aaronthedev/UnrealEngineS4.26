@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Common/TargetPlatformBase.h"
 #include "HAL/IConsoleManager.h"
@@ -42,27 +42,9 @@ bool FTargetPlatformBase::UsesDistanceFields() const
 	return true;
 }
 
-bool FTargetPlatformBase::UsesRayTracing() const
-{
-	static IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.RayTracing"));
-	return CVar ? (CVar->GetInt() != 0) : false;
-}
-
-bool FTargetPlatformBase::ForcesSimpleSkyDiffuse() const
-{
-	return false;
-}
-
 float FTargetPlatformBase::GetDownSampleMeshDistanceFieldDivider() const
 {
 	return 1.0f;
-}
-
-int32 FTargetPlatformBase::GetHeightFogModeForOpaque() const
-{
-	// Don't override the project setting by default
-	// Platforms wish to support override need to implement the logic in their own target platform classes
-	return 0;
 }
 
 static bool IsPluginEnabledForTarget(const IPlugin& Plugin, const FProjectDescriptor* Project, const FString& Platform, EBuildConfiguration Configuration, EBuildTargetType TargetType)
@@ -72,8 +54,7 @@ static bool IsPluginEnabledForTarget(const IPlugin& Plugin, const FProjectDescri
 		return false;
 	}
 
-	const bool bAllowEnginePluginsEnabledByDefault = (Project == nullptr || !Project->bDisableEnginePluginsByDefault);
-	bool bEnabledForProject = Plugin.IsEnabledByDefault(bAllowEnginePluginsEnabledByDefault);
+	bool bEnabledForProject = Plugin.IsEnabledByDefault();
 	if (Project != nullptr)
 	{
 		for(const FPluginReferenceDescriptor& PluginReference : Project->Plugins)

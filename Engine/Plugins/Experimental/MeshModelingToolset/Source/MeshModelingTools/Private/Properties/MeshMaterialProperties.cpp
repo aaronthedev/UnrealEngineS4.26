@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Properties/MeshMaterialProperties.h"
 
@@ -17,11 +17,26 @@ UNewMeshMaterialProperties::UNewMeshMaterialProperties()
 	Material = CreateDefaultSubobject<UMaterialInterface>(TEXT("MATERIAL"));
 }
 
-void UExistingMeshMaterialProperties::RestoreProperties(UInteractiveTool* RestoreToTool)
+
+void UNewMeshMaterialProperties::SaveProperties(UInteractiveTool* SaveFromTool)
 {
-	Super::RestoreProperties(RestoreToTool);
-	Setup();
+	UNewMeshMaterialProperties* PropertyCache = GetPropertyCache<UNewMeshMaterialProperties>();
+	PropertyCache->Material = this->Material;
+	PropertyCache->UVScale = this->UVScale;
+	PropertyCache->bWorldSpaceUVScale = this->bWorldSpaceUVScale;
+	// not bWireframe
 }
+
+void UNewMeshMaterialProperties::RestoreProperties(UInteractiveTool* RestoreToTool)
+{
+	UNewMeshMaterialProperties* PropertyCache = GetPropertyCache<UNewMeshMaterialProperties>();
+	this->Material = PropertyCache->Material;
+	this->UVScale = PropertyCache->UVScale;
+	this->bWorldSpaceUVScale = PropertyCache->bWorldSpaceUVScale;
+}
+
+
+
 
 void UExistingMeshMaterialProperties::Setup()
 {
@@ -44,18 +59,44 @@ void UExistingMeshMaterialProperties::UpdateMaterials()
 	}
 }
 
-
-UMaterialInterface* UExistingMeshMaterialProperties::GetActiveOverrideMaterial() const
+void UExistingMeshMaterialProperties::SetMaterialIfChanged(UMaterialInterface* OriginalMaterial, UMaterialInterface* CurrentMaterial, TFunctionRef<void(UMaterialInterface* Material)> SetMaterialFn)
 {
+	UMaterialInterface *Material = OriginalMaterial;
 	if (MaterialMode == ESetMeshMaterialMode::Checkerboard && CheckerMaterial != nullptr)
 	{
-		return CheckerMaterial;
+		Material = CheckerMaterial;
 	}
-	if (MaterialMode == ESetMeshMaterialMode::Override && OverrideMaterial != nullptr)
+	else if (MaterialMode == ESetMeshMaterialMode::Override && OverrideMaterial != nullptr)
 	{
-		return OverrideMaterial;
+		Material = OverrideMaterial;
 	}
-	return nullptr;
+	if (CurrentMaterial != Material)
+	{
+		SetMaterialFn(Material);
+	}
 }
+
+
+
+
+
+
+
+void UMeshEditingViewProperties::SaveProperties(UInteractiveTool* SaveFromTool)
+{
+	UMeshEditingViewProperties* PropertyCache = GetPropertyCache<UMeshEditingViewProperties>();
+	PropertyCache->bShowWireframe = this->bShowWireframe;
+	PropertyCache->MaterialMode = this->MaterialMode;
+}
+
+void UMeshEditingViewProperties::RestoreProperties(UInteractiveTool* RestoreToTool)
+{
+	UMeshEditingViewProperties* PropertyCache = GetPropertyCache<UMeshEditingViewProperties>();
+	this->bShowWireframe = PropertyCache->bShowWireframe;
+	this->MaterialMode = PropertyCache->MaterialMode;
+}
+
+
+
 
 #undef LOCTEXT_NAMESPACE

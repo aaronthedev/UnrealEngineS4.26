@@ -1,18 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "UObject/Object.h"
-#include "ContentBrowserDelegates.h"
 
 #include "ContentBrowserMenuContexts.generated.h"
 
 class FAssetContextMenu;
 class IAssetTypeActions;
-class SAssetView;
-class SContentBrowser;
 
 UCLASS()
 class CONTENTBROWSER_API UContentBrowserAssetContextMenuContext : public UObject
@@ -31,9 +28,6 @@ public:
 	UPROPERTY()
 	UClass* CommonClass;
 
-	UPROPERTY()
-	bool bCanBeModified;
-
 	UFUNCTION(BlueprintCallable, Category="Tool Menus")
 	TArray<UObject*> GetSelectedObjects() const
 	{
@@ -47,42 +41,3 @@ public:
 	}
 };
 
-UCLASS()
-class CONTENTBROWSER_API UContentBrowserAssetViewContextMenuContext : public UObject
-{
-	GENERATED_BODY()
-
-public:
-
-	TWeakPtr<SAssetView> AssetView;
-};
-
-UCLASS()
-class CONTENTBROWSER_API UContentBrowserFolderContext : public UObject
-{
-	GENERATED_BODY()
-
-public:
-
-	UPROPERTY()
-	bool bCanBeModified;
-
-	UPROPERTY()
-	int32 NumAssetPaths;
-
-	UPROPERTY()
-	int32 NumClassPaths;
-
-	TWeakPtr<SContentBrowser> ContentBrowser;
-	FOnCreateNewFolder OnCreateNewFolder;
-};
-
-UCLASS()
-class CONTENTBROWSER_API UContentBrowserAddNewContextMenuContext : public UObject
-{
-	GENERATED_BODY()
-
-public:
-
-	TWeakPtr<SContentBrowser> ContentBrowser;
-};

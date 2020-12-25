@@ -1,12 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Chaos/PBDLongRangeConstraintsBase.h"
 #include "Chaos/PBDParticles.h"
 #include "Chaos/PerParticleRule.h"
-#include "ChaosStats.h"
-
-DECLARE_CYCLE_STAT(TEXT("Chaos PBD Long Range Per Particle Constraint"), STAT_PBD_LongRangePerParticle, STATGROUP_Chaos);
 
 namespace Chaos
 {
@@ -34,8 +31,8 @@ class TPerParticlePBDLongRangeConstraints : public TPerParticleRule<T, d>, publi
 	{
 		for (int32 i = 0; i < MParticleToConstraints[Index].Num(); ++i)
 		{
-			const int32 CIndex = MParticleToConstraints[Index][i];  // Cache misses all the time
-			const TArray<uint32>& Constraint = MConstraints[CIndex];
+			const auto CIndex = MParticleToConstraints[Index][i];
+			const auto& Constraint = MConstraints[CIndex];
 			check(Index == Constraint[Constraint.Num() - 1]);
 			check(InParticles.InvM(Index) > 0);
 			InParticles.P(Index) += Base::GetDelta(InParticles, CIndex);
@@ -44,8 +41,7 @@ class TPerParticlePBDLongRangeConstraints : public TPerParticleRule<T, d>, publi
 
 	void Apply(TPBDParticles<T, d>& InParticles, const T Dt) const override //-V762
 	{
-		SCOPE_CYCLE_COUNTER(STAT_PBD_LongRangePerParticle);
-		PhysicsParallelFor(MParticleToConstraints.Num(), [this, &InParticles, Dt](int32 Index) {
+		PhysicsParallelFor(MParticleToConstraints.Num(), [&](int32 Index) {
 			Apply(InParticles, Dt, Index);
 		});
 	}

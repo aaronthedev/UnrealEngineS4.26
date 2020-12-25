@@ -22,8 +22,8 @@
 // language governing permissions and limitations under the Apache License.
 //
 
-#ifndef PXR_BASE_TRACE_TRACE_H
-#define PXR_BASE_TRACE_TRACE_H
+#ifndef TRACE_H
+#define TRACE_H
 
 /// \file trace/trace.h
 
@@ -349,4 +349,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TRACE_TRACE_H
+#endif // TRACE_H

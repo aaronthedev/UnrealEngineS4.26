@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -32,7 +32,7 @@ class SObjectColumnHeader : public SColumnHeader
 
 		SColumnHeader::FArguments ColumnArgs;
 		ColumnArgs.Style( Style );
-		ColumnArgs.Customization( InArgs._Customization );
+		ColumnArgs.Customization( Customization );
 
 		SColumnHeader::Construct( ColumnArgs, InPropertyTableColumn, InPropertyUtilities );
 	}
@@ -52,13 +52,13 @@ class SObjectColumnHeader : public SColumnHeader
 		{
 			TSharedRef< FPropertyEditor > PropertyEditor = FPropertyEditor::Create( Cell->GetNode().ToSharedRef(), Utilities.ToSharedRef() );
 
-			TWeakFieldPtr< FProperty > Property = PropertyTableRow->GetDataSource()->AsPropertyPath()->GetLeafMostProperty().Property.Get();
+			TWeakObjectPtr< UProperty > Property = PropertyTableRow->GetDataSource()->AsPropertyPath()->GetLeafMostProperty().Property;
 
-			if( Property->IsA( FBoolProperty::StaticClass() ) )
+			if( Property->IsA( UBoolProperty::StaticClass() ) )
 			{
 				CellPresenter = MakeShareable( new FBooleanPropertyTableCellPresenter( PropertyEditor ) );
 			}
-			else if ( CastField<const FStructProperty>(Property.Get()) && (CastField<const FStructProperty>(Property.Get())->Struct->GetFName()==NAME_Color || CastField<const FStructProperty>(Property.Get())->Struct->GetFName()==NAME_LinearColor) )
+			else if ( Cast<const UStructProperty>(Property.Get()) && (Cast<const UStructProperty>(Property.Get())->Struct->GetFName()==NAME_Color || Cast<const UStructProperty>(Property.Get())->Struct->GetFName()==NAME_LinearColor) )
 			{
 				CellPresenter = MakeShareable( new FColorPropertyTableCellPresenter( PropertyEditor, Utilities.ToSharedRef() ) );
 			}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -21,8 +21,7 @@ public:
 	virtual EStackRowStyle GetStackRowStyle() const override;
 	FOnIssueNotify& OnIssueModified();
 	virtual void GetSearchItems(TArray<FStackSearchItem>& SearchItems) const override;
-	virtual EStackIssueSeverity GetIssueSeverity() const override;
-
+	
 protected:
 	virtual void RefreshChildrenInternal(const TArray<UNiagaraStackEntry*>& CurrentChildren, TArray<UNiagaraStackEntry*>& NewChildren, TArray<FStackIssue>& NewIssues);
 
@@ -44,7 +43,6 @@ public:
 	void Initialize(FRequiredEntryData InRequiredEntryData, FStackIssue InStackIssue, FString InStackEditorDataKey);
 	virtual FText GetDisplayName() const override;
 	virtual EStackRowStyle GetStackRowStyle() const override;
-	virtual EStackIssueSeverity GetIssueSeverity() const override;
 
 protected:
 	FStackIssue StackIssue;
@@ -65,7 +63,6 @@ public:
 	virtual FText GetFixButtonText() const;
 	UNiagaraStackErrorItem::FOnIssueNotify& OnIssueFixed();
 	void SetFixDelegate(const FStackIssueFixDelegate& InFixDelegate);
-	virtual EStackIssueSeverity GetIssueSeverity() const override;
 
 protected:
 	FStackIssue StackIssue;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -35,9 +35,6 @@ protected:
 	FWorkflowApplicationModeExtender Extender;
 
 private:
-
-	// Extend toolbars and menus
-	void RegisterMenus();
 
 	// Extends a skeletal mesh editor instance toolbar
 	TSharedRef<FExtender> ExtendSkelMeshEditorToolbar(const TSharedRef<FUICommandList> InCommandList, TSharedRef<ISkeletalMeshEditor> InSkeletalMeshEditor);

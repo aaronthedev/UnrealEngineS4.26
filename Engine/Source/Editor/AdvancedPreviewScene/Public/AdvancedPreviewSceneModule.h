@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -26,14 +26,6 @@ public:
 		FOnGetPropertyTypeCustomizationInstance OnGetPropertyTypeCustomizationInstance;
 	};
 
-	DECLARE_MULTICAST_DELEGATE_OneParam(FOnPreviewSceneChanged, TSharedRef<FAdvancedPreviewScene>);
-
-	/** Info about a Delegates to subscribe to */
-	struct FDetailDelegates
-	{
-		FOnPreviewSceneChanged& OnPreviewSceneChangedDelegate;
-	};
-
 	// IModuleInterface implementation
 	virtual void StartupModule() override;
 	virtual void ShutdownModule() override;
@@ -45,8 +37,7 @@ public:
 	 * @param	InAdditionalSettings			Additional settings object to display in the view
 	 * @param	InDetailCustomizations			Customizations to use for this details tab
 	 * @param	InPropertyTypeCustomizations	Customizations to use for this details tab
-	 * @param	InDelegates						Delegates to use for this details tab. Array to match other args
 	 * @return a new widget
 	 */
-	virtual TSharedRef<SWidget> CreateAdvancedPreviewSceneSettingsWidget(const TSharedRef<FAdvancedPreviewScene>& InPreviewScene, UObject* InAdditionalSettings = nullptr, const TArray<FDetailCustomizationInfo>& InDetailCustomizations = TArray<FDetailCustomizationInfo>(), const TArray<FPropertyTypeCustomizationInfo>& InPropertyTypeCustomizations = TArray<FPropertyTypeCustomizationInfo>(), const TArray<FDetailDelegates>& InDelegates = TArray<FDetailDelegates>());
+	virtual TSharedRef<SWidget> CreateAdvancedPreviewSceneSettingsWidget(const TSharedRef<FAdvancedPreviewScene>& InPreviewScene, UObject* InAdditionalSettings = nullptr, const TArray<FDetailCustomizationInfo>& InDetailCustomizations = TArray<FDetailCustomizationInfo>(), const TArray<FPropertyTypeCustomizationInfo>& InPropertyTypeCustomizations = TArray<FPropertyTypeCustomizationInfo>());
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 const fs = require('fs');
 const { Console } = require('console');
@@ -7,15 +7,15 @@ var loggers=[];
 var logFunctions=[];
 var logColorFunctions=[];
 
-console.log = function(msg, ...args) {
+console.log = function(msg) {
 	logFunctions.forEach((logFunction) => {
-		logFunction(msg, ...args);
+		logFunction(msg);
 	});
 }
 
-console.logColor = function(color, msg, ...args) {
+console.logColor = function(color, msg) {
 	logColorFunctions.forEach((logColorFunction) => {
-		logColorFunction(color, msg, ...args);
+		logColorFunction(color, msg);
 	});
 }
 
@@ -67,24 +67,24 @@ function RegisterFileLogger(path) {
 	
 	var output = fs.createWriteStream(`./logs/${dateTimeToString()}.log`);
 	var fileLogger = new Console(output);
-	logFunctions.push(function(msg, ...args) {
-		fileLogger.log(`${timeToString()} ${msg}`, ...args);
+	logFunctions.push(function(msg) {
+		fileLogger.log(`${timeToString()} ${msg}`);
 	});
 	
-	logColorFunctions.push(function(color, msg, ...args) {
-		fileLogger.log(`${timeToString()} ${msg}`, ...args);
+	logColorFunctions.push(function(color, msg) {
+		fileLogger.log(`${timeToString()} ${msg}`);
 	});
 	loggers.push(fileLogger);
 }
 	
 function RegisterConsoleLogger() {
 	var consoleLogger = new Console(process.stdout, process.stderr)
-	logFunctions.push(function(msg, ...args) {
-		consoleLogger.log(`${timeToString()} ${msg}`, ...args);
+	logFunctions.push(function(msg) {
+		consoleLogger.log(`${timeToString()} ${msg}`);
 	});
 	
-	logColorFunctions.push(function(color, msg, ...args) {
-		consoleLogger.log(`${BoldOn}${color}${timeToString()} ${msg}${AllAttributesOff}`, ...args);
+	logColorFunctions.push(function(color, msg) {
+		consoleLogger.log(`${BoldOn}${color}${timeToString()} ${msg}${AllAttributesOff}`);
 	});
 	loggers.push(consoleLogger);
 }

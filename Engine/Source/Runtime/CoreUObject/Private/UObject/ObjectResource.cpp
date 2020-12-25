@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UObject/ObjectResource.h"
 #include "UObject/Class.h"
@@ -58,9 +58,9 @@ FObjectExport::FObjectExport()
 
 {}
 
-FObjectExport::FObjectExport( UObject* InObject, bool bInNotAlwaysLoadedForEditorGame /*= true*/)
+FObjectExport::FObjectExport( UObject* InObject )
 : FObjectResource(InObject)
-, ObjectFlags(InObject ? InObject->GetMaskedFlags(RF_Load) : RF_NoFlags)
+, ObjectFlags(InObject ? InObject->GetMaskedFlags() : RF_NoFlags)
 , SerialSize(0)
 , SerialOffset(0)
 , ScriptSerializationStartOffset(0)
@@ -70,7 +70,7 @@ FObjectExport::FObjectExport( UObject* InObject, bool bInNotAlwaysLoadedForEdito
 , bForcedExport(false)
 , bNotForClient(false)
 , bNotForServer(false)
-, bNotAlwaysLoadedForEditorGame(bInNotAlwaysLoadedForEditorGame)
+, bNotAlwaysLoadedForEditorGame(true)
 , bIsAsset(false)
 , bExportLoadFailed(false)
 , DynamicType(EDynamicType::NotDynamicExport)
@@ -85,8 +85,9 @@ FObjectExport::FObjectExport( UObject* InObject, bool bInNotAlwaysLoadedForEdito
 {
 	if(Object)		
 	{
-		bNotForClient = !Object->NeedsLoadForClient();
-		bNotForServer = !Object->NeedsLoadForServer();
+		bNotForClient = Object->HasAnyMarks(OBJECTMARK_NotForClient);
+		bNotForServer = Object->HasAnyMarks(OBJECTMARK_NotForServer);
+		bNotAlwaysLoadedForEditorGame = Object->HasAnyMarks(OBJECTMARK_NotAlwaysLoadedForEditorGame);
 		bIsAsset = Object->IsAsset();
 	}
 }
@@ -206,8 +207,8 @@ void operator<<(FStructuredArchive::FSlot Slot, FObjectTextExport& E)
 	}
 
 	Slot << SA_ATTRIBUTE(TEXT("Class"), ClassName);
-	Slot << SA_OPTIONAL_ATTRIBUTE(TEXT("Outer"), OuterName, FString());
-	Slot << SA_OPTIONAL_ATTRIBUTE(TEXT("SuperStruct"), SuperStructName, FString());
+	Slot << SA_DEFAULTED_ATTRIBUTE(TEXT("Outer"), OuterName, FString());
+	Slot << SA_DEFAULTED_ATTRIBUTE(TEXT("SuperStruct"), SuperStructName, FString());
 
 	if (BaseArchive.IsLoading())
 	{
@@ -217,21 +218,21 @@ void operator<<(FStructuredArchive::FSlot Slot, FObjectTextExport& E)
 	}
 
 	uint32 Save = E.Export.ObjectFlags & RF_Load;
-	Slot << SA_OPTIONAL_ATTRIBUTE(TEXT("ObjectFlags"), Save, 0);
+	Slot << SA_DEFAULTED_ATTRIBUTE(TEXT("ObjectFlags"), Save, 0);
 	if (BaseArchive.IsLoading())
 	{
 		E.Export.ObjectFlags = EObjectFlags(Save & RF_Load);
 	}
 
-	Slot << SA_OPTIONAL_ATTRIBUTE(TEXT("bForcedExport"), E.Export.bForcedExport, false);
-	Slot << SA_OPTIONAL_ATTRIBUTE(TEXT("bNotForClient"), E.Export.bNotForClient, false);
-	Slot << SA_OPTIONAL_ATTRIBUTE(TEXT("bNotForServer"), E.Export.bNotForServer, false);
+	Slot << SA_DEFAULTED_ATTRIBUTE(TEXT("bForcedExport"), E.Export.bForcedExport, false);
+	Slot << SA_DEFAULTED_ATTRIBUTE(TEXT("bNotForClient"), E.Export.bNotForClient, false);
+	Slot << SA_DEFAULTED_ATTRIBUTE(TEXT("bNotForServer"), E.Export.bNotForServer, false);
 
-	Slot << SA_OPTIONAL_ATTRIBUTE(TEXT("PackageGuid"), E.Export.PackageGuid, FGuid());
-	Slot << SA_OPTIONAL_ATTRIBUTE(TEXT("PackageFlags"), E.Export.PackageFlags, 0);
+	Slot << SA_DEFAULTED_ATTRIBUTE(TEXT("PackageGuid"), E.Export.PackageGuid, FGuid());
+	Slot << SA_DEFAULTED_ATTRIBUTE(TEXT("PackageFlags"), E.Export.PackageFlags, 0);
 
-	Slot << SA_OPTIONAL_ATTRIBUTE(TEXT("bNotAlwaysLoadedForEditorGame"), E.Export.bNotAlwaysLoadedForEditorGame, false);
-	Slot << SA_OPTIONAL_ATTRIBUTE(TEXT("bIsAsset"), E.Export.bIsAsset, false);
+	Slot << SA_DEFAULTED_ATTRIBUTE(TEXT("bNotAlwaysLoadedForEditorGame"), E.Export.bNotAlwaysLoadedForEditorGame, false);
+	Slot << SA_DEFAULTED_ATTRIBUTE(TEXT("bIsAsset"), E.Export.bIsAsset, false);
 }
 
 /*-----------------------------------------------------------------------------
@@ -286,14 +287,6 @@ void operator<<(FStructuredArchive::FSlot Slot, FObjectImport& I)
 	Record << SA_VALUE(TEXT("ClassName"), I.ClassName);
 	Record << SA_VALUE(TEXT("OuterIndex"), I.OuterIndex);
 	Record << SA_VALUE(TEXT("ObjectName"), I.ObjectName);
-
-	//@todo: re-enable package override at runtime when ready
-#if WITH_EDITORONLY_DATA
-	if (Slot.GetUnderlyingArchive().UE4Ver() >= VER_UE4_NON_OUTER_PACKAGE_IMPORT && !Slot.GetUnderlyingArchive().IsFilterEditorOnly())
-	{
-		Record << SA_VALUE(TEXT("PackageName"), I.PackageName);
-	}
-#endif
 
 	if (Slot.GetUnderlyingArchive().IsLoading())
 	{

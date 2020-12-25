@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GeometryCollection/StaticMeshSimulationComponent.h"
 
@@ -17,8 +17,6 @@
 #include "PhysicsProxy/StaticMeshPhysicsProxy.h"
 #include "PhysicsSolver.h"
 #include "Chaos/ChaosGameplayEventDispatcher.h"
-#include "Chaos/ChaosSolverActor.h"
-#include "Chaos/ChaosPhysicalMaterial.h"
 
 
 DEFINE_LOG_CATEGORY_STATIC(UStaticMeshSimulationComponentLogging, NoLogging, All);
@@ -40,16 +38,8 @@ UStaticMeshSimulationComponent::UStaticMeshSimulationComponent(const FObjectInit
 	PrimaryComponentTick.bStartWithTickEnabled = true;
 	PrimaryComponentTick.bCanEverTick = true;
 	PrimaryComponentTick.SetTickFunctionEnable(true);
-	ChaosMaterial = MakeUnique<Chaos::FChaosPhysicsMaterial>();
+	ChaosMaterial = MakeUnique<Chaos::TChaosPhysicsMaterial<float>>();
 }
-
-UStaticMeshSimulationComponent::UStaticMeshSimulationComponent(FVTableHelper& Helper)
-	: Super(Helper)
-{
-
-}
-
-UStaticMeshSimulationComponent::~UStaticMeshSimulationComponent() = default;
 
 // We tick to detect components that unreal has moved, so we can update the solver.
 // The better solution long-term is to tie into UPrimitiveComponent::OnUpdateTransform() like we do for physx
@@ -57,7 +47,6 @@ void UStaticMeshSimulationComponent::TickComponent(float DeltaTime, enum ELevelT
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-#if 0	//todo: remove
 	// for kinematic objects, we assume that UE4 can and will move them, so we need to pass the new data to the phys solver
 	if ((ObjectType == EObjectStateTypeEnum::Chaos_Object_Kinematic) && Simulating)
 	{
@@ -76,13 +65,12 @@ void UStaticMeshSimulationComponent::TickComponent(float DeltaTime, enum ELevelT
 			ParamUpdate.NewTransform = Comp->GetComponentTransform();
 			ParamUpdate.NewVelocity = Comp->ComponentVelocity;
 
-			PhysicsProxy->GetSolver<Chaos::FPBDRigidsEvolution>()->EnqueueCommandImmediate([PhysObj = PhysicsProxy, Params = ParamUpdate]()
+			PhysicsDispatcher->EnqueueCommandImmediate([PhysObj = PhysicsProxy, Params = ParamUpdate]()
 			{
 				PhysObj->BufferKinematicUpdate(Params);
 			});
 		}
 	}
-#endif
 }
 
 Chaos::FPhysicsSolver* GetSolver(const UStaticMeshSimulationComponent& StaticMeshSimulationComponent)

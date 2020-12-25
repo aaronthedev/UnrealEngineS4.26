@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -61,7 +61,6 @@ public:
 		, _AutoWrapText(false)
 		, _WrappingPolicy(ETextWrappingPolicy::DefaultWrapping)
 		, _SelectAllTextOnCommit( false )
-		, _SelectWordOnMouseDoubleClick( true )
 		, _BackgroundColor()		
 		, _Padding()
 		, _Margin()
@@ -198,9 +197,6 @@ public:
 		/** Whether to select all text when pressing enter to commit changes */
 		SLATE_ATTRIBUTE( bool, SelectAllTextOnCommit )
 
-		/** Whether to select word on mouse double click on the widget */
-		SLATE_ATTRIBUTE(bool, SelectWordOnMouseDoubleClick)
-
 		/** The color of the background/border around the editable text (overrides Style) */
 		SLATE_ATTRIBUTE( FSlateColor, BackgroundColor )
 
@@ -261,13 +257,6 @@ public:
 		return EditableText->GetPlainText();
 	}
 
-	/**
-	 * Return the text line where the current cursor location is at.
-	 *
-	 * @param  OutTextLine	Text string
-	 */	
-	void GetCurrentTextLine(FString& OutTextLine) const;
-
 	/** See attribute Style */
 	void SetStyle(const FEditableTextBoxStyle* InStyle);
 
@@ -325,13 +314,6 @@ public:
 	 */
 	void SetReadOnlyForegroundColor(const TAttribute<FSlateColor>& InReadOnlyForegroundColor);
 
-	/**
-	 * Sets whether to select word on the mouse double click
-	 *
-	 * @param  InSelectWordOnMouseDoubleClick		Select word on the mouse double click
-	 */
-	void SetSelectWordOnMouseDoubleClick(const TAttribute<bool>& InSelectWordOnMouseDoubleClick);
-
 	/** See TextShapingMethod attribute */
 	void SetTextShapingMethod(const TOptional<ETextShapingMethod>& InTextShapingMethod);
 
@@ -376,8 +358,6 @@ public:
 	virtual bool SupportsKeyboardFocus() const override;
 	virtual bool HasKeyboardFocus() const override;
 	virtual FReply OnFocusReceived( const FGeometry& MyGeometry, const FFocusEvent& InFocusEvent ) override;
-	virtual FReply OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent) override;
-
 
 	/** Query to see if any text is selected within the document */
 	bool AnyTextSelected() const;
@@ -488,9 +468,6 @@ protected:
 
 	/** Whether to disable the context menu */
 	TAttribute< bool > AllowContextMenu;
-
-	/** Whether to select work on mouse double click */
-	TAttribute<bool> bSelectWordOnMouseDoubleClick;
 
 	/** Allows for inserting additional widgets that extend the functionality of the text box */
 	TSharedPtr<SHorizontalBox> Box;

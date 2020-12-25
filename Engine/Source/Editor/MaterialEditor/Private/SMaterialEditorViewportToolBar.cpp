@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SMaterialEditorViewportToolBar.h"
 #include "Widgets/Layout/SBorder.h"
@@ -14,7 +14,7 @@ void SMaterialEditorViewportPreviewShapeToolBar::Construct(const FArguments& InA
 {
 	// Force this toolbar to have small icons, as the preview panel is only small so we have limited space
 	const bool bForceSmallIcons = true;
-	FToolBarBuilder ToolbarBuilder(InViewport->GetCommandList(), FMultiBoxCustomization::None, nullptr, bForceSmallIcons);
+	FToolBarBuilder ToolbarBuilder(InViewport->GetCommandList(), FMultiBoxCustomization::None, nullptr, Orient_Horizontal, bForceSmallIcons);
 
 	// Use a custom style
 	ToolbarBuilder.SetStyle(&FEditorStyle::Get(), "ViewportMenu");

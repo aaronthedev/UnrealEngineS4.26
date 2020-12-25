@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -126,7 +126,12 @@ public:
 		return Ptr != nullptr;
 	}
 
-	operator TPythonType*() const
+	operator TPythonType*()
+	{
+		return Ptr;
+	}
+
+	operator const TPythonType*() const
 	{
 		return Ptr;
 	}
@@ -160,7 +165,17 @@ public:
 		return Ptr;
 	}
 
-	TPythonType* GetPtr() const
+	const TPythonType*& Get() const
+	{
+		return Ptr;
+	}
+
+	TPythonType* GetPtr()
+	{
+		return Ptr;
+	}
+
+	const TPythonType* GetPtr() const
 	{
 		return Ptr;
 	}

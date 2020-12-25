@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,14 +18,6 @@ struct APPLICATIONCORE_API FHoloLensPlatformApplicationMisc : public FGenericPla
 		// UE expects mouse coordinates in screen space. HoloLens provides in client space. 
 		// Also note comments in FDisplayMetrics::GetDisplayMetrics for HoloLens.
 		return true;
-	}
-	
-	static bool RequiresVirtualKeyboard()
-	{
-#if PLATFORM_HOLOLENS
-		return true;
-#endif
-		return false;
 	}
 };
 

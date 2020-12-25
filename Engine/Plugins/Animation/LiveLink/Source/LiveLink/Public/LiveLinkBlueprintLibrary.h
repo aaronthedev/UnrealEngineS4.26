@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -116,7 +116,7 @@ public:
 
 	/** Get a list of all subjects */
 	UFUNCTION(BlueprintCallable, Category = "LiveLink")
-	static TArray<FLiveLinkSubjectKey> GetLiveLinkSubjects(bool bIncludeDisabledSubject, bool bIncludeVirtualSubject);
+	static TArray<FLiveLinkSubjectKey> GetLiveLinkSubjects(bool bIncludeDisabledSubject, bool bIncludeDisal);
 
 	/**
 	 * Whether or not a subject from the specific source is the enabled subject.
@@ -125,7 +125,7 @@ public:
 	 * That snapshot dictate which subject will be used for the duration of that frame.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "LiveLink")
-	static bool IsSpecificLiveLinkSubjectEnabled(const FLiveLinkSubjectKey SubjectKey, bool bForThisFrame);
+	bool IsSpecificLiveLinkSubjectEnabled(const FLiveLinkSubjectKey SubjectKey, bool bForThisFrame);
 
 	/**
 	 * Whether or not the client has a subject with this name enabled
@@ -134,7 +134,7 @@ public:
 	 * That snapshot dictate which subject will be used for the duration of that frame.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "LiveLink")
-	static bool IsLiveLinkSubjectEnabled(const FLiveLinkSubjectName SubjectName);
+	bool IsLiveLinkSubjectEnabled(const FLiveLinkSubjectName SubjectName);
 
 	/** 
 	 * Set the subject's from a specific source to enabled, disabling the other in the process.
@@ -144,7 +144,7 @@ public:
 	 * SetSubjectEnabled will take effect on the next frame.
 	 */
 	UFUNCTION(BlueprintCallable, Category = "LiveLink")
-	static void SetLiveLinkSubjectEnabled(const FLiveLinkSubjectKey SubjectKey, bool bEnabled);
+	void SetLiveLinkSubjectEnabled(const FLiveLinkSubjectKey SubjectKey, bool bEnabled);
 
 	/** Get the role of a subject from a specific source */
 	UFUNCTION(BlueprintCallable, Category = "LiveLink")
@@ -166,10 +166,7 @@ public:
 	UFUNCTION(BlueprintCallable, CustomThunk, Category = LiveLink, meta = (CustomStructureParam = "OutBlueprintData", BlueprintInternalUseOnly = "true", AllowAbstract = "false"))
 	static bool EvaluateLiveLinkFrameAtWorldTimeOffset(FLiveLinkSubjectName SubjectName, TSubclassOf<ULiveLinkRole> Role, float WorldTimeOffset, FLiveLinkBaseBlueprintData& OutBlueprintData);
 
-	/**
-	 * Fetches a frame on a subject for a specific role at a specified scene time (timecode).
-	 * The Timecode should be at the frame rate as the engine timecode.
-	 * Output is evaluated based on the role */
+	/** Fetches a frame on a subject for a specific role at a specified scene time (timecode). Output is evaluated based on the role */
 	UFUNCTION(BlueprintCallable, CustomThunk, Category = LiveLink, meta = (CustomStructureParam = "OutBlueprintData", BlueprintInternalUseOnly = "true", AllowAbstract = "false"))
 	static bool EvaluateLiveLinkFrameAtSceneTime(FLiveLinkSubjectName SubjectName, TSubclassOf<ULiveLinkRole> Role, FTimecode SceneTime, FLiveLinkBaseBlueprintData& OutBlueprintData);
 

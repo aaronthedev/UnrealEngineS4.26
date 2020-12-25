@@ -153,12 +153,6 @@ static bool InlineCallIfPossible(CallSite CS, InlineFunctionInfo &IFI,
 
   AdjustCallerSSPLevel(Caller, Callee);
 
-  // HLSL Change Begin- not merge allocas.
-  // Merge alloca will make alloca which has one def become multi def.
-  // SROA will fail to remove the merged allocas.
-  return true;
-  // HLSL Change End.
-#if 0 // HLSL Change - disable unused code.
   // Look at all of the allocas that we inlined through this call site.  If we
   // have already inlined other allocas through other calls into this function,
   // then we know that they have disjoint lifetimes and that we can merge them.
@@ -275,7 +269,6 @@ static bool InlineCallIfPossible(CallSite CS, InlineFunctionInfo &IFI,
   }
   
   return true;
-#endif
 }
 
 unsigned Inliner::getInlineThreshold(CallSite CS) const {
@@ -668,8 +661,8 @@ bool Inliner::removeDeadFunctions(CallGraph &CG, bool AlwaysInlineOnly) {
 
   // Scan for all of the functions, looking for ones that should now be removed
   // from the program.  Insert the dead ones in the FunctionsToRemove set.
-  for (const auto &I : CG) {
-    CallGraphNode *CGN = I.second.get();
+  for (auto I : CG) {
+    CallGraphNode *CGN = I.second;
     Function *F = CGN->getFunction();
     if (!F || F->isDeclaration())
       continue;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IOS/IOSPlatformApplicationMisc.h"
 
@@ -13,15 +13,6 @@
 #include "IOS/IOSFeedbackContext.h"
 
 FIOSApplication* FIOSPlatformApplicationMisc::CachedApplication = nullptr;
-FGetGamePadGlyphDelegate FIOSPlatformApplicationMisc::GetGamePadGlyphDelegate;
-
-static TAutoConsoleVariable<int32> CVarPhysicalScreenDensity(
-	TEXT("ios.PhysicalScreenDensity"),
-	-1,
-	TEXT("Physical screen density for this iOS device. Normally this is set by device profile.\n")
-	TEXT("-1 = not set by device profile (default)\n")
-	TEXT(" 0 = Specified as unknown (eg tvOS)")
-	TEXT(">0 = Specified as exact value for device"));
 
 EAppReturnType::Type MessageBoxExtImpl( EAppMsgType::Type MsgType, const TCHAR* Text, const TCHAR* Caption )
 {
@@ -200,14 +191,6 @@ void FIOSPlatformApplicationMisc::SetGamepadsAllowed(bool bAllowed)
 	}
 }
 
-void FIOSPlatformApplicationMisc::SetGamepadsBlockDeviceFeedback(bool bBlock)
-{
-	if (FIOSInputInterface* InputInterface = (FIOSInputInterface*)CachedApplication->GetInputInterface())
-	{
-		InputInterface->SetGamepadsBlockDeviceFeedback(bBlock);
-	}
-}
-
 void FIOSPlatformApplicationMisc::ResetGamepadAssignments()
 {
 	UE_LOG(LogIOS, Warning, TEXT("Restting gamepad assignments is not allowed in IOS"))
@@ -222,15 +205,6 @@ bool FIOSPlatformApplicationMisc::IsControllerAssignedToGamepad(int32 Controller
 {
 	FIOSInputInterface* InputInterface = (FIOSInputInterface*)CachedApplication->GetInputInterface();
 	return InputInterface->IsControllerAssignedToGamepad(ControllerId);
-}
-
-class UTexture2D* FIOSPlatformApplicationMisc::GetGamepadButtonGlyph(const FGamepadKeyNames::Type& ButtonKey, uint32 ControllerIndex)
-{
-	if (GetGamePadGlyphDelegate.IsBound())
-	{
-        return GetGamePadGlyphDelegate.Execute(ButtonKey, ControllerIndex);
-	}
-	return nullptr;
 }
 
 void FIOSPlatformApplicationMisc::EnableMotionData(bool bEnable)
@@ -275,17 +249,86 @@ void FIOSPlatformApplicationMisc::ClipboardPaste(class FString& Result)
 
 EScreenPhysicalAccuracy FIOSPlatformApplicationMisc::ComputePhysicalScreenDensity(int32& ScreenDensity)
 {
-	// If we have a cvar set by a device profile, return it.
-	ScreenDensity = CVarPhysicalScreenDensity.GetValueOnAnyThread();
-	if (ScreenDensity >= 0)
-	{
-		return ScreenDensity == 0 ? EScreenPhysicalAccuracy::Unknown : EScreenPhysicalAccuracy::Truth;
-	}
+	FPlatformMisc::EIOSDevice Device = FPlatformMisc::GetIOSDeviceType();
+	static_assert( FPlatformMisc::EIOSDevice::IOS_Unknown == 45, "Every device needs to be handled here." );
 
-	// If it hasn't been set, assume that the density is a multiple of the 
-	// native Content Scaling Factor.  Won't be exact, but should be close enough.
+	ScreenDensity = 0;
+	EScreenPhysicalAccuracy Accuracy = EScreenPhysicalAccuracy::Unknown;
+
+	// look up what the device can support
 	const float NativeScale =[[UIScreen mainScreen] scale];
-	ScreenDensity = 163 * NativeScale;
+
+	switch ( Device )
+	{
+	case FPlatformMisc::IOS_IPhoneSE:
+	case FPlatformMisc::IOS_IPhone4:
+	case FPlatformMisc::IOS_IPhone4S:
+	case FPlatformMisc::IOS_IPhone5:
+	case FPlatformMisc::IOS_IPhone5S:
+	case FPlatformMisc::IOS_IPodTouch5:
+	case FPlatformMisc::IOS_IPodTouch6:
+	case FPlatformMisc::IOS_IPodTouch7:
+	case FPlatformMisc::IOS_IPhone6:
+	case FPlatformMisc::IOS_IPhone6S:
+	case FPlatformMisc::IOS_IPhone7:
+	case FPlatformMisc::IOS_IPhone8:
+    case FPlatformMisc::IOS_IPhoneXR:
+	case FPlatformMisc::IOS_IPhone11:
+		ScreenDensity = 326;
+		Accuracy = EScreenPhysicalAccuracy::Truth;
+		break;
+	case FPlatformMisc::IOS_IPhone6Plus:
+	case FPlatformMisc::IOS_IPhone6SPlus:
+	case FPlatformMisc::IOS_IPhone7Plus:
+	case FPlatformMisc::IOS_IPhone8Plus:
+	case FPlatformMisc::IOS_IPhoneX:
+    case FPlatformMisc::IOS_IPhoneXS:
+    case FPlatformMisc::IOS_IPhoneXSMax:
+	case FPlatformMisc::IOS_IPhone11Pro:
+	case FPlatformMisc::IOS_IPhone11ProMax:
+		ScreenDensity = 401;
+		Accuracy = EScreenPhysicalAccuracy::Truth;
+		break;
+	case FPlatformMisc::IOS_IPadMini:
+	case FPlatformMisc::IOS_IPadMini2: // also the iPadMini3
+	case FPlatformMisc::IOS_IPadMini4:
+    case FPlatformMisc::IOS_IPadMini5:
+		ScreenDensity = 401;
+		Accuracy = EScreenPhysicalAccuracy::Truth;
+		break;
+	case FPlatformMisc::IOS_IPad2:
+	case FPlatformMisc::IOS_IPad3:
+	case FPlatformMisc::IOS_IPad4:
+	case FPlatformMisc::IOS_IPad5:
+	case FPlatformMisc::IOS_IPad6:
+	case FPlatformMisc::IOS_IPad7:
+	case FPlatformMisc::IOS_IPadAir:
+	case FPlatformMisc::IOS_IPadAir2:
+    case FPlatformMisc::IOS_IPadAir3:
+	case FPlatformMisc::IOS_IPadPro_97:
+		ScreenDensity = 264;
+		Accuracy = EScreenPhysicalAccuracy::Truth;
+		break;
+	case FPlatformMisc::IOS_IPadPro:
+	case FPlatformMisc::IOS_IPadPro_129:
+	case FPlatformMisc::IOS_IPadPro_105:
+	case FPlatformMisc::IOS_IPadPro_11:
+	case FPlatformMisc::IOS_IPadPro2_129:
+	case FPlatformMisc::IOS_IPadPro3_129:
+		ScreenDensity = 264;
+		Accuracy = EScreenPhysicalAccuracy::Truth;
+		break;
+	case FPlatformMisc::IOS_AppleTV:
+	case FPlatformMisc::IOS_AppleTV4K:
+		Accuracy = EScreenPhysicalAccuracy::Unknown;
+		break;
+	default:
+		// If we don't know, assume that the density is a multiple of the 
+		// native Content Scaling Factor.  Won't be exact, but should be close enough.
+		ScreenDensity = 163 * NativeScale;
+		Accuracy = EScreenPhysicalAccuracy::Approximation;
+		break;
+	}
 
 	// look up the current scale factor
 	UIView* View = [IOSAppDelegate GetDelegate].IOSView;
@@ -296,6 +339,6 @@ EScreenPhysicalAccuracy FIOSPlatformApplicationMisc::ComputePhysicalScreenDensit
 		ScreenDensity = ScreenDensity * ( ContentScaleFactor / NativeScale );
 	}
 
-	return EScreenPhysicalAccuracy::Approximation;
+	return Accuracy;
 }
 

@@ -1,26 +1,26 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "HttpListener.h"
 #include "HttpConnection.h"
 #include "HttpRequestHandler.h"
 #include "HttpRouter.h"
-#include "HttpServerConfig.h"
 
 #include "Sockets.h"
+#include "SocketSubsystem.h"
 #include "IPAddress.h"
 
 DEFINE_LOG_CATEGORY(LogHttpListener)
 
-FHttpListener::FHttpListener(uint32 InListenPort)
+FHttpListener::FHttpListener(uint32 Port)
 { 
-	check(InListenPort > 0);
-	ListenPort = InListenPort;
+	check(Port > 0);
+	ListenPort = Port;
 	Router = MakeShared<FHttpRouter>();
 }
 
 FHttpListener::~FHttpListener() 
 { 
-	check(!ListenSocket);
+	check(nullptr == ListenSocket);
 	check(!bIsListening);
 
 	const bool bRequestGracefulExit = false;
@@ -36,8 +36,9 @@ FHttpListener::~FHttpListener()
 // --------------------------------------------------------------------------------------------
 bool FHttpListener::StartListening()
 {
-	check(!ListenSocket);
+	check(nullptr == ListenSocket);
 	check(!bIsListening);
+	bIsListening = true;
 
 	ISocketSubsystem* SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
 	if (nullptr == SocketSubsystem)
@@ -47,66 +48,45 @@ bool FHttpListener::StartListening()
 		return false;
 	}
 
-	FUniqueSocket NewSocket = SocketSubsystem->CreateUniqueSocket(NAME_Stream, TEXT("HttpListenerSocket"));
-	if (!NewSocket)
+	ListenSocket = SocketSubsystem->CreateSocket(NAME_Stream, TEXT("HttpListenerSocket"));
+	if (nullptr == ListenSocket)
 	{
 		UE_LOG(LogHttpListener, Error, 
 			TEXT("HttpListener - Unable to allocate stream socket"));
 		return false;
 	}
+	ListenSocket->SetNonBlocking(true);
 
-	NewSocket->SetNonBlocking(true);
-
-	// Bind to config-driven address
-	TSharedRef<FInternetAddr> BindAddress = SocketSubsystem->CreateInternetAddr();
-	Config = FHttpServerConfig::GetListenerConfig(ListenPort);
-	if (0 == Config.BindAddress.Compare(TEXT("any"), ESearchCase::IgnoreCase))
-	{
-		BindAddress->SetAnyAddress();
-	}
-	else
-	{
-		bool bIsValidAddress = false;
-		BindAddress->SetIp(*(Config.BindAddress), bIsValidAddress);
-		if (!bIsValidAddress)
-		{
-			UE_LOG(LogHttpListener, Error,
-				TEXT("HttpListener detected invalid bind address (%s:%u)"),
-				*Config.BindAddress, ListenPort);
-			return false;
-		}
-	}
-
-	BindAddress->SetPort(ListenPort);
-	if (!NewSocket->Bind(*BindAddress))
+	// Bind to Localhost/Caller-defined port
+	TSharedRef<FInternetAddr> LocalhostAddr = SocketSubsystem->CreateInternetAddr();
+	LocalhostAddr->SetAnyAddress();
+	LocalhostAddr->SetPort(ListenPort);
+	if (!ListenSocket->Bind(*LocalhostAddr))
 	{
 		UE_LOG(LogHttpListener, Error, 
-		TEXT("HttpListener unable to bind to %s"),
-			*BindAddress->ToString(true));
+			TEXT("HttpListener unable to bind to %s"), 
+			*LocalhostAddr->ToString(true));
 		return false;
 	}
 
 	int32 ActualBufferSize;
-	NewSocket->SetSendBufferSize(Config.BufferSize, ActualBufferSize);
-	if (ActualBufferSize < Config.BufferSize)
+	ListenSocket->SetSendBufferSize(ListenerBufferSize, ActualBufferSize);
+	if (ActualBufferSize != ListenerBufferSize)
 	{
 		UE_LOG(LogHttpListener, Warning, 
 			TEXT("HttpListener unable to set desired buffer size (%d): Limited to %d"),
-			Config.BufferSize, ActualBufferSize);
+			ListenerBufferSize, ActualBufferSize);
 	}
 
-	if (!NewSocket->Listen(Config.ConnectionsBacklogSize))
+	if (!ListenSocket->Listen(ListenerConnectionBacklogSize))
 	{
 		UE_LOG(LogHttpListener, Error, 
 			TEXT("HttpListener unable to listen on socket"));
 		return false;
 	}
 
-	bIsListening = true;
-	ListenSocket = MoveTemp(NewSocket);
 	UE_LOG(LogHttpListener, Log, 
-		TEXT("Created new HttpListener on %s"), 
-		*BindAddress->ToString(true));
+		TEXT("Created new HttpListener on port %u"), ListenPort);
 	return true;
 }
 
@@ -120,7 +100,12 @@ void FHttpListener::StopListening()
 		UE_LOG(LogHttpListener, Log,
 			TEXT("HttListener stopping listening on Port %u"), ListenPort);
 
-		ListenSocket.Reset();
+		ISocketSubsystem* SocketSubsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
+		if (SocketSubsystem)
+		{
+			SocketSubsystem->DestroySocket(ListenSocket);
+		}
+		ListenSocket = nullptr;
 	}
 	bIsListening = false;
 
@@ -133,17 +118,14 @@ void FHttpListener::StopListening()
 
 void FHttpListener::Tick(float DeltaTime)
 {
-	if (bIsListening)
-	{
-		// Accept new connections
-		AcceptConnections();
+	// Accept new connections
+	AcceptConnections(MaxConnectionsToAcceptPerFrame);
 
-		// Tick Connections
-		TickConnections(DeltaTime);
+	// Tick Connections
+	TickConnections(DeltaTime);
 
-		// Remove any destroyed connections
-		RemoveDestroyedConnections();
-	}
+	// Remove any destroyed connections
+	RemoveDestroyedConnections();
 }
 
 bool FHttpListener::HasPendingConnections() const 
@@ -164,11 +146,11 @@ bool FHttpListener::HasPendingConnections() const
 // --------------------------------------------------------------------------------------------
 // Private Implementation
 // --------------------------------------------------------------------------------------------
-void FHttpListener::AcceptConnections()
+void FHttpListener::AcceptConnections(uint32 MaxConnectionsToAccept)
 {
 	check(ListenSocket);
 
-	for (int32 i = 0; i < Config.MaxConnectionsAcceptPerFrame; ++i)
+	for (uint32 i = 0; i < MaxConnectionsToAccept; ++i)
 	{
 		// Check pending prior to Accept()ing
 		bool bHasPendingConnection = false;
@@ -201,7 +183,7 @@ void FHttpListener::AcceptConnections()
 
 			IncomingConnection->SetNonBlocking(true);
 			TSharedPtr<FHttpConnection> Connection = 
-				MakeShared<FHttpConnection>(IncomingConnection, Router, ListenPort, NumConnectionsAccepted++, Config.ConnectionSelectWaitTime);
+				MakeShared<FHttpConnection>(IncomingConnection, Router, ListenPort, NumConnectionsAccepted++);
 			Connections.Add(Connection);
 		}
 	}

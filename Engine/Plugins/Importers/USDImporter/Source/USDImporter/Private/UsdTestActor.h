@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -35,7 +35,7 @@ struct FUsdTestStruct
 
 	UPROPERTY(EditAnywhere, Category = "UsdTestStruct")
 	int32 IntProperty;
-
+	
 	UPROPERTY(EditAnywhere, Category = "UsdTestStruct")
 	EUsdTestEnum EnumProperty;
 
@@ -49,13 +49,13 @@ struct FUsdTestStruct
 	FUsdTestStruct2 InnerStruct;
 };
 
-UCLASS(Deprecated)
-class UDEPRECATED_UUsdTestComponent : public USceneComponent
+UCLASS()
+class UUsdTestComponent : public USceneComponent
 {
 	GENERATED_BODY()
 
 public:
-	UDEPRECATED_UUsdTestComponent() {};
+	UUsdTestComponent() {};
 
 	// Basic properties
 	UPROPERTY(EditAnywhere, Category = "Component|BasicProperties")
@@ -194,12 +194,12 @@ public:
 };
 
 
-UCLASS(Blueprintable, Deprecated)
-class ADEPRECATED_AUsdTestActor : public AActor
+UCLASS(Blueprintable)
+class AUsdTestActor : public AActor
 {
 	GENERATED_UCLASS_BODY()
-
-public:
+	
+public:	
 	// Basic properties
 	UPROPERTY(EditAnywhere, Category = BasicProperties)
 	int8 Int8Property;
@@ -343,8 +343,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = ArrayDeepNesting)
 	TArray<FUsdTestStruct> TestStructPropertyArray2;
 
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Use the new USDStageImporter module instead"))
-	UDEPRECATED_UUsdTestComponent* TestComponent_DEPRECATED;
-public:
+	UPROPERTY(VisibleAnywhere, Category = InnerComponent)
+	UUsdTestComponent* TestComponent;
+public:	
 
 };

@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_ASSET_PATH_H
-#define PXR_USD_SDF_ASSET_PATH_H
+#ifndef SDF_ASSETPATH_H
+#define SDF_ASSETPATH_H
 
 /// \file sdf/assetPath.h
 
@@ -79,14 +79,6 @@ public:
         return hash;
     }
 
-    /// \class Hash
-    struct Hash
-    {
-        size_t operator()(const SdfAssetPath &ap) const {
-            return ap.GetHash();
-        }
-    };
-
     friend size_t hash_value(const SdfAssetPath &ap) { return ap.GetHash(); }
 
     /// @}
@@ -103,7 +95,7 @@ public:
     ///
     /// Note that SdfAssetPath only carries a resolved path if the creator of
     /// an instance supplied one to the constructor.  SdfAssetPath will never
-    /// perform any resolution itself.
+    /// call Rp itself.
     const std::string &GetResolvedPath() const {
         return _resolvedPath;
     }
@@ -135,4 +127,4 @@ SDF_API std::ostream& operator<<(std::ostream& out, const SdfAssetPath& ap);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_ASSET_PATH_H
+#endif // SDF_ASSETPATH_H

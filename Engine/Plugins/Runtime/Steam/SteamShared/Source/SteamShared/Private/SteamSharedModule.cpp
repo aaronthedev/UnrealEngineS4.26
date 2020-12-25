@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SteamSharedModule.h"
 #include "CoreMinimal.h"
@@ -264,16 +264,6 @@ void FSteamSharedModule::UnloadSteamModules()
 	}
 }
 
-FSteamInstanceHandlerBase::FSteamInstanceHandlerBase() : 
-	bInitialized(false)
-{
-	// Grab the gameport for game communications.
-	if (FParse::Value(FCommandLine::Get(), TEXT("Port="), GamePort) == false)
-	{
-		GConfig->GetInt(TEXT("URL"), TEXT("Port"), GamePort, GEngineIni);
-	}
-}
-
 FSteamClientInstanceHandler::FSteamClientInstanceHandler(FSteamSharedModule* SteamInitializer) :
 	FSteamInstanceHandlerBase()
 {
@@ -320,6 +310,12 @@ FSteamServerInstanceHandler::FSteamServerInstanceHandler(FSteamSharedModule* Ste
 		{
 			MultiHomeIP->GetIp(LocalServerIP);
 		}
+	}
+
+	// Grab the gameport for game communications.
+	if (FParse::Value(FCommandLine::Get(), TEXT("Port="), GamePort) == false)
+	{
+		GConfig->GetInt(TEXT("URL"), TEXT("Port"), GamePort, GEngineIni);
 	}
 
 	// Grab the SteamPort, which handles communications over the steam network.

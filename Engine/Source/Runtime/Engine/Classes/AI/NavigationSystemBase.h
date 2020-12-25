@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -21,8 +21,6 @@ class AController;
 class UNavAreaBase;
 
 ENGINE_API DECLARE_LOG_CATEGORY_EXTERN(LogNavigation, Warning, All);
-ENGINE_API DECLARE_LOG_CATEGORY_EXTERN(LogNavigationDataBuild, Log, All);
-ENGINE_API DECLARE_LOG_CATEGORY_EXTERN(LogNavLink, Warning, All);
 
 UENUM()
 enum class FNavigationSystemRunMode : uint8
@@ -32,7 +30,6 @@ enum class FNavigationSystemRunMode : uint8
 	EditorMode,
 	SimulationMode,
 	PIEMode,
-	InferFromWorldMode,
 };
 
 namespace ENavigationLockReason

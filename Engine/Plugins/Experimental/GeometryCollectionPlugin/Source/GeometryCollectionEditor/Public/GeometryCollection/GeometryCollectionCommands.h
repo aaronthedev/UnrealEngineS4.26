@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "Engine/World.h"
@@ -55,24 +55,6 @@ public:
 	*  @param World
 	*/
 	static void DeleteCoincidentVertices(const TArray<FString>& Args, UWorld * World);
-
-
-	/**
-	*  Command to set attributes within a named group. 
-	*
-	*    GeometryCollection.SetNamedAttributeValues <type> <Attribute> <Group> <Value> [<Regex Attribute> <Regex>]
-	* 
-	*    Where type is in SupportedAttributeTypes (bool,int32,float)
-	*      and <Attribute> exists within <Group>
-	*      with optional regex matching against <RegexAttribute> within <Group>
-	*
-	*  For Example : 
-	*     GeometryCollection.SetNamedAttributeValues bool SimulatableParticlesAttribute Transform 0 BoneName Cube_1_1
-	*
-	*     This will set the bool attribute SimulatableParticlesAttribute of the Transform group to false where BoneName equals Cube_1_1
-	*
-	*/
-	static void SetNamedAttributeValues(const TArray<FString>& Args, UWorld* World);
 
 	/**
 	*

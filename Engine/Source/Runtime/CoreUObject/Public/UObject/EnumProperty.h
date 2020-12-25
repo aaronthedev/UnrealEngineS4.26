@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,37 +7,32 @@
 #include "UObject/ObjectMacros.h"
 
 class UEnum;
-class FNumericProperty;
+class UNumericProperty;
 
-class COREUOBJECT_API FEnumProperty : public FProperty
+namespace UE4EnumProperty_Private
 {
-	DECLARE_FIELD(FEnumProperty, FProperty, CASTCLASS_FEnumProperty)
+	struct FEnumPropertyFriend;
+}
+
+class COREUOBJECT_API UEnumProperty : public UProperty
+{
+	DECLARE_CASTED_CLASS_INTRINSIC(UEnumProperty, UProperty, 0, TEXT("/Script/CoreUObject"), CASTCLASS_UEnumProperty)
 
 public:
-	FEnumProperty(FFieldVariant InOwner, const FName& InName, EObjectFlags InObjectFlags);
-	FEnumProperty(FFieldVariant InOwner, const FName& InName, EObjectFlags InObjectFlags, UEnum* InEnum);
-	FEnumProperty(FFieldVariant InOwner, const FName& InName, EObjectFlags InObjectFlags, int32 InOffset, EPropertyFlags InFlags, UEnum* InEnum);
-#if WITH_EDITORONLY_DATA
-	explicit FEnumProperty(UField* InField);
-#endif // WITH_EDITORONLY_DATA
-	virtual ~FEnumProperty();
+	UEnumProperty(const FObjectInitializer& ObjectInitializer, UEnum* InEnum);
+	UEnumProperty(const FObjectInitializer& ObjectInitializer, ECppProperty, int32 InOffset, EPropertyFlags InFlags, UEnum* InEnum);
 
 	// UObject interface
 	virtual void Serialize( FArchive& Ar ) override;
-	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
+	static void AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector);
 	virtual void GetPreloadDependencies(TArray<UObject*>& OutDeps) override;
 	// End of UObject interface
 
-	// Field interface
-	virtual void PostDuplicate(const FField& InField) override;
-	virtual FField* GetInnerFieldByName(const FName& InName) override;
-	virtual void GetInnerFields(TArray<FField*>& OutFields) override;
-
 	// UField interface
-	virtual void AddCppProperty(FProperty* Property) override;
+	virtual void AddCppProperty(UProperty* Property) override;
 	// End of UField interface
 
-	// FProperty interface
+	// UProperty interface
 	virtual FString GetCPPMacroType( FString& ExtendedTypeText ) const  override;
 	virtual FString GetCPPType( FString* ExtendedTypeText, uint32 CPPExportFlags ) const override;
 	virtual FString GetCPPTypeForwardDeclaration() const override;
@@ -48,9 +43,9 @@ public:
 	virtual void ExportTextItem( FString& ValueStr, const void* PropertyValue, const void* DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope ) const override;
 	virtual const TCHAR* ImportText_Internal( const TCHAR* Buffer, void* Data, int32 PortFlags, UObject* OwnerObject, FOutputDevice* ErrorText ) const override;
 	virtual int32 GetMinAlignment() const override;
-	virtual bool SameType(const FProperty* Other) const override;
+	virtual bool SameType(const UProperty* Other) const override;
 	virtual EConvertFromTypeResult ConvertFromType(const FPropertyTag& Tag, FStructuredArchive::FSlot Slot, uint8* Data, UStruct* DefaultsStruct) override;
-	// End of FProperty interface
+	// End of UProperty interface
 
 	/**
 	 * Set the UEnum of this property.
@@ -58,7 +53,7 @@ public:
 	 */
 	FORCEINLINE void SetEnum(UEnum* InEnum)
 	{
-		checkf(!Enum, TEXT("FEnumProperty enum may only be set once"));
+		checkf(!Enum, TEXT("UEnumProperty enum may only be set once"));
 		Enum = InEnum;
 	}
 
@@ -73,7 +68,7 @@ public:
 	/**
 	 * Returns the numeric property which represents the integral type of the enum.
 	 */
-	FORCEINLINE FNumericProperty* GetUnderlyingProperty() const
+	FORCEINLINE UNumericProperty* GetUnderlyingProperty() const
 	{
 		return UnderlyingProp;
 	}
@@ -81,9 +76,11 @@ public:
 private:
 	virtual uint32 GetValueTypeHashInternal(const void* Src) const override;
 
+	friend struct UE4EnumProperty_Private::FEnumPropertyFriend;
+	
 #if HACK_HEADER_GENERATOR
 public:
 #endif
-	FNumericProperty* UnderlyingProp; // The property which represents the underlying type of the enum
+	UNumericProperty* UnderlyingProp; // The property which represents the underlying type of the enum
 	UEnum* Enum; // The enum represented by this property
 };

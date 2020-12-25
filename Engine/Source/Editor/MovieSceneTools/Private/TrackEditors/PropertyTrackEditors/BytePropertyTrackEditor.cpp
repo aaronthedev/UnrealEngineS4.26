@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TrackEditors/PropertyTrackEditors/BytePropertyTrackEditor.h"
 #include "UObject/EnumProperty.h"
@@ -22,16 +22,16 @@ UEnum* GetEnumForByteTrack(TSharedPtr<ISequencer> Sequencer, const FGuid& OwnerO
 			continue;
 		}
 
-		FProperty* Property = RuntimeObject->GetClass()->FindPropertyByName(PropertyName);
+		UProperty* Property = RuntimeObject->GetClass()->FindPropertyByName(PropertyName);
 		if (Property != nullptr)
 		{
 			UEnum* Enum = nullptr;
 
-			if (FEnumProperty* EnumProperty = CastField<FEnumProperty>(Property))
+			if (UEnumProperty* EnumProperty = Cast<UEnumProperty>(Property))
 			{
 				Enum = EnumProperty->GetEnum();
 			}
-			else if (FByteProperty* ByteProperty = CastField<FByteProperty>(Property))
+			else if (UByteProperty* ByteProperty = Cast<UByteProperty>(Property))
 			{
 				Enum = ByteProperty->Enum;
 			}
@@ -73,7 +73,7 @@ UMovieSceneTrack* FBytePropertyTrackEditor::AddTrack(UMovieScene* FocusedMovieSc
 }
 
 
-void FBytePropertyTrackEditor::GenerateKeysFromPropertyChanged( const FPropertyChangedParams& PropertyChangedParams, UMovieSceneSection* SectionToKey, FGeneratedTrackKeys& OutGeneratedKeys )
+void FBytePropertyTrackEditor::GenerateKeysFromPropertyChanged( const FPropertyChangedParams& PropertyChangedParams, FGeneratedTrackKeys& OutGeneratedKeys )
 {
 	uint8 KeyedValue = PropertyChangedParams.GetPropertyValue<uint8>();
 	OutGeneratedKeys.Add(FMovieSceneChannelValueSetter::Create<FMovieSceneByteChannel>(0, KeyedValue, true));

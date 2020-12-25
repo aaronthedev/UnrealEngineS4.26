@@ -158,7 +158,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDUI_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -170,7 +170,7 @@ private:
 
     // override SchemaBase virtuals.
     USDUI_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -180,12 +180,10 @@ public:
     /// graph. This help-description explains what the nodes in a backdrop do.
     /// 
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform token ui:description` |
-    /// | C++ Type | TfToken |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+    /// \n  C++ Type: TfToken
+    /// \n  Usd Type: SdfValueTypeNames->Token
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: No Fallback
     USDUI_API
     UsdAttribute GetDescriptionAttr() const;
 

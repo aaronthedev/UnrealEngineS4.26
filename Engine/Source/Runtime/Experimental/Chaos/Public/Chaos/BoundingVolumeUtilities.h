@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Chaos/Array.h"
@@ -12,39 +12,34 @@
 #include "Chaos/Sphere.h"
 #include "Chaos/Transform.h"
 
-#define MIN_NUM_OBJECTS 5
-
 namespace Chaos
 {
 
-// @todo(ccaulfield): COLLISION - get rid of these?
 extern float MinBoundsThickness;
 extern float BoundsThicknessMultiplier;
 
-inline FVec3 ComputeBoundsThickness(FVec3 Vel, FReal Dt, FReal BoundsThickness, FReal BoundsVelocityInflation)
+template <typename T, int d>
+TVector<T, d> ComputeThickness(const TPBDRigidParticles<T, d>& InParticles, T Dt, int32 BodyIndex)
 {
-	// @todo(ccaulfield): this expands the bounds in negative velocity direction as well...maybe we don't want that?
-	for (int i = 0; i < 3; ++i)
+	TVector<T, d> AbsVelocity = InParticles.V(BodyIndex).GetAbs();
+	for (int i = 0; i < d; ++i)
 	{
-		Vel[i] = FMath::Max(MinBoundsThickness, BoundsThicknessMultiplier * (BoundsThickness + FMath::Abs(Vel[i]) * Dt * BoundsVelocityInflation));
+		AbsVelocity[i] = FMath::Max(MinBoundsThickness, AbsVelocity[i] * Dt * BoundsThicknessMultiplier);//todo(ocohen): ignoring MThickness for now
 	}
-	return Vel;
+
+	return AbsVelocity;
 }
 
-inline FVec3 ComputeBoundsThickness(const TPBDRigidParticles<FReal, 3>& InParticles, FReal Dt, int32 BodyIndex, FReal BoundsThickness, FReal BoundsVelocityInflation)
+template <typename THandle, typename T>
+TVector<T, THandle::D> ComputeThickness(const THandle& PBDRigid, T Dt)
 {
-	return ComputeBoundsThickness(InParticles.V(BodyIndex), Dt, BoundsThickness, BoundsVelocityInflation);
-}
+	auto AbsVelocity = PBDRigid.V().GetAbs();
+	for (int i = 0; i < THandle::D; ++i)
+	{
+		AbsVelocity[i] = FMath::Max(MinBoundsThickness, AbsVelocity[i] * Dt * BoundsThicknessMultiplier);//todo(ocohen): ignoring MThickness for now
+	}
 
-inline FVec3 ComputeBoundsThickness(const TKinematicGeometryParticles<FReal, 3>& InParticles, FReal Dt, int32 BodyIndex, FReal BoundsThickness, FReal BoundsVelocityInflation)
-{
-	return ComputeBoundsThickness(InParticles.V(BodyIndex), Dt, BoundsThickness, BoundsVelocityInflation);
-}
-
-template <typename THandle>
-FVec3 ComputeBoundsThickness(const THandle& PBDRigid, FReal Dt, FReal BoundsThickness, FReal BoundsVelocityInflation)
-{
-	return ComputeBoundsThickness(PBDRigid.V(), Dt, BoundsThickness, BoundsVelocityInflation);
+	return AbsVelocity;
 }
 
 template<class OBJECT_ARRAY>
@@ -94,81 +89,78 @@ bool HasBoundingBox(const TPBDRigidParticleHandleImp<T, d, bPersistent>& Handle)
 }
 
 template<class OBJECT_ARRAY, class T, int d>
-const TAABB<T, d> GetWorldSpaceBoundingBox(const OBJECT_ARRAY& Objects, const int32 i, const TMap<int32, TAABB<T, d>>& WorldSpaceBoxes)
+const TBox<T, d>& GetWorldSpaceBoundingBox(const OBJECT_ARRAY& Objects, const int32 i, const TMap<int32, TBox<T, d>>& WorldSpaceBoxes)
 {
 	return Objects[i]->BoundingBox();
 }
 
 template<class T, int d>
-const TAABB<T, d>& GetWorldSpaceBoundingBox(const TParticles<T, d>& Objects, const int32 i, const TMap<int32, TAABB<T, d>>& WorldSpaceBoxes)
+const TBox<T, d>& GetWorldSpaceBoundingBox(const TParticles<T, d>& Objects, const int32 i, const TMap<int32, TBox<T, d>>& WorldSpaceBoxes)
 {
 	return WorldSpaceBoxes[i];
 }
 
 template<class T, int d>
-const TAABB<T, d>& GetWorldSpaceBoundingBox(const TGeometryParticles<T, d>& Objects, const int32 i, const TMap<int32, TAABB<T, d>>& WorldSpaceBoxes)
+const TBox<T, d>& GetWorldSpaceBoundingBox(const TGeometryParticles<T, d>& Objects, const int32 i, const TMap<int32, TBox<T, d>>& WorldSpaceBoxes)
 {
 	return GetWorldSpaceBoundingBox(static_cast<const TParticles<T, d>&>(Objects), i, WorldSpaceBoxes);
 }
 
 template<class T, int d>
-const TAABB<T, d> GetWorldSpaceBoundingBox(const TPBDRigidParticles<T, d>& Objects, const int32 i, const TMap<int32, TAABB<T, d>>& WorldSpaceBoxes)
+const TBox<T, d>& GetWorldSpaceBoundingBox(const TPBDRigidParticles<T, d>& Objects, const int32 i, const TMap<int32, TBox<T, d>>& WorldSpaceBoxes)
 {
 	return GetWorldSpaceBoundingBox(static_cast<const TParticles<T, d>&>(Objects), i, WorldSpaceBoxes);
 }
 
 template<class T, int d>
-TAABB<T, d> ComputeWorldSpaceBoundingBox(const TParticles<T, d>& Objects, const int32 i, bool bUseVelocity = false, T Dt = 0)
+TBox<T, d> ComputeWorldSpaceBoundingBox(const TParticles<T, d>& Objects, const int32 i, bool bUseVelocity = false, T Dt = 0)
 {
 	ensure(!bUseVelocity);
-	return TAABB<T, d>(Objects.X(i), Objects.X(i));
+	return TBox<T, d>(Objects.X(i), Objects.X(i));
 }
 
 template<class T, int d>
-TAABB<T, d> ComputeWorldSpaceBoundingBox(const TGeometryParticles<T, d>& Objects, const int32 i, bool bUseVelocity = false, T Dt = 0)
+TBox<T, d> ComputeWorldSpaceBoundingBox(const TGeometryParticles<T, d>& Objects, const int32 i, bool bUseVelocity = false, T Dt = 0)
 {
 	ensure(!bUseVelocity);
 	TRigidTransform<T, d> LocalToWorld(Objects.X(i), Objects.R(i));
 	const auto& LocalBoundingBox = Objects.Geometry(i)->BoundingBox();
-	return LocalBoundingBox.TransformedAABB(LocalToWorld);
+	return LocalBoundingBox.TransformedBox(LocalToWorld);
 }
 
 template<class T, int d>
-TAABB<T, d> ComputeWorldSpaceBoundingBox(const TPBDRigidParticles<T, d>& Objects, const int32 i, bool bUseVelocity = false, T Dt = 0)
+TBox<T, d> ComputeWorldSpaceBoundingBox(const TPBDRigidParticles<T, d>& Objects, const int32 i, bool bUseVelocity = false, T Dt = 0)
 {
 	TRigidTransform<T, d> LocalToWorld(Objects.P(i), Objects.Q(i));
-	TAABB<T, d> WorldSpaceBox;
+	TBox<T, d> WorldSpaceBox;
 	if (Objects.Geometry(i))
 	{
 		const auto& LocalBoundingBox = Objects.Geometry(i)->BoundingBox();
-		WorldSpaceBox = LocalBoundingBox.TransformedAABB(LocalToWorld);
+		WorldSpaceBox = LocalBoundingBox.TransformedBox(LocalToWorld);
 	}
 	else
 	{
 		check(Objects.CollisionParticles(i) && Objects.CollisionParticles(i)->Size());
-		TAABB<T, d> LocalBoundingBox(Objects.CollisionParticles(i)->X(0), Objects.CollisionParticles(i)->X(0));
+		TBox<T, d> LocalBoundingBox(Objects.CollisionParticles(i)->X(0), Objects.CollisionParticles(i)->X(0));
 		for (uint32 j = 1; j < Objects.CollisionParticles(i)->Size(); ++j)
 		{
 			LocalBoundingBox.GrowToInclude(Objects.CollisionParticles(i)->X(j));
 		}
-		WorldSpaceBox = LocalBoundingBox.TransformedAABB(LocalToWorld);
+		WorldSpaceBox = LocalBoundingBox.TransformedBox(LocalToWorld);
 	}
 	
 	if (bUseVelocity)
 	{
-		// @todo(ccaulfield): COLLISION - thickness
-		WorldSpaceBox.ThickenSymmetrically(ComputeBoundsThickness(Objects, Dt, i, 0, 1));
+		WorldSpaceBox.ThickenSymmetrically(ComputeThickness(Objects, Dt, i));
 	}
 	return WorldSpaceBox;
 }
 
 template<typename THandle, typename T, int d, bool bPersistent>
-TAABB<T, d> ComputeWorldSpaceBoundingBoxForHandle(const THandle& Handle)
+TBox<T, d> ComputeWorldSpaceBoundingBoxForHandle(const THandle& Handle)
 {
-	const auto PBDRigid = Handle.CastToRigidParticle();
-	const bool bIsRigidDynamic = PBDRigid && PBDRigid->ObjectState() == EObjectStateType::Dynamic;
-
-	TRigidTransform<T, d> LocalToWorld = bIsRigidDynamic ? TRigidTransform<T, d>(PBDRigid->P(), PBDRigid->Q()) : TRigidTransform<T, d>(Handle.X(), Handle.R());
+	const auto PBDRigid = Handle.AsDynamic();
+	TRigidTransform<T, d> LocalToWorld = PBDRigid ? TRigidTransform<T, d>(PBDRigid->P(), PBDRigid->Q()) : TRigidTransform<T, d>(Handle.X(), Handle.R());
 	if(Handle.Geometry())
 	{
 		const auto& LocalBoundingBox = Handle.Geometry()->BoundingBox();
@@ -177,7 +169,7 @@ TAABB<T, d> ComputeWorldSpaceBoundingBoxForHandle(const THandle& Handle)
 
 	check(PBDRigid);
 	check(PBDRigid->CollisionParticles() && PBDRigid->CollisionParticles()->Size());
-	TAABB<T, d> LocalBoundingBox(PBDRigid->CollisionParticles()->X(0), PBDRigid->CollisionParticles()->X(0));
+	TBox<T, d> LocalBoundingBox(PBDRigid->CollisionParticles()->X(0), PBDRigid->CollisionParticles()->X(0));
 	for(uint32 j = 1; j < PBDRigid->CollisionParticles()->Size(); ++j)
 	{
 		LocalBoundingBox.GrowToInclude(PBDRigid->CollisionParticles()->X(j));
@@ -186,28 +178,28 @@ TAABB<T, d> ComputeWorldSpaceBoundingBoxForHandle(const THandle& Handle)
 }
 
 template<typename T, int d, bool bPersistent>
-TAABB<T, d> ComputeWorldSpaceBoundingBox(const TGeometryParticleHandleImp<T, d, bPersistent>& Handle, bool bUseVelocity = false, T Dt = 0)
+TBox<T, d> ComputeWorldSpaceBoundingBox(const TGeometryParticleHandleImp<T, d, bPersistent>& Handle, bool bUseVelocity = false, T Dt = 0)
 {
 	return Handle.WorldSpaceInflatedBounds();
 }
 
 template<typename T, int d, bool bPersistent>
-TAABB<T, d> ComputeWorldSpaceBoundingBox(const TPBDRigidParticleHandleImp<T, d, bPersistent>& Handle, bool bUseVelocity = false, T Dt = 0)
+TBox<T, d> ComputeWorldSpaceBoundingBox(const TPBDRigidParticleHandleImp<T, d, bPersistent>& Handle, bool bUseVelocity = false, T Dt = 0)
 {
 	return Handle.WorldSpaceInflatedBounds();
 }
 
-template<typename T, typename GenericEntry>
-TAABB<T, 3> ComputeWorldSpaceBoundingBox(const GenericEntry& InEntry, bool bUseVelocity = false, T Dt = 0)
+template<typename GenericEntry, typename T>
+TBox<T, 3> ComputeWorldSpaceBoundingBox(const GenericEntry& InEntry, bool bUseVelocity = false, T Dt = 0)
 {
 	ensure(!bUseVelocity);
 	return InEntry.BoundingBox();
 }
 
 template<typename OBJECT_ARRAY, typename T, int d>
-const TAABB<T, d> ComputeGlobalBoxAndSplitAxis(const OBJECT_ARRAY& Objects, const TArray<int32>& AllObjects, const TMap<int32, TAABB<T, d>>& WorldSpaceBoxes, bool bAllowMultipleSplitting, int32& OutAxis)
+const TBox<T, d> ComputeGlobalBoxAndSplitAxis(const OBJECT_ARRAY& Objects, const TArray<int32>& AllObjects, const TMap<int32, TBox<T, d>>& WorldSpaceBoxes, bool bAllowMultipleSplitting, int32& OutAxis)
 {
-	TAABB<T, d> GlobalBox = GetWorldSpaceBoundingBox(Objects, AllObjects[0], WorldSpaceBoxes);
+	TBox<T, d> GlobalBox = GetWorldSpaceBoundingBox(Objects, AllObjects[0], WorldSpaceBoxes);
 	for (int32 i = 1; i < AllObjects.Num(); ++i)
 	{
 		GlobalBox.GrowToInclude(GetWorldSpaceBoundingBox(Objects, AllObjects[i], WorldSpaceBoxes));
@@ -232,7 +224,7 @@ const TAABB<T, d> ComputeGlobalBoxAndSplitAxis(const OBJECT_ARRAY& Objects, cons
 }
 
 template<typename T, int d>
-const TAABB<T, d> ComputeGlobalBoxAndSplitAxis(const TParticles<T,d>& Objects, const TArray<int32>& AllObjects, const TMap<int32, TAABB<T, d>>& WorldSpaceBoxes, bool bAllowMultipleSplitting, int32& OutAxis)
+const TBox<T, d> ComputeGlobalBoxAndSplitAxis(const TParticles<T,d>& Objects, const TArray<int32>& AllObjects, const TMap<int32, TBox<T, d>>& WorldSpaceBoxes, bool bAllowMultipleSplitting, int32& OutAxis)
 {
 	//simple particles means we can split more efficiently
 	TPair<int32, int32> Counts[d];
@@ -252,11 +244,11 @@ const TAABB<T, d> ComputeGlobalBoxAndSplitAxis(const TParticles<T,d>& Objects, c
 		};
 	};
 
-	TAABB<T, d> GlobalBox = GetWorldSpaceBoundingBox(Objects, AllObjects[0], WorldSpaceBoxes);
+	TBox<T, d> GlobalBox = GetWorldSpaceBoundingBox(Objects, AllObjects[0], WorldSpaceBoxes);
 	CountLambda(GlobalBox.Center());
 	for (int32 i = 1; i < AllObjects.Num(); ++i)
 	{
-		TAABB<T, d> PtBox = GetWorldSpaceBoundingBox(Objects, AllObjects[i], WorldSpaceBoxes);
+		TBox<T, d> PtBox = GetWorldSpaceBoundingBox(Objects, AllObjects[i], WorldSpaceBoxes);
 		GlobalBox.GrowToInclude(PtBox);
 		CountLambda(PtBox.Center());
 	}
@@ -281,26 +273,13 @@ const TAABB<T, d> ComputeGlobalBoxAndSplitAxis(const TParticles<T,d>& Objects, c
 }
 
 template<class OBJECT_ARRAY, class T, int d>
-void ComputeAllWorldSpaceBoundingBoxes(const OBJECT_ARRAY& Objects, const TArray<int32>& AllObjects, const bool bUseVelocity, const T Dt, TMap<int32, TAABB<T, d>>& WorldSpaceBoxes)
+void ComputeAllWorldSpaceBoundingBoxes(const OBJECT_ARRAY& Objects, const TArray<int32>& AllObjects, const bool bUseVelocity, const T Dt, TMap<int32, TBox<T, d>>& WorldSpaceBoxes)
 {
 	check(!bUseVelocity);
 }
 
 template<class T, int d>
-void ComputeAllWorldSpaceBoundingBoxes(const TParticles<T, d>& Objects, const TArray<int32>& AllObjects, const bool bUseVelocity, const T Dt, TMap<int32, TAABB<T, d>>& WorldSpaceBoxes)
-{
-	check(!bUseVelocity);
-	WorldSpaceBoxes.Reserve(AllObjects.Num());
-	//PhysicsParallelFor(AllObjects.Num(), [&](int32 i) {
-	for (int32 i : AllObjects)
-	{
-		WorldSpaceBoxes.FindOrAdd(i) = ComputeWorldSpaceBoundingBox(Objects, i);
-	}
-	//});
-}
-
-template<class T, int d>
-void ComputeAllWorldSpaceBoundingBoxes(const TGeometryParticles<T, d>& Objects, const TArray<int32>& AllObjects, const bool bUseVelocity, const T Dt, TMap<int32, TAABB<T, d>>& WorldSpaceBoxes)
+void ComputeAllWorldSpaceBoundingBoxes(const TParticles<T, d>& Objects, const TArray<int32>& AllObjects, const bool bUseVelocity, const T Dt, TMap<int32, TBox<T, d>>& WorldSpaceBoxes)
 {
 	check(!bUseVelocity);
 	WorldSpaceBoxes.Reserve(AllObjects.Num());
@@ -313,14 +292,27 @@ void ComputeAllWorldSpaceBoundingBoxes(const TGeometryParticles<T, d>& Objects, 
 }
 
 template<class T, int d>
-void ComputeAllWorldSpaceBoundingBoxes(const TPBDRigidParticles<T, d>& Objects, const TArray<int32>& AllObjects, const bool bUseVelocity, const T Dt, TMap<int32, TAABB<T, d>>& WorldSpaceBoxes)
+void ComputeAllWorldSpaceBoundingBoxes(const TGeometryParticles<T, d>& Objects, const TArray<int32>& AllObjects, const bool bUseVelocity, const T Dt, TMap<int32, TBox<T, d>>& WorldSpaceBoxes)
+{
+	check(!bUseVelocity);
+	WorldSpaceBoxes.Reserve(AllObjects.Num());
+	//PhysicsParallelFor(AllObjects.Num(), [&](int32 i) {
+	for (int32 i : AllObjects)
+	{
+		WorldSpaceBoxes.FindOrAdd(i) = ComputeWorldSpaceBoundingBox(Objects, i);
+	}
+	//});
+}
+
+template<class T, int d>
+void ComputeAllWorldSpaceBoundingBoxes(const TPBDRigidParticles<T, d>& Objects, const TArray<int32>& AllObjects, const bool bUseVelocity, const T Dt, TMap<int32, TBox<T, d>>& WorldSpaceBoxes)
 {
 	WorldSpaceBoxes.Reserve(AllObjects.Num());
 	//PhysicsParallelFor(AllObjects.Num(), [&](int32 i) {
 	for (int32 i = 0; i < AllObjects.Num(); ++i)
 	{
 		const int32 BodyIndex = AllObjects[i];
-		TAABB<T, d>& WorldSpaceBox = WorldSpaceBoxes.FindOrAdd(BodyIndex);
+		TBox<T, d>& WorldSpaceBox = WorldSpaceBoxes.FindOrAdd(BodyIndex);
 		WorldSpaceBox = ComputeWorldSpaceBoundingBox(Objects, BodyIndex, bUseVelocity, Dt);
 	}
 	//});
@@ -336,7 +328,7 @@ struct CParticleView
 
 //todo: how do we protect ourselves and make it const?
 template<typename ParticleView, typename T, int d>
-typename TEnableIf<TModels<CParticleView, ParticleView>::Value>::Type ComputeAllWorldSpaceBoundingBoxes(const ParticleView& Particles, const TArray<bool>& RequiresBounds, const bool bUseVelocity, const T Dt, TArray<TAABB<T, d>>& WorldSpaceBoxes)
+typename TEnableIf<TModels<CParticleView, ParticleView>::Value>::Type ComputeAllWorldSpaceBoundingBoxes(const ParticleView& Particles, const TArray<bool>& RequiresBounds, const bool bUseVelocity, const T Dt, TArray<TBox<T, d>>& WorldSpaceBoxes)
 {
 	WorldSpaceBoxes.AddUninitialized(Particles.Num());
 	ParticlesParallelFor(Particles, [&RequiresBounds, &WorldSpaceBoxes, bUseVelocity, Dt](const auto& Particle, int32 Index)
@@ -348,8 +340,7 @@ typename TEnableIf<TModels<CParticleView, ParticleView>::Value>::Type ComputeAll
 			{
 				if (const auto PBDRigid = Particle.AsDynamic())
 				{
-					// @todo(ccaulfield): COLLISION - thickness
-					WorldSpaceBoxes.Last().ThickenSymmetrically(ComputeBoundsThickness(*PBDRigid, Dt, 0, 1));
+					WorldSpaceBoxes.Last().ThickenSymmetrically(ComputeThickness(*PBDRigid, Dt));
 				}
 			}
 		}
@@ -357,7 +348,7 @@ typename TEnableIf<TModels<CParticleView, ParticleView>::Value>::Type ComputeAll
 }
 
 template<typename ParticleView, typename T, int d>
-typename TEnableIf<!TModels<CParticleView, ParticleView>::Value>::Type ComputeAllWorldSpaceBoundingBoxes(const ParticleView& Particles, const TArray<bool>& RequiresBounds, const bool bUseVelocity, const T Dt, TArray<TAABB<T, d>>& WorldSpaceBoxes)
+typename TEnableIf<!TModels<CParticleView, ParticleView>::Value>::Type ComputeAllWorldSpaceBoundingBoxes(const ParticleView& Particles, const TArray<bool>& RequiresBounds, const bool bUseVelocity, const T Dt, TArray<TBox<T, d>>& WorldSpaceBoxes)
 {
 	WorldSpaceBoxes.AddUninitialized(Particles.Num());
 	ParticlesParallelFor(Particles, [&RequiresBounds, &WorldSpaceBoxes, bUseVelocity, Dt](const auto& Particle, int32 Index)

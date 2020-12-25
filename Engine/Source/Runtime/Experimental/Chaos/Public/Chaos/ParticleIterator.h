@@ -1,7 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
-#include "Chaos/Framework/Parallel.h"
 #include "Chaos/ParallelFor.h"
 #include "Chaos/Particles.h"
 #include "ChaosStats.h"
@@ -13,6 +12,8 @@ DECLARE_CYCLE_STAT(TEXT("HandleViewParallelForImp"), STAT_HandleViewParallelForI
 
 namespace Chaos
 {
+CHAOS_API extern int32 ChaosParticleParallelFor;
+
 template <typename TSOA>
 class TConstParticleView;
 
@@ -88,13 +89,15 @@ void ParticlesParallelFor(const TView& Particles, const Lambda& Func, bool bForc
 {
 	SCOPE_CYCLE_COUNTER(STAT_ParticlesParallelFor);
 
-	if (!bForceSingleThreaded && !bDisableParticleParallelFor)
+	switch (ChaosParticleParallelFor)
 	{
-		Chaos::ParticlesParallelForImp(Particles, Func);
-	}
-	else
-	{
-		Chaos::ParticlesSequentialFor(Particles, Func);
+		case 0:
+			Chaos::ParticlesSequentialFor(Particles, Func);
+			break;
+
+		case 1:
+			Chaos::ParticlesParallelForImp(Particles, Func);
+			break;
 	}
 }
 
@@ -326,10 +329,6 @@ public:
 	TConstParticleIterator(const TConstParticleIterator& Rhs) = default;
 
 	operator bool() const { return TransientHandle.GeometryParticles != nullptr; }
-
-	// The non-parallel implementation of iteration should not deviate in behavior
-	// from the parallel implementation in \c ParticleViewParallelForImp().  They
-	// must be kept in sync.
 	TConstParticleIterator<TSOA>& operator++()
 	{
 		RangedForValidation();
@@ -347,20 +346,17 @@ public:
 			++CurHandleIdx;
 			if (CurHandleIdx < CurHandlesArray->Num())
 			{
-				// Reconstruct the TransientHandle so that it has a chance to update
-				// other data members, like the particle type in the case of geometry 
-				// particles.
-				THandle* HandlePtr = (*CurHandlesArray)[CurHandleIdx];
-				THandleBase Handle(HandlePtr->GeometryParticles, HandlePtr->ParticleIdx);
-				TransientHandle = static_cast<TTransientHandle&>(Handle);
+				TransientHandle.ParticleIdx = (*CurHandlesArray)[CurHandleIdx]->ParticleIdx;
 			}
 			else
 			{
 				IncSOAIdx();
 			}
 		}
+
 		return *this;
 	}
+
 	
 	const TTransientHandle& operator*() const
 	{
@@ -416,11 +412,7 @@ protected:
 	void RangedForValidation() const
 	{
 #if PARTICLE_ITERATOR_RANGED_FOR_CHECK
-		if (CurHandlesArray)
-		{
-			check(DirtyValidationCount == CurHandlesArray->Num());
-		}
-		else if (TransientHandle.GeometryParticles)
+		if (TransientHandle.GeometryParticles)
 		{
 			check(DirtyValidationCount != INDEX_NONE);
 			check(TransientHandle.GeometryParticles->DirtyValidationCount() == DirtyValidationCount && TEXT("Iterating over particles while modifying the underlying SOA. Consider delaying any operations that require a Handle*"));
@@ -438,14 +430,7 @@ protected:
 	{
 
 #if PARTICLE_ITERATOR_RANGED_FOR_CHECK
-		if (CurHandlesArray)
-		{
-			DirtyValidationCount = CurHandlesArray->Num();
-		}
-		else
-		{
-			DirtyValidationCount = TransientHandle.GeometryParticles ? TransientHandle.GeometryParticles->DirtyValidationCount() : INDEX_NONE;
-		}
+		DirtyValidationCount = TransientHandle.GeometryParticles ? TransientHandle.GeometryParticles->DirtyValidationCount() : INDEX_NONE;
 #endif
 	}
 
@@ -608,8 +593,6 @@ TParticleView<TSOA> MakeParticleView(TSOA* SOA)
 	return TParticleView<TSOA>(MoveTemp(SOAs));
 }
 
-// The non-parallel implementation of iteration should not deviate in behavior from
-// this parallel implementation.  They must be kept in sync.
 template <typename TParticleView, typename Lambda>
 void ParticleViewParallelForImp(const TParticleView& Particles, const Lambda& Func)
 {
@@ -638,11 +621,8 @@ void ParticleViewParallelForImp(const TParticleView& Particles, const Lambda& Fu
 			const int32 HandleCount = CurHandlesArray->Num();
 			::ParallelFor(HandleCount, [&Func, CurHandlesArray, ParticleIdxOff](const int32 HandleIdx)
 			{
-				// Reconstruct the TransientHandle so that it has a chance to update
-				// other data members, like the particle type in the case of geometry 
-				// particles.
 				THandle* HandlePtr = (*CurHandlesArray)[HandleIdx];
-				THandleBase Handle(HandlePtr->GeometryParticles, HandlePtr->ParticleIdx);
+				THandleBase Handle = THandleBase(HandlePtr->GeometryParticles, HandlePtr->ParticleIdx);
 				Func(static_cast<TTransientHandle&>(Handle), ParticleIdxOff + HandleIdx);
 			});
 			ParticleIdxOff += HandleCount;
@@ -652,10 +632,7 @@ void ParticleViewParallelForImp(const TParticleView& Particles, const Lambda& Fu
 			// Do a regular parallel for over the particles in this SOA view
 			::ParallelFor(ParticleCount, [&Func, &SOAView, ParticleIdxOff](const int32 ParticleIdx)
 			{
-				// Reconstruct the TransientHandle so that it has a chance to update
-				// other data members, like the particle type in the case of geometry 
-				// particles.
-				THandleBase Handle(SOAView.SOA, ParticleIdx);
+				THandleBase Handle = THandleBase(SOAView.SOA, ParticleIdx);
 				Func(static_cast<TTransientHandle&>(Handle), ParticleIdxOff + ParticleIdx);
 			});
 			ParticleIdxOff += ParticleCount;

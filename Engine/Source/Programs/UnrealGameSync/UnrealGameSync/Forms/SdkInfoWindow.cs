@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -188,7 +188,7 @@ namespace UnrealGameSync
 				List<BadgeInfo> Badges = GetBadges(HitTest.Item, HitTest.SubItem);
 				foreach(BadgeInfo Badge in Badges)
 				{
-					if(Badge.Rectangle.Contains(e.Location) && Badge.OnClick != null)
+					if(Badge.Rectangle.Contains(e.Location))
 					{
 						Badge.OnClick();
 					}

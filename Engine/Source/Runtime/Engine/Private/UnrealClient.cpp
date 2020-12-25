@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "UnrealClient.h"
@@ -16,6 +16,7 @@
 #include "UnrealEngine.h"
 #include "Components/PostProcessComponent.h"
 #include "Matinee/MatineeActor.h"
+#include "EditorSupportDelegates.h"
 #include "HighResScreenshot.h"
 #include "GameFramework/GameUserSettings.h"
 #include "HModel.h"
@@ -34,8 +35,6 @@ IMPLEMENT_STRUCT(PostProcessSettings);
 
 bool FViewport::bIsGameRenderingEnabled = true;
 int32 FViewport::PresentAndStopMovieDelay = 0;
-
-static const FName NAME_DummyViewport = FName(TEXT("DummyViewport"));
 
 /**
 * Reads the viewport's displayed pixels into a preallocated color buffer.
@@ -449,26 +448,23 @@ int32 FStatUnitData::DrawStat(FViewport* InViewport, FCanvas* InCanvas, int32 In
 	FDynamicResolutionStateInfos DynamicResolutionStateInfos;
 	GEngine->GetDynamicResolutionCurrentStateInfos(/* out */ DynamicResolutionStateInfos);
 
-	for (uint32 GPUIndex : FRHIGPUMask::All())
-	{
-		/** Number of milliseconds the GPU was busy last frame. */
-		const uint32 GPUCycles = RHIGetGPUFrameCycles(GPUIndex);
-		RawGPUFrameTime[GPUIndex] = FPlatformTime::ToMilliseconds(GPUCycles);
-		GPUFrameTime[GPUIndex] = 0.9 * GPUFrameTime[GPUIndex] + 0.1 * RawGPUFrameTime[GPUIndex];
-	}
+	/** Number of milliseconds the GPU was busy last frame. */
+	const uint32 GPUCycles = RHIGetGPUFrameCycles();
+	RawGPUFrameTime = FPlatformTime::ToMilliseconds(GPUCycles);
+	GPUFrameTime = 0.9 * GPUFrameTime + 0.1 * RawGPUFrameTime;
 
 	SET_FLOAT_STAT(STAT_UnitFrame, FrameTime);
 	SET_FLOAT_STAT(STAT_UnitRender, RenderThreadTime);
 	SET_FLOAT_STAT(STAT_UnitRHIT, RHITTime);
 	SET_FLOAT_STAT(STAT_UnitGame, GameThreadTime);
-	SET_FLOAT_STAT(STAT_UnitGPU, GPUFrameTime[0]);
+	SET_FLOAT_STAT(STAT_UnitGPU, GPUFrameTime);
 	SET_FLOAT_STAT(STAT_InputLatencyTime, InputLatencyTime);
 
-	GEngine->SetAverageUnitTimes(FrameTime, RenderThreadTime, GameThreadTime, GPUFrameTime[0], RHITTime);
+	GEngine->SetAverageUnitTimes(FrameTime, RenderThreadTime, GameThreadTime, GPUFrameTime, RHITTime);
 
 	float Max_RenderThreadTime = 0.0f;
 	float Max_GameThreadTime = 0.0f;
-	float Max_GPUFrameTime[MAX_NUM_GPUS] = { 0.0f };
+	float Max_GPUFrameTime = 0.0f;
 	float Max_FrameTime = 0.0f;
 	float Max_RHITTime = 0.0f;
 	float Max_InputLatencyTime = 0.0f;
@@ -478,10 +474,7 @@ int32 FStatUnitData::DrawStat(FViewport* InViewport, FCanvas* InCanvas, int32 In
 	const bool bShowRawUnitTimes = InViewport->GetClient() ? InViewport->GetClient()->IsStatEnabled(TEXT("Raw")) : false;
 	RenderThreadTimes[CurrentIndex] = bShowRawUnitTimes ? RawRenderThreadTime : RenderThreadTime;
 	GameThreadTimes[CurrentIndex] = bShowRawUnitTimes ? RawGameThreadTime : GameThreadTime;
-	for (uint32 GPUIndex : FRHIGPUMask::All())
-	{
-		GPUFrameTimes[GPUIndex][CurrentIndex] = bShowRawUnitTimes ? RawGPUFrameTime[GPUIndex] : GPUFrameTime[GPUIndex];
-	}
+	GPUFrameTimes[CurrentIndex] = bShowRawUnitTimes ? RawGPUFrameTime : GPUFrameTime;
 	FrameTimes[CurrentIndex] = bShowRawUnitTimes ? RawFrameTime : FrameTime;
 	RHITTimes[CurrentIndex] = bShowRawUnitTimes ? RawRHITTime : RHITTime;
 	InputLatencyTimes[CurrentIndex] = bShowRawUnitTimes ? RawInputLatencyTime : InputLatencyTime;
@@ -505,12 +498,9 @@ int32 FStatUnitData::DrawStat(FViewport* InViewport, FCanvas* InCanvas, int32 In
 			{
 				Max_GameThreadTime = GameThreadTimes[MaxIndex];
 			}
-			for (uint32 GPUIndex : FRHIGPUMask::All())
+			if (Max_GPUFrameTime < GPUFrameTimes[MaxIndex])
 			{
-				if (Max_GPUFrameTime[GPUIndex] < GPUFrameTimes[GPUIndex][MaxIndex])
-				{
-					Max_GPUFrameTime[GPUIndex] = GPUFrameTimes[GPUIndex][MaxIndex];
-				}
+				Max_GPUFrameTime = GPUFrameTimes[MaxIndex];
 			}
 			if (Max_FrameTime < FrameTimes[MaxIndex])
 			{
@@ -534,11 +524,7 @@ int32 FStatUnitData::DrawStat(FViewport* InViewport, FCanvas* InCanvas, int32 In
 	UFont* Font = (!FPlatformProperties::SupportsWindowedMode() && GEngine->GetMediumFont()) ? GEngine->GetMediumFont() : GEngine->GetSmallFont();
 
 	const bool bShowUnitTimeGraph = InViewport->GetClient() ? InViewport->GetClient()->IsStatEnabled(TEXT("UnitGraph")) : false;
-	bool bHaveGPUData[MAX_NUM_GPUS] = { false };
-	for (uint32 GPUIndex : FRHIGPUMask::All())
-	{
-		bHaveGPUData[GPUIndex] = RawGPUFrameTime[GPUIndex] > 0;
-	}
+	const bool bHaveGPUData = GPUCycles > 0;
 	const bool bHaveInputLatencyData = InputLatencyTime > 0;
 
 	const float AlertResolutionFraction = 0.70f; // Truncation of sqrt(0.5) for easier remembering.
@@ -591,21 +577,47 @@ int32 FStatUnitData::DrawStat(FViewport* InViewport, FCanvas* InCanvas, int32 In
 			InY += RowHeight;
 		}
 
-		for (uint32 GPUIndex : FRHIGPUMask::All())
+		if (bHaveGPUData)
 		{
-			if (bHaveGPUData[GPUIndex])
+			const FColor GPUAverageColor = GEngine->GetFrameTimeDisplayColor(GPUFrameTime);
+			InCanvas->DrawShadowedString(X1, InY, TEXT("GPU:"), Font, bShowUnitTimeGraph ? FColor(255, 255, 100) : FColor::White);
+			InCanvas->DrawShadowedString(X2, InY, *FString::Printf(TEXT("%3.2f ms"), GPUFrameTime), Font, GPUAverageColor);
+			if (bShowUnitMaxTimes)
 			{
-				const FColor GPUAverageColor = GEngine->GetFrameTimeDisplayColor(GPUFrameTime[GPUIndex]);
-				FString GPUString = GNumExplicitGPUsForRendering > 1 ? FString::Printf(TEXT("GPU%u:"), GPUIndex) : TEXT("GPU:");
-				InCanvas->DrawShadowedString(X1, InY, *GPUString, Font, bShowUnitTimeGraph ? FColor(255, 255, 100) : FColor::White);
-				InCanvas->DrawShadowedString(X2, InY, *FString::Printf(TEXT("%3.2f ms"), GPUFrameTime[GPUIndex]), Font, GPUAverageColor);
-				if (bShowUnitMaxTimes)
-				{
-					const FColor GPUMaxColor = GEngine->GetFrameTimeDisplayColor(Max_GPUFrameTime[GPUIndex]);
-					InCanvas->DrawShadowedString(X3, InY, *FString::Printf(TEXT("%4.2f ms"), Max_GPUFrameTime[GPUIndex]), Font, GPUMaxColor);
-				}
-				InY += RowHeight;
+				const FColor GPUMaxColor = GEngine->GetFrameTimeDisplayColor(Max_GPUFrameTime);
+				InCanvas->DrawShadowedString(X3, InY, *FString::Printf(TEXT("%4.2f ms"), Max_GPUFrameTime), Font, GPUMaxColor);
 			}
+			if (GMaxRHIShaderPlatform == SP_PS4)
+			{
+				FString Warnings;
+
+				{
+					static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.PS4ContinuousSubmits"));
+					int32 Value = CVar->GetInt();
+
+					if (!Value)
+					{
+						// good for profiling (avoids bubles) but bad for high fps
+						Warnings += TEXT(" r.PS4ContinuousSubmits");
+					}
+				}
+				{
+					static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.PS4StallsOnMarkers"));
+					int32 Value = CVar->GetInt();
+
+					if (Value)
+					{
+						// good to get Razor aligned GPU profiling but bad for high fps
+						Warnings += TEXT(" r.PS4StallsOnMarkers");
+					}
+				}
+
+				if (!Warnings.IsEmpty())
+				{
+					InCanvas->DrawShadowedString(X3 + 100, InY, *Warnings, Font, FColor::Red);
+				}
+			}
+			InY += RowHeight;
 		}
 		if (IsRunningRHIInSeparateThread())
 		{
@@ -935,8 +947,8 @@ int32 FStatUnitData::DrawStat(FViewport* InViewport, FCanvas* InCanvas, int32 In
 			AlertPrintY -= AlertPrintHeight;
 
 			// If we don't have GPU data to display, then skip this line
-			if ((StatIndex == EGS_GPU && !bHaveGPUData[0])
-				|| (StatIndex == EGS_Frame && bShowFrameTimeInUnitGraph == false && bHaveGPUData[0])
+			if ((StatIndex == EGS_GPU && !bHaveGPUData)
+				|| (StatIndex == EGS_Frame && bShowFrameTimeInUnitGraph == false && bHaveGPUData)
 				|| (StatIndex == EGS_RHIT && !IsRunningRHIInSeparateThread()))
 			{
 				continue;
@@ -968,8 +980,7 @@ int32 FStatUnitData::DrawStat(FViewport* InViewport, FCanvas* InCanvas, int32 In
 
 			case EGS_GPU:
 				AbsoluteAlertValueThreshold = AlertTimeMS;
-				// Multi-GPU support : We don't support more than 1 GPU in stat unitgraph yet.
-				Values = GPUFrameTimes[0].GetData();
+				Values = GPUFrameTimes.GetData();
 				GraphVerticalPixelPerValue = GraphVerticalPixelsPerMS;
 				StatColor = FLinearColor(1.0f, 1.0f, 0.1f);		// Yellow
 				break;
@@ -1163,7 +1174,6 @@ FViewport::FViewport(FViewportClient* InViewportClient):
 	bHasRequestedToggleFreeze(false),
 	bIsSlateViewport(false),
 	bIsHDR(false),
-	ViewportType(NAME_None),
 	bTakeHighResScreenShot(false)
 {
 	//initialize the hit proxy kernel
@@ -1214,7 +1224,7 @@ bool FViewport::TakeHighResScreenShot()
 		Info.bUseLargeFont = false;
 		FSlateNotificationManager::Get().AddNotification(Info); 
 
-		UE_LOG(LogClient, Warning, TEXT("The specified multiplier for high resolution screenshot is too large for your system (requested size %ux%u, max size %ux%u)! Please try again with a smaller value."), GScreenshotResolutionX, GScreenshotResolutionY, MaxTextureDimension, MaxTextureDimension);
+		UE_LOG(LogClient, Warning, TEXT("The specified multiplier for high resolution screenshot is too large for your system! Please try again with a smaller value."));
 
 		GIsHighResScreenshot = false;
 		return false;
@@ -1441,6 +1451,7 @@ void UPostProcessComponent::Serialize(FArchive& Ar)
 */
 void FViewport::EnqueueBeginRenderFrame(const bool bShouldPresent)
 {
+	AdvanceFrameRenderPrerequisite();
 	FViewport* Viewport = this;
 	ENQUEUE_RENDER_COMMAND(BeginDrawingCommand)(
 		[Viewport](FRHICommandListImmediate& RHICmdList)
@@ -1553,7 +1564,7 @@ void FViewport::Draw( bool bShouldPresent /*= true */)
 				Canvas.SetRenderTargetRect(FIntRect(0, 0, SizeX, SizeY));
 				{
 					// Make sure the Canvas is not rendered upside down
-					Canvas.SetAllowSwitchVerticalAxis(true);
+					Canvas.SetAllowSwitchVerticalAxis(false);
 					ViewportClient->Draw(this, &Canvas);
 				}
 				Canvas.Flush_GameThread();
@@ -1610,12 +1621,6 @@ void FViewport::InvalidateHitProxy()
 {
 	bHitProxiesCached = false;
 	HitProxyMap.Invalidate();
-	
-	FCanvas* DebugCanvas = GetDebugCanvas();
-	if (DebugCanvas)
-	{
-		DebugCanvas->SetHitProxy(nullptr);
-	}
 }
 
 
@@ -1658,9 +1663,7 @@ const TArray<FColor>& FViewport::GetRawHitProxyData(FIntRect InRect)
 			{
 				// Set the hit proxy map's render target.
 				// Clear the hit proxy map to white, which is overloaded to mean no hit proxy.
-				FRHITexture* RenderTarget = Viewport->HitProxyMap.GetRenderTargetTexture();
-				RHICmdList.Transition(FRHITransitionInfo(RenderTarget, ERHIAccess::Unknown, ERHIAccess::RTV));
-				FRHIRenderPassInfo RPInfo(RenderTarget, ERenderTargetActions::Clear_Store);
+				FRHIRenderPassInfo RPInfo(Viewport->HitProxyMap.GetRenderTargetTexture(), ERenderTargetActions::Clear_Store);
 				RHICmdList.BeginRenderPass(RPInfo, TEXT("ClearHitProxyMap"));
 				RHICmdList.EndRenderPass();
 			});
@@ -2004,12 +2007,18 @@ ENGINE_API bool IsAltDown(FViewport* Viewport) { return (Viewport->KeyState(EKey
 /** Constructor */
 FViewport::FHitProxyMap::FHitProxyMap()
 {
+#if WITH_EDITOR
+	FEditorSupportDelegates::CleanseEditor.AddRaw(this, &FViewport::FHitProxyMap::Invalidate);
+#endif // WITH_EDITOR
 }
 
 
 /** Destructor */
 FViewport::FHitProxyMap::~FHitProxyMap()
 {
+#if WITH_EDITOR
+	FEditorSupportDelegates::CleanseEditor.RemoveAll(this);
+#endif // WITH_EDITOR
 }
 
 
@@ -2140,20 +2149,26 @@ extern bool ParseResolution( const TCHAR* InResolution, uint32& OutX, uint32& Ou
 ENGINE_API bool GetHighResScreenShotInput(const TCHAR* Cmd, FOutputDevice& Ar, uint32& OutXRes, uint32& OutYRes, float& OutResMult, FIntRect& OutCaptureRegion, bool& OutShouldEnableMask, bool& OutDumpBufferVisualizationTargets, bool& OutCaptureHDR, FString& OutFilenameOverride, bool& OutUseDateTimeAsFileName)
 {
 	FString CmdString = Cmd;
+	int32 SeperatorPos = -1;
+	int32 LastSeperatorPos = 0;
 	TArray<FString> Arguments;
-	const FString FilenameSearchString = TEXT("filename=");
 
-	// FParse::Value has better handling of escape characters than FParse::Token
-	FParse::Value(Cmd, *FilenameSearchString, OutFilenameOverride);
-
-	FString Arg;
-	while (FParse::Token(Cmd, Arg, true))
+	// Look for an optional filename to override from the default filename and strip it if found.
+	FString FilenameSearchString = TEXT("filename=");
+	int32 FilenamePos = CmdString.Find(FilenameSearchString, ESearchCase::IgnoreCase);
+	if (FilenamePos != INDEX_NONE)
 	{
-		// Now skip filename since we already processed it
-		if (!Arg.StartsWith(FilenameSearchString))
-		{
-			Arguments.Add(Arg);
-		}
+		FString FilenameOverride;
+		FParse::Value(Cmd, TEXT("filename="), FilenameOverride);
+		OutFilenameOverride = FilenameOverride;
+		CmdString.RemoveAt(FilenamePos, FilenameSearchString.Len() + FilenameOverride.Len());
+		CmdString.TrimStartAndEndInline(); 
+	}
+
+	while (CmdString.FindChar(TCHAR(' '), SeperatorPos))
+	{
+		Arguments.Add(CmdString.Mid(LastSeperatorPos, SeperatorPos));
+		CmdString = CmdString.Mid(SeperatorPos + 1);
 	}
 
 	if (CmdString.Len() > 0)
@@ -2282,7 +2297,6 @@ FDummyViewport::FDummyViewport(FViewportClient* InViewportClient)
 	: FViewport(InViewportClient)
 	, DebugCanvas(NULL)
 {
-	ViewportType = NAME_DummyViewport;
 	UWorld* CurWorld = (InViewportClient != NULL ? InViewportClient->GetWorld() : NULL);
 	DebugCanvas = new FCanvas(this, NULL, CurWorld, (CurWorld != NULL ? CurWorld->FeatureLevel.GetValue() : GMaxRHIFeatureLevel));
 		

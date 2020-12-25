@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Factories/FbxSceneImportOptions.h"
 
@@ -10,7 +10,7 @@ UFbxSceneImportOptions::UFbxSceneImportOptions(const FObjectInitializer& ObjectI
 	bBakePivotInVertex = false;
 	bCreateContentFolderHierarchy = false;
 	bImportAsDynamic = false;
-	HierarchyType = EFBXSceneOptionsCreateHierarchyType::FBXSOCHT_CreateBlueprint;
+	HierarchyType = FBXSOCHT_CreateBlueprint;
 	bForceFrontXAxis = false;
 	bImportStaticMeshLODs = false;
 	bImportSkeletalMeshLODs = false;

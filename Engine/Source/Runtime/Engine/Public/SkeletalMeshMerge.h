@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	SkeletalMeshMerge.h: Merging of unreal skeletal mesh objects.
@@ -208,16 +208,12 @@ private:
 		*/
 		int32 MaterialId;
 
-		/** material slot name, if multiple section use the same material we use the first slot name found */
-		FName SlotName;
-
 		/** Default UVChannelData for new sections. Will be recomputed if necessary */
 		FMeshUVChannelInfo UVChannelData;
 
-		FNewSectionInfo( UMaterialInterface* InMaterial, int32 InMaterialId, FName InSlotName, const FMeshUVChannelInfo& InUVChannelData )
+		FNewSectionInfo( UMaterialInterface* InMaterial, int32 InMaterialId, const FMeshUVChannelInfo& InUVChannelData )
 			:	Material(InMaterial)
 			,	MaterialId(InMaterialId)
-			,	SlotName(InSlotName)
 			,	UVChannelData(InUVChannelData)
 		{}
 	};
@@ -235,8 +231,8 @@ private:
 	* Creates a new LOD model and adds the new merged sections to it. Modifies the MergedMesh.
 	* @param LODIdx - current LOD to process
 	*/
-	template<typename VertexDataType>
-	void GenerateLODModel( int32 LODIdx);
+	template<typename VertexDataType, typename SkinWeightType>
+	void GenerateLODModel( int32 LODIdx );
 
 	/**
 	* Generate the list of sections that need to be created along with info needed to merge sections
@@ -317,6 +313,6 @@ private:
 	void CopyVertexFromSource(VertexDataType& DestVert, const FSkeletalMeshLODRenderData& SrcLODData, int32 SourceVertIdx, const FMergeSectionInfo& MergeSectionInfo);
 
 	/** Copy skin weight info from source LOD model - templatized per SourceLODModel extra bone influence */
-	template<typename SkinWeightType, bool bHasExtraBoneInfluences, typename BoneIndexType>
+	template<typename SkinWeightType, bool bHasExtraBoneInfluences>
 	void CopyWeightFromSource(SkinWeightType& DestWeight, const FSkeletalMeshLODRenderData& SrcLODData, int32 SourceVertIdx, const FMergeSectionInfo& MergeSectionInfo);
 };

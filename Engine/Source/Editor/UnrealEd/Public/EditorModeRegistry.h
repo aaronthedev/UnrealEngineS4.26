@@ -1,16 +1,19 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
+#include "CoreMinimal.h"
 #include "Textures/SlateIcon.h"
-#include "Tools/Modes.h"
+#include "Editor.h"
 
 class FEditorModeTools;
 
 // Required forward declarations
 class FEdMode;
+class UEdMode;
 
 DECLARE_DELEGATE_RetVal(TSharedRef<FEdMode>, FEditorModeFactoryCallback);
+DECLARE_DELEGATE_RetVal(UEdMode*, FEditorModeFactoryDelegate);
 /**
  *	Class responsible for maintaining a list of registered editor mode types.
  *
@@ -31,6 +34,39 @@ DECLARE_DELEGATE_RetVal(TSharedRef<FEdMode>, FEditorModeFactoryCallback);
  *	Unregister your mode when it is no longer available like so (this will prompt the destruction of any existing modes of this type):
  *		FEditorModeRegistry::Get().UnregisterMode( FName( TEXT("MyEditorMode") ) );
  */
+
+struct FEditorModeInfo
+{
+	/** Default constructor */
+	UNREALED_API FEditorModeInfo();
+
+	/** Helper constructor */
+	UNREALED_API FEditorModeInfo(
+		FEditorModeID InID,
+		FText InName = FText(),
+		FSlateIcon InIconBrush = FSlateIcon(),
+		bool bInIsVisible = false,
+		int32 InPriorityOrder = MAX_int32
+		);
+
+	/** The mode ID */
+	FEditorModeID ID;
+
+	/** Name of the toolbar this mode uses and can be used by external systems to customize that mode toolbar */
+	FName ToolbarCustomizationName;
+
+	/** Name for the editor to display */
+	FText Name;
+
+	/** The mode icon */
+	FSlateIcon IconBrush;
+
+	/** Whether or not the mode should be visible in the mode menu */
+	bool bVisible;
+
+	/** The priority of this mode which will determine its default order and shift+X command assignment */
+	int32 PriorityOrder;
+};
 
 struct IEditorModeFactory : public TSharedFromThis<IEditorModeFactory>
 {
@@ -54,14 +90,16 @@ struct IEditorModeFactory : public TSharedFromThis<IEditorModeFactory>
 	 * Create a new instance of our mode
 	 */
 	virtual TSharedRef<FEdMode> CreateMode() const = 0;
+
+	virtual UEdMode* CreateScriptableMode() const = 0;
+
+	virtual bool ForScriptableMode() const = 0;
 };
 
-struct UNREALED_API FEditorModeFactory : IEditorModeFactory
+struct FEditorModeFactory : IEditorModeFactory
 {
-public:
-	FEditorModeFactory(const FEditorModeInfo& InModeInfo);
-	FEditorModeFactory(FEditorModeInfo&& InModeInfo);
-	virtual ~FEditorModeFactory();
+	FEditorModeFactory(FEditorModeInfo InModeInfo) : ModeInfo(InModeInfo) {}
+	virtual ~FEditorModeFactory() {}
 
 	/** Information pertaining to this factory's mode */
 	FEditorModeInfo ModeInfo;
@@ -72,9 +110,45 @@ public:
 	/**
 	 * Gets the information pertaining to the mode type that this factory creates
 	 */
-	virtual FEditorModeInfo GetModeInfo() const final;
+	virtual FEditorModeInfo GetModeInfo() const override { return ModeInfo; }
 
-	virtual TSharedRef<FEdMode> CreateMode() const final;
+	/**
+	 * Create a new instance of our mode
+	 */
+	virtual TSharedRef<FEdMode> CreateMode() const override { return FactoryCallback.Execute(); }
+
+	virtual UEdMode* CreateScriptableMode() const override { return nullptr; }
+
+	virtual bool ForScriptableMode() const override { return false; }
+};
+
+class UEditorModeFactory : public UObject, public IEditorModeFactory
+{
+	UEditorModeFactory(FEditorModeInfo InModeInfo) : ModeInfo(InModeInfo) {}
+	virtual ~UEditorModeFactory() {}
+
+	/** Information pertaining to this factory's mode */
+	FEditorModeInfo ModeInfo;
+
+	/** Callback used to create an instance of this mode type */
+	FEditorModeFactoryCallback FactoryCallback;
+
+	/** Callback used to create an instance of this mode type */
+	FEditorModeFactoryDelegate FactoryDelegate;
+
+	/**
+	 * Gets the information pertaining to the mode type that this factory creates
+	 */
+	virtual FEditorModeInfo GetModeInfo() const override { return ModeInfo; }
+
+	virtual TSharedRef<FEdMode> CreateMode() const override { return FactoryCallback.Execute(); }
+
+	/**
+	* Create a new instance of our mode
+	*/
+	virtual UEdMode* CreateScriptableMode() const override { return FactoryDelegate.Execute(); }
+
+	virtual bool ForScriptableMode() const override { return true; }
 };
 
 /**
@@ -83,10 +157,19 @@ public:
 class FEditorModeRegistry
 {
 	typedef TMap<FEditorModeID, TSharedRef<IEditorModeFactory>> FactoryMap;
-	friend class ULegacyEdModeWrapper;
-	friend class UAssetEditorSubsystem;
 
 public:
+
+	/**
+	 * Initialize this registry
+	 */
+	static void Initialize();
+
+	/**
+	 * Shutdown this registry
+	 */
+	static void Shutdown();
+
 	/**
 	 * Singleton access
 	 */
@@ -95,13 +178,11 @@ public:
 	/**
 	 * Get a list of information for all currently registered modes, sorted by UI priority order
 	 */
-	UE_DEPRECATED(4.26, "Use UAssetEditorSubsystem::GetEditorModeInfoOrderedByPriority")
 	UNREALED_API TArray<FEditorModeInfo> GetSortedModeInfo() const;
 
 	/**
 	 * Get a currently registered mode information for specified ID
 	 */
-	UE_DEPRECATED(4.26, "Use UAssetEditorSubsystem::FindEditorModeInfo")
 	UNREALED_API FEditorModeInfo GetModeInfo(FEditorModeID ModeID) const;
 
 	/**
@@ -138,20 +219,30 @@ public:
 	/**
 	 * Event that is triggered whenever a mode is registered or unregistered
 	 */
-	UE_DEPRECATED(4.26, "Use UAssetEditorSubsystem::OnEditorModesChanged")
-	FRegisteredModesChangedEvent& OnRegisteredModesChanged();
+	DECLARE_EVENT(FEditorModeRegistry, FRegisteredModesChangedEvent);
+	FRegisteredModesChangedEvent& OnRegisteredModesChanged() { return RegisteredModesChanged; }
 	
 	/**
 	 * Event that is triggered whenever a mode is registered
 	 */
-	UE_DEPRECATED(4.26, "Use UAssetEditorSubsystem::OnEditorModeRegistered")
-	FOnModeRegistered& OnModeRegistered();
+	DECLARE_EVENT_OneParam(FEditorModeRegistry, FOnModeRegistered, FEditorModeID);
+	FOnModeRegistered& OnModeRegistered() { return OnModeRegisteredEvent; }
 	
 	/**
 	 * Event that is triggered whenever a mode is unregistered
 	 */
-	UE_DEPRECATED(4.26, "Use UAssetEditorSubsystem::OnEditorModeUnregistered")
-	FOnModeUnregistered& OnModeUnregistered();
+	DECLARE_EVENT_OneParam(FEditorModeRegistry, FOnModeUnregistered, FEditorModeID);
+	FOnModeUnregistered& OnModeUnregistered() { return OnModeUnregisteredEvent; }
+
+	/**
+	 * Create a new instance of the mode registered under the specified ID
+	 */
+	TSharedPtr<FEdMode> CreateMode(FEditorModeID ModeID, FEditorModeTools& Owner);
+
+	/**
+	 * Create a new instance of the mode registered under the specified ID
+	 */
+	UEdMode* CreateScriptableMode(FEditorModeID ModeID, FEditorModeTools& Owner);
 
 	/**
 	 * Const access to the internal factory map
@@ -160,23 +251,16 @@ public:
 
 
 private:
-	/**
-	 * Initialize this registry
-	 */
-	void Initialize();
-
-	/**
-	 * Shutdown this registry
-	 */
-	void Shutdown();
-
-	/**
-	 * Create a new instance of the mode registered under the specified ID
-	 */
-	TSharedPtr<FEdMode> CreateMode(FEditorModeID ModeID, FEditorModeTools& Owner);
 
 	/** A map of editor mode IDs to factory callbacks */
 	FactoryMap ModeFactories;
+	
+	/** Event that is triggered whenever a mode is registered or unregistered */
+	FRegisteredModesChangedEvent RegisteredModesChanged;
 
-	bool bInitialized = false;
+	/** Event that is triggered whenever a mode is registered */
+	FOnModeRegistered OnModeRegisteredEvent;
+
+	/** Event that is triggered whenever a mode is unregistered */
+	FOnModeUnregistered OnModeUnregisteredEvent;
 };

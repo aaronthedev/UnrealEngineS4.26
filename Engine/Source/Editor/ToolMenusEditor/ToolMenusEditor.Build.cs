@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -6,17 +6,13 @@ namespace UnrealBuildTool.Rules
 	{
 		public ToolMenusEditor(ReadOnlyTargetRules Target) : base(Target)
 		{
-			PublicDependencyModuleNames.AddRange(
-				new string[] {
-					"ToolMenus",
-				});
-
 			PrivateDependencyModuleNames.AddRange(
 				new string[] {
 					"Core",
 					"CoreUObject",
 					"Slate",
 					"SlateCore",
+					"ToolMenus",
 					"EditorStyle",
 					"UnrealEd",
 					"InputCore",

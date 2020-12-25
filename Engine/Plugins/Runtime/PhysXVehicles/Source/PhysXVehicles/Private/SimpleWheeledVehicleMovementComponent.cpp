@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SimpleWheeledVehicleMovementComponent.h"
 #include "Components/PrimitiveComponent.h"
@@ -7,8 +7,6 @@
 #include "PhysXPublic.h"
 #include "PhysXVehicleManager.h"
 #endif // WITH_PHYSX
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 void USimpleWheeledVehicleMovementComponent::SetBrakeTorque(float BrakeTorque, int32 WheelIndex)
 {
@@ -113,5 +111,3 @@ void USimpleWheeledVehicleMovementComponent::SetupVehicleDrive(PxVehicleWheelsSi
 }
 
 #endif // WITH_PHYSX_VEHICLES
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

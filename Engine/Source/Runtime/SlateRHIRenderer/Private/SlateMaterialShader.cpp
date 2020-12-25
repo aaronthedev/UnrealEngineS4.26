@@ -1,11 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SlateMaterialShader.h"
 #include "Materials/Material.h"
 #include "ShaderParameterUtils.h"
 
-IMPLEMENT_TYPE_LAYOUT(FSlateMaterialShaderVS);
-IMPLEMENT_TYPE_LAYOUT(FSlateMaterialShaderPS);
 
 FSlateMaterialShaderVS::FSlateMaterialShaderVS(const FMaterialShaderType::CompiledShaderInitializerType& Initializer)
 	: FMaterialShader(Initializer)
@@ -19,36 +17,36 @@ void FSlateMaterialShaderVS::ModifyCompilationEnvironment(const FMaterialShaderP
 {
 	// Set defines based on what this shader will be used for
 	OutEnvironment.SetDefine( TEXT("USE_MATERIALS"), 1 );
-	OutEnvironment.SetDefine( TEXT("NUM_CUSTOMIZED_UVS"), Parameters.MaterialParameters.NumCustomizedUVs );
-	OutEnvironment.SetDefine( TEXT("HAS_SCREEN_POSITION"), (bool)Parameters.MaterialParameters.bHasVertexPositionOffsetConnected );
+	OutEnvironment.SetDefine( TEXT("NUM_CUSTOMIZED_UVS"), Parameters.Material->GetNumCustomizedUVs() );
+	OutEnvironment.SetDefine( TEXT("HAS_SCREEN_POSITION"), Parameters.Material->HasVertexPositionOffsetConnected() );
 
 	FMaterialShader::ModifyCompilationEnvironment( Parameters, OutEnvironment );
 }
 
 bool FSlateMaterialShaderVS::ShouldCompilePermutation(const FMaterialShaderPermutationParameters& Parameters)
 {
-	return Parameters.MaterialParameters.MaterialDomain == MD_UI;
+	return Parameters.Material->GetMaterialDomain() == MD_UI;
 }
 
 void FSlateMaterialShaderVS::SetViewProjection(FRHICommandList& RHICmdList, const FMatrix& InViewProjection )
 {
-	SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), ViewProjection, InViewProjection );
+	SetShaderValue(RHICmdList, GetVertexShader(), ViewProjection, InViewProjection );
 }
 
 void FSlateMaterialShaderVS::SetMaterialShaderParameters(FRHICommandList& RHICmdList, const FSceneView& View, const FMaterialRenderProxy* MaterialRenderProxy, const FMaterial* Material)
 {
-	FRHIVertexShader* ShaderRHI = RHICmdList.GetBoundVertexShader();
-	SetViewParameters(RHICmdList, ShaderRHI, View, View.ViewUniformBuffer);
-	FMaterialShader::SetParameters<FRHIVertexShader>(RHICmdList, ShaderRHI, MaterialRenderProxy, *Material, View);
+	FRHIVertexShader* ShaderRHI = GetVertexShader();
+
+	FMaterialShader::SetParameters<FRHIVertexShader>(RHICmdList, ShaderRHI, MaterialRenderProxy, *Material, View, View.ViewUniformBuffer, ESceneTextureSetupMode::None);
 }
 
 void FSlateMaterialShaderVS::SetVerticalAxisMultiplier(FRHICommandList& RHICmdList, float InMultiplier )
 {
-	SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), SwitchVerticalAxisMultiplier, InMultiplier );
+	SetShaderValue(RHICmdList, GetVertexShader(), SwitchVerticalAxisMultiplier, InMultiplier );
 }
 
 
-/*bool FSlateMaterialShaderVS::Serialize(FArchive& Ar)
+bool FSlateMaterialShaderVS::Serialize(FArchive& Ar)
 {
 	bool bShaderHasOutdatedParameters = FMaterialShader::Serialize(Ar);
 
@@ -56,12 +54,12 @@ void FSlateMaterialShaderVS::SetVerticalAxisMultiplier(FRHICommandList& RHICmdLi
 	Ar << SwitchVerticalAxisMultiplier;
 
 	return bShaderHasOutdatedParameters;
-}*/
+}
 
 
 bool FSlateMaterialShaderPS::ShouldCompilePermutation(const FMaterialShaderPermutationParameters& Parameters)
 {
-	return Parameters.MaterialParameters.MaterialDomain == MD_UI;
+	return Parameters.Material->GetMaterialDomain() == MD_UI;
 }
 
 
@@ -69,7 +67,7 @@ void FSlateMaterialShaderPS::ModifyCompilationEnvironment(const FMaterialShaderP
 {
 	// Set defines based on what this shader will be used for
 	OutEnvironment.SetDefine( TEXT("USE_MATERIALS"), 1 );
-	OutEnvironment.SetDefine( TEXT("NUM_CUSTOMIZED_UVS"), Parameters.MaterialParameters.NumCustomizedUVs);
+	OutEnvironment.SetDefine( TEXT("NUM_CUSTOMIZED_UVS"), Parameters.Material->GetNumCustomizedUVs() );
 
 	FMaterialShader::ModifyCompilationEnvironment( Parameters, OutEnvironment );
 }
@@ -122,31 +120,42 @@ void FSlateMaterialShaderPS::SetBlendState(FGraphicsPipelineStateInitializer& Gr
 
 void FSlateMaterialShaderPS::SetParameters(FRHICommandList& RHICmdList, const FSceneView& View, const FMaterialRenderProxy* MaterialRenderProxy, const FMaterial* Material, const FVector4& InShaderParams)
 {
-	FRHIPixelShader* ShaderRHI = RHICmdList.GetBoundPixelShader();
+	FRHIPixelShader* ShaderRHI = GetPixelShader();
 
 	SetShaderValue( RHICmdList, ShaderRHI, ShaderParams, InShaderParams );
 
-	SetViewParameters(RHICmdList, ShaderRHI, View, View.ViewUniformBuffer);
-	FMaterialShader::SetParameters<FRHIPixelShader>(RHICmdList, ShaderRHI, MaterialRenderProxy, *Material, View);
+	const ESceneTextureSetupMode SceneTextures = ESceneTextureSetupMode::SceneDepth | ESceneTextureSetupMode::SSAO | ESceneTextureSetupMode::CustomDepth; // TODO - SSAO valid here?
+	FMaterialShader::SetParameters<FRHIPixelShader>(RHICmdList, ShaderRHI, MaterialRenderProxy, *Material, View, View.ViewUniformBuffer, SceneTextures);
 }
 
 void FSlateMaterialShaderPS::SetAdditionalTexture( FRHICommandList& RHICmdList, FRHITexture* InTexture, const FSamplerStateRHIRef SamplerState )
 {
-	SetTextureParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), AdditionalTextureParameter, TextureParameterSampler, SamplerState, InTexture );
+	SetTextureParameter(RHICmdList, GetPixelShader(), AdditionalTextureParameter, TextureParameterSampler, SamplerState, InTexture );
 }
 
 void FSlateMaterialShaderPS::SetDisplayGammaAndContrast(FRHICommandList& RHICmdList, float InDisplayGamma, float InContrast)
 {
 	FVector4 InGammaValues(2.2f / InDisplayGamma, 1.0f / InDisplayGamma, 0.0f, InContrast);
 
-	SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), GammaAndAlphaValues, InGammaValues);
+	SetShaderValue(RHICmdList, GetPixelShader(), GammaAndAlphaValues, InGammaValues);
 }
 
 void FSlateMaterialShaderPS::SetDrawFlags(FRHICommandList& RHICmdList, bool bDrawDisabledEffect)
 {
 	FVector4 InDrawFlags(bDrawDisabledEffect ? 1 : 0, 0, 0, 0);
 
-	SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), DrawFlags, InDrawFlags);
+	SetShaderValue(RHICmdList, GetPixelShader(), DrawFlags, InDrawFlags);
+}
+
+bool FSlateMaterialShaderPS::Serialize(FArchive& Ar)
+{
+	bool bShaderHasOutdatedParameters = FMaterialShader::Serialize(Ar);
+	Ar << GammaAndAlphaValues;
+	Ar << DrawFlags;
+	Ar << ShaderParams;
+	Ar << TextureParameterSampler;
+	Ar << AdditionalTextureParameter;
+	return bShaderHasOutdatedParameters;
 }
 
 

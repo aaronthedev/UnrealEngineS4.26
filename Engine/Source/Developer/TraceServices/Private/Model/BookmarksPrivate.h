@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,15 +13,15 @@ class FStringStore;
 
 struct FBookmarkSpec
 {
-	const TCHAR* File = nullptr;
-	const TCHAR* FormatString = nullptr;
-	int32 Line = 0;
+	const TCHAR* File;
+	const TCHAR* FormatString;
+	int32 Line;
 };
 
 struct FBookmarkInternal
 {
-	double Time = 0.0;
-	const TCHAR* Text = nullptr;
+	double Time;
+	const TCHAR* Text;
 };
 
 class FBookmarkProvider

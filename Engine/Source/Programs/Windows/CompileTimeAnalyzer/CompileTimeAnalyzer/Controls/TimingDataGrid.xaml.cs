@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -14,16 +14,14 @@ namespace Timing_Data_Investigator.Controls
 	/// Interaction logic for TimingDataGrid.xaml
 	/// </summary>
 	public partial class TimingDataGrid : UserControl
-	{
-		private DataGridColumn SortingColumn = null;
-
-		public TimingDataGrid()
-		{
+    {
+        public TimingDataGrid()
+        {
 			InitializeComponent();
-		}
+        }
 
-		private void Grid_Sorting(object sender, DataGridSortingEventArgs e)
-		{
+        private void Grid_Sorting(object sender, DataGridSortingEventArgs e)
+        {
 			switch (e.Column.SortDirection)
 			{
 				case ListSortDirection.Ascending:
@@ -45,55 +43,67 @@ namespace Timing_Data_Investigator.Controls
 					}
 			}
 
-			SortingColumn = e.Column;
-			SortNodes();
-			e.Handled = true;
-		}
-
-		private void SortNodes()
-		{
-			if (SortingColumn == null)
-			{
-				SortingColumn = Grid.Columns[2];
-			}
-
 			TreeGridFlatModel GridModel = (TreeGridFlatModel)DataContext;
-			PropertyInfo SortProperty = typeof(TimingDataViewModel).GetProperty(SortingColumn.SortMemberPath);
-			GridModel.Sort(SortProperty, SortingColumn.SortDirection);
-		}
+			PropertyInfo SortProperty = typeof(TimingDataViewModel).GetProperty(e.Column.SortMemberPath);
+			GridModel.Sort(SortProperty, e.Column.SortDirection);
 
-		private void Grid_KeyDown(object sender, KeyEventArgs e)
+            e.Handled = true;
+        }
+
+		private void SortNodes(ObservableCollection<TreeGridElement> NewFlatModel, TreeGridElement Node, ListSortDirection SortDirection, PropertyInfo SortProperty)
 		{
-			TreeGridElement SelectedData = Grid.SelectedItem as TreeGridElement;
-			if (SelectedData == null)
+			NewFlatModel.Add(Node);
+			if (Node.IsExpanded && Node.HasChildren)
 			{
-				return;
-			}
-
-			if (e.Key == Key.Right && !SelectedData.IsExpanded)
-			{
-				SelectedData.IsExpanded = true;
-				e.Handled = true;
-			}
-			else if (e.Key == Key.Left)
-			{
-				while (SelectedData != null)
+				IOrderedEnumerable<TreeGridElement> SortedChildren;
+				if (SortDirection == ListSortDirection.Ascending)
 				{
-					if (SelectedData.IsExpanded)
-					{
-						SelectedData.IsExpanded = false;
-						Grid.SelectedItem = SelectedData;
-						Grid.ScrollIntoView(SelectedData);
-						DataGridRow Row = (DataGridRow)Grid.ItemContainerGenerator.ContainerFromItem(SelectedData);
-						Row.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
-						e.Handled = true;
-						break;
-					}
+					SortedChildren = Node.Children.OrderBy(c => SortProperty.GetValue(c));
+				}
+				else
+				{
+					SortedChildren = Node.Children.OrderByDescending(c => SortProperty.GetValue(c));
+				}
 
-					SelectedData = SelectedData.Parent as TreeGridElement;
+				foreach (TreeGridElement Child in SortedChildren)
+				{
+					SortNodes(NewFlatModel, Child, SortDirection, SortProperty);
 				}
 			}
 		}
+
+        private void Grid_KeyDown(object sender, KeyEventArgs e)
+        {
+			TreeGridElement SelectedData = Grid.SelectedItem as TreeGridElement;
+            if (SelectedData == null)
+            {
+                return;
+            }
+
+            if (e.Key == Key.Right && !SelectedData.IsExpanded)
+            {
+                SelectedData.IsExpanded = true;
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Left)
+            {
+                while (SelectedData != null)
+                {
+                    if (SelectedData.IsExpanded)
+                    {
+                        SelectedData.IsExpanded = false;
+                        Grid.SelectedItem = SelectedData;
+                        Grid.ScrollIntoView(SelectedData);
+						DataGridRow Row = (DataGridRow)Grid.ItemContainerGenerator.ContainerFromItem(SelectedData);
+                        Row.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+                        e.Handled = true;
+                        break;
+                    }
+
+                    SelectedData = SelectedData.Parent as TreeGridElement;
+                }
+            }
+        }
 
 		private void Button_Click(object sender, System.Windows.RoutedEventArgs e)
 		{
@@ -104,10 +114,6 @@ namespace Timing_Data_Investigator.Controls
 			}
 
 			SelectedData.IsExpanded = !SelectedData.IsExpanded;
-			if (SelectedData.IsExpanded)
-			{
-				SortNodes();
-			}
 		}
 	}
 }

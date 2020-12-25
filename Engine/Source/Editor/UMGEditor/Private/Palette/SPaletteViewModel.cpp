@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Palette/SPaletteViewModel.h"
 #include "Palette/SPaletteView.h"
@@ -410,13 +410,9 @@ void FPaletteViewModel::BuildClassWidgetList()
 				WidgetBPClass = *LoadedWidgetBPClass;
 			}
 
-			uint32 BPFlags = WidgetBPAssetData.GetTagValueRef<uint32>(FBlueprintTags::ClassFlags);
-			if (!(BPFlags & (CLASS_Abstract | CLASS_Deprecated)))
-			{
-				auto Template = MakeShareable(new FWidgetTemplateBlueprintClass(WidgetBPAssetData, WidgetBPClass));
+			auto Template = MakeShareable(new FWidgetTemplateBlueprintClass(WidgetBPAssetData, WidgetBPClass));
 
-				AddWidgetTemplate(Template);
-			}
+			AddWidgetTemplate(Template);
 		}
 	}
 }

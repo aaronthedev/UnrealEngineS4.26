@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -65,18 +65,14 @@ class ListThirdPartySoftware : BuildCommand
 			{
 				JsonObject Module = Modules.GetObjectField(ModuleName);
 				DirectoriesToScan.Add(new DirectoryReference(Module.GetStringField("Directory")));
-				
-				JsonObject[] RuntimeDependencies;
-				if (Module.TryGetObjectArrayField("RuntimeDependencies", out RuntimeDependencies))
+
+				foreach(JsonObject RuntimeDependency in Module.GetObjectArrayField("RuntimeDependencies"))
 				{
-					foreach (JsonObject RuntimeDependency in RuntimeDependencies)
+					string RuntimeDependencyPath;
+					if(RuntimeDependency.TryGetStringField("SourcePath", out RuntimeDependencyPath) || RuntimeDependency.TryGetStringField("Path", out RuntimeDependencyPath))
 					{
-						string RuntimeDependencyPath;
-						if (RuntimeDependency.TryGetStringField("SourcePath", out RuntimeDependencyPath) || RuntimeDependency.TryGetStringField("Path", out RuntimeDependencyPath))
-						{
-							List<FileReference> Files = FileFilter.ResolveWildcard(DirectoryReference.Combine(CommandUtils.EngineDirectory, "Source"), RuntimeDependencyPath);
-							DirectoriesToScan.UnionWith(Files.Select(x => x.Directory));
-						}
+						List<FileReference> Files = FileFilter.ResolveWildcard(DirectoryReference.Combine(CommandUtils.EngineDirectory, "Source"), RuntimeDependencyPath);
+						DirectoriesToScan.UnionWith(Files.Select(x => x.Directory));
 					}
 				}
 			}
@@ -93,7 +89,7 @@ class ListThirdPartySoftware : BuildCommand
 
 			// Get the platforms to exclude
 			List<UnrealTargetPlatform> SupportedPlatforms = new List<UnrealTargetPlatform> { UnrealTargetPlatform.Parse(Object.GetStringField("Platform")) };
-			string[] ExcludePlatformNames = Utils.MakeListOfUnsupportedPlatforms(SupportedPlatforms, bIncludeUnbuildablePlatforms: true).ToArray();
+			string[] ExcludePlatformNames = Utils.MakeListOfUnsupportedPlatforms(SupportedPlatforms).ToArray();
 
 			// Find all the TPS files under the engine directory which match
 			foreach(DirectoryReference DirectoryToScan in SortedDirectoriesToScan)

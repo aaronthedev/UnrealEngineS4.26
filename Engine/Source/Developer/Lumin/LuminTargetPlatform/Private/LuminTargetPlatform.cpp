@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LuminTargetPlatform.h"
 #include "CoreTypes.h"
@@ -104,10 +104,12 @@ void FLuminTargetPlatform::RefreshSettings()
 	// If we are targeting ES 2.0/3.1, we also must cook encoded HDR reflection captures
 	static FName NAME_VULKAN_ES31(TEXT("SF_VULKAN_ES31_LUMIN"));
 	static FName NAME_VULKAN_ES31_NOUB(TEXT("SF_VULKAN_ES31_LUMIN_NOUB"));
-	static FName NAME_GLSL_ES3_1_ANDROID(TEXT("GLSL_ES3_1_ANDROID"));
+	static FName NAME_GLSL_ES2(TEXT("GLSL_ES2"));
+	static FName NAME_GLSL_SM5(TEXT("GLSL_430"));
 	bRequiresEncodedHDRReflectionCaptures = TargetedShaderFormats.Contains(NAME_VULKAN_ES31)
 		|| TargetedShaderFormats.Contains(NAME_VULKAN_ES31_NOUB)
-		|| TargetedShaderFormats.Contains(NAME_GLSL_ES3_1_ANDROID);
+		|| TargetedShaderFormats.Contains(NAME_GLSL_ES2)
+		|| TargetedShaderFormats.Contains(NAME_GLSL_SM5);
 
 #if WITH_EDITOR
 	//ensure that we wipe out the material cached data before we begin serializing.  It is cleared *after* a serialize, but changes made ini files will not be taken into account for materials without this
@@ -175,7 +177,10 @@ void FLuminTargetPlatform::InitializeDeviceDetection()
 void FLuminTargetPlatform::GetAllPossibleShaderFormats( TArray<FName>& OutFormats ) const
 {
 	// @todo Lumin: re-use Android version? Make sure Android has VULKAN_SM5
-	static FName NAME_GLSL_ES3_1_ANDROID(TEXT("GLSL_ES3_1_ANDROID"));
+	static FName NAME_GLSL_ES2(TEXT("GLSL_ES2"));
+//	static FName NAME_GLSL_310_ES_EXT(TEXT("GLSL_310_ES_EXT"));
+//	static FName NAME_GLSL_SM4(TEXT("GLSL_150"));
+	static FName NAME_GLSL_SM5(TEXT("GLSL_430"));
 	static FName NAME_VULKAN_SM5_LUMIN(TEXT("SF_VULKAN_SM5_LUMIN"));
 	static FName NAME_VULKAN_SM5_LUMIN_NOUB(TEXT("SF_VULKAN_SM5_LUMIN_NOUB"));
 	static FName NAME_VULKAN_ES31_LUMIN(TEXT("SF_VULKAN_ES31_LUMIN"));
@@ -192,7 +197,7 @@ void FLuminTargetPlatform::GetAllPossibleShaderFormats( TArray<FName>& OutFormat
 		}
 		else
 		{
-			OutFormats.AddUnique(NAME_GLSL_ES3_1_ANDROID);
+			OutFormats.AddUnique(NAME_GLSL_ES2);
 		}
 	}
 
@@ -201,6 +206,10 @@ void FLuminTargetPlatform::GetAllPossibleShaderFormats( TArray<FName>& OutFormat
 		if (LuminSupportsVulkan(LuminEngineSettings))
 		{
 			OutFormats.AddUnique(bUseNOUB ? NAME_VULKAN_SM5_LUMIN_NOUB : NAME_VULKAN_SM5_LUMIN);
+		}
+		else
+		{
+			OutFormats.AddUnique(NAME_GLSL_SM5);
 		}
 	}
 }

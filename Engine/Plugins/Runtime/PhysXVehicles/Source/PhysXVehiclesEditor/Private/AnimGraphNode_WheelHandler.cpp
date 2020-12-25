@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimGraphNode_WheelHandler.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -8,8 +8,6 @@
 // UAnimGraphNode_WheelHandler
 
 #define LOCTEXT_NAMESPACE "A3Nodes"
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 UAnimGraphNode_WheelHandler::UAnimGraphNode_WheelHandler(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -59,5 +57,3 @@ bool UAnimGraphNode_WheelHandler::IsCompatibleWithGraph(const UEdGraph* TargetGr
 }
 
 #undef LOCTEXT_NAMESPACE
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

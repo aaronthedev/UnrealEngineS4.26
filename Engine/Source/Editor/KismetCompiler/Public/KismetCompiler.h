@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -55,7 +55,7 @@ protected:
 	TMap< TSubclassOf<class UEdGraphNode>, FNodeHandlingFunctor*> NodeHandlers;
 
 	// Map of properties created for timelines; to aid in debug data generation
-	TMap<class UTimelineTemplate*, class FProperty*> TimelineToMemberVariableMap;
+	TMap<class UTimelineTemplate*, class UProperty*> TimelineToMemberVariableMap;
 
 	// Map from UProperties to default object values, to be fixed up after compilation is complete
 	TMap<FName, FString> DefaultPropertyValueMap;
@@ -135,9 +135,12 @@ public:
 	FLinkerLoad* OldLinker;
 	UBlueprintGeneratedClass* TargetClass;
 
-	// Flag to trigger FMulticastDelegateProperty::SignatureFunction resolution in 
+	// Flag to trigger UMulticastDelegateProperty::SignatureFunction resolution in 
 	// CreateClassVariablesFromBlueprint:
 	bool bAssignDelegateSignatureFunction;
+
+	// Flag to trigger ProcessLinkedGraph in CreateClassVariablesFromBlueprint:
+	bool bGenerateLinkedAnimGraphVariables;
 
 	static FSimpleMulticastDelegate OnPreCompile;
 	static FSimpleMulticastDelegate OnPostCompile;
@@ -285,13 +288,6 @@ public:
 	/** Ensures that all component class overrides are legal overrides of the parent class */
 	void ValidateComponentClassOverrides();
 
-	/**
-	* Ensures that all class reference Properties are legal overrides of the parent class
-	* by checking the default value set on any PC_Class variable types. Requires a 
-	* valid CDO in order to do this validation. Called in Stage V: Validate 
-	*/
-	void ValidateClassPropertyDefaults();
-
 	/** Creates a class variable for each entry in the Blueprint NewVars array */
 	virtual void CreateClassVariablesFromBlueprint();
 
@@ -351,9 +347,6 @@ protected:
 	 */
 	void CheckConnectionResponse(const FPinConnectionResponse &Response, const UEdGraphNode *Node);
 
-	/** Prune isolated nodes given the specified graph */
-	void PruneIsolatedNodes(UEdGraph* InGraph, bool bInIncludeNodesThatCouldBeExpandedToRootSet);
-
 protected:
 	// FGraphCompilerContext interface
 	virtual void ValidateLink(const UEdGraphPin* PinA, const UEdGraphPin* PinB) const override;
@@ -378,7 +371,7 @@ protected:
 	void CreateCommentBlockAroundNodes(const TArray<UEdGraphNode*>& Nodes, UObject* SourceObject, UEdGraph* TargetGraph, FString CommentText, FLinearColor CommentColor, int32& Out_OffsetX, int32& Out_OffsetY);
 
 	/** Creates a class variable */
-	FProperty* CreateVariable(const FName Name, const FEdGraphPinType& Type);
+	UProperty* CreateVariable(const FName Name, const FEdGraphPinType& Type);
 
 	// Gives derived classes a chance to emit debug data
 	virtual void PostCompileDiagnostics() {}
@@ -387,29 +380,26 @@ protected:
 	virtual void PreCompile() { OnPreCompile.Broadcast(); }
 	virtual void PostCompile() { OnPostCompile.Broadcast(); }
 
-	// Gives derived classes a chance to process post-node expansion
-	virtual void PostExpansionStep(const UEdGraph* Graph) {}
-
 	/** Determines if a node is pure */
 	virtual bool IsNodePure(const UEdGraphNode* Node) const;
 
 	/** Creates a property with flags including PropertyFlags in the Scope structure for each entry in the Terms array */
-	void CreatePropertiesFromList(UStruct* Scope, FField**& PropertyStorageLocation, TIndirectArray<FBPTerminal>& Terms, EPropertyFlags PropertyFlags, bool bPropertiesAreLocal, bool bPropertiesAreParameters = false);
+	void CreatePropertiesFromList(UStruct* Scope, UField**& PropertyStorageLocation, TIndirectArray<FBPTerminal>& Terms, EPropertyFlags PropertyFlags, bool bPropertiesAreLocal, bool bPropertiesAreParameters = false);
 
 	/** Create the properties on a function for input/output parameters */
-	void CreateParametersForFunction(FKismetFunctionContext& Context, UFunction* ParameterSignature, FField**& FunctionPropertyStorageLocation);
+	void CreateParametersForFunction(FKismetFunctionContext& Context, UFunction* ParameterSignature, UField**& FunctionPropertyStorageLocation);
 
 	/** Creates the properties on a function that store the local and event graph (if applicable) variables */
-	void CreateLocalVariablesForFunction(FKismetFunctionContext& Context, FField**& FunctionPropertyStorageLocation);
+	void CreateLocalVariablesForFunction(FKismetFunctionContext& Context, UField**& FunctionPropertyStorageLocation);
 
 	/** Creates user defined local variables for function */
-	void CreateUserDefinedLocalVariablesForFunction(FKismetFunctionContext& Context, FField**& FunctionPropertyStorageLocation);
+	void CreateUserDefinedLocalVariablesForFunction(FKismetFunctionContext& Context, UField**& FunctionPropertyStorageLocation);
 
 	/** Helper function for CreateUserDefinedLocalVariablesForFunction and compilation manager's FastGenerateSkeletonClass: */
-	static FProperty* CreateUserDefinedLocalVariableForFunction(const FBPVariableDescription& Variable, UFunction* Function, UBlueprintGeneratedClass* OwningClass, FField**& FunctionPropertyStorageLocation, const UEdGraphSchema_K2* Schema, FCompilerResultsLog& MessageLog);
+	static UProperty* CreateUserDefinedLocalVariableForFunction(const FBPVariableDescription& Variable, UFunction* Function, UBlueprintGeneratedClass* OwningClass, UField**& FunctionPropertyStorageLocation, const UEdGraphSchema_K2* Schema, FCompilerResultsLog& MessageLog);
 
 	/** Adds a default value entry into the DefaultPropertyValueMap for the property specified */
-	void SetPropertyDefaultValue(const FProperty* PropertyToSet, FString& Value);
+	void SetPropertyDefaultValue(const UProperty* PropertyToSet, FString& Value);
 
 	/** Copies default values cached for the terms in the DefaultPropertyValueMap to the final CDO */
 	virtual void CopyTermDefaultsToDefaultObject(UObject* DefaultObject);
@@ -511,10 +501,6 @@ protected:
 	virtual void PrecompileFunction(FKismetFunctionContext& Context, EInternalCompilerFlags InternalFlags);
 
 	/**
-	 * Used for performing custom patching during stage IX of the compilation during load.
-	 */
-	virtual void PreCompileUpdateBlueprintOnLoad(UBlueprint* BP) {}
-	/**
 	 * Second phase of compiling a function graph
 	 *   - Generates an executable statement list
 	 */
@@ -583,7 +569,7 @@ protected:
 	void DetermineNodeExecLinks(UEdGraphNode* SourceNode, TMap<UEdGraphPin*, UEdGraphPin*>& SourceNodeLinks) const;
 
 private:
-	void CreateLocalsAndRegisterNets(FKismetFunctionContext& Context, FField**& FunctionPropertyStorageLocation);
+	void CreateLocalsAndRegisterNets(FKismetFunctionContext& Context, UField**& FunctionPropertyStorageLocation);
 
 	/**
 	 * Handles creating a new event node for a given output on a timeline node utilizing the named function

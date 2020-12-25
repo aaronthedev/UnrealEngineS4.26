@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Kismet/KismetSystemLibrary.h"
 #include "HAL/IConsoleManager.h"
@@ -36,34 +36,13 @@
 #include "KismetTraceUtils.h"
 #include "Engine/AssetManager.h"
 #include "HAL/PlatformApplicationMisc.h"
-#include "UObject/FieldPathProperty.h"
-#include "Commandlets/Commandlet.h"
-#include "PlatformFeatures.h"
 
 //////////////////////////////////////////////////////////////////////////
 // UKismetSystemLibrary
 
-#define LOCTEXT_NAMESPACE "UKismetSystemLibrary"
-
-const FName PropertyGetFailedWarning = FName("PropertyGetFailedWarning");
-const FName PropertySetFailedWarning = FName("PropertySetFailedWarning");
-
 UKismetSystemLibrary::UKismetSystemLibrary(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	FBlueprintSupport::RegisterBlueprintWarning(
-		FBlueprintWarningDeclaration(
-			PropertyGetFailedWarning,
-			LOCTEXT("PropertyGetFailedWarning", "Property Get Failed")
-		)
-	);
-
-	FBlueprintSupport::RegisterBlueprintWarning(
-		FBlueprintWarningDeclaration(
-			PropertySetFailedWarning,
-			LOCTEXT("PropertySetFailedWarning", "Property Set Failed")
-		)
-	);
 }
 
 void UKismetSystemLibrary::StackTraceImpl(const FFrame& StackFrame)
@@ -80,21 +59,6 @@ FString UKismetSystemLibrary::GetObjectName(const UObject* Object)
 FString UKismetSystemLibrary::GetPathName(const UObject* Object)
 {
 	return GetPathNameSafe(Object);
-}
-
-FString UKismetSystemLibrary::GetSystemPath(const UObject* Object)
-{
-	if (Object && Object->IsAsset())
-	{
-		FString PackageFileName;
-		FString PackageFile;
-		if (FPackageName::TryConvertLongPackageNameToFilename(Object->GetPackage()->GetName(), PackageFileName) &&
-			FPackageName::FindPackageFileWithoutExtension(PackageFileName, PackageFile))
-		{
-			return FPaths::ConvertRelativePathToFull(MoveTemp(PackageFile));
-		}
-	}
-	return FString();
 }
 
 FString UKismetSystemLibrary::GetDisplayName(const UObject* Object)
@@ -176,12 +140,7 @@ FString UKismetSystemLibrary::GetPlatformUserName()
 	return FString(FPlatformProcess::UserName());
 }
 
-FString UKismetSystemLibrary::GetPlatformUserDir()
-{
-	return FString(FPlatformProcess::UserDir());
-}
-
-bool UKismetSystemLibrary::DoesImplementInterface(const UObject* TestObject, TSubclassOf<UInterface> Interface)
+bool UKismetSystemLibrary::DoesImplementInterface(UObject* TestObject, TSubclassOf<UInterface> Interface)
 {
 	if (Interface != NULL && TestObject != NULL)
 	{
@@ -192,7 +151,7 @@ bool UKismetSystemLibrary::DoesImplementInterface(const UObject* TestObject, TSu
 	return false;
 }
 
-float UKismetSystemLibrary::GetGameTimeInSeconds(const UObject* WorldContextObject)
+float UKismetSystemLibrary::GetGameTimeInSeconds(UObject* WorldContextObject)
 {
 	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
 	return World ? World->GetTimeSeconds() : 0.f;
@@ -203,13 +162,13 @@ int64 UKismetSystemLibrary::GetFrameCount()
 	return (int64) GFrameCounter;
 }
 
-bool UKismetSystemLibrary::IsServer(const UObject* WorldContextObject)
+bool UKismetSystemLibrary::IsServer(UObject* WorldContextObject)
 {
 	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
 	return World ? (World->GetNetMode() != NM_Client) : false;
 }
 
-bool UKismetSystemLibrary::IsDedicatedServer(const UObject* WorldContextObject)
+bool UKismetSystemLibrary::IsDedicatedServer(UObject* WorldContextObject)
 {
 	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
 	if (World)
@@ -219,16 +178,10 @@ bool UKismetSystemLibrary::IsDedicatedServer(const UObject* WorldContextObject)
 	return IsRunningDedicatedServer();
 }
 
-bool UKismetSystemLibrary::IsStandalone(const UObject* WorldContextObject)
+bool UKismetSystemLibrary::IsStandalone(UObject* WorldContextObject)
 {
 	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
 	return World ? (World->GetNetMode() == NM_Standalone) : false;
-}
-
-bool UKismetSystemLibrary::IsSplitScreen(const UObject* WorldContextObject)
-{
-	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
-	return World ? GEngine->IsSplitScreen(World) : false;
 }
 
 bool UKismetSystemLibrary::IsPackagedForDistribution()
@@ -238,7 +191,9 @@ bool UKismetSystemLibrary::IsPackagedForDistribution()
 
 FString UKismetSystemLibrary::GetUniqueDeviceId()
 {
-	return FString();
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	return FPlatformMisc::GetUniqueDeviceId();
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 FString UKismetSystemLibrary::GetDeviceId()
@@ -251,7 +206,7 @@ UObject* UKismetSystemLibrary::Conv_InterfaceToObject(const FScriptInterface& In
 	return Interface.GetObject();
 }
 
-void UKismetSystemLibrary::PrintString(const UObject* WorldContextObject, const FString& InString, bool bPrintToScreen, bool bPrintToLog, FLinearColor TextColor, float Duration)
+void UKismetSystemLibrary::PrintString(UObject* WorldContextObject, const FString& InString, bool bPrintToScreen, bool bPrintToLog, FLinearColor TextColor, float Duration)
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST) // Do not Print in Shipping or Test
 
@@ -264,9 +219,7 @@ void UKismetSystemLibrary::PrintString(const UObject* WorldContextObject, const 
 			switch(World->GetNetMode())
 			{
 				case NM_Client:
-					// GPlayInEditorID 0 is always the server, so 1 will be first client.
-					// You want to keep this logic in sync with GeneratePIEViewportWindowTitle and UpdatePlayInEditorWorldDebugString
-					Prefix = FString::Printf(TEXT("Client %d: "), GPlayInEditorID);
+					Prefix = FString::Printf(TEXT("Client %d: "), GPlayInEditorID - 1);
 					break;
 				case NM_DedicatedServer:
 				case NM_ListenServer:
@@ -323,7 +276,7 @@ void UKismetSystemLibrary::PrintString(const UObject* WorldContextObject, const 
 #endif
 }
 
-void UKismetSystemLibrary::PrintText(const UObject* WorldContextObject, const FText InText, bool bPrintToScreen, bool bPrintToLog, FLinearColor TextColor, float Duration)
+void UKismetSystemLibrary::PrintText(UObject* WorldContextObject, const FText InText, bool bPrintToScreen, bool bPrintToLog, FLinearColor TextColor, float Duration)
 {
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST) // Do not Print in Shipping or Test
 	PrintString(WorldContextObject, InText.ToString(), bPrintToScreen, bPrintToLog, TextColor, Duration);
@@ -350,7 +303,7 @@ void UKismetSystemLibrary::SetWindowTitle(const FText& Title)
 	}
 }
 
-void UKismetSystemLibrary::ExecuteConsoleCommand(const UObject* WorldContextObject, const FString& Command, APlayerController* Player)
+void UKismetSystemLibrary::ExecuteConsoleCommand(UObject* WorldContextObject, const FString& Command, APlayerController* Player)
 {
 	// First, try routing through the primary player
 	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::ReturnNull);
@@ -369,10 +322,10 @@ float UKismetSystemLibrary::GetConsoleVariableFloatValue(const FString& Variable
 {
 	float Value = 0.0f;
 
-	IConsoleVariable* Variable = IConsoleManager::Get().FindConsoleVariable(*VariableName);
+	TConsoleVariableData<float>* Variable = IConsoleManager::Get().FindTConsoleVariableDataFloat(*VariableName);
 	if (Variable)
 	{
-		Value = Variable->GetFloat();
+		Value = Variable->GetValueOnGameThread();
 	}
 	else
 	{
@@ -386,10 +339,10 @@ int32 UKismetSystemLibrary::GetConsoleVariableIntValue(const FString& VariableNa
 {
 	int32 Value = 0;
 
-	IConsoleVariable* Variable = IConsoleManager::Get().FindConsoleVariable(*VariableName);
+	TConsoleVariableData<int32>* Variable = IConsoleManager::Get().FindTConsoleVariableDataInt(*VariableName);
 	if (Variable)
 	{
-		Value = Variable->GetInt();
+		Value = Variable->GetValueOnGameThread();
 	}
 	else
 	{
@@ -405,7 +358,7 @@ bool UKismetSystemLibrary::GetConsoleVariableBoolValue(const FString& VariableNa
 }
 
 
-void UKismetSystemLibrary::QuitGame(const UObject* WorldContextObject, class APlayerController* SpecificPlayer, TEnumAsByte<EQuitPreference::Type> QuitPreference, bool bIgnorePlatformRestrictions)
+void UKismetSystemLibrary::QuitGame(UObject* WorldContextObject, class APlayerController* SpecificPlayer, TEnumAsByte<EQuitPreference::Type> QuitPreference, bool bIgnorePlatformRestrictions)
 {
 	APlayerController* TargetPC = SpecificPlayer ? SpecificPlayer : UGameplayStatics::GetPlayerController(WorldContextObject, 0);
 	if( TargetPC )
@@ -463,6 +416,12 @@ FTimerHandle UKismetSystemLibrary::K2_SetTimer(UObject* Object, FString Function
 		}
 	}
 
+	InitialStartDelay += FMath::RandRange(-InitialStartDelayVariance, InitialStartDelayVariance);
+	if (Time <= 0.f || ((Time + InitialStartDelay) - InitialStartDelayVariance) < 0.f)
+	{
+		FFrame::KismetExecutionMessage(TEXT("SetTimer passed a negative time.  The associated timer may fail to fire!  If using InitialStartDelayVariance, be sure it is smaller than (Time + InitialStartDelay)."), ELogVerbosity::Warning);
+	}
+
 	FTimerDynamicDelegate Delegate;
 	Delegate.BindUFunction(Object, FunctionFName);
 	return K2_SetTimerDelegate(Delegate, Time, bLooping, InitialStartDelay);
@@ -477,11 +436,9 @@ FTimerHandle UKismetSystemLibrary::K2_SetTimerDelegate(FTimerDynamicDelegate Del
 		if(World)
 		{
 			InitialStartDelay += FMath::RandRange(-InitialStartDelayVariance, InitialStartDelayVariance);
-			if (Time <= 0.f || (Time + InitialStartDelay) < 0.f)
+			if (Time <= 0.f || ((Time + InitialStartDelay) - InitialStartDelayVariance) < 0.f)
 			{
-				FString ObjectName = GetNameSafe(Delegate.GetUObject());
-				FString FunctionName = Delegate.GetFunctionName().ToString(); 
-				FFrame::KismetExecutionMessage(*FString::Printf(TEXT("%s %s SetTimer passed a negative or zero time. The associated timer may fail to be created/fire! If using InitialStartDelayVariance, be sure it is smaller than (Time + InitialStartDelay)."), *ObjectName, *FunctionName), ELogVerbosity::Warning);
+				FFrame::KismetExecutionMessage(TEXT("SetTimer passed a negative time or initial start delay.  The associated timer may fail to fire!  If using InitialStartDelayVariance, be sure it is smaller than (Time + InitialStartDelay)."), ELogVerbosity::Warning);
 			}
 
 			FTimerManager& TimerManager = World->GetTimerManager();
@@ -527,7 +484,7 @@ void UKismetSystemLibrary::K2_ClearTimerDelegate(FTimerDynamicDelegate Delegate)
 	}
 }
 
-void UKismetSystemLibrary::K2_ClearTimerHandle(const UObject* WorldContextObject, FTimerHandle Handle)
+void UKismetSystemLibrary::K2_ClearTimerHandle(UObject* WorldContextObject, FTimerHandle Handle)
 {
 	if (Handle.IsValid())
 	{
@@ -539,7 +496,7 @@ void UKismetSystemLibrary::K2_ClearTimerHandle(const UObject* WorldContextObject
 	}
 }
 
-void UKismetSystemLibrary::K2_ClearAndInvalidateTimerHandle(const UObject* WorldContextObject, FTimerHandle& Handle)
+void UKismetSystemLibrary::K2_ClearAndInvalidateTimerHandle(UObject* WorldContextObject, FTimerHandle& Handle)
 {
 	if (Handle.IsValid())
 	{
@@ -579,7 +536,7 @@ void UKismetSystemLibrary::K2_PauseTimerDelegate(FTimerDynamicDelegate Delegate)
 	}
 }
 
-void UKismetSystemLibrary::K2_PauseTimerHandle(const UObject* WorldContextObject, FTimerHandle Handle)
+void UKismetSystemLibrary::K2_PauseTimerHandle(UObject* WorldContextObject, FTimerHandle Handle)
 {
 	if (Handle.IsValid())
 	{
@@ -619,7 +576,7 @@ void UKismetSystemLibrary::K2_UnPauseTimerDelegate(FTimerDynamicDelegate Delegat
 	}
 }
 
-void UKismetSystemLibrary::K2_UnPauseTimerHandle(const UObject* WorldContextObject, FTimerHandle Handle)
+void UKismetSystemLibrary::K2_UnPauseTimerHandle(UObject* WorldContextObject, FTimerHandle Handle)
 {
 	if (Handle.IsValid())
 	{
@@ -662,7 +619,7 @@ bool UKismetSystemLibrary::K2_IsTimerActiveDelegate(FTimerDynamicDelegate Delega
 	return bIsActive;
 }
 
-bool UKismetSystemLibrary::K2_IsTimerActiveHandle(const UObject* WorldContextObject, FTimerHandle Handle)
+bool UKismetSystemLibrary::K2_IsTimerActiveHandle(UObject* WorldContextObject, FTimerHandle Handle)
 {
 	bool bIsActive = false;
 	if (Handle.IsValid())
@@ -707,7 +664,7 @@ bool UKismetSystemLibrary::K2_IsTimerPausedDelegate(FTimerDynamicDelegate Delega
 	return bIsPaused;
 }
 
-bool UKismetSystemLibrary::K2_IsTimerPausedHandle(const UObject* WorldContextObject, FTimerHandle Handle)
+bool UKismetSystemLibrary::K2_IsTimerPausedHandle(UObject* WorldContextObject, FTimerHandle Handle)
 {
 	bool bIsPaused = false;
 	if (Handle.IsValid())
@@ -752,7 +709,7 @@ bool UKismetSystemLibrary::K2_TimerExistsDelegate(FTimerDynamicDelegate Delegate
 	return bTimerExists;
 }
 
-bool UKismetSystemLibrary::K2_TimerExistsHandle(const UObject* WorldContextObject, FTimerHandle Handle)
+bool UKismetSystemLibrary::K2_TimerExistsHandle(UObject* WorldContextObject, FTimerHandle Handle)
 {
 	bool bTimerExists = false;
 	if (Handle.IsValid())
@@ -797,7 +754,7 @@ float UKismetSystemLibrary::K2_GetTimerElapsedTimeDelegate(FTimerDynamicDelegate
 	return ElapsedTime;
 }
 
-float UKismetSystemLibrary::K2_GetTimerElapsedTimeHandle(const UObject* WorldContextObject, FTimerHandle Handle)
+float UKismetSystemLibrary::K2_GetTimerElapsedTimeHandle(UObject* WorldContextObject, FTimerHandle Handle)
 {
 	float ElapsedTime = 0.f;
 	if (Handle.IsValid())
@@ -842,7 +799,7 @@ float UKismetSystemLibrary::K2_GetTimerRemainingTimeDelegate(FTimerDynamicDelega
 	return RemainingTime;
 }
 
-float UKismetSystemLibrary::K2_GetTimerRemainingTimeHandle(const UObject* WorldContextObject, FTimerHandle Handle)
+float UKismetSystemLibrary::K2_GetTimerRemainingTimeHandle(UObject* WorldContextObject, FTimerHandle Handle)
 {
 	float RemainingTime = 0.f;
 	if (Handle.IsValid())
@@ -861,7 +818,7 @@ void UKismetSystemLibrary::SetIntPropertyByName(UObject* Object, FName PropertyN
 {
 	if(Object != NULL)
 	{
-		FIntProperty* IntProp = FindFProperty<FIntProperty>(Object->GetClass(), PropertyName);
+		UIntProperty* IntProp = FindField<UIntProperty>(Object->GetClass(), PropertyName);
 		if(IntProp != NULL)
 		{
 			IntProp->SetPropertyValue_InContainer(Object, Value);
@@ -873,7 +830,7 @@ void UKismetSystemLibrary::SetInt64PropertyByName(UObject* Object, FName Propert
 {
 	if (Object != NULL)
 	{
-		FInt64Property* IntProp = FindFProperty<FInt64Property>(Object->GetClass(), PropertyName);
+		UInt64Property* IntProp = FindField<UInt64Property>(Object->GetClass(), PropertyName);
 		if (IntProp != NULL)
 		{
 			IntProp->SetPropertyValue_InContainer(Object, Value);
@@ -885,14 +842,14 @@ void UKismetSystemLibrary::SetBytePropertyByName(UObject* Object, FName Property
 {
 	if(Object != NULL)
 	{
-		if(FByteProperty* ByteProp = FindFProperty<FByteProperty>(Object->GetClass(), PropertyName))
+		if(UByteProperty* ByteProp = FindField<UByteProperty>(Object->GetClass(), PropertyName))
 		{
 			ByteProp->SetPropertyValue_InContainer(Object, Value);
 		}
-		else if(FEnumProperty* EnumProp = FindFProperty<FEnumProperty>(Object->GetClass(), PropertyName))
+		else if(UEnumProperty* EnumProp = FindField<UEnumProperty>(Object->GetClass(), PropertyName))
 		{
 			void* PropAddr = EnumProp->ContainerPtrToValuePtr<void>(Object);
-			FNumericProperty* UnderlyingProp = EnumProp->GetUnderlyingProperty();
+			UNumericProperty* UnderlyingProp = EnumProp->GetUnderlyingProperty();
 			UnderlyingProp->SetIntPropertyValue(PropAddr, (int64)Value);
 		}
 	}
@@ -902,7 +859,7 @@ void UKismetSystemLibrary::SetFloatPropertyByName(UObject* Object, FName Propert
 {
 	if(Object != NULL)
 	{
-		FFloatProperty* FloatProp = FindFProperty<FFloatProperty>(Object->GetClass(), PropertyName);
+		UFloatProperty* FloatProp = FindField<UFloatProperty>(Object->GetClass(), PropertyName);
 		if(FloatProp != NULL)
 		{
 			FloatProp->SetPropertyValue_InContainer(Object, Value);
@@ -914,7 +871,7 @@ void UKismetSystemLibrary::SetBoolPropertyByName(UObject* Object, FName Property
 {
 	if(Object != NULL)
 	{
-		FBoolProperty* BoolProp = FindFProperty<FBoolProperty>(Object->GetClass(), PropertyName);
+		UBoolProperty* BoolProp = FindField<UBoolProperty>(Object->GetClass(), PropertyName);
 		if(BoolProp != NULL)
 		{
 			BoolProp->SetPropertyValue_InContainer(Object, Value );
@@ -926,7 +883,7 @@ void UKismetSystemLibrary::SetObjectPropertyByName(UObject* Object, FName Proper
 {
 	if(Object != NULL && Value != NULL)
 	{
-		FObjectPropertyBase* ObjectProp = FindFProperty<FObjectPropertyBase>(Object->GetClass(), PropertyName);
+		UObjectPropertyBase* ObjectProp = FindField<UObjectPropertyBase>(Object->GetClass(), PropertyName);
 		if(ObjectProp != NULL && Value->IsA(ObjectProp->PropertyClass)) // check it's the right type
 		{
 			ObjectProp->SetObjectPropertyValue_InContainer(Object, Value);
@@ -938,7 +895,7 @@ void UKismetSystemLibrary::SetClassPropertyByName(UObject* Object, FName Propert
 {
 	if (Object && *Value)
 	{
-		FClassProperty* ClassProp = FindFProperty<FClassProperty>(Object->GetClass(), PropertyName);
+		UClassProperty* ClassProp = FindField<UClassProperty>(Object->GetClass(), PropertyName);
 		if (ClassProp != NULL && Value->IsChildOf(ClassProp->MetaClass)) // check it's the right type
 		{
 			ClassProp->SetObjectPropertyValue_InContainer(Object, *Value);
@@ -950,7 +907,7 @@ void UKismetSystemLibrary::SetInterfacePropertyByName(UObject* Object, FName Pro
 {
 	if (Object)
 	{
-		FInterfaceProperty* InterfaceProp = FindFProperty<FInterfaceProperty>(Object->GetClass(), PropertyName);
+		UInterfaceProperty* InterfaceProp = FindField<UInterfaceProperty>(Object->GetClass(), PropertyName);
 		if (InterfaceProp != NULL && Value.GetObject()->GetClass()->ImplementsInterface(InterfaceProp->InterfaceClass)) // check it's the right type
 		{
 			InterfaceProp->SetPropertyValue_InContainer(Object, Value);
@@ -962,7 +919,7 @@ void UKismetSystemLibrary::SetStringPropertyByName(UObject* Object, FName Proper
 {
 	if(Object != NULL)
 	{
-		FStrProperty* StringProp = FindFProperty<FStrProperty>(Object->GetClass(), PropertyName);
+		UStrProperty* StringProp = FindField<UStrProperty>(Object->GetClass(), PropertyName);
 		if(StringProp != NULL)
 		{
 			StringProp->SetPropertyValue_InContainer(Object, Value);
@@ -974,7 +931,7 @@ void UKismetSystemLibrary::SetNamePropertyByName(UObject* Object, FName Property
 {
 	if(Object != NULL)
 	{
-		FNameProperty* NameProp = FindFProperty<FNameProperty>(Object->GetClass(), PropertyName);
+		UNameProperty* NameProp = FindField<UNameProperty>(Object->GetClass(), PropertyName);
 		if(NameProp != NULL)
 		{
 			NameProp->SetPropertyValue_InContainer(Object, Value);
@@ -986,19 +943,9 @@ void UKismetSystemLibrary::SetSoftObjectPropertyByName(UObject* Object, FName Pr
 {
 	if (Object != NULL)
 	{
-		FSoftObjectProperty* ObjectProp = FindFProperty<FSoftObjectProperty>(Object->GetClass(), PropertyName);
+		USoftObjectProperty* ObjectProp = FindField<USoftObjectProperty>(Object->GetClass(), PropertyName);
 		const FSoftObjectPtr* SoftObjectPtr = (const FSoftObjectPtr*)(&Value);
 		ObjectProp->SetPropertyValue_InContainer(Object, *SoftObjectPtr);
-	}
-}
-
-void UKismetSystemLibrary::SetFieldPathPropertyByName(UObject* Object, FName PropertyName, const TFieldPath<FField>& Value)
-{
-	if (Object != NULL)
-	{
-		FFieldPathProperty* FieldProp = FindFProperty<FFieldPathProperty>(Object->GetClass(), PropertyName);
-		const FFieldPath* FieldPathPtr = (const FFieldPath*)(&Value);
-		FieldProp->SetPropertyValue_InContainer(Object, *FieldPathPtr);
 	}
 }
 
@@ -1006,7 +953,7 @@ void UKismetSystemLibrary::SetSoftClassPropertyByName(UObject* Object, FName Pro
 {
 	if (Object != NULL)
 	{
-		FSoftClassProperty* ObjectProp = FindFProperty<FSoftClassProperty>(Object->GetClass(), PropertyName);
+		USoftClassProperty* ObjectProp = FindField<USoftClassProperty>(Object->GetClass(), PropertyName);
 		const FSoftObjectPtr* SoftObjectPtr = (const FSoftObjectPtr*)(&Value);
 		ObjectProp->SetPropertyValue_InContainer(Object, *SoftObjectPtr);
 	}
@@ -1132,7 +1079,7 @@ void UKismetSystemLibrary::SetTextPropertyByName(UObject* Object, FName Property
 {
 	if(Object != NULL)
 	{
-		FTextProperty* TextProp = FindFProperty<FTextProperty>(Object->GetClass(), PropertyName);
+		UTextProperty* TextProp = FindField<UTextProperty>(Object->GetClass(), PropertyName);
 		if(TextProp != NULL)
 		{
 			TextProp->SetPropertyValue_InContainer(Object, Value);
@@ -1145,7 +1092,7 @@ void UKismetSystemLibrary::SetVectorPropertyByName(UObject* Object, FName Proper
 	if(Object != NULL)
 	{
 		UScriptStruct* VectorStruct = TBaseStructure<FVector>::Get();
-		FStructProperty* VectorProp = FindFProperty<FStructProperty>(Object->GetClass(), PropertyName);
+		UStructProperty* VectorProp = FindField<UStructProperty>(Object->GetClass(), PropertyName);
 		if(VectorProp != NULL && VectorProp->Struct == VectorStruct)
 		{
 			*VectorProp->ContainerPtrToValuePtr<FVector>(Object) = Value;
@@ -1158,7 +1105,7 @@ void UKismetSystemLibrary::SetRotatorPropertyByName(UObject* Object, FName Prope
 	if(Object != NULL)
 	{
 		UScriptStruct* RotatorStruct = TBaseStructure<FRotator>::Get();
-		FStructProperty* RotatorProp = FindFProperty<FStructProperty>(Object->GetClass(), PropertyName);
+		UStructProperty* RotatorProp = FindField<UStructProperty>(Object->GetClass(), PropertyName);
 		if(RotatorProp != NULL && RotatorProp->Struct == RotatorStruct)
 		{
 			*RotatorProp->ContainerPtrToValuePtr<FRotator>(Object) = Value;
@@ -1168,27 +1115,14 @@ void UKismetSystemLibrary::SetRotatorPropertyByName(UObject* Object, FName Prope
 
 void UKismetSystemLibrary::SetLinearColorPropertyByName(UObject* Object, FName PropertyName, const FLinearColor& Value)
 {
-	if(Object != nullptr)
+	if(Object != NULL)
 	{
-		UScriptStruct* LinearColorStruct = TBaseStructure<FLinearColor>::Get();
-		FStructProperty* LinearColorProp = FindFProperty<FStructProperty>(Object->GetClass(), PropertyName);
-		if(LinearColorProp != nullptr && LinearColorProp->Struct == LinearColorStruct)
+		UScriptStruct* ColorStruct = TBaseStructure<FLinearColor>::Get();
+		UStructProperty* ColorProp = FindField<UStructProperty>(Object->GetClass(), PropertyName);
+		if(ColorProp != NULL && ColorProp->Struct == ColorStruct)
 		{
-			*LinearColorProp->ContainerPtrToValuePtr<FLinearColor>(Object) = Value;
+			*ColorProp->ContainerPtrToValuePtr<FLinearColor>(Object) = Value;
 		}		
-	}
-}
-
-void UKismetSystemLibrary::SetColorPropertyByName(UObject* Object, FName PropertyName, const FColor& Value)
-{
-	if (Object != nullptr)
-	{
-		UScriptStruct* ColorStruct = TBaseStructure<FColor>::Get();
-		FStructProperty* ColorProp = FindFProperty<FStructProperty>(Object->GetClass(), PropertyName);
-		if (ColorProp != nullptr && ColorProp->Struct == ColorStruct)
-		{
-			*ColorProp->ContainerPtrToValuePtr<FColor>(Object) = Value;
-		}
 	}
 }
 
@@ -1197,7 +1131,7 @@ void UKismetSystemLibrary::SetTransformPropertyByName(UObject* Object, FName Pro
 	if(Object != NULL)
 	{
 		UScriptStruct* TransformStruct = TBaseStructure<FTransform>::Get();
-		FStructProperty* TransformProp = FindFProperty<FStructProperty>(Object->GetClass(), PropertyName);
+		UStructProperty* TransformProp = FindField<UStructProperty>(Object->GetClass(), PropertyName);
 		if(TransformProp != NULL && TransformProp->Struct == TransformStruct)
 		{
 			*TransformProp->ContainerPtrToValuePtr<FTransform>(Object) = Value;
@@ -1215,7 +1149,7 @@ void UKismetSystemLibrary::Generic_SetStructurePropertyByName(UObject* OwnerObje
 {
 	if (OwnerObject != NULL)
 	{
-		FStructProperty* StructProp = FindFProperty<FStructProperty>(OwnerObject->GetClass(), StructPropertyName);
+		UStructProperty* StructProp = FindField<UStructProperty>(OwnerObject->GetClass(), StructPropertyName);
 		if (StructProp != NULL)
 		{
 			void* Dest = StructProp->ContainerPtrToValuePtr<void>(OwnerObject);
@@ -1246,7 +1180,7 @@ void UKismetSystemLibrary::GetActorListFromComponentList(const TArray<UPrimitive
 
 
 
-bool UKismetSystemLibrary::SphereOverlapActors(const UObject* WorldContextObject, const FVector SpherePos, float SphereRadius, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, UClass* ActorClassFilter, const TArray<AActor*>& ActorsToIgnore, TArray<AActor*>& OutActors)
+bool UKismetSystemLibrary::SphereOverlapActors(UObject* WorldContextObject, const FVector SpherePos, float SphereRadius, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, UClass* ActorClassFilter, const TArray<AActor*>& ActorsToIgnore, TArray<AActor*>& OutActors)
 {
 	OutActors.Empty();
 
@@ -1260,7 +1194,7 @@ bool UKismetSystemLibrary::SphereOverlapActors(const UObject* WorldContextObject
 	return (OutActors.Num() > 0);
 }
 
-bool UKismetSystemLibrary::SphereOverlapComponents(const UObject* WorldContextObject, const FVector SpherePos, float SphereRadius, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, UClass* ComponentClassFilter, const TArray<AActor*>& ActorsToIgnore, TArray<UPrimitiveComponent*>& OutComponents)
+bool UKismetSystemLibrary::SphereOverlapComponents(UObject* WorldContextObject, const FVector SpherePos, float SphereRadius, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, UClass* ComponentClassFilter, const TArray<AActor*>& ActorsToIgnore, TArray<UPrimitiveComponent*>& OutComponents)
 {
 	OutComponents.Empty();
 
@@ -1299,7 +1233,7 @@ bool UKismetSystemLibrary::SphereOverlapComponents(const UObject* WorldContextOb
 
 
 
-bool UKismetSystemLibrary::BoxOverlapActors(const UObject* WorldContextObject, const FVector BoxPos, FVector BoxExtent, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, UClass* ActorClassFilter, const TArray<AActor*>& ActorsToIgnore, TArray<AActor*>& OutActors)
+bool UKismetSystemLibrary::BoxOverlapActors(UObject* WorldContextObject, const FVector BoxPos, FVector BoxExtent, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, UClass* ActorClassFilter, const TArray<AActor*>& ActorsToIgnore, TArray<AActor*>& OutActors)
 {
 	OutActors.Empty();
 
@@ -1313,7 +1247,7 @@ bool UKismetSystemLibrary::BoxOverlapActors(const UObject* WorldContextObject, c
 	return (OutActors.Num() > 0);
 }
 
-bool UKismetSystemLibrary::BoxOverlapComponents(const UObject* WorldContextObject, const FVector BoxPos, FVector BoxExtent, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, UClass* ComponentClassFilter, const TArray<AActor*>& ActorsToIgnore, TArray<UPrimitiveComponent*>& OutComponents)
+bool UKismetSystemLibrary::BoxOverlapComponents(UObject* WorldContextObject, const FVector BoxPos, FVector BoxExtent, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, UClass* ComponentClassFilter, const TArray<AActor*>& ActorsToIgnore, TArray<UPrimitiveComponent*>& OutComponents)
 {
 	OutComponents.Empty();
 
@@ -1351,7 +1285,7 @@ bool UKismetSystemLibrary::BoxOverlapComponents(const UObject* WorldContextObjec
 }
 
 
-bool UKismetSystemLibrary::CapsuleOverlapActors(const UObject* WorldContextObject, const FVector CapsulePos, float Radius, float HalfHeight, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, UClass* ActorClassFilter, const TArray<AActor*>& ActorsToIgnore, TArray<AActor*>& OutActors)
+bool UKismetSystemLibrary::CapsuleOverlapActors(UObject* WorldContextObject, const FVector CapsulePos, float Radius, float HalfHeight, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, UClass* ActorClassFilter, const TArray<AActor*>& ActorsToIgnore, TArray<AActor*>& OutActors)
 {
 	OutActors.Empty();
 
@@ -1365,7 +1299,7 @@ bool UKismetSystemLibrary::CapsuleOverlapActors(const UObject* WorldContextObjec
 	return (OutActors.Num() > 0);
 }
 
-bool UKismetSystemLibrary::CapsuleOverlapComponents(const UObject* WorldContextObject, const FVector CapsulePos, float Radius, float HalfHeight, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, UClass* ComponentClassFilter, const TArray<AActor*>& ActorsToIgnore, TArray<UPrimitiveComponent*>& OutComponents)
+bool UKismetSystemLibrary::CapsuleOverlapComponents(UObject* WorldContextObject, const FVector CapsulePos, float Radius, float HalfHeight, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, UClass* ComponentClassFilter, const TArray<AActor*>& ActorsToIgnore, TArray<UPrimitiveComponent*>& OutComponents)
 {
 	OutComponents.Empty();
 
@@ -1455,7 +1389,7 @@ bool UKismetSystemLibrary::ComponentOverlapComponents(UPrimitiveComponent* Compo
 }
 
 
-bool UKismetSystemLibrary::LineTraceSingle(const UObject* WorldContextObject, const FVector Start, const FVector End, ETraceTypeQuery TraceChannel, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::LineTraceSingle(UObject* WorldContextObject, const FVector Start, const FVector End, ETraceTypeQuery TraceChannel, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	ECollisionChannel CollisionChannel = UEngineTypes::ConvertToCollisionChannel(TraceChannel);
 
@@ -1472,7 +1406,7 @@ bool UKismetSystemLibrary::LineTraceSingle(const UObject* WorldContextObject, co
 	return bHit;
 }
 
-bool UKismetSystemLibrary::LineTraceMulti(const UObject* WorldContextObject, const FVector Start, const FVector End, ETraceTypeQuery TraceChannel, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::LineTraceMulti(UObject* WorldContextObject, const FVector Start, const FVector End, ETraceTypeQuery TraceChannel, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	ECollisionChannel CollisionChannel = UEngineTypes::ConvertToCollisionChannel(TraceChannel);
 
@@ -1489,7 +1423,7 @@ bool UKismetSystemLibrary::LineTraceMulti(const UObject* WorldContextObject, con
 	return bHit;
 }
 
-bool UKismetSystemLibrary::BoxTraceSingle(const UObject* WorldContextObject, const FVector Start, const FVector End, const FVector HalfSize, const FRotator Orientation, ETraceTypeQuery TraceChannel, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::BoxTraceSingle(UObject* WorldContextObject, const FVector Start, const FVector End, const FVector HalfSize, const FRotator Orientation, ETraceTypeQuery TraceChannel, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	static const FName BoxTraceSingleName(TEXT("BoxTraceSingle"));
 	FCollisionQueryParams Params = ConfigureCollisionParams(BoxTraceSingleName, bTraceComplex, ActorsToIgnore, bIgnoreSelf, WorldContextObject);
@@ -1504,7 +1438,7 @@ bool UKismetSystemLibrary::BoxTraceSingle(const UObject* WorldContextObject, con
 	return bHit;
 }
 
-bool UKismetSystemLibrary::BoxTraceMulti(const UObject* WorldContextObject, const FVector Start, const FVector End, const FVector HalfSize, const FRotator Orientation, ETraceTypeQuery TraceChannel, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::BoxTraceMulti(UObject* WorldContextObject, const FVector Start, const FVector End, const FVector HalfSize, const FRotator Orientation, ETraceTypeQuery TraceChannel, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	static const FName BoxTraceMultiName(TEXT("BoxTraceMulti"));
 	FCollisionQueryParams Params = ConfigureCollisionParams(BoxTraceMultiName, bTraceComplex, ActorsToIgnore, bIgnoreSelf, WorldContextObject);
@@ -1519,7 +1453,7 @@ bool UKismetSystemLibrary::BoxTraceMulti(const UObject* WorldContextObject, cons
 	return bHit;
 }
 
-bool UKismetSystemLibrary::SphereTraceSingle(const UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, ETraceTypeQuery TraceChannel, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::SphereTraceSingle(UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, ETraceTypeQuery TraceChannel, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	ECollisionChannel CollisionChannel = UEngineTypes::ConvertToCollisionChannel(TraceChannel);
 
@@ -1536,7 +1470,7 @@ bool UKismetSystemLibrary::SphereTraceSingle(const UObject* WorldContextObject, 
 	return bHit;
 }
 
-bool UKismetSystemLibrary::SphereTraceMulti(const UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, ETraceTypeQuery TraceChannel, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::SphereTraceMulti(UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, ETraceTypeQuery TraceChannel, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	ECollisionChannel CollisionChannel = UEngineTypes::ConvertToCollisionChannel(TraceChannel);
 
@@ -1553,7 +1487,7 @@ bool UKismetSystemLibrary::SphereTraceMulti(const UObject* WorldContextObject, c
 	return bHit;
 }
 
-bool UKismetSystemLibrary::CapsuleTraceSingle(const UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, float HalfHeight, ETraceTypeQuery TraceChannel, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::CapsuleTraceSingle(UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, float HalfHeight, ETraceTypeQuery TraceChannel, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	ECollisionChannel CollisionChannel = UEngineTypes::ConvertToCollisionChannel(TraceChannel);
 
@@ -1571,7 +1505,7 @@ bool UKismetSystemLibrary::CapsuleTraceSingle(const UObject* WorldContextObject,
 }
 
 
-bool UKismetSystemLibrary::CapsuleTraceMulti(const UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, float HalfHeight, ETraceTypeQuery TraceChannel, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::CapsuleTraceMulti(UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, float HalfHeight, ETraceTypeQuery TraceChannel, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	ECollisionChannel CollisionChannel = UEngineTypes::ConvertToCollisionChannel(TraceChannel);
 
@@ -1589,7 +1523,7 @@ bool UKismetSystemLibrary::CapsuleTraceMulti(const UObject* WorldContextObject, 
 }
 
 /** Object Query functions **/
-bool UKismetSystemLibrary::LineTraceSingleForObjects(const UObject* WorldContextObject, const FVector Start, const FVector End, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::LineTraceSingleForObjects(UObject* WorldContextObject, const FVector Start, const FVector End, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	static const FName LineTraceSingleName(TEXT("LineTraceSingleForObjects"));
 	FCollisionQueryParams Params = ConfigureCollisionParams(LineTraceSingleName, bTraceComplex, ActorsToIgnore, bIgnoreSelf, WorldContextObject);
@@ -1611,7 +1545,7 @@ bool UKismetSystemLibrary::LineTraceSingleForObjects(const UObject* WorldContext
 	return bHit;
 }
 
-bool UKismetSystemLibrary::LineTraceMultiForObjects(const UObject* WorldContextObject, const FVector Start, const FVector End, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::LineTraceMultiForObjects(UObject* WorldContextObject, const FVector Start, const FVector End, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	static const FName LineTraceMultiName(TEXT("LineTraceMultiForObjects"));
 	FCollisionQueryParams Params = ConfigureCollisionParams(LineTraceMultiName, bTraceComplex, ActorsToIgnore, bIgnoreSelf, WorldContextObject);
@@ -1633,7 +1567,7 @@ bool UKismetSystemLibrary::LineTraceMultiForObjects(const UObject* WorldContextO
 	return bHit;
 }
 
-bool UKismetSystemLibrary::SphereTraceSingleForObjects(const UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::SphereTraceSingleForObjects(UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	static const FName SphereTraceSingleName(TEXT("SphereTraceSingleForObjects"));
 	FCollisionQueryParams Params = ConfigureCollisionParams(SphereTraceSingleName, bTraceComplex, ActorsToIgnore, bIgnoreSelf, WorldContextObject);
@@ -1655,7 +1589,7 @@ bool UKismetSystemLibrary::SphereTraceSingleForObjects(const UObject* WorldConte
 	return bHit;
 }
 
-bool UKismetSystemLibrary::SphereTraceMultiForObjects(const UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::SphereTraceMultiForObjects(UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	static const FName SphereTraceMultiName(TEXT("SphereTraceMultiForObjects"));
 	FCollisionQueryParams Params = ConfigureCollisionParams(SphereTraceMultiName, bTraceComplex, ActorsToIgnore, bIgnoreSelf, WorldContextObject);
@@ -1677,7 +1611,7 @@ bool UKismetSystemLibrary::SphereTraceMultiForObjects(const UObject* WorldContex
 	return bHit;
 }
 
-bool UKismetSystemLibrary::BoxTraceSingleForObjects(const UObject* WorldContextObject, const FVector Start, const FVector End, const FVector HalfSize, const FRotator Orientation, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::BoxTraceSingleForObjects(UObject* WorldContextObject, const FVector Start, const FVector End, const FVector HalfSize, const FRotator Orientation, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	static const FName BoxTraceSingleName(TEXT("BoxTraceSingleForObjects"));
 	FCollisionQueryParams Params = ConfigureCollisionParams(BoxTraceSingleName, bTraceComplex, ActorsToIgnore, bIgnoreSelf, WorldContextObject);
@@ -1702,7 +1636,7 @@ bool UKismetSystemLibrary::BoxTraceSingleForObjects(const UObject* WorldContextO
 	return bHit;
 }
 
-bool UKismetSystemLibrary::BoxTraceMultiForObjects(const UObject* WorldContextObject, const FVector Start, const FVector End, const FVector HalfSize, const FRotator Orientation, const TArray<TEnumAsByte<	EObjectTypeQuery> > & ObjectTypes, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::BoxTraceMultiForObjects(UObject* WorldContextObject, const FVector Start, const FVector End, const FVector HalfSize, const FRotator Orientation, const TArray<TEnumAsByte<	EObjectTypeQuery> > & ObjectTypes, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	static const FName BoxTraceMultiName(TEXT("BoxTraceMultiForObjects"));
 	FCollisionQueryParams Params = ConfigureCollisionParams(BoxTraceMultiName, bTraceComplex, ActorsToIgnore, bIgnoreSelf, WorldContextObject);
@@ -1724,7 +1658,7 @@ bool UKismetSystemLibrary::BoxTraceMultiForObjects(const UObject* WorldContextOb
 	return bHit;
 }
 
-bool UKismetSystemLibrary::CapsuleTraceSingleForObjects(const UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, float HalfHeight, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::CapsuleTraceSingleForObjects(UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, float HalfHeight, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	static const FName CapsuleTraceSingleName(TEXT("CapsuleTraceSingleForObjects"));
 	FCollisionQueryParams Params = ConfigureCollisionParams(CapsuleTraceSingleName, bTraceComplex, ActorsToIgnore, bIgnoreSelf, WorldContextObject);
@@ -1746,7 +1680,7 @@ bool UKismetSystemLibrary::CapsuleTraceSingleForObjects(const UObject* WorldCont
 	return bHit;
 }
 
-bool UKismetSystemLibrary::CapsuleTraceMultiForObjects(const UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, float HalfHeight, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::CapsuleTraceMultiForObjects(UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, float HalfHeight, const TArray<TEnumAsByte<EObjectTypeQuery> > & ObjectTypes, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	static const FName CapsuleTraceMultiName(TEXT("CapsuleTraceMultiForObjects"));
 	FCollisionQueryParams Params = ConfigureCollisionParams(CapsuleTraceMultiName, bTraceComplex, ActorsToIgnore, bIgnoreSelf, WorldContextObject);
@@ -1769,7 +1703,7 @@ bool UKismetSystemLibrary::CapsuleTraceMultiForObjects(const UObject* WorldConte
 }
 
 
-bool UKismetSystemLibrary::LineTraceSingleByProfile(const UObject* WorldContextObject, const FVector Start, const FVector End, FName ProfileName, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::LineTraceSingleByProfile(UObject* WorldContextObject, const FVector Start, const FVector End, FName ProfileName, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	static const FName LineTraceSingleName(TEXT("LineTraceSingleByProfile"));
 	FCollisionQueryParams Params = ConfigureCollisionParams(LineTraceSingleName, bTraceComplex, ActorsToIgnore, bIgnoreSelf, WorldContextObject);
@@ -1784,7 +1718,7 @@ bool UKismetSystemLibrary::LineTraceSingleByProfile(const UObject* WorldContextO
 	return bHit;
 }
 
-bool UKismetSystemLibrary::LineTraceMultiByProfile(const UObject* WorldContextObject, const FVector Start, const FVector End, FName ProfileName, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::LineTraceMultiByProfile(UObject* WorldContextObject, const FVector Start, const FVector End, FName ProfileName, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	static const FName LineTraceMultiName(TEXT("LineTraceMultiByProfile"));
 	FCollisionQueryParams Params = ConfigureCollisionParams(LineTraceMultiName, bTraceComplex, ActorsToIgnore, bIgnoreSelf, WorldContextObject);
@@ -1799,7 +1733,7 @@ bool UKismetSystemLibrary::LineTraceMultiByProfile(const UObject* WorldContextOb
 	return bHit;
 }
 
-bool UKismetSystemLibrary::BoxTraceSingleByProfile(const UObject* WorldContextObject, const FVector Start, const FVector End, const FVector HalfSize, const FRotator Orientation, FName ProfileName, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::BoxTraceSingleByProfile(UObject* WorldContextObject, const FVector Start, const FVector End, const FVector HalfSize, const FRotator Orientation, FName ProfileName, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	static const FName BoxTraceSingleName(TEXT("BoxTraceSingleByProfile"));
 	FCollisionQueryParams Params = ConfigureCollisionParams(BoxTraceSingleName, bTraceComplex, ActorsToIgnore, bIgnoreSelf, WorldContextObject);
@@ -1815,7 +1749,7 @@ bool UKismetSystemLibrary::BoxTraceSingleByProfile(const UObject* WorldContextOb
 	return bHit;
 }
 
-bool UKismetSystemLibrary::BoxTraceMultiByProfile(const UObject* WorldContextObject, const FVector Start, const FVector End, const FVector HalfSize, const FRotator Orientation, FName ProfileName, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::BoxTraceMultiByProfile(UObject* WorldContextObject, const FVector Start, const FVector End, const FVector HalfSize, const FRotator Orientation, FName ProfileName, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	static const FName BoxTraceMultiName(TEXT("BoxTraceMultiByProfile"));
 	FCollisionQueryParams Params = ConfigureCollisionParams(BoxTraceMultiName, bTraceComplex, ActorsToIgnore, bIgnoreSelf, WorldContextObject);
@@ -1830,7 +1764,7 @@ bool UKismetSystemLibrary::BoxTraceMultiByProfile(const UObject* WorldContextObj
 	return bHit;
 }
 
-bool UKismetSystemLibrary::SphereTraceSingleByProfile(const UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, FName ProfileName, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::SphereTraceSingleByProfile(UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, FName ProfileName, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	static const FName SphereTraceSingleName(TEXT("SphereTraceSingleByProfile"));
 	FCollisionQueryParams Params = ConfigureCollisionParams(SphereTraceSingleName, bTraceComplex, ActorsToIgnore, bIgnoreSelf, WorldContextObject);
@@ -1845,7 +1779,7 @@ bool UKismetSystemLibrary::SphereTraceSingleByProfile(const UObject* WorldContex
 	return bHit;
 }
 
-bool UKismetSystemLibrary::SphereTraceMultiByProfile(const UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, FName ProfileName, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::SphereTraceMultiByProfile(UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, FName ProfileName, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	static const FName SphereTraceMultiName(TEXT("SphereTraceMultiByProfile"));
 	FCollisionQueryParams Params = ConfigureCollisionParams(SphereTraceMultiName, bTraceComplex, ActorsToIgnore, bIgnoreSelf, WorldContextObject);
@@ -1860,7 +1794,7 @@ bool UKismetSystemLibrary::SphereTraceMultiByProfile(const UObject* WorldContext
 	return bHit;
 }
 
-bool UKismetSystemLibrary::CapsuleTraceSingleByProfile(const UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, float HalfHeight, FName ProfileName, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::CapsuleTraceSingleByProfile(UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, float HalfHeight, FName ProfileName, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, FHitResult& OutHit, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	static const FName CapsuleTraceSingleName(TEXT("CapsuleTraceSingleByProfile"));
 	FCollisionQueryParams Params = ConfigureCollisionParams(CapsuleTraceSingleName, bTraceComplex, ActorsToIgnore, bIgnoreSelf, WorldContextObject);
@@ -1876,7 +1810,7 @@ bool UKismetSystemLibrary::CapsuleTraceSingleByProfile(const UObject* WorldConte
 }
 
 
-bool UKismetSystemLibrary::CapsuleTraceMultiByProfile(const UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, float HalfHeight, FName ProfileName, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
+bool UKismetSystemLibrary::CapsuleTraceMultiByProfile(UObject* WorldContextObject, const FVector Start, const FVector End, float Radius, float HalfHeight, FName ProfileName, bool bTraceComplex, const TArray<AActor*>& ActorsToIgnore, EDrawDebugTrace::Type DrawDebugType, TArray<FHitResult>& OutHits, bool bIgnoreSelf, FLinearColor TraceColor, FLinearColor TraceHitColor, float DrawTime)
 {
 	static const FName CapsuleTraceMultiName(TEXT("CapsuleTraceMultiByProfile"));
 	FCollisionQueryParams Params = ConfigureCollisionParams(CapsuleTraceMultiName, bTraceComplex, ActorsToIgnore, bIgnoreSelf, WorldContextObject);
@@ -1893,7 +1827,7 @@ bool UKismetSystemLibrary::CapsuleTraceMultiByProfile(const UObject* WorldContex
 
 
 /** Draw a debug line */
-void UKismetSystemLibrary::DrawDebugLine(const UObject* WorldContextObject, FVector const LineStart, FVector const LineEnd, FLinearColor Color, float LifeTime, float Thickness)
+void UKismetSystemLibrary::DrawDebugLine(UObject* WorldContextObject, FVector const LineStart, FVector const LineEnd, FLinearColor Color, float LifeTime, float Thickness)
 {
 #if ENABLE_DRAW_DEBUG
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
@@ -1904,7 +1838,7 @@ void UKismetSystemLibrary::DrawDebugLine(const UObject* WorldContextObject, FVec
 }
 
 /** Draw a debug circle */
-void UKismetSystemLibrary::DrawDebugCircle(const UObject* WorldContextObject,FVector Center, float Radius, int32 NumSegments, FLinearColor LineColor, float LifeTime, float Thickness, FVector YAxis, FVector ZAxis, bool bDrawAxis)
+void UKismetSystemLibrary::DrawDebugCircle(UObject* WorldContextObject,FVector Center, float Radius, int32 NumSegments, FLinearColor LineColor, float LifeTime, float Thickness, FVector YAxis, FVector ZAxis, bool bDrawAxis)
 { 
 #if ENABLE_DRAW_DEBUG
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
@@ -1915,7 +1849,7 @@ void UKismetSystemLibrary::DrawDebugCircle(const UObject* WorldContextObject,FVe
 }
 
 /** Draw a debug point */
-void UKismetSystemLibrary::DrawDebugPoint(const UObject* WorldContextObject, FVector const Position, float Size, FLinearColor PointColor, float LifeTime)
+void UKismetSystemLibrary::DrawDebugPoint(UObject* WorldContextObject, FVector const Position, float Size, FLinearColor PointColor, float LifeTime)
 {
 #if ENABLE_DRAW_DEBUG
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
@@ -1926,7 +1860,7 @@ void UKismetSystemLibrary::DrawDebugPoint(const UObject* WorldContextObject, FVe
 }
 
 /** Draw directional arrow, pointing from LineStart to LineEnd. */
-void UKismetSystemLibrary::DrawDebugArrow(const UObject* WorldContextObject, FVector const LineStart, FVector const LineEnd, float ArrowSize, FLinearColor Color, float LifeTime, float Thickness)
+void UKismetSystemLibrary::DrawDebugArrow(UObject* WorldContextObject, FVector const LineStart, FVector const LineEnd, float ArrowSize, FLinearColor Color, float LifeTime, float Thickness)
 {
 #if ENABLE_DRAW_DEBUG
 	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
@@ -1938,7 +1872,7 @@ void UKismetSystemLibrary::DrawDebugArrow(const UObject* WorldContextObject, FVe
 }
 
 /** Draw a debug box */
-void UKismetSystemLibrary::DrawDebugBox(const UObject* WorldContextObject, FVector const Center, FVector Extent, FLinearColor Color, const FRotator Rotation, float LifeTime, float Thickness)
+void UKismetSystemLibrary::DrawDebugBox(UObject* WorldContextObject, FVector const Center, FVector Extent, FLinearColor Color, const FRotator Rotation, float LifeTime, float Thickness)
 {
 #if ENABLE_DRAW_DEBUG
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
@@ -1956,7 +1890,7 @@ void UKismetSystemLibrary::DrawDebugBox(const UObject* WorldContextObject, FVect
 }
 
 /** Draw a debug coordinate system. */
-void UKismetSystemLibrary::DrawDebugCoordinateSystem(const UObject* WorldContextObject, FVector const AxisLoc, FRotator const AxisRot, float Scale, float LifeTime, float Thickness)
+void UKismetSystemLibrary::DrawDebugCoordinateSystem(UObject* WorldContextObject, FVector const AxisLoc, FRotator const AxisRot, float Scale, float LifeTime, float Thickness)
 {
 #if ENABLE_DRAW_DEBUG
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
@@ -1967,7 +1901,7 @@ void UKismetSystemLibrary::DrawDebugCoordinateSystem(const UObject* WorldContext
 }
 
 /** Draw a debug sphere */
-void UKismetSystemLibrary::DrawDebugSphere(const UObject* WorldContextObject, FVector const Center, float Radius, int32 Segments, FLinearColor Color, float LifeTime, float Thickness)
+void UKismetSystemLibrary::DrawDebugSphere(UObject* WorldContextObject, FVector const Center, float Radius, int32 Segments, FLinearColor Color, float LifeTime, float Thickness)
 {
 #if ENABLE_DRAW_DEBUG
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
@@ -1978,7 +1912,7 @@ void UKismetSystemLibrary::DrawDebugSphere(const UObject* WorldContextObject, FV
 }
 
 /** Draw a debug cylinder */
-void UKismetSystemLibrary::DrawDebugCylinder(const UObject* WorldContextObject, FVector const Start, FVector const End, float Radius, int32 Segments, FLinearColor Color, float LifeTime, float Thickness)
+void UKismetSystemLibrary::DrawDebugCylinder(UObject* WorldContextObject, FVector const Start, FVector const End, float Radius, int32 Segments, FLinearColor Color, float LifeTime, float Thickness)
 {
 #if ENABLE_DRAW_DEBUG
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
@@ -1989,7 +1923,7 @@ void UKismetSystemLibrary::DrawDebugCylinder(const UObject* WorldContextObject, 
 }
 
 /** Draw a debug cone */
-void UKismetSystemLibrary::DrawDebugCone(const UObject* WorldContextObject, FVector const Origin, FVector const Direction, float Length, float AngleWidth, float AngleHeight, int32 NumSides, FLinearColor Color, float Duration, float Thickness)
+void UKismetSystemLibrary::DrawDebugCone(UObject* WorldContextObject, FVector const Origin, FVector const Direction, float Length, float AngleWidth, float AngleHeight, int32 NumSides, FLinearColor Color, float Duration, float Thickness)
 {
 #if ENABLE_DRAW_DEBUG
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
@@ -1999,7 +1933,7 @@ void UKismetSystemLibrary::DrawDebugCone(const UObject* WorldContextObject, FVec
 #endif
 }
 
-void UKismetSystemLibrary::DrawDebugConeInDegrees(const UObject* WorldContextObject, FVector const Origin, FVector const Direction, float Length, float AngleWidth, float AngleHeight, int32 NumSides, FLinearColor Color, float LifeTime, float Thickness)
+void UKismetSystemLibrary::DrawDebugConeInDegrees(UObject* WorldContextObject, FVector const Origin, FVector const Direction, float Length, float AngleWidth, float AngleHeight, int32 NumSides, FLinearColor Color, float LifeTime, float Thickness)
 {
 #if ENABLE_DRAW_DEBUG
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
@@ -2010,7 +1944,7 @@ void UKismetSystemLibrary::DrawDebugConeInDegrees(const UObject* WorldContextObj
 }
 
 /** Draw a debug capsule */
-void UKismetSystemLibrary::DrawDebugCapsule(const UObject* WorldContextObject, FVector const Center, float HalfHeight, float Radius, const FRotator Rotation, FLinearColor Color, float LifeTime, float Thickness)
+void UKismetSystemLibrary::DrawDebugCapsule(UObject* WorldContextObject, FVector const Center, float HalfHeight, float Radius, const FRotator Rotation, FLinearColor Color, float LifeTime, float Thickness)
 {
 #if ENABLE_DRAW_DEBUG
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
@@ -2021,7 +1955,7 @@ void UKismetSystemLibrary::DrawDebugCapsule(const UObject* WorldContextObject, F
 }
 
 /** Draw a debug string at a 3d world location. */
-void UKismetSystemLibrary::DrawDebugString(const UObject* WorldContextObject, FVector const TextLocation, const FString& Text, class AActor* TestBaseActor, FLinearColor TextColor, float Duration)
+void UKismetSystemLibrary::DrawDebugString(UObject* WorldContextObject, FVector const TextLocation, const FString& Text, class AActor* TestBaseActor, FLinearColor TextColor, float Duration)
 {
 #if ENABLE_DRAW_DEBUG
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
@@ -2032,7 +1966,7 @@ void UKismetSystemLibrary::DrawDebugString(const UObject* WorldContextObject, FV
 }
 
 /** Removes all debug strings. */
-void UKismetSystemLibrary::FlushDebugStrings(const UObject* WorldContextObject )
+void UKismetSystemLibrary::FlushDebugStrings( UObject* WorldContextObject )
 {
 #if ENABLE_DRAW_DEBUG
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
@@ -2043,7 +1977,7 @@ void UKismetSystemLibrary::FlushDebugStrings(const UObject* WorldContextObject )
 }
 
 /** Draws a debug plane. */
-void UKismetSystemLibrary::DrawDebugPlane(const UObject* WorldContextObject, FPlane const& P, FVector const Loc, float Size, FLinearColor Color, float LifeTime)
+void UKismetSystemLibrary::DrawDebugPlane(UObject* WorldContextObject, FPlane const& P, FVector const Loc, float Size, FLinearColor Color, float LifeTime)
 {
 #if ENABLE_DRAW_DEBUG
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
@@ -2054,7 +1988,7 @@ void UKismetSystemLibrary::DrawDebugPlane(const UObject* WorldContextObject, FPl
 }
 
 /** Flush all persistent debug lines and shapes */
-void UKismetSystemLibrary::FlushPersistentDebugLines(const UObject* WorldContextObject)
+void UKismetSystemLibrary::FlushPersistentDebugLines(UObject* WorldContextObject)
 {
 #if ENABLE_DRAW_DEBUG
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
@@ -2065,7 +1999,7 @@ void UKismetSystemLibrary::FlushPersistentDebugLines(const UObject* WorldContext
 }
 
 /** Draws a debug frustum. */
-void UKismetSystemLibrary::DrawDebugFrustum(const UObject* WorldContextObject, const FTransform& FrustumTransform, FLinearColor FrustumColor, float Duration, float Thickness)
+void UKismetSystemLibrary::DrawDebugFrustum(UObject* WorldContextObject, const FTransform& FrustumTransform, FLinearColor FrustumColor, float Duration, float Thickness)
 {
 #if ENABLE_DRAW_DEBUG
 	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
@@ -2090,7 +2024,7 @@ void UKismetSystemLibrary::DrawDebugCamera(const ACameraActor* CameraActor, FLin
 #endif
 }
 
-void UKismetSystemLibrary::DrawDebugFloatHistoryTransform(const UObject* WorldContextObject, const FDebugFloatHistory& FloatHistory, const FTransform& DrawTransform, FVector2D DrawSize, FLinearColor DrawColor, float LifeTime)
+void UKismetSystemLibrary::DrawDebugFloatHistoryTransform(UObject* WorldContextObject, const FDebugFloatHistory& FloatHistory, const FTransform& DrawTransform, FVector2D DrawSize, FLinearColor DrawColor, float LifeTime)
 {
 #if ENABLE_DRAW_DEBUG
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
@@ -2100,7 +2034,7 @@ void UKismetSystemLibrary::DrawDebugFloatHistoryTransform(const UObject* WorldCo
 #endif
 }
 
-void UKismetSystemLibrary::DrawDebugFloatHistoryLocation(const UObject* WorldContextObject, const FDebugFloatHistory& FloatHistory, FVector DrawLocation, FVector2D DrawSize, FLinearColor DrawColor, float LifeTime)
+void UKismetSystemLibrary::DrawDebugFloatHistoryLocation(UObject* WorldContextObject, const FDebugFloatHistory& FloatHistory, FVector DrawLocation, FVector2D DrawSize, FLinearColor DrawColor, float LifeTime)
 {
 #if ENABLE_DRAW_DEBUG
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
@@ -2161,7 +2095,7 @@ void UKismetSystemLibrary::GetActorBounds(const AActor* Actor, FVector& Origin, 
 }
 
 
-void UKismetSystemLibrary::Delay(const UObject* WorldContextObject, float Duration, FLatentActionInfo LatentInfo )
+void UKismetSystemLibrary::Delay(UObject* WorldContextObject, float Duration, FLatentActionInfo LatentInfo )
 {
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
 	{
@@ -2174,7 +2108,7 @@ void UKismetSystemLibrary::Delay(const UObject* WorldContextObject, float Durati
 }
 
 // Delay execution by Duration seconds; Calling again before the delay has expired will reset the countdown to Duration.
-void UKismetSystemLibrary::RetriggerableDelay(const UObject* WorldContextObject, float Duration, FLatentActionInfo LatentInfo)
+void UKismetSystemLibrary::RetriggerableDelay(UObject* WorldContextObject, float Duration, FLatentActionInfo LatentInfo)
 {
 	if (UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull))
 	{
@@ -2461,7 +2395,7 @@ void UKismetSystemLibrary::ShowPlatformSpecificLeaderboardScreen(const FString& 
 	UOnlineEngineInterface::Get()->ShowLeaderboardUI(nullptr, CategoryName);
 }
 
-void UKismetSystemLibrary::ShowPlatformSpecificAchievementsScreen(const APlayerController* SpecificPlayer)
+void UKismetSystemLibrary::ShowPlatformSpecificAchievementsScreen(APlayerController* SpecificPlayer)
 {
 	UWorld* World = SpecificPlayer ? SpecificPlayer->GetWorld() : nullptr;
 
@@ -2479,7 +2413,7 @@ void UKismetSystemLibrary::ShowPlatformSpecificAchievementsScreen(const APlayerC
 	UOnlineEngineInterface::Get()->ShowAchievementsUI(World, LocalUserNum);
 }
 
-bool UKismetSystemLibrary::IsLoggedIn(const APlayerController* SpecificPlayer)
+bool UKismetSystemLibrary::IsLoggedIn(APlayerController* SpecificPlayer)
 {
 	UWorld* World = SpecificPlayer ? SpecificPlayer->GetWorld() : nullptr;
 
@@ -2522,12 +2456,6 @@ bool UKismetSystemLibrary::GetVolumeButtonsHandledBySystem()
 	return FPlatformMisc::GetVolumeButtonsHandledBySystem();
 }
 
-void UKismetSystemLibrary::SetGamepadsBlockDeviceFeedback(bool bBlock)
-{
-	FPlatformApplicationMisc::SetGamepadsBlockDeviceFeedback(bBlock);
-
-}
-
 void UKismetSystemLibrary::ResetGamepadAssignments()
 {
 	FPlatformApplicationMisc::ResetGamepadAssignments();
@@ -2548,12 +2476,7 @@ FString UKismetSystemLibrary::GetGamepadControllerName(int32 ControllerId)
 	return FPlatformApplicationMisc::GetGamepadControllerName(ControllerId);
 }
 
-UTexture2D* UKismetSystemLibrary::GetGamepadButtonGlyph(const FString& ButtonKey, int32 ControllerIndex)
-{
-	return FPlatformApplicationMisc::GetGamepadButtonGlyph(FName(*ButtonKey), ControllerIndex);
-}
-
-void UKismetSystemLibrary::SetSuppressViewportTransitionMessage(const UObject* WorldContextObject, bool bState)
+void UKismetSystemLibrary::SetSuppressViewportTransitionMessage(UObject* WorldContextObject, bool bState)
 {
 	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
 	if (World && World->GetFirstLocalPlayerFromController() != nullptr && World->GetFirstLocalPlayerFromController()->ViewportClient != nullptr )
@@ -2636,7 +2559,7 @@ public:
 #endif
 };
 
-void UKismetSystemLibrary::LoadAsset(const UObject* WorldContextObject, TSoftObjectPtr<UObject> Asset, UKismetSystemLibrary::FOnAssetLoaded OnLoaded, FLatentActionInfo LatentInfo)
+void UKismetSystemLibrary::LoadAsset(UObject* WorldContextObject, TSoftObjectPtr<UObject> Asset, UKismetSystemLibrary::FOnAssetLoaded OnLoaded, FLatentActionInfo LatentInfo)
 {
 	struct FLoadAssetAction : public FLoadAssetActionBase
 	{
@@ -2665,7 +2588,7 @@ void UKismetSystemLibrary::LoadAsset(const UObject* WorldContextObject, TSoftObj
 	}
 }
 
-void UKismetSystemLibrary::LoadAssetClass(const UObject* WorldContextObject, TSoftClassPtr<UObject> AssetClass, UKismetSystemLibrary::FOnAssetClassLoaded OnLoaded, FLatentActionInfo LatentInfo)
+void UKismetSystemLibrary::LoadAssetClass(UObject* WorldContextObject, TSoftClassPtr<UObject> AssetClass, UKismetSystemLibrary::FOnAssetClassLoaded OnLoaded, FLatentActionInfo LatentInfo)
 {
 	struct FLoadAssetClassAction : public FLoadAssetActionBase
 	{
@@ -2714,212 +2637,10 @@ FString UKismetSystemLibrary::GetCommandLine()
 	return FString(FCommandLine::Get());
 }
 
-void UKismetSystemLibrary::ParseCommandLine(const FString& InCmdLine, TArray<FString>& OutTokens, TArray<FString>& OutSwitches, TMap<FString, FString>& OutParams)
-{
-	UCommandlet::ParseCommandLine(*InCmdLine, OutTokens, OutSwitches, OutParams);
-}
-
-bool UKismetSystemLibrary::ParseParam(const FString& InString, const FString& InParam)
-{
-	return FParse::Param(*InString, *InParam);
-}
-
-
-bool UKismetSystemLibrary::ParseParamValue(const FString& InString, const FString& InParam, FString& OutValue)
-{
-	return FParse::Value(*InString, *InParam, OutValue);
-}
-
 bool UKismetSystemLibrary::IsUnattended()
 {
 	return FApp::IsUnattended();
 }
-
-#if WITH_EDITOR
-
-bool UKismetSystemLibrary::GetEditorProperty(UObject* Object, const FName PropertyName, int32& PropertyValue)
-{
-	// We should never hit this! Stubbed to avoid NoExport on the class.
-	check(0);
-	return false;
-}
-
-bool UKismetSystemLibrary::Generic_GetEditorProperty(const UObject* Object, const FProperty* ObjectProp, void* ValuePtr, const FProperty* ValueProp)
-{
-	const EPropertyAccessResultFlags AccessResult = PropertyAccessUtil::GetPropertyValue_Object(ObjectProp, Object, ValueProp, ValuePtr, INDEX_NONE);
-
-	if (EnumHasAnyFlags(AccessResult, EPropertyAccessResultFlags::PermissionDenied))
-	{
-		if (EnumHasAnyFlags(AccessResult, EPropertyAccessResultFlags::AccessProtected))
-		{
-			FFrame::KismetExecutionMessage(*FString::Printf(TEXT("Property '%s' on '%s' (%s) is protected and cannot be read"), *ObjectProp->GetName(), *Object->GetPathName(), *Object->GetClass()->GetName()), ELogVerbosity::Warning, PropertyGetFailedWarning);
-			return false;
-		}
-
-		FFrame::KismetExecutionMessage(*FString::Printf(TEXT("Property '%s' on '%s' (%s) cannot be read"), *ObjectProp->GetName(), *Object->GetPathName(), *Object->GetClass()->GetName()), ELogVerbosity::Warning, PropertyGetFailedWarning);
-		return false;
-	}
-
-	if (EnumHasAnyFlags(AccessResult, EPropertyAccessResultFlags::ConversionFailed))
-	{
-		FFrame::KismetExecutionMessage(*FString::Printf(TEXT("Property '%s' (%s) on '%s' (%s) tried to get to a property value of the incorrect type (%s)"), *ObjectProp->GetName(), *ObjectProp->GetClass()->GetName(), *Object->GetPathName(), *Object->GetClass()->GetName(), *ValueProp->GetClass()->GetName()), ELogVerbosity::Warning, PropertyGetFailedWarning);
-		return false;
-	}
-
-	return true;
-}
-
-DEFINE_FUNCTION(UKismetSystemLibrary::execGetEditorProperty)
-{
-	P_GET_OBJECT(UObject, Object);
-	P_GET_PROPERTY(FNameProperty, PropertyName);
-
-	Stack.StepCompiledIn<FProperty>(nullptr);
-	const FProperty* ValueProp = Stack.MostRecentProperty;
-	void* ValuePtr = Stack.MostRecentPropertyAddress;
-
-	P_FINISH;
-
-	if (!ValueProp || !ValuePtr)
-	{
-		FBlueprintExceptionInfo ExceptionInfo(
-			EBlueprintExceptionType::AccessViolation,
-			LOCTEXT("GetEditorProperty_MissingOutputProperty", "Failed to resolve the output parameter for GetEditorProperty.")
-		);
-		FBlueprintCoreDelegates::ThrowScriptException(P_THIS, Stack, ExceptionInfo);
-	}
-
-	if (!Object)
-	{
-		FBlueprintExceptionInfo ExceptionInfo(
-			EBlueprintExceptionType::AccessViolation, 
-			LOCTEXT("GetEditorProperty_AccessNone", "Accessed None attempting to call GetEditorProperty.")
-		);
-		FBlueprintCoreDelegates::ThrowScriptException(P_THIS, Stack, ExceptionInfo);
-	}
-
-	bool bResult = false;
-
-	if (Object)
-	{
-		const FProperty* ObjectProp = PropertyAccessUtil::FindPropertyByName(PropertyName, Object->GetClass());
-		if (ObjectProp)
-		{
-			P_NATIVE_BEGIN;
-			bResult = Generic_GetEditorProperty(Object, ObjectProp, ValuePtr, ValueProp);
-			P_NATIVE_END;
-		}
-		else
-		{
-			FFrame::KismetExecutionMessage(*FString::Printf(TEXT("Property '%s' on '%s' (%s) was missing"), *PropertyName.ToString(), *Object->GetPathName(), *Object->GetClass()->GetName()), ELogVerbosity::Warning, PropertyGetFailedWarning);
-		}
-	}
-
-	*(bool*)RESULT_PARAM = bResult;
-}
-
-bool UKismetSystemLibrary::SetEditorProperty(UObject* Object, const FName PropertyName, const int32& PropertyValue, const EPropertyAccessChangeNotifyMode ChangeNotifyMode)
-{
-	// We should never hit this! Stubbed to avoid NoExport on the class.
-	check(0);
-	return false;
-}
-
-bool UKismetSystemLibrary::Generic_SetEditorProperty(UObject* Object, const FProperty* ObjectProp, const void* ValuePtr, const FProperty* ValueProp, const EPropertyAccessChangeNotifyMode ChangeNotifyMode)
-{
-	const EPropertyAccessResultFlags AccessResult = PropertyAccessUtil::SetPropertyValue_Object(ObjectProp, Object, ValueProp, ValuePtr, INDEX_NONE, PropertyAccessUtil::EditorReadOnlyFlags, ChangeNotifyMode);
-
-	if (EnumHasAnyFlags(AccessResult, EPropertyAccessResultFlags::PermissionDenied))
-	{
-		if (EnumHasAnyFlags(AccessResult, EPropertyAccessResultFlags::AccessProtected))
-		{
-			FFrame::KismetExecutionMessage(*FString::Printf(TEXT("Property '%s' on '%s' (%s) is protected and cannot be set"), *ObjectProp->GetName(), *Object->GetPathName(), *Object->GetClass()->GetName()), ELogVerbosity::Warning, PropertySetFailedWarning);
-			return false;
-		}
-
-		if (EnumHasAnyFlags(AccessResult, EPropertyAccessResultFlags::CannotEditTemplate))
-		{
-			FFrame::KismetExecutionMessage(*FString::Printf(TEXT("Property '%s' on '%s' (%s) cannot be edited on templates"), *ObjectProp->GetName(), *Object->GetPathName(), *Object->GetClass()->GetName()), ELogVerbosity::Warning, PropertySetFailedWarning);
-			return false;
-		}
-
-		if (EnumHasAnyFlags(AccessResult, EPropertyAccessResultFlags::CannotEditInstance))
-		{
-			FFrame::KismetExecutionMessage(*FString::Printf(TEXT("Property '%s' on '%s' (%s) cannot be edited on instances"), *ObjectProp->GetName(), *Object->GetPathName(), *Object->GetClass()->GetName()), ELogVerbosity::Warning, PropertySetFailedWarning);
-			return false;
-		}
-
-		if (EnumHasAnyFlags(AccessResult, EPropertyAccessResultFlags::ReadOnly))
-		{
-			FFrame::KismetExecutionMessage(*FString::Printf(TEXT("Property '%s' on '%s' (%s) is read-only and cannot be set"), *ObjectProp->GetName(), *Object->GetPathName(), *Object->GetClass()->GetName()), ELogVerbosity::Warning, PropertySetFailedWarning);
-			return false;
-		}
-
-		FFrame::KismetExecutionMessage(*FString::Printf(TEXT("Property '%s' on '%s' (%s) cannot be set"), *ObjectProp->GetName(), *Object->GetPathName(), *Object->GetClass()->GetName()), ELogVerbosity::Warning, PropertySetFailedWarning);
-		return false;
-	}
-
-	if (EnumHasAnyFlags(AccessResult, EPropertyAccessResultFlags::ConversionFailed))
-	{
-		FFrame::KismetExecutionMessage(*FString::Printf(TEXT("Property '%s' (%s) on '%s' (%s) tried to set from a property value of the incorrect type (%s)"), *ObjectProp->GetName(), *ObjectProp->GetClass()->GetName(), *Object->GetPathName(), *Object->GetClass()->GetName(), *ValueProp->GetClass()->GetName()), ELogVerbosity::Warning, PropertySetFailedWarning);
-		return false;
-	}
-
-	return true;
-}
-
-DEFINE_FUNCTION(UKismetSystemLibrary::execSetEditorProperty)
-{
-	P_GET_OBJECT(UObject, Object);
-	P_GET_PROPERTY(FNameProperty, PropertyName);
-
-	Stack.StepCompiledIn<FProperty>(nullptr);
-	const FProperty* ValueProp = Stack.MostRecentProperty;
-	const void* ValuePtr = Stack.MostRecentPropertyAddress;
-
-	P_GET_ENUM(EPropertyAccessChangeNotifyMode, ChangeNotifyMode);
-
-	P_FINISH;
-
-	if (!ValueProp || !ValuePtr)
-	{
-		FBlueprintExceptionInfo ExceptionInfo(
-			EBlueprintExceptionType::AccessViolation,
-			LOCTEXT("SetEditorProperty_MissingOutputProperty", "Failed to resolve the output parameter for SetEditorProperty.")
-		);
-		FBlueprintCoreDelegates::ThrowScriptException(P_THIS, Stack, ExceptionInfo);
-	}
-
-	if (!Object)
-	{
-		FBlueprintExceptionInfo ExceptionInfo(
-			EBlueprintExceptionType::AccessViolation, 
-			LOCTEXT("SetEditorProperty_AccessNone", "Accessed None attempting to call SetEditorProperty.")
-		);
-		FBlueprintCoreDelegates::ThrowScriptException(P_THIS, Stack, ExceptionInfo);
-	}
-
-	bool bResult = false;
-
-	if (Object)
-	{
-		const FProperty* ObjectProp = PropertyAccessUtil::FindPropertyByName(PropertyName, Object->GetClass());
-		if (ObjectProp)
-		{
-			P_NATIVE_BEGIN;
-			bResult = Generic_SetEditorProperty(Object, ObjectProp, ValuePtr, ValueProp, ChangeNotifyMode);
-			P_NATIVE_END;
-		}
-		else
-		{
-			FFrame::KismetExecutionMessage(*FString::Printf(TEXT("Property '%s' on '%s' (%s) was missing"), *PropertyName.ToString(), *Object->GetPathName(), *Object->GetClass()->GetName()), ELogVerbosity::Warning, PropertySetFailedWarning);
-		}
-	}
-
-	*(bool*)RESULT_PARAM = bResult;
-}
-
-#endif	// WITH_EDITOR
 
 int32 UKismetSystemLibrary::BeginTransaction(const FString& Context, FText Description, UObject* PrimaryObject)
 {
@@ -3146,4 +2867,3 @@ void UKismetSystemLibrary::GetPrimaryAssetsWithBundleState(const TArray<FName>& 
 		Manager->GetPrimaryAssetsWithBundleState(OutPrimaryAssetIdList, ValidTypes, RequiredBundles, ExcludedBundles, bForceCurrentState);
 	}
 }
-#undef LOCTEXT_NAMESPACE

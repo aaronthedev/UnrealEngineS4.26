@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,7 +13,9 @@ struct FFileLineException
 	int32   Line;
 
 	template <typename... Types>
-	UE_NORETURN static void VARARGS Throwf(FString&& Filename, int32 Line, const TCHAR* Fmt, Types... Args)
+	FUNCTION_NO_RETURN_START
+		static void VARARGS Throwf(FString&& Filename, int32 Line, const TCHAR* Fmt, Types... Args)
+	FUNCTION_NO_RETURN_END
 	{
 		static_assert(TAnd<TIsValidVariadicFunctionArg<Types>...>::Value, "Invalid argument(s) passed to FError::Throwf");
 
@@ -21,7 +23,9 @@ struct FFileLineException
 	}
 
 private:
-	UE_NORETURN static void VARARGS ThrowfImpl(FString&& Filename, int32 Line, const TCHAR* Fmt, ...);
+	FUNCTION_NO_RETURN_START
+	static void VARARGS ThrowfImpl(FString&& Filename, int32 Line, const TCHAR* Fmt, ...)
+	FUNCTION_NO_RETURN_END;
 
 	FFileLineException(FString&& InMessage, FString&& InFilename, int32 InLine);
 };

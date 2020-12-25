@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -20,9 +20,7 @@ class UPendingNetGame :
 	public UObject,
 	public FNetworkNotify
 {
-	GENERATED_BODY()
-
-public:
+	GENERATED_UCLASS_BODY()
 
 	/** 
 	 * Net driver created for contacting the new server
@@ -35,18 +33,9 @@ public:
 	 * Demo Net driver created for loading demos, but we need to go through pending net game
 	 * Transferred to world on successful connection
 	 */
-	UE_DEPRECATED(4.26, "DemoNetDriver will be made private in a future release.  Please use GetDemoNetDriver/SetDemoNetDriver instead.")
 	UPROPERTY()
 	class UDemoNetDriver*	DemoNetDriver;
-
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	/** Gets the demo net driver for this pending world. */
-	UDemoNetDriver* GetDemoNetDriver() const { return DemoNetDriver; }
-
-	/** Sets the demo net driver for this pending world. */
-	void SetDemoNetDriver(UDemoNetDriver* const InDemoNetDriver) { DemoNetDriver = InDemoNetDriver; }
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
+	
 	/**
 	 * Setup the connection for encryption with a given key
 	 * All future packets are expected to be encrypted
@@ -88,7 +77,7 @@ public:
 	/**
 	 * Send the packet for triggering the initial join
 	 */
-	ENGINE_API void SendInitialJoin();
+	void SendInitialJoin();
 
 	//~ Begin FNetworkNotify Interface.
 	virtual EAcceptConnection::Type NotifyAcceptingConnection() override;

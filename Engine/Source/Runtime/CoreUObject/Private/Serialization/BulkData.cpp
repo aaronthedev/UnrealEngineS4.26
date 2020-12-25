@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Serialization/BulkData.h"
 #include "HAL/FileManager.h"
 #include "Misc/ScopeLock.h"
 #include "Misc/Paths.h"
-#include "Misc/PathViews.h"
 #include "Serialization/LargeMemoryWriter.h"
 #include "Serialization/LargeMemoryReader.h"
 #include "HAL/IConsoleManager.h"
@@ -414,11 +413,6 @@ bool FUntypedBulkData::CanLoadFromDisk() const
 #endif // WITH_EDITOR
 }
 
-bool FUntypedBulkData::DoesExist() const
-{
-	return IFileManager::Get().FileExists(*Filename);
-}
-
 /**
  * Returns flags usable to decompress the bulk data
  * 
@@ -731,36 +725,6 @@ void FUntypedBulkData::ForceBulkDataResident()
 #endif // WITH_EDITOR
 }
 
-bool FUntypedBulkData::StartAsyncLoading()
-{
-	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("FUntypedBulkData::StartAsyncLoading"), STAT_UBD_StartSerializingBulkData, STATGROUP_Memory);
-
-	if (!IsAsyncLoadingComplete())
-	{
-		return true; // Early out if an asynchronous load is already in progress.
-	}
-
-	if (IsBulkDataLoaded())
-	{
-		return false; // Early out if we do not need to actually load any data
-	}
-
-	if (!CanLoadFromDisk())
-	{
-		return false; // Early out if we cannot load from disk
-	}
-
-	check(SerializeFuture.IsValid() == false);
-
-	SerializeFuture = Async(EAsyncExecution::ThreadPool, [=]()
-	{
-		AsyncLoadBulkData();
-		return true;
-	});
-
-	return true;
-}
-
 /**
  * Sets the passed in bulk data flags.
  *
@@ -768,12 +732,12 @@ bool FUntypedBulkData::StartAsyncLoading()
  */
 void FUntypedBulkData::SetBulkDataFlags( uint32 BulkDataFlagsToSet )
 {
-	BulkDataFlags = EBulkDataFlags(BulkDataFlags | BulkDataFlagsToSet);
+	BulkDataFlags |= BulkDataFlagsToSet;
 }
 
 void FUntypedBulkData::ResetBulkDataFlags(uint32 BulkDataFlagsToSet)
 {
-	BulkDataFlags = (EBulkDataFlags)BulkDataFlagsToSet;
+	BulkDataFlags = BulkDataFlagsToSet;
 }
 
 /**
@@ -813,12 +777,19 @@ uint32 FUntypedBulkData::GetBulkDataAlignment() const
  */
 void FUntypedBulkData::ClearBulkDataFlags( uint32 BulkDataFlagsToClear )
 {
-	BulkDataFlags = EBulkDataFlags(BulkDataFlags & ~BulkDataFlagsToClear);
+	BulkDataFlags &= ~BulkDataFlagsToClear;
 }
 
+/**
+ * Load the resource data in the BulkDataAsync
+ *
+ * @param BulkDataFlagsToClear	Bulk data flags to clear
+ */
 void FUntypedBulkData::AsyncLoadBulkData()
 {
 	BulkDataAsync.Reallocate(GetBulkDataSize(), BulkDataAlignment);
+
+	UE_CLOG(GEventDrivenLoaderEnabled, LogSerialization, Error, TEXT("Attempt to stream bulk data with EDL enabled. This is not desireable. File %s"), *Filename);
 
 	FArchive* FileReaderAr = IFileManager::Get().CreateFileReader(*Filename, FILEREAD_Silent);
 	checkf(FileReaderAr != NULL, TEXT("Attempted to load bulk data from an invalid filename '%s'."), *Filename);
@@ -828,6 +799,7 @@ void FUntypedBulkData::AsyncLoadBulkData()
 	SerializeBulkData(*FileReaderAr, BulkDataAsync.Get());
 	delete FileReaderAr;
 }
+
 
 /*-----------------------------------------------------------------------------
 	Serialization.
@@ -840,9 +812,7 @@ void FUntypedBulkData::StartSerializingBulkData(FArchive& Ar, UObject* Owner, in
 
 	SerializeFuture = Async(EAsyncExecution::ThreadPool, [=]() 
 	{ 
-		UE_CLOG(GEventDrivenLoaderEnabled, LogSerialization, Error, TEXT("Attempt to stream bulk data with EDL enabled. This is not desireable. File %s"), *Filename);
-		AsyncLoadBulkData();
-
+		AsyncLoadBulkData(); 
 		return true;
 	});
 
@@ -887,12 +857,7 @@ bool FUntypedBulkData::ShouldStreamBulkData()
 		GMinimumBulkDataSizeForAsyncLoading >= 0);
 }
 
-bool FUntypedBulkData::NeedsOffsetFixup() const
-{
-	return (BulkDataFlags & BULKDATA_NoOffsetFixUp) == 0;
-}
-
-void FUntypedBulkData::Serialize( FArchive& Ar, UObject* Owner, int32 Idx, bool bAttemptFileMapping, EFileRegionType FileRegionType)
+void FUntypedBulkData::Serialize( FArchive& Ar, UObject* Owner, int32 Idx, bool bAttemptFileMapping)
 {
 	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("FUntypedBulkData::Serialize"), STAT_UBD_Serialize, STATGROUP_Memory);
 
@@ -952,9 +917,6 @@ void FUntypedBulkData::Serialize( FArchive& Ar, UObject* Owner, int32 Idx, bool 
 #if TRACK_BULKDATA_USE
 		FThreadSafeBulkDataToObjectMap::Get().Add( this, Owner );
 #endif
-		// When saving, this block mutates values in order to write them out to the archive, even if just cooking. Store the existing version of them so we can restore them if necessary after writing out the bytes.
-		EBulkDataFlags SavedBulkDataFlags = BulkDataFlags;
-
 		// Offset where the bulkdata flags are stored
 		int64 SavedBulkDataFlagsPos = Ar.Tell();
 		{
@@ -964,7 +926,7 @@ void FUntypedBulkData::Serialize( FArchive& Ar, UObject* Owner, int32 Idx, bool 
 			// and BulkDataSizeOnDisk need to be held as int64s, so set a flag indicating the new format.
 			if (Ar.IsSaving() && GetBulkDataSize() >= (1LL << 31))
 			{
-				SetBulkDataFlags(BULKDATA_Size64Bit);
+				BulkDataFlags |= BULKDATA_Size64Bit;
 			}
 			Ar << BulkDataFlags;
 		}
@@ -983,23 +945,23 @@ void FUntypedBulkData::Serialize( FArchive& Ar, UObject* Owner, int32 Idx, bool 
 		}
 
 		// We're loading from the persistent archive.
-		if (Ar.IsLoading())
+		if( Ar.IsLoading() )
 		{
 			Filename = TEXT("");
-
+			
 			// @todo when Landscape (and others?) only Lock/Unlock once, we can enable this
 			if (false) // FPlatformProperties::RequiresCookedData())
 			{
 				// Bulk data that is being serialized via seekfree loading is single use only. This allows us 
 				// to free the memory as e.g. the bulk data won't be attached to an archive in the case of
 				// seek free loading.
-				SetBulkDataFlags(BULKDATA_SingleUse);
+				BulkDataFlags |= BULKDATA_SingleUse;
 			}
 
 			// Hacky fix for using cooked data in editor. Cooking sets BULKDATA_SingleUse for textures, but PIEing needs to keep bulk data around.
 			if (GIsEditor)
 			{
-				ClearBulkDataFlags(BULKDATA_SingleUse);
+				BulkDataFlags &= ~BULKDATA_SingleUse;
 			}
 
 			// Size on disk, which in the case of compression is != GetBulkDataSize()
@@ -1016,38 +978,14 @@ void FUntypedBulkData::Serialize( FArchive& Ar, UObject* Owner, int32 Idx, bool 
 
 			Ar << BulkDataOffsetInFile;
 
-			if ((BulkDataFlags & BULKDATA_BadDataVersion) != 0)
-			{
-				uint16 DummyValue;
-				Ar << DummyValue;
-
-				ClearBulkDataFlags(BULKDATA_BadDataVersion);	
-			}
-			
 			// determine whether the payload is stored inline or at the end of the file
 			const bool bPayloadInline = !(BulkDataFlags&BULKDATA_PayloadAtEndOfFile);
 
-			// GetLinker
-#if WITH_EDITOR
-			if (Owner != nullptr)
-			{
-				Linker = Owner->GetLinker();
-			}
-#else
-			FLinker* Linker = nullptr;
-			if (Owner != nullptr)
-			{
-				Package = Owner->GetOutermost();
-				check(Package.IsValid());
-				Linker = FLinkerLoad::FindExistingLinkerForPackage(Package.Get());
-			}
-#endif
-
 			// fix up the file offset, but only if not stored inline
 			int64 OffsetInFileFixup = 0;
-			if (Owner != NULL && Linker && !bPayloadInline && NeedsOffsetFixup())
+			if (Owner != NULL && Owner->GetLinker() && !bPayloadInline)
 			{
-				OffsetInFileFixup = Linker->Summary.BulkDataStartOffset;
+				OffsetInFileFixup = Owner->GetLinker()->Summary.BulkDataStartOffset;
 			}
 			BulkDataOffsetInFile += OffsetInFileFixup;
 
@@ -1056,16 +994,20 @@ void FUntypedBulkData::Serialize( FArchive& Ar, UObject* Owner, int32 Idx, bool 
 			if (Ar.IsAllowingLazyLoading() && Owner != NULL && CacheableArchive)
 			{				
 #if WITH_EDITOR
+				Linker = Owner->GetLinker();
 				check(Linker);
 				CacheableArchive->AttachBulkData(Owner, this);
 				check(!CacheableArchive->IsTextFormat());
 				AttachedAr = CacheableArchive;
 				Filename = Linker->Filename;
 #else
+				Package = Owner->GetOutermost();
+				check(Package.IsValid());
+				auto Linker = FLinkerLoad::FindExistingLinkerForPackage(Package.Get());
 				check(Linker);
 				Filename = Linker->Filename;
 
-				check(!Owner->GetLinker() || Owner->GetLinker() == Linker);
+				check(Owner->GetLinker() == Linker);
 #endif // WITH_EDITOR
 
 				if (bPayloadInline)
@@ -1086,7 +1028,7 @@ void FUntypedBulkData::Serialize( FArchive& Ar, UObject* Owner, int32 Idx, bool 
 							{
 								BulkDataOffsetInFile -= IFileManager::Get().FileSize(*Filename);
 								check(BulkDataOffsetInFile >= 0);
-								Filename = FPaths::GetBaseFilename(Filename, false) + BulkDataExt::Export;
+								Filename = FPaths::GetBaseFilename(Filename, false) + TEXT(".uexp");
 							}
 							bWasMapped = BulkData.MapFile(*Filename, BulkDataOffsetInFile, GetBulkDataSize());
 						}
@@ -1108,12 +1050,12 @@ void FUntypedBulkData::Serialize( FArchive& Ar, UObject* Owner, int32 Idx, bool 
 				else if (BulkDataFlags & BULKDATA_DuplicateNonOptionalPayload)
 				{
 					// Load from optional payload instead if optional payload is available
-					FString OptionalFilename = FPathViews::ChangeExtension(Filename, BulkDataExt::Optional);
+					FString OptionalFilename = FPaths::ChangeExtension(Filename, TEXT(".uptnl"));
 					if (IFileManager::Get().FileExists(*OptionalFilename))
 					{
 						Filename = OptionalFilename;
 						Ar << BulkDataFlags;
-						SetBulkDataFlags(BULKDATA_OptionalPayload);
+						BulkDataFlags |= BULKDATA_OptionalPayload;
 
 						if (BulkDataFlags & BULKDATA_Size64Bit)
 						{
@@ -1149,22 +1091,22 @@ void FUntypedBulkData::Serialize( FArchive& Ar, UObject* Owner, int32 Idx, bool 
 						int64 DummyBulkDataOffsetInFile;
 						Ar << DummyBulkDataOffsetInFile;
 
-						Filename = FPathViews::ChangeExtension(Filename, BulkDataExt::Default);
+						Filename = FPaths::ChangeExtension(Filename, TEXT(".ubulk"));
 					}
 				}
 				else if (BulkDataFlags & BULKDATA_OptionalPayload)
 				{
-					Filename = FPathViews::ChangeExtension(Filename, BulkDataExt::Optional);
+					Filename = FPaths::ChangeExtension(Filename, TEXT(".uptnl"));
 				}
 				else if (BulkDataFlags & BULKDATA_PayloadInSeperateFile)
 				{
 					if (BulkDataFlags & BULKDATA_MemoryMappedPayload)
 					{
-						Filename = FPathViews::ChangeExtension(Filename, BulkDataExt::MemoryMapped);
+						Filename = FPaths::ChangeExtension(Filename, TEXT(".m.ubulk"));
 					}
 					else
 					{
-						Filename = FPathViews::ChangeExtension(Filename, BulkDataExt::Default);
+						Filename = FPaths::ChangeExtension(Filename, TEXT(".ubulk"));
 					}
 
 
@@ -1212,7 +1154,7 @@ void FUntypedBulkData::Serialize( FArchive& Ar, UObject* Owner, int32 Idx, bool 
 							{
 								BulkDataOffsetInFile -= IFileManager::Get().FileSize(*Filename);
 								check(BulkDataOffsetInFile >= 0);
-								Filename = FPaths::GetBaseFilename(Filename, false) + BulkDataExt::Export;
+								Filename = FPaths::GetBaseFilename(Filename, false) + TEXT(".uexp");
 							}
 
 							FArchive* TargetArchive = IFileManager::Get().CreateFileReader(*Filename);
@@ -1243,12 +1185,8 @@ void FUntypedBulkData::Serialize( FArchive& Ar, UObject* Owner, int32 Idx, bool 
 		// We're saving to the persistent archive.
 		else if( Ar.IsSaving() )
 		{
-			// This block mutates values in order to write them out to the archive, even if just cooking. Store the existing version of them so we can restore them if necessary after writing out the bytes.
-			int64 SavedBulkDataSizeOnDisk = BulkDataSizeOnDisk;
-			int64 SavedBulkDataOffsetInFile = BulkDataOffsetInFile;
-
 			// Remove single element serialization requirement before saving out bulk data flags.
-			ClearBulkDataFlags(BULKDATA_ForceSingleElementSerialization);
+			BulkDataFlags &= ~BULKDATA_ForceSingleElementSerialization;
 
 			// Make sure bulk data is loaded.
 			MakeSureBulkDataIsLoaded();
@@ -1279,9 +1217,10 @@ void FUntypedBulkData::Serialize( FArchive& Ar, UObject* Owner, int32 Idx, bool 
 				BulkDataOffsetInFile = INDEX_NONE;
 				// And serialize the placeholder which is going to be overwritten later.
 				Ar << BulkDataOffsetInFile;
+
 			}
 
-			// try to get the linkersave object
+				// try to get the linkersave object
 			FLinkerSave* LinkerSave = Cast<FLinkerSave>(Ar.GetLinker());
 
 			// determine whether we are going to store the payload inline or not.
@@ -1295,7 +1234,7 @@ void FUntypedBulkData::Serialize( FArchive& Ar, UObject* Owner, int32 Idx, bool 
 			if (!bStoreInline)
 			{
 				// set the flag indicating where the payload is stored
-				SetBulkDataFlags(BULKDATA_PayloadAtEndOfFile);
+				BulkDataFlags |= BULKDATA_PayloadAtEndOfFile;
 
 				// with no LinkerSave we have to store the data inline
 				check(LinkerSave != NULL);				
@@ -1308,7 +1247,6 @@ void FUntypedBulkData::Serialize( FArchive& Ar, UObject* Owner, int32 Idx, bool 
 				BulkStore.BulkDataSizeOnDiskPos = SavedBulkDataSizeOnDiskPos;
 				BulkStore.BulkDataFlagsPos = SavedBulkDataFlagsPos;
 				BulkStore.BulkDataFlags = BulkDataFlags;
-				BulkStore.BulkDataFileRegionType = FileRegionType;
 				BulkStore.BulkData = this;
 
 				// If having flag BULKDATA_DuplicateNonOptionalPayload, duplicate bulk data in optional storage (.uptnl)
@@ -1337,7 +1275,6 @@ void FUntypedBulkData::Serialize( FArchive& Ar, UObject* Owner, int32 Idx, bool 
 							int32 BulkDataSizeOnDiskAsInt32 = BulkDataSizeOnDisk;
 							Ar << BulkDataSizeOnDiskAsInt32;
 						}
-
 						// Keep track of position we are going to serialize placeholder BulkDataOffsetInFile.
 						SavedDupeBulkDataOffsetInFilePos = Ar.Tell();
 						BulkDataOffsetInFile = INDEX_NONE;
@@ -1353,7 +1290,6 @@ void FUntypedBulkData::Serialize( FArchive& Ar, UObject* Owner, int32 Idx, bool 
 					DupeBulkStore.BulkDataSizeOnDiskPos = SavedDupeBulkDataSizeOnDiskPos;
 					DupeBulkStore.BulkDataFlagsPos = SavedDupeBulkDataFlagsPos;
 					DupeBulkStore.BulkDataFlags = SavedDupeBulkDataFlags;
-					DupeBulkStore.BulkDataFileRegionType = FileRegionType;
 					DupeBulkStore.BulkData = this;
 				}
 				
@@ -1363,21 +1299,12 @@ void FUntypedBulkData::Serialize( FArchive& Ar, UObject* Owner, int32 Idx, bool 
 			else
 			{
 				// set the flag indicating where the payload is stored
-				ClearBulkDataFlags(BULKDATA_PayloadAtEndOfFile);
+				BulkDataFlags &= ~BULKDATA_PayloadAtEndOfFile;
 
 				int64 SavedBulkDataStartPos = Ar.Tell();
 
 				// Serialize bulk data.
-				if (FileRegionType != EFileRegionType::None)
-				{
-					Ar.PushFileRegionType(FileRegionType);
-				}
 				SerializeBulkData( Ar, BulkData.Get() );
-				if (FileRegionType != EFileRegionType::None)
-				{
-					Ar.PopFileRegionType();
-				}
-
 				// store the payload endpos
 				int64 SavedBulkDataEndPos = Ar.Tell();
 
@@ -1419,14 +1346,6 @@ void FUntypedBulkData::Serialize( FArchive& Ar, UObject* Owner, int32 Idx, bool 
 			// Seek to the end of written data so we don't clobber any data in subsequent write 
 			// operations
 			Ar.Seek(CurrentFileOffset);
-
-			// Restore the mutated values when we are serializing for cooking; saving to a cook target should not mutate the in-memory object
-			if (Ar.IsCooking())
-			{
-				BulkDataFlags = SavedBulkDataFlags;
-				BulkDataOffsetInFile = SavedBulkDataOffsetInFile;
-				BulkDataSizeOnDisk = SavedBulkDataSizeOnDisk;
-			}
 		}
 	}
 }
@@ -1489,17 +1408,16 @@ void FUntypedBulkData::StoreCompressedOnDisk( FName CompressionFormat )
 		if( CompressionFormat == NAME_None )
 		{
 			// clear all compression settings
-			ClearBulkDataFlags(BULKDATA_SerializeCompressed);
+			BulkDataFlags &= ~BULKDATA_SerializeCompressed;
 		}
 		else
 		{
 			// right BulkData only knows zlib
 			check(CompressionFormat == NAME_Zlib);
-			const uint32 FlagToSet = CompressionFormat == NAME_Zlib ? BULKDATA_SerializeCompressedZLIB : BULKDATA_None;
-			SetBulkDataFlags(FlagToSet);
+			BulkDataFlags |= (CompressionFormat == NAME_Zlib) ? BULKDATA_SerializeCompressedZLIB : BULKDATA_None;
 
 			// make sure we are not forcing the bulkdata to be stored inline if we use compression
-			ClearBulkDataFlags(BULKDATA_ForceInlinePayload);
+			BulkDataFlags &= ~BULKDATA_ForceInlinePayload;
 		}
 	}
 }
@@ -1605,9 +1523,9 @@ void FUntypedBulkData::SerializeBulkData( FArchive& Ar, void* Data )
 			Ar.Serialize( Data, GetBulkDataSize() );
 		}
 	}
-	// Serialize an element at a time via the virtual SerializeElement function potentially allowing and dealing with 
+	// Serialize an element at a time via the virtual SerializeElement function potentialy allowing and dealing with 
 	// endian conversion. Dealing with compression makes this a bit more complex as SerializeCompressed expects the 
-	// full data to be compressed en block and not piecewise.
+	// full data to be compresed en block and not piecewise.
 	else
 	{
 		// Serialize data compressed.
@@ -1651,41 +1569,21 @@ void FUntypedBulkData::SerializeBulkData( FArchive& Ar, void* Data )
 	}
 }
 
-IAsyncReadFileHandle* FUntypedBulkData::OpenAsyncReadHandle() const
-{
-	return FPlatformFileManager::Get().GetPlatformFile().OpenAsyncRead(*GetFilename());
-}
-
-IBulkDataIORequest* FUntypedBulkData::CreateStreamingRequest(EAsyncIOPriorityAndFlags Priority, FBulkDataIORequestCallBack* CompleteCallback, uint8* UserSuppliedMemory) const
+FBulkDataIORequest* FUntypedBulkData::CreateStreamingRequest(EAsyncIOPriorityAndFlags Priority, FAsyncFileCallBack* CompleteCallback, uint8* UserSuppliedMemory) const
 {
 	const int64 DataSize = GetBulkDataSize();
 
 	return CreateStreamingRequest(0, DataSize, Priority, CompleteCallback, UserSuppliedMemory);
 }
 
-IBulkDataIORequest* FUntypedBulkData::CreateStreamingRequest(int64 OffsetInBulkData, int64 BytesToRead, EAsyncIOPriorityAndFlags Priority, FBulkDataIORequestCallBack* CompleteCallback, uint8* UserSuppliedMemory) const
+FBulkDataIORequest* FUntypedBulkData::CreateStreamingRequest(int64 OffsetInBulkData, int64 BytesToRead, EAsyncIOPriorityAndFlags Priority, FAsyncFileCallBack* CompleteCallback, uint8* UserSuppliedMemory) const
 {
 	check(Filename.IsEmpty() == false);
 
-	// If we are loading from a .uexp file then we need to adjust the filename and offset stored by BulkData in order to use them
-	// to access the data in the .uexp file. To keep the method const (due to a large number of places calling this, assuming that
-	// it is const) we take a copy of these data values which if needed can be adjusted and use them instead.
-	FString AdjustedFilename = Filename; 
-	int64 AdjustedBulkDataOffsetInFile = BulkDataOffsetInFile;
+	UE_CLOG(IsStoredCompressedOnDisk(), LogSerialization, Fatal, TEXT("Package level compression is no longer supported (%s)."), *Filename);
+	UE_CLOG(GetBulkDataSize() <= 0, LogSerialization, Error, TEXT("(%s) has invalid bulk data size."), *Filename);
 
-	// Fix up the Filename/Offset to work with streaming if EDL is enabled and the filename is still referencing a uasset or umap
-	if (GEventDrivenLoaderEnabled && (AdjustedFilename.EndsWith(TEXT(".uasset")) || AdjustedFilename.EndsWith(TEXT(".umap"))))
-	{
-		AdjustedBulkDataOffsetInFile -= IFileManager::Get().FileSize(*AdjustedFilename);
-		AdjustedFilename = FPaths::GetBaseFilename(AdjustedFilename, false) + BulkDataExt::Export;
-
-		UE_LOG(LogSerialization, Error, TEXT("Streaming from the .uexp file '%s' this MUST be in a ubulk instead for best performance."), *AdjustedFilename);
-	}
-
-	UE_CLOG(IsStoredCompressedOnDisk(), LogSerialization, Fatal, TEXT("Package level compression is no longer supported (%s)."), *AdjustedFilename);
-	UE_CLOG(GetBulkDataSize() <= 0, LogSerialization, Error, TEXT("(%s) has invalid bulk data size."), *AdjustedFilename);
-
-	IAsyncReadFileHandle* IORequestHandle = FPlatformFileManager::Get().GetPlatformFile().OpenAsyncRead(*AdjustedFilename);
+	IAsyncReadFileHandle* IORequestHandle = FPlatformFileManager::Get().GetPlatformFile().OpenAsyncRead(*Filename);
 	check(IORequestHandle); // this generally cannot fail because it is async
 
 	if (IORequestHandle == nullptr)
@@ -1693,17 +1591,16 @@ IBulkDataIORequest* FUntypedBulkData::CreateStreamingRequest(int64 OffsetInBulkD
 		return nullptr;
 	}
 
-	const int64 OffsetInFile = AdjustedBulkDataOffsetInFile + OffsetInBulkData;
+	const int64 OffsetInFile = GetBulkDataOffsetInFile() + OffsetInBulkData;
 
-	FBulkDataIORequest* IORequest = new FBulkDataIORequest(IORequestHandle);
-
-	if (IORequest->MakeReadRequest(OffsetInFile, BytesToRead, Priority, CompleteCallback, UserSuppliedMemory))
+	IAsyncReadRequest* ReadRequest = IORequestHandle->ReadRequest(OffsetInFile, BytesToRead, Priority, CompleteCallback, UserSuppliedMemory);
+	if (ReadRequest != nullptr)
 	{
-		return IORequest;
+		return new FBulkDataIORequest(IORequestHandle, ReadRequest, BytesToRead);
 	}
 	else
 	{
-		delete IORequest;
+		delete IORequestHandle;
 		return nullptr;
 	}
 }
@@ -1721,14 +1618,9 @@ FBulkDataStreamingToken FUntypedBulkData::CreateStreamingToken() const
 	return FBulkDataStreamingToken((uint32)GetBulkDataOffsetInFile(), (uint32)GetBulkDataSize());
 }
 
-IBulkDataIORequest* FUntypedBulkData::CreateStreamingRequestForRange(const FString& Filename, const BulkDataRangeArray& RangeArray, EAsyncIOPriorityAndFlags Priority, FBulkDataIORequestCallBack* CompleteCallback)
+FBulkDataIORequest* FUntypedBulkData::CreateStreamingRequestForRange(const FString& Filename, const FBulkDataStreamingToken& Start, const FBulkDataStreamingToken& End, EAsyncIOPriorityAndFlags Priority, FAsyncFileCallBack* CompleteCallback)
 {
 	check(Filename.IsEmpty() == false);
-	check(RangeArray.Num() > 0);
-
-	const FBulkDataStreamingToken& Start = *(RangeArray[0]);
-	const FBulkDataStreamingToken& End = *(RangeArray[RangeArray.Num()-1]);
-
 	check(Start.IsValid());
 	check(End.IsValid());
 
@@ -1741,39 +1633,23 @@ IBulkDataIORequest* FUntypedBulkData::CreateStreamingRequestForRange(const FStri
 	}
 
 	const int64 ReadOffset = Start.GetOffset();
-	const int64 ReadSize = (End.GetOffset() + End.GetBulkDataSize()) - ReadOffset;
+	const int64 ReadSize = (End.GetOffset() + End.GetSize()) - ReadOffset;
 
 	check(ReadSize > 0);
 
-	FBulkDataIORequest* IORequest = new FBulkDataIORequest(IORequestHandle);
-
-	if (IORequest->MakeReadRequest(ReadOffset, ReadSize, Priority, CompleteCallback, nullptr))
+	IAsyncReadRequest* ReadRequest = IORequestHandle->ReadRequest(ReadOffset, ReadSize, Priority, CompleteCallback, nullptr);
+	if (ReadRequest != nullptr)
 	{
-		return IORequest;
+		return new FBulkDataIORequest(IORequestHandle, ReadRequest, ReadSize);
 	}
 	else
 	{
-		delete IORequest;
+		delete IORequestHandle;
 		return nullptr;
 	}
 }
 
 #endif
-
-FBulkDataIORequest::FBulkDataIORequest(IAsyncReadFileHandle* InFileHandle)
-	: FileHandle(InFileHandle)
-	, ReadRequest(nullptr)
-	, Size(INDEX_NONE)
-{
-}
-
-FBulkDataIORequest::FBulkDataIORequest(IAsyncReadFileHandle* InFileHandle, IAsyncReadRequest* InReadRequest, int64 BytesToRead)
-	: FileHandle(InFileHandle)
-	, ReadRequest(InReadRequest)
-	, Size(BytesToRead)
-{
-
-}
 
 FBulkDataIORequest::~FBulkDataIORequest()
 {
@@ -1781,55 +1657,35 @@ FBulkDataIORequest::~FBulkDataIORequest()
 	delete FileHandle;
 }
 
-bool FBulkDataIORequest::MakeReadRequest(int64 Offset, int64 BytesToRead, EAsyncIOPriorityAndFlags PriorityAndFlags, FBulkDataIORequestCallBack* CompleteCallback, uint8* UserSuppliedMemory)
-{
-	check(ReadRequest == nullptr);
-
-	FBulkDataIORequestCallBack LocalCallback = *CompleteCallback;
-	FAsyncFileCallBack AsyncFileCallBack = [LocalCallback, BytesToRead, this](bool bWasCancelled, IAsyncReadRequest* InRequest)
-	{
-		// In some cases the call to ReadRequest can invoke the callback immediately (if the requested data is cached 
-		// in the pak file system for example) which means that FBulkDataIORequest::ReadRequest might not actually be
-		// set correctly, so we need to make sure it is assigned before we invoke LocalCallback!
-		ReadRequest = InRequest;
-
-		Size = BytesToRead;
-		LocalCallback(bWasCancelled, this);
-	};
-
-	ReadRequest = FileHandle->ReadRequest(Offset, BytesToRead, PriorityAndFlags, &AsyncFileCallBack, UserSuppliedMemory);
-	
-	if (ReadRequest != nullptr)
-	{
-		return true;
-	}
-	else
-	{
-		return false;
-	}
-}
-
 bool FBulkDataIORequest::PollCompletion() const
 {
 	return ReadRequest->PollCompletion();
 }
 
-bool FBulkDataIORequest::WaitCompletion(float TimeLimitSeconds)
+bool FBulkDataIORequest::WaitCompletion(float TimeLimitSeconds) const
 {
 	return ReadRequest->WaitCompletion(TimeLimitSeconds);
 }
 
-uint8* FBulkDataIORequest::GetReadResults()
+
+uint8* FBulkDataIORequest::GetReadResults() const
 {
 	return ReadRequest->GetReadResults();
 }
 
 int64 FBulkDataIORequest::GetSize() const
 {
-	return Size;
+	if (ReadRequest->PollCompletion())
+	{
+		return Size;
+	}
+	else
+	{
+		return -1;
+	}
 }
 
-void FBulkDataIORequest::Cancel()
+void FBulkDataIORequest::Cancel() const
 {
 	ReadRequest->Cancel();
 }
@@ -1917,11 +1773,11 @@ void FUntypedBulkData::LoadDataIntoMemory( void* Dest )
 		FString BulkDataFilename;
 		if (BulkDataFlags & BULKDATA_MemoryMappedPayload)
 		{
-			BulkDataFilename = FPathViews::ChangeExtension(Filename, BulkDataExt::MemoryMapped);
+			BulkDataFilename = FPaths::ChangeExtension(Filename, TEXT(".m.ubulk"));
 		}
 		else
 		{
-			BulkDataFilename = FPathViews::ChangeExtension(Filename, BulkDataExt::Default);
+			BulkDataFilename = FPaths::ChangeExtension(Filename, TEXT(".ubulk"));
 		}
 		BulkDataArchive = IFileManager::Get().CreateFileReader(*BulkDataFilename, FILEREAD_Silent);
 	}
@@ -1992,7 +1848,7 @@ void FUntypedBulkData::LoadDataIntoMemory( void* Dest )
 		// is it possible for streaming mips to be loaded in non streaming ways.
 		if (CVarTextureStreamingEnabled->GetValueOnAnyThread() != 0)
 		{
-			bool bIsBulkFile = Filename.EndsWith(BulkDataExt::Default);
+			bool bIsBulkFile = Filename.EndsWith(TEXT(".ubulk"));
 			UE_CLOG(GEventDrivenLoaderEnabled && bIsBulkFile && (IsInGameThread() || IsInAsyncLoadingThread()), LogSerialization, Error, TEXT("Attempt to sync load bulk data with EDL enabled (LoadDataIntoMemory). This is not desireable. File %s"), *Filename);
 		}
 #endif
@@ -2001,7 +1857,7 @@ void FUntypedBulkData::LoadDataIntoMemory( void* Dest )
 		{
 			BulkDataOffsetInFile -= IFileManager::Get().FileSize(*Filename);
 			check(BulkDataOffsetInFile >= 0);
-			Filename = FPaths::GetBaseFilename(Filename, false) + BulkDataExt::Export;
+			Filename = FPaths::GetBaseFilename(Filename, false) + TEXT(".uexp");
 		}
 
 		FArchive* Ar = IFileManager::Get().CreateFileReader(*Filename, FILEREAD_Silent);
@@ -2123,6 +1979,18 @@ void FFloatBulkDataOld::SerializeElement( FArchive& Ar, void* Data, int64 Elemen
 {
 	float& FloatData = *((float*)Data + ElementIndex);
 	Ar << FloatData;
+}
+
+FBulkDataIORequest* BulkDataUtils::CreateStreamingRequestForRange(const FBulkDataInterface& Start, const FBulkDataInterface& End, EAsyncIOPriorityAndFlags Priority, FAsyncFileCallBack* CompleteCallback)
+{
+	check(Start.GetFilename() == End.GetFilename());
+
+	const int64 ReadOffset = Start.GetBulkDataOffsetInFile();
+	const int64 ReadSize = (End.GetBulkDataOffsetInFile() + End.GetBulkDataSize()) - ReadOffset;
+
+	check(ReadSize > 0);
+
+	return Start.CreateStreamingRequest(0, ReadSize, Priority, CompleteCallback, nullptr);
 }
 
 void FFormatContainer::Serialize(FArchive& Ar, UObject* Owner, const TArray<FName>* FormatsToSave, bool bSingleUse, uint32 InAlignment, bool bInline, bool bMapped)

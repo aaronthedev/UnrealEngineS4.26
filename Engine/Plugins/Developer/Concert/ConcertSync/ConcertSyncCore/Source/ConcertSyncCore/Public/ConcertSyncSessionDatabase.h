@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -113,15 +113,13 @@ public:
 	 * @note The endpoint ID referenced by the activity must exist in the database (@see SetEndpoint).
 	 * @note This function is expected to be called on the server to populate its version of the session database.
 	 *
-	 * @param InPackageActivity			The base part of the package activity to add (the ActivityId, EventTime, EventType, EventId, and PackageRevision members are ignored).
-	 * @param InPackageInfo				Information about the package affected.
-	 * @param InPackageDataStream		A stream to the package data if the activty is about adding or modifying a package. Can be empty when the activity is about deleting or discarding changes.
+	 * @param InPackageActivity			The package activity to add (the ActivityId, EventTime, EventType, EventId, and PackageRevision members are ignored).
 	 * @param OutActivityId				Populated with the ID of this activity in the database.
 	 * @param OutPackageEventId			Populated with the ID of the package event in the database (@see GetPackageEvent).
 	 *
 	 * @return True if the package activity was added, false otherwise.
 	 */
-	bool AddPackageActivity(const FConcertSyncActivity& InPackageActivity, const FConcertPackageInfo& InPackageInfo, FConcertPackageDataStream& InPackageDataStream, int64& OutActivityId, int64& OutPackageEventId);
+	bool AddPackageActivity(const FConcertSyncPackageActivity& InPackageActivity, int64& OutActivityId, int64& OutPackageEventId);
 
 	/**
 	 * Set a connection activity in this database, creating or replacing it.
@@ -162,13 +160,12 @@ public:
 	 * @note The endpoint ID referenced by the activity must exist in the database (@see SetEndpoint).
 	 * @note This function is expected to be called on the client to populate its version of the session database from data synced from the server.
 	 *
-	 * @param InPackageActivity			The base part of the package activity to set.
-	 * @param InPackageActivityEvent	The event meta data (package info + revision) and possibly the corresponding package data.
-	 * @param bMetaDataOnly				True to store the meta data only, omitting the package data itself.
+	 * @param InPackageActivity		The package activity to set.
+	 * @param bMetaDataOnly			True to store the meta data only, omitting the package data itself.
 	 *
 	 * @return True if the package activity was set, false otherwise.
 	 */
-	bool SetPackageActivity(const FConcertSyncActivity& InPackageActivity, FConcertSyncPackageEventData& InPackageActivityEvent, const bool bMetaDataOnly = false);
+	bool SetPackageActivity(const FConcertSyncPackageActivity& InPackageActivity, const bool bMetaDataOnly = false);
 
 	/**
 	 * Get the generic part of an activity from this database.
@@ -213,13 +210,12 @@ public:
 	/**
 	 * Get a package activity from this database.
 	 *
-	 * @param InActivityId			The ID of the activity to find.
-	 * @param PackageActivityFn		A callback invoked with the package activity components (the base activity part and the event part).
-	 * @note The package data stream passed to the callback through the FConcertSycnPackageEventData is only valid during the callback.
+	 * @param InActivityId				The ID of the activity to find.
+	 * @param OutPackageActivity		The package activity to populate with the result.
 	 *
 	 * @return True if the package activity was found, false otherwise.
 	 */
-	bool GetPackageActivity(const int64 InActivityId, const TFunctionRef<void(FConcertSyncActivity&& /*BasePart*/, FConcertSyncPackageEventData& /*EventPart*/)>& PackageActivityFn) const;
+	bool GetPackageActivity(const int64 InActivityId, FConcertSyncPackageActivity& OutPackageActivity) const;
 
 	/**
 	 * Get the type of an activity in this database.
@@ -275,13 +271,12 @@ public:
 	/**
 	 * Get a package activity for an event in this database.
 	 *
-	 * @param InPackageEventId		The ID of the package event to find the activity for.
-	 * @param PackageActivityFn		A callback invoked with the package activity components (the base activity part and the event part).
-	 * @note The package data stream passed to the callback through the FConcertSycnPackageEventData is only valid during the callback.
+	 * @param InPackageEventId			The ID of the package event to find the activity for.
+	 * @param OutPackageActivity		The package activity to populate with the result.
 	 *
 	 * @return True if the package activity was found, false otherwise.
 	 */
-	bool GetPackageActivityForEvent(const int64 InPackageEventId, const TFunctionRef<void(FConcertSyncActivity&& /*BasePart*/, FConcertSyncPackageEventData& /*EventPart*/)>& PackageActivityFn) const;
+	bool GetPackageActivityForEvent(const int64 InPackageEventId, FConcertSyncPackageActivity& OutPackageActivity) const;
 
 	/**
 	 * Enumerate the generic part of the activities in this database.
@@ -326,7 +321,7 @@ public:
 	 *
 	 * @return True if the package activities were enumerated without error, false otherwise.
 	 */
-	bool EnumeratePackageActivities(const TFunctionRef<bool(FConcertSyncActivity&&/*BasePart*/, FConcertSyncPackageEventData& /*EventPart*/)>& InCallback) const;
+	bool EnumeratePackageActivities(TFunctionRef<bool(FConcertSyncPackageActivity&&)> InCallback) const;
 
 	/**
 	 * Enumerate all the activities in this database of the given type.
@@ -535,25 +530,15 @@ public:
 	bool AddDummyPackageEvent(const FName InPackageName, int64& OutPackageEventId);
 
 	/**
-	 * Get a package event meta data (omitting the package data itself) from this database.
-	 *
-	 * @param InPackageEventId		The ID of the package event to find.
-	 * @param OuptPackageRevision	The package revision number.
-	 * @param OutPackageInfo		The Package info.
-	 *
-	 * @return True if the package event was found, false otherwise.
-	 */
-	bool GetPackageEventMetaData(const int64 InPackageEventId, int64& OuptPackageRevision, FConcertPackageInfo& OutPackageInfo) const;
-	
-	/**
 	 * Get a package event from this database.
 	 *
 	 * @param InPackageEventId			The ID of the package event to find.
-	 * @param PackageEventFn			The callback invoked with the package event containing the event meta data and the package data if available.
+	 * @param OutPackageEvent			The package event to populate with the result.
+	 * @param InMetaDataOnly			True to only get the meta-data for the package, and skip the bulk of the data.
 	 *
 	 * @return True if the package event was found, false otherwise.
 	 */
-	bool GetPackageEvent(const int64 InPackageEventId, const TFunctionRef<void(FConcertSyncPackageEventData&)>& PackageEventFn) const;
+	bool GetPackageEvent(const int64 InPackageEventId, FConcertSyncPackageEvent& OutPackageEvent, const bool InMetaDataOnly = false) const;
 
 	/**
 	 * Get package names for packages with a head revision (at least one package event)
@@ -579,32 +564,34 @@ public:
 	 * Enumerate the head revision package data for all packages in this database.
 	 *
 	 * @param InCallback				Callback invoked for each package; return true to continue enumeration, or false to stop.
+	 * @param InMetaDataOnly			True to only get the meta-data for the package, and skip the bulk of the data.
 	 *
 	 * @return True if the package data was enumerated without error, false otherwise.
 	 */
-	bool EnumerateHeadRevisionPackageData(TFunctionRef<bool(const FConcertPackageInfo&, FConcertPackageDataStream&)> InCallback) const;
+	bool EnumerateHeadRevisionPackageData(TFunctionRef<bool(FConcertPackage&&)> InCallback, const bool InMetaDataOnly = false) const;
+
+	/**
+	 * Get the data from this database for the given package name for the given revision.
+	 *
+	 * @param InPackageName				The name of the package to get the head revision for.
+	 * @param OutPackage				The package data to populate with the result.
+	 * @param InPackageRevision			The revision of the package to get the data for, or null to get the head revision.
+	 *
+	 * @return True if package data could be found for the given revision, false otherwise.
+	 */
+	bool GetPackageDataForRevision(const FName InPackageName, FConcertPackage& OutPackage, const int64* InPackageRevision = nullptr) const;
 
 	/**
 	 * Get the data from this database for the given package name for the given revision.
 	 *
 	 * @param InPackageName				The name of the package to get the head revision for.
 	 * @param OutPackageInfo			The package info to populate with the result.
+	 * @param OutPackageData			The package data to populate with the result, or null to skip the package data.
 	 * @param InPackageRevision			The revision of the package to get the data for, or null to get the head revision.
 	 *
 	 * @return True if package data could be found for the given revision, false otherwise.
 	 */
-	bool GetPackageInfoForRevision(const FName InPackageName, FConcertPackageInfo& OutPackageInfo, const int64* InPackageRevision = nullptr) const;
-	
-	/**
-	 * Get the data from this database for the given package name for the given revision.
-	 *
-	 * @param InPackageName				The name of the package to get the head revision for.
-	 * @param InCallback				A callback invoked with the package info and package data.
-	 * @param InPackageRevision			The revision of the package to get the data for, or null to get the head revision.
-	 *
-	 * @return True if package data could be found for the given revision, false otherwise.
-	 */
-	bool GetPackageDataForRevision(const FName InPackageName, const TFunctionRef<void(const FConcertPackageInfo&, FConcertPackageDataStream&)>& InCallback, const int64* InPackageRevision = nullptr) const;
+	bool GetPackageDataForRevision(const FName InPackageName, FConcertPackageInfo& OutPackageInfo, TArray<uint8>* OutPackageData, const int64* InPackageRevision = nullptr) const;
 	
 	/**
 	 * Get the head revision in this database for the given package name.
@@ -649,10 +636,10 @@ public:
 	 * Update the specified package event.
 	 * @note The function is meant to be update a partially synced package event to store the corresponding package data.
 	 * @param InPackageEventId			The ID of the event to update.
-	 * @param PackageEvent				The event to store.
-	 * @return True if the package was updated.
+	 * @param InTransactionEvent		The event to store.
+	 * @return True if the transaction was updated.
 	 */
-	bool UpdatePackageEvent(const int64 InPackageEventId, FConcertSyncPackageEventData& PackageEvent);
+	bool UpdatePackageEvent(const int64 InPackageEventId, const FConcertSyncPackageEvent& InPackageEvent);
 
 private:
 	/**
@@ -739,25 +726,35 @@ private:
 	/**
 	 * Add a new package event to this database, assigning it a package event ID.
 	 *
-	 * @param InPackageInfo				The package info to add for this event.
-	 * @param InPackageDataStream		The package data to add for this event (may be empty if the event doesn't carry package data).
+	 * @param InPackageEvent			The package event to add.
 	 * @param OutPackageEventId			Populated with the ID of the package event in the database.
 	 *
 	 * @return True if the package event was added, false otherwise.
 	 */
-	bool AddPackageEvent(const FConcertPackageInfo& InPackageInfo, FConcertPackageDataStream& InPackageDataStream, int64& OutPackageEventId);
+	bool AddPackageEvent(const FConcertSyncPackageEvent& InPackageEvent, int64& OutPackageEventId);
 
 	/**
 	 * Set a package event in this database, creating or replacing it.
 	 *
 	 * @param InPackageEventId			The ID of the package event to set.
-	 * @param PackageRevision			The package revision number.
-	 * @param PackageInfo				The package info.
-	 * @param InPackageDataStream		The package data stream or null to set only the package meta data (revision and package info).
+	 * @param InPackageEvent			The package event to set.
+	 * @param bMetaDataOnly				True to store the meta data only, omitting the package data.
 	 *
 	 * @return True if the package event was set, false otherwise.
 	 */
-	bool SetPackageEvent(const int64 InPackageEventId, int64 PackageRevision, const FConcertPackageInfo& PackageInfo, FConcertPackageDataStream* InPackageDataStream);
+	bool SetPackageEvent(const int64 InPackageEventId, const FConcertSyncPackageEvent& InPackageEvent, const bool bMetaDataOnly = false);
+
+	/**
+	 * Set a package event in this database, creating or replacing it.
+	 *
+	 * @param InPackageEventId			The ID of the package event to set.
+	 * @param InPackageRevision			The package revision to set.
+	 * @param InPackage					The package to set.
+	 * @param bMetaDataOnly				True to store the meta data only, omitting the package data.
+	 *
+	 * @return True if the package event was set, false otherwise.
+	 */
+	bool SetPackageEvent(const int64 InPackageEventId, const int64 InPackageRevision, const FConcertPackage& InPackage, const bool bMetaDataOnly = false);
 
 	/**
 	 * Get the maximum ID of the package events in this database.
@@ -881,37 +878,24 @@ private:
 	/**
 	 * Save and cache the given package data with the given filename.
 	 *
-	 * @param InDstPackageBlobPathname	The pathname to save the package data as. The package data may or may not be compressed.
+	 * @param InPackageFilename			The filename to save the package data as.
 	 * @param InPackageInfo				The package info to save.
-	 * @param InPackageDataStream		The package data to save.
+	 * @param InPackageData				The package data to save.
 	 *
 	 * @return True if the package data was saved, false otherwise.
 	 */
-	bool SavePackage(const FString& InDstPackageBlobPathname, const FConcertPackageInfo& InPackageInfo, FConcertPackageDataStream& InPackageDataStream) const;
+	bool SavePackage(const FString& InPackageFilename, const FConcertPackageInfo& InPackageInfo, const TArray<uint8>& InPackageData) const;
 
 	/**
-	 * Load the package data for the given filename.
+	 * Load and cache the package data for the given filename.
 	 *
-	 * @param InPackageBlobFilename			The blob filename containing the package data to extract.
-	 * @param PackageDataStreamFn			Callback invoked to let the caller stream the package data.
-	 * @note The archive passed as output is only valid during the callback, its position is set at the beginning of the data (not necessarily zero) and may contain data passed the supplied size.
+	 * @param InPackageFilename			The filename to load the package data from.
+	 * @param OutPackageInfo			The package info to populate with the result, or null to skip the package info.
+	 * @param OutPackageData			The package data to populate with the result, or null to skip the package data.
+	 *
 	 * @return True if the package data was loaded, false otherwise.
 	 */
-	bool LoadPackage(const FString& InPackageBlobFilename, const TFunctionRef<void(FConcertPackageDataStream&)>& PackageDataStreamFn) const;
-	
-	/**
-	 * Returns true if a package blob should be cached in memory, according to its size.
-	 * @param PackageBlobSize The blob size (containing package data (possibly compressed) and some meta data).
-	 * @return true if the pacage should be cached, false otherwise.
-	 */
-	bool ShouldCachePackageBlob(uint64 PackageBlobSize) const;
-
-	/**
-	 * Returns true if the package data should be compressed in the blob, according to its size.
-	 * @param PackageDataSize The uncompressed package data size.
-	 * @return true if the package data should be compressed, false otherwise.
-	 */
-	bool ShouldCompressPackageData(uint64 PackageDataSize) const;
+	bool LoadPackage(const FString& InPackageFilename, FConcertPackageInfo* OutPackageInfo, TArray<uint8>* OutPackageData) const;
 
 	/** Root path to store all session data under */
 	FString SessionPath;
@@ -927,12 +911,6 @@ private:
 
 	/** Internal SQLite database */
 	TUniquePtr<FSQLiteDatabase> Database;
-
-	/** Threshold used to avoid caching very large packages (3GB for example) in memory. */
-	uint64 MaxPackageBlobSizeForCaching;
-
-	/** Threshold used to decide when a package should be compressed or not. */
-	uint64 MaxPackageDataSizeForCompression;
 };
 
 namespace ConcertSyncSessionDatabaseFilterUtil

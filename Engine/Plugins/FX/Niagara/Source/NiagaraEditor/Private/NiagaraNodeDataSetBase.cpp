@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraNodeDataSetBase.h"
 #include "UObject/UnrealType.h"
 #include "INiagaraCompiler.h"
 #include "NiagaraEvents.h"
 #include "EdGraphSchema_Niagara.h"
-#include "NiagaraCustomVersion.h"
 
 #define LOCTEXT_NAMESPACE "UNiagaraNodeDataSetBase"
 
@@ -86,11 +85,7 @@ void UNiagaraNodeDataSetBase::PostLoad()
 		UE_LOG(LogNiagaraEditor, Display, TEXT("Niagara script '%s' references struct asset '%s'"), *GetFullName(), *ExternalStructAsset->GetFullName());
 	}*/
 	
-	if (!IsSynchronizedWithStruct(true, nullptr, true))
-	{
-		SynchronizeWithStruct();
-		ReallocatePins();
-	}
+	IsSynchronizedWithStruct(true, nullptr, true);
 
 	const int32 NiagaraVer = GetLinkerCustomVersion(FNiagaraCustomVersion::GUID);
 
@@ -107,11 +102,11 @@ bool UNiagaraNodeDataSetBase::IsSynchronizedWithStruct(bool bIgnoreConditionVari
 		bool bFoundIssues = false;
 		// First check to see if any variables have been added...
 		{
-			for (TFieldIterator<FProperty> PropertyIt(ExternalStructAsset, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
+			for (TFieldIterator<UProperty> PropertyIt(ExternalStructAsset, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
 			{
-				const FProperty* Property = *PropertyIt;
+				const UProperty* Property = *PropertyIt;
 
-				if (bIgnoreConditionVariable && Property->IsA<FBoolProperty>() && Property->GetFName() == ConditionVarName)
+				if (bIgnoreConditionVariable && Property->IsA<UBoolProperty>() && Property->GetFName() == ConditionVarName)
 				{
 					continue;
 				}
@@ -168,10 +163,10 @@ bool UNiagaraNodeDataSetBase::IsSynchronizedWithStruct(bool bIgnoreConditionVari
 			for (const FNiagaraVariable& Var : Variables)
 			{
 				bool bFound = false;
-				for (TFieldIterator<FProperty> PropertyIt(ExternalStructAsset, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
+				for (TFieldIterator<UProperty> PropertyIt(ExternalStructAsset, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
 				{
-					const FProperty* Property = *PropertyIt;
-					if (Property->GetName() == Var.GetName().ToString())
+					const UProperty* Property = *PropertyIt;
+					if (Property->GetFName() == Var.GetName())
 					{
 						bFound = true;
 						break;
@@ -221,20 +216,20 @@ bool UNiagaraNodeDataSetBase::RefreshFromExternalChanges()
 	return false;
 }
 
-bool UNiagaraNodeDataSetBase::GetSupportedNiagaraTypeDef(const FProperty* Property, FNiagaraTypeDefinition& TypeDef)
+bool UNiagaraNodeDataSetBase::GetSupportedNiagaraTypeDef(const UProperty* Property, FNiagaraTypeDefinition& TypeDef)
 {
-	const FStructProperty* StructProp = CastField<FStructProperty>(Property);
-	if (Property->IsA(FFloatProperty::StaticClass()))
+	const UStructProperty* StructProp = Cast<UStructProperty>(Property);
+	if (Property->IsA(UFloatProperty::StaticClass()))
 	{
 		TypeDef = FNiagaraTypeDefinition::GetFloatDef();
 		return true;
 	}
-	else if (Property->IsA(FBoolProperty::StaticClass()))
+	else if (Property->IsA(UBoolProperty::StaticClass()))
 	{
 		TypeDef = FNiagaraTypeDefinition::GetBoolDef();
 		return true;
 	}
-	else if (Property->IsA(FIntProperty::StaticClass()))
+	else if (Property->IsA(UIntProperty::StaticClass()))
 	{
 		TypeDef = FNiagaraTypeDefinition::GetIntDef();
 		return true;
@@ -282,13 +277,13 @@ bool UNiagaraNodeDataSetBase::SynchronizeWithStruct()
 	// TODO: need to add valid as a variable separately for now; compiler support to validate index is missing	
 	//Variables.Add(FNiagaraVariable(FNiagaraTypeDefinition::GetBoolDef(), "Valid"));
 
-	//UGH! Why do we have our own custom type rep again. Why aren't we just using the FPropertySystem?
+	//UGH! Why do we have our own custom type rep again. Why aren't we just using the UPropertySystem?
 	//
 	// [OP] not really different from anywhere else, nodes everywhere else hold FNiagaraVariables as their outputs; 
 	//  just traversing the ustruct here to build an array of those; this is temporary and should be genericised, of course
-	for (TFieldIterator<FProperty> PropertyIt(ExternalStructAsset, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
+	for (TFieldIterator<UProperty> PropertyIt(ExternalStructAsset, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
 	{
-		const FProperty* Property = *PropertyIt;
+		const UProperty* Property = *PropertyIt;
 		FText DisplayNameText = Property->GetDisplayNameText();
 		FString DisplayName = DisplayNameText.ToString();
 		FNiagaraTypeDefinition TypeDef;

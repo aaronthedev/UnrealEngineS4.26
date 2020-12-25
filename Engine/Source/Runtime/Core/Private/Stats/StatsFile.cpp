@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	StatsFile.cpp: Implements stats file related functionality.
@@ -278,7 +278,7 @@ void IStatsWriteFile::Stop()
 
 FText IStatsWriteFile::GetFileMetaDesc() const
 {
-	const FTimespan Duration = FTimespan( 0, 0, (int32)(FPlatformTime::Seconds() - StartTime) );
+	const FTimespan Duration = FTimespan( 0, 0, FPlatformTime::Seconds() - StartTime );
 
 	const FText FileMetaDesc = FText::Format( LOCTEXT( "FileMetaDesc_Fmt", "STATS FILE: Duration: {0}, Filesize: {1}" ), FText::AsTimespan( Duration ), FText::AsMemory( (SIZE_T)FileSize ) );
 	return FileMetaDesc;
@@ -632,15 +632,8 @@ bool FStatsReadFile::PrepareLoading()
 	Stream.ReadFramesOffsets( *Reader );
 
 	// Move file pointer to the first frame or first stat packet.
-	if (Stream.FramesInfo.Num() > 0)
-	{
-		const int64 FrameOffset0 = Stream.FramesInfo[0].FrameFileOffset;
-		Reader->Seek( FrameOffset0 );
-	}
-	else
-	{
-		Reader->Seek(Reader->TotalSize());
-	}
+	const int64 FrameOffset0 = Stream.FramesInfo[0].FrameFileOffset;
+	Reader->Seek( FrameOffset0 );
 
 	const double TotalTime = FPlatformTime::Seconds() - StartTime;
 	UE_LOG( LogStats, Log, TEXT( "Prepare loading took %.2f sec(s)" ), TotalTime );
@@ -758,7 +751,7 @@ void FStatsReadFile::ReadRawStats()
 		else
 		{
 			Frame.Packets.Add( StatPacket );
-			FileInfo.MaximumPacketSize = FMath::Max<int32>( FileInfo.MaximumPacketSize, (int32)StatPacket->StatMessages.GetAllocatedSize() );
+			FileInfo.MaximumPacketSize = FMath::Max<int32>( FileInfo.MaximumPacketSize, StatPacket->StatMessages.GetAllocatedSize() );
 		}
 
 		UpdateReadStageProgress();
@@ -925,7 +918,7 @@ void FStatsReadFile::ProcessStats()
 									// Read OperationSequenceTag.
 									Index++; CurrentStatMessageIndex++;
 									const FStatMessage& SequenceTagMessage = Data[Index];
-									const uint32 SequenceTag = (uint32)SequenceTagMessage.GetValue_int64();
+									const uint32 SequenceTag = SequenceTagMessage.GetValue_int64();
 
 									//ThreadStats->AddMemoryMessage( GET_STATFNAME( STAT_Memory_AllocPtr ), (uint64)(UPTRINT)Ptr | (uint64)EMemoryOperation::Alloc );
 									//ThreadStats->AddMemoryMessage( GET_STATFNAME( STAT_Memory_AllocSize ), Size );
@@ -949,7 +942,7 @@ void FStatsReadFile::ProcessStats()
 									// Read OperationSequenceTag.
 									Index++; CurrentStatMessageIndex++;
 									const FStatMessage& SequenceTagMessage = Data[Index];
-									const uint32 SequenceTag = (uint32)SequenceTagMessage.GetValue_int64();
+									const uint32 SequenceTag = SequenceTagMessage.GetValue_int64();
 
 									//ThreadStats->AddMemoryMessage( GET_STATFNAME( STAT_Memory_FreePtr ), (uint64)(UPTRINT)OldPtr | (uint64)EMemoryOperation::Realloc );
 									//ThreadStats->AddMemoryMessage( GET_STATFNAME( STAT_Memory_AllocPtr ), (uint64)(UPTRINT)NewPtr | (uint64)EMemoryOperation::Realloc );
@@ -962,7 +955,7 @@ void FStatsReadFile::ProcessStats()
 									// Read OperationSequenceTag.
 									Index++; CurrentStatMessageIndex++;
 									const FStatMessage& SequenceTagMessage = Data[Index];
-									const uint32 SequenceTag = (uint32)SequenceTagMessage.GetValue_int64();
+									const uint32 SequenceTag = SequenceTagMessage.GetValue_int64();
 
 									//ThreadStats->AddMemoryMessage( GET_STATFNAME( STAT_Memory_FreePtr ), (uint64)(UPTRINT)Ptr | (uint64)EMemoryOperation::Free );	// 16 bytes total				
 									//ThreadStats->AddMemoryMessage( GET_STATFNAME( STAT_Memory_OperationSequenceTag ), (int64)SequenceTag );
@@ -1062,7 +1055,7 @@ void FStatsReadFile::UpdateReadStageProgress()
 	const double CurrentSeconds = FPlatformTime::Seconds();
 	if (CurrentSeconds > LastUpdateTime + NumSecondsBetweenUpdates)
 	{
-		const int32 PercentagePos = int32( 100.0*double(Reader->Tell()) / double(Reader->TotalSize()) );
+		const int32 PercentagePos = int32( 100.0*Reader->Tell() / Reader->TotalSize() );
 		StageProgress.Set( PercentagePos );
 		UE_LOG( LogStats, Verbose, TEXT( "UpdateReadStageProgress: %3i%%" ), PercentagePos );
 		LastUpdateTime = CurrentSeconds;
@@ -1086,14 +1079,14 @@ void FStatsReadFile::UpdateCombinedHistoryStats()
 		int32 FramePackets = It.Value.Packets.Num(); // Threads
 		for (const auto& It2 : It.Value.Packets)
 		{
-			FramePacketsSize += (int32)It2->StatMessages.GetAllocatedSize();
+			FramePacketsSize += It2->StatMessages.GetAllocatedSize();
 			FrameStatMessages += It2->StatMessages.Num();
 		}
 
 		UE_LOG( LogStats, Verbose, TEXT( "Frame: %4i/%2i Size: %5.1f MB / %10i" ),
 				FrameNum,
 				FramePackets,
-				(float)FramePacketsSize / 1024.0f / 1024.0f,
+				FramePacketsSize / 1024.0f / 1024.0f,
 				FrameStatMessages );
 
 		FileInfo.TotalStatMessagesNum += FrameStatMessages;
@@ -1101,8 +1094,8 @@ void FStatsReadFile::UpdateCombinedHistoryStats()
 	}
 
 	UE_LOG( LogStats, Warning, TEXT( "Total PacketSize: %6.1f MB, Max: %2f MB, PacketsNum: %i, StatMessagesNum: %i, Frames: %i" ),
-			(float)FileInfo.TotalPacketsSize / 1024.0f / 1024.0f,
-			(float)FileInfo.MaximumPacketSize / 1024.0f / 1024.0f,
+			FileInfo.TotalPacketsSize / 1024.0f / 1024.0f,
+			FileInfo.MaximumPacketSize / 1024.0f / 1024.0f,
 			FileInfo.TotalPacketsNum,
 			FileInfo.TotalStatMessagesNum,
 			CombinedHistory.Num() );

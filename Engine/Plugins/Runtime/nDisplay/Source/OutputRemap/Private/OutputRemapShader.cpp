@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OutputRemapShader.h"
 
@@ -42,7 +42,7 @@ class FOutputRemapVS : public FGlobalShader
 
 public:
 	/** Default constructor. */
-	FOutputRemapVS() 
+	FOutputRemapVS()
 	{ }
 
 public:
@@ -90,9 +90,20 @@ public:
 		RHICmdList.SetShaderSampler(ShaderRHI, PostprocessInputParameterSampler0.GetBaseIndex(), TStaticSamplerState<SF_Trilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI());
 	}
 
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar
+			<< PostprocessInputParameter0
+			<< PostprocessInputParameterSampler0
+			;
+
+		return bShaderHasOutdatedParameters;
+	}
+
 private:
-	LAYOUT_FIELD(FShaderResourceParameter, PostprocessInputParameter0)
-	LAYOUT_FIELD(FShaderResourceParameter, PostprocessInputParameterSampler0)
+	FShaderResourceParameter PostprocessInputParameter0;
+	FShaderResourceParameter PostprocessInputParameterSampler0;
 };
 
 // Implement shaders inside UE4
@@ -152,18 +163,19 @@ bool FOutputRemapShader::ApplyOutputRemap_RenderThread(FRHICommandListImmediate&
 		GraphicsPSOInit.BlendState = TStaticBlendState <>::GetRHI();
 		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
 
-		FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(GMaxRHIFeatureLevel);
+		// Grab shaders
+		TShaderMap<FGlobalShaderType>* ShaderMap = GetGlobalShaderMap(GMaxRHIFeatureLevel);
 		TShaderMapRef<FOutputRemapVS> VertexShader(ShaderMap);
 		TShaderMapRef<FOutputRemapPS> PixelShader(ShaderMap);
 
-		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;// GetVertexDeclarationFVector4();
-		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
-		PixelShader->SetParameters(RHICmdList, PixelShader.GetPixelShader(), ShaderResourceTexture);
+		PixelShader->SetParameters(RHICmdList, PixelShader->GetPixelShader(), ShaderResourceTexture);
 		MeshData->DrawMesh(RHICmdList);
 	}
 

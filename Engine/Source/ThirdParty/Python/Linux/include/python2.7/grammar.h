@@ -69,7 +69,6 @@ typedef struct {
 /* FUNCTIONS */
 
 grammar *newgrammar(int start);
-void freegrammar(grammar *g);
 dfa *adddfa(grammar *g, int type, char *name);
 int addstate(dfa *d);
 void addarc(dfa *d, int from, int to, int lbl);

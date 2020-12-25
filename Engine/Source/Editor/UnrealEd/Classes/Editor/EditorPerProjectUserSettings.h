@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -161,20 +161,13 @@ public:
 	UPROPERTY(config)
 	int32 PreviewFeatureLevel;
 
-	/** The platform name to preview, or NAME_None if there is no preview platform */
-	UPROPERTY(config)
-	FName PreviewPlatformName;
-
-	/** The shader platform to preview, or NAME_None if there is no preview platform */
+	/** The shader platform to preview, or NAME_None if there is no shader preview platform */
 	UPROPERTY(config)
 	FName PreviewShaderFormatName;
 
 	/** Is feature level preview currently active */
 	UPROPERTY(config)
 	bool bPreviewFeatureLevelActive;
-
-	UPROPERTY(config)
-	FName PreviewDeviceProfileName;
 
 public:
 

@@ -73,7 +73,7 @@ ConditionalBranchToSimpleConditionalBranchOpportunityFinder::
         result.push_back(
             MakeUnique<
                 ConditionalBranchToSimpleConditionalBranchReductionOpportunity>(
-                context, block.terminator(), redirect_to_true));
+                block.terminator(), redirect_to_true));
       }
     }
   }

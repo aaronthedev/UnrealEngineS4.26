@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -28,24 +28,17 @@ public:
 class SLATE_API FSlateAccessibleCheckBox
 	: public FSlateAccessibleWidget
 	, public IAccessibleActivatable
-	, public IAccessibleProperty
 {
 public:
 	FSlateAccessibleCheckBox(TWeakPtr<SWidget> InWidget) : FSlateAccessibleWidget(InWidget, EAccessibleWidgetType::CheckBox) {}
 	virtual ~FSlateAccessibleCheckBox() {}
 
 	virtual IAccessibleActivatable* AsActivatable() override { return this; }
-	virtual IAccessibleProperty* AsProperty() override { return this; }
 
 	// IAccessibleActivatable
 	virtual void Activate() override;
 	virtual bool IsCheckable() const override;
 	virtual bool GetCheckedState() const override;
-	// ~
-	
-	// IAccessibleProperty
-	virtual FString GetValue() const override;
-	virtual FVariant GetValueAsVariant() const override;
 	// ~
 };
 // ~
@@ -72,7 +65,6 @@ public:
 	virtual bool IsReadOnly() const override;
 	virtual bool IsPassword() const override;
 	virtual FString GetValue() const override;
-	virtual FVariant GetValueAsVariant() const override;
 	virtual void SetValue(const FString& Value) override;
 	// ~
 };
@@ -100,7 +92,6 @@ public:
 	virtual bool IsReadOnly() const override;
 	virtual bool IsPassword() const override;
 	virtual FString GetValue() const override;
-	virtual FVariant GetValueAsVariant() const override;
 	virtual void SetValue(const FString& Value) override;
 	// ~
 };
@@ -144,7 +135,6 @@ public:
 	virtual float GetMaximum() const override;
 	virtual float GetMinimum() const override;
 	virtual FString GetValue() const override;
-	virtual FVariant GetValueAsVariant() const override;
 	virtual void SetValue(const FString& Value) override;
 	// ~
 };

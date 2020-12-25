@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MaterialTexCoordScalesPixelShader.usf: Pixel shader to analyse coordinate scale per texture
@@ -70,6 +70,9 @@ MaterialFloat StoreAvailableVTLevel(in out FTexCoordScalesParams Params, float L
 #include "/Engine/Generated/Material.ush"
 #include "DebugViewModeCommon.ush"
 
+#if LIGHTMAP_VT_ENABLED || NUM_VIRTUALTEXTURE_SAMPLES
+	RWTexture2D<uint> VTFeedbackBuffer : register(VT_FEEDBACK_REGISTER);
+#endif
 
 #if LIGHTMAP_VT_ENABLED || NUM_VIRTUALTEXTURE_SAMPLES
 EARLYDEPTHSTENCIL
@@ -110,7 +113,6 @@ void Main(
 		half Opacity = GetMaterialOpacityRaw(PixelMaterialInputs);
 #if MATERIALBLENDING_MASKED || (DECAL_BLEND_MODE == DECALBLENDMODEID_VOLUMETRIC)
 		half Mask = GetMaterialMask(PixelMaterialInputs);
-		clip(GetMaterialMask(PixelMaterialInputs));
 #endif
 		half4 SSData = GetMaterialSubsurfaceDataRaw(PixelMaterialInputs);
 		float Custom0 = GetMaterialCustomData0(MaterialParameters);
@@ -149,7 +151,7 @@ void Main(
 		MaterialParameters.SvPosition,
 		1.0,
 		View.FrameNumber,
-		View.VTFeedbackBuffer
+		VTFeedbackBuffer
 	);
 #endif	
 }

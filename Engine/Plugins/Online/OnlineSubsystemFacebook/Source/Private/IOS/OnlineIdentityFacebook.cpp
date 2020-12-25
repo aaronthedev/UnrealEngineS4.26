@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // Module includes
 #include "OnlineIdentityFacebook.h"
@@ -56,8 +56,16 @@ void FUserOnlineAccountFacebook::Parse(const FBSDKProfile* NewProfile)
 		SetAccountData(TEXT(ME_FIELD_FIRSTNAME), FirstName);
 		SetAccountData(TEXT(ME_FIELD_LASTNAME), LastName);
 
+#if __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_10_0
 		NSISO8601DateFormatter* dateFormatter = [[NSISO8601DateFormatter alloc] init];
 		dateFormatter.formatOptions = NSISO8601DateFormatWithInternetDateTime | NSISO8601DateFormatWithDashSeparatorInDate | NSISO8601DateFormatWithColonSeparatorInTime | NSISO8601DateFormatWithTimeZone;
+#else
+		// see https://developer.apple.com/library/content/qa/qa1480/_index.html
+		NSDateFormatter* dateFormatter = [[NSDateFormatter alloc] init];
+		NSLocale* enUSPOSIXLocale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+		[dateFormatter setLocale:enUSPOSIXLocale];
+		[dateFormatter setDateFormat:@"yyyy-MM-dd'T'HH:mm:ssZZZZZ"];
+#endif
 
 		NSString* iso8601String = [dateFormatter stringFromDate: NewProfile.refreshDate];
 		[dateFormatter release];

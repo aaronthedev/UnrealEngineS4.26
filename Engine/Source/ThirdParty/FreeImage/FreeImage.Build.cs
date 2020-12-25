@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using UnrealBuildTool;
 using System.IO;
 
@@ -8,7 +8,7 @@ public class FreeImage : ModuleRules
 	{
 		Type = ModuleType.External;
 
-		PublicSystemIncludePaths.Add(Path.Combine(ModuleDirectory, "FreeImage-3.18.0", "Dist"));
+		PublicSystemIncludePaths.Add(Path.Combine(ModuleDirectory, "Source"));
 
 		string BinaryLibraryFolder = Path.Combine(Target.UEThirdPartyBinariesDirectory, "FreeImage", Target.Platform.ToString());
 		string LibraryFileName = "";
@@ -36,17 +36,16 @@ public class FreeImage : ModuleRules
 			PublicDelayLoadDLLs.Add(LibraryFileName);
 			RuntimeDependencies.Add(DynLibPath);
 
-			if (Target.LinkType != TargetLinkType.Monolithic)
-			{
-				PublicSystemLibraries.Add("stdc++");
-			}
-
+			PublicSystemLibraries.Add("stdc++");
 			bWithFreeImage = true;
 		}
 		else if (Target.Platform == UnrealTargetPlatform.Mac)
 		{
 			LibraryFileName = "libfreeimage-3.18.0.dylib";
 			string DynLibPath = Path.Combine(BinaryLibraryFolder, LibraryFileName);
+
+			PublicRuntimeLibraryPaths.Add(BinaryLibraryFolder);
+			PublicAdditionalLibraries.Add(DynLibPath);
 
             PublicDelayLoadDLLs.Add(DynLibPath);   
 			RuntimeDependencies.Add(DynLibPath);

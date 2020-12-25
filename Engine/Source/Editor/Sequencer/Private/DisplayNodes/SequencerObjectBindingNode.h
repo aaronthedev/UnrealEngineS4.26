@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -94,6 +94,8 @@ private:
 	
 	void HandleAddTrackSubMenuNew(FMenuBuilder& AddTrackMenuBuilder, TArray<FPropertyPath> KeyablePropertyPath, int32 PropertyNameIndexStart = 0);
 
+	void HandleLabelsSubMenuCreate(FMenuBuilder& MenuBuilder);
+	
 	void HandlePropertyMenuItemExecute(FPropertyPath PropertyPath);
 
 	ECheckBoxState GetTagCheckState(FName TagName);

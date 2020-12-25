@@ -1,7 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PyWrapperFixedArray.h"
 #include "PyWrapperTypeRegistry.h"
+#include "PyUtil.h"
 #include "PyConversion.h"
 #include "PyReferenceCollector.h"
 #include "UObject/UnrealType.h"
@@ -119,7 +120,7 @@ FPyWrapperFixedArray* FPyWrapperFixedArray::New(PyTypeObject* InType)
 	if (Self)
 	{
 		new(&Self->OwnerContext) FPyWrapperOwnerContext();
-		new(&Self->ArrayProp) PyUtil::FConstPropOnScope();
+		Self->ArrayProp = nullptr;
 		Self->ArrayInstance = nullptr;
 	}
 	return Self;
@@ -130,7 +131,6 @@ void FPyWrapperFixedArray::Free(FPyWrapperFixedArray* InSelf)
 	Deinit(InSelf);
 
 	InSelf->OwnerContext.~FPyWrapperOwnerContext();
-	InSelf->ArrayProp.~TPropOnScope();
 	FPyWrapperBase::Free(InSelf);
 }
 
@@ -144,7 +144,7 @@ int FPyWrapperFixedArray::Init(FPyWrapperFixedArray* InSelf, const PyUtil::FProp
 		return BaseInit;
 	}
 
-	PyUtil::FConstPropOnScope ArrayProp = PyUtil::FConstPropOnScope::OwnedReference(PyUtil::CreateProperty(InPropDef, InLen));
+	UProperty* ArrayProp = PyUtil::CreateProperty(InPropDef, InLen);
 	if (!ArrayProp)
 	{
 		PyUtil::SetPythonError(PyExc_Exception, InSelf, TEXT("Array property was null during init"));
@@ -154,14 +154,14 @@ int FPyWrapperFixedArray::Init(FPyWrapperFixedArray* InSelf, const PyUtil::FProp
 	void* ArrayValue = FMemory::Malloc(ArrayProp->GetSize(), ArrayProp->GetMinAlignment());
 	ArrayProp->InitializeValue(ArrayValue);
 
-	InSelf->ArrayProp = MoveTemp(ArrayProp);
+	InSelf->ArrayProp = ArrayProp;
 	InSelf->ArrayInstance = ArrayValue;
 
 	FPyWrapperFixedArrayFactory::Get().MapInstance(InSelf->ArrayInstance, InSelf);
 	return 0;
 }
 
-int FPyWrapperFixedArray::Init(FPyWrapperFixedArray* InSelf, const FPyWrapperOwnerContext& InOwnerContext, const FProperty* InProp, void* InValue, const EPyConversionMethod InConversionMethod)
+int FPyWrapperFixedArray::Init(FPyWrapperFixedArray* InSelf, const FPyWrapperOwnerContext& InOwnerContext, const UProperty* InProp, void* InValue, const EPyConversionMethod InConversionMethod)
 {
 	InOwnerContext.AssertValidConversionMethod(InConversionMethod);
 
@@ -175,14 +175,14 @@ int FPyWrapperFixedArray::Init(FPyWrapperFixedArray* InSelf, const FPyWrapperOwn
 
 	check(InProp && InValue);
 
-	PyUtil::FConstPropOnScope PropToUse;
+	const UProperty* PropToUse = nullptr;
 	void* ArrayInstanceToUse = nullptr;
 	switch (InConversionMethod)
 	{
 	case EPyConversionMethod::Copy:
 	case EPyConversionMethod::Steal:
 		{
-			PropToUse = PyUtil::FConstPropOnScope::OwnedReference(PyUtil::CreateProperty(InProp));
+			PropToUse = PyUtil::CreateProperty(InProp);
 			if (!PropToUse)
 			{
 				PyUtil::SetPythonError(PyExc_TypeError, InSelf, *FString::Printf(TEXT("Failed to create property from '%s' (%s)"), *InProp->GetName(), *InProp->GetClass()->GetName()));
@@ -197,7 +197,7 @@ int FPyWrapperFixedArray::Init(FPyWrapperFixedArray* InSelf, const FPyWrapperOwn
 
 	case EPyConversionMethod::Reference:
 		{
-			PropToUse = PyUtil::FConstPropOnScope::ExternalReference(InProp);
+			PropToUse = InProp;
 			ArrayInstanceToUse = InValue;
 		}
 		break;
@@ -210,7 +210,7 @@ int FPyWrapperFixedArray::Init(FPyWrapperFixedArray* InSelf, const FPyWrapperOwn
 	check(PropToUse && ArrayInstanceToUse);
 
 	InSelf->OwnerContext = InOwnerContext;
-	InSelf->ArrayProp = MoveTemp(PropToUse);
+	InSelf->ArrayProp = PropToUse;
 	InSelf->ArrayInstance = ArrayInstanceToUse;
 
 	FPyWrapperFixedArrayFactory::Get().MapInstance(InSelf->ArrayInstance, InSelf);
@@ -236,7 +236,7 @@ void FPyWrapperFixedArray::Deinit(FPyWrapperFixedArray* InSelf)
 		}
 		FMemory::Free(InSelf->ArrayInstance);
 	}
-	InSelf->ArrayProp.Release();
+	InSelf->ArrayProp = nullptr;
 	InSelf->ArrayInstance = nullptr;
 }
 
@@ -284,7 +284,7 @@ FPyWrapperFixedArray* FPyWrapperFixedArray::CastPyObject(PyObject* InPyObject, P
 			return nullptr;
 		}
 
-		const PyUtil::FPropertyDef SelfPropDef = Self->ArrayProp.Get();
+		const PyUtil::FPropertyDef SelfPropDef = Self->ArrayProp;
 		if (SelfPropDef == InPropDef)
 		{
 			SetOptionalPyConversionResult(FPyConversionResult::Success(), OutCastResult);
@@ -460,7 +460,7 @@ FPyWrapperFixedArray* FPyWrapperFixedArray::Concat(FPyWrapperFixedArray* InSelf,
 		return nullptr;
 	}
 
-	const PyUtil::FPropertyDef SelfPropDef = InSelf->ArrayProp.Get();
+	const PyUtil::FPropertyDef SelfPropDef = InSelf->ArrayProp;
 	FPyWrapperFixedArrayPtr Other = FPyWrapperFixedArrayPtr::StealReference(FPyWrapperFixedArray::CastPyObject(InOther, &PyWrapperFixedArrayType, SelfPropDef));
 	if (!Other)
 	{
@@ -500,7 +500,7 @@ FPyWrapperFixedArray* FPyWrapperFixedArray::Repeat(FPyWrapperFixedArray* InSelf,
 		return nullptr;
 	}
 
-	const PyUtil::FPropertyDef SelfPropDef = InSelf->ArrayProp.Get();
+	const PyUtil::FPropertyDef SelfPropDef = InSelf->ArrayProp;
 	const int32 NewArrayLen = InSelf->ArrayProp->ArrayDim * InMultiplier;
 	FPyWrapperFixedArrayPtr NewArray = FPyWrapperFixedArrayPtr::StealReference(FPyWrapperFixedArray::New(Py_TYPE(InSelf)));
 	if (FPyWrapperFixedArray::Init(NewArray, SelfPropDef, NewArrayLen) != 0)
@@ -588,7 +588,7 @@ PyTypeObject InitializePyWrapperFixedArrayType()
 				return nullptr;
 			}
 
-			const PyUtil::FPropertyDef SelfPropDef = InSelf->ArrayProp.Get();
+			const PyUtil::FPropertyDef SelfPropDef = InSelf->ArrayProp;
 			FPyWrapperFixedArrayPtr Other = FPyWrapperFixedArrayPtr::StealReference(FPyWrapperFixedArray::CastPyObject(InOther, &PyWrapperFixedArrayType, SelfPropDef));
 			if (!Other)
 			{
@@ -699,7 +699,7 @@ PyTypeObject InitializePyWrapperFixedArrayType()
 				return nullptr;
 			}
 
-			const PyUtil::FPropertyDef SelfPropDef = InSelf->ArrayProp.Get();
+			const PyUtil::FPropertyDef SelfPropDef = InSelf->ArrayProp;
 			FPyWrapperFixedArrayPtr NewArray = FPyWrapperFixedArrayPtr::StealReference(FPyWrapperFixedArray::New(Py_TYPE(InSelf)));
 			if (FPyWrapperFixedArray::Init(NewArray, SelfPropDef, SliceLen) != 0)
 			{
@@ -906,7 +906,7 @@ void FPyWrapperFixedArrayMetaData::AddReferencedObjects(FPyWrapperBase* Instance
 	FPyWrapperFixedArray* Self = static_cast<FPyWrapperFixedArray*>(Instance);
 	if (Self->ArrayProp && Self->ArrayInstance && !Self->OwnerContext.HasOwner())
 	{
-		Self->ArrayProp.AddReferencedObjects(Collector);
+		Collector.AddReferencedObject(Self->ArrayProp);
 		FPyReferenceCollector::AddReferencedObjectsFromProperty(Collector, Self->ArrayProp, Self->ArrayInstance);
 	}
 }

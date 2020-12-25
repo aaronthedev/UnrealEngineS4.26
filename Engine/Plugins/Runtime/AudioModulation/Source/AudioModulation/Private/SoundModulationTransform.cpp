@@ -1,78 +1,118 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "SoundModulationTransform.h"
 
 #include "Audio.h"
 #include "DSP/Dsp.h"
 
+FSoundModulationInputTransform::FSoundModulationInputTransform()
+	: InputMin(0.0f)
+	, InputMax(1.0f)
+	, OutputMin(0.0f)
+	, OutputMax(1.0f)
+{
+}
 
-void FSoundModulationTransform::Apply(float& OutValue) const
+void FSoundModulationInputTransform::Apply(float& Value) const
+{
+	const float Denom = FMath::Max(FMath::Abs(InputMax - InputMin), SMALL_NUMBER);
+	const float Alpha = FMath::Clamp(FMath::Abs(Value - InputMin) / Denom, 0.0f, 1.0f);
+	Value = FMath::Lerp(OutputMin, OutputMax, Alpha);
+	Value = FMath::Clamp(Value, OutputMin, OutputMax);
+}
+
+FSoundModulationOutputTransform::FSoundModulationOutputTransform()
+	: InputMin(0.0f)
+	, InputMax(1.0f)
+	, Curve(ESoundModulatorOutputCurve::Linear)
+	, Scalar(2.5f)
+	, CurveShared(nullptr)
+	, OutputMin(0.0f)
+	, OutputMax(1.0f)
+{
+}
+
+void FSoundModulationOutputTransform::Apply(float& Value) const
 {
 	// Clamp the input
-	OutValue = FMath::Clamp(OutValue, 0.0f, 1.0f);
+	Value = FMath::Clamp(Value, InputMin, InputMax);
+
+	EvaluateCurve(Value);
+
+	// Clamp the output
+	Value = FMath::Clamp(Value, OutputMin, OutputMax);
+}
+
+void FSoundModulationOutputTransform::EvaluateCurve(float& Value) const
+{
+	// If custom curve, evaluate curve and return before calculating alpha
+	if (Curve == ESoundModulatorOutputCurve::Custom)
+	{
+		Value = CurveCustom.Eval(Value);
+		return;
+	}
+
+	// If shared curve, evaluate curve and return before calculating alpha
+	if (Curve == ESoundModulatorOutputCurve::Shared)
+	{
+		if (CurveShared)
+		{
+			Value = CurveShared->FloatCurve.Eval(Value);
+		}
+		return;
+	}
+
+	// Avoid divide-by-zero
+	const float Denom = FMath::Max(FMath::Abs(InputMax - InputMin), SMALL_NUMBER);
+	const float Alpha = FMath::Clamp(FMath::Abs(Value - InputMin) / Denom, 0.0f, 1.0f);
 
 	switch (Curve)
 	{
-		case ESoundModulatorCurve::Custom:
+		case ESoundModulatorOutputCurve::Linear:
 		{
-			OutValue = CurveCustom.Eval(OutValue);
-			break;
-		}
-
-		case ESoundModulatorCurve::Shared:
-		{
-			if (CurveShared)
-			{
-				OutValue = CurveShared->FloatCurve.Eval(OutValue);
-			}
-			break;
-		}
-
-		case ESoundModulatorCurve::Linear:
-		{
-			// Do nothing, just linearly map output to incoming value
+			Value = Alpha;
 		}
 		break;
 	
-		case ESoundModulatorCurve::Exp:
+		case ESoundModulatorOutputCurve::Exp:
 		{
 			// Alpha is limited to between 0.0f and 1.0f and ExponentialScalar
-			// between 0 and 10 to keep OutValues "sane" and avoid float boundary.
-			OutValue *= (FMath::Pow(10.0f, Scalar * (OutValue - 1.0f)));
+			// between 0 and 10 to keep values "sane" and avoid float boundary.
+			Value = Alpha * (FMath::Pow(10.0f, Scalar * (Alpha - 1.0f)));
 		}
 		break;
 
-		case ESoundModulatorCurve::Exp_Inverse:
+		case ESoundModulatorOutputCurve::Exp_Inverse:
 		{
 			// Alpha is limited to between 0.0f and 1.0f and ExponentialScalar
-			// between 0 and 10 to keep OutValues "sane" and avoid float boundary.
-			OutValue = ((OutValue - 1.0f) * FMath::Pow(10.0f, -1.0f * Scalar * OutValue)) + 1.0f;
+			// between 0 and 10 to keep values "sane" and avoid float boundary.
+			Value = ((Alpha - 1.0f) * FMath::Pow(10.0f, -1.0f * Scalar * Alpha)) + 1.0f;
 		}
 		break;
 
-		case ESoundModulatorCurve::Log:
+		case ESoundModulatorOutputCurve::Log:
 		{
-			OutValue = (Scalar * FMath::LogX(10.0f, OutValue)) + 1.0f;
+			Value = (Scalar * FMath::LogX(10.0f, Alpha)) + 1.0f;
 		}
 		break;
 
-		case ESoundModulatorCurve::Sin:
+		case ESoundModulatorOutputCurve::Sin:
 		{
-			OutValue = Audio::FastSin(HALF_PI * OutValue);
+			Value = Audio::FastSin(HALF_PI * Alpha);
 		}
 		break;
 
-		case ESoundModulatorCurve::SCurve:
+		case ESoundModulatorOutputCurve::SCurve:
 		{
-			OutValue = 0.5f * Audio::FastSin(((PI * OutValue) - HALF_PI)) + 0.5f;
+			Value = 0.5f * Audio::FastSin(((PI * Alpha) - HALF_PI)) + 0.5f;
 		}
 		break;
 
 		default:
 		{
-			static_assert(static_cast<int32>(ESoundModulatorCurve::Count) == 8, "Possible missing case coverage for output curve.");
+			static_assert(static_cast<int32>(ESoundModulatorOutputCurve::Count) == 8, "Possible missing case coverage for output curve.");
 		}
 		break;
 	}
 
-	OutValue = FMath::Clamp(OutValue, 0.0f, 1.0f);
+	Value = FMath::Lerp(OutputMin, OutputMax, Value);
 }

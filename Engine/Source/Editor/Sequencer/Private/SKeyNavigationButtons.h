@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -23,7 +23,6 @@
 #include "ISequencerModule.h"
 #include "Modules/ModuleManager.h"
 #include "IKeyArea.h"
-#include "SequencerAddKeyOperation.h"
 
 #define LOCTEXT_NAMESPACE "SKeyNavigationButtons"
 
@@ -180,13 +179,6 @@ public:
 			}
 		}
 
-		if (!PreviousTime.IsSet() && AllTimes.Num() > 0)
-		{
-			AllTimes.Sort();
-
-			PreviousTime = AllTimes.Last();
-		}
-
 		if (PreviousTime.IsSet())
 		{
 			Sequencer.SetLocalTime(PreviousTime.GetValue());
@@ -238,13 +230,6 @@ public:
 			}
 		}
 
-		if (!NextTime.IsSet() && AllTimes.Num() > 0)
-		{
-			AllTimes.Sort();
-
-			NextTime = AllTimes[0];
-		}
-
 		if (NextTime.IsSet())
 		{
 			Sequencer.SetLocalTime(NextTime.GetValue());
@@ -256,12 +241,64 @@ public:
 
 	FReply OnAddKeyClicked()
 	{
-		using namespace UE::Sequencer;
-		FSequencer& Sequencer   = DisplayNode->GetSequencer();
-		FFrameTime  CurrentTime = Sequencer.GetLocalTime().Time;
+		FSequencer& Sequencer = DisplayNode->GetSequencer();
+		FFrameTime CurrentTime = Sequencer.GetLocalTime().Time;
+
+		// Gather all sections on this node so we can decide which one to key
+		TSet<TWeakObjectPtr<UMovieSceneSection> > WeakSections;
+		SequencerHelpers::GetAllSections( DisplayNode.ToSharedRef(), WeakSections );
+
+		TArray<UMovieSceneSection*> SectionArray;
+		SectionArray.Reserve(WeakSections.Num());
+		for (TWeakObjectPtr<UMovieSceneSection> WeakSection : WeakSections)
+		{
+			if (UMovieSceneSection* Section = WeakSection.Get())
+			{
+				SectionArray.Add(Section);
+			}
+		}
+
+		// Add keys specifically only on the closest or overlapping section
+		const int32 SectionIndex = SequencerHelpers::GetSectionFromTime(SectionArray, CurrentTime.FrameNumber);
+		if (SectionIndex == INDEX_NONE)
+		{
+			return FReply::Handled();
+		}
 
 		FScopedTransaction Transaction(LOCTEXT("AddKeys", "Add Keys at Current Time"));
-		FAddKeyOperation::FromNode(DisplayNode.ToSharedRef()).Commit(CurrentTime.FrameNumber, Sequencer);
+
+		// Add the section to the transaction
+		UMovieSceneSection* SectionToKey = SectionArray[SectionIndex];
+		SectionToKey->SetFlags(RF_Transactional);
+		if (!SectionToKey->TryModify())
+		{
+			return FReply::Handled();
+		}
+
+		TSharedPtr<FSequencerObjectBindingNode> ParentObjectBinding = DisplayNode->FindParentObjectBindingNode();
+		FGuid ObjectBinding = ParentObjectBinding.IsValid() ? ParentObjectBinding->GetObjectBinding() : FGuid();
+
+		TArray<TSharedRef<FSequencerSectionKeyAreaNode>> KeyAreaNodes;
+		if (DisplayNode->GetType() == ESequencerNode::KeyArea)
+		{
+			KeyAreaNodes.Add(StaticCastSharedPtr<FSequencerSectionKeyAreaNode>(DisplayNode).ToSharedRef());
+		}
+		DisplayNode->GetChildKeyAreaNodesRecursively(KeyAreaNodes);
+
+		//Need to key first since we may need to interrogate the section
+		SectionToKey->ExpandToFrame(CurrentTime.FrameNumber);
+
+		for (TSharedRef<FSequencerSectionKeyAreaNode> KeyAreaNode : KeyAreaNodes)
+		{
+			TSharedPtr<IKeyArea> KeyArea =  KeyAreaNode->GetKeyArea(SectionToKey);
+			if (KeyArea.IsValid())
+			{
+				KeyArea->AddOrUpdateKey(CurrentTime.FrameNumber, ObjectBinding, Sequencer);
+			}
+		}
+
+		Sequencer.NotifyMovieSceneDataChanged(EMovieSceneDataChangeType::TrackValueChanged);
+		Sequencer.UpdatePlaybackRange();
 
 		return FReply::Handled();
 	}

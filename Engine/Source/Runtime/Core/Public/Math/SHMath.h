@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -37,7 +37,7 @@ public:
 	float V[NumTotalFloats];
 
 	/** The integral of the constant SH basis. */
-	static constexpr float ConstantBasisIntegral = 3.5449077018110320545963349666823f; // 2 * Sqrt(PI)
+	static constexpr float ConstantBasisIntegral = 3.5449077018110320545963349666823; // 2 * Sqrt(PI)
 
 	/** Default constructor. */
 	TSHVector()
@@ -273,7 +273,7 @@ public:
 
 		for (int32 l = 0; l < TSHVector::MaxSHOrder; l++)
 		{
-			const float BandScaleFactor = 1.0f / (1.0f + Lambda * float(l * l * (l + 1) * (l + 1)));
+			const float BandScaleFactor = 1.0f / (1.0f + Lambda * l * l * (l + 1.0f) * (l + 1.0f));
 
 			for (int32 m = -l; m <= l; m++)
 			{
@@ -355,8 +355,8 @@ public:
 
 			for (int32 BandIndex = 1; BandIndex < TSHVector::MaxSHOrder; BandIndex++)
 			{
-				const float	SinPhiM = FMath::Sin((float)BandIndex * Phi);
-				const float	CosPhiM = FMath::Cos((float)BandIndex * Phi);
+				const float	SinPhiM = FMath::Sin(BandIndex * Phi);
+				const float	CosPhiM = FMath::Cos(BandIndex * Phi);
 
 				for (int32 RecurrentBandIndex = BandIndex; RecurrentBandIndex < TSHVector::MaxSHOrder; RecurrentBandIndex++)
 				{

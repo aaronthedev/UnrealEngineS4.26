@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BackgroundHttpRequestImpl.h"
 
@@ -13,7 +13,6 @@ FBackgroundHttpRequestImpl::FBackgroundHttpRequestImpl()
 	, URLList()
 	, RequestID()
 	, NumberOfTotalRetries(0)
-	, RequestPriority(EBackgroundHTTPPriority::Normal)
 	, HttpRequestCompleteDelegate()
 	, HttpProgressUpdateDelegate()
 {
@@ -65,9 +64,6 @@ void FBackgroundHttpRequestImpl::OnBackgroundDownloadComplete()
 	//whatever kicked this off doesn't want to react to this download complete before we send this notification (IE: Kick off another download
 	//using the same NotificationObject, etc.)
 	NotifyNotificationObjectOfComplete(bWasSuccess);
-	
-	//Now that we have called our completion delegates and done everything else for this request, allow us to clean up data for it
-	FBackgroundHttpModule::Get().GetBackgroundHttpManager()->CleanUpDataAfterCompletingRequest(SharedThis(this));
 }
 
 void FBackgroundHttpRequestImpl::NotifyNotificationObjectOfComplete(bool bWasSuccess)
@@ -141,14 +137,4 @@ bool FBackgroundHttpRequestImpl::HandleDelayedProcess()
 	//By default we don't provide an implementation for this. If this is called, it should be overriden by the platform specific
 	//BackgroundHttpRequest if the platform expects to make use of this.
 	return ensureAlwaysMsgf(false, TEXT("Platform expects an implementation of HandleDelayedProcess on the BackgroundHttpRequest, but none found!"));
-}
-
-EBackgroundHTTPPriority FBackgroundHttpRequestImpl::GetRequestPriority() const
-{
-	return RequestPriority;
-}
-
-void FBackgroundHttpRequestImpl::SetRequestPriority(EBackgroundHTTPPriority NewPriority)
-{
-	RequestPriority = NewPriority;
 }

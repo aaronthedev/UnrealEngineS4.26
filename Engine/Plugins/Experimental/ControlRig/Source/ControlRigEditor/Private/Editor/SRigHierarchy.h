@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,8 +7,6 @@
 #include "Rigs/RigHierarchyContainer.h"
 #include "EditorUndoClient.h"
 #include "DragAndDrop/GraphNodeDragDropOp.h"
-#include "Engine/SkeletalMesh.h"
-#include "SRigHierarchy.generated.h"
 
 class SRigHierarchy;
 class FControlRigEditor;
@@ -94,62 +92,6 @@ private:
 	FText GetName() const;
 };
 
-USTRUCT()
-struct FRigHierarchyImportSettings
-{
-	GENERATED_BODY()
-
-	FRigHierarchyImportSettings()
-	: Mesh(nullptr)
-	{}
-
-	UPROPERTY(EditAnywhere, Category = "Hierachy Import")
-	USkeletalMesh* Mesh;
-};
-
-class SRigHierarchyTreeView : public STreeView<TSharedPtr<FRigTreeElement>>
-{
-public:
-
-	virtual ~SRigHierarchyTreeView() {}
-
-	virtual FReply OnFocusReceived(const FGeometry& MyGeometry, const FFocusEvent& InFocusEvent) override
-	{
-		FReply Reply = STreeView<TSharedPtr<FRigTreeElement>>::OnFocusReceived(MyGeometry, InFocusEvent);
-
-		LastClickCycles = FPlatformTime::Cycles();
-
-		return Reply;
-	}
-
-	uint32 LastClickCycles = 0;
-
-	/** Save a snapshot of the internal map that tracks item expansion before tree reconstruction */
-	void SaveAndClearSparseItemInfos()
-	{
-		OldSparseItemInfos = SparseItemInfos;
-		ClearExpandedItems();
-	}
-
-	/** Restore the expansion infos map from the saved snapshot after tree reconstruction */
-	void RestoreSparseItemInfos(TSharedPtr<FRigTreeElement> ItemPtr)
-	{
-		for (const auto& Pair : OldSparseItemInfos)
-		{
-			if (Pair.Key->Key == ItemPtr->Key)
-			{
-				// the SparseItemInfos now reference the new element, but keep the same expansion state
-				SparseItemInfos.Add(ItemPtr, Pair.Value);
-				break;
-			}
-		}
-	}
-
-private:
-	/** A temporary snapshot of the SparseItemInfos in STreeView, used during SRigHierarchy::RefreshTreeView() */
-	TSparseItemMap OldSparseItemInfos;
-};
-
 /** Widget allowing editing of a control rig's structure */
 class SRigHierarchy : public SCompoundWidget, public FEditorUndoClient
 {
@@ -189,11 +131,8 @@ private:
 	/** Check whether we can deleting the selected item(s) */
 	bool CanDuplicateItem() const;
 
-	/** Duplicate Item */
+	/** Delete Item */
 	void HandleDuplicateItem();
-
-	/** Mirror Item */
-	void HandleMirrorItem();
 
 	/** Check whether we can deleting the selected item(s) */
 	bool CanRenameItem() const;
@@ -212,9 +151,6 @@ private:
 	void OnSelectionChanged(TSharedPtr<FRigTreeElement> Selection, ESelectInfo::Type SelectInfo);
 
 	TSharedPtr< SWidget > CreateContextMenu();
-	void OnItemClicked(TSharedPtr<FRigTreeElement> InItem);
-	void OnItemDoubleClicked(TSharedPtr<FRigTreeElement> InItem);
-	void OnSetExpansionRecursive(TSharedPtr<FRigTreeElement> InItem, bool bShouldBeExpanded);
 
 	// FEditorUndoClient
 	virtual void PostUndo(bool bSuccess) override;
@@ -237,13 +173,10 @@ private:
 	TSharedPtr<SSearchBox> FilterBox;
 	FText FilterText;
 
-	EVisibility IsToolbarVisible() const;
-	EVisibility IsSearchbarVisible() const;
-	FReply OnImportSkeletonClicked();
 	void OnFilterTextChanged(const FText& SearchText);
 
 	/** Tree view widget */
-	TSharedPtr<SRigHierarchyTreeView> TreeView;
+	TSharedPtr<STreeView<TSharedPtr<FRigTreeElement>>> TreeView;
 
 	/** Backing array for tree view */
 	TArray<TSharedPtr<FRigTreeElement>> RootElements;
@@ -261,8 +194,6 @@ private:
 
 	bool IsMultiSelected() const;
 	bool IsSingleSelected() const;
-	bool IsSingleBoneSelected() const;
-	bool IsSingleSpaceSelected() const;
 	bool IsControlSelected() const;
 	bool IsControlOrSpaceSelected() const;
 
@@ -275,19 +206,17 @@ private:
 	bool ShouldFilterOnImport(const FAssetData& AssetData) const;
 	void RefreshHierarchy(const FAssetData& InAssetData);
 
-	void HandleResetTransform(bool bSelectionOnly);
+	void HandleResetTransform();
 	void HandleResetInitialTransform();
 	void HandleResetSpace();
 	void HandleSetInitialTransformFromCurrentTransform();
 	void HandleSetInitialTransformFromClosestBone();
 	void HandleFrameSelection();
-	void HandleControlBoneOrSpaceTransform();
-	void HandleUnparent();
 	bool FindClosestBone(const FVector& Point, FName& OutRigElementName, FTransform& OutGlobalTransform) const;
 
 	FName CreateUniqueName(const FName& InBaseName, ERigElementType InElementType) const;
 
-	void SetExpansionRecursive(TSharedPtr<FRigTreeElement> InElement, bool bTowardsParent, bool bShouldBeExpanded);
+	void SetExpansionRecursive(TSharedPtr<FRigTreeElement> InElements, bool bTowardsParent);
 
 	void ClearDetailPanel() const;
 
@@ -297,15 +226,12 @@ private:
 	void OnRigElementRenamed(FRigHierarchyContainer* Container, ERigElementType ElementType, const FName& InOldName, const FName& InNewName);
 	void OnRigElementReparented(FRigHierarchyContainer* Container, const FRigElementKey& InKey, const FName& InOldParentName, const FName& InNewParentName);
 	void OnRigElementSelected(FRigHierarchyContainer* Container, const FRigElementKey& InKey, bool bSelected);
-	void HandleRefreshEditorFromBlueprint(UControlRigBlueprint* InBlueprint);
 
 	static TSharedPtr<FRigTreeElement> FindElement(const FRigElementKey& InElementKey, TSharedPtr<FRigTreeElement> CurrentItem);
 	void AddElement(FRigElementKey InKey, FRigElementKey InParentKey = FRigElementKey());
-	void AddSpacerElement();
 	void AddBoneElement(FRigBone InBone);
 	void AddControlElement(FRigControl InControl);
 	void AddSpaceElement(FRigSpace InSpace);
-	void ReparentElement(FRigElementKey InKey, FRigElementKey InParentKey);
 
 public:
 	bool RenameElement(const FRigElementKey& OldKey, const FName& NewName);

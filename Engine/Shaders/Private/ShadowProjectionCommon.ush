@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ShadowProjectionCommon.usf: Contains functions that uniformly filter a depth buffer.
@@ -149,20 +149,18 @@ void CalcCubemapVectorAndFaceIndex(float3 NormalizedLightVector, float ShadowFil
 }
 
 /** Computes shadowing for a given world position from a cubemap shadowmap used on a point light. */
-float CubemapHardwarePCF(
-	TextureCube InShadowDepthCubeTexture, SamplerComparisonState InShadowDepthCubeTextureSampler, float4x4 InShadowViewProjectionMatrices[6], float InInvShadowmapResolution,
-	float3 WorldPosition, float3 LightPosition, float LightInvRadius, float DepthBias, float SlopeDepthBias, float MaxSlopeDepthBias)
+float CubemapHardwarePCF(float3 WorldPosition, float3 LightPosition, float LightInvRadius, float DepthBias, float SlopeDepthBias, float MaxSlopeDepthBias)
 {
 	float Shadow = 1;
 
-	float3 WorldSampleToLightVec = LightPosition - WorldPosition.xyz;
-	float Distance = length(WorldSampleToLightVec);
+	float3 LightVector = LightPosition - WorldPosition.xyz;
+	float Distance = length(LightVector);
 
 	BRANCH
 	// Skip pixels outside of the light's influence
 	if (Distance * LightInvRadius < 1.0f)
 	{
-		float3 NormalizedLightVector = WorldSampleToLightVec / Distance;
+		float3 NormalizedLightVector = LightVector / Distance;
 		float3 SideVector = normalize(cross(NormalizedLightVector, float3(0, 0, 1)));
 		float3 UpVector = cross(SideVector, NormalizedLightVector);
 
@@ -170,25 +168,25 @@ float CubemapHardwarePCF(
 		UpVector *= InvShadowmapResolution;
 
 		// Figure out which cube face we're sampling from
-		float3 AbsLightVector = abs(WorldSampleToLightVec);
+		float3 AbsLightVector = abs(LightVector);
 		float MaxCoordinate = max(AbsLightVector.x, max(AbsLightVector.y, AbsLightVector.z));
 
 		int CubeFaceIndex = 0;
 		if (MaxCoordinate == AbsLightVector.x)
 		{
-			CubeFaceIndex = AbsLightVector.x == WorldSampleToLightVec.x ? 0 : 1;
+			CubeFaceIndex = AbsLightVector.x == LightVector.x ? 0 : 1;
 		}
 		else if (MaxCoordinate == AbsLightVector.y)
 		{
-			CubeFaceIndex = AbsLightVector.y == WorldSampleToLightVec.y ? 2 : 3;
+			CubeFaceIndex = AbsLightVector.y == LightVector.y ? 2 : 3;
 		}
 		else
 		{
-			CubeFaceIndex = AbsLightVector.z == WorldSampleToLightVec.z ? 4 : 5;
+			CubeFaceIndex = AbsLightVector.z == LightVector.z ? 4 : 5;
 		}
 
-		// Transform the Light-relative position into shadow space (The light shadow view is pre-translated wrt the main view)
-		float4 ShadowPosition = mul(float4(-WorldSampleToLightVec, 1), InShadowViewProjectionMatrices[CubeFaceIndex]);
+		// Transform the position into shadow space
+		float4 ShadowPosition = mul(float4(WorldPosition.xyz, 1), ShadowViewProjectionMatrices[CubeFaceIndex]);
 
 		// Calculate the Z buffer value that would have been stored for this position in the shadow map
 		float CompareDistance = ShadowPosition.z / ShadowPosition.w;
@@ -198,14 +196,14 @@ float CubemapHardwarePCF(
 
 #if SHADOW_QUALITY <= 2
 
-		Shadow = InShadowDepthCubeTexture.SampleCmpLevelZero(InShadowDepthCubeTextureSampler, WorldSampleToLightVec, CompareDistance + ShadowDepthBias);
+		Shadow = ShadowDepthCubeTexture.SampleCmpLevelZero(ShadowDepthCubeTextureSampler, NormalizedLightVector, CompareDistance + ShadowDepthBias);
 
 #elif SHADOW_QUALITY == 3
 		UNROLL for(int i = 0; i < 5; ++i)
 		{
 			float3 SamplePos = NormalizedLightVector + SideVector * DiscSamples5[i].x + UpVector * DiscSamples5[i].y;
-			Shadow += InShadowDepthCubeTexture.SampleCmpLevelZero(
-				InShadowDepthCubeTextureSampler,
+			Shadow += ShadowDepthCubeTexture.SampleCmpLevelZero(
+				ShadowDepthCubeTextureSampler, 
 				SamplePos, 
 				CompareDistance + ShadowDepthBias * length(DiscSamples5[i]));
 		}
@@ -216,8 +214,8 @@ float CubemapHardwarePCF(
 		UNROLL for(int i = 0; i < 12; ++i)
 		{
 			float3 SamplePos = NormalizedLightVector + SideVector * DiscSamples12[i].x + UpVector * DiscSamples12[i].y;
-			Shadow += InShadowDepthCubeTexture.SampleCmpLevelZero(
-				InShadowDepthCubeTextureSampler,
+			Shadow += ShadowDepthCubeTexture.SampleCmpLevelZero(
+				ShadowDepthCubeTextureSampler, 
 				SamplePos, 
 				CompareDistance + ShadowDepthBias * length(DiscSamples12[i]));
 		}
@@ -228,8 +226,8 @@ float CubemapHardwarePCF(
 		UNROLL for(int i = 0; i < 29; ++i)
 		{
 			float3 SamplePos = NormalizedLightVector + SideVector * DiscSamples29[i].x + UpVector * DiscSamples29[i].y;
-			Shadow += InShadowDepthCubeTexture.SampleCmpLevelZero(
-				InShadowDepthCubeTextureSampler,
+			Shadow += ShadowDepthCubeTexture.SampleCmpLevelZero(
+				ShadowDepthCubeTextureSampler, 
 				SamplePos, 
 				CompareDistance + ShadowDepthBias * length(DiscSamples29[i]));
 		}
@@ -240,7 +238,7 @@ float CubemapHardwarePCF(
 		/*// 4 * 9 samples (former non randomized sample pattern, more samples, less ALU, slower)
 		{
 			float4 ShadowResults;
-			// TODO CubePCF3x3Quarter should use the In parameters similarly to InShadowDepthCubeTexture
+		
 			ShadowResults.x = CubePCF3x3Quarter(NormalizedLightVector, - SideVector, - UpVector, CompareDistance, ShadowDepthBias);
 			ShadowResults.y = CubePCF3x3Quarter(NormalizedLightVector, - SideVector,   UpVector, CompareDistance, ShadowDepthBias);
 			ShadowResults.z = CubePCF3x3Quarter(NormalizedLightVector,   SideVector, - UpVector, CompareDistance, ShadowDepthBias);
@@ -253,16 +251,7 @@ float CubemapHardwarePCF(
 	return Shadow;
 }
 
-float CubemapHardwarePCF(
-	float3 WorldPosition, float3 LightPosition, float LightInvRadius, float DepthBias, float SlopeDepthBias, float MaxSlopeDepthBias)
-{
-	return CubemapHardwarePCF(ShadowDepthCubeTexture, ShadowDepthCubeTextureSampler, ShadowViewProjectionMatrices, InvShadowmapResolution,
-		WorldPosition, LightPosition, LightInvRadius, DepthBias, SlopeDepthBias, MaxSlopeDepthBias);
-}
-
 #endif
-
-#ifndef NO_TRANSLUCENCY_AVAILABLE
 
 /** Textures and parameters needed for Fourier opacity maps. */
 #define TranslucencyShadowTransmission0 TranslucentSelfShadow.Transmission0
@@ -356,7 +345,3 @@ float CalculateTranslucencyShadowing(float2 ShadowUV, float ShadingDepth)
 	float FinalTransmission = saturate(exp(-ShadowDensity));
 	return FinalTransmission;
 }
-
-#endif // NO_TRANSLUCENCY_AVAILABLE
-
-

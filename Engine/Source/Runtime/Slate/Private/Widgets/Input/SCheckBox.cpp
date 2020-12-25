@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -58,9 +58,7 @@ void SCheckBox::Construct( const SCheckBox::FArguments& InArgs )
 	IsCheckboxChecked = InArgs._IsChecked;
 	OnCheckStateChanged = InArgs._OnCheckStateChanged;
 
-	ClickMethod = InArgs._ClickMethod;
-	TouchMethod = InArgs._TouchMethod;
-	PressMethod = InArgs._PressMethod;
+	ClickMethod = InArgs._ClickMethod.Get();
 
 	OnGetMenuContent = InArgs._OnGetMenuContent;
 
@@ -80,56 +78,22 @@ bool SCheckBox::SupportsKeyboardFocus() const
 	return bIsFocusable;
 }
 
-FReply SCheckBox::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
-{
-	if (FSlateApplication::Get().GetNavigationActionFromKey(InKeyEvent) == EUINavigationAction::Accept)
-	{
-		bIsPressed = true;
-
-		if (PressMethod == EButtonPressMethod::ButtonPress)
-		{
-			ToggleCheckedState();
-
-			const ECheckBoxState State = IsCheckboxChecked.Get();
-			if (State == ECheckBoxState::Checked)
-			{
-				PlayCheckedSound();
-			}
-			else if (State == ECheckBoxState::Unchecked)
-			{
-				PlayUncheckedSound();
-			}
-		}
-
-		return FReply::Handled();
-	}
-
-	return FReply::Unhandled();
-
-}
-
 FReply SCheckBox::OnKeyUp( const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent )
 {
 	if (FSlateApplication::Get().GetNavigationActionFromKey(InKeyEvent) == EUINavigationAction::Accept)
 	{
-		const bool bWasPressed = bIsPressed;
-		bIsPressed = false;
+		ToggleCheckedState();
 
-		if (PressMethod == EButtonPressMethod::ButtonRelease || (PressMethod == EButtonPressMethod::DownAndUp && bWasPressed))
+		const ECheckBoxState State = IsCheckboxChecked.Get();
+		if ( State == ECheckBoxState::Checked )
 		{
-			ToggleCheckedState();
-
-			const ECheckBoxState State = IsCheckboxChecked.Get();
-			if (State == ECheckBoxState::Checked)
-			{
-				PlayCheckedSound();
-			}
-			else if (State == ECheckBoxState::Unchecked)
-			{
-				PlayUncheckedSound();
-			}
+			PlayCheckedSound();
 		}
-
+		else if ( State == ECheckBoxState::Unchecked )
+		{
+			PlayUncheckedSound();
+		}
+		
 		return FReply::Handled();
 	}
 
@@ -150,9 +114,7 @@ FReply SCheckBox::OnMouseButtonDown( const FGeometry& MyGeometry, const FPointer
 	{
 		bIsPressed = true;
 
-		EButtonClickMethod::Type InputClickMethod = GetClickMethodFromInputType(MouseEvent);
-
-		if(InputClickMethod == EButtonClickMethod::MouseDown )
+		if( ClickMethod == EButtonClickMethod::MouseDown )
 		{
 			ToggleCheckedState();
 			const ECheckBoxState State = IsCheckboxChecked.Get();
@@ -217,17 +179,13 @@ FReply SCheckBox::OnMouseButtonDoubleClick( const FGeometry& InMyGeometry, const
  */
 FReply SCheckBox::OnMouseButtonUp( const FGeometry& MyGeometry, const FPointerEvent& MouseEvent )
 {
-	const EButtonClickMethod::Type InputClickMethod = GetClickMethodFromInputType(MouseEvent);
-	const bool bMustBePressed = InputClickMethod == EButtonClickMethod::DownAndUp || InputClickMethod == EButtonClickMethod::PreciseClick;
-	const bool bMeetsPressedRequirements = (!bMustBePressed || (bIsPressed && bMustBePressed));
-
-	if (bMeetsPressedRequirements && ((MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton || MouseEvent.IsTouchEvent())))
+	if ( MouseEvent.GetEffectingButton() == EKeys::LeftMouseButton )
 	{
 		bIsPressed = false;
 
-		if(InputClickMethod == EButtonClickMethod::MouseDown )
+		if( ClickMethod == EButtonClickMethod::MouseDown )
 		{
-			// NOTE: If we're configured to click on mouse-down/precise-tap, then we never capture the mouse thus
+			// NOTE: If we're configured to click on mouse-down, then we never capture the mouse thus
 			//       may never receive an OnMouseButtonUp() call.  We make sure that our bIsPressed
 			//       state is reset by overriding OnMouseLeave().
 		}
@@ -238,7 +196,7 @@ FReply SCheckBox::OnMouseButtonUp( const FGeometry& MyGeometry, const FPointerEv
 			{
 				// If we were asked to allow the button to be clicked on mouse up, regardless of whether the user
 				// pressed the button down first, then we'll allow the click to proceed without an active capture
-				if(InputClickMethod == EButtonClickMethod::MouseUp || HasMouseCapture() )
+				if( ClickMethod == EButtonClickMethod::MouseUp || HasMouseCapture() )
 				{
 					ToggleCheckedState();
 					const ECheckBoxState State = IsCheckboxChecked.Get();
@@ -274,7 +232,7 @@ void SCheckBox::OnMouseLeave( const FPointerEvent& MouseEvent )
 
 	// If we're setup to click on mouse-down, then we never capture the mouse and may not receive a
 	// mouse up event, so we need to make sure our pressed state is reset properly here
-	if( ClickMethod == EButtonClickMethod::MouseDown || IsPreciseTapOrClick(MouseEvent) )
+	if( ClickMethod == EButtonClickMethod::MouseDown )
 	{
 		bIsPressed = false;
 	}
@@ -359,29 +317,6 @@ void SCheckBox::ToggleCheckedState()
 void SCheckBox::SetIsChecked(TAttribute<ECheckBoxState> InIsChecked)
 {
 	IsCheckboxChecked = InIsChecked;
-}
-
-TEnumAsByte<EButtonClickMethod::Type> SCheckBox::GetClickMethodFromInputType(const FPointerEvent& MouseEvent) const
-{
-	if (MouseEvent.IsTouchEvent())
-	{
-		switch (TouchMethod)
-		{
-		case EButtonTouchMethod::Down:
-			return EButtonClickMethod::MouseDown;
-		case EButtonTouchMethod::DownAndUp:
-			return EButtonClickMethod::DownAndUp;
-		case EButtonTouchMethod::PreciseTap:
-			return EButtonClickMethod::PreciseClick;
-		}
-	}
-
-	return ClickMethod;
-}
-
-bool SCheckBox::IsPreciseTapOrClick(const FPointerEvent& MouseEvent) const
-{
-	return GetClickMethodFromInputType(MouseEvent) == EButtonClickMethod::PreciseClick;
 }
 
 void SCheckBox::PlayCheckedSound() const
@@ -588,21 +523,6 @@ const FSlateBrush* SCheckBox::GetUndeterminedHoveredImage() const
 const FSlateBrush* SCheckBox::GetUndeterminedPressedImage() const
 {
 	return UndeterminedPressedImage ? UndeterminedPressedImage : &Style->UndeterminedPressedImage;
-}
-
-void SCheckBox::SetClickMethod(EButtonClickMethod::Type InClickMethod)
-{
-	ClickMethod = InClickMethod;
-}
-
-void SCheckBox::SetTouchMethod(EButtonTouchMethod::Type InTouchMethod)
-{
-	TouchMethod = InTouchMethod;
-}
-
-void SCheckBox::SetPressMethod(EButtonPressMethod::Type InPressMethod)
-{
-	PressMethod = InPressMethod;
 }
 
 #if WITH_ACCESSIBILITY

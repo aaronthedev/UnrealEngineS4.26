@@ -54,9 +54,7 @@ class SdfAssetPath;
 ///
 /// Light emitted from one side of a rectangle.
 /// The rectangle is centered in the XY plane and emits light along the -Z axis.
-/// The rectangle is 1 unit in length in the X and Y axis.  In the default 
-/// position, a texture file's min coordinates should be at (+X, +Y) and 
-/// max coordinates at (-X, -Y).
+/// The rectangle is 1 unit in length in the X and Y axis.
 ///
 class UsdLuxRectLight : public UsdLuxLight
 {
@@ -138,7 +136,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDLUX_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -150,7 +148,7 @@ private:
 
     // override SchemaBase virtuals.
     USDLUX_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -158,11 +156,10 @@ public:
     // --------------------------------------------------------------------- //
     /// Width of the rectangle, in the local X axis.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float width = 1` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 1.0
     USDLUX_API
     UsdAttribute GetWidthAttr() const;
 
@@ -180,11 +177,10 @@ public:
     // --------------------------------------------------------------------- //
     /// Height of the rectangle, in the local Y axis.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float height = 1` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 1.0
     USDLUX_API
     UsdAttribute GetHeightAttr() const;
 
@@ -202,11 +198,10 @@ public:
     // --------------------------------------------------------------------- //
     /// A color texture to use on the rectangle.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `asset texture:file` |
-    /// | C++ Type | SdfAssetPath |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Asset |
+    /// \n  C++ Type: SdfAssetPath
+    /// \n  Usd Type: SdfValueTypeNames->Asset
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDLUX_API
     UsdAttribute GetTextureFileAttr() const;
 

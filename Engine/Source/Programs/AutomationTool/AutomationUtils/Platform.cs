@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -377,16 +377,6 @@ namespace AutomationTool
 		{
 			return LocalPath;
 		}
-
-		/// <summary>
-		/// Update the build agenda for this platform
-		/// </summary>
-		/// <param name="Agenda">Agenda to update</param>
-		/// <param name="ExtraBuildProducts">Any additional files that will be created</param>
-		public virtual void MakeAgenda(UE4Build.BuildAgenda Agenda, List<string> ExtraBuildProducts)
-		{
-		}
-
 		/// <summary>
 		/// Returns a list of the compiler produced debug file extensions
 		/// </summary>
@@ -477,14 +467,6 @@ namespace AutomationTool
 		/// Returns platform specific command line options for UnrealPak
 		/// </summary>
 		public virtual string GetPlatformPakCommandLine(ProjectParams Params, DeploymentContext SC)
-		{
-			return "";
-		}
-
-		/// <summary>
-		/// Returns platform specific command line options for the IoStore cmdlet
-		/// </summary>
-		public virtual string GetPlatformIoStoreCommandLine(ProjectParams Params, DeploymentContext SC)
 		{
 			return "";
 		}
@@ -627,11 +609,6 @@ namespace AutomationTool
 		public virtual UnrealTargetPlatform[] GetStagePlatforms()
 		{
 			return new UnrealTargetPlatform[] { PlatformType };
-		}
-
-		public virtual DirectoryReference GetProjectRootForStage(DirectoryReference RuntimeRoot, StagedDirectoryReference RelativeProjectRootForStage)
-		{
-			return DirectoryReference.Combine(RuntimeRoot, RelativeProjectRootForStage.Name);
 		}
 
 		// let the platform set the exe extension if it chooses (otherwise, use

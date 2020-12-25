@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	StaticMeshBuild.cpp: Static mesh building.
@@ -24,10 +24,7 @@
 #include "MeshUtilities.h"
 #include "MeshUtilitiesCommon.h"
 #include "Misc/FeedbackContext.h"
-#include "Misc/ScopedSlowTask.h"
 #include "Misc/App.h"
-
-#include "Rendering/StaticLightingSystemInterface.h"
 #endif // #if WITH_EDITOR
 
 #define LOCTEXT_NAMESPACE "StaticMeshEditor"
@@ -111,18 +108,23 @@ static TAutoConsoleVariable<int32> CVarStaticMeshDisableThreadedBuild(
 void UStaticMesh::Build(bool bInSilent, TArray<FText>* OutErrors)
 {
 #if WITH_EDITOR
-	FFormatNamedArguments Args;
-	Args.Add( TEXT("Path"), FText::FromString( GetPathName() ) );
-	const FText StatusUpdate = FText::Format( LOCTEXT("BeginStaticMeshBuildingTask", "({Path}) Building"), Args );
-	FScopedSlowTask StaticMeshBuildingSlowTask(1, StatusUpdate);
 	if (!bInSilent)
 	{
-		StaticMeshBuildingSlowTask.MakeDialog();
+		FFormatNamedArguments Args;
+		Args.Add(TEXT("Path"), FText::FromString(GetPathName()));
+		const FText StatusUpdate = FText::Format(LOCTEXT("BeginStaticMeshBuildingTask", "({Path}) Building"), Args);
+		GWarn->BeginSlowTask(StatusUpdate, true);
 	}
-	StaticMeshBuildingSlowTask.EnterProgressFrame(1);
 #endif // #if WITH_EDITOR
 
 	BatchBuild({ this }, bInSilent, nullptr, OutErrors);
+
+#if WITH_EDITOR
+	if (!bInSilent)
+	{
+		GWarn->EndSlowTask();
+	}
+#endif // #if WITH_EDITOR
 }
 
 void UStaticMesh::BatchBuild(const TArray<UStaticMesh*>& InStaticMeshes, bool bInSilent, TFunction<bool(UStaticMesh*)> InProgressCallback, TArray<FText>* OutErrors)
@@ -143,28 +145,14 @@ void UStaticMesh::BatchBuild(const TArray<UStaticMesh*>& InStaticMeshes, bool bI
 
 	if (StaticMeshesToProcess.Num())
 	{
+		// Ensure those modules are loaded on the main thread - we'll need them in async tasks
+		FModuleManager::Get().LoadModuleChecked<IMeshBuilderModule>(TEXT("MeshBuilder"));
+		FModuleManager::Get().LoadModuleChecked<IMeshReductionManagerModule>(TEXT("MeshReductionInterface"));
+
 		// Make sure the target platform is properly initialized before accessing it from multiple threads
 		ITargetPlatformManagerModule& TargetPlatformManager = GetTargetPlatformManagerRef();
 		ITargetPlatform* RunningPlatform = TargetPlatformManager.GetRunningTargetPlatform();
 		check(RunningPlatform);
-
-		// Ensure those modules are loaded on the main thread - we'll need them in async tasks
-		FModuleManager::Get().LoadModuleChecked<IMeshReductionManagerModule>(TEXT("MeshReductionInterface"));
-		IMeshBuilderModule::GetForRunningPlatform();
-		for (const ITargetPlatform* TargetPlatform : TargetPlatformManager.GetActiveTargetPlatforms())
-		{
-			IMeshBuilderModule::GetForPlatform(TargetPlatform);
-		}
-
-		for (UStaticMesh* StaticMesh : StaticMeshesToProcess)
-		{
-			if (StaticMesh->RenderData)
-			{
-				// Finish any previous async builds before modifying RenderData
-				// This can happen during import as the mesh is rebuilt redundantly
-				GDistanceFieldAsyncQueue->BlockUntilBuildComplete(StaticMesh, true);
-			}
-		}
 
 		// Detach all instances of those static meshes from the scene.
 		FStaticMeshComponentRecreateRenderStateContext RecreateRenderStateContext(StaticMeshesToProcess, false);
@@ -239,6 +227,7 @@ void UStaticMesh::BatchBuild(const TArray<UStaticMesh*>& InStaticMeshes, bool bI
 			}
 		}
 	}
+
 #else
 	UE_LOG(LogStaticMesh, Fatal, TEXT("UStaticMesh::Build should not be called on non-editor builds."));
 #endif
@@ -262,6 +251,13 @@ void UStaticMesh::PreBuildInternal()
 	// Flush the resource release commands to the rendering thread to ensure that the build doesn't occur while a resource is still
 	// allocated, and potentially accessing the UStaticMesh.
 	ReleaseResourcesFence.Wait();
+
+	if (RenderData)
+	{
+		// Finish any previous async builds before modifying RenderData
+		// This can happen during import as the mesh is rebuilt redundantly
+		GDistanceFieldAsyncQueue->BlockUntilBuildComplete(this, true);
+	}
 }
 
 bool UStaticMesh::BuildInternal(bool bInSilent, TArray<FText> * OutErrors)
@@ -278,12 +274,6 @@ bool UStaticMesh::BuildInternal(bool bInSilent, TArray<FText> * OutErrors)
 
 		return false;
 	}
-
-	FFormatNamedArguments Args;
-	Args.Add( TEXT("Path"), FText::FromString( GetPathName() ) );
-	const FText StatusUpdate = FText::Format( LOCTEXT("BeginStaticMeshBuildingTask", "({Path}) Building"), Args );
-	FScopedSlowTask StaticMeshBuildingSlowTask(1, StatusUpdate);
-	StaticMeshBuildingSlowTask.EnterProgressFrame(1);
 
 	// Remember the derived data key of our current render data if any.
 	FString ExistingDerivedDataKey = RenderData ? RenderData->DerivedDataKey : TEXT("");
@@ -438,21 +428,6 @@ void UStaticMesh::PostBuildInternal(const TArray<UStaticMeshComponent*> & InAffe
 			Component->InvalidateLightingCache();
 		}
 	}
-	else
-	{
-#if WITH_EDITOR
-		// No change in RenderData, still re-register components with preview static lighting system as ray tracing geometry has been recreated
-		// When RenderData is changed, this is handled by InvalidateLightingCache()
-		for (UStaticMeshComponent* Component : InAffectedComponents)
-		{
-			FStaticLightingSystemInterface::OnPrimitiveComponentUnregistered.Broadcast(Component);
-			if (Component->HasValidSettingsForStaticLighting(false))
-			{
-				FStaticLightingSystemInterface::OnPrimitiveComponentRegistered.Broadcast(Component);
-			}
-		}
-#endif
-	}
 
 	// Calculate extended bounds
 	CalculateExtendedBounds();
@@ -464,6 +439,7 @@ void UStaticMesh::PostBuildInternal(const TArray<UStaticMeshComponent*> & InAffe
 }
 
 #endif // #if WITH_EDITOR
+
 /*------------------------------------------------------------------------------
 	Remapping of painted vertex colors.
 ------------------------------------------------------------------------------*/
@@ -505,11 +481,11 @@ struct FStaticMeshComponentVertPosOctreeSemantics
 	}
 
 	/** Ignored for this implementation */
-	FORCEINLINE static void SetElementId( const FPaintedVertex& Element, FOctreeElementId2 Id )
+	FORCEINLINE static void SetElementId( const FPaintedVertex& Element, FOctreeElementId Id )
 	{
 	}
 };
-typedef TOctree2<FPaintedVertex, FStaticMeshComponentVertPosOctreeSemantics> TSMCVertPosOctree;
+typedef TOctree<FPaintedVertex, FStaticMeshComponentVertPosOctreeSemantics> TSMCVertPosOctree;
 
 void RemapPaintedVertexColors(const TArray<FPaintedVertex>& InPaintedVertices,
 	const FColorVertexBuffer* InOverrideColors,
@@ -579,6 +555,7 @@ void RemapPaintedVertexColors(const TArray<FPaintedVertex>& InPaintedVertices,
 	for ( uint32 NewVertIndex = 0; NewVertIndex < NewPositions.GetNumVertices(); ++NewVertIndex )
 	{
 		PointsToConsider.Reset();
+		TSMCVertPosOctree::TConstIterator<> OctreeIter( VertPosOctree );
 		const FVector& CurPosition = NewPositions.VertexPosition( NewVertIndex );
 		FVector CurNormal = FVector::ZeroVector;
 		if (OptionalVertexBuffer)
@@ -587,10 +564,42 @@ void RemapPaintedVertexColors(const TArray<FPaintedVertex>& InPaintedVertices,
 		}
 
 		// Iterate through the octree attempting to find the vertices closest to the current new point
-		VertPosOctree.FindNearbyElements(CurPosition, [&PointsToConsider](const FPaintedVertex& Vertex)
+		while ( OctreeIter.HasPendingNodes() )
 		{
-			PointsToConsider.Add(Vertex);
-		});
+			const TSMCVertPosOctree::FNode& CurNode = OctreeIter.GetCurrentNode();
+			const FOctreeNodeContext& CurContext = OctreeIter.GetCurrentContext();
+
+			// Find the child of the current node, if any, that contains the current new point
+			FOctreeChildNodeRef ChildRef = CurContext.GetContainingChild( FBoxCenterAndExtent( CurPosition, FVector::ZeroVector ) );
+
+			if ( !ChildRef.IsNULL() )
+			{
+				const TSMCVertPosOctree::FNode* ChildNode = CurNode.GetChild( ChildRef );
+
+				// If the specified child node exists and contains any of the old vertices, push it to the iterator for future consideration
+				if ( ChildNode && ChildNode->GetInclusiveElementCount() > 0 )
+				{
+					OctreeIter.PushChild( ChildRef );
+				}
+				// If the child node doesn't have any of the old vertices in it, it's not worth pursuing any further. In an attempt to find
+				// anything to match vs. the new point, add all of the children of the current octree node that have old points in them to the
+				// iterator for future consideration.
+				else
+				{
+					FOREACH_OCTREE_CHILD_NODE( OctreeChildRef )
+					{
+						if( CurNode.HasChild( OctreeChildRef ) )
+						{
+							OctreeIter.PushChild( OctreeChildRef );
+						}
+					}
+				}
+			}
+
+			// Add all of the elements in the current node to the list of points to consider for closest point calculations
+			PointsToConsider.Append( CurNode.GetElements() );
+			OctreeIter.Advance();
+		}
 
 		// If any points to consider were found, iterate over each and find which one is the closest to the new point 
 		if ( PointsToConsider.Num() > 0 )

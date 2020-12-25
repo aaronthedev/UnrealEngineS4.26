@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -233,9 +233,6 @@ public:
 	{
 		return FModuleManager::Get().IsModuleLoaded("PerfCounters");
 	}
-
-	/** Returns the HTTP port to bind for the stats request. Returns -1 if none were specified */
-	static PERFCOUNTERS_API int32 GetHTTPStatsPort();
 
 	/**
 	 * @return the currently initialized / in use perf counters 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved
 
 #include "IOSTargetPlatform.h"
 #include "IOSTargetDeviceOutput.h"
@@ -8,8 +8,6 @@
 #include "Interfaces/ITargetPlatformManagerModule.h"
 #include "Interfaces/ITargetPlatform.h"
 #include "Interfaces/IProjectManager.h"
-
-DEFINE_LOG_CATEGORY_STATIC(LogIOSDeviceHelper, Log, All);
 
 struct FDeviceNotificationCallbackInformation
 {
@@ -151,9 +149,9 @@ public:
 		return DeviceNotification;
 	}
 
-	void Enable(bool bInCheckDevices)
+	void Enable(bool OnOff)
 	{
-		bCheckDevices = bInCheckDevices;
+		bCheckDevices = OnOff;
 	}
 
 private:
@@ -168,7 +166,7 @@ private:
 			RetryQuery--;
 			if (RetryQuery < 0 || Response < 0)
 			{
-				UE_LOG(LogIOSDeviceHelper, Verbose, TEXT("IOS device listing is disabled for 1 minute (too many failed attempts)!"));
+				//UE_LOG(LogTemp, Log, TEXT("IOS device listing is disabled (to many failed attempts)!"));
 				Enable(false);
 			}
 			return;

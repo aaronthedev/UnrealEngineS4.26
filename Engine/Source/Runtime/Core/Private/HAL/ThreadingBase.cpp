@@ -1,16 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "HAL/ThreadingBase.h"
 #include "UObject/NameTypes.h"
 #include "Stats/Stats.h"
-#include "Misc/CommandLine.h"
 #include "Misc/CoreStats.h"
 #include "Misc/EventPool.h"
 #include "Misc/LazySingleton.h"
-#include "Misc/Fork.h"
 #include "Templates/Atomic.h"
-#include "HAL/IConsoleManager.h"
 #include "HAL/PlatformStackWalk.h"
 #include "ProfilingDebugging/MiscTrace.h"
 
@@ -18,14 +15,6 @@ DEFINE_STAT( STAT_EventWaitWithId );
 DEFINE_STAT( STAT_EventTriggerWithId );
 
 DECLARE_DWORD_COUNTER_STAT( TEXT( "ThreadPoolDummyCounter" ), STAT_ThreadPoolDummyCounter, STATGROUP_ThreadPoolAsyncTasks );
-
-static bool GDoPooledThreadWaitTimeouts = false;
-static FAutoConsoleVariableRef CVarDoPooledThreadWaitTimeouts(
-	TEXT("DoPooledThreadWaitTimeouts"),
-	GDoPooledThreadWaitTimeouts,
-	TEXT("If enabled, uses the old behaviour for waking up pool threads every 10ms. Otherwise, lets pooled threads sleep until data arrives."),
-	ECVF_Default
-);
 
 /** The global thread pool */
 FQueuedThreadPool* GThreadPool = nullptr;
@@ -44,32 +33,12 @@ CORE_API bool IsInSlateThread()
 	return GSlateLoadingThreadId != 0 && FPlatformTLS::GetCurrentThreadId() == GSlateLoadingThreadId;
 }
 
-CORE_API TAtomic<bool> GIsAudioThreadSuspended(false);
-
 CORE_API FRunnableThread* GAudioThread = nullptr;
-
-CORE_API bool IsAudioThreadRunning()
-{
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	return (GAudioThread != nullptr) && !GIsAudioThreadSuspended.Load(EMemoryOrder::Relaxed);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
-}
 
 CORE_API bool IsInAudioThread()
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	// Check if audio thread null or if audio thread is suspended 
-	if (nullptr == GAudioThread || GIsAudioThreadSuspended.Load(EMemoryOrder::Relaxed))
-	{
-		// If the audio thread is suspended or does not exist, true if in game thread. 
-		return FPlatformTLS::GetCurrentThreadId() == GGameThreadId;
-	}
-	else
-	{
-		// If the audio thread is not suspended, true if in actual audio thread. 
-		return FPlatformTLS::GetCurrentThreadId() == GAudioThread->GetThreadID();
-	} 
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
+	// True if this is the audio thread or if there is no audio thread, then if it is the game thread
+	return FPlatformTLS::GetCurrentThreadId() == (GAudioThreadId ? GAudioThreadId : GGameThreadId);
 }
 
 CORE_API TAtomic<int32> GIsRenderingThreadSuspended(0);
@@ -78,25 +47,19 @@ CORE_API FRunnableThread* GRenderingThread = nullptr;
 
 CORE_API bool IsInActualRenderingThread()
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	return FPlatformTLS::GetCurrentThreadId() == GRenderThreadId;
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
+	return GRenderingThread && FPlatformTLS::GetCurrentThreadId() == GRenderingThread->GetThreadID();
 }
 
 CORE_API bool IsInRenderingThread()
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return !GRenderingThread || GIsRenderingThreadSuspended.Load(EMemoryOrder::Relaxed) || (FPlatformTLS::GetCurrentThreadId() == GRenderingThread->GetThreadID());
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 CORE_API bool IsInParallelRenderingThread()
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	if (!GRenderingThread || GIsRenderingThreadSuspended.Load(EMemoryOrder::Relaxed))
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	{
-		return true;
+		return FPlatformTLS::GetCurrentThreadId() == GGameThreadId;
 	}
 	else
 	{
@@ -107,18 +70,9 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 CORE_API uint32 GRHIThreadId = 0;
 CORE_API FRunnableThread* GRHIThread_InternalUseOnly = nullptr;
 
-CORE_API bool IsRHIThreadRunning()
-{
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	return GRHIThreadId != 0;
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
-}
-
 CORE_API bool IsInRHIThread()
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return GRHIThreadId && FPlatformTLS::GetCurrentThreadId() == GRHIThreadId;
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 // Fake threads
@@ -139,26 +93,20 @@ class FFakeThread : public FRunnableThread
 	/** Thread Id pool */
 	static uint32 ThreadIdCounter;
 
-protected:
-
 	/** Thread is suspended. */
 	bool bIsSuspended;
 
 	/** Runnable object associated with this thread. */
-	FSingleThreadRunnable* SingleThreadRunnable;
+	FSingleThreadRunnable* Runnable;
 
 public:
-
-	/** Use the MSB as a mask to prevent clashes between kernel assigned thread ids and fake thread ids */
-	static constexpr uint32 FakeIdReservedBit = 1 << 31;
 
 	/** Constructor. */
 	FFakeThread()
 		: bIsSuspended(false)
-		, SingleThreadRunnable(nullptr)
+		, Runnable(nullptr)
 	{
 		ThreadID = ThreadIdCounter++;
-		ThreadID |= FakeIdReservedBit;
 		// Auto register with single thread manager.
 		FThreadManager::Get().AddThread(ThreadID, this);
 	}
@@ -173,9 +121,9 @@ public:
 	/** Tick one time per frame. */
 	virtual void Tick() override
 	{
-		if (SingleThreadRunnable && !bIsSuspended)
+		if (Runnable && !bIsSuspended)
 		{
-			SingleThreadRunnable->Tick();
+			Runnable->Tick();
 		}
 	}
 
@@ -206,28 +154,15 @@ public:
 
 	virtual bool CreateInternal(FRunnable* InRunnable, const TCHAR* InThreadName,
 		uint32 InStackSize,
-		EThreadPriority InThreadPri, uint64 InThreadAffinityMask,
-		EThreadCreateFlags InCreateFlags = EThreadCreateFlags::None) override
+		EThreadPriority InThreadPri, uint64 InThreadAffinityMask) override
 
 	{
-		ThreadName = InThreadName;
-		ThreadAffinityMask = InThreadAffinityMask;
-
-		SingleThreadRunnable = InRunnable->GetSingleThreadInterface();
-		if (SingleThreadRunnable)
+		Runnable = InRunnable->GetSingleThreadInterface();
+		if (Runnable)
 		{
 			InRunnable->Init();
-
-			Runnable = InRunnable;
-		}
-		return SingleThreadRunnable != nullptr;
-	}
-
-protected:
-
-	virtual FRunnableThread::ThreadType GetThreadType() const override
-	{
-		return ThreadType::Fake;
+		}		
+		return Runnable != nullptr;
 	}
 };
 uint32 FFakeThread::ThreadIdCounter = 0xffff;
@@ -235,42 +170,7 @@ uint32 FFakeThread::ThreadIdCounter = 0xffff;
 
 void FThreadManager::AddThread(uint32 ThreadId, FRunnableThread* Thread)
 {
-	// Convert the thread's priority into an ordered value that is suitable
-	// for sorting. Note we're using higher values so as to not collide with
-	// existing trace data that's using TPri directly, and leaving gaps so
-	// values can be added in between should need be
-	int8 PriRemap[][2] = {
-		{ TPri_TimeCritical,		0x10 },
-		{ TPri_Highest,				0x20 },
-		{ TPri_AboveNormal,			0x30 },
-		{ TPri_Normal,				0x40 },
-		{ TPri_SlightlyBelowNormal,	0x50 },
-		{ TPri_BelowNormal,			0x60 },
-		{ TPri_Lowest,				0x70 },
-	};
-	static_assert(TPri_Num == UE_ARRAY_COUNT(PriRemap), "Please update PriRemap when adding/removing thread priorities. Many thanks.");
-	int32 SortHint = UE_ARRAY_COUNT(PriRemap);
-	for (auto Candidate : PriRemap)
-	{
-		if (Candidate[0] == Thread->GetThreadPriority())
-		{
-			SortHint = Candidate[1];
-			break;
-		}
-	}
-
-	// Note that this must be called from thread being registered.
-	Trace::ThreadRegister(*(Thread->GetThreadName()), Thread->GetThreadID(), SortHint);
-
-	const bool bIsSingleThreadEnvironment = FPlatformProcess::SupportsMultithreading() == false;
-
-	if (bIsSingleThreadEnvironment && Thread->GetThreadType() == FRunnableThread::ThreadType::Real)
-	{
-		checkf((ThreadId & FFakeThread::FakeIdReservedBit) == 0, TEXT("The thread ID  assigned by the kernel clashes with the bit reserved for identifying fake threads. Need to revisit the fake ID assignment algo."));
-	}
-
-	FScopeLock ThreadsLock(&ThreadsCritical);	
-
+	FScopeLock ThreadsLock(&ThreadsCritical);
 	// Some platforms do not support TLS
 	if (!Threads.Contains(ThreadId))
 	{
@@ -290,26 +190,21 @@ void FThreadManager::RemoveThread(FRunnableThread* Thread)
 
 void FThreadManager::Tick()
 {	
-	const bool bIsSingleThreadEnvironment = FPlatformProcess::SupportsMultithreading() == false;
-	if (bIsSingleThreadEnvironment)
+	if (!FPlatformProcess::SupportsMultithreading())
 	{
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_FSingleThreadManager_Tick);
 
 		FScopeLock ThreadsLock(&ThreadsCritical);
 
-		// Tick all registered fake threads.
+		// Tick all registered threads.
 		for (TPair<uint32, FRunnableThread*>& ThreadPair : Threads)
 		{
-			// Only fake and forkable threads are ticked by the ThreadManager
-			if( ThreadPair.Value->GetThreadType() != FRunnableThread::ThreadType::Real )
-			{
-				ThreadPair.Value->Tick();
-			}
+			ThreadPair.Value->Tick();
 		}
 	}
 }
 
-const FString& FThreadManager::GetThreadNameInternal(uint32 ThreadId)
+const FString& FThreadManager::GetThreadName(uint32 ThreadId)
 {
 	static FString NoThreadName;
 	FScopeLock ThreadsLock(&ThreadsCritical);
@@ -363,35 +258,11 @@ void FThreadManager::GetAllThreadStackBackTraces(TArray<FThreadStackBackTrace>& 
 }
 #endif
 
-void FThreadManager::ForEachThread(TFunction<void(uint32, class FRunnableThread*)> Func)
-{
-	FScopeLock Lock(&ThreadsCritical);
-	for (const TPair<uint32, FRunnableThread*>& Pair : Threads)
-	{
-		Func(Pair.Key, Pair.Value);
-	}
-}
-
 FThreadManager& FThreadManager::Get()
 {
 	static FThreadManager Singleton;
 	FThreadManager::bIsInitialized = true;
 	return Singleton;
-}
-
-TArray<FRunnableThread*> FThreadManager::GetForkableThreads()
-{
-	TArray<FRunnableThread*> ForkableThreads;
-	FScopeLock Lock(&ThreadsCritical);
-	for (const TPair<uint32, FRunnableThread*>& Pair : Threads)
-	{
-		if (Pair.Value->GetThreadType() == FRunnableThread::ThreadType::Forkable)
-		{
-			ForkableThreads.Add(Pair.Value);
-		}
-	}
-
-	return ForkableThreads;
 }
 
 bool FThreadManager::bIsInitialized = false;
@@ -477,20 +348,6 @@ FScopedEvent::~FScopedEvent()
 	}
 }
 
-
-/*-----------------------------------------------------------------------------
-	FEventRef
------------------------------------------------------------------------------*/
-
-FEventRef::FEventRef(EEventMode Mode /* = EEventMode::AutoReset */)
-	: Event(FPlatformProcess::GetSynchEventFromPool(Mode == EEventMode::ManualReset))
-{}
-
-FEventRef::~FEventRef()
-{
-	FPlatformProcess::ReturnSynchEventToPool(Event);
-}
-
 /*-----------------------------------------------------------------------------
 	FRunnableThread
 -----------------------------------------------------------------------------*/
@@ -527,56 +384,49 @@ FRunnableThread* FRunnableThread::Create(
 	const TCHAR* ThreadName,
 	uint32 InStackSize,
 	EThreadPriority InThreadPri, 
-	uint64 InThreadAffinityMask,
-	EThreadCreateFlags InCreateFlags)
+	uint64 InThreadAffinityMask)
 {
-	bool bCreateRealThread = FPlatformProcess::SupportsMultithreading();
-
 	FRunnableThread* NewThread = nullptr;
-
-	if (bCreateRealThread)
+	if (FPlatformProcess::SupportsMultithreading())
 	{
 		check(InRunnable);
 		// Create a new thread object
 		NewThread = FPlatformProcess::CreateRunnableThread();
+		if (NewThread)
+		{
+			// Call the thread's create method
+			if (NewThread->CreateInternal(InRunnable,ThreadName,InStackSize,InThreadPri,InThreadAffinityMask) == false)
+			{
+				// We failed to start the thread correctly so clean up
+				delete NewThread;
+				NewThread = nullptr;
+			}
+		}
 	}
 	else if (InRunnable->GetSingleThreadInterface())
 	{
 		// Create a fake thread when multithreading is disabled.
 		NewThread = new FFakeThread();
+		if (NewThread->CreateInternal(InRunnable,ThreadName,InStackSize,InThreadPri) == false)
+		{
+			// We failed to start the thread correctly so clean up
+			delete NewThread;
+			NewThread = nullptr;
+		}
 	}
 
 	if (NewThread)
 	{
-		SetupCreatedThread(NewThread, InRunnable, ThreadName, InStackSize, InThreadPri, InThreadAffinityMask, InCreateFlags);
+		TRACE_CREATE_THREAD(NewThread->GetThreadID(), *NewThread->GetThreadName(), InThreadPri);
 	}
+#if	STATS
+	if( NewThread )
+	{
+		FStartupMessages::Get().AddThreadMetadata( FName( *NewThread->GetThreadName() ), NewThread->GetThreadID() );
+	}
+#endif // STATS
 
 	return NewThread;
-}
-
-void FRunnableThread::SetupCreatedThread(FRunnableThread*& NewThread, class FRunnable* InRunnable,  const TCHAR* ThreadName, uint32 InStackSize, EThreadPriority InThreadPri, uint64 InThreadAffinityMask, EThreadCreateFlags InCreateFlags)
-{
-	// Call the thread's create method
-	bool bIsValid = NewThread->CreateInternal(InRunnable, ThreadName, InStackSize, InThreadPri, InThreadAffinityMask, InCreateFlags);
-
-	if( bIsValid )
-	{
-		check(NewThread->Runnable);
-		NewThread->PostCreate(InThreadPri);
-	}
-	else
-	{
-		// We failed to start the thread correctly so clean up
-		delete NewThread;
-		NewThread = nullptr;
-	}
-}
-
-void FRunnableThread::PostCreate(EThreadPriority InThreadPriority)
-{
-#if	STATS
-	FStartupMessages::Get().AddThreadMetadata( FName( *GetThreadName() ), GetThreadID() );
-#endif // STATS
 }
 
 void FRunnableThread::SetTls()
@@ -619,30 +469,80 @@ class FQueuedThread
 protected:
 
 	/** The event that tells the thread there is work to do. */
-	FEvent* DoWorkEvent = nullptr;
+	FEvent* DoWorkEvent;
 
 	/** If true, the thread should exit. */
-	TAtomic<bool> TimeToDie { false };
+	TAtomic<bool> TimeToDie;
 
 	/** The work this thread is doing. */
-	IQueuedWork* volatile QueuedWork = nullptr;
+	IQueuedWork* volatile QueuedWork;
 
 	/** The pool this thread belongs to. */
-	class FQueuedThreadPoolBase* OwningThreadPool = nullptr;
+	class FQueuedThreadPool* OwningThreadPool;
 
 	/** My Thread  */
-	FRunnableThread* Thread = nullptr;
+	FRunnableThread* Thread;
 
 	/**
 	 * The real thread entry point. It waits for work events to be queued. Once
 	 * an event is queued, it executes it and goes back to waiting.
 	 */
-	virtual uint32 Run() override;
+	virtual uint32 Run() override
+	{
+		while (!TimeToDie.Load(EMemoryOrder::Relaxed))
+		{
+			// This will force sending the stats packet from the previous frame.
+			SET_DWORD_STAT( STAT_ThreadPoolDummyCounter, 0 );
+			// We need to wait for shorter amount of time
+			bool bContinueWaiting = true;
+
+			// Unless we're collecting stats there doesn't appear to be any reason to wake
+			// up again until there's work to do (or it's time to die)
+
+#if STATS
+			if (FThreadStats::IsCollectingData())
+			{
+			while( bContinueWaiting )
+			{				
+				DECLARE_SCOPE_CYCLE_COUNTER( TEXT( "FQueuedThread::Run.WaitForWork" ), STAT_FQueuedThread_Run_WaitForWork, STATGROUP_ThreadPoolAsyncTasks );
+
+				// Wait for some work to do
+
+				bContinueWaiting = !DoWorkEvent->Wait( 10 );
+			}
+			}
+#endif
+
+			if (bContinueWaiting)
+			{
+				DoWorkEvent->Wait();
+			}
+
+			IQueuedWork* LocalQueuedWork = QueuedWork;
+			QueuedWork = nullptr;
+			FPlatformMisc::MemoryBarrier();
+			check(LocalQueuedWork || TimeToDie.Load(EMemoryOrder::Relaxed)); // well you woke me up, where is the job or termination request?
+			while (LocalQueuedWork)
+			{
+				// Tell the object to do the work
+				LocalQueuedWork->DoThreadedWork();
+				// Let the object cleanup before we remove our ref to it
+				LocalQueuedWork = OwningThreadPool->ReturnToPoolOrGetNextJob(this);
+			} 
+		}
+		return 0;
+	}
 
 public:
 
 	/** Default constructor **/
-	FQueuedThread() = default;
+	FQueuedThread()
+		: DoWorkEvent(nullptr)
+		, TimeToDie(false)
+		, QueuedWork(nullptr)
+		, OwningThreadPool(nullptr)
+		, Thread(nullptr)
+	{ }
 
 	/**
 	 * Creates the thread with the specified stack size and creates the various
@@ -653,7 +553,7 @@ public:
 	 * @param ThreadPriority priority of new thread
 	 * @return True if the thread and all of its initialization was successful, false otherwise
 	 */
-	virtual bool Create(class FQueuedThreadPoolBase* InPool,uint32 InStackSize = 0,EThreadPriority ThreadPriority=TPri_Normal)
+	virtual bool Create(class FQueuedThreadPool* InPool,uint32 InStackSize = 0,EThreadPriority ThreadPriority=TPri_Normal)
 	{
 		static int32 PoolThreadIndex = 0;
 		const FString PoolThreadName = FString::Printf( TEXT( "PoolThread %d" ), PoolThreadIndex );
@@ -674,7 +574,7 @@ public:
 	 *
 	 * @return True if the thread exited graceful, false otherwise
 	 */
-	bool KillThread()
+	virtual bool KillThread()
 	{
 		bool bDidExitOK = true;
 		// Tell the thread it needs to die
@@ -709,6 +609,7 @@ public:
 		// Tell the thread to wake up and do its job
 		DoWorkEvent->Trigger();
 	}
+
 };
 
 
@@ -748,10 +649,8 @@ public:
 		Destroy();
 	}
 
-	virtual bool Create(uint32 InNumQueuedThreads, uint32 StackSize, EThreadPriority ThreadPriority, const TCHAR* Name) override
+	virtual bool Create(uint32 InNumQueuedThreads,uint32 StackSize = (32 * 1024),EThreadPriority ThreadPriority=TPri_Normal) override
 	{
-		Trace::ThreadGroupBegin(Name);
-
 		// Make sure we have synch objects
 		bool bWasSuccessful = true;
 		check(SynchQueue == nullptr);
@@ -790,8 +689,6 @@ public:
 		{
 			Destroy();
 		}
-
-		Trace::ThreadGroupEnd();
 		return bWasSuccessful;
 	}
 
@@ -908,7 +805,7 @@ public:
 		return !!QueuedWork.RemoveSingle(InQueuedWork);
 	}
 
-	IQueuedWork* ReturnToPoolOrGetNextJob(FQueuedThread* InQueuedThread)
+	virtual IQueuedWork* ReturnToPoolOrGetNextJob(FQueuedThread* InQueuedThread) override
 	{
 		check(InQueuedThread != nullptr);
 		IQueuedWork* Work = nullptr;
@@ -943,57 +840,6 @@ FQueuedThreadPool* FQueuedThreadPool::Allocate()
 	return new FQueuedThreadPoolBase;
 }
 
-FQueuedThreadPool::FQueuedThreadPool() = default;
-FQueuedThreadPool::~FQueuedThreadPool() = default;
-
-//////////////////////////////////////////////////////////////////////////
-
-uint32
-FQueuedThread::Run()
-{
-	while (!TimeToDie.Load(EMemoryOrder::Relaxed))
-	{
-		// This will force sending the stats packet from the previous frame.
-		SET_DWORD_STAT(STAT_ThreadPoolDummyCounter, 0);
-		// We need to wait for shorter amount of time
-		bool bContinueWaiting = true;
-
-		// Unless we're collecting stats there doesn't appear to be any reason to wake
-		// up again until there's work to do (or it's time to die)
-
-#if STATS
-		if (FThreadStats::IsCollectingData())
-		{
-			while (bContinueWaiting)
-			{
-				DECLARE_SCOPE_CYCLE_COUNTER(TEXT("FQueuedThread::Run.WaitForWork"), STAT_FQueuedThread_Run_WaitForWork, STATGROUP_ThreadPoolAsyncTasks);
-
-				// Wait for some work to do
-
-				bContinueWaiting = !DoWorkEvent->Wait(GDoPooledThreadWaitTimeouts ? 10 : MAX_uint32);
-			}
-		}
-#endif
-
-		if (bContinueWaiting)
-		{
-			DoWorkEvent->Wait();
-		}
-
-		IQueuedWork* LocalQueuedWork = QueuedWork;
-		QueuedWork = nullptr;
-		FPlatformMisc::MemoryBarrier();
-		check(LocalQueuedWork || TimeToDie.Load(EMemoryOrder::Relaxed)); // well you woke me up, where is the job or termination request?
-		while (LocalQueuedWork)
-		{
-			// Tell the object to do the work
-			LocalQueuedWork->DoThreadedWork();
-			// Let the object cleanup before we remove our ref to it
-			LocalQueuedWork = OwningThreadPool->ReturnToPoolOrGetNextJob(this);
-		}
-	}
-	return 0;
-}
 
 /*-----------------------------------------------------------------------------
 	FThreadSingletonInitializer
@@ -1039,235 +885,4 @@ void FTlsAutoCleanup::Register()
 	{
 		RunnableThread->TlsInstances.Add( this );
 	}
-}
-
-//-------------------------------------------------------------------------------
-// FForkableThread
-//-------------------------------------------------------------------------------
-
-/**
- * This thread starts as a fake thread and gets ticked like it was in a single-threaded environment.
- * Once it receives the OnPostFork event it creates and holds a real thread that
- * will cause the RunnableObject to be executed in it's own thread.
- */
-class FForkableThread : public FFakeThread
-{
-	typedef FFakeThread Super;
-
-private:
-
-	/** Real thread that gets created right after forking */
-	FRunnableThread* RealThread = nullptr;
-
-	/** Cached values to use when the real thread is created post-fork */
-	EThreadPriority CachedPriority = TPri_Normal;
-	uint32 CachedStackSize = 0;
-
-public:
-
-	virtual void Tick() override
-	{
-		// Tick in single-thread mode when the real thread isn't created yet
-		if(RealThread == nullptr)
-		{
-			Super::Tick();
-		}
-	}
-
-	virtual void SetThreadPriority(EThreadPriority NewPriority) override
-	{
-		CachedPriority = NewPriority;
-		
-		if (RealThread)
-		{
-			RealThread->SetThreadPriority(NewPriority);
-		}
-	}
-
-	virtual void Suspend(bool bShouldPause) override
-	{
-		Super::Suspend(bShouldPause);
-
-		if (RealThread)
-		{
-			RealThread->Suspend(bShouldPause);
-		}
-	}
-
-	virtual bool Kill(bool bShouldWait) override
-	{
-		bool bExitedCorrectly = true;
-
-		if (RealThread)
-		{
-			bExitedCorrectly = RealThread->Kill(bShouldWait);
-		}
-
-		Super::Kill(bShouldWait);
-
-		return bExitedCorrectly;
-	}
-
-	virtual void WaitForCompletion() override
-	{
-		if (RealThread)
-		{
-			RealThread->WaitForCompletion();
-		}
-
-		Super::WaitForCompletion();
-	}
-
-	virtual bool CreateInternal(FRunnable* InRunnable, const TCHAR* InThreadName, uint32 InStackSize, EThreadPriority InThreadPri, uint64 InThreadAffinityMask, EThreadCreateFlags InCreateFlags) override
-	{
-		checkf(FForkProcessHelper::SupportsMultithreadingPostFork(), TEXT("ForkableThreads should only be created when -PostForkThreading is enabled"));
-		checkf(FForkProcessHelper::IsForkedMultithreadInstance() == false, TEXT("Once forked we create a real runnable thread instead of a ForkableThread"));
-
-		// Call the fake thread creator
-		bool bCreated = Super::CreateInternal(InRunnable, InThreadName, InStackSize, InThreadPri, InThreadAffinityMask, InCreateFlags);
-
-		// Cache the target values until we create the real thread
-		CachedStackSize = InStackSize;
-		CachedPriority = InThreadPri;
-
-		return bCreated;
-	}
-
-protected:
-
-	virtual void OnPostFork() override
-	{
-		check(FForkProcessHelper::IsForkedMultithreadInstance());
-
-		check(RealThread == nullptr);
-		RealThread = FPlatformProcess::CreateRunnableThread();
-		bool bCreated = RealThread->CreateInternal(Runnable, *GetThreadName(), CachedStackSize, CachedPriority, ThreadAffinityMask, EThreadCreateFlags::None);
-
-		if (bCreated)
-		{
-			RealThread->PostCreate(CachedPriority);
-
-			// Suspend the thread if the fake thread was suspended too
-			//TODO: this lets the thread run for a few cycles before hitting the suspend call...
-			if (bIsSuspended)
-			{
-				RealThread->Suspend(bIsSuspended);
-			}
-		}
-		else
-		{
-			delete RealThread;
-			RealThread = nullptr;
-		}
-	}
-
-	virtual FRunnableThread::ThreadType GetThreadType() const override
-	{
-		return ThreadType::Forkable;
-	}
-};
-
-//-------------------------------------------------------------------------------
-// ForkableThreadHelper
-//-------------------------------------------------------------------------------
-
-bool FForkProcessHelper::bIsForkedMultithreadInstance = false;
-bool FForkProcessHelper::bIsForkedChildProcess = false;
-
-bool FForkProcessHelper::IsForkedChildProcess()
-{
-	return bIsForkedChildProcess;
-}
-
-void FForkProcessHelper::SetIsForkedChildProcess()
-{
-	bIsForkedChildProcess = true;
-}
-
-void FForkProcessHelper::OnForkingOccured()
-{
-	if( SupportsMultithreadingPostFork() )
-	{
-		ensureMsgf(GMalloc->IsInternallyThreadSafe(), TEXT("The BaseAllocator %s is not threadsafe. Switch to a multithread allocator or ensure the FMallocThreadSafeProxy wraps it."), GMalloc->GetDescriptiveName());
-
-		bIsForkedMultithreadInstance = true;
-
-		// Use a local list of forkable threads so we don't keep a lock on the global list during thread creation
-		auto ForkableThreads = FThreadManager::Get().GetForkableThreads();
-		for (FRunnableThread* ForkableThread : ForkableThreads)
-		{
-			ForkableThread->OnPostFork();
-		}
-	}
-}
-
-bool FForkProcessHelper::IsForkedMultithreadInstance()
-{
-	return bIsForkedMultithreadInstance;
-}
-
-bool FForkProcessHelper::IsAForkingProcess()
-{
-	static bool bForkingProcess = FParse::Param(FCommandLine::Get(), TEXT("WaitAndFork")) || FParse::Param(FCommandLine::Get(), TEXT("FakeForking"));
-	return bForkingProcess;
-}
-
-bool FForkProcessHelper::SupportsMultithreadingPostFork()
-{
-	check(FCommandLine::IsInitialized());
-	static bool bSupportsMultithreadingPostFork = FParse::Param(FCommandLine::Get(), TEXT("PostForkThreading"));
-	return bSupportsMultithreadingPostFork;
-}
-
-FRunnableThread* FForkProcessHelper::CreateForkableThread(class FRunnable* InRunnable, const TCHAR* InThreadName, uint32 InStackSize, EThreadPriority InThreadPri, uint64 InThreadAffinityMask, EThreadCreateFlags InCreateFlags)
-{
-	bool bCreateRealThread = FPlatformProcess::SupportsMultithreading();
-	bool bCreateForkableThread(false);
-
-	// Look for conditions allowing real threads in a non-multithread environment
-	if (bCreateRealThread == false)
-	{
-		if( SupportsMultithreadingPostFork() )
-		{
-			if( IsForkedMultithreadInstance() )
-			{
-				// Already forked, create a real thread immediately
-				bCreateRealThread = true;
-			}
-			else
-			{
-				// We have yet to fork the process, create a forkable thread to handle the fork event
-				bCreateForkableThread = true;
-			}
-		
-		}
-	}
-
-	FRunnableThread* NewThread(nullptr);
-	if (bCreateRealThread)
-	{
-		check(InRunnable);
-		NewThread = FPlatformProcess::CreateRunnableThread();
-	}
-	else if (bCreateForkableThread)
-	{
-		if( InRunnable->GetSingleThreadInterface() )
-		{
-			NewThread = new FForkableThread();
-		}
-	}
-	else
-	{
-		if (InRunnable->GetSingleThreadInterface())
-		{
-			NewThread = new FFakeThread();
-		}
-	}
-
-	if (NewThread)
-	{
-		FRunnableThread::SetupCreatedThread(NewThread, InRunnable, InThreadName, InStackSize, InThreadPri, InThreadAffinityMask, InCreateFlags);
-	}
-
-	return NewThread;
 }

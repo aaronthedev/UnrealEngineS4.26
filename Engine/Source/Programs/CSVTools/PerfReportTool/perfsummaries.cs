@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -219,12 +219,25 @@ namespace PerfSummaries
         public virtual void PostInit(ReportTypeInfo reportTypeInfo, CsvStats csvStats)
         {
 			// Resolve wildcards and remove duplicates
-			stats = csvStats.GetStatNamesMatchingStringList(stats.ToArray());
+			List<string> newStats = new List<string>();
+			Dictionary<string, bool> uniqueStats = new Dictionary<string, bool>();
+			foreach (string statStr in stats)
+			{
+				List<StatSamples> statsMatching = csvStats.GetStatsMatchingString(statStr);
+				foreach (StatSamples stat in statsMatching)
+				{
+					if (!uniqueStats.ContainsKey(stat.Name))
+					{
+						uniqueStats.Add(stat.Name, true);
+						newStats.Add(stat.Name);
+					}
+				}
+			}
+			stats = newStats;
 		}
 
         public void ReadStatsFromXML(XElement element)
         {
-			useUnstrippedCsvStats = element.GetSafeAttibute<bool>("useUnstrippedCsvStats", false);
 			XElement statsElement = element.Element("stats");
 			if (statsElement != null)
 			{
@@ -328,25 +341,6 @@ namespace PerfSummaries
             return uniqueStats.ToArray();
         }
 
-		protected double [] ReadColourThresholdsXML(XElement colourThresholdEl)
-		{
-			if (colourThresholdEl != null)
-			{
-				string[] colourStrings = colourThresholdEl.Value.Split(',');
-				if (colourStrings.Length != 4)
-				{
-					throw new Exception("Incorrect number of colourthreshold entries. Should be 4.");
-				}
-				double [] colourThresholds = new double[4];
-				for (int i = 0; i < colourStrings.Length; i++)
-				{
-					colourThresholds[i] = Convert.ToDouble(colourStrings[i], System.Globalization.CultureInfo.InvariantCulture);
-				}
-				return colourThresholds;
-			}
-			return null;
-		}
-
         public string GetStatThresholdColour(string StatToUse, double value)
         {
 			ColourThresholdList Thresholds = GetStatColourThresholdList(StatToUse);
@@ -369,12 +363,11 @@ namespace PerfSummaries
         public List<CaptureRange> captures;
         public List<string> stats;
         public Dictionary<string, ColourThresholdList> StatThresholds;
-		public bool useUnstrippedCsvStats;
     };
 
     class FPSChartSummary : Summary
     {
-        public FPSChartSummary(XElement element, string baseXmlDirectory)
+        public FPSChartSummary(XElement element)
         {
             ReadStatsFromXML(element);
             fps = Convert.ToInt32(element.Attribute("fps").Value);
@@ -385,9 +378,6 @@ namespace PerfSummaries
 				engineHitchToNonHitchRatio = element.GetSafeAttibute<float>("engineHitchToNonHitchRatio", 1.5f);
 				engineMinTimeBetweenHitchesMs = element.GetSafeAttibute<float>("engineMinTimeBetweenHitchesMs", 200.0f);
 			}
-
-			bIgnoreHitchTimePercent = element.GetSafeAttibute<bool>("ignoreHitchTimePercent", false);
-			bIgnoreMVP = element.GetSafeAttibute<bool>("ignoreMVP", false);
 		}
 
 		float GetEngineHitchToNonHitchRatio()
@@ -408,13 +398,11 @@ namespace PerfSummaries
 			public float TotalTimeSeconds;
 		};
 
-		FpsChartData ComputeFPSChartDataForFrames(List<float> frameTimes, bool skiplastFrame)
+		FpsChartData ComputeFPSChartDataForFrames(List<float> frameTimes)
 		{
 			double totalFrametime = 0.0;
 			int hitchCount = 0;
 			double totalHitchTime = 0.0;
-
-			int frameCount = skiplastFrame ? frameTimes.Count - 1 : frameTimes.Count;
 
 			// Count hitches
 			if (bUseEngineHitchMetric)
@@ -425,9 +413,8 @@ namespace PerfSummaries
 				double LastFrameTime = float.MinValue;
 				float HitchMultiplierAmount = GetEngineHitchToNonHitchRatio();
 
-				for ( int i=0; i< frameCount; i++)
+				foreach (float frametime in frameTimes)
 				{
-					float frametime = frameTimes[i];
 					// How long has it been since the last hitch we detected?
 					if (frametime >= hitchThreshold)
 					{
@@ -453,9 +440,8 @@ namespace PerfSummaries
 			}
 			else
 			{
-				for (int i = 0; i < frameCount; i++)
+				foreach (float frametime in frameTimes)
 				{
-					float frametime = frameTimes[i];
 					totalFrametime += frametime;
 					if (frametime >= hitchThreshold)
 					{
@@ -487,9 +473,13 @@ namespace PerfSummaries
                 string csvPath = Path.Combine(Path.GetDirectoryName(htmlFileName), "FrameStats_colored.csv");
                 statsCsvFile = new System.IO.StreamWriter(csvPath, false);
             }
-			// Compute MVP30 and MVP60. Note: we ignore the last frame because fpscharts can hitch
+            // Compute MVP30 and MVP60
             List<float> frameTimes = csvStats.Stats["frametime"].samples;
-			FpsChartData fpsChartData = ComputeFPSChartDataForFrames(frameTimes,true);
+
+			// Remove the last element, because FPSCharts can hitch
+			frameTimes.RemoveAt(frameTimes.Count - 1);
+
+			FpsChartData fpsChartData = ComputeFPSChartDataForFrames(frameTimes);
 
             // Write the averages
             List<string> ColumnNames = new List<string>();
@@ -507,21 +497,15 @@ namespace PerfSummaries
 			ColumnValues.Add(fpsChartData.HitchesPerMinute.ToString("0.00"));
 			ColumnColors.Add(ColourThresholdList.GetSafeColourForValue(ColumnColorThresholds.Last(), ColumnValues.Last()));
 
-			if (!bIgnoreHitchTimePercent)
-			{
-				ColumnNames.Add("HitchTimePercent");
-				ColumnColorThresholds.Add(GetStatColourThresholdList(ColumnNames.Last()));
-				ColumnValues.Add(fpsChartData.HitchTimePercent.ToString("0.00"));
-				ColumnColors.Add(ColourThresholdList.GetSafeColourForValue(ColumnColorThresholds.Last(), ColumnValues.Last()));
-			}
+			ColumnNames.Add("HitchTimePercent");
+			ColumnColorThresholds.Add(GetStatColourThresholdList(ColumnNames.Last()));
+			ColumnValues.Add(fpsChartData.HitchTimePercent.ToString("0.00"));
+			ColumnColors.Add(ColourThresholdList.GetSafeColourForValue(ColumnColorThresholds.Last(), ColumnValues.Last()));
 
-			if (!bIgnoreMVP)
-			{
-				ColumnNames.Add("MVP" + fps.ToString());
-				ColumnColorThresholds.Add(GetStatColourThresholdList(ColumnNames.Last()));
-				ColumnValues.Add(fpsChartData.MVP.ToString("0.00"));
-				ColumnColors.Add(ColourThresholdList.GetSafeColourForValue(ColumnColorThresholds.Last(), ColumnValues.Last()));
-			}
+			ColumnNames.Add("MVP" + fps.ToString());
+			ColumnColorThresholds.Add(GetStatColourThresholdList(ColumnNames.Last()));
+            ColumnValues.Add(fpsChartData.MVP.ToString("0.00"));
+			ColumnColors.Add(ColourThresholdList.GetSafeColourForValue(ColumnColorThresholds.Last(), ColumnValues.Last()));
 
 			foreach (string statName in stats)
             {
@@ -620,7 +604,7 @@ namespace PerfSummaries
                     {
                         continue;
                     }
-					FpsChartData captureFpsChartData = ComputeFPSChartDataForFrames(CaptureFrameTimes.Frames,true);
+					FpsChartData captureFpsChartData = ComputeFPSChartDataForFrames(CaptureFrameTimes.Frames);
 				
                     if (captureFpsChartData.TotalTimeSeconds == 0.0f)
                     {
@@ -633,17 +617,11 @@ namespace PerfSummaries
                     ColumnValues.Add(captureFpsChartData.HitchesPerMinute.ToString("0.00"));
                     ColumnColors.Add(GetStatThresholdColour("Hitches/Min", captureFpsChartData.HitchesPerMinute));
 
-					if (!bIgnoreHitchTimePercent)
-					{
-						ColumnValues.Add(captureFpsChartData.HitchTimePercent.ToString("0.00"));
-						ColumnColors.Add(GetStatThresholdColour("HitchTimePercent", captureFpsChartData.HitchTimePercent));
-					}
+					ColumnValues.Add(captureFpsChartData.HitchTimePercent.ToString("0.00"));
+					ColumnColors.Add(GetStatThresholdColour("HitchTimePercent", captureFpsChartData.HitchTimePercent));
 
-					if (!bIgnoreMVP)
-					{
-						ColumnValues.Add(captureFpsChartData.MVP.ToString("0.00"));
-						ColumnColors.Add(GetStatThresholdColour("MVP" + fps.ToString(), captureFpsChartData.MVP));
-					}
+					ColumnValues.Add(captureFpsChartData.MVP.ToString("0.00"));
+                    ColumnColors.Add(GetStatThresholdColour("MVP" + fps.ToString(), captureFpsChartData.MVP));
 
                     foreach (string statName in stats)
                     {
@@ -716,20 +694,34 @@ namespace PerfSummaries
         int fps;
         float hitchThreshold;
 		bool bUseEngineHitchMetric;
-		bool bIgnoreHitchTimePercent;
-		bool bIgnoreMVP;
 		float engineHitchToNonHitchRatio;
 		float engineMinTimeBetweenHitchesMs;
 	};
 
     class EventSummary : Summary
     {
-        public EventSummary(XElement element, string baseXmlDirectory)
+        public EventSummary(XElement element)
         {
             title = element.GetSafeAttibute("title","Events");
             metadataKey = element.Attribute("metadataKey").Value;
             events = element.Element("events").Value.Split(',');
-			colourThresholds = ReadColourThresholdsXML(element.Element("colourThresholds"));
+
+
+            XElement colourThresholdEl = element.Element("colourThresholds");
+            if (colourThresholdEl != null)
+            {
+                string[] colourStrings = colourThresholdEl.Value.Split(',');
+                if (colourStrings.Length != 4)
+                {
+                    throw new Exception("Incorrect number of colourthreshold entries. Should be 4.");
+                }
+                colourThresholds = new double[4];
+                for (int i = 0; i < colourStrings.Length; i++)
+                {
+                    colourThresholds[i] = Convert.ToDouble(colourStrings[i], System.Globalization.CultureInfo.InvariantCulture);
+                }
+            }
+
         }
 
         public override void WriteSummaryData(System.IO.StreamWriter htmlFile, CsvStats csvStats, bool bIncludeSummaryCsv, SummaryMetadata metadata, string htmlFileName)
@@ -802,7 +794,7 @@ namespace PerfSummaries
 
     class HitchSummary : Summary
     {
-        public HitchSummary(XElement element, string baseXmlDirectory)
+        public HitchSummary(XElement element)
         {
             ReadStatsFromXML(element);
 
@@ -886,17 +878,30 @@ namespace PerfSummaries
             }
             htmlFile.WriteLine("  </table>");
 			htmlFile.WriteLine("<p style='font-size:8'>Note: Simplified hitch metric. All frames over threshold are counted" + "</p>");
+
+			if (csvStats.Events.Count == 0)
+            {
+                return;
+            }
         }
         public double[] HitchThresholds;
     };
 
     class HistogramSummary : Summary
     {
-        public HistogramSummary(XElement element, string baseXmlDirectory)
+        public HistogramSummary(XElement element)
         {
             ReadStatsFromXML(element);
-
-			ColourThresholds = ReadColourThresholdsXML(element.Element("colourThresholds"));
+            string[] colourStrings = element.Element("colourThresholds").Value.Split(',');
+            if (colourStrings.Length != 4)
+            {
+                throw new Exception("Incorrect number of colourthreshold entries. Should be 4.");
+            }
+            ColourThresholds = new double[4];
+            for (int i = 0; i < colourStrings.Length; i++)
+            {
+                ColourThresholds[i] = Convert.ToDouble(colourStrings[i], System.Globalization.CultureInfo.InvariantCulture);
+            }
 
             string[] histogramStrings = element.Element("histogramThresholds").Value.Split(',');
             HistogramThresholds = new double[histogramStrings.Length];
@@ -1047,7 +1052,7 @@ namespace PerfSummaries
 
     class PeakSummary : Summary
     {
-        public PeakSummary(XElement element, string baseXmlDirectory)
+        public PeakSummary(XElement element)
         {
 			hidePrefixes = new List<string>();
 			sectionPrefixes = new List<string>();
@@ -1292,555 +1297,7 @@ namespace PerfSummaries
         List<string> hidePrefixes;
     };
 
-	class BoundedStatValuesSummary : Summary
-	{
-		class Column
-		{
-			public string name;
-			public string formula;
-			public double value;
-			public string metadataKey;
-			public string statName;
-			public bool perSecond;
-			public bool filterOutZeros;
-			public bool applyEndOffset;
-			public double multiplier;
-			public double threshold;
-			public ColourThresholdList colourThresholdList;
-		};
-		public BoundedStatValuesSummary(XElement element, string baseXmlDirectory)
-		{
-			ReadStatsFromXML(element);
-			if (stats.Count != 0)
-			{
-				throw new Exception("<stats> element is not supported");
-			}
-
-			title = element.GetSafeAttibute("title", "Events");
-			beginEvent = element.GetSafeAttibute<string>("beginevent");
-			endEvent = element.GetSafeAttibute<string>("endevent");
-
-			endOffsetPercentage = 0.0;
-			XAttribute endOffsetAtt = element.Attribute("endoffsetpercent");
-			if ( endOffsetAtt != null )
-			{
-				endOffsetPercentage = double.Parse(endOffsetAtt.Value);
-			}
-			columns = new List<Column>();
-
-			foreach (XElement columnEl in element.Elements("column"))
-			{
-				Column column = new Column();
-				double[] colourThresholds = ReadColourThresholdsXML(columnEl.Element("colourThresholds"));
-				if (colourThresholds != null)
-				{
-					column.colourThresholdList = new ColourThresholdList();
-					for (int i = 0; i < colourThresholds.Length; i++)
-					{
-						column.colourThresholdList.Add(new ThresholdInfo(colourThresholds[i], null));
-					}
-				}
-
-				XAttribute metadataKeyAtt = columnEl.Attribute("metadataKey");
-				if (metadataKeyAtt!=null)
-				{
-					column.metadataKey = metadataKeyAtt.Value;
-				}
-				column.statName = columnEl.Attribute("stat").Value.ToLower();
-				if ( !stats.Contains(column.statName) )
-				{
-					stats.Add(column.statName);
-				}
-
-				column.name = columnEl.Attribute("name").Value;
-				column.formula = columnEl.Attribute("formula").Value;
-				column.filterOutZeros= columnEl.GetSafeAttibute<bool>("filteroutzeros", false);
-				column.perSecond = columnEl.GetSafeAttibute<bool>("persecond", false);
-				column.multiplier = columnEl.GetSafeAttibute<double>("multiplier", 1.0);
-				column.threshold = columnEl.GetSafeAttibute<double>("threshold", 0.0);
-				column.applyEndOffset = columnEl.GetSafeAttibute<bool>("applyEndOffset", true);
-				columns.Add(column);
-			}
-		}
-
-		public override void WriteSummaryData(System.IO.StreamWriter htmlFile, CsvStats csvStats, bool bIncludeSummaryCsv, SummaryMetadata metadata, string htmlFileName)
-		{
-			int startFrame = -1;
-			int endFrame = int.MaxValue;
-
-			// Find the start and end frames based on the events
-			if (beginEvent != null)
-			{
-				foreach (CsvEvent ev in csvStats.Events)
-				{
-					if (CsvStats.DoesSearchStringMatch(ev.Name, beginEvent))
-					{
-						startFrame = ev.Frame;
-						break;
-					}
-				}
-				if (startFrame == -1)
-				{
-					Console.WriteLine("BoundedStatValuesSummary: Begin event " + beginEvent + " was not found");
-					return;
-				}
-			}
-			if (endEvent != null)
-			{
-				foreach (CsvEvent ev in csvStats.Events)
-				{
-					if (CsvStats.DoesSearchStringMatch(ev.Name, endEvent))
-					{
-						endFrame = ev.Frame;
-						if ( endFrame > startFrame )
-						{
-							break;
-						}
-					}
-				}
-				if (endFrame == int.MaxValue)
-				{
-					Console.WriteLine("BoundedStatValuesSummary: End event " + endEvent + " was not found");
-					return;
-				}
-			}
-			if ( startFrame >= endFrame )
-			{
-				throw new Exception("BoundedStatValuesSummary: end event appeared before the start event");
-			}
-			endFrame = Math.Min(endFrame, csvStats.SampleCount - 1);
-			startFrame = Math.Max(startFrame, 0);
-			
-			// Adjust the end frame based on the specified offset percentage, but cache the old value (some columns may need the unmodified one)
-			int endEventFrame = Math.Min(csvStats.SampleCount, endFrame + 1);
-			if (endOffsetPercentage > 0.0)
-			{
-				double multiplier = endOffsetPercentage / 100.0;
-				endFrame += (int)((double)(endFrame-startFrame)*multiplier);
-			}
-			endFrame = Math.Min(csvStats.SampleCount, endFrame + 1);
-			StatSamples frameTimeStat = csvStats.GetStat("frametime");
-			List<float> frameTimes = frameTimeStat.samples;
-
-			// Filter only columns with stats that exist in the CSV
-			List<Column> filteredColumns = new List<Column>();
-			foreach (Column col in columns)
-			{
-				if (csvStats.GetStat(col.statName) != null)
-				{
-					filteredColumns.Add(col);
-				}
-			}
-
-			// Nothing to report, so bail out!
-			if (filteredColumns.Count == 0)
-			{
-				return;
-			}
-
-			// Process the column values
-			foreach (Column col in filteredColumns)
-			{
-				List<float> statValues = csvStats.GetStat(col.statName).samples;
-				double value = 0.0;
-				double totalFrameWeight = 0.0;
-				int colEndFrame = col.applyEndOffset ? endFrame : endEventFrame;
-
-				if ( col.formula == "average")
-				{
-					for (int i=startFrame; i< colEndFrame; i++)
-					{
-						if (col.filterOutZeros == false || statValues[i] > 0)
-						{
-							value += statValues[i] * frameTimes[i];
-							totalFrameWeight += frameTimes[i];
-						}
-					}
-				}
-				else if (col.formula == "percentoverthreshold")
-				{
-					for (int i = startFrame; i < colEndFrame; i++)
-					{
-						if (statValues[i] > col.threshold)
-						{
-							value += frameTimes[i];
-						}
-						totalFrameWeight += frameTimes[i];
-					}
-					value *= 100.0;
-				}
-				else if (col.formula == "percentunderthreshold")
-				{
-					for (int i = startFrame; i < colEndFrame; i++)
-					{
-						if (statValues[i] < col.threshold)
-						{
-							value += frameTimes[i];
-						}
-						totalFrameWeight += frameTimes[i];
-					}
-					value *= 100.0;
-				}
-				else if (col.formula == "sum")
-				{
-					for (int i = startFrame; i < colEndFrame; i++)
-					{
-						value += statValues[i];
-					}
-
-					if (col.perSecond)
-					{
-						double totalTimeMS = 0.0;
-						for (int i = startFrame; i < colEndFrame; i++)
-						{
-							if (col.filterOutZeros == false || statValues[i] > 0)
-							{
-								totalTimeMS += frameTimes[i];
-							}
-						}
-						value /= (totalTimeMS / 1000.0);
-					}
-					totalFrameWeight = 1.0;
-				}
-				else if (col.formula == "streamingstressmetric")
-				{
-					// Note: tInc is scaled such that it hits 1.0 on the event frame, regardless of the offset
-					double tInc = 1.0/(double)(endEventFrame - startFrame);
-					double t = tInc*0.5;
-					for (int i = startFrame; i < colEndFrame; i++)
-					{
-						if (col.filterOutZeros == false || statValues[i] > 0)
-						{
-							// Frame weighting is scaled to heavily favor final frames. Note that t can exceed 1 after the event frame if an offset percentage is specified, so we clamp it
-							double frameWeight = Math.Pow(Math.Min(t,1.0), 4.0) * frameTimes[i];
-
-							// If we're past the end event frame, apply a linear falloff to the weight
-							if (i >= endEventFrame)
-							{
-								double falloff = 1.0 - (double)(i - endEventFrame) / (colEndFrame - endEventFrame);
-								frameWeight *= falloff;
-							}
-
-							// The frame score takes into account the queue depth, but it's not massively significant
-							double frameScore = Math.Pow(statValues[i], 0.25);
-							value += frameScore * frameWeight;
-							totalFrameWeight += frameWeight;
-						}
-						t += tInc;
-					}
-				}
-				else
-				{
-					throw new Exception("BoundedStatValuesSummary: unexpected formula "+col.formula);
-				}
-				value *= col.multiplier;
-				col.value = value / totalFrameWeight;
-			}
-
-			// Output HTML
-			if (htmlFile != null)
-			{
-				htmlFile.WriteLine("  <br><h3>" + title + "</h3>");
-				htmlFile.WriteLine("  <table border='0' bgcolor='#000000' style='width:1400'>");
-				htmlFile.WriteLine("  <tr>");
-				foreach (Column col in filteredColumns)
-				{
-					htmlFile.WriteLine("<td bgcolor='#ffffff'><b>" + col.name + "</b></td>");
-				}
-				htmlFile.WriteLine("  </tr>");
-				htmlFile.WriteLine("  <tr>");
-				foreach (Column col in filteredColumns)
-				{
-					string bgcolor = "'#ffffff'";
-					if (col.colourThresholdList != null)
-					{
-						bgcolor = col.colourThresholdList.GetColourForValue(col.value);
-					}
-					htmlFile.WriteLine("<td bgcolor=" + bgcolor + ">" + col.value.ToString("0.00") + "</td>");
-				}
-				htmlFile.WriteLine("  </tr>");
-				htmlFile.WriteLine("  </table>");
-			}
-
-			// Output metadata
-			if (metadata != null)
-			{
-				foreach (Column col in filteredColumns)
-				{
-					if ( col.metadataKey != null )
-					{
-						metadata.Add(col.metadataKey, col.value.ToString("0.00"), col.colourThresholdList);
-					}
-				}
-			}
-		}
-		public override void PostInit(ReportTypeInfo reportTypeInfo, CsvStats csvStats)
-		{
-		}
-		string title;
-		string beginEvent;
-		string endEvent;
-		double endOffsetPercentage;
-		List<Column> columns;
-	};
-
-	class MapOverlaySummary : Summary
-	{
-		class MapOverlayEvent
-		{
-			public MapOverlayEvent(string inName)
-			{
-				name = inName;
-			}
-			public MapOverlayEvent(XElement element)
-			{
-			}
-			public string name;
-			public string metadataKey;
-			public string shortName;
-			public string lineColor;
-		};
-
-		class MapOverlay
-		{
-			public MapOverlay(XElement element)
-			{
-				positionStatNames[0] = element.GetSafeAttibute<string>("xStat");
-				positionStatNames[1] = element.GetSafeAttibute<string>("yStat");
-				positionStatNames[2] = element.GetSafeAttibute<string>("zStat");
-				metadataPrefix = element.GetSafeAttibute<string>("metadataPrefix");
-				lineColor = element.GetSafeAttibute<string>("lineColor","#ffffff");
-				foreach (XElement eventEl in element.Elements("event"))
-				{
-					MapOverlayEvent ev = new MapOverlayEvent(eventEl.Attribute("name").Value);
-					ev.shortName = eventEl.GetSafeAttibute<string>("shortName");
-					ev.metadataKey = eventEl.GetSafeAttibute<string>("metadataKey");
-					ev.lineColor = eventEl.GetSafeAttibute<string>("lineColor");
-					if (eventEl.GetSafeAttibute<bool>("isStartEvent", false))
-					{
-						if (startEvent != null)
-						{
-							throw new Exception("Can't have multiple start events!");
-						}
-						startEvent = ev;
-					}
-					events.Add(ev);
-				}
-
-			}
-			public string [] positionStatNames = new string[3];
-			public string metadataPrefix;
-			public MapOverlayEvent startEvent;
-			public string lineColor;
-			public List<MapOverlayEvent> events = new List<MapOverlayEvent>();
-		}
-
-		public MapOverlaySummary(XElement element, string baseXmlDirectory)
-		{
-			ReadStatsFromXML(element);
-			if (stats.Count != 0)
-			{
-				throw new Exception("<stats> element is not supported");
-			}
-
-			sourceImagePath = element.GetSafeAttibute<string>("sourceImage");
-			if ( !System.IO.Path.IsPathRooted(sourceImagePath))
-			{
-				sourceImagePath = System.IO.Path.GetFullPath(System.IO.Path.Combine(baseXmlDirectory,sourceImagePath));
-			}
-
-			offsetX = element.GetSafeAttibute<float>("offsetX",0.0f);
-			offsetY = element.GetSafeAttibute<float>("offsetY",0.0f);
-			scale = element.GetSafeAttibute<float>("scale",1.0f);
-			title = element.GetSafeAttibute("title", "Events");
-			destImageFilename = element.Attribute("destImage").Value;
-			imageWidth = element.GetSafeAttibute<float>("width", 250.0f);
-			imageHeight = element.GetSafeAttibute<float>("height", 250.0f);
-			framesPerLineSegment = element.GetSafeAttibute<int>("framesPerLineSegment", 5);
-			lineSplitDistanceThreshold = element.GetSafeAttibute<float>("lineSplitDistanceThreshold", float.MaxValue);
-
-			foreach (XElement overlayEl in element.Elements("overlay"))
-			{
-				MapOverlay overlay = new MapOverlay(overlayEl);
-				overlays.Add(overlay);
-				stats.Add(overlay.positionStatNames[0]);
-				stats.Add(overlay.positionStatNames[1]);
-				stats.Add(overlay.positionStatNames[2]);
-			}
-		}
-
-		int toSvgX(float worldX, float worldY)
-		{
-			float svgX = (worldY * scale + offsetX) * 0.5f + 0.5f;
-			svgX *= imageWidth;
-			return (int)(svgX + 0.5f);
-		}
-
-		int toSvgY(float worldX, float worldY)
-		{ 
-			float svgY = 1.0f - (worldX * scale + offsetY) * 0.5f - 0.5f;
-			svgY *= imageHeight;
-			return (int)(svgY + 0.5f);
-		}
-
-		public override void WriteSummaryData(System.IO.StreamWriter htmlFile, CsvStats csvStats, bool bIncludeSummaryCsv, SummaryMetadata metadata, string htmlFileName)
-		{
-			// Output HTML
-			if (htmlFile != null)
-			{
-				string outputDirectory= System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(htmlFileName));
-				string outputMapFilename = System.IO.Path.Combine(outputDirectory, destImageFilename);
-
-				if ( !System.IO.File.Exists(outputMapFilename))
-				{
-					System.IO.File.Copy(sourceImagePath, outputMapFilename);
-				}
-
-				// Check if the file exists in the output directory
-				htmlFile.WriteLine("  <br><h3>" + title + "</h3>");
-				htmlFile.WriteLine("<svg version='1.1' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' width='" + imageWidth + "' height='" + imageHeight + "'>");
-				htmlFile.WriteLine("<image href='" + destImageFilename + "' width='" + imageWidth + "' height='" + imageHeight + "' />");
-
-				// Draw the overlays
-				foreach (MapOverlay overlay in overlays)
-				{
-					StatSamples xStat = csvStats.GetStat(overlay.positionStatNames[0]);
-					StatSamples yStat = csvStats.GetStat(overlay.positionStatNames[1]);
-
-					if (xStat == null || yStat == null)
-					{
-						continue;
-					}
-
-					// If a startevent is specified, update the start frame
-					int startFrame = 0;
-					if (overlay.startEvent != null)
-					{
-						foreach (CsvEvent ev in csvStats.Events)
-						{
-							if (CsvStats.DoesSearchStringMatch(ev.Name, overlay.startEvent.name))
-							{
-								startFrame = ev.Frame;
-								break;
-							}
-						}
-					}
-
-					// Make a mapping from frame to map indices
-					List<KeyValuePair<int, MapOverlayEvent>> frameEvents = new List<KeyValuePair<int, MapOverlayEvent>>();
-					foreach (MapOverlayEvent mapEvent in overlay.events)
-					{
-						foreach (CsvEvent ev in csvStats.Events)
-						{
-							if (CsvStats.DoesSearchStringMatch(ev.Name, mapEvent.name))
-							{
-								frameEvents.Add(new KeyValuePair<int, MapOverlayEvent>(ev.Frame, mapEvent));
-							}
-						}
-					}
-					frameEvents.Sort((pair0, pair1) => pair0.Key.CompareTo(pair1.Key));
-					int eventIndex = 0;
-
-					// Draw the lines
-					string currentLineColor = overlay.lineColor;
-					string lineStartTemplate = "<polyline style='fill:none;stroke-width:1.3;stroke:{LINECOLOUR}' points='";
-					htmlFile.Write(lineStartTemplate.Replace("{LINECOLOUR}", currentLineColor));
-					float adjustedLineSplitDistanceThreshold = lineSplitDistanceThreshold * framesPerLineSegment;
-					float oldx = 0;
-					float oldy = 0;
-					int lastFrameIndex = 0;
-					for (int i = startFrame; i < xStat.samples.Count; i += framesPerLineSegment)
-					{
-						float x = xStat.samples[i];
-						float y = yStat.samples[i];
-						string lineCoordsStr = toSvgX(x, y) + "," + toSvgY(x, y) + " ";
-
-						// Figure out which event we're up to so we can do color changes
-						bool restartLineStrip = false;
-						while (eventIndex < frameEvents.Count && lastFrameIndex < frameEvents[eventIndex].Key && i >= frameEvents[eventIndex].Key)
-						{
-							MapOverlayEvent mapEvent = frameEvents[eventIndex].Value;
-							string newLineColor = mapEvent.lineColor != null ? mapEvent.lineColor : overlay.lineColor;
-							// If we changed color, restart the line strip
-							if (newLineColor != currentLineColor)
-							{
-								currentLineColor = newLineColor;
-								restartLineStrip = true;
-							}
-							eventIndex++;
-						}
-
-						// If the distance between this point and the last is over the threshold, restart the line strip
-						float maxManhattanDist = Math.Max(Math.Abs(x - oldx), Math.Abs(y - oldy));
-						if (maxManhattanDist > adjustedLineSplitDistanceThreshold)
-						{
-							restartLineStrip = true;
-						}
-						else
-						{
-							htmlFile.Write(lineCoordsStr);
-						}
-
-						if (restartLineStrip)
-						{
-							htmlFile.WriteLine("'/>");
-							htmlFile.Write(lineStartTemplate.Replace("{LINECOLOUR}", currentLineColor));
-							htmlFile.Write(lineCoordsStr);
-						}
-						oldx = x;
-						oldy = y;
-						lastFrameIndex = i;
-					}
-					htmlFile.WriteLine("'/>");
-
-					// Plot the events 
-					float circleRadius = 3;
-					string eventColourString = "#ffffff";
-					foreach (MapOverlayEvent mapEvent in overlay.events)
-					{
-						foreach (CsvEvent ev in csvStats.Events)
-						{
-							if (CsvStats.DoesSearchStringMatch(ev.Name, mapEvent.name))
-							{
-								string eventText = mapEvent.shortName != null ? mapEvent.shortName : ev.Name;
-								float x = xStat.samples[ev.Frame];
-								float y = yStat.samples[ev.Frame];
-								int svgX = toSvgX(x, y);
-								int svgY = toSvgY(x, y);
-								htmlFile.Write("<circle cx='" + svgX + "' cy='" + svgY + "' r='" + circleRadius + "' fill='" + eventColourString + "' fill-opacity='1.0'/>");
-								htmlFile.WriteLine("<text x='" + (svgX + 5) + "' y='" + svgY + "' text-anchor='left' style='font-family: Verdana;fill: #ffffff; font-size: " + 9 + "px;'>" + eventText + "</text>");
-							}
-						}
-					}
-				}
-
-				//htmlFile.WriteLine("<text x='50%' y='" + (imageHeight * 0.05) + "' text-anchor='middle' style='font-family: Verdana;fill: #FFFFFF; stroke: #C0C0C0;  font-size: " + 20 + "px;'>" + title + "</text>");
-				htmlFile.WriteLine("</svg>");
-			}
-
-			// Output metadata
-			if (metadata != null)
-			{
-			}
-		}
-		public override void PostInit(ReportTypeInfo reportTypeInfo, CsvStats csvStats)
-		{
-		}
-		string title;
-		string sourceImagePath;
-		float offsetX;
-		float offsetY;
-		float scale;
-		string destImageFilename;
-		float imageWidth;
-		float imageHeight;
-		float lineSplitDistanceThreshold;
-		int framesPerLineSegment;
-
-		List<MapOverlay> overlays = new List<MapOverlay>();
-	};
-
-	class SummaryMetadataValue
+    class SummaryMetadataValue
     {
 		public SummaryMetadataValue(double inValue, ColourThresholdList inColorThresholdList, string inToolTip)
 		{
@@ -1893,14 +1350,7 @@ namespace PerfSummaries
                 metadataValue = new SummaryMetadataValue(value, colorThresholdList, tooltip);
             }
 
-			try
-			{
-				dict.Add(key, metadataValue);
-			}
-			catch (System.ArgumentException)
-			{
-				throw new Exception("Summary metadata key " + key + " has already been added");
-			}
+            dict.Add(key, metadataValue);
 		}
 
         public void AddString(string key, string value, ColourThresholdList colorThresholdList = null, string tooltip = "")
@@ -1980,9 +1430,7 @@ namespace PerfSummaries
 		{
 			if ( !isNumeric )
 			{
-				// This is already a non-numeric column. Better treat this as a string value
-				SetStringValue(index, value.ToString());
-				return;
+				throw new Exception("can't mix numeric and non-numeric types!");
 			}
 			// Grow to fill if necessary
 			if ( index >= floatValues.Count )
@@ -1993,20 +1441,6 @@ namespace PerfSummaries
 				}
 			}
 			floatValues[index] = value;
-		}
-
-		void convertToStrings()
-		{
-			if ( isNumeric )
-			{
-				stringValues = new List<string>();
-				foreach (float f in floatValues)
-				{
-					stringValues.Add(f.ToString());
-				}
-				floatValues = new List<float>();
-				isNumeric = false;
-			}
 		}
 
 		public void SetColourThresholds(int index, ColourThresholdList value)
@@ -2058,8 +1492,7 @@ namespace PerfSummaries
 		{
 			if (isNumeric)
 			{
-				// Better convert this to a string column, since we're trying to add a string to it
-				convertToStrings();
+				throw new Exception("can't mix numeric and non-numeric types!");
 			}
 			// Grow to fill if necessary
 			if (index >= stringValues.Count)
@@ -2140,10 +1573,8 @@ namespace PerfSummaries
         {
         }
 
-		public SummaryMetadataTable CollateSortedTable(List<string> collateByList, bool addMinMaxColumns)
+		public SummaryMetadataTable CollateSortedTable(List<string> collateByList)
 		{
-			int numSubColumns=addMinMaxColumns ? 3 : 1;
-
 			List<SummaryMetadataColumn> newColumns = new List<SummaryMetadataColumn>();
 			List<string> finalSortByList = new List<string>();
 			foreach (string collateBy in collateByList)
@@ -2173,11 +1604,8 @@ namespace PerfSummaries
 				{
 					srcToDestBaseColumnIndex.Add( newColumns.Count );
 					newColumns.Add(new SummaryMetadataColumn("Avg " + column.name, true));
-					if (addMinMaxColumns)
-					{
-						newColumns.Add(new SummaryMetadataColumn("Min " + column.name, true));
-						newColumns.Add(new SummaryMetadataColumn("Max " + column.name, true));
-					}
+					newColumns.Add(new SummaryMetadataColumn("Min " + column.name, true));
+					newColumns.Add(new SummaryMetadataColumn("Max " + column.name, true));
 				}
 				else
 				{
@@ -2188,8 +1616,6 @@ namespace PerfSummaries
 			List<float> RowMaxValues = new List<float>();
 			List<float> RowTotals = new List<float>();
 			List<float> RowMinValues = new List<float>();
-			List<int> RowCounts = new List<int>();
-			List<ColourThresholdList> RowColourThresholds = new List<ColourThresholdList>();
 
 			// Set the initial sort key
 			string CurrentRowSortKey = "";
@@ -2208,18 +1634,11 @@ namespace PerfSummaries
 					RowMaxValues.Clear();
 					RowMinValues.Clear();
 					RowTotals.Clear();
-					RowCounts.Clear();
-					RowColourThresholds.Clear();
 					for (int j = 0; j < columns.Count; j++)
 					{
-						if (addMinMaxColumns)
-						{
-							RowMaxValues.Add(-float.MaxValue);
-							RowMinValues.Add(float.MaxValue);
-						}
+						RowMaxValues.Add(-float.MaxValue);
+						RowMinValues.Add(float.MaxValue);
 						RowTotals.Add(0.0f);
-						RowCounts.Add(0);
-						RowColourThresholds.Add(null);
 					}
 					mergedRowsCount = 0;
 					reset = false;
@@ -2232,16 +1651,15 @@ namespace PerfSummaries
 					if (column.isNumeric)
 					{
 						float value = column.GetValue(i);
-						if (value != float.MaxValue)
+						if (value == float.MaxValue)
 						{
-							if (addMinMaxColumns)
-							{
-								RowMaxValues[j] = Math.Max(RowMaxValues[j], value);
-								RowMinValues[j] = Math.Min(RowMinValues[j], value);
-							}
+							RowTotals[j] = float.MaxValue;
+						}
+						else
+						{
+							RowMaxValues[j] = Math.Max(RowMaxValues[j], value);
+							RowMinValues[j] = Math.Min(RowMinValues[j], value);
 							RowTotals[j] += value;
-							RowColourThresholds[j] = column.GetColourThresholds(i);
-							RowCounts[j]++;
 						}
 					}
 				}
@@ -2269,19 +1687,17 @@ namespace PerfSummaries
 					newColumns[countColumnIndex].SetValue(destRowIndex, (float)mergedRowsCount);
 					for (int j = 0; j < columns.Count; j++)
 					{
+						SummaryMetadataColumn srcColumn = columns[j];
 						int destColumnBaseIndex = srcToDestBaseColumnIndex[j];
-						if (destColumnBaseIndex != -1 && RowCounts[j]>0)
+						if (destColumnBaseIndex != -1 && RowTotals[j] != float.MaxValue)
 						{
-							newColumns[destColumnBaseIndex].SetValue(destRowIndex, RowTotals[j] / (float)RowCounts[j]);
-							if (addMinMaxColumns)
-							{
-								newColumns[destColumnBaseIndex + 1].SetValue(destRowIndex, RowMinValues[j]);
-								newColumns[destColumnBaseIndex + 2].SetValue(destRowIndex, RowMaxValues[j]);
-							}
+							newColumns[destColumnBaseIndex].SetValue(destRowIndex, RowTotals[j] / (float)mergedRowsCount);
+							newColumns[destColumnBaseIndex+1].SetValue(destRowIndex, RowMinValues[j]);
+							newColumns[destColumnBaseIndex+2].SetValue(destRowIndex, RowMaxValues[j]);
 
 							// Set colour thresholds based on the source column
-							ColourThresholdList Thresholds = RowColourThresholds[j];
-							for ( int k=0;k<numSubColumns;k++)
+							ColourThresholdList Thresholds = srcColumn.GetColourThresholds(i);
+							for ( int k=0;k<3;k++)
 							{
 								newColumns[destColumnBaseIndex+k].SetColourThresholds(destRowIndex, Thresholds);
 							}
@@ -2299,7 +1715,6 @@ namespace PerfSummaries
 			newTable.rowCount = destRowIndex;
 			newTable.firstStatColumnIndex = numericColumnStartIndex;
 			newTable.isCollated = true;
-			newTable.hasMinMaxColumns = addMinMaxColumns;
 			return newTable;
 		}
 
@@ -2449,10 +1864,9 @@ namespace PerfSummaries
 			csvFile.Close();
 		}
 
-		public void WriteToHTML(string htmlFilename, string VersionString, bool bSpreadsheetFriendlyStrings)
+		public void WriteToHTML(string htmlFilename, string VersionString)
 		{
 			System.IO.StreamWriter htmlFile = new System.IO.StreamWriter(htmlFilename, false);
-			int statColSpan = hasMinMaxColumns ? 3 : 1;
 			htmlFile.WriteLine("<html><head><title>Performance summary</title></head><body><font face='verdana'>");
 			int cellPadding = 2;
 			if (isCollated)
@@ -2476,9 +1890,9 @@ namespace PerfSummaries
 					string prefix = "";
 					string suffix = "";
 					string statName = GetStatNameWithPrefixAndSuffix(columns[i].GetDisplayName(), out prefix, out suffix);
-					if ((i - 1) % statColSpan == 0)
+					if ((i - 1) % 3 == 0)
 					{
-						TopHeaderRow += "<td bgcolor='#ffffff' colspan='"+statColSpan+"' ><center><b>" + statName + suffix + "</center></b></td>";
+						TopHeaderRow += "<td bgcolor='#ffffff' colspan='3' ><center><b>" + statName + suffix + "</center></b></td>";
 					}
 					HeaderRow += "<td bgcolor='#ffffff'><center><b>" + prefix.Trim() + "</b></center></td>";
 				}
@@ -2517,12 +1931,7 @@ namespace PerfSummaries
 						colour = stripeColors[i % 2];
 					}
 					bool bold = false;// column.name.StartsWith("Avg ");
-					string stringValue = column.GetStringValue(i, true);
-					if (bSpreadsheetFriendlyStrings && !column.isNumeric)
-					{
-						stringValue = "'" + stringValue;
-					}
-					string columnString = "<td "+ toolTipString + "bgcolor=" + colour + ">" + (bold ? "<b>" : "") + stringValue + (bold ? "</b>" : "") + "</td>";
+					string columnString = "<td "+ toolTipString + "bgcolor=" + colour + ">" + (bold ? "<b>" : "") + column.GetStringValue(i, true) + (bold ? "</b>" : "") + "</td>";
 					htmlFile.Write(columnString);
 				}
 				htmlFile.WriteLine("</tr>");
@@ -2641,7 +2050,6 @@ namespace PerfSummaries
 		int rowCount = 0;
 		int firstStatColumnIndex = 0;
 		bool isCollated = false;
-		bool hasMinMaxColumns = false;
     };
 
 }

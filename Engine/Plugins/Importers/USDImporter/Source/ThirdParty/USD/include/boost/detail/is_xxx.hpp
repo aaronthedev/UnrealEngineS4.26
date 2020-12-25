@@ -5,13 +5,13 @@
 # define BOOST_DETAIL_IS_XXX_DWA20051011_HPP
 
 # include <boost/config.hpp>
-# include <boost/type_traits/integral_constant.hpp>
+# include <boost/mpl/bool.hpp>
 # include <boost/preprocessor/enum_params.hpp>
 
 
 #  define BOOST_DETAIL_IS_XXX_DEF(name, qualified_name, nargs)  \
 template <class T>                                              \
-struct is_##name : boost::false_type                            \
+struct is_##name : mpl::false_                                  \
 {                                                               \
 };                                                              \
                                                                 \
@@ -19,7 +19,7 @@ template < BOOST_PP_ENUM_PARAMS_Z(1, nargs, class T) >          \
 struct is_##name<                                               \
    qualified_name< BOOST_PP_ENUM_PARAMS_Z(1, nargs, T) >        \
 >                                                               \
-   : boost::true_type                                           \
+   : mpl::true_                                                 \
 {                                                               \
 };
 

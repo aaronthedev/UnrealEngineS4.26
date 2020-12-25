@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -39,8 +39,7 @@ class GAMEPLAYABILITIES_API UAbilityTask_ApplyRootMotionConstantForce : public U
 		UCurveFloat* StrengthOverTime,
 		ERootMotionFinishVelocityMode VelocityOnFinishMode,
 		FVector SetVelocityOnFinish,
-		float ClampVelocityOnFinish,
-		bool bEnableGravity
+		float ClampVelocityOnFinish
 	);
 
 	/** Tick function for this task, if bTickingTask == true */
@@ -75,8 +74,4 @@ protected:
 	 */
 	UPROPERTY(Replicated)
 	UCurveFloat* StrengthOverTime;
-
-	UPROPERTY(Replicated)
-	bool bEnableGravity;
-
 };

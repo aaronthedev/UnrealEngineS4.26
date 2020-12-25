@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SaveGameNetworkReplayStreaming.h"
 #include "Misc/Paths.h"
@@ -326,8 +326,7 @@ namespace SaveGameReplay
 		{
 			IFileManager& FileManager = IFileManager::Get();
 
-			const FString LocalFileExt = FNetworkReplayStreaming::GetReplayFileExtension();
-			const FString WildCard(FPaths::Combine(DemoPath, FString::Printf(TEXT("*%s%s"), *SaveReplayExt, *LocalFileExt)));
+			const FString WildCard(FPaths::Combine(DemoPath, FString::Printf(TEXT("*%s.replay"), *SaveReplayExt)));
 			TArray<FString> FoundFiles;
 
 			FileManager.FindFiles(FoundFiles, *WildCard, /*bFiles=*/true, /*bDirectories=*/false);
@@ -337,7 +336,7 @@ namespace SaveGameReplay
 				UE_LOG(LogSaveGameReplay, Log, TEXT("FSaveGameMoveFileHelper::SanitizeNames - Handling %s"), *CurrentName);
 
 				FString NewName(CurrentName);
-				NewName.RemoveFromEnd(LocalFileExt);
+				NewName.RemoveFromEnd(TEXT(".replay"));
 				MakeUniqueReplayName(NewName);
 
 				if (!FileManager.Move(*FPaths::Combine(DemoPath, NewName), *FPaths::Combine(DemoPath, CurrentName)))
@@ -354,14 +353,12 @@ namespace SaveGameReplay
 			// Make sure to sanitize this so the system doesn't get tricked into thinking this is a saved replay.
 			// Note, this may still happen if the usually manually entered this...
 			Name.RemoveFromEnd(SaveReplayExt);
-			
-			const FString LocalFileExt = FNetworkReplayStreaming::GetReplayFileExtension();
 
 			int32 Index = 1;
-			FString UseName = FString::Printf(TEXT("%s%s"), *Name, *LocalFileExt);
+			FString UseName = FString::Printf(TEXT("%s.replay"), *Name);
 			while (FileManager.FileExists(*UseName))
 			{
-				UseName = FString::Printf(TEXT("%s - %d%s"), *Name, ++Index, *LocalFileExt);
+				UseName = FString::Printf(TEXT("%s - %d.replay"), *Name, ++Index);
 			}
 
 			Name = MoveTemp(UseName);
@@ -379,8 +376,7 @@ namespace SaveGameReplay
 
 		static void CopyFile(const TSharedPtr<FMoveContext>& Context, const FString& BaseFileName)
 		{
-			const FString LocalFileExt = FNetworkReplayStreaming::GetReplayFileExtension();
-			const FString SourceFileName = FPaths::Combine(Context->SourceDirectory, BaseFileName) + LocalFileExt;
+			const FString SourceFileName = FPaths::Combine(Context->SourceDirectory, BaseFileName) + ".replay";
 
 			FString DestinationFileName = FPaths::Combine(Context->DestinationDirectory, BaseFileName);
 			MakeUniqueReplayName(DestinationFileName);
@@ -481,14 +477,12 @@ namespace SaveGameReplay
 
 		static void MoveFilesLocalInternal(const TSharedPtr<FMoveContext>& MoveContext)
 		{
-			const FString LocalFileExt = FNetworkReplayStreaming::GetReplayFileExtension();
-
 			TArray<FString> ReplayFiles;
-			IFileManager::Get().FindFiles(ReplayFiles, *MoveContext->SourceDirectory, *LocalFileExt);
+			IFileManager::Get().FindFiles(ReplayFiles, *MoveContext->SourceDirectory, TEXT(".replay"));
 
 			for (FString& ReplayFileName : ReplayFiles)
 			{
-				ReplayFileName.RemoveFromEnd(LocalFileExt);
+				ReplayFileName.RemoveFromEnd(TEXT(".replay"));
 
 #if PLATFORM_PS4
 				if (ReplayFileName.Compare(ReplayFileName.ToLower(), ESearchCase::CaseSensitive) != 0)
@@ -1552,7 +1546,7 @@ bool FSaveGameNetworkReplayStreamer::ReadMetaDataFromLocalStream(FArchive& Strea
 	check(StreamArchive.IsLoading());
 
 	FLocalFileReplayInfo FileReplayInfo;
-	if (!ReadReplayInfo(StreamArchive, FileReplayInfo, EReadReplayInfoFlags::None) || !FileReplayInfo.bIsValid)
+	if (!ReadReplayInfo(StreamArchive, FileReplayInfo) || !FileReplayInfo.bIsValid)
 	{
 		return false;
 	}
@@ -1585,27 +1579,6 @@ bool FSaveGameNetworkReplayStreamer::ReadMetaDataFromLocalStream(FArchive& Strea
 			ReplayEventData.SetNumUninitialized(LocalEvent.SizeInBytes);
 			StreamArchive.Seek(LocalEvent.EventDataOffset);
 			StreamArchive.Serialize(ReplayEventData.GetData(), ReplayEventData.Num());
-
-			if (FileReplayInfo.bEncrypted)
-			{
-				if (SupportsEncryption())
-				{
-					TArray<uint8> PlaintextData;
-										
-					if (!DecryptBuffer(ReplayEventData, PlaintextData, FileReplayInfo.EncryptionKey))
-					{
-						UE_LOG(LogSaveGameReplay, Error, TEXT("FSaveGameNetworkReplayStreamer::ReadMetaDataFromLocalStream. DecryptBuffer failed."));
-						return false;
-					}
-
-					ReplayEventData = MoveTemp(PlaintextData);
-				}
-				else
-				{
-					UE_LOG(LogSaveGameReplay, Error, TEXT("FSaveGameNetworkReplayStreamer::ReadMetaDataFromLocalStream. Encrypted event but streamer does not support encryption."));
-					return false;
-				}
-			}
 		}
 
 		EventList.Add(MoveTemp(ReplayEvent));

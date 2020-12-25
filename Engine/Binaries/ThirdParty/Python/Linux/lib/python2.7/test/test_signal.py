@@ -138,8 +138,6 @@ class InterProcessSignalTests(unittest.TestCase):
         else:
             self.fail("pause returned of its own accord, and the signal"
                       " didn't arrive after another second.")
-        finally:
-            signal.alarm(0)
 
     # Issue 3864. Unknown if this affects earlier versions of freebsd also.
     @unittest.skipIf(sys.platform=='freebsd6',
@@ -248,15 +246,11 @@ class WakeupSignalTests(unittest.TestCase):
         import select
 
         signal.alarm(1)
-        try:
-            before_time = time.time()
-            # We attempt to get a signal during the sleep,
-            # before select is called
-            time.sleep(self.TIMEOUT_FULL)
-            mid_time = time.time()
-        finally:
-            signal.alarm(0)
-
+        before_time = time.time()
+        # We attempt to get a signal during the sleep,
+        # before select is called
+        time.sleep(self.TIMEOUT_FULL)
+        mid_time = time.time()
         self.assertTrue(mid_time - before_time < self.TIMEOUT_HALF)
         select.select([self.read], [], [], self.TIMEOUT_FULL)
         after_time = time.time()
@@ -266,15 +260,11 @@ class WakeupSignalTests(unittest.TestCase):
         import select
 
         signal.alarm(1)
-        try:
-            before_time = time.time()
-            # We attempt to get a signal during the select call
-            self.assertRaises(select.error, select.select,
-                [self.read], [], [], self.TIMEOUT_FULL)
-            after_time = time.time()
-        finally:
-            signal.alarm(0)
-
+        before_time = time.time()
+        # We attempt to get a signal during the select call
+        self.assertRaises(select.error, select.select,
+            [self.read], [], [], self.TIMEOUT_FULL)
+        after_time = time.time()
         self.assertTrue(after_time - before_time < self.TIMEOUT_HALF)
 
     def setUp(self):

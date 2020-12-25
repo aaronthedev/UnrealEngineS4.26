@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PrimaryAssetTypeCustomization.h"
 #include "AssetManagerEditorModule.h"
@@ -8,7 +8,6 @@
 #include "Engine/AssetManager.h"
 #include "PropertyHandle.h"
 #include "PropertyCustomizationHelpers.h"
-#include "ScopedTransaction.h"
 
 #define LOCTEXT_NAMESPACE "PrimaryAssetTypeCustomization"
 
@@ -73,13 +72,7 @@ TSharedRef<SWidget>	SPrimaryAssetTypeGraphPin::GetDefaultValueWidget()
 void SPrimaryAssetTypeGraphPin::OnTypeSelected(FPrimaryAssetType AssetType)
 {
 	CurrentType = AssetType;
-
-	if (CurrentType.ToString() != GraphPinObj->GetDefaultAsString())
-	{
-		const FScopedTransaction Transaction(NSLOCTEXT("GraphEditor", "ChangePinValue", "Change Pin Value"));
-		GraphPinObj->Modify();
-		GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, CurrentType.ToString());
-	}
+	GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, CurrentType.ToString());
 }
 
 FText SPrimaryAssetTypeGraphPin::GetDisplayText() const

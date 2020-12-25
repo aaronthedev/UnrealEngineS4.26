@@ -82,7 +82,7 @@ public:
 
 	@see PxCollection, PxSerialization::complete
 	*/
-	virtual			void			requiresObjects(PxBase&, PxProcessPxBaseCallback&) const									= 0;
+	virtual			void			requires(PxBase&, PxProcessPxBaseCallback&) const									= 0;
 	
 	/**
 	\brief Whether the object is subordinate.
@@ -162,10 +162,10 @@ public:
 		return mTypeName; 
 	}
 
-	virtual	void requiresObjects(PxBase& obj, PxProcessPxBaseCallback& c) const
+	virtual	void requires(PxBase& obj, PxProcessPxBaseCallback& c) const
 	{
 		T& t = static_cast<T&>(obj);
-		t.requiresObjects(c);
+		t.requires(c);
 	}
 
 	virtual	bool isSubordinate() const
@@ -211,7 +211,7 @@ public:
 		};
 
 		RequiresCallback callback(s);
-		t.requiresObjects(callback);	
+		t.requires(callback);	
 	}
 
 	// class methods

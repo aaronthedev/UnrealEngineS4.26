@@ -1,12 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OpenColorIOConfiguration.h"
 
 #include "Engine/VolumeTexture.h"
+#include "IOpenColorIOModule.h"
 #include "Math/PackedVector.h"
 #include "Modules/ModuleManager.h"
 #include "OpenColorIOColorTransform.h"
-#include "OpenColorIOModule.h"
 #include "TextureResource.h"
 
 

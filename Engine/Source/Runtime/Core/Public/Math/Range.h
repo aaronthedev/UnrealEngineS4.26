@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,7 +7,6 @@
 #include "Misc/AssertionMacros.h"
 #include "Misc/DateTime.h"
 #include "Math/RangeBound.h"
-#include "Misc/FrameNumber.h"
 #include "Serialization/Archive.h"
 
 
@@ -877,4 +876,3 @@ DEFINE_RANGE_WRAPPER_STRUCT(FInt8Range,   int8)
 DEFINE_RANGE_WRAPPER_STRUCT(FInt16Range,  int16)
 DEFINE_RANGE_WRAPPER_STRUCT(FInt32Range,  int32)
 DEFINE_RANGE_WRAPPER_STRUCT(FInt64Range,  int64)
-DEFINE_RANGE_WRAPPER_STRUCT(FFrameNumberRange, FFrameNumber)

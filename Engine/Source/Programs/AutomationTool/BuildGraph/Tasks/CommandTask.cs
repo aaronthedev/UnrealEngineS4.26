@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -124,15 +124,6 @@ namespace BuildGraph.Tasks
 					Log.TraceWarning("Unable to read UAT telemetry file from {0}", TelemetryFile);
 				}
 			}
-		}
-
-		/// <summary>
-		/// Gets the name of this trace
-		/// </summary>
-		/// <returns>Name of the trace</returns>
-		public override string GetTraceName()
-		{
-			return String.Format("{0}.{1}", base.GetTraceName(), Parameters.Name.ToLowerInvariant());
 		}
 
 		/// <summary>

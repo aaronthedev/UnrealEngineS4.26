@@ -157,7 +157,6 @@ TEST_F(ValidateStorage, GenericVariableOutsideFunction) {
   const auto str = R"(
           OpCapability Kernel
           OpCapability Linkage
-          OpCapability GenericPointer
           OpMemoryModel Logical OpenCL
 %intt   = OpTypeInt 32 0
 %ptrt   = OpTypePointer Function %intt
@@ -173,7 +172,6 @@ TEST_F(ValidateStorage, GenericVariableInsideFunction) {
   const auto str = R"(
           OpCapability Shader
           OpCapability Linkage
-          OpCapability GenericPointer
           OpMemoryModel Logical GLSL450
 %intt   = OpTypeInt 32 1
 %voidt  = OpTypeVoid
@@ -186,7 +184,7 @@ TEST_F(ValidateStorage, GenericVariableInsideFunction) {
           OpFunctionEnd
 )";
   CompileSuccessfully(str);
-  EXPECT_EQ(SPV_ERROR_INVALID_BINARY, ValidateInstructions());
+  ASSERT_EQ(SPV_ERROR_INVALID_BINARY, ValidateInstructions());
   EXPECT_THAT(getDiagnosticString(),
               HasSubstr("OpVariable storage class cannot be Generic"));
 }
@@ -309,10 +307,12 @@ INSTANTIATE_TEST_SUITE_P(
            std::make_tuple("Workgroup", false, true, ""),
            std::make_tuple("Private", false, true, ""),
            std::make_tuple("Function", true, true, ""),
-           std::make_tuple("CrossWorkgroup", false, false,
-                           "Invalid storage class for target environment"),
-           std::make_tuple("PushConstant", false, false,
-                           "Invalid storage class for target environment")));
+           std::make_tuple(
+               "CrossWorkgroup", false, false,
+               "For WebGPU, OpTypePointer storage class must be one of"),
+           std::make_tuple(
+               "PushConstant", false, false,
+               "For WebGPU, OpTypePointer storage class must be one of")));
 
 }  // namespace
 }  // namespace val

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -52,15 +52,7 @@ public:
 	 * @return true if we are able to get proxy information from the current operating system, false if not
 	 */
 	static bool IsOperatingSystemProxyInformationSupported();
-	
-	/**
-	 * Verify Peer Ssl Certificate
-	 *
-	 * @return optional bool: the previous value
-	 */
-	static bool VerifyPeerSslCertificate(bool verify);
 };
 
-#if WINDOWS_USE_FEATURE_PLATFORMHTTP_CLASS
+
 typedef FWindowsPlatformHttp FPlatformHttp;
-#endif // WINDOWS_USE_FEATURE_PLATFORMHTTP_CLASS

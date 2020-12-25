@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -310,13 +310,6 @@ namespace UnrealBuildTool
 		string[] PlatformNames = null;
 
 		/// <summary>
-		/// Names of configurations to include in the generated project files.
-		/// See UnrealTargetConfiguration for valid entries
-		/// </summary>
-		[XmlConfigFile(Name = "Configurations")]
-		string[] ConfigurationNames = null;
-
-		/// <summary>
 		/// Relative path to the directory where the master project file will be saved to
 		/// </summary>
 		public static DirectoryReference MasterProjectPath = UnrealBuildTool.RootDirectory; // We'll save the master project to our "root" folder
@@ -433,34 +426,8 @@ namespace UnrealBuildTool
 					VCSharpProjectFile Project = new VCSharpProjectFile(ProjectFile);
 					Project.ShouldBuildForAllSolutionTargets = false;//true;
 					AddExistingProjectFile(Project, bForceDevelopmentConfiguration: true);
-					AutomationProjectFiles.Add( Project );
+                    AutomationProjectFiles.Add( Project );
 					Folder.ChildProjects.Add( Project );
-
-					if (!ProjectFile.IsUnderDirectory(UnrealBuildTool.EngineDirectory))
-					{
-						FileReference PropsFile = new FileReference(ProjectFile.FullName + ".props");
-						CreateAutomationProjectPropsFile(PropsFile);
-					}
-				}
-			}
-		}
-
-		/// <summary>
-		/// Creates a .props file next to each automation project which specifies the path to the engine directory
-		/// </summary>
-		/// <param name="PropsFile">The properties file path</param>
-		void CreateAutomationProjectPropsFile(FileReference PropsFile)
-		{
-			using (FileStream Stream = FileReference.Open(PropsFile, FileMode.Create, FileAccess.Write, FileShare.Read))
-			{
-				using (StreamWriter Writer = new StreamWriter(Stream, Encoding.UTF8))
-				{
-					Writer.WriteLine("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
-					Writer.WriteLine("<Project ToolsVersion=\"Current\" xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\">");
-					Writer.WriteLine("\t<PropertyGroup>");
-					Writer.WriteLine("\t\t<EngineDir Condition=\"'$(EngineDir)' == ''\">{0}</EngineDir>", UnrealBuildTool.EngineDirectory);
-					Writer.WriteLine("\t</PropertyGroup>");
-					Writer.WriteLine("</Project>");
 				}
 			}
 		}
@@ -470,14 +437,14 @@ namespace UnrealBuildTool
 		/// </summary>
 		void DiscoverCSharpProgramProjects(MasterProjectFolder ProgramsFolder)
 		{
-			string[] UnsupportedPlatformNames = Utils.MakeListOfUnsupportedPlatforms(SupportedPlatforms, bIncludeUnbuildablePlatforms:true).ToArray();
+			string[] UnsupportedPlatformNames = Utils.MakeListOfUnsupportedPlatforms(SupportedPlatforms).ToArray();
 
 			List<FileReference> FoundProjects = new List<FileReference>();
 
 			DirectoryReference EngineExtras = DirectoryReference.Combine(UnrealBuildTool.EngineDirectory, "Extras");
 			DiscoverCSharpProgramProjectsRecursively(EngineExtras, FoundProjects);
 
-			List<DirectoryReference> AllEngineDirectories = UnrealBuildTool.GetExtensionDirs(UnrealBuildTool.EngineDirectory, "Source/Programs");
+			DirectoryReference[] AllEngineDirectories = UnrealBuildTool.GetAllEngineDirectories("Source/Programs");
 			foreach (DirectoryReference EngineDir in AllEngineDirectories)
 			{
 				DiscoverCSharpProgramProjectsRecursively(EngineDir, FoundProjects);
@@ -747,7 +714,7 @@ namespace UnrealBuildTool
 			Dictionary<FileReference, ProjectFile> ProgramProjects;
 			{
 				// Setup buildable projects for all targets
-				AddProjectsForAllTargets( PlatformProjectGenerators, AllGameProjects, AllTargetFiles, Arguments, out EngineProject, out EnterpriseProject, out GameProjects, out ProgramProjects );
+				AddProjectsForAllTargets( PlatformProjectGenerators, AllGameProjects, AllTargetFiles, out EngineProject, out EnterpriseProject, out GameProjects, out ProgramProjects );
 
 				// Add projects for mods
 				AddProjectsForMods(GameProjects, out ModProjects);
@@ -803,7 +770,7 @@ namespace UnrealBuildTool
 						AddEngineExtrasFiles(EngineProject);
 
 						// Platform Extension files
-						AddEngineExtensionFiles(EngineProject);
+						AddPlatformExtensionFiles(EngineProject);
 
 						// Engine localization files
 						if( bIncludeLocalizationFiles )
@@ -1048,7 +1015,7 @@ namespace UnrealBuildTool
 				foreach(FileReference ProjectFile in AllGameProjects)
 				{
 					RulesAssembly RulesAssembly = RulesCompiler.CreateProjectRulesAssembly(ProjectFile, false, false);
-					QueryTargetsMode.WriteTargetInfo(ProjectFile, RulesAssembly, QueryTargetsMode.GetDefaultOutputFile(ProjectFile), new CommandLineArguments(GetTargetArguments(Arguments)));
+					QueryTargetsMode.WriteTargetInfo(ProjectFile, RulesAssembly, QueryTargetsMode.GetDefaultOutputFile(ProjectFile));
 				}
 			}
 
@@ -1062,7 +1029,6 @@ namespace UnrealBuildTool
 		private void AddUBTConfigFilesToEngineProject(ProjectFile EngineProject)
 		{
 			EngineProject.AddAliasedFileToProject(new AliasedFile(
-					XmlConfig.GetSchemaLocation(),
 					XmlConfig.GetSchemaLocation().FullName,
 					Path.Combine("Programs", "UnrealBuildTool")
 				));
@@ -1072,7 +1038,6 @@ namespace UnrealBuildTool
 			{
 				EngineProject.AddAliasedFileToProject(
 						new AliasedFile(
-							InputFile.Location,
 							InputFile.Location.FullName,
 							Path.Combine("Config", "UnrealBuildTool", InputFile.FolderName)
 						)
@@ -1261,43 +1226,42 @@ namespace UnrealBuildTool
 				{
 					// @todo projectfiles: We have engine localization files, but should we also add GAME localization files?
 
-					foreach (DirectoryReference ExtensionDir in UnrealBuildTool.GetExtensionDirs(GameProjectDirectory))
-					{
-						GameProject.AddFilesToProject(SourceFileSearch.FindFiles(ExtensionDir, SearchSubdirectories: false), ExtensionDir);
-					}
+					GameProject.AddFilesToProject( SourceFileSearch.FindFiles( GameProjectDirectory, SearchSubdirectories: false ), GameProjectDirectory );
 
-					// Game restricted source files, since they won't be added via a module FileReference
-					foreach (DirectoryReference GameRestrictedSourceDirectory in UnrealBuildTool.GetExtensionDirs(GameProjectDirectory, "Source", bIncludePlatformDirectories:false, bIncludeBaseDirectory:false))
+					DirectoryReference GamePlatformsDirectory = UnrealBuildTool.ProjectPlatformExtensionsDirectory(GameProjectDirectory);
+					if (DirectoryReference.Exists(GamePlatformsDirectory))
 					{
-						GameProject.AddFilesToProject(SourceFileSearch.FindFiles(GameRestrictedSourceDirectory), GameRestrictedSourceDirectory);
+						GameProject.AddFilesToProject(SourceFileSearch.FindFiles(GamePlatformsDirectory), GameProjectDirectory);
 					}
 
 					// Game config files
 					if ( bIncludeConfigFiles )
 					{
-						foreach (DirectoryReference GameConfigDirectory in UnrealBuildTool.GetExtensionDirs(GameProjectDirectory, "Config"))
+						DirectoryReference GameConfigDirectory = DirectoryReference.Combine(GameProjectDirectory, "Config");
+						if( DirectoryReference.Exists(GameConfigDirectory) )
 						{
-							GameProject.AddFilesToProject(SourceFileSearch.FindFiles(GameConfigDirectory), GameProjectDirectory);
+							GameProject.AddFilesToProject( SourceFileSearch.FindFiles( GameConfigDirectory ), GameProjectDirectory );
 						}
 					}
 
 					// Game build files
 					if( bIncludeBuildSystemFiles )
 					{
-						foreach (DirectoryReference GameBuildDirectory in UnrealBuildTool.GetExtensionDirs(GameProjectDirectory, "Build"))
+						DirectoryReference GameBuildDirectory = DirectoryReference.Combine(GameProjectDirectory, "Build");
+						if( DirectoryReference.Exists(GameBuildDirectory) )
 						{
 							List<string> SubdirectoryNamesToExclude = new List<string>();
 							SubdirectoryNamesToExclude.Add("Receipts");
 							SubdirectoryNamesToExclude.Add("Scripts");
 							SubdirectoryNamesToExclude.Add("FileOpenOrder");
 							SubdirectoryNamesToExclude.Add("PipelineCaches");
-							SubdirectoryNamesToExclude.Add("symbols");
 
 							GameProject.AddFilesToProject( SourceFileSearch.FindFiles( GameBuildDirectory, SubdirectoryNamesToExclude ), GameProjectDirectory );
 						}
 					}
 
-					foreach (DirectoryReference GameShaderDirectory in UnrealBuildTool.GetExtensionDirs(GameProjectDirectory, "Shaders"))
+					DirectoryReference GameShaderDirectory = DirectoryReference.Combine(GameProjectDirectory, "Shaders");
+					if (DirectoryReference.Exists(GameShaderDirectory))
 					{
 						GameProject.AddFilesToProject(SourceFileSearch.FindFiles(GameShaderDirectory), GameProjectDirectory);
 					}
@@ -1344,21 +1308,15 @@ namespace UnrealBuildTool
 		}
 
 		/// Adds additional files from the platform extensions folder
-		protected virtual void AddEngineExtensionFiles( ProjectFile EngineProject )
+		protected virtual void AddPlatformExtensionFiles( ProjectFile EngineProject )
 		{
-			// @todo: this will add the same files to the solution (like the UBT source files that also get added to UnrealBuildTool project).
-			// not sure of a good filtering method here
-			foreach(DirectoryReference ExtensionDir in UnrealBuildTool.GetExtensionDirs(UnrealBuildTool.EngineDirectory))
+			DirectoryReference PlatformExtensionsDirectory = UnrealBuildTool.ProjectPlatformExtensionsDirectory(EngineProject.ProjectFilePath);
+			if (DirectoryReference.Exists(PlatformExtensionsDirectory))
 			{
-				if (ExtensionDir != UnrealBuildTool.EngineDirectory)
-				{
-					List<string> SubdirectoryNamesToExclude = new List<string>();
-					SubdirectoryNamesToExclude.Add("AutomationTool"); //automation files are added separately to the AutomationTool project
-					SubdirectoryNamesToExclude.Add("Binaries");
-					SubdirectoryNamesToExclude.Add("Content");
+				List<string> SubdirectoryNamesToExclude = new List<string>();
+				SubdirectoryNamesToExclude.Add("AutomationTool"); //automation files are added separately to the AutomationTool project
 
-					EngineProject.AddFilesToProject(SourceFileSearch.FindFiles(ExtensionDir, SubdirectoryNamesToExclude), UnrealBuildTool.EngineDirectory);
-				}
+				EngineProject.AddFilesToProject(SourceFileSearch.FindFiles(PlatformExtensionsDirectory, SubdirectoryNamesToExclude), UnrealBuildTool.RootDirectory);
 			}
 		}
 
@@ -1449,7 +1407,7 @@ namespace UnrealBuildTool
 			List<FileReference> AllTargetFiles = new List<FileReference>();
 
 			// Make a list of all platform name strings that we're *not* including in the project files
-			List<string> UnsupportedPlatformNameStrings = Utils.MakeListOfUnsupportedPlatforms(SupportedPlatforms, bIncludeUnbuildablePlatforms:true);
+			List<string> UnsupportedPlatformNameStrings = Utils.MakeListOfUnsupportedPlatforms( SupportedPlatforms );
 
 			// Locate all targets (*.Target.cs files)
 			List<FileReference> FoundTargetFiles = RulesCompiler.FindAllRulesSourceFiles( RulesCompiler.RulesFileType.Target, AllGameProjects.Select(x => x.Directory).ToList(), ForeignPlugins: DiscoverExtraPlugins(AllGameProjects), AdditionalSearchPaths:null, bIncludeTempTargets: bIncludeTempTargets );
@@ -1826,13 +1784,6 @@ namespace UnrealBuildTool
 						ProjectFile TargetProjectFile = Targets[ TargetIndex ].Item1;
 						ProjectTarget CurTarget = Targets[ TargetIndex ].Item2;
 
-						// Ignore projects for platforms we can't build on this host
-						UnrealTargetPlatform IntellisensePlatform = BuildHostPlatform.Current.Platform;
-						if (!CurTarget.SupportedPlatforms.Any(x => x == IntellisensePlatform))
-						{
-							continue;
-						}
-
 						Log.TraceVerbose("Found target: " + CurTarget.Name);
 
 						List<string> NewArguments = new List<string>(Arguments.Length + 4);
@@ -1845,15 +1796,14 @@ namespace UnrealBuildTool
 						try
 						{
 							// Get the architecture from the target platform
-							string DefaultArchitecture = UEBuildPlatform.GetBuildPlatform(IntellisensePlatform).GetDefaultArchitecture(CurTarget.UnrealProjectFilePath);
+							string DefaultArchitecture = UEBuildPlatform.GetBuildPlatform(BuildHostPlatform.Current.Platform).GetDefaultArchitecture(CurTarget.UnrealProjectFilePath);
 
 							// Create the target descriptor
-							TargetDescriptor TargetDesc = new TargetDescriptor(CurTarget.UnrealProjectFilePath, CurTarget.Name, IntellisensePlatform, UnrealTargetConfiguration.Development, DefaultArchitecture, new CommandLineArguments(NewArguments.ToArray()));
+							TargetDescriptor TargetDesc = new TargetDescriptor(CurTarget.UnrealProjectFilePath, CurTarget.Name, BuildHostPlatform.Current.Platform, UnrealTargetConfiguration.Development, DefaultArchitecture, new CommandLineArguments(NewArguments.ToArray()));
 
 							// Create the target
 							UEBuildTarget Target = UEBuildTarget.Create(TargetDesc, false, bUsePrecompiled);
 
-							AddTargetForIntellisense(Target);
 							// Generate a compile environment for each module in the binary
 							CppCompileEnvironment GlobalCompileEnvironment = Target.CreateCompileEnvironmentForProjectFiles();
 							foreach(UEBuildBinary Binary in Target.Binaries)
@@ -1864,8 +1814,10 @@ namespace UnrealBuildTool
 									ProjectFile ProjectFileForIDE;
 									if (ModuleToProjectFileMap.TryGetValue(Module.Name, out ProjectFileForIDE) && ProjectFileForIDE == TargetProjectFile)
 									{
-										CppCompileEnvironment ModuleCompileEnvironment = Module.CreateCompileEnvironmentForIntellisense(Target.Rules, BinaryCompileEnvironment);
-										ProjectFileForIDE.AddModule(Module, ModuleCompileEnvironment);
+										CppCompileEnvironment ModuleCompileEnvironment = Module.CreateModuleCompileEnvironment(Target.Rules, BinaryCompileEnvironment);
+										ProjectFileForIDE.AddIntelliSensePreprocessorDefinitions(ModuleCompileEnvironment.Definitions);
+										ProjectFileForIDE.AddIntelliSenseIncludePaths(ModuleCompileEnvironment.SystemIncludePaths, true);
+										ProjectFileForIDE.AddIntelliSenseIncludePaths(ModuleCompileEnvironment.UserIncludePaths, false);
 									}
 								}
 							}
@@ -1889,11 +1841,6 @@ namespace UnrealBuildTool
 					}
 				}
 			}
-		}
-
-		protected virtual void AddTargetForIntellisense(UEBuildTarget Target)
-		{
-			
 		}
 
 
@@ -1935,31 +1882,8 @@ namespace UnrealBuildTool
 				}
 			}
 
-			List<UnrealTargetConfiguration> AllowedTargetConfigurations = new List<UnrealTargetConfiguration>();
-
-			if (ConfigurationNames == null)
-			{
-				AllowedTargetConfigurations = Enum.GetValues(typeof(UnrealTargetConfiguration)).Cast<UnrealTargetConfiguration>().ToList();
-			}
-			else
-			{
-				foreach (string ConfigName in ConfigurationNames)
-				{
-					try
-					{
-						UnrealTargetConfiguration AllowedConfiguration = (UnrealTargetConfiguration)Enum.Parse(typeof(UnrealTargetConfiguration), ConfigName);
-						AllowedTargetConfigurations.Add(AllowedConfiguration);
-					}
-					catch (Exception)
-					{
-						Log.TraceWarning("Invalid entry found in Configurations: {0}. Must be a member of UnrealTargetConfiguration", ConfigName);
-						continue;
-					}
-				}
-			}
-
 			// Add all configurations
-			foreach( UnrealTargetConfiguration CurConfiguration in AllowedTargetConfigurations)
+			foreach( UnrealTargetConfiguration CurConfiguration in Enum.GetValues( typeof(UnrealTargetConfiguration) ) )
 			{
 				if( CurConfiguration != UnrealTargetConfiguration.Unknown )
 				{
@@ -2040,11 +1964,14 @@ namespace UnrealBuildTool
 				// check for engine, or platform extension engine folders
 				if( !bIncludeEngineSource )
 				{
-					if (CurModuleFile.IsUnderDirectory(UnrealBuildTool.EngineDirectory))
+					foreach (DirectoryReference EngineDirectory in UnrealBuildTool.GetAllEngineDirectories())
 					{
-						// We were asked to exclude engine modules from the generated projects
-						WantProjectFileForModule = false;
-						break;
+						if (CurModuleFile.IsUnderDirectory(EngineDirectory))
+						{
+							// We were asked to exclude engine modules from the generated projects
+							WantProjectFileForModule = false;
+							break;
+						}
 					}
 				}
 
@@ -2082,7 +2009,8 @@ namespace UnrealBuildTool
 					// Check if there's a plugin directory here
 					if(!ProjectsWithPlugins.Contains(ProjectFile))
 					{
-						foreach (DirectoryReference PluginFolder in UnrealBuildTool.GetExtensionDirs(BaseFolder, "Plugins"))
+						DirectoryReference PluginFolder = DirectoryReference.Combine(BaseFolder, "Plugins");
+						if(DirectoryReference.Exists(PluginFolder))
 						{
 							// Add all the plugin files for this project
 							foreach(FileReference PluginFileName in Plugins.EnumeratePlugins(PluginFolder))
@@ -2181,13 +2109,15 @@ namespace UnrealBuildTool
 				}
 
 				// check for engine, or platform extension engine folders
-				foreach (DirectoryReference ExtensionDir in UnrealBuildTool.GetExtensionDirs(UnrealBuildTool.EngineDirectory))
+				if (Path == UnrealBuildTool.EngineDirectory)
 				{
-					if (Path == ExtensionDir)
-					{
-						BaseFolder = UnrealBuildTool.EngineDirectory;
-						return FindOrAddProjectHelper(EngineProjectFileNameBase, BaseFolder);
-					}
+					BaseFolder = UnrealBuildTool.EngineDirectory;
+					return FindOrAddProjectHelper(EngineProjectFileNameBase, BaseFolder);
+				}
+				if (Path == UnrealBuildTool.EnginePlatformExtensionsDirectory)
+				{
+					BaseFolder = UnrealBuildTool.RootDirectory;
+					return FindOrAddProjectHelper(EngineProjectFileNameBase, BaseFolder);
 				}
 				if (Path == UnrealBuildTool.EnterpriseDirectory)
 				{
@@ -2208,16 +2138,14 @@ namespace UnrealBuildTool
 		/// <param name="PlatformProjectGenerators">The registered platform project generators</param>
 		/// <param name="AllGames">All game folders</param>
 		/// <param name="AllTargetFiles">All the target files to add</param>
-		/// <param name="Arguments">The commandline arguments used</param>
 		/// <param name="EngineProject">The engine project we created</param>
 		/// <param name="EnterpriseProject">The enterprise project we created</param>
 		/// <param name="GameProjects">Map of game folder name to all of the game projects we created</param>
 		/// <param name="ProgramProjects">Map of program names to all of the program projects we created</param>
-		private void AddProjectsForAllTargets(
-			PlatformProjectGeneratorCollection PlatformProjectGenerators,
-			List<FileReference> AllGames,
+		private void AddProjectsForAllTargets( 
+			PlatformProjectGeneratorCollection PlatformProjectGenerators, 
+			List<FileReference> AllGames, 
 			List<FileReference> AllTargetFiles,
-			String[] Arguments,
 			out ProjectFile EngineProject, 
 			out ProjectFile EnterpriseProject,
 			out List<ProjectFile> GameProjects, 
@@ -2229,33 +2157,11 @@ namespace UnrealBuildTool
 			GameProjects = new List<ProjectFile>();
 			ProgramProjects = new Dictionary<FileReference, ProjectFile>();
 
-			// Separate the .target.cs files that are platform extension specializations, per target name. These will be added alongside their base target.cs
-			Dictionary<string,List<FileReference>> AllSubTargetFilesPerTarget = new Dictionary<string, List<FileReference>>();
-			HashSet<FileReference> AllSubTargetFiles = new HashSet<FileReference>();
-			foreach( FileReference TargetFilePath in AllTargetFiles )
-			{
-				string[] TargetPathSplit = TargetFilePath.GetFileNameWithoutAnyExtensions().Split(new char[]{'_'}, StringSplitOptions.RemoveEmptyEntries );
-				if (TargetPathSplit.Length > 1 && (UnrealTargetPlatform.IsValidName(TargetPathSplit.Last()) || UnrealPlatformGroup.IsValidName(TargetPathSplit.Last()) ) )
-				{
-					string TargetName = TargetPathSplit.First();
-					if (!AllSubTargetFilesPerTarget.ContainsKey(TargetName))
-					{
-						AllSubTargetFilesPerTarget.Add(TargetName, new List<FileReference>() );
-					}
-
-					AllSubTargetFilesPerTarget[TargetName].Add(TargetFilePath);
-					AllSubTargetFiles.Add(TargetFilePath);
-				}
-			}
-
 			// Get some standard directories
-			//DirectoryReference EngineSourceProgramsDirectory = DirectoryReference.Combine(UnrealBuildTool.EngineSourceDirectory, "Programs");
+			DirectoryReference EngineSourceProgramsDirectory = DirectoryReference.Combine(UnrealBuildTool.EngineSourceDirectory, "Programs");
 			DirectoryReference EnterpriseSourceProgramsDirectory = DirectoryReference.Combine(UnrealBuildTool.EnterpriseSourceDirectory, "Programs");
 
-			// Keep a cache of the default editor target for each project so that we don't have to interrogate the configs for each target
-			Dictionary<string, string> DefaultProjectEditorTargetCache = new Dictionary<string, string>();
-
-			foreach( FileReference TargetFilePath in AllTargetFiles.Except(AllSubTargetFiles) )
+			foreach( FileReference TargetFilePath in AllTargetFiles )
 			{
 				string TargetName = TargetFilePath.GetFileNameWithoutAnyExtensions();		// Remove both ".cs" and ".Target"
 
@@ -2263,16 +2169,16 @@ namespace UnrealBuildTool
 				bool IsEngineTarget = false;
 				bool IsEnterpriseTarget = false;
 				bool WantProjectFileForTarget = true;
-				if(TargetFilePath.IsUnderDirectory(UnrealBuildTool.EngineDirectory))
+				if(UnrealBuildTool.GetAllEngineDirectories().Any(x => TargetFilePath.IsUnderDirectory(x)))
 				{
 					// This is an engine target
 					IsEngineTarget = true;
 
-					if(UnrealBuildTool.GetExtensionDirs(UnrealBuildTool.EngineDirectory, "Source/Programs").Any(x => TargetFilePath.IsUnderDirectory(x)))
+					if(UnrealBuildTool.GetAllEngineDirectories("Source/Programs").Any(x => TargetFilePath.IsUnderDirectory(x)))
 					{
 						WantProjectFileForTarget = IncludeEnginePrograms;
 					}
-					else if(UnrealBuildTool.GetExtensionDirs(UnrealBuildTool.EngineDirectory, "Source").Any(x => TargetFilePath.IsUnderDirectory(x)))
+					else if(UnrealBuildTool.GetAllEngineDirectories("Source").Any(x => TargetFilePath.IsUnderDirectory(x)))
 					{
 						WantProjectFileForTarget = bIncludeEngineSource;
 					}
@@ -2291,7 +2197,7 @@ namespace UnrealBuildTool
 						WantProjectFileForTarget = bIncludeEnterpriseSource;
 					}
 				}
-				
+
 				if (WantProjectFileForTarget)
 				{
 					RulesAssembly RulesAssembly;
@@ -2315,7 +2221,7 @@ namespace UnrealBuildTool
 
 					// Create target rules for all of the platforms and configuration combinations that we want to enable support for.
 					// Just use the current platform as we only need to recover the target type and both should be supported for all targets...
-					TargetRules TargetRulesObject = RulesAssembly.CreateTargetRules(TargetName, BuildHostPlatform.Current.Platform, UnrealTargetConfiguration.Development, "", CheckProjectFile, new CommandLineArguments(GetTargetArguments(Arguments)));
+					TargetRules TargetRulesObject = RulesAssembly.CreateTargetRules(TargetName, BuildHostPlatform.Current.Platform, UnrealTargetConfiguration.Development, "", CheckProjectFile, null);
 
 					bool IsProgramTarget = false;
 
@@ -2346,44 +2252,12 @@ namespace UnrealBuildTool
 						ProjectFileNameBase = ProjectInfo.GetFileNameWithoutExtension();
 					}
 
-					// Look at the project engine config to see if it has specified a default editor target
-					FileReference ProjectLocation = GetProjectLocation(ProjectFileNameBase);
-					string DefaultEditorTarget = null;
-					if (!DefaultProjectEditorTargetCache.TryGetValue(ProjectFileNameBase, out DefaultEditorTarget))
-					{
-						if (GameFolder != null)
-						{
-							FileReference DefaultEngineIniFilename = FileReference.Combine(GameFolder, "Config", "DefaultEngine.ini");
-							ConfigFile ProjectDefaultEngineIni;
-							ConfigCache.TryReadFile(DefaultEngineIniFilename, out ProjectDefaultEngineIni);
-							if (ProjectDefaultEngineIni != null)
-							{
-								ConfigFileSection Section;
-								if (ProjectDefaultEngineIni.TryGetSection("/Script/BuildSettings.BuildSettings", out Section))
-								{
-									ConfigLine Line;
-									if (Section.TryGetLine("DefaultEditorTarget", out Line))
-									{
-										DefaultEditorTarget = Line.Value;
-									}
-								}
-							}
-						}
-
-						DefaultProjectEditorTargetCache.Add(ProjectFileNameBase, DefaultEditorTarget);
-					}
-
 					// Get the suffix to use for this project file. If we have multiple targets of the same type, we'll have to split them out into separate IDE project files.
 					string GeneratedProjectName = TargetRulesObject.GeneratedProjectName;
 					if(GeneratedProjectName == null)
 					{
 						ProjectFile ExistingProjectFile;
-						// We should create a separate project for targets which aren't the default for this target type.
-						// Note that we currently only support changing the default editor target and not any other types, so
-						// if we aren't an editor, we'll just fall back to previous behavior and assume the first one we encounter
-						// should be added to the main project
-						bool bIsDefaultTargetForType = (DefaultEditorTarget == null) || (TargetRulesObject.Type != TargetType.Editor) || (TargetRulesObject.Name == DefaultEditorTarget);
-						if( !bIsDefaultTargetForType || (ProjectFileMap.TryGetValue(ProjectLocation, out ExistingProjectFile ) && ExistingProjectFile.ProjectTargets.Any(x => x.TargetRules.Type == TargetRulesObject.Type)))
+						if( ProjectFileMap.TryGetValue( GetProjectLocation(ProjectFileNameBase), out ExistingProjectFile ) && ExistingProjectFile.ProjectTargets.Any(x => x.TargetRules.Type == TargetRulesObject.Type))
 						{
 							GeneratedProjectName = TargetRulesObject.Name;
 						}
@@ -2503,20 +2377,13 @@ namespace UnrealBuildTool
 							ProjectFilePath = ProjectFilePath,
 							UnrealProjectFilePath = CheckProjectFile,
 							SupportedPlatforms = TargetRulesObject.GetSupportedPlatforms().Where(x => UEBuildPlatform.GetBuildPlatform(x, true) != null).ToArray(),
-							CreateRulesDelegate = (Platform, Configuration) => RulesAssembly.CreateTargetRules(TargetName, Platform, Configuration, "", CheckProjectFile, new CommandLineArguments(GetTargetArguments(Arguments)))
+							CreateRulesDelegate = (Platform, Configuration) => RulesAssembly.CreateTargetRules(TargetName, Platform, Configuration, "", CheckProjectFile, null)
                         };
 
 					ProjectFile.ProjectTargets.Add(ProjectTarget);
 
 					// Make sure the *.Target.cs file is in the project.
 					ProjectFile.AddFileToProject(TargetFilePath, BaseFolder);
-
-					// Add all matching *_<platform>.Target.cs to the same folder
-					if (AllSubTargetFilesPerTarget.ContainsKey(TargetName))
-					{
-						ProjectFile.AddFilesToProject( AllSubTargetFilesPerTarget[TargetName], BaseFolder );
-					}
-
 
 					Log.TraceVerbose("Generating target {0} for {1}", TargetRulesObject.Type.ToString(), ProjectFilePath);
 				}
@@ -2537,7 +2404,7 @@ namespace UnrealBuildTool
 				ProjectFile GameProject = GameProjects.First();
 				foreach(PluginInfo PluginInfo in Plugins.ReadProjectPlugins(GameProject.BaseDir))
 				{
-					if (PluginInfo.Descriptor.Modules != null && PluginInfo.Descriptor.Modules.Count > 0 && PluginInfo.Type == PluginType.Mod)
+					if (PluginInfo.Descriptor.Modules != null && PluginInfo.Descriptor.Modules.Length > 0 && PluginInfo.Type == PluginType.Mod)
 					{
 						FileReference ModProjectFilePath = FileReference.Combine(PluginInfo.Directory, "Mods", PluginInfo.Name + ProjectFileExtension);
 
@@ -2973,12 +2840,6 @@ namespace UnrealBuildTool
 			InProject.LoadGUIDFromExistingProject();
 
 			OtherProjectFiles.Add( InProject );
-		}
-
-		public virtual string[] GetTargetArguments(string[] Arguments)
-		{
-			// by default we do not forward any arguments to the targets
-			return new string[0];
 		}
 
 		/// The default project to be built for the solution.

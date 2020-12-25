@@ -19,7 +19,6 @@
 #define BOOST_CORE_EXPLICIT_OPERATOR_BOOL_HPP
 
 #include <boost/config.hpp>
-#include <boost/config/workaround.hpp>
 
 #ifdef BOOST_HAS_PRAGMA_ONCE
 #pragma once
@@ -53,8 +52,6 @@
         return !this->operator! ();\
     }
 
-#if !BOOST_WORKAROUND(BOOST_GCC, < 40700)
-
 /*!
  * \brief The macro defines a constexpr explicit operator of conversion to \c bool
  *
@@ -67,12 +64,6 @@
     {\
         return !this->operator! ();\
     }
-
-#else
-
-#define BOOST_CONSTEXPR_EXPLICIT_OPERATOR_BOOL() BOOST_EXPLICIT_OPERATOR_BOOL_NOEXCEPT()
-
-#endif
 
 #else // !defined(BOOST_NO_CXX11_EXPLICIT_CONVERSION_OPERATORS)
 

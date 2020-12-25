@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Framework/Docking/LayoutService.h"
 #include "Misc/ConfigCacheIni.h"
 
-DEFINE_LOG_CATEGORY_STATIC(LogLayoutService, Log, All);
 
 const TCHAR* EditorLayoutsSectionName = TEXT("EditorLayouts");
 
@@ -15,95 +14,28 @@ const FString& FLayoutSaveRestore::GetAdditionalLayoutConfigIni()
 }
 
 
-void FLayoutSaveRestore::SaveToConfig( const FString& InConfigFileName, const TSharedRef<FTabManager::FLayout>& InLayoutToSave )
+void FLayoutSaveRestore::SaveToConfig( const FString& ConfigFileName, const TSharedRef<FTabManager::FLayout>& LayoutToSave )
 {
-	// Only save to config if it's not the FTabManager::FLayout::NullLayout
-	if (InLayoutToSave->GetLayoutName() != FTabManager::FLayout::NullLayout->GetLayoutName())
-	{
-		const FString LayoutAsString = FLayoutSaveRestore::PrepareLayoutStringForIni(InLayoutToSave->ToString());
-		GConfig->SetString(EditorLayoutsSectionName, *InLayoutToSave->GetLayoutName().ToString(), *LayoutAsString, InConfigFileName);
-	}
+	const FString LayoutAsString = FLayoutSaveRestore::PrepareLayoutStringForIni( LayoutToSave->ToString() );
+
+	GConfig->SetString(EditorLayoutsSectionName, *LayoutToSave->GetLayoutName().ToString(), *LayoutAsString, ConfigFileName );
 }
 
 
-TSharedRef<FTabManager::FLayout> FLayoutSaveRestore::LoadFromConfig(const FString& InConfigFileName, const TSharedRef<FTabManager::FLayout>& InDefaultLayout,
-	const EOutputCanBeNullptr InPrimaryAreaOutputCanBeNullptr)
+TSharedRef<FTabManager::FLayout> FLayoutSaveRestore::LoadFromConfig( const FString& ConfigFileName, const TSharedRef<FTabManager::FLayout>& DefaultLayout )
 {
-	TArray<FString> DummyArray;
-	return FLayoutSaveRestore::LoadFromConfigPrivate(InConfigFileName, InDefaultLayout, InPrimaryAreaOutputCanBeNullptr, false, DummyArray);
-}
-
-
-TSharedRef<FTabManager::FLayout> FLayoutSaveRestore::LoadFromConfig(const FString& InConfigFileName,
-	const TSharedRef<FTabManager::FLayout>& InDefaultLayout, const EOutputCanBeNullptr InPrimaryAreaOutputCanBeNullptr, TArray<FString>& OutRemovedOlderLayoutVersions)
-{
-	return FLayoutSaveRestore::LoadFromConfigPrivate(InConfigFileName, InDefaultLayout, InPrimaryAreaOutputCanBeNullptr, true, OutRemovedOlderLayoutVersions);
-}
-
-
-TSharedRef<FTabManager::FLayout> FLayoutSaveRestore::LoadFromConfigPrivate(const FString& InConfigFileName, const TSharedRef<FTabManager::FLayout>& InDefaultLayout,
-	const EOutputCanBeNullptr InPrimaryAreaOutputCanBeNullptr, const bool bInRemoveOlderLayoutVersions, TArray<FString>& OutRemovedOlderLayoutVersions)
-{
-	const FString LayoutNameString = InDefaultLayout->GetLayoutName().ToString();
-	// If the Key (InDefaultLayout->GetLayoutName()) already exists in the section EditorLayoutsSectionName of the file InConfigFileName, try to load the layout from that file
+	const FName LayoutName = DefaultLayout->GetLayoutName();
 	FString UserLayoutString;
-	if (GConfig->GetString(EditorLayoutsSectionName, *LayoutNameString, UserLayoutString, InConfigFileName) && !UserLayoutString.IsEmpty())
+	if ( GConfig->GetString(EditorLayoutsSectionName, *LayoutName.ToString(), UserLayoutString, ConfigFileName ) && !UserLayoutString.IsEmpty() )
 	{
 		TSharedPtr<FTabManager::FLayout> UserLayout = FTabManager::FLayout::NewFromString( FLayoutSaveRestore::GetLayoutStringFromIni( UserLayoutString ));
 		if ( UserLayout.IsValid() && UserLayout->GetPrimaryArea().IsValid() )
 		{
-			// Return UserLayout in the following 2 cases:
-			// - By default (PrimaryAreaOutputCanBeNullptr = Never or IfNoTabValid)
-			// - For the case of PrimaryAreaOutputCanBeNullptr = IfNoOpenTabValid, only if the primary area has at least a valid open tab
-			if (InPrimaryAreaOutputCanBeNullptr != EOutputCanBeNullptr::IfNoOpenTabValid
-				|| FGlobalTabmanager::Get()->HasValidOpenTabs(UserLayout->GetPrimaryArea().Pin().ToSharedRef()))
-			{
-				return UserLayout.ToSharedRef();
-			}
-		}
-	}
-	// If the file layout could not be loaded and the caller wants to remove old fields
-	else if (bInRemoveOlderLayoutVersions)
-	{
-		// If File and Section exist
-		if (FConfigSection* ConfigSection = GConfig->GetSectionPrivate(EditorLayoutsSectionName, /*Force*/false, /*Const*/true, InConfigFileName))
-		{
-			// If Key does not exist (i.e., Section does but not contain that Key)
-			if (!ConfigSection->Find(*LayoutNameString))
-			{
-				// Create LayoutKeyToRemove
-				FString LayoutKeyToRemove;
-				for (int32 Index = LayoutNameString.Len() - 1; Index > 0; --Index)
-				{
-					if (LayoutNameString[Index] != TCHAR('.') && (LayoutNameString[Index] < TCHAR('0') || LayoutNameString[Index] > TCHAR('9')))
-					{
-						LayoutKeyToRemove = LayoutNameString.Left(Index+1);
-						break;
-					}
-				}
-				// Look for older versions of this Key
-				OutRemovedOlderLayoutVersions.Empty();
-				for (const auto& SectionPair : *ConfigSection/*->ArrayOfStructKeys*/)
-				{
-					FString CurrentKey = SectionPair.Key.ToString();
-					if (CurrentKey.Len() > LayoutKeyToRemove.Len() && CurrentKey.Left(LayoutKeyToRemove.Len()) == LayoutKeyToRemove)
-					{
-						OutRemovedOlderLayoutVersions.Emplace(std::move(CurrentKey));
-					}
-				}
-				// Remove older versions of this Key
-				for (const FString& KeyToRemove : OutRemovedOlderLayoutVersions)
-				{
-					GConfig->RemoveKey(EditorLayoutsSectionName, *KeyToRemove, InConfigFileName);
-					UE_LOG(LogLayoutService, Warning, TEXT("While key \"%s\" was not found, and older version exists (key \"%s\"). This means section \"%s\" was"
-						" created with a previous version of UE and is no longer compatible. The old key has been removed and updated with the new one."),
-						*LayoutNameString, *KeyToRemove, EditorLayoutsSectionName);
-				}
-			}
+			return UserLayout.ToSharedRef();
 		}
 	}
 
-	return InDefaultLayout;
+	return DefaultLayout;
 }
 
 

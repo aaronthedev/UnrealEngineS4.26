@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "AssetTypeActions_SoundControlBusMix.h"
 
 #include "SoundControlBusMix.h"
@@ -14,7 +14,7 @@ const TArray<FText>& FAssetTypeActions_SoundControlBusMix::GetSubMenus() const
 {
 	static const TArray<FText> SubMenus
 	{
-		LOCTEXT("AssetSoundModulationSubMenu", "Modulation")
+		FText(LOCTEXT("AssetSoundMixSubMenu", "Mix"))
 	};
 
 	return SubMenus;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Misc/CoreMisc.h"
@@ -71,9 +71,7 @@ public:
 		const bool bSendAnalytics = FParse::Param(FCommandLine::Get(), TEXT("SendAutomationAnalytics"));
 
 		// Register for the callback that tells us there are tests available
-		if (!TestsRefreshedHandle.IsValid()) {
-			TestsRefreshedHandle = AutomationController->OnTestsRefreshed().AddRaw(this, &FAutomationExecCmd::HandleRefreshTestCallback);
-		}
+		AutomationController->OnTestsRefreshed().AddRaw(this, &FAutomationExecCmd::HandleRefreshTestCallback);
 
 		TickHandler = FTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateRaw(this, &FAutomationExecCmd::Tick));
 
@@ -197,24 +195,7 @@ public:
 			{
 				// old behavior of just string searching
 				ArgumentName = ArgumentName.TrimStart().Replace(TEXT(" "), TEXT(""));
-
-				bool bMatchFromStart = false;
-				//bool bMatchFromEnd = false;
-
-				if (ArgumentName.StartsWith("^"))
-				{
-					bMatchFromStart = true;
-					ArgumentName.RightChopInline(1);
-				}
-
-				/*if (ArgumentName.EndsWith("$"))
-				{
-					bMatchFromEnd = true;
-					ArgumentName.LeftChopInline(1);
-				}*/
-
-				// #agrant todo: restore in 4.26 when headers can be changed
-				Filters.Add(FAutomatedTestFilter(ArgumentName, bMatchFromStart/*, bMatchFromEnd*/));
+				Filters.Add(FAutomatedTestFilter(ArgumentName));
 			}
 		}
 		
@@ -224,39 +205,10 @@ public:
 
 			for (const FAutomatedTestFilter& Filter : Filters)
 			{
-				// #agrant todo: remove in 4.26 when headers can be changed and we store this during parsing
-				bool bMatchFromEnd = false;
-				FString FilterString = Filter.Contains;
-				if (FilterString.EndsWith("$"))
-				{
-					bMatchFromEnd = true;
-					FilterString.LeftChopInline(1);
-				}
+				bool IsMatch = (Filter.MatchFromStart && TestNamesNoWhiteSpaces.StartsWith(Filter.Contains))
+					|| (Filter.MatchFromStart == false && TestNamesNoWhiteSpaces.Contains((Filter.Contains)));
 
-				bool bNeedStartMatch = Filter.MatchFromStart;
-				bool bNeedEndMatch = bMatchFromEnd;
-				bool bMeetsMatch = true;	// assume true
-
-				// If we need to match at the start or end, 
-				if (bNeedStartMatch || bNeedEndMatch)
-				{
-					if (bNeedStartMatch)
-					{
-						bMeetsMatch = TestNamesNoWhiteSpaces.StartsWith(FilterString);
-					}
-
-					if (bNeedEndMatch && bMeetsMatch)
-					{
-						bMeetsMatch = TestNamesNoWhiteSpaces.EndsWith(FilterString);
-					}
-				}
-				else
-				{
-					// match anywhere
-					bMeetsMatch = TestNamesNoWhiteSpaces.Contains(FilterString);
-				}
-
-				if (bMeetsMatch)
+				if (IsMatch)
 				{
 					OutTestNames.Add(AllTestNames[TestIndex]);
 					TestCount++;
@@ -376,12 +328,6 @@ public:
 			{
 				AutomationTestState = EAutomationTestState::Complete;
 			}
-
-
-			// Clear delegate to avoid re-running tests due to multiple delegates being added or when refreshing session frontend
-			// The delegate will be readded in Init whenever a new command is executed
-			AutomationController->OnTestsRefreshed().Remove(TestsRefreshedHandle);
-			TestsRefreshedHandle.Reset();
 		}
 		else if (AutomationCommand == EAutomationCommand::RunCheckpointTests)
 		{
@@ -715,9 +661,6 @@ private:
 
 	/** What work was requested */
 	EAutomationCommand AutomationCommand;
-
-	/** Handle to Test Refresh delegate */
-	FDelegateHandle TestsRefreshedHandle;
 
 	/** Delay used before finding workers on game instances. Just to ensure they have started up */
 	float DelayTimer;

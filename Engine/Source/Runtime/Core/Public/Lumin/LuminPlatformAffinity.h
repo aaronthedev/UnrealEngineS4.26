@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,37 +6,39 @@
 
 class FLuminAffinity : public FGenericPlatformAffinity
 {
+	const static uint64 ArmCores = MAKEAFFINITYMASK2(3,4);
+	const static uint64 DenverCores = MAKEAFFINITYMASK1(2);
 public:
 	static const CORE_API uint64 GetMainGameMask() {
-		return GameThreadMask;
+		return ArmCores;
 	}
 
 	static const CORE_API uint64 GetRenderingThreadMask() {
-		return RenderingThreadMask;
+		return ArmCores;
 	}
 
 	static const CORE_API uint64 GetRHIThreadMask() {
-		return RHIThreadMask;
+		return ArmCores;
 	}
 
 	static const CORE_API uint64 GetRTHeartBeatMask() {
-		return RTHeartBeatMask;
+		return ArmCores;
 	}
 
 	static const CORE_API uint64 GetPoolThreadMask() {
-		return PoolThreadMask;
+		return DenverCores;
 	}
 
 	static const CORE_API uint64 GetTaskGraphThreadMask() {
-		return TaskGraphThreadMask;
+		return ArmCores;
 	}
 
 	static const CORE_API uint64 GetStatsThreadMask() {
-		return StatsThreadMask;
+		return ArmCores;
 	}
 
 	static const CORE_API uint64 GetAudioThreadMask() {
-		return AudioThreadMask;
+		return DenverCores;
 	}
 
 	static const CORE_API uint64 GetNoAffinityMask() {
@@ -44,7 +46,7 @@ public:
 	}
 
 	static const CORE_API uint64 GetTaskGraphBackgroundTaskMask() {
-		return TaskGraphBGTaskMask;
+		return ArmCores;
 	}
 
 	static EThreadPriority GetRenderingThreadPriority() {
@@ -54,18 +56,6 @@ public:
 	static EThreadPriority GetRHIThreadPriority() {
 		return TPri_SlightlyBelowNormal;
 	}
-
-public:
-	// Default mask definitions in LuminPlatformProcess.cpp
-	static int64 GameThreadMask;
-	static int64 RenderingThreadMask;
-	static int64 RTHeartBeatMask;
-	static int64 RHIThreadMask;
-	static int64 PoolThreadMask;
-	static int64 TaskGraphThreadMask;
-	static int64 TaskGraphBGTaskMask;
-	static int64 StatsThreadMask;
-	static int64 AudioThreadMask;
 };
 
 typedef FLuminAffinity FPlatformAffinity;

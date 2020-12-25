@@ -1,6 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-#include "ViewModels/NiagaraScriptViewModel.h"
+#include "NiagaraScriptViewModel.h"
 #include "NiagaraScript.h"
 #include "NiagaraScriptSource.h"
 #include "NiagaraGraph.h"
@@ -19,7 +19,7 @@
 
 template<> TMap<UNiagaraScript*, TArray<FNiagaraScriptViewModel*>> TNiagaraViewModelManager<UNiagaraScript, FNiagaraScriptViewModel>::ObjectsToViewModels{};
 
-FNiagaraScriptViewModel::FNiagaraScriptViewModel(TAttribute<FText> DisplayName, ENiagaraParameterEditMode InParameterEditMode)
+FNiagaraScriptViewModel::FNiagaraScriptViewModel(FText DisplayName, ENiagaraParameterEditMode InParameterEditMode)
 	: InputCollectionViewModel(MakeShareable(new FNiagaraScriptInputCollectionViewModel(DisplayName, InParameterEditMode)))
 	, OutputCollectionViewModel(MakeShareable(new FNiagaraScriptOutputCollectionViewModel(InParameterEditMode)))
 	, GraphViewModel(MakeShareable(new FNiagaraScriptGraphViewModel(DisplayName)))
@@ -64,11 +64,6 @@ void FNiagaraScriptViewModel::OnVMScriptCompiled(UNiagaraScript* InScript)
 	}
 }
 
-void FNiagaraScriptViewModel::OnGPUScriptCompiled(UNiagaraScript* InScript)
-{
-	// Do nothing in base implementation
-}
-
 bool FNiagaraScriptViewModel::IsGraphDirty() const
 {
 	for (int32 i = 0; i < Scripts.Num(); i++)
@@ -106,14 +101,10 @@ FNiagaraScriptViewModel::~FNiagaraScriptViewModel()
 		if (Scripts[i].IsValid())
 		{
 			Scripts[i]->OnVMScriptCompiled().RemoveAll(this);
-			Scripts[i]->OnGPUScriptCompiled().RemoveAll(this);
 		}
 	}
 
-	if (GEditor != nullptr)
-	{
-		GEditor->UnregisterForUndo(this);
-	}
+	GEditor->UnregisterForUndo(this);
 
 	for (TNiagaraViewModelManager<UNiagaraScript, FNiagaraScriptViewModel>::Handle RegisteredHandle : RegisteredHandles)
 	{
@@ -123,15 +114,6 @@ FNiagaraScriptViewModel::~FNiagaraScriptViewModel()
 
 }
 
-FText FNiagaraScriptViewModel::GetDisplayName() const
-{
-	return GraphViewModel->GetDisplayName();
-}
-
-const TArray<TWeakObjectPtr<UNiagaraScript>>& FNiagaraScriptViewModel::GetScripts() const
-{
-	return Scripts;
-}
 
 void FNiagaraScriptViewModel::SetScripts(UNiagaraScriptSource* InScriptSource, TArray<UNiagaraScript*>& InScripts)
 {
@@ -154,7 +136,6 @@ void FNiagaraScriptViewModel::SetScripts(UNiagaraScriptSource* InScriptSource, T
 		if (Scripts[i].IsValid())
 		{
 			Scripts[i]->OnVMScriptCompiled().RemoveAll(this);
-			Scripts[i]->OnGPUScriptCompiled().RemoveAll(this);
 		}
 	}
 
@@ -170,7 +151,6 @@ void FNiagaraScriptViewModel::SetScripts(UNiagaraScriptSource* InScriptSource, T
 		int32 i = Scripts.Add(Script);
 		check(Script->GetSource() == InScriptSource);
 		Scripts[i]->OnVMScriptCompiled().AddSP(this, &FNiagaraScriptViewModel::OnVMScriptCompiled);
-		Scripts[i]->OnGPUScriptCompiled().AddSP(this, &FNiagaraScriptViewModel::OnGPUScriptCompiled);
 	}
 	Source = InScriptSource;
 
@@ -301,6 +281,7 @@ UNiagaraScript* FNiagaraScriptViewModel::GetStandaloneScript()
 	return nullptr;
 }
 
+
 void FNiagaraScriptViewModel::UpdateCompileStatus(ENiagaraScriptCompileStatus InAggregateCompileStatus, const FString& InAggregateCompileErrorString,
 	const TArray<ENiagaraScriptCompileStatus>& InCompileStatuses, const TArray<FString>& InCompileErrors, const TArray<FString>& InCompilePaths,
 	const TArray<UNiagaraScript*>& InCompileSources)
@@ -411,9 +392,7 @@ void FNiagaraScriptViewModel::CompileStandaloneScript(bool bForceCompile)
 ENiagaraScriptCompileStatus FNiagaraScriptViewModel::GetLatestCompileStatus()
 {
 	if (GraphViewModel->GetGraph() && IsGraphDirty())
-	{
 		return ENiagaraScriptCompileStatus::NCS_Dirty;
-	}
 	return LastCompileStatus;
 }
 

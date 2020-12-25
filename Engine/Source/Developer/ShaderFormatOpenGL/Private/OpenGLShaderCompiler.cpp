@@ -1,5 +1,5 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-// ..
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
+// .
 
 #include "CoreMinimal.h"
 #include "HAL/FileManager.h"
@@ -32,8 +32,6 @@
 	#include <GL/glcorearb.h>
 	#include <GL/glext.h>
 	#include "SDL.h"
-	#include <stdio.h>
-	#include <wchar.h>
 	typedef SDL_Window*		SDL_HWindow;
 	typedef SDL_GLContext	SDL_HGLContext;
 	struct FPlatformOpenGLContext
@@ -72,11 +70,19 @@ THIRD_PARTY_INCLUDES_END
 
 DEFINE_LOG_CATEGORY_STATIC(LogOpenGLShaderCompiler, Log, All);
 
+
 #define VALIDATE_GLSL_WITH_DRIVER		0
 #define ENABLE_IMAGINATION_COMPILER		1
-static FORCEINLINE bool IsPCESPlatform(GLSLVersion Version)
+
+
+static FORCEINLINE bool IsES2Platform(GLSLVersion Version)
 {
-	return (Version == GLSL_150_ES3_1);
+	return (Version == GLSL_ES2 || Version == GLSL_150_ES2 || Version == GLSL_ES2_WEBGL || Version == GLSL_150_ES2_NOUB);
+}
+
+static FORCEINLINE bool IsPCES2Platform(GLSLVersion Version)
+{
+	return (Version == GLSL_150_ES2 || Version == GLSL_150_ES2_NOUB || Version == GLSL_150_ES3_1);
 }
 
 // This function should match OpenGLShaderPlatformSeparable
@@ -85,7 +91,7 @@ bool FOpenGLFrontend::SupportsSeparateShaderObjects(GLSLVersion Version)
 	// Only desktop shader platforms can use separable shaders for now,
 	// the generated code relies on macros supplied at runtime to determine whether
 	// shaders may be separable and/or linked.
-	return Version == GLSL_150_ES3_1;
+	return Version == GLSL_150 || Version == GLSL_150_ES2 || Version == GLSL_150_ES2_NOUB || Version == GLSL_150_ES3_1 || Version == GLSL_430;
 }
 
 /*------------------------------------------------------------------------------
@@ -670,6 +676,27 @@ void FOpenGLFrontend::BuildShaderOutput(
 		}
 	}
 
+	// Generate vertex attribute remapping table.
+	// This is used on devices where GL_MAX_VERTEX_ATTRIBS < 16
+	if (Frequency == SF_Vertex)
+	{
+		uint32 AttributeMask = Header.Bindings.InOutMask;
+		int32 NextAttributeSlot = 0;
+		Header.Bindings.VertexRemappedMask = 0;
+		for (int32 AttributeIndex = 0; AttributeIndex < 16; AttributeIndex++, AttributeMask >>= 1)
+		{
+			if (AttributeMask & 0x1)
+			{
+				Header.Bindings.VertexRemappedMask |= (1 << NextAttributeSlot);
+				Header.Bindings.VertexAttributeRemap[AttributeIndex] = NextAttributeSlot++;
+			}
+			else
+			{
+				Header.Bindings.VertexAttributeRemap[AttributeIndex] = -1;
+			}
+		}
+	}
+
 	static const FString TargetPrefix = "out_Target";
 	static const FString GL_FragDepth = "gl_FragDepth";
 	for (auto& Output : CCHeader.Outputs)
@@ -848,13 +875,7 @@ void FOpenGLFrontend::BuildShaderOutput(
 			Info.TypeIndex = CrossCompiler::PackedTypeNameToTypeIndex(TypeName);
 			InfoArray.Add(Info);
 		}
-		
-		// Sort by TypeIndex as expected by eUB uloading code
-		InfoArray.Sort([](const CrossCompiler::FPackedArrayInfo& A, const CrossCompiler::FPackedArrayInfo& B)
-		{ 
-			return A.TypeIndex < B.TypeIndex; 
-		});
-		
+
 		Header.Bindings.PackedUniformBuffers.Add(InfoArray);
 	}
 
@@ -940,7 +961,6 @@ void FOpenGLFrontend::BuildShaderOutput(
 		// Build the generic SRT for this shader.
 		FShaderCompilerResourceTable GenericSRT;
 		BuildResourceTableMapping(ShaderInput.Environment.ResourceTableMap, ShaderInput.Environment.ResourceTableLayoutHashes, UsedUniformBufferSlots, ShaderOutput.ParameterMap, GenericSRT);
-		CullGlobalUniformBuffers(ShaderInput.Environment.ResourceTableLayoutSlots, ShaderOutput.ParameterMap);
 
 		// Copy over the bits indicating which resource tables are active.
 		Header.Bindings.ShaderResourceTable.ResourceTableBits = GenericSRT.ResourceTableBits;
@@ -1007,10 +1027,23 @@ void FOpenGLFrontend::ConvertOpenGLVersionFromGLSLVersion(GLSLVersion InVersion,
 {
 	switch(InVersion)
 	{
+		case GLSL_150:
+			OutMajorVersion = 3;
+			OutMinorVersion = 2;
+			break;
+		case GLSL_310_ES_EXT:
+		case GLSL_430:
+			OutMajorVersion = 4;
+			OutMinorVersion = 3;
+			break;
+		case GLSL_150_ES2:
+		case GLSL_150_ES2_NOUB:
 		case GLSL_150_ES3_1:
 			OutMajorVersion = 3;
 			OutMinorVersion = 2;
 			break;
+		case GLSL_ES2_WEBGL:
+		case GLSL_ES2:
 		case GLSL_ES3_1_ANDROID:
 			OutMajorVersion = 0;
 			OutMinorVersion = 0;
@@ -1021,6 +1054,145 @@ void FOpenGLFrontend::ConvertOpenGLVersionFromGLSLVersion(GLSLVersion InVersion,
 			OutMajorVersion = 0;
 			OutMinorVersion = 0;
 			break;
+	}
+}
+
+static const TCHAR* GetGLSLES2CompilerExecutable(bool bNDACompiler)
+{
+	// Unfortunately no env var is set to handle install path
+	return (bNDACompiler
+		? TEXT("C:\\Imagination\\PowerVR\\GraphicsSDK\\Compilers\\OGLES\\Windows_x86_32\\glslcompiler_sgx543_nda.exe")
+		: TEXT("C:\\Imagination\\PowerVR\\GraphicsSDK\\Compilers\\OGLES\\Windows_x86_32\\glslcompiler_sgx543.exe"));
+}
+
+static FString CreateGLSLES2CompilerArguments(const FString& ShaderFile, const FString& OutputFile, EHlslShaderFrequency Frequency, bool bNDACompiler)
+{
+	const TCHAR* FrequencySwitch = TEXT("");
+	switch (Frequency)
+	{
+	case HSF_PixelShader:
+		FrequencySwitch = TEXT(" -f");
+		break;
+
+	case HSF_VertexShader:
+		FrequencySwitch = TEXT(" -v");
+		break;
+
+	default:
+		return TEXT("");
+	}
+
+	FString Arguments = FString::Printf(TEXT("%s %s %s -profile -perfsim"), *FPaths::GetCleanFilename(ShaderFile), *FPaths::GetCleanFilename(OutputFile), FrequencySwitch);
+
+	if (bNDACompiler)
+	{
+		Arguments += " -disasm";
+	}
+
+	return Arguments;
+}
+
+static FString CreateCommandLineGLSLES2(const FString& ShaderFile, const FString& OutputFile, GLSLVersion Version, EHlslShaderFrequency Frequency, bool bNDACompiler)
+{
+	if (Version != GLSL_ES2 && Version != GLSL_ES2_WEBGL)
+	{
+		return TEXT("");
+	}
+
+	FString CmdLine = FString(GetGLSLES2CompilerExecutable(bNDACompiler)) + TEXT(" ") + CreateGLSLES2CompilerArguments(ShaderFile, OutputFile, Frequency, bNDACompiler);
+	CmdLine += FString(LINE_TERMINATOR) + TEXT("pause");
+	return CmdLine;
+}
+
+/** Precompile a glsl shader for ES2. */
+void FOpenGLFrontend::PrecompileGLSLES2(FShaderCompilerOutput& ShaderOutput, const FShaderCompilerInput& ShaderInput, const ANSICHAR* ShaderSource, EHlslShaderFrequency Frequency)
+{
+	const TCHAR* CompilerExecutableName = GetGLSLES2CompilerExecutable(false);
+	const int32 SourceLen = FCStringAnsi::Strlen(ShaderSource);
+	const bool bCompilerExecutableExists = FPaths::FileExists(CompilerExecutableName);
+
+	// Using the debug info path to write out the files to disk for the PVR shader compiler
+	if (ShaderInput.DumpDebugInfoPath != TEXT("") && bCompilerExecutableExists)
+	{
+		const FString GLSLSourceFile = (ShaderInput.DumpDebugInfoPath / TEXT("GLSLSource.txt"));
+		bool bSavedSuccessfully = false;
+
+		{
+			FArchive* Ar = IFileManager::Get().CreateFileWriter(*GLSLSourceFile, FILEWRITE_EvenIfReadOnly);
+
+			// Save the ansi file to disk so it can be used as input to the PVR shader compiler
+			if (Ar)
+			{
+				bSavedSuccessfully = true;
+
+				// @todo: Patch the code so that textureCubeLodEXT gets converted to textureCubeLod to workaround PowerVR issues
+				const ANSICHAR* VersionString = FCStringAnsi::Strifind(ShaderSource, "#version 100");
+				check(VersionString);
+				VersionString += 12;	// strlen("# version 100");
+				Ar->Serialize((void*)ShaderSource, (VersionString - ShaderSource) * sizeof(ANSICHAR));
+				const char* PVRWorkaround = "\n#ifndef textureCubeLodEXT\n#define textureCubeLodEXT textureCubeLod\n#endif\n";
+				Ar->Serialize((void*)PVRWorkaround, FCStringAnsi::Strlen(PVRWorkaround));
+				Ar->Serialize((void*)VersionString, (SourceLen - (VersionString - ShaderSource)) * sizeof(ANSICHAR));
+				delete Ar;
+			}
+		}
+
+		if (bSavedSuccessfully && ENABLE_IMAGINATION_COMPILER)
+		{
+			const FString Arguments = CreateGLSLES2CompilerArguments(GLSLSourceFile, TEXT("ASM.txt"), Frequency, false);
+
+			FString StdOut;
+			FString StdErr;
+			int32 ReturnCode = 0;
+
+			// Run the PowerVR shader compiler and wait for completion
+			FPlatformProcess::ExecProcess(GetGLSLES2CompilerExecutable(false), *Arguments, &ReturnCode, &StdOut, &StdErr);
+
+			if (ReturnCode >= 0)
+			{
+				ShaderOutput.bSucceeded = true;
+				ShaderOutput.Target = ShaderInput.Target;
+
+				BuildShaderOutput(ShaderOutput, ShaderInput, ShaderSource, SourceLen, GLSL_ES2);
+
+				// Parse the cycle count
+				const int32 CycleCountStringLength = FPlatformString::Strlen(TEXT("Cycle count: "));
+				const int32 CycleCountIndex = StdOut.Find(TEXT("Cycle count: "));
+
+				if (CycleCountIndex != INDEX_NONE && CycleCountIndex + CycleCountStringLength < StdOut.Len())
+				{
+					const int32 CycleCountEndIndex = StdOut.Find(TEXT("\n"), ESearchCase::IgnoreCase, ESearchDir::FromStart, CycleCountIndex + CycleCountStringLength);
+
+					if (CycleCountEndIndex != INDEX_NONE)
+					{
+						const FString InstructionSubstring = StdOut.Mid(CycleCountIndex + CycleCountStringLength, CycleCountEndIndex - (CycleCountIndex + CycleCountStringLength));
+						ShaderOutput.NumInstructions = FCString::Atoi(*InstructionSubstring);
+					}
+				}
+			}
+			else
+			{
+				ShaderOutput.bSucceeded = false;
+
+				FShaderCompilerError* NewError = new(ShaderOutput.Errors) FShaderCompilerError();
+				// Print the name of the generated glsl file so we can open it with a double click in the VS.Net output window
+				NewError->StrippedErrorMessage = FString::Printf(TEXT("%s \nPVR SDK glsl compiler for SGX543: %s"), *GLSLSourceFile, *StdOut);
+			}
+		}
+		else
+		{
+			ShaderOutput.bSucceeded = true;
+			ShaderOutput.Target = ShaderInput.Target;
+
+			BuildShaderOutput(ShaderOutput, ShaderInput, ShaderSource, SourceLen, GLSL_ES2);
+		}
+	}
+	else
+	{
+		ShaderOutput.bSucceeded = true;
+		ShaderOutput.Target = ShaderInput.Target;
+
+		BuildShaderOutput(ShaderOutput, ShaderInput, ShaderSource, SourceLen, GLSL_ES2);
 	}
 }
 
@@ -1044,90 +1216,139 @@ void FOpenGLFrontend::PrecompileShader(FShaderCompilerOutput& ShaderOutput, cons
 		return;
 	}
 
-
-	// Create the shader with the preprocessed source code.
-	void* ContextPtr;
-	void* PrevContextPtr;
-	int MajorVersion = 0;
-	int MinorVersion = 0;
-	ConvertOpenGLVersionFromGLSLVersion(Version, MajorVersion, MinorVersion);
-	PlatformInitOpenGL(ContextPtr, PrevContextPtr, MajorVersion, MinorVersion);
-
-	GLint SourceLen = FCStringAnsi::Strlen(ShaderSource);
-	GLuint Shader = glCreateShader(GLFrequency);
+	if (Version == GLSL_ES2 || Version == GLSL_ES2_WEBGL)
 	{
-		const GLchar* SourcePtr = ShaderSource;
-		glShaderSource(Shader, 1, &SourcePtr, &SourceLen);
+		PrecompileGLSLES2(ShaderOutput, ShaderInput, ShaderSource, Frequency);
 	}
-
-	// Compile and get results.
-	glCompileShader(Shader);
+	else
 	{
-		GLint CompileStatus;
-		glGetShaderiv(Shader, GL_COMPILE_STATUS, &CompileStatus);
-		if (CompileStatus == GL_TRUE)
+		// Create the shader with the preprocessed source code.
+		void* ContextPtr;
+		void* PrevContextPtr;
+		int MajorVersion = 0;
+		int MinorVersion = 0;
+		ConvertOpenGLVersionFromGLSLVersion(Version, MajorVersion, MinorVersion);
+		PlatformInitOpenGL(ContextPtr, PrevContextPtr, MajorVersion, MinorVersion);
+
+		GLint SourceLen = FCStringAnsi::Strlen(ShaderSource);
+		GLuint Shader = glCreateShader(GLFrequency);
 		{
-			ShaderOutput.Target = ShaderInput.Target;
-			BuildShaderOutput(
-				ShaderOutput,
-				ShaderInput,
-				ShaderSource,
-				(int32)SourceLen,
-				Version
-				);
+			const GLchar* SourcePtr = ShaderSource;
+			glShaderSource(Shader, 1, &SourcePtr, &SourceLen);
 		}
-		else
+
+		// Compile and get results.
+		glCompileShader(Shader);
 		{
-			GLint LogLength;
-			glGetShaderiv(Shader, GL_INFO_LOG_LENGTH, &LogLength);
-			if (LogLength > 1)
+			GLint CompileStatus;
+			glGetShaderiv(Shader, GL_COMPILE_STATUS, &CompileStatus);
+			if (CompileStatus == GL_TRUE)
 			{
-				TArray<ANSICHAR> RawCompileLog;
-				FString CompileLog;
-				TArray<FString> LogLines;
-
-				RawCompileLog.Empty(LogLength);
-				RawCompileLog.AddZeroed(LogLength);
-				glGetShaderInfoLog(Shader, LogLength, /*OutLength=*/ NULL, RawCompileLog.GetData());
-				CompileLog = ANSI_TO_TCHAR(RawCompileLog.GetData());
-				CompileLog.ParseIntoArray(LogLines, TEXT("\n"), true);
-
-				for (int32 Line = 0; Line < LogLines.Num(); ++Line)
-				{
-					ParseGlslError(ShaderOutput.Errors, LogLines[Line]);
-				}
-
-				if (ShaderOutput.Errors.Num() == 0)
-				{
-					FShaderCompilerError* NewError = new(ShaderOutput.Errors) FShaderCompilerError();
-					NewError->StrippedErrorMessage = FString::Printf(
-						TEXT("GLSL source:\n%sGL compile log: %s\n"),
-						ANSI_TO_TCHAR(ShaderSource),
-						ANSI_TO_TCHAR(RawCompileLog.GetData())
-						);
-				}
+				ShaderOutput.Target = ShaderInput.Target;
+				BuildShaderOutput(
+					ShaderOutput,
+					ShaderInput,
+					ShaderSource,
+					(int32)SourceLen,
+					Version
+					);
 			}
 			else
 			{
-				FShaderCompilerError* NewError = new(ShaderOutput.Errors) FShaderCompilerError();
-				NewError->StrippedErrorMessage = TEXT("Shader compile failed without errors.");
-			}
+				GLint LogLength;
+				glGetShaderiv(Shader, GL_INFO_LOG_LENGTH, &LogLength);
+				if (LogLength > 1)
+				{
+					TArray<ANSICHAR> RawCompileLog;
+					FString CompileLog;
+					TArray<FString> LogLines;
 
-			ShaderOutput.bSucceeded = false;
+					RawCompileLog.Empty(LogLength);
+					RawCompileLog.AddZeroed(LogLength);
+					glGetShaderInfoLog(Shader, LogLength, /*OutLength=*/ NULL, RawCompileLog.GetData());
+					CompileLog = ANSI_TO_TCHAR(RawCompileLog.GetData());
+					CompileLog.ParseIntoArray(LogLines, TEXT("\n"), true);
+
+					for (int32 Line = 0; Line < LogLines.Num(); ++Line)
+					{
+						ParseGlslError(ShaderOutput.Errors, LogLines[Line]);
+					}
+
+					if (ShaderOutput.Errors.Num() == 0)
+					{
+						FShaderCompilerError* NewError = new(ShaderOutput.Errors) FShaderCompilerError();
+						NewError->StrippedErrorMessage = FString::Printf(
+							TEXT("GLSL source:\n%sGL compile log: %s\n"),
+							ANSI_TO_TCHAR(ShaderSource),
+							ANSI_TO_TCHAR(RawCompileLog.GetData())
+							);
+					}
+				}
+				else
+				{
+					FShaderCompilerError* NewError = new(ShaderOutput.Errors) FShaderCompilerError();
+					NewError->StrippedErrorMessage = TEXT("Shader compile failed without errors.");
+				}
+
+				ShaderOutput.bSucceeded = false;
+			}
 		}
+		glDeleteShader(Shader);
+		PlatformReleaseOpenGL(ContextPtr, PrevContextPtr);
 	}
-	glDeleteShader(Shader);
-	PlatformReleaseOpenGL(ContextPtr, PrevContextPtr);
 }
 
 void FOpenGLFrontend::SetupPerVersionCompilationEnvironment(GLSLVersion Version, FShaderCompilerDefinitions& AdditionalDefines, EHlslCompileTarget& HlslCompilerTarget)
-{
+	{
 	switch (Version)
 	{
 		case GLSL_ES3_1_ANDROID:
 			AdditionalDefines.SetDefine(TEXT("COMPILER_GLSL_ES3_1"), 1);
 			AdditionalDefines.SetDefine(TEXT("ES3_1_PROFILE"), 1);
 			HlslCompilerTarget = HCT_FeatureLevelES3_1;
+			break;
+
+		case GLSL_310_ES_EXT:
+			AdditionalDefines.SetDefine(TEXT("COMPILER_GLSL"), 1);
+			AdditionalDefines.SetDefine(TEXT("COMPILER_GLSL_ES3_1_EXT"), 1);
+			AdditionalDefines.SetDefine(TEXT("ESDEFERRED_PROFILE"), 1);
+			AdditionalDefines.SetDefine(TEXT("GL4_PROFILE"), 1);
+			HlslCompilerTarget = HCT_FeatureLevelES3_1Ext;
+			break;
+
+		case GLSL_430:
+			AdditionalDefines.SetDefine(TEXT("COMPILER_GLSL"), 1);
+			AdditionalDefines.SetDefine(TEXT("GL4_PROFILE"), 1);
+			HlslCompilerTarget = HCT_FeatureLevelSM5;
+			break;
+
+		case GLSL_150:
+			AdditionalDefines.SetDefine(TEXT("COMPILER_GLSL"), 1);
+			AdditionalDefines.SetDefine(TEXT("GL3_PROFILE"), 1);
+			HlslCompilerTarget = HCT_FeatureLevelSM4;
+			break;
+
+		case GLSL_ES2_WEBGL:
+			AdditionalDefines.SetDefine(TEXT("WEBGL"), 1);
+			AdditionalDefines.SetDefine(TEXT("COMPILER_GLSL_ES2"), 1);
+			AdditionalDefines.SetDefine(TEXT("ES2_PROFILE"), 1);
+			HlslCompilerTarget = HCT_FeatureLevelES2;
+			AdditionalDefines.SetDefine(TEXT("row_major"), TEXT(""));
+			break;
+
+		case GLSL_ES2:
+			AdditionalDefines.SetDefine(TEXT("COMPILER_GLSL_ES2"), 1);
+			AdditionalDefines.SetDefine(TEXT("ES2_PROFILE"), 1);
+			HlslCompilerTarget = HCT_FeatureLevelES2;
+			AdditionalDefines.SetDefine(TEXT("row_major"), TEXT(""));
+			break;
+
+		case GLSL_150_ES2:
+		case GLSL_150_ES2_NOUB:
+			AdditionalDefines.SetDefine(TEXT("COMPILER_GLSL"), 1);
+			AdditionalDefines.SetDefine(TEXT("ES2_PROFILE"), 1);
+			HlslCompilerTarget = HCT_FeatureLevelSM4;
+			AdditionalDefines.SetDefine(TEXT("row_major"), TEXT(""));
 			break;
 
 		case GLSL_150_ES3_1:
@@ -1146,19 +1367,47 @@ void FOpenGLFrontend::SetupPerVersionCompilationEnvironment(GLSLVersion Version,
 
 uint32 FOpenGLFrontend::GetMaxSamplers(GLSLVersion Version)
 {
-	return 16;
+	switch (Version)
+	{
+		// Assume that GL4.3 targets support 32 samplers as we don't currently support separate sampler objects
+		case GLSL_430:
+			return 32;
+
+		// mimicing the old GetFeatureLevelMaxTextureSamplers for the rest
+		case GLSL_ES2:
+		case GLSL_150_ES2:
+		case GLSL_150_ES2_NOUB:
+			return 8;
+
+		case GLSL_ES2_WEBGL:
+			// For WebGL 1 and 2, GL_MAX_TEXTURE_IMAGE_UNITS is generally much higher than on old GLES 2 Android
+			// devices, but we only know the limit at runtime. Assume a decent desktop default.
+			return 32;
+
+		default:
+			return 16;
+	}
 }
 
 uint32 FOpenGLFrontend::CalculateCrossCompilerFlags(GLSLVersion Version, const TArray<uint32>& CompilerFlags)
 {
 	uint32  CCFlags = HLSLCC_NoPreprocess | HLSLCC_PackUniforms | HLSLCC_DX11ClipSpace | HLSLCC_RetainSizes;
+	if (IsES2Platform(Version) && !IsPCES2Platform(Version))
+	{
+		CCFlags |= HLSLCC_FlattenUniformBuffers | HLSLCC_FlattenUniformBufferStructures;
+		// Currently only enabled for ES2, as there are still features to implement for SM4+ (atomics, global store, UAVs, etc)
+		CCFlags |= HLSLCC_ApplyCommonSubexpressionElimination;
+		CCFlags |= HLSLCC_ExpandUBMemberArrays;
+	}
 
-	if (CompilerFlags.Contains(CFLAG_UseFullPrecisionInPS))
+	if (CompilerFlags.Contains(CFLAG_UseFullPrecisionInPS) || Version == GLSL_ES2_WEBGL)
 	{
 		CCFlags |= HLSLCC_UseFullPrecisionInPS;
 	}
 
-	if (CompilerFlags.Contains(CFLAG_UseEmulatedUB))
+	if (Version == GLSL_150_ES2_NOUB ||
+		CompilerFlags.Contains(CFLAG_FeatureLevelES31) ||
+		CompilerFlags.Contains(CFLAG_UseEmulatedUB))
 	{
 		CCFlags |= HLSLCC_FlattenUniformBuffers | HLSLCC_FlattenUniformBufferStructures;
 		// Enabling HLSLCC_GroupFlattenedUniformBuffers, see FORT-159483.
@@ -1181,21 +1430,19 @@ uint32 FOpenGLFrontend::CalculateCrossCompilerFlags(GLSLVersion Version, const T
 
 FGlslCodeBackend* FOpenGLFrontend::CreateBackend(GLSLVersion Version, uint32 CCFlags, EHlslCompileTarget HlslCompilerTarget)
 {
-	return new FGlslCodeBackend(CCFlags, HlslCompilerTarget);
+	return new FGlslCodeBackend(CCFlags, HlslCompilerTarget, Version == GLSL_ES2_WEBGL);
 }
 
-class FGlsl430LanguageSpec : public FGlslLanguageSpec
+FGlslLanguageSpec* FOpenGLFrontend::CreateLanguageSpec(GLSLVersion Version)
 {
-public:
-	FGlsl430LanguageSpec(bool bInDefaultPrecisionIsHalf)
-		: FGlslLanguageSpec(bInDefaultPrecisionIsHalf)
-	{}
-	virtual bool EmulateStructuredWithTypedBuffers() const override { return false; }
-};
+	bool bIsES2 = (IsES2Platform(Version) && !IsPCES2Platform(Version));
+	bool bIsWebGL = (Version == GLSL_ES2_WEBGL);
+					// For backwards compatibility when targeting WebGL 2 shaders,
+					// generate GLES2/WebGL 1 style shaders but with GLES3/WebGL 2
+					// constructs available.
+	bool bIsES31 = (Version == GLSL_150_ES3_1 || Version == GLSL_ES3_1_ANDROID);
 
-FGlslLanguageSpec* FOpenGLFrontend::CreateLanguageSpec(GLSLVersion Version, bool bDefaultPrecisionIsHalf)
-{
-	return new FGlslLanguageSpec(bDefaultPrecisionIsHalf);
+	return new FGlslLanguageSpec(bIsES2, bIsWebGL, bIsES31);
 }
 
 #if USE_DXC
@@ -1215,24 +1462,24 @@ static void CompileShaderDXC(FShaderCompilerInput const& Input, FShaderCompilerO
 	std::string FileName(TCHAR_TO_UTF8(*Input.VirtualSourceFilePath));
 	std::string EntryPointName(TCHAR_TO_UTF8(*Input.EntryPointName));
 
-	SourceData = "float4 gl_FragColor;\nfloat4 gl_LastFragColorARM;\nfloat gl_LastFragDepthARM;\nbool ARM_shader_framebuffer_fetch;\nbool ARM_shader_framebuffer_fetch_depth_stencil;\nfloat4 FramebufferFetchES2() { if(!ARM_shader_framebuffer_fetch) { return gl_FragColor; } else { return gl_LastFragColorARM; } }\nfloat DepthbufferFetchES2() { return (!ARM_shader_framebuffer_fetch_depth_stencil ? 0.0 : gl_LastFragDepthARM); }\n" + SourceData;
+	SourceData = "float4 gl_FragColor;\nfloat4 gl_LastFragColorARM;\nfloat gl_LastFragDepthARM;\nbool ARM_shader_framebuffer_fetch;\nbool ARM_shader_framebuffer_fetch_depth_stencil;\nfloat4 FramebufferFetchES2() { if(!ARM_shader_framebuffer_fetch) { return gl_FragColor; } else { return gl_LastFragColorARM; } }\nfloat DepthbufferFetchES2(float OptionalDepth, float C1, float C2) { return (!ARM_shader_framebuffer_fetch_depth_stencil ? OptionalDepth : (clamp(1.0/(gl_LastFragDepthARM*C1-C2), 0.0, 65000.0))); }\n" + SourceData;
 
 
 	std::string FrameBufferDefines = "#ifdef UE_EXT_shader_framebuffer_fetch\n"
 	"#define _Globals_ARM_shader_framebuffer_fetch 0\n"
 	"#define FRAME_BUFFERFETCH_STORAGE_QUALIFIER inout\n"
 	"#define _Globals_gl_FragColor out_var_SV_Target0\n"
-	"#define _Globals_gl_LastFragColorARM vec4(0.0, 0.0, 0.0, 0.0)\n"
+	"#define _Globals_gl_LastFragColorARM vec4(65000.0, 65000.0, 65000.0, 65000.0)\n"
 	"#elif defined( GL_ARM_shader_framebuffer_fetch)\n"
 	"#define _Globals_ARM_shader_framebuffer_fetch 1\n"
 	"#define FRAME_BUFFERFETCH_STORAGE_QUALIFIER out\n"
-	"#define _Globals_gl_FragColor vec4(0.0, 0.0, 0.0, 0.0)\n"
+	"#define _Globals_gl_FragColor vec4(65000.0, 65000.0, 65000.0, 65000.0)\n"
 	"#define _Globals_gl_LastFragColorARM gl_LastFragDepthARM\n"
 	"#else\n"
 	"#define FRAME_BUFFERFETCH_STORAGE_QUALIFIER out\n"
 	"#define _Globals_ARM_shader_framebuffer_fetch 0\n"
-	"#define _Globals_gl_FragColor vec4(0.0, 0.0, 0.0, 0.0)\n"
-	"#define _Globals_gl_LastFragColorARM vec4(0.0, 0.0, 0.0, 0.0)\n"
+	"#define _Globals_gl_FragColor vec4(65000.0, 65000.0, 65000.0, 65000.0)\n"
+	"#define _Globals_gl_LastFragColorARM vec4(65000.0, 65000.0, 65000.0, 65000.0)\n"
 	"#endif\n"
 	"#ifdef GL_ARM_shader_framebuffer_fetch_depth_stencil\n"
 	"	#define _Globals_ARM_shader_framebuffer_fetch_depth_stencil 1\n"
@@ -1778,7 +2025,7 @@ static void CompileShaderDXC(FShaderCompilerInput const& Input, FShaderCompilerO
 
 				for (auto const& Var : OutputVars)
 				{
-					if (Var->storage_class == SpvStorageClassOutput && Var->built_in == -1 && !CrossCompiler::FShaderConductorContext::IsIntermediateSpirvOutputVariable(Var->name))
+					if (Var->storage_class == SpvStorageClassOutput && Var->built_in == -1)
 					{
 						if (Frequency == HSF_PixelShader && strstr(Var->name, "SV_Target"))
 						{
@@ -2004,7 +2251,10 @@ static void CompileShaderDXC(FShaderCompilerInput const& Input, FShaderCompilerO
 
 		switch (Version)
 		{
+		case GLSL_150_ES2:	// ES2 Emulation
+		case GLSL_150_ES2_NOUB:	// ES2 Emulation with NoUBs
 		case GLSL_150_ES3_1:	// ES3.1 Emulation
+		case GLSL_150:
 			TargetDesc.version = "330";
 			TargetDesc.language = ShaderConductor::ShadingLanguage::Glsl;
 			break;
@@ -2012,10 +2262,17 @@ static void CompileShaderDXC(FShaderCompilerInput const& Input, FShaderCompilerO
 			TargetDesc.version = "320";
 			TargetDesc.language = ShaderConductor::ShadingLanguage::Essl;
 			break;
+		case GLSL_430:
 		case GLSL_SWITCH:
 			TargetDesc.version = "430";
 			TargetDesc.language = ShaderConductor::ShadingLanguage::Glsl;
 			break;
+		case GLSL_ES2:
+		case GLSL_ES2_WEBGL:
+			TargetDesc.version = "210";
+			TargetDesc.language = ShaderConductor::ShadingLanguage::Essl;
+			break;
+		case GLSL_310_ES_EXT:
 		case GLSL_ES3_1_ANDROID:
 		default:
 			TargetDesc.version = "310";
@@ -2038,12 +2295,14 @@ static void CompileShaderDXC(FShaderCompilerInput const& Input, FShaderCompilerO
 			Pos = PreprocessedShader.Find(TEXT("TextureExternal"), ESearchCase::CaseSensitive, ESearchDir::FromStart, Pos + 15);
 			if (Pos != INDEX_NONE)
 			{
-#if PLATFORM_WINDOWS
-				if (swscanf_s(&PreprocessedShader[Pos], TEXT("TextureExternal %ls"), TextureExternalName, 256) == 1)
-#elif PLATFORM_MAC
+#if !PLATFORM_WINDOWS
+	#if !PLATFORM_MAC
+				if (swscanf(&PreprocessedShader[Pos], TEXT("TextureExternal %ls"), TextureExternalName) == 1)
+	#else
 				if (sscanf(TCHAR_TO_ANSI(&PreprocessedShader[Pos]), "TextureExternal %s", TextureExternalName) == 1)
-#else // PLATFORM_LINUX
-				if (swscanf(TCHAR_TO_WCHAR(&PreprocessedShader[Pos]), L"TextureExternal %ls", TextureExternalName) == 1)
+	#endif
+#else
+				if (swscanf_s(&PreprocessedShader[Pos], TEXT("TextureExternal %ls"), TextureExternalName, 256) == 1)
 #endif
 				{
 					FString Name = TextureExternalName;
@@ -2129,6 +2388,15 @@ static void CompileShaderDXC(FShaderCompilerInput const& Input, FShaderCompilerO
 					GlslSource.insert(LayoutPos, DefineString);
 				}
 			}
+
+			std::string LocationString = "layout(location = ";
+			size_t LocationPos = 0;
+			do
+			{
+				LocationPos = GlslSource.find(LocationString, LocationPos);
+				if (LocationPos != std::string::npos)
+					GlslSource.replace(LocationPos, LocationString.length(), "INTERFACE_LOCATION(");
+			} while (LocationPos != std::string::npos);
 
 			std::string GlobalsSearchString = "uniform type_Globals _Globals;";
 			std::string GlobalsString = "//";
@@ -2308,6 +2576,12 @@ void FOpenGLFrontend::CompileShader(const FShaderCompilerInput& Input,FShaderCom
 	EHlslCompileTarget HlslCompilerTarget = HCT_InvalidTarget;
 	ECompilerFlags PlatformFlowControl = CFLAG_AvoidFlowControl;
 
+	const bool bCompileES2With310 = (Version == GLSL_ES2 && Input.Environment.CompilerFlags.Contains(CFLAG_FeatureLevelES31));
+	if (bCompileES2With310)
+	{
+		Version = GLSL_ES3_1_ANDROID;
+	}
+
 	// set up compiler env based on version
 	SetupPerVersionCompilationEnvironment(Version, AdditionalDefines, HlslCompilerTarget);
 
@@ -2362,7 +2636,7 @@ void FOpenGLFrontend::CompileShader(const FShaderCompilerInput& Input,FShaderCom
 		bIsSM5 ? HSF_HullShader : HSF_InvalidFrequency,
 		bIsSM5 ? HSF_DomainShader : HSF_InvalidFrequency,
 		HSF_PixelShader,
-		HSF_GeometryShader,
+		IsES2Platform(Version) ? HSF_InvalidFrequency : HSF_GeometryShader,
 		RHISupportsComputeShaders(Input.Target.GetPlatform()) ? HSF_ComputeShader : HSF_InvalidFrequency
 	};
 
@@ -2375,14 +2649,6 @@ void FOpenGLFrontend::CompileShader(const FShaderCompilerInput& Input,FShaderCom
 			TEXT("%s shaders not supported for use in OpenGL."),
 			CrossCompiler::GetFrequencyName((EShaderFrequency)Input.Target.Frequency)
 			);
-		return;
-	}
-
-	FShaderParameterParser ShaderParameterParser;
-	if (!ShaderParameterParser.ParseAndMoveShaderParametersToRootConstantBuffer(
-		Input, Output, PreprocessedShader, /* ConstantBufferType = */ nullptr))
-	{
-		// The FShaderParameterParser will add any relevant errors.
 		return;
 	}
 
@@ -2405,7 +2671,23 @@ void FOpenGLFrontend::CompileShader(const FShaderCompilerInput& Input,FShaderCom
 		// Write out the preprocessed file and a batch file to compile it if requested (DumpDebugInfoPath is valid)
 		if (bDumpDebugInfo)
 		{
-			DumpDebugUSF(Input, PreprocessedShader, CCFlags);
+			FArchive* FileWriter = IFileManager::Get().CreateFileWriter(*(Input.DumpDebugInfoPath / Input.GetSourceFilename()));
+			if (FileWriter)
+			{
+				auto AnsiSourceFile = StringCast<ANSICHAR>(*PreprocessedShader);
+				FileWriter->Serialize((ANSICHAR*)AnsiSourceFile.Get(), AnsiSourceFile.Length());
+				{
+					FString Line = CrossCompiler::CreateResourceTableFromEnvironment(Input.Environment);
+
+					Line += TEXT("#if 0 /*DIRECT COMPILE*/\n");
+					Line += CreateShaderCompilerWorkerDirectCommandLine(Input, CCFlags);
+					Line += TEXT("\n#endif /*DIRECT COMPILE*/\n");
+
+					FileWriter->Serialize(TCHAR_TO_ANSI(*Line), Line.Len());
+				}
+				FileWriter->Close();
+				delete FileWriter;
+			}
 
 			if (Input.bGenerateDirectCompileFile)
 			{
@@ -2414,9 +2696,7 @@ void FOpenGLFrontend::CompileShader(const FShaderCompilerInput& Input,FShaderCom
 		}
 
 		FGlslCodeBackend* BackEnd = CreateBackend(Version, CCFlags, HlslCompilerTarget);
-
-		bool bDefaultPrecisionIsHalf = (CCFlags & HLSLCC_UseFullPrecisionInPS) == 0;
-		FGlslLanguageSpec* LanguageSpec = CreateLanguageSpec(Version, bDefaultPrecisionIsHalf);
+		FGlslLanguageSpec* LanguageSpec = CreateLanguageSpec(Version);
 
 		FHlslCrossCompilerContext CrossCompilerContext(CCFlags, Frequency, HlslCompilerTarget);
 		if (CrossCompilerContext.Init(TCHAR_TO_ANSI(*Input.VirtualSourceFilePath), LanguageSpec))
@@ -2436,10 +2716,39 @@ void FOpenGLFrontend::CompileShader(const FShaderCompilerInput& Input,FShaderCom
 
 	if (Result != 0)
 	{
-		static const bool bDirectCompile = FParse::Param(FCommandLine::Get(), TEXT("directcompile"));
-		if (bDirectCompile)
+		int32 GlslSourceLen = GlslShaderSource ? FCStringAnsi::Strlen(GlslShaderSource) : 0;
+		if (bDumpDebugInfo)
 		{
-			FPlatformMisc::LowLevelOutputDebugStringf(TEXT("%s\n"), ANSI_TO_TCHAR(GlslShaderSource));
+			const FString GLSLFile = (Input.DumpDebugInfoPath / TEXT("Output.glsl"));
+			const FString GLBatchFileContents = CreateCommandLineGLSLES2(GLSLFile, (Input.DumpDebugInfoPath / TEXT("Output.asm")), Version, Frequency, false);
+			if (!GLBatchFileContents.IsEmpty())
+			{
+				FFileHelper::SaveStringToFile(GLBatchFileContents, *(Input.DumpDebugInfoPath / TEXT("GLSLCompile.bat")));
+			}
+
+			const FString NDABatchFileContents = CreateCommandLineGLSLES2(GLSLFile, (Input.DumpDebugInfoPath / TEXT("Output.asm")), Version, Frequency, true);
+			if (!NDABatchFileContents.IsEmpty())
+			{
+				FFileHelper::SaveStringToFile(NDABatchFileContents, *(Input.DumpDebugInfoPath / TEXT("NDAGLSLCompile.bat")));
+			}
+
+			if (GlslSourceLen > 0)
+			{
+				uint32 Len = FCStringAnsi::Strlen(TCHAR_TO_ANSI(*Input.VirtualSourceFilePath)) + FCStringAnsi::Strlen(TCHAR_TO_ANSI(*Input.EntryPointName)) + FCStringAnsi::Strlen(GlslShaderSource) + 20;
+				char* Dest = (char*)malloc(Len);
+				FCStringAnsi::Snprintf(Dest, Len, "// ! %s:%s\n%s", (const char*)TCHAR_TO_ANSI(*Input.VirtualSourceFilePath), (const char*)TCHAR_TO_ANSI(*Input.EntryPointName), (const char*)GlslShaderSource);
+				free(GlslShaderSource);
+				GlslShaderSource = Dest;
+				GlslSourceLen = FCStringAnsi::Strlen(GlslShaderSource);
+
+				FArchive* FileWriter = IFileManager::Get().CreateFileWriter(*GLSLFile);
+				if (FileWriter)
+				{
+					FileWriter->Serialize(GlslShaderSource,GlslSourceLen+1);
+					FileWriter->Close();
+					delete FileWriter;
+				}
+			}
 		}
 
 #if VALIDATE_GLSL_WITH_DRIVER
@@ -2452,6 +2761,17 @@ void FOpenGLFrontend::CompileShader(const FShaderCompilerInput& Input,FShaderCom
 	}
 	else
 	{
+		if (bDumpDebugInfo)
+		{
+			// Generate the batch file to help track down cross-compiler issues if necessary
+			const FString GLSLFile = (Input.DumpDebugInfoPath / TEXT("Output.glsl"));
+			const FString GLBatchFileContents = CreateCommandLineGLSLES2(GLSLFile, (Input.DumpDebugInfoPath / TEXT("Output.asm")), Version, Frequency, false);
+			if (!GLBatchFileContents.IsEmpty())
+			{
+				FFileHelper::SaveStringToFile(GLBatchFileContents, *(Input.DumpDebugInfoPath / TEXT("GLSLCompile.bat")));
+			}
+		}
+
 		FString Tmp = ANSI_TO_TCHAR(ErrorLog);
 		TArray<FString> ErrorLines;
 		Tmp.ParseIntoArray(ErrorLines, TEXT("\n"), true);
@@ -2470,9 +2790,6 @@ void FOpenGLFrontend::CompileShader(const FShaderCompilerInput& Input,FShaderCom
 	{
 		free(ErrorLog);
 	}
-
-	// Do not validate as global halfN != UB's halfN
-	//ShaderParameterParser.ValidateShaderParameterTypes(Input, Output);
 }
 
 enum class EPlatformType
@@ -2486,24 +2803,42 @@ enum class EPlatformType
 struct FDeviceCapabilities
 {
 	EPlatformType TargetPlatform = EPlatformType::Android;
+	bool bUseES30ShadingLanguage;
 	bool bSupportsSeparateShaderObjects;
 	bool bRequiresUEShaderFramebufferFetchDef;
+	bool bRequiresDontEmitPrecisionForTextureSamplers;
+	bool bSupportsShaderTextureLod;
+	bool bSupportsShaderTextureCubeLod;
+	bool bRequiresTextureCubeLodEXTToTextureCubeLodDefine;
 };
 
 void FOpenGLFrontend::FillDeviceCapsOfflineCompilation(struct FDeviceCapabilities& Capabilities, const GLSLVersion ShaderVersion) const
 {
 	FMemory::Memzero(Capabilities);
 
-	if (ShaderVersion == GLSL_ES3_1_ANDROID)
+	if (ShaderVersion == GLSL_ES2 || ShaderVersion == GLSL_ES3_1_ANDROID)
 	{
 		Capabilities.TargetPlatform = EPlatformType::Android;
+
+		Capabilities.bUseES30ShadingLanguage = ShaderVersion == GLSL_ES3_1_ANDROID;
 		Capabilities.bRequiresUEShaderFramebufferFetchDef = true;
+		Capabilities.bRequiresDontEmitPrecisionForTextureSamplers = false;
+	}
+	else if (ShaderVersion == GLSL_ES2_WEBGL)
+	{
+		Capabilities.TargetPlatform = EPlatformType::Web;
+		Capabilities.bUseES30ShadingLanguage = false; // make sure this matches HTML5OpenGL.h -> FOpenGL::UseES30ShadingLanguage();
 	}
 	else
 	{
 		Capabilities.TargetPlatform = EPlatformType::Desktop;
+
 		Capabilities.bSupportsSeparateShaderObjects = true;
 	}
+
+	Capabilities.bSupportsShaderTextureLod = true;
+	Capabilities.bSupportsShaderTextureCubeLod = false;
+	Capabilities.bRequiresTextureCubeLodEXTToTextureCubeLodDefine = true;
 }
 
 static bool MoveHashLines(FString& Destination, FString &Source)
@@ -2543,14 +2878,44 @@ static bool MoveHashLines(FString& Destination, FString &Source)
 	return bFound;
 }
 
+static bool OpenGLShaderPlatformNeedsBindLocation(const GLSLVersion InShaderPlatform)
+{
+	switch (InShaderPlatform)
+	{
+		case GLSL_430:
+		case GLSL_310_ES_EXT:
+		case GLSL_ES3_1_ANDROID:
+		case GLSL_150_ES3_1:
+			return false;
+
+		case GLSL_150:
+		case GLSL_150_ES2:
+		case GLSL_ES2:
+		case GLSL_150_ES2_NOUB:
+		case GLSL_ES2_WEBGL:
+			return true;
+
+		default:
+			return true;
+		break;
+	}
+}
+
 inline bool OpenGLShaderPlatformSeparable(const GLSLVersion InShaderPlatform)
 {
 	switch (InShaderPlatform)
 	{
+		case GLSL_430:
+		case GLSL_150:
+		case GLSL_150_ES2:
+		case GLSL_150_ES2_NOUB:
 		case GLSL_150_ES3_1:
 			return true;
 
+		case GLSL_310_ES_EXT:
 		case GLSL_ES3_1_ANDROID:
+		case GLSL_ES2:
+		case GLSL_ES2_WEBGL:
 			return false;
 
 		default:
@@ -2567,19 +2932,47 @@ TSharedPtr<ANSICHAR> FOpenGLFrontend::PrepareCodeForOfflineCompilation(const GLS
 	FDeviceCapabilities Capabilities;
 	FillDeviceCapsOfflineCompilation(Capabilities, ShaderVersion);
 
+	// Whether shader was compiled for ES 3.1
+	const TCHAR *ES310Version = TEXT("#version 310 es");
+	const bool bES31 = OriginalShaderSource.Find(ES310Version) != INDEX_NONE;
+
 	// Whether we need to emit mobile multi-view code or not.
 	const bool bEmitMobileMultiView = OriginalShaderSource.Find(TEXT("gl_ViewID_OVR")) != INDEX_NONE;
 
 	// Whether we need to emit texture external code or not.
 	const bool bEmitTextureExternal = OriginalShaderSource.Find(TEXT("samplerExternalOES")) != INDEX_NONE;
 
+	const bool bUseES30ShadingLanguage = Capabilities.bUseES30ShadingLanguage;
+
 	bool bNeedsExtDrawInstancedDefine = false;
 	if (Capabilities.TargetPlatform == EPlatformType::Android || Capabilities.TargetPlatform == EPlatformType::Web)
 	{
-		const TCHAR *ES310Version = TEXT("#version 310 es");
-		StrOutSource.Append(ES310Version);
-		StrOutSource.Append(TEXT("\n"));
-		OriginalShaderSource.RemoveFromStart(ES310Version);
+		bNeedsExtDrawInstancedDefine = !bES31;
+		if (bES31)
+		{
+			StrOutSource.Append(ES310Version);
+			StrOutSource.Append(TEXT("\n"));
+			OriginalShaderSource.RemoveFromStart(ES310Version);
+		}
+		else if (IsES2Platform(ShaderVersion))
+		{
+			StrOutSource.Append(TEXT("#version 100\n"));
+			OriginalShaderSource.RemoveFromStart(TEXT("#version 100"));
+		}
+	}
+	else if (Capabilities.TargetPlatform == EPlatformType::IOS)
+	{
+		bNeedsExtDrawInstancedDefine = true;
+		StrOutSource.Append(TEXT("#version 100\n"));
+		OriginalShaderSource.RemoveFromStart(TEXT("#version 100"));
+	}
+
+	if (bNeedsExtDrawInstancedDefine)
+	{
+		// Check for the GL_EXT_draw_instanced extension if necessary (version < 300)
+		StrOutSource.Append(TEXT("#ifdef GL_EXT_draw_instanced\n"));
+		StrOutSource.Append(TEXT("#define UE_EXT_draw_instanced 1\n"));
+		StrOutSource.Append(TEXT("#endif\n"));
 	}
 
 	const GLenum TypeEnum = GLFrequencyTable[Frequency];
@@ -2587,8 +2980,9 @@ TSharedPtr<ANSICHAR> FOpenGLFrontend::PrepareCodeForOfflineCompilation(const GLS
 	// This is the place to insert such engine preprocessor defines, immediately after the glsl version declaration.
 	if (Capabilities.bRequiresUEShaderFramebufferFetchDef && TypeEnum == GL_FRAGMENT_SHADER)
 	{
-		// Mali offline shader compiler does not support GL_EXT_shader_framebuffer_fetch
-		//StrOutSource.Append(TEXT("#define UE_EXT_shader_framebuffer_fetch 1\n"));
+		// Some devices (Zenfone5) support GL_EXT_shader_framebuffer_fetch but do not define GL_EXT_shader_framebuffer_fetch in GLSL compiler
+		// We can't define anything with GL_, so we use UE_EXT_shader_framebuffer_fetch to enable frame buffer fetch
+		StrOutSource.Append(TEXT("#define UE_EXT_shader_framebuffer_fetch 1\n"));
 	}
 
 	if (bEmitMobileMultiView)
@@ -2606,28 +3000,126 @@ TSharedPtr<ANSICHAR> FOpenGLFrontend::PrepareCodeForOfflineCompilation(const GLS
 		StrOutSource.Append(TEXT("#define samplerExternalOES sampler2D\n"));
 	}
 
-	// Move version tag & extensions before beginning all other operations
-	MoveHashLines(StrOutSource, OriginalShaderSource);
+	// Only desktop with separable shader platform can use GL_ARB_separate_shader_objects for reduced shader compile/link hitches
+	// however ES3.1 relies on layout(location=) support
+	bool const bNeedsBindLocation = OpenGLShaderPlatformNeedsBindLocation(ShaderVersion) && !bES31;
+	if (OpenGLShaderPlatformSeparable(ShaderVersion) || !bNeedsBindLocation)
+	{
+		// Move version tag & extensions before beginning all other operations
+		MoveHashLines(StrOutSource, OriginalShaderSource);
 
-	// OpenGL SM5 shader platforms require location declarations for the layout, but don't necessarily use SSOs
-	if (Capabilities.TargetPlatform == EPlatformType::Desktop)
-	{
-		StrOutSource.Append(TEXT("#extension GL_ARB_separate_shader_objects : enable\n"));
-		StrOutSource.Append(TEXT("#define INTERFACE_BLOCK(Pos, Interp, Modifiers, Semantic, PreType, PostType) layout(location=Pos) Interp Modifiers struct { PreType PostType; }\n"));
-	}
-	else
-	{
-		StrOutSource.Append(TEXT("#define INTERFACE_BLOCK(Pos, Interp, Modifiers, Semantic, PreType, PostType) layout(location=Pos) Modifiers Semantic { PreType PostType; }\n"));
-	}
-
-	if (Capabilities.TargetPlatform == EPlatformType::Desktop)
-	{
-		// If we're running <= featurelevel es3.1 shaders then enable this extension which adds support for uintBitsToFloat etc.
-		if (StrOutSource.Contains(TEXT("#version 150")))
+		// OpenGL SM5 shader platforms require location declarations for the layout, but don't necessarily use SSOs
+		if (Capabilities.bSupportsSeparateShaderObjects || !bNeedsBindLocation)
 		{
-			StrOutSource.Append(TEXT("\n\n"));
-			StrOutSource.Append(TEXT("#extension GL_ARB_gpu_shader5 : enable\n"));
-			StrOutSource.Append(TEXT("\n\n"));
+			if (Capabilities.TargetPlatform == EPlatformType::Desktop)
+			{
+				StrOutSource.Append(TEXT("#extension GL_ARB_separate_shader_objects : enable\n"));
+				StrOutSource.Append(TEXT("#define INTERFACE_LOCATION(Pos) layout(location=Pos) \n"));
+				StrOutSource.Append(TEXT("#define INTERFACE_BLOCK(Pos, Interp, Modifiers, Semantic, PreType, PostType) layout(location=Pos) Interp Modifiers struct { PreType PostType; }\n"));
+			}
+			else
+			{
+				StrOutSource.Append(TEXT("#define INTERFACE_LOCATION(Pos) layout(location=Pos) \n"));
+				StrOutSource.Append(TEXT("#define INTERFACE_BLOCK(Pos, Interp, Modifiers, Semantic, PreType, PostType) layout(location=Pos) Modifiers Semantic { PreType PostType; }\n"));
+			}
+		}
+		else
+		{
+			StrOutSource.Append(TEXT("#define INTERFACE_LOCATION(Pos) \n"));
+			StrOutSource.Append(TEXT("#define INTERFACE_BLOCK(Pos, Interp, Modifiers, Semantic, PreType, PostType) Modifiers Semantic { Interp PreType PostType; }\n"));
+		}
+	}
+
+	if (Capabilities.TargetPlatform == EPlatformType::Android)
+	{
+		if (IsES2Platform(ShaderVersion) && !bES31)
+		{
+			StrOutSource.Append(TEXT("#define HDR_32BPP_ENCODE_MODE 0.0\n"));
+
+			// This #define fixes compiler errors on Android (which doesn't seem to support textureCubeLodEXT)
+			if (bUseES30ShadingLanguage)
+			{
+				if (TypeEnum == GL_VERTEX_SHADER)
+				{
+					StrOutSource.Append(TEXT("#define texture2D texture \n"
+						"#define texture2DProj textureProj \n"
+						"#define texture2DLod textureLod \n"
+						"#define texture2DLodEXT textureLod \n"
+						"#define texture2DProjLod textureProjLod \n"
+						"#define textureCube texture \n"
+						"#define textureCubeLod textureLod \n"
+						"#define textureCubeLodEXT textureLod \n"
+						"#define texture3D texture \n"
+						"#define texture3DProj textureProj \n"
+						"#define texture3DLod textureLod \n"));
+
+					OriginalShaderSource.Replace(TEXT("attribute"), TEXT("in"));
+					OriginalShaderSource.Replace(TEXT("varying"), TEXT("out"));
+				}
+				else if (TypeEnum == GL_FRAGMENT_SHADER)
+				{
+					// #extension directives have to come before any non-# directives. Because
+					// we add non-# stuff below and the #extension directives
+					// get added to the incoming shader source we move any # directives
+					// to be right after the #version to ensure they are always correct.
+					MoveHashLines(StrOutSource, OriginalShaderSource);
+
+					StrOutSource.Append(TEXT("#define texture2D texture \n"
+						"#define texture2DProj textureProj \n"
+						"#define texture2DLod textureLod \n"
+						"#define texture2DLodEXT textureLod \n"
+						"#define texture2DProjLod textureProjLod \n"
+						"#define textureCube texture \n"
+						"#define textureCubeLod textureLod \n"
+						"#define textureCubeLodEXT textureLod \n"
+						"#define texture3D texture \n"
+						"#define texture3DProj textureProj \n"
+						"#define texture3DLod textureLod \n"
+						"#define texture3DProjLod textureProjLod \n"
+						"\n"
+						"#define gl_FragColor out_FragColor \n"
+						"#ifdef EXT_shader_framebuffer_fetch_enabled \n"
+						"inout mediump vec4 out_FragColor; \n"
+						"#else \n"
+						"out mediump vec4 out_FragColor; \n"
+						"#endif \n"));
+
+					OriginalShaderSource.Replace(TEXT("varying"), TEXT("in"));
+				}
+			}
+			else
+			{
+				if (TypeEnum == GL_FRAGMENT_SHADER)
+				{
+					// Apply #defines to deal with incompatible sections of code
+
+					if (Capabilities.bRequiresDontEmitPrecisionForTextureSamplers)
+					{
+						StrOutSource.Append(TEXT("#define DONTEMITSAMPLERDEFAULTPRECISION \n"));
+					}
+
+					if (!Capabilities.bSupportsShaderTextureLod || !Capabilities.bSupportsShaderTextureCubeLod)
+					{
+						StrOutSource.Append(TEXT("#define DONTEMITEXTENSIONSHADERTEXTURELODENABLE \n"
+							"#define texture2DLodEXT(a, b, c) texture2D(a, b) \n"
+							"#define textureCubeLodEXT(a, b, c) textureCube(a, b) \n"));
+					}
+					else if (Capabilities.bRequiresTextureCubeLodEXTToTextureCubeLodDefine)
+					{
+						StrOutSource.Append(TEXT("#define textureCubeLodEXT textureCubeLod \n"));
+					}
+				}
+			}
+		}
+	}
+	else if (Capabilities.TargetPlatform == EPlatformType::Web)
+	{
+		// HTML5 use case is much simpler, use a separate chunk of code from android. 
+		if (!Capabilities.bSupportsShaderTextureLod)
+		{
+			StrOutSource.Append(TEXT("#define DONTEMITEXTENSIONSHADERTEXTURELODENABLE \n"
+				"#define texture2DLodEXT(a, b, c) texture2D(a, b) \n"
+				"#define textureCubeLodEXT(a, b, c) textureCube(a, b) \n"));
 		}
 	}
 
@@ -2651,12 +3143,21 @@ bool FOpenGLFrontend::PlatformSupportsOfflineCompilation(const GLSLVersion Shade
 	switch (ShaderVersion)
 	{
 		// desktop
+		case GLSL_150:
+		case GLSL_430:
+		case GLSL_150_ES2:
+		case GLSL_150_ES2_NOUB:
 		case GLSL_150_ES3_1:
+		case GLSL_310_ES_EXT:
+		// web
+		case GLSL_ES2_WEBGL:
 		// switch
 		case GLSL_SWITCH:
 		case GLSL_SWITCH_FORWARD:
 			return false;
 		break;
+		// android
+		case GLSL_ES2:
 		case GLSL_ES3_1_ANDROID:
 			return true;
 		break;
@@ -2681,7 +3182,7 @@ void FOpenGLFrontend::CompileOffline(const FShaderCompilerInput& Input, FShaderC
 
 void FOpenGLFrontend::PlatformCompileOffline(const FShaderCompilerInput& Input, FShaderCompilerOutput& ShaderOutput, const ANSICHAR* ShaderSource, const GLSLVersion ShaderVersion)
 {
-	if (ShaderVersion == GLSL_ES3_1_ANDROID)
+	if (ShaderVersion == GLSL_ES2 || ShaderVersion == GLSL_ES3_1_ANDROID)
 	{
 		CompileOfflineMali(Input, ShaderOutput, ShaderSource, FPlatformString::Strlen(ShaderSource), false);
 	}

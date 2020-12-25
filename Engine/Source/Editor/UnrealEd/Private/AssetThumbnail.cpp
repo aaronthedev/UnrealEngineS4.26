@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AssetThumbnail.h"
 #include "Engine/Blueprint.h"
@@ -96,11 +96,10 @@ public:
 			AssetTypeActions = AssetToolsModule.Get().GetAssetTypeActionsForClass(Class).Pin();
 		}
 
-		AssetTypeColorOverride = InArgs._AssetTypeColorOverride;
 		AssetColor = FLinearColor::White;
-		if( AssetTypeColorOverride.IsSet() )
+		if( InArgs._AssetTypeColorOverride.IsSet() )
 		{
-			AssetColor = AssetTypeColorOverride.GetValue();
+			AssetColor = InArgs._AssetTypeColorOverride.GetValue();
 		}
 		else if ( AssetTypeActions.IsValid() )
 		{
@@ -355,18 +354,13 @@ private:
 
 		UpdateThumbnailClass();
 
-		AssetColor = FLinearColor::White;
-		if( AssetTypeColorOverride.IsSet() )
-		{
-			AssetColor = AssetTypeColorOverride.GetValue();
-		}
-		else if ( AssetTypeActions.IsValid() )
+		AssetColor = FLinearColor(1.f, 1.f, 1.f, 1.f);
+		if ( AssetTypeActions.IsValid() )
 		{
 			AssetColor = AssetTypeActions.Pin()->GetTypeColor();
+			AssetBackgroundWidget->SetBorderBackgroundColor(AssetColor.CopyWithNewOpacity(0.3f));
+			AssetColorStripWidget->SetBorderBackgroundColor(AssetColor);
 		}
-
-		AssetBackgroundWidget->SetBorderBackgroundColor(AssetColor.CopyWithNewOpacity(0.3f));
-		AssetColorStripWidget->SetBorderBackgroundColor(AssetColor);
 
 		UpdateThumbnailVisibilities();
 	}
@@ -591,7 +585,11 @@ private:
 			{
 				if (AssetData != nullptr)
 				{
-					ClassDisplayName = AssetTypeActions.Pin()->GetDisplayNameFromAssetData(*AssetData);
+					FAssetTypeActions_Base* BaseAssetTypeAction = static_cast<FAssetTypeActions_Base*>(AssetTypeActions.Pin().Get());
+					if (BaseAssetTypeAction != nullptr)
+					{
+						ClassDisplayName = BaseAssetTypeAction->GetDisplayNameFromAssetData(*AssetData);
+					}
 				}
 
 				if (ClassDisplayName.IsEmpty())
@@ -602,7 +600,7 @@ private:
 
 			if ( ClassDisplayName.IsEmpty() )
 			{
-				ClassDisplayName = Class->GetDisplayNameText();
+				ClassDisplayName = FText::FromString( FName::NameToDisplayString(*Class->GetName(), false) );
 			}
 		}
 
@@ -680,8 +678,6 @@ private:
 	FCurveHandle ViewportFadeCurve;
 
 	FLinearColor AssetColor;
-	TOptional<FLinearColor> AssetTypeColorOverride;
-
 	float WidthLastFrame;
 	float GenericThumbnailBorderPadding;
 	bool bHasRenderedThumbnail;
@@ -938,7 +934,7 @@ bool FAssetThumbnailPool::IsTickable() const
 void FAssetThumbnailPool::Tick( float DeltaTime )
 {
 	// If throttling do not tick unless drag dropping which could have a thumbnail as the cursor decorator
-	if (FSlateApplication::IsInitialized() && !FSlateApplication::Get().IsDragDropping() && !FSlateThrottleManager::Get().IsAllowingExpensiveTasks() && !FSlateApplication::Get().AnyMenusVisible())
+	if (!FSlateApplication::Get().IsDragDropping() && !FSlateThrottleManager::Get().IsAllowingExpensiveTasks() && !FSlateApplication::Get().AnyMenusVisible())
 	{
 		return;
 	}

@@ -81,16 +81,10 @@ void InitListHandler::flatten(const InitListExpr *expr) {
   }
 }
 
-// Note that we cannot use inst->getSourceLocation() for OpCompositeExtract.
-// For example, float3(sign(v4f.xyz - 2 * v4f.xyz)) is InitListExpr and the
-// result of "sign(v4f.xyz - 2 * v4f.xyz)" has its location as the start
-// location of "v4f.xyz". When InitListHandler::decompose() handles inst
-// for "sign(v4f.xyz - 2 * v4f.xyz)", inst->getSourceLocation() is the location
-// of "v4f.xyz". However, we must use the start location of "sign(" for
-// OpCompositeExtract.
-void InitListHandler::decompose(SpirvInstruction *inst,
-                                const SourceLocation &loc) {
+void InitListHandler::decompose(SpirvInstruction *inst) {
   const QualType type = inst->getAstResultType();
+  auto loc = inst->getSourceLocation();
+
   QualType elemType = {};
   uint32_t elemCount = 0, rowCount = 0, colCount = 0;
 
@@ -251,7 +245,7 @@ InitListHandler::createInitForBuiltinType(QualType type,
   initializers.pop_back();
 
   if (!init->getAstResultType()->isBuiltinType()) {
-    decompose(init, srcLoc);
+    decompose(init);
     return createInitForBuiltinType(type, srcLoc);
   }
 

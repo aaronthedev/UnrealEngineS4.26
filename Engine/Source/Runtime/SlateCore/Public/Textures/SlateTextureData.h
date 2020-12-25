@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -20,15 +20,6 @@ struct SLATECORE_API FSlateTextureData
 		, BytesPerPixel(InBytesPerPixel)
 	{
 		INC_MEMORY_STAT_BY( STAT_SlateTextureDataMemory, Bytes.GetAllocatedSize() );
-	}
-
-	FSlateTextureData(uint32 InWidth, uint32 InHeight, uint32 InBytesPerPixel, TArray<uint8>&& InBytes)
-		: Bytes(InBytes)
-		, Width(InWidth)
-		, Height(InHeight)
-		, BytesPerPixel(InBytesPerPixel)
-	{
-		INC_MEMORY_STAT_BY(STAT_SlateTextureDataMemory, Bytes.GetAllocatedSize());
 	}
 
 	/**

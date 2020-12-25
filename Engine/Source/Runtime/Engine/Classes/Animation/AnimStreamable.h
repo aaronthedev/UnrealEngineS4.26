@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  * Animation that can be streamed instead of being loaded completely
@@ -109,6 +109,12 @@ public:
 	UPROPERTY()
 	const UAnimSequence* SourceSequence;
 
+	/**
+	 * The compression scheme that was most recently used to compress this animation.
+	 */
+	UPROPERTY(Category = Compression, VisibleAnywhere)
+	class UAnimCompress* CompressionScheme;
+
 	UPROPERTY()
 	FGuid RawDataGuid;
 
@@ -170,10 +176,6 @@ public:
 #endif
 	}
 
-	/** The bone compression settings used to compress bones in this sequence. */
-	UPROPERTY(Category = Compression, EditAnywhere)
-	class UAnimBoneCompressionSettings* BoneCompressionSettings;
-
 	/** The curve compression settings used to compress curves in this sequence. */
 	UPROPERTY(Category = Compression, EditAnywhere)
 	class UAnimCurveCompressionSettings* CurveCompressionSettings;
@@ -204,7 +206,7 @@ public:
 
 	//~ Begin UAnimSequenceBase Interface
 	ENGINE_API virtual void HandleAssetPlayerTickedInternal(FAnimAssetTickContext &Context, const float PreviousTime, const float MoveDelta, const FAnimTickRecord &Instance, struct FAnimNotifyQueue& NotifyQueue) const override;
-	virtual void GetAnimationPose(FAnimationPoseData& OutAnimationPoseData, const FAnimExtractContext& ExtractionContext) const override;
+	virtual void GetAnimationPose(FCompactPose& OutPose, FBlendedCurve& OutCurve, const FAnimExtractContext& ExtractionContext) const override;
 	virtual int32 GetNumberOfFrames() const override { return NumFrames; }
 	//~ End UAnimSequenceBase Interface
 
@@ -219,11 +221,13 @@ public:
 	private:
 
 #if WITH_EDITOR
+	float GetAltCompressionErrorThreshold() const;
+
 	ENGINE_API void RequestCompressedData(const  ITargetPlatform* Platform=nullptr);
 
 	void UpdateRawData();
 
-	FString GetBaseDDCKey(uint32 NumChunks) const;
+	FString GetBaseDDCKey(uint32 NumChunks, float AltCompressionErrorThreshold) const;
 
 	void RequestCompressedDataForChunk(const FString& ChunkDDCKey, FAnimStreamableChunk& Chunk, const int32 ChunkIndex, const uint32 FrameStart, const uint32 FrameEnd, TSharedRef<FAnimCompressContext> CompressContext);
 #endif

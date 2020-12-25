@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Windows/WindowsPlatformApplicationMisc.h"
 #include "Windows/WindowsApplication.h"
@@ -23,7 +23,7 @@ APPLICATIONCORE_API GetDpiForMonitorProc GetDpiForMonitor;
 void FWindowsPlatformApplicationMisc::LoadPreInitModules()
 {
 	// D3D11 is not supported on WinXP, so in this case we use the OpenGL RHI
-	if(FPlatformMisc::VerifyWindowsVersion(6, 0))
+	if(FWindowsPlatformMisc::VerifyWindowsVersion(6, 0))
 	{
 		//#todo-rco: Only try on Win10
 		const bool bForceD3D12 = FParse::Param(FCommandLine::Get(), TEXT("d3d12")) || FParse::Param(FCommandLine::Get(), TEXT("dx12"));
@@ -144,8 +144,8 @@ void FWindowsPlatformApplicationMisc::PumpMessages(bool bFromMainLoop)
 		}
 		else if( HasFocus && !HadFocus )
 		{
-			// Boost our priority back to above normal as initially set in WindowsRunnableThread::CreateInternal.
-			SetThreadPriority( GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL );
+			// Boost our priority back to normal.
+			SetThreadPriority( GetCurrentThread(), THREAD_PRIORITY_NORMAL );
 		}
 		if( !HasFocus )
 		{

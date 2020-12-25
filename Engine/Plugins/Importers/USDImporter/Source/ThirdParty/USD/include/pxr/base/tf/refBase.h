@@ -21,14 +21,15 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_REF_BASE_H
-#define PXR_BASE_TF_REF_BASE_H
+#ifndef TF_REFBASE_H
+#define TF_REFBASE_H
 
 /// \file tf/refBase.h
 /// \ingroup group_tf_Memory
 
 #include "pxr/pxr.h"
 
+#include "pxr/base/tf/diagnostic.h"
 #include "pxr/base/tf/refCount.h"
 #include "pxr/base/tf/api.h"
 
@@ -98,7 +99,14 @@ public:
         _shouldInvokeUniqueChangedListener = shouldCall;
     }
 
-    TF_API static void SetUniqueChangedListener(UniqueChangedListener listener);
+    static void SetUniqueChangedListener(UniqueChangedListener listener) {
+        if (_uniqueChangedListener.lock ||
+            _uniqueChangedListener.func ||
+            _uniqueChangedListener.unlock) {
+            TF_FATAL_ERROR("Setting an already set UniqueChangedListener");
+        }
+        _uniqueChangedListener = listener;
+    }
 
 protected:
     /*
@@ -110,7 +118,7 @@ private:
     TfRefCount _refCount;
     bool _shouldInvokeUniqueChangedListener;
 
-    static UniqueChangedListener _uniqueChangedListener;
+    TF_API static UniqueChangedListener _uniqueChangedListener;
     template <typename T> friend class TfRefPtr;
     friend struct Tf_RefPtr_UniqueChangedCounter;
     friend struct Tf_RefPtr_Counter;
@@ -135,4 +143,4 @@ public:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_REF_BASE_H
+#endif // TF_REFBASE_H

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IbmLiveStreaming.h"
 
@@ -14,6 +14,8 @@
 #if defined(WITH_IBMRTMPINGEST) && LIVESTREAMING
 
 DEFINE_LOG_CATEGORY(IbmLiveStreaming);
+
+GAMEPLAYMEDIAENCODER_START
 
 extern "C"
 {
@@ -121,9 +123,9 @@ TArray<uint8> FIbmLiveStreaming::FFormData::FStringToUint8(const FString& InStri
 	return OutBytes;
 }
 
-TSharedRef<IHttpRequest, ESPMode::ThreadSafe> FIbmLiveStreaming::FFormData::CreateHttpPostRequestImpl(const FString& URL)
+TSharedRef<IHttpRequest> FIbmLiveStreaming::FFormData::CreateHttpPostRequestImpl(const FString& URL)
 {
-	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> HttpRequest = FHttpModule::Get().CreateRequest();
+	TSharedRef<IHttpRequest> HttpRequest = FHttpModule::Get().CreateRequest();
 
 	TArray<uint8> CombinedContent;
 	CombinedContent.Append(FStringToUint8(Data));
@@ -291,7 +293,7 @@ bool FIbmLiveStreaming::Start(const FString& ClientId, const FString& ClientSecr
 	FormData.AddField(TEXT("client_id"), Config.ClientId);
 	FormData.AddField(TEXT("client_secret"), Config.ClientSecret);
 	FormData.AddField(TEXT("scope"), TEXT("broadcaster"));
-	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> HttpRequest = FormData.CreateHttpPostRequest("https://www.ustream.tv/oauth2/token", this, &FIbmLiveStreaming::OnProcessRequestComplete);
+	TSharedRef<IHttpRequest> HttpRequest = FormData.CreateHttpPostRequest("https://www.ustream.tv/oauth2/token", this, &FIbmLiveStreaming::OnProcessRequestComplete);
 
 	if (!HttpRequest->ProcessRequest())
 	{
@@ -367,7 +369,7 @@ void FIbmLiveStreaming::OnProcessRequestComplete(FHttpRequestPtr SourceHttpReque
 		//
 		// Fire up the next stage's http request
 		//
-		TSharedRef<IHttpRequest, ESPMode::ThreadSafe> HttpRequest = FHttpModule::Get().CreateRequest();
+		TSharedRef<IHttpRequest> HttpRequest = FHttpModule::Get().CreateRequest();
 		HttpRequest->OnProcessRequestComplete().BindRaw(this, &FIbmLiveStreaming::OnProcessRequestComplete);
 		HttpRequest->SetURL(FString::Printf(TEXT("https://api.ustream.tv/channels/%s/ingest.json"), *Config.Channel));
 		HttpRequest->SetVerb(TEXT("GET"));
@@ -1015,6 +1017,8 @@ void FIbmLiveStreaming::OnStreamBandwidthChanged(RTMPModuleBroadcaster* Module, 
 {
 	reinterpret_cast<FIbmLiveStreaming*>(Module->customData)->OnStreamBandwidthChangedImpl(Module, Bandwidth, QueueWasEmpty != 0 );
 }
+
+GAMEPLAYMEDIAENCODER_END
 
 #endif // WITH_IBMRTMPINGEST
 

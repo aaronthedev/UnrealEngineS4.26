@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "K2Node_GetSequenceBinding.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -7,7 +7,6 @@
 #include "EditorCategoryUtils.h"
 #include "BlueprintActionDatabaseRegistrar.h"
 #include "Framework/Application/SlateApplication.h"
-#include "Compilation/MovieSceneCompiledDataManager.h"
 #include "PropertyCustomizationHelpers.h"
 #include "MovieSceneSequence.h"
 #include "ToolMenus.h"
@@ -22,7 +21,7 @@
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SComboBox.h"
 #include "Editor.h"
-#include "ScopedTransaction.h"
+#include "Compilation/MovieSceneCompiler.h"
 
 static const FName OutputPinName(TEXT("Output"));
 static const FName SequencePinName(TEXT("Sequence"));
@@ -158,15 +157,6 @@ UMovieScene* UK2Node_GetSequenceBinding::GetObjectMovieScene() const
 					bHierarchyIsValid = false;
 					break;
 				}
-
-				const FMovieSceneSequenceHierarchyNode* Node = SequenceHierarchyCache.FindNode(CurrentSequenceID);
-				if (!Node)
-				{
-					bHierarchyIsValid = false;
-					break;
-				}
-
-				CurrentSequenceID = Node->ParentID;
 			}
 
 			// If it's not valid, it needs recompiling
@@ -176,15 +166,24 @@ UMovieScene* UK2Node_GetSequenceBinding::GetObjectMovieScene() const
 				SequenceSignatureCache.Reset();
 				SequenceHierarchyCache = FMovieSceneSequenceHierarchy();
 
-				UMovieSceneCompiledDataManager::CompileHierarchy(Sequence, &SequenceHierarchyCache);
+				FMovieSceneCompiler::CompileHierarchy(*Sequence, SequenceHierarchyCache);
 
-				for (const TTuple<FMovieSceneSequenceID, FMovieSceneSubSequenceData>& Pair : SequenceHierarchyCache.AllSubSequenceData())
+				TArray<FMovieSceneSequenceID> AllSequenceIDs;
+				while (AllSequenceIDs.Num())
 				{
-					const UMovieSceneSequence* SubSequence = Pair.Value.GetSequence();
-					if (ensure(SubSequence))
+					int32 NumSequenceIDs = AllSequenceIDs.Num();
+					for (int32 Index = 0; Index < NumSequenceIDs; ++Index)
 					{
-						SequenceSignatureCache.Add(Pair.Key, SubSequence->GetSignature());
+						FMovieSceneSequenceID ThisSequenceID = AllSequenceIDs[Index];
+						const FMovieSceneSubSequenceData* SubData = SequenceHierarchyCache.FindSubData(ThisSequenceID);
+						const UMovieSceneSequence* SubSequence = SubData ? SubData->GetSequence() : nullptr;
+						if (ensure(SubSequence))
+						{
+							SequenceSignatureCache.Add(ThisSequenceID, SubSequence->GetSignature());
+						}
 					}
+
+					AllSequenceIDs.RemoveAt(0, NumSequenceIDs);
 				}
 			}
 
@@ -282,10 +281,6 @@ void UK2Node_GetSequenceBinding::GetNodeContextMenuActions(UToolMenu* Menu, UGra
 void UK2Node_GetSequenceBinding::SetSequence(const FAssetData& InAssetData)
 {
 	FSlateApplication::Get().DismissAllMenus();
-
-	const FScopedTransaction Transaction(LOCTEXT("SetSequence", "Set Sequence"));
-	Modify();
-
 	SourceSequence = Cast<UMovieSceneSequence>(InAssetData.GetAsset());
 }
 
@@ -514,9 +509,6 @@ TSharedPtr<SGraphNode> UK2Node_GetSequenceBinding::CreateVisualWidget()
 
 		virtual void SetCurrentValue(const FMovieSceneObjectBindingID& InBindingId) override
 		{
-			const FScopedTransaction Transaction(LOCTEXT("SetBindng", "Set Binding"));
-			GraphNode->Modify();
-
 			CastChecked<UK2Node_GetSequenceBinding>(GraphNode)->Binding = InBindingId;
 			bNeedsUpdate = true;
 		}

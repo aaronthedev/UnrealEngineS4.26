@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreTypes.h"
-#include "Templates/Invoke.h"
 
 // TPlus<T> specifically takes const T& and returns T.
 // TPlus<> (empty angle brackets) is late-binding, taking whatever is passed and returning the correct result type for (A+B)
@@ -37,7 +36,7 @@ namespace Algo
 		T Result = MoveTemp(Init);
 		for (const auto& InputElem : Input)
 		{
-			Result = Invoke(Op, MoveTemp(Result), InputElem);
+			Result = Op(MoveTemp(Result), InputElem);
 		}
 		return Result;
 	}
@@ -72,7 +71,7 @@ namespace Algo
 		T Result = MoveTemp(Init);
 		for (const auto& InputElem : Input)
 		{
-			Result = Invoke(Op, MoveTemp(Result), Invoke(MapOp, InputElem));
+			Result = Op(MoveTemp(Result), MapOp(InputElem));
 		}
 		return Result;
 	}

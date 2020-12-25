@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -23,7 +23,7 @@ public class OodleHandlerComponent : ModuleRules
 			});
 
 
-		if (Target.IsInPlatformGroup(UnrealPlatformGroup.Windows))
+		if (Target.Platform == UnrealTargetPlatform.Win64 || Target.Platform == UnrealTargetPlatform.Win32)
 		{
 			// this is needed to hunt down the DLL in the binaries directory for running unstaged
 			PrivateDependencyModuleNames.AddRange(
@@ -32,13 +32,13 @@ public class OodleHandlerComponent : ModuleRules
 			});
 		}
 
-		string OodleNotForLicenseesNetBuildFile = System.IO.Path.Combine(EngineDirectory,
-			"Restricted/NotForLicensees/Source/ThirdParty/RadGames/OodleNet/OodleNet.Build.cs");
+		string OodleNotForLicenseesNetBuildFile = System.IO.Path.Combine(Target.UEThirdPartySourceDirectory,
+			"NotForLicensees/RadGames/OodleNet/OodleNet.Build.cs");
 		string OodleLicenseesNetBuildFile = System.IO.Path.Combine(Target.UEThirdPartySourceDirectory,
 			"RadGames/OodleNet/OodleNet.Build.cs");
 
-		string OodleNotForLicenseesDataBuildFile = System.IO.Path.Combine(EngineDirectory,
-			"Restricted/NotForLicensees/Source/ThirdParty/RadGames/OodleData/OodleData.Build.cs");
+		string OodleNotForLicenseesDataBuildFile = System.IO.Path.Combine(Target.UEThirdPartySourceDirectory,
+			"NotForLicensees/RadGames/OodleData/OodleData.Build.cs");
 		string OodleLicenseesDataBuildFile = System.IO.Path.Combine(Target.UEThirdPartySourceDirectory,
 			"RadGames/OodleData/OodleData.Build.cs");
 

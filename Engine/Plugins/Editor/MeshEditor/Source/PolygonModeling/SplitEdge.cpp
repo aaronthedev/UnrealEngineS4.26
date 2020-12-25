@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SplitEdge.h"
 #include "IMeshEditorModeEditingContract.h"
@@ -61,7 +61,7 @@ void USplitEdgeCommand::ApplyDuringDrag( IMeshEditorModeEditingContract& MeshEdi
 
 					// Select all of the new vertices that were created by splitting the edge
 					{
-						for( const FVertexID& NewVertexID : NewVertexIDs )
+						for( const FVertexID NewVertexID : NewVertexIDs )
 						{
 							FMeshElement MeshElementToSelect;
 							{

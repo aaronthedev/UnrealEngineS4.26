@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	GeometryCacheVertexFactory.cpp: Geometry Cache vertex factory implementation
@@ -21,14 +21,13 @@ IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FGeometryCacheManualVertexFetchUniformB
 /** Shader parameters for use with TGPUSkinVertexFactory */
 class FGeometryCacheVertexFactoryShaderParameters : public FVertexFactoryShaderParameters
 {
-	DECLARE_INLINE_TYPE_LAYOUT(FGeometryCacheVertexFactoryShaderParameters, NonVirtual);
 public:
 
 	/**
 	* Bind shader constants by name
 	* @param	ParameterMap - mapping of named shader constants to indices
 	*/
-	void Bind(const FShaderParameterMap& ParameterMap)
+	virtual void Bind(const FShaderParameterMap& ParameterMap) override
 	{
 		MeshOrigin.Bind(ParameterMap, TEXT("MeshOrigin"));
 		MeshExtension.Bind(ParameterMap, TEXT("MeshExtension"));
@@ -37,7 +36,20 @@ public:
 		MotionBlurPositionScale.Bind(ParameterMap, TEXT("MotionBlurPositionScale"));
 	}
 
-	void GetElementShaderBindings(
+	/**
+	* Serialize shader params to an archive
+	* @param	Ar - archive to serialize to
+	*/
+	virtual void Serialize(FArchive& Ar) override
+	{
+		Ar << MeshOrigin;
+		Ar << MeshExtension;
+		Ar << MotionBlurDataOrigin;
+		Ar << MotionBlurDataExtension;
+		Ar << MotionBlurPositionScale;
+	}
+
+	virtual void GetElementShaderBindings(
 		const class FSceneInterface* Scene,
 		const FSceneView* View,
 		const class FMeshMaterialShader* Shader,
@@ -46,7 +58,7 @@ public:
 		const FVertexFactory* GenericVertexFactory,
 		const FMeshBatchElement& BatchElement,
 		class FMeshDrawSingleShaderBindings& ShaderBindings,
-		FVertexInputStreamArray& VertexStreams) const
+		FVertexInputStreamArray& VertexStreams) const override
 	{
 		// Ensure the vertex factory matches this parameter object and cast relevant objects
 		check(GenericVertexFactory->GetType() == &FGeometryCacheVertexVertexFactory::StaticType);
@@ -71,27 +83,37 @@ public:
 		ShaderBindings.Add(Shader->GetUniformBufferParameter<FGeometryCacheManualVertexFetchUniformBufferParameters>(), BatchData->ManualVertexFetchUniformBuffer);
 	}
 
+	virtual uint32 GetSize() const override { return sizeof(*this); }
+
 private:
-	LAYOUT_FIELD(FShaderParameter, MeshOrigin);
-	LAYOUT_FIELD(FShaderParameter, MeshExtension);
-	LAYOUT_FIELD(FShaderParameter, MotionBlurDataOrigin);
-	LAYOUT_FIELD(FShaderParameter, MotionBlurDataExtension);
-	LAYOUT_FIELD(FShaderParameter, MotionBlurPositionScale);
+	FShaderParameter MeshOrigin;
+	FShaderParameter MeshExtension;
+	FShaderParameter MotionBlurDataOrigin;
+	FShaderParameter MotionBlurDataExtension;
+	FShaderParameter MotionBlurPositionScale;
 };
 
 /*-----------------------------------------------------------------------------
 FGPUSkinPassthroughVertexFactory
 -----------------------------------------------------------------------------*/
-void FGeometryCacheVertexVertexFactory::ModifyCompilationEnvironment(const FVertexFactoryShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+void FGeometryCacheVertexVertexFactory::ModifyCompilationEnvironment(const FVertexFactoryType* Type, EShaderPlatform Platform, const FMaterial* Material, FShaderCompilerEnvironment& OutEnvironment)
 {
-	Super::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+	Super::ModifyCompilationEnvironment(Type, Platform, Material, OutEnvironment);
+}
+
+bool FGeometryCacheVertexVertexFactory::ShouldCache(EShaderPlatform Platform, const class FMaterial* Material, const FShaderType* ShaderType)
+{
+	//FIXME: This can probably be beter like this?!?
+	//return Material->IsUsedWithGeometryCache() || Material->IsSpecialEngineMaterial();
+
+	return true;
 }
 
 void FGeometryCacheVertexVertexFactory::SetData(const FDataType& InData)
 {
 	check(IsInRenderingThread());
 
-	// The shader code makes assumptions that the color component is a FColor, performing swizzles on ES3 and Metal platforms as necessary
+	// The shader code makes assumptions that the color component is a FColor, performing swizzles on ES2 and Metal platforms as necessary
 	// If the color is sent down as anything other than VET_Color then you'll get an undesired swizzle on those platforms
 	check((InData.ColorComponent.Type == VET_None) || (InData.ColorComponent.Type == VET_Color));
 
@@ -325,16 +347,26 @@ void FGeometryCacheVertexVertexFactory::CreateManualVertexFetchUniformBuffer(
 	OutUserData.ManualVertexFetchUniformBuffer = FGeometryCacheManualVertexFetchUniformBufferParametersRef::CreateUniformBufferImmediate(ManualVertexFetchParameters, UniformBuffer_SingleFrame);
 }
 
-bool FGeometryCacheVertexVertexFactory::ShouldCompilePermutation(const FVertexFactoryShaderPermutationParameters& Parameters)
+FVertexFactoryShaderParameters* FGeometryCacheVertexVertexFactory::ConstructShaderParameters(EShaderFrequency ShaderFrequency)
+{
+	switch (ShaderFrequency)
+	{
+		case SF_Vertex:
+#if RHI_RAYTRACING
+		case SF_RayHitGroup:
+#endif
+			return new FGeometryCacheVertexFactoryShaderParameters();
+		default:
+			return nullptr;
+	}
+}
+
+bool FGeometryCacheVertexVertexFactory::ShouldCompilePermutation(EShaderPlatform Platform, const class FMaterial* Material, const class FShaderType* ShaderType)
 {
 	// Should this be platform or mesh type based? Returning true should work in all cases, but maybe too expensive? 
 	// return IsFeatureLevelSupported(Platform, ERHIFeatureLevel::SM5) && !IsConsolePlatform(Platform);
 	// TODO currently GeomCache supports only 4 UVs which could cause compilation errors when trying to compile shaders which use > 4
-	return Parameters.MaterialParameters.bIsUsedWithGeometryCache || Parameters.MaterialParameters.bIsSpecialEngineMaterial;
+	return Material->IsUsedWithGeometryCache() || Material->IsSpecialEngineMaterial();
 }
 
-IMPLEMENT_VERTEX_FACTORY_PARAMETER_TYPE(FGeometryCacheVertexVertexFactory, SF_Vertex, FGeometryCacheVertexFactoryShaderParameters);
-#if RHI_RAYTRACING
-IMPLEMENT_VERTEX_FACTORY_PARAMETER_TYPE(FGeometryCacheVertexVertexFactory, SF_RayHitGroup, FGeometryCacheVertexFactoryShaderParameters);
-#endif
 IMPLEMENT_VERTEX_FACTORY_TYPE(FGeometryCacheVertexVertexFactory, "/Engine/Private/GeometryCacheVertexFactory.ush", true, false, true, false, true);

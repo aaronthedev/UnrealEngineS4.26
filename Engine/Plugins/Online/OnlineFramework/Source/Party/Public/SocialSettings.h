@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,20 +7,6 @@
 #include "SocialSettings.generated.h"
 
 enum class ESocialSubsystem : uint8;
-
-USTRUCT()
-struct FSocialPlatformDescription
-{
-	GENERATED_BODY()
-
-	FSocialPlatformDescription() { };
-
-	UPROPERTY()
-	FString SocialPlatformTypeName;
-
-	UPROPERTY()
-	FString SocialPlatformName;
-};
 
 /**
  * Config-driven settings object for the social framework.
@@ -35,15 +21,10 @@ public:
 	USocialSettings();
 
 	static FString GetUniqueIdEnvironmentPrefix(ESocialSubsystem SubsystemType);
-	static int32 GetDefaultMaxPartySize();
 	static bool ShouldPreferPlatformInvites();
 	static bool MustSendPrimaryInvites();
-	static bool ShouldLeavePartyOnDisconnect();
-	static bool ShouldSetDesiredPrivacyOnLocalPlayerBecomesLeader();
+	static int32 GetDefaultMaxPartySize();
 	static float GetUserListAutoUpdateRate();
-	static int32 GetMinNicknameLength();
-	static int32 GetMaxNicknameLength();
-	static const TArray<FSocialPlatformDescription>& GetSocialPlatformDescriptions();
 
 private:
 	/**
@@ -56,37 +37,15 @@ private:
 	UPROPERTY(config)
 	TArray<FName> OssNamesWithEnvironmentIdPrefix;
 
-	/** How many players are in a party by default */
 	UPROPERTY(config)
 	int32 DefaultMaxPartySize = 4;
 
-	/** If true, prioritize the platform's social system over the publisher's */
 	UPROPERTY(config)
 	bool bPreferPlatformInvites = true;
 
-	/** If true, always send invites using the publisher's system even if already sent via a platform system */
 	UPROPERTY(config)
 	bool bMustSendPrimaryInvites = false;
 
-	/** Should we leave a party when it enters the disconnected state? */
 	UPROPERTY(config)
-	bool bLeavePartyOnDisconnect = true;
-
-	/** How often the user list will update in seconds */
-	UPROPERTY(config)
-	bool bSetDesiredPrivacyOnLocalPlayerBecomesLeader = true;
-
-	UPROPERTY(config)
-	float UserListAutoUpdateRate = 0.5f;
-
-	/** Shortest possible player nickname */
-	UPROPERTY(Config)
-	int32 MinNicknameLength = 3;
-
-	/** Longest possible player nickname */
-	UPROPERTY(Config)
-	int32 MaxNicknameLength = 16;
-
-	UPROPERTY(Config)
-	TArray<FSocialPlatformDescription> SocialPlatformDescriptions;
+	float UserListAutoUpdateRate = 7.5f;
 };

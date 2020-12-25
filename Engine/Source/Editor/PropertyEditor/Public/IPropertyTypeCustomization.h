@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -40,15 +40,6 @@ public:
 	 * @param StructCustomizationUtils	Utilities for customization
 	 */
 	virtual void CustomizeChildren( TSharedRef<IPropertyHandle> PropertyHandle, IDetailChildrenBuilder& ChildBuilder, IPropertyTypeCustomizationUtils& CustomizationUtils ) = 0;
-
-	
-	/**
-	 * @return whether or not this customisation should be inlined when used as a key within a row
-	 */
-	virtual bool ShouldInlineKey() const
-	{
-		return false;
-	}
 };
 
 

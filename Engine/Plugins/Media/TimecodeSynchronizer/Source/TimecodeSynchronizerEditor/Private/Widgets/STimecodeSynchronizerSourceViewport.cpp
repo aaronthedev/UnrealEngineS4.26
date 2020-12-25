@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/STimecodeSynchronizerSourceViewport.h"
 #include "TimecodeSynchronizer.h"
@@ -169,7 +169,8 @@ FText STimecodeSynchronizerSourceViewport::HandleIntervalMinTimecodeText() const
 	if (AttachedSource && AttachedSource->IsReady())
 	{
 		const FFrameNumber OldestFrame = AttachedSource->GetInputSourceState().OldestAvailableSample.GetFrame();
-		Timecode = FTimecode::FromFrameNumber(OldestFrame, AttachedSource->GetFrameRate());
+		const bool bIsDropFrame = FTimecode::IsDropFormatTimecodeSupported(AttachedSource->GetFrameRate());
+		Timecode = FTimecode::FromFrameNumber(OldestFrame, AttachedSource->GetFrameRate(), bIsDropFrame);
 	}
 
 	return FText::FromString(FString("Minimum: ") + Timecode.ToString());
@@ -182,7 +183,8 @@ FText STimecodeSynchronizerSourceViewport::HandleIntervalMaxTimecodeText() const
 	if (AttachedSource && AttachedSource->IsReady())
 	{
 		const FFrameNumber NewestFrame = AttachedSource->GetInputSourceState().NewestAvailableSample.GetFrame();
-		Timecode = FTimecode::FromFrameNumber(NewestFrame, AttachedSource->GetFrameRate());
+		const bool bIsDropFrame = FTimecode::IsDropFormatTimecodeSupported(AttachedSource->GetFrameRate());
+		Timecode = FTimecode::FromFrameNumber(NewestFrame, AttachedSource->GetFrameRate(), bIsDropFrame);
 	}
 
 	return FText::FromString(FString("Maximum: ") + Timecode.ToString());

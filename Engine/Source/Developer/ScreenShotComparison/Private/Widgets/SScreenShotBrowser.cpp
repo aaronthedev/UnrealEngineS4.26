@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	SScreenShotBrowser.cpp: Implements the SScreenShotBrowser class.
@@ -28,11 +28,10 @@
 void SScreenShotBrowser::Construct( const FArguments& InArgs,  IScreenShotManagerRef InScreenShotManager  )
 {
 	ScreenShotManager = InScreenShotManager;
-	ComparisonRoot = FPaths::ConvertRelativePathToFull(FPaths::AutomationReportsDir());
+	ComparisonRoot = FPaths::ConvertRelativePathToFull(FPaths::ProjectSavedDir() / TEXT("Automation/Comparisons"));
 	bReportsChanged = true;
-	bDisplayingSuccess = false;
 	bDisplayingError = true;
-	bDisplayingNew = true;
+	bDisplayingWarning = true;
 	ReportFilterString = FString();
 
 	FModuleManager::Get().LoadModuleChecked(FName("ImageWrapper"));
@@ -48,7 +47,6 @@ void SScreenShotBrowser::Construct( const FArguments& InArgs,  IScreenShotManage
 
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
-			.Padding(2.0f, 0.0f)
 			[
 				SNew(SDirectoryPicker)
 				.Directory(ComparisonRoot)
@@ -73,34 +71,8 @@ void SScreenShotBrowser::Construct( const FArguments& InArgs,  IScreenShotManage
 					
 				]
 
-				+SHorizontalBox::Slot()
-				.AutoWidth()
-				.Padding(2.0f, 0.0f)
-				[
-					SNew(SHorizontalBox)
-
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					[
-						SNew(SCheckBox)
-						.HAlign(HAlign_Center)
-					.IsChecked(bDisplayingSuccess ? ECheckBoxState::Checked : ECheckBoxState::Unchecked)
-					.OnCheckStateChanged(this, &SScreenShotBrowser::DisplaySuccess_OnCheckStateChanged)
-					]
-
-				+ SHorizontalBox::Slot()
-					.AutoWidth()
-					.VAlign(VAlign_Center)
-					[
-						SNew(STextBlock)
-						.AutoWrapText(true)
-					.Text(LOCTEXT("DisplaySuccess", "Show Passed"))
-					]
-				]
-
 				+ SHorizontalBox::Slot()
 				.AutoWidth()
-				.HAlign(HAlign_Right)
 				.Padding(2.0f, 0.0f)
 				[
 					SNew(SHorizontalBox)
@@ -135,8 +107,8 @@ void SScreenShotBrowser::Construct( const FArguments& InArgs,  IScreenShotManage
 					[
 						SNew(SCheckBox)
 						.HAlign(HAlign_Center)
-						.IsChecked(bDisplayingNew ? ECheckBoxState::Checked : ECheckBoxState::Unchecked)
-						.OnCheckStateChanged(this, &SScreenShotBrowser::DisplayNew_OnCheckStateChanged)
+						.IsChecked(bDisplayingWarning ? ECheckBoxState::Checked : ECheckBoxState::Unchecked)
+						.OnCheckStateChanged(this, &SScreenShotBrowser::DisplayWarning_OnCheckStateChanged)
 					]
 
 					+ SHorizontalBox::Slot()
@@ -145,19 +117,14 @@ void SScreenShotBrowser::Construct( const FArguments& InArgs,  IScreenShotManage
 					[
 						SNew(STextBlock)
 						.AutoWrapText(true)
-						.Text(LOCTEXT("DisplayNew", "Show New"))
+						.Text(LOCTEXT("DisplayWarnings", "Show New"))
 					]
 				]
-			]			
-		]
-
-		+ SVerticalBox::Slot()
-			.AutoHeight()
-		[
-			SNew(SHorizontalBox)
+			]
 
 			+ SHorizontalBox::Slot()
 			.FillWidth(1.0f)
+			.HAlign(HAlign_Right)
 			[
 				SNew(SHorizontalBox)
 
@@ -172,29 +139,29 @@ void SScreenShotBrowser::Construct( const FArguments& InArgs,  IScreenShotManage
 					.ButtonStyle(FEditorStyle::Get(), "FlatButton.Success")
 					.TextStyle(FEditorStyle::Get(), "FlatButton.DefaultTextStyle")
 					.IsEnabled_Lambda([this]() -> bool
-						{
-							return ComparisonList.Num() > 0 && ISourceControlModule::Get().IsEnabled();
-						})
+					{
+						return ComparisonList.Num() > 0 && ISourceControlModule::Get().IsEnabled();
+					})
 					.OnClicked_Lambda([this]()
+					{
+						for (int Entry = ComparisonList.Num()-1; Entry >= 0; --Entry)
 						{
-							for (int Entry = ComparisonList.Num() - 1; Entry >= 0; --Entry)
+							TSharedPtr<FScreenComparisonModel> Model = ComparisonList[Entry];
+							const FImageComparisonResult& Comparison = Model->Report.Comparison;
+						
+							if (CanAddNewReportResult(Comparison))
 							{
-								TSharedPtr<FScreenComparisonModel> Model = ComparisonList[Entry];
-								const FImageComparisonResult& Comparison = Model->Report.GetComparisonResult();
+								ComparisonList.RemoveAt(Entry);
+								Model->AddNew(ScreenShotManager);
 
-								if (CanAddNewReportResult(Comparison))
-								{
-									ComparisonList.RemoveAt(Entry);
-									Model->AddNew();
+								// Avoid thrashing P4
+								const float SleepBetweenOperations = 0.005f;
+								FPlatformProcess::Sleep(SleepBetweenOperations);
+							}	
+						}
 
-									// Avoid thrashing P4
-									const float SleepBetweenOperations = 0.005f;
-									FPlatformProcess::Sleep(SleepBetweenOperations);
-								}
-							}
-
-							return FReply::Handled();
-						})
+						return FReply::Handled();
+					})
 				]
 
 				+ SHorizontalBox::Slot()
@@ -208,30 +175,30 @@ void SScreenShotBrowser::Construct( const FArguments& InArgs,  IScreenShotManage
 					.ButtonStyle(FEditorStyle::Get(), "FlatButton.Warning")
 					.TextStyle(FEditorStyle::Get(), "FlatButton.DefaultTextStyle")
 					.IsEnabled_Lambda([this]() -> bool
-						{
-							return ComparisonList.Num() > 0 && ISourceControlModule::Get().IsEnabled();
-						})
+					{
+						return ComparisonList.Num() > 0 && ISourceControlModule::Get().IsEnabled();
+					})
 					.OnClicked_Lambda([this]()
+					{
+						for (int Entry = ComparisonList.Num()-1; Entry >= 0; --Entry)
 						{
-							for (int Entry = ComparisonList.Num() - 1; Entry >= 0; --Entry)
+							TSharedPtr<FScreenComparisonModel> Model = ComparisonList[Entry];
+							const FImageComparisonResult& Comparison = Model->Report.Comparison;
+						
+							if (!CanAddNewReportResult(Comparison))
 							{
-								TSharedPtr<FScreenComparisonModel> Model = ComparisonList[Entry];
-								const FImageComparisonResult& Comparison = Model->Report.GetComparisonResult();
+								ComparisonList.RemoveAt(Entry);
+								Model->Replace(ScreenShotManager);
 
-								if (!CanAddNewReportResult(Comparison))
-								{
-									ComparisonList.RemoveAt(Entry);
-									Model->Replace();
-
-									// Avoid thrashing P4
-									const float SleepBetweenOperations = 0.005f;
-									FPlatformProcess::Sleep(SleepBetweenOperations);
-								}
+								// Avoid thrashing P4
+								const float SleepBetweenOperations = 0.005f;
+								FPlatformProcess::Sleep(SleepBetweenOperations);
 							}
+						}
 
-							return FReply::Handled();
-						})
-					]
+						return FReply::Handled();
+					})
+				]
 
 				+ SHorizontalBox::Slot()
 				.AutoWidth()
@@ -244,19 +211,19 @@ void SScreenShotBrowser::Construct( const FArguments& InArgs,  IScreenShotManage
 					.ButtonStyle(FEditorStyle::Get(), "FlatButton.Danger")
 					.TextStyle(FEditorStyle::Get(), "FlatButton.DefaultTextStyle")
 					.IsEnabled_Lambda([this]() -> bool
-						{
-							return ComparisonList.Num() > 0;
-						})
+					{
+						return ComparisonList.Num() > 0;
+					})
 					.OnClicked_Lambda([this]()
+					{
+						while ( ComparisonList.Num() > 0 )
 						{
-							while (ComparisonList.Num() > 0)
-							{
-								TSharedPtr<FScreenComparisonModel> Model = ComparisonList.Pop();
-								Model->Complete(true);
-							}
+							TSharedPtr<FScreenComparisonModel> Model = ComparisonList.Pop();
+							Model->Complete();
+						}
 
-							return FReply::Handled();
-						})
+						return FReply::Handled();
+					})
 				]
 			]
 		]
@@ -275,22 +242,6 @@ void SScreenShotBrowser::Construct( const FArguments& InArgs,  IScreenShotManage
 				+ SHeaderRow::Column("Name")
 				.DefaultLabel(LOCTEXT("ColumnHeader_Name", "Name"))
 				.FillWidth(1.0f)
-				.VAlignCell(VAlign_Center)
-
-				+ SHeaderRow::Column("Date")
-				.DefaultLabel(LOCTEXT("ColumnHeader_Date", "Date"))
-				.FixedWidth(120)
-				.VAlignHeader(VAlign_Center)
-				.HAlignHeader(HAlign_Center)
-				.HAlignCell(HAlign_Center)
-				.VAlignCell(VAlign_Center)
-
-				+ SHeaderRow::Column("Platform")
-				.DefaultLabel(LOCTEXT("ColumnHeader_Platform", "Platform"))
-				.FixedWidth(120)
-				.VAlignHeader(VAlign_Center)
-				.HAlignHeader(HAlign_Center)
-				.HAlignCell(HAlign_Center)
 				.VAlignCell(VAlign_Center)
 
 				+ SHeaderRow::Column("Delta")
@@ -368,21 +319,15 @@ TSharedRef<ITableRow> SScreenShotBrowser::OnGenerateWidgetForScreenResults(TShar
 		.ComparisonResult(InItem);
 }
 
-void SScreenShotBrowser::DisplaySuccess_OnCheckStateChanged(ECheckBoxState NewRadioState)
-{
-	bDisplayingSuccess = (NewRadioState == ECheckBoxState::Checked);
-	bReportsChanged = true;
-}
-
 void SScreenShotBrowser::DisplayError_OnCheckStateChanged(ECheckBoxState NewRadioState)
 {
 	bDisplayingError = (NewRadioState == ECheckBoxState::Checked);
 	bReportsChanged = true;
 }
 
-void SScreenShotBrowser::DisplayNew_OnCheckStateChanged(ECheckBoxState NewRadioState)
+void SScreenShotBrowser::DisplayWarning_OnCheckStateChanged(ECheckBoxState NewRadioState)
 {
-	bDisplayingNew = (NewRadioState == ECheckBoxState::Checked);
+	bDisplayingWarning = (NewRadioState == ECheckBoxState::Checked);
 	bReportsChanged = true;
 }
 
@@ -404,36 +349,22 @@ void SScreenShotBrowser::RebuildTree()
 	if ( ScreenShotManager->OpenComparisonReports(ComparisonRoot, CurrentReports) )
 	{
 		//Sort by what will resolve down to the Screenshots' names
-		CurrentReports.Sort([](const FComparisonReport& LHS, const FComparisonReport& RHS) { return LHS.GetReportPath().Compare(RHS.GetReportPath()) < 0; });
+		CurrentReports.Sort([](const FComparisonReport& LHS, const FComparisonReport& RHS) { return LHS.ReportFolder.Compare(RHS.ReportFolder) < 0; });
 
 		for ( const FComparisonReport& Report : CurrentReports )
 		{
-			const FImageComparisonResult& Comparison = Report.GetComparisonResult();
-
-			bool IsNew = Comparison.IsNew();
-			bool IsFail = !Comparison.AreSimilar();
-			bool IsPass = !IsNew && !IsFail;
-
-			if (IsPass && !bDisplayingSuccess)
+			if (Report.Comparison.IsNew() && !bDisplayingWarning)
 			{
 				continue;
 			}
-
-			if (IsNew && !bDisplayingNew)
+			if (!Report.Comparison.IsNew() && !Report.Comparison.AreSimilar() && !bDisplayingError)
 			{
 				continue;
 			}
-
-			if (IsFail && !bDisplayingError)
+			if (ReportFilterString.Len() && !Report.ReportFolder.Contains(ReportFilterString, ESearchCase::IgnoreCase))
 			{
 				continue;
 			}
-
-			if (ReportFilterString.Len() && !Report.GetReportPath().Contains(ReportFilterString, ESearchCase::IgnoreCase))
-			{
-				continue;
-			}
-
 			TSharedPtr<FScreenComparisonModel> Model = MakeShared<FScreenComparisonModel>(Report);
 			Model->OnComplete.AddLambda([this, Model] () {
 				ComparisonList.Remove(Model);
@@ -449,7 +380,12 @@ void SScreenShotBrowser::RebuildTree()
 
 bool SScreenShotBrowser::CanAddNewReportResult(const FImageComparisonResult& Comparison)
 {
-	return Comparison.IsNew();
+	bool bHasApprovedFile = !Comparison.ApprovedFile.IsEmpty();
+	FString ApprovedPath = FPaths::GetPath(Comparison.ApprovedFile);
+	FString IncomingPath = FPaths::GetPath(Comparison.IncomingFile);
+	bool bIsComparingAgainstPlatformFallback = bHasApprovedFile && ApprovedPath != IncomingPath;
+
+	return Comparison.IsNew() || bIsComparingAgainstPlatformFallback;
 }
 
 #undef LOCTEXT_NAMESPACE

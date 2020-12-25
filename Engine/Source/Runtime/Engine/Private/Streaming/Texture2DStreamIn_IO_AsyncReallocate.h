@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 Texture2DStreamIn_IO_AsyncReallocate.h: Default path for streaming in texture 2D mips.
@@ -13,7 +13,7 @@ class FTexture2DStreamIn_IO_AsyncReallocate : public FTexture2DStreamIn_IO
 {
 public:
 
-	FTexture2DStreamIn_IO_AsyncReallocate(UTexture2D* InTexture, bool InPrioritizedIORequest);
+	FTexture2DStreamIn_IO_AsyncReallocate(UTexture2D* InTexture, int32 InRequestedMips, bool InPrioritizedIORequest);
 
 protected:
 

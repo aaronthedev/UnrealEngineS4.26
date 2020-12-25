@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraStackFunctionInputBinder.h"
 #include "NiagaraScript.h"
@@ -6,7 +6,6 @@
 #include "NiagaraScriptSource.h"
 #include "NiagaraGraph.h"
 #include "NiagaraNodeFunctionCall.h"
-#include "NiagaraNodeOutput.h"
 
 #include "EdGraph/EdGraphPin.h"
 
@@ -292,15 +291,8 @@ FGuid FNiagaraStackFunctionInputBinder::GetChangeIdFromFunctionScript() const
 
 void FNiagaraStackFunctionInputBinder::RefreshGraphPins() const
 {
-	if (FunctionCallNode.IsValid() == false || FunctionCallNode->FunctionScript == nullptr || FunctionCallNode->FunctionScript->GetSource() == nullptr)
-	{
-		OverridePin = nullptr;
-		DefaultPin = nullptr;
-		return;
-	}
-
 	OverridePin = FNiagaraStackGraphUtilities::GetStackFunctionInputOverridePin(*FunctionCallNode, AliasedParameterHandle);
-	DefaultPin = FunctionCallNode->FindParameterMapDefaultValuePin(InputName, Script->GetUsage(), FCompileConstantResolver());
+	DefaultPin = FunctionCallNode->FindParameterMapDefaultValuePin(InputName, Script->GetUsage());
 	
 	// if we bind to a static switch value the default value pin cannot be found via the parameter map
 	if (DefaultPin == nullptr)

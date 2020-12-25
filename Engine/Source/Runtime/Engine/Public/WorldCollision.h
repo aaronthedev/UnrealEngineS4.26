@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // Structs that are used for Async Trace functionality
 // Mostly used by a batch of traces that you don't need a result right away
@@ -44,11 +44,6 @@ struct FTraceHandle
 	bool operator==(FTraceHandle const& Other) const
 	{
 		return Other._Handle == _Handle;
-	}
-
-	bool IsValid() const
-	{
-		return _Handle != 0;
 	}
 
 };
@@ -151,7 +146,6 @@ struct FTraceDatum : public FBaseTraceDatum
 	 */
 	FVector Start;
 	FVector End;
-	FQuat	Rot;
 	/** Delegate to be set if you want Delegate to be called when the output is available. Filled up by requester (main thread) **/
 	FTraceDelegate Delegate;
 
@@ -164,13 +158,12 @@ struct FTraceDatum : public FBaseTraceDatum
 	FTraceDatum() {}
 
 	/** Set Trace Datum for each shape type **/
-	FTraceDatum(UWorld* World, const FCollisionShape& CollisionShape, const FCollisionQueryParams& Param, const struct FCollisionResponseParams& InResponseParam, const struct FCollisionObjectQueryParams& InObjectQueryParam,
-		ECollisionChannel Channel, uint32 InUserData, EAsyncTraceType InTraceType, const FVector& InStart, const FVector& InEnd, const FQuat& InRot, FTraceDelegate* InDelegate, int32 FrameCounter)
+	FTraceDatum(UWorld * World, const FCollisionShape& CollisionShape, const FCollisionQueryParams& Param, const struct FCollisionResponseParams &InResponseParam, const struct FCollisionObjectQueryParams& InObjectQueryParam, 
+		ECollisionChannel Channel, uint32 InUserData, EAsyncTraceType InTraceType,	const FVector& InStart, const FVector& InEnd, FTraceDelegate * InDelegate, int32 FrameCounter)
 	{
 		Set(World, CollisionShape, Param, InResponseParam, InObjectQueryParam, Channel, InUserData, FrameCounter);
 		Start = InStart;
 		End = InEnd;
-		Rot = InRot;
 		if (InDelegate)
 		{
 			Delegate = *InDelegate;

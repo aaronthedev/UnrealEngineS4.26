@@ -1,13 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
-
-#include "CoreMinimal.h"
 
 #include "Input/Devices/DisplayClusterInputDeviceTraits.h"
 #include "Input/Devices/DisplayClusterInputDeviceBase.h"
 
-class UDisplayClusterConfigurationInputDeviceTracker;
+#include "CoreMinimal.h"
 
 
 /**
@@ -17,7 +15,7 @@ class FDisplayClusterVrpnTrackerInputDataHolder
 	: public FDisplayClusterInputDeviceBase<EDisplayClusterInputDeviceType::VrpnTracker>
 {
 public:
-	FDisplayClusterVrpnTrackerInputDataHolder(const FString& DeviceId, const UDisplayClusterConfigurationInputDeviceTracker* CfgDevice);
+	FDisplayClusterVrpnTrackerInputDataHolder(const FDisplayClusterConfigInput& config);
 	virtual ~FDisplayClusterVrpnTrackerInputDataHolder();
 
 public:
@@ -26,15 +24,12 @@ public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	virtual bool Initialize() override;
 
-	virtual FString GetType() const override
-	{ return FString("tracker"); }
-
 public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	// IDisplayClusterStringSerializable
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	virtual FString SerializeToString() const override final;
-	virtual bool    DeserializeFromString(const FString& Data) override final;
+	virtual bool    DeserializeFromString(const FString& data) override final;
 
 private:
 	// Serialization constants

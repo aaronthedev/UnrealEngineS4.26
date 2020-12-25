@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /** 
  * This is the definition for a skeleton, used to animate USkeletalMesh
@@ -24,8 +24,6 @@ class UBlendProfile;
 class URig;
 class USkeletalMesh;
 class USkeletalMeshSocket;
-class FPackageReloadedEvent;
-enum class EPackageReloadPhase : uint8;
 
 /** This is a mapping table between bone in a particular skeletal mesh and bone of this skeleton set. */
 USTRUCT()
@@ -233,7 +231,7 @@ public:
 
 namespace VirtualBoneNameHelpers
 {
-	extern ENGINE_API const FString VirtualBonePrefix;
+	const FString VirtualBonePrefix(TEXT("VB "));
 
 	ENGINE_API FString AddVirtualBonePrefix(const FString& InName);
 	ENGINE_API FName RemoveVirtualBonePrefix(const FString& InName);
@@ -316,7 +314,6 @@ public:
 	ENGINE_API virtual void PreEditUndo() override;
 	ENGINE_API virtual void PostEditUndo() override;
 #endif
-	ENGINE_API virtual void BeginDestroy() override;
 
 	/** Accessor to Reference Skeleton to make data read only */
 	const FReferenceSkeleton& GetReferenceSkeleton() const
@@ -437,10 +434,7 @@ public:
 	ENGINE_API const FAnimSlotGroup* FindAnimSlotGroup(const FName& InGroupName) const;
 	ENGINE_API const TArray<FAnimSlotGroup>& GetSlotGroups() const;
 	ENGINE_API bool ContainsSlotName(const FName& InSlotName) const;
-
-	/** Register a slot name. Return true if a slot was registered, false if it was already registered. */
-	ENGINE_API bool RegisterSlotNode(const FName& InSlotName);
-
+	ENGINE_API void RegisterSlotNode(const FName& InSlotName);
 	ENGINE_API void SetSlotGroupName(const FName& InSlotName, const FName& InGroupName);
 	/** Returns true if Group is added, false if it already exists */
 	ENGINE_API bool AddSlotGroupName(const FName& InNewGroupName);
@@ -882,9 +876,6 @@ private:
 	/** Regenerate new Guid */
 	void RegenerateGuid();
 	void RegenerateVirtualBoneGuid();
-
-	// Handle skeletons being reloaded via the content browser
-	static void HandlePackageReloaded(const EPackageReloadPhase InPackageReloadPhase, FPackageReloadedEvent* InPackageReloadedEvent);
 
 
 

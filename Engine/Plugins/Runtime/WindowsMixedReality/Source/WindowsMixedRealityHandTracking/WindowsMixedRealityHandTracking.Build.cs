@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System.IO;
 
@@ -12,11 +12,9 @@ namespace UnrealBuildTool.Rules
 			PublicDependencyModuleNames.AddRange(
 				new string[]
 				{
-					"InputDevice",
-                    "LiveLink",
-                    "LiveLinkInterface"
-                }
-            );
+					"InputDevice"
+				}
+			);
 
 			PrivateDependencyModuleNames.AddRange(
 				new string[]
@@ -27,22 +25,12 @@ namespace UnrealBuildTool.Rules
 					"InputCore",
 					"Slate",
 					"HeadMountedDisplay",
+					"WindowsMixedRealityHMD",
 					"SlateCore",
 	                "LiveLink",
-                    "LiveLinkInterface",
-					"WindowsMixedRealityHMD"
-				}
+                    "LiveLinkInterface"
+                }
 			);
-
-			if (Target.Platform == UnrealTargetPlatform.Win64 && Target.bBuildEditor == true)
-			{
-				PrivateDependencyModuleNames.Add("WindowsMixedRealityInputSimulation");
-				PrivateDefinitions.Add("WITH_INPUT_SIMULATION=1");
-			}
-			else
-			{
-				PrivateDefinitions.Add("WITH_INPUT_SIMULATION=0");
-			}
 
             AddEngineThirdPartyPrivateStaticDependencies(Target, "WindowsMixedRealityInterop");
         }

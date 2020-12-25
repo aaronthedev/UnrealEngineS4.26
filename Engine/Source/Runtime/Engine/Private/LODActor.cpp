@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	LODActorBase.cpp: Static mesh actor base class implementation.
@@ -56,13 +56,6 @@ ENGINE_API TAutoConsoleVariable<FString> CVarHLODDistanceOverride(
 	TEXT("If non-zero, overrides the distance that HLOD transitions will take place for all objects at the HLOD level index, formatting is as follows:\n")
 	TEXT("'r.HLOD.DistanceOverride 5000, 10000, 20000' would result in HLOD levels 0, 1 and 2 transitioning at 5000, 1000 and 20000 respectively."),
 	ECVF_Scalability);
-
-static TAutoConsoleVariable<FString> CVarHLODDistanceOverrideScale(
-	TEXT("r.HLOD.DistanceOverrideScale"),
-	"",
-	TEXT("Scales the value in r.HLOD.DistanceOverride, Default off.\n")
-	TEXT("This is an optional scale intended to allow game logic to dynamically modify without impacting scalability.\n")
-);
 
 static TAutoConsoleVariable<int32> CVarHLODForceDisableCastDynamicShadow(
 	TEXT("r.HLOD.ForceDisableCastDynamicShadow"),
@@ -289,24 +282,24 @@ void ALODActor::PostLoad()
 #if !WITH_EDITOR
 	// Invalid runtime LOD actor with null static mesh is invalid, look for a possible way to patch this up
 	if (GetStaticMeshComponent() && GetStaticMeshComponent()->GetStaticMesh() == nullptr && GetStaticMeshComponent()->GetLODParentPrimitive())
+	{
+ 		if (ALODActor* ParentLODActor = Cast<ALODActor>(GetStaticMeshComponent()->GetLODParentPrimitive()->GetOwner()))
 		{
- 			if (ALODActor* ParentLODActor = Cast<ALODActor>(GetStaticMeshComponent()->GetLODParentPrimitive()->GetOwner()))
-			{
 			// Make the parent HLOD
-					ParentLODActor->SubActors.Remove(this);
+			ParentLODActor->SubActors.Remove(this);
 			ParentLODActor->SubActors.Append(SubActors);
-					for (AActor* Actor : SubActors)
-					{
-						if (Actor)
-						{
-							Actor->SetLODParent(ParentLODActor->GetStaticMeshComponent(), ParentLODActor->GetDrawDistance());
-						}
-					}
-  
-					SubActors.Empty();
-					bHasPatchedUpParent = true;
+			for (AActor* Actor : SubActors)
+			{
+				if (Actor)
+				{
+					Actor->SetLODParent(ParentLODActor->GetStaticMeshComponent(), ParentLODActor->GetDrawDistance());
 				}
 			}
+  
+			SubActors.Empty();
+			bHasPatchedUpParent = true;
+		}
+	}
 #endif // !WITH_EDITOR
 
 	ParseOverrideDistancesCVar();
@@ -372,29 +365,15 @@ void ALODActor::ParseOverrideDistancesCVar()
 {
 	// Parse HLOD override distance cvar into array
 	const FString DistanceOverrideValues = CVarHLODDistanceOverride.GetValueOnAnyThread();
-	const FString DistanceOverrideScaleValues = CVarHLODDistanceOverrideScale.GetValueOnAnyThread();
-	const TCHAR* Delimiters[] = { TEXT(","), TEXT(" ") };
-
 	TArray<FString> Distances;
-	DistanceOverrideValues.ParseIntoArray(/*out*/ Distances, Delimiters, UE_ARRAY_COUNT(Delimiters), true);
-
-	TArray<FString> DistanceScales;
-	if (!DistanceOverrideScaleValues.IsEmpty())
-	{
-		DistanceOverrideScaleValues.ParseIntoArray(/*out*/ DistanceScales, Delimiters, UE_ARRAY_COUNT(Delimiters), true);
-	}	
-
+	DistanceOverrideValues.ParseIntoArray(/*out*/ Distances, TEXT(","), /*bCullEmpty=*/ false);
 	HLODDistances.Empty(Distances.Num());
-	for (int32 Index = 0; Index < Distances.Num(); ++Index)
+
+	for (const FString& DistanceString : Distances)
 	{
-		const float DistanceForThisLevel = FCString::Atof(*Distances[Index]);
-		float DistanceScaleForThisLevel = 1.f;
-		if (DistanceScales.IsValidIndex(Index))
-		{
-			DistanceScaleForThisLevel = FCString::Atof(*DistanceScales[Index]);
-		}
-		HLODDistances.Add(DistanceForThisLevel * DistanceScaleForThisLevel);
-	}
+		const float DistanceForThisLevel = FCString::Atof(*DistanceString);
+		HLODDistances.Add(DistanceForThisLevel);
+	}	
 }
 
 float ALODActor::GetLODDrawDistanceWithOverride() const
@@ -674,14 +653,7 @@ void ALODActor::ForceUnbuilt()
 #endif
 }
 
-bool ALODActor::Modify(bool bAlwaysMarkDirty /*= true*/)
-{
-	// Avoid marking the package as dirty if this LODActor was spawned from an HLODDesc and is transient
-	bAlwaysMarkDirty = bAlwaysMarkDirty && !WasBuiltFromHLODDesc();
-	return Super::Modify(bAlwaysMarkDirty);
-}
-
-void ALODActor::PreEditChange(FProperty* PropertyThatWillChange)
+void ALODActor::PreEditChange(UProperty* PropertyThatWillChange)
 {
 	Super::PreEditChange(PropertyThatWillChange);
 
@@ -691,7 +663,7 @@ void ALODActor::PreEditChange(FProperty* PropertyThatWillChange)
 
 void ALODActor::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
-	FProperty* PropertyThatChanged = PropertyChangedEvent.Property;
+	UProperty* PropertyThatChanged = PropertyChangedEvent.Property;
 	FName PropertyName = PropertyThatChanged != NULL ? PropertyThatChanged->GetFName() : NAME_None;
 	
 	if (PropertyName == GET_MEMBER_NAME_CHECKED(ALODActor, bOverrideTransitionScreenSize) || PropertyName == GET_MEMBER_NAME_CHECKED(ALODActor, TransitionScreenSize))
@@ -746,7 +718,7 @@ void ALODActor::CheckForErrors()
 		Arguments.Add(TEXT("ActorName"), FText::FromString(GetPathName()));
 		MapCheck.Warning()
 			->AddToken(FUObjectToken::Create(this))
-			->AddToken(FTextToken::Create(FText::Format(LOCTEXT("MapCheck_Message_StaticMeshComponent", "{ActorName} : LODActor has no StaticMeshComponent. Please rebuild HLODs for this level."), Arguments)))
+			->AddToken(FTextToken::Create(FText::Format(LOCTEXT("MapCheck_Message_StaticMeshComponent", "{ActorName} : Static mesh actor has NULL StaticMeshComponent property - please delete."), Arguments)))
 			->AddToken(FMapErrorToken::Create(FMapErrors::StaticMeshComponent));
 	}
 
@@ -754,19 +726,19 @@ void ALODActor::CheckForErrors()
 	{
 		FFormatNamedArguments Arguments;
 		Arguments.Add(TEXT("ActorName"), FText::FromString(GetPathName()));
-		FMessageLog("MapCheck").Warning()
+		FMessageLog("MapCheck").Error()
 			->AddToken(FUObjectToken::Create(this))
-			->AddToken(FTextToken::Create(FText::Format(LOCTEXT("MapCheck_Message_InvalidLODActorMissingMesh", "{ActorName} : LODActor has no static mesh. Please rebuild HLODs for this level."), Arguments)))
+			->AddToken(FTextToken::Create(FText::Format(LOCTEXT("MapCheck_Message_InvalidLODActorMissingMesh", "{ActorName} : Static mesh is missing for the built LODActor.  Did you remove the asset? Please delete it and build LOD again. "), Arguments)))
 			->AddToken(FMapErrorToken::Create(FMapErrors::LODActorMissingStaticMesh));
 	}
-
+	
 	if (SubActors.Num() == 0)
 	{
 		FFormatNamedArguments Arguments;
 		Arguments.Add(TEXT("ActorName"), FText::FromString(GetPathName()));
-		FMessageLog("MapCheck").Warning()
+		FMessageLog("MapCheck").Error()
 			->AddToken(FUObjectToken::Create(this))
-			->AddToken(FTextToken::Create(FText::Format(LOCTEXT("MapCheck_Message_InvalidLODActorEmptyActor", "{ActorName} : No sub actors are assigned. Please rebuild HLODs for this level."), Arguments)))
+			->AddToken(FTextToken::Create(FText::Format(LOCTEXT("MapCheck_Message_InvalidLODActorEmptyActor", "{ActorName} : NoActor is assigned. We recommend you to delete this actor. "), Arguments)))
 			->AddToken(FMapErrorToken::Create(FMapErrors::LODActorNoActorFound));
 	}
 	else
@@ -774,13 +746,13 @@ void ALODActor::CheckForErrors()
 		for (AActor* Actor : SubActors)
 		{
 			// see if it's null, if so it is not good
-			if (Actor == nullptr)
+			if(Actor == nullptr)
 			{
 				FFormatNamedArguments Arguments;
 				Arguments.Add(TEXT("ActorName"), FText::FromString(GetPathName()));
-				FMessageLog("MapCheck").Warning()
+				FMessageLog("MapCheck").Error()
 					->AddToken(FUObjectToken::Create(this))
-					->AddToken(FTextToken::Create(FText::Format(LOCTEXT("MapCheck_Message_InvalidLODActorNullActor", "{ActorName} : Actor is missing. The actor might have been removed. Please rebuild HLODs for this level."), Arguments)))
+					->AddToken(FTextToken::Create(FText::Format(LOCTEXT("MapCheck_Message_InvalidLODActorNullActor", "{ActorName} : Actor is missing. The actor might have been removed. We recommend you to build LOD again. "), Arguments)))
 					->AddToken(FMapErrorToken::Create(FMapErrors::LODActorMissingActor));
 			}
 		}
@@ -805,44 +777,32 @@ void ALODActor::EditorApplyMirror(const FVector& MirrorScale, const FVector& Piv
 
 void ALODActor::AddSubActor(AActor* InActor)
 {
-	AddSubActors({ InActor });
-}
+	SubActors.Add(InActor);
 
-void ALODActor::AddSubActors(const TArray<AActor*>& InActors)
-{
-	SubActors.Append(InActors);
+	UStaticMeshComponent* LODComponent = GetOrCreateLODComponentForActor(InActor);
+	InActor->SetLODParent(LODComponent, GetLODDrawDistanceWithOverride());
 
-	float LODDrawDistanceWithOverride = GetLODDrawDistanceWithOverride();
-	TArray<UStaticMeshComponent*> StaticMeshComponents;
-
-	for(AActor* Actor : InActors)
+	// Adding number of triangles
+	if (!InActor->IsA<ALODActor>())
 	{
-		UStaticMeshComponent* LODComponent = GetOrCreateLODComponentForActor(Actor);
-		Actor->SetLODParent(LODComponent, LODDrawDistanceWithOverride);
-
-		// Adding number of triangles
-		ALODActor* LODActor = Cast<ALODActor>(Actor);
-		if (!LODActor)
+		TArray<UStaticMeshComponent*> StaticMeshComponents;
+		InActor->GetComponents<UStaticMeshComponent>(StaticMeshComponents);
+		for (UStaticMeshComponent* Component : StaticMeshComponents)
 		{
-			StaticMeshComponents.Reset();
-			Actor->GetComponents<UStaticMeshComponent>(StaticMeshComponents);
-
-			for (UStaticMeshComponent* Component : StaticMeshComponents)
+			const UStaticMesh* StaticMesh = (Component) ? Component->GetStaticMesh() : nullptr;
+			if (StaticMesh && StaticMesh->RenderData && StaticMesh->RenderData->LODResources.Num() > 0)
 			{
-				const UStaticMesh* StaticMesh = (Component) ? Component->GetStaticMesh() : nullptr;
-				if (StaticMesh && StaticMesh->RenderData && StaticMesh->RenderData->LODResources.Num() > 0)
-				{
-					NumTrianglesInSubActors += StaticMesh->RenderData->LODResources[0].GetNumTriangles();
-				}
-				Component->MarkRenderStateDirty();
+				NumTrianglesInSubActors += StaticMesh->RenderData->LODResources[0].GetNumTriangles();
 			}
-		}
-		else
-		{
-			NumTrianglesInSubActors += LODActor->GetNumTrianglesInSubActors();
+			Component->MarkRenderStateDirty();
 		}
 	}
-
+	else
+	{
+		ALODActor* LODActor = Cast<ALODActor>(InActor);
+		NumTrianglesInSubActors += LODActor->GetNumTrianglesInSubActors();
+	}
+	
 	// Reset the shadowing flags and determine them according to our current sub actors
 	DetermineShadowingFlags();
 }
@@ -939,7 +899,7 @@ const bool ALODActor::HasValidSubActors() const
 	UHLODProxy::ExtractStaticMeshComponentsFromLODActor(this, Components);
 
 	UStaticMeshComponent** ValidComponent = Components.FindByPredicate([&](const UStaticMeshComponent* Component)
-				{
+	{
 #if WITH_EDITOR
 		return !Component->bHiddenInGame && Component->GetStaticMesh() != nullptr && Component->ShouldGenerateAutoLOD(LODLevel - 1);
 #else
@@ -1012,12 +972,9 @@ const uint32 ALODActor::GetNumTrianglesInMergedMesh()
 
 void ALODActor::SetStaticMesh(class UStaticMesh* InStaticMesh)
 {
-	if (StaticMeshComponent && StaticMeshComponent->GetStaticMesh() != InStaticMesh)
+	if (StaticMeshComponent)
 	{
-		// Temporarily switch to movable in order to update the static mesh...
-		StaticMeshComponent->SetMobility(EComponentMobility::Movable);
 		StaticMeshComponent->SetStaticMesh(InStaticMesh);
-		StaticMeshComponent->SetMobility(EComponentMobility::Static);
 
 		ensure(StaticMeshComponent->GetStaticMesh() == InStaticMesh);
 		if (InStaticMesh && InStaticMesh->RenderData && InStaticMesh->RenderData->LODResources.Num() > 0)
@@ -1027,22 +984,14 @@ void ALODActor::SetStaticMesh(class UStaticMesh* InStaticMesh)
 	}
 }
 
-void ALODActor::SetupImposters(const UMaterialInterface* InMaterial, UStaticMesh* InStaticMesh, const TArray<FTransform>& InTransforms)
+void ALODActor::SetupImposters(UMaterialInterface* InMaterial, UStaticMesh* InStaticMesh, const TArray<FTransform>& InTransforms)
 {
 	check(InMaterial);
 	check(InStaticMesh);
 	check(InTransforms.Num() > 0);
 
 	UInstancedStaticMeshComponent* Component = GetOrCreateLODComponentForMaterial(InMaterial);
-
-	if (Component->GetStaticMesh() != InStaticMesh)
-	{
-		// Temporarily switch to movable in order to update the static mesh...
-		Component->SetMobility(EComponentMobility::Movable);
-		Component->SetStaticMesh(InStaticMesh);
-		Component->SetMobility(EComponentMobility::Static);
-	}
-
+	Component->SetStaticMesh(InStaticMesh);
 	Component->ClearInstances();
 	
 	for (const FTransform& Transform : InTransforms)
@@ -1058,7 +1007,7 @@ void ALODActor::UpdateSubActorLODParents()
 {
 	for (AActor* Actor : SubActors)
 	{	
-		if (Actor && !Actor->IsPendingKillPending())
+		if(Actor)
 		{
 			UStaticMeshComponent* LODComponent = GetLODComponentForActor(Actor);
 			Actor->SetLODParent(LODComponent, LODComponent->MinDrawDistance);
@@ -1094,16 +1043,6 @@ void ALODActor::RecalculateDrawingDistance(const float InTransitionScreenSize)
 	SetDrawDistance(DrawDistance);
 
 	UpdateSubActorLODParents();
-}
-
-bool ALODActor::UpdateProxyDesc()
-{
-	if (ProxyDesc)
-	{
-		return ProxyDesc->UpdateFromLODActor(this);
-	}
-
-	return false;
 }
 
 #endif // WITH_EDITOR
@@ -1154,7 +1093,7 @@ UMaterialInterface* ALODActor::GetImposterMaterial(const UStaticMeshComponent* I
 		const int32 LODIndex = StaticMesh->GetNumLODs() - 1;
 
 		// Retrieve the sections, we're expect 1 for imposter meshes
-		const FStaticMeshLODResources::FStaticMeshSectionArray& Sections = StaticMesh->RenderData->LODResources[LODIndex].Sections;
+		const TArray<FStaticMeshSection>& Sections = StaticMesh->RenderData->LODResources[LODIndex].Sections;
 		if (Sections.Num() == 1)
 		{
 			// Retrieve material for this section
@@ -1263,7 +1202,7 @@ UStaticMeshComponent* ALODActor::GetOrCreateLODComponentForActor(const AActor* I
 
 #endif // !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 
-FBox ALODActor::GetComponentsBoundingBox(bool bNonColliding, bool bIncludeFromChildActors) const
+FBox ALODActor::GetComponentsBoundingBox(bool bNonColliding) const 
 {
 	FBox BoundBox = Super::GetComponentsBoundingBox(bNonColliding);
 
@@ -1298,7 +1237,7 @@ FBox ALODActor::GetComponentsBoundingBox(bool bNonColliding, bool bIncludeFromCh
 			{
 				if (Actor)
 				{
-					BoundBox += Actor->GetComponentsBoundingBox(bNonColliding, bIncludeFromChildActors);
+					BoundBox += Actor->GetComponentsBoundingBox(bNonColliding);
 				}
 			}
 		}
@@ -1393,12 +1332,10 @@ void ALODActor::PreSave(const class ITargetPlatform* TargetPlatform)
 {
 	Super::PreSave(TargetPlatform);	
 
-	// Always rebuild key on save here.
-	// We don't do this while cooking as keys rely on platform derived data which is context-dependent during cook
 	if(!GIsCookerLoadingPackage)
 	{
-		const bool bMustUndoLevelTransform = false; // In the save process, the level transform is already removed
-		Key = UHLODProxy::GenerateKeyForActor(this, bMustUndoLevelTransform);
+		// Always rebuild key on save here. We dont do this while cooking as keys rely on platform derived data which is context-dependent during cook
+		Key = UHLODProxy::GenerateKeyForActor(this);
 	}
 
 	// check & warn if we need building

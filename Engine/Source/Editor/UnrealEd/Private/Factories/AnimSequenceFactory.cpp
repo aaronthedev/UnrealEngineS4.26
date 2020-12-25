@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AnimSequenceFactory.cpp: Factory for AnimSequence
@@ -66,23 +66,24 @@ bool UAnimSequenceFactory::ConfigureProperties()
 
 UObject* UAnimSequenceFactory::FactoryCreateNew(UClass* Class, UObject* InParent, FName Name, EObjectFlags Flags, UObject* Context, FFeedbackContext* Warn)
 {
-	//
-	UAnimSequence* AnimSequence = NewObject<UAnimSequence>(InParent, Class, Name, Flags);
-
-	// @todo I think this will crash, we should support differentoptions
-	AnimSequence->SequenceLength = 0.f;
-	AnimSequence->SetRawNumberOfFrame(0);
-	
 	if (TargetSkeleton)
 	{
-		AnimSequence->SetSkeleton(TargetSkeleton);
-	}
-	if (PreviewSkeletalMesh)
-	{
-		AnimSequence->SetPreviewMesh(PreviewSkeletalMesh);
+		UAnimSequence* AnimSequence = NewObject<UAnimSequence>(InParent, Class, Name, Flags);
+
+		// @todo I think this will crash, we should support differentoptions
+		AnimSequence->SequenceLength = 0.f;
+		AnimSequence->SetRawNumberOfFrame(0);
+		
+		AnimSequence->SetSkeleton( TargetSkeleton );
+		if (PreviewSkeletalMesh)
+		{
+			AnimSequence->SetPreviewMesh(PreviewSkeletalMesh);
+		}
+
+		return AnimSequence;
 	}
 
-	return AnimSequence;
+	return NULL;
 }
 
 void UAnimSequenceFactory::OnTargetSkeletonSelected(const FAssetData& SelectedAsset)

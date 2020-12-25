@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -21,12 +21,9 @@ public:
 	virtual void ApplySettings(int32 LODIndex, FMeshData& InOutMeshData) const override;
 	virtual UPackage* GetOuter() const override;
 	virtual FString GetBaseName() const override;
-	virtual FName GetMaterialSlotName(int32 MaterialIndex) const override;
-	virtual FName GetImportedMaterialSlotName(int32 MaterialIndex) const override;
 	virtual void SetMaterial(int32 MaterialIndex, UMaterialInterface* Material) override;
 	virtual void RemapMaterialIndex(int32 LODIndex, int32 SectionIndex, int32 NewMaterialIndex) override;
 	virtual int32 AddMaterial(UMaterialInterface* Material) override;
-	virtual int32 AddMaterial(UMaterialInterface* Material, const FName& SlotName, const FName& ImportedSlotName) override;
 	virtual void UpdateUVChannelData() override;
 	virtual bool IsAsset() const override;
 	virtual int32 LightmapUVIndex() const override;

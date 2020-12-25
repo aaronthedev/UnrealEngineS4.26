@@ -1,22 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Logging/LogMacros.h"
 
-#if !defined(MFMEDIA_SUPPORTED_PLATFORM)
-	#define MFMEDIA_SUPPORTED_PLATFORM (PLATFORM_XBOXONE || PLATFORM_HOLOLENS || (PLATFORM_WINDOWS && WINVER >= 0x0601 /*Win7*/ && !UE_SERVER))
-	#define MFMEDIA_NEED_PLATFORM_PRIVATE 0
-#else
-	#define MFMEDIA_NEED_PLATFORM_PRIVATE 1
-#endif
+#define MFMEDIA_SUPPORTED_PLATFORM (PLATFORM_XBOXONE || PLATFORM_HOLOLENS || (PLATFORM_WINDOWS && WINVER >= 0x0601 /*Win7*/ && !UE_SERVER))
 
-
-
-#if MFMEDIA_SUPPORTED_PLATFORM && MFMEDIA_NEED_PLATFORM_PRIVATE
-	#include "MfMediaPlatformPrivate.h"
-
-#elif MFMEDIA_SUPPORTED_PLATFORM
+#if MFMEDIA_SUPPORTED_PLATFORM
 	#if PLATFORM_WINDOWS
 		#include "Windows/WindowsHWrapper.h"
 	#endif

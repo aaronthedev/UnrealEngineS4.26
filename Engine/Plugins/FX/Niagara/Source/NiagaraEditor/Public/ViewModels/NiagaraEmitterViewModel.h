@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "NiagaraCommon.h"
 #include "ViewModels/TNiagaraViewModelManager.h"
 #include "UObject/ObjectKey.h"
-#include "IAssetTypeActions.h"
 
 class UNiagaraEmitter;
 class UNiagaraScript;
@@ -17,9 +16,6 @@ class FNiagaraEmitterInstance;
 struct FNiagaraVariable;
 struct FNiagaraParameterStore;
 struct FEdGraphEditAction;
-class SWindow;
-class FNiagaraEmitterHandleViewModel;
-struct FNiagaraEventScriptProperties;
 
 /** The view model for the UNiagaraEmitter objects */
 class FNiagaraEmitterViewModel : public TSharedFromThis<FNiagaraEmitterViewModel>,  public TNiagaraViewModelManager<UNiagaraEmitter, FNiagaraEmitterViewModel>
@@ -44,7 +40,7 @@ public:
 	void Reset();
 
 	/** Gets the currently assigned simulation if there is one. */
-	NIAGARAEDITOR_API TWeakPtr<FNiagaraEmitterInstance, ESPMode::ThreadSafe> GetSimulation() const;
+	TWeakPtr<FNiagaraEmitterInstance, ESPMode::ThreadSafe> GetSimulation() const;
 
 	/** Sets the current simulation for the emitter. */
 	void SetSimulation(TWeakPtr<FNiagaraEmitterInstance, ESPMode::ThreadSafe> InSimulation);
@@ -64,9 +60,6 @@ public:
 	/** Gets the text representation of the parent emitter path. */
 	NIAGARAEDITOR_API FText GetParentPathNameText() const;
 
-	NIAGARAEDITOR_API void CreateNewParentWindow(TSharedRef<FNiagaraEmitterHandleViewModel> EmitterHandleViewModel);
-	void UpdateParentEmitter(const TArray<FAssetData>& ActivatedAssets, EAssetTypeActivationMethod::Type ActivationMethod, TSharedRef<FNiagaraEmitterHandleViewModel> EmitterHandleViewModel);
-
 	/** Removes the parent emitter from this emitter. */
 	NIAGARAEDITOR_API void RemoveParentEmitter();
 
@@ -84,7 +77,7 @@ public:
 	FOnEmitterChanged& OnEmitterChanged();
 
 	/** Gets a delegate which is called when a property on the emitter changes. */
-	NIAGARAEDITOR_API FOnPropertyChanged& OnPropertyChanged();
+	FOnPropertyChanged& OnPropertyChanged();
 
 	/** Gets a delegate which is called when the shared script is compiled. */
 	FOnScriptCompiled& OnScriptCompiled();
@@ -104,17 +97,15 @@ public:
 	/** Gets editor specific data which is stored per emitter.  If this data hasn't been created then it will be created. */
 	UNiagaraEmitterEditorData& GetOrCreateEditorData();
 
-	/** Add an event script to the owned emitter. Sets the Usage, UsageID and Source of the EventScriptProperties. */
-	NIAGARAEDITOR_API void AddEventHandler(FNiagaraEventScriptProperties& EventScriptProperties, bool bResetGraphForOutput = false);
-
 	void Cleanup();
+
+	bool IsEnabledByDetailLevel() const;
 
 private:
 	/** Sets this view model to a different emitter. */
 	void SetEmitter(UNiagaraEmitter* InEmitter);
 
 	void OnVMCompiled(UNiagaraEmitter* InEmitter);
-	void OnGPUCompiled(UNiagaraEmitter* InEmitter);
 
 	void AddScriptEventHandlers();
 
@@ -133,8 +124,8 @@ private:
 	/** The text format stats to only display particles count. */
 	static const FText StatsParticleCountFormat;
 
-	/** The text format stats to display when an emitter is disabled due to scalability. */
-	static const FText ParticleDisabledDueToScalability;
+	/** The text format stats to display when detail level mismatches. */
+	static const FText ParticleDisabledDueToDetailLevel;
 
 	/** The emitter object being displayed by the control .*/
 	TWeakObjectPtr<UNiagaraEmitter> Emitter;
@@ -173,6 +164,4 @@ private:
 
 	/** A mapping of script to the delegate handle for it's on parameter map changed delegate. */
 	TMap<FObjectKey, FDelegateHandle> ScriptToOnParameterStoreChangedHandleMap;
-
-	TSharedPtr<SWindow> NewParentWindow;
 };

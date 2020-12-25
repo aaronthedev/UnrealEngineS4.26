@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Misc/Guid.h"
 #include "Misc/Parse.h"
-#include "Math/Int128.h"
 #include "UObject/PropertyPortFlags.h"
 #include "Misc/Base64.h"
 
@@ -75,39 +74,6 @@ FString FGuid::ToString(EGuidFormats Format) const
 		return Result;
 	}
 
-	case EGuidFormats::Base36Encoded:
-	{
-		static const uint8 Alphabet[36] = 
-		{
-			'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F',
-			'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V',
-			'W', 'X', 'Y', 'Z'
-		};
-
-		FUInt128 Value(A, B, C, D);
-
-		FString Result;
-		Result.Reserve(26);
-		TArray<TCHAR>& OutCharArray = Result.GetCharArray();
-
-		while(Value > 0)
-		{
-			uint32 Remainder;
-			Value = Value.Divide(36, Remainder);
-			OutCharArray.Add(Alphabet[Remainder]);
-		}
-
-		for(int32 i=OutCharArray.Num(); i<25; i++)
-		{
-			OutCharArray.Add('0');
-		}
-
-		OutCharArray.Add(0);
-
-		check(Result.Len() == 25);
-		return Result.Reverse();
-	}
-
 	default:
 		return FString::Printf(TEXT("%08X%08X%08X%08X"), A, B, C, D);
 	}
@@ -163,18 +129,13 @@ bool FGuid::Parse(const FString& GuidString, FGuid& OutGuid)
 		return ParseExact(GuidString, EGuidFormats::Short, OutGuid);
 	}
 
-	if (GuidString.Len() == 25)
-	{
-		return ParseExact(GuidString, EGuidFormats::Base36Encoded, OutGuid);
-	}
-
 	return false;
 }
 
 
 bool FGuid::ParseExact(const FString& GuidString, EGuidFormats Format, FGuid& OutGuid)
 {
-	// The below normalizing into the Digits format doesn't work with Short and Base36 Guids
+	// The below normalizing into the Digits format doesn't work with Short Guids
 	if (Format == EGuidFormats::Short)
 	{
 		uint32 Data[4] = {};
@@ -202,39 +163,6 @@ bool FGuid::ParseExact(const FString& GuidString, EGuidFormats Format, FGuid& Ou
 						Data[1],
 						Data[2],
 						Data[3]);
-		return true;
-	}
-
-	if (Format == EGuidFormats::Base36Encoded)
-	{
-		FUInt128 Value;
-		const TCHAR* c = *GuidString;
-
-		while (*c)
-		{
-			Value *= 36;
-			if (*c >= '0' && *c <= '9')
-			{
-				Value += *c - '0';
-			}
-			else if (*c >= 'A' && *c <= 'Z')
-			{
-				Value += *c - 'A' + 10;
-			}
-			else
-			{
-				return false;
-			}
-			c++;
-		}
-
-		OutGuid = FGuid(
-			Value.GetQuadPart(3), 
-			Value.GetQuadPart(2), 
-			Value.GetQuadPart(1), 
-			Value.GetQuadPart(0)
-		);
-
 		return true;
 	}
 
@@ -392,10 +320,9 @@ FArchive& operator<<(FArchive& Ar, FGuid& G)
 
 void operator<<(FStructuredArchive::FSlot Slot, FGuid& G)
 {
-	const FArchiveState& State = Slot.GetArchiveState();
-	if (State.IsTextFormat())
+	if (Slot.GetUnderlyingArchive().IsTextFormat())
 	{
-		if (State.IsLoading())
+		if (Slot.GetUnderlyingArchive().IsLoading())
 		{
 			FString AsString;
 			Slot << AsString;

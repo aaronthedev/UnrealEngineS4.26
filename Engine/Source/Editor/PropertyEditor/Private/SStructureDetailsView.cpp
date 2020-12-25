@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SStructureDetailsView.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
@@ -51,85 +51,85 @@ void SStructureDetailsView::Construct(const FArguments& InArgs)
 	ColumnSizeData.RightColumnWidth = TAttribute<float>(this, &SStructureDetailsView::OnGetRightColumnWidth);
 	ColumnSizeData.OnWidthChanged = SSplitter::FOnSlotResized::CreateSP(this, &SStructureDetailsView::OnSetColumnWidth);
 
-	TSharedRef<SScrollBar> ExternalScrollbar = SNew(SScrollBar);
+	TSharedRef<SScrollBar> ExternalScrollbar = 
+		SNew(SScrollBar)
+		.AlwaysShowScrollbar( DetailsViewArgs.bShowScrollBar )
+		.Visibility(DetailsViewArgs.bShowScrollBar ? EVisibility::Visible : EVisibility::Collapsed);
 
-	// See note in SDetailsView for why visibility is set after construction
-	ExternalScrollbar->SetVisibility( TAttribute<EVisibility>(this, &SStructureDetailsView::GetScrollBarVisibility) );
+		FMenuBuilder DetailViewOptions( true, NULL );
 
-	FMenuBuilder DetailViewOptions( true, nullptr );
+		FUIAction ShowOnlyModifiedAction( 
+			FExecuteAction::CreateSP(this, &SStructureDetailsView::OnShowOnlyModifiedClicked),
+			FCanExecuteAction(),
+			FIsActionChecked::CreateSP(this, &SStructureDetailsView::IsShowOnlyModifiedChecked)
+		);
 
-	FUIAction ShowOnlyModifiedAction( 
-		FExecuteAction::CreateSP(this, &SStructureDetailsView::OnShowOnlyModifiedClicked),
-		FCanExecuteAction(),
-		FIsActionChecked::CreateSP(this, &SStructureDetailsView::IsShowOnlyModifiedChecked)
-	);
+		if (DetailsViewArgs.bShowModifiedPropertiesOption)
+		{
+			DetailViewOptions.AddMenuEntry( 
+				LOCTEXT("ShowOnlyModified", "Show Only Modified Properties"),
+				LOCTEXT("ShowOnlyModified_ToolTip", "Displays only properties which have been changed from their default"),
+				FSlateIcon(),
+				ShowOnlyModifiedAction,
+				NAME_None,
+				EUserInterfaceActionType::ToggleButton 
+			);
+		}
+		if (DetailsViewArgs.bShowKeyablePropertiesOption)
+		{
+			DetailViewOptions.AddMenuEntry(
+				LOCTEXT("ShowOnlyKeyable", "Show Only Keyable Properties"),
+				LOCTEXT("ShowOnlyKeyable_ToolTip", "Displays only properties which are keyable"),
+				FSlateIcon(),
+				FUIAction(
+					FExecuteAction::CreateSP(this, &SStructureDetailsView::OnShowKeyableClicked),
+					FCanExecuteAction(),
+					FIsActionChecked::CreateSP(this, &SStructureDetailsView::IsShowKeyableChecked)
+				),
+				NAME_None,
+				EUserInterfaceActionType::ToggleButton
+			);
+		}
+		if (DetailsViewArgs.bShowAnimatedPropertiesOption)
+		{
+			DetailViewOptions.AddMenuEntry(
+				LOCTEXT("ShowAnimated", "Show Only Animated Properties"),
+				LOCTEXT("ShowAnimated_ToolTip", "Displays only properties which are animated (have tracks)"),
+				FSlateIcon(),
+				FUIAction(
+					FExecuteAction::CreateSP(this, &SStructureDetailsView::OnShowAnimatedClicked),
+					FCanExecuteAction(),
+					FIsActionChecked::CreateSP(this, &SStructureDetailsView::IsShowAnimatedChecked)
+				),
+				NAME_None,
+				EUserInterfaceActionType::ToggleButton
+			);
+		}
+		FUIAction ShowAllAdvancedAction( 
+			FExecuteAction::CreateSP(this, &SStructureDetailsView::OnShowAllAdvancedClicked),
+			FCanExecuteAction(),
+			FIsActionChecked::CreateSP(this, &SStructureDetailsView::IsShowAllAdvancedChecked)
+		);
 
-	if (DetailsViewArgs.bShowModifiedPropertiesOption)
-	{
-		DetailViewOptions.AddMenuEntry( 
-			LOCTEXT("ShowOnlyModified", "Show Only Modified Properties"),
-			LOCTEXT("ShowOnlyModified_ToolTip", "Displays only properties which have been changed from their default"),
+		DetailViewOptions.AddMenuEntry(
+			LOCTEXT("ShowAllAdvanced", "Show All Advanced Details"),
+			LOCTEXT("ShowAllAdvanced_ToolTip", "Shows all advanced detail sections in each category"),
 			FSlateIcon(),
-			ShowOnlyModifiedAction,
+			ShowAllAdvancedAction,
 			NAME_None,
 			EUserInterfaceActionType::ToggleButton 
-		);
-	}
-	if (DetailsViewArgs.bShowKeyablePropertiesOption)
-	{
-		DetailViewOptions.AddMenuEntry(
-			LOCTEXT("ShowOnlyKeyable", "Show Only Keyable Properties"),
-			LOCTEXT("ShowOnlyKeyable_ToolTip", "Displays only properties which are keyable"),
-			FSlateIcon(),
-			FUIAction(
-				FExecuteAction::CreateSP(this, &SStructureDetailsView::OnShowKeyableClicked),
-				FCanExecuteAction(),
-				FIsActionChecked::CreateSP(this, &SStructureDetailsView::IsShowKeyableChecked)
-			),
-			NAME_None,
-			EUserInterfaceActionType::ToggleButton
-		);
-	}
-	if (DetailsViewArgs.bShowAnimatedPropertiesOption)
-	{
-		DetailViewOptions.AddMenuEntry(
-			LOCTEXT("ShowAnimated", "Show Only Animated Properties"),
-			LOCTEXT("ShowAnimated_ToolTip", "Displays only properties which are animated (have tracks)"),
-			FSlateIcon(),
-			FUIAction(
-				FExecuteAction::CreateSP(this, &SStructureDetailsView::OnShowAnimatedClicked),
-				FCanExecuteAction(),
-				FIsActionChecked::CreateSP(this, &SStructureDetailsView::IsShowAnimatedChecked)
-			),
-			NAME_None,
-			EUserInterfaceActionType::ToggleButton
-		);
-	}
-	FUIAction ShowAllAdvancedAction( 
-		FExecuteAction::CreateSP(this, &SStructureDetailsView::OnShowAllAdvancedClicked),
-		FCanExecuteAction(),
-		FIsActionChecked::CreateSP(this, &SStructureDetailsView::IsShowAllAdvancedChecked)
-	);
+			);
 
-	DetailViewOptions.AddMenuEntry(
-		LOCTEXT("ShowAllAdvanced", "Show All Advanced Details"),
-		LOCTEXT("ShowAllAdvanced_ToolTip", "Shows all advanced detail sections in each category"),
-		FSlateIcon(),
-		ShowAllAdvancedAction,
-		NAME_None,
-		EUserInterfaceActionType::ToggleButton 
-		);
-
-	DetailViewOptions.AddMenuEntry(
-		LOCTEXT("CollapseAll", "Collapse All Categories"),
-		LOCTEXT("CollapseAll_ToolTip", "Collapses all root level categories"),
-		FSlateIcon(),
-		FUIAction(FExecuteAction::CreateSP(this, &SStructureDetailsView::SetRootExpansionStates, /*bExpanded=*/false, /*bRecurse=*/false)));
-	DetailViewOptions.AddMenuEntry(
-		LOCTEXT("ExpandAll", "Expand All Categories"),
-		LOCTEXT("ExpandAll_ToolTip", "Expands all root level categories"),
-		FSlateIcon(),
-		FUIAction(FExecuteAction::CreateSP(this, &SStructureDetailsView::SetRootExpansionStates, /*bExpanded=*/true, /*bRecurse=*/false)));
+		DetailViewOptions.AddMenuEntry(
+			LOCTEXT("CollapseAll", "Collapse All Categories"),
+			LOCTEXT("CollapseAll_ToolTip", "Collapses all root level categories"),
+			FSlateIcon(),
+			FUIAction(FExecuteAction::CreateSP(this, &SStructureDetailsView::SetRootExpansionStates, /*bExpanded=*/false, /*bRecurse=*/false)));
+		DetailViewOptions.AddMenuEntry(
+			LOCTEXT("ExpandAll", "Expand All Categories"),
+			LOCTEXT("ExpandAll_ToolTip", "Expands all root level categories"),
+			FSlateIcon(),
+			FUIAction(FExecuteAction::CreateSP(this, &SStructureDetailsView::SetRootExpansionStates, /*bExpanded=*/true, /*bRecurse=*/false)));
 
 	TSharedRef<SHorizontalBox> FilterBoxRow = SNew( SHorizontalBox )
 		.Visibility(this, &SStructureDetailsView::GetFilterBoxVisibility)

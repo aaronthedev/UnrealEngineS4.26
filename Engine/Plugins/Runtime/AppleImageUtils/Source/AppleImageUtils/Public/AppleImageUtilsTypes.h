@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -17,11 +17,7 @@ enum class ETextureRotationDirection : uint8
 	None,
 	Left,
 	Right,
-	Down,
-	LeftMirrored,
-	RightMirrored,
-	DownMirrored,
-	UpMirrored
+	Down
 };
 
 UENUM(BlueprintType, Category="AppleImageUtils", meta=(Experimental))

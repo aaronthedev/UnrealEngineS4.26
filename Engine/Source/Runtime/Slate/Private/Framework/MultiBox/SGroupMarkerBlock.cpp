@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Framework/MultiBox/SGroupMarkerBlock.h"
 
@@ -50,5 +50,6 @@ void SGroupMarkerBlock::BuildMultiBlockWidget(const ISlateStyle* StyleSet, const
 	];
 
 	// Add this widget to the search list of the multibox and hide it
-	OwnerMultiBoxWidget.Pin()->AddElement(this->AsWidget(), FText::GetEmpty(), MultiBlock->GetSearchable());
+	if (MultiBlock->GetSearchable())
+		OwnerMultiBoxWidget.Pin()->AddSearchElement(this->AsWidget(), FText::GetEmpty());
 }

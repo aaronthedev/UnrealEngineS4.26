@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SColorGradientEditor.h"
 #include "Fonts/SlateFontInfo.h"
@@ -475,7 +475,7 @@ FReply SColorGradientEditor::OnMouseButtonUp( const FGeometry& MyGeometry, const
 			bDraggingStop = false;
 			return FReply::Handled().ReleaseMouseCapture();
 		}
-		else if( MouseEvent.GetEffectingButton() == EKeys::RightMouseButton && !bDraggingStop)
+		else if( MouseEvent.GetEffectingButton() == EKeys::RightMouseButton )
 		{
 			// Didnt move the mouse too far, open a context menu
 			if( DistanceDragged < DragThresholdDist && SelectedStop.IsValid( *CurveOwner ) )

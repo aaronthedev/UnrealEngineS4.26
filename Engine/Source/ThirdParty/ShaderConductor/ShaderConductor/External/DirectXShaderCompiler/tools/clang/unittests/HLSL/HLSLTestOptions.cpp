@@ -13,7 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "HLSLTestOptions.h"
-#include "dxc/Test/WEXAdapter.h"
+#include "WEXAdapter.h"
 #include "dxc/Support/WinAdapter.h"
 
 namespace clang {

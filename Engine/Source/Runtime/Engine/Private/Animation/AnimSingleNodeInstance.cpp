@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	UAnimSingleNodeInstance.cpp: Single Node Tree Instance 
@@ -192,7 +192,6 @@ void UAnimSingleNodeInstance::RestartMontage(UAnimMontage* Montage, FName FromSe
 			Montage_JumpToSection(FromSection);
 		}
 		SetMontageLoop(Montage, Proxy.IsLooping(), FromSection);
-		UpdateMontageWeightForTimeSkip(Montage->BlendIn.GetBlendTime());
 	}
 }
 
@@ -324,11 +323,6 @@ float UAnimSingleNodeInstance::GetCurrentTime() const
 void UAnimSingleNodeInstance::SetReverse(bool bInReverse)
 {
 	GetProxyOnGameThread<FAnimSingleNodeInstanceProxy>().SetReverse(bInReverse);
-
-	if (FAnimMontageInstance* CurMontageInstance = GetActiveMontageInstance())
-	{
-		CurMontageInstance->SetPlayRate(GetPlayRate());
-	}
 }
 
 void UAnimSingleNodeInstance::SetPositionWithPreviousTime(float InPosition, float InPreviousTime, bool bFireNotifies)

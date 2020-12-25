@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayDebuggerCategoryReplicator.h"
 #include "GameFramework/PlayerController.h"
@@ -418,9 +418,8 @@ void AGameplayDebuggerCategoryReplicator::BeginPlay()
 	Super::BeginPlay();
 
 	UWorld* World = GetWorld();
-	check(World);
 	const ENetMode NetMode = World->GetNetMode();
-	bHasAuthority = FGameplayDebuggerUtils::IsAuthority(World);
+	bHasAuthority = (NetMode != NM_Client);
 	bIsLocal = (NetMode != NM_DedicatedServer);
 
 	FGameplayDebuggerAddonManager& AddonManager = FGameplayDebuggerAddonManager::GetCurrent();
@@ -723,7 +722,9 @@ void AGameplayDebuggerCategoryReplicator::SetReplicatorOwner(APlayerController* 
 	{
 		// can't use bHasAuthority, BeginPlay was not called yet
 		UWorld* World = GetWorld();
-		if (FGameplayDebuggerUtils::IsAuthority(World))
+		const ENetMode NetMode = World->GetNetMode();
+
+		if (NetMode != NM_Client)
 		{
 			APlayerController* OldOwner = OwnerPC;
 			OwnerPC = InOwnerPC;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreTypes.h"
 #include "Async/Async.h"
@@ -138,7 +138,7 @@ bool FTimecodeTest::RunTest(const FString& Parameters)
 				if (bWrongFrame && bIsDropFrame)
 				{
 					// if new minute but not multiple of 10 mins, 2|4 is expected
-					const int32 NumberOfFramesInSecond = FMath::CeilToInt((float)FrameRate.AsDecimal());
+					const int32 NumberOfFramesInSecond = FMath::CeilToInt(FrameRate.AsDecimal());
 					const int32 NumberOfTimecodesToDrop = NumberOfFramesInSecond <= 30 ? 2 : 4;
 					bWrongFrame = !(TimecodeValue.Frames == NumberOfTimecodesToDrop && PreviousTimecodeValue.Minutes + 1 == TimecodeValue.Minutes && TimecodeValue.Minutes % 10 != 0);
 				}
@@ -234,7 +234,7 @@ bool FTimecodeTest::RunTest(const FString& Parameters)
 
 	// Test the conversion for all common frame rate
 	TArray<TFuture<bool>> Futures;
-	for (const FFrameRate& FrameRate : CommonFrameRates)
+	for (const FFrameRate FrameRate : CommonFrameRates)
 	{
 		Futures.Add(Async(EAsyncExecution::Thread, [FrameRate, &ConversionWithFrameRateTest](){ return ConversionWithFrameRateTest(FrameRate); }));
 	}

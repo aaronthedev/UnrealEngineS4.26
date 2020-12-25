@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,8 +9,6 @@
 #include "MultiSelectionTool.h"
 #include "ProxyLODVolume.h"
 #include "Properties/MeshStatisticsProperties.h"
-#include "PropertySets/OnAcceptProperties.h"
-
 #include "VoxelCSGMeshesTool.generated.h"
 
 
@@ -64,23 +62,27 @@ class MESHMODELINGTOOLSEDITORONLY_API UVoxelCSGMeshesToolProperties : public UIn
 public:
 	/** The type of operation  */
 	UPROPERTY(EditAnywhere, Category = Options)
-	EVoxelCSGOperation Operation = EVoxelCSGOperation::DifferenceAB;
+	EVoxelCSGOperation Operation;
 
 	/** The size of the geometry bounding box major axis measured in voxels.*/
-	UPROPERTY(EditAnywhere, Category = Options, meta = (UIMin = "8", UIMax = "1024", ClampMin = "8", ClampMax = "1024"))
+	UPROPERTY(EditAnywhere, Category = Options, meta = (UIMin = "8", UIMax = "512", ClampMin = "8", ClampMax = "512"))
 	int32 VoxelCount = 128;
 
-	/** Remeshing adaptivity, prior to optional simplification */
+	/** Remeshing adaptivity */
 	UPROPERTY(EditAnywhere, Category = Options, meta = (UIMin = "0", UIMax = "1", ClampMin = "0", ClampMax = "1"))
-	float MeshAdaptivity = 0.01f;
+	float MeshAdaptivity = 0.001f;
 
-	/** Offset when remeshing, note large offsets with high voxels counts will be slow */
-	UPROPERTY(EditAnywhere, Category = Options, meta = (UIMin = "-10", UIMax = "10", ClampMin = "-10", ClampMax = "10"))
-	float OffsetDistance = 0.0f;
+	/** Offset when remeshing, measured in voxels units */
+	UPROPERTY(EditAnywhere, Category = Options, meta = (UIMin = "-2", UIMax = "2", ClampMin = "-2", ClampMax = "2"))
+	float OffsetDistance = 0;
 
 	/** Automatically simplify the result of voxel-based merge.*/
 	UPROPERTY(EditAnywhere, Category = Options)
 	bool bAutoSimplify = false;
+
+	/** Remove the source Actors/Components when accepting results of tool.*/
+	UPROPERTY(EditAnywhere, Category = Options)
+	bool bDeleteInputActors = true;
 };
 
 
@@ -103,17 +105,17 @@ public:
 	virtual void Setup() override;
 	virtual void Shutdown(EToolShutdownType ShutdownType) override;
 
-	virtual void OnTick(float DeltaTime) override;
+	virtual void Tick(float DeltaTime) override;
 	virtual void Render(IToolsContextRenderAPI* RenderAPI) override;
 
 	virtual bool HasCancel() const override { return true; }
-	virtual bool HasAccept() const override { return true; }
+	virtual bool HasAccept() const override;
 	virtual bool CanAccept() const override;
 
-	virtual void OnPropertyModified(UObject* PropertySet, FProperty* Property) override;
+	virtual void OnPropertyModified(UObject* PropertySet, UProperty* Property) override;
 
 	// IDynamicMeshOperatorFactory API
-	virtual TUniquePtr<FDynamicMeshOperator> MakeNewOperator() override;
+	virtual TSharedPtr<FDynamicMeshOperator> MakeNewOperator() override;
 
 
 protected:
@@ -122,9 +124,6 @@ protected:
 
 	UPROPERTY()
 	UMeshStatisticsProperties* MeshStatisticsProperties;
-
-	UPROPERTY()
-	UOnAcceptHandleSourcesProperties* HandleSourcesProperties;
 
 	UPROPERTY()
 	UMeshOpPreviewWithBackgroundCompute* Preview;
@@ -140,5 +139,5 @@ protected:
 	/** quickly generate a low-quality result for display while the actual result is being computed. */
 	void CreateLowQualityPreview();
 
-	void GenerateAsset(const FDynamicMeshOpResult& Result);
+	void GenerateAsset(const TUniquePtr<FDynamicMeshOpResult>& Result);
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -25,8 +25,7 @@ public class TargetPlatform : ModuleRules
 			// these are needed by multiple platform specific target platforms, so we make sure they are built with the base editor
 			DynamicallyLoadedModuleNames.Add("ShaderPreprocessor");
 			DynamicallyLoadedModuleNames.Add("ShaderFormatOpenGL");
-            DynamicallyLoadedModuleNames.Add("ShaderFormatVectorVM");
-            DynamicallyLoadedModuleNames.Add("ImageWrapper");
+			DynamicallyLoadedModuleNames.Add("ImageWrapper");
 
 			if ((Target.Platform == UnrealTargetPlatform.Win64) || (Target.Platform == UnrealTargetPlatform.Win32))
 			{

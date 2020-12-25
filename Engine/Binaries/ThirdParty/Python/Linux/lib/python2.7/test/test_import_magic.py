@@ -11,7 +11,7 @@ class MagicNumberTests(unittest.TestCase):
     Test release compatibility issues relating to precompiled bytecode
     """
     @unittest.skipUnless(
-        sys.version_info.releaselevel in ('candidate', 'final'),
+        sys.version_info.releaselevel in ('final', 'release'),
         'only applies to candidate or final python release levels'
     )
     def test_magic_number(self):

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimNodes/AnimNode_PoseBlendNode.h"
 #include "AnimationRuntime.h"
@@ -60,25 +60,17 @@ void FAnimNode_PoseBlendNode::Evaluate_AnyThread(FPoseContext& Output)
 			PoseCurve.Value = RemappedValue;
 		}
 
-
-		FAnimationPoseData CurrentAnimationPoseData(CurrentPose);
-		if (CachedPoseAsset->GetAnimationPose(CurrentAnimationPoseData, PoseExtractContext))
+		if (CachedPoseAsset->GetAnimationPose(CurrentPose.Pose, CurrentPose.Curve, PoseExtractContext))
 		{
 			// once we get it, we have to blend by weight
 			if (CachedPoseAsset->IsValidAdditive())
 			{
 				Output = SourceData;
-
-				FAnimationPoseData BaseAnimationPoseData(Output);
-				FAnimationRuntime::AccumulateAdditivePose(BaseAnimationPoseData, CurrentAnimationPoseData, 1.f, EAdditiveAnimationType::AAT_LocalSpaceBase);
+				FAnimationRuntime::AccumulateAdditivePose(Output.Pose, CurrentPose.Pose, Output.Curve, CurrentPose.Curve, 1.f, EAdditiveAnimationType::AAT_LocalSpaceBase);
 			}
 			else
 			{
-
-				FAnimationPoseData OutputAnimationPoseData(Output);
-				const FAnimationPoseData SourceAnimationPoseData(SourceData);
-
-				FAnimationRuntime::BlendTwoPosesTogetherPerBone(SourceAnimationPoseData, CurrentAnimationPoseData, BoneBlendWeights, OutputAnimationPoseData);
+				FAnimationRuntime::BlendTwoPosesTogetherPerBone(SourceData.Pose, CurrentPose.Pose, SourceData.Curve, CurrentPose.Curve, BoneBlendWeights, Output.Pose, Output.Curve);
 			}
 
 			bValidPose = true;

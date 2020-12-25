@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Curves/CurveBase.h"
 #include "Serialization/Csv/CsvParser.h"
@@ -79,9 +79,6 @@ void UCurveBase::MakeTransactional()
 
 void UCurveBase::OnCurveChanged(const TArray<FRichCurveEditInfo>& ChangedCurveEditInfos)
 {
-#if WITH_EDITOR
-	OnUpdateCurve.Broadcast(this, EPropertyChangeType::ValueSet);
-#endif // WITH_EDITOR
 }
 
 
@@ -205,10 +202,4 @@ void UCurveBase::PostLoad()
 	}
 }
 
-void UCurveBase::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
-{
-	Super::PostEditChangeProperty(PropertyChangedEvent);
-
-	OnUpdateCurve.Broadcast(this, PropertyChangedEvent.ChangeType);
-}
 #endif //WITH_EDITORONLY_DATA

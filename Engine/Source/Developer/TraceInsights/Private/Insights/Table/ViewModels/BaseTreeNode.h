@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -30,9 +30,12 @@ typedef TWeakPtr<class FBaseTreeNode> FBaseTreeNodeWeak;
 class FBaseTreeNode : public TSharedFromThis<FBaseTreeNode>
 {
 public:
+	static constexpr int32 InvalidId = -1;
+
+public:
 	/** Initialization constructor for the node. */
-	FBaseTreeNode(const FName InName, bool bInIsGroup)
-		: DefaultSortOrder(0)
+	FBaseTreeNode(uint64 InId, const FName InName, bool bInIsGroup)
+		: Id(InId)
 		, Name(InName)
 		, bIsGroup(bInIsGroup)
 		, bIsExpanded(false)
@@ -45,8 +48,13 @@ public:
 
 	virtual const FName& GetTypeName() const = 0;
 
-	uint32 GetDefaultSortOrder() const { return DefaultSortOrder; }
-	void SetDefaultSortOrder(uint32 Order) { DefaultSortOrder = Order; }
+	/**
+	 * @return an id of this node.
+	 */
+	const int32 GetId() const
+	{
+		return Id;
+	}
 
 	/**
 	 * @return a name of this node.
@@ -151,8 +159,8 @@ protected:
 	}
 
 private:
-	/** The default sort order. Index used to optimize sorting. */
-	int32 DefaultSortOrder;
+	/** The id of this node. */
+	const int32 Id;
 
 	/** The name of this node. */
 	const FName Name;

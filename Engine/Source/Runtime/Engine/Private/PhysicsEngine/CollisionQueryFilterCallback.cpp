@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PhysicsEngine/CollisionQueryFilterCallback.h"
 #include "PhysicsEngine/ScopedSQHitchRepeater.h"
@@ -8,13 +8,12 @@
 #include "Components/PrimitiveComponent.h"
 #include "Collision.h"
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 #include "PhysXInterfaceWrapper.h"
 #endif
 
 #include "ChaosInterfaceWrapperCore.h"
 #include "Physics/Experimental/ChaosInterfaceWrapper.h"
-#include "Chaos/GeometryParticles.h"
 
 ECollisionQueryHitType FCollisionQueryFilterCallback::CalcQueryHitType(const FCollisionFilterData& QueryFilter, const FCollisionFilterData& ShapeFilter, bool bPreFilter)
 {
@@ -87,10 +86,10 @@ ECollisionQueryHitType FCollisionQueryFilterCallback::CalcQueryHitType(const FCo
 	return ECollisionQueryHitType::None;
 }
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 ECollisionQueryHitType FCollisionQueryFilterCallback::PreFilterImp(const FCollisionFilterData& FilterData, const physx::PxShape& Shape, const physx::PxActor& Actor)
 {
-	//SCOPE_CYCLE_COUNTER(STAT_Collision_PreFilter);
+	SCOPE_CYCLE_COUNTER(STAT_Collision_PreFilter);
 	FCollisionFilterData ShapeFilter = PhysXInterface::GetQueryFilterData(Shape);
 
 	// We usually don't have ignore components so we try to avoid the virtual getSimulationFilterData() call below. 'word2' of shape sim filter data is componentID.
@@ -109,15 +108,9 @@ ECollisionQueryHitType FCollisionQueryFilterCallback::PreFilterImp(const FCollis
 }
 #endif
 
-ECollisionQueryHitType FCollisionQueryFilterCallback::PreFilterImp(const FCollisionFilterData& FilterData, const Chaos::FPerShapeData& Shape, const Chaos::TGeometryParticle<float,3>& Actor)
+ECollisionQueryHitType FCollisionQueryFilterCallback::PreFilterImp(const FCollisionFilterData& FilterData, const Chaos::TPerShapeData<float,3>& Shape, const Chaos::TGeometryParticle<float,3>& Actor)
 {
-	//SCOPE_CYCLE_COUNTER(STAT_Collision_PreFilter);
-
-	if (!Shape.GetQueryEnabled())
-	{
-		return ECollisionQueryHitType::None;
-	}
-
+	SCOPE_CYCLE_COUNTER(STAT_Collision_PreFilter);
 	FCollisionFilterData ShapeFilter = ChaosInterface::GetQueryFilterData(Shape);
 
 	// We usually don't have ignore components so we try to avoid the virtual getSimulationFilterData() call below. 'word2' of shape sim filter data is componentID.
@@ -258,7 +251,7 @@ ECollisionQueryHitType FCollisionQueryFilterCallback::PostFilterImp(const FColli
 	}
 }
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 ECollisionQueryHitType FCollisionQueryFilterCallback::PostFilterImp(const FCollisionFilterData& FilterData, const physx::PxQueryHit& Hit)
 {
 	// Unused in non-sweeps
@@ -288,7 +281,7 @@ ECollisionQueryHitType FCollisionQueryFilterCallback::PostFilterImp(const FColli
 	return PostFilterImp(FilterData, bIsOverlap);
 }
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 
 PxQueryHitType::Enum FCollisionQueryFilterCallback::preFilter(const PxFilterData& filterData, const PxShape* shape, const PxRigidActor* actor, PxHitFlags& queryFlags)
 {

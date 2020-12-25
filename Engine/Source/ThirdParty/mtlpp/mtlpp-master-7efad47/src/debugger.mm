@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include <TargetConditionals.h>
 #include "debugger.hpp"
@@ -33,12 +33,7 @@ namespace mtlpp
 		if(IsDebuggerPresent())
 		{
 #if MTLPP_PLATFORM_MAC
-            // Epic agrant: use builtin for arm mac
-    #ifdef __aarch64__
-            __builtin_trap();
-    #else
 			__asm__ ( "int $3" );
-    #endif
 #else
 			__asm__ ( "svc 0" );
 #endif

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -30,9 +30,6 @@ struct FGrassVariety
 
 	UPROPERTY(EditAnywhere, Category=Grass)
 	UStaticMesh* GrassMesh;
-
-	UPROPERTY(EditAnywhere, Category=Grass, meta = (ToolTip = "Material Overrides."))
-	TArray<class UMaterialInterface*> OverrideMaterials;
 
 	/* Instances per 10 square meters. */
 	UPROPERTY(EditAnywhere, Category=Grass, meta = (UIMin = 0, ClampMin = 0, UIMax = 1000, ClampMax = 1000))
@@ -72,11 +69,11 @@ struct FGrassVariety
 	FFloatInterval ScaleX;
 
 	/** Specifies the range of scale, from minimum to maximum, to apply to a grass instance's Y Scale property */
-	UPROPERTY(EditAnywhere, Category=Grass, meta = (EditCondition = "Scaling == EGrassScaling::Free"))
+	UPROPERTY(EditAnywhere, Category=Grass)
 	FFloatInterval ScaleY;
 
 	/** Specifies the range of scale, from minimum to maximum, to apply to a grass instance's Z Scale property */
-	UPROPERTY(EditAnywhere, Category=Grass, meta = (EditCondition = "Scaling == EGrassScaling::Free || Scaling == EGrassScaling::LockXY"))
+	UPROPERTY(EditAnywhere, Category=Grass)
 	FFloatInterval ScaleZ;
 
 	/** Whether the grass instances should be placed at random rotation (true) or all at the same rotation (false) */

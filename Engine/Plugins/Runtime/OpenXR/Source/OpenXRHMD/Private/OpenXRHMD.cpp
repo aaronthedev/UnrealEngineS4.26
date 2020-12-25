@@ -1,12 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OpenXRHMD.h"
+#include "OpenXRHMDPrivate.h"
+#include "OpenXRHMDPrivateRHI.h"
 #include "OpenXRHMD_Swapchain.h"
 #include "OpenXRHMD_RenderBridge.h"
-#include "OpenXRCore.h"
-#include "OpenXRPlatformRHI.h"
-#include "IOpenXRExtensionPlugin.h"
-#include "IOpenXRARModule.h"
 
 #include "Misc/App.h"
 #include "Modules/ModuleManager.h"
@@ -26,19 +24,10 @@
 #include "Slate/SceneViewport.h"
 #include "Engine/GameEngine.h"
 #include "BuildSettings.h"
-#include "ARSystem.h"
-#include "IHandTracker.h"
-
-#if PLATFORM_ANDROID
-#include <android_native_app_glue.h>
-extern struct android_app* GNativeAndroidApp;
-#endif
 
 #if WITH_EDITOR
 #include "Editor/UnrealEd/Classes/Editor/EditorEngine.h"
 #endif
-
-#define OPENXR_PAUSED_IDLE_FPS 10
 
 static TAutoConsoleVariable<int32> CVarEnableOpenXRValidationLayer(
 	TEXT("xr.EnableOpenXRValidationLayer"),
@@ -49,9 +38,6 @@ static TAutoConsoleVariable<int32> CVarEnableOpenXRValidationLayer(
 
 
 namespace {
-	static TSet<XrEnvironmentBlendMode> SupportedBlendModes{ XR_ENVIRONMENT_BLEND_MODE_ADDITIVE, XR_ENVIRONMENT_BLEND_MODE_OPAQUE };
-	static TSet<XrViewConfigurationType> SupportedViewConfigurations{ XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, XR_VIEW_CONFIGURATION_TYPE_PRIMARY_QUAD_VARJO };
-
 	/** Helper function for acquiring the appropriate FSceneViewport */
 	FSceneViewport* FindSceneViewport()
 	{
@@ -102,6 +88,10 @@ public:
 
 	~FOpenXRHMDPlugin()
 	{
+		if (Instance)
+		{
+			XR_ENSURE(xrDestroyInstance(Instance));
+		}
 	}
 
 	/** IHeadMountedDisplayModule implementation */
@@ -122,11 +112,6 @@ public:
 
 	void ShutdownModule() override
 	{
-		if (Instance)
-		{
-			XR_ENSURE(xrDestroyInstance(Instance));
-		}
-
 		if (LoaderHandle)
 		{
 			FPlatformProcess::FreeDllHandle(LoaderHandle);
@@ -135,10 +120,9 @@ public:
 	}
 
 	virtual bool IsHMDConnected() override { return true; }
-	virtual bool IsExtensionAvailable(const FString& Name) const override { return AvailableExtensions.Contains(Name); }
-	virtual bool IsExtensionEnabled(const FString& Name) const override { return EnabledExtensions.Contains(Name); }
-	virtual bool IsLayerAvailable(const FString& Name) const override { return EnabledLayers.Contains(Name); }
-	virtual bool IsLayerEnabled(const FString& Name) const override { return EnabledLayers.Contains(Name); }
+
+	bool HasExtension(const char* Name) const { return AvailableExtensions.Contains(Name); }
+	bool HasLayer(const char* Name) const { return AvailableLayers.Contains(Name); }
 
 private:
 	void *LoaderHandle;
@@ -146,19 +130,12 @@ private:
 	XrSystemId System;
 	TSet<FString> AvailableExtensions;
 	TSet<FString> AvailableLayers;
-	TArray<const char*> EnabledExtensions;
-	TArray<const char*> EnabledLayers;
-	TArray<IOpenXRExtensionPlugin*> ExtensionPlugins;
 	TRefCountPtr<FOpenXRRenderBridge> RenderBridge;
 	TSharedPtr< IHeadMountedDisplayVulkanExtensions, ESPMode::ThreadSafe > VulkanExtensions;
 
 	bool EnumerateExtensions();
 	bool EnumerateLayers();
 	bool InitRenderBridge();
-	PFN_xrGetInstanceProcAddr GetDefaultLoader();
-	bool EnableExtensions(const TArray<const ANSICHAR*>& RequiredExtensions, const TArray<const ANSICHAR*>& OptionalExtensions, TArray<const ANSICHAR*>& OutExtensions);
-	bool GetRequiredExtensions(TArray<const ANSICHAR*>& OutExtensions);
-	bool GetOptionalExtensions(TArray<const ANSICHAR*>& OutExtensions);
 };
 
 IMPLEMENT_MODULE( FOpenXRHMDPlugin, OpenXRHMD )
@@ -172,14 +149,10 @@ TSharedPtr< class IXRTrackingSystem, ESPMode::ThreadSafe > FOpenXRHMDPlugin::Cre
 			return nullptr;
 		}
 	}
-	auto ARModule = FModuleManager::LoadModulePtr<IOpenXRARModule>("OpenXRAR");
-	auto ARSystem = ARModule->CreateARSystem();
 
-	auto OpenXRHMD = FSceneViewExtensions::NewExtension<FOpenXRHMD>(Instance, System, RenderBridge, EnabledExtensions, ExtensionPlugins, ARSystem);
+	auto OpenXRHMD = FSceneViewExtensions::NewExtension<FOpenXRHMD>(Instance, System, RenderBridge, AvailableExtensions);
 	if (OpenXRHMD->IsInitialized())
 	{
-		ARModule->SetTrackingSystem(OpenXRHMD);
-		OpenXRHMD->GetARCompositionComponent()->InitializeARSystem();
 		return OpenXRHMD;
 	}
 
@@ -192,7 +165,7 @@ uint64 FOpenXRHMDPlugin::GetGraphicsAdapterLuid()
 	{
 		if (!InitRenderBridge())
 		{
-			return 0;
+			return false;
 		}
 	}
 	return RenderBridge->GetGraphicsAdapterLuid();
@@ -200,8 +173,8 @@ uint64 FOpenXRHMDPlugin::GetGraphicsAdapterLuid()
 
 TSharedPtr< IHeadMountedDisplayVulkanExtensions, ESPMode::ThreadSafe > FOpenXRHMDPlugin::GetVulkanExtensions()
 {
-#ifdef XR_USE_GRAPHICS_API_VULKAN
-	if (PreInit() && IsExtensionEnabled(XR_KHR_VULKAN_ENABLE_EXTENSION_NAME))
+#if XR_USE_GRAPHICS_API_VULKAN
+	if (PreInit() && HasExtension(XR_KHR_VULKAN_ENABLE_EXTENSION_NAME))
 	{
 		if (!VulkanExtensions.IsValid())
 		{
@@ -283,28 +256,28 @@ bool FOpenXRHMDPlugin::InitRenderBridge()
 	}
 
 #ifdef XR_USE_GRAPHICS_API_D3D11
-	if (RHIString == TEXT("DirectX 11") && IsExtensionEnabled(XR_KHR_D3D11_ENABLE_EXTENSION_NAME))
+	if (RHIString == TEXT("DirectX 11") && HasExtension(XR_KHR_D3D11_ENABLE_EXTENSION_NAME))
 	{
 		RenderBridge = CreateRenderBridge_D3D11(Instance, System);
 	}
 	else
 #endif
 #ifdef XR_USE_GRAPHICS_API_D3D12
-	if (RHIString == TEXT("DirectX 12") && IsExtensionEnabled(XR_KHR_D3D12_ENABLE_EXTENSION_NAME))
+	if (RHIString == TEXT("DirectX 12") && HasExtension(XR_KHR_D3D12_ENABLE_EXTENSION_NAME))
 	{
 		RenderBridge = CreateRenderBridge_D3D12(Instance, System);
 	}
 	else
 #endif
 #ifdef XR_USE_GRAPHICS_API_OPENGL
-	if (RHIString == TEXT("OpenGL") && IsExtensionEnabled(XR_KHR_OPENGL_ENABLE_EXTENSION_NAME))
+	if (RHIString == TEXT("OpenGL") && HasExtension(XR_KHR_OPENGL_ENABLE_EXTENSION_NAME))
 	{
 		RenderBridge = CreateRenderBridge_OpenGL(Instance, System);
 	}
 	else
 #endif
 #ifdef XR_USE_GRAPHICS_API_VULKAN
-	if (RHIString == TEXT("Vulkan") && IsExtensionEnabled(XR_KHR_VULKAN_ENABLE_EXTENSION_NAME))
+	if (RHIString == TEXT("Vulkan") && HasExtension(XR_KHR_VULKAN_ENABLE_EXTENSION_NAME))
 	{
 		RenderBridge = CreateRenderBridge_Vulkan(Instance, System);
 	}
@@ -317,180 +290,31 @@ bool FOpenXRHMDPlugin::InitRenderBridge()
 	return true;
 }
 
-struct AnsiKeyFunc : BaseKeyFuncs<const ANSICHAR*, const ANSICHAR*, false>
+bool FOpenXRHMDPlugin::PreInit()
 {
-	typedef typename TTypeTraits<const ANSICHAR*>::ConstPointerType KeyInitType;
-	typedef typename TCallTraits<const ANSICHAR*>::ParamType ElementInitType;
+	if (Instance)
+		return true;
 
-	/**
-	 * @return The key used to index the given element.
-	 */
-	static FORCEINLINE KeyInitType GetSetKey(ElementInitType Element)
-	{
-		return Element;
-	}
-
-	/**
-	 * @return True if the keys match.
-	 */
-	static FORCEINLINE bool Matches(KeyInitType A, KeyInitType B)
-	{
-		return FCStringAnsi::Strcmp(A, B) == 0;
-	}
-
-	/** Calculates a hash index for a key. */
-	static FORCEINLINE uint32 GetKeyHash(KeyInitType Key)
-	{
-		return GetTypeHash(Key);
-	}
-};
-
-PFN_xrGetInstanceProcAddr FOpenXRHMDPlugin::GetDefaultLoader()
-{
 #if PLATFORM_WINDOWS
-#if !PLATFORM_CPU_X86_FAMILY
-#error Windows platform does not currently support this CPU family. A OpenXR loader binary for this CPU family is needed.
-#endif
-
 #if PLATFORM_64BITS
 	FString BinariesPath = FPaths::EngineDir() / FString(TEXT("Binaries/ThirdParty/OpenXR/win64"));
 #else
 	FString BinariesPath = FPaths::EngineDir() / FString(TEXT("Binaries/ThirdParty/OpenXR/win32"));
 #endif
 
-	FString LoaderName = "openxr_loader.dll";
+	FString LoaderName = FString::Printf(TEXT("openxr_loader-%d_%d.dll"), XR_VERSION_MAJOR(XR_CURRENT_API_VERSION), XR_VERSION_MINOR(XR_CURRENT_API_VERSION));
 	FPlatformProcess::PushDllDirectory(*BinariesPath);
-	LoaderHandle = FPlatformProcess::GetDllHandle(*LoaderName);
+	LoaderHandle = FPlatformProcess::GetDllHandle(*(BinariesPath / LoaderName));
 	FPlatformProcess::PopDllDirectory(*BinariesPath);
-#elif PLATFORM_HOLOLENS
-#ifndef PLATFORM_64BITS
-#error HoloLens platform does not currently support 32-bit. 32-bit OpenXR loader binaries are needed.
-#endif
-
-#if PLATFORM_CPU_ARM_FAMILY
-	FString BinariesPath = FPaths::EngineDir() / FString(TEXT("Binaries/ThirdParty/OpenXR/hololens/arm64"));
-#elif PLATFORM_CPU_X86_FAMILY
-	FString BinariesPath = FPaths::EngineDir() / FString(TEXT("Binaries/ThirdParty/OpenXR/hololens/x64"));
-#else
-#error Unsupported CPU family for the HoloLens platform.
-#endif
-
-	LoaderHandle = FPlatformProcess::GetDllHandle(*(BinariesPath / "openxr_loader.dll"));
 #endif
 
 	if (!LoaderHandle)
 	{
-		UE_LOG(LogHMD, Log, TEXT("Failed to load openxr_loader.dll"));
-		return nullptr;
-	}
-	return (PFN_xrGetInstanceProcAddr)FPlatformProcess::GetDllExport(LoaderHandle, TEXT("xrGetInstanceProcAddr"));
-}
-
-bool FOpenXRHMDPlugin::EnableExtensions(const TArray<const ANSICHAR*>& RequiredExtensions, const TArray<const ANSICHAR*>& OptionalExtensions, TArray<const ANSICHAR*>& OutExtensions)
-{
-	// Query required extensions and check if they're all available
-	bool ExtensionMissing = false;
-	for (const ANSICHAR* Ext : RequiredExtensions)
-	{
-		if (AvailableExtensions.Contains(Ext))
-		{
-			UE_LOG(LogHMD, Verbose, TEXT("Required extension %s enabled"), ANSI_TO_TCHAR(Ext));
-		}
-		else
-		{
-			UE_LOG(LogHMD, Warning, TEXT("Required extension %s is not available"), ANSI_TO_TCHAR(Ext));
-			ExtensionMissing = true;
-		}
-	}
-
-	// If any required extensions are missing then we ignore the plugin
-	if (ExtensionMissing)
-	{
+		UE_LOG(LogHMD, Log, TEXT("Failed to load openxr_loader-%d_%d.dll"), XR_VERSION_MAJOR(XR_CURRENT_API_VERSION), XR_VERSION_MINOR(XR_CURRENT_API_VERSION));
 		return false;
 	}
 
-	// All required extensions are supported we can safely add them to our set and give the plugin callbacks
-	OutExtensions.Append(RequiredExtensions);
-
-	// Add all supported optional extensions to the set
-	for (const ANSICHAR* Ext : OptionalExtensions)
-	{
-		if (AvailableExtensions.Contains(Ext))
-		{
-			UE_LOG(LogHMD, Verbose, TEXT("Optional extension %s enabled"), ANSI_TO_TCHAR(Ext));
-			OutExtensions.Add(Ext);
-		}
-		else
-		{
-			UE_LOG(LogHMD, Log, TEXT("Optional extension %s is not available"), ANSI_TO_TCHAR(Ext));
-		}
-	}
-
-	return true;
-}
-
-bool FOpenXRHMDPlugin::GetRequiredExtensions(TArray<const ANSICHAR*>& OutExtensions)
-{
-#if PLATFORM_ANDROID
-	OutExtensions.Add(XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME);
-#endif
-	return true;
-}
-
-bool FOpenXRHMDPlugin::GetOptionalExtensions(TArray<const ANSICHAR*>& OutExtensions)
-{
-#ifdef XR_USE_GRAPHICS_API_D3D11
-	OutExtensions.Add(XR_KHR_D3D11_ENABLE_EXTENSION_NAME);
-#endif
-#ifdef XR_USE_GRAPHICS_API_D3D12
-	OutExtensions.Add(XR_KHR_D3D12_ENABLE_EXTENSION_NAME);
-#endif
-#ifdef XR_USE_GRAPHICS_API_OPENGL
-	OutExtensions.Add(XR_KHR_OPENGL_ENABLE_EXTENSION_NAME);
-#endif
-#ifdef XR_USE_GRAPHICS_API_VULKAN
-	OutExtensions.Add(XR_KHR_VULKAN_ENABLE_EXTENSION_NAME);
-#endif
-	OutExtensions.Add(XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME);
-	OutExtensions.Add(XR_VARJO_QUAD_VIEWS_EXTENSION_NAME);
-	OutExtensions.Add(XR_KHR_VISIBILITY_MASK_EXTENSION_NAME);
-	return true;
-}
-
-bool FOpenXRHMDPlugin::PreInit()
-{
-	if (Instance)
-		return true;
-
-	// Get all extension plugins
-	TSet<const ANSICHAR*, AnsiKeyFunc> ExtensionSet;
-	TArray<IOpenXRExtensionPlugin*> ExtModules = IModularFeatures::Get().GetModularFeatureImplementations<IOpenXRExtensionPlugin>(IOpenXRExtensionPlugin::GetModularFeatureName());
-
-	// Query all extension plugins to see if we need to use a custom loader
-	PFN_xrGetInstanceProcAddr GetProcAddr = nullptr;
-	for (IOpenXRExtensionPlugin* Plugin : ExtModules)
-	{
-		if (Plugin->GetCustomLoader(&GetProcAddr))
-		{
-			// We pick the first loader we can find
-			break;
-		}
-
-		// Clear it again just to ensure the failed call didn't leave the pointer set
-		GetProcAddr = nullptr;
-	}
-
-	if (!GetProcAddr)
-	{
-		GetProcAddr = GetDefaultLoader();
-	}
-
-	if (!PreInitOpenXRCore(GetProcAddr))
-	{
-		UE_LOG(LogHMD, Log, TEXT("Failed to initialize core functions. Please check that you have a valid OpenXR runtime installed."));
-		return false;
-	}
-
+	TArray<const char*> Extensions;
 	if (!EnumerateExtensions())
 	{
 		UE_LOG(LogHMD, Log, TEXT("Failed to enumerate extensions. Please check that you have a valid OpenXR runtime installed."));
@@ -503,79 +327,44 @@ bool FOpenXRHMDPlugin::PreInit()
 		return false;
 	}
 
-	// Enable any required and optional extensions that are not plugin specific (usually platform support extensions)
+#ifdef XR_USE_GRAPHICS_API_D3D11
+	if (HasExtension(XR_KHR_D3D11_ENABLE_EXTENSION_NAME))
 	{
-		TArray<const ANSICHAR*> RequiredExtensions, OptionalExtensions, Extensions;
-		// Query required extensions
-		RequiredExtensions.Empty();
-		if (!GetRequiredExtensions(RequiredExtensions))
-		{
-			UE_LOG(LogHMD, Error, TEXT("Could not get required OpenXR extensions."));
-			return false;
-		}
+		Extensions.Add(XR_KHR_D3D11_ENABLE_EXTENSION_NAME);
+	}
+#endif
+#ifdef XR_USE_GRAPHICS_API_D3D12
+	if (HasExtension(XR_KHR_D3D12_ENABLE_EXTENSION_NAME))
+	{
+		Extensions.Add(XR_KHR_D3D12_ENABLE_EXTENSION_NAME);
+	}
+#endif
+#ifdef XR_USE_GRAPHICS_API_OPENGL
+	if (HasExtension(XR_KHR_OPENGL_ENABLE_EXTENSION_NAME))
+	{
+		Extensions.Add(XR_KHR_OPENGL_ENABLE_EXTENSION_NAME);
+	}
+#endif
+#ifdef XR_USE_GRAPHICS_API_VULKAN
+	if (HasExtension(XR_KHR_VULKAN_ENABLE_EXTENSION_NAME))
+	{
+		Extensions.Add(XR_KHR_VULKAN_ENABLE_EXTENSION_NAME);
+	}
+#endif
 
-		// Query optional extensions
-		OptionalExtensions.Empty();
-		if (!GetOptionalExtensions(OptionalExtensions))
-		{
-			UE_LOG(LogHMD, Error, TEXT("Could not get optional OpenXR extensions."));
-			return false;
-		}
-
-		if (!EnableExtensions(RequiredExtensions, OptionalExtensions, Extensions))
-		{
-			UE_LOG(LogHMD, Error, TEXT("Could not enable all required OpenXR extensions."));
-			return false;
-		}
-		ExtensionSet.Append(Extensions);
+	if (HasExtension(XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME))
+	{
+		Extensions.Add(XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME);
 	}
 
-	if (AvailableExtensions.Contains(XR_EPIC_VIEW_CONFIGURATION_FOV_EXTENSION_NAME))
+	if (HasExtension(XR_VARJO_QUAD_VIEWS_EXTENSION_NAME))
 	{
-		ExtensionSet.Add(XR_EPIC_VIEW_CONFIGURATION_FOV_EXTENSION_NAME);
+		Extensions.Add(XR_VARJO_QUAD_VIEWS_EXTENSION_NAME);
 	}
 
-	for (IOpenXRExtensionPlugin* Plugin : ExtModules)
+	if (HasExtension(XR_KHR_VISIBILITY_MASK_EXTENSION_NAME))
 	{
-		TArray<const ANSICHAR*> RequiredExtensions, OptionalExtensions, Extensions;
-
-		// Query required extensions
-		RequiredExtensions.Empty();
-		if (!Plugin->GetRequiredExtensions(RequiredExtensions))
-		{
-			// Ignore the plugin if the query fails
-			continue;
-		}
-
-		// Query optional extensions
-		OptionalExtensions.Empty();
-		if (!Plugin->GetOptionalExtensions(OptionalExtensions))
-		{
-			// Ignore the plugin if the query fails
-			continue;
-		}
-
-		if (!EnableExtensions(RequiredExtensions, OptionalExtensions, Extensions))
-		{
-			// Ignore the plugin if the required extension could not be enabled
-			UE_LOG(LogHMD, Log, TEXT("Could not enable all required OpenXR extensions for OpenXRExtensionPlugin on current system. This plugin will be loaded but ignored, but will be enabled on a target platform that supports the required extension."));
-			continue;
-		}
-		ExtensionSet.Append(Extensions);
-		ExtensionPlugins.Add(Plugin);
-	}
-
-	if (auto ARModule = FModuleManager::LoadModulePtr<IOpenXRARModule>("OpenXRAR"))
-	{
-		TArray<const ANSICHAR*> ARExtensionSet;
-		ARModule->GetExtensions(ARExtensionSet);
-		ExtensionSet.Append(ARExtensionSet);
-	}
-
-	EnabledExtensions.Reset();
-	for (const ANSICHAR* Ext : ExtensionSet)
-	{
-		EnabledExtensions.Add(Ext);
+		Extensions.Add(XR_KHR_VISIBILITY_MASK_EXTENSION_NAME);
 	}
 
 	// Enable layers, if specified by CVar.
@@ -583,12 +372,12 @@ bool FOpenXRHMDPlugin::PreInit()
 	//   1. Download and build the OpenXR SDK from https://github.com/KhronosGroup/OpenXR-SDK-Source (follow instructions at https://github.com/KhronosGroup/OpenXR-SDK-Source/blob/master/BUILDING.md)
 	//	 2. Add a registry key under HKEY_LOCAL_MACHINE\SOFTWARE\Khronos\OpenXR\1\ApiLayers\Explicit, containing the path to the manifest file
 	//      (e.g. C:\OpenXR-SDK-Source-master\build\win64\src\api_layers\XrApiLayer_core_validation.json) <-- this file is downloaded as part of the SDK source, above
-	//   3. Copy the DLL from the build target at, for example, C:\OpenXR-SDK-Source-master\build\win64\src\api_layers\XrApiLayer_core_validation.dll to
+	//   3. Copy the DLL from the build target at, for example, C:\OpenXR-SDK-Source-master\build\win64\src\api_layers\XrApiLayer_core_validation.dll to 
 	//      somewhere in your system path (e.g. c:\windows\system32); the OpenXR loader currently doesn't use the path the json file is in (this is a bug)
 
 	const bool bEnableOpenXRValidationLayer = CVarEnableOpenXRValidationLayer.GetValueOnAnyThread() != 0;
 	TArray<const char*> Layers;
-	if (bEnableOpenXRValidationLayer && AvailableLayers.Contains("XR_APILAYER_LUNARG_core_validation"))
+	if (bEnableOpenXRValidationLayer && HasLayer("XR_APILAYER_LUNARG_core_validation"))
 	{
 		Layers.Add("XR_APILAYER_LUNARG_core_validation");
 	}
@@ -621,22 +410,9 @@ bool FOpenXRHMDPlugin::PreInit()
 	Info.enabledApiLayerCount = Layers.Num();
 	Info.enabledApiLayerNames = Layers.GetData();
 
-	Info.enabledExtensionCount = EnabledExtensions.Num();
-	Info.enabledExtensionNames = EnabledExtensions.GetData();
+	Info.enabledExtensionCount = Extensions.Num();
+	Info.enabledExtensionNames = Extensions.GetData();
 
-#if PLATFORM_ANDROID
-	XrInstanceCreateInfoAndroidKHR InstanceCreateInfoAndroid;
-	InstanceCreateInfoAndroid.type = XR_TYPE_INSTANCE_CREATE_INFO_ANDROID_KHR;
-	InstanceCreateInfoAndroid.next = nullptr;
-	InstanceCreateInfoAndroid.applicationVM = GNativeAndroidApp->activity->vm;
-	InstanceCreateInfoAndroid.applicationActivity = GNativeAndroidApp->activity->clazz;
-	Info.next = &InstanceCreateInfoAndroid;
-#endif // PLATFORM_ANDROID
-
-	for (IOpenXRExtensionPlugin* Module : ExtensionPlugins)
-	{
-		Info.next = Module->OnCreateInstance(this, Info.next);
-	}
 	XrResult rs = xrCreateInstance(&Info, &Instance);
 	if (XR_FAILED(rs))
 	{
@@ -644,29 +420,15 @@ bool FOpenXRHMDPlugin::PreInit()
 		return false;
 	}
 
-	if (!InitOpenXRCore(Instance))
-	{
-		UE_LOG(LogHMD, Log, TEXT("Failed to initialize core functions. Please check that you have a valid OpenXR runtime installed."));
-		return false;
-	}
-
 	XrSystemGetInfo SystemInfo;
 	SystemInfo.type = XR_TYPE_SYSTEM_GET_INFO;
 	SystemInfo.next = nullptr;
 	SystemInfo.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
-	for (IOpenXRExtensionPlugin* Module : ExtensionPlugins)
-	{
-		Info.next = Module->OnGetSystem(Instance, Info.next);
-	}
 	rs = xrGetSystem(Instance, &SystemInfo, &System);
 	if (XR_FAILED(rs))
 	{
 		UE_LOG(LogHMD, Log, TEXT("Failed to get an OpenXR system, result is %s. Please check that your runtime supports VR headsets."), OpenXRResultToString(rs));
 		return false;
-	}
-	for (IOpenXRExtensionPlugin* Module : ExtensionPlugins)
-	{
-		Module->PostGetSystem(Instance, System);
 	}
 
 	return true;
@@ -688,13 +450,10 @@ bool FOpenXRHMD::FVulkanExtensions::GetVulkanInstanceExtensionsRequired(TArray<c
 	}
 
 	{
-		PFN_xrGetVulkanInstanceExtensionsKHR GetVulkanInstanceExtensionsKHR;
-		XR_ENSURE(xrGetInstanceProcAddr(Instance, "xrGetVulkanInstanceExtensionsKHR", (PFN_xrVoidFunction*)&GetVulkanInstanceExtensionsKHR));
-
 		uint32 ExtensionCount = 0;
-		XR_ENSURE(GetVulkanInstanceExtensionsKHR(Instance, System, 0, &ExtensionCount, nullptr));
+		XR_ENSURE(xrGetVulkanInstanceExtensionsKHR(Instance, System, 0, &ExtensionCount, nullptr));
 		Extensions.SetNum(ExtensionCount);
-		XR_ENSURE(GetVulkanInstanceExtensionsKHR(Instance, System, ExtensionCount, &ExtensionCount, Extensions.GetData()));
+		XR_ENSURE(xrGetVulkanInstanceExtensionsKHR(Instance, System, ExtensionCount, &ExtensionCount, Extensions.GetData()));
 	}
 
 	ANSICHAR* Context = nullptr;
@@ -715,7 +474,7 @@ bool FOpenXRHMD::FVulkanExtensions::GetVulkanInstanceExtensionsRequired(TArray<c
 
 		if (!ExtensionFound)
 		{
-			UE_LOG(LogHMD, Log, TEXT("Missing required Vulkan instance extension %S."), Tok);
+			UE_LOG(LogHMD, Log, TEXT("Missing required Vulkan instance extension %s."), Tok);
 			return false;
 		}
 	}
@@ -735,13 +494,10 @@ bool FOpenXRHMD::FVulkanExtensions::GetVulkanDeviceExtensionsRequired(VkPhysical
 	}
 
 	{
-		PFN_xrGetVulkanDeviceExtensionsKHR GetVulkanDeviceExtensionsKHR;
-		XR_ENSURE(xrGetInstanceProcAddr(Instance, "xrGetVulkanDeviceExtensionsKHR", (PFN_xrVoidFunction*)&GetVulkanDeviceExtensionsKHR));
-
 		uint32 ExtensionCount = 0;
-		XR_ENSURE(GetVulkanDeviceExtensionsKHR(Instance, System, 0, &ExtensionCount, nullptr));
+		XR_ENSURE(xrGetVulkanDeviceExtensionsKHR(Instance, System, 0, &ExtensionCount, nullptr));
 		DeviceExtensions.SetNum(ExtensionCount);
-		XR_ENSURE(GetVulkanDeviceExtensionsKHR(Instance, System, ExtensionCount, &ExtensionCount, DeviceExtensions.GetData()));
+		XR_ENSURE(xrGetVulkanDeviceExtensionsKHR(Instance, System, ExtensionCount, &ExtensionCount, DeviceExtensions.GetData()));
 	}
 
 	ANSICHAR* Context = nullptr;
@@ -762,7 +518,7 @@ bool FOpenXRHMD::FVulkanExtensions::GetVulkanDeviceExtensionsRequired(VkPhysical
 
 		if (!ExtensionFound)
 		{
-			UE_LOG(LogHMD, Log, TEXT("Missing required Vulkan device extension %S."), Tok);
+			UE_LOG(LogHMD, Log, TEXT("Missing required Vulkan device extension %s."), Tok);
 			return false;
 		}
 	}
@@ -770,82 +526,9 @@ bool FOpenXRHMD::FVulkanExtensions::GetVulkanDeviceExtensionsRequired(VkPhysical
 	return true;
 }
 
-void FOpenXRHMD::GetMotionControllerData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerData& MotionControllerData)
-{
-	MotionControllerData.DeviceName = GetSystemName();
-	MotionControllerData.ApplicationInstanceID = FApp::GetInstanceId();
-	MotionControllerData.DeviceVisualType = EXRVisualType::Controller;
-	MotionControllerData.TrackingStatus = ETrackingStatus::NotTracked;
-	MotionControllerData.HandIndex = Hand;
-
-	FName HandTrackerName("OpenXRHandTracking");
-	TArray<IHandTracker*> HandTrackers = IModularFeatures::Get().GetModularFeatureImplementations<IHandTracker>(IHandTracker::GetModularFeatureName());
-	IHandTracker* HandTracker = nullptr;
-	for (auto Itr : HandTrackers)
-	{
-		if (Itr->GetHandTrackerDeviceTypeName() == HandTrackerName)
-		{
-			HandTracker = Itr;
-			break;
-		}
-	}
-
-	FName MotionControllerName("OpenXR");
-	TArray<IMotionController*> MotionControllers = IModularFeatures::Get().GetModularFeatureImplementations<IMotionController>(IMotionController::GetModularFeatureName());
-	IMotionController* MotionController = nullptr;
-	for (auto Itr : MotionControllers)
-	{
-		if (Itr->GetMotionControllerDeviceTypeName() == MotionControllerName)
-		{
-			MotionController = Itr;
-			break;
-		}
-	}
-
-	if (MotionController)
-	{
-		const float WorldToMeters = GetWorldToMetersScale();
-
-		bool bSuccess = false;
-		FVector Position = FVector::ZeroVector;
-		FRotator Rotation = FRotator::ZeroRotator;
-		FTransform trackingToWorld = GetTrackingToWorldTransform();
-		FName AimSource = Hand == EControllerHand::Left ? FName("LeftAim") : FName("RightAim");
-		bSuccess = MotionController->GetControllerOrientationAndPosition(0, AimSource, Rotation, Position, WorldToMeters);
-		if (bSuccess)
-		{
-			MotionControllerData.AimPosition = trackingToWorld.TransformPosition(Position);
-			MotionControllerData.AimRotation = trackingToWorld.TransformRotation(FQuat(Rotation));
-		}
-		MotionControllerData.bValid |= bSuccess;
-
-		FName GripSource = Hand == EControllerHand::Left ? FName("LeftGrip") : FName("RightGrip");
-		bSuccess = MotionController->GetControllerOrientationAndPosition(0, GripSource, Rotation, Position, WorldToMeters);
-		if (bSuccess)
-		{
-			MotionControllerData.GripPosition = trackingToWorld.TransformPosition(Position);
-			MotionControllerData.GripRotation = trackingToWorld.TransformRotation(FQuat(Rotation));
-		}
-		MotionControllerData.bValid |= bSuccess;
-
-		MotionControllerData.TrackingStatus = MotionController->GetControllerTrackingStatus(0, GripSource);
-	}
-
-	if (HandTracker && HandTracker->IsHandTrackingStateValid())
-	{
-		MotionControllerData.DeviceVisualType = EXRVisualType::Hand;
-
-		MotionControllerData.bValid = HandTracker->GetAllKeypointStates(Hand, MotionControllerData.HandKeyPositions, MotionControllerData.HandKeyRotations, MotionControllerData.HandKeyRadii);
-		check(!MotionControllerData.bValid || (MotionControllerData.HandKeyPositions.Num() == EHandKeypointCount && MotionControllerData.HandKeyRotations.Num() == EHandKeypointCount && MotionControllerData.HandKeyRadii.Num() == EHandKeypointCount));
-	}
-
-	//TODO: this is reportedly a wmr specific convenience function for rapid prototyping.  Not sure it is useful for openxr.
-	MotionControllerData.bIsGrasped = false;
-}
-
 float FOpenXRHMD::GetWorldToMetersScale() const
 {
-	return WorldToMetersScale;
+	return 100.0f;
 }
 
 bool FOpenXRHMD::IsHMDEnabled() const
@@ -894,22 +577,6 @@ void FOpenXRHMD::SetInterpupillaryDistance(float NewInterpupillaryDistance)
 float FOpenXRHMD::GetInterpupillaryDistance() const
 {
 	return 0.064f;
-}	
-
-bool FOpenXRHMD::GetIsTracked(int32 DeviceId)
-{
-	// This function is called from both the game and rendering thread and each thread maintains separate pose
-	// snapshots to prevent inconsistent poses (tearing) on the same frame.
-	const FPipelinedFrameState& PipelineState = GetPipelinedFrameStateForThread();
-
-	if (!PipelineState.DeviceLocations.IsValidIndex(DeviceId))
-	{
-		return false;
-	}
-
-	const XrSpaceLocation& Location = PipelineState.DeviceLocations[DeviceId];
-	return Location.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT &&
-		Location.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT;
 }
 
 bool FOpenXRHMD::GetCurrentPose(int32 DeviceId, FQuat& CurrentOrientation, FVector& CurrentPosition)
@@ -917,66 +584,30 @@ bool FOpenXRHMD::GetCurrentPose(int32 DeviceId, FQuat& CurrentOrientation, FVect
 	CurrentOrientation = FQuat::Identity;
 	CurrentPosition = FVector::ZeroVector;
 
-	// This function is called from both the game and rendering thread and each thread maintains separate pose
-	// snapshots to prevent inconsistent poses (tearing) on the same frame.
-	const FPipelinedFrameState& PipelineState = GetPipelinedFrameStateForThread();
-
-	if (!PipelineState.DeviceLocations.IsValidIndex(DeviceId))
+	if (!DeviceSpaces.IsValidIndex(DeviceId) || !DeviceSpaces[DeviceId].Space || FrameState.predictedDisplayTime <= 0)
 	{
 		return false;
 	}
 
-	const XrSpaceLocation& Location = PipelineState.DeviceLocations[DeviceId];
-	if (Location.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT &&
-		Location.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT)
+	XrSpaceLocation Location = {};
+	Location.type = XR_TYPE_SPACE_LOCATION;
+	XrResult Result = xrLocateSpace(DeviceSpaces[DeviceId].Space, GetTrackingSpace(), FrameState.predictedDisplayTime, &Location);
+	if (!XR_ENSURE(Result))
+	{
+		return false;
+	}
+
+	if (Location.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT)
 	{
 		CurrentOrientation = ToFQuat(Location.pose.orientation);
+	}
+
+	if (Location.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT)
+	{
 		CurrentPosition = ToFVector(Location.pose.position, GetWorldToMetersScale());
-		return true;
 	}
 
-	return false;
-}
-
-bool FOpenXRHMD::GetPoseForTime(int32 DeviceId, FTimespan Timespan, FQuat& Orientation, FVector& Position, bool& bProvidedLinearVelocity, FVector& LinearVelocity, bool& bProvidedAngularVelocity, FVector& AngularVelocityRadPerSec)
-{
-	FPipelinedFrameState& PipelineState = GetPipelinedFrameStateForThread();
-
-	if (!DeviceSpaces.IsValidIndex(DeviceId))
-	{
-		return false;
-	}
-
-	XrTime TargetTime = ToXrTime(Timespan);
-
-	const FDeviceSpace& DeviceSpace = DeviceSpaces[DeviceId];
-
-	XrSpaceVelocity DeviceVelocity { XR_TYPE_SPACE_VELOCITY };
-	XrSpaceLocation DeviceLocation { XR_TYPE_SPACE_LOCATION, &DeviceVelocity };
-
-	XR_ENSURE(xrLocateSpace(DeviceSpace.Space, PipelineState.TrackingSpace, TargetTime, &DeviceLocation));
-
-	if (DeviceLocation.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT &&
-		DeviceLocation.locationFlags & XR_SPACE_LOCATION_POSITION_VALID_BIT)
-	{
-		Orientation = ToFQuat(DeviceLocation.pose.orientation);
-		Position = ToFVector(DeviceLocation.pose.position, GetWorldToMetersScale());
-
-		if (DeviceVelocity.velocityFlags & XR_SPACE_VELOCITY_LINEAR_VALID_BIT)
-		{
-			bProvidedLinearVelocity = true;
-			LinearVelocity = ToFVector(DeviceVelocity.linearVelocity, GetWorldToMetersScale());
-		}
-		if (DeviceVelocity.velocityFlags & XR_SPACE_VELOCITY_ANGULAR_VALID_BIT)
-		{
-			bProvidedAngularVelocity = true;
-			AngularVelocityRadPerSec = ToFVector(DeviceVelocity.angularVelocity);
-		}
-
-		return true;
-	}
-
-	return false;
+	return true;
 }
 
 bool FOpenXRHMD::IsChromaAbCorrectionEnabled() const
@@ -1045,87 +676,15 @@ void FOpenXRHMD::AdjustViewRect(EStereoscopicPass StereoPass, int32& X, int32& Y
 {
 	const uint32 ViewIndex = GetViewIndexForPass(StereoPass);
 
-	const FPipelinedFrameState& PipelineState = GetPipelinedFrameStateForThread();
-	const XrViewConfigurationView& Config = PipelineState.ViewConfigs[ViewIndex];
-	FIntPoint ViewRectMin(EForceInit::ForceInitToZero);
+	const XrViewConfigurationView& Config = Configs[ViewIndex];
 
-	// If Mobile Multi-View is active the first two views will share the same position
-	// Thus the start index should be the second view if enabled
-	for (uint32 i = bIsMobileMultiViewEnabled ? 1 : 0; i < ViewIndex; ++i)
+	for (uint32 i = 0; i < ViewIndex; ++i)
 	{
-		ViewRectMin.X += PipelineState.ViewConfigs[i].recommendedImageRectWidth;
+		X += Configs[i].recommendedImageRectWidth;
 	}
-	QuantizeSceneBufferSize(ViewRectMin, ViewRectMin);
 
-	X = ViewRectMin.X;
-	Y = ViewRectMin.Y;
 	SizeX = Config.recommendedImageRectWidth;
 	SizeY = Config.recommendedImageRectHeight;
-}
-
-void FOpenXRHMD::SetFinalViewRect(const enum EStereoscopicPass StereoPass, const FIntRect& FinalViewRect)
-{
-	if (StereoPass == eSSP_FULL)
-	{
-		return;
-	}
-
-	int32 ViewIndex = GetViewIndexForPass(StereoPass);
-	float NearZ = GNearClippingPlane / GetWorldToMetersScale();
-
-	FPipelinedFrameState& PipelineState = GetPipelinedFrameStateForThread();
-	FPipelinedLayerState& LayerState = GetPipelinedLayerStateForThread();
-
-	XrSwapchainSubImage& ColorImage = LayerState.ColorImages[ViewIndex];
-	ColorImage.swapchain = Swapchain.IsValid() ? static_cast<FOpenXRSwapchain*>(GetSwapchain())->GetHandle() : XR_NULL_HANDLE;
-	ColorImage.imageArrayIndex = bIsMobileMultiViewEnabled ? ViewIndex : 0;
-	ColorImage.imageRect = {
-		{ FinalViewRect.Min.X, FinalViewRect.Min.Y },
-		{ FinalViewRect.Width(), FinalViewRect.Height() }
-	};
-
-	XrSwapchainSubImage& DepthImage = LayerState.DepthImages[ViewIndex];
-	if (bDepthExtensionSupported)
-	{
-		DepthImage.swapchain = DepthSwapchain.IsValid() ? static_cast<FOpenXRSwapchain*>(GetDepthSwapchain())->GetHandle() : XR_NULL_HANDLE;
-		DepthImage.imageArrayIndex = bIsMobileMultiViewEnabled ? ViewIndex : 0;
-		DepthImage.imageRect = ColorImage.imageRect;
-	}
-
-	if (PipelineState.PluginViews[ViewIndex])
-	{
-		// Defer to the plugin to handle submission
-		return;
-	}
-
-	XrCompositionLayerProjectionView& Projection = LayerState.ProjectionLayers[ViewIndex];
-	XrCompositionLayerDepthInfoKHR& DepthLayer = LayerState.DepthLayers[ViewIndex];
-
-	Projection.type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW;
-	Projection.next = nullptr;
-	Projection.subImage = ColorImage;
-
-	if (bDepthExtensionSupported)
-	{
-		DepthLayer.type = XR_TYPE_COMPOSITION_LAYER_DEPTH_INFO_KHR;
-		DepthLayer.next = nullptr;
-		DepthLayer.subImage = DepthImage;
-		DepthLayer.minDepth = 0.0f;
-		DepthLayer.maxDepth = 1.0f;
-		DepthLayer.nearZ = FLT_MAX;
-		DepthLayer.farZ = NearZ;
-
-		for (IOpenXRExtensionPlugin* Module : ExtensionPlugins)
-		{
-			DepthLayer.next = Module->OnBeginDepthInfo(Session, 0, ViewIndex, DepthLayer.next);
-		}
-		Projection.next = &DepthLayer;
-	}
-
-	for (IOpenXRExtensionPlugin* Module : ExtensionPlugins)
-	{
-		Projection.next = Module->OnBeginProjectionView(Session, 0, ViewIndex, Projection.next);
-	}
 }
 
 EStereoscopicPass FOpenXRHMD::GetViewPassForIndex(bool bStereoRequested, uint32 ViewIndex) const
@@ -1152,34 +711,9 @@ uint32 FOpenXRHMD::GetViewIndexForPass(EStereoscopicPass StereoPassType) const
 	}
 }
 
-uint32 FOpenXRHMD::DeviceGetLODViewIndex() const
-{
-	if (SelectedViewConfigurationType == XR_VIEW_CONFIGURATION_TYPE_PRIMARY_QUAD_VARJO)
-	{
-		return GetViewIndexForPass(eSSP_LEFT_EYE_SIDE);
-	}
-	return IStereoRendering::DeviceGetLODViewIndex();
-}
-
-bool FOpenXRHMD::DeviceIsAPrimaryPass(EStereoscopicPass Pass)
-{
-	uint32 ViewIndex = GetViewIndexForPass(Pass);
-	const FPipelinedFrameState& PipelineState = GetPipelinedFrameStateForThread();
-	if (PipelineState.PluginViews.IsValidIndex(ViewIndex) && PipelineState.PluginViews[ViewIndex])
-	{
-		// Views provided by a plugin should be considered a new primary pass
-		return true;
-	}
-
-	return Pass == EStereoscopicPass::eSSP_FULL || Pass == EStereoscopicPass::eSSP_LEFT_EYE;
-}
-
 int32 FOpenXRHMD::GetDesiredNumberOfViews(bool bStereoRequested) const
 {
-	const FPipelinedFrameState& FrameState = GetPipelinedFrameStateForThread();
-
-	// FIXME: Monoscopic actually needs 2 views for quad vr
-	return bStereoRequested ? FrameState.ViewConfigs.Num() : 1;
+	return bStereoRequested ? Views.Num() : 1; // FIXME: Monoscopic actually needs 2 views for quad vr
 }
 
 bool FOpenXRHMD::GetRelativeEyePose(int32 InDeviceId, EStereoscopicPass InEye, FQuat& OutOrientation, FVector& OutPosition)
@@ -1189,26 +723,18 @@ bool FOpenXRHMD::GetRelativeEyePose(int32 InDeviceId, EStereoscopicPass InEye, F
 		return false;
 	}
 
-	const FPipelinedFrameState& FrameState = GetPipelinedFrameStateForThread();
-
-	if (FrameState.ViewState.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT &&
-		FrameState.ViewState.viewStateFlags & XR_VIEW_STATE_POSITION_VALID_BIT)
-	{
-		const uint32 ViewIndex = GetViewIndexForPass(InEye);
-		OutOrientation = ToFQuat(FrameState.Views[ViewIndex].pose.orientation);
-		OutPosition = ToFVector(FrameState.Views[ViewIndex].pose.position, GetWorldToMetersScale());
-		return true;
-	}
-
-	return false;
+	const uint32 ViewIndex = GetViewIndexForPass(InEye);
+	const XrView& View = Views[ViewIndex];
+	OutOrientation = ToFQuat(View.pose.orientation);
+	OutPosition = ToFVector(View.pose.position, GetWorldToMetersScale());
+	return true;
 }
 
 FMatrix FOpenXRHMD::GetStereoProjectionMatrix(const enum EStereoscopicPass StereoPassType) const
 {
 	const uint32 ViewIndex = GetViewIndexForPass(StereoPassType);
 
-	const FPipelinedFrameState& FrameState = GetPipelinedFrameStateForThread();
-	XrFovf Fov = FrameState.Views[ViewIndex].fov;
+	XrFovf Fov = Views[ViewIndex].fov;
 
 	float ZNear = GNearClippingPlane;
 
@@ -1249,8 +775,7 @@ void FOpenXRHMD::SetupViewFamily(FSceneViewFamily& InViewFamily)
 	// can take advantage of the extra resolution in the distortion process.
 	InViewFamily.EngineShowFlags.ScreenPercentage = 0;
 
-	const FPipelinedFrameState& FrameState = GetPipelinedFrameStateForThread();
-	if (FrameState.Views.Num() > 2)
+	if (Configs.Num() > 2)
 	{
 		InViewFamily.EngineShowFlags.Vignette = 0;
 		InViewFamily.EngineShowFlags.Bloom = 0;
@@ -1263,14 +788,6 @@ void FOpenXRHMD::SetupView(FSceneViewFamily& InViewFamily, FSceneView& InView)
 
 void FOpenXRHMD::BeginRenderViewFamily(FSceneViewFamily& InViewFamily)
 {
-	uint32 ViewConfigCount = 0;
-	XR_ENSURE(xrEnumerateViewConfigurationViews(Instance, System, SelectedViewConfigurationType, 0, &ViewConfigCount, nullptr));
-
-	PipelinedLayerStateRendering.ProjectionLayers.SetNum(ViewConfigCount);
-	PipelinedLayerStateRendering.DepthLayers.SetNum(ViewConfigCount);
-
-	PipelinedLayerStateRendering.ColorImages.SetNum(PipelinedFrameStateRendering.ViewConfigs.Num());
-	PipelinedLayerStateRendering.DepthImages.SetNum(PipelinedFrameStateRendering.ViewConfigs.Num());
 }
 
 void FOpenXRHMD::PreRenderView_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView)
@@ -1293,320 +810,97 @@ bool FOpenXRHMD::IsActiveThisFrame(class FViewport* InViewport) const
 	return GEngine && GEngine->IsStereoscopic3D(InViewport);
 }
 
-FOpenXRHMD::FOpenXRHMD(const FAutoRegister& AutoRegister, XrInstance InInstance, XrSystemId InSystem, TRefCountPtr<FOpenXRRenderBridge>& InRenderBridge, TArray<const char*> InEnabledExtensions, TArray<IOpenXRExtensionPlugin*> InExtensionPlugins, IARSystemSupport* ARSystemSupport)
-	: FHeadMountedDisplayBase(ARSystemSupport)
+FOpenXRHMD::FOpenXRHMD(const FAutoRegister& AutoRegister, XrInstance InInstance, XrSystemId InSystem, TRefCountPtr<FOpenXRRenderBridge>& InRenderBridge, const TSet<FString>& Extensions)
+	: FHeadMountedDisplayBase(nullptr)
 	, FSceneViewExtensionBase(AutoRegister)
 	, bStereoEnabled(false)
 	, bIsRunning(false)
 	, bIsReady(false)
 	, bIsRendering(false)
-	, bIsSynchronized(false)
-	, bNeedReAllocatedDepth(false)
-	, bNeedReBuildOcclusionMesh(true)
+	, bRunRequested(false)
 	, CurrentSessionState(XR_SESSION_STATE_UNKNOWN)
-	, FrameEventRHI(FPlatformProcess::GetSynchEventFromPool())
-	, EnabledExtensions(std::move(InEnabledExtensions))
-	, ExtensionPlugins(std::move(InExtensionPlugins))
 	, Instance(InInstance)
 	, System(InSystem)
 	, Session(XR_NULL_HANDLE)
 	, LocalSpace(XR_NULL_HANDLE)
 	, StageSpace(XR_NULL_HANDLE)
 	, TrackingSpaceType(XR_REFERENCE_SPACE_TYPE_STAGE)
-	, SelectedViewConfigurationType(XR_VIEW_CONFIGURATION_TYPE_MAX_ENUM)
-	, SelectedEnvironmentBlendMode(XR_ENVIRONMENT_BLEND_MODE_MAX_ENUM)
+	, SelectedViewConfigurationType(XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO)
 	, RenderBridge(InRenderBridge)
 	, RendererModule(nullptr)
-	, LastRequestedSwapchainFormat(0)
-	, LastRequestedDepthSwapchainFormat(0)
 {
-	XrInstanceProperties InstanceProps = { XR_TYPE_INSTANCE_PROPERTIES, nullptr };
-	XR_ENSURE(xrGetInstanceProperties(Instance, &InstanceProps));
+	FrameState.type = XR_TYPE_FRAME_STATE;
+	FrameState.next = nullptr;
+	FrameState.predictedDisplayPeriod = FrameState.predictedDisplayTime = 0;
+	FrameStateRHI = FrameState;
 
-	bDepthExtensionSupported = IsExtensionEnabled(XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME);
-	bHiddenAreaMaskSupported = IsExtensionEnabled(XR_KHR_VISIBILITY_MASK_EXTENSION_NAME) &&
-		!FCStringAnsi::Strstr(InstanceProps.runtimeName, "Oculus");
-	bViewConfigurationFovSupported = IsExtensionEnabled(XR_EPIC_VIEW_CONFIGURATION_FOV_EXTENSION_NAME);
+	ViewState.type = XR_TYPE_VIEW_STATE;
+	ViewState.next = nullptr;
+	ViewState.viewStateFlags = 0;
 
-	static const auto CVarMobileMultiView = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.MobileMultiView"));
-	static const auto CVarMobileHDR = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileHDR"));
-	const bool bMobileHDR = (CVarMobileHDR && CVarMobileHDR->GetValueOnAnyThread() != 0);
-	const bool bMobileMultiView = !bMobileHDR && (CVarMobileMultiView && CVarMobileMultiView->GetValueOnAnyThread() != 0);
-#if PLATFORM_HOLOLENS
-	bIsMobileMultiViewEnabled = bMobileMultiView && GRHISupportsArrayIndexFromAnyShader;
-#else
-	bIsMobileMultiViewEnabled = bMobileMultiView && RHISupportsMobileMultiView(GMaxRHIShaderPlatform);
-#endif
-	// Enumerate the viewport configurations
-	uint32 ConfigurationCount;
-	TArray<XrViewConfigurationType> ViewConfigTypes;
-	XR_ENSURE(xrEnumerateViewConfigurations(Instance, System, 0, &ConfigurationCount, nullptr));
-	ViewConfigTypes.SetNum(ConfigurationCount);
-	// Fill the initial array with valid enum types (this will fail in the validation layer otherwise).
-	for (auto & TypeIter : ViewConfigTypes)
-		TypeIter = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_MONO;
-	XR_ENSURE(xrEnumerateViewConfigurations(Instance, System, ConfigurationCount, &ConfigurationCount, ViewConfigTypes.GetData()));
+	bNeedReAllocatedDepth = bDepthExtensionSupported = Extensions.Contains(XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME);
+	bHiddenAreaMaskSupported = Extensions.Contains(XR_KHR_VISIBILITY_MASK_EXTENSION_NAME);
 
-	// Select the first view configuration returned by the runtime that is supported.
-	// This is the view configuration preferred by the runtime.
-	for (XrViewConfigurationType ViewConfigType : ViewConfigTypes)
 	{
-		if (SupportedViewConfigurations.Contains(ViewConfigType))
-		{
-			SelectedViewConfigurationType = ViewConfigType;
-			break;
-		}
-	}
-
-	// If there is no supported view configuration type, use the first option as a last resort.
-	if (!ensure(SelectedViewConfigurationType != XR_VIEW_CONFIGURATION_TYPE_MAX_ENUM))
-	{
-		UE_LOG(LogHMD, Error, TEXT("No compatible view configuration type found, falling back to runtime preferred type."));
-		SelectedViewConfigurationType = ViewConfigTypes[0];
-	}
-
-	EnumerateViews(PipelinedFrameStateGame);
-
-	// Enumerate environment blend modes and select the best one.
-	{
-		uint32 BlendModeCount;
-		TArray<XrEnvironmentBlendMode> BlendModes;
-		XR_ENSURE(xrEnumerateEnvironmentBlendModes(Instance, System, SelectedViewConfigurationType, 0, &BlendModeCount, nullptr));
+		// Enumerate the viewport configurations
+		uint32 ConfigurationCount;
+		TArray<XrViewConfigurationType> Types;
+		XR_ENSURE(xrEnumerateViewConfigurations(Instance, System, 0, &ConfigurationCount, nullptr));
+		Types.SetNum(ConfigurationCount);
 		// Fill the initial array with valid enum types (this will fail in the validation layer otherwise).
-		for (auto& TypeIter : BlendModes)
-			TypeIter = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
-		BlendModes.SetNum(BlendModeCount);
-		XR_ENSURE(xrEnumerateEnvironmentBlendModes(Instance, System, SelectedViewConfigurationType, BlendModeCount, &BlendModeCount, BlendModes.GetData()));
+		for (auto & TypeIter : Types)
+			TypeIter = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_MONO;
+		XR_ENSURE(xrEnumerateViewConfigurations(Instance, System, ConfigurationCount, &ConfigurationCount, Types.GetData()));
 
-		// Select the first blend mode returned by the runtime that is supported.
-		// This is the environment blend mode preferred by the runtime.
-		for (XrEnvironmentBlendMode BlendMode : BlendModes)
+		// Ensure the configuration type we want is provided
+		if (Types.Contains(XR_VIEW_CONFIGURATION_TYPE_PRIMARY_QUAD_VARJO))
 		{
-			if (SupportedBlendModes.Contains(BlendMode))
-			{
-				SelectedEnvironmentBlendMode = BlendMode;
-				break;
-			}
+			SelectedViewConfigurationType = static_cast<XrViewConfigurationType>(XR_VIEW_CONFIGURATION_TYPE_PRIMARY_QUAD_VARJO);
 		}
+		ensure(Types.Contains(SelectedViewConfigurationType));
 
-		// If there is no supported environment blend mode, use the first option as a last resort.
-		if (!ensure(SelectedEnvironmentBlendMode != XR_ENVIRONMENT_BLEND_MODE_MAX_ENUM))
+		// Enumerate the viewport view configurations
+		uint32 ViewCount;
+		XR_ENSURE(xrEnumerateViewConfigurationViews(Instance, System, SelectedViewConfigurationType, 0, &ViewCount, nullptr));
+		Configs.SetNum(ViewCount);
+		for (XrViewConfigurationView& View : Configs)
 		{
-			SelectedEnvironmentBlendMode = BlendModes[0];
+			View.type = XR_TYPE_VIEW_CONFIGURATION_VIEW;
+			View.next = nullptr;
 		}
+		XR_ENSURE(xrEnumerateViewConfigurationViews(Instance, System, SelectedViewConfigurationType, ViewCount, &ViewCount, Configs.GetData()));
+	}
+
+	// Ensure the views have sane values before we locate them
+	Views.SetNum(Configs.Num());
+	for (XrView& View : Views)
+	{
+		View.type = XR_TYPE_VIEW;
+		View.next = nullptr;
+		View.fov = XrFovf{ -PI / 4.0f, PI / 4.0f, PI / 4.0f, -PI / 4.0f };
+		View.pose = ToXrPose(FTransform::Identity);
 	}
 
 	// Add a device space for the HMD without an action handle and ensure it has the correct index
 	ensure(DeviceSpaces.Emplace(XR_NULL_HANDLE) == HMDDeviceId);
-
-	// Give the all frame states the same initial values.
-	PipelinedFrameStateRHI = PipelinedFrameStateRendering = PipelinedFrameStateGame;
-
-	FrameEventRHI->Trigger();
 }
 
 FOpenXRHMD::~FOpenXRHMD()
 {
-	DestroySession();
-
-	FPlatformProcess::ReturnSynchEventToPool(FrameEventRHI);
-}
-
-const FOpenXRHMD::FPipelinedFrameState& FOpenXRHMD::GetPipelinedFrameStateForThread() const
-{
-	if (IsInRHIThread())
-	{
-		return PipelinedFrameStateRHI;
-	}
-	else if (IsInRenderingThread())
-	{
-		return PipelinedFrameStateRendering;
-	}
-	else
-	{
-		check(IsInGameThread());
-		return PipelinedFrameStateGame;
-	}
-}
-
-FOpenXRHMD::FPipelinedFrameState& FOpenXRHMD::GetPipelinedFrameStateForThread()
-{
-	if (IsInRHIThread())
-	{
-		return PipelinedFrameStateRHI;
-	}
-	else if (IsInRenderingThread())
-	{
-		return PipelinedFrameStateRendering;
-	}
-	else
-	{
-		check(IsInGameThread());
-		return PipelinedFrameStateGame;
-	}
-}
-
-const FOpenXRHMD::FPipelinedLayerState& FOpenXRHMD::GetPipelinedLayerStateForThread() const
-{
-	if (IsInRHIThread())
-	{
-		return PipelinedLayerStateRHI;
-	}
-	else
-	{
-		check(IsInRenderingThread());
-		return PipelinedLayerStateRendering;
-	}
-}
-
-FOpenXRHMD::FPipelinedLayerState& FOpenXRHMD::GetPipelinedLayerStateForThread()
-{
-	if (IsInRHIThread())
-	{
-		return PipelinedLayerStateRHI;
-	}
-	else
-	{
-		check(IsInRenderingThread());
-		return PipelinedLayerStateRendering;
-	}
-}
-
-void FOpenXRHMD::UpdateDeviceLocations(bool bUpdateOpenXRExtensionPlugins)
-{
-	FPipelinedFrameState& PipelineState = GetPipelinedFrameStateForThread();
-
-	// Only update the device locations if the frame state has been predicted
-	if (bIsSynchronized && PipelineState.FrameState.predictedDisplayTime > 0)
-	{
-		FScopeLock Lock(&DeviceMutex);
-
-		PipelineState.DeviceLocations.SetNum(DeviceSpaces.Num());
-		for (int32 DeviceIndex = 0; DeviceIndex < PipelineState.DeviceLocations.Num(); DeviceIndex++)
-		{
-			const FDeviceSpace& DeviceSpace = DeviceSpaces[DeviceIndex];
-			if (DeviceSpace.Space != XR_NULL_HANDLE)
-			{
-				XrSpaceLocation& DeviceLocation = PipelineState.DeviceLocations[DeviceIndex];
-				DeviceLocation.type = XR_TYPE_SPACE_LOCATION;
-				DeviceLocation.next = nullptr;
-				XR_ENSURE(xrLocateSpace(DeviceSpace.Space, PipelineState.TrackingSpace, PipelineState.FrameState.predictedDisplayTime, &DeviceLocation));
-			}
-			else
-			{
-				// Ensure the location flags are zeroed out so the pose is detected as invalid
-				PipelineState.DeviceLocations[DeviceIndex].locationFlags = 0;
-			}
-		}
-
-		if (bUpdateOpenXRExtensionPlugins)
-		{
-			for (IOpenXRExtensionPlugin* Module : ExtensionPlugins)
-			{
-				Module->UpdateDeviceLocations(Session, PipelineState.FrameState.predictedDisplayTime, PipelineState.TrackingSpace);
-			}
-		}
-	}
-}
-
-void FOpenXRHMD::EnumerateViews(FPipelinedFrameState& PipelineState)
-{
-	// Enumerate the viewport configuration views
-	uint32 ViewConfigCount = 0;
-	TArray<XrViewConfigurationViewFovEPIC> ViewFov;
-	XR_ENSURE(xrEnumerateViewConfigurationViews(Instance, System, SelectedViewConfigurationType, 0, &ViewConfigCount, nullptr));
-	ViewFov.SetNum(ViewConfigCount);
-	PipelineState.ViewConfigs.Empty(ViewConfigCount);
-	PipelineState.PluginViews.Empty(ViewConfigCount);
-	for (uint32 ViewIndex = 0; ViewIndex < ViewConfigCount; ViewIndex++)
-	{
-		XrViewConfigurationView View;
-		View.type = XR_TYPE_VIEW_CONFIGURATION_VIEW;
-
-		ViewFov[ViewIndex].type = XR_TYPE_VIEW_CONFIGURATION_VIEW_FOV_EPIC;
-		ViewFov[ViewIndex].next = nullptr;
-		View.next = bViewConfigurationFovSupported ? &ViewFov[ViewIndex] : nullptr;
-
-		// These are core views that don't have an associated plugin
-		PipelineState.PluginViews.Add(nullptr);
-		PipelineState.ViewConfigs.Add(View);
-	}
-	XR_ENSURE(xrEnumerateViewConfigurationViews(Instance, System, SelectedViewConfigurationType, ViewConfigCount, &ViewConfigCount, PipelinedFrameStateGame.ViewConfigs.GetData()));
-
-	for (IOpenXRExtensionPlugin* Module : ExtensionPlugins)
-	{
-		TArray<XrViewConfigurationView> ViewConfigs;
-		Module->GetViewConfigurations(System, ViewConfigs);
-		for (int32 i = 0; i < ViewConfigs.Num(); i++)
-		{
-			PipelineState.PluginViews.Add(Module);
-		}
-		PipelineState.ViewConfigs.Append(ViewConfigs);
-	}
-	
 	if (Session)
 	{
-		uint32_t ViewCount = 0;
-		XrViewLocateInfo ViewInfo;
-		ViewInfo.type = XR_TYPE_VIEW_LOCATE_INFO;
-		ViewInfo.next = nullptr;
-		ViewInfo.viewConfigurationType = SelectedViewConfigurationType;
-		ViewInfo.space = DeviceSpaces[HMDDeviceId].Space;
-		ViewInfo.displayTime = PipelineState.FrameState.predictedDisplayTime;
-		XR_ENSURE(xrLocateViews(Session, &ViewInfo, &PipelineState.ViewState, 0, &ViewCount, nullptr));
-		PipelineState.Views.SetNum(ViewCount, false);
-		XR_ENSURE(xrLocateViews(Session, &ViewInfo, &PipelineState.ViewState, PipelineState.Views.Num(), &ViewCount, PipelineState.Views.GetData()));
-
-		for (IOpenXRExtensionPlugin* Module : ExtensionPlugins)
-		{
-			if (PipelineState.PluginViews.Contains(Module))
-			{
-				TArray<XrView> Views;
-				Module->GetViewLocations(Session, PipelineState.FrameState.predictedDisplayTime, DeviceSpaces[HMDDeviceId].Space, Views);
-				check(Views.Num() > 0);
-				PipelineState.Views.Append(Views);
-			}
-		}
-	}
-	else if (bViewConfigurationFovSupported)
-	{
-		// We can't locate the views yet, but we can already retrieve their field-of-views
-		PipelineState.Views.SetNum(PipelineState.ViewConfigs.Num());
-		for (int ViewIndex = 0; ViewIndex < PipelineState.Views.Num(); ViewIndex++)
-		{
-			XrView& View = PipelineState.Views[ViewIndex];
-			View.type = XR_TYPE_VIEW;
-			View.next = nullptr;
-			// FIXME: should be recommendedFov
-			View.fov = ViewFov[ViewIndex].recommendedMutableFov;
-			View.pose = ToXrPose(FTransform::Identity);
-		}
-	}
-	else
-	{
-		// Ensure the views have sane values before we locate them
-		PipelineState.Views.SetNum(PipelineState.ViewConfigs.Num());
-		for (XrView& View : PipelineState.Views)
-		{
-			View.type = XR_TYPE_VIEW;
-			View.next = nullptr;
-			View.fov = XrFovf{ -PI / 4.0f, PI / 4.0f, PI / 4.0f, -PI / 4.0f };
-			View.pose = ToXrPose(FTransform::Identity);
-		}
+		XR_ENSURE(xrDestroySession(Session));
 	}
 }
 
-#if !PLATFORM_HOLOLENS
 void FOpenXRHMD::BuildOcclusionMeshes()
 {
-	uint32_t ViewCount = 0;
-	XR_ENSURE(xrEnumerateViewConfigurationViews(Instance, System, SelectedViewConfigurationType, 0, &ViewCount, nullptr));
-	HiddenAreaMeshes.SetNum(ViewCount);
-	VisibleAreaMeshes.SetNum(ViewCount);
+	HiddenAreaMeshes.SetNum(Views.Num());
+	VisibleAreaMeshes.SetNum(Views.Num());
 
 	bool bSucceeded = true;
 
-	for (uint32_t View = 0; View < ViewCount; ++View)
+	for (int View = 0; View < Views.Num(); ++View)
 	{
 		if (!BuildOcclusionMesh(XR_VISIBILITY_MASK_TYPE_VISIBLE_TRIANGLE_MESH_KHR, View, VisibleAreaMeshes[View]) ||
 			!BuildOcclusionMesh(XR_VISIBILITY_MASK_TYPE_HIDDEN_TRIANGLE_MESH_KHR, View, HiddenAreaMeshes[View]))
@@ -1627,19 +921,9 @@ void FOpenXRHMD::BuildOcclusionMeshes()
 
 bool FOpenXRHMD::BuildOcclusionMesh(XrVisibilityMaskTypeKHR Type, int View, FHMDViewMesh& Mesh)
 {
-	PFN_xrGetVisibilityMaskKHR GetVisibilityMaskKHR;
-	XR_ENSURE(xrGetInstanceProcAddr(Instance, "xrGetVisibilityMaskKHR", (PFN_xrVoidFunction*)&GetVisibilityMaskKHR));
-
 	XrVisibilityMaskKHR VisibilityMask = { XR_TYPE_VISIBILITY_MASK_KHR };
-	XR_ENSURE(GetVisibilityMaskKHR(Session, SelectedViewConfigurationType, View, Type, &VisibilityMask));
+	XR_ENSURE(xrGetVisibilityMaskKHR(Session, SelectedViewConfigurationType, View, Type, &VisibilityMask));
 
-	if (VisibilityMask.indexCountOutput == 0)
-	{
-		UE_LOG(LogHMD, Warning, TEXT("Runtime does not currently have a visibility mask.  Another attempt will be made to build the occlusion mesh on an XR_TYPE_EVENT_DATA_VISIBILITY_MASK_CHANGED_KHR event."));
-		// Disallow future BuildOcclusionMesh attempts until this flag is reset in the XR_TYPE_EVENT_DATA_VISIBILITY_MASK_CHANGED_KHR handler.
-		bHiddenAreaMaskSupported = false;
-		return false;
-	}
 	if (!VisibilityMask.indexCountOutput || (VisibilityMask.indexCountOutput % 3) != 0 || VisibilityMask.vertexCountOutput == 0)
 	{
 		UE_LOG(LogHMD, Error, TEXT("Visibility Mask Mesh returned from runtime is invalid."));
@@ -1662,33 +946,47 @@ bool FOpenXRHMD::BuildOcclusionMesh(XrVisibilityMaskTypeKHR Type, int View, FHMD
 	VisibilityMask.indices = OutIndices;
 	VisibilityMask.vertices = OutVertices.Get();
 
-	GetVisibilityMaskKHR(Session, SelectedViewConfigurationType, View, Type, &VisibilityMask);
-
-	// We need to apply the eye's projection matrix to each vertex
-	FMatrix Projection = GetStereoProjectionMatrix(GetViewPassForIndex(true, View));
+	xrGetVisibilityMaskKHR(Session, SelectedViewConfigurationType, View, Type, &VisibilityMask);
 
 	ensure(VisibilityMask.vertexCapacityInput == VisibilityMask.vertexCountOutput);
 	ensure(VisibilityMask.indexCapacityInput == VisibilityMask.indexCountOutput);
 
-	for (uint32 VertexIndex = 0; VertexIndex < VisibilityMask.vertexCountOutput; ++VertexIndex)
+	if (Type == XR_VISIBILITY_MASK_TYPE_HIDDEN_TRIANGLE_MESH_KHR)
 	{
-		FFilterVertex& Vertex = Vertices[VertexIndex];
-		FVector Position(OutVertices[VertexIndex].x, OutVertices[VertexIndex].y, 1.0f);
-
-		Vertex.Position = Projection.TransformPosition(Position);
-
-		if (Type == XR_VISIBILITY_MASK_TYPE_VISIBLE_TRIANGLE_MESH_KHR)
+		// For the hidden-area mesh, bias z to the near plane so we occlude everything, and re-bias vertices to the -0.5 to 0.5 range in x and y. 
+		for (uint32 VertexIndex = 0; VertexIndex < VisibilityMask.vertexCountOutput; ++VertexIndex)
 		{
-			// For the visible-area mesh, this will be consumed by the post-process pipeline, so set up coordinates in the space they expect
-			// (x and y range from 0-1, z at the far plane).
-			Vertex.Position.X = Vertex.Position.X / 2.0f + .5f;
-			Vertex.Position.Y = Vertex.Position.Y / 2.0f + .5f;
+			FFilterVertex& Vertex = Vertices[VertexIndex];
+			const XrVector2f& Position = OutVertices[VertexIndex];
+
+			Vertex.Position.X = (Position.x * 2.0f) - 1.0f;
+			Vertex.Position.Y = (Position.y * 2.0f) - 1.0f;
+			Vertex.Position.Z = 1.0f;
+			Vertex.Position.W = 1.0f;
+			Vertex.UV.X = Vertex.UV.Y = 0.0f;
+		}
+	}
+	else if (Type == XR_VISIBILITY_MASK_TYPE_VISIBLE_TRIANGLE_MESH_KHR)
+	{
+		// For the visible-area mesh, this will be consumed by the post-process pipeline, so set up coordinates in the space they expect 
+		// (x and y range from 0-1, y reversed, z at the far plane).
+		for (uint32 VertexIndex = 0; VertexIndex < VisibilityMask.vertexCountOutput; ++VertexIndex)
+		{
+			FFilterVertex& Vertex = Vertices[VertexIndex];
+			const XrVector2f& Position = OutVertices[VertexIndex];
+
+			Vertex.Position.X = Position.x;
+			Vertex.Position.Y = 1.0f - Position.y;
 			Vertex.Position.Z = 0.0f;
 			Vertex.Position.W = 1.0f;
-		}
 
-		Vertex.UV.X = Vertex.Position.X;
-		Vertex.UV.Y = Vertex.Position.Y;
+			Vertex.UV.X = Position.x;
+			Vertex.UV.Y = 1.0f - Position.y;
+		}
+	}
+	else
+	{
+		ensureMsgf(false, TEXT("FOpenXRHMD::BuildOcclusionMesh called with unsupported visibility mask type."));
 	}
 
 	Mesh.NumIndices = VisibilityMask.indexCountOutput;
@@ -1697,23 +995,29 @@ bool FOpenXRHMD::BuildOcclusionMesh(XrVisibilityMaskTypeKHR Type, int View, FHMD
 
 	RHIUnlockVertexBuffer(Mesh.VertexBufferRHI);
 	RHIUnlockIndexBuffer(Mesh.IndexBufferRHI);
-
+	
 	return true;
 }
-#endif
 
 bool FOpenXRHMD::OnStereoStartup()
 {
-	XrSessionCreateInfo SessionInfo;
-	SessionInfo.type = XR_TYPE_SESSION_CREATE_INFO;
-	SessionInfo.next = RenderBridge->GetGraphicsBinding();
-	SessionInfo.createFlags = 0;
-	SessionInfo.systemId = System;
-	for (IOpenXRExtensionPlugin* Module : ExtensionPlugins)
+	FOpenXRHMD* Self = this;
+	ENQUEUE_RENDER_COMMAND(OpenXRCreateSession)([Self](FRHICommandListImmediate& RHICmdList)
 	{
-		SessionInfo.next = Module->OnCreateSession(Instance, System, SessionInfo.next);
-	}
-	XR_ENSURE(xrCreateSession(Instance, &SessionInfo, &Session));
+		XrSessionCreateInfo SessionInfo;
+		SessionInfo.type = XR_TYPE_SESSION_CREATE_INFO;
+		SessionInfo.next = Self->RenderBridge->GetGraphicsBinding_RenderThread();
+		SessionInfo.createFlags = 0;
+		SessionInfo.systemId = Self->System;
+		XR_ENSURE(xrCreateSession(Self->Instance, &SessionInfo, &Self->Session));
+
+		if (Self->bHiddenAreaMaskSupported)
+		{
+			Self->BuildOcclusionMeshes();
+		}
+	});
+
+	FlushRenderingCommands();
 
 	uint32_t ReferenceSpacesCount;
 	XR_ENSURE(xrEnumerateReferenceSpaces(Session, 0, &ReferenceSpacesCount, nullptr));
@@ -1754,7 +1058,7 @@ bool FOpenXRHMD::OnStereoStartup()
 	}
 
 	// Create action spaces for all devices
-	for (FDeviceSpace& DeviceSpace : DeviceSpaces)
+	for (auto& DeviceSpace : DeviceSpaces)
 	{
 		DeviceSpace.CreateSpace(Session);
 	}
@@ -1765,42 +1069,7 @@ bool FOpenXRHMD::OnStereoStartup()
 	static const FName RendererModuleName("Renderer");
 	RendererModule = FModuleManager::GetModulePtr<IRendererModule>(RendererModuleName);
 
-	bool bUseExtensionSpectatorScreenController = false;
-	for (IOpenXRExtensionPlugin* Module : ExtensionPlugins)
-	{
-		bUseExtensionSpectatorScreenController = Module->GetSpectatorScreenController(this, SpectatorScreenController);
-		if (bUseExtensionSpectatorScreenController)
-		{
-			break;
-		}
-	}
-
-#if !PLATFORM_HOLOLENS
-	if (!bUseExtensionSpectatorScreenController && !FPlatformMisc::IsStandaloneStereoOnlyDevice())
-	{
-		SpectatorScreenController = MakeUnique<FDefaultSpectatorScreenController>(this);
-		UE_LOG(LogHMD, Verbose, TEXT("OpenXR using base spectator screen."));
-	}
-	else
-#endif
-	{
-		if (SpectatorScreenController == nullptr)
-		{
-			UE_LOG(LogHMD, Verbose, TEXT("OpenXR disabling spectator screen."));
-		}
-		else
-		{
-			UE_LOG(LogHMD, Verbose, TEXT("OpenXR using extension spectator screen."));
-		}
-	}
-
-	// Check for hand tracking support
-	XrSystemHandTrackingPropertiesEXT HandTrackingSystemProperties{
-		XR_TYPE_SYSTEM_HAND_TRACKING_PROPERTIES_EXT };
-	XrSystemProperties systemProperties{ XR_TYPE_SYSTEM_PROPERTIES,
-										&HandTrackingSystemProperties };
-	XR_ENSURE(xrGetSystemProperties(Instance, System, &systemProperties));
-	bSupportsHandTracking = HandTrackingSystemProperties.supportsHandTracking == XR_TRUE;
+	SpectatorScreenController = MakeUnique<FDefaultSpectatorScreenController>(this);
 
 	StartSession();
 
@@ -1814,8 +1083,8 @@ bool FOpenXRHMD::OnStereoTeardown()
 		XrResult Result = xrRequestExitSession(Session);
 		if (Result == XR_ERROR_SESSION_NOT_RUNNING)
 		{
-			// Session was never running - most likely PIE without putting the headset on.
-			DestroySession();
+			// Session was never running - most likely PIE without putting the headset on. 
+			CloseSession();
 		}
 		else
 		{
@@ -1826,43 +1095,44 @@ bool FOpenXRHMD::OnStereoTeardown()
 	return true;
 }
 
-void FOpenXRHMD::DestroySession()
+void FOpenXRHMD::CloseSession()
 {
-	FScopeLock Lock(&DeviceMutex);
-
 	if (Session != XR_NULL_HANDLE)
 	{
 		Swapchain.Reset();
 		DepthSwapchain.Reset();
 
-		// Destroy device spaces, they will be recreated
-		// when the session is created again.
-		for (FDeviceSpace& Device : DeviceSpaces)
+		// Clear up device spaces
+		for (auto& DeviceSpace : DeviceSpaces)
 		{
-			Device.DestroySpace();
+			DeviceSpace.DestroySpace();
 		}
 
 		// Close the session now we're allowed to.
-		XR_ENSURE(xrDestroySession(Session));
-		Session = XR_NULL_HANDLE;
+		ENQUEUE_RENDER_COMMAND(OpenXRDestroySession)([this](FRHICommandListImmediate& RHICmdList)
+		{
+			if (bIsRunning)
+			{
+				XR_ENSURE(xrEndSession(Session));
+			}
+
+			XR_ENSURE(xrDestroySession(Session));
+
+			Session = XR_NULL_HANDLE;
+		});
 
 		FlushRenderingCommands();
 
-		bStereoEnabled = false;
+		bIsRendering = false;
 		bIsReady = false;
 		bIsRunning = false;
-		bIsRendering = false;
-		bIsSynchronized = false;
+		bRunRequested = false;
 		bNeedReAllocatedDepth = true;
-		bNeedReBuildOcclusionMesh = true;
 	}
 }
 
 int32 FOpenXRHMD::AddActionDevice(XrAction Action)
 {
-	// Ensure the HMD device is already emplaced
-	ensure(DeviceSpaces.Num() > 0);
-
 	int32 DeviceId = DeviceSpaces.Emplace(Action);
 	if (Session)
 	{
@@ -1879,12 +1149,6 @@ void FOpenXRHMD::ResetActionDevices()
 	{
 		DeviceSpaces.RemoveAt(HMDDeviceId + 1, DeviceSpaces.Num() - 1);
 	}
-}
-
-XrTime FOpenXRHMD::GetDisplayTime() const
-{
-	const FPipelinedFrameState& PipelineState = GetPipelinedFrameStateForThread();
-	return PipelineState.FrameState.predictedDisplayTime;
 }
 
 bool FOpenXRHMD::IsInitialized() const
@@ -1904,37 +1168,23 @@ bool FOpenXRHMD::IsFocused() const
 
 bool FOpenXRHMD::StartSession()
 {
-	// If the session is already running, or is not yet ready,
+	// If the session is already running, or is not yet ready, 
 	if (!bIsReady || bIsRunning)
 	{
+		if (!bIsRunning)
+			bRunRequested = true;
+
 		return false;
 	}
 
 	XrSessionBeginInfo Begin = { XR_TYPE_SESSION_BEGIN_INFO, nullptr, SelectedViewConfigurationType };
-	for (IOpenXRExtensionPlugin* Module : ExtensionPlugins)
-	{
-		Begin.next = Module->OnBeginSession(Session, Begin.next);
-	}
-
-	FScopeLock ScopeLock(&BeginEndFrameMutex);
 	bIsRunning = XR_ENSURE(xrBeginSession(Session, &Begin));
+
+	// Unflag a request, if we're running.
+	if (bIsRunning)
+		bRunRequested = false;
+
 	return bIsRunning;
-}
-
-bool FOpenXRHMD::StopSession()
-{
-	// Ensures xrEndFrame has been called before the session leaves running state and no new frames are submitted.
-	FScopeLock ScopeLock(&BeginEndFrameMutex);
-
-	if (!bIsRunning)
-	{
-		return false;
-	}
-
-	// We'll wait a maximum of one second for the last frame to finished
-	FrameEventRHI->Wait(1000);
-	bIsRunning = !XR_ENSURE(xrEndSession(Session));
-	return !bIsRunning;
 }
 
 void FOpenXRHMD::OnBeginPlay(FWorldContext& InWorldContext)
@@ -1950,127 +1200,65 @@ IStereoRenderTargetManager* FOpenXRHMD::GetRenderTargetManager()
 	return this;
 }
 
-bool FOpenXRHMD::AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, ETextureCreateFlags Flags, ETextureCreateFlags TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples)
+bool FOpenXRHMD::AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 Flags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples)
 {
 	check(IsInRenderingThread());
 
 	// We need to ensure we can sample from the texture in CopyTexture
 	Flags |= TexCreate_ShaderResource;
 
-	// On mobile without HDR all render targets need to be marked sRGB
-	bool MobileHWsRGB = IsMobileColorsRGB() && IsMobilePlatform(GMaxRHIShaderPlatform);
-	if (MobileHWsRGB)
-	{
-		TargetableTextureFlags |= TexCreate_SRGB;
-	}
-
-	FClearValueBinding ClearColor = (SelectedEnvironmentBlendMode == XR_ENVIRONMENT_BLEND_MODE_OPAQUE) ? FClearValueBinding::Black : FClearValueBinding::Transparent;
-
-	const FRHITexture2D* const SwapchainTexture = Swapchain == nullptr ? nullptr : Swapchain->GetTexture2DArray() ? Swapchain->GetTexture2DArray() : Swapchain->GetTexture2D();
-	if (Swapchain == nullptr || SwapchainTexture == nullptr || Format != LastRequestedSwapchainFormat || SwapchainTexture->GetSizeX() != SizeX || SwapchainTexture->GetSizeY() != SizeY)
-	{
-		Swapchain = RenderBridge->CreateSwapchain(Session, Format, SizeX, SizeY, bIsMobileMultiViewEnabled ? 2 : 1, NumMips, NumSamples, Flags, TargetableTextureFlags, ClearColor);
-		if (!Swapchain)
-		{
-			return false;
-		}
-	}
-
-	// Grab the presentation texture out of the swapchain.
-	OutTargetableTexture = OutShaderResourceTexture = (FTexture2DRHIRef&)Swapchain->GetTextureRef();
-	LastRequestedSwapchainFormat = Format;
-
-	bNeedReAllocatedDepth = bDepthExtensionSupported;
-
-	return true;
-}
-
-bool FOpenXRHMD::AllocateDepthTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, ETextureCreateFlags Flags, ETextureCreateFlags TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples)
-{
-	// FIXME: UE4 constantly calls this function even when there is no reason to reallocate the depth texture
-	if (!bDepthExtensionSupported)
+	Swapchain = RenderBridge->CreateSwapchain(Session, Format, SizeX, SizeY, NumMips, NumSamples, Flags, TargetableTextureFlags);
+	if (!Swapchain)
 	{
 		return false;
 	}
+	
+	// Grab the presentation texture out of the swapchain.
+	OutTargetableTexture = OutShaderResourceTexture = (FTexture2DRHIRef&)Swapchain->GetTextureRef();
 
-	const FRHITexture2D* const DepthSwapchainTexture = DepthSwapchain == nullptr ? nullptr : DepthSwapchain->GetTexture2DArray() ? DepthSwapchain->GetTexture2DArray() : DepthSwapchain->GetTexture2D();
-	if (DepthSwapchain == nullptr || DepthSwapchainTexture == nullptr || Format != LastRequestedDepthSwapchainFormat || DepthSwapchainTexture->GetSizeX() != SizeX || DepthSwapchainTexture->GetSizeY() != SizeY)
+	if (bDepthExtensionSupported)
 	{
-		DepthSwapchain = RenderBridge->CreateSwapchain(Session, PF_DepthStencil, SizeX, SizeY, bIsMobileMultiViewEnabled ? 2 : 1, FMath::Max(NumMips, 1u), NumSamples, Flags, TargetableTextureFlags, FClearValueBinding::DepthFar);
+		// Allocate the depth buffer swapchain while we're here.
+		DepthSwapchain = RenderBridge->CreateSwapchain(Session, PF_DepthStencil, SizeX, SizeY, NumMips, NumSamples, 0, TexCreate_DepthStencilTargetable);
 		if (!DepthSwapchain)
 		{
 			return false;
 		}
+		bNeedReAllocatedDepth = false;
 	}
 
-	bNeedReAllocatedDepth = false;
+	return true;
+}
+
+bool FOpenXRHMD::AllocateDepthTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples)
+{
+	if (!DepthSwapchain.IsValid())
+	{
+		return false;
+	}
 
 	OutTargetableTexture = OutShaderResourceTexture = (FTexture2DRHIRef&)DepthSwapchain->GetTextureRef();
-	LastRequestedDepthSwapchainFormat = Format;
 
 	return true;
 }
 
 void FOpenXRHMD::OnBeginRendering_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& ViewFamily)
 {
-	ensure(IsInRenderingThread());
-
-	// Ensure xrEndFrame has been called before starting rendering the next frame.
-	// We'll discard the frame if it takes longer than 250ms to finish.
-	if (bIsRunning)
+	if (bIsReady)
 	{
-		FrameEventRHI->Wait(250);
-	}
-
-	PipelinedFrameStateRendering = PipelinedFrameStateGame;
-
-	FPipelinedLayerState& LayerState = GetPipelinedLayerStateForThread();
-	for (int32 ViewIndex = 0; ViewIndex < LayerState.ProjectionLayers.Num(); ViewIndex++)
-	{
-		const XrView& View = PipelinedFrameStateRendering.Views[ViewIndex];
-		FTransform EyePose = ToFTransform(View.pose, GetWorldToMetersScale());
-
-		// Apply the base HMD pose to each eye pose, we will late update this pose for late update in another callback
-		FTransform BasePose(ViewFamily.Views[ViewIndex]->BaseHmdOrientation, ViewFamily.Views[ViewIndex]->BaseHmdLocation);
-		XrCompositionLayerProjectionView& Projection = LayerState.ProjectionLayers[ViewIndex];
-		Projection.pose = ToXrPose(EyePose * BasePose, GetWorldToMetersScale());
-		Projection.fov = View.fov;
-	}
-
-#if !PLATFORM_HOLOLENS
-	if (bHiddenAreaMaskSupported && bNeedReBuildOcclusionMesh)
-	{
-		BuildOcclusionMeshes();
-	}
-#endif
-
-	// We need to re-check bIsRunning to ensure the session didn't end while waiting for FrameEventRHI.
-	// There is a chance xrBeginFrame may time out waiting for FrameEventRHI so a mutex is needed to
-	// ensure the two calls never overlap (spec requires they are externally synchronized).
-	FScopeLock ScopeLock(&BeginEndFrameMutex);
-	if (bIsRunning)
-	{
-		// TODO: This should be moved to the RHI thread at some point
 		XrFrameBeginInfo BeginInfo;
 		BeginInfo.type = XR_TYPE_FRAME_BEGIN_INFO;
 		BeginInfo.next = nullptr;
-		XrTime DisplayTime = PipelinedFrameStateRendering.FrameState.predictedDisplayTime;
-		for (IOpenXRExtensionPlugin* Module : ExtensionPlugins)
-		{
-			BeginInfo.next = Module->OnBeginFrame(Session, DisplayTime, BeginInfo.next);
-		}
-		XrResult Result;
-		Result = xrBeginFrame(Session, &BeginInfo);
-
+		XrResult Result = xrBeginFrame(Session, &BeginInfo);
 		if (XR_SUCCEEDED(Result))
 		{
 			bIsRendering = true;
 
-			Swapchain->IncrementSwapChainIndex_RHIThread(PipelinedFrameStateRendering.FrameState.predictedDisplayPeriod);
-			if (bDepthExtensionSupported && !bNeedReAllocatedDepth)
+			Swapchain->IncrementSwapChainIndex_RHIThread(FrameStateRHI.predictedDisplayPeriod);
+			if (bDepthExtensionSupported)
 			{
 				ensure(DepthSwapchain != nullptr);
-				DepthSwapchain->IncrementSwapChainIndex_RHIThread(PipelinedFrameStateRendering.FrameState.predictedDisplayPeriod);
+				DepthSwapchain->IncrementSwapChainIndex_RHIThread(FrameStateRHI.predictedDisplayPeriod);
 			}
 		}
 		else
@@ -2083,61 +1271,105 @@ void FOpenXRHMD::OnBeginRendering_RenderThread(FRHICommandListImmediate& RHICmdL
 			}
 		}
 	}
-	ScopeLock.Unlock();
 
-	// Snapshot new poses for late update.
-	UpdateDeviceLocations(false);
+	FrameStateRHI = FrameState;
+
+	const FSceneView* MainView = ViewFamily.Views[0];
+	check(MainView);
+	BaseTransform = FTransform(MainView->BaseHmdOrientation, MainView->BaseHmdLocation);
+
+	ViewsRHI.SetNum(Views.Num());
+	DepthLayersRHI.SetNum(Views.Num());
+
+	int32 OffsetX = 0;
+
+	const float WorldScale = GetWorldToMetersScale() * (1.0 / 100.0f); // physical scale is 100 UUs/meter
+	float NearZ = GNearClippingPlane * WorldScale;
+
+	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+	{
+		const XrView& View = Views[ViewIndex];
+		const XrViewConfigurationView& Config = Configs[ViewIndex];
+		FTransform ViewTransform = ToFTransform(View.pose, GetWorldToMetersScale());
+
+		XrCompositionLayerProjectionView& Projection = ViewsRHI[ViewIndex];
+		XrCompositionLayerDepthInfoKHR& DepthLayer = DepthLayersRHI[ViewIndex];
+
+		Projection.type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW;
+		Projection.next = bDepthExtensionSupported ? &DepthLayer : nullptr;
+		Projection.fov = View.fov;
+		Projection.pose = ToXrPose(ViewTransform * BaseTransform, GetWorldToMetersScale());
+		Projection.subImage.swapchain = static_cast<FOpenXRSwapchain*>(GetSwapchain())->GetHandle();
+		Projection.subImage.imageArrayIndex = 0;
+		Projection.subImage.imageRect = {
+			{ OffsetX, 0 },
+			{
+				(int32)Config.recommendedImageRectWidth,
+				(int32)Config.recommendedImageRectHeight
+			}
+		};
+
+		if (bDepthExtensionSupported)
+		{
+			DepthLayer.type = XR_TYPE_COMPOSITION_LAYER_DEPTH_INFO_KHR;
+			DepthLayer.next = nullptr;
+			DepthLayer.subImage.swapchain = static_cast<FOpenXRSwapchain*>(GetDepthSwapchain())->GetHandle();
+			DepthLayer.subImage.imageArrayIndex = 0;
+			DepthLayer.subImage.imageRect = Projection.subImage.imageRect;
+			DepthLayer.minDepth = 0.0f;
+			DepthLayer.maxDepth = 1.0f;
+			DepthLayer.nearZ = FLT_MAX;
+			DepthLayer.farZ = NearZ;
+		}
+
+		OffsetX += Config.recommendedImageRectWidth;
+	}
+
+	// Give the RHI thread its own copy of the frame state and tracking space
+	TrackingSpaceRHI = GetTrackingSpace();
 }
 
 void FOpenXRHMD::OnLateUpdateApplied_RenderThread(const FTransform& NewRelativeTransform)
 {
 	FHeadMountedDisplayBase::OnLateUpdateApplied_RenderThread(NewRelativeTransform);
 
-	ensure(IsInRenderingThread());
-	FPipelinedFrameState& FrameState = GetPipelinedFrameStateForThread();
-	FPipelinedLayerState& LayerState = GetPipelinedLayerStateForThread();
-
-	for (int32 ViewIndex = 0; ViewIndex < LayerState.ProjectionLayers.Num(); ViewIndex++)
+	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
-		const XrView& View = FrameState.Views[ViewIndex];
-		XrCompositionLayerProjectionView& Projection = LayerState.ProjectionLayers[ViewIndex];
-
-		// Apply the new HMD orientation to each eye pose for the final pose
-		FTransform EyePose = ToFTransform(View.pose, GetWorldToMetersScale());
-		Projection.pose = ToXrPose(EyePose * NewRelativeTransform, GetWorldToMetersScale());
+		XrCompositionLayerProjectionView& Projection = ViewsRHI[ViewIndex];
+		FTransform ViewTransform = ToFTransform(Projection.pose, GetWorldToMetersScale()) * BaseTransform.Inverse();
+		Projection.pose = ToXrPose(ViewTransform * NewRelativeTransform, GetWorldToMetersScale());
 	}
 }
 
 void FOpenXRHMD::OnBeginRendering_GameThread()
 {
-	if (!bIsReady || !bIsRunning)
+	if (!bIsReady)
 	{
 		// @todo: Sleep here?
 		return;
 	}
 
-	ensure(IsInGameThread());
-
 	XrFrameWaitInfo WaitInfo;
 	WaitInfo.type = XR_TYPE_FRAME_WAIT_INFO;
 	WaitInfo.next = nullptr;
 
-	XrFrameState FrameState{XR_TYPE_FRAME_STATE};
-	for (IOpenXRExtensionPlugin* Module : ExtensionPlugins)
-	{
-		FrameState.next = Module->OnWaitFrame(Session, FrameState.next);
-	}
+	// Pass in a clean FrameState (some implementations may fail if this is just uninitialized).
+	FrameState.type = XR_TYPE_FRAME_STATE;
+	FrameState.next = nullptr;
+	FrameState.predictedDisplayPeriod = 0;
+
 	XR_ENSURE(xrWaitFrame(Session, &WaitInfo, &FrameState));
 
-	// The pipeline state on the game thread can only be safely modified after xrWaitFrame which will be unblocked by
-	// the runtime when xrBeginFrame is called. The rendering thread will clone the game pipeline state before calling
-	// xrBeginFrame so the game pipeline state can safely be modified after xrWaitFrame returns.
-	FPipelinedFrameState& PipelineState = GetPipelinedFrameStateForThread();
-	PipelineState.FrameState = FrameState;
-	PipelineState.TrackingSpace = GetTrackingSpace();
-	PipelineState.WorldToMetersScale = WorldToMetersScale;
-
-	EnumerateViews(PipelineState);
+	uint32_t ViewCount = 0;
+	XrViewLocateInfo ViewInfo;
+	ViewInfo.type = XR_TYPE_VIEW_LOCATE_INFO;
+	ViewInfo.next = nullptr;
+	ViewInfo.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+	ViewInfo.space = DeviceSpaces[HMDDeviceId].Space;
+	ViewInfo.displayTime = FrameState.predictedDisplayTime;
+	XR_ENSURE(xrLocateViews(Session, &ViewInfo, &ViewState, 0, &ViewCount, nullptr));
+	Views.SetNum(ViewCount);
+	XR_ENSURE(xrLocateViews(Session, &ViewInfo, &ViewState, Views.Num(), &ViewCount, Views.GetData()));
 }
 
 bool FOpenXRHMD::ReadNextEvent(XrEventDataBuffer* buffer)
@@ -2147,36 +1379,16 @@ bool FOpenXRHMD::ReadNextEvent(XrEventDataBuffer* buffer)
 	*baseHeader = { XR_TYPE_EVENT_DATA_BUFFER };
 	const XrResult xr = xrPollEvent(Instance, buffer);
 	XR_ENSURE(xr);
-	if (xr == XR_SUCCESS)
-	{
-		for (IOpenXRExtensionPlugin* Module : ExtensionPlugins)
-		{
-			Module->OnEvent(Session, baseHeader);
-		}
-		return true;
-	}
-	return false;
+	return xr == XR_SUCCESS;
 }
 
 bool FOpenXRHMD::OnStartGameFrame(FWorldContext& WorldContext)
 {
-	const AWorldSettings* const WorldSettings = WorldContext.World() ? WorldContext.World()->GetWorldSettings() : nullptr;
-	if (WorldSettings)
-	{
-		WorldToMetersScale = WorldSettings->WorldToMeters;
-	}
-
-	// Only refresh this based on the game world.  When remoting there is also an editor world, which we do not want to have affect the transform.
-	if (WorldContext.World()->IsGameWorld())
-	{
-		RefreshTrackingToWorldTransform(WorldContext);
-	}
-
 	// Process all pending messages.
 	XrEventDataBuffer event;
 	while (ReadNextEvent(&event))
 	{
-		switch (event.type)
+		switch (event.type) 
 		{
 		case XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED:
 		{
@@ -2204,26 +1416,15 @@ bool FOpenXRHMD::OnStartGameFrame(FWorldContext& WorldContext)
 
 			if (SessionState.state == XR_SESSION_STATE_READY)
 			{
-				GEngine->SetMaxFPS(0);
 				bIsReady = true;
-				StartSession();
+				if (bRunRequested)
+				{
+					StartSession();
+				}
+				break;
 			}
-			else if (SessionState.state == XR_SESSION_STATE_SYNCHRONIZED)
-			{
-				bIsSynchronized = true;
-			}
-			else if (SessionState.state == XR_SESSION_STATE_IDLE)
-			{
-				bIsSynchronized = false;
-				GEngine->SetMaxFPS(OPENXR_PAUSED_IDLE_FPS);
-			}
-			else if (SessionState.state == XR_SESSION_STATE_STOPPING)
-			{
-				bIsReady = false;
-				StopSession();
-			}
-			
-			if (SessionState.state != XR_SESSION_STATE_EXITING && SessionState.state != XR_SESSION_STATE_LOSS_PENDING)
+
+			if (SessionState.state != XR_SESSION_STATE_STOPPING && SessionState.state != XR_SESSION_STATE_EXITING)
 			{
 				break;
 			}
@@ -2248,7 +1449,7 @@ bool FOpenXRHMD::OnStartGameFrame(FWorldContext& WorldContext)
 				FPlatformMisc::RequestExit(false);
 			}
 
-			DestroySession();
+			CloseSession();
 
 			break;
 		}
@@ -2262,68 +1463,26 @@ bool FOpenXRHMD::OnStartGameFrame(FWorldContext& WorldContext)
 			}
 			break;
 		}
-		case XR_TYPE_EVENT_DATA_VISIBILITY_MASK_CHANGED_KHR:
-		{
-			bHiddenAreaMaskSupported = ensure(IsExtensionEnabled(XR_KHR_VISIBILITY_MASK_EXTENSION_NAME));  // Ensure fail indicates a non-conformant openxr implementation.
-			bNeedReBuildOcclusionMesh = true;
-		}
 		}
 	}
-
-	GetARCompositionComponent()->StartARGameFrame(WorldContext);
-
-	// Add a display period to the simulation frame state so we're predicting poses for the new frame.
-	FPipelinedFrameState& PipelineState = GetPipelinedFrameStateForThread();
-	PipelineState.FrameState.predictedDisplayTime += PipelineState.FrameState.predictedDisplayPeriod;
-
-	// Snapshot new poses for game simulation.
-	UpdateDeviceLocations(true);
 
 	return true;
 }
 
-void FOpenXRHMD::OnBeginRendering_RHIThread()
+void FOpenXRHMD::FinishRendering()
 {
-	ensure(IsInRenderingThread() || IsInRHIThread());
-
-	PipelinedFrameStateRHI = PipelinedFrameStateRendering;
-	PipelinedLayerStateRHI = PipelinedLayerStateRendering;
-}
-
-void FOpenXRHMD::OnFinishRendering_RHIThread()
-{
-	ensure(IsInRenderingThread() || IsInRHIThread());
-
-	// OnBeginRendering_RenderThread may time out waiting for FrameEventRHI to be signaled. This can result
-	// in xrBeginFrame being called on the render thread while xrEndFrame is being called on the RHI thread,
-	// so a mutex is needed to ensure they are externally synchronized, as required by the OpenXR specification.
-	// This may also result in a XR_ERROR_CALL_ORDER_INVALID error.
-	FScopeLock ScopeLock(&BeginEndFrameMutex);
-	if (!bIsRunning || !Swapchain)
-	{
-		return;
-	}
-
-	const FPipelinedFrameState& PipelineState = GetPipelinedFrameStateForThread();
-	const FPipelinedLayerState& LayerState = GetPipelinedLayerStateForThread();
-
 	XrCompositionLayerProjection Layer = {};
 	Layer.type = XR_TYPE_COMPOSITION_LAYER_PROJECTION;
 	Layer.next = nullptr;
-	Layer.layerFlags = 0;
-	Layer.space = PipelineState.TrackingSpace;
-	Layer.viewCount = LayerState.ProjectionLayers.Num();
-	Layer.views = LayerState.ProjectionLayers.GetData();
-	for (IOpenXRExtensionPlugin* Module : ExtensionPlugins)
-	{
-		Layer.next = Module->OnEndProjectionLayer(Session, 0, Layer.next, Layer.layerFlags);
-	}
+	Layer.space = TrackingSpaceRHI;
+	Layer.viewCount = ViewsRHI.Num();
+	Layer.views = ViewsRHI.GetData();
 
 	if (bIsRendering)
 	{
 		Swapchain->ReleaseCurrentImage_RHIThread();
 
-		if (bDepthExtensionSupported && DepthSwapchain)
+		if (bDepthExtensionSupported)
 		{
 			DepthSwapchain->ReleaseCurrentImage_RHIThread();
 		}
@@ -2332,37 +1491,17 @@ void FOpenXRHMD::OnFinishRendering_RHIThread()
 		XrCompositionLayerBaseHeader* Headers[1] = { reinterpret_cast<XrCompositionLayerBaseHeader*>(&Layer) };
 		EndInfo.type = XR_TYPE_FRAME_END_INFO;
 		EndInfo.next = nullptr;
-		EndInfo.displayTime = PipelineState.FrameState.predictedDisplayTime;
-		EndInfo.environmentBlendMode = SelectedEnvironmentBlendMode;
-		EndInfo.layerCount = PipelineState.FrameState.shouldRender ? 1 : 0;
-		EndInfo.layers = PipelineState.FrameState.shouldRender ?
-			reinterpret_cast<XrCompositionLayerBaseHeader**>(Headers) : nullptr;
+		EndInfo.displayTime = FrameStateRHI.predictedDisplayTime;
+		EndInfo.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
+		EndInfo.layerCount = 1;
+		EndInfo.layers = reinterpret_cast<XrCompositionLayerBaseHeader**>(Headers);
+		XrResult Result = xrEndFrame(Session, &EndInfo);
 
-		// Make callback to plugin including any extra view subimages they've requested
-		for (IOpenXRExtensionPlugin* Module : ExtensionPlugins)
-		{
-			TArray<XrSwapchainSubImage> ColorImages;
-			TArray<XrSwapchainSubImage> DepthImages;
-			for (int32 i = 0; i < PipelineState.PluginViews.Num(); i++)
-			{
-				if (PipelineState.PluginViews[i] == Module)
-				{
-					ColorImages.Add(LayerState.ColorImages[i]);
-					if (bDepthExtensionSupported)
-					{
-						DepthImages.Add(LayerState.DepthImages[i]);
-					}
-				}
-			}
-			EndInfo.next = Module->OnEndFrame(Session, EndInfo.displayTime, ColorImages, DepthImages, EndInfo.next);
-		}
-		XR_ENSURE(xrEndFrame(Session, &EndInfo));
+		// Ignore invalid call order for now, we will recover on the next frame
+		ensure(XR_SUCCEEDED(Result) || Result == XR_ERROR_CALL_ORDER_INVALID);
 
 		bIsRendering = false;
 	}
-
-	// Signal that it is now ok to start rendering the next frame.
-	FrameEventRHI->Trigger();
 }
 
 FXRRenderBridge* FOpenXRHMD::GetActiveRenderBridge_GameThread(bool /* bUseSeparateRenderTarget */)
@@ -2372,22 +1511,16 @@ FXRRenderBridge* FOpenXRHMD::GetActiveRenderBridge_GameThread(bool /* bUseSepara
 
 FIntPoint FOpenXRHMD::GetIdealRenderTargetSize() const
 {
-	const FPipelinedFrameState& PipelineState = GetPipelinedFrameStateForThread();
-
 	FIntPoint Size(EForceInit::ForceInitToZero);
-	for (int32 ViewIndex = 0; ViewIndex < PipelineState.ViewConfigs.Num(); ViewIndex++)
+	for (XrViewConfigurationView Config : Configs)
 	{
-		const XrViewConfigurationView& Config = PipelineState.ViewConfigs[ViewIndex];
-
-		// If Mobile Multi-View is active the first two views will share the same position
-		Size.X = bIsMobileMultiViewEnabled && ViewIndex < 2 ? FMath::Max(Size.X, (int)Config.recommendedImageRectWidth)
-			: Size.X + (int)Config.recommendedImageRectWidth;
+		Size.X += (int)Config.recommendedImageRectWidth;
 		Size.Y = FMath::Max(Size.Y, (int)Config.recommendedImageRectHeight);
-
-		// We always prefer the nearest multiple of 4 for our buffer sizes. Make sure we round up here,
-		// so we're consistent with the rest of the engine in creating our buffers.
-		QuantizeSceneBufferSize(Size, Size);
 	}
+
+	// We always prefer the nearest multiple of 4 for our buffer sizes. Make sure we round up here,
+	// so we're consistent with the rest of the engine in creating our buffers.
+	QuantizeSceneBufferSize(Size, Size);
 
 	return Size;
 }
@@ -2396,7 +1529,7 @@ FIntRect FOpenXRHMD::GetFullFlatEyeRect_RenderThread(FTexture2DRHIRef EyeTexture
 {
 	FVector2D SrcNormRectMin(0.05f, 0.2f);
 	FVector2D SrcNormRectMax(0.45f, 0.8f);
-	if (GetDesiredNumberOfViews(bStereoEnabled) > 2)
+	if (Configs.Num() > 2)
 	{
 		SrcNormRectMin.X /= 2;
 		SrcNormRectMax.X /= 2;
@@ -2451,12 +1584,10 @@ void FOpenXRHMD::CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdList, 
 		TShaderMapRef<FScreenPS> PixelShader(ShaderMap);
 
 		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 
 		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
-
-		RHICmdList.Transition(FRHITransitionInfo(SrcTexture, ERHIAccess::Unknown, ERHIAccess::SRVMask));
 
 		const bool bSameSize = DstRect.Size() == SrcRect.Size();
 		if (bSameSize)
@@ -2476,7 +1607,7 @@ void FOpenXRHMD::CopyTexture_RenderThread(FRHICommandListImmediate& RHICmdList, 
 			USize, VSize,
 			TargetSize,
 			FIntPoint(1, 1),
-			VertexShader,
+			*VertexShader,
 			EDRF_Default);
 	}
 	RHICmdList.EndRenderPass();
@@ -2506,14 +1637,12 @@ void FOpenXRHMD::DrawHiddenAreaMesh_RenderThread(class FRHICommandList& RHICmdLi
 	check(StereoPass != eSSP_FULL);
 
 	const uint32 ViewIndex = GetViewIndexForPass(StereoPass);
-	if (ViewIndex < (uint32)HiddenAreaMeshes.Num())
-	{
-		const FHMDViewMesh& Mesh = HiddenAreaMeshes[ViewIndex];
-		check(Mesh.IsValid());
+	check(ViewIndex < (uint32)HiddenAreaMeshes.Num());
+	const FHMDViewMesh& Mesh = HiddenAreaMeshes[ViewIndex];
+	check(Mesh.IsValid());
 
-		RHICmdList.SetStreamSource(0, Mesh.VertexBufferRHI, 0);
-		RHICmdList.DrawIndexedPrimitive(Mesh.IndexBufferRHI, 0, 0, Mesh.NumVertices, 0, Mesh.NumTriangles, 1);
-	}
+	RHICmdList.SetStreamSource(0, Mesh.VertexBufferRHI, 0);
+	RHICmdList.DrawIndexedPrimitive(Mesh.IndexBufferRHI, 0, 0, Mesh.NumVertices, 0, Mesh.NumTriangles, 1);
 }
 
 void FOpenXRHMD::DrawVisibleAreaMesh_RenderThread(class FRHICommandList& RHICmdList, EStereoscopicPass StereoPass) const
@@ -2538,11 +1667,6 @@ FOpenXRHMD::FDeviceSpace::FDeviceSpace(XrAction InAction)
 	: Action(InAction)
 	, Space(XR_NULL_HANDLE)
 {
-}
-
-FOpenXRHMD::FDeviceSpace::~FDeviceSpace()
-{
-	DestroySpace();
 }
 
 bool FOpenXRHMD::FDeviceSpace::CreateSpace(XrSession InSession)

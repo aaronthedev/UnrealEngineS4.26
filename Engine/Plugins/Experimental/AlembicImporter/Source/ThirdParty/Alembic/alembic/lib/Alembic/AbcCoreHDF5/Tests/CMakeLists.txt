@@ -43,25 +43,25 @@ SET(CXX_FILES
 )
 
 ADD_EXECUTABLE(AbcCoreHDF5_Test1 test1.cpp)
-TARGET_LINK_LIBRARIES(AbcCoreHDF5_Test1 Alembic)
+TARGET_LINK_LIBRARIES(AbcCoreHDF5_Test1 ${CORE_LIBS})
 
 ADD_EXECUTABLE(AbcCoreHDF5_ArchiveTests ArchiveTests.cpp)
-TARGET_LINK_LIBRARIES(AbcCoreHDF5_ArchiveTests Alembic)
+TARGET_LINK_LIBRARIES(AbcCoreHDF5_ArchiveTests ${CORE_LIBS})
 
 ADD_EXECUTABLE(AbcCoreHDF5_ArrayPropertyTests ArrayPropertyTests.cpp)
-TARGET_LINK_LIBRARIES(AbcCoreHDF5_ArrayPropertyTests Alembic)
+TARGET_LINK_LIBRARIES(AbcCoreHDF5_ArrayPropertyTests ${CORE_LIBS})
 
 ADD_EXECUTABLE(AbcCoreHDF5_ScalarPropertyTests ScalarPropertyTests.cpp)
-TARGET_LINK_LIBRARIES(AbcCoreHDF5_ScalarPropertyTests Alembic)
+TARGET_LINK_LIBRARIES(AbcCoreHDF5_ScalarPropertyTests ${CORE_LIBS})
 
 ADD_EXECUTABLE(AbcCoreHDF5_TimeSamplingTests TimeSamplingTests.cpp)
-TARGET_LINK_LIBRARIES(AbcCoreHDF5_TimeSamplingTests Alembic)
+TARGET_LINK_LIBRARIES(AbcCoreHDF5_TimeSamplingTests ${CORE_LIBS})
 
 ADD_EXECUTABLE(AbcCoreHDF5_ObjectTests ObjectTests.cpp)
-TARGET_LINK_LIBRARIES(AbcCoreHDF5_ObjectTests Alembic)
+TARGET_LINK_LIBRARIES(AbcCoreHDF5_ObjectTests ${CORE_LIBS})
 
 ADD_EXECUTABLE(AbcCoreHDF5_ConstantPropsTest ConstantPropsNumSampsTest.cpp)
-TARGET_LINK_LIBRARIES(AbcCoreHDF5_ConstantPropsTest Alembic)
+TARGET_LINK_LIBRARIES(AbcCoreHDF5_ConstantPropsTest ${CORE_LIBS})
 
 ADD_TEST(AbcCoreHDF5_TEST1 AbcCoreHDF5_Test1)
 ADD_TEST(AbcCoreHDF5_ArchiveTESTS AbcCoreHDF5_ArchiveTests)

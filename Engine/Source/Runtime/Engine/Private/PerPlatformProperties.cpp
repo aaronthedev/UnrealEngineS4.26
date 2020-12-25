@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PerPlatformProperties.h"
 #include "Serialization/Archive.h"
@@ -7,9 +7,6 @@
 #include "Interfaces/ITargetPlatform.h"
 #include "PlatformInfo.h"
 #endif
-
-IMPLEMENT_TYPE_LAYOUT(FFreezablePerPlatformFloat);
-IMPLEMENT_TYPE_LAYOUT(FFreezablePerPlatformInt);
 
 /** Serializer to cook out the most appropriate platform override */
 template<typename StructType, typename ValueType, EName BasePropertyName>
@@ -77,11 +74,9 @@ ENGINE_API void operator<<(FStructuredArchive::FSlot Slot, TPerPlatformProperty<
 template ENGINE_API FArchive& operator<<(FArchive&, TPerPlatformProperty<FPerPlatformInt, int32, NAME_IntProperty>&);
 template ENGINE_API FArchive& operator<<(FArchive&, TPerPlatformProperty<FPerPlatformFloat, float, NAME_FloatProperty>&);
 template ENGINE_API FArchive& operator<<(FArchive&, TPerPlatformProperty<FPerPlatformBool, bool, NAME_BoolProperty>&);
-template ENGINE_API FArchive& operator<<(FArchive&, TPerPlatformProperty<FFreezablePerPlatformFloat, float, NAME_FloatProperty>&);
 template ENGINE_API void operator<<(FStructuredArchive::FSlot Slot, TPerPlatformProperty<FPerPlatformInt, int32, NAME_IntProperty>&);
 template ENGINE_API void operator<<(FStructuredArchive::FSlot Slot, TPerPlatformProperty<FPerPlatformFloat, float, NAME_FloatProperty>&);
 template ENGINE_API void operator<<(FStructuredArchive::FSlot Slot, TPerPlatformProperty<FPerPlatformBool, bool, NAME_BoolProperty>&);
-template ENGINE_API void operator<<(FStructuredArchive::FSlot Slot, TPerPlatformProperty<FFreezablePerPlatformFloat, float, NAME_FloatProperty>&);
 
 FString FPerPlatformInt::ToString() const
 {
@@ -99,9 +94,4 @@ FString FPerPlatformInt::ToString() const
 #endif
 
 	return Result;
-}
-
-FString FFreezablePerPlatformInt::ToString() const
-{
-	return FPerPlatformInt(*this).ToString();
 }

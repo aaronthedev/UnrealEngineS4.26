@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,7 +7,7 @@
 #include "InputCoreTypes.h"
 
 /** Magic Leap motion sources */
-struct MAGICLEAPCONTROLLER_API FMagicLeapMotionSourceNames
+struct FMagicLeapMotionSourceNames
 {
 	static const FName Control0;
 	static const FName Control1;
@@ -16,7 +16,7 @@ struct MAGICLEAPCONTROLLER_API FMagicLeapMotionSourceNames
 };
 
 /** List of input key names for all keys specific to Magic Leap Controller and Mobile Companion App. */
-struct MAGICLEAPCONTROLLER_API FMagicLeapControllerKeyNames
+struct FMagicLeapControllerKeyNames
 {
 	static const FName MotionController_Left_Thumbstick_Z_Name;
 	static const FName Left_HomeButton_Name;

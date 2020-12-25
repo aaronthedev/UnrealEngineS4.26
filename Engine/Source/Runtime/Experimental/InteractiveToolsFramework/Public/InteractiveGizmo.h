@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,7 +8,8 @@
 #include "InteractiveGizmo.generated.h"
 
 class UInteractiveGizmoManager;
-class FCanvas;
+
+
 
 /**
  * UInteractiveGizmo is the base class for all Gizmos in the InteractiveToolsFramework.
@@ -41,14 +42,7 @@ public:
 	virtual void Render(IToolsContextRenderAPI* RenderAPI);
 
 	/**
-	 * Allow the Gizmo to do any custom screen space drawing
-	 * @param Canvas the FCanvas to use to do the drawing
-	 * @param RenderAPI Abstraction that provides access to Rendering in the current ToolsContext
-	 */
-	virtual void DrawHUD( FCanvas* Canvas, IToolsContextRenderAPI* RenderAPI );
-
-	/**
-	 * Allow the Gizmo to do any necessary processing on Tick
+	 * Allow the Gizmo to do any necessary processing on Tick 
 	 * @param DeltaTime the time delta since last tick
 	 */
 	virtual void Tick(float DeltaTime);
@@ -97,35 +91,21 @@ enum class ETransformGizmoSubElements
 {
 	None = 0,
 
-	TranslateAxisX = 1<<1,
-	TranslateAxisY = 1<<2,
-	TranslateAxisZ = 1<<3,
+	TranslateAxisX = 1,
+	TranslateAxisY = 2,
+	TranslateAxisZ = 4,
 	TranslateAllAxes = TranslateAxisX | TranslateAxisY | TranslateAxisZ,
 
-	TranslatePlaneXY = 1<<4,
-	TranslatePlaneXZ = 1<<5,
-	TranslatePlaneYZ = 1<<6,
+	TranslatePlaneXY = 8,
+	TranslatePlaneXZ = 16,
+	TranslatePlaneYZ = 32,
 	TranslateAllPlanes = TranslatePlaneXY | TranslatePlaneXZ | TranslatePlaneYZ,
 
-	RotateAxisX = 1<<7,
-	RotateAxisY = 1<<8,
-	RotateAxisZ = 1<<9,
+	RotateAxisX = 64,
+	RotateAxisY = 128,
+	RotateAxisZ = 256,
 	RotateAllAxes = RotateAxisX | RotateAxisY | RotateAxisZ,
 
-	ScaleAxisX = 1<<10,
-	ScaleAxisY = 1<<11,
-	ScaleAxisZ = 1<<12,
-	ScaleAllAxes = ScaleAxisX | ScaleAxisY | ScaleAxisZ,
-
-	ScalePlaneYZ = 1<<13,
-	ScalePlaneXZ = 1<<14,
-	ScalePlaneXY = 1<<15,
-	ScaleAllPlanes = ScalePlaneXY | ScalePlaneXZ | ScalePlaneYZ,
-
-	ScaleUniform = 1<<16,
-
-	StandardTranslateRotate = TranslateAllAxes | TranslateAllPlanes | RotateAllAxes,
-	TranslateRotateUniformScale = TranslateAllAxes | TranslateAllPlanes | RotateAllAxes | ScaleUniform,
-	FullTranslateRotateScale = TranslateAllAxes | TranslateAllPlanes | RotateAllAxes | ScaleAllAxes | ScaleAllPlanes | ScaleUniform
+	StanedardTranslateRotate = TranslateAllAxes | TranslateAllPlanes | RotateAllAxes
 };
 ENUM_CLASS_FLAGS(ETransformGizmoSubElements);

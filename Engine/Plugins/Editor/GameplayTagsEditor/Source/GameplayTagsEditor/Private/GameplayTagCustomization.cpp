@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayTagCustomization.h"
 #include "Widgets/Input/SComboButton.h"
@@ -6,7 +6,6 @@
 #include "Editor.h"
 #include "PropertyHandle.h"
 #include "DetailWidgetRow.h"
-#include "IDetailChildrenBuilder.h"
 #include "GameplayTagsEditorModule.h"
 #include "Widgets/Input/SHyperlink.h"
 
@@ -26,8 +25,6 @@ void FGameplayTagCustomization::CustomizeHeader(TSharedRef<class IPropertyHandle
 	StructPropertyHandle->SetOnPropertyValueChanged(OnTagChanged);
 
 	BuildEditableContainerList();
-
-	FUIAction SearchForReferencesAction(FExecuteAction::CreateSP(this, &FGameplayTagCustomization::OnSearchForReferences));
 
 	HeaderRow
 	.NameContent()
@@ -77,11 +74,7 @@ void FGameplayTagCustomization::CustomizeHeader(TSharedRef<class IPropertyHandle
 				.OnNavigate( this, &FGameplayTagCustomization::OnTagDoubleClicked)
 			]
 		]
-	]
-	.AddCustomContextMenuAction(SearchForReferencesAction,
-		LOCTEXT("FGameplayTagCustomization_SearchForReferences", "Search For References"),
-		LOCTEXT("FGameplayTagCustomization_SearchForReferencesTooltip", "Find references for this tag"),
-		FSlateIcon());
+	];
 
 	GEditor->RegisterForUndo(this);
 }
@@ -89,17 +82,6 @@ void FGameplayTagCustomization::CustomizeHeader(TSharedRef<class IPropertyHandle
 void FGameplayTagCustomization::OnTagDoubleClicked()
 {
 	UGameplayTagsManager::Get().NotifyGameplayTagDoubleClickedEditor(TagName);
-}
-
-void FGameplayTagCustomization::OnSearchForReferences()
-{
-	FName TagFName(*TagName, FNAME_Find);
-	if (FEditorDelegates::OnOpenReferenceViewer.IsBound() && !TagFName.IsNone())
-	{
-		TArray<FAssetIdentifier> AssetIdentifiers;
-		AssetIdentifiers.Add(FAssetIdentifier(FGameplayTag::StaticStruct(), TagFName));
-		FEditorDelegates::OnOpenReferenceViewer.Broadcast(AssetIdentifiers, FReferenceViewerParams());
-	}
 }
 
 EVisibility FGameplayTagCustomization::GetVisibilityForTagTextBlockWidget(bool ForTextWidget) const
@@ -226,7 +208,7 @@ void FGameplayTagCustomization::BuildEditableContainerList()
 		if (RawStructData.Num() > 0)
 		{
 			FGameplayTag* Tag = (FGameplayTag*)(RawStructData[0]);
-			if (Tag && Tag->IsValid())
+			if (Tag->IsValid())
 			{
 				TagName = Tag->ToString();
 				TagContainer->AddTag(*Tag);
@@ -240,38 +222,6 @@ void FGameplayTagCustomization::BuildEditableContainerList()
 FText FGameplayTagCustomization::SelectedTag() const
 {
 	return FText::FromString(*TagName);
-}
-
-TSharedRef<IPropertyTypeCustomization> FGameplayTagCreationWidgetHelperDetails::MakeInstance()
-{
-	return MakeShareable(new FGameplayTagCreationWidgetHelperDetails());
-}
-
-void FGameplayTagCreationWidgetHelperDetails::CustomizeHeader(TSharedRef<IPropertyHandle> StructPropertyHandle, class FDetailWidgetRow& HeaderRow, IPropertyTypeCustomizationUtils& StructCustomizationUtils)
-{
-
-}
-
-void FGameplayTagCreationWidgetHelperDetails::CustomizeChildren(TSharedRef<IPropertyHandle> StructPropertyHandle, class IDetailChildrenBuilder& StructBuilder, IPropertyTypeCustomizationUtils& StructCustomizationUtils)
-{
-	FString FilterString = UGameplayTagsManager::Get().GetCategoriesMetaFromPropertyHandle(StructPropertyHandle);
-	const float MaxPropertyWidth = 480.0f;
-	const float MaxPropertyHeight = 240.0f;
-
-	StructBuilder.AddCustomRow(NSLOCTEXT("GameplayTagReferenceHelperDetails", "NewTag", "NewTag"))
-		.ValueContent()
-		.MaxDesiredWidth(MaxPropertyWidth)
-		[
-			SAssignNew(TagWidget, SGameplayTagWidget, TArray<SGameplayTagWidget::FEditableGameplayTagContainerDatum>())
-			.Filter(FilterString)
-		.NewTagName(FilterString)
-		.MultiSelect(false)
-		.GameplayTagUIMode(EGameplayTagUIMode::ManagementMode)
-		.MaxHeight(MaxPropertyHeight)
-		.NewTagControlsInitiallyExpanded(true)
-		//.OnTagChanged(this, &FGameplayTagsSettingsCustomization::OnTagChanged)
-		];
-
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_PY_MAP_EDIT_PROXY_H
-#define PXR_USD_SDF_PY_MAP_EDIT_PROXY_H
+#ifndef SDF_PYMAPEDITPROXY_H
+#define SDF_PYMAPEDITPROXY_H
 
 /// \file sdf/pyMapEditProxy.h
 
@@ -126,22 +126,16 @@ private:
             .def("__delitem__", &This::_DelItem)
             .def("__contains__", &This::_HasKey)
             .def("__iter__",   &This::_GetKeyIterator)
-#if PY_MAJOR_VERSION < 3
             .def("itervalues", &This::_GetValueIterator)
             .def("iterkeys",   &This::_GetKeyIterator)
             .def("iteritems",  &This::_GetItemIterator)
-            .def("values", &This::_GetValues)
-            .def("keys", &This::_GetKeys)
-            .def("items", &This::_GetItems)
-            .def("has_key", &This::_HasKey)
-#else
-            .def("values", &This::_GetValueIterator)
-            .def("keys",   &This::_GetKeyIterator)
-            .def("items",  &This::_GetItemIterator)
-#endif
             .def("clear", &Type::clear)
             .def("get", &This::_PyGet)
             .def("get", &This::_PyGetDefault)
+            .def("has_key", &This::_HasKey)
+            .def("items", &This::_GetItems)
+            .def("keys", &This::_GetKeys)
+            .def("values", &This::_GetValues)
             .def("pop", &This::_Pop)
             .def("popitem", &This::_PopItem)
             .def("setdefault", &This::_SetDefault)
@@ -149,7 +143,7 @@ private:
             .def("update", &This::_UpdateList)
             .def("copy", &This::_Copy)
             .add_property("expired", &Type::IsExpired)
-            .def(TfPyBoolBuiltinFuncName, &This::_NonZero)
+            .def("__nonzero__", &This::_NonZero)
             .def(self == self)
             .def(self != self)
             ;
@@ -157,19 +151,19 @@ private:
         class_<_Iterator<_ExtractItem> >
             ((name + "_Iterator").c_str(), no_init)
             .def("__iter__", &This::template _Iterator<_ExtractItem>::GetCopy)
-            .def(TfPyIteratorNextMethodName, &This::template _Iterator<_ExtractItem>::GetNext)
+            .def("next", &This::template _Iterator<_ExtractItem>::GetNext)
             ;
 
         class_<_Iterator<_ExtractKey> >
             ((name + "_KeyIterator").c_str(), no_init)
             .def("__iter__", &This::template _Iterator<_ExtractKey>::GetCopy)
-            .def(TfPyIteratorNextMethodName, &This::template _Iterator<_ExtractKey>::GetNext)
+            .def("next", &This::template _Iterator<_ExtractKey>::GetNext)
             ;
 
         class_<_Iterator<_ExtractValue> >
             ((name + "_ValueIterator").c_str(), no_init)
             .def("__iter__", &This::template _Iterator<_ExtractValue>::GetCopy)
-            .def(TfPyIteratorNextMethodName, &This::template _Iterator<_ExtractValue>::GetNext)
+            .def("next", &This::template _Iterator<_ExtractValue>::GetNext)
             ;
     }
 
@@ -284,7 +278,6 @@ private:
         return result;
     }
 
-#if PY_MAJOR_VERSION < 3
     static boost::python::list _GetItems(const Type& x)
     {
         return _Get<_ExtractItem>(x);
@@ -299,7 +292,6 @@ private:
     {
         return _Get<_ExtractValue>(x);
     }
-#endif
 
     static mapped_type _Pop(Type& x, const key_type& key)
     {
@@ -380,4 +372,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_PY_MAP_EDIT_PROXY_H
+#endif // SDF_PYMAPEDITPROXY_H

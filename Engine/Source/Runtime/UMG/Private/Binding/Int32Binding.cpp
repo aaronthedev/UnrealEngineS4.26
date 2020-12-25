@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Binding/Int32Binding.h"
 
@@ -8,12 +8,12 @@ UInt32Binding::UInt32Binding()
 {
 }
 
-bool UInt32Binding::IsSupportedDestination(FProperty* Property) const
+bool UInt32Binding::IsSupportedDestination(UProperty* Property) const
 {
 	return IsSupportedSource(Property);
 }
 
-bool UInt32Binding::IsSupportedSource(FProperty* Property) const
+bool UInt32Binding::IsSupportedSource(UProperty* Property) const
 {
 	return IsConcreteTypeCompatibleWithReflectedType<int32>(Property);
 }

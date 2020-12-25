@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,6 +10,24 @@
 
 #if !PLATFORM_TVOS
 
+#if __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_7_0
+#include <GameKit/GKSession.h>
+
+@interface FGameCenterSessionDelegateGK : UIViewController<GKSessionDelegate>
+{
+};
+
+@property (nonatomic, strong) GKSession *Session;
+
+-(void) initSessionWithName:(NSString*) sessionName;
+-(void) shutdownSession;
+-(bool) sessionsAvailable;
+-(void)joinSession;
+
+@end
+#endif
+
+#if defined(__IPHONE_7_0)
 #include <MultipeerConnectivity/MultipeerConnectivity.h>
 
 @interface FGameCenterSessionDelegateMC : UIViewController<MCSessionDelegate>
@@ -25,12 +43,18 @@
 -(void)joinSession;
 
 @end
+#endif
 
 @interface FGameCenterSessionDelegate : NSObject
 {
 };
 
+#if __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_7_0
+@property (nonatomic, strong) FGameCenterSessionDelegateGK *SessionGK;
+#endif
+#if defined(__IPHONE_7_0)
 @property (nonatomic, strong) FGameCenterSessionDelegateMC *SessionMC;
+#endif
 
 -(instancetype) initSessionWithName:(NSString*) sessionName;
 -(void) shutdownSession;

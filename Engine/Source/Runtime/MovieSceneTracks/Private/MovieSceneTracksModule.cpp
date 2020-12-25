@@ -1,18 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Modules/ModuleManager.h"
 #include "IMovieSceneModule.h"
 #include "IMovieSceneTracksModule.h"
-#include "Components/SceneComponent.h"
-#include "Systems/MovieScene3DTransformPropertySystem.h"
 
-#include "EntitySystem/MovieSceneEntityManager.h"
-#include "MovieSceneTracksComponentTypes.h"
-
-#if !IS_MONOLITHIC
-	UE::MovieScene::FEntityManager*& GEntityManagerForDebugging = UE::MovieScene::GEntityManagerForDebuggingVisualizers;
-#endif
 
 /**
  * Implements the MovieSceneTracks module.
@@ -20,7 +12,6 @@
 class FMovieSceneTracksModule
 	: public IMovieSceneTracksModule
 {
-
 	virtual void StartupModule() override
 	{
 		IMovieSceneModule& MovieSceneModule = IMovieSceneModule::Get();
@@ -36,12 +27,6 @@ class FMovieSceneTracksModule
 		MovieSceneModule.RegisterEvaluationGroupParameters(
 			IMovieSceneTracksModule::GetEvaluationGroupName(EBuiltInEvaluationGroup::PostEvaluation),
 			FMovieSceneEvaluationGroupParameters(0x0008));
-
-		UE::MovieScene::FMovieSceneTracksComponentTypes::Get();
-	}
-
-	virtual void ShutdownModule() override
-	{
 	}
 };
 

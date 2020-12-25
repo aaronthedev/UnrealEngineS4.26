@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 
@@ -170,13 +170,14 @@ public:
 	TSharedPtr< FUICommandInfo > PromoteToParameter;
 
 	TSharedPtr< FUICommandInfo > QualityLevel_All;
-	TSharedPtr< FUICommandInfo > QualityLevel_Epic;
 	TSharedPtr< FUICommandInfo > QualityLevel_High;
 	TSharedPtr< FUICommandInfo > QualityLevel_Medium;
 	TSharedPtr< FUICommandInfo > QualityLevel_Low;
 
 	TSharedPtr< FUICommandInfo > FeatureLevel_All;
+	TSharedPtr< FUICommandInfo > FeatureLevel_ES2;
 	TSharedPtr< FUICommandInfo > FeatureLevel_ES31;
+	TSharedPtr< FUICommandInfo > FeatureLevel_SM4;
 	TSharedPtr< FUICommandInfo > FeatureLevel_SM5;
 
 	/**

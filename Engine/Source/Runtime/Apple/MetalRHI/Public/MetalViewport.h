@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MetalViewport.h: Metal viewport RHI definitions.
@@ -37,7 +37,7 @@ public:
 	void Resize(uint32 InSizeX, uint32 InSizeY, bool bInIsFullscreen,EPixelFormat Format);
 	
 	TRefCountPtr<FMetalTexture2D> GetBackBuffer(EMetalViewportAccessFlag Accessor) const;
-	id<CAMetalDrawable> GetDrawable(EMetalViewportAccessFlag Accessor);
+	mtlpp::Drawable GetDrawable(EMetalViewportAccessFlag Accessor);
 	FMetalTexture GetDrawableTexture(EMetalViewportAccessFlag Accessor);
 	ns::AutoReleased<FMetalTexture> GetCurrentTexture(EMetalViewportAccessFlag Accessor);
 	void ReleaseDrawable(void);
@@ -64,7 +64,7 @@ private:
 	uint32 GetViewportIndex(EMetalViewportAccessFlag Accessor) const;
 
 private:
-	id<CAMetalDrawable> Drawable;
+	mtlpp::Drawable Drawable;
 	TRefCountPtr<FMetalTexture2D> BackBuffer[2];
 	mutable FCriticalSection Mutex;
 	

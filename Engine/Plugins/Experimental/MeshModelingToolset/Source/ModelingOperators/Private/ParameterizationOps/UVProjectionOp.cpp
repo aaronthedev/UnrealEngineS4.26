@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ParameterizationOps/UVProjectionOp.h"
 
@@ -52,7 +52,7 @@ void FUVProjectionOp::CalculateResult(FProgressCancel* Progress)
 	FDynamicMeshUVOverlay* UVLayer = ResultMesh->Attributes()->GetUVLayer(LayerIndex);
 	UVLayer->ClearElements();
 
-	FVector2f Scale = FVector2f(.5,.5)*UVScale, Offset = FVector2f(.5,.5)+UVOffset;
+	FVector2D Scale = FVector2D(.5,.5)*UVScale, Offset = FVector2D(.5,.5)+UVOffset;
 	// project to major axis
 	auto ProjAxis = [&Scale, &Offset](const FVector3d& P, int Ax1, int Ax2, float Ax1Scale, float Ax2Scale)
 	{
@@ -70,7 +70,7 @@ void FUVProjectionOp::CalculateResult(FProgressCancel* Progress)
 			if (ResultMesh->IsVertex(VID))
 			{
 				FVector2f UV = ProjAxis(TransformedVertices[VID], 0, 1, 1, 1);
-				UVLayer->InsertElement(VID, (float*)UV, true);
+				UVLayer->InsertElement(VID, UV, VID, true);
 			}
 		}
 		UVLayer->EndUnsafeElementsInsert();
@@ -86,8 +86,8 @@ void FUVProjectionOp::CalculateResult(FProgressCancel* Progress)
 	{	
 		// All cases in this branch require normals 
 		// compute normals on the transformed vertices
-		TArray<FVector3d> TransformedNormals; TransformedNormals.SetNumUninitialized(ResultMesh->MaxTriangleID());
-		ParallelFor(ResultMesh->MaxTriangleID(), [this, &TransformedVertices, &TransformedNormals](int32 TriangleID)
+		TArray<FVector3d> TransformedNormals; TransformedNormals.SetNumUninitialized(ResultMesh->TriangleCount());
+		ParallelFor(ResultMesh->TriangleCount(), [this, &TransformedVertices, &TransformedNormals](int32 TriangleID)
 		{
 			if (ResultMesh->IsTriangle(TriangleID))
 			{
@@ -129,7 +129,7 @@ void FUVProjectionOp::CalculateResult(FProgressCancel* Progress)
 					if (!ElementIdx)
 					{
 						FVector3d LocalV = TransformedVertices[SourceTri[SubIdx]];
-						int NewElementIdx = UVLayer->AppendElement(ProjAxis(LocalV, Minor1, Minor2, MajorAxisSign*Minor1Flip[MajorAxis], Minor2Flip[MajorAxis]));
+						int NewElementIdx = UVLayer->AppendElement(ProjAxis(LocalV, Minor1, Minor2, MajorAxisSign*Minor1Flip[MajorAxis], Minor2Flip[MajorAxis]), ElementKey.A);
 						VertIdxAndBucketIDToElementID.Add(ElementKey, NewElementIdx);
 						OverlayTri[SubIdx] = NewElementIdx;
 					}
@@ -170,7 +170,7 @@ void FUVProjectionOp::CalculateResult(FProgressCancel* Progress)
 						if (!ElementIdx)
 						{
 							FVector3d LocalV = TransformedVertices[SourceTri[SubIdx]];
-							int NewElementIdx = UVLayer->AppendElement(ProjAxis(LocalV, Minor1, Minor2, MajorAxisSign, 1));
+							int NewElementIdx = UVLayer->AppendElement(ProjAxis(LocalV, Minor1, Minor2, MajorAxisSign, 1), ElementKey.A);
 							VertIdxAndBucketIDToElementID.Add(ElementKey, NewElementIdx);
 							OverlayTri[SubIdx] = NewElementIdx;
 						}
@@ -208,7 +208,7 @@ void FUVProjectionOp::CalculateResult(FProgressCancel* Progress)
 						if (!ElementIdx)
 						{
 							FVector2f UV(-(float(VAngle)*FMathf::InvPi - 1.0f)*Scale.X + Offset.X, -float(LocalV.Z)*Scale.Y + Offset.Y);
-							int NewElementIdx = UVLayer->AppendElement(UV);
+							int NewElementIdx = UVLayer->AppendElement(UV, ElementKey.A);
 							VertIdxAndBucketIDToElementID.Add(ElementKey, NewElementIdx);
 							OverlayTri[SubIdx] = NewElementIdx;
 						}

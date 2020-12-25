@@ -1,9 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "IMagicLeapSharedFilePlugin.h"
+#include "MagicLeapPluginUtil.h"
 #include "Containers/Ticker.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogMagicLeapSharedFile, Verbose, All);
@@ -23,6 +24,7 @@ public:
 	void GetFileNamesFromSharedFileList(void* SharedFiles);
 
 private:
+	FMagicLeapAPISetup APISetup;
 	FTickerDelegate TickDelegate;
 	FDelegateHandle TickDelegateHandle;
 

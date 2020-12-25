@@ -31,8 +31,7 @@ class ConditionalBranchToSimpleConditionalBranchReductionOpportunity
   // to the true target; otherwise, the true target will be changed to also
   // point to the false target.
   explicit ConditionalBranchToSimpleConditionalBranchReductionOpportunity(
-      opt::IRContext* context, opt::Instruction* conditional_branch_instruction,
-      bool redirect_to_true);
+      opt::Instruction* conditional_branch_instruction, bool redirect_to_true);
 
   bool PreconditionHolds() override;
 
@@ -40,7 +39,6 @@ class ConditionalBranchToSimpleConditionalBranchReductionOpportunity
   void Apply() override;
 
  private:
-  opt::IRContext* context_;
   opt::Instruction* conditional_branch_instruction_;
 
   // If true, the false target will be changed to point to the true target;

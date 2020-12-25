@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,15 +9,12 @@ UCLASS(Abstract)
 class UNREALED_API UBaseWidgetBlueprint : public UBlueprint
 {
 	GENERATED_UCLASS_BODY()
-
 public:
 #if WITH_EDITORONLY_DATA
 	/** A tree of the widget templates to be created */
 	UPROPERTY()
 	class UWidgetTree* WidgetTree;
 #endif
-
-	virtual void PostLoad() override;
 
 	/**
 	* Returns collection of widgets that represent the 'source' (user edited) widgets for this

@@ -196,7 +196,7 @@ namespace SteamAudio
 	 */
 	void FBakeIndirectWindow::Invoke()
 	{
-		FGlobalTabmanager::Get()->TryInvokeTab(BakeIndirectTabName);
+		FGlobalTabmanager::Get()->InvokeTab(BakeIndirectTabName);
 	}
 
 	/**

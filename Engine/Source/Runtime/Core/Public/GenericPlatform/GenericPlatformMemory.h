@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 /*=============================================================================================
@@ -138,19 +138,6 @@ struct CORE_API FGenericPlatformMemoryStats : public FPlatformMemoryConstants
 	
 	/** Default constructor, clears all variables. */
 	FGenericPlatformMemoryStats();
-
-	struct FPlatformSpecificStat
-	{
-		const TCHAR* Name;
-		uint64 Value;
-
-		FPlatformSpecificStat(const TCHAR* InName, uint64 InValue)
-			: Name(InName)
-			, Value(InValue)
-		{}
-	};
-
-	TArray<FPlatformSpecificStat> GetPlatformSpecificStats() const;
 };
 
 
@@ -220,7 +207,6 @@ struct CORE_API FGenericPlatformMemory
 		Binned2, // Newer binned malloc
 		Binned3, // Newer VM-based binned malloc, 64 bit only
 		Platform, // Custom platform specific allocator
-		Mimalloc, // mimalloc
 	};
 
 	/** Current allocator */
@@ -355,54 +341,6 @@ struct CORE_API FGenericPlatformMemory
 	 * @param Size size of the allocation previously passed to BinnedAllocFromOS
 	 */
 	static void BinnedFreeToOS( void* Ptr, SIZE_T Size );
-	
-	/**
-	 *	Performs initial setup for Nano malloc.
-	 *	This is a noop on non-apple platforms
-	 */
-	static void NanoMallocInit()
-	{
-		return;
-	}
-	
-	/**
-	 * Was this pointer allocated by the OS malloc?
-	 * Currently only Apple platforms implement this to detect small block allocations.
-	 *
-	 * @param The pointer to query
-	 * @return True if this pointer was allocated by the OS.
-	 *
-	 */
-	static bool PtrIsOSMalloc( void* Ptr)
-	{
-		return false;
-	}
-	
-	/**
-	 *
-	 * Nano Malloc is Apple's tiny block allocator.
-	 * Does the Nano malloc zone exist?
-	 *
-	 * @return True if Nano malloc is enabled and available.
-	*
-	*/
-	static bool IsNanoMallocAvailable()
-	{
-		return false;
-	}
-	
-	/**
-	* Was this pointer allocated by in the Nano Malloc Zone?
-	* Currently only Apple platforms implement this to detect small block allocations.
-	*
-	* @param The pointer to query
-	* @return True if this pointer is in the Nano Malloc Region
-	*
-	*/
-	static bool PtrIsFromNanoMalloc( void* Ptr)
-	{
-		return false;
-	}
 
 	class FBasicVirtualMemoryBlock
 	{
@@ -691,15 +629,9 @@ public:
 
 	/**
 	* Returns true if debug memory has been assigned to the title for general use.
-	* Only applies to platforms with fixed memory and no paging.
+	* Only applies to consoles with fixed memory and no paging.
 	*/
 	static bool IsExtraDevelopmentMemoryAvailable();
-
-	/**
-	* Returns >0 if debug memory has been assigned to the title for general use.
-	* Only applies to platforms with fixed memory and no paging.
-	*/
-	static uint64 GetExtraDevelopmentMemorySize();
 
 	/**
 	* This function sets AllocFunction and FreeFunction and returns true, or just returns false.

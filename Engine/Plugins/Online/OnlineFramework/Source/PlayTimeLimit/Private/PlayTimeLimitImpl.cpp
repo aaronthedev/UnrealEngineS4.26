@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PlayTimeLimitImpl.h"
 
@@ -301,11 +301,6 @@ float FPlayTimeLimitImpl::GetRewardRate(const FUniqueNetId& UserId)
 FWarnUserPlayTime& FPlayTimeLimitImpl::GetWarnUserPlayTimeDelegate()
 {
 	return WarnUserPlayTimeDelegate;
-}
-
-void FPlayTimeLimitImpl::GameExitByRequest()
-{
-	OnGameExitRequestedDelegate.Broadcast();
 }
 
 const FOnlinePlayLimitConfigEntry* FPlayTimeLimitImpl::GetConfigEntry(const int32 PlayTimeMinutes) const

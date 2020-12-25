@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	OpenGLCommands.cpp: OpenGL RHI commands implementation.
@@ -16,10 +16,9 @@
 #include "OpenGLDrvPrivate.h"
 #include "RenderUtils.h"
 
-/*
-#define DECLARE_ISBOUNDSHADER(ShaderType) template <typename TShaderType> inline void ValidateBoundShader(TRefCountPtr<FOpenGLBoundShaderState> InBoundShaderState, FRHIGraphicsShader* GfxShader, TShaderType* ShaderTypeRHI) \
+#define DECLARE_ISBOUNDSHADER(ShaderType) inline void ValidateBoundShader(TRefCountPtr<FOpenGLBoundShaderState> InBoundShaderState, FRHI##ShaderType* ShaderType##RHI) \
 { \
-	FOpenGL##ShaderType* ShaderType = FOpenGLDynamicRHI::ResourceCast(static_cast<TShaderType*>(GfxShader)); \
+	FOpenGL##ShaderType* ShaderType = FOpenGLDynamicRHI::ResourceCast(ShaderType##RHI); \
 	ensureMsgf(InBoundShaderState && ShaderType == InBoundShaderState->Get##ShaderType(), TEXT("Parameters are being set for a %s which is not currently bound"), TEXT(#ShaderType)); \
 }
 
@@ -28,12 +27,11 @@ DECLARE_ISBOUNDSHADER(PixelShader)
 DECLARE_ISBOUNDSHADER(GeometryShader)
 DECLARE_ISBOUNDSHADER(HullShader)
 DECLARE_ISBOUNDSHADER(DomainShader)
-*/
 
-#if 0//DO_CHECK
-	#define VALIDATE_BOUND_SHADER(s, t) ValidateBoundShader<t>(PendingState.BoundShaderState, s)
+#if DO_CHECK
+	#define VALIDATE_BOUND_SHADER(s) ValidateBoundShader(PendingState.BoundShaderState, s)
 #else
-	#define VALIDATE_BOUND_SHADER(s, t)
+	#define VALIDATE_BOUND_SHADER(s)
 #endif
 
 namespace OpenGLConsoleVariables
@@ -47,6 +45,13 @@ namespace OpenGLConsoleVariables
 		TEXT("OpenGL.UseMapBuffer"),
 		bUseMapBuffer,
 		TEXT("If true, use glMapBuffer otherwise use glBufferSubdata.")
+		);
+
+	static FAutoConsoleVariable CVarUseEmulatedUBs(
+		TEXT("OpenGL.UseEmulatedUBs"),
+		0,
+		TEXT("If true, enable using emulated uniform buffers on ES2 mode."),
+		ECVF_ReadOnly
 		);
 
 	int32 bSkipCompute = 0;
@@ -98,14 +103,6 @@ namespace OpenGLConsoleVariables
 		TEXT("If true, use dynamic buffer orphaning hint.")
 		);
 	
-	int32 bUsePersistentMappingStagingBuffer= 1;
-	static FAutoConsoleVariableRef CVarUsePersistentMappingStagingBuffer(
-		TEXT("OpenGL.UsePersistentMappingStagingBuffer"),
-		bUsePersistentMappingStagingBuffer,
-		TEXT("If true, it will use persistent mapping for the Staging Buffer."),
-		ECVF_ReadOnly
-	);
-
 	static TAutoConsoleVariable<int32> CVarUseSeparateShaderObjects(
 		TEXT("OpenGL.UseSeparateShaderObjects"),
 		0,
@@ -230,19 +227,6 @@ static FOpenGLVertexBuffer* FindExpandedZeroStrideBuffer(FOpenGLVertexBuffer* Ze
 			}
 		}
 		break;
-	case 12:
-		{
-			uint64 SourceA = *(uint64*)SourceData;
-			uint32 SourceB = *((uint32*)SourceData + 2);
-			uint32* RESTRICT Dest = (uint32*)Data;
-			for (uint32 Index = 0; Index < Size / (3 * sizeof(uint32)); ++Index)
-			{
-				*((uint64*)Dest) = SourceA;
-				Dest = Dest + 2;
-				*Dest++ = SourceB;
-			}
-		}
-		break;
 	case 16:
 		{
 			uint64 SourceA = *(uint64*)SourceData;
@@ -286,104 +270,6 @@ static FORCEINLINE GLint ModifyFilterByMips(GLint Filter, bool bHasMips)
 	}
 
 	return Filter;
-}
-
-static FORCEINLINE EShaderFrequency GetShaderFrequency(FRHIGraphicsShader* ShaderRHI)
-{
-	switch (ShaderRHI->GetFrequency())
-	{
-	case SF_Vertex:
-		VALIDATE_BOUND_SHADER(ShaderRHI, Vertex);
-		return SF_Vertex;
-#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-	case SF_Hull:
-		VALIDATE_BOUND_SHADER(ShaderRHI, Hull);
-		return SF_Hull;
-	case SF_Domain:
-		VALIDATE_BOUND_SHADER(ShaderRHI, Domain);
-		return SF_Domain;
-#endif
-#if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
-	case SF_Geometry:
-		VALIDATE_BOUND_SHADER(ShaderRHI, Geometry);
-		return SF_Geometry;
-#endif
-	case SF_Pixel:
-		VALIDATE_BOUND_SHADER(ShaderRHI, Pixel);
-		return SF_Pixel;
-	default:
-		checkf(0, TEXT("Undefined FRHIShader Type %d!"), (int32)ShaderRHI->GetFrequency());
-	}
-
-	return SF_NumFrequencies;
-}
-
-static FORCEINLINE CrossCompiler::EShaderStage GetShaderCrossCompilerStage(FRHIGraphicsShader* ShaderRHI)
-{
-	switch (ShaderRHI->GetFrequency())
-	{
-	case SF_Vertex:
-		VALIDATE_BOUND_SHADER(ShaderRHI, Vertex);
-		return CrossCompiler::SHADER_STAGE_VERTEX;
-#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-	case SF_Hull:
-		VALIDATE_BOUND_SHADER(ShaderRHI, Hull);
-		return CrossCompiler::SHADER_STAGE_HULL;
-	case SF_Domain:
-		VALIDATE_BOUND_SHADER(ShaderRHI, Domain);
-		return CrossCompiler::SHADER_STAGE_DOMAIN;
-#endif
-#if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
-	case SF_Geometry:
-		VALIDATE_BOUND_SHADER(ShaderRHI, Geometry);
-		return CrossCompiler::SHADER_STAGE_GEOMETRY;
-#endif
-	case SF_Pixel:
-		VALIDATE_BOUND_SHADER(ShaderRHI, Pixel);
-		return CrossCompiler::SHADER_STAGE_PIXEL;
-	default:
-		checkf(0, TEXT("Undefined FRHIShader Type %d!"), (int32)ShaderRHI->GetFrequency());
-	}
-
-	return CrossCompiler::NUM_SHADER_STAGES;
-}
-
-static FORCEINLINE void GetShaderStageIndexAndMaxUnits(FRHIGraphicsShader* ShaderRHI, GLint& OutIndex, GLint& OutMaxUnits)
-{
-	switch (ShaderRHI->GetFrequency())
-	{
-	case SF_Vertex:
-		VALIDATE_BOUND_SHADER(ShaderRHI, Vertex);
-		OutIndex = FOpenGL::GetFirstVertexTextureUnit();
-		OutMaxUnits = FOpenGL::GetMaxVertexTextureImageUnits();
-		break;
-#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-	case SF_Hull:
-		VALIDATE_BOUND_SHADER(ShaderRHI, Hull);
-		OutIndex = FOpenGL::GetFirstHullTextureUnit();
-		OutMaxUnits = FOpenGL::GetMaxHullTextureImageUnits();
-		break;
-	case SF_Domain:
-		VALIDATE_BOUND_SHADER(ShaderRHI, Domain);
-		OutIndex = FOpenGL::GetFirstDomainTextureUnit();
-		OutMaxUnits = FOpenGL::GetMaxDomainTextureImageUnits();
-		break;
-#endif
-#if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
-	case SF_Geometry:
-		VALIDATE_BOUND_SHADER(ShaderRHI, Geometry);
-		OutIndex = FOpenGL::GetFirstGeometryTextureUnit();
-		OutMaxUnits = FOpenGL::GetMaxGeometryTextureImageUnits();
-		break;
-#endif
-	case SF_Pixel:
-		VALIDATE_BOUND_SHADER(ShaderRHI, Pixel);
-		OutIndex = FOpenGL::GetFirstPixelTextureUnit();
-		OutMaxUnits = FOpenGL::GetMaxTextureImageUnits();
-		break;
-	default:
-		checkf(0, TEXT("Undefined FRHIShader Type %d!"), (int32)ShaderRHI->GetFrequency());
-	}
 }
 
 // Vertex state.
@@ -490,13 +376,13 @@ void FOpenGLDynamicRHI::UpdateViewportInOpenGLContext( FOpenGLContextState& Cont
 	}
 }
 
-void FOpenGLDynamicRHI::RHISetViewport(float MinX, float MinY,float MinZ, float MaxX, float MaxY,float MaxZ)
+void FOpenGLDynamicRHI::RHISetViewport(uint32 MinX,uint32 MinY,float MinZ,uint32 MaxX,uint32 MaxY,float MaxZ)
 {
 	VERIFY_GL_SCOPE();
-	PendingState.Viewport.Min.X = (uint32)MinX;
-	PendingState.Viewport.Min.Y = (uint32)MinY;
-	PendingState.Viewport.Max.X = (uint32)MaxX;
-	PendingState.Viewport.Max.Y = (uint32)MaxY;
+	PendingState.Viewport.Min.X = MinX;
+	PendingState.Viewport.Min.Y = MinY;
+	PendingState.Viewport.Max.X = MaxX;
+	PendingState.Viewport.Max.Y = MaxY;
 	PendingState.DepthMinZ = MinZ;
 	PendingState.DepthMaxZ = MaxZ;
 
@@ -554,12 +440,6 @@ void FOpenGLDynamicRHI::RHISetBoundShaderState(FRHIBoundShaderState* BoundShader
 	BoundShaderStateHistory.Add(BoundShaderState);
 }
 
-void FOpenGLDynamicRHI::RHISetUAVParameter(FRHIPixelShader* PixelShaderRHI, uint32 UAVIndex, FRHIUnorderedAccessView* UnorderedAccessViewRHI)
-{
-	checkNoEntry();//UAV-PS port: not yet implemented
-}
-
-
 void FOpenGLDynamicRHI::RHISetUAVParameter(FRHIComputeShader* ComputeShaderRHI,uint32 UAVIndex, FRHIUnorderedAccessView* UnorderedAccessViewRHI)
 {
 	check(FOpenGL::SupportsComputeShaders());
@@ -570,11 +450,11 @@ void FOpenGLDynamicRHI::RHISetUAVParameter(FRHIComputeShader* ComputeShaderRHI,u
 		FOpenGLUnorderedAccessView* UnorderedAccessView = ResourceCast(UnorderedAccessViewRHI);
 		bool bLayered = UnorderedAccessView->IsLayered();
 		GLint Layer = UnorderedAccessView->GetLayer();
-		InternalSetShaderUAV(FOpenGL::GetFirstComputeUAVUnit() + UAVIndex, UnorderedAccessView->Format, UnorderedAccessView->Resource, bLayered, Layer, GL_READ_WRITE);
+		InternalSetShaderUAV(FOpenGL::GetFirstComputeUAVUnit() + UAVIndex, UnorderedAccessView->Format, UnorderedAccessView->Resource, bLayered, Layer);
 	}
 	else
 	{
-		InternalSetShaderUAV(FOpenGL::GetFirstComputeUAVUnit() + UAVIndex, GL_R32F, 0, false, 0, GL_READ_WRITE);
+		InternalSetShaderUAV(FOpenGL::GetFirstComputeUAVUnit() + UAVIndex, GL_R32F, 0, false, 0);
 	}
 }
 
@@ -586,6 +466,7 @@ void FOpenGLDynamicRHI::RHISetUAVParameter(FRHIComputeShader* ComputeShaderRHI,u
 
 void FOpenGLDynamicRHI::InternalSetShaderTexture(FOpenGLTextureBase* Texture, FOpenGLShaderResourceView* SRV, GLint TextureIndex, GLenum Target, GLuint Resource, int NumMips, int LimitMip)
 {
+	VERIFY_GL_SCOPE();
 	auto& PendingTextureState = PendingState.Textures[TextureIndex];
 	PendingTextureState.Texture = Texture;
 	PendingTextureState.SRV = SRV;
@@ -598,6 +479,7 @@ void FOpenGLDynamicRHI::InternalSetShaderTexture(FOpenGLTextureBase* Texture, FO
 
 void FOpenGLDynamicRHI::InternalSetSamplerStates(GLint TextureIndex, FOpenGLSamplerState* SamplerState)
 {
+	VERIFY_GL_SCOPE();
 	PendingState.SamplerStates[TextureIndex] = SamplerState;
 }
 
@@ -653,11 +535,11 @@ void FOpenGLDynamicRHI::CachedSetupTextureStageInner(FOpenGLContextState& Contex
 		if (!bSameLimitMip || !bSameNumMips)
 		{
 			DETAILED_QUICK_SCOPE_CYCLE_COUNTER(STAT_CachedSetupTextureStage_TexParameter);
-			if (!bSameLimitMip)
+			if (FOpenGL::SupportsTextureBaseLevel() && !bSameLimitMip)
 			{
 				FOpenGL::TexParameter(Target, GL_TEXTURE_BASE_LEVEL, BaseMip);
 			}
-			if (!bSameNumMips)
+			if (FOpenGL::SupportsTextureMaxLevel() && !bSameNumMips)
 			{
 				FOpenGL::TexParameter(Target, GL_TEXTURE_MAX_LEVEL, MaxMip);
 			}
@@ -700,6 +582,35 @@ inline void FOpenGLDynamicRHI::ApplyTextureStage(FOpenGLContextState& ContextSta
 
 		GLint WrapS = SamplerState->Data.WrapS;
 		GLint WrapT = SamplerState->Data.WrapT;
+		if (!FOpenGL::SupportsTextureNPOT() && bHasTexture)
+		{
+			if (!TextureStage.Texture->IsPowerOfTwo())
+			{
+				bool bChanged = false;
+				if (WrapS != GL_CLAMP_TO_EDGE)
+				{
+					WrapS = GL_CLAMP_TO_EDGE;
+					bChanged = true;
+				}
+				if (WrapT != GL_CLAMP_TO_EDGE)
+				{
+					WrapT = GL_CLAMP_TO_EDGE;
+					bChanged = true;
+				}
+				if (bChanged)
+				{
+					ANSICHAR DebugName[128] = "";
+					if (FOpenGL::GetLabelObject(GL_TEXTURE, TextureStage.Resource, sizeof(DebugName), DebugName) != 0)
+					{
+						UE_LOG(LogRHI, Warning, TEXT("Texture %s (Index %d, Resource %d) has a non-clamp mode; switching to clamp to avoid driver problems"), ANSI_TO_TCHAR(DebugName), TextureIndex, TextureStage.Resource);
+					}
+					else
+					{
+						UE_LOG(LogRHI, Warning, TEXT("Texture %d (Resource %d) has a non-clamp mode; switching to clamp to avoid driver problems"), TextureIndex, TextureStage.Resource);
+					}
+				}
+			}
+		}
 
 		// Sets parameters of currently bound texture
 		FOpenGL::TexParameter(Target, GL_TEXTURE_WRAP_S, WrapS);
@@ -713,7 +624,7 @@ inline void FOpenGLDynamicRHI::ApplyTextureStage(FOpenGLContextState& ContextSta
 		{
 			FOpenGL::TexParameter(Target, GL_TEXTURE_LOD_BIAS, SamplerState->Data.LODBias);
 		}
-		// Make sure we don't set mip filtering on if the texture has no mip levels, as that will cause a crash/black render on ES.
+		// Make sure we don't set mip filtering on if the texture has no mip levels, as that will cause a crash/black render on ES2.
 		FOpenGL::TexParameter(Target, GL_TEXTURE_MIN_FILTER, ModifyFilterByMips(SamplerState->Data.MinFilter, TextureStage.bHasMips));
 		FOpenGL::TexParameter(Target, GL_TEXTURE_MAG_FILTER, SamplerState->Data.MagFilter);
 		if( FOpenGL::SupportsTextureFilterAnisotropic() )
@@ -801,7 +712,8 @@ void FOpenGLDynamicRHI::SetupTexturesForDraw( FOpenGLContextState& ContextState,
 			CachedSetupTextureStage( ContextState, TextureStageIndex, TextureStage.Target, TextureStage.Resource, TextureStage.LimitMip, TextureStage.NumMips );
 			
 			bool bExternalTexture = (TextureStage.Target == GL_TEXTURE_EXTERNAL_OES);
-			if (!bExternalTexture)
+
+			if (FOpenGL::SupportsSamplerObjects() && !bExternalTexture)
 			{
 				FOpenGLSamplerState* PendingSampler = PendingState.SamplerStates[TextureStageIndex];
 			
@@ -813,8 +725,11 @@ void FOpenGLDynamicRHI::SetupTexturesForDraw( FOpenGLContextState& ContextState,
 			}
 			else if (TextureStage.Target != GL_TEXTURE_BUFFER)
 			{
-				FOpenGL::BindSampler(TextureStageIndex, 0);
-				ContextState.SamplerStates[TextureStageIndex] = nullptr;
+				if (FOpenGL::SupportsSamplerObjects())
+				{
+					FOpenGL::BindSampler(TextureStageIndex, 0);
+					ContextState.SamplerStates[TextureStageIndex] = nullptr;
+				}
 				ApplyTextureStage( ContextState, TextureStageIndex, TextureStage, PendingState.SamplerStates[TextureStageIndex] );
 			}
 		}
@@ -832,129 +747,60 @@ void FOpenGLDynamicRHI::SetupTexturesForDraw( FOpenGLContextState& ContextState 
 	SetupTexturesForDraw(ContextState, PendingState.BoundShaderState, FOpenGL::GetMaxCombinedTextureImageUnits());
 }
 
-void FOpenGLDynamicRHI::InternalSetShaderUAV(GLint UAVIndex, GLenum Format, GLuint Resource, bool bLayered, GLint Layer, GLenum Access)
+void FOpenGLDynamicRHI::InternalSetShaderUAV(GLint UAVIndex, GLenum Format, GLuint Resource, bool bLayered, GLint Layer)
 {
 	VERIFY_GL_SCOPE();
 	PendingState.UAVs[UAVIndex].Format = Format;
 	PendingState.UAVs[UAVIndex].Resource = Resource;
 	PendingState.UAVs[UAVIndex].Layer = Layer;
 	PendingState.UAVs[UAVIndex].bLayered = bLayered;
-	PendingState.UAVs[UAVIndex].Access = Access;
 }
 
-void FOpenGLDynamicRHI::SetupUAVsForDraw(FOpenGLContextState& ContextState)
+void FOpenGLDynamicRHI::SetupUAVsForDraw( FOpenGLContextState& ContextState, const FOpenGLComputeShader* ComputeShader, int32 MaxUAVsNeeded )
 {
-	int32 MaxUAVUnitUsed = 0;
-	const TBitArray<>& NeededBits = PendingState.BoundShaderState->GetUAVNeeds(MaxUAVUnitUsed);
-	SetupUAVsForProgram(ContextState, NeededBits, MaxUAVUnitUsed, FOpenGL::GetMaxPixelUAVUnits());
-}
+	check(FOpenGL::SupportsComputeShaders());
 
-void FOpenGLDynamicRHI::SetupUAVsForCompute(FOpenGLContextState& ContextState, const FOpenGLComputeShader* ComputeShader)
-{
-	int32 MaxUAVUnitUsed = 0;
-	const TBitArray<>& NeededBits = ComputeShader->GetUAVNeeds(MaxUAVUnitUsed);
-	SetupUAVsForProgram(ContextState, NeededBits, MaxUAVUnitUsed, FOpenGL::GetMaxComputeUAVUnits());
-}
-
-void FOpenGLDynamicRHI::SetupUAVsForProgram(FOpenGLContextState& ContextState, const TBitArray<>& NeededBits, int32 MaxUAVUnitUsed, int32 MaxUAVUnits)
-{
-	if (MaxUAVUnitUsed < 0 && ContextState.ActiveUAVMask == 0)
+	for( int32 UAVStageIndex = 0; UAVStageIndex < MaxUAVsNeeded; ++UAVStageIndex )
 	{
-		// Quit early if program does not use UAVs and context has no active UAV units
-		return;
-	}
-
-	for (int32 UAVStageIndex = 0; UAVStageIndex <= MaxUAVUnitUsed; ++UAVStageIndex)
-	{
-		if (!NeededBits[UAVStageIndex])
+		if (!ComputeShader->NeedsUAVStage(UAVStageIndex))
 		{
-			CachedSetupUAVStage(ContextState, UAVStageIndex, GL_R32F, 0, false, 0, GL_READ_WRITE);
+			CachedSetupUAVStage(ContextState, UAVStageIndex, GL_R32F, 0, false, 0);
 		}
 		else
 		{
 			const FUAVStage& UAVStage = PendingState.UAVs[UAVStageIndex];
-			CachedSetupUAVStage(ContextState, UAVStageIndex, UAVStage.Format, UAVStage.Resource, UAVStage.bLayered, UAVStage.Layer, UAVStage.Access);
+			CachedSetupUAVStage(ContextState, UAVStageIndex, UAVStage.Format, UAVStage.Resource, UAVStage.bLayered, UAVStage.Layer);
 		}
 	}
-
-	// clear rest of the units
-	for (int32 UAVStageIndex = (MaxUAVUnitUsed+1); UAVStageIndex < MaxUAVUnits; ++UAVStageIndex)
-	{
-		CachedSetupUAVStage(ContextState, UAVStageIndex, GL_R32F, 0, false, 0, GL_READ_WRITE);
-	}
+	
 }
 
-static bool IsImageTextureFormatSupported(GLenum Format)
-{
-	if (GMaxRHIFeatureLevel == ERHIFeatureLevel::ES3_1)
-	{
-		// from GLES 3.1 spec
-		switch (Format)
-		{
-			case GL_RGBA32F:
-			case GL_RGBA16F:
-			case GL_R32F:
-			case GL_RGBA32UI:
-			case GL_RGBA16UI:
-			case GL_RGBA8UI:
-			case GL_R32UI:
-			case GL_RGBA32I:
-			case GL_RGBA16I:
-			case GL_RGBA8I:
-			case GL_R32I:
-			case GL_RGBA8:
-			case GL_RGBA8_SNORM:
-				return true;
-			default:
-				return false;
-		}
-	}
-	return true;
-}
 
-void FOpenGLDynamicRHI::CachedSetupUAVStage( FOpenGLContextState& ContextState, GLint UAVIndex, GLenum Format, GLuint Resource, bool bLayered, GLint Layer, GLenum Access)
+void FOpenGLDynamicRHI::CachedSetupUAVStage( FOpenGLContextState& ContextState, GLint UAVIndex, GLenum Format, GLuint Resource, bool bLayered, GLint Layer)
 {
-	FUAVStage& UAVStage = ContextState.UAVs[UAVIndex];	
-
-	if (UAVStage.Format == Format && 
-		UAVStage.Resource == Resource &&
-		UAVStage.Access == Access &&
-		UAVStage.Layer == Layer &&
-		UAVStage.bLayered == bLayered)
+	if (ContextState.UAVs[UAVIndex].Format == Format && 
+		ContextState.UAVs[UAVIndex].Resource == Resource &&
+		ContextState.UAVs[UAVIndex].Layer == Layer &&
+		ContextState.UAVs[UAVIndex].bLayered == bLayered)
 	{
 		// Nothing's changed, no need to update
 		return;
 	}
-	
-	check(IsImageTextureFormatSupported(Format));
-		
-	VERIFY_GL_SCOPE();
-	
-	FOpenGL::BindImageTexture(UAVIndex, Resource, 0, bLayered ? GL_TRUE : GL_FALSE, Layer, Access, Format);
-	
-	UAVStage.Format = Format;
-	UAVStage.Resource = Resource;
-	UAVStage.Access = Access;
-	UAVStage.Layer = Layer;
-	UAVStage.bLayered = bLayered;
 
-	uint32 UAVBit = 1 << UAVIndex;
-	if (Resource != 0)
-	{
-		ContextState.ActiveUAVMask|= UAVBit;
-	}
-	else
-	{
-		ContextState.ActiveUAVMask&= ~UAVBit;
-	}
+	FOpenGL::BindImageTexture(UAVIndex, Resource, 0, bLayered ? GL_TRUE : GL_FALSE, Layer, GL_READ_WRITE, Format);
+	
+	ContextState.UAVs[UAVIndex].Format = Format;
+	ContextState.UAVs[UAVIndex].Resource = Resource;
+	ContextState.UAVs[UAVIndex].Layer = Layer;
+	ContextState.UAVs[UAVIndex].bLayered = bLayered;
 }
 
 void FOpenGLDynamicRHI::UpdateSRV(FOpenGLShaderResourceView* SRV)
 {
 	check(SRV);
 	// For Depth/Stencil textures whose Stencil component we wish to sample we must blit the stencil component out to an intermediate texture when we 'Store' the texture.
-#if PLATFORM_DESKTOP || PLATFORM_LUMINGL4
-	if (FOpenGL::GetFeatureLevel() >= ERHIFeatureLevel::SM5 && IsValidRef(SRV->Texture2D))
+#if PLATFORM_DESKTOP || PLATFORM_ANDROIDESDEFERRED || PLATFORM_LUMINGL4
+	if (FOpenGL::GetFeatureLevel() >= ERHIFeatureLevel::SM5 && FOpenGL::SupportsPixelBuffers() && IsValidRef(SRV->Texture2D))
 	{
 		FOpenGLTexture2D* Texture2D = ResourceCast(SRV->Texture2D.GetReference());
 		
@@ -1002,22 +848,16 @@ void FOpenGLDynamicRHI::UpdateSRV(FOpenGLShaderResourceView* SRV)
 #endif
 }
 
-void FOpenGLDynamicRHI::RHISetShaderResourceViewParameter(FRHIGraphicsShader* ShaderRHI,uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
+void FOpenGLDynamicRHI::RHISetShaderResourceViewParameter(FRHIPixelShader* PixelShaderRHI,uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
 {
 	VERIFY_GL_SCOPE();
-
+	VALIDATE_BOUND_SHADER(PixelShaderRHI);
 #ifndef __EMSCRIPTEN__
-	// TODO: On WebGL1 builds, the following assert() always comes out false, however when simply ignoring this check,
+	// TODO: On WebGL1/GLES2 builds, the following assert() always comes out false, however when simply ignoring this check,
 	// everything seems to be working fine. That said, I don't know what should change here, shader resource views are a D3D abstraction,
 	// but I think InternalSetShaderTexture() and RHISetShaderSampler() calls below need to occur even on GLES2.
 	check(FOpenGL::SupportsResourceView());
 #endif
-
-	GLint Index = 0;
-	GLint MaxUnits = 0;
-	GetShaderStageIndexAndMaxUnits(ShaderRHI, Index, MaxUnits);
-
-	ensureMsgf((int32)TextureIndex < MaxUnits, TEXT("Using more texture units (%d) than allowed (%d) on Frequency %d!"), TextureIndex, MaxUnits, (int32)ShaderRHI->GetFrequency());
 	FOpenGLShaderResourceView* SRV = ResourceCast(SRVRHI);
 	GLuint Resource = 0;
 	GLenum Target = GL_TEXTURE_BUFFER;
@@ -1029,9 +869,31 @@ void FOpenGLDynamicRHI::RHISetShaderResourceViewParameter(FRHIGraphicsShader* Sh
 		LimitMip = SRV->LimitMip;
 		UpdateSRV(SRV);
 	}
-	ensureMsgf((int32)TextureIndex < MaxUnits, TEXT("Using more textures (%d) than allowed (%d)!"), TextureIndex, MaxUnits);
-	InternalSetShaderTexture(NULL, SRV, Index + TextureIndex, Target, Resource, 0, LimitMip);
-	RHISetShaderSampler(ShaderRHI, TextureIndex, PointSamplerState);
+	ensureMsgf((int32)TextureIndex < FOpenGL::GetMaxTextureImageUnits(), TEXT("Using more pixel textures (%d) than allowed (%d)!"), TextureIndex, FOpenGL::GetMaxTextureImageUnits());
+	InternalSetShaderTexture(NULL, SRV, FOpenGL::GetFirstPixelTextureUnit() + TextureIndex, Target, Resource, 0, LimitMip);
+	RHISetShaderSampler(PixelShaderRHI,TextureIndex,PointSamplerState);
+}
+
+void FOpenGLDynamicRHI::RHISetShaderResourceViewParameter(FRHIVertexShader* VertexShaderRHI,uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
+{
+	VALIDATE_BOUND_SHADER(VertexShaderRHI);
+
+	VERIFY_GL_SCOPE();
+	check(FOpenGL::SupportsResourceView());
+	FOpenGLShaderResourceView* SRV = ResourceCast(SRVRHI);
+	GLuint Resource = 0;
+	GLenum Target = GL_TEXTURE_BUFFER;
+	int32 LimitMip = -1;
+	if( SRV )
+	{
+		Resource = SRV->Resource;
+		Target = SRV->Target;
+		LimitMip = SRV->LimitMip;
+		UpdateSRV(SRV);
+	}
+	ensureMsgf((int32)TextureIndex < FOpenGL::GetMaxVertexTextureImageUnits(), TEXT("Using more vertex texture units (%d) than allowed (%d)!"), TextureIndex, FOpenGL::GetMaxVertexTextureImageUnits());
+	InternalSetShaderTexture(NULL, SRV, FOpenGL::GetFirstVertexTextureUnit() + TextureIndex, Target, Resource, 0, LimitMip);
+	RHISetShaderSampler(VertexShaderRHI,TextureIndex,PointSamplerState);
 }
 
 void FOpenGLDynamicRHI::RHISetShaderResourceViewParameter(FRHIComputeShader* ComputeShaderRHI,uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
@@ -1055,36 +917,194 @@ void FOpenGLDynamicRHI::RHISetShaderResourceViewParameter(FRHIComputeShader* Com
 	RHISetShaderSampler(ComputeShaderRHI,TextureIndex,PointSamplerState);
 }
 
-void FOpenGLDynamicRHI::RHISetShaderTexture(FRHIGraphicsShader* ShaderRHI,uint32 TextureIndex, FRHITexture* NewTextureRHI)
+void FOpenGLDynamicRHI::RHISetShaderResourceViewParameter(FRHIHullShader* HullShaderRHI,uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
 {
+	VALIDATE_BOUND_SHADER(HullShaderRHI);
+
+	check(GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5);
+	VERIFY_GL_SCOPE();
+	check(FOpenGL::SupportsResourceView());
+	FOpenGLShaderResourceView* SRV = ResourceCast(SRVRHI);
+	GLuint Resource = 0;
+	GLenum Target = GL_TEXTURE_BUFFER;
+	int32 LimitMip = -1;
+	if( SRV )
+	{
+		Resource = SRV->Resource;
+		Target = SRV->Target;
+		LimitMip = SRV->LimitMip;
+		UpdateSRV(SRV);
+	}
+	ensureMsgf((int32)TextureIndex < FOpenGL::GetMaxHullTextureImageUnits(), TEXT("Using more hull texture units (%d) than allowed (%d)!"), TextureIndex, FOpenGL::GetMaxHullTextureImageUnits());
+	InternalSetShaderTexture(NULL, SRV, FOpenGL::GetFirstHullTextureUnit() + TextureIndex, Target, Resource, 0, LimitMip);
+}
+
+void FOpenGLDynamicRHI::RHISetShaderResourceViewParameter(FRHIDomainShader* DomainShaderRHI,uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
+{
+	VALIDATE_BOUND_SHADER(DomainShaderRHI);
+
+	check(GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5);
+	VERIFY_GL_SCOPE();
+	check(FOpenGL::SupportsResourceView());
+	FOpenGLShaderResourceView* SRV = ResourceCast(SRVRHI);
+	GLuint Resource = 0;
+	GLenum Target = GL_TEXTURE_BUFFER;
+	int32 LimitMip = -1;
+	if( SRV )
+	{
+		Resource = SRV->Resource;
+		Target = SRV->Target;
+		LimitMip = SRV->LimitMip;
+		UpdateSRV(SRV);
+	}
+	ensureMsgf((int32)TextureIndex < FOpenGL::GetMaxDomainTextureImageUnits(), TEXT("Using more domain texture units (%d) than allowed (%d)!"), TextureIndex, FOpenGL::GetMaxDomainTextureImageUnits());
+	InternalSetShaderTexture(NULL, SRV, FOpenGL::GetFirstDomainTextureUnit() + TextureIndex, Target, Resource, 0, LimitMip);
+}
+
+void FOpenGLDynamicRHI::RHISetShaderResourceViewParameter(FRHIGeometryShader* GeometryShaderRHI,uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
+{
+	VALIDATE_BOUND_SHADER(GeometryShaderRHI);
+
+	VERIFY_GL_SCOPE();
+	check(FOpenGL::SupportsResourceView());
+	FOpenGLShaderResourceView* SRV = ResourceCast(SRVRHI);
+	GLuint Resource = 0;
+	GLenum Target = GL_TEXTURE_BUFFER;
+	int32 LimitMip = -1;
+	if( SRV )
+	{
+		Resource = SRV->Resource;
+		Target = SRV->Target;
+		LimitMip = SRV->LimitMip;
+		UpdateSRV(SRV);
+	}
+	ensureMsgf((int32)TextureIndex < FOpenGL::GetMaxGeometryTextureImageUnits(), TEXT("Using more geometry texture units (%d) than allowed (%d)!"), TextureIndex, FOpenGL::GetMaxGeometryTextureImageUnits());
+	InternalSetShaderTexture(NULL, SRV, FOpenGL::GetFirstGeometryTextureUnit() + TextureIndex, Target, Resource, 0, LimitMip);
+	RHISetShaderSampler(GeometryShaderRHI,TextureIndex,PointSamplerState);
+}
+
+void FOpenGLDynamicRHI::RHISetShaderTexture(FRHIVertexShader* VertexShaderRHI,uint32 TextureIndex, FRHITexture* NewTextureRHI)
+{
+	VALIDATE_BOUND_SHADER(VertexShaderRHI);
+
 	VERIFY_GL_SCOPE();
 	FOpenGLTextureBase* NewTexture = GetOpenGLTextureFromRHITexture(NewTextureRHI);
-
-	GLint Index = 0;
-	GLint MaxUnits = 0;
-	GetShaderStageIndexAndMaxUnits(ShaderRHI, Index, MaxUnits);
-
-	ensureMsgf((int32)TextureIndex < MaxUnits, TEXT("Using more texture units (%d) than allowed (%d) on Frequency %d!"), TextureIndex, MaxUnits, (int32)ShaderRHI->GetFrequency());
+	ensureMsgf((int32)TextureIndex < FOpenGL::GetMaxVertexTextureImageUnits(), TEXT("Using more vertex texture units (%d) than allowed (%d)!"), TextureIndex, FOpenGL::GetMaxVertexTextureImageUnits());
 	if (NewTexture)
 	{
-		InternalSetShaderTexture(NewTexture, nullptr, Index + TextureIndex, NewTexture->Target, NewTexture->Resource, NewTextureRHI->GetNumMips(), -1);
+		InternalSetShaderTexture(NewTexture, nullptr, FOpenGL::GetFirstVertexTextureUnit() + TextureIndex, NewTexture->Target, NewTexture->Resource, NewTextureRHI->GetNumMips(), -1);
 	}
 	else
 	{
-		InternalSetShaderTexture(nullptr, nullptr, Index + TextureIndex, 0, 0, 0, -1);
+		InternalSetShaderTexture(nullptr, nullptr, FOpenGL::GetFirstVertexTextureUnit() + TextureIndex, 0, 0, 0, -1);
 	}
 }
 
-void FOpenGLDynamicRHI::RHISetShaderSampler(FRHIGraphicsShader* ShaderRHI,uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
+void FOpenGLDynamicRHI::RHISetShaderTexture(FRHIHullShader* HullShaderRHI,uint32 TextureIndex, FRHITexture* NewTextureRHI)
 {
+	VALIDATE_BOUND_SHADER(HullShaderRHI);
+	
+	check(GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5);
+	VERIFY_GL_SCOPE();
+	FOpenGLTextureBase* NewTexture = GetOpenGLTextureFromRHITexture(NewTextureRHI);
+	ensureMsgf((int32)TextureIndex < FOpenGL::GetMaxHullTextureImageUnits(), TEXT("Using more hull texture units (%d) than allowed (%d)!"), TextureIndex, FOpenGL::GetMaxHullTextureImageUnits());
+	if (NewTexture)
+	{
+		InternalSetShaderTexture(NewTexture, nullptr, FOpenGL::GetFirstHullTextureUnit() + TextureIndex, NewTexture->Target, NewTexture->Resource, NewTextureRHI->GetNumMips(), -1);
+	}
+	else
+	{
+		InternalSetShaderTexture(nullptr, nullptr, FOpenGL::GetFirstHullTextureUnit() + TextureIndex, 0, 0, 0, -1);
+	}
+}
+
+void FOpenGLDynamicRHI::RHISetShaderTexture(FRHIDomainShader* DomainShaderRHI,uint32 TextureIndex, FRHITexture* NewTextureRHI)
+{
+	VALIDATE_BOUND_SHADER(DomainShaderRHI);
+
+	check(GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5);
+	VERIFY_GL_SCOPE();
+	FOpenGLTextureBase* NewTexture = GetOpenGLTextureFromRHITexture(NewTextureRHI);
+	ensureMsgf((int32)TextureIndex < FOpenGL::GetMaxDomainTextureImageUnits(), TEXT("Using more domain texture units (%d) than allowed (%d)!"), TextureIndex, FOpenGL::GetMaxDomainTextureImageUnits());
+	if (NewTexture)
+	{
+		InternalSetShaderTexture(NewTexture, nullptr, FOpenGL::GetFirstDomainTextureUnit() + TextureIndex, NewTexture->Target, NewTexture->Resource, NewTextureRHI->GetNumMips(), -1);
+	}
+	else
+	{
+		InternalSetShaderTexture(nullptr, nullptr, FOpenGL::GetFirstDomainTextureUnit() + TextureIndex, 0, 0, 0, -1);
+	}
+}
+
+void FOpenGLDynamicRHI::RHISetShaderTexture(FRHIGeometryShader* GeometryShaderRHI,uint32 TextureIndex, FRHITexture* NewTextureRHI)
+{
+	VALIDATE_BOUND_SHADER(GeometryShaderRHI);
+
+	VERIFY_GL_SCOPE();
+	FOpenGLTextureBase* NewTexture = GetOpenGLTextureFromRHITexture(NewTextureRHI);
+	ensureMsgf((int32)TextureIndex < FOpenGL::GetMaxGeometryTextureImageUnits(), TEXT("Using more geometry texture units (%d) than allowed (%d)!"), TextureIndex, FOpenGL::GetMaxGeometryTextureImageUnits());
+	if (NewTexture)
+	{
+		InternalSetShaderTexture(NewTexture, nullptr, FOpenGL::GetFirstGeometryTextureUnit() + TextureIndex, NewTexture->Target, NewTexture->Resource, NewTextureRHI->GetNumMips(), -1);
+	}
+	else
+	{
+		InternalSetShaderTexture(nullptr, nullptr, FOpenGL::GetFirstGeometryTextureUnit() + TextureIndex, 0, 0, 0, -1);
+	}
+}
+
+void FOpenGLDynamicRHI::RHISetShaderTexture(FRHIPixelShader* PixelShaderRHI,uint32 TextureIndex, FRHITexture* NewTextureRHI)
+{
+	VALIDATE_BOUND_SHADER(PixelShaderRHI);
+
+	VERIFY_GL_SCOPE();
+	FOpenGLTextureBase* NewTexture = GetOpenGLTextureFromRHITexture(NewTextureRHI);
+	ensureMsgf((int32)TextureIndex < FOpenGL::GetMaxTextureImageUnits(), TEXT("Using more pixel texture units (%d) than allowed (%d)!"), TextureIndex, FOpenGL::GetMaxTextureImageUnits());
+	if (NewTexture)
+	{
+		InternalSetShaderTexture(NewTexture, nullptr, FOpenGL::GetFirstPixelTextureUnit() + TextureIndex, NewTexture->Target, NewTexture->Resource, NewTextureRHI->GetNumMips(), -1);
+	}
+	else
+	{
+		InternalSetShaderTexture(nullptr, nullptr, FOpenGL::GetFirstPixelTextureUnit() + TextureIndex, 0, 0, 0, -1);
+	}
+}
+
+void FOpenGLDynamicRHI::RHISetShaderSampler(FRHIVertexShader* VertexShaderRHI,uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
+{
+	VALIDATE_BOUND_SHADER(VertexShaderRHI);
+
 	VERIFY_GL_SCOPE();
 	FOpenGLSamplerState* NewState = ResourceCast(NewStateRHI);
+	InternalSetSamplerStates(FOpenGL::GetFirstVertexTextureUnit() + SamplerIndex, NewState);
+}
 
-	GLint Index = 0;
-	GLint MaxUnits = 0;
-	GetShaderStageIndexAndMaxUnits(ShaderRHI, Index, MaxUnits);
+void FOpenGLDynamicRHI::RHISetShaderSampler(FRHIHullShader* HullShaderRHI,uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
+{
+	VALIDATE_BOUND_SHADER(HullShaderRHI);
 
-	InternalSetSamplerStates(Index + SamplerIndex, NewState);
+	check(GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5);
+	VERIFY_GL_SCOPE();
+	FOpenGLSamplerState* NewState = ResourceCast(NewStateRHI);
+	InternalSetSamplerStates(FOpenGL::GetFirstHullTextureUnit() + SamplerIndex, NewState);
+}
+void FOpenGLDynamicRHI::RHISetShaderSampler(FRHIDomainShader* DomainShaderRHI,uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
+{
+	VALIDATE_BOUND_SHADER(DomainShaderRHI);
+
+	check(GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5);
+	VERIFY_GL_SCOPE();
+	FOpenGLSamplerState* NewState = ResourceCast(NewStateRHI);
+	InternalSetSamplerStates(FOpenGL::GetFirstDomainTextureUnit() + SamplerIndex, NewState);
+}
+
+void FOpenGLDynamicRHI::RHISetShaderSampler(FRHIGeometryShader* GeometryShaderRHI,uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
+{
+	VALIDATE_BOUND_SHADER(GeometryShaderRHI);
+
+	VERIFY_GL_SCOPE();
+	FOpenGLSamplerState* NewState = ResourceCast(NewStateRHI);
+	InternalSetSamplerStates(FOpenGL::GetFirstGeometryTextureUnit() + SamplerIndex, NewState);
 }
 
 void FOpenGLDynamicRHI::RHISetShaderTexture(FRHIComputeShader* ComputeShaderRHI,uint32 TextureIndex, FRHITexture* NewTextureRHI)
@@ -1103,26 +1123,51 @@ void FOpenGLDynamicRHI::RHISetShaderTexture(FRHIComputeShader* ComputeShaderRHI,
 	}
 }
 
-void FOpenGLDynamicRHI::RHISetGlobalUniformBuffers(const FUniformBufferStaticBindings& InUniformBuffers)
+void FOpenGLDynamicRHI::RHISetShaderSampler(FRHIPixelShader* PixelShaderRHI,uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
 {
-	FMemory::Memzero(GlobalUniformBuffers.GetData(), GlobalUniformBuffers.Num() * sizeof(FRHIUniformBuffer*));
+	VALIDATE_BOUND_SHADER(PixelShaderRHI);
 
-	for (int32 Index = 0; Index < InUniformBuffers.GetUniformBufferCount(); ++Index)
-	{
-		GlobalUniformBuffers[InUniformBuffers.GetSlot(Index)] = InUniformBuffers.GetUniformBuffer(Index);
-	}
+	VERIFY_GL_SCOPE();
+	FOpenGLSamplerState* NewState = ResourceCast(NewStateRHI);
+	InternalSetSamplerStates(FOpenGL::GetFirstPixelTextureUnit() + SamplerIndex, NewState);
 }
 
-void FOpenGLDynamicRHI::RHISetShaderUniformBuffer(FRHIGraphicsShader* ShaderRHI,uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
+void FOpenGLDynamicRHI::RHISetShaderUniformBuffer(FRHIVertexShader* VertexShaderRHI,uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
 {
+	VALIDATE_BOUND_SHADER(VertexShaderRHI);
 	VERIFY_GL_SCOPE();
-	EShaderFrequency Stage = GetShaderFrequency(ShaderRHI);
-	if (Stage != SF_NumFrequencies)
-	{
-		PendingState.BoundUniformBuffers[Stage][BufferIndex] = BufferRHI;
-		PendingState.DirtyUniformBuffers[Stage] |= 1 << BufferIndex;
-		PendingState.bAnyDirtyGraphicsUniformBuffers = true;
-	}
+	PendingState.BoundUniformBuffers[SF_Vertex][BufferIndex] = BufferRHI;
+	PendingState.DirtyUniformBuffers[SF_Vertex] |= 1 << BufferIndex;
+	PendingState.bAnyDirtyGraphicsUniformBuffers = true;
+}
+
+void FOpenGLDynamicRHI::RHISetShaderUniformBuffer(FRHIHullShader* HullShaderRHI,uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
+{
+	VALIDATE_BOUND_SHADER(HullShaderRHI);
+	VERIFY_GL_SCOPE();
+	check(GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5);
+	PendingState.BoundUniformBuffers[SF_Hull][BufferIndex] = BufferRHI;
+	PendingState.DirtyUniformBuffers[SF_Hull] |= 1 << BufferIndex;
+	PendingState.bAnyDirtyGraphicsUniformBuffers = true;
+}
+
+void FOpenGLDynamicRHI::RHISetShaderUniformBuffer(FRHIDomainShader* DomainShaderRHI,uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
+{
+	VALIDATE_BOUND_SHADER(DomainShaderRHI);
+	VERIFY_GL_SCOPE();
+	check(GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5);
+	PendingState.BoundUniformBuffers[SF_Domain][BufferIndex] = BufferRHI;
+	PendingState.DirtyUniformBuffers[SF_Domain] |= 1 << BufferIndex;
+	PendingState.bAnyDirtyGraphicsUniformBuffers = true;
+}
+
+void FOpenGLDynamicRHI::RHISetShaderUniformBuffer(FRHIGeometryShader* GeometryShaderRHI,uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
+{
+	VALIDATE_BOUND_SHADER(GeometryShaderRHI);
+	VERIFY_GL_SCOPE();
+	PendingState.BoundUniformBuffers[SF_Geometry][BufferIndex] = BufferRHI;
+	PendingState.DirtyUniformBuffers[SF_Geometry] |= 1 << BufferIndex;
+	PendingState.bAnyDirtyGraphicsUniformBuffers = true;
 }
 
 void FOpenGLDynamicRHI::RHISetShaderSampler(FRHIComputeShader* ComputeShaderRHI,uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
@@ -1133,6 +1178,15 @@ void FOpenGLDynamicRHI::RHISetShaderSampler(FRHIComputeShader* ComputeShaderRHI,
 	InternalSetSamplerStates(FOpenGL::GetFirstComputeTextureUnit() + SamplerIndex, NewState);
 }
 
+void FOpenGLDynamicRHI::RHISetShaderUniformBuffer(FRHIPixelShader* PixelShaderRHI,uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
+{
+	VERIFY_GL_SCOPE();
+	VALIDATE_BOUND_SHADER(PixelShaderRHI);
+	PendingState.BoundUniformBuffers[SF_Pixel][BufferIndex] = BufferRHI;
+	PendingState.DirtyUniformBuffers[SF_Pixel] |= 1 << BufferIndex;
+	PendingState.bAnyDirtyGraphicsUniformBuffers = true;
+}
+
 void FOpenGLDynamicRHI::RHISetShaderUniformBuffer(FRHIComputeShader* ComputeShaderRHI,uint32 BufferIndex, FRHIUniformBuffer* BufferRHI)
 {
 	VERIFY_GL_SCOPE();
@@ -1141,15 +1195,51 @@ void FOpenGLDynamicRHI::RHISetShaderUniformBuffer(FRHIComputeShader* ComputeShad
 	PendingState.DirtyUniformBuffers[SF_Compute] |= 1 << BufferIndex;
 }
 
-void FOpenGLDynamicRHI::RHISetShaderParameter(FRHIGraphicsShader* ShaderRHI,uint32 BufferIndex,uint32 BaseIndex,uint32 NumBytes,const void* NewValue)
+void FOpenGLDynamicRHI::RHISetShaderParameter(FRHIVertexShader* VertexShaderRHI,uint32 BufferIndex,uint32 BaseIndex,uint32 NumBytes,const void* NewValue)
 {
+	VALIDATE_BOUND_SHADER(VertexShaderRHI);
+
 	VERIFY_GL_SCOPE();
-	CrossCompiler::EShaderStage Stage = GetShaderCrossCompilerStage(ShaderRHI);
-	if (Stage != CrossCompiler::NUM_SHADER_STAGES)
-	{
-		PendingState.ShaderParameters[Stage].Set(BufferIndex, BaseIndex, NumBytes, NewValue);
-		PendingState.LinkedProgramAndDirtyFlag = nullptr;
-	}
+	PendingState.ShaderParameters[CrossCompiler::SHADER_STAGE_VERTEX].Set(BufferIndex, BaseIndex, NumBytes, NewValue);
+	PendingState.LinkedProgramAndDirtyFlag = nullptr;
+}
+
+void FOpenGLDynamicRHI::RHISetShaderParameter(FRHIPixelShader* PixelShaderRHI,uint32 BufferIndex,uint32 BaseIndex,uint32 NumBytes,const void* NewValue)
+{
+	VALIDATE_BOUND_SHADER(PixelShaderRHI);
+
+	VERIFY_GL_SCOPE();
+	PendingState.ShaderParameters[CrossCompiler::SHADER_STAGE_PIXEL].Set(BufferIndex, BaseIndex, NumBytes, NewValue);
+	PendingState.LinkedProgramAndDirtyFlag = nullptr;
+}
+
+void FOpenGLDynamicRHI::RHISetShaderParameter(FRHIHullShader* HullShaderRHI,uint32 BufferIndex,uint32 BaseIndex,uint32 NumBytes,const void* NewValue)
+{
+	VALIDATE_BOUND_SHADER(HullShaderRHI);
+
+	check(GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5);
+	VERIFY_GL_SCOPE();
+	PendingState.ShaderParameters[CrossCompiler::SHADER_STAGE_HULL].Set(BufferIndex, BaseIndex, NumBytes, NewValue);
+	PendingState.LinkedProgramAndDirtyFlag = nullptr;
+}
+
+void FOpenGLDynamicRHI::RHISetShaderParameter(FRHIDomainShader* DomainShaderRHI,uint32 BufferIndex,uint32 BaseIndex,uint32 NumBytes,const void* NewValue)
+{
+	VALIDATE_BOUND_SHADER(DomainShaderRHI);
+
+	check(GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5);
+	VERIFY_GL_SCOPE();
+	PendingState.ShaderParameters[CrossCompiler::SHADER_STAGE_DOMAIN].Set(BufferIndex, BaseIndex, NumBytes, NewValue);
+	PendingState.LinkedProgramAndDirtyFlag = nullptr;
+}
+
+void FOpenGLDynamicRHI::RHISetShaderParameter(FRHIGeometryShader* GeometryShaderRHI,uint32 BufferIndex,uint32 BaseIndex,uint32 NumBytes,const void* NewValue)
+{
+	VALIDATE_BOUND_SHADER(GeometryShaderRHI);
+
+	VERIFY_GL_SCOPE();
+	PendingState.ShaderParameters[CrossCompiler::SHADER_STAGE_GEOMETRY].Set(BufferIndex, BaseIndex, NumBytes, NewValue);
+	PendingState.LinkedProgramAndDirtyFlag = nullptr;
 }
 
 void FOpenGLDynamicRHI::RHISetShaderParameter(FRHIComputeShader* ComputeShaderRHI,uint32 BufferIndex,uint32 BaseIndex,uint32 NumBytes,const void* NewValue)
@@ -1316,7 +1406,6 @@ void FOpenGLDynamicRHI::SetPendingBlendStateForActiveRenderTargets( FOpenGLConte
 	VERIFY_GL_SCOPE();
 
 	bool bABlendWasSet = false;
-	bool bMSAAEnabled = false;
 
 	//
 	// Need to expand setting for glBlendFunction and glBlendEquation
@@ -1329,11 +1418,6 @@ void FOpenGLDynamicRHI::SetPendingBlendStateForActiveRenderTargets( FOpenGLConte
 		{
 			// Even if on this stage blend states are incompatible with other stages, we can disregard it, as no render target is assigned to it.
 			continue;
-		}
-		else if (RenderTargetIndex == 0)
-		{
-			FOpenGLTexture2D* RenderTarget2D = (FOpenGLTexture2D*)PendingState.RenderTargets[RenderTargetIndex];
-			bMSAAEnabled = RenderTarget2D->GetNumSamples() > 1 || RenderTarget2D->GetNumSamplesTileMem() > 1;
 		}
 
 		const FOpenGLBlendStateData::FRenderTarget& RenderTargetBlendState = PendingState.BlendState.RenderTargets[RenderTargetIndex];
@@ -1385,8 +1469,8 @@ void FOpenGLDynamicRHI::SetPendingBlendStateForActiveRenderTargets( FOpenGLConte
 				{
 					if (CachedRenderTargetBlendState.ColorSourceBlendFactor != RenderTargetBlendState.ColorSourceBlendFactor
 						|| CachedRenderTargetBlendState.ColorDestBlendFactor != RenderTargetBlendState.ColorDestBlendFactor
-						|| CachedRenderTargetBlendState.AlphaSourceBlendFactor != RenderTargetBlendState.AlphaSourceBlendFactor
-						|| CachedRenderTargetBlendState.AlphaDestBlendFactor != RenderTargetBlendState.AlphaDestBlendFactor)
+						|| CachedRenderTargetBlendState.AlphaSourceBlendFactor != RenderTargetBlendState.ColorSourceBlendFactor
+						|| CachedRenderTargetBlendState.AlphaDestBlendFactor != RenderTargetBlendState.ColorDestBlendFactor)
 					{
 						FOpenGL::BlendFunci(RenderTargetIndex, RenderTargetBlendState.ColorSourceBlendFactor, RenderTargetBlendState.ColorDestBlendFactor);
 					}
@@ -1458,8 +1542,8 @@ void FOpenGLDynamicRHI::SetPendingBlendStateForActiveRenderTargets( FOpenGLConte
 					{
 						if (CachedRenderTargetBlendState.ColorSourceBlendFactor != RenderTargetBlendState.ColorSourceBlendFactor
 							|| CachedRenderTargetBlendState.ColorDestBlendFactor != RenderTargetBlendState.ColorDestBlendFactor
-							|| CachedRenderTargetBlendState.AlphaSourceBlendFactor != RenderTargetBlendState.AlphaSourceBlendFactor
-							|| CachedRenderTargetBlendState.AlphaDestBlendFactor != RenderTargetBlendState.AlphaDestBlendFactor)
+							|| CachedRenderTargetBlendState.AlphaSourceBlendFactor != RenderTargetBlendState.ColorSourceBlendFactor
+							|| CachedRenderTargetBlendState.AlphaDestBlendFactor != RenderTargetBlendState.ColorDestBlendFactor)
 						{
 							glBlendFunc(RenderTargetBlendState.ColorSourceBlendFactor, RenderTargetBlendState.ColorDestBlendFactor);
 						}
@@ -1521,21 +1605,6 @@ void FOpenGLDynamicRHI::SetPendingBlendStateForActiveRenderTargets( FOpenGLConte
 			CachedRenderTargetBlendState.ColorWriteMaskA = RenderTargetBlendState.ColorWriteMaskA;
 		}
 	}
-
-	PendingState.bAlphaToCoverageEnabled = bMSAAEnabled && PendingState.BlendState.bUseAlphaToCoverage;
-	if (PendingState.bAlphaToCoverageEnabled != ContextState.bAlphaToCoverageEnabled)
-	{
-		if (PendingState.bAlphaToCoverageEnabled)
-		{
-			glEnable(GL_SAMPLE_ALPHA_TO_COVERAGE);
-		}
-		else
-		{
-			glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE);
-		}
-
-		ContextState.bAlphaToCoverageEnabled = PendingState.bAlphaToCoverageEnabled;
-	}
 }
 
 void FOpenGLDynamicRHI::RHISetBlendState(FRHIBlendState* NewStateRHI,const FLinearColor& BlendFactor)
@@ -1545,13 +1614,17 @@ void FOpenGLDynamicRHI::RHISetBlendState(FRHIBlendState* NewStateRHI,const FLine
 	FMemory::Memcpy(&PendingState.BlendState,&(NewState->Data),sizeof(FOpenGLBlendStateData));
 }
 
-void FOpenGLDynamicRHI::SetRenderTargets(
+void FOpenGLDynamicRHI::RHISetRenderTargets(
 	uint32 NumSimultaneousRenderTargets,
 	const FRHIRenderTargetView* NewRenderTargetsRHI,
-	const FRHIDepthRenderTargetView* NewDepthStencilTargetRHI)
+	const FRHIDepthRenderTargetView* NewDepthStencilTargetRHI,
+	uint32 NumUAVs,
+	FRHIUnorderedAccessView* const* UAVs
+	)
 {
 	VERIFY_GL_SCOPE();
 	check(NumSimultaneousRenderTargets <= MaxSimultaneousRenderTargets);
+	check(NumUAVs == 0);
 
 	FMemory::Memset(PendingState.RenderTargets,0,sizeof(PendingState.RenderTargets));
 	FMemory::Memset(PendingState.RenderTargetMipmapLevels,0,sizeof(PendingState.RenderTargetMipmapLevels));
@@ -1571,6 +1644,43 @@ void FOpenGLDynamicRHI::SetRenderTargets(
 	}
 
 	FOpenGLTextureBase* NewDepthStencilRT = GetOpenGLTextureFromRHITexture(NewDepthStencilTargetRHI ? NewDepthStencilTargetRHI->Texture : nullptr);
+
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	if (IsES2Platform(GMaxRHIShaderPlatform) && !IsPCPlatform(GMaxRHIShaderPlatform))
+	{
+		// @todo-mobile
+
+		FOpenGLContextState& ContextState = GetContextStateForCurrentContext();
+		GLuint NewColorRTResource = PendingState.RenderTargets[0] ? PendingState.RenderTargets[0]->Resource : 0;
+		GLenum NewColorTargetType = PendingState.RenderTargets[0] ? PendingState.RenderTargets[0]->Target : 0;
+		// If the color buffer did not change and we are disabling depth, do not switch depth and assume
+		// the high level will disable depth test/write (so we can avoid a logical buffer store);
+		// if both are set to nothing, then it's an endframe so we don't want to switch either...
+		if (NewDepthStencilRT == NULL && PendingState.DepthStencil != NULL)
+		{
+			const bool bColorBufferUnchanged = ContextState.LastES2ColorRTResource == NewColorRTResource && ContextState.LastES2ColorTargetType == NewColorTargetType;
+#if PLATFORM_ANDROID && !PLATFORM_LUMINGL4
+			//color RT being 0 means backbuffer is being used. Hence taking only comparison with previous RT into consideration. Fixes black screen issue.
+			if (bColorBufferUnchanged)
+#else
+			if (NewColorRTResource == 0 || bColorBufferUnchanged)
+#endif
+			{
+				return;
+			}
+			else
+			{
+				ContextState.LastES2ColorRTResource = NewColorRTResource;
+				ContextState.LastES2ColorTargetType = NewColorTargetType;
+			}
+		}
+		else
+		{
+				ContextState.LastES2ColorRTResource = NewColorRTResource;
+				ContextState.LastES2ColorTargetType = NewColorTargetType;
+		}
+	}
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	
 	PendingState.DepthStencil = NewDepthStencilRT;
 	PendingState.StencilStoreAction = NewDepthStencilTargetRHI ? NewDepthStencilTargetRHI->GetStencilStoreAction() : ERenderTargetStoreAction::ENoAction;
@@ -1701,78 +1811,44 @@ void FOpenGLDynamicRHI::RHIDiscardRenderTargets(bool Depth, bool Stencil, uint32
 			}
 		}
 
-		FOpenGL::InvalidateFramebuffer(GL_FRAMEBUFFER, I, Attachments);
+		FOpenGL::DiscardFramebufferEXT(GL_FRAMEBUFFER, I, Attachments);
 	}
 }
 
-void FOpenGLDynamicRHI::SetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo)
+void FOpenGLDynamicRHI::RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo)
 {
 	VERIFY_GL_SCOPE();
-	this->SetRenderTargets(RenderTargetsInfo.NumColorRenderTargets,
+	this->RHISetRenderTargets(RenderTargetsInfo.NumColorRenderTargets,
 		RenderTargetsInfo.ColorRenderTarget,
-		&RenderTargetsInfo.DepthStencilRenderTarget);
-
-	/**
-	 * Convert all load action from NoAction to Clear for tiled GPU on OpenGL platform to avoid an unnecessary load action.
-	 */
-
-	bool bIsTiledGPU = RHIHasTiledGPU(GetFeatureLevelShaderPlatform(FOpenGL::GetFeatureLevel()));
-
-	bool bClearColor = RenderTargetsInfo.bClearColor;
-	bool bClearStencil = RenderTargetsInfo.bClearStencil;
-	bool bClearDepth = RenderTargetsInfo.bClearDepth;
-
-	FLinearColor ClearColors[MaxSimultaneousRenderTargets];
-	float DepthClear = 0.0;
-	uint32 StencilClear = 0;
-
-	for (int32 i = 0; i < RenderTargetsInfo.NumColorRenderTargets; ++i)
+		&RenderTargetsInfo.DepthStencilRenderTarget,
+		0,
+		nullptr);
+	if (RenderTargetsInfo.bClearColor || RenderTargetsInfo.bClearStencil || RenderTargetsInfo.bClearDepth)
 	{
-		if (RenderTargetsInfo.ColorRenderTarget[i].Texture != nullptr)
+		FLinearColor ClearColors[MaxSimultaneousRenderTargets];
+		float DepthClear = 0.0;
+		uint32 StencilClear = 0;
+
+		if (RenderTargetsInfo.bClearColor)
 		{
-			const FClearValueBinding& ClearValue = RenderTargetsInfo.ColorRenderTarget[i].Texture->GetClearBinding();
-
-			if (bIsTiledGPU)
+			for (int32 i = 0; i < RenderTargetsInfo.NumColorRenderTargets; ++i)
 			{
-				bClearColor |= RenderTargetsInfo.ColorRenderTarget[i].LoadAction == ERenderTargetLoadAction::ENoAction;
-
-				ClearColors[i] = ClearValue.ColorBinding == EClearBinding::EColorBound ? ClearValue.GetClearColor() : FLinearColor::Black;
-			}
-			else if(bClearColor)
-			{
-				checkf(ClearValue.ColorBinding == EClearBinding::EColorBound, TEXT("Texture: %s does not have a color bound for fast clears"), *RenderTargetsInfo.ColorRenderTarget[i].Texture->GetName().GetPlainNameString());
-
-				ClearColors[i] = ClearValue.GetClearColor();
+				if (RenderTargetsInfo.ColorRenderTarget[i].Texture != nullptr)
+				{
+					const FClearValueBinding& ClearValue = RenderTargetsInfo.ColorRenderTarget[i].Texture->GetClearBinding();
+					checkf(ClearValue.ColorBinding == EClearBinding::EColorBound, TEXT("Texture: %s does not have a color bound for fast clears"), *RenderTargetsInfo.ColorRenderTarget[i].Texture->GetName().GetPlainNameString());
+					ClearColors[i] = ClearValue.GetClearColor();
+				}
 			}
 		}
-	}
-
-	if (RenderTargetsInfo.DepthStencilRenderTarget.Texture != nullptr)
-	{
-		const FClearValueBinding& ClearValue = RenderTargetsInfo.DepthStencilRenderTarget.Texture->GetClearBinding();
-
-		if (bIsTiledGPU)
+		if (RenderTargetsInfo.bClearDepth || RenderTargetsInfo.bClearStencil)
 		{
-			bClearStencil |= RenderTargetsInfo.DepthStencilRenderTarget.StencilLoadAction == ERenderTargetLoadAction::ENoAction;
-
-			bClearDepth |= RenderTargetsInfo.DepthStencilRenderTarget.DepthLoadAction == ERenderTargetLoadAction::ENoAction;
-
-			if (ClearValue.ColorBinding == EClearBinding::EDepthStencilBound)
-			{
-				ClearValue.GetDepthStencil(DepthClear, StencilClear);
-			}
-		}
-		else if (bClearDepth || bClearStencil)
-		{
+			const FClearValueBinding& ClearValue = RenderTargetsInfo.DepthStencilRenderTarget.Texture->GetClearBinding();
 			checkf(ClearValue.ColorBinding == EClearBinding::EDepthStencilBound, TEXT("Texture: %s does not have a DS value bound for fast clears"), *RenderTargetsInfo.DepthStencilRenderTarget.Texture->GetName().GetPlainNameString());
-
 			ClearValue.GetDepthStencil(DepthClear, StencilClear);
 		}
-	}
 
-	if (bClearColor || bClearStencil || bClearDepth)
-	{
-		this->RHIClearMRT(bClearColor, RenderTargetsInfo.NumColorRenderTargets, ClearColors, bClearDepth, DepthClear, bClearStencil, StencilClear);
+		this->RHIClearMRT(RenderTargetsInfo.bClearColor, RenderTargetsInfo.NumColorRenderTargets, ClearColors, RenderTargetsInfo.bClearDepth, DepthClear, RenderTargetsInfo.bClearStencil, StencilClear);
 	}
 }
 
@@ -1886,7 +1962,9 @@ void FOpenGLDynamicRHI::SetupVertexArrays(FOpenGLContextState& ContextState, uin
 			continue; // skip unused attributes.
 		}
 
-		if (VertexElement.StreamIndex < NumStreams)
+		AttributeIndex = RemapVertexAttrib(Bindings, AttributeIndex);
+
+		if ( VertexElement.StreamIndex < NumStreams)
 		{
 			FOpenGLStream* Stream = &Streams[VertexElement.StreamIndex];
 			uint32 Stride = Stream->Stride;
@@ -1957,15 +2035,21 @@ void FOpenGLDynamicRHI::SetupVertexArraysVAB(FOpenGLContextState& ContextState, 
 	VERIFY_GL_SCOPE();
 	bool KnowsDivisor[NUM_OPENGL_VERTEX_STREAMS] = { 0 };
 	uint32 Divisor[NUM_OPENGL_VERTEX_STREAMS] = { 0 };
+	uint32 LastMaxAttrib = ContextState.MaxActiveAttrib;
 	bool UpdateDivisors = false;
 	uint32 StreamMask = ContextState.ActiveStreamMask;
 
 	check(IsValidRef(PendingState.BoundShaderState));
 	FOpenGLVertexDeclaration* VertexDeclaration = PendingState.BoundShaderState->VertexDeclaration;
 	uint32 AttributeMask = PendingState.BoundShaderState->GetVertexShader()->Bindings.InOutMask;
-
-	if (ContextState.VertexDecl != VertexDeclaration || AttributeMask != ContextState.VertexAttrs_EnabledBits)
+	if (FOpenGL::NeedsVertexAttribRemapTable())
 	{
+		AttributeMask = PendingState.BoundShaderState->GetVertexShader()->Bindings.VertexRemappedMask;
+	}
+
+	if (ContextState.VertexDecl != VertexDeclaration || AttributeMask != ContextState.ActiveAttribMask)
+	{
+		ContextState.MaxActiveAttrib = 0;
 		StreamMask = 0;
 		UpdateDivisors = true;
 
@@ -1975,8 +2059,15 @@ void FOpenGLDynamicRHI::SetupVertexArraysVAB(FOpenGLContextState& ContextState, 
 		{
 			FOpenGLVertexElement& VertexElement = VertexDeclaration->VertexElements[ElementIndex];
 			uint32 AttributeIndex = VertexElement.AttributeIndex;
-			const bool bAttribInUse = (AttributeMask & (0x1 << AttributeIndex)) != 0;
+			const bool bAttribInUse = (PendingState.BoundShaderState->GetVertexShader()->Bindings.InOutMask & (0x1 << AttributeIndex)) != 0;
+			if (bAttribInUse)
+			{
+				AttributeIndex = RemapVertexAttrib(AttributeIndex);
+			}
+
 			const uint32 StreamIndex = VertexElement.StreamIndex;
+
+			ContextState.MaxActiveAttrib = FMath::Max( ContextState.MaxActiveAttrib, AttributeIndex);
 
 			//only setup/track attributes actually in use
 			FOpenGLCachedAttr &Attr = ContextState.VertexAttrs[AttributeIndex];
@@ -1984,6 +2075,7 @@ void FOpenGLDynamicRHI::SetupVertexArraysVAB(FOpenGLContextState& ContextState, 
 			{
 				if (VertexElement.StreamIndex < NumStreams)
 				{
+
 					// Track the actively used streams, to limit the updates to those in use
 					StreamMask |= 0x1 << VertexElement.StreamIndex;
 
@@ -1992,7 +2084,8 @@ void FOpenGLDynamicRHI::SetupVertexArraysVAB(FOpenGLContextState& ContextState, 
 					KnowsDivisor[StreamIndex] = true;
 					Divisor[StreamIndex] = VertexElement.Divisor;
 
-					if ((Attr.StreamOffset != VertexElement.Offset) ||
+					if (
+						(Attr.StreamOffset != VertexElement.Offset) ||
 						(Attr.Size != VertexElement.Size) ||
 						(Attr.Type != VertexElement.Type) ||
 						(Attr.bNormalized != VertexElement.bNormalized))
@@ -2017,25 +2110,16 @@ void FOpenGLDynamicRHI::SetupVertexArraysVAB(FOpenGLContextState& ContextState, 
 						FOpenGL::VertexAttribBinding(AttributeIndex, VertexElement.StreamIndex);
 						Attr.StreamIndex = StreamIndex;
 					}
-
-					if (!ContextState.GetVertexAttrEnabled(AttributeIndex))
-					{
-						ContextState.SetVertexAttrEnabled(AttributeIndex, true);
-						glEnableVertexAttribArray(AttributeIndex);
-					}
 				}
 				else
 				{
-					//workaround attributes with no streams
-					VERIFY_GL_SCOPE();
-
-					if (ContextState.GetVertexAttrEnabled(AttributeIndex))
-					{		
-						ContextState.SetVertexAttrEnabled(AttributeIndex, false);
-						glDisableVertexAttribArray(AttributeIndex);
-					}
+					// bogus stream, make sure current value is zero to match D3D
 					static float data[4] = { 0.0f };
+
 					glVertexAttrib4fv(AttributeIndex, data);
+
+					//Kill this attribute to make sure it isn't enabled
+					AttributeMask &= ~(1 << AttributeIndex);
 				}
 			}
 			else
@@ -2048,83 +2132,77 @@ void FOpenGLDynamicRHI::SetupVertexArraysVAB(FOpenGLContextState& ContextState, 
 			}
 		}
 		ContextState.VertexDecl = VertexDeclaration;
+
+		//Update the stream mask
+		ContextState.ActiveStreamMask = StreamMask;
 	}
 
-	// Disable remaining vertex arrays
-	uint32 NotUsedButEnabledAttrMask = (ContextState.VertexAttrs_EnabledBits & ~(AttributeMask));
-	for (GLuint AttribIndex = 0; AttribIndex < NUM_OPENGL_VERTEX_STREAMS && NotUsedButEnabledAttrMask; AttribIndex++)
+	//setup streams
+	for (uint32 StreamIndex = 0; StreamIndex < NumStreams; StreamIndex++, StreamMask >>= 1)
 	{
-		if (NotUsedButEnabledAttrMask & 1)
+		FOpenGLStream &CachedStream = ContextState.VertexStreams[StreamIndex];
+		FOpenGLStream &Stream = Streams[StreamIndex];
+		uint32 Offset = BaseVertexIndex * Stream.Stride + Stream.Offset;
+		if ((StreamMask & 0x1) != 0 && Stream.VertexBuffer)
 		{
-			glDisableVertexAttribArray(AttribIndex);
-			ContextState.SetVertexAttrEnabled(AttribIndex, false);
-		}
-		NotUsedButEnabledAttrMask >>= 1;
-	}
-
-	// Active streams that are no used by this draw
-	uint32 NotUsedButActiveStreamMask = (ContextState.ActiveStreamMask & ~(StreamMask));
-	
-	// Update the stream mask
-	ContextState.ActiveStreamMask = StreamMask;
-
-	// Enable used streams
-	for (uint32 StreamIndex = 0; StreamIndex < NumStreams && StreamMask; StreamIndex++)
-	{
-		if (StreamMask & 0x1)
-		{
-			FOpenGLStream &CachedStream = ContextState.VertexStreams[StreamIndex];
-			FOpenGLStream &Stream = Streams[StreamIndex];
-			if (Stream.VertexBuffer)
+			if ( CachedStream.VertexBuffer != Stream.VertexBuffer || CachedStream.Offset != Offset || CachedStream.Stride != Stream.Stride)
 			{
-				uint32 Offset = BaseVertexIndex * Stream.Stride + Stream.Offset;
-				bool bAnyDifferent = //bitwise ors to get rid of the branches
-					(CachedStream.VertexBuffer != Stream.VertexBuffer) |
-					(CachedStream.Stride != Stream.Stride)|
-					(CachedStream.Offset != Offset);
-
-				if (bAnyDifferent)
-				{
-					check(Stream.VertexBuffer->Resource != 0);
-					FOpenGL::BindVertexBuffer(StreamIndex, Stream.VertexBuffer->Resource, Offset, Stream.Stride);
-					CachedStream.VertexBuffer = Stream.VertexBuffer;
-					CachedStream.Offset = Offset;
-					CachedStream.Stride = Stream.Stride;
-				}
-				if (UpdateDivisors && CachedStream.Divisor != Divisor[StreamIndex])
-				{
-					FOpenGL::VertexBindingDivisor(StreamIndex, Divisor[StreamIndex]);
-					CachedStream.Divisor = Divisor[StreamIndex];
-				}
+				check(Stream.VertexBuffer->Resource != 0);
+				FOpenGL::BindVertexBuffer( StreamIndex, Stream.VertexBuffer->Resource, Offset, Stream.Stride);
+				CachedStream.VertexBuffer = Stream.VertexBuffer;
+				CachedStream.Offset = Offset;
+				CachedStream.Stride = Stream.Stride;
 			}
-			else
+			if (UpdateDivisors && CachedStream.Divisor != Divisor[StreamIndex])
+			{
+				FOpenGL::VertexBindingDivisor( StreamIndex, Divisor[StreamIndex]);
+				CachedStream.Divisor = Divisor[StreamIndex];
+			}
+		}
+		else
+		{
+			if (((StreamMask & 0x1) != 0) && (Stream.VertexBuffer == nullptr))
 			{
 				UE_LOG(LogRHI, Error, TEXT("Stream %d marked as in use, but vertex buffer provided is NULL (Mask = %x)"), StreamIndex, StreamMask);
-				
+			}
+			if (CachedStream.VertexBuffer != Stream.VertexBuffer || CachedStream.Offset != Offset || CachedStream.Stride != Stream.Stride)
+			{
 				FOpenGL::BindVertexBuffer(StreamIndex, 0, 0, 0);
 				CachedStream.VertexBuffer = nullptr;
 				CachedStream.Offset = 0;
 				CachedStream.Stride = 0;
 			}
 		}
-		StreamMask >>= 1;
 	}
+
 	//Ensure that all requested streams were set
 	check(StreamMask == 0);
 
-	// Disable active unused streams
-	for (uint32 StreamIndex = 0; StreamIndex < NUM_OPENGL_VERTEX_STREAMS && NotUsedButActiveStreamMask; StreamIndex++)
+	// Set the enable/disable state on the arrays
+	uint32 MaskDif = ContextState.ActiveAttribMask ^ AttributeMask;
+	if (MaskDif)
 	{
-		if (NotUsedButActiveStreamMask & 0x1)
+		ContextState.ActiveAttribMask = AttributeMask;
+		uint32 MaxAttrib = FMath::Max( ContextState.MaxActiveAttrib, LastMaxAttrib);
+	
+		for (GLuint AttribIndex = 0; AttribIndex < NUM_OPENGL_VERTEX_STREAMS && AttribIndex <= MaxAttrib && MaskDif; AttribIndex++)
 		{
-			FOpenGL::BindVertexBuffer(StreamIndex, 0, 0, 0);
-			ContextState.VertexStreams[StreamIndex].VertexBuffer = nullptr;
-			ContextState.VertexStreams[StreamIndex].Offset = 0;
-			ContextState.VertexStreams[StreamIndex].Stride = 0;
+			if ( MaskDif & 0x1)
+			{
+				if ( AttributeMask & 0x1)
+				{
+					glEnableVertexAttribArray(AttribIndex);
+				}
+				else
+				{
+					glDisableVertexAttribArray(AttribIndex);
+				}
+			}
+			AttributeMask >>= 1;
+			MaskDif >>= 1;
 		}
-		NotUsedButActiveStreamMask >>= 1;
+		check( MaskDif == 0);
 	}
-	check(NotUsedButActiveStreamMask == 0);
 }
 
 // Used by default on ES2 for immediate mode rendering.
@@ -2149,6 +2227,7 @@ void FOpenGLDynamicRHI::SetupVertexArraysUP(FOpenGLContextState& ContextState, v
 		const bool bAttribInUse = (Bindings.InOutMask & (0x1 << AttributeIndex)) != 0;
 		if (bAttribInUse)
 		{
+			AttributeIndex = RemapVertexAttrib(Bindings, AttributeIndex);
 			check(Stride > 0);
 			EnableVertexElementCached(
 				ContextState,
@@ -2202,58 +2281,31 @@ void FOpenGLDynamicRHI::OnVertexBufferDeletion( GLuint VertexBufferResource )
 		RenderingContextState.ArrayBufferBound = -1;	// will force refresh
 	}
 
-	if (FOpenGL::SupportsVertexAttribBinding() && OpenGLConsoleVariables::bUseVAB)
+	for (GLuint AttribIndex = 0; AttribIndex < NUM_OPENGL_VERTEX_STREAMS; AttribIndex++)
 	{
-		// loop through active streams
-		uint32 ActiveStreamMask = SharedContextState.ActiveStreamMask;
-		for (GLuint StreamIndex = 0; StreamIndex < NUM_OPENGL_VERTEX_STREAMS && ActiveStreamMask; StreamIndex++)
+		if( SharedContextState.VertexAttrs[AttribIndex].Buffer == VertexBufferResource )
 		{
-			FOpenGLStream& CachedStream = SharedContextState.VertexStreams[StreamIndex];
-			if ((ActiveStreamMask & 0x1) && 
-				CachedStream.VertexBuffer && 
-				CachedStream.VertexBuffer->Resource == VertexBufferResource)
-			{
-				FOpenGL::BindVertexBuffer(StreamIndex, 0, 0, 0); // brianh@nvidia: work around driver bug 1809000
-				CachedStream.VertexBuffer = nullptr;
-				CachedStream.Offset = 0;
-				CachedStream.Stride = 0;
-			}
-			ActiveStreamMask >>= 1;
+			SharedContextState.VertexAttrs[AttribIndex].Pointer = FOpenGLCachedAttr_Invalid;	// that'll enforce state update on next cache test
 		}
-	
-		// loop through active streams
-		ActiveStreamMask = RenderingContextState.ActiveStreamMask;
-		for (GLuint StreamIndex = 0; StreamIndex < NUM_OPENGL_VERTEX_STREAMS && ActiveStreamMask; StreamIndex++)
+
+		if( RenderingContextState.VertexAttrs[AttribIndex].Buffer == VertexBufferResource )
 		{
-			FOpenGLStream& CachedStream = RenderingContextState.VertexStreams[StreamIndex];
-			if ((ActiveStreamMask & 0x1) && 
-				CachedStream.VertexBuffer && 
-				CachedStream.VertexBuffer->Resource == VertexBufferResource)
-			{
-				FOpenGL::BindVertexBuffer(StreamIndex, 0, 0, 0); // brianh@nvidia: work around driver bug 1809000
-				CachedStream.VertexBuffer = nullptr;
-				CachedStream.Offset = 0;
-				CachedStream.Stride = 0;
-			}
-			ActiveStreamMask >>= 1;
+			RenderingContextState.VertexAttrs[AttribIndex].Pointer = FOpenGLCachedAttr_Invalid;	// that'll enforce state update on next cache test
 		}
 	}
-	else
+
+	for (GLuint StreamIndex = 0; StreamIndex < NUM_OPENGL_VERTEX_STREAMS; StreamIndex++)
 	{
-		for (GLuint AttribIndex = 0; AttribIndex < NUM_OPENGL_VERTEX_STREAMS; AttribIndex++)
+		if (SharedContextState.VertexStreams[StreamIndex].VertexBuffer != nullptr && SharedContextState.VertexStreams[StreamIndex].VertexBuffer->Resource == VertexBufferResource)
 		{
-			if (SharedContextState.VertexAttrs[AttribIndex].Buffer == VertexBufferResource)
-			{
-				SharedContextState.VertexAttrs[AttribIndex].Pointer = FOpenGLCachedAttr_Invalid;	// that'll enforce state update on next cache test		}
-			}
+			FOpenGL::BindVertexBuffer(StreamIndex, 0, 0, 0); // brianh@nvidia: work around driver bug 1809000
+			SharedContextState.VertexStreams[StreamIndex].VertexBuffer = nullptr;
 		}
-	
-		for (GLuint AttribIndex = 0; AttribIndex < NUM_OPENGL_VERTEX_STREAMS; AttribIndex++)
+
+		if (RenderingContextState.VertexStreams[StreamIndex].VertexBuffer != nullptr && RenderingContextState.VertexStreams[StreamIndex].VertexBuffer->Resource == VertexBufferResource)
 		{
-			if (RenderingContextState.VertexAttrs[AttribIndex].Buffer == VertexBufferResource)
-			{
-				RenderingContextState.VertexAttrs[AttribIndex].Pointer = FOpenGLCachedAttr_Invalid;	// that'll enforce state update on next cache test		}
-			}
+			FOpenGL::BindVertexBuffer(StreamIndex, 0, 0, 0); // brianh@nvidia: work around driver bug 1809000
+			RenderingContextState.VertexStreams[StreamIndex].VertexBuffer = nullptr;
 		}
 	}
 }
@@ -2299,19 +2351,16 @@ void FOpenGLDynamicRHI::OnUniformBufferDeletion( GLuint UniformBufferResource, u
 		RenderingContextState.UniformBufferBound = -1;	// will force refresh
 	}
 
-	if (!GUseEmulatedUniformBuffers)
+	for (GLuint UniformBufferIndex = 0; UniformBufferIndex < CrossCompiler::NUM_SHADER_STAGES*OGL_MAX_UNIFORM_BUFFER_BINDINGS; UniformBufferIndex++)
 	{
-		for (GLuint UniformBufferIndex = 0; UniformBufferIndex < CrossCompiler::NUM_SHADER_STAGES*OGL_MAX_UNIFORM_BUFFER_BINDINGS; UniformBufferIndex++)
+		if( SharedContextState.UniformBuffers[UniformBufferIndex] == UniformBufferResource )
 		{
-			if (SharedContextState.UniformBuffers[UniformBufferIndex] == UniformBufferResource)
-			{
-				SharedContextState.UniformBuffers[UniformBufferIndex] = FOpenGLCachedUniformBuffer_Invalid;	// that'll enforce state update on next cache test
-			}
+			SharedContextState.UniformBuffers[UniformBufferIndex] = FOpenGLCachedUniformBuffer_Invalid;	// that'll enforce state update on next cache test
+		}
 
-			if (RenderingContextState.UniformBuffers[UniformBufferIndex] == UniformBufferResource)
-			{
-				RenderingContextState.UniformBuffers[UniformBufferIndex] = FOpenGLCachedUniformBuffer_Invalid;	// that'll enforce state update on next cache test
-			}
+		if( RenderingContextState.UniformBuffers[UniformBufferIndex] == UniformBufferResource )
+		{
+			RenderingContextState.UniformBuffers[UniformBufferIndex] = FOpenGLCachedUniformBuffer_Invalid;	// that'll enforce state update on next cache test
 		}
 	}
 }
@@ -2412,17 +2461,7 @@ template <> FORCEINLINE uint32 GetNumTextureUnits<SF_Geometry>() { return FOpenG
 template <> FORCEINLINE uint32 GetNumTextureUnits<SF_Compute>() { return FOpenGL::GetMaxComputeTextureImageUnits(); }
 
 template <EShaderFrequency Frequency>
-uint32 GetFirstUAVUnit() { return 0; }
-template <> FORCEINLINE uint32 GetFirstUAVUnit<SF_Pixel>() { return FOpenGL::GetFirstPixelUAVUnit(); }
-template <> FORCEINLINE uint32 GetFirstUAVUnit<SF_Compute>() { return FOpenGL::GetFirstComputeUAVUnit(); }
-
-template <EShaderFrequency Frequency>
-uint32 GetNumUAVUnits() { return 0; }
-template <> FORCEINLINE uint32 GetNumUAVUnits<SF_Compute>()	{ return FOpenGL::GetMaxComputeUAVUnits(); }
-template <> FORCEINLINE uint32 GetNumUAVUnits<SF_Pixel>()	{ return FOpenGL::GetMaxPixelUAVUnits(); }
-
-template <EShaderFrequency Frequency>
-void SetResource(FOpenGLDynamicRHI* RESTRICT OpenGLRHI, uint32 BindIndex, FRHITexture* RESTRICT TextureRHI)
+FORCEINLINE void SetResource(FOpenGLDynamicRHI* RESTRICT OpenGLRHI, uint32 BindIndex, FRHITexture* RESTRICT TextureRHI)
 {
 	FOpenGLTextureBase* Texture = GetOpenGLTextureFromRHITexture(TextureRHI);
 #if !UE_BUILD_TEST && !UE_BUILD_SHIPPING
@@ -2437,6 +2476,7 @@ void SetResource(FOpenGLDynamicRHI* RESTRICT OpenGLRHI, uint32 BindIndex, FRHITe
 	{
 		OpenGLRHI->InternalSetShaderTexture(Texture, nullptr, GetFirstTextureUnit<Frequency>() + BindIndex, 0, 0, 0, -1);
 	}
+
 	// clear any previous sampler state
 	OpenGLRHI->InternalSetSamplerStates(GetFirstTextureUnit<Frequency>() + BindIndex, nullptr);
 }
@@ -2456,20 +2496,6 @@ FORCEINLINE void SetResource(FOpenGLDynamicRHI* RESTRICT OpenGLRHI, uint32 BindI
 	auto SRV = FOpenGLDynamicRHI::ResourceCast(RHISRV);
 	OpenGLRHI->InternalSetShaderTexture(NULL, SRV, GetFirstTextureUnit<Frequency>() + BindIndex, SRV->Target, SRV->Resource, 0, SRV->LimitMip);
 	SetResource<Frequency>(OpenGLRHI,BindIndex,OpenGLRHI->GetPointSamplerState());
-}
-
-template <EShaderFrequency Frequency>
-FORCEINLINE void SetResource(FOpenGLDynamicRHI* RESTRICT OpenGLRHI, uint32 BindIndex, FRHIUnorderedAccessView* RESTRICT RHIUAV)
-{
-#if !UE_BUILD_TEST && !UE_BUILD_SHIPPING
-	ensureMsgf(BindIndex < GetNumUAVUnits<Frequency>(), TEXT("Using more %s image units (%d) than allowed (%d) on a shader unit!"), GetShaderFrequencyString(Frequency, false), BindIndex, GetNumUAVUnits<Frequency>());	VERIFY_GL_SCOPE();
-#endif
-	auto UAV = FOpenGLDynamicRHI::ResourceCast(RHIUAV);
-	GLenum Access = (Frequency == SF_Compute) ? GL_READ_WRITE : GL_WRITE_ONLY;
-	// TODO: This must be true for 3D textures
-	bool bLayered = false;
-	GLint Layer = 0;
-	OpenGLRHI->InternalSetShaderUAV(GetFirstUAVUnit<Frequency>() + BindIndex, UAV->Format, UAV->Resource, bLayered, Layer, Access);
 }
 
 template <class GLResourceType, EShaderFrequency ShaderFrequency>
@@ -2518,7 +2544,6 @@ FORCEINLINE void FOpenGLDynamicRHI::SetResourcesFromTables(const ShaderType* RES
 			SetShaderResourcesFromBuffer<FRHITexture, (EShaderFrequency)ShaderType::StaticFrequency>(this, Buffer, SRT->TextureMap.GetData(), BufferIndex);
 			SetShaderResourcesFromBuffer<FRHIShaderResourceView, (EShaderFrequency)ShaderType::StaticFrequency>(this, Buffer, SRT->ShaderResourceViewMap.GetData(), BufferIndex);
 			SetShaderResourcesFromBuffer<FOpenGLSamplerState, (EShaderFrequency)ShaderType::StaticFrequency>(this, Buffer, SRT->SamplerMap.GetData(), BufferIndex);
-			SetShaderResourcesFromBuffer<FRHIUnorderedAccessView, (EShaderFrequency)ShaderType::StaticFrequency>(this, Buffer, SRT->UnorderedAccessViewMap.GetData(), BufferIndex);
 		}
 		BufferIndex++;
 		DirtyBits >>= 1;
@@ -2638,7 +2663,6 @@ void FOpenGLDynamicRHI::RHIDrawPrimitive(uint32 BaseVertexIndex,uint32 NumPrimit
 	BindPendingShaderState(ContextState);
 	CommitGraphicsResourceTables();
 	SetupTexturesForDraw(ContextState);
-	SetupUAVsForDraw(ContextState);
 	CommitNonComputeShaderConstants();
 	CachedBindElementArrayBuffer(ContextState,0);
 	uint32 VertexCount = GetVertexCountForPrimitiveCount(NumPrimitives,PrimitiveType);
@@ -2670,6 +2694,7 @@ void FOpenGLDynamicRHI::RHIDrawPrimitive(uint32 BaseVertexIndex,uint32 NumPrimit
 	{
 		SCOPE_CYCLE_COUNTER_DETAILED(STAT_OpenGLDrawPrimitiveDriverTime);
 		CONDITIONAL_SCOPE_CYCLE_COUNTER(STAT_OpenGLShaderFirstDrawTime, PendingState.BoundShaderState->RequiresDriverInstantiation());
+		check( FOpenGL::SupportsInstancing() );
 		FOpenGL::DrawArraysInstanced(DrawMode, 0, NumElements, NumInstances);
 		REPORT_GL_DRAW_ARRAYS_INSTANCED_EVENT_FOR_FRAME_DUMP( DrawMode, 0, NumElements, NumInstances );
 	}
@@ -2692,9 +2717,7 @@ void FOpenGLDynamicRHI::RHIDrawPrimitiveIndirect(FRHIVertexBuffer* ArgumentBuffe
 		UpdateRasterizerStateInOpenGLContext(ContextState);
 		UpdateDepthStencilStateInOpenGLContext(ContextState);
 		BindPendingShaderState(ContextState);
-		CommitGraphicsResourceTables();
 		SetupTexturesForDraw(ContextState);
-		SetupUAVsForDraw(ContextState);
 		CommitNonComputeShaderConstants();
 		CachedBindElementArrayBuffer(ContextState,0);
 
@@ -2750,9 +2773,7 @@ void FOpenGLDynamicRHI::RHIDrawIndexedIndirect(FRHIIndexBuffer* IndexBufferRHI, 
 		UpdateRasterizerStateInOpenGLContext(ContextState);
 		UpdateDepthStencilStateInOpenGLContext(ContextState);
 		BindPendingShaderState(ContextState);
-		CommitGraphicsResourceTables();
 		SetupTexturesForDraw(ContextState);
-		SetupUAVsForDraw(ContextState);
 		CommitNonComputeShaderConstants();
 		CachedBindElementArrayBuffer(ContextState,IndexBuffer->Resource);
 
@@ -2836,10 +2857,6 @@ void FOpenGLDynamicRHI::RHIDrawIndexedPrimitive(FRHIIndexBuffer* IndexBufferRHI,
 		SetupTexturesForDraw(ContextState);
 	}
 	{
-		DETAILED_QUICK_SCOPE_CYCLE_COUNTER(STAT_SetupUAVsForDraw);
-		SetupUAVsForDraw(ContextState);
-	}
-	{
 		DETAILED_QUICK_SCOPE_CYCLE_COUNTER(STAT_CommitNonComputeShaderConstants);
 		CommitNonComputeShaderConstants();
 	}
@@ -2874,6 +2891,7 @@ void FOpenGLDynamicRHI::RHIDrawIndexedPrimitive(FRHIIndexBuffer* IndexBufferRHI,
 	{
 		SCOPE_CYCLE_COUNTER_DETAILED(STAT_OpenGLDrawPrimitiveDriverTime);
 		CONDITIONAL_SCOPE_CYCLE_COUNTER(STAT_OpenGLShaderFirstDrawTime, PendingState.BoundShaderState->RequiresDriverInstantiation());
+		check( FOpenGL::SupportsInstancing() );
 		checkf(FirstInstance  == 0, TEXT("FirstInstance is currently unsupported on this RHI"));
 		FOpenGL::DrawElementsInstanced(DrawMode, NumElements, IndexType, INDEX_TO_VOID(StartIndex), NumInstances);
 		REPORT_GL_DRAW_ELEMENTS_INSTANCED_EVENT_FOR_FRAME_DUMP(DrawMode, NumElements, IndexType, (void *)StartIndex, NumInstances);
@@ -2913,9 +2931,7 @@ void FOpenGLDynamicRHI::RHIDrawIndexedPrimitiveIndirect(FRHIIndexBuffer* IndexBu
 		UpdateRasterizerStateInOpenGLContext(ContextState);
 		UpdateDepthStencilStateInOpenGLContext(ContextState);
 		BindPendingShaderState(ContextState);
-		CommitGraphicsResourceTables();
 		SetupTexturesForDraw(ContextState);
-		SetupUAVsForDraw(ContextState);
 		CommitNonComputeShaderConstants();
 		CachedBindElementArrayBuffer(ContextState,IndexBuffer->Resource);
 
@@ -2976,8 +2992,6 @@ static inline void ClearCurrentDepthStencilWithCurrentScissor( int8 ClearType, f
 
 void FOpenGLDynamicRHI::ClearCurrentFramebufferWithCurrentScissor(FOpenGLContextState& ContextState, int8 ClearType, int32 NumClearColors, const FLinearColor* ClearColorArray, float Depth, uint32 Stencil)
 {
-	VERIFY_GL_SCOPE();
-		
 	if ( FOpenGL::SupportsMultipleRenderTargets() )
 	{
 		// Clear color buffers
@@ -3175,9 +3189,8 @@ void FOpenGLDynamicRHI::RHISubmitCommandsAndFlushGPU()
 /**
  * Returns the total GPU time taken to render the last frame. Same metric as FPlatformTime::Cycles().
  */
-uint32 FOpenGLDynamicRHI::RHIGetGPUFrameCycles(uint32 GPUIndex)
+uint32 FOpenGLDynamicRHI::RHIGetGPUFrameCycles()
 {
-	check(GPUIndex == 0);
 	return GGPUFrameTime;
 }
 
@@ -3196,8 +3209,6 @@ void FOpenGLDynamicRHI::RHISetComputeShader(FRHIComputeShader* ComputeShaderRHI)
 	{
 		UE_LOG(LogRHI,Fatal,TEXT("Platform doesn't support SM5 for OpenGL but set feature level to SM5"));
 	}
-
-	ApplyGlobalUniformBuffers(ComputeShaderRHI, ResourceCast(ComputeShaderRHI));
 }
 
 void FOpenGLDynamicRHI::RHIDispatchComputeShader(uint32 ThreadGroupCountX, uint32 ThreadGroupCountY, uint32 ThreadGroupCountZ)
@@ -3227,7 +3238,7 @@ void FOpenGLDynamicRHI::RHIDispatchComputeShader(uint32 ThreadGroupCountX, uint3
 		BindPendingComputeShaderState(ContextState, ComputeShader);
 		CommitComputeResourceTables(ComputeShader);
 		SetupTexturesForDraw(ContextState, ComputeShader, FOpenGL::GetMaxComputeTextureImageUnits());
-		SetupUAVsForCompute(ContextState, ComputeShader);
+		SetupUAVsForDraw(ContextState, ComputeShader, OGL_MAX_COMPUTE_STAGE_UAV_UNITS);
 		CommitComputeShaderConstants(ComputeShader);
 	
 		FOpenGL::MemoryBarrier(GL_ALL_BARRIER_BITS);
@@ -3265,7 +3276,7 @@ void FOpenGLDynamicRHI::RHIDispatchIndirectComputeShader(FRHIVertexBuffer* Argum
 
 		SetupTexturesForDraw(ContextState, ComputeShader, FOpenGL::GetMaxComputeTextureImageUnits());
 
-		SetupUAVsForCompute(ContextState, ComputeShader);
+		SetupUAVsForDraw(ContextState, ComputeShader, OGL_MAX_COMPUTE_STAGE_UAV_UNITS);
 	
 		CommitComputeShaderConstants(ComputeShader);
 	
@@ -3339,12 +3350,13 @@ void FOpenGLDynamicRHI::RHIInvalidateCachedState()
 	RenderingContextState = FOpenGLContextState();
 	SharedContextState = FOpenGLContextState();
 
-	RenderingContextState.InitializeResources(FOpenGL::GetMaxCombinedTextureImageUnits(), FOpenGL::GetMaxCombinedUAVUnits());
-	SharedContextState.InitializeResources(FOpenGL::GetMaxCombinedTextureImageUnits(), FOpenGL::GetMaxCombinedUAVUnits());
+	RenderingContextState.InitializeResources(FOpenGL::GetMaxCombinedTextureImageUnits(), OGL_MAX_COMPUTE_STAGE_UAV_UNITS);
+	SharedContextState.InitializeResources(FOpenGL::GetMaxCombinedTextureImageUnits(), OGL_MAX_COMPUTE_STAGE_UAV_UNITS);
 }
 
 void FOpenGLDynamicRHI::RHICopyToStagingBuffer(FRHIVertexBuffer* SourceBufferRHI, FRHIStagingBuffer* DestinationStagingBufferRHI, uint32 InOffset, uint32 InNumBytes)
 {
+#if OPENGL_GL3
 	VERIFY_GL_SCOPE();
 	FOpenGLVertexBuffer* SourceBuffer = ResourceCast(SourceBufferRHI);
 	FOpenGLStagingBuffer* DestinationBuffer = ResourceCast(DestinationStagingBufferRHI);
@@ -3353,24 +3365,8 @@ void FOpenGLDynamicRHI::RHICopyToStagingBuffer(FRHIVertexBuffer* SourceBufferRHI
 	glBindBuffer(GL_COPY_WRITE_BUFFER, DestinationBuffer->ShadowBuffer);
 	if (DestinationBuffer->ShadowSize < InNumBytes)
 	{
-		if (FOpenGL::SupportsBufferStorage() && OpenGLConsoleVariables::bUsePersistentMappingStagingBuffer)
-		{
-			if (DestinationBuffer->Mapping != nullptr)
-			{
-				FOpenGL::UnmapBuffer(GL_COPY_WRITE_BUFFER);
-				glDeleteBuffers(1, &DestinationBuffer->ShadowBuffer);
-				glGenBuffers(1, &DestinationBuffer->ShadowBuffer);
-				glBindBuffer(GL_COPY_WRITE_BUFFER, DestinationBuffer->ShadowBuffer);
-			}
-
-			FOpenGL::BufferStorage(GL_COPY_WRITE_BUFFER, InNumBytes, NULL, GL_MAP_READ_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
-
-			DestinationBuffer->Mapping = FOpenGL::MapBufferRange(GL_COPY_WRITE_BUFFER, 0, InNumBytes, FOpenGL::EResourceLockMode::RLM_ReadOnlyPersistent);
-		}
-		else
-		{
-			glBufferData(GL_COPY_WRITE_BUFFER, InNumBytes, NULL, GL_STREAM_READ);
-		}
+		// Orphan the existing buffer.
+		glBufferData(GL_COPY_WRITE_BUFFER, InNumBytes, NULL, GL_STREAM_READ);
 		DestinationBuffer->ShadowSize = InNumBytes;
 	}
 
@@ -3378,6 +3374,9 @@ void FOpenGLDynamicRHI::RHICopyToStagingBuffer(FRHIVertexBuffer* SourceBufferRHI
 	FOpenGL::CopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, InOffset, 0, InNumBytes);
 	glBindBuffer(GL_COPY_READ_BUFFER, 0);
 	glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
+#else
+	UE_LOG(LogRHI, Fatal, TEXT("Only OpenGL3 or higher supports CopyToStagingBuffer"));
+#endif
 }
 
 void FOpenGLDynamicRHI::RHIWriteGPUFence(FRHIGPUFence* FenceRHI)

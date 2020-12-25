@@ -1,19 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Modules/ModuleInterface.h"
 #include "Modules/ModuleManager.h"
 
-#include "Cluster/DisplayClusterClusterEvent.h"
+#include "HAL/IConsoleManager.h"
+#include "IMessagingModule.h"
+#include "IMessageBus.h"
+#include "IDisplayCluster.h"
 #include "Cluster/IDisplayClusterClusterManager.h"
-#include "Cluster/IDisplayClusterClusterSyncObject.h"
-#include "DisplayClusterGameEngine.h"
 #include "DisplayClusterMessageInterceptor.h"
 #include "DisplayClusterMessageInterceptionSettings.h"
-#include "Engine/Engine.h"
-#include "HAL/IConsoleManager.h"
-#include "IDisplayCluster.h"
-#include "IMessageBus.h"
-#include "IMessagingModule.h"
 
 #if WITH_EDITOR
 	#include "ISettingsModule.h"
@@ -22,12 +18,6 @@
 
 #define LOCTEXT_NAMESPACE "DisplayClusterInterception"
 
-
-namespace DisplayClusterInterceptionModuleUtils
-{
-	static const FString MessageInterceptionSetupEventCategory = TEXT("nDCISetup");
-	static const FString MessageInterceptionSetupEventParameterSettings = TEXT("Settings");
-}
 
 /**
  * Display Cluster Message Interceptor module
@@ -39,8 +29,21 @@ class FDisplayClusterMessageInterceptionModule : public IModuleInterface
 public:
 	virtual void StartupModule() override
 	{
-		// Register for Cluster StartSession callback so everything is setup before launching interception
-		IDisplayCluster::Get().OnDisplayClusterStartSession().AddRaw(this, &FDisplayClusterMessageInterceptionModule::OnDisplayClusterStartSession);
+		// Create the message interceptor
+		Interceptor = MakeShared<FDisplayClusterMessageInterceptor, ESPMode::ThreadSafe>();
+
+		// Register cluster event listeners
+		IDisplayClusterClusterManager* ClusterManager = IDisplayCluster::Get().GetClusterMgr();
+		if (ClusterManager && !ListenerDelegate.IsBound())
+		{
+			ListenerDelegate = FOnClusterEventListener::CreateRaw(this, &FDisplayClusterMessageInterceptionModule::HandleClusterEvent);
+			ClusterManager->AddClusterEventListener(ListenerDelegate);
+		}
+
+		// Register cluster session events
+		IDisplayCluster::Get().OnDisplayClusterStartSession().AddRaw(this, &FDisplayClusterMessageInterceptionModule::StartInterception);
+		IDisplayCluster::Get().OnDisplayClusterEndSession().AddRaw(this, &FDisplayClusterMessageInterceptionModule::StopInterception);
+		IDisplayCluster::Get().OnDisplayClusterPreTick().AddRaw(this, &FDisplayClusterMessageInterceptionModule::HandleClusterPreTick);
 
 		// Setup console command to start/stop interception
 		StartMessageSyncCommand = MakeUnique<FAutoConsoleCommand>(
@@ -82,7 +85,7 @@ public:
 			IDisplayClusterClusterManager* ClusterManager = IDisplayCluster::Get().GetClusterMgr();
 			if (ClusterManager && ListenerDelegate.IsBound())
 			{
-				ClusterManager->RemoveClusterEventJsonListener(ListenerDelegate);
+				ClusterManager->RemoveClusterEventListener(ListenerDelegate);
 				ListenerDelegate.Unbind();
 			}
 
@@ -97,80 +100,16 @@ public:
 	}
 
 private:
-	void OnDisplayClusterStartSession()
+	void HandleClusterEvent(const FDisplayClusterClusterEvent& InEvent)
 	{
-		if (IDisplayCluster::IsAvailable() && IDisplayCluster::Get().GetOperationMode() == EDisplayClusterOperationMode::Cluster)
+		if (Interceptor)
 		{
-			// Create the message interceptor only when we're in cluster mode
-			Interceptor = MakeShared<FDisplayClusterMessageInterceptor, ESPMode::ThreadSafe>();
-
-			// Register cluster event listeners
-			IDisplayClusterClusterManager* ClusterManager = IDisplayCluster::Get().GetClusterMgr();
-			if (ClusterManager && !ListenerDelegate.IsBound())
-			{
-				ListenerDelegate = FOnClusterEventJsonListener::CreateRaw(this, &FDisplayClusterMessageInterceptionModule::HandleClusterEvent);
-				ClusterManager->AddClusterEventJsonListener(ListenerDelegate);
-
-				//Master will send out its interceptor settings to the cluster so everyone uses the same things
-				if (ClusterManager->IsMaster())
-				{
-					FString ExportedSettings;
-					const UDisplayClusterMessageInterceptionSettings* CurrentSettings = GetDefault<UDisplayClusterMessageInterceptionSettings>();
-					FMessageInterceptionSettings::StaticStruct()->ExportText(ExportedSettings, &CurrentSettings->InterceptionSettings, nullptr, nullptr, PPF_None, nullptr);
-					
-					FDisplayClusterClusterEventJson SettingsEvent;
-					SettingsEvent.Category = DisplayClusterInterceptionModuleUtils::MessageInterceptionSetupEventCategory;
-					SettingsEvent.Name = ClusterManager->GetNodeId();
-					SettingsEvent.bIsSystemEvent = true;
-					SettingsEvent.Parameters.FindOrAdd(DisplayClusterInterceptionModuleUtils::MessageInterceptionSetupEventParameterSettings) = MoveTemp(ExportedSettings);
-
-					const bool bMasterOnly = true; 
-					ClusterManager->EmitClusterEventJson(SettingsEvent, bMasterOnly);
-				}
-			}
-
-			//Start with interception enabled
-			bStartInterceptionRequested = true;
-
-			// Register cluster session events
-			IDisplayCluster::Get().OnDisplayClusterEndSession().AddRaw(this, &FDisplayClusterMessageInterceptionModule::StopInterception);
-			IDisplayCluster::Get().OnDisplayClusterPreTick().AddRaw(this, &FDisplayClusterMessageInterceptionModule::HandleClusterPreTick);
+			Interceptor->HandleClusterEvent(InEvent);
 		}
-	}
-
-	void HandleClusterEvent(const FDisplayClusterClusterEventJson& InEvent)
-	{
-		if (InEvent.Category == DisplayClusterInterceptionModuleUtils::MessageInterceptionSetupEventCategory)
-		{
-			HandleMessageInterceptorSetupEvent(InEvent);
-		}
-		else
-		{
-			//All events except our settings synchronization one are passed to the interceptor
-			if (Interceptor)
-			{
-				Interceptor->HandleClusterEvent(InEvent);
-			}
-		}
-
 	}
 
 	void HandleClusterPreTick()
 	{
-		// StartInterception will be handled once settings synchronization is completed to ensure the same behavior across the cluster
-		if (bStartInterceptionRequested)
-		{
-			IDisplayClusterClusterManager* ClusterManager = IDisplayCluster::Get().GetClusterMgr();
-			if (Interceptor && ClusterManager)
-			{
-				if (bSettingsSynchronizationDone)
-				{
-					bStartInterceptionRequested = false;
-					Interceptor->Start(IMessagingModule::Get().GetDefaultBus().ToSharedRef());
-				}
-			}
-		}
-
 		if (Interceptor)
 		{
 			Interceptor->SyncMessages();
@@ -179,7 +118,12 @@ private:
 
 	void StartInterception()
 	{
-		bStartInterceptionRequested = true;
+		IDisplayClusterClusterManager* ClusterManager = IDisplayCluster::Get().GetClusterMgr();
+		if (Interceptor && ClusterManager)
+		{
+			Interceptor->Setup(ClusterManager, IMessagingModule::Get().GetDefaultBus().ToSharedRef());
+			Interceptor->Start();
+		}		
 	}
 
 	void StopInterception()
@@ -187,47 +131,20 @@ private:
 		if (Interceptor)
 		{
 			Interceptor->Stop();
+			// remove internal reference to message bus
+			Interceptor->Setup(nullptr, nullptr);
 		}
 	}
-
-	void HandleMessageInterceptorSetupEvent(const FDisplayClusterClusterEventJson& InEvent)
-	{
-		if (Interceptor)
-		{
-			const FString& ExportedSettings = InEvent.Parameters.FindChecked(DisplayClusterInterceptionModuleUtils::MessageInterceptionSetupEventParameterSettings);
-			FMessageInterceptionSettings::StaticStruct()->ImportText(*ExportedSettings, &SynchronizedSettings, nullptr, EPropertyPortFlags::PPF_None, GLog, FMessageInterceptionSettings::StaticStruct()->GetName());
-
-			IDisplayClusterClusterManager* ClusterManager = IDisplayCluster::Get().GetClusterMgr();
-			if (ClusterManager)
-			{
-				Interceptor->Setup(ClusterManager, SynchronizedSettings);
-				bSettingsSynchronizationDone = true;
-
-				UE_LOG(LogDisplayClusterInterception, Display, TEXT("Node '%s' received synchronization settings event"), *ClusterManager->GetNodeId());
-			}
-		}
-	}
-
-private:
 
 	/** MessageBus interceptor */
 	TSharedPtr<FDisplayClusterMessageInterceptor, ESPMode::ThreadSafe> Interceptor;
 
-	/** Settings to be used synchronized around the cluster */
-	FMessageInterceptionSettings SynchronizedSettings;
-
 	/** Cluster event listener delegate */
-	FOnClusterEventJsonListener ListenerDelegate;
+	FOnClusterEventListener ListenerDelegate;
 
-	/** Console commands handle. */
+	// Console commands handle.
 	TUniquePtr<FAutoConsoleCommand> StartMessageSyncCommand;
 	TUniquePtr<FAutoConsoleCommand> StopMessageSyncCommand;
-
-	/** Request to start interception. Cached to be done once synchronization is done. */
-	bool bStartInterceptionRequested;
-
-	/** Flag to check if synchronization was done */
-	bool bSettingsSynchronizationDone = false;
 };
 
 #undef LOCTEXT_NAMESPACE

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/Blueprint.h"
 #include "Misc/CoreMisc.h"
@@ -17,7 +17,6 @@
 #include "Engine/Breakpoint.h"
 #include "Components/TimelineComponent.h"
 #include "Modules/ModuleManager.h"
-#include "UObject/TextProperty.h"
 
 #if WITH_EDITOR
 #include "BlueprintCompilationManager.h"
@@ -42,7 +41,6 @@
 #include "UObject/MetaData.h"
 #include "BlueprintAssetHandler.h"
 #include "Blueprint/BlueprintExtension.h"
-#include "UObject/TextProperty.h"
 #endif
 #include "Engine/InheritableComponentHandler.h"
 
@@ -51,16 +49,16 @@ DEFINE_LOG_CATEGORY(LogBlueprint);
 //////////////////////////////////////////////////////////////////////////
 // Static Helpers
 
-#if WITH_EDITOR
 /**
  * Updates the blueprint's OwnedComponents, such that they reflect changes made 
  * natively since the blueprint was last saved (a change in AttachParents, etc.)
  * 
  * @param  Blueprint	The blueprint whose components you wish to vet.
  */
-void UBlueprint::ConformNativeComponents()
+static void ConformNativeComponents(UBlueprint* Blueprint)
 {
-	if (UClass* const BlueprintClass = GeneratedClass)
+#if WITH_EDITOR
+	if (UClass* const BlueprintClass = Blueprint->GeneratedClass)
 	{
 		if (AActor* BlueprintCDO = Cast<AActor>(BlueprintClass->ClassDefaultObject))
 		{
@@ -117,9 +115,8 @@ void UBlueprint::ConformNativeComponents()
 			}
 		}
 	}
+#endif // #if WITH_EDITOR
 }
-
-#endif // WITH_EDITOR
 
 
 //////////////////////////////////////////////////////////////////////////
@@ -204,16 +201,16 @@ namespace
 						UStruct* TypeToCheck = TypesToCheck.Pop(/*bAllowShrinking*/false);
 						TypesChecked.Add(TypeToCheck);
 
-						for (TFieldIterator<const FProperty> PropIt(TypeToCheck, EFieldIteratorFlags::IncludeSuper, EFieldIteratorFlags::ExcludeDeprecated, EFieldIteratorFlags::IncludeInterfaces); !bForceHasScript && PropIt; ++PropIt)
+						for (TFieldIterator<const UProperty> PropIt(TypeToCheck, EFieldIteratorFlags::IncludeSuper, EFieldIteratorFlags::ExcludeDeprecated, EFieldIteratorFlags::IncludeInterfaces); !bForceHasScript && PropIt; ++PropIt)
 						{
-							auto ProcessInnerProperty = [&bForceHasScript, &TypesToCheck, &TypesChecked](const FProperty* InProp) -> bool
+							auto ProcessInnerProperty = [&bForceHasScript, &TypesToCheck, &TypesChecked](const UProperty* InProp) -> bool
 							{
-								if (const FTextProperty* TextProp = CastField<const FTextProperty>(InProp))
+								if (const UTextProperty* TextProp = Cast<const UTextProperty>(InProp))
 								{
 									bForceHasScript = true;
 									return true;
 								}
-								if (const FStructProperty* StructProp = CastField<const FStructProperty>(InProp))
+								if (const UStructProperty* StructProp = Cast<const UStructProperty>(InProp))
 								{
 									if (!TypesChecked.Contains(StructProp->Struct))
 									{
@@ -226,16 +223,16 @@ namespace
 
 							if (!ProcessInnerProperty(*PropIt))
 							{
-								if (const FArrayProperty* ArrayProp = CastField<const FArrayProperty>(*PropIt))
+								if (const UArrayProperty* ArrayProp = Cast<const UArrayProperty>(*PropIt))
 								{
 									ProcessInnerProperty(ArrayProp->Inner);
 								}
-								if (const FMapProperty* MapProp = CastField<const FMapProperty>(*PropIt))
+								if (const UMapProperty* MapProp = Cast<const UMapProperty>(*PropIt))
 								{
 									ProcessInnerProperty(MapProp->KeyProp);
 									ProcessInnerProperty(MapProp->ValueProp);
 								}
-								if (const FSetProperty* SetProp = CastField<const FSetProperty>(*PropIt))
+								if (const USetProperty* SetProp = Cast<const USetProperty>(*PropIt))
 								{
 									ProcessInnerProperty(SetProp->ElementProp);
 								}
@@ -354,18 +351,6 @@ UBlueprint::UBlueprint(const FObjectInitializer& ObjectInitializer)
 }
 
 #if WITH_EDITORONLY_DATA
-static TAutoConsoleVariable<bool> CVarBPDisableSearchDataUpdateOnSave(
-	TEXT("bp.DisableSearchDataUpdateOnSave"),
-	false,
-	TEXT("Don't update Blueprint search metadata on save (for QA/testing purposes only). On an editor relaunch, it should include the BP in the unindexed count after the first search."),
-	ECVF_Cheat);
-
-static TAutoConsoleVariable<bool> CVarBPForceOldSearchDataFormatVersionOnSave(
-	TEXT("bp.ForceOldSearchDataFormatVersionOnSave"),
-	false,
-	TEXT("Force Blueprint search metadata to use an old format version on save (for QA/testing purposes only). On an editor relaunch, it should include the BP in the out-of-date count after the first search."),
-	ECVF_Cheat);
-
 void UBlueprint::PreSave(const class ITargetPlatform* TargetPlatform)
 {
 	Super::PreSave(TargetPlatform);
@@ -375,26 +360,8 @@ void UBlueprint::PreSave(const class ITargetPlatform* TargetPlatform)
 
 	if (!TargetPlatform || TargetPlatform->HasEditorOnlyData())
 	{
-		// This will force an immediate (synchronous) update of this Blueprint's index tag value.
-		EAddOrUpdateBlueprintSearchMetadataFlags Flags = EAddOrUpdateBlueprintSearchMetadataFlags::ForceRecache;
-
-		// For regression testing, we exclude the registry tag on save by clearing the cached value.
-		// Expected result: On an editor relaunch it should cause this BP to be reported as "unindexed," until the asset is loaded.
-		if (CVarBPDisableSearchDataUpdateOnSave.GetValueOnGameThread())
-		{
-			Flags |= EAddOrUpdateBlueprintSearchMetadataFlags::ClearCachedValue;
-		}
-
-		// For regression testing, we allow an old format version to be used as an override on save.
-		// Expected result: On an editor relaunch it should cause this BP to be reported as "out-of-date," until the asset is loaded.
-		EFiBVersion OverrideVersion = EFiBVersion::FIB_VER_NONE;
-		if (CVarBPForceOldSearchDataFormatVersionOnSave.GetValueOnGameThread())
-		{
-			OverrideVersion = EFiBVersion::FIB_VER_BASE;
-		}
-
 		// Cache the BP for use (immediate, since we're about to save)
-		FFindInBlueprintSearchManager::Get().AddOrUpdateBlueprintSearchMetadata(this, Flags, OverrideVersion);
+		FFindInBlueprintSearchManager::Get().AddOrUpdateBlueprintSearchMetadata(this, true);
 	}
 }
 #endif // WITH_EDITORONLY_DATA
@@ -437,10 +404,13 @@ void UBlueprint::Serialize(FArchive& Ar)
 	// Preload our parent blueprints
 	if (Ar.IsLoading())
 	{
-		for (UClass* ClassIt = ParentClass; ClassIt && !ClassIt->HasAnyClassFlags(CLASS_Native); ClassIt = ClassIt->GetSuperClass())
+		for (UClass* ClassIt = ParentClass; (ClassIt != NULL) && !(ClassIt->HasAnyClassFlags(CLASS_Native)); ClassIt = ClassIt->GetSuperClass())
 		{
-			// In some cases, a non-native parent class may not have an associated Blueprint asset - we consider that to be ok here since we're just preloading.
-			if (ClassIt->ClassGeneratedBy && ClassIt->ClassGeneratedBy->HasAnyFlags(RF_NeedLoad))
+			if (!ensure(ClassIt->ClassGeneratedBy != nullptr))
+			{
+				UE_LOG(LogBlueprint, Error, TEXT("Cannot preload parent blueprint from null ClassGeneratedBy field (for '%s')"), *ClassIt->GetName());
+			}
+			else if (ClassIt->ClassGeneratedBy->HasAnyFlags(RF_NeedLoad))
 			{
 				ClassIt->ClassGeneratedBy->GetLinker()->Preload(ClassIt->ClassGeneratedBy);
 			}
@@ -594,7 +564,25 @@ bool UBlueprint::Rename( const TCHAR* InName, UObject* NewOuter, ERenameFlags Fl
 		return false;
 	}
 
-	return Super::Rename( InName, NewOuter, Flags );
+	bool bSuccess = Super::Rename( InName, NewOuter, Flags );
+
+	// Finally, do a compile, but only if the new name differs from before
+	if(bSuccess && !(Flags & REN_Test) && !(Flags & REN_DoNotDirty) && InName && InName != OldName)
+	{
+		// Gather all blueprints that currently depend on this one.
+		TArray<UBlueprint*> Dependents;
+		FBlueprintEditorUtils::GetDependentBlueprints(this, Dependents);
+
+		FKismetEditorUtilities::CompileBlueprint(this);
+
+		// Recompile dependent blueprints after compiling this one. Otherwise, we can end up with a GLEO during the internal package save, which will include referencers as well.
+		for (UBlueprint* DependentBlueprint : Dependents)
+		{
+			FKismetEditorUtilities::CompileBlueprint(DependentBlueprint);
+		}
+	}
+
+	return bSuccess;
 }
 
 void UBlueprint::PostDuplicate(bool bDuplicateForPIE)
@@ -889,11 +877,11 @@ void UBlueprint::SetObjectBeingDebugged(UObject* NewObject)
 			return;
 		}
 
-		DebuggingWorldRegistrationHelper(OldObject, nullptr);
+		DebuggingWorldRegistrationHelper(OldObject, NULL);
 	}
 
 	// Note that we allow macro Blueprints to bypass this check
-	if ((NewObject != nullptr) && !GCompilingBlueprint && BlueprintType != BPTYPE_MacroLibrary)
+	if ((NewObject != NULL) && !GCompilingBlueprint && BlueprintType != BPTYPE_MacroLibrary)
 	{
 		// You can only debug instances of this!
 		if (!ensureMsgf(
@@ -902,7 +890,7 @@ void UBlueprint::SetObjectBeingDebugged(UObject* NewObject)
 				this->GeneratedClass ? *(this->GeneratedClass->GetName()) : TEXT("NULL"), 
 				NewObject->GetClass() ? *(NewObject->GetClass()->GetName()) : TEXT("NULL")))
 		{
-			NewObject = nullptr;
+			NewObject = NULL;
 		}
 	}
 
@@ -910,23 +898,10 @@ void UBlueprint::SetObjectBeingDebugged(UObject* NewObject)
 	CurrentObjectBeingDebugged = NewObject;
 
 	// Register the new object
-	if (NewObject != nullptr)
+	if (NewObject != NULL)
 	{
-		ObjectPathToDebug = NewObject->GetPathName();
 		DebuggingWorldRegistrationHelper(NewObject, NewObject);
 	}
-	else
-	{
-		ObjectPathToDebug = FString();
-	}
-}
-
-void UBlueprint::UnregisterObjectBeingDebugged()
-{
-	// This is implemented as a set to null and restore of ObjectPathToDebug, so subclasses have their overrides called properly
-	FString LastPath = ObjectPathToDebug;
-	SetObjectBeingDebugged(nullptr);
-	ObjectPathToDebug = LastPath;
 }
 
 void UBlueprint::SetWorldBeingDebugged(UWorld *NewWorld)
@@ -1023,10 +998,9 @@ void UBlueprint::GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const
 	{
 		FString Value;
 		const bool bRebuildSearchData = false;
-		FSearchData SearchData = FFindInBlueprintSearchManager::Get().QuerySingleBlueprint((UBlueprint*)this, bRebuildSearchData);
-		if (SearchData.IsValid())
+		if (const FSearchData* SearchData = FFindInBlueprintSearchManager::Get().QuerySingleBlueprint((UBlueprint*)this, bRebuildSearchData))
 		{
-			Value = SearchData.Value;
+			Value = SearchData->Value;
 		}
 		
 		OutTags.Add( FAssetRegistryTag(FBlueprintTags::FindInBlueprintsData, Value, FAssetRegistryTag::TT_Hidden) );
@@ -1058,7 +1032,7 @@ void UBlueprint::GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const
 		for (UBlueprintGeneratedClass* TestBPClass = BlueprintClass; TestBPClass != nullptr; TestBPClass = Cast<UBlueprintGeneratedClass>(TestBPClass->GetSuperClass()))
 		{
 			const UBlueprint* AssociatedBP = Cast<const UBlueprint>(TestBPClass->ClassGeneratedBy);
-			if (AssociatedBP && AssociatedBP->SimpleConstructionScript != nullptr)
+			if (AssociatedBP->SimpleConstructionScript != nullptr)
 			{
 				NumAddedComponents += AssociatedBP->SimpleConstructionScript->GetAllNodesConst().Num();
 			}
@@ -1610,7 +1584,7 @@ ETimelineSigType UBlueprint::GetTimelineSignatureForFunctionByName(const FName& 
 	// If an object property was specified, find the class of that property instead
 	if(ObjectPropertyName != NAME_None)
 	{
-		FObjectPropertyBase* ObjProperty = FindFProperty<FObjectPropertyBase>(SkeletonGeneratedClass, ObjectPropertyName);
+		UObjectPropertyBase* ObjProperty = FindField<UObjectPropertyBase>(SkeletonGeneratedClass, ObjectPropertyName);
 		if(ObjProperty == NULL)
 		{
 			UE_LOG(LogBlueprint, Log, TEXT("GetTimelineSignatureForFunction: Object Property '%s' not found."), *ObjectPropertyName.ToString());
@@ -1620,7 +1594,7 @@ ETimelineSigType UBlueprint::GetTimelineSignatureForFunctionByName(const FName& 
 		UseClass = ObjProperty->PropertyClass;
 	}
 
-	UFunction* Function = FindUField<UFunction>(UseClass, FunctionName);
+	UFunction* Function = FindField<UFunction>(UseClass, FunctionName);
 	if(Function == NULL)
 	{
 		UE_LOG(LogBlueprint, Log, TEXT("GetTimelineSignatureForFunction: Function '%s' not found in class '%s'."), *FunctionName.ToString(), *UseClass->GetName());
@@ -1815,6 +1789,8 @@ bool UBlueprint::ChangeOwnerOfTemplates()
 	bool bIsStillStale = false;
 	if (BPGClass)
 	{
+		check(!bIsRegeneratingOnLoad);
+
 		// >>> Backwards Compatibility:  VER_UE4_EDITORONLY_BLUEPRINTS
 		bool bMigratedOwner = false;
 		TSet<class UCurveBase*> Curves;
@@ -1917,6 +1893,14 @@ bool UBlueprint::ChangeOwnerOfTemplates()
 		UE_LOG(LogBlueprint, Log, TEXT("ChangeOwnerOfTemplates: No BlueprintGeneratedClass in %s"), *GetName());
 	}
 	return !bIsStillStale;
+}
+
+void UBlueprint::PostLoadSubobjects(FObjectInstancingGraph* OuterInstanceGraph)
+{
+	Super::PostLoadSubobjects(OuterInstanceGraph);
+	ChangeOwnerOfTemplates();
+
+	ConformNativeComponents(this);
 }
 
 #if WITH_EDITOR

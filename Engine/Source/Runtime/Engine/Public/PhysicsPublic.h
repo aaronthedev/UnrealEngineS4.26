@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PhysicsPublic.h
@@ -54,11 +54,7 @@ DECLARE_DWORD_COUNTER_STAT_EXTERN(TEXT("Cloth Actor Count"), STAT_NumCloths, STA
 DECLARE_DWORD_COUNTER_STAT_EXTERN(TEXT("Simulated Cloth Verts"), STAT_NumClothVerts, STATGROUP_Physics, ENGINE_API);
 
 #define WITH_PHYSX_VEHICLES WITH_PHYSX && PHYSICS_INTERFACE_PHYSX
-
-/** Pointer to PhysX Command Handler */
-extern ENGINE_API class FPhysCommandHandler* GPhysCommandHandler;
-
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 
 namespace physx
 {
@@ -110,6 +106,9 @@ using namespace nvidia;
 
 /** Pointer to PhysX cooking object */
 extern ENGINE_API PxCooking*			GPhysXCooking;
+
+/** Pointer to PhysX Command Handler */
+extern ENGINE_API class FPhysCommandHandler* GPhysCommandHandler;
 
 namespace NvParameterized
 {
@@ -202,7 +201,7 @@ public:
 	void ENGINE_API DeferredRelease(apex::ApexInterface* ApexInterface);
 #endif
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 	void ENGINE_API DeferredRelease(physx::PxScene * PScene);
 	void ENGINE_API DeferredDeleteSimEventCallback(physx::PxSimulationEventCallback* SimEventCallback);
 	void ENGINE_API DeferredDeleteContactModifyCallback(FContactModifyCallback* ContactModifyCallback);
@@ -222,7 +221,7 @@ private:
 			apex::ApexInterface * ApexInterface;
 			apex::DestructibleActor * DestructibleActor;
 #endif
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 			physx::PxScene* PScene;
 			physx::PxCpuDispatcher* CPUDispatcher;
 			physx::PxSimulationEventCallback* SimEventCallback;
@@ -264,7 +263,7 @@ FORCEINLINE bool PhysSingleThreadedMode()
 	return false;
 }
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 /** Struct used for passing info to the PhysX shader */
 
 struct FPhysSceneShaderInfo
@@ -340,9 +339,11 @@ FTransform FindBodyTransform(AActor* Actor, FName BoneName);
 FBox	FindBodyBox(AActor* Actor, FName BoneName);
 
 /** Set of delegates to allowing hooking different parts of the physics engine */
-class ENGINE_API FPhysicsDelegates : public FPhysicsDelegatesCore
+class ENGINE_API FPhysicsDelegates
 {
 public:
+	DECLARE_MULTICAST_DELEGATE_OneParam(FOnUpdatePhysXMaterial, UPhysicalMaterial*);
+	static FOnUpdatePhysXMaterial OnUpdatePhysXMaterial;
 
 	DECLARE_MULTICAST_DELEGATE_OneParam(FOnPhysicsAssetChanged, const UPhysicsAsset*);
 	static FOnPhysicsAssetChanged OnPhysicsAssetChanged;

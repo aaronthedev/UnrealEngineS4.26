@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithDeltaGenImporter.h"
 
-#include "DatasmithDeltaGenAnimationInterpolator.h"
 #include "DatasmithDeltaGenImportData.h"
 #include "DatasmithDeltaGenImportOptions.h"
 #include "DatasmithDeltaGenImporterAuxFiles.h"
@@ -44,7 +43,9 @@ DEFINE_LOG_CATEGORY(LogDatasmithDeltaGenImport);
 #define REVERSE_ATTACH_ORDER 1
 
 // Asset paths of blueprints used here
-#define SWITCH_ACTOR_CLASS TEXT("/Script/VariantManagerContent.SwitchActor")
+#define SWITCH_BLUEPRINT_ASSET		TEXT("/DatasmithContent/Blueprints/FBXImporter/BP_Switch")
+#define TOGGLE_BLUEPRINT_ASSET		TEXT("/DatasmithContent/Blueprints/FBXImporter/BP_Toggle")
+#define SHARED_NODE_BLUEPRINT_ASSET	TEXT("/DatasmithContent/Blueprints/FBXImporter/BP_SharedNode")
 
 class FAsyncReleaseFbxScene : public FNonAbandonableTask
 {
@@ -86,12 +87,29 @@ void FDatasmithDeltaGenImporter::SetImportOptions(UDatasmithDeltaGenImportOption
 
 bool FDatasmithDeltaGenImporter::OpenFile(const FString& FilePath)
 {
-	if (!ParseFbxFile(FilePath))
+	FString Extension = FPaths::GetExtension(FilePath);
+	bool bIsFromIntermediate = Extension.Compare(TEXT(DATASMITH_FBXIMPORTER_INTERMEDIATE_FORMAT_EXT), ESearchCase::IgnoreCase) == 0;
+	if (bIsFromIntermediate)
 	{
-		return false;
+		if (!ParseIntermediateFile(FilePath))
+		{
+			return false;
+		}
+	}
+	else
+	{
+		if (!ParseFbxFile(FilePath))
+		{
+			return false;
+		}
 	}
 
 	ParseAuxFiles(FilePath);
+
+	if (!SerializeScene(FilePath))
+	{
+		return false;
+	}
 
 	FDatasmithFBXScene::FStats Stats = IntermediateScene->GetStats();
 	UE_LOG(LogDatasmithDeltaGenImport, Log, TEXT("Scene %s has %d nodes, %d geometries, %d meshes, %d materials"),
@@ -135,6 +153,34 @@ bool FDatasmithDeltaGenImporter::ParseFbxFile(const FString& FBXPath)
 	}
 
 	( new FAutoDeleteAsyncTask< FAsyncReleaseFbxScene >( FbxImporter ) )->StartBackgroundTask();
+	return true;
+}
+
+bool FDatasmithDeltaGenImporter::ParseIntermediateFile(const FString& FBXPath)
+{
+	TUniquePtr<FArchive> SceneReader(IFileManager::Get().CreateFileReader(*FBXPath));
+	if (!SceneReader)
+	{
+		return false;
+	}
+
+	if (SceneReader && IntermediateScene->Serialize(*SceneReader))
+	{
+		// ok
+	}
+	else
+	{
+		UE_LOG(LogDatasmithDeltaGenImport, Log, TEXT("Failed deserializing scene from intermediate file %s"), *FBXPath);
+		return false;
+	}
+
+#if WITH_DELTAGEN_DEBUG_CODE
+	if (ImportOptions->IntermediateSerialization == EDatasmithFBXIntermediateSerializationType::SaveLoadSkipFurtherImport)
+	{
+		// signal to stop further import
+		return false;
+	}
+#endif
 	return true;
 }
 
@@ -207,15 +253,65 @@ void FDatasmithDeltaGenImporter::ParseAuxFiles(const FString& FBXPath)
 	}
 }
 
+void FDatasmithDeltaGenImporter::FetchAOTexture(const FString& MeshName, TSharedPtr<FDatasmithFBXSceneMaterial>& Material)
+{
+	if (ImportOptions->TextureDirs.Num() == 0 || ImportOptions->ShadowTextureMode == EShadowTextureMode::Ignore)
+	{
+		return;
+	}
+
+	// FNames because they're case insensitive
+	// I've only ever seen .bmp shadow textures, but I haven't seen anything saying they can't be anything else
+	const static TSet<FName> ImageExtensions{ TEXT("bmp"), TEXT("jpg"), TEXT("png"), TEXT("jpeg"), TEXT("tiff"), TEXT("tga") };
+
+	// Find all filepaths for images that are in a texture folder and have the mesh name as part of the filename
+	TArray<FString> PotentialTextures;
+	for (const FDirectoryPath& Dir : ImportOptions->TextureDirs)
+	{
+		TArray<FString> Textures;
+		IFileManager::Get().FindFiles(Textures, *Dir.Path, TEXT(""));
+
+		for (const FString& Texture : Textures)
+		{
+			FName Extension = FName(*FPaths::GetExtension(Texture));
+
+			if (ImageExtensions.Contains(Extension) && Texture.Contains(MeshName))
+			{
+				PotentialTextures.Add( Dir.Path / Texture );
+			}
+		}
+	}
+
+	if (PotentialTextures.Num() == 0)
+	{
+		return;
+	}
+
+	FString AOTexPath = PotentialTextures[0];
+	if (PotentialTextures.Num() > 1)
+	{
+		UE_LOG(LogDatasmithDeltaGenImport, Log, TEXT("Found more than one candidate for an AO texture for mesh '%s'. The texture '%s' will be used, but moving or renaming the texture would prevent this."), *MeshName, *AOTexPath);
+	}
+
+	FDatasmithFBXSceneMaterial::FTextureParams& Tex = Material->TextureParams.FindOrAdd(TEXT("TexAO"));
+	Tex.Path = AOTexPath;
+}
+
 bool FDatasmithDeltaGenImporter::ProcessScene()
 {
 	FDatasmithDeltaGenSceneProcessor Processor(IntermediateScene.Get());
 
-	Processor.FindDuplicatedMaterials();
-
+	// We need to create AO textures before we merge as they depend on the name of the mesh itself,
+	// and we only want to add this AO texture to the one material used by that mesh
 	if (ImportOptions->ShadowTextureMode != EShadowTextureMode::Ignore)
 	{
-		Processor.SetupAOTextures(ImportOptions->TextureDirs);
+		for (TSharedPtr<FDatasmithFBXSceneNode>& Node : IntermediateScene->GetAllNodes())
+		{
+			for (TSharedPtr<FDatasmithFBXSceneMaterial>& Material : Node->Materials)
+			{
+				FetchAOTexture(Node->Mesh->Name, Material);
+			}
+		}
 	}
 
 	Processor.RemoveLightMapNodes();
@@ -225,6 +321,8 @@ bool FDatasmithDeltaGenImporter::ProcessScene()
 	Processor.SplitLightNodes();
 
 	Processor.DecomposePivots(TmlTimelines);
+
+	Processor.FindDuplicatedMaterials();
 
 	if (ImportOptions->bRemoveInvisibleNodes)
 	{
@@ -240,14 +338,55 @@ bool FDatasmithDeltaGenImporter::ProcessScene()
 
 	Processor.RemoveEmptyNodes();
 
+	if (ImportOptions->bOptimizeDuplicatedNodes)
+	{
+		Processor.OptimizeDuplicatedNodes();
+	}
+
 	Processor.FixMeshNames();
+
+	return true;
+}
+
+bool FDatasmithDeltaGenImporter::SerializeScene(const FString& FBXPath)
+{
+#if WITH_DELTAGEN_DEBUG_CODE
+	if (ImportOptions->IntermediateSerialization != EDatasmithFBXIntermediateSerializationType::Disabled)
+	{
+		FString FilePath = FBXPath;
+		if (FPaths::GetExtension(FilePath, false) != TEXT(DATASMITH_FBXIMPORTER_INTERMEDIATE_FORMAT_EXT))
+		{
+			FilePath = FilePath + "." + DATASMITH_FBXIMPORTER_INTERMEDIATE_FORMAT_EXT;
+		}
+
+		TUniquePtr<FArchive> SceneWriter(IFileManager::Get().CreateFileWriter(*FilePath));
+		if (SceneWriter && IntermediateScene->Serialize(*SceneWriter))
+		{
+			UE_LOG(LogDatasmithDeltaGenImport, Log, TEXT("Serialized scene to intermediate file %s"), *FilePath);
+		}
+		else
+		{
+			UE_LOG(LogDatasmithDeltaGenImport, Warning, TEXT("Failed serializing scene to intermediate file %s"), *FilePath);
+		}
+	}
+	if (ImportOptions->IntermediateSerialization == EDatasmithFBXIntermediateSerializationType::SaveLoadSkipFurtherImport)
+	{
+		// signal to stop further import
+		return false;
+	}
+#endif
 
 	return true;
 }
 
 bool FDatasmithDeltaGenImporter::CheckNodeType(const TSharedPtr<FDatasmithFBXSceneNode>& Node)
 {
-	if (Node->Mesh.IsValid() && Node->Camera.IsValid())
+	if (EnumHasAnyFlags(Node->GetNodeType(), ENodeType::SharedNode) && (Node->Mesh.IsValid() || Node->Camera.IsValid() || Node->Light.IsValid()))
+	{
+		UE_LOG(LogDatasmithDeltaGenImport, Error, TEXT("Node '%s' can't be a SharedNode and have a mesh, camera or light!"), *Node->Name);
+		return false;
+	}
+	else if (Node->Mesh.IsValid() && Node->Camera.IsValid())
 	{
 		UE_LOG(LogDatasmithDeltaGenImport, Error, TEXT("Node '%s' can't have a mesh and a camera at the same time!"), *Node->Name);
 		return false;
@@ -412,21 +551,8 @@ TSharedPtr<IDatasmithActorElement> FDatasmithDeltaGenImporter::ConvertNode(const
 		LightActor->SetColor(Light->DiffuseColor);
 		LightActor->SetTemperature(Light->Temperature);
 		LightActor->SetUseTemperature(Light->UseTemperature);
+		LightActor->SetIesFile(*Light->IESPath);
 		LightActor->SetUseIes(Light->UseIESProfile);
-		if (Light->UseIESProfile && !Light->IESPath.IsEmpty())
-		{
-			// Create IES texture
-			const FString BaseFilename = FPaths::GetBaseFilename(Light->IESPath);
-			FString TextureName = FDatasmithUtils::SanitizeObjectName(BaseFilename + TEXT("_IES"));
-			TSharedPtr<IDatasmithTextureElement> Texture = FDatasmithSceneFactory::CreateTexture(*TextureName);
-			Texture->SetTextureMode(EDatasmithTextureMode::Ies);
-			Texture->SetLabel(*BaseFilename);
-			Texture->SetFile(*Light->IESPath);
-			DatasmithScene->AddTexture(Texture);
-
-			// Assign IES texture to light
-			LightActor->SetIesTexturePathName(*TextureName);
-		}
 
 		ActorElement = LightActor;
 	}
@@ -449,9 +575,26 @@ TSharedPtr<IDatasmithActorElement> FDatasmithDeltaGenImporter::ConvertNode(const
 	{
 		if (EnumHasAnyFlags(Node->GetNodeType(), ENodeType::Switch))
 		{
-			TSharedPtr<IDatasmithCustomActorElement> SwitchActorClass = FDatasmithSceneFactory::CreateCustomActor(*Node->Name);
-			SwitchActorClass->SetClassOrPathName(SWITCH_ACTOR_CLASS);
-			ActorElement = SwitchActorClass;
+			// Add switch blueprint
+			TSharedPtr<IDatasmithCustomActorElement> SwitchBlueprint = FDatasmithSceneFactory::CreateCustomActor(*Node->Name);
+			SwitchBlueprint->SetClassOrPathName(SWITCH_BLUEPRINT_ASSET);
+			TSharedPtr<IDatasmithKeyValueProperty> Property = FDatasmithSceneFactory::CreateKeyValueProperty(TEXT("Name"));
+			Property->SetValue(*Node->OriginalName);
+			Property->SetPropertyType(EDatasmithKeyValuePropertyType::String);
+			SwitchBlueprint->AddProperty(Property);
+			ActorElement = SwitchBlueprint;
+		}
+		else if (EnumHasAnyFlags(Node->GetNodeType(), ENodeType::SharedNode))
+		{
+			TSharedPtr<IDatasmithCustomActorElement> SharedNodeBlueprint = FDatasmithSceneFactory::CreateCustomActor(*Node->Name);
+			SharedNodeBlueprint->SetClassOrPathName(SHARED_NODE_BLUEPRINT_ASSET);
+			ActorElement = SharedNodeBlueprint;
+		}
+		else if (EnumHasAnyFlags(Node->GetNodeType(), ENodeType::Toggle))
+		{
+			TSharedPtr<IDatasmithCustomActorElement> Blueprint = FDatasmithSceneFactory::CreateCustomActor(*Node->Name);
+			Blueprint->SetClassOrPathName(TOGGLE_BLUEPRINT_ASSET);
+			ActorElement = Blueprint;
 		}
 		else
 		{
@@ -540,7 +683,6 @@ TSharedPtr<IDatasmithTextureElement> CreateTextureAndTextureProperties(IDatasmit
 		MapEntry(TEXT("TexTransparent"), EDatasmithTextureMode::Other),
 		MapEntry(TEXT("TexEmissive"), EDatasmithTextureMode::Diffuse),
 		MapEntry(TEXT("TexAO"), EDatasmithTextureMode::Diffuse),
-		MapEntry(TEXT("TexShininess"), EDatasmithTextureMode::Specular),
 	});
 
 	// Create the actual texture (accompanying texture properties will all be packed as key-value pairs)
@@ -641,269 +783,187 @@ TSharedPtr<IDatasmithBaseMaterialElement> FDatasmithDeltaGenImporter::ConvertMat
 	TSharedRef<IDatasmithMasterMaterialElement> MaterialElement = FDatasmithSceneFactory::CreateMasterMaterial(*Material->Name);
 	ImportedMaterials.Add(Material, MaterialElement);
 
-	IDatasmithMasterMaterialElement* El = &MaterialElement.Get();
-	AddStringProperty(El, TEXT("Type"), Material->Type);
-	AddBoolProperty(El, TEXT("ReflectionIsActive"), true);
-
-	for (const auto& Pair : Material->TextureParams)
+	if (ImportOptions->bColorizeMaterials)
 	{
-		const FString& TexName = Pair.Key;
-		const FDatasmithFBXSceneMaterial::FTextureParams& Tex = Pair.Value;
+		// Compute some color based on material's name hash, so they'll appear differently
+		FMD5 Md5;
+		Md5.Update((const uint8*)*Material->Name, Material->Name.Len() * sizeof(TCHAR));
+		FMD5Hash NameHash;
+		NameHash.Set(Md5);
+		int32 ColorIndex = NameHash.GetBytes()[15];
 
-		FString FoundTexturePath = DeltaGenImporterImpl::SearchForFile(Tex.Path, ImportOptions->TextureDirs);
-		if (FoundTexturePath.IsEmpty())
+		static const uint8 Colors[] = { 0, 32, 128, 255 };
+
+		uint8 R = Colors[ColorIndex & 3];
+		uint8 G = Colors[(ColorIndex >> 2) & 3];
+		uint8 B = Colors[(ColorIndex >> 4) & 3];
+
+		AddColorProperty(&MaterialElement.Get(), TEXT("DiffuseColor"), FVector4(R / 255.0f, G / 255.0f, B / 255.0f, 1.0f));
+	}
+	else
+	{
+		IDatasmithMasterMaterialElement* El = &MaterialElement.Get();
+		AddStringProperty(El, TEXT("Type"), Material->Type);
+		AddBoolProperty(El, TEXT("ReflectionIsActive"), true);
+
+		for (const auto& Pair : Material->TextureParams)
 		{
-			continue;
-		}
-		TSharedPtr<IDatasmithTextureElement> CreatedTexture = CreateTextureAndTextureProperties(El, TexName, Tex, ImportOptions->ShadowTextureMode);
+			const FString& TexName = Pair.Key;
+			const FDatasmithFBXSceneMaterial::FTextureParams& Tex = Pair.Value;
 
-		// Only add the texture element to the scene once (so the asset is only created once). We need
-		// to let CreateTextureAndTextureProperties run regardless though, as it will add to the material element
-		// the properties describing how this material will use this texture
-		if (CreatedTexture.IsValid() && !CreatedTextureElementPaths.Contains(FoundTexturePath))
+			FString FoundTexturePath = DeltaGenImporterImpl::SearchForFile(Tex.Path, ImportOptions->TextureDirs);
+			if (FoundTexturePath.IsEmpty())
+			{
+				continue;
+			}
+			TSharedPtr<IDatasmithTextureElement> CreatedTexture = CreateTextureAndTextureProperties(El, TexName, Tex, ImportOptions->ShadowTextureMode);
+
+			// Only add the texture element to the scene once (so the asset is only created once). We need
+			// to let CreateTextureAndTextureProperties run regardless though, as it will add to the material element
+			// the properties describing how this material will use this texture
+			if (CreatedTexture.IsValid() && !CreatedTextureElementPaths.Contains(FoundTexturePath))
+			{
+				DatasmithScene->AddTexture(CreatedTexture);
+				CreatedTextureElementPaths.Add(FoundTexturePath);
+			}
+		}
+
+		for (const auto& Pair : Material->BoolParams)
 		{
-			DatasmithScene->AddTexture(CreatedTexture);
-			CreatedTextureElementPaths.Add(FoundTexturePath);
+			const FString& ParamName = Pair.Key;
+			const bool bValue = Pair.Value;
+
+			AddBoolProperty(El, ParamName, bValue);
 		}
-	}
 
-	for (const auto& Pair : Material->BoolParams)
-	{
-		const FString& ParamName = Pair.Key;
-		const bool bValue = Pair.Value;
+		for (const auto& Pair : Material->ScalarParams)
+		{
+			const FString& ParamName = Pair.Key;
+			const float Value = Pair.Value;
 
-		AddBoolProperty(El, ParamName, bValue);
-	}
+			AddFloatProperty(El, ParamName, Value);
+		}
 
-	for (const auto& Pair : Material->ScalarParams)
-	{
-		const FString& ParamName = Pair.Key;
-		const float Value = Pair.Value;
+		for (const auto& Pair : Material->VectorParams)
+		{
+			const FString& ParamName = Pair.Key;
+			const FVector4& Value = Pair.Value;
 
-		AddFloatProperty(El, ParamName, Value);
-	}
-
-	for (const auto& Pair : Material->VectorParams)
-	{
-		const FString& ParamName = Pair.Key;
-		const FVector4& Value = Pair.Value;
-
-		AddColorProperty(El, ParamName, Value);
+			AddColorProperty(El, ParamName, Value);
+		}
 	}
 
 	return MaterialElement;
 }
 
-namespace DeltaGenImporterImpl
+void PopulateTransformAnimation(IDatasmithTransformAnimationElement& TransformAnimation, const FDeltaGenTmlDataAnimationTrack& Track)
 {
-	void PopulateTransformAnimation(IDatasmithTransformAnimationElement& TransformAnimation, const FDeltaGenTmlDataAnimationTrack& Track, float InFramerate, float TimelineDelayMs)
+	if (Track.Zeroed)
 	{
-		EDatasmithTransformType DSType = EDatasmithTransformType::Count;
-
-		switch(Track.Type)
-		{
-			case EDeltaGenTmlDataAnimationTrackType::Translation:
-				DSType = EDatasmithTransformType::Translation;
-				break;
-			// We convert Rotation to Euler on import
-			case EDeltaGenTmlDataAnimationTrackType::Rotation:
-			case EDeltaGenTmlDataAnimationTrackType::RotationDeltaGenEuler:
-				DSType = EDatasmithTransformType::Rotation;
-				break;
-			case EDeltaGenTmlDataAnimationTrackType::Scale:
-				DSType = EDatasmithTransformType::Scale;
-				break;
-			case EDeltaGenTmlDataAnimationTrackType::Center:
-				UE_LOG(LogDatasmithDeltaGenImport, Warning, TEXT("Center animations are currently not supported!"));
-				return;
-				break;
-			default:
-				return;
-		}
-
-		bool bValidValues = false;
-		for (const FVector& Value : Track.Values)
-		{
-			if (Value != FVector::ZeroVector)
-			{
-				bValidValues = true;
-				break;
-			}
-		}
-
-		bool bValidControlPoints = false;
-		for (const FVector& Value : Track.ValueControlPoints)
-		{
-			if (Value != FVector::ZeroVector)
-			{
-				bValidControlPoints = true;
-				break;
-			}
-		}
-
-		// Early out if this track has invalid data
-		if ((Track.ValueInterpolation == EDeltaGenAnimationInterpolation::Constant ||
-			 Track.ValueInterpolation == EDeltaGenAnimationInterpolation::Linear) &&
-			!bValidValues)
-		{
-			return;
-		}
-		else if (Track.ValueInterpolation == EDeltaGenAnimationInterpolation::Cubic &&
-				 (!bValidValues || !bValidControlPoints))
-		{
-			return;
-		}
-
-		// Extract the keys from the time curve control points (x values of tangential control points)
-		// DeltaGen will store, for example, these "Positions" for some TimeAdjustment Smooth interpolator:
-		//	0.00000000 0.00000000 0.00000000;    <--- P0
-		//	5.00000000 5.00000000 0.00000000;    <--- P1
-		//	10.00000000 10.00000000 0.00000000;  <--- P2
-		//	15.00000000 15.00000000 0.00000000;  <--- P3
-		// With this, we will extract 0 and 15 as keys, and have the entire dataset as control points.
-		int32 NumKeyControlPoints = Track.KeyControlPoints.Num();
-		TArray<float> KeyCurveKeys;
-
-		TUniquePtr<DeltaGen::FInterpolator> KeyInterpolator = nullptr;
-		switch (Track.KeyInterpolation)
-		{
-		case EDeltaGenAnimationInterpolation::Cubic:
-			// We should have 1 tangential (actual vertex) and 2 auxiliary (handles) control points per key, except the
-			// first and last keys, which have 1 handle less, so NumControlPts = NumKeys + NumKeys * 2 - 2, and so
-			// NumKeys = (NumControlPts + 2)/3
-			KeyCurveKeys.Reserve((NumKeyControlPoints + 2) / 3);
-			for (int32 Index = 0; Index < NumKeyControlPoints; Index += 3)
-			{
-				KeyCurveKeys.Add(Track.KeyControlPoints[Index].X);
-			}
-
-			KeyInterpolator = MakeUnique<DeltaGen::FCubicInterpolator>(KeyCurveKeys, Track.KeyControlPoints);
-			break;
-
-		default:
-			KeyCurveKeys.Reserve(NumKeyControlPoints);
-			for (int32 Index = 0; Index < NumKeyControlPoints; ++Index)
-			{
-				KeyCurveKeys.Add(Track.KeyControlPoints[Index].X);
-			}
-
-			KeyInterpolator = MakeUnique<DeltaGen::FLinearInterpolator>(KeyCurveKeys, Track.KeyControlPoints);
-			break;
-		}
-
-		TUniquePtr<DeltaGen::FInterpolator> ValueInterpolator = nullptr;
-		switch (Track.ValueInterpolation)
-		{
-		case EDeltaGenAnimationInterpolation::Constant:
-			ValueInterpolator = MakeUnique<DeltaGen::FConstInterpolator>(Track.Keys, Track.Values);
-			break;
-		case EDeltaGenAnimationInterpolation::Linear:
-			ValueInterpolator = MakeUnique<DeltaGen::FLinearInterpolator>(Track.Keys, Track.Values);
-			break;
-		case EDeltaGenAnimationInterpolation::Cubic:
-			ValueInterpolator = MakeUnique<DeltaGen::FCubicInterpolator>(Track.Keys, Track.ValueControlPoints);
-			break;
-		case EDeltaGenAnimationInterpolation::Unsupported:
-		default:
-			return;
-			break;
-		}
-
-		if (!ValueInterpolator.IsValid() || !KeyInterpolator.IsValid())
-		{
-			UE_LOG(LogDatasmithDeltaGenImport, Error, TEXT("Unsupported transform animation interpolation type for animation '%s'!"), TransformAnimation.GetLabel());
-			return;
-		}
-
-		float DelayS = (Track.DelayMs + TimelineDelayMs) / 1000.0f;
-
-		FFrameRate Framerate = FFrameRate(static_cast<uint32>(InFramerate + 0.5f), 1);
-		FFrameNumber StartFrame = Framerate.AsFrameNumber(ValueInterpolator->GetMinTime() + DelayS);
-
-		// If we use AsFrameNumber it will floor, and we might lose the very end of the animation
-		const double TimeAsFrame = (double(ValueInterpolator->GetMaxTime() + DelayS) * Framerate.Numerator) / Framerate.Denominator;
-		FFrameNumber EndFrame = FFrameNumber(static_cast<int32>(FMath::CeilToDouble(TimeAsFrame)));
-
-		// We go to EndFrame.Value+1 here so that if its a 2 second animation at 30fps, frame 60 belongs
-		// to the actual animation, as opposed to being range [0, 59]. This guarantees that the animation will
-		// actually complete within its range, which is necessary in order to play it correctly at runtime
-		for (int32 Frame = StartFrame.Value; Frame <= EndFrame.Value + 1; ++Frame)
-		{
-			float TimeSeconds = Framerate.AsSeconds(Frame) - DelayS;
-			FVector InterpolatedTime = KeyInterpolator->SolveForX(TimeSeconds);
-			FVector Val = ValueInterpolator->Evaluate(InterpolatedTime.Y);
-
-			if (DSType == EDatasmithTransformType::Rotation)
-			{
-				FQuat Xrot = FQuat(FVector(1.0f, 0.0f, 0.0f), FMath::DegreesToRadians(Val.X));
-				FQuat Yrot = FQuat(FVector(0.0f, 1.0f, 0.0f), FMath::DegreesToRadians(Val.Y));
-				FQuat Zrot = FQuat(FVector(0.0f, 0.0f, 1.0f), FMath::DegreesToRadians(Val.Z));
-				Val = (Xrot * Yrot * Zrot).Euler();
-				Val.X *= -1;
-				Val.Z *= -1;
-			}
-			else if (DSType == EDatasmithTransformType::Translation)
-			{
-				// Deltagen is right-handed Z up, UE4 is left-handed Z up. We try keeping the same X, so here we
-				// just flip the Y coordinate to convert between them.
-				// Note: Geometry, transforms and VRED animations get converted when parsing the FBX file in DatasmithFBXFileImporter, so
-				// you won't find analogue for this in VRED importer, even though the conversion is the same
-				Val.Y *= -1;
-			}
-
-			FDatasmithTransformFrameInfo FrameInfo = FDatasmithTransformFrameInfo(Frame, Val);
-			TransformAnimation.AddFrame(DSType, FrameInfo);
-		}
-
-		// DeltaGen always has all components for each track type
-		EDatasmithTransformChannels Channels = TransformAnimation.GetEnabledTransformChannels();
-		ETransformChannelComponents Components = ETransformChannelComponents::All;
-		TransformAnimation.SetEnabledTransformChannels(Channels | FDatasmithAnimationUtils::SetChannelTypeComponents(Components, DSType));
+		return;
 	}
 
-	void CombineAnimations(const TArray<TSharedRef<IDatasmithTransformAnimationElement>>& InputAnimations, TSharedRef<IDatasmithTransformAnimationElement>& OutputAnimation)
+	EDatasmithTransformType DSType = EDatasmithTransformType::Count;
+	switch(Track.Type)
 	{
-		TArray<FDatasmithTransformFrameInfo> Frames;
-		for (uint8 TransformTypeIndex = 0; TransformTypeIndex < (uint8)EDatasmithTransformType::Count; ++TransformTypeIndex)
+	case EDeltaGenTmlDataAnimationTrackType::Translation:
+	{
+		DSType = EDatasmithTransformType::Translation;
+		break;
+	}
+	// We convert Rotation to Euler on import as well
+	case EDeltaGenTmlDataAnimationTrackType::Rotation:
+	case EDeltaGenTmlDataAnimationTrackType::RotationDeltaGenEuler:
+	{
+		DSType = EDatasmithTransformType::Rotation;
+		break;
+	}
+	case EDeltaGenTmlDataAnimationTrackType::Scale:
+	{
+		DSType = EDatasmithTransformType::Scale;
+		break;
+	}
+	case EDeltaGenTmlDataAnimationTrackType::Center:
+	{
+		UE_LOG(LogDatasmithDeltaGenImport, Warning, TEXT("Center animations are currently not supported!"));
+		return;
+		break;
+	}
+	default:
+	{
+		return;
+	}
+	}
+
+	FRichCurve Curves[3];
+	float MinKey = FLT_MAX;
+	float MaxKey = -FLT_MAX;
+
+	// DeltaGen always has all components for each track type
+	EDatasmithTransformChannels Channels = TransformAnimation.GetEnabledTransformChannels();
+	ETransformChannelComponents Components = FDatasmithAnimationUtils::GetChannelTypeComponents(Channels, DSType);
+	if (Track.Keys.Num() > 0)
+	{
+		Components = ETransformChannelComponents::All;
+	}
+	TransformAnimation.SetEnabledTransformChannels(Channels | FDatasmithAnimationUtils::SetChannelTypeComponents(Components, DSType));
+
+	for(int KeyIndex = 0; KeyIndex < Track.Keys.Num(); ++KeyIndex)
+	{
+		float Key = Track.Keys[KeyIndex];
+		bool bUnwindRotation = (DSType == EDatasmithTransformType::Rotation);
+		FVector Value = FVector(Track.Values[KeyIndex].X, Track.Values[KeyIndex].Y, Track.Values[KeyIndex].Z);
+
+		MinKey = FMath::Min(MinKey, Key);
+		MaxKey = FMath::Max(MaxKey, Key);
+
+		Curves[0].AddKey(Key, Value.X, bUnwindRotation);
+		Curves[1].AddKey(Key, Value.Y, bUnwindRotation);
+		Curves[2].AddKey(Key, Value.Z, bUnwindRotation);
+	}
+
+	FFrameRate FrameRate = FFrameRate(30, 1);
+	FFrameNumber StartFrame = FrameRate.AsFrameNumber(MinKey);
+
+	// If we use AsFrameNumber it will floor, and we might lose the very end of the animation
+	const double TimeAsFrame = (double(MaxKey) * FrameRate.Numerator) / FrameRate.Denominator;
+	FFrameNumber EndFrame = FFrameNumber(static_cast<int32>(FMath::CeilToDouble(TimeAsFrame)));
+
+	// We go to EndFrame.Value+1 here so that if its a 2 second animation at 30fps, frame 60 belongs
+	// to the actual animation, as opposed to being range [0, 59]. This guarantees that the animation will
+	// actually complete within its range, which is necessary in order to play it correctly at runtime
+	for (int32 Frame = StartFrame.Value; Frame <= EndFrame.Value + 1; ++Frame)
+	{
+		float TimeSeconds = FrameRate.AsSeconds(Frame);
+		FVector Val = FVector(Curves[0].Eval(TimeSeconds), Curves[1].Eval(TimeSeconds), Curves[2].Eval(TimeSeconds));
+
+		if (DSType == EDatasmithTransformType::Rotation)
 		{
-			EDatasmithTransformType TransformType = (EDatasmithTransformType)TransformTypeIndex;
-
-			int32 NumFrames = 0;
-			for (const TSharedRef<IDatasmithTransformAnimationElement>& Animation : InputAnimations)
-			{
-				NumFrames += Animation->GetFramesCount(TransformType);
-			}
-			Frames.Reset();
-			Frames.Reserve(NumFrames);
-
-			for (const TSharedRef<IDatasmithTransformAnimationElement>& Animation : InputAnimations)
-			{
-				int32 FrameCount = Animation->GetFramesCount(TransformType);
-				for (int32 FrameIndex = 0; FrameIndex < FrameCount; ++FrameIndex)
-				{
-					Frames.Add(Animation->GetFrame(TransformType, FrameIndex));
-				}
-			}
-
-			Algo::Sort(Frames, [](const FDatasmithTransformFrameInfo& A, const FDatasmithTransformFrameInfo& B)
-			{
-				return A.FrameNumber < B.FrameNumber;
-			});
-
-			for (const FDatasmithTransformFrameInfo& Frame : Frames)
-			{
-				OutputAnimation->AddFrame(TransformType, Frame);
-			}
+			FQuat Xrot = FQuat(FVector(1.0f, 0.0f, 0.0f), FMath::DegreesToRadians(Val.X));
+			FQuat Yrot = FQuat(FVector(0.0f, 1.0f, 0.0f), FMath::DegreesToRadians(Val.Y));
+			FQuat Zrot = FQuat(FVector(0.0f, 0.0f, 1.0f), FMath::DegreesToRadians(Val.Z));
+			Val = (Xrot * Yrot * Zrot).Euler();
+			Val.X *= -1;
+			Val.Z *= -1;
 		}
+		else if (DSType == EDatasmithTransformType::Translation)
+		{
+			// Deltagen is right-handed Z up, UE4 is left-handed Z up. We try keeping the same X, so here we
+			// just flip the Y coordinate to convert between them.
+			// Note: Geometry, transforms and VRED animations get converted when parsing the FBX file in DatasmithFBXFileImporter, so
+			// you won't find analogue for this in VRED importer, even though the conversion is the same
+			Val.Y *= -1;
+		}
+
+		FDatasmithTransformFrameInfo FrameInfo = FDatasmithTransformFrameInfo(Frame, Val);
+		TransformAnimation.AddFrame(DSType, FrameInfo);
 	}
 }
 
 TSharedPtr<IDatasmithLevelSequenceElement> FDatasmithDeltaGenImporter::ConvertAnimationTimeline(const FDeltaGenTmlDataTimeline& TmlTimeline)
 {
 	TSharedRef<IDatasmithLevelSequenceElement> SequenceElement = FDatasmithSceneFactory::CreateLevelSequence(*TmlTimeline.Name);
-	SequenceElement->SetFrameRate(TmlTimeline.Framerate);
 
-	TArray<TSharedRef<IDatasmithTransformAnimationElement>> InitialAnimations;
 	for (const FDeltaGenTmlDataTimelineAnimation& Animation : TmlTimeline.Animations)
 	{
 		FString TargetNodeName = Animation.TargetNode.ToString();
@@ -914,44 +974,14 @@ TSharedPtr<IDatasmithLevelSequenceElement> FDatasmithDeltaGenImporter::ConvertAn
 
 		for (const FDeltaGenTmlDataAnimationTrack& Track : Animation.Tracks)
 		{
-			DeltaGenImporterImpl::PopulateTransformAnimation(TransformAnimation.Get(), Track, TmlTimeline.Framerate, Animation.DelayMs);
+			PopulateTransformAnimation(TransformAnimation.Get(), Track);
 		}
 
 		if (TransformAnimation->GetFramesCount(EDatasmithTransformType::Translation) > 0 ||
 			TransformAnimation->GetFramesCount(EDatasmithTransformType::Rotation) > 0 ||
 			TransformAnimation->GetFramesCount(EDatasmithTransformType::Scale) > 0)
 		{
-			InitialAnimations.Add(TransformAnimation);
-		}
-	}
-
-	// Temp fix for UE-87458 until DatasmithLevelSequenceImporter can handle multiple simultaneous animations per actor using separate sections.
-	// This combines animations so that we will only ever emit one IDatasmithTransformAnimationElement per actor per level sequence.
-	// This needs to be done after baking as tracks can have different interpolation modes.
-	{
-		TMap<FString, TArray<TSharedRef<IDatasmithTransformAnimationElement>>> AnimationsPerActor;
-
-		for (const TSharedRef<IDatasmithTransformAnimationElement>& Animation : InitialAnimations)
-		{
-			AnimationsPerActor.FindOrAdd(Animation->GetName()).Add(Animation);
-		}
-
-		for (const TPair<FString, TArray<TSharedRef<IDatasmithTransformAnimationElement>>>& Pair : AnimationsPerActor)
-		{
-			const FString& ActorName = Pair.Key;
-			const TArray<TSharedRef<IDatasmithTransformAnimationElement>>& Animations = Pair.Value;
-
-			if (Animations.Num() == 1)
-			{
-				SequenceElement->AddAnimation(Animations[0]);
-			}
-			else
-			{
-				TSharedRef<IDatasmithTransformAnimationElement> CombinedAnimation = FDatasmithSceneFactory::CreateTransformAnimation(*ActorName);
-				DeltaGenImporterImpl::CombineAnimations(Animations, CombinedAnimation);
-
-				SequenceElement->AddAnimation(CombinedAnimation);
-			}
+			SequenceElement->AddAnimation(TransformAnimation);
 		}
 	}
 

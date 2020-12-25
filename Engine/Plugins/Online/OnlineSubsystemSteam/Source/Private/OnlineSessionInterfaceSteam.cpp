@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineSessionInterfaceSteam.h"
 #include "Misc/CommandLine.h"
@@ -232,8 +232,15 @@ bool FOnlineSessionSteam::CreateSession(int32 HostingPlayerNum, FName SessionNam
 
 		Session->HostingPlayerNum = HostingPlayerNum;
 		Session->OwningUserId = SteamUser() ? MakeShareable(new FUniqueNetIdSteam(SteamUser()->GetSteamID())) : nullptr;
-		Session->OwningUserName = SteamFriends() ? SteamFriends()->GetPersonaName() : GetCustomDedicatedServerName();
+		//Session->OwningUserName = SteamFriends() ? SteamFriends()->GetPersonaName() : GetCustomDedicatedServerName();
+		Session->OwningUserName = SessionName.ToString();
+		if (NewSessionSettings.bRequiresCode)
+		{	
+			FString RequiresCode = "?Param1=true";
+			Session->OwningUserName.Append(RequiresCode);
+		}
 		
+
 		// Unique identifier of this build for compatibility
 		Session->SessionSettings.BuildUniqueId = GetBuildUniqueId();
 
@@ -1346,7 +1353,7 @@ FString FOnlineSessionSteam::GetCustomDedicatedServerName() const
 		{
 			UE_LOG_ONLINE_SESSION(Warning, TEXT("SteamServerName overflows the maximum amount of characters %d allowed, truncating."), k_cbMaxGameServerName);
 			// Must have space for the null terminator
-			ServerName.LeftInline(k_cbMaxGameServerName - 1);
+			ServerName = ServerName.Left(k_cbMaxGameServerName - 1);
 		}
 
 		return ServerName;

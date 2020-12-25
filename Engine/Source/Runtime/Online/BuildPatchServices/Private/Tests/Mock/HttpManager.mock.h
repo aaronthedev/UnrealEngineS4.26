@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Common/HttpManager.h"
@@ -19,10 +19,10 @@ namespace BuildPatchServices
 		{
 		}
 
-		virtual TSharedRef<IHttpRequest, ESPMode::ThreadSafe> CreateRequest() override
+		virtual TSharedRef<IHttpRequest> CreateRequest() override
 		{
 			++RxCreateRequest;
-			return TSharedRef<IHttpRequest, ESPMode::ThreadSafe>(new FMockHttpRequest());
+			return TSharedRef<IHttpRequest>(new FMockHttpRequest());
 		}
 
 	public:

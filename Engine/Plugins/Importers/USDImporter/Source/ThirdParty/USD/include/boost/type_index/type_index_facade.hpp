@@ -1,5 +1,5 @@
 //
-// Copyright (c) 2013-2019 Antony Polukhin.
+// Copyright (c) Antony Polukhin, 2013-2015.
 //
 //
 // Distributed under the Boost Software License, Version 1.0. (See accompanying
@@ -10,7 +10,6 @@
 #define BOOST_TYPE_INDEX_TYPE_INDEX_FACADE_HPP
 
 #include <boost/config.hpp>
-#include <boost/container_hash/hash_fwd.hpp>
 #include <string>
 #include <cstring>
 
@@ -25,6 +24,11 @@
 #ifdef BOOST_HAS_PRAGMA_ONCE
 # pragma once
 #endif
+
+// Forward declaration from #include <boost/functional/hash_fwd.hpp>
+namespace boost {
+    template <class It> std::size_t hash_range(It, It);
+}
 
 namespace boost { namespace typeindex {
 
@@ -62,7 +66,7 @@ template <class Derived, class TypeInfo>
 class type_index_facade {
 private:
     /// @cond
-    BOOST_CXX14_CONSTEXPR const Derived & derived() const BOOST_NOEXCEPT {
+    const Derived & derived() const BOOST_NOEXCEPT {
       return *static_cast<Derived const*>(this);
     }
     /// @endcond
@@ -99,8 +103,7 @@ public:
 
     /// \b Override: This function \b may be redefined in Derived class. Overrides \b must not throw.
     /// \return Hash code of a type. By default hashes types by raw_name().
-    /// \note Derived class header \b must include <boost/container_hash/hash.hpp>, \b unless this function is redefined in
-    /// Derived class to not use boost::hash_range().
+    /// \note <boost/functional/hash.hpp> has to be included if this function is used.
     inline std::size_t hash_code() const BOOST_NOEXCEPT {
         const char* const name_raw = derived().raw_name();
         return boost::hash_range(name_raw, name_raw + std::strlen(name_raw));
@@ -151,34 +154,34 @@ protected:
 
 /// @cond
 template <class Derived, class TypeInfo>
-BOOST_CXX14_CONSTEXPR inline bool operator == (const type_index_facade<Derived, TypeInfo>& lhs, const type_index_facade<Derived, TypeInfo>& rhs) BOOST_NOEXCEPT {
+inline bool operator == (const type_index_facade<Derived, TypeInfo>& lhs, const type_index_facade<Derived, TypeInfo>& rhs) BOOST_NOEXCEPT {
     return static_cast<Derived const&>(lhs).equal(static_cast<Derived const&>(rhs));
 }
 
 template <class Derived, class TypeInfo>
-BOOST_CXX14_CONSTEXPR inline bool operator < (const type_index_facade<Derived, TypeInfo>& lhs, const type_index_facade<Derived, TypeInfo>& rhs) BOOST_NOEXCEPT {
-    return static_cast<Derived const&>(lhs).before(static_cast<Derived const&>(rhs));
+inline bool operator < (const type_index_facade<Derived, TypeInfo>& lhs, const type_index_facade<Derived, TypeInfo>& rhs) BOOST_NOEXCEPT {
+    return static_cast<Derived const&>(lhs).before(static_cast<Derived const&>(rhs));;
 }
 
 
 
 template <class Derived, class TypeInfo>
-BOOST_CXX14_CONSTEXPR inline bool operator > (const type_index_facade<Derived, TypeInfo>& lhs, const type_index_facade<Derived, TypeInfo>& rhs) BOOST_NOEXCEPT {
+inline bool operator > (const type_index_facade<Derived, TypeInfo>& lhs, const type_index_facade<Derived, TypeInfo>& rhs) BOOST_NOEXCEPT {
     return rhs < lhs;
 }
 
 template <class Derived, class TypeInfo>
-BOOST_CXX14_CONSTEXPR inline bool operator <= (const type_index_facade<Derived, TypeInfo>& lhs, const type_index_facade<Derived, TypeInfo>& rhs) BOOST_NOEXCEPT {
+inline bool operator <= (const type_index_facade<Derived, TypeInfo>& lhs, const type_index_facade<Derived, TypeInfo>& rhs) BOOST_NOEXCEPT {
     return !(lhs > rhs);
 }
 
 template <class Derived, class TypeInfo>
-BOOST_CXX14_CONSTEXPR inline bool operator >= (const type_index_facade<Derived, TypeInfo>& lhs, const type_index_facade<Derived, TypeInfo>& rhs) BOOST_NOEXCEPT {
+inline bool operator >= (const type_index_facade<Derived, TypeInfo>& lhs, const type_index_facade<Derived, TypeInfo>& rhs) BOOST_NOEXCEPT {
     return !(lhs < rhs);
 }
 
 template <class Derived, class TypeInfo>
-BOOST_CXX14_CONSTEXPR inline bool operator != (const type_index_facade<Derived, TypeInfo>& lhs, const type_index_facade<Derived, TypeInfo>& rhs) BOOST_NOEXCEPT {
+inline bool operator != (const type_index_facade<Derived, TypeInfo>& lhs, const type_index_facade<Derived, TypeInfo>& rhs) BOOST_NOEXCEPT {
     return !(lhs == rhs);
 }
 
@@ -285,7 +288,7 @@ inline std::basic_ostream<CharT, TriatT>& operator<<(
 #endif // BOOST_NO_IOSTREAM
 
 /// This free function is used by Boost's unordered containers.
-/// \note <boost/container_hash/hash.hpp> has to be included if this function is used.
+/// \note <boost/functional/hash.hpp> has to be included if this function is used.
 template <class Derived, class TypeInfo>
 inline std::size_t hash_value(const type_index_facade<Derived, TypeInfo>& lhs) BOOST_NOEXCEPT {
     return static_cast<Derived const&>(lhs).hash_code();

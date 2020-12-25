@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UserInterfaceCommand.h"
 #include "IAutomationControllerModule.h"
@@ -114,8 +114,6 @@ void FUserInterfaceCommand::Run(  )
 void FUserInterfaceCommand::InitializeSlateApplication( const FString& LayoutIni )
 {
 	FSlateApplication::InitializeAsStandaloneApplication(GetStandardStandaloneRenderer());
-	FSlateApplication::InitHighDPI(true);
-
 	FGlobalTabmanager::Get()->SetApplicationTitle(NSLOCTEXT("UnrealFrontend", "AppTitle", "Unreal Frontend"));
 
 	// load widget reflector
@@ -157,13 +155,10 @@ void FUserInterfaceCommand::InitializeSlateApplication( const FString& LayoutIni
 				)
 		);
 
-	// Load layout from ini file.
 	UserInterfaceCommand::ApplicationLayout = FLayoutSaveRestore::LoadFromConfig(LayoutIni, NewLayout);
-	// Restore application layout.
-	const bool bEmbedTitleAreaContent = false;
-	const EOutputCanBeNullptr OutputCanBeNullptr = EOutputCanBeNullptr::IfNoTabValid;
-	FGlobalTabmanager::Get()->RestoreFrom(UserInterfaceCommand::ApplicationLayout.ToSharedRef(), TSharedPtr<SWindow>(), bEmbedTitleAreaContent, OutputCanBeNullptr);
+	FGlobalTabmanager::Get()->RestoreFrom(UserInterfaceCommand::ApplicationLayout.ToSharedRef(), TSharedPtr<SWindow>());
 }
+
 
 void FUserInterfaceCommand::ShutdownSlateApplication( const FString& LayoutIni )
 {

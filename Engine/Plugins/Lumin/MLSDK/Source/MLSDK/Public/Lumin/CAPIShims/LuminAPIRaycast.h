@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,17 +10,17 @@ LUMIN_THIRD_PARTY_INCLUDES_START
 #include <ml_raycast.h>
 LUMIN_THIRD_PARTY_INCLUDES_END
 
-namespace LUMIN_MLSDK_API
+namespace MLSDK_API
 {
 
 CREATE_FUNCTION_SHIM(ml_perception_client, MLResult, MLRaycastCreate)
-#define MLRaycastCreate ::LUMIN_MLSDK_API::MLRaycastCreateShim
+#define MLRaycastCreate ::MLSDK_API::MLRaycastCreateShim
 CREATE_FUNCTION_SHIM(ml_perception_client, MLResult, MLRaycastDestroy)
-#define MLRaycastDestroy ::LUMIN_MLSDK_API::MLRaycastDestroyShim
+#define MLRaycastDestroy ::MLSDK_API::MLRaycastDestroyShim
 CREATE_FUNCTION_SHIM(ml_perception_client, MLResult, MLRaycastRequest)
-#define MLRaycastRequest ::LUMIN_MLSDK_API::MLRaycastRequestShim
+#define MLRaycastRequest ::MLSDK_API::MLRaycastRequestShim
 CREATE_FUNCTION_SHIM(ml_perception_client, MLResult, MLRaycastGetResult)
-#define MLRaycastGetResult ::LUMIN_MLSDK_API::MLRaycastGetResultShim
+#define MLRaycastGetResult ::MLSDK_API::MLRaycastGetResultShim
 
 }
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System.IO;
 using UnrealBuildTool;
@@ -28,20 +28,17 @@ public class WindowsMixedRealityInterop : ModuleRules
             {
                 PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "MixedRealityInterop.lib"));
             }
+            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "Microsoft.Holographic.AppRemoting.lib"));
+			PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "HolographicStreamerDesktop.lib"));
+			PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "Microsoft.Perception.Simulation.lib"));
+			PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "PerceptionSimulationManager.lib"));
 
-            PublicDefinitions.Add("WITH_SCENE_UNDERSTANDING=1");
+            PublicDefinitions.Add("WITH_SCENE_UNDERSTANDING=0");
         }
         else if (Target.Platform == UnrealTargetPlatform.HoloLens)
         {
             LibrariesPath = Path.Combine(LibrariesPath, Target.WindowsPlatform.GetArchitectureSubpath());
-            if (Target.Configuration == UnrealTargetConfiguration.Debug)
-            {
-				PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "MixedRealityInteropHoloLensDebug.lib"));
-			}
-			else
-			{
-				PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "MixedRealityInteropHoloLens.lib"));
-			}
+            PublicAdditionalLibraries.Add(Path.Combine(LibrariesPath, "MixedRealityInteropHoloLens.lib"));
 
             // Add a dependency to SceneUnderstanding.dll if present
             string SceneUnderstandingPath = Path.Combine(Target.UEThirdPartyBinariesDirectory, "HoloLens", Target.WindowsPlatform.GetArchitectureSubpath(), "Microsoft.MixedReality.SceneUnderstanding.dll");

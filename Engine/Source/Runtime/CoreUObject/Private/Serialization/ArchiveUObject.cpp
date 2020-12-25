@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Serialization/ArchiveUObject.h"
 #include "UObject/UObjectGlobals.h"
@@ -207,11 +207,11 @@ void FArchiveReplaceObjectRefBase::SerializeObject(UObject* ObjectToSerialize)
 		{
 			bAllowReferenceElimination = bAllow;
 		}
-		virtual void HandleObjectReference(UObject*& InObject, const UObject* InReferencingObject, const FProperty* InReferencingProperty) override
+		virtual void HandleObjectReference(UObject*& InObject, const UObject* InReferencingObject, const UProperty* InReferencingProperty) override
 		{
 			if (bAllowReferenceElimination)
 			{
-				FProperty* NewSerializedProperty = const_cast<FProperty*>(InReferencingProperty);
+				UProperty* NewSerializedProperty = const_cast<UProperty*>(InReferencingProperty);
 				FSerializedPropertyScope SerializedPropertyScope(Ar, NewSerializedProperty ? NewSerializedProperty : Ar.GetSerializedProperty());
 				Ar << InObject;
 			}

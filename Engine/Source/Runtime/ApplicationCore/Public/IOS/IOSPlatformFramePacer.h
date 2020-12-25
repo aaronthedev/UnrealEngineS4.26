@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 /*=============================================================================================
@@ -21,17 +21,13 @@ struct FIOSPlatformRHIFramePacer : public FGenericPlatformRHIFramePacer
 {
     // FGenericPlatformRHIFramePacer interface
     static bool IsEnabled();
-    static void Destroy();
-	static int32 SetFramePace(int32 FramePace);
-	static int32 GetFramePace();
-	static bool SupportsFramePace(int32 QueryFramePace);
-
-	// FIOSPlatformRHIFramePacer interface
 	static void InitWithEvent(class FEvent* TriggeredEvent);
 	static void AddHandler(FIOSFramePacerHandler Handler);
 	static void RemoveHandler(FIOSFramePacerHandler Handler);
-	static uint32 GetMaxRefreshRate();
+    static void Destroy();
+	static uint32 GetFramePace() { return Pace; };
 
+    
     /** Access to the IOS Frame Pacer: CADisplayLink */
     static FIOSFramePacer* FramePacer;
     

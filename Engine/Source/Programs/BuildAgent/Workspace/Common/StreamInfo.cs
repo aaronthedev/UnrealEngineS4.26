@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -235,13 +235,8 @@ namespace BuildAgent.Workspace.Common
 		/// Saves the contents of this object to disk
 		/// </summary>
 		/// <param name="OutputFile">The output file to write to</param>
-		public void Save(FileReference OutputFile, bool Overwrite = false)
+		public void Save(FileReference OutputFile)
 		{
-			if (Overwrite && FileReference.Exists(OutputFile))
-			{
-				FileReference.Delete(OutputFile);
-			}
-
 			using(FileStream Stream = File.Open(OutputFile.FullName, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
 			{
 				Stream.Write(CurrentSignature, 0, CurrentSignature.Length);

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 TextureStreamingBuild.cpp : Contains definitions to build texture streaming data.
@@ -158,6 +158,16 @@ ENGINE_API bool BuildTextureStreamingComponentData(UWorld* InWorld, EMaterialQua
 }
 
 #undef LOCTEXT_NAMESPACE
+
+/**
+* Checks whether a UStreamableRenderAsset is a texture/mesh with streamable mips
+* @param Asset		Asset to check
+* @return			true if the UStreamableRenderAsset is supposed to be streaming
+*/
+bool IsStreamingRenderAsset( const UStreamableRenderAsset* Asset )
+{
+	return Asset && Asset->bIsStreamable && !Asset->NeverStream && Asset->GetNumMipsForStreaming() > Asset->GetNumNonStreamingMips();
+}
 
 uint32 PackRelativeBox(const FVector& RefOrigin, const FVector& RefExtent, const FVector& Origin, const FVector& Extent)
 {
@@ -407,7 +417,7 @@ void FStreamingTextureLevelContext::ProcessMaterial(const FBoxSphereBounds& Comp
 	for (UTexture* Texture : Textures)
 	{
 		UTexture2D* Texture2D = Cast<UTexture2D>(Texture);
-		if (!Texture2D || !Texture2D->IsStreamable())
+		if (!IsStreamingRenderAsset(Texture2D))
 		{
 			continue;
 		}

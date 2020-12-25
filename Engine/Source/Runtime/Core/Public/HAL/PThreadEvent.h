@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,7 +8,7 @@
 /**
  * This is the PThreads version of FEvent.
  */
-class FPThreadEvent
+class CORE_VTABLE FPThreadEvent
 	: public FEvent
 {
 	// This is a little complicated, in an attempt to match Win32 Event semantics...

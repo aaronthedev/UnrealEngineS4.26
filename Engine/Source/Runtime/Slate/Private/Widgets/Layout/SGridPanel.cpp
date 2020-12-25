@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/Layout/SGridPanel.h"
 #include "Types/PaintArgs.h"
@@ -9,7 +9,6 @@
 SGridPanel::SGridPanel()
 : Slots(this)
 {
-	SetCanTick(false);
 }
 
 SGridPanel::FSlot& SGridPanel::AddSlot( int32 Column, int32 Row, SGridPanel::Layer InLayer )
@@ -273,8 +272,6 @@ void SGridPanel::SetColumnFill( int32 ColumnId, const TAttribute<float>& Coeffic
 		ColFillCoefficients.Emplace(0);
 	}
 	ColFillCoefficients[ColumnId] = Coefficient;
-
-	Invalidate(EInvalidateWidgetReason::Layout);
 }
 
 void SGridPanel::SetRowFill( int32 RowId, const TAttribute<float>& Coefficient )
@@ -284,16 +281,12 @@ void SGridPanel::SetRowFill( int32 RowId, const TAttribute<float>& Coefficient )
 		RowFillCoefficients.Emplace(0);
 	}
 	RowFillCoefficients[RowId] = Coefficient;
-
-	Invalidate(EInvalidateWidgetReason::Layout);
 }
 
 void SGridPanel::ClearFill()
 {
 	ColFillCoefficients.Reset();
 	RowFillCoefficients.Reset();
-
-	Invalidate(EInvalidateWidgetReason::Layout);
 }
 
 void SGridPanel::ComputePartialSums( TArray<float>& TurnMeIntoPartialSums )
@@ -376,8 +369,6 @@ void SGridPanel::NotifySlotChanged(SGridPanel::FSlot* InSlot, bool bSlotLayerCha
 			return LHS.LayerParam < RHS.LayerParam;
 		});
 	}
-
-	Invalidate(EInvalidateWidgetReason::Layout);
 }
 
 void SGridPanel::ComputeDesiredCellSizes( TArray<float>& OutColumns, TArray<float>& OutRows ) const

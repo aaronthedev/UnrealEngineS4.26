@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SteamVRHMD.h"
 #include "SteamVRPrivate.h"
@@ -673,11 +673,6 @@ bool FSteamVRHMD::GetTrackingSensorProperties(int32 SensorId, FQuat& OutOrientat
 	return true;
 }
 
-FString FSteamVRHMD::GetTrackedDevicePropertySerialNumber(int32 DeviceId)
-{
-	return GetFStringTrackedDeviceProperty(VRSystem, DeviceId, vr::Prop_SerialNumber_String);
-}
-
 void FSteamVRHMD::SetInterpupillaryDistance(float NewInterpupillaryDistance)
 {
 }
@@ -896,6 +891,7 @@ bool FSteamVRHMD::GetFloorToEyeTrackingTransform(FTransform& OutStandingToSeated
 	}
 	return bSuccess;
 }
+
 
 void FSteamVRHMD::RecordAnalytics()
 {
@@ -1374,9 +1370,8 @@ bool FSteamVRHMD::EnableStereo(bool bStereo)
 					Width = WindowMirrorBoundsWidth;
 					Height = WindowMirrorBoundsHeight;
 				}
-
-				bStereoEnabled = bStereoDesired;
 				SceneVP->SetViewportSize(Width, Height);
+				bStereoEnabled = bStereoDesired;
 			}
 			else
 			{
@@ -1599,7 +1594,7 @@ static const uint32 SteamVRSwapChainLength = 3;
 static const uint32 SteamVRSwapChainLength = 1;
 #endif
 
-bool FSteamVRHMD::AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, ETextureCreateFlags InTexFlags, ETextureCreateFlags InTargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples)
+bool FSteamVRHMD::AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 InTargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples)
 {
 	if (!IsStereoEnabled())
 	{
@@ -1612,13 +1607,6 @@ bool FSteamVRHMD::AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32
 #if PLATFORM_MAC
 	MetalBridge* MetalBridgePtr = (MetalBridge*)pBridge.GetReference();
 #endif
-
-	if (pBridge != nullptr && pBridge->GetSwapChain() != nullptr && pBridge->GetSwapChain()->GetTexture2D() != nullptr && pBridge->GetSwapChain()->GetTexture2D()->GetSizeX() == SizeX && pBridge->GetSwapChain()->GetTexture2D()->GetSizeY() == SizeY)
-	{
-		OutTargetableTexture = (FTexture2DRHIRef&)pBridge->GetSwapChain()->GetTextureRef();
-		OutShaderResourceTexture = OutTargetableTexture;
-		return true;
-	}
 
 	for (uint32 SwapChainIter = 0; SwapChainIter < SteamVRSwapChainLength; ++SwapChainIter)
 	{
@@ -1642,7 +1630,16 @@ bool FSteamVRHMD::AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32
 
 		if (BindingTexture == nullptr)
 		{
-			BindingTexture = GDynamicRHI->RHICreateAliasedTexture((FTextureRHIRef&)TargetableTexture);
+			// For this iteration, create a temporary texture resource that will get stomped the first time we do our bind/alias
+			// pass on this object.
+			// Note, even though this is a wasted allocation, it never gets bound or used in any way, so should be minimally impactful.
+			FTexture2DRHIRef TempTargetableTexture, TempShaderResourceTexture;
+			RHICreateTargetableShaderResource2D(SizeX, SizeY, PF_B8G8R8A8, 1, TexCreate_None, TexCreate_RenderTargetable, false, CreateInfo, TempTargetableTexture, TempShaderResourceTexture, NumSamples);
+			check(TempTargetableTexture == TempShaderResourceTexture);
+			BindingTexture = TempTargetableTexture;
+
+			// Alias immediately.
+			GDynamicRHI->RHIAliasTextureResources(BindingTexture, TargetableTexture);
 		}
 	}
 
@@ -1655,7 +1652,7 @@ bool FSteamVRHMD::AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32
 	return true;
 }
 
-bool FSteamVRHMD::AllocateDepthTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, ETextureCreateFlags Flags, ETextureCreateFlags TargetableTextureFlags,
+bool FSteamVRHMD::AllocateDepthTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 Flags, uint32 TargetableTextureFlags, 
 	FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples /* ignored, we always use 1 */)
 {
 	if (!IsStereoEnabled() || pBridge == nullptr)
@@ -1708,9 +1705,16 @@ bool FSteamVRHMD::AllocateDepthTexture(uint32 Index, uint32 SizeX, uint32 SizeY,
 
 		SwapChainTextures.Add((FTextureRHIRef&)TargetableTexture);
 
+		// As above, create a temp, stompable texture to alias over.
 		if (BindingTexture == nullptr)
 		{
-			BindingTexture = GDynamicRHI->RHICreateAliasedTexture((FTextureRHIRef&)TargetableTexture);
+			FTexture2DRHIRef TempTargetableTexture, TempShaderResourceTexture;
+			RHICreateTargetableShaderResource2D(SizeX, SizeY, PF_DepthStencil, 1, Flags, TargetableTextureFlags, false, CreateInfo, TempTargetableTexture, TempShaderResourceTexture, 1);
+			check(TempTargetableTexture == TempShaderResourceTexture);
+			BindingTexture = TempTargetableTexture;
+
+			// Alias immediately.
+			GDynamicRHI->RHIAliasTextureResources(BindingTexture, TargetableTexture);
 		}
 	}
 
@@ -1796,6 +1800,10 @@ bool FSteamVRHMD::Startup()
 		{ 
 			PixelDensity = FMath::Clamp(PixelDensityCVar->GetFloat(), PixelDensityMin, PixelDensityMax);
 		}
+
+		// disable vsync
+		static IConsoleVariable* CVSyncVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.VSync"));
+		CVSyncVar->Set(false);
 
 		// enforce finishcurrentframe
 		static IConsoleVariable* CFCFVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.finishcurrentframe"));

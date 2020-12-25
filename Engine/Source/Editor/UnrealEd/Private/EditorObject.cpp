@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	EditorObject.cpp: Unreal Editor object manipulation code.
@@ -114,9 +114,9 @@ void UEditorEngine::RenameObject(UObject* Object,UObject* NewOuter,const TCHAR* 
 }
 
 
-static void RemapProperty(FProperty* Property, int32 Index, const TMap<AActor*, AActor*>& ActorRemapper, uint8* DestData)
+static void RemapProperty(UProperty* Property, int32 Index, const TMap<AActor*, AActor*>& ActorRemapper, uint8* DestData)
 {
-	if (FObjectPropertyBase* ObjectProperty = CastField<FObjectPropertyBase>(Property))
+	if (UObjectProperty* ObjectProperty = Cast<UObjectProperty>(Property))
 	{
 		// If there's a concrete index, use that, otherwise iterate all array members (for the case that this property is inside a struct, or there is exactly one element)
 		const int32 Num = (Index == INDEX_NONE) ? ObjectProperty->ArrayDim : 1;
@@ -136,7 +136,7 @@ static void RemapProperty(FProperty* Property, int32 Index, const TMap<AActor*, 
 
 		}
 	}
-	else if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Property))
+	else if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(Property))
 	{
 		FScriptArrayHelper ArrayHelper(ArrayProperty, ArrayProperty->ContainerPtrToValuePtr<void>(DestData));
 		if (Index != INDEX_NONE)
@@ -151,12 +151,12 @@ static void RemapProperty(FProperty* Property, int32 Index, const TMap<AActor*, 
 			}
 		}
 	}
-	else if (FStructProperty* StructProperty = CastField<FStructProperty>(Property))
+	else if (UStructProperty* StructProperty = Cast<UStructProperty>(Property))
 	{
 		if (Index != INDEX_NONE)
 		{
 			// If a concrete index was given, remap just that
-			for (TFieldIterator<FProperty> It(StructProperty->Struct); It; ++It)
+			for (TFieldIterator<UProperty> It(StructProperty->Struct); It; ++It)
 			{
 				RemapProperty(*It, INDEX_NONE, ActorRemapper, StructProperty->ContainerPtrToValuePtr<uint8>(DestData, Index));
 			}
@@ -167,7 +167,7 @@ static void RemapProperty(FProperty* Property, int32 Index, const TMap<AActor*, 
 			// a deeper structure (an array or another struct) and we cannot know which element was changed, so iterate through all elements.
 			for (int32 Count = 0; Count < StructProperty->ArrayDim; Count++)
 			{
-				for (TFieldIterator<FProperty> It(StructProperty->Struct); It; ++It)
+				for (TFieldIterator<UProperty> It(StructProperty->Struct); It; ++It)
 				{
 					RemapProperty(*It, INDEX_NONE, ActorRemapper, StructProperty->ContainerPtrToValuePtr<uint8>(DestData, Count));
 				}
@@ -267,7 +267,7 @@ static const TCHAR* ImportProperties(
 			}
 			if (Length != StrLine.Len())
 			{
-				StrLine.LeftInline(Length, false);
+				StrLine = StrLine.Left(Length);
 			}
 		}
 
@@ -573,12 +573,6 @@ static const TCHAR* ImportProperties(
 							NewFlags &= ~RF_Transactional;
 						}
 					}
-					
-					// Ensure DefaultSubojbect flag persists through the clearing of flags
-					if (ComponentTemplate->HasAllFlags(RF_DefaultSubObject))
-					{
-						NewFlags |= RF_DefaultSubObject;
-					}
 
 					// Make sure desired flags are set - existing object could be pending kill
 					ComponentTemplate->ClearFlags(RF_AllFlags);
@@ -633,7 +627,7 @@ static const TCHAR* ImportProperties(
 		else
 		{
 			// Property.
-			FProperty::ImportSingleProperty(Str, DestData, ObjectStruct, SubobjectOuter, PortFlags, Warn, DefinedProperties);
+			UProperty::ImportSingleProperty(Str, DestData, ObjectStruct, SubobjectOuter, PortFlags, Warn, DefinedProperties);
 		}
 	}
 
@@ -704,13 +698,18 @@ const TCHAR* ImportObjectProperties( FImportObjectParams& InParams )
 		InParams.SubobjectOuter->PreEditChange(NULL);
 	}
 
-	FObjectInstancingGraph TempGraph;
-	FObjectInstancingGraph& InstanceGraph = InParams.InInstanceGraph ? *InParams.InInstanceGraph : TempGraph;
-
-	if ( InParams.SubobjectRoot && InParams.SubobjectRoot != UObject::StaticClass()->GetDefaultObject() )
+	FObjectInstancingGraph* CurrentInstanceGraph = InParams.InInstanceGraph;
+	if ( InParams.SubobjectRoot != NULL && InParams.SubobjectRoot != UObject::StaticClass()->GetDefaultObject() )
 	{
-		InstanceGraph.SetDestinationRoot(InParams.SubobjectRoot);
+		if ( CurrentInstanceGraph == NULL )
+		{
+			CurrentInstanceGraph = new FObjectInstancingGraph;
+		}
+		CurrentInstanceGraph->SetDestinationRoot(InParams.SubobjectRoot);
 	}
+
+ 	FObjectInstancingGraph TempGraph; 
+	FObjectInstancingGraph& InstanceGraph = CurrentInstanceGraph ? *CurrentInstanceGraph : TempGraph;
 
 	// Parse the object properties.
 	const TCHAR* NewSourceText =
@@ -757,6 +756,13 @@ const TCHAR* ImportObjectProperties( FImportObjectParams& InParams )
 			ContextSupplier = NULL;
 			InParams.Warn->SetContext(NULL);
 		}
+	}
+
+	// if we created the instance graph, delete it now
+	if ( CurrentInstanceGraph != NULL && InParams.InInstanceGraph == NULL )
+	{
+		delete CurrentInstanceGraph;
+		CurrentInstanceGraph = NULL;
 	}
 
 	return NewSourceText;

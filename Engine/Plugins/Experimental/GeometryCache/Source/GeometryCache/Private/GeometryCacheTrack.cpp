@@ -1,12 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GeometryCacheTrack.h"
 #include "GeometryCacheHelpers.h"
 #include "UObject/AnimPhysObjectVersion.h"
-
-const FGeometryCacheTrackSampleInfo FGeometryCacheTrackSampleInfo::EmptySampleInfo;
-const FVisibilitySample FVisibilitySample::VisibleSample(true);
-const FVisibilitySample FVisibilitySample::InvisibleSample(false);
 
 UGeometryCacheTrack::UGeometryCacheTrack(const FObjectInitializer& ObjectInitializer /*= FObjectInitializer::Get()*/) : UObject(ObjectInitializer)
 {
@@ -148,9 +144,4 @@ void UGeometryCacheTrack::GetResourceSizeEx(FResourceSizeEx& CumulativeResourceS
 	// Determine resource size from data that is serialized
 	CumulativeResourceSize.AddDedicatedSystemMemoryBytes(MatrixSamples.Num() * sizeof(FMatrix));
 	CumulativeResourceSize.AddDedicatedSystemMemoryBytes(MatrixSampleTimes.Num() * sizeof(float));
-}
-
-const FGeometryCacheTrackSampleInfo& UGeometryCacheTrack::GetSampleInfo(float Time, bool bLooping)
-{
-	return FGeometryCacheTrackSampleInfo::EmptySampleInfo;
 }

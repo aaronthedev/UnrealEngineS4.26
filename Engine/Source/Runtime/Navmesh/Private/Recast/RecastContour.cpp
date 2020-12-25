@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 // Modified version of Recast/Detour's source file
 
 //
@@ -883,8 +883,7 @@ static int findContourFromSet(const rcContourSet& cset, unsigned short reg)
 	return -1;
 }
 
-//@UE4 BEGIN
-#if WITH_NAVMESH_CLUSTER_LINKS
+
 bool rcBuildClusters(rcContext* ctx, rcContourSet& cset, rcClusterSet& clusters)
 {
 	ctx->startTimer(RC_TIMER_BUILD_CLUSTERS);
@@ -949,6 +948,4 @@ bool rcBuildClusters(rcContext* ctx, rcContourSet& cset, rcClusterSet& clusters)
 
 	ctx->stopTimer(RC_TIMER_BUILD_CLUSTERS);
 	return true;
-}
-#endif // WITH_NAVMESH_CLUSTER_LINKS
-//@UE4 END
+} 

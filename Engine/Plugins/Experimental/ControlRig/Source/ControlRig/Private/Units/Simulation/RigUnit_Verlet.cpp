@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Units/Simulation/RigUnit_Verlet.h"
 #include "Units/RigUnitContext.h"
@@ -8,16 +8,9 @@ FRigUnit_VerletIntegrateVector_Execute()
     DECLARE_SCOPE_HIERARCHICAL_COUNTER_RIGUNIT()
 	if (Context.State == EControlRigState::Init)
 	{
-		bInitialized = false;
-		return;
-	}
-
-	if (!bInitialized)
-	{
 		Point.Mass = 1.f;
 		Position = Point.Position = Target;
 		Velocity = Acceleration = Point.LinearVelocity = FVector::ZeroVector;
-		bInitialized = true;
 		return;
 	}
 

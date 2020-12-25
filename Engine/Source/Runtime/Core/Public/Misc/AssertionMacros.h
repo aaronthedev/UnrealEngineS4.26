@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,18 +10,12 @@
 #include "Templates/IsValidVariadicFunctionArg.h"
 #include "Misc/VarArgs.h"
 
-#if (DO_CHECK || DO_GUARD_SLOW || DO_ENSURE) && !PLATFORM_CPU_ARM_FAMILY
+#if DO_CHECK || DO_GUARD_SLOW
 	// We'll put all assert implementation code into a separate section in the linked
 	// executable. This code should never execute so using a separate section keeps
 	// it well off the hot path and hopefully out of the instruction cache. It also
 	// facilitates reasoning about the makeup of a compiled/linked binary.
 	#define UE_DEBUG_SECTION PLATFORM_CODE_SECTION(".uedbg")
-#else
-	// On ARM we can't do this because the executable will require jumps larger
-	// than the branch instruction can handle. Clang will only generate
-	// the trampolines in the .text segment of the binary. If the uedbg segment
-	// is present it will generate code that it cannot link.
-	#define UE_DEBUG_SECTION
 #endif // DO_CHECK || DO_GUARD_SLOW
 
 namespace ELogVerbosity
@@ -53,16 +47,13 @@ struct CORE_API FDebug
 	// returns true if an ensure is currently in progress (e.g. the RenderThread is ensuring)
 	static bool IsEnsuring();
 
-	// returns the number of times an ensure has failed in this instance.
-	static SIZE_T GetNumEnsureFailures();
-
 	/** Dumps the stack trace into the log, meant to be used for debugging purposes. */
-	static void DumpStackTraceToLog(const ELogVerbosity::Type LogVerbosity);
+	static void DumpStackTraceToLog();
 
 	/** Dumps the stack trace into the log with a custom heading, meant to be used for debugging purposes. */
-	static void DumpStackTraceToLog(const TCHAR* Heading, const ELogVerbosity::Type LogVerbosity);
+	static void DumpStackTraceToLog(const TCHAR* Heading);
 
-#if DO_CHECK || DO_GUARD_SLOW || DO_ENSURE
+#if DO_CHECK || DO_GUARD_SLOW
 private:
 	static void VARARGS CheckVerifyFailedImpl(const ANSICHAR* Expr, const char* File, int32 Line, const TCHAR* Format, ...);
 	static void VARARGS LogAssertFailedMessageImpl(const ANSICHAR* Expr, const ANSICHAR* File, int32 Line, const TCHAR* Fmt, ...);
@@ -116,6 +107,18 @@ public:
 		return OptionallyLogFormattedEnsureMessageReturningFalseImpl(bLog, Expr, File, Line, FormattedMsg, Args...);
 	}
 
+	template <typename FmtType, typename... Types>
+	UE_DEPRECATED(4.20, "The formatting string must now be a TCHAR string literal.")
+	static FORCEINLINE typename TEnableIf<!TIsArrayOrRefOfType<FmtType, TCHAR>::Value, bool>::Type OptionallyLogFormattedEnsureMessageReturningFalse(bool bLog, const ANSICHAR* Expr, const ANSICHAR* File, int32 Line, const FmtType& FormattedMsg, Types... Args)
+	{
+		// NOTE: When this deprecated function is removed, the return type of the overload above
+		//       should be set to simply bool.
+
+		static_assert(TAnd<TIsValidVariadicFunctionArg<Types>...>::Value, "Invalid argument(s) passed to ensureMsgf");
+
+		return OptionallyLogFormattedEnsureMessageReturningFalseImpl(bLog, Expr, File, Line, FormattedMsg, Args...);
+	}
+
 #endif // DO_CHECK || DO_GUARD_SLOW
 
 	/**
@@ -141,7 +144,7 @@ public:
 // "verify" expressions are always evaluated, but only cause an error if enabled.
 //
 
-#if DO_CHECK || DO_GUARD_SLOW || DO_ENSURE
+#if DO_CHECK || DO_GUARD_SLOW
 	template <typename FmtType, typename... Types>
 	void FORCENOINLINE UE_DEBUG_SECTION FDebug::CheckVerifyFailed(
 		const ANSICHAR* Expr,
@@ -317,7 +320,7 @@ public:
  * ensure is hit in a session; ensureAlways can be used instead if you want to handle every failure
  */
 
-#if DO_ENSURE && !USING_CODE_ANALYSIS // The Visual Studio 2013 analyzer doesn't understand these complex conditionals
+#if DO_CHECK && !USING_CODE_ANALYSIS // The Visual Studio 2013 analyzer doesn't understand these complex conditionals
 
 	#define UE_ENSURE_IMPL(Capture, Always, InExpression, ...) \
 		(LIKELY(!!(InExpression)) || (DispatchCheckVerify<bool>([Capture] () FORCENOINLINE UE_DEBUG_SECTION \
@@ -342,7 +345,7 @@ public:
 	#define ensureAlways(     InExpression                ) UE_ENSURE_IMPL( , true,  InExpression, TEXT(""))
 	#define ensureAlwaysMsgf( InExpression, InFormat, ... ) UE_ENSURE_IMPL(&, true,  InExpression, InFormat, ##__VA_ARGS__)
 
-#else	// DO_ENSURE
+#else	// DO_CHECK
 
 	#define ensure(           InExpression                ) (!!(InExpression))
 	#define ensureMsgf(       InExpression, InFormat, ... ) (!!(InExpression))

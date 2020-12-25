@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DynamicMeshBrushTool.h"
 #include "InteractiveToolManager.h"
@@ -23,10 +23,10 @@ void UDynamicMeshBrushTool::Setup()
 	PreviewMesh->bBuildSpatialDataStructure = true;
 	PreviewMesh->CreateInWorld(ComponentTarget->GetOwnerActor()->GetWorld(), FTransform::Identity);
 	PreviewMesh->SetTransform(ComponentTarget->GetWorldTransform());
-
-	FComponentMaterialSet MaterialSet;
-	ComponentTarget->GetMaterialSet(MaterialSet);
-	PreviewMesh->SetMaterials(MaterialSet.Materials);
+	if (ComponentTarget->GetMaterial(0) != nullptr)
+	{
+		PreviewMesh->SetMaterial(ComponentTarget->GetMaterial(0));
+	}
 
 	// initialize from LOD-0 MeshDescription
 	PreviewMesh->InitializeMesh(ComponentTarget->GetMesh());
@@ -35,8 +35,6 @@ void UDynamicMeshBrushTool::Setup()
 
 	// call this here so that base tool can estimate target dimension
 	InputMeshBoundsLocal = PreviewMesh->GetPreviewDynamicMesh()->GetBounds();
-	double ScaledDim = ComponentTarget->GetWorldTransform().TransformVector(FVector::OneVector).Size();
-	this->WorldToLocalScale = FMathd::Sqrt3 / FMathd::Max(FMathf::ZeroTolerance, ScaledDim);
 	UBaseBrushTool::Setup();
 
 	// hide input StaticMeshComponent

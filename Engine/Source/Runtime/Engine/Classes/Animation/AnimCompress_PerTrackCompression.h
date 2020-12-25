@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -130,13 +130,16 @@ class UAnimCompress_PerTrackCompression : public UAnimCompress_RemoveLinearKeys
 
 
 public:
-	virtual void DecompressBone(FAnimSequenceDecompressionContext& DecompContext, int32 TrackIndex, FTransform& OutAtom) const override;
+	/**
+	 * Cached metastructures used within DoReduction, tied to a particular sequence and mesh
+	 */
+	struct FPerTrackCachedInfo* PerReductionCachedData;
 
 protected:
 	//~ Begin UAnimCompress Interface
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
-	virtual bool DoReduction(const FCompressibleAnimData& CompressibleAnimData, FCompressibleAnimDataResult& OutResult) override;
+	virtual void DoReduction(const FCompressibleAnimData& CompressibleAnimData, FCompressibleAnimDataResult& OutResult) override;
 	virtual void PopulateDDCKey(FArchive& Ar) override;
 #endif // WITH_EDITOR
 	//~ Begin UAnimCompress Interface
@@ -151,12 +154,50 @@ protected:
 		const TArray<FScaleTrack>& ScaleData,
 		const bool bFinalPass) override;
 
-	virtual void* FilterBeforeMainKeyRemoval(
+#if USE_SEGMENTING_CONTEXT
+	virtual void CompressUsingUnderlyingCompressor(
+		UAnimSequence& AnimSeq,
+		const TArray<FBoneData>& BoneData,
+		TArray<FAnimSegmentContext>& RawSegments,
+		const bool bFinalPass) override;
+#endif
+
+	/**
+	 * Performs the per track compression optimization for a single segment.
+	 * This can be called from multiple threads concurrently.
+	 */
+	void OptimizeSegmentTracks(struct FOptimizeSegmentTracksContext& Context) const;
+
+	virtual void FilterBeforeMainKeyRemoval(
 		const FCompressibleAnimData& CompressibleAnimData,
 		TArray<FTranslationTrack>& TranslationData,
 		TArray<FRotationTrack>& RotationData,
 		TArray<FScaleTrack>& ScaleData) override;
 	//~ End UAnimCompress_RemoveLinearKeys Interface
+
+	/**
+	* Structure to hold the track format information that we calculate is most optimal.
+	*/
+	struct FPerTrackFormat
+	{
+		AnimationCompressionFormat RotationFormat;
+		AnimationCompressionFormat TranslationFormat;
+		AnimationCompressionFormat ScaleFormat;
+
+		bool bHasRotationTimeMarkers;
+		bool bHasTranslationTimeMarkers;
+		bool bHasScaleTimeMarkers;
+
+		FTrackKeyFlags RotationKeyFlags;
+		FTrackKeyFlags TranslationKeyFlags;
+		FTrackKeyFlags ScaleKeyFlags;
+	};
+
+	static void PackTranslationKey(TArray<uint8>& ByteStream, AnimationCompressionFormat Format, const FVector& Key, const float* Mins, const float* Ranges, const struct FPerTrackFormat& TrackFormat);
+	static void PackRotationKey(TArray<uint8>& ByteStream, AnimationCompressionFormat Format, const FQuat& Key, const float* Mins, const float* Ranges, const struct FPerTrackFormat& TrackFormat);
+	static void PackScaleKey(TArray<uint8>& ByteStream, AnimationCompressionFormat Format, const FVector& Key, const float* Mins, const float* Ranges, const struct FPerTrackFormat& TrackFormat);
+
+	friend struct FAsyncOptimizeSegmentTracksTaskGroupContext;
 #endif // WITH_EDITOR
 };
 

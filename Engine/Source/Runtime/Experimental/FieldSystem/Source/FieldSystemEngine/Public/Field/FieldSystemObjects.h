@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -608,8 +608,6 @@ public:
 
 	virtual FFieldNodeBase* NewEvaluationGraph(TArray<const UFieldNodeBase*>& Nodes) const override;
 
-	virtual FFieldNodeBase::EFieldType Type() const override;
-
 	UFUNCTION(BlueprintPure, Category = "Field")
 	UCullingField* SetCullingField( const UFieldNodeBase* Culling, const UFieldNodeBase* Field, EFieldCullingOperationType Operation);
 
@@ -621,6 +619,7 @@ public:
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Field")
 	TEnumAsByte<EFieldCullingOperationType> Operation;
+
 };
 
 /**

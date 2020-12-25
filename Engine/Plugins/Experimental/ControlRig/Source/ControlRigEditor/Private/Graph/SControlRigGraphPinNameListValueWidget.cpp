@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reservekd.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reservekd.
 
 #include "SControlRigGraphPinNameListValueWidget.h"
 #include "DetailLayoutBuilder.h"
 #include "Framework/Application/SlateUser.h"
-#include "Framework/Application/SlateApplication.h"
 
 #define LOCTEXT_NAMESPACE "GraphPinNameListValueWidget"
 
@@ -18,7 +17,6 @@ void SControlRigGraphPinNameListValueWidget::Construct(const FArguments& InArgs)
 
 	TSharedRef<SWidget> ComboBoxMenuContent =
 		SNew(SBox)
-		.MinDesiredWidth(150.0f)
 		.MaxDesiredHeight(InArgs._MaxListHeight)
 		[
 			SNew(SVerticalBox)
@@ -29,8 +27,6 @@ void SControlRigGraphPinNameListValueWidget::Construct(const FArguments& InArgs)
 				SAssignNew(this->SearchField, SEditableTextBox)
 				.HintText(LOCTEXT("Search", "Search"))
 				.OnTextChanged(this, &SControlRigGraphPinNameListValueWidget::OnSearchTextChanged)
-				.OnTextCommitted(this, &SControlRigGraphPinNameListValueWidget::OnSearchTextCommitted)
-				.OnKeyDownHandler(this, &SControlRigGraphPinNameListValueWidget::OnSearchTextKeyDown)
 			]
 
 			+ SVerticalBox::Slot()
@@ -38,10 +34,9 @@ void SControlRigGraphPinNameListValueWidget::Construct(const FArguments& InArgs)
 				SAssignNew(this->ComboListView, SComboListType)
 				.ListItemsSource(OptionsSource)
 				.OnGenerateRow(this, &SControlRigGraphPinNameListValueWidget::GenerateMenuItemRow)
-				.OnSelectionChanged(this, &SControlRigGraphPinNameListValueWidget::OnSelectionChanged_Internal, false)
+				.OnSelectionChanged(this, &SControlRigGraphPinNameListValueWidget::OnSelectionChanged_Internal)
 				.SelectionMode(ESelectionMode::Single)
 				.ExternalScrollbar(InArgs._CustomScrollbar)
-				.OnKeyDownHandler(this, &SControlRigGraphPinNameListValueWidget::OnComboListKeyDown)
 			]
 		];
 
@@ -188,16 +183,16 @@ EActiveTimerReturnType SControlRigGraphPinNameListValueWidget::SetFocusPostConst
 	return EActiveTimerReturnType::Continue;
 }
 
-void SControlRigGraphPinNameListValueWidget::OnSelectionChanged_Internal(TSharedPtr<FString> ProposedSelection, ESelectInfo::Type SelectInfo, bool bForce)
+void SControlRigGraphPinNameListValueWidget::OnSelectionChanged_Internal(TSharedPtr<FString> ProposedSelection, ESelectInfo::Type SelectInfo)
 {
 	// Ensure that the proposed selection is different
-	if (SelectInfo != ESelectInfo::OnNavigation || bForce)
+	if (SelectInfo != ESelectInfo::OnNavigation)
 	{
 		// Ensure that the proposed selection is different from selected
-		if (ProposedSelection != SelectedItem || bForce)
+		if (ProposedSelection != SelectedItem)
 		{
 			SelectedItem = ProposedSelection;
-			OnSelectionChanged.ExecuteIfBound(ProposedSelection, ESelectInfo::OnMouseClick); // SelectInfo);
+			OnSelectionChanged.ExecuteIfBound(ProposedSelection, SelectInfo);
 		}
 		// close combo even if user reselected item
 		this->SetIsOpen(false);
@@ -211,23 +206,15 @@ void SControlRigGraphPinNameListValueWidget::OnSearchTextChanged(const FText& Ch
 
 	for (int32 i = 0; i < OptionsSource->Num(); i++)
 	{
-		const TSharedPtr<FString>& Option = (*OptionsSource)[i];
-
-		TSharedPtr<ITableRow> Row = ComboListView->WidgetFromItem(Option);
+		TSharedPtr<ITableRow> Row = ComboListView->WidgetFromItem((*OptionsSource)[i]);
 		if (Row)
 		{
 			if (SearchToken.IsEmpty())
 			{
 				Row->AsWidget()->SetVisibility(EVisibility::Visible);
 			}
-			else if (Option->ToLower() == SearchToken)
-			{
-				Row->AsWidget()->SetVisibility(EVisibility::Visible);
-				ComboListView->Private_ClearSelection();
-				ComboListView->Private_SetItemSelection(Option, true);
-			}
-			else if ((Option->ToLower().Find(SearchToken) >= 0) ||
-				(Option->ToLower().Find(SearchTokenUnderscores) >= 0))
+			else if (((*OptionsSource)[i]->ToLower().Find(SearchToken) >= 0) ||
+				((*OptionsSource)[i]->ToLower().Find(SearchTokenUnderscores) >= 0))
 			{
 				Row->AsWidget()->SetVisibility(EVisibility::Visible);
 			}
@@ -242,66 +229,6 @@ void SControlRigGraphPinNameListValueWidget::OnSearchTextChanged(const FText& Ch
 
 	SelectedItem = TSharedPtr< FString >();
 }
-
-void SControlRigGraphPinNameListValueWidget::OnSearchTextCommitted(const FText& ChangedText, ETextCommit::Type CommitType)
-{
-	if (CommitType == ETextCommit::OnEnter)
-	{
-		FString ProposedSelection = ChangedText.ToString().ToLower();
-		for (int32 i = 0; i < OptionsSource->Num(); i++)
-		{
-			const TSharedPtr<FString>& Option = (*OptionsSource)[i];
-			if (Option->ToLower() == ProposedSelection)
-			{
-				OnSelectionChanged_Internal(Option, ESelectInfo::OnKeyPress, true);
-			}
-		}
-	}
-}
-
-FReply SControlRigGraphPinNameListValueWidget::OnSearchTextKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
-{
-	if (InKeyEvent.GetKey() == EKeys::Down)
-	{
-		for (int32 i = 0; i < OptionsSource->Num(); i++)
-		{
-			const TSharedPtr<FString>& Option = (*OptionsSource)[i];
-			TSharedPtr<ITableRow> Row = ComboListView->WidgetFromItem(Option);
-			if (Row)
-			{
-				if (Row->AsWidget()->GetVisibility() == EVisibility::Visible)
-				{
-					ComboListView->SetSelection(Option, ESelectInfo::OnNavigation);
-					ComboListView->RequestScrollIntoView(Option, 0);
-
-					SelectedItem = Option;
-					OnSelectionChanged.ExecuteIfBound(Option, ESelectInfo::OnNavigation);
-
-					FSlateApplication::Get().SetKeyboardFocus(ComboListView.ToSharedRef(), EFocusCause::SetDirectly);
-					return FReply::Handled();
-				}
-			}
-		}
-	}
-
-	return FReply::Unhandled();
-}
-
-FReply SControlRigGraphPinNameListValueWidget::OnComboListKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
-{
-	if (InKeyEvent.GetKey() == EKeys::Enter)
-	{
-		TArray<TSharedPtr<FString>> SelectedItems = ComboListView->GetSelectedItems();
-		if (SelectedItems.Num() > 0)
-		{
-			OnSelectionChanged_Internal(SelectedItems[0], ESelectInfo::OnKeyPress);
-			return FReply::Handled();
-		}
-	}
-
-	return FReply::Unhandled();
-}
-
 
 FReply SControlRigGraphPinNameListValueWidget::OnButtonClicked()
 {

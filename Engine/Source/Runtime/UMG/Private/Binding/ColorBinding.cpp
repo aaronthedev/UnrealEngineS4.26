@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Binding/ColorBinding.h"
 
@@ -8,19 +8,19 @@ UColorBinding::UColorBinding()
 {
 }
 
-bool UColorBinding::IsSupportedDestination(FProperty* Property) const
+bool UColorBinding::IsSupportedDestination(UProperty* Property) const
 {
 	return IsSupportedSource(Property);
 }
 
-bool UColorBinding::IsSupportedSource(FProperty* Property) const
+bool UColorBinding::IsSupportedSource(UProperty* Property) const
 {
 	return
 		IsConcreteTypeCompatibleWithReflectedType<FSlateColor>(Property) ||
 		IsConcreteTypeCompatibleWithReflectedType<FLinearColor>(Property);
 }
 
-void UColorBinding::Bind(FProperty* Property, FScriptDelegate* Delegate)
+void UColorBinding::Bind(UProperty* Property, FScriptDelegate* Delegate)
 {
 	if ( IsConcreteTypeCompatibleWithReflectedType<FSlateColor>(Property) )
 	{

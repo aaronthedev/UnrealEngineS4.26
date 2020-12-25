@@ -11,6 +11,8 @@
 
 namespace symbols
 {
+	typedef types::unordered_map<uint32_t, std::wstring> DiaSymbolCache;
+
 	void ReconstructFromExecutableCoff
 	(
 		const symbols::Provider* provider,
@@ -19,9 +21,11 @@ namespace symbols
 		const coff::CoffDB* coffDb,
 		const types::StringSet& strippedSymbols,
 		const symbols::ObjPath& objPath,
+		const symbols::CompilandDB* compilandDb,
 		const symbols::ContributionDB* contributionDb,
 		const symbols::ThunkDB* thunkDb,
 		const symbols::ImageSectionDB* imageSectionDb,
-		symbols::SymbolDB* symbolDB
+		symbols::SymbolDB* symbolDB,
+		DiaSymbolCache* diaSymbolCache
 	);
 }

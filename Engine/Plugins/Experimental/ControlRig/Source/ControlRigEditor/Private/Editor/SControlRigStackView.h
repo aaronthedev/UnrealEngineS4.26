@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,7 +7,6 @@
 #include "ControlRig.h"
 #include "ControlRigBlueprint.h"
 #include "Widgets/Views/STreeView.h"
-#include "RigVMCore/RigVM.h"
 
 class FControlRigEditor;
 class SControlRigStackView;
@@ -28,14 +27,15 @@ namespace ERigStackEntry
 class FRigStackEntry : public TSharedFromThis<FRigStackEntry>
 {
 public:
-	FRigStackEntry(int32 InEntryIndex, ERigStackEntry::Type InEntryType, int32 InInstructionIndex, ERigVMOpCode InOpCode, const FString& InLabel);
+	FRigStackEntry(int32 InEntryIndex, ERigStackEntry::Type InEntryType, int32 InOpIndex, EControlRigOpCode InOpCode, const FName& InName, const FString& InLabel);
 
 	TSharedRef<ITableRow> MakeTreeRowWidget(const TSharedRef<STableViewBase>& InOwnerTable, TSharedRef<FRigStackEntry> InEntry, TSharedRef<FUICommandList> InCommandList, TSharedPtr<SControlRigStackView> InStackView);
 
 	int32 EntryIndex;
 	ERigStackEntry::Type EntryType;
-	int32 InstructionIndex;
-	ERigVMOpCode OpCode;
+	int32 OpIndex;
+	EControlRigOpCode OpCode;
+	FName Name;
 	FString Label;
 	TArray<TSharedPtr<FRigStackEntry>> Children;
 };
@@ -73,7 +73,7 @@ public:
 protected:
 
 	/** Rebuild the tree view */
-	void RefreshTreeView(URigVM* InVM);
+	void RefreshTreeView(UControlRig* ControlRig = nullptr);
 
 private:
 
@@ -89,13 +89,12 @@ private:
 	/** Focus on the selected operator in the graph*/
 	void HandleFocusOnSelectedGraphNode();
 
-	void OnVMCompiled(UBlueprint* InCompiledBlueprint, URigVM* InCompiledVM);
+	void OnBlueprintCompiled(UBlueprint* InCompiledBlueprint);
+
+	void OnControlRigInitialized(UControlRig* ControlRig, EControlRigState State);
 
 	bool bSuspendModelNotifications;
-	bool bSuspendControllerSelection;
-	void HandleModifiedEvent(ERigVMGraphNotifType InNotifType, URigVMGraph* InGraph, UObject* InSubject);
-	void HandleControlRigInitializedEvent(UControlRig* InControlRig, const EControlRigState InState, const FName& InEventName);
-	void HandlePreviewControlRigUpdated(FControlRigEditor* InEditor);
+	void HandleModelModified(const UControlRigModel* InModel, EControlRigModelNotifType InType, const void* InPayload);
 
 	TSharedPtr<STreeView<TSharedPtr<FRigStackEntry>>> TreeView;
 
@@ -109,7 +108,6 @@ private:
 	TArray<TSharedPtr<FRigStackEntry>> Operators;
 
 	FDelegateHandle OnModelModified;
+	FDelegateHandle OnBlueprintCompiledHandle;
 	FDelegateHandle OnControlRigInitializedHandle;
-	FDelegateHandle OnVMCompiledHandle;
-	FDelegateHandle OnPreviewControlRigUpdatedHandle;
 };

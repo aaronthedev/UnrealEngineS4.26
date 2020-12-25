@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -6,7 +6,6 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 
@@ -251,21 +250,10 @@ namespace UnrealGameSync
 					ErrorMessage = String.Format("Couldn't get depot path for {0}", NewSelectedFileName);
 					return false;
 				}
-
-				Match Match = Regex.Match(NewSelectedProjectIdentifier, "//([^/]+)/");
-				if (Match.Success)
-				{
-					PerforceSpec Spec;
-					if (PerforceClient.TryGetDepotSpec(Match.Groups[1].Value, out Spec, Log) && Spec.GetField("Type") == "stream")
-					{
-						ErrorMessage = String.Format("Cannot use a legacy client ({0}) with a stream depot ({1}).", PerforceClient.ClientName, Match.Groups[1].Value);
-						return false;
-					}
-				}
 			}
 
 			// Read the project logo
-			if (NewSelectedFileName.EndsWith(".uproject", StringComparison.InvariantCultureIgnoreCase))
+			if(NewSelectedFileName.EndsWith(".uproject", StringComparison.InvariantCultureIgnoreCase))
 			{
 				string LogoFileName = Path.Combine(Path.GetDirectoryName(NewSelectedFileName), "Build", "UnrealGameSync.png");
 				if(File.Exists(LogoFileName))
@@ -306,28 +294,9 @@ namespace UnrealGameSync
 				bIsEnterpriseProject = Utility.IsEnterpriseProjectFromText(Text);
 			}
 
-			// Make sure the drive containing the project exists, to prevent other errors down the line
-			string PathRoot = Path.GetPathRoot(NewSelectedFileName);
-			if (!Directory.Exists(PathRoot))
-			{
-				ErrorMessage = String.Format("Path '{0}' is invalid", NewSelectedFileName);
-				return false;
-			}
-
 			// Read the initial config file
 			LocalConfigFiles = new List<KeyValuePair<string, DateTime>>();
 			LatestProjectConfigFile = PerforceMonitor.ReadProjectConfigFile(PerforceClient, BranchClientPath, NewSelectedClientFileName, CacheFolder, LocalConfigFiles, Log);
-
-			// Run any event hooks
-			if (DeploymentSettings.OnDetectProjectSettings != null)
-			{
-				string Message;
-				if (!DeploymentSettings.OnDetectProjectSettings(this, Log, out Message))
-				{
-					ErrorMessage = Message;
-					return false;
-				}
-			}
 
 			// Succeed!
 			ErrorMessage = null;

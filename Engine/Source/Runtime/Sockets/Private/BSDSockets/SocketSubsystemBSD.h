@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Misc/OutputDeviceRedirector.h"
-#include "HAL/IConsoleManager.h"
 #include "SocketSubsystemPackage.h"
 #include "SocketSubsystem.h"
 #include "IPAddress.h"
@@ -12,7 +11,6 @@
 #if PLATFORM_HAS_BSD_SOCKETS || PLATFORM_HAS_BSD_IPV6_SOCKETS
 
 class FSocketBSD;
-extern TAutoConsoleVariable<int32> CVarDisableIPv6;
 
 #include "SocketSubsystemBSDPrivate.h"
 
@@ -40,7 +38,6 @@ public:
 
 	// ISocketSubsystem interface
 	virtual TSharedRef<FInternetAddr> CreateInternetAddr() override;
-	virtual TSharedRef<FInternetAddr> CreateInternetAddr(const FName ProtocolType) override;
 
 	virtual class FSocket* CreateSocket(const FName& SocketType, const FString& SocketDescription, bool bForceUDP = false) override
 	{
@@ -58,10 +55,19 @@ public:
 
 	virtual TSharedPtr<FInternetAddr> GetAddressFromString(const FString& InAddress) override;
 
-	virtual bool GetMultihomeAddress(TSharedRef<FInternetAddr>& Addr) override;
-
 	virtual bool GetHostName(FString& HostName) override;
 	virtual ESocketErrors GetLastErrorCode() override;
+
+	virtual bool GetLocalAdapterAddresses( TArray<TSharedPtr<FInternetAddr> >& OutAdresses ) override
+	{
+		bool bCanBindAll;
+
+		OutAdresses.Add(GetLocalHostAddr(*GLog, bCanBindAll));
+
+		return true;
+	}
+
+	virtual TSharedRef<FInternetAddr> GetLocalBindAddr(FOutputDevice& Out) override;
 
 	virtual const TCHAR* GetSocketAPIName() const override;
 

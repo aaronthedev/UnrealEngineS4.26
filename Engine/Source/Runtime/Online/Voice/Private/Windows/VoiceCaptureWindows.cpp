@@ -1,21 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VoiceCaptureWindows.h"
 #include "VoicePrivate.h"
 #include "VoiceModule.h"
-#include "DSP/Dsp.h"
 
 #if PLATFORM_SUPPORTS_VOICE_CAPTURE
 
 #include "Windows/AllowWindowsPlatformTypes.h"
-
-static int32 DisplayAmplitudeCvar = 0;
-FAutoConsoleVariableRef CVarDisplayAmplitude(
-	TEXT("voice.debug.PrintAmplitude"),
-	DisplayAmplitudeCvar,
-	TEXT("when set to 1, the current incoming amplitude of the VOIP engine will be displayed on screen.\n")
-	TEXT("0: disabled, 1: enabled."),
-	ECVF_Default);
 
 struct FVoiceCaptureWindowsVars
 {
@@ -129,10 +120,7 @@ bool FVoiceCaptureWindows::Init(const FString& DeviceName, int32 SampleRate, int
 	LookaheadBuffer.Init(AttackInSamples + 1);
 	LookaheadBuffer.SetDelay(AttackInSamples);
 
-	NoiseGateAttenuator.Init(SampleRate);
-
 	bIsMicActive = false;
-	bWasMicAboveNoiseGateThreshold = false;
 
 	return CreateCaptureBuffer(DeviceName.IsEmpty() ? VoiceDev->DefaultVoiceCaptureDevice.DeviceName : DeviceName, SampleRate, NumChannels);
 }
@@ -165,7 +153,7 @@ bool FVoiceCaptureWindows::CreateCaptureBuffer(const FString& DeviceName, int32 
 	FVoiceCaptureDeviceWindows::FCaptureDeviceInfo* DeviceInfo = nullptr;
 	if (DeviceName.IsEmpty())
 	{
-		DeviceInfo = &VoiceDev->DefaultVoiceCaptureDevice;
+		DeviceInfo = VoiceDev->Devices.Find(DEFAULT_DEVICE_NAME);
 	}
 	else
 	{
@@ -427,40 +415,11 @@ void FVoiceCaptureWindows::ProcessData()
 			int32 SamplesPushedToUncompressedAudioBuffer = ReleaseBuffer.PopBufferedAudio(AudioBuffer, ReleaseBuffer.GetBufferCount());
 			AudioBuffer += SamplesPushedToUncompressedAudioBuffer;
 
+			// get threshold
 			static IConsoleVariable* SilenceDetectionThresholdCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("voice.SilenceDetectionThreshold"));
 			check(SilenceDetectionThresholdCVar);			
 			const float MicSilenceThreshold = SilenceDetectionThresholdCVar->GetFloat();
-
-			static IConsoleVariable* NoiseGateThresholdCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("voice.MicNoiseGateThreshold"));
-			check(NoiseGateThresholdCVar);
-			const float MicNoiseGateThreshold = NoiseGateThresholdCVar->GetFloat();
 			
-			static IConsoleVariable* NoiseGateAttackTimeCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("voice.MicNoiseAttackTime"));
-			check(NoiseGateAttackTimeCVar);
-			const float MicNoiseGateAttackTime = NoiseGateAttackTimeCVar->GetFloat();
-
-			static IConsoleVariable* NoiseGateReleaseTimeCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("voice.MicNoiseReleaseTime"));
-			check(NoiseGateReleaseTimeCVar);
-			const float MicNoiseGateReleaseTime = NoiseGateReleaseTimeCVar->GetFloat();
-
-			static IConsoleVariable* MicInputGainCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("voice.MicInputGain"));
-			check(MicInputGainCVar);
-			const float MicInputGain = MicInputGainCVar->GetFloat();
-
-			static IConsoleVariable* MicStereoBiasCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("voice.MicStereoBias"));
-			check(MicStereoBiasCVar);
-			const float MicStereoBias = FMath::Clamp(MicStereoBiasCVar->GetFloat(), -1.0f, 1.0f);
-
-			float LeftGain = 1.0f;
-			float RightGain = 1.0f;
-
-			Audio::GetStereoPan(MicStereoBias, LeftGain, RightGain);
-
-			// Since we don't interpolate the pan here, we normalize stereo gains.
-			const float StereoGainMax = FMath::Max(LeftGain, RightGain);
-			LeftGain /= StereoGainMax;
-			RightGain /= StereoGainMax;
-
 			bool bMicReleased = false;
 
 			CurrentSampleStart = CachedSampleStart;
@@ -481,36 +440,11 @@ void FVoiceCaptureWindows::ProcessData()
 
 				bIsMicActive = MicLevelDetector.GetCurrentValue() > MicSilenceThreshold;
 
-				// If we have just crossed the noise gate threshold, begin interpoloating to 1.0 or 0.0
-				const bool bIsMicAboveNoiseGateThreshold = MicLevelDetector.GetCurrentValue() > MicNoiseGateThreshold;
-
-				if (bIsMicAboveNoiseGateThreshold && !bWasMicAboveNoiseGateThreshold)
-				{
-					NoiseGateAttenuator.SetValue(1.0f, MicNoiseGateAttackTime);
-				}
-				else if (!bIsMicAboveNoiseGateThreshold && bWasMicAboveNoiseGateThreshold)
-				{
-					NoiseGateAttenuator.SetValue(0.0f, MicNoiseGateReleaseTime);
-				}
-
-				bWasMicAboveNoiseGateThreshold = bIsMicAboveNoiseGateThreshold;
-
 				if (bIsMicActive)
 				{
 					if (bMicReleased)
 					{
-						// Apply noise gate attenuation.
-						const float TotalMicGain = MicInputGain * NoiseGateAttenuator.GetNextValue();
-						for (int32 ChannelIndex = 0; ChannelIndex < NumInputChannels; ChannelIndex++)
-						{
-							const float BiasedMicGain = (ChannelIndex % 2 == 0) ? (TotalMicGain * LeftGain) : (TotalMicGain * RightGain);
-
-							Audio::TSampleRef<int16> SampleRef(InputBuffer[FrameIndex + ChannelIndex]);
-							SampleRef = SampleRef * BiasedMicGain;
-						}
-
-						ReleaseBuffer.PushFrame(&InputBuffer[FrameIndex], NumInputChannels);
-
+						ReleaseBuffer.PushSample(Temp);
 
 						if (!bSampleStartCached)
 						{
@@ -520,18 +454,8 @@ void FVoiceCaptureWindows::ProcessData()
 					}
 					else
 					{
-						// Apply noise gate attenuation.
-						const float TotalMicGain = MicInputGain * NoiseGateAttenuator.GetNextValue();
-						for (int32 ChannelIndex = 0; ChannelIndex < NumInputChannels; ChannelIndex++)
-						{
-							const float BiasedMicGain = (ChannelIndex % 2 == 0) ? (TotalMicGain * LeftGain) : (TotalMicGain * RightGain);
-
-							Audio::TSampleRef<int16> SampleRef(InputBuffer[FrameIndex + ChannelIndex]);
-							SampleRef = SampleRef * BiasedMicGain;
-						}
-
-						FMemory::Memcpy(&AudioBuffer[FrameIndex], &InputBuffer[FrameIndex], sizeof(int16) * NumInputChannels);
-						SamplesPushedToUncompressedAudioBuffer += NumInputChannels;
+						AudioBuffer[FrameIndex] = Temp;
+						SamplesPushedToUncompressedAudioBuffer++;
 					}
 				}
 				else
@@ -560,35 +484,11 @@ void FVoiceCaptureWindows::ProcessData()
 
 				bIsMicActive = MicLevelDetector.GetCurrentValue() > MicSilenceThreshold;
 
-				// If we have just crossed the noise gate threshold, begin interpoloating to 1.0 or 0.0
-				const bool bIsMicAboveNoiseGateThreshold = MicLevelDetector.GetCurrentValue() > MicNoiseGateThreshold;
-
-				if (bIsMicAboveNoiseGateThreshold && !bWasMicAboveNoiseGateThreshold)
-				{
-					NoiseGateAttenuator.SetValue(1.0f, MicNoiseGateAttackTime);
-				}
-				else if (!bIsMicAboveNoiseGateThreshold && bWasMicAboveNoiseGateThreshold)
-				{
-					NoiseGateAttenuator.SetValue(0.0f, MicNoiseGateReleaseTime);
-				}
-
-				bWasMicAboveNoiseGateThreshold = bIsMicAboveNoiseGateThreshold;
-
 				if (bIsMicActive)
 				{
 					if (bMicReleased)
 					{
-						// Apply noise gate attenuation.
-						const float TotalMicGain = MicInputGain * NoiseGateAttenuator.GetNextValue();
-						for (int32 ChannelIndex = 0; ChannelIndex < NumInputChannels; ChannelIndex++)
-						{
-							const float BiasedMicGain = (ChannelIndex % 2 == 0) ? (TotalMicGain * LeftGain) : (TotalMicGain * RightGain);
-
-							Audio::TSampleRef<int16> SampleRef(InputBuffer[FrameIndex + ChannelIndex]);
-							SampleRef = SampleRef * BiasedMicGain;
-						}
-
-						ReleaseBuffer.PushFrame(&InputBuffer[FrameIndex], NumInputChannels);
+						ReleaseBuffer.PushSample(Temp);
 
 						if (!bSampleStartCached)
 						{
@@ -598,18 +498,8 @@ void FVoiceCaptureWindows::ProcessData()
 					}
 					else
 					{
-						// Apply noise gate attenuation.
-						const float TotalMicGain = MicInputGain * NoiseGateAttenuator.GetNextValue();
-						for (int32 ChannelIndex = 0; ChannelIndex < NumInputChannels; ChannelIndex++)
-						{
-							const float BiasedMicGain = (ChannelIndex % 2 == 0) ? (TotalMicGain * LeftGain) : (TotalMicGain * RightGain);
-
-							Audio::TSampleRef<int16> SampleRef(InputBuffer[FrameIndex + ChannelIndex]);
-							SampleRef = SampleRef * BiasedMicGain;
-						}
-
-						FMemory::Memcpy(&AudioBuffer[FrameIndex], &InputBuffer[FrameIndex], sizeof(int16) * NumInputChannels);
-						SamplesPushedToUncompressedAudioBuffer += NumInputChannels;
+						AudioBuffer[FrameIndex] = Temp;
+						SamplesPushedToUncompressedAudioBuffer++;
 					}
 				}
 				else
@@ -703,33 +593,6 @@ EVoiceCaptureState::Type FVoiceCaptureWindows::GetVoiceData(uint8* OutVoiceBuffe
 		MicrophoneOutput.PushAudio(ConversionBuffer.GetData(), ConversionBuffer.GetNumSamples());
 	}
 
-	// print debug string with current amplitude:
-	if (DisplayAmplitudeCvar && GEngine)
-	{
-		static double TimeLastPrinted = FPlatformTime::Seconds();
-
-		static const double AmplitudeStringDisplayRate = 0.05;
-		static const int32 TotalNumTicks = 32;
-
-		if (FPlatformTime::Seconds() - TimeLastPrinted > AmplitudeStringDisplayRate)
-		{
-			const float MicLevel = MicLevelDetector.GetCurrentValue();
-			FString PrintString = FString::Printf(TEXT("Mic Amp: %.2f"), MicLevel);
-
-			int32 NumTicks = FMath::FloorToInt(MicLevelDetector.GetCurrentValue() * TotalNumTicks);
-
-			for (int32 Iteration = 0; Iteration < NumTicks; Iteration++)
-			{
-				PrintString.AppendChar(TCHAR('|'));
-			}
-
-			FColor TextColor = FLinearColor::LerpUsingHSV(FLinearColor::Green, FLinearColor::Red, MicLevel).ToFColor(true);
-
-			GEngine->AddOnScreenDebugMessage(30, AmplitudeStringDisplayRate, TextColor, PrintString, false);
-			TimeLastPrinted = FPlatformTime::Seconds();
-		}
-	}
-
 	return NewMicState;
 }
 
@@ -815,11 +678,6 @@ bool FVoiceCaptureWindows::Tick(float DeltaTime)
 	}
 
 	return true;
-}
-
-float FVoiceCaptureWindows::GetCurrentAmplitude() const
-{
-	return MicLevelDetector.GetCurrentValue();
 }
 
 void FVoiceCaptureWindows::DumpState() const

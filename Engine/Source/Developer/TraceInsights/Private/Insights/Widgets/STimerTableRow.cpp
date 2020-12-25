@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "STimerTableRow.h"
 
@@ -34,7 +34,7 @@ void STimerTableRow::Construct(const FArguments& InArgs, const TSharedRef<STable
 	TablePtr = InArgs._TablePtr;
 	TimerNodePtr = InArgs._TimerNodePtr;
 
-	RowToolTip = MakeShared<STimerTableRowToolTip>(TimerNodePtr);
+	RowToolTip = MakeShareable(new STimerTableRowToolTip(TimerNodePtr));
 
 	SetEnabled(TAttribute<bool>(this, &STimerTableRow::HandleShouldBeEnabled));
 
@@ -170,7 +170,7 @@ const FSlateBrush* STimerTableRow::GetOutlineBrush(const FName ColumnId) const
 	{
 		Brush = FEditorStyle::GetBrush("Profiler.EventGraph.Border.L");
 	}
-	else if (Result == HAlign_Right)
+	else if(Result == HAlign_Right)
 	{
 		Brush = FEditorStyle::GetBrush("Profiler.EventGraph.Border.R");
 	}
@@ -195,7 +195,7 @@ bool STimerTableRow::HandleShouldBeEnabled() const
 	{
 		if (OnShouldBeEnabled.IsBound())
 		{
-			bResult = OnShouldBeEnabled.Execute(TimerNodePtr);
+			bResult = OnShouldBeEnabled.Execute(TimerNodePtr->GetId());
 		}
 	}
 
@@ -218,7 +218,7 @@ EVisibility STimerTableRow::IsColumnVisible(const FName ColumnId) const
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void STimerTableRow::OnSetHoveredCell(TSharedPtr<Insights::FTable> InTablePtr, TSharedPtr<Insights::FTableColumn> InColumnPtr, FTimerNodePtr InTimerNodePtr)
+void STimerTableRow::OnSetHoveredCell(TSharedPtr<Insights::FTable> InTablePtr, TSharedPtr<Insights::FTableColumn> InColumnPtr, const FTimerNodePtr InTimerNodePtr)
 {
 	SetHoveredCellDelegate.ExecuteIfBound(InTablePtr, InColumnPtr, InTimerNodePtr);
 }

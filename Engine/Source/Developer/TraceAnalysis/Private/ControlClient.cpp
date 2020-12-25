@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Trace/ControlClient.h"
 #include "IPAddress.h"
@@ -122,9 +122,9 @@ void FControlClient::SendWriteTo(const TCHAR* Path)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-void FControlClient::SendToggleChannel(const TCHAR* Channels, bool bState /*= true*/)
+void FControlClient::SendToggleEvent(const TCHAR* EventSpec, bool bState)
 {
-	FormatAndSend(TEXT("ToggleChannels %s %d"), Channels, bState);
+    FormatAndSend(TEXT("ToggleEvent %s %d"), EventSpec, bState);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -172,4 +172,4 @@ void FControlClient::Send(const uint8* Data, int Length)
     }
 }
 
-} // namespace Trace
+} // namesapce Trace

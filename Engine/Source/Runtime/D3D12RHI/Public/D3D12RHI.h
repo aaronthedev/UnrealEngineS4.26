@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	D3D12RHI.h: Public D3D RHI definitions.
@@ -18,7 +18,7 @@
 
 // This is a value that should be tweaked to fit the app, lower numbers will have better performance
 // Titles using many terrain layers may want to set MAX_SRVS to 64 to avoid shader compilation errors. This will have a small performance hit of around 0.1%
-#define MAX_SRVS		64
+#define MAX_SRVS		48
 #define MAX_SAMPLERS	16
 #define MAX_UAVS		16
 #define MAX_CBS			16
@@ -37,26 +37,28 @@
 // enough to ensure that the GPU is rarely blocked by residency work
 #define RESIDENCY_PIPELINE_DEPTH	6
 
-// This is the primary define that controls if the logic for the SubmissionGapRecorder is enabled or not in D3D12
-#ifndef PLATFORM_ALLOW_D3D12_SUBMISSION_GAP_RECORDER
-#define PLATFORM_ALLOW_D3D12_SUBMISSION_GAP_RECORDER 1
-#endif
+#if PLATFORM_XBOXONE
+	#define ENABLE_RESIDENCY_MANAGEMENT				0
+	#define ASYNC_DEFERRED_DELETION					0
+	#define ASYNC_DEFERRED_DELETION					0
+	#define PIPELINE_STATE_FILE_LOCATION			FPaths::ProjectContentDir()
+	#define USE_PIX									XBOXONE_PROFILING_ENABLED
 
-#if PLATFORM_ALLOW_D3D12_SUBMISSION_GAP_RECORDER
-#define D3D12_SUBMISSION_GAP_RECORDER !(UE_BUILD_SHIPPING || WITH_EDITOR)
-#define D3D12_SUBMISSION_GAP_RECORDER_DEBUG_INFO  !(UE_BUILD_SHIPPING || UE_BUILD_TEST || WITH_EDITOR)
-#else
-#define D3D12_SUBMISSION_GAP_RECORDER 0
-#define D3D12_SUBMISSION_GAP_RECORDER_DEBUG_INFO  0
-#endif
+	// The number of sampler descriptors with the maximum value of 2048
+	// If the heap type is unbounded the number could be increased to avoid rollovers.
+	#define ENABLE_UNBOUNDED_SAMPLER_DESCRIPTORS	0
+	#define NUM_SAMPLER_DESCRIPTORS					D3D12_MAX_SHADER_VISIBLE_SAMPLER_HEAP_SIZE
 
-#if PLATFORM_WINDOWS || PLATFORM_HOLOLENS
+	// Xbox doesn't have DXGI but common code needs this defined for headers
+	#define DXGI_QUERY_VIDEO_MEMORY_INFO			int
+
+#elif PLATFORM_WINDOWS || PLATFORM_HOLOLENS
 	#define ENABLE_RESIDENCY_MANAGEMENT				1
 	#define ASYNC_DEFERRED_DELETION					1
 	#define PIPELINE_STATE_FILE_LOCATION			FPaths::ProjectSavedDir()
 	#define USE_PIX									D3D12_PROFILING_ENABLED
 #else
-	#include "D3D12RHIPlatformPublic.h"
+	#error	Unknown platform!
 #endif
 
 
@@ -82,63 +84,3 @@ static_assert((8 * sizeof(SamplerSlotMask)) >= MAX_SAMPLERS, "SamplerSlotMask is
 
 typedef uint16 UAVSlotMask;
 static_assert((8 * sizeof(UAVSlotMask)) >= MAX_UAVS, "UAVSlotMask isn't large enough to cover all UAVs. Please increase the size.");
-
-/* If the submission gap recorder code is enabled define the SubmissionGapRecorder class */
-#if D3D12_SUBMISSION_GAP_RECORDER
-/** Class for tracking timestamps for recording bubbles between command list submissions */
-class FD3D12SubmissionGapRecorder
-{
-	struct FGapSpan
-	{
-		uint64 BeginCycles;
-		uint64 DurationCycles;
-	};
-	struct FFrame
-	{
-		FFrame() { bIsValid = false; bSafeToReadOnRenderThread = false;  FrameNumber = -1; }
-
-		TArray<FGapSpan> GapSpans;
-		uint32 FrameNumber;
-		uint64 TotalWaitCycles;
-		uint64 StartCycles;
-		uint64 EndCycles;
-		bool bIsValid;
-		bool bSafeToReadOnRenderThread;
-	};
-public:
-	FD3D12SubmissionGapRecorder();
-
-	// Submits the gap timestamps for a frame. Typically called from the RHI thread in EndFrame. Returns the total number of cycles spent waiting
-	uint64 SubmitSubmissionTimestampsForFrame(uint32 FrameCounter, TArray<uint64>& PrevFrameBeginSubmissionTimestamps, TArray<uint64>& PrevFrameEndSubmissionTimestamps);
-
-	// Adjusts a timestamp by subtracting any preceding submission gaps
-	uint64 AdjustTimestampForSubmissionGaps(uint32 FrameSubmitted, uint64 Timestamp);
-
-	// Called when we advance the frame from the render thread (in EndDrawingViewport)
-	void OnRenderThreadAdvanceFrame();
-
-	int32 GetStartFrameSlotIdx() const		{ return StartFrameSlotIdx; }
-	void  SetStartFrameSlotIdx(int32 val)	{ StartFrameSlotIdx = val; }
-
-	int32 GetEndFrameSlotIdx() const		{ return EndFrameSlotIdx; }
-	void  SetEndFrameSlotIdx(int32 val)		{ EndFrameSlotIdx = val; }
-
-	int32 GetPresentSlotIdx() const			{ return PresentSlotIdx; }
-	void SetPresentSlotIdx(int32 val)		{ PresentSlotIdx = val; }
-
-private:
-
-	TArray<FD3D12SubmissionGapRecorder::FFrame> FrameRingbuffer;
-
-	FCriticalSection GapSpanMutex;
-	uint32 WriteIndex;
-	uint32 WriteIndexRT;
-	uint32 ReadIndex;
-	uint64 CurrentGapSpanReadIndex;
-	uint64 CurrentElapsedWaitCycles;
-	uint64 LastTimestampAdjusted;
-	int32  StartFrameSlotIdx;
-	int32  EndFrameSlotIdx;
-	int32  PresentSlotIdx;
-};
-#endif

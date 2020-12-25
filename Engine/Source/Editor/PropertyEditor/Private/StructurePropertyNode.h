@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -36,21 +36,21 @@ public:
 		return StructData;
 	}
 
-	bool GetReadAddressUncached(const FPropertyNode& InPropertyNode, FReadAddressListData& OutAddresses) const override
+	bool GetReadAddressUncached(FPropertyNode& InPropertyNode, FReadAddressListData& OutAddresses) const override
 	{
 		if (!HasValidStructData())
 		{
 			return false;
 		}
 
-		const FProperty* InItemProperty = InPropertyNode.GetProperty();
+		UProperty* InItemProperty = InPropertyNode.GetProperty();
 		if (!InItemProperty)
 		{
 			return false;
 		}
 
 		UStruct* OwnerStruct = InItemProperty->GetOwnerStruct();
-		if (!OwnerStruct || OwnerStruct->IsStructTrashed())
+		if (!OwnerStruct || OwnerStruct->Children == nullptr)
 		{
 			// Verify that the property is not part of an invalid trash class
 			return false;
@@ -62,7 +62,7 @@ public:
 		return true;
 	}
 
-	bool GetReadAddressUncached(const FPropertyNode& InPropertyNode,
+	bool GetReadAddressUncached(FPropertyNode& InPropertyNode,
 		bool InRequiresSingleSelection,
 		FReadAddressListData* OutAddresses,
 		bool bComparePropertyContents,
@@ -122,7 +122,7 @@ public:
 		check(0 == Index);
 		return HasValidStructData() ? StructData->GetStructMemory() : NULL;
 	}
-	virtual uint8* GetValuePtrOfInstance(int32 Index, const FProperty* InProperty, FPropertyNode* InParentNode) override
+	virtual uint8* GetValuePtrOfInstance(int32 Index, const UProperty* InProperty, FPropertyNode* InParentNode) override
 	{ 
 		check(0 == Index);
 		uint8* StructBaseAddress = HasValidStructData() ? StructData->GetStructMemory() : nullptr;
@@ -149,7 +149,7 @@ protected:
 	/** FPropertyNode interface */
 	virtual void InitChildNodes() override;
 
-	virtual uint8* GetValueBaseAddress(uint8* Base, bool bIsSparseData) const override
+	virtual uint8* GetValueBaseAddress(uint8* Base, bool bIsSparseData) override
 	{
 		check(bIsSparseData == false);
 		return HasValidStructData() ? StructData->GetStructMemory() : nullptr;

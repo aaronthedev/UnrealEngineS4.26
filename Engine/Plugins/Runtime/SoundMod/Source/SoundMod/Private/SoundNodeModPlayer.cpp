@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SoundNodeModPlayer.h"
 #include "Audio.h"
@@ -22,7 +22,7 @@ void USoundNodeModPlayer::Serialize(FArchive& Ar)
 		}
 		else if (Ar.IsSaving())
 		{
-			USoundMod* HardReference = (ShouldHardReferenceAsset(Ar.CookingTarget()) ? SoundMod : nullptr);
+			USoundMod* HardReference = (ShouldHardReferenceAsset() ? SoundMod : nullptr);
 			Ar << HardReference;
 		}
 	}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System.IO;
 
@@ -49,10 +49,11 @@ namespace UnrealBuildTool.Rules
                     "MagicLeapHelperOpenGL",
 					// Public headers of MagicLeapHelperVulkan are protected against Mac so this is fine here.
 					"MagicLeapHelperVulkan",
+					"MagicLeapSecureStorage",
 				}
 			);
 
-			if (Target.Platform != UnrealTargetPlatform.Mac && Target.Platform != UnrealTargetPlatform.IOS)
+			if (Target.Platform != UnrealTargetPlatform.Mac)
 			{
 				PrivateDependencyModuleNames.AddRange(
 					new string[]

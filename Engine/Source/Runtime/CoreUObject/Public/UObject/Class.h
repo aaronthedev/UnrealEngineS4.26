@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Class.h: UClass definition.
@@ -25,15 +25,12 @@
 #include "UObject/ReflectedTypeAccessors.h"
 #include "UObject/Script.h"
 #include "UObject/UObjectGlobals.h"
-#include "UObject/FieldPath.h"
 
 struct FCustomPropertyListNode;
 struct FFrame;
 struct FNetDeltaSerializeInfo;
 struct FObjectInstancingGraph;
 struct FPropertyTag;
-class FField;
-class UPropertyWrapper;
 
 COREUOBJECT_API DECLARE_LOG_CATEGORY_EXTERN(LogClass, Log, All);
 COREUOBJECT_API DECLARE_LOG_CATEGORY_EXTERN(LogScriptSerialization, Log, All);
@@ -47,9 +44,9 @@ COREUOBJECT_API DECLARE_LOG_CATEGORY_EXTERN(LogScriptSerialization, Log, All);
 //
 struct FRepRecord
 {
-	FProperty* Property;
+	UProperty* Property;
 	int32 Index;
-	FRepRecord(FProperty* InProperty,int32 InIndex)
+	FRepRecord(UProperty* InProperty,int32 InIndex)
 	: Property(InProperty), Index(InIndex)
 	{}
 };
@@ -65,9 +62,6 @@ class COREUOBJECT_API UField : public UObject
 {
 	DECLARE_CASTED_CLASS_INTRINSIC(UField, UObject, CLASS_Abstract, TEXT("/Script/CoreUObject"), CASTCLASS_UField)
 
-	typedef UField BaseFieldClass;
-	typedef UClass FieldTypeClass;
-
 	/** Next Field in the linked list */
 	UField*			Next;
 
@@ -81,7 +75,7 @@ class COREUOBJECT_API UField : public UObject
 	virtual bool NeedsLoadForServer() const override;
 
 	// UField interface.
-	virtual void AddCppProperty(FProperty* Property);
+	virtual void AddCppProperty( UProperty* Property );
 	virtual void Bind();
 
 	/** Goes up the outer chain to look for a UClass */
@@ -97,7 +91,7 @@ class COREUOBJECT_API UField : public UObject
 	 */
 	FString GetAuthoredName() const;
 
-#if WITH_EDITORONLY_DATA
+#if WITH_EDITOR || HACK_HEADER_GENERATOR
 	/**
 	 * Finds the localized display name or native display name as a fallback.
 	 *
@@ -128,17 +122,8 @@ class COREUOBJECT_API UField : public UObject
 	 * @param Key The key to lookup in the metadata
 	 * @return true if there is a (possibly blank) value associated with this key
 	 */
-	bool HasMetaData(const TCHAR* Key) const { return FindMetaData(Key) != nullptr; }
-	bool HasMetaData(const FName& Key) const { return FindMetaData(Key) != nullptr; }
-
-	/**
-	 * Find the metadata value associated with the key
-	 *
-	 * @param Key The key to lookup in the metadata
-	 * @return The value associated with the key if exists, null otherwise
-	 */
-	const FString* FindMetaData(const TCHAR* Key) const;
-	const FString* FindMetaData(const FName& Key) const;
+	bool HasMetaData(const TCHAR* Key) const;
+	bool HasMetaData(const FName& Key) const;
 
 	/**
 	 * Find the metadata value associated with the key
@@ -157,8 +142,8 @@ class COREUOBJECT_API UField : public UObject
 	 * @param LocalizationKey			Key to lookup in the localization manager
 	 * @return							Localized metadata if available, defaults to whatever is provided via GetMetaData
 	 */
-	FText GetMetaDataText(const TCHAR* MetaDataKey, const FString LocalizationNamespace = FString(), const FString LocalizationKey = FString()) const;
-	FText GetMetaDataText(const FName& MetaDataKey, const FString LocalizationNamespace = FString(), const FString LocalizationKey = FString()) const;
+	const FText GetMetaDataText(const TCHAR* MetaDataKey, const FString LocalizationNamespace = FString(), const FString LocalizationKey = FString()) const;
+	const FText GetMetaDataText(const FName& MetaDataKey, const FString LocalizationNamespace = FString(), const FString LocalizationKey = FString()) const;
 
 	/**
 	 * Sets the metadata value associated with the key
@@ -238,21 +223,7 @@ class COREUOBJECT_API UField : public UObject
 	/** Clear any metadata associated with the key */
 	void RemoveMetaData(const TCHAR* Key);
 	void RemoveMetaData(const FName& Key);
-#endif // WITH_EDITORONLY_DATA
-
-	bool HasAnyCastFlags(const uint64 InCastFlags) const;
-	bool HasAllCastFlags(const uint64 InCastFlags) const;
-
-#if WITH_EDITORONLY_DATA
-	/**
-	 * Gets the FField object associated with this Field
-	 */
-	virtual FField* GetAssociatedFField();
-	/**
-	 * Sets the FField object associated with this Field
-	 */
-	virtual void SetAssociatedFField(FField* InField);
-#endif // WITH_EDITORONLY_DATA
+#endif
 };
 
 #if USTRUCT_FAST_ISCHILDOF_IMPL == USTRUCT_ISCHILDOF_STRUCTARRAY
@@ -306,9 +277,6 @@ public:
 	/** Pointer to start of linked list of child fields */
 	UField* Children;
 	
-	/** Pointer to start of linked list of child fields */
-	FField* ChildProperties;
-
 	/** Total size of all UProperties, the allocated structure may be larger due to alignment */
 	int32 PropertiesSize;
 	/** Alignment of structure in memory, structure will be at least this large */
@@ -318,42 +286,26 @@ public:
 	TArray<uint8> Script;
 
 	/** In memory only: Linked list of properties from most-derived to base */
-	FProperty* PropertyLink;
+	UProperty* PropertyLink;
 	/** In memory only: Linked list of object reference properties from most-derived to base */
-	FProperty* RefLink;
+	UProperty* RefLink;
 	/** In memory only: Linked list of properties requiring destruction. Note this does not include things that will be destroyed byt he native destructor */
-	FProperty* DestructorLink;
+	UProperty* DestructorLink;
 	/** In memory only: Linked list of properties requiring post constructor initialization */
-	FProperty* PostConstructLink;
+	UProperty* PostConstructLink;
 
-	/** Array of object references embedded in script code and referenced by FProperties. Mirrored for easy access by realtime garbage collection code */
-	TArray<UObject*> ScriptAndPropertyObjectReferences;
-
-	typedef TArray<TPair<TFieldPath<FField>, int32>> FUnresolvedScriptPropertiesArray;
-	/** Contains a list of script properties that couldn't be resolved at load time */
-	FUnresolvedScriptPropertiesArray* UnresolvedScriptProperties;
-
-#if WITH_EDITORONLY_DATA
-	/** List of wrapper UObjects for FProperties */
-	TArray<UPropertyWrapper*> PropertyWrappers;
-	/** Unique id incremented each time this class properties get destroyed */
-	int32 FieldPathSerialNumber;
-#endif
-
-	/** Cached schema for optimized unversioned property serialization, owned by this. */
-	mutable const struct FUnversionedStructSchema* UnversionedSchema = nullptr;
+	/** Array of object references embedded in script code. Mirrored for easy access by realtime garbage collection code */
+	TArray<UObject*> ScriptObjectReferences;
 
 public:
 	// Constructors.
 	UStruct( EStaticConstructor, int32 InSize, int32 InAlignment, EObjectFlags InFlags );
 	explicit UStruct(UStruct* InSuperStruct, SIZE_T ParamsSize = 0, SIZE_T Alignment = 0);
 	explicit UStruct(const FObjectInitializer& ObjectInitializer, UStruct* InSuperStruct, SIZE_T ParamsSize = 0, SIZE_T Alignment = 0 );
-	virtual ~UStruct();
 
 	// UObject interface.
 	virtual void Serialize(FArchive& Ar) override;
 	virtual void Serialize(FStructuredArchive::FRecord Record) override;
-	virtual void PostLoad() override;
 	virtual void FinishDestroy() override;
 	virtual void RegisterDependencies() override;
 	static void AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector);
@@ -361,16 +313,16 @@ public:
 	virtual void TagSubobjects(EObjectFlags NewFlags) override;
 
 	// UField interface.
-	virtual void AddCppProperty(FProperty* Property) override;
+	virtual void AddCppProperty(UProperty* Property) override;
 
 	/** Searches property link chain for a property with the specified name */
-	FProperty* FindPropertyByName(FName InName) const;
+	UProperty* FindPropertyByName(FName InName) const;
 
 	/**
 	 * Creates new copies of components
 	 * 
-	 * @param	Data						pointer to the address of the subobject referenced by this FProperty
-	 * @param	DefaultData					pointer to the address of the default value of the subbject referenced by this FProperty
+	 * @param	Data						pointer to the address of the subobject referenced by this UProperty
+	 * @param	DefaultData					pointer to the address of the default value of the subbject referenced by this UProperty
 	 * @param	DefaultStruct				the struct corresponding to the buffer pointed to by DefaultData
 	 * @param	Owner						the object that contains the component currently located at Data
 	 * @param	InstanceGraph				contains the mappings of instanced objects and components to their templates
@@ -432,8 +384,9 @@ public:
 	 */
 	virtual void DestroyStruct(void* Dest, int32 ArrayDim = 1) const;
 
+public:
 	/** Look up a property by an alternate name if it was not found in the first search, this is overridden for user structs */
-	virtual FProperty* CustomFindProperty(const FName InName) const { return nullptr; };
+	virtual UProperty* CustomFindProperty(const FName InName) const { return nullptr; };
 
 	/** Serialize an expression to an archive. Returns expression token */
 	virtual EExprToken SerializeExpr(int32& iCode, FArchive& Ar);
@@ -504,19 +457,7 @@ public:
 	/** Returns a human readable string for a given field, overridden for user defined structs */
 	virtual FString GetAuthoredNameForField(const UField* Field) const;
 
-	/** Returns a human readable string for a given field, overridden for user defined structs */
-	virtual FString GetAuthoredNameForField(const FField* Field) const;
-
-	/** If true, this class has been cleaned and sanitized (trashed) and should not be used */
-	virtual bool IsStructTrashed() const
-	{
-		return false;
-	}
-
-	/** Destroys all properties owned by this struct */
-	void DestroyChildPropertiesAndResetPropertyLinks();
-
-#if WITH_EDITORONLY_DATA
+#if WITH_EDITOR || HACK_HEADER_GENERATOR
 	/** Try and find boolean metadata with the given key. If not found on this class, work up hierarchy looking for it. */
 	bool GetBoolMetaDataHierarchical(const FName& Key) const;
 
@@ -530,47 +471,12 @@ public:
 	 * @return pointer to the UStruct that has associated metadata, nullptr if Key is not associated with any UStruct in the hierarchy
 	 */
 	const UStruct* HasMetaDataHierarchical(const FName& Key) const;
-#endif // WITH_EDITORONLY_DATA
+#endif
 
 #if HACK_HEADER_GENERATOR
 	// Required by UHT makefiles for internal data serialization.
 	friend struct FStructArchiveProxy;
 #endif // HACK_HEADER_GENERATOR
-
-	/** Sets the UnresolvedScriptProperties array */
-	void SetUnresolvedScriptProperties(FUnresolvedScriptPropertiesArray& InUnresolvedProperties)
-	{
-		if (!UnresolvedScriptProperties)
-		{
-			UnresolvedScriptProperties = new FUnresolvedScriptPropertiesArray();
-		}
-		*UnresolvedScriptProperties = MoveTemp(InUnresolvedProperties);
-	}
-
-	/** Deletes the UnresolvedScriptProperties array */
-	FORCEINLINE void DeleteUnresolvedScriptProperties()
-	{
-		if (UnresolvedScriptProperties)
-		{
-			delete UnresolvedScriptProperties;
-			UnresolvedScriptProperties = nullptr;
-		}
-	}
-
-	/**
-	 * Collects UObjects referenced by bytecode
-	 * @param OutReferencedObjects buffer to store the referenced objects in (not cleared by this function)
-	 */
-	void CollectBytecodeReferencedObjects(TArray<UObject*>& OutReferencedObjects);
-	/**
-	 * Collects UObjects referenced by properties
-	 * @param OutReferencedObjects buffer to store the referenced objects in (not cleared by this function)
-	 */
-	void CollectPropertyReferencedObjects(TArray<UObject*>& OutReferencedObjects);
-	/**
-	 * Collects UObjects referenced by bytecode and properties for faster GC access
-	 */
-	void CollectBytecodeAndPropertyReferencedObjects();
 
 protected:
 
@@ -583,16 +489,6 @@ protected:
 	/** Returns if we have access to property guids */
 	virtual bool ArePropertyGuidsAvailable() const { return false; }
 
-	/** Serializes properties of this struct */
-	void SerializeProperties(FArchive& Ar);
-
-#if WITH_EDITORONLY_DATA
-	void ConvertUFieldsToFFields();
-#endif // WITH_EDITORONLY_DATA
-
-	/** Serializes list of properties to a te, using property tags to handle mismatches */
-	void LoadTaggedPropertiesFromText(FStructuredArchive::FSlot Slot, uint8* Data, UStruct* DefaultsStruct, uint8* Defaults, const UObject* BreakRecursionIfFullyLoad) const;
-
 private:
 #if USTRUCT_FAST_ISCHILDOF_IMPL == USTRUCT_ISCHILDOF_STRUCTARRAY
 	// For UObjectBaseUtility
@@ -603,8 +499,6 @@ private:
 	friend class FStructBaseChain;
 	friend class FBlueprintCompileReinstancer;
 #endif
-
-	void SerializeVersionedTaggedProperties(FStructuredArchive::FSlot Slot, uint8* Data, UStruct* DefaultsStruct, uint8* Defaults, const UObject* BreakRecursionIfFullyLoad) const;
 };
 
 enum EStructFlags
@@ -670,9 +564,6 @@ enum EStructFlags
 
 	/** If set, this struct can share net serialization state across connections */
 	STRUCT_NetSharedSerialization = 0x00400000,
-
-	/** If set, this struct has been cleaned and sanitized (trashed) and should not be used */
-	STRUCT_Trashed = 0x00800000,
 
 	/** Struct flags that are automatically inherited */
 	STRUCT_Inherit				= STRUCT_HasInstancedReference|STRUCT_Atomic,
@@ -961,11 +852,11 @@ struct TStructOpsTypeTraits : public TStructOpsTypeTraitsBase2<CPPSTRUCT>
 	 * Selection of AddStructReferencedObjects check.
 	 */
 	template<class CPPSTRUCT>
-	FORCEINLINE void AddStructReferencedObjectsOrNot(void* A, FReferenceCollector& Collector)
+	FORCEINLINE void AddStructReferencedObjectsOrNot(const void* A, FReferenceCollector& Collector)
 	{
 		if constexpr (TStructOpsTypeTraits<CPPSTRUCT>::WithAddStructReferencedObjects)
 		{
-			((CPPSTRUCT*)A)->AddStructReferencedObjects(Collector);
+			((CPPSTRUCT const*)A)->AddStructReferencedObjects(Collector);
 		}
 	}
 
@@ -975,14 +866,14 @@ struct TStructOpsTypeTraits : public TStructOpsTypeTraitsBase2<CPPSTRUCT>
 	 * Selection of AddStructReferencedObjects check.
 	 */
 	template<class CPPSTRUCT>
-	FORCEINLINE typename TEnableIf<!TStructOpsTypeTraits<CPPSTRUCT>::WithAddStructReferencedObjects>::Type AddStructReferencedObjectsOrNot(void* A, FReferenceCollector& Collector)
+	FORCEINLINE typename TEnableIf<!TStructOpsTypeTraits<CPPSTRUCT>::WithAddStructReferencedObjects>::Type AddStructReferencedObjectsOrNot(const void* A, FReferenceCollector& Collector)
 	{
 	}
 
 	template<class CPPSTRUCT>
-	FORCEINLINE typename TEnableIf<TStructOpsTypeTraits<CPPSTRUCT>::WithAddStructReferencedObjects>::Type AddStructReferencedObjectsOrNot(void* A, FReferenceCollector& Collector)
+	FORCEINLINE typename TEnableIf<TStructOpsTypeTraits<CPPSTRUCT>::WithAddStructReferencedObjects>::Type AddStructReferencedObjectsOrNot(const void* A, FReferenceCollector& Collector)
 	{
-		((CPPSTRUCT*)A)->AddStructReferencedObjects(Collector);
+		((CPPSTRUCT const*)A)->AddStructReferencedObjects(Collector);
 	}
 
 #endif
@@ -990,7 +881,7 @@ struct TStructOpsTypeTraits : public TStructOpsTypeTraitsBase2<CPPSTRUCT>
 /**
  * Reflection data for a standalone structure declared in a header or as a user defined struct
  */
-class UScriptStruct : public UStruct
+class COREUOBJECT_VTABLE UScriptStruct : public UStruct
 {
 public:
 	/** Interface to template to manage dynamic access to C++ struct construction and destruction **/
@@ -1082,7 +973,7 @@ public:
 		virtual bool HasIdentical() = 0;
 		/** 
 		 * Compare this structure 
-		 * @return true if the copy was handled, otherwise it will fall back to FStructProperty::Identical
+		 * @return true if the copy was handled, otherwise it will fall back to UStructProperty::Identical
 		 */
 		virtual bool Identical(const void* A, const void* B, uint32 PortFlags, bool& bOutResult) = 0;
 
@@ -1090,7 +981,7 @@ public:
 		virtual bool HasExportTextItem() = 0;
 		/** 
 		 * export this structure 
-		 * @return true if the copy was exported, otherwise it will fall back to FStructProperty::ExportTextItem
+		 * @return true if the copy was exported, otherwise it will fall back to UStructProperty::ExportTextItem
 		 */
 		virtual bool ExportTextItem(FString& ValueStr, const void* PropertyValue, const void* DefaultValue, class UObject* Parent, int32 PortFlags, class UObject* ExportRootScope) = 0;
 
@@ -1098,7 +989,7 @@ public:
 		virtual bool HasImportTextItem() = 0;
 		/** 
 		 * import this structure 
-		 * @return true if the copy was imported, otherwise it will fall back to FStructProperty::ImportText
+		 * @return true if the copy was imported, otherwise it will fall back to UStructProperty::ImportText
 		 */
 		virtual bool ImportTextItem(const TCHAR*& Buffer, void* Data, int32 PortFlags, class UObject* OwnerObject, FOutputDevice* ErrorText) = 0;
 
@@ -1106,9 +997,9 @@ public:
 		virtual bool HasAddStructReferencedObjects() = 0;
 		/** 
 		 * return a pointer to a function that can add referenced objects
-		 * @return true if the copy was imported, otherwise it will fall back to FStructProperty::ImportText
+		 * @return true if the copy was imported, otherwise it will fall back to UStructProperty::ImportText
 		 */
-		typedef void (*TPointerToAddStructReferencedObjects)(void* A, class FReferenceCollector& Collector);
+		typedef void (*TPointerToAddStructReferencedObjects)(const void* A, class FReferenceCollector& Collector);
 		virtual TPointerToAddStructReferencedObjects AddStructReferencedObjects() = 0;
 
 		/** return true if this class wants to serialize from some other tag (usually for conversion purposes) **/
@@ -1518,7 +1409,7 @@ public:
 	friend struct FScriptStructArchiveProxy;
 #endif
 
-protected:
+private:
 	/** true if we have performed PrepareCppStructOps **/
 	bool bPrepareCppStructOpsCompleted;
 	/** Holds the Cpp ctors and dtors, sizeof, etc. Is not owned by this and is not released. **/
@@ -1533,11 +1424,7 @@ public:
 	virtual COREUOBJECT_API void Link(FArchive& Ar, bool bRelinkExistingProperties) override;
 	virtual COREUOBJECT_API void InitializeStruct(void* Dest, int32 ArrayDim = 1) const override;
 	virtual COREUOBJECT_API void DestroyStruct(void* Dest, int32 ArrayDim = 1) const override;
-	virtual COREUOBJECT_API bool IsStructTrashed() const override;
 	// End of UStruct interface.
-
-	/** Sets or unsets the trashed flag on this struct */
-	void COREUOBJECT_API SetStructTrashed(bool bIsTrash);
 
 	/** 
 	 * Stash a CppStructOps for future use 
@@ -1547,7 +1434,7 @@ public:
 	static COREUOBJECT_API void DeferCppStructOps(FName Target, ICppStructOps* InCppStructOps);
 
 	/** Look for the CppStructOps and hook it up **/
-	virtual COREUOBJECT_API void PrepareCppStructOps();
+	COREUOBJECT_API void PrepareCppStructOps();
 
 	/** Returns the CppStructOps that can be used to do custom operations */
 	FORCEINLINE ICppStructOps* GetCppStructOps() const
@@ -1740,7 +1627,7 @@ public:
 	uint16 RPCResponseId;
 
 	/** pointer to first local struct property in this UFunction that contains defaults */
-	FProperty* FirstPropertyToInit;
+	UProperty* FirstPropertyToInit;
 
 #if UE_BLUEPRINT_EVENTGRAPH_FASTCALLS
 	/** The event graph this function calls in to (persistent) */
@@ -1806,7 +1693,7 @@ public:
 	UFunction* GetSuperFunction() const;
 
 	/** Returns the return value property if there is one, or null */
-	FProperty* GetReturnProperty() const;
+	UProperty* GetReturnProperty() const;
 
 	/** Returns the owning UClass* without branching */
 	FORCEINLINE UClass* GetOuterUClassUnchecked() const
@@ -1993,9 +1880,6 @@ public:
 	/** Returns the short name matching the enum Value, returns empty string if invalid */
 	FString GetNameStringByValue(int64 InValue) const;
 
-	/** Looks for a name with a given value and returns true and writes the name to Out if one was found */
-	bool FindNameStringByValue(FString& Out, int64 InValue) const;
-
 	/** Gets enum value by name, returns INDEX_NONE and optionally errors when name is not found. Handles full or short names */
 	int64 GetValueByNameString(const FString& SearchString, EGetByNameFlags Flags = EGetByNameFlags::None) const;
 
@@ -2012,9 +1896,6 @@ public:
 	/** Version of GetDisplayNameTextByIndex that takes a value instead */
 	FText GetDisplayNameTextByValue(int64 InValue) const;
 
-	/** Looks for a display name with a given value and returns true and writes the name to Out if one was found */
-	bool FindDisplayNameTextByValue(FText& Out, int64 InValue) const;
-
 	/**
 	 * Returns the unlocalized logical name originally assigned to the enum at creation.
 	 * By default this is the same as the short name but it is overridden in child classes with different internal name storage.
@@ -2028,9 +1909,6 @@ public:
 
 	/** Version of GetAuthoredNameByIndex that takes a value instead */
 	FString GetAuthoredNameStringByValue(int64 InValue) const;
-
-	/** Looks for a display name with a given value and returns true and writes the unlocalized logical name to Out if one was found */
-	bool FindAuthoredNameStringByValue(FString& Out, int64 InValue) const;
 
 	/** Gets max value of Enum. Defaults to zero if there are no entries. */
 	int64 GetMaxEnumValue() const;
@@ -2061,11 +1939,6 @@ public:
 	ECppForm GetCppForm() const
 	{
 		return CppForm;
-	}
-
-	bool HasAnyEnumFlags(EEnumFlags InFlags) const
-	{
-		return EnumHasAnyFlags(EnumFlags, InFlags);
 	}
 
 	/**
@@ -2147,7 +2020,7 @@ public:
 	 * @param bAddMaxKeyIfMissing Should a default Max item be added.
 	 * @return	true unless the MAX enum already exists and isn't the last enum.
 	 */
-	virtual bool SetEnums(TArray<TPair<FName, int64>>& InNames, ECppForm InCppForm, EEnumFlags InFlags = EEnumFlags::None, bool bAddMaxKeyIfMissing = true);
+	virtual bool SetEnums(TArray<TPair<FName, int64>>& InNames, ECppForm InCppForm, bool bAddMaxKeyIfMissing = true);
 
 	/**
 	 * @return	 The number of enum names.
@@ -2179,7 +2052,7 @@ public:
 	FText GetToolTipText(int32 NameIndex) const { return GetToolTipTextByIndex(NameIndex); }
 #endif
 
-#if WITH_EDITORONLY_DATA
+#if WITH_EDITOR || HACK_HEADER_GENERATOR
 	/**
 	 * Wrapper method for easily determining whether this enum has metadata associated with it.
 	 * 
@@ -2219,7 +2092,7 @@ public:
 	 *
 	 */
 	void RemoveMetaData( const TCHAR* Key, int32 NameIndex=INDEX_NONE ) const;
-#endif // WITH_EDITORONLY_DATA
+#endif
 	
 	/**
 	 * @param EnumPath         Full enum path.
@@ -2291,7 +2164,7 @@ public:
 	template<typename EnumType>
 	FORCEINLINE static FName GetValueAsName(const TEnumAsByte<EnumType> EnumeratorValue)
 	{
-		return GetValueAsName(EnumeratorValue.GetValue());
+		return GetValueAsName((int64)EnumeratorValue.GetValue());
 	}
 
 	template<typename EnumType>
@@ -2316,7 +2189,7 @@ public:
 	template<typename EnumType>
 	FORCEINLINE static FString GetValueAsString(const TEnumAsByte<EnumType> EnumeratorValue)
 	{
-		return GetValueAsString(EnumeratorValue.GetValue());
+		return GetValueAsString((int64)EnumeratorValue.GetValue());
 	}
 
 	template<typename EnumType>
@@ -2344,7 +2217,7 @@ public:
 	template<typename EnumType>
 	FORCEINLINE static FText GetDisplayValueAsText(const TEnumAsByte<EnumType> EnumeratorValue)
 	{
-		return GetDisplayValueAsText(EnumeratorValue.GetValue());
+		return GetDisplayValueAsText((int64)EnumeratorValue.GetValue());
 	}
 
 	template<typename EnumType>
@@ -2389,9 +2262,6 @@ protected:
 
 	/** How the enum was originally defined. */
 	ECppForm CppForm;
-
-	/** Enum flags. */
-	EEnumFlags EnumFlags;
 
 	/** pointer to function used to look up the enum's display name. Currently only assigned for UEnums generated for nativized blueprints */
 	FEnumDisplayNameFn EnumDisplayNameFn;
@@ -2590,14 +2460,6 @@ public:
 	/** This is the blueprint that caused the generation of this class, or null if it is a native compiled-in class */
 	UObject* ClassGeneratedBy;
 
-#if WITH_EDITORONLY_DATA
-	/** Linked list of properties to be destroyed when this class is destroyed that couldn't be destroyed in PurgeClass **/
-	FField* PropertiesPendingDestruction;
-
-	/** Destroys properties that couldn't be destroyed in PurgeClass */
-	void DestroyPropertiesPendingDestruction();
-#endif
-
 #if WITH_EDITOR
 	/**
 	 * Conditionally recompiles the class after loading, in case any dependencies were also newly loaded
@@ -2613,11 +2475,8 @@ public:
 	/** List of replication records */
 	TArray<FRepRecord> ClassReps;
 
-	/** List of network relevant fields (functions) */
+	/** List of network relevant fields (properties and functions) */
 	TArray<UField*> NetFields;
-
-	/** Index of the first ClassRep that belongs to this class. Anything before that was defined by / belongs to parent classes. */
-	int32 FirstOwnedClassRep = 0;
 
 #if WITH_EDITOR || HACK_HEADER_GENERATOR 
 	// Editor only properties
@@ -2706,10 +2565,22 @@ public:
 	 */
 	TArray<FImplementedInterface> Interfaces;
 
+	/**
+	 * Prepends reference token stream with super class's stream.
+	 *
+	 * @param SuperClass Super class to prepend stream with.
+	 */
+	void PrependStreamWithSuperClass(UClass& SuperClass);
+
 	/** Reference token stream used by realtime garbage collector, finalized in AssembleReferenceTokenStream */
 	FGCReferenceTokenStream ReferenceTokenStream;
 	/** CS for the token stream. Token stream can assemble code can sometimes be called from two threads throuh a web of async loading calls. */
 	FCriticalSection ReferenceTokenStreamCritical;
+
+#if ENABLE_GC_OBJECT_CHECKS
+	/** TokenIndex map to look-up token stream index origin. */
+	FGCDebugReferenceTokenMap DebugTokenMap;
+#endif
 
 	/** This class's native functions. */
 	TArray<FNativeFunctionLookup> NativeFunctionLookupTable;
@@ -2764,7 +2635,10 @@ public:
 	 *
 	 * @return The version of this class that references should be stored to
 	 */
-	virtual UClass* GetAuthoritativeClass();
+	virtual UClass* GetAuthoritativeClass()
+	{
+		return this;
+	}
 	const UClass* GetAuthoritativeClass() const { return const_cast<UClass*>(this)->GetAuthoritativeClass(); }
 
 	/**
@@ -2826,7 +2700,6 @@ public:
 	// UStruct interface.
 	virtual void Link(FArchive& Ar, bool bRelinkExistingProperties) override;
 	virtual void SetSuperStruct(UStruct* NewSuperStruct) override;
-	virtual bool IsStructTrashed() const override;
 	// End of UStruct interface.
 
 #if WITH_EDITOR
@@ -3068,12 +2941,6 @@ public:
 	void EmitFixedArrayEnd();
 
 	/**
-	 * Realtime garbage collection helper function used to emit token containing information about an
-	 * external package reference.
-	 */
-	void EmitExternalPackageReference();
-
-	/**
 	 * Assembles the token stream for realtime garbage collection by combining the per class only
 	 * token stream for each class in the class hierarchy. This is only done once and duplicate
 	 * work is avoided by using an object flag.
@@ -3116,8 +2983,6 @@ public:
 	/** 
 	 * Purges out the properties of this class in preparation for it to be regenerated
 	 * @param bRecompilingOnLoad - true if we are recompiling on load
-	 *
-	 * In editor, properties are not freed until DestroyPropertiesPendingDestruction is called.
 	 */
 	virtual void PurgeClass(bool bRecompilingOnLoad);
 
@@ -3154,7 +3019,7 @@ public:
 	 * @param InProperty	The property to check if it is contained in this or a parent class.
 	 * @return				True if the property exists on this or a parent class.
 	 */
-	virtual bool HasProperty(FProperty* InProperty) const;
+	virtual bool HasProperty(UProperty* InProperty) const;
 
 	/** Finds the object that is used as the parent object when serializing properties, overridden for blueprints */
 	virtual UObject* FindArchetype(const UClass* ArchetypeClass, const FName ArchetypeName) const { return nullptr; }
@@ -3184,10 +3049,6 @@ public:
 	 * Also happens after blueprint compiliation.
 	 */
 	void SetUpRuntimeReplicationData();
-
-#if HACK_HEADER_GENERATOR
-	void SetUpUhtReplicationData();
-#endif  // HACK_HEADER_GENERATOR
 
 	/**
 	 * Helper function for determining if the given class is compatible with structured archive serialization
@@ -3270,7 +3131,7 @@ public:
 	virtual void SetupObjectInitializer(FObjectInitializer& ObjectInitializer) const override;
 
 	/** Find a struct property, called from generated code */
-	FStructProperty* FindStructPropertyChecked(const TCHAR* PropertyName) const;
+	UStructProperty* FindStructPropertyChecked(const TCHAR* PropertyName) const;
 
 	/** Misc objects owned by the class. */
 	TArray<UObject*> MiscConvertedSubobjects;
@@ -3293,9 +3154,6 @@ public:
 	UObject* AnimClassImplementation;
 
 	DynamicClassInitializerType DynamicClassInitializer;
-
-	/** Prefix for the temporary package where the dynamic classes are stored when being generated */
-	static const FString& GetTempPackagePrefix();
 };
 
 /**
@@ -3438,21 +3296,6 @@ public:
 	 * @param	out_Components	receives the list of objects contained by SearchOuter
 	 */
 	void RetrieveObjectInstances( class UObject* SearchOuter, TArray<class UObject*>& out_Objects );
-
-	/**
-	 * Allows looping over instances that were created during this instancing.
-	 *
-	 * @param	Pred		the object to retrieve object instances for
-	 */
-	template <typename Predicate>
-	void ForEachObjectInstance(Predicate Pred)
-	{
-		for (TMap<UObject*, UObject*>::TIterator It(SourceToDestinationMap); It; ++It)
-		{
-			UObject* InstancedObject = It.Value();
-			Pred(InstancedObject);
-		}
-	}
 
 	/**
 	 * Enables / disables component instancing.
@@ -3635,7 +3478,7 @@ inline T* GetMutableDefault(UClass *Class)
 
 struct FStructUtils
 {
-	static bool ArePropertiesTheSame(const FProperty* A, const FProperty* B, bool bCheckPropertiesNames);
+	static bool ArePropertiesTheSame(const UProperty* A, const UProperty* B, bool bCheckPropertiesNames);
 
 	/** Do structures have exactly the same memory layout */
 	COREUOBJECT_API static bool TheSameLayout(const UStruct* StructA, const UStruct* StructB, bool bCheckPropertiesNames = false);
@@ -3764,12 +3607,6 @@ template<> struct TBaseStructure<FFrameNumber>
 	COREUOBJECT_API static UScriptStruct* Get();
 };
 
-struct FFrameTime;
-template<> struct TBaseStructure<FFrameTime>
-{
-	COREUOBJECT_API static UScriptStruct* Get();
-};
-
 struct FSoftObjectPath;
 template<> struct TBaseStructure<FSoftObjectPath>
 {
@@ -3802,12 +3639,6 @@ template<> struct TBaseStructure<FDateTime>
 
 struct FPolyglotTextData;
 template<> struct TBaseStructure<FPolyglotTextData>
-{
-	COREUOBJECT_API static UScriptStruct* Get();
-};
-
-struct FAssetBundleData;
-template<> struct TBaseStructure<FAssetBundleData>
 {
 	COREUOBJECT_API static UScriptStruct* Get();
 };

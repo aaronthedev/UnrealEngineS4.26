@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AutomationUtilsBlueprintLibrary.h"
 #include "SceneViewExtension.h"
@@ -21,8 +21,6 @@
 #include "Misc/FileHelper.h"
 #include "Serialization/JsonSerializer.h"
 #include "Containers/Ticker.h"
-#include "Engine/GameEngine.h"
-#include "Stats/Stats.h"
 
 //Private Helper Class Definitions
 class FAutomationUtilsGameplayViewExtension : public FSceneViewExtensionBase
@@ -124,7 +122,7 @@ FAutomationUtilsGameplayAutomationScreenshotInstance::FAutomationUtilsGameplayAu
 		//Generate Json Metadata relevant to rendering device, quality settings, and comparison tolerances
 		TSharedPtr<FJsonObject> JsonObject = MakeShareable(new FJsonObject);
 		//General Stuff
-		JsonObject->SetStringField(TEXT("screenShotName"), FPaths::MakeValidFileName(ScreenshotName, TEXT('_')));
+		JsonObject->SetStringField(TEXT("name"), FPaths::MakeValidFileName(ScreenshotName, TEXT('_')));
 		JsonObject->SetStringField(TEXT("context"), MapName);
 		JsonObject->SetStringField(TEXT("id"), FGuid::NewGuid().ToString());
 		JsonObject->SetStringField(TEXT("Commit"), FEngineVersion::Current().HasChangelist() ? FString::FromInt(FEngineVersion::Current().GetChangelist()) : FString(TEXT("")));
@@ -212,7 +210,7 @@ FAutomationUtilsGameplayAutomationScreenshotInstance::FAutomationUtilsGameplayAu
 		if (HardwareDetailsString.Len() > 0)
 		{
 			//remove leading "_"
-			HardwareDetailsString.RightChopInline(1, false);
+			HardwareDetailsString = HardwareDetailsString.RightChop(1);
 		}
 
 		//now plop that back onto the path we're building
@@ -226,9 +224,7 @@ FAutomationUtilsGameplayAutomationScreenshotInstance::FAutomationUtilsGameplayAu
 	}
 	else
 	{
-		FTicker::GetCoreTicker().AddTicker(TEXT("FAutomationUtilsGameplayScreenshotInstanceAutoCleanup"), 0.1f, [this](float)
-		{
-			QUICK_SCOPE_CYCLE_COUNTER(STAT_FAutomationUtilsGameplayScreenshotInstanceAutoCleanup);
+		FTicker::GetCoreTicker().AddTicker(TEXT("FAutomationUtilsGameplayScreenshotInstanceAutoCleanup"), 0.1f, [this](float) {
 			FAutomationUtilsGameplayAutomationScreenshotFactory::RequestDeleteScreenshotInstance(ScreenshotName);
 			return false;
 		});
@@ -345,17 +341,6 @@ void UAutomationUtilsBlueprintLibrary::TakeGameplayAutomationScreenshot(const FS
 	{
 		//Finish Compiling all shaders
 		GShaderCompilingManager->FinishAllCompilation();
-	}
-
-	FlushAsyncLoading();
-
-	// Make sure we finish all level streaming
-	if (UGameEngine* GameEngine = Cast<UGameEngine>(GEngine))
-	{
-		if (UWorld* GameWorld = GameEngine->GetGameWorld())
-		{
-			GameWorld->FlushLevelStreaming(EFlushLevelStreamingType::Full);
-		}
 	}
 
 	//Stream in everything

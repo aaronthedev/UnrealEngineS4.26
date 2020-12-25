@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,11 +9,13 @@
 #include "Windows/AllowWindowsPlatformTypes.h"
 #endif
 
+PRAGMA_DEFAULT_VISIBILITY_START
 THIRD_PARTY_INCLUDES_START
 #include <Alembic/AbcCoreAbstract/TimeSampling.h>
 #include <Alembic/Abc/All.h>
 #include <Alembic/AbcGeom/All.h>
 THIRD_PARTY_INCLUDES_END
+PRAGMA_DEFAULT_VISIBILITY_END
 
 #if PLATFORM_WINDOWS
 #include "Windows/HideWindowsPlatformTypes.h"
@@ -32,9 +34,6 @@ THIRD_PARTY_INCLUDES_END
 #include "AbcImportLogger.h"
 #include "AbcImportSettings.h"
 
-class FAbcFile;
-class FAbcPolyMesh;
-class UMaterialInterface;
 struct FAbcMeshSample;
 struct FCompressedAbcData;
 
@@ -46,8 +45,7 @@ enum class ESampleReadFlags : uint8
 	UVs = 1 << 3,
 	Normals = 1 << 4,
 	Colors = 1 << 5,
-	MaterialIndices = 1 << 6,
-	Velocities = 1 << 7
+	MaterialIndices = 1 << 6
 };
 ENUM_CLASS_FLAGS(ESampleReadFlags);
 
@@ -299,10 +297,10 @@ namespace AbcImporterUtilities
 	void PropogateMatrixTransformationToSample(FAbcMeshSample* Sample, const FMatrix& Matrix);
 
 	/** Generates the delta frame data for the given average and frame vertex data */
-	void GenerateDeltaFrameDataMatrix(const TArray<FVector>& FrameVertexData, const TArray<FVector>& AverageVertexData, const int32 SampleOffset, const int32 AverageVertexOffset, TArray<float>& OutGeneratedMatrix);
+	void GenerateDeltaFrameDataMatrix(const TArray<FVector>& FrameVertexData, TArray<FVector>& AverageVertexData, const int32 SampleOffset, const int32 AverageVertexOffset, TArray<float>& OutGeneratedMatrix);
 
 	/** Populates compressed data structure from the result PCA compression bases and weights */
-	void GenerateCompressedMeshData(FCompressedAbcData& CompressedData, const uint32 NumUsedSingularValues, const uint32 NumSamples, const TArrayView<float>& BasesMatrix, const TArray<float>& BasesWeights, const float SampleTimeStep, const float StartTime);
+	void GenerateCompressedMeshData(FCompressedAbcData& CompressedData, const uint32 NumUsedSingularValues, const uint32 NumSamples, const TArray<float>& BasesMatrix, const TArray<float>& BasesWeights, const float SampleTimeStep, const float StartTime);
 
 	void CalculateNewStartAndEndFrameIndices(const float FrameStepRatio, int32& InOutStartFrameIndex, int32& InOutEndFrameIndex );
 
@@ -317,7 +315,7 @@ namespace AbcImporterUtilities
 	/** Applies user/preset conversion to the given matrices */
 	void ApplyConversion(FMatrix& InOutMatrix, const FAbcConversionSettings& InConversionSettings);
 
-	/** Extracts the bounding box from the given alembic property (initialised to zero if the property is invalid) */
+        /** Extracts the bounding box from the given alembic property (initialised to zero if the property is invalid) */
 	FBoxSphereBounds ExtractBounds(Alembic::Abc::IBox3dProperty InBoxBoundsProperty);
 	
 	/** Applies user/preset conversion to the given BoxSphereBounds */
@@ -326,27 +324,4 @@ namespace AbcImporterUtilities
 	bool IsObjectVisible(const Alembic::Abc::IObject& Object, const Alembic::Abc::ISampleSelector FrameSelector);
 	/** Returns whether or not the Objects visibility property is constant across the entire sequence (this includes parent Objects) */
 	bool IsObjectVisibilityConstant(const Alembic::Abc::IObject& Object);
-
-	/** Generates and populates a FGeometryCacheMeshData instance from and for the given mesh sample */
-	void GeometryCacheDataForMeshSample(FGeometryCacheMeshData &OutMeshData, const FAbcMeshSample* MeshSample, const uint32 MaterialOffset, const float SecondsPerFrame, const bool bUseVelocitiesAsMotionVectors);
-
-	/**
-	 * Merges the given PolyMeshes at the given FrameIndex into a GeometryCacheMeshData
-	 *
-	 * @param FrameIndex			The frame index to merge the PolyMeshes at
-	 * @param FrameStart			The starting frame number of the range being processed
-	 * @param SecondsPerFrame		The time step of the Abc file
-	 * @param bUseVelocitiesAsMotionVectors		Converts the AbcPolyMesh velocities to motion vectors
-	 * @param PolyMeshes			The PolyMeshes to merge, which will be sampled at FrameIndex
-	 * @param UniqueFaceSetNames	The array of unique face set names of the PolyMeshes
-	 * @param MeshData				The GeometryCacheMeshData where to output the merged PolyMeshes
-	 * @param PreviousNumVertices	The number of vertices in the merged PolyMeshes, used to determine if its topology is constant between 2 frames
-	 * @param bConstantTopology		Flag to indicate if the merged PolyMeshes has constant topology
-	 */
-	void MergePolyMeshesToMeshData(int32 FrameIndex, int32 FrameStart, float SecondsPerFrame, bool bUseVelocitiesAsMotionVectors,
-		const TArray<FAbcPolyMesh*>& PolyMeshes, const TArray<FString>& UniqueFaceSetNames,
-		FGeometryCacheMeshData& MeshData, int32& PreviousNumVertices, bool& bConstantTopology);
-
-	/** Retrieves a material from an AbcFile according to the given name and resaves it into the parent package */
-	UMaterialInterface* RetrieveMaterial(FAbcFile& AbcFile, const FString& MaterialName, UObject* InParent, EObjectFlags Flags);
 }

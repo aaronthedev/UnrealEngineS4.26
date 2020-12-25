@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	HdrCustomResolve.usf: Custom resolve for HDR color and box filter.
@@ -6,8 +6,10 @@
 
 #include "Common.ush"
 
-#ifdef OVERRIDE_HDRCUSTOMRESOLVESHADERS_USH
-# include "/Platform/Private/HdrCustomResolveShaders.ush"
+#ifdef PLATFORM_HDRCUSTOMRESOLVESHADERS_USH
+# include PLATFORM_HDRCUSTOMRESOLVESHADERS_USH
+#elif PS4_PROFILE
+# include "Platform/PS4/HdrCustomResolveShaders.ush"
 #else
 
 float4 HdrCustomResolveVS(uint Id : SV_VertexID) : SV_POSITION

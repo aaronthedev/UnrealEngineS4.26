@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,22 +9,7 @@
 
 class IMessageBus;
 class IDisplayClusterClusterManager;
-struct FDisplayClusterClusterEventJson;
-
-
-DECLARE_LOG_CATEGORY_EXTERN(LogDisplayClusterInterception, Log, All);
-
-
-struct FInterceptedMessageDescriptor
-{
-	FInterceptedMessageDescriptor(TArray<FName>&& InMessageTypes, FName InAnnotation)
-		: MessageTypes(MoveTemp(InMessageTypes))
-		, Annotation(InAnnotation)
-	{}
-
-	TArray<FName> MessageTypes;
-	FName Annotation;
-};
+struct FDisplayClusterClusterEvent;
 
 /**
  * Display Cluster Message Interceptor 
@@ -37,13 +22,13 @@ class FDisplayClusterMessageInterceptor : public TSharedFromThis<FDisplayCluster
 public:
 	FDisplayClusterMessageInterceptor();
 
-	void Setup(IDisplayClusterClusterManager* InClusterManager, const FMessageInterceptionSettings& InInterceptionSettings);
+	void Setup(IDisplayClusterClusterManager* InClusterManager, TSharedPtr<IMessageBus, ESPMode::ThreadSafe> InBus);
 	
-	void Start(TSharedPtr<IMessageBus, ESPMode::ThreadSafe> InBus);
+	void Start();
 	void Stop();
 	
 	void SyncMessages();
-	void HandleClusterEvent(const FDisplayClusterClusterEventJson& InEvent);
+	void HandleClusterEvent(const FDisplayClusterClusterEvent& InEvent);
 
 	// IMessageInterceptor interface
 	virtual FName GetDebugName() const override;
@@ -66,6 +51,9 @@ private:
 	/** Sender address needed by message bus. */
 	FMessageAddress Address;
 
+	/** Message with this annotation will be intercepted. */
+	FName InterceptedAnnotation;
+
 	/** The bus this interceptor is intercepting messages on. */
 	TSharedPtr<IMessageBus, ESPMode::ThreadSafe> InterceptedBus;
 
@@ -74,12 +62,6 @@ private:
 
 	/** Critical section for the intercepted messages. */
 	FCriticalSection ContextQueueCS;
-
-	/** Settings to be used for interception */
-	FMessageInterceptionSettings InterceptionSettings;
-
-	/** Description of messages we intercept */
-	TArray<FInterceptedMessageDescriptor> InterceptedMessages;
 
 	/** Holds intercepted messages and their current sync state across the cluster. */
 	struct FContextSync

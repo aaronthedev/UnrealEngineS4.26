@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CompositeDataTableEditor.h"
 #include "SCompositeRowEditor.h"
@@ -140,11 +140,6 @@ void FCompositeDataTableEditor::InitDataTableEditor(const EToolkitMode::Type Mod
 		// Make sure details window is pointing to our object
 		DetailsView->SetObject(GetEditingObject());
 	}
-}
-
-bool FCompositeDataTableEditor::CanEditRows() const
-{
-	return false;
 }
 
 TSharedRef<SDockTab> FCompositeDataTableEditor::SpawnTab_Stack(const FSpawnTabArgs& Args)

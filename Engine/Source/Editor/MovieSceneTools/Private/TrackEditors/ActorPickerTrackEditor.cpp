@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TrackEditors/ActorPickerTrackEditor.h"
 #include "Widgets/SBoxPanel.h"
@@ -23,7 +23,6 @@
 #include "LevelEditor.h"
 #include "MovieSceneObjectBindingIDPicker.h"
 #include "MovieSceneToolHelpers.h"
-#include "SComponentChooser.h"
 
 #define LOCTEXT_NAMESPACE "FActorPickerTrackEditor"
 
@@ -160,6 +159,100 @@ void FActorPickerTrackEditor::ShowActorSubMenu(FMenuBuilder& MenuBuilder, TArray
 	}
 }
 
+class SComponentChooserPopup : public SCompoundWidget
+{
+public:
+	DECLARE_DELEGATE_OneParam( FOnComponentChosen, FString );
+
+	SLATE_BEGIN_ARGS( SComponentChooserPopup )
+		: _Actor(NULL)
+		{}
+
+		/** An actor with components */
+		SLATE_ARGUMENT( AActor*, Actor )
+
+		/** Called when the text is chosen. */
+		SLATE_EVENT( FOnComponentChosen, OnComponentChosen )
+
+	SLATE_END_ARGS()
+
+	/** Delegate to call when component is selected */
+	FOnComponentChosen OnComponentChosen;
+
+	/** List of tag names selected in the tag containers*/
+	TArray< TSharedPtr<FString> > ComponentNames;
+
+private:
+	TSharedRef<ITableRow> MakeListViewWidget(TSharedPtr<FString> InItem, const TSharedRef<STableViewBase>& OwnerTable)
+	{
+		return SNew( STableRow< TSharedPtr<FString> >, OwnerTable )
+				[
+					SNew(STextBlock) .Text( FText::FromString(*InItem.Get()) )
+				];
+	}
+
+	void OnComponentSelected(TSharedPtr<FString> InItem, ESelectInfo::Type InSelectInfo)
+	{
+		FSlateApplication::Get().DismissAllMenus();
+
+		if(OnComponentChosen.IsBound())
+		{
+			OnComponentChosen.Execute(*InItem.Get());
+		}
+	}
+
+public:
+	void Construct( const FArguments& InArgs )
+	{
+		OnComponentChosen = InArgs._OnComponentChosen;
+		AActor* Actor = InArgs._Actor;
+
+		TInlineComponentArray<USceneComponent*> Components(Actor);
+
+		ComponentNames.Empty();
+		for(USceneComponent* Component : Components)
+		{
+			if (Component->HasAnySockets())
+			{
+				ComponentNames.Add(MakeShareable(new FString(Component->GetName())));
+			}
+		}
+
+		// Then make widget
+		this->ChildSlot
+		[
+			SNew(SBorder)
+			.BorderImage(FEditorStyle::GetBrush(TEXT("Menu.Background")))
+			.Padding(5)
+			.Content()
+			[
+				SNew(SVerticalBox)
+				+SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.0f, 1.0f)
+				[
+					SNew(STextBlock)
+					.Font( FEditorStyle::GetFontStyle(TEXT("SocketChooser.TitleFont")) )
+					.Text( NSLOCTEXT("ComponentChooser", "ChooseComponentLabel", "Choose Component") )
+				]
+				+SVerticalBox::Slot()
+				.AutoHeight()
+				.MaxHeight(512)
+				[
+					SNew(SBox)
+					.WidthOverride(256)
+					.Content()
+					[
+						SNew(SListView< TSharedPtr<FString> >)
+						.ListItemsSource( &ComponentNames)
+						.OnGenerateRow( this, &SComponentChooserPopup::MakeListViewWidget )
+						.OnSelectionChanged( this, &SComponentChooserPopup::OnComponentSelected )
+					]
+				]
+			]
+		];
+	}
+};
 
 void FActorPickerTrackEditor::ActorPicked(AActor* ParentActor, TArray<FGuid> ObjectGuids, UMovieSceneSection* Section)
 {
@@ -176,7 +269,7 @@ void FActorPickerTrackEditor::ExistingBindingPicked(FMovieSceneObjectBindingID E
 	if (ExistingBindingID.IsValid())
 	{
 		// Ensure that this ID is resolvable from the root, based on the current local sequence ID
-		FMovieSceneObjectBindingID RootBindingID = ExistingBindingID.ResolveLocalToRoot(SequenceID, *SequencerPtr);
+		FMovieSceneObjectBindingID RootBindingID = ExistingBindingID.ResolveLocalToRoot(SequenceID, SequencerPtr->GetEvaluationTemplate().GetHierarchy());
 		SequenceID = RootBindingID.GetSequenceID();
 	}
 
@@ -244,12 +337,12 @@ void FActorPickerTrackEditor::ActorPickerIDPicked(FActorPickerID ActorPickerID, 
 	}
 	else
 	{
-		ActorComponentPicked(ComponentsWithSockets[0]->GetFName(), ActorPickerID, ObjectGuids, Section);
+		ActorComponentPicked(ComponentsWithSockets[0]->GetName(), ActorPickerID, ObjectGuids, Section);
 	}
 }
 
 
-void FActorPickerTrackEditor::ActorComponentPicked(FName ComponentName, FActorPickerID ActorPickerID, TArray<FGuid> ObjectGuids, UMovieSceneSection* Section)
+void FActorPickerTrackEditor::ActorComponentPicked(FString ComponentName, FActorPickerID ActorPickerID, TArray<FGuid> ObjectGuids, UMovieSceneSection* Section)
 {
 	USceneComponent* ComponentWithSockets = nullptr;
 	if (ActorPickerID.ActorPicked.IsValid())
@@ -258,7 +351,7 @@ void FActorPickerTrackEditor::ActorComponentPicked(FName ComponentName, FActorPi
 	
 		for(USceneComponent* Component : Components)
 		{
-			if (Component->GetFName() == ComponentName)
+			if (Component->GetName() == ComponentName)
 			{
 				ComponentWithSockets = Component;
 				break;

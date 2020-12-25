@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IPAddressBSD.h"
 #include "SocketSubsystemBSD.h"
@@ -24,30 +24,9 @@ FInternetAddrBSD::FInternetAddrBSD()
 	Clear();
 }
 
-FInternetAddrBSD::FInternetAddrBSD(FSocketSubsystemBSD* InSocketSubsystem, FName RequestedProtocol) : 
-	SocketSubsystem(InSocketSubsystem)
+FInternetAddrBSD::FInternetAddrBSD(FSocketSubsystemBSD* InSocketSubsystem) : SocketSubsystem(InSocketSubsystem)
 {
 	Clear();
-
-	if (RequestedProtocol.IsNone() && InSocketSubsystem)
-	{
-		RequestedProtocol = InSocketSubsystem->GetDefaultSocketProtocolFamily();
-	}
-
-	if (RequestedProtocol == FNetworkProtocolTypes::IPv4)
-	{
-		Addr.ss_family = AF_INET;
-	}
-#if PLATFORM_HAS_BSD_IPV6_SOCKETS
-	else if (RequestedProtocol == FNetworkProtocolTypes::IPv6)
-	{
-		Addr.ss_family = AF_INET6;
-	}
-#endif
-	else
-	{
-		Addr.ss_family = AF_UNSPEC;
-	}
 }
 
 bool FInternetAddrBSD::CompareEndpoints(const FInternetAddr& InAddr) const
@@ -172,7 +151,7 @@ void FInternetAddrBSD::SetIp(const TCHAR* InAddr, bool& bIsValid)
 	if (AddressString.Contains("]:") || (FirstColonIndex == LastColonIndex && LastColonIndex != INDEX_NONE))
 	{
 		Port = AddressString.RightChop(LastColonIndex + 1);
-		AddressString.LeftInline(LastColonIndex, false);
+		AddressString = AddressString.Left(LastColonIndex);
 	}
 
 	// Strip these for backwards compatibility.
@@ -201,7 +180,7 @@ void FInternetAddrBSD::SetIp(const TCHAR* InAddr, bool& bIsValid)
 void FInternetAddrBSD::SetIp(uint32 InAddr)
 {
 #if PLATFORM_HAS_BSD_IPV6_SOCKETS
-	if (GetProtocolType() == FNetworkProtocolTypes::IPv6)
+	if (SocketSubsystem && SocketSubsystem->GetDefaultSocketProtocolFamily() == FNetworkProtocolTypes::IPv6)
 	{
 		if (InAddr == 0)
 		{
@@ -340,7 +319,7 @@ void FInternetAddrBSD::SetAnyAddress()
 {
 	if (SocketSubsystem != nullptr)
 	{
-		if (GetProtocolType() == FNetworkProtocolTypes::IPv6)
+		if (SocketSubsystem->GetDefaultSocketProtocolFamily() == FNetworkProtocolTypes::IPv6)
 		{
 			SetAnyIPv6Address();
 		}
@@ -374,7 +353,7 @@ void FInternetAddrBSD::SetBroadcastAddress()
 {
 	if (SocketSubsystem)
 	{
-		if (GetProtocolType() == FNetworkProtocolTypes::IPv6)
+		if (SocketSubsystem->GetDefaultSocketProtocolFamily() == FNetworkProtocolTypes::IPv6)
 		{
 			SetIPv6BroadcastAddress();
 		}
@@ -401,7 +380,7 @@ void FInternetAddrBSD::SetIPv6BroadcastAddress()
 	Clear();
 #if PLATFORM_HAS_BSD_IPV6_SOCKETS
 	// broadcast means something different in IPv6, but this is a rough equivalent
-#if !defined(in6addr_allnodesonlink) && !PLATFORM_MICROSOFT
+#ifndef in6addr_allnodesonlink
 		// see RFC 4291, link-local multicast address http://tools.ietf.org/html/rfc4291
 	static in6_addr in6addr_allnodesonlink =
 	{
@@ -416,7 +395,7 @@ void FInternetAddrBSD::SetLoopbackAddress()
 {
 	if (SocketSubsystem)
 	{
-		if (GetProtocolType() == FNetworkProtocolTypes::IPv6)
+		if (SocketSubsystem->GetDefaultSocketProtocolFamily() == FNetworkProtocolTypes::IPv6)
 		{
 			SetIPv6LoopbackAddress();
 		}
@@ -457,10 +436,10 @@ FString FInternetAddrBSD::ToString(bool bAppendPort) const
 		{
 			FString IPv6Str(ANSI_TO_TCHAR(IPStr));
 			// Remove the scope interface if it exists.
-			const int32 InterfaceMarkerIndex = IPv6Str.Find("%", ESearchCase::CaseSensitive, ESearchDir::FromEnd);
+			const int32 InterfaceMarkerIndex = IPv6Str.Find("%", ESearchCase::IgnoreCase, ESearchDir::FromEnd);
 			if (InterfaceMarkerIndex != INDEX_NONE)
 			{
-				IPv6Str.LeftInline(InterfaceMarkerIndex, false);
+				IPv6Str = IPv6Str.Left(InterfaceMarkerIndex);
 			}
 
 			// Using dynamic formatting strings are deprecated.
@@ -544,7 +523,7 @@ bool FInternetAddrBSD::IsValid() const
 
 TSharedRef<FInternetAddr> FInternetAddrBSD::Clone() const
 {
-	TSharedRef<FInternetAddrBSD> NewAddress = MakeShareable(new FInternetAddrBSD(SocketSubsystem, GetProtocolType()));
+	TSharedRef<FInternetAddrBSD> NewAddress = MakeShareable(new FInternetAddrBSD(SocketSubsystem));
 	NewAddress->Addr = Addr;
 	return NewAddress;
 }

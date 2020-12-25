@@ -1,21 +1,18 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
+#include "Chaos/Matrix.h"
 #include "Chaos/Pair.h"
 #include "Chaos/Serializable.h"
-#include "Chaos/Core.h"
-#include "Chaos/ImplicitFwd.h"
+#include "Chaos/Vector.h"
 
 #include <functional>
-
-#ifndef TRACK_CHAOS_GEOMETRY
-#define TRACK_CHAOS_GEOMETRY !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-#endif
+#include "Transform.h"
 
 namespace Chaos
 {
 template<class T, int d>
-class TAABB;
+class TBox;
 template<class T>
 class TCylinder;
 template<class T, int d>
@@ -26,53 +23,28 @@ template<class T, int d>
 class TParticles;
 template<class T, int d>
 class TBVHParticles;
-class FImplicitObject;
+template<class T, int d>
+class TImplicitObject;
 
-namespace ImplicitObjectType
+
+enum class ImplicitObjectType : int8
 {
-	enum
-	{
-		//Note: add entries in order to avoid serialization issues (but before IsInstanced)
-		Sphere = 0,
-		Box,
-		Plane,
-		Capsule,
-		Transformed,
-		Union,
-		LevelSet,
-		Unknown,
-		Convex,
-		TaperedCylinder,
-		Cylinder,
-		TriangleMesh,
-		HeightField,
-		DEPRECATED_Scaled,	//needed for serialization of existing data
-		Triangle,
-		UnionClustered,
-
-		//Add entries above this line for serialization
-		IsInstanced = 1 << 6,
-		IsScaled = 1 << 7
-	};
-}
-
-using EImplicitObjectType = uint8;	//see ImplicitObjectType
-
-FORCEINLINE bool IsInstanced(EImplicitObjectType Type)
-{
-	return (Type & ImplicitObjectType::IsInstanced) != 0;
-}
-
-FORCEINLINE bool IsScaled(EImplicitObjectType Type)
-{
-	return (Type & ImplicitObjectType::IsScaled) != 0;
-}
-
-FORCEINLINE EImplicitObjectType GetInnerType(EImplicitObjectType Type)
-{
-	return Type & (~(ImplicitObjectType::IsScaled | ImplicitObjectType::IsInstanced));
-}
-
+	//Note: add entries at the bottom for serialization
+	Sphere = 0,
+	Box,
+	Plane,
+	Capsule,
+	Transformed,
+	Union,
+	LevelSet,
+	Unknown,
+	Convex,
+	TaperedCylinder,
+	Cylinder,
+	TriangleMesh,
+	HeightField,
+	Scaled
+};
 
 namespace EImplicitObject
 {
@@ -80,7 +52,7 @@ namespace EImplicitObject
 	{
 		IsConvex = 1,
 		HasBoundingBox = 1 << 1,
-		DisableCollisions = 1 << 2
+		IgnoreAnalyticCollisions = 1 << 2,
 	};
 
 	const int32 FiniteConvex = IsConvex | HasBoundingBox;
@@ -96,9 +68,9 @@ struct TImplicitObjectPtrStorage
 template<class T, int d>
 struct TImplicitObjectPtrStorage<T, d, false>
 {
-	using PtrType = FImplicitObject*;
+	using PtrType = TImplicitObject<T, d>*;
 
-	static PtrType Convert(const TUniquePtr<FImplicitObject>& Object)
+	static PtrType Convert(const TUniquePtr<TImplicitObject<T, d>>& Object)
 	{
 		return Object.Get();
 	}
@@ -107,43 +79,31 @@ struct TImplicitObjectPtrStorage<T, d, false>
 template<class T, int d>
 struct TImplicitObjectPtrStorage<T, d, true>
 {
-	using PtrType = TSerializablePtr<FImplicitObject>;
+	using PtrType = TSerializablePtr<TImplicitObject<T, d>>;
 
-	static PtrType Convert(const TUniquePtr<FImplicitObject>& Object)
+	static PtrType Convert(const TUniquePtr<TImplicitObject<T, d>>& Object)
 	{
 		return MakeSerializable(Object);
 	}
 };
 
-/*
- * Base class for implicit collision geometry such as spheres, capsules, boxes, etc.
- * 
- * Some shapes are represented by a core shape with a margin. E.g. Spheres are
- * a point with a margin equal to the radius; boxes are a core AABB with a margin.
- * The margin is considered to be physically part of the shape for the pupose
- * of collision detection, separating distance, etc.
- * 
- * The margin exists to make GJK and EPA collision more robust, and is not required
- * by all derived types. E.g., We never use GJK to perform triangle-triangle collision
- * so we do not need a margin on triangles. We would need a margin on every type
- * that can be tested against a triangle though.
- */
-class CHAOS_API FImplicitObject
+
+
+template<class T, int d>
+class CHAOS_API TImplicitObject
 {
 public:
-	using TType = FReal;
-	static constexpr int D = 3;
-	static FImplicitObject* SerializationFactory(FChaosArchive& Ar, FImplicitObject* Obj);
+	static TImplicitObject<T,d>* SerializationFactory(FChaosArchive& Ar, TImplicitObject<T, d>* Obj);
 
-	FImplicitObject(int32 Flags, EImplicitObjectType InType = ImplicitObjectType::Unknown);
-	FImplicitObject(const FImplicitObject&) = delete;
-	FImplicitObject(FImplicitObject&&) = delete;
-	virtual ~FImplicitObject();
+	TImplicitObject(int32 Flags, ImplicitObjectType InType = ImplicitObjectType::Unknown);
+	TImplicitObject(const TImplicitObject<T, d>&) = delete;
+	TImplicitObject(TImplicitObject<T, d>&&) = delete;
+	virtual ~TImplicitObject();
 
 	template<class T_DERIVED>
 	T_DERIVED* GetObject()
 	{
-		if (T_DERIVED::StaticType() == Type)
+		if (T_DERIVED::GetType() == Type)
 		{
 			return static_cast<T_DERIVED*>(this);
 		}
@@ -153,7 +113,7 @@ public:
 	template<class T_DERIVED>
 	const T_DERIVED* GetObject() const
 	{
-		if (T_DERIVED::StaticType() == Type)
+		if (T_DERIVED::GetType() == Type)
 		{
 			return static_cast<const T_DERIVED*>(this);
 		}
@@ -163,70 +123,55 @@ public:
 	template<class T_DERIVED>
 	const T_DERIVED& GetObjectChecked() const
 	{
-		check(T_DERIVED::StaticType() == Type);
+		check(T_DERIVED::GetType() == Type);
 		return static_cast<const T_DERIVED&>(*this);
 	}
 
 	template<class T_DERIVED>
 	T_DERIVED& GetObjectChecked()
 	{
-		check(T_DERIVED::StaticType() == Type);
-		return static_cast<T_DERIVED&>(*this);
+		check(T_DERIVED::GetType() == Type);
+		return static_cast<const T_DERIVED&>(*this);
 	}
 
-	EImplicitObjectType GetType() const;
-	static int32 GetOffsetOfType() { return offsetof(FImplicitObject, Type); }
-
-	EImplicitObjectType GetCollisionType() const;
-	void SetCollisionType(EImplicitObjectType InCollisionType) { CollisionType = InCollisionType; }
-
-	FReal GetMargin() const { return Margin; }
-	static int32 GetOffsetOfMargin() { return offsetof(FImplicitObject, Margin); }
+	ImplicitObjectType GetType(bool bGetTrueType = false) const;
 
 	virtual bool IsValidGeometry() const;
 
-	virtual TUniquePtr<FImplicitObject> Copy() const;
-	virtual TUniquePtr<FImplicitObject> DeepCopy() const { return Copy(); }
+	virtual TUniquePtr<TImplicitObject<T, d>> Copy() const;
 
 	//This is strictly used for optimization purposes
 	bool IsUnderlyingUnion() const;
 
 	// Explicitly non-virtual.  Must cast to derived types to target their implementation.
-	FReal SignedDistance(const FVec3& x) const;
+	T SignedDistance(const TVector<T, d>& x) const;
 
 	// Explicitly non-virtual.  Must cast to derived types to target their implementation.
-	FVec3 Normal(const FVec3& x) const;
-	virtual FReal PhiWithNormal(const FVec3& x, FVec3& Normal) const = 0;
-	virtual const class TAABB<FReal, 3> BoundingBox() const;
+	TVector<T, d> Normal(const TVector<T, d>& x) const;
+	virtual T PhiWithNormal(const TVector<T, d>& x, TVector<T, d>& Normal) const = 0;
+	virtual const class TBox<T, d>& BoundingBox() const;
+	virtual TVector<T, d> Support(const TVector<T, d>& Direction, const T Thickness) const;
 	bool HasBoundingBox() const { return bHasBoundingBox; }
-
 	bool IsConvex() const { return bIsConvex; }
+	void IgnoreAnalyticCollisions(const bool Ignore = true) { bIgnoreAnalyticCollisions = Ignore; }
+	bool GetIgnoreAnalyticCollisions() const { return bIgnoreAnalyticCollisions; }
 	void SetConvex(const bool Convex = true) { bIsConvex = Convex; }
-
-	void SetDoCollide(const bool Collide ) { bDoCollide = Collide; }
-	bool GetDoCollide() const { return bDoCollide; }
-	
-#if TRACK_CHAOS_GEOMETRY
-	//Turn on memory tracking. Must pass object itself as a serializable ptr so we can save it out
-	void Track(TSerializablePtr<FImplicitObject> This, const FString& DebugInfo);
-#endif
-
 	virtual bool IsPerformanceWarning() const { return false; }
 	virtual FString PerformanceWarningAndSimplifaction() 
 	{
 		return FString::Printf(TEXT("ImplicitObject - No Performance String"));
 	};
 
-	Pair<FVec3, bool> FindDeepestIntersection(const FImplicitObject* Other, const TBVHParticles<FReal, 3>* Particles, const FMatrix33& OtherToLocalTransform, const FReal Thickness) const;
-	Pair<FVec3, bool> FindDeepestIntersection(const FImplicitObject* Other, const TParticles<FReal, 3>* Particles, const FMatrix33& OtherToLocalTransform, const FReal Thickness) const;
-	Pair<FVec3, bool> FindClosestIntersection(const FVec3& StartPoint, const FVec3& EndPoint, const FReal Thickness) const;
+	Pair<TVector<T, d>, bool> FindDeepestIntersection(const TImplicitObject<T, d>* Other, const TBVHParticles<float, d>* Particles, const PMatrix<T, d, d>& OtherToLocalTransform, const T Thickness) const;
+	Pair<TVector<T, d>, bool> FindDeepestIntersection(const TImplicitObject<T, d>* Other, const TParticles<float, d>* Particles, const PMatrix<T, d, d>& OtherToLocalTransform, const T Thickness) const;
+	Pair<TVector<T, d>, bool> FindClosestIntersection(const TVector<T, d>& StartPoint, const TVector<T, d>& EndPoint, const T Thickness) const;
 
 	//This gives derived types a way to avoid calling PhiWithNormal todo: this api is confusing
-	virtual bool Raycast(const FVec3& StartPoint, const FVec3& Dir, const FReal Length, const FReal Thickness, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex) const
+	virtual bool Raycast(const TVector<T, d>& StartPoint, const TVector<T,d>& Dir, const T Length, const T Thickness, T& OutTime, TVector<T,d>& OutPosition, TVector<T,d>& OutNormal, int32& OutFaceIndex) const
 	{
 		OutFaceIndex = INDEX_NONE;
-		const FVec3 EndPoint = StartPoint + Dir * Length;
-		Pair<FVec3, bool> Result = FindClosestIntersection(StartPoint, EndPoint, Thickness);
+		const TVector<T, d> EndPoint = StartPoint + Dir * Length;
+		Pair<TVector<T,d>, bool> Result = FindClosestIntersection(StartPoint, EndPoint, Thickness);
 		if (Result.Second)
 		{
 			OutPosition = Result.First;
@@ -243,24 +188,11 @@ public:
 		@param HintFaceIndex - for certain geometry we can use this to accelerate the search.
 		@return Index of the most opposing face
 	*/
-	virtual int32 FindMostOpposingFace(const FVec3& Position, const FVec3& UnitDir, int32 HintFaceIndex, FReal SearchDist) const
+	virtual int32 FindMostOpposingFace(const TVector<T, d>& Position, const TVector<T, d>& UnitDir, int32 HintFaceIndex, T SearchDist) const
 	{
 		//Many objects have no concept of a face
 		return INDEX_NONE;
 	}
-
-
-	/** Finds the first intersecting face at given position
-	@param Position - local position to search around (for example a point on the surface of a convex hull)
-	@param FaceIndices - Vertices that lie on the face plane.
-	@param SearchDistance - distance to surface [def:0.01]
-	*/
-	virtual int32 FindClosestFaceAndVertices(const FVec3& Position, TArray<FVec3>& FaceVertices, FReal SearchDist = 0.01) const
-	{
-		//Many objects have no concept of a face
-		return INDEX_NONE;
-	}
-
 
 	/** Given a normal and a face index, compute the most opposing normal associated with the underlying geometry features.
 		For example a sphere swept against a box may not give a normal associated with one of the box faces. This function will return a normal associated with one of the faces.
@@ -269,41 +201,36 @@ public:
 		@param OriginalNormal - the original normal given by something like a sphere sweep
 		@return The most opposing normal associated with the underlying geometry's feature (like a face)
 	*/
-	virtual FVec3 FindGeometryOpposingNormal(const FVec3& DenormDir, int32 FaceIndex, const FVec3& OriginalNormal) const
+	virtual TVector<T,d> FindGeometryOpposingNormal(const TVector<T, d>& DenormDir, int32 FaceIndex, const TVector<T,d>& OriginalNormal) const
 	{
 		//Many objects have no concept of a face
 		return OriginalNormal;
 	}
 
 	//This gives derived types a way to do an overlap check without calling PhiWithNormal todo: this api is confusing
-	virtual bool Overlap(const FVec3& Point, const FReal Thickness) const
+	virtual bool Overlap(const TVector<T, d>& Point, const T Thickness) const
 	{
 		return SignedDistance(Point) <= Thickness;
 	}
 
-	virtual void AccumulateAllImplicitObjects(TArray<Pair<const FImplicitObject*, FRigidTransform3>>& Out, const FRigidTransform3& ParentTM) const
+	virtual void AccumulateAllImplicitObjects(TArray<Pair<const TImplicitObject<T, d>*, TRigidTransform<T, d>>>& Out, const TRigidTransform<T, d>& ParentTM) const
 	{
 		Out.Add(MakePair(this, ParentTM));
 	}
 
-	virtual void AccumulateAllSerializableImplicitObjects(TArray<Pair<TSerializablePtr<FImplicitObject>, FRigidTransform3>>& Out, const FRigidTransform3& ParentTM, TSerializablePtr<FImplicitObject> This) const
+	virtual void AccumulateAllSerializableImplicitObjects(TArray<Pair<TSerializablePtr<TImplicitObject<T, d>>, TRigidTransform<T, d>>>& Out, const TRigidTransform<T, d>& ParentTM, TSerializablePtr<TImplicitObject<T,d>> This) const
 	{
 		Out.Add(MakePair(This, ParentTM));
 	}
 
-	virtual void FindAllIntersectingObjects(TArray < Pair<const FImplicitObject*, FRigidTransform3>>& Out, const TAABB<FReal, 3>& LocalBounds) const;
+	virtual void FindAllIntersectingObjects(TArray < Pair<const TImplicitObject<T, d>*, TRigidTransform<T, d>>>& Out, const TBox<T, d>& LocalBounds) const;
 
 	virtual FString ToString() const
 	{
-		return FString::Printf(TEXT("ImplicitObject bIsConvex:%d, bDoCollide:%d, bHasBoundingBox:%d"), bIsConvex, bDoCollide, bHasBoundingBox);
+		return FString::Printf(TEXT("ImplicitObject bIsConvex:%d, bIgnoreAnalyticCollision:%d, bHasBoundingBox:%d"), bIsConvex, bIgnoreAnalyticCollisions, bHasBoundingBox);
 	}
 
 	void SerializeImp(FArchive& Ar);
-
-	constexpr static EImplicitObjectType StaticType()
-	{
-		return ImplicitObjectType::Unknown;
-	}
 	
 	virtual void Serialize(FArchive& Ar)
 	{
@@ -312,51 +239,37 @@ public:
 
 	virtual void Serialize(FChaosArchive& Ar);
 	
-	static FArchive& SerializeLegacyHelper(FArchive& Ar, TUniquePtr<FImplicitObject>& Value);
+	static FArchive& SerializeLegacyHelper(FArchive& Ar, TUniquePtr<TImplicitObject<T, d>>& Value);
 
 	virtual uint32 GetTypeHash() const = 0;
 
 	virtual FName GetTypeName() const { return GetTypeName(GetType()); }
 
-	static const FName GetTypeName(const EImplicitObjectType InType);
-
-	virtual uint16 GetMaterialIndex(uint32 HintIndex) const { return 0; }
+	static const FName GetTypeName(const ImplicitObjectType InType);
 
 protected:
-
-	// Not all derived types support a margin, and for some it represents some other
-	// property (the radius of a sphere for example), so the setter should only be exposed 
-	// in a derived class if at all (and it may want to change the size of the core shape as well)
-	void SetMargin(FReal InMargin) { Margin = InMargin; }
-
-	EImplicitObjectType Type;
-	EImplicitObjectType CollisionType;
-	FReal Margin;
+	ImplicitObjectType Type;
 	bool bIsConvex;
-	bool bDoCollide;
+	bool bIgnoreAnalyticCollisions;
 	bool bHasBoundingBox;
 
-#if TRACK_CHAOS_GEOMETRY
-	bool bIsTracked;
-#endif
-
 private:
-	virtual Pair<FVec3, bool> FindClosestIntersectionImp(const FVec3& StartPoint, const FVec3& EndPoint, const FReal Thickness) const;
+	virtual Pair<TVector<T, d>, bool> FindClosestIntersectionImp(const TVector<T, d>& StartPoint, const TVector<T, d>& EndPoint, const T Thickness) const;
 };
 
-FORCEINLINE FChaosArchive& operator<<(FChaosArchive& Ar, FImplicitObject& Value)
+template <typename T, int d>
+FORCEINLINE FChaosArchive& operator<<(FChaosArchive& Ar, TImplicitObject<T, d>& Value)
 {
 	Value.Serialize(Ar);
 	return Ar;
 }
 
-FORCEINLINE FArchive& operator<<(FArchive& Ar, FImplicitObject& Value)
+template <typename T, int d>
+FORCEINLINE FArchive& operator<<(FArchive& Ar, TImplicitObject<T, d>& Value)
 {
 	Value.Serialize(Ar);
 	return Ar;
 }
 
-typedef FImplicitObject FImplicitObject3;
-typedef TSharedPtr<Chaos::FImplicitObject, ESPMode::ThreadSafe> ThreadSafeSharedPtr_FImplicitObject;
-typedef TSharedPtr<Chaos::FImplicitObject, ESPMode::NotThreadSafe> NotThreadSafeSharedPtr_FImplicitObject;
+typedef TImplicitObject<float, 3> FImplicitObject3;
 }

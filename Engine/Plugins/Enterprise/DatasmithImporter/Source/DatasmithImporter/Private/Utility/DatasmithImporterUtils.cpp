@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Utility/DatasmithImporterUtils.h"
 
@@ -10,10 +10,8 @@
 #include "DatasmithScene.h"
 #include "DatasmithSceneActor.h"
 #include "DatasmithSceneFactory.h"
-#include "DatasmithSceneSource.h"
 #include "DatasmithSceneXmlReader.h"
 #include "DatasmithSceneXmlWriter.h"
-#include "DatasmithTranslatorManager.h"
 #include "LevelVariantSets.h"
 
 #include "ObjectTemplates/DatasmithActorTemplate.h"
@@ -55,10 +53,8 @@
 #include "LevelSequence.h"
 #include "Lightmass/LightmassPortal.h"
 #include "Logging/TokenizedMessage.h"
-#include "Materials/MaterialInstanceConstant.h"
 #include "MessageLogModule.h"
 #include "Modules/ModuleManager.h"
-#include "Misc/FileHelper.h"
 #include "Misc/SecureHash.h"
 #include "Serialization/MemoryWriter.h"
 #include "UObject/ObjectRedirector.h"
@@ -160,7 +156,7 @@ TArray< ADatasmithSceneActor* > FDatasmithImporterUtils::FindSceneActors( UWorld
 		return TArray< ADatasmithSceneActor* >();
 	}
 
-	auto IsValidSceneActor = [DatasmithScene, World]( AActor* Actor )
+	auto IsValidSceneActor = [DatasmithScene]( AActor* Actor )
 	{
 		ADatasmithSceneActor* NullSceneActor = nullptr;
 
@@ -175,8 +171,7 @@ TArray< ADatasmithSceneActor* > FDatasmithImporterUtils::FindSceneActors( UWorld
 			{
 				if( ADatasmithSceneActor* SceneActor = Cast< ADatasmithSceneActor >( Actor ) )
 				{
-					// A scene can be used by multiple loaded levels. Only the SceneActors of the current level are valid
-					return (SceneActor->Scene == DatasmithScene && SceneActor->GetLevel() == World->GetCurrentLevel()) ? SceneActor : NullSceneActor;
+					return SceneActor->Scene == DatasmithScene ? SceneActor : NullSceneActor;
 				}
 
 				return NullSceneActor;
@@ -288,23 +283,12 @@ void FDatasmithImporterUtils::DeleteNonImportedDatasmithElementFromSceneActor(AD
 
 					// Make a copy because the array in RootComponent will get modified during the process
 					TArray< USceneComponent* > AttachChildren = Actor->GetRootComponent()->GetAttachChildren();
-					USceneComponent* AttachParent = Actor->GetRootComponent()->GetAttachParent();
 					for ( USceneComponent* ChildComponent : AttachChildren )
 					{
 						if ( ChildComponent->GetOwner() != Actor && !ChildComponent->GetOwner()->IsActorBeingDestroyed() )
 						{
-							// If the component has a template pointing to the parent about to be deleted, update the template 
-							// to the new parent to avoid creating a template override where there was none.
-							if ( UDatasmithSceneComponentTemplate* ComponentTemplate = FDatasmithObjectTemplateUtils::GetObjectTemplate<UDatasmithSceneComponentTemplate>( ChildComponent ) )
-							{
-								if ( ComponentTemplate->AttachParent == ChildComponent->GetAttachParent() )
-								{
-									ComponentTemplate->AttachParent = AttachParent;
-								}
-							}
-
 							// Reattach our children to our parent
-							ChildComponent->AttachToComponent( AttachParent, FAttachmentTransformRules::KeepWorldTransform );
+							ChildComponent->AttachToComponent( Actor->GetRootComponent()->GetAttachParent(), FAttachmentTransformRules::KeepWorldTransform );
 						}
 					}
 
@@ -371,11 +355,6 @@ void FDatasmithImporterUtils::DeleteActor( AActor& Actor )
 			}
 		}
 
-		// Make sure actor is deselected before deletion 
-		if (GEditor && Actor.IsSelected())
-		{
-			GEditor->SelectActor( &Actor, false, true );
-		}
 		// Actually delete the actor
 		ActorWorld->EditorDestroyActor( &Actor, true );
 
@@ -424,37 +403,6 @@ void FDatasmithImporterUtils::AddUniqueLayersToWorld(UWorld* World, const TSet< 
 
 bool FDatasmithImporterUtils::CanCreateAsset(const FString& AssetPathName, const UClass* AssetClass, FText& OutFailReason)
 {
-	switch(CanCreateAsset(AssetPathName, AssetClass))
-	{
-		case EAssetCreationStatus::CS_HasRedirector:
-		{
-			OutFailReason = FText::Format(LOCTEXT("FoundRedirectionForAsset", "Found redirection for asset {0}. Skipping this asset ..."), FText::FromString(AssetPathName));
-			return false;
-		}
-
-		case EAssetCreationStatus::CS_ClassMismatch:
-		{
-			IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
-			const FAssetData AssetData = AssetRegistry.GetAssetByObjectPath(*AssetPathName);
-
-			const FString FoundClassName(AssetData.GetClass()->GetFName().ToString());
-			const FString ExpectedClassName(AssetClass->GetFName().ToString());
-			OutFailReason = FText::Format(LOCTEXT("AssetClassMismatch", "Found asset {0} of class {1} instead of class {2}. Skipping this asset ..."), FText::FromString(AssetPathName), FText::FromString(FoundClassName), FText::FromString(ExpectedClassName) );
-			return false;
-		}
-
-		case EAssetCreationStatus::CS_CanCreate:
-		default:
-		{
-			break;
-		}
-	}
-
-	return true;
-}
-
-FDatasmithImporterUtils::EAssetCreationStatus FDatasmithImporterUtils::CanCreateAsset(const FString& AssetPathName, const UClass* AssetClass)
-{
 	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get();
 
 	const FAssetData AssetData = AssetRegistry.GetAssetByObjectPath(*AssetPathName);
@@ -462,21 +410,25 @@ FDatasmithImporterUtils::EAssetCreationStatus FDatasmithImporterUtils::CanCreate
 	// Asset does not exist yet. Safe to import
 	if (!AssetData.IsValid())
 	{
-		return EAssetCreationStatus::CS_CanCreate;
+		return true;
 	}
 
 	// Warn and skip import of asset since it is an object redirection
 	if (AssetData.IsRedirector())
 	{
-		return EAssetCreationStatus::CS_HasRedirector;
+		OutFailReason = FText::Format(LOCTEXT("FoundRedirectionForAsset", "Found redirection for asset {0}. Skipping this asset ..."), FText::FromString(AssetPathName));
+		return false;
 	}
 	// Warn and skip re-import of asset since it is not of the expected class
 	else if (!AssetData.GetClass()->IsChildOf(AssetClass))
 	{
-		return EAssetCreationStatus::CS_ClassMismatch;
+		const FString FoundClassName(AssetData.GetClass()->GetFName().ToString());
+		const FString ExpectedClassName(AssetClass->GetFName().ToString());
+		OutFailReason = FText::Format(LOCTEXT("AssetClassMismatch", "Found asset {0} of class {1} instead of class {2}. Skipping this asset ..."), FText::FromString(AssetPathName), FText::FromString(FoundClassName), FText::FromString(ExpectedClassName) );
+		return false;
 	}
 
-	return EAssetCreationStatus::CS_CanCreate;
+	return true;
 }
 
 UDatasmithScene* FDatasmithImporterUtils::FindDatasmithSceneForAsset( UObject* Asset )
@@ -1063,157 +1015,6 @@ TArray<TSharedPtr<IDatasmithBaseMaterialElement>> FDatasmithImporterUtils::GetOr
 	return ReferencedMaterials;
 }
 
-FDatasmithImporterUtils::FDatasmithMaterialImportIterator::FDatasmithMaterialImportIterator(const FDatasmithImportContext& InImportContext)
-	: ImportContext(InImportContext),
-	CurrentIndex(0)
-{
-	if (!ImportContext.bIsAReimport)
-	{
-		return;
-	}
-
-	auto DoesParentWithSameNameExist = [this](TSharedPtr<IDatasmithBaseMaterialElement> Mat)
-	{
-		if (TSoftObjectPtr<UMaterialInterface>* MatInterface = ImportContext.SceneAsset->Materials.Find(Mat->GetName()))
-		{
-			if (UMaterialInstanceConstant* MaterialInstance = Cast< UMaterialInstanceConstant >(MatInterface->Get()))
-			{
-				const FString ParentDatasmithUniqueId = UDatasmithAssetUserData::GetDatasmithUserDataValueForKey(MaterialInstance->Parent, UDatasmithAssetUserData::UniqueIdMetaDataKey);
-				return MaterialInstance->Parent && ParentDatasmithUniqueId == Mat->GetName();
-			}
-		}
-
-		return false;
-	};
-
-	SortedMaterials.Reserve(ImportContext.FilteredScene->GetMaterialsCount());
-	int32 NumMaterialMovedToFront = 0;
-
-	for (int32 MaterialIndex = 0; MaterialIndex < ImportContext.FilteredScene->GetMaterialsCount(); ++MaterialIndex)
-	{
-		SortedMaterials.Add(ImportContext.FilteredScene->GetMaterial(MaterialIndex));
-
-		// Materials that are already existing and that were used to create their parent material should be imported first otherwise we might create new parent materials instead of reusing the existing ones.
-		if (DoesParentWithSameNameExist(SortedMaterials[MaterialIndex]))
-		{
-			if (NumMaterialMovedToFront != MaterialIndex)
-			{
-				SortedMaterials.Swap(NumMaterialMovedToFront,MaterialIndex);
-			}
-			NumMaterialMovedToFront++;
-		}
-	}
-}
-
-FDatasmithImporterUtils::FDatasmithMaterialImportIterator& FDatasmithImporterUtils::FDatasmithMaterialImportIterator::operator++()
-{
-	++CurrentIndex;
-	return *this;
-}
-
-FDatasmithImporterUtils::FDatasmithMaterialImportIterator::operator bool() const
-{
-	if (ImportContext.bIsAReimport)
-	{
-		return CurrentIndex < SortedMaterials.Num();
-	}
-	else
-	{
-		return CurrentIndex < ImportContext.FilteredScene->GetMaterialsCount();
-	}
-}
-
-const TSharedPtr<IDatasmithBaseMaterialElement>& FDatasmithImporterUtils::FDatasmithMaterialImportIterator::Value() const
-{
-	if (ImportContext.bIsAReimport)
-	{
-		return SortedMaterials[CurrentIndex];
-	}
-	else
-	{
-		//We need to use a const IDatasmithScene to be able to use the const-ref version on GetMaterial().
-		const TSharedPtr<const IDatasmithScene>& DatasmithScene(ImportContext.FilteredScene);
-		return DatasmithScene->GetMaterial(CurrentIndex);
-	}
-}
-
-UObject* FDatasmithImporterUtils::StaticDuplicateObject(UObject* SourceObject, UObject* Outer, const FName Name)
-{
-	if (UStaticMesh* SourceMesh = Cast< UStaticMesh >(SourceObject))
-	{
-		const bool bIgnoreBulkData = false;
-		return DuplicateStaticMesh(SourceMesh, Outer, Name, bIgnoreBulkData);
-	}
-
-	// Duplicate is used only to move our object from its temporary package into its final package replacing any asset
-	// already at that location. This function also takes care of fixing internal dependencies among the object's children.
-	// Since Duplicate has some rather heavy consequence, like calling PostLoad and doing all kind of stuff on an object
-	// that is not even fully initialized yet, we might want to find an alternative way of moving our objects in future
-	// releases but keep it for the current release cycle.
-	return ::DuplicateObject< UObject >( SourceObject, Outer, Name );
-}
-
-UStaticMesh* FDatasmithImporterUtils::DuplicateStaticMesh(UStaticMesh* SourceStaticMesh, UObject* Outer, const FName Name, bool bIgnoreBulkData)
-{
-	TArray<FStaticMeshSourceModel> SourceModels;
-
-	// Since static mesh can be quite heavy, remove source models for cloning to reduce useless work.
-	// Will be reinserted on the new duplicated asset or restored on the SourceStaticMesh if bIgnoreBulkData is true.
-	SourceModels = MoveTemp(SourceStaticMesh->GetSourceModels());
-
-	// Temporary flag to skip Postload during DuplicateObject
-	SourceStaticMesh->SetFlags(RF_ArchetypeObject);
-
-	// Duplicate is used only to move our object from its temporary package into its final package replacing any asset
-	// already at that location. This function also takes care of fixing internal dependencies among the object's children.
-	// Since Duplicate has some rather heavy consequence, like calling PostLoad and doing all kind of stuff on an object
-	// that is not even fully initialized yet, we might want to find an alternative way of moving our objects in future
-	// releases but keep it for the current release cycle.
-	UStaticMesh* DuplicateMesh = ::DuplicateObject< UStaticMesh >(SourceStaticMesh, Outer, Name);
-
-	// Get rid of our temporary flag
-	SourceStaticMesh->ClearFlags(RF_ArchetypeObject);
-	DuplicateMesh->ClearFlags(RF_ArchetypeObject);
-
-	if (bIgnoreBulkData)
-	{
-		//We are not moving the source model bulk data, so we can simply copy the settings used in the DDC key.
-		//That way we also avoid marking the source mesh as pending kill.
-		for (FStaticMeshSourceModel& SourceModel : SourceModels)
-		{
-			FStaticMeshSourceModel& DuplicateSourceModel = DuplicateMesh->AddSourceModel();
-			DuplicateSourceModel.StaticMeshOwner = DuplicateMesh;
-
-			// Apply the SourceMesh settings to the duplicated SourceModels
-			DuplicateSourceModel.BuildSettings = SourceModel.BuildSettings;
-			DuplicateSourceModel.ReductionSettings = SourceModel.ReductionSettings;
-			DuplicateSourceModel.ScreenSize = SourceModel.ScreenSize;
-			DuplicateSourceModel.bImportWithBaseMesh = SourceModel.bImportWithBaseMesh;
-			DuplicateSourceModel.SourceImportFilename = SourceModel.SourceImportFilename;
-		}
-
-		// Move back the source models to the original mesh
-		SourceStaticMesh->GetSourceModels() = MoveTemp(SourceModels);
-	}
-	else
-	{
-		// The source mesh is stripped from it's source model, it is not buildable anymore.
-		// -> MarkPendingKill to avoid use-after-move crash in the StaticMesh::Build()
-		SourceStaticMesh->MarkPendingKill();
-
-		for (FStaticMeshSourceModel& SourceModel : SourceModels)
-		{
-			// Fixup the new SourceModels owner
-			SourceModel.StaticMeshOwner = DuplicateMesh;
-		}
-
-		// Apply source models to the duplicated mesh
-		DuplicateMesh->GetSourceModels() = MoveTemp(SourceModels);
-	}
-
-	return DuplicateMesh;
-}
-
 FScopedLogger::FScopedLogger(FName LogTitle, const FText& LogLabel)
 	: Title(LogTitle)
 	, MessageLogModule(FModuleManager::LoadModuleChecked<FMessageLogModule>("MessageLog"))
@@ -1230,7 +1031,7 @@ FScopedLogger::~FScopedLogger()
 TSharedRef<FTokenizedMessage> FScopedLogger::Push(EMessageSeverity::Type Severity, const FText& Message)
 {
 	TokenizedMessages.Add(FTokenizedMessage::Create(Severity, Message));
-
+	
 	return TokenizedMessages.Last();
 }
 
@@ -1257,123 +1058,6 @@ void FScopedLogger::ClearLog()
 void FScopedLogger::ClearPending()
 {
 	TokenizedMessages.Empty();
-}
-
-bool FDatasmithImporterUtils::CreatePlmXmlSceneFromCADFiles(FString PlmXmlFileName, const TSet<FString>& FilesToProcess, TArray<FString>& FilesNotProcessed)
-{
-	// Find out which translator can import CAD files by retrieving translator for a JT file(this is expected to be 'DatasmithCADTranslator').
-	// And then accept files which have this translator returned as compatible.
-	FDatasmithSceneSource SomeCADFileSource;
-	SomeCADFileSource.SetSourceFile("test.jt");
-	TSharedPtr<IDatasmithTranslator> TranslatorForCADFiles = FDatasmithTranslatorManager::Get().SelectFirstCompatible(SomeCADFileSource);
-	if (!TranslatorForCADFiles.IsValid())
-	{
-		UE_LOG(LogDatasmithImport, Error, TEXT("Datasmith import error: no translator found for CAD files. Abort import."));
-		return false;
-	}
-
-	FName CADTranslatorName = TranslatorForCADFiles->GetFName();
-	TArray<FString> FilesToProcessWithPlmXml;
-	for (const FString& FileName : FilesToProcess)
-	{
-		FDatasmithSceneSource Source;
-		Source.SetSourceFile(FileName);
-		TSharedPtr<IDatasmithTranslator> Translator = FDatasmithTranslatorManager::Get().SelectFirstCompatible(Source);
-
-		bool bIsCADFile = Translator.IsValid() && (Translator->GetFName() == CADTranslatorName);
-		if (bIsCADFile)
-		{
-			FilesToProcessWithPlmXml.Add(FileName);
-		}
-		else
-		{
-			FilesNotProcessed.Add(FileName);
-			// XXX make warning for not processed
-			// UE_LOG(LogDatasmithImport, Warning, TEXT("Datasmith import error: '%s' is not a CAD file, skipping."), *FileName);
-		}
-	}
-
-	if (FilesToProcessWithPlmXml.Num() <= 0)
-	{
-		return false;
-	}
-
-	class FXmlWriter
-	{
-	public:
-		FString Buffer;
-
-		FXmlWriter()
-		{
-			Buffer = TEXT("<?xml version=\"1.0\" encoding=\"utf-8\"?>");
-			Buffer += LINE_TERMINATOR;
-		}
-
-		class FTagGuard
-		{
-		public:
-			FTagGuard(FXmlWriter& InWriter, FString Opening, FString InClosing)
-				: Writer(InWriter)
-				, Closing(InClosing)
-			{
-				Writer.Buffer += Opening;
-				Writer.Buffer += LINE_TERMINATOR;
-			}
-			~FTagGuard()
-			{
-				Writer.Buffer += Closing;
-				Writer.Buffer += LINE_TERMINATOR;
-			}
-		private:
-			FXmlWriter& Writer;
-			FString Closing;
-		};
-	};
-
-	FXmlWriter Writer;
-	FString& Buffer = Writer.Buffer;
-
-	// Creating PLMXML file where each of files to process is referenced from a ProductRevisionView
-	{
-		FXmlWriter::FTagGuard PLMXMLTag(Writer, TEXT("<PLMXML xmlns=\"http://www.plmxml.org/Schemas/PLMXMLSchema\">"), "</PLMXML>");
-		FXmlWriter::FTagGuard ProductDefTag(Writer, TEXT("<ProductDef id=\"id1\">"), TEXT("</ProductDef>"));
-
-		// Used to assign unique ids to PLMXML entities being created
-		int32 CurrentId = 2;
-
-		// Collect all InstanceId to reference from InstanceGraph rootRefs
-		TArray<FString> InstanceIds;
-		InstanceIds.Reserve(FilesToProcessWithPlmXml.Num());
-		for (const FString& FileName : FilesToProcessWithPlmXml)
-		{
-			InstanceIds.Add(FString::Printf(TEXT("id%d"), CurrentId++));
-		}
-		FXmlWriter::FTagGuard InstanceGraphTag(Writer, FString::Printf(TEXT("<InstanceGraph id=\"id2\" rootRefs=\"%s\">"), *FString::Join(InstanceIds, TEXT(" "))), TEXT("</InstanceGraph>"));
-
-		for (int32 FileIndex = 0; FileIndex < FilesToProcessWithPlmXml.Num(); ++FileIndex)
-		{
-			const FString& FileName = FilesToProcessWithPlmXml[FileIndex];
-			FString InstanceId = InstanceIds[FileIndex];
-			FString InstanceName = FPaths::GetBaseFilename(FileName);
-			FString PartId = FString::Printf(TEXT("id%d"), CurrentId++);
-			FString RepresentationId = FString::Printf(TEXT("id%d"), CurrentId++);
-			{
-				FXmlWriter::FTagGuard ProductInstanceTag(Writer, FString::Printf(TEXT("<ProductInstance id=\"%s\" name=\"%s\" partRef=\"#%s\">"), *InstanceId, *InstanceName, *PartId), TEXT("</ProductInstance>"));
-			}
-			{
-				FXmlWriter::FTagGuard ProductRevisionViewTag(Writer, FString::Printf(TEXT("<ProductRevisionView id=\"%s\" name=\"%s\">"), *PartId, *InstanceName), TEXT("</ProductRevisionView>"));
-				//  omitting 'format' attribute, it's optional anyway
-				FXmlWriter::FTagGuard RepresentationTag(Writer, FString::Printf(TEXT("<Representation id=\"%s\" location=\"%s\">"), *RepresentationId, *FileName), TEXT("</Representation>"));
-			}
-		}
-	}
-
-	if (!FFileHelper::SaveStringToFile(Buffer, *PlmXmlFileName, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
-	{
-		UE_LOG(LogDatasmithImport, Error, TEXT("Datasmith import error: Failed to create PlmXml file '%s' for parallel loading ..."), *PlmXmlFileName);
-		return false;
-	}
-	return true;
 }
 
 #undef LOCTEXT_NAMESPACE // "DatasmithImporterUtils"

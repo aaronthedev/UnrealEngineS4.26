@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 DebugViewModeInterface.cpp: Contains definitions for rendering debug viewmodes.
@@ -23,16 +23,8 @@ void FDebugViewModeInterface::SetDrawRenderState(EBlendMode BlendMode, FRenderSt
 	else
 	{
 		DrawRenderState.BlendState = TStaticBlendState<>::GetRHI();
-
 		// If not selected, use depth equal to make alpha test stand out (goes with EarlyZPassMode = DDM_AllOpaque) 
-		if (BlendMode == BLEND_Masked && bHasDepthPrepassForMaskedMaterial)
-		{
-			DrawRenderState.DepthStencilState = TStaticDepthStencilState<false, CF_Equal>::GetRHI();
-		}
-		else
-		{
-			DrawRenderState.DepthStencilState = TStaticDepthStencilState<>::GetRHI();
-		}
+		DrawRenderState.DepthStencilState = TStaticDepthStencilState<false, CF_Equal>::GetRHI();
 	}
 }
 
@@ -45,18 +37,14 @@ void FDebugViewModeInterface::SetInterface(EDebugViewShaderMode InDebugViewMode,
 	}
 }
 
-bool FDebugViewModeInterface::AllowFallbackToDefaultMaterial(EMaterialTessellationMode TessellationMode, bool bHasVertexPositionOffsetConnected, bool bHasPixelDepthOffsetConnected)
-{
-	// Check for anything that could change the shape from the default material.
-	return !bHasVertexPositionOffsetConnected &&
-		!bHasPixelDepthOffsetConnected &&
-		TessellationMode == MTM_NoTessellation;
-}
-
 bool FDebugViewModeInterface::AllowFallbackToDefaultMaterial(const FMaterial* InMaterial)
 {
 	check(InMaterial);
-	return FDebugViewModeInterface::AllowFallbackToDefaultMaterial(InMaterial->GetTessellationMode(), InMaterial->HasVertexPositionOffsetConnected(), InMaterial->HasPixelDepthOffsetConnected());
+
+	// Check for anything that could change the shape from the default material.
+	return !InMaterial->HasVertexPositionOffsetConnected() && 
+		!InMaterial->HasPixelDepthOffsetConnected() &&
+		InMaterial->GetTessellationMode() == MTM_NoTessellation; 
 }
 
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -7,11 +7,10 @@
 #include "GeometryCacheTrack.generated.h"
 
 struct FGeometryCacheMeshData;
-struct FGeometryCacheTrackSampleInfo;
 
 /** Base class for GeometryCache tracks, stores matrix animation data and implements functionality for it */
 UCLASS(collapsecategories, hidecategories = Object, BlueprintType, config = Engine)
-class GEOMETRYCACHE_API UGeometryCacheTrack : public UObject
+class UGeometryCacheTrack : public UObject
 {
 	GENERATED_UCLASS_BODY()
 
@@ -91,8 +90,7 @@ class GEOMETRYCACHE_API UGeometryCacheTrack : public UObject
 	virtual float GetDuration();
 
 	/**
-	* GetMaxSampleTime, returns the time for the last sample
-	* Not the same as the animation length since it might not start at time 0
+	* GetMaxSampleTime, returns the time for the last sample can be considered as the total animation leght
 	*
 	* @return const float
 	*/
@@ -104,14 +102,6 @@ class GEOMETRYCACHE_API UGeometryCacheTrack : public UObject
 	* @return const uint32
 	*/
 	const uint32 GetNumMaterials() const { return NumMaterials; }
-
-	/**
-	* Get the info for the sample displayed at the given time.
-	* 
-	* @param Time - (Elapsed)Time to check against
-	* @param bLooping - Whether or not the animation is being played in a loop
-	*/
-	virtual const FGeometryCacheTrackSampleInfo& GetSampleInfo(float Time, const bool bLooping);
 
 protected:
 
@@ -141,42 +131,4 @@ protected:
 
 	/** Number of materials for this track*/
 	uint32 NumMaterials;
-};
-
-/**
- Info stored per sample that is always resident in memory
- */
-struct GEOMETRYCACHE_API FGeometryCacheTrackSampleInfo
-{
-	float SampleTime;
-	FBox BoundingBox;
-	int32 NumVertices;
-	int32 NumIndices;
-
-	FGeometryCacheTrackSampleInfo() : SampleTime(0.0f), NumVertices(0), NumIndices(0) {}
-
-	FGeometryCacheTrackSampleInfo(float SetSampleTime, FBox SetBoundingBox, int32 SetNumVertices, int32 SetNumIndices) :
-		SampleTime(SetSampleTime), BoundingBox(SetBoundingBox), NumVertices(SetNumVertices), NumIndices(SetNumIndices) {}
-
-	static const FGeometryCacheTrackSampleInfo EmptySampleInfo;
-};
-
-/*
-Hold the visibility state for a given time range
-*/
-struct GEOMETRYCACHE_API FVisibilitySample
-{
-	FVisibilitySample() = default;
-
-	FVisibilitySample(bool bVisible)
-	: bVisibilityState(bVisible)
-	{}
-
-	TRange<float> Range;
-	bool bVisibilityState;
-
-	friend FArchive& operator<<(FArchive& Ar, FVisibilitySample& Range);
-
-	static const FVisibilitySample VisibleSample;
-	static const FVisibilitySample InvisibleSample;
 };

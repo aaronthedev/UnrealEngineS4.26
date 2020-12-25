@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -21,7 +21,6 @@ struct FRigUnit_VerletIntegrateVector : public FRigUnit_SimBase
 		Damp = 0.01;
 		Blend = 5.f;
 		Point = FCRSimPoint();
-		bInitialized = false;
 	}
 
 	RIGVM_METHOD()
@@ -51,10 +50,7 @@ struct FRigUnit_VerletIntegrateVector : public FRigUnit_SimBase
 	UPROPERTY(meta = (Output))
 	FVector Acceleration;
 
-	UPROPERTY(transient)
+	UPROPERTY()
 	FCRSimPoint Point;
-
-	UPROPERTY(transient)
-	bool bInitialized;
 };
 

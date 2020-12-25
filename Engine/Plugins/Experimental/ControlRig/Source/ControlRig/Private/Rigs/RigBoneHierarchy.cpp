@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Rigs/RigBoneHierarchy.h"
 #include "ControlRig.h"
@@ -10,21 +10,17 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 FRigBoneHierarchy::FRigBoneHierarchy()
-	: Container(nullptr)
-	, bSuspendNotifications(false)
+	:Container(nullptr)
 {
 }
 
 FRigBoneHierarchy& FRigBoneHierarchy::operator= (const FRigBoneHierarchy &InOther)
 {
 #if WITH_EDITOR
-	if (!bSuspendNotifications)
+	for (int32 Index = Num() - 1; Index >= 0; Index--)
 	{
-		for (int32 Index = Num() - 1; Index >= 0; Index--)
-		{
-			FRigBone BoneToRemove = Bones[Index];
-			OnBoneRemoved.Broadcast(Container, FRigElementKey(BoneToRemove.Name, ERigElementType::Bone));
-		}
+		FRigBone BoneToRemove = Bones[Index];
+		OnBoneRemoved.Broadcast(Container, FRigElementKey(BoneToRemove.Name, ERigElementType::Bone));
 	}
 #endif
 
@@ -34,12 +30,9 @@ FRigBoneHierarchy& FRigBoneHierarchy::operator= (const FRigBoneHierarchy &InOthe
 	RefreshMapping();
 
 #if WITH_EDITOR
-	if (!bSuspendNotifications)
+	for (const FRigBone& BoneAdded : Bones)
 	{
-		for (const FRigBone& BoneAdded : Bones)
-		{
-			OnBoneAdded.Broadcast(Container, FRigElementKey(BoneAdded.Name, ERigElementType::Bone));
-		}
+		OnBoneAdded.Broadcast(Container, FRigElementKey(BoneAdded.Name, ERigElementType::Bone));
 	}
 #endif
 
@@ -73,10 +66,7 @@ FRigBone& FRigBoneHierarchy::Add(const FName& InNewName, const FName& InParentNa
 	RefreshMapping();
 
 #if WITH_EDITOR
-	if (!bSuspendNotifications)
-	{
-		OnBoneAdded.Broadcast(Container, NewBone.GetElementKey());
-	}
+	OnBoneAdded.Broadcast(Container, NewBone.GetElementKey());
 #endif
 
 	int32 Index = GetIndex(NewBoneName);
@@ -126,10 +116,7 @@ bool FRigBoneHierarchy::Reparent(const FName& InName, const FName& InNewParentNa
 #if WITH_EDITOR
 		if (OldParentName != NewParentName)
 		{
-			if (!bSuspendNotifications)
-			{
-				OnBoneReparented.Broadcast(Container, FRigElementKey(InName, RigElementType()), OldParentName, NewParentName);
-			}
+			OnBoneReparented.Broadcast(Container, FRigElementKey(InName, RigElementType()), OldParentName, NewParentName);
 		}
 #endif
 		return Bones[GetIndex(InName)].ParentName == InNewParentName;
@@ -160,27 +147,20 @@ FRigBone FRigBoneHierarchy::Remove(const FName& InNameToRemove)
 	}
 
 	int32 IndexToDelete = GetIndex(InNameToRemove);
-	if (IndexToDelete == INDEX_NONE)
-	{
-		return FRigBone();
-	}
-
+#if WITH_EDITOR
 	Select(InNameToRemove, false);
-
+#endif
 	FRigBone RemovedBone = Bones[IndexToDelete];
 	Bones.RemoveAt(IndexToDelete);
 
 	RefreshMapping();
 
 #if WITH_EDITOR
-	if (!bSuspendNotifications)
+	for (const FName& RemovedChildBone : RemovedChildBones)
 	{
-		for (const FName& RemovedChildBone : RemovedChildBones)
-		{
-			OnBoneRemoved.Broadcast(Container, FRigElementKey(RemovedChildBone, RigElementType()));
-		}
-		OnBoneRemoved.Broadcast(Container, RemovedBone.GetElementKey());
+		OnBoneRemoved.Broadcast(Container, FRigElementKey(RemovedChildBone, RigElementType()));
 	}
+	OnBoneRemoved.Broadcast(Container, RemovedBone.GetElementKey());
 #endif
 
 	return RemovedBone;
@@ -298,67 +278,28 @@ FTransform FRigBoneHierarchy::GetLocalTransform(int32 InIndex) const
 	return FTransform::Identity;
 }
 
-void FRigBoneHierarchy::SetInitialGlobalTransform(const FName& InName, const FTransform& InTransform, bool bPropagateTransform)
+void FRigBoneHierarchy::SetInitialTransform(const FName& InName, const FTransform& InTransform)
 {
-	SetInitialGlobalTransform(GetIndex(InName), InTransform);
+	SetInitialTransform(GetIndex(InName), InTransform);
 }
 
-void FRigBoneHierarchy::SetInitialGlobalTransform(int32 InIndex, const FTransform& InTransform, bool bPropagateTransform)
+void FRigBoneHierarchy::SetInitialTransform(int32 InIndex, const FTransform& InTransform)
 {
 	if (Bones.IsValidIndex(InIndex))
 	{
 		FRigBone& Bone = Bones[InIndex];
-		
-		TArray<FTransform> LocalTransforms;
-		if (bPropagateTransform)
-		{
-			for (int32 Dependent : Bone.Dependents)
-			{
-				FTransform LocalTransform = Bones[Dependent].InitialTransform.GetRelativeTransform(Bone.InitialTransform);
-				LocalTransforms.Add(LocalTransform);
-			}
-		}
-
 		Bone.InitialTransform = InTransform;
 		Bone.InitialTransform.NormalizeRotation();
-
-		for (int32 LocalTransformIndex = 0; LocalTransformIndex < LocalTransforms.Num(); LocalTransformIndex++)
-		{
-			int32 Dependent = Bone.Dependents[LocalTransformIndex];
-			FTransform InitialTransform = LocalTransforms[LocalTransformIndex] * Bone.InitialTransform;
-			SetInitialGlobalTransform(Dependent, InitialTransform, bPropagateTransform);
-		}
+		RecalculateLocalTransform(Bone);
 	}
 }
 
-void FRigBoneHierarchy::SetInitialLocalTransform(const FName& InName, const FTransform& InTransform, bool bPropagateTransform)
+FTransform FRigBoneHierarchy::GetInitialTransform(const FName& InName) const
 {
-	SetInitialLocalTransform(GetIndex(InName), InTransform, bPropagateTransform);
+	return GetInitialTransform(GetIndex(InName));
 }
 
-void FRigBoneHierarchy::SetInitialLocalTransform(int32 InIndex, const FTransform& InTransform, bool bPropagateTransform)
-{
-	if (Bones.IsValidIndex(InIndex))
-	{
-		FRigBone& Bone = Bones[InIndex];
-
-		FTransform Transform = InTransform;
-		if (Bone.ParentIndex != INDEX_NONE)
-		{
-			FTransform ParentTransform = GetInitialGlobalTransform(Bone.ParentIndex);
-			Transform = Transform * ParentTransform;
-		}
-
-		SetInitialGlobalTransform(InIndex, Transform, bPropagateTransform);
-	}
-}
-
-FTransform FRigBoneHierarchy::GetInitialGlobalTransform(const FName& InName) const
-{
-	return GetInitialGlobalTransform(GetIndex(InName));
-}
-
-FTransform FRigBoneHierarchy::GetInitialGlobalTransform(int32 InIndex) const
+FTransform FRigBoneHierarchy::GetInitialTransform(int32 InIndex) const
 {
 	if (Bones.IsValidIndex(InIndex))
 	{
@@ -367,38 +308,6 @@ FTransform FRigBoneHierarchy::GetInitialGlobalTransform(int32 InIndex) const
 
 	return FTransform::Identity;
 }
-
-FTransform FRigBoneHierarchy::GetInitialLocalTransform(const FName& InName) const
-{
-	return GetInitialLocalTransform(GetIndex(InName));
-}
-
-FTransform FRigBoneHierarchy::GetInitialLocalTransform(int32 InIndex) const
-{
-	if (Bones.IsValidIndex(InIndex))
-	{
-		FTransform Transform = GetInitialGlobalTransform(InIndex);
-		if (Bones[InIndex].ParentIndex != INDEX_NONE)
-		{
-			FTransform ParentTransform = GetInitialGlobalTransform(Bones[InIndex].ParentIndex);
-			Transform = Transform.GetRelativeTransform(ParentTransform);
-		}
-		return Transform;
-	}
-
-	return FTransform::Identity;
-}
-
-void FRigBoneHierarchy::RecalculateLocalTransform(int32 InIndex)
-{
-	RecalculateLocalTransform(Bones[InIndex]);
-}
-
-void FRigBoneHierarchy::RecalculateGlobalTransform(int32 InIndex)
-{
-	RecalculateGlobalTransform(Bones[InIndex]);
-}
-
 void FRigBoneHierarchy::RecalculateLocalTransform(FRigBone& InOutBone)
 {
 	bool bHasParent = InOutBone.ParentIndex != INDEX_NONE;
@@ -420,11 +329,13 @@ FName FRigBoneHierarchy::Rename(const FName& InOldName, const FName& InNewName)
 		{
 			FName NewName = GetSafeNewName(InNewName);
 
+#if WITH_EDITOR
 			bool bWasSelected = IsSelected(InOldName);
 			if(bWasSelected)
 			{
 				Select(InOldName, false);
 			}
+#endif
 
 			Bones[Found].Name = NewName;
 
@@ -447,13 +358,10 @@ FName FRigBoneHierarchy::Rename(const FName& InOldName, const FName& InNewName)
 			RefreshMapping();
 
 #if WITH_EDITOR
-			if (!bSuspendNotifications)
+			OnBoneRenamed.Broadcast(Container, RigElementType(), InOldName, NewName);
+			for (const FName& ReparentedBone : ReparentedBones)
 			{
-				OnBoneRenamed.Broadcast(Container, RigElementType(), InOldName, NewName);
-				for (const FName& ReparentedBone : ReparentedBones)
-				{
-					OnBoneReparented.Broadcast(Container, FRigElementKey(ReparentedBone, RigElementType()), InOldName, NewName);
-				}
+				OnBoneReparented.Broadcast(Container, FRigElementKey(ReparentedBone, RigElementType()), InOldName, NewName);
 			}
 			if (bWasSelected)
 			{
@@ -483,8 +391,8 @@ void FRigBoneHierarchy::Sort()
 		}
 		else
 		{
-			// add as a root
-			HierarchyTree.FindOrAdd(Index);
+			// as as a root
+			HierarchyTree.Add(Index);
 			RootArray.Add(Index);
 		}
 	}
@@ -546,8 +454,7 @@ void FRigBoneHierarchy::RefreshParentNames()
 
 void FRigBoneHierarchy::RefreshMapping()
 {
-	// sort doesn't rely on the name map,
-	// since it uses GetIndexSlow.
+	RefreshParentNames();
 	Sort();
 
 	NameToIndexMapping.Empty();
@@ -556,17 +463,9 @@ void FRigBoneHierarchy::RefreshMapping()
 		Bones[Index].Index = Index;
 		NameToIndexMapping.Add(Bones[Index].Name, Index);
 	}
-
-	RefreshParentNames();
-
-	// update the dependents
-	for (int32 Index = 0; Index < Bones.Num(); ++Index)
-	{
-		GetChildren(Index, Bones[Index].Dependents, false);
-	}
 }
 
-void FRigBoneHierarchy::Initialize(bool bResetTransforms)
+void FRigBoneHierarchy::Initialize()
 {
 	RefreshMapping();
 
@@ -578,11 +477,8 @@ void FRigBoneHierarchy::Initialize(bool bResetTransforms)
 	// initialize transform
 	for (int32 Index = 0; Index < Bones.Num(); ++Index)
 	{
-		if (bResetTransforms)
-		{
-			Bones[Index].GlobalTransform = Bones[Index].InitialTransform;
-			RecalculateLocalTransform(Bones[Index]);
-		}
+		Bones[Index].GlobalTransform = Bones[Index].InitialTransform;
+		RecalculateLocalTransform(Bones[Index]);
 
 		// update children
 		GetChildren(Index, Bones[Index].Dependents, false);
@@ -601,25 +497,6 @@ void FRigBoneHierarchy::ResetTransforms()
 	{
 		Bones[Index].GlobalTransform = Bones[Index].InitialTransform;
 		RecalculateLocalTransform(Bones[Index]);
-	}
-}
-
-void FRigBoneHierarchy::CopyInitialTransforms(const FRigBoneHierarchy& InOther)
-{
-	ensure(InOther.Num() == Num());
-
-	for (int32 Index = 0; Index < Bones.Num(); ++Index)
-	{
-		Bones[Index].InitialTransform = InOther.Bones[Index].InitialTransform;
-	}
-}
-
-void FRigBoneHierarchy::RecomputeGlobalTransforms()
-{
-	for (int32 Index = 0; Index < Bones.Num(); ++Index)
-	{
-		Bones[Index].GlobalTransform = Bones[Index].InitialTransform;
-		RecalculateGlobalTransform(Bones[Index]);
 	}
 }
 
@@ -660,6 +537,8 @@ void FRigBoneHierarchy::PropagateTransform(int32 InIndex)
 	}
 }
 
+#if WITH_EDITOR
+
 bool FRigBoneHierarchy::Select(const FName& InName, bool bSelect)
 {
 	if(GetIndex(InName) == INDEX_NONE)
@@ -674,6 +553,13 @@ bool FRigBoneHierarchy::Select(const FName& InName, bool bSelect)
 
 	if(bSelect)
 	{
+		if (Container)
+		{
+			Container->SpaceHierarchy.ClearSelection();
+			Container->ControlHierarchy.ClearSelection();
+			Container->CurveContainer.ClearSelection();
+		}
+
 		Selection.Add(InName);
 	}
 	else
@@ -681,10 +567,7 @@ bool FRigBoneHierarchy::Select(const FName& InName, bool bSelect)
 		Selection.Remove(InName);
 	}
 
-	if (!bSuspendNotifications)
-	{
-		OnBoneSelected.Broadcast(Container, FRigElementKey(InName, RigElementType()), bSelect);
-	}
+	OnBoneSelected.Broadcast(Container, FRigElementKey(InName, RigElementType()), bSelect);
 
 	return true;
 }
@@ -712,28 +595,24 @@ bool FRigBoneHierarchy::IsSelected(const FName& InName) const
 	return Selection.Contains(InName);
 }
 
-TArray<FRigElementKey> FRigBoneHierarchy::ImportSkeleton(const FReferenceSkeleton& InSkeleton, const FName& InNameSpace, bool bReplaceExistingBones, bool bRemoveObsoleteBones, bool bSelectBones, bool bNotify)
+TArray<FRigElementKey> FRigBoneHierarchy::ImportSkeleton(const FReferenceSkeleton& InSkeleton, const FName& InNameSpace, bool bReplaceExistingBones, bool bRemoveObsoleteBones, bool bSelectBones)
 {
-	TGuardValue<bool> SuspendNotification(bSuspendNotifications, !bNotify);
-
 	TArray<FRigElementKey> AddedBones;
 	TArray<FName> BoneNamesToSelect;
 	TMap<FName, FName> BoneNameMap;
-
-	ResetTransforms();
 
 	const TArray<FMeshBoneInfo>& BoneInfos = InSkeleton.GetRefBoneInfo();
 	const TArray<FTransform>& BonePoses = InSkeleton.GetRefBonePose();
 
 	struct Local
 	{
-		static FName DetermineBoneName(const FName& InBoneName, const FName& InLocalNameSpace)
+		static FName DetermineBoneName(const FName& InBoneName, const FName& InNameSpace)
 		{
-			if (InLocalNameSpace == NAME_None || InBoneName == NAME_None)
+			if (InNameSpace == NAME_None || InBoneName == NAME_None)
 			{
 				return InBoneName;
 			}
-			return *FString::Printf(TEXT("%s_%s"), *InLocalNameSpace.ToString(), *InBoneName.ToString());
+			return *FString::Printf(TEXT("%s_%s"), *InNameSpace.ToString(), *InBoneName.ToString());
 		}
 	};
 
@@ -759,25 +638,23 @@ TArray<FRigElementKey> FRigBoneHierarchy::ImportSkeleton(const FReferenceSkeleto
 
 			if (ExistingBoneIndex != INDEX_NONE)
 			{
-				FRigBone& ExistingBone = Bones[ExistingBoneIndex];
 				// check it's parent
 				if (ParentName != NAME_None)
 				{
-					ExistingBone.ParentName = ParentName;
+					Bones[ExistingBoneIndex].ParentName = ParentName;
 				}
 
-				ExistingBone.LocalTransform = BonePoses[Index];
+				// reset it's initial transform
+				SetInitialTransform(ExistingBoneIndex, FAnimationRuntime::GetComponentSpaceTransform(InSkeleton, BonePoses, Index));
 
-				BoneNamesToSelect.Add(ExistingBone.Name);
+				BoneNamesToSelect.Add(Bones[ExistingBoneIndex].Name);
 			}
 			else
 			{
-				FRigBone& AddedBone = Add(DesiredBoneName, ParentName, ERigBoneType::Imported, FTransform::Identity);
+				FRigBone& AddedBone = Add(DesiredBoneName, ParentName, ERigBoneType::Imported, FAnimationRuntime::GetComponentSpaceTransform(InSkeleton, BonePoses, Index));
 				BoneNameMap.Add(DesiredBoneName, AddedBone.Name);
 				AddedBones.Add(AddedBone.GetElementKey());
 				BoneNamesToSelect.Add(AddedBone.Name);
-
-				AddedBone.LocalTransform = BonePoses[Index];
 			}
 		}
 
@@ -796,25 +673,14 @@ TArray<FRigElementKey> FRigBoneHierarchy::ImportSkeleton(const FReferenceSkeleto
 				ParentName = *MappedParentNamePtr;
 			}
 			
-			FRigBone& AddedBone = Add(DesiredBoneName, ParentName, ERigBoneType::Imported, FTransform::Identity);
+			FRigBone& AddedBone = Add(DesiredBoneName, ParentName, ERigBoneType::Imported, FAnimationRuntime::GetComponentSpaceTransform(InSkeleton, BonePoses, Index));
 			BoneNameMap.Add(DesiredBoneName, AddedBone.Name);
 			AddedBones.Add(AddedBone.GetElementKey());
 			BoneNamesToSelect.Add(AddedBone.Name);
-
-			// FAnimationRuntime::GetComponentSpaceTransform(InSkeleton, BonePoses, Index)
-			AddedBone.LocalTransform = BonePoses[Index];
 		}
 	}
 
 	RefreshMapping();
-
-	RecomputeGlobalTransforms();
-
-	// copy the initial from the global
-	for (FRigBone& Bone : Bones)
-	{
-		Bone.InitialTransform = Bone.GlobalTransform;
-	}
 
 	if (bReplaceExistingBones && bRemoveObsoleteBones)
 	{
@@ -878,38 +744,5 @@ TArray<FRigElementKey> FRigBoneHierarchy::ImportSkeleton(const FReferenceSkeleto
 	return AddedBones;
 }
 
-FRigPose FRigBoneHierarchy::GetPose() const
-{
-	FRigPose Pose;
-	AppendToPose(Pose);
-	return Pose;
-}
 
-void FRigBoneHierarchy::SetPose(FRigPose& InPose)
-{
-	for(FRigPoseElement& Element : InPose)
-	{
-		if(Element.Index.GetKey().Type == ERigElementType::Bone)
-		{
-			if(Element.Index.UpdateCache(Container))
-			{
-				Bones[Element.Index.GetIndex()].GlobalTransform = Element.GlobalTransform;
-				Bones[Element.Index.GetIndex()].LocalTransform = Element.LocalTransform;
-			}
-		}
-	}
-}
-
-void FRigBoneHierarchy::AppendToPose(FRigPose& InOutPose) const
-{
-	for(const FRigBone& Bone : Bones)
-	{
-		FRigPoseElement Element;
-		if(Element.Index.UpdateCache(Bone.GetElementKey(), Container))
-		{
-			Element.GlobalTransform = GetGlobalTransform(Element.Index.GetIndex());
-			Element.LocalTransform = GetLocalTransform(Element.Index.GetIndex());
-			InOutPose.Elements.Add(Element);
-		}
-	}
-}
+#endif

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EnvironmentQuery/EQSTestingPawn.h"
 #include "UObject/ConstructorHelpers.h"
@@ -98,7 +98,6 @@ AEQSTestingPawn::AEQSTestingPawn(const FObjectInitializer& ObjectInitializer)
 	if (HasAnyFlags(RF_ClassDefaultObject) && GetClass() == StaticClass())
 	{
 		USelection::SelectObjectEvent.AddStatic(&AEQSTestingPawn::OnEditorSelectionChanged);
-		USelection::SelectionChangedEvent.AddStatic(&AEQSTestingPawn::OnEditorSelectionChanged);
 	}
 #endif // WITH_EDITOR
 }
@@ -113,34 +112,30 @@ const FNavAgentProperties& AEQSTestingPawn::GetNavAgentPropertiesRef() const
 	return NavAgentProperties;
 }
 
-#if WITH_EDITOR
 void AEQSTestingPawn::OnEditorSelectionChanged(UObject* NewSelection)
 {
-	TArray<AEQSTestingPawn*> SelectedPawns;
-	AEQSTestingPawn* SelectedPawn = Cast<AEQSTestingPawn>(NewSelection);
-	if (SelectedPawn)
-	{
-		SelectedPawns.Add(Cast<AEQSTestingPawn>(NewSelection));
-	}
-	else 
+	/* This is totally busted and should not depend on gameplay debugger.
+
+	bool bEQSPawnSelected = Cast<AEQSTestingPawn>(NewSelection) != NULL;
+	if (bEQSPawnSelected == false)
 	{
 		USelection* Selection = Cast<USelection>(NewSelection);
 		if (Selection != NULL)
 		{
+			TArray<AEQSTestingPawn*> SelectedPawns;
 			Selection->GetSelectedObjects<AEQSTestingPawn>(SelectedPawns);
+			bEQSPawnSelected = SelectedPawns.Num() > 0;
 		}
 	}
 
-	for (AEQSTestingPawn* EQSPawn : SelectedPawns)
+#if WITH_EDITOR && !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+	if (GCurrentLevelEditingViewportClient != NULL && FGameplayDebuggerSettings::ShowFlagIndex != INDEX_NONE)
 	{
-		if (EQSPawn->QueryTemplate != nullptr && EQSPawn->QueryInstance.IsValid() == false)
-		{
-			EQSPawn->QueryTemplate->CollectQueryParams(*EQSPawn, EQSPawn->QueryConfig);
-			EQSPawn->RunEQSQuery();
-		}
+		GCurrentLevelEditingViewportClient->EngineShowFlags.SetSingleFlag(FGameplayDebuggerSettings::ShowFlagIndex, bEQSPawnSelected);
 	}
+#endif
+	*/
 }
-#endif // WITH_EDITOR
 
 void AEQSTestingPawn::TickActor(float DeltaTime, enum ELevelTick TickType, FActorTickFunction& ThisTickFunction)
 {

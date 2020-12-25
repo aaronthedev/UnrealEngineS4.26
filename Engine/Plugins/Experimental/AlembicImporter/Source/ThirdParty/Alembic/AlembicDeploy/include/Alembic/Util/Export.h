@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_Util_Export_h
-#define Alembic_Util_Export_h
+#ifndef _Alembic_Util_Export_h_
+#define _Alembic_Util_Export_h_
 
 #if defined(ALEMBIC_DLL)
     #if defined(ALEMBIC_EXPORTS)
@@ -53,4 +53,4 @@
     #define ALEMBIC_EXPORT_CONST const
 #endif
 
-#endif /* Alembic_Util_Export_h */
+#endif /* _Alembic_Util_Export_h_ */

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -97,9 +97,6 @@ protected:
 
 	/** Called when user clicks on a new result */
 	void OnTreeSelectionChanged(FSearchResult Item, ESelectInfo::Type SelectInfo);
-
-	/** Called when user double clicks on a new result */
-	void OnTreeSelectionDoubleClick(FSearchResult Item);
 
 	/** Called when a new row is being generated */
 	TSharedRef<ITableRow> OnGenerateRow(FSearchResult InItem, const TSharedRef<STableViewBase>& OwnerTable);

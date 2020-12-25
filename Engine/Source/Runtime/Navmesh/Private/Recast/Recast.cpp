@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 // Modified version of Recast/Detour's source file
 
 //
@@ -154,8 +154,6 @@ void rcFreeContourSet(rcContourSet* cset)
 	rcFree(cset);
 }
 
-//@UE4 BEGIN
-#if WITH_NAVMESH_CLUSTER_LINKS
 rcClusterSet* rcAllocClusterSet()
 {
 	rcClusterSet* clusters = (rcClusterSet*)rcAlloc(sizeof(rcClusterSet), RC_ALLOC_PERM);
@@ -171,8 +169,6 @@ void rcFreeClusterSet(rcClusterSet* clusters)
 	rcFree(clusters->links);
 	rcFree(clusters);
 }
-#endif // WITH_NAVMESH_CLUSTER_LINKS
-//@UE4 END
 
 rcPolyMesh* rcAllocPolyMesh()
 {
@@ -252,8 +248,6 @@ bool rcCreateHeightfield(rcContext* /*ctx*/, rcHeightfield& hf, int width, int h
 
 #if EPIC_ADDITION_USE_NEW_RECAST_RASTERIZER
 	hf.EdgeHits = (rcEdgeHit*)rcAlloc(sizeof(rcEdgeHit) * (hf.height + 1), RC_ALLOC_PERM); 
-	if (!hf.EdgeHits)
-		return false;
 	memset(hf.EdgeHits, 0, sizeof(rcEdgeHit) * (hf.height + 1));
 
 	hf.RowExt = (rcRowExt*)rcAlloc(sizeof(rcRowExt) * (hf.height + 2), RC_ALLOC_PERM); 
@@ -265,8 +259,6 @@ bool rcCreateHeightfield(rcContext* /*ctx*/, rcHeightfield& hf, int width, int h
 	}
 
 	hf.tempspans = (rcTempSpan*)rcAlloc(sizeof(rcTempSpan)*(hf.width + 2) * (hf.height + 2), RC_ALLOC_PERM); 
-	if (!hf.tempspans)
-		return false;
 
 	for (int i = 0; i < hf.height + 2; i++)
 	{

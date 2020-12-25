@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -156,21 +156,25 @@ public:
 	* Current persistent id for this package
 	*/
 	FGuid	PersistentGuid;
-#endif
 
+	/**
+	* Package persistent owner for this package
+	*/
+	FGuid	OwnerPersistentGuid;
+#endif
+	
 	/**
 	* Data about previous versions of this package
 	*/
 	TArray<FGenerationInfo> Generations;
 
 	/**
-	* Engine version this package was saved with. This may differ from CompatibleWithEngineVersion for assets saved with a hotfix release.
+	* Engine version this package was saved with. For hotfix releases and engine versions which maintain strict binary compatibility with another version, this may differ from CompatibleWithEngineVersion.
 	*/
 	FEngineVersion SavedByEngineVersion;
 
 	/**
-	* Engine version this package is compatible with. Assets saved by Hotfix releases and engine versions that maintain binary compatibility will have
-	* a CompatibleWithEngineVersion.Patch that matches the original release (as opposed to SavedByEngineVersion which will have a patch version of the new release).
+	* Engine version this package is compatible with. See SavedByEngineVersion.
 	*/
 	FEngineVersion CompatibleWithEngineVersion;
 

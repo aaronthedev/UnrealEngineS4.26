@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -57,35 +57,7 @@ namespace Gauntlet
 		/// <summary>
 		/// Command line that this role will use
 		/// </summary>
-		public string CommandLine
-		{
-			get
-			{
-				if (CommandLineParams == null)
-				{
-					CommandLineParams = new GauntletCommandLine();
-				}
-				return CommandLineParams.GenerateFullCommandLine();
-			}
-			set
-			{
-				if (CommandLineParams == null)
-				{
-					CommandLineParams = new GauntletCommandLine();
-				}
-
-				CommandLineParams.ClearCommandLine();
-
-				CommandLineParams.AddRawCommandline(value, false);
-			}
-		}
-		/// <summary>
-		/// Dictionary of commandline arguments that are turned into a commandline at the end.
-		/// For flags, leave the value set to null. Generated from the Test Role's commandline object
-		/// and modified as needed. Then passed through to the AppConfig in UnrealBuildSource.cs
-		/// </summary>
-		public GauntletCommandLine CommandLineParams { get; set; }
-
+		public string CommandLine;
 
 		/// <summary>
 		/// Map override to use on a server in case we don't want them all running the same map.
@@ -193,7 +165,6 @@ namespace Gauntlet
 
 			Options = InOptions;
             FilesToCopy = new List<UnrealFileToCopy>();
-			CommandLineParams = new GauntletCommandLine();
 			RoleModifier = ERoleModifier.None;
         }
 
@@ -542,7 +513,7 @@ namespace Gauntlet
 
 		public void ReleaseDevices()
 		{
-			if ( (ReservedDevices != null) && (ReservedDevices.Count() > 0) )
+			if (ReservedDevices.Count() > 0)
 			{
 				DevicePool.Instance.ReleaseDevices(ReservedDevices);
 				ReservedDevices.Clear();
@@ -1221,41 +1192,27 @@ namespace Gauntlet
 		/// <returns></returns>
 		public IEnumerable<UnrealRoleArtifacts> SaveRoleArtifacts(UnrealTestContext Context, UnrealSessionInstance TestInstance, string OutputPath)
 		{
-			Dictionary<UnrealTargetRole, int> RoleCounts = new Dictionary<UnrealTargetRole, int>();
-			int DummyClientCount = 0;
+			int ClientCount = 1;
+			int DummyClientCount = 1;
 
 			List<UnrealRoleArtifacts> AllArtifacts = new List<UnrealRoleArtifacts>();
 
 			foreach (UnrealSessionInstance.RoleInstance App in TestInstance.RunningRoles)
 			{
+				bool IsServer = App.Role.RoleType.IsServer();
 				string RoleName = (App.Role.IsDummy() ? "Dummy" : "") + App.Role.RoleType.ToString();
 				string FolderName = RoleName;
 
-				int RoleCount = 1;
-
-				if (App.Role.IsDummy())
+				if (IsServer == false)
 				{
-					DummyClientCount++;
-					RoleCount = DummyClientCount;
-				}
-				else
-				{
-					if (!RoleCounts.ContainsKey(App.Role.RoleType))
+					if ((!App.Role.IsDummy() && ClientCount++ > 1))
 					{
-						RoleCounts.Add(App.Role.RoleType, 1);
+						FolderName += string.Format("_{0:00}", ClientCount);
 					}
-					else
+					else if (App.Role.IsDummy() && DummyClientCount++ > 1)
 					{
-						RoleCounts[App.Role.RoleType]++;
+						FolderName += string.Format("_{0:00}", DummyClientCount);
 					}
-
-					RoleCount = RoleCounts[App.Role.RoleType];
-				}
-
-				
-				if (RoleCount > 1)
-				{
-					FolderName += string.Format("_{0:00}", RoleCount);
 				}
 
 				string DestPath = Path.Combine(OutputPath, FolderName);

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,7 +15,7 @@ class UNiagaraNodeOutput : public UNiagaraNode
 {
 	GENERATED_UCLASS_BODY()
 
-	UPROPERTY(VisibleAnywhere, Category = Output, meta = (SkipForCompileHash = "true"))
+	UPROPERTY(VisibleAnywhere, Category = Output)
 	TArray<FNiagaraVariable> Outputs;
 
 	UPROPERTY()
@@ -58,11 +58,6 @@ public:
 	/** Gets the id of the usage of this script.  For use when there are multiple scripts with the same usage e.g. Events. */
 	FGuid GetUsageId() const { return ScriptTypeId; }
 	void SetUsageId(FGuid InId) { ScriptTypeId = InId; }
-
-	/** Gets the Stack Context replacement name if it is different than the default for this stage. Note that this doesn't work in cloned graphs during translation, but will work in general editor evaluation.*/
-	TOptional<FName> GetStackContextOverride() const; 
-	/** Gets the Stack Context replacement names for the owning emitter if it is different than the default for this stage. Note that this doesn't work in cloned graphs during translation, but will work in general editor evaluation.*/
-	TArray<FName> GetAllStackContextOverrides() const;
 
 protected:
 	virtual int32 CompileInputPin(class FHlslNiagaraTranslator *Translator, UEdGraphPin* Pin) override;

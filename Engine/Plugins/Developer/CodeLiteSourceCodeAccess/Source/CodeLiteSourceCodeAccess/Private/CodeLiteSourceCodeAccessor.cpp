@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CodeLiteSourceCodeAccessor.h"
 #include "HAL/PlatformProcess.h"
@@ -64,11 +64,9 @@ bool FCodeLiteSourceCodeAccessor::OpenSolutionAtPath(const FString& InSolutionPa
 		return false;
 	}
 
-	FString Args = TEXT("\"") + SolutionPath.ReplaceQuotesWithEscapedQuotes() + TEXT("\"");
-
-	UE_LOG(LogCodeLiteAccessor, Warning, TEXT("FCodeLiteSourceCodeAccessor::OpenSolution: \"%s\" %s"), *CodeLitePath, *Args);
+	UE_LOG(LogCodeLiteAccessor, Warning, TEXT("FCodeLiteSourceCodeAccessor::OpenSolution: \"%s\" \"%s\""), *CodeLitePath, *SolutionPath);
 	
-	FProcHandle Proc = FPlatformProcess::CreateProc(*CodeLitePath, *Args, true, false, false, nullptr, 0, nullptr, nullptr);
+	FProcHandle Proc = FPlatformProcess::CreateProc(*CodeLitePath, *SolutionPath, true, false, false, nullptr, 0, nullptr, nullptr);
 	if(Proc.IsValid())
 	{
 		FPlatformProcess::CloseProc(Proc);
@@ -174,9 +172,9 @@ FString FCodeLiteSourceCodeAccessor::GetSolutionPath() const
 {
 	if(IsInGameThread())
 	{
-		CachedSolutionPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir());
+		CachedSolutionPath = FPaths::ProjectDir();
 		
-		if (!FUProjectDictionary::GetDefault().IsForeignProject(CachedSolutionPath))
+		if (!FUProjectDictionary(FPaths::RootDir()).IsForeignProject(CachedSolutionPath))
 		{
 			CachedSolutionPath = FPaths::Combine(FPaths::RootDir(), TEXT("UE4.workspace"));
 		}

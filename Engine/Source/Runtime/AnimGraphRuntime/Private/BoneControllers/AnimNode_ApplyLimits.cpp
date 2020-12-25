@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BoneControllers/AnimNode_ApplyLimits.h"
 #include "AnimationCoreLibrary.h"
@@ -38,9 +38,7 @@ void FAnimNode_ApplyLimits::EvaluateSkeletalControl_AnyThread(FComponentSpacePos
 	FCSPose<FCompactPose>::ConvertComponentPosesToLocalPoses(Output.Pose, LocalPose1.Pose);
 	LocalPose0.Curve = Output.Curve;
 	LocalPose1.Curve = Output.Curve;
-	LocalPose0.CustomAttributes = Output.CustomAttributes;
-	LocalPose1.CustomAttributes = Output.CustomAttributes;
-	
+
 	const FTransform ComponentTransform = Output.AnimInstanceProxy->GetComponentTransform();
 	const FBoneContainer& BoneContainer = LocalPose0.Pose.GetBoneContainer();
 
@@ -68,11 +66,7 @@ void FAnimNode_ApplyLimits::EvaluateSkeletalControl_AnyThread(FComponentSpacePos
 		const float BlendWeight = FMath::Clamp<float>(ActualAlpha, 0.f, 1.f);
 
 		FPoseContext BlendedPose(Output.AnimInstanceProxy);
-
-		const FAnimationPoseData AnimationPoseData0(LocalPose0);
-		const FAnimationPoseData AnimationPoseData1(LocalPose1);
-		FAnimationPoseData BlendedAnimationPoseData(BlendedPose);
-		FAnimationRuntime::BlendTwoPosesTogether(AnimationPoseData0, AnimationPoseData1, BlendWeight, BlendedAnimationPoseData);
+		FAnimationRuntime::BlendTwoPosesTogether(LocalPose0.Pose, LocalPose1.Pose, LocalPose0.Curve, LocalPose1.Curve, BlendWeight, BlendedPose.Pose, BlendedPose.Curve);
 
  		Output.Pose.InitPose(BlendedPose.Pose);
 	 	Output.Curve = BlendedPose.Curve;

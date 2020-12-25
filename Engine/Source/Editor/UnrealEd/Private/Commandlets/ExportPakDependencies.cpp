@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Commandlets/ExportPakDependencies.h"
 #include "AssetRegistryModule.h"
@@ -127,17 +127,12 @@ bool ExportDependencies(const TCHAR * PakFilename, const TCHAR* GameName, const 
 	{
 		// Get size information from PAK file.
 		{
-			TArray<FPakFile::FPakEntryIterator> Records;
+			TArray<FPakFile::FFileIterator> Records;
 			FString PakGameContentFolder = FString(GameName) + TEXT("/Content");
-			if (!PakFile.HasFilenames())
-			{
-				UE_LOG(LogPakFile, Error, TEXT("Pakfiles were loaded without Filenames, cannot export."));
-				return false;
-			}
-			for(FPakFile::FPakEntryIterator It(PakFile); It; ++It)
+			for(FPakFile::FFileIterator It(PakFile); It; ++It)
 			{
 				FString PackageName;
-				It.TryGetFilename()->Split(TEXT("."),&PackageName,NULL);
+				It.Filename().Split(TEXT("."),&PackageName,NULL);
 				int64 Size = It.Info().Size;			
 
 				if( PackageName.StartsWith(TEXT("Engine/Content")) )

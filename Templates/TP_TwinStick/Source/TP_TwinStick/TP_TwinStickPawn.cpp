@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TP_TwinStickPawn.h"
 #include "TP_TwinStickProjectile.h"
@@ -112,7 +112,7 @@ void ATP_TwinStickPawn::FireShot(FVector FireDirection)
 			const FVector SpawnLocation = GetActorLocation() + FireRotation.RotateVector(GunOffset);
 
 			UWorld* const World = GetWorld();
-			if (World != nullptr)
+			if (World != NULL)
 			{
 				// spawn the projectile
 				World->SpawnActor<ATP_TwinStickProjectile>(SpawnLocation, FireRotation);

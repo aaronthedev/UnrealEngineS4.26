@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UObject/UnrealType.h"
 #include "Serialization/ArchiveUObjectFromStructuredArchive.h"
@@ -19,14 +19,14 @@ bool FPropertyValueIterator::NextValue(EPropertyValueIteratorFlags InRecursionFl
 	if (Entry.ValueIndex < Entry.ValueArray.Num())
 	{
 		// Look for recursion on current value first
-		const FProperty* Property = Entry.ValueArray[Entry.ValueIndex].Key;
+		const UProperty* Property = Entry.ValueArray[Entry.ValueIndex].Key;
 		const void* PropertyValue = Entry.ValueArray[Entry.ValueIndex].Value;
 
 		// For containers, insert at next index ahead of others
 		int32 InsertIndex = Entry.ValueIndex + 1;
 
 		// Handle container properties
-		if (const FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Property))
+		if (const UArrayProperty* ArrayProperty = Cast<UArrayProperty>(Property))
 		{
 			if (InRecursionFlags == EPropertyValueIteratorFlags::FullRecursion)
 			{
@@ -37,7 +37,7 @@ bool FPropertyValueIterator::NextValue(EPropertyValueIteratorFlags InRecursionFl
 				}
 			}
 		}
-		else if (const FMapProperty* MapProperty = CastField<FMapProperty>(Property))
+		else if (const UMapProperty* MapProperty = Cast<UMapProperty>(Property))
 		{
 			if (InRecursionFlags == EPropertyValueIteratorFlags::FullRecursion)
 			{
@@ -55,7 +55,7 @@ bool FPropertyValueIterator::NextValue(EPropertyValueIteratorFlags InRecursionFl
 				}
 			}
 		}
-		else if (const FSetProperty* SetProperty = CastField<FSetProperty>(Property))
+		else if (const USetProperty* SetProperty = Cast<USetProperty>(Property))
 		{
 			if (InRecursionFlags == EPropertyValueIteratorFlags::FullRecursion)
 			{
@@ -72,12 +72,12 @@ bool FPropertyValueIterator::NextValue(EPropertyValueIteratorFlags InRecursionFl
 				}
 			}
 		}
-		else if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property))
+		else if (const UStructProperty* StructProperty = Cast<UStructProperty>(Property))
 		{
 			if (InRecursionFlags == EPropertyValueIteratorFlags::FullRecursion)
 			{
 				// We don't need recursion on these - this will happen naturally as we process these values
-				for (FPropertyValueIterator Iter(FProperty::StaticClass(), StructProperty->Struct, PropertyValue, EPropertyValueIteratorFlags::NoRecursion, DeprecatedPropertyFlags); Iter; ++Iter)
+				for (FPropertyValueIterator Iter(UProperty::StaticClass(), StructProperty->Struct, PropertyValue, EPropertyValueIteratorFlags::NoRecursion, DeprecatedPropertyFlags); Iter; ++Iter)
 				{
 					Entry.ValueArray.EmplaceAt(InsertIndex++, Iter->Key, Iter->Value);
 				}
@@ -111,7 +111,7 @@ bool FPropertyValueIterator::NextValue(EPropertyValueIteratorFlags InRecursionFl
 		}
 
 		// If nothing left in value array, add base properties for current field and increase field iterator
-		const FProperty* Property = *Entry.FieldIterator;
+		const UProperty* Property = *Entry.FieldIterator;
 		++Entry.FieldIterator;
 
 		// Clear out existing value array
@@ -155,7 +155,7 @@ void FPropertyValueIterator::IterateToNext()
 	}
 }
 
-void FPropertyValueIterator::GetPropertyChain(TArray<const FProperty*>& PropertyChain) const
+void FPropertyValueIterator::GetPropertyChain(TArray<const UProperty*>& PropertyChain) const
 {
 	// Iterate over UStruct nesting, starting at the inner most property
 	for (int32 StackIndex = PropertyIteratorStack.Num() - 1; StackIndex >= 0; StackIndex--)
@@ -163,13 +163,14 @@ void FPropertyValueIterator::GetPropertyChain(TArray<const FProperty*>& Property
 		const FPropertyValueStackEntry& Entry = PropertyIteratorStack[StackIndex];
 
 		// Index should always be valid
-		const FProperty* Property = Entry.ValueArray[Entry.ValueIndex].Key;
+		const UProperty* Property = Entry.ValueArray[Entry.ValueIndex].Key;
 
 		while (Property)
 		{
 			// This handles container property nesting
 			PropertyChain.Add(Property);
-			Property = Property->GetOwner<FProperty>();
+
+			Property = Cast<UProperty>(Property->GetOuter());
 		}
 	}
 }

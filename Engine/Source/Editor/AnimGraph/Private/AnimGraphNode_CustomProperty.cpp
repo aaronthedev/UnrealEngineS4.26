@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimGraphNode_CustomProperty.h"
 #include "EdGraphSchema_K2.h"
@@ -14,71 +14,8 @@
 #include "Widgets/SBoxPanel.h"
 #include "DetailWidgetRow.h"
 #include "PropertyCustomizationHelpers.h"
-#include "KismetCompilerMisc.h"
-#include "AnimBlueprintCompilerHandler_Base.h"
-#include "IAnimBlueprintCompilerHandlerCollection.h"
-#include "IAnimBlueprintCompilerHandler.h"
-#include "KismetCompiler.h"
-#include "IAnimBlueprintCompilationContext.h"
 
 #define LOCTEXT_NAMESPACE "CustomPropNode"
-
-void UAnimGraphNode_CustomProperty::CreateClassVariablesFromBlueprint(IAnimBlueprintVariableCreationContext& InCreationContext)
-{
-	for (UEdGraphPin* Pin : Pins)
-	{
-		if (!Pin->bOrphanedPin && !UAnimationGraphSchema::IsPosePin(Pin->PinType))
-		{
-			// avoid to add properties which already exist on the custom node.
-			// for example the ControlRig_CustomNode has a pin called "alpha" which is not custom.
-			if (FStructProperty* NodeProperty = CastField<FStructProperty>(GetClass()->FindPropertyByName(TEXT("Node"))))
-			{
-				if(NodeProperty->Struct->FindPropertyByName(Pin->GetFName()))
-				{
-					continue;
-				}
-			}
-
-			// Add prefix to avoid collisions
-			FString PrefixedName = GetPinTargetVariableName(Pin);
-
-			// Create a property on the new class to hold the pin data
-			InCreationContext.CreateVariable(FName(*PrefixedName), Pin->PinType);
-		}
-	}
-}
-
-void UAnimGraphNode_CustomProperty::OnProcessDuringCompilation(IAnimBlueprintCompilationContext& InCompilationContext, IAnimBlueprintGeneratedClassCompiledData& OutCompiledData)
-{
-	for (UEdGraphPin* Pin : Pins)
-	{
-		if (!Pin->bOrphanedPin && !UAnimationGraphSchema::IsPosePin(Pin->PinType))
-		{
-			// avoid to add properties which already exist on the custom node.
-			// for example the ControlRig_CustomNode has a pin called "alpha" which is not custom.
-			if (FStructProperty* NodeProperty = CastField<FStructProperty>(GetClass()->FindPropertyByName(TEXT("Node"))))
-			{
-				if(NodeProperty->Struct->FindPropertyByName(Pin->GetFName()))
-				{
-					continue;
-				}
-			}
-			
-			FString PrefixedName = GetPinTargetVariableName(Pin);
-
-			// Add mappings to the node
-			UClass* InstClass = GetTargetSkeletonClass();
-			if (FProperty* FoundProperty = FindFProperty<FProperty>(InstClass, Pin->PinName))
-			{
-				AddSourceTargetProperties(*PrefixedName, FoundProperty->GetFName());
-			}
-			else
-			{
-				AddSourceTargetProperties(*PrefixedName, Pin->GetFName());
-			}
-		}
-	}
-}
 
 void UAnimGraphNode_CustomProperty::ValidateAnimNodeDuringCompilation(USkeleton* ForSkeleton, FCompilerResultsLog& MessageLog)
 {
@@ -120,14 +57,14 @@ void UAnimGraphNode_CustomProperty::ReallocatePinsDuringReconstruction(TArray<UE
 	const UAnimationGraphSchema* AnimGraphDefaultSchema = GetDefault<UAnimationGraphSchema>();
 
 	// Grab the list of properties we can expose
-	TArray<FProperty*> ExposablePropeties;
+	TArray<UProperty*> ExposablePropeties;
 	GetExposableProperties(ExposablePropeties);
 
 	// We'll track the names we encounter by removing from this list, if anything remains the properties
 	// have been removed from the target class and we should remove them too
 	TArray<FName> BeginExposableNames = KnownExposableProperties;
 
-	for(FProperty* Property : ExposablePropeties)
+	for(UProperty* Property : ExposablePropeties)
 	{
 		FName PropertyName = Property->GetFName();
 		BeginExposableNames.Remove(PropertyName);
@@ -162,12 +99,12 @@ void UAnimGraphNode_CustomProperty::ReallocatePinsDuringReconstruction(TArray<UE
 	}
 }
 
-void UAnimGraphNode_CustomProperty::GetInstancePinProperty(const IAnimBlueprintCompilationContext& InCompilationContext, UEdGraphPin* InInputPin, FProperty*& OutProperty)
+void UAnimGraphNode_CustomProperty::GetInstancePinProperty(const UClass* InOwnerInstanceClass, UEdGraphPin* InInputPin, UProperty*& OutProperty)
 {
 	// The actual name of the instance property
 	FString FullName = GetPinTargetVariableName(InInputPin);
 
-	if(FProperty* Property = InCompilationContext.FindClassFProperty<FProperty>(*FullName))
+	if(UProperty* Property = FindField<UProperty>(InOwnerInstanceClass, *FullName))
 	{
 		OutProperty = Property;
 	}
@@ -182,19 +119,19 @@ FString UAnimGraphNode_CustomProperty::GetPinTargetVariableName(const UEdGraphPi
 	return TEXT("__CustomProperty_") + InPin->PinName.ToString() + TEXT("_") + NodeGuid.ToString();
 }
 
-FText UAnimGraphNode_CustomProperty::GetPropertyTypeText(FProperty* Property)
+FText UAnimGraphNode_CustomProperty::GetPropertyTypeText(UProperty* Property)
 {
 	FText PropertyTypeText;
 
-	if(FStructProperty* StructProperty = CastField<FStructProperty>(Property))
+	if(UStructProperty* StructProperty = Cast<UStructProperty>(Property))
 	{
 		PropertyTypeText = StructProperty->Struct->GetDisplayNameText();
 	}
-	else if(FObjectProperty* ObjectProperty = CastField<FObjectProperty>(Property))
+	else if(UObjectProperty* ObjectProperty = Cast<UObjectProperty>(Property))
 	{
 		PropertyTypeText = ObjectProperty->PropertyClass->GetDisplayNameText();
 	}
-	else if(FFieldClass* PropClass = Property->GetClass())
+	else if(UClass* PropClass = Property->GetClass())
 	{
 		PropertyTypeText = PropClass->GetDisplayNameText();
 	}
@@ -210,9 +147,9 @@ void UAnimGraphNode_CustomProperty::RebuildExposedProperties()
 {
 	ExposedPropertyNames.Empty();
 	KnownExposableProperties.Empty();
-	TArray<FProperty*> ExposableProperties;
+	TArray<UProperty*> ExposableProperties;
 	GetExposableProperties(ExposableProperties);
-	for(FProperty* Property : ExposableProperties)
+	for(UProperty* Property : ExposableProperties)
 	{
 		KnownExposableProperties.Add(Property->GetFName());
 	}
@@ -268,7 +205,6 @@ void UAnimGraphNode_CustomProperty::OnPropertyExposeCheckboxChanged(ECheckBoxSta
 		ExposedPropertyNames.Remove(PropertyName);
 	}
 
-	FGuardValue_Bitfield(bDisableOrphanPinSaving, true);
 	ReconstructNode();
 }
 
@@ -322,7 +258,7 @@ void UAnimGraphNode_CustomProperty::CustomizeDetails(IDetailLayoutBuilder& Detai
 	}
 }
 
-void UAnimGraphNode_CustomProperty::GetExposableProperties( TArray<FProperty*>& OutExposableProperties) const
+void UAnimGraphNode_CustomProperty::GetExposableProperties( TArray<UProperty*>& OutExposableProperties) const
 {
 	OutExposableProperties.Empty();
 
@@ -332,9 +268,9 @@ void UAnimGraphNode_CustomProperty::GetExposableProperties( TArray<FProperty*>& 
 	{
 		const UEdGraphSchema_K2* Schema = CastChecked<UEdGraphSchema_K2>(GetSchema());
 
-		for(TFieldIterator<FProperty> It(TargetClass, EFieldIteratorFlags::IncludeSuper); It; ++It)
+		for(TFieldIterator<UProperty> It(TargetClass, EFieldIteratorFlags::IncludeSuper); It; ++It)
 		{
-			FProperty* CurProperty = *It;
+			UProperty* CurProperty = *It;
 			FEdGraphPinType PinType;
 
 			if(CurProperty->HasAllPropertyFlags(CPF_Edit | CPF_BlueprintVisible) && CurProperty->HasAllFlags(RF_Public) && Schema->ConvertPropertyToPinType(CurProperty, PinType))
@@ -369,7 +305,7 @@ UClass* UAnimGraphNode_CustomProperty::GetTargetClass() const
 UClass* UAnimGraphNode_CustomProperty::GetTargetSkeletonClass() const
 {
 	UClass* TargetClass = GetTargetClass();
-	if(TargetClass && TargetClass->ClassGeneratedBy)
+	if(TargetClass)
 	{
 		UBlueprint* Blueprint = CastChecked<UBlueprint>(TargetClass->ClassGeneratedBy);
 		if(Blueprint)

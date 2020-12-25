@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -46,14 +46,9 @@ namespace UnrealBuildTool
 		FailedDueToHeaderChange = 4,
 
 		/// <summary>
-		/// Compilation failed due to the engine modules needing to be rebuilt
-		/// </summary>
-		FailedDueToEngineChange = 5,
-
-		/// <summary>
 		/// Compilation failed due to compilation errors
 		/// </summary>
-		OtherCompilationError = 6,
+		OtherCompilationError = 5,
 
 		/// <summary>
 		/// Compilation is not supported in the current build
@@ -93,12 +88,10 @@ namespace UnrealBuildTool
 	{
 		Program,
 		EngineRuntime,
-		EngineUncooked,
 		EngineDeveloper,
 		EngineEditor,
 		EngineThirdParty,
 		GameRuntime,
-		GameUncooked,
 		GameDeveloper,
 		GameEditor,
 		GameThirdParty,
@@ -127,6 +120,7 @@ namespace UnrealBuildTool
 				case ModuleHostType.RuntimeNoCommandlet:
 				case ModuleHostType.RuntimeAndProgram:
 				case ModuleHostType.CookedOnly:
+				case ModuleHostType.UncookedOnly:
 				case ModuleHostType.ServerOnly:
 				case ModuleHostType.ClientOnly:
 				case ModuleHostType.ClientOnlyNoCommandlet:
@@ -138,8 +132,6 @@ namespace UnrealBuildTool
 				case ModuleHostType.EditorNoCommandlet:
 				case ModuleHostType.EditorAndProgram:
 					return UHTModuleType.EngineEditor;
-				case ModuleHostType.UncookedOnly:
-					return UHTModuleType.EngineUncooked;
 				default:
 					return null;
 			}
@@ -154,6 +146,7 @@ namespace UnrealBuildTool
 				case ModuleHostType.RuntimeNoCommandlet:
 				case ModuleHostType.RuntimeAndProgram:
 				case ModuleHostType.CookedOnly:
+				case ModuleHostType.UncookedOnly:
 				case ModuleHostType.ServerOnly:
 				case ModuleHostType.ClientOnly:
 				case ModuleHostType.ClientOnlyNoCommandlet:
@@ -165,8 +158,6 @@ namespace UnrealBuildTool
 				case ModuleHostType.EditorNoCommandlet:
 				case ModuleHostType.EditorAndProgram:
 					return UHTModuleType.GameEditor;
-				case ModuleHostType.UncookedOnly:
-					return UHTModuleType.GameUncooked;
 				default:
 					return null;
 			}
@@ -197,11 +188,6 @@ namespace UnrealBuildTool
 		/// Module type
 		/// </summary>
 		public string ModuleType;
-
-		/// <summary>
-		/// Overridden package module type to add more flags
-		/// </summary>
-		public string OverrideModuleType;
 
 		/// <summary>
 		/// Public UObject headers found in the Classes directory (legacy)
@@ -238,13 +224,12 @@ namespace UnrealBuildTool
 		/// </summary>
 		public bool bIsReadOnly;
 
-		public UHTModuleInfo(string ModuleName, FileReference ModuleRulesFile, DirectoryReference[] ModuleDirectories, UHTModuleType ModuleType, DirectoryItem GeneratedCodeDirectory, EGeneratedCodeVersion GeneratedCodeVersion, bool bIsReadOnly, ModuleRules.PackageOverrideType OverrideType)
+		public UHTModuleInfo(string ModuleName, FileReference ModuleRulesFile, DirectoryReference[] ModuleDirectories, UHTModuleType ModuleType, DirectoryItem GeneratedCodeDirectory, EGeneratedCodeVersion GeneratedCodeVersion, bool bIsReadOnly)
 		{
 			this.ModuleName = ModuleName;
 			this.ModuleRulesFile = ModuleRulesFile;
 			this.ModuleDirectories = ModuleDirectories;
 			this.ModuleType = ModuleType.ToString();
-			this.OverrideModuleType = OverrideType.ToString();
 			this.PublicUObjectClassesHeaders = new List<FileItem>();
 			this.PublicUObjectHeaders = new List<FileItem>();
 			this.PrivateUObjectHeaders = new List<FileItem>();
@@ -259,7 +244,6 @@ namespace UnrealBuildTool
 			ModuleRulesFile = Reader.ReadFileReference();
 			ModuleDirectories = Reader.ReadArray<DirectoryReference>(Reader.ReadDirectoryReference);
 			ModuleType = Reader.ReadString();
-			OverrideModuleType = Reader.ReadString();
 			PublicUObjectClassesHeaders = Reader.ReadList(() => Reader.ReadFileItem());
 			PublicUObjectHeaders = Reader.ReadList(() => Reader.ReadFileItem());
 			PrivateUObjectHeaders = Reader.ReadList(() => Reader.ReadFileItem());
@@ -275,7 +259,6 @@ namespace UnrealBuildTool
 			Writer.WriteFileReference(ModuleRulesFile);
 			Writer.WriteArray<DirectoryReference>(ModuleDirectories, Writer.WriteDirectoryReference);
 			Writer.WriteString(ModuleType);
-			Writer.WriteString(OverrideModuleType);
 			Writer.WriteList(PublicUObjectClassesHeaders, Item => Writer.WriteFileItem(Item));
 			Writer.WriteList(PublicUObjectHeaders, Item => Writer.WriteFileItem(Item));
 			Writer.WriteList(PrivateUObjectHeaders, Item => Writer.WriteFileItem(Item));
@@ -324,7 +307,6 @@ namespace UnrealBuildTool
 		{
 			public string Name;
 			public string ModuleType;
-			public string OverrideModuleType;
 			public string BaseDirectory;
 			public string IncludeBase;     // The include path which all UHT-generated includes should be relative to
 			public string OutputDirectory;
@@ -339,7 +321,6 @@ namespace UnrealBuildTool
 			{
 				Name = Info.ModuleName;
 				ModuleType = Info.ModuleType;
-				OverrideModuleType = Info.OverrideModuleType;
 				BaseDirectory = Info.ModuleDirectories[0].FullName;
 				IncludeBase = Info.ModuleDirectories[0].ParentDirectory.FullName;
 				OutputDirectory = Path.GetDirectoryName(Info.GeneratedCPPFilenameBase);
@@ -587,7 +568,7 @@ namespace UnrealBuildTool
 				{
 					UEBuildModuleCPP Module = ModulesSortedByType[Idx];
 
-					UHTModuleInfo Info = new UHTModuleInfo(Module.Name, Module.RulesFile, Module.ModuleDirectories, ModuleToType[Module], DirectoryItem.GetItemByDirectoryReference(Module.GeneratedCodeDirectory), GeneratedCodeVersion, Module.Rules.bUsePrecompiled, Module.Rules.OverridePackageType);
+					UHTModuleInfo Info = new UHTModuleInfo(Module.Name, Module.RulesFile, Module.ModuleDirectories, ModuleToType[Module], DirectoryItem.GetItemByDirectoryReference(Module.GeneratedCodeDirectory), GeneratedCodeVersion, Module.Rules.bUsePrecompiled);
 					ModuleInfoArray[Idx] = Info;
 
 					Queue.Enqueue(() => SetupUObjectModule(Info, ExcludedFolders, MetadataCache, Queue));
@@ -609,19 +590,7 @@ namespace UnrealBuildTool
 					Info.GeneratedCPPFilenameBase = Path.Combine(Module.GeneratedCodeDirectory.FullName, Info.ModuleName) + ".gen";
 					if (!Module.Rules.bUsePrecompiled)
 					{
-						Module.GeneratedCppDirectories = new List<string>();
-						Module.GeneratedCppDirectories.Add(Module.GeneratedCodeDirectory.FullName);
-
-						if (Module.Rules.AdditionalCodeGenDirectories != null)
-						{
-							foreach (string DirPath in Module.Rules.AdditionalCodeGenDirectories)
-							{
-								if (Directory.Exists(DirPath))
-								{
-									Module.GeneratedCppDirectories.Add(Path.GetFullPath(DirPath));
-								}
-							}
-						}
+						Module.GeneratedCodeWildcard = Path.Combine(Module.GeneratedCodeDirectory.FullName, "*.gen.cpp");
 					}
 
 					UObjectModules.Add(Info);
@@ -1155,7 +1124,7 @@ namespace UnrealBuildTool
 						TargetDescriptor TargetDescriptor = new TargetDescriptor(ScriptProjectFile, "UnrealHeaderTool", Platform, Configuration, Architecture, null);
 						TargetDescriptor.bQuiet = true;
 
-						using(Timeline.ScopeEvent("Building UnrealHeaderTool"))
+						using(Timeline.ScopeEvent("Buildng UnrealHeaderTool"))
 						{
 							BuildMode.Build(new List<TargetDescriptor>{ TargetDescriptor }, BuildConfiguration, WorkingSet, BuildOptions.None, null);
 						}
@@ -1178,16 +1147,6 @@ namespace UnrealBuildTool
 
 					string CmdLine = (ProjectFile != null) ? "\"" + ProjectFile.FullName + "\"" : TargetName;
 					CmdLine += " \"" + ModuleInfoFileName + "\" -LogCmds=\"loginit warning, logexit warning, logdatabase error\" -Unattended -WarningsAsErrors";
-
-					if (Log.OutputFile != null)
-					{
-						string LogFileName = Log.OutputFile.GetFileNameWithoutExtension();
-						LogFileName = (LogFileName.StartsWith("UBT") ? "UHT" + LogFileName.Substring(3) : LogFileName + "_UHT") + ".txt";
-						LogFileName = FileReference.Combine(Log.OutputFile.Directory, LogFileName).ToString();
-
-						CmdLine += " -abslog=\"" + LogFileName + "\"";
-					}
-
 					if (UnrealBuildTool.IsEngineInstalled())
 					{
 						CmdLine += " -installed";

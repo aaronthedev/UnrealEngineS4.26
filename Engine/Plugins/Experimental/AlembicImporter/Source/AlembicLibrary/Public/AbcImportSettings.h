@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,9 +25,7 @@ enum class EBaseCalculationType : uint8
 	/** Determines the number of bases that should be used with the given percentage*/
 	PercentageBased = 1,
 	/** Set a fixed number of bases to import*/
-	FixedNumber,
-	/** One base per frame, uncompressed*/
-	NoCompression
+	FixedNumber
 };
 
 USTRUCT(Blueprintable)
@@ -132,11 +130,10 @@ struct FAbcNormalGenerationSettings
 		HardEdgeAngleThreshold = 0.9f;
 		bForceOneSmoothingGroupPerObject = false;
 		bIgnoreDegenerateTriangles = true;
-		bSkipComputingTangents = false;
 	}
 
 	/** Whether or not to force smooth normals for each individual object rather than calculating smoothing groups */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = NormalCalculation)
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = NormalCalculation, meta = (EditCondition = "bRecomputeNormals"))
 	bool bForceOneSmoothingGroupPerObject;
 
 	/** Threshold used to determine whether an angle between two normals should be considered hard, closer to 0 means more smooth vs 1 */
@@ -150,10 +147,6 @@ struct FAbcNormalGenerationSettings
 	/** Determines whether or not the degenerate triangles should be ignored when calculating tangents/normals */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = NormalCalculation, meta = (EditCondition = "bRecomputeNormals"))
 	bool bIgnoreDegenerateTriangles;
-
-	/** Determines whether tangents are computed. Skipping them can improve streaming performance but may cause visual artifacts where they are required */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = NormalCalculation, AdvancedDisplay)
-	bool bSkipComputingTangents;
 };
 
 USTRUCT(Blueprintable)
@@ -244,17 +237,6 @@ struct FAbcConversionSettings
 	FVector Rotation;
 };
 
-UENUM(Blueprintable)
-enum class EAbcGeometryCacheMotionVectorsImport : uint8
-{
-	/** No motion vectors will be present in the geometry cache. */
-	NoMotionVectors,
-	/** Imports the Velocities from the Alembic file and converts them to motion vectors. This will increase file size as the motion vectors will be stored on disc. */
-	ImportAbcVelocitiesAsMotionVectors,
-	/** Force calculation of motion vectors during import. This will increase file size as the motion vectors will be stored on disc. */
-	CalculateMotionVectorsDuringImport
-};
-
 USTRUCT(Blueprintable)
 struct FAbcGeometryCacheSettings
 {
@@ -263,8 +245,7 @@ struct FAbcGeometryCacheSettings
 	FAbcGeometryCacheSettings()
 	:	bFlattenTracks(true),
 		bApplyConstantTopologyOptimizations(false),
-		bCalculateMotionVectorsDuringImport_DEPRECATED(false),
-		MotionVectors(EAbcGeometryCacheMotionVectorsImport::NoMotionVectors),
+		bCalculateMotionVectorsDuringImport(false),
 		bOptimizeIndexBuffers(false),
 		CompressedPositionPrecision(0.01f),
 		CompressedTextureCoordinatesNumberOfBits(10)
@@ -280,11 +261,8 @@ struct FAbcGeometryCacheSettings
 	bool bApplyConstantTopologyOptimizations;
 
 	/** Force calculation of motion vectors during import. This will increase file size as the motion vectors will be stored on disc. Recommended to OFF.*/
-	UPROPERTY()
-	bool bCalculateMotionVectorsDuringImport_DEPRECATED;
-
 	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadWrite, Category = GeometryCache)
-	EAbcGeometryCacheMotionVectorsImport MotionVectors;
+	bool bCalculateMotionVectorsDuringImport;
 
 	/** Optimizes index buffers for each unique frame, to allow better cache coherency on the GPU. Very costly and time-consuming process, recommended to OFF.*/
 	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadWrite, Category = GeometryCache)
@@ -335,7 +313,4 @@ class ALEMBICLIBRARY_API UAbcImportSettings : public UObject
 
 	bool bReimport;
 	int32 NumThreads;
-
-public:
-	virtual void Serialize(class FArchive& Archive) override;
 };

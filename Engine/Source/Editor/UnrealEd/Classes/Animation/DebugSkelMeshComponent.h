@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -229,9 +229,6 @@ class UNREALED_API UDebugSkelMeshComponent : public USkeletalMeshComponent
 	UPROPERTY(transient)
 	bool bClothCullBackface;
 
-	UPROPERTY(transient)
-	uint32 bRequiredBonesUpToDateDuringTick : 1;
-
 	/* Bounds computed from cloth. */
 	FBoxSphereBounds CachedClothBounds;
 
@@ -311,9 +308,9 @@ class UNREALED_API UDebugSkelMeshComponent : public USkeletalMeshComponent
 	virtual bool IsWindEnabled() const override { return true; }
 	virtual void SetAnimClass(class UClass* NewClass) override;
 	//~ End SkeletalMeshComponent Interface
-
-	// return true if currently preview animation asset is on
-	virtual bool IsPreviewOn() const;
+	// Preview.
+	// @todo document
+	bool IsPreviewOn() const;
 
 	// @todo document
 	FString GetPreviewText() const;
@@ -442,8 +439,7 @@ public:
 
 	// Rebuilds the fixed parameter on the mesh to mesh data, to be used if the editor has
 	// changed a vert to be fixed or unfixed otherwise the simulation will not work
-	// bInvalidateDerivedDataCache can only be false during previewing as otherwise the changes won't be correctly saved
-	void RebuildClothingSectionsFixedVerts(bool bInvalidateDerivedDataCache = true);
+	void RebuildClothingSectionsFixedVerts();
 
 	TArray<FVector> SkinnedSelectedClothingPositions;
 	TArray<FVector> SkinnedSelectedClothingNormals;
@@ -475,8 +471,6 @@ public:
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction) override;
 
 	void RefreshSelectedClothingSkinnedPositions();
-
-	virtual bool CanOverrideCollisionProfile() const { return true; }
 
 	virtual void GetUsedMaterials(TArray<UMaterialInterface *>& OutMaterials, bool bGetDebugMaterials = false) const override;
 

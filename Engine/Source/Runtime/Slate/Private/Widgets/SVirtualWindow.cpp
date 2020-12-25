@@ -1,7 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/SVirtualWindow.h"
-#include "Input/HittestGrid.h"
 #include "Layout/ArrangedChildren.h"
 #include "Misc/App.h"
 #include "Modules/ModuleManager.h"

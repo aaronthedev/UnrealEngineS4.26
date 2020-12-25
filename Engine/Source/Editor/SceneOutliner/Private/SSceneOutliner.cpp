@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SSceneOutliner.h"
 
@@ -28,7 +28,6 @@
 #include "Textures/SlateIcon.h"
 #include "ToolMenus.h"
 #include "UnrealEdGlobals.h"
-#include "UObject/PackageReload.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SComboButton.h"
@@ -783,19 +782,18 @@ namespace SceneOutliner
 					EUserInterfaceActionType::ToggleButton
 				);
 
-				// Temporarily disable this feature until it can be redesigned.
-				//MenuBuilder.AddMenuEntry(
-				//	LOCTEXT("ToggleHideFoldersContainingHiddenActors", "Hide Folders with Only Hidden Actors"),
-				//	LOCTEXT("ToggleHideFoldersContainingHiddenActorsToolTip", "When enabled, only shows Folders containing non-hidden Actors."),
-				//	FSlateIcon(),
-				//	FUIAction(
-				//		FExecuteAction::CreateSP(this, &SSceneOutliner::ToggleHideFoldersContainingOnlyHiddenActors),
-				//		FCanExecuteAction(),
-				//		FIsActionChecked::CreateSP(this, &SSceneOutliner::IsHidingFoldersContainingOnlyHiddenActors)
-				//	),
-				//	NAME_None,
-				//	EUserInterfaceActionType::ToggleButton
-				//);
+				MenuBuilder.AddMenuEntry(
+					LOCTEXT("ToggleHideFoldersContainingHiddenActors", "Hide Folders with Only Hidden Actors"),
+					LOCTEXT("ToggleHideFoldersContainingHiddenActorsToolTip", "When enabled, only shows Folders containing non-hidden Actors."),
+					FSlateIcon(),
+					FUIAction(
+						FExecuteAction::CreateSP(this, &SSceneOutliner::ToggleHideFoldersContainingOnlyHiddenActors),
+						FCanExecuteAction(),
+						FIsActionChecked::CreateSP(this, &SSceneOutliner::IsHidingFoldersContainingOnlyHiddenActors)
+					),
+					NAME_None,
+					EUserInterfaceActionType::ToggleButton
+				);
 
 				MenuBuilder.AddMenuEntry(
 					LOCTEXT("ToggleShowActorComponents", "Show Actor Components"),
@@ -1088,9 +1086,7 @@ namespace SceneOutliner
 
 	bool SSceneOutliner::IsHidingFoldersContainingOnlyHiddenActors() const
 	{
-		// Temporarily disable this feature until it can be redesigned.
-		return false;
-		//return GetDefault<USceneOutlinerSettings>()->bHideFoldersContainingHiddenActors;
+		return GetDefault<USceneOutlinerSettings>()->bHideFoldersContainingHiddenActors;
 	}
 
 	/** END FILTERS */
@@ -1212,10 +1208,7 @@ namespace SceneOutliner
 		SharedData->bRepresentingPlayWorld = SharedData->RepresentingWorld->WorldType == EWorldType::PIE;
 
 		// Get a collection of items and folders which were formerly collapsed
-		if (CachedExpansionStateInfo.Num() == 0)
-		{
-			CachedExpansionStateInfo.Append(GetParentsExpansionState());
-		}
+		const FParentsExpansionState ExpansionStateInfo = GetParentsExpansionState();
 
 		bool bMadeAnySignificantChanges = false;
 		if(bFullRefresh)
@@ -1257,6 +1250,8 @@ namespace SceneOutliner
 		}
 
 		PendingOperations.RemoveAt(0, End);
+		SetParentsExpansionState(ExpansionStateInfo);
+
 
 		for (FName Folder : PendingFoldersSelect)
 		{
@@ -1271,9 +1266,6 @@ namespace SceneOutliner
 		bool bFinalSort = false;
 		if (PendingOperations.Num() == 0)
 		{
-			SetParentsExpansionState(CachedExpansionStateInfo);
-			CachedExpansionStateInfo.Empty();
-
 			// We're fully refreshed now.
 			NewItemActions.Empty();
 			bNeedsRefresh = false;
@@ -1344,7 +1336,7 @@ namespace SceneOutliner
 					{
 						for (UActorComponent* Component : Actor->GetComponents())
 						{
-							if (Component && Filters->PassesAllFilters(FComponentTreeItem(Component)))
+							if (Filters->PassesAllFilters(FComponentTreeItem(Component)))
 							{
 								bool IsHandled = false;
 								if (CustomImplementation)
@@ -1917,20 +1909,14 @@ namespace SceneOutliner
 
 	void SSceneOutliner::AddColumn(FName ColumId, const SceneOutliner::FColumnInfo& ColumInfo)
 	{
-		if (!SharedData->ColumnMap.Contains(ColumId))
-		{
-			SharedData->ColumnMap.Add(ColumId, ColumInfo);
-			RefreshColums();
-		}
+		SharedData->ColumnMap.Add(ColumId, ColumInfo);
+		RefreshColums();
 	}
 
 	void SSceneOutliner::RemoveColumn(FName ColumId)
 	{
-		if (SharedData->ColumnMap.Contains(ColumId))
-		{
-			SharedData->ColumnMap.Remove(ColumId);
-			RefreshColums();
-		}
+		SharedData->ColumnMap.Remove(ColumId);
+		RefreshColums();
 	}
 
 	TArray<FName> SSceneOutliner::GetColumnIds() const
@@ -2562,7 +2548,7 @@ namespace SceneOutliner
 				}
 			}
 
-			GEditor->GetSelectedActors()->EndBatchSelectOperation(/*bNotify*/false);
+			GEditor->GetSelectedActors()->EndBatchSelectOperation();
 			GEditor->NoteSelectionChange();
 		}
 
@@ -3322,7 +3308,7 @@ namespace SceneOutliner
 					}
 
 					// Commit selection changes
-					GEditor->GetSelectedActors()->EndBatchSelectOperation(/*bNotify*/false);
+					GEditor->GetSelectedActors()->EndBatchSelectOperation();
 
 					// Fire selection changed event
 					GEditor->NoteSelectionChange();
@@ -3496,7 +3482,7 @@ namespace SceneOutliner
 						TArray<ISceneOutlinerTraversal*> ConstructTreeItemImp = IModularFeatures::Get().GetModularFeatureImplementations<ISceneOutlinerTraversal>("SceneOutlinerTraversal");
 						for (UActorComponent* Component : InActor->GetComponents())
 						{
-							if (Component && Filters->PassesAllFilters(FComponentTreeItem(Component)))
+							if (Filters->PassesAllFilters(FComponentTreeItem(Component)))
 							{
 								bool IsHandled = false;
 								for (ISceneOutlinerTraversal* CustomImplementation : ConstructTreeItemImp)
@@ -3739,7 +3725,7 @@ namespace SceneOutliner
 					}
 
 					// Commit selection changes
-					GEditor->GetSelectedActors()->EndBatchSelectOperation(/*bNotify*/false);
+					GEditor->GetSelectedActors()->EndBatchSelectOperation();
 
 					// Fire selection changed event
 					GEditor->NoteSelectionChange();

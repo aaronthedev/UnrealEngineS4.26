@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AndroidMediaFactoryPrivate.h"
 
@@ -7,7 +7,6 @@
 #include "Containers/UnrealString.h"
 #include "Internationalization/Internationalization.h"
 #include "Misc/Paths.h"
-#include "Misc/Guid.h"
 #include "Modules/ModuleInterface.h"
 #include "Modules/ModuleManager.h"
 #include "IMediaModule.h"
@@ -95,12 +94,6 @@ public:
 		return PlayerName;
 	}
 
-	virtual FGuid GetPlayerPluginGUID() const override
-	{
-		static FGuid PlayerPluginGUID(0x894a9ab3, 0xb44d4373, 0x87a7dd0c, 0x9cbd9613);
-		return PlayerPluginGUID;
-	}
-
 	virtual const TArray<FString>& GetSupportedPlatforms() const override
 	{
 		return SupportedPlatforms;
@@ -125,7 +118,6 @@ public:
 		SupportedFileExtensions.Add(TEXT("mp4"));
 		SupportedFileExtensions.Add(TEXT("m3u8"));
 		SupportedFileExtensions.Add(TEXT("mp3"));
-		SupportedFileExtensions.Add(TEXT("webm"));
 
 		// supported platforms
 		SupportedPlatforms.Add(TEXT("Android"));

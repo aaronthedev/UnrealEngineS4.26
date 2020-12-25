@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,8 +10,6 @@ class UCameraComponent;
 class USpringArmComponent;
 class UTextRenderComponent;
 class UInputComponent;
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 UCLASS(config=Game)
 class ATP_VehiclePawn : public AWheeledVehicle
@@ -133,6 +131,3 @@ public:
 	/** Returns InCarGear subobject **/
 	FORCEINLINE UTextRenderComponent* GetInCarGear() const { return InCarGear; }
 };
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
-

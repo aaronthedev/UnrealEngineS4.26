@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -49,24 +49,19 @@ class LIVELINKCOMPONENTS_API ULiveLinkTransformController : public ULiveLinkCont
 	GENERATED_BODY()
 
 public:
-#if WITH_EDITORONLY_DATA
-	UPROPERTY()
-	FComponentReference ComponentToControl_DEPRECATED;
-#endif //WITH_EDITORONLY_DATA
+	UPROPERTY(EditAnywhere, Category="LiveLink", meta=(UseComponentPicker, AllowedClasses="SceneComponent"))
+	FComponentReference ComponentToControl;
 	
 	UPROPERTY(EditAnywhere, Category="LiveLink", meta=(ShowOnlyInnerProperties))
 	FLiveLinkTransformControllerData TransformData;
 
 public:
-	//~Begin ULiveLinkControllerBase interface
 	virtual void OnEvaluateRegistered() override;
-	virtual void Tick(float DeltaTime, const FLiveLinkSubjectFrameData& SubjectData) override;
+	virtual void Tick(float DeltaTime, const FLiveLinkSubjectRepresentation& SubjectRepresentation) override;
 	virtual bool IsRoleSupported(const TSubclassOf<ULiveLinkRole>& RoleToSupport) override;
-	virtual TSubclassOf<UActorComponent> GetDesiredComponentClass() const override;
-	virtual void SetAttachedComponent(UActorComponent* ActorComponent) override;
-	//~End ULiveLinkControllerBase interface
 
-	//~ Begin UObject interface
-	virtual void PostLoad() override;
-	//~ End UObject interface
+public:
+#if WITH_EDITOR
+	virtual void InitializeInEditor() override;
+#endif
 };

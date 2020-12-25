@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Materials/MaterialExpressionLandscapeLayerSample.h"
 #include "Engine/Engine.h"
@@ -72,7 +72,7 @@ bool UMaterialExpressionLandscapeLayerSample::MatchesSearchQuery(const TCHAR* Se
 {
 	TArray<FString> Captions;
 	GetCaption(Captions);
-	for (const FString& Caption : Captions)
+	for (const FString Caption : Captions)
 	{
 		if (Caption.Contains(SearchQuery))
 		{
@@ -95,6 +95,11 @@ void UMaterialExpressionLandscapeLayerSample::GetAllParameterInfo(TArray<FMateri
 	{
 		OutParameterIds.Add(ExpressionGUID);
 	}
+}
+
+bool UMaterialExpressionLandscapeLayerSample::NeedsLoadForClient() const
+{
+	return ParameterName != NAME_None;
 }
 
 #undef LOCTEXT_NAMESPACE

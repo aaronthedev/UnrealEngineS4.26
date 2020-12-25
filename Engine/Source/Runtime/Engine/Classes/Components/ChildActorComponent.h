@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -40,10 +40,6 @@ public:
 	virtual void ApplyToComponent(UActorComponent* Component, const ECacheApplyPhase CacheApplyPhase) override;
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
 
-	// The class of the child actor when the instance data cache was stored
-	UPROPERTY()
-	TSubclassOf<AActor> ChildActorClass;
-
 	// The name of the spawned child actor so it (attempts to) remain constant across construction script reruns
 	UPROPERTY()
 	FName ChildActorName;
@@ -51,29 +47,9 @@ public:
 	UPROPERTY()
 	TArray<FChildActorAttachedActorInfo> AttachedActors;
 
-#if WITH_EDITOR
-	/** Keep track of the child actor GUID to reuse it when reinstancing */
-	FGuid ChildActorGUID;
-#endif
-
 	// The component instance data cache for the ChildActor spawned by this component
 	TSharedPtr<FComponentInstanceDataCache> ComponentInstanceData;
 };
-
-#if WITH_EDITORONLY_DATA
-UENUM()
-enum class EChildActorComponentTreeViewVisualizationMode : uint8
-{
-	/** Use the editor's default setting. */
-	UseDefault UMETA(Hidden),
-	/** Show only the outer component as a single component node. */
-	ComponentOnly,
-	/** Include the child actor hierarchy attached to the outer component as the root node. */
-	ComponentWithChildActor,
-	/** Show only as a child actor hierarchy (i.e. do not show the outer component node as the root). */
-	ChildActorOnly,
-};
-#endif
 
 /** A component that spawns an Actor when registered, and destroys it when unregistered.*/
 UCLASS(ClassGroup=Utility, hidecategories=(Object,LOD,Physics,Lighting,TextureStreaming,Activation,"Components|Activation",Collision), meta=(BlueprintSpawnableComponent))
@@ -81,29 +57,8 @@ class ENGINE_API UChildActorComponent : public USceneComponent
 {
 	GENERATED_UCLASS_BODY()
 
-	/**
-	 * Sets the class to use for the child actor. 
-	 * If called on a template component (owned by a CDO), the properties of any existing child actor template will be copied as best possible to the template. 
-	 * If called on a component instance in a world (and the class is changing), the created ChildActor will use the class defaults as template.
-	 * @param InClass The Actor subclass to spawn as a child actor
-	 */
 	UFUNCTION(BlueprintCallable, Category=ChildActorComponent)
-	void SetChildActorClass(TSubclassOf<AActor> InClass)
-	{
-		SetChildActorClass(InClass, nullptr);
-	}
-
-	/**
-	 * Sets then class to use for the child actor providing an optional Actor to use as the template.
-	 * If called on a template component (owned by a CDO) and NewChildActorTemplate is not null, the new child actor template will be created using the supplied Actor as template.
-	 * If called on a template component and NewChildActorTemplate is null, the properties of any existing child actor template will be copied as best possible to the template.
-	 * If called on a component instance in a world with NewChildActorTemplate not null, then if registered a new child actor will be created using the supplied Actor as template, 
-	 *    otherwise if not registered it will ensure. If the class also changed, then future ChildActors created by this component the class defaults will be used.
-	 * If called on a component instance in a world with NewChildActorTemplate null and the class is changing, the created ChildActor will use the class defaults as template.
-	 * @param InClass                 The Actor subclass to spawn as a child actor
-	 * @param NewChildActorTemplate   An Actor to use as the template when spawning a child actor using this component (per the rules listed above)
-	 */
-	void SetChildActorClass(TSubclassOf<AActor> InClass, AActor* NewChildActorTemplate);
+	void SetChildActorClass(TSubclassOf<AActor> InClass);
 
 	TSubclassOf<AActor> GetChildActorClass() const { return ChildActorClass; }
 
@@ -125,24 +80,11 @@ private:
 	/** We try to keep the child actor's name as best we can, so we store it off here when destroying */
 	FName ChildActorName;
 
-	/** Detect when the parent actor is renamed, in which case we can't preseve the child actor's name */
-	UObject* ActorOuter;
-
 	/** Cached copy of the instance data when the ChildActor is destroyed to be available when needed */
 	mutable FChildActorComponentInstanceData* CachedInstanceData;
 
-#if WITH_EDITORONLY_DATA
-	/** Indicates how this component will be visualized for editing in a tree view. Users can change this setting per instance via the context menu in the Blueprint/SCS editor. */
-	UPROPERTY()
-	EChildActorComponentTreeViewVisualizationMode EditorTreeViewVisualizationMode;
-#endif
-
 	/** Flag indicating that when the component is registered that the child actor should be recreated */
 	uint8 bNeedsRecreate:1;
-
-#if WITH_EDITOR
-	virtual void SetPackageExternal(bool bExternal, bool bShouldDirty) override;
-#endif
 
 public:
 
@@ -170,7 +112,7 @@ public:
 	//~ End ActorComponent Interface.
 
 	/** Apply the component instance data to the child actor component */
-	void ApplyComponentInstanceData(FChildActorComponentInstanceData* ComponentInstanceData, const ECacheApplyPhase CacheApplyPhase);
+	void ApplyComponentInstanceData(struct FChildActorComponentInstanceData* ComponentInstanceData, const ECacheApplyPhase CacheApplyPhase);
 
 	/** Create the child actor */
 	virtual void CreateChildActor();
@@ -182,20 +124,7 @@ public:
 
 	/** Kill any currently present child actor */
 	void DestroyChildActor();
-
-#if WITH_EDITOR
-	EChildActorComponentTreeViewVisualizationMode GetEditorTreeViewVisualizationMode() const
-	{
-		return EditorTreeViewVisualizationMode;
-	}
-
-	void SetEditorTreeViewVisualizationMode(EChildActorComponentTreeViewVisualizationMode InMode);
-#endif
 };
 
-struct FActorParentComponentSetter
-{
-	static void Set(AActor* ChildActor, UChildActorComponent* ParentComponent);
-private:
-	friend UChildActorComponent;
-};
+
+

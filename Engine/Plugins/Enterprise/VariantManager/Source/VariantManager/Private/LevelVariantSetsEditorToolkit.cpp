@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LevelVariantSetsEditorToolkit.h"
 
@@ -86,17 +86,15 @@ void FLevelVariantSetsEditorToolkit::Initialize(const EToolkitMode::Type Mode, c
 	// tab ID will already be registered within EditorTabManager
 	if (EditorTabManager->FindExistingLiveTab(TabID).IsValid())
 	{
-		EditorTabManager->TryInvokeTab(TabID)->RequestCloseTab();
+		EditorTabManager->InvokeTab(TabID)->RequestCloseTab();
 	}
 
 	FAssetEditorToolkit::InitAssetEditor(Mode, InitToolkitHost, TEXT("VariantManagerApp"), StandaloneDefaultLayout, bCreateDefaultStandaloneMenu, bCreateDefaultToolbar, LevelVariantSets);
 
-	TSharedPtr<SDockTab> Tab = EditorTabManager->TryInvokeTab(TabID);
-	if (Tab.IsValid())
-	{
-		Tab->SetContent(VariantManager->GetVariantManagerWidget().ToSharedRef());
-		Tab->SetOnTabClosed(SDockTab::FOnTabClosedCallback::CreateStatic(&Local::OnVariantManagerClosed, TWeakPtr<IAssetEditorInstance>(SharedThis(this))));
-	}
+	TSharedRef<SDockTab> Tab = EditorTabManager->InvokeTab(TabID);
+	Tab->SetContent(VariantManager->GetVariantManagerWidget().ToSharedRef());
+	Tab->SetOnTabClosed(SDockTab::FOnTabClosedCallback::CreateStatic(&Local::OnVariantManagerClosed, TWeakPtr<IAssetEditorInstance>(SharedThis(this))));
+
 	CreatedTab = Tab;
 }
 

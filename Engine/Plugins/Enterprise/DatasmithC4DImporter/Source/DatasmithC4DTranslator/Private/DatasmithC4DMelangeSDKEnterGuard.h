@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // Enter Datasmith platform include gard.
 #if PLATFORM_WINDOWS
@@ -7,7 +7,6 @@
 // Back up some preprocessor identifiers.
 __pragma(push_macro("PI"))
 __pragma(push_macro("BYTE_MAX"))
-__pragma(push_macro("_HAS_EXCEPTIONS"))
 
 #undef PI
 

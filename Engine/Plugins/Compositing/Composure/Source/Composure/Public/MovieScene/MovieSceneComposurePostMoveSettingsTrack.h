@@ -1,16 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Tracks/MovieScenePropertyTrack.h"
-#include "Compilation/IMovieSceneTrackTemplateProducer.h"
 #include "MovieSceneComposurePostMoveSettingsTrack.generated.h"
 
 /**
 * A track for animating FComposurePostMoveSettings properties.
 */
 UCLASS(MinimalAPI)
-class UMovieSceneComposurePostMoveSettingsTrack : public UMovieScenePropertyTrack, public IMovieSceneTrackTemplateProducer
+class UMovieSceneComposurePostMoveSettingsTrack : public UMovieScenePropertyTrack
 {
 	GENERATED_BODY()
 

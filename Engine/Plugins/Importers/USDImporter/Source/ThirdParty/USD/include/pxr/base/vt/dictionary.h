@@ -21,28 +21,40 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_VT_DICTIONARY_H
-#define PXR_BASE_VT_DICTIONARY_H
+#ifndef BOOST_PP_IS_ITERATING
+
+#ifndef VT_DICTIONARY_H
+#define VT_DICTIONARY_H
 
 /// \file vt/dictionary.h
 
 #include "pxr/pxr.h"
 #include "pxr/base/vt/api.h"
+#include "pxr/base/vt/keyValue.h"
 #include "pxr/base/vt/value.h"
 
-#include "pxr/base/tf/diagnostic.h"
 #include "pxr/base/tf/hash.h"
+#include "pxr/base/tf/move.h"
 #include "pxr/base/tf/mallocTag.h"
 
 #include <boost/functional/hash.hpp>
-#include <boost/iterator/iterator_adaptor.hpp>
+#include <boost/preprocessor.hpp>
 
+#include <boost/iterator/iterator_adaptor.hpp>
 #include <initializer_list>
+
 #include <iosfwd>
-#include <map>
 #include <memory>
 
 PXR_NAMESPACE_OPEN_SCOPE
+
+// This constant will only be defined if not defined already. This is because
+// many files need a higher limit and define this constant themselves before
+// including anything else.
+
+#ifndef VT_DICTIONARY_MAX_ARITY
+#  define VT_DICTIONARY_MAX_ARITY 7
+#endif // VT_DICTIONARY_MAX_ARITY
 
 /// \defgroup group_vtdict_functions VtDictionary Functions
 /// Functions for manipulating VtDictionary objects.
@@ -61,7 +73,7 @@ PXR_NAMESPACE_OPEN_SCOPE
 /// \link group_vtdict_functions VtDictionary Functions \endlink group page .
 ///
 class VtDictionary {
-    typedef std::map<std::string, VtValue, std::less<>> _Map;
+    typedef std::map<std::string, VtValue> _Map;
     std::unique_ptr<_Map> _dictMap;
 
 public:
@@ -199,10 +211,6 @@ public:
     VT_API
     size_type count(const std::string& key) const;
 
-    /// Counts the number of elements whose key is \p key. 
-    VT_API
-    size_type count(const char* key) const;
-
     /// Erases the element whose key is \p key. 
     VT_API
     size_type erase(const std::string& key);
@@ -225,15 +233,7 @@ public:
 
     /// Finds an element whose key is \p key. 
     VT_API
-    iterator find(const char* key);
-
-    /// Finds an element whose key is \p key. 
-    VT_API
     const_iterator find(const std::string& key) const;
-
-    /// Finds an element whose key is \p key. 
-    VT_API
-    const_iterator find(const char* key) const;
 
     /// Returns an \p iterator pointing to the beginning of the \p VtDictionary. 
     VT_API
@@ -384,20 +384,6 @@ VtDictionaryIsHolding( const VtDictionary &dictionary,
     return i->second.IsHolding<T>();
 }
 
-/// \overload
-template <typename T>
-bool
-VtDictionaryIsHolding( const VtDictionary &dictionary,
-                       const char *key )
-{
-    VtDictionary::const_iterator i = dictionary.find(key);
-    if ( i == dictionary.end() ) {
-        return false;
-    }
-
-    return i->second.IsHolding<T>();
-}
-
 
 /// Return a value held in a VtDictionary by reference.
 ///
@@ -418,21 +404,6 @@ VtDictionaryGet( const VtDictionary &dictionary,
     if (ARCH_UNLIKELY(i == dictionary.end())) {
         TF_FATAL_ERROR("Attempted to get value for key '" + key +
                        "', which is not in the dictionary.");
-    }
-
-    return i->second.Get<T>();
-}
-
-/// \overload
-template <typename T>
-const T &
-VtDictionaryGet( const VtDictionary &dictionary,
-                 const char *key )
-{
-    VtDictionary::const_iterator i = dictionary.find(key);
-    if (ARCH_UNLIKELY(i == dictionary.end())) {
-        TF_FATAL_ERROR("Attempted to get value for key '%s', "
-                       "which is not in the dictionary.", key);
     }
 
     return i->second.Get<T>();
@@ -481,19 +452,7 @@ T VtDictionaryGet( const VtDictionary &dictionary,
     VtDictionary::const_iterator i = dictionary.find(key);
     if (i == dictionary.end() || !i->second.IsHolding<T>())
         return def.val;
-    return i->second.UncheckedGet<T>();
-}
-
-/// \overload
-template <class T, class U>
-T VtDictionaryGet( const VtDictionary &dictionary,
-                   const char *key,
-                   Vt_DefaultHolder<U> const &def )
-{
-    VtDictionary::const_iterator i = dictionary.find(key);
-    if (i == dictionary.end() || !i->second.IsHolding<T>())
-        return def.val;
-    return i->second.UncheckedGet<T>();
+    return i->second.Get<T>();
 }
 
 
@@ -516,7 +475,7 @@ VtDictionaryOver(const VtDictionary &strong, const VtDictionary &weak,
 /// Updates \p strong to become \p strong composed over \p weak.
 ///
 /// The updated contents of \p strong will be all key-value pairs from \p
-/// strong together with the key-value pairs from \p weak whose keys are not in
+/// stong together with the key-value pairs from \p weak whose keys are not in
 /// \p strong.
 ///
 /// If \p coerceToWeakerOpinionType is \c true then coerce a strong value to
@@ -530,7 +489,7 @@ VtDictionaryOver(VtDictionary *strong, const VtDictionary &weak,
 
 /// Updates \p weak to become \p strong composed over \p weak.
 ///
-/// The updated contents of \p weak will be all key-value pairs from \p strong
+/// The updated contents of \p weak will be all key-value pairs from \p stong
 /// together with the key-value pairs from \p weak whose keys are not in \p
 /// strong.
 ///
@@ -617,6 +576,49 @@ struct VtDictionaryHash {
     }
 };
 
+#define BOOST_PP_ITERATION_LIMITS (1, VT_DICTIONARY_MAX_ARITY)
+#define BOOST_PP_FILENAME_1 "pxr/base/vt/dictionary.h"
+#include BOOST_PP_ITERATE()
+/* comment needed for scons dependency scanner
+#include "pxr/base/vt/dictionary.h"
+*/
+
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif /* PXR_BASE_VT_DICTIONARY_H */
+#endif /* VT_DICTIONARY_H */
+
+#else // BOOST_PP_IS_ITERATING
+
+#define N BOOST_PP_ITERATION()
+
+/// In-place creation of a VtDictionary.
+///
+/// Creates a VtDictionary from a set of VtKeyValue pairs.
+///
+/// \ingroup group_vtdict_functions
+inline VtDictionary VtMakeDictionary(
+    BOOST_PP_ENUM_PARAMS(N, const VtKeyValue &keyValue))
+{
+    // Note: It would be easy enough to move the implementations to the cpp
+    // file, but then we cannot provide a per-translation unit configurable
+    // maximum arity.
+
+    // Allocate as few buckets as possible to save memory.
+    VtDictionary dictionary(0);
+
+    #define _VT_PARAMS_TO_LIST() \
+        BOOST_PP_TUPLE_TO_LIST(N, (BOOST_PP_ENUM_PARAMS(N, keyValue)))
+    #define _VT_ADD_TO_DICTIONARY(r, unused, elem) \
+        dictionary[elem.GetKey()] = elem.GetValue();
+
+    BOOST_PP_LIST_FOR_EACH( _VT_ADD_TO_DICTIONARY, ~, _VT_PARAMS_TO_LIST())
+
+    #undef _VT_PARAMS_TO_LIST
+    #undef _VT_ADD_TO_DICTIONARY
+
+    return dictionary;
+}
+
+#undef N
+
+#endif // BOOST_PP_IS_ITERATING

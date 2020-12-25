@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SPinnedCommandList.h"
 #include "Styling/SlateTypes.h"
@@ -327,7 +327,7 @@ void SPinnedCommandList::Construct( const FArguments& InArgs, const FName& InCon
 	ChildSlot
 	[
 		SAssignNew(CommandBox, SWrapBox)
-		.UseAllottedSize(true)
+		.UseAllottedWidth(true)
 		.InnerSlotPadding(FVector2D(0.0f, 0.0f))
 	];
 }

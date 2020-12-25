@@ -21,14 +21,13 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_INTERPOLATION_H
-#define PXR_USD_USD_INTERPOLATION_H
+#ifndef USD_INTERPOLATION_H
+#define USD_INTERPOLATION_H
 
 /// \file usd/interpolation.h
 
 #include "pxr/pxr.h"
 #include "pxr/usd/usd/api.h"
-#include "pxr/usd/sdf/timeCode.h"
 #include "pxr/base/vt/array.h"
 #include "pxr/base/gf/declare.h"
 
@@ -49,13 +48,11 @@ enum UsdInterpolationType
     UsdInterpolationTypeLinear ///< Linear interpolation
 };
 
-/// \anchor USD_LINEAR_INTERPOLATION_TYPES
 /// Sequence of value types that support linear interpolation.
 /// These types and VtArrays of these types are supported:
 /// \li <b>GfHalf</b>
 /// \li <b>float</b>
 /// \li <b>double</b>
-/// \li <b>SdfTimeCode</b>
 /// \li <b>GfMatrix2d</b>
 /// \li <b>GfMatrix3d</b>
 /// \li <b>GfMatrix4d</b>
@@ -76,7 +73,6 @@ enum UsdInterpolationType
     (GfHalf) (VtArray<GfHalf>)                       \
     (float) (VtArray<float>)                         \
     (double) (VtArray<double>)                       \
-    (SdfTimeCode) (VtArray<SdfTimeCode>)             \
     (GfMatrix2d) (VtArray<GfMatrix2d>)               \
     (GfMatrix3d) (VtArray<GfMatrix3d>)               \
     (GfMatrix4d) (VtArray<GfMatrix4d>)               \
@@ -123,4 +119,4 @@ BOOST_PP_SEQ_FOR_EACH(_USD_DECLARE_INTERPOLATION_TRAITS, ~,
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_USD_INTERPOLATION_H
+#endif // USD_INTERPOLATION_H

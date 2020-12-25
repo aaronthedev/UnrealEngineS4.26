@@ -49,6 +49,4 @@ public:
 	{
 		return FModuleManager::Get().IsModuleLoaded(SpatialInputName);
 	}
-
-	virtual void OnConfigureGestures(const FXRGestureConfig& InGestureConfig, bool& bSuccess) = 0;
 };

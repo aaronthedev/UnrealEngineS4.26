@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcCoreOgawa_ReadWrite_h
-#define Alembic_AbcCoreOgawa_ReadWrite_h
+#ifndef _Alembic_AbcCoreOgawa_ReadWrite_h_
+#define _Alembic_AbcCoreOgawa_ReadWrite_h_
 
 #include <Alembic/AbcCoreAbstract/All.h>
 #include <Alembic/Util/Export.h>
@@ -68,9 +68,8 @@ class ALEMBIC_EXPORT ReadArchive
 public:
     ReadArchive();
 
-    // Open the file iNumStreams times and manage them internally. If iUseMMap
-    // is true, then use memory mapped file I/O, otherwise use file streams.
-    ReadArchive( size_t iNumStreams, bool iUseMMap );
+    // Open the file iNumStreams times and manage them internally
+    ReadArchive( size_t iNumStreams );
 
     // Read from the provided streams, we do not own these, expect them
     // to remain open and all have the same data in them, and do not try to
@@ -89,7 +88,6 @@ public:
 
 private:
     size_t m_numStreams;
-    bool m_useMMap;
     std::vector< std::istream * > m_streams;
 };
 

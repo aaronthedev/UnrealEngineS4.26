@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Templates/SharedPointer.h"
 #include "UObject/NameTypes.h"
 #include "ViewModels/Stack/NiagaraStackEntry.h"
-#include "NiagaraTypes.h"
 
 class FMenuBuilder;
 class SWidget;
@@ -21,8 +20,6 @@ namespace FNiagaraStackEditorWidgetsUtilities
 
 	FName GetIconColorNameForExecutionCategory(FName ExecutionCategoryName);
 	
-	FName GetColorNameForParameterScope(ENiagaraParameterScope ParameterScope);
-
 	bool AddStackEntryAssetContextMenuActions(FMenuBuilder& MenuBuilder, UNiagaraStackEntry& StackEntry);
 
 	bool AddStackItemContextMenuActions(FMenuBuilder& MenuBuilder, UNiagaraStackItem& StackItem);

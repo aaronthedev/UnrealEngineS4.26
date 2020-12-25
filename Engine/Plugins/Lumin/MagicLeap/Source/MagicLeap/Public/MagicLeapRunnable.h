@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,13 +11,11 @@
 #include "Containers/Array.h"
 #include "Misc/Variant.h"
 #include "AppEventHandler.h"
-#include "MagicLeapTypes.h"
 #include "Lumin/CAPIShims/LuminAPI.h"
 
 struct FMagicLeapTask
 {
 	bool bSuccess;
-	FMagicLeapResult Result;
 
 	FMagicLeapTask()
 	: bSuccess(false)
@@ -37,7 +35,6 @@ public:
 	, StopTaskCounter(0)
 	, Semaphore(nullptr)
 	, bPaused(false)
-	, bShuttingDown(false)
 	{
 		AppEventHandler.SetOnAppPauseHandler([this]() 
 		{
@@ -49,20 +46,26 @@ public:
 			OnAppResume();
 		});
 
-		AppEventHandler.SetOnAppStartHandler([this]()
-		{
-			OnAppStart();
-		});
-
 		AppEventHandler.SetOnAppShutDownHandler([this]()
 		{
-			OnAppShutdown();
+			OnAppShutDown();
 		});
 	}
 
 	virtual ~FMagicLeapRunnable()
 	{
-		Stop();
+		StopTaskCounter.Increment();
+
+		if (Semaphore)
+		{
+			Semaphore->Trigger();
+			Thread->WaitForCompletion();
+			FGenericPlatformProcess::ReturnSynchEventToPool(Semaphore);
+			Semaphore = nullptr;
+		}
+
+		delete Thread;
+		Thread = nullptr;
 	}
 
 	uint32 Run() override
@@ -91,28 +94,6 @@ public:
 		return 0;
 	}
 
-	virtual void Start()
-	{
-		StopTaskCounter.Reset();
-		Semaphore = FGenericPlatformProcess::GetSynchEventFromPool(false);
-		Thread = FRunnableThread::Create(this, *Name, 0, ThreadPriority, FPlatformAffinity::GetPoolThreadMask());
-	}
-
-	void Stop() override
-	{
-		StopTaskCounter.Increment();
-
-		if (Semaphore)
-		{
-			Semaphore->Trigger();
-			Thread->WaitForCompletion();
-			FGenericPlatformProcess::ReturnSynchEventToPool(Semaphore);
-			Semaphore = nullptr;
-			delete Thread;
-			Thread = nullptr;
-		}
-	}
-
 	void OnAppPause()
 	{
 		bPaused = true;
@@ -131,27 +112,18 @@ public:
 		}
 	}
 
-	void OnAppStart()
+	void OnAppShutDown()
 	{
-		bShuttingDown = false;
+		Stop();
 	}
 
-	void OnAppShutdown()
+	void PushNewTask(TTaskType InTask)
 	{
-		bShuttingDown = true;
-	}
-
-	void PushNewTask(const TTaskType& InTask)
-	{
-		if (bShuttingDown)
-		{
-			return;
-		}
-
 		// on demand thread creation
 		if (!Thread)
 		{
-			Start();
+			Semaphore = FGenericPlatformProcess::GetSynchEventFromPool(false);
+			Thread = FRunnableThread::Create(this, *Name, 0, ThreadPriority, FPlatformAffinity::GetPoolThreadMask());
 		}
 
 		IncomingTasks.Enqueue(InTask);
@@ -166,17 +138,14 @@ public:
 
 	bool TryGetCompletedTask(TTaskType& OutCompletedTask)
 	{
+#if PLATFORM_LUMIN
 		if (CompletedTasks.Peek(OutCompletedTask))
 		{
 			CompletedTasks.Pop();
 			return true;
 		}
+#endif //PLATFORM_LUMIN
 		return false;
-	}
-
-	bool IsRunning() const
-	{
-		return StopTaskCounter.GetValue() == 0;
 	}
 
 protected:
@@ -184,7 +153,7 @@ protected:
 	{
 		while (IncomingTasks.Dequeue(CurrentTask))
 		{
-			CurrentTask.Result.bSuccess = CurrentTask.bSuccess = false;
+			CurrentTask.bSuccess = false;
 			CompletedTasks.Enqueue(CurrentTask);
 		}
 	}
@@ -193,24 +162,23 @@ protected:
 	virtual void Pause() {}
 	virtual void Resume() {}
 
+	/** Internal thread this instance is running on */
 	MagicLeap::IAppEventHandler AppEventHandler;
 	FString Name;
-	/** Internal thread this instance is running on */
 	FRunnableThread* Thread;
 	EThreadPriority ThreadPriority;
 	FThreadSafeCounter StopTaskCounter;
 	FEvent* Semaphore;
 	FThreadSafeBool bPaused;
-	FThreadSafeBool bShuttingDown;
 	TQueue<TTaskType, EQueueMode::Spsc> IncomingTasks;
-	TQueue<TTaskType, EQueueMode::Mpsc> CompletedTasks; // allow multiple (binder) threads to push completed tasks
+	TQueue<TTaskType, EQueueMode::Spsc> CompletedTasks;
 	TTaskType CurrentTask;
 
 private:
 	bool DoNextTask()
 	{
 		IncomingTasks.Dequeue(CurrentTask);
-		CurrentTask.Result.bSuccess = CurrentTask.bSuccess = ProcessCurrentTask();
+		CurrentTask.bSuccess = ProcessCurrentTask();
 
 		if (bPaused)
 		{
@@ -219,6 +187,6 @@ private:
 
 		CompletedTasks.Enqueue(CurrentTask);
 
-		return CurrentTask.Result.bSuccess;
+		return CurrentTask.bSuccess;
 	}
 };

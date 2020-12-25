@@ -1,6 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WebSocketServer.h"
+#include "WebSocketNetworkingPrivate.h"
 #include "WebSocket.h"
 
 #if USE_LIBWEBSOCKET
@@ -85,13 +86,17 @@ bool FWebSocketServer::Init(uint32 Port, FWebSocketClientConnectedCallBack CallB
 	return true;
 }
 
-void FWebSocketServer::Tick()
+bool FWebSocketServer::Tick()
 {
 #if USE_LIBWEBSOCKET
 	lws_service(Context, 0);
 	lws_callback_on_writable_all_protocol(Context, &Protocols[0]);
 #endif
+	return true;
 }
+
+FWebSocketServer::FWebSocketServer()
+{}
 
 FWebSocketServer::~FWebSocketServer()
 {
@@ -130,6 +135,7 @@ static int unreal_networking_server
 	struct lws_context *Context = lws_get_context(Wsi);
 	PerSessionDataServer* BufferInfo = (PerSessionDataServer*)User;
 	FWebSocketServer* Server = (FWebSocketServer*)lws_context_user(Context);
+
 	switch (Reason)
 	{
 		case LWS_CALLBACK_ESTABLISHED:
@@ -143,14 +149,7 @@ static int unreal_networking_server
 		case LWS_CALLBACK_RECEIVE:
 			if (BufferInfo->Socket->Context == Context) // UE-74107 -- bandaid until this file is removed in favor of using LwsWebSocketsManager.cpp & LwsWebSocket.cpp
 			{
-				if (!lws_frame_is_binary(Wsi))
-				{
-					BufferInfo->Socket->OnReceive(In, Len);
-				}
-				else
-				{
-					BufferInfo->Socket->OnRawRecieve(In, Len);
-				}
+				BufferInfo->Socket->OnRawRecieve(In, Len);
 			}
 			lws_set_timeout(Wsi, NO_PENDING_TIMEOUT, 0);
 			break;
@@ -167,14 +166,9 @@ static int unreal_networking_server
 				BufferInfo->Socket->ErrorCallBack.ExecuteIfBound();
 			}
 			break;
-		case LWS_CALLBACK_CLOSED:
-			if (BufferInfo->Socket)
-			{
-				BufferInfo->Socket->OnClose();
-			}
-			break;
 		case LWS_CALLBACK_WSI_DESTROY:
 		case LWS_CALLBACK_PROTOCOL_DESTROY:
+		case LWS_CALLBACK_CLOSED:
 		case LWS_CALLBACK_CLOSED_HTTP:
 			break;
 	}

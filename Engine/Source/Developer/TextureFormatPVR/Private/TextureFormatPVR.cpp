@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "HAL/PlatformProcess.h"
@@ -108,13 +108,12 @@ static bool SquarifyImage(FImage& Image, uint32 MinSquareSize)
 			Image.SizeX, Image.SizeY, FMath::Max(Image.SizeX, Image.SizeY), FMath::Max(Image.SizeX, Image.SizeY), POverhead);
 	}
 	
-	int64 SourceSliceSize = (int64)Image.SizeX * Image.SizeY;
-	int64 DestSliceSize = (int64)SquareSize * SquareSize;
-
 	// Allocate room to fill out into
-	TArray64<uint8> SquareRawData;
-	SquareRawData.SetNumUninitialized(DestSliceSize * Image.NumSlices * sizeof(uint32));
+	TArray<uint32> SquareRawData;
+	SquareRawData.SetNumUninitialized(SquareSize * SquareSize * Image.NumSlices);
 	
+	int32 SourceSliceSize = Image.SizeX * Image.SizeY;
+	int32 DestSliceSize = SquareSize * SquareSize;
 	for ( int32 SliceIndex=0; SliceIndex < Image.NumSlices; ++SliceIndex )
 	{
 		uint32* RectData = ((uint32*)Image.RawData.GetData()) + SliceIndex * SourceSliceSize;
@@ -123,13 +122,13 @@ static bool SquarifyImage(FImage& Image, uint32 MinSquareSize)
 		{
 			for ( int32 X = 0; X < Image.SizeX; ++X )
 			{
-				uint32 SourceColor = *(RectData + (int64)Y * Image.SizeX + X);
+				uint32 SourceColor = *(RectData + Y * Image.SizeX + X);
 			
 				for ( uint32 YDup = 0; YDup < MultY; ++YDup )
 				{
 					for ( uint32 XDup = 0; XDup < MultX; ++XDup )
 					{
-						uint32* DestColor = SquareData + (((int64)Y * MultY + YDup) * SquareSize + ((int64)X * MultX + XDup));
+						uint32* DestColor = SquareData + ((Y * MultY + YDup) * SquareSize + (X * MultX + XDup));
 						*DestColor = SourceColor;
 					}
 				}
@@ -137,8 +136,12 @@ static bool SquarifyImage(FImage& Image, uint32 MinSquareSize)
 		}
 	}
 
-	// Put the new image data into the existing Image.
-	Image.RawData = MoveTemp(SquareRawData);
+	// Put the new image data into the existing Image (copying from uint32 array to uint8 array)
+	Image.RawData.Empty(SquareSize * SquareSize * Image.NumSlices * sizeof(uint32));
+	Image.RawData.SetNumUninitialized(SquareSize * SquareSize * Image.NumSlices * sizeof(uint32));
+	uint32* FinalData = (uint32*)Image.RawData.GetData();
+	FMemory::Memcpy(Image.RawData.GetData(), SquareRawData.GetData(), SquareSize * SquareSize * Image.NumSlices * sizeof(uint32));
+
 	Image.SizeX = SquareSize;
 	Image.SizeY = SquareSize;
 
@@ -147,7 +150,7 @@ static bool SquarifyImage(FImage& Image, uint32 MinSquareSize)
 
 static void DeriveNormalZ(FImage& Image)
 {
-	int64 SliceSize = (int64)Image.SizeX * Image.SizeY;
+	int32 SliceSize = Image.SizeX * Image.SizeY;
 	for ( int32 SliceIndex=0; SliceIndex < Image.NumSlices; ++SliceIndex )
 	{
 		FColor* RectData = (FColor*)Image.RawData.GetData() + SliceIndex * SliceSize;
@@ -344,12 +347,12 @@ class FTextureFormatPVR : public ITextureFormat
 		}
 
 		bool bCompressionSucceeded = true;
-		int64 SliceSize = (int64)Image.SizeX * Image.SizeY;
+		int32 SliceSize = Image.SizeX * Image.SizeY;
 		for (int32 SliceIndex = 0; SliceIndex < Image.NumSlices && bCompressionSucceeded; ++SliceIndex)
 		{
-			TArray64<uint8> CompressedSliceData;
+			TArray<uint8> CompressedSliceData;
 			bCompressionSucceeded = CompressImageUsingPVRTexTool(
-				(&Image.AsBGRA8()[0]) + SliceIndex * SliceSize,
+				Image.AsBGRA8() + SliceIndex * SliceSize,
 				CompressedPixelFormat,
 				Image.SizeX,
 				Image.SizeY,
@@ -373,7 +376,7 @@ class FTextureFormatPVR : public ITextureFormat
 		return bCompressionSucceeded;
 	}
 
-	static bool CompressImageUsingPVRTexTool( void* SourceData, EPixelFormat PixelFormat, int32 SizeX, int32 SizeY, bool bSRGB, int32 FinalSquareSize, TArray64<uint8>& OutCompressedData, const struct FTextureBuildSettings& BuildSettings )
+	static bool CompressImageUsingPVRTexTool( void* SourceData, EPixelFormat PixelFormat, int32 SizeX, int32 SizeY, bool bSRGB, int32 FinalSquareSize, TArray<uint8>& OutCompressedData, const struct FTextureBuildSettings& BuildSettings )
 	{
 		// Figure out whether to use 2 bits or 4 bits per pixel (PVRTC2/PVRTC4)
 		bool bIsPVRTC2 = (PixelFormat == PF_PVRTC2);
@@ -387,7 +390,7 @@ class FTextureFormatPVR : public ITextureFormat
 		// min 2x2 blocks per mip
 		const uint32 DestBlocksX = FGenericPlatformMath::Max<uint32>(DestSizeX / BlockSizeX, 2);
 		const uint32 DestBlocksY = FGenericPlatformMath::Max<uint32>(DestSizeY / BlockSizeY, 2);
-		const uint64 DestNumBytes = (uint64)DestBlocksX * DestBlocksY * BlockBytes;
+		const uint32 DestNumBytes = DestBlocksX * DestBlocksY * BlockBytes;
 
 		// If using an image that's too small, compressor needs to generate mips for us with an upscaled image
 		check(SizeX == SizeY);
@@ -437,7 +440,7 @@ class FTextureFormatPVR : public ITextureFormat
 		PVRFile->Serialize(&PVRHeader, HeaderSize);
 
 		// Write out uncompressed data
-		PVRFile->Serialize(SourceData, (int64)SizeX * SizeY * sizeof(uint32));
+		PVRFile->Serialize(SourceData, SizeX * SizeY * sizeof(uint32));
 
 		// Finished writing file
 		PVRFile->Close();
@@ -513,14 +516,14 @@ class FTextureFormatPVR : public ITextureFormat
 			}
 
 			// Get Raw File Data
-			TArray64<uint8> PVRData;
+			TArray<uint8> PVRData;
 			FFileHelper::LoadFileToArray(PVRData, *OutputFilePath);
 
 			// Process It
 			FPVRHeader* Header = (FPVRHeader*)PVRData.GetData();
 
 			// Calculate the offset to get to the mip data
-			uint64 FileOffset = HeaderSize;
+			int FileOffset = HeaderSize;
 			for(int32 i = 0; i < MipLevel; ++i)
 			{
 				// Get the mip size for each image before the mip we want
@@ -528,7 +531,7 @@ class FTextureFormatPVR : public ITextureFormat
 				uint32 LocalMipSizeY = LocalMipSizeX;
 				uint32 LocalBlocksX = FGenericPlatformMath::Max<uint32>(LocalMipSizeX / BlockSizeX, 2);
 				uint32 LocalBlocksY = FGenericPlatformMath::Max<uint32>(LocalMipSizeY / BlockSizeY, 2);
-				uint64 LocalMipSize = (uint64)LocalBlocksX * LocalBlocksY * BlockBytes;
+				uint32 LocalMipSize = LocalBlocksX * LocalBlocksY * BlockBytes;
 
 				// Add that mip's size to the offset
 				FileOffset += LocalMipSize;

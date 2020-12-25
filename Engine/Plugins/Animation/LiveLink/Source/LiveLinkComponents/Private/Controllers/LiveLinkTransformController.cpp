@@ -1,16 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Controllers/LiveLinkTransformController.h"
-
-#include "Components/SceneComponent.h"
-#include "GameFramework/Actor.h"
-#include "ILiveLinkClient.h"
-#include "LiveLinkComponentController.h"
-#include "LiveLinkCustomVersion.h"
 #include "LiveLinkComponentPrivate.h"
+
+#include "ILiveLinkClient.h"
 #include "Roles/LiveLinkTransformRole.h"
 #include "Roles/LiveLinkTransformTypes.h"
-#include "UObject/EnterpriseObjectVersion.h"
+
+#include "Components/SceneComponent.h"
+#include "Features/IModularFeatures.h"
+#include "GameFramework/Actor.h"
 
 #if WITH_EDITOR
 #include "Framework/Notifications/NotificationManager.h"
@@ -18,7 +17,7 @@
 #include "Widgets/Notifications/SNotificationList.h"
 #endif
 
-#define LOCTEXT_NAMESPACE "LiveLinkTransformController"
+#define LOCTEXT_NAMESPACE "LiveLinkController"
 
 void FLiveLinkTransformControllerData::ApplyTransform(USceneComponent* SceneComponent, const FTransform& Transform) const
 {
@@ -39,6 +38,7 @@ void FLiveLinkTransformControllerData::ApplyTransform(USceneComponent* SceneComp
 		}
 	}
 }
+
 
 void FLiveLinkTransformControllerData::CheckForError(FName OwnerName, USceneComponent* SceneComponent) const
 {
@@ -66,70 +66,48 @@ void FLiveLinkTransformControllerData::CheckForError(FName OwnerName, USceneComp
 void ULiveLinkTransformController::OnEvaluateRegistered()
 {
 	AActor* OuterActor = GetOuterActor();
-	TransformData.CheckForError(OuterActor ? OuterActor->GetFName() : NAME_None, Cast<USceneComponent>(AttachedComponent));
+	TransformData.CheckForError(OuterActor ? OuterActor->GetFName() : NAME_None, Cast<USceneComponent>(ComponentToControl.GetComponent(OuterActor)));
 }
 
-void ULiveLinkTransformController::Tick(float DeltaTime, const FLiveLinkSubjectFrameData& SubjectData)
-{
-	const FLiveLinkTransformStaticData* StaticData = SubjectData.StaticData.Cast<FLiveLinkTransformStaticData>();
-	const FLiveLinkTransformFrameData* FrameData = SubjectData.FrameData.Cast<FLiveLinkTransformFrameData>();
 
-	if (StaticData && FrameData)
+void ULiveLinkTransformController::Tick(float DeltaTime, const FLiveLinkSubjectRepresentation& SubjectRepresentation)
+{
+	if (USceneComponent* SceneComponent = Cast<USceneComponent>(ComponentToControl.GetComponent(GetOuterActor())))
 	{
-		if (USceneComponent* SceneComponent = Cast<USceneComponent>(AttachedComponent))
+		ILiveLinkClient& LiveLinkClient = IModularFeatures::Get().GetModularFeature<ILiveLinkClient>(ILiveLinkClient::ModularFeatureName);
+
+		FLiveLinkSubjectFrameData SubjectData;
+		if (LiveLinkClient.EvaluateFrame_AnyThread(SubjectRepresentation.Subject, SubjectRepresentation.Role, SubjectData))
 		{
-			TransformData.ApplyTransform(SceneComponent, FrameData->Transform);
+			FLiveLinkTransformStaticData* StaticData = SubjectData.StaticData.Cast<FLiveLinkTransformStaticData>();
+			FLiveLinkTransformFrameData* FrameData = SubjectData.FrameData.Cast<FLiveLinkTransformFrameData>();
+
+			if (StaticData && FrameData)
+			{
+				TransformData.ApplyTransform(SceneComponent, FrameData->Transform);
+			}
 		}
 	}
 }
+
 
 bool ULiveLinkTransformController::IsRoleSupported(const TSubclassOf<ULiveLinkRole>& RoleToSupport)
 {
-	return RoleToSupport == ULiveLinkTransformRole::StaticClass();
+	return RoleToSupport->IsChildOf(ULiveLinkTransformRole::StaticClass());
 }
 
-TSubclassOf<UActorComponent> ULiveLinkTransformController::GetDesiredComponentClass() const
-{
-	return USceneComponent::StaticClass();
-}
-
-void ULiveLinkTransformController::SetAttachedComponent(UActorComponent* ActorComponent)
-{
-	Super::SetAttachedComponent(ActorComponent);
-
-	AActor* OuterActor = GetOuterActor();
-	TransformData.CheckForError(OuterActor ? OuterActor->GetFName() : NAME_None, Cast<USceneComponent>(AttachedComponent));
-}
-
-void ULiveLinkTransformController::PostLoad()
-{
-	Super::PostLoad();
 
 #if WITH_EDITOR
-	const int32 Version = GetLinkerCustomVersion(FEnterpriseObjectVersion::GUID);
-	if (Version < FEnterpriseObjectVersion::LiveLinkControllerSplitPerRole)
+void ULiveLinkTransformController::InitializeInEditor()
+{
+	if (AActor* Actor = GetOuterActor())
 	{
-		AActor* MyActor = GetOuterActor();
-		if (MyActor)
+		if (USceneComponent* SceneComponent = Actor->FindComponentByClass<USceneComponent>())
 		{
-			//Make sure all UObjects we use in our post load have been postloaded
-			MyActor->ConditionalPostLoad();
-
-			ULiveLinkComponentController* LiveLinkComponent = Cast<ULiveLinkComponentController>(MyActor->GetComponentByClass(ULiveLinkComponentController::StaticClass()));
-			if (LiveLinkComponent)
-			{
-				LiveLinkComponent->ConditionalPostLoad();
-
-				//if Subjects role direct controller is us, set the component to control to what we had
-				if (LiveLinkComponent->SubjectRepresentation.Role == ULiveLinkTransformRole::StaticClass())
-				{
-					LiveLinkComponent->ComponentToControl = ComponentToControl_DEPRECATED;
-				}
-			}
+			ComponentToControl = FComponentEditorUtils::MakeComponentReference(Actor, SceneComponent);
 		}
-		
 	}
-#endif //WITH_EDITOR
 }
+#endif
 
 #undef LOCTEXT_NAMESPACE

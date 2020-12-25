@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "STableTreeView.h"
 
@@ -18,17 +18,14 @@
 #include "Widgets/Views/STableViewBase.h"
 
 // Insights
-#include "Insights/Common/Stopwatch.h"
 #include "Insights/InsightsManager.h"
 #include "Insights/Table/ViewModels/Table.h"
 #include "Insights/Table/ViewModels/TableColumn.h"
 #include "Insights/Table/ViewModels/TableTreeNode.h"
 #include "Insights/Table/ViewModels/TreeNodeGrouping.h"
 #include "Insights/Table/ViewModels/TreeNodeSorting.h"
-#include "Insights/Table/ViewModels/UntypedTable.h"
 #include "Insights/Table/Widgets/STableTreeViewTooltip.h"
 #include "Insights/Table/Widgets/STableTreeViewRow.h"
-#include "Insights/TimingProfilerCommon.h"
 
 #define LOCTEXT_NAMESPACE "STableTreeView"
 
@@ -48,9 +45,10 @@ STableTreeView::STableTreeView()
 	, HoveredColumnId()
 	, HoveredNodePtr(nullptr)
 	, HighlightedNodeName()
-	, Root(MakeShared<FTableTreeNode>(RootNodeName, Table))
+	, Root(MakeShareable(new FTableTreeNode(RootNodeName, Table)))
 	, TableTreeNodes()
 	, FilteredGroupNodes()
+	, TableTreeNodesIdMap()
 	, ExpandedNodes()
 	, bExpansionSaved(false)
 	, SearchBox(nullptr)
@@ -81,15 +79,8 @@ STableTreeView::~STableTreeView()
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void STableTreeView::Construct(const FArguments& InArgs, TSharedPtr<FTable> InTablePtr)
-{
-	ConstructWidget(InTablePtr);
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
 BEGIN_SLATE_FUNCTION_BUILD_OPTIMIZATION
-void STableTreeView::ConstructWidget(TSharedPtr<FTable> InTablePtr)
+void STableTreeView::Construct(const FArguments& InArgs, TSharedPtr<FTable> InTablePtr)
 {
 	check(InTablePtr.IsValid());
 	Table = InTablePtr;
@@ -101,7 +92,7 @@ void STableTreeView::ConstructWidget(TSharedPtr<FTable> InTablePtr)
 	[
 		SNew(SVerticalBox)
 
-		+ SVerticalBox::Slot()
+		+SVerticalBox::Slot()
 		.VAlign(VAlign_Center)
 		.AutoHeight()
 		[
@@ -112,27 +103,27 @@ void STableTreeView::ConstructWidget(TSharedPtr<FTable> InTablePtr)
 				SNew(SVerticalBox)
 
 				// Search box
-				+ SVerticalBox::Slot()
+				+SVerticalBox::Slot()
 				.VAlign(VAlign_Center)
 				.Padding(2.0f)
 				.AutoHeight()
 				[
 					SAssignNew(SearchBox, SSearchBox)
-					.HintText(LOCTEXT("SearchBoxHint", "Search"))
+					.HintText(LOCTEXT("SearchBoxHint", "Search timers or groups"))
 					.OnTextChanged(this, &STableTreeView::SearchBox_OnTextChanged)
 					.IsEnabled(this, &STableTreeView::SearchBox_IsEnabled)
-					.ToolTipText(LOCTEXT("FilterSearchHint", "Type here to search the tree hierarchy by item or group name"))
+					.ToolTipText(LOCTEXT("FilterSearchHint", "Type here to search timer or group"))
 				]
 
 				// Group by
-				+ SVerticalBox::Slot()
+				+SVerticalBox::Slot()
 				.VAlign(VAlign_Center)
 				.Padding(2.0f)
 				.AutoHeight()
 				[
 					SNew(SHorizontalBox)
 
-					+ SHorizontalBox::Slot()
+					+SHorizontalBox::Slot()
 					.AutoWidth()
 					.VAlign(VAlign_Center)
 					[
@@ -141,7 +132,7 @@ void STableTreeView::ConstructWidget(TSharedPtr<FTable> InTablePtr)
 						.Margin(FMargin(0.0f, 0.0f, 4.0f, 0.0f))
 					]
 
-					+ SHorizontalBox::Slot()
+					+SHorizontalBox::Slot()
 					.FillWidth(1.0f)
 					.VAlign(VAlign_Center)
 					[
@@ -160,7 +151,7 @@ void STableTreeView::ConstructWidget(TSharedPtr<FTable> InTablePtr)
 		]
 
 		// Tree view
-		+ SVerticalBox::Slot()
+		+SVerticalBox::Slot()
 		.FillHeight(1.0f)
 		.Padding(0.0f, 6.0f, 0.0f, 0.0f)
 		[
@@ -211,14 +202,14 @@ void STableTreeView::ConstructWidget(TSharedPtr<FTable> InTablePtr)
 		]
 	];
 
-	// Create the search filters: text based, type based etc.
-	TextFilter = MakeShared<FTableTreeNodeTextFilter>(FTableTreeNodeTextFilter::FItemToStringArray::CreateSP(this, &STableTreeView::HandleItemToStringArray));
-	Filters = MakeShared<FTableTreeNodeFilterCollection>();
-	Filters->Add(TextFilter);
-
+	InitializeAndShowHeaderColumns();
 	//BindCommands();
 
-	InitializeAndShowHeaderColumns();
+	// Create the search filters: text based, type based etc.
+	TextFilter = MakeShareable(new FTableTreeNodeTextFilter(FTableTreeNodeTextFilter::FItemToStringArray::CreateSP(this, &STableTreeView::HandleItemToStringArray)));
+	Filters = MakeShareable(new FTableTreeNodeFilterCollection());
+	Filters->Add(TextFilter);
+
 	CreateGroupings();
 	CreateSortings();
 
@@ -252,13 +243,7 @@ TSharedPtr<SWidget> STableTreeView::TreeView_GetMenuContent()
 			PropertyName = HoveredColumnPtr->GetShortName();
 			PropertyValue = HoveredColumnPtr->GetValueAsTooltipText(*SelectedNode);
 		}
-		FString ItemName = SelectedNode->GetName().ToString();
-		const int32 MaxStringLen = 64;
-		if (ItemName.Len() > MaxStringLen)
-		{
-			ItemName = ItemName.Left(MaxStringLen) + TEXT("...");
-		}
-		SelectionStr = FText::FromString(ItemName);
+		SelectionStr = FText::FromName(SelectedNode->GetName());
 	}
 	else
 	{
@@ -366,9 +351,9 @@ void STableTreeView::TreeView_BuildSortByMenu(FMenuBuilder& MenuBuilder)
 	MenuBuilder.BeginSection("ColumnName", LOCTEXT("ContextMenu_Header_Misc_ColumnName", "Column Name"));
 
 	//TODO: for (Sorting : AvailableSortings)
-	for (const TSharedRef<FTableColumn>& ColumnRef : Table->GetColumns())
+	for (const TSharedPtr<FTableColumn>& ColumnPtr : Table->GetColumns())
 	{
-		const FTableColumn& Column = *ColumnRef;
+		const FTableColumn& Column = *ColumnPtr;
 
 		if (Column.IsVisible() && Column.CanBeSorted())
 		{
@@ -428,9 +413,9 @@ void STableTreeView::TreeView_BuildViewColumnMenu(FMenuBuilder& MenuBuilder)
 {
 	MenuBuilder.BeginSection("ViewColumn", LOCTEXT("ContextMenu_Header_Columns_View", "View Column"));
 
-	for (const TSharedRef<FTableColumn>& ColumnRef : Table->GetColumns())
+	for (const TSharedPtr<FTableColumn>& ColumnPtr : Table->GetColumns())
 	{
-		const FTableColumn& Column = *ColumnRef;
+		const FTableColumn& Column = *ColumnPtr;
 
 		FUIAction Action_ToggleColumn
 		(
@@ -453,27 +438,13 @@ void STableTreeView::TreeView_BuildViewColumnMenu(FMenuBuilder& MenuBuilder)
 
 void STableTreeView::InitializeAndShowHeaderColumns()
 {
-	for (const TSharedRef<FTableColumn>& ColumnRef : Table->GetColumns())
+	for (const TSharedPtr<FTableColumn>& ColumnPtr : Table->GetColumns())
 	{
-		if (ColumnRef->ShouldBeVisible())
+		if (ColumnPtr->ShouldBeVisible())
 		{
-			ShowColumn(ColumnRef->GetId());
+			ShowColumn(ColumnPtr->GetId());
 		}
 	}
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STableTreeView::RebuildColumns()
-{
-	TreeViewHeaderRow->ClearColumns();
-	InitializeAndShowHeaderColumns();
-
-	PreChangeGroupings();
-	CreateGroupings();
-	PostChangeGroupings();
-
-	CreateSortings();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -753,14 +724,7 @@ TSharedRef<ITableRow> STableTreeView::TreeView_OnGenerateRow(FTableTreeNodePtr N
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool STableTreeView::TableRow_ShouldBeEnabled(FTableTreeNodePtr NodePtr) const
-{
-	return true;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
-void STableTreeView::TableRow_SetHoveredCell(TSharedPtr<FTable> InTablePtr, TSharedPtr<FTableColumn> InColumnPtr, FTableTreeNodePtr InNodePtr)
+void STableTreeView::TableRow_SetHoveredCell(TSharedPtr<FTable> InTablePtr, TSharedPtr<FTableColumn> InColumnPtr, const FTableTreeNodePtr InNodePtr)
 {
 	HoveredColumnId = InColumnPtr ? InColumnPtr->GetId() : FName();
 
@@ -809,6 +773,13 @@ FName STableTreeView::TableRow_GetHighlightedNodeName() const
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+
+bool STableTreeView::TableRow_ShouldBeEnabled(const uint32 TimerId) const
+{
+	return true;//im:TODO: Session->GetAggregatedStat(TimerId) != nullptr;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
 // SearchBox
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -835,9 +806,9 @@ void STableTreeView::CreateGroups()
 	GroupNodesRec(TableTreeNodes, *Root, 0);
 
 	ResetAggregatedValuesRec(*Root);
-	for (const TSharedRef<FTableColumn>& ColumnRef : Table->GetColumns())
+	for (const TSharedPtr<FTableColumn> ColumnPtr : Table->GetColumns())
 	{
-		FTableColumn& Column = *ColumnRef;
+		FTableColumn& Column = *ColumnPtr;
 		if (Column.GetAggregation() == ETableColumnAggregation::Sum)
 		{
 			switch (Column.GetDataType())
@@ -880,7 +851,7 @@ void STableTreeView::GroupNodesRec(const TArray<FTableTreeNodePtr>& Nodes, FTabl
 		FTableTreeNodePtr* GroupPtrPtr = GroupMap.Find(GroupInfo.Name);
 		if (!GroupPtrPtr)
 		{
-			GroupPtr = MakeShared<FTableTreeNode>(GroupInfo.Name, Table);
+			GroupPtr = MakeShareable(new FTableTreeNode(GroupInfo.Name, Table));
 
 			GroupMap.Add(GroupInfo.Name, GroupPtr);
 			ParentGroup.AddChildAndSetGroupPtr(GroupPtr);
@@ -1013,18 +984,17 @@ void STableTreeView::UpdateDoubleSumAggregationRec(FTableColumn& Column, FTableT
 
 void STableTreeView::CreateGroupings()
 {
-	AvailableGroupings.Reset();
-	CurrentGroupings.Reset();
+	AvailableGroupings.Reset(3);
 
-	AvailableGroupings.Add(MakeShared<FTreeNodeGroupingFlat>());
-	//AvailableGroupings.Add(MakeShared<FTreeNodeGroupingByNameFirstLetter>());
-	//AvailableGroupings.Add(MakeShared<FTreeNodeGroupingByType>());
+	AvailableGroupings.Add(MakeShareable(new FTreeNodeGroupingFlat()));
+	//AvailableGroupings.Add(MakeShareable(new FTreeNodeGroupingByNameFirstLetter()));
+	//AvailableGroupings.Add(MakeShareable(new FTreeNodeGroupingByType()));
 
-	for (const TSharedRef<FTableColumn>& ColumnRef : Table->GetColumns())
+	for (const TSharedPtr<FTableColumn> ColumnPtr : Table->GetColumns())
 	{
-		if (!ColumnRef->IsHierarchy())
+		if (!ColumnPtr->IsHierarchy())
 		{
-			AvailableGroupings.Add(MakeShared<FTreeNodeGroupingByUniqueValue>(ColumnRef));
+			AvailableGroupings.Add(MakeShareable(new FTreeNodeGroupingByUniqueValue(ColumnPtr.ToSharedRef())));
 		}
 	}
 
@@ -1098,25 +1068,22 @@ void STableTreeView::PostChangeGroupings()
 
 	//////////////////////////////////////////////////
 
-	if (TreeViewHeaderRow->GetColumns().Num() > 0)
-	{
-		// Set width for the Hierarchy column.
-		SHeaderRow::FColumn& HierarchyColumn = const_cast<SHeaderRow::FColumn&>(TreeViewHeaderRow->GetColumns()[0]);
-		HierarchyColumn.SetWidth(HierarchyColumnWidth);
+	// Set with for the Hierarchy column.
+	SHeaderRow::FColumn& HierarchyColumn = const_cast<SHeaderRow::FColumn&>(TreeViewHeaderRow->GetColumns()[0]);
+	HierarchyColumn.SetWidth(HierarchyColumnWidth);
 
-		// Set name for the Hierarchy column.
-		//FTableColumn& HierarchyTableColumn = *Table->FindColumnChecked(HierarchyColumn.ColumnId);
-		//if (!GroupingStr.IsEmpty())
-		//{
-		//	const FText HierarchyColumnName = FText::Format(LOCTEXT("HierarchyShortNameFmt", "Hierarchy ({0})"), FText::FromString(GroupingStr));
-		//	HierarchyTableColumn.SetShortName(HierarchyColumnName);
-		//}
-		//else
-		//{
-		//	const FText HierarchyColumnName(LOCTEXT("HierarchyShortName", "Hierarchy"));
-		//	HierarchyTableColumn.SetShortName(HierarchyColumnName);
-		//}
-	}
+	// Set name for the Hierarchy column.
+	//FTableColumn& HierarchyTableColumn = *Table->FindColumnChecked(HierarchyColumn.ColumnId);
+	//if (!GroupingStr.IsEmpty())
+	//{
+	//	const FText HierarchyColumnName = FText::Format(LOCTEXT("HierarchyShortNameFmt", "Hierarchy ({0})"), FText::FromString(GroupingStr));
+	//	HierarchyTableColumn.SetShortName(HierarchyColumnName);
+	//}
+	//else
+	//{
+	//	const FText HierarchyColumnName(LOCTEXT("HierarchyShortName", "Hierarchy"));
+	//	HierarchyTableColumn.SetShortName(HierarchyColumnName);
+	//}
 
 	//////////////////////////////////////////////////
 
@@ -1135,7 +1102,7 @@ void STableTreeView::RebuildGroupingCrumbs()
 {
 	GroupingBreadcrumbTrail->ClearCrumbs();
 
-	for (const TSharedPtr<FTreeNodeGrouping>& Grouping : CurrentGroupings)
+	for (const TSharedPtr<FTreeNodeGrouping> Grouping : CurrentGroupings)
 	{
 		GroupingBreadcrumbTrail->PushCrumb(Grouping->GetShortName(), Grouping);
 	}
@@ -1230,12 +1197,12 @@ TSharedRef<SWidget> STableTreeView::GetGroupingCrumbMenuContent(const TSharedPtr
 	MenuBuilder.BeginSection("InsertOrAdd");
 	{
 		const FText AddGroupingText = (CrumbGroupingDepth == CurrentGroupings.Num() - 1) ? // after last one
-			LOCTEXT("GroupingMenu_Add", "Add Grouping...") :
-			LOCTEXT("GroupingMenu_Insert", "Insert Grouping...");
+			LOCTEXT("AddGrouping_Section", "Add Grouping...") :
+			LOCTEXT("InsertGrouping_Section", "Insert Grouping...");
 		MenuBuilder.AddSubMenu
 		(
 			AddGroupingText,
-			LOCTEXT("GroupingMenu_AddOrInsert_Desc", "Add or insert new grouping."),
+			LOCTEXT("GroupingMenu_Add_Desc", "Add or insert new grouping."),
 			FNewMenuDelegate::CreateSP(this, &STableTreeView::BuildGroupingSubMenu_Add, CrumbGrouping),
 			false,
 			FSlateIcon()
@@ -1249,8 +1216,8 @@ TSharedRef<SWidget> STableTreeView::GetGroupingCrumbMenuContent(const TSharedPtr
 		{
 			MenuBuilder.AddSubMenu
 			(
-				LOCTEXT("GroupingMenu_Change", "Change To..."),
-				LOCTEXT("GroupingMenu_Change_Desc", "Change selected grouping."),
+				LOCTEXT("ChangeGrouping_Section", "Change To..."),
+				LOCTEXT("ChangeGrouping_Desc", "Change selected grouping."),
 				FNewMenuDelegate::CreateSP(this, &STableTreeView::BuildGroupingSubMenu_Change, CrumbGrouping),
 				false,
 				FSlateIcon()
@@ -1509,11 +1476,11 @@ void STableTreeView::CreateSortings()
 	AvailableSorters.Reset();
 	CurrentSorter = nullptr;
 
-	for (const TSharedRef<FTableColumn>& ColumnRef : Table->GetColumns())
+	for (const TSharedPtr<FTableColumn> ColumnPtr : Table->GetColumns())
 	{
-		if (ColumnRef->CanBeSorted())
+		if (ColumnPtr->CanBeSorted())
 		{
-			TSharedPtr<Insights::ITableCellValueSorter> SorterPtr = ColumnRef->GetValueSorter();
+			TSharedPtr<Insights::ITableCellValueSorter> SorterPtr = ColumnPtr->GetValueSorter();
 			if (ensure(SorterPtr.IsValid()))
 			{
 				AvailableSorters.Add(SorterPtr);
@@ -1800,9 +1767,9 @@ void STableTreeView::ContextMenu_ShowAllColumns_Execute()
 	ColumnSortMode = GetDefaultColumnSortMode();
 	UpdateCurrentSortingByColumn();
 
-	for (const TSharedRef<FTableColumn>& ColumnRef : Table->GetColumns())
+	for (const TSharedPtr<FTableColumn>& ColumnPtr : Table->GetColumns())
 	{
-		const FTableColumn& Column = *ColumnRef;
+		const FTableColumn& Column = *ColumnPtr;
 
 		if (!Column.IsVisible())
 		{
@@ -1828,9 +1795,9 @@ void STableTreeView::ContextMenu_ResetColumns_Execute()
 	ColumnSortMode = GetDefaultColumnSortMode();
 	UpdateCurrentSortingByColumn();
 
-	for (const TSharedRef<FTableColumn>& ColumnRef : Table->GetColumns())
+	for (const TSharedPtr<FTableColumn>& ColumnPtr : Table->GetColumns())
 	{
-		const FTableColumn& Column = *ColumnRef;
+		const FTableColumn& Column = *ColumnPtr;
 
 		if (Column.ShouldBeVisible() && !Column.IsVisible())
 		{
@@ -1857,14 +1824,67 @@ void STableTreeView::Reset()
 
 void STableTreeView::RebuildTree(bool bResync)
 {
-	unimplemented();
+	bool bListHasChanged = false;
+
+	if (bResync)
+	{
+		const int32 PreviousNodeCount = TableTreeNodes.Num();
+		TableTreeNodes.Empty(PreviousNodeCount);
+		TableTreeNodesIdMap.Empty(PreviousNodeCount);
+		bListHasChanged = true;
+	}
+
+	TSharedPtr<Trace::IUntypedTable> SourceTable = Table->GetSourceTable();
+	TSharedPtr<Trace::IUntypedTableReader> TableReader = Table->GetTableReader();
+
+	if (Session.IsValid() && SourceTable.IsValid() && TableReader.IsValid())
+	{
+		int32 TotalRowCount = SourceTable->GetRowCount();
+
+		if (TotalRowCount != TableTreeNodes.Num())
+		{
+			bResync = true;
+		}
+
+		if (bResync)
+		{
+			const int32 PreviousNodeCount = TableTreeNodes.Num();
+			TableTreeNodes.Empty(PreviousNodeCount);
+			TableTreeNodesIdMap.Empty(PreviousNodeCount);
+			bListHasChanged = true;
+
+			for (int32 RowIndex = 0; RowIndex < TotalRowCount; ++RowIndex)
+			{
+				TableReader->SetRowIndex(RowIndex);
+				uint64 NodeId = static_cast<uint64>(RowIndex);
+				FName NodeName(*FString::Printf(TEXT("row %d"), RowIndex));
+				FTableTreeNodePtr NodePtr = MakeShareable(new FTableTreeNode(NodeId, NodeName, Table, RowIndex));
+				TableTreeNodes.Add(NodePtr);
+				TableTreeNodesIdMap.Add(NodeId, NodePtr);
+			}
+		}
+	}
+
+	if (bListHasChanged)
+	{
+		UpdateTree();
+
+		TreeView->RebuildList();
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-FTableTreeNodePtr STableTreeView::GetNodeByTableRowIndex(int32 RowIndex) const
+void STableTreeView::SelectNodeByNodeId(uint64 Id)
 {
-	return (RowIndex >= 0 && RowIndex < TableTreeNodes.Num()) ? TableTreeNodes[RowIndex] : nullptr;
+	FTableTreeNodePtr* NodePtrPtr = TableTreeNodesIdMap.Find(Id);
+	if (NodePtrPtr != nullptr)
+	{
+		FTableTreeNodePtr NodePtr = *NodePtrPtr;
+
+		TreeView->SetSelection(NodePtr);
+		TreeView->RequestScrollIntoView(NodePtr);
+	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1874,11 +1894,9 @@ void STableTreeView::SelectNodeByTableRowIndex(int32 RowIndex)
 	if (RowIndex >= 0 && RowIndex < TableTreeNodes.Num())
 	{
 		FTableTreeNodePtr NodePtr = TableTreeNodes[RowIndex];
-		if (ensure(NodePtr))
-		{
-			TreeView->SetSelection(NodePtr);
-			TreeView->RequestScrollIntoView(NodePtr);
-		}
+
+		TreeView->SetSelection(NodePtr);
+		TreeView->RequestScrollIntoView(NodePtr);
 	}
 }
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using UnrealBuildTool;
 
 public class DX11Audio : ModuleRules
@@ -18,6 +18,7 @@ public class DX11Audio : ModuleRules
 		{
 			DirectXSDKDir = Target.UEThirdPartySourceDirectory + "Windows/DirectX";
 		}
+		PublicSystemIncludePaths.Add(DirectXSDKDir + "/include");
 
 		string LibDir = null;
 		if (Target.Platform == UnrealTargetPlatform.Win64)
@@ -31,8 +32,6 @@ public class DX11Audio : ModuleRules
 
 		if (Target.Platform == UnrealTargetPlatform.Win32 || Target.Platform == UnrealTargetPlatform.Win64)
 		{
-			PublicSystemIncludePaths.Add(DirectXSDKDir + "/include");
-
 			PublicAdditionalLibraries.AddRange(
 			new string[] 
 			{
@@ -45,8 +44,6 @@ public class DX11Audio : ModuleRules
 		}
 		else if (Target.Platform == UnrealTargetPlatform.HoloLens)
 		{
-			PublicSystemIncludePaths.Add(DirectXSDKDir + "/include");
-
             PublicSystemLibraries.AddRange(
 			new string[]
 			{

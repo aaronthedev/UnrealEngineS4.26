@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Framework/MultiBox/SMenuEntryBlock.h"
 #include "Framework/MultiBox/ToolMenuBase.h"
@@ -28,8 +28,8 @@ FMenuEntryBlock::FMenuEntryBlock( const FName& InExtensionHook, const TSharedPtr
 }
 
 
-FMenuEntryBlock::FMenuEntryBlock( const FName& InExtensionHook, const TAttribute<FText>& InLabel, const TAttribute<FText>& InToolTip, const FNewMenuDelegate& InEntryBuilder, TSharedPtr<FExtender> InExtender, bool bInSubMenu, bool bInSubMenuOnClick, const FSlateIcon& InIcon, const FUIAction& InUIAction, const EUserInterfaceActionType InUserInterfaceActionType, bool bInCloseSelfOnly, bool bInShouldCloseWindowAfterMenuSelection, TSharedPtr< const FUICommandList > InCommandList)
-	: FMultiBlock( InUIAction, InExtensionHook, EMultiBlockType::MenuEntry, /* bInIsPartOfHeading = */ false, InCommandList )
+FMenuEntryBlock::FMenuEntryBlock( const FName& InExtensionHook, const TAttribute<FText>& InLabel, const TAttribute<FText>& InToolTip, const FNewMenuDelegate& InEntryBuilder, TSharedPtr<FExtender> InExtender, bool bInSubMenu, bool bInSubMenuOnClick, const FSlateIcon& InIcon, const FUIAction& InUIAction, const EUserInterfaceActionType InUserInterfaceActionType, bool bInCloseSelfOnly, bool bInShouldCloseWindowAfterMenuSelection)
+	: FMultiBlock( InUIAction, InExtensionHook, EMultiBlockType::MenuEntry )
 	, LabelOverride( InLabel )
 	, ToolTipOverride( InToolTip )
 	, IconOverride( InIcon )
@@ -899,7 +899,7 @@ void SMenuEntryBlock::BuildMultiBlockWidget(const ISlateStyle* StyleSet, const F
 			HighlightText.Bind(OwnerMultiBoxWidget.Pin().Get(), &SMultiBoxWidget::GetSearchText);
 			TheTextBlock->SetHighlightText(HighlightText);
 
-			OwnerMultiBoxWidget.Pin()->AddElement( this->AsWidget(), TheTextBlock.Get().GetText(), MultiBlock->GetSearchable());
+			OwnerMultiBoxWidget.Pin()->AddSearchElement( this->AsWidget(), TheTextBlock.Get().GetText() );
 		}
 		else
 		{
@@ -908,7 +908,8 @@ void SMenuEntryBlock::BuildMultiBlockWidget(const ISlateStyle* StyleSet, const F
 	}
 	else
 	{
-		OwnerMultiBoxWidget.Pin()->AddElement( this->AsWidget(), BuildParams.Label.Get(), MultiBlock->GetSearchable());
+		if (MultiBlock->GetSearchable() && !BuildParams.Label.Get().IsEmpty())
+			OwnerMultiBoxWidget.Pin()->AddSearchElement( this->AsWidget(), BuildParams.Label.Get() );
 	}
 
 	// Tool tips are optional so if the tool tip override is empty and there is no UI command just use the empty tool tip.
@@ -943,7 +944,7 @@ void SMenuEntryBlock::BuildMultiBlockWidget(const ISlateStyle* StyleSet, const F
 			ChildSlot.AttachWidget( BuildMenuEntryWidget( BuildParams ) );
 		}
 	}
-	else if( ensure( MultiBox->GetType() == EMultiBoxType::MenuBar) )
+	else if( ensure( MultiBox->GetType() == EMultiBoxType::MenuBar || MultiBox->GetType() == EMultiBoxType::ToolMenuBar ) )
 	{
 		// Menu bar items cannot be submenus
 		check( !MenuEntryBlock->bIsSubMenu );

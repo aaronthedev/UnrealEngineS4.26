@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PostProcess/PostProcessGBufferHints.h"
 #include "CanvasTypes.h"
 #include "RenderTargetTemp.h"
 #include "SceneTextureParameters.h"
-#include "UnrealEngine.h"
 
 class FVisualizeGBufferHintsPS : public FGlobalShader
 {
@@ -20,7 +19,8 @@ public:
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Input)
-		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneTextureUniformParameters, SceneTextures)
+		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureParameters, SceneTextures)
+		SHADER_PARAMETER_STRUCT_INCLUDE(FSceneTextureSamplerParameters, SceneTextureSamplers)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneColorTexture)
 		SHADER_PARAMETER_SAMPLER(SamplerState, SceneColorSampler)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, OriginalSceneColorTexture)
@@ -53,17 +53,18 @@ FScreenPassTexture AddVisualizeGBufferHintsPass(FRDGBuilder& GraphBuilder, const
 	PassParameters->RenderTargets[0] = Output.GetRenderTargetBinding();
 	PassParameters->View = View.ViewUniformBuffer;
 	PassParameters->Input = GetScreenPassTextureViewportParameters(InputViewport);
-	PassParameters->SceneTextures = Inputs.SceneTextures;
+	PassParameters->SceneTextures = *Inputs.SceneTextures;
 	PassParameters->SceneColorTexture = Inputs.SceneColor.Texture;
 	PassParameters->SceneColorSampler = PointClampSampler;
 	PassParameters->OriginalSceneColorTexture = Inputs.OriginalSceneColor.Texture;
 	PassParameters->OriginalSceneColorSampler = PointClampSampler;
+	SetupSceneTextureSamplers(&PassParameters->SceneTextureSamplers);
 
 	TShaderMapRef<FVisualizeGBufferHintsPS> PixelShader(View.ShaderMap);
 
 	RDG_EVENT_SCOPE(GraphBuilder, "VisualizeGBufferHints");
 
-	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("Visualizer"), View, OutputViewport, InputViewport, PixelShader, PassParameters);
+	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("Visualizer"), View, OutputViewport, InputViewport, *PixelShader, PassParameters);
 
 	Output.LoadAction = ERenderTargetLoadAction::ELoad;
 

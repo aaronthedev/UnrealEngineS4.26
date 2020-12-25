@@ -1,10 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimGraphNode_Root.h"
 #include "GraphEditorSettings.h"
-#include "AnimBlueprintCompiler.h"
-#include "AnimBlueprintCompilerHandler_Base.h"
-#include "IAnimBlueprintCompilationContext.h"
+
 
 /////////////////////////////////////////////////////
 // FPoseLinkMappingRecord
@@ -17,7 +15,7 @@ void FPoseLinkMappingRecord::PatchLinkIndex(uint8* DestinationPtr, int32 LinkID,
 	
 	if (ChildPropertyIndex != INDEX_NONE)
 	{
-		FArrayProperty* ArrayProperty = CastFieldChecked<FArrayProperty>(ChildProperty);
+		UArrayProperty* ArrayProperty = CastChecked<UArrayProperty>(ChildProperty);
 
 		FScriptArrayHelper ArrayHelper(ArrayProperty, DestinationPtr);
 		check(ArrayHelper.IsValidIndex(ChildPropertyIndex));
@@ -85,13 +83,6 @@ void UAnimGraphNode_Root::GetMenuActions(FBlueprintActionDatabaseRegistrar& Acti
 FString UAnimGraphNode_Root::GetDocumentationLink() const
 {
 	return TEXT("Shared/GraphNodes/AnimationStateMachine");
-}
-
-void UAnimGraphNode_Root::OnProcessDuringCompilation(IAnimBlueprintCompilationContext& InCompilationContext, IAnimBlueprintGeneratedClassCompiledData& OutCompiledData)
-{
-	UAnimGraphNode_Root* TrueNode = InCompilationContext.GetMessageLog().FindSourceObjectTypeChecked<UAnimGraphNode_Root>(this);
-
-	Node.Name = TrueNode->GetGraph()->GetFName();
 }
 
 #undef LOCTEXT_NAMESPACE

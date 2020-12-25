@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -24,37 +24,19 @@ namespace UnrealBuildTool.Rules
 				}
 			);
 
-			// Monolithic and non-editor builds compile in the enabled/disabled plugins. Non-monolithic editor builds save them in the plugin receipt to avoid invalidating the shared build environment.
-			if (Target.Type == TargetType.Editor && Target.LinkType != TargetLinkType.Monolithic)
+			List<string> EnabledPluginStrings = new List<string>();
+			foreach(string EnablePlugin in Target.EnablePlugins)
 			{
-				PublicDefinitions.Add("READ_TARGET_ENABLED_PLUGINS_FROM_RECEIPT=1");
-
-				// Include DesktopPlatform to work with the target receipt which contains the enabled/disabled plugins
-				PrivateDependencyModuleNames.AddRange(
-					new string[]
-					{
-						"DesktopPlatform"
-					}
-				);
+				EnabledPluginStrings.Add(String.Format("TEXT(\"{0}\")", EnablePlugin));
 			}
-			else
+			PrivateDefinitions.Add(String.Format("UBT_TARGET_ENABLED_PLUGINS={0}", String.Join(", ", EnabledPluginStrings)));
+
+			List<string> DisabledPluginStrings = new List<string>();
+			foreach(string DisablePlugin in Target.DisablePlugins)
 			{
-				PublicDefinitions.Add("READ_TARGET_ENABLED_PLUGINS_FROM_RECEIPT=0");
-
-				List<string> EnabledPluginStrings = new List<string>();
-				foreach(string EnablePlugin in Target.EnablePlugins)
-				{
-					EnabledPluginStrings.Add(String.Format("TEXT(\"{0}\")", EnablePlugin));
-				}
-				PrivateDefinitions.Add(String.Format("UBT_TARGET_ENABLED_PLUGINS={0}", String.Join(", ", EnabledPluginStrings)));
-
-				List<string> DisabledPluginStrings = new List<string>();
-				foreach(string DisablePlugin in Target.DisablePlugins)
-				{
-					DisabledPluginStrings.Add(String.Format("TEXT(\"{0}\")", DisablePlugin));
-				}
-				PrivateDefinitions.Add(String.Format("UBT_TARGET_DISABLED_PLUGINS={0}", String.Join(", ", DisabledPluginStrings)));
+				DisabledPluginStrings.Add(String.Format("TEXT(\"{0}\")", DisablePlugin));
 			}
+			PrivateDefinitions.Add(String.Format("UBT_TARGET_DISABLED_PLUGINS={0}", String.Join(", ", DisabledPluginStrings)));
 
 			if (Target.bIncludePluginsForTargetPlatforms)
 			{

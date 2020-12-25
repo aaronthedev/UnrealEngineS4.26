@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "FractureToolSlice.h"
 
@@ -41,12 +41,12 @@ UFractureToolSlice::UFractureToolSlice(const FObjectInitializer& ObjInit)
 
 FText UFractureToolSlice::GetDisplayText() const
 { 
-	return FText(NSLOCTEXT("Fracture", "FractureToolSlice", "Slice Fracture")); 
+	return FText(NSLOCTEXT("Fracture", "FractureToolSlice", "Slice")); 
 }
 
 FText UFractureToolSlice::GetTooltipText() const 
 { 
-	return FText(NSLOCTEXT("Fracture", "FractureToolSliceTooltip", "The Slice Voronoi fracture method enables you to define the number of X, Y, and Z slices, along with providing random angle and offset variation.  Click the Fracture Button to commit the fracture to the geometry collection.")); 
+	return FText(NSLOCTEXT("Fracture", "FractureToolSliceTooltip", "Uniformly Slice Mesh")); 
 }
 
 FSlateIcon UFractureToolSlice::GetToolIcon() const 

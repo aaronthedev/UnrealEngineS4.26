@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,7 +12,6 @@
 
 #include "ConvexElem.generated.h"
 
-
 struct FDynamicMeshVertex;
 struct FKBoxElem;
 
@@ -23,9 +22,8 @@ namespace physx
 
 namespace Chaos
 {
-	class FImplicitObject;
-
-	class FConvex;
+	template <typename T, int d>
+	class TImplicitObject;
 }
 
 /** One convex hull, used for simplified collision. */
@@ -38,9 +36,6 @@ struct FKConvexElem : public FKShapeElem
 	UPROPERTY()
 	TArray<FVector> VertexData;
 
-	UPROPERTY()
-	TArray<int32> IndexData;
-
 	/** Bounding box of this convex hull. */
 	UPROPERTY()
 	FBox ElemBox;
@@ -50,16 +45,14 @@ private:
 	UPROPERTY()
 	FTransform Transform;
 
-#if PHYSICS_INTERFACE_PHYSX
 	/** Convex mesh for this body, created from cooked data in CreatePhysicsMeshes */
 	physx::PxConvexMesh*   ConvexMesh;
 
 	/** Convex mesh for this body, flipped across X, created from cooked data in CreatePhysicsMeshes */
 	physx::PxConvexMesh*   ConvexMeshNegX;
-#endif
 
 #if WITH_CHAOS
-	TSharedPtr<Chaos::FConvex, ESPMode::ThreadSafe> ChaosConvex;
+	TUniquePtr<Chaos::TImplicitObject<float, 3>> ChaosConvex;
 #endif
 
 public:
@@ -98,7 +91,6 @@ public:
 	/** Returns the volume of this element */
 	float GetVolume(const FVector& Scale) const;
 
-#if PHYSICS_INTERFACE_PHYSX
 	/** Get the PhysX convex mesh (defined in BODY space) for this element */
 	ENGINE_API physx::PxConvexMesh* GetConvexMesh() const;
 
@@ -110,21 +102,13 @@ public:
 
 	/** Set the PhysX convex mesh to use for this element */
 	ENGINE_API void SetMirroredConvexMesh(physx::PxConvexMesh* InMesh);
-#endif
 
 #if WITH_CHAOS
-	ENGINE_API const auto& GetChaosConvexMesh() const
-	{
-		return ChaosConvex;
-	}
+	ENGINE_API const TUniquePtr<Chaos::TImplicitObject<float, 3>>& GetChaosConvexMesh() const;
 
-	ENGINE_API void SetChaosConvexMesh(TSharedPtr<Chaos::FConvex, ESPMode::ThreadSafe>&& InChaosConvex);
+	ENGINE_API void SetChaosConvexMesh(TUniquePtr<Chaos::TImplicitObject<float, 3>>&& InChaosConvex);
 
 	ENGINE_API void ResetChaosConvexMesh();
-
-	ENGINE_API void ComputeChaosConvexIndices(bool bForceCompute = false);
-
-	ENGINE_API TArray<int32> GetChaosConvexIndices() const;
 #endif
 
 	/** Get current transform applied to convex mesh vertices */

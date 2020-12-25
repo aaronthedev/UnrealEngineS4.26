@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -28,19 +28,11 @@ public:
 	 * @param	InOnShouldFilterActor	Delegate used to only allow particular actors (empty to accept all actors; works alongside InOnGetAllowedClasses)
 	 * @param	InOnActorSelected		Delegate to call when a valid actor is selected
 	 */
-	void BeginActorPickingMode(FOnGetAllowedClasses InOnGetAllowedClasses, FOnShouldFilterActor InOnShouldFilterActor, FOnActorSelected InOnActorSelected) const;
+	void BeginActorPickingMode(FOnGetAllowedClasses InOnGetAllowedClasses, FOnShouldFilterActor InOnShouldFilterActor, FOnActorSelected InOnActorSelected);
 
 	/** Exit actor picking mode */
-	void EndActorPickingMode() const;
+	void EndActorPickingMode();
 
 	/** @return Whether or not actor picking mode is currently active */
 	bool IsInActorPickingMode() const;
-	
-private:
-
-	/** Handler for when the application is deactivated. */
-	void OnApplicationDeactivated(const bool IsActive) const;
-
-private:
-	FDelegateHandle OnApplicationDeactivatedHandle;
 };

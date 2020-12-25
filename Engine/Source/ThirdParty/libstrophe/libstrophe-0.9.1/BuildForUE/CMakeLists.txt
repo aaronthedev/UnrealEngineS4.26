@@ -2,11 +2,9 @@ cmake_minimum_required(VERSION 3.3)
 project(libstrophe)
 
 # Put our build output one level up so we can easily delete the temporary files and only check-in the final libs
-if (NOT DEFINED CMAKE_ARCHIVE_OUTPUT_DIRECTORY)
-	set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/../")
-	set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/../")
-	set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/../")
-endif()
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/../")
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/../")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/../")
 
 set(SOCKET_IMPL ../src/sock.c CACHE STRING "Socket implementation")
 option(DISABLE_TLS "Disable TLS support" ON)

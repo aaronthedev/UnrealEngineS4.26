@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,8 +8,7 @@
 #include "DSP/Dsp.h"
 #include "HAL/Runnable.h"
 #include "HAL/RunnableThread.h"
-#include "Templates/Function.h"
-#include "Containers/Queue.h"
+
 #include "MixedRealityInterop.h"
 
 // Struct to hold dynamic object data for Microsoft Spatial Sound API
@@ -115,7 +114,7 @@ public:
 
 	virtual bool SupportsPlatform(const FString& PlatformName) override
 	{
-		return (PlatformName == TEXT("Windows")) || (PlatformName == TEXT("XboxOne")) || (PlatformName == TEXT("HoloLens"));
+		return (PlatformName == TEXT("Windows")) || (PlatformName == TEXT("XboxOne"));
 	}
 
 	// Microsoft spatial sound dynamic objects render objects externally from the audio renderer

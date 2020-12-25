@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "FramePro/FrameProProfiler.h"
 
@@ -122,7 +122,16 @@ class FFrameProProfilerContext : public TThreadSingleton<FFrameProProfilerContex
 	FFrameProProfilerContext()
 	: TThreadSingleton<FFrameProProfilerContext>()
 	{
-		const FString& ThreadName = FThreadManager::GetThreadName(ThreadId);
+		FString ThreadName;
+		if (IsInGameThread())
+		{
+			ThreadName = FName(NAME_GameThread).GetPlainNameString();
+		}
+		else
+		{
+			ThreadName = FThreadManager::Get().GetThreadName(ThreadId);
+		}
+
 		if (ThreadName.Len())
 		{
 			FramePro::SetThreadName(TCHAR_TO_ANSI(*ThreadName));
@@ -266,7 +275,7 @@ void FFrameProProfiler::FrameStart()
 		uint64 CurrentTime = FPlatformTime::Cycles64();
 		if (GFrameProCPUStatsUpdateRate > 0.0f)
 		{
-			bool bUpdateStats = ((FPlatformTime::ToSeconds64(CurrentTime - LastCollectionTime) >= GFrameProCPUStatsUpdateRate));
+			bool bUpdateStats = ((FPlatformTime::ToSeconds(CurrentTime - LastCollectionTime) >= GFrameProCPUStatsUpdateRate));
 			if (bUpdateStats)
 			{
 				LastCollectionTime = CurrentTime;
@@ -324,14 +333,6 @@ void FFrameProProfiler::PopEvent(const ANSICHAR* Override)
 	}
 }
 
-static int32 ScopeMinTimeMicroseconds = 25;
-static FAutoConsoleVariableRef CVarScopeMinTimeMicroseconds(
-	TEXT("framepro.ScopeMinTimeMicroseconds"),
-	ScopeMinTimeMicroseconds,
-	TEXT("Scopes with time taken below this threshold are not recorded in the FramePro capture.\n")
-	TEXT(" This value is only used when starting framepro captures with framepro.startrec.")
-);
-
 void FFrameProProfiler::StartFrameProRecordingFromCommand(const TArray< FString >& Args)
 {
 	FString FilenameRoot = FString::Printf(TEXT("ProfilePid%d"), FPlatformProcess::GetCurrentProcessId());
@@ -340,7 +341,18 @@ void FFrameProProfiler::StartFrameProRecordingFromCommand(const TArray< FString 
 		FilenameRoot = Args[0];
 	}
 
-	StartFrameProRecording(FilenameRoot, ScopeMinTimeMicroseconds);
+	StartFrameProRecording(FilenameRoot, 25);
+}
+
+void FFrameProProfiler::StartFrameProRecordingScopeOverrideFromCommand(const TArray< FString >& Args)
+{
+	int32 MinScopeTime = 25;
+	if (Args.Num() > 0 && Args[0].Len() > 0)
+	{
+		MinScopeTime = FCString::Atoi(*Args[0]);
+	}
+
+	StartFrameProRecording(FString::Printf(TEXT("ProfilePid%d"), FPlatformProcess::GetCurrentProcessId()), MinScopeTime);
 }
 
 FString FFrameProProfiler::StartFrameProRecording(const FString& FilenameRoot, int32 MinScopeTime)
@@ -358,14 +370,14 @@ FString FFrameProProfiler::StartFrameProRecording(const FString& FilenameRoot, i
 
 	UE_LOG(LogFramePro, Log, TEXT("--- Start Recording To File: %s"), *OutputFilename);
 	
-	FramePro::StartRecording(OutputFilename, FParse::Param(FCommandLine::Get(), TEXT("FrameproEnableContextSwitches")), 100 * 1024 * 1024); // 100 MB file
+	FramePro::StartRecording(OutputFilename, false, 100 * 1024 * 1024); // 100 MB file
 	FramePro::SetConditionalScopeMinTimeInMicroseconds(MinScopeTime);
 
 	// Force this on, no events to record without it
 	GFrameProEnabled = true;
 
 	// Enable named events as well
-	GCycleStatsShouldEmitNamedEvents += 1;
+	GCycleStatsShouldEmitNamedEvents = true;
 
 	// Set recording flag
 	GFrameProIsRecording = true;
@@ -379,17 +391,18 @@ static FAutoConsoleCommand StartFrameProRecordCommand(
 	FConsoleCommandWithArgsDelegate::CreateStatic(&FFrameProProfiler::StartFrameProRecordingFromCommand)
 );
 
+static FAutoConsoleCommand StartFrameProRecordScopeOverrideCommand(
+	TEXT("framepro.startrecscopeoverride"),
+	TEXT("Start FramePro recording with a minimum event scope override"),
+	FConsoleCommandWithArgsDelegate::CreateStatic(&FFrameProProfiler::StartFrameProRecordingScopeOverrideFromCommand)
+);
+
 void FFrameProProfiler::StopFrameProRecording()
 {
-	if (!GFrameProIsRecording)
-	{
-		return;
-	}
-
 	FramePro::StopRecording();
 
 	// Disable named events
-	GCycleStatsShouldEmitNamedEvents -= 1;
+	GCycleStatsShouldEmitNamedEvents = false;
 
 	// Clear recording flag
 	GFrameProIsRecording = false;

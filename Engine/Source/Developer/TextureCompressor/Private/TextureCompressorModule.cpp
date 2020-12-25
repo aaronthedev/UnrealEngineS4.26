@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TextureCompressorModule.h"
 #include "Math/RandomStream.h"
@@ -49,7 +49,7 @@ struct FImageView2D
 	{
 		SizeX = Image.SizeX;
 		SizeY = Image.SizeY;
-		SliceColors = (&Image.AsRGBA32F()[0]) + SliceIndex * SizeY * SizeX;
+		SliceColors = Image.AsRGBA32F() + SliceIndex * SizeY * SizeX;
 	}
 
 	/** Access a single texel. */
@@ -65,12 +65,6 @@ struct FImageView2D
 	}
 
 	bool IsValid() const { return SliceColors != nullptr; }
-
-	static const FImageView2D ConstructConst(const FImage& Image, int32 SliceIndex)
-	{
-		return FImageView2D(const_cast<FImage&>(Image), SliceIndex);
-	}
-
 };
 
 // 2D sample lookup with input conversion
@@ -698,192 +692,6 @@ static void GenerateTopMip(const FImage& SrcImage, FImage& DestImage, const FTex
 	}
 }
 
-static FLinearColor LookupSourceMipBilinear(const FImageView2D& SourceImageData, float X, float Y)
-{
-	X = FMath::Clamp(X, 0.f, SourceImageData.SizeX - 1.f);
-	Y = FMath::Clamp(Y, 0.f, SourceImageData.SizeY - 1.f);
-	int32 IntX0 = FMath::FloorToInt(X);
-	int32 IntY0 = FMath::FloorToInt(Y);
-	float FractX = X - IntX0;
-	float FractY = Y - IntY0;
-	int32 IntX1 = FMath::Min(IntX0+1, SourceImageData.SizeX-1);
-	int32 IntY1 = FMath::Min(IntY0+1, SourceImageData.SizeY-1);
-	
-	FLinearColor Sample00 = SourceImageData.Access(IntX0,IntY0);
-	FLinearColor Sample10 = SourceImageData.Access(IntX1,IntY0);
-	FLinearColor Sample01 = SourceImageData.Access(IntX0,IntY1);
-	FLinearColor Sample11 = SourceImageData.Access(IntX1,IntY1);
-	FLinearColor Sample0 = FMath::Lerp(Sample00, Sample10, FractX);
-	FLinearColor Sample1 = FMath::Lerp(Sample01, Sample11, FractX);
-		
-	return FMath::Lerp(Sample0, Sample1, FractY);
-}
-
-struct FTextureDownscaleSettings
-{
-	int32 BlockSize;
-	float Downscale;
-	uint8 DownscaleOptions;
-	bool bDitherMipMapAlpha;
-};
-
-static void DownscaleImage(const FImage& SrcImage, FImage& DstImage, const FTextureDownscaleSettings& Settings)
-{
-	if (Settings.Downscale <= 1.f)
-	{
-		return;
-	}
-	
-	float Downscale = FMath::Clamp(Settings.Downscale, 1.f, 8.f);
-	int32 FinalSizeX = FMath::CeilToInt(SrcImage.SizeX / Downscale);
-	int32 FinalSizeY = FMath::CeilToInt(SrcImage.SizeY / Downscale);
-
-	// compute final size respecting image block size
-	if (Settings.BlockSize > 1 
-		&& SrcImage.SizeX % Settings.BlockSize == 0 
-		&& SrcImage.SizeY % Settings.BlockSize == 0)
-	{
-		int32 NumBlocksX = SrcImage.SizeX / Settings.BlockSize;
-		int32 NumBlocksY = SrcImage.SizeY / Settings.BlockSize;
-		int32 GCD = FMath::GreatestCommonDivisor(NumBlocksX, NumBlocksY);
-		int32 RatioX = NumBlocksX/GCD;
-		int32 RatioY = NumBlocksY/GCD;
-		int32 FinalNumBlocksX = (int32)FMath::GridSnap((float)FinalSizeX/Settings.BlockSize, (float)RatioX);
-		int32 FinalNumBlocksY = FinalNumBlocksX/RatioX*RatioY;
-		FinalSizeX = FinalNumBlocksX*Settings.BlockSize;
-		FinalSizeY = FinalNumBlocksY*Settings.BlockSize;
-	}
-
-	Downscale = (float)SrcImage.SizeX / FinalSizeX;
-		
-	FImage Image0;
-	FImage Image1;
-	FImage* ImageChain[2] = {&const_cast<FImage&>(SrcImage), &Image1};
-	bool bUnfiltered = Settings.DownscaleOptions == (uint8)ETextureDownscaleOptions::Unfiltered;
-	
-	// Scaledown using 2x2 average, use user specified filtering only for last iteration
-	FImageKernel2D AvgKernel;
-	AvgKernel.BuildSeparatableGaussWithSharpen(2);
-	int32 NumIterations = 0;
-	while(Downscale > 2.0f)
-	{
-		int32 DstSizeX = ImageChain[0]->SizeX / 2;
-		int32 DstSizeY = ImageChain[0]->SizeY / 2;
-		ImageChain[1]->Init(DstSizeX, DstSizeY, ImageChain[0]->NumSlices, ImageChain[0]->Format, ImageChain[0]->GammaSpace);
-
-		FImageView2D SrcImageData(*ImageChain[0], 0);
-		FImageView2D DstImageData(*ImageChain[1], 0);
-		GenerateSharpenedMipB8G8R8A8Templ<MGTAM_Clamp>(
-			SrcImageData, 
-			DstImageData, 
-			Settings.bDitherMipMapAlpha, 
-			FVector4(0, 0, 0, 0),
-			FVector4(0, 0, 0, 0), 
-			AvgKernel, 
-			2, 
-			false,
-			bUnfiltered);
-
-		if (NumIterations == 0)
-		{
-			ImageChain[0] = &Image0;
-		}
-		Swap(ImageChain[0], ImageChain[1]);
-		
-		NumIterations++;
-		Downscale/= 2.f;
-	}
-
-	if (ImageChain[0]->SizeX == FinalSizeX &&
-		ImageChain[0]->SizeY == FinalSizeY)
-	{
-		ImageChain[0]->CopyTo(DstImage, ImageChain[0]->Format, ImageChain[0]->GammaSpace);
-		return;
-	}
-	
-	int32 KernelSize = 2;
-	float Sharpening = 0.0f;
-	if (Settings.DownscaleOptions >= (uint8)ETextureDownscaleOptions::Sharpen0 && Settings.DownscaleOptions <= (uint8)ETextureDownscaleOptions::Sharpen10)
-	{
-		// 0 .. 2.0f
-		Sharpening = ((int32)Settings.DownscaleOptions - (int32)ETextureDownscaleOptions::Sharpen0) * 0.2f;
-		KernelSize = 8;
-	}
-	
-	bool bBilinear = Settings.DownscaleOptions == (uint8)ETextureDownscaleOptions::SimpleAverage;
-	
-	FImageKernel2D KernelSharpen;
-	KernelSharpen.BuildSeparatableGaussWithSharpen(KernelSize, Sharpening);
-	const int32 KernelCenter = (int32)KernelSharpen.GetFilterTableSize() / 2 - 1;
-		
-	ImageChain[1] = &DstImage;
-	if (ImageChain[0] == ImageChain[1])
-	{
-		ImageChain[0]->CopyTo(Image0, ImageChain[0]->Format, ImageChain[0]->GammaSpace);
-		ImageChain[0] = &Image0;
-	}
-	
-	// Set up a random number stream for dithering.
-	FRandomStream RandomStream(0);
-	ImageChain[1]->Init(FinalSizeX, FinalSizeY, ImageChain[0]->NumSlices, ImageChain[0]->Format, ImageChain[0]->GammaSpace);
-	Downscale = (float)ImageChain[0]->SizeX / FinalSizeX;
-
-	FImageView2D SrcImageData(*ImageChain[0], 0);
-	FImageView2D DstImageData(*ImageChain[1], 0);
-					
-	for (int32 Y = 0; Y < FinalSizeY; ++Y)
-	{
-		float SourceY = Y * Downscale;
-		int32 IntSourceY = FMath::RoundToInt(SourceY);
-		
-		for (int32 X = 0; X < FinalSizeX; ++X)
-		{
-			float SourceX = X * Downscale;
-			int32 IntSourceX = FMath::RoundToInt(SourceX);
-
-			FLinearColor FilteredColor(0,0,0,0);
-
-			if (bUnfiltered)
-			{
-				FilteredColor = LookupSourceMip<MGTAM_Clamp>(SrcImageData, IntSourceX, IntSourceY);
-			}
-			else if(bBilinear)
-			{
-				FilteredColor = LookupSourceMipBilinear(SrcImageData, SourceX, SourceY);
-			}
-			else
-			{
-				for (uint32 KernelY = 0; KernelY < KernelSharpen.GetFilterTableSize();  ++KernelY)
-				{
-					for (uint32 KernelX = 0; KernelX < KernelSharpen.GetFilterTableSize();  ++KernelX)
-					{
-						float Weight = KernelSharpen.GetAt(KernelX, KernelY);
-						FLinearColor Sample = LookupSourceMipBilinear(SrcImageData, SourceX + KernelX - KernelCenter, SourceY + KernelY - KernelCenter);
-						FilteredColor += Weight	* Sample;
-					}
-				}
-			}
-
-			if (Settings.bDitherMipMapAlpha)
-			{
-				// Dither the alpha of any pixel which passes an alpha threshold test.
-				const int32 DitherAlphaThreshold = 5.0f / 255.0f;
-				const float MinRandomAlpha = 85.0f;
-				const float MaxRandomAlpha = 255.0f;
-
-				if (FilteredColor.A > DitherAlphaThreshold)
-				{
-					FilteredColor.A = FMath::TruncToInt(FMath::Lerp(MinRandomAlpha, MaxRandomAlpha, RandomStream.GetFraction()));
-				}
-			}
-
-			// Set the destination pixel.
-			FLinearColor& DestColor = DstImageData.Access(X, Y);
-			DestColor = FilteredColor;
-		}
-	}
-}
-
 void ITextureCompressorModule::GenerateMipChain(
 	const FTextureBuildSettings& Settings,
 	const FImage& BaseImage,
@@ -901,32 +709,12 @@ void ITextureCompressorModule::GenerateMipChain(
 	FVector4 AlphaScales(1, 1, 1, 1);
 	FVector4 AlphaCoverages(0, 0, 0, 0);
 
+	// space for one source mip and one destination mip
+	FImage IntermediateSrc(SrcWidth, SrcHeight, SrcNumSlices, ImageFormat);
+	FImage IntermediateDst(FMath::Max<uint32>( 1, SrcWidth >> 1 ), FMath::Max<uint32>( 1, SrcHeight >> 1 ), Settings.bVolume ? FMath::Max<uint32>( 1, SrcNumSlices >> 1 ) : SrcNumSlices, ImageFormat);
 
-	const FImage* IntermediateSrcPtr;
-	FImage* IntermediateDstPtr;
-
-	// This will be used as a buffer for the mip processing
-	FImage FirstTempImage;
-
-	if (BaseMip.GammaSpace != EGammaSpace::Linear)
-	{
-		// copy base mip
-		BaseMip.CopyTo(FirstTempImage, ERawImageFormat::RGBA32F, EGammaSpace::Linear);
-
-		IntermediateSrcPtr = &FirstTempImage;
-	}
-	else
-	{
-		// It looks like the BaseMip can be reused for the intermediate source of the second Mip (assuming that the format was check earlier to be RGBA32F)
-		IntermediateSrcPtr = &BaseMip;
-
-		// This temp image will be first used as an intermediate destination for the third mip in the chain
-		FirstTempImage.Init( FMath::Max<uint32>( 1, SrcWidth >> 2 ), FMath::Max<uint32>( 1, SrcHeight >> 2 ), Settings.bVolume ? FMath::Max<uint32>( 1, SrcNumSlices >> 2 ) : SrcNumSlices, ImageFormat );
-	}
-
-	// The image for the first destination
-	FImage SecondTempImage(FMath::Max<uint32>( 1, SrcWidth >> 1 ), FMath::Max<uint32>( 1, SrcHeight >> 1 ), Settings.bVolume ? FMath::Max<uint32>( 1, SrcNumSlices >> 1 ) : SrcNumSlices, ImageFormat);
-	IntermediateDstPtr = &SecondTempImage;
+	// copy base mip
+	BaseMip.CopyTo(IntermediateSrc, ERawImageFormat::RGBA32F, EGammaSpace::Linear);
 
 	// Filtering kernels.
 	FImageKernel2D KernelSimpleAverage;
@@ -946,8 +734,7 @@ void ITextureCompressorModule::GenerateMipChain(
 	// Calculate alpha coverage value to preserve along mip chain
 	if (Settings.AlphaCoverageThresholds != FVector4(0,0,0,0))
 	{
-		check(IntermediateSrcPtr);
-		const FImageView2D IntermediateSrcView = FImageView2D::ConstructConst(*IntermediateSrcPtr, 0);
+		FImageView2D IntermediateSrcView(IntermediateSrc, 0);
 		switch (AddressMode)
 		{
 		case MGTAM_Wrap:
@@ -967,17 +754,13 @@ void ITextureCompressorModule::GenerateMipChain(
 	// Generate mips
 	for (; MipChainDepth != 0 ; --MipChainDepth)
 	{
-		check(IntermediateSrcPtr && IntermediateDstPtr);
-		const FImage& IntermediateSrc = *IntermediateSrcPtr;
-		FImage& IntermediateDst = *IntermediateDstPtr;
-
 		FImage& DestImage = *new(OutMipChain) FImage(IntermediateDst.SizeX, IntermediateDst.SizeY, IntermediateDst.NumSlices, ImageFormat);
 		
 		for (int32 SliceIndex = 0; SliceIndex < IntermediateDst.NumSlices; ++SliceIndex)
 		{
 			const int32 SrcSliceIndex = Settings.bVolume ? (SliceIndex * 2) : SliceIndex;
-			const FImageView2D IntermediateSrcView = FImageView2D::ConstructConst(IntermediateSrc, SrcSliceIndex);
-			const FImageView2D IntermediateSrcView2 = Settings.bVolume ?  FImageView2D::ConstructConst(IntermediateSrc, SrcSliceIndex + 1) : FImageView2D(); // Volume texture mips take 2 slices
+			FImageView2D IntermediateSrcView(IntermediateSrc, SrcSliceIndex);
+			FImageView2D IntermediateSrcView2 = Settings.bVolume ? FImageView2D(IntermediateSrc, SrcSliceIndex + 1) : FImageView2D(); // Volume texture mips take 2 slices
 			FImageView2D DestView(DestImage, SliceIndex);
 			FImageView2D IntermediateDstView(IntermediateDst, SliceIndex);
 
@@ -1015,7 +798,7 @@ void ITextureCompressorModule::GenerateMipChain(
 
 		if ( Settings.bDownsampleWithAverage == false )
 		{
-			FMemory::Memcpy( (&IntermediateDst.AsRGBA32F()[0]), (&DestImage.AsRGBA32F()[0]),
+			FMemory::Memcpy( IntermediateDst.AsRGBA32F(), DestImage.AsRGBA32F(),
 				IntermediateDst.SizeX * IntermediateDst.SizeY * IntermediateDst.NumSlices * sizeof(FLinearColor) );
 		}
 
@@ -1023,7 +806,7 @@ void ITextureCompressorModule::GenerateMipChain(
 		{
 			for (int32 SliceIndex = 0; SliceIndex < IntermediateDst.NumSlices; ++SliceIndex)
 			{
-				const FImageView2D IntermediateSrcView = FImageView2D::ConstructConst(IntermediateSrc, SliceIndex);
+				FImageView2D IntermediateSrcView(IntermediateSrc, SliceIndex);
 				FImageView2D DestView(DestImage, SliceIndex);
 				FImageView2D IntermediateDstView(IntermediateDst, SliceIndex);
 				GenerateMipBorder( IntermediateSrcView, DestView );
@@ -1038,21 +821,17 @@ void ITextureCompressorModule::GenerateMipChain(
 		}
 
 		// last destination becomes next source
-		if (IntermediateDstPtr == &SecondTempImage)
-		{
-			IntermediateDstPtr = &FirstTempImage;
-			IntermediateSrcPtr = &SecondTempImage;
-		}
-		else
-		{
-			IntermediateDstPtr = &SecondTempImage;
-			IntermediateSrcPtr = &FirstTempImage;
-		}
+		FMemory::Memcpy(IntermediateSrc.AsRGBA32F(), IntermediateDst.AsRGBA32F(),
+			IntermediateDst.SizeX * IntermediateDst.SizeY * IntermediateDst.NumSlices * sizeof(FLinearColor));
 
-		// Update the destination size for the next iteration.
-		IntermediateDstPtr->SizeX = FMath::Max<uint32>( 1, IntermediateSrcPtr->SizeX >> 1 );
-		IntermediateDstPtr->SizeY = FMath::Max<uint32>( 1, IntermediateSrcPtr->SizeY >> 1 );
-		IntermediateDstPtr->NumSlices = Settings.bVolume ? FMath::Max<uint32>( 1, IntermediateSrcPtr->NumSlices >> 1 ) : SrcNumSlices;
+		// Sizes for the next iteration.
+		IntermediateSrc.SizeX = FMath::Max<uint32>( 1, IntermediateSrc.SizeX >> 1 );
+		IntermediateSrc.SizeY = FMath::Max<uint32>( 1, IntermediateSrc.SizeY >> 1 );
+		IntermediateSrc.NumSlices = Settings.bVolume ? FMath::Max<uint32>( 1, IntermediateSrc.NumSlices >> 1 ) : IntermediateSrc.NumSlices;
+
+		IntermediateDst.SizeX = FMath::Max<uint32>( 1, IntermediateDst.SizeX >> 1 );
+		IntermediateDst.SizeY = FMath::Max<uint32>( 1, IntermediateDst.SizeY >> 1 );
+		IntermediateDst.NumSlices = Settings.bVolume ? FMath::Max<uint32>( 1, IntermediateDst.NumSlices >> 1 ) : IntermediateDst.NumSlices;
 	}
 }
 
@@ -1075,7 +854,7 @@ struct FImageViewLongLat
 	/** Initialization constructor. */
 	explicit FImageViewLongLat(FImage& Image)
 	{
-		ImageColors = (&Image.AsRGBA32F()[0]);
+		ImageColors = Image.AsRGBA32F();
 		SizeX = Image.SizeX;
 		SizeY = Image.SizeY;
 	}
@@ -1601,7 +1380,7 @@ void ITextureCompressorModule::AdjustImageColors(FImage& Image, const FTextureBu
 		const FLinearColor ChromaKeyTarget = InBuildSettings.ChromaKeyColor;
 		const float ChromaKeyThreshold = InBuildSettings.ChromaKeyThreshold + SMALL_NUMBER;
 		const int32 NumPixels = Image.SizeX * Image.SizeY * Image.NumSlices;
-		TArrayView64<FLinearColor> ImageColors = Image.AsRGBA32F();
+		FLinearColor* ImageColors = Image.AsRGBA32F();
 
 		int32 NumJobs = FTaskGraphInterface::Get().GetNumWorkerThreads();
 		int32 NumPixelsEachJob = NumPixels / NumJobs;
@@ -1725,7 +1504,7 @@ static void ComputeBokehAlpha(FImage& Image)
 	check( Image.SizeX > 0 && Image.SizeY > 0 );
 
 	const int32 NumPixels = Image.SizeX * Image.SizeY * Image.NumSlices;
-	TArrayView64<FLinearColor> ImageColors = Image.AsRGBA32F();
+	FLinearColor* ImageColors = Image.AsRGBA32F();
 
 	// compute LinearAverage
 	FLinearColor LinearAverage;
@@ -1775,7 +1554,7 @@ static void ReplicateRedChannel( TArray<FImage>& InOutMipChain )
 	for ( uint32 MipIndex = 0; MipIndex < MipCount; ++MipIndex )
 	{
 		FImage& SrcMip = InOutMipChain[MipIndex];
-		FLinearColor* FirstColor = (&SrcMip.AsRGBA32F()[0]);
+		FLinearColor* FirstColor = SrcMip.AsRGBA32F();
 		FLinearColor* LastColor = FirstColor + (SrcMip.SizeX * SrcMip.SizeY * SrcMip.NumSlices);
 		for ( FLinearColor* Color = FirstColor; Color < LastColor; ++Color )
 		{
@@ -1793,7 +1572,7 @@ static void ReplicateAlphaChannel( TArray<FImage>& InOutMipChain )
 	for ( uint32 MipIndex = 0; MipIndex < MipCount; ++MipIndex )
 	{
 		FImage& SrcMip = InOutMipChain[MipIndex];
-		FLinearColor* FirstColor = (&SrcMip.AsRGBA32F()[0]);
+		FLinearColor* FirstColor = SrcMip.AsRGBA32F();
 		FLinearColor* LastColor = FirstColor + (SrcMip.SizeX * SrcMip.SizeY * SrcMip.NumSlices);
 		for ( FLinearColor* Color = FirstColor; Color < LastColor; ++Color )
 		{
@@ -1808,7 +1587,7 @@ static void ReplicateAlphaChannel( TArray<FImage>& InOutMipChain )
  */
 static void FlipGreenChannel( FImage& Image )
 {
-	FLinearColor* FirstColor = (&Image.AsRGBA32F()[0]);
+	FLinearColor* FirstColor = Image.AsRGBA32F();
 	FLinearColor* LastColor = FirstColor + (Image.SizeX * Image.SizeY * Image.NumSlices);
 	for ( FLinearColor* Color = FirstColor; Color < LastColor; ++Color )
 	{
@@ -1822,7 +1601,7 @@ static void FlipGreenChannel( FImage& Image )
 static bool DetectAlphaChannel(const FImage& InImage)
 {
 	// Uncompressed data is required to check for an alpha channel.
-	const FLinearColor* SrcColors = (&InImage.AsRGBA32F()[0]);
+	const FLinearColor* SrcColors = InImage.AsRGBA32F();
 	const FLinearColor* LastColor = SrcColors + (InImage.SizeX * InImage.SizeY * InImage.NumSlices);
 	while (SrcColors < LastColor)
 	{
@@ -1842,7 +1621,7 @@ static void ApplyYCoCgBlockScale(TArray<FImage>& InOutMipChain)
 	for (uint32 MipIndex = 0; MipIndex < MipCount; ++MipIndex)
 	{
 		FImage& SrcMip = InOutMipChain[MipIndex];
-		FLinearColor* FirstColor = (&SrcMip.AsRGBA32F()[0]);
+		FLinearColor* FirstColor = SrcMip.AsRGBA32F();
 
 		int32 BlockWidthX = SrcMip.SizeX / 4;
 		int32 BlockWidthY = SrcMip.SizeY / 4;
@@ -1916,8 +1695,8 @@ void ApplyCompositeTexture(FImage& RoughnessSourceMips, const FImage& NormalSour
 	check(RoughnessSourceMips.SizeX == NormalSourceMips.SizeX);
 	check(RoughnessSourceMips.SizeY == NormalSourceMips.SizeY);
 
-	FLinearColor* FirstColor = (&RoughnessSourceMips.AsRGBA32F()[0]);
-	const FLinearColor* NormalColors = (&NormalSourceMips.AsRGBA32F()[0]);
+	FLinearColor* FirstColor = RoughnessSourceMips.AsRGBA32F();
+	const FLinearColor* NormalColors = NormalSourceMips.AsRGBA32F();
 
 	FLinearColor* LastColor = FirstColor + (RoughnessSourceMips.SizeX * RoughnessSourceMips.SizeY * RoughnessSourceMips.NumSlices);
 	for ( FLinearColor* Color = FirstColor; Color < LastColor; ++Color, ++NormalColors )
@@ -2001,8 +1780,6 @@ public:
 	 */
 	void DoWork()
 	{
-		TRACE_CPUPROFILER_EVENT_SCOPE(CompressImage);
-
 		bCompressionResults = TextureFormat.CompressImageEx(
 			SourceImages,
 			NumImages,
@@ -2018,13 +1795,9 @@ public:
 		RETURN_QUICK_DECLARE_CYCLE_STAT(FAsyncCompressionWorker, STATGROUP_ThreadPoolAsyncTasks);
 	}
 
-	/**
-	 * Transfer the result of the compression to the OutCompressedImage
-	 * Can only be called once
-	 */
-	bool ConsumeCompressionResults(FCompressedImage2D& OutCompressedImage)
+	bool GetCompressionResults(FCompressedImage2D& OutCompressedImage) const
 	{
-		OutCompressedImage = MoveTemp(CompressedImage);
+		OutCompressedImage = CompressedImage;
 		return bCompressionResults;
 	}
 
@@ -2058,8 +1831,6 @@ static bool CompressMipChain(
 	uint32& OutNumMipsInTail,
 	uint32& OutExtData)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(CompressMipChain)
-
 	// now call the Ex version now that we have the proper MipChain
 	const FTextureFormatCompressorCaps CompressorCaps = TextureFormat->GetFormatCapabilitiesEx(Settings, MipChain.Num(), MipChain[0]);
 	OutNumMipsInTail = CompressorCaps.NumMipsInTail;
@@ -2125,7 +1896,7 @@ static bool CompressMipChain(
 		FAsyncCompressionTask& AsynTask = AsyncCompressionTasks[TaskIndex];
 		AsynTask.EnsureCompletion();
 		FCompressedImage2D& DestMip = OutMips[TaskIndex];
-		bCompressionSucceeded = bCompressionSucceeded && AsynTask.GetTask().ConsumeCompressionResults(DestMip);
+		bCompressionSucceeded = bCompressionSucceeded && AsynTask.GetTask().GetCompressionResults(DestMip);
 	}
 
 	for (int32 MipIndex = FirstMipTailIndex + 1; MipIndex < MipCount; ++MipIndex)
@@ -2159,7 +1930,7 @@ static bool CompressMipChain(
 static void NormalizeMip(FImage& InOutMip)
 {
 	const uint32 NumPixels = InOutMip.SizeX * InOutMip.SizeY * InOutMip.NumSlices;
-	TArrayView64<FLinearColor> ImageColors = InOutMip.AsRGBA32F();
+	FLinearColor* ImageColors = InOutMip.AsRGBA32F();
 	for(uint32 CurPixelIndex = 0; CurPixelIndex < NumPixels; ++CurPixelIndex)
 	{
 		FLinearColor& Color = ImageColors[CurPixelIndex];
@@ -2518,17 +2289,6 @@ private:
 				}				
 			}
 
-			if (BuildSettings.Downscale > 1.f)
-			{
-				FTextureDownscaleSettings DownscaleSettings;
-				DownscaleSettings.Downscale = BuildSettings.Downscale;
-				DownscaleSettings.DownscaleOptions = BuildSettings.DownscaleOptions;
-				DownscaleSettings.bDitherMipMapAlpha = BuildSettings.bDitherMipMapAlpha;
-				DownscaleSettings.BlockSize = 4;
-		
-				DownscaleImage(*Mip, *Mip, DownscaleSettings);
-			}
-
 			// Apply color adjustments
 			AdjustImageColors(*Mip, BuildSettings);
 			if (BuildSettings.bComputeBokehAlpha)
@@ -2583,14 +2343,7 @@ private:
 		if( RoughnessSourceMips[RoughnessSourceMips.Num() - MinLevel].SizeX != NormalSourceMips[NormalSourceMips.Num() - MinLevel].SizeX || 
 			RoughnessSourceMips[RoughnessSourceMips.Num() - MinLevel].SizeY != NormalSourceMips[NormalSourceMips.Num() - MinLevel].SizeY )
 		{
-			UE_LOG(LogTextureCompressor, Warning, TEXT("Couldn't apply composite texture as RoughnessSourceMips (mip %d, %d x %d) doesn't match NormalSourceMips (mip %d, %d x %d); mipchain might be mismatched/incomplete"),
-				RoughnessSourceMips.Num() - MinLevel,
-				RoughnessSourceMips[RoughnessSourceMips.Num() - MinLevel].SizeX,
-				RoughnessSourceMips[RoughnessSourceMips.Num() - MinLevel].SizeY,
-				NormalSourceMips.Num() - MinLevel,
-				NormalSourceMips[NormalSourceMips.Num() - MinLevel].SizeX,
-				NormalSourceMips[NormalSourceMips.Num() - MinLevel].SizeY
-				);
+			//incomplete mip chain or mismatched dimensions so bail
 			return false;
 		}
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 // ShaderCompileWorker.cpp : Defines the entry point for the console application.
@@ -12,9 +12,31 @@
 #include "Interfaces/IShaderFormatModule.h"
 #include "Interfaces/ITargetPlatformManagerModule.h"
 #include "RHIShaderFormatDefinitions.inl"
-#include "ShaderCompilerCommon.h"
 
 #define DEBUG_USING_CONSOLE	0
+
+// this is for the protocol, not the data, bump if FShaderCompilerInput or ProcessInputFromArchive changes (also search for the second one with the same name, todo: put into one header file)
+const int32 ShaderCompileWorkerInputVersion = 10;
+// this is for the protocol, not the data, bump if FShaderCompilerOutput or WriteToOutputArchive changes (also search for the second one with the same name, todo: put into one header file)
+const int32 ShaderCompileWorkerOutputVersion = 5;
+// this is for the protocol, not the data, bump if FShaderCompilerOutput or WriteToOutputArchive changes (also search for the second one with the same name, todo: put into one header file)
+const int32 ShaderCompileWorkerSingleJobHeader = 'S';
+// this is for the protocol, not the data, bump if FShaderCompilerOutput or WriteToOutputArchive changes (also search for the second one with the same name, todo: put into one header file)
+const int32 ShaderCompileWorkerPipelineJobHeader = 'P';
+
+enum class ESCWErrorCode
+{
+	Success,
+	GeneralCrash,
+	BadShaderFormatVersion,
+	BadInputVersion,
+	BadSingleJobHeader,
+	BadPipelineJobHeader,
+	CantDeleteInputFile,
+	CantSaveOutputFile,
+	NoTargetShaderFormatsFound,
+	CantCompileForSpecificFormat,
+};
 
 static double LastCompileTime = 0.0;
 static int32 GNumProcessedJobs = 0;
@@ -39,14 +61,14 @@ static void OnXGEJobCompleted(const TCHAR* WorkingDirectory)
 {
 	if (GXGEMode == EXGEMode::Xml)
 	{
-		// To signal compilation completion, create a zero length file in the working directory.
+	// To signal compilation completion, create a zero length file in the working directory.
 		// This is only required in Xml mode.
-		delete IFileManager::Get().CreateFileWriter(*FString::Printf(TEXT("%s/Success"), WorkingDirectory), FILEWRITE_EvenIfReadOnly);
+	delete IFileManager::Get().CreateFileWriter(*FString::Printf(TEXT("%s/Success"), WorkingDirectory), FILEWRITE_EvenIfReadOnly);
 	}
 }
 
 #if USING_CODE_ANALYSIS
-	UE_NORETURN static inline void ExitWithoutCrash(ESCWErrorCode ErrorCode, const FString& Message);
+	FUNCTION_NO_RETURN_START static inline void ExitWithoutCrash(ESCWErrorCode ErrorCode, const FString& Message) FUNCTION_NO_RETURN_END;
 #endif
 
 static inline void ExitWithoutCrash(ESCWErrorCode ErrorCode, const FString& Message)
@@ -126,15 +148,7 @@ static void ProcessCompilationJob(const FShaderCompilerInput& Input,FShaderCompi
 	}
 
 	// Compile the shader directly through the platform dll (directly from the shader dir as the working directory)
-	double TimeStart = FPlatformTime::Seconds();
 	Compiler->CompileShader(Input.ShaderFormat, Input, Output, WorkingDirectory);
-	Output.CompileTime = FPlatformTime::Seconds() - TimeStart;
-
-	if (Compiler->UsesHLSLcc(Input))
-	{
-		Output.bUsedHLSLccCompiler = true;
-	}
-
 	++GNumProcessedJobs;
 }
 
@@ -185,6 +199,8 @@ static int64 WriteOutputFileHeader(FArchive& OutputFile, int32 ErrorCode, int32 
 class FWorkLoop
 {
 public:
+	bool bIsBuildMachine = false;
+
 	// If we have been idle for 20 seconds then exit. Can be overriden from the cmd line with -TimeToLive=N where N is in seconds (and a float value)
 	float TimeToLive = 20.0f;
 
@@ -197,6 +213,8 @@ public:
 	,	OutputFilePath(FString(InWorkingDirectory) + InOutputFilename)
 	,	FormatVersionMap(InFormatVersionMap)
 	{
+		bIsBuildMachine = FParse::Param(FCommandLine::Get(), TEXT("buildmachine"));
+
 		TArray<FString> Tokens, Switches;
 		FCommandLine::Parse(FCommandLine::Get(), Tokens, Switches);
 		for (FString& Switch : Switches)
@@ -265,12 +283,6 @@ public:
 				// We only do one pass per process when using XGE.
 				break;
 			}
-
-			if (TimeToLive == 0 || AnyJobUsedHLSLccCompiler( SingleJobResults, PipelineJobResults ))
-			{
-				UE_LOG(LogShaders, Log, TEXT("TimeToLive set to 0, or used HLSLcc compiler, exiting after single job"));
-				break;
-			}
 		}
 
 		UE_LOG(LogShaders, Log, TEXT("Exiting job loop"));
@@ -328,7 +340,7 @@ private:
 			{
 				if (Pair.Value != *Found)
 				{
-					ExitWithoutCrash(ESCWErrorCode::BadShaderFormatVersion, FString::Printf(TEXT("Mismatched shader version for format %s: Found version %u but expected %u; did you forget to build ShaderCompilerWorker?"), *Pair.Key, *Found, Pair.Value));
+					ExitWithoutCrash(ESCWErrorCode::BadShaderFormatVersion, FString::Printf(TEXT("Mismatched shader version for format %s; did you forget to build ShaderCompilerWorker?"), *Pair.Key, *Found, Pair.Value));
 				}
 			}
 		}
@@ -689,32 +701,6 @@ private:
 		}
 #endif
 	}
-	
-	static bool AnyJobUsedHLSLccCompiler(TArray<FJobResult>& SingleJobResults, TArray<FPipelineJobResult>& PipelineJobResults)
-	{
-		for (int32 ResultIndex = 0; ResultIndex < SingleJobResults.Num(); ResultIndex++)
-		{
-			FJobResult& JobResult = SingleJobResults[ResultIndex];
-			if (JobResult.CompilerOutput.bUsedHLSLccCompiler)
-			{
-				return true;
-			}
-		}
-
-		for (int32 ResultIndex = 0; ResultIndex < PipelineJobResults.Num(); ResultIndex++)
-		{
-			FPipelineJobResult& PipelineJob = PipelineJobResults[ResultIndex];
-			for (int32 Index = 0; Index < PipelineJob.SingleJobs.Num(); ++Index)
-			{
-				FJobResult& JobResult = PipelineJob.SingleJobs[Index];
-				if (JobResult.CompilerOutput.bUsedHLSLccCompiler)
-				{
-					return true;
-				}
-			}
-		}
-		return false;
-	}
 };
 
 static void DirectCompile(const TArray<const class IShaderFormat*>& ShaderFormats)
@@ -872,93 +858,10 @@ static void DirectCompile(const TArray<const class IShaderFormat*>& ShaderFormat
  */
 static int32 GuardedMain(int32 argc, TCHAR* argv[], bool bDirectMode)
 {
-	FString ExtraCmdLine = TEXT("-NOPACKAGECACHE -ReduceThreadUsage -cpuprofilertrace -nocrashreports");
-
-	// When executing tasks remotely through XGE, enumerating files requires tcp/ip round-trips with
-	// the initiator, which can slow down engine initialization quite drastically.
-	// The idea here is to save the Ini and Modules manager state and reuse them on the workers
-	// to avoid all those directory enumeration during engine init.
-	FString IniBootstrapFilename;
-	FString ModulesBootstrapFilename;
-
-	if (IsUsingXGE())
-	{
-		// Tie the bootstrap filenames to the xge job id to refresh bootstraps state every time a new build starts
-		// This allows the ini/modules and shadercompilerworker binaries to change between builds.
-		FGuid XGJobID;
-		if (FGuid::Parse(FPlatformMisc::GetEnvironmentVariable(TEXT("xgJobID")), XGJobID))
-		{
-			FString XGJobIDString = XGJobID.ToString(EGuidFormats::DigitsWithHyphens);
-			IniBootstrapFilename = FString::Printf(TEXT("%s/Bootstrap-%s.inis"), argv[1], *XGJobIDString);
-			ModulesBootstrapFilename = FString::Printf(TEXT("%s/Bootstrap-%s.modules"), argv[1], *XGJobIDString);
-
-			ExtraCmdLine.Appendf(TEXT(" -IniBootstrap=\"%s\" -ModulesBootstrap=\"%s\""), *IniBootstrapFilename, *ModulesBootstrapFilename);
-
-			// Use Windows API directly because required CreateFile flags are not supported by our current OS abstraction
-#if PLATFORM_WINDOWS
-			// This is advantageous to have only a single worker do the init work instead of having all workers
-			// do a stampede of the initiator's machine all trying to enumerate directories at the same time.
-			// I've seen incoming TCP connections going through the roof (350 connections for 150 virtual CPUs)
-			// coming from workers doing all the same directory enumerations.
-			// This is not strictly required, but will improve performance when successful.
-			// Most likely a local worker will win the race and do a fast init.
-			FString MutexFilename = FString::Printf(TEXT("%s/Bootstrap-%s.mutex"), argv[1], *XGJobIDString);
-
-			// We need to implement a mutex scheme through a file for it to work with XGE's file virtualization layer.
-			// The first process to successfully create this file will have the honor of doing the complete initialization.
-			HANDLE MutexHandle =
-				CreateFileW(
-					*MutexFilename,
-					GENERIC_WRITE,
-					0,
-					nullptr,
-					CREATE_NEW,
-					FILE_ATTRIBUTE_NORMAL,
-					nullptr);
-
-			if (MutexHandle != INVALID_HANDLE_VALUE)
-			{
-				// We won the race, proceed to initialization.
-				CloseHandle(MutexHandle);
-			}
-			else
-			{
-				// Wait until the race winner writes the last bootstrap file
-				// Due to a bug in XGE, some workers might never see the new file appear, we must proceed after some timeout value.
-				for (int32 Index = 0; Index < 10 && !FPaths::FileExists(ModulesBootstrapFilename); ++Index)
-				{
-					Sleep(100);
-				}
-			}
-#endif
-		}
-	}
-
-	GEngineLoop.PreInit(argc, argv, *ExtraCmdLine);
+	GEngineLoop.PreInit(argc, argv, TEXT("-NOPACKAGECACHE -ReduceThreadUsage"));
 #if DEBUG_USING_CONSOLE
 	GLogConsole->Show( true );
 #endif
-
-	auto AtomicSave = 
-		[](const FString& Filename, TFunctionRef<void (const FString& TmpFile)> SaveFunction)
-		{
-			if (!Filename.IsEmpty() && !FPaths::FileExists(Filename))
-			{
-				// Use a tmp file for atomic publication and avoid reading incomplete state from other workers
-				FString TmpFile = FString::Printf(TEXT("%s-%s"), *Filename, *FGuid::NewGuid().ToString());
-				SaveFunction(TmpFile);
-				const bool bReplace = false;
-				const bool bDoNotRetryOrError = true;
-				const bool bEvenIfReadOnly = false;
-				const bool bAttributes = false;
-				IFileManager::Get().Move(*Filename, *TmpFile, bReplace, bEvenIfReadOnly, bAttributes, bDoNotRetryOrError);
-				// In case this process lost the race and wasn't able to move the file, discard the tmp file.
-				IFileManager::Get().Delete(*TmpFile);
-			}
-		};
-
-	AtomicSave(IniBootstrapFilename,     [](const FString& TmpFile) { GConfig->SaveCurrentStateForBootstrap(*TmpFile); });
-	AtomicSave(ModulesBootstrapFilename, [](const FString& TmpFile) { FModuleManager::Get().SaveCurrentStateForBootstrap(*TmpFile); });
 
 	// We just enumerate the shader formats here for debugging.
 	const TArray<const class IShaderFormat*>& ShaderFormats = GetShaderFormats();
@@ -1032,22 +935,14 @@ static int32 GuardedMainWrapper(int32 ArgC, TCHAR* ArgV[], const TCHAR* CrashOut
 			ReturnCode = GuardedMain(ArgC, ArgV, bDirectMode);
 			GIsGuarded = 0;
 		}
-		__except(EXCEPTION_EXECUTE_HANDLER)
+		__except( ReportCrash( GetExceptionInformation() ) )
 		{
-			FArchive& OutputFile = *IFileManager::Get().CreateFileWriter(CrashOutputFile, FILEWRITE_EvenIfReadOnly);
+			FArchive& OutputFile = *IFileManager::Get().CreateFileWriter(CrashOutputFile,FILEWRITE_NoFail);
 
 			if (GFailedErrorCode == ESCWErrorCode::Success)
 			{
-				if (GSCWErrorCode != ESCWErrorCode::NotSet)
-				{
-					// Use the value set inside the shader format
-					GFailedErrorCode = GSCWErrorCode;
-				}
-				else
-				{
-					// Something else failed before we could set the error code, so mark it as a General Crash
-					GFailedErrorCode = ESCWErrorCode::GeneralCrash;
-				}
+				// Something else failed before we could set the error code, so mark it as a General Crash
+				GFailedErrorCode = ESCWErrorCode::GeneralCrash;
 			}
 			int64 FileSizePosition = WriteOutputFileHeader(OutputFile, (int32)GFailedErrorCode, FCString::Strlen(GErrorHist), GErrorHist,
 				FCString::Strlen(GErrorExceptionDescription), GErrorExceptionDescription);

@@ -1,36 +1,19 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Units/Highlevel/Harmonics/RigUnit_ChainHarmonics.h"
 #include "Units/RigUnitContext.h"
 
 FRigUnit_ChainHarmonics_Execute()
 {
-	FRigUnit_ChainHarmonicsPerItem::StaticExecute(
-		RigVMExecuteContext, 
-		FRigElementKey(ChainRoot, ERigElementType::Bone),
-		Speed,
-		Reach,
-		Wave,
-		WaveCurve,
-		Pendulum,
-		bDrawDebug,
-		DrawWorldOffset,
-		WorkData,
-		ExecuteContext, 
-		Context);
-}
-
-FRigUnit_ChainHarmonicsPerItem_Execute()
-{
     DECLARE_SCOPE_HIERARCHICAL_COUNTER_RIGUNIT()
-	FRigHierarchyContainer* Hierarchy = ExecuteContext.Hierarchy;
+	FRigBoneHierarchy* Hierarchy = ExecuteContext.GetBones();
 	if (Hierarchy == nullptr)
 	{
 		return;
 	}
 
 	FVector& Time = WorkData.Time;
-	TArray<FCachedRigElement>& Items = WorkData.Items;
+	TArray<int32>& Bones = WorkData.Bones;
 	TArray<float>& Ratio = WorkData.Ratio;
 	TArray<FVector>& LocalTip = WorkData.LocalTip;
 	TArray<FVector>& PendulumTip = WorkData.PendulumTip;
@@ -42,73 +25,74 @@ FRigUnit_ChainHarmonicsPerItem_Execute()
 	if (Context.State == EControlRigState::Init)
 	{
 		Time = FVector::ZeroVector;
-		Items.Reset();
-		return;
-	}
+		Bones.Reset();
 
-	if(Items.Num() == 0)
-	{
-		if (!ChainRoot.IsValid())
+		int32 RootIndex = Hierarchy->GetIndex(ChainRoot);
+		if (RootIndex == INDEX_NONE)
 		{
 			return;
 		}
 
-		Items.Add(FCachedRigElement(ChainRoot, Hierarchy));
-
-		TArray<FRigElementKey> Children = Hierarchy->GetChildKeys(Items.Last(), false);
+		Bones.Add(RootIndex);
+		TArray<int32> Children;
+		Hierarchy->GetChildren(Bones.Last(), Children, false);
 		while (Children.Num() > 0)
 		{
-			Items.Add(FCachedRigElement(Children[0], Hierarchy));
-			Children = Hierarchy->GetChildKeys(Children[0], false);
+			Bones.Add(Children[0]);
+			Hierarchy->GetChildren(Children[0], Children, false);
 		}
 
-		if (Items.Num() < 2)
+		if (Bones.Num() < 2)
 		{
-			Items.Reset();
+			Bones.Reset();
 			return;
 		}
 
-		Ratio.SetNumZeroed(Items.Num());
-		LocalTip.SetNumZeroed(Items.Num());
-		PendulumTip.SetNumZeroed(Items.Num());
-		PendulumPosition.SetNumZeroed(Items.Num());
-		PendulumVelocity.SetNumZeroed(Items.Num());
-		VelocityLines.SetNumZeroed(Items.Num() * 2);
+		Ratio.SetNumZeroed(Bones.Num());
+		LocalTip.SetNumZeroed(Bones.Num());
+		PendulumTip.SetNumZeroed(Bones.Num());
+		PendulumPosition.SetNumZeroed(Bones.Num());
+		PendulumVelocity.SetNumZeroed(Bones.Num());
+		VelocityLines.SetNumZeroed(Bones.Num() * 2);
 
-		for (int32 Index = 0; Index < Items.Num(); Index++)
+		for (int32 Index = 0; Index < Bones.Num(); Index++)
 		{
-			Ratio[Index] = float(Index) / float(Items.Num() - 1);
-			LocalTip[Index] = Hierarchy->GetLocalTransform(Items[Index]).GetLocation();
-			PendulumPosition[Index] = Hierarchy->GetGlobalTransform(Items[Index]).GetLocation();
+			Ratio[Index] = float(Index) / float(Bones.Num() - 1);
+
+			int32 BoneIndex = Bones[Index];
+			LocalTip[Index] = Hierarchy->GetLocalTransform(BoneIndex).GetLocation();
+			PendulumPosition[Index] = Hierarchy->GetGlobalTransform(BoneIndex).GetLocation();
 		}
 		
-		for (int32 Index = 0; Index < Items.Num() - 1; Index++)
+		for (int32 Index = 0; Index < Bones.Num() - 1; Index++)
 		{
 			PendulumTip[Index] = LocalTip[Index + 1];
 		}
 		PendulumTip[PendulumTip.Num() - 1] = PendulumTip[PendulumTip.Num() - 2];
 
-		for (int32 Index = 0; Index < Items.Num(); Index++)
+		for (int32 Index = 0; Index < Bones.Num(); Index++)
 		{
-			PendulumPosition[Index] = Hierarchy->GetGlobalTransform(Items[Index]).TransformPosition(PendulumTip[Index]);
+			PendulumPosition[Index] = Hierarchy->GetGlobalTransform(Bones[Index]).TransformPosition(PendulumTip[Index]);
 		}
+
+		return;
 	}
 	
-	if (Items.Num() < 2)
+	if (Bones.Num() == 0)
 	{
 		return;
 	}
 
 	FTransform ParentTransform = FTransform::Identity;
-	FRigElementKey ParentKey = Hierarchy->GetParentKey(Items[0]);
-	if (ParentKey.IsValid())
+	int32 ParentIndex = (*Hierarchy)[Bones[0]].ParentIndex;
+	if (ParentIndex != INDEX_NONE)
 	{
-		ParentTransform = Hierarchy->GetGlobalTransform(ParentKey);
+		ParentTransform = Hierarchy->GetGlobalTransform(ParentIndex);
 	}
 
-	for (int32 Index = 0;Index < Items.Num(); Index++)
+	for (int32 Index = 0;Index < Bones.Num(); Index++)
 	{
-		FTransform GlobalTransform = Hierarchy->GetLocalTransform(Items[Index]) * ParentTransform;
+		FTransform GlobalTransform = Hierarchy->GetLocalTransform(Bones[Index]) * ParentTransform;
 		FQuat Rotation = GlobalTransform.GetRotation();
 
 		if (Reach.bEnabled)
@@ -198,7 +182,7 @@ FRigUnit_ChainHarmonicsPerItem_Execute()
 		}
 
 		GlobalTransform.SetRotation(Rotation);
-		Hierarchy->SetGlobalTransform(Items[Index], GlobalTransform);
+		Hierarchy->SetGlobalTransform(Bones[Index], GlobalTransform, false);
 		ParentTransform = GlobalTransform;
 	}
 
@@ -206,10 +190,10 @@ FRigUnit_ChainHarmonicsPerItem_Execute()
 
 	if (Context.DrawInterface != nullptr && bDrawDebug)
 	{
-		HierarchyLine.SetNum(Items.Num());
-		for (int32 Index = 0; Index < Items.Num(); Index++)
+		HierarchyLine.SetNum(Bones.Num());
+		for (int32 Index = 0; Index < Bones.Num(); Index++)
 		{
-			HierarchyLine[Index] = Hierarchy->GetGlobalTransform(Items[Index]).GetLocation();
+			HierarchyLine[Index] = Hierarchy->GetGlobalTransform(Bones[Index]).GetLocation();
 		}
 
 		Context.DrawInterface->DrawLineStrip(DrawWorldOffset, HierarchyLine, FLinearColor::Yellow, 0.f);

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SCurveEditorFilterPanel.h"
 #include "Widgets/Input/SButton.h"
@@ -33,7 +33,7 @@ public:
 	}
 };
 
-void SCurveEditorFilterPanel::Construct(const FArguments& InArgs, TSharedRef<FCurveEditor> InCurveEditor, UClass* DefaultFilterClass)
+void SCurveEditorFilterPanel::Construct(const FArguments& InArgs, TSharedRef<FCurveEditor> InCurveEditor)
 {
 	WeakCurveEditor = InCurveEditor;
 
@@ -43,7 +43,6 @@ void SCurveEditorFilterPanel::Construct(const FArguments& InArgs, TSharedRef<FCu
 	// Options.Mode = EClassViewerMode::ClassBrowsing;
 	Options.bAllowViewOptions = false;
 	Options.NameTypeToDisplay = EClassViewerNameTypeToDisplay::DisplayName;
-	Options.InitiallySelectedClass = DefaultFilterClass;
 
 	TSharedPtr<FCurveFilterClassFilter> ClassFilter = MakeShared<FCurveFilterClassFilter>();
 	Options.ClassFilter = ClassFilter;
@@ -166,7 +165,7 @@ bool SCurveEditorFilterPanel::CanApplyFilter() const
 }
 
 
-void SCurveEditorFilterPanel::OpenDialog(TSharedPtr<SWindow> RootWindow, TSharedRef<FCurveEditor> InHostCurveEditor, TSubclassOf<UCurveEditorFilterBase> DefaultFilterClass)
+void SCurveEditorFilterPanel::OpenDialog(const TSharedRef<FTabManager>& TabManager, TSharedRef<FCurveEditor> InHostCurveEditor, TSubclassOf<UCurveEditorFilterBase> DefaultFilterClass)
 {
 	TSharedPtr<SWindow> ExistingWindow = ExistingFilterWindow.Pin();
 	if (ExistingWindow.IsValid())
@@ -182,6 +181,8 @@ void SCurveEditorFilterPanel::OpenDialog(TSharedPtr<SWindow> RootWindow, TShared
 			.SupportsMinimize(false)
 			.ClientSize(FVector2D(480, 360));
 
+		TSharedPtr<SDockTab> OwnerTab = TabManager->GetOwnerTab();
+		TSharedPtr<SWindow> RootWindow = OwnerTab.IsValid() ? OwnerTab->GetParentWindow() : TSharedPtr<SWindow>();
 		if (RootWindow.IsValid())
 		{
 			FSlateApplication::Get().AddWindowAsNativeChild(ExistingWindow.ToSharedRef(), RootWindow.ToSharedRef());
@@ -194,9 +195,10 @@ void SCurveEditorFilterPanel::OpenDialog(TSharedPtr<SWindow> RootWindow, TShared
 
 	TSharedPtr<SCurveEditorFilterPanel> FilterPanel;
 	ExistingWindow->SetContent(
-		SAssignNew(FilterPanel, SCurveEditorFilterPanel, InHostCurveEditor, DefaultFilterClass)
+		SAssignNew(FilterPanel, SCurveEditorFilterPanel, InHostCurveEditor)
 	);
 
+	FilterPanel->SetFilterClass(DefaultFilterClass);
 	ExistingFilterWindow = ExistingWindow;
 }
 

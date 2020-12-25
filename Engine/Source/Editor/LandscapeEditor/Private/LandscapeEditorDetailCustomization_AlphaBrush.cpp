@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LandscapeEditorDetailCustomization_AlphaBrush.h"
 #include "UnrealClient.h"
@@ -22,7 +22,6 @@
 #include "IAssetTypeActions.h"
 #include "AssetToolsModule.h"
 #include "CanvasTypes.h"
-#include "Editor.h"
 
 #define LOCTEXT_NAMESPACE "LandscapeEditor.Brushes.Alpha"
 

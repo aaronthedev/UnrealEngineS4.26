@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineTurnBasedInterfaceIOS.h"
 #include "TurnBasedEventListener.h"
 #include "Interfaces/OnlineIdentityInterface.h"
 #include "OnlineSubsystem.h"
-#include "OnlineSubsystemIOS.h"
 #include "OnlineAsyncTaskManager.h"
 #include "Net/RepLayout.h"
 #include "Interfaces/TurnBasedMatchInterface.h"
@@ -115,9 +114,17 @@ int32 FTurnBasedMatchIOS::GetLocalPlayerIndex() const
 	for (GKTurnBasedParticipant* participant in participantArray)
 	{
         NSString* PlayerIDString = nil;
+#ifdef __IPHONE_8_0
         if ([GKTurnBasedParticipant respondsToSelector:@selector(player)] == YES)
         {
-			PlayerIDString = FOnlineSubsystemIOS::GetPlayerId(participant.player);
+            PlayerIDString = participant.player.playerID;
+        }
+        else
+#endif
+        {
+#if __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_8_0
+            PlayerIDString = participant.playerID;
+#endif
         }
 		if ([playerID isEqualToString : PlayerIDString])
 		{
@@ -157,9 +164,17 @@ int32 FTurnBasedMatchIOS::GetPlayerIndexForPlayer(NSString* PlayerID) const
 	for (GKTurnBasedParticipant* participant in Match.participants)
 	{
         NSString* PlayerIDString = nil;
+#ifdef __IPHONE_8_0
         if ([GKTurnBasedParticipant respondsToSelector:@selector(player)] == YES)
         {
-			PlayerIDString = FOnlineSubsystemIOS::GetPlayerId(participant.player);
+            PlayerIDString = participant.player.playerID;
+        }
+        else
+#endif
+        {
+#if __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_8_0
+            PlayerIDString = participant.playerID;
+#endif
         }
 		if ([PlayerIDString isEqualToString : PlayerID])
 		{
@@ -588,9 +603,17 @@ NSArray* FOnlineTurnBasedIOS::GetPlayerIdentifierArrayForMatch(GKTurnBasedMatch*
 	for (GKTurnBasedParticipant* participant in match.participants)
 	{
         NSString* PlayerIDString = nil;
+#ifdef __IPHONE_8_0
         if ([GKTurnBasedParticipant respondsToSelector:@selector(player)] == YES)
         {
-			PlayerIDString = FOnlineSubsystemIOS::GetPlayerId(participant.player);
+            PlayerIDString = participant.player.playerID;
+        }
+        else
+#endif
+        {
+#if __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_8_0
+            PlayerIDString = participant.playerID;
+#endif
         }
 		if (!PlayerIDString)
 		{

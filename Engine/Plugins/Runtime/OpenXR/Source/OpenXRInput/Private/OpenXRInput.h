@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "GenericPlatform/IInputInterface.h"
@@ -31,25 +31,20 @@ public:
 	struct FOpenXRController
 	{
 		XrActionSet		ActionSet;
-		XrAction		GripAction;
-		XrAction		AimAction;
+		XrAction		Action;
 		XrAction		VibrationAction;
-		int32			GripDeviceId;
-		int32			AimDeviceId;
+		int32			DeviceId;
 
-		FOpenXRController(XrActionSet InActionSet, const char* InName);
-
-		void AddActionDevices(FOpenXRHMD* HMD);
+		FOpenXRController(FOpenXRHMD* HMD, XrActionSet InActionSet, const char* InName);
 	};
 
 	struct FInteractionProfile
 	{
 	public:
-		bool HasHaptics;
 		XrPath Path;
 		TArray<XrActionSuggestedBinding> Bindings;
 
-		FInteractionProfile(XrPath InProfile, bool InHasHaptics);
+		FInteractionProfile(XrPath InProfile);
 	};
 
 	class FOpenXRInput : public IInputDevice, public FXRMotionControllerBase, public IHapticDevice, public TSharedFromThis<FOpenXRInput>
@@ -68,12 +63,8 @@ public:
 
 		// IMotionController overrides
 		virtual FName GetMotionControllerDeviceTypeName() const override;
-		virtual bool GetControllerOrientationAndPosition(const int32 ControllerIndex, const FName MotionSource, FRotator& OutOrientation, FVector& OutPosition, float WorldToMetersScale) const override;
-		virtual bool GetControllerOrientationAndPositionForTime(const int32 ControllerIndex, const FName MotionSource, FTimespan Time, bool& OutTimeWasUsed, FRotator& OutOrientation, FVector& OutPosition, bool& OutbProvidedLinearVelocity, FVector& OutLinearVelocity, bool& OutbProvidedAngularVelocity, FVector& OutAngularVelocityRadPerSec, float WorldToMetersScale) const override;
-		virtual ETrackingStatus GetControllerTrackingStatus(const int32 ControllerIndex, const FName MotionSource) const override;
-		virtual bool GetControllerOrientationAndPosition(const int32 ControllerIndex, const EControllerHand DeviceHand, FRotator& OutOrientation, FVector& OutPosition, float WorldToMetersScale) const override { check(false); return false; }
-		virtual ETrackingStatus GetControllerTrackingStatus(const int32 ControllerIndex, const EControllerHand DeviceHand) const override { check(false); return ETrackingStatus::NotTracked; }
-		virtual void EnumerateSources(TArray<FMotionControllerSource>& SourcesOut) const override;
+		virtual bool GetControllerOrientationAndPosition(const int32 ControllerIndex, const EControllerHand DeviceHand, FRotator& OutOrientation, FVector& OutPosition, float WorldToMetersScale) const override;
+		virtual ETrackingStatus GetControllerTrackingStatus(const int32 ControllerIndex, const EControllerHand DeviceHand) const override;
 
 		// IHapticDevice overrides
 		IHapticDevice* GetHapticDevice() override { return (IHapticDevice*)this; }
@@ -91,12 +82,8 @@ public:
 		TArray<XrPath> SubactionPaths;
 		TArray<FOpenXRAction> Actions;
 		TMap<EControllerHand, FOpenXRController> Controllers;
-		TMap<FName, EControllerHand> MotionSourceToControllerHandMap;
-		XrAction GetActionForMotionSource(FName MotionSource) const;
-		int32 GetDeviceIDForMotionSource(FName MotionSource) const;
-		bool IsOpenXRInputSupportedMotionSource(const FName MotionSource) const;
-		bool bActionsBound;
 
+		bool bActionsBound;
 		void BuildActions();
 		void DestroyActions();
 
@@ -110,11 +97,10 @@ public:
 	FOpenXRInputPlugin();
 	virtual ~FOpenXRInputPlugin();
 
+	FOpenXRHMD* GetOpenXRHMD() const;
+
 	virtual void StartupModule() override;
 	virtual TSharedPtr< class IInputDevice > CreateInputDevice(const TSharedRef< FGenericApplicationMessageHandler >& InMessageHandler) override;
-
-private:
-	FOpenXRHMD* GetOpenXRHMD() const;
 
 private:
 	TSharedPtr<FOpenXRInput> InputDevice;

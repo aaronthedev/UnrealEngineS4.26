@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System.IO;
 using System.Collections.Generic;
@@ -80,6 +80,8 @@ namespace UnrealBuildTool.Rules
 
         public PixelStreaming(ReadOnlyTargetRules Target) : base(Target)
         {
+			PrivateIncludePaths.Add(Path.Combine(ModuleDirectory, "../ThirdParty"));
+
             // use private PCH to include lots of WebRTC headers
             PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
             PrivatePCHHeaderFile = "Private/PCH.h";
@@ -110,9 +112,7 @@ namespace UnrealBuildTool.Rules
 				"WebSockets",
 				"Sockets",
                 "MediaUtils",
-				"AVEncoder",
-				"DeveloperSettings"
-			});
+            });
 
             DynamicallyLoadedModuleNames.AddRange(new string[]
            {
@@ -139,7 +139,6 @@ namespace UnrealBuildTool.Rules
             });
             // required by D3D11RHI
             AddEngineThirdPartyPrivateStaticDependencies(Target, "IntelMetricsDiscovery");
-			AddEngineThirdPartyPrivateStaticDependencies(Target, "IntelExtensionsFramework");
             AddEngineThirdPartyPrivateStaticDependencies(Target, "NVAftermath");
 
             {   // WebRTC stuff
@@ -172,7 +171,6 @@ namespace UnrealBuildTool.Rules
             AddSignallingServer();
     	    AddMatchmakingServer();
         	AddWebRTCServers();
-
         }
     }
 }

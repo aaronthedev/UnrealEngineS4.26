@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -49,21 +49,17 @@ namespace UnrealBuildTool
 
 			// Create the rules assembly
 			RulesAssembly Assembly;
-			if (ProjectFile != null)
-			{
-				Assembly = RulesCompiler.CreateProjectRulesAssembly(ProjectFile, BuildConfiguration.bUsePrecompiled, BuildConfiguration.bSkipRulesCompile);
-			}
-			else if(DirectoryReference.Exists(UnrealBuildTool.EnterpriseDirectory))
+			if(ProjectFile == null)
 			{
 				Assembly = RulesCompiler.CreateEnterpriseRulesAssembly(BuildConfiguration.bUsePrecompiled, BuildConfiguration.bSkipRulesCompile);
 			}
 			else
 			{
-				Assembly = RulesCompiler.CreateEngineRulesAssembly(BuildConfiguration.bUsePrecompiled, BuildConfiguration.bSkipRulesCompile);
+				Assembly = RulesCompiler.CreateProjectRulesAssembly(ProjectFile, BuildConfiguration.bUsePrecompiled, BuildConfiguration.bSkipRulesCompile);
 			}
 
 			// Write information about these targets
-			WriteTargetInfo(ProjectFile, Assembly, OutputFile, Arguments);
+			WriteTargetInfo(ProjectFile, Assembly, OutputFile);
 			Log.TraceInformation("Written {0}", OutputFile);
 			return 0;
 		}
@@ -91,8 +87,7 @@ namespace UnrealBuildTool
 		/// <param name="ProjectFile">The project file for the targets being built</param>
 		/// <param name="Assembly">The rules assembly for this target</param>
 		/// <param name="OutputFile">Output file to write to</param>
-		/// <param name="Arguments"></param>
-		public static void WriteTargetInfo(FileReference ProjectFile, RulesAssembly Assembly, FileReference OutputFile, CommandLineArguments Arguments)
+		public static void WriteTargetInfo(FileReference ProjectFile, RulesAssembly Assembly, FileReference OutputFile)
 		{
 			// Construct all the targets in this assembly
 			List<string> TargetNames = new List<string>();
@@ -106,19 +101,12 @@ namespace UnrealBuildTool
 				Writer.WriteArrayStart("Targets");
 				foreach (string TargetName in TargetNames)
 				{
-					// skip target rules that are platform extension or platform group specializations
-					string[] TargetPathSplit = TargetName.Split(new char[]{'_'}, StringSplitOptions.RemoveEmptyEntries );
-					if (TargetPathSplit.Length > 1 && (UnrealTargetPlatform.IsValidName(TargetPathSplit.Last()) || UnrealPlatformGroup.IsValidName(TargetPathSplit.Last()) ) )
-					{
-						continue;
-					}
-
 					// Construct the rules object
 					TargetRules TargetRules;
 					try
 					{
 						string Architecture = UEBuildPlatform.GetBuildPlatform(BuildHostPlatform.Current.Platform).GetDefaultArchitecture(ProjectFile);
-						TargetRules = Assembly.CreateTargetRules(TargetName, BuildHostPlatform.Current.Platform, UnrealTargetConfiguration.Development, Architecture, ProjectFile, Arguments);
+						TargetRules = Assembly.CreateTargetRules(TargetName, BuildHostPlatform.Current.Platform, UnrealTargetConfiguration.Development, Architecture, ProjectFile, new CommandLineArguments(new string[0]));
 					}
 					catch (Exception Ex)
 					{

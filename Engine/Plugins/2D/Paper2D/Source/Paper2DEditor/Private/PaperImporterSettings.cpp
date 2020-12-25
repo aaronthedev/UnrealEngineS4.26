@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PaperImporterSettings.h"
 #include "Paper2DEditorLog.h"
@@ -146,22 +146,7 @@ void UPaperImporterSettings::ApplySettingsForTileMapInit(UPaperTileMap* TileMap,
 	}
 
 	TileMap->PixelsPerUnrealUnit = DefaultPixelsPerUnrealUnit;
-
-	// Set Defaults based on the editor preferences 
-	const UTileMapEditorSettings* Settings = GetMutableDefault<UTileMapEditorSettings>();
-	if (!Settings)
-	{
-		Settings = GetDefault<UTileMapEditorSettings>();
-	}
-
-	TileMap->BackgroundColor = Settings->DefaultBackgroundColor;
-	TileMap->TileGridColor = Settings->DefaultTileGridColor;
-	TileMap->MultiTileGridColor = Settings->DefaultMultiTileGridColor;
-	TileMap->MultiTileGridWidth = Settings->DefaultMultiTileGridWidth;
-	TileMap->MultiTileGridHeight = Settings->DefaultMultiTileGridHeight;
-	TileMap->MultiTileGridOffsetX = Settings->DefaultMultiTileGridOffsetX;
-	TileMap->MultiTileGridOffsetY = Settings->DefaultMultiTileGridOffsetY;
-	TileMap->LayerGridColor = Settings->DefaultLayerGridColor;
+	TileMap->BackgroundColor = GetDefault<UTileMapEditorSettings>()->DefaultBackgroundColor;
 
 	ESpriteInitMaterialType DesiredMaterialType = MaterialTypeMode;
 	if (DesiredMaterialType == ESpriteInitMaterialType::Automatic)

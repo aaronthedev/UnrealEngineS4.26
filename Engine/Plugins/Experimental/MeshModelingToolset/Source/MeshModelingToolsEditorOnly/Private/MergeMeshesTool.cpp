@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MergeMeshesTool.h"
 #include "InteractiveToolManager.h"
@@ -21,9 +21,8 @@
 
 bool UMergeMeshesToolBuilder::CanBuildTool(const FToolBuilderState& SceneState) const
 {
-	const bool bHasBuildAPI = (this->AssetAPI != nullptr);
-	const int32 MinRequiredComponents = 1;
-	const bool bHasComponents = ToolBuilderUtil::CountComponents(SceneState, CanMakeComponentTarget) >= MinRequiredComponents;
+	bool bHasBuildAPI = (this->AssetAPI != nullptr);
+	bool bHasComponents = ToolBuilderUtil::CountComponents(SceneState, CanMakeComponentTarget) > 1;
 	return ( bHasBuildAPI && bHasComponents );
 }
 
@@ -79,15 +78,10 @@ void UMergeMeshesTool::Setup()
 	UInteractiveTool::Setup();
 
 	MergeProps = NewObject<UMergeMeshesToolProperties>();
-	MergeProps->RestoreProperties(this);
 	AddToolPropertySource(MergeProps);
 
 	MeshStatisticsProperties = NewObject<UMeshStatisticsProperties>(this);
 	AddToolPropertySource(MeshStatisticsProperties);
-
-	HandleSourcesProperties = NewObject<UOnAcceptHandleSourcesProperties>(this);
-	HandleSourcesProperties->RestoreProperties(this);
-	AddToolPropertySource(HandleSourcesProperties);
 
 	// Hide the source meshes
 	for (auto& ComponentTarget : ComponentTargets)
@@ -108,61 +102,77 @@ void UMergeMeshesTool::Setup()
 	CreateLowQualityPreview(); // update the preview with a low-quality result
 	
 	Preview->ConfigureMaterials(
-		ToolSetupUtil::GetDefaultSculptMaterial(GetToolManager()),
+		// TODO: This is is very likely a bug waiting to happen
+		ToolSetupUtil::GetDefaultMaterial(GetToolManager(), ComponentTargets[0]->GetMaterial(0)),
 		ToolSetupUtil::GetDefaultWorkingMaterial(GetToolManager())
 	);
 
 	Preview->InvalidateResult();    // start compute
 
-
-	GetToolManager()->DisplayMessage(
-		LOCTEXT("OnStartTool", "This Tool combines the input meshes into closed solids using voxelization techniques. UVs, sharp edges, and small/thin features will be lost. Increase Voxel Count to enhance accuracy."),
-		EToolMessageLevel::UserNotification);
 }
 
 
 void UMergeMeshesTool::Shutdown(EToolShutdownType ShutdownType)
 {
-	MergeProps->SaveProperties(this);
-	HandleSourcesProperties->SaveProperties(this);
-
-	FDynamicMeshOpResult Result = Preview->Shutdown();
-	// Restore (unhide) the source meshes
-	for (auto& ComponentTarget : ComponentTargets)
-	{
-		ComponentTarget->SetOwnerVisibility(true);
-	}
+	TUniquePtr<FDynamicMeshOpResult> Result = Preview->Shutdown();
 	if (ShutdownType == EToolShutdownType::Accept)
 	{
 		GetToolManager()->BeginUndoTransaction(LOCTEXT("MergeMeshes", "Merge Meshes"));
 
-		// Generate the result
 		GenerateAsset(Result);
 
-		TArray<AActor*> Actors;
 		for (auto& ComponentTarget : ComponentTargets)
 		{
-			Actors.Add(ComponentTarget->GetOwnerActor());
+			ComponentTarget->SetOwnerVisibility(true);
+			AActor* Actor = ComponentTarget->GetOwnerActor();
+			if (MergeProps->bDeleteInputActors)
+			{
+				Actor->Destroy();
+			}
+			else
+			{
+				// just hide the result.
+				Actor->SetIsTemporarilyHiddenInEditor(true);
+			}
 		}
-		HandleSourcesProperties->ApplyMethod(Actors, GetToolManager());
 
 		GetToolManager()->EndUndoTransaction();
+
+	}
+	else
+	{
+		// Restore (unhide) the source meshes
+		for (auto& ComponentTarget : ComponentTargets)
+		{
+			ComponentTarget->SetOwnerVisibility(true);
+		}
 	}
 }
 
 
 
-void UMergeMeshesTool::OnTick(float DeltaTime)
+void UMergeMeshesTool::Tick(float DeltaTime)
 {
 	Preview->Tick(DeltaTime);
 }
 
-bool UMergeMeshesTool::CanAccept() const
+
+void UMergeMeshesTool::Render(IToolsContextRenderAPI* RenderAPI)
 {
-	return Super::CanAccept() && Preview->HaveValidResult();
 }
 
-void UMergeMeshesTool::OnPropertyModified(UObject* PropertySet, FProperty* Property)
+
+bool UMergeMeshesTool::HasAccept() const
+{
+	return true;
+}
+
+bool UMergeMeshesTool::CanAccept() const
+{
+	return Preview->HaveValidResult();
+}
+
+void UMergeMeshesTool::OnPropertyModified(UObject* PropertySet, UProperty* Property)
 {
 	Preview->InvalidateResult();
 }
@@ -170,9 +180,9 @@ void UMergeMeshesTool::OnPropertyModified(UObject* PropertySet, FProperty* Prope
 
 
 
-TUniquePtr<FDynamicMeshOperator> UMergeMeshesTool::MakeNewOperator()
+TSharedPtr<FDynamicMeshOperator> UMergeMeshesTool::MakeNewOperator()
 {
-	TUniquePtr<FVoxelMergeMeshesOp> MergeOp = MakeUnique<FVoxelMergeMeshesOp>();
+	TSharedPtr<FVoxelMergeMeshesOp> MergeOp = MakeShared<FVoxelMergeMeshesOp>();
 	MergeOp->VoxelCount     = MergeProps->VoxelCount;
 	MergeOp->AdaptivityD    = MergeProps->MeshAdaptivity;
 	MergeOp->IsoSurfaceD    = MergeProps->OffsetDistance;
@@ -218,19 +228,20 @@ void UMergeMeshesTool::CreateLowQualityPreview()
 }
 
 
-void UMergeMeshesTool::GenerateAsset(const FDynamicMeshOpResult& Result)
+void UMergeMeshesTool::GenerateAsset(const TUniquePtr<FDynamicMeshOpResult>& Result)
 {
-	check(Result.Mesh.Get() != nullptr);
+	check(Result->Mesh.Get() != nullptr);
 
 	
 
 	AActor* NewActor = AssetGenerationUtil::GenerateStaticMeshActor(
 		AssetAPI, TargetWorld,
-		Result.Mesh.Get(), Result.Transform, TEXT("MergedMesh"));
-	if (NewActor != nullptr)
-	{
-		ToolSelectionUtil::SetNewActorSelection(GetToolManager(), NewActor);
-	}
+		Result->Mesh.Get(), Result->Transform, TEXT("MergedMesh"),
+		AssetGenerationUtil::GetDefaultAutoGeneratedAssetPath());
+
+	// select newly-created object
+	ToolSelectionUtil::SetNewActorSelection(GetToolManager(), NewActor);
+
 	
 }
 

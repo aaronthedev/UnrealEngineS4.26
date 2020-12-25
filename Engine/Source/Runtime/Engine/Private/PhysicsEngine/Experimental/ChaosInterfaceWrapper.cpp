@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Physics/Experimental/ChaosInterfaceWrapper.h"
 #include "Physics/Experimental/PhysScene_Chaos.h"
@@ -11,18 +11,17 @@ namespace ChaosInterface
 	FBodyInstance* GetUserData(const Chaos::TGeometryParticle<float,3>& Actor)
 	{
 		void* UserData = Actor.UserData();
-		return UserData ? FChaosUserData::Get<FBodyInstance>(Actor.UserData()) : nullptr;
+		return UserData ? FPhysxUserData::Get<FBodyInstance>(Actor.UserData()) : nullptr;
 	}
 
-	UPhysicalMaterial* GetUserData(const Chaos::FChaosPhysicsMaterial& Material)
+	UPhysicalMaterial* GetUserData(const FPhysTypeDummy& Material)
 	{
-		void* UserData = Material.UserData;
-		return UserData ? FChaosUserData::Get<UPhysicalMaterial>(UserData) : nullptr;
+		return nullptr;
 	}
 
 #if WITH_CHAOS
-	FScopedSceneReadLock::FScopedSceneReadLock(FPhysScene_Chaos& SceneIn)
-		: Scene(SceneIn)
+	FScopedSceneReadLock::FScopedSceneReadLock(FPhysScene_ChaosInterface& SceneIn)
+		: Scene(SceneIn.GetScene())
 	{
 		Scene.ExternalDataLock.ReadLock();
 	}

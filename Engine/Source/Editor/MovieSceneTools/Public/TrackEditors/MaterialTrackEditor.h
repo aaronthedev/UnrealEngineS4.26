@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,7 +15,6 @@
 class UMaterial;
 class UMaterialInterface;
 class UMovieSceneMaterialTrack;
-class USceneComponent;
 
 /**
  * Track editor for material parameters.
@@ -96,6 +95,6 @@ private:
 
 	void ConstructObjectBindingTrackMenu(FMenuBuilder& MenuBuilder, TArray<FGuid> ObjectBindings);
 	/** Callback for executing the add component material track. */
-	void HandleAddComponentMaterialActionExecute(USceneComponent* Component, int32 MaterialIndex);
+	void HandleAddComponentMaterialActionExecute(UPrimitiveComponent* Component, int32 MaterialIndex);
 
 };

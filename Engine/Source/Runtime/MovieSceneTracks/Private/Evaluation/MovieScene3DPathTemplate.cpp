@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Evaluation/MovieScene3DPathTemplate.h"
 #include "Evaluation/MovieSceneTemplateCommon.h"
@@ -129,7 +129,7 @@ struct F3DPathExecutionToken
 		if (PathBindingID.GetSequenceID().IsValid())
 		{
 			// Ensure that this ID is resolvable from the root, based on the current local sequence ID
-			FMovieSceneObjectBindingID RootBindingID = PathBindingID.ResolveLocalToRoot(SequenceID, Player);
+			FMovieSceneObjectBindingID RootBindingID = PathBindingID.ResolveLocalToRoot(SequenceID, Player.GetEvaluationTemplate().GetHierarchy());
 			SequenceID = RootBindingID.GetSequenceID();
 		}
 

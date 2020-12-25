@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DisplayNodes/SequencerSectionKeyAreaNode.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
@@ -111,20 +111,6 @@ ESequencerNode::Type FSequencerSectionKeyAreaNode::GetType() const
 void FSequencerSectionKeyAreaNode::SetDisplayName(const FText& NewDisplayName)
 {
 	check(false);
-}
-
-FSlateFontInfo FSequencerSectionKeyAreaNode::GetDisplayNameFont() const
-{
-	bool bAnyKeyAreaAnimated = false;
-	for (const TSharedRef<IKeyArea>& KeyArea : KeyAreas)
-	{
-		FMovieSceneChannel* Channel = KeyArea->ResolveChannel();
-		if (Channel && Channel->GetNumKeys() > 0)
-		{
-			return FEditorStyle::GetFontStyle("Sequencer.AnimationOutliner.ItalicFont");
-		}
-	}
-	return FSequencerDisplayNode::GetDisplayNameFont();
 }
 
 void FSequencerSectionKeyAreaNode::CreateCurveModels(TArray<TUniquePtr<FCurveModel>>& OutCurveModels)

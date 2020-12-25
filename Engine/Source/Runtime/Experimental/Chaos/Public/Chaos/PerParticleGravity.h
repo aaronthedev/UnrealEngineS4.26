@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Chaos/DynamicParticles.h"
@@ -11,11 +11,7 @@ namespace Chaos
 	class TPerParticleGravity : public TPerParticleRule<T, d>
 	{
 	public:
-		TPerParticleGravity()
-			: MAcceleration(TVector<T, d>(0, 0, (T)-980.665)) {}
-		TPerParticleGravity(const TVector<T, d>& G)
-			: MAcceleration(G) {}
-		TPerParticleGravity(const TVector<T, d>& Direction, const T Magnitude)
+		TPerParticleGravity(const TVector<T, d>& Direction = TVector<T, d>(0, 0, -1), const T Magnitude = (T)980.665)
 			: MAcceleration(Direction * Magnitude) {}
 		virtual ~TPerParticleGravity() {}
 
@@ -34,19 +30,37 @@ namespace Chaos
 
 		void Apply(TTransientPBDRigidParticleHandle<T, d>& Particle, const T Dt) const override //-V762
 		{
-			if(Particle.GravityEnabled())
+			if (!UsesGravity.Contains(Particle.Handle()))
 			{
 				Particle.F() += MAcceleration * Particle.M();
 			}
 		}
 
-		void SetAcceleration(const TVector<T, d>& Acceleration)
-		{ MAcceleration = Acceleration; }
+		void SetEnabled(const TGeometryParticleHandleImp<T, d, true>& Handle, bool bEnabled)
+		{
+			if (bEnabled)
+			{
+				if (UsesGravity.Contains(&Handle))
+				{
+					UsesGravity.Remove(&Handle);
+				}
+			}
+			else
+			{
+				if (!UsesGravity.Contains(&Handle))
+				{
+					UsesGravity.Add(&Handle);
+				}
+			}
+		}
 
-		const TVector<T, d>& GetAcceleration() const
-		{ return MAcceleration; }
+		void SetAcceleration(const TVector<T, d>& Acceleration)
+		{
+			MAcceleration = Acceleration;
+		}
 
 	private:
 		TVector<T, d> MAcceleration;
+		TSet< const TGeometryParticleHandleImp<T, d, true>* > UsesGravity;
 	};
 }

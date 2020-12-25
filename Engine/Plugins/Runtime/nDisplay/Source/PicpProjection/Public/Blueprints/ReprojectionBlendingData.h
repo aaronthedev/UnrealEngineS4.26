@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -30,7 +30,6 @@ public:
 	UTextureRenderTarget2D* DestinationFrame;		
 };
 
-
 USTRUCT(BlueprintType, Category = "PICP")
 struct FPicpOverlayFrameBlendingPair
 {
@@ -47,29 +46,8 @@ public:
 	ECameraOverlayRenderMode OverlayBlendMode;
 };
 
-
 USTRUCT(BlueprintType, Category = "PICP")
-struct FPicpCameraChromakey
-{
-	GENERATED_BODY()
-
-public:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PICP")
-	UTextureRenderTarget2D* ChromakeyOverlayFrame;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PICP")
-	UTexture2D* ChromakeyMarkerTexture;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PICP")
-	float ChromakeyMarkerScale = 1;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PICP")
-	EChromakeyMarkerUVSource ChromakeyMarkerUVSource = EChromakeyMarkerUVSource::ScreenSpace;
-};
-
-
-USTRUCT(BlueprintType, Category = "PICP")
-struct FPicpCameraBlendingParameters
+struct FPicpOverlayFrameBlendingParameters
 {
 	GENERATED_BODY()
 
@@ -90,5 +68,5 @@ public:
 	FString RTTViewportId;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "PICP")
-	FPicpCameraChromakey  CameraChromakey;
+	TArray<struct FPicpOverlayFrameBlendingPair> OverlayBlendFrames;
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,6 +9,7 @@
 #include "MagicLeapMath.h"
 #include "MagicLeapUtils.h"
 #include "Lumin/CAPIShims/LuminAPIPerception.h"
+#include "MagicLeapPluginUtil.h"
 #include "Math/Vector4.h"
 
 class FMagicLeapHMD;
@@ -32,7 +33,6 @@ public:
 	float RecommendedFarClippingPlane;
 	float StabilizationDepth;
 	bool bBeginFrameSucceeded;
-	bool bFrameRenderingInProgress;
 
 #if WITH_MLSDK
 	MLSnapshot* Snapshot;
@@ -58,7 +58,6 @@ public:
 		, RecommendedFarClippingPlane(FarClippingPlane)
 		, StabilizationDepth(1000.0f) // 10m
 		, bBeginFrameSucceeded(false)
-		, bFrameRenderingInProgress(false)
 #if WITH_MLSDK
 		, Snapshot(nullptr)
 		, ProjectionType(MLGraphicsProjectionType_ReversedInfiniteZ)
@@ -72,7 +71,7 @@ public:
 
 		MagicLeap::ResetClipExtentsInfoArray(UpdateInfoArray);
 		MLGraphicsFrameInfoInit(&FrameInfo);
-		MagicLeap::ResetFrameInfo(FrameInfo);
+		MagicLeap::ResetVirtualCameraInfoArray(FrameInfo.virtual_camera_info_array);
 #endif //WITH_MLSDK
 	}
 };
@@ -104,6 +103,7 @@ protected:
 	FMagicLeapHMD* Plugin;
 	bool bNotifyLifecycleOfFirstPresent;
 	bool bCustomPresentIsSet;
+	uint32 PlatformAPILevel;
 	volatile int64 HFOV;
 	volatile int64 VFOV;
 

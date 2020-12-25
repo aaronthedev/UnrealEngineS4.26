@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -76,5 +76,4 @@ private:
 	void OnWindowBeingDestroyed(const SWindow& WindowBeingDestoyed);
 private:
 	TMap<const SWindow*, TSharedPtr<FVisualTreeSnapshot>> VisualTrees;
-	bool bIsEnabled;
 };

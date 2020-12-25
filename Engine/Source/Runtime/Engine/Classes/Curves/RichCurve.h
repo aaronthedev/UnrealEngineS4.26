@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -56,9 +56,6 @@ enum ERichCurveCompressionFormat
 
 	/** Keys use mixed interpolation modes */
 	RCCF_Mixed UMETA(DisplayName = "Mixed"),
-
-	/** Keys use weighted interpolation modes */
-	RCCF_Weighted UMETA(DisplayName = "Weighted"),
 };
 
 /** Enumerates key time compression options. */
@@ -152,9 +149,7 @@ struct ENGINE_API FRichCurveKey
 
 	/** Conversion constructor */
 	FRichCurveKey(const FInterpCurvePoint<float>& InPoint);
-	FRichCurveKey(const FInterpCurvePoint<FVector2D>& InPoint, int32 ComponentIndex);
 	FRichCurveKey(const FInterpCurvePoint<FVector>& InPoint, int32 ComponentIndex);
-	FRichCurveKey(const FInterpCurvePoint<FTwoVectors>& InPoint, int32 ComponentIndex);
 
 	/** ICPPStructOps interface */
 	bool Serialize(FArchive& Ar);
@@ -210,7 +205,6 @@ public:
 	/** Functions for getting keys based on handles */
 	FRichCurveKey& GetKey(FKeyHandle KeyHandle);
 	FRichCurveKey GetKey(FKeyHandle KeyHandle) const;
-	const FRichCurveKey& GetKeyRef(FKeyHandle KeyHandle) const;
 	
 	/** Quick accessors for the first and last keys */
 	FRichCurveKey GetFirstKey() const;
@@ -270,13 +264,12 @@ public:
 
 	/** Set the interp mode of the specified key */
 	virtual void SetKeyInterpMode(FKeyHandle KeyHandle, ERichCurveInterpMode NewInterpMode) final override;
-	void SetKeyInterpMode(FKeyHandle KeyHandle, ERichCurveInterpMode NewInterpMode, bool bAutoSetTangents);
 
 	/** Set the tangent mode of the specified key */
-	void SetKeyTangentMode(FKeyHandle KeyHandle, ERichCurveTangentMode NewTangentMode, bool bAutoSetTangents = true);
+	void SetKeyTangentMode(FKeyHandle KeyHandle, ERichCurveTangentMode NewTangentMode);
 
 	/** Set the tangent weight mode of the specified key */
-	void SetKeyTangentWeightMode(FKeyHandle KeyHandle, ERichCurveTangentWeightMode NewTangentWeightMode, bool bAutoSetTangents = true);
+	void SetKeyTangentWeightMode(FKeyHandle KeyHandle, ERichCurveTangentWeightMode NewTangentWeightMode);
 
 	/** Get the interp mode of the specified key */
 	virtual ERichCurveInterpMode GetKeyInterpMode(FKeyHandle KeyHandle) const final override;

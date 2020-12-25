@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OpenExrWrapper.h"
 
@@ -114,27 +114,10 @@ FFrameRate FRgbaInputFile::GetFrameRate(const FFrameRate& DefaultValue) const
 	return FFrameRate(Value.n, Value.d);
 }
 
-int32 FRgbaInputFile::GetNumChannels() const
-{
-	Imf::RgbaChannels Channels = ((Imf::RgbaInputFile*)InputFile)->channels();
-	int32 NumChannels = 3;
-	switch (Channels)
-	{
-	case Imf::RgbaChannels::WRITE_RGB:
-		NumChannels = 3;
-		break;
-	case Imf::RgbaChannels::WRITE_RGBA:
-		NumChannels = 4;
-		break;
-	default:
-		break;
-	}
-	return NumChannels;
-}
 
 int32 FRgbaInputFile::GetUncompressedSize() const
 {
-	const int32 NumChannels = ((Imf::RgbaInputFile*)InputFile)->channels();
+	const int32 NumChannels = 4;
 	const int32 ChannelSize = sizeof(int16);
 	const FIntPoint Window = GetDataWindow();
 
@@ -150,7 +133,8 @@ bool FRgbaInputFile::IsComplete() const
 
 void FRgbaInputFile::ReadPixels(int32 StartY, int32 EndY)
 {
-	((Imf::RgbaInputFile*)InputFile)->readPixels(StartY, EndY);
+	Imath::Box2i Win = ((Imf::RgbaInputFile*)InputFile)->dataWindow();
+	((Imf::RgbaInputFile*)InputFile)->readPixels(Win.min.y, Win.max.y);
 }
 
 

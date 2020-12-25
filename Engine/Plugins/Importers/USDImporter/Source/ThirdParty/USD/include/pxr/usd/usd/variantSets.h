@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_VARIANT_SETS_H
-#define PXR_USD_USD_VARIANT_SETS_H
+#ifndef USD_VARIANTSETS_H
+#define USD_VARIANTSETS_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/usd/api.h"
@@ -74,7 +74,7 @@ public:
     /// \endcode
     USD_API
     bool AddVariant(const std::string& variantName,
-                    UsdListPosition position=UsdListPositionBackOfPrependList);
+                    UsdListPosition position=UsdListPositionTempDefault);
 
     /// Return the composed variant names for this VariantSet, ordered
     /// lexicographically.
@@ -97,7 +97,7 @@ public:
     /// If requested, the variant selection (if any) will be returned in
     /// \p value .
     USD_API
-    bool HasAuthoredVariantSelection(std::string *value = nullptr) const;
+    bool HasAuthoredVariantSelection(std::string *value = NULL) const;
 
     /// Author a variant selection for this VariantSet, setting it to
     /// \a variantName in the stage's current EditTarget.  Return true if the
@@ -224,17 +224,16 @@ public:
     /// without necessarily populating it with variants.
     USD_API
     UsdVariantSet AddVariantSet(const std::string& variantSetName,
-                UsdListPosition position=UsdListPositionBackOfPrependList);
+                                UsdListPosition position=UsdListPositionTempDefault);
 
     // TODO: don't we want remove and reorder, clear, etc. also?
 
-    /// Compute the list of all VariantSets authored on the originating
-    /// UsdPrim.  Always return true.  Clear the contents of \p names and store
-    /// the result there.
+    /// Compute a list of all VariantSets authored on the originiating UsdPrim.
+    /// Always return true.
     USD_API
     bool GetNames(std::vector<std::string>* names) const;
 
-    /// Return a list of all VariantSets authored on the originating UsdPrim.
+    /// Return a list of all VariantSets authored on the originiating UsdPrim.
     USD_API
     std::vector<std::string> GetNames() const;
 
@@ -263,13 +262,6 @@ public:
     bool SetSelection(const std::string& variantSetName,
                       const std::string& variantName);
 
-    /// Returns the composed map of all variant selections authored on the
-    /// the originating UsdPrim, regardless of whether a corresponding 
-    /// variant set exists.
-    USD_API
-    SdfVariantSelectionMap GetAllVariantSelections() const;
-
-
 private:
     explicit UsdVariantSets(const UsdPrim& prim) 
         : _prim(prim)
@@ -285,4 +277,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif //PXR_USD_USD_VARIANT_SETS_H
+#endif //USD_VARIANTSETS_H

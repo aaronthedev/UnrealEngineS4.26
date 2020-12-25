@@ -22,7 +22,6 @@
 #include "gmock/gmock.h"
 #include "source/latest_version_glsl_std_450_header.h"
 #include "source/latest_version_opencl_std_header.h"
-#include "source/util/string_utils.h"
 #include "test/test_fixture.h"
 #include "test/unit_spirv.h"
 
@@ -31,7 +30,7 @@ namespace {
 
 using spvtest::Concatenate;
 using spvtest::MakeInstruction;
-using utils::MakeVector;
+using spvtest::MakeVector;
 using spvtest::TextToBinaryTest;
 using ::testing::Combine;
 using ::testing::Eq;
@@ -527,54 +526,54 @@ INSTANTIATE_TEST_SUITE_P(
         Values(SPV_ENV_UNIVERSAL_1_0, SPV_ENV_UNIVERSAL_1_1,
                SPV_ENV_UNIVERSAL_1_3, SPV_ENV_VULKAN_1_0, SPV_ENV_VULKAN_1_1),
         ValuesIn(std::vector<AssemblyCase>{
-            {"OpCapability VulkanMemoryModel\n",
+            {"OpCapability VulkanMemoryModelKHR\n",
              MakeInstruction(SpvOpCapability,
                              {SpvCapabilityVulkanMemoryModelKHR})},
-            {"OpCapability VulkanMemoryModelDeviceScope\n",
+            {"OpCapability VulkanMemoryModelDeviceScopeKHR\n",
              MakeInstruction(SpvOpCapability,
                              {SpvCapabilityVulkanMemoryModelDeviceScopeKHR})},
-            {"OpMemoryModel Logical Vulkan\n",
+            {"OpMemoryModel Logical VulkanKHR\n",
              MakeInstruction(SpvOpMemoryModel, {SpvAddressingModelLogical,
                                                 SpvMemoryModelVulkanKHR})},
-            {"OpStore %1 %2 MakePointerAvailable %3\n",
+            {"OpStore %1 %2 MakePointerAvailableKHR %3\n",
              MakeInstruction(SpvOpStore,
                              {1, 2, SpvMemoryAccessMakePointerAvailableKHRMask,
                               3})},
-            {"OpStore %1 %2 Volatile|MakePointerAvailable %3\n",
+            {"OpStore %1 %2 Volatile|MakePointerAvailableKHR %3\n",
              MakeInstruction(SpvOpStore,
                              {1, 2,
                               int(SpvMemoryAccessMakePointerAvailableKHRMask) |
                                   int(SpvMemoryAccessVolatileMask),
                               3})},
-            {"OpStore %1 %2 Aligned|MakePointerAvailable 4 %3\n",
+            {"OpStore %1 %2 Aligned|MakePointerAvailableKHR 4 %3\n",
              MakeInstruction(SpvOpStore,
                              {1, 2,
                               int(SpvMemoryAccessMakePointerAvailableKHRMask) |
                                   int(SpvMemoryAccessAlignedMask),
                               4, 3})},
-            {"OpStore %1 %2 MakePointerAvailable|NonPrivatePointer %3\n",
+            {"OpStore %1 %2 MakePointerAvailableKHR|NonPrivatePointerKHR %3\n",
              MakeInstruction(SpvOpStore,
                              {1, 2,
                               int(SpvMemoryAccessMakePointerAvailableKHRMask) |
                                   int(SpvMemoryAccessNonPrivatePointerKHRMask),
                               3})},
-            {"%2 = OpLoad %1 %3 MakePointerVisible %4\n",
+            {"%2 = OpLoad %1 %3 MakePointerVisibleKHR %4\n",
              MakeInstruction(SpvOpLoad,
                              {1, 2, 3, SpvMemoryAccessMakePointerVisibleKHRMask,
                               4})},
-            {"%2 = OpLoad %1 %3 Volatile|MakePointerVisible %4\n",
+            {"%2 = OpLoad %1 %3 Volatile|MakePointerVisibleKHR %4\n",
              MakeInstruction(SpvOpLoad,
                              {1, 2, 3,
                               int(SpvMemoryAccessMakePointerVisibleKHRMask) |
                                   int(SpvMemoryAccessVolatileMask),
                               4})},
-            {"%2 = OpLoad %1 %3 Aligned|MakePointerVisible 8 %4\n",
+            {"%2 = OpLoad %1 %3 Aligned|MakePointerVisibleKHR 8 %4\n",
              MakeInstruction(SpvOpLoad,
                              {1, 2, 3,
                               int(SpvMemoryAccessMakePointerVisibleKHRMask) |
                                   int(SpvMemoryAccessAlignedMask),
                               8, 4})},
-            {"%2 = OpLoad %1 %3 MakePointerVisible|NonPrivatePointer "
+            {"%2 = OpLoad %1 %3 MakePointerVisibleKHR|NonPrivatePointerKHR "
              "%4\n",
              MakeInstruction(SpvOpLoad,
                              {1, 2, 3,
@@ -582,9 +581,9 @@ INSTANTIATE_TEST_SUITE_P(
                                   int(SpvMemoryAccessNonPrivatePointerKHRMask),
                               4})},
             {"OpCopyMemory %1 %2 "
-             "MakePointerAvailable|"
-             "MakePointerVisible|"
-             "NonPrivatePointer "
+             "MakePointerAvailableKHR|"
+             "MakePointerVisibleKHR|"
+             "NonPrivatePointerKHR "
              "%3 %4\n",
              MakeInstruction(SpvOpCopyMemory,
                              {1, 2,
@@ -593,9 +592,9 @@ INSTANTIATE_TEST_SUITE_P(
                                int(SpvMemoryAccessNonPrivatePointerKHRMask)),
                               3, 4})},
             {"OpCopyMemorySized %1 %2 %3 "
-             "MakePointerAvailable|"
-             "MakePointerVisible|"
-             "NonPrivatePointer "
+             "MakePointerAvailableKHR|"
+             "MakePointerVisibleKHR|"
+             "NonPrivatePointerKHR "
              "%4 %5\n",
              MakeInstruction(SpvOpCopyMemorySized,
                              {1, 2, 3,
@@ -604,12 +603,12 @@ INSTANTIATE_TEST_SUITE_P(
                                int(SpvMemoryAccessNonPrivatePointerKHRMask)),
                               4, 5})},
             // Image operands
-            {"OpImageWrite %1 %2 %3 MakeTexelAvailable "
+            {"OpImageWrite %1 %2 %3 MakeTexelAvailableKHR "
              "%4\n",
              MakeInstruction(
                  SpvOpImageWrite,
                  {1, 2, 3, int(SpvImageOperandsMakeTexelAvailableKHRMask), 4})},
-            {"OpImageWrite %1 %2 %3 MakeTexelAvailable|NonPrivateTexel "
+            {"OpImageWrite %1 %2 %3 MakeTexelAvailableKHR|NonPrivateTexelKHR "
              "%4\n",
              MakeInstruction(SpvOpImageWrite,
                              {1, 2, 3,
@@ -617,7 +616,7 @@ INSTANTIATE_TEST_SUITE_P(
                                   int(SpvImageOperandsNonPrivateTexelKHRMask),
                               4})},
             {"OpImageWrite %1 %2 %3 "
-             "MakeTexelAvailable|NonPrivateTexel|VolatileTexel "
+             "MakeTexelAvailableKHR|NonPrivateTexelKHR|VolatileTexelKHR "
              "%4\n",
              MakeInstruction(SpvOpImageWrite,
                              {1, 2, 3,
@@ -625,14 +624,14 @@ INSTANTIATE_TEST_SUITE_P(
                                   int(SpvImageOperandsNonPrivateTexelKHRMask) |
                                   int(SpvImageOperandsVolatileTexelKHRMask),
                               4})},
-            {"%2 = OpImageRead %1 %3 %4 MakeTexelVisible "
+            {"%2 = OpImageRead %1 %3 %4 MakeTexelVisibleKHR "
              "%5\n",
              MakeInstruction(SpvOpImageRead,
                              {1, 2, 3, 4,
                               int(SpvImageOperandsMakeTexelVisibleKHRMask),
                               5})},
             {"%2 = OpImageRead %1 %3 %4 "
-             "MakeTexelVisible|NonPrivateTexel "
+             "MakeTexelVisibleKHR|NonPrivateTexelKHR "
              "%5\n",
              MakeInstruction(SpvOpImageRead,
                              {1, 2, 3, 4,
@@ -640,7 +639,7 @@ INSTANTIATE_TEST_SUITE_P(
                                   int(SpvImageOperandsNonPrivateTexelKHRMask),
                               5})},
             {"%2 = OpImageRead %1 %3 %4 "
-             "MakeTexelVisible|NonPrivateTexel|VolatileTexel "
+             "MakeTexelVisibleKHR|NonPrivateTexelKHR|VolatileTexelKHR "
              "%5\n",
              MakeInstruction(SpvOpImageRead,
                              {1, 2, 3, 4,
@@ -826,82 +825,82 @@ INSTANTIATE_TEST_SUITE_P(
              MakeInstruction(SpvOpExtension,
                              MakeVector("SPV_EXT_descriptor_indexing"))},
             // Check capabilities, by name
-            {"OpCapability ShaderNonUniform\n",
+            {"OpCapability ShaderNonUniformEXT\n",
              MakeInstruction(SpvOpCapability,
                              {SpvCapabilityShaderNonUniformEXT})},
-            {"OpCapability RuntimeDescriptorArray\n",
+            {"OpCapability RuntimeDescriptorArrayEXT\n",
              MakeInstruction(SpvOpCapability,
                              {SpvCapabilityRuntimeDescriptorArrayEXT})},
-            {"OpCapability InputAttachmentArrayDynamicIndexing\n",
+            {"OpCapability InputAttachmentArrayDynamicIndexingEXT\n",
              MakeInstruction(
                  SpvOpCapability,
                  {SpvCapabilityInputAttachmentArrayDynamicIndexingEXT})},
-            {"OpCapability UniformTexelBufferArrayDynamicIndexing\n",
+            {"OpCapability UniformTexelBufferArrayDynamicIndexingEXT\n",
              MakeInstruction(
                  SpvOpCapability,
                  {SpvCapabilityUniformTexelBufferArrayDynamicIndexingEXT})},
-            {"OpCapability StorageTexelBufferArrayDynamicIndexing\n",
+            {"OpCapability StorageTexelBufferArrayDynamicIndexingEXT\n",
              MakeInstruction(
                  SpvOpCapability,
                  {SpvCapabilityStorageTexelBufferArrayDynamicIndexingEXT})},
-            {"OpCapability UniformBufferArrayNonUniformIndexing\n",
+            {"OpCapability UniformBufferArrayNonUniformIndexingEXT\n",
              MakeInstruction(
                  SpvOpCapability,
                  {SpvCapabilityUniformBufferArrayNonUniformIndexingEXT})},
-            {"OpCapability SampledImageArrayNonUniformIndexing\n",
+            {"OpCapability SampledImageArrayNonUniformIndexingEXT\n",
              MakeInstruction(
                  SpvOpCapability,
                  {SpvCapabilitySampledImageArrayNonUniformIndexingEXT})},
-            {"OpCapability StorageBufferArrayNonUniformIndexing\n",
+            {"OpCapability StorageBufferArrayNonUniformIndexingEXT\n",
              MakeInstruction(
                  SpvOpCapability,
                  {SpvCapabilityStorageBufferArrayNonUniformIndexingEXT})},
-            {"OpCapability StorageImageArrayNonUniformIndexing\n",
+            {"OpCapability StorageImageArrayNonUniformIndexingEXT\n",
              MakeInstruction(
                  SpvOpCapability,
                  {SpvCapabilityStorageImageArrayNonUniformIndexingEXT})},
-            {"OpCapability InputAttachmentArrayNonUniformIndexing\n",
+            {"OpCapability InputAttachmentArrayNonUniformIndexingEXT\n",
              MakeInstruction(
                  SpvOpCapability,
                  {SpvCapabilityInputAttachmentArrayNonUniformIndexingEXT})},
-            {"OpCapability UniformTexelBufferArrayNonUniformIndexing\n",
+            {"OpCapability UniformTexelBufferArrayNonUniformIndexingEXT\n",
              MakeInstruction(
                  SpvOpCapability,
                  {SpvCapabilityUniformTexelBufferArrayNonUniformIndexingEXT})},
-            {"OpCapability StorageTexelBufferArrayNonUniformIndexing\n",
+            {"OpCapability StorageTexelBufferArrayNonUniformIndexingEXT\n",
              MakeInstruction(
                  SpvOpCapability,
                  {SpvCapabilityStorageTexelBufferArrayNonUniformIndexingEXT})},
             // Check capabilities, by number
-            {"OpCapability ShaderNonUniform\n",
+            {"OpCapability ShaderNonUniformEXT\n",
              MakeInstruction(SpvOpCapability, {5301})},
-            {"OpCapability RuntimeDescriptorArray\n",
+            {"OpCapability RuntimeDescriptorArrayEXT\n",
              MakeInstruction(SpvOpCapability, {5302})},
-            {"OpCapability InputAttachmentArrayDynamicIndexing\n",
+            {"OpCapability InputAttachmentArrayDynamicIndexingEXT\n",
              MakeInstruction(SpvOpCapability, {5303})},
-            {"OpCapability UniformTexelBufferArrayDynamicIndexing\n",
+            {"OpCapability UniformTexelBufferArrayDynamicIndexingEXT\n",
              MakeInstruction(SpvOpCapability, {5304})},
-            {"OpCapability StorageTexelBufferArrayDynamicIndexing\n",
+            {"OpCapability StorageTexelBufferArrayDynamicIndexingEXT\n",
              MakeInstruction(SpvOpCapability, {5305})},
-            {"OpCapability UniformBufferArrayNonUniformIndexing\n",
+            {"OpCapability UniformBufferArrayNonUniformIndexingEXT\n",
              MakeInstruction(SpvOpCapability, {5306})},
-            {"OpCapability SampledImageArrayNonUniformIndexing\n",
+            {"OpCapability SampledImageArrayNonUniformIndexingEXT\n",
              MakeInstruction(SpvOpCapability, {5307})},
-            {"OpCapability StorageBufferArrayNonUniformIndexing\n",
+            {"OpCapability StorageBufferArrayNonUniformIndexingEXT\n",
              MakeInstruction(SpvOpCapability, {5308})},
-            {"OpCapability StorageImageArrayNonUniformIndexing\n",
+            {"OpCapability StorageImageArrayNonUniformIndexingEXT\n",
              MakeInstruction(SpvOpCapability, {5309})},
-            {"OpCapability InputAttachmentArrayNonUniformIndexing\n",
+            {"OpCapability InputAttachmentArrayNonUniformIndexingEXT\n",
              MakeInstruction(SpvOpCapability, {5310})},
-            {"OpCapability UniformTexelBufferArrayNonUniformIndexing\n",
+            {"OpCapability UniformTexelBufferArrayNonUniformIndexingEXT\n",
              MakeInstruction(SpvOpCapability, {5311})},
-            {"OpCapability StorageTexelBufferArrayNonUniformIndexing\n",
+            {"OpCapability StorageTexelBufferArrayNonUniformIndexingEXT\n",
              MakeInstruction(SpvOpCapability, {5312})},
 
             // Check the decoration token
-            {"OpDecorate %1 NonUniform\n",
+            {"OpDecorate %1 NonUniformEXT\n",
              MakeInstruction(SpvOpDecorate, {1, SpvDecorationNonUniformEXT})},
-            {"OpDecorate %1 NonUniform\n",
+            {"OpDecorate %1 NonUniformEXT\n",
              MakeInstruction(SpvOpDecorate, {1, 5300})},
         })));
 

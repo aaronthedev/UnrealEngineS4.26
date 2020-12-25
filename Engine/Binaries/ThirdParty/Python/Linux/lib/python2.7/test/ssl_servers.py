@@ -42,11 +42,6 @@ class HTTPSServer(_HTTPServer):
             raise
         return sslconn, addr
 
-    def handle_error(self, request, client_address):
-        "Suppose noisy error output by default."
-        if support.verbose:
-            _HTTPServer.handle_error(self, request, client_address)
-
 class RootedHTTPRequestHandler(SimpleHTTPRequestHandler):
     # need to override translate_path to get a known root,
     # instead of using os.curdir, since the test could be

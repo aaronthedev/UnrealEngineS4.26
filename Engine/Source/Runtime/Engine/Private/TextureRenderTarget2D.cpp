@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	TextureRenderTarget2D.cpp: UTextureRenderTarget2D implementation
@@ -13,7 +13,6 @@
 #include "DeviceProfiles/DeviceProfileManager.h"
 #include "UObject/RenderingObjectVersion.h"
 #include "GenerateMips.h"
-#include "RenderGraphUtils.h"
 
 int32 GTextureRenderTarget2DMaxSizeX = 999999999;
 int32 GTextureRenderTarget2DMaxSizeY = 999999999;
@@ -25,8 +24,6 @@ int32 GTextureRenderTarget2DMaxSizeY = 999999999;
 UTextureRenderTarget2D::UTextureRenderTarget2D(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	SizeX = 1;
-	SizeY = 1;
 	bHDR_DEPRECATED = true;
 	RenderTargetFormat = RTF_RGBA16f;
 	bAutoGenerateMips = false;
@@ -42,6 +39,16 @@ UTextureRenderTarget2D::UTextureRenderTarget2D(const FObjectInitializer& ObjectI
 FTextureResource* UTextureRenderTarget2D::CreateResource()
 {
 	UWorld* World = GetWorld();
+	ERHIFeatureLevel::Type FeatureLevel = World != nullptr ? World->FeatureLevel.GetValue() : GMaxRHIFeatureLevel;
+	if (FeatureLevel <= ERHIFeatureLevel::ES2)
+	{
+		EPixelFormat Format = GetFormat();
+		if ((!GSupportsRenderTargetFormat_PF_FloatRGBA && (Format == PF_FloatRGBA || Format == PF_FloatRGB))
+			|| Format == PF_A16B16G16R16)
+		{
+			OverrideFormat = PF_B8G8R8A8;
+		}
+	}
 
 	if (bAutoGenerateMips)
 	{
@@ -125,10 +132,6 @@ void UTextureRenderTarget2D::ResizeTarget(uint32 InSizeX, uint32 InSizeY)
 	{
 		SizeX = InSizeX;
 		SizeY = InSizeY;
-		if (bAutoGenerateMips)
-		{
-			NumMips = FGenericPlatformMath::CeilToInt(FGenericPlatformMath::Log2(FGenericPlatformMath::Max(SizeX, SizeY)));
-		}
 
 		if (Resource)
 		{
@@ -303,14 +306,6 @@ UTexture2D* UTextureRenderTarget2D::ConstructTexture2D(UObject* Outer, const FSt
 	case PF_FloatRGBA:
 		TextureFormat = TSF_RGBA16F;
 		break;
-	case PF_G8:
-		TextureFormat = TSF_G8;
-		break;
-	default:
-	{
-		FText InvalidFormatMessage = NSLOCTEXT("TextureRenderTarget2D", "UnsupportedFormatRenderTarget2DWarning", "Unsupported format when creating Texture2D from TextureRenderTarget2D. Supported formats are B8G8R8A8, FloatRGBA and G8.");
-		FMessageDialog::Open(EAppMsgType::Ok, InvalidFormatMessage);
-	}
 	}
 
 	// exit if source is not compatible.
@@ -366,7 +361,7 @@ void UTextureRenderTarget2D::UpdateTexture2D(UTexture2D* InTexture2D, ETextureSo
 	// init to the same size as the 2d texture
 	InTexture2D->Source.Init(SizeX, SizeY, 1, 1, InTextureFormat);
 
-	uint8* TextureData = (uint8*)InTexture2D->Source.LockMip(0);
+	uint32* TextureData = (uint32*)InTexture2D->Source.LockMip(0);
 	const int32 TextureDataSize = InTexture2D->Source.CalcMipSize(0);
 
 	// read the 2d surface
@@ -436,16 +431,6 @@ void UTextureRenderTarget2D::UpdateTexture2D(UTexture2D* InTexture2D, ETextureSo
 		check(TextureDataSize == SurfData.Num() * sizeof(FFloat16Color));
 		FMemory::Memcpy(TextureData, SurfData.GetData(), TextureDataSize);
 	}
-	else if (InTextureFormat == TSF_G8)
-	{
-		TArray<FColor> SurfData;
-		RenderTarget->ReadPixels(SurfData);
-		check(TextureDataSize == SurfData.Num() * sizeof(uint8));
-		for (int32 Pixel = 0; Pixel < SurfData.Num(); Pixel++)
-		{
-			TextureData[Pixel] = SurfData[Pixel].R;
-		}
-	}
 
 	InTexture2D->Source.UnlockMip(0);
 
@@ -498,8 +483,8 @@ void FTextureRenderTarget2DResource::InitDynamicRHI()
 	if( TargetSizeX > 0 && TargetSizeY > 0 )
 	{
 		// Create the RHI texture. Only one mip is used and the texture is targetable for resolve.
-		ETextureCreateFlags TexCreateFlags = Owner->IsSRGB() ? TexCreate_SRGB : TexCreate_None;
-		TexCreateFlags |= Owner->bGPUSharedFlag ? TexCreate_Shared : TexCreate_None;
+		uint32 TexCreateFlags = Owner->IsSRGB() ? TexCreate_SRGB : 0;
+		TexCreateFlags |= Owner->bGPUSharedFlag ? TexCreate_Shared : 0;
 		FRHIResourceCreateInfo CreateInfo = FRHIResourceCreateInfo(FClearValueBinding(ClearColor));
 		CreateInfo.DebugName = TEXT("TextureRenderTarget2DResource");
 
@@ -539,7 +524,7 @@ void FTextureRenderTarget2DResource::InitDynamicRHI()
 		Owner->AddressY == TA_Wrap ? AM_Wrap : (Owner->AddressY == TA_Clamp ? AM_Clamp : AM_Mirror),
 		AM_Wrap
 	);
-	SamplerStateRHI = GetOrCreateSamplerState( SamplerStateInitializer );
+	SamplerStateRHI = RHICreateSamplerState( SamplerStateInitializer );
 }
 
 /**
@@ -554,8 +539,7 @@ void FTextureRenderTarget2DResource::ReleaseDynamicRHI()
 
 	RHIUpdateTextureReference(Owner->TextureReference.TextureReferenceRHI, nullptr);
 	Texture2DRHI.SafeRelease();
-	RenderTargetTextureRHI.SafeRelease();
-	MipGenerationCache.SafeRelease();
+	RenderTargetTextureRHI.SafeRelease();	
 
 	// remove grom global list of deferred clears
 	RemoveFromDeferredUpdateList();
@@ -569,37 +553,33 @@ void FTextureRenderTarget2DResource::ReleaseDynamicRHI()
  */
 void FTextureRenderTarget2DResource::UpdateDeferredResource( FRHICommandListImmediate& RHICmdList, bool bClearRenderTarget/*=true*/ )
 {
-	FMemMark Mark(FMemStack::Get());
-
 	SCOPED_DRAW_EVENT(RHICmdList, GPUResourceUpdate)
 	RemoveFromDeferredUpdateList();
-
-	FRDGBuilder GraphBuilder(RHICmdList);
-
-	CacheRenderTarget(RenderTargetTextureRHI, TEXT("MipGeneration"), MipGenerationCache);
-	FRDGTextureRef RenderTargetTextureRDG = GraphBuilder.RegisterExternalTexture(MipGenerationCache);
-	FRDGTextureRef TextureRDG = GraphBuilder.RegisterExternalTexture(CreateRenderTarget(TextureRHI, TEXT("TextureRenderTarget2DResource")));
 
  	// clear the target surface to green
 	if (bClearRenderTarget)
 	{
+		RHICmdList.SetViewport(0, 0, 0.0f, TargetSizeX, TargetSizeY, 1.0f);
 		ensure(RenderTargetTextureRHI.IsValid() && (RenderTargetTextureRHI->GetClearColor() == ClearColor));
-		AddClearRenderTargetPass(GraphBuilder, RenderTargetTextureRDG, ClearColor);
+
+		FRHIRenderPassInfo RPInfo(RenderTargetTextureRHI, ERenderTargetActions::Clear_Store);
+		RHICmdList.BeginRenderPass(RPInfo, TEXT("ClearRenderTarget"));
+		RHICmdList.EndRenderPass();
 	}
  
+	// #todo-renderpasses must generate mips outside of a renderpass?
 	if (Owner->bAutoGenerateMips)
 	{
 		/**Convert the input values from the editor to a compatible format for FSamplerStateInitializerRHI. 
 			Ensure default sampler is Bilinear clamp*/
-		FGenerateMips::Execute(GraphBuilder, RenderTargetTextureRDG, FGenerateMipsParams{
+		FGenerateMips::Execute(RHICmdList, RenderTargetTextureRHI, FGenerateMipsParams{
 			Owner->MipsSamplerFilter == TF_Nearest ? SF_Point : (Owner->MipsSamplerFilter == TF_Trilinear ? SF_Trilinear : SF_Bilinear),
 			Owner->MipsAddressU == TA_Wrap ? AM_Wrap : (Owner->MipsAddressU == TA_Mirror ? AM_Mirror : AM_Clamp),
 			Owner->MipsAddressV == TA_Wrap ? AM_Wrap : (Owner->MipsAddressV == TA_Mirror ? AM_Mirror : AM_Clamp)});
 	}
 
-	AddCopyToResolveTargetPass(GraphBuilder, RenderTargetTextureRDG, TextureRDG, FResolveParams());
-
-	GraphBuilder.Execute();
+ 	// copy surface to the texture for use
+	RHICmdList.CopyToResolveTarget(RenderTargetTextureRHI, TextureRHI, FResolveParams());
 }
 
 void FTextureRenderTarget2DResource::Resize(int32 NewSizeX, int32 NewSizeY)

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UObject/PackageReload.h"
 #include "UObject/ReferenceChainSearch.h"
@@ -127,12 +127,12 @@ public:
 		return TEXT("FReplaceObjectReferencesArchive");
 	}
 
-	virtual void HandleObjectReference(UObject*& Object, const UObject* ReferencingObject, const FProperty* ReferencingProperty) override
+	virtual void HandleObjectReference(UObject*& Object, const UObject* ReferencingObject, const UProperty* ReferencingProperty) override
 	{
 		(*this) << Object;
 	}
 
-	virtual void HandleObjectReferences(UObject** InObjects, const int32 ObjectNum, const UObject* InReferencingObject, const FProperty* InReferencingProperty) override
+	virtual void HandleObjectReferences(UObject** InObjects, const int32 ObjectNum, const UObject* InReferencingObject, const UProperty* InReferencingProperty) override
 	{
 		for (int32 ObjectIndex = 0; ObjectIndex < ObjectNum; ++ObjectIndex)
 		{
@@ -194,10 +194,9 @@ public:
 void MarkPackageReplaced(UPackage* InPackage)
 {
 	InPackage->SetFlags(RF_NewerVersionExists);
-	ForEachObjectWithPackage(InPackage, [](UObject* InSubObject)
+	ForEachObjectWithOuter(InPackage, [](UObject* InSubObject)
 	{
 		InSubObject->SetFlags(RF_NewerVersionExists);
-		return true; // continue
 	});
 }
 
@@ -207,10 +206,9 @@ void MarkPackageReplaced(UPackage* InPackage)
 void ClearPackageReplaced(UPackage* InPackage)
 {
 	InPackage->ClearFlags(RF_NewerVersionExists);
-	ForEachObjectWithPackage(InPackage, [](UObject* InSubObject)
+	ForEachObjectWithOuter(InPackage, [](UObject* InSubObject)
 	{
 		InSubObject->ClearFlags(RF_NewerVersionExists);
-		return true; // continue
 	});
 }
 
@@ -232,10 +230,9 @@ void MakeObjectPurgeable(UObject* InObject)
 void MakePackagePurgeable(UPackage* InPackage)
 {
 	MakeObjectPurgeable(InPackage);
-	ForEachObjectWithPackage(InPackage, [](UObject* InObject)
+	ForEachObjectWithOuter(InPackage, [](UObject* InObject)
 	{
 		MakeObjectPurgeable(InObject);
-		return true; // continue
 	});
 }
 
@@ -395,10 +392,10 @@ void SortPackagesForReload(const FName PackageName, TSet<FName>& ProcessedPackag
 	ProcessedPackages.Add(PackageName);
 
 	TArray<FName> PackageDependencies;
-	InAssetRegistry.GetDependencies(PackageName, PackageDependencies, UE::AssetRegistry::EDependencyCategory::Package, UE::AssetRegistry::EDependencyQuery::Hard);
+	InAssetRegistry.GetDependencies(PackageName, PackageDependencies, EAssetRegistryDependencyType::Hard);
 
 	// Recursively go through processing each new dependency until we run out
-	for (const FName& Dependency : PackageDependencies)
+	for (const FName Dependency : PackageDependencies)
 	{
 		if (!ProcessedPackages.Contains(Dependency))
 		{
@@ -583,16 +580,9 @@ void ReloadPackages(const TArrayView<FReloadPackageData>& InPackagesToReload, TA
 
 				// Mutating the old versions of classes can result in us replacing the SuperStruct pointer, which results
 				// in class layout change and subsequently crashes because instances will not match this new class layout:
-				UClass* AsClass = Cast<UClass>(PotentialReferencer);
-				if (!AsClass)
+				if(UClass* AsClass = Cast<UClass>(PotentialReferencer))
 				{
-					AsClass = PotentialReferencer->GetTypedOuter<UClass>();
-				}
-
-				if(AsClass)
-				{
-					if( AsClass->HasAnyClassFlags(CLASS_NewerVersionExists) || 
-						AsClass->HasAnyFlags(RF_NewerVersionExists))
+					if(AsClass->HasAnyClassFlags(CLASS_NewerVersionExists) || AsClass->HasAnyFlags(RF_NewerVersionExists))
 					{
 						continue;
 					}
@@ -679,10 +669,9 @@ void ReloadPackages(const TArrayView<FReloadPackageData>& InPackagesToReload, TA
 			if (bDumpExternalReferences)
 			{
 				PackageReloadInternal::DumpExternalReferences(ExistingPackage, ExistingPackage);
-				//ForEachObjectWithPackage(ExistingPackage, [](UObject* InExistingObject)
+				//ForEachObjectWithOuter(ExistingPackage, [](UObject* InExistingObject)
 				//{
 				//	PackageReloadInternal::DumpExternalReferences(InExistingObject, ExistingPackage);
-				//	return true; // continue
 				//}, true, RF_NoFlags, EInternalObjectFlags::PendingKill);
 			}
 		}

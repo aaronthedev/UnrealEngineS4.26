@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PostProcess/PostProcessUpscale.h"
 #include "SceneFilterRendering.h"
@@ -107,7 +107,6 @@ BEGIN_SHADER_PARAMETER_STRUCT(FUpscaleParameters, )
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, SceneColorTexture)
 	SHADER_PARAMETER_SAMPLER(SamplerState, SceneColorSampler)
 	SHADER_PARAMETER_RDG_TEXTURE(Texture2D, PointSceneColorTexture)
-	SHADER_PARAMETER_RDG_TEXTURE(Texture2DArray, PointSceneColorTextureArray)
 	SHADER_PARAMETER_SAMPLER(SamplerState, PointSceneColorSampler)
 	SHADER_PARAMETER_STRUCT(FPaniniProjectionParameters, Panini)
 	SHADER_PARAMETER(float, UpscaleSoftness)
@@ -129,7 +128,7 @@ public:
 		const FPermutationDomain PermutationVector(Parameters.PermutationId);
 		const EUpscaleMethod UpscaleMethod = PermutationVector.Get<FMethodDimension>();
 
-		// Always allow point and bilinear upscale. (Provides upscaling for mobile emulation)
+		// Always allow point and bilinear upscale. (Provides upscaling for ES2 emulation)
 		if (UpscaleMethod == EUpscaleMethod::Nearest || UpscaleMethod == EUpscaleMethod::Bilinear)
 		{
 			return true;
@@ -176,7 +175,7 @@ FScreenPassTexture AddUpscalePass(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 
 	if (!Output.IsValid())
 	{
-		FRDGTextureDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
+		FPooledRenderTargetDesc OutputDesc = Inputs.SceneColor.Texture->Desc;
 		OutputDesc.Reset();
 
 		if (Inputs.Stage == EUpscaleStage::PrimaryToSecondary)
@@ -213,7 +212,6 @@ FScreenPassTexture AddUpscalePass(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 	PassParameters->SceneColorTexture = Inputs.SceneColor.Texture;
 	PassParameters->SceneColorSampler = TStaticSamplerState<SF_Bilinear, AM_Border, AM_Border, AM_Border>::GetRHI();
 	PassParameters->PointSceneColorTexture = Inputs.SceneColor.Texture;
-	PassParameters->PointSceneColorTextureArray = Inputs.SceneColor.Texture;
 	PassParameters->PointSceneColorSampler = TStaticSamplerState<SF_Point, AM_Border, AM_Border, AM_Border>::GetRHI();
 	PassParameters->Panini = GetPaniniProjectionParameters(PaniniConfig, View);
 	PassParameters->UpscaleSoftness = FMath::Clamp(CVarUpscaleSoftness.GetValueOnRenderThread(), 0.0f, 1.0f);
@@ -235,23 +233,24 @@ FScreenPassTexture AddUpscalePass(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 	{
 		RHICmdList.SetViewport(OutputViewport.Rect.Min.X, OutputViewport.Rect.Min.Y, 0.0f, OutputViewport.Rect.Max.X, OutputViewport.Rect.Max.Y, 1.0f);
 
-		TShaderRef<FShader> VertexShader;
+		FShader* VertexShader = nullptr;
+
 		if (bUsePaniniProjection)
 		{
 			TShaderMapRef<FUpscaleVS> TypedVertexShader(View.ShaderMap);
-			SetScreenPassPipelineState(RHICmdList, FScreenPassPipelineState(TypedVertexShader, PixelShader));
-			SetShaderParameters(RHICmdList, TypedVertexShader, TypedVertexShader.GetVertexShader(), *PassParameters);
-			VertexShader = TypedVertexShader;
+			SetScreenPassPipelineState(RHICmdList, FScreenPassPipelineState(*TypedVertexShader, *PixelShader));
+			SetShaderParameters(RHICmdList, *TypedVertexShader, TypedVertexShader->GetVertexShader(), *PassParameters);
+			VertexShader = *TypedVertexShader;
 		}
 		else
 		{
 			TShaderMapRef<FScreenPassVS> TypedVertexShader(View.ShaderMap);
-			SetScreenPassPipelineState(RHICmdList, FScreenPassPipelineState(TypedVertexShader, PixelShader));
-			VertexShader = TypedVertexShader;
+			SetScreenPassPipelineState(RHICmdList, FScreenPassPipelineState(*TypedVertexShader, *PixelShader));
+			VertexShader = *TypedVertexShader;
 		}
-		check(VertexShader.IsValid());
+		check(VertexShader != nullptr);
 
-		SetShaderParameters(RHICmdList, PixelShader, PixelShader.GetPixelShader(), *PassParameters);
+		SetShaderParameters(RHICmdList, *PixelShader, PixelShader->GetPixelShader(), *PassParameters);
 
 		DrawRectangle(
 			RHICmdList,
@@ -266,4 +265,38 @@ FScreenPassTexture AddUpscalePass(FRDGBuilder& GraphBuilder, const FViewInfo& Vi
 	});
 
 	return MoveTemp(Output);
+}
+
+FRenderingCompositeOutputRef AddUpscalePass(FRenderingCompositionGraph& Graph, FRenderingCompositeOutputRef Input, EUpscaleMethod Method, EUpscaleStage Stage)
+{
+	FRenderingCompositePass* Pass = Graph.RegisterPass(
+		new(FMemStack::Get()) TRCPassForRDG<1, 1>(
+			[Method, Stage](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
+	{
+		FRDGBuilder GraphBuilder(InContext.RHICmdList);
+
+		FUpscaleInputs PassInputs;
+		PassInputs.Method = Method;
+		PassInputs.Stage = Stage;
+		PassInputs.SceneColor.Texture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
+		PassInputs.SceneColor.ViewRect = InContext.SceneColorViewRect;
+
+		if (FRDGTextureRef OverrideOutputTexture = InPass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("FrameBuffer")))
+		{
+			PassInputs.OverrideOutput.Texture = OverrideOutputTexture;
+			PassInputs.OverrideOutput.ViewRect = InContext.GetSceneColorDestRect(InPass);
+			PassInputs.OverrideOutput.LoadAction = InContext.View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
+		}
+
+		FScreenPassTexture PassOutput = AddUpscalePass(GraphBuilder, InContext.View, PassInputs);
+
+		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, PassOutput.Texture);
+
+		InContext.SceneColorViewRect = PassOutput.ViewRect;
+		InContext.ReferenceBufferSize = PassOutput.Texture->Desc.Extent;
+
+		GraphBuilder.Execute();
+	}));
+	Pass->SetInput(ePId_Input0, Input);
+	return FRenderingCompositeOutputRef(Pass);
 }

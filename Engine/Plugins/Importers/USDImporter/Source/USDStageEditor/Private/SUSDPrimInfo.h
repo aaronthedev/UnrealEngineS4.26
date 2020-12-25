@@ -1,16 +1,20 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
-namespace UE
-{
-	class FUsdStage;
-}
-
 #if USE_USD_SDK
+
+#include "USDMemory.h"
+
+#include "USDIncludesStart.h"
+
+#include "pxr/pxr.h"
+#include "pxr/usd/usd/stage.h"
+
+#include "USDIncludesEnd.h"
 
 class AUsdStageActor;
 
@@ -20,13 +24,13 @@ public:
 	SLATE_BEGIN_ARGS( SUsdPrimInfo ) {}
 	SLATE_END_ARGS()
 
-	void Construct( const FArguments& InArgs, const UE::FUsdStage& UsdStage, const TCHAR* PrimPath );
+	void Construct( const FArguments& InArgs, const TUsdStore< pxr::UsdStageRefPtr >& UsdStage, const TCHAR* PrimPath );
 
-	void SetPrimPath( const UE::FUsdStage& UsdStage, const TCHAR* PrimPath );
+	void SetPrimPath( const TUsdStore< pxr::UsdStageRefPtr >& UsdStage, const TCHAR* PrimPath );
 
 protected:
-	TSharedRef< SWidget > GenerateVariantSetsWidget( const UE::FUsdStage& UsdStage, const TCHAR* PrimPath );
-	TSharedRef< SWidget > GenerateReferencesListWidget( const UE::FUsdStage& UsdStage, const TCHAR* PrimPath );
+	TSharedRef< SWidget > GenerateVariantSetsWidget( const TUsdStore< pxr::UsdStageRefPtr >& UsdStage, const TCHAR* PrimPath );
+	TSharedRef< SWidget > GenerateReferencesListWidget( const TUsdStore< pxr::UsdStageRefPtr >& UsdStage, const TCHAR* PrimPath );
 
 private:
 	TSharedPtr< class SUsdPrimPropertiesList > PropertiesList;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ShaderParameters.h: Shader parameter inline definitions.
@@ -100,7 +100,7 @@ void SetShaderValue(
 template<typename ShaderRHIParamRef>
 UE_DEPRECATED(4.24, "Please use integer values for boolean shader parameters instead.")
 void SetShaderValue(
-	FRHIComputeCommandList& RHICmdList,
+	FRHIAsyncComputeCommandList& RHICmdList,
 	const ShaderRHIParamRef& Shader,
 	const FShaderParameter& Parameter,
 	bool Value,
@@ -386,28 +386,6 @@ FORCEINLINE void SetUAVParameter(
 	}
 }
 
-/**
- * Sets the value of a unordered access view parameter
- */
-template<typename TRHICmdList>
-FORCEINLINE void SetUAVParameter(
-	TRHICmdList& RHICmdList,
-	FRHIPixelShader* PixelShader,
-	const FShaderResourceParameter& Parameter,
-	FRHIUnorderedAccessView* NewUnorderedAccessViewRHI
-)
-{
-	if (Parameter.IsBound())
-	{
-		RHICmdList.SetUAVParameter(
-			PixelShader,
-			Parameter.GetBaseIndex(),
-			NewUnorderedAccessViewRHI
-		);
-	}
-}
-
-
 
 template<typename TRHICmdList>
 inline bool SetUAVParameterIfCS(TRHICmdList& RHICmdList, FRHIVertexShader* Shader, const FShaderResourceParameter& UAVParameter, FRHIUnorderedAccessView* UAV)
@@ -418,8 +396,7 @@ inline bool SetUAVParameterIfCS(TRHICmdList& RHICmdList, FRHIVertexShader* Shade
 template<typename TRHICmdList>
 inline bool SetUAVParameterIfCS(TRHICmdList& RHICmdList, FRHIPixelShader* Shader, const FShaderResourceParameter& UAVParameter, FRHIUnorderedAccessView* UAV)
 {
-	SetUAVParameter(RHICmdList, Shader, UAVParameter, UAV);
-	return UAVParameter.IsBound();
+	return false;
 }
 
 template<typename TRHICmdList>

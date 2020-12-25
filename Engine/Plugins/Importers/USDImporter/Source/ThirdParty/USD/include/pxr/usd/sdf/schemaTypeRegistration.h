@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_SCHEMA_TYPE_REGISTRATION_H
-#define PXR_USD_SDF_SCHEMA_TYPE_REGISTRATION_H
+#ifndef SDF_SCHEMA_TYPE_REGISTRATION_H
+#define SDF_SCHEMA_TYPE_REGISTRATION_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/sdf/layerOffset.h"
@@ -75,10 +75,12 @@ PXR_NAMESPACE_OPEN_SCOPE
 ((SdfFieldKeys->InheritPaths,            SdfPathListOp))                 \
 ((SdfFieldKeys->Instanceable,            bool))                          \
 ((SdfFieldKeys->Kind,                    TfToken))                       \
+((SdfFieldKeys->Marker,                  std::string))                   \
+((SdfFieldKeys->MapperArgValue,          VtValue))                       \
 ((SdfFieldKeys->Owner,                   std::string))                   \
 ((SdfFieldKeys->PrimOrder,               std::vector<TfToken>))          \
 ((SdfFieldKeys->NoLoadHint,              bool))                          \
-((SdfFieldKeys->Payload,                 SdfPayloadListOp))              \
+((SdfFieldKeys->Payload,                 SdfPayload))                    \
 ((SdfFieldKeys->Permission,              SdfPermission))                 \
 ((SdfFieldKeys->Prefix,                  std::string))                   \
 ((SdfFieldKeys->PrefixSubstitutions,     VtDictionary))                  \
@@ -88,6 +90,7 @@ PXR_NAMESPACE_OPEN_SCOPE
 ((SdfFieldKeys->TargetPaths,             SdfPathListOp))                 \
 ((SdfFieldKeys->TimeSamples,             SdfTimeSampleMap))              \
 ((SdfFieldKeys->Relocates,               SdfRelocatesMap))               \
+((SdfFieldKeys->Script,                  std::string))                   \
 ((SdfFieldKeys->Specializes,             SdfPathListOp))                 \
 ((SdfFieldKeys->Specifier,               SdfSpecifier))                  \
 ((SdfFieldKeys->StartFrame,              double))                        \
@@ -156,11 +159,13 @@ SdfRegisterTypes(Registrar* reg)
 #undef _SDF_REGISTER_TYPES
 
    // Also register all of the C++ value types for value types.
-#define _SDF_REGISTER_VALUE_TYPES(r, unused, elem)                     \
-    {                                                                  \
-        reg->template RegisterType<SDF_VALUE_CPP_TYPE(elem)>();        \
-        reg->template RegisterType<SDF_VALUE_CPP_ARRAY_TYPE(elem)>();  \
+#define _SDF_REGISTER_VALUE_TYPES(r, unused, elem)       \
+    {                                                   \
+        typedef SDF_VALUE_TRAITS_TYPE(elem) T;                          \
+        reg->template RegisterType<typename T::Type>();                 \
+        reg->template RegisterType<typename T::ShapedType>();           \
     }
+
     BOOST_PP_SEQ_FOR_EACH(_SDF_REGISTER_VALUE_TYPES, ~, SDF_VALUE_TYPES)
 #undef _SDF_REGISTER_VALUE_TYPES
 
@@ -177,4 +182,4 @@ SdfRegisterTypes(Registrar* reg)
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_SCHEMA_TYPE_REGISTRATION_H
+#endif // SDF_SCHEMA_TYPE_REGISTRATION_H

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Interpolation.cpp: Code for supporting interpolation of properties in-game.
@@ -109,7 +109,6 @@
 #include "Animation/AnimBlueprintGeneratedClass.h"
 #include "Particles/ParticleSystemReplay.h"
 #include "GameFramework/GameState.h"
-#include "UObject/CoreObjectVersion.h"
 
 #if WITH_EDITOR
 #include "Sound/SoundCue.h"
@@ -322,13 +321,13 @@ namespace InterpTools
 		// Check to see if there is a period in the name, which is the case 
 		// for structs and components that own interp variables. In these  
 		// cases, we want to cut off the preceeding text up and the period.
-		int32 PeriodPosition = PropertyString.Find(TEXT("."), ESearchCase::CaseSensitive);
+		int32 PeriodPosition = PropertyString.Find(TEXT("."));
 
 		if(PeriodPosition != INDEX_NONE)
 		{
 			// We found a period; Only capture the text after the 
 			// period, which represents the actual property name.
-			PropertyString.MidInline( PeriodPosition + 1, MAX_int32, false );
+			PropertyString = PropertyString.Mid( PeriodPosition + 1 );
 		}
 
 		return FName(*PropertyString);
@@ -411,7 +410,7 @@ AMatineeActor::AMatineeActor(const FObjectInitializer& ObjectInitializer)
 
 void AMatineeActor::PostLoad()
 {
-	bReplicates = !bClientSideOnly;
+	SetReplicates(!bClientSideOnly);
 	Super::PostLoad();
 }
 
@@ -1271,7 +1270,7 @@ void AMatineeActor::StepInterp( float DeltaTime, bool bPreview )
 
 void AMatineeActor::DisableRadioFilterIfNeeded()
 {
-	FAudioDeviceHandle AudioDevice = GEngine->GetMainAudioDevice();
+	FAudioDevice* AudioDevice = GEngine->GetMainAudioDevice();
 	if( AudioDevice )
 	{
 		AudioDevice->EnableRadioEffect( !bDisableRadioFilter );
@@ -1299,7 +1298,7 @@ void AMatineeActor::EnableCinematicMode(bool bEnable)
 
 void AMatineeActor::EnableRadioFilter()
 {
-	FAudioDeviceHandle AudioDevice = GEngine->GetMainAudioDevice();
+	FAudioDevice* AudioDevice = GEngine->GetMainAudioDevice();
 	if( AudioDevice )
 	{
 		AudioDevice->EnableRadioEffect( true );
@@ -1341,7 +1340,7 @@ void AMatineeActor::PostEditChangeProperty( FPropertyChangedEvent& PropertyChang
 	ValidateActorGroups();
 }
 
-bool AMatineeActor::CanEditChange( const FProperty* Property ) const
+bool AMatineeActor::CanEditChange( const UProperty* Property ) const
 {
 	bool bIsEditable = Super::CanEditChange( Property );
 	if( bIsEditable && Property != NULL )
@@ -3121,11 +3120,9 @@ UInterpTrackInstProperty::UInterpTrackInstProperty(const FObjectInitializer& Obj
 void UInterpTrackInstProperty::SetupPropertyUpdateCallback(AActor* InActor, const FName& TrackPropertyName)
 {
 	// Try to find a custom callback to use when updating the property.  This callback will be called instead of UpdateComponents.
-	void* PropertyScope = nullptr;
-	FProperty* OutInterpProperty = InterpProperty.Get();
-	UObject* PropertyOuterObject = FMatineeUtils::FindObjectAndPropOffset(/*out*/ PropertyScope, /*out*/ OutInterpProperty, InActor, TrackPropertyName);
-	InterpProperty = OutInterpProperty;
-	if ((InterpProperty != nullptr) && (PropertyOuterObject != nullptr))
+	void* PropertyScope = NULL;
+	UObject* PropertyOuterObject = FMatineeUtils::FindObjectAndPropOffset(/*out*/ PropertyScope, /*out*/ InterpProperty, InActor, TrackPropertyName);
+	if ((InterpProperty != NULL) && (PropertyOuterObject != NULL))
 	{
 		PropertyOuterObjectInst = PropertyOuterObject;
 	}
@@ -3135,17 +3132,17 @@ void UInterpTrackInstProperty::SetupPropertyUpdateCallback(AActor* InActor, cons
 void UInterpTrackInstProperty::CallPropertyUpdateCallback()
 {
 	// call post interp change if we have valid outer
-	if(PropertyOuterObjectInst)
+	if(PropertyOuterObjectInst != NULL)
 	{
-		PropertyOuterObjectInst->PostInterpChange(InterpProperty.Get());
+		PropertyOuterObjectInst->PostInterpChange(InterpProperty);
 	}
 }
 
 void UInterpTrackInstProperty::TermTrackInst(UInterpTrack* Track)
 {
 	// Clear references
-	InterpProperty = nullptr;
-	PropertyOuterObjectInst = nullptr;
+	InterpProperty=NULL;
+	PropertyOuterObjectInst=NULL;
 
 	Super::TermTrackInst(Track);
 }
@@ -8612,7 +8609,7 @@ UInterpTrackFloatMaterialParam::UInterpTrackFloatMaterialParam(const FObjectInit
 }
 
 #if WITH_EDITOR
-void UInterpTrackFloatMaterialParam::PreEditChange(FProperty* PropertyThatWillChange)
+void UInterpTrackFloatMaterialParam::PreEditChange(UProperty* PropertyThatWillChange)
 {
 	PreEditChangeMaterialParamTrack();
 	Super::PreEditChange(PropertyThatWillChange);
@@ -8770,7 +8767,7 @@ UInterpTrackVectorMaterialParam::UInterpTrackVectorMaterialParam(const FObjectIn
 }
 
 #if WITH_EDITOR
-void UInterpTrackVectorMaterialParam::PreEditChange(FProperty* PropertyThatWillChange)
+void UInterpTrackVectorMaterialParam::PreEditChange(UProperty* PropertyThatWillChange)
 {
 	PreEditChangeMaterialParamTrack();
 	Super::PreEditChange(PropertyThatWillChange);
@@ -9840,7 +9837,7 @@ void UInterpTrackFloatAnimBPParam::PostEditChangeProperty(FPropertyChangedEvent&
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
-	FProperty* PropertyThatChanged = PropertyChangedEvent.Property;
+	UProperty* PropertyThatChanged = PropertyChangedEvent.Property;
 	FName PropertyName = PropertyThatChanged != NULL ? PropertyThatChanged->GetFName() : NAME_None;
 
 	if (PropertyName == GET_MEMBER_NAME_CHECKED(UInterpTrackFloatAnimBPParam, ParamName) ||

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	GenericMacTargetPlatform.h: Declares the TGenericMacTargetPlatform class template.
@@ -120,6 +120,8 @@ return TSuper::SupportsFeature(Feature);
 			OutFormats.AddUnique(NAME_SF_METAL_SM5);
 			static FName NAME_SF_METAL_MACES3_1(TEXT("SF_METAL_MACES3_1"));
 			OutFormats.AddUnique(NAME_SF_METAL_MACES3_1);
+			static FName NAME_SF_METAL_MACES2(TEXT("SF_METAL_MACES2"));
+			OutFormats.AddUnique(NAME_SF_METAL_MACES2);
 			static FName NAME_SF_METAL_MRT_MAC(TEXT("SF_METAL_MRT_MAC"));
 			OutFormats.AddUnique(NAME_SF_METAL_MRT_MAC);
 		}
@@ -190,7 +192,6 @@ return TSuper::SupportsFeature(Feature);
 		static FName NameG16(TEXT("G16"));
 		static FName NameVU8(TEXT("VU8"));
 		static FName NameRGBA16F(TEXT("RGBA16F"));
-		static FName NameR16F(TEXT("R16F"));
 		static FName NameBC6H(TEXT("BC6H"));
 		static FName NameBC7(TEXT("BC7"));
 
@@ -265,10 +266,6 @@ return TSuper::SupportsFeature(Feature);
 		{
 			TextureFormatName = NameBC7;
 		}
-		else if (Settings == TC_HalfFloat)
-		{
-			TextureFormatName = NameR16F;
-		}
 		else if (bNoAlpha)
 		{
 			TextureFormatName = NameDXT1;
@@ -325,7 +322,7 @@ return TSuper::SupportsFeature(Feature);
 			return NAME_ADPCM;
 		}
 
-		if (Wave->IsStreaming(*this->IniPlatformName()))
+		if (Wave->IsStreaming())
 		{
 			return NAME_OPUS;
 		}
@@ -342,6 +339,11 @@ return TSuper::SupportsFeature(Feature);
 		OutFormats.Add(NAME_ADPCM);
 		OutFormats.Add(NAME_OGG);
 		OutFormats.Add(NAME_OPUS);
+	}
+
+	virtual FPlatformAudioCookOverrides* GetAudioCompressionSettings() const override
+	{
+		return nullptr;
 	}
 
 #endif //WITH_ENGINE

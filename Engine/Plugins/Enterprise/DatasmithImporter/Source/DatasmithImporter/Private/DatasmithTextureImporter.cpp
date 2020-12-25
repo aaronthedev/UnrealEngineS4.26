@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithTextureImporter.h"
 
@@ -31,9 +31,10 @@
 #include "Modules/ModuleManager.h"
 
 #include "ObjectTools.h"
-#include "RHI.h"
 
 #define LOCTEXT_NAMESPACE "DatasmithTextureImport"
+
+const uint32 MaxTextureSize = 4096;
 
 namespace
 {
@@ -41,7 +42,7 @@ namespace
 	{
 		TRACE_CPUPROFILER_EVENT_SCOPE(ResizeTexture);
 
-		EDSTextureUtilsError ErrorCode = FDatasmithTextureResize::ResizeTexture(Filename, ResizedFilename, EDSResizeTextureMode::NearestPowerOfTwo, GMaxTextureDimensions, bCreateNormal);
+		EDSTextureUtilsError ErrorCode = FDatasmithTextureResize::ResizeTexture(Filename, ResizedFilename, EDSResizeTextureMode::NearestPowerOfTwo, MaxTextureSize, bCreateNormal);
 
 		switch (ErrorCode)
 		{
@@ -84,9 +85,6 @@ FDatasmithTextureImporter::FDatasmithTextureImporter(FDatasmithImportContext& In
 	, TextureFact( NewObject< UTextureFactory >() )
 {
 	TextureFact->SuppressImportOverwriteDialog();
-
-	// Avoid recomputing DDC when importing the same texture more than once
-	TextureFact->bUseHashAsGuid = true;
 
 	TempDir = FPaths::Combine(FPaths::ProjectIntermediateDir(), TEXT("DatasmithTextureImport"));
 	IFileManager::Get().MakeDirectory(*TempDir);
@@ -190,11 +188,6 @@ bool FDatasmithTextureImporter::GetTextureData(const TSharedPtr<IDatasmithTextur
 
 UTexture* FDatasmithTextureImporter::CreateTexture(const TSharedPtr<IDatasmithTextureElement>& TextureElement, const TArray<uint8>& TextureData, const FString& Extension)
 {
-	if (TextureElement->GetTextureMode() == EDatasmithTextureMode::Ies)
-	{
-		return CreateIESTexture(TextureElement);
-	}
-
 	const FString TextureLabel = TextureElement->GetLabel();
 	const FString TextureName = TextureLabel.Len() > 0 ? ImportContext.AssetsContext.TextureNameProvider.GenerateUniqueName(TextureLabel) : TextureElement->GetName();
 
@@ -281,84 +274,16 @@ UTexture* FDatasmithTextureImporter::CreateTexture(const TSharedPtr<IDatasmithTe
 		// Notify the asset registry
 		FAssetRegistryModule::AssetCreated(Texture);
 
-		bool bUpdateResource = false;
-
 		if (FMath::IsNearlyEqual(RGBCurve, 1.0f) == false && RGBCurve > 0.f)
 		{
 			Texture->AdjustRGBCurve = RGBCurve;
-			bUpdateResource = true;
-		}
-
-		EDatasmithColorSpace ColorSpace = TextureElement->GetSRGB();
-		if (!Texture->SRGB && ColorSpace == EDatasmithColorSpace::sRGB)
-		{
-			Texture->SRGB = true;
-			bUpdateResource = true;
-		}
-		else if (Texture->SRGB && ColorSpace == EDatasmithColorSpace::Linear)
-		{
-			Texture->SRGB = false;
-			bUpdateResource = true;
-		}
-
-		if (bUpdateResource)
-		{
-			// Make sure the previous update done by the factory has been completed
-			FlushRenderingCommands();
-
 			Texture->UpdateResource();
 		}
+
 		Texture->MarkPackageDirty();
 	}
 
 	return Texture;
-}
-
-UTexture* FDatasmithTextureImporter::CreateIESTexture(const TSharedPtr<IDatasmithTextureElement>& TextureElement)
-{
-	UTextureLightProfile* IESTexture = nullptr;
-
-	FString Filename(TextureElement->GetFile());
-	if (Filename.IsEmpty() || !FPaths::FileExists(Filename))
-	{
-		UE_LOG(LogDatasmithImport, Error, TEXT("Unable to find ies file %s"), *Filename);
-
-		return nullptr;
-	}
-
-	FString Extension = FPaths::GetExtension(Filename).ToLower();
-	FString TextureName(TextureElement->GetName());
-
-	// try opening from absolute path
-	TArray<uint8> TextureData;
-	if (!(FFileHelper::LoadFileToArray(TextureData, *Filename) && TextureData.Num() > 0))
-	{
-		UE_LOG(LogDatasmithImport, Warning, TEXT("Unable to find Texture file %s"), *Filename);
-		return nullptr;
-	}
-
-	TextureFact->SuppressImportOverwriteDialog();
-
-	TextureFact->LODGroup = TEXTUREGROUP_IESLightProfile;
-	TextureFact->CompressionSettings = TC_HDR;
-
-	const uint8* PtrTexture = TextureData.GetData();
-
-	IESTexture = (UTextureLightProfile*)TextureFact->FactoryCreateBinary(UTextureLightProfile::StaticClass(),
-							ImportContext.AssetsContext.TexturesImportPackage.Get(),
-							*TextureName, ImportContext.ObjectFlags, nullptr,
-							*Extension, PtrTexture,	PtrTexture + TextureData.Num(), GWarn);
-	if (IESTexture != nullptr)
-	{
-		IESTexture->AssetImportData->Update(Filename);
-
-		// Notify the asset registry
-		FAssetRegistryModule::AssetCreated(IESTexture);
-
-		IESTexture->MarkPackageDirty();
-	}
-
-	return IESTexture;
 }
 
 #undef LOCTEXT_NAMESPACE

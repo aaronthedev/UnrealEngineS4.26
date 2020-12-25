@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_USD_FILE_FORMAT_H
-#define PXR_USD_USD_USD_FILE_FORMAT_H
+#ifndef USD_USD_FILE_FORMAT_H
+#define USD_USD_FILE_FORMAT_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/usd/api.h"
@@ -33,7 +33,9 @@
 
 PXR_NAMESPACE_OPEN_SCOPE
 
+
 TF_DECLARE_WEAK_AND_REF_PTRS(UsdUsdFileFormat);
+TF_DECLARE_WEAK_PTRS(SdfLayerBase);
 
 #define USD_USD_FILE_FORMAT_TOKENS  \
     ((Id,           "usd"))         \
@@ -50,8 +52,8 @@ TF_DECLARE_PUBLIC_TOKENS(UsdUsdFileFormatTokens, USD_API, USD_USD_FILE_FORMAT_TO
 /// When creating a file through the SdfLayer::CreateNew() interface, the
 /// meaningful SdfFileFormat::FileFormatArguments are as follows:
 /// \li UsdUsdFileFormatTokens->FormatArg , which must be a supported format's
-///     'Id'.  The possible values are UsdUsdaFileFormatTokens->Id
-///     or UsdUsdcFileFormatTokens->Id.
+///     'Id'.  The possible values are UsdUsdaFileFormatTokens->Id,
+///     UsdUsdbFileFormatTokens->Id, or UsdUsdcFileFormatTokens->Id.
 ///
 /// If no UsdUsdFileFormatTokens->FormatArg is supplied, the default is
 /// UsdUsdcFileFormatTokens->Id.
@@ -63,40 +65,40 @@ public:
 
     USD_API
     virtual SdfAbstractDataRefPtr
-    InitData(const FileFormatArguments& args) const override;
+    InitData(const FileFormatArguments& args) const;
 
     USD_API
-    virtual bool CanRead(const std::string &file) const override;
+    virtual bool CanRead(const std::string &file) const;
 
     USD_API
     virtual bool Read(
-        SdfLayer* layer,
+        const SdfLayerBasePtr& layerBase,
         const std::string& resolvedPath,
-        bool metadataOnly) const override;
+        bool metadataOnly) const;
 
     USD_API
     virtual bool WriteToFile(
-        const SdfLayer& layer,
+        const SdfLayerBase* layerBase,
         const std::string& filePath,
         const std::string& comment = std::string(),
-        const FileFormatArguments& args = FileFormatArguments()) const override;
+        const FileFormatArguments& args = FileFormatArguments()) const;
 
     USD_API
     virtual bool ReadFromString(
-        SdfLayer* layer,
-        const std::string& str) const override;
+        const SdfLayerBasePtr& layerBase,
+        const std::string& str) const;
 
     USD_API
     virtual bool WriteToString(
-        const SdfLayer& layer,
+        const SdfLayerBase* layerBase,
         std::string* str,
-        const std::string& comment = std::string()) const override;
+        const std::string& comment = std::string()) const;
 
     USD_API
     virtual bool WriteToStream(
         const SdfSpecHandle &spec,
         std::ostream& out,
-        size_t indent) const override;
+        size_t indent) const;
 
     /// Returns the value of the "format" argument to be used in the 
     /// FileFormatArguments when exporting or saving the given layer.
@@ -104,7 +106,7 @@ public:
     /// Returns an empty token if the given layer does not have this 
     /// file format.
     USD_API
-    static TfToken GetUnderlyingFormatForLayer(const SdfLayer& layer);
+    static TfToken GetUnderlyingFormatForLayer(const SdfLayerBase *layerBase);
 
 protected:
     SDF_FILE_FORMAT_FACTORY_ACCESS;
@@ -114,9 +116,12 @@ private:
     virtual ~UsdUsdFileFormat();
     
     static SdfFileFormatConstPtr 
-    _GetUnderlyingFileFormatForLayer(const SdfLayer& layer);
+    _GetUnderlyingFileFormatForLayer(const SdfLayerBase* layer);
+
+    virtual bool _IsStreamingLayer(const SdfLayerBase& layer) const;
 };
+
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_USD_USD_FILE_FORMAT_H
+#endif // USD_USD_FILE_FORMAT_H

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -86,7 +86,7 @@ namespace FastTriWinding
 	/**
 	 *  Evaluate first-order FWN approximation at point Q, relative to Center c
 	 */
-	inline double EvaluateOrder1Approx(const FVector3d& Center, const FVector3d& Order1Coeff, const FVector3d& Q)
+	double EvaluateOrder1Approx(const FVector3d& Center, const FVector3d& Order1Coeff, const FVector3d& Q)
 	{
 		FVector3d dpq = (Center - Q);
 		double len = dpq.Length();
@@ -97,7 +97,7 @@ namespace FastTriWinding
 	/**
 	 *  Evaluate second-order FWN approximation at point Q, relative to Center c
 	 */
-	inline double EvaluateOrder2Approx(const FVector3d& Center, const FVector3d& Order1Coeff, const FMatrix3d& Order2Coeff, const FVector3d& Q)
+	double EvaluateOrder2Approx(const FVector3d& Center, const FVector3d& Order1Coeff, const FMatrix3d& Order2Coeff, const FVector3d& Q)
 	{
 		FVector3d dpq = (Center - Q);
 		double len = dpq.Length();
@@ -125,7 +125,7 @@ namespace FastTriWinding
 	// triangle-winding-number first-order approximation.
 	// T is triangle, P is 'Center' of cluster of dipoles, Q is evaluation point
 	// (This is really just for testing)
-	inline double Order1Approx(const FTriangle3d& T, const FVector3d& P, const FVector3d& XN, double XA, const FVector3d& Q)
+	double Order1Approx(const FTriangle3d& T, const FVector3d& P, const FVector3d& XN, double XA, const FVector3d& Q)
 	{
 		FVector3d at0 = XA * XN;
 
@@ -139,7 +139,7 @@ namespace FastTriWinding
 	// triangle-winding-number second-order approximation
 	// T is triangle, P is 'Center' of cluster of dipoles, Q is evaluation point
 	// (This is really just for testing)
-	inline double Order2Approx(const FTriangle3d& T, const FVector3d& P, const FVector3d& XN, double XA, const FVector3d& Q)
+	double Order2Approx(const FTriangle3d& T, const FVector3d& P, const FVector3d& XN, double XA, const FVector3d& Q)
 	{
 		FVector3d dpq = (P - Q);
 
@@ -166,12 +166,11 @@ namespace FastTriWinding
 	}
 } // namespace FastTriWinding
 
-
-
 /**
- * Fast Mesh Winding Number extension to a TMeshAABBTree3.
- * This class is an "add-on" to the AABBTree, that can compute the Fast Mesh Winding Number.
- * This calculation requires a precomputation pass where information is cached at each tree node.
+ *  Fast Mesh Winding Number computation
+ *
+ *  TODO: this is tightly coupled to the internal guts of TMeshAABBTree3 (because it is ported from code where it *was* the guts of the AABBTree)
+ *			we should probably at least try to decouple it some
  */
 template <class TriangleMeshType>
 class TFastWindingTree
@@ -200,23 +199,15 @@ public:
 	 */
 	int FWNApproxOrder = 2;
 
-	TFastWindingTree(TMeshAABBTree3<TriangleMeshType>* TreeToRef, bool bAutoBuild = true)
+	TFastWindingTree(TMeshAABBTree3<TriangleMeshType>* TreeToRef)
 	{
-		SetTree(TreeToRef, bAutoBuild);
+		SetTree(TreeToRef);
 	}
 
-	void SetTree(TMeshAABBTree3<TriangleMeshType>* TreeToRef, bool bAutoBuild = true)
+	void SetTree(TMeshAABBTree3<TriangleMeshType>* TreeToRef)
 	{
 		this->Tree = TreeToRef;
-		if (bAutoBuild)
-		{
-			Build(true);
-		}
-	}
-
-	TMeshAABBTree3<TriangleMeshType>* GetTree() const
-	{
-		return Tree;
+		Build(true);
 	}
 
 	void Build(bool bAlwaysBuildRegardlessOfTimestamp = true)
@@ -233,16 +224,8 @@ public:
 		}
 	}
 
-	bool IsBuilt() const
-	{
-		return Tree->MeshTimestamp == Tree->Mesh->GetShapeTimestamp() && FastWindingCacheTimestamp == Tree->MeshTimestamp;
-	}
-
 	/**
-	 * Fast approximation of winding number using far-field approximations.
-	 * On a closed mesh the winding number will be 1 or more inside (depending on number of "winds").
-	 * Outside a closed mesh the winding number will be zero.
-	 * On an open mesh, the above holds near the mesh but in the "hole" areas the value will smoothly blend from 1 to 0 over a band of width dependent on the hole extent
+	 *  Fast approximation of winding number using far-field approximations
 	 */
 	double FastWindingNumber(const FVector3d& P)
 	{
@@ -251,27 +234,9 @@ public:
 		return sum;
 	}
 
-	/**
-	 * Const version does not auto-build on query
-	 */
-	double FastWindingNumber(const FVector3d& P) const
-	{
-		checkSlow(IsBuilt());
-		double sum = branch_fast_winding_num(Tree->RootIndex, P);
-		return sum;
-	}
-
-	/**
-	 * @return true if fast winding number at point P is greater than winding threshold (default 0.5)
-	 */
-	bool IsInside(const FVector3d& P, double WindingIsoThreshold = 0.5) const
-	{
-		return FastWindingNumber(P) > WindingIsoThreshold;
-	}
-
 private:
 	// evaluate winding number contribution for all Triangles below IBox
-	double branch_fast_winding_num(int IBox, FVector3d P) const
+	double branch_fast_winding_num(int IBox, FVector3d P)
 	{
 		double branch_sum = 0;
 
@@ -425,9 +390,9 @@ private:
 	}
 
 	// check if value is in cache and far enough away from Q that we can use cached value
-	bool can_use_fast_winding_cache(int IBox, const FVector3d& Q) const
+	bool can_use_fast_winding_cache(int IBox, const FVector3d& Q)
 	{
-		const FWNInfo* cacheInfo = FastWindingCache.Find(IBox);
+		FWNInfo* cacheInfo = FastWindingCache.Find(IBox);
 		if (!cacheInfo)
 		{
 			return false;
@@ -455,7 +420,7 @@ private:
 	}
 
 	// evaluate the FWN cache for IBox
-	double evaluate_box_fast_winding_cache(int IBox, const FVector3d& Q) const
+	double evaluate_box_fast_winding_cache(int IBox, const FVector3d& Q)
 	{
 		const FWNInfo& cacheInfo = FastWindingCache[IBox];
 

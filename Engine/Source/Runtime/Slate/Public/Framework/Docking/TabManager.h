@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,7 +11,6 @@
 
 class FJsonObject;
 class FMenuBuilder;
-class FBlacklistNames;
 class FMultiBox;
 class FProxyTabmanager;
 class SDockingArea;
@@ -525,8 +524,6 @@ class SLATE_API FTabManager : public TSharedFromThis<FTabManager>
 				
 			public:
 
-				static const TSharedRef<FTabManager::FLayout> NullLayout; /** A dummy layout meant to spawn nothing during (e.g., asset editor) initialization */
-
 				TSharedRef<FLayout> AddArea( const TSharedRef<FArea>& InArea )
 				{
 					Areas.Add( InArea );
@@ -705,8 +702,7 @@ class SLATE_API FTabManager : public TSharedFromThis<FTabManager>
 		 */
 		void UnregisterAllTabSpawners();
 
-		TSharedPtr<SWidget> RestoreFrom(const TSharedRef<FLayout>& Layout, const TSharedPtr<SWindow>& ParentWindow, const bool bEmbedTitleAreaContent = false,
-			const EOutputCanBeNullptr RestoreAreaOutputCanBeNullptr = EOutputCanBeNullptr::Never);
+		TSharedPtr<SWidget> RestoreFrom(const TSharedRef<FLayout>& Layout, const TSharedPtr<SWindow>& ParentWindow, const bool bEmbedTitleAreaContent = false, const EOutputCanBeNullptr RestoreAreaOutputCanBeNullptr = EOutputCanBeNullptr::Never);
 
 		void PopulateLocalTabSpawnerMenu( FMenuBuilder& PopulateMe );
 
@@ -745,16 +741,7 @@ class SLATE_API FTabManager : public TSharedFromThis<FTabManager>
 		 * @param TabId The tab identifier.
 		 * @return The existing or newly spawned tab instance.
 		 */
-		UE_DEPRECATED(4.26, "FTabManager::InvokeTab is deprecated. Please use TryInvokeTab instead!")
-		virtual TSharedRef<SDockTab> InvokeTab(const FTabId& TabId);
-
-		/**
-		 * Try to open tab if it is closed at the last known location.  If it already exists, it will draw attention to the tab.
-		 *
-		 * @param TabId The tab identifier.
-		 * @return The existing or newly spawned tab instance if successful.
-		 */
-		virtual TSharedPtr<SDockTab> TryInvokeTab(const FTabId& TabId);
+		virtual TSharedRef<SDockTab> InvokeTab( const FTabId& TabId );
 
 		/**
 		 * Finds the first instance of an existing tab with the given tab id.
@@ -814,9 +801,6 @@ class SLATE_API FTabManager : public TSharedFromThis<FTabManager>
 		/** Returns the owner tab (if it exists) */
 		TSharedPtr<SDockTab> GetOwnerTab() { return OwnerTabPtr.Pin(); }
 
-		/** Returns filter for additional control over available tabs */
-		TSharedRef<FBlacklistNames>& GetTabBlacklist();
-
 	protected:
 		void InvokeTabForMenu( FName TabId );
 
@@ -873,23 +857,13 @@ class SLATE_API FTabManager : public TSharedFromThis<FTabManager>
 		void RestoreSplitterContent(const TSharedRef<FSplitter>& SplitterNode, const TSharedRef<class SDockingSplitter>& SplitterWidget, const TSharedPtr<SWindow>& ParentWindow);
 		
 		bool IsValidTabForSpawning( const FTab& SomeTab ) const;
-		bool IsAllowedTab(const FTabId& TabId) const;
-		bool IsAllowedTabType(const FName TabType) const;
 		TSharedPtr<SDockTab> SpawnTab(const FTabId& TabId, const TSharedPtr<SWindow>& ParentWindow, const bool bCanOutputBeNullptr = false);
 
 		TSharedPtr<class SDockingTabStack> FindTabInLiveAreas( const FTabMatcher& TabMatcher ) const;
 		static TSharedPtr<class SDockingTabStack> FindTabInLiveArea( const FTabMatcher& TabMatcher, const TSharedRef<SDockingArea>& InArea );
 
 		template<typename MatchFunctorType> static bool HasAnyMatchingTabs( const TSharedRef<FTabManager::FLayoutNode>& SomeNode, const MatchFunctorType& Matcher );
-
-	public:
-		/**
-		 * It searches for valid and open tabs on SomeNode.
-		 * @return It returns true if there is at least a valid open tab in the input SomeNode.
-		 */
-		bool HasValidOpenTabs( const TSharedRef<FTabManager::FLayoutNode>& SomeNode ) const;
-
-	protected:
+		bool HasOpenTabs( const TSharedRef<FTabManager::FLayoutNode>& SomeNode ) const;
 		bool HasValidTabs( const TSharedRef<FTabManager::FLayoutNode>& SomeNode ) const;
 		/**
 		 * It sets the desired (or all) tabs in the FTabManager::FLayoutNode to the desired value.
@@ -992,9 +966,6 @@ class SLATE_API FTabManager : public TSharedFromThis<FTabManager>
 
 		/* Prevent or allow Drag operation. */
 		bool bCanDoDragOperation;
-
-		/** Allow systems to dynamically hide tabs */
-		TSharedRef<FBlacklistNames> TabBlacklist;
 };
 
 

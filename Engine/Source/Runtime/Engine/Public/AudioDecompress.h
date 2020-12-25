@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AudioDecompress.h: Unreal audio vorbis decompression interface object.
@@ -327,7 +327,7 @@ public:
 	 *
 	 * @param	InWave		Wave data to decompress
 	 */
-	ENGINE_API FAsyncAudioDecompressWorker(USoundWave* InWave, int32 InNumPrecacheFrames, FAudioDevice* InAudioDevice = nullptr);
+	ENGINE_API FAsyncAudioDecompressWorker(USoundWave* InWave, int32 InNumPrecacheFrames);
 
 	/**
 	 * Performs the async audio decompression

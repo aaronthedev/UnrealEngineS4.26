@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -16,15 +16,14 @@ class FHlslNiagaraTranslator;
 class FCompileConstantResolver
 {
 public:
-	FCompileConstantResolver() : Emitter(nullptr), Translator(nullptr), Usage(ENiagaraScriptUsage::Function) {}
-	FCompileConstantResolver(const UNiagaraEmitter* Emitter, ENiagaraScriptUsage Usage) : Emitter(Emitter), Translator(nullptr), Usage(Usage) {}
-	FCompileConstantResolver(const FHlslNiagaraTranslator* Translator) : Emitter(nullptr), Translator(Translator), Usage(ENiagaraScriptUsage::Function) {}
+	FCompileConstantResolver() : Emitter(nullptr), Translator(nullptr) {}
+	FCompileConstantResolver(UNiagaraEmitter* Emitter) : Emitter(Emitter), Translator(nullptr) {}
+	FCompileConstantResolver(FHlslNiagaraTranslator* Translator) : Emitter(nullptr), Translator(Translator) {}
 
 	bool ResolveConstant(FNiagaraVariable& OutConstant) const;
 private:
-	const UNiagaraEmitter* Emitter;
-	const FHlslNiagaraTranslator* Translator;
-	ENiagaraScriptUsage Usage;
+	UNiagaraEmitter* Emitter;
+	FHlslNiagaraTranslator* Translator;
 };
 
 /** Traverses a Niagara node graph to identify the variables that have been written and read from a parameter map. 
@@ -36,16 +35,10 @@ struct FNiagaraParameterMapHistory
 public:
 	FNiagaraParameterMapHistory();
 
-	ENiagaraScriptUsage OriginatingScriptUsage;
-
 	/** The variables that have been identified during the traversal. */
 	TArray<FNiagaraVariable> Variables;
 
-	/** The metadata associated with each variable identified during the traversal. Only gathered by FNiagaraParameterMapHistoryWithMetaDataBuilder. */
-	TArray<FNiagaraVariableMetaData> VariableMetaData;
-
 	TArray<FNiagaraVariable> VariablesWithOriginalAliasesIntact;
-
 
 	/** Used parameter collections identified during the traversal. TODO: Need to ensure these cannot be GCd if the asset is deleted while it's being used in an in flight compilation. */
 	TArray<UNiagaraParameterCollection*> ParameterCollections;
@@ -74,11 +67,6 @@ public:
 
 	/** List of emitter namespaces encountered as this parameter map was built.*/
 	TArray<FString> EmitterNamespacesEncountered;
-
-	/** List of all the custom iteration source override namespaces encountered */
-	TArray<FName> IterationNamespaceOverridesEncountered;
-
-	bool IsVariableFromCustomIterationNamespaceOverride(const FNiagaraVariable& InVar) const;
 	
 	/**
 	* Called in a depth-first traversal to identify a given Niagara Parameter Map pin that was touched during traversal.
@@ -98,7 +86,7 @@ public:
 	/**
 	* Find a variable by both name and type. 
 	*/
-	int32 FindVariable(const FName& VariableName, const FNiagaraTypeDefinition& Type) const;
+	int32 FindVariable(const FName& VariableName, const FNiagaraTypeDefinition& Type);
 
 
 	/**
@@ -125,11 +113,10 @@ public:
 	/**
 	* Use the input alias map to resolve any aliases in this input variable name.
 	*/
-	static FNiagaraVariable ResolveAliases(const FNiagaraVariable& InVar, const TMap<FString, FString>& InAliases, const TMap<FString, FString>& InStartAliases = TMap<FString, FString>(), const TCHAR* InJoinSeparator = TEXT("."));
+	static FNiagaraVariable ResolveAliases(const FNiagaraVariable& InVar, const TMap<FString, FString>& InAliases, const TCHAR* InJoinSeparator);
 
 	static FName ResolveEmitterAlias(const FName& InName, const FString& InAlias);
 
-	
 	/**
 	* Remove the Particles namespace if it exists.
 	*/
@@ -165,7 +152,7 @@ public:
 	static bool IsPerInstanceEngineParameter(const FNiagaraVariable& InVar, const FString& EmitterAlias);
 	static bool IsUserParameter(const FNiagaraVariable& InVar);
 	static bool IsRapidIterationParameter(const FNiagaraVariable& InVar);
-	static bool SplitRapidIterationParameterName(const FNiagaraVariable& InVar, ENiagaraScriptUsage InUsage, FString& EmitterName, FString& FunctionCallName, FString& InputName);
+	static bool SplitRapidIterationParameterName(const FNiagaraVariable& InVar, FString& EmitterName, FString& FunctionCallName, FString& InputName);
 	
 	/** Take an input string and make it hlsl safe.*/
 	static FString MakeSafeNamespaceString(const FString& InStr);
@@ -184,9 +171,8 @@ public:
 	static bool IsValidNamespaceForReading(ENiagaraScriptUsage InScriptUsage, int32 InUsageBitmask, FString Namespace);
 
 	/** Called to determine if a given variable should be output from a script. It is not static as it requires the overall context to include emitter namespaces visited for system scripts.*/
-	bool IsPrimaryDataSetOutput(const FNiagaraVariable& InVar, const UNiagaraScript* InScript,   bool bAllowDataInterfaces = false) const;
+	bool IsPrimaryDataSetOutput(const FNiagaraVariable& InVar, const UNiagaraScript* InScript, bool bAllowDataInterfaces = false) const;
 	bool IsPrimaryDataSetOutput(const FNiagaraVariable& InVar, ENiagaraScriptUsage InUsage, bool bAllowDataInterfaces = false) const;
-	static bool IsWrittenToScriptUsage(const FNiagaraVariable& InVar, ENiagaraScriptUsage InUsage, bool bAllowDataInterfaces);
 
 	/** Are we required to export this variable as an external constant?*/
 	bool IsExportableExternalConstant(const FNiagaraVariable& InVar, const UNiagaraScript* InScript);
@@ -206,22 +192,16 @@ public:
 	/** Does this parameter contain the "Initial" namespace as one of its intermediate namespaces?*/
 	static bool IsInitialValue(const FNiagaraVariable& InVar);
 
-	/** Does this parameter contain the "Previous" namespace as one of its intermediate namespaces?*/
-	static bool IsPreviousValue(const FNiagaraVariable& InVar);
-
 	/** Get the output node associated with this graph.*/
 	const UNiagaraNodeOutput* GetFinalOutputNode() const;
 
 	/** Does this parameter contain the "Initial" namespace as one of its intermediate namespaces? If so, remove the "Initial" namespace and return the original value.*/
 	static FNiagaraVariable GetSourceForInitialValue(const FNiagaraVariable& InVar);
 
-	/** Does this parameter contain the "Previous" namespace as one of its intermediate namespaces? If so, remove the "Previous" namespace and return the original value.*/
-	static FNiagaraVariable GetSourceForPreviousValue(const FNiagaraVariable& InVar);
-
 	/**
 	* Helper to add a variable to the known list for a parameter map.
 	*/
-	int32 AddVariable(const FNiagaraVariable& InVar, const FNiagaraVariable& InAliasedVar, const UEdGraphPin* InPin, TOptional<FNiagaraVariableMetaData> InMetaData = TOptional<FNiagaraVariableMetaData>());
+	int32 AddVariable(const FNiagaraVariable& InVar, const FNiagaraVariable& InAliasedVar, const UEdGraphPin* InPin);
 
 	/** Get the default value for this variable.*/
 	const UEdGraphPin* GetDefaultValuePin(int32 VarIdx) const;
@@ -238,86 +218,6 @@ public:
 	bool ShouldIgnoreVariableDefault(const FNiagaraVariable& Var)const;
 };
 
-// view of FNiagaraVariableMetaData that caches configurable types to avoid verification checks on getters.
-struct FNiagaraStaticVariableMetaData
-{
-	FNiagaraStaticVariableMetaData(const FNiagaraVariableMetaData& ViewMetaData);
-
-	ENiagaraParameterScope GetScope() const { return Scope; };
-	const FString& GetNamespaceString() const { return NamespaceString; };
-
-private:
-	ENiagaraParameterScope Scope;
-	FString NamespaceString;
-};
-
-// helper struct for handling tracked variable metadata and aliases from histories.
-struct FNiagaraHistoryVariable
-{
-	FNiagaraHistoryVariable(FNiagaraVariable* InVar, const FNiagaraVariable* InVarWithOriginalAlias, const FNiagaraVariableMetaData& InVarMetaData)
-		: Var(InVar)
-		, VarWithOriginalAlias(InVarWithOriginalAlias)
-		, VarMetaData(&InVarMetaData)
-		, StaticVarMetaData(InVarMetaData)
-		, bDoNotDemote(false)
-	{};
-
-	FNiagaraVariable* Var;
-	const FNiagaraVariable* VarWithOriginalAlias;
-	const FNiagaraVariableMetaData* VarMetaData;
-	const FNiagaraStaticVariableMetaData StaticVarMetaData;
-
-	// Used to track whether this history variable should not be demoted during pre-compilation.
-	bool bDoNotDemote;
-
-	// Use carefully, implemented to fixup names of module namespace parameters that alias with other parameters in same scope.
-	void SetVarWithOriginalAliasName(const FName& NewName);
-};
-
-struct FNiagaraParameterMapHistoryHandle
-{
-public:
-	FNiagaraParameterMapHistoryHandle();
-
-	FNiagaraParameterMapHistoryHandle(FNiagaraParameterMapHistory& InHistory, const TArray<FNiagaraVariable>& InRequiredRendererVariables, const FName InEmitterUniqueName = FName());
-
-	FNiagaraParameterMapHistoryHandle(FNiagaraParameterMapHistory& InPrimaryHistory, FNiagaraParameterMapHistory& InSecondaryHistory, const TArray<FNiagaraVariable>& InRequiredRendererVariables, const FName InEmitterUniqueName = FName());
-
-	const int32 GetScriptExecutionIndex() const { return ScriptExecutionIndex; };
-	const int32 GetScriptRunIndex() const { return ScriptRunIndex; };
-	const ENiagaraParameterScope GetScriptScope() const { return Scope; };
-	const ENiagaraScriptUsage GetOriginatingScriptUsage() const { return History->OriginatingScriptUsage; };
-
-	TArray<FNiagaraHistoryVariable> HistoryVariables;
-
-	void SetScriptExecutionIndex(int32& InIndex) { ScriptExecutionIndex = InIndex; };
-	void SetScriptRunIndex(int32& InIndex) { ScriptRunIndex = InIndex; };
-	void SetScriptScope(ENiagaraParameterScope InScope) { Scope = InScope; };
-
-	void FixupWrittenHistoryPinNames(int32& VarIdx, const FName& NewName);
-	void FixupWrittenHistoryPinNames(const FNiagaraVariable* AssociatedVar, const FName& NewName);
-	void FixupReadHistoryPinNames(int32& VarIdx, const FName& NewName);
-	void FixupReadHistoryPinNames(const FNiagaraVariable* AssociatedVar, const FName& NewName);
-
-	const int32 GetSourceVariableHistoryIndex(const FNiagaraVariable* InVar) const { return History->VariablesWithOriginalAliasesIntact.IndexOfByPredicate([InVar](const FNiagaraVariable& Var) {return InVar == &Var; }); };
-
-	const TArray<FNiagaraVariable>& GetRequiredRendererVariables() const { return RequiredRendererVariables; };
-	const FName& GetEmitterUniqueName() const { return EmitterUniqueName; };
-	const bool IsSystemHistoryHandle() const { return EmitterUniqueName.IsNone(); };
-
-private:
-	/** Records a number associated with the required order of execution of the script that has been visited. Used to determine if parameters will be accessed from prior or proceeding scripts. */ 
-	int32 ScriptExecutionIndex;
-	int32 ScriptRunIndex;
-
-	ENiagaraParameterScope Scope;
-
-	FNiagaraParameterMapHistory* History;
-
-	TArray<FNiagaraVariable> RequiredRendererVariables;
-
-	FName EmitterUniqueName;
-};
 
 class FNiagaraParameterMapHistoryBuilder
 {
@@ -327,8 +227,6 @@ public:
 
 	/** Constructor*/
 	FNiagaraParameterMapHistoryBuilder();
-
-	virtual ~FNiagaraParameterMapHistoryBuilder() {};
 
 	/** Add a new parameter map to the array.*/
 	int32 CreateParameterMap();
@@ -361,13 +259,10 @@ public:
 
 	void EndTranslation(const UNiagaraEmitter* Emitter);
 
-	void BeginUsage(ENiagaraScriptUsage InUsage, FName InStageName = FName());
-	void EndUsage();
-
 	/**
 	* Record that we have entered a new function scope.
 	*/
-	void EnterFunction(const FString& InNodeName, const class UNiagaraScript* InScript, const class UNiagaraGraph* InGraph, const class UNiagaraNode* Node);
+	void EnterFunction(const FString& InNodeName, const class UNiagaraScript* InScript, const class UNiagaraNode* Node);
 
 	/**
 	* Record that we have exited a function scope.
@@ -377,7 +272,7 @@ public:
 	/**
 	* Record that we have entered an emitter scope.
 	*/
-	void EnterEmitter(const FString& InEmitterName, const class UNiagaraGraph* InGraph, const class UNiagaraNode* Node);
+	void EnterEmitter(const FString& InEmitterName, const class UNiagaraNode* Node);
 
 	/**
 	* Record that we have exited an emitter scope.
@@ -421,11 +316,6 @@ public:
 	int32 HandleVariableRead(int32 ParameterMapIndex, const UEdGraphPin* InPin, bool RegisterReadsAsVariables, const UEdGraphPin* InDefaultPin, bool bFilterForCompilation, bool& OutUsedDefault);
 
 	int32 HandleExternalVariableRead(int32 ParamMapIdx, const FName& InVarName);
-
-	/**
-	* Virtual wrapper to call correct AddVariable method on the target ParameterMapHistory.
-	*/
-	virtual int32 AddVariableToHistory(FNiagaraParameterMapHistory& History, const FNiagaraVariable& InVar, const FNiagaraVariable& InAliasedVar, const UEdGraphPin* InPin);
 	
 	/**
 	* Get the string that the "Module" namespace maps to currently (if it exists)
@@ -468,8 +358,6 @@ public:
 
 	FCompileConstantResolver ConstantResolver;
 
-	bool bShouldBuildSubHistories = true;
-
 protected:
 	/**
 	* Generate the internal alias map from the current traversal state.
@@ -484,10 +372,6 @@ protected:
 
 	/** Contains the hierarchy of nodes leading to the current graph being processed. Usually made up of FunctionCall and Emitter nodes.*/
 	TArray<const UNiagaraNode*> CallingContext;
-
-	/** Contains the hierarchy of graphs leading to and including the current graph being processed. Is not in sync with CallingContext as there is an additional 0th entry for the NodeGraphDeepCopy. */
-	TArray<const UNiagaraGraph*> CallingGraphContext;
-
 	/** Tracker for each context level of the parameter map index associated with a given pin. Used to trace parameter maps through the graph.*/
 	TArray<TMap<const UEdGraphPin*, int32> > PinToParameterMapIndices;
 	/** List of previously visited nodes per context. Note that the same node may be visited multiple times across all graph traversals, but only one time per context level.*/
@@ -500,8 +384,6 @@ protected:
 	TArray<ENiagaraScriptUsage> RelevantScriptUsageContext;
 	/** Resolved alias map for the current context level. Rebuilt by BuildCurrentAliases.*/
 	TMap<FString, FString> AliasMap;
-	TMap<FString, FString> StartOnlyAliasMap;
-	TArray<FName> ScriptUsageContextNameStack;
 
 	TArray<TArray<FString> > EncounteredFunctionNames;
 	TArray<FString> EncounteredEmitterNames;
@@ -515,19 +397,4 @@ protected:
 	bool bIgnoreDisabled;
 
 	TArray<FNiagaraVariable> EncounterableExternalVariables;
-};
-
-class FNiagaraParameterMapHistoryWithMetaDataBuilder : public FNiagaraParameterMapHistoryBuilder
-{
-public:
-	/** Iterate over histories and fix variable namespaces so the translator can link parameters across script executions. */
-	static void FixupHistoryVariableNamespaces(TArray<FNiagaraParameterMapHistoryHandle>& InHistoryHandles, bool bCullDatasetOutputs);
-
-	//** Add a graph to the calling graph context stack. Generally used to prime the context stack with the node graph deep copy during precompilation. */
-	void AddGraphToCallingGraphContextStack(const UNiagaraGraph* InGraph) { CallingGraphContext.Add(InGraph); };
-
-	/**
-	* Virtual wrapper to call correct AddVariable method on the target ParameterMapHistory.
-	*/
-	virtual int32 AddVariableToHistory(FNiagaraParameterMapHistory& History, const FNiagaraVariable& InVar, const FNiagaraVariable& InAliasedVar, const UEdGraphPin* InPin);
 };

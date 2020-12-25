@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -26,15 +26,57 @@ class FRunnableThreadWin
 	HANDLE Thread;
 
 	/**
+	 * Helper function to set thread names, visible by the debugger.
+	 * @param ThreadID		Thread ID for the thread who's name is going to be set
+	 * @param ThreadName	Name to set
+	 */
+	static void SetThreadName( uint32 ThreadID, LPCSTR ThreadName )
+	{
+#if !PLATFORM_SEH_EXCEPTIONS_DISABLED
+		/**
+		 * Code setting the thread name for use in the debugger.
+		 *
+		 * http://msdn.microsoft.com/en-us/library/xcb2z8hs.aspx
+		 */
+		const uint32 MS_VC_EXCEPTION=0x406D1388;
+
+		struct THREADNAME_INFO
+		{
+			uint32 dwType;		// Must be 0x1000.
+			LPCSTR szName;		// Pointer to name (in user addr space).
+			uint32 dwThreadID;	// Thread ID (-1=caller thread).
+			uint32 dwFlags;		// Reserved for future use, must be zero.
+		};
+
+		THREADNAME_INFO ThreadNameInfo;
+		ThreadNameInfo.dwType		= 0x1000;
+		ThreadNameInfo.szName		= ThreadName;
+		ThreadNameInfo.dwThreadID	= ThreadID;
+		ThreadNameInfo.dwFlags		= 0;
+
+		__try
+		{
+			RaiseException( MS_VC_EXCEPTION, 0, sizeof(ThreadNameInfo)/sizeof(ULONG_PTR), (ULONG_PTR*)&ThreadNameInfo );
+		}
+		__except( EXCEPTION_EXECUTE_HANDLER )
+		CA_SUPPRESS(6322)
+		{	
+		}
+#endif
+	}
+
+#if !PLATFORM_XBOXONE		
+	static void SetThreadDescription(HANDLE hThread, PCWSTR lpThreadDescription);
+#endif
+
+	/**
 	 * The thread entry point. Simply forwards the call on to the right
 	 * thread main function
 	 */
 	static ::DWORD STDCALL _ThreadProc( LPVOID pThis )
 	{
 		check(pThis);
-		auto* ThisThread = (FRunnableThreadWin*)pThis;
-		FThreadManager::Get().AddThread(ThisThread->GetThreadID(), ThisThread);
-		return ThisThread->GuardedRun();
+		return ((FRunnableThreadWin*)pThis)->GuardedRun();
 	}
 
 	/** Guarding works only if debugger is not attached or GAlwaysReportCrash is true. */
@@ -134,8 +176,7 @@ protected:
 
 	virtual bool CreateInternal( FRunnable* InRunnable, const TCHAR* InThreadName,
 		uint32 InStackSize = 0,
-		EThreadPriority InThreadPri = TPri_Normal, uint64 InThreadAffinityMask = 0,
-		EThreadCreateFlags InCreateFlags = EThreadCreateFlags::None) override
+		EThreadPriority InThreadPri = TPri_Normal, uint64 InThreadAffinityMask = 0 ) override
 	{
 		static bool bOnce = false;
 		if (!bOnce)
@@ -153,7 +194,6 @@ protected:
 		ThreadInitSyncEvent	= FPlatformProcess::GetSynchEventFromPool(true);
 
 		ThreadName = InThreadName ? InThreadName : TEXT("Unnamed UE4");
-		ThreadPriority = InThreadPri;
 
 		// Create the new thread
 		{
@@ -174,12 +214,26 @@ protected:
 		}
 		else
 		{
+#if !PLATFORM_XBOXONE		
+			// We try to use the SetThreadDescription API where possible since this
+			// enables thread names in crashdumps and ETW traces
+			SetThreadDescription(Thread, *ThreadName);
+#endif
+
+			FThreadManager::Get().AddThread(ThreadID, this);
 			ResumeThread(Thread);
 
-			// Let the thread start up
+			// Let the thread start up, then set the name for debug purposes.
 			ThreadInitSyncEvent->Wait(INFINITE);
-
-			ThreadPriority = TPri_Normal; // Set back to default in case any SetThreadPrio() impls compare against current value to reduce syscalls
+#if !PLATFORM_XBOXONE
+			SetThreadName( ThreadID, TCHAR_TO_ANSI( *ThreadName ) );
+#elif !UE_BUILD_SHIPPING
+			if (FPlatformMisc::IsDebuggerPresent())
+			{
+				SetThreadName( ThreadID, TCHAR_TO_ANSI( *ThreadName ) );
+			}
+			::SetThreadName( Thread, *ThreadName );
+#endif
 			SetThreadPriority(InThreadPri);
 		}
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "PhysicsEngine/PhysDerivedData.h"
 #include "Serialization/MemoryWriter.h"
 #include "Modules/ModuleManager.h"
@@ -9,7 +9,7 @@
 #include "PhysicsEngine/BodySetup.h"
 #include "Interfaces/ITargetPlatformManagerModule.h"
 
-#if PHYSICS_INTERFACE_PHYSX && WITH_EDITOR
+#if WITH_PHYSX && WITH_EDITOR
 
 #include "IPhysXCookingModule.h"
 

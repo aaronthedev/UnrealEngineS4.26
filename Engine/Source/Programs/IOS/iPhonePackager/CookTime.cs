@@ -1,5 +1,5 @@
-/**
- * Copyright Epic Games, Inc. All Rights Reserved.
+﻿/**
+ * Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
  */
 
 using System;
@@ -149,24 +149,23 @@ namespace iPhonePackager
 
 		static public void CopySignedFiles()
 		{
-			string TargetName = Config.GetTargetName();
 			string NameDecoration;
 			if (Program.GameConfiguration == "Development")
 			{
-				NameDecoration = Program.Architecture;
+				NameDecoration = (Program.IsClient ? "Client" : "") + Program.Architecture;
 			}
 			else
 			{
-				NameDecoration = "-" + Config.OSString + "-" + Program.GameConfiguration + Program.Architecture;
+				NameDecoration = (Program.IsClient ? "Client" : "") + "-" + Config.OSString + "-" + Program.GameConfiguration + Program.Architecture;
 			}
 
 			// Copy and un-decorate the binary name
-			FileOperations.CopyFiles(Config.BinariesDirectory, Config.PayloadDirectory, "<PAYLOADDIR>", TargetName + NameDecoration, null);
-			FileOperations.RenameFile(Config.PayloadDirectory, TargetName + NameDecoration, TargetName);
+			FileOperations.CopyFiles(Config.BinariesDirectory, Config.PayloadDirectory, "<PAYLOADDIR>", Program.GameName + NameDecoration, null);
+			FileOperations.RenameFile(Config.PayloadDirectory, Program.GameName + NameDecoration, Program.GameName);
 
 			FileOperations.CopyNonEssentialFile(
-				Path.Combine(Config.BinariesDirectory, TargetName + NameDecoration + ".app.dSYM.zip"),
-				Path.Combine(Config.PCStagingRootDir, TargetName + NameDecoration + ".app.dSYM.zip.datecheck")
+				Path.Combine(Config.BinariesDirectory, Program.GameName + NameDecoration + ".app.dSYM.zip"),
+				Path.Combine(Config.PCStagingRootDir, Program.GameName + NameDecoration + ".app.dSYM.zip.datecheck")
 			);
 		}
 
@@ -223,7 +222,7 @@ namespace iPhonePackager
 				return;
 			}
 
-			string ZipWorkingDir = String.Format("Payload/{0}{1}.app/", Config.GetTargetName(), Program.Architecture);
+			string ZipWorkingDir = String.Format("Payload/{0}{1}.app/", Program.GameName + (Program.IsClient ? "Client" : ""), Program.Architecture);
 
 			FileOperations.ZipFileSystem FileSystem = new FileOperations.ZipFileSystem(Zip, ZipWorkingDir);
 
@@ -316,7 +315,7 @@ namespace iPhonePackager
 					string RelativeFilename = AbsoluteFilename.Substring(SourceDir.Length + 1).Replace('\\', '/');
 
 					string ZipAbsolutePath = String.Format("Payload/{0}{1}.app/{2}",
-						Config.GetTargetName(),
+						Program.GameName + (Program.IsClient ? "Client" : ""),
 						Program.Architecture,
 						RelativeFilename);
 

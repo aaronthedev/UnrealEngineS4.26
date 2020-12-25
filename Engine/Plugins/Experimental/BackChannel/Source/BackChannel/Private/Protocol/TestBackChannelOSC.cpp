@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BackChannel/Private/BackChannelCommon.h"
 #include "BackChannel/Transport/IBackChannelTransport.h"
@@ -29,12 +29,12 @@ bool FBackChannelTestOSCMessage::RunTest(const FString& Parameters)
 {
 	FBackChannelOSCMessage Message(OSCPacketMode::Write);
 	
-	Message.SetPath(TEXT("/foo"));
+	Message.SetAddress(TEXT("/foo"));
 	
 	int32 IntValue = 1;
 	float FloatValue = 2.5;
 	FString StringValue = TEXT("Hello!");
-	TArray<uint8> AnswerArray;
+	TArray<int8> AnswerArray;
 
 	const int kArraySize = 33;
 	const int kArrayValue = 42;
@@ -44,16 +44,9 @@ bool FBackChannelTestOSCMessage::RunTest(const FString& Parameters)
 		AnswerArray.Add(kArrayValue);
 	}
 
-	// #agrant todo - cleanup
-	// Message << IntValue << FloatValue << StringValue << AnswerArray;
-	Message.Write(TEXT("Int"), IntValue);
-	Message.Write(TEXT("true"), true);
-	Message.Write(TEXT("false"), false);
-	Message.Write(TEXT("Float"), FloatValue);
-	Message.Write(TEXT("String"), StringValue);
-	Message.Write(TEXT("Array"), AnswerArray);
+	Message << IntValue << FloatValue << StringValue << AnswerArray;
 
-	FString Address = Message.GetPath();
+	FString Address = Message.GetAddress();
 	FString Tags = Message.GetTags();
 	const int32 ArgSize = Message.GetArgumentSize();
 
@@ -65,7 +58,7 @@ bool FBackChannelTestOSCMessage::RunTest(const FString& Parameters)
 
 	// verify this address and tags...
 	check(Address == TEXT("/foo"));
-	check(Tags == TEXT("iTFfsb"));
+	check(Tags == TEXT("ifsib"));
 	check(ArgSize == ExpectedArgSize);
 
 	TArray<uint8> Buffer;
@@ -80,28 +73,20 @@ bool FBackChannelTestOSCMessage::RunTest(const FString& Parameters)
 	// read them back
 	int32 OutIntValue(0);
 	float OutFloatValue(0);
-	bool OutTrueValue(false);
-	bool OutFalseValue(true);
 	FString OutStringValue;
 	TArray<uint8> OutArray;
 
-	NewMessage->Read(TEXT("Int"), OutIntValue);
-	NewMessage->Read(TEXT("true"), OutTrueValue);
-	NewMessage->Read(TEXT("false"), OutFalseValue);
-	NewMessage->Read(TEXT("Float"), OutFloatValue);
-	NewMessage->Read(TEXT("String"), OutStringValue);
-	NewMessage->Read(TEXT("Array"), OutArray);
+	OutArray.AddUninitialized(kArraySize);
+
+	*NewMessage << OutIntValue << OutFloatValue << OutStringValue << OutArray;
 
 	check(OutIntValue == IntValue);
 	check(OutFloatValue == OutFloatValue);
 	check(OutStringValue == OutStringValue);
-	check(OutTrueValue == true);
-	check(OutFalseValue == false);
-	check(OutArray.Num() == AnswerArray.Num());
 	
 	for (int i = 0; i < OutArray.Num(); i++)
 	{
-		check(OutArray[i] == AnswerArray[i]);
+		check(OutArray[i] == kArrayValue);
 	}
 
 	return true;
@@ -157,12 +142,8 @@ bool FBackChannelTestOSCBundleWithMessages::RunTest(const FString& Parameters)
 	FString Msg1Test = TEXT("This is Message 1");
 	FString Msg2Test = TEXT("This is Message 2");
 
-	// #agrant cleanuo
-	//(*Msg1) << Msg1Test;
-	//*Msg2 << Msg2Test;
-
-	Msg1->Write(TEXT("String"), *Msg1Test);
-	Msg2->Write(TEXT("String"), *Msg2Test);
+	(*Msg1) << Msg1Test;
+	*Msg2 << Msg2Test;
 
 	TSharedPtr<FBackChannelOSCBundle> Bundle = MakeShareable(new FBackChannelOSCBundle(OSCPacketMode::Write));
 
@@ -198,11 +179,8 @@ bool FBackChannelTestOSCBundleWithMessages::RunTest(const FString& Parameters)
 
 	FString OutMsg1Text, OutMsg2Text;
 
-	// #agrant cleanup
-	//*RecreatedMsg1 << OutMsg1Text;
-	//*RecreatedMsg2 << OutMsg2Text;
-	RecreatedMsg1->Read(TEXT("String"), OutMsg1Text);
-	RecreatedMsg2->Read(TEXT("String"), OutMsg2Text);
+	*RecreatedMsg1 << OutMsg1Text;
+	*RecreatedMsg2 << OutMsg2Text;
 
 	check(OutMsg1Text == Msg1Test);
 	check(OutMsg2Text == Msg2Test);

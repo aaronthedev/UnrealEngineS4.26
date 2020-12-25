@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,36 +8,9 @@
 #include "ShadowRendering.h"
 #include "Engine/Engine.h"
 
-class FProjectedShadowInfo;
-class FPlanarReflectionSceneProxy;
-class FRHIRenderQuery;
-
-DECLARE_GPU_STAT_NAMED_EXTERN(HZB, TEXT("HZB"));
-
 /*=============================================================================
 	SceneOcclusion.h
 =============================================================================*/
-
-struct FViewOcclusionQueries
-{
-	using FProjectedShadowArray = TArray<FProjectedShadowInfo const*, SceneRenderingAllocator>;
-	using FPlanarReflectionArray = TArray<FPlanarReflectionSceneProxy const*, SceneRenderingAllocator>;
-	using FRenderQueryArray = TArray<FRHIRenderQuery*, SceneRenderingAllocator>;
-
-	FProjectedShadowArray PointLightQueryInfos;
-	FProjectedShadowArray CSMQueryInfos;
-	FProjectedShadowArray ShadowQuerieInfos;
-	FPlanarReflectionArray ReflectionQuerieInfos;
-
-	FRenderQueryArray PointLightQueries;
-	FRenderQueryArray CSMQueries;
-	FRenderQueryArray ShadowQueries;
-	FRenderQueryArray ReflectionQueries;
-
-	bool bFlushQueries = true;
-};
-
-using FViewOcclusionQueriesPerView = TArray<FViewOcclusionQueries, TInlineAllocator<1, SceneRenderingAllocator>>;
 
 /**
 * A vertex shader for rendering a texture on a simple element.
@@ -50,12 +23,8 @@ public:
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
-		static auto* MobileUseHWsRGBEncodingCVAR = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.UseHWsRGBEncoding"));
-		const bool bMobileUseHWsRGBEncoding = (MobileUseHWsRGBEncodingCVAR && MobileUseHWsRGBEncodingCVAR->GetValueOnAnyThread() == 1);
-
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-		OutEnvironment.SetDefine(TEXT("OUTPUT_GAMMA_SPACE"), IsMobileHDR() == false && !bMobileUseHWsRGBEncoding);
-		OutEnvironment.SetDefine(TEXT("OUTPUT_MOBILE_HDR"), IsMobileHDR() == true);
+		OutEnvironment.SetDefine(TEXT("OUTPUT_GAMMA_SPACE"), IsMobileHDR() == false);
 	}
 
 	FOcclusionQueryVS(const ShaderMetaType::CompiledShaderInitializerType& Initializer):
@@ -69,7 +38,7 @@ public:
 
 	void SetParametersWithBoundingSphere(FRHICommandList& RHICmdList, const FViewInfo& View, const FSphere& BoundingSphere)
 	{
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, RHICmdList.GetBoundVertexShader(), View.ViewUniformBuffer);
+		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, GetVertexShader(), View.ViewUniformBuffer);
 
 		FVector4 StencilingSpherePosAndScale;
 		StencilingGeometry::GStencilSphereVertexBuffer.CalcTransform(StencilingSpherePosAndScale, BoundingSphere, View.ViewMatrices.GetPreViewTranslation());
@@ -77,26 +46,36 @@ public:
 
 		if (GEngine && GEngine->StereoRenderingDevice)
 		{
-			SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), ViewId, GEngine->StereoRenderingDevice->GetViewIndexForPass(View.StereoPass));
+			SetShaderValue(RHICmdList, GetVertexShader(), ViewId, GEngine->StereoRenderingDevice->GetViewIndexForPass(View.StereoPass));
 		}
 	}
 
 	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View)
 	{
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, RHICmdList.GetBoundVertexShader(),View.ViewUniformBuffer);
+		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, GetVertexShader(),View.ViewUniformBuffer);
 
 		// Don't transform if rendering frustum
 		StencilingGeometryParameters.Set(RHICmdList, this, FVector4(0,0,0,1));
 
 		if (GEngine && GEngine->StereoRenderingDevice)
 		{
-			SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), ViewId, GEngine->StereoRenderingDevice->GetViewIndexForPass(View.StereoPass));
+			SetShaderValue(RHICmdList, GetVertexShader(), ViewId, GEngine->StereoRenderingDevice->GetViewIndexForPass(View.StereoPass));
 		}
 	}
 
+	//~ Begin FShader Interface
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << StencilingGeometryParameters;
+		Ar << ViewId;
+		return bShaderHasOutdatedParameters;
+	}
+	//~ Begin  End FShader Interface 
+
 private:
-	LAYOUT_FIELD(FStencilingGeometryShaderParameters, StencilingGeometryParameters)
-	LAYOUT_FIELD(FShaderParameter, ViewId)
+	FStencilingGeometryShaderParameters StencilingGeometryParameters;
+	FShaderParameter ViewId;
 };
 
 /**

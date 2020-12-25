@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IOSProfileWizard.h"
 #include "GenericPlatform/GenericPlatformFile.h"
@@ -35,13 +35,13 @@ static void SetupIOSAppProfile(ILauncherProfileRef& AppProfile, const FProfilePa
 
 	AppProfile->SetBuildUAT(true);
 	// App build configuration
-	AppProfile->SetBuildMode(ELauncherProfileBuildModes::Auto);
+	AppProfile->SetBuildGame(true);
 	AppProfile->SetBuildConfiguration(Params.BuildConfiguration);
 	
 	//// Cooking
 	AppProfile->SetCookMode(ELauncherProfileCookModes::ByTheBook);
 	AppProfile->SetCookConfiguration(Params.BuildConfiguration);
-	for (const FString& MapName : Params.AppMaps)
+	for (const FString MapName : Params.AppMaps)
 	{
 		AppProfile->AddCookedMap(MapName);
 	}
@@ -85,7 +85,7 @@ static void SetupIOSDLCProfile(ILauncherProfileRef& DLCProfile, const FProfilePa
 
 	DLCProfile->SetBuildUAT(true);
 	// App build configuration
-	DLCProfile->SetBuildMode(ELauncherProfileBuildModes::DoNotBuild);
+	DLCProfile->SetBuildGame(false);
 	DLCProfile->SetBuildConfiguration(Params.BuildConfiguration);
 	
 	//// Cooking

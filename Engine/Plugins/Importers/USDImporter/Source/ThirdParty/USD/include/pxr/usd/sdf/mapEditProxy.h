@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_MAP_EDIT_PROXY_H
-#define PXR_USD_SDF_MAP_EDIT_PROXY_H
+#ifndef SDF_MAPEDITPROXY_H
+#define SDF_MAPEDITPROXY_H
 
 /// \file sdf/mapEditProxy.h
 
@@ -190,7 +190,7 @@ private:
         inner_iterator _pos;
     };
 
-    class _PairProxy {
+    class _PairProxy : boost::totally_ordered<_PairProxy> {
     public:
         explicit _PairProxy(This* owner, const Type* data, inner_iterator i) :
                         first(i->first), second(_ValueProxy(owner, data, i)) { }
@@ -927,4 +927,4 @@ struct Vt_DefaultValueFactory<SdfMapEditProxy<T, _ValuePolicy> > {
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_MAP_EDIT_PROXY_H
+#endif // SDF_MAPEDITPROXY_H

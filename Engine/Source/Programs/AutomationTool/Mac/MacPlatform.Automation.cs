@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -134,8 +134,7 @@ public class MacPlatform : Platform
 						}
 						else if (Params.IsCodeBasedProject)
 						{
-							// We want Mac-Shipping etc in the bundle name
-							BootstrapExeName = Path.GetFileName(Executable.Path.FullName) + ".app";
+							BootstrapExeName = Target.Receipt.TargetName + ".app";
 						}
 						else
 						{
@@ -327,7 +326,7 @@ public class MacPlatform : Platform
 		if (Params.CreateAppBundle)
 		{
 			string ExeName = SC.StageExecutables[0];
-			string BundlePath = SC.IsCodeBasedProject ? CombinePaths(SC.ArchiveDirectory.FullName, ExeName + ".app") : BundlePath = CombinePaths(SC.ArchiveDirectory.FullName, SC.ShortProjectName + ".app");
+			string BundlePath = CombinePaths(SC.ArchiveDirectory.FullName, SC.ShortProjectName + ".app");
 
 			if (SC.bIsCombiningMultiplePlatforms)
 			{
@@ -388,7 +387,7 @@ public class MacPlatform : Platform
 
 			// Update executable name, icon and entry in Info.plist
 			string UE4GamePath = CombinePaths(BundlePath, "Contents", "MacOS", ExeName);
-			if (!SC.IsCodeBasedProject && ExeName != SC.ShortProjectName && File.Exists(UE4GamePath))
+			if (ExeName != SC.ShortProjectName && File.Exists(UE4GamePath))
 			{
 				string GameExePath = CombinePaths(BundlePath, "Contents", "MacOS", SC.ShortProjectName);
 				File.Delete(GameExePath);

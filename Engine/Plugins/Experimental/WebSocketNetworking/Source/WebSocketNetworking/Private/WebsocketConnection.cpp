@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WebSocketNetworkingPrivate.h"
 
@@ -126,19 +126,19 @@ FString UWebSocketConnection::LowLevelDescribe()
 		);
 }
 
-void UWebSocketConnection::SetWebSocket(INetworkingWebSocket* InWebSocket)
+void UWebSocketConnection::SetWebSocket(FWebSocket* InWebSocket)
 {
 	WebSocket = InWebSocket; 
 }
 
-INetworkingWebSocket* UWebSocketConnection::GetWebSocket()
+FWebSocket* UWebSocketConnection::GetWebSocket()
 {
 	return WebSocket;
 }
 
-void UWebSocketConnection::Tick(float DeltaSeconds)
+void UWebSocketConnection::Tick()
 {
-	UNetConnection::Tick(DeltaSeconds);
+	UNetConnection::Tick();
 	WebSocket->Tick();
 }
 
@@ -148,7 +148,7 @@ void UWebSocketConnection::FinishDestroy()
 	if (WebSocket)
 	{
 #if USE_LIBWEBSOCKET
-		static_cast<FWebSocket*>(WebSocket)->Context = NULL; // UE-68340;
+		WebSocket->Context = NULL; // UE-68340
 #endif
 		delete WebSocket; 
 		WebSocket = NULL;

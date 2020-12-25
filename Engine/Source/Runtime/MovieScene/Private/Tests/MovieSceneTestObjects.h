@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,9 +7,6 @@
 #include "MovieSceneSection.h"
 #include "MovieSceneSequence.h"
 #include "Evaluation/MovieSceneEvalTemplate.h"
-#include "Sections/MovieSceneSubSection.h"
-#include "Tracks/MovieSceneSubTrack.h"
-#include "Compilation/IMovieSceneTrackTemplateProducer.h"
 #include "MovieSceneTestObjects.generated.h"
 
 USTRUCT()
@@ -21,7 +18,7 @@ struct FTestMovieSceneEvalTemplate : public FMovieSceneEvalTemplate
 };
 
 UCLASS(MinimalAPI)
-class UTestMovieSceneTrack : public UMovieSceneTrack, public IMovieSceneTrackTemplateProducer
+class UTestMovieSceneTrack : public UMovieSceneTrack
 {
 public:
 
@@ -29,6 +26,7 @@ public:
 
 	virtual const TArray<UMovieSceneSection*>& GetAllSections() const override { return SectionArray; }
 	virtual FMovieSceneEvalTemplatePtr CreateTemplateForSection(const UMovieSceneSection& InSection) const override;
+	virtual FMovieSceneTrackSegmentBlenderPtr GetTrackSegmentBlender() const override;
 
 	UPROPERTY()
 	bool bHighPassFilter;
@@ -64,22 +62,3 @@ public:
 	UPROPERTY()
 	UMovieScene* MovieScene;
 };
-
-UCLASS(MinimalAPI)
-class UTestMovieSceneSubTrack : public UMovieSceneSubTrack
-{
-public:
-	GENERATED_BODY()
-
-	virtual const TArray<UMovieSceneSection*>& GetAllSections() const override { return SectionArray; }
-
-	UPROPERTY()
-	TArray<UMovieSceneSection*> SectionArray;
-};
-
-UCLASS(MinimalAPI)
-class UTestMovieSceneSubSection : public UMovieSceneSubSection
-{
-	GENERATED_BODY()
-};
-

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MaterialStats.h"
 #include "MaterialStatsGrid.h"
@@ -101,16 +101,16 @@ FText FShaderPlatformSettings::GetShaderCode(const EMaterialQualityLevel::Type Q
 	// check if shader compilation is done and extract shader code
 	if (bCompilationFinished)
 	{
-		TMap<FHashedName, TShaderRef<FShader>> ShaderMap;
+		TMap<FName, FShader*> ShaderMap;
 		MaterialShaderMap->GetShaderList(ShaderMap);
 
 		const auto Entry = ShaderMap.Find(PlatformData[QualityType].ComboBoxSelectedName);
 		if (Entry != nullptr)
 		{
-			const TShaderRef<FShader>& Shader = *Entry;
+			const FShader* Shader = *Entry;
 
-			const FName ShaderFName = Shader.GetType()->GetFName();
-			const FMemoryImageString* ShaderSource = MaterialShaderMap->GetShaderSource(ShaderFName);
+			const FName ShaderFName = Shader->GetType()->GetFName();
+			const FString* ShaderSource = MaterialShaderMap->GetShaderSource(ShaderFName);
 			if (ShaderSource != nullptr)
 			{
 				PlatformData[QualityType].bUpdateShaderCode = false;
@@ -131,7 +131,7 @@ void FShaderPlatformSettings::AllocateMaterialResources()
 	for (int32 QualityLevelIndex = 0; QualityLevelIndex < EMaterialQualityLevel::Num; QualityLevelIndex++)
 	{
 		PlatformData[QualityLevelIndex].MaterialResourcesStats = new FMaterialResourceStats();
-		PlatformData[QualityLevelIndex].MaterialResourcesStats->SetMaterial(Material, MaterialInstance, (ERHIFeatureLevel::Type)TargetFeatureLevel, (EMaterialQualityLevel::Type)QualityLevelIndex);
+		PlatformData[QualityLevelIndex].MaterialResourcesStats->SetMaterial(Material, (EMaterialQualityLevel::Type)QualityLevelIndex, true, (ERHIFeatureLevel::Type)TargetFeatureLevel, MaterialInstance);
 	}
 }
 
@@ -173,11 +173,12 @@ bool FShaderPlatformSettings::CheckShaders()
 			{
 				Data.MaterialResourcesStats->CancelCompilation();
 
-				Material->UpdateCachedExpressionData();
+				Material->RebuildExpressionTextureReferences();
 
 				if (MaterialInstance != nullptr)
 				{
-					MaterialInstance->UpdateCachedLayerParameters();
+					MaterialInstance->PermutationTextureReferences.Empty();
+					MaterialInstance->AppendReferencedTextures(MaterialInstance->PermutationTextureReferences);
 				}
 
 				Data.MaterialResourcesStats->CacheShaders(PlatformShaderID);
@@ -218,13 +219,13 @@ bool FShaderPlatformSettings::Update()
 				const FMaterialShaderMap* MaterialShaderMap = Resource->GetGameThreadShaderMap();
 				if (MaterialShaderMap != nullptr)
 				{
-					TMap<FShaderId, TShaderRef<FShader>> ShaderMap;
+					TMap<FShaderId, FShader*> ShaderMap;
 					MaterialShaderMap->GetShaderList(ShaderMap);
 
 					QualityItem.ArrShaderNames.Empty();
-					for (const auto& Entry : ShaderMap)
+					for (const auto Entry : ShaderMap)
 					{
-						QualityItem.ArrShaderNames.Add(MakeShareable(new FName(Entry.Value.GetType()->GetFName())));
+						QualityItem.ArrShaderNames.Add(MakeShareable(new FName(Entry.Key.ShaderType->GetFName())));
 					}
 
 					if (QualityItem.ArrShaderNames.Num() > 0)
@@ -299,7 +300,7 @@ void FMaterialStats::LoadSettings()
 {
 	Options = NewObject<UMaterialStatsOptions>();
 
-	for (const auto& PlatformEntry : ShaderPlatformStatsDB)
+	for (const auto PlatformEntry : ShaderPlatformStatsDB)
 	{
 		const EShaderPlatform PlatformID = PlatformEntry.Key;
 		const bool bPresentInGrid = !!Options->bPlatformUsed[PlatformID];
@@ -313,7 +314,7 @@ void FMaterialStats::LoadSettings()
 		const bool bUsed = !!Options->bMaterialQualityUsed[i];
 		bArrStatsQualitySelector[(EMaterialQualityLevel::Type)i] = bUsed;
 
-		for (const auto& PlatformEntry : ShaderPlatformStatsDB)
+		for (const auto PlatformEntry : ShaderPlatformStatsDB)
 		{
 			TSharedPtr<FShaderPlatformSettings> SomePlatform = PlatformEntry.Value;
 			if (SomePlatform.IsValid())
@@ -326,7 +327,7 @@ void FMaterialStats::LoadSettings()
 
 void FMaterialStats::SaveSettings()
 {
-	for (const auto& PlatformEntry : ShaderPlatformStatsDB)
+	for (const auto PlatformEntry : ShaderPlatformStatsDB)
 	{
 		const EShaderPlatform PlatformID = PlatformEntry.Key;
 		const auto Platform = PlatformEntry.Value;
@@ -379,7 +380,7 @@ void FMaterialStats::DisplayOldStats(const bool bShow)
 {
 	if (bShow)
 	{
-		MaterialEditor->GetTabManager()->TryInvokeTab(OldStatsTabId);
+		MaterialEditor->GetTabManager()->InvokeTab(OldStatsTabId);
 	}
 	else if (!bShowOldStats && OldStatsTab.IsValid())
 	{
@@ -391,7 +392,7 @@ void FMaterialStats::DisplayStatsGrid(const bool bShow)
 {
 	if (bShow)
 	{
-		MaterialEditor->GetTabManager()->TryInvokeTab(StatsTabId);
+		MaterialEditor->GetTabManager()->InvokeTab(StatsTabId);
 	}
 	else if (!bShowStats && StatsTab.IsValid())
 	{
@@ -414,50 +415,18 @@ void FMaterialStats::BuildShaderPlatformDB()
 	// Vulkan
 	AddShaderPlatform(EPlatformCategoryType::Desktop, SP_VULKAN_SM5, TEXT("Vulkan SM5"), false, true, TEXT("Desktop, Vulkan, Shader Model 5"));
 
+	// OpenGL
+	AddShaderPlatform(EPlatformCategoryType::Desktop, SP_OPENGL_SM5, TEXT("OpenGL SM5"), false, true, TEXT("Desktop, OpenGL, Shader Model 5"));
+
 	// Android
 	AddShaderPlatform(EPlatformCategoryType::Android, SP_OPENGL_ES3_1_ANDROID, TEXT("Android GLES 3.1"), true, true, TEXT("Android, OpenGLES 3.1"));
+	AddShaderPlatform(EPlatformCategoryType::Android, SP_OPENGL_ES2_ANDROID, TEXT("Android GLES 2.0"), true, true, TEXT("Android, OpenGLES 2.0"));
 	AddShaderPlatform(EPlatformCategoryType::Android, SP_VULKAN_ES3_1_ANDROID, TEXT("Android Vulkan"), true, true, TEXT("Android, Vulkan"));
-	AddShaderPlatform(EPlatformCategoryType::Android, SP_VULKAN_SM5_ANDROID, TEXT("Android Vulkan SM5"), true, true, TEXT("Android, Vulkan SM5"));
 
 	// Apple
 	AddShaderPlatform(EPlatformCategoryType::Desktop, SP_METAL_SM5, TEXT("Metal SM5"), false, true, TEXT("macOS, Metal, Shader Model 5"));
 	AddShaderPlatform(EPlatformCategoryType::IOS, SP_METAL, TEXT("Metal"), false, true, TEXT("iOS, Metal, Mobile"));
 	AddShaderPlatform(EPlatformCategoryType::IOS, SP_METAL_MRT, TEXT("Metal MRT"), false, true, TEXT("iOS, Metal, Shader Model 5"));
-
-	// Look to see what console platforms we have
-	static const EShaderPlatform ConsolePlatforms[] =
-	{
-		SP_PS4,
-		SP_XBOXONE_D3D12,
-		SP_SWITCH,
-		SP_SWITCH_FORWARD,
-	};
-
-	ITargetPlatformManagerModule& TPM = GetTargetPlatformManagerRef();
-	for (EShaderPlatform ShaderPlatform : ConsolePlatforms)
-	{
-		const FName ShaderFormat = LegacyShaderPlatformToShaderFormat(ShaderPlatform);
-		if (TPM.FindShaderFormat(ShaderFormat) != nullptr )
-		{
-			FString PlatformName = FMaterialStatsUtils::ShaderPlatformTypeName(ShaderPlatform);
-			AddShaderPlatform(EPlatformCategoryType::Console, ShaderPlatform, FName(*PlatformName), true, true, PlatformName);
-		}
-	}
-
-	// Add platform extensions
-	for (int32 StaticPlatform = SP_StaticPlatform_First; StaticPlatform <= SP_StaticPlatform_Last; ++StaticPlatform)
-	{
-		EShaderPlatform ShaderPlatform = (EShaderPlatform)StaticPlatform;
-		if (FDataDrivenShaderPlatformInfo::IsValid(ShaderPlatform))
-		{
-			bool bIsConsole = FDataDrivenShaderPlatformInfo::GetIsConsole(ShaderPlatform);
-
-			const FName ShaderFormat = LegacyShaderPlatformToShaderFormat(ShaderPlatform);
-			const FName PlatformName = ShaderPlatformToPlatformName(ShaderPlatform);
-			AddShaderPlatform(bIsConsole ? EPlatformCategoryType::Console : EPlatformCategoryType::Desktop, ShaderPlatform, PlatformName, true, true, PlatformName.ToString());
-		}
-	}
-
 }
 
 TSharedPtr<FShaderPlatformSettings> FMaterialStats::AddShaderPlatform(const EPlatformCategoryType PlatformType, const EShaderPlatform PlatformID, const FName PlatformName,
@@ -510,7 +479,7 @@ void FMaterialStats::SetStatusQualityFlag(const EMaterialQualityLevel::Type Qual
 
 	bArrStatsQualitySelector[QualityLevel] = bValue;
 
-	for (const auto& PlatformEntry : ShaderPlatformStatsDB)
+	for (const auto PlatformEntry : ShaderPlatformStatsDB)
 	{
 		TSharedPtr<FShaderPlatformSettings> SomePlatform = PlatformEntry.Value;
 		if (SomePlatform.IsValid())
@@ -606,7 +575,7 @@ void FMaterialStats::Update()
 
 	bool bInfoChanged = false;
 
-	for (const auto& Entry : ShaderPlatformStatsDB)
+	for (const auto Entry : ShaderPlatformStatsDB)
 	{
 		auto PlatformStats = Entry.Value;
 		bInfoChanged |= PlatformStats->Update();
@@ -865,7 +834,7 @@ void FMaterialStats::BuildViewShaderCodeMenus()
 
 bool FMaterialStats::IsCodeViewWindowActive() const
 {
-	for (const auto& MapEntry : ShaderPlatformStatsDB)
+	for (const auto MapEntry : ShaderPlatformStatsDB)
 	{
 		TSharedPtr<FShaderPlatformSettings> PlatformPtr = MapEntry.Value;
 

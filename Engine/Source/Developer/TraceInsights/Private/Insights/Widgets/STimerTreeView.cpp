@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "STimerTreeView.h"
 
@@ -13,10 +13,7 @@
 #include "Insights/Table/ViewModels/Table.h"
 #include "Insights/Table/ViewModels/TableColumn.h"
 #include "Insights/Table/ViewModels/TreeNodeSorting.h"
-#include "Insights/TimingProfilerManager.h"
-#include "Insights/ViewModels/TimerButterflyAggregation.h"
 #include "Insights/ViewModels/TimersViewColumnFactory.h"
-#include "Insights/Widgets/SAggregatorStatus.h"
 #include "Insights/Widgets/STimersViewTooltip.h"
 #include "Insights/Widgets/STimerTableRow.h"
 
@@ -25,7 +22,7 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 STimerTreeView::STimerTreeView()
-	: Table(MakeShared<Insights::FTable>())
+	: Table(MakeShareable(new Insights::FTable()))
 	, ViewName()
 	, TreeView(nullptr)
 	, TreeViewHeaderRow(nullptr)
@@ -57,8 +54,6 @@ void STimerTreeView::Construct(const FArguments& InArgs, const FText& InViewName
 {
 	ViewName = InViewName;
 
-	TSharedRef<Insights::FTimerButterflyAggregator> TimerButterflyAggregator = FTimingProfilerManager::Get()->GetTimerButterflyAggregator();
-
 	SAssignNew(ExternalScrollbar, SScrollBar)
 	.AlwaysShowScrollbar(true);
 
@@ -75,16 +70,10 @@ void STimerTreeView::Construct(const FArguments& InArgs, const FText& InViewName
 
 			+ SScrollBox::Slot()
 			[
-				SNew(SOverlay)
-
-				+ SOverlay::Slot()
-				.HAlign(HAlign_Fill)
-				.VAlign(VAlign_Fill)
+				SNew(SBorder)
+				.BorderImage(FEditorStyle::GetBrush("ToolPanel.GroupBorder"))
+				.Padding(0.0f)
 				[
-				//SNew(SBorder)
-				//.BorderImage(FEditorStyle::GetBrush("ToolPanel.GroupBorder"))
-				//.Padding(0.0f)
-				//[
 					SAssignNew(TreeView, STreeView<FTimerNodePtr>)
 					.ExternalScrollbar(ExternalScrollbar)
 					.SelectionMode(ESelectionMode::Multi)
@@ -100,15 +89,6 @@ void STimerTreeView::Construct(const FArguments& InArgs, const FText& InViewName
 						SAssignNew(TreeViewHeaderRow, SHeaderRow)
 						.Visibility(EVisibility::Visible)
 					)
-				//]
-				]
-
-				+ SOverlay::Slot()
-				.HAlign(HAlign_Right)
-				.VAlign(VAlign_Bottom)
-				.Padding(16.0f)
-				[
-					SAssignNew(AggregatorStatus, Insights::SAggregatorStatus, TimerButterflyAggregator)
 				]
 			]
 		]
@@ -156,13 +136,7 @@ TSharedPtr<SWidget> STimerTreeView::TreeView_GetMenuContent()
 			PropertyName = HoveredColumnPtr->GetShortName();
 			PropertyValue = HoveredColumnPtr->GetValueAsTooltipText(*SelectedNode);
 		}
-		FString ItemName = SelectedNode->GetName().ToString();
-		const int32 MaxStringLen = 64;
-		if (ItemName.Len() > MaxStringLen)
-		{
-			ItemName = ItemName.Left(MaxStringLen) + TEXT("...");
-		}
-		SelectionStr = FText::FromString(ItemName);
+		SelectionStr = FText::FromName(SelectedNode->GetName());
 	}
 	else
 	{
@@ -253,9 +227,9 @@ void STimerTreeView::TreeView_BuildSortByMenu(FMenuBuilder& MenuBuilder)
 {
 	MenuBuilder.BeginSection("ColumnName", LOCTEXT("ContextMenu_Header_Misc_ColumnName", "Column Name"));
 
-	for (const TSharedRef<Insights::FTableColumn>& ColumnRef : Table->GetColumns())
+	for (const TSharedPtr<Insights::FTableColumn>& ColumnPtr : Table->GetColumns())
 	{
-		const Insights::FTableColumn& Column = *ColumnRef;
+		const Insights::FTableColumn& Column = *ColumnPtr;
 
 		if (Column.IsVisible() && Column.CanBeSorted())
 		{
@@ -315,9 +289,9 @@ void STimerTreeView::TreeView_BuildViewColumnMenu(FMenuBuilder& MenuBuilder)
 {
 	MenuBuilder.BeginSection("ViewColumn", LOCTEXT("ContextMenu_Header_Columns_View", "View Column"));
 
-	for (const TSharedRef<Insights::FTableColumn>& ColumnRef : Table->GetColumns())
+	for (const TSharedPtr<Insights::FTableColumn>& ColumnPtr : Table->GetColumns())
 	{
-		const Insights::FTableColumn& Column = *ColumnRef;
+		const Insights::FTableColumn& Column = *ColumnPtr;
 
 		FUIAction Action_ToggleColumn
 		(
@@ -341,21 +315,19 @@ void STimerTreeView::TreeView_BuildViewColumnMenu(FMenuBuilder& MenuBuilder)
 void STimerTreeView::InitializeAndShowHeaderColumns()
 {
 	// Create columns.
-	TArray<TSharedRef<Insights::FTableColumn>> Columns;
+	TArray<TSharedPtr<Insights::FTableColumn>> Columns;
 	FTimersViewColumnFactory::CreateTimerTreeViewColumns(Columns);
-	if (ensure(Columns.Num() > 0 && Columns[0]->IsHierarchy()))
-	{
-		Columns[0]->SetShortName(ViewName);
-		Columns[0]->SetTitleName(ViewName);
-	}
+	ensure(Columns.Num() > 0 && Columns[0]->IsHierarchy());
+	Columns[0]->SetShortName(ViewName);
+	Columns[0]->SetTitleName(ViewName);
 	Table->SetColumns(Columns);
 
 	// Show columns.
-	for (const TSharedRef<Insights::FTableColumn>& ColumnRef : Table->GetColumns())
+	for (const TSharedPtr<Insights::FTableColumn>& ColumnPtr : Table->GetColumns())
 	{
-		if (ColumnRef->ShouldBeVisible())
+		if (ColumnPtr->ShouldBeVisible())
 		{
-			ShowColumn(ColumnRef->GetId());
+			ShowColumn(ColumnPtr->GetId());
 		}
 	}
 }
@@ -386,14 +358,15 @@ TSharedRef<SWidget> STimerTreeView::TreeViewHeaderRow_GenerateColumnMenu(const I
 				FExecuteAction::CreateSP(this, &STimerTreeView::HideColumn, Column.GetId()),
 				FCanExecuteAction::CreateSP(this, &STimerTreeView::CanHideColumn, Column.GetId())
 			);
+
 			MenuBuilder.AddMenuEntry
 			(
 				LOCTEXT("TreeViewHeaderRow_HideColumn", "Hide"),
 				LOCTEXT("TreeViewHeaderRow_HideColumn_Desc", "Hides the selected column"),
 				FSlateIcon(), Action_HideColumn, NAME_None, EUserInterfaceActionType::Button
 			);
-
 			bIsMenuVisible = true;
+
 			MenuBuilder.EndSection();
 		}
 
@@ -426,8 +399,8 @@ TSharedRef<SWidget> STimerTreeView::TreeViewHeaderRow_GenerateColumnMenu(const I
 				LOCTEXT("ContextMenu_Header_Misc_Sort_SortDescending_Desc", "Sorts descending"),
 				FSlateIcon(FEditorStyle::GetStyleSetName(), "Profiler.Misc.SortDescending"), Action_SortDescending, NAME_None, EUserInterfaceActionType::RadioButton
 			);
-
 			bIsMenuVisible = true;
+
 			MenuBuilder.EndSection();
 		}
 	}
@@ -512,14 +485,14 @@ TSharedRef<ITableRow> STimerTreeView::TreeView_OnGenerateRow(FTimerNodePtr Timer
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-bool STimerTreeView::TableRow_ShouldBeEnabled(FTimerNodePtr NodePtr) const
+bool STimerTreeView::TableRow_ShouldBeEnabled(const uint32 TimerId) const
 {
 	return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void STimerTreeView::TableRow_SetHoveredCell(TSharedPtr<Insights::FTable> InTablePtr, TSharedPtr<Insights::FTableColumn> InColumnPtr, FTimerNodePtr InNodePtr)
+void STimerTreeView::TableRow_SetHoveredCell(TSharedPtr<Insights::FTable> InTablePtr, TSharedPtr<Insights::FTableColumn> InColumnPtr, const FTimerNodePtr InNodePtr)
 {
 	HoveredColumnId = InColumnPtr ? InColumnPtr->GetId() : FName();
 
@@ -590,11 +563,11 @@ void STimerTreeView::CreateSortings()
 	AvailableSorters.Reset();
 	CurrentSorter = nullptr;
 
-	for (const TSharedRef<Insights::FTableColumn>& ColumnRef : Table->GetColumns())
+	for (const TSharedPtr<Insights::FTableColumn> ColumnPtr : Table->GetColumns())
 	{
-		if (ColumnRef->CanBeSorted())
+		if (ColumnPtr->CanBeSorted())
 		{
-			TSharedPtr<Insights::ITableCellValueSorter> SorterPtr = ColumnRef->GetValueSorter();
+			TSharedPtr<Insights::ITableCellValueSorter> SorterPtr = ColumnPtr->GetValueSorter();
 			if (ensure(SorterPtr.IsValid()))
 			{
 				AvailableSorters.Add(SorterPtr);
@@ -885,9 +858,9 @@ void STimerTreeView::ContextMenu_ShowAllColumns_Execute()
 	ColumnSortMode = GetDefaultColumnSortMode();
 	UpdateCurrentSortingByColumn();
 
-	for (const TSharedRef<Insights::FTableColumn>& ColumnRef : Table->GetColumns())
+	for (const TSharedPtr<Insights::FTableColumn>& ColumnPtr : Table->GetColumns())
 	{
-		const Insights::FTableColumn& Column = *ColumnRef;
+		const Insights::FTableColumn& Column = *ColumnPtr;
 
 		if (!Column.IsVisible())
 		{
@@ -913,9 +886,9 @@ void STimerTreeView::ContextMenu_ResetColumns_Execute()
 	ColumnSortMode = GetDefaultColumnSortMode();
 	UpdateCurrentSortingByColumn();
 
-	for (const TSharedRef<Insights::FTableColumn>& ColumnRef : Table->GetColumns())
+	for (const TSharedPtr<Insights::FTableColumn>& ColumnPtr : Table->GetColumns())
 	{
-		const Insights::FTableColumn& Column = *ColumnRef;
+		const Insights::FTableColumn& Column = *ColumnPtr;
 
 		if (Column.ShouldBeVisible() && !Column.IsVisible())
 		{
@@ -974,11 +947,15 @@ FTimerNodePtr STimerTreeView::CreateTimerNodeRec(const Trace::FTimingProfilerBut
 	if (Node.Timer == nullptr)
 	{
 		return nullptr;
-		//return MakeShared<FTimerNode>(0, TEXT("!!!!!"), ETimerNodeType::InvalidOrMax);
+		//return MakeShareable(new FTimerNode(0, FName(TEXT("!!!!!")), FName(TEXT("[Group]")), ETimerNodeType::InvalidOrMax));
 	}
 
+	const uint64 Id = Node.Timer->Id;
+	const FName Name(Node.Timer->Name);
+	const FName Group(Node.Timer->IsGpuTimer ? TEXT("GPU") : TEXT("CPU"));
 	const ETimerNodeType Type = Node.Timer->IsGpuTimer ? ETimerNodeType::GpuScope : ETimerNodeType::CpuScope;
-	FTimerNodePtr TimerNodePtr = MakeShared<FTimerNode>(Node.Timer->Id, Node.Timer->Name, Type);
+
+	FTimerNodePtr TimerNodePtr = MakeShareable(new FTimerNode(Id, Name, Group, Type));
 
 	Trace::FTimingProfilerAggregatedStats AggregatedStats;
 	AggregatedStats.InstanceCount = Node.Count;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/MenuAnchor.h"
 #include "Widgets/SNullWidget.h"
@@ -71,26 +71,15 @@ void UMenuAnchor::HandleMenuOpenChanged(bool bIsOpen)
 TSharedRef<SWidget> UMenuAnchor::HandleGetMenuContent()
 {
 	TSharedPtr<SWidget> SlateMenuWidget;
-	
-	if ( OnGetUserMenuContentEvent.IsBound() )
+
+	if ( OnGetMenuContentEvent.IsBound() )
 	{
-		UWidget* MenuWidget = OnGetUserMenuContentEvent.Execute();
-		if ( MenuWidget )
-		{
-			SlateMenuWidget = MenuWidget->TakeWidget();
-		}
-	}
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	else if ( OnGetMenuContentEvent.IsBound() )
-	{
-		// Remove when OnGetMenuContentEvent is fully deprecated.
 		UWidget* MenuWidget = OnGetMenuContentEvent.Execute();
 		if ( MenuWidget )
 		{
 			SlateMenuWidget = MenuWidget->TakeWidget();
 		}
 	}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	else
 	{
 		if ( MenuClass != nullptr && !MenuClass->HasAnyClassFlags(CLASS_Abstract) )

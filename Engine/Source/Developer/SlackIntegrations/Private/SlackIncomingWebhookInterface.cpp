@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SlackIncomingWebhookInterface.h"
 #include "HttpModule.h"
@@ -18,7 +18,7 @@ bool FSlackIncomingWebhookInterface::SendMessage(const FSlackIncomingWebhook& In
 	return HttpRequest->ProcessRequest();
 }
 
-TSharedRef<IHttpRequest, ESPMode::ThreadSafe> FSlackIncomingWebhookInterface::CreateHttpRequest() const
+TSharedRef<IHttpRequest> FSlackIncomingWebhookInterface::CreateHttpRequest() const
 {
 	auto Request = FHttpModule::Get().CreateRequest();
 	Request->OnProcessRequestComplete().BindRaw(this, &FSlackIncomingWebhookInterface::OnProcessRequestComplete);

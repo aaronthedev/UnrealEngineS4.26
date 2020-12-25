@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GeometryCollection/DetailCustomizations/WarningMessageCustomization.h"
 
@@ -11,7 +11,6 @@
 #include "EditorFontGlyphs.h"
 #include "GeometryCollection/GeometryCollectionActor.h"
 #include "GeometryCollection/GeometryCollectionDebugDrawActor.h"
-#include "GeometryCollection/GeometryCollectionDebugDrawComponent.h"
 
 TSharedRef<IPropertyTypeCustomization> FWarningMessageCustomization::MakeInstance()
 {
@@ -25,7 +24,7 @@ void FWarningMessageCustomization::CustomizeHeader(TSharedRef<IPropertyHandle> S
 
 	// Check whether the selected actor has begun play
 	bool bHasBegunPlay = false;
-	for (const TWeakObjectPtr<UObject>& SelectedObject: StructCustomizationUtils.GetPropertyUtilities()->GetSelectedObjects())
+	for (const TWeakObjectPtr<UObject> SelectedObject: StructCustomizationUtils.GetPropertyUtilities()->GetSelectedObjects())
 	{
 		if (AGeometryCollectionDebugDrawActor* const Actor = Cast<AGeometryCollectionDebugDrawActor>(SelectedObject.Get()))
 		{

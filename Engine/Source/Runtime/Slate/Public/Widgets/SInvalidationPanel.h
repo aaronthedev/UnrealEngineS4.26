@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -58,17 +58,16 @@ protected:
 	virtual int32 PaintSlowPath(const FSlateInvalidationContext& Context) override;
 private:
 	void OnGlobalInvalidationToggled(bool bGlobalInvalidationEnabled);
-	bool UpdateCachePrequisites(FSlateWindowElementList& OutDrawElements, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, int32 LayerId, const FWidgetStyle& InWidgetStyle) const;
+	bool UpdateCachePrequisites(FSlateWindowElementList& OutDrawElements, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, int32 LayerId) const;
 private:
 	FSimpleSlot EmptyChildSlot;
 
-	mutable TSharedRef<FHittestGrid> HittestGrid;
+	mutable FHittestGrid HittestGrid;
 
 	mutable TOptional<FSlateClippingState> LastClippingState;
 	mutable FGeometry LastAllottedGeometry;
 	mutable FVector2D LastClipRectSize;
 	mutable int32 LastIncomingLayerId;
-	mutable FLinearColor LastIncomingColorAndOpacity;
 
 	bool bCanCache;
 

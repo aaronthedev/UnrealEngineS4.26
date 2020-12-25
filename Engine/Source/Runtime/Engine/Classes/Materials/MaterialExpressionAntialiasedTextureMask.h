@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -31,17 +31,18 @@ class UMaterialExpressionAntialiasedTextureMask : public UMaterialExpressionText
 	UPROPERTY(EditAnywhere, Category=MaterialExpressionAntialiasedTextureMask)
 	TEnumAsByte<enum ETextureColorChannel> Channel;
 
-#if WITH_EDITOR
+
 	//~ Begin UMaterialExpressionTextureSampleParameter Interface
 	virtual bool TextureIsValid(UTexture* InTexture, FString& OutMessage) override;
 	virtual void SetDefaultTexture() override;
 	//~ End UMaterialExpressionTextureSampleParameter Interface
 
 	//~ Begin UMaterialExpression Interface
+#if WITH_EDITOR
 	virtual int32 Compile(class FMaterialCompiler* Compiler, int32 OutputIndex) override;
 	virtual void GetCaption(TArray<FString>& OutCaptions) const override;
+#endif
 	//~ End UMaterialExpression Interface
-#endif // WITH_EDITOR
 };
 
 

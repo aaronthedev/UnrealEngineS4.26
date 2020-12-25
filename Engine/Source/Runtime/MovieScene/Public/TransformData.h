@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -35,15 +35,4 @@ struct MOVIESCENE_API FTransformData
 		, Scale(InComponent->GetRelativeScale3D())
 	{}
 
-	FTransformData(const FTransform& InTransform)
-		: Translation(InTransform.GetTranslation())
-		, Rotation(InTransform.GetRotation().Rotator())
-		, Scale(InTransform.GetScale3D())
-	{}
-
-	FTransformData(const FVector& InTranslation, const FRotator& InRotation, const FVector& InScale)
-		: Translation(InTranslation)
-		, Rotation(InRotation)
-		, Scale(InScale)
-	{}
 };

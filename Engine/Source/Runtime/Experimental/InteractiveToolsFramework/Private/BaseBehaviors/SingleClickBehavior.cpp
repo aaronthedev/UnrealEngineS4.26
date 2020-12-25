@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BaseBehaviors/SingleClickBehavior.h"
 
@@ -16,36 +16,33 @@ void USingleClickInputBehavior::Initialize(IClickBehaviorTarget* TargetIn)
 }
 
 
-FInputCaptureRequest USingleClickInputBehavior::WantsCapture(const FInputDeviceState& Input)
+FInputCaptureRequest USingleClickInputBehavior::WantsCapture(const FInputDeviceState& input)
 {
-	if (IsPressed(Input) && (ModifierCheckFunc == nullptr || ModifierCheckFunc(Input)) )
+	if (IsPressed(input) && (ModifierCheckFunc == nullptr || ModifierCheckFunc(input)) )
 	{
-		FInputRayHit HitResult = Target->IsHitByClick(GetDeviceRay(Input));
-		if (HitResult.bHit)
+		if ( Target->IsHitByClick(GetDeviceRay(input)) )
 		{
-			return FInputCaptureRequest::Begin(this, EInputCaptureSide::Any, HitResult.HitDepth);
+			return FInputCaptureRequest::Begin(this, EInputCaptureSide::Any);
 		}
 	}
 	return FInputCaptureRequest::Ignore();
 }
 
 
-FInputCaptureUpdate USingleClickInputBehavior::BeginCapture(const FInputDeviceState& Input, EInputCaptureSide eSide)
+FInputCaptureUpdate USingleClickInputBehavior::BeginCapture(const FInputDeviceState& input, EInputCaptureSide eSide)
 {
-	Modifiers.UpdateModifiers(Input, Target);
 	return FInputCaptureUpdate::Begin(this, EInputCaptureSide::Any);
 }
 
 
-FInputCaptureUpdate USingleClickInputBehavior::UpdateCapture(const FInputDeviceState& Input, const FInputCaptureData& Data)
+FInputCaptureUpdate USingleClickInputBehavior::UpdateCapture(const FInputDeviceState& input, const FInputCaptureData& data)
 {
-	Modifiers.UpdateModifiers(Input, Target);
-	if (IsReleased(Input))
+	if (IsReleased(input)) 
 	{
 		if (HitTestOnRelease == false || 
-			Target->IsHitByClick(GetDeviceRay(Input)).bHit )
+			Target->IsHitByClick(GetDeviceRay(input)) )
 		{
-			Clicked(Input, Data);
+			Clicked(input, data);
 		}
 
 		return FInputCaptureUpdate::End();

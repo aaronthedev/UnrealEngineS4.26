@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -28,7 +28,7 @@ namespace UnrealBuildTool.Rules
 			PrivateIncludePaths.AddRange(
 				new string[] {
 				});
-
+				
             PrivateDependencyModuleNames.AddRange(
                 new string[]
                 {
@@ -38,7 +38,6 @@ namespace UnrealBuildTool.Rules
 			if (Target.bBuildEditor == true)
 			{
 				PrivateDependencyModuleNames.Add("UnrealEd");
-				PrivateDependencyModuleNames.Add("LevelEditor");
 			}
 		}
 	}

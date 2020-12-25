@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,7 +18,8 @@ class DISPLAYCLUSTER_API UDisplayClusterClusterEventListener
 public:
 	UDisplayClusterClusterEventListener(const FObjectInitializer& ObjectInitializer)
 		: Super(ObjectInitializer)
-	{ }
+	{
+	}
 };
 
  
@@ -31,14 +32,6 @@ class DISPLAYCLUSTER_API IDisplayClusterClusterEventListener
 
 public:
 	// React on incoming cluster events
-	UFUNCTION(BlueprintImplementableEvent, meta = (DeprecatedFunction, DeprecationMessage = "Use OnClusterEventJson"), Category="nDisplay")
+	UFUNCTION(BlueprintImplementableEvent, Category="nDisplay")
 	void OnClusterEvent(const FDisplayClusterClusterEvent& Event);
-
-	// React on incoming cluster events
-	UFUNCTION(BlueprintImplementableEvent, Category = "nDisplay")
-	void OnClusterEventJson(const FDisplayClusterClusterEventJson& Event);
-
-	// React on incoming cluster events
-	UFUNCTION(BlueprintImplementableEvent, Category = "nDisplay")
-	void OnClusterEventBinary(const FDisplayClusterClusterEventBinary& Event);
 };

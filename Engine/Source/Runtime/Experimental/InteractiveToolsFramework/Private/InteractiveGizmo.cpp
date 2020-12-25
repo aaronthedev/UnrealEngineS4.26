@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "InteractiveGizmo.h"
@@ -26,9 +26,6 @@ void UInteractiveGizmo::Render(IToolsContextRenderAPI* RenderAPI)
 {
 }
 
-void UInteractiveGizmo::DrawHUD( FCanvas* Canvas, IToolsContextRenderAPI* RenderAPI )
-{
-}
 
 void UInteractiveGizmo::AddInputBehavior(UInputBehavior* Behavior)
 {

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CurveEditorTransformTool.h"
 #include "CurveEditorToolCommands.h"
@@ -230,7 +230,7 @@ void FCurveEditorTransformTool::UpdateMarqueeBoundingBox()
 	FSlateLayoutTransform AbsoluteToContainer = CurveEditor->GetPanel()->GetViewContainerGeometry().GetAccumulatedLayoutTransform();
 
 	const TMap<FCurveModelID, FKeyHandleSet>& SelectedKeySet = CurveEditor->GetSelection().GetAll();
-	for (const TPair<FCurveModelID, FKeyHandleSet>& Pair : SelectedKeySet)
+	for (const TPair<FCurveModelID, FKeyHandleSet> Pair : SelectedKeySet)
 	{
 		const SCurveEditorView* View = CurveEditor->FindFirstInteractiveView(Pair.Key);
 		if (!View)
@@ -788,7 +788,6 @@ void FCurveEditorTransformTool::OnDragStart()
 
 			KeyData.StartKeyPositions.SetNumZeroed(KeyData.Handles.Num());
 			Curve->GetKeyPositions(KeyData.Handles, KeyData.StartKeyPositions);
-			KeyData.LastDraggedKeyPositions = KeyData.StartKeyPositions;
 			for (const FKeyPosition& KeyPosition : KeyData.StartKeyPositions)
 			{
 				if (bMinMaxIsSet)
@@ -986,7 +985,7 @@ void FCurveEditorTransformTool::OnDrag(const FPointerEvent& InMouseEvent, const 
 				TransformWidget.Position = TransformWidget.StartPosition + MouseDelta;
 			}
 
-			for (FKeyData& KeyData : KeysByCurve)
+			for (const FKeyData& KeyData : KeysByCurve)
 			{
 				const SCurveEditorView* View = CurveEditor->FindFirstInteractiveView(KeyData.CurveID);
 				if (!View)
@@ -1016,8 +1015,7 @@ void FCurveEditorTransformTool::OnDrag(const FPointerEvent& InMouseEvent, const 
 					NewKeyPositionScratch.Add(StartPosition);
 				}
 
-				CurveModel->SetKeyPositions(KeyData.Handles, NewKeyPositionScratch, EPropertyChangeType::Interactive);
-				KeyData.LastDraggedKeyPositions = NewKeyPositionScratch;
+				CurveModel->SetKeyPositions(KeyData.Handles, NewKeyPositionScratch);
 			}
 		}
 		else if (TransformWidget.SelectedAnchorFlags != ECurveEditorAnchorFlags::None)
@@ -1072,14 +1070,6 @@ void FCurveEditorTransformTool::OnDragEnd()
 		return;
 	}
 
-	for (const FKeyData& KeyData : KeysByCurve)
-	{
-		if (FCurveModel* Curve = CurveEditor->FindCurve(KeyData.CurveID))
-		{
-			Curve->SetKeyPositions(KeyData.Handles, KeyData.LastDraggedKeyPositions, EPropertyChangeType::ValueSet);
-		}
-	}
-
 	CurveEditor->SuppressBoundTransformUpdates(false);
 
 	// This finalizes the transaction
@@ -1101,7 +1091,7 @@ void FCurveEditorTransformTool::StopDragIfPossible()
 	}
 }
 
-void FCurveEditorTransformTool::ScaleFrom(const FVector2D& InPanelSpaceCenter, const FVector2D& InChangeAmount, const bool bInFalloffOn, const bool bInAffectsX, const bool bInAffectsY) 
+void FCurveEditorTransformTool::ScaleFrom(const FVector2D& InPanelSpaceCenter, const FVector2D& InChangeAmount, const bool bInFalloffOn, const bool bInAffectsX, const bool bInAffectsY) const
 {
 	TSharedPtr<FCurveEditor> CurveEditor = WeakCurveEditor.Pin();
 	if (!CurveEditor)
@@ -1121,7 +1111,7 @@ void FCurveEditorTransformTool::ScaleFrom(const FVector2D& InPanelSpaceCenter, c
 
 	// We now know if we need to affect both X and Y, and we know where we're scaling from. Now we can loop through the keys and actually modify their positions.
 	// We perform the scale on both axis (for simplicity) and then read which axis it should effect before assigning it back to the key position.
-	for (FKeyData& KeyData : KeysByCurve)
+	for (const FKeyData& KeyData : KeysByCurve)
 	{
 		const SCurveEditorView* View = CurveEditor->FindFirstInteractiveView(KeyData.CurveID);
 		if (!View)
@@ -1176,9 +1166,7 @@ void FCurveEditorTransformTool::ScaleFrom(const FVector2D& InPanelSpaceCenter, c
 			NewKeyPositionScratch.Add(StartPosition);
 		}
 
-		CurveModel->SetKeyPositions(KeyData.Handles, NewKeyPositionScratch, EPropertyChangeType::Interactive);
-		KeyData.LastDraggedKeyPositions = NewKeyPositionScratch;
-
+		CurveModel->SetKeyPositions(KeyData.Handles, NewKeyPositionScratch);
 	}
 }
 

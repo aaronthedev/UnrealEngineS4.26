@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -40,7 +40,6 @@ public:
 		, _WrapTextAt( 0.0f )
 		, _AutoWrapText(false)
 		, _WrappingPolicy(ETextWrappingPolicy::DefaultWrapping)
-		, _TransformPolicy(ETextTransformPolicy::None)
 		, _Marshaller()
 		, _DecoratorStyleSet( &FCoreStyle::Get() )
 		, _TextStyle( &FCoreStyle::Get().GetWidgetStyle<FTextBlockStyle>( "NormalText" ) )
@@ -71,9 +70,6 @@ public:
 
 		/** The wrapping policy to use */
 		SLATE_ATTRIBUTE( ETextWrappingPolicy, WrappingPolicy )
-
-		/** The transform policy to use */
-		SLATE_ATTRIBUTE( ETextTransformPolicy, TransformPolicy )
 
 		/** The marshaller used to get/set the raw text to/from the text layout. */
 		SLATE_ARGUMENT(TSharedPtr<class FRichTextLayoutMarshaller>, Marshaller)
@@ -197,9 +193,6 @@ public:
 	/** Set WrappingPolicy attribute */
 	void SetWrappingPolicy(const TAttribute<ETextWrappingPolicy>& InWrappingPolicy);
 
-	/** Set TransformPolicy attribute */
-	void SetTransformPolicy(const TAttribute<ETextTransformPolicy>& InTransformPolicy);
-
 	/** See LineHeightPercentage attribute */
 	void SetLineHeightPercentage(const TAttribute<float>& InLineHeightPercentage);
 
@@ -222,9 +215,6 @@ public:
 	 * Causes the text to reflow it's layout
 	 */
 	void Refresh();
-
-	/** set the scale value at the TextLayout*/
-	void SetTextBlockScale(const float NewTextBlockScale);
 
 protected:
 	//~ SWidget interface
@@ -255,9 +245,6 @@ private:
 	/** The wrapping policy we're using */
 	TAttribute<ETextWrappingPolicy> WrappingPolicy;
 
-	/** The transform policy we're using */
-	TAttribute<ETextTransformPolicy> TransformPolicy;
-
 	/** The amount of blank space left around the edges of text area. */
 	TAttribute< FMargin > Margin;
 
@@ -269,9 +256,6 @@ private:
 
 	/** Prevents the text block from being smaller than desired in certain cases (e.g. when it is empty) */
 	TAttribute<float> MinDesiredWidth;
-
-	/** Use to Scale the entire Text Block*/
-	float TextBlockScale = 1.0f;
 
 	/**  */
 	TSharedPtr<FRichTextLayoutMarshaller> Marshaller;

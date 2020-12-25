@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SPluginTileList.h"
 #include "Widgets/Views/SListView.h"
@@ -86,9 +86,9 @@ void SPluginTileList::RebuildAndFilterPluginList()
 		{
 			struct FPluginListItemSorter
 			{
-				bool operator()(const TSharedRef<IPlugin>& A, const TSharedRef<IPlugin>& B) const
+				bool operator()( const TSharedRef<IPlugin>& A, const TSharedRef<IPlugin>& B ) const
 				{
-					return A->GetFriendlyName() < B->GetFriendlyName();
+					return A->GetDescriptor().FriendlyName < B->GetDescriptor().FriendlyName;
 				}
 			};
 			PluginListItems.Sort( FPluginListItemSorter() );

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "HttpRouter.h"
 #include "HttpRouteHandle.h"
@@ -9,22 +9,9 @@
 #include "HttpRequestHandler.h"
 #include "HttpRequestHandlerIterator.h"
 
-bool FHttpRouter::Query(const TSharedPtr<FHttpServerRequest>& Request, const FHttpResultCallback& OnProcessingComplete)
+FHttpRouter::FHttpRouter()
 {
-	bool bRequestHandled = false;
-
-	FHttpRequestHandlerIterator Iterator(Request, RequestHandlerRegistrar);
-	while (const FHttpRequestHandler* RequestHandlerPtr = Iterator.Next())
-	{
-		(*RequestHandlerPtr).CheckCallable();
-		bRequestHandled = (*RequestHandlerPtr)(*Request, OnProcessingComplete);
-		if (bRequestHandled)
-		{
-			break;
-		}
-	}
-
-	return bRequestHandled;
+	RequestHandlerRegistrar = MakeShared<TMap<const FString, const FHttpRouteHandle>>();
 }
 
 FHttpRouteHandle FHttpRouter::BindRoute(const FHttpPath& HttpPath,  const EHttpServerRequestVerbs& HttpVerbs,  const FHttpRequestHandler& Handler)
@@ -32,24 +19,26 @@ FHttpRouteHandle FHttpRouter::BindRoute(const FHttpPath& HttpPath,  const EHttpS
 	check(HttpPath.IsValidPath());
 	check(EHttpServerRequestVerbs::VERB_NONE != HttpVerbs);
 
-	if (RequestHandlerRegistrar.ContainsRoute(HttpPath, HttpVerbs))
+	if (RequestHandlerRegistrar->Contains(HttpPath.GetPath()))
 	{
 		return nullptr;
 	}
 
 	auto RouteHandle = MakeShared<FHttpRouteHandleInternal>(HttpPath.GetPath(), HttpVerbs, Handler);
-	RequestHandlerRegistrar.AddRoute(RouteHandle);
+	RequestHandlerRegistrar->Add(HttpPath.GetPath(), RouteHandle);
 
 	return RouteHandle;
 }
 
 void FHttpRouter::UnbindRoute(const FHttpRouteHandle& RouteHandle)
 {
-	if (FRouteQueryResult QueryResult = RequestHandlerRegistrar.QueryRoute(RouteHandle->Path, RouteHandle->Verbs))
+	auto ExistingRouteHandle = RequestHandlerRegistrar->Find(RouteHandle->Path);
+
+	if (ExistingRouteHandle)
 	{
 		// Ensure caller is unbinding a route they actually own
-		check(QueryResult.RouteHandle == RouteHandle);
-		RequestHandlerRegistrar.RemoveRoute(RouteHandle);
+		check(*ExistingRouteHandle == RouteHandle);
+		RequestHandlerRegistrar->Remove(RouteHandle->Path);
 	}
 }
 
@@ -58,4 +47,3 @@ FHttpRequestHandlerIterator FHttpRouter::CreateRequestHandlerIterator(const TSha
 	FHttpRequestHandlerIterator Iterator(Request, RequestHandlerRegistrar);
 	return Iterator;
 }
-

@@ -1,36 +1,29 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Physics/ImmediatePhysics/ImmediatePhysicsChaos/ImmediatePhysicsDeclares_Chaos.h"
 #include "Physics/ImmediatePhysics/ImmediatePhysicsShared/ImmediatePhysicsCore.h"
 
-#include "Chaos/Core.h"
 #include "Chaos/ParticleHandleFwd.h"
-#include "Chaos/PBDRigidsEvolutionFwd.h"
 
 namespace Chaos
 {
-	class FImplicitObject;
-	class FNarrowPhase;
-	class FParticlePairBroadPhase;
-	class FParticlePairCollisionDetector;
-	class FPBDJointConstraintHandle;
-	class FPBDJointConstraints;
-	class FPerShapeData;
-	template<class T> class TArrayCollectionArray;
+	template<typename T, int D> class TImplicitObject;
 	template<typename T, int D> struct TKinematicGeometryParticleParameters;
 	template<typename T, int D> class TKinematicTarget;
-	template<typename T> class TPBDConstraintIslandRule;
+	template<typename P, typename T, int D> class TPBDConstraintIslandRule;
+	template<typename T, int D> class TPBDJointConstraintHandle;
+	template<typename T, int D> class TPBDJointConstraints;
 	template<typename T, int D> struct TPBDRigidParticleParameters;
+	template<typename T, int D> class TPBDRigidsEvolutionGBF;
 	template<typename T, int D> class TPBDRigidsSOAs;
-	template<typename T> class TSimpleConstraintRule;
-
+	template<typename T, int D> class TPerShapeData;
 }
 
 namespace ImmediatePhysics_Chaos
 {
-	using FReal = Chaos::FReal;
+	using FReal = float;
 	const int Dimensions = 3;
 
 	using EActorType = ImmediatePhysics_Shared::EActorType;

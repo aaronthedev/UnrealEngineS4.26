@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -21,7 +21,7 @@ struct FRigUnit_MathBoolConstant : public FRigUnit_MathBoolBase
 		Value = false;
 	}
 
-	UPROPERTY(meta=(Output))
+	UPROPERTY(meta=(Output, Constant))
 	bool Value;
 };
 
@@ -74,9 +74,6 @@ struct FRigUnit_MathBoolConstTrue : public FRigUnit_MathBoolConstant
 	{
 		Value = true;
 	}
-
-	RIGVM_METHOD()
-	virtual void Execute(const FRigUnitContext& Context) override;
 };
 
 /**
@@ -91,9 +88,6 @@ struct FRigUnit_MathBoolConstFalse : public FRigUnit_MathBoolConstant
 	{
 		Value = false;
 	}
-
-	RIGVM_METHOD()
-	virtual void Execute(const FRigUnitContext& Context) override;
 };
 
 /**

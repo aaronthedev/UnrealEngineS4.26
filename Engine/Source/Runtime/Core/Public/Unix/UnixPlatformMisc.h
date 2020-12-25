@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 /*=============================================================================================
@@ -32,6 +32,7 @@ struct CORE_API FUnixPlatformMisc : public FGenericPlatformMisc
 
 	static FString GetEnvironmentVariable(const TCHAR* VariableName);
 	static void SetEnvironmentVar(const TCHAR* VariableName, const TCHAR* Value);
+	UE_DEPRECATED(4.14, "GetMacAddress is deprecated. It is not reliable on all platforms")
 	static TArray<uint8> GetMacAddress();
 	static bool IsRunningOnBattery();
 
@@ -136,8 +137,6 @@ struct CORE_API FUnixPlatformMisc : public FGenericPlatformMisc
 	static void CreateGuid(FGuid& Result);
 
 	static IPlatformChunkInstall* GetPlatformChunkInstall();
-
-	static bool SetStoredValues(const FString& InStoreId, const FString& InSectionName, const TMap<FString, FString>& InKeyValues);
 
 #if STATS || ENABLE_STATNAMEDEVENTS
 	static void BeginNamedEventFrame();

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DSP/MultithreadedPatching.h"
 #include "DSP/BufferVectorOperations.h"
@@ -120,15 +120,6 @@ namespace Audio
 	{
 	}
 
-	FPatchInput::FPatchInput(FPatchInput&& Other)
-	{
-		OutputHandle = Other.OutputHandle;
-		Other.OutputHandle.Reset();
-
-		PushCallsCounter = Other.PushCallsCounter;
-		Other.PushCallsCounter = 0;
-	}
-
 	FPatchInput& FPatchInput::operator=(const FPatchInput& Other)
 	{
 		OutputHandle = Other.OutputHandle;
@@ -240,8 +231,6 @@ namespace Audio
 	int32 FPatchMixer::MaxNumberOfSamplesThatCanBePopped()
 	{
 		FScopeLock ScopeLock(&CurrentPatchesCriticalSection);
-
-		CleanUpDisconnectedPatches();
 		ConnectNewPatches();
 
 		// Iterate through our inputs and see which input has the least audio buffered.
@@ -267,12 +256,6 @@ namespace Audio
 		}
 	}
 
-	void FPatchMixer::DisconnectAllInputs()
-	{
-		FScopeLock ScopeLock(&CurrentPatchesCriticalSection);
-		CurrentInputs.Reset();
-	}
-
 	void FPatchMixer::ConnectNewPatches()
 	{
 		FScopeLock ScopeLock(&PendingNewInputsCriticalSection);
@@ -290,18 +273,6 @@ namespace Audio
 	void FPatchMixer::CleanUpDisconnectedPatches()
 	{
 		FScopeLock PendingInputDeletionScopeLock(&InputDeletionCriticalSection);
-
-		 // Callers of this function must have CurrentPatchesCritialSection locked so that 
-		 // this is not causing a race condition.
-		for (const FPatchOutputStrongPtr& Patch : CurrentInputs)
-		{
-			check(Patch.IsValid());
-
-			if (Patch->IsInputStale())
-			{
-				DisconnectedInputs.Add(Patch->PatchID);
-			}
-		}
 
 		// Iterate through all of the PatchIDs we need to clean up.
 		for (const int32& PatchID : DisconnectedInputs)

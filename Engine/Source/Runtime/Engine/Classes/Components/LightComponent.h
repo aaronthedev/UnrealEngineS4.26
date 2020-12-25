@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -302,9 +302,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Rendering|Components|Light")
 	void SetForceCachedShadowsForMovablePrimitives(bool bNewValue);
 
-	UFUNCTION(BlueprintCallable, Category = "Rendering|Components|Light")
-	void SetLightingChannels(bool bChannel0, bool bChannel1, bool bChannel2);
-
 public:
 	/** The light's scene info. */
 	class FLightSceneProxy* SceneProxy;
@@ -374,10 +371,6 @@ public:
 	{
 		return 0;
 	}
-	virtual FLinearColor GetAtmosphereSunDiskColorScale() const
-	{
-		return FLinearColor::White;
-	}
 
 	/** Compute current light brightness based on whether there is a valid IES profile texture attached, and whether IES brightness is enabled */
 	virtual float ComputeLightBrightness() const;
@@ -391,7 +384,7 @@ public:
 	virtual void PostLoad() override;
 #if WITH_EDITOR
 	virtual void PreSave(const class ITargetPlatform* TargetPlatform) override;
-	virtual bool CanEditChange(const FProperty* InProperty) const override;
+	virtual bool CanEditChange(const UProperty* InProperty) const override;
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 	virtual void UpdateLightSpriteTexture() override;
 #endif // WITH_EDITOR
@@ -421,13 +414,16 @@ public:
 protected:
 	//~ Begin UActorComponent Interface
 	virtual void OnRegister() override;
-	virtual void CreateRenderState_Concurrent(FRegisterComponentContext* Context) override;
+	virtual void CreateRenderState_Concurrent() override;
 	virtual void SendRenderTransform_Concurrent() override;
 	virtual void DestroyRenderState_Concurrent() override;
 	//~ Begin UActorComponent Interface
 
 public:
 	virtual void InvalidateLightingCacheDetailed(bool bInvalidateBuildEnqueuedLighting, bool bTranslationOnly) override;
+
+	/** Invalidates the light's cached lighting with the option to recreate the light Guids. */
+	void InvalidateLightingCacheInner(bool bRecreateLightGuids);
 
 	/** Script interface to retrieve light direction. */
 	FVector GetDirection() const;
@@ -446,7 +442,7 @@ public:
 	 *
 	 * @param PropertyThatChanged	Property that changed
 	 */
-	virtual void PostInterpChange(FProperty* PropertyThatChanged) override;
+	virtual void PostInterpChange(UProperty* PropertyThatChanged) override;
 
 	/** 
 	 * Iterates over ALL stationary light components in the target world and assigns their preview shadowmap channel, and updates light icons accordingly.

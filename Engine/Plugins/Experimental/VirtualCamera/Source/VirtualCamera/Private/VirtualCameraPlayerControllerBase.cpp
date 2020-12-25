@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VirtualCameraPlayerControllerBase.h"
 
@@ -8,12 +8,11 @@
 #include "Engine/World.h"
 #include "Features/IModularFeatures.h"
 #include "Framework/Application/SlateApplication.h"
-#include "ILiveLinkClient.h"
 #include "IXRTrackingSystem.h"
-#include "RemoteSession.h"
-#include "Channels/RemoteSessionInputChannel.h"
-#include "Channels/RemoteSessionFrameBufferChannel.h"
-#include "Channels/RemoteSessionXRTrackingChannel.h"
+#include "RemoteSession/RemoteSession.h"
+#include "RemoteSession/Channels/RemoteSessionInputChannel.h"
+#include "RemoteSession/Channels/RemoteSessionFrameBufferChannel.h"
+#include "RemoteSession/Channels/RemoteSessionXRTrackingChannel.h"
 #include "Roles/LiveLinkAnimationRole.h"
 #include "Roles/LiveLinkAnimationTypes.h"
 #include "Roles/LiveLinkTransformRole.h"
@@ -114,10 +113,12 @@ void AVirtualCameraPlayerControllerBase::BeginPlay()
 	{
 		if (IRemoteSessionModule* RemoteSession = FModuleManager::LoadModulePtr<IRemoteSessionModule>("RemoteSession"))
 		{
-			//RemoteSession->AddSupportedChannel(FRemoteSessionImageChannel::StaticType(), ERemoteSessionChannelMode::Write);
-			//RemoteSession->AddSupportedChannel(FRemoteSessionInputChannel::StaticType(), ERemoteSessionChannelMode::Read);
-			//RemoteSession->AddSupportedChannel(FRemoteSessionXRTrackingChannel::StaticType(), ERemoteSessionChannelMode::Read);
+			TMap<FString, ERemoteSessionChannelMode> RequiredChannels;
+			RequiredChannels.Add(FRemoteSessionFrameBufferChannelFactoryWorker::StaticType(), ERemoteSessionChannelMode::Write);
+			RequiredChannels.Add(FRemoteSessionInputChannel::StaticType(), ERemoteSessionChannelMode::Read);
+			RequiredChannels.Add(FRemoteSessionXRTrackingChannel::StaticType(), ERemoteSessionChannelMode::Read);
 
+			RemoteSession->SetSupportedChannels(RequiredChannels);
 			RemoteSession->InitHost();
 		}
 	}

@@ -6,11 +6,9 @@
 // License. See LICENSE.TXT for details.                                     //
 //                                                                           //
 ///////////////////////////////////////////////////////////////////////////////
-#pragma once
 
 namespace llvm {
   class Value;
-  class Function;
 }
 
 namespace hlsl {

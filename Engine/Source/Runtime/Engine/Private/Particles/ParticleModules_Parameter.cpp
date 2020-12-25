@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ParticleModules_Parameter.cpp: 
@@ -427,6 +427,26 @@ UMaterial* UParticleModuleParameterDynamic_RetrieveMaterial(UMaterialInterface* 
 	return Material;
 }
 
+/**
+ *	Helper function to find the DynamicParameter expression in a material
+ */
+UMaterialExpressionDynamicParameter* UParticleModuleParameterDynamic_GetDynamicParameterExpression(UMaterial* InMaterial)
+{
+	UMaterialExpressionDynamicParameter* DynParamExp = NULL;
+	for (int32 ExpIndex = 0; ExpIndex < InMaterial->Expressions.Num(); ExpIndex++)
+	{
+		DynParamExp = Cast<UMaterialExpressionDynamicParameter>(InMaterial->Expressions[ExpIndex]);
+
+		if (DynParamExp != NULL)
+		{
+			break;
+		}
+	}
+
+	return DynParamExp;
+}
+
+
 void UParticleModuleParameterDynamic::UpdateParameterNames(UMaterialInterface* InMaterialInterface)
 {
 	UMaterial* Material = UParticleModuleParameterDynamic_RetrieveMaterial(InMaterialInterface);
@@ -435,18 +455,16 @@ void UParticleModuleParameterDynamic::UpdateParameterNames(UMaterialInterface* I
 		return;
 	}
 
-	const TArray<FName>& ParamNames = Material->GetCachedExpressionData().DynamicParameterNames;
-	check(DynamicParams.Num() == 4);
+	// Check the expressions...
+	UMaterialExpressionDynamicParameter* DynParamExp = UParticleModuleParameterDynamic_GetDynamicParameterExpression(Material);
+	if (DynParamExp == NULL)
+	{
+		return;
+	}
+
 	for (int32 ParamIndex = 0; ParamIndex < 4; ParamIndex++)
 	{
-		if (ParamNames.IsValidIndex(ParamIndex))
-		{
-			DynamicParams[ParamIndex].ParamName = ParamNames[ParamIndex];
-		}
-		else
-		{
-			DynamicParams[ParamIndex].ParamName = NAME_None;
-		}
+		DynamicParams[ParamIndex].ParamName = FName(*(DynParamExp->ParamNames[ParamIndex]));
 	}
 }
 

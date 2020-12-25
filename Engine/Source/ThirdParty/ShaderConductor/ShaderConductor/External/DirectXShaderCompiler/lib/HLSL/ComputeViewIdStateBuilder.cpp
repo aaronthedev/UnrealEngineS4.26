@@ -7,9 +7,7 @@
 //                                                                           //
 ///////////////////////////////////////////////////////////////////////////////
 
-#include "dxc/HlslIntrinsicOp.h"
 #include "dxc/HLSL/ComputeViewIdState.h"
-#include "dxc/HLSL/HLOperations.h"
 #include "dxc/Support/Global.h"
 #include "dxc/DXIL/DxilModule.h"
 #include "dxc/DXIL/DxilOperations.h"
@@ -54,13 +52,13 @@ public:
         m_NumInputSigScalars(state.m_NumInputSigScalars),
         m_NumOutputSigScalars(state.m_NumOutputSigScalars,
                               DxilViewIdStateData::kNumStreams),
-        m_NumPCOrPrimSigScalars(state.m_NumPCOrPrimSigScalars),
+        m_NumPCSigScalars(state.m_NumPCSigScalars),
         m_OutputsDependentOnViewId(state.m_OutputsDependentOnViewId,
                                    DxilViewIdStateData::kNumStreams),
-        m_PCOrPrimOutputsDependentOnViewId(state.m_PCOrPrimOutputsDependentOnViewId),
+        m_PCOutputsDependentOnViewId(state.m_PCOutputsDependentOnViewId),
         m_InputsContributingToOutputs(state.m_InputsContributingToOutputs,
                                       DxilViewIdStateData::kNumStreams),
-        m_InputsContributingToPCOrPrimOutputs(state.m_InputsContributingToPCOrPrimOutputs),
+        m_InputsContributingToPCOutputs(state.m_InputsContributingToPCOutputs),
         m_PCInputsContributingToOutputs(state.m_PCInputsContributingToOutputs),
         m_bUsesViewId(state.m_bUsesViewId) {}
 
@@ -73,15 +71,15 @@ private:
 
   unsigned &m_NumInputSigScalars;
   MutableArrayRef<unsigned> m_NumOutputSigScalars;
-  unsigned &m_NumPCOrPrimSigScalars;
+  unsigned &m_NumPCSigScalars;
 
   // Set of scalar outputs dependent on ViewID.
   MutableArrayRef<OutputsDependentOnViewIdType> m_OutputsDependentOnViewId;
-  OutputsDependentOnViewIdType &m_PCOrPrimOutputsDependentOnViewId;
+  OutputsDependentOnViewIdType &m_PCOutputsDependentOnViewId;
 
   // Set of scalar inputs contributing to computation of scalar outputs.
   MutableArrayRef<InputsContributingToOutputType> m_InputsContributingToOutputs;
-  InputsContributingToOutputType &m_InputsContributingToPCOrPrimOutputs; // HS PC and MS Prim only.
+  InputsContributingToOutputType &m_InputsContributingToPCOutputs; // HS PC only.
   InputsContributingToOutputType &m_PCInputsContributingToOutputs; // DS only.
 
   bool &m_bUsesViewId;
@@ -176,7 +174,7 @@ void DxilViewIdStateBuilder::Compute() {
   // 1. Traverse signature MD to determine max packed location.
   DetermineMaxPackedLocation(m_pModule->GetInputSignature(), &m_NumInputSigScalars, 1);
   DetermineMaxPackedLocation(m_pModule->GetOutputSignature(), &m_NumOutputSigScalars[0], pSM->IsGS() ? kNumStreams : 1);
-  DetermineMaxPackedLocation(m_pModule->GetPatchConstOrPrimSignature(), &m_NumPCOrPrimSigScalars, 1);
+  DetermineMaxPackedLocation(m_pModule->GetPatchConstantSignature(), &m_NumPCSigScalars, 1);
 
   // 2. Collect sets of functions reachable from main and pc entries.
   CallGraphAnalysis CGA;
@@ -207,10 +205,10 @@ void DxilViewIdStateBuilder::Compute() {
                      m_OutputsDependentOnViewId[StreamId],
                      m_InputsContributingToOutputs[StreamId], false);
   }
-  if (pSM->IsHS() || pSM->IsMS()) {
+  if (pSM->IsHS()) {
     CreateViewIdSets(m_PCEntry.ContributingInstructions[0],
-                     m_PCOrPrimOutputsDependentOnViewId,
-                     m_InputsContributingToPCOrPrimOutputs, true);
+                     m_PCOutputsDependentOnViewId,
+                     m_InputsContributingToPCOutputs, true);
   } else if (pSM->IsDS()) {
     OutputsDependentOnViewIdType OutputsDependentOnViewId;
     CreateViewIdSets(m_Entry.ContributingInstructions[0],
@@ -235,12 +233,12 @@ void DxilViewIdStateBuilder::Clear() {
     m_OutputsDependentOnViewId[i].reset();
     m_InputsContributingToOutputs[i].clear();
   }
-  m_NumPCOrPrimSigScalars     = 0;
+  m_NumPCSigScalars     = 0;
   m_InpSigDynIdxElems.clear();
   m_OutSigDynIdxElems.clear();
   m_PCSigDynIdxElems.clear();
-  m_PCOrPrimOutputsDependentOnViewId.reset();
-  m_InputsContributingToPCOrPrimOutputs.clear();
+  m_PCOutputsDependentOnViewId.reset();
+  m_InputsContributingToPCOutputs.clear();
   m_PCInputsContributingToOutputs.clear();
   m_Entry.Clear();
   m_PCEntry.Clear();
@@ -342,18 +340,6 @@ void DxilViewIdStateBuilder::AnalyzeFunctions(EntryInfo &Entry) {
           GetUnsignedVal(SO.get_rowIndex(), (uint32_t*)&row);
           IFTBOOL(GetUnsignedVal(SO.get_colIndex(), &col), DXC_E_GENERAL_INTERNAL_ERROR);
           Entry.Outputs.emplace(CI);
-        } else if (DxilInst_StoreVertexOutput SVO = DxilInst_StoreVertexOutput(CI)) {
-          pDynIdxElems = &m_OutSigDynIdxElems;
-          IFTBOOL(GetUnsignedVal(SVO.get_outputSigId(), &id), DXC_E_GENERAL_INTERNAL_ERROR);
-          GetUnsignedVal(SVO.get_rowIndex(), (uint32_t*)&row);
-          IFTBOOL(GetUnsignedVal(SVO.get_colIndex(), &col), DXC_E_GENERAL_INTERNAL_ERROR);
-          Entry.Outputs.emplace(CI);
-        } else if (DxilInst_StorePrimitiveOutput SPO = DxilInst_StorePrimitiveOutput(CI)) {
-          pDynIdxElems = &m_PCSigDynIdxElems;
-          IFTBOOL(GetUnsignedVal(SPO.get_outputSigId(), &id), DXC_E_GENERAL_INTERNAL_ERROR);
-          GetUnsignedVal(SPO.get_rowIndex(), (uint32_t*)&row);
-          IFTBOOL(GetUnsignedVal(SPO.get_colIndex(), &col), DXC_E_GENERAL_INTERNAL_ERROR);
-          Entry.Outputs.emplace(CI);
         } else if (DxilInst_LoadPatchConstant LPC = DxilInst_LoadPatchConstant(CI)) {
           if (m_pModule->GetShaderModel()->IsDS()) {
             pDynIdxElems = &m_PCSigDynIdxElems;
@@ -426,20 +412,8 @@ void DxilViewIdStateBuilder::CollectValuesContributingToOutputs(EntryInfo &Entry
       GetUnsignedVal(SO.get_outputSigId(), &id);
       GetUnsignedVal(SO.get_colIndex(), &col);
       GetUnsignedVal(SO.get_rowIndex(), (uint32_t*)&startRow);
-    } else if (DxilInst_StoreVertexOutput SVO = DxilInst_StoreVertexOutput(CI)) {
-      pDxilSig = &m_pModule->GetOutputSignature();
-      pContributingValue = SVO.get_value();
-      GetUnsignedVal(SVO.get_outputSigId(), &id);
-      GetUnsignedVal(SVO.get_colIndex(), &col);
-      GetUnsignedVal(SVO.get_rowIndex(), (uint32_t*)&startRow);
-    } else if (DxilInst_StorePrimitiveOutput SPO = DxilInst_StorePrimitiveOutput(CI)) {
-      pDxilSig = &m_pModule->GetPatchConstOrPrimSignature();
-      pContributingValue = SPO.get_value();
-      GetUnsignedVal(SPO.get_outputSigId(), &id);
-      GetUnsignedVal(SPO.get_colIndex(), &col);
-      GetUnsignedVal(SPO.get_rowIndex(), (uint32_t*)&startRow);
     } else if (DxilInst_StorePatchConstant SPC = DxilInst_StorePatchConstant(CI)) {
-      pDxilSig = &m_pModule->GetPatchConstOrPrimSignature();
+      pDxilSig = &m_pModule->GetPatchConstantSignature();
       pContributingValue = SPC.get_value();
       GetUnsignedVal(SPC.get_outputSigID(), &id);
       GetUnsignedVal(SPC.get_row(), (uint32_t*)&startRow);
@@ -684,10 +658,6 @@ void DxilViewIdStateBuilder::CollectReachingDeclsRec(Value *pValue, ValueSetType
   } else if (GEPOperator *pGepOp = dyn_cast<GEPOperator>(pValue)) {
     Value *pPtrValue = pGepOp->getPointerOperand();
     CollectReachingDeclsRec(pPtrValue, ReachingDecls, Visited);
-  } else if (isa<ConstantExpr>(pValue) && cast<ConstantExpr>(pValue)->getOpcode() == Instruction::AddrSpaceCast) {
-    CollectReachingDeclsRec(cast<ConstantExpr>(pValue)->getOperand(0), ReachingDecls, Visited);
-  } else if (AddrSpaceCastInst *pCI = dyn_cast<AddrSpaceCastInst>(pValue)) {
-    CollectReachingDeclsRec(pCI->getOperand(0), ReachingDecls, Visited);
   } else if (dyn_cast<AllocaInst>(pValue)) {
     ReachingDecls.emplace(pValue);
   } else if (PHINode *phi = dyn_cast<PHINode>(pValue)) {
@@ -698,10 +668,6 @@ void DxilViewIdStateBuilder::CollectReachingDeclsRec(Value *pValue, ValueSetType
     CollectReachingDeclsRec(SelI->getTrueValue(), ReachingDecls, Visited);
     CollectReachingDeclsRec(SelI->getFalseValue(), ReachingDecls, Visited);
   } else if (dyn_cast<Argument>(pValue)) {
-    ReachingDecls.emplace(pValue);
-  } else if (CallInst *call = dyn_cast<CallInst>(pValue)) {
-    DXASSERT(OP::GetDxilOpFuncCallInst(call) == DXIL::OpCode::GetMeshPayload,
-             "the function must be @dx.op.getMeshPayload here.");
     ReachingDecls.emplace(pValue);
   } else {
     IFT(DXC_E_GENERAL_INTERNAL_ERROR);
@@ -796,7 +762,7 @@ void DxilViewIdStateBuilder::CreateViewIdSets(const std::unordered_map<unsigned,
           GetUnsignedVal(LPC.get_inputSigId(), &inpId);
           GetUnsignedVal(LPC.get_col(), &col);
           GetUnsignedVal(LPC.get_row(), (uint32_t*)&startRow);
-          pSigElem = &m_pModule->GetPatchConstOrPrimSignature().GetElement(inpId);
+          pSigElem = &m_pModule->GetPatchConstantSignature().GetElement(inpId);
         }
       } else {
         continue;
@@ -821,7 +787,7 @@ void DxilViewIdStateBuilder::CreateViewIdSets(const std::unordered_map<unsigned,
             // This HS patch-constant output depends on an input value of LoadOutputControlPoint
             // that is the output value of the HS main (control-point) function.
             // Transitively update this (patch-constant) output dependence on main (control-point) output.
-            DXASSERT_NOMSG(&OutputsDependentOnViewId == &m_PCOrPrimOutputsDependentOnViewId);
+            DXASSERT_NOMSG(&OutputsDependentOnViewId == &m_PCOutputsDependentOnViewId);
             OutputsDependentOnViewId[outIdx] = OutputsDependentOnViewId[outIdx] || m_OutputsDependentOnViewId[0][index];
 
             const auto it = m_InputsContributingToOutputs[0].find(index);
@@ -840,14 +806,14 @@ void DxilViewIdStateBuilder::CreateViewIdSets(const std::unordered_map<unsigned,
 unsigned DxilViewIdStateBuilder::GetLinearIndex(DxilSignatureElement &SigElem, int row, unsigned col) const {
   DXASSERT_NOMSG(row >= 0 && col < kNumComps && SigElem.GetStartRow() != Semantic::kUndefinedRow);
   unsigned idx = (((unsigned)row) + SigElem.GetStartRow())*kNumComps + col + SigElem.GetStartCol();
-  DXASSERT_NOMSG(idx < kMaxSigScalars); (void)kMaxSigScalars;
+  DXASSERT_NOMSG(idx < kMaxSigScalars);
   return idx;
 }
 
 void DxilViewIdStateBuilder::UpdateDynamicIndexUsageState() const {
   UpdateDynamicIndexUsageStateForSig(m_pModule->GetInputSignature(), m_InpSigDynIdxElems);
   UpdateDynamicIndexUsageStateForSig(m_pModule->GetOutputSignature(), m_OutSigDynIdxElems);
-  UpdateDynamicIndexUsageStateForSig(m_pModule->GetPatchConstOrPrimSignature(), m_PCSigDynIdxElems);
+  UpdateDynamicIndexUsageStateForSig(m_pModule->GetPatchConstantSignature(), m_PCSigDynIdxElems);
 }
 
 void DxilViewIdStateBuilder::UpdateDynamicIndexUsageStateForSig(DxilSignature &Sig,

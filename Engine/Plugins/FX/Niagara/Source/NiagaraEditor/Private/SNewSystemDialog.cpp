@@ -1,9 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SNewSystemDialog.h"
 #include "NiagaraSystem.h"
 #include "NiagaraEditorStyle.h"
-#include "SNiagaraAssetPickerList.h"
+#include "SNiagaraTemplateAssetPicker.h"
 
 #include "AssetData.h"
 
@@ -24,11 +24,35 @@ void SNewSystemDialog::Construct(const FArguments& InArgs)
 {
 	FContentBrowserModule& ContentBrowserModule = FModuleManager::Get().LoadModuleChecked<FContentBrowserModule>(TEXT("ContentBrowser"));
 
+	FAssetPickerConfig SystemAssetPickerConfig;
+	SystemAssetPickerConfig.SelectionMode = ESelectionMode::SingleToggle;
+	SystemAssetPickerConfig.InitialAssetViewType = EAssetViewType::List;
+	SystemAssetPickerConfig.Filter.ClassNames.Add(UNiagaraSystem::StaticClass()->GetFName());
+	SystemAssetPickerConfig.GetCurrentSelectionDelegates.Add(&GetSelectedSystemAssetsFromPicker);
+	SystemAssetPickerConfig.OnAssetsActivated.BindSP(this, &SNewSystemDialog::OnSystemAssetsActivated);
+
+	TSharedRef<SWidget> SystemAssetPicker = ContentBrowserModule.Get().CreateAssetPicker(SystemAssetPickerConfig);
+
+	FAssetPickerConfig EmitterAssetPickerConfig;
+	EmitterAssetPickerConfig.SelectionMode = ESelectionMode::Multi;
+	EmitterAssetPickerConfig.InitialAssetViewType = EAssetViewType::List;
+	EmitterAssetPickerConfig.Filter.ClassNames.Add(UNiagaraEmitter::StaticClass()->GetFName());
+	EmitterAssetPickerConfig.GetCurrentSelectionDelegates.Add(&GetSelectedEmitterAssetsFromPicker);
+	EmitterAssetPickerConfig.OnAssetsActivated.BindSP(this, &SNewSystemDialog::OnEmitterAssetsActivated);
+
+	TSharedRef<SWidget> EmitterAssetPicker = ContentBrowserModule.Get().CreateAssetPicker(EmitterAssetPickerConfig);
+
 	SNiagaraNewAssetDialog::Construct(SNiagaraNewAssetDialog::FArguments(), UNiagaraSystem::StaticClass()->GetFName(), LOCTEXT("AssetTypeName", "system"),
 		{
 			SNiagaraNewAssetDialog::FNiagaraNewAssetDialogOption(
-				LOCTEXT("CreateFromSelectedEmittersLabel", "New system from selected emitter(s)"),
-				LOCTEXT("CreateFromSelectedEmittersDescription", "Choose a mix of emitters (inherited) and emitter templates (no inheritance)"),
+				LOCTEXT("CreateFromTemplateLabel", "Create a new system from a system template"),
+				LOCTEXT("TemplateLabel", "Select a System Template"),
+				SNiagaraNewAssetDialog::FOnGetSelectedAssetsFromPicker::CreateSP(this, &SNewSystemDialog::GetSelectedSystemTemplateAssets),
+				SNiagaraNewAssetDialog::FOnSelectionConfirmed(),
+				SAssignNew(TemplateAssetPicker, SNiagaraTemplateAssetPicker, UNiagaraSystem::StaticClass())
+				.OnTemplateAssetActivated(this, &SNewSystemDialog::OnTemplateAssetActivated)),
+			SNiagaraNewAssetDialog::FNiagaraNewAssetDialogOption(
+				LOCTEXT("CreateFromSelectedEmittersLabel", "Create a new system from a set of selected emitters"),
 				LOCTEXT("ProjectEmittersLabel", "Select Emitters to Add"),
 				SNiagaraNewAssetDialog::FOnGetSelectedAssetsFromPicker::CreateSP(this, &SNewSystemDialog::GetSelectedProjectEmiterAssets),
 				SNiagaraNewAssetDialog::FOnSelectionConfirmed(),
@@ -36,10 +60,7 @@ void SNewSystemDialog::Construct(const FArguments& InArgs)
 				+ SVerticalBox::Slot()
 				.Padding(0, 0, 0, 10)
 				[
-					SAssignNew(EmitterAssetPicker, SNiagaraAssetPickerList, UNiagaraEmitter::StaticClass())
-					.OnTemplateAssetActivated(this, &SNewSystemDialog::OnEmitterAssetsActivated)
-					.bTemplateOnly(false)
-					.bAllowMultiSelect(true)
+					EmitterAssetPicker
 				]
 				+ SVerticalBox::Slot()
 				.AutoHeight()
@@ -59,6 +80,7 @@ void SNewSystemDialog::Construct(const FArguments& InArgs)
 					.VAlign(VAlign_Center)
 					[
 						SNew(SButton)
+						//.ButtonStyle(FNiagaraEditorStyle::Get(), "NiagaraEditor.NewAssetDialog.AddButton")
 						.ButtonStyle(FEditorStyle::Get(), "FlatButton.Success")
 						.IsEnabled(this, &SNewSystemDialog::IsAddEmittersToSelectionButtonEnabled)
 						.OnClicked(this, &SNewSystemDialog::AddEmittersToSelectionButtonClicked)
@@ -83,27 +105,16 @@ void SNewSystemDialog::Construct(const FArguments& InArgs)
 				.AutoHeight()
 				[
 					SAssignNew(SelectedEmitterBox, SWrapBox)
-					.UseAllottedSize(true)
+					.UseAllottedWidth(true)
 				]),
 			SNiagaraNewAssetDialog::FNiagaraNewAssetDialogOption(
-				LOCTEXT("CreateFromTemplateLabel", "New system from a template"),
-				LOCTEXT("CreateFromTemplateDescription", "The new system will be derived from a system template"),
-				LOCTEXT("TemplateLabel", "Select a System Template"),
-				SNiagaraNewAssetDialog::FOnGetSelectedAssetsFromPicker::CreateSP(this, &SNewSystemDialog::GetSelectedSystemTemplateAssets),
-				SNiagaraNewAssetDialog::FOnSelectionConfirmed(),
-				SAssignNew(TemplateAssetPicker, SNiagaraAssetPickerList, UNiagaraSystem::StaticClass())
-				.bTemplateOnly(true)),
-			SNiagaraNewAssetDialog::FNiagaraNewAssetDialogOption(
-				LOCTEXT("CreateFromOtherSystemLabel", "Copy existing system"),
-				LOCTEXT("CreateFromOtherSystemDescription", "Copies an existing system from your project content and maintains any inheritance of the included emitters"),
+				LOCTEXT("CreateFromOtherSystemLabel", "Copy an existing system from your project content"),
 				LOCTEXT("ProjectSystemsLabel", "Select a Project System"),
 				SNiagaraNewAssetDialog::FOnGetSelectedAssetsFromPicker::CreateSP(this, &SNewSystemDialog::GetSelectedProjectSystemAssets),
 				SNiagaraNewAssetDialog::FOnSelectionConfirmed(),
-				SAssignNew(SystemAssetPicker, SNiagaraAssetPickerList, UNiagaraSystem::StaticClass())
-				.bTemplateOnly(false)),
+				SystemAssetPicker),
 			SNiagaraNewAssetDialog::FNiagaraNewAssetDialogOption(
-				LOCTEXT("CreateEmptyLabel", "Create empty system"),
-				LOCTEXT("CreateEmptyDescription", "Create an empty system with no emitters or emitter templates"),
+				LOCTEXT("CreateEmptyLabel", "Create an empty system with no emitters"),
 				LOCTEXT("EmptyLabel", "Empty System"),
 				SNiagaraNewAssetDialog::FOnGetSelectedAssetsFromPicker(),
 				SNiagaraNewAssetDialog::FOnSelectionConfirmed(),
@@ -149,21 +160,22 @@ TArray<FAssetData> SNewSystemDialog::GetSelectedEmitterAssets() const
 	return ConfirmedSelectedEmitterAssets;
 }
 
-void SNewSystemDialog::OnEmitterAssetsActivated(const FAssetData& ActivatedTemplateAsset)
-{
-	TArray<FAssetData> ActivatedTemplateAssets;
-	ActivatedTemplateAssets.Add(ActivatedTemplateAsset);
-	AddEmitterAssetsToSelection(ActivatedTemplateAssets);
-}
-
 void SNewSystemDialog::GetSelectedSystemTemplateAssets(TArray<FAssetData>& OutSelectedAssets)
 {
 	OutSelectedAssets.Append(TemplateAssetPicker->GetSelectedAssets());
+	if (ActivatedTemplateSystemAsset.IsValid())
+	{
+		OutSelectedAssets.AddUnique(ActivatedTemplateSystemAsset);
+	}
 }
 
 void SNewSystemDialog::GetSelectedProjectSystemAssets(TArray<FAssetData>& OutSelectedAssets)
 {
-	OutSelectedAssets.Append(SystemAssetPicker->GetSelectedAssets());
+	OutSelectedAssets.Append(GetSelectedSystemAssetsFromPicker.Execute());
+	if (ActivatedProjectSystemAsset.IsValid())
+	{
+		OutSelectedAssets.AddUnique(ActivatedProjectSystemAsset);
+	}
 }
 
 void SNewSystemDialog::GetSelectedProjectEmiterAssets(TArray<FAssetData>& OutSelectedAssets)
@@ -171,14 +183,41 @@ void SNewSystemDialog::GetSelectedProjectEmiterAssets(TArray<FAssetData>& OutSel
 	OutSelectedAssets.Append(SelectedEmitterAssets);
 }
 
+void SNewSystemDialog::OnTemplateAssetActivated(const FAssetData& ActivatedTemplateAsset)
+{
+	// Input handling issues with the list view widget can allow items to be activated but not added to the selection so cache this here
+	// so it can be included in the selection set.
+	ActivatedTemplateSystemAsset = ActivatedTemplateAsset;
+	ConfirmSelection();
+}
+
+void SNewSystemDialog::OnSystemAssetsActivated(const TArray<FAssetData>& ActivatedAssets, EAssetTypeActivationMethod::Type ActivationMethod)
+{
+	if ((ActivationMethod == EAssetTypeActivationMethod::DoubleClicked || ActivationMethod == EAssetTypeActivationMethod::Opened) && ActivatedAssets.Num() == 1)
+	{
+		// Input handling issues with the list view widget can allow items to be activated but not added to the selection so cache this here
+		// so it can be included in the selection set.
+		ActivatedProjectSystemAsset = ActivatedAssets[0];
+		ConfirmSelection();
+	}
+}
+
+void SNewSystemDialog::OnEmitterAssetsActivated(const TArray<FAssetData>& ActivatedAssets, EAssetTypeActivationMethod::Type ActivationMethod)
+{
+	if (ActivationMethod == EAssetTypeActivationMethod::DoubleClicked || ActivationMethod == EAssetTypeActivationMethod::Opened)
+	{
+		AddEmitterAssetsToSelection(ActivatedAssets);
+	}
+}
+
 bool SNewSystemDialog::IsAddEmittersToSelectionButtonEnabled() const
 {
-	return EmitterAssetPicker->GetSelectedAssets().Num() > 0;
+	return GetSelectedEmitterAssetsFromPicker.Execute().Num() > 0;
 }
 
 FReply SNewSystemDialog::AddEmittersToSelectionButtonClicked()
 {
-	TArray<FAssetData> SelectedEmitterAssetsFromPicker = EmitterAssetPicker->GetSelectedAssets();
+	TArray<FAssetData> SelectedEmitterAssetsFromPicker = GetSelectedEmitterAssetsFromPicker.Execute();
 	AddEmitterAssetsToSelection(SelectedEmitterAssetsFromPicker);
 	return FReply::Handled();
 }

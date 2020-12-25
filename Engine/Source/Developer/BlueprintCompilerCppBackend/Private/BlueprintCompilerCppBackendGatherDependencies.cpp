@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BlueprintCompilerCppBackendGatherDependencies.h"
 #include "Misc/CoreMisc.h"
@@ -21,42 +21,6 @@
 #include "K2Node_EnumLiteral.h"
 #include "KismetCompiler.h" // For LogK2Compiler
 
-class FGatherConvertedClassDependenciesArchive : public FReferenceCollectorArchive
-{
-public:
-	FGatherConvertedClassDependenciesArchive(UObject* InSerializingObject, FReferenceCollector& InCollector)
-		: FReferenceCollectorArchive(InSerializingObject, InCollector)
-	{
-		ArIsObjectReferenceCollector = true;
-		SetIsPersistent(InCollector.IsIgnoringTransient());
-		ArIgnoreArchetypeRef = InCollector.IsIgnoringArchetypeRef();
-	}
-
-protected:
-	virtual FArchive& operator<<(UObject*& Object) override
-	{
-		if (Object)
-		{
-			FReferenceCollector& CurrentCollector = GetCollector();
-			FProperty* OldCollectorSerializedProperty = CurrentCollector.GetSerializedProperty();
-			CurrentCollector.SetSerializedProperty(GetSerializedProperty());
-			CurrentCollector.AddReferencedObject(Object, GetSerializingObject(), GetSerializedProperty());
-			CurrentCollector.SetSerializedProperty(OldCollectorSerializedProperty);
-		}
-		return *this;
-	}
-
-	virtual FArchive& operator<<(FField*& Field) override
-	{
-		if (Field)
-		{
-			FReferenceCollector& CurrentCollector = GetCollector();
-			Field->AddReferencedObjects(CurrentCollector);
-		}
-		return *this;
-	}
-};
-
 struct FGatherConvertedClassDependenciesHelperBase : public FReferenceCollector
 {
 	TSet<UObject*> SerializedObjects;
@@ -64,7 +28,6 @@ struct FGatherConvertedClassDependenciesHelperBase : public FReferenceCollector
 
 	FGatherConvertedClassDependenciesHelperBase(FGatherConvertedClassDependencies& InDependencies)
 		: Dependencies(InDependencies)
-		, Archive(nullptr, *this)
 	{ }
 
 	virtual bool IsIgnoringArchetypeRef() const override { return false; }
@@ -72,8 +35,14 @@ struct FGatherConvertedClassDependenciesHelperBase : public FReferenceCollector
 
 	void FindReferences(UObject* Object)
 	{
+		UProperty* Property = Cast<UProperty>(Object);
+		if (Property && Property->HasAnyPropertyFlags(CPF_DevelopmentAssets))
 		{
-			FVerySlowReferenceCollectorArchiveScope CollectorScope(Archive, Object, nullptr);
+			return;
+		}
+
+		{
+			FVerySlowReferenceCollectorArchiveScope CollectorScope(GetVerySlowReferenceCollectorArchive(), Object, nullptr);
 			const bool bOldFilterEditorOnly = CollectorScope.GetArchive().IsFilterEditorOnly();
 			CollectorScope.GetArchive().SetFilterEditorOnly(true);
 			if (UClass* AsBPGC = Cast<UBlueprintGeneratedClass>(Object))
@@ -82,16 +51,6 @@ struct FGatherConvertedClassDependenciesHelperBase : public FReferenceCollector
 			}
 			Object->Serialize(CollectorScope.GetArchive());
 			CollectorScope.GetArchive().SetFilterEditorOnly(bOldFilterEditorOnly);
-
-			// Class/struct fields (FFields) are no longer serialized, but we still need to find and collect property object references as part of dependency gathering.
-			// Note: Cannot rely on UStruct::PropertyObjectReferences (cached at link time) because that's GC-specific and excludes native references that we need here.
-			if (UStruct* ObjAsStruct = Cast<UStruct>(Object))
-			{
-				for (FField* ChildProperty = ObjAsStruct->ChildProperties; ChildProperty; ChildProperty = ChildProperty->Next)
-				{
-					ChildProperty->AddReferencedObjects(*this);
-				}
-			}
 		}
 	}
 
@@ -144,9 +103,6 @@ struct FGatherConvertedClassDependenciesHelperBase : public FReferenceCollector
 			Dependencies.ConvertedEnum.Add(InUDE);
 		}
 	}
-
-private:
-	FGatherConvertedClassDependenciesArchive Archive;
 };
 
 struct FFindAssetsToInclude : public FGatherConvertedClassDependenciesHelperBase
@@ -261,7 +217,7 @@ struct FFindAssetsToInclude : public FGatherConvertedClassDependenciesHelperBase
 		FindReferencesForNewObject(Object);
 	}
 
-	virtual void HandleObjectReference(UObject*& InObject, const UObject* InReferencingObject, const FProperty* InReferencingProperty) override
+	virtual void HandleObjectReference(UObject*& InObject, const UObject* InReferencingObject, const UProperty* InReferencingProperty) override
 	{
 		UObject* Object = InObject;
 		if (!Object)
@@ -352,7 +308,7 @@ struct FFindHeadersToInclude : public FGatherConvertedClassDependenciesHelperBas
 		}
 	}
 
-	virtual void HandleObjectReference(UObject*& InObject, const UObject* InReferencingObject, const FProperty* InReferencingProperty) override
+	virtual void HandleObjectReference(UObject*& InObject, const UObject* InReferencingObject, const UProperty* InReferencingProperty) override
 	{
 		UObject* Object = InObject;
 		if (!Object || Object->IsA<UBlueprint>())
@@ -383,6 +339,10 @@ struct FFindHeadersToInclude : public FGatherConvertedClassDependenciesHelperBas
 
 			if (ObjAsField && !ObjAsField->HasAnyFlags(RF_ClassDefaultObject))
 			{
+				if (ObjAsField->IsA<UProperty>())
+				{
+					ObjAsField = ObjAsField->GetOwnerStruct();
+				}
 				if (ObjAsField->IsA<UFunction>())
 				{
 					ObjAsField = ObjAsField->GetOwnerClass();
@@ -572,80 +532,13 @@ bool FGatherConvertedClassDependencies::WillClassBeConverted(const UBlueprintGen
 	return false;
 }
 
-
-class FFieldCollectorArchive : public FArchive
-{
-	TSet<FField*> VisitedFields;
-	TArray<FFieldVariant>& Fields;
-
-public:
-
-	FFieldCollectorArchive(TArray<FFieldVariant>& OutFields)
-		: Fields(OutFields)
-	{
-		this->SetIsSaving(true);
-		this->SetIsPersistent(false);
-	}
-
-	virtual FArchive& operator << (FField*& InField) override
-	{
-		if (InField && !VisitedFields.Contains(InField))
-		{
-			VisitedFields.Add(InField);
-			Fields.Add(InField);
-			InField->Serialize(*this);
-		}
-		return *this;
-	}
-};
-
-class FSimpleArrayReferenceCollector : public FReferenceCollector
-{
-	TArray<UObject*>& Objects;
-public:
-	FSimpleArrayReferenceCollector(TArray<UObject*>& OutObjects)
-		: Objects(OutObjects)
-	{
-	}
-	virtual bool IsIgnoringArchetypeRef() const override { return false; }
-	virtual bool IsIgnoringTransient() const override { return false; }
-	virtual void HandleObjectReference(UObject*& InObject, const UObject* InReferencingObject, const FProperty* InReferencingProperty)
-	{
-		if (InObject)
-		{
-			Objects.Add(InObject);
-		}
-	}
-};
-
-void GetStructProperties(UStruct* InStruct, TArray<FFieldVariant>& OutFields)
-{
-	FFieldCollectorArchive Ar(OutFields);
-
-	for (FField* Prop = InStruct->ChildProperties; Prop; Prop = Prop->Next)
-	{
-		Ar << Prop;
-	}
-}
 void FGatherConvertedClassDependencies::DependenciesForHeader()
 {
-	TArray<FFieldVariant> ObjectsToCheck;
-	{
-		TArray<UObject*> StructSubobjects;
-		GetObjectsWithOuter(OriginalStruct, StructSubobjects, true);
-		GetStructProperties(OriginalStruct, ObjectsToCheck);
-		for (UObject* SubObj : StructSubobjects)
-		{
-			ObjectsToCheck.Add(SubObj);
-			if (UStruct* SubStruct = Cast<UStruct>(SubObj))
-			{
-				GetStructProperties(SubStruct, ObjectsToCheck);
-			}
-		}
-	}
+	TArray<UObject*> ObjectsToCheck;
+	GetObjectsWithOuter(OriginalStruct, ObjectsToCheck, true);
 
 	TArray<UObject*> NeededObjects;
-	FSimpleArrayReferenceCollector HeaderReferenceFinder(NeededObjects);
+	FReferenceFinder HeaderReferenceFinder(NeededObjects, nullptr, false, false, true, false);
 
 	auto ShouldIncludeHeaderFor = [this](UObject* InObj)->bool
 	{
@@ -664,63 +557,61 @@ void FGatherConvertedClassDependencies::DependenciesForHeader()
 		return false;
 	};
 
-	for (FFieldVariant& Obj : ObjectsToCheck)
+	for (UObject* Obj : ObjectsToCheck)
 	{
-		const FProperty* Property = Obj.Get<FProperty>();
-		if (const FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Property))
+		const UProperty* Property = Cast<const UProperty>(Obj);
+		if (const UArrayProperty* ArrayProperty = Cast<UArrayProperty>(Property))
 		{
 			Property = ArrayProperty->Inner;
 		}
-		const FProperty* OwnerProperty = Property ? Property->GetOwnerProperty() : nullptr;
+		const UProperty* OwnerProperty = IsValid(Property) ? Property->GetOwnerProperty() : nullptr;
 		const bool bIsParam = OwnerProperty && (0 != (OwnerProperty->PropertyFlags & CPF_Parm)) && OwnerProperty->IsIn(OriginalStruct);
-		const bool bIsMemberVariable = OwnerProperty && (OwnerProperty->GetOwner<UObject>() == OriginalStruct);
+		const bool bIsMemberVariable = OwnerProperty && (OwnerProperty->GetOuter() == OriginalStruct);
 		if (bIsParam || bIsMemberVariable)
 		{
-			if (const FSoftClassProperty* SoftClassProperty = CastField<const FSoftClassProperty>(Property))
+			if (const USoftClassProperty* SoftClassProperty = Cast<const USoftClassProperty>(Property))
 			{
 				DeclareInHeader.Add(GetFirstNativeOrConvertedClass(SoftClassProperty->MetaClass));
 			}
-			if (const FClassProperty* ClassProperty = CastField<const FClassProperty>(Property))
+			if (const UClassProperty* ClassProperty = Cast<const UClassProperty>(Property))
 			{
 				DeclareInHeader.Add(GetFirstNativeOrConvertedClass(ClassProperty->MetaClass));
 			}
-			if (const FObjectPropertyBase* ObjectProperty = CastField<const FObjectPropertyBase>(Property))
+			if (const UObjectPropertyBase* ObjectProperty = Cast<const UObjectPropertyBase>(Property))
 			{
 				DeclareInHeader.Add(GetFirstNativeOrConvertedClass(ObjectProperty->PropertyClass));
 			}
-			else if (const FInterfaceProperty* InterfaceProperty = CastField<const FInterfaceProperty>(Property))
+			else if (const UInterfaceProperty* InterfaceProperty = Cast<const UInterfaceProperty>(Property))
 			{
 				IncludeInHeader.Add(InterfaceProperty->InterfaceClass);
 			}
-			else if (const FDelegateProperty* DelegateProperty = CastField<const FDelegateProperty>(Property))
+			else if (const UDelegateProperty* DelegateProperty = Cast<const UDelegateProperty>(Property))
 			{
 				IncludeInHeader.Add(DelegateProperty->SignatureFunction ? DelegateProperty->SignatureFunction->GetOwnerStruct() : nullptr);
 			}
 			/* MC Delegate signatures are recreated in local scope anyway.
-			else if (const FMulticastDelegateProperty* MulticastDelegateProperty = CastField<const FMulticastDelegateProperty>(Property))
+			else if (const UMulticastDelegateProperty* MulticastDelegateProperty = Cast<const UMulticastDelegateProperty>(Property))
 			{
 				IncludeInHeader.Add(MulticastDelegateProperty->SignatureFunction ? MulticastDelegateProperty->SignatureFunction->GetOwnerClass() : nullptr);
 			}
 			*/
-			else if (const FByteProperty* ByteProperty = CastField<const FByteProperty>(Property))
+			else if (const UByteProperty* ByteProperty = Cast<const UByteProperty>(Property))
 			{ 
 				// HeaderReferenceFinder.FindReferences(Obj); cannot find this enum..
 				IncludeInHeader.Add(ByteProperty->Enum);
 			}
-			else if (const FEnumProperty* EnumProperty = CastField<const FEnumProperty>(Property))
+			else if (const UEnumProperty* EnumProperty = Cast<const UEnumProperty>(Property))
 			{ 
 				// HeaderReferenceFinder.FindReferences(Obj); cannot find this enum..
 				IncludeInHeader.Add(EnumProperty->GetEnum());
 			}
-			else if (const FStructProperty* StructProperty = CastField<const FStructProperty>(Property))
+			else if (const UStructProperty* StructProperty = Cast<const UStructProperty>(Property))
 			{
 				IncludeInHeader.Add(StructProperty->Struct);
 			}
 			else
 			{
-				FField* Field = Obj.Get<FField>();	
-				check(Field);
-				Field->AddReferencedObjects(HeaderReferenceFinder);
+				HeaderReferenceFinder.FindReferences(Obj);
 			}
 		}
 	}
@@ -752,9 +643,9 @@ void FGatherConvertedClassDependencies::DependenciesForHeader()
 	{
 		FStructOnScope StructOnScope(UDS);
 		UDS->InitializeDefaultValue(StructOnScope.GetStructMemory());
-		for (TFieldIterator<FObjectPropertyBase> PropertyIt(UDS); PropertyIt; ++PropertyIt)
+		for (TFieldIterator<UObjectPropertyBase> PropertyIt(UDS); PropertyIt; ++PropertyIt)
 		{
-			UObject* DefaultValueObject = ((FObjectPropertyBase*)*PropertyIt)->GetObjectPropertyValue_InContainer(StructOnScope.GetStructMemory());
+			UObject* DefaultValueObject = ((UObjectPropertyBase*)*PropertyIt)->GetObjectPropertyValue_InContainer(StructOnScope.GetStructMemory());
 			if (ShouldIncludeHeaderFor(DefaultValueObject))
 			{
 				UField* ObjAsField = Cast<UField>(DefaultValueObject);

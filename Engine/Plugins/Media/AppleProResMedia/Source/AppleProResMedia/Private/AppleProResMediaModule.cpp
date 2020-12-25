@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "AppleProResMediaModule.h"
@@ -56,13 +56,7 @@ class FAppleProResMediaModule : public IModuleInterface
 			return;
 		}
 
-		if (IWmfMediaModule* Module = IWmfMediaModule::Get())
-		{
-			if (Module->IsInitialized())
-			{
-				Module->GetCodecManager()->AddCodec(MakeUnique<WmfMediaCodecGenerator<WmfMediaAppleProResDecoder>>(true));
-			}
-		}
+		IWmfMediaModule::Get()->GetCodecManager()->AddCodec(MakeUnique<WmfMediaCodecGenerator<WmfMediaAppleProResDecoder>>(true));
 
 #if WITH_EDITOR
 		// register settings

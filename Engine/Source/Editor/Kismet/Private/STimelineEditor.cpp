@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "STimelineEditor.h"
@@ -39,61 +39,37 @@
 
 namespace TimelineEditorHelpers
 {
-	FTTTrackBase* GetTrackFromTimeline(UTimelineTemplate* InTimeline, TSharedPtr<FTimelineEdTrack> InTrack)
-	{
-		FTTTrackId TrackId = InTimeline->GetDisplayTrackId(InTrack->DisplayIndex);
-		FTTTrackBase::ETrackType TrackType = (FTTTrackBase::ETrackType)TrackId.TrackType;
-		if (TrackType == FTTTrackBase::TT_Event)
-		{
-			if (InTimeline->EventTracks.IsValidIndex(TrackId.TrackIndex))
-			{
-				return &InTimeline->EventTracks[TrackId.TrackIndex];
-			}
-		}
-		else if (TrackType == FTTTrackBase::TT_FloatInterp)
-		{
-			if (InTimeline->FloatTracks.IsValidIndex(TrackId.TrackIndex))
-			{
-				return &InTimeline->FloatTracks[TrackId.TrackIndex];
-			}
-		}
-		else if (TrackType == FTTTrackBase::TT_VectorInterp)
-		{
-			if (InTimeline->VectorTracks.IsValidIndex(TrackId.TrackIndex))
-			{
-				return &InTimeline->VectorTracks[TrackId.TrackIndex];
-			}
-		}
-		else if (TrackType == FTTTrackBase::TT_LinearColorInterp)
-		{
-			if (InTimeline->LinearColorTracks.IsValidIndex(TrackId.TrackIndex))
-			{
-				return &InTimeline->LinearColorTracks[TrackId.TrackIndex];
-			}
-		}
-		return nullptr;
-	}
-
 	FName GetTrackNameFromTimeline(UTimelineTemplate* InTimeline, TSharedPtr<FTimelineEdTrack> InTrack)
 	{
-		FTTTrackBase* TrackBase = GetTrackFromTimeline(InTimeline, InTrack);
-		if (TrackBase)
+		if(InTrack->TrackType == FTimelineEdTrack::TT_Event)
 		{
-			return TrackBase->GetTrackName();
+			return InTimeline->EventTracks[InTrack->TrackIndex].GetTrackName();
+		}
+		else if(InTrack->TrackType == FTimelineEdTrack::TT_FloatInterp)
+		{
+			return InTimeline->FloatTracks[InTrack->TrackIndex].GetTrackName();
+		}
+		else if(InTrack->TrackType == FTimelineEdTrack::TT_VectorInterp)
+		{
+			return InTimeline->VectorTracks[InTrack->TrackIndex].GetTrackName();
+		}
+		else if(InTrack->TrackType == FTimelineEdTrack::TT_LinearColorInterp)
+		{
+			return InTimeline->LinearColorTracks[InTrack->TrackIndex].GetTrackName();
 		}
 		return NAME_None;
 	}
 
-	TSubclassOf<UCurveBase> TrackTypeToAllowedClass(FTTTrackBase::ETrackType TrackType)
+	TSubclassOf<UCurveBase> TrackTypeToAllowedClass(FTimelineEdTrack::ETrackType TrackType)
 	{
 		switch (TrackType)
 		{
-		case FTTTrackBase::TT_Event:
-		case FTTTrackBase::TT_FloatInterp:
+		case FTimelineEdTrack::TT_Event:
+		case FTimelineEdTrack::TT_FloatInterp:
 			return UCurveFloat::StaticClass();
-		case FTTTrackBase::TT_VectorInterp:
+		case FTimelineEdTrack::TT_VectorInterp:
 			return UCurveVector::StaticClass();
-		case FTTTrackBase::TT_LinearColorInterp:
+		case FTimelineEdTrack::TT_LinearColorInterp:
 			return UCurveLinearColor::StaticClass();
 		default:
 			return UCurveBase::StaticClass();
@@ -122,36 +98,32 @@ void STimelineEdTrack::Construct(const FArguments& InArgs, TSharedPtr<FTimelineE
 	CurveBasePtr = NULL;
 	FTTTrackBase* TrackBase = NULL;
 	bool bDrawCurve = true;
-
-	FTTTrackId TrackId = TimelineObj->GetDisplayTrackId(InTrack->DisplayIndex);
-	FTTTrackBase::ETrackType TrackType = (FTTTrackBase::ETrackType)TrackId.TrackType;
-
-	if(TrackType == FTTTrackBase::TT_Event)
+	if(Track->TrackType == FTimelineEdTrack::TT_Event)
 	{
-		check(TrackId.TrackIndex < TimelineObj->EventTracks.Num());
-		FTTEventTrack* EventTrack = &(TimelineObj->EventTracks[TrackId.TrackIndex]);
+		check(Track->TrackIndex < TimelineObj->EventTracks.Num());
+		FTTEventTrack* EventTrack = &(TimelineObj->EventTracks[Track->TrackIndex]);
 		CurveBasePtr = EventTrack->CurveKeys;
 		TrackBase = EventTrack;
 		bDrawCurve = false;
 	}
-	else if(TrackType == FTTTrackBase::TT_FloatInterp)
+	else if(Track->TrackType == FTimelineEdTrack::TT_FloatInterp)
 	{
-		check(TrackId.TrackIndex < TimelineObj->FloatTracks.Num());
-		FTTFloatTrack* FloatTrack = &(TimelineObj->FloatTracks[TrackId.TrackIndex]);
+		check(Track->TrackIndex < TimelineObj->FloatTracks.Num());
+		FTTFloatTrack* FloatTrack = &(TimelineObj->FloatTracks[Track->TrackIndex]);
 		CurveBasePtr = FloatTrack->CurveFloat;
 		TrackBase = FloatTrack;
 	}
-	else if(TrackType == FTTTrackBase::TT_VectorInterp)
+	else if(Track->TrackType == FTimelineEdTrack::TT_VectorInterp)
 	{
-		check(TrackId.TrackIndex < TimelineObj->VectorTracks.Num());
-		FTTVectorTrack* VectorTrack = &(TimelineObj->VectorTracks[TrackId.TrackIndex]);
+		check(Track->TrackIndex < TimelineObj->VectorTracks.Num());
+		FTTVectorTrack* VectorTrack = &(TimelineObj->VectorTracks[Track->TrackIndex]);
 		CurveBasePtr = VectorTrack->CurveVector;
 		TrackBase = VectorTrack;
 	}
-	else if(TrackType == FTTTrackBase::TT_LinearColorInterp)
+	else if(Track->TrackType == FTimelineEdTrack::TT_LinearColorInterp)
 	{
-		check(TrackId.TrackIndex < TimelineObj->LinearColorTracks.Num());
-		FTTLinearColorTrack* LinearColorTrack = &(TimelineObj->LinearColorTracks[TrackId.TrackIndex]);
+		check(Track->TrackIndex < TimelineObj->LinearColorTracks.Num());
+		FTTLinearColorTrack* LinearColorTrack = &(TimelineObj->LinearColorTracks[Track->TrackIndex]);
 		CurveBasePtr = LinearColorTrack->CurveLinearColor;
 		TrackBase = LinearColorTrack;
 	}
@@ -244,7 +216,7 @@ void STimelineEdTrack::Construct(const FArguments& InArgs, TSharedPtr<FTimelineE
 							.FillWidth(1)
 							[
 								SNew(SObjectPropertyEntryBox)
-								.AllowedClass(TimelineEditorHelpers::TrackTypeToAllowedClass(TrackType))
+								.AllowedClass(TimelineEditorHelpers::TrackTypeToAllowedClass(Track->TrackType))
 								.ObjectPath(this, &STimelineEdTrack::GetExternalCurvePath)
 								.OnObjectChanged(FOnSetObject::CreateSP(this, &STimelineEdTrack::OnChooseCurve))
 							]
@@ -281,54 +253,6 @@ void STimelineEdTrack::Construct(const FArguments& InArgs, TSharedPtr<FTimelineE
 							.Text(LOCTEXT("SynchronizeViewLabel", "Synchronize View"))
 						]
 					]
-
-					// Re-ordering timeline tracks.
-					+ SVerticalBox::Slot()
-						.AutoHeight()
-						.Padding(2, 0, 2, 0)
-						[
-							SNew(SHorizontalBox)
-							+SHorizontalBox::Slot()
-							.AutoWidth()
-							.VAlign(VAlign_Center)
-							[
-								SNew(SButton)
-								.ButtonStyle( FEditorStyle::Get(), "NoBorder" )
-								.OnClicked(this, &STimelineEdTrack::OnMoveUp)
-								.IsEnabled(this, &STimelineEdTrack::CanMoveUp)
-								.ContentPadding(1.f)
-								.ToolTipText(NSLOCTEXT("TimelineEdTrack", "TimelineEdTrack_MoveUp", "Move track up list"))
-								[
-									SNew(SImage)
-									.Image( FEditorStyle::GetBrush(TEXT("ArrowUp")) )
-								]
-							]
-
-							// Convert to internal curve button
-							+SHorizontalBox::Slot()
-							.AutoWidth()
-							.VAlign(VAlign_Center)
-							[
-								SNew(SButton)
-								.ButtonStyle( FEditorStyle::Get(), "NoBorder" )
-								.OnClicked(this, &STimelineEdTrack::OnMoveDown)
-								.IsEnabled(this, &STimelineEdTrack::CanMoveDown)
-								.ContentPadding(1.f)
-								.ToolTipText(NSLOCTEXT("TimelineEdTrack", "TimelineEdTrack_MoveDown", "Move track down list"))
-								[
-									SNew(SImage)
-									.Image( FEditorStyle::GetBrush(TEXT("ArrowDown")) )
-								]
-							]
-							+SHorizontalBox::Slot()
-							.FillWidth(1)
-							.HAlign(HAlign_Left)
-							.Padding(2)
-							[
-								SNew(STextBlock)
-								.Text(LOCTEXT("ReorderLabel", "Reorder"))
-							]
-						]
 				]
 
 				// Graph Area
@@ -359,7 +283,7 @@ void STimelineEdTrack::Construct(const FArguments& InArgs, TSharedPtr<FTimelineE
 	if( TrackBase )
 	{
 		bool bZoomToFit = false;
-		if((GetMaxInput() == 0) && (GetMinInput() == 0))
+		if( TimelineRef->GetViewMaxInput() == 0 && TimelineRef->GetViewMinInput() == 0 )
 		{
 			// If the input range has not been set, zoom to fit to set it
 			bZoomToFit = true;
@@ -427,42 +351,39 @@ void STimelineEdTrack::SwitchToExternalCurve(UCurveBase* AssetCurvePtr)
 		UTimelineTemplate* TimelineObj = TimelineEd->GetTimeline();
 		check(TimelineObj); // We shouldn't have any tracks if there is no track object!
 
-		FTTTrackId TrackId = TimelineObj->GetDisplayTrackId(Track->DisplayIndex);
-		FTTTrackBase::ETrackType TrackType = (FTTTrackBase::ETrackType)TrackId.TrackType;
-
 		FTTTrackBase* TrackBase = NULL;
-		if(TrackType == FTTTrackBase::TT_Event)
+		if(Track->TrackType == FTimelineEdTrack::TT_Event)
 		{
 			if(AssetCurvePtr->IsA(UCurveFloat::StaticClass()))
 			{
-				FTTEventTrack& NewTrack = TimelineObj->EventTracks[ TrackId.TrackIndex ];
+				FTTEventTrack& NewTrack = TimelineObj->EventTracks[ Track->TrackIndex ];
 				NewTrack.CurveKeys = Cast<UCurveFloat>(AssetCurvePtr);
 				TrackBase = &NewTrack;
 			}
 		}
-		else if(TrackType == FTTTrackBase::TT_FloatInterp)
+		else if(Track->TrackType == FTimelineEdTrack::TT_FloatInterp)
 		{
 			if(AssetCurvePtr->IsA(UCurveFloat::StaticClass()))
 			{
-				FTTFloatTrack& NewTrack = TimelineObj->FloatTracks[ TrackId.TrackIndex ];
+				FTTFloatTrack& NewTrack = TimelineObj->FloatTracks[ Track->TrackIndex ];
 				NewTrack.CurveFloat = Cast<UCurveFloat>(AssetCurvePtr);
 				TrackBase = &NewTrack;
 			}
 		}
-		else if(TrackType == FTTTrackBase::TT_VectorInterp)
+		else if(Track->TrackType == FTimelineEdTrack::TT_VectorInterp)
 		{
 			if(AssetCurvePtr->IsA(UCurveVector::StaticClass()))
 			{
-				FTTVectorTrack& NewTrack = TimelineObj->VectorTracks[ TrackId.TrackIndex ];
+				FTTVectorTrack& NewTrack = TimelineObj->VectorTracks[ Track->TrackIndex ];
 				NewTrack.CurveVector = Cast<UCurveVector>(AssetCurvePtr);
 				TrackBase = &NewTrack;
 			}
 		}
-		else if(TrackType == FTTTrackBase::TT_LinearColorInterp)
+		else if(Track->TrackType == FTimelineEdTrack::TT_LinearColorInterp)
 		{
 			if(AssetCurvePtr->IsA(UCurveLinearColor::StaticClass()))
 			{
-				FTTLinearColorTrack& NewTrack = TimelineObj->LinearColorTracks[ TrackId.TrackIndex ];
+				FTTLinearColorTrack& NewTrack = TimelineObj->LinearColorTracks[ Track->TrackIndex ];
 				NewTrack.CurveLinearColor = Cast<UCurveLinearColor>(AssetCurvePtr);
 				TrackBase = &NewTrack;
 			}
@@ -502,20 +423,17 @@ void STimelineEdTrack::UseInternalCurve( )
 		UTimelineTemplate* TimelineObj = TimelineEd->GetTimeline();
 		check(TimelineObj); // We shouldn't have any tracks if there is no track object!
 
-		FTTTrackId TrackId = TimelineObj->GetDisplayTrackId(Track->DisplayIndex);
-		FTTTrackBase::ETrackType TrackType = (FTTTrackBase::ETrackType)TrackId.TrackType;
-
 		FTTTrackBase* TrackBase = NULL;
 		UCurveBase* CurveBase = NULL;
 
-		if(TrackType == FTTTrackBase::TT_Event)
+		if(Track->TrackType == FTimelineEdTrack::TT_Event)
 		{
-			FTTEventTrack& NewTrack = TimelineObj->EventTracks[ TrackId.TrackIndex ];
+			FTTEventTrack& NewTrack = TimelineObj->EventTracks[ Track->TrackIndex ];
 
 			if(NewTrack.bIsExternalCurve )
 			{
 				UCurveFloat* SrcCurve = NewTrack.CurveKeys;
-				UCurveFloat* DestCurve = Cast<UCurveFloat>(TimelineEd->CreateNewCurve( TrackType) );
+				UCurveFloat* DestCurve = Cast<UCurveFloat>(TimelineEd->CreateNewCurve( Track->TrackType) );
 				if( SrcCurve && DestCurve )
 				{
 					//Copy external event curve data to internal curve
@@ -526,13 +444,13 @@ void STimelineEdTrack::UseInternalCurve( )
 			}
 			TrackBase = &NewTrack;
 		}
-		else if(TrackType == FTTTrackBase::TT_FloatInterp)
+		else if(Track->TrackType == FTimelineEdTrack::TT_FloatInterp)
 		{
-			FTTFloatTrack& NewTrack = TimelineObj->FloatTracks[ TrackId.TrackIndex ];
+			FTTFloatTrack& NewTrack = TimelineObj->FloatTracks[ Track->TrackIndex ];
 			if(NewTrack.bIsExternalCurve)
 			{
 				UCurveFloat* SrcCurve = NewTrack.CurveFloat;
-				UCurveFloat* DestCurve = Cast<UCurveFloat>(TimelineEd->CreateNewCurve( TrackType) );
+				UCurveFloat* DestCurve = Cast<UCurveFloat>(TimelineEd->CreateNewCurve( Track->TrackType) );
 				if( SrcCurve && DestCurve )
 				{
 					//Copy external float curve data to internal curve
@@ -543,13 +461,13 @@ void STimelineEdTrack::UseInternalCurve( )
 			}
 			TrackBase = &NewTrack;
 		}
-		else if(TrackType == FTTTrackBase::TT_VectorInterp)
+		else if(Track->TrackType == FTimelineEdTrack::TT_VectorInterp)
 		{
-			FTTVectorTrack& NewTrack = TimelineObj->VectorTracks[ TrackId.TrackIndex ];
+			FTTVectorTrack& NewTrack = TimelineObj->VectorTracks[ Track->TrackIndex ];
 			if(NewTrack.bIsExternalCurve )
 			{
 				UCurveVector* SrcCurve = NewTrack.CurveVector;
-				UCurveVector* DestCurve = Cast<UCurveVector>(TimelineEd->CreateNewCurve( TrackType) );
+				UCurveVector* DestCurve = Cast<UCurveVector>(TimelineEd->CreateNewCurve( Track->TrackType) );
 				if( SrcCurve && DestCurve )
 				{
 					for( int32 i=0; i<3; i++ )
@@ -563,13 +481,13 @@ void STimelineEdTrack::UseInternalCurve( )
 			}
 			TrackBase = &NewTrack;
 		}
-		else if(TrackType == FTTTrackBase::TT_LinearColorInterp)
+		else if(Track->TrackType == FTimelineEdTrack::TT_LinearColorInterp)
 		{
-			FTTLinearColorTrack& NewTrack = TimelineObj->LinearColorTracks[ TrackId.TrackIndex ];
+			FTTLinearColorTrack& NewTrack = TimelineObj->LinearColorTracks[ Track->TrackIndex ];
 			if(NewTrack.bIsExternalCurve )
 			{
 				UCurveLinearColor* SrcCurve = NewTrack.CurveLinearColor;
-				UCurveLinearColor* DestCurve = Cast<UCurveLinearColor>(TimelineEd->CreateNewCurve( TrackType) );
+				UCurveLinearColor* DestCurve = Cast<UCurveLinearColor>(TimelineEd->CreateNewCurve( Track->TrackType) );
 				if( SrcCurve && DestCurve )
 				{
 					for( int32 i=0; i<4; i++ )
@@ -625,14 +543,6 @@ UCurveBase* STimelineEdTrack::CreateCurveAsset()
 {
 	UCurveBase* AssetCurve = NULL;
 
-	TSharedPtr<STimelineEditor> TimelineEd = TimelineEdPtr.Pin();
-	check(TimelineEd.IsValid());
-	UTimelineTemplate* TimelineObj = TimelineEd->GetTimeline();
-	check(TimelineObj); // We shouldn't have any tracks if there is no track object!
-
-	FTTTrackId TrackId = TimelineObj->GetDisplayTrackId(Track->DisplayIndex);
-	FTTTrackBase::ETrackType TrackType = (FTTTrackBase::ETrackType)TrackId.TrackType;
-
 	if( TrackWidget.IsValid() )
 	{
 		TSharedRef<SDlgPickAssetPath> NewLayerDlg = 
@@ -645,16 +555,15 @@ UCurveBase* STimelineEdTrack::CreateCurveAsset()
 			FString PackageName = NewLayerDlg->GetFullAssetPath().ToString();
 			FName AssetName = FName(*NewLayerDlg->GetAssetName().ToString());
 
-			UPackage* Package = CreatePackage( *PackageName);
+			UPackage* Package = CreatePackage(NULL, *PackageName);
 			
 			//Get the curve class type
 			TSubclassOf<UCurveBase> CurveType;
-
-			if( TrackType == FTTTrackBase::TT_Event || TrackType == FTTTrackBase::TT_FloatInterp )
+			if( Track->TrackType == FTimelineEdTrack::TT_Event || Track->TrackType == FTimelineEdTrack::TT_FloatInterp )
 			{
 				CurveType = UCurveFloat::StaticClass();
 			}
-			else if( TrackType == FTTTrackBase::TT_LinearColorInterp )
+			else if( Track->TrackType == FTimelineEdTrack::TT_LinearColorInterp )
 			{
 				CurveType = UCurveLinearColor::StaticClass();
 			}
@@ -668,7 +577,7 @@ UCurveBase* STimelineEdTrack::CreateCurveAsset()
 			if( NewObj )
 			{
 				//Copy curve data from current curve to newly create curve
-				if(  TrackType == FTTTrackBase::TT_Event || TrackType == FTTTrackBase::TT_FloatInterp )
+				if(  Track->TrackType == FTimelineEdTrack::TT_Event || Track->TrackType == FTimelineEdTrack::TT_FloatInterp )
 				{
 					UCurveFloat* DestCurve = CastChecked<UCurveFloat>(NewObj);
 
@@ -680,9 +589,9 @@ UCurveBase* STimelineEdTrack::CreateCurveAsset()
 						CopyCurveData( &SourceCurve->FloatCurve, &DestCurve->FloatCurve );
 					}
 
-					DestCurve->bIsEventCurve = ( TrackType == FTTTrackBase::TT_Event ) ? true : false;
+					DestCurve->bIsEventCurve = ( Track->TrackType == FTimelineEdTrack::TT_Event ) ? true : false;
 				}
-				else if( TrackType == FTTTrackBase::TT_VectorInterp)
+				else if( Track->TrackType == FTimelineEdTrack::TT_VectorInterp)
 				{
 					UCurveVector* DestCurve = Cast<UCurveVector>(NewObj);
 
@@ -697,7 +606,7 @@ UCurveBase* STimelineEdTrack::CreateCurveAsset()
 						}
 					}
 				}
-				else if( TrackType == FTTTrackBase::TT_LinearColorInterp)
+				else if( Track->TrackType == FTimelineEdTrack::TT_LinearColorInterp)
 				{
 					UCurveLinearColor* DestCurve = Cast<UCurveLinearColor>(NewObj);
 
@@ -747,59 +656,30 @@ void STimelineEdTrack::CopyCurveData( const FRichCurve* SrcCurve, FRichCurve* De
 
 ECheckBoxState STimelineEdTrack::GetIsExpandedState() const
 {
-	const FTTTrackBase* TrackBase = GetTrackBase();
-
-	return (TrackBase && TrackBase->bIsExpanded) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+	return Track->bIsExpanded ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
 }
 
 void STimelineEdTrack::OnIsExpandedStateChanged(ECheckBoxState IsExpandedState)
 {
-	FTTTrackBase* TrackBase = GetTrackBase();
-
-	if (TrackBase)
-	{
-		TrackBase->bIsExpanded = IsExpandedState == ECheckBoxState::Checked;
-	}
-
-	//recalculate how much space the widgets take up to enable scrolling when needed
-	TSharedPtr<STimelineEditor> TimelineEditor = TimelineEdPtr.Pin();
-	TimelineEditor->OnTimelineChanged();
+	Track->bIsExpanded = IsExpandedState == ECheckBoxState::Checked;
 }
 
 EVisibility STimelineEdTrack::GetContentVisibility() const
 {
-	const FTTTrackBase* TrackBase = GetTrackBase();
-
-	return (TrackBase && TrackBase->bIsExpanded) ? EVisibility::Visible : EVisibility::Collapsed;
+	return Track->bIsExpanded ? EVisibility::Visible : EVisibility::Collapsed;
 }
 
 ECheckBoxState  STimelineEdTrack::GetIsCurveViewSynchronizedState() const
 {
-	const FTTTrackBase* TrackBase = GetTrackBase();
-
-	return (TrackBase && TrackBase->bIsCurveViewSynchronized) ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
+	return Track->bIsCurveViewSynchronized ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
 }
 
 void  STimelineEdTrack::OnIsCurveViewSynchronizedStateChanged(ECheckBoxState IsCurveViewSynchronizedState)
 {
-	FTTTrackBase* TrackBase = GetTrackBase();
-
-	if (TrackBase)
+	Track->bIsCurveViewSynchronized = IsCurveViewSynchronizedState == ECheckBoxState::Checked;
+	if (Track->bIsCurveViewSynchronized == false)
 	{
-		TrackBase->bIsCurveViewSynchronized = IsCurveViewSynchronizedState == ECheckBoxState::Checked;
-	}
-
-	//local is always up to date, make sure the timeline editor is inited at least once
-	TSharedPtr<STimelineEditor> TimelineEditor = TimelineEdPtr.Pin();
-	if ((TimelineEditor->GetViewMaxInput() == 0) && (TimelineEditor->GetViewMinInput() == 0))
-	{
-		//we've never used the shared timeline range, but our local one is always up to date!
-		TimelineEditor->SetInputViewRange(LocalInputMin, LocalInputMax);
-		TimelineEditor->SetOutputViewRange(LocalOutputMin, LocalOutputMax);
-	}
-	//only take the timeline editors extents if we are accepting synchronization
-	if ((TrackBase && TrackBase->bIsCurveViewSynchronized) || ((LocalInputMax == 0.0f) && (LocalInputMin == 0.0f)))
-	{
+		TSharedPtr<STimelineEditor> TimelineEditor = TimelineEdPtr.Pin();
 		LocalInputMin = TimelineEditor->GetViewMinInput();
 		LocalInputMax = TimelineEditor->GetViewMaxInput();
 		LocalOutputMin = TimelineEditor->GetViewMinOutput();
@@ -807,121 +687,63 @@ void  STimelineEdTrack::OnIsCurveViewSynchronizedStateChanged(ECheckBoxState IsC
 	}
 }
 
-FReply STimelineEdTrack::OnMoveUp()
-{
-	MoveTrack(-1);
-
-	return FReply::Handled();
-}
-bool STimelineEdTrack::CanMoveUp() const
-{
-	return (Track->DisplayIndex > 0);
-	return false;
-}
-FReply STimelineEdTrack::OnMoveDown()
-{
-	MoveTrack(1);
-
-	return FReply::Handled();
-}
-
-bool STimelineEdTrack::CanMoveDown() const
-{
-	TSharedPtr<STimelineEditor> TimelineEd = TimelineEdPtr.Pin();
-	check(TimelineEd.IsValid());
-	UTimelineTemplate* TimelineObj = TimelineEd->GetTimeline();
-	check(TimelineObj); // We shouldn't have any tracks if there is no track object!
-
-	return (Track->DisplayIndex < (TimelineObj->GetNumDisplayTracks() - 1));
-}
-
-void STimelineEdTrack::MoveTrack(int32 DirectionDelta)
-{
-	TSharedPtr<STimelineEditor> TimelineEd = TimelineEdPtr.Pin();
-	check(TimelineEd.IsValid());
-
-	TimelineEd->OnReorderTracks(Track->DisplayIndex, DirectionDelta);
-}
-
-
 float STimelineEdTrack::GetMinInput() const
 {
-	const FTTTrackBase* TrackBase = GetTrackBase();
-	return (TrackBase && TrackBase->bIsCurveViewSynchronized)
+	return Track->bIsCurveViewSynchronized
 		? TimelineEdPtr.Pin()->GetViewMinInput()
 		: LocalInputMin;
 }
 
 float STimelineEdTrack::GetMaxInput() const
 {
-	const FTTTrackBase* TrackBase = GetTrackBase();
-	return (TrackBase && TrackBase->bIsCurveViewSynchronized)
+	return Track->bIsCurveViewSynchronized
 		? TimelineEdPtr.Pin()->GetViewMaxInput()
 		: LocalInputMax;
 }
 
 float STimelineEdTrack::GetMinOutput() const
 {
-	const FTTTrackBase* TrackBase = GetTrackBase();
-	return (TrackBase && TrackBase->bIsCurveViewSynchronized)
+	return Track->bIsCurveViewSynchronized
 		? TimelineEdPtr.Pin()->GetViewMinOutput()
 		: LocalOutputMin;
 }
 
 float STimelineEdTrack::GetMaxOutput() const
 {
-	const FTTTrackBase* TrackBase = GetTrackBase();
-	return (TrackBase && TrackBase->bIsCurveViewSynchronized)
+	return Track->bIsCurveViewSynchronized
 		? TimelineEdPtr.Pin()->GetViewMaxOutput()
 		: LocalOutputMax;
 }
 
 void STimelineEdTrack::OnSetInputViewRange(float Min, float Max)
 {
-	const FTTTrackBase* TrackBase = GetTrackBase();
-	if (TrackBase && TrackBase->bIsCurveViewSynchronized)
+	if (Track->bIsCurveViewSynchronized)
 	{
 		TimelineEdPtr.Pin()->SetInputViewRange(Min, Max);
 	}
-	//always set these in case we go back and forth
-	LocalInputMin = Min;
-	LocalInputMax = Max;
+	else
+	{
+		LocalInputMin = Min;
+		LocalInputMax = Max;
+	}
 }
 
 void STimelineEdTrack::OnSetOutputViewRange(float Min, float Max)
 {
-	const FTTTrackBase* TrackBase = GetTrackBase();
-	if (TrackBase && TrackBase->bIsCurveViewSynchronized)
+	if (Track->bIsCurveViewSynchronized)
 	{
 		TimelineEdPtr.Pin()->SetOutputViewRange(Min, Max);
 	}
-	//always set these in case we go back and forth
-	LocalOutputMin = Min;
-	LocalOutputMax = Max;
+	else
+	{
+		LocalOutputMin = Min;
+		LocalOutputMax = Max;
+	}
 }
 
 void STimelineEdTrack::ResetExternalCurveInfo( )
 {
 	ExternalCurvePath = FString( TEXT( "None" ) );
-}
-
-FTTTrackBase* STimelineEdTrack::GetTrackBase()
-{
-	TSharedPtr<STimelineEditor> TimelineEd = TimelineEdPtr.Pin();
-	check(TimelineEd.IsValid());
-	UTimelineTemplate* TimelineObj = TimelineEd->GetTimeline();
-	check(TimelineObj); // We shouldn't have any tracks if there is no track object!
-	FTTTrackBase* TrackBase = TimelineEditorHelpers::GetTrackFromTimeline(TimelineObj, Track);
-	return TrackBase;
-}
-const FTTTrackBase* STimelineEdTrack::GetTrackBase() const
-{
-	TSharedPtr<STimelineEditor> TimelineEd = TimelineEdPtr.Pin();
-	check(TimelineEd.IsValid());
-	UTimelineTemplate* TimelineObj = TimelineEd->GetTimeline();
-	check(TimelineObj); // We shouldn't have any tracks if there is no track object!
-	FTTTrackBase* TrackBase = TimelineEditorHelpers::GetTrackFromTimeline(TimelineObj, Track);
-	return TrackBase;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1003,7 +825,7 @@ void STimelineEditor::Construct(const FArguments& InArgs, TSharedPtr<FBlueprintE
 					.Image(FEditorStyle::GetBrush("TimelineEditor.AddFloatTrack"))
 				]
 				.ToolTipText( LOCTEXT( "AddFloatTrack", "Add Float Track" ) )
-				.OnClicked( this, &STimelineEditor::CreateNewTrack, FTTTrackBase::TT_FloatInterp )
+				.OnClicked( this, &STimelineEditor::CreateNewTrack, FTimelineEdTrack::TT_FloatInterp )
 				.AddMetaData<FTagMetaData>(TEXT("TimelineEditor.AddFloatTrack"))
 			]
 			+SHorizontalBox::Slot()
@@ -1018,7 +840,7 @@ void STimelineEditor::Construct(const FArguments& InArgs, TSharedPtr<FBlueprintE
 					.Image(FEditorStyle::GetBrush("TimelineEditor.AddVectorTrack"))
 				]
 				.ToolTipText( LOCTEXT( "AddVectorTrack", "Add Vector Track" ) )
-				.OnClicked( this, &STimelineEditor::CreateNewTrack, FTTTrackBase::TT_VectorInterp )
+				.OnClicked( this, &STimelineEditor::CreateNewTrack, FTimelineEdTrack::TT_VectorInterp )
 				.AddMetaData<FTagMetaData>(TEXT("TimelineEditor.AddVectorTrack"))
 			]
 			+SHorizontalBox::Slot()
@@ -1033,7 +855,7 @@ void STimelineEditor::Construct(const FArguments& InArgs, TSharedPtr<FBlueprintE
 					.Image(FEditorStyle::GetBrush("TimelineEditor.AddEventTrack"))
 				]
 				.ToolTipText( LOCTEXT( "AddEventTrack", "Add Event Track" ) )
-				.OnClicked( this, &STimelineEditor::CreateNewTrack, FTTTrackBase::TT_Event )
+				.OnClicked( this, &STimelineEditor::CreateNewTrack, FTimelineEdTrack::TT_Event )
 				.AddMetaData<FTagMetaData>(TEXT("TimelineEditor.AddEventTrack"))
 			]
 			+SHorizontalBox::Slot()
@@ -1048,7 +870,7 @@ void STimelineEditor::Construct(const FArguments& InArgs, TSharedPtr<FBlueprintE
 					.Image(FEditorStyle::GetBrush("TimelineEditor.AddColorTrack"))
 				]
 				.ToolTipText( LOCTEXT( "AddColorTrack", "Add Color Track" ) )
-				.OnClicked( this, &STimelineEditor::CreateNewTrack, FTTTrackBase::TT_LinearColorInterp )
+				.OnClicked( this, &STimelineEditor::CreateNewTrack, FTimelineEdTrack::TT_LinearColorInterp )
 				.AddMetaData<FTagMetaData>(TEXT("TimelineEditor.AddColorTrack"))
 			]
 			+SHorizontalBox::Slot()
@@ -1237,7 +1059,7 @@ TSharedRef<ITableRow> STimelineEditor::MakeTrackWidget( TSharedPtr<FTimelineEdTr
 	];
 }
 
-FReply STimelineEditor::CreateNewTrack(FTTTrackBase::ETrackType Type)
+FReply STimelineEditor::CreateNewTrack(FTimelineEdTrack::ETrackType Type)
 {
 	FName TrackName;
 	do
@@ -1263,24 +1085,16 @@ FReply STimelineEditor::CreateNewTrack(FTTTrackBase::ETrackType Type)
 		TimelineObj->Modify();
 
 		NewTrackPendingRename = TrackName;
-		
-		FTTTrackId NewTrackId;
-		NewTrackId.TrackType = Type;
-
-		if(Type == FTTTrackBase::TT_Event)
+		if(Type == FTimelineEdTrack::TT_Event)
 		{
-			NewTrackId.TrackIndex = TimelineObj->EventTracks.Num();
-				
 			FTTEventTrack NewTrack;
 			NewTrack.SetTrackName(TrackName, TimelineObj);
 			NewTrack.CurveKeys = NewObject<UCurveFloat>(OwnerClass, NAME_None, RF_Public); // Needs to be marked public so that it can be referenced from timeline instances in the level
 			NewTrack.CurveKeys->bIsEventCurve = true;
 			TimelineObj->EventTracks.Add(NewTrack);
 		}
-		else if(Type == FTTTrackBase::TT_FloatInterp)
+		else if(Type == FTimelineEdTrack::TT_FloatInterp)
 		{
-			NewTrackId.TrackIndex = TimelineObj->FloatTracks.Num();
-
 			FTTFloatTrack NewTrack;
 			NewTrack.SetTrackName(TrackName, TimelineObj);
 			// @hack for using existing curve assets.  need something better!
@@ -1291,33 +1105,24 @@ FReply STimelineEditor::CreateNewTrack(FTTTrackBase::ETrackType Type)
 			}
 			TimelineObj->FloatTracks.Add(NewTrack);
 		}
-		else if(Type == FTTTrackBase::TT_VectorInterp)
+		else if(Type == FTimelineEdTrack::TT_VectorInterp)
 		{
-			NewTrackId.TrackIndex = TimelineObj->VectorTracks.Num();
-
 			FTTVectorTrack NewTrack;
 			NewTrack.SetTrackName(TrackName, TimelineObj);
 			NewTrack.CurveVector = NewObject<UCurveVector>(OwnerClass, NAME_None, RF_Public);
 			TimelineObj->VectorTracks.Add(NewTrack);
 		}
-		else if(Type == FTTTrackBase::TT_LinearColorInterp)
+		else if(Type == FTimelineEdTrack::TT_LinearColorInterp)
 		{
-			NewTrackId.TrackIndex = TimelineObj->LinearColorTracks.Num();
-
 			FTTLinearColorTrack NewTrack;
 			NewTrack.SetTrackName(TrackName, TimelineObj);
 			NewTrack.CurveLinearColor = NewObject<UCurveLinearColor>(OwnerClass, NAME_None, RF_Public);
 			TimelineObj->LinearColorTracks.Add(NewTrack);
 		}
 
-		TimelineObj->AddDisplayTrack(NewTrackId);
-
 		// Refresh the node that owns this timeline template to get new pin
 		TimelineNode->ReconstructNode();
 		Kismet2->RefreshEditors();
-
-		//rebuild the widgets!
-		OnTimelineChanged();
 	}
 	else
 	{
@@ -1340,29 +1145,30 @@ FReply STimelineEditor::CreateNewTrack(FTTTrackBase::ETrackType Type)
 	return FReply::Handled();
 }
 
-UCurveBase* STimelineEditor::CreateNewCurve(FTTTrackBase::ETrackType Type )
+UCurveBase* STimelineEditor::CreateNewCurve( FTimelineEdTrack::ETrackType Type )
 {
 	TSharedPtr<FBlueprintEditor> Kismet2 = Kismet2Ptr.Pin();
 	UBlueprint* Blueprint = Kismet2->GetBlueprintObj();
 	UClass* OwnerClass = Blueprint->GeneratedClass;
 	check(OwnerClass);
 	UCurveBase* NewCurve = NULL;
-	if(Type == FTTTrackBase::TT_Event)
+	if(Type == FTimelineEdTrack::TT_Event)
 	{
 		NewCurve = NewObject<UCurveFloat>(OwnerClass, NAME_None, RF_Public);
 	}
-	else if(Type == FTTTrackBase::TT_FloatInterp)
+	else if(Type == FTimelineEdTrack::TT_FloatInterp)
 	{
 		NewCurve = NewObject<UCurveFloat>(OwnerClass, NAME_None, RF_Public);
 	}
-	else if(Type == FTTTrackBase::TT_VectorInterp)
+	else if(Type == FTimelineEdTrack::TT_VectorInterp)
 	{
 		NewCurve = NewObject<UCurveVector>(OwnerClass, NAME_None, RF_Public);
 	}
-	else if(Type == FTTTrackBase::TT_LinearColorInterp)
+	else if(Type == FTimelineEdTrack::TT_LinearColorInterp)
 	{
 		NewCurve = NewObject<UCurveLinearColor>(OwnerClass, NAME_None, RF_Public);
 	}
+
 
 	return NewCurve;
 }
@@ -1392,35 +1198,26 @@ void STimelineEditor::OnDeleteSelectedTracks()
 				TimelineObj->Modify();
 
 				TSharedPtr<FTimelineEdTrack> SelTrack = SelTracks[0];
-				FTTTrackId TrackId = TimelineObj->GetDisplayTrackId(SelTrack->DisplayIndex);
-				FTTTrackBase::ETrackType TrackType = (FTTTrackBase::ETrackType)TrackId.TrackType;
-
-				TimelineObj->RemoveDisplayTrack(SelTrack->DisplayIndex);
-
-				if (TrackType == FTTTrackBase::TT_Event)
+				if(SelTrack->TrackType == FTimelineEdTrack::TT_Event)
 				{
-					TimelineObj->EventTracks.RemoveAt(TrackId.TrackIndex);
+					TimelineObj->EventTracks.RemoveAt(SelTrack->TrackIndex);
 				}
-				else if (TrackType == FTTTrackBase::TT_FloatInterp)
+				else if(SelTrack->TrackType == FTimelineEdTrack::TT_FloatInterp)
 				{
-					TimelineObj->FloatTracks.RemoveAt(TrackId.TrackIndex);
+					TimelineObj->FloatTracks.RemoveAt(SelTrack->TrackIndex);
 				}
-				else if (TrackType == FTTTrackBase::TT_VectorInterp)
+				else if(SelTrack->TrackType == FTimelineEdTrack::TT_VectorInterp)
 				{
-					TimelineObj->VectorTracks.RemoveAt(TrackId.TrackIndex);
+					TimelineObj->VectorTracks.RemoveAt(SelTrack->TrackIndex);
 				}
-				else if (TrackType == FTTTrackBase::TT_LinearColorInterp)
+				else if(SelTrack->TrackType == FTimelineEdTrack::TT_LinearColorInterp)
 				{
-					TimelineObj->LinearColorTracks.RemoveAt(TrackId.TrackIndex);
+					TimelineObj->LinearColorTracks.RemoveAt(SelTrack->TrackIndex);
 				}
 
 				// Refresh the node that owns this timeline template to remove pin
 				TimelineNode->ReconstructNode();
 				Kismet2->RefreshEditors();
-
-				//rebuild the widgets!
-				OnTimelineChanged();
-				TrackListView->RebuildList();
 			}
 			else
 			{
@@ -1452,19 +1249,51 @@ void STimelineEditor::OnTimelineChanged()
 	if(TimelineObj != NULL)
 	{
 		// Iterate over tracks and create entries in the array that drives the list widget
-		for (int32 i = 0; i < TimelineObj->GetNumDisplayTracks(); ++i)
+
+		for(int32 i=0; i<TimelineObj->EventTracks.Num(); i++)
 		{
-			FTTTrackId TrackId = TimelineObj->GetDisplayTrackId(i);
+			TSharedRef<FTimelineEdTrack> Track = FTimelineEdTrack::Make(FTimelineEdTrack::TT_Event, i);
 
-			TSharedRef<FTimelineEdTrack> Track = FTimelineEdTrack::Make(i);
-			TrackList.Add(Track);
-
-			FTTTrackBase* TrackBase = TimelineEditorHelpers::GetTrackFromTimeline(TimelineObj, Track);
-			if (TrackBase->GetTrackName() == NewTrackPendingRename)
+			if(TimelineObj->EventTracks[i].GetTrackName() == NewTrackPendingRename)
 			{
 				NewlyCreatedTrack = Track;
 			}
+			TrackList.Add(Track);
 		}
+
+		for(int32 i=0; i<TimelineObj->FloatTracks.Num(); i++)
+		{
+			TSharedRef<FTimelineEdTrack> Track = FTimelineEdTrack::Make(FTimelineEdTrack::TT_FloatInterp, i);
+			
+			if(TimelineObj->FloatTracks[i].GetTrackName() == NewTrackPendingRename)
+			{
+				NewlyCreatedTrack = Track;
+			}
+			TrackList.Add(Track);
+		}
+
+		for(int32 i=0; i<TimelineObj->VectorTracks.Num(); i++)
+		{
+			TSharedRef<FTimelineEdTrack> Track = FTimelineEdTrack::Make(FTimelineEdTrack::TT_VectorInterp, i);
+			
+			if(TimelineObj->VectorTracks[i].GetTrackName() == NewTrackPendingRename)
+			{
+				NewlyCreatedTrack = Track;
+			}
+			TrackList.Add(Track);
+		}
+
+		for(int32 i=0; i<TimelineObj->LinearColorTracks.Num(); i++)
+		{
+			TSharedRef<FTimelineEdTrack> Track = FTimelineEdTrack::Make(FTimelineEdTrack::TT_LinearColorInterp, i);
+			
+			if(TimelineObj->LinearColorTracks[i].GetTrackName() == NewTrackPendingRename)
+			{
+				NewlyCreatedTrack = Track;
+			}
+			TrackList.Add(Track);
+		}
+
 	}
 
 	TrackListView->RequestListRefresh();
@@ -1706,27 +1535,6 @@ void STimelineEditor::OnTrackNameCommitted( const FText& StringName, ETextCommit
 			Kismet2->RefreshEditors();
 			OnTimelineChanged();
 		}
-	}
-}
-
-void STimelineEditor::OnReorderTracks(int32 DisplayIndex, int32 DirectionDelta)
-{
-	if (TimelineObj != NULL)
-	{
-		const FScopedTransaction Transaction(LOCTEXT("TimelineEditor_DeleteTrack", "Delete track"));
-
-		TSharedPtr<FBlueprintEditor> Kismet2 = Kismet2Ptr.Pin();
-		UBlueprint* Blueprint = Kismet2->GetBlueprintObj();
-		UK2Node_Timeline* TimelineNode = FBlueprintEditorUtils::FindNodeForTimeline(Blueprint, TimelineObj);
-
-		TimelineNode->Modify();
-		TimelineObj->Modify();
-
-		TimelineObj->MoveDisplayTrack(DisplayIndex, DirectionDelta);
-
-		// Refresh the node that owns this timeline template to remove pin
-		TimelineNode->ReconstructNode();
-		Kismet2->RefreshEditors();
 	}
 }
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,15 +13,11 @@ class FPhysScene_PhysX;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogVehicles, Log, All);
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-
 #if WITH_PHYSX_VEHICLES
 
 /**
  * Manages vehicles and tire surface data for all scenes
  */
-
-class UE_DEPRECATED(4.26, "PhysX is deprecated. Use the FChaosVehicleManager from the ChaosVehiclePhysics Plugin.") FPhysXVehicleManager;
 class PHYSXVEHICLES_API FPhysXVehicleManager
 {
 public:
@@ -162,5 +158,3 @@ private:
 };
 
 #endif // WITH_PHYSX
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

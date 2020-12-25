@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IOSAppDelegateConsoleHandling.h"
 #include "Engine/Engine.h"
@@ -23,6 +23,7 @@ extern bool GShowSplashScreen;
 	self.ConsoleHistoryValuesIndex = [self.ConsoleHistoryValues count];
 
 	// Set up a containing alert message and buttons
+#if defined(__IPHONE_8_0)
 	if ([UIAlertController class])
 	{
 		self.ConsoleAlertController = [UIAlertController alertControllerWithTitle : @""
@@ -82,6 +83,41 @@ extern bool GShowSplashScreen;
 //		[self.ConsoleAlertController release];
 		[[IOSAppDelegate GetDelegate].IOSController presentViewController : self.ConsoleAlertController animated : YES completion : nil];
 	}
+	else
+#endif
+	{
+#if __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_9_0
+		self.ConsoleAlert = [[UIAlertView alloc] initWithTitle:@"Type a console command"
+								message:@""
+								delegate:self
+								cancelButtonTitle:NSLocalizedString(@"Cancel", nil)
+								otherButtonTitles:NSLocalizedString(@"OK", nil), nil];
+
+		self.ConsoleAlert.alertViewStyle = UIAlertViewStylePlainTextInput;
+
+		// The property is now the owner
+		[self.ConsoleAlert release];
+
+		UITextField* TextField = [self.ConsoleAlert textFieldAtIndex : 0];
+		TextField.clearsOnBeginEditing = NO;
+		TextField.autocorrectionType = UITextAutocorrectionTypeNo;
+		TextField.autocapitalizationType = UITextAutocapitalizationTypeNone;
+		TextField.placeholder = @"or swipe for history";
+		TextField.clearButtonMode = UITextFieldViewModeWhileEditing;
+		TextField.delegate = self;
+
+		// Add gesture recognizers
+		UISwipeGestureRecognizer* SwipeLeftGesture = [[UISwipeGestureRecognizer alloc] initWithTarget:self action : @selector(SwipeLeftAction:)];
+		SwipeLeftGesture.direction = UISwipeGestureRecognizerDirectionLeft;
+		[TextField addGestureRecognizer : SwipeLeftGesture];
+
+		UISwipeGestureRecognizer* SwipeRightGesture = [[UISwipeGestureRecognizer alloc] initWithTarget:self action : @selector(SwipeRightAction:)];
+		SwipeRightGesture.direction = UISwipeGestureRecognizerDirectionRight;
+		[TextField addGestureRecognizer : SwipeRightGesture];
+
+		[self.ConsoleAlert show];
+#endif
+	}
 }
 #endif
 
@@ -96,7 +132,7 @@ extern bool GShowSplashScreen;
 		if (self.bEngineInit && GEngine != nullptr)
 		{
 			TArray<TCHAR> Ch;
-			Ch.AddZeroed([ConsoleCommand length]+1);
+			Ch.AddZeroed([ConsoleCommand length]);
 
 			FPlatformString::CFStringToTCHAR((CFStringRef)ConsoleCommand, Ch.GetData());
 			new(GEngine->DeferredCommands) FString(Ch.GetData());
@@ -138,6 +174,7 @@ extern bool GShowSplashScreen;
 		}
 		GShowSplashScreen = false;
 	}
+#if defined(__IPHONE_8_0)
 	if ([UIAlertController class])
 	{
 		UIAlertController* AlertController = [UIAlertController alertControllerWithTitle:[StringArray objectAtIndex : 0]
@@ -162,14 +199,62 @@ extern bool GShowSplashScreen;
 
 		[[IOSAppDelegate GetDelegate].IOSController presentViewController : AlertController animated : YES completion : nil];
 	}
+	else
+#endif
+	{
+#if __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_9_0
+		// set up the alert message and buttons
+		UIAlertView* Alert = [[[UIAlertView alloc] initWithTitle:[StringArray objectAtIndex : 0]
+									message : [StringArray objectAtIndex : 1]
+									delegate : self // use ourself to handle the button clicks 
+									cancelButtonTitle : [StringArray objectAtIndex : 2]
+									otherButtonTitles : nil] autorelease];
+
+		Alert.alertViewStyle = UIAlertViewStyleDefault;
+
+		// add any extra buttons
+		for (int OptionalButtonIndex = 3; OptionalButtonIndex < [StringArray count]; OptionalButtonIndex++)
+		{
+			[Alert addButtonWithTitle : [StringArray objectAtIndex : OptionalButtonIndex]];
+		}
+
+		// show it!
+		[Alert show];
+#endif
+	}
 }
 
 - (BOOL)textFieldShouldReturn:(UITextField *)alertTextField
 {
 	[alertTextField resignFirstResponder];// to dismiss the keyboard.
-    
+#if __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_9_0
+	[self.ConsoleAlert dismissWithClickedButtonIndex:1 animated:YES];//this is called on alertview to dismiss it.
+#endif
+
 	return YES;
 }
+
+
+/**
+ * An alert button was pressed
+ */
+#if __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_9_0
+- (void)alertView:(UIAlertView*)AlertView didDismissWithButtonIndex:(NSInteger)ButtonIndex
+{
+	// just set our AlertResponse property, all we need to do
+	self.AlertResponse = ButtonIndex;
+
+	if (AlertView.alertViewStyle == UIAlertViewStylePlainTextInput)
+	{
+		UITextField* TextField = [AlertView textFieldAtIndex:0];
+		// if we clicked Ok (not Cancel at index 0), submit the console command
+		if (ButtonIndex > 0)
+		{
+			[self HandleConsoleCommand:TextField.text];
+		}
+	}
+}
+#endif
 
 #if !UE_BUILD_SHIPPING && !PLATFORM_TVOS
 - (void)SwipeLeftAction:(id)Ignored
@@ -180,11 +265,20 @@ extern bool GShowSplashScreen;
 	{
 		self.ConsoleHistoryValuesIndex++;
         UITextField* TextField = nil;
+#ifdef __IPHONE_8_0
         if ([UIAlertController class])
         {
             TextField = self.ConsoleAlertController.textFields.firstObject;
 			TextField.text = [self.ConsoleHistoryValues objectAtIndex : self.ConsoleHistoryValuesIndex];
 		}
+        else
+#endif
+        {
+#if __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_9_0
+			TextField = [self.ConsoleAlert textFieldAtIndex : 0];
+			TextField.text = [self.ConsoleHistoryValues objectAtIndex : self.ConsoleHistoryValuesIndex];
+#endif
+        }
 	}
 }
 
@@ -196,10 +290,19 @@ extern bool GShowSplashScreen;
 	{
 		self.ConsoleHistoryValuesIndex--;
         UITextField* TextField = nil;
+#ifdef __IPHONE_8_0
         if ([UIAlertController class])
         {
             TextField = self.ConsoleAlertController.textFields.firstObject;
 			TextField.text = [self.ConsoleHistoryValues objectAtIndex : self.ConsoleHistoryValuesIndex];
+	}
+        else
+#endif
+        {
+#if __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_9_0
+			TextField = [self.ConsoleAlert textFieldAtIndex : 0];
+			TextField.text = [self.ConsoleHistoryValues objectAtIndex : self.ConsoleHistoryValuesIndex];
+#endif
         }
 	}
 }

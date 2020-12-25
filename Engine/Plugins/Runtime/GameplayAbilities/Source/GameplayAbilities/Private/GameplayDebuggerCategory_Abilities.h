@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -48,8 +48,6 @@ protected:
 		void Serialize(FArchive& Ar);
 	};
 	FRepData DataPack;
-
-	bool WrapStringAccordingToViewport(const FString& iStr, FString& oStr, FGameplayDebuggerCanvasContext& CanvasContext, float ViewportWitdh);
 };
 
 #endif // WITH_GAMEPLAY_DEBUGGER

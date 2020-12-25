@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================================
 	RectLight.usf: Light sampling functions for Rect light implementation
@@ -72,8 +72,7 @@ void RectLight_EstimateLight(
 
 	// Approximate geometric term
 	float3 SurfaceNormal = Payload.WorldNormal;
-	float NoL = dot(SurfaceNormal, LightDirection);
-	NoL = ENABLE_TRANSMISSION && HasTransmission(LightId) ? abs(NoL) : saturate(NoL);
+	float NoL = saturate(dot(SurfaceNormal, LightDirection));
 	float Area = GetWidth(LightId) * GetHeight(LightId);
 
 	float LightPower = Luminance(GetColor(LightId));

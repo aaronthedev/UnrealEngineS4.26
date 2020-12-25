@@ -1,12 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CrashReportAnalytics.h"
 #include "Misc/Guid.h"
-#include "Misc/EngineBuildSettings.h"
 
 #include "AnalyticsET.h"
 #include "IAnalyticsProviderET.h"
-#include "AnalyticsBuildType.h"
 
 bool FCrashReportAnalytics::bIsInitialized;
 TSharedPtr<IAnalyticsProviderET> FCrashReportAnalytics::Analytics;
@@ -43,25 +41,7 @@ void FCrashReportAnalytics::Initialize()
 {
 	checkf(!bIsInitialized, TEXT("FCrashReportAnalytics::Initialize called more than once."));
 
-	// Allow build machines to force CRC to enable internal telemetry.
-	#if defined(CRC_TELEMETRY_URL) && defined(CRC_TELEMETRY_KEY_DEV) && defined(CRC_TELEMETRY_KEY_RELEASE)
-
-		// We always use the "Release" analytics account unless we're running in analytics test mode (usually with
-		// a command-line parameter), or we're an internal Epic build
-		bool bUseReleaseAccount =
-			(GetAnalyticsBuildType() == EAnalyticsBuildType::Development || GetAnalyticsBuildType() == EAnalyticsBuildType::Release) &&
-			!FEngineBuildSettings::IsInternalBuild();	// Internal Epic build
-
-		FAnalyticsET::Config Config;
-		Config.APIServerET = TEXT(CRC_TELEMETRY_URL);
-		Config.APIKeyET = bUseReleaseAccount ? TEXT(PREPROCESSOR_TO_STRING(CRC_TELEMETRY_KEY_RELEASE)) : TEXT(PREPROCESSOR_TO_STRING(CRC_TELEMETRY_KEY_DEV));
-
-	#else
-
-		FAnalyticsET::Config Config = GetCrashReportAnalyticsConfigFunc()();
-
-	#endif
-
+	FAnalyticsET::Config Config = GetCrashReportAnalyticsConfigFunc()();
 	if (!Config.APIServerET.IsEmpty())
 	{
 		// Connect the engine analytics provider (if there is a configuration delegate installed)

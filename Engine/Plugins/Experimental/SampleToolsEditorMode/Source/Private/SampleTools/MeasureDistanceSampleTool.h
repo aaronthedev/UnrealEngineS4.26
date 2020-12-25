@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -59,13 +59,15 @@ class SAMPLETOOLSEDITORMODE_API UMeasureDistanceSampleTool : public UInteractive
 	GENERATED_BODY()
 
 public:
+	UMeasureDistanceSampleTool();
+
 	virtual void SetWorld(UWorld* World);
 
 	// UInteractiveTool overrides
 
 	virtual void Setup() override;
 	virtual void Render(IToolsContextRenderAPI* RenderAPI) override;
-	virtual void OnPropertyModified(UObject* PropertySet, FProperty* Property) override;
+	virtual void OnPropertyModified(UObject* PropertySet, UProperty* Property) override;
 
 	// IClickDragBehaviorTarget implementation
 

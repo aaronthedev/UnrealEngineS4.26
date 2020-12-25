@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Animation/DebugSkelMeshComponent.h"
@@ -484,9 +484,8 @@ void UDebugSkelMeshComponent::GenSpaceBases(TArray<FTransform>& OutSpaceBases)
 	TempBoneSpaceTransforms.AddUninitialized(OutSpaceBases.Num());
 	FVector TempRootBoneTranslation;
 	FBlendedHeapCurve TempCurve;
-	FHeapCustomAttributes TempAtttributes;
 	AnimScriptInstance->PreEvaluateAnimation();
-	PerformAnimationEvaluation(SkeletalMesh, AnimScriptInstance, OutSpaceBases, TempBoneSpaceTransforms, TempRootBoneTranslation, TempCurve, TempAtttributes);
+	PerformAnimationEvaluation(SkeletalMesh, AnimScriptInstance, OutSpaceBases, TempBoneSpaceTransforms, TempRootBoneTranslation, TempCurve);
 	AnimScriptInstance->PostEvaluateAnimation();
 }
 
@@ -572,13 +571,10 @@ void UDebugSkelMeshComponent::RefreshBoneTransforms(FActorComponentTickFunction*
 					{
 						FCompactPose AdditiveBasePose;
 						FBlendedCurve AdditiveCurve;
-						FStackCustomAttributes AdditiveAttributes;
 						AdditiveCurve.InitFrom(BoneContainer);
 						AdditiveBasePose.SetBoneContainer(&BoneContainer);
-						
-						FAnimationPoseData AnimationPoseData(AdditiveBasePose, AdditiveCurve, AdditiveAttributes);
-						Sequence->GetAdditiveBasePose(AnimationPoseData, FAnimExtractContext(PreviewInstance->GetCurrentTime()));
-						CSAdditiveBasePose.InitPose(AnimationPoseData.GetPose());
+						Sequence->GetAdditiveBasePose(AdditiveBasePose, AdditiveCurve, FAnimExtractContext(PreviewInstance->GetCurrentTime()));
+						CSAdditiveBasePose.InitPose(AdditiveBasePose);
 					}
 
 					const int32 NumSkeletonBones = BoneContainer.GetNumBones();
@@ -727,10 +723,9 @@ void UDebugSkelMeshComponent::ResetMeshSectionVisibility()
 	}
 }
 
-void UDebugSkelMeshComponent::RebuildClothingSectionsFixedVerts(bool bInvalidateDerivedDataCache)
+void UDebugSkelMeshComponent::RebuildClothingSectionsFixedVerts()
 {
 	FSkeletalMeshModel* Resource = SkeletalMesh->GetImportedModel();
-	FScopedSkeletalMeshPostEditChange ScopedSkeletalMeshPostEditChange(SkeletalMesh);
 
 	const int32 NumLods = Resource->LODModels.Num();
 	for (FSkeletalMeshLODModel& LodModel : Resource->LODModels)
@@ -746,34 +741,27 @@ void UDebugSkelMeshComponent::RebuildClothingSectionsFixedVerts(bool bInvalidate
 				if(BaseAsset)
 				{
 					UClothingAssetCommon* ConcreteAsset = Cast<UClothingAssetCommon>(BaseAsset);
-					const FClothLODDataCommon& LodData = ConcreteAsset->LodData[Section.ClothingData.AssetLodIndex];
-					const FPointWeightMap* const MaxDistances = LodData.PhysicalMeshData.FindWeightMap(EWeightMapTargetCommon::MaxDistance);
+					UClothLODDataBase* LodData = ConcreteAsset->ClothLodData[Section.ClothingData.AssetLodIndex];
 
-					if (MaxDistances && MaxDistances->Num())
+					for(FMeshToMeshVertData& VertData : Section.ClothMappingData)
 					{
-						for (FMeshToMeshVertData& VertData : Section.ClothMappingData)
+						if(LodData->PhysicalMeshData->IsFixed(
+							VertData.SourceMeshVertIndices[0],
+							VertData.SourceMeshVertIndices[1],
+							VertData.SourceMeshVertIndices[2]))
 						{
-							VertData.SourceMeshVertIndices[3] = MaxDistances->AreAllBelowThreshold(
-								VertData.SourceMeshVertIndices[0],
-								VertData.SourceMeshVertIndices[1],
-								VertData.SourceMeshVertIndices[2]) ? 0xFFFF : 0;
+							VertData.SourceMeshVertIndices[3] = 0xFFFF;
 						}
-					}
-					else
-					{
-						for (FMeshToMeshVertData& VertData : Section.ClothMappingData)
+						else
 						{
 							VertData.SourceMeshVertIndices[3] = 0;
 						}
 					}
-					if (bInvalidateDerivedDataCache)
-					{
-						// We must always dirty the DDC key unless previewing
-						SkeletalMesh->InvalidateDeriveDataCacheGUID();
-					}
 				}
 			}
 		}
+
+		SkeletalMesh->PostEditChange();
 	}
 
 	ReregisterComponent();
@@ -805,10 +793,7 @@ void UDebugSkelMeshComponent::TickComponent(float DeltaTime, enum ELevelTick Tic
 	bCachedMaterialParameterIndicesAreDirty = true;
 	
 	// Force retargeting data to be re-cached to take into account skeleton edits.
-	if (bRequiredBonesUpToDateDuringTick)
-	{
-		bRequiredBonesUpToDate = false;
-	}
+	bRequiredBonesUpToDate = false;
 
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
@@ -834,7 +819,7 @@ void UDebugSkelMeshComponent::RefreshSelectedClothingSkinnedPositions()
 		{
 			UClothingAssetCommon* ConcreteAsset = Cast<UClothingAssetCommon>(*Asset);
 
-			if(ConcreteAsset->LodData.IsValidIndex(SelectedClothingLodForPainting))
+			if(ConcreteAsset->ClothLodData.IsValidIndex(SelectedClothingLodForPainting))
 			{
 				SkinnedSelectedClothingPositions.Reset();
 				SkinnedSelectedClothingNormals.Reset();
@@ -843,9 +828,9 @@ void UDebugSkelMeshComponent::RefreshSelectedClothingSkinnedPositions()
 				// Pass LOD0 to collect all bones
 				GetCurrentRefToLocalMatrices(RefToLocals, 0);
 
-				const FClothLODDataCommon& LodData = ConcreteAsset->LodData[SelectedClothingLodForPainting];
+				UClothLODDataBase* LodData = ConcreteAsset->ClothLodData[SelectedClothingLodForPainting];
 
-				ClothingMeshUtils::SkinPhysicsMesh(ConcreteAsset->UsedBoneIndices, LodData.PhysicalMeshData, FTransform::Identity, RefToLocals.GetData(), RefToLocals.Num(), SkinnedSelectedClothingPositions, SkinnedSelectedClothingNormals);
+				ClothingMeshUtils::SkinPhysicsMesh(ConcreteAsset->UsedBoneIndices, *LodData->PhysicalMeshData, FTransform::Identity, RefToLocals.GetData(), RefToLocals.Num(), SkinnedSelectedClothingPositions, SkinnedSelectedClothingNormals);
 				RebuildCachedClothBounds();
 			}
 		}
@@ -1048,17 +1033,17 @@ FDebugSkelMeshDynamicData::FDebugSkelMeshDynamicData(UDebugSkelMeshComponent* In
 
 					if(UClothingAssetCommon* ConcreteAsset = Cast<UClothingAssetCommon>(BaseAsset))
 					{
-						if(ConcreteAsset->LodData.IsValidIndex(InComponent->SelectedClothingLodForPainting))
+						if(ConcreteAsset->ClothLodData.IsValidIndex(InComponent->SelectedClothingLodForPainting))
 						{
-							const FClothLODDataCommon& LodData = ConcreteAsset->LodData[InComponent->SelectedClothingLodForPainting];
+							UClothLODDataBase* LodData = ConcreteAsset->ClothLodData[InComponent->SelectedClothingLodForPainting];
 
-							ClothingSimIndices = LodData.PhysicalMeshData.Indices;
+							ClothingSimIndices = LodData->PhysicalMeshData->Indices;
 
-							if(LodData.PointWeightMaps.IsValidIndex(InComponent->SelectedClothingLodMaskForPainting))
+							if(LodData->ParameterMasks.IsValidIndex(InComponent->SelectedClothingLodMaskForPainting))
 							{
-								const FPointWeightMap& Mask = LodData.PointWeightMaps[InComponent->SelectedClothingLodMaskForPainting];
+								FPointWeightMap& Mask = LodData->ParameterMasks[InComponent->SelectedClothingLodMaskForPainting];
 
-								ClothingVisiblePropertyValues = Mask.Values;
+								ClothingVisiblePropertyValues = Mask.GetValueArray();
 							}
 						}
 					}

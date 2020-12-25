@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	TiledDeferredLightShaders.usf: Implementation of tiled deferred shading
@@ -26,7 +26,7 @@ uint4 ViewDimensions;
 uint NumLights;
 
 // Workaround performance issue with shared memory bank collisions in GLSL
-#if SWITCH_PROFILE || SWITCH_PROFILE_FORWARD
+#if GL4_PROFILE || SWITCH_PROFILE || SWITCH_PROFILE_FORWARD
 #define ATOMIC_REDUCTION 0
 #else
 #define ATOMIC_REDUCTION 1
@@ -68,14 +68,13 @@ void ExecuteShadingLoops(inout float4 CompositedLighting, FScreenSpaceData Scree
 		LightData.InvRadius = TiledDeferred.LightPositionAndInvRadius[LightIndex].w;
 		LightData.Color = TiledDeferred.LightColorAndFalloffExponent[LightIndex].xyz;
 		LightData.FalloffExponent = TiledDeferred.LightColorAndFalloffExponent[LightIndex].w;
-		LightData.SpotAngles = TiledDeferred2.SpotAnglesAndSourceRadiusAndSimpleLighting[LightIndex].xy;
 		{
 			float4 Value = TiledDeferred2.LightDirectionAndSpotlightMaskAndSpecularScale[LightIndex];
 			LightData.Direction = Value.xyz;
-			// Point-lights set the (cosine of) spot angles to ( -2.0f, 1.0f ), see PointLightComponent.cpp
-			LightData.bSpotLight = LightData.SpotAngles.x > -2.0f;
-			LightData.SpecularScale = Value.w;
+			LightData.bSpotLight = Value.w > 0;
+			LightData.SpecularScale = abs(Value.w);
 		}
+		LightData.SpotAngles = TiledDeferred2.SpotAnglesAndSourceRadiusAndSimpleLighting[LightIndex].xy;
 		LightData.SourceRadius = TiledDeferred2.SpotAnglesAndSourceRadiusAndSimpleLighting[LightIndex].z;
 		// don't support lights with non-0 length in tiled-deferred path, so make sure it stays zero-initialized
 		//LightData.SourceLength = TiledDeferred2.SpotAnglesAndSourceRadiusAndSimpleLighting[LightIndex].w;
@@ -348,7 +347,6 @@ void TiledDeferredLightingMain(
 		EXECUTE_SHADING_LOOPS_SINGLE_SM(SHADINGMODELID_CLOTH, PixelShadingModelID, CompositedLighting, PixelPos, NumLightsAffectingTile, NumSimpleLightsAffectingTile, CameraVector, WorldPosition);
 		EXECUTE_SHADING_LOOPS_SINGLE_SM(SHADINGMODELID_EYE, PixelShadingModelID, CompositedLighting, PixelPos, NumLightsAffectingTile, NumSimpleLightsAffectingTile, CameraVector, WorldPosition);
 		EXECUTE_SHADING_LOOPS_SINGLE_SM(SHADINGMODELID_SINGLELAYERWATER, PixelShadingModelID, CompositedLighting, PixelPos, NumLightsAffectingTile, NumSimpleLightsAffectingTile, CameraVector, WorldPosition);
-		// SHADINGMODELID_THIN_TRANSLUCENT - skipping because it can not be opaque
 #else // !USE_PASS_PER_SHADING_MODEL
 		ExecuteShadingLoops(CompositedLighting, ScreenSpaceData, NumLightsAffectingTile, NumSimpleLightsAffectingTile, CameraVector, WorldPosition);
 #endif // USE_PASS_PER_SHADING_MODEL

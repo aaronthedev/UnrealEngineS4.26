@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -107,9 +107,8 @@ class SEditConditionWidget : public SCompoundWidget
 
 private:
 	void OnEditConditionCheckChanged( ECheckBoxState CheckState );
-	bool HasEditConditionToggle() const;
+	bool HasEditCondition() const;
 	ECheckBoxState OnGetEditConditionCheckState() const;
-
 private:
 	TSharedPtr<FPropertyEditor> PropertyEditor;
 	FCustomEditCondition CustomEditCondition;
@@ -121,14 +120,14 @@ namespace PropertyEditorHelpers
 	 * Perform common checks from metadata to determine if a given Property
 	 * should be visible when displayed underneath the given property node.
 	 */
-	bool ShouldBeVisible(const FPropertyNode& InParentNode, const FProperty* Property);
+	bool ShouldBeVisible(const FPropertyNode& InParentNode, const UProperty* Property);
 
 	/**
 	 * Returns whether or not a property is a built in struct property like a vector or color
 	 *
 	 * @return true if the property is built in type, false otherwise
 	 */
-	bool IsBuiltInStructProperty( const FProperty* Property );
+	bool IsBuiltInStructProperty( const UProperty* Property );
 
 	/**
 	 * Returns whether or not a property is a child of an array (static or dynamic)
@@ -164,27 +163,27 @@ namespace PropertyEditorHelpers
 	/**
 	 * Returns true if this is an FSoftObjectPath and should be treated like a TSoftObjectPtr
 	 */
-	bool IsSoftObjectPath(const FProperty* Property);
+	bool IsSoftObjectPath(const UProperty* Property);
 
 	/**
 	 * Returns true if this is an FSoftClassPath and should be treated like a TSoftClassPtr
 	 */
-	bool IsSoftClassPath(const FProperty* Property);
+	bool IsSoftClassPath(const UProperty* Property);
 
 	/**
 	 * Gets the array parent of a property if it is in a dynamic or static array
 	 */
-	const FProperty* GetArrayParent( const FPropertyNode& InPropertyNode );
+	const UProperty* GetArrayParent( const FPropertyNode& InPropertyNode );
 
 	/**
 	 * Gets the set parent of a property if it is in a set
 	 */
-	const FProperty* GetSetParent( const FPropertyNode& InPropertyNode );
+	const UProperty* GetSetParent( const FPropertyNode& InPropertyNode );
 
 	/**
 	 * Gets the map parent of a property if it is in a map
 	 */
-	const FProperty* GetMapParent(const FPropertyNode& InPropertyNode);
+	const UProperty* GetMapParent(const FPropertyNode& InPropertyNode);
 
 	/**
 	 * Returns if a class is acceptable for edit inline
@@ -197,22 +196,22 @@ namespace PropertyEditorHelpers
 	/**
 	 * @return The text that represents the specified properties tooltip
 	 */
-	FText GetToolTipText( const FProperty* const Property );
+	FText GetToolTipText( const UProperty* const Property );
 
 	/**
 	 * @return The link to the documentation that describes this property in detail
 	 */
-	FString GetDocumentationLink( const FProperty* const Property );
+	FString GetDocumentationLink( const UProperty* const Property );
 
 	/**
 	* @return The link to the documentation that describes this enum property in detail
 	*/
-	FString GetEnumDocumentationLink(const FProperty* const Property);
+	FString GetEnumDocumentationLink(const UProperty* const Property);
 
 	/**
 	 * @return The name of the excerpt that describes this property in detail in the documentation file linked to this property
 	 */
-	FString GetDocumentationExcerptName( const FProperty* const Property );
+	FString GetDocumentationExcerptName( const UProperty* const Property );
 
 	/**
 	 * Gets a property handle for the specified property node
@@ -254,13 +253,13 @@ namespace PropertyEditorHelpers
 	void CollectObjectNodes( TSharedPtr<FPropertyNode> StartNode, TArray<FObjectPropertyNode*>& OutObjectNodes );
 
 	/**
-	 * Returns any enums that are explicitly allowed by the "AllowedEnumValues" metadata on FProperty using the specified enum.
+	 * Returns any enums that are explicitly allowed by the "AllowedEnumValues" metadata on UProperty using the specified enum.
 	 *
 	 * @param Property	The property which may contain the "AllowedEnumValues" metadata
 	 * @param InEnum	The enum to search
 	 * @return The array of allowed enums.  NOTE: If an empty array is returned all enum values are allowed.  It is an error for a property to hide all enum values so that state is undefined here.
 	 */
-	TArray<FName> GetValidEnumsFromPropertyOverride(const FProperty* Property, const UEnum* InEnum);
+	TArray<FName> GetValidEnumsFromPropertyOverride(const UProperty* Property, const UEnum* InEnum);
 	/**
 	 * Whether or not a category is hidden by a given root object
 	 * @param InRootNode	The root node that for the objects we are customizing
@@ -278,6 +277,6 @@ namespace PropertyEditorHelpers
 	 */
 	bool IsVisibleStandaloneProperty(const FPropertyNode& PropertyNode, const FPropertyNode& ParentNode);
 
-	void OrderPropertiesFromMetadata(TArray<FProperty*>& Properties);
+	void OrderPropertiesFromMetadata(TArray<UProperty*>& Properties);
 }
 

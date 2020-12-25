@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraSettings.h"
 
 UNiagaraSettings::UNiagaraSettings(const FObjectInitializer& ObjectInitlaizer)
 	: Super(ObjectInitlaizer)
-	, DefaultEffectTypePtr(nullptr)
 {
 
 }
@@ -21,22 +20,13 @@ FText UNiagaraSettings::GetSectionText() const
 }
 #endif
 
-void UNiagaraSettings::PostInitProperties()
-{
-	Super::PostInitProperties();
-
-	DefaultEffectTypePtr = Cast<UNiagaraEffectType>(DefaultEffectType.TryLoad());
-}
-
 #if WITH_EDITOR
 void UNiagaraSettings::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
 	if (PropertyChangedEvent.Property != nullptr)
 	{
-		SettingsChangedDelegate.Broadcast(PropertyChangedEvent.Property->GetFName(), this);
+		SettingsChangedDelegate.Broadcast(PropertyChangedEvent.Property->GetName(), this);
 	}
-
-	DefaultEffectTypePtr = Cast<UNiagaraEffectType>(DefaultEffectType.TryLoad());
 }
 
 UNiagaraSettings::FOnNiagaraSettingsChanged& UNiagaraSettings::OnSettingsChanged()
@@ -47,7 +37,4 @@ UNiagaraSettings::FOnNiagaraSettingsChanged& UNiagaraSettings::OnSettingsChanged
 UNiagaraSettings::FOnNiagaraSettingsChanged UNiagaraSettings::SettingsChangedDelegate;
 #endif
 
-UNiagaraEffectType* UNiagaraSettings::GetDefaultEffectType()const
-{
-	return DefaultEffectTypePtr;
-}
+

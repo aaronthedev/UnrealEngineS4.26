@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PaperEditorShared/SpriteGeometryEditing.h"
 #include "Materials/Material.h"
@@ -247,7 +247,7 @@ void FSpriteGeometryEditingHelper::DeleteSelectedItems()
 
 	// See if anything else can be deleted
 	bool bCanDeleteNonGeometry = false;
-	for (const TSharedPtr<FSelectedItem>& SelectedItem : GetSelectionSet())
+	for (const TSharedPtr<FSelectedItem> SelectedItem : GetSelectionSet())
 	{
 		if (SelectedItem->CanBeDeleted())
 		{

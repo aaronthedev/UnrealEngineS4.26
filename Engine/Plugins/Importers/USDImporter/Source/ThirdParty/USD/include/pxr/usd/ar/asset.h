@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_AR_ASSET_H
-#define PXR_USD_AR_ASSET_H
+#ifndef AR_ASSET_H
+#define AR_ASSET_H
 
 /// \file ar/asset.h
 
@@ -45,8 +45,10 @@ public:
     AR_API
     virtual ~ArAsset();
 
+    AR_API 
     ArAsset(const ArAsset&) = delete;
 
+    AR_API 
     ArAsset& operator=(const ArAsset&) = delete;
 
     /// Returns size of the asset.
@@ -96,4 +98,4 @@ protected:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_AR_ASSET_H
+#endif // AR_ASSET_H

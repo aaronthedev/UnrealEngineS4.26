@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -36,9 +36,9 @@ class UCanvas;
 class FDebugDisplayInfo;
 
 /** Data for a single component */
-struct FAnimBudgetAllocatorComponentData
+struct FComponentData
 {
-	FAnimBudgetAllocatorComponentData()
+	FComponentData()
 		: Component(nullptr)
 		, RootPrerequisite(nullptr)
 		, Significance(0.0f)
@@ -61,9 +61,9 @@ struct FAnimBudgetAllocatorComponentData
 		, bNeverThrottle(true)
 	{}
 
-	FAnimBudgetAllocatorComponentData(USkeletalMeshComponentBudgeted* InComponent, float InGameThreadLastTickTimeMs, int32 InStateChangeThrottle);
+	FComponentData(USkeletalMeshComponentBudgeted* InComponent, float InGameThreadLastTickTimeMs, int32 InStateChangeThrottle);
 
-	bool operator==(const FAnimBudgetAllocatorComponentData& InOther) const
+	bool operator==(const FComponentData& InOther) const
 	{
 		return Component == InOther.Component;
 	}
@@ -192,17 +192,13 @@ protected:
 	UWorld* World;
 
 	// All component data
-	TArray<FAnimBudgetAllocatorComponentData> AllComponentData;
+	TArray<FComponentData> AllComponentData;
 
-	/** 
-	 * All currently tickable component indices sorted by significance, updated each tick.
-	 * Note that this array is not managed, so components can be deleted underneath it. 
-	 * Therefore usage outside of Tick() is not recommended.
-	 */
+	/** All currently tickable component indices sorted by significance, updated each tick */
 	TArray<int32> AllSortedComponentData;
 
 #if WITH_TICK_DEBUG
-	TArray<FAnimBudgetAllocatorComponentData*> AllSortedComponentDataDebug;
+	TArray<FComponentData*> AllSortedComponentDataDebug;
 #endif
 
 	/** All components that have reduced work that might want to tick (and hence might not want to do reduced work) */

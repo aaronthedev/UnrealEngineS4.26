@@ -45,7 +45,7 @@ IF(NOT ILMBASE_ROOT AND NOT $ENV{ILMBASE_ROOT} STREQUAL "")
 ENDIF()
 
 IF(NOT DEFINED ILMBASE_ROOT)
-    MESSAGE(STATUS "ILMBASE_ROOT is undefined" )
+    MESSAGE( "ILMBASE_ROOT is undefined" )
     IF ( ${CMAKE_HOST_UNIX} )
         IF( ${DARWIN} )
           # TODO: set to default install path when shipping out
@@ -57,7 +57,7 @@ IF(NOT DEFINED ILMBASE_ROOT)
     ELSE()
         IF ( ${WINDOWS} )
           # TODO: set to 32-bit or 64-bit path
-          SET( ALEMBIC_ILMBASE_ROOT "C:/Program Files (x86)/ilmbase-1.0.1/" )
+          SET( ALEMBIC_ILMBASE_ROOT "D:/Framework_Stream/Engine/Plugins/Experimental/AlembicImporter/Source/ThirdParty/Alembic/ilmbase-1.0.2/" )
         ELSE()
           SET( ALEMBIC_ILMBASE_ROOT NOTFOUND )
         ENDIF()
@@ -65,6 +65,8 @@ IF(NOT DEFINED ILMBASE_ROOT)
 ELSE()
   SET( ALEMBIC_ILMBASE_ROOT ${ILMBASE_ROOT} )
 ENDIF()
+
+MESSAGE( STATUS "ILMBASE PATH: ${ALEMBIC_ILMBASE_ROOT}" )
 
 SET(_ilmbase_FIND_COMPONENTS
     Half
@@ -95,6 +97,10 @@ FIND_PATH(ILMBASE_INCLUDE_DIR
   PATH_SUFFIXES
     include
     include/OpenEXR
+	lib
+	lib/Mac
+	lib/VS2013
+	lib/VS2015
 )
 
 # If the headers were found, get the version from config file, if not already set.
@@ -112,14 +118,15 @@ IF(ILMBASE_INCLUDE_DIR)
 
     IF(_ilmbase_CONFIG)
       FILE(STRINGS "${_ilmbase_CONFIG}" ILMBASE_BUILD_SPECIFICATION
-           REGEX "^[ \t]*#define[ \t]+(ILMBASE_VERSION_STRING|VERSION)[ \t]+\"[.0-9]+\".*$")
+           REGEX "^[ \t]*#define[ \t]+ILMBASE_VERSION_STRING[ \t]+\"[.0-9]+\".*$")
     ELSE()
       MESSAGE(WARNING "Could not find \"OpenEXRConfig.h\" in \"${ILMBASE_INCLUDE_DIR}\"")
     ENDIF()
 
     IF(ILMBASE_BUILD_SPECIFICATION)
-      STRING(REGEX REPLACE ".*#define[ \t]+(ILMBASE_VERSION_STRING|VERSION)[ \t]+\"([.0-9]+)\".*"
-             "\\2" _ilmbase_libs_ver_init ${ILMBASE_BUILD_SPECIFICATION})
+      MESSAGE(STATUS "${ILMBASE_BUILD_SPECIFICATION}")
+      STRING(REGEX REPLACE ".*#define[ \t]+ILMBASE_VERSION_STRING[ \t]+\"([.0-9]+)\".*"
+             "\\1" _ilmbase_libs_ver_init ${ILMBASE_BUILD_SPECIFICATION})
     ELSE()
       MESSAGE(WARNING "Could not determine ILMBase library version, assuming ${_ilmbase_libs_ver_init}.")
     ENDIF()
@@ -128,10 +135,11 @@ IF(ILMBASE_INCLUDE_DIR)
 
   ENDIF()
 
-  SET("ILMBASE_VERSION" ${_ilmbase_libs_ver_init} CACHE STRING "Version of OpenEXR lib")
+  SET("ILMBASE_VERSION" ${_ilmbase_libs_ver_init}) #CACHE STRING "Version of OpenEXR lib")
   UNSET(_ilmbase_libs_ver_init)
-
+   
   STRING(REGEX REPLACE "([0-9]+)[.]([0-9]+).*" "\\1_\\2" _ilmbase_libs_ver ${ILMBASE_VERSION})
+  MESSAGE(STATUS "${_ilmbase_libs_ver}")
 ENDIF()
 
 
@@ -145,11 +153,7 @@ FOREACH(COMPONENT ${_ilmbase_FIND_COMPONENTS})
     HINTS
       ${_ilmbase_SEARCH_DIRS}
     PATH_SUFFIXES
-      lib64
-      lib
-      lib/VS2015/x64/StaticRelease
-      lib/Mac/StaticRelease
-      lib/Linux/StaticRelease/x86_64-unknown-linux-gnu
+      lib64 lib
     )
   LIST(APPEND _ilmbase_LIBRARIES "${ILMBASE_${UPPERCOMPONENT}_LIBRARY}")
 ENDFOREACH()

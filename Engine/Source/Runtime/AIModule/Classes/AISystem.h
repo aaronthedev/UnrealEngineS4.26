@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -28,11 +28,9 @@ class AIMODULE_API UAISystem : public UAISystemBase
 	GENERATED_BODY()
 
 protected:
-	/** Class that will be used to spawn the perception system, can be game-specific */
 	UPROPERTY(globalconfig, EditAnywhere, Category = "AISystem", meta = (MetaClass = "AIPerceptionSystem", DisplayName = "Perception System Class"))
 	FSoftClassPath PerceptionSystemClassName;
 
-	/** Class that will be used to spawn the hot spot manager, can be game-specific */
 	UPROPERTY(globalconfig, EditAnywhere, Category = "AISystem", meta = (MetaClass = "AIHotSpotManager", DisplayName = "AIHotSpotManager Class"))
 	FSoftClassPath HotSpotManagerClassName;
 
@@ -52,22 +50,16 @@ public:
 	UPROPERTY(globalconfig, EditDefaultsOnly, Category = "Movement")
 	float PathfollowingNavLinkAcceptanceRadius;
 	
-	/** If true, overlapping the goal will be counted by default as finishing a move */
 	UPROPERTY(globalconfig, EditDefaultsOnly, Category = "Movement")
 	bool bFinishMoveOnGoalOverlap;
 
-	/** Sets default value for rather move tasks accept partial paths or not */
 	UPROPERTY(globalconfig, EditDefaultsOnly, Category = "Movement")
 	bool bAcceptPartialPaths;
 
-	/** Sets default value for rather move tasks allow strafing or not */
 	UPROPERTY(globalconfig, EditDefaultsOnly, Category = "Movement")
 	bool bAllowStrafing;
 
-	/** 
-	 * Whether or not to enable Gameplay Tasks for move tasks
-     * this property is just a transition-time flag - in the end we're going to switch over to Gameplay Tasks anyway, that's the goal. 
-	 */
+	/** this property is just a transition-time flag - in the end we're going to switch over to Gameplay Tasks anyway, that's the goal. */
 	UPROPERTY(globalconfig, EditDefaultsOnly, Category = "Gameplay Tasks")
 	bool bEnableBTAITasks;
 
@@ -81,19 +73,7 @@ public:
 	UPROPERTY(globalconfig, EditDefaultsOnly, Category = "AISystem")
 	bool bEnableDebuggerPlugin;
 
-	/** If set, actors will be forgotten by the perception system when their stimulus has expired.
-	 *	If not set, the perception system will remember the actor even if they are no longer perceived and their
-	 *	stimuli has exceeded its max age */
-	UPROPERTY(globalconfig, EditDefaultsOnly, Category = "AISystem")
-	bool bForgetStaleActors;
-
-	/** If set to true will result in automatically adding the SelfActor key to new Blackboard assets. It will 
-	 *	also result in making sure all the BB assets loaded do have the SelfKey entry, via PostLoad */
-	UPROPERTY(globalconfig, EditDefaultsOnly, Category = "Blackboard")
-	bool bAddBlackboardSelfKey = true;
-
-	/** Which collision channel to use for sight checks by default */
-	UPROPERTY(globalconfig, EditDefaultsOnly, Category = "PerceptionSystem")
+	UPROPERTY(globalconfig, EditAnywhere, Category = "PerceptionSystem")
 	TEnumAsByte<ECollisionChannel> DefaultSightCollisionChannel;
 
 protected:

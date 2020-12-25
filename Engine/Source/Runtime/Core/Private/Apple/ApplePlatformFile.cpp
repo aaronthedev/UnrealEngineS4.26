@@ -1,18 +1,16 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ApplePlatformFile.mm: Apple platform implementations of File functions
 =============================================================================*/
 
 #include "Apple/ApplePlatformFile.h"
-
+#include "HAL/PlatformTime.h"
+#include "HAL/PlatformFile.h"
 #include "Containers/UnrealString.h"
 #include "Containers/StringConv.h"
-#include "CoreGlobals.h"
-#include "HAL/PlatformFile.h"
-#include "HAL/PlatformTime.h"
-#include "ProfilingDebugging/PlatformFileTrace.h"
 #include "Templates/Function.h"
+#include "CoreGlobals.h"
 #include <sys/stat.h>
 
 // make an FTimeSpan object that represents the "epoch" for time_t (from a stat struct)
@@ -36,7 +34,7 @@ namespace
 			MacEpoch + FTimespan::FromSeconds(FileInfo.st_mtime), 
 			FileSize,
 			bIsDirectory,
-			!(FileInfo.st_mode & S_IWUSR)
+			!!(FileInfo.st_mode & S_IWUSR)
 		);
 	}
 }
@@ -85,16 +83,9 @@ public:
 		{
 			if( ActiveHandles[ HandleSlot ] == this )
 			{
-				TRACE_PLATFORMFILE_BEGIN_CLOSE(FileHandle);
-				flock(FileHandle, LOCK_UN | LOCK_NB);
 				int CloseResult = close(FileHandle);
-				if (CloseResult >= 0)
+				if (CloseResult < 0)
 				{
-					TRACE_PLATFORMFILE_END_CLOSE(FileHandle);
-				}
-				else
-				{
-					TRACE_PLATFORMFILE_FAIL_CLOSE(FileHandle);
 					UE_LOG(LogInit, Warning, TEXT("Failed to properly close readable file: %s with errno: %d"), *Filename, errno);
 				}
 				ActiveHandles[ HandleSlot ] = nullptr;
@@ -111,16 +102,9 @@ public:
 					UE_LOG(LogInit, Error, TEXT("Failed to properly flush writable file with errno: %d"), errno);
 				}
             }
-			TRACE_PLATFORMFILE_BEGIN_CLOSE(FileHandle);
-			flock(FileHandle, LOCK_UN | LOCK_NB);
 			int CloseResult = close(FileHandle);
-			if (CloseResult >= 0)
+			if (CloseResult < 0)
 			{
-				TRACE_PLATFORMFILE_END_CLOSE(FileHandle);
-			}
-			else
-			{
-				TRACE_PLATFORMFILE_FAIL_CLOSE(FileHandle);
 				UE_LOG(LogInit, Warning, TEXT("Failed to properly close file with errno: %d"), errno);
 			}
 		}
@@ -193,24 +177,18 @@ public:
 	virtual bool Write(const uint8* Source, int64 BytesToWrite) override
 	{
 		check(IsValid());
-		TRACE_PLATFORMFILE_BEGIN_WRITE(this, FileHandle, 0, BytesToWrite);
-		int64 TotalBytesWritten = 0;
 		while (BytesToWrite)
 		{
 			check(BytesToWrite >= 0);
 			int64 ThisSize = FMath::Min<int64>(READWRITE_SIZE, BytesToWrite);
 			check(Source);
-			int64 BytesWritten = write(FileHandle, Source, ThisSize);
-			TotalBytesWritten += BytesWritten;
-			if (BytesWritten != ThisSize)
+			if (write(FileHandle, Source, ThisSize) != ThisSize)
 			{
-				TRACE_PLATFORMFILE_END_WRITE(this, TotalBytesWritten);
 				return false;
 			}
 			Source += ThisSize;
 			BytesToWrite -= ThisSize;
 		}
-		TRACE_PLATFORMFILE_END_WRITE(this, TotalBytesWritten);
 		return true;
 	}
 	virtual bool Flush(const bool bFullFlush = false) override
@@ -243,9 +221,7 @@ public:
 			return false;
 		}
 #endif
-		int Result = 0;
-		do { Result = ftruncate(FileHandle, NewSize); } while (Result < 0 && errno == EINTR);
-		return Result == 0;
+		return ftruncate(FileHandle, NewSize) == 0;
 	}
 	virtual int64 Size() override
 	{
@@ -279,17 +255,11 @@ private:
 			{
 				ReserveSlot();
 
-				TRACE_PLATFORMFILE_BEGIN_OPEN(*Filename);
 				FileHandle = open(TCHAR_TO_UTF8(*Filename), O_RDONLY | O_SHLOCK);
 				if( FileHandle != -1 )
 				{
-					TRACE_PLATFORMFILE_END_OPEN(FileHandle);
 					lseek(FileHandle, FileOffset, SEEK_SET);
 					ActiveHandles[ HandleSlot ] = this;
-				}
-				else
-				{
-					TRACE_PLATFORMFILE_FAIL_OPEN(*Filename);
 				}
 			}
 			else
@@ -325,22 +295,7 @@ private:
 				}
 			}
 
-			int32 OldestFileHandle = ActiveHandles[ Oldest ]->FileHandle;
-			TRACE_PLATFORMFILE_BEGIN_CLOSE(OldestFileHandle);
-			flock(OldestFileHandle, LOCK_UN | LOCK_NB);
-			int CloseResult = close(OldestFileHandle);
-#if PLATFORMFILETRACE_ENABLED
-			if (CloseResult >= 0)
-			{
-				TRACE_PLATFORMFILE_END_CLOSE(OldestFileHandle);
-			}
-			else
-			{
-				TRACE_PLATFORMFILE_FAIL_CLOSE(OldestFileHandle);
-			}
-#else
-			(void)CloseResult;
-#endif
+			close( ActiveHandles[ Oldest ]->FileHandle );
 			ActiveHandles[ Oldest ]->FileHandle = -1;
 			HandleSlot = Oldest;
 		}
@@ -355,7 +310,6 @@ private:
 		check(IsValid());
 		int64 MaxReadSize = READWRITE_SIZE;
 		int64 BytesRead = 0;
-		TRACE_PLATFORMFILE_BEGIN_READ(this, FileHandle, 0, BytesToRead);
 		while (BytesToRead)
 		{
 			check(BytesToRead >= 0);
@@ -370,19 +324,16 @@ private:
 					MaxReadSize /= 2;
 					continue;
 				}
-				TRACE_PLATFORMFILE_END_READ(this, BytesRead);
 				return BytesRead;
 			}
 			BytesRead += ThisRead;
 			if (ThisRead != ThisSize)
 			{
-				TRACE_PLATFORMFILE_END_READ(this, BytesRead);
 				return BytesRead;
 			}
 			Destination += ThisSize;
 			BytesToRead -= ThisSize;
 		}
-		TRACE_PLATFORMFILE_END_READ(this, BytesRead);
 		return BytesRead;
 	}
 
@@ -428,13 +379,17 @@ __thread double FFileHandleApple::AccessTimes[ FFileHandleApple::ACTIVE_HANDLE_C
 FString FApplePlatformFile::NormalizeFilename(const TCHAR* Filename)
 {
 	FString Result(Filename);
-	Result.ReplaceInline(TEXT("\\"), TEXT("/"), ESearchCase::CaseSensitive);
+	Result.ReplaceInline(TEXT("\\"), TEXT("/"));
 	return Result;
 }
 FString FApplePlatformFile::NormalizeDirectory(const TCHAR* Directory)
 {
 	FString Result(Directory);
-	Result.ReplaceInline(TEXT("\\"), TEXT("/"), ESearchCase::CaseSensitive);
+	Result.ReplaceInline(TEXT("\\"), TEXT("/"));
+	if (Result.EndsWith(TEXT("/")))
+	{
+		Result.LeftChop(1);
+	}
 	return Result;
 }
 
@@ -560,29 +515,14 @@ FString FApplePlatformFile::GetFilenameOnDisk(const TCHAR* Filename)
 
 IFileHandle* FApplePlatformFile::OpenRead(const TCHAR* Filename, bool bAllowWrite)
 {
-	TRACE_PLATFORMFILE_BEGIN_OPEN(Filename);
 	int32 Handle = open(TCHAR_TO_UTF8(*NormalizeFilename(Filename)), O_RDONLY);
 	if (Handle != -1)
 	{
-		TRACE_PLATFORMFILE_END_OPEN(Handle);
 #if PLATFORM_MAC && !UE_BUILD_SHIPPING
 		// No blocking attempt shared lock, failure means we should not have opened the file for reading, protect against multiple instances and client/server versions
 		if(!bAllowWrite && flock(Handle, LOCK_NB | LOCK_SH) == -1)
 		{
-			TRACE_PLATFORMFILE_BEGIN_CLOSE(Handle);
-			int CloseResult = close(Handle);
-#if PLATFORMFILETRACE_ENABLED
-			if (CloseResult >= 0)
-			{
-				TRACE_PLATFORMFILE_END_CLOSE(Handle);
-			}
-			else
-			{
-				TRACE_PLATFORMFILE_FAIL_CLOSE(Handle);
-			}
-#else
-			(void)CloseResult;
-#endif
+			close(Handle);
 			return nullptr;
 		}
 #endif
@@ -593,11 +533,7 @@ IFileHandle* FApplePlatformFile::OpenRead(const TCHAR* Filename, bool bAllowWrit
 		return new FFileHandleApple(Handle, Filename, true);
 #endif
 	}
-	else
-	{
-		TRACE_PLATFORMFILE_FAIL_OPEN(Filename);
-		return nullptr;
-	}
+	return nullptr;
 }
 
 IFileHandle* FApplePlatformFile::OpenWrite(const TCHAR* Filename, bool bAppend, bool bAllowRead)
@@ -613,30 +549,15 @@ IFileHandle* FApplePlatformFile::OpenWrite(const TCHAR* Filename, bool bAppend, 
 		Flags |= O_WRONLY;
 	}
 	
-	TRACE_PLATFORMFILE_BEGIN_OPEN(Filename);
 	int32 Handle = open(TCHAR_TO_UTF8(*NormalizeFilename(Filename)), Flags, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
 	
 	if (Handle != -1)
 	{
-		TRACE_PLATFORMFILE_END_OPEN(Handle);
 #if PLATFORM_MAC && UE_EDITOR && !UE_BUILD_SHIPPING
 		// No blocking attempt exclusive lock, failure means we should not have opened the file for writing, protect against multiple instances and client/server versions
 		if(!bAllowRead && flock(Handle, LOCK_NB | LOCK_EX) == -1)
 		{
-			TRACE_PLATFORMFILE_BEGIN_CLOSE(Handle);
-			int CloseResult = close(Handle);
-#if PLATFORMFILETRACE_ENABLED
-			if (CloseResult >= 0)
-			{
-				TRACE_PLATFORMFILE_END_CLOSE(Handle);
-			}
-			else
-			{
-				TRACE_PLATFORMFILE_FAIL_CLOSE(Handle);
-			}
-#else
-			(void)CloseResult;
-#endif
+			close(Handle);
 			return nullptr;
 		}
 #endif
@@ -658,11 +579,7 @@ IFileHandle* FApplePlatformFile::OpenWrite(const TCHAR* Filename, bool bAppend, 
 		}
 		return FileHandleApple;
 	}
-	else
-	{
-		TRACE_PLATFORMFILE_FAIL_OPEN(Filename);
-		return nullptr;
-	}
+	return nullptr;
 }
 
 bool FApplePlatformFile::DirectoryExists(const TCHAR* Directory)

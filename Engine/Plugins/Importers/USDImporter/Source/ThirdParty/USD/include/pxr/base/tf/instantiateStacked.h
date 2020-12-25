@@ -21,11 +21,11 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifdef PXR_BASE_TF_INSTANTIATE_STACKED_H
+#ifdef TF_INSTANTIATE_STACKED_H
 #error This file may be included only once in a translation unit (.cpp file).
 #endif
 
-#define PXR_BASE_TF_INSTANTIATE_STACKED_H
+#define TF_INSTANTIATE_STACKED_H
 
 #include "pxr/pxr.h"
 #include "pxr/base/tf/stacked.h"

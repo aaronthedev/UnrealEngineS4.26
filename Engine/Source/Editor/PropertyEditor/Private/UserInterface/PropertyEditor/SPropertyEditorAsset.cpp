@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UserInterface/PropertyEditor/SPropertyEditorAsset.h"
 #include "Engine/Texture.h"
@@ -36,13 +36,13 @@ DECLARE_DELEGATE( FOnCopy );
 DECLARE_DELEGATE( FOnPaste );
 
 // Helper to retrieve the correct property that has the applicable metadata.
-static const FProperty* GetActualMetadataProperty(const FProperty* Property)
+static const UProperty* GetActualMetadataProperty(const UProperty* Property)
 {
-	if (FProperty* OuterProperty = Property->GetOwner<FProperty>())
+	if (UProperty* OuterProperty = Cast<UProperty>(Property->GetOuter()))
 	{
-		if (OuterProperty->IsA<FArrayProperty>()
-			|| OuterProperty->IsA<FSetProperty>()
-			|| OuterProperty->IsA<FMapProperty>())
+		if (OuterProperty->IsA<UArrayProperty>()
+			|| OuterProperty->IsA<USetProperty>()
+			|| OuterProperty->IsA<UMapProperty>())
 		{
 			return OuterProperty;
 		}
@@ -52,7 +52,7 @@ static const FProperty* GetActualMetadataProperty(const FProperty* Property)
 }
 
 // Helper to support both meta=(TagName) and meta=(TagName=true) syntaxes
-static bool GetTagOrBoolMetadata(const FProperty* Property, const TCHAR* TagName, bool bDefault)
+static bool GetTagOrBoolMetadata(const UProperty* Property, const TCHAR* TagName, bool bDefault)
 {
 	bool bResult = bDefault;
 
@@ -84,10 +84,10 @@ bool SPropertyEditorAsset::ShouldDisplayThumbnail(const FArguments& InArgs, cons
 		return false;
 	}
 
-	bool bShowThumbnail = InObjectClass == nullptr || !(InObjectClass->IsChildOf(AActor::StaticClass()) || InObjectClass->IsChildOf(UInterface::StaticClass()));
-
+	bool bShowThumbnail = InObjectClass == nullptr || !InObjectClass->IsChildOf(AActor::StaticClass());
+	
 	// also check metadata for thumbnail & text display
-	const FProperty* PropertyToCheck = nullptr;
+	const UProperty* PropertyToCheck = nullptr;
 	if (PropertyEditor.IsValid())
 	{
 		PropertyToCheck = PropertyEditor->GetProperty();
@@ -107,7 +107,7 @@ bool SPropertyEditorAsset::ShouldDisplayThumbnail(const FArguments& InArgs, cons
 	return bShowThumbnail;
 }
 
-void SPropertyEditorAsset::InitializeClassFilters(const FProperty* Property)
+void SPropertyEditorAsset::InitializeClassFilters(const UProperty* Property)
 {
 	if (Property == nullptr)
 	{
@@ -116,7 +116,7 @@ void SPropertyEditorAsset::InitializeClassFilters(const FProperty* Property)
 	}
 
 	// Account for the allowed classes specified in the property metadata
-	const FProperty* MetadataProperty = GetActualMetadataProperty(Property);
+	const UProperty* MetadataProperty = GetActualMetadataProperty(Property);
 
 	bExactClass = GetTagOrBoolMetadata(MetadataProperty, TEXT("ExactClass"), false);
 
@@ -124,10 +124,13 @@ void SPropertyEditorAsset::InitializeClassFilters(const FProperty* Property)
 	if (!AllowedClassesFilterString.IsEmpty())
 	{
 		TArray<FString> AllowedClassFilterNames;
-		AllowedClassesFilterString.ParseIntoArrayWS(AllowedClassFilterNames, TEXT(","), true);
+		AllowedClassesFilterString.ParseIntoArray(AllowedClassFilterNames, TEXT(","), true);
 
-		for (const FString& ClassName : AllowedClassFilterNames)
+		for (FString& ClassName : AllowedClassFilterNames)
 		{
+			// User can potentially list class names with leading or trailing whitespace
+			ClassName.TrimStartAndEndInline();
+
 			UClass* Class = FindObject<UClass>(ANY_PACKAGE, *ClassName);
 			if (!Class)
 			{
@@ -166,10 +169,13 @@ void SPropertyEditorAsset::InitializeClassFilters(const FProperty* Property)
 	if (!DisallowedClassesFilterString.IsEmpty())
 	{
 		TArray<FString> DisallowedClassFilterNames;
-		DisallowedClassesFilterString.ParseIntoArrayWS(DisallowedClassFilterNames, TEXT(","), true);
+		DisallowedClassesFilterString.ParseIntoArray(DisallowedClassFilterNames, TEXT(","), true);
 
-		for (const FString& ClassName : DisallowedClassFilterNames)
+		for (FString& ClassName : DisallowedClassFilterNames)
 		{
+			// User can potentially list class names with leading or trailing whitespace
+			ClassName.TrimStartAndEndInline();
+
 			UClass* Class = FindObject<UClass>(ANY_PACKAGE, *ClassName);
 			if (!Class)
 			{
@@ -199,82 +205,6 @@ void SPropertyEditorAsset::InitializeClassFilters(const FProperty* Property)
 	}
 }
 
-void SPropertyEditorAsset::InitializeAssetDataTags(const FProperty* Property)
-{
-	if (Property == nullptr)
-	{
-		return;
-	}
-
-	const FProperty* MetadataProperty = GetActualMetadataProperty(Property);
-	const FString DisallowedAssetDataTagsFilterString = MetadataProperty->GetMetaData(TEXT("DisallowedAssetDataTags"));
-	if (!DisallowedAssetDataTagsFilterString.IsEmpty())
-	{
-		TArray<FString> DisallowedAssetDataTagsAndValues;
-		DisallowedAssetDataTagsFilterString.ParseIntoArray(DisallowedAssetDataTagsAndValues, TEXT(","), true);
-
-		for (const FString& TagAndOptionalValueString : DisallowedAssetDataTagsAndValues)
-		{
-			TArray<FString> TagAndOptionalValue;
-			TagAndOptionalValueString.ParseIntoArray(TagAndOptionalValue, TEXT("="), true);
-			size_t NumStrings = TagAndOptionalValue.Num();
-			check((NumStrings == 1) || (NumStrings == 2)); // there should be a single '=' within a tag/value pair
-
-			if (!DisallowedAssetDataTags.IsValid())
-			{
-				DisallowedAssetDataTags = MakeShared<FAssetDataTagMap>();
-			}
-			DisallowedAssetDataTags->Add(FName(*TagAndOptionalValue[0]), (NumStrings > 1) ? TagAndOptionalValue[1] : FString());
-		}
-	}
-
-	const FString RequiredAssetDataTagsFilterString = MetadataProperty->GetMetaData(TEXT("RequiredAssetDataTags"));
-	if (!RequiredAssetDataTagsFilterString.IsEmpty())
-	{
-		TArray<FString> RequiredAssetDataTagsAndValues;
-		RequiredAssetDataTagsFilterString.ParseIntoArray(RequiredAssetDataTagsAndValues, TEXT(","), true);
-
-		for (const FString& TagAndOptionalValueString : RequiredAssetDataTagsAndValues)
-		{
-			TArray<FString> TagAndOptionalValue;
-			TagAndOptionalValueString.ParseIntoArray(TagAndOptionalValue, TEXT("="), true);
-			size_t NumStrings = TagAndOptionalValue.Num();
-			check((NumStrings == 1) || (NumStrings == 2)); // there should be a single '=' within a tag/value pair
-
-			if (!RequiredAssetDataTags.IsValid())
-			{
-				RequiredAssetDataTags = MakeShared<FAssetDataTagMap>();
-			}
-			RequiredAssetDataTags->Add(FName(*TagAndOptionalValue[0]), (NumStrings > 1) ? TagAndOptionalValue[1] : FString());
-		}
-	}
-}
-
-bool SPropertyEditorAsset::IsAssetAllowed(const FAssetData& InAssetData)
-{
-	if (DisallowedAssetDataTags.IsValid())
-	{
-		for (const auto& DisallowedTagAndValue : *DisallowedAssetDataTags.Get())
-		{
-			if (InAssetData.TagsAndValues.ContainsKeyValue(DisallowedTagAndValue.Key, DisallowedTagAndValue.Value))
-			{
-				return false;
-			}
-		}
-	}
-	if (RequiredAssetDataTags.IsValid())
-	{
-		for (const auto& RequiredTagAndValue : *RequiredAssetDataTags.Get())
-		{
-			if (!InAssetData.TagsAndValues.ContainsKeyValue(RequiredTagAndValue.Key, RequiredTagAndValue.Value))
-			{
-				return false;
-			}
-		}
-	}
-	return true;
-}
-
 // Awful hack to deal with UClass::FindCommonBase taking an array of non-const classes...
 static TArray<UClass*> ConstCastClassArray(TArray<const UClass*>& Classes)
 {
@@ -296,7 +226,7 @@ void SPropertyEditorAsset::Construct(const FArguments& InArgs, const TSharedPtr<
 	OnShouldFilterAsset = InArgs._OnShouldFilterAsset;
 	ObjectPath = InArgs._ObjectPath;
 
-	FProperty* Property = nullptr;
+	UProperty* Property = nullptr;
 	if (PropertyEditor.IsValid())
 	{
 		Property = PropertyEditor->GetPropertyNode()->GetProperty();
@@ -308,20 +238,6 @@ void SPropertyEditorAsset::Construct(const FArguments& InArgs, const TSharedPtr<
 
 	ObjectClass = InArgs._Class != nullptr ? InArgs._Class : GetObjectPropertyClass(Property);
 	bAllowClear = InArgs._AllowClear.IsSet() ? InArgs._AllowClear.GetValue() : (Property ? !(Property->PropertyFlags & CPF_NoClear) : true);
-
-	InitializeAssetDataTags(Property);
-	if (DisallowedAssetDataTags.IsValid() || RequiredAssetDataTags.IsValid())
-	{
-		// re-route the filter delegate to our own if we have our own asset data tags filter :
-		OnShouldFilterAsset.BindLambda([this, AssetFilter = InArgs._OnShouldFilterAsset](const FAssetData& InAssetData)
-		{
-			if (IsAssetAllowed(InAssetData))
-			{
-				return AssetFilter.IsBound() ? AssetFilter.Execute(InAssetData) : false;
-			}
-			return true;
-		});
-	}
 
 	InitializeClassFilters(Property);
 
@@ -336,7 +252,7 @@ void SPropertyEditorAsset::Construct(const FArguments& InArgs, const TSharedPtr<
 		ObjectClass = UClass::FindCommonBase(ConstCastClassArray(AllowedClassFilters));
 	}
 
-	bIsActor = ObjectClass->IsChildOf(AActor::StaticClass()) || ObjectClass->IsChildOf(UInterface::StaticClass());
+	bIsActor = ObjectClass->IsChildOf(AActor::StaticClass());
 
 	if (InArgs._NewAssetFactories.IsSet())
 	{
@@ -352,7 +268,7 @@ void SPropertyEditorAsset::Construct(const FArguments& InArgs, const TSharedPtr<
 	ChildSlot
 	[
 		SNew( SAssetDropTarget )
-		.OnIsAssetAcceptableForDropWithReason( this, &SPropertyEditorAsset::OnAssetDraggedOver )
+		.OnIsAssetAcceptableForDrop( this, &SPropertyEditorAsset::OnAssetDraggedOver )
 		.OnAssetDropped( this, &SPropertyEditorAsset::OnAssetDropped )
 		[
 			SAssignNew( ValueContentBox, SHorizontalBox )	
@@ -364,7 +280,7 @@ void SPropertyEditorAsset::Construct(const FArguments& InArgs, const TSharedPtr<
 
 	if (Property)
 	{
-		const FProperty* PropToConsider = GetActualMetadataProperty(Property);
+		const UProperty* PropToConsider = GetActualMetadataProperty(Property);
 		if (PropToConsider->HasAnyPropertyFlags(CPF_EditConst | CPF_DisableEditOnTemplate))
 		{
 			// There are some cases where editing an Actor Property is not allowed, such as when it is contained within a struct or a CDO
@@ -745,14 +661,14 @@ bool SPropertyEditorAsset::Supports( const TSharedRef< FPropertyEditor >& InProp
 	return Supports(PropertyNode->GetProperty());
 }
 
-bool SPropertyEditorAsset::Supports( const FProperty* NodeProperty )
+bool SPropertyEditorAsset::Supports( const UProperty* NodeProperty )
 {
-	const FObjectPropertyBase* ObjectProperty = CastField<const FObjectPropertyBase>( NodeProperty );
-	const FInterfaceProperty* InterfaceProperty = CastField<const FInterfaceProperty>( NodeProperty );
+	const UObjectPropertyBase* ObjectProperty = Cast<const UObjectPropertyBase>( NodeProperty );
+	const UInterfaceProperty* InterfaceProperty = Cast<const UInterfaceProperty>( NodeProperty );
 
 	if ( ( ObjectProperty != nullptr || InterfaceProperty != nullptr )
-		 && !NodeProperty->IsA(FClassProperty::StaticClass()) 
-		 && !NodeProperty->IsA(FSoftClassProperty::StaticClass()) )
+		 && !NodeProperty->IsA(UClassProperty::StaticClass()) 
+		 && !NodeProperty->IsA(USoftClassProperty::StaticClass()) )
 	{
 		return true;
 	}
@@ -799,8 +715,7 @@ void SPropertyEditorAsset::OnMenuOpenChanged(bool bOpen)
 
 bool SPropertyEditorAsset::IsFilteredActor( const AActor* const Actor ) const
 {
-	bool bActorTypeValid = ObjectClass->IsChildOf(UInterface::StaticClass()) ? Actor->GetClass()->ImplementsInterface(ObjectClass) : Actor->IsA(ObjectClass);
-	bool IsAllowed = bActorTypeValid && !Actor->IsChildActor() && IsClassAllowed(Actor->GetClass());
+	bool IsAllowed = Actor->IsA(ObjectClass) && !Actor->IsChildActor() && IsClassAllowed(Actor->GetClass());
 	return IsAllowed;
 }
 
@@ -1006,7 +921,7 @@ FPropertyAccess::Result SPropertyEditorAsset::GetValue( FObjectOrAssetData& OutV
 #if !UE_BUILD_SHIPPING
 		if (Object && !Object->IsValidLowLevel())
 		{
-			const FProperty* Property = PropertyEditor->GetProperty();
+			const UProperty* Property = PropertyEditor->GetProperty();
 			UE_LOG(LogPropertyNode, Fatal, TEXT("Property \"%s\" (%s) contains invalid data."), *Property->GetName(), *Property->GetCPPType());
 		}
 #endif
@@ -1037,7 +952,7 @@ FPropertyAccess::Result SPropertyEditorAsset::GetValue( FObjectOrAssetData& OutV
 #if !UE_BUILD_SHIPPING
 			if (!Object->IsValidLowLevel())
 			{
-				const FProperty* Property = PropertyEditor->GetProperty();
+				const UProperty* Property = PropertyEditor->GetProperty();
 				UE_LOG(LogPropertyNode, Fatal, TEXT("Property \"%s\" (%s) contains invalid data."), *Property->GetName(), *Property->GetCPPType());
 			}
 #endif
@@ -1187,7 +1102,7 @@ void SPropertyEditorAsset::OnUse()
 		&& !OnShouldFilterAsset.IsBound()
 		&& AllowedClassFilters.Num() == 0
 		&& DisallowedClassFilters.Num() == 0
-		&& (GEditor ? !GEditor->MakeAssetReferenceFilter(FAssetReferenceFilterContext()).IsValid() : true))
+		&& (GUnrealEd ? !GUnrealEd->MakeAssetReferenceFilter(FAssetReferenceFilterContext()).IsValid() : true))
 	{
 		PropertyEditor->GetPropertyHandle()->SetObjectValueFromSelection();
 	}
@@ -1240,7 +1155,7 @@ FSlateColor SPropertyEditorAsset::GetAssetClassColor()
 	return FSlateColor::UseForeground();
 }
 
-bool SPropertyEditorAsset::OnAssetDraggedOver( const UObject* InObject, FText& OutReason ) const
+bool SPropertyEditorAsset::OnAssetDraggedOver( const UObject* InObject ) const
 {
 	if (CanEdit() && InObject != nullptr && InObject->IsA(ObjectClass))
 	{
@@ -1251,7 +1166,7 @@ bool SPropertyEditorAsset::OnAssetDraggedOver( const UObject* InObject, FText& O
 		{
 			if (CanSetBasedOnCustomClasses(AssetData))
 			{
-				return CanSetBasedOnAssetReferenceFilter(AssetData, &OutReason);
+				return CanSetBasedOnAssetReferenceFilter(AssetData);
 			}
 		}
 	}
@@ -1390,7 +1305,7 @@ bool SPropertyEditorAsset::IsClassAllowed(const UClass* InClass) const
 
 bool SPropertyEditorAsset::CanSetBasedOnAssetReferenceFilter( const FAssetData& InAssetData, FText* OutOptionalFailureReason) const
 {
-	if (GEditor && InAssetData.IsValid())
+	if (GUnrealEd && InAssetData.IsValid())
 	{
 		TSharedPtr<IPropertyHandle> PropertyHandleToUse = GetMostSpecificPropertyHandle();
 		FAssetReferenceFilterContext AssetReferenceFilterContext;
@@ -1416,7 +1331,7 @@ bool SPropertyEditorAsset::CanSetBasedOnAssetReferenceFilter( const FAssetData& 
 			}
 		}
 
-		TSharedPtr<IAssetReferenceFilter> AssetReferenceFilter = GEditor->MakeAssetReferenceFilter(AssetReferenceFilterContext);
+		TSharedPtr<IAssetReferenceFilter> AssetReferenceFilter = GUnrealEd->MakeAssetReferenceFilter(AssetReferenceFilterContext);
 		if (AssetReferenceFilter.IsValid() && !AssetReferenceFilter->PassesFilter(InAssetData, OutOptionalFailureReason))
 		{
 			return false;
@@ -1440,31 +1355,21 @@ TSharedPtr<IPropertyHandle> SPropertyEditorAsset::GetMostSpecificPropertyHandle(
 	return TSharedPtr<IPropertyHandle>();
 }
 
-UClass* SPropertyEditorAsset::GetObjectPropertyClass(const FProperty* Property)
+UClass* SPropertyEditorAsset::GetObjectPropertyClass(const UProperty* Property)
 {
 	UClass* Class = nullptr;
 
-	if (CastField<const FObjectPropertyBase>(Property) != nullptr)
+	if (Cast<const UObjectPropertyBase>(Property) != nullptr)
 	{
-		Class = CastField<const FObjectPropertyBase>(Property)->PropertyClass;
-		if (Class == nullptr)
-		{
-			UE_LOG(LogPropertyNode, Warning, TEXT("Object Property (%s) has a null class, falling back to UObject"), *Property->GetFullName());
-			Class = UObject::StaticClass();
-		}
+		Class = Cast<const UObjectPropertyBase>(Property)->PropertyClass;
 	}
-	else if (CastField<const FInterfaceProperty>(Property) != nullptr)
+	else if (Cast<const UInterfaceProperty>(Property) != nullptr)
 	{
-		Class = CastField<const FInterfaceProperty>(Property)->InterfaceClass;
-		if (Class == nullptr)
-		{
-			UE_LOG(LogPropertyNode, Warning, TEXT("Interface Property (%s) has a null class, falling back to UObject"), *Property->GetFullName());
-			Class = UObject::StaticClass();
-		}
+		Class = Cast<const UInterfaceProperty>(Property)->InterfaceClass;
 	}
-	else
+
+	if (!ensureMsgf(Class != nullptr, TEXT("Property (%s) is not an object or interface class"), Property ? *Property->GetFullName() : TEXT("null")))
 	{
-		ensureMsgf(Class != nullptr, TEXT("Property (%s) is not an object or interface class"), Property ? *Property->GetFullName() : TEXT("null"));
 		Class = UObject::StaticClass();
 	}
 	return Class;

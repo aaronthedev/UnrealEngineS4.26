@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,7 +10,6 @@ class UNiagaraStackSystemSettingsGroup;
 class UNiagaraStackEmitterSettingsGroup;
 class UNiagaraStackScriptItemGroup;
 class UNiagaraStackEventHandlerGroup;
-class UNiagaraStackSimulationStagesGroup;
 class UNiagaraStackRenderItemGroup;
 
 UCLASS()
@@ -25,15 +24,12 @@ public:
 
 	virtual bool GetCanExpand() const override;
 	virtual bool GetShouldShowInStack() const override;
-	UNiagaraStackRenderItemGroup* GetRenderGroup() const
-	{
-		return RenderGroup;
-	}
+
 protected:
 	virtual void RefreshChildrenInternal(const TArray<UNiagaraStackEntry*>& CurrentChildren, TArray<UNiagaraStackEntry*>& NewChildren, TArray<FStackIssue>& NewIssues) override;
 
 private:
-	void EmitterArraysChanged();
+	void EmitterEventArraysChanged();
 
 private:
 	UPROPERTY()
@@ -62,9 +58,6 @@ private:
 
 	UPROPERTY()
 	UNiagaraStackEventHandlerGroup* AddEventHandlerGroup;
-
-	UPROPERTY()
-	UNiagaraStackSimulationStagesGroup* AddSimulationStageGroup;
 
 	UPROPERTY()
 	UNiagaraStackRenderItemGroup* RenderGroup;

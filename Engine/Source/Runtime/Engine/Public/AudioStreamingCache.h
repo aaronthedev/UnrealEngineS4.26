@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 AudioStreaming.h: Definitions of classes used for audio streaming.
@@ -16,14 +16,9 @@ AudioStreaming.h: Definitions of classes used for audio streaming.
 #include "Async/AsyncFileHandle.h"
 #include "HAL/ThreadSafeBool.h"
 #include "AudioStreaming.h"
-#include "Sound/SoundWave.h"
-#include "Sound/SoundWaveLoadingBehavior.h"
-#include "UObject/ObjectKey.h"
 
 
 #define DEBUG_STREAM_CACHE !UE_BUILD_SHIPPING
-
-ENGINE_API DECLARE_LOG_CATEGORY_EXTERN(LogAudioStreamCaching, Display, All);
 
 // Basic fixed-size LRU cache for retaining chunks of compressed audio data.
 class FAudioChunkCache
@@ -34,32 +29,35 @@ public:
 		USoundWave* SoundWave = nullptr;
 		FName SoundWaveName = FName();
 		uint32 ChunkIndex = INDEX_NONE;
-		FObjectKey ObjectKey = FObjectKey();
 
 #if WITH_EDITOR
 		// This is used in the editor to invalidate stale compressed chunks.
 		uint32 ChunkRevision = INDEX_NONE;
 #endif
-		inline bool operator==(const FChunkKey& Other) const;
-		
+
+		inline bool operator==(const FChunkKey& Other) const
+		{
+#if WITH_EDITOR
+			return (SoundWaveName == Other.SoundWaveName) && (ChunkIndex == Other.ChunkIndex) && (ChunkRevision == Other.ChunkRevision);
+#else
+			return (SoundWaveName == Other.SoundWaveName) && (ChunkIndex == Other.ChunkIndex);
+#endif
+		}
 	};
 
 	FAudioChunkCache(uint32 InMaxChunkSize, uint32 NumChunks, uint64 InMemoryLimitInBytes);
 	
 	~FAudioChunkCache();
 
-	// Places chunk in cache, or puts this chunk back at the top of the cache if it's already loaded. Returns the static lookup ID of the chunk in the cache on success,
-	// or InvalidAudioStreamCacheLookupID on failiure.
-	uint64 AddOrTouchChunk(const FChunkKey& InKey, TFunction<void(EAudioChunkLoadResult) > OnLoadCompleted, ENamedThreads::Type CallbackThread, bool bNeededForPlayback);
+	// Places chunk in cache, or puts this chunk back at the top of the cache if it's already loaded. Returns false on failure.
+	bool AddOrTouchChunk(const FChunkKey& InKey, TFunction<void(EAudioChunkLoadResult) > OnLoadCompleted, ENamedThreads::Type CallbackThread);
 
 	// Returns the chunk asked for, or an empty TArrayView if that chunk is not loaded.
-	// InOutCacheLookupID can optionally be set as a cache offset to use directly rather than searching the cache for a matching chunk.
-	// InOutCacheLookupID will be set to the offset the chunk is in the cache, which can be used for faster lookup in the future.
-	TArrayView<uint8> GetChunk(const FChunkKey& InKey, bool bBlockForLoadCompletion, bool bNeededForPlayback, uint64& InOutCacheLookupID);
+	TArrayView<uint8> GetChunk(const FChunkKey& InKey, bool bBlockForLoadCompletion);
 
 	// add an additional reference for a chunk.
-	void AddNewReferenceToChunk(const FChunkKey& InKey, uint64 InCacheLookupID);
-	void RemoveReferenceToChunk(const FChunkKey& InKey, uint64 InCacheLookupID);
+	void AddNewReferenceToChunk(const FChunkKey& InKey);
+	void RemoveReferenceToChunk(const FChunkKey& InKey);
 
 	// Evict all sounds from the cache.
 	void ClearCache();
@@ -67,11 +65,7 @@ public:
 	// This function will reclaim memory by freeing as many chunks as needed to free BytesToFree.
 	// returns the amount of bytes we were actually able to free.
 	// It's important to note that this will block any chunk requests.
-	uint64 TrimMemory(uint64 BytesToFree, bool bAllowRetainedChunkTrimming);
-
-	// Returns an array of the USoundwaves retaining the least recently used retained chunks in the cache.
-	// This can potentially return soundwaves for chunks that are retained by a currently playing sound, if the cache is thrashed enough.
-	TArray<FObjectKey> GetLeastRecentlyUsedRetainedSoundWaves(int32 NumSoundWavesToRetrieve);
+	uint64 TrimMemory(uint64 BytesToFree);
 
 	// This function will continue to lock until any async file loads are finished.
 	void BlockForAllPendingLoads() const;
@@ -102,18 +96,6 @@ public:
 	// This is for debugging purposes only. Prints the elements in the cache from most recently used to least.
 	// Returns the dimensions of this debug log so that multiple caches can be tiled across the screen.
 	TPair<int, int> DebugDisplay(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation) const;
-	// Generate a formatted text file for this cache.
-	FString DebugPrint();
-
-	void IncrementCacheOverflowCounter()
-	{
-		CacheOverflowCount.Increment();
-	}
-
-	int32 GetNumberOfCacheOverflows() const
-	{
-		return CacheOverflowCount.GetValue();
-	}
 
 private:
 
@@ -134,10 +116,6 @@ private:
 		// This is a cumulative moving average of a chunks location before it was 
 		float AverageLocationInCacheWhenNeeded;
 
-		// Note the loading behavior of the sound wave that inserted this element into the cache
-		ESoundWaveLoadingBehavior LoadingBehavior;
-		bool bLoadingBehaviorExternallyOverriden;
-
 		// if true, 
 		bool bWasCacheMiss;
 
@@ -147,7 +125,6 @@ private:
 			, TimeLoadStarted(0.0)
 			, TimeToLoad(0.0)
 			, AverageLocationInCacheWhenNeeded(0.0f)
-			, LoadingBehavior(ESoundWaveLoadingBehavior::Uninitialized)
 			, bWasCacheMiss(false)
 		{
 		}
@@ -158,27 +135,21 @@ private:
 			NumTimesTouched = 0;
 			TimeLoadStarted = 0;
 			TimeToLoad = 0.0f;
-			LoadingBehavior = ESoundWaveLoadingBehavior::Uninitialized;
 			bWasCacheMiss = false;
 			AverageLocationInCacheWhenNeeded = 0.0f;
 		}
 	};
 #endif
 
-
-	// counter for the number of times this cache has overflown
-	FThreadSafeCounter CacheOverflowCount;
-
-
 	// Struct containing a single element in our LRU Cache.  
 	struct FCacheElement
 	{
 		FChunkKey Key;
-		uint8* ChunkData;
+		TArray<uint8> ChunkData;
 		uint32 ChunkDataSize;
 		FCacheElement* MoreRecentElement;
 		FCacheElement* LessRecentElement;
-		uint64 CacheLookupID;
+		uint32 CacheIndex;
 
 		FThreadSafeBool bIsLoaded;
 		
@@ -190,20 +161,18 @@ private:
 #endif
 
 		// Handle to our async read request operation.
-		IBulkDataIORequest* ReadRequest;
+		TUniquePtr<FBulkDataIORequest> ReadRequest;
 
 #if DEBUG_STREAM_CACHE
 		FCacheElementDebugInfo DebugInfo;
 #endif
 
 		FCacheElement(uint32 MaxChunkSize, uint32 InCacheIndex)
-			: ChunkData(nullptr)
-			, ChunkDataSize(0)
+			: ChunkDataSize(0)
 			, MoreRecentElement(nullptr)
 			, LessRecentElement(nullptr)
-			, CacheLookupID(InCacheIndex)
+			, CacheIndex(InCacheIndex)
 			, bIsLoaded(false)
-			, ReadRequest(nullptr)
 		{
 		}
 
@@ -221,18 +190,15 @@ private:
 			}
 #endif
 
-			// Take ownership and close the storage
-			IBulkDataIORequest* LocalReadRequest = (IBulkDataIORequest*)FPlatformAtomics::InterlockedExchangePtr((void* volatile*)&ReadRequest, (void*)0x1);
-
-			if (LocalReadRequest && (void*)LocalReadRequest != (void*)0x1)
+			if (ReadRequest.IsValid())
 			{
 				if (bCancel)
 				{
-					LocalReadRequest->Cancel();
+					ReadRequest->Cancel();
 				}
 				
-				LocalReadRequest->WaitCompletion();
-				delete LocalReadRequest;
+				ReadRequest->WaitCompletion();
+				ReadRequest.Reset();
 			}
 		}
 
@@ -255,12 +221,6 @@ private:
 		{
 			WaitForAsyncLoadCompletion(true);
 			checkf(NumConsumers.GetValue() == 0, TEXT("Tried to destroy streaming cache while the cached data was in use!"));
-			if (ChunkData)
-			{
-				FMemory::Free(ChunkData);
-			}
-
-			ChunkData = nullptr;
 		}
 	};
 
@@ -299,8 +259,7 @@ private:
 	bool bLogCacheMisses;
 
 	// Returns cached element if it exists in our cache, nullptr otherwise.
-	// If the index of the element is already known, it can be used here to avoid searching the cache.
-	FCacheElement* FindElementForKey(const FChunkKey& InKey, uint64 CacheLookupID = InvalidAudioStreamCacheLookupID);
+	FCacheElement* FindElementForKey(const FChunkKey& InKey);
 
 	// Puts this element at the front of the linked list.
 	void TouchElement(FCacheElement* InElement);
@@ -316,11 +275,10 @@ private:
 	bool ShouldAddNewChunk() const;
 
 	// Returns the least recent chunk and fixes up the linked list accordingly.
-	FCacheElement* EvictLeastRecentChunk(bool bBlockForPendingLoads = false);
+	FCacheElement* EvictLeastRecentChunk();
 
-
-	void KickOffAsyncLoad(FCacheElement* CacheElement, const FChunkKey& InKey, TFunction<void(EAudioChunkLoadResult)> OnLoadCompleted, ENamedThreads::Type CallbackThread, bool bNeededForPlayback);
-	EAsyncIOPriorityAndFlags GetAsyncPriorityForChunk(const FChunkKey& InKey, bool bNeededForPlayback);
+	void KickOffAsyncLoad(FCacheElement* CacheElement, const FChunkKey& InKey, TFunction<void(EAudioChunkLoadResult)> OnLoadCompleted, ENamedThreads::Type CallbackThread);
+	EAsyncIOPriorityAndFlags GetAsyncPriorityForChunk(const FChunkKey& InKey);
 
 	// Calls OnLoadCompleted on current thread if CallbackThread == ENamedThreads::AnyThread, and dispatchs an async task on a named thread otherwise.
 	static void ExecuteOnLoadCompleteCallback(EAudioChunkLoadResult Result, const TFunction<void(EAudioChunkLoadResult)>& OnLoadCompleted, const ENamedThreads::Type& CallbackThread);
@@ -381,7 +339,7 @@ public:
 	virtual void NotifyLevelOffset( class ULevel* Level, const FVector& Offset ) override;
 	// End IStreamingManager interface
 
-	// IAudioStreamingManager interface (unused functions)
+	// IAudioStreamingManager interface
 	virtual void AddStreamingSoundWave(USoundWave* SoundWave) override;
 	virtual void RemoveStreamingSoundWave(USoundWave* SoundWave) override;
 	virtual void AddDecoder(ICompressedAudioInfo* CompressedAudioInfo) override;
@@ -392,15 +350,10 @@ public:
 	virtual void AddStreamingSoundSource(FSoundSource* SoundSource) override;
 	virtual void RemoveStreamingSoundSource(FSoundSource* SoundSource) override;
 	virtual bool IsManagedStreamingSoundSource(const FSoundSource* SoundSource) const override;
-	// End IAudioStreamingManager interface (unused)
-
-	// IAudioStreamingManager interface (used functions)
-	virtual bool RequestChunk(USoundWave* SoundWave, uint32 ChunkIndex, TFunction<void(EAudioChunkLoadResult)> OnLoadCompleted, ENamedThreads::Type ThreadToCallOnLoadCompletedOn, bool bForImmediatePlayback = false) override;
-	virtual FAudioChunkHandle GetLoadedChunk(const USoundWave* SoundWave, uint32 ChunkIndex, bool bBlockForLoad = false, bool bForImmediatePlayback = false) const override;
+	virtual bool RequestChunk(USoundWave* SoundWave, uint32 ChunkIndex, TFunction<void(EAudioChunkLoadResult)> OnLoadCompleted, ENamedThreads::Type ThreadToCallOnLoadCompletedOn) override;
+	virtual FAudioChunkHandle GetLoadedChunk(const USoundWave* SoundWave, uint32 ChunkIndex, bool bBlockForLoad = false) const override;
 	virtual uint64 TrimMemory(uint64 NumBytesToFree) override;
 	virtual int32 RenderStatAudioStreaming(UWorld* World, FViewport* Viewport, FCanvas* Canvas, int32 X, int32 Y, const FVector* ViewLocation, const FRotator* ViewRotation) override;
-	virtual FString GenerateMemoryReport() override;
-	virtual void SetProfilingMode(bool bEnabled) override;
 	// End IAudioStreamingManager interface
 
 protected:
@@ -428,8 +381,3 @@ protected:
 	
 
 };
-
-inline int32 GetTypeHash(const FAudioChunkCache::FChunkKey& InKey)
-{
-	return HashCombine(InKey.SoundWaveName.GetNumber(), InKey.ChunkIndex);
-}

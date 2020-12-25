@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,6 +15,4 @@ enum class ECheckedMetadataSpecifier
 	, Max
 };
 
-extern const TMap<FName, ECheckedMetadataSpecifier> GCheckedMetadataSpecifiers;
-
-ECheckedMetadataSpecifier GetCheckedMetadataSpecifier(FName Key);
+extern const TCHAR* GCheckedMetadataSpecifierStrings[(int32)ECheckedMetadataSpecifier::Max];

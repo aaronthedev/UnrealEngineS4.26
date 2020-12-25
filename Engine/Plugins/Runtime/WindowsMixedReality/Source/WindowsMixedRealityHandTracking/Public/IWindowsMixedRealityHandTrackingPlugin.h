@@ -1,13 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Modules/ModuleManager.h"
 #include "IInputDeviceModule.h"
-
-#include "WindowsMixedRealityHandTrackingTypes.h"
-
-enum class EControllerHand : uint8;
 
 /**
  * The public interface to this module.  In most cases, this interface is only public to sibling modules
@@ -62,7 +58,4 @@ public:
 
 	virtual void AddLiveLinkSource() = 0;
 	virtual void RemoveLiveLinkSource() = 0;
-
-	virtual bool GetHandJointTransform(EControllerHand Hand, EWMRHandKeypoint Keypoint, FTransform& Transform, float& OutRadius) = 0;
-
 };

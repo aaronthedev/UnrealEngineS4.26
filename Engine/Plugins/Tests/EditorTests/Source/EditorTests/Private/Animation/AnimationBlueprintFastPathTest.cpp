@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Misc/AutomationTest.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -55,7 +55,7 @@ bool FCheckFastPathLatentCommand::Update()
 			IAnimClassInterface* AnimClassInterface = Cast<IAnimClassInterface>(AnimBlueprint->GeneratedClass);
 			if (AnimClassInterface && DefaultAnimInstance)
 			{
-				for (const FStructPropertyPath& Property : AnimClassInterface->GetAnimNodeProperties())
+				for (UStructProperty* Property : AnimClassInterface->GetAnimNodeProperties())
 				{
 					if (Property->Struct->IsChildOf(FAnimNode_Base::StaticStruct()) && !Property->Struct->IsChildOf(FAnimNode_Root::StaticStruct()))
 					{
@@ -70,9 +70,35 @@ bool FCheckFastPathLatentCommand::Update()
 								}
 								for (const FExposedValueCopyRecord& CopyRecord : AnimNode->GetEvaluateGraphExposedInputs().CopyRecords)
 								{
-									if (CopyRecord.CopyIndex == INDEX_NONE)
+									if (CopyRecord.SourcePropertyName == NAME_None)
 									{
-										UE_LOG(LogAnimBlueprintFastPathTests, Error, TEXT("Anim blueprint has an invalid copy index (%s)"), *AnimBlueprint->GetName());
+										UE_LOG(LogAnimBlueprintFastPathTests, Error, TEXT("Anim blueprint has an invalid source property name (%s)"), *AnimBlueprint->GetName());
+									}
+									if (bIsStructTest)
+									{
+										if (CopyRecord.SourceSubPropertyName == NAME_None)
+										{
+											UE_LOG(LogAnimBlueprintFastPathTests, Error, TEXT("Anim blueprint has an invalid source sub struct property name (%s)"), *AnimBlueprint->GetName());
+										}
+									}
+									else
+									{
+										if (CopyRecord.SourceSubPropertyName != NAME_None)
+										{
+											UE_LOG(LogAnimBlueprintFastPathTests, Error, TEXT("Anim blueprint specifies a sub struct when it shouldnt (%s)"), *AnimBlueprint->GetName());
+										}
+									}
+									if (CopyRecord.DestProperty == nullptr)
+									{
+										UE_LOG(LogAnimBlueprintFastPathTests, Error, TEXT("Anim blueprint has an invalid dest property ptr (%s)"), *AnimBlueprint->GetName());
+									}
+									if (CopyRecord.DestArrayIndex < 0)
+									{
+										UE_LOG(LogAnimBlueprintFastPathTests, Error, TEXT("Anim blueprint has an invalid dest array index (%s)"), *AnimBlueprint->GetName());
+									}
+									if (CopyRecord.Size <= 0)
+									{
+										UE_LOG(LogAnimBlueprintFastPathTests, Error, TEXT("Anim blueprint has an invalid size (%s)"), *AnimBlueprint->GetName());
 									}
 								}
 							}

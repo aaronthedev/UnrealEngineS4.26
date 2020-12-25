@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -173,10 +173,14 @@ public:
 		bImmediateFlush = FParse::Param(FCommandLine::Get(), TEXT("FORCELOGFLUSH"));
 	}
 
-	FArchive& GetInnerArchive()
+	/**
+	 * Deletes the inner archive
+	 */
+	void DeleteInnerArchive()
 	{
-		return InnerArchive;
+		delete (FArchive*)&InnerArchive;
 	}
+
 
 	/**
 	 * Pushes the current archive position onto a stack

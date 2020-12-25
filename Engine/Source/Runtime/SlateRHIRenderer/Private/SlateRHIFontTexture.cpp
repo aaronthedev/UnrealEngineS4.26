@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SlateRHIFontTexture.h"
 #include "Rendering/SlateRenderer.h"
@@ -20,7 +20,7 @@ void FSlateFontTextureRHIResource::InitDynamicRHI()
 	if( Width > 0 && Height > 0 )
 	{
 		const EPixelFormat PixelFormat = GetRHIPixelFormat();
-		const ETextureCreateFlags TextCreateFlags = TexCreate_Dynamic | (bIsGrayscale ? TexCreate_None : TexCreate_SRGB);
+		const uint32 TextCreateFlags = TexCreate_Dynamic | (bIsGrayscale ? TexCreate_None : TexCreate_SRGB);
 
 		check( !IsValidRef( ShaderResource) );
 		FRHIResourceCreateInfo CreateInfo;
@@ -42,7 +42,7 @@ void FSlateFontTextureRHIResource::InitDynamicRHI()
 		  0,
 		  0
 		);
-		SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
+		SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
 
 		// Create a custom sampler state for using this texture in a deferred pass, where ddx / ddy are discontinuous
 		FSamplerStateInitializerRHI DeferredPassSamplerStateInitializer
@@ -56,7 +56,7 @@ void FSlateFontTextureRHIResource::InitDynamicRHI()
 		  0,
 		  0
 		);
-		DeferredPassSamplerStateRHI = GetOrCreateSamplerState(DeferredPassSamplerStateInitializer);
+		DeferredPassSamplerStateRHI = RHICreateSamplerState(DeferredPassSamplerStateInitializer);
 
 		INC_MEMORY_STAT_BY(STAT_SlateTextureGPUMemory, Width*Height*GPixelFormats[PixelFormat].BlockBytes);
 	}

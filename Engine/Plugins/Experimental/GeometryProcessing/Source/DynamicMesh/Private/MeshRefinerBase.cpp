@@ -1,8 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MeshRefinerBase.h"
 #include "DynamicMeshAttributeSet.h"
-#include "DynamicMeshChangeTracker.h"
+
 
 
 
@@ -107,81 +107,38 @@ bool FMeshRefinerBase::CheckIfFlipInvertsNormals(int a, int b, int c, int d, int
 bool FMeshRefinerBase::CanCollapseEdge(int eid, int a, int b, int c, int d, int tc, int td, int& collapse_to) const
 {
 	collapse_to = -1;
-	if (!Constraints)
+	if (Constraints == nullptr)
 	{
 		return true;
 	}
-
-	// are the vertices themselves constrained in a way that prevents this collapse? 
-	// nb: this modifies collapse_to if we have to keep a particular vert.
 	bool bVtx = CanCollapseVertex(eid, a, b, collapse_to);
 	if (bVtx == false)
 	{
 		return false;
 	}
 
-	// determine if edge constraints require keeping either vert.
-	bool bMustRetainA = false;
-	bool bMustRetainB = false;
-
-	// if edge ac is constrained, we must keep it and thus vertex a, likewise for edge bc and vertex b.
-	if (c != IndexConstants::InvalidID)
+	// when we lose a vtx in a collapse, we also lose two edges [iCollapse,c] and [iCollapse,d].
+	// If either of those edges is constrained, we would lose that constraint.
+	// This would be bad.
+	int iCollapse = (collapse_to == a) ? b : a;
+	if (c != IndexConstants::InvalidID) 
 	{
-		int32 eac = Mesh->FindEdgeFromTri(a, c, tc);
-		int32 ebc = Mesh->FindEdgeFromTri(b, c, tc);
-
-		bMustRetainA = bMustRetainA || (Constraints->GetEdgeConstraint(eac).IsUnconstrained() == false);
-		bMustRetainB = bMustRetainB || (Constraints->GetEdgeConstraint(ebc).IsUnconstrained() == false);
-		
+		int ec = Mesh->FindEdgeFromTri(iCollapse, c, tc);
+		if (Constraints->GetEdgeConstraint(ec).IsUnconstrained() == false)
+		{
+			return false;
+		}
 	}
-
-	// if edge ad is constrained, we must keep it and thus vertex a, likewise for edge bd and vertex b.
 	if (d != IndexConstants::InvalidID)
 	{
-		int32 ead = Mesh->FindEdgeFromTri(a, d, td);
-		int32 ebd = Mesh->FindEdgeFromTri(b, d, td);
-
-		bMustRetainA = bMustRetainA || (Constraints->GetEdgeConstraint(ead).IsUnconstrained() == false);
-		bMustRetainB = bMustRetainB || (Constraints->GetEdgeConstraint(ebd).IsUnconstrained() == false);
+		int ed = Mesh->FindEdgeFromTri(iCollapse, d, td);
+		if (Constraints->GetEdgeConstraint(ed).IsUnconstrained() == false)
+		{
+			return false;
+		}
 	}
 
-	bool bCanCollapse = true;
-
-	// adjacent edge constraints want us to keep both verts.. no can do.
-	if (bMustRetainA && bMustRetainB)
-	{
-			bCanCollapse = false;
-	}
-	else
-	{
-		
-		if (collapse_to == -1)
-		{
-			// the vertex constraints didn't require either vertex.  
-			// if the adjacent edge constraints require one, record it 
-			if (bMustRetainA && !bMustRetainB)
-			{
-				collapse_to = a;
-			}
-			else if (bMustRetainB && !bMustRetainA)
-			{
-				collapse_to = b;
-			}
-		}
-		else if (collapse_to == a && bMustRetainB)
-		{
-			// vertex and adjacent edge constraints conflict
-			bCanCollapse = false;
-		}
-		else if (collapse_to == b && bMustRetainA)
-		{
-			// vertex and adjacent edge constraints conflict
-			bCanCollapse = false;
-		}
-
-	}
-
-	return bCanCollapse;
+	return true;
 }
 
 
@@ -193,42 +150,31 @@ bool FMeshRefinerBase::CanCollapseEdge(int eid, int a, int b, int c, int d, int 
 /**
  * Resolve vertex constraints for collapsing edge eid=[a,b]. Generally we would
  * collapse a to b, and set the new position as 0.5*(v_a+v_b). However if a *or* b
- * are non-deletable, then we want to keep that vertex. This vertex (a or b) will be returned in collapse_to, 
- * which is -1 otherwise.
- * If a *and* b are non-deletable, then things are complicated (and documented below).
+ * are constrained, then we want to keep that vertex and collapse to its position.
+ * This vertex (a or b) will be returned in collapse_to, which is -1 otherwise.
+ * If a *and* b are constrained, then things are complicated (and documented below).
  */
 bool FMeshRefinerBase::CanCollapseVertex(int eid, int a, int b, int& collapse_to) const
 {
 	collapse_to = -1;
-	if (!Constraints)
+	if (Constraints == nullptr)
 	{
 		return true;
 	}
-
-	FVertexConstraint ca = Constraints->GetVertexConstraint(a);
-	FVertexConstraint cb = Constraints->GetVertexConstraint(b);
-	
-	bool bIsFixedA = (ca.bCanMove == false);
-	bool bIsFixedB = (cb.bCanMove == false);
-
-	if (bIsFixedA && bIsFixedB)
-	{
-		return false;
-	}
-
-	bool CanDeleteA = (ca.bCannotDelete == false);
-	bool CanDeleteB = (cb.bCannotDelete == false);
+	FVertexConstraint ca, cb;
+	Constraints->GetVertexConstraint(a, ca);
+	Constraints->GetVertexConstraint(b, cb);
 
 	// no constraint at all
-	if ( CanDeleteA && CanDeleteB && ca.Target == nullptr && cb.Target == nullptr )
+	if (ca.Fixed == false && cb.Fixed == false && ca.Target == nullptr && cb.Target == nullptr)
 	{
 		return true;
 	}
 
-	// handle a or b non-deletable
-	if ( ca.bCannotDelete && CanDeleteB )
+	// handle a or b fixed
+	if (ca.Fixed == true && cb.Fixed == false) 
 	{
-		// if b has a projection target, and it is different than a's target, we can't collapse
+		// if b is fixed to a target, and it is different than a's target, we can't collapse
 		if (cb.Target != nullptr && cb.Target != ca.Target)
 		{
 			return false;
@@ -236,8 +182,7 @@ bool FMeshRefinerBase::CanCollapseVertex(int eid, int a, int b, int& collapse_to
 		collapse_to = a;
 		return true;
 	}
-
-	if ( cb.bCannotDelete  && CanDeleteA )
+	if (cb.Fixed == true && ca.Fixed == false) 
 	{
 		if (ca.Target != nullptr && ca.Target != cb.Target)
 		{
@@ -246,9 +191,8 @@ bool FMeshRefinerBase::CanCollapseVertex(int eid, int a, int b, int& collapse_to
 		collapse_to = b;
 		return true;
 	}
-
-	// if both are non-deletable, and options allow, treat this edge as unconstrained (eg collapse to midpoint)
-	// TODO: tried picking a or b here, but something weird happens, where
+	// if both fixed, and options allow, treat this edge as unconstrained (eg collapse to midpoint)
+	// [RMS] tried picking a or b here, but something weird happens, where
 	//   eg cylinder cap will entirely erode away. Somehow edge lengths stay below threshold??
 	if (AllowCollapseFixedVertsWithSameSetID
 		&& ca.FixedSetID >= 0
@@ -288,44 +232,6 @@ bool FMeshRefinerBase::CanCollapseVertex(int eid, int a, int b, int& collapse_to
 
 
 
-void FMeshRefinerBase::SetMeshChangeTracker(FDynamicMeshChangeTracker* Tracker)
-{
-	ActiveChangeTracker = Tracker;
-}
-
-
-void FMeshRefinerBase::SaveTriangleBeforeModify(int32 TriangleID)
-{
-	if (ActiveChangeTracker)
-	{
-		ActiveChangeTracker->SaveTriangle(TriangleID, true);
-	}
-}
-
-void FMeshRefinerBase::SaveVertexTrianglesBeforeModify(int32 VertexID)
-{
-	if (ActiveChangeTracker)
-	{
-		for (int32 TriangleID : Mesh->VtxTrianglesItr(VertexID))
-		{
-			ActiveChangeTracker->SaveTriangle(TriangleID, true );
-		}
-	}
-}
-
-
-void FMeshRefinerBase::SaveEdgeBeforeModify(int32 EdgeID)
-{
-	if (ActiveChangeTracker)
-	{
-		FIndex2i EdgeVerts = Mesh->GetEdgeV(EdgeID);
-		SaveVertexTrianglesBeforeModify(EdgeVerts.A);
-		SaveVertexTrianglesBeforeModify(EdgeVerts.B);
-	}
-}
-
-
-
 void FMeshRefinerBase::RuntimeDebugCheck(int eid)
 {
 	if (DebugEdges.Contains(eid))
@@ -341,7 +247,7 @@ void FMeshRefinerBase::DoDebugChecks(bool bEndOfPass)
 
 	if ((DEBUG_CHECK_LEVEL > 2) || (bEndOfPass && DEBUG_CHECK_LEVEL > 1))
 	{
-		Mesh->CheckValidity(FDynamicMesh3::FValidityOptions::Permissive());
+		Mesh->CheckValidity(true);
 		DebugCheckUVSeamConstraints();
 	}
 }
@@ -350,7 +256,7 @@ void FMeshRefinerBase::DoDebugChecks(bool bEndOfPass)
 void FMeshRefinerBase::DebugCheckUVSeamConstraints()
 {
 	// verify UV constraints (temporary?)
-	if (Mesh->HasAttributes() && Mesh->Attributes()->PrimaryUV() != nullptr && Constraints)
+	if (Mesh->HasAttributes() && Mesh->Attributes()->PrimaryUV() != nullptr && Constraints != nullptr)
 	{
 		for (int eid : Mesh->EdgeIndicesItr())
 		{
@@ -365,7 +271,7 @@ void FMeshRefinerBase::DebugCheckUVSeamConstraints()
 			if (Mesh->Attributes()->PrimaryUV()->IsSeamVertex(vid))
 			{
 				auto cons = Constraints->GetVertexConstraint(vid);
-				check(cons.bCannotDelete == true);
+				check(cons.Fixed == true);
 			}
 		}
 	}
@@ -374,7 +280,7 @@ void FMeshRefinerBase::DebugCheckUVSeamConstraints()
 
 void FMeshRefinerBase::DebugCheckVertexConstraints()
 {
-	if (!Constraints)
+	if (Constraints == nullptr)
 	{
 		return;
 	}

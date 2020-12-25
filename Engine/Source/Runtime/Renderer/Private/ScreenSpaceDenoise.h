@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -208,15 +208,6 @@ public:
 		const FSceneTextureParameters& SceneTextures,
 		const FReflectionsInputs& ReflectionInputs,
 		const FReflectionsRayTracingConfig RayTracingConfig) const = 0;
-
-	/** Entry point to denoise water reflections. */
-	virtual FReflectionsOutputs DenoiseWaterReflections(
-		FRDGBuilder& GraphBuilder,
-		const FViewInfo& View,
-		FPreviousViewInfo* PreviousViewInfos,
-		const FSceneTextureParameters& SceneTextures,
-		const FReflectionsInputs& ReflectionInputs,
-		const FReflectionsRayTracingConfig RayTracingConfig) const = 0;
 	
 	/** Entry point to denoise reflections. */
 	virtual FAmbientOcclusionOutputs DenoiseAmbientOcclusion(
@@ -238,15 +229,6 @@ public:
 
 	/** Entry point to denoise SkyLight diffuse indirect. */
 	virtual FDiffuseIndirectOutputs DenoiseSkyLight(
-		FRDGBuilder& GraphBuilder,
-		const FViewInfo& View,
-		FPreviousViewInfo* PreviousViewInfos,
-		const FSceneTextureParameters& SceneTextures,
-		const FDiffuseIndirectInputs& Inputs,
-		const FAmbientOcclusionRayTracingConfig Config) const = 0;
-
-	/** Entry point to denoise reflected SkyLight diffuse indirect. */
-	virtual FDiffuseIndirectOutputs DenoiseReflectedSkyLight(
 		FRDGBuilder& GraphBuilder,
 		const FViewInfo& View,
 		FPreviousViewInfo* PreviousViewInfos,
@@ -281,5 +263,3 @@ public:
 
 // The interface for the renderer to denoise what it needs, Plugins can come and point this to custom interface.
 extern RENDERER_API const IScreenSpaceDenoiser* GScreenSpaceDenoiser;
-
-extern int GetReflectionsDenoiserMode();

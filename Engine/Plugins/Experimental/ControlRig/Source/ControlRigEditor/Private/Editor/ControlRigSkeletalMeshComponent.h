@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -34,8 +34,6 @@ class UControlRigSkeletalMeshComponent : public UDebugSkelMeshComponent
 
 	virtual void EnablePreview(bool bEnable, class UAnimationAsset * PreviewAsset) override;
 
-	// return true if preview animation is active 
-	virtual bool IsPreviewOn() const override;
 	// END UDebugSkeletalMeshComponent interface
 
 public:

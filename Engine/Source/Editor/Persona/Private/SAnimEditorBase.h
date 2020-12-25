@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -13,9 +13,6 @@
 #include "SAnimationScrubPanel.h"
 #include "EditorObjectsTracker.h"
 #include "SAnimCurvePanel.h"
-
-class FAnimModel;
-class SAnimTimeline;
 
 //////////////////////////////////////////////////////////////////////////
 // FTrackMarkerBar
@@ -36,17 +33,12 @@ class SAnimEditorBase : public SCompoundWidget, public FGCObject
 {
 public:
 	SLATE_BEGIN_ARGS(SAnimEditorBase)
-		: _DisplayAnimTimeline(true)
-		, _DisplayAnimScrubBar(false)
+		: _DisplayAnimInfoBar(true)
 	{}
 
 	SLATE_EVENT(FOnObjectsSelected, OnObjectsSelected)
 
-	SLATE_ARGUMENT( bool, DisplayAnimTimeline )
-
-	SLATE_ARGUMENT( bool, DisplayAnimScrubBar )
-
-	SLATE_ARGUMENT( TSharedPtr<FAnimModel>, AnimModel )
+	SLATE_ARGUMENT( bool, DisplayAnimInfoBar )
 
 	SLATE_END_ARGS()
 
@@ -146,9 +138,6 @@ protected:
 
 	/** Delegate called to select objects */
 	FOnObjectsSelected OnObjectsSelected;
-
-	/** The timeline widget */
-	TSharedPtr<SAnimTimeline> TimelineWidget;
 
 private:
 	float GetPercentageInternal() const;

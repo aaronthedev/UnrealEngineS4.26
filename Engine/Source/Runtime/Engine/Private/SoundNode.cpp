@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Sound/SoundNode.h"
@@ -7,14 +7,8 @@
 #include "Misc/App.h"
 #include "Sound/SoundNodeWavePlayer.h"
 #include "ContentStreaming.h"
+#include "Sound/SoundWave.h"
 #include "AudioCompressionSettingsUtils.h"
-
-static int32 BypassRetainInSoundNodesCVar = 0;
-FAutoConsoleVariableRef CVarBypassRetainInSoundNodes(
-	TEXT("au.streamcache.priming.BypassRetainFromSoundCues"),
-	BypassRetainInSoundNodesCVar,
-	TEXT("When set to 1, we ignore the loading behavior of sound classes set on a Sound Cue directly.\n"),
-	ECVF_Default);
 
 /*-----------------------------------------------------------------------------
 	USoundNode implementation.
@@ -23,7 +17,6 @@ USoundNode::USoundNode(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	RandomStream.Initialize(FApp::bUseFixedSeed ? GetFName() : NAME_None);
-	bIsRetainingAudio = false;
 }
 
 
@@ -99,19 +92,9 @@ UPTRINT USoundNode::GetNodeWaveInstanceHash(const UPTRINT ParentWaveInstanceHash
 
 void USoundNode::PrimeChildWavePlayers(bool bRecurse)
 {
-	OverrideLoadingBehaviorOnChildWaves(bRecurse, ESoundWaveLoadingBehavior::PrimeOnLoad);
-}
-
-void USoundNode::RetainChildWavePlayers(bool bRecurse)
-{
-	OverrideLoadingBehaviorOnChildWaves(bRecurse, ESoundWaveLoadingBehavior::RetainOnLoad);
-}
-
-void USoundNode::OverrideLoadingBehaviorOnChildWaves(const bool bRecurse, const ESoundWaveLoadingBehavior InLoadingBehavior)
-{
-	if (!BypassRetainInSoundNodesCVar && FPlatformCompressionUtilities::IsCurrentPlatformUsingStreamCaching())
+	if (FPlatformCompressionUtilities::IsCurrentPlatformUsingStreamCaching())
 	{
-		// Search child nodes for wave players, then override their waves' loading behavior.
+		// Search child nodes for wave players, then prime their waves.
 		for (USoundNode* ChildNode : ChildNodes)
 		{
 			if (ChildNode)
@@ -119,85 +102,21 @@ void USoundNode::OverrideLoadingBehaviorOnChildWaves(const bool bRecurse, const 
 				ChildNode->ConditionalPostLoad();
 				if (bRecurse)
 				{
-					ChildNode->OverrideLoadingBehaviorOnChildWaves(true, InLoadingBehavior);
+					ChildNode->PrimeChildWavePlayers(true);
 				}
 
 				USoundNodeWavePlayer* WavePlayer = Cast<USoundNodeWavePlayer>(ChildNode);
 				if (WavePlayer != nullptr)
 				{
 					USoundWave* SoundWave = WavePlayer->GetSoundWave();
-					if (SoundWave)
+					if (SoundWave && SoundWave->IsStreaming() && SoundWave->GetNumChunks() > 1)
 					{
-						SoundWave->OverrideLoadingBehavior(InLoadingBehavior);
+						IStreamingManager::Get().GetAudioStreamingManager().RequestChunk(SoundWave, 1, [](EAudioChunkLoadResult) {});
 					}
 				}
 			}
 		}
 	}
-
-	if (!GIsEditor && InLoadingBehavior == ESoundWaveLoadingBehavior::RetainOnLoad)
-	{
-		bIsRetainingAudio = true;
-	}
-}
-
-void USoundNode::ReleaseRetainerOnChildWavePlayers(bool bRecurse)
-{
-	if (bIsRetainingAudio && FPlatformCompressionUtilities::IsCurrentPlatformUsingStreamCaching())
-	{
-		// Search child nodes for wave players, then release their retainers.
-		for (USoundNode* ChildNode : ChildNodes)
-		{
-			if (ChildNode)
-			{
-				ChildNode->ConditionalPostLoad();
-				if (bRecurse)
-				{
-					ChildNode->ReleaseRetainerOnChildWavePlayers(true);
-				}
-
-				USoundNodeWavePlayer* WavePlayer = Cast<USoundNodeWavePlayer>(ChildNode);
-				if (WavePlayer != nullptr)
-				{
-					USoundWave* SoundWave = WavePlayer->GetSoundWave();
-					if (SoundWave)
-					{
-						SoundWave->ReleaseCompressedAudio();
-					}
-				}
-			}
-		}
-	}
-
-	bIsRetainingAudio = false;
-}
-
-void USoundNode::RemoveSoundWaveOnChildWavePlayers()
-{
-	// Search child nodes for wave players, then null out their sound wave.
-	for (USoundNode* ChildNode : ChildNodes)
-	{
-		if (ChildNode)
-		{
-			ChildNode->ConditionalPostLoad();
-			ChildNode->RemoveSoundWaveOnChildWavePlayers();
-
-			USoundNodeWavePlayer* WavePlayer = Cast<USoundNodeWavePlayer>(ChildNode);
-			if (WavePlayer != nullptr)
-			{
-				USoundWave* SoundWave = WavePlayer->GetSoundWave();
-				if (SoundWave && !WavePlayer->IsCurrentlyAsyncLoadingAsset())
-				{
-					WavePlayer->ClearAssetReferences();
-				}
-			}
-		}
-	}
-}
-
-void USoundNode::BeginDestroy()
-{
-	Super::BeginDestroy();
 }
 
 void USoundNode::ParseNodes( FAudioDevice* AudioDevice, const UPTRINT NodeWaveInstanceHash, FActiveSound& ActiveSound, const FSoundParseParameters& ParseParams, TArray<FWaveInstance*>& WaveInstances )
@@ -276,7 +195,6 @@ float USoundNode::GetDuration()
 	{
 		if (ChildNode)
 		{
-			ChildNode->ConditionalPostLoad();
 			MaxDuration = FMath::Max(ChildNode->GetDuration(), MaxDuration);
 		}
 	}

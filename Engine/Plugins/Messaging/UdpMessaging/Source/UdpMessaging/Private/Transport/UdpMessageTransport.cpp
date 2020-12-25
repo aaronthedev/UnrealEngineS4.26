@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Transport/UdpMessageTransport.h"
 #include "UdpMessagingPrivate.h"
@@ -100,9 +100,9 @@ bool FUdpMessageTransport::StartTransport(IMessageTransportHandler& Handler)
 	// create & initialize unicast socket (only on multi-process platforms)
 	UnicastSocket = FUdpSocketBuilder(TEXT("UdpMessageUnicastSocket"))
 		.AsNonBlocking()
+		// Do not bind the unicast socket so it may send to addresses not in its range (i.e other adapters)
 		.BoundToEndpoint(UnicastEndpoint)
 		.WithMulticastLoopback()
-		.WithMulticastTtl(MulticastTtl) // since this socket is also used to send to multicast addresses
 		.WithReceiveBufferSize(UDP_MESSAGING_RECEIVE_BUFFER_SIZE);
 
 	if (UnicastSocket == nullptr)
@@ -118,12 +118,11 @@ bool FUdpMessageTransport::StartTransport(IMessageTransportHandler& Handler)
 		.AsNonBlocking()
 		.AsReusable()
 #if PLATFORM_WINDOWS
-		// If multiple bus instances bind the same unicast ip:port combination (allowed as the socket is marked as reusable), 
-		// then for each packet sent to that ip:port combination, only one of the instances (at the discretion of the OS) will receive it. 
-		// The instance that receives the packet may vary over time, seemingly based on the congestion of its socket.
-		// This isn't the intended usage.
-		// To allow traffic to be sent directly to unicast for discovery, set the interface and port for the unicast endpoint
-		// However for legacy reason, keep binding this as well, although it might be unreliable in some cases
+		// For 0.0.0.0, Windows will pick the default interface instead of all
+		// interfaces. Here we allow to specify which interface to bind to. 
+		// On all other platforms we bind to the wildcard IP address in order
+		// to be able to also receive packets that were sent directly to the
+		// interface IP instead of the multicast address.
 		.BoundToAddress(UnicastEndpoint.Address)
 #endif
 		.BoundToPort(MulticastEndpoint.Port)

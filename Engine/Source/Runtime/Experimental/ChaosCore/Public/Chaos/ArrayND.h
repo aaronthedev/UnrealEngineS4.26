@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Chaos/Array.h"
@@ -79,7 +79,6 @@ class TArrayNDBase
 		return *this;
 	}
 	FORCEINLINE T_DERIVED Copy() const { return T_DERIVED(MCounts, MArray); }
-	FORCEINLINE void Copy(const TArrayNDBase<T_DERIVED, T, d>& Source) { MCounts = Source.MCounts; MArray = Source.MArray; }
 	FORCEINLINE void Fill(const T& Value)
 	{
 		for (auto& Elem : MArray)
@@ -91,7 +90,6 @@ class TArrayNDBase
 	FORCEINLINE T& operator[](const int32 i) { return MArray[i]; }
 
 	FORCEINLINE int32 Num() const { return MArray.Num(); }
-	FORCEINLINE TVector<int32, d> Counts() const { return MCounts; }
 
   protected:
 	TVector<int32, d> MCounts;

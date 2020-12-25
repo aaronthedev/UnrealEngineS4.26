@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -24,10 +24,6 @@ class UMaterialExpressionSingleLayerWaterMaterialOutput : public UMaterialExpres
 	/** Input for phase function 'g' parameter describing how much forward(g<0) or backward (g>0) light scatter around. Valid range is [-1,1]. */
 	UPROPERTY()
 	FExpressionInput PhaseG;
-
-	/** Input for custom color multiplier for scene color behind water. Can be used for caustics textures etc. Defaults to 1.0. Valid range is [0,+inf[. */
-	UPROPERTY()
-	FExpressionInput ColorScaleBehindWater;
 
 public:
 #if WITH_EDITOR

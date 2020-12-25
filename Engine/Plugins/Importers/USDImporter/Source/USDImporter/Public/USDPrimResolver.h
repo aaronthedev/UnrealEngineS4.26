@@ -1,14 +1,19 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Templates/SubclassOf.h"
+#include "USDMemory.h"
 #include "UObject/Object.h"
 
-#include "USDMemory.h"
+#if USE_USD_SDK
+#include "USDIncludesStart.h"
 
-#include "UsdWrappers/UsdPrim.h"
+#include "pxr/usd/usd/prim.h"
+
+#include "USDIncludesEnd.h"
+#endif // #if USE_USD_SDK
 
 #include "USDPrimResolver.generated.h"
 
@@ -19,6 +24,7 @@ struct FUsdImportContext;
 struct FUsdGeomData;
 struct FUSDSceneImportContext;
 
+#if USE_USD_SDK
 struct FUsdAssetPrimToImport
 {
 	FUsdAssetPrimToImport()
@@ -27,10 +33,10 @@ struct FUsdAssetPrimToImport
 	{}
 
 	/** The prim that represents the root most prim of the mesh asset being created */
-	UE::FUsdPrim Prim;
+	TUsdStore< pxr::UsdPrim > Prim;
 
 	/** Each prim in this list represents a list of prims which have LODs at a specific lod index */
-	TArray< UE::FUsdPrim > MeshPrims;
+	TArray< TUsdStore< pxr::UsdPrim > > MeshPrims;
 	int32 NumLODs;
 	FMatrix CustomPrimTransform;
 	FString AssetPath;
@@ -40,26 +46,28 @@ struct FActorSpawnData
 {
 	FTransform WorldTransform;
 	/** The prim that represents this actor */
-	UE::FUsdPrim ActorPrim;
+	TUsdStore< pxr::UsdPrim > ActorPrim;
 	/** The prim that represents the parent of this actor for attachment (not necessarily the parent of this prim) */
-	UE::FUsdPrim AttachParentPrim;
+	TUsdStore< pxr::UsdPrim > AttachParentPrim;
 	/** List of assets under this actor to create */
 	TArray<FUsdAssetPrimToImport> AssetsToImport;
 	FString ActorClassName;
 	FString AssetPath;
 	FName ActorName;
 };
+#endif // #if USE_USD_SDK
 
 /** Base class for all evaluation of prims for geometry and actors */
-UCLASS(transient, MinimalAPI, Deprecated)
-class UDEPRECATED_UUSDPrimResolver : public UObject
+UCLASS(transient, MinimalAPI)
+class UUSDPrimResolver : public UObject
 {
 	GENERATED_BODY()
 
 public:
+#if USE_USD_SDK
 	virtual void Init();
 
-	virtual void FindMeshAssetsToImport(FUsdImportContext& ImportContext, const UE::FUsdPrim& StartPrim, const UE::FUsdPrim& ModelPrim, TArray<FUsdAssetPrimToImport>& OutAssetsToImport, bool bRecursive = true) const;
+	virtual void FindMeshAssetsToImport(FUsdImportContext& ImportContext, const TUsdStore< pxr::UsdPrim >& StartPrim, const TUsdStore< pxr::UsdPrim >& ModelPrim, TArray<FUsdAssetPrimToImport>& OutAssetsToImport, bool bRecursive = true) const;
 
 	/**
 	 * Finds any mesh children of a parent prim
@@ -69,19 +77,20 @@ public:
 	 * @param bOnlyLODRoots		Only return prims which are parents of LOD meshes (i.e the prim has an LOD variant set)
 	 * @param OutMeshChilden	Flattened list of descendant prims with geometry
 	 */
-	virtual void FindMeshChildren(FUsdImportContext& ImportContext, const UE::FUsdPrim& ParentPrim, bool bOnlyLODRoots, TArray< UE::FUsdPrim >& OutMeshChildren) const;
+	virtual void FindMeshChildren(FUsdImportContext& ImportContext, const TUsdStore< pxr::UsdPrim >& ParentPrim, bool bOnlyLODRoots, TArray< TUsdStore< pxr::UsdPrim > >& OutMeshChildren) const;
 
 	virtual void FindActorsToSpawn(FUSDSceneImportContext& ImportContext, TArray<FActorSpawnData>& OutActorSpawnDatas) const;
 
-
+	
 	virtual AActor* SpawnActor(FUSDSceneImportContext& ImportContext, const FActorSpawnData& SpawnData);
 
 	virtual TSubclassOf<AActor> FindActorClass(FUSDSceneImportContext& ImportContext, const FActorSpawnData& SpawnData) const;
 
 protected:
-	virtual void FindActorsToSpawn_Recursive(FUSDSceneImportContext& ImportContext, const UE::FUsdPrim& Prim, const UE::FUsdPrim& ParentPrim, TArray<FActorSpawnData>& OutSpawnDatas) const;
+	virtual void FindActorsToSpawn_Recursive(FUSDSceneImportContext& ImportContext, const TUsdStore< pxr::UsdPrim >& Prim, const TUsdStore< pxr::UsdPrim >& ParentPrim, TArray<FActorSpawnData>& OutSpawnDatas) const;
 	bool IsValidPathForImporting(const FString& TestPath) const;
 protected:
 	IAssetRegistry* AssetRegistry;
 	TMap<FString, AActor*> PrimToActorMap;
+#endif // #if USE_USD_SDK
 };

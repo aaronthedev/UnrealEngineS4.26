@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Chaos/Array.h"
@@ -18,17 +18,8 @@ namespace Chaos
 		using Base = TContainerConstraintHandle<TPBDRigidDynamicSpringConstraints<T, d>>;
 		using FConstraintContainer = TPBDRigidDynamicSpringConstraints<T, d>;
 
-		TPBDRigidDynamicSpringConstraintHandle() 
-		{
-		}
-
-		TPBDRigidDynamicSpringConstraintHandle(FConstraintContainer* InConstraintContainer, int32 InConstraintIndex) 
-			: TContainerConstraintHandle<TPBDRigidDynamicSpringConstraints<T, d>>(StaticType(),InConstraintContainer, InConstraintIndex) 
-		{
-		}
-
-		static FConstraintHandle::EType StaticType() { return FConstraintHandle::EType::DynamicSpring; }
-		TVector<TGeometryParticleHandle<T, d>*, 2> GetConstrainedParticles() const;
+		TPBDRigidDynamicSpringConstraintHandle() {}
+		TPBDRigidDynamicSpringConstraintHandle(FConstraintContainer* InConstraintContainer, int32 InConstraintIndex) : TContainerConstraintHandle<TPBDRigidDynamicSpringConstraints<T, d>>(InConstraintContainer, InConstraintIndex) {}
 
 	protected:
 		using Base::ConstraintIndex;
@@ -36,16 +27,15 @@ namespace Chaos
 	};
 
 	template<class T, int d>
-	class CHAOS_API TPBDRigidDynamicSpringConstraints : public FPBDConstraintContainer
+	class CHAOS_API TPBDRigidDynamicSpringConstraints : public TPBDConstraintContainer<T, d>
 	{
 	public:
-		using Base = FPBDConstraintContainer;
+		using Base = TPBDConstraintContainer<T, d>;
 		using FConstrainedParticlePair = TVector<TGeometryParticleHandle<T, d>*, 2>;
 		using FReal = T;
 		static const int Dimensions = d;
-		using FConstraintContainerHandle = TPBDRigidDynamicSpringConstraintHandle<FReal, Dimensions>;
+		using FConstraintHandle = TPBDRigidDynamicSpringConstraintHandle<FReal, Dimensions>;
 		using FConstraintHandleAllocator = TConstraintHandleAllocator<TPBDRigidDynamicSpringConstraints<FReal, Dimensions>>;
-		using FHandles = TArray<FConstraintContainerHandle*>;
 
 		TPBDRigidDynamicSpringConstraints(const T InStiffness = (T)1)
 			: CreationThreshold(1), MaxSprings(1), Stiffness(InStiffness) 
@@ -86,7 +76,7 @@ namespace Chaos
 		 * Add a constraint initialized from current world-space particle positions.
 		 * You would use this method when your objects are already positioned in the world.
 		 */
-		FConstraintContainerHandle* AddConstraint(const FConstrainedParticlePair& InConstrainedParticles)
+		FConstraintHandle* AddConstraint(const FConstrainedParticlePair& InConstrainedParticles)
 		{
 			Handles.Add(HandleAllocator.AllocHandle(this, Handles.Num()));
 			Constraints.Add(InConstrainedParticles);
@@ -100,7 +90,7 @@ namespace Chaos
 		 */
 		void RemoveConstraint(int ConstraintIndex)
 		{
-			FConstraintContainerHandle* ConstraintHandle = Handles[ConstraintIndex];
+			FConstraintHandle* ConstraintHandle = Handles[ConstraintIndex];
 			if (ConstraintHandle != nullptr)
 			{
 				// Release the handle for the freed constraint
@@ -121,14 +111,10 @@ namespace Chaos
 			}
 		}
 
-		/**
-		 * Disabled the specified constraint.
-		 */
-		void DisableConstraints(const TSet<TGeometryParticleHandle<FReal, 3>*>& RemovedParticles)
+		// @todo(ccaulfield): rename/remove  this
+		void RemoveConstraints(const TSet<TGeometryParticleHandle<T, d>*>& RemovedParticles)
 		{
-			// @todo(chaos)
 		}
-
 
 		/**
 		 * Set the distance threshold below which springs get created between particles.
@@ -150,26 +136,16 @@ namespace Chaos
 		//
 		// Constraint API
 		//
-		FHandles& GetConstraintHandles()
-		{
-			return Handles;
-		}
-		const FHandles& GetConstConstraintHandles() const
-		{
-			return Handles;
-		}
 
-
-		const FConstraintContainerHandle* GetConstraintHandle(int32 ConstraintIndex) const
+		const FConstraintHandle* GetConstraintHandle(int32 ConstraintIndex) const
 		{
 			return Handles[ConstraintIndex];
 		}
 
-		FConstraintContainerHandle* GetConstraintHandle(int32 ConstraintIndex)
+		FConstraintHandle* GetConstraintHandle(int32 ConstraintIndex)
 		{
 			return Handles[ConstraintIndex];
 		}
-
 
 		/**
 		 * Get the particles that are affected by the specified constraint.
@@ -180,35 +156,23 @@ namespace Chaos
 		}
 
 
-
 		//
 		// Island Rule API
 		//
 
-		void PrepareTick() {}
-
-		void UnprepareTick() {}
-
-		void PrepareIteration(FReal Dt) {}
-
-		void UnprepareIteration(FReal Dt) {}
-
 		void UpdatePositionBasedState(const T Dt);
 
-		bool Apply(const T Dt, const TArray<FConstraintContainerHandle*>& InConstraintHandles, const int32 It, const int32 NumIts)
+		void Apply(const T Dt, const TArray<FConstraintHandle*>& InConstraintHandles, const int32 It, const int32 NumIts)
 		{
-			for (FConstraintContainerHandle* ConstraintHandle : InConstraintHandles)
+			for (FConstraintHandle* ConstraintHandle : InConstraintHandles)
 			{
 				ApplySingle(Dt, ConstraintHandle->GetConstraintIndex());
 			}
-
-			// TODO: Return true only if more iteration are needed
-			return true;
 		}
 
-		bool ApplyPushOut(const T Dt, const TArray<FConstraintContainerHandle*>& InConstraintHandles, const int32 It, const int32 NumIts)
+		// @todo(ccaulfield): remove  this
+		void ApplyPushOut(const T Dt, const TArray<FConstraintHandle*>& InConstraintHandles)
 		{
-			return false;
 		}
 
 	protected:
@@ -227,7 +191,7 @@ namespace Chaos
 		int32 MaxSprings;
 		T Stiffness;
 
-		FHandles Handles;
+		TArray<FConstraintHandle*> Handles;
 		FConstraintHandleAllocator HandleAllocator;
 	};
 }

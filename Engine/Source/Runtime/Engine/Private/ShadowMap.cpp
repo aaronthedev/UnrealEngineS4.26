@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShadowMap.h"
 #include "Engine/MapBuildDataRegistry.h"
@@ -8,7 +8,7 @@
 #include "Interfaces/ITargetPlatform.h"
 #include "Engine/ShadowMapTexture2D.h"
 #include "Components/InstancedStaticMeshComponent.h"
-#include "Engine/InstancedStaticMesh.h"
+#include "InstancedStaticMesh.h"
 #include "LightMap.h"
 #include "UObject/Package.h"
 #include "Misc/FeedbackContext.h"
@@ -16,7 +16,6 @@
 
 #if WITH_EDITOR
 
-	#include "Modules/ModuleManager.h"
 	#include "TextureCompressorModule.h"
 
 	// NOTE: We're only counting the top-level mip-map for the following variables.
@@ -110,7 +109,7 @@ struct FShadowMapAllocation
 				// TODO: We currently only support one LOD of static lighting in foliage
 				// Need to create per-LOD instance data to fix that
 				MeshBuildData->PerInstanceLightmapData[InstanceIndex].ShadowmapUVBias = ShadowMap->GetCoordinateBias();
-				const int32 RenderIndex = Component->GetRenderIndex(InstanceIndex);
+				int32 RenderIndex = Component->InstanceReorderTable.IsValidIndex(InstanceIndex) ? Component->InstanceReorderTable[InstanceIndex] : InstanceIndex;
 				if (RenderIndex != INDEX_NONE)
 				{
 					Component->InstanceUpdateCmdBuffer.SetShadowMapData(RenderIndex, MeshBuildData->PerInstanceLightmapData[InstanceIndex].ShadowmapUVBias);

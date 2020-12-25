@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LevelVariantSets.h"
 
@@ -156,7 +156,6 @@ void ULevelVariantSets::RemoveVariantSets(const TArray<UVariantSet*> InVariantSe
 	for (UVariantSet* VariantSet : InVariantSets)
 	{
 		VariantSets.Remove(VariantSet);
-		VariantSet->Rename(nullptr, GetTransientPackage());
 	}
 }
 
@@ -179,7 +178,7 @@ FString ULevelVariantSets::GetUniqueVariantSetName(const FString& InPrefix)
 	FString LastChar = VarSetName.Right(1);
 	while (LastChar.IsNumeric())
 	{
-		VarSetName.LeftChopInline(1, false);
+		VarSetName = VarSetName.LeftChop(1);
 		LastChar = VarSetName.Right(1);
 	}
 
@@ -364,7 +363,6 @@ UWorld* ULevelVariantSets::ComputeCurrentWorld(int32& OutPIEInstanceID)
 	UWorld* EditorWorld = nullptr;
 	for (const FWorldContext& Context : GEngine->GetWorldContexts())
 	{
-		// Return the first PIE world that we can find
 		if (Context.WorldType == EWorldType::PIE)
 		{
 			UWorld* ThisWorld = Context.World();
@@ -374,9 +372,7 @@ UWorld* ULevelVariantSets::ComputeCurrentWorld(int32& OutPIEInstanceID)
 				return ThisWorld;
 			}
 		}
-		// Or else return a valid Editor world. For "Standalone mode" the world type is Game.
-		// Note that this code won't run in an actual packaged build though, as its inside an #if WITH_EDITOR block
-		else if (Context.WorldType == EWorldType::Editor | Context.WorldType == EWorldType::Game)
+		else if (Context.WorldType == EWorldType::Editor)
 		{
 			EditorWorld = Context.World();
 		}

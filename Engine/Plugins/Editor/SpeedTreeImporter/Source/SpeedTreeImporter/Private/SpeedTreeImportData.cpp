@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "SpeedTreeImportData.h"
 #include "PropertyHandle.h"
 #include "DetailLayoutBuilder.h"
@@ -57,7 +57,7 @@ void USpeedTreeImportData::SaveOptions()
 {
 	int32 PortFlags = 0;
 
-	for (FProperty* Property = GetClass()->PropertyLink; Property; Property = Property->PropertyLinkNext)
+	for (UProperty* Property = GetClass()->PropertyLink; Property; Property = Property->PropertyLinkNext)
 	{
 		if (!Property->HasAnyPropertyFlags(CPF_Config))
 		{
@@ -69,7 +69,7 @@ void USpeedTreeImportData::SaveOptions()
 		const bool bIsPropertyInherited = Property->GetOwnerClass() != GetClass();
 		UObject* SuperClassDefaultObject = GetClass()->GetSuperClass()->GetDefaultObject();
 
-		FArrayProperty* Array = CastField<FArrayProperty>(Property);
+		UArrayProperty* Array = dynamic_cast<UArrayProperty*>(Property);
 		if (Array)
 		{
 			FConfigSection* Sec = GConfig->GetSectionPrivate(*Section, 1, 0, *GEditorPerProjectIni);
@@ -108,7 +108,7 @@ void USpeedTreeImportData::LoadOptions()
 {
 	int32 PortFlags = 0;
 
-	for (FProperty* Property = GetClass()->PropertyLink; Property; Property = Property->PropertyLinkNext)
+	for (UProperty* Property = GetClass()->PropertyLink; Property; Property = Property->PropertyLinkNext)
 	{
 		if (!Property->HasAnyPropertyFlags(CPF_Config))
 		{
@@ -122,7 +122,7 @@ void USpeedTreeImportData::LoadOptions()
 
 		const FString& PropFileName = GEditorPerProjectIni;
 
-		FArrayProperty* Array = CastField<FArrayProperty>(Property);
+		UArrayProperty* Array = dynamic_cast<UArrayProperty*>(Property);
 		if (Array)
 		{
 			FConfigSection* Sec = GConfig->GetSectionPrivate(*Section, 0, 1, *GEditorPerProjectIni);

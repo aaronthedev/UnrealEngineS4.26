@@ -1,6 +1,7 @@
-SET ILMBASE_ROOT=%cd%/../../../../../../Source/ThirdParty/openexr/Deploy/OpenEXR-2.3.0/OpenEXR
+SET ILMBASE_ROOT=%cd%/AlembicDeploy/VS2015/x64/
 SET HDF5_ROOT=%cd%/AlembicDeploy/VS2015/x64/
 mkdir build
+cd build
 cd build
 mkdir VS2015
 cd VS2015

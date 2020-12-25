@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -7,20 +7,25 @@ public class OutputRemap : ModuleRules
 {
 	public OutputRemap(ReadOnlyTargetRules ROTargetRules) : base(ROTargetRules)
 	{
+		PublicDefinitions.Add("OutputRemap_STATIC");
+
 		PublicDependencyModuleNames.AddRange(
-			new string[] {
+			new string[]
+			{
 				"Core",
 				"CoreUObject",
 				"Engine",
 				"Projects",
-			});
+            });
 
 		PrivateDependencyModuleNames.AddRange(
-			new string[] {
-				"DisplayCluster",
+			new string[]
+			{
+                "DisplayCluster",
 				"RenderCore",
 				"RHI"
-			});
+			}
+		);
 
 		if (Target.bBuildEditor == true)
 		{

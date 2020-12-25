@@ -22,8 +22,8 @@
 // language governing permissions and limitations under the Apache License.
 //
 
-#ifndef PXR_BASE_TF_PY_STATIC_TOKENS_H
-#define PXR_BASE_TF_PY_STATIC_TOKENS_H
+#ifndef TF_PYSTATICTOKENS_H
+#define TF_PYSTATICTOKENS_H
 
 /// \file tf/pyStaticTokens.h
 
@@ -32,7 +32,6 @@
 #include <locale>
 
 #include "pxr/base/tf/staticTokens.h"
-#include "pxr/base/tf/preprocessorUtilsLite.h"
 
 #include <boost/python/class.hpp>
 #include <boost/python/scope.hpp>
@@ -81,10 +80,10 @@ private:
 // Private macros to add a single data member.
 #define _TF_PY_TOKENS_WRAP_ATTR_MEMBER(r, key, name)                        \
     boost::python::scope().attr(                                            \
-        TF_PP_STRINGIZE(name)) = key->name.GetString();
+        BOOST_PP_STRINGIZE(name)) = key->name.GetString();
 
 #define _TF_PY_TOKENS_WRAP_MEMBER(r, key, name)                             \
-    .add_static_property(TF_PP_STRINGIZE(name),                             \
+    .add_static_property(BOOST_PP_STRINGIZE(name),                          \
         boost::python::make_function(_TfPyWrapStaticToken((&key->name)),    \
             boost::python::return_value_policy<                             \
                 boost::python::return_by_value>(),                          \
@@ -114,4 +113,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_PY_STATIC_TOKENS_H
+#endif // TF_PYSTATICTOKENS_H

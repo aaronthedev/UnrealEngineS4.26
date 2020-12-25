@@ -1,11 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Input/Reply.h"
-#include "Math/Color.h"
-#include "Misc/FrameNumber.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 
@@ -40,8 +38,6 @@ private:
 	void SetTime(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent);
 
 	ISequencer* GetSequencer() const;
-
-	void DrawKeys(const FGeometry& AllottedGeometry, FSlateWindowElementList& OutDrawElements, int32 LayerId, bool bParentEnabled, const TArrayView<const FFrameNumber>& Keys, const TArrayView<const FLinearColor>& KeyColors, bool& bOutPlayMarkerOnKey) const;
 
 	/** The sequencer that we're controlling */
 	TWeakPtr<ISequencer> WeakSequencer;

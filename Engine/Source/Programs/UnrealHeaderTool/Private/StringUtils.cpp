@@ -1,46 +1,42 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "StringUtils.h"
 #include "UnrealHeaderTool.h"
 #include "Containers/UnrealString.h"
 #include "Hash/CityHash.h"
 
-FString GetClassNameWithPrefixRemoved(const FString& InClassName)
+FString GetClassNameWithPrefixRemoved(const FString InClassName)
 {
-	FString Result;
 	const FString ClassPrefix = GetClassPrefix( InClassName );
 	if( !ClassPrefix.IsEmpty() )
 	{	
-		Result = InClassName.Right(InClassName.Len() - ClassPrefix.Len());
+		return InClassName.Right(InClassName.Len() - ClassPrefix.Len());
 	}
-	return Result;
+	return FString();
 }
 
-FString GetClassNameWithoutPrefix(FString InClassNameOrFilename)
+FString GetClassNameWithoutPrefix( const FString& InClassNameOrFilename )
 {
-	FString ClassNameWithoutPrefix = MoveTemp(InClassNameOrFilename);
-
 	// Check for header names (they don't come with a full path so we only search for the first dot)
-	int32 DotIndex;
-	if (ClassNameWithoutPrefix.FindChar(TEXT('.'), DotIndex))
+	const int32 DotIndex = InClassNameOrFilename.Find(TEXT("."), ESearchCase::CaseSensitive);
+	if (DotIndex == INDEX_NONE)
 	{
-		ClassNameWithoutPrefix.MidInline(0, DotIndex, false);
+		const FString ClassPrefix = GetClassPrefix( InClassNameOrFilename );
+		return InClassNameOrFilename.Right(InClassNameOrFilename.Len() - ClassPrefix.Len());
 	}
 	else
 	{
-		const FString ClassPrefix = GetClassPrefix(ClassNameWithoutPrefix);
-		ClassNameWithoutPrefix.RightInline(ClassNameWithoutPrefix.Len() - ClassPrefix.Len(), false);
+		return InClassNameOrFilename.Mid(0, DotIndex);
 	}
-	return ClassNameWithoutPrefix;
 }
 
-FString GetClassPrefix( const FString& InClassName )
+FString GetClassPrefix( const FString InClassName )
 {
 	bool bIsLabledDeprecated;
 	return GetClassPrefix(InClassName, /*out*/ bIsLabledDeprecated);
 }
 
-FString GetClassPrefix(const FString& InClassName, bool& bIsLabeledDeprecated )
+FString GetClassPrefix( const FString InClassName, bool& bIsLabeledDeprecated )
 {
 	FString ClassPrefix = InClassName.Left(1);
 
@@ -55,7 +51,7 @@ FString GetClassPrefix(const FString& InClassName, bool& bIsLabeledDeprecated )
 		case TEXT('A'):
 		case TEXT('U'):
 			// If it is a class prefix, check for deprecated class prefix also
-			if (InClassName.Len() > 12 && FCString::Strncmp(&(InClassName[1]), TEXT("DEPRECATED_"), 11) == 0)
+			if (InClassName.Mid(1, 11).Compare(TEXT("DEPRECATED_"), ESearchCase::CaseSensitive) == 0)
 			{
 				bIsLabeledDeprecated = true;
 				ClassPrefix = InClassName.Left(12);
@@ -69,7 +65,7 @@ FString GetClassPrefix(const FString& InClassName, bool& bIsLabeledDeprecated )
 
 		default:
 			// If it's not a class or struct prefix, it's invalid
-			ClassPrefix.Reset();
+			ClassPrefix.Empty();
 			break;
 		}
 	}
@@ -107,7 +103,7 @@ FORCEINLINE uint64 GenerateTextHash64(const TCHAR* Str)
 	{
 		const TCHAR* End = FindCrOrNul(Str);
 		
-		if (int32 Len = UE_PTRDIFF_TO_INT32(End - Str))
+		if (int32 Len = End - Str)
 		{
 			Hash = CityHash64WithSeed(reinterpret_cast<const char*>(Str), Len * sizeof(TCHAR), Hash);
 		}

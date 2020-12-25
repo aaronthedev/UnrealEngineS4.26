@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,22 +6,21 @@
 #include "TraceServices/Containers/Timelines.h"
 #include "TraceServices/Containers/Tables.h"
 #include "Containers/Array.h"
-#include "Containers/ArrayView.h"
 
 namespace Trace
 {
 
 struct FTimingProfilerTimer
 {
-	const TCHAR* Name = nullptr;
-	uint32 Id = 0;
-	uint32 NameHash = 0;
-	bool IsGpuTimer = false;
+	const TCHAR* Name;
+	uint32 Id;
+	uint32 NameHash;
+	bool IsGpuTimer;
 };
 
 struct FTimingProfilerEvent
 {
-	uint32 TimerIndex = uint32(-1);
+	uint32 TimerIndex;
 };
 
 struct FTimingProfilerAggregatedStats
@@ -58,14 +57,6 @@ public:
 	virtual const FTimingProfilerButterflyNode& GenerateCalleesTree(uint32 TimerId) = 0;
 };
 
-class ITimingProfilerTimerReader
-{
-public:
-	virtual const FTimingProfilerTimer* GetTimer(uint32 TimerId) const = 0;
-	virtual uint32 GetTimerCount() const = 0;
-	virtual TArrayView<const uint8> GetMetadata(uint32 TimerId) const = 0;
-};
-
 class ITimingProfilerProvider
 	: public IProvider
 {
@@ -76,9 +67,9 @@ public:
 	virtual bool GetCpuThreadTimelineIndex(uint32 ThreadId, uint32& OutTimelineIndex) const = 0;
 	virtual bool GetGpuTimelineIndex(uint32& OutTimelineIndex) const = 0;
 	virtual bool ReadTimeline(uint32 Index, TFunctionRef<void(const Timeline&)> Callback) const = 0;
-	virtual uint32 GetTimelineCount() const = 0;
+	virtual uint64 GetTimelineCount() const = 0;
 	virtual void EnumerateTimelines(TFunctionRef<void(const Timeline&)> Callback) const = 0;
-	virtual void ReadTimers(TFunctionRef<void(const ITimingProfilerTimerReader&)> Callback) const = 0;
+	virtual void ReadTimers(TFunctionRef<void(const FTimingProfilerTimer*, uint64)> Callback) const = 0;
 	virtual ITable<FTimingProfilerAggregatedStats>* CreateAggregation(double IntervalStart, double IntervalEnd, TFunctionRef<bool(uint32)> CpuThreadFilter, bool IncludeGpu) const = 0;
 	virtual ITimingProfilerButterfly* CreateButterfly(double IntervalStart, double IntervalEnd, TFunctionRef<bool(uint32)> CpuThreadFilter, bool IncludeGpu) const = 0;
 };

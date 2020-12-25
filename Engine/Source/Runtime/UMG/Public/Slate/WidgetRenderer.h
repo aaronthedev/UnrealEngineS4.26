@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,13 +8,13 @@
 #include "Input/PopupMethodReply.h"
 #include "Widgets/SWidget.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
+#include "Input/HittestGrid.h"
 #include "Rendering/DrawElements.h"
 #include "Engine/Texture.h"
 #include "Widgets/SWindow.h"
 #include "Widgets/SVirtualWindow.h"
 
 class FArrangedChildren;
-class FHittestGrid;
 class FSlateDrawBuffer;
 class ISlate3DRenderer;
 class STooltipPresenter;

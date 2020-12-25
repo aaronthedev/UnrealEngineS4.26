@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/Overlay.h"
 #include "Components/OverlaySlot.h"
@@ -44,7 +44,7 @@ void UOverlay::OnSlotAdded(UPanelSlot* InSlot)
 void UOverlay::OnSlotRemoved(UPanelSlot* InSlot)
 {
 	// Remove the widget from the live slot if it exists.
-	if ( MyOverlay.IsValid() && InSlot->Content)
+	if ( MyOverlay.IsValid() )
 	{
 		TSharedPtr<SWidget> Widget = InSlot->Content->GetCachedWidget();
 		if ( Widget.IsValid() )

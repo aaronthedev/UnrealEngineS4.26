@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Binding/MouseCursorBinding.h"
 
@@ -8,20 +8,20 @@ UMouseCursorBinding::UMouseCursorBinding()
 {
 }
 
-bool UMouseCursorBinding::IsSupportedSource(FProperty* Property) const
+bool UMouseCursorBinding::IsSupportedSource(UProperty* Property) const
 {
 	return IsSupportedDestination(Property);
 }
 
-bool UMouseCursorBinding::IsSupportedDestination(FProperty* Property) const
+bool UMouseCursorBinding::IsSupportedDestination(UProperty* Property) const
 {
 	static const FName MouseCursorEnum(TEXT("EMouseCursor"));
 	
-	if ( FEnumProperty* EnumProperty = CastField<FEnumProperty>(Property) )
+	if ( UEnumProperty* EnumProperty = Cast<UEnumProperty>(Property) )
 	{
 		return EnumProperty->GetEnum()->GetFName() == MouseCursorEnum;
 	}
-	else if ( FByteProperty* ByteProperty = CastField<FByteProperty>(Property) )
+	else if ( UByteProperty* ByteProperty = Cast<UByteProperty>(Property) )
 	{
 		if ( ByteProperty->IsEnum() )
 		{

@@ -1,8 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
-struct MAGICLEAPEYETRACKER_API FMagicLeapVREyeTrackingData
+struct FMagicLeapVREyeTrackingData
 {
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Average")
@@ -33,9 +33,16 @@ public:
 	bool bLeftBlink;
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Blink Data")
 	bool bRightBlink;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Eye Fixation Comfort")
+	bool FixationDepthIsUncomfortable;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Eye Fixation Comfort")
+	bool FixationDepthViolationHasOccurred;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Eye Fixation Comfort")
+	float RemainingTimeAtUncomfortableDepth;
 };
 
-struct MAGICLEAPEYETRACKER_API FMagicLeapVRStabilityData
+struct FMagicLeapVRStabilityData
 {
 
 };

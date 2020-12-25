@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Rigs/RigSpaceHierarchy.h"
 #include "ControlRig.h"
@@ -84,11 +84,7 @@ bool FRigSpaceHierarchy::Reparent(const FName& InName, ERigSpaceType InSpaceType
 		int32 ParentIndex = GetParentIndex(InSpaceType, InNewParentName);
 		if (ParentIndex != INDEX_NONE)
 		{
-			if(ParentIndex == Index)
-			{
-				ParentIndex = INDEX_NONE;
-			}
-			else if (Container != nullptr)
+			if (Container != nullptr)
 			{
 				switch (InSpaceType)
 				{
@@ -145,7 +141,9 @@ bool FRigSpaceHierarchy::Reparent(const FName& InName, ERigSpaceType InSpaceType
 FRigSpace FRigSpaceHierarchy::Remove(const FName& InNameToRemove)
 {
 	int32 IndexToDelete = GetIndex(InNameToRemove);
+#if WITH_EDITOR
 	Select(InNameToRemove, false);
+#endif
 	FRigSpace RemovedSpace = Spaces[IndexToDelete];
 	Spaces.RemoveAt(IndexToDelete);
 
@@ -242,38 +240,6 @@ FTransform FRigSpaceHierarchy::GetGlobalTransform(int32 InIndex) const
 
 	if (Spaces.IsValidIndex(InIndex))
 	{
-#if WITH_EDITOR
-		// this is not threadsafe,
-		// but currently only one thread is run per character.
-		if (RecursionGuard.Num() < Spaces.Num())
-		{
-			RecursionGuard.AddZeroed(Spaces.Num() - RecursionGuard.Num());
-		}
-
-		if (RecursionGuard[InIndex])
-		{
-			TArray<FString> SpacesHitElements;
-			TArray<FString> SpaceParentsElements;
-			for (int32 SpaceIndex = 0; SpaceIndex < RecursionGuard.Num(); SpaceIndex++)
-			{
-				if (RecursionGuard[SpaceIndex])
-				{
-					SpacesHitElements.Add(Spaces[SpaceIndex].Name.ToString());
-				}
-				if (!Spaces[SpaceIndex].ParentName.IsNone())
-				{
-					SpaceParentsElements.Add(FString::Printf(TEXT("%s->%s"), *Spaces[SpaceIndex].ParentName.ToString(), *Spaces[SpaceIndex].Name.ToString()));
-				}
-			}
-			FString SpacesHit = FString::Join(SpacesHitElements, TEXT(", "));
-			FString SpaceParents = FString::Join(SpaceParentsElements, TEXT(", "));
-
-			checkf(!RecursionGuard[InIndex], TEXT("Control Rig Recursion (JIRA UE-94987)\n%s\n%s"), *SpacesHit, *SpaceParents);
-			return GetLocalTransform(InIndex);
-		}
-		TGuardValue<bool> Guard(RecursionGuard[InIndex], true);
-#endif
-
 		const FRigSpace& Space = Spaces[InIndex];
 		switch (Space.SpaceType)
 		{
@@ -417,11 +383,13 @@ FName FRigSpaceHierarchy::Rename(const FName& InOldName, const FName& InNewName)
 		{
 			FName NewName = GetSafeNewName(InNewName);
 
+#if WITH_EDITOR
 			bool bWasSelected = IsSelected(InOldName);
 			if(bWasSelected)
 			{
 				Select(InOldName, false);
 			}
+#endif
 
 			Spaces[Found].Name = NewName;
 
@@ -438,11 +406,11 @@ FName FRigSpaceHierarchy::Rename(const FName& InOldName, const FName& InNewName)
 
 #if WITH_EDITOR
 			OnSpaceRenamed.Broadcast(Container, RigElementType(), InOldName, NewName);
-#endif
 			if(bWasSelected)
 			{
 				Select(NewName, true);
 			}
+#endif
 			return NewName;
 		}
 	}
@@ -460,27 +428,19 @@ void FRigSpaceHierarchy::RefreshMapping()
 	}
 }
 
-void FRigSpaceHierarchy::Initialize(bool bResetTransforms)
+void FRigSpaceHierarchy::Initialize()
 {
 	RefreshMapping();
 
 	// initialize transform
 	for (int32 Index = 0; Index < Spaces.Num(); ++Index)
 	{
-		if (bResetTransforms)
-		{
-			Spaces[Index].LocalTransform = Spaces[Index].InitialTransform;
-		}
 		if (Container)
 		{
-			Spaces[Index].ParentIndex = Container->GetIndex(Spaces[Index].GetParentElementKey(true /* force */));
+			Spaces[Index].ParentIndex = Container->GetIndex(Spaces[Index].GetParentElementKey());
 		}
+		Spaces[Index].LocalTransform = Spaces[Index].InitialTransform;
 	}
-
-#if WITH_EDITOR
-	RecursionGuard.Reset();
-	RecursionGuard.AddZeroed(Spaces.Num());
-#endif
 }
 
 void FRigSpaceHierarchy::Reset()
@@ -494,16 +454,6 @@ void FRigSpaceHierarchy::ResetTransforms()
 	for (int32 Index = 0; Index < Spaces.Num(); ++Index)
 	{
 		Spaces[Index].LocalTransform = Spaces[Index].InitialTransform;
-	}
-}
-
-void FRigSpaceHierarchy::CopyInitialTransforms(const FRigSpaceHierarchy& InOther)
-{
-	ensure(InOther.Num() == Num());
-
-	for (int32 Index = 0; Index < Spaces.Num(); ++Index)
-	{
-		Spaces[Index].InitialTransform = InOther.Spaces[Index].InitialTransform;
 	}
 }
 
@@ -535,6 +485,8 @@ int32 FRigSpaceHierarchy::GetParentIndex(ERigSpaceType InSpaceType, const FName&
 	return INDEX_NONE;
 }
 
+#if WITH_EDITOR
+
 bool FRigSpaceHierarchy::Select(const FName& InName, bool bSelect)
 {
 	if(GetIndex(InName) == INDEX_NONE)
@@ -549,6 +501,13 @@ bool FRigSpaceHierarchy::Select(const FName& InName, bool bSelect)
 
 	if(bSelect)
 	{
+		if (Container)
+		{
+			Container->BoneHierarchy.ClearSelection();
+			Container->ControlHierarchy.ClearSelection();
+			Container->CurveContainer.ClearSelection();
+		}
+
 		Selection.Add(InName);
 	}
 	else
@@ -584,8 +543,6 @@ bool FRigSpaceHierarchy::IsSelected(const FName& InName) const
 	return Selection.Contains(InName);
 }
 
-#if WITH_EDITOR
-
 void FRigSpaceHierarchy::HandleOnElementRemoved(FRigHierarchyContainer* InContainer, const FRigElementKey& InKey)
 {
 	if (Container == nullptr)
@@ -604,7 +561,9 @@ void FRigSpaceHierarchy::HandleOnElementRemoved(FRigHierarchyContainer* InContai
 					Space.ParentIndex = Container->BoneHierarchy.GetIndex(InKey.Name);
 					Space.ParentName = Space.ParentIndex == INDEX_NONE ? NAME_None : InKey.Name;
 					Space.SpaceType = Space.ParentIndex == INDEX_NONE ? ERigSpaceType::Global : Space.SpaceType;
+#if WITH_EDITOR
 					OnSpaceReparented.Broadcast(Container, Space.GetElementKey(), InKey.Name, Space.ParentName);
+#endif
 				}
 			}
 			break;
@@ -618,7 +577,9 @@ void FRigSpaceHierarchy::HandleOnElementRemoved(FRigHierarchyContainer* InContai
 					Space.ParentIndex = Container->ControlHierarchy.GetIndex(InKey.Name);
 					Space.ParentName = Space.ParentIndex == INDEX_NONE ? NAME_None : InKey.Name;
 					Space.SpaceType = Space.ParentIndex == INDEX_NONE ? ERigSpaceType::Global : Space.SpaceType;
+#if WITH_EDITOR
 					OnSpaceReparented.Broadcast(Container, Space.GetElementKey(), InKey.Name, Space.ParentName);
+#endif
 				}
 			}
 			break;
@@ -649,7 +610,9 @@ void FRigSpaceHierarchy::HandleOnElementRenamed(FRigHierarchyContainer* InContai
 					Space.ParentIndex = Container->BoneHierarchy.GetIndex(InNewName);
 					Space.ParentName = Space.ParentIndex == INDEX_NONE ? NAME_None : InNewName;
 					Space.SpaceType = Space.ParentIndex == INDEX_NONE ? ERigSpaceType::Global : Space.SpaceType;
+#if WITH_EDITOR
 					OnSpaceReparented.Broadcast(Container, Space.GetElementKey(), InOldName, Space.ParentName);
+#endif
 				}
 			}
 			break;
@@ -663,7 +626,9 @@ void FRigSpaceHierarchy::HandleOnElementRenamed(FRigHierarchyContainer* InContai
 					Space.ParentIndex = Container->ControlHierarchy.GetIndex(InNewName);
 					Space.ParentName = Space.ParentIndex == INDEX_NONE ? NAME_None : InNewName;
 					Space.SpaceType = Space.ParentIndex == INDEX_NONE ? ERigSpaceType::Global : Space.SpaceType;
+#if WITH_EDITOR
 					OnSpaceReparented.Broadcast(Container, Space.GetElementKey(), InOldName, Space.ParentName);
+#endif
 				}
 			}
 			break;
@@ -677,38 +642,3 @@ void FRigSpaceHierarchy::HandleOnElementRenamed(FRigHierarchyContainer* InContai
 }
 
 #endif
-
-FRigPose FRigSpaceHierarchy::GetPose() const
-{
-	FRigPose Pose;
-	AppendToPose(Pose);
-	return Pose;
-}
-
-void FRigSpaceHierarchy::SetPose(FRigPose& InPose)
-{
-	for(FRigPoseElement& Element : InPose)
-	{
-		if(Element.Index.GetKey().Type == ERigElementType::Space)
-		{
-			if(Element.Index.UpdateCache(Container))
-			{
-				SetLocalTransform(Element.Index.GetIndex(), Element.LocalTransform);
-			}
-		}
-	}
-}
-
-void FRigSpaceHierarchy::AppendToPose(FRigPose& InOutPose) const
-{
-	for(const FRigSpace& Space : Spaces)
-	{
-		FRigPoseElement Element;
-		if(Element.Index.UpdateCache(Space.GetElementKey(), Container))
-		{
-			Element.GlobalTransform = GetGlobalTransform(Element.Index.GetIndex());
-			Element.LocalTransform = GetLocalTransform(Element.Index.GetIndex());
-			InOutPose.Elements.Add(Element);
-		}
-	}
-}

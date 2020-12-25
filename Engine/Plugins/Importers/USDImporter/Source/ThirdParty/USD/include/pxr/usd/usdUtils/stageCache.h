@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_UTILS_STAGE_CACHE_H
-#define PXR_USD_USD_UTILS_STAGE_CACHE_H
+#ifndef USDUTILS_STAGECACHE_H
+#define USDUTILS_STAGECACHE_H
 
 /// \file usdUtils/stageCache.h
 /// A simple interface for handling a singleton usd stage cache.
@@ -68,4 +68,4 @@ public:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif /* PXR_USD_USD_UTILS_STAGE_CACHE_H */
+#endif /* USDUTILS_STAGECACHE_H */

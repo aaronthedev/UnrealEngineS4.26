@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Sound/SoundClass.h"
@@ -11,37 +11,11 @@
 #include "UObject/UObjectHash.h"
 #include "UObject/UObjectIterator.h"
 #include "Sound/SoundMix.h"
-#include "AudioDeviceManager.h"
-#include "AudioDevice.h"
-
 #if WITH_EDITOR
 #include "SoundClassGraph/SoundClassGraph.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
-#endif // WITH_EDITOR
-
-FSoundClassProperties::FSoundClassProperties()
-	: Volume(1.0f)
-	, Pitch(1.0f)
-	, LowPassFilterFrequency(MAX_FILTER_FREQUENCY)
-	, AttenuationDistanceScale(1.0f)
-	, LFEBleed(0.5f)
-	, VoiceCenterChannelVolume(0.0f)
-	, RadioFilterVolume(0.0f)
-	, RadioFilterVolumeThreshold(0.0f)
-	, bApplyEffects(false)
-	, bAlwaysPlay(false)
-	, bIsUISound(false)
-	, bIsMusic(false)
-	, bCenterChannelOnly(false)
-	, bApplyAmbientVolumes(false)
-	, bReverb(true)
-	, Default2DReverbSendAmount(0.0f)
-	, OutputTarget(EAudioOutputTarget::Speaker)
-	, LoadingBehavior(ESoundWaveLoadingBehavior::Inherited)
-	, DefaultSubmix(nullptr)
-{
-}
+#endif
 
 /*-----------------------------------------------------------------------------
 	USoundClass implementation.
@@ -98,7 +72,7 @@ void USoundClass::PostLoad()
 TArray<USoundClass*> BackupChildClasses;
 ESoundWaveLoadingBehavior BackupLoadingBehavior;
 
-void USoundClass::PreEditChange(FProperty* PropertyAboutToChange)
+void USoundClass::PreEditChange(UProperty* PropertyAboutToChange)
 {
 	static const FName NAME_ChildClasses = GET_MEMBER_NAME_CHECKED(USoundClass, ChildClasses);
 	static const FName NAME_Properties = GET_MEMBER_NAME_CHECKED(FSoundClassProperties, LoadingBehavior);
@@ -122,7 +96,6 @@ void USoundClass::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyC
 		static const FName NAME_ChildClasses = GET_MEMBER_NAME_CHECKED(USoundClass, ChildClasses);
 		static const FName NAME_ParentClass = GET_MEMBER_NAME_CHECKED(USoundClass, ParentClass);
 		static const FName NAME_Properties = GET_MEMBER_NAME_CHECKED(FSoundClassProperties, LoadingBehavior);
-		static const FName NAME_AttenuationDistanceScale = GET_MEMBER_NAME_CHECKED(FSoundClassProperties, AttenuationDistanceScale);
 
 		if (PropertyChangedEvent.GetPropertyName() == NAME_ChildClasses)
 		{
@@ -199,16 +172,6 @@ void USoundClass::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyC
 				FSlateNotificationManager::Get().AddNotification(Info);
 
 				Properties.LoadingBehavior = BackupLoadingBehavior;
-			}
-		}
-		else if (PropertyChangedEvent.GetPropertyName() == NAME_AttenuationDistanceScale)
-		{
-			if (FAudioDeviceManager* AudioDeviceManager = FAudioDeviceManager::Get())
-			{
-				AudioDeviceManager->IterateOverAllDevices([this](Audio::FDeviceId DeviceId, FAudioDevice* InDevice)
-				{
-					InDevice->SetSoundClassDistanceScale(this, Properties.AttenuationDistanceScale, 0.2f);
-				});
 			}
 		}
 	}

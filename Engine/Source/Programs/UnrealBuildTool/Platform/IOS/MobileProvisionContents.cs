@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -157,7 +157,6 @@ namespace UnrealBuildTool
 									byte[] Data = Reader.ReadBytes(NextField.Length);
 
 									XmlDocument Document = new XmlDocument();
-									Document.XmlResolver = null;
 									Document.Load(new MemoryStream(Data));
 									return Document;
 								}

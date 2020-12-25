@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "STimecodeProvider.h"
 
@@ -29,7 +29,7 @@ void STimecodeProvider::Construct(const FArguments& InArgs)
 			{
 				return TimecodeProviderPtr->GetFrameRate().ToPrettyText();
 			}
-			return NSLOCTEXT("TimecodeProvider", "Undefined", "<Undefined>");
+			return GEngine->DefaultTimecodeFrameRate.ToPrettyText();
 		}))
 		.Font(InArgs._TimecodeProviderFont)
 		.ColorAndOpacity(InArgs._TimecodeProviderColor)
@@ -61,7 +61,7 @@ void STimecodeProvider::Construct(const FArguments& InArgs)
 					{
 						return FText::FromName(TimecodeProviderPtr->GetFName());
 					}
-					return NSLOCTEXT("TimecodeProvider", "Undefined", "<Undefined>");
+					return FText::FromString(TEXT("[System Clock]"));
 				}))
 				.Font(InArgs._TimecodeProviderFont)
 				.ColorAndOpacity(InArgs._TimecodeProviderColor)
@@ -83,13 +83,12 @@ void STimecodeProvider::Construct(const FArguments& InArgs)
 				{
 					if (const UTimecodeProvider* OverrideTimecodeProviderPtr = OverrideTimecodeProvider.Get().Get())
 					{
-						return OverrideTimecodeProviderPtr->GetDelayedTimecode();
+						return OverrideTimecodeProviderPtr->GetTimecode();
 					}
 
 					// If we use the Engine's TimecodeProvider, get the timecode for the current frame
 					return FApp::GetTimecode();
 				}))
-			.DisplayLabel(InArgs._DisplayLabel)
 			.TimecodeFont(InArgs._TimecodeFont)
 			.TimecodeColor(InArgs._TimecodeColor)
 		]
@@ -138,7 +137,7 @@ FText STimecodeProvider::HandleStateText() const
 		case ETimecodeProviderSynchronizationState::Closed:
 			return FEditorFontGlyphs::Ban;
 		case ETimecodeProviderSynchronizationState::Synchronized:
-			return FEditorFontGlyphs::Film;
+			return FEditorFontGlyphs::Clock_O;
 		case ETimecodeProviderSynchronizationState::Synchronizing:
 			return FEditorFontGlyphs::Hourglass_O;
 		}

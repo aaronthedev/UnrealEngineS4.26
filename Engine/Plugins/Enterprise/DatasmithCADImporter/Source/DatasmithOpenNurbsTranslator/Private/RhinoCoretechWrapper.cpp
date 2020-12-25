@@ -1,10 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RhinoCoretechWrapper.h"
 
 
-#if defined(CAD_LIBRARY) && defined(USE_OPENNURBS)
+#ifdef CAD_LIBRARY
 #include "CoreTechHelper.h"
+//#include "TessellationHelper.h"
 
 #pragma warning(push)
 #pragma warning(disable:4265)
@@ -171,8 +172,7 @@ struct SurfaceInfo
 	}
 };
 
-
-CT_OBJECT_ID BRepToKernelIOBodyTranslator::CreateCTSurface(ON_NurbsSurface& Surface)
+CT_OBJECT_ID CreateCTSurface(ON_NurbsSurface& Surface)
 {
 	if (Surface.Dimension() < 3)
 		return 0;
@@ -193,7 +193,7 @@ CT_OBJECT_ID BRepToKernelIOBodyTranslator::CreateCTSurface(ON_NurbsSurface& Surf
 	return CTSurfaceID;
 }
 
-void BRepToKernelIOBodyTranslator::CreateCTFace_internal(const ON_BrepFace& Face, CT_LIST_IO& dest, ON_BoundingBox& outerBBox, ON_NurbsSurface& Surface, bool ignoreInner)
+void CreateCTFace_internal(const ON_BrepFace& Face, CT_LIST_IO& dest, ON_BoundingBox& outerBBox, ON_NurbsSurface& Surface, bool ignoreInner)
 {
 	CT_OBJECT_ID SurfaceID = CreateCTSurface(Surface);
 	if (SurfaceID == 0)
@@ -230,30 +230,10 @@ void BRepToKernelIOBodyTranslator::CreateCTFace_internal(const ON_BrepFace& Face
 			if (nurbFormSuccess == 0)
 				continue;
 
-			CT_OBJECT_ID NewCoedge;
-			err = CT_COEDGE_IO::Create(NewCoedge, Trim.m_bRev3d ? CT_ORIENTATION::CT_REVERSE : CT_ORIENTATION::CT_FORWARD);
+			CT_OBJECT_ID Coedge;
+			err = CT_COEDGE_IO::Create(Coedge, Trim.m_bRev3d ? CT_ORIENTATION::CT_REVERSE : CT_ORIENTATION::CT_FORWARD);
 			if (err != IO_OK)
 				continue;
-
-			BrepTrimToCoedge[Trim.m_trim_index] = NewCoedge;
-
-			// Find a Trim that use this edge, that is not current Trim
-			// If the Trim has been converted into a coedge, link both Trims
-			for (int32 Index = 0; Index < on_edge->m_ti.Count(); ++Index)
-			{
-				int32 LinkedEdgeIndex = on_edge->m_ti[Index];
-				if (LinkedEdgeIndex == Trim.m_trim_index)
-				{
-					continue;
-				}
-
-				CT_OBJECT_ID LinkedCoedgeId = BrepTrimToCoedge[LinkedEdgeIndex];
-				if (LinkedCoedgeId)
-				{
-					CT_COEDGE_IO::MatchCoedges(LinkedCoedgeId, NewCoedge);
-					break;
-				}
-			}
 
 			// fill edge data
 			CT_UINT32 order = nurbs_curve.Order();
@@ -296,7 +276,7 @@ void BRepToKernelIOBodyTranslator::CreateCTFace_internal(const ON_BrepFace& Face
 
 			ON_Interval dom = nurbs_curve.Domain();
 			CADLibrary::CheckedCTError setUvCurveError = CT_COEDGE_IO::SetUVCurve(
-				NewCoedge,       /*!< [in] Id of coedge */ // CT documentation is wrong, the edge is already create by CT_COEDGE_IO::Create. This function just set the UV curve of an existing Edge
+				Coedge,          /*!< [out] Id of created coedge */
 				order,           /*!< [in] Order of curve */
 				KnotSize,        /*!< [in] Knot vector size */
 				ctrl_hull_size,  /*!< [in] Control Hull Size */
@@ -311,7 +291,7 @@ void BRepToKernelIOBodyTranslator::CreateCTFace_internal(const ON_BrepFace& Face
 			if (!setUvCurveError)
 				continue;
 
-			Coedges.PushBack(NewCoedge);
+			Coedges.PushBack(Coedge);
 		}
 
 		CT_OBJECT_ID Loop;
@@ -330,10 +310,10 @@ void BRepToKernelIOBodyTranslator::CreateCTFace_internal(const ON_BrepFace& Face
 	dest.PushBack(FaceID);
 }
 
-void BRepToKernelIOBodyTranslator::CreateCTFace(const ON_BrepFace& Face, CT_LIST_IO& dest)
+void CreateCTFace(const ON_Brep& brep, const ON_BrepFace& Face, CT_LIST_IO& dest)
 {
-	const ON_BrepLoop* OuterLoop = Face.OuterLoop();
-	if (OuterLoop == nullptr)
+	const ON_BrepLoop* outerLoop = Face.OuterLoop();
+	if (outerLoop == nullptr)
 	{
 		return;
 	}
@@ -345,18 +325,18 @@ void BRepToKernelIOBodyTranslator::CreateCTFace(const ON_BrepFace& Face, CT_LIST
 
 #if FIX_HOLE_IN_WHOLE_FACE
 	int LoopCount = Face.LoopCount();
-	bool bBadLoopHack = BRep.LoopIsSurfaceBoundary(OuterLoop->m_loop_index) && LoopCount >= 2;
+	bool bBadLoopHack = brep.LoopIsSurfaceBoundary(outerLoop->m_loop_index) && LoopCount >= 2;
 	if (bBadLoopHack)
 	{
 		CT_LIST_IO Coedges;
-		int TrimCount = OuterLoop->TrimCount();
-		bool bHasSingularTrim = false;
+		int TrimCount = outerLoop->TrimCount();
+		bool hasSingularTrim = false;
 		for (int i = 0; i < TrimCount; ++i)
 		{
-			ON_BrepTrim& Trim = *OuterLoop->Trim(i);
-			bHasSingularTrim |= (Trim.m_type == ON_BrepTrim::TYPE::singular);
+			ON_BrepTrim& Trim = *outerLoop->Trim(i);
+			hasSingularTrim |= (Trim.m_type == ON_BrepTrim::TYPE::singular);
 		}
-		bBadLoopHack &= bHasSingularTrim;
+		bBadLoopHack &= hasSingularTrim;
 	}
 
 	if (bBadLoopHack)
@@ -407,44 +387,7 @@ CT_IO_ERROR FRhinoCoretechWrapper::Tessellate(FMeshDescription& Mesh, CADLibrary
 	return CADLibrary::Tessellate(MainObjectId, ImportParams, Mesh, MeshParameters);
 }
 
-CT_OBJECT_ID BRepToKernelIOBodyTranslator::CreateBody(const ON_3dVector& Offset)
-{
-	BrepTrimToCoedge.SetNumZeroed(BRep.m_T.Count());
-
-	double boxmin[3];
-	double boxmax[3];
-	BRep.GetBBox(boxmin, boxmax);
-
-	BRep.Translate(Offset);
-	BRep.GetBBox(boxmin, boxmax);
-
-	// Create ct faces
-	BRep.FlipReversedSurfaces();
-	CT_LIST_IO FaceList;
-	int FaceCount = BRep.m_F.Count();
-	for (int index = 0; index < FaceCount; index++)
-	{
-		const ON_BrepFace& On_face = BRep.m_F[index];
-		CreateCTFace(On_face, FaceList);
-	}
-	BRep.Translate(-Offset);
-
-	if (FaceList.IsEmpty())
-	{
-		return 0;
-	}
-
-	// Create body from faces
-	CT_OBJECT_ID BodyID;
-	CADLibrary::CheckedCTError Result = CT_BODY_IO::CreateFromFaces(BodyID, CT_BODY_PROP::CT_BODY_PROP_EXACT | CT_BODY_PROP::CT_BODY_PROP_CLOSE, FaceList);
-	if (Result)
-	{
-		return BodyID;
-	}
-	return 0;
-}
-
-CADLibrary::CheckedCTError FRhinoCoretechWrapper::AddBRep(ON_Brep& Brep, const ON_3dVector& Offset)
+CADLibrary::CheckedCTError FRhinoCoretechWrapper::AddBRep(ON_Brep& Brep)
 {
 	CADLibrary::CheckedCTError Result;
 	if (!IsSessionValid())
@@ -453,19 +396,33 @@ CADLibrary::CheckedCTError FRhinoCoretechWrapper::AddBRep(ON_Brep& Brep, const O
 		return Result;
 	}
 
-	BRepToKernelIOBodyTranslator BodyTranslator(Brep);
-	CT_OBJECT_ID BodyID = BodyTranslator.CreateBody(Offset);
-
-	CT_LIST_IO Bodies;
-	if (BodyID)
+	// Create ct faces
+	Brep.FlipReversedSurfaces();
+	CT_LIST_IO FaceList;
+	int FaceCount = Brep.m_F.Count();
+	for (int index = 0; index < FaceCount; index++)
 	{
-		Bodies.PushBack(BodyID);
-		// Setup parenting
-		Result = CT_COMPONENT_IO::AddChildren(MainObjectId, Bodies);
+		const ON_BrepFace& on_face = Brep.m_F[index];
+		CreateCTFace(Brep, on_face, FaceList);
+	}
+
+	if (FaceList.IsEmpty())
+	{
 		return Result;
 	}
 
-	return IO_ERROR;
+	// Create body from faces
+	CT_OBJECT_ID BodyID;
+	Result = CT_BODY_IO::CreateFromFaces(BodyID, CT_BODY_PROP::CT_BODY_PROP_EXACT | CT_BODY_PROP::CT_BODY_PROP_CLOSE, FaceList);
+	if (!Result)
+		return Result;
+
+	CT_LIST_IO Bodies;
+	Bodies.PushBack(BodyID);
+
+	// Setup parenting
+	Result = CT_COMPONENT_IO::AddChildren(MainObjectId, Bodies);
+	return Result;
 }
 
 
@@ -481,4 +438,4 @@ TSharedPtr<FRhinoCoretechWrapper> FRhinoCoretechWrapper::GetSharedSession(double
 	return Session;
 }
 
-#endif // defined(CAD_LIBRARY) && defined(USE_OPENNURBS)
+#endif

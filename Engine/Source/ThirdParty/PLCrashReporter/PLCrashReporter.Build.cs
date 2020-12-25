@@ -1,6 +1,5 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using UnrealBuildTool;
-using System.IO;
 
 public class PLCrashReporter : ModuleRules
 {
@@ -8,36 +7,31 @@ public class PLCrashReporter : ModuleRules
 	{
 		Type = ModuleType.External;
 
-		string PLVersion = "plcrashreporter-master-5ae3b0a";
-		string[] PLDefines = new string[] {};
+		string PLCrashReporterPath = Target.UEThirdPartySourceDirectory + "PLCrashReporter/plcrashreporter-master-5ae3b0a/";
 
-		string PLCrashReporterPath = Path.Combine(Target.UEThirdPartySourceDirectory,"PLCrashReporter",PLVersion);
-		string PLSourcePath = Path.Combine(PLCrashReporterPath, "Source");
-		string PLLibPath = Path.Combine(PLCrashReporterPath, "lib");
-		string LibConfig = "Release";
-
-		if (Target.Platform == UnrealTargetPlatform.Mac || Target.Platform == UnrealTargetPlatform.IOS)
+		if (Target.Platform == UnrealTargetPlatform.Mac)
 		{
-			PublicSystemIncludePaths.Add(PLSourcePath);
-
+			PublicSystemIncludePaths.Add(PLCrashReporterPath + "Source");
 			if (Target.Configuration == UnrealTargetConfiguration.Debug && Target.bDebugBuildsActuallyUseDebugCRT)
 			{
-				LibConfig = "Debug";
+				PublicAdditionalLibraries.Add(PLCrashReporterPath + "Mac/Debug/libCrashReporter-MacOSX-Static.a");
 			}
 			else
 			{
-				LibConfig = "Release";
+				PublicAdditionalLibraries.Add(PLCrashReporterPath + "Mac/Release/libCrashReporter-MacOSX-Static.a");
 			}
-
-			string Lib = Path.Combine(PLLibPath, Target.Platform.ToString(), LibConfig, "libCrashReporter.a");
-			PublicAdditionalLibraries.Add(Lib);		
-
-			PublicDefinitions.AddRange(PLDefines);	
 		}
-		if (Target.Platform == UnrealTargetPlatform.Mac)
-		{
-			string Lib = Path.Combine(PLLibPath, Target.Platform.ToString(), LibConfig, "libprotobuf-c.a");
-			PublicAdditionalLibraries.Add(Lib);
-		}
+        else if (Target.Platform == UnrealTargetPlatform.IOS)
+        {
+            PublicSystemIncludePaths.Add(PLCrashReporterPath + "Source");
+            if (Target.Configuration == UnrealTargetConfiguration.Debug && Target.bDebugBuildsActuallyUseDebugCRT)
+            {
+                PublicAdditionalLibraries.Add(PLCrashReporterPath + "IOS/Debug/libCrashReporter-iphoneos.a");
+            }
+            else
+            {
+                PublicAdditionalLibraries.Add(PLCrashReporterPath + "IOS/Release/libCrashReporter-iphoneos.a");
+            }
+        }
     }
 }

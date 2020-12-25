@@ -28,7 +28,6 @@ add_llvm_library(LLVMAnalysis
   DxilConstantFolding.cpp
   DxilConstantFoldingExt.cpp
   DxilSimplify.cpp
-  DxilValueCache.cpp
   IVUsers.cpp
   InstCount.cpp
   InstructionSimplify.cpp

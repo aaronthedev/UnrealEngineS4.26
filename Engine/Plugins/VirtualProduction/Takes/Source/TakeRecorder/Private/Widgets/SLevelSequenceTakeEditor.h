@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -61,8 +61,6 @@ private:
 	 * Check to see whether the level sequence ptr has changed, and propagate that change if necessary
 	 */
 	void CheckForNewLevelSequence();
-
-	void AddDetails(const TPair<const UClass*, TArray<UObject*> >& Pair, TArray<FObjectKey>& PreviousClasses);
 
 	/**
 	 * Update the details panel for the current selection

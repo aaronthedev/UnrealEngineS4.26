@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Windows/D3D/SlateD3DRenderingPolicy.h"
 #include "Windows/D3D/SlateD3DRenderer.h"
@@ -329,16 +329,7 @@ void FSlateD3D11RenderingPolicy::DrawElements(const FMatrix& ViewProjectionMatri
 		{
 			GD3DDeviceContext->RSSetState( WireframeRasterState );
 		}
-
-		if (EnumHasAllFlags(DrawFlags, ESlateBatchDrawFlag::NoGamma))
-		{
-			PixelShader->SetGammaValues(FVector2D(1.0f, 1.0f));
-		}
-		else
-		{
-			PixelShader->SetGammaValues(FVector2D(1, 1 / 2.2f));
-		}
-
+		
 		const FSlateClippingState* ClippingState = RenderBatch.GetClippingState();
 		if (ClippingState != LastClippingState)
 		{

@@ -1,46 +1,18 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-
-#include "AudioDefines.h"
-#include "UObject/Object.h"
 #include "UObject/ObjectMacros.h"
-
+#include "UObject/Object.h"
+#include "AudioDefines.h"
 #include "SoundMix.generated.h"
 
 class USoundClass;
 struct FPropertyChangedEvent;
 
 USTRUCT()
-struct ENGINE_API FAudioEffectParameters
-{
-	GENERATED_USTRUCT_BODY()
-
-public:
-	FAudioEffectParameters()
-	{
-	}
-
-	virtual ~FAudioEffectParameters()
-	{
-	}
-
-	// Interpolates between one set of parameters and another and stores result in local copy
-	virtual bool Interpolate(const FAudioEffectParameters& InStart, const FAudioEffectParameters& InEnd)
-	{
-		return false;
-	}
-
-	// Prints effect parameters
-	virtual void PrintSettings() const
-	{
-	}
-};
-
-USTRUCT()
-struct FAudioEQEffect : public FAudioEffectParameters
+struct FAudioEQEffect
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -112,48 +84,47 @@ struct FAudioEQEffect : public FAudioEffectParameters
 	{}
 
 	/** 
-	 * Interpolates between Start and End EQ effect settings, storing results locally and returning if interpolation is complete
-	 */
-	bool Interpolate(const FAudioEffectParameters& InStart, const FAudioEffectParameters& InEnd) override;
+	* Interpolate EQ settings based on time
+	*/
+	void Interpolate( float InterpValue, const FAudioEQEffect& Start, const FAudioEQEffect& End );
 		
 	/** 
 	* Clamp all settings in range
 	*/
 	void ClampValues();
 
-	virtual void PrintSettings() const override;
 };
 
 /**
  * Elements of data for sound group volume control
  */
-USTRUCT(BlueprintType)
+USTRUCT()
 struct FSoundClassAdjuster
 {
 	GENERATED_USTRUCT_BODY()
 
 	/* The sound class this adjuster affects. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassAdjuster, DisplayName = "Sound Class" )
+	UPROPERTY(EditAnywhere, Category=SoundClassAdjuster, DisplayName = "Sound Class" )
 	USoundClass* SoundClassObject;
 
 	/* A multiplier applied to the volume. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassAdjuster, meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "4.0"))
+	UPROPERTY(EditAnywhere, Category=SoundClassAdjuster, meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "4.0"))
 	float VolumeAdjuster;
 
 	/* A multiplier applied to the pitch. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassAdjuster, meta = (ClampMin = "0.0", ClampMax = "8.0", UIMin = "0.0", UIMax = "8.0"))
+	UPROPERTY(EditAnywhere, Category=SoundClassAdjuster, meta = (ClampMin = "0.0", ClampMax = "8.0", UIMin = "0.0", UIMax = "8.0"))
 	float PitchAdjuster;
 
 	/* Lowpass filter cutoff frequency to apply to sound sources. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = SoundClassAdjuster, meta = (ClampMin = "0.0", ClampMax = "20000.0", UIMin = "0.0", UIMax = "20000.0"))
+	UPROPERTY(EditAnywhere, Category = SoundClassAdjuster, meta = (ClampMin = "0.0", ClampMax = "20000.0", UIMin = "0.0", UIMax = "20000.0"))
 	float LowPassFilterFrequency;
 
 	/* Set to true to apply this adjuster to all children of the sound class. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassAdjuster )
+	UPROPERTY(EditAnywhere, Category=SoundClassAdjuster )
 	uint32 bApplyToChildren:1;
 
 	/* A multiplier applied to VoiceCenterChannelVolume. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClassAdjuster, meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "4.0"))
+	UPROPERTY(EditAnywhere, Category=SoundClassAdjuster, meta = (ClampMin = "0.0", UIMin = "0.0", UIMax = "4.0"))
 	float VoiceCenterChannelVolumeAdjuster;
 
 	FSoundClassAdjuster()
@@ -184,10 +155,10 @@ class USoundMix : public UObject
 	struct FAudioEQEffect EQSettings;
 
 	/* Array of changes to be applied to groups. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category=SoundClasses)
+	UPROPERTY(EditAnywhere, Category=SoundClasses)
 	TArray<struct FSoundClassAdjuster> SoundClassEffects;
 
-	/* Initial delay in seconds before the mix is applied. */
+	/* Initial delay in seconds before the the mix is applied. */
 	UPROPERTY(EditAnywhere, Category=SoundMix )
 	float InitialDelay;
 

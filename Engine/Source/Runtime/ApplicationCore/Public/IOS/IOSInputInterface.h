@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -30,24 +30,6 @@ enum TouchType
 	FirstMove,
 };
 
-enum ControllerType
-{
-    Unassigned,
-    SiriRemote,
-    ExtendedGamepad,
-    XboxGamepad,
-    DualShockGamepad
-};
-
-enum PlayerIndex
-{
-    PlayerOne,
-    PlayerTwo,
-    PlayerThree,
-    PlayerFour,
-    PlayerUnset
-};
-
 struct TouchInput
 {
 	int Handle;
@@ -55,27 +37,6 @@ struct TouchInput
 	FVector2D LastPosition;
 	FVector2D Position;
 	float Force;
-};
-
-enum class EIOSEventType : int32
-{
-    Invalid = 0,
-    LeftMouseDown = 1,
-    LeftMouseUp = 2,
-    RightMouseDown = 3,
-    RightMouseUp = 4,
-    KeyDown = 10,
-    KeyUp = 11,
-    MiddleMouseDown = 25,
-    MiddleMouseUp = 26,
-    ThumbDown = 50,
-    ThumbUp = 70,
-};
-
-struct FDeferredIOSEvent
-{
-    EIOSEventType type;
-    uint32 keycode;
 };
 
 /**
@@ -118,46 +79,21 @@ public:
 	virtual void ResetLightColor(int32 ControllerId) override {}
 
 	void SetGamepadsAllowed(bool bAllowed) { bAllowControllers = bAllowed; }
-	void SetGamepadsBlockDeviceFeedback(bool bBlock) { bControllersBlockDeviceFeedback = bBlock; }
 	bool IsControllerAssignedToGamepad(int32 ControllerId) const;
 	bool IsGamepadAttached() const;
 
 	void EnableMotionData(bool bEnable);
 	bool IsMotionDataEnabled() const;
-    
-    static void SetKeyboardInhibited(bool bInhibited) { bKeyboardInhibited = bInhibited; }
-    static bool IsKeyboardInhibited() { return bKeyboardInhibited; }
-    
-    
-    NSData* GetGamepadGlyphRawData(const FGamepadKeyNames::Type& ButtonKey, uint32 ControllerIndex);
-    const ControllerType GetControllerType(uint32 ControllerIndex);
-    void SetControllerType(uint32 ControllerIndex);
-    
-    GCControllerButtonInput *GetGCControllerButton(const FGamepadKeyNames::Type& ButtonKey, uint32 ControllerIndex);
-    
-    void HandleInputInternal(const FGamepadKeyNames::Type& UEButton, uint32 ControllerIndex, bool bIsPressed, bool bWasPressed);
-    void HandleButtonGamepad(const FGamepadKeyNames::Type& UEButton, uint32 ControllerIndex);
-    void HandleAnalogGamepad(const FGamepadKeyNames::Type& UEAxis, uint32 ControllerIndex);
-    void HandleVirtualButtonGamepad(const FGamepadKeyNames::Type& UEButtonNegative, const FGamepadKeyNames::Type& UEButtonPositive, uint32 ControllerIndex);
-
+	
 private:
 
 	FIOSInputInterface( const TSharedRef< FGenericApplicationMessageHandler >& InMessageHandler );
 
-
-#if __IPHONE_OS_VERSION_MAX_ALLOWED >= 140000
-    // handle disconnect and connect events
-    void HandleMouseConnection(GCMouse* Mouse);
-    void HandleMouseDisconnect(GCMouse* Mouse);
-    void HandleKeyboardConnection(GCKeyboard* Keyboard);
-    void HandleKeyboardDisconnect(GCKeyboard* Keyboard);
-#endif
+	// handle disconnect and connect events
 	void HandleConnection(GCController* Controller);
 	void HandleDisconnect(GCController* Controller);
 	
-    void SetCurrentController(GCController* Controller);
-
-    /**
+	/**
 	 * Get the current Movement data from the device
 	 *
 	 * @param Attitude The current Roll/Pitch/Yaw of the device
@@ -174,51 +110,42 @@ private:
 
 private:
 	void ProcessTouchesAndKeys(uint32 ControllerId, const TArray<TouchInput>& InTouchInputStack, const TArray<int32>& InKeyInputStack);
-    void ProcessDeferredEvents();
-    void ProcessEvent(const FDeferredIOSEvent& Event);
-	
-    TSharedRef< FGenericApplicationMessageHandler > MessageHandler;
+	   
+	TSharedRef< FGenericApplicationMessageHandler > MessageHandler;
 
 
 	/** Game controller objects (per user)*/
 	struct FUserController
 	{
-        GCController* Controller;
-        
-        ControllerType ControllerType;
-        
-        PlayerIndex PlayerIndex;
-
-        GCExtendedGamepad* PreviousExtendedGamepad;
-        GCMicroGamepad* PreviousMicroGamepad;
-
+		GCGamepadSnapshot* PreviousGamepad;
+		GCExtendedGamepadSnapshot* PreviousExtendedGamepad;
+#if PLATFORM_TVOS
+		GCMicroGamepadSnapshot* PreviousMicroGamepad;
+#endif
 		FQuat ReferenceAttitude;
 		bool bNeedsReferenceAttitude;
 		bool bHasReferenceAttitude;
-        
-        // Deprecated but buttonMenu in iOS 14 is not working in current Beta (August 2020).
-        bool bPauseWasPressed;
+		bool bIsGamepadConnected;
+		bool bIsRemoteConnected;
+		bool bPauseWasPressed;
 	};
-    // there is a hardcoded limit of 4 controllers in the API
+	// there is a hardcoded limit of 4 controllers in the API
 	FUserController Controllers[4];
 
 	// can the remote be rotated to landscape
 	bool bAllowRemoteRotation;
 
-	// can the game handle multiple gamepads at the same time (siri remote is a gamepad) ?
-	bool bGameSupportsMultipleActiveControllers;
+	// is the remote treated as a separate controller?
+	bool bTreatRemoteAsSeparateController;
 
 	// should the remote be used as virtual joystick vs touch events
-	bool bUseRemoteAsVirtualJoystick_DEPRECATED;
+	bool bUseRemoteAsVirtualJoystick;
 
 	// should the tracking use the pad center as the virtual joystick center?
 	bool bUseRemoteAbsoluteDpadValues;
 	
 	// should we allow controllers to send input
 	bool bAllowControllers;
-
-	// bluetooth connected controllers will block force feedback.
-	bool bControllersBlockDeviceFeedback;
 	
 	/** Is motion paused or not? */
 	bool bPauseMotion;
@@ -255,12 +182,4 @@ private:
 	int HapticFeedbackSupportLevel;
 	
 	TMap<FName, double> NextKeyRepeatTime;
-    
-    FCriticalSection EventsMutex;
-        TArray<FDeferredIOSEvent> DeferredEvents;
-        float MouseDeltaX;
-        float MouseDeltaY;
-        float ScrollDeltaY;
-        bool bHaveMouse;
-        static bool bKeyboardInhibited;
 };

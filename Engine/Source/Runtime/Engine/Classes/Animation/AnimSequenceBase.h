@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -22,8 +22,6 @@ enum ETypeAdvanceAnim
 	ETAA_Finished,
 	ETAA_Looped
 };
-
-struct FAnimationPoseData;
 
 UCLASS(abstract, BlueprintType)
 class ENGINE_API UAnimSequenceBase : public UAnimationAsset
@@ -132,10 +130,10 @@ class ENGINE_API UAnimSequenceBase : public UAnimationAsset
 	virtual void GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const override;
 	
 	// Get a pointer to the data for a given Anim Notify
-	uint8* FindNotifyPropertyData(int32 NotifyIndex, FArrayProperty*& ArrayProperty);
+	uint8* FindNotifyPropertyData(int32 NotifyIndex, UArrayProperty*& ArrayProperty);
 
 	// Get a pointer to the data for a given array property item
-	uint8* FindArrayProperty(const TCHAR* PropName, FArrayProperty*& ArrayProperty, int32 ArrayIndex);
+	uint8* FindArrayProperty(const TCHAR* PropName, UArrayProperty*& ArrayProperty, int32 ArrayIndex);
 
 protected:
 	virtual void RefreshParentAssetData() override;
@@ -172,11 +170,7 @@ public:
 	* @param	OutCurve			Curves to fill
 	* @param	ExtractionContext	Extraction Context (position, looping, root motion, etc.)
 	*/
-	UE_DEPRECATED(4.26, "Use other GetAnimationPose signature")
-	virtual void GetAnimationPose(struct FCompactPose& OutPose, FBlendedCurve& OutCurve, const FAnimExtractContext& ExtractionContext) const;
-	
-	virtual void GetAnimationPose(FAnimationPoseData& OutPoseData, const FAnimExtractContext& ExtractionContext) const
-		PURE_VIRTUAL(UAnimSequenceBase::GetAnimationPose, );
+	virtual void GetAnimationPose(struct FCompactPose& OutPose, FBlendedCurve& OutCurve, const FAnimExtractContext& ExtractionContext) const PURE_VIRTUAL(UAnimSequenceBase::GetAnimationPose, );
 	
 	virtual void HandleAssetPlayerTickedInternal(FAnimAssetTickContext &Context, const float PreviousTime, const float MoveDelta, const FAnimTickRecord &Instance, struct FAnimNotifyQueue& NotifyQueue) const;
 

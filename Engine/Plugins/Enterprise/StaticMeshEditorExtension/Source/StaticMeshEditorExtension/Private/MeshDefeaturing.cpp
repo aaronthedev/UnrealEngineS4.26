@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PolygonEditingToolbar.h"
 #include "MeshEditingContext.h"
@@ -8,6 +8,7 @@
 #include "Editor.h"
 #include "IStaticMeshEditor.h"
 #include "StaticMeshAttributes.h"
+#include "MeshDescriptionOperations.h"
 #include "Misc/MessageDialog.h"
 #include "Modules/ModuleManager.h"
 #include "RawMesh.h"

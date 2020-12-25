@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_DECLARE_HANDLES_H
-#define PXR_USD_SDF_DECLARE_HANDLES_H
+#ifndef SDF_DECLAREHANDLES_H
+#define SDF_DECLAREHANDLES_H
 
 /// \file sdf/declareHandles.h
 
@@ -36,10 +36,10 @@
 
 #include <set>
 #include <typeinfo>
-#include <type_traits>
 #include <vector>
 #include <boost/intrusive_ptr.hpp>
 #include <boost/operators.hpp>
+#include <boost/type_traits/remove_const.hpp>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
@@ -65,7 +65,7 @@ public:
     typedef SdfHandle<T> This;
     typedef T SpecType;
 
-    typedef typename std::remove_const<SpecType>::type NonConstSpecType;
+    typedef typename boost::remove_const<SpecType>::type NonConstSpecType;
     typedef SdfHandle<NonConstSpecType> NonConstThis;
 
     SdfHandle() { }
@@ -149,16 +149,17 @@ public:
     }
 
 private:
-    friend
-    inline SpecType *get_pointer(const SdfHandle &x) {
-        return ARCH_UNLIKELY(x._spec.IsDormant()) ?
-            nullptr : const_cast<SpecType*>(&x._spec);
-    }
-
     SpecType _spec;
 
     template <class U> friend class SdfHandle;
 };
+
+template <class T>
+T*
+get_pointer(const SdfHandle<T>& x)
+{
+    return !x ? 0 : x.operator->();
+}
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
@@ -221,9 +222,8 @@ Sdf_CanCastToTypeCheckSchema(
 
 template <class DST, class SRC>
 struct Sdf_SpecTypesAreDirectlyRelated
-    : std::integral_constant<bool,
-        std::is_base_of<DST, SRC>::value ||
-        std::is_base_of<SRC, DST>::value>
+    : public boost::mpl::or_<boost::is_base_of<DST, SRC>,
+                             boost::is_base_of<SRC, DST> >::type
 { };
 
 /// Convert SdfHandle<SRC> \p x to an SdfHandle<DST>. This function
@@ -337,4 +337,4 @@ typedef std::set<SdfHandleTo<SdfLayer>::Handle> SdfLayerHandleSet;
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_DECLARE_HANDLES_H
+#endif // SDF_DECLAREHANDLES_H

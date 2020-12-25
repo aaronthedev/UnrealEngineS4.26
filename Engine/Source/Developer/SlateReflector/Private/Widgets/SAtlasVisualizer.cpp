@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/SAtlasVisualizer.h"
 #include "Textures/TextureAtlas.h"
@@ -8,8 +8,6 @@
 #include "Widgets/SViewport.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Framework/Layout/ScrollyZoomy.h"
-#include "Styling/SlateStyleRegistry.h"
-#include "Misc/FileHelper.h"
 
 #define LOCTEXT_NAMESPACE "AtlasVisualizer"
 
@@ -246,8 +244,6 @@ void SAtlasVisualizer::Construct( const FArguments& InArgs )
 	SelectedAtlasPage = 0;
 	bDisplayCheckerboard = false;
 
-	HoveredSlotBorderBrush = FCoreStyle::Get().GetBrush("Debug.Border");
-
 	TSharedPtr<SViewport> Viewport;
 	ChildSlot
 	[
@@ -307,10 +303,16 @@ void SAtlasVisualizer::Construct( const FArguments& InArgs )
 						.Text( LOCTEXT("DisplayCheckerboardCheckboxLabel", "Display Checkerboard") )
 					]
 				]
+
+				+ SHorizontalBox::Slot()
+				[
+					SNew(SSpacer)
+				]
+
 				+ SHorizontalBox::Slot()
 				.Padding(2.0f)
-				.HAlign(HAlign_Right)
-				.VAlign(VAlign_Center)
+				.AutoWidth()
+				.VAlign( VAlign_Center )
 				[
 					SNew( STextBlock )
 					.Text( this, &SAtlasVisualizer::GetZoomLevelPercentText )
@@ -366,29 +368,7 @@ void SAtlasVisualizer::Construct( const FArguments& InArgs )
 		]
 	];
 
-	Viewport->SetViewportInterface(SharedThis(this));
-}
-
-void SAtlasVisualizer::OnDrawViewport(const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, class FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled)
-{
-	if (CurrentHoveredSlotInfo.AtlasSlotRect.IsValid())
-	{
-		FSlateRect CurrentSlotRect = CurrentHoveredSlotInfo.AtlasSlotRect;
-
-		FSlateDrawElement::MakeBox(
-			OutDrawElements,
-			LayerId+1,
-			AllottedGeometry.ToPaintGeometry(FVector2D::Max((CurrentSlotRect.GetTopLeft()*ScrollPanel->GetZoomLevel())-FVector2D(1,1), FVector2D::ZeroVector), (CurrentSlotRect.GetSize() * ScrollPanel->GetZoomLevel())+FVector2D(1, 1)),
-			HoveredSlotBorderBrush,
-			ESlateDrawEffect::None,
-			FLinearColor::Yellow
-		);
-	}
-}
-
-FText SAtlasVisualizer::GetToolTipText() const
-{
-	return HoveredAtlasSlotToolTip;
+	Viewport->SetViewportInterface( SharedThis( this ) );
 }
 
 FIntPoint SAtlasVisualizer::GetSize() const
@@ -424,62 +404,6 @@ bool SAtlasVisualizer::IsViewportTextureAlphaOnly() const
 	}
 
 	return false;
-}
-
-void SAtlasVisualizer::OnMouseEnter(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
-{
-	CurrentHoveredSlotInfo = FAtlasSlotInfo();
-}
-
-void SAtlasVisualizer::OnMouseLeave(const FPointerEvent& MouseEvent)
-{
-	CurrentHoveredSlotInfo = FAtlasSlotInfo();
-}
-
-FReply SAtlasVisualizer::OnMouseMove(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
-{
-#if WITH_ATLAS_DEBUGGING
-	if (!MouseEvent.GetCursorDelta().IsNearlyZero() && !HasMouseCapture())
-	{
-		FVector2D LocalPos = MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition()) / ScrollPanel->GetZoomLevel();
-
-		FAtlasSlotInfo PrevSlotInfo = CurrentHoveredSlotInfo;
-
-		CurrentHoveredSlotInfo = AtlasProvider->GetAtlasSlotInfoAtPosition(LocalPos.IntPoint(), SelectedAtlasPage);
-
-		if (CurrentHoveredSlotInfo != PrevSlotInfo)
-		{
-			RebuildToolTip(CurrentHoveredSlotInfo);
-		}
-
-		return FReply::Handled();
-	}
-#endif
-
-	return FReply::Unhandled();
-}
-
-void SAtlasVisualizer::RebuildToolTip(const FAtlasSlotInfo& Info)
-{
-	if(Info.TextureName != NAME_None)
-	{
-		FTextBuilder Builder;
-		Builder.AppendLine(FText::FromName(Info.TextureName));
-
-		TArray<FName> Resources = FSlateStyleRegistry::GetSylesUsingBrush(Info.TextureName);
-
-		Builder.AppendLine(LOCTEXT("AtlasDebuggingToolTipTitle", "\nUsed by:"));
-		for (FName Name : Resources)
-		{
-			Builder.AppendLine(Name);
-		}
-
-		SetToolTipText(Builder.ToText());
-	}
-	else
-	{
-		SetToolTipText(FText::GetEmpty());
-	}
 }
 
 FText SAtlasVisualizer::GetViewportSizeText() const
@@ -609,6 +533,5 @@ TSharedRef<SWidget> SAtlasVisualizer::OnGenerateWidgetForCombo( TSharedPtr<int32
 	SNew( STextBlock )
 	.Text( FText::Format( LOCTEXT("PageX", "Page {0}"), FText::AsNumber(*AtlasPage) ) );
 }
-
 
 #undef LOCTEXT_NAMESPACE

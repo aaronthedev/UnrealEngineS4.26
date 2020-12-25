@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ProceduralFoliageComponent.h"
 #include "Async/Future.h"
@@ -126,7 +126,7 @@ bool UProceduralFoliageComponent::ExecuteSimulation(TArray<FDesiredFoliageInstan
 		FTileLayout TileLayout;
 		GetTileLayout(TileLayout);
 
-		FoliageSpawner->Simulate();
+		FoliageSpawner->SimulateIfNeeded();
 
 		TArray<TFuture< TArray<FDesiredFoliageInstance>* >> Futures;
 		for (int32 X = 0; X < TileLayout.NumTilesX; ++X)
@@ -208,7 +208,6 @@ bool UProceduralFoliageComponent::ExecuteSimulation(TArray<FDesiredFoliageInstan
 
 		int32 FutureIdx = 0;
 		bool bCancelled = false;
-		uint32 OutInstanceGrowth = 0;
 		for (int X = 0; X < TileLayout.NumTilesX; ++X)
 		{
 			for (int Y = 0; Y < TileLayout.NumTilesY; ++Y)
@@ -235,17 +234,6 @@ bool UProceduralFoliageComponent::ExecuteSimulation(TArray<FDesiredFoliageInstan
 					bFirstTime = false;
 				}
 
-				TArray<FDesiredFoliageInstance>* DesiredInstances = Futures[FutureIdx++].Get();
-				OutInstanceGrowth += DesiredInstances->Num();
-			}
-		}
-
-		OutInstances.Reserve(OutInstances.Num() + OutInstanceGrowth);
-		FutureIdx = 0;
-		for (int X = 0; X < TileLayout.NumTilesX; ++X)
-		{
-			for (int Y = 0; Y < TileLayout.NumTilesY; ++Y)
-			{
 				TArray<FDesiredFoliageInstance>* DesiredInstances = Futures[FutureIdx++].Get();
 				OutInstances.Append(*DesiredInstances);
 				delete DesiredInstances;

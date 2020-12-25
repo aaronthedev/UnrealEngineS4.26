@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Tracks/TemplateSequenceTrack.h"
 #include "IMovieSceneTracksModule.h"
@@ -6,15 +6,9 @@
 #include "MovieSceneTimeHelpers.h"
 #include "Sections/TemplateSequenceSection.h"
 #include "Compilation/IMovieSceneTemplateGenerator.h"
-#include "Evaluation/MovieSceneEvaluationTrack.h"
+#include "Evaluation/TemplateSequenceSectionTemplate.h"
 
 #define LOCTEXT_NAMESPACE "TemplateSequenceTrack"
-
-UTemplateSequenceTrack::UTemplateSequenceTrack(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer)
-{
-	SupportedBlendTypes.Add(EMovieSceneBlendType::Absolute);
-}
 
 bool UTemplateSequenceTrack::SupportsType(TSubclassOf<UMovieSceneSection> SectionClass) const
 {
@@ -33,7 +27,7 @@ UMovieSceneSection* UTemplateSequenceTrack::AddNewTemplateSequenceSection(FFrame
 		UMovieScene* OuterMovieScene = GetTypedOuter<UMovieScene>();
 		UMovieScene* InnerMovieScene = InSequence->GetMovieScene();
 
-		int32      InnerSequenceLength = UE::MovieScene::DiscreteSize(InnerMovieScene->GetPlaybackRange());
+		int32      InnerSequenceLength = MovieScene::DiscreteSize(InnerMovieScene->GetPlaybackRange());
 		FFrameTime OuterSequenceLength = ConvertFrameTime(InnerSequenceLength, InnerMovieScene->GetTickResolution(), OuterMovieScene->GetTickResolution());
 
 		NewSection->InitialPlacement(Sections, KeyTime, OuterSequenceLength.FrameNumber.Value, SupportsMultipleRows());
@@ -43,6 +37,13 @@ UMovieSceneSection* UTemplateSequenceTrack::AddNewTemplateSequenceSection(FFrame
 	AddSection(*NewSection);
 
 	return NewSection;
+}
+
+void UTemplateSequenceTrack::PostCompile(FMovieSceneEvaluationTrack& OutTrack, const FMovieSceneTrackCompilerArgs& Args) const
+{
+	// Make sure out evaluation template runs before the spawn tracks because it will have to setup the overrides.
+	OutTrack.SetEvaluationGroup(IMovieSceneTracksModule::GetEvaluationGroupName(EBuiltInEvaluationGroup::SpawnObjects));
+	OutTrack.SetEvaluationPriority(GetEvaluationPriority());
 }
 
 #if WITH_EDITORONLY_DATA

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,24 +15,6 @@ public:
     {
 		ComponentTarget = MoveTemp(ComponentTargetIn);
 	}
-
-	/**
-	 * @return true if all ComponentTargets of this tool are still valid
-	 */
-	virtual bool AreAllTargetsValid() const
-	{
-		return ComponentTarget->IsValid();
-	}
-
-
-public:
-	virtual bool CanAccept() const override
-	{
-		return AreAllTargetsValid();
-	}
-
 protected:
 	TUniquePtr<FPrimitiveComponentTarget> ComponentTarget{};
-
-
 };

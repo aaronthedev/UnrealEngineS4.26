@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -13,7 +13,6 @@ public class SlateCore : ModuleRules
 				"InputCore",
 				"ApplicationCore",
 				"Json",
-				"TraceLog",
 			});
 
 		PrivateIncludePaths.AddRange(

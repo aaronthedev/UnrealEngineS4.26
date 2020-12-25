@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "ContentBrowserModule.h"
 #include "ContentBrowserLog.h"
 #include "ContentBrowserSingleton.h"
-#include "IContentBrowserDataModule.h"
 #include "MRUFavoritesList.h"
 #include "Settings/ContentBrowserSettings.h"
 
@@ -14,9 +13,6 @@ const FName FContentBrowserModule::NumberOfRecentAssetsName(TEXT("NumObjectsInRe
 
 void FContentBrowserModule::StartupModule()
 {
-	// Ensure the data module is loaded
-	IContentBrowserDataModule::Get();
-
 	ContentBrowserSingleton = new FContentBrowserSingleton();
 	
 	RecentlyOpenedAssets = MakeUnique<FMainMRUFavoritesList>(TEXT("ContentBrowserRecent"), GetDefault<UContentBrowserSettings>()->NumObjectsInRecentList);

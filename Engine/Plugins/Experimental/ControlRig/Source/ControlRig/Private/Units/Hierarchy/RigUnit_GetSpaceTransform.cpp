@@ -1,7 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RigUnit_GetSpaceTransform.h"
 #include "Units/RigUnitContext.h"
+
+FString FRigUnit_GetSpaceTransform::GetUnitLabel() const
+{
+	return FString::Printf(TEXT("Get Transform %s"), *Space.ToString());
+}
 
 FRigUnit_GetSpaceTransform_Execute()
 {
@@ -13,11 +18,11 @@ FRigUnit_GetSpaceTransform_Execute()
 		{
 			case EControlRigState::Init:
 			{
-				CachedSpaceIndex.Reset();
+				CachedSpaceIndex = Hierarchy->GetIndex(Space);
 			}
 			case EControlRigState::Update:
 			{
-				if (CachedSpaceIndex.UpdateCache(Space, Hierarchy))
+				if (CachedSpaceIndex != INDEX_NONE)
 				{
 					switch (SpaceType)
 					{

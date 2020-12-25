@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "VulkanRHIPrivate.h"
@@ -15,7 +15,7 @@ FVulkanStructuredBuffer::~FVulkanStructuredBuffer()
 }
 
 
-FStructuredBufferRHIRef FVulkanDynamicRHI::RHICreateStructuredBuffer(uint32 InStride, uint32 InSize, uint32 InUsage, ERHIAccess InResourceState, FRHIResourceCreateInfo& CreateInfo)
+FStructuredBufferRHIRef FVulkanDynamicRHI::RHICreateStructuredBuffer(uint32 InStride, uint32 InSize, uint32 InUsage, FRHIResourceCreateInfo& CreateInfo)
 {
 	return new FVulkanStructuredBuffer(Device, InStride, InSize, CreateInfo, InUsage);
 }

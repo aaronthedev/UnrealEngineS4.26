@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Styling/SlateTypes.h"
 #include "Brushes/SlateNoResource.h"
@@ -134,9 +134,7 @@ void FButtonStyle::PostSerialize(const FArchive& Ar)
 #endif
 
 FComboButtonStyle::FComboButtonStyle()
-	: ShadowOffset(FVector2D::ZeroVector)
-	, ShadowColorAndOpacity(FLinearColor::Black)
-	, MenuBorderPadding(FMargin(0.0f))
+	: MenuBorderPadding(FMargin(0.0f))
 {
 }
 

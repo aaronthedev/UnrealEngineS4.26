@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once 
@@ -18,23 +18,17 @@ class FUICommandList;
 class UNREALED_API FEditorViewportCommands : public TCommands<FEditorViewportCommands>
 {
 public:
-	FEditorViewportCommands();
+	FEditorViewportCommands() 
+		: TCommands<FEditorViewportCommands>
+		(
+			TEXT("EditorViewport"), // Context name for fast lookup
+			NSLOCTEXT("Contexts", "EditorViewportCommands", "Common Viewport Commands"), // Localized context name for displaying
+			TEXT("MainFrame"),
+			FEditorStyle::GetStyleSetName() // Icon Style Set
+		)
+	{
+	}
 	
-	/** Viewport pane configurations */
-	TSharedPtr< FUICommandInfo > ViewportConfig_OnePane;
-	TSharedPtr< FUICommandInfo > ViewportConfig_TwoPanesH;
-	TSharedPtr< FUICommandInfo > ViewportConfig_TwoPanesV;
-	TSharedPtr< FUICommandInfo > ViewportConfig_ThreePanesLeft;
-	TSharedPtr< FUICommandInfo > ViewportConfig_ThreePanesRight;
-	TSharedPtr< FUICommandInfo > ViewportConfig_ThreePanesTop;
-	TSharedPtr< FUICommandInfo > ViewportConfig_ThreePanesBottom;
-	TSharedPtr< FUICommandInfo > ViewportConfig_FourPanesLeft;
-	TSharedPtr< FUICommandInfo > ViewportConfig_FourPanesRight;
-	TSharedPtr< FUICommandInfo > ViewportConfig_FourPanesTop;
-	TSharedPtr< FUICommandInfo > ViewportConfig_FourPanesBottom;
-	TSharedPtr< FUICommandInfo > ViewportConfig_FourPanes2x2;
-
-
 	/** Changes the viewport to perspective view */
 	TSharedPtr< FUICommandInfo > Perspective;
 

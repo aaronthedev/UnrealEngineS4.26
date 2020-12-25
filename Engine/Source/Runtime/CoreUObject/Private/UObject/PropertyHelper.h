@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -60,16 +60,12 @@ static bool AreInstancedObjectsIdentical( UObject* ObjectA, UObject* ObjectB, ui
 	if (!RecursionCheck.Contains(Test))
 	{
 		RecursionCheck.Push(Test);
-		for ( FProperty* Prop = ObjectA->GetClass()->PropertyLink; Prop && Result; Prop = Prop->PropertyLinkNext )
+		for ( UProperty* Prop = ObjectA->GetClass()->PropertyLink; Prop && Result; Prop = Prop->PropertyLinkNext )
 		{
 			// only the properties that could have been modified in the editor should be compared
 			// (skipping the name and archetype properties, since name will almost always be different)
-			bool bConsiderProperty;
-			if ( (PortFlags&PPF_Copy) == 0 )
-			{
-				bConsiderProperty = Prop->ShouldDuplicateValue();
-			}
-			else
+			bool bConsiderProperty = Prop->ShouldDuplicateValue();
+			if ( (PortFlags&PPF_Copy) != 0 )
 			{
 				bConsiderProperty = (Prop->PropertyFlags&CPF_Edit) != 0;
 			}
@@ -259,7 +255,7 @@ namespace DelegatePropertyTools
 				}
 			}
 		}
-		UFunction *Func = FindUField<UFunction>( Cls, FuncName );
+		UFunction *Func = FindField<UFunction>( Cls, FuncName );
 		// Check function params.
 		if(Func != nullptr)
 		{
@@ -270,7 +266,7 @@ namespace DelegatePropertyTools
 			if(	Func->NumParms == SignatureFunction->NumParms )
 			{
 				int32 Count=0;
-				for( TFieldIterator<FProperty> It1(Func),It2(SignatureFunction); Count<SignatureFunction->NumParms; ++It1,++It2,++Count )
+				for( TFieldIterator<UProperty> It1(Func),It2(SignatureFunction); Count<SignatureFunction->NumParms; ++It1,++It2,++Count )
 				{
 					if( It1->GetClass()!=It2->GetClass() || (It1->PropertyFlags&CPF_OutParm)!=(It2->PropertyFlags&CPF_OutParm) )
 					{

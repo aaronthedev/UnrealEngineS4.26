@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -165,25 +165,6 @@ public:
 	 */
 	double MaxExpandFactor = 0.25;
 
-	static constexpr uint32 MaxSupportedTreeDepth = 0x1F;
-
-	int GetMaxTreeDepth()
-	{
-		return MaxTreeDepth;
-	}
-	/**
-	 * Sets max tree depth w/ protection against setting beyond supported max
-	 */
-	void SetMaxTreeDepth(int MaxTreeDepthIn)
-	{
-		if (!ensure((uint32)MaxTreeDepthIn <= MaxSupportedTreeDepth))
-		{
-			MaxTreeDepthIn = (int32)MaxSupportedTreeDepth;
-		}
-
-		MaxTreeDepth = MaxTreeDepthIn;
-	}
-protected:
 	/**
 	 * Objects will not be inserted more than this many levels deep from a Root cell
 	 */
@@ -311,8 +292,7 @@ protected:
 	// calculate the base width of a cell at a given level
 	inline double GetCellWidth(uint32 Level) const
 	{
-		checkSlow(Level <= MaxSupportedTreeDepth);
-		double Divisor = (double)( (uint64)1 << (Level & MaxSupportedTreeDepth) );
+		double Divisor = (double)( (uint64)1 << (Level & 0x1F) );
 		double CellWidth = RootDimension / Divisor;
 		return CellWidth;
 	}
@@ -345,8 +325,6 @@ protected:
 	}
 
 
-	// warning: result here appears to be unstable (due to optimization?) if any of the position values are on the border of a cell
-	// (in testing, pragma-optimization-disabled code produced off-by-one result from calling this function)
 	FVector3i PointToIndex(uint32 Level, const FVector3d& Position) const
 	{
 		double CellWidth = GetCellWidth(Level);
@@ -404,7 +382,7 @@ bool FSparseDynamicOctree3::ContainsObject(int32 ObjectID) const
 
 void FSparseDynamicOctree3::InsertObject(int32 ObjectID, const FAxisAlignedBox3d& Bounds)
 {
-	checkSlow(ContainsObject(ObjectID) == false);
+	check(ContainsObject(ObjectID) == false);
 
 	FSparseOctreeCell CurrentCell = FindCurrentContainingCell(Bounds);
 
@@ -414,7 +392,6 @@ void FSparseDynamicOctree3::InsertObject(int32 ObjectID, const FAxisAlignedBox3d
 		Insert_Spill(ObjectID, Bounds);
 		return;
 	}
-	checkSlow(CanFit(CurrentCell, Bounds));
 
 	// if we found a containing root cell but it doesn't exist, create it and insert
 	if (CurrentCell.Level == 0 && CurrentCell.IsExistingCell() == false)
@@ -449,7 +426,7 @@ void FSparseDynamicOctree3::Insert_NewChildCell(int32 ObjectID, const FAxisAlign
 	int ParentCellID, FSparseOctreeCell NewChildCell, int ChildIdx)
 {
 	FSparseOctreeCell& OrigParentCell = Cells[ParentCellID];
-	checkSlow(OrigParentCell.HasChild(ChildIdx) == false);
+	check(OrigParentCell.HasChild(ChildIdx) == false);
 
 	NewChildCell.CellID = CellRefCounts.Allocate();
 	Cells.InsertAt(NewChildCell, NewChildCell.CellID);
@@ -462,30 +439,28 @@ void FSparseDynamicOctree3::Insert_NewChildCell(int32 ObjectID, const FAxisAlign
 
 	OrigParentCell.SetChild(ChildIdx, NewChildCell);
 
-	checkSlow(CanFit(NewChildCell, Bounds));
-	// this check is unstable if the center point is within machine-epsilon of the cell border
-	//check(PointToIndex(NewChildCell.Level, Bounds.Center()) == NewChildCell.Index);
+	check(CanFit(NewChildCell, Bounds));
+	check(PointToIndex(NewChildCell.Level, Bounds.Center()) == NewChildCell.Index);
 }
 
 
 void FSparseDynamicOctree3::Insert_ToCell(int32 ObjectID, const FAxisAlignedBox3d& Bounds, const FSparseOctreeCell& ExistingCell)
 {
-	checkSlow(CellRefCounts.IsValid(ExistingCell.CellID));
+	check(CellRefCounts.IsValid(ExistingCell.CellID));
 
 	ObjectIDToCellMap.InsertAt(ExistingCell.CellID, ObjectID);
 	ValidObjectIDs.Set(ObjectID, true);
 
 	CellObjectLists.Insert(ExistingCell.CellID, ObjectID);
 
-	checkSlow(CanFit(ExistingCell, Bounds));
-	// this check is unstable if the center point is within machine-epsilon of the cell border
-	//check(PointToIndex(ExistingCell.Level, Bounds.Center()) == ExistingCell.Index);
+	check(CanFit(ExistingCell, Bounds));
+	check(PointToIndex(ExistingCell.Level, Bounds.Center()) == ExistingCell.Index);
 }
 
 
 void FSparseDynamicOctree3::Insert_NewRoot(int32 ObjectID, const FAxisAlignedBox3d& Bounds, FSparseOctreeCell NewRootCell)
 {
-	checkSlow(RootCells.Has(NewRootCell.Index) == false);
+	check(RootCells.Has(NewRootCell.Index) == false);
 
 	NewRootCell.CellID = CellRefCounts.Allocate();
 	Cells.InsertAt(NewRootCell, NewRootCell.CellID);
@@ -498,8 +473,6 @@ void FSparseDynamicOctree3::Insert_NewRoot(int32 ObjectID, const FAxisAlignedBox
 
 	CellObjectLists.AllocateAt(NewRootCell.CellID);
 	CellObjectLists.Insert(NewRootCell.CellID, ObjectID);
-
-	checkSlow(CanFit(NewRootCell, Bounds));
 }
 
 void FSparseDynamicOctree3::Insert_Spill(int32 ObjectID, const FAxisAlignedBox3d& Bounds)
@@ -523,7 +496,7 @@ bool FSparseDynamicOctree3::RemoveObject(int32 ObjectID)
 	if (CellID == SpillCellID)
 	{
 		int32 RemovedCount = SpillObjectSet.Remove(ObjectID);
-		checkSlow(RemovedCount > 0);
+		check(RemovedCount > 0);
 		ValidObjectIDs.Set(ObjectID, false);
 		return (RemovedCount > 0);
 	}
@@ -536,7 +509,7 @@ bool FSparseDynamicOctree3::RemoveObject(int32 ObjectID)
 	ValidObjectIDs.Set(ObjectID, false);
 
 	bool bInList = CellObjectLists.Remove(CellID, ObjectID);
-	checkSlow(bInList);
+	check(bInList);
 	return true;
 }
 
@@ -776,19 +749,9 @@ FSparseOctreeCell FSparseDynamicOctree3::FindCurrentContainingCell(const FAxisAl
 	const uint32* RootCellID = RootCells.Get(RootIndex);
 	if (RootCellID == nullptr)
 	{
-		FSparseOctreeCell RootCell(0, RootIndex);
-		// have to make sure we can fit in this root cell
-		if (CanFit(RootCell, Bounds))
-		{
-			return RootCell;
-		}
-		else
-		{
-			return FSparseOctreeCell(FSparseOctreeCell::InvalidLevel, FVector3i::Zero());
-		}
-
+		return FSparseOctreeCell(0, RootIndex);
 	}
-	checkSlow(CellRefCounts.IsValid(*RootCellID));
+	check(CellRefCounts.IsValid(*RootCellID));
 
 	// check if box is contained in root cell, if not we have to spill
 	// (should we do this before checking for existence? we can...)
@@ -805,7 +768,7 @@ FSparseOctreeCell FSparseDynamicOctree3::FindCurrentContainingCell(const FAxisAl
 		if (CurrentCell->HasChild(ChildIdx))
 		{
 			int32 ChildCellID = CurrentCell->GetChildCellID(ChildIdx);
-			checkSlow(CellRefCounts.IsValid(ChildCellID));
+			check(CellRefCounts.IsValid(ChildCellID));
 			const FSparseOctreeCell* ChildCell = &Cells[ChildCellID];
 			if (CanFit(*ChildCell, Bounds))
 			{
@@ -887,12 +850,12 @@ void FSparseDynamicOctree3::CheckValidity(
 			{
 				// this is a spill node...
 				SpillObjectCount++;
-				CheckOrFailF(SpillObjectSet.Contains(ObjectID));
+				check(SpillObjectSet.Contains(ObjectID));
 			}
 			else if (CellID == InvalidCellID)
 			{
 				MissingObjectCount++;
-				CheckOrFailF(SpillObjectSet.Contains(ObjectID) == false);
+				check(SpillObjectSet.Contains(ObjectID) == false);
 			}
 			else
 			{

@@ -1,7 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
-	NavMeshRenderingComponent.cpp: A component that renders a navmesh.
+	NavMeshRenderingComponent.cpp: A component that renders a nav mesh.
  =============================================================================*/
 
 #include "NavMesh/NavMeshRenderingComponent.h"
@@ -17,10 +17,6 @@
 #include "Debug/DebugDrawService.h"
 #include "SceneManagement.h"
 #include "TimerManager.h"
-
-#if RECAST_INTERNAL_DEBUG_DATA
-#include "NavMesh/RecastInternalDebugData.h"
-#endif
 
 #if WITH_EDITOR
 #include "Editor.h"
@@ -45,10 +41,10 @@ static const float ClusterLinkLines_LineThickness = 2.0f;
 
 namespace FNavMeshRenderingHelpers
 {
-	bool LineInView(const FVector& Start, const FVector& End, const FSceneView* View)
+	bool LineInView(const FVector& Start, const FVector& End, const FSceneView* View, bool bUseDistanceCheck)
 	{
-		if (FVector::DistSquaredXY(Start, View->ViewMatrices.GetViewOrigin()) > ARecastNavMesh::GetDrawDistanceSq() ||
-			FVector::DistSquaredXY(End,   View->ViewMatrices.GetViewOrigin()) > ARecastNavMesh::GetDrawDistanceSq())
+		if (FVector::DistSquared(Start, View->ViewMatrices.GetViewOrigin()) > ARecastNavMesh::GetDrawDistanceSq() ||
+			FVector::DistSquared(End, View->ViewMatrices.GetViewOrigin()) > ARecastNavMesh::GetDrawDistanceSq())
 		{
 			return false;
 		}
@@ -65,30 +61,11 @@ namespace FNavMeshRenderingHelpers
 		return true;
 	}
 
-	bool PointInView(const FVector& Position, const FSceneView* View)
-	{
-		if (FVector::DistSquaredXY(Position, View->ViewMatrices.GetViewOrigin()) > ARecastNavMesh::GetDrawDistanceSq())
-		{
-			return false;
-		}
-
-		for (int32 PlaneIdx = 0; PlaneIdx < View->ViewFrustum.Planes.Num(); ++PlaneIdx)
-		{
-			const FPlane& CurPlane = View->ViewFrustum.Planes[PlaneIdx];
-			if (CurPlane.PlaneDot(Position) > 0.f)
-			{
-				return false;
-			}
-		}
-
-		return true;
-	}
-
 	bool LineInCorrectDistance(const FVector& Start, const FVector& End, const FSceneView* View, float CorrectDistance = -1)
 	{
 		const float MaxDistanceSq = (CorrectDistance > 0) ? FMath::Square(CorrectDistance) : ARecastNavMesh::GetDrawDistanceSq();
-		return	FVector::DistSquaredXY(Start, View->ViewMatrices.GetViewOrigin()) < MaxDistanceSq &&
-				FVector::DistSquaredXY(End, View->ViewMatrices.GetViewOrigin()) < MaxDistanceSq;
+		return FVector::DistSquared(Start, View->ViewMatrices.GetViewOrigin()) < MaxDistanceSq &&
+			FVector::DistSquared(End, View->ViewMatrices.GetViewOrigin()) < MaxDistanceSq;
 	}
 
 	FVector EvalArc(const FVector& Org, const FVector& Dir, const float h, const float u)
@@ -182,16 +159,6 @@ namespace FNavMeshRenderingHelpers
 		return FColor(((Col >> 1) & 0x007f7f7f) | (Col & 0xff000000));
 	}
 
-	FColor SemiDarkenColor(const FColor& Base)
-	{
-		const uint32 Col = Base.DWColor();
-		// 1/2 can be too dark(DarkenColor) - use 3/4 here.
-		const uint32 QuarterCol = ((Col >> 2) & 0x003f3f3f);
-		const uint32 HalfCol = ((Col >> 1) & 0x007f7f7f);
-		const uint32 ThreeQuarterCol = QuarterCol + HalfCol;
-		return FColor(ThreeQuarterCol | (Col & 0xff000000));
-	}
-
 	void AddVertex(FNavMeshSceneProxyData::FDebugMeshData& MeshData, const FVector& Pos, const FColor Color)
 	{
 		const int32 VertexIndex = MeshData.Vertices.Num();
@@ -205,7 +172,7 @@ namespace FNavMeshRenderingHelpers
 		Vertex->Color = Color;
 	}
 
-	void AddTriangleIndices(FNavMeshSceneProxyData::FDebugMeshData& MeshData, int32 V0, int32 V1, int32 V2)
+	void AddTriangle(FNavMeshSceneProxyData::FDebugMeshData& MeshData, int32 V0, int32 V1, int32 V2)
 	{
 		MeshData.Indices.Add(V0);
 		MeshData.Indices.Add(V1);
@@ -226,7 +193,7 @@ namespace FNavMeshRenderingHelpers
 		}
 		for (int32 TriIdx = 0; TriIdx < MeshIndices.Num(); TriIdx += 3)
 		{
-			FNavMeshRenderingHelpers::AddTriangleIndices(DebugMeshData, MeshIndices[TriIdx], MeshIndices[TriIdx + 1], MeshIndices[TriIdx + 2]);
+			FNavMeshRenderingHelpers::AddTriangle(DebugMeshData, MeshIndices[TriIdx], MeshIndices[TriIdx + 1], MeshIndices[TriIdx + 2]);
 		}
 
 		DebugMeshData.ClusterColor = Color;
@@ -267,8 +234,6 @@ void FNavMeshSceneProxyData::Reset()
 	NavMeshEdgeLines.Reset();
 	NavLinkLines.Reset();
 	ClusterLinkLines.Reset();
-	AuxLines.Reset();
-	AuxPoints.Reset();
 	AuxBoxes.Reset();
 	DebugLabels.Reset();
 	OctreeBounds.Reset();
@@ -314,7 +279,7 @@ void FNavMeshSceneProxyData::Serialize(FArchive& Ar)
 		Ar << MeshBuilder.ClusterColor;
 	}
 
-	TArray<FDebugRenderSceneProxy::FDebugLine>* LineArraysToSerialize[] = { &ThickLineItems, &TileEdgeLines, &NavMeshEdgeLines, &NavLinkLines, &ClusterLinkLines, &AuxLines };
+	TArray<FDebugRenderSceneProxy::FDebugLine>* LineArraysToSerialize[] = { &ThickLineItems, &TileEdgeLines, &NavMeshEdgeLines, &NavLinkLines, &ClusterLinkLines };
 	for (int32 ArrIdx = 0; ArrIdx < UE_ARRAY_COUNT(LineArraysToSerialize); ArrIdx++)
 	{
 		int32 NumItems = LineArraysToSerialize[ArrIdx]->Num();
@@ -331,31 +296,6 @@ void FNavMeshSceneProxyData::Serialize(FArchive& Ar)
 			Ar << (*LineArraysToSerialize[ArrIdx])[Idx].Start;
 			Ar << (*LineArraysToSerialize[ArrIdx])[Idx].End;
 			Ar << (*LineArraysToSerialize[ArrIdx])[Idx].Color;
-		}
-	}
-
-	int32 NumPoints = AuxPoints.Num();
-	Ar << NumPoints;
-	if (Ar.IsLoading())
-	{
-		FDebugPoint TmpPoint(FVector::ZeroVector, FColor::Black, 0.0f);
-		AuxPoints.Reserve(NumPoints);
-		for (int32 Idx = 0; Idx < NumPoints; Idx++)
-		{
-			Ar << TmpPoint.Position;
-			Ar << TmpPoint.Color;
-			Ar << TmpPoint.Size;
-
-			AuxPoints.Add(TmpPoint);
-		}
-	}
-	else
-	{
-		for (int32 Idx = 0; Idx < NumPoints; Idx++)
-		{
-			Ar << AuxPoints[Idx].Position;
-			Ar << AuxPoints[Idx].Color;
-			Ar << AuxPoints[Idx].Size;
 		}
 	}
 
@@ -428,8 +368,6 @@ uint32 FNavMeshSceneProxyData::GetAllocatedSize() const
 		NavMeshEdgeLines.GetAllocatedSize() +
 		NavLinkLines.GetAllocatedSize() +
 		ClusterLinkLines.GetAllocatedSize() +
-		AuxLines.GetAllocatedSize() +
-		AuxPoints.GetAllocatedSize() +
 		AuxBoxes.GetAllocatedSize() +
 		DebugLabels.GetAllocatedSize() +
 		OctreeBounds.GetAllocatedSize();
@@ -545,13 +483,11 @@ void FNavMeshSceneProxyData::GatherData(const ARecastNavMesh* NavMesh, int32 InN
 		}
 
 		// offset all navigation-link positions
+		const bool bGatherClusters = FNavMeshRenderingHelpers::HasFlag(NavDetailFlags, ENavMeshDetailFlags::Clusters);
 		const bool bGatherNavLinks = FNavMeshRenderingHelpers::HasFlag(NavDetailFlags, ENavMeshDetailFlags::NavLinks);
 		const bool bGatherFailedNavLinks = FNavMeshRenderingHelpers::HasFlag(NavDetailFlags, ENavMeshDetailFlags::FailedNavLinks);
 
-#if WITH_NAVMESH_CLUSTER_LINKS
-		const bool bGatherClusters = FNavMeshRenderingHelpers::HasFlag(NavDetailFlags, ENavMeshDetailFlags::Clusters);
 		if (bGatherClusters == false)
-#endif // WITH_NAVMESH_CLUSTER_LINKS
 		{
 			for (int32 OffMeshLineIndex = 0; OffMeshLineIndex < NavMeshGeometry.OffMeshLinks.Num(); ++OffMeshLineIndex)
 			{
@@ -562,7 +498,7 @@ void FNavMeshSceneProxyData::GatherData(const ARecastNavMesh* NavMesh, int32 InN
 				{
 					const FVector V0 = Link.Left + NavMeshDrawOffset;
 					const FVector V1 = Link.Right + NavMeshDrawOffset;
-					const FColor LinkColor = ((Link.Direction && Link.ValidEnds) || (Link.ValidEnds & FRecastDebugGeometry::OMLE_Left)) ? FNavMeshRenderingHelpers::SemiDarkenColor(NavMeshColors[Link.AreaID]) : NavMeshRenderColor_OffMeshConnectionInvalid;
+					const FColor LinkColor = ((Link.Direction && Link.ValidEnds) || (Link.ValidEnds & FRecastDebugGeometry::OMLE_Left)) ? FNavMeshRenderingHelpers::DarkenColor(NavMeshColors[Link.AreaID]) : NavMeshRenderColor_OffMeshConnectionInvalid;
 
 					FNavMeshRenderingHelpers::CacheLink(NavLinkLines, V0, V1, LinkColor, Link.Direction);
 
@@ -689,25 +625,12 @@ void FNavMeshSceneProxyData::GatherData(const ARecastNavMesh* NavMesh, int32 InN
 			}
 		}
 
-#if RECAST_INTERNAL_DEBUG_DATA
-		// Display internal debug data
-		for (const FIntPoint& point : NavMeshGeometry.TilesToDisplayInternalData)
-		{
-			if (NavMesh->GetDebugDataMap())
-			{
-				const FRecastInternalDebugData& DebugData = NavMesh->GetDebugDataMap()->FindRef(point);
-				AddMeshForInternalData(DebugData);
-			}
-		}
-#endif
-
 		NavMesh->FinishBatchQuery();
 
 		// Draw Mesh
 		const bool bGatherFilledPolys = FNavMeshRenderingHelpers::HasFlag(NavDetailFlags, ENavMeshDetailFlags::FilledPolys);
 		if (bGatherFilledPolys)
 		{
-#if WITH_NAVMESH_CLUSTER_LINKS
 			if (bGatherClusters)
 			{
 				for (int32 Idx = 0; Idx < NavMeshGeometry.Clusters.Num(); ++Idx)
@@ -726,14 +649,13 @@ void FNavMeshSceneProxyData::GatherData(const ARecastNavMesh* NavMesh, int32 InN
 					}
 					for (int32 TriIdx = 0; TriIdx < MeshIndices.Num(); TriIdx += 3)
 					{
-						FNavMeshRenderingHelpers::AddTriangleIndices(DebugMeshData, MeshIndices[TriIdx], MeshIndices[TriIdx + 1], MeshIndices[TriIdx + 2]);
+						FNavMeshRenderingHelpers::AddTriangle(DebugMeshData, MeshIndices[TriIdx], MeshIndices[TriIdx + 1], MeshIndices[TriIdx + 2]);
 					}
 
 					MeshBuilders.Add(DebugMeshData);
 				}
 			}
 			else
-#endif // WITH_NAVMESH_CLUSTER_LINKS
 			{
 				for (int32 AreaType = 0; AreaType < RECAST_MAX_AREAS; ++AreaType)
 				{
@@ -755,49 +677,59 @@ void FNavMeshSceneProxyData::GatherData(const ARecastNavMesh* NavMesh, int32 InN
 				TArray<FVector> CollidingVerts;
 				TArray<uint32> CollidingIndices;
 
-				FBox CurrentNodeBoundsBox;
-				NavOctree->FindElementsWithPredicate([bGatherOctree, bGatherPathCollidingGeometry, this, &CurrentNodeBoundsBox](const FBoxCenterAndExtent& NodeBounds)
+				for (FNavigationOctree::TConstIterator<> NodeIt(*NavOctree); NodeIt.HasPendingNodes(); NodeIt.Advance())
 				{
+					const FNavigationOctree::FNode& CurrentNode = NodeIt.GetCurrentNode();
+					const FOctreeNodeContext& CorrentContext = NodeIt.GetCurrentContext();					
+
 					if (bGatherOctree)
 					{
-						OctreeBounds.Add(NodeBounds);
-					}
+						OctreeBounds.Add(CorrentContext.Bounds);
 
-					if (bGatherPathCollidingGeometry)
-					{
-						CurrentNodeBoundsBox = NodeBounds.GetBox();
-					}
-					return true;
-				},
-				[bGatherOctree, bGatherOctreeDetails, bGatherPathCollidingGeometry, this, NavMesh, &CollidingVerts, &CollidingIndices, &CurrentNodeBoundsBox](const FNavigationOctreeElement& Element)
-				{
-					if (bGatherOctree && bGatherOctreeDetails)
-					{
-						OctreeBounds.Add(FBoxCenterAndExtent(Element.Bounds));
-					}
-
-					if (bGatherPathCollidingGeometry)
-					{
-						if (Element.ShouldUseGeometry(NavMesh->GetConfig()) && Element.Data->CollisionData.Num())
+						if (bGatherOctreeDetails)
 						{
-							const FRecastGeometryCache CachedGeometry(Element.Data->CollisionData.GetData());
-							TArray<FTransform> InstanceTransforms;
-							Element.Data->NavDataPerInstanceTransformDelegate.ExecuteIfBound(CurrentNodeBoundsBox, InstanceTransforms);
-
-							if (InstanceTransforms.Num() == 0)
+							for (FNavigationOctree::ElementConstIt ElementIt(CurrentNode.GetElementIt()); ElementIt; ElementIt++)
 							{
-								FNavMeshRenderingHelpers::AddRecastGeometry(CollidingVerts, CollidingIndices, CachedGeometry.Verts, CachedGeometry.Header.NumVerts, CachedGeometry.Indices, CachedGeometry.Header.NumFaces);
+								const FNavigationOctreeElement& Element = *ElementIt;
+								OctreeBounds.Add(FBoxCenterAndExtent(Element.Bounds));
 							}
-							else
+						}
+					}
+
+					if (bGatherPathCollidingGeometry)
+					{
+						for (FNavigationOctree::ElementConstIt ElementIt(CurrentNode.GetElementIt()); ElementIt; ElementIt++)
+						{
+							const FNavigationOctreeElement& Element = *ElementIt;
+							if (Element.ShouldUseGeometry(NavMesh->GetConfig()) && Element.Data->CollisionData.Num())
 							{
-								for (const auto& Transform : InstanceTransforms)
+								const FRecastGeometryCache CachedGeometry(Element.Data->CollisionData.GetData());
+								TArray<FTransform> InstanceTransforms;
+								Element.Data->NavDataPerInstanceTransformDelegate.ExecuteIfBound(CorrentContext.Bounds.GetBox(), InstanceTransforms);
+								
+								if (InstanceTransforms.Num() == 0)
 								{
-									FNavMeshRenderingHelpers::AddRecastGeometry(CollidingVerts, CollidingIndices, CachedGeometry.Verts, CachedGeometry.Header.NumVerts, CachedGeometry.Indices, CachedGeometry.Header.NumFaces, Transform);
+									FNavMeshRenderingHelpers::AddRecastGeometry(CollidingVerts, CollidingIndices, CachedGeometry.Verts, CachedGeometry.Header.NumVerts, CachedGeometry.Indices, CachedGeometry.Header.NumFaces);
+								}
+								else
+								{
+									for (const auto& Transform : InstanceTransforms)
+									{
+										FNavMeshRenderingHelpers::AddRecastGeometry(CollidingVerts, CollidingIndices, CachedGeometry.Verts, CachedGeometry.Header.NumVerts, CachedGeometry.Indices, CachedGeometry.Header.NumFaces, Transform);
+									}
 								}
 							}
 						}
 					}
-				});
+					
+					FOREACH_OCTREE_CHILD_NODE(ChildRef)
+					{
+						if (CurrentNode.HasChild(ChildRef))
+						{
+							NodeIt.PushChild(ChildRef);
+						}
+					}
+				}
 			
 				if (CollidingVerts.Num())
 				{
@@ -825,7 +757,6 @@ void FNavMeshSceneProxyData::GatherData(const ARecastNavMesh* NavMesh, int32 InN
 			MeshBuilders.Add(DebugMeshData);
 		}
 
-#if WITH_NAVMESH_CLUSTER_LINKS
 		if (bGatherClusters)
 		{
 			for (int32 Idx = 0; Idx < NavMeshGeometry.ClusterLinks.Num(); Idx++)
@@ -839,9 +770,7 @@ void FNavMeshSceneProxyData::GatherData(const ARecastNavMesh* NavMesh, int32 InN
 				FNavMeshRenderingHelpers::CacheArrowHead(ClusterLinkLines, V1, V0 + VOffset, 30.f, FColor::Black, ClusterLinkLines_LineThickness);
 			}
 		}
-#endif // WITH_NAVMESH_CLUSTER_LINKS
 
-#if WITH_NAVMESH_SEGMENT_LINKS
 		// cache segment links
 		if (bGatherNavLinks)
 		{
@@ -882,10 +811,10 @@ void FNavMeshSceneProxyData::GatherData(const ARecastNavMesh* NavMesh, int32 InN
 						FNavMeshRenderingHelpers::AddVertex(DebugMeshData, Pt0, (ArcIdx == NumArcPoints) ? ColB : FColor::White);
 						FNavMeshRenderingHelpers::AddVertex(DebugMeshData, Pt1, (ArcIdx == NumArcPoints) ? ColB : FColor::White);
 
-						FNavMeshRenderingHelpers::AddTriangleIndices(DebugMeshData, VertBase + 0, VertBase + 2, VertBase + 1);
-						FNavMeshRenderingHelpers::AddTriangleIndices(DebugMeshData, VertBase + 2, VertBase + 3, VertBase + 1);
-						FNavMeshRenderingHelpers::AddTriangleIndices(DebugMeshData, VertBase + 0, VertBase + 1, VertBase + 2);
-						FNavMeshRenderingHelpers::AddTriangleIndices(DebugMeshData, VertBase + 2, VertBase + 1, VertBase + 3);
+						FNavMeshRenderingHelpers::AddTriangle(DebugMeshData, VertBase + 0, VertBase + 2, VertBase + 1);
+						FNavMeshRenderingHelpers::AddTriangle(DebugMeshData, VertBase + 2, VertBase + 3, VertBase + 1);
+						FNavMeshRenderingHelpers::AddTriangle(DebugMeshData, VertBase + 0, VertBase + 1, VertBase + 2);
+						FNavMeshRenderingHelpers::AddTriangle(DebugMeshData, VertBase + 2, VertBase + 1, VertBase + 3);
 
 						VertBase += 2;
 						Prev0 = Pt0;
@@ -902,115 +831,8 @@ void FNavMeshSceneProxyData::GatherData(const ARecastNavMesh* NavMesh, int32 InN
 				}
 			}
 		}
-#endif // WITH_NAVMESH_SEGMENT_LINKS
 	}
 }
-
-
-#if RECAST_INTERNAL_DEBUG_DATA
-
-namespace FNavMeshRenderingHelpers
-{
-	struct FUniqueColor
-	{
-		FUniqueColor() : Color(0), Count(0) {}
-		FUniqueColor(const uint32 InColor, const uint32 InCount) : Color(InColor), Count(InCount) {}
-		uint32 Color;
-		uint32 Count;
-		bool operator==(const FUniqueColor& Other) const
-		{
-			return Color == Other.Color;
-
-		}
-	};
-	FORCEINLINE uint32 GetTypeHash(const FUniqueColor& UniqueColor)
-	{
-		return UniqueColor.Color;
-	}
-}
-
-void FNavMeshSceneProxyData::AddMeshForInternalData(const FRecastInternalDebugData& InInternalData)
-{
-	if (InInternalData.TriangleIndices.Num() > 0)
-	{
-		const TArray<uint32>& Indices = InInternalData.TriangleIndices;
-		const TArray<FVector>& Vertices = InInternalData.TriangleVertices;
-		const TArray<uint32>& Colors = InInternalData.TriangleColors;
-
-		if (ensure(Vertices.Num() == Colors.Num()))
-		{
-			// Split the mesh into different colored pieces (because we cannot use vertex colors).
-			TSet<FNavMeshRenderingHelpers::FUniqueColor> UniqueColors;
-			uint32 PrevColor = Colors[Indices[0]];
-			FSetElementId ColorIdx = UniqueColors.Add(FNavMeshRenderingHelpers::FUniqueColor(PrevColor, 1));
-			for (int32 i = 3; i < Indices.Num(); i += 3)
-			{
-				const uint32 Color = Colors[Indices[i]];	// Use the first color as representative of the triangle color.
-				if (Color != PrevColor)
-				{
-					ColorIdx = UniqueColors.Add(FNavMeshRenderingHelpers::FUniqueColor(PrevColor, 1));
-					PrevColor = Color;
-				}
-				else
-				{
-					UniqueColors[ColorIdx].Count++;
-				}
-			}
-
-			// Add triangles
-			for (FNavMeshRenderingHelpers::FUniqueColor CurrentColor : UniqueColors)
-			{
-				const uint32 VertexCount = CurrentColor.Count * 3;
-				FDebugMeshData& MeshData = MeshBuilders.AddDefaulted_GetRef();
-
-				MeshData.Indices.Reserve(VertexCount);
-				MeshData.Vertices.Reserve(VertexCount);
-				for (int32 i = 0; i < Indices.Num(); i += 3)
-				{
-					const uint32 Color = Colors[Indices[i]];
-					if (Color == CurrentColor.Color)
-					{
-						const int32 VertexBase = MeshData.Vertices.Num();
-						FNavMeshRenderingHelpers::AddVertex(MeshData, Vertices[Indices[i]] + NavMeshDrawOffset, FColor(Color));
-						FNavMeshRenderingHelpers::AddVertex(MeshData, Vertices[Indices[i + 1]] + NavMeshDrawOffset, FColor(Color));
-						FNavMeshRenderingHelpers::AddVertex(MeshData, Vertices[Indices[i + 2]] + NavMeshDrawOffset, FColor(Color));
-						MeshData.Indices.Add(VertexBase);
-						MeshData.Indices.Add(VertexBase + 1);
-						MeshData.Indices.Add(VertexBase + 2);
-					}
-				}
-				MeshData.ClusterColor = FColor(CurrentColor.Color);
-			}
-		}
-	}
-
-	if (InInternalData.LineVertices.Num() > 0)
-	{
-		const TArray<FVector>& Vertices = InInternalData.LineVertices;
-		const TArray<uint32>& Colors = InInternalData.LineColors;
-		if (ensure(Vertices.Num() == Colors.Num()))
-		{
-			for (int32 i = 0; i < Vertices.Num(); i += 2)
-			{
-				AuxLines.Emplace(Vertices[i] + NavMeshDrawOffset, Vertices[i + 1] + NavMeshDrawOffset, FColor(Colors[i]), 0.0f);
-			}
-		}
-	}
-
-	if (InInternalData.PointVertices.Num() > 0)
-	{
-		const TArray<FVector>& Vertices = InInternalData.PointVertices;
-		const TArray<uint32>& Colors = InInternalData.PointColors;
-		if (ensure(Vertices.Num() == Colors.Num()))
-		{
-			for (int32 i = 0; i < Vertices.Num(); i++)
-			{
-				AuxPoints.Emplace(Vertices[i] + NavMeshDrawOffset, FColor(Colors[i]), 5.0f);
-			}
-		}
-	}
-}
-#endif //RECAST_INTERNAL_DEBUG_DATA
 
 #endif
 
@@ -1208,7 +1030,7 @@ void FNavMeshSceneProxy::GetDynamicMeshElements(const TArray<const FSceneView*>&
 			for (int32 Index = 0; Index < Num; ++Index)
 			{
 				const FDebugLine &Line = ProxyData.NavMeshEdgeLines[Index];
-				if (FNavMeshRenderingHelpers::LineInView(Line.Start, Line.End, View))
+				if (FNavMeshRenderingHelpers::LineInView(Line.Start, Line.End, View, false))
 				{
 					if (FNavMeshRenderingHelpers::LineInCorrectDistance(Line.Start, Line.End, View))
 					{
@@ -1227,7 +1049,7 @@ void FNavMeshSceneProxy::GetDynamicMeshElements(const TArray<const FSceneView*>&
 			for (int32 Index = 0; Index < Num; ++Index)
 			{
 				const FDebugLine &Line = ProxyData.ClusterLinkLines[Index];
-				if (FNavMeshRenderingHelpers::LineInView(Line.Start, Line.End, View))
+				if (FNavMeshRenderingHelpers::LineInView(Line.Start, Line.End, View, false))
 				{
 					if (FNavMeshRenderingHelpers::LineInCorrectDistance(Line.Start, Line.End, View))
 					{
@@ -1246,7 +1068,7 @@ void FNavMeshSceneProxy::GetDynamicMeshElements(const TArray<const FSceneView*>&
 			for (int32 Index = 0; Index < Num; ++Index)
 			{
 				const FDebugLine &Line = ProxyData.TileEdgeLines[Index];
-				if (FNavMeshRenderingHelpers::LineInView(Line.Start, Line.End, View))
+				if (FNavMeshRenderingHelpers::LineInView(Line.Start, Line.End, View, false))
 				{
 					if (FNavMeshRenderingHelpers::LineInCorrectDistance(Line.Start, Line.End, View))
 					{
@@ -1265,7 +1087,7 @@ void FNavMeshSceneProxy::GetDynamicMeshElements(const TArray<const FSceneView*>&
 			for (int32 Index = 0; Index < Num; ++Index)
 			{
 				const FDebugLine &Line = ProxyData.NavLinkLines[Index];
-				if (FNavMeshRenderingHelpers::LineInView(Line.Start, Line.End, View))
+				if (FNavMeshRenderingHelpers::LineInView(Line.Start, Line.End, View, false))
 				{
 					if (FNavMeshRenderingHelpers::LineInCorrectDistance(Line.Start, Line.End, View))
 					{
@@ -1278,34 +1100,12 @@ void FNavMeshSceneProxy::GetDynamicMeshElements(const TArray<const FSceneView*>&
 				}
 			}
 
-			Num = ProxyData.AuxLines.Num();
-			PDI->AddReserveLines(SDPG_World, Num, false, false);
-			PDI->AddReserveLines(SDPG_Foreground, Num, false, true);
-			for (int32 Index = 0; Index < Num; ++Index)
-			{
-				const auto& Line = ProxyData.AuxLines[Index];
-				if (FNavMeshRenderingHelpers::LineInView(Line.Start, Line.End, View))
-				{
-					PDI->DrawLine(Line.Start, Line.End, Line.Color, SDPG_World, Line.Thickness, 0, true);
-				}
-			}
-
-			Num = ProxyData.AuxPoints.Num();
-			for (int32 Index = 0; Index < Num; ++Index)
-			{
-				const auto& Point = ProxyData.AuxPoints[Index];
-				if (FNavMeshRenderingHelpers::PointInView(Point.Position, View))
-				{
-					PDI->DrawPoint(Point.Position, Point.Color, Point.Size, SDPG_World);
-				}
-			}
-
 			Num = ProxyData.ThickLineItems.Num();
 			PDI->AddReserveLines(SDPG_Foreground, Num, false, true);
 			for (int32 Index = 0; Index < Num; ++Index)
 			{
 				const auto &Line = ProxyData.ThickLineItems[Index];
-				if (FNavMeshRenderingHelpers::LineInView(Line.Start, Line.End, View))
+				if (FNavMeshRenderingHelpers::LineInView(Line.Start, Line.End, View, false))
 				{
 					if (FNavMeshRenderingHelpers::LineInCorrectDistance(Line.Start, Line.End, View))
 					{
@@ -1360,7 +1160,7 @@ FPrimitiveViewRelevance FNavMeshSceneProxy::GetViewRelevance(const FSceneView* V
 	Result.bDrawRelevance = bVisible && IsShown(View);
 	Result.bDynamicRelevance = true;
 	// ideally the TranslucencyRelevance should be filled out by the material, here we do it conservative
-	Result.bSeparateTranslucency = Result.bNormalTranslucency = bVisible && IsShown(View);
+	Result.bSeparateTranslucencyRelevance = Result.bNormalTranslucencyRelevance = bVisible && IsShown(View);
 	return Result;
 }
 
@@ -1541,9 +1341,9 @@ FPrimitiveSceneProxy* UNavMeshRenderingComponent::CreateSceneProxy()
 #endif //WITH_RECAST && !UE_BUILD_SHIPPING && !UE_BUILD_TEST
 }
 
-void UNavMeshRenderingComponent::CreateRenderState_Concurrent(FRegisterComponentContext* Context)
+void UNavMeshRenderingComponent::CreateRenderState_Concurrent()
 {
-	Super::CreateRenderState_Concurrent(Context);
+	Super::CreateRenderState_Concurrent();
 
 #if WITH_RECAST && !UE_BUILD_SHIPPING && !UE_BUILD_TEST
 	NavMeshDebugDrawDelgateManager.RegisterDebugDrawDelgate();
@@ -1573,8 +1373,11 @@ FBoxSphereBounds UNavMeshRenderingComponent::CalcBounds(const FTransform& LocalT
 			const FNavigationOctree* NavOctree = NavSys ? NavSys->GetNavOctree() : nullptr;
 			if (NavOctree)
 			{
-				//this is only iterating over the rootnode
-				BoundingBox += NavOctree->GetRootBounds().GetBox();
+				for (FNavigationOctree::TConstIterator<> NodeIt(*NavOctree); NodeIt.HasPendingNodes(); NodeIt.Advance())
+				{
+					const FOctreeNodeContext& CorrentContext = NodeIt.GetCurrentContext();
+					BoundingBox += CorrentContext.Bounds.GetBox();
+				}
 			}
 		}
 	}

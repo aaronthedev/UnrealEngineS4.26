@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MagicLeapPlanesComponent.h"
 #include "MagicLeapPlanesModule.h"
@@ -9,9 +9,6 @@ UMagicLeapPlanesComponent::UMagicLeapPlanesComponent()
 , MaxResults(10)
 , MinHolePerimeter(50.0f)
 , MinPlaneArea(400.0f)
-, QueryType(EMagicLeapPlaneQueryType::Bulk)
-, SimilarityThreshold(1.0f)
-, CurrentQueryType(QueryType)
 {
 	bAutoActivate = true;
 	SearchVolume = CreateDefaultSubobject<UBoxComponent>(TEXT("SearchVolume"));
@@ -29,17 +26,6 @@ void UMagicLeapPlanesComponent::BeginPlay()
 {
 	Super::BeginPlay();
 	GetMagicLeapPlanesModule().CreateTracker();
-
-	// A handle is only selectively needed
-	if (QueryType == EMagicLeapPlaneQueryType::Delta)
-	{
-
-		QueryHandle = GetMagicLeapPlanesModule().AddQuery(QueryType);
-
-	}
-
-	CurrentQueryType = QueryType;
-
 }
 
 void UMagicLeapPlanesComponent::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -50,24 +36,6 @@ void UMagicLeapPlanesComponent::EndPlay(const EEndPlayReason::Type EndPlayReason
 
 bool UMagicLeapPlanesComponent::RequestPlanesAsync()
 {
-	
-	if(QueryType != CurrentQueryType)
-	{
-		
-		GetMagicLeapPlanesModule().RemoveQuery(QueryHandle);
-
-		// A handle is only selectively needed
-		if (QueryType == EMagicLeapPlaneQueryType::Delta)
-		{
-
-			QueryHandle = GetMagicLeapPlanesModule().AddQuery(QueryType);
-
-		}
-
-		CurrentQueryType = QueryType;
-		
-	}
-		
 	FMagicLeapPlanesQuery QueryParams;
 	QueryParams.Flags = QueryFlags;
 	QueryParams.MaxResults = MaxResults;
@@ -76,19 +44,7 @@ bool UMagicLeapPlanesComponent::RequestPlanesAsync()
 	QueryParams.SearchVolumePosition = SearchVolume->GetComponentLocation();
 	QueryParams.SearchVolumeOrientation = SearchVolume->GetComponentQuat();
 	QueryParams.SearchVolumeExtents = SearchVolume->GetScaledBoxExtent();
-	QueryParams.SimilarityThreshold = SimilarityThreshold;
-
-	if(QueryType == EMagicLeapPlaneQueryType::Bulk)
-	{
-		return GetMagicLeapPlanesModule().QueryBeginAsync(
-			QueryParams,
-			OnPlanesQueryResult);
-	}
-	
-	return GetMagicLeapPlanesModule().PersistentQueryBeginAsync(
+	return GetMagicLeapPlanesModule().QueryBeginAsync(
 		QueryParams,
-		QueryHandle,
-		OnPersistentPlanesQueryResult);		
-	
-	
+		OnPlanesQueryResult);
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,6 +7,8 @@
 #include "Misc/ConfigCacheIni.h"
 #include "Features/IModularFeatures.h"
 #include "Features/IModularFeature.h"
+
+static const FName EyeTrackerModularFeatureName(TEXT("EyeTracker"));
 
 /**
  * The public interface of the EyeTracker module
@@ -17,7 +19,6 @@ public:
 	/** Returns modular feature name for this module */
 	static FName GetModularFeatureName()
 	{
-		static const FName EyeTrackerModularFeatureName(TEXT("EyeTracker"));
 		return EyeTrackerModularFeatureName;
 	}
 

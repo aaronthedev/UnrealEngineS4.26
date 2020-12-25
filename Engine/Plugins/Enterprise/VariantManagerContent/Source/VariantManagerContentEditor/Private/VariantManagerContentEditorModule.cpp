@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VariantManagerContentEditorModule.h"
 
@@ -98,7 +98,7 @@ public:
 					if (bForceOverwrite)
 					{
 						const FString PackageName = SafePackagePath + TEXT("/") + SafeAssetName;
-						UPackage* Pkg = CreatePackage(*PackageName);
+						UPackage* Pkg = CreatePackage(nullptr,*PackageName);
 
 						// Search for UObject instead of ULevelVariantSets as we also want to catch redirectors
 						UObject* ExistingObject = StaticFindObject( UObject::StaticClass(), Pkg, *SafeAssetName );
@@ -118,7 +118,7 @@ public:
 								CollectGarbage( GARBAGE_COLLECTION_KEEPFLAGS );
 
 								// Old package will be GC'ed... create a new one here
-								Pkg = CreatePackage(*PackageName);
+								Pkg = CreatePackage(nullptr,*PackageName);
 								Pkg->MarkAsFullyLoaded();
 							}
 

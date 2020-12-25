@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -68,7 +68,7 @@ namespace MovieSceneImpl
 {
 	struct FNull
 	{
-		FNull Get(bool) const { return *this; }
+		FNull Get() const { return *this; }
 	};
 
 	template<typename TokenType> struct TProducerType;
@@ -147,7 +147,7 @@ struct MOVIESCENE_API TMovieSceneSavedTokens
 	 */
 	void Reset();
 
-	void CopyFrom(TMovieSceneSavedTokens& Other);
+	void SetPayload(PayloadType&& InPayload) { Payload = MoveTemp(InPayload); }
 
 private:
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================================
 BuildMipTreeCS.usf: Build MipTree PDF structure
@@ -48,16 +48,7 @@ float CalcSkyLightPdf(uint2 Pixel)
 		// Determine probability
 		uint2 MipOffset = (Pixel.xy >> (MipIndex - StopLevel)) - MipPixel;
 		uint LinearIndex = MipOffset.y << 1 | MipOffset.x;
-
-		if (LinearIndex > 0)
-		{
-			MipPdf *= Cdf[LinearIndex] - Cdf[LinearIndex - 1];
-		}
-		else
-		{
-			MipPdf *= Cdf[LinearIndex];
-		}
-
+		MipPdf *= LinearIndex > 0 ? Cdf[LinearIndex] - Cdf[LinearIndex - 1] : Cdf[LinearIndex];
 #if 0
 		float LevelPdf = Cdf[LinearIndex];
 		if (LinearIndex > 0)

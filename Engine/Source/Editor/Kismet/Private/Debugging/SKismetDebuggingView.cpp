@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Debugging/SKismetDebuggingView.h"
@@ -23,7 +23,6 @@
 #include "Kismet2/DebuggerCommands.h"
 #include "Debugging/KismetDebugCommands.h"
 #include "Widgets/Input/SHyperlink.h"
-#include "ToolMenus.h"
 
 #define LOCTEXT_NAMESPACE "DebugViewUI"
 
@@ -321,7 +320,7 @@ FText FWatchLineItem::GetDisplayName() const
 	{
 		if (UBlueprint* Blueprint = GetBlueprintForObject(ParentObjectRef.Get()))
 		{
-			if (FProperty* Property = FKismetDebugUtilities::FindClassPropertyForPin(Blueprint, PinToWatch))
+			if (UProperty* Property = FKismetDebugUtilities::FindClassPropertyForPin(Blueprint, PinToWatch))
 			{
 				return FText::FromString(UEditorEngine::GetFriendlyName(Property));
 			}
@@ -1063,19 +1062,8 @@ void SKismetDebuggingView::Construct(const FArguments& InArgs)
 	BlueprintToWatchPtr = InArgs._BlueprintToWatch;
 
 	// Build the debug toolbar
-	static const FName ToolbarName = "Kismet.DebuggingViewToolBar";
-	if (!UToolMenus::Get()->IsMenuRegistered(ToolbarName))
-	{
-		UToolMenu* ToolBar = UToolMenus::Get()->RegisterMenu(ToolbarName, NAME_None, EMultiBoxType::ToolBar);
-
-		{
-			FToolMenuSection& Section = ToolBar->AddSection("Debug");
-			FPlayWorldCommands::BuildToolbar(Section);
-		}
-	}
-
-	FToolMenuContext MenuContext(FPlayWorldCommands::GlobalPlayWorldActions);
-	TSharedRef<SWidget> ToolbarWidget = UToolMenus::Get()->GenerateWidget(ToolbarName, MenuContext);
+	FToolBarBuilder DebugToolbarBuilder(FPlayWorldCommands::GlobalPlayWorldActions, FMultiBoxCustomization::None );
+	FPlayWorldCommands::BuildToolbar(DebugToolbarBuilder);
 
 	this->ChildSlot
 	[
@@ -1087,7 +1075,7 @@ void SKismetDebuggingView::Construct(const FArguments& InArgs)
 			.Visibility( this, &SKismetDebuggingView::IsDebuggerVisible )
 			.BorderImage( FEditorStyle::GetBrush( TEXT("NoBorder") ) )
 			[
-				ToolbarWidget
+				DebugToolbarBuilder.MakeWidget()
 			]
 		]
 		+SVerticalBox::Slot()

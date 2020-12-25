@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -30,7 +30,7 @@ public:
 	EUVProjectionMethod ProjectionMethod;
 	float CylinderProjectToTopOrBottomAngleThreshold;
 	FTransform ProjectionTransform;
-	FVector2f UVScale, UVOffset;
+	FVector2D UVScale, UVOffset;
 	bool bWorldSpaceUVScale;
 
 	void SetTransform(const FTransform& Transform);

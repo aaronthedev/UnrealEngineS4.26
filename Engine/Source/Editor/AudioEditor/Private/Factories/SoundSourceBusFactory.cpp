@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Factories/SoundSourceBusFactory.h"
 #include "Sound/SoundSourceBus.h"
@@ -24,5 +24,5 @@ UObject* USoundSourceBusFactory::FactoryCreateNew(UClass* InClass, UObject* InPa
 
 bool USoundSourceBusFactory::CanCreateNew() const
 {
-	return true;
+	return GetDefault<UAudioSettings>()->IsAudioMixerEnabled();
 }

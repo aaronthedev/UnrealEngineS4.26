@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "HAL/UnrealMemory.h"
 #include "Math/UnrealMathUtility.h"
@@ -24,8 +24,6 @@
 #include "HAL/MallocLeakDetectionProxy.h"
 #include "HAL/PlatformMallocCrash.h"
 #include "HAL/MallocPoisonProxy.h"
-#include "HAL/MallocDoubleFreeFinder.h"
-#include "HAL/MallocFrameProfiler.h"
 
 #if MALLOC_GT_HOOKS
 
@@ -120,7 +118,7 @@ public:
 			verify(GetAllocationSize(Ptr, Size) && Size);
 			FMemory::Memset(Ptr, uint8(PURGATORY_STOMP_CHECKS_CANARYBYTE), Size);
 			Purgatory[GFrameNumber % PURGATORY_STOMP_CHECKS_FRAMES].Push(Ptr);
-			OutstandingSizeInKB.Add((int32)((Size + 1023) / 1024));
+			OutstandingSizeInKB.Add((Size + 1023) / 1024);
 		}
 		FPlatformMisc::MemoryBarrier();
 		uint32 LocalLastCheckFrame = LastCheckFrame;
@@ -152,7 +150,7 @@ public:
 						}
 					}
 					UsedMalloc->Free(Pop);
-					OutstandingSizeInKB.Subtract((int32)((Size + 1023) / 1024));
+					OutstandingSizeInKB.Subtract((Size + 1023) / 1024);
 				}
 			}
 		}
@@ -329,6 +327,11 @@ static int FMemory_GCreateMalloc_ThreadUnsafe()
 	// Setup malloc crash as soon as possible.
 	FPlatformMallocCrash::Get( GMalloc );
 
+	if ( ! FPlatformProcess::SupportsMultithreading() )
+	{
+		return 0;
+	}
+
 #if PLATFORM_USES_FIXED_GMalloc_CLASS
 #if USE_MALLOC_PROFILER || MALLOC_VERIFY || MALLOC_LEAKDETECTION || UE_USE_MALLOC_FILL_BYTES
 #error "Turn off PLATFORM_USES_FIXED_GMalloc_CLASS in order to use special allocator proxies"
@@ -374,13 +377,11 @@ static int FMemory_GCreateMalloc_ThreadUnsafe()
 // On Mac it's too early to log here in some cases. For example GMalloc may be created during initialization of a third party dylib on load, before CoreFoundation is initialized
 #if !PLATFORM_DESKTOP
 	// by this point, we assume we can log
-	double SizeInMb = (double)ProgramSize / (1024.0 * 1024.0);
+	double SizeInMb = ProgramSize / (1024.0 * 1024.0);
 	FPlatformMisc::LowLevelOutputDebugStringf(TEXT("Used memory before allocating anything was %.2fMB\n"), SizeInMb);
 	UE_LOG(LogMemory, Display, TEXT("Used memory before allocating anything was %.2fMB"), SizeInMb);
 #endif
 
-	GMalloc = FMallocDoubleFreeFinder::OverrideIfEnabled(GMalloc);
-	GMalloc = FMallocFrameProfiler::OverrideIfEnabled(GMalloc);
 	return 0;
 }
 
@@ -614,72 +615,6 @@ void FUseSystemMallocForNew::operator delete[](void* Ptr)
 {
 	FMemory::SystemFree(Ptr);
 }
-
-static bool GPersistentAuxiliaryEnabled = true;
-static uint8 * GPersistentAuxiliary = nullptr;
-static uint8 * GPersistentAuxiliaryEnd = nullptr;
-static TAtomic<SIZE_T> GPersistentAuxiliaryCurrentOffset;
-static SIZE_T GPersistentAuxiliarySize = 0;
-
-
-void FMemory::RegisterPersistentAuxiliary(void* InMemory, SIZE_T InSize)
-{
-	check(GPersistentAuxiliary == nullptr);
-	GPersistentAuxiliaryCurrentOffset = 0;
-	GPersistentAuxiliarySize = InSize;
-	GPersistentAuxiliary = (uint8 *)InMemory;
-	GPersistentAuxiliaryEnd = GPersistentAuxiliary + InSize;
-}
-void* FMemory::MallocPersistentAuxiliary(SIZE_T InSize, uint32 InAlignment)
-{
-	if (GPersistentAuxiliary != nullptr && GPersistentAuxiliaryEnabled)
-	{
-		const uint32 Alignment = FMath::Max<uint32>(InAlignment, 16u);
-		const SIZE_T AlignedSize = Align(InSize, Alignment);
-		// 1st check if there is room, this is atomic but could still fail when actually incrementing the offset.
-		if (GPersistentAuxiliaryCurrentOffset + AlignedSize <= GPersistentAuxiliarySize)
-		{
-			SIZE_T OldOffset = GPersistentAuxiliaryCurrentOffset.AddExchange(AlignedSize);
-			if (OldOffset + AlignedSize <= GPersistentAuxiliarySize)
-			{
-				// we were able to increment the offset and it's still within the bounds of the aux memory.
-				return &GPersistentAuxiliary[OldOffset];
-			}
-			// we've gone over the end of the aux memory, this could waste some space, if it's a problem protect with a critical section.
-		}
-	}
-	return FMemory::Malloc(InSize, InAlignment);
-}
-void FMemory::FreePersistentAuxiliary(void* InPtr)
-{
-	if (GPersistentAuxiliary != nullptr)
-	{
-		uint8* Ptr = (uint8*)InPtr;
-		if (Ptr >= GPersistentAuxiliary && Ptr < GPersistentAuxiliaryEnd)
-		{
-			// it is part of the GPersistentAuxiliary
-			return;
-		}
-	}
-	return FMemory::Free(InPtr);
-}
-bool FMemory::IsPersistentAuxiliaryActive()
-{
-	return GPersistentAuxiliary != nullptr && GPersistentAuxiliaryEnabled;
-}
-void FMemory::DisablePersistentAuxiliary()
-{
-	GPersistentAuxiliaryEnabled = false;
-}
-void FMemory::EnablePersistentAuxiliary()
-{
-	GPersistentAuxiliaryEnabled = true;
-}
-SIZE_T FMemory::GetUsedPersistentAuxiliary()
-{
-	return GPersistentAuxiliaryCurrentOffset;
-}
-
 
 #if !INLINE_FMEMORY_OPERATION && !PLATFORM_USES_FIXED_GMalloc_CLASS
 #include "HAL/FMemory.inl"

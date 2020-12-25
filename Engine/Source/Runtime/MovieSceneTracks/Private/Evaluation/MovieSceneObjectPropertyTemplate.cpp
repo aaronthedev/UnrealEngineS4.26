@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Evaluation/MovieSceneObjectPropertyTemplate.h"
 #include "Tracks/MovieSceneObjectPropertyTrack.h"
@@ -56,7 +56,7 @@ struct FObjectPropertyExecToken : IMovieSceneExecutionToken
 				continue;
 			}
 
-			FObjectPropertyBase* ObjectProperty = CastField<FObjectPropertyBase>(PropertyBindings->GetProperty(*ObjectPtr));
+			UObjectPropertyBase* ObjectProperty = Cast<UObjectPropertyBase>(PropertyBindings->GetProperty(*ObjectPtr));
 			if (!ObjectProperty || !CanAssignValue(ObjectProperty, NewObjectValue))
 			{
 				continue;
@@ -72,7 +72,7 @@ struct FObjectPropertyExecToken : IMovieSceneExecutionToken
 		}
 	}
 
-	bool CanAssignValue(FObjectPropertyBase* TargetProperty, UObject* DesiredValue) const
+	bool CanAssignValue(UObjectPropertyBase* TargetProperty, UObject* DesiredValue) const
 	{
 		check(TargetProperty);
 		if (!TargetProperty->PropertyClass)
@@ -95,7 +95,7 @@ struct FObjectPropertyExecToken : IMovieSceneExecutionToken
 
 
 FMovieSceneObjectPropertyTemplate::FMovieSceneObjectPropertyTemplate(const UMovieSceneObjectPropertySection& Section, const UMovieSceneObjectPropertyTrack& Track)
-	: FMovieScenePropertySectionTemplate(Track.GetPropertyName(), Track.GetPropertyPath().ToString())
+	: FMovieScenePropertySectionTemplate(Track.GetPropertyName(), Track.GetPropertyPath())
 	, ObjectChannel(Section.ObjectChannel)
 {}
 

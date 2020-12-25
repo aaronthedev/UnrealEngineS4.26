@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	DeviceProfile.h: Declares the UDeviceProfile class.
@@ -38,9 +38,6 @@ class ENGINE_API UDeviceProfile : public UTextureLODSettings
 
 	/** This is not a property, it shouldn't be set by the editor */
 	FString ConfigPlatform;
-
-	/** A collection of UDeviceProfileFragment names, which can contain predefined sets of cvars */
-	TArray<FString> FragmentIncludes;
 
 public:
 
@@ -89,7 +86,6 @@ public:
 
 	//~ Begin UObject Interface
 	virtual void PostInitProperties() override;
-	virtual void BeginDestroy() override;
 	//~ End UObject Interface
 
 #if WITH_EDITOR

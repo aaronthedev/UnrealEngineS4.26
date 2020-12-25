@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -49,11 +49,6 @@ class UNiagaraEditorDataBase : public UObject
 public:
 #if WITH_EDITORONLY_DATA
 	virtual void PostLoadFromOwner(UObject* InOwner) PURE_VIRTUAL(UNiagaraEditorDataBase::PostLoadFromOwner, );
-
-	NIAGARA_API FSimpleMulticastDelegate& OnPersistentDataChanged() { return PersistentDataChangedDelegate; }
-
-private:
-	FSimpleMulticastDelegate PersistentDataChangedDelegate;
 #endif
 };
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Factories/PhysicsAssetFactory.h"
 #include "Misc/MessageDialog.h"
@@ -104,7 +104,7 @@ UObject* UPhysicsAssetFactory::CreatePhysicsAssetFromMesh(FName InAssetName, UOb
 	if(InParent == nullptr && !PackageName.IsEmpty())
 	{
 		// Then find/create it.
-		Package = CreatePackage( *PackageName);
+		Package = CreatePackage(nullptr, *PackageName);
 		if ( !ensure(Package) )
 		{
 			// There was a problem creating the package

@@ -67,19 +67,6 @@ struct DxilFunctionProps {
       };
       unsigned attributeSizeInBytes;
     } Ray;
-    // Mesh shader.
-    struct {
-      unsigned numThreads[3];
-      unsigned maxVertexCount;
-      unsigned maxPrimitiveCount;
-      DXIL::MeshOutputTopology outputTopology;
-      unsigned payloadSizeInBytes;
-    } MS;
-    // Amplification shader.
-    struct {
-      unsigned numThreads[3];
-      unsigned payloadSizeInBytes;
-    } AS;
   } ShaderProps;
   DXIL::ShaderKind shaderKind;
   // TODO: Should we have an unmangled name here for ray tracing shaders?
@@ -90,8 +77,7 @@ struct DxilFunctionProps {
   bool IsDS() const     { return shaderKind == DXIL::ShaderKind::Domain; }
   bool IsCS() const     { return shaderKind == DXIL::ShaderKind::Compute; }
   bool IsGraphics() const {
-    return (shaderKind >= DXIL::ShaderKind::Pixel && shaderKind <= DXIL::ShaderKind::Domain) ||
-           shaderKind == DXIL::ShaderKind::Mesh || shaderKind == DXIL::ShaderKind::Amplification;
+    return (shaderKind >= DXIL::ShaderKind::Pixel && shaderKind <= DXIL::ShaderKind::Domain);
   }
   bool IsRayGeneration() const { return shaderKind == DXIL::ShaderKind::RayGeneration; }
   bool IsIntersection() const { return shaderKind == DXIL::ShaderKind::Intersection; }
@@ -102,8 +88,6 @@ struct DxilFunctionProps {
   bool IsRay() const {
     return (shaderKind >= DXIL::ShaderKind::RayGeneration && shaderKind <= DXIL::ShaderKind::Callable);
   }
-  bool IsMS() const { return shaderKind == DXIL::ShaderKind::Mesh; }
-  bool IsAS() const { return shaderKind == DXIL::ShaderKind::Amplification; }
 };
 
 } // namespace hlsl

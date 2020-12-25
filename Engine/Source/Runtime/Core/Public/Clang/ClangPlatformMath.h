@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================================
 	ClangPlatformMath.h: Clang intrinsic implementations of some platform Math functions
@@ -19,21 +19,14 @@ struct FClangPlatformMath : public FGenericPlatformMath
 	 *
 	 * @return the number of zeros before the first "on" bit
 	 */
-	static FORCEINLINE uint8 CountLeadingZeros8(uint8 Value)
-	{
-		return uint8(__builtin_clz((uint32(Value) << 1) | 1) - 23);
-	}
-
-	/**
-	 * Counts the number of leading zeros in the bit representation of the value
-	 *
-	 * @param Value the value to determine the number of leading zeros for
-	 *
-	 * @return the number of zeros before the first "on" bit
-	 */
 	static FORCEINLINE uint32 CountLeadingZeros(uint32 Value)
 	{
-		return __builtin_clzll((uint64(Value) << 1) | 1) - 31;
+		if (Value == 0)
+		{
+			return 32;
+		}
+	
+		return __builtin_clz(Value);
 	}
 
 	/**
@@ -67,7 +60,7 @@ struct FClangPlatformMath : public FGenericPlatformMath
 			return 32;
 		}
 	
-		return (uint32)__builtin_ctz(Value);
+		return __builtin_ctz(Value);
 	}
 	
 	/**
@@ -84,18 +77,6 @@ struct FClangPlatformMath : public FGenericPlatformMath
 			return 64;
 		}
 	
-		return (uint64)__builtin_ctzll(Value);
-	}
-
-	static FORCEINLINE uint32 FloorLog2(uint32 Value)
-	{
-		int32 Mask = -int32(Value != 0);
-		return (31 - __builtin_clz(Value)) & Mask;
-	}
-
-	static FORCEINLINE uint64 FloorLog2_64(uint64 Value)
-	{
-		int64 Mask = -int64(Value != 0);
-		return (63 - __builtin_clzll(Value)) & Mask;
+		return __builtin_ctzll(Value);
 	}
 };

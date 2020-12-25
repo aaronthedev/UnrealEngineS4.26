@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SUSDReferencesList.h"
 
-#include "SUSDStageEditorStyle.h"
 #include "USDStageActor.h"
 #include "USDStageModule.h"
 #include "USDTypesConversion.h"
@@ -14,6 +13,13 @@
 #include "Widgets/Input/STextComboBox.h"
 
 #if USE_USD_SDK
+#include "USDIncludesStart.h"
+
+#include "pxr/usd/sdf/reference.h"
+#include "pxr/usd/usd/prim.h"
+#include "pxr/usd/usd/variantSets.h"
+
+#include "USDIncludesEnd.h"
 
 namespace UsdReferencesListConstants
 {
@@ -30,7 +36,7 @@ void SUsdReferenceRow::Construct( const FArguments& InArgs, TSharedPtr< FUsdRefe
 }
 
 TSharedRef< SWidget > SUsdReferenceRow::GenerateWidgetForColumn( const FName& ColumnName )
-{
+{	
 	TSharedRef< SWidget > ColumnWidget = SNullWidget::NullWidget;
 
 	if ( ColumnName == TEXT("AssetPath") )
@@ -40,35 +46,31 @@ TSharedRef< SWidget > SUsdReferenceRow::GenerateWidgetForColumn( const FName& Co
 		.Font( FEditorStyle::GetFontStyle( UsdReferencesListConstants::NormalFont ) );
 	}
 
-	return SNew( SBox )
-		.HeightOverride( FUsdStageEditorStyle::Get()->GetFloat( "UsdStageEditor.ListItemHeight" ) )
+	return SNew( SHorizontalBox )
+		+SHorizontalBox::Slot()
+		.HAlign( HAlign_Left )
+		.VAlign( VAlign_Center )
+		.Padding( UsdReferencesListConstants::RowPadding )
+		.AutoWidth()
 		[
-			SNew( SHorizontalBox )
-			+SHorizontalBox::Slot()
-			.HAlign( HAlign_Left )
-			.VAlign( VAlign_Center )
-			.Padding( UsdReferencesListConstants::RowPadding )
-			.AutoWidth()
-			[
-				ColumnWidget
-			]
+			ColumnWidget
 		];
 }
 
-void SUsdReferencesList::Construct( const FArguments& InArgs, const UE::FUsdStage& UsdStage, const TCHAR* PrimPath )
+void SUsdReferencesList::Construct( const FArguments& InArgs, const TUsdStore< pxr::UsdStageRefPtr >& UsdStage, const TCHAR* PrimPath )
 {
-	ViewModel.UpdateReferences( UsdStage, PrimPath );
+	UpdateReferences( UsdStage, PrimPath );
 
 	SAssignNew( HeaderRowWidget, SHeaderRow )
+	.Visibility( EVisibility::Collapsed )
 
 	+SHeaderRow::Column( FName( TEXT("AssetPath") ) )
-	.DefaultLabel( NSLOCTEXT( "USDReferencesList", "References", "References" ) )
 	.FillWidth( 100.f );
 
 	SListView::Construct
 	(
 		SListView::FArguments()
-		.ListItemsSource( &ViewModel.References )
+		.ListItemsSource( &References )
 		.OnGenerateRow( this, &SUsdReferencesList::OnGenerateRow )
 		.HeaderRow( HeaderRowWidget )
 	);
@@ -79,9 +81,36 @@ TSharedRef< ITableRow > SUsdReferencesList::OnGenerateRow( TSharedPtr< FUsdRefer
 	return SNew( SUsdReferenceRow, InDisplayNode, OwnerTable );
 }
 
-void SUsdReferencesList::SetPrimPath( const UE::FUsdStage& UsdStage, const TCHAR* PrimPath )
+void SUsdReferencesList::UpdateReferences( const TUsdStore< pxr::UsdStageRefPtr >& UsdStage, const TCHAR* PrimPath )
 {
-	ViewModel.UpdateReferences( UsdStage, PrimPath );
+	References.Reset();
+
+	if ( !UsdStage.Get() )
+	{
+		return;
+	}
+
+	FScopedUsdAllocs UsdAllocs;
+	
+	pxr::SdfPrimSpecHandle PrimSpec = UsdStage.Get()->GetRootLayer()->GetPrimAtPath( UnrealToUsd::ConvertPath( PrimPath ).Get() );
+
+	if ( PrimSpec )
+	{
+		pxr::SdfReferencesProxy ReferencesProxy = PrimSpec->GetReferenceList();
+
+		for ( const pxr::SdfReference& UsdReference : ReferencesProxy.GetAddedOrExplicitItems() )
+		{
+			FUsdReference Reference;
+			Reference.AssetPath = UsdToUnreal::ConvertString( UsdReference.GetAssetPath() );
+
+			References.Add( MakeSharedUnreal< FUsdReference >( MoveTemp( Reference ) ) );
+		}
+	}
+}
+
+void SUsdReferencesList::SetPrimPath( const TUsdStore< pxr::UsdStageRefPtr >& UsdStage, const TCHAR* PrimPath )
+{
+	UpdateReferences( UsdStage, PrimPath );
 	RequestListRefresh();
 }
 

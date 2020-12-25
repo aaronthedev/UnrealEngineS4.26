@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,6 @@
 #include "UObject/ObjectMacros.h"
 #include "OnlineSubsystemTypes.h"
 #include "OnlineDelegateMacros.h"
-//#include "InAppPurchaseCallbackProxy2.h"
 #include "OnlineStoreInterface.generated.h"
 
 ONLINESUBSYSTEM_API DECLARE_LOG_CATEGORY_EXTERN(LogOnlineStore, Log, All);
@@ -239,7 +238,7 @@ typedef TSharedPtr<FOnlineInAppPurchaseRestoreRead, ESPMode::ThreadSafe> FOnline
 /**
  *	IOnlineStore - Interface class for microtransactions
  */
-class UE_DEPRECATED(4.26, "IOnlineStore is deprecated, please use IOnlineStoreV2 and IOnlinePurchase instead.") IOnlineStore
+class IOnlineStore
 {
 public:
 

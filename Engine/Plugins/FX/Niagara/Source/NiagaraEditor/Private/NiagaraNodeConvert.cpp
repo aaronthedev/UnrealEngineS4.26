@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraNodeConvert.h"
 #include "EdGraphSchema_Niagara.h"
@@ -28,11 +28,10 @@ TSharedPtr<SGraphNode> UNiagaraNodeConvert::CreateVisualWidget()
 
 void UNiagaraNodeConvert::Compile(class FHlslNiagaraTranslator* Translator, TArray<int32>& CompileOutputs)
 {
-	FPinCollectorArray InputPins;
+	TArray<UEdGraphPin*> InputPins;
 	GetInputPins(InputPins);
 
-	TArray<int32, TInlineAllocator<16>> CompileInputs;
-	CompileInputs.Reserve(InputPins.Num());
+	TArray<int32> CompileInputs;
 	for(UEdGraphPin* InputPin : InputPins)
 	{
 		if (InputPin->PinType.PinCategory == UEdGraphSchema_Niagara::PinCategoryType || 
@@ -102,11 +101,11 @@ void UNiagaraNodeConvert::AutowireNewNode(UEdGraphPin* FromPin)
 			TArray<FName> SrcPath;
 			TArray<FName> DestPath;
 			//Add a corresponding pin for each property in the from Pin.
-			for (TFieldIterator<FProperty> PropertyIt(Struct, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
+			for (TFieldIterator<UProperty> PropertyIt(Struct, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
 			{
 				SrcPath.Empty(SrcPath.Num());
 				DestPath.Empty(DestPath.Num());
-				const FProperty* Property = *PropertyIt;
+				const UProperty* Property = *PropertyIt;
 				FNiagaraTypeDefinition PropType = Schema->GetTypeDefForProperty(Property);
 				UEdGraphPin* NewPin = RequestNewTypedPin(Dir, PropType, *Property->GetDisplayNameText().ToString());
 
@@ -218,8 +217,8 @@ FText UNiagaraNodeConvert::GetNodeTitle(ENodeTitleType::Type TitleType)const
 	}
 	else
 	{
-		FPinCollectorArray InPins;
-		FPinCollectorArray OutPins;
+		TArray<UEdGraphPin*> InPins;
+		TArray<UEdGraphPin*> OutPins;
 		GetInputPins(InPins);
 		GetOutputPins(OutPins);
 		if (InPins.Num() == 2 && OutPins.Num() == 2)
@@ -299,14 +298,14 @@ bool UNiagaraNodeConvert::InitConversion(UEdGraphPin* FromPin, UEdGraphPin* ToPi
 
 	TArray<FName> SrcPath;
 	TArray<FName> DestPath;
-	TFieldIterator<FProperty> FromPropertyIt(FromType.GetScriptStruct(), EFieldIteratorFlags::IncludeSuper);
-	TFieldIterator<FProperty> ToPropertyIt(ToType.GetScriptStruct(), EFieldIteratorFlags::IncludeSuper);
+	TFieldIterator<UProperty> FromPropertyIt(FromType.GetScriptStruct(), EFieldIteratorFlags::IncludeSuper);
+	TFieldIterator<UProperty> ToPropertyIt(ToType.GetScriptStruct(), EFieldIteratorFlags::IncludeSuper);
 
-	TFieldIterator<FProperty> NextFromPropertyIt(FromType.GetScriptStruct(), EFieldIteratorFlags::IncludeSuper);
+	TFieldIterator<UProperty> NextFromPropertyIt(FromType.GetScriptStruct(), EFieldIteratorFlags::IncludeSuper);
 	while (FromPropertyIt && ToPropertyIt)
 	{
-		FProperty* FromProp = *FromPropertyIt;
-		FProperty* ToProp = *ToPropertyIt;
+		UProperty* FromProp = *FromPropertyIt;
+		UProperty* ToProp = *ToPropertyIt;
 		if (NextFromPropertyIt)
 		{
 			++NextFromPropertyIt;

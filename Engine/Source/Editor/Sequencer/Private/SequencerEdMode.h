@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,13 +7,11 @@
 #include "EditorModeTools.h"
 #include "EdMode.h"
 #include "Misc/FrameTime.h"
-#include "Engine/Texture2D.h"
 
 class FCanvas;
 class FEditorViewportClient;
 class FPrimitiveDrawInterface;
 class FSceneView;
-class ISequencer;
 class FSequencer;
 class FViewport;
 struct HMovieSceneKeyProxy;
@@ -73,9 +71,13 @@ public:
 
 protected:
 	void DrawTracks3D(FPrimitiveDrawInterface* PDI);
-	void DrawTransformTrack(const TSharedPtr<ISequencer>& Sequencer, FPrimitiveDrawInterface* PDI, UMovieScene3DTransformTrack* TransformTrack, TArrayView<const TWeakObjectPtr<>> BoundObjects, const bool bIsSelected);
-	void DrawAudioTracks(FPrimitiveDrawInterface* PDI);
+	void DrawTransformTrack(const TSharedPtr<FSequencer>& Sequencer, FPrimitiveDrawInterface* PDI, UMovieScene3DTransformTrack* TransformTrack, TArrayView<const TWeakObjectPtr<>> BoundObjects, const bool bIsSelected);
 
+protected:
+	static void GetLocationAtTime(FMovieSceneEvaluationTrack* Track, UObject* BoundObject, FFrameTime KeyTime, FVector& KeyPos, FRotator& KeyRot, const TSharedPtr<FSequencer>& Sequencer);
+	static void GetParents(TArray<const UObject *>& Parents, const UObject* InObject);
+	static FTransform GetRefFrameFromParents(const TSharedPtr<FSequencer>& Sequencer, const TArray<const UObject *>& Parents, FFrameTime KeyTime);
+	static bool GetParentTM(FTransform& CurrentRefTM, const TSharedPtr<FSequencer>& Sequencer, UObject* ParentObject, FFrameTime KeyTime);
 private:
 	TArray<TWeakPtr<FSequencer>> Sequencers;
 
@@ -87,9 +89,6 @@ private:
 
 	/** If true, draw mesh trails instead of debug lines*/
 	bool bDrawMeshTrails;
-
-	/** The audio texture used for drawing the audio spatialization points */
-	UTexture2D* AudioTexture;
 };
 
 /**

@@ -1,10 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ViewModels/Stack/NiagaraStackEventScriptItemGroup.h"
 #include "NiagaraEmitter.h"
 #include "ViewModels/Stack/NiagaraStackObject.h"
 #include "ViewModels/Stack/NiagaraStackModuleItem.h"
-#include "ViewModels/NiagaraScriptViewModel.h"
+#include "NiagaraScriptViewModel.h"
 #include "NiagaraScriptGraphViewModel.h"
 #include "ViewModels/NiagaraEmitterViewModel.h"
 #include "NiagaraGraph.h"
@@ -50,7 +50,7 @@ FText UNiagaraStackEventHandlerPropertiesItem::GetDisplayName() const
 	return LOCTEXT("EventHandlerPropertiesDisplayName", "Event Handler Properties");
 }
 
-bool UNiagaraStackEventHandlerPropertiesItem::TestCanResetToBaseWithMessage(FText& OutCanResetToBaseMessage) const
+bool UNiagaraStackEventHandlerPropertiesItem::CanResetToBase() const
 {
 	if (bCanResetToBaseCache.IsSet() == false)
 	{
@@ -72,22 +72,12 @@ bool UNiagaraStackEventHandlerPropertiesItem::TestCanResetToBaseWithMessage(FTex
 			bCanResetToBaseCache = false;
 		}
 	}
-	if (bCanResetToBaseCache.GetValue())
-	{
-		OutCanResetToBaseMessage = LOCTEXT("CanResetToBase", "Reset the event handler properties to the state defined by the parent emitter.");
-		return true;
-	}
-	else
-	{
-		OutCanResetToBaseMessage = LOCTEXT("CanNotResetToBase", "No parent to reset to, or not different from parent.");
-		return false;
-	}
+	return bCanResetToBaseCache.GetValue();
 }
 
 void UNiagaraStackEventHandlerPropertiesItem::ResetToBase()
 {
-	FText Unused;
-	if (TestCanResetToBaseWithMessage(Unused))
+	if (CanResetToBase())
 	{
 		const UNiagaraEmitter* BaseEmitter = GetEmitterViewModel()->GetEmitter()->GetParent();
 		TSharedRef<FNiagaraScriptMergeManager> MergeManager = FNiagaraScriptMergeManager::Get();
@@ -158,7 +148,7 @@ void UNiagaraStackEventHandlerPropertiesItem::SelectEmitterStackObjectRootTreeNo
 			TSharedPtr<IPropertyHandle> EventHandlerArrayItemPropertyHandle = EventHandlerArrayItemNode->CreatePropertyHandle();
 			if (EventHandlerArrayItemPropertyHandle.IsValid())
 			{
-				FStructProperty* StructProperty = CastField<FStructProperty>(EventHandlerArrayItemPropertyHandle->GetProperty());
+				UStructProperty* StructProperty = Cast<UStructProperty>(EventHandlerArrayItemPropertyHandle->GetProperty());
 				if (StructProperty != nullptr && StructProperty->Struct == FNiagaraEventScriptProperties::StaticStruct())
 				{
 					TArray<void*> RawData;
@@ -200,11 +190,9 @@ void UNiagaraStackEventScriptItemGroup::Initialize(
 	FRequiredEntryData InRequiredEntryData,
 	TSharedRef<FNiagaraScriptViewModel> InScriptViewModel,
 	ENiagaraScriptUsage InScriptUsage,
-	FGuid InScriptUsageId,
-	FGuid InEventSourceEmitterId)
+	FGuid InScriptUsageId)
 {
-	EventSourceEmitterId = InEventSourceEmitterId;
-	FText ToolTip = LOCTEXT("EventGroupTooltip", "Determines how this Emitter responds to incoming events. There can be more than one event handler stage per Emitter.");
+	FText ToolTip = LOCTEXT("EventGroupTooltip", "Determines how this Emitter responds to incoming events. There can be more than one event handler script stack per Emitter.");
 	FText TempDisplayName = FText::Format(LOCTEXT("TempDisplayNameFormat", "Event Handler - {0}"), FText::FromString(InScriptUsageId.ToString(EGuidFormats::DigitsWithHyphens)));
 	Super::Initialize(InRequiredEntryData, TempDisplayName, ToolTip, InScriptViewModel, InScriptUsage, InScriptUsageId);
 }
@@ -237,21 +225,12 @@ void UNiagaraStackEventScriptItemGroup::RefreshChildrenInternal(const TArray<UNi
 	Super::RefreshChildrenInternal(CurrentChildren, NewChildren, NewIssues);
 }
 
-bool UNiagaraStackEventScriptItemGroup::TestCanDeleteWithMessage(FText& OutCanDeleteMessage) const
+bool UNiagaraStackEventScriptItemGroup::CanDelete() const
 {
-	if (HasBaseEventHandler())
-	{
-		OutCanDeleteMessage = LOCTEXT("CantDeleteInherited", "Can not delete this event handler because it's inherited.");
-		return false;
-	}
-	else
-	{
-		OutCanDeleteMessage = LOCTEXT("CanDelete", "Delete this event handler.");
-		return true;
-	}
+	return HasBaseEventHandler() == false;
 }
 
-void UNiagaraStackEventScriptItemGroup::Delete()
+bool UNiagaraStackEventScriptItemGroup::Delete()
 {
 	TSharedPtr<FNiagaraScriptViewModel> ScriptViewModelPinned = ScriptViewModel.Pin();
 	checkf(ScriptViewModelPinned.IsValid(), TEXT("Can not delete when the script view model has been deleted."));
@@ -261,13 +240,8 @@ void UNiagaraStackEventScriptItemGroup::Delete()
 
 	if (!Source || !Source->NodeGraph)
 	{
-		return;
+		return false;
 	}
-
-	//Need to tear down existing systems now.
-	FNiagaraSystemUpdateContext UpdateCtx;
-	UpdateCtx.SetDestroyOnAdd(true);
-	UpdateCtx.Add(Emitter, true);
 
 	FScopedTransaction Transaction(FText::Format(LOCTEXT("DeleteEventHandler", "Deleted {0}"), GetDisplayName()));
 	Emitter->Modify();
@@ -293,6 +267,8 @@ void UNiagaraStackEventScriptItemGroup::Delete()
 	ScriptViewModelPinned->SetScripts(Emitter);
 	
 	OnModifiedEventHandlersDelegate.ExecuteIfBound();
+
+	return true;
 }
 
 bool UNiagaraStackEventScriptItemGroup::HasBaseEventHandler() const

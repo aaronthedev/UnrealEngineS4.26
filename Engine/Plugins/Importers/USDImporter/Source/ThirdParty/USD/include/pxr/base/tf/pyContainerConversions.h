@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_PY_CONTAINER_CONVERSIONS_H
-#define PXR_BASE_TF_PY_CONTAINER_CONVERSIONS_H
+#ifndef TF_PYCONTAINERCONVERSIONS_H
+#define TF_PYCONTAINERCONVERSIONS_H
 
 /// \file tf/pyContainerConversions.h
 /// Utilities for providing C++ <-> Python container support.
@@ -229,13 +229,13 @@ namespace TfPyContainerConversions {
             || PyFrozenSet_Check(obj_ptr)
             || PyIter_Check(obj_ptr)
             || PyRange_Check(obj_ptr)
-            || (   !PyBytes_Check(obj_ptr)
+            || (   !PyString_Check(obj_ptr)
                 && !PyUnicode_Check(obj_ptr)
-                && (   Py_TYPE(obj_ptr) == 0
-                    || Py_TYPE(Py_TYPE(obj_ptr)) == 0
-                    || Py_TYPE(Py_TYPE(obj_ptr))->tp_name == 0
+                && (   obj_ptr->ob_type == 0
+                    || obj_ptr->ob_type->ob_type == 0
+                    || obj_ptr->ob_type->ob_type->tp_name == 0
                     || std::strcmp(
-                         Py_TYPE(Py_TYPE(obj_ptr))->tp_name,
+                         obj_ptr->ob_type->ob_type->tp_name,
                          "Boost.Python.class") != 0)
                 && PyObject_HasAttrString(obj_ptr, "__len__")
                 && PyObject_HasAttrString(obj_ptr, "__getitem__")))) return 0;
@@ -256,7 +256,7 @@ namespace TfPyContainerConversions {
         bool is_range = PyRange_Check(obj_ptr);
         std::size_t i=0;
         if (!all_elements_convertible(obj_iter, is_range, i)) return 0;
-        if (!is_range) assert(i == (std::size_t)obj_size);
+        if (!is_range) assert(i == obj_size);
       }
       return obj_ptr;
     }
@@ -438,4 +438,4 @@ void TfPyRegisterStlSequencesFromPython()
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_PY_CONTAINER_CONVERSIONS_H
+#endif // TF_PYCONTAINERCONVERSIONS_H

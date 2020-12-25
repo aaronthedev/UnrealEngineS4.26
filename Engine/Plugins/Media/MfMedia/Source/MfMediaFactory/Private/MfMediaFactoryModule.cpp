@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MfMediaFactoryPrivate.h"
 
@@ -9,7 +9,6 @@
 #include "IMediaPlayerFactory.h"
 #include "Internationalization/Internationalization.h"
 #include "Misc/Paths.h"
-#include "Misc/Guid.h"
 #include "Modules/ModuleInterface.h"
 #include "Modules/ModuleManager.h"
 #include "UObject/NameTypes.h"
@@ -112,12 +111,6 @@ public:
 		return PlayerName;
 	}
 
-	virtual FGuid GetPlayerPluginGUID() const override
-	{
-		static FGuid PlayerPluginGUID(0x6a5bd063, 0xe0854163, 0x867e5978, 0xf3eaa9f2);
-		return PlayerPluginGUID;
-	}
-
 	virtual const TArray<FString>& GetSupportedPlatforms() const override
 	{
 		return SupportedPlatforms;
@@ -167,23 +160,18 @@ public:
 #endif
 
 		// supported platforms
-		AddSupportedPlatform(FGuid(0x21f5cd78, 0xc2824344, 0xa0f32e55, 0x28059b27));
-		AddSupportedPlatform(FGuid(0x0df604e1, 0x12e44452, 0x80bee1c7, 0x4eb934b1));
+		SupportedPlatforms.Add(TEXT("XboxOne"));
+		SupportedPlatforms.Add(TEXT("HoloLens"));
 #if MFMEDIAFACTORY_WINDOWS && MFMEDIAFACTORY_USE_WINDOWS
-		AddSupportedPlatform(FGuid(0xd1d5f296, 0xff834a87, 0xb20faaa9, 0xd6b8e9a6));
+		SupportedPlatforms.Add(TEXT("Windows"));
 #endif
-		AddSupportedPlatform(FGuid(0x5636fbc1, 0xd2b54f62, 0xac8e7d4f, 0xb184b45a));
-		AddSupportedPlatform(FGuid(0x941259d5, 0x0a2746aa, 0xadc0ba84, 0x4790ad8a));
-		AddSupportedPlatform(FGuid(0xccf05903, 0x822b47e1, 0xb2236a28, 0xdfd78817));
 
 		// supported schemes
 		SupportedUriSchemes.Add(TEXT("file"));
-#if MFMEDIAFACTORY_ALLOW_HTTPS
-		SupportedUriSchemes.Add(TEXT("https"));
-#endif
 #if MFMEDIAFACTORY_WINDOWS && MFMEDIAFACTORY_USE_WINDOWS
 		SupportedUriSchemes.Add(TEXT("http"));
 		SupportedUriSchemes.Add(TEXT("httpd"));
+		SupportedUriSchemes.Add(TEXT("https"));
 		SupportedUriSchemes.Add(TEXT("mms"));
 		SupportedUriSchemes.Add(TEXT("rtsp"));
 		SupportedUriSchemes.Add(TEXT("rtspt"));
@@ -211,18 +199,6 @@ public:
 	}
 
 private:
-	void AddSupportedPlatform(const FGuid& PlatformGuid)
-	{
-		auto MediaModule = FModuleManager::GetModulePtr<IMediaModule>("Media");
-		if (MediaModule)
-		{
-			FName PlatformName = MediaModule->GetPlatformName(PlatformGuid);
-			if (!PlatformName.IsNone())
-			{
-				SupportedPlatforms.Add(PlatformName.ToString());
-			}
-		}
-	}
 
 	/** List of supported media file types. */
 	TArray<FString> SupportedFileExtensions;

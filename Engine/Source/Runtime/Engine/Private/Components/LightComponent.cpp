@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	LightComponent.cpp: LightComponent implementation.
@@ -24,16 +24,13 @@
 #include "Components/DirectionalLightComponent.h"
 #include "Components/BillboardComponent.h"
 #include "ComponentRecreateRenderStateContext.h"
-#if WITH_EDITOR
-#include "Rendering/StaticLightingSystemInterface.h"
-#endif
 
 void FStaticShadowDepthMap::InitRHI()
 {
 	if (FApp::CanEverRender() && Data && Data->ShadowMapSizeX > 0 && Data->ShadowMapSizeY > 0 && GMaxRHIFeatureLevel >= ERHIFeatureLevel::SM5)
 	{
 		FRHIResourceCreateInfo CreateInfo;
-		FTexture2DRHIRef Texture2DRHI = RHICreateTexture2D(Data->ShadowMapSizeX, Data->ShadowMapSizeY, PF_R16F, 1, 1, TexCreate_None, CreateInfo);
+		FTexture2DRHIRef Texture2DRHI = RHICreateTexture2D(Data->ShadowMapSizeX, Data->ShadowMapSizeY, PF_R16F, 1, 1, 0, CreateInfo);
 		TextureRHI = Texture2DRHI;
 
 		uint32 DestStride = 0;
@@ -232,26 +229,9 @@ void ULightComponentBase::OnRegister()
 
 		UpdateLightSpriteTexture();
 	}
-
-#if WITH_EDITOR
-	if (bAffectsWorld && HasStaticShadowing())
-	{
-		FStaticLightingSystemInterface::OnLightComponentRegistered.Broadcast(this);
-	}
-#endif
 }
 
-void ULightComponentBase::OnUnregister()
-{
-#if WITH_EDITOR
-	// Unconditional unregistration event in case we miss any changes to mobility in the middle
-	FStaticLightingSystemInterface::OnLightComponentUnregistered.Broadcast(this);
-#endif
-
-	Super::OnUnregister();
-}
-
-bool ULightComponentBase::CanEditChange(const FProperty* InProperty) const
+bool ULightComponentBase::CanEditChange(const UProperty* InProperty) const
 {
 	if (InProperty)
 	{
@@ -320,21 +300,15 @@ FLightSceneProxy::FLightSceneProxy(const ULightComponent* InLightComponent)
 	, bUseWholeSceneCSMForMovableObjects(false)
 	, bTiledDeferredLightingSupported(false)
 	, AtmosphereSunLightIndex(InLightComponent->GetAtmosphereSunLightIndex())
-	, AtmosphereSunDiskColorScale(InLightComponent->GetAtmosphereSunDiskColorScale())
 	, LightType(InLightComponent->GetLightType())	
 	, LightingChannelMask(GetLightingChannelMaskForStruct(InLightComponent->LightingChannels))
 	, StatId(InLightComponent->GetStatID(true))
 	, ComponentName(InLightComponent->GetOwner() ? InLightComponent->GetOwner()->GetFName() : InLightComponent->GetFName())
-	, LevelName(InLightComponent->GetOwner() ? InLightComponent->GetOwner()->GetLevel()->GetOutermost()->GetFName() : NAME_None)
+	, LevelName(InLightComponent->GetOutermost()->GetFName())
 	, FarShadowDistance(0)
 	, FarShadowCascadeCount(0)
 	, ShadowAmount(1.0f)
 	, SamplesPerPixel(1)
-	, DeepShadowLayerDistribution(InLightComponent->DeepShadowLayerDistribution)
-	, bMobileMovablePointLightUniformBufferNeedsUpdate(false)
-	, bMobileMovablePointLightShouldBeRender(false)
-	, bMobileMovablePointLightShouldCastShadow(false)
-	, MobileMovablePointLightShadowmapMinMax()
 {
 	check(SceneInterface);
 
@@ -426,7 +400,6 @@ ULightComponentBase::ULightComponentBase(const FObjectInitializer& ObjectInitial
 #if WITH_EDITORONLY_DATA
 	bVisualizeComponent = true;
 #endif
-	DeepShadowLayerDistribution = 0.5f;
 }
 
 ULightComponent::FOnUpdateColorAndBrightness ULightComponent::UpdateColorAndBrightnessEvent;
@@ -553,7 +526,7 @@ void ULightComponent::Serialize(FArchive& Ar)
 			FLightComponentLegacyMapBuildData LegacyLightData;
 			LegacyLightData.Id = LightGuid;
 			LegacyLightData.Data = LegacyData;
-			GLightComponentsWithLegacyBuildData.AddAnnotation(this, MoveTemp(LegacyLightData));
+			GLightComponentsWithLegacyBuildData.AddAnnotation(this, LegacyLightData);
 		}
 	}
 
@@ -598,7 +571,7 @@ void ULightComponent::PreSave(const class ITargetPlatform* TargetPlatform)
 	ValidateLightGUIDs();
 }
 
-bool ULightComponent::CanEditChange(const FProperty* InProperty) const
+bool ULightComponent::CanEditChange(const UProperty* InProperty) const
 {
 	if (InProperty)
 	{
@@ -672,7 +645,7 @@ bool ULightComponent::CanEditChange(const FProperty* InProperty) const
 
 void ULightComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
-	FProperty* PropertyThatChanged = PropertyChangedEvent.MemberProperty;
+	UProperty* PropertyThatChanged = PropertyChangedEvent.MemberProperty;
 	const FString PropertyName = PropertyThatChanged ? PropertyThatChanged->GetName() : TEXT("");
 
 	Intensity = FMath::Max(0.0f, Intensity);
@@ -802,9 +775,9 @@ void ULightComponent::OnRegister()
 	ValidateLightGUIDs();
 }
 
-void ULightComponent::CreateRenderState_Concurrent(FRegisterComponentContext* Context)
+void ULightComponent::CreateRenderState_Concurrent()
 {
-	Super::CreateRenderState_Concurrent(Context);
+	Super::CreateRenderState_Concurrent();
 
 	if (bAffectsWorld)
 	{
@@ -1143,19 +1116,6 @@ void ULightComponent::SetForceCachedShadowsForMovablePrimitives(bool bNewValue)
 	}
 }
 
-void ULightComponent::SetLightingChannels(bool bChannel0, bool bChannel1, bool bChannel2)
-{
-	if (bChannel0 != LightingChannels.bChannel0 ||
-		bChannel1 != LightingChannels.bChannel1 ||
-		bChannel2 != LightingChannels.bChannel2)
-	{
-		LightingChannels.bChannel0 = bChannel0;
-		LightingChannels.bChannel1 = bChannel1;
-		LightingChannels.bChannel2 = bChannel2;
-		MarkRenderStateDirty();
-	}
-}
-
 // GetDirection
 FVector ULightComponent::GetDirection() const 
 { 
@@ -1191,42 +1151,42 @@ void ULightComponent::UpdateColorAndBrightness()
 
 void ULightComponent::InvalidateLightingCacheDetailed(bool bInvalidateBuildEnqueuedLighting, bool bTranslationOnly)
 {
-	if (HasStaticShadowing()) // == non movable
-	{
-#if WITH_EDITOR
-		FStaticLightingSystemInterface::OnLightComponentUnregistered.Broadcast(this);
-#endif
+	InvalidateLightingCacheInner(true);
 
+	UWorld* World = GetWorld();
+	if (GIsEditor
+		&& World != NULL
+		&& HasStaticShadowing()
+		&& !HasStaticLighting())
+	{
+		ReassignStationaryLightChannels(World, false, NULL);
+	}
+}
+
+/** Invalidates the light's cached lighting with the option to recreate the light Guids. */
+void ULightComponent::InvalidateLightingCacheInner(bool bRecreateLightGuids)
+{
+	if (HasStaticShadowing())
+	{
 		// Save the light state for transactions.
 		Modify();
 
 		BeginReleaseResource(&StaticShadowDepthMap);
 
-		// Create new guids for light.
-		UpdateLightGUIDs();
-
-		if (GIsEditor)
+		if (bRecreateLightGuids)
 		{
-			UWorld* World = GetWorld();
-			bool bStationary = HasStaticShadowing() && !HasStaticLighting();
-			if (World != NULL && bStationary)
-			{
-				ReassignStationaryLightChannels(World, false, NULL);
-			}
+			// Create new guids for light.
+			UpdateLightGUIDs();
+		}
+		else
+		{
+			ValidateLightGUIDs();
 		}
 
 		MarkRenderStateDirty();
-
-#if WITH_EDITOR
-		if (bAffectsWorld)
-		{
-			FStaticLightingSystemInterface::OnLightComponentRegistered.Broadcast(this);
-		}
-#endif
 	}
 	else
 	{
-		// Movable lights will have a GUID of 0
 		LightGuid.Invalidate();
 	}
 }
@@ -1283,13 +1243,6 @@ const FLightComponentMapBuildData* ULightComponent::GetLightComponentMapBuildDat
 
 		if (OwnerLevel && OwnerLevel->OwningWorld)
 		{
-#if WITH_EDITOR
-			if (FStaticLightingSystemInterface::GetLightComponentMapBuildData(this))
-			{
-				return FStaticLightingSystemInterface::GetLightComponentMapBuildData(this);
-			}
-#endif
-
 			ULevel* ActiveLightingScenario = OwnerLevel->OwningWorld->GetActiveLightingScenario();
 			UMapBuildDataRegistry* MapBuildData = NULL;
 
@@ -1332,7 +1285,7 @@ void ULightComponent::InitializeStaticShadowDepthMap()
 			});
 
 		BeginInitResource(&StaticShadowDepthMap);
-			}
+	}
 }
 
 FLinearColor ULightComponent::GetColoredLightBrightness() const
@@ -1374,7 +1327,7 @@ void ULightComponent::SetMaterial(int32 ElementIndex, UMaterialInterface* InMate
 *
 * @param PropertyThatChanged	Property that changed
 */
-void ULightComponent::PostInterpChange(FProperty* PropertyThatChanged)
+void ULightComponent::PostInterpChange(UProperty* PropertyThatChanged)
 {
 	static FName LightColorName(TEXT("LightColor"));
 	static FName IntensityName(TEXT("Intensity"));
@@ -1426,13 +1379,6 @@ struct FCompareLightsByArrayCount
 	}
 };
 
-/**
- * This function is supposed to be called only when
- * - loading a map (UEditorEngine::Map_Load)
- * - a light's lighting cache gets invalidated (ULightComponent::InvalidateLightingCacheDetailed)
- * - finishing a lighting build
- * If you're adding more call sites to this function, make sure not to break GPULightmass as it is based on the above assumption
- */
 void ULightComponent::ReassignStationaryLightChannels(UWorld* TargetWorld, bool bAssignForLightingBuild, ULevel* LightingScenario)
 {
 	TMap<FLightAndChannel*, TArray<FLightAndChannel*> > LightToOverlapMap;
@@ -1455,7 +1401,7 @@ void ULightComponent::ReassignStationaryLightChannels(UWorld* TargetWorld, bool 
 			if (!LightingScenario || !LightLevel->bIsLightingScenario || LightLevel == LightingScenario)
 			{				
 				if (LightComponent->bAffectsWorld
-					&& (LightComponent->CastShadows || LightComponent->LightFunctionMaterial)
+					&& LightComponent->CastShadows 
 					&& LightComponent->CastStaticShadows)
 				{
 					LightToOverlapMap.Add(new FLightAndChannel(LightComponent), TArray<FLightAndChannel*>());
@@ -1568,9 +1514,6 @@ void ULightComponent::ReassignStationaryLightChannels(UWorld* TargetWorld, bool 
 		if (CurrentLight->Light->PreviewShadowMapChannel != CurrentLight->Channel)
 		{
 			CurrentLight->Light->PreviewShadowMapChannel = CurrentLight->Channel;
-#if WITH_EDITOR
-			FStaticLightingSystemInterface::OnStationaryLightChannelReassigned.Broadcast(CurrentLight->Light, CurrentLight->Light->PreviewShadowMapChannel);
-#endif
 			CurrentLight->Light->MarkRenderStateDirty();
 		}
 

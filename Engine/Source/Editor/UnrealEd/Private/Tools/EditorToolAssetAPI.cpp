@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Tools/EditorToolAssetAPI.h"
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
-#include "Engine/Classes/Engine/World.h"
 
 
 #include "AssetRegistryModule.h"
@@ -17,39 +16,18 @@
 
 FString FEditorToolAssetAPI::GetActiveAssetFolderPath()
 {
-	IContentBrowserSingleton& ContentBrowser = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser").Get();
-	return ContentBrowser.GetCurrentPath();
-}
+	check(false);  	// this only works if we have an asset selected!
 
-FString FEditorToolAssetAPI::GetWorldRelativeAssetRootPath(const UWorld* World)
-{
-	if (ensure(World->GetOutermost() != nullptr) == false)
-	{
-		return TEXT("/Game/");
-	}
-	FString WorldPackageName = World->GetOutermost()->GetName();
-	FString WorldPackageFolder = FPackageName::GetLongPackagePath(WorldPackageName);
-	return WorldPackageFolder;
-}
-
-
-FString FEditorToolAssetAPI::InteractiveSelectAssetPath(const FString& DefaultAssetName, const FText& DialogTitleMessage)
-{
 	IContentBrowserSingleton& ContentBrowser = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser").Get();
 
-	FString UseDefaultAssetName = DefaultAssetName;
-	FString CurrentPath = GetActiveAssetFolderPath();
-	if (CurrentPath.IsEmpty() == false)
-	{
-		UseDefaultAssetName = MakeUniqueAssetName(CurrentPath, DefaultAssetName);
-	}
+	//ContentBrowser.CreatePathPicker()
 
-	FSaveAssetDialogConfig Config;
-	Config.DefaultAssetName = UseDefaultAssetName;
-	Config.DialogTitleOverride = DialogTitleMessage;
-	Config.DefaultPath = CurrentPath;
-	return ContentBrowser.CreateModalSaveAssetDialog(Config);
+	TArray<FAssetData> SelectedAssets;
+	ContentBrowser.GetSelectedAssets(SelectedAssets);
+	return SelectedAssets[0].PackagePath.ToString();
 }
+
+
 
 
 UPackage* FEditorToolAssetAPI::MakeNewAssetPackage(const FString& FolderPath, const FString& AssetBaseName, FString& UniqueAssetName)
@@ -59,18 +37,9 @@ UPackage* FEditorToolAssetAPI::MakeNewAssetPackage(const FString& FolderPath, co
 	AssetToolsModule.Get().CreateUniqueAssetName(
 		FolderPath + TEXT("/") + AssetBaseName, TEXT(""), UniquePackageName, UniqueAssetName);
 
-	UPackage* AssetPackage = CreatePackage( *UniquePackageName);
+	UPackage* AssetPackage = CreatePackage(nullptr, *UniquePackageName);
 	return AssetPackage;
-}
 
-
-FString FEditorToolAssetAPI::MakeUniqueAssetName(const FString& FolderPath, const FString& AssetBaseName)
-{
-	FString UniquePackageName, UniqueAssetName;
-	FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>("AssetTools");
-	AssetToolsModule.Get().CreateUniqueAssetName(
-		FolderPath + TEXT("/") + AssetBaseName, TEXT(""), UniquePackageName, UniqueAssetName);
-	return UniqueAssetName;
 }
 
 
@@ -78,6 +47,7 @@ FString FEditorToolAssetAPI::MakeUniqueAssetName(const FString& FolderPath, cons
 void FEditorToolAssetAPI::InteractiveSaveGeneratedAsset(UObject* Asset, UPackage* AssetPackage)
 {
 	Asset->MarkPackageDirty();
+
 	FAssetRegistryModule::AssetCreated(Asset);
 
 	TArray<UPackage*> PackagesToSave;
@@ -91,6 +61,7 @@ void FEditorToolAssetAPI::InteractiveSaveGeneratedAsset(UObject* Asset, UPackage
 void FEditorToolAssetAPI::AutoSaveGeneratedAsset(UObject* Asset, UPackage* AssetPackage)
 {
 	Asset->MarkPackageDirty();
+
 	FAssetRegistryModule::AssetCreated(Asset);
 
 	TArray<UPackage*> PackagesToSave;
@@ -98,11 +69,4 @@ void FEditorToolAssetAPI::AutoSaveGeneratedAsset(UObject* Asset, UPackage* Asset
 	bool bCheckDirty = true;
 	bool bPromptToSave = false;
 	FEditorFileUtils::PromptForCheckoutAndSave(PackagesToSave, bCheckDirty, bPromptToSave);
-}
-
-
-void FEditorToolAssetAPI::NotifyGeneratedAssetModified(UObject* Asset, UPackage* AssetPackage)
-{
-	Asset->MarkPackageDirty();
-	FAssetRegistryModule::AssetCreated(Asset);
 }

@@ -1,10 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "ScreenPass.h"
-#include "SceneViewExtension.h"
-
 
 /** This class provides a solution for overriding the final render target / view rect in a chain of render graph passes.
  *  RDG pass setup is immediate, which makes it difficult to determine the final pass in a chain in order to swap a final
@@ -113,27 +111,15 @@ public:
 #endif
 	}
 
-	bool AcceptOverrideIfLastPass(EPass Pass, FScreenPassRenderTarget& OutTargetToOverride, const TOptional<int32>& AfterPassCallbackIndex = TOptional<int32>())
+	bool AcceptOverrideIfLastPass(EPass Pass, FScreenPassRenderTarget& OutTargetToOverride)
 	{
-		bool bLastAfterPass = AfterPass[(int32)Pass].Num() == 0;
+		AcceptPass(Pass);
 
-		if (AfterPassCallbackIndex)
-		{
-			bLastAfterPass = AfterPassCallbackIndex.GetValue() == AfterPass[(int32)Pass].Num() - 1;
-		}
-		else
-		{
-			// Display debug information for a Pass unless it is an after pass.
-			AcceptPass(Pass);
-		}
-
-		// We need to override output only if this is the last pass and the last after pass.
-		if (IsLastPass(Pass) && bLastAfterPass)
+		if (IsLastPass(Pass))
 		{
 			OutTargetToOverride = OverrideOutput;
 			return true;
 		}
-
 		return false;
 	}
 
@@ -167,12 +153,6 @@ public:
 		}
 	}
 
-	FAfterPassCallbackDelegateArray& GetAfterPassCallbacks(EPass Pass)
-	{ 
-		const int32 PassIndex = (int32)Pass;
-		return AfterPass[PassIndex]; 
-	}
-
 private:
 	static const int32 PassCountMax = (int32)EPass::MAX;
 
@@ -188,7 +168,6 @@ private:
 
 	FScreenPassRenderTarget OverrideOutput;
 	TStaticArray<FPassInfo, PassCountMax> Passes;
-	TStaticArray<FAfterPassCallbackDelegateArray, PassCountMax> AfterPass;
 	EPass LastPass = EPass::MAX;
 
 #if RDG_ENABLE_DEBUG

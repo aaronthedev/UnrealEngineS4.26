@@ -1,37 +1,35 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VariantManager.h"
 
-#include "CapturableProperty.h"
-#include "Kismet2/KismetEditorUtilities.h"
-#include "LevelVariantSets.h"
-#include "LevelVariantSetsFunctionDirector.h"
-#include "PropertyValue.h"
-#include "PropertyValueColor.h"
-#include "PropertyValueMaterial.h"
-#include "PropertyValueOption.h"
-#include "PropertyValueSoftObject.h"
 #include "SVariantManager.h"
-#include "Variant.h"
-#include "VariantManagerLog.h"
-#include "VariantManagerNodeTree.h"
-#include "VariantManagerPropertyCapturer.h"
-#include "VariantManagerSelection.h"
-#include "VariantObjectBinding.h"
-#include "VariantObjectBinding.h"
-#include "VariantSet.h"
-
+#include "CapturableProperty.h"
 #include "CoreMinimal.h"
-#include "Dialogs/SCaptureDialog.h"
 #include "Editor.h"
-#include "FunctionCaller.h"
-#include "HAL/UnrealMemory.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_FunctionEntry.h"
 #include "Kismet2/BlueprintEditorUtils.h"
-#include "ObjectTools.h"
+#include "Kismet2/KismetEditorUtilities.h"
+#include "LevelVariantSets.h"
+#include "LevelVariantSetsFunctionDirector.h"
+#include "Variant.h"
+#include "VariantManagerNodeTree.h"
+#include "VariantSet.h"
+#include "VariantObjectBinding.h"
+#include "FunctionCaller.h"
 #include "PropertyPath.h"
+#include "PropertyValue.h"
+#include "PropertyValueMaterial.h"
+#include "PropertyValueColor.h"
+#include "PropertyValueOption.h"
+#include "HAL/UnrealMemory.h"
+#include "ObjectTools.h"
+#include "Dialogs/SCaptureDialog.h"
 #include "UObject/StrongObjectPtr.h"
+#include "VariantManagerLog.h"
+#include "VariantManagerPropertyCapturer.h"
+#include "VariantManagerSelection.h"
+#include "VariantObjectBinding.h"
 
 DEFINE_LOG_CATEGORY(LogVariantManager);
 
@@ -61,6 +59,8 @@ void FVariantManager::Close()
 void FVariantManager::InitVariantManager(ULevelVariantSets* InLevelVariantSets)
 {
 	CurrentLevelVariantSets = InLevelVariantSets;
+
+	VariantManagerWidget = SNew(SVariantManager, SharedThis(this));
 
 	// When undo occurs, get a notification so we can make sure our view is up to date
 	GEditor->RegisterForUndo(this);
@@ -119,17 +119,7 @@ UK2Node_FunctionEntry* FVariantManager::CreateDirectorFunction(ULevelVariantSets
 		FEdGraphPinType PinType;
 		PinType.PinCategory = PinClassType && PinClassType->IsChildOf(UInterface::StaticClass()) ? UEdGraphSchema_K2::PC_Interface : UEdGraphSchema_K2::PC_Object;
 		PinType.PinSubCategoryObject = PinClassType ? PinClassType : UObject::StaticClass();
-		EntryNode->CreateUserDefinedPin(TARGET_PIN_NAME, PinType, EGPD_Output, true);
-
-		PinType.PinSubCategoryObject = ULevelVariantSets::StaticClass();
-		EntryNode->CreateUserDefinedPin(LEVEL_VARIANT_SETS_PIN_NAME, PinType, EGPD_Output, true);
-
-		PinType.PinSubCategoryObject = UVariantSet::StaticClass();
-		EntryNode->CreateUserDefinedPin(VARIANT_SET_PIN_NAME, PinType, EGPD_Output, true);
-
-		PinType.PinSubCategoryObject = UVariant::StaticClass();
-		EntryNode->CreateUserDefinedPin(VARIANT_PIN_NAME, PinType, EGPD_Output, true);
-
+		EntryNode->CreateUserDefinedPin(FName(TARGET_PIN_NAME), PinType, EGPD_Output, true);
 		EntryNode->ReconstructNode();
 
 		return EntryNode;
@@ -495,56 +485,38 @@ TArray<UPropertyValue*> FVariantManager::CreatePropertyCaptures(const TArray<TSh
 			}
 
 			UPropertyValue* NewPropVal = nullptr;
-			FFieldClass* PropClass = nullptr;
+			UClass* PropClass = nullptr;
 
 			switch (PropAndDisplay->CaptureType)
 			{
 			case EPropertyValueCategory::Material:
 			{
 				NewPropVal = NewObject<UPropertyValueMaterial>(GetTransientPackage(), UPropertyValueMaterial::StaticClass(), NAME_None, RF_Public|RF_Transactional);
-				PropClass = FObjectProperty::StaticClass();
+				PropClass = UObjectProperty::StaticClass();
 				break;
 			}
 			case EPropertyValueCategory::Color:
 			{
 				NewPropVal = NewObject<UPropertyValueColor>(GetTransientPackage(), UPropertyValueColor::StaticClass(), NAME_None, RF_Public|RF_Transactional);
-				PropClass = FStructProperty::StaticClass();
+				PropClass = UStructProperty::StaticClass();
 				break;
 			}
 			case EPropertyValueCategory::Option:
 			{
 				NewPropVal = NewObject<UPropertyValueOption>(GetTransientPackage(), UPropertyValueOption::StaticClass(), NAME_None, RF_Public|RF_Transactional);
-				PropClass = FIntProperty::StaticClass();
+				PropClass = UIntProperty::StaticClass();
 				break;
 			}
 			default: // Generic
 			{
-				FProperty* LeafProp = PropAndDisplay->Prop.GetLeafMostProperty().Property.Get();
-
-				if (LeafProp && LeafProp->GetClass()->IsChildOf(FSoftObjectProperty::StaticClass()))
+				NewPropVal = NewObject<UPropertyValue>(GetTransientPackage(), UPropertyValue::StaticClass(), NAME_None, RF_Public|RF_Transactional);
+				UProperty* LeafProp = PropAndDisplay->Prop.GetLeafMostProperty().Property.Get();
+				if (LeafProp)
 				{
-					NewPropVal = NewObject<UPropertyValueSoftObject>(GetTransientPackage(), UPropertyValueSoftObject::StaticClass(), NAME_None, RF_Public|RF_Transactional);
-					PropClass = FSoftObjectProperty::StaticClass();
-				}
-				else if (LeafProp)
-				{
-					NewPropVal = NewObject<UPropertyValue>(GetTransientPackage(), UPropertyValue::StaticClass(), NAME_None, RF_Public|RF_Transactional);
 					PropClass = LeafProp->GetClass();
-				}
-				else
-				{
-					UObject* BoundObject = Binding->GetObject();
-					FString ObjectName = BoundObject ? BoundObject->GetName() : TEXT("<invalid actor>");
-
-					UE_LOG(LogVariantManager, Error, TEXT("Failed to capture property with path '%s' for actor '%s'"), *PropAndDisplay->DisplayName, *ObjectName);
 				}
 				break;
 			}
-			}
-
-			if (!NewPropVal || !PropClass)
-			{
-				continue;
 			}
 
 			NewPropVal->Init(PropAndDisplay->ToCapturedPropSegmentArray(), PropClass, PropAndDisplay->DisplayName, PropAndDisplay->PropertySetterName, PropAndDisplay->CaptureType);
@@ -752,7 +724,7 @@ TArray<UVariantObjectBinding*> FVariantManager::CreateObjectBindings(const TArra
 			if (UnboundActors.Contains(SelectedActor))
 			{
 				UVariantObjectBinding* NewBinding = NewObject<UVariantObjectBinding>(GetTransientPackage(), NAME_None, RF_Public|RF_Transactional);
-				NewBinding->SetObject(SelectedActor);
+				NewBinding->Init(SelectedActor);
 
 				VarBindingsToTheseActors.Add(NewBinding);
 				NewBindings.Add(NewBinding);
@@ -822,7 +794,7 @@ TArray<UVariantObjectBinding*> FVariantManager::CreateObjectBindingsAndCaptures(
 			if (UnboundActors.Contains(SelectedActor))
 			{
 				UVariantObjectBinding* NewBinding = NewObject<UVariantObjectBinding>(GetTransientPackage(), NAME_None, RF_Public|RF_Transactional);
-				NewBinding->SetObject(SelectedActor);
+				NewBinding->Init(SelectedActor);
 
 				VarBindingsToTheseActors.Add(NewBinding);
 				NewBindings.Add(NewBinding);
@@ -1034,12 +1006,9 @@ void FVariantManager::CanAddActorsToVariant(const TArray<UObject*>& InActors, co
 
 void FVariantManager::PostUndo(bool bSuccess)
 {
-	if (VariantManagerWidget.IsValid())
-	{
-		VariantManagerWidget->RefreshVariantTree();
-		VariantManagerWidget->RefreshActorList();
-		VariantManagerWidget->RefreshPropertyList();
-	}
+	VariantManagerWidget->RefreshVariantTree();
+	VariantManagerWidget->RefreshActorList();
+	VariantManagerWidget->RefreshPropertyList();
 }
 
 void FVariantManager::CaptureNewProperties(const TArray<UVariantObjectBinding*>& Bindings)
@@ -1064,7 +1033,7 @@ void FVariantManager::CaptureNewProperties(const TArray<UVariantObjectBinding*>&
 	}
 }
 
-void FVariantManager::GetCapturableProperties(const TArray<AActor*>& Actors, TArray<TSharedPtr<FCapturableProperty>>& OutProperties, FString TargetPropertyPath, bool bCaptureAllArrayIndices)
+void FVariantManager::GetCapturableProperties(const TArray<AActor*>& Actors, TArray<TSharedPtr<FCapturableProperty>>& OutProperties, FString TargetPropertyPath)
 {
 	TSet<UObject*> BoundObjects;
 	for (AActor* Actor : Actors)
@@ -1074,10 +1043,10 @@ void FVariantManager::GetCapturableProperties(const TArray<AActor*>& Actors, TAr
 
 	TArray<UObject*> BoundObjectsArr = BoundObjects.Array();
 
-	FVariantManagerPropertyCapturer::CaptureProperties(BoundObjectsArr, OutProperties, TargetPropertyPath, bCaptureAllArrayIndices);
+	FVariantManagerPropertyCapturer::CaptureProperties(BoundObjectsArr, OutProperties, TargetPropertyPath);
 }
 
-void FVariantManager::GetCapturableProperties(const TArray<UClass*>& Classes, TArray<TSharedPtr<FCapturableProperty>>& OutProperties, FString TargetPropertyPath, bool bCaptureAllArrayIndices)
+void FVariantManager::GetCapturableProperties(const TArray<UClass*>& Classes, TArray<TSharedPtr<FCapturableProperty>>& OutProperties, FString TargetPropertyPath)
 {
 	TSet<UObject*> BoundObjects;
 	for (UClass* Class : Classes)
@@ -1087,16 +1056,11 @@ void FVariantManager::GetCapturableProperties(const TArray<UClass*>& Classes, TA
 
 	TArray<UObject*> BoundObjectsArr = BoundObjects.Array();
 
-	FVariantManagerPropertyCapturer::CaptureProperties(BoundObjectsArr, OutProperties, TargetPropertyPath, bCaptureAllArrayIndices);
+	FVariantManagerPropertyCapturer::CaptureProperties(BoundObjectsArr, OutProperties, TargetPropertyPath);
 }
 
-TSharedPtr<SVariantManager> FVariantManager::GetVariantManagerWidget()
-{	
-	if (!VariantManagerWidget.IsValid())
-	{
-		VariantManagerWidget = SNew(SVariantManager, SharedThis(this));
-	}
-
+TSharedPtr<SVariantManager> FVariantManager::GetVariantManagerWidget() const
+{
 	return VariantManagerWidget;
 }
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieSceneImagePlateTemplate.h"
 
@@ -8,7 +8,6 @@
 #include "MovieSceneImagePlateTrack.h"
 #include "MovieSceneImagePlateSection.h"
 #include "ImagePlateFileSequence.h"
-#include "ImagePlateComponent.h"
 
 #include "Engine/Texture2D.h"
 #include "Engine/Texture2DDynamic.h"
@@ -99,7 +98,7 @@ struct FImagePlateExecutionToken : IMovieSceneExecutionToken
 			}
 
 			UTexture* RenderTexture = SectionData.PropertyBindings->GetCurrentValue<UTexture*>(*Object);
-			FObjectProperty* Property = CastField<FObjectProperty>(SectionData.PropertyBindings->GetProperty(*Object));
+			UObjectProperty* Property = Cast<UObjectProperty>(SectionData.PropertyBindings->GetProperty(*Object));
 
 			bool bCreateNewTexture = ( Property && UTexture2DDynamic::StaticClass()->IsChildOf(Property->PropertyClass) ) && ( !RenderTexture || !bReuseExistingTexture);
 			if (bCreateNewTexture)
@@ -134,12 +133,6 @@ struct FImagePlateExecutionToken : IMovieSceneExecutionToken
 				// @todo: do we need to block here? It'll get picked up on the render thread anyway before our frame is out
 				//TextureCopied.Wait();
 			}
-
-			UImagePlateComponent* ImagePlateComponent = Cast<UImagePlateComponent>(Object);
-			if (ImagePlateComponent)
-			{
-				ImagePlateComponent->OnRenderTextureChanged();
-			}
 		}
 	}
 };
@@ -153,7 +146,7 @@ FMovieSceneImagePlateSectionTemplate::FMovieSceneImagePlateSectionTemplate()
 {}
 
 FMovieSceneImagePlateSectionTemplate::FMovieSceneImagePlateSectionTemplate(const UMovieSceneImagePlateSection& InSection, const UMovieSceneImagePlateTrack& InTrack)
-	: PropertyData(InTrack.GetPropertyName(), InTrack.GetPropertyPath().ToString())
+	: PropertyData(InTrack.GetPropertyName(), InTrack.GetPropertyPath(), NAME_None, "OnRenderTextureChanged")
 {
 	Params.FileSequence = InSection.FileSequence;
 	Params.SectionStartTime = InSection.GetInclusiveStartFrame();

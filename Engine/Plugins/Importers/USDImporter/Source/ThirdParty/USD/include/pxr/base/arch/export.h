@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_ARCH_EXPORT_H
-#define PXR_BASE_ARCH_EXPORT_H
+#ifndef ARCH_EXPORT_H
+#define ARCH_EXPORT_H
 
 /// \file arch/export.h
 /// \ingroup group_arch_SymbolVisibility
@@ -176,4 +176,4 @@
 #define ARCH_EXPORT_TEMPLATE(type, ...)
 #define ARCH_IMPORT_TEMPLATE(type, ...) extern template type ARCH_IMPORT __VA_ARGS__
 
-#endif // PXR_BASE_ARCH_EXPORT_H
+#endif // ARCH_EXPORT_H

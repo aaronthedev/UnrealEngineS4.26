@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OculusToolCommands.h"
 #include "Framework/Docking/TabManager.h"
@@ -12,7 +12,7 @@ void FOculusToolCommands::RegisterCommands()
 
 void FOculusToolCommands::ShowOculusTool()
 {
-	FGlobalTabmanager::Get()->TryInvokeTab(FOculusEditorModule::OculusPerfTabName);
+	FGlobalTabmanager::Get()->InvokeTab(FOculusEditorModule::OculusPerfTabName);
 }
 
 #undef LOCTEXT_NAMESPACE

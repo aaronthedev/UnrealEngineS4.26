@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Misc/CoreDelegates.h"
@@ -21,19 +21,17 @@
 #include "ActorEditorUtils.h"
 #include "EngineGlobals.h"
 
-#include "AssetRegistryModule.h"
-
 #if WITH_EDITOR
 
 #include "Editor.h"
 
 #define LOCTEXT_NAMESPACE "ErrorChecking"
 
-void AActor::PreEditChange(FProperty* PropertyThatWillChange)
+void AActor::PreEditChange(UProperty* PropertyThatWillChange)
 {
 	Super::PreEditChange(PropertyThatWillChange);
 
-	FObjectProperty* ObjProp = CastField<FObjectProperty>(PropertyThatWillChange);
+	UObjectProperty* ObjProp = Cast<UObjectProperty>(PropertyThatWillChange);
 	UBlueprintGeneratedClass* BPGC = Cast<UBlueprintGeneratedClass>(GetClass());
 	if ( BPGC != nullptr && ObjProp != nullptr )
 	{
@@ -53,7 +51,7 @@ static FName Name_RelativeScale3D = USceneComponent::GetRelativeScale3DPropertyN
 
 void AActor::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
-	FProperty* MemberPropertyThatChanged = PropertyChangedEvent.MemberProperty;
+	UProperty* MemberPropertyThatChanged = PropertyChangedEvent.MemberProperty;
 	const FName MemberPropertyName = MemberPropertyThatChanged != NULL ? MemberPropertyThatChanged->GetFName() : NAME_None;
 	
 	const bool bTransformationChanged = (MemberPropertyName == Name_RelativeLocation || MemberPropertyName == Name_RelativeRotation || MemberPropertyName == Name_RelativeScale3D);
@@ -150,11 +148,6 @@ void AActor::PostEditMove(bool bFinished)
 		}
 	}
 
-	if (!FLevelUtils::IsMovingLevel())
-	{
-		GEngine->BroadcastOnActorMoving(this);
-	}
-
 	if ( bFinished )
 	{
 		UWorld* World = GetWorld();
@@ -173,6 +166,7 @@ void AActor::PostEditMove(bool bFinished)
 	// If the root component was not just recreated by the construction script - call PostEditComponentMove on it
 	if(RootComponent != NULL && !RootComponent->IsCreatedByConstructionScript())
 	{
+		// @TODO Should we call on ALL components?
 		RootComponent->PostEditComponentMove(bFinished);
 	}
 
@@ -565,28 +559,11 @@ bool AActor::InternalPostEditUndo()
 	return true;
 }
 
-void AActor::PostTransacted(const FTransactionObjectEvent& TransactionEvent)
-{
-	Super::PostTransacted(TransactionEvent);
-	if (TransactionEvent.HasOuterChange())
-	{
-		GEngine->BroadcastLevelActorOuterChanged(this, StaticFindObject(ULevel::StaticClass(), nullptr, *TransactionEvent.GetOriginalObjectOuterPathName().ToString()));
-	}
-}
-
 void AActor::PostEditUndo()
 {
 	if (InternalPostEditUndo())
 	{
 		Super::PostEditUndo();
-	}
-
-	UWorld* World = GetWorld();
-	if (World && World->Scene)
-	{
-		ENQUEUE_RENDER_COMMAND(UpdateAllPrimitiveSceneInfosCmd)([Scene = World->Scene](FRHICommandListImmediate& RHICmdList) {
-			Scene->UpdateAllPrimitiveSceneInfos(RHICmdList);
-		});
 	}
 }
 
@@ -768,46 +745,6 @@ bool AActor::EditorCanAttachTo(const AActor* InParent, FText& OutReason) const
 	return true;
 }
 
-void AActor::SetPackageExternal(bool bExternal, bool bShouldDirty)
-{
-	if (bExternal == IsPackageExternal())
-	{
-		return;
-	}
-
-    // Mark the current actor & package as dirty
-	Modify(bShouldDirty);
-
-	UPackage* LevelPackage = GetLevel()->GetPackage();
-	if (bExternal)
-	{
-		ActorGuid = ActorGuid.IsValid() ? ActorGuid : FGuid::NewGuid();
-		UPackage* NewActorPackage = ULevel::CreateActorPackage(LevelPackage,  ActorGuid);
-		SetExternalPackage(NewActorPackage);
-		// should be removed but needed for now so the package creation is visible to Multi-User
-		FAssetRegistryModule::AssetCreated(this);
-	}
-	// if the actor package is different, embed the actor back in the level
-	else 
-	{
-		UPackage* ActorPackage = GetExternalPackage();
-		// Detach the linker from the actor package so that the actor won't keep references to it if we wanted to delete the package
-		ResetLoaders(ActorPackage);
-		SetExternalPackage(nullptr);
-	}
-
-	for (UActorComponent* ActorComponent : GetComponents())
-	{
-		if (ActorComponent && ActorComponent->IsRegistered())
-		{
-			ActorComponent->SetPackageExternal(bExternal, bShouldDirty);
-		}
-	}
-	
-	// Mark the new actor package dirty
-	MarkPackageDirty();
-}
-
 const FString& AActor::GetActorLabel() const
 {
 	// If the label string is empty then we'll use the default actor label (usually the actor's class name.)
@@ -822,15 +759,20 @@ const FString& AActor::GetActorLabel() const
 
 	if( ActorLabel.IsEmpty() )
 	{
+		// Treating ActorLabel as mutable here (no 'mutable' keyword in current script compiler)
+		AActor* MutableThis = const_cast< AActor* >( this );
+
 		// Get the class
 		UClass* ActorClass = GetClass();
 
+		// NOTE: Calling GetName() is actually fairly slow (does ANSI->Wide conversion, lots of copies, etc.)
 		FString DefaultActorLabel = ActorClass->GetName();
 
 		// Strip off the ugly "_C" suffix for Blueprint class actor instances
-		if (Cast<UBlueprint>(ActorClass->ClassGeneratedBy))
+		UBlueprint* GeneratedByClassBlueprint = Cast<UBlueprint>( ActorClass->ClassGeneratedBy );
+		if( GeneratedByClassBlueprint != nullptr && DefaultActorLabel.EndsWith( TEXT( "_C" ) ) )
 		{
-			DefaultActorLabel.RemoveFromEnd(TEXT("_C"), ESearchCase::CaseSensitive);
+			DefaultActorLabel.RemoveFromEnd( TEXT( "_C" ) );
 		}
 
 		// We want the actor's label to be initially unique, if possible, so we'll use the number of the
@@ -849,7 +791,7 @@ const FString& AActor::GetActorLabel() const
 		// Remember, there could already be an actor with the same label in the level.  But that's OK, because
 		// actor labels aren't supposed to be unique.  We just try to make them unique initially to help
 		// disambiguate when opening up a new level and there are hundreds of actors of the same type.
-		ActorLabel = MoveTemp(DefaultActorLabel);
+		MutableThis->ActorLabel = DefaultActorLabel;
 	}
 
 	return ActorLabel;
@@ -864,7 +806,8 @@ void AActor::SetActorLabel( const FString& NewActorLabelDirty, bool bMarkDirty )
 void AActor::SetActorLabelInternal(const FString& NewActorLabelDirty, bool bMakeGloballyUniqueFName, bool bMarkDirty)
 {
 	// Clean up the incoming string a bit
-	FString NewActorLabel = NewActorLabelDirty.TrimStartAndEnd();
+	FString NewActorLabel = NewActorLabelDirty;
+	NewActorLabel.TrimStartAndEndInline();
 
 	// Validate incoming string before proceeding
 	FText OutErrorMessage;
@@ -882,7 +825,7 @@ void AActor::SetActorLabelInternal(const FString& NewActorLabelDirty, bool bMake
 			{
 				// Store new label
 				Modify(bMarkDirty);
-				ActorLabel = MoveTemp(NewActorLabel);
+				ActorLabel = NewActorLabel;
 			}
 		}
 
@@ -925,7 +868,7 @@ void AActor::SetActorLabelInternal(const FString& NewActorLabelDirty, bool bMake
 		}
 	}
 
-	FPropertyChangedEvent PropertyEvent( FindFProperty<FProperty>( AActor::StaticClass(), "ActorLabel" ) );
+	FPropertyChangedEvent PropertyEvent( FindField<UProperty>( AActor::StaticClass(), "ActorLabel" ) );
 	PostEditChangeProperty(PropertyEvent);
 
 	FCoreDelegates::OnActorLabelChanged.Broadcast(this);
@@ -938,7 +881,7 @@ bool AActor::IsActorLabelEditable() const
 
 void AActor::ClearActorLabel()
 {
-	ActorLabel.Reset();
+	ActorLabel = TEXT("");
 }
 
 const FName& AActor::GetFolderPath() const
@@ -1049,12 +992,6 @@ bool AActor::GetReferencedContentObjects( TArray<UObject*>& Objects ) const
 
 EDataValidationResult AActor::IsDataValid(TArray<FText>& ValidationErrors)
 {
-	// Do not run asset validation on external actors, validation will be caught through map check
-	if (IsPackageExternal())
-	{
-		return EDataValidationResult::NotValidated;
-	}
-
 	bool bSuccess = CheckDefaultSubobjects();
 	if (!bSuccess)
 	{

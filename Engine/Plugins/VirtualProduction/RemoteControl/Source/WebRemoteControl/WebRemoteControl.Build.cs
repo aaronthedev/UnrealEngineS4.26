@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -15,26 +15,10 @@ public class WebRemoteControl : ModuleRules
 
         PrivateDependencyModuleNames.AddRange(
 			new string[] {
-				"AssetRegistry",
 				"HTTPServer",
 				"RemoteControl",
 				"Serialization",
-				"Sockets",
-				"WebSocketNetworking"
 			}
         );
-
-		if (Target.Type == TargetType.Editor)
-		{
-			PrivateDependencyModuleNames.AddRange(
-				new string[] {
-					"ImageWrapper",
-					"Settings",
-					"Slate",
-					"SlateCore",
-					"UnrealEd",
-				}
-			);
-		}
-	}
+    }
 }

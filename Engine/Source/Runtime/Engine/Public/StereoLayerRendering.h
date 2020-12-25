@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ScreenRendering.h: Screen rendering definitions.
@@ -34,7 +34,7 @@ public:
 
 	void SetParameters(FRHICommandList& RHICmdList, FVector2D QuadSize, FBox2D UVRect, const FMatrix& ViewProjection, const FMatrix& World)
 	{
-		FRHIVertexShader* VS = RHICmdList.GetBoundVertexShader();
+		FRHIVertexShader* VS = GetVertexShader();
 
 		if (InQuadAdjust.IsBound())
 		{
@@ -62,28 +62,48 @@ public:
 		}
 	}
 
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << InQuadAdjust;
+		Ar << InUVAdjust;
+		Ar << InViewProjection;
+		Ar << InWorld;
+		return bShaderHasOutdatedParameters;
+	}
+
 private:
-	LAYOUT_FIELD(FShaderParameter, InQuadAdjust);
-	LAYOUT_FIELD(FShaderParameter, InUVAdjust);
-	LAYOUT_FIELD(FShaderParameter, InViewProjection);
-	LAYOUT_FIELD(FShaderParameter, InWorld);
+	FShaderParameter InQuadAdjust;
+	FShaderParameter InUVAdjust;
+	FShaderParameter InViewProjection;
+	FShaderParameter InWorld;
 };
 
 class FStereoLayerPS_Base : public FGlobalShader
 {
-	DECLARE_TYPE_LAYOUT(FStereoLayerPS_Base, NonVirtual);
 public:
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters) { return true; }
 
 	void SetParameters(FRHICommandList& RHICmdList, FRHISamplerState* SamplerStateRHI, FRHITexture* TextureRHI)
 	{
-		FRHIPixelShader* PS = RHICmdList.GetBoundPixelShader();
+		FRHIPixelShader* PS = GetPixelShader();
 
 		SetTextureParameter(RHICmdList, PS, InTexture, InTextureSampler, SamplerStateRHI, TextureRHI);
 	}
 
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << InTexture;
+		Ar << InTextureSampler;
+		return bShaderHasOutdatedParameters;
+	}
+
 protected:
+	FShaderResourceParameter InTexture;
+	FShaderResourceParameter InTextureSampler;
+
 	FStereoLayerPS_Base(const ShaderMetaType::CompiledShaderInitializerType& Initializer, const TCHAR* TextureParamName) :
 		FGlobalShader(Initializer) 
 	{
@@ -92,8 +112,6 @@ protected:
 	}
 	FStereoLayerPS_Base() {}
 
-	LAYOUT_FIELD(FShaderResourceParameter, InTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, InTextureSampler);
 };
 
 /**

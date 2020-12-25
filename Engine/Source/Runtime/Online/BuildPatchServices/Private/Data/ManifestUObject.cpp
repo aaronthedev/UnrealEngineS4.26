@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Data/ManifestUObject.h"
 #include "Serialization/Archive.h"
@@ -219,7 +219,7 @@ public:
 
 	virtual void Serialize(void* Data, int64 Num) override
 	{
-		if (Num && !IsError())
+		if (Num && !ArIsError)
 		{
 			const int64 NumBytesToAdd = Offset + Num - Bytes.Num();
 			if (NumBytesToAdd > 0)
@@ -227,7 +227,7 @@ public:
 				const int64 NewArrayCount = Bytes.Num() + NumBytesToAdd;
 				if (NewArrayCount >= MAX_int32)
 				{
-					SetError();
+					ArIsError = true;
 					return;
 				}
 				Bytes.AddUninitialized((int32)NumBytesToAdd);
@@ -306,7 +306,7 @@ public:
 		}
 		else
 		{
-			SetError();
+			ArIsError = true;
 		}
 		Offset = NameTableReader.Tell();
 	}
@@ -329,7 +329,7 @@ public:
 
 	virtual FArchive& operator<<(FName& N) override
 	{
-		if (IsError())
+		if (ArIsError)
 		{
 			N = NAME_None;
 		}
@@ -345,7 +345,7 @@ public:
 			else
 			{
 				N = NAME_None;
-				SetError();
+				ArIsError = true;
 			}
 		}
 		return *this;
@@ -353,7 +353,7 @@ public:
 
 	virtual void Serialize(void* Data, int64 Num) override
 	{
-		if (Num && !IsError())
+		if (Num && !ArIsError)
 		{
 			// Only serialize if we have the requested amount of data
 			if (Offset + Num <= Bytes.Num())
@@ -363,7 +363,7 @@ public:
 			}
 			else
 			{
-				SetError();
+				ArIsError = true;
 			}
 		}
 	}

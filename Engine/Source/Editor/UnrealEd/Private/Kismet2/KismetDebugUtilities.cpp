@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Kismet2/KismetDebugUtilities.h"
 #include "Engine/BlueprintGeneratedClass.h"
@@ -38,8 +38,6 @@
 #include "Logging/MessageLog.h"
 #include "Misc/UObjectToken.h"
 #include "AnimGraphNode_Base.h"
-#include "UObject/UnrealType.h"
-#include "AnimationGraphSchema.h"
 
 #define LOCTEXT_NAMESPACE "BlueprintDebugging"
 
@@ -119,35 +117,42 @@ public:
 //////////////////////////////////////////////////////////////////////////
 // FKismetDebugUtilities
 
-void FKismetDebugUtilities::EndOfScriptExecution(const FBlueprintContextTracker& BlueprintContext)
+void FKismetDebugUtilities::EndOfScriptExecution()
 {
-	if(BlueprintContext.GetScriptEntryTag() == 1)
+#if DO_BLUEPRINT_GUARD
+	FBlueprintExceptionTracker& BlueprintExceptionTracker = FBlueprintExceptionTracker::Get();
+	if(BlueprintExceptionTracker.ScriptEntryTag == 1)
 	{
 		// if this is our last VM frame, then clear stepping data:
 		FKismetDebugUtilitiesData& Data = FKismetDebugUtilitiesData::Get();
 
 		Data.Reset();
 	}
+#endif // DO_BLUEPRINT_GUARD
 }
 
 void FKismetDebugUtilities::RequestSingleStepIn()
 {
+#if DO_BLUEPRINT_GUARD
 	FKismetDebugUtilitiesData& Data = FKismetDebugUtilitiesData::Get();
+	FBlueprintExceptionTracker& BlueprintExceptionTracker = FBlueprintExceptionTracker::Get();
 
 	Data.bIsSingleStepping = true;
+#endif // DO_BLUEPRINT_GUARD
 }
 
 void FKismetDebugUtilities::RequestStepOver()
 {
+#if DO_BLUEPRINT_GUARD
 	FKismetDebugUtilitiesData& Data = FKismetDebugUtilitiesData::Get();
-	const TArray<const FFrame*>& ScriptStack = FBlueprintContextTracker::Get().GetScriptStack();
+	FBlueprintExceptionTracker& BlueprintExceptionTracker = FBlueprintExceptionTracker::Get();
 
-	if(ScriptStack.Num() > 0)
+	if(BlueprintExceptionTracker.ScriptStack.Num() > 0)
 	{
-		Data.TargetGraphStackDepth = ScriptStack.Num();
+		Data.TargetGraphStackDepth = BlueprintExceptionTracker.ScriptStack.Num();
 		
 		// get the current graph that we're stopped at:
-		const FFrame* CurrentFrame = ScriptStack.Last();
+		const FFrame* CurrentFrame = BlueprintExceptionTracker.ScriptStack.Last();
 		if(CurrentFrame->Object)
 		{
 			if(UBlueprintGeneratedClass* BPGC = Cast<UBlueprintGeneratedClass>(CurrentFrame->Object->GetClass()))
@@ -181,19 +186,22 @@ void FKismetDebugUtilities::RequestStepOver()
 			}
 		}
 	}
+#endif // DO_BLUEPRINT_GUARD
 }
 
 void FKismetDebugUtilities::RequestStepOut()
 {
+#if DO_BLUEPRINT_GUARD
 	FKismetDebugUtilitiesData& Data = FKismetDebugUtilitiesData::Get();
-	const TArray<const FFrame*>& ScriptStack = FBlueprintContextTracker::Get().GetScriptStack();
+	FBlueprintExceptionTracker& BlueprintExceptionTracker = FBlueprintExceptionTracker::Get();
 
 	Data.bIsSingleStepping = false;
-	if (ScriptStack.Num() > 1)
+	if (BlueprintExceptionTracker.ScriptStack.Num() > 1)
 	{
 		Data.bIsSteppingOut = true;
-		Data.TargetGraphStackDepth = ScriptStack.Num() - 1;
+		Data.TargetGraphStackDepth = BlueprintExceptionTracker.ScriptStack.Num() - 1;
 	}
+#endif // DO_BLUEPRINT_GUARD
 }
 
 void FKismetDebugUtilities::OnScriptException(const UObject* ActiveObject, const FFrame& StackFrame, const FBlueprintExceptionInfo& Info)
@@ -215,7 +223,7 @@ void FKismetDebugUtilities::OnScriptException(const UObject* ActiveObject, const
 		}
 	};
 
-	checkSlow(ActiveObject != nullptr);
+	checkSlow(ActiveObject != NULL);
 
 	// Ignore script exceptions for preview actors
 	if(FActorEditorUtils::IsAPreviewOrInactiveActor(Cast<const AActor>(ActiveObject)))
@@ -224,7 +232,7 @@ void FKismetDebugUtilities::OnScriptException(const UObject* ActiveObject, const
 	}
 	
 	UClass* ClassContainingCode = FindClassForNode(ActiveObject, StackFrame.Node);
-	UBlueprint* BlueprintObj = (ClassContainingCode ? Cast<UBlueprint>(ClassContainingCode->ClassGeneratedBy) : nullptr);
+	UBlueprint* BlueprintObj = (ClassContainingCode ? Cast<UBlueprint>(ClassContainingCode->ClassGeneratedBy) : NULL);
 	if (BlueprintObj)
 	{
 		const FBlueprintExceptionInfo* ExceptionInfo = &Info;
@@ -232,25 +240,11 @@ void FKismetDebugUtilities::OnScriptException(const UObject* ActiveObject, const
 		UObject* ObjectBeingDebugged = BlueprintObj->GetObjectBeingDebugged();
 		UObject* SavedObjectBeingDebugged = ObjectBeingDebugged;
 		UWorld* WorldBeingDebugged = BlueprintObj->GetWorldBeingDebugged();
-		const FString& PathToDebug = BlueprintObj->GetObjectPathToDebug();
-		
-		if (ObjectBeingDebugged == nullptr)
-		{
-			// Check if we need to update the object being debugged
-			UObject* ObjectToDebug = FindObjectSafe<UObject>(nullptr, *PathToDebug);
-			if (ObjectToDebug)
-			{
-				// If the path to debug matches a newly-spawned object, set the hard reference now
-				ObjectBeingDebugged = ObjectToDebug;
-				BlueprintObj->SetObjectBeingDebugged(ObjectBeingDebugged);
-			}
-		}
 
 		const int32 BreakpointOffset = StackFrame.Code - StackFrame.Node->Script.GetData() - 1;
 
 		bool bShouldBreakExecution = false;
 		bool bForceToCurrentObject = false;
-		bool bIsStepping = Data.bIsSingleStepping || Data.TargetGraphStackDepth != INDEX_NONE;
 
 		switch (Info.GetType())
 		{
@@ -258,7 +252,7 @@ void FKismetDebugUtilities::OnScriptException(const UObject* ActiveObject, const
 			bShouldBreakExecution = true;
 			break;
 		case EBlueprintExceptionType::Tracepoint:
-			bShouldBreakExecution = bIsStepping;
+			bShouldBreakExecution = Data.bIsSingleStepping || Data.TargetGraphStackDepth != INDEX_NONE;
 			break;
 		case EBlueprintExceptionType::WireTracepoint:
 			break;
@@ -283,11 +277,11 @@ void FKismetDebugUtilities::OnScriptException(const UObject* ActiveObject, const
 
 #if WITH_EDITORONLY_DATA // to protect access to GeneratedClass->DebugData
 				UBlueprintGeneratedClass* GeneratedClass = Cast<UBlueprintGeneratedClass>(ClassContainingCode);
-				if ((GeneratedClass != nullptr) && GeneratedClass->DebugData.IsValid())
+				if ((GeneratedClass != NULL) && GeneratedClass->DebugData.IsValid())
 				{
 					UEdGraphNode* BlueprintNode = GeneratedClass->DebugData.FindSourceNodeFromCodeLocation(StackFrame.Node, BreakpointOffset, true);
 					// if instead, there is a node we can point to...
-					if (BlueprintNode != nullptr)
+					if (BlueprintNode != NULL)
 					{
 						Message->AddToken(FTextToken::Create(LOCTEXT("RuntimeErrorBlueprintGraphLabel", "Graph: ")));
 						Message->AddToken(FUObjectToken::Create(BlueprintNode->GetGraph(), FText::FromString(GetNameSafe(BlueprintNode->GetGraph())))
@@ -316,20 +310,14 @@ void FKismetDebugUtilities::OnScriptException(const UObject* ActiveObject, const
 			break;
 		}
 
-		if (!bForceToCurrentObject && bIsStepping)
-		{
-			// If we're stepping, temporarily override the selected debug object so step into always works)
-			bForceToCurrentObject = true;
-		}
-
 		// If we are debugging a specific world, the object needs to be in it
-		if (WorldBeingDebugged != nullptr && !ActiveObject->IsIn(WorldBeingDebugged))
+		if (WorldBeingDebugged != NULL && !ActiveObject->IsIn(WorldBeingDebugged))
 		{
 			// Might be a streaming level case, so find the real world to see
 			const UObject *ObjOuter = ActiveObject;
-			const UWorld *ObjWorld = nullptr;
+			const UWorld *ObjWorld = NULL;
 			bool FailedWorldCheck = true;
-			while(ObjWorld == nullptr && ObjOuter != nullptr)
+			while(ObjWorld == NULL && ObjOuter != NULL)
 			{
 				ObjOuter = ObjOuter->GetOuter();
 				ObjWorld = Cast<const UWorld>(ObjOuter);
@@ -352,17 +340,16 @@ void FKismetDebugUtilities::OnScriptException(const UObject* ActiveObject, const
 
 		if (bShouldBreakExecution)
 		{
-			if ((PathToDebug.IsEmpty()) || (bForceToCurrentObject))
+			if ((ObjectBeingDebugged == NULL) || (bForceToCurrentObject))
 			{
 				// If there was nothing being debugged, treat this as a one-shot, temporarily set this object as being debugged,
 				// and continue allowing any breakpoint to hit later on
 				bResetObjectBeingDebuggedWhenFinished = true;
-				ObjectBeingDebugged = const_cast<UObject*>(ActiveObject);
-				BlueprintObj->SetObjectBeingDebugged(ObjectBeingDebugged);
+				BlueprintObj->SetObjectBeingDebugged(const_cast<UObject*>(ActiveObject));
 			}
 		}
 
-		if (ObjectBeingDebugged == ActiveObject)
+		if (BlueprintObj->GetObjectBeingDebugged() == ActiveObject)
 		{
 			// Record into the trace log
 			FKismetTraceSample& Tracer = Data.TraceStackSamples.WriteNewElementUninitialized();
@@ -395,16 +382,12 @@ void FKismetDebugUtilities::OnScriptException(const UObject* ActiveObject, const
 		// Reset the object being debugged if we forced it to be something different
 		if (bResetObjectBeingDebuggedWhenFinished)
 		{
-			if (BlueprintObj->GetObjectBeingDebugged() == ObjectBeingDebugged)
-			{
-				// Only reset if it's still what we expected, if the user picked a new object from the UI we want to respect that
-				BlueprintObj->SetObjectBeingDebugged(SavedObjectBeingDebugged);
-			}
+			BlueprintObj->SetObjectBeingDebugged(SavedObjectBeingDebugged);
 		}
 
 		const auto ShowScriptExceptionError = [&](const FText& InExceptionErrorMsg)
 		{
-			if (GUnrealEd->PlayWorld != nullptr)
+			if (GUnrealEd->PlayWorld != NULL)
 			{
 				GEditor->RequestEndPlayMap();
 				FSlateApplication::Get().LeaveDebuggingMode();
@@ -536,8 +519,9 @@ UEdGraphNode* FKismetDebugUtilities::FindSourceNodeForCodeLocation(const UObject
 
 void FKismetDebugUtilities::CheckBreakConditions(UEdGraphNode* NodeStoppedAt, bool bHitBreakpoint, int32 BreakpointOffset, bool& InOutBreakExecution)
 {
+#if DO_BLUEPRINT_GUARD
 	FKismetDebugUtilitiesData& Data = FKismetDebugUtilitiesData::Get();
-	const TArray<const FFrame*>& ScriptStack = FBlueprintContextTracker::Get().GetScriptStack();
+	FBlueprintExceptionTracker& BlueprintExceptionTracker = FBlueprintExceptionTracker::Get();
 
 	if (NodeStoppedAt)
 	{
@@ -550,7 +534,7 @@ void FKismetDebugUtilities::CheckBreakConditions(UEdGraphNode* NodeStoppedAt, bo
 			// Update the TargetGraphStackDepth if we're on the same node - this handles things like
 			// event nodes in the Event Graph, which will push another frame on to the stack:
 			if(NodeStoppedAt == Data.MostRecentStoppedNode &&
-				Data.MostRecentBreakpointGraphStackDepth < ScriptStack.Num() &&
+				Data.MostRecentBreakpointGraphStackDepth < BlueprintExceptionTracker.ScriptStack.Num() &&
 				Data.TargetGraphStackDepth != INDEX_NONE)
 			{
 				// when we recurse, when a node increases stack depth itself we want to increase our 
@@ -567,7 +551,7 @@ void FKismetDebugUtilities::CheckBreakConditions(UEdGraphNode* NodeStoppedAt, bo
 			InOutBreakExecution = 
 				NodeStoppedAt != Data.MostRecentStoppedNode ||
 				(
-					Data.MostRecentBreakpointGraphStackDepth < ScriptStack.Num() &&
+					Data.MostRecentBreakpointGraphStackDepth < BlueprintExceptionTracker.ScriptStack.Num() &&
 					Data.MostRecentBreakpointInstructionOffset >= BreakpointOffset
 				);
 
@@ -575,12 +559,12 @@ void FKismetDebugUtilities::CheckBreakConditions(UEdGraphNode* NodeStoppedAt, bo
 			// in to a collapsed graph/macro instance:
 			if(InOutBreakExecution && Data.TargetGraphStackDepth != INDEX_NONE && !bHitBreakpoint)
 			{
-				InOutBreakExecution = Data.TargetGraphStackDepth >= ScriptStack.Num();
-				if(InOutBreakExecution && Data.TargetGraphStackDepth == ScriptStack.Num())
+				InOutBreakExecution = Data.TargetGraphStackDepth >= BlueprintExceptionTracker.ScriptStack.Num();
+				if(InOutBreakExecution && Data.TargetGraphStackDepth == BlueprintExceptionTracker.ScriptStack.Num())
 				{
 					// we're at the same stack depth, don't break if we've entered a different graph, but do break if we left the 
 					// graph that we were trying to step over..
-					const FFrame* CurrentFrame = ScriptStack.Last();
+					const FFrame* CurrentFrame = BlueprintExceptionTracker.ScriptStack.Last();
 					if(CurrentFrame->Object)
 					{
 						if(UBlueprintGeneratedClass* BPGC = Cast<UBlueprintGeneratedClass>(CurrentFrame->Object->GetClass()))
@@ -612,7 +596,7 @@ void FKismetDebugUtilities::CheckBreakConditions(UEdGraphNode* NodeStoppedAt, bo
 	if (InOutBreakExecution)
 	{
 		Data.MostRecentStoppedNode = NodeStoppedAt;
-		Data.MostRecentBreakpointGraphStackDepth = ScriptStack.Num();
+		Data.MostRecentBreakpointGraphStackDepth = BlueprintExceptionTracker.ScriptStack.Num();
 		Data.MostRecentBreakpointInstructionOffset = BreakpointOffset;
 		Data.TargetGraphStackDepth = INDEX_NONE;
 		Data.TargetGraphNodes.Empty();
@@ -634,10 +618,12 @@ void FKismetDebugUtilities::CheckBreakConditions(UEdGraphNode* NodeStoppedAt, bo
 			}
 		}
 	}
+#endif // DO_BLUEPRINT_GUARD
 }
 
 void FKismetDebugUtilities::AttemptToBreakExecution(UBlueprint* BlueprintObj, const UObject* ActiveObject, const FFrame& StackFrame, const FBlueprintExceptionInfo& Info, UEdGraphNode* NodeStoppedAt, int32 DebugOpcodeOffset)
 {
+#if DO_BLUEPRINT_GUARD
 	checkSlow(BlueprintObj->GetObjectBeingDebugged() == ActiveObject);
 
 	FKismetDebugUtilitiesData& Data = FKismetDebugUtilitiesData::Get();
@@ -728,13 +714,14 @@ void FKismetDebugUtilities::AttemptToBreakExecution(UBlueprint* BlueprintObj, co
 	if (bShouldInStackDebug)
 	{
 		TGuardValue<int32> GuardDisablePIE(GPlayInEditorID, INDEX_NONE);
-		const TArray<const FFrame*>& ScriptStack = FBlueprintContextTracker::Get().GetScriptStack();
+		const TArray<const FFrame*>& ScriptStack = FBlueprintExceptionTracker::Get().ScriptStack;
 		Data.LastExceptionMessage = Info.GetDescription();
 		FKismetEditorUtilities::BringKismetToFocusAttentionOnObject(NodeStoppedAt);
 		CallStackViewer::UpdateDisplayedCallstack(ScriptStack);
 		WatchViewer::UpdateInstancedWatchDisplay();
 		FSlateApplication::Get().EnterDebuggingMode();
 	}
+#endif // DO_BLUEPRINT_GUARD
 }
 
 UEdGraphNode* FKismetDebugUtilities::GetCurrentInstruction()
@@ -1026,9 +1013,9 @@ bool FKismetDebugUtilities::HasDebuggingData(const UBlueprint* Blueprint)
 // Blueprint utils
 
 // Looks thru the debugging data for any class variables associated with the node
-FProperty* FKismetDebugUtilities::FindClassPropertyForPin(UBlueprint* Blueprint, const UEdGraphPin* Pin)
+UProperty* FKismetDebugUtilities::FindClassPropertyForPin(UBlueprint* Blueprint, const UEdGraphPin* Pin)
 {
-	FProperty* FoundProperty = nullptr;
+	UProperty* FoundProperty = nullptr;
 
 	UClass* Class = Blueprint->GeneratedClass;
 	while (UBlueprintGeneratedClass* BlueprintClass = Cast<UBlueprintGeneratedClass>(Class))
@@ -1046,7 +1033,7 @@ FProperty* FKismetDebugUtilities::FindClassPropertyForPin(UBlueprint* Blueprint,
 }
 
 // Looks thru the debugging data for any class variables associated with the node (e.g., temporary variables or timelines)
-FProperty* FKismetDebugUtilities::FindClassPropertyForNode(UBlueprint* Blueprint, const UEdGraphNode* Node)
+UProperty* FKismetDebugUtilities::FindClassPropertyForNode(UBlueprint* Blueprint, const UEdGraphNode* Node)
 {
 	if (UBlueprintGeneratedClass* Class = Cast<UBlueprintGeneratedClass>(*Blueprint->GeneratedClass))
 	{
@@ -1073,49 +1060,18 @@ FKismetDebugUtilities::FOnWatchedPinsListChanged FKismetDebugUtilities::WatchedP
 
 bool FKismetDebugUtilities::CanWatchPin(const UBlueprint* Blueprint, const UEdGraphPin* Pin)
 {
-	// Forward to schema
-	if(const UEdGraphNode* Node = Pin->GetOwningNode())
-	{
-		if(const UAnimationGraphSchema* AnimationGraphSchema = Cast<UAnimationGraphSchema>(Node->GetSchema()))
-		{
-			// Anim graphs need to respect whether they have a binding as they are effectively unlinked
-			bool bHasBinding = false; 
+	//@TODO: This function belongs in the schema
+	const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
 
-			if(UAnimGraphNode_Base* AnimGraphNode = Cast<UAnimGraphNode_Base>(Pin->GetOwningNode()))
-			{
-				// Compare FName without number to make sure we catch array properties that are split into multiple pins
-				FName ComparisonName = Pin->GetFName();
-				ComparisonName.SetNumber(0);
+	UEdGraph* Graph = Pin->GetOwningNode()->GetGraph();
 
-				if (FAnimGraphNodePropertyBinding* BindingPtr = AnimGraphNode->PropertyBindings.Find(ComparisonName))
-				{
-					bHasBinding = true;
-				}
-			}
+	// Inputs should always be followed to their corresponding output in the world above
+	const bool bNotAnInput = (Pin->Direction != EGPD_Input);
 
-			UEdGraph* Graph = Pin->GetOwningNode()->GetGraph();
+	//@TODO: Make watching a schema-allowable/denyable thing
+	const bool bCanWatchThisGraph = true;
 
-			// We allow input pins to be watched only if they have bindings, otherwise we need to follow to output pins
-			const bool bNotAnInputOrBound = (Pin->Direction != EGPD_Input) || bHasBinding;
-
-			return !AnimationGraphSchema->IsMetaPin(*Pin) && bNotAnInputOrBound && !IsPinBeingWatched(Blueprint, Pin);
-		}
-		else if(const UEdGraphSchema_K2* K2Schema = Cast<UEdGraphSchema_K2>(Node->GetSchema()))
-		{
-			UEdGraph* Graph = Pin->GetOwningNode()->GetGraph();
-
-			// Inputs should always be followed to their corresponding output in the world above
-			const bool bNotAnInput = (Pin->Direction != EGPD_Input);
-
-			//@TODO: Make watching a schema-allowable/denyable thing
-			const bool bCanWatchThisGraph = true;
-
-			return bCanWatchThisGraph && !K2Schema->IsMetaPin(*Pin) && bNotAnInput && !IsPinBeingWatched(Blueprint, Pin);
-		}
-	}
-
-	return false;
-	
+	return bCanWatchThisGraph && !K2Schema->IsMetaPin(*Pin) && bNotAnInput && !IsPinBeingWatched(Blueprint, Pin);
 }
 
 bool FKismetDebugUtilities::IsPinBeingWatched(const UBlueprint* Blueprint, const UEdGraphPin* Pin)
@@ -1162,26 +1118,16 @@ void FKismetDebugUtilities::ClearPinWatches(UBlueprint* Blueprint)
 // Gets the watched tooltip for a specified site
 FKismetDebugUtilities::EWatchTextResult FKismetDebugUtilities::GetWatchText(FString& OutWatchText, UBlueprint* Blueprint, UObject* ActiveObject, const UEdGraphPin* WatchPin)
 {
-	FProperty* PropertyToDebug = nullptr;
+	UProperty* PropertyToDebug = nullptr;
 	void* DataPtr = nullptr;
 	void* DeltaPtr = nullptr;
 	UObject* ParentObj = nullptr;
-	bool bShouldUseContainerOffset = false;
 	TArray<UObject*> SeenObjects;
-	FKismetDebugUtilities::EWatchTextResult Result = FindDebuggingData(Blueprint, ActiveObject, WatchPin, PropertyToDebug, DataPtr, DeltaPtr, ParentObj, SeenObjects, &bShouldUseContainerOffset);
+	FKismetDebugUtilities::EWatchTextResult Result = FindDebuggingData(Blueprint, ActiveObject, WatchPin, PropertyToDebug, DataPtr, DeltaPtr, ParentObj, SeenObjects);
 
 	if (Result == FKismetDebugUtilities::EWatchTextResult::EWTR_Valid)
 	{
-		// If this came from an array property we need to avoid using ExportText_InContainer in order to properly 
-		// calculate the internal offset
-		if(bShouldUseContainerOffset)
-		{
-			PropertyToDebug->ExportText_Direct(/*inout*/ OutWatchText, DataPtr, DeltaPtr, ParentObj, PPF_PropertyWindow | PPF_BlueprintDebugView);
-		}
-		else
-		{
-			PropertyToDebug->ExportText_InContainer(/*ArrayElement=*/ 0, /*inout*/ OutWatchText, DataPtr, DeltaPtr, /*Parent=*/ ParentObj, PPF_PropertyWindow | PPF_BlueprintDebugView);
-		}
+		PropertyToDebug->ExportText_InContainer(/*ArrayElement=*/ 0, /*inout*/ OutWatchText, DataPtr, DeltaPtr, /*Parent=*/ ParentObj, PPF_PropertyWindow | PPF_BlueprintDebugView);
 	}
 
 	return Result;
@@ -1189,7 +1135,7 @@ FKismetDebugUtilities::EWatchTextResult FKismetDebugUtilities::GetWatchText(FStr
 
 FKismetDebugUtilities::EWatchTextResult FKismetDebugUtilities::GetDebugInfo(FDebugInfo& OutDebugInfo, UBlueprint* Blueprint, UObject* ActiveObject, const UEdGraphPin* WatchPin)
 {
-	FProperty* PropertyToDebug = nullptr;
+	UProperty* PropertyToDebug = nullptr;
 	void* DataPtr = nullptr;
 	void* DeltaPtr = nullptr;
 	UObject* ParentObj = nullptr;
@@ -1204,11 +1150,11 @@ FKismetDebugUtilities::EWatchTextResult FKismetDebugUtilities::GetDebugInfo(FDeb
 	return Result;
 }
 
-FKismetDebugUtilities::EWatchTextResult FKismetDebugUtilities::FindDebuggingData(UBlueprint* Blueprint, UObject* ActiveObject, const UEdGraphPin* WatchPin, FProperty*& OutProperty, void*& OutData, void*& OutDelta, UObject*& OutParent, TArray<UObject*>& SeenObjects, bool* OutbShouldUseContainerOffset /* = nullptr */)
+FKismetDebugUtilities::EWatchTextResult FKismetDebugUtilities::FindDebuggingData(UBlueprint* Blueprint, UObject* ActiveObject, const UEdGraphPin* WatchPin, UProperty*& OutProperty, void*& OutData, void*& OutDelta, UObject*& OutParent, TArray<UObject*>& SeenObjects)
 {
 	FKismetDebugUtilitiesData& Data = FKismetDebugUtilitiesData::Get();
 
-	if (FProperty* Property = FKismetDebugUtilities::FindClassPropertyForPin(Blueprint, WatchPin))
+	if (UProperty* Property = FKismetDebugUtilities::FindClassPropertyForPin(Blueprint, WatchPin))
 	{
 		if (!Property->IsValidLowLevel())
 		{
@@ -1248,36 +1194,17 @@ FKismetDebugUtilities::EWatchTextResult FKismetDebugUtilities::FindDebuggingData
 					{
 						if (OutParmRec->Property == Property)
 						{
-							if (WatchPin->Direction == EEdGraphPinDirection::EGPD_Input)
+							// try to use the output pin we're linked to
+							// otherwise the output param won't show any data since the return node hasn't executed when we stop here
+							if (WatchPin->Direction == EEdGraphPinDirection::EGPD_Input && WatchPin->LinkedTo.Num() == 1)
 							{
-								// try to use the output pin we're linked to
-								// otherwise the output param won't show any data since the return node hasn't executed when we stop here
-								if (WatchPin->LinkedTo.Num() == 1)
-								{
-									return FindDebuggingData(Blueprint, ActiveObject, WatchPin->LinkedTo[0], OutProperty, OutData, OutDelta, OutParent, SeenObjects, OutbShouldUseContainerOffset);
-								}
-								else if (!WatchPin->LinkedTo.Num())
-								{
-									// If this is an output pin with no links, then we have no debug data
-									// so fallback to the local stack frame
-									PropertyBase = TestFrame->Locals;
-								}
+								return FindDebuggingData(Blueprint, ActiveObject, WatchPin->LinkedTo[0], OutProperty, OutData, OutDelta, OutParent, SeenObjects);
 							}
 
-							// If this is an out container property then a different offset must be used when exporting this property 
-							// to text. Only container properties are effected by this because ExportText_InContainer adds an extra 
-							// 8 byte offset, which  would point to the container's first element, not the container itself. 
-							const bool bIsContainer = OutParmRec->Property->IsA<FArrayProperty>() || OutParmRec->Property->IsA<FSetProperty>() || OutParmRec->Property->IsA<FMapProperty>();
-							if (PropertyBase == nullptr && OutbShouldUseContainerOffset && bIsContainer)
-							{
-								*OutbShouldUseContainerOffset = true;
-								PropertyBase = OutParmRec->PropAddr;
-							}
+							PropertyBase = OutParmRec->PropAddr;
 							break;
 						}
 					}
-
-					// Fallback to the local variables if we couldn't find one
 					if (PropertyBase == nullptr)
 					{
 						PropertyBase = TestFrame->Locals;
@@ -1287,7 +1214,7 @@ FKismetDebugUtilities::EWatchTextResult FKismetDebugUtilities::FindDebuggingData
 			}
 
 			// Try at member scope if it wasn't part of a current function scope
-			UClass* PropertyClass = Property->GetOwner<UClass>();
+			UClass* PropertyClass = Cast<UClass>(Property->GetOuter());
 			if (!PropertyBase && PropertyClass)
 			{
 				if (ActiveObject->GetClass()->IsChildOf(PropertyClass))
@@ -1309,7 +1236,7 @@ FKismetDebugUtilities::EWatchTextResult FKismetDebugUtilities::FindDebuggingData
 			}
 #if USE_UBER_GRAPH_PERSISTENT_FRAME
 			// Try find the propertybase in the persistent ubergraph frame
-			UFunction* OuterFunction = Property->GetOwner<UFunction>();
+			UFunction* OuterFunction = Cast<UFunction>(Property->GetOuter());
 			if (!PropertyBase && OuterFunction)
 			{
 				UBlueprintGeneratedClass* BPGC = Cast<UBlueprintGeneratedClass>(Blueprint->GeneratedClass);
@@ -1325,7 +1252,7 @@ FKismetDebugUtilities::EWatchTextResult FKismetDebugUtilities::FindDebuggingData
 			if (!PropertyBase && AnimBlueprintGeneratedClass)
 			{
 				// are we linked to an anim graph node?
-				FProperty* LinkedProperty = Property;
+				UProperty* LinkedProperty = Property;
 				const UAnimGraphNode_Base* Node = Cast<UAnimGraphNode_Base>(WatchPin->GetOuter());
 				if (Node == nullptr && WatchPin->LinkedTo.Num() > 0)
 				{
@@ -1337,12 +1264,12 @@ FKismetDebugUtilities::EWatchTextResult FKismetDebugUtilities::FindDebuggingData
 
 				if (Node && LinkedProperty)
 				{
-					FStructProperty* NodeStructProperty = CastField<FStructProperty>(FKismetDebugUtilities::FindClassPropertyForNode(Blueprint, Node));
+					UStructProperty* NodeStructProperty = Cast<UStructProperty>(FKismetDebugUtilities::FindClassPropertyForNode(Blueprint, Node));
 					if (NodeStructProperty)
 					{
-						for (const FStructPropertyPath& NodeProperty : AnimBlueprintGeneratedClass->GetAnimNodeProperties())
+						for (UStructProperty* NodeProperty : AnimBlueprintGeneratedClass->AnimNodeProperties)
 						{
-							if (NodeProperty.Get() == NodeStructProperty)
+							if (NodeProperty == NodeStructProperty)
 							{
 								void* NodePtr = NodeProperty->ContainerPtrToValuePtr<void>(ActiveObject);
 								OutProperty = LinkedProperty;
@@ -1366,13 +1293,13 @@ FKismetDebugUtilities::EWatchTextResult FKismetDebugUtilities::FindDebuggingData
 					UEdGraphPin* SelfPin = WatchNode->FindPin(TEXT("self"));
 					if (SelfPin && SelfPin != WatchPin)
 					{
-						FProperty* SelfPinProperty = nullptr;
+						UProperty* SelfPinProperty = nullptr;
 						void* SelfPinData = nullptr;
 						void* SelfPinDelta = nullptr;
 						UObject* SelfPinParent = nullptr;
 						SeenObjects.AddUnique(ActiveObject);
 						FKismetDebugUtilities::EWatchTextResult Result = FindDebuggingData(Blueprint, ActiveObject, SelfPin, SelfPinProperty, SelfPinData, SelfPinDelta, SelfPinParent, SeenObjects);
-						FObjectPropertyBase* SelfPinPropertyBase = CastField<FObjectPropertyBase>(SelfPinProperty);
+						UObjectPropertyBase* SelfPinPropertyBase = Cast<UObjectPropertyBase>(SelfPinProperty);
 						if (Result == EWTR_Valid && SelfPinPropertyBase != nullptr)
 						{
 							void* PropertyValue = SelfPinProperty->ContainerPtrToValuePtr<void>(SelfPinData);
@@ -1414,12 +1341,12 @@ FKismetDebugUtilities::EWatchTextResult FKismetDebugUtilities::FindDebuggingData
 	}
 }
 
-void FKismetDebugUtilities::GetDebugInfo_InContainer(int32 Index, FDebugInfo& DebugInfo, FProperty* Property, const void* Data)
+void FKismetDebugUtilities::GetDebugInfo_InContainer(int32 Index, FDebugInfo& DebugInfo, UProperty* Property, const void* Data)
 {
 	GetDebugInfoInternal(DebugInfo, Property, Property->ContainerPtrToValuePtr<void>(Data, Index));
 }
 
-void FKismetDebugUtilities::GetDebugInfoInternal(FDebugInfo& DebugInfo, FProperty* Property, const void* PropertyValue)
+void FKismetDebugUtilities::GetDebugInfoInternal(FDebugInfo& DebugInfo, UProperty* Property, const void* PropertyValue)
 {
 	if (Property == nullptr)
 	{
@@ -1429,7 +1356,7 @@ void FKismetDebugUtilities::GetDebugInfoInternal(FDebugInfo& DebugInfo, FPropert
 	DebugInfo.Type = UEdGraphSchema_K2::TypeToText(Property);
 	DebugInfo.DisplayName = Property->GetDisplayNameText();
 
-	FByteProperty* ByteProperty = CastField<FByteProperty>(Property);
+	UByteProperty* ByteProperty = Cast<UByteProperty>(Property);
 	if (ByteProperty)
 	{
 		UEnum* Enum = ByteProperty->GetIntPropertyEnum();
@@ -1447,17 +1374,17 @@ void FKismetDebugUtilities::GetDebugInfoInternal(FDebugInfo& DebugInfo, FPropert
 			return;
 		}
 
-		// if there is no Enum we need to fall through and treat this as a FNumericProperty
+		// if there is no Enum we need to fall through and treat this as a UNumericProperty
 	}
 
-	FNumericProperty* NumericProperty = CastField<FNumericProperty>(Property);
+	UNumericProperty* NumericProperty = Cast<UNumericProperty>(Property);
 	if (NumericProperty)
 	{
 		DebugInfo.Value = FText::FromString(NumericProperty->GetNumericPropertyValueToString(PropertyValue));
 		return;
 	}
 
-	FBoolProperty* BoolProperty = CastField<FBoolProperty>(Property);
+	UBoolProperty* BoolProperty = Cast<UBoolProperty>(Property);
 	if (BoolProperty)
 	{
 		const FCoreTexts& CoreTexts = FCoreTexts::Get();
@@ -1466,28 +1393,28 @@ void FKismetDebugUtilities::GetDebugInfoInternal(FDebugInfo& DebugInfo, FPropert
 		return;
 	}
 
-	FNameProperty* NameProperty = CastField<FNameProperty>(Property);
+	UNameProperty* NameProperty = Cast<UNameProperty>(Property);
 	if (NameProperty)
 	{
 		DebugInfo.Value = FText::FromName(*(FName*)PropertyValue);
 		return;
 	}
 
-	FTextProperty* TextProperty = CastField<FTextProperty>(Property);
+	UTextProperty* TextProperty = Cast<UTextProperty>(Property);
 	if (TextProperty)
 	{
 		DebugInfo.Value = TextProperty->GetPropertyValue(PropertyValue);
 		return;
 	}
 
-	FStrProperty* StringProperty = CastField<FStrProperty>(Property);
+	UStrProperty* StringProperty = Cast<UStrProperty>(Property);
 	if (StringProperty)
 	{
 		DebugInfo.Value = FText::FromString(StringProperty->GetPropertyValue(PropertyValue));
 		return;
 	}
 
-	FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Property);
+	UArrayProperty* ArrayProperty = Cast<UArrayProperty>(Property);
 	if (ArrayProperty)
 	{
 		checkSlow(ArrayProperty->Inner);
@@ -1510,14 +1437,14 @@ void FKismetDebugUtilities::GetDebugInfoInternal(FDebugInfo& DebugInfo, FPropert
 		return;
 	}
 
-	FStructProperty* StructProperty = CastField<FStructProperty>(Property);
+	UStructProperty* StructProperty = Cast<UStructProperty>(Property);
 	if (StructProperty)
 	{
 		FString WatchText;
 		StructProperty->ExportTextItem(WatchText, PropertyValue, PropertyValue, nullptr, PPF_PropertyWindow | PPF_BlueprintDebugView, nullptr);
 		DebugInfo.Value = FText::FromString(WatchText);
 
-		for (TFieldIterator<FProperty> It(StructProperty->Struct); It; ++It)
+		for (TFieldIterator<UProperty> It(StructProperty->Struct); It; ++It)
 		{
 			FDebugInfo StructDebugInfo;
 			GetDebugInfoInternal(StructDebugInfo, *It, It->ContainerPtrToValuePtr<void>(PropertyValue, 0));
@@ -1528,10 +1455,10 @@ void FKismetDebugUtilities::GetDebugInfoInternal(FDebugInfo& DebugInfo, FPropert
 		return;
 	}
 
-	FEnumProperty* EnumProperty = CastField<FEnumProperty>(Property);
+	UEnumProperty* EnumProperty = Cast<UEnumProperty>(Property);
 	if (EnumProperty)
 	{
-		FNumericProperty* LocalUnderlyingProp = EnumProperty->GetUnderlyingProperty();
+		UNumericProperty* LocalUnderlyingProp = EnumProperty->GetUnderlyingProperty();
 		UEnum* Enum = EnumProperty->GetEnum();
 
 		int64 Value = LocalUnderlyingProp->GetSignedIntPropertyValue(PropertyValue);
@@ -1557,7 +1484,7 @@ void FKismetDebugUtilities::GetDebugInfoInternal(FDebugInfo& DebugInfo, FPropert
 		return;
 	}
 
-	FMapProperty* MapProperty = CastField<FMapProperty>(Property);
+	UMapProperty* MapProperty = Cast<UMapProperty>(Property);
 	if (MapProperty)
 	{
 		FScriptMapHelper MapHelper(MapProperty, PropertyValue);
@@ -1589,7 +1516,7 @@ void FKismetDebugUtilities::GetDebugInfoInternal(FDebugInfo& DebugInfo, FPropert
 		return;
 	}
 
-	FSetProperty* SetProperty = CastField<FSetProperty>(Property);
+	USetProperty* SetProperty = Cast<USetProperty>(Property);
 	if (SetProperty)
 	{
 		FScriptSetHelper SetHelper(SetProperty, PropertyValue);
@@ -1616,7 +1543,7 @@ void FKismetDebugUtilities::GetDebugInfoInternal(FDebugInfo& DebugInfo, FPropert
 		return;
 	}
 
-	FObjectPropertyBase* ObjectPropertyBase = CastField<FObjectPropertyBase>(Property);
+	UObjectPropertyBase* ObjectPropertyBase = Cast<UObjectPropertyBase>(Property);
 	if (ObjectPropertyBase)
 	{
 		UObject* Obj = ObjectPropertyBase->GetObjectPropertyValue(PropertyValue);
@@ -1632,7 +1559,7 @@ void FKismetDebugUtilities::GetDebugInfoInternal(FDebugInfo& DebugInfo, FPropert
 		return;
 	}
 
-	FDelegateProperty* DelegateProperty = CastField<FDelegateProperty>(Property);
+	UDelegateProperty* DelegateProperty = Cast<UDelegateProperty>(Property);
 	if (DelegateProperty)
 	{
 		if (DelegateProperty->SignatureFunction)
@@ -1647,7 +1574,7 @@ void FKismetDebugUtilities::GetDebugInfoInternal(FDebugInfo& DebugInfo, FPropert
 		return;
 	}
 
-	FMulticastDelegateProperty* MulticastDelegateProperty = CastField<FMulticastDelegateProperty>(Property);
+	UMulticastDelegateProperty* MulticastDelegateProperty = Cast<UMulticastDelegateProperty>(Property);
 	if (MulticastDelegateProperty)
 	{
 		if (MulticastDelegateProperty->SignatureFunction)

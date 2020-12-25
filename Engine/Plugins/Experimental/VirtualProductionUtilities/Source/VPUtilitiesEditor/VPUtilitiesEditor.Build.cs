@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -17,6 +17,7 @@ public class VPUtilitiesEditor : ModuleRules
 				"EditorSubsystem",
 				"VPUtilities",                
 				"VREditor",
+				"Blutility",
             }
         );
 
@@ -37,8 +38,6 @@ public class VPUtilitiesEditor : ModuleRules
 				"VPBookmark",
 				"WorkspaceMenuStructure",
                 "CinematicCamera",
-				"OSC",
-				"PlacementMode"
             }
 		);
 	}

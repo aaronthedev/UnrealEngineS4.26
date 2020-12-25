@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -190,12 +190,6 @@ namespace SceneOutliner
 
 		/** Return the name/Id of the columns of the scene outliner */
 		virtual TArray<FName> GetColumnIds() const override;
-
-		/** @return Returns the current sort mode of the specified column */
-		virtual EColumnSortMode::Type GetColumnSortMode(const FName ColumnId) const;
-
-		/** Request that the tree be sorted at a convenient time */
-		virtual void RequestSort();
 
 		/** Returns true if edit delete can be executed */
 		virtual bool Delete_CanExecute();
@@ -833,9 +827,6 @@ namespace SceneOutliner
 		/** Structure containing information relating to the expansion state of parent items in the tree */
 		typedef TMap<FTreeItemID, bool> FParentsExpansionState;
 
-		/** Cached expansion state info, in case we need to process >500 items so we don't re-fetch from the partially rebuilt tree */
-		FParentsExpansionState CachedExpansionStateInfo;
-
 		/** Gets the current expansion state of parent items */
 		FParentsExpansionState GetParentsExpansionState() const;
 
@@ -934,6 +925,12 @@ namespace SceneOutliner
 
 		/** Handles column sorting mode change */
 		void OnColumnSortModeChanged( const EColumnSortPriority::Type SortPriority, const FName& ColumnId, const EColumnSortMode::Type InSortMode );
+
+		/** @return Returns the current sort mode of the specified column */
+		EColumnSortMode::Type GetColumnSortMode( const FName ColumnId ) const;
+
+		/** Request that the tree be sorted at a convenient time */
+		void RequestSort();
 
 		/** Sort the specified array of items based on the current sort column */
 		void SortItems(TArray<FTreeItemPtr>& Items) const;

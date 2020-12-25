@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_PCP_NODE_H
-#define PXR_USD_PCP_NODE_H
+#ifndef PCP_NODE_H
+#define PCP_NODE_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/pcp/api.h"
@@ -212,9 +212,10 @@ public:
     PCP_API
     const PcpLayerStackRefPtr& GetLayerStack() const;
 
-    /// Returns true if this node is the root node of the prim index graph.
+    /// Returns true if this node is a source of direct opinions.
+    /// There should only be one direct node per prim index.
     PCP_API
-    bool IsRootNode() const;
+    bool IsDirect() const;
 
     /// Returns true if this node is due to an ancestral opinion.
     PCP_API
@@ -447,4 +448,4 @@ int PcpNode_GetNonVariantPathElementCount(const SdfPath &path);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_PCP_NODE_H
+#endif // PCP_NODE_H

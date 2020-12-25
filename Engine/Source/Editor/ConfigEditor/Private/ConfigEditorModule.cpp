@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "ConfigEditorModule.h"
@@ -63,7 +63,7 @@ TSharedRef<SDockTab> FConfigEditorModule::SpawnConfigEditorTab(const FSpawnTabAr
 }
 
 
-void FConfigEditorModule::CreateHierarchyEditor(FProperty* InEditProperty)
+void FConfigEditorModule::CreateHierarchyEditor(UProperty* InEditProperty)
 {
 	CachedPropertyToView = InEditProperty;
 }

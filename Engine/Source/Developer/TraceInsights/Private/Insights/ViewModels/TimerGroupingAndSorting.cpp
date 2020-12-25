@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TimerGroupingAndSorting.h"
 
@@ -9,7 +9,6 @@
 
 // Sort by name (ascending).
 #define INSIGHTS_DEFAULT_SORTING_NODES(A, B) return A->GetName().LexicalLess(B->GetName());
-//#define INSIGHTS_DEFAULT_SORTING_NODES(A, B) return A->GetDefaultSortOrder() < B->GetDefaultSortOrder();
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 // Sorting by Timer Type
@@ -20,7 +19,7 @@ FTimerNodeSortingByTimerType::FTimerNodeSortingByTimerType(TSharedRef<Insights::
 		FName(TEXT("ByTimerType")),
 		LOCTEXT("Sorting_ByTimerType_Name", "By Type"),
 		LOCTEXT("Sorting_ByTimerType_Title", "Sort By Type"),
-		LOCTEXT("Sorting_ByTimerType_Desc", "Sort by timer type."),
+		LOCTEXT("Sorting_ByTimerType_Desc", "Sort by timer type (ascending or descending), then by name (ascending)."),
 		InColumnRef)
 {
 }
@@ -82,7 +81,7 @@ FTimerNodeSortingByInstanceCount::FTimerNodeSortingByInstanceCount(TSharedRef<In
 		FName(TEXT("ByInstanceCount")),
 		LOCTEXT("Sorting_ByInstanceCount_Name", "By Instance Count"),
 		LOCTEXT("Sorting_ByInstanceCount_Title", "Sort By Instance Count"),
-		LOCTEXT("Sorting_ByInstanceCount_Desc", "Sort by aggregated instance count."),
+		LOCTEXT("Sorting_ByInstanceCount_Desc", "Sort by aggregated instance count (ascending or descending), then by name (ascending)."),
 		InColumnRef)
 {
 }
@@ -148,7 +147,7 @@ FTimerNodeSortingByTotalInclusiveTime::FTimerNodeSortingByTotalInclusiveTime(TSh
 		FName(TEXT("ByTotalInclusiveTime")),
 		LOCTEXT("Sorting_ByTotalInclusiveTime_Name", "By Total Inclusive Time"),
 		LOCTEXT("Sorting_ByTotalInclusiveTime_Title", "Sort By Total Inclusive Time"),
-		LOCTEXT("Sorting_ByTotalInclusiveTime_Desc", "Sort by aggregated total inclusive time."),
+		LOCTEXT("Sorting_ByTotalInclusiveTime_Desc", "Sort by aggregated total inclusive time (ascending or descending), then by name (ascending)."),
 		InColumnRef)
 {
 }
@@ -214,7 +213,7 @@ FTimerNodeSortingByTotalExclusiveTime::FTimerNodeSortingByTotalExclusiveTime(TSh
 		FName(TEXT("ByTotalExclusiveTime")),
 		LOCTEXT("Sorting_ByTotalExclusiveTime_Name", "By Total Exclusive Time"),
 		LOCTEXT("Sorting_ByTotalExclusiveTime_Title", "Sort By Total Exclusive Time"),
-		LOCTEXT("Sorting_ByTotalExclusiveTime_Desc", "Sort by aggregated total exclusive time."),
+		LOCTEXT("Sorting_ByTotalExclusiveTime_Desc", "Sort by aggregated total exclusive time (ascending or descending), then by name (ascending)."),
 		InColumnRef)
 {
 }
@@ -268,6 +267,35 @@ void FTimerNodeSortingByTotalExclusiveTime::Sort(TArray<Insights::FBaseTreeNodeP
 				return ValueB < ValueA;
 			}
 		});
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+// Grouping by Timer Type
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+FTimerNodeGroupingByTimerType::FTimerNodeGroupingByTimerType()
+	: FTreeNodeGrouping(
+		LOCTEXT("Grouping_ByTimerType_ShortName", "Type"),
+		LOCTEXT("Grouping_ByTimerType_TitleName", "Type"),
+		LOCTEXT("Grouping_ByTimerType_Desc", "Creates a group for each timer type."),
+		TEXT("Profiler.FiltersAndPresets.StatTypeIcon"), //TODO
+		nullptr)
+{
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+Insights::FTreeNodeGroupInfo FTimerNodeGroupingByTimerType::GetGroupForNode(const Insights::FBaseTreeNodePtr InNodePtr) const
+{
+	if (InNodePtr->GetTypeName() == FTimerNode::TypeName)
+	{
+		const FTimerNodePtr& TimerNodePtr = StaticCastSharedPtr<FTimerNode>(InNodePtr);
+		return { FName(*TimerNodeTypeHelper::ToText(TimerNodePtr->GetType()).ToString()), true };
+	}
+	else
+	{
+		return { FName("Unknown"), true };
 	}
 }
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Misc/EngineBuildSettings.h"
 #include "Misc/Paths.h"
@@ -6,7 +6,7 @@
 
 bool FEngineBuildSettings::IsInternalBuild()
 {
-	static bool bIsInternalBuild = FPaths::FileExists( FPaths::EngineDir() / TEXT("Restricted/NotForLicensees/Build/EpicInternal.txt") );
+	static bool bIsInternalBuild = FPaths::FileExists( FPaths::EngineDir() / TEXT("Build/NotForLicensees/EpicInternal.txt") );
 	return bIsInternalBuild;
 }
 

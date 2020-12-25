@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -76,21 +76,13 @@ public:
 	ENGINE_API virtual bool IsDependent(UMaterialFunctionInterface* OtherFunction)
 		PURE_VIRTUAL(UMaterialFunctionInterface::IsDependent,return false;);
 
-#if WITH_EDITORONLY_DATA
-	/**
-	 * Iterates all functions that this function is dependent on, directly or indrectly.
-	 *
-	 * @param Predicate a visitor predicate returning true to continue iteration, false to break
-	 *
-	 * @return true if all dependent functions were visited, false if the Predicate did break iteration
-	 */
-	ENGINE_API virtual bool IterateDependentFunctions(TFunctionRef<bool(UMaterialFunctionInterface*)> Predicate) const
-		PURE_VIRTUAL(UMaterialFunctionInterface::IterateDependentFunctions,return false;);
-
 	/** Returns an array of the functions that this function is dependent on, directly or indirectly. */
 	ENGINE_API virtual void GetDependentFunctions(TArray<UMaterialFunctionInterface*>& DependentFunctions) const
 		PURE_VIRTUAL(UMaterialFunctionInterface::GetDependentFunctions,);
-#endif
+
+	/** Appends textures referenced by the expressions in this function. */
+	ENGINE_API virtual void AppendReferencedTextures(TArray<UObject*>& InOutTextures) const
+		PURE_VIRTUAL(UMaterialFunctionInterface::AppendReferencedTextures,);
 
 #if WITH_EDITOR
 	ENGINE_API virtual UMaterialInterface* GetPreviewMaterial()
@@ -122,10 +114,8 @@ public:
 	virtual const UMaterialFunctionInterface* GetBaseFunction() const
 		PURE_VIRTUAL(UMaterialFunctionInterface::GetBaseFunction,return nullptr;);
 
-#if WITH_EDITORONLY_DATA
 	virtual const TArray<UMaterialExpression*>* GetFunctionExpressions() const
 		PURE_VIRTUAL(UMaterialFunctionInterface::GetFunctionExpressions,return nullptr;);
-#endif // WITH_EDITORONLY_DATA
 
 	virtual const FString* GetDescription() const
 		PURE_VIRTUAL(UMaterialFunctionInterface::GetDescription,return nullptr;);
@@ -137,17 +127,15 @@ public:
 		PURE_VIRTUAL(UMaterialFunctionInterface::SetReentrantFlag,);
 
 public:
-#if WITH_EDITORONLY_DATA
 	/** Finds the names of all matching type parameters */
 	template<typename ExpressionType>
 	void GetAllParameterInfo(TArray<FMaterialParameterInfo>& OutParameterInfo, TArray<FGuid>& OutParameterIds, const FMaterialParameterInfo& InBaseParameterInfo) const
 	{
 		if (const UMaterialFunctionInterface* ParameterFunction = GetBaseFunction())
 		{
-			const UClass* TargetClass = UMaterialExpressionMaterialFunctionCall::StaticClass();
 			for (UMaterialExpression* Expression : *ParameterFunction->GetFunctionExpressions())
 			{
-				if (const UMaterialExpressionMaterialFunctionCall* FunctionExpression = (Expression && Expression->IsA(TargetClass)) ? (const UMaterialExpressionMaterialFunctionCall*)Expression : nullptr)
+				if (const UMaterialExpressionMaterialFunctionCall* FunctionExpression = Cast<const UMaterialExpressionMaterialFunctionCall>(Expression))
 				{
 					if (FunctionExpression->MaterialFunction)
 					{
@@ -163,25 +151,24 @@ public:
 			check(OutParameterInfo.Num() == OutParameterIds.Num());
 		}
 	}
-#endif // WITH_EDITORONLY_DATA
 
-#if WITH_EDITOR
 	/** Finds the first matching parameter by name and type */
 	template<typename ExpressionType>
-	bool GetNamedParameterOfType(const FHashedMaterialParameterInfo& ParameterInfo, ExpressionType*& Parameter, UMaterialFunctionInterface** OwningFunction = nullptr)
+	bool GetNamedParameterOfType(const FMaterialParameterInfo& ParameterInfo, ExpressionType*& Parameter, UMaterialFunctionInterface** OwningFunction = nullptr)
 	{
 		Parameter = nullptr;
 
 		if (UMaterialFunctionInterface* ParameterFunction = GetBaseFunction())
 		{
-			const UClass* TargetClass = ExpressionType::StaticClass();
+			TArray<UMaterialFunctionInterface*> Functions;
+			ParameterFunction->GetDependentFunctions(Functions);
+			Functions.AddUnique(ParameterFunction);
 
-			auto GetExpressionParameterByNamePredicate = 
-				[&ParameterInfo, &Parameter, &OwningFunction, TargetClass](UMaterialFunctionInterface* Function) -> bool
+			for (UMaterialFunctionInterface* Function : Functions)
 			{
 				for (UMaterialExpression* FunctionExpression : *Function->GetFunctionExpressions())
 				{
-					if (ExpressionType* ExpressionParameter = (FunctionExpression && FunctionExpression->IsA(TargetClass)) ? (ExpressionType *)FunctionExpression : nullptr)
+					if (ExpressionType* ExpressionParameter = Cast<ExpressionType>(FunctionExpression))
 					{
 						if (ExpressionParameter->ParameterName == ParameterInfo.Name)
 						{
@@ -192,26 +179,19 @@ public:
 								(*OwningFunction) = Function;
 							}
 
-							return false; // found, stop iterating
+							return true;
 						}
 					}
 				}
-
-				return true; // not found, continue iterating
-			};
-			
-			if (!ParameterFunction->IterateDependentFunctions(GetExpressionParameterByNamePredicate))
-			{
-				return true;
 			}
-			return !GetExpressionParameterByNamePredicate(ParameterFunction);
 		}
 
 		return false;
 	}
 
+#if WITH_EDITOR
 	/** Finds the first matching parameter's group name */
-	bool GetParameterGroupName(const FHashedMaterialParameterInfo& ParameterInfo, FName& OutGroup)
+	bool GetParameterGroupName(const FMaterialParameterInfo& ParameterInfo, FName& OutGroup)
 	{
 		if (UMaterialFunctionInterface* ParameterFunction = GetBaseFunction())
 		{
@@ -255,7 +235,7 @@ public:
 	}
 
 	/** Finds the first matching parameter's group name */
-	bool GetParameterSortPriority(const FHashedMaterialParameterInfo& ParameterInfo, int32& OutSortPriority)
+	bool GetParameterSortPriority(const FMaterialParameterInfo& ParameterInfo, int32& OutSortPriority)
 	{
 		if (UMaterialFunctionInterface* ParameterFunction = GetBaseFunction())
 		{
@@ -299,7 +279,7 @@ public:
 	}
 
 	/** Finds the first matching parameter's description */
-	bool GetParameterDesc(const FHashedMaterialParameterInfo& ParameterInfo, FString& OutDesc)
+	bool GetParameterDesc(const FMaterialParameterInfo& ParameterInfo, FString& OutDesc)
 	{
 		if (UMaterialFunctionInterface* ParameterFunction = GetBaseFunction())
 		{
@@ -341,6 +321,7 @@ public:
 
 		return false;
 	}
+#endif // WITH_EDITOR
 
 	/** Returns if any of the matching parameters have changed */
 	template <typename ParameterType, typename ExpressionType>
@@ -373,9 +354,7 @@ public:
 
 		return bChanged;
 	}
-#endif // WITH_EDITOR
 
-#if WITH_EDITORONLY_DATA
 	/** Get all expressions of the requested type, recursing through any function expressions in the function */
 	template<typename ExpressionType>
 	bool HasAnyExpressionsOfType()
@@ -426,39 +405,38 @@ public:
 			}
 		}
 	}
-#endif // WITH_EDITORONLY_DATA
 
-	virtual bool OverrideNamedScalarParameter(const FHashedMaterialParameterInfo& ParameterInfo, float& OutValue)
+	virtual bool OverrideNamedScalarParameter(const FMaterialParameterInfo& ParameterInfo, float& OutValue)
 	{
 		return false;
 	}
 
-	virtual bool OverrideNamedVectorParameter(const FHashedMaterialParameterInfo& ParameterInfo, FLinearColor& OutValue)
+	virtual bool OverrideNamedVectorParameter(const FMaterialParameterInfo& ParameterInfo, FLinearColor& OutValue)
 	{
 		return false;
 	}
 
-	virtual bool OverrideNamedTextureParameter(const FHashedMaterialParameterInfo& ParameterInfo, class UTexture*& OutValue)
+	virtual bool OverrideNamedTextureParameter(const FMaterialParameterInfo& ParameterInfo, class UTexture*& OutValue)
 	{
 		return false;
 	}
 	
-	virtual bool OverrideNamedRuntimeVirtualTextureParameter(const FHashedMaterialParameterInfo& ParameterInfo, class URuntimeVirtualTexture*& OutValue)
+	virtual bool OverrideNamedRuntimeVirtualTextureParameter(const FMaterialParameterInfo& ParameterInfo, class URuntimeVirtualTexture*& OutValue)
 	{
 		return false;
 	}
 
-	virtual bool OverrideNamedFontParameter(const FHashedMaterialParameterInfo& ParameterInfo, class UFont*& OutFontValue, int32& OutFontPage)
+	virtual bool OverrideNamedFontParameter(const FMaterialParameterInfo& ParameterInfo, class UFont*& OutFontValue, int32& OutFontPage)
 	{
 		return false;
 	}
 
-	virtual bool OverrideNamedStaticSwitchParameter(const FHashedMaterialParameterInfo& ParameterInfo, bool& OutValue, FGuid& OutExpressionGuid)
+	virtual bool OverrideNamedStaticSwitchParameter(const FMaterialParameterInfo& ParameterInfo, bool& OutValue, FGuid& OutExpressionGuid)
 	{
 		return false;
 	}
 
-	virtual bool OverrideNamedStaticComponentMaskParameter(const FHashedMaterialParameterInfo& ParameterInfo, bool& OutR, bool& OutG, bool& OutB, bool& OutA, FGuid& OutExpressionGuid)
+	virtual bool OverrideNamedStaticComponentMaskParameter(const FMaterialParameterInfo& ParameterInfo, bool& OutR, bool& OutG, bool& OutB, bool& OutA, FGuid& OutExpressionGuid)
 	{
 		return false;
 	}

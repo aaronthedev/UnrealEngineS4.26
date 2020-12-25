@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ClassViewerFilter.h"
 
@@ -9,7 +9,8 @@
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 #include "Misc/TextFilterExpressionEvaluator.h"
-#include "Editor.h"
+#include "Editor/UnrealEdEngine.h"
+#include "UnrealEdGlobals.h"
 #include "AssetRegistryModule.h"
 #include "PropertyHandle.h"
 
@@ -366,7 +367,29 @@ static bool CheckIfBlueprintBase(const TSharedRef<const IUnloadedBlueprintData>&
 */
 static bool PassesTextFilter(const FString& InTestString, const TSharedRef<FTextFilterExpressionEvaluator>& InTextFilter)
 {
-	return InTextFilter->TestTextFilter(FBasicStringFilterExpressionContext(InTestString));
+	class FClassFilterContext : public ITextFilterExpressionContext
+	{
+	public:
+		explicit FClassFilterContext(const FString& InStr)
+			: StrPtr(&InStr)
+		{
+		}
+
+		virtual bool TestBasicStringExpression(const FTextFilterString& InValue, const ETextFilterTextComparisonMode InTextComparisonMode) const override
+		{
+			return TextFilterUtils::TestBasicStringExpression(*StrPtr, InValue, InTextComparisonMode);
+		}
+
+		virtual bool TestComplexExpression(const FName& InKey, const FTextFilterString& InValue, const ETextFilterComparisonOperation InComparisonOperation, const ETextFilterTextComparisonMode InTextComparisonMode) const override
+		{
+			return false;
+		}
+
+	private:
+		const FString* StrPtr;
+	};
+
+	return InTextFilter->TestTextFilter(FClassFilterContext(InTestString));
 }
 
 FClassViewerFilter::FClassViewerFilter(const FClassViewerInitializationOptions& InInitOptions) :
@@ -375,7 +398,7 @@ FClassViewerFilter::FClassViewerFilter(const FClassViewerInitializationOptions& 
 	AssetRegistry(FModuleManager::GetModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry")).Get())
 {
 	// Create a game-specific filter, if the referencing property/assets were supplied
-	if (GEditor)
+	if (GUnrealEd)
 	{
 		FAssetReferenceFilterContext AssetReferenceFilterContext;
 		AssetReferenceFilterContext.ReferencingAssets = InInitOptions.AdditionalReferencingAssets;
@@ -388,7 +411,7 @@ FClassViewerFilter::FClassViewerFilter(const FClassViewerInitializationOptions& 
 				AssetReferenceFilterContext.ReferencingAssets.Add(FAssetData(ReferencingObject));
 			}
 		}
-		AssetReferenceFilter = GEditor->MakeAssetReferenceFilter(AssetReferenceFilterContext);
+		AssetReferenceFilter = GUnrealEd->MakeAssetReferenceFilter(AssetReferenceFilterContext);
 	}
 }
 
@@ -425,12 +448,10 @@ bool FClassViewerFilter::IsClassAllowed(const FClassViewerInitializationOptions&
 	// Determine if we allow any developer folder classes, if so determine if this class is in one of the allowed developer folders.
 	static const FString DeveloperPathWithSlash = FPackageName::FilenameToLongPackageName(FPaths::GameDevelopersDir());
 	static const FString UserDeveloperPathWithSlash = FPackageName::FilenameToLongPackageName(FPaths::GameUserDeveloperDir());
-	const FString GeneratedClassPathString = InClass->GetPathName();
-
-	const UClassViewerSettings* ClassViewerSettings = GetDefault<UClassViewerSettings>();
+	FString GeneratedClassPathString = InClass->GetPathName();
 
 	bool bPassesDeveloperFilter = true;
-	EClassViewerDeveloperType AllowedDeveloperType = ClassViewerSettings->DeveloperFolderType;
+	EClassViewerDeveloperType AllowedDeveloperType = GetDefault<UClassViewerSettings>()->DeveloperFolderType;
 	if (AllowedDeveloperType == EClassViewerDeveloperType::CVDT_None)
 	{
 		bPassesDeveloperFilter = !GeneratedClassPathString.StartsWith(DeveloperPathWithSlash);
@@ -442,15 +463,15 @@ bool FClassViewerFilter::IsClassAllowed(const FClassViewerInitializationOptions&
 			bPassesDeveloperFilter = GeneratedClassPathString.StartsWith(UserDeveloperPathWithSlash);
 		}
 	}
-	
+
 	// The INI files declare classes and folders that are considered internal only. Does this class match any of those patterns?
 	// INI path: /Script/ClassViewer.ClassViewerProjectSettings
 	bool bPassesInternalFilter = true;
-	if (!ClassViewerSettings->DisplayInternalClasses)
+	if (!GetDefault<UClassViewerSettings>()->DisplayInternalClasses)
 	{
-		for (const FDirectoryPath& DirPath : InternalPaths)
+		for (int i = 0; i < InternalPaths.Num(); ++i)
 		{
-			if (GeneratedClassPathString.StartsWith(DirPath.Path))
+			if (GeneratedClassPathString.StartsWith(InternalPaths[i].Path))
 			{
 				bPassesInternalFilter = false;
 				break;
@@ -459,24 +480,14 @@ bool FClassViewerFilter::IsClassAllowed(const FClassViewerInitializationOptions&
 
 		if (bPassesInternalFilter)
 		{
-			for (const UClass* Class : InternalClasses)
+			for (int i = 0; i < InternalClasses.Num(); ++i)
 			{
-				if (InClass->IsChildOf(Class))
+				if (InClass->IsChildOf(InternalClasses[i]))
 				{
 					bPassesInternalFilter = false;
 					break;
 				}
 			}
-		}
-	}
-
-	// The INI files can contain a list of globally allowed classes - if it does, then only classes whose names match will be shown.
-	bool bPassesAllowedClasses = true;
-	if (ClassViewerSettings->AllowedClasses.Num() > 0)
-	{
-		if (!ClassViewerSettings->AllowedClasses.Contains(GeneratedClassPathString))
-		{
-			bPassesAllowedClasses = false;
 		}
 	}
 
@@ -493,19 +504,7 @@ bool FClassViewerFilter::IsClassAllowed(const FClassViewerInitializationOptions&
 		bPassesCustomFilter = InInitOptions.ClassFilter->IsClassAllowed(InInitOptions, InClass, FilterFunctions);
 	}
 
-	bool bPassesTextFilter = true;
-	if (bCheckTextFilter && (TextFilter->GetFilterType() != ETextFilterExpressionType::Empty))
-	{
-		FString ClassNameWithCppPrefix = FString::Printf(TEXT("%s%s"), InClass->GetPrefixCPP(), *InClass->GetName());
-		bPassesTextFilter = PassesTextFilter(InClass->GetName(), TextFilter) || PassesTextFilter(ClassNameWithCppPrefix, TextFilter);
-
-		// If the class is deprecated, try searching without the deprecated name inserted, in case a user typed a string
-		if (!bPassesTextFilter && InClass->HasAnyClassFlags(CLASS_Deprecated))
-		{
-			ClassNameWithCppPrefix.RemoveAt(1, 11);
-			bPassesTextFilter |= PassesTextFilter(ClassNameWithCppPrefix, TextFilter);
-		}
-	}
+	const bool bPassesTextFilter = PassesTextFilter(InClass->GetName(), TextFilter);
 
 	bool bPassesAssetReferenceFilter = true;
 	if (AssetReferenceFilter.IsValid() && !InClass->IsNative())
@@ -513,9 +512,9 @@ bool FClassViewerFilter::IsClassAllowed(const FClassViewerInitializationOptions&
 		bPassesAssetReferenceFilter = AssetReferenceFilter->PassesFilter(FAssetData(InClass));
 	}
 
-	bool bPassesFilter = bPassesAllowedClasses && bPassesPlaceableFilter && bPassesBlueprintBaseFilter
+	bool bPassesFilter = bPassesPlaceableFilter && bPassesBlueprintBaseFilter 
 		&& bPassesDeveloperFilter && bPassesInternalFilter && bPassesEditorClassFilter 
-		&& bPassesCustomFilter && bPassesTextFilter && bPassesAssetReferenceFilter;
+		&& bPassesCustomFilter && (!bCheckTextFilter || bPassesTextFilter) && bPassesAssetReferenceFilter;
 
 	return bPassesFilter;
 }
@@ -536,6 +535,9 @@ bool FClassViewerFilter::IsUnloadedClassAllowed(const FClassViewerInitialization
 	const bool bIsBlueprintBase = CheckIfBlueprintBase(InUnloadedClassData);
 	const bool bPassesBlueprintBaseFilter = !InInitOptions.bIsBlueprintBaseOnly || bIsBlueprintBase;
 
+	// unloaded blueprints cannot be editor-only
+	const bool bPassesEditorClassFilter = !InInitOptions.bEditorClassesOnly;
+
 	// Determine if we allow any developer folder classes, if so determine if this class is in one of the allowed developer folders.
 	static const FString DeveloperPathWithSlash = FPackageName::FilenameToLongPackageName(FPaths::GameDevelopersDir());
 	static const FString UserDeveloperPathWithSlash = FPackageName::FilenameToLongPackageName(FPaths::GameUserDeveloperDir());
@@ -543,8 +545,7 @@ bool FClassViewerFilter::IsUnloadedClassAllowed(const FClassViewerInitialization
 
 	bool bPassesDeveloperFilter = true;
 
-	const UClassViewerSettings* ClassViewerSettings = GetDefault<UClassViewerSettings>();
-	EClassViewerDeveloperType AllowedDeveloperType = ClassViewerSettings->DeveloperFolderType;
+	EClassViewerDeveloperType AllowedDeveloperType = GetDefault<UClassViewerSettings>()->DeveloperFolderType;
 	if (AllowedDeveloperType == EClassViewerDeveloperType::CVDT_None)
 	{
 		bPassesDeveloperFilter = !GeneratedClassPathString.StartsWith(DeveloperPathWithSlash);
@@ -560,25 +561,15 @@ bool FClassViewerFilter::IsUnloadedClassAllowed(const FClassViewerInitialization
 	// The INI files declare classes and folders that are considered internal only. Does this class match any of those patterns?
 	// INI path: /Script/ClassViewer.ClassViewerProjectSettings
 	bool bPassesInternalFilter = true;
-	if (!ClassViewerSettings->DisplayInternalClasses)
+	if (!GetDefault<UClassViewerSettings>()->DisplayInternalClasses)
 	{
-		for (const FDirectoryPath& DirPath : InternalPaths)
+		for (int i = 0; i < InternalPaths.Num(); ++i)
 		{
-			if (GeneratedClassPathString.StartsWith(DirPath.Path))
+			if (GeneratedClassPathString.StartsWith(InternalPaths[i].Path))
 			{
 				bPassesInternalFilter = false;
 				break;
 			}
-		}
-	}
-
-	// The INI files can contain a list of globally allowed classes - if it does, then only classes whose names match will be shown.
-	bool bPassesAllowedClasses = true;
-	if (ClassViewerSettings->AllowedClasses.Num() > 0)
-	{
-		if (!ClassViewerSettings->AllowedClasses.Contains(GeneratedClassPathString))
-		{
-			bPassesAllowedClasses = false;
 		}
 	}
 
@@ -605,8 +596,8 @@ bool FClassViewerFilter::IsUnloadedClassAllowed(const FClassViewerInitialization
 	}
 
 	bool bPassesFilter = bPassesPlaceableFilter && bPassesBlueprintBaseFilter
-		&& bPassesDeveloperFilter && bPassesInternalFilter && bPassesCustomFilter 
-		&& (!bCheckTextFilter || bPassesTextFilter) && bPassesAssetReferenceFilter;
+		&& bPassesDeveloperFilter && bPassesInternalFilter && bPassesEditorClassFilter
+		&& bPassesCustomFilter && (!bCheckTextFilter || bPassesTextFilter) && bPassesAssetReferenceFilter;
 
 	return bPassesFilter;
 }

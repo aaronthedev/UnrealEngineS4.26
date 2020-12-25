@@ -1,11 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AudioCaptureAndroid.h"
 
-#include "CoreMinimal.h"
 
-DECLARE_LOG_CATEGORY_EXTERN(LogAudioCaptureAndroid, Log, All);
-DEFINE_LOG_CATEGORY(LogAudioCaptureAndroid);
+
 
 Audio::FAudioCaptureAndroidStream::FAudioCaptureAndroidStream()
 	: NumChannels(1)
@@ -30,7 +28,6 @@ bool Audio::FAudioCaptureAndroidStream::GetCaptureDeviceInfo(FCaptureDeviceInfo&
 
 bool Audio::FAudioCaptureAndroidStream::OpenCaptureStream(const FAudioCaptureDeviceParams& InParams, FOnCaptureFunction InOnCapture, uint32 NumFramesDesired)
 {
-	// Build stream settings object.
 	oboe::AudioStreamBuilder StreamBuilder;
 	StreamBuilder.setDeviceId(0);
 	StreamBuilder.setCallback(this);
@@ -39,33 +36,20 @@ bool Audio::FAudioCaptureAndroidStream::OpenCaptureStream(const FAudioCaptureDev
 	StreamBuilder.setChannelCount(NumChannels);
 	StreamBuilder.setFormat(oboe::AudioFormat::Float);
 
-	// Open up a capture stream
 	oboe::AudioStream* NewStream;
 	oboe::Result Result = StreamBuilder.openStream(&NewStream);
-
-	bool bSuccess = Result == oboe::Result::OK;
-
 	InputOboeStream.Reset(NewStream);
 
 	OnCapture = MoveTemp(InOnCapture);
 
-	if (!bSuccess)
-	{
-		// Log error on failure.
-		FString ErrorString(UTF8_TO_TCHAR(convertToText(Result)));
-		UE_LOG(LogAudioCaptureAndroid, Error, TEXT("Failed to open oboe capture stream: %s"), *ErrorString)
-	}
-
-	return bSuccess;
+	return true;
 }
 
 bool Audio::FAudioCaptureAndroidStream::CloseStream()
 {
-	if (!InputOboeStream)
-	{
-		InputOboeStream->close();
-		InputOboeStream.Reset();
-	}
+	check(InputOboeStream != nullptr);
+	InputOboeStream->close();
+	InputOboeStream.Reset();
 
 	return true;
 }
@@ -129,7 +113,7 @@ bool Audio::FAudioCaptureAndroidStream::IsCapturing() const
 void Audio::FAudioCaptureAndroidStream::OnAudioCapture(void* InBuffer, uint32 InBufferFrames, double StreamTime, bool bOverflow)
 {
 	const float* FloatBuffer = static_cast<float*>(InBuffer);
-	OnCapture(FloatBuffer, InBufferFrames, NumChannels, SampleRate, StreamTime, bOverflow);
+	OnCapture(FloatBuffer, InBufferFrames, NumChannels, StreamTime, bOverflow);
 }
 
 bool Audio::FAudioCaptureAndroidStream::GetInputDevicesAvailable(TArray<FCaptureDeviceInfo>& OutDevices)

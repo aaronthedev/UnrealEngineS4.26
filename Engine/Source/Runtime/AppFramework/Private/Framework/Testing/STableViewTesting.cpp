@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Framework/Testing/STableViewTesting.h"
 #include "Layout/Margin.h"
@@ -139,7 +139,7 @@ class FTestData
 
 		static float MakeRandomItemHeight()
 		{
-			return static_cast<float>(rand()) / static_cast<float>(RAND_MAX) * 50.0f;
+			return static_cast<float>(rand()) / RAND_MAX * 50.0f;
 		}
 
 		/**

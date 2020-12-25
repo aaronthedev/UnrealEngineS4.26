@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,9 +19,6 @@ class UNiagaraScript;
 class UEdGraphPin;
 class UNiagaraDataInterface;
 enum class EStackParameterBehavior;
-class UNiagaraClipboardFunctionInput;
-class UNiagaraClipboardFunction;
-class UNiagaraScriptVariable;
 
 /** Represents a single module input in the module stack view model. */
 UCLASS()
@@ -43,20 +40,17 @@ public:
 		Data,
 		/** The value is provided by an expression object. */
 		Expression,
-		/** The value is a default value provided by a function call. */
-		DefaultFunction,
-		/** This input is overridden in the stack graph, but the override is invalid. */
-		InvalidOverride,
-		/** This input has a default value set in it's graph which can't be displayed in the stack view. */
-		UnsupportedDefault,
-		/** This input has no value. */
-		None
+		/** The value source for this input was not set, or couldn't be determined. */
+		Invalid
 	};
 
 	DECLARE_MULTICAST_DELEGATE(FOnValueChanged);
 
 public:
 	UNiagaraStackFunctionInput();
+
+	static void AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector);
+	void AddReferencedObjects(FReferenceCollector& Collector);
 
 	/** 
 	 * Sets the input data for this entry.
@@ -81,9 +75,6 @@ public:
 	/** Gets the function call node which owns this input. */
 	const UNiagaraNodeFunctionCall& GetInputFunctionCallNode() const;
 
-	/** Gets the script that the function call node was referencing when this input was initialized. */
-	UNiagaraScript* GetInputFunctionCallInitialScript() const;
-
 	/** Gets the current value mode */
 	EValueMode GetValueMode();
 
@@ -94,25 +85,10 @@ public:
 	virtual FText GetDisplayName() const override;
 	virtual FText GetTooltipText() const override;
 	virtual bool GetIsEnabled() const override;
-	virtual UObject* GetExternalAsset() const override;
-	virtual bool SupportsCut() const override { return true; }
-	virtual bool TestCanCutWithMessage(FText& OutMessage) const override;
-	virtual FText GetCutTransactionText() const override;
-	virtual void CopyForCut(UNiagaraClipboardContent* ClipboardContent) const override;
-	virtual void RemoveForCut() override;
-	virtual bool SupportsCopy() const override { return true; }
-	virtual bool TestCanCopyWithMessage(FText& OutMessage) const override;
-	virtual void Copy(UNiagaraClipboardContent* ClipboardContent) const override;
-	virtual bool SupportsPaste() const override { return true; }
-	virtual bool TestCanPasteWithMessage(const UNiagaraClipboardContent* ClipboardContent, FText& OutMessage) const override;
-	virtual FText GetPasteTransactionText(const UNiagaraClipboardContent* ClipboardContent) const override;
-	virtual void Paste(const UNiagaraClipboardContent* ClipboardContent, FText& OutPasteWarning) override;
+	
+	UObject* GetExternalAsset() const override;
 
-	/** Gets the tooltip that should be shown for the value of this input. */
-	FText GetValueToolTip() const;
-
-	/** Gets the tooltip that should be shown for the value of this input. */
-	FText GetCollapsedStateText() const;
+	FText GetTooltipText(EValueMode InValueMode) const;
 
 	/** Gets the path of parameter handles from the owning module to the function call which owns this input. */
 	const TArray<FNiagaraParameterHandle>& GetInputParameterHandlePath() const;
@@ -126,32 +102,26 @@ public:
 	/** Sets the value of this input to a linked parameter handle. */
 	void SetLinkedValueHandle(const FNiagaraParameterHandle& InParameterHandle);
 
-	/** Gets the current set of available parameter handles which can be assigned to this input. */
-	void GetAvailableParameterHandles(TArray<FNiagaraParameterHandle>& AvailableParameterHandles) const;
-
-	/** Gets the function node form the script graph if the current value mode is DefaultFunction. */
-	UNiagaraNodeFunctionCall* GetDefaultFunctionNode() const;
+	/** Gets the current set of available parameter handes which can be assigned to this input. */
+	void GetAvailableParameterHandles(TArray<FNiagaraParameterHandle>& AvailableParameterHandles);
 
 	/** Gets the dynamic input node providing the value for this input, if one is available. */
 	UNiagaraNodeFunctionCall* GetDynamicInputNode() const;
+
+	/** Gets the expression input node providing the value for this input, if one is available. */
+	UNiagaraNodeCustomHlsl* GetExpressionNode() const;
 
 	/** Gets the dynamic inputs available for this input. */
 	void GetAvailableDynamicInputs(TArray<UNiagaraScript*>& AvailableDynamicInputs, bool bIncludeNonLibraryInputs = false);
 
 	/** Sets the dynamic input script for this input. */
-	void SetDynamicInput(UNiagaraScript* DynamicInput, FString SuggestedName = FString());
-
-	/** Gets the expression providing the value for this input, if one is available. */
-	FText GetCustomExpressionText() const;
+	void SetDynamicInput(UNiagaraScript* DynamicInput);
 
 	/** Sets the dynamic custom expression script for this input. */
-	void SetCustomExpression(const FString& InCustomExpression);
-
-	/** Create a new scratch pad dynamic inputs and set this input to use it. */
-	void SetScratch();
+	void SetCustomExpression(const FString& InputText);
 
 	/** Gets the current struct value of this input is there is one. */
-	TSharedPtr<const FStructOnScope> GetLocalValueStruct();
+	TSharedPtr<FStructOnScope> GetLocalValueStruct();
 
 	/** Gets the current data object value of this input is there is one. */
 	UNiagaraDataInterface* GetDataValueObject();
@@ -174,9 +144,6 @@ public:
 	/** Resets the value and handle of this input to the value and handle defined in the module. */
 	void Reset();
 
-	/** Checks if any data needs a fixup after the module definition changed. */
-	void ApplyModuleChanges();
-
 	/** Determine if this field is editable */
 	bool IsEditable() const;
 
@@ -193,10 +160,16 @@ public:
 	void ResetToBase();
 
 	/** Returns whether or not this input can be renamed. */
-	virtual bool SupportsRename() const override;
+	bool CanRenameInput() const;
+
+	/** Gets whether this input has a rename pending. */
+	bool GetIsRenamePending() const;
+
+	/** Sets whether this input has a rename pending. */
+	void SetIsRenamePending(bool bIsRenamePending);
 
 	/** Renames this input to the name specified. */
-	virtual void OnRenamed(FText NewName) override;
+	void RenameInput(FName NewName);
 
 	/** Returns whether or not this input can be deleted. */
 	bool CanDeleteInput() const;
@@ -205,10 +178,7 @@ public:
 	void DeleteInput();
 
 	/** Gets the namespaces which new parameters for this input can be read from. */
-	void GetNamespacesForNewReadParameters(TArray<FName>& OutNamespacesForNewParameters) const;
-
-	/** Gets the namespaces which new parameters for this input can write to. */
-	void GetNamespacesForNewWriteParameters(TArray<FName>& OutNamespacesForNewParameters) const;
+	void GetNamespacesForNewParameters(TArray<FName>& OutNamespacesForNewParameters) const;
 
 	/** Gets a multicast delegate which is called whenever the value on this input changes. */
 	FOnValueChanged& OnValueChanged();
@@ -246,18 +216,9 @@ public:
 	/** Gets whether or not this input is filtered from search results and appearing in stack due to visibility metadata*/
 	bool GetShouldPassFilterForVisibleCondition() const;
 
-	const UNiagaraClipboardFunctionInput* ToClipboardFunctionInput(UObject* InOuter) const;
-
-	void SetValueFromClipboardFunctionInput(const UNiagaraClipboardFunctionInput& ClipboardFunctionInput);
-
-	bool IsScratchDynamicInput() const;
-
-	virtual bool IsSemanticChild() const;
-	void SetSemanticChild(bool IsSemanticChild);
-
+public:
 	//~ UNiagaraStackEntry interface
 	virtual void GetSearchItems(TArray<FStackSearchItem>& SearchItems) const override;
-	virtual bool HasFrontDivider() const override;
 
 	/** If false then the stack parameter is not visible */
 	bool bIsVisible = true;
@@ -267,30 +228,86 @@ protected:
 	virtual void FinalizeInternal() override;
 	virtual void RefreshChildrenInternal(const TArray<UNiagaraStackEntry*>& CurrentChildren, TArray<UNiagaraStackEntry*>& NewChildren, TArray<FStackIssue>& NewIssues) override;
 
+	FNiagaraVariable GetDefaultVariableForRapidIterationParameter() const;
 	bool UpdateRapidIterationParametersForAffectedScripts(const uint8* Data);
 	bool RemoveRapidIterationParametersForAffectedScripts();
 	FString ResolveDisplayNameArgument(const FString& InArg) const;
 
 private:
-	struct FInputValues
+	struct FDataValues
 	{
-		FInputValues()
-			: Mode(EValueMode::None)
+		enum class EDefaultValueOwner
+		{
+			LocallyOwned,
+			FunctionOwned,
+			Invalid
+		};
+
+		FDataValues()
+			: ValueObject(nullptr)
+			, DefaultValueObject(nullptr)
+			, DefaultValueOwner(EDefaultValueOwner::Invalid)
+			, bIsValid(false)
 		{
 		}
 
-		bool HasEditableData() const
+		FDataValues(UNiagaraDataInterface* InValueObject, UNiagaraDataInterface* InDefaultValueObject, EDefaultValueOwner InDefaultValueOwner)
+			: ValueObject(InValueObject)
+			, DefaultValueObject(InDefaultValueObject)
+			, DefaultValueOwner(InDefaultValueOwner)
+			, bIsValid(true)
 		{
-			return Mode != EValueMode::None && Mode != EValueMode::InvalidOverride && Mode != EValueMode::UnsupportedDefault;
+			checkf(DefaultValueObject == nullptr || DefaultValueOwner != EDefaultValueOwner::Invalid, TEXT("Must specify a valid owner if the default value object is not null"));
 		}
+
+		UNiagaraDataInterface* GetValueObject() const
+		{
+			return ValueObject;
+		}
+
+		UNiagaraDataInterface* GetDefaultValueObject() const
+		{
+			return DefaultValueObject;
+		}
+
+		UNiagaraDataInterface*& GetDefaultValueObjectRef()
+		{
+			return DefaultValueObject;
+		}
+
+		EDefaultValueOwner GetDefaultValueOwner() const
+		{
+			return DefaultValueOwner;
+		}
+
+		bool IsValid() const
+		{
+			return bIsValid;
+		}
+
+	private:
+		UNiagaraDataInterface* ValueObject;
+		UNiagaraDataInterface* DefaultValueObject;
+		EDefaultValueOwner DefaultValueOwner;
+		bool bIsValid;
+	};
+
+	struct FInputValues
+	{
+		FInputValues()
+			: Mode(EValueMode::Invalid)
+		{
+		}
+
+		TSharedPtr<FStructOnScope> GetLocalStructToReuse();
+		UNiagaraDataInterface* GetDataDefaultValueObjectToReuse();
 
 		EValueMode Mode;
 		TSharedPtr<FStructOnScope> LocalStruct;
 		FNiagaraParameterHandle LinkedHandle;
 		TWeakObjectPtr<UNiagaraNodeFunctionCall> DynamicNode;
 		TWeakObjectPtr<UNiagaraNodeCustomHlsl> ExpressionNode;
-		TWeakObjectPtr<UNiagaraDataInterface> DataObject;
-		TWeakObjectPtr<UNiagaraNodeFunctionCall> DefaultFunctionNode;
+		FDataValues DataObjects;
 	};
 
 private:
@@ -316,6 +333,9 @@ private:
 	  * This will create the node and add it to the graph if it doesn't exist. */
 	UNiagaraNodeParameterMapSet& GetOrCreateOverrideNode();
 
+	/** Gets the default value pin from the map get node which generated this input. */
+	UEdGraphPin* GetDefaultPin() const;
+
 	/** Gets the pin on the override node which is associated with this input if it exists. */
 	UEdGraphPin* GetOverridePin() const;
 
@@ -323,33 +343,28 @@ private:
 	  * pin don't exist, they will be created. */
 	UEdGraphPin& GetOrCreateOverridePin();
 
-	void GetDefaultDataInterfaceValueFromDefaultPin(UEdGraphPin* DefaultPin, UNiagaraStackFunctionInput::FInputValues& InInputValues) const;
+	/** Tries to get a local value for this input if it exists by checking the graph data directly. */
+	bool TryGetCurrentLocalValue(TSharedPtr<FStructOnScope>& LocalValue, UEdGraphPin& DefaultPin, UEdGraphPin& ValuePin, TSharedPtr<FStructOnScope> OldValueToReuse);
 
-	void GetDefaultLocalValueFromDefaultPin(UEdGraphPin* DefaultPin, UNiagaraStackFunctionInput::FInputValues& InInputValues) const;
+	/** Tries to get a data interface value for this input if it exists by checking the graph data directly .*/
+	bool TryGetCurrentDataValue(FDataValues& DataValues, UEdGraphPin* OverrideValuePin, UEdGraphPin& DefaultValuePin, UNiagaraDataInterface* LocallyOwnedDefaultDataValueObjectToReuse);
 
-	void GetDefaultLinkedHandleOrLinkedFunctionFromDefaultPin(UEdGraphPin* DefaultPin, UNiagaraStackFunctionInput::FInputValues& InInputValues) const;
+	/** Tries to get the linked value parameter handle for this input if it exists by checking the graph directly. */
+	bool TryGetCurrentLinkedValue(FNiagaraParameterHandle& LinkedValue, UEdGraphPin& ValuePin);
 
-	void UpdateValuesFromScriptDefaults(FInputValues& InInputValues) const;
-
-	void UpdateValuesFromOverridePin(const FInputValues& OldInputValues, FInputValues& NewInputValues, UEdGraphPin& InOverridePin) const;
+	/** Gets the dynamic input node providing a value to this input if one exists. */
+	bool TryGetCurrentDynamicValue(TWeakObjectPtr<UNiagaraNodeFunctionCall>& DynamicValue, UEdGraphPin* OverridePin);
 
 	/** Removes all nodes connected to the override pin which provide it's value. */
 	void RemoveNodesForOverridePin(UEdGraphPin& OverridePin);
 
-	/** Remove the override pin and all nodes connected to it. */
-	void RemoveOverridePin();
+	/** Gets the expression input node providing a value to this input if one exists. */
+	bool TryGetCurrentExpressionValue(TWeakObjectPtr<UNiagaraNodeCustomHlsl>& ExpressionValue, UEdGraphPin* OverridePin);
 
 	/** Determine if the values in this input are possibly under the control of the rapid iteration array on the script.*/
 	bool IsRapidIterationCandidate() const;
 
 	FNiagaraVariable CreateRapidIterationVariable(const FName& InName);
-
-	/** Handles the message manager refreshing messages. */
-	void OnMessageManagerRefresh(const TArray<TSharedRef<const INiagaraMessage>>& NewMessages);
-
-	TArray<UNiagaraStackFunctionInput*> GetChildInputs() const;
-
-	void ResetDataInterfaceOverride();
 
 private:
 	/** The module function call which owns this input entry. NOTE: This input might not be an input to the module function
@@ -358,9 +373,6 @@ private:
 
 	/** The function call which this entry is an input to. NOTE: This node can be a module function call node or a dynamic input node. */
 	TWeakObjectPtr<UNiagaraNodeFunctionCall> OwningFunctionCallNode;
-
-	/** The script which the owning function call is referencing. */
-	TWeakObjectPtr<UNiagaraScript> OwningFunctionCallInitialScript;
 
 	/** The assignment node which owns this input.  This is only valid for inputs of assignment modules. */
 	TWeakObjectPtr<UNiagaraNodeAssignment> OwningAssignmentNode;
@@ -396,9 +408,6 @@ private:
 	/** Optional override for the display name*/
 	TOptional<FText> DisplayNameOverride;
 
-	/** The default value for this input defined in the defining script. */
-	FInputValues DefaultInputValues;
-
 	/** Pointers and handles to the various values this input can have. */
 	FInputValues InputValues;
 
@@ -415,14 +424,6 @@ private:
 
 	/** Whether or not this input can be reset to a base value defined by a parent emitter. */
 	mutable TOptional<bool> bCanResetToBaseCache;
-
-	/** A tooltip to show for the value of this input. */
-	mutable TOptional<FText> ValueToolTipCache;
-
-	/** Text to display on a collapsed node. */
-	mutable TOptional<FText> CollapsedTextCache;
-
-	mutable TOptional<bool> bIsScratchDynamicInputCache;
 
 	/** A flag to prevent handling graph changes when it's being updated directly by this object. */
 	bool bUpdatingGraphDirectly;
@@ -461,15 +462,4 @@ private:
 
 	/** Whether or not the dynamic input for this input has a function script reassignment pending due to a request to fix a missing script. */
 	bool bIsDynamicInputScriptReassignmentPending;
-
-	/** A key to the message manager registration and its delegate binding. */
-	FGuid MessageManagerRegistrationKey;
-
-	//** Issues created outside of the RefreshChildren call that will be committed the next time the UI state is refreshed. */
-	TArray<FStackIssue> MessageManagerIssues;
-
-	FGuid MessageLogGuid;
-
-	// If true then this stack entry is the semantic child of another stack entry
-	bool bIsSemanticChild = false;
 };

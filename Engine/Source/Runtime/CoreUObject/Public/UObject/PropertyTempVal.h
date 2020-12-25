@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,7 +9,7 @@
 // functions called on it.
 struct COREUOBJECT_API FPropertyTempVal
 {
-	explicit FPropertyTempVal(FProperty* InProp);
+	explicit FPropertyTempVal(UProperty* InProp);
 	~FPropertyTempVal();
 
 	// Uncopyable
@@ -36,7 +36,7 @@ struct COREUOBJECT_API FPropertyTempVal
 
 private:
 	// The property which is used to manage to underlying instance.
-	FProperty* Prop;
+	UProperty* Prop;
 
 	// The memory of 
 	void* Value;

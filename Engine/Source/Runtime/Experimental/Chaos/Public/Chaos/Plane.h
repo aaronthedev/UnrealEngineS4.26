@@ -1,22 +1,42 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Chaos/ImplicitObject.h"
 #include "ChaosArchive.h"
-#include "ChaosCheck.h"
 
 namespace Chaos
 {
-
-template <typename T, int d>
-class TPlaneConcrete
+template<class T, int d>
+class TPlane final : public TImplicitObject<T, d>
 {
-public:
-	TPlaneConcrete() = default;
-	TPlaneConcrete(const TVector<T, d>& InX, const TVector<T, d>& InNormal)
-	    : MX(InX)
+  public:
+	using TImplicitObject<T, d>::GetTypeName;
+
+
+	TPlane() : TImplicitObject<T, d>(0, ImplicitObjectType::Plane) {}	//needed for serialization
+	TPlane(const TVector<T, d>& InX, const TVector<T, d>& InNormal)
+	    : TImplicitObject<T, d>(0, ImplicitObjectType::Plane)
+	    , MX(InX)
 	    , MNormal(InNormal)
 	{
+	}
+	TPlane(const TPlane<T, d>& Other)
+	    : TImplicitObject<T, d>(0, ImplicitObjectType::Plane)
+	    , MX(Other.MX)
+	    , MNormal(Other.MNormal)
+	{
+	}
+	TPlane(TPlane<T, d>&& Other)
+	    : TImplicitObject<T, d>(0, ImplicitObjectType::Plane)
+	    , MX(MoveTemp(Other.MX))
+	    , MNormal(MoveTemp(Other.MNormal))
+	{
+	}
+	virtual ~TPlane() {}
+
+	static ImplicitObjectType GetType()
+	{
+		return ImplicitObjectType::Plane;
 	}
 
 	/**
@@ -30,7 +50,7 @@ public:
 	/**
 	 * Phi is positive on the side of the normal, and negative otherwise.
 	 */
-	T PhiWithNormal(const TVector<T, d>& x, TVector<T, d>& Normal) const
+	virtual T PhiWithNormal(const TVector<T, d>& x, TVector<T, d>& Normal) const override
 	{
 		Normal = MNormal;
 		return TVector<T, d>::DotProduct(x - MX, MNormal);
@@ -42,10 +62,10 @@ public:
 		return x - TVector<T, d>(Dist * MNormal);
 	}
 
-	bool Raycast(const TVector<T, d>& StartPoint, const TVector<T, d>& Dir, const T Length, const T Thickness, T& OutTime, TVector<T, d>& OutPosition, TVector<T, d>& OutNormal, int32& OutFaceIndex) const
+	virtual bool Raycast(const TVector<T, d>& StartPoint, const TVector<T, d>& Dir, const T Length, const T Thickness, T& OutTime, TVector<T, d>& OutPosition, TVector<T, d>& OutNormal, int32& OutFaceIndex) const override
 	{
 		ensure(FMath::IsNearlyEqual(Dir.SizeSquared(),1, KINDA_SMALL_NUMBER));
-		CHAOS_ENSURE(Length > 0);
+		ensure(Length > 0);
 		OutFaceIndex = INDEX_NONE;
 
 		const T SignedDist = TVector<T, d>::DotProduct(StartPoint - MX, MNormal);
@@ -81,7 +101,7 @@ public:
 		return true;
 	}
 
-	Pair<TVector<T, d>, bool> FindClosestIntersection(const TVector<T, d>& StartPoint, const TVector<T, d>& EndPoint, const T Thickness) const
+	virtual Pair<TVector<T, d>, bool> FindClosestIntersectionImp(const TVector<T, d>& StartPoint, const TVector<T, d>& EndPoint, const T Thickness) const override
  	{
 		TVector<T, d> Direction = EndPoint - StartPoint;
 		T Length = Direction.Size();
@@ -111,97 +131,10 @@ public:
 	const TVector<T, d>& Normal() const { return MNormal; }
 	const TVector<T, d>& Normal(const TVector<T, d>&) const { return MNormal; }
 	
-	FORCEINLINE void Serialize(FArchive& Ar)
-	{
-		Ar << MX << MNormal;
-	}
-
-	uint32 GetTypeHash() const
-	{
-		return HashCombine(::GetTypeHash(MX), ::GetTypeHash(MNormal));
-	}
-
-  private:
-	TVector<T, d> MX;
-	TVector<T, d> MNormal;
-};
-
-template <typename T, int d>
-FArchive& operator<<(FArchive& Ar, TPlaneConcrete<T,d>& PlaneConcrete)
-{
-	PlaneConcrete.Serialize(Ar);
-	return Ar;
-}
-
-template<class T, int d>
-class TPlane final : public FImplicitObject
-{
-  public:
-	using FImplicitObject::GetTypeName;
-
-
-	TPlane() : FImplicitObject(0, ImplicitObjectType::Plane) {}	//needed for serialization
-	TPlane(const TVector<T, d>& InX, const TVector<T, d>& InNormal)
-	    : FImplicitObject(0, ImplicitObjectType::Plane)
-		, MPlaneConcrete(InX, InNormal)
-	{
-	}
-	TPlane(const TPlane<T, d>& Other)
-	    : FImplicitObject(0, ImplicitObjectType::Plane)
-	    , MPlaneConcrete(Other.MPlaneConcrete)
-	{
-	}
-	TPlane(TPlane<T, d>&& Other)
-	    : FImplicitObject(0, ImplicitObjectType::Plane)
-	    , MPlaneConcrete(MoveTemp(Other.MPlaneConcrete))
-	{
-	}
-	virtual ~TPlane() {}
-
-	static constexpr EImplicitObjectType StaticType()
-	{
-		return ImplicitObjectType::Plane;
-	}
-
-	/**
-	 * Phi is positive on the side of the normal, and negative otherwise.
-	 */
-	T SignedDistance(const TVector<T, d>& x) const
-	{
-		return MPlaneConcrete.SignedDistance(x);
-	}
-
-	/**
-	 * Phi is positive on the side of the normal, and negative otherwise.
-	 */
-	virtual T PhiWithNormal(const TVector<T, d>& x, TVector<T, d>& Normal) const override
-	{
-		return MPlaneConcrete.PhiWithNormal(x,Normal);
-	}
-
-	TVector<T, d> FindClosestPoint(const TVector<T, d>& x, const T Thickness = (T)0) const
-	{
-		return MPlaneConcrete.FindClosestPoint(x,Thickness);
-	}
-
-	virtual bool Raycast(const TVector<T, d>& StartPoint, const TVector<T, d>& Dir, const T Length, const T Thickness, T& OutTime, TVector<T, d>& OutPosition, TVector<T, d>& OutNormal, int32& OutFaceIndex) const override
-	{
-		return MPlaneConcrete.Raycast(StartPoint,Dir,Length,Thickness,OutTime,OutPosition,OutNormal,OutFaceIndex);
-	}
-
-	virtual Pair<TVector<T, d>, bool> FindClosestIntersectionImp(const TVector<T, d>& StartPoint, const TVector<T, d>& EndPoint, const T Thickness) const override
- 	{
-		return MPlaneConcrete.FindClosestIntersection(StartPoint,EndPoint,Thickness);
-	}
-
-	const TVector<T,d>& X() const { return MPlaneConcrete.X(); }
-	const TVector<T,d>& Normal() const { return MPlaneConcrete.Normal(); }
-	const TVector<T, d>& Normal(const TVector<T, d>&) const { return MPlaneConcrete.Normal(); }
-	
 	FORCEINLINE void SerializeImp(FArchive& Ar)
 	{
-		FImplicitObject::SerializeImp(Ar);
-		MPlaneConcrete.Serialize(Ar);
+		TImplicitObject<T, d>::SerializeImp(Ar);
+		Ar << MX << MNormal;
 	}
 
 	virtual void Serialize(FChaosArchive& Ar) override
@@ -217,13 +150,12 @@ class TPlane final : public FImplicitObject
 
 	virtual uint32 GetTypeHash() const override
 	{
-		return MPlaneConcrete.GetTypeHash();
+		return HashCombine(::GetTypeHash(MX), ::GetTypeHash(MNormal));
 	}
 
-	const TPlaneConcrete<T,d>& PlaneConcrete() const { return MPlaneConcrete; }
-
   private:
-	  TPlaneConcrete<T,d> MPlaneConcrete;
+	TVector<T, d> MX;
+	TVector<T, d> MNormal;
 };
 
 template<typename T, int d>
@@ -322,16 +254,4 @@ TVector<T, d> FindClosestPointOnTriangle(const TPlane<T, d>& TrianglePlane, cons
 	const TVector<T, d> PointOnPlane = TrianglePlane.FindClosestPoint(P);
 	return FindClosestPointOnTriangle(PointOnPlane, P0, P1, P2, P);
 }
-
-
-template<typename T, int d>
-bool IntersectPlanes2(TVector<T,d>& I, TVector<T,d>& D, const TPlane<T,d>& P1, const TPlane<T,d>& P2)
-{
-	FVector LI = I, LD = D;
-	FPlane LP1(P1.X(), P1.Normal()), LP2(P2.X(), P2.Normal());
-	bool RetVal = FMath::IntersectPlanes2(LI,LD,LP1,LP2);
-	I = LI; D = LD;
-	return RetVal;
-}
-
 }

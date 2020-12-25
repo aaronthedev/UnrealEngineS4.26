@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SBlendProfilePicker.h"
 #include "Fonts/SlateFontInfo.h"
@@ -208,7 +208,7 @@ SBlendProfilePicker::~SBlendProfilePicker()
 
 FText SBlendProfilePicker::GetSelectedProfileName() const
 {
-	UBlendProfile* SelectedProfile = EditableSkeleton->GetBlendProfile(SelectedProfileName);
+	UBlendProfile* SelectedProfile = EditableSkeleton.Pin()->GetBlendProfile(SelectedProfileName);
 	if(SelectedProfile)
 	{
 		if (bIsStandalone)
@@ -265,7 +265,7 @@ TSharedRef<SWidget> SBlendProfilePicker::GetMenuContent()
 	{
 		if (EditableSkeleton.IsValid())
 		{
-			for (UBlendProfile* Profile : EditableSkeleton->GetBlendProfiles())
+			for (UBlendProfile* Profile : EditableSkeleton.Pin()->GetBlendProfiles())
 			{
 				MenuBuilder.AddWidget(
 					SNew(SBlendProfileMenuEntry)
@@ -287,7 +287,7 @@ TSharedRef<SWidget> SBlendProfilePicker::GetMenuContent()
 void SBlendProfilePicker::OnProfileSelected(FName InBlendProfileName)
 {
 	SelectedProfileName = InBlendProfileName;
-	BlendProfileSelectedDelegate.ExecuteIfBound(EditableSkeleton->GetBlendProfile(SelectedProfileName));
+	BlendProfileSelectedDelegate.ExecuteIfBound(EditableSkeleton.Pin()->GetBlendProfile(SelectedProfileName));
 }
 
 void SBlendProfilePicker::OnClearSelection()
@@ -298,7 +298,7 @@ void SBlendProfilePicker::OnClearSelection()
 
 void SBlendProfilePicker::OnProfileRemoved(FName InBlendProfileName)
 {
-	EditableSkeleton->RemoveBlendProfile(EditableSkeleton->GetBlendProfile(InBlendProfileName));
+	EditableSkeleton.Pin()->RemoveBlendProfile(EditableSkeleton.Pin()->GetBlendProfile(InBlendProfileName));
 	SelectedProfileName = NAME_None;
 	BlendProfileSelectedDelegate.ExecuteIfBound(nullptr);
 }
@@ -328,11 +328,11 @@ void SBlendProfilePicker::OnCreateNewProfileComitted(const FText& NewName, EText
 		FName NameToUse = FName(*NewName.ToString());
 
 		// Only create if we don't have a matching profile
-		if(UBlendProfile* FoundProfile = EditableSkeleton->GetBlendProfile(NameToUse))
+		if(UBlendProfile* FoundProfile = EditableSkeleton.Pin()->GetBlendProfile(NameToUse))
 		{
 			OnProfileSelected(FoundProfile->GetFName());
 		}
-		else if(UBlendProfile* NewProfile = EditableSkeleton->CreateNewBlendProfile(NameToUse))
+		else if(UBlendProfile* NewProfile = EditableSkeleton.Pin()->CreateNewBlendProfile(NameToUse))
 		{
 			OnProfileSelected(NewProfile->GetFName());
 		}
@@ -341,7 +341,7 @@ void SBlendProfilePicker::OnCreateNewProfileComitted(const FText& NewName, EText
 
 void SBlendProfilePicker::SetSelectedProfile(UBlendProfile* InProfile, bool bBroadcast /*= true*/)
 {
-	if(EditableSkeleton->GetBlendProfiles().Contains(InProfile))
+	if(EditableSkeleton.Pin()->GetBlendProfiles().Contains(InProfile))
 	{
 		SelectedProfileName = InProfile->GetFName();
 		if(bBroadcast)
@@ -357,24 +357,24 @@ void SBlendProfilePicker::SetSelectedProfile(UBlendProfile* InProfile, bool bBro
 
 UBlendProfile* const SBlendProfilePicker::GetSelectedBlendProfile() const
 {
-	return EditableSkeleton->GetBlendProfile(SelectedProfileName);
+	return EditableSkeleton.Pin()->GetBlendProfile(SelectedProfileName);
 }
 
 FName SBlendProfilePicker::GetSelectedBlendProfileName() const
 {
-	UBlendProfile* SelectedProfile = EditableSkeleton->GetBlendProfile(SelectedProfileName);
+	UBlendProfile* SelectedProfile = EditableSkeleton.Pin()->GetBlendProfile(SelectedProfileName);
 
 	return SelectedProfile ? SelectedProfile->GetFName() : NAME_None;
 }
 
 void SBlendProfilePicker::PostUndo(bool bSuccess)
 {
-	BlendProfileSelectedDelegate.ExecuteIfBound(EditableSkeleton->GetBlendProfile(SelectedProfileName));
+	BlendProfileSelectedDelegate.ExecuteIfBound(EditableSkeleton.Pin()->GetBlendProfile(SelectedProfileName));
 }
 
 void SBlendProfilePicker::PostRedo(bool bSuccess)
 {
-	BlendProfileSelectedDelegate.ExecuteIfBound(EditableSkeleton->GetBlendProfile(SelectedProfileName));
+	BlendProfileSelectedDelegate.ExecuteIfBound(EditableSkeleton.Pin()->GetBlendProfile(SelectedProfileName));
 }
 
 #undef LOCTEXT_NAMESPACE

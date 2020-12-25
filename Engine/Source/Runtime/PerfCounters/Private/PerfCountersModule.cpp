@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PerfCountersModule.h"
 #include "HAL/PlatformProcess.h"
 #include "PerfCounters.h"
-#include "Misc/CommandLine.h"
 
 class FPerfCountersModule : public IPerfCountersModule
 {
@@ -72,10 +71,3 @@ const FName IPerfCounters::Histograms::FrameTimeWithoutSleep(TEXT("FrameTimeWith
 const FName IPerfCounters::Histograms::ServerReplicateActorsTime(TEXT("ServerReplicateActorsTime"));
 const FName IPerfCounters::Histograms::SleepTime(TEXT("SleepTime"));
 const FName IPerfCounters::Histograms::ZeroLoadFrameTime(TEXT("ZeroLoadFrameTime"));
-
-int32 IPerfCountersModule::GetHTTPStatsPort()
-{
-	int32 StatsPort = -1;
-	FParse::Value(FCommandLine::Get(), TEXT("statsPort="), StatsPort);
-	return StatsPort;
-}

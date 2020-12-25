@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SubversionSourceControlUtils.h"
 #include "HAL/PlatformProcess.h"
@@ -100,7 +100,7 @@ static FString DetectSubversionPath()
 			int32 NewLine = INDEX_NONE;
 			if (SVNPath.FindChar('\n', NewLine))
 			{
-				SVNPath.LeftInline(NewLine);
+				SVNPath = SVNPath.Left(NewLine);
 			}
 		}
 		FPlatformProcess::ClosePipe(ReadPipe, WritePipe);

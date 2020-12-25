@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "SAnimationSequenceBrowser.h"
@@ -64,13 +64,8 @@ public:
 	// IFilter implementation
 	virtual bool PassesFilter(FAssetFilterType InItem) const override
 	{
-		FAssetData ItemAssetData;
-		if (InItem.Legacy_TryGetAssetData(ItemAssetData))
-		{
-			const FString TagValue = ItemAssetData.GetTagValueRef<FString>(GET_MEMBER_NAME_CHECKED(UAnimSequence, AdditiveAnimType));
-			return !TagValue.IsEmpty() && !TagValue.Equals(TEXT("AAT_None"));
-		}
-		return false;
+		const FString TagValue = InItem.GetTagValueRef<FString>(GET_MEMBER_NAME_CHECKED(UAnimSequence, AdditiveAnimType));
+		return !TagValue.IsEmpty() && !TagValue.Equals(TEXT("AAT_None"));
 	}
 };
 
@@ -157,30 +152,26 @@ public:
 	// IFilter implementation
 	virtual bool PassesFilter(FAssetFilterType InItem) const override
 	{
-		FAssetData ItemAssetData;
-		if (InItem.Legacy_TryGetAssetData(ItemAssetData))
+		const FString TagValue = InItem.GetTagValueRef<FString>(USkeleton::AnimNotifyTag);
+		if (!TagValue.IsEmpty())
 		{
-			const FString TagValue = ItemAssetData.GetTagValueRef<FString>(USkeleton::AnimNotifyTag);
-			if (!TagValue.IsEmpty())
+			if (!NotifyString.IsEmpty())
 			{
-				if (!NotifyString.IsEmpty())
+				// parse notifies
+				TArray<FString> NotifyValues;
+				if (TagValue.ParseIntoArray(NotifyValues, *USkeleton::AnimNotifyTagDelimiter, true) > 0)
 				{
-					// parse notifies
-					TArray<FString> NotifyValues;
-					if (TagValue.ParseIntoArray(NotifyValues, *USkeleton::AnimNotifyTagDelimiter, true) > 0)
+					for (const FString& NotifyValue : NotifyValues)
 					{
-						for (const FString& NotifyValue : NotifyValues)
+						if (NotifyValue == NotifyString)
 						{
-							if (NotifyValue == NotifyString)
-							{
-								return true;
-							}
+							return true;
 						}
 					}
 				}
-
-				return NotifyString.IsEmpty();
 			}
+
+			return NotifyString.IsEmpty();
 		}
 
 		return false;
@@ -283,30 +274,26 @@ public:
 	// IFilter implementation
 	virtual bool PassesFilter(FAssetFilterType InItem) const override
 	{
-		FAssetData ItemAssetData;
-		if (InItem.Legacy_TryGetAssetData(ItemAssetData))
+		const FString TagValue = InItem.GetTagValueRef<FString>(USkeleton::CurveNameTag);
+		if (!TagValue.IsEmpty())
 		{
-			const FString TagValue = ItemAssetData.GetTagValueRef<FString>(USkeleton::CurveNameTag);
-			if (!TagValue.IsEmpty())
+			if (!CurveString.IsEmpty())
 			{
-				if (!CurveString.IsEmpty())
+				// parse curves
+				TArray<FString> CurveValues;
+				if (TagValue.ParseIntoArray(CurveValues, *USkeleton::CurveTagDelimiter, true) > 0)
 				{
-					// parse curves
-					TArray<FString> CurveValues;
-					if (TagValue.ParseIntoArray(CurveValues, *USkeleton::CurveTagDelimiter, true) > 0)
+					for (const FString& CurveValue : CurveValues)
 					{
-						for (const FString& CurveValue : CurveValues)
+						if (CurveValue == CurveString)
 						{
-							if (CurveValue == CurveString)
-							{
-								return true;
-							}
+							return true;
 						}
 					}
 				}
-
-				return CurveString.IsEmpty();
 			}
+
+			return CurveString.IsEmpty();
 		}
 
 		return false;
@@ -342,12 +329,7 @@ public:
 	// IFilter implementation
 	virtual bool PassesFilter(FAssetFilterType InItem) const override
 	{
-		FAssetData ItemAssetData;
-		if (InItem.Legacy_TryGetAssetData(ItemAssetData))
-		{
-			return !ItemAssetData.GetClass()->IsChildOf(USoundWave::StaticClass());
-		}
-		return false;
+		return !InItem.GetClass()->IsChildOf(USoundWave::StaticClass());
 	}
 };
 
@@ -701,7 +683,7 @@ void SAnimationSequenceBrowser::OnApplyCompression(TArray<FAssetData> SelectedAs
 		}
 
 		FPersonaModule& PersonaModule = FModuleManager::GetModuleChecked<FPersonaModule>("Persona");
-		PersonaModule.ApplyCompression(AnimSequences, true);
+		PersonaModule.ApplyCompression(AnimSequences);
 	}
 }
 
@@ -843,6 +825,8 @@ void SAnimationSequenceBrowser::Construct(const FArguments& InArgs, const TShare
 	bTriedToCacheOrginalAsset = false;
 
 	bIsActiveTimerRegistered = false;
+	bToolTipVisualizedThisFrame = false;
+	bToolTipClosedThisFrame = false;
 
 	FContentBrowserModule& ContentBrowserModule = FModuleManager::Get().LoadModuleChecked<FContentBrowserModule>(TEXT("ContentBrowser"));
 
@@ -1266,7 +1250,7 @@ TSharedRef<SToolTip> SAnimationSequenceBrowser::CreateCustomAssetToolTip(FAssetD
 		{
 			// Check for DisplayName metadata
 			FText DisplayName;
-			if (FProperty* Field = FindFProperty<FProperty>(AssetClass, TagPair.Key))
+			if (UProperty* Field = FindField<UProperty>(AssetClass, TagPair.Key))
 			{
 				DisplayName = Field->GetDisplayNameText();
 			}
@@ -1475,6 +1459,7 @@ bool SAnimationSequenceBrowser::OnVisualizeAssetToolTip(const TSharedPtr<SWidget
 				bIsActiveTimerRegistered = true;
 				RegisterActiveTimer(0.f, FWidgetActiveTimerDelegate::CreateSP(this, &SAnimationSequenceBrowser::UpdateTootipPreview));
 			}
+			bToolTipVisualizedThisFrame = true;
 		}
 		else
 		{
@@ -1489,6 +1474,11 @@ bool SAnimationSequenceBrowser::OnVisualizeAssetToolTip(const TSharedPtr<SWidget
 
 void SAnimationSequenceBrowser::OnAssetToolTipClosing()
 {
+	// Make sure that the tooltip isn't about to preview another animation
+	if (!bToolTipVisualizedThisFrame)
+	{
+		ViewportWidget->SetVisibility(EVisibility::Hidden);
+	}
 }
 
 void SAnimationSequenceBrowser::CleanupPreviewSceneComponent(USceneComponent* Component)
@@ -1507,7 +1497,8 @@ void SAnimationSequenceBrowser::CleanupPreviewSceneComponent(USceneComponent* Co
 
 EActiveTimerReturnType SAnimationSequenceBrowser::UpdateTootipPreview( double InCurrentTime, float InDeltaTime )
 {
-	if (PreviewComponent && IsToolTipPreviewVisible() && ViewportWidget->IsParentValid())
+	bToolTipVisualizedThisFrame = false;
+	if ( PreviewComponent && IsToolTipPreviewVisible() )
 	{
 		// Tick the world to update preview viewport for tooltips
 		PreviewComponent->GetScene()->GetWorld()->Tick( LEVELTICK_All, InDeltaTime );
@@ -1533,7 +1524,7 @@ bool SAnimationSequenceBrowser::IsToolTipPreviewVisible()
 }
 
 EVisibility SAnimationSequenceBrowser::GetHistoryVisibility() const
-{
+	{
 	return bShowHistory ? EVisibility::Visible : EVisibility::Collapsed;
 }
 

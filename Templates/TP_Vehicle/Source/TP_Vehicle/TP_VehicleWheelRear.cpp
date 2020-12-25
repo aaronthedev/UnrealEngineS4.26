@@ -1,8 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TP_VehicleWheelRear.h"
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 UTP_VehicleWheelRear::UTP_VehicleWheelRear()
 {
@@ -11,5 +9,3 @@ UTP_VehicleWheelRear::UTP_VehicleWheelRear()
 	bAffectedByHandbrake = true;
 	SteerAngle = 0.f;
 }
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

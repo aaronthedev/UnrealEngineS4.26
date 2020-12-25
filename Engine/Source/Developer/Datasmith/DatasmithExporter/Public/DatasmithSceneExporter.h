@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -44,17 +44,17 @@ public:
 
 	/** Sets the logger to store the summary of the export process */
 	void SetLogger( const TSharedPtr< FDatasmithLogger >& InLogger );
-
+	
 	/** Sets the name of the scene to export. The resulting file and folder will use this name. */
     void SetName(const TCHAR* InName);
 
-	/**
-	 * Sets the output path to where this scene will be exported.
+	/** 
+	 * Sets the output path to where this scene will be exporter.
 	 */
 	void SetOutputPath(const TCHAR* InOutputPath);
 	const TCHAR* GetOutputPath() const;
 
-	/**
+	/** 
 	 * Gets the path to the assets output folder. This is where we output the mesh files, textures, etc.
 	 */
 	const TCHAR* GetAssetsOutputPath() const;

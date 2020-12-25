@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -26,7 +26,6 @@
 #include "Layout/LayoutUtils.h"
 #include "MarqueeOperation.h"
 #include "Templates/UniquePtr.h"
-#include "UObject/GCObject.h"
 
 class FActiveTimerHandle;
 class FScopedTransaction;
@@ -188,7 +187,7 @@ struct FZoomLevelsContainer
 	virtual ~FZoomLevelsContainer( void ) {};
 };
 
-struct GRAPHEDITOR_API FGraphSelectionManager : public FGCObject
+struct GRAPHEDITOR_API FGraphSelectionManager
 {
 	FGraphPanelSelectionSet SelectedNodes;
 
@@ -229,8 +228,6 @@ public:
 
 	// Handle the selection mechanics when a node is clicked on
 	void ClickedOnNode(SelectedItemType Node, const FPointerEvent& MouseEvent);
-
-	void AddReferencedObjects(FReferenceCollector& Collector) override;
 };
 
 /**
@@ -356,16 +353,16 @@ public:
 			return FVector2D::ZeroVector;
 		}
 
-		virtual float GetRelativeLayoutScale(int32 ChildIndex, float LayoutScaleMultiplier) const override
+		virtual float GetRelativeLayoutScale(const FSlotBase& Child, float LayoutScaleMultiplier) const override
 		{
-			const FNodeSlot& ThisSlot = Children[ChildIndex];
-			if (!ThisSlot.AllowScale.Get())
+			const FNodeSlot& ThisSlot = static_cast<const FNodeSlot&>(Child);
+			if ( !ThisSlot.AllowScale.Get() )
 			{
 				// Child slots that do not allow zooming should scale themselves to negate the node panel's zoom.
 				TSharedPtr<SNodePanel> ParentPanel = GetParentPanel();
 				if (ParentPanel.IsValid())
-				{
-					return 1.0f / ParentPanel->GetZoomAmount();
+				{					
+					return 1.0f/ParentPanel->GetZoomAmount();
 				}
 			}
 
@@ -399,7 +396,7 @@ public:
 						CurChild.GetWidget(),
 						CurChild.Offset.Get(),
 						Size,
-						GetRelativeLayoutScale(ChildIndex, AllottedGeometry.Scale)
+						GetRelativeLayoutScale(CurChild, AllottedGeometry.Scale)
 					);
 					ArrangedChildren.AddWidget( ChildVisibility, ChildGeom );
 				}
@@ -583,7 +580,6 @@ public:
 		, DesiredSizeScale(FVector2D(1,1))
 		, Children(this)
 		{
-			bHasRelativeLayoutScale = true;
 		}
 
 	protected:
@@ -642,7 +638,7 @@ public:
 	virtual void OnFocusLost( const FFocusEvent& InFocusEvent ) override;
 	virtual FReply OnTouchGesture( const FGeometry& MyGeometry, const FPointerEvent& GestureEvent ) override;
 	virtual FReply OnTouchEnded( const FGeometry& MyGeometry, const FPointerEvent& InTouchEvent ) override;
-	virtual float GetRelativeLayoutScale(int32 ChildIndex, float LayoutScaleMultiplier) const override;
+	virtual float GetRelativeLayoutScale(const FSlotBase& Child, float LayoutScaleMultiplier) const override;
 	// End of SWidget interface
 public:
 	/**
@@ -958,10 +954,6 @@ protected:
 
 	/** Cached geometry for use within the active timer */
 	FGeometry CachedGeometry;
-
-	/** A flag to detect when a visual update is pending to prevent deferred
-	    commands like zoom to fit from running when there are no widgets */
-	bool bVisualUpdatePending;
 
 private:
 	/** Active timer that handles deferred zooming until the target zoom is reached */

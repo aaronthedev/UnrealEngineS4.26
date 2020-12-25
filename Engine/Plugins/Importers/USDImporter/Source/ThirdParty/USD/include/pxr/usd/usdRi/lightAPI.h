@@ -126,7 +126,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDRI_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -138,7 +138,7 @@ private:
 
     // override SchemaBase virtuals.
     USDRI_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -151,11 +151,10 @@ public:
     /// resulting in some lights that are under-sampled, you may want to set
     /// it to non-zero.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `int ri:sampling:fixedSampleCount` |
-    /// | C++ Type | int |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Int |
+    /// \n  C++ Type: int
+    /// \n  Usd Type: SdfValueTypeNames->Int
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDRI_API
     UsdAttribute GetRiSamplingFixedSampleCountAttr() const;
 
@@ -173,11 +172,10 @@ public:
     // --------------------------------------------------------------------- //
     /// Importance of this light for noise control.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float ri:sampling:importanceMultiplier = 1` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: 1.0
     USDRI_API
     UsdAttribute GetRiSamplingImportanceMultiplierAttr() const;
 
@@ -198,11 +196,10 @@ public:
     /// avoid hot spots and sampling issues where a light is near a
     /// surface.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float ri:intensityNearDist` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
+    /// \n  C++ Type: float
+    /// \n  Usd Type: SdfValueTypeNames->Float
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDRI_API
     UsdAttribute GetRiIntensityNearDistAttr() const;
 
@@ -222,11 +219,10 @@ public:
     /// This is useful to generate per-light AOVs for later adjustment
     /// in compositing.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `string ri:lightGroup` |
-    /// | C++ Type | std::string |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->String |
+    /// \n  C++ Type: std::string
+    /// \n  Usd Type: SdfValueTypeNames->String
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDRI_API
     UsdAttribute GetRiLightGroupAttr() const;
 
@@ -248,11 +244,10 @@ public:
     /// colored shadows for transmissive objects without needing to
     /// generate photons for caustics.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `bool ri:shadow:thinShadow` |
-    /// | C++ Type | bool |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Bool |
+    /// \n  C++ Type: bool
+    /// \n  Usd Type: SdfValueTypeNames->Bool
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDRI_API
     UsdAttribute GetRiShadowThinShadowAttr() const;
 
@@ -274,11 +269,10 @@ public:
     /// to selectively decide which lights emit photons when using the
     /// PxrVCM or PxrUPBP Integrators.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `bool ri:trace:lightPaths` |
-    /// | C++ Type | bool |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Bool |
+    /// \n  C++ Type: bool
+    /// \n  Usd Type: SdfValueTypeNames->Bool
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDRI_API
     UsdAttribute GetRiTraceLightPathsAttr() const;
 

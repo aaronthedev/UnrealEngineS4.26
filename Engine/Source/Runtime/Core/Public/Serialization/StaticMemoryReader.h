@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -32,7 +32,7 @@ public:
 
 	void Serialize( void* Data, int64 Num )
 	{
-		if (Num && !IsError())
+		if (Num && !ArIsError)
 		{
 			// Only serialize if we have the requested amount of data
 			if (Offset + Num <= TotalSize())
@@ -42,7 +42,7 @@ public:
 			}
 			else
 			{
-				SetError();
+				ArIsError = true;
 			}
 		}
 	}

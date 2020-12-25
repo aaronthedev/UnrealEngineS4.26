@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PreviewSceneCustomizations.h"
 #include "Modules/ModuleManager.h"
@@ -28,7 +28,6 @@
 #include "PhysicsEngine/PhysicsAsset.h"
 #include "Algo/Sort.h"
 #include "ScopedTransaction.h"
-#include "Features/IModularFeatures.h"
 
 #define LOCTEXT_NAMESPACE "PreviewSceneCustomizations"
 
@@ -131,7 +130,7 @@ void FPreviewSceneDescriptionCustomization::CustomizeDetails(IDetailLayoutBuilde
 
 	FSimpleDelegate PropertyChangedDelegate = FSimpleDelegate::CreateSP(this, &FPreviewSceneDescriptionCustomization::HandlePreviewControllerPropertyChanged);
 
-	for (const FProperty* TestProperty : TFieldRange<FProperty>(PersonaPreviewSceneDescription->PreviewControllerInstance->GetClass()))
+	for (const UProperty* TestProperty : TFieldRange<UProperty>(PersonaPreviewSceneDescription->PreviewControllerInstance->GetClass()))
 	{
 		if (TestProperty->HasAnyPropertyFlags(CPF_Edit))
 		{
@@ -215,21 +214,6 @@ void FPreviewSceneDescriptionCustomization::CustomizeDetails(IDetailLayoutBuilde
 			.OnShouldFilterAsset(this, &FPreviewSceneDescriptionCustomization::HandleShouldFilterAsset, FName("Skeleton"), PersonaToolkit.Pin()->GetContext() == UPhysicsAsset::StaticClass()->GetFName())
 			.OnObjectChanged(this, &FPreviewSceneDescriptionCustomization::HandleMeshChanged)
 			.ThumbnailPool(DetailBuilder.GetThumbnailPool())
-			.CustomResetToDefault(FResetToDefaultOverride::Create(
-				FIsResetToDefaultVisible::CreateLambda([this](TSharedPtr<IPropertyHandle> PropertyHandle) -> bool {
-					if (PreviewScene.IsValid())
-					{
-						return PreviewScene.Pin()->GetPreviewMesh() != nullptr;
-					}
-					return false;
-				}),
-				FResetToDefaultHandler::CreateLambda([this](TSharedPtr<IPropertyHandle> PropertyHandle) {
-					if (PreviewScene.IsValid())
-					{
-						PreviewScene.Pin()->SetPreviewMesh(nullptr, false);
-					}
-				})
-			))
 		];
 
 		// Customize animation blueprint preview
@@ -321,7 +305,7 @@ void FPreviewSceneDescriptionCustomization::CustomizeDetails(IDetailLayoutBuilde
 		for (const auto& ClassProvider : ClassProviders)
 		{
 			// Populate cloth factory list
-			ClothSimulationFactoryList.Add(MakeShared<TSubclassOf<class UClothingSimulationFactory>>(ClassProvider->GetClothingSimulationFactoryClass()));
+			ClothSimulationFactoryList.Add(MakeShared<TSubclassOf<class UClothingSimulationFactory>>(ClassProvider->GetDefaultSimulationFactoryClass()));
 		}
 
 		DetailBuilder.EditCategory("Physics")

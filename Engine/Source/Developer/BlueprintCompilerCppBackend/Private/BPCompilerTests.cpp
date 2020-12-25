@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
@@ -16,7 +16,7 @@
 class FArchiveSkipTransientObjectCRC32 : public FArchiveObjectCrc32
 {
 public:
-	static bool CanPropertyBeDifferentInConvertedCDO(const FProperty* InProperty)
+	static bool CanPropertyBeDifferentInConvertedCDO(const UProperty* InProperty)
 	{
 		check(InProperty);
 		return InProperty->HasAllPropertyFlags(CPF_Transient)
@@ -28,7 +28,7 @@ public:
 			|| InProperty->GetName() == TEXT("OwnedComponents");
 	}
 	// Begin FArchive Interface
-	virtual bool ShouldSkipProperty(const FProperty* InProperty) const override
+	virtual bool ShouldSkipProperty(const UProperty* InProperty) const override
 	{
 		return FArchiveObjectCrc32::ShouldSkipProperty(InProperty)
 			|| CanPropertyBeDifferentInConvertedCDO(InProperty);
@@ -109,7 +109,7 @@ static UClass* GetNativeClass(const TCHAR* TestFolder, const TCHAR* ClassName, F
 	CollectGarbage(RF_NoFlags);
 
 	FString FullName = FString::Printf(TEXT("/RuntimeTests/CompilerTests/%s/%s"), TestFolder, ClassName);
-	UPackage* NativePackage = CreatePackage( *FullName);
+	UPackage* NativePackage = CreatePackage(nullptr, *FullName);
 	check(NativePackage);
 
 	const FString FStringFullPathName = FString::Printf(TEXT("%s.%s_C"), *FullName, ClassName);
@@ -242,13 +242,13 @@ bool FBPCompilerCDOTest::RunTest(const FString& Parameters)
 		return true;
 	}
 
-	for (FProperty* NativeProperty : TFieldRange<FProperty>(NativeTestInstance->GetClass()))
+	for (UProperty* NativeProperty : TFieldRange<UProperty>(NativeTestInstance->GetClass()))
 	{
 		if ((NativeProperty->GetOwnerClass() == UObject::StaticClass()) || (FArchiveSkipTransientObjectCRC32::CanPropertyBeDifferentInConvertedCDO(NativeProperty)))
 		{
 			continue;
 		}
-		FProperty* BPProperty = FindFProperty<FProperty>(GeneratedTestInstance->GetClass(), *NativeProperty->GetName());
+		UProperty* BPProperty = FindField<UProperty>(GeneratedTestInstance->GetClass(), *NativeProperty->GetName());
 		if (!BPProperty)
 		{
 			AddError(*FString::Printf(TEXT("Cannot find property %s in BPGC"), *NativeProperty->GetName()));

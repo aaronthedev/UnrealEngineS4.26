@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,17 +12,11 @@
 #include "Templates/SharedPointer.h"
 #include "TextureResource.h"
 #include "UnrealClient.h"
-#include "IMediaTimeSource.h"
-#include "RHIResources.h"
-#include "Async/Async.h"
-#include "RenderingThread.h"
-#include "RendererInterface.h"
 
 class FMediaPlayerFacade;
 class IMediaPlayer;
 class IMediaTextureSample;
 class UMediaTexture;
-struct FGenerateMipsStruct;
 
 enum class EMediaTextureSinkFormat;
 enum class EMediaTextureSinkMode;
@@ -45,15 +39,11 @@ public:
 	 * @param InOWnerSize Reference to the size in bytes of the texture that owns this resource (will be updated by resource).
 	 * @param InClearColor The initial clear color.
 	 * @param InTextureGuid The initial external texture GUID.
-	 * @param bEnableGenMips If true mips generation will be enabled (possibly optimizing for NumMips == 1 case)
-	 * @param InNumMips The initial number of mips to be generated for the output texture
 	 */
-	FMediaTextureResource(UMediaTexture& InOwner, FIntPoint& InOwnerDim, SIZE_T& InOwnerSize, FLinearColor InClearColor, FGuid InTextureGuid, bool bEnableGenMips, uint8 InNumMips);
+	FMediaTextureResource(UMediaTexture& InOwner, FIntPoint& InOwnerDim, SIZE_T& InOwnerSize, FLinearColor InClearColor, FGuid InTextureGuid);
 
 	/** Virtual destructor. */
-	virtual ~FMediaTextureResource() 
-	{
-	}
+	virtual ~FMediaTextureResource() { }
 
 public:
 
@@ -81,14 +71,8 @@ public:
 		/** Whether output should be in sRGB color space. */
 		bool SrgbOutput;
 
-		/** Number of mips wanted */
-		uint8 NumMips;
-
 		/** The time of the video frame to render (in player's clock). */
-		FMediaTimeStamp Time;
-
-		/** Explicit texture sample to render - if set time will be ignored */
-		TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe> TextureSample;
+		FTimespan Time;
 	};
 
 	/**
@@ -100,12 +84,6 @@ public:
 	 * @param Params Render parameters.
 	 */
 	void Render(const FRenderParams& Params);
-
-	/**
-	 * Flush out any pending data like texture samples waiting for retirement etc.
-	 * @note this call can stall for noticable amounts of time under certain circumstances
-	 */
-	void FlushPendingData();
 
 public:
 
@@ -139,12 +117,9 @@ protected:
 	 * @param Sample The texture sample to convert.
 	 * @param ClearColor The clear color to use for the output texture.
 	 * @param SrgbOutput Whether the output texture is in sRGB color space.
-	 * @param Number of mips
 	 * @see CopySample
 	 */
-	void ConvertSample(const TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& Sample, const FLinearColor& ClearColor, bool SrgbOutput, uint8 InNumMips);
-
-	void ConvertTextureToOutput(FRHITexture2D* InputTexture, const TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& Sample, bool SrgbOutput);
+	void ConvertSample(const TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& Sample, const FLinearColor& ClearColor, bool SrgbOutput);
 
 	/**
 	 * Render the given texture sample by using it as or copying it to the render target.
@@ -152,10 +127,9 @@ protected:
 	 * @param Sample The texture sample to copy.
 	 * @param ClearColor The clear color to use for the output texture.
 	 * @param SrgbOutput Whether the output texture is in sRGB color space.
-	 * @param Number of mips
 	 * @see ConvertSample
 	 */
-	void CopySample(const TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& Sample, const FLinearColor& ClearColor, bool SrgbOutput, uint8 InNumMips, const FGuid & TextureGUID);
+	void CopySample(const TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& Sample, const FLinearColor& ClearColor, bool SrgbOutput);
 
 	/** Calculates the current resource size and notifies the owner texture. */
 	void UpdateResourceSize();
@@ -169,8 +143,11 @@ protected:
 
 	/**
 	 * Create/update output render target as needed
+	 *
+	 * @param InSample Sample to query render target dimension and format from
+	 * @param InParams Parameters containing SrgbOutput and ClearColor
 	 */
-	void CreateOutputRenderTarget(const FIntPoint & InDim, EPixelFormat InPixelFormat, bool bInSRGB, const FLinearColor & InClearColor, uint8 InNumMips);
+	void CreateOutputRenderTarget(const TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& InSample, const FRenderParams& InParams);
 
 	/**
 	 * Caches next available sample from queue in MediaTexture owner to keep single consumer access
@@ -179,19 +156,20 @@ protected:
 	 */
 	void CacheNextAvailableSampleTime(const TSharedPtr<FMediaTextureSampleSource, ESPMode::ThreadSafe>& InSampleQueue) const;
 
-	/** Setup sampler state from owner's settings as needed */
-	void SetupSampler();
-
-	/** Copy to local buffer from external texture */
-	void CopyFromExternalTexture(const TSharedPtr <IMediaTextureSample, ESPMode::ThreadSafe>& Sample, const FGuid & TextureGUID);
-
-	bool RequiresConversion(const TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>& Sample, bool SrgbOutput, uint8 numMips) const;
-	bool RequiresConversion(const FTexture2DRHIRef& SampleTexture, const FIntPoint & OutputDim, bool SrgbOutput, uint8 numMips) const;
-
 private:
 
-	/** Platform uses GL/ES ImageExternal */
-	bool bUsesImageExternal;
+	// Class to maintain a reference to a IMediaTextureSample instance as long  as needed by RHI
+	// (needed not to keep Texture for GPU - that is safe already - but to avoid reusing the buffer too early)
+	class FTextureSampleKeeper : public FRHIResource
+	{
+	public:
+		FTextureSampleKeeper(const TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe> & InMediaSample)
+			: MediaSample(InMediaSample)
+		{}
+
+		TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe> MediaSample;
+	};
+
 
 	/** Whether the texture has been cleared. */
 	bool Cleared;
@@ -217,116 +195,9 @@ private:
 	/** Reference to the owner's texture size field. */
 	SIZE_T& OwnerSize;
 
-	/** Enable mips generation */
-	bool bEnableGenMips;
-
-	/** Current number of mips to be generated as output */
-	uint8 CurrentNumMips;
-
-	/** Current texture sampler filter value */
-	ESamplerFilter CurrentSamplerFilter;
-
 	/** The current media player facade to get video samples from. */
 	TWeakPtr<FMediaPlayerFacade, ESPMode::ThreadSafe> PlayerFacadePtr;
 
 	/** cached media sample to postpone releasing it until the next sample rendering as it can get overwritten due to asynchronous rendering */
-	TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe> CurrentSample;
-
-	/** prior samples not yet ready for retirement as GPU may still actively use them */
-	template<typename ObjectRefType> struct TGPUsyncedDataDeleter
-	{
-		~TGPUsyncedDataDeleter()
-		{
-			Flush();
-		}
-
-		void Retire(const ObjectRefType& Object)
-		{
-			FRHICommandListImmediate& CommandList = FRHICommandListExecutor::GetImmediateCommandList();
-
-			// Prep "retirement package"
-			FRetiringObjectInfo Info;
-			Info.Object = Object;
-			Info.GPUFence = CommandList.CreateGPUFence(TEXT("MediaTextureResourceReuseFence"));
-
-			// Insert fence. We assume that GPU-workload-wise this marks the spot usage of the sample is done
-			CommandList.WriteGPUFence(Info.GPUFence);
-
-			// Recall for later checking...
-			FScopeLock Lock(&CS);
-			Objects.Push(Info);
-		}
-
-		bool Update()
-		{
-			FScopeLock Lock(&CS);
-
-			// Check for any retired samples that are not done being touched by the GPU...
-			int32 Idx = 0;
-			for (; Idx < Objects.Num(); ++Idx)
-			{
-				// Either no fence present or the fence has been signaled?
-				if (Objects[Idx].GPUFence.IsValid() && !Objects[Idx].GPUFence->Poll())
-				{
-					// No. This one is still busy, we can stop...
-					break;
-				}
-			}
-			// Remove (hence return to the pool / free up fence) all the finished ones...
-			if (Idx != 0)
-			{
-				Objects.RemoveAt(0, Idx);
-			}
-			return Objects.Num() != 0;
-		}
-
-		void Flush()
-		{
-			// See if all samples are ready to be retired now...
-			if (!Update())
-			{
-				// They are. No need for any async task...
-				return;
-			}
-
-			// Some samples still need the GPU to get done. Use async task to get this done...
-			TFunction<void()> FlushTask = [LastObjects{ MoveTemp(Objects) }]()
-			{
-				while (1)
-				{
-					int32 Idx = 0;
-					for (; Idx < LastObjects.Num(); ++Idx)
-					{
-						if (LastObjects[Idx].GPUFence.IsValid() && !LastObjects[Idx].GPUFence->Poll())
-						{
-							break;
-						}
-					}
-					if (Idx == LastObjects.Num())
-					{
-						break;
-					}
-
-					FPlatformProcess::Sleep(5.0f / 1000.0f);
-				}
-			};
-			Async(EAsyncExecution::ThreadPool, MoveTemp(FlushTask));
-		}
-
-		struct FRetiringObjectInfo
-		{
-			ObjectRefType Object;
-			FGPUFenceRHIRef GPUFence;
-		};
-
-		TArray<FRetiringObjectInfo> Objects;
-		FCriticalSection CS;
-	};
-
-	typedef TGPUsyncedDataDeleter<TSharedPtr<IMediaTextureSample, ESPMode::ThreadSafe>> FPriorSamples;
-
-	TSharedRef<FPriorSamples, ESPMode::ThreadSafe> PriorSamples;
-
-	/** cached params etc. for use with mip generator */
-	TRefCountPtr<IPooledRenderTarget> MipGenerationCache;
+	TRefCountPtr<FTextureSampleKeeper> CurrentSample;
 };

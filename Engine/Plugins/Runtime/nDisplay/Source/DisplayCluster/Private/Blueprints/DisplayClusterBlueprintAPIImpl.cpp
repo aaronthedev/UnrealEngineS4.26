@@ -1,124 +1,167 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Blueprints/DisplayClusterBlueprintAPIImpl.h"
 
 #include "IDisplayCluster.h"
 
+#include "DisplayClusterLog.h"
 #include "Cluster/DisplayClusterClusterEvent.h"
 #include "Cluster/IDisplayClusterClusterManager.h"
 #include "Config/IDisplayClusterConfigManager.h"
 #include "Game/IDisplayClusterGameManager.h"
 #include "Input/IDisplayClusterInputManager.h"
 #include "Render/IDisplayClusterRenderManager.h"
-#include "Render/Device/DisplayClusterRenderViewport.h"
-#include "Render/Device/IDisplayClusterRenderDevice.h"
-#include "DisplayClusterSceneViewExtensions.h"
 
-#include "Misc/DisplayClusterHelpers.h"
-#include "Misc/DisplayClusterTypesConverter.h"
-#include "Misc/DisplayClusterGlobals.h"
-#include "Misc/DisplayClusterHelpers.h"
-#include "Misc/DisplayClusterLog.h"
-#include "Misc/DisplayClusterStrings.h"
+#include "DisplayClusterRootComponent.h"
 
-#include "DisplayClusterRootActor.h"
-#include "Components/DisplayClusterCameraComponent.h"
-#include "Components/DisplayClusterMeshComponent.h"
-#include "Components/DisplayClusterSceneComponent.h"
-#include "Components/DisplayClusterScreenComponent.h"
+#include "Config/DisplayClusterConfigTypes.h"
 
-#include "DisplayClusterConfigurationTypes.h"
-#include "DisplayClusterEnums.h"
-
-#include "Math/IntRect.h"
-
-#include "CineCameraComponent.h"
+#include "DisplayClusterGlobals.h"
+#include "DisplayClusterHelpers.h"
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 // DisplayCluster module API
 //////////////////////////////////////////////////////////////////////////////////////////////
 /** Return if the module has been initialized. */
-bool UDisplayClusterBlueprintAPIImpl::IsModuleInitialized() const
+bool UDisplayClusterBlueprintAPIImpl::IsModuleInitialized()
 {
-	const bool bInitialized = IDisplayCluster::Get().IsModuleInitialized();
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("IsModuleInitialized - %s"), *DisplayClusterTypesConverter::template ToString(bInitialized));
-	return bInitialized;
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+	return IDisplayCluster::Get().IsModuleInitialized();
 }
 
-EDisplayClusterOperationMode UDisplayClusterBlueprintAPIImpl::GetOperationMode() const
+EDisplayClusterOperationMode UDisplayClusterBlueprintAPIImpl::GetOperationMode()
 {
-	const EDisplayClusterOperationMode OpMode = IDisplayCluster::Get().GetOperationMode();
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("Operation mode - %s"), *DisplayClusterTypesConverter::template ToString(OpMode));
-	return OpMode;
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+	return IDisplayCluster::Get().GetOperationMode();
 }
-
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 // Cluster API
 //////////////////////////////////////////////////////////////////////////////////////////////
-bool UDisplayClusterBlueprintAPIImpl::IsMaster() const
+bool UDisplayClusterBlueprintAPIImpl::IsMaster()
 {
-	const bool bIsMaster = IDisplayCluster::Get().GetClusterMgr()->IsMaster();
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("IsMaster - %s"), *DisplayClusterTypesConverter::template ToString(bIsMaster));
-	return bIsMaster;
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterClusterManager* const Manager = IDisplayCluster::Get().GetClusterMgr();
+	if (Manager)
+	{
+		return Manager->IsMaster();
+	}
+
+	return false;
 }
 
-bool UDisplayClusterBlueprintAPIImpl::IsSlave() const
+bool UDisplayClusterBlueprintAPIImpl::IsSlave()
 {
-	const bool bIsSlave = !IsMaster();
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("IsSlave - %s"), *DisplayClusterTypesConverter::template ToString(bIsSlave));
-	return bIsSlave;
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	return !IsMaster();
 }
 
-FString UDisplayClusterBlueprintAPIImpl::GetNodeId() const
+bool UDisplayClusterBlueprintAPIImpl::IsCluster()
 {
-	const FString NodeId = IDisplayCluster::Get().GetClusterMgr()->GetNodeId();
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetNodeId - NodeId=%s"), *NodeId);
-	return NodeId;
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterClusterManager* const Manager = IDisplayCluster::Get().GetClusterMgr();
+	if (Manager)
+	{
+		return Manager->IsCluster();
+	}
+
+	return false;
 }
 
-int32 UDisplayClusterBlueprintAPIImpl::GetNodesAmount() const
+bool UDisplayClusterBlueprintAPIImpl::IsStandalone()
 {
-	const int32 NodesAmount = IDisplayCluster::Get().GetClusterMgr()->GetNodesAmount();
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetNodesAmount - %d"), NodesAmount);
-	return NodesAmount;
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	return !IsCluster();
+}
+
+FString UDisplayClusterBlueprintAPIImpl::GetNodeId()
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterClusterManager* const Manager = IDisplayCluster::Get().GetClusterMgr();
+	if (Manager)
+	{
+		return Manager->GetNodeId();
+	}
+
+	return FString();
+}
+
+int32 UDisplayClusterBlueprintAPIImpl::GetNodesAmount()
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterClusterManager* const Manager = IDisplayCluster::Get().GetClusterMgr();
+	if (Manager)
+	{
+		return Manager->GetNodesAmount();
+	}
+
+	return 0;
 }
 
 void UDisplayClusterBlueprintAPIImpl::AddClusterEventListener(TScriptInterface<IDisplayClusterClusterEventListener> Listener)
 {
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("AddClusterEventListener - adding cluster event listener..."));
-	IDisplayCluster::Get().GetClusterMgr()->AddClusterEventListener(Listener);
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterClusterManager* const Manager = IDisplayCluster::Get().GetClusterMgr();
+	if (Manager)
+	{
+		return Manager->AddClusterEventListener(Listener);
+	}
 }
 
 void UDisplayClusterBlueprintAPIImpl::RemoveClusterEventListener(TScriptInterface<IDisplayClusterClusterEventListener> Listener)
 {
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("RemoveClusterEventListener - removing cluster event listener..."));
-	IDisplayCluster::Get().GetClusterMgr()->RemoveClusterEventListener(Listener);
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterClusterManager* const Manager = IDisplayCluster::Get().GetClusterMgr();
+	if (Manager)
+	{
+		return Manager->RemoveClusterEventListener(Listener);
+	}
 }
 
-void UDisplayClusterBlueprintAPIImpl::EmitClusterEventJson(const FDisplayClusterClusterEventJson& Event, bool bMasterOnly)
+void UDisplayClusterBlueprintAPIImpl::EmitClusterEvent(const FDisplayClusterClusterEvent& Event, bool MasterOnly)
 {
-	UE_LOG(LogDisplayClusterBlueprint, Verbose,     TEXT("EmitClusterEventJson - emitting cluster event, bMasterOnly=%s"), *DisplayClusterTypesConverter::template ToString(bMasterOnly));
-	UE_LOG(LogDisplayClusterBlueprint, VeryVerbose, TEXT("EmitClusterEventJson - emitting cluster event, Category='%s' Type='%s' Name='%s'"), *Event.Category, *Event.Type, *Event.Name);
-	IDisplayCluster::Get().GetClusterMgr()->EmitClusterEventJson(Event, bMasterOnly);
-}
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
 
-void UDisplayClusterBlueprintAPIImpl::EmitClusterEventBinary(const FDisplayClusterClusterEventBinary& Event, bool bMasterOnly)
-{
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("EmitClusterEventBinary - emitting cluster event, bMasterOnly=%s"), *DisplayClusterTypesConverter::template ToString(bMasterOnly));
-	UE_LOG(LogDisplayClusterBlueprint, VeryVerbose, TEXT("EmitClusterEventBinary - emitting cluster event, EventId='%d'"), Event.EventId);
-	IDisplayCluster::Get().GetClusterMgr()->EmitClusterEventBinary(Event, bMasterOnly);
+	IDisplayClusterClusterManager* const Manager = IDisplayCluster::Get().GetClusterMgr();
+	if (Manager)
+	{
+		return Manager->EmitClusterEvent(Event, MasterOnly);
+	}
 }
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 // Config API
 //////////////////////////////////////////////////////////////////////////////////////////////
-UFUNCTION(BlueprintCallable, meta = (DisplayName = "Get config"), Category = "DisplayCluster|Config")
-UDisplayClusterConfigurationData* UDisplayClusterBlueprintAPIImpl::GetConfig() const
+void UDisplayClusterBlueprintAPIImpl::GetLocalViewports(bool IsRTT, TArray<FString>& ViewportIDs, TArray<FString>& ViewportTypes, TArray<FIntPoint>& ViewportLocations, TArray<FIntPoint>& ViewportSizes)
 {
-	return const_cast<UDisplayClusterConfigurationData*>(IDisplayCluster::Get().GetConfigMgr()->GetConfig());
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	TArray<FDisplayClusterConfigViewport> SelectedViewports = DisplayClusterHelpers::config::GetLocalViewports().FilterByPredicate([IsRTT](const FDisplayClusterConfigViewport& Item)
+	{
+		return Item.IsRTT == IsRTT;
+	});
+
+	for (const FDisplayClusterConfigViewport& Item : SelectedViewports)
+	{
+		FDisplayClusterConfigProjection CfgProjection;
+		if (IDisplayCluster::Get().GetConfigMgr()->GetProjection(Item.ProjectionId, CfgProjection))
+		{
+			ViewportIDs.Add(Item.Id);
+			ViewportTypes.Add(CfgProjection.Type);
+			ViewportLocations.Add(Item.Loc);
+			ViewportSizes.Add(Item.Size);
+		}
+	}	
 }
 
 
@@ -126,11 +169,162 @@ UDisplayClusterConfigurationData* UDisplayClusterBlueprintAPIImpl::GetConfig() c
 // Game API
 //////////////////////////////////////////////////////////////////////////////////////////////
 // Root
-ADisplayClusterRootActor* UDisplayClusterBlueprintAPIImpl::GetRootActor() const
+ADisplayClusterRootActor* UDisplayClusterBlueprintAPIImpl::GetRootActor()
 {
-	ADisplayClusterRootActor* const RootActor = IDisplayCluster::Get().GetGameMgr()->GetRootActor();
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetRootActor - %s"), RootActor ? *RootActor->GetHumanReadableName() : DisplayClusterStrings::log::NotFound);
-	return RootActor;
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterGameManager* const Manager = IDisplayCluster::Get().GetGameMgr();
+	if (Manager)
+	{
+		return Manager->GetRootActor();
+	}
+
+	return nullptr;
+}
+
+UDisplayClusterRootComponent* UDisplayClusterBlueprintAPIImpl::GetRootComponent()
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterGameManager* const Manager = IDisplayCluster::Get().GetGameMgr();
+	if (Manager)
+	{
+		return Manager->GetRootComponent();
+	}
+
+	return nullptr;
+}
+
+// Screens
+UDisplayClusterScreenComponent* UDisplayClusterBlueprintAPIImpl::GetScreenById(const FString& id)
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterGameManager* const Manager = IDisplayCluster::Get().GetGameMgr();
+	if (Manager)
+	{
+		return Manager->GetScreenById(id);
+	}
+
+	return nullptr;
+}
+
+TArray<UDisplayClusterScreenComponent*> UDisplayClusterBlueprintAPIImpl::GetAllScreens()
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterGameManager* const Manager = IDisplayCluster::Get().GetGameMgr();
+	if (Manager)
+	{
+		return Manager->GetAllScreens();
+	}
+
+	return TArray<UDisplayClusterScreenComponent*>();
+}
+
+int32 UDisplayClusterBlueprintAPIImpl::GetScreensAmount()
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterGameManager* const Manager = IDisplayCluster::Get().GetGameMgr();
+	if (Manager)
+	{
+		return Manager->GetScreensAmount();
+	}
+
+	return 0;
+}
+
+// Cameras
+TArray<UDisplayClusterCameraComponent*> UDisplayClusterBlueprintAPIImpl::GetAllCameras()
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterGameManager* const Manager = IDisplayCluster::Get().GetGameMgr();
+	if (Manager)
+	{
+		return Manager->GetAllCameras();
+	}
+
+	return TArray<UDisplayClusterCameraComponent*>();
+}
+
+UDisplayClusterCameraComponent* UDisplayClusterBlueprintAPIImpl::GetCameraById(const FString& id)
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterGameManager* const Manager = IDisplayCluster::Get().GetGameMgr();
+	if (Manager)
+	{
+		return Manager->GetCameraById(id);
+	}
+
+	return nullptr;
+}
+
+int32 UDisplayClusterBlueprintAPIImpl::GetCamerasAmount()
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterGameManager* const Manager = IDisplayCluster::Get().GetGameMgr();
+	if (Manager)
+	{
+		return Manager->GetCamerasAmount();
+	}
+
+	return 0;
+}
+
+UDisplayClusterCameraComponent* UDisplayClusterBlueprintAPIImpl::GetDefaultCamera()
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterGameManager* const Manager = IDisplayCluster::Get().GetGameMgr();
+	if (Manager)
+	{
+		return Manager->GetDefaultCamera();
+	}
+
+	return nullptr;
+}
+
+void UDisplayClusterBlueprintAPIImpl::SetDefaultCameraById(const FString& id)
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterGameManager* const Manager = IDisplayCluster::Get().GetGameMgr();
+	if (Manager)
+	{
+		return Manager->SetDefaultCamera(id);
+	}
+}
+
+
+// Nodes
+UDisplayClusterSceneComponent* UDisplayClusterBlueprintAPIImpl::GetNodeById(const FString& id)
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterGameManager* const Manager = IDisplayCluster::Get().GetGameMgr();
+	if (Manager)
+	{
+		return Manager->GetNodeById(id);
+	}
+
+	return nullptr;
+}
+
+TArray<UDisplayClusterSceneComponent*> UDisplayClusterBlueprintAPIImpl::GetAllNodes()
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterGameManager* const Manager = IDisplayCluster::Get().GetGameMgr();
+	if (Manager)
+	{
+		return Manager->GetAllNodes();
+	}
+
+	return TArray<UDisplayClusterSceneComponent*>();
 }
 
 
@@ -138,278 +332,333 @@ ADisplayClusterRootActor* UDisplayClusterBlueprintAPIImpl::GetRootActor() const
 // Input API
 //////////////////////////////////////////////////////////////////////////////////////////////
 // Device information
-int32 UDisplayClusterBlueprintAPIImpl::GetAxisDeviceAmount() const
+int32 UDisplayClusterBlueprintAPIImpl::GetAxisDeviceAmount()
 {
-	const int32 AxisDevicesAmount = IDisplayCluster::Get().GetInputMgr()->GetAxisDeviceAmount();
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetAxisDeviceAmount - %d"), AxisDevicesAmount);
-	return AxisDevicesAmount;
-}
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
 
-int32 UDisplayClusterBlueprintAPIImpl::GetButtonDeviceAmount() const
-{
-	const int32 ButtonDevicesAmount = IDisplayCluster::Get().GetInputMgr()->GetButtonDeviceAmount();
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetButtonDeviceAmount - %d"), ButtonDevicesAmount);
-	return ButtonDevicesAmount;
-}
-
-int32 UDisplayClusterBlueprintAPIImpl::GetTrackerDeviceAmount() const
-{
-	const int32 TrackerDevicesAmount = IDisplayCluster::Get().GetInputMgr()->GetTrackerDeviceAmount();
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetTrackerDeviceAmount - %d"), TrackerDevicesAmount);
-	return TrackerDevicesAmount;
-}
-
-void UDisplayClusterBlueprintAPIImpl::GetAxisDeviceIds(TArray<FString>& DeviceIDs) const
-{
-	IDisplayCluster::Get().GetInputMgr()->GetAxisDeviceIds(DeviceIDs);
-
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetAxisDeviceIds - found %d devices"), DeviceIDs.Num());
-	for (int i = 0; i < DeviceIDs.Num(); ++i)
+	IDisplayClusterInputManager* const Manager = IDisplayCluster::Get().GetInputMgr();
+	if (Manager)
 	{
-		UE_LOG(LogDisplayClusterBlueprint, VeryVerbose, TEXT("GetAxisDeviceIds - %d: %s"), i, *DeviceIDs[i]);
+		Manager->GetAxisDeviceAmount();
 	}
+
+	return 0;
 }
 
-void UDisplayClusterBlueprintAPIImpl::GetButtonDeviceIds(TArray<FString>& DeviceIDs) const
+int32 UDisplayClusterBlueprintAPIImpl::GetButtonDeviceAmount()
 {
-	IDisplayCluster::Get().GetInputMgr()->GetButtonDeviceIds(DeviceIDs);
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
 
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetButtonDeviceIds - found %d devices"), DeviceIDs.Num());
-	for (int i = 0; i < DeviceIDs.Num(); ++i)
+	IDisplayClusterInputManager* const Manager = IDisplayCluster::Get().GetInputMgr();
+	if (Manager)
 	{
-		UE_LOG(LogDisplayClusterBlueprint, VeryVerbose, TEXT("GetButtonDeviceIds - %d: %s"), i, *DeviceIDs[i]);
+		Manager->GetButtonDeviceAmount();
 	}
+
+	return 0;
 }
 
-void UDisplayClusterBlueprintAPIImpl::GetKeyboardDeviceIds(TArray<FString>& DeviceIDs) const
+int32 UDisplayClusterBlueprintAPIImpl::GetTrackerDeviceAmount()
 {
-	IDisplayCluster::Get().GetInputMgr()->GetKeyboardDeviceIds(DeviceIDs);
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
 
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetKeyboardDeviceIds - found %d devices"), DeviceIDs.Num());
-	for (int i = 0; i < DeviceIDs.Num(); ++i)
+	IDisplayClusterInputManager* const Manager = IDisplayCluster::Get().GetInputMgr();
+	if (Manager)
 	{
-		UE_LOG(LogDisplayClusterBlueprint, VeryVerbose, TEXT("GetKeyboardDeviceIds - %d: %s"), i, *DeviceIDs[i]);
+		Manager->GetTrackerDeviceAmount();
 	}
+
+	return 0;
 }
 
-void UDisplayClusterBlueprintAPIImpl::GetTrackerDeviceIds(TArray<FString>& DeviceIDs) const
+bool UDisplayClusterBlueprintAPIImpl::GetAxisDeviceIds(TArray<FString>& IDs)
 {
-	IDisplayCluster::Get().GetInputMgr()->GetTrackerDeviceIds(DeviceIDs);
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
 
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetTrackerDeviceIds - found %d devices"), DeviceIDs.Num());
-	for (int i = 0; i < DeviceIDs.Num(); ++i)
+	TArray<FString> result;
+	IDisplayClusterInputManager* const Manager = IDisplayCluster::Get().GetInputMgr();
+	if (Manager)
 	{
-		UE_LOG(LogDisplayClusterBlueprint, VeryVerbose, TEXT("GetTrackerDeviceIds - %d: %s"), i, *DeviceIDs[i]);
+		return Manager->GetAxisDeviceIds(IDs);
 	}
+
+	return false;
+}
+
+bool UDisplayClusterBlueprintAPIImpl::GetButtonDeviceIds(TArray<FString>& IDs)
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterInputManager* const Manager = IDisplayCluster::Get().GetInputMgr();
+	if (Manager)
+	{
+		return Manager->GetButtonDeviceIds(IDs);
+	}
+
+	return false;
+}
+
+bool UDisplayClusterBlueprintAPIImpl::GetTrackerDeviceIds(TArray<FString>& IDs)
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterInputManager* const Manager = IDisplayCluster::Get().GetInputMgr();
+	if (Manager)
+	{
+		return Manager->GetTrackerDeviceIds(IDs);
+	}
+
+	return false;
 }
 
 // Buttons
-void UDisplayClusterBlueprintAPIImpl::GetButtonState(const FString& DeviceId, int32 DeviceChannel, bool& bCurrentState, bool& bIsChannelAvailable) const
+void UDisplayClusterBlueprintAPIImpl::GetButtonState(const FString& DeviceId, uint8 DeviceChannel, bool& CurState, bool& IsChannelAvailable)
 {
-	bIsChannelAvailable = IDisplayCluster::Get().GetInputMgr()->GetButtonState(DeviceId, DeviceChannel, bCurrentState);
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetButtonState - %s@%d avail=%d state=%d"), *DeviceId, DeviceChannel, bIsChannelAvailable ? 1 : 0, bCurrentState ? 1 : 0);
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterInputManager* const Manager = IDisplayCluster::Get().GetInputMgr();
+	if (Manager)
+	{
+		IsChannelAvailable = Manager->GetButtonState(DeviceId, DeviceChannel, CurState);
+	}
 }
 
-void UDisplayClusterBlueprintAPIImpl::IsButtonPressed(const FString& DeviceId, int32 DeviceChannel, bool& bIsPressedCurrently, bool& bIsChannelAvailable) const
+void UDisplayClusterBlueprintAPIImpl::IsButtonPressed(const FString& DeviceId, uint8 DeviceChannel, bool& CurPressed, bool& IsChannelAvailable)
 {
-	bIsChannelAvailable = IDisplayCluster::Get().GetInputMgr()->IsButtonPressed(DeviceId, DeviceChannel, bIsPressedCurrently);
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("IsButtonPressed - %s@%d avail=%d pressed=%d"), *DeviceId, DeviceChannel, bIsChannelAvailable ? 1 : 0, bIsPressedCurrently ? 1 : 0);
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterInputManager* const Manager = IDisplayCluster::Get().GetInputMgr();
+	if (Manager)
+	{
+		IsChannelAvailable = Manager->IsButtonPressed(DeviceId, DeviceChannel, CurPressed);
+	}
 }
 
-void UDisplayClusterBlueprintAPIImpl::IsButtonReleased(const FString& DeviceId, int32 DeviceChannel, bool& bIsReleasedCurrently, bool& bIsChannelAvailable) const
+void UDisplayClusterBlueprintAPIImpl::IsButtonReleased(const FString& DeviceId, uint8 DeviceChannel, bool& CurReleased, bool& IsChannelAvailable)
 {
-	bIsChannelAvailable = IDisplayCluster::Get().GetInputMgr()->IsButtonReleased(DeviceId, DeviceChannel, bIsReleasedCurrently);
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("IsButtonReleased - %s@%d avail=%d released=%d"), *DeviceId, DeviceChannel, bIsChannelAvailable ? 1 : 0, bIsReleasedCurrently ? 1 : 0);
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterInputManager* const Manager = IDisplayCluster::Get().GetInputMgr();
+	if (Manager)
+	{
+		IsChannelAvailable = Manager->IsButtonReleased(DeviceId, DeviceChannel, CurReleased);
+	}
 }
 
-void UDisplayClusterBlueprintAPIImpl::WasButtonPressed(const FString& DeviceId, int32 DeviceChannel, bool& bWasPressed, bool& bIsChannelAvailable) const
+void UDisplayClusterBlueprintAPIImpl::WasButtonPressed(const FString& DeviceId, uint8 DeviceChannel, bool& WasPressed, bool& IsChannelAvailable)
 {
-	bIsChannelAvailable = IDisplayCluster::Get().GetInputMgr()->WasButtonPressed(DeviceId, DeviceChannel, bWasPressed);
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("WasButtonPressed - %s@%d avail=%d just_pressed=%d"), *DeviceId, DeviceChannel, bIsChannelAvailable ? 1 : 0, bWasPressed ? 1 : 0);
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterInputManager* const Manager = IDisplayCluster::Get().GetInputMgr();
+	if (Manager)
+	{
+		IsChannelAvailable = Manager->WasButtonPressed(DeviceId, DeviceChannel, WasPressed);
+	}
 }
 
-void UDisplayClusterBlueprintAPIImpl::WasButtonReleased(const FString& DeviceId, int32 DeviceChannel, bool& bWasReleased, bool& bIsChannelAvailable) const
+void UDisplayClusterBlueprintAPIImpl::WasButtonReleased(const FString& DeviceId, uint8 DeviceChannel, bool& WasReleased, bool& IsChannelAvailable)
 {
-	bIsChannelAvailable = IDisplayCluster::Get().GetInputMgr()->WasButtonReleased(DeviceId, DeviceChannel, bWasReleased);
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("WasButtonReleased - %s@%d avail=%d just_released=%d"), *DeviceId, DeviceChannel, bIsChannelAvailable ? 1 : 0, bWasReleased ? 1 : 0);
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterInputManager* const Manager = IDisplayCluster::Get().GetInputMgr();
+	if (Manager)
+	{
+		IsChannelAvailable = Manager->WasButtonReleased(DeviceId, DeviceChannel, WasReleased);
+	}
 }
 
 // Axes
-void UDisplayClusterBlueprintAPIImpl::GetAxis(const FString& DeviceId, int32 DeviceChannel, float& Value, bool& bIsChannelAvailable) const
+void UDisplayClusterBlueprintAPIImpl::GetAxis(const FString& DeviceId, uint8 DeviceChannel, float& Value, bool& IsChannelAvailable)
 {
-	bIsChannelAvailable = IDisplayCluster::Get().GetInputMgr()->GetAxis(DeviceId, DeviceChannel, Value);
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetAxis - %s@%d avail=%d value=%f"), *DeviceId, DeviceChannel, bIsChannelAvailable ? 1 : 0, Value);
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterInputManager* const Manager = IDisplayCluster::Get().GetInputMgr();
+	if (Manager)
+	{
+		IsChannelAvailable = Manager->GetAxis(DeviceId, DeviceChannel, Value);
+	}
 }
 
 // Trackers
-void UDisplayClusterBlueprintAPIImpl::GetTrackerLocation(const FString& DeviceId, int32 DeviceChannel, FVector& Location, bool& bIsChannelAvailable) const
+void UDisplayClusterBlueprintAPIImpl::GetTrackerLocation(const FString& DeviceId, uint8 DeviceChannel, FVector& Location, bool& IsChannelAvailable)
 {
-	bIsChannelAvailable = IDisplayCluster::Get().GetInputMgr()->GetTrackerLocation(DeviceId, DeviceChannel, Location);
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetTrackerLocation - %s@%d avail=%d loc=%f"), *DeviceId, DeviceChannel, bIsChannelAvailable ? 1 : 0, *DisplayClusterTypesConverter::template ToString(Location));
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterInputManager* const Manager = IDisplayCluster::Get().GetInputMgr();
+	if (Manager)
+	{
+		IsChannelAvailable = Manager->GetTrackerLocation(DeviceId, DeviceChannel, Location);
+	}
 }
 
-void UDisplayClusterBlueprintAPIImpl::GetTrackerQuat(const FString& DeviceId, int32 DeviceChannel, FQuat& Rotation, bool& bIsChannelAvailable) const
+void UDisplayClusterBlueprintAPIImpl::GetTrackerQuat(const FString& DeviceId, uint8 DeviceChannel, FQuat& Rotation, bool& IsChannelAvailable)
 {
-	bIsChannelAvailable = IDisplayCluster::Get().GetInputMgr()->GetTrackerQuat(DeviceId, DeviceChannel, Rotation);
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetTrackerQuat - %s@%d avail=%d rot=%f"), *DeviceId, DeviceChannel, bIsChannelAvailable ? 1 : 0, *DisplayClusterTypesConverter::template ToString(Rotation));
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterInputManager* const Manager = IDisplayCluster::Get().GetInputMgr();
+	if (Manager)
+	{
+		IsChannelAvailable = Manager->GetTrackerQuat(DeviceId, DeviceChannel, Rotation);
+	}
 }
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 // Render API
 //////////////////////////////////////////////////////////////////////////////////////////////
-void UDisplayClusterBlueprintAPIImpl::SetViewportCamera(const FString& CameraId, const FString& ViewportId)
+void UDisplayClusterBlueprintAPIImpl::SetViewportCamera(const FString& InCameraId, const FString& InViewportId)
 {
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("SetViewportCamera - assigning camera '%s' to viewport '%s'"), *CameraId, *ViewportId);
-	IDisplayClusterRenderDevice* Device = IDisplayCluster::Get().GetRenderMgr()->GetRenderDevice();
-	if (!Device)
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterRenderManager* const Manager = IDisplayCluster::Get().GetRenderMgr();
+	if (Manager)
 	{
-		UE_LOG(LogDisplayClusterBlueprint, Warning, TEXT("SetViewportCamera - couldn't get render device interface"));
-		return;
+		Manager->SetViewportCamera(InCameraId, InViewportId);
 	}
 
-	Device->SetViewportCamera(CameraId, ViewportId);
+	return;
 }
 
-bool UDisplayClusterBlueprintAPIImpl::GetBufferRatio(const FString& ViewportId, float& BufferRatio) const
+void UDisplayClusterBlueprintAPIImpl::GetBufferRatio(const FString& InViewportId, float &OutBufferRatio)
 {
-	IDisplayClusterRenderDevice* Device = IDisplayCluster::Get().GetRenderMgr()->GetRenderDevice();
-	if (!Device)
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterRenderManager* const Manager = IDisplayCluster::Get().GetRenderMgr();
+	if (Manager)
 	{
-		return false;
+		Manager->GetBufferRatio(InViewportId, OutBufferRatio);
 	}
 
-	const bool bResult = (Device ? Device->GetBufferRatio(ViewportId, BufferRatio) : false);
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetBufferRatio - viewport '%s' (%s) has buffer ratio %f"), *ViewportId, bResult ? DisplayClusterStrings::log::Found : DisplayClusterStrings::log::NotFound, BufferRatio);
-	return bResult;
+	return;
 }
 
-bool UDisplayClusterBlueprintAPIImpl::SetBufferRatio(const FString& ViewportId, float BufferRatio)
+void UDisplayClusterBlueprintAPIImpl::SetBufferRatio(const FString& InViewportId, float InBufferRatio)
 {
-	IDisplayClusterRenderDevice* Device = IDisplayCluster::Get().GetRenderMgr()->GetRenderDevice();
-	if (!Device)
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterRenderManager* const Manager = IDisplayCluster::Get().GetRenderMgr();
+	if (Manager)
 	{
-		return false;
+		Manager->SetBufferRatio(InViewportId, InBufferRatio);
 	}
 
-	const bool bResult = (Device ? Device->SetBufferRatio(ViewportId, BufferRatio) : false);
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("SetBufferRatio - set buffer ratio %f to viewport '%s'"), BufferRatio, *ViewportId);
-	return bResult;
+	return;
 }
 
-void UDisplayClusterBlueprintAPIImpl::SetStartPostProcessingSettings(const FString& ViewportId, const FPostProcessSettings& StartPostProcessingSettings)
+void UDisplayClusterBlueprintAPIImpl::SetStartPostProcessingSettings(const FString& ViewportID, const FPostProcessSettings& StartPostProcessingSettings)
 {
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("SetStartPostProcessingSettings - id=%s"), *ViewportId);
-	IDisplayClusterRenderDevice* Device = IDisplayCluster::Get().GetRenderMgr()->GetRenderDevice();
-	if (!Device)
-	{
-		UE_LOG(LogDisplayClusterBlueprint, Warning, TEXT("SetStartPostProcessingSettings - couldn't get render device interface"));
-		return;
-	}
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
 
-	Device->SetStartPostProcessingSettings(ViewportId, StartPostProcessingSettings);
+	IDisplayClusterRenderManager* const Manager = IDisplayCluster::Get().GetRenderMgr();
+	if (Manager)
+	{
+		Manager->SetStartPostProcessingSettings(ViewportID, StartPostProcessingSettings);
+	}
 }
 
-void UDisplayClusterBlueprintAPIImpl::SetOverridePostProcessingSettings(const FString& ViewportId, const FPostProcessSettings& OverridePostProcessingSettings, float BlendWeight)
+void UDisplayClusterBlueprintAPIImpl::SetOverridePostProcessingSettings(const FString& ViewportID, const FPostProcessSettings& OverridePostProcessingSettings, float BlendWeight)
 {
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("SetOverridePostProcessingSettings - id=%s, weight=%f"), *ViewportId, BlendWeight);
-	IDisplayClusterRenderDevice* Device = IDisplayCluster::Get().GetRenderMgr()->GetRenderDevice();
-	if (!Device)
-	{
-		return;
-	}
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
 
-	Device->SetOverridePostProcessingSettings(ViewportId, OverridePostProcessingSettings, BlendWeight);
+	IDisplayClusterRenderManager* const Manager = IDisplayCluster::Get().GetRenderMgr();
+	if (Manager)
+	{
+		Manager->SetOverridePostProcessingSettings(ViewportID, OverridePostProcessingSettings, BlendWeight);
+	}
 }
 
-void UDisplayClusterBlueprintAPIImpl::SetFinalPostProcessingSettings(const FString& ViewportId, const FPostProcessSettings& FinalPostProcessingSettings)
+void UDisplayClusterBlueprintAPIImpl::SetFinalPostProcessingSettings(const FString& ViewportID, const FPostProcessSettings& FinalPostProcessingSettings)
 {
-	UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("SetFinalPostProcessingSettings - id=%s"), *ViewportId);
-	IDisplayClusterRenderDevice* Device = IDisplayCluster::Get().GetRenderMgr()->GetRenderDevice();
-	if (!Device)
-	{
-		UE_LOG(LogDisplayClusterBlueprint, Warning, TEXT("SetFinalPostProcessingSettings - couldn't get render device interface"));
-		return;
-	}
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
 
-	Device->SetFinalPostProcessingSettings(ViewportId, FinalPostProcessingSettings);
+	IDisplayClusterRenderManager* const Manager = IDisplayCluster::Get().GetRenderMgr();
+	if (Manager)
+	{
+		Manager->SetFinalPostProcessingSettings(ViewportID, FinalPostProcessingSettings);
+	}
 }
 
-bool UDisplayClusterBlueprintAPIImpl::GetViewportRect(const FString& ViewportId, FIntPoint& ViewportLoc, FIntPoint& ViewportSize) const
+bool UDisplayClusterBlueprintAPIImpl::GetViewportRect(const FString& ViewportID, FIntPoint& ViewportLoc, FIntPoint& ViewportSize)
 {
-	IDisplayClusterRenderDevice* Device = IDisplayCluster::Get().GetRenderMgr()->GetRenderDevice();
-	if (!Device)
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterRenderManager* const Manager = IDisplayCluster::Get().GetRenderMgr();
+	if (Manager)
 	{
-		return false;
-	}
-
-	FIntRect ViewportRect;
-	if (Device->GetViewportRect(ViewportId, ViewportRect))
-	{
-		ViewportLoc  = ViewportRect.Min;
-		ViewportSize = ViewportRect.Size();
-
-		UE_LOG(LogDisplayClusterBlueprint, Verbose, TEXT("GetViewportRect - id=%s, loc=%s, size=%s"), *ViewportId, *DisplayClusterTypesConverter::template ToString(ViewportLoc), *DisplayClusterTypesConverter::template ToString(ViewportSize));
-
-		return true;
+		FIntRect ViewportRect;
+		if (Manager->GetViewportRect(ViewportID, ViewportRect))
+		{
+			ViewportLoc  = ViewportRect.Min;
+			ViewportSize = ViewportRect.Size();
+			return true;
+		}
 	}
 
 	return false;
 }
 
-void UDisplayClusterBlueprintAPIImpl::GetLocalViewports(TArray<FString>& ViewportIDs, TArray<FString>& ProjectionTypes, TArray<FIntPoint>& ViewportLocations, TArray<FIntPoint>& ViewportSizes) const
+
+float UDisplayClusterBlueprintAPIImpl::GetInterpupillaryDistance(const FString& CameraId)
 {
-	const IDisplayClusterRenderDevice* Device = IDisplayCluster::Get().GetRenderMgr()->GetRenderDevice();
-	if (!Device)
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterRenderManager* const Manager = IDisplayCluster::Get().GetRenderMgr();
+	if (Manager)
 	{
-		UE_LOG(LogDisplayClusterBlueprint, Warning, TEXT("GetLocalViewports - couldn't get render device interface"));
-		return;
+		return Manager->GetInterpupillaryDistance(CameraId);
 	}
 
-	TArray<FDisplayClusterRenderViewport> Viewports;
-	Device->GetRenderViewports(Viewports);
-
-	// Clean output containers
-	ViewportIDs.Empty();
-	ProjectionTypes.Empty();
-	ViewportLocations.Empty();
-	ViewportSizes.Empty();
-
-	// Fill output data
-	for (const auto& Viewport : Viewports)
-	{
-		ViewportIDs.Add(Viewport.GetId());
-		ViewportLocations.Add(Viewport.GetRect().Min);
-		ViewportSizes.Add(Viewport.GetRect().Size());
-
-		FDisplayClusterConfigurationProjection CfgProjection;
-		IDisplayCluster::Get().GetConfigMgr()->GetLocalProjection(Viewport.GetId(), CfgProjection);
-		ProjectionTypes.Add(CfgProjection.Type);
-	}
+	return 0.f;
 }
 
-void UDisplayClusterBlueprintAPIImpl::SceneViewExtensionIsActiveInContextFunction(const TArray<FString>& ViewportIDs, FSceneViewExtensionIsActiveFunctor& OutIsActiveFunction) const
+void  UDisplayClusterBlueprintAPIImpl::SetInterpupillaryDistance(const FString& CameraId, float EyeDistance)
 {
-	OutIsActiveFunction.IsActiveFunction = [ViewportIDs](const ISceneViewExtension* SceneViewExtension, FSceneViewExtensionContext& Context) 
-	{
-		// If the context is not a known one, offer no opinion.
-		{
-			if (!Context.IsA(FDisplayClusterSceneViewExtensionContext()))
-			{
-				return TOptional<bool>();
-			}
-		}
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
 
-		FDisplayClusterSceneViewExtensionContext& DisplayContext = static_cast<FDisplayClusterSceneViewExtensionContext&>(Context);
-		
-		// If no nDisplay viewport ids are given, assume this Scene View Extension should apply to all viewports.
-		if (!ViewportIDs.Num())
-		{
-			return TOptional<bool>(true);
-		}
-		
-		// Return true/false depending on whether the contextual nDisplay Viewport is found in the given array of ids or not.
-		return TOptional<bool>(!!ViewportIDs.FindByKey(DisplayContext.ViewportId));
-	};
+	IDisplayClusterRenderManager* const Manager = IDisplayCluster::Get().GetRenderMgr();
+	if (Manager)
+	{
+		return Manager->SetInterpupillaryDistance(CameraId, EyeDistance);
+	}
+
+	return;
 }
 
+bool UDisplayClusterBlueprintAPIImpl::GetEyesSwap(const FString& CameraId)
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterRenderManager* const Manager = IDisplayCluster::Get().GetRenderMgr();
+	if (Manager)
+	{
+		return Manager->GetEyesSwap(CameraId);
+	}
+
+	return false;
+}
+
+void UDisplayClusterBlueprintAPIImpl::SetEyesSwap(const FString& CameraId, bool EyeSwapped)
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterRenderManager* const Manager = IDisplayCluster::Get().GetRenderMgr();
+	if (Manager)
+	{
+		return Manager->SetEyesSwap(CameraId, EyeSwapped);
+	}
+
+	return;
+}
+
+bool UDisplayClusterBlueprintAPIImpl::ToggleEyesSwap(const FString& CameraId)
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterBlueprint);
+
+	IDisplayClusterRenderManager* const Manager = IDisplayCluster::Get().GetRenderMgr();
+	if (Manager)
+	{
+		return Manager->ToggleEyesSwap(CameraId);
+	}
+
+	return false;
+}

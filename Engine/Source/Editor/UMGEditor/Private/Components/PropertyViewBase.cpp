@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/PropertyViewBase.h"
 
@@ -56,6 +56,23 @@ TSharedRef<SWidget> UPropertyViewBase::RebuildWidget()
 	return DisplayedWidget.ToSharedRef();
 }
 
+void UPropertyViewBase::AsynBuildContentWidget()
+{
+	if (!bIsAsyncBuildContentRequested)
+	{
+		bIsAsyncBuildContentRequested = true;
+
+		AsyncTask(ENamedThreads::GameThread, [this]()
+		{
+			if (bIsAsyncBuildContentRequested)
+			{
+				BuildContentWidget();
+				bIsAsyncBuildContentRequested = false;
+			}
+		});
+	}
+}
+
 
 UObject* UPropertyViewBase::GetObject() const
 {
@@ -84,7 +101,7 @@ void UPropertyViewBase::InternalOnAssetLoaded(UObject* AssetLoaded)
 {
 	if (SoftObjectPath.GetAssetPathName() == FSoftObjectPath(AssetLoaded).GetAssetPathName())
 	{
-		BuildContentWidget();
+		AsynBuildContentWidget();
 	}
 }
 
@@ -97,7 +114,7 @@ void UPropertyViewBase::InternalPostLoadMapWithWorld(UWorld* AssetLoaded)
 
 void UPropertyViewBase::InternalOnMapChange(uint32)
 {
-	BuildContentWidget();
+	AsynBuildContentWidget();
 }
 
 
@@ -105,10 +122,17 @@ void UPropertyViewBase::PostLoad()
 {
 	Super::PostLoad();
 
-	if (!LazyObject.IsValid() && SoftObjectPath.IsAsset() && bAutoLoadAsset && !HasAnyFlags(RF_BeginDestroyed))
+	if (!LazyObject.IsValid() && SoftObjectPath.IsAsset() && bAutoLoadAsset)
 	{
-		LazyObject = SoftObjectPath.TryLoad();
-		BuildContentWidget();
+		AsyncTask(ENamedThreads::GameThread, [this]()
+		{
+			if (!HasAnyFlags(RF_BeginDestroyed))
+			{
+				LazyObject = SoftObjectPath.TryLoad();
+				BuildContentWidget();
+				bIsAsyncBuildContentRequested = false;
+			}
+		});
 	}
 }
 

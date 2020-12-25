@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AssetVtConversion.h"
 #include "Engine/Texture2D.h"
@@ -118,21 +118,6 @@ bool IsVirtualTextureValidForMaterial(UMaterialInterface* InMaterial, UTexture2D
 	}
 
 	return true;
-}
-
-void FVTConversionWorker::AddReferencedObjects( FReferenceCollector& Collector )
-{
-	Collector.AddReferencedObjects( UserTextures );
-	Collector.AddReferencedObjects( Textures );
-	Collector.AddReferencedObjects( Materials );
-	Collector.AddReferencedObjects( Functions );
-	Collector.AddReferencedObjects( SizeRejectedTextures );
-	Collector.AddReferencedObjects( SizeRejectedTextures );
-	Collector.AddReferencedObjects( MaterialRejectedTextures );
-
-	TArray<UObject*> AuditTrailKeys;
-	AuditTrail.GetKeys(AuditTrailKeys);
-	Collector.AddReferencedObjects( AuditTrailKeys );
 }
 
 void FVTConversionWorker::FindAllTexturesAndMaterials_Iteration(TArray<UMaterial*>& InAffectedMaterials,

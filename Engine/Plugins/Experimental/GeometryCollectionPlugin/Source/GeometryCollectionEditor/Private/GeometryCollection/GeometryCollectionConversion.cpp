@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GeometryCollection/GeometryCollectionConversion.h"
 
@@ -20,14 +20,15 @@
 #include "GeometryCollection/GeometryCollectionClusteringUtility.h"
 #include "GeometryCollection/GeometryCollectionUtility.h"
 #include "Logging/LogMacros.h"
-#include "Materials/Material.h"
 #include "Rendering/SkeletalMeshRenderData.h"
 
 
 DEFINE_LOG_CATEGORY_STATIC(UGeometryCollectionConversionLogging, Log, All);
 
-void FGeometryCollectionConversion::AppendStaticMesh(const UStaticMesh* StaticMesh, const TArray<UMaterialInterface*>& Materials, const FTransform& StaticMeshTransform, UGeometryCollection* GeometryCollectionObject, bool ReindexMaterials)
+void FGeometryCollectionConversion::AppendStaticMesh(const UStaticMesh * StaticMesh, const UStaticMeshComponent *StaticMeshComponent, const FTransform & StaticMeshTransform, UGeometryCollection * GeometryCollectionObject, bool ReindexMaterials)
 {
+	//UE_LOG(UGeometryCollectionConversionLogging, Log, TEXT("FGeometryCollectionConversion::AppendStaticMesh()"));
+
 	if (StaticMesh == nullptr)
 	{
 		return;
@@ -41,7 +42,7 @@ void FGeometryCollectionConversion::AppendStaticMesh(const UStaticMesh* StaticMe
 	// @todo : Discuss how to handle multiple LOD's
 	if (StaticMesh->RenderData && StaticMesh->RenderData->LODResources.Num() > 0)
 	{
-		FStaticMeshVertexBuffers& VertexBuffer = StaticMesh->RenderData->LODResources[0].VertexBuffers;
+		FStaticMeshVertexBuffers & VertexBuffer = StaticMesh->RenderData->LODResources[0].VertexBuffers;
 
 		// vertex information
 		TManagedArray<FVector>& Vertex = GeometryCollection->Vertex;
@@ -80,7 +81,7 @@ void FGeometryCollectionConversion::AppendStaticMesh(const UStaticMesh* StaticMe
 		TManagedArray<int32>& MaterialID = GeometryCollection->MaterialID;
 		TManagedArray<int32>& MaterialIndex = GeometryCollection->MaterialIndex;
 
-		FRawStaticIndexBuffer& IndexBuffer = StaticMesh->RenderData->LODResources[0].IndexBuffer;
+		FRawStaticIndexBuffer & IndexBuffer = StaticMesh->RenderData->LODResources[0].IndexBuffer;
 		FIndexArrayView IndexBufferView = IndexBuffer.GetArrayView();
 		const int32 IndicesCount = IndexBuffer.GetNumIndices() / 3;
 		int InitialNumIndices = GeometryCollection->NumElements(FGeometryCollection::FacesGroup);
@@ -137,7 +138,7 @@ void FGeometryCollectionConversion::AppendStaticMesh(const UStaticMesh* StaticMe
 		TransformToGeometryIndexArray[TransformIndex1] = GeometryIndex;
 
 		FVector Center(0);
-		for (int32 VertexIndex = VertexStart; VertexIndex < VertexStart + VertexCount; VertexIndex++)
+		for (int32 VertexIndex = VertexStart; VertexIndex < VertexStart+VertexCount; VertexIndex++)
 		{
 			Center += Vertex[VertexIndex];
 		}
@@ -147,7 +148,7 @@ void FGeometryCollectionConversion::AppendStaticMesh(const UStaticMesh* StaticMe
 		BoundingBox[GeometryIndex] = FBox(ForceInitToZero);
 		InnerRadius[GeometryIndex] = FLT_MAX;
 		OuterRadius[GeometryIndex] = -FLT_MAX;
-		for (int32 VertexIndex = VertexStart; VertexIndex < VertexStart + VertexCount; VertexIndex++)
+		for (int32 VertexIndex = VertexStart; VertexIndex < VertexStart+VertexCount; VertexIndex++)
 		{
 			BoundingBox[GeometryIndex] += Vertex[VertexIndex];
 
@@ -177,7 +178,7 @@ void FGeometryCollectionConversion::AppendStaticMesh(const UStaticMesh* StaticMe
 			for (int e = 0; e < 3; e++)
 			{
 				int i = e, j = (e + 1) % 3;
-				FVector Edge = Vertex[Indices[fdx][i]] + 0.5 * (Vertex[Indices[fdx][j]] - Vertex[Indices[fdx][i]]);
+				FVector Edge = Vertex[Indices[fdx][i]] + 0.5*(Vertex[Indices[fdx][j]] - Vertex[Indices[fdx][i]]);
 				float Delta = (Center - Edge).Size();
 				InnerRadius[GeometryIndex] = FMath::Min(InnerRadius[GeometryIndex], Delta);
 				OuterRadius[GeometryIndex] = FMath::Max(OuterRadius[GeometryIndex], Delta);
@@ -185,45 +186,40 @@ void FGeometryCollectionConversion::AppendStaticMesh(const UStaticMesh* StaticMe
 		}
 
 		// for each material, add a reference in our GeometryCollectionObject
-		const int32 MaterialStart = GeometryCollectionObject->Materials.Num();
-		const int32 NumMeshMaterials = Materials.Num();
-		GeometryCollectionObject->Materials.Reserve(MaterialStart + NumMeshMaterials);
+		int CurrIdx = 0;
+		UMaterialInterface *CurrMaterial = StaticMeshComponent ? StaticMeshComponent->GetMaterial(CurrIdx) : StaticMesh->GetMaterial(CurrIdx);
+	
 
-		for (int32 Index = 0; Index < NumMeshMaterials; ++Index)
+		int MaterialStart = GeometryCollectionObject->Materials.Num();
+		while (CurrMaterial)
 		{
-			UMaterialInterface* CurrMaterial = Materials[Index];
-
-			// Possible we have a null entry - replace with default
-			if (CurrMaterial == nullptr)
-			{
-				CurrMaterial = UMaterial::GetDefaultMaterial(MD_Surface);
-			}
-
 			GeometryCollectionObject->Materials.Add(CurrMaterial);
+			CurrMaterial = StaticMeshComponent ?  StaticMeshComponent->GetMaterial(++CurrIdx) : StaticMesh->GetMaterial(++CurrIdx);
 		}
 
-		TManagedArray<FGeometryCollectionSection>& Sections = GeometryCollection->Sections;
-
+		TManagedArray<FGeometryCollectionSection> & Sections = GeometryCollection->Sections;
+	
 		// We make sections that mirror what is in the static mesh.  Note that this isn't explicitly
 		// necessary since we reindex after all the meshes are added, but it is a good step to have
 		// optimal min/max vertex index right from the static mesh.  All we really need to do is
 		// assign material ids and rely on reindexing, in theory
-		for (const FStaticMeshSection& CurrSection : StaticMesh->RenderData->LODResources[0].Sections)
-		{
+		const TArray<FStaticMeshSection> &StaticMeshSections = StaticMesh->RenderData->LODResources[0].Sections;
+		for (const FStaticMeshSection &CurrSection : StaticMeshSections)
+		{			
 			// create new section
 			int32 SectionIndex = GeometryCollection->AddElements(1, FGeometryCollection::MaterialGroup);
-
+						
 			Sections[SectionIndex].MaterialID = MaterialStart + CurrSection.MaterialIndex;
 
-			Sections[SectionIndex].FirstIndex = IndicesStart * 3 + CurrSection.FirstIndex;
+			Sections[SectionIndex].FirstIndex = IndicesStart*3 + CurrSection.FirstIndex;
 			Sections[SectionIndex].MinVertexIndex = VertexStart + CurrSection.MinVertexIndex;
 
 			Sections[SectionIndex].NumTriangles = CurrSection.NumTriangles;
-			Sections[SectionIndex].MaxVertexIndex = VertexStart + CurrSection.MaxVertexIndex;
+			Sections[SectionIndex].MaxVertexIndex = VertexStart + CurrSection.MaxVertexIndex;		
 
 			// set the MaterialID for all of the faces
 			// note the divide by 3 - the GeometryCollection stores indices in tuples of 3 rather than in a flat array
-			for (int32 i = Sections[SectionIndex].FirstIndex / 3; i < Sections[SectionIndex].FirstIndex / 3 + Sections[SectionIndex].NumTriangles; ++i)
+ 			for (int32 i = Sections[SectionIndex].FirstIndex/3; i < Sections[SectionIndex].FirstIndex/3 + Sections[SectionIndex].NumTriangles; ++i)
 			{
 				MaterialID[i] = Sections[SectionIndex].MaterialID;
 			}
@@ -233,26 +229,6 @@ void FGeometryCollectionConversion::AppendStaticMesh(const UStaticMesh* StaticMe
 			GeometryCollection->ReindexMaterials();
 		}
 	}
-}
-
-
-void FGeometryCollectionConversion::AppendStaticMesh(const UStaticMesh* StaticMesh, const UStaticMeshComponent* StaticMeshComponent, const FTransform& StaticMeshTransform, UGeometryCollection* GeometryCollectionObject, bool ReindexMaterials)
-{
-	if (StaticMesh == nullptr)
-	{
-		return;
-	}
-
-	TArray<UMaterialInterface*> Materials;
-	Materials.Reserve(StaticMesh->StaticMaterials.Num());
-
-	for (int32 Index = 0; Index < StaticMesh->StaticMaterials.Num(); ++Index)
-	{
-		UMaterialInterface* CurrMaterial = StaticMeshComponent ? StaticMeshComponent->GetMaterial(Index) : StaticMesh->GetMaterial(Index);
-		Materials.Add(CurrMaterial);
-	}
-
-	AppendStaticMesh(StaticMesh, Materials, StaticMeshTransform, GeometryCollectionObject, ReindexMaterials);
 }
 
 
@@ -354,10 +330,10 @@ void FGeometryCollectionConversion::AppendSkeletalMesh(const USkeletalMesh* Skel
 						{
 							int VertexOffset = VertexBaseIndex + VertexIndex;
 							BoneMap[VertexOffset] = -1;
-							int32 SkeletalBoneIndex = -1;
-							check(SkinWeightVertexBuffer.GetRigidWeightBone(VertexIndex, SkeletalBoneIndex));
-							if (SkeletalBoneIndex > -1)
+							if (const TSkinWeightInfo<false> * SkinWeightInfo = SkinWeightVertexBuffer.GetSkinWeightPtr<false>(VertexIndex))
 							{
+								uint8 SkeletalBoneIndex = -1;
+								check(SkinWeightInfo->GetRigidWeightBone(SkeletalBoneIndex));
 								BoneMap[VertexOffset] = SkeletalBoneIndex + TransformBaseIndex;
 								Vertex[VertexOffset] = Transform[BoneMap[VertexOffset]].ToInverseMatrixWithScale().TransformPosition(PositionVertexBuffer.VertexPosition(VertexIndex));
 							}
@@ -457,7 +433,7 @@ void FGeometryCollectionConversion::AppendSkeletalMesh(const USkeletalMesh* Skel
 
 void FGeometryCollectionConversion::CreateGeometryCollectionCommand(UWorld * World)
 {
-	UPackage* Package = CreatePackage(TEXT("/Game/GeometryCollectionAsset"));
+	UPackage* Package = CreatePackage(NULL, TEXT("/Game/GeometryCollectionAsset"));
 	auto GeometryCollectionFactory = NewObject<UGeometryCollectionFactory>();
 	UGeometryCollection* GeometryCollection = static_cast<UGeometryCollection*>(
 		GeometryCollectionFactory->FactoryCreateNew(UGeometryCollection::StaticClass(), Package,
@@ -491,7 +467,7 @@ void FGeometryCollectionConversion::CreateFromSelectedActorsCommand(UWorld * Wor
 					{
 						if (!Package || !GeometryCollection)
 						{
-							Package = CreatePackage(TEXT("/Game/GeometryCollectionAsset"));
+							Package = CreatePackage(NULL, TEXT("/Game/GeometryCollectionAsset"));
 							auto GeometryCollectionFactory = NewObject<UGeometryCollectionFactory>();
 							GeometryCollection = static_cast<UGeometryCollection*>(
 								GeometryCollectionFactory->FactoryCreateNew(
@@ -521,7 +497,7 @@ void FGeometryCollectionConversion::CreateFromSelectedActorsCommand(UWorld * Wor
 					{
 						if (!Package || !GeometryCollection)
 						{
-							Package = CreatePackage(TEXT("/Game/GeometryCollectionAsset"));
+							Package = CreatePackage(NULL, TEXT("/Game/GeometryCollectionAsset"));
 							auto GeometryCollectionFactory = NewObject<UGeometryCollectionFactory>();
 							GeometryCollection = static_cast<UGeometryCollection*>(
 								GeometryCollectionFactory->FactoryCreateNew(
@@ -568,7 +544,7 @@ void FGeometryCollectionConversion::CreateFromSelectedAssetsCommand(UWorld * Wor
 			UE_LOG(UGeometryCollectionConversionLogging, Log, TEXT("Static Mesh Content Browser : %s"), *AssetData.GetClass()->GetName());
 			if (!Package || !GeometryCollection)
 			{
-				Package = CreatePackage(TEXT("/Game/GeometryCollectionAsset"));
+				Package = CreatePackage(NULL, TEXT("/Game/GeometryCollectionAsset"));
 				auto GeometryCollectionFactory = NewObject<UGeometryCollectionFactory>();
 				GeometryCollection = static_cast<UGeometryCollection*>(
 					GeometryCollectionFactory->FactoryCreateNew(
@@ -580,7 +556,7 @@ void FGeometryCollectionConversion::CreateFromSelectedAssetsCommand(UWorld * Wor
 						GWarn));
 			}
 			FGeometryCollectionConversion::AppendStaticMesh(
-				static_cast<const UStaticMesh*>(AssetData.GetAsset()),
+				static_cast<const UStaticMesh *>(AssetData.GetAsset()), 
 				nullptr,
 				FTransform(), 
 				GeometryCollection);
@@ -590,7 +566,7 @@ void FGeometryCollectionConversion::CreateFromSelectedAssetsCommand(UWorld * Wor
 			UE_LOG(UGeometryCollectionConversionLogging, Log, TEXT("Skeletal Mesh Content Browser : %s"), *AssetData.GetClass()->GetName());
 			if (!Package || !GeometryCollection)
 			{
-				Package = CreatePackage(TEXT("/Game/GeometryCollectionAsset"));
+				Package = CreatePackage(NULL, TEXT("/Game/GeometryCollectionAsset"));
 				auto GeometryCollectionFactory = NewObject<UGeometryCollectionFactory>();
 				GeometryCollection = static_cast<UGeometryCollection*>(
 					GeometryCollectionFactory->FactoryCreateNew(

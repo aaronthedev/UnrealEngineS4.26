@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DSP/LateReflectionsFast.h"
 #include "CoreMinimal.h"
@@ -220,24 +220,6 @@ void FLateReflectionsPlate::ProcessAudioFrames(
 	DelayI->ProcessAudio(OutPlateSamples.Taps[6], OutPlateSamples.Output);
 }
 
-void FLateReflectionsPlate::FlushAudio()
-{
-	DelayA->Reset();
-	DelayB->Reset();
-	DelayC->Reset();
-	DelayD->Reset();
-	DelayE->Reset();
-	DelayF->Reset();
-	DelayG->Reset();
-	DelayH->Reset();
-	DelayI->Reset();
-
-	LPF->FlushAudio();
-
-	ModulatedAPF->Reset();
-	APF->Reset();
-}
-
 void FLateReflectionsPlate::SetDampening(float InDampening)
 {
 	Dampening = InDampening;
@@ -252,7 +234,7 @@ void FLateReflectionsPlate::SetDecay(float InDecay)
 void FLateReflectionsPlate::SetDensity(float InDensity)
 {
 	Density = InDensity;
-	ModulatedAPF->SetG(FMath::Clamp(-Density, -0.9f, 0.9f));
+	ModulatedAPF->SetG(-Density);
 	APF->SetG(Density - 0.15f);
 }
 
@@ -339,6 +321,8 @@ FLateReflectionsFast::FLateReflectionsFast(float InSampleRate, int32 InMaxNumInt
 	LeftPlateOutputs.ResizeAndZero(NumInternalBufferSamples);
 	RightPlateOutputs.ResizeAndZero(NumInternalBufferSamples);
 
+	LeftPlateOutputBuffer = MakeUnique<FAlignedBlockBuffer>(4 * NumInternalBufferSamples, NumInternalBufferSamples);
+	RightPlateOutputBuffer = MakeUnique<FAlignedBlockBuffer>(4 * NumInternalBufferSamples, NumInternalBufferSamples);
 
 	ApplySettings();
 }
@@ -396,21 +380,6 @@ void FLateReflectionsFast::ProcessAudio(const AlignedFloatBuffer& InSamples, con
 		InPos += FramesToProcess * InNumChannels;
 		OutPos += FramesToProcess;
 	}
-}
-
-void FLateReflectionsFast::FlushAudio()
-{
-	PreDelay->Reset();
-
-	InputLPF->FlushAudio();
-
-	APF1->Reset();
-	APF2->Reset();
-	APF3->Reset();
-	APF4->Reset();
-
-	LeftPlate->FlushAudio();
-	RightPlate->FlushAudio();
 }
 
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once 
 
@@ -19,10 +19,7 @@ public:
 	/** Cancels build, may block until current running async tasks are finished */
 	virtual void CancelBuild() {};
 
-	/** Ticks navigation build
-	 *  If the generator is set to time sliced rebuild then this function will only get called when
-	 *  there is sufficient time (effectively roughly once in n frames where n is the number of time sliced nav data / generators currently building)
-	 */
+	/**  */
 	virtual void TickAsyncBuild(float DeltaSeconds) {};
 	
 	/**  */
@@ -32,13 +29,7 @@ public:
 	virtual void RebuildDirtyAreas(const TArray<FNavigationDirtyArea>& DirtyAreas) {}
 
 	/** determines whether this generator is performing navigation building actions at the moment*/
-	UE_DEPRECATED(4.26, "This function is deprecated. Please use IsBuildInProgressCheckDirty")
-	virtual bool IsBuildInProgress(bool bCheckDirtyToo = false) const { return IsBuildInProgressCheckDirty(); }
-
-	/** determines whether this generator is performing navigation building actions at the moment, dirty areas are also checked */
-	virtual bool IsBuildInProgressCheckDirty() const { return false; }
-
-	virtual bool GetTimeSliceData(int32& OutNumRemainingBuildTasks, double& OutCurrentBuildTaskDuration) const { OutNumRemainingBuildTasks = 0; OutCurrentBuildTaskDuration = 0.; return false; }
+	virtual bool IsBuildInProgress(bool bCheckDirtyToo = false) const { return false; }	
 
 	/** Returns number of remaining tasks till build is complete
 	 */

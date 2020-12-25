@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -45,7 +45,7 @@ struct FMovieSceneSequenceID
 		return GetTypeHash(In.Value);
 	}
 
-	FORCEINLINE FMovieSceneSequenceID AccumulateParentID(FMovieSceneSequenceID InParentID) const
+	FORCEINLINE FMovieSceneSequenceID AccumulateParentID(FMovieSceneSequenceID InParentID)
 	{
 		return Value == 0 ? InParentID : FMovieSceneSequenceID(HashCombine(Value, InParentID.Value));
 	}
@@ -94,9 +94,4 @@ namespace MovieSceneSequenceID
 {
 	static const FMovieSceneSequenceID Invalid(-1);
 	static const FMovieSceneSequenceID Root(0);
-}
-
-inline FString LexToString(const FMovieSceneSequenceID& SequenceID)
-{
-	return *FString::Printf(TEXT("SeqID(%d)"), SequenceID.GetInternalValue());
 }

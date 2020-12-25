@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved. 
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved. 
 
 #include "WireframeMeshComponent.h"
 #include "RenderingThread.h"
@@ -22,13 +22,6 @@ void UWireframeMesh::BeginDestroy()
 	{
 		ReleaseResources();
 	}
-}
-
-
-bool UWireframeMesh::IsReadyForFinishDestroy()
-{
-	bool bReady = Super::IsReadyForFinishDestroy();
-	return bReady && ReleaseFence.IsFenceComplete();
 }
 
 
@@ -260,7 +253,6 @@ void UWireframeMesh::ReleaseResources()
 		BeginReleaseResource( &VertexBuffers.StaticMeshVertexBuffer );
 		BeginReleaseResource( &VertexBuffers.ColorVertexBuffer );
 		BeginReleaseResource( &IndexBuffer );
-		ReleaseFence.BeginFence();
 	}
 }
 
@@ -291,7 +283,7 @@ public:
 			InstanceVertexBuffer.SetVertexUV( Index, 0, FVector2D::ZeroVector );
 		}
 
-		for( const FEdgeID& HiddenEdgeID : Component->HiddenEdgeIDs )
+		for( const FEdgeID HiddenEdgeID : Component->HiddenEdgeIDs )
 		{
 			const TArray<int32>& EdgeInstanceIndices = Component->GetWireframeMesh()->GetEdgeInstanceIDs( HiddenEdgeID );
 			for( const int32 EdgeInstanceIndex : EdgeInstanceIndices )
@@ -379,7 +371,7 @@ public:
 		Result.bRenderCustomDepth = ShouldRenderCustomDepth();
 		Result.bTranslucentSelfShadow = bCastVolumetricTranslucentShadow;
 		MaterialRelevance.SetPrimitiveViewRelevance( Result );
-		Result.bVelocityRelevance = IsMovable() && Result.bOpaque && Result.bRenderInMainPass;
+		Result.bVelocityRelevance = IsMovable() && Result.bOpaqueRelevance && Result.bRenderInMainPass;
 		return Result;
 	}
 

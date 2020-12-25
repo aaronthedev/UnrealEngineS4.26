@@ -97,10 +97,10 @@ public:
         IFT(m_pIncludeHandler->LoadSource(pFilename, ppIncludeSource));
       }
     }
-    CComPtr<IDxcBlobUtf8> utf8Source;
-    IFT(hlsl::DxcGetBlobAsUtf8(*ppIncludeSource, DxcGetThreadMallocNoRef(), &utf8Source));
+    CComPtr<IDxcBlobEncoding> utf8Source;
+    IFT(hlsl::DxcGetBlobAsUtf8(*ppIncludeSource, &utf8Source));
 
-    StringRef Data(utf8Source->GetStringPointer(), utf8Source->GetStringLength());
+    StringRef Data((LPSTR)utf8Source->GetBufferPointer(), utf8Source->GetBufferSize());
     std::string strRegionData = (Twine(file_region) + Data + file_region).str();
 
     CComPtr<IDxcBlobEncoding> pEncodingIncludeSource;
@@ -149,11 +149,11 @@ private:
 };
 
 HRESULT IncludeToLibPreprocessorImpl::SplitShaderIntoSnippets(IDxcBlob *pSource) {
-  CComPtr<IDxcBlobUtf8> utf8Source;
-  IFT(hlsl::DxcGetBlobAsUtf8(pSource, DxcGetThreadMallocNoRef(), &utf8Source));
+  CComPtr<IDxcBlobEncoding> utf8Source;
+  IFT(hlsl::DxcGetBlobAsUtf8(pSource, &utf8Source));
 
-  StringRef Data(utf8Source->GetStringPointer(),
-                 utf8Source->GetStringLength());
+  StringRef Data((LPSTR)utf8Source->GetBufferPointer(),
+                 utf8Source->GetBufferSize());
   SmallVector<StringRef,8> splitResult;
   Data.split(splitResult, file_region, /*maxSplit*/-1, /*keepEmpty*/false);
   for (StringRef snippet : splitResult) {

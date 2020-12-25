@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_Util_PlainOldDataType_h
-#define Alembic_Util_PlainOldDataType_h
+#ifndef _Alembic_Util_PlainOldDataType_h_
+#define _Alembic_Util_PlainOldDataType_h_
 
 #include <Alembic/Util/Foundation.h>
 #include <Alembic/Util/Exception.h>

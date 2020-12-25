@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -38,15 +38,12 @@ DECLARE_MULTICAST_DELEGATE(FOnSelectedLODChangedMulticaster);
 typedef FOnSelectedLODChangedMulticaster::FDelegate FOnSelectedLODChanged;
 
 //The selected bone changed
-DECLARE_MULTICAST_DELEGATE_TwoParams(FOnSelectedBoneChangedMulticaster, const FName& /*InBoneName*/, ESelectInfo::Type /*InSelectInfo*/);
+DECLARE_MULTICAST_DELEGATE_OneParam(FOnSelectedBoneChangedMulticaster, const FName& /*InBoneName*/);
 typedef FOnSelectedBoneChangedMulticaster::FDelegate FOnSelectedBoneChanged;
 
 //The selected socket changed
 DECLARE_MULTICAST_DELEGATE_OneParam(FOnSelectedSocketChangedMulticaster, const FSelectedSocketInfo& /*InSocketInfo*/);
 typedef FOnSelectedSocketChangedMulticaster::FDelegate FOnSelectedSocketChanged;
-
-//The delegate to check if the attach component can be removed
-DECLARE_DELEGATE_RetVal_OneParam(bool, FOnRemoveAttachedComponentFilter, const USceneComponent* /*InComponent*/);
 
 /** Modes that the preview scene defaults to (usually depending on asset editor context) */
 enum class EPreviewSceneDefaultAnimationMode : int32
@@ -87,9 +84,6 @@ public:
 	/** Set the additional meshes used by this preview scene (sets the additional meshes on the skeleton) */
 	virtual void SetAdditionalMeshes(class UDataAsset* InAdditionalMeshes) = 0;
 
-	/** Set whether additional meshes are selectable */
-	virtual void SetAdditionalMeshesSelectable(bool bSelectable) = 0;
-
 	/** Refreshes the additional meshes displayed in this preview scene */
 	virtual void RefreshAdditionalMeshes(bool bAllowOverrideBaseMesh) = 0;
 
@@ -121,11 +115,7 @@ public:
 	virtual void RemoveAttachedObjectFromPreviewComponent(UObject* Object, FName AttachedTo) = 0;
 
 	/** Sets the selected bone on the preview component */
-	UE_DEPRECATED(4.26, "Please call/implement SetSelectedBone with ESelectInfo")
-	virtual void SetSelectedBone(const FName& BoneName) final { SetSelectedBone(BoneName, ESelectInfo::Direct); }
-
-	/** Sets the selected bone on the preview component */
-	virtual void SetSelectedBone(const FName& BoneName, ESelectInfo::Type InSelectInfo) = 0;
+	virtual void SetSelectedBone(const FName& BoneName) = 0;
 
 	/** Clears the selected bone on the preview component */
 	virtual void ClearSelectedBone() = 0;
@@ -162,15 +152,6 @@ public:
 
 	/** Unregisters a delegate to be called when the preview mesh's LOD has changed */
 	virtual void UnregisterOnLODChanged(void* Thing) = 0;
-
-	/** Registers a delegate to be called when the preview mesh's morph targets has changed */
-	virtual void RegisterOnMorphTargetsChanged(const FSimpleDelegate& Delegate) = 0;
-
-	/** Unregisters a delegate to be called when the preview mesh's morph targets has changed */
-	virtual void UnregisterOnMorphTargetsChanged(void* Thing) = 0;
-
-	/** Broadcasts that the preview mesh morph targets has changed */
-	virtual void BroadcastOnMorphTargetsChanged() = 0;
 
 	/** Registers a delegate to be called when the view is invalidated */
 	virtual void RegisterOnInvalidateViews(const FSimpleDelegate& Delegate) = 0;
@@ -289,10 +270,6 @@ public:
 
 	/** Unregister a callback for just after the preview scene is ticked */
 	virtual void UnregisterOnPostTick(void* Thing) = 0;
-
-	/** setter/getter for can remove attach component */
-	virtual void SetRemoveAttachedComponentFilter(const FOnRemoveAttachedComponentFilter& Delegate) = 0;
-	virtual void ClearRemoveAttachedComponentFilter() = 0;
 
 	/** Let the preview scene know that it should tick (because it is visible) */
 	virtual void FlagTickable() = 0;

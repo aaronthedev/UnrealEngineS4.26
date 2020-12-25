@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -33,7 +33,7 @@ struct CORE_API FWindowsPlatformTime
 	{
 		Windows::LARGE_INTEGER Cycles;
 		Windows::QueryPerformanceCounter(&Cycles);
-		return (uint32)Cycles.QuadPart;
+		return Cycles.QuadPart;
 	}
 
 	static FORCEINLINE uint64 Cycles64()

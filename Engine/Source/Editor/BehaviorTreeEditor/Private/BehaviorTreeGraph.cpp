@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "BehaviorTreeGraph.h"
 #include "EdGraph/EdGraphPin.h"
 #include "SGraphNode.h"
@@ -578,7 +578,8 @@ namespace BTGraphHelpers
 				CollectDecorators(BTAsset, GraphNode, DecoratorInstances, DecoratorOperations, true, RootNode, ExecutionIndex, TreeDepth, ChildIdx);
 
 				// store child data
-				FBTCompositeChild& ChildInfo = RootNode->Children.AddDefaulted_GetRef();
+				ChildIdx = RootNode->Children.AddDefaulted();
+				FBTCompositeChild& ChildInfo = RootNode->Children[ChildIdx];
 				ChildInfo.ChildComposite = CompositeInstance;
 				ChildInfo.ChildTask = TaskInstance;
 				ChildInfo.Decorators = DecoratorInstances;
@@ -626,7 +627,6 @@ namespace BTGraphHelpers
 				// assign execution index to child node
 				ChildNode->InitializeNode(RootNode, *ExecutionIndex, 0, TreeDepth);
 				*ExecutionIndex += 1;
-				ChildIdx++;
 
 				VerifyDecorators(GraphNode);
 

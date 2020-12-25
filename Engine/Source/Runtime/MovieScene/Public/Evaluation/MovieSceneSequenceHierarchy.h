@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,8 +12,6 @@
 #include "Evaluation/MovieSceneSequenceInstanceData.h"
 #include "Containers/ArrayView.h"
 #include "MovieSceneFrameMigration.h"
-#include "Evaluation/MovieSceneSegment.h"
-#include "Evaluation/MovieSceneEvaluationTree.h"
 #include "MovieSceneSequenceHierarchy.generated.h"
 
 class UMovieSceneSequence;
@@ -68,23 +66,10 @@ struct FMovieSceneSubSequenceData
 	/** This sequence's deterministic sequence ID. Used in editor to reduce the risk of collisions on recompilation. */ 
 	UPROPERTY()
 	FMovieSceneSequenceID DeterministicSequenceID;
-	
+
 	/** This sub sequence's playback range according to its parent sub section. Clamped recursively during template generation */
 	UPROPERTY()
 	FMovieSceneFrameRange PlayRange;
-
-	/** The sub-sequence's full playback range, in its own local time space. */
-	UPROPERTY()
-	FMovieSceneFrameRange FullPlayRange;
-
-	/**
-	 * The play range of the parent section, without any warping involved.
-	 * That means that, for a sub-sequence playing with an initial offset of 50 and looping 3 times,
-	 * this play range will start 50 frames after layRange's lower bound, and extend much past PlayRange's 
-	 * upper bound (3 times longer).
-	 */
-	UPROPERTY()
-	FMovieSceneFrameRange UnwarpedPlayRange;
 
 	/** The sequence preroll range considering the start offset */
 	UPROPERTY()
@@ -96,11 +81,7 @@ struct FMovieSceneSubSequenceData
 
 	/** The accumulated hierarchical bias of this sequence. Higher bias will take precedence */
 	UPROPERTY()
-	int16 HierarchicalBias;
-
-	/** Whether this sub-sequence has hierarchical easing. */
-	UPROPERTY()
-	bool bHasHierarchicalEasing;
+	int32 HierarchicalBias;
 
 	/** Instance data that should be used for any tracks contained immediately within this sub sequence */
 	UPROPERTY()
@@ -111,7 +92,6 @@ struct FMovieSceneSubSequenceData
 	/** This sequence's path within its movie scene */
 	UPROPERTY()
 	FName SectionPath;
-
 #endif
 
 private:
@@ -158,45 +138,6 @@ struct FMovieSceneSequenceHierarchyNode
 	TArray<FMovieSceneSequenceID> Children;
 };
 
-USTRUCT()
-struct FMovieSceneSubSequenceTreeEntry
-{
-	GENERATED_BODY()
-
-	friend FArchive& operator<<(FArchive& Ar, FMovieSceneSubSequenceTreeEntry& InOutEntry)
-	{
-		return Ar << InOutEntry.SequenceID << InOutEntry.Flags;
-	}
-
-	friend bool operator==(FMovieSceneSubSequenceTreeEntry A, FMovieSceneSubSequenceTreeEntry B)
-	{
-		return A.SequenceID == B.SequenceID && A.Flags == B.Flags;
-	}
-
-	FMovieSceneSequenceID SequenceID;
-	ESectionEvaluationFlags Flags;
-};
-
-USTRUCT()
-struct FMovieSceneSubSequenceTree
-{
-	GENERATED_BODY()
-
-	friend bool operator==(const FMovieSceneSubSequenceTree& A, const FMovieSceneSubSequenceTree& B)
-	{
-		return A.Data == B.Data;
-	}
-
-	bool Serialize(FArchive& Ar)
-	{
-		Ar << Data;
-		return true;
-	}
-
-	TMovieSceneEvaluationTree<FMovieSceneSubSequenceTreeEntry> Data;
-};
-template<> struct TStructOpsTypeTraits<FMovieSceneSubSequenceTree> : public TStructOpsTypeTraitsBase2<FMovieSceneSubSequenceTree> { enum { WithSerializer = true, WithIdenticalViaEquality = true }; };
-
 /**
  * Structure that stores hierarchical information pertaining to all sequences contained within a master sequence
  */
@@ -206,8 +147,9 @@ struct FMovieSceneSequenceHierarchy
 	GENERATED_BODY()
 
 	FMovieSceneSequenceHierarchy()
-		: RootNode(MovieSceneSequenceID::Invalid)
-	{}
+	{
+		Hierarchy.Add(MovieSceneSequenceID::Root, FMovieSceneSequenceHierarchyNode(MovieSceneSequenceID::Invalid));
+	}
 
 	/**
 	 * Find the structural information for the specified sequence ID
@@ -217,7 +159,7 @@ struct FMovieSceneSequenceHierarchy
 	 */
 	const FMovieSceneSequenceHierarchyNode* FindNode(FMovieSceneSequenceIDRef SequenceID) const
 	{
-		return SequenceID == MovieSceneSequenceID::Root ? &RootNode : Hierarchy.Find(SequenceID);
+		return Hierarchy.Find(SequenceID);
 	}
 
 	/**
@@ -228,7 +170,7 @@ struct FMovieSceneSequenceHierarchy
 	 */
 	FMovieSceneSequenceHierarchyNode* FindNode(FMovieSceneSequenceIDRef SequenceID)
 	{
-		return SequenceID == MovieSceneSequenceID::Root ? &RootNode : Hierarchy.Find(SequenceID);
+		return Hierarchy.Find(SequenceID);
 	}
 
 	/**
@@ -239,7 +181,7 @@ struct FMovieSceneSequenceHierarchy
 	 */
 	const FMovieSceneSubSequenceData* FindSubData(FMovieSceneSequenceIDRef SequenceID) const
 	{
-		return SequenceID == MovieSceneSequenceID::Root ? nullptr : SubSequences.Find(SequenceID);
+		return SubSequences.Find(SequenceID);
 	}
 
 	/**
@@ -250,18 +192,7 @@ struct FMovieSceneSequenceHierarchy
 	 */
 	FMovieSceneSubSequenceData* FindSubData(FMovieSceneSequenceIDRef SequenceID)
 	{
-		return SequenceID == MovieSceneSequenceID::Root ? nullptr : SubSequences.Find(SequenceID);
-	}
-
-	/**
-	 * Find the sub sequence for a given sequence ID, or nullptr if it was not found
-	 *
-	 * @return pointer to the sequence, or nullptr if the sequence ID does not exist in this hierarchy
-	 */
-	UMovieSceneSequence* FindSubSequence(FMovieSceneSequenceIDRef SequenceID) const
-	{
-		const FMovieSceneSubSequenceData* SubSequenceData = FindSubData(SequenceID);
-		return SubSequenceData ? SubSequenceData->GetSequence(): nullptr;
+		return SubSequences.Find(SequenceID);
 	}
 
 	/**
@@ -275,36 +206,13 @@ struct FMovieSceneSequenceHierarchy
 
 	void Remove(TArrayView<const FMovieSceneSequenceID> SequenceIDs);
 
-	void AddRange(FMovieSceneSequenceIDRef InSequenceID, const TRange<FFrameNumber>& RootSpaceRange, ESectionEvaluationFlags InFlags)
-	{
-		Tree.Data.AddUnique(RootSpaceRange, FMovieSceneSubSequenceTreeEntry{ InSequenceID, InFlags });
-	}
-
 	/** Access to all the subsequence data */
 	const TMap<FMovieSceneSequenceID, FMovieSceneSubSequenceData>& AllSubSequenceData() const
 	{
-		return SubSequences;
-	}
-
-	/** Access to all the sub sequence nodes */
-	const TMap<FMovieSceneSequenceID, FMovieSceneSequenceHierarchyNode>& AllSubSequenceNodes() const
-	{
-		return Hierarchy;
-	}
-
-	const TMovieSceneEvaluationTree<FMovieSceneSubSequenceTreeEntry>& GetTree() const
-	{
-		return Tree.Data;
+		return (const TMap<FMovieSceneSequenceID, FMovieSceneSubSequenceData>&)SubSequences;
 	}
 
 private:
-
-
-	UPROPERTY()
-	FMovieSceneSequenceHierarchyNode RootNode;
-
-	UPROPERTY()
-	FMovieSceneSubSequenceTree Tree;
 
 	/** Map of all (recursive) sub sequences found in this template, keyed on sequence ID */
 	UPROPERTY()

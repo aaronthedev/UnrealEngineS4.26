@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraStaticSwitchNodeDetails.h"
 #include "UObject/WeakObjectPtr.h"
@@ -33,6 +33,7 @@ FNiagaraStaticSwitchNodeDetails::FNiagaraStaticSwitchNodeDetails()
 
 	for (FNiagaraTypeDefinition Type : FNiagaraTypeRegistry::GetRegisteredParameterTypes())
 	{
+		//TODO are these all relevant niagara enum types?
 		if (Type.IsEnum())
 		{
 			DropdownOptions.Add(MakeShareable(new SwitchDropdownOption(Type.GetEnum()->GetName(), Type.GetEnum())));
@@ -49,22 +50,6 @@ void FNiagaraStaticSwitchNodeDetails::CustomizeDetails(IDetailLayoutBuilder& Det
 	if (ObjectsCustomized.Num() == 1 && ObjectsCustomized[0]->IsA<UNiagaraNodeStaticSwitch>())
 	{
 		Node = CastChecked<UNiagaraNodeStaticSwitch>(ObjectsCustomized[0].Get());
-
-		FNiagaraTypeDefinition TypeDefOnNode = Node->GetInputType();
-
-		// Just in case the actual enum type isn't shown, add to the list.
-		if (TypeDefOnNode.IsEnum())
-		{
-			bool bFoundAlready = false;
-			for (TSharedPtr<SwitchDropdownOption>& Option : DropdownOptions)
-			{
-				if (Option->Enum == TypeDefOnNode.GetEnum())
-					bFoundAlready = true;
-			}
-
-			if (!bFoundAlready)
-				DropdownOptions.Add(MakeShareable(new SwitchDropdownOption(TypeDefOnNode.GetEnum()->GetName(), TypeDefOnNode.GetEnum())));
-		}
 		UpdateSelectionFromNode();
 		
 		IDetailCategoryBuilder& CategoryBuilder = DetailBuilder.EditCategory(SwitchCategoryName);		
@@ -264,7 +249,7 @@ int32 FNiagaraStaticSwitchNodeDetails::GetDefaultWidgetIndex() const
 TOptional<int32> FNiagaraStaticSwitchNodeDetails::GetSwitchDefaultValue() const
 {
 	TOptional<FNiagaraVariableMetaData> MetaData = GetSwitchParameterMetadata();
-	return MetaData.IsSet() ? TOptional<int32>(MetaData->GetStaticSwitchDefaultValue()) : TOptional<int32>();
+	return MetaData.IsSet() ? TOptional<int32>(MetaData->StaticSwitchDefaultValue) : TOptional<int32>();
 }
 
 void FNiagaraStaticSwitchNodeDetails::DefaultIntValueCommitted(int32 Value, ETextCommit::Type CommitInfo)
@@ -272,7 +257,7 @@ void FNiagaraStaticSwitchNodeDetails::DefaultIntValueCommitted(int32 Value, ETex
 	TOptional<FNiagaraVariableMetaData> MetaData = GetSwitchParameterMetadata();
 	if (MetaData.IsSet())
 	{
-		MetaData->SetStaticSwitchDefaultValue(Value);
+		MetaData->StaticSwitchDefaultValue = Value;
 		SetSwitchParameterMetadata(MetaData.GetValue());
 	}
 }
@@ -282,7 +267,7 @@ void FNiagaraStaticSwitchNodeDetails::DefaultBoolValueCommitted(ECheckBoxState N
 	TOptional<FNiagaraVariableMetaData> MetaData = GetSwitchParameterMetadata();
 	if (MetaData.IsSet())
 	{
-		MetaData->SetStaticSwitchDefaultValue((NewState == ECheckBoxState::Checked) ? 1 : 0);
+		MetaData->StaticSwitchDefaultValue = (NewState == ECheckBoxState::Checked) ? 1 : 0;
 		SetSwitchParameterMetadata(MetaData.GetValue());
 	}
 }
@@ -329,7 +314,7 @@ void FNiagaraStaticSwitchNodeDetails::OnSelectionChanged(TSharedPtr<DefaultEnumO
 		return;
 	}
 
-	MetaData->SetStaticSwitchDefaultValue(SelectedDefaultValue->EnumIndex);
+	MetaData->StaticSwitchDefaultValue = SelectedDefaultValue->EnumIndex;
 	SetSwitchParameterMetadata(MetaData.GetValue());
 }
 
@@ -376,7 +361,7 @@ void FNiagaraStaticSwitchNodeDetails::OnSelectionChanged(TSharedPtr<ConstantDrop
 	// in case of an enum constant we also need the enum type
 	if (SelectedDropdownItem == DropdownOptions[4])
 	{
-		Node->SwitchTypeData.Enum = NewValue->Constant.GetType().GetEnum();
+		Node->SwitchTypeData.Enum = NewValue->Constant.GetType().Enum;
 	}
 	else
 	{
@@ -468,7 +453,7 @@ void FNiagaraStaticSwitchNodeDetails::RefreshDropdownValues()
 			FText DisplayName = Enum->GetDisplayNameTextByIndex(i);
 			DefaultEnumDropdownOptions.Add(MakeShared<DefaultEnumOption>(DisplayName, i));
 
-			if (MetaData.IsSet() && i == MetaData->GetStaticSwitchDefaultValue())
+			if (MetaData.IsSet() && i == MetaData->StaticSwitchDefaultValue)
 			{
 				SelectedDefaultValue = DefaultEnumDropdownOptions[i];
 			}
@@ -497,7 +482,6 @@ void FNiagaraStaticSwitchNodeDetails::SetSwitchParameterMetadata(const FNiagaraV
 		return;
 	}
 	Node->GetNiagaraGraph()->SetMetaData(FNiagaraVariable(Node->GetInputType(), Node->InputParameterName), MetaData);
-	Node->GetNiagaraGraph()->NotifyGraphNeedsRecompile();
 }
 
 void FNiagaraStaticSwitchNodeDetails::UpdateSelectionFromNode()
@@ -569,7 +553,6 @@ void FNiagaraStaticSwitchNodeDetails::OnParameterNameCommited(const FText& InTex
 	if (Node.IsValid())
 	{
 		Node->ChangeSwitchParameterName(FName(*InText.ToString()));
-		Node->GetNiagaraGraph()->NotifyGraphNeedsRecompile();
 	}
 }
 

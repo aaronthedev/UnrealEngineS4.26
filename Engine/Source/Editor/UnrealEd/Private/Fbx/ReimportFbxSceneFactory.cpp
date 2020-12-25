@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Factories/ReimportFbxSceneFactory.h"
 #include "Misc/Paths.h"
@@ -57,9 +57,6 @@
 #include "AI/Navigation/NavCollisionBase.h"
 #include "Subsystems/AssetEditorSubsystem.h"
 #include "Editor.h"
-
-#include "SSceneReimportNodeTreeView.h"
-#include "SSceneBaseMeshListView.h"
 
 #define LOCTEXT_NAMESPACE "FBXSceneReImportFactory"
 
@@ -252,24 +249,22 @@ bool GetFbxSceneReImportOptions(UnFbx::FFbxImporter* FbxImporter
 
 	GlobalImportSettings->OverrideMaterials.Reset();
 
-	if (!GIsRunningUnattendedScript)
+	TSharedPtr<SWindow> ParentWindow;
+	if (FModuleManager::Get().IsModuleLoaded("MainFrame"))
 	{
-		TSharedPtr<SWindow> ParentWindow;
-		if (FModuleManager::Get().IsModuleLoaded("MainFrame"))
-		{
-			IMainFrameModule& MainFrame = FModuleManager::LoadModuleChecked<IMainFrameModule>("MainFrame");
-			ParentWindow = MainFrame.GetParentWindow();
-		}
-		TSharedRef<SWindow> Window = SNew(SWindow)
-			.ClientSize(FVector2D(800.f, 650.f))
-			.Title(NSLOCTEXT("UnrealEd", "FBXSceneReimportOpionsTitle", "FBX Scene Reimport Options"));
-		TSharedPtr<SFbxSceneOptionWindow> FbxSceneOptionWindow;
+		IMainFrameModule& MainFrame = FModuleManager::LoadModuleChecked<IMainFrameModule>("MainFrame");
+		ParentWindow = MainFrame.GetParentWindow();
+	}
+	TSharedRef<SWindow> Window = SNew(SWindow)
+		.ClientSize(FVector2D(800.f, 650.f))
+		.Title(NSLOCTEXT("UnrealEd", "FBXSceneReimportOpionsTitle", "FBX Scene Reimport Options"));
+	TSharedPtr<SFbxSceneOptionWindow> FbxSceneOptionWindow;
 
-		//Make sure the display option show the save default options
-		SFbxSceneOptionWindow::CopyFbxOptionsToStaticMeshOptions(GlobalImportSettings, StaticMeshImportData);
-		SFbxSceneOptionWindow::CopyFbxOptionsToSkeletalMeshOptions(GlobalImportSettings, SkeletalMeshImportData);
+	//Make sure the display option show the save default options
+	SFbxSceneOptionWindow::CopyFbxOptionsToStaticMeshOptions(GlobalImportSettings, StaticMeshImportData);
+	SFbxSceneOptionWindow::CopyFbxOptionsToSkeletalMeshOptions(GlobalImportSettings, SkeletalMeshImportData);
 
-		Window->SetContent
+	Window->SetContent
 		(
 			SAssignNew(FbxSceneOptionWindow, SFbxSceneOptionWindow)
 			.SceneInfo(SceneInfoPtr)
@@ -284,23 +279,13 @@ bool GetFbxSceneReImportOptions(UnFbx::FFbxImporter* FbxImporter
 			.GlobalImportSettings(GlobalImportSettings)
 			.OwnerWindow(Window)
 			.FullPath(Path)
-		);
+			);
 
-		FSlateApplication::Get().AddModalWindow(Window, ParentWindow, false);
+	FSlateApplication::Get().AddModalWindow(Window, ParentWindow, false);
 
-		if (!FbxSceneOptionWindow->ShouldImport())
-		{
-			return false;
-		}
-	}
-	else
+	if (!FbxSceneOptionWindow->ShouldImport())
 	{
-		//Fill the node and mesh status data so the reimport know what was added/removed/changed
-		SFbxReimportSceneTreeView::FillNodeStatusMap(&NodeStatusMap, SceneInfoPtr, SceneInfoOriginalPtr);
-		bool bFillSkeletalMeshStatusMap = false;
-		SFbxSSceneBaseMeshListView::FillMeshStatusMap(&MeshStatusMap, SceneInfoPtr, SceneInfoOriginalPtr, bFillSkeletalMeshStatusMap);
-		bFillSkeletalMeshStatusMap = true;
-		SFbxSSceneBaseMeshListView::FillMeshStatusMap(&MeshStatusMap, SceneInfoPtr, SceneInfoOriginalPtr, bFillSkeletalMeshStatusMap);
+		return false;
 	}
 
 	//Set the bakepivot option in the SceneImportOptions
@@ -683,7 +668,7 @@ EReimportResult::Type UReimportFbxSceneFactory::Reimport(UObject* Obj)
 			//Delete the asset and use the normal dialog to make sure the user understand he will remove some content
 			//The user can decide to cancel the delete or not. This will not interrupt the reimport process
 			//The delete is done at the end because we want to remove the blueprint reference before deleting object
-			ObjectTools::DeleteAssets(AssetDataToDelete, !GIsRunningUnattendedScript);
+			ObjectTools::DeleteAssets(AssetDataToDelete, true);
 		}
 	}
 	//Make sure the content browser is in sync
@@ -698,13 +683,6 @@ EReimportResult::Type UReimportFbxSceneFactory::Reimport(UObject* Obj)
 	FbxImporter = nullptr;
 	GWarn->EndSlowTask();
 	return EReimportResult::Succeeded;
-}
-
-void UReimportFbxSceneFactory::ScriptReimportHelper(UObject* Obj)
-{
-	//Scripted reimport should be consider unattended
-	TGuardValue<bool> UnattendedScriptGuard(GIsRunningUnattendedScript, true);
-	Reimport(Obj);
 }
 
 void UReimportFbxSceneFactory::RemoveChildNodeRecursively(USimpleConstructionScript* SimpleConstructionScript, USCS_Node* ScsNode)
@@ -809,7 +787,7 @@ void UReimportFbxSceneFactory::RecursivelySetComponentProperties(USCS_Node* Curr
 	FString ReduceNodeName = NodeName;
 	if (NameContainTemplateSuffixe)
 	{
-		ReduceNodeName.LeftInline(IndexTemplateSuffixe, false);
+		ReduceNodeName = ReduceNodeName.Left(IndexTemplateSuffixe);
 	}
 
 	USceneComponent *CurrentNodeSceneComponent = Cast<USceneComponent>(CurrentNodeActorComponent);
@@ -1025,9 +1003,7 @@ UBlueprint *UReimportFbxSceneFactory::UpdateOriginalBluePrint(FString &BluePrint
 		CollectGarbage(GARBAGE_COLLECTION_KEEPFLAGS);
 
 		//Create the new nodes from the hierarchy actor
-		FKismetEditorUtilities::FAddComponentsToBlueprintParams Params;
-		Params.bKeepMobility = true;
-		FKismetEditorUtilities::AddComponentsToBlueprint(BluePrint, HierarchyActor->GetInstanceComponents(), Params);
+		FKismetEditorUtilities::AddComponentsToBlueprint(BluePrint, HierarchyActor->GetInstanceComponents(), false, nullptr, true);
 		
 		UWorld* World = HierarchyActor->GetWorld();
 		World->DestroyActor(HierarchyActor);
@@ -1220,7 +1196,6 @@ EReimportResult::Type UReimportFbxSceneFactory::ImportStaticMesh(void* VoidFbxIm
 	{
 		if (Pkg != nullptr)
 		{
-			Pkg->SetDirtyFlag(false);
 			Pkg->RemoveFromRoot();
 			Pkg->ConditionalBeginDestroy();
 		}
@@ -1420,7 +1395,7 @@ EReimportResult::Type UReimportFbxSceneFactory::ReimportSkeletalMesh(void* VoidF
 						if (DestSeq == nullptr)
 						{
 							//Import a new sequence
-							ParentPackage = CreatePackage( *ParentPath);
+							ParentPackage = CreatePackage(NULL, *ParentPath);
 							Object = LoadObject<UObject>(ParentPackage, *SequenceName, NULL, LOAD_None, NULL);
 							DestSeq = Cast<UAnimSequence>(Object);
 							if (Object && !DestSeq)

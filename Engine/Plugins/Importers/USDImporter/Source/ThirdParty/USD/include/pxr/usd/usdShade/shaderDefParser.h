@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_SHADE_SHADER_DEF_PARSER_H
-#define PXR_USD_USD_SHADE_SHADER_DEF_PARSER_H
+#ifndef USDSHADE_SRDPARSERPLUGIN_H
+#define USDSHADE_SRDPARSERPLUGIN_H
 
 #include "pxr/usd/usdShade/api.h"
 
@@ -64,4 +64,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_USD_SHADE_SHADER_DEF_PARSER_H
+#endif // USDSHADE_SRDPARSERPLUGIN_H

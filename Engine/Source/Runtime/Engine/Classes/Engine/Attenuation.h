@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -35,20 +35,6 @@ namespace EAttenuationShape
 	};
 }
 
-UENUM(BlueprintType)
-enum class ENaturalSoundFalloffMode : uint8
-{
-	// (Default) Continues attenuating pass falloff max using volume value
-	// specified at the max falloff distance's bounds
-	Continues,
-
-	// Sound goes silent upon leaving the shape
-	Silent,
-
-	// Holds the volume value specified at the shapes falloff bounds
-	Hold,
-};
-
 /*
 * Base class for attenuation settings.
 */
@@ -67,15 +53,9 @@ struct ENGINE_API FBaseAttenuationSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category= AttenuationDistance)
 	TEnumAsByte<enum EAttenuationShape::Type> AttenuationShape;
 
-	/* The attenuation volume at the falloff distance in decibels (Only for 'Natural Sound' Distance Algorithm). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category= AttenuationDistance, meta=(DisplayName = "Attenuation At Max (dB)", ClampMin = "-60", ClampMax = "0"))
+	/* The attenuation volume at maximum distance in decibels, used for natural attenuation method. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category= AttenuationDistance, meta=(DisplayName = "dB Attenuation At Max", ClampMax = "0" ))
 	float dBAttenuationAtMax;
-
-	// Whether to continue attenuating, go silent, or hold last volume value when beyond falloff bounds and 
-	// 'Attenuation At Max (dB)' is set to a value greater than -60dB.
-	// (Only for 'Natural Sound' Distance Algorithm). */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category= AttenuationDistance)
-	ENaturalSoundFalloffMode FalloffMode;
 
 	/* The dimensions to use for the attenuation shape. Interpretation of the values differ per shape.
 	   Sphere  - X is Sphere Radius. Y and Z are unused
@@ -98,7 +78,15 @@ struct ENGINE_API FBaseAttenuationSettings
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category= AttenuationDistance)
 	FRuntimeFloatCurve CustomAttenuationCurve;
 
-	FBaseAttenuationSettings();
+	FBaseAttenuationSettings()
+		: DistanceAlgorithm(EAttenuationDistanceModel::Linear)
+		, AttenuationShape(EAttenuationShape::Sphere)
+		, dBAttenuationAtMax(-60.f)
+		, AttenuationShapeExtents(400.f, 0.f, 0.f)
+		, ConeOffset(0.f)
+		, FalloffDistance(3600.f)
+	{
+	}
 
 	struct AttenuationShapeDetails
 	{
@@ -109,9 +97,6 @@ struct ENGINE_API FBaseAttenuationSettings
 
 	virtual void CollectAttenuationShapesForVisualization(TMultiMap<EAttenuationShape::Type, AttenuationShapeDetails>& ShapeDetailsMap) const;
 	float GetMaxDimension() const;
-
-	float GetMaxFalloffDistance() const;
-
 	float Evaluate(const FTransform& Origin, FVector Location, float DistanceScale = 1.f) const;
 
 	float AttenuationEval(float Distance, float Falloff, float DistanceScale = 1.f) const;

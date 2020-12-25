@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -46,8 +46,6 @@ public:
 
 	/** \see UARBlueprintLibrary::GetTrackingQuality() */
 	EARTrackingQuality GetTrackingQuality() const;
-	/** \see UARBlueprintLibrary::GetTrackingQualityReason() */
-	EARTrackingQualityReason GetTrackingQualityReason() const;
 	/** \see UARBlueprintLibrary::StartARSession() */
 	void StartARSession(UARSessionConfig* InSessionConfig);
 	/** \see UARBlueprintLibrary::PauseARSession() */
@@ -58,14 +56,6 @@ public:
 	FARSessionStatus GetARSessionStatus() const;
 	/** \see UARBlueprintLibrary::IsSessionTypeSupported() */
 	bool IsSessionTypeSupported(EARSessionType SessionType) const;
-
-	/** \see UARBlueprintLibrary::ToggleARCapture() */
-	bool ToggleARCapture(const bool bOnOff, const EARCaptureType CaptureType);
-
-	/** \see UARBlueprintLibrary::ToggleARCapture() */
-	void SetEnabledXRCamera(bool bOnOff);
-	/** \see UARBlueprintLibrary::ToggleARCapture() */
-	FIntPoint ResizeXRCamera(const FIntPoint& InSize);
 
 	/**
 	 * \see UARBlueprintLibrary::SetAlignmentTransform()
@@ -82,6 +72,10 @@ public:
 	TArray<UARTrackedGeometry*> GetAllTrackedGeometries() const;
 	/** \see UARBlueprintLibrary::GetAllPins() */
 	TArray<UARPin*> GetAllPins() const;
+	/** \see UARBlueprintLibrary::GetCameraImage() */
+	UARTextureCameraImage* GetCameraImage();
+	/** \see UARBlueprintLibrary::GetCameraDepth() */
+	UARTextureCameraDepth* GetCameraDepth();
 	/**\see UARBlueprintLibrary::IsEnvironmentCaptureSupported() */
 	bool IsEnvironmentCaptureSupported() const;
 	/**\see UARBlueprintLibrary::AddEnvironmentCaptureProbe() */
@@ -102,7 +96,6 @@ public:
 	UARPin* PinComponent(USceneComponent* ComponentToPin, const FARTraceResult& HitResult, const FName DebugName = NAME_None);
 	/** \see UARBlueprintLibrary::RemovePin() */
 	void RemovePin(UARPin* PinToRemove);
-	bool TryGetOrCreatePinForNativeResource(void* InNativeResource, const FString& InAnchorName, UARPin*& OutAnchor);
 
 	/** \see UARBlueprintLibrary::GetSupportedVideoFormats() */
 	TArray<FARVideoFormat> GetSupportedVideoFormats(EARSessionType SessionType = EARSessionType::World) const;
@@ -122,23 +115,11 @@ public:
 	/** \see UARBlueprintLibrary::GetTracked2DPose() */
 	TArray<FARPose2D> GetTracked2DPose() const;
 	
-	/** \see UARBlueprintLibrary::IsSceneReconstructionSupported() */
-	bool IsSceneReconstructionSupported(EARSessionType SessionType, EARSceneReconstruction SceneReconstructionMethod) const;
+	/** \see UARBlueprintLibrary::GetPersonSegmentationImage() */
+	UARTextureCameraImage* GetPersonSegmentationImage() const;
 	
-	/** \see UARBlueprintLibrary::AddTrackedPointWithName() */
-	bool AddTrackedPointWithName(const FTransform& WorldTransform, const FString& PointName, bool bDeletePointsWithSameName);
-	
-	/** \see UARBlueprintLibrary::GetNumberOfTrackedFacesSupported() */
-	int32 GetNumberOfTrackedFacesSupported() const;
-	
-	/** \see UARBlueprintLibrary::GetARTexture() */
-	UARTexture* GetARTexture(EARTextureType TextureType) const;
-	
-	/** \see UARBlueprintLibrary::GetCameraIntrinsics() */
-	bool GetCameraIntrinsics(FARCameraIntrinsics& OutCameraIntrinsics) const;
-	
-	/** \see UARBlueprintLibrary::IsARSupported() */
-	bool IsARAvailable() const;
+	/** \see UARBlueprintLibrary::GetPersonSegmentationDepthImage() */
+	UARTextureCameraImage* GetPersonSegmentationDepthImage() const;
 
 	//~ FGCObject
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
@@ -149,16 +130,6 @@ public:
 	DECLARE_AR_SI_DELEGATE_FUNCS(OnTrackableUpdated)
 	DECLARE_AR_SI_DELEGATE_FUNCS(OnTrackableRemoved)
 	// End helpers
-
-	/** Pin Interface */
-	bool PinComponent(USceneComponent* ComponentToPin, UARPin* Pin);
-	bool IsLocalPinSaveSupported() const;
-	bool ArePinsReadyToLoad();
-	void LoadARPins(TMap<FName, UARPin*>& LoadedPins);
-	bool SaveARPin(FName InName, UARPin* InPin);
-	void RemoveSavedARPin(FName InName);
-	void RemoveAllSavedARPins();
-
 
 	FARSystemOnSessionStarted OnARSessionStarted;
 	FARSystemOnAlignmentTransformUpdated OnAlignmentTransformUpdated;

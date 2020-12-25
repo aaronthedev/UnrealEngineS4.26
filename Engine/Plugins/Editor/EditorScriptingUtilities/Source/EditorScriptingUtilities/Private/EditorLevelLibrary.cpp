@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EditorLevelLibrary.h"
 
@@ -178,7 +178,6 @@ void UEditorLevelLibrary::SetSelectedLevelActors(const TArray<class AActor*>& Ac
 		return;
 	}
 
-	GEditor->GetSelectedActors()->Modify();
 	if (ActorsToSelect.Num() > 0)
 	{
 		GEditor->SelectNone(false, true, false);
@@ -284,20 +283,17 @@ void UEditorLevelLibrary::SetLevelViewportCameraInfo(FVector CameraLocation, FRo
 
 void UEditorLevelLibrary::ClearActorSelectionSet()
 {
-	GEditor->GetSelectedActors()->Modify();
 	GEditor->GetSelectedActors()->DeselectAll();
 	GEditor->NoteSelectionChange();
 }
 
 void UEditorLevelLibrary::SelectNothing()
 {
-	GEditor->GetSelectedActors()->Modify();
 	GEditor->SelectNone(true, true, false);
 }
 
 void UEditorLevelLibrary::SetActorSelectionState(AActor* Actor, bool bShouldBeSelected)
 {
-	GEditor->GetSelectedActors()->Modify();
 	GEditor->SelectActor(Actor, bShouldBeSelected, /*bNotify=*/ false);
 }
 
@@ -327,17 +323,9 @@ void UEditorLevelLibrary::EditorPlaySimulate()
 	TSharedPtr<IAssetViewport> ActiveLevelViewport = LevelEditorModule.GetFirstActiveViewport();
 	if (ActiveLevelViewport.IsValid())
 	{
-		FRequestPlaySessionParams SessionParams;
-		SessionParams.WorldType = EPlaySessionWorldType::SimulateInEditor;
-		SessionParams.DestinationSlateViewport = ActiveLevelViewport;
-
-		GUnrealEd->RequestPlaySession(SessionParams);
+		const bool bSimulateInEditor = true;
+		GUnrealEd->RequestPlaySession(false, ActiveLevelViewport, bSimulateInEditor, NULL, NULL, -1, false);
 	}
-}
-
-void UEditorLevelLibrary::EditorEndPlay()
-{
-	GUnrealEd->RequestEndPlayMap();
 }
 
 void UEditorLevelLibrary::EditorInvalidateViewports()
@@ -354,7 +342,7 @@ void UEditorLevelLibrary::EditorInvalidateViewports()
 
 namespace InternalEditorLevelLibrary
 {
-	AActor* SpawnActor(const TCHAR* MessageName, UObject* ObjToUse, FVector Location, FRotator Rotation, bool bTransient = false)
+	AActor* SpawnActor(const TCHAR* MessageName, UObject* ObjToUse, FVector Location, FRotator Rotation)
 	{
 		if (!EditorScriptingUtils::CheckIfInEditorAndPIE())
 		{
@@ -384,17 +372,7 @@ namespace InternalEditorLevelLibrary
 		GEditor->ClickLocation = Location;
 		GEditor->ClickPlane = FPlane(Location, FVector::UpVector);
 
-		EObjectFlags NewObjectFlags = RF_NoFlags;
-
-		if (bTransient)
-		{
-			NewObjectFlags |= RF_Transient;
-		}
-		else
-		{
-			NewObjectFlags |= RF_Transactional;
-		}
-
+		const EObjectFlags NewObjectFlags = RF_Transactional;
 		UActorFactory* FactoryToUse = nullptr;
 		bool bSelectActors = true;
 		TArray<AActor*> Actors = FLevelEditorViewportClient::TryPlacingActorFromObject(DesiredLevel, ObjToUse, bSelectActors, NewObjectFlags, FactoryToUse);
@@ -417,7 +395,7 @@ namespace InternalEditorLevelLibrary
 	}
 }
 
-AActor* UEditorLevelLibrary::SpawnActorFromObject(UObject* ObjToUse, FVector Location, FRotator Rotation, bool bTransient)
+AActor* UEditorLevelLibrary::SpawnActorFromObject(UObject* ObjToUse, FVector Location, FRotator Rotation)
 {
 	TGuardValue<bool> UnattendedScriptGuard(GIsRunningUnattendedScript, true);
 
@@ -432,10 +410,10 @@ AActor* UEditorLevelLibrary::SpawnActorFromObject(UObject* ObjToUse, FVector Loc
 		return nullptr;
 	}
 
-	return InternalEditorLevelLibrary::SpawnActor(TEXT("SpawnActorFromObject"), ObjToUse, Location, Rotation, bTransient);
+	return InternalEditorLevelLibrary::SpawnActor(TEXT("SpawnActorFromObject"), ObjToUse, Location, Rotation);
 }
 
-AActor* UEditorLevelLibrary::SpawnActorFromClass(TSubclassOf<class AActor> ActorClass, FVector Location, FRotator Rotation, bool bTransient)
+AActor* UEditorLevelLibrary::SpawnActorFromClass(TSubclassOf<class AActor> ActorClass, FVector Location, FRotator Rotation)
 {
 	TGuardValue<bool> UnattendedScriptGuard(GIsRunningUnattendedScript, true);
 
@@ -450,7 +428,7 @@ AActor* UEditorLevelLibrary::SpawnActorFromClass(TSubclassOf<class AActor> Actor
 		return nullptr;
 	}
 
-	return InternalEditorLevelLibrary::SpawnActor(TEXT("SpawnActorFromClass"), ActorClass.Get(), Location, Rotation, bTransient);
+	return InternalEditorLevelLibrary::SpawnActor(TEXT("SpawnActorFromClass"), ActorClass.Get(), Location, Rotation);
 }
 
 bool UEditorLevelLibrary::DestroyActor(class AActor* ToDestroyActor)
@@ -511,28 +489,6 @@ UWorld* UEditorLevelLibrary::GetGameWorld()
 	return InternalEditorLevelLibrary::GetGameWorld();
 }
 
-TArray<UWorld*> UEditorLevelLibrary::GetPIEWorlds(bool bIncludeDedicatedServer)
-{
-	TGuardValue<bool> UnattendedScriptGuard(GIsRunningUnattendedScript, true);
-
-	TArray<UWorld*> PIEWorlds;
-
-	if (GEditor)
-	{
-		for (const FWorldContext& WorldContext : GEngine->GetWorldContexts())
-		{
-			if (WorldContext.WorldType == EWorldType::PIE)
-			{
-				if (bIncludeDedicatedServer || !WorldContext.RunAsDedicated)
-				{
-					PIEWorlds.Add(WorldContext.World());
-				}
-			}
-		}
-	}
-
-	return PIEWorlds;
-}
 
 /**
  *
@@ -842,7 +798,7 @@ namespace InternalEditorLevelLibrary
 	int32 ReplaceMaterials(ArrayType& Array, UMaterialInterface* MaterialToBeReplaced, UMaterialInterface* NewMaterial)
 	{
 		//Would use FObjectEditorUtils::SetPropertyValue, but Material are a special case. They need a lock and we need to use the SetMaterial function
-		FProperty* MaterialProperty = FindFieldChecked<FProperty>(UMeshComponent::StaticClass(), GET_MEMBER_NAME_CHECKED(UMeshComponent, OverrideMaterials));
+		UProperty* MaterialProperty = FindFieldChecked<UProperty>(UMeshComponent::StaticClass(), GET_MEMBER_NAME_CHECKED(UMeshComponent, OverrideMaterials));
 		TArray<UObject*, TInlineAllocator<16>> ObjectsThatChanged;
 		int32 NumberOfChanges = 0;
 
@@ -942,7 +898,7 @@ namespace InternalEditorLevelLibrary
 	int32 ReplaceMeshes(const ArrayType& Array, UStaticMesh* MeshToBeReplaced, UStaticMesh* NewMesh)
 	{
 		//Would use FObjectEditorUtils::SetPropertyValue, but meshes are a special case. They need a lock and we need to use the SetMesh function
-		FProperty* StaticMeshProperty = FindFieldChecked<FProperty>(UStaticMeshComponent::StaticClass(), "StaticMesh");
+		UProperty* StaticMeshProperty = FindFieldChecked<UProperty>(UStaticMeshComponent::StaticClass(), "StaticMesh");
 		TArray<UObject*, TInlineAllocator<16>> ObjectsThatChanged;
 		int32 NumberOfChanges = 0;
 

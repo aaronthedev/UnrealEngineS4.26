@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	UObjectHash.h: Unreal object name hashes
@@ -75,28 +75,6 @@ COREUOBJECT_API void ForEachObjectWithOuter(const class UObjectBase* Outer, TFun
 COREUOBJECT_API class UObjectBase* FindObjectWithOuter(const class UObjectBase* Outer, const class UClass* ClassToLookFor = nullptr, FName NameToLookFor = NAME_None);
 
 /**
- * Returns an array of all objects found within a given package
- *
- * @param	Package						Package to search into
- * @param	Results						Array to put the results
- * @param	bIncludeNestedObjects		If true, then things whose outers directly or indirectly have Outer as an outer are included, these are the nested objects.
- * @param	ExclusionFlags				Specifies flags to use as a filter for which objects to return
- * @param	ExclusiveInternalFlags		Specifies internal flags to use as a filter for which objects to return
- */
-COREUOBJECT_API void GetObjectsWithPackage(const class UPackage* Outer, TArray<UObject *>& Results, bool bIncludeNestedObjects = true, EObjectFlags ExclusionFlags = RF_NoFlags, EInternalObjectFlags ExclusionInternalFlags = EInternalObjectFlags::None);
-
-/**
- * Performs an operation on all objects found within a given package
- *
- * @param	Package						Package to iterate into
- * @param	Operation					Function to be called for each object, return false to break out of the iteration
- * @param	bIncludeNestedObjects		If true, then things whose outers directly or indirectly have Outer as an outer are included, these are the nested objects.
- * @param	ExclusionFlags				Specifies flags to use as a filter for which objects to return
- * @param	ExclusiveInternalFlags		Specifies internal flags to use as a filter for which objects to return
- */
-COREUOBJECT_API void ForEachObjectWithPackage(const class UPackage* Outer, TFunctionRef<bool(UObject*)> Operation, bool bIncludeNestedObjects = true, EObjectFlags ExclusionFlags = RF_NoFlags, EInternalObjectFlags ExclusionInternalFlags = EInternalObjectFlags::None);
-
-/**
  * Returns an array of objects of a specific class. Optionally, results can include objects of derived classes as well.
  *
  * @param	ClassToLookFor				Class of the objects to return.
@@ -108,24 +86,14 @@ COREUOBJECT_API void ForEachObjectWithPackage(const class UPackage* Outer, TFunc
 COREUOBJECT_API void GetObjectsOfClass(const UClass* ClassToLookFor, TArray<UObject *>& Results, bool bIncludeDerivedClasses = true, EObjectFlags ExcludeFlags = RF_ClassDefaultObject, EInternalObjectFlags ExclusionInternalFlags = EInternalObjectFlags::None);
 
 /**
- * Performs an operation on all objects of the provided class
+ * Performs an operation on all objects with a given outer
  *
- * @param	Outer						UObject class to loop over instances of
+ * @param	Outer						Outer to search for
  * @param	Operation					Function to be called for each object
  * @param	bIncludeDerivedClasses		If true, the results will include objects of child classes as well.
  * @param	AdditionalExcludeFlags		Objects with any of these flags will be excluded from the results.
  */
 COREUOBJECT_API void ForEachObjectOfClass(const UClass* ClassToLookFor, TFunctionRef<void(UObject*)> Operation, bool bIncludeDerivedClasses = true, EObjectFlags ExcludeFlags = RF_ClassDefaultObject, EInternalObjectFlags ExclusionInternalFlags = EInternalObjectFlags::None);
-
-/**
- * Performs an operation on all objects of the provided classes
- *
- * @param	Classes						UObject Classes to loop over instances of
- * @param	Operation					Function to be called for each object
- * @param	bIncludeDerivedClasses		If true, the results will include objects of child classes as well.
- * @param	AdditionalExcludeFlags		Objects with any of these flags will be excluded from the results.
- */
-COREUOBJECT_API void ForEachObjectOfClasses(TArrayView<const UClass*> ClassesToLookFor, TFunctionRef<void(UObject*)> Operation, EObjectFlags ExcludeFlags = RF_ClassDefaultObject, EInternalObjectFlags ExclusionInternalFlags = EInternalObjectFlags::None);
 
 /**
  * Returns an array of classes that were derived from the specified class.
@@ -157,46 +125,10 @@ void HashObject(class UObjectBase* Object);
  */
 void UnhashObject(class UObjectBase* Object);
 
-
-/**
- * Assign an external package directly to an object in the hash tables
- * @param Object	Object to assign a package to
- * @param Package	Package to assign, null will call UnhashObjectExternalPackage
- */
-void HashObjectExternalPackage(class UObjectBase* Object, class UPackage* Package);
-
-/**
- * Assign an external package directly to an object in the hash tables
- * @param Object	Object to unassign a package from
- */
-void UnhashObjectExternalPackage(class UObjectBase* Object);
-
-/**
- * Return the assigned external package of an object, if any
- * @param Object	Object to get the external package of
- * @return the assigned external package if any
- */
-UPackage* GetObjectExternalPackageThreadSafe(const class UObjectBase* Object);
-
-/**
- * Return the assigned external package of an object, if any
- * @param Object	Object to get the external package of
- * @return the assigned external package if any
- * @note DO NOT USE, only for internal GC reference collecting
- */
-UPackage* GetObjectExternalPackageInternal(const class UObjectBase* Object);
-
 /**
 * Shrink the UObject hash tables
 */
 COREUOBJECT_API void ShrinkUObjectHashTables();
-
-/**
-* Get a version number representing the current state of registered classes.
-*
-* Can be stored and then compared to invalidate external caching of classes hierarchy whenever it changes. 
-*/
-COREUOBJECT_API uint64 GetRegisteredClassesVersionNumber();
 
 /**
  * Logs out information about the object hash for debug purposes
@@ -213,14 +145,6 @@ COREUOBJECT_API void LogHashStatistics(FOutputDevice& Ar, const bool bShowHashBu
  * @param bShowHashBucketCollisionInfo whether to log each bucket's collision count
  */
 COREUOBJECT_API void LogHashOuterStatistics(FOutputDevice& Ar, const bool bShowHashBucketCollisionInfo);
-
-/**
- * Logs out information about the total object hash memory usage for debug purposes
- *
- * @param Ar the archive to write the log data to
- * @param bShowIndividualStats whether to log each hash/map memory usage separately
- */
-COREUOBJECT_API void LogHashMemoryOverheadStatistics(FOutputDevice& Ar, const bool bShowIndividualStats);
 
 /**
  * Adds a uobject to the global array which is used for uobject iteration

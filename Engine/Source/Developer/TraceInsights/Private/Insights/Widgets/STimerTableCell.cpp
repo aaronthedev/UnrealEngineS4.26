@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "STimerTableCell.h"
 
@@ -6,7 +6,6 @@
 #include "SlateOptMacros.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/SToolTip.h"
@@ -14,7 +13,6 @@
 #include "Widgets/Views/SExpanderArrow.h"
 
 // Insights
-#include "Insights/InsightsStyle.h"
 #include "Insights/Table/ViewModels/Table.h"
 #include "Insights/Table/ViewModels/TableColumn.h"
 #include "Insights/Widgets/STimerTableRow.h"
@@ -94,25 +92,6 @@ TSharedRef<SWidget> STimerTableCell::GenerateWidgetForNameColumn(const FArgument
 				.Visibility(this, &STimerTableCell::GetHintIconVisibility)
 				.Image(FEditorStyle::GetBrush("Profiler.Tooltip.HintIcon10"))
 				.ToolTip(GetRowToolTip(TableRow))
-			]
-		]
-
-		// Color box
-		+ SHorizontalBox::Slot()
-		.AutoWidth()
-		.HAlign(HAlign_Center)
-		.VAlign(VAlign_Center)
-		[
-			SNew(SBox)
-			.Visibility(this, &STimerTableCell::GetBoxVisibility)
-			.WidthOverride(14.0f)
-			.HeightOverride(14.0f)
-			[
-				SNew(SBorder)
-				.BorderImage(FInsightsStyle::Get().GetBrush("WhiteBrush"))
-				.BorderBackgroundColor(this, &STimerTableCell::GetBoxColorAndOpacity)
-				.HAlign(HAlign_Fill)
-				.VAlign(VAlign_Fill)
 			]
 		]
 

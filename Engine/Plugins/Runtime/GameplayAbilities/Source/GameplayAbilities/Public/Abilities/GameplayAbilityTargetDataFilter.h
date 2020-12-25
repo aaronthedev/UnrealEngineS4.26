@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -67,13 +67,13 @@ struct GAMEPLAYABILITIES_API FGameplayTargetDataFilter
 	UPROPERTY()
 	AActor* SelfActor;
 
-	/** Subclass actors must be to pass the filter. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ExposeOnSpawn = true), Category = Filter)
-	TSubclassOf<AActor> RequiredActorClass;
-
 	/** Filter based on whether or not this actor is "self." */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ExposeOnSpawn = true), Category = Filter)
 	TEnumAsByte<ETargetDataFilterSelf::Type> SelfFilter;
+
+	/** Subclass actors must be to pass the filter. */
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ExposeOnSpawn = true), Category = Filter)
+	TSubclassOf<AActor> RequiredActorClass;
 
 	/** Reverses the meaning of the filter, so it will exclude all actors that pass. */
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, meta = (ExposeOnSpawn = true), Category = Filter)

@@ -165,13 +165,11 @@
     <Compile Include="Executors\ParallelExecutor.cs" />
     <Compile Include="Executors\SNDBS.cs" />
     <Compile Include="Executors\XGE.cs" />
-    <Compile Include="Executors\Experimental\FASTBuild.cs" />
     <Compile Include="Modes\WriteMetadataMode.cs" />
     <Compile Include="Platform\IOS\IOSPostBuildSyncMode.cs" />
     <Compile Include="Platform\IOS\MobileProvisionContents.cs" />
     <Compile Include="Platform\Lumin\LuminPackageManifest.cs" />
     <Compile Include="Platform\Lumin\UEDeployLumin.cs" />
-    <Compile Include="Platform\Windows\VCManifestGenerator.cs" />
     <Compile Include="ProjectFiles\CLion\CLionGenerator.cs" />
     <Compile Include="ProjectFiles\CMake\CMakefileGenerator.cs" />
     <Compile Include="ProjectFiles\CodeLite\CodeLiteGenerator.cs" />
@@ -187,7 +185,6 @@
     <Compile Include="ProjectFiles\QMake\QMakefileGenerator.cs" />
     <Compile Include="ProjectFiles\Rider\RiderProjectFile.cs" />
     <Compile Include="ProjectFiles\Rider\RiderProjectFileGenerator.cs" />
-    <Compile Include="ProjectFiles\Rider\ToolchainInfo.cs" />
     <Compile Include="ProjectFiles\VisualStudioCode\VSCodeProjectFileGenerator.cs" />
     <Compile Include="ProjectFiles\VisualStudio\VCProject.cs" />
     <Compile Include="ProjectFiles\VisualStudio\VCProjectFileGenerator.cs" />
@@ -206,7 +203,6 @@
     <Compile Include="System\CppIncludeParser.cs" />
     <Compile Include="System\FileMetadataPrefetch.cs" />
     <Compile Include="Modes\ParseMsvcTimingInfo.cs" />
-    <Compile Include="System\ActionGraphBuilder.cs" />
     <Compile Include="System\RestrictedFolders.cs" />
     <Compile Include="System\RulesScope.cs" />
     <Compile Include="System\SourceFileMetadataCache.cs" />
@@ -233,7 +229,6 @@
     <Compile Include="System\ConfigFileAttribute.cs" />
     <Compile Include="System\ConfigHierarchy.cs" />
     <Compile Include="System\CustomBuildSteps.cs" />
-    <Compile Include="System\DeployExports.cs" />
     <Compile Include="System\InstalledPlatformInfo.cs" />
     <Compile Include="System\LocalizationDescriptor.cs" />
     <Compile Include="System\ObsoleteOverrideAttribute.cs" />
@@ -243,7 +238,6 @@
     <Compile Include="System\SingleInstanceMutex.cs" />
     <Compile Include="System\SourceFileWorkingSet.cs" />
     <Compile Include="System\StartupTraceListener.cs" />
-    <Compile Include="System\Subnet.cs" />
     <Compile Include="System\SupportedConfigurationsAttribute.cs" />
     <Compile Include="System\SupportedPlatformsAttribute.cs" />
     <Compile Include="System\TargetMakefile.cs" />
@@ -283,6 +277,13 @@
       </ItemGroup>
     </When>
   </Choose>
+  <Choose>
+    <When Condition="Exists('Platform\Android\NoRedist\AndroidToolChainInternal.cs')">
+      <ItemGroup>
+        <Compile Include="Platform\Android\NoRedist\AndroidToolChainInternal.cs" />
+      </ItemGroup>
+    </When>
+  </Choose>
   <ItemGroup>
     <Compile Include="ToolChain\RemoteMac.cs" />
     <Compile Include="UnrealBuildTool.cs" />
@@ -304,7 +305,7 @@
   <Choose>
     <When Condition="'$(OS)' != 'Windows_NT'">
       <PropertyGroup>
-        <DefineConstants>$(DefineConstants);__MonoCS__</DefineConstants>
+        <DefineConstants>__MonoCS__</DefineConstants>
       </PropertyGroup>
     </When>
   </Choose>
@@ -328,6 +329,13 @@
     </When>
   </Choose>
   <Choose>
+    <When Condition="Exists('Platform\IOS\NoRedist\IOSToolChainInternal.cs')">
+      <ItemGroup>
+        <Compile Include="Platform\IOS\NoRedist\IOSToolChainInternal.cs" />
+      </ItemGroup>
+    </When>
+  </Choose>
+  <Choose>
     <When Condition="Exists('Platform\Linux\UEBuildLinux.cs')">
       <ItemGroup>
         <Compile Include="Platform\Linux\LinuxCommon.cs" />
@@ -347,6 +355,9 @@
         <Compile Include="Platform\Lumin\UEBuildLumin.cs" />
       </ItemGroup>
     </When>
+  </Choose>
+  <Choose>
+    <When Condition="Exists('System\NotForLicensees\TelemetryProviderET.cs')" />
   </Choose>
   <ItemGroup>
     <Compile Include="..\DotNETCommon\MetaData.cs">
@@ -416,25 +427,18 @@
     <None Include="app.manifest" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
-  <!-- The following will glob all platform extensions' UnrealBuildTool source
-  files and include them in the build. They will also appear in VisualStudio.
-  RecursiveDir does not work in VS Mac (and maybe Linux?), so only use it in Windows. 
-  See: https://developercommunity.visualstudio.com/content/problem/527478/recursivedir-causes-infinitely-nested-subdirectori.html -->
+  <!-- The next two sections allow for GenerateProjectFiles script to hunt down "platform extension" C# files
+       without them needing to be added to this project. If they were compiled in a separate assembly like
+	   rules files, we would need to make a huge amount of classes, etc public, which we definitely do not 
+	   want to do. However, this does require that GenerateProjectFiles is run to create the References file
+	   below. 
+       The PlatformExtensionCompile compile item compiles the files found in the References file. This indirection
+	   is used so that Visual Studio shows these files. (If the References file directly compiled files, the 
+	   files would not be visible in the Solution Explorer).
+  -->
+  <Import Project="..\..\..\Intermediate\ProjectFiles\UnrealBuildTool.csproj.References" Condition="Exists('..\..\..\Intermediate\ProjectFiles\UnrealBuildTool.csproj.References')" />
   <ItemGroup>
-    <Compile Include="../../../Platforms/*/Source/Programs/UnrealBuildTool/**/*.cs">
-      <!-- Since RecursiveDir is bugged on VS Mac, we use the FullPath, and use Regex to pull out portions of the path to get Platform name -->
-      <Link>Platform/$([System.Text.RegularExpressions.Regex]::Replace(%(FullPath), '^(.*[\\/]Platforms[\\/])(.+?)[\\/](.*)$', '$2'))/%(Filename)%(Extension)</Link>
-    </Compile>
-    <Compile Include="../../../Restricted/*/Platforms/*/Source/Programs/UnrealBuildTool/**/*.cs">
-      <!-- Restricted may or may not be in a Platforms dir, so just use the subdir directly, even tho it makes for a
-       messier directory structure for these few files -->
-      <Link>Platform/$([System.Text.RegularExpressions.Regex]::Replace(%(FullPath), '^(.*[\\/]Platforms[\\/])(.+?)[\\/](.*)$', '$2'))/%(Filename)%(Extension)</Link>
-    </Compile>
-    <Compile Include="../../../Restricted/*/Source/Programs/UnrealBuildTool/**/*.cs">
-      <!-- Restricted may or may not be in a Platforms dir, so just use the subdir directly, even tho it makes for a
-       messier directory structure for these few files -->
-      <Link>$([System.Text.RegularExpressions.Regex]::Replace(%(FullPath), '^.+?[\\/]UnrealBuildTool[\\/]', ''))</Link>
-    </Compile>
+    <Compile Include="@(PlatformExtensionCompile)" />
   </ItemGroup>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

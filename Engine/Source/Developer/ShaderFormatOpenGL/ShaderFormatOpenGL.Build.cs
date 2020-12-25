@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -41,7 +41,7 @@ public class ShaderFormatOpenGL : ModuleRules
 
 		if (Target.Platform == UnrealTargetPlatform.Win64)
 		{
-			PublicDelayLoadDLLs.Add("dxcompiler.dll");
+			PublicDelayLoadDLLs.Add("dxcompiler_sc.dll");
 			PublicDelayLoadDLLs.Add("ShaderConductor.dll");
 		}
 	}

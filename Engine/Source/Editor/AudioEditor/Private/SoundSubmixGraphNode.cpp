@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SoundSubmixGraph/SoundSubmixGraphNode.h"
 #include "Sound/SoundSubmix.h"
@@ -6,7 +6,6 @@
 #include "SoundSubmixGraph/SoundSubmixGraph.h"
 #include "Toolkits/AssetEditorManager.h"
 #include "SoundSubmixEditor.h"
-#include "SoundSubmixDefaultColorPalette.h"
 
 #define LOCTEXT_NAMESPACE "SoundSubmixGraphNode"
 
@@ -57,19 +56,15 @@ bool USoundSubmixGraphNode::CheckRepresentsSoundSubmix()
 
 FLinearColor USoundSubmixGraphNode::GetNodeTitleColor() const
 {
-	return Audio::GetColorForSubmixType(SoundSubmix);
+	return Super::GetNodeTitleColor();
 }
 
 void USoundSubmixGraphNode::AllocateDefaultPins()
 {
 	check(Pins.Num() == 0);
 
-	ChildPin = CreatePin(EGPD_Input, Audio::GetNameForSubmixType(SoundSubmix), *LOCTEXT("SoundSubmixGraphNode_Input", "Input").ToString());
-
-	if (USoundSubmixWithParentBase* NonEndpointSubmix = Cast<USoundSubmixWithParentBase>(SoundSubmix))
-	{
-		ParentPin = CreatePin(EGPD_Output, Audio::GetNameForSubmixType(SoundSubmix), *LOCTEXT("SoundSubmixGraphNode_Output", "Output").ToString());
-	}
+	ChildPin = CreatePin(EGPD_Input, TEXT("SoundSubmix"), *LOCTEXT("SoundSubmixGraphNode_Input", "Input").ToString());
+	ParentPin = CreatePin(EGPD_Output, TEXT("SoundSubmix"), *LOCTEXT("SoundSubmixGraphNode_Output", "Output").ToString());
 }
 
 void USoundSubmixGraphNode::AutowireNewNode(UEdGraphPin* FromPin)
@@ -111,7 +106,7 @@ bool USoundSubmixGraphNode::CanUserDeleteNode() const
 		{
 			if (SoundSubmix->SoundSubmixGraph == Graph)
 			{
-				USoundSubmixBase* RootSubmix = CastChecked<USoundSubmixGraph>(Graph)->GetRootSoundSubmix();
+				USoundSubmix* RootSubmix = CastChecked<USoundSubmixGraph>(Graph)->GetRootSoundSubmix();
 				if (RootSubmix == SoundSubmix)
 				{
 					return false;

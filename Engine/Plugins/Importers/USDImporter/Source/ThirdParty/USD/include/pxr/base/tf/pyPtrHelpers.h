@@ -21,15 +21,15 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_PY_PTR_HELPERS_H
-#define PXR_BASE_TF_PY_PTR_HELPERS_H
+#ifndef TF_PYPTRHELPERS_H
+#define TF_PYPTRHELPERS_H
 
 /// \file tf/pyPtrHelpers.h
 /// Enables wrapping of Weak or Ref & Weak held types to python.
 
 #include "pxr/pxr.h"
 
-#include "pxr/base/tf/py3Compat.h"
+#include "pxr/base/tf/pyUtils.h"
 #include "pxr/base/tf/pyIdentity.h"
 #include "pxr/base/tf/pyObjectFinder.h"
 #include "pxr/base/tf/wrapTypeHelpers.h"
@@ -52,6 +52,7 @@
 #include <boost/python/handle.hpp>
 #include <boost/python/implicit.hpp>
 #include <boost/python/to_python_converter.hpp>
+#include <boost/type_traits/is_abstract.hpp>
 
 #include <memory>
 
@@ -110,7 +111,13 @@ struct TfMakePyPtr {
 
 namespace Tf_PyDefHelpers {
 
+namespace mpl = boost::mpl;
+
 using namespace boost::python;
+
+using boost::disable_if;
+using boost::enable_if;
+using boost::is_abstract;
 
 template <typename Ptr>
 struct _PtrInterface {
@@ -239,6 +246,17 @@ struct _AnyWeakPtrFromPython {
     }
 };
 
+template <typename Source, typename Target>
+typename disable_if<mpl::or_<is_abstract<Source>, is_abstract<Target> > >::type
+_RegisterImplicitConversion() {
+    implicitly_convertible<Source, Target>();
+}
+
+template <typename Source, typename Target>
+typename enable_if<mpl::or_<is_abstract<Source>, is_abstract<Target> > >::type
+_RegisterImplicitConversion() {
+}
+
 template <typename Ptr>
 struct _ConstPtrToPython {
     typedef typename _PtrInterface<Ptr>::ConstPtr ConstPtr;
@@ -331,9 +349,9 @@ struct WeakPtr : def_visitor<WeakPtr> {
         _AnyWeakPtrFromPython<PtrType>();
 
         // From python, can always make a const pointer from a non-const one.
-        implicitly_convertible<PtrType,
+        _RegisterImplicitConversion<PtrType,
             typename _PtrInterface<PtrType>::ConstPtr >();
-
+        
         // Register a conversion that casts away constness when going to python.
         _ConstPtrToPython<PtrType>();
 
@@ -371,7 +389,7 @@ struct WeakPtr : def_visitor<WeakPtr> {
         c.add_property("expired", _IsPtrExpired<UnwrappedPtrType>,
                        (const char *)
                        "True if this object has expired, False otherwise.");
-        c.def(TfPyBoolBuiltinFuncName, _IsPtrValid<UnwrappedPtrType>,
+        c.def("__nonzero__", _IsPtrValid<UnwrappedPtrType>,
               (char const *)
               "True if this object has not expired.  False otherwise.");
         c.def("__eq__", _ArePtrsEqual<UnwrappedPtrType>,
@@ -429,4 +447,4 @@ struct TfPyRefAndWeakPtr : Tf_PyDefHelpers::RefAndWeakPtr {};
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_PY_PTR_HELPERS_H
+#endif // TF_PYPTRHELPERS_H

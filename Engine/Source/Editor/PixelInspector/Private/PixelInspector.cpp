@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PixelInspector.h"
 #include "Modules/ModuleManager.h"
@@ -52,10 +52,10 @@ namespace PixelInspector
 		Buffer_A_RGB8[1] = nullptr;
 		Buffer_A_RGB10[0] = nullptr;
 		Buffer_A_RGB10[1] = nullptr;
-		Buffer_BCDEF_Float[0] = nullptr;
-		Buffer_BCDEF_Float[1] = nullptr;
-		Buffer_BCDEF_RGB8[0] = nullptr;
-		Buffer_BCDEF_RGB8[1] = nullptr;
+		Buffer_BCDE_Float[0] = nullptr;
+		Buffer_BCDE_Float[1] = nullptr;
+		Buffer_BCDE_RGB8[0] = nullptr;
+		Buffer_BCDE_RGB8[1] = nullptr;
 
 		TickSinceLastCreateRequest = 0;
 		LastBufferIndex = 0;
@@ -425,8 +425,7 @@ namespace PixelInspector
 				{
 					if (!EditorViewport->IsRealtime())
 					{
-						const bool bShouldBeRealtime = true;
-						EditorViewport->AddRealtimeOverride(bShouldBeRealtime, LOCTEXT("RealtimeOverrideMessage_PixelInspector", "Pixel Inspector"));
+						EditorViewport->SetRealtime(true);
 					}
 				}
 			}
@@ -519,17 +518,17 @@ namespace PixelInspector
 			Buffer_A_RGB10[BufferIndex]->RemoveFromRoot();
 			Buffer_A_RGB10[BufferIndex] = nullptr;
 		}
-		if (Buffer_BCDEF_Float[BufferIndex] != nullptr)
+		if (Buffer_BCDE_Float[BufferIndex] != nullptr)
 		{
-			Buffer_BCDEF_Float[BufferIndex]->ClearFlags(RF_Standalone);
-			Buffer_BCDEF_Float[BufferIndex]->RemoveFromRoot();
-			Buffer_BCDEF_Float[BufferIndex] = nullptr;
+			Buffer_BCDE_Float[BufferIndex]->ClearFlags(RF_Standalone);
+			Buffer_BCDE_Float[BufferIndex]->RemoveFromRoot();
+			Buffer_BCDE_Float[BufferIndex] = nullptr;
 		}
-		if (Buffer_BCDEF_RGB8[BufferIndex] != nullptr)
+		if (Buffer_BCDE_RGB8[BufferIndex] != nullptr)
 		{
-			Buffer_BCDEF_RGB8[BufferIndex]->ClearFlags(RF_Standalone);
-			Buffer_BCDEF_RGB8[BufferIndex]->RemoveFromRoot();
-			Buffer_BCDEF_RGB8[BufferIndex] = nullptr;
+			Buffer_BCDE_RGB8[BufferIndex]->ClearFlags(RF_Standalone);
+			Buffer_BCDE_RGB8[BufferIndex]->RemoveFromRoot();
+			Buffer_BCDE_RGB8[BufferIndex] = nullptr;
 		}
 	}
 
@@ -554,7 +553,7 @@ namespace PixelInspector
 		FTextureRenderTargetResource* HDRRenderTargetResource = nullptr;
 		FTextureRenderTargetResource* DepthRenderTargetResource = nullptr;
 		FTextureRenderTargetResource* BufferARenderTargetResource = nullptr;
-		FTextureRenderTargetResource* BufferBCDEFRenderTargetResource = nullptr;
+		FTextureRenderTargetResource* BufferBCDERenderTargetResource = nullptr;
 
 		//Final color is in RGB8 format
 		Buffer_FinalColor_RGB8[LastBufferIndex] = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), TEXT("PixelInspectorBufferFinalColorTarget"), RF_Standalone);
@@ -607,12 +606,12 @@ namespace PixelInspector
 			Buffer_A_RGB8[LastBufferIndex]->UpdateResourceImmediate(true);
 			BufferARenderTargetResource = Buffer_A_RGB8[LastBufferIndex]->GameThread_GetRenderTargetResource();
 
-			Buffer_BCDEF_RGB8[LastBufferIndex] = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), TEXT("PixelInspectorBufferBTarget"), RF_Standalone );
-			Buffer_BCDEF_RGB8[LastBufferIndex]->AddToRoot();
-			Buffer_BCDEF_RGB8[LastBufferIndex]->InitCustomFormat(4, 1, PF_B8G8R8A8, true);
-			Buffer_BCDEF_RGB8[LastBufferIndex]->ClearColor = FLinearColor::Black;
-			Buffer_BCDEF_RGB8[LastBufferIndex]->UpdateResourceImmediate(true);
-			BufferBCDEFRenderTargetResource = Buffer_BCDEF_RGB8[LastBufferIndex]->GameThread_GetRenderTargetResource();
+			Buffer_BCDE_RGB8[LastBufferIndex] = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), TEXT("PixelInspectorBufferBTarget"), RF_Standalone );
+			Buffer_BCDE_RGB8[LastBufferIndex]->AddToRoot();
+			Buffer_BCDE_RGB8[LastBufferIndex]->InitCustomFormat(4, 1, PF_B8G8R8A8, true);
+			Buffer_BCDE_RGB8[LastBufferIndex]->ClearColor = FLinearColor::Black;
+			Buffer_BCDE_RGB8[LastBufferIndex]->UpdateResourceImmediate(true);
+			BufferBCDERenderTargetResource = Buffer_BCDE_RGB8[LastBufferIndex]->GameThread_GetRenderTargetResource();
 		}
 		else if(GBufferFormat == EGBufferFormat::Default)
 		{
@@ -625,12 +624,12 @@ namespace PixelInspector
 			BufferARenderTargetResource = Buffer_A_RGB10[LastBufferIndex]->GameThread_GetRenderTargetResource();
 
 			//Default is PF_B8G8R8A8
-			Buffer_BCDEF_RGB8[LastBufferIndex] = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), TEXT("PixelInspectorBufferBTarget"), RF_Standalone );
-			Buffer_BCDEF_RGB8[LastBufferIndex]->AddToRoot();
-			Buffer_BCDEF_RGB8[LastBufferIndex]->InitCustomFormat(4, 1, PF_B8G8R8A8, true);
-			Buffer_BCDEF_RGB8[LastBufferIndex]->ClearColor = FLinearColor::Black;
-			Buffer_BCDEF_RGB8[LastBufferIndex]->UpdateResourceImmediate(true);
-			BufferBCDEFRenderTargetResource = Buffer_BCDEF_RGB8[LastBufferIndex]->GameThread_GetRenderTargetResource();
+			Buffer_BCDE_RGB8[LastBufferIndex] = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), TEXT("PixelInspectorBufferBTarget"), RF_Standalone );
+			Buffer_BCDE_RGB8[LastBufferIndex]->AddToRoot();
+			Buffer_BCDE_RGB8[LastBufferIndex]->InitCustomFormat(4, 1, PF_B8G8R8A8, true);
+			Buffer_BCDE_RGB8[LastBufferIndex]->ClearColor = FLinearColor::Black;
+			Buffer_BCDE_RGB8[LastBufferIndex]->UpdateResourceImmediate(true);
+			BufferBCDERenderTargetResource = Buffer_BCDE_RGB8[LastBufferIndex]->GameThread_GetRenderTargetResource();
 		}
 		else if (GBufferFormat == EGBufferFormat::HighPrecisionNormals || GBufferFormat == EGBufferFormat::Force16BitsPerChannel)
 		{
@@ -642,19 +641,19 @@ namespace PixelInspector
 			Buffer_A_Float[LastBufferIndex]->UpdateResourceImmediate(true);
 			BufferARenderTargetResource = Buffer_A_Float[LastBufferIndex]->GameThread_GetRenderTargetResource();
 
-			Buffer_BCDEF_Float[LastBufferIndex] = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), TEXT("PixelInspectorBufferBTarget"), RF_Standalone );
-			Buffer_BCDEF_Float[LastBufferIndex]->AddToRoot();
-			Buffer_BCDEF_Float[LastBufferIndex]->InitCustomFormat(4, 1, PF_FloatRGBA, true);
-			Buffer_BCDEF_Float[LastBufferIndex]->ClearColor = FLinearColor::Black;
-			Buffer_BCDEF_Float[LastBufferIndex]->UpdateResourceImmediate(true);
-			BufferBCDEFRenderTargetResource = Buffer_BCDEF_Float[LastBufferIndex]->GameThread_GetRenderTargetResource();
+			Buffer_BCDE_Float[LastBufferIndex] = NewObject<UTextureRenderTarget2D>(GetTransientPackage(), TEXT("PixelInspectorBufferBTarget"), RF_Standalone );
+			Buffer_BCDE_Float[LastBufferIndex]->AddToRoot();
+			Buffer_BCDE_Float[LastBufferIndex]->InitCustomFormat(4, 1, PF_FloatRGBA, true);
+			Buffer_BCDE_Float[LastBufferIndex]->ClearColor = FLinearColor::Black;
+			Buffer_BCDE_Float[LastBufferIndex]->UpdateResourceImmediate(true);
+			BufferBCDERenderTargetResource = Buffer_BCDE_Float[LastBufferIndex]->GameThread_GetRenderTargetResource();
 		}
 		else
 		{
 			checkf(0, TEXT("Unhandled gbuffer format (%i) during pixel inspector initializtion."), GBufferFormat);
 		}	
 		
-		SceneInterface->InitializePixelInspector(FinalColorRenderTargetResource, SceneColorRenderTargetResource, DepthRenderTargetResource, HDRRenderTargetResource, BufferARenderTargetResource, BufferBCDEFRenderTargetResource, LastBufferIndex);
+		SceneInterface->InitializePixelInspector(FinalColorRenderTargetResource, SceneColorRenderTargetResource, DepthRenderTargetResource, HDRRenderTargetResource, BufferARenderTargetResource, BufferBCDERenderTargetResource, LastBufferIndex);
 
 		return LastBufferIndex;
 	}
@@ -724,14 +723,14 @@ namespace PixelInspector
 							BufferAValue.Empty();
 						}
 
-						TArray<FColor> BufferBCDEFValue;
-						FTextureRenderTargetResource* RTResourceBCDEF = Buffer_BCDEF_RGB8[Request.BufferIndex]->GameThread_GetRenderTargetResource();
-						if (RTResourceA->ReadPixels(BufferBCDEFValue) == false)
+						TArray<FColor> BufferBCDEValue;
+						FTextureRenderTargetResource* RTResourceBCDE = Buffer_BCDE_RGB8[Request.BufferIndex]->GameThread_GetRenderTargetResource();
+						if (RTResourceA->ReadPixels(BufferBCDEValue) == false)
 						{
-							BufferBCDEFValue.Empty();
+							BufferBCDEValue.Empty();
 						}
 
-						PixelResult.DecodeBufferData(BufferAValue, BufferBCDEFValue, Request.AllowStaticLighting);
+						PixelResult.DecodeBufferData(BufferAValue, BufferBCDEValue, Request.AllowStaticLighting);
 					}
 					else if (Request.GBufferPrecision == EGBufferFormat::Default)
 					{
@@ -743,13 +742,13 @@ namespace PixelInspector
 							BufferAValue.Empty();
 						}
 
-						TArray<FColor> BufferBCDEFValue;
-						FTextureRenderTargetResource* RTResourceBCDEF = Buffer_BCDEF_RGB8[Request.BufferIndex]->GameThread_GetRenderTargetResource();
-						if (RTResourceBCDEF->ReadPixels(BufferBCDEFValue) == false)
+						TArray<FColor> BufferBCDEValue;
+						FTextureRenderTargetResource* RTResourceBCDE = Buffer_BCDE_RGB8[Request.BufferIndex]->GameThread_GetRenderTargetResource();
+						if (RTResourceBCDE->ReadPixels(BufferBCDEValue) == false)
 						{
-							BufferBCDEFValue.Empty();
+							BufferBCDEValue.Empty();
 						}
-						PixelResult.DecodeBufferData(BufferAValue, BufferBCDEFValue, Request.AllowStaticLighting);
+						PixelResult.DecodeBufferData(BufferAValue, BufferBCDEValue, Request.AllowStaticLighting);
 					}
 					else if (Request.GBufferPrecision == EGBufferFormat::HighPrecisionNormals || Request.GBufferPrecision == EGBufferFormat::Force16BitsPerChannel)
 					{
@@ -761,13 +760,13 @@ namespace PixelInspector
 							BufferAValue.Empty();
 						}
 
-						TArray<FFloat16Color> BufferBCDEFValue;
-						FTextureRenderTargetResource* RTResourceBCDEF = Buffer_BCDEF_Float[Request.BufferIndex]->GameThread_GetRenderTargetResource();
-						if (RTResourceA->ReadFloat16Pixels(BufferBCDEFValue) == false)
+						TArray<FFloat16Color> BufferBCDEValue;
+						FTextureRenderTargetResource* RTResourceBCDE = Buffer_BCDE_Float[Request.BufferIndex]->GameThread_GetRenderTargetResource();
+						if (RTResourceA->ReadFloat16Pixels(BufferBCDEValue) == false)
 						{
-							BufferBCDEFValue.Empty();
+							BufferBCDEValue.Empty();
 						}
-						PixelResult.DecodeBufferData(BufferAValue, BufferBCDEFValue, Request.AllowStaticLighting);
+						PixelResult.DecodeBufferData(BufferAValue, BufferBCDEValue, Request.AllowStaticLighting);
 					}
 					else
 					{

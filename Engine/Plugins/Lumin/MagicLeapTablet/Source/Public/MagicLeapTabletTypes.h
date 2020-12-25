@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Engine/Engine.h"
@@ -51,7 +51,7 @@ enum class EMagicLeapInputTabletDeviceStateMask : uint8
 };
 
 USTRUCT(BlueprintType)
-struct MAGICLEAPTABLET_API FMagicLeapInputTabletDeviceState
+struct FMagicLeapInputTabletDeviceState
 {
 	GENERATED_BODY();
 	/** Version of this structure. */

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	VertexFactory.cpp: Vertex factory implementation
@@ -8,26 +8,11 @@
 #include "Serialization/MemoryWriter.h"
 #include "UObject/DebugSerializationFlags.h"
 #include "PipelineStateCache.h"
-#include "ShaderCompilerCore.h"
 
-IMPLEMENT_TYPE_LAYOUT(FVertexFactoryShaderParameters);
-
-uint32 FVertexFactoryType::NumVertexFactories = 0;
+uint32 FVertexFactoryType::NextHashIndex = 0;
 bool FVertexFactoryType::bInitializedSerializationHistory = false;
 
 static TLinkedList<FVertexFactoryType*>* GVFTypeList = nullptr;
-
-static TArray<FVertexFactoryType*>& GetSortedMaterialVertexFactoryTypes()
-{
-	static TArray<FVertexFactoryType*> Types;
-	return Types;
-}
-
-static TMap<FHashedName, FVertexFactoryType*>& GetVFTypeMap()
-{
-	static TMap<FHashedName, FVertexFactoryType*> VTTypeMap;
-	return VTTypeMap;
-}
 
 /**
  * @return The global shader factory list.
@@ -37,18 +22,20 @@ TLinkedList<FVertexFactoryType*>*& FVertexFactoryType::GetTypeList()
 	return GVFTypeList;
 }
 
-const TArray<FVertexFactoryType*>& FVertexFactoryType::GetSortedMaterialTypes()
-{
-	return GetSortedMaterialVertexFactoryTypes();
-}
-
 /**
  * Finds a FVertexFactoryType by name.
  */
-FVertexFactoryType* FVertexFactoryType::GetVFByName(const FHashedName& VFName)
+FVertexFactoryType* FVertexFactoryType::GetVFByName(const FString& VFName)
 {
-	FVertexFactoryType** Type = GetVFTypeMap().Find(VFName);
-	return Type ? *Type : nullptr;
+	for(TLinkedList<FVertexFactoryType*>::TIterator It(GetTypeList()); It; It.Next())
+	{
+		FString CurrentVFName = FString(It->GetName());
+		if (CurrentVFName == VFName)
+		{
+			return *It;
+		}
+	}
+	return NULL;
 }
 
 void FVertexFactoryType::Initialize(const TMap<FString, TArray<const TCHAR*> >& ShaderFileToUniformBufferVariables)
@@ -61,6 +48,22 @@ void FVertexFactoryType::Initialize(const TMap<FString, TArray<const TCHAR*> >& 
 		{
 			FVertexFactoryType* Type = *It;
 			GenerateReferencedUniformBuffers(Type->ShaderFilename, Type->Name, ShaderFileToUniformBufferVariables, Type->ReferencedUniformBufferStructsCache);
+
+			for (int32 Frequency = 0; Frequency < SF_NumFrequencies; Frequency++)
+			{
+				// Construct a temporary shader parameter instance, which is initialized to safe values for serialization
+				FVertexFactoryShaderParameters* Parameters = Type->CreateShaderParameters((EShaderFrequency)Frequency);
+
+				if (Parameters)
+				{
+					// Serialize the temp shader to memory and record the number and sizes of serializations
+					TArray<uint8> TempData;
+					FMemoryWriter Ar(TempData, true);
+					FShaderSaveArchive SaveArchive(Ar, Type->SerializationHistory[Frequency]);
+					Parameters->Serialize(SaveArchive);
+					delete Parameters;
+				}
+			}
 		}
 	}
 
@@ -69,6 +72,16 @@ void FVertexFactoryType::Initialize(const TMap<FString, TArray<const TCHAR*> >& 
 
 void FVertexFactoryType::Uninitialize()
 {
+	for(TLinkedList<FVertexFactoryType*>::TIterator It(FVertexFactoryType::GetTypeList()); It; It.Next())
+	{
+		FVertexFactoryType* Type = *It;
+
+		for (int32 Frequency = 0; Frequency < SF_NumFrequencies; Frequency++)
+		{
+			Type->SerializationHistory[Frequency] = FSerializationHistory();
+		}
+	}
+
 	bInitializedSerializationHistory = false;
 }
 
@@ -83,8 +96,6 @@ FVertexFactoryType::FVertexFactoryType(
 	bool bInSupportsCachingMeshDrawCommands,
 	bool bInSupportsPrimitiveIdStream,
 	ConstructParametersType InConstructParameters,
-	GetParameterTypeLayoutType InGetParameterTypeLayout,
-	GetParameterTypeElementShaderBindingsType InGetParameterTypeElementShaderBindings,
 	ShouldCacheType InShouldCache,
 	ModifyCompilationEnvironmentType InModifyCompilationEnvironment,
 	ValidateCompiledResultType InValidateCompiledResult,
@@ -93,7 +104,6 @@ FVertexFactoryType::FVertexFactoryType(
 	Name(InName),
 	ShaderFilename(InShaderFilename),
 	TypeName(InName),
-	HashedName(TypeName),
 	bUsedWithMaterials(bInUsedWithMaterials),
 	bSupportsStaticLighting(bInSupportsStaticLighting),
 	bSupportsDynamicLighting(bInSupportsDynamicLighting),
@@ -102,8 +112,6 @@ FVertexFactoryType::FVertexFactoryType(
 	bSupportsCachingMeshDrawCommands(bInSupportsCachingMeshDrawCommands),
 	bSupportsPrimitiveIdStream(bInSupportsPrimitiveIdStream),
 	ConstructParameters(InConstructParameters),
-	GetParameterTypeLayout(InGetParameterTypeLayout),
-	GetParameterTypeElementShaderBindings(InGetParameterTypeElementShaderBindings),
 	ShouldCacheRef(InShouldCache),
 	ModifyCompilationEnvironmentRef(InModifyCompilationEnvironment),
 	ValidateCompiledResultRef(InValidateCompiledResult),
@@ -125,33 +133,14 @@ FVertexFactoryType::FVertexFactoryType(
 
 	// Add this vertex factory type to the global list.
 	GlobalListLink.LinkHead(GetTypeList());
-	GetVFTypeMap().Add(HashedName, this);
 
-	if (bUsedWithMaterials)
-	{
-		TArray<FVertexFactoryType*>& SortedTypes = GetSortedMaterialVertexFactoryTypes();
-		const int32 SortedIndex = Algo::LowerBoundBy(SortedTypes, HashedName, [](const FVertexFactoryType* InType) { return InType->GetHashedName(); });
-		SortedTypes.Insert(this, SortedIndex);
-	}
-
-	++NumVertexFactories;
+	// Assign the vertex factory type the next unassigned hash index.
+	HashIndex = NextHashIndex++;
 }
 
 FVertexFactoryType::~FVertexFactoryType()
 {
 	GlobalListLink.Unlink();
-	verify(GetVFTypeMap().Remove(HashedName) == 1);
-
-	if (bUsedWithMaterials)
-	{
-		TArray<FVertexFactoryType*>& SortedTypes = GetSortedMaterialVertexFactoryTypes();
-		const int32 SortedIndex = Algo::BinarySearchBy(SortedTypes, HashedName, [](const FVertexFactoryType* InType) { return InType->GetHashedName(); });
-		check(SortedIndex != INDEX_NONE);
-		SortedTypes.RemoveAt(SortedIndex);
-	}
-
-	check(NumVertexFactories > 0u);
-	--NumVertexFactories;
 }
 
 /** Calculates a Hash based on this vertex factory type's source code and includes */
@@ -176,9 +165,17 @@ FArchive& operator<<(FArchive& Ar,FVertexFactoryType*& TypeRef)
 	return Ar;
 }
 
-FVertexFactoryType* FindVertexFactoryType(const FHashedName& TypeName)
+FVertexFactoryType* FindVertexFactoryType(FName TypeName)
 {
-	return FVertexFactoryType::GetVFByName(TypeName);
+	// Search the global vertex factory list for a type with a matching name.
+	for(TLinkedList<FVertexFactoryType*>::TIterator VertexFactoryTypeIt(FVertexFactoryType::GetTypeList());VertexFactoryTypeIt;VertexFactoryTypeIt.Next())
+	{
+		if(VertexFactoryTypeIt->GetFName() == TypeName)
+		{
+			return *VertexFactoryTypeIt;
+		}
+	}
+	return NULL;
 }
 
 void FVertexFactory::GetStreams(ERHIFeatureLevel::Type InFeatureLevel, EVertexInputStreamType VertexStreamType, FVertexInputStreamArray& OutVertexStreams) const
@@ -319,6 +316,107 @@ void FVertexFactory::InitDeclaration(const FVertexDeclarationElementList& Elemen
 	}
 }
 
+FVertexFactoryParameterRef::FVertexFactoryParameterRef(FVertexFactoryType* InVertexFactoryType,const FShaderParameterMap& ParameterMap, EShaderFrequency InShaderFrequency, EShaderPlatform InShaderPlatform)
+: Parameters(NULL)
+, VertexFactoryType(InVertexFactoryType)
+, ShaderFrequency(InShaderFrequency)
+, ShaderPlatform(InShaderPlatform)
+{
+	Parameters = VertexFactoryType->CreateShaderParameters(InShaderFrequency);
+#if KEEP_SHADER_SOURCE_HASHES
+	VFHash = GetShaderFileHash(VertexFactoryType->GetShaderFilename(), InShaderPlatform);
+#endif
+
+	if(Parameters)
+	{
+		Parameters->Bind(ParameterMap);
+	}
+}
+
+bool operator<<(FArchive& Ar,FVertexFactoryParameterRef& Ref)
+{
+	bool bShaderHasOutdatedParameters = false;
+
+	Ar << Ref.VertexFactoryType;
+
+	uint8 ShaderFrequencyByte = Ref.ShaderFrequency;
+	Ar << ShaderFrequencyByte;
+	if(Ar.IsLoading())
+	{
+		Ref.ShaderFrequency = (EShaderFrequency)ShaderFrequencyByte;
+	}
+
+	uint8 ShaderPlatformByte = Ref.ShaderPlatform;
+	Ar << ShaderPlatformByte;
+	if (Ar.IsLoading())
+	{
+		Ref.ShaderPlatform = (EShaderPlatform)ShaderPlatformByte;
+	}
+
+#if KEEP_SHADER_SOURCE_HASHES
+	FSHAHash& VFHash = Ref.VFHash;
+#else
+	FSHAHash VFHash;
+#endif
+	Ar << FShaderResource::FilterShaderSourceHashForSerialization(Ar, VFHash);
+
+
+	if (Ar.IsLoading())
+	{
+		delete Ref.Parameters;
+		if (Ref.VertexFactoryType)
+		{
+			Ref.Parameters = Ref.VertexFactoryType->CreateShaderParameters(Ref.ShaderFrequency);
+		}
+		else
+		{
+			bShaderHasOutdatedParameters = true;
+			Ref.Parameters = NULL;
+		}
+	}
+
+	// Need to be able to skip over parameters for no longer existing vertex factories.
+	int64 SkipOffset = Ar.Tell();
+	{
+		FArchive::FScopeSetDebugSerializationFlags S(Ar, DSF_IgnoreDiff);
+		// Write placeholder.
+		Ar << SkipOffset;
+	}
+
+
+	if(Ref.Parameters)
+	{
+		Ref.Parameters->Serialize(Ar);
+	}
+	else if(Ar.IsLoading())
+	{
+		Ar.Seek( SkipOffset );
+	}
+
+	if( Ar.IsSaving() )
+	{
+		int64 EndOffset = Ar.Tell();
+		Ar.Seek( SkipOffset );
+		Ar << EndOffset;
+		Ar.Seek( EndOffset );
+	}
+
+	return bShaderHasOutdatedParameters;
+}
+
+#if KEEP_SHADER_SOURCE_HASHES
+/** Returns the hash of the vertex factory shader file that this shader was compiled with. */
+const FSHAHash& FVertexFactoryParameterRef::GetHash() const 
+{ 
+	return VFHash;
+}
+#endif
+
+/** Returns the shader platform that this shader was compiled with. */
+EShaderPlatform FVertexFactoryParameterRef::GetShaderPlatform() const
+{
+	return ShaderPlatform;
+}
 void FPrimitiveIdDummyBuffer::InitRHI() 
 {
 	// create a static vertex buffer

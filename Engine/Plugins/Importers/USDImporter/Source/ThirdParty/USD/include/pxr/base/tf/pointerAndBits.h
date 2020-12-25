@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_POINTER_AND_BITS_H
-#define PXR_BASE_TF_POINTER_AND_BITS_H
+#ifndef TF_POINTERANDBITS_H
+#define TF_POINTERANDBITS_H
 
 #include "pxr/pxr.h"
 #include "pxr/base/arch/pragmas.h"
@@ -67,24 +67,24 @@ class TfPointerAndBits
     // Microsoft Visual Studio doesn't like alignof(<abstract-type>).
     // We'll assume that such an object has a pointer in it (the vtbl
     // pointer) and use void* for alignment in that case.
-    static constexpr uintptr_t _GetAlign() noexcept {
+    static constexpr uintptr_t _GetAlign() {
         return _AlignOf<T, std::is_abstract<T>::value>::value;
     }
 
-    static constexpr bool _SupportsAtLeastOneBit() noexcept {
+    static constexpr bool _SupportsAtLeastOneBit() {
         return _GetAlign() > 1 && Tf_IsPow2(_GetAlign());
     }
 
 public:
     /// Constructor.  Pointer is initialized to null, bits are initialized to
     /// zero.
-    constexpr TfPointerAndBits() noexcept : _ptrAndBits(0) {
+    constexpr TfPointerAndBits() : _ptrAndBits(0) {
         static_assert(_SupportsAtLeastOneBit(),
                       "T's alignment does not support any bits");
     }
 
     /// Constructor.  Set the pointer to \a p, and the bits to \a bits.
-    constexpr explicit TfPointerAndBits(T *p, uintptr_t bits = 0) noexcept
+    constexpr explicit TfPointerAndBits(T *p, uintptr_t bits = 0)
         : _ptrAndBits(_Combine(p, bits))
     {
         static_assert(_SupportsAtLeastOneBit(),
@@ -100,24 +100,24 @@ public:
     }
 
     /// Assignment.  Leaves bits unmodified.
-    TfPointerAndBits &operator=(T *ptr) noexcept {
+    TfPointerAndBits &operator=(T *ptr) {
         _SetPtr(ptr);
         return *this;
     }
 
     /// Indirection.
-    constexpr T *operator->() const noexcept {
+    T *operator->() const {
         return _GetPtr();
     }
 
     /// Dereference.
-    constexpr T &operator *() const noexcept {
+    T &operator *() const {
         return *_GetPtr();
     }
 
     /// Retrieve the stored bits as the integral type \a Integral.
     template <class Integral>
-    constexpr Integral BitsAs() const noexcept {
+    Integral BitsAs() const {
         ARCH_PRAGMA_PUSH
         ARCH_PRAGMA_FORCING_TO_BOOL
         return static_cast<Integral>(_GetBits());
@@ -126,23 +126,23 @@ public:
 
     /// Set the stored bits.  No static range checking is performed.
     template <class Integral>
-    void SetBits(Integral val) noexcept {
+    void SetBits(Integral val) {
         _SetBits(static_cast<uintptr_t>(val));
     }
 
     /// Set the pointer value to \a ptr.
-    void Set(T *ptr) noexcept {
+    void Set(T *ptr) {
         _SetPtr(ptr);
     }
 
     /// Set the pointer value to \a ptr and the bits to \a val.
     template <class Integral>
-    void Set(T *ptr, Integral val) noexcept {
+    void Set(T *ptr, Integral val) {
         _ptrAndBits = _Combine(ptr, val);
     }
 
     /// Retrieve the pointer.
-    constexpr T *Get() const noexcept {
+    T *Get() const {
         return _GetPtr();
     }
 
@@ -151,54 +151,54 @@ public:
     /// this has the same bit pattern as the pointer value if the bits are 0,
     /// and will compare equal to another instance when both have identical
     /// pointer and bits values.
-    constexpr uintptr_t GetLiteral() const noexcept {
+    constexpr uintptr_t GetLiteral() const {
         return _AsInt(_ptrAndBits);
     }
 
     /// Swap this PointerAndBits with \a other.
-    void Swap(TfPointerAndBits &other) noexcept {
+    void Swap(TfPointerAndBits &other) {
         ::std::swap(_ptrAndBits, other._ptrAndBits);
     }
 
 private:
-    constexpr uintptr_t _GetBitMask() const noexcept {
+    constexpr uintptr_t _GetBitMask() const {
         return GetMaxValue();
     }
 
     // Combine \a p and \a bits into a single pointer value.
-    constexpr T *_Combine(T *p, uintptr_t bits) const noexcept {
+    constexpr T *_Combine(T *p, uintptr_t bits) const {
         return _AsPtr(_AsInt(p) | (bits & _GetBitMask()));
     }
 
     // Cast the pointer \a p to an integral type.  This function and _AsPtr are
     // the only ones that do the dubious compiler-specific casting.
-    constexpr uintptr_t _AsInt(T *p) const noexcept {
+    constexpr uintptr_t _AsInt(T *p) const {
         return (uintptr_t)p;
     }
 
     // Cast the integral \a i to the pointer type.  This function and _AsInt are
     // the only ones that do the dubious compiler-specific casting.
-    constexpr T *_AsPtr(uintptr_t i) const noexcept {
+    constexpr T *_AsPtr(uintptr_t i) const {
         return (T *)i;
     }
 
     // Retrieve the held pointer value.
-    constexpr T *_GetPtr() const noexcept {
+    inline T *_GetPtr() const {
         return _AsPtr(_AsInt(_ptrAndBits) & ~_GetBitMask());
     }
 
     // Set the held pointer value.
-    void _SetPtr(T *p) noexcept {
+    inline void _SetPtr(T *p) {
         _ptrAndBits = _Combine(p, _GetBits());
     }
 
     // Retrieve the held bits value.
-    constexpr uintptr_t _GetBits() const noexcept {
+    inline uintptr_t _GetBits() const {
         return _AsInt(_ptrAndBits) & _GetBitMask();
     }
 
     // Set the held bits value.
-    void _SetBits(uintptr_t bits) noexcept {
+    inline void _SetBits(uintptr_t bits) {
         _ptrAndBits = _Combine(_GetPtr(), bits);
     }
 
@@ -208,4 +208,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_POINTER_AND_BITS_H
+#endif // TF_POINTERANDBITS_H

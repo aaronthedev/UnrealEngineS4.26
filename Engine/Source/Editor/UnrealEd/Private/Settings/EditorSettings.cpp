@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Settings/EditorSettings.h"
 #include "HAL/FileManager.h"
@@ -15,21 +15,11 @@ UEditorSettings::UEditorSettings(const FObjectInitializer& ObjectInitializer)
 	bCopyStarterContentPreference = false;
 	bEditorAnalyticsEnabled_DEPRECATED = true;
 	AutoScalabilityWorkScaleAmount = 1;
-
-	FProperty* S3Property = StaticClass()->FindPropertyByName("bEnableS3DDC");
-	if (ensure(S3Property != nullptr))
-	{
-		bool bValue = false;
-		if (!GConfig->GetBool(TEXT("EditorSettings"), TEXT("bShowEnableS3DDC"), bValue, GEditorIni) || !bValue)
-		{
-			S3Property->ClearPropertyFlags(CPF_Edit);
-		}
-	}
 }
 
 void UEditorSettings::PostEditChangeProperty( struct FPropertyChangedEvent& PropertyChangedEvent)
 {
-	FProperty* PropertyThatChanged = PropertyChangedEvent.Property;
+	UProperty* PropertyThatChanged = PropertyChangedEvent.Property;
 
 	const FName Name = PropertyThatChanged ? PropertyThatChanged->GetFName() : NAME_None;
 	if (Name == FName(TEXT("bLoadTheMostRecentlyLoadedProjectAtStartup")))

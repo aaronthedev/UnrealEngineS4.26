@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MediaBundleFactoryNew.h"
 
@@ -74,7 +74,7 @@ void UActorFactoryMediaBundle::PostSpawnActor(UObject* Asset, AActor* NewActor)
 	UMediaBundle* MediaBundle = CastChecked<UMediaBundle>(Asset);
 	AMediaBundleActorBase* MediaBundleActor = CastChecked<AMediaBundleActorBase>(NewActor);
 
-	FProperty* MediaBundleProperty = FindFieldChecked<FProperty>(AMediaBundleActorBase::StaticClass(), "MediaBundle");
+	UProperty* MediaBundleProperty = FindFieldChecked<UProperty>(AMediaBundleActorBase::StaticClass(), "MediaBundle");
 	FEditPropertyChain PropertyChain;
 	PropertyChain.AddHead(MediaBundleProperty);
 	static_cast<UObject*>(NewActor)->PreEditChange(PropertyChain);

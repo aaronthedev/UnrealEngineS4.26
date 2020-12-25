@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GenericPlatform/GenericPlatformMisc.h"
 #include "Misc/AssertionMacros.h"
@@ -324,23 +324,23 @@ FString FGenericPlatformMisc::GetMacAddressString()
 FString FGenericPlatformMisc::GetHashedMacAddressString()
 {
 	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	// ensure empty MAC addresses don't return a hash of zero bytes.
-	FString MacAddr = FPlatformMisc::GetMacAddressString();
-	if (!MacAddr.IsEmpty())
-	{
-		return FMD5::HashAnsiString(*MacAddr);
-	}
-	else
-	{
-		return FString();
-	}
+	return FMD5::HashAnsiString(*FPlatformMisc::GetMacAddressString());
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
+}
+
+FString FGenericPlatformMisc::GetUniqueDeviceId()
+{
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	return FPlatformMisc::GetHashedMacAddressString();
 	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 FString FGenericPlatformMisc::GetDeviceId()
 {
-	// not implemented at the base level. Each platform must decide how to implement this, if possible.
-	return FString();
+	// @todo: When this function is finally removed, the functionality used will need to be moved in here.
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	return GetUniqueDeviceId();
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 FString FGenericPlatformMisc::GetUniqueAdvertisingId()
@@ -459,6 +459,11 @@ void FGenericPlatformMisc::MemoryBarrier()
 {
 }
 
+void FGenericPlatformMisc::HandleIOFailure( const TCHAR* Filename )
+{
+	UE_LOG(LogGenericPlatformMisc, Fatal,TEXT("I/O failure operating on '%s'"), Filename ? Filename : TEXT("Unknown file"));
+}
+
 void FGenericPlatformMisc::RaiseException(uint32 ExceptionCode)
 {
 	/** This is the last place to gather memory stats before exception. */
@@ -511,19 +516,6 @@ void FGenericPlatformMisc::EndNamedEvent()
 #endif
 }
 
-bool FGenericPlatformMisc::SetStoredValues(const FString& InStoreId, const FString& InSectionName, const TMap<FString, FString>& InKeyValues)
-{
-	for (const TPair<FString, FString>& InKeyValue : InKeyValues)
-	{
-		if (!FPlatformMisc::SetStoredValue(InStoreId, InSectionName, InKeyValue.Key, InKeyValue.Value))
-		{
-			return false;
-		}
-	}
-
-	return true;
-}
-
 bool FGenericPlatformMisc::SetStoredValue(const FString& InStoreId, const FString& InSectionName, const FString& InKeyName, const FString& InValue)
 {
 	check(!InStoreId.IsEmpty());
@@ -572,7 +564,7 @@ bool FGenericPlatformMisc::GetStoredValue(const FString& InStoreId, const FStrin
 }
 
 bool FGenericPlatformMisc::DeleteStoredValue(const FString& InStoreId, const FString& InSectionName, const FString& InKeyName)
-{
+{	
 	check(!InStoreId.IsEmpty());
 	check(!InSectionName.IsEmpty());
 	check(!InKeyName.IsEmpty());
@@ -590,26 +582,6 @@ bool FGenericPlatformMisc::DeleteStoredValue(const FString& InStoreId, const FSt
 
 		ConfigFile.Dirty = true;
 		return ConfigFile.Write(ConfigPath) && RemovedNum == 1;
-	}
-
-	return false;
-}
-
-bool FGenericPlatformMisc::DeleteStoredSection(const FString& InStoreId, const FString& InSectionName)
-{
-	check(!InStoreId.IsEmpty());
-	check(!InSectionName.IsEmpty());
-
-	// This assumes that FPlatformProcess::ApplicationSettingsDir() returns a user-specific directory; it doesn't on Windows, but Windows overrides this behavior to use the registry
-	const FString ConfigPath = FString(FPlatformProcess::ApplicationSettingsDir()) / InStoreId / FString(TEXT("KeyValueStore.ini"));
-
-	FConfigFile ConfigFile;
-	ConfigFile.Read(ConfigPath);
-
-	if (ConfigFile.Remove(InSectionName) != 0)
-	{
-		ConfigFile.Dirty = true;
-		return ConfigFile.Write(ConfigPath);
 	}
 
 	return false;
@@ -747,31 +719,6 @@ void FGenericPlatformMisc::CreateGuid(FGuid& Guid)
 	Guid = FGuid(RandBits | (SequentialBits << 16), EstimatedCurrentDateTime.GetTicks() >> 32, EstimatedCurrentDateTime.GetTicks() & 0xffffffff, FPlatformTime::Cycles());
 }
 
-const TCHAR* LexToString( EAppReturnType::Type Value )
-{
-	switch (Value)
-	{
-	case EAppReturnType::No:
-		return TEXT("No");
-	case EAppReturnType::Yes:
-		return TEXT("Yes");
-	case EAppReturnType::YesAll:
-		return TEXT("YesAll");
-	case EAppReturnType::NoAll:
-		return TEXT("NoAll");
-	case EAppReturnType::Cancel:
-		return TEXT("Cancel");
-	case EAppReturnType::Ok:
-		return TEXT("Ok");
-	case EAppReturnType::Retry:
-		return TEXT("Retry");
-	case EAppReturnType::Continue:
-		return TEXT("Continue");
-	default:
-		return TEXT("Unknown");
-	}
-}
-
 EAppReturnType::Type FGenericPlatformMisc::MessageBoxExt( EAppMsgType::Type MsgType, const TCHAR* Text, const TCHAR* Caption )
 {
 	if (GWarn)
@@ -810,7 +757,7 @@ const TCHAR* FGenericPlatformMisc::RootDir()
 		int32 chopPos = TempPath.Find(TEXT("/Engine"), ESearchCase::IgnoreCase, ESearchDir::FromEnd);
 		if (chopPos != INDEX_NONE)
 		{
-			TempPath.LeftInline(chopPos + 1, false);
+			TempPath = TempPath.Left(chopPos + 1);
 		}
 		else
 		{
@@ -819,7 +766,7 @@ const TCHAR* FGenericPlatformMisc::RootDir()
 			// if the path ends in a separator, remove it
 			if (TempPath.Right(1) == TEXT("/"))
 			{
-				TempPath.LeftChopInline(1, false);
+				TempPath = TempPath.LeftChop(1);
 			}
 
 			// keep going until we've removed Binaries
@@ -830,7 +777,7 @@ const TCHAR* FGenericPlatformMisc::RootDir()
 #endif
 			if (pos != INDEX_NONE)
 			{
-				TempPath.LeftInline(pos + 1, false);
+				TempPath = TempPath.Left(pos + 1);
 			}
 			else
 			{
@@ -843,7 +790,7 @@ const TCHAR* FGenericPlatformMisc::RootDir()
 				{
 					while (TempPath.Len() && TempPath.Right(1) != TEXT("/"))
 					{
-						TempPath.LeftChopInline(1, false);
+						TempPath = TempPath.LeftChop(1);
 					}
 				}
 			}
@@ -956,28 +903,18 @@ const TCHAR* FGenericPlatformMisc::ProjectDir()
 	bool bIsIniReady = GConfig && GConfig->IsReadyForUse();
 	if (bWasIniReady != bIsIniReady)
 	{
-		ProjectDir.Reset();
+		ProjectDir = TEXT("");
 		bWasIniReady = bIsIniReady;
-	}
-
-	// track if last time we called this function the project file path was set
-	static bool bWasProjectFilePathReady = false;
-	if (!bWasProjectFilePathReady && FPaths::IsProjectFilePathSet())
-	{
-		ProjectDir.Reset();
-		bWasProjectFilePathReady = true;
 	}
 
 	// try using the override game dir if it exists, which will override all below logic
 	if (ProjectDir.Len() == 0)
 	{
-		ProjectDir.Reserve(FPlatformMisc::GetMaxPathLength());
 		ProjectDir = OverrideProjectDir;
 	}
 
 	if (ProjectDir.Len() == 0)
 	{
-		ProjectDir.Reserve(FPlatformMisc::GetMaxPathLength());
 		if (FPlatformProperties::IsProgram())
 		{
 			// monolithic, game-agnostic executables, the ini is in Engine/Config/Platform
@@ -1077,7 +1014,12 @@ const TCHAR* FGenericPlatformMisc::GamePersistentDownloadDir()
 
 	if (GamePersistentDownloadDir.Len() == 0)
 	{
-		GamePersistentDownloadDir = FPaths::ProjectSavedDir() / TEXT("PersistentDownloadDir");
+		FString BaseProjectDir = ProjectDir();
+
+		if (BaseProjectDir.Len() > 0)
+		{
+			GamePersistentDownloadDir = BaseProjectDir / TEXT("PersistentDownloadDir");
+		}
 	}
 	return *GamePersistentDownloadDir;
 }
@@ -1090,21 +1032,6 @@ const TCHAR* FGenericPlatformMisc::GetUBTPlatform()
 const TCHAR* FGenericPlatformMisc::GetUBTTarget()
 {
 	return TEXT(PREPROCESSOR_TO_STRING(UBT_COMPILED_TARGET));
-}
-
-/** The name of the UBT target that the current executable was built from. Defaults to the UE4 default target for this type to make content only projects work, 
-	but will be overridden by the primary game module if it exists */
-TCHAR GUBTTargetName[128] = TEXT("UE4" PREPROCESSOR_TO_STRING(UBT_COMPILED_TARGET));
-
-void FGenericPlatformMisc::SetUBTTargetName(const TCHAR* InTargetName)
-{
-	check(FCString::Strlen(InTargetName) < (UE_ARRAY_COUNT(GUBTTargetName) - 1));
-	FCString::Strcpy(GUBTTargetName, InTargetName);
-}
-
-const TCHAR* FGenericPlatformMisc::GetUBTTargetName()
-{
-	return GUBTTargetName;
 }
 
 const TCHAR* FGenericPlatformMisc::GetDefaultDeviceProfileName()
@@ -1232,7 +1159,7 @@ FString FGenericPlatformMisc::GetTimeZoneId()
 	return FString();
 }
 
-#if DO_ENSURE
+#if DO_CHECK
 namespace GenericPlatformMisc
 {
 	/** Chances for handling an ensure (0.0 - never, 1.0 - always). */
@@ -1260,14 +1187,14 @@ void FGenericPlatformMisc::UpdateHotfixableEnsureSettings()
 	float HandleEnsurePercentInConfig = 100.0f;
 	if (GConfig && GConfig->GetFloat(TEXT("Core.System"), TEXT("HandleEnsurePercent"), HandleEnsurePercentInConfig, GEngineIni))
 	{
-		GenericPlatformMisc::GEnsureChance = HandleEnsurePercentInConfig / 100.0f;
+		GenericPlatformMisc::GEnsureChance = HandleEnsurePercentInConfig / 100.0;
 	}
 	else
 	{
 		float HandleEnsurePercentOnCmdLine = 100.0f;
-		if (FCommandLine::IsInitialized() && FParse::Value(FCommandLine::Get(), TEXT("handleensurepercent="), HandleEnsurePercentOnCmdLine))
+		if (!FCommandLine::IsInitialized() && FParse::Value(FCommandLine::Get(), TEXT("handleensurepercent="), HandleEnsurePercentOnCmdLine))
 		{
-			GenericPlatformMisc::GEnsureChance = HandleEnsurePercentOnCmdLine / 100.0f;
+			GenericPlatformMisc::GEnsureChance = HandleEnsurePercentOnCmdLine / 100.0;
 		}
 	}
 
@@ -1279,7 +1206,7 @@ void FGenericPlatformMisc::UpdateHotfixableEnsureSettings()
 
 	GenericPlatformMisc::GEnsureSettingsEverUpdated = true;
 }
-#endif // #if DO_ENSURE
+#endif // !DO_CHECK
 
 void FGenericPlatformMisc::TickHotfixables()
 {
@@ -1422,11 +1349,6 @@ bool FGenericPlatformMisc::RequestDeviceCheckToken(TFunction<void(const TArray<u
 	return false;
 }
 
-TArray<FCustomChunk> FGenericPlatformMisc::GetOnDemandChunksForPakchunkIndices(const TArray<int32>& PakchunkIndices)
-{
-	return TArray<FCustomChunk>();
-}
-
 TArray<FCustomChunk> FGenericPlatformMisc::GetAllOnDemandChunks()
 {
 	return TArray<FCustomChunk>();
@@ -1453,19 +1375,14 @@ FString FGenericPlatformMisc::LoadTextFileFromPlatformPackage(const FString& Rel
 {
 	FString Path = RootDir() / RelativePath;
 	FString Result;
-	if (FFileHelper::LoadFileToString(Result, &IPlatformFile::GetPlatformPhysical(), *Path))
-	{
-		return Result;
-	}
-
-	Result.Empty();
+	FFileHelper::LoadFileToString(Result, *Path);
 	return Result;
 }
 
 bool FGenericPlatformMisc::FileExistsInPlatformPackage(const FString& RelativePath)
 {
 	FString Path = RootDir() / RelativePath;
-	return IPlatformFile::GetPlatformPhysical().FileExists(*Path);
+	return IFileManager::Get().FileExists(*Path);
 }
 
 void FGenericPlatformMisc::TearDown()
@@ -1496,33 +1413,4 @@ void FGenericPlatformMisc::ParseChunkIdPakchunkIndexMapping(TArray<FString> Chun
 			OutMapping.Add(ChunkId, PakchunkIndex);
 		}
 	}
-}
-
-int32 FGenericPlatformMisc::GetPakchunkIndexFromPakFile(const FString& InFilename)
-{
-	FString ChunkIdentifier(TEXT("pakchunk"));
-	FString BaseFilename = FPaths::GetBaseFilename(InFilename);
-	int32 ChunkNumber = INDEX_NONE;
-
-	if (BaseFilename.StartsWith(ChunkIdentifier))
-	{
-		int32 StartOfNumber = ChunkIdentifier.Len();
-		int32 DigitCount = 0;
-		if (FChar::IsDigit(BaseFilename[StartOfNumber]))
-		{
-			while ((DigitCount + StartOfNumber) < BaseFilename.Len() && FChar::IsDigit(BaseFilename[StartOfNumber + DigitCount]))
-			{
-				DigitCount++;
-			}
-
-			if ((StartOfNumber + DigitCount) < BaseFilename.Len())
-			{
-				FString ChunkNumberString = BaseFilename.Mid(StartOfNumber, DigitCount);
-				check(ChunkNumberString.IsNumeric());
-				TTypeFromString<int32>::FromString(ChunkNumber, *ChunkNumberString);
-			}
-		}
-	}
-
-	return ChunkNumber;
 }

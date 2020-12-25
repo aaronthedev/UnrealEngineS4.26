@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Roles/LiveLinkAnimationBlueprintStructs.h"
 
@@ -23,44 +23,25 @@ FCachedSubjectFrame::FCachedSubjectFrame(const FLiveLinkSkeletonStaticData* InSt
 	check(InStaticData->BoneNames.Num() == NumTransforms);
 	check(InStaticData->BoneParents.Num() == NumTransforms);
 	check(InStaticData->PropertyNames.Num() == InAnimData->PropertyValues.Num());
-	CachedRootSpaceTransforms.SetNum(NumTransforms);
-	CachedChildTransformIndices.SetNum(NumTransforms);
+	RootSpaceTransforms.SetNum(NumTransforms);
+	ChildTransformIndices.SetNum(NumTransforms);
 	for (int32 i = 0; i < NumTransforms; ++i)
 	{
-		CachedRootSpaceTransforms[i].Key = false;
-		CachedChildTransformIndices[i].Key = false;
+		RootSpaceTransforms[i].Key = false;
+		ChildTransformIndices[i].Key = false;
 	}
 }
 
-void FCachedSubjectFrame::SetCurvesFromCache(TMap<FName, float>& OutCurves) const
+void FCachedSubjectFrame::SetCurvesFromCache(TMap<FName, float>& OutCurves)
 {
 	if (!bHaveCachedCurves)
 	{
-		// This caching does not change the result of the function 
 		CacheCurves();
 	}
 	OutCurves = CachedCurves;
 };
 
-bool FCachedSubjectFrame::GetCurveValueByName(FName InCurveName, float& OutCurveValue) const
-{
-	if (!bHaveCachedCurves)
-	{
-		// The caching does not change the result of the function 
-		CacheCurves();
-	}
-	if (const float* ValuePtr = CachedCurves.Find(InCurveName))
-	{
-		if (FMath::IsFinite(*ValuePtr))
-		{
-			OutCurveValue = *ValuePtr;
-			return true;
-		}
-	}
-	return false;
-}
-
-void FCachedSubjectFrame::GetSubjectMetadata(FSubjectMetadata& OutSubjectMetadata) const
+void FCachedSubjectFrame::GetSubjectMetadata(FSubjectMetadata& OutSubjectMetadata)
 {
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	OutSubjectMetadata.StringMetadata = SourceAnimationFrameData.MetaData.StringMetaData;
@@ -70,17 +51,17 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
 };
 
-int32 FCachedSubjectFrame::GetNumberOfTransforms() const
+int32 FCachedSubjectFrame::GetNumberOfTransforms()
 {
 	return SourceAnimationFrameData.Transforms.Num();
 };
 
-void FCachedSubjectFrame::GetTransformNames(TArray<FName>& OutTransformNames) const
+void FCachedSubjectFrame::GetTransformNames(TArray<FName>& OutTransformNames)
 {
 	OutTransformNames = SourceSkeletonData.GetBoneNames();
 };
 
-void FCachedSubjectFrame::GetTransformName(const int32 InTransformIndex, FName& OutName) const
+void FCachedSubjectFrame::GetTransformName(const int32 InTransformIndex, FName& OutName)
 {
 	if (IsValidTransformIndex(InTransformIndex))
 	{
@@ -92,12 +73,12 @@ void FCachedSubjectFrame::GetTransformName(const int32 InTransformIndex, FName& 
 	}
 };
 
-int32 FCachedSubjectFrame::GetTransformIndexFromName(FName InTransformName) const
+int32 FCachedSubjectFrame::GetTransformIndexFromName(FName InTransformName)
 {
 	return SourceSkeletonData.GetBoneNames().IndexOfByKey(InTransformName);
 };
 
-int32 FCachedSubjectFrame::GetParentTransformIndex(const int32 InTransformIndex) const
+int32 FCachedSubjectFrame::GetParentTransformIndex(const int32 InTransformIndex)
 {
 	if (IsValidTransformIndex(InTransformIndex))
 	{
@@ -109,12 +90,12 @@ int32 FCachedSubjectFrame::GetParentTransformIndex(const int32 InTransformIndex)
 	}
 };
 
-void FCachedSubjectFrame::GetChildTransformIndices(const int32 InTransformIndex, TArray<int32>& OutChildIndices) const
+void FCachedSubjectFrame::GetChildTransformIndices(const int32 InTransformIndex, TArray<int32>& OutChildIndices)
 {
 	OutChildIndices.Reset();
 	if (IsValidTransformIndex(InTransformIndex))
 	{
-		TPair<bool, TArray<int32>>& ChildIndicesCache = CachedChildTransformIndices[InTransformIndex];
+		TPair<bool, TArray<int32>>& ChildIndicesCache = ChildTransformIndices[InTransformIndex];
 		bool bHasValidCache = ChildIndicesCache.Key;
 		TArray<int32>& CachedChildIndices = ChildIndicesCache.Value;
 		if (!bHasValidCache)
@@ -134,7 +115,7 @@ void FCachedSubjectFrame::GetChildTransformIndices(const int32 InTransformIndex,
 	}
 }
 
-void FCachedSubjectFrame::GetTransformParentSpace(const int32 InTransformIndex, FTransform& OutTransform) const
+void FCachedSubjectFrame::GetTransformParentSpace(const int32 InTransformIndex, FTransform& OutTransform)
 {
 	// Case: Root joint or invalid
 	OutTransform = FTransform::Identity;
@@ -145,13 +126,13 @@ void FCachedSubjectFrame::GetTransformParentSpace(const int32 InTransformIndex, 
 	}
 };
 
-void FCachedSubjectFrame::GetTransformRootSpace(const int32 InTransformIndex, FTransform& OutTransform) const
+void FCachedSubjectFrame::GetTransformRootSpace(const int32 InTransformIndex, FTransform& OutTransform)
 {
 	// Case: Root joint or invalid
 	OutTransform = FTransform::Identity;
 	if (IsValidTransformIndex(InTransformIndex))
 	{
-		TPair<bool, FTransform>& RootSpaceCache = CachedRootSpaceTransforms[InTransformIndex];
+		TPair<bool, FTransform>& RootSpaceCache = RootSpaceTransforms[InTransformIndex];
 		bool bHasValidCache = RootSpaceCache.Key;
 		// Case: Have Cached Value
 		if (bHasValidCache)
@@ -164,7 +145,7 @@ void FCachedSubjectFrame::GetTransformRootSpace(const int32 InTransformIndex, FT
 			const TArray<int32>& BoneParents = SourceSkeletonData.GetBoneParents();
 			int32 ParentIndex = BoneParents[InTransformIndex];
 
-			const FTransform& LocalSpaceTransform = SourceAnimationFrameData.Transforms[InTransformIndex];
+			FTransform& LocalSpaceTransform = SourceAnimationFrameData.Transforms[InTransformIndex];
 
 			FTransform ParentRootSpaceTransform;
 			GetTransformRootSpace(ParentIndex, ParentRootSpaceTransform);
@@ -178,13 +159,13 @@ void FCachedSubjectFrame::GetTransformRootSpace(const int32 InTransformIndex, FT
 	}
 };
 
-int32 FCachedSubjectFrame::GetRootIndex() const
+int32 FCachedSubjectFrame::GetRootIndex()
 {
 	const TArray<int32>& BoneParents = SourceSkeletonData.GetBoneParents();
 	return BoneParents.IndexOfByPredicate([](const int32& ParentIndex) { return ParentIndex < 0; });
 };
 
-void FCachedSubjectFrame::CacheCurves() const
+void FCachedSubjectFrame::CacheCurves()
 {
 	bHaveCachedCurves = false;
 	CachedCurves.Reset();
@@ -202,7 +183,7 @@ void FCachedSubjectFrame::CacheCurves() const
 	}
 };
 
-bool FCachedSubjectFrame::IsValidTransformIndex(int32 InTransformIndex) const
+bool FCachedSubjectFrame::IsValidTransformIndex(int32 InTransformIndex)
 {
 	return (InTransformIndex >= 0) && (InTransformIndex < SourceAnimationFrameData.Transforms.Num());
 };
@@ -214,10 +195,9 @@ FLiveLinkTransform::FLiveLinkTransform()
 // to evaluate as identity
 	: TransformIndex(-1)
 {
-
 };
 
-void FLiveLinkTransform::GetName(FName& OutName) const
+void FLiveLinkTransform::GetName(FName& OutName)
 {
 	if (CachedFrame.IsValid())
 	{
@@ -225,7 +205,7 @@ void FLiveLinkTransform::GetName(FName& OutName) const
 	}
 };
 
-void FLiveLinkTransform::GetTransformParentSpace(FTransform& OutTransform) const
+void FLiveLinkTransform::GetTransformParentSpace(FTransform& OutTransform)
 {
 	if (CachedFrame.IsValid())
 	{
@@ -233,7 +213,7 @@ void FLiveLinkTransform::GetTransformParentSpace(FTransform& OutTransform) const
 	}
 };
 
-void FLiveLinkTransform::GetTransformRootSpace(FTransform& OutTransform) const
+void FLiveLinkTransform::GetTransformRootSpace(FTransform& OutTransform)
 {
 	if (CachedFrame.IsValid())
 	{
@@ -241,7 +221,7 @@ void FLiveLinkTransform::GetTransformRootSpace(FTransform& OutTransform) const
 	}
 };
 
-bool FLiveLinkTransform::HasParent() const
+bool FLiveLinkTransform::HasParent()
 {
 	if (CachedFrame.IsValid())
 	{
@@ -253,7 +233,7 @@ bool FLiveLinkTransform::HasParent() const
 	}
 };
 
-void FLiveLinkTransform::GetParent(FLiveLinkTransform& OutParentTransform) const
+void FLiveLinkTransform::GetParent(FLiveLinkTransform& OutParentTransform)
 {
 	if (CachedFrame.IsValid())
 	{
@@ -263,7 +243,7 @@ void FLiveLinkTransform::GetParent(FLiveLinkTransform& OutParentTransform) const
 	}
 };
 
-int32 FLiveLinkTransform::GetChildCount() const
+int32 FLiveLinkTransform::GetChildCount()
 {
 	if (CachedFrame.IsValid())
 	{
@@ -277,7 +257,7 @@ int32 FLiveLinkTransform::GetChildCount() const
 	}
 };
 
-void FLiveLinkTransform::GetChildren(TArray<FLiveLinkTransform>& OutChildTransforms) const
+void FLiveLinkTransform::GetChildren(TArray<FLiveLinkTransform>& OutChildTransforms)
 {
 	OutChildTransforms.Reset();
 	if (CachedFrame.IsValid())
@@ -310,7 +290,7 @@ int32 FLiveLinkTransform::GetTransformIndex() const
 
 // FSubjectFrameHandle
 
-void FSubjectFrameHandle::GetCurves(TMap<FName, float>& OutCurves) const
+void FSubjectFrameHandle::GetCurves(TMap<FName, float>& OutCurves)
 {
 	if (CachedFrame.IsValid())
 	{
@@ -318,16 +298,7 @@ void FSubjectFrameHandle::GetCurves(TMap<FName, float>& OutCurves) const
 	}
 };
 
-bool FSubjectFrameHandle::GetCurveValueByName(FName CurveName, float& CurveValue) const
-{
-	if (CachedFrame.IsValid())
-	{
-		return CachedFrame->GetCurveValueByName(CurveName, CurveValue);
-	}
-	return false;
-}
-
-void FSubjectFrameHandle::GetSubjectMetadata(FSubjectMetadata& OutMetadata) const
+void FSubjectFrameHandle::GetSubjectMetadata(FSubjectMetadata& OutMetadata)
 {
 	if (CachedFrame.IsValid())
 	{
@@ -335,7 +306,7 @@ void FSubjectFrameHandle::GetSubjectMetadata(FSubjectMetadata& OutMetadata) cons
 	}
 };
 
-int32 FSubjectFrameHandle::GetNumberOfTransforms() const
+int32 FSubjectFrameHandle::GetNumberOfTransforms()
 {
 	if (CachedFrame.IsValid())
 	{
@@ -347,7 +318,7 @@ int32 FSubjectFrameHandle::GetNumberOfTransforms() const
 	}
 };
 
-void FSubjectFrameHandle::GetTransformNames(TArray<FName>& OutTransformNames) const
+void FSubjectFrameHandle::GetTransformNames(TArray<FName>& OutTransformNames)
 {
 	if (CachedFrame.IsValid())
 	{
@@ -355,7 +326,7 @@ void FSubjectFrameHandle::GetTransformNames(TArray<FName>& OutTransformNames) co
 	}
 };
 
-void FSubjectFrameHandle::GetRootTransform(FLiveLinkTransform& OutLiveLinkTransform) const
+void FSubjectFrameHandle::GetRootTransform(FLiveLinkTransform& OutLiveLinkTransform)
 {
 	OutLiveLinkTransform.SetCachedFrame(CachedFrame);
 	if (CachedFrame.IsValid())
@@ -364,28 +335,20 @@ void FSubjectFrameHandle::GetRootTransform(FLiveLinkTransform& OutLiveLinkTransf
 	}
 }
 
-void FSubjectFrameHandle::GetTransformByIndex(int32 InTransformIndex, FLiveLinkTransform& OutLiveLinkTransform) const
+void FSubjectFrameHandle::GetTransformByIndex(int32 InTransformIndex, FLiveLinkTransform& OutLiveLinkTransform)
 {
 	OutLiveLinkTransform.SetCachedFrame(CachedFrame);
-	if (CachedFrame.IsValid())
-	{
-		OutLiveLinkTransform.SetCachedFrame(CachedFrame);
-		OutLiveLinkTransform.SetTransformIndex(InTransformIndex);
-	}
+	OutLiveLinkTransform.SetTransformIndex(InTransformIndex);
 };
 
-void FSubjectFrameHandle::GetTransformByName(FName InTransformName, FLiveLinkTransform& OutLiveLinkTransform) const
+void FSubjectFrameHandle::GetTransformByName(FName InTransformName, FLiveLinkTransform& OutLiveLinkTransform)
 {
+	int32 TransformIndex = CachedFrame->GetTransformIndexFromName(InTransformName);
 	OutLiveLinkTransform.SetCachedFrame(CachedFrame);
-	if (CachedFrame.IsValid())
-	{
-		int32 TransformIndex = CachedFrame->GetTransformIndexFromName(InTransformName);
-		OutLiveLinkTransform.SetCachedFrame(CachedFrame);
-		OutLiveLinkTransform.SetTransformIndex(TransformIndex);
-	}
+	OutLiveLinkTransform.SetTransformIndex(TransformIndex);
 };
 
-const FLiveLinkSkeletonStaticData* FSubjectFrameHandle::GetSourceSkeletonStaticData() const
+FLiveLinkSkeletonStaticData* FSubjectFrameHandle::GetSourceSkeletonStaticData()
 {
 	if (CachedFrame.IsValid())
 	{
@@ -394,7 +357,7 @@ const FLiveLinkSkeletonStaticData* FSubjectFrameHandle::GetSourceSkeletonStaticD
 	return nullptr;
 }
 
-const FLiveLinkAnimationFrameData* FSubjectFrameHandle::GetSourceAnimationFrameData() const
+FLiveLinkAnimationFrameData* FSubjectFrameHandle::GetSourceAnimationFrameData()
 {
 	if (CachedFrame.IsValid())
 	{

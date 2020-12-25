@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,7 +12,6 @@
 #include "TakeRecorderSources.generated.h"
 
 class UTakeRecorderSource;
-class UMovieSceneSubSection;
 
 DECLARE_LOG_CATEGORY_EXTERN(SubSequenceSerialization, Verbose, All);
 
@@ -51,7 +50,7 @@ public:
 	 * @param InSourceType    The class type of the source to add
 	 * @return An instance of the specified source type
 	 */
-	UFUNCTION(BlueprintCallable, Category = "Take Recorder", meta = (DeterminesOutputType = "InSourceType"))
+	UFUNCTION(BlueprintCallable, Category = "Take Recorder")
 	UTakeRecorderSource* AddSource(TSubclassOf<UTakeRecorderSource> InSourceType);
 
 	/**
@@ -93,11 +92,6 @@ public:
 	bool GetRecordToSubSequence() const { return bRecordSourcesToSubSequences; }
 	UFUNCTION(BlueprintCallable, Category = "Take Recorder")
 	void SetRecordToSubSequence(bool bValue) { bRecordSourcesToSubSequences = bValue; }
-
-	UFUNCTION(BlueprintPure, Category = "Take Recorder")
-	bool GetStartAtCurrentTimecode() const { return bStartAtCurrentTimecode; }
-	UFUNCTION(BlueprintCallable, Category = "Take Recorder")
-	void SetStartAtCurrentTimecode(bool bValue) { bStartAtCurrentTimecode = bValue; }
 
 	/** Calls the recording initialization flows on each of the specified sources. */
 	UFUNCTION(BlueprintCallable, Category = "Take Recorder")
@@ -154,11 +148,6 @@ public:
 	/** Creates a sub-sequence asset for the specified sub sequence name based on the given master sequence. */
 	static ULevelSequence* CreateSubSequenceForSource(ULevelSequence* InMasterSequence, const FString& SubSequenceTrackName, const FString& SubSequenceAssetName);
 
-	/**
-	 * Array of pairs - key time and the corresponding timecode
-	 */
-	static TArray<TPair<FQualifiedFrameTime, FTimecode> > RecordedTimes;
-
 private:
 	/** Called at the end of each frame in both the Editor and in Game to update all Sources. */
 	virtual void Tick(float DeltaTime) {}
@@ -179,8 +168,8 @@ private:
 	/** Finds the folder that the given Source should be created in, creating it if necessary. */
 	class UMovieSceneFolder* AddFolderForSource(const UTakeRecorderSource* InSource, class UMovieScene* InMovieScene);
 
-	/** Gets the current frame time for recording */
-	FQualifiedFrameTime GetCurrentRecordingFrameTime() const;
+	/** Gets the current frame time for recording, optionally resolving out the engine's custom Timecode provider. */
+	FQualifiedFrameTime GetCurrentRecordingFrameTime(const FTimecode& InTimeCode, bool& bHasValidTimeCodeSource) const;
 
 	/** Remove object bindings that don't have any tracks and are not bindings for attach/path tracks */
 	void RemoveRedundantTracks();
@@ -190,8 +179,6 @@ private:
 	void PreRecordSources(TArray<UTakeRecorderSource *> InSources);
 
 	void StartRecordingTheseSources(const TArray<UTakeRecorderSource *>& InSources, const FTimecode& CurrentTimecode);
-
-	void SetSectionStartTimecode(UMovieSceneSubSection* SubSection, const FTimecode& Timecode, FFrameRate FrameRate, FFrameRate TickResolution);
 
 private:
 
@@ -216,14 +203,8 @@ private:
 	/** What Tick Resolution is the target level sequence we're recording into? Used to convert seconds into FrameNumbers. */
 	FFrameRate TargetLevelSequenceTickResolution;
 
-	/** What Display Rate is the target level sequence we're recording into? Used to convert seconds into FrameNumbers. */
-	FFrameRate TargetLevelSequenceDisplayRate;
-
 	/** Non-serialized serial number that is used for updating UI when the source list changes */
 	uint32 SourcesSerialNumber;
-
-	/** Should we record tracks to start at the current timecode? */
-	bool bStartAtCurrentTimecode;
 
 	/** Should we record our sources to Sub Sequences and place them in the master via a Subscenes track? */
 	bool bRecordSourcesToSubSequences;
@@ -239,6 +220,9 @@ private:
 
 	/** Timecode time at start of recording */
 	FTimecode StartRecordingTimecodeSource;
+
+	/** Last Timecode Frame Number, used to avoid recording same time twice*/
+	TOptional<FFrameNumber> LastTimecodeFrameNumber;
 
 	/** All sources after PreRecord */
 	TArray<UTakeRecorderSource *> PreRecordedSources;

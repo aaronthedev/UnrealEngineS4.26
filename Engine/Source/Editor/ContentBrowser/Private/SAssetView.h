@@ -1,8 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
+#include "UObject/GCObject.h"
 #include "Misc/Attribute.h"
 #include "Input/Reply.h"
 #include "Layout/Visibility.h"
@@ -14,7 +15,6 @@
 #include "ARFilter.h"
 #include "AssetThumbnail.h"
 #include "IContentBrowserSingleton.h"
-#include "ContentBrowserDataFilter.h"
 #include "SourcesData.h"
 #include "Animation/CurveSequence.h"
 #include "Widgets/Views/STableViewBase.h"
@@ -22,10 +22,8 @@
 #include "Editor/ContentBrowser/Private/AssetViewSortManager.h"
 #include "AssetViewTypes.h"
 #include "HistoryManager.h"
-#include "Misc/BlacklistNames.h"
 
 class FMenuBuilder;
-class FBlacklistPaths;
 class FWeakWidgetPath;
 class FWidgetPath;
 class SAssetColumnView;
@@ -35,8 +33,8 @@ class SComboButton;
 class UFactory;
 struct FPropertyChangedEvent;
 
-/** Fires whenever the asset view is asked to start to create a temporary item */
-DECLARE_DELEGATE_OneParam(FOnAssetViewNewItemRequested, const FContentBrowserItem& /*NewItem*/);
+/** Delegate called when selection changed. Provides more context than FOnAssetSelected */
+DECLARE_DELEGATE_TwoParams(FOnAssetSelectionChanged, const FAssetData& /*InAssetData*/, ESelectInfo::Type /*InSelectInfo*/);
 
 /** Fires whenever one of the "Search" options changes, useful for modifying search criteria to match */
 DECLARE_DELEGATE(FOnSearchOptionChanged);
@@ -44,12 +42,11 @@ DECLARE_DELEGATE(FOnSearchOptionChanged);
 /**
  * A widget to display a list of filtered assets
  */
-class SAssetView : public SCompoundWidget
+class SAssetView : public SCompoundWidget, public FGCObject
 {
 public:
 	SLATE_BEGIN_ARGS( SAssetView )
-		: _InitialCategoryFilter(EContentBrowserItemCategoryFilter::IncludeAll)
-		, _AreRealTimeThumbnailsAllowed(true)
+		: _AreRealTimeThumbnailsAllowed(true)
 		, _ThumbnailLabel( EThumbnailLabel::ClassName )
 		, _AllowThumbnailHintLabel(true)
 		, _InitialViewType(EAssetViewType::Tile)
@@ -62,7 +59,6 @@ public:
 		, _CanShowRealTimeThumbnails(false)
 		, _CanShowDevelopersFolder(false)
 		, _CanShowFavorites(false)
-		, _CanDockCollections(false)
 		, _PreloadAssetsForContextMenu(true)
 		, _SelectionMode( ESelectionMode::Multi )
 		, _AllowDragging(true)
@@ -71,27 +67,34 @@ public:
 		, _ShowPathInColumnView(false)
 		, _ShowTypeInColumnView(true)
 		, _SortByPathInColumnView(false)
-		, _ForceShowEngineContent(false)
-		, _ForceShowPluginContent(false)
 		{}
 
 		/** Called to check if an asset should be filtered out by external code */
 		SLATE_EVENT( FOnShouldFilterAsset, OnShouldFilterAsset )
 
-		/** Called when the asset view is asked to start to create a temporary item */
-		SLATE_EVENT( FOnAssetViewNewItemRequested, OnNewItemRequested )
+		/** Called to when an asset is selected */
+		SLATE_EVENT( FOnAssetSelected, OnAssetSelected )
 
-		/** Called to when an item is selected */
-		SLATE_EVENT( FOnContentBrowserItemSelectionChanged, OnItemSelectionChanged )
+		/** Called to when an asset is selected. Provides more context OnAssetSelected */
+		SLATE_EVENT( FOnAssetSelectionChanged, OnAssetSelectionChanged )
 
-		/** Called when the user double clicks, presses enter, or presses space on an Content Browser item */
-		SLATE_EVENT( FOnContentBrowserItemsActivated, OnItemsActivated )
+		/** Called when the user double clicks, presses enter, or presses space on an asset */
+		SLATE_EVENT( FOnAssetsActivated, OnAssetsActivated )
 
-		/** Delegate to invoke when a context menu for an item is opening. */
-		SLATE_EVENT( FOnGetContentBrowserItemContextMenu, OnGetItemContextMenu )
+		/** Called when an asset is right clicked */
+		SLATE_EVENT( FOnGetAssetContextMenu, OnGetAssetContextMenu )
 
-		/** Called when the user has committed a rename of one or more items */
-		SLATE_EVENT( FOnContentBrowserItemRenameCommitted, OnItemRenameCommitted )
+		/** Delegate to invoke when a context menu for a folder is opening. */
+		SLATE_EVENT( FOnGetFolderContextMenu, OnGetFolderContextMenu )
+
+		/** The delegate that fires when a path is right clicked and a context menu is requested */
+		SLATE_EVENT( FContentBrowserMenuExtender_SelectedPaths, OnGetPathContextMenuExtender )
+
+		/** Invoked when a "Find in Asset Tree" is requested */
+		SLATE_EVENT( FOnFindInAssetTreeRequested, OnFindInAssetTreeRequested )
+
+		/** Called when the user has committed a rename of one or more assets */
+		SLATE_EVENT( FOnAssetRenameCommitted, OnAssetRenameCommitted )
 
 		/** Delegate to call (if bound) to check if it is valid to get a custom tooltip for this asset item */
 		SLATE_EVENT(FOnIsAssetValidForCustomToolTip, OnIsAssetValidForCustomToolTip)
@@ -104,9 +107,6 @@ public:
 
 		/** Called when an asset item's tooltip is closing */
 		SLATE_EVENT(FOnAssetToolTipClosing, OnAssetToolTipClosing)
-
-		/** Initial set of item categories that this view should show - may be adjusted further by things like CanShowClasses or legacy delegate bindings */
-		SLATE_ARGUMENT( EContentBrowserItemCategoryFilter, InitialCategoryFilter )
 
 		/** The warning text to display when there are no assets to show */
 		SLATE_ATTRIBUTE( FText, AssetShowWarningText )
@@ -165,9 +165,6 @@ public:
 		/** Indicates if the 'Show Favorites' option should be enabled or disabled */
 		SLATE_ARGUMENT(bool, CanShowFavorites)
 
-		/** Indicates if the 'Dock Collections' option should be enabled or disabled */
-		SLATE_ARGUMENT(bool, CanDockCollections)
-
 		/** Indicates if the context menu is going to load the assets, and if so to preload before the context menu is shown, and warn about the pending load. */
 		SLATE_ARGUMENT( bool, PreloadAssetsForContextMenu )
 
@@ -192,14 +189,11 @@ public:
 		/** Sort by path in the column view. Only works if the initial view type is Column */
 		SLATE_ARGUMENT(bool, SortByPathInColumnView)
 
-		/** Should always show engine content */
-		SLATE_ARGUMENT(bool, ForceShowEngineContent)
-
-		/** Should always show plugin content */
-		SLATE_ARGUMENT(bool, ForceShowPluginContent)
-
 		/** Called to check if an asset tag should be display in details view. */
 		SLATE_EVENT( FOnShouldDisplayAssetTag, OnAssetTagWantsToBeDisplayed )
+
+		/** Called when a folder is entered */
+		SLATE_EVENT( FOnPathSelected, OnPathSelected )
 
 		/** Called to add extra asset data to the asset view, to display virtual assets. These get treated similar to Class assets */
 		SLATE_EVENT( FOnGetCustomSourceAssets, OnGetCustomSourceAssets )
@@ -232,41 +226,32 @@ public:
 	/** Notifies the asset view that the filter-list filter has changed */
 	void SetBackendFilter(const FARFilter& InBackendFilter);
 
-	/** Handler for when a data source requests folder item creation */
-	void NewFolderItemRequested(const FContentBrowserItemTemporaryContext& NewItemContext);
-
-	/** Handler for when a data source requests file item creation */
-	void NewFileItemRequested(const FContentBrowserItemDataTemporaryContext& NewItemContext);
-
 	/** Creates a new asset item designed to allocate a new object once it is named. Uses the supplied factory to create the asset */
 	void CreateNewAsset(const FString& DefaultAssetName, const FString& PackagePath, UClass* AssetClass, UFactory* Factory);
 
-	/** Sets up an inline rename for the specified item */
-	void RenameItem(const FContentBrowserItem& ItemToRename);
+	/** Creates a new asset item designed to duplicate an object once it is named */
+	void DuplicateAsset(const FString& PackagePath, const TWeakObjectPtr<UObject>& OriginalObject);
 
-	/** Selects the specified items. */
-	void SyncToItems( TArrayView<const FContentBrowserItem> ItemsToSync, const bool bFocusOnSync = true );
+	/** Sets up an inline rename for the specified asset */
+	void RenameAsset(const FAssetData& ItemToRename);
 
-	/** Selects the specified virtual paths. */
-	void SyncToVirtualPaths( TArrayView<const FName> VirtualPathsToSync, const bool bFocusOnSync = true );
+	/** Sets up an inline rename for the specified folder */
+	void RenameFolder(const FString& FolderToRename);
 
-	/** Selects the specified assets and paths. */
-	void SyncToLegacy( TArrayView<const FAssetData> AssetDataList, TArrayView<const FString> FolderList, const bool bFocusOnSync = true );
+	/** Selects the paths containing the specified assets. */
+	void SyncToAssets( const TArray<FAssetData>& AssetDataList, const bool bFocusOnSync = true );
+
+	/** Selects the specified paths. */
+	void SyncToFolders( const TArray<FString>& FolderList, const bool bFocusOnSync = true );
+
+	/** Selects the paths containing the specified items. */
+	void SyncTo( const FContentBrowserSelection& ItemSelection, const bool bFocusOnSync = true );
 
 	/** Sets the state of the asset view to the one described by the history data */
 	void ApplyHistoryData( const FHistoryData& History );
 
 	/** Returns all the items currently selected in the view */
-	TArray<TSharedPtr<FAssetViewItem>> GetSelectedViewItems() const;
-
-	/** Returns all the items currently selected in the view */
-	TArray<FContentBrowserItem> GetSelectedItems() const;
-
-	/** Returns all the folder items currently selected in the view */
-	TArray<FContentBrowserItem> GetSelectedFolderItems() const;
-
-	/** Returns all the file items currently selected in the view */
-	TArray<FContentBrowserItem> GetSelectedFileItems() const;
+	TArray<TSharedPtr<FAssetViewItem>> GetSelectedItems() const;
 
 	/** Returns all the asset data objects in items currently selected in the view */
 	TArray<FAssetData> GetSelectedAssets() const;
@@ -280,6 +265,9 @@ public:
 	/** Requests that the asset view refreshes only items that are filtered through frontend sources. This should be used when possible. */
 	void RequestQuickFrontendListRefresh();
 
+	/** Requests that the asset view adds any recently added items in the next update to the filtered asset items */
+	void RequestAddNewAssetsNextFrame();
+
 	/** Saves any settings to config that should be persistent between editor sessions */
 	void SaveSettings(const FString& IniFilename, const FString& IniSection, const FString& SettingsString) const;
 
@@ -288,6 +276,9 @@ public:
 
 	/** Adjusts the selected asset by the selection delta, which should be +1 or -1) */
 	void AdjustActiveSelection(int32 SelectionDelta);
+
+	/** Processes assets that were loaded or changed since the last frame */
+	void ProcessRecentlyLoadedOrChangedAssets();
 
 	/** Returns true if an asset is currently in the process of being renamed */
 	bool IsRenamingAsset() const;
@@ -301,6 +292,10 @@ public:
 	virtual FReply OnKeyDown( const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent ) override;
 	virtual FReply OnMouseWheel( const FGeometry& MyGeometry, const FPointerEvent& MouseEvent ) override;
 	virtual void OnFocusChanging( const FWeakWidgetPath& PreviousFocusPath, const FWidgetPath& NewWidgetPath, const FFocusEvent& InFocusEvent ) override;
+
+	//~ FGCObject inherited
+	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
+	virtual FString GetReferencerName() const override { return TEXT("SAssetView"); }
 
 	/** Opens the selected assets or folders, depending on the selection */
 	void OnOpenAssetsOrFolders();
@@ -319,6 +314,18 @@ public:
 
 	/** Set whether the user is currently searching or not */
 	void SetUserSearching(bool bInSearching);
+
+	/** Create a new folder item. The item will create a new folder once it is named */
+	void OnCreateNewFolder(const FString& DefaultFolderName, const FString& FolderPath);
+
+	/** Called when a folder is added to the asset registry */
+	void OnAssetRegistryPathAdded(const FString& Path);
+
+	/** Called when a folder is removed from the asset registry */
+	void OnAssetRegistryPathRemoved(const FString& Path);
+
+	/** Handles updating the content browser when a path is populated with an asset for the first time */
+	void OnFolderPopulated(const FString& Path);
 
 	/**
 	 * Forces the plugin content folder to be shown.
@@ -353,11 +360,8 @@ private:
 	/** Calculates the latest color and opacity for the hint on thumbnails */
 	void CalculateThumbnailHintColorAndOpacity();
 
-	/** True if we have items pending that ProcessItemsPendingFilter still needs to process */
-	bool HasItemsPendingFilter() const;
-
-	/** Handles amortizing the additional filters */
-	void ProcessItemsPendingFilter(const double TickStartTime);
+	/** Handles amortizing the backend filters */
+	void ProcessQueriedItems( const double TickStartTime );
 
 	/** Creates a new tile view */
 	TSharedRef<class SAssetTileView> CreateTileView();
@@ -377,14 +381,29 @@ private:
 	/** Regenerates the FilteredAssetItems list from the AssetItems list */
 	void RefreshFilteredItems();
 
+	/** Regenerates folders if we are displaying them */
+	void RefreshFolders();
+
 	/** Sets the asset type that represents the majority of the assets in view */
 	void SetMajorityAssetType(FName NewMajorityAssetType);
 
 	/** Handler for when an asset is added to a collection */
 	void OnAssetsAddedToCollection( const FCollectionNameType& Collection, const TArray< FName >& ObjectPaths );
 
+	/** Handler for when an asset was created or added to the asset registry */
+	void OnAssetAdded(const FAssetData& AssetData);
+
+	/** Process assets that we were recently informed of & buffered in RecentlyAddedAssets */
+	void ProcessRecentlyAddedAssets();
+
 	/** Handler for when an asset is removed from a collection */
 	void OnAssetsRemovedFromCollection( const FCollectionNameType& Collection, const TArray< FName >& ObjectPaths );
+
+	/** Handler for when an asset was deleted or removed from the asset registry */
+	void OnAssetRemoved(const FAssetData& AssetData);
+
+	/** Removes the specified asset from view's caches */
+	void RemoveAssetByPath( const FName& ObjectPath );
 
 	/** Handler for when a collection is renamed */
 	void OnCollectionRenamed( const FCollectionNameType& OriginalCollection, const FCollectionNameType& NewCollection );
@@ -392,14 +411,35 @@ private:
 	/** Handler for when a collection is updated */
 	void OnCollectionUpdated( const FCollectionNameType& Collection );
 
+	/** Handler for when an asset was renamed in the asset registry */
+	void OnAssetRenamed(const FAssetData& AssetData, const FString& OldObjectPath);
+
+	/** Handler for when an asset is updated in the asset registry */
+	void OnAssetUpdated(const FAssetData& AssetData);
+
+	/** Handler for when an asset was loaded */
+	void OnAssetLoaded(UObject* Asset);
+
+	/** Handler for when an asset's property has changed */
+	void OnObjectPropertyChanged(UObject* Object, FPropertyChangedEvent& PropertyChangedEvent);
+
+	/** Called when the class hierarchy is updated due to the available modules changing */
+	void OnClassHierarchyUpdated();
+
 	/** Handler for when any frontend filters have been changed */
 	void OnFrontendFiltersChanged();
 
 	/** Returns true if there is any frontend filter active */
 	bool IsFrontendFilterActive() const;
 
-	/** Returns true if the specified Content Browser item passes all applied frontend (non asset registry) filters */
-	bool PassesCurrentFrontendFilter(const FContentBrowserItem& Item) const;
+	/** Returns true if the specified asset data item passes all applied frontend (non asset registry) filters */
+	bool PassesCurrentFrontendFilter(const FAssetData& Item) const;
+
+	/** Returns true if the specified asset data item passes all applied backend (asset registry) filters */
+	bool PassesCurrentBackendFilter(const FAssetData& Item) const;
+
+	/** Removes asset data items from the given array that don't pass all applied backend (asset registry) filters */
+	void RunAssetsThroughBackendFilter(TArray<FAssetData>& InOutAssetDataList) const;
 
 	/** Returns true if the current filters deem that the asset view should be filtered recursively (overriding folder view) */
 	bool ShouldFilterRecursively() const;
@@ -415,12 +455,6 @@ private:
 
 	/** Handler for when the view combo button is clicked */
 	TSharedRef<SWidget> GetViewButtonContent();
-
-	/** Register menu for when the view combo button is clicked */
-	static void RegisterGetViewButtonMenu();
-
-	/** Fill in menu content for when the view combo button is clicked */
-	void PopulateViewButtonMenu(class UToolMenu* Menu);
 
 	/** Toggle whether folders should be shown or not */
 	void ToggleShowFolders();
@@ -476,12 +510,6 @@ private:
 	/** Whether or not it's possible to toggle developers content */
 	bool IsToggleShowDevelopersContentAllowed() const;
 
-	/** Whether or not it's possible to toggle engine content */
-	bool IsToggleShowEngineContentAllowed() const;
-
-	/** Whether or not it's possible to toggle plugin content */
-	bool IsToggleShowPluginContentAllowed() const;
-	
 	/** @return true when we are showing the developers content */
 	bool IsShowingDevelopersContent() const;
 
@@ -493,15 +521,6 @@ private:
 
 	/** @return true when we are showing favorites */
 	bool IsShowingFavorites() const;
-
-	/** Toggle whether the collections view should be docked under the paths view */
-	void ToggleDockCollections();
-
-	/** Whether or not it's possible to dock the collections view */
-	bool IsToggleDockCollectionsAllowed() const;
-
-	/** @return true when the collections view is docked */
-	bool HasDockedCollections() const;
 
 	/** Toggle whether C++ content should be shown or not */
 	void ToggleShowCppContent();
@@ -587,7 +606,7 @@ private:
 	void UpdateThumbnails();
 
 	/**  Helper function for UpdateThumbnails. Adds the specified item to the new thumbnail relevancy map and creates any thumbnails for new items. Returns the thumbnail. */
-	TSharedPtr<class FAssetThumbnail> AddItemToNewThumbnailRelevancyMap(const TSharedPtr<FAssetViewItem>& Item, TMap< TSharedPtr<FAssetViewItem>, TSharedPtr<class FAssetThumbnail> >& NewRelevantThumbnails);
+	TSharedPtr<class FAssetThumbnail> AddItemToNewThumbnailRelevancyMap(const TSharedPtr<FAssetViewAsset>& Item, TMap< TSharedPtr<FAssetViewAsset>, TSharedPtr<class FAssetThumbnail> >& NewRelevantThumbnails);
 
 	/** Handler for tree view selection changes */
 	void AssetSelectionChanged( TSharedPtr<FAssetViewItem > AssetItem, ESelectInfo::Type SelectInfo );
@@ -682,6 +701,14 @@ private:
 	/** @return The state of the is working progress bar */
 	TOptional< float > GetIsWorkingProgressBarState() const;
 
+	/** Creates an asset from a temporary asset
+	 * @param InName			The name of the asset
+	 * @param InItem			The asset item with all the information to create the asset
+	 * @param OutErrorText		The error text generated
+	 * @return					The created UObject for the asset
+	 */
+	UObject* CreateAssetFromTemporary(FString InName, const TSharedPtr<FAssetViewAsset>& InItem, FText& OutErrorText);
+
 	/** Is the no assets to show warning visible? */
 	EVisibility IsAssetShowWarningTextVisible() const;
 
@@ -691,11 +718,26 @@ private:
 	/** Whether we have a single source collection selected */
 	bool HasSingleCollectionSource() const;
 
-	/** Starts the async flow of creating a file or folder item from deferred data */
-	void BeginCreateDeferredItem();
+	/** Delegate for when assets or asset paths are dragged onto a folder */
+	void OnAssetsOrPathsDragDropped(const TArray<FAssetData>& AssetList, const TArray<FString>& AssetPaths, const FString& DestinationPath);
 
-	/** Finishes the async flow of creating a file or folder item from deferred data */
-	FContentBrowserItem EndCreateDeferredItem(const TSharedPtr<FAssetViewItem>& InItem, const FString& InName, const bool bFinalize, FText& OutErrorText);
+	/** Delegate for when external assets are dragged onto a folder */
+	void OnFilesDragDropped(const TArray<FString>& AssetList, const FString& DestinationPath);
+
+	/** Delegate to respond to drop of assets or asset paths onto a folder */
+	void ExecuteDropCopy(TArray<FAssetData> AssetList, TArray<FString> AssetPaths, FString DestinationPath);
+
+	/** Delegate to respond to drop of assets or asset paths onto a folder */
+	void ExecuteDropMove(TArray<FAssetData> AssetList, TArray<FString> AssetPaths, FString DestinationPath);
+
+	/** Delegate to respond to drop of assets or asset paths onto a folder */
+	void ExecuteDropAdvancedCopy(TArray<FAssetData> AssetList, TArray<FString> AssetPaths, FString DestinationPath);
+
+	/** Creates a new asset from deferred data */
+	void DeferredCreateNewAsset();
+
+	/** Creates a new folder from deferred data */
+	void DeferredCreateNewFolder();
 
 	/** @return The current quick-jump term */
 	FText GetQuickJumpTerm() const;
@@ -748,44 +790,30 @@ private:
 
 	/** Creates the row header context menu allowing for hiding individually clicked columns*/
 	TSharedRef<SWidget> CreateRowHeaderMenuContent(const FString ColumnName);
-
 	/** Will compute the max row size from all its children for the specified column id*/
 	FVector2D GetMaxRowSizeForColumn(const FName& ColumnId);
 
-	/** Append the current effective backend filter (intersection of BackendFilter and SupportedFilter) to the given filter. */
-	void AppendBackendFilter(FARFilter& FilterToAppendTo) const;
-
-	FContentBrowserDataFilter CreateBackendDataFilter() const;
-
-	/** Handles updating the view when content items are changed */
-	void HandleItemDataUpdated(TArrayView<const FContentBrowserItemDataUpdate> InUpdatedItems);
-
-	/** Notification for when the content browser has completed it's initial search */
-	void HandleItemDataDiscoveryComplete();
+public:
+	/** Delegate that handles if any folder paths changed as a result of a move, rename, etc. in the asset view*/
+	FOnFolderPathChanged OnFolderPathChanged;
 
 private:
-	friend class FAssetViewFrontendFilterHelper;
 
-	/** The available items from querying the backend data sources */
-	TMap<FContentBrowserItemKey, TSharedPtr<FAssetViewItem>> AvailableBackendItems;
-
-	/**
-	 * The items from AvailableBackendItems that are pending a run through any additional filtering before they can be shown in the filtered view list.
-	 * @note This filtering will run without amortization via ProcessItemsPendingFilter, so only use it for items that *must* be processed this frame.
-	 */
-	TSet<TSharedPtr<FAssetViewItem>> ItemsPendingPriorityFilter;
-
-	/**
-	 * The items from AvailableBackendItems that are pending a run through any additional frontend filters before they can be shown in the filtered view list.
-	 * @note This filtering will run amortized on the game thread via ProcessItemsPendingFilter.
-	 */
-	TSet<TSharedPtr<FAssetViewItem>> ItemsPendingFrontendFilter;
-
-	/** The items that are being shown in the filtered view list */
+	/** The asset items being displayed in the view and the filtered list */
+	TArray<FAssetData> QueriedAssetItems;
+	TArray<FAssetData> AssetItems;
 	TArray<TSharedPtr<FAssetViewItem>> FilteredAssetItems;
 
-	/* Map of an item name to the current count of FilteredAssetItems that are of that type */ 
-	TMap<FName, int32> FilteredAssetItemTypeCounts;
+	/** The folder items being displayed in the view */
+	TSet<FString> Folders;
+
+	/** A set of assets that were loaded or changed since the last frame */
+	TSet<FAssetData> RecentlyLoadedOrChangedAssets;
+
+	/** A list of assets that were recently reported as added by the asset registry */
+	TArray<FAssetData> RecentlyAddedAssets;
+	TArray<FAssetData> FilteredRecentlyAddedAssets;
+	double LastProcessAddsTime;
 
 	/** The list view that is displaying the assets */
 	EAssetViewType::Type CurrentViewType;
@@ -800,8 +828,6 @@ private:
 	/** The current base source filter for the view */
 	FSourcesData SourcesData;
 	FARFilter BackendFilter;
-	TSharedPtr<FBlacklistNames> AssetClassBlacklist;
-	TSharedPtr<FBlacklistPaths> FolderBlacklist;
 	TSharedPtr<FAssetFilterCollectionType> FrontendFilters;
 
 	/** If true, the source items will be refreshed next frame. Very slow. */
@@ -822,20 +848,29 @@ private:
 	/** Called to check if an asset should be filtered out by external code */
 	FOnShouldFilterAsset OnShouldFilterAsset;
 
-	/** Called when the asset view is asked to start to create a temporary item */
-	FOnAssetViewNewItemRequested OnNewItemRequested;
+	/** Called when an asset was selected in the list */
+	FOnAssetSelected OnAssetSelected;
 
-	/** Called when an item was selected in the list. Provides more context than OnAssetSelected. */
-	FOnContentBrowserItemSelectionChanged OnItemSelectionChanged;
+	/** Called when an asset was selected in the list. Provides more context than OnAssetSelected. */
+	FOnAssetSelectionChanged OnAssetSelectionChanged;
 
-	/** Called when the user double clicks, presses enter, or presses space on a Content Browser item */
-	FOnContentBrowserItemsActivated OnItemsActivated;
+	/** Called when the user double clicks, presses enter, or presses space on an asset */
+	FOnAssetsActivated OnAssetsActivated;
 
-	/** Delegate to invoke when generating the context menu for an item */
-	FOnGetContentBrowserItemContextMenu OnGetItemContextMenu;
+	/** Called when the user right clicks on an asset in the view */
+	FOnGetAssetContextMenu OnGetAssetContextMenu;
 
-	/** Called when the user has committed a rename of one or more items */
-	FOnContentBrowserItemRenameCommitted OnItemRenameCommitted;
+	/** Delegate to invoke when generating the context menu for a folder */
+	FOnGetFolderContextMenu OnGetFolderContextMenu;
+
+	/** The delegate that fires when a folder is right clicked and a context menu is requested */
+	FContentBrowserMenuExtender_SelectedPaths OnGetPathContextMenuExtender;
+
+	/** Called when a "Find in Asset Tree" is requested */
+	FOnFindInAssetTreeRequested OnFindInAssetTreeRequested;
+
+	/** Called when the user has committed a rename of one or more assets */
+	FOnAssetRenameCommitted OnAssetRenameCommitted;
 
 	/** Called to check if an asset tag should be display in details view. */
 	FOnShouldDisplayAssetTag OnAssetTagWantsToBeDisplayed;
@@ -865,16 +900,16 @@ private:
 	double SortDelaySeconds;
 
 	/** Weak ptr to the asset that is waiting to be renamed when scrolled into view, and the window is active */
-	TWeakPtr<FAssetViewItem> AwaitingRename;
+	TWeakPtr<struct FAssetViewItem> AwaitingRename;
 
 	/** Set when the user is in the process of naming an asset */
-	TWeakPtr<FAssetViewItem> RenamingAsset;
+	TWeakPtr<struct FAssetViewItem> RenamingAsset;
 
 	/** Pool for maintaining and rendering thumbnails */
 	TSharedPtr<class FAssetThumbnailPool> AssetThumbnailPool;
 
 	/** A map of FAssetViewAsset to the thumbnail that represents it. Only items that are currently visible or within half of the FilteredAssetItems array index distance described by NumOffscreenThumbnails are in this list */
-	TMap< TSharedPtr<FAssetViewItem>, TSharedPtr<class FAssetThumbnail> > RelevantThumbnails;
+	TMap< TSharedPtr<FAssetViewAsset>, TSharedPtr<class FAssetThumbnail> > RelevantThumbnails;
 
 	/** The set of FAssetItems that currently have widgets displaying them. */
 	TArray< TSharedPtr<FAssetViewItem> > VisibleItems;
@@ -943,9 +978,6 @@ private:
 	/** Indicates if the 'Show Favorites' option should be enabled or disabled */
 	bool bCanShowFavorites;
 
-	/** Indicates if the 'Dock Collections' option should be enabled or disabled */
-	bool bCanDockCollections;
-
 	/** Indicates if the context menu is going to load the assets, and if so to preload before the context menu is shown, and warn about the pending load. */
 	bool bPreloadAssetsForContextMenu;
 
@@ -957,12 +989,6 @@ private:
 
 	/** If true, it sorts by path and then name */
 	bool bSortByPathInColumnView;
-
-	/** If true, engine content is always shown */
-	bool bForceShowEngineContent;
-
-	/** If true, plugin content is always shown */
-	bool bForceShowPluginContent;
 
 	/** The current selection mode used by the asset view */
 	ESelectionMode::Type SelectionMode;
@@ -997,14 +1023,14 @@ private:
 	/** The text to show when there are no assets to show */
 	TAttribute< FText > AssetShowWarningText;
 
-	/** Initial set of item categories that this view should show - may be adjusted further by things like CanShowClasses or legacy delegate bindings */
-	EContentBrowserItemCategoryFilter InitialCategoryFilter;
-
 	/** Whether to allow dragging of items */
 	bool bAllowDragging;
 
 	/** Whether this asset view should allow focus on sync or not */
 	bool bAllowFocusOnSync;
+
+	/** Delegate to invoke when folder is entered. */
+	FOnPathSelected OnPathSelected;
 
 	/** Flag set if the user is currently searching */
 	bool bUserSearching;
@@ -1012,16 +1038,43 @@ private:
 	/** Whether or not to notify about newly selected items on on the next asset sync */
 	bool bShouldNotifyNextAssetSync;
 
-	/** A struct to hold data for the deferred creation of a file or folder item */
-	struct FCreateDeferredItemData
+	/** A struct to hold data for the deferred creation of assets */
+	struct FCreateDeferredAssetData
 	{
-		FContentBrowserItemTemporaryContext ItemContext;
+		/** The name of the asset */
+		FString DefaultAssetName;
 
-		bool bWasAddedToView = false;
+		/** The path where the asset will be created */
+		FString PackagePath;
+
+		/** The class of the asset to be created */
+		UClass* AssetClass;
+
+		/** The factory to use */
+		UFactory* Factory;
+
+		void AddReferencedObjects(FReferenceCollector& Collector)
+		{
+			Collector.AddReferencedObject(AssetClass);
+			Collector.AddReferencedObject(Factory);
+		}
 	};
 
-	/** File or folder item pending deferred creation */
-	TUniquePtr<FCreateDeferredItemData> DeferredItemToCreate;
+	/** Asset pending deferred creation */
+	TUniquePtr<FCreateDeferredAssetData> DeferredAssetToCreate;
+
+	/** A struct to hold data for the deferred creation of a folder */
+	struct FCreateDeferredFolderData
+	{
+		/** The name of the folder to create */
+		FString FolderName;
+
+		/** The path of the folder to create */
+		FString FolderPath;
+	};
+
+	/** Folder pending deferred creation */
+	TUniquePtr<FCreateDeferredFolderData> DeferredFolderToCreate;
 
 	/** Struct holding the data for the asset quick-jump */
 	struct FQuickJumpData

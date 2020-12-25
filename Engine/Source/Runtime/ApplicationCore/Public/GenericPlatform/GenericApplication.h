@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,7 +10,7 @@
 #include "Templates/SharedPointer.h"
 #include "Delegates/Delegate.h"
 #if WITH_ACCESSIBILITY
-#include "GenericPlatform/Accessibility/GenericAccessibleInterfaces.h"
+#include "GenericPlatform/GenericAccessibleInterfaces.h"
 #endif
 #include "GenericPlatform/GenericApplicationMessageHandler.h"
 #include "GenericPlatform/GenericWindowDefinition.h"
@@ -334,7 +334,6 @@ struct FMonitorInfo
 	FString ID;
 	int32 NativeWidth;
 	int32 NativeHeight;
-	FIntPoint MaxResolution = FIntPoint(ForceInitToZero);
 	FPlatformRect DisplayRect;
 	FPlatformRect WorkArea;
 	bool bIsPrimary;
@@ -443,6 +442,7 @@ public:
 	{
 
 	}
+
 	virtual ~GenericApplication() {}
 
 	virtual void SetMessageHandler( const TSharedRef< FGenericApplicationMessageHandler >& InMessageHandler ) { MessageHandler = InMessageHandler; }
@@ -552,7 +552,6 @@ public:
 
 	virtual bool IsAllowedToRender() const { return true; }
 
-	virtual void FinishedInputThisFrame() {}
 public:
 
 	const TSharedPtr< ICursor > Cursor;
@@ -563,9 +562,7 @@ protected:
 
 #if WITH_ACCESSIBILITY
 	TSharedRef<FGenericAccessibleMessageHandler> AccessibleMessageHandler;
-	
 #endif
-
 	
 	/** Trigger the OnDisplayMetricsChanged event with the argument 'InMetrics' */
 	void BroadcastDisplayMetricsChanged( const FDisplayMetrics& InMetrics ){ OnDisplayMetricsChangedEvent.Broadcast( InMetrics ); }

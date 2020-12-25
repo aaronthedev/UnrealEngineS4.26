@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/SCS_Node.h"
 #include "UObject/LinkerLoad.h"
@@ -161,7 +161,7 @@ UActorComponent* USCS_Node::ExecuteNodeOnActor(AActor* Actor, USceneComponent* P
 		if (VarName != NAME_None)
 		{
 			UClass* ActorClass = Actor->GetClass();
-			if (FObjectPropertyBase* Prop = FindFProperty<FObjectPropertyBase>(ActorClass, VarName))
+			if (UObjectPropertyBase* Prop = FindField<UObjectPropertyBase>(ActorClass, VarName))
 			{
 				// If it is null we don't really know what's going on, but make it behave as it did before the bug fix
 				if (Prop->PropertyClass == nullptr || NewActorComp->IsA(Prop->PropertyClass))
@@ -458,13 +458,6 @@ void USCS_Node::Serialize(FArchive& Ar)
 			{
 				ComponentClass = ComponentTemplate->GetClass();
 			}
-
-			// Only "override" template objects created/referenced by the ICH should have this flag set.
-			// Older versions may have been saved with this flag incorrectly set on the default root node.
-			if (ComponentTemplate != nullptr)
-			{
-				ComponentTemplate->ClearFlags(RF_InheritableComponentTemplate);
-			}
 		}
 	}
 }
@@ -508,7 +501,7 @@ void USCS_Node::SetParent(USCS_Node* InParentNode)
 	}
 }
 
-void USCS_Node::SetParent(const USceneComponent* InParentComponent)
+void USCS_Node::SetParent(USceneComponent* InParentComponent)
 {
 	check(InParentComponent != NULL);
 

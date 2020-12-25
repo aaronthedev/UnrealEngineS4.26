@@ -1,14 +1,17 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVAudioSession.h>
 #import <GameKit/GKGameCenterViewController.h>
-#import <UserNotifications/UserNotifications.h>
 #include "Delegates/Delegate.h"
 #include "Logging/LogMacros.h"
 #include "Containers/UnrealString.h"
+
+#if __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_10_0
+#import <UserNotifications/UserNotifications.h>
+#endif
 
 #define USE_MUTE_SWITCH_DETECTION 0
 
@@ -56,10 +59,6 @@ public:
 	DECLARE_MULTICAST_DELEGATE(FOnWillResignActive);
 	static FOnWillResignActive OnWillResignActive;
 
-	/** INTERNAL - called when becoming active - this is not thread-safe with the game thread or render thread as it is called from the app's Main thread */
-	DECLARE_MULTICAST_DELEGATE(FOnDidBecomeActive);
-	static FOnWillResignActive OnDidBecomeActive;
-	
 private:
 	struct FFilterDelegateAndHandle
 	{
@@ -90,8 +89,6 @@ namespace FAppEntry
     void Suspend(bool bIsInterrupt = false);
     void Resume(bool bIsInterrupt = false);
 	void RestartAudio();
-    void IncrementAudioSuspendCounters();
-    void DecrementAudioSuspendCounters();
 
 	bool IsStartupMoviePlaying();
 
@@ -106,7 +103,9 @@ APPLICATIONCORE_API
 	UIGestureRecognizerDelegate,
 #endif
 	GKGameCenterControllerDelegate,
+#if __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_10_0
 	UNUserNotificationCenterDelegate,
+#endif
 	UITextFieldDelegate>
 {
     bool bForceExit;
@@ -159,7 +158,12 @@ APPLICATIONCORE_API
 
 #if !UE_BUILD_SHIPPING && !PLATFORM_TVOS
 	/** Properties for managing the console */
+#if __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_9_0
+	@property (nonatomic, retain) UIAlertView*		ConsoleAlert;
+#endif
+#ifdef __IPHONE_8_0
 	@property (nonatomic, retain) UIAlertController* ConsoleAlertController;
+#endif
 	@property (nonatomic, retain) NSMutableArray*	ConsoleHistoryValues;
 	@property (nonatomic, assign) int				ConsoleHistoryValuesIndex;
 #endif
@@ -177,8 +181,6 @@ APPLICATIONCORE_API
 @property (assign) NSProcessInfoThermalState ThermalState;
 @property (assign) bool bBatteryState;
 @property (assign) int BatteryLevel;
-
-@property (assign) bool bUpdateAvailable;
 
 /**
  * @return the single app delegate object
@@ -200,8 +202,6 @@ APPLICATIONCORE_API
 -(void)CheckForZoomAccessibility;
 -(float)GetBackgroundingMainThreadBlockTime;
 -(void)OverrideBackgroundingMainThreadBlockTime:(float)BlockTime;
-
--(bool)IsUpdateAvailable;
 
 @property (assign) bool bAudioSessionInitialized;
 

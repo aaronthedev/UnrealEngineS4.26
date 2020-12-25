@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,6 @@
 #include "Input/Reply.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
-#include "Widgets/Input/SComboBox.h"
 #include "Widgets/Input/SSearchBox.h"
 #include "GraphEditor.h"
 #include "AssetData.h"
@@ -69,9 +68,6 @@ private:
 	/** Handler for clicking the history forward button */
 	FReply ForwardClicked();
 
-	/** Refresh the current view */
-	FReply RefreshClicked();
-
 	/** Handler for when the graph panel tells us to go back in history (like using the mouse thumb button) */
 	void GraphNavigateHistoryBack();
 
@@ -86,9 +82,6 @@ private:
 
 	/** Gets the text to be displayed in the address bar */
 	FText GetAddressBarText() const;
-
-	/** Gets the text to be displayed for warning/status updates */
-	FText GetStatusText() const;
 
 	/** Called when the path is being edited */
 	void OnAddressBarTextChanged(const FText& NewText);
@@ -111,7 +104,6 @@ private:
 	void OnEnableCollectionFilterChanged(ECheckBoxState NewState);
 	ECheckBoxState IsEnableCollectionFilterChecked() const;
 	TSharedRef<SWidget> GenerateCollectionFilterItem(TSharedPtr<FName> InItem);
-	void UpdateCollectionsComboList();
 	void HandleCollectionFilterChanged(TSharedPtr<FName> Item, ESelectInfo::Type SelectInfo);
 	FText GetCollectionFilterText() const;
 
@@ -119,8 +111,6 @@ private:
 	ECheckBoxState IsShowSoftReferencesChecked() const;
 	void OnShowHardReferencesChanged(ECheckBoxState NewState);
 	ECheckBoxState IsShowHardReferencesChecked() const;
-	void OnShowEditorOnlyReferencesChanged(ECheckBoxState NewState);
-	ECheckBoxState IsShowEditorOnlyReferencesChecked() const;
 
 	EVisibility GetManagementReferencesVisibility() const;
 	void OnShowManagementReferencesChanged(ECheckBoxState NewState);
@@ -166,7 +156,6 @@ private:
 	bool HasAtLeastOnePackageNodeSelected() const;
 	bool HasAtLeastOneRealNodeSelected() const;
 
-	void OnAssetRegistryChanged(const FAssetData& AssetData);
 	void OnInitialAssetRegistrySearchComplete();
 	EActiveTimerReturnType TriggerZoomToFit(double InCurrentTime, float InDeltaTime);
 private:
@@ -183,9 +172,6 @@ private:
 
 	/** The temporary copy of the path text when it is actively being edited. */
 	FText TemporaryPathBeingEdited;
-
-	/** Combo box for collections filter options */
-	TSharedPtr<SComboBox<TSharedPtr<FName>>> CollectionsCombo;
 
 	/** List of collection filter options */
 	TArray<TSharedPtr<FName>> CollectionsComboList;
@@ -210,26 +196,4 @@ private:
 	bool bShowShowSearchableNames;
 	/** Whether to visually show to the user the option of "Show Native Packages" */
 	bool bShowShowNativePackages;
-	/** True if our view is out of date due to asset registry changes */
-	bool bDirtyResults;
-
-	/** Handle to know if dirty */
-	FDelegateHandle AssetRefreshHandle;
 };
-
-enum class EDependencyPinCategory
-{
-	LinkEndPassive = 0,
-	LinkEndActive = 1,
-	LinkEndMask = LinkEndActive,
-
-	LinkTypeNone = 0,
-	LinkTypeUsedInGame = 2,
-	LinkTypeHard = 4,
-	LinkTypeMask = LinkTypeHard | LinkTypeUsedInGame,
-};
-ENUM_CLASS_FLAGS(EDependencyPinCategory);
-
-extern EDependencyPinCategory ParseDependencyPinCategory(FName PinCategory);
-extern FLinearColor GetColor(EDependencyPinCategory Category);
-extern FName GetName(EDependencyPinCategory Category);

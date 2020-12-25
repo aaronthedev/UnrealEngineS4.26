@@ -220,7 +220,17 @@ void OFaceSetSchema::set( const Sample &iSamp )
         SetPropUsePrevIfNull( m_facesProperty, iSamp.getFaces() );
     }
 
-    m_selfBoundsProperty.set( iSamp.getSelfBounds() );
+    // We've now set the sample for the m_faces property.
+    if ( iSamp.getSelfBounds().hasVolume() )
+    {
+        // Caller explicity set bounds for this sample of the faceset.
+        m_selfBoundsProperty.set( iSamp.getSelfBounds() );
+    }
+    else
+    {
+        m_selfBoundsProperty.set( iSamp.getSelfBounds() );
+        // NYI compute self bounds via parent mesh's faces
+    }
 
     if (m_facesExclusive != kFaceSetNonExclusive)
     {

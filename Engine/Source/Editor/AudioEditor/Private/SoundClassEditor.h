@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,11 +14,6 @@ class IDetailsView;
 class SDockableTab;
 class UEdGraph;
 class USoundClass;
-
-namespace Audio
-{
-	class FAudioDebugger;
-}
 
 //////////////////////////////////////////////////////////////////////////
 // FSoundClassEditor
@@ -124,7 +119,7 @@ private:
 	TSharedPtr<FUICommandList> GraphEditorCommands;
 
 	/** Cache the audio debugger instance */
-	Audio::FAudioDebugger* Debugger;
+	class FAudioDebugger* Debugger;
 
 	/**	The tab ids for all the tabs used */
 	static const FName GraphCanvasTabId;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -31,13 +31,13 @@ public class MovieSceneTracks : ModuleRules
 			}
 		);
 
-		if (Target.bBuildWithEditorOnlyData && Target.bBuildEditor)
+		if (Target.bBuildWithEditorOnlyData)
 		{
-            PublicDependencyModuleNames.AddRange(
-                new string[] {
-                    "BlueprintGraph"
-                }
-            );
+			PublicDependencyModuleNames.AddRange(
+				new string[] {
+					"BlueprintGraph"
+				}
+			);
             PrivateDependencyModuleNames.AddRange(
                 new string[] {
                     "UnrealEd"

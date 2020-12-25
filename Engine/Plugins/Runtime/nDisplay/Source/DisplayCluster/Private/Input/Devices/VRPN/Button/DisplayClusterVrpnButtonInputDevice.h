@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,8 +10,6 @@
 #include "Windows/HideWindowsPlatformTypes.h"
 #endif
 
-class UDisplayClusterConfigurationInputDeviceButton;
-
 
 /**
  * VRPN button device implementation
@@ -20,7 +18,7 @@ class FDisplayClusterVrpnButtonInputDevice
 	: public FDisplayClusterVrpnButtonInputDataHolder
 {
 public:
-	FDisplayClusterVrpnButtonInputDevice(const FString& DeviceId, const UDisplayClusterConfigurationInputDeviceButton* CfgDevice);
+	FDisplayClusterVrpnButtonInputDevice(const FDisplayClusterConfigInput& config);
 	virtual ~FDisplayClusterVrpnButtonInputDevice();
 
 public:
@@ -33,7 +31,7 @@ public:
 
 private:
 	// Data update handler
-	static void VRPN_CALLBACK HandleButtonDevice(void *UserData, vrpn_BUTTONCB const ButtonData);
+	static void VRPN_CALLBACK HandleButtonDevice(void *userData, vrpn_BUTTONCB const b);
 
 private:
 	// The device (PIMPL)

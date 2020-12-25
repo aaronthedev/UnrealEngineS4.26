@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -79,13 +79,13 @@ private:
 	friend class FScopedExternalProfilerBase;
 };
 
-class CORE_API FActiveExternalProfilerBase
+class FActiveExternalProfilerBase
 {
 public:	
 
-	static FExternalProfiler* GetActiveProfiler() { return ActiveProfiler;	};
+	CORE_API static FExternalProfiler* GetActiveProfiler();
 
-	static FExternalProfiler* InitActiveProfiler();
+
 private:
 	/** Static: True if we've tried to initialize a profiler already */
 	static bool bDidInitialize;

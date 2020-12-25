@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -12,7 +12,6 @@ public class DetailCustomizations : ModuleRules
 			new string[] {
 				"AppFramework",
 				"Core",
-// 				"AudioEditor",
 				"CoreUObject",
 				"ApplicationCore",
 				"DesktopWidgets",
@@ -24,7 +23,6 @@ public class DetailCustomizations : ModuleRules
 				"EditorStyle",
 				"UnrealEd",
 				"EditorWidgets",
-				"Kismet",
 				"KismetWidgets",
 				"MovieSceneCapture",
 				"MovieSceneTools",
@@ -52,6 +50,7 @@ public class DetailCustomizations : ModuleRules
 				"NavigationSystem",
 				"AIModule", 
 				"ConfigEditor",
+				"Persona",
 				"CinematicCamera",
 				"ComponentVisualizers",
 				"SkeletonEditor",
@@ -61,7 +60,6 @@ public class DetailCustomizations : ModuleRules
 				"HeadMountedDisplay",
                 "DataTableEditor",
 				"ToolMenus",
-				"PhysicsCore"
             }
 		);
 

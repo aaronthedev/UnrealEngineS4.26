@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_TYPE_IMPL_H
-#define PXR_BASE_TF_TYPE_IMPL_H
+#ifndef TF_TYPE_IMPL_H
+#define TF_TYPE_IMPL_H
 
 #include "pxr/base/tf/mallocTag.h"
 
@@ -72,18 +72,6 @@ struct Tf_AddBases<TfType::Bases<Bases...>>
         }
     }
 };
-
-template <class T, class BaseTypes>
-TfType const &
-TfType::Declare()
-{
-    // Declare each of the base types.
-    std::vector<TfType> baseTfTypes = Tf_AddBases<BaseTypes>::Declare();
-    // Declare our type T.
-    const std::type_info &typeInfo = typeid(T);
-    const std::string typeName = TfType::GetCanonicalTypeName(typeInfo);
-    return TfType::Declare(typeName, baseTfTypes);
-}
 
 template <typename T, typename BaseTypes>
 TfType const&
@@ -138,4 +126,4 @@ Tf_CastToParent(void* addr, bool derivedToBase)
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_TYPE_IMPL_H
+#endif // TF_TYPE_IMPL_H

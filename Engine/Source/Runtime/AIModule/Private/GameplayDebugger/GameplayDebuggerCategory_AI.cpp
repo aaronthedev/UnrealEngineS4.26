@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayDebugger/GameplayDebuggerCategory_AI.h"
 
@@ -28,14 +28,12 @@
 namespace FGameplayDebuggerCategoryTweakables
 {
 	int32 bDrawOverheadIcons = 1;
-	bool bDrawPaths = false;
 }
 
 namespace
 {
 	FAutoConsoleVariableRef CVars_GameplayDebuggerCategory_AI[] = {
-		FAutoConsoleVariableRef(TEXT("ai.debug.DrawOverheadIcons"), FGameplayDebuggerCategoryTweakables::bDrawOverheadIcons, TEXT("Should default AI overhead icons be drawn"), ECVF_Default),
-		FAutoConsoleVariableRef(TEXT("ai.debug.DrawPaths"), FGameplayDebuggerCategoryTweakables::bDrawPaths, TEXT("Should AI paths be drawn"), ECVF_Default)
+		FAutoConsoleVariableRef(TEXT("ai.debug.DrawOverheadIcons"), FGameplayDebuggerCategoryTweakables::bDrawOverheadIcons, TEXT("Should default AI overhead icons be drawn"), ECVF_Default)
 	};
 }
 
@@ -317,11 +315,6 @@ void FGameplayDebuggerCategory_AI::DrawData(APlayerController* OwnerPC, FGamepla
 		DrawOverheadInfo(*SelectedActor, CanvasContext);
 	}
 
-	if (FGameplayDebuggerCategoryTweakables::bDrawPaths && DataPack.bIsUsingPathFollowing)
-	{
-		DrawPath(MyWorld);
-	}
-
 	if (DataPack.bHasController)
 	{
 		CanvasContext.Printf(TEXT("Controller Name: {yellow}%s"), *DataPack.ControllerName);
@@ -381,7 +374,7 @@ FDebugRenderSceneProxy* FGameplayDebuggerCategory_AI::CreateDebugSceneProxy(cons
 			const bool bCanShow = View->Family->EngineShowFlags.GetSingleFlag(ViewFlagIndex);
 
 			FPrimitiveViewRelevance Result;
-			Result.bDrawRelevance = Result.bSeparateTranslucency = Result.bNormalTranslucency = bCanShow;
+			Result.bDrawRelevance = Result.bSeparateTranslucencyRelevance = Result.bNormalTranslucencyRelevance = bCanShow;
 			Result.bDynamicRelevance = true;
 			return Result;
 		}

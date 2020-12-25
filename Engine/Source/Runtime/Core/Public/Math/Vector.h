@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,7 +18,6 @@
 #include "Internationalization/Internationalization.h"
 #include "Math/IntVector.h"
 #include "Math/Axis.h"
-#include "Serialization/MemoryLayout.h"
 
 #if PLATFORM_VECTOR_CUBIC_INTERP_SSE
 #include "Math/UnrealMathSSE.h"
@@ -65,15 +64,6 @@ public:
 
 	/** Unreal left vector (0,-1,0) */
 	static CORE_API const FVector LeftVector;
-
-	/** Unit X axis vector (1,0,0) */
-	static CORE_API const FVector XAxisVector;
-
-	/** Unit Y axis vector (0,1,0) */
-	static CORE_API const FVector YAxisVector;
-
-	/** Unit Z axis vector (0,0,1) */
-	static CORE_API const FVector ZAxisVector;
 
 public:
 
@@ -1022,9 +1012,6 @@ public:
 	 */
 	CORE_API bool NetSerialize(FArchive& Ar, class UPackageMap* Map, bool& bOutSuccess);
 };
-template<> struct TCanBulkSerialize<FVector> { enum { Value = true }; };
-
-DECLARE_INTRINSIC_TYPE_LAYOUT(FVector);
 
 
 /* FVector inline functions
@@ -1222,7 +1209,7 @@ inline bool FVector::Orthogonal(const FVector& Normal1, const FVector& Normal2, 
 inline bool FVector::Coplanar(const FVector &Base1, const FVector &Normal1, const FVector &Base2, const FVector &Normal2, float ParallelCosineThreshold)
 {
 	if      (!FVector::Parallel(Normal1,Normal2,ParallelCosineThreshold)) return false;
-	else if (FMath::Abs(FVector::PointPlaneDist (Base2,Base1,Normal1)) > THRESH_POINT_ON_PLANE) return false;
+	else if (FVector::PointPlaneDist (Base2,Base1,Normal1) > THRESH_POINT_ON_PLANE) return false;
 	else return true;
 }
 
@@ -1266,13 +1253,13 @@ FORCEINLINE FVector::FVector(const FLinearColor& InColor)
 }
 
 FORCEINLINE FVector::FVector(FIntVector InVector)
-	: X((float)InVector.X), Y((float)InVector.Y), Z((float)InVector.Z)
+	: X(InVector.X), Y(InVector.Y), Z(InVector.Z)
 {
 	DiagnosticCheckNaN();
 }
 
 FORCEINLINE FVector::FVector(FIntPoint A)
-	: X((float)A.X), Y((float)A.Y), Z(0.f)
+	: X(A.X), Y(A.Y), Z(0.f)
 {
 	DiagnosticCheckNaN();
 }
@@ -1434,13 +1421,13 @@ FORCEINLINE FVector FVector::operator/=(const FVector& V)
 
 FORCEINLINE float& FVector::operator[](int32 Index)
 {
-	checkSlow(Index >= 0 && Index < 3);
+	check(Index >= 0 && Index < 3);
 	return (&X)[Index];
 }
 
 FORCEINLINE float FVector::operator[](int32 Index)const
 {
-	checkSlow(Index >= 0 && Index < 3);
+	check(Index >= 0 && Index < 3);
 	return (&X)[Index];
 }
 

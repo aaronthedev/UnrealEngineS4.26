@@ -61,8 +61,8 @@
 // slower than MD5.
 //
 
-#ifndef Alembic_Util_SpookyV2_h
-#define Alembic_Util_SpookyV2_h
+#ifndef _Alembic_Util_SpookyV2_h_
+#define _Alembic_Util_SpookyV2_h_
 
 #include <Alembic/Util/Export.h>
 #include <Alembic/Util/PlainOldDataType.h>

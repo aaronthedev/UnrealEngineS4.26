@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_DENSE_HASH_MAP_H
-#define PXR_BASE_TF_DENSE_HASH_MAP_H
+#ifndef TF_DENSE_HASH_MAP_H
+#define TF_DENSE_HASH_MAP_H
 
 /// \file tf/denseHashMap.h
 
@@ -33,6 +33,7 @@
 #include <vector>
 
 #include <boost/compressed_pair.hpp>
+#include <boost/operators.hpp>
 #include <boost/iterator/iterator_facade.hpp>
 #include <boost/utility.hpp>
 
@@ -56,7 +57,10 @@ template <
     class    EqualKey  = std::equal_to<Key>,
     unsigned Threshold = 128
 >
-class TfDenseHashMap
+class TfDenseHashMap :
+    private boost::equality_comparable<
+        TfDenseHashMap<Key, Data, HashFn, EqualKey, Threshold>
+    >
 {
 public:
 
@@ -232,12 +236,6 @@ public:
         insert(begin, end);
     }
 
-    /// Construct from an initializer_list.
-    ///
-    TfDenseHashMap(std::initializer_list<value_type> l) {
-        insert(l.begin(), l.end());
-    }
-
     /// Copy Ctor.
     ///
     TfDenseHashMap(const TfDenseHashMap &rhs)
@@ -250,14 +248,6 @@ public:
     ///
     TfDenseHashMap &operator=(TfDenseHashMap rhs) {
         swap(rhs);
-        return *this;
-    }
-
-    /// Assignment from an initializer_list.
-    ///
-    TfDenseHashMap &operator=(std::initializer_list<value_type> l) {
-        clear();
-        insert(l.begin(), l.end());
         return *this;
     }
 
@@ -280,10 +270,6 @@ public:
         }
 
         return true;
-    }
-
-    bool operator!=(const TfDenseHashMap &rhs) const {
-        return !(*this == rhs);
     }
 
     /// Erases all of the elements
@@ -619,4 +605,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_DENSE_HASH_MAP_H
+#endif // TF_DENSE_HASH_MAP_H

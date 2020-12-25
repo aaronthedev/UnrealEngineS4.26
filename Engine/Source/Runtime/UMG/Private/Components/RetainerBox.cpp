@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/RetainerBox.h"
 #include "Widgets/SNullWidget.h"
@@ -76,16 +76,6 @@ void URetainerBox::SetTextureParameter(FName InTextureParameter)
 	}
 }
 
-void URetainerBox::SetRetainRendering(bool bInRetainRendering)
-{
-	bRetainRender = bInRetainRendering;
-
-	if (MyRetainerWidget.IsValid())
-	{
-		MyRetainerWidget->SetRetainedRendering(bRetainRender);
-	}
-}
-
 void URetainerBox::ReleaseSlateResources(bool bReleaseChildren)
 {
 	Super::ReleaseSlateResources(bReleaseChildren);
@@ -104,8 +94,10 @@ TSharedRef<SWidget> URetainerBox::RebuildWidget()
 #if STATS
 		.StatId( FName( *FString::Printf(TEXT("%s [%s]"), *GetFName().ToString(), *GetClass()->GetName() ) ) )
 #endif//STATS
-	;
+		;
 
+	MyRetainerWidget->SetRetainedRendering(IsDesignTime() ? false : true);
+	
 	if ( GetChildrenCount() > 0 )
 	{
 		MyRetainerWidget->SetContent(GetContentSlot()->Content ? GetContentSlot()->Content->TakeWidget() : SNullWidget::NullWidget);
@@ -118,7 +110,6 @@ void URetainerBox::SynchronizeProperties()
 {
 	Super::SynchronizeProperties();
 
-	MyRetainerWidget->SetRetainedRendering(IsDesignTime() ? false : bRetainRender);
 	MyRetainerWidget->SetEffectMaterial(EffectMaterial);
 	MyRetainerWidget->SetTextureParameter(TextureParameter);
 	MyRetainerWidget->SetWorld(GetWorld());

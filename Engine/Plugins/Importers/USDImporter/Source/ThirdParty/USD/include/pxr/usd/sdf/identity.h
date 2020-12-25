@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_IDENTITY_H
-#define PXR_USD_SDF_IDENTITY_H
+#ifndef SDF_IDENTITY_H
+#define SDF_IDENTITY_H
 
 #include "pxr/pxr.h"
 #include "pxr/base/tf/hashmap.h"
@@ -52,9 +52,8 @@ public:
     const SdfLayerHandle &GetLayer() const;
 
     /// Returns the path that this identity refers to.
-    const SdfPath &GetPath() const {
-        return _path;
-    }
+    SDF_API
+    const SdfPath &GetPath() const;
 
 private:
     // Ref-counting ops manage _refCount.
@@ -91,9 +90,7 @@ public:
     ~Sdf_IdentityRegistry();
 
     /// Returns the layer that owns this registry.
-    const SdfLayerHandle &GetLayer() const {
-        return _layer;
-    }
+    const SdfLayerHandle &GetLayer() const;
 
     /// Return the identity associated with \a path, issuing a new
     /// one if necessary. The registry will track the identity
@@ -113,15 +110,12 @@ private:
     void _Remove(const SdfPath &path, Sdf_Identity *id);
 
     /// The layer that owns this registry, and on behalf of which
-    /// this registry tracks identities.
+    /// this registry tracks identites.
     const SdfLayerHandle _layer;
     
     /// The identities being managed by this registry
     typedef TfHashMap<SdfPath, Sdf_Identity*, SdfPath::Hash> _IdMap;
     _IdMap _ids;
-
-    /// Cache the last fetched identity, it's commonly re-fetched.
-    Sdf_IdentityRefPtr _lastId;
 
     // This mutex synchronizes access to _ids.
     tbb::spin_mutex _idsMutex;
@@ -129,4 +123,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_IDENTITY_H
+#endif // SDF_IDENTITY_H

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PhysicsAssetDetailsCustomization.h"
 #include "Widgets/SCompoundWidget.h"
@@ -39,11 +39,6 @@ void FPhysicsAssetDetailsCustomization::CustomizeDetails(IDetailLayoutBuilder& D
 
 	PhysicalAnimationProfilesHandle = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UPhysicsAsset, PhysicalAnimationProfiles));
 	ConstraintProfilesHandle = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UPhysicsAsset, ConstraintProfiles));
-
-#if !WITH_CHAOS
-	// Hide Chaos-Only settings in PhysX
-	DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UPhysicsAsset, SolverIterations))->MarkHiddenByCustomization();
-#endif
 
 	DetailLayout.EditCategory(TEXT("Physical Animation Profiles"))
 	.AddProperty(PhysicalAnimationProfilesHandle)

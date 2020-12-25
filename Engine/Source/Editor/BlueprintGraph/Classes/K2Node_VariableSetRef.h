@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -35,7 +35,7 @@ class UK2Node_VariableSetRef : public UK2Node
 	/** 
 	 * Changes the type of variable set by this node, based on the specified pin
 	 *
-	 * @param Pin				The pin to gather type information from.
+	 * @param Pin				The pin to gather type information from.  If NULL, node will reset to wildcards
 	 */
 	void CoerceTypeFromPin(const UEdGraphPin* Pin);
 

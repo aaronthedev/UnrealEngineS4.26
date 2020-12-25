@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BackChannel/Private/BackChannelCommon.h"
 #include "BackChannel/Transport/IBackChannelTransport.h"
@@ -51,7 +51,7 @@ public:
 		FBackChannelThreadedListener ThreadedConnection;
 
 		ThreadedConnection.Start(ListenerConnection.ToSharedRef(), 
-			FBackChannelListenerDelegate::CreateLambda([this, &AcceptConnected](TSharedPtr<IBackChannelSocketConnection> NewConnection)
+			FBackChannelListenerDelegate::CreateLambda([this, &AcceptConnected](TSharedPtr<IBackChannelConnection> NewConnection)
 		{
 			AcceptConnected = true;
 			AcceptedConnection = NewConnection;
@@ -62,7 +62,7 @@ public:
 		{
 			if (ClientConnected == false)
 			{
-				ClientConnection->WaitForConnection(0, [&ClientConnected](TSharedPtr<IBackChannelSocketConnection> NewConnection) {
+				ClientConnection->WaitForConnection(0, [&ClientConnected](TSharedPtr<IBackChannelConnection> NewConnection) {
 					ClientConnected = true;
 					return true;
 				});
@@ -75,9 +75,9 @@ public:
 		return AcceptedConnection.IsValid();
 	}
 
-	TSharedPtr<IBackChannelSocketConnection>	ListenerConnection;
-	TSharedPtr<IBackChannelSocketConnection>	ClientConnection;
-	TSharedPtr<IBackChannelSocketConnection>	AcceptedConnection;
+	TSharedPtr<IBackChannelConnection>	ListenerConnection;
+	TSharedPtr<IBackChannelConnection>	ClientConnection;
+	TSharedPtr<IBackChannelConnection>	AcceptedConnection;
 
 };
 

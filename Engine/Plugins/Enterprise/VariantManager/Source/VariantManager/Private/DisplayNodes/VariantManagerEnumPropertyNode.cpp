@@ -1,20 +1,19 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DisplayNodes/VariantManagerEnumPropertyNode.h"
 
-#include "PropertyTemplateObject.h"
+#include "GameFramework/Actor.h"
 #include "PropertyValue.h"
+#include "PropertyTemplateObject.h"
+#include "PropertyEditorModule.h"
+#include "Modules/ModuleManager.h"
+#include "Widgets/Input/SNumericEntryBox.h"
+#include "Widgets/Input/SComboBox.h"
+#include "ScopedTransaction.h"
+#include "IDocumentation.h"
 #include "SVariantManager.h"
 #include "VariantManagerLog.h"
 #include "VariantObjectBinding.h"
-
-#include "GameFramework/Actor.h"
-#include "IDocumentation.h"
-#include "Modules/ModuleManager.h"
-#include "PropertyEditorModule.h"
-#include "ScopedTransaction.h"
-#include "Widgets/Input/SComboBox.h"
-#include "Widgets/Input/SNumericEntryBox.h"
 
 #define LOCTEXT_NAMESPACE "FVariantManagerEnumPropertyNode"
 
@@ -66,7 +65,31 @@ TSharedPtr<SWidget> FVariantManagerEnumPropertyNode::GetPropertyValueWidget()
 	}
 	if(!bAtLeastOneResolved)
 	{
-		return GetFailedToResolveWidget(FirstPropertyValue);
+		UObject* ActorAsObj = FirstPropertyValue->GetParent()->GetObject();
+		FString ActorName;
+		if (AActor* Actor = Cast<AActor>(ActorAsObj))
+		{
+			ActorName = Actor->GetActorLabel();
+		}
+		else
+		{
+			ActorName = ActorAsObj->GetName();
+		}
+
+		return SNew(SBox)
+		.VAlign(VAlign_Center)
+		.HAlign(HAlign_Left)
+		.Padding(FMargin(3.0f, 0.0f, 0.0f, 0.0f))
+		[
+			SNew(STextBlock)
+			.Text(LOCTEXT("FailedToResolveText", "Failed to resolve!"))
+			.Font(FEditorStyle::GetFontStyle("Sequencer.AnimationOutliner.RegularFont"))
+			.ColorAndOpacity(this, &FVariantManagerDisplayNode::GetDisplayNameColor)
+			.ToolTipText(FText::Format(
+				LOCTEXT("FailedToResolveTooltip", "Make sure actor '{0}' has a property with path '{1}'"),
+				FText::FromString(ActorName),
+				FText::FromString(FirstPropertyValue->GetFullDisplayString())))
+		];
 	}
 
 	// If properties have different values, just give back a "Multiple Values" text block
@@ -85,8 +108,17 @@ TSharedPtr<SWidget> FVariantManagerEnumPropertyNode::GetPropertyValueWidget()
 
 	UpdateComboboxStrings();
 
+	int32 EnumIndex = FirstPropertyValue->GetRecordedDataAsEnumIndex();
+	int32 ComboboxItemIndex = EnumIndices.Find(EnumIndex);
+	if (ComboboxItemIndex == INDEX_NONE)
+	{
+		UE_LOG(LogVariantManager, Warning, TEXT("For captured property '%s', did not find an UEnum item with index %d"), *FirstPropertyValue->GetPropertyName().ToString(), EnumIndex);
+		ComboboxItemIndex = 0;
+	}
+
 	SAssignNew(Combobox, SComboBox<TSharedPtr<FString>>)
 	.OptionsSource(&EnumDisplayTexts)
+	.InitiallySelectedItem(EnumDisplayTexts[ComboboxItemIndex])
 	.OnGenerateWidget_Lambda([bSameValue](TSharedPtr<FString> Item)
 	{
 		return SNew(STextBlock).Text(FText::FromString(*Item));
@@ -94,7 +126,7 @@ TSharedPtr<SWidget> FVariantManagerEnumPropertyNode::GetPropertyValueWidget()
 	.Content()
 	[
 		SNew(STextBlock)
-		.Text(this, &FVariantManagerEnumPropertyNode::GetRecordedEnumDisplayText, bSameValue)
+		.Text(this, &FVariantManagerEnumPropertyNode::ComboboxGetText, bSameValue)
 	]
 	.OnSelectionChanged(this, &FVariantManagerEnumPropertyNode::OnComboboxSelectionChanged); // Widget updates recorded data
 
@@ -147,31 +179,22 @@ void FVariantManagerEnumPropertyNode::OnComboboxSelectionChanged(TSharedPtr<FStr
 	GetVariantManager().Pin()->GetVariantManagerWidget()->RefreshPropertyList();
 }
 
-FText FVariantManagerEnumPropertyNode::GetRecordedEnumDisplayText(bool bSameValue) const
+FText FVariantManagerEnumPropertyNode::ComboboxGetText(bool bSameValue) const
 {
-	if (!bSameValue)
+	if (Combobox.IsValid())
 	{
-		return LOCTEXT("MultipleValuesLabel", "Multiple Values");
-	}
-
-	// We don't just use Combobox->GetSelectedItem() here because the Combobox watches
-	// EnumDisplayTexts, and that list only contains the valid and non-hidden options for the Enum.
-	// The user can only choose between those, but the PropertyValue may have a hidden or 'invalid'
-	// option recorded already (e.g. _MAX), and with this we will display it as it actually is,
-	// which is also how the Details panel behaves
-	if (PropertyValues.Num() >= 1)
-	{
-		UPropertyValue* FirstPropertyValue = PropertyValues[0].Get();
-
-		if (UEnum* Enum = FirstPropertyValue->GetEnumPropertyEnum())
+		if (!bSameValue)
 		{
-			int32 EnumIndex = FirstPropertyValue->GetRecordedDataAsEnumIndex();
-			FText EnumDisplayNameText = Enum->GetDisplayNameTextByIndex(EnumIndex);
-			if(!EnumDisplayNameText.IsEmpty())
-			{
-				return EnumDisplayNameText;
-			}
+			return LOCTEXT("MultipleValuesLabel", "Multiple Values");
 		}
+
+		TSharedPtr<FString> SelectedText = Combobox->GetSelectedItem();
+		if (SelectedText.IsValid())
+		{
+			return FText::FromString(*SelectedText);
+		}
+
+		return LOCTEXT("InvalidLabel", "(INVALID)");
 	}
 
 	return FText();

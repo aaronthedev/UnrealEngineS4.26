@@ -1,14 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
-#include "BackChannel/Transport/IBackChannelSocketConnection.h"
+#include "BackChannel/Transport/IBackChannelConnection.h"
 #include "HAL/Runnable.h"
 #include "HAL/ThreadSafeBool.h"
 
 class FSocket;
 
-DECLARE_DELEGATE_RetVal_OneParam(bool, FBackChannelListenerDelegate, TSharedRef<IBackChannelSocketConnection>);
+DECLARE_DELEGATE_RetVal_OneParam(bool, FBackChannelListenerDelegate, TSharedRef<IBackChannelConnection>);
 
 /**
  * BackChannelClient implementation.
@@ -20,7 +20,7 @@ public:
 	FBackChannelThreadedListener();
 	~FBackChannelThreadedListener();
 
-	void Start(TSharedRef<IBackChannelSocketConnection> InConnection, FBackChannelListenerDelegate InDelegate);
+	void Start(TSharedRef<IBackChannelConnection> InConnection, FBackChannelListenerDelegate InDelegate);
 
 	virtual void Stop() override;
 
@@ -32,7 +32,7 @@ protected:
 
 private:
 
-	TSharedPtr<IBackChannelSocketConnection>		Connection;
+	TSharedPtr<IBackChannelConnection>		Connection;
 	FBackChannelListenerDelegate			Delegate;
 	
 	FThreadSafeBool							bExitRequested;

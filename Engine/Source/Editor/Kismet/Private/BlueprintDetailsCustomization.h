@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -16,7 +16,6 @@
 #include "Widgets/Views/STableRow.h"
 #include "SMyBlueprint.h"
 #include "SGraphPin.h"
-#include "UObject/WeakFieldPtr.h"
 
 class Error;
 class FBlueprintGlobalOptionsDetails;
@@ -76,16 +75,7 @@ protected:
 
 	UBlueprint* GetBlueprintObj() const { return Blueprint.Get(); }
 
-	/**
-	* Adds any FMulticastDelegateProperties on the given details builder with either
-	* a green "+" symbol to create a bound node, or a "view" option if it already exists.
-	* 
-	* @param DetailBuilder		Details builder to add the events to
-	* @param PropertyName		Name of the selected property
-	* @param ComponentClass		The class to find any Multicast delegate properties on
-	*/
-	void AddEventsCategory(IDetailLayoutBuilder& DetailBuilder, FName PropertyName, UClass* ComponentClass);
-	
+	void AddEventsCategory(IDetailLayoutBuilder& DetailBuilder, UProperty* VariableProperty);
 	FReply HandleAddOrViewEventForVariable(const FName EventName, FName PropertyName, TWeakObjectPtr<UClass> PropertyClass);
 	int32 HandleAddOrViewIndexForButton(const FName EventName, FName PropertyName) const;
 
@@ -123,16 +113,16 @@ private:
 	FEdGraphSchemaAction_K2Var* MyBlueprintSelectionAsVar() const {return MyBlueprint.Pin()->SelectionAsVar();}
 	FEdGraphSchemaAction_K2LocalVar* MyBlueprintSelectionAsLocalVar() const {return MyBlueprint.Pin()->SelectionAsLocalVar();}
 	UK2Node_Variable* EdGraphSelectionAsVar() const;
-	FProperty* CustomizedObjectAsProperty() const;
-	FProperty* SelectionAsProperty() const;
+	UProperty* CustomizedObjectAsProperty() const;
+	UProperty* SelectionAsProperty() const;
 	FName GetVariableName() const;
 
 	/** Commonly queried attributes about the schema action */
-	bool IsAUserVariable(FProperty* VariableProperty) const;
-	bool IsASCSVariable(FProperty* VariableProperty) const;
-	bool IsABlueprintVariable(FProperty* VariableProperty) const;
-	bool IsALocalVariable(FProperty* VariableProperty) const;
-	UStruct* GetLocalVariableScope(FProperty* VariableProperty) const;
+	bool IsAUserVariable(UProperty* VariableProperty) const;
+	bool IsASCSVariable(UProperty* VariableProperty) const;
+	bool IsABlueprintVariable(UProperty* VariableProperty) const;
+	bool IsALocalVariable(UProperty* VariableProperty) const;
+	UStruct* GetLocalVariableScope(UProperty* VariableProperty) const;
 
 	// Callbacks for uproperty details customization
 	bool GetVariableNameChangeEnabled() const;
@@ -293,7 +283,7 @@ private:
 	TWeakPtr< SListView< TSharedPtr< FString > > > PropertyFlagWidget;
 
 	/** Cached property for the variable we are affecting */
-	TWeakFieldPtr<FProperty> CachedVariableProperty;
+	TWeakObjectPtr<UProperty> CachedVariableProperty;
 
 	/** Cached name for the variable we are affecting */
 	FName CachedVariableName;
@@ -404,7 +394,7 @@ private:
 
 	void SetEntryNode();
 
-	FMulticastDelegateProperty* GetDelegateProperty() const;
+	UMulticastDelegateProperty* GetDelegateProperty() const;
 
 	void CollectAvailibleSignatures();
 	void OnFunctionSelected(TSharedPtr<FString> FunctionItemData, ESelectInfo::Type SelectInfo);
@@ -626,9 +616,6 @@ private:
 
 	/** Callback to determine if the "New" button for adding input/output pins is visible */
 	EVisibility GetAddNewInputOutputVisibility() const;
-
-	/** Callback to determine if the "new" button for adding input/output pins is enabled */
-	bool IsAddNewInputOutputEnabled() const;
 
 	EVisibility OnGetSectionTextVisibility(TWeakPtr<SWidget> RowWidget) const;
 

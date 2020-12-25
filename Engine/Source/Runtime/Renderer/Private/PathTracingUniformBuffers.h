@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PathTracingUniformBuffers.h
@@ -17,7 +17,7 @@ END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 // Lights
 
-BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FPathTracingLightData, RENDERER_API)
+BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FPathTracingLightData, )
 	SHADER_PARAMETER(uint32, Count)
 	SHADER_PARAMETER_ARRAY(uint32, Type, [RAY_TRACING_LIGHT_COUNT_MAXIMUM])
 	// Geometry
@@ -32,10 +32,6 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FPathTracingLightData, RENDERER_API)
 	SHADER_PARAMETER_ARRAY(float, Attenuation, [RAY_TRACING_LIGHT_COUNT_MAXIMUM])
 	SHADER_PARAMETER_ARRAY(float, RectLightBarnCosAngle, [RAY_TRACING_LIGHT_COUNT_MAXIMUM])
 	SHADER_PARAMETER_ARRAY(float, RectLightBarnLength, [RAY_TRACING_LIGHT_COUNT_MAXIMUM])
-	// Flags
-	SHADER_PARAMETER_ARRAY(uint32, Flags, [RAY_TRACING_LIGHT_COUNT_MAXIMUM])
-	// Only used by GPULightmass currently, not filled in realtime paths
-	SHADER_PARAMETER_ARRAY(uint32, Mobility, [RAY_TRACING_LIGHT_COUNT_MAXIMUM])
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 

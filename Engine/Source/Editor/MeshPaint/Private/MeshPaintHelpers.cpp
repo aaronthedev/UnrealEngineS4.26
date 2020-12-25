@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MeshPaintHelpers.h"
 
@@ -108,7 +108,7 @@ bool MeshPaintHelpers::PropagateColorsToRawMesh(UStaticMesh* StaticMesh, int32 L
 	FStaticMeshRenderData& RenderData = *StaticMesh->RenderData;
 	FStaticMeshLODResources& RenderModel = RenderData.LODResources[LODIndex];
 	FColorVertexBuffer& ColorVertexBuffer = *ComponentLODInfo.OverrideVertexColors;
-	if (RenderModel.WedgeMap.Num() > 0 && ColorVertexBuffer.GetNumVertices() == RenderModel.GetNumVertices())
+	if (RenderData.WedgeMap.Num() > 0 && ColorVertexBuffer.GetNumVertices() == RenderModel.GetNumVertices())
 	{
 		// Use the wedge map if it is available as it is lossless.
 		FMeshDescription* MeshDescription = StaticMesh->GetMeshDescription(LODIndex);
@@ -121,14 +121,14 @@ bool MeshPaintHelpers::PropagateColorsToRawMesh(UStaticMesh* StaticMesh, int32 L
 
 		FStaticMeshAttributes Attributes(*MeshDescription);
 		int32 NumWedges = MeshDescription->VertexInstances().Num();
-		if (RenderModel.WedgeMap.Num() == NumWedges)
+		if (RenderData.WedgeMap.Num() == NumWedges)
 		{
 			TVertexInstanceAttributesRef<FVector4> Colors = Attributes.GetVertexInstanceColors();
 			int32 VertexInstanceIndex = 0;
 			for (const FVertexInstanceID VertexInstanceID : MeshDescription->VertexInstances().GetElementIDs())
 			{
 				FLinearColor WedgeColor = FLinearColor::White;
-				int32 Index = RenderModel.WedgeMap[VertexInstanceIndex];
+				int32 Index = RenderData.WedgeMap[VertexInstanceIndex];
 				if (Index != INDEX_NONE)
 				{
 					WedgeColor = FLinearColor(ColorVertexBuffer.VertexColor(Index));
@@ -162,7 +162,7 @@ bool MeshPaintHelpers::PropagateColorsToRawMesh(UStaticMesh* StaticMesh, int32 L
 		int32 VertexIndex = 0;
 		for (const FVertexID VertexID : MeshDescription->Vertices().GetElementIDs())
 		{
-			VertexPositionsDup[VertexIndex++] = VertexPositions[VertexID];
+			VertexPositionsDup[VertexIndex] = VertexPositions[VertexID];
 		}
 		TempPositionVertexBuffer.Init(VertexPositionsDup);
 		RemapPaintedVertexColors(
@@ -1159,14 +1159,14 @@ void MeshPaintHelpers::SetRealtimeViewport(bool bRealtime)
 		FEditorViewportClient &Viewport = ViewportWindow->GetAssetViewportClient();
 		if (Viewport.IsPerspective())
 		{
-			const FText SystemDisplayName = NSLOCTEXT("MeshPaint", "RealtimeOverrideMessage_MeshPaint", "Mesh Paint");
 			if (bRealtime)
 			{
-				Viewport.AddRealtimeOverride(bRealtime, SystemDisplayName);
+				Viewport.SetRealtime(bRealtime, bRememberCurrentState);
 			}
 			else
 			{
-				Viewport.RemoveRealtimeOverride(SystemDisplayName);
+				const bool bAllowDisable = true;
+				Viewport.RestoreRealtime(bAllowDisable);
 			}
 		}
 	}
@@ -1756,11 +1756,11 @@ struct FVertexColorPropogationOctreeSemantics
 	}
 
 	/** Ignored for this implementation */
-	FORCEINLINE static void SetElementId( const FPaintedMeshVertex& Element, FOctreeElementId2 Id )
+	FORCEINLINE static void SetElementId( const FPaintedMeshVertex& Element, FOctreeElementId Id )
 	{
 	}
 };
-typedef TOctree2<FPaintedMeshVertex, FVertexColorPropogationOctreeSemantics> TVertexColorPropogationPosOctree;
+typedef TOctree<FPaintedMeshVertex, FVertexColorPropogationOctreeSemantics> TVertexColorPropogationPosOctree;
 
 void MeshPaintHelpers::ApplyVertexColorsToAllLODs(IMeshPaintGeometryAdapter& GeometryInfo, USkeletalMeshComponent* SkeletalMeshComponent)
 {
@@ -1836,6 +1836,7 @@ void MeshPaintHelpers::ApplyVertexColorsToAllLODs(IMeshPaintGeometryAdapter& Geo
 					for (uint32 VertexIndex = 0; VertexIndex < ApplyLOD.GetNumVertices(); ++VertexIndex)
 					{
 						TArray<FPaintedMeshVertex> PointsToConsider;
+						TVertexColorPropogationPosOctree::TConstIterator<> OctreeIter(VertPosOctree);
 						const FVector CurPosition = ApplyLOD.StaticVertexBuffers.PositionVertexBuffer.VertexPosition(VertexIndex);
 
 						FPackedNormal VertexTangentZ;
@@ -1844,10 +1845,42 @@ void MeshPaintHelpers::ApplyVertexColorsToAllLODs(IMeshPaintGeometryAdapter& Geo
 						FVector CurNormal = VertexTangentZ.ToFVector();
 
 						// Iterate through the octree attempting to find the vertices closest to the current new point
-						VertPosOctree.FindNearbyElements(CurPosition, [&PointsToConsider](const FPaintedMeshVertex& Vertex)
+						while (OctreeIter.HasPendingNodes())
 						{
-							PointsToConsider.Add(Vertex);
-						});
+							const TVertexColorPropogationPosOctree::FNode& CurNode = OctreeIter.GetCurrentNode();
+							const FOctreeNodeContext& CurContext = OctreeIter.GetCurrentContext();
+
+							// Find the child of the current node, if any, that contains the current new point
+							FOctreeChildNodeRef ChildRef = CurContext.GetContainingChild(FBoxCenterAndExtent(CurPosition, FVector::ZeroVector));
+
+							if (!ChildRef.IsNULL())
+							{
+								const TVertexColorPropogationPosOctree::FNode* ChildNode = CurNode.GetChild(ChildRef);
+
+								// If the specified child node exists and contains any of the old vertices, push it to the iterator for future consideration
+								if (ChildNode && ChildNode->GetInclusiveElementCount() > 0)
+								{
+									OctreeIter.PushChild(ChildRef);
+								}
+								// If the child node doesn't have any of the old vertices in it, it's not worth pursuing any further. In an attempt to find
+								// anything to match vs. the new point, add all of the children of the current octree node that have old points in them to the
+								// iterator for future consideration.
+								else
+								{
+									FOREACH_OCTREE_CHILD_NODE(OctreeChildRef)
+									{
+										if (CurNode.HasChild(OctreeChildRef))
+										{
+											OctreeIter.PushChild(OctreeChildRef);
+										}
+									}
+								}
+							}
+
+							// Add all of the elements in the current node to the list of points to consider for closest point calculations
+							PointsToConsider.Append(CurNode.GetElements());
+							OctreeIter.Advance();
+						}
 
 						// If any points to consider were found, iterate over each and find which one is the closest to the new point 
 						if (PointsToConsider.Num() > 0)

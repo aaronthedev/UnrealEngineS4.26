@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Collection.h"
 #include "HAL/PlatformTime.h"
@@ -14,9 +14,6 @@
 #include "ISourceControlModule.h"
 #include "Misc/TextFilterExpressionEvaluator.h"
 #include "Misc/EngineBuildSettings.h"
-#include "Misc/ScopeRWLock.h"
-#include "Async/ParallelFor.h"
-#include "String/ParseLines.h"
 
 #define LOCTEXT_NAMESPACE "CollectionManager"
 
@@ -70,7 +67,6 @@ TSharedRef<FCollection> FCollection::Clone(const FString& InFilename, bool InUse
 
 bool FCollection::Load(FText& OutError)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(FCollection::Load)
 	Empty();
 
 	FString FullFileContentsString;
@@ -80,23 +76,25 @@ bool FCollection::Load(FText& OutError)
 		return false;
 	}
 
-	TArray<FStringView> FileContents;
-	UE::String::ParseLines(FullFileContentsString, [&FileContents](const FStringView& Line) { FileContents.Add(Line); });
+	// Normalize line endings and parse into array
+	TArray<FString> FileContents;
+	FullFileContentsString.ReplaceInline(TEXT("\r"), TEXT(""));
+	FullFileContentsString.ParseIntoArray(FileContents, TEXT("\n"), /*bCullEmpty=*/false);
 
-	if (FileContents.Num() == 0)
+	if ( FileContents.Num() == 0 )
 	{
 		// Empty file, assume static collection with no items
 		return true;
 	}
 
 	// Load the header from the contents array
-	TMap<FString, FString> HeaderPairs;
-	
-	int32 LineIndex = 0;
-	for (int32 Num = FileContents.Num(); LineIndex < Num; ++LineIndex)
+	TMap<FString,FString> HeaderPairs;
+	while ( FileContents.Num() )
 	{
-		FStringView Line(FileContents[LineIndex]);
-		Line.TrimStartAndEndInline();
+		// Pop the 0th element from the contents array and read it
+		FileContents[0].TrimStartAndEndInline();
+		const FString Line = FileContents[0];
+		FileContents.RemoveAt(0);
 
 		if (Line.Len() == 0)
 		{
@@ -104,12 +102,11 @@ bool FCollection::Load(FText& OutError)
 			break;
 		}
 
-		FStringView::SizeType Offset;
-		if (Line.FindChar(TEXT(':'), Offset))
+		FString Key;
+		FString Value;
+		if ( Line.Split(TEXT(":"), &Key, &Value) )
 		{
-			FString Key(Line.Left(Offset));
-			FString Value(Line.Right(Line.Len() - Offset - 1));
-			HeaderPairs.Emplace(MoveTemp(Key), MoveTemp(Value));
+			HeaderPairs.Add(Key, Value);
 		}
 	}
 
@@ -124,34 +121,23 @@ bool FCollection::Load(FText& OutError)
 	// Now load the content if the header load was successful
 	if (StorageMode == ECollectionStorageMode::Static)
 	{
-		const int32 NamesNum = FileContents.Num() - LineIndex;
-
-		TArray<FName> FNames;
-		FNames.SetNum(NamesNum);
-
-		// Name hashing to register new FName takes time
-		// Process as much as possible in multiple threads
-		ParallelFor(
-			NamesNum,
-			[this, &FileContents, &LineIndex, &FNames](int32 LocalLineIndex)
-			{
-				FStringView Line(FileContents[LineIndex + LocalLineIndex]);
-				FNames[LocalLineIndex] = FName(Line.TrimStartAndEnd());
-			},
-			// Do not pay for scheduling cost if number of items is too low
-			NamesNum < 1000 ? EParallelForFlags::ForceSingleThread : EParallelForFlags::None
-		);
-
 		// Static collection, a flat list of asset paths
-		for (FName& Name : FNames)
+		for (FString& Line : FileContents)
 		{
-			AddObjectToCollection(Name);
+			Line.TrimStartAndEndInline();
+
+			if ( int32 Len = Line.Len() )
+			{
+				AddObjectToCollection(FName(Len, *Line));
+			}
 		}
 	}
 	else
 	{
 		// Dynamic collection, a single query line
-		DynamicQueryText = (FileContents.Num() > LineIndex) ? FString(FileContents[LineIndex].TrimStartAndEnd()) : FString();
+		DynamicQueryText = (FileContents.Num() > 0) ? FileContents[0] : FString();
+
+		DynamicQueryText.TrimStartAndEndInline();
 	}
 
 	DiskSnapshot.TakeSnapshot(*this);
@@ -759,14 +745,6 @@ void FCollection::GetObjectDifferences(const TSet<FName>& BaseSet, const TSet<FN
 		}
 	}
 
-	// If both sets have the same number of items and nothing has been removed
-	// we can safely infer that both collections are equals without going
-	// over them a second time.
-	if (ObjectsRemoved.Num() == 0 && BaseSet.Num() == NewSet.Num())
-	{
-		return;
-	}
-
 	// Find the objects that were added compare to the base set
 	for (const FName& NewObjectName : NewSet)
 	{
@@ -1190,7 +1168,7 @@ bool FCollection::DeleteFromSourceControl(FText& OutError)
 			if ( SourceControlProvider.Execute(ISourceControlOperation::Create<FDelete>(), AbsoluteFilename) == ECommandResult::Succeeded )
 			{
 				// Now check in the delete
-				const FText ChangelistDesc = FText::Format( LOCTEXT("CollectionDeletedDesc", "Deleted collection: {CollectionName}"), Args );
+				const FText ChangelistDesc = FText::Format( LOCTEXT("CollectionDeletedDesc", "Deleted collection: {CollectionName}"), CollectionNameText );
 				TSharedRef<FCheckIn, ESPMode::ThreadSafe> CheckInOperation = ISourceControlOperation::Create<FCheckIn>();
 				CheckInOperation->SetDescription(ChangelistDesc);
 				if ( SourceControlProvider.Execute( CheckInOperation, AbsoluteFilename ) )

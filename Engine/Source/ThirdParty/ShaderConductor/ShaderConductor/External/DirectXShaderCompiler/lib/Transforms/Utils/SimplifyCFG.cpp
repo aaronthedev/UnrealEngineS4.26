@@ -48,9 +48,6 @@
 #include <algorithm>
 #include <map>
 #include <set>
-
-#include "dxc/DXIL/DxilMetadataHelper.h" // HLSL Change - control flow hint.
-
 using namespace llvm;
 using namespace PatternMatch;
 
@@ -1491,7 +1488,7 @@ static bool SpeculativelyExecuteBB(BranchInst *BI, BasicBlock *ThenBB,
                                    const TargetTransformInfo &TTI) {
   // HLSL Change Begins.
   // Skip block with control flow hint.
-  if (hlsl::DxilMDHelper::HasControlFlowHintToPreventFlatten(BI)) {
+  if (BI->hasMetadataOtherThanDebugLoc()) {
     return false;
   }
   // HLSL Change Ends.
@@ -1914,7 +1911,7 @@ static bool FoldTwoEntryPHINode(PHINode *PN, const TargetTransformInfo &TTI,
   Instruction *InsertPt = DomBlock->getTerminator();
   // HLSL Change Begins.
   // Skip block with control flow hint.
-  if (hlsl::DxilMDHelper::HasControlFlowHintToPreventFlatten(InsertPt)) {
+  if (InsertPt->hasMetadataOtherThanDebugLoc()) {
     return false;
   }
   // HLSL Change Ends.
@@ -2099,7 +2096,6 @@ bool llvm::FoldBranchToCommonDest(BranchInst *BI, unsigned BonusInstThreshold) {
           for (BasicBlock::iterator I = BB->begin(), E = BB->end();
                I != E; ) {
             Instruction *Curr = I++;
-            if (isa<DbgInfoIntrinsic>(Curr)) continue; // HLSL Change - Ignore debug insts
             if (isa<CmpInst>(Curr)) {
               Cond = Curr;
               break;

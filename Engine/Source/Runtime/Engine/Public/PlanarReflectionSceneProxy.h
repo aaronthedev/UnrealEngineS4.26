@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PlanarReflectionSceneProxy.h: 
@@ -41,7 +41,7 @@ public:
 			AM_Clamp,
 			AM_Clamp
 		);
-		SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
+		SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
 
 		FTexture2DRHIRef Texture2DRHI;
 		FRHIResourceCreateInfo CreateInfo = { FClearValueBinding(FLinearColor::Black) };
@@ -51,7 +51,7 @@ public:
 			GetSizeY(), 
 			PF_FloatRGBA,
 			1,
-			TexCreate_None,
+			0,
 			TexCreate_RenderTargetable,
 			false,
 			CreateInfo,
@@ -78,21 +78,8 @@ public:
 
 	virtual FString GetFriendlyName() const override { return TEXT("FPlanarReflectionRenderTarget"); }
 
-	virtual FRHIGPUMask GetGPUMask(FRHICommandListImmediate& RHICmdList) const override
-	{
-		return ActiveGPUMask;
-	}
-
-	// Changes the GPUMask used when updating the reflection capture in AFR.
-	void SetActiveGPUMask(FRHIGPUMask InGPUMask)
-	{
-		check(IsInRenderingThread());
-		ActiveGPUMask = InGPUMask;
-	}
-
 private:
 
-	FRHIGPUMask ActiveGPUMask; // In AFR we need to change which GPUs are rendered to every frame.
 	FIntPoint Size;
 };
 

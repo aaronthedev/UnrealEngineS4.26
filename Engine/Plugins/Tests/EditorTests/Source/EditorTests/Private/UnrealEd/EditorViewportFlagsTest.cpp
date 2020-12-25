@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
@@ -60,8 +60,6 @@ namespace FViewportTestHelper
 				break;
 			case SFG_Max:
 				break;
-			case SFG_Custom:
-				GroupName = TEXT("Custom");
 			default:
 				GroupName = TEXT("Post Process");
 				break;

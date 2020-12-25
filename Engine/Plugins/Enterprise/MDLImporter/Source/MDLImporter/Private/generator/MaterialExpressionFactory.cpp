@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #ifdef USE_MDLSDK
 
@@ -22,7 +22,6 @@ MDLSDK_INCLUDES_START
 #include "mi/neuraylib/imdl_factory.h"
 #include "mi/neuraylib/itransaction.h"
 #include "mi/neuraylib/itexture.h"
-#include "mi/neuraylib/istring.h"
 MDLSDK_INCLUDES_END
 
 namespace Generator
@@ -750,13 +749,14 @@ namespace Generator
 			{
 				return Inputs;
 			}
-			case mi::neuraylib::IFunction_definition::DS_ARRAY_INDEX:
+			case mi::neuraylib::IFunction_definition::DS_INTRINSIC_DAG_INDEX_ACCESS:
 			{
 				check(Inputs.Num() == 2);
 				check(Inputs[0].ConnectionType == EConnectionType::Expression);
 				check(Inputs[1].ConnectionType == EConnectionType::Expression);
 				check(Inputs[1].ExpressionData.Expression->IsA<UMaterialExpressionConstant>());
-				check(FunctionName == TEXT("operator[](<0>[],int)"));
+				check(FunctionName == TEXT("float2@(float2,int)") || FunctionName == TEXT("float3@(float3,int)") ||
+				      FunctionName == TEXT("float4@(float4,int)"));
 
 				const int32 Index = (int32)Cast<UMaterialExpressionConstant>(Inputs[1].ExpressionData.Expression)->R;
 				CurrentMaterial->Expressions.Remove(Inputs[1].ExpressionData.Expression);
@@ -1174,7 +1174,7 @@ namespace Generator
 				// DAG intrinsics
 			case mi::neuraylib::IFunction_definition::DS_INTRINSIC_DAG_FIELD_ACCESS:
 			case mi::neuraylib::IFunction_definition::DS_INTRINSIC_DAG_ARRAY_CONSTRUCTOR:
-			case mi::neuraylib::IFunction_definition::DS_ARRAY_INDEX:
+			case mi::neuraylib::IFunction_definition::DS_INTRINSIC_DAG_INDEX_ACCESS:
 				return CreateExpressionDAG(Semantic, Inputs, FunctionName);
 
 			default:
@@ -1309,18 +1309,11 @@ namespace Generator
 		UMaterialFunction* MakeFloat2 = &FunctionLoader->Get(ECommonFunction::MakeFloat2);
 		UMaterialFunction* MakeFloat3 = &FunctionLoader->Get(ECommonFunction::MakeFloat3);
 		UMaterialFunction* MakeFloat4 = &FunctionLoader->Get(ECommonFunction::MakeFloat4);
-
-		mi::neuraylib::IType::Kind Kind = MDLType.get_kind();
-
-		switch (Kind)
+		switch (MDLType.get_kind())
 		{
 			case mi::neuraylib::IType::TK_FLOAT:
 			{
-				if (!ensure(Inputs[0].ConnectionType == EConnectionType::Expression))
-				{
-					break;
-				}
-
+				check(Inputs[0].ConnectionType == EConnectionType::Expression);
 				if (Inputs.Num() == 1)
 				{
 					if ((Inputs[0].ExpressionData.Expression->IsA<UMaterialExpressionStaticBool>() ||
@@ -1340,43 +1333,23 @@ namespace Generator
 			{
 				const mi::base::Handle<const mi::neuraylib::IType_vector> Type(MDLType.get_interface<const mi::neuraylib::IType_vector>());
 
-				int32 VectorSize = (int32)Type->get_size();
-
 				if (Inputs.Num() == 1)
 				{
-					if (ensure(IsScalar(Inputs[0])))
-					{
-						return { NewMaterialExpressionFunctionCall(CurrentMaterial, MakeFloat3, {Inputs[0], Inputs[0], Inputs[0]}) };
-					}
+					return Inputs;
 				}
-				else if (Inputs.Num() == VectorSize)
+				else if (Inputs.Num() == (int32)Type->get_size())
 				{
-					switch (VectorSize)
+					switch (Type->get_size())
 					{
 						case 2:
-						{
-							if (ensure(IsScalar(Inputs[0]) && IsScalar(Inputs[1])))
-							{
-								return { NewMaterialExpressionFunctionCall(CurrentMaterial, MakeFloat2, {Inputs[0], Inputs[1]}) };
-							}
-							break;
-						}
+							check(IsScalar(Inputs[0]) && IsScalar(Inputs[1]));
+							return {NewMaterialExpressionFunctionCall(CurrentMaterial, MakeFloat2, {Inputs[0], Inputs[1]})};
 						case 3:
-						{
-							if (ensure(IsScalar(Inputs[0]) && IsScalar(Inputs[1]) && IsScalar(Inputs[2])))
-							{
-								return { NewMaterialExpressionFunctionCall(CurrentMaterial, MakeFloat3, {Inputs[0], Inputs[1], Inputs[2]}) };
-							}
-							break;
-						}
+							check(IsScalar(Inputs[0]) && IsScalar(Inputs[1]) && IsScalar(Inputs[2]));
+							return {NewMaterialExpressionFunctionCall(CurrentMaterial, MakeFloat3, {Inputs[0], Inputs[1], Inputs[2]})};
 						case 4:
-						{
-							if (ensure(IsScalar(Inputs[0]) && IsScalar(Inputs[1]) && IsScalar(Inputs[2]) && IsScalar(Inputs[3])))
-							{
-								return { NewMaterialExpressionFunctionCall(CurrentMaterial, MakeFloat4, {Inputs[0], Inputs[1], Inputs[2], Inputs[3]}) };
-							}
-							break;
-						}
+							check(IsScalar(Inputs[0]) && IsScalar(Inputs[1]) && IsScalar(Inputs[2]) && IsScalar(Inputs[3]));
+							return {NewMaterialExpressionFunctionCall(CurrentMaterial, MakeFloat4, {Inputs[0], Inputs[1], Inputs[2], Inputs[3]})};
 					}
 				}
 				break;
@@ -1480,17 +1453,7 @@ namespace Generator
 			}
 		}
 
-
-		ensure(false);
-		// We couldn't handle constructor call, print out the type that it was called for
-		mi::base::Handle<mi::neuraylib::IExpression_factory> ExpressionFactory(MdlFactory->create_expression_factory(CurrentTransaction));
-		mi::base::Handle<mi::neuraylib::IType_factory> TypeFactory(MdlFactory->create_type_factory(CurrentTransaction));
-		mi::base::Handle<const mi::IString> TypeStr(TypeFactory->dump(&MDLType, 1));
-		FString TypeString = ANSI_TO_TCHAR(TypeStr->get_c_str());
-
-		LogMessages.Emplace(MDLImporterLogging::EMessageSeverity::Warning,
-			FString::Printf(TEXT("Can't construct '%s' from %d Inputs"), *TypeString, Inputs.Num()));
-		
+		check(false);
 		return Inputs;
 	}
 
@@ -1546,5 +1509,4 @@ namespace Generator
 		}
 	}
 }  // namespace Generator
-
 #endif

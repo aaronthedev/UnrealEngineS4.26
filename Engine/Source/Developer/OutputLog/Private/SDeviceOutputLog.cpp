@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SDeviceOutputLog.h"
 #include "Framework/Text/TextLayout.h"
@@ -327,7 +327,6 @@ void SDeviceOutputLog::OnDeviceSelectionChanged(FTargetDeviceEntryPtr DeviceEntr
 		{
 			CurrentDeviceOutputPtr = PinnedPtr->CreateDeviceOutputRouter(this);
 		}
-		OnSelectedDeviceChangedDelegate.ExecuteIfBound(GetSelectedTargetDevice());
 	}
 }
 

@@ -16,10 +16,6 @@ public:
 
 	UResonanceAudioSettings();
 
-	// Reference to submix where reverb plugin audio is routed.
-	UPROPERTY(GlobalConfig, EditAnywhere, Category = "Reverb", meta = (AllowedClasses = "SoundSubmix"))
-	FSoftObjectPath OutputSubmix;
-
 	// Global Quality mode to use for directional sound sources.
 	UPROPERTY(GlobalConfig, EditAnywhere, Category = General)
 	ERaQualityMode QualityMode;

@@ -36,9 +36,7 @@
 
 #include <Alembic/Abc/All.h>
 #include <Alembic/AbcCoreAbstract/All.h>
-#ifdef ALEMBIC_WITH_HDF5
 #include <Alembic/AbcCoreHDF5/All.h>
-#endif
 #include <Alembic/AbcCoreOgawa/All.h>
 #include <Alembic/AbcCoreFactory/All.h>
 #include <Alembic/AbcCollection/All.h>
@@ -87,9 +85,9 @@ using AbcA::index_t;
 
 void segfault_sigaction(int signal)
 {
-    std::cout << REDCOLOR
+    std::cout << REDCOLOR 
               << "Unrecoverable error: signal " << signal
-              << RESETCOLOR
+              << RESETCOLOR 
               << std::endl;
     exit(0);
 }
@@ -468,8 +466,8 @@ void printChild( Abc::ICompoundProperty iParent, Abc::PropertyHeader header,
     }
     else
         std::cout << "   ";
-
-    // try to access and print the 0th sample value
+   
+    // try to access and print the 0th sample value 
     if ( values && !header.isCompound() ) {
         try {
             printValue( iParent, header, 0, false, false, 24.0 );
@@ -477,7 +475,7 @@ void printChild( Abc::ICompoundProperty iParent, Abc::PropertyHeader header,
             std::cerr << "Exception : " << e.what() << std::endl;
         }
     }
-
+    
     std::cout << RESETCOLOR;
 
 }
@@ -492,15 +490,10 @@ void printChild( AbcG::IObject iParent, AbcG::IObject iObj,
 
     if ( long_list ) {
         std::string schema = md.get( "schema" );
-        size_t spacing = COL_1;
+        int spacing = COL_1;
         if ( all )
             spacing = COL_1 + COL_2;
-
-        if (spacing > schema.length())
-            std::cout << schema << std::string(spacing - schema.length(), ' ');
-        else
-            std::cout << schema;
-
+        std::cout << schema << std::string(spacing - schema.length(), ' ');
     }
     std::cout << GREENCOLOR << iObj.getName();
 
@@ -642,7 +635,7 @@ int main( int argc, char *argv[] )
     );
 
     /* sigaction if available */
-#if defined(_POSIX_VERSION) && (_POSIX_VERSION >= 199506L)
+#if defined(_POSIX_VERSION) && (_POSIX_VERSION >= 199506L) 
     // seg fault handler
     struct sigaction act;
     sigemptyset(&act.sa_mask);
@@ -652,7 +645,7 @@ int main( int argc, char *argv[] )
     /* signal if available */
 #elif defined(_POSIX_VERSION) || defined(_MSC_VER)
     signal(SIGSEGV, segfault_sigaction);
-#else
+#else 
 #error No signal interface available
 #endif //_POSIX_VERSION
 
@@ -752,14 +745,12 @@ int main( int argc, char *argv[] )
             std::string whenWritten;
             std::string userDescription;
             std::string coreName;
-            double dccFps;
             GetArchiveInfo (archive,
                             appName,
                             libraryVersionString,
                             libraryVersion,
                             whenWritten,
-                            userDescription,
-                            dccFps);
+                            userDescription);
 
             if ( coreType == AbcF::IFactory::kOgawa ) {
                 coreName = "Ogawa";
@@ -774,10 +765,6 @@ int main( int argc, char *argv[] )
                 std::cout << "  using Alembic : " << libraryVersionString << std::endl;
                 std::cout << "  written on : " << whenWritten << std::endl;
                 std::cout << "  user description : " << userDescription << std::endl;
-                if (dccFps > 0)
-                {
-                    std::cout << "  DCC FPS at write: " << dccFps << std::endl;
-                }
             } else {
                 std::cout << "  (file doesn't have any ArchiveInfo)"
                           << std::endl;

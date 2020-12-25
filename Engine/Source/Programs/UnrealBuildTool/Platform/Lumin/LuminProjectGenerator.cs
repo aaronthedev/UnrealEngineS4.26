@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -16,7 +16,6 @@ namespace UnrealBuildTool
 	{
 		static bool VSSupportChecked = false;       // Don't want to check multiple times
 		static bool VSDebuggingEnabled = false;
-		FileReference BPOnlyProjectPath = null;
 
 		/// <summary>
 		/// Constructor
@@ -25,10 +24,6 @@ namespace UnrealBuildTool
 		public LuminProjectGenerator(CommandLineArguments Arguments)
 			: base(Arguments)
 		{
-			if (Arguments.HasValue("-bponlyproject="))
-			{
-				BPOnlyProjectPath = new FileReference(Arguments.GetString("-bponlyproject="));
-			}
 		}
 
 		private bool IsVSLuminSupportInstalled(VCProjectFileFormat ProjectFileFormat)
@@ -36,9 +31,7 @@ namespace UnrealBuildTool
 			if (!VSSupportChecked)
 			{
 				// TODO: add a registry check or file exists check to confirm if MLExtension is installed on the given ProjectFileFormat.
-				VSDebuggingEnabled = (ProjectFileFormat == VCProjectFileFormat.VisualStudio2015 
-									|| ProjectFileFormat == VCProjectFileFormat.VisualStudio2017 
-									|| ProjectFileFormat == VCProjectFileFormat.VisualStudio2019);
+				VSDebuggingEnabled = (ProjectFileFormat == VCProjectFileFormat.VisualStudio2015 || ProjectFileFormat == VCProjectFileFormat.VisualStudio2017);
 				VSSupportChecked = true;
 			}
             return VSDebuggingEnabled;
@@ -75,7 +68,7 @@ namespace UnrealBuildTool
 		/// <returns>string    The custom configuration section for the project file; Empty string if it doesn't require one</returns>
 		public override void GetVisualStudioPlatformToolsetString(UnrealTargetPlatform InPlatform, UnrealTargetConfiguration InConfiguration, VCProjectFileFormat InProjectFileFormat, StringBuilder ProjectFileBuilder)
 		{
-			VCProjectFileGenerator.AppendPlatformToolsetProperty(ProjectFileBuilder, InProjectFileFormat);
+			ProjectFileBuilder.AppendLine("    <PlatformToolset>" + VCProjectFileGenerator.GetProjectFilePlatformToolsetVersionString(InProjectFileFormat) + "</PlatformToolset>");
 		}
 
 		/// <summary>
@@ -97,16 +90,13 @@ namespace UnrealBuildTool
 
 			if (IsVSLuminSupportInstalled(InProjectFileFormat) && TargetType == TargetType.Game && InPlatform == UnrealTargetPlatform.Lumin)
 			{
-				// When generating for a blueprint only project, use the blueprint only project's path to generate the visual studio path entries
-				bool bGetEntriesForBlueprintOnlyProject = BPOnlyProjectPath != null;
-
 				string MLSDK = Utils.CleanDirectorySeparators(Environment.GetEnvironmentVariable("MLSDK"), '\\');
 
-				string GameName = bGetEntriesForBlueprintOnlyProject ? BPOnlyProjectPath.GetFileNameWithoutExtension() : TargetRulesPath.GetFileNameWithoutExtension();
+				// TODO: Check if MPK name can be other than the project name.
+				string GameName = TargetRulesPath.GetFileNameWithoutExtension();
 				GameName = Path.GetFileNameWithoutExtension(GameName);
 
-				string PackagePath = bGetEntriesForBlueprintOnlyProject ? BPOnlyProjectPath.Directory.FullName + "\\Binaries\\Lumin" : Utils.MakePathRelativeTo(NMakeOutputPath.Directory.FullName, ProjectFilePath.Directory.FullName);
-				string PackageFile = PackagePath;
+				string PackageFile = Utils.MakePathRelativeTo(NMakeOutputPath.Directory.FullName, ProjectFilePath.Directory.FullName);
 				string PackageName = GameName;
 				if (InConfiguration != UnrealTargetConfiguration.Development)
 				{
@@ -115,13 +105,13 @@ namespace UnrealBuildTool
 				PackageFile = Path.Combine(PackageFile, PackageName + ".mpk");
 
                 // Can't use $(NMakeOutput) directly since that is defined after <ELFFile> tag and thus ends up being translated as an empty string.
-                string ELFFile = bGetEntriesForBlueprintOnlyProject ? PackagePath : Utils.MakePathRelativeTo(NMakeOutputPath.Directory.FullName, ProjectFilePath.Directory.FullName);
+                string ELFFile = Utils.MakePathRelativeTo(NMakeOutputPath.Directory.FullName, ProjectFilePath.Directory.FullName);
 				// Provide path to stripped executable so all symbols are resolved from the external sym file instead.
-				ELFFile = Path.Combine(ELFFile, "..\\..\\Intermediate\\Lumin\\Mabu\\Binaries", GetElfName(NMakeOutputPath));
+                ELFFile = Path.Combine(ELFFile, "..\\..\\Intermediate\\Lumin\\Mabu\\Binaries", GetElfName(NMakeOutputPath));
 				string DebuggerFlavor = "MLDebugger";
 
 				string SymFile = Utils.MakePathRelativeTo(NMakeOutputPath.Directory.FullName, ProjectFilePath.Directory.FullName);
-				SymFile = Path.Combine(SymFile, "..\\..\\Intermediate\\Lumin\\Mabu\\Binaries", Path.ChangeExtension(GetElfName(NMakeOutputPath), ".sym"));
+				SymFile = Path.Combine(SymFile, "..\\..\\Intermediate\\Lumin\\Mabu\\Binaries", Path.ChangeExtension(NMakeOutputPath.GetFileName(), ".sym"));
 
 				// following are defaults for debugger options
 				string Attach = "false";

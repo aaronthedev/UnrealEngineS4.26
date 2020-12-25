@@ -1,29 +1,20 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "SoundControlBusMix.h"
 
 #include "Audio/AudioAddressPattern.h"
 #include "AudioDevice.h"
 #include "AudioModulation.h"
+#include "AudioModulationInternal.h"
 #include "AudioModulationLogging.h"
-#include "AudioModulationProfileSerializer.h"
-#include "AudioModulationStatics.h"
 #include "Engine/World.h"
-#include "SoundControlBus.h"
-
-#if WITH_EDITOR
-#include "Framework/Notifications/NotificationManager.h"
-#include "Widgets/Notifications/SNotificationList.h"
-#endif // WITH_EDITOR
-
-#define LOCTEXT_NAMESPACE "AudioModulation"
 
 
-FSoundControlBusMixStage::FSoundControlBusMixStage()
+FSoundControlBusMixChannel::FSoundControlBusMixChannel()
 	: Bus(nullptr)
 {
 }
 
-FSoundControlBusMixStage::FSoundControlBusMixStage(USoundControlBus* InBus, const float TargetValue)
+FSoundControlBusMixChannel::FSoundControlBusMixChannel(USoundControlBusBase* InBus, const float TargetValue)
 	: Bus(InBus)
 {
 	Value.TargetValue = FMath::Clamp(TargetValue, 0.0f, 1.0f);
@@ -31,153 +22,179 @@ FSoundControlBusMixStage::FSoundControlBusMixStage(USoundControlBus* InBus, cons
 
 USoundControlBusMix::USoundControlBusMix(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-	, ProfileIndex(0)
 {
 }
 
 void USoundControlBusMix::BeginDestroy()
 {
-	using namespace AudioModulation;
-
 	Super::BeginDestroy();
 
 	if (UWorld* World = GetWorld())
 	{
-		if (FAudioDeviceHandle AudioDevice = World->GetAudioDevice())
+		if (FAudioDevice* AudioDevice = World->GetAudioDevice())
 		{
-			if (AudioDevice->IsModulationPluginEnabled())
+			check(AudioDevice->IsModulationPluginEnabled());
+			if (IAudioModulation* ModulationInterface = AudioDevice->ModulationInterface.Get())
 			{
-				if (IAudioModulation* ModulationInterface = AudioDevice->ModulationInterface.Get())
-				{
-					FAudioModulation* Modulation = static_cast<FAudioModulation*>(ModulationInterface);
-					check(Modulation);
-					Modulation->DeactivateBusMix(*this);
-				}
+				auto ModulationImpl = static_cast<AudioModulation::FAudioModulation*>(ModulationInterface)->GetImpl();
+				check(ModulationImpl);
+				ModulationImpl->DeactivateBusMix(*this);
 			}
 		}
 	}
 }
 
-void USoundControlBusMix::ActivateMix()
+namespace AudioModulation
 {
-	AudioModulation::IterateModulationImpl([this](AudioModulation::FAudioModulation& OutModulation)
+	FModulatorBusMixChannelProxy::FModulatorBusMixChannelProxy(const FSoundControlBusMixChannel& Channel)
+		: TModulatorProxyBase<FBusId>(Channel.Bus->GetName(), Channel.Bus->GetUniqueID())
+		, Address(Channel.Bus->Address)
+		, ClassId(Channel.Bus->GetClass()->GetUniqueID())
+		, Value(Channel.Value)
 	{
-		OutModulation.ActivateBusMix(*this);
-	});
-}
-
-void USoundControlBusMix::DeactivateMix()
-{
-	AudioModulation::IterateModulationImpl([this](AudioModulation::FAudioModulation& OutModulation)
-	{
-		OutModulation.DeactivateBusMix(*this);
-	});
-}
-
-void USoundControlBusMix::DeactivateAllMixes()
-{
-	AudioModulation::IterateModulationImpl([this](AudioModulation::FAudioModulation& OutModulation)
-	{
-		OutModulation.DeactivateAllBusMixes();
-	});
-}
-
-void USoundControlBusMix::LoadMixFromProfile()
-{
-	const bool bSucceeded = AudioModulation::FProfileSerializer::Deserialize(ProfileIndex, *this);
-#if WITH_EDITOR
-	if (bSucceeded)
-	{
-		FNotificationInfo Info(FText::Format(
-			LOCTEXT("SoundControlBusMix_LoadSucceeded", "'Control Bus Mix '{0}' profile {1} loaded successfully."),
-			FText::FromName(GetFName()),
-			FText::AsNumber(ProfileIndex)
-		));
-		Info.bFireAndForget = true;
-		Info.ExpireDuration = 2.0f;
-		Info.bUseThrobber = true;
-		FSlateNotificationManager::Get().AddNotification(Info);
 	}
-#endif // WITH_EDITOR
 
-	ActivateMix();
-}
-
-#if WITH_EDITOR
-void USoundControlBusMix::PostEditChangeProperty(FPropertyChangedEvent& InPropertyChangedEvent)
-{
-	OnPropertyChanged(InPropertyChangedEvent.Property, InPropertyChangedEvent.ChangeType);
-	Super::PostEditChangeProperty(InPropertyChangedEvent);
-}
-
-void USoundControlBusMix::PostEditChangeChainProperty(FPropertyChangedChainEvent& InPropertyChangedEvent)
-{
-	OnPropertyChanged(InPropertyChangedEvent.Property, InPropertyChangedEvent.ChangeType);
-	Super::PostEditChangeChainProperty(InPropertyChangedEvent);
-}
-
-void USoundControlBusMix::OnPropertyChanged(FProperty* Property, EPropertyChangeType::Type InChangeType)
-{
-	if (Property)
+	FModulatorBusMixProxy::FModulatorBusMixProxy(const USoundControlBusMix& InBusMix)
+		: TModulatorProxyRefType(InBusMix.GetName(), InBusMix.GetUniqueID())
 	{
-		if (InChangeType == EPropertyChangeType::Interactive || InChangeType == EPropertyChangeType::ValueSet)
-		{
-			if ((Property->GetFName() == GET_MEMBER_NAME_CHECKED(FSoundModulationMixValue, TargetValue))
-				|| (Property->GetFName() == GET_MEMBER_NAME_CHECKED(FSoundControlBusMixStage, Bus)))
-			{
-				for (FSoundControlBusMixStage& Stage : MixStages)
-				{
-					if (Stage.Bus)
-					{
-						Stage.Value.TargetValue = FMath::Clamp(Stage.Value.TargetValue, 0.0f, 1.0f);
-						float UnitValue = Stage.Value.TargetValue;
-						if (USoundModulationParameter* Parameter = Stage.Bus->Parameter)
-						{
-							UnitValue = Parameter->ConvertNormalizedToUnit(Stage.Value.TargetValue);
-						}
+		Init(InBusMix);
+	}
 
-						if (!FMath::IsNearlyEqual(Stage.Value.TargetUnitValue, UnitValue, KINDA_SMALL_NUMBER))
-						{
-							Stage.Value.TargetUnitValue = UnitValue;
-						}
+	FModulatorBusMixProxy& FModulatorBusMixProxy::operator =(const USoundControlBusMix& InBusMix)
+	{
+		Init(InBusMix);
+
+		return *this;
+	}
+
+	bool FModulatorBusMixProxy::CanDestroy() const
+	{
+		return Status == BusMixStatus::Stopped;
+	}
+
+	void FModulatorBusMixProxy::Init(const USoundControlBusMix& InBusMix)
+	{
+		Channels.Reset();
+
+		Status = BusMixStatus::Enabled;
+		for (const FSoundControlBusMixChannel& Channel : InBusMix.Channels)
+		{
+			if (Channel.Bus)
+			{
+				auto BusId = static_cast<const AudioModulation::FBusId>(Channel.Bus->GetUniqueID());
+#if !UE_BUILD_SHIPPING
+				if (Channels.Contains(BusId))
+				{
+					UE_LOG(LogAudioModulation, Warning,
+						TEXT("USoundControlBusMix '%s' already contains bus '%s'. Only one representative channel for this bus added."),
+						*InBusMix.GetFullName(), *Channel.Bus->GetFullName());
+				}
+#endif // UE_BUILD_SHIPPING
+				Channels.Emplace(BusId, FModulatorBusMixChannelProxy(Channel));
+			}
+			else
+			{
+				UE_LOG(LogAudioModulation, Warning,
+					TEXT("USoundControlBusMix '%s' has channel with no bus specified. "
+						"Mix activated but channel ignored."),
+					*InBusMix.GetFullName());
+			}
+		}
+	}
+
+	void FModulatorBusMixProxy::SetMix(const TArray<FSoundControlBusMixChannel>& InChannels)
+	{
+		for (const FSoundControlBusMixChannel& NewChannel : InChannels)
+		{
+			if(NewChannel.Bus)
+			{
+				FBusId BusId = static_cast<FBusId>(NewChannel.Bus->GetUniqueID());
+				if (FModulatorBusMixChannelProxy* ChannelProxy = Channels.Find(BusId))
+				{
+					ChannelProxy->Value.TargetValue = NewChannel.Value.TargetValue;
+					ChannelProxy->Value.AttackTime = NewChannel.Value.AttackTime;
+					ChannelProxy->Value.ReleaseTime = NewChannel.Value.ReleaseTime;
+				}
+			}
+		}
+	}
+
+	void FModulatorBusMixProxy::SetMixByFilter(const FString& InAddressFilter, uint32 InFilterClassId, const FSoundModulationValue& InValue)
+	{
+		static const uint32 BaseClassId = USoundControlBusBase::StaticClass()->GetUniqueID();
+
+		for (TPair<FBusId, FModulatorBusMixChannelProxy>& IdProxyPair : Channels)
+		{
+			FModulatorBusMixChannelProxy& ChannelProxy = IdProxyPair.Value;
+			if (InFilterClassId != BaseClassId && ChannelProxy.ClassId != InFilterClassId)
+			{
+				continue;
+			}
+
+			if (!FAudioAddressPattern::PartsMatch(InAddressFilter, ChannelProxy.Address))
+			{
+				continue;
+			}
+
+			ChannelProxy.Value.TargetValue = InValue.TargetValue;
+
+			if (InValue.AttackTime >= 0.0f)
+			{
+				ChannelProxy.Value.AttackTime = InValue.AttackTime;
+			}
+
+			if (InValue.ReleaseTime >= 0.0f)
+			{
+				ChannelProxy.Value.ReleaseTime = InValue.ReleaseTime;
+			}
+		}
+	}
+
+	void FModulatorBusMixProxy::SetEnabled()
+	{
+		Status = BusMixStatus::Enabled;
+	}
+
+	void FModulatorBusMixProxy::SetStopping()
+	{
+		if (Status == BusMixStatus::Enabled)
+		{
+			Status = BusMixStatus::Stopping;
+		}
+	}
+
+	void FModulatorBusMixProxy::Update(float Elapsed, FBusProxyMap& ProxyMap)
+	{
+		bool bRequestStop = true;
+		for (TPair<FBusId, FModulatorBusMixChannelProxy>& Channel : Channels)
+		{
+			FModulatorBusMixChannelProxy& ChannelProxy = Channel.Value;
+			FSoundModulationValue& MixChannelValue = ChannelProxy.Value;
+
+			if (FControlBusProxy* BusProxy = ProxyMap.Find(ChannelProxy.GetId()))
+			{
+				MixChannelValue.Update(Elapsed);
+
+				const float CurrentValue = MixChannelValue.GetCurrentValue();
+				if (Status == BusMixStatus::Stopping)
+				{
+					MixChannelValue.TargetValue = BusProxy->GetDefaultValue();
+					if (!FMath::IsNearlyEqual(MixChannelValue.TargetValue, CurrentValue))
+					{
+						bRequestStop = false;
 					}
 				}
+				else
+				{
+					bRequestStop = false;
+				}
+				BusProxy->MixIn(CurrentValue);
 			}
 		}
+
+		if (bRequestStop)
+		{
+			Status = BusMixStatus::Stopped;
+		}
 	}
-
-	AudioModulation::IterateModulationImpl([this](AudioModulation::FAudioModulation& OutModulation)
-	{
-		OutModulation.UpdateMix(*this);
-	});
-}
-#endif // WITH_EDITOR
-
-void USoundControlBusMix::SaveMixToProfile()
-{
-	const bool bSucceeded = AudioModulation::FProfileSerializer::Serialize(*this, ProfileIndex);
-#if WITH_EDITOR
-	if (bSucceeded)
-	{
-		FNotificationInfo Info(FText::Format(
-			LOCTEXT("SoundControlBusMix_SaveSucceeded", "'Control Bus Mix '{0}' profile {1} saved successfully."),
-			FText::FromName(GetFName()),
-			FText::AsNumber(ProfileIndex)
-		));
-		Info.bFireAndForget = true;
-		Info.ExpireDuration = 2.0f;
-		Info.bUseThrobber = true;
-		FSlateNotificationManager::Get().AddNotification(Info);
-	}
-#endif // WITH_EDITOR
-}
-
-void USoundControlBusMix::SoloMix()
-{
-	AudioModulation::IterateModulationImpl([this](AudioModulation::FAudioModulation& OutModulation)
-	{
-		OutModulation.SoloBusMix(*this);
-	});
-}
-
-#undef LOCTEXT_NAMESPACE // AudioModulation
+} // namespace AudioModulation

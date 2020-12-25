@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,6 +9,7 @@
 #include "AssetData.h"
 
 class IDestructibleMeshEditor;
+class UDestructibleMesh;
 class UStaticMesh;
 class FExtender;
 
@@ -18,8 +19,7 @@ extern const FName DestructibleMeshEditorAppIdentifier;
 class IDestructibleMeshEditor;
 
 /** DestructibleMesh Editor module */
-
-class UE_DEPRECATED(4.26, "APEX is deprecated. Destruction in future will be supported using Chaos Destruction.") FDestructibleMeshEditorModule : public IModuleInterface,
+class FDestructibleMeshEditorModule : public IModuleInterface,
 	public IHasMenuExtensibility, public IHasToolBarExtensibility
 {
 
@@ -28,7 +28,6 @@ public:
 	virtual void StartupModule() override;
 	virtual void ShutdownModule() override;
 
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	/**
 	 * Creates an instance of table editor object.  Only virtual so that it can be called across the DLL boundary.
 	 *
@@ -51,8 +50,7 @@ public:
 	 *
 	 * @return The newly created UDestructibleMesh if successful, NULL otherwise
 	 */
-	virtual class UDestructibleMesh*	CreateDestructibleMeshFromStaticMesh(UObject* InParent, UStaticMesh* StaticMesh, FName Name, EObjectFlags Flags, FText& OutErrorMsg);
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
+	virtual UDestructibleMesh*	CreateDestructibleMeshFromStaticMesh(UObject* InParent, UStaticMesh* StaticMesh, FName Name, EObjectFlags Flags, FText& OutErrorMsg);
 
 	/** Gets the extensibility managers for outside entities to extend static mesh editor's menus and toolbars */
 	virtual TSharedPtr<FExtensibilityManager> GetMenuExtensibilityManager() override {return MenuExtensibilityManager;}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,18 +7,19 @@
 
 
 /**
- * SetSpaceTransform is used to perform a change in the hierarchy by setting a single space's transform.
+ * SetSpaceTransform is used to perform a change in the hierarchy by setting a single bone's transform.
  */
-USTRUCT(meta=(DisplayName="Set Space", Category="Hierarchy", DocumentationPolicy="Strict", Keywords = "SetSpaceTransform", Deprecated="4.25"))
+USTRUCT(meta=(DisplayName="Set Space", Category="Hierarchy", DocumentationPolicy="Strict", Keywords = "SetSpaceTransform"))
 struct FRigUnit_SetSpaceTransform : public FRigUnitMutable
 {
 	GENERATED_BODY()
 
 	FRigUnit_SetSpaceTransform()
-		: Weight(1.f)
-		, SpaceType(EBoneGetterSetterMode::GlobalSpace)
-		, CachedSpaceIndex(FCachedRigElement())
+		: SpaceType(EBoneGetterSetterMode::LocalSpace)
+		, CachedSpaceIndex(INDEX_NONE)
 	{}
+
+	virtual FString GetUnitLabel() const override;
 
 	RIGVM_METHOD()
 	virtual void Execute(const FRigUnitContext& Context) override;
@@ -26,14 +27,8 @@ struct FRigUnit_SetSpaceTransform : public FRigUnitMutable
 	/**
 	 * The name of the Space to set the transform for.
 	 */
-	UPROPERTY(meta = (Input))
+	UPROPERTY(meta = (Input, SpaceName, Constant))
 	FName Space;
-
-	/**
-	 * The weight of the change - how much the change should be applied
-	 */
-	UPROPERTY(meta = (Input, UIMin = "0.0", UIMax = "1.0"))
-	float Weight;
 
 	/**
 	 * The transform value to set for the given Space.
@@ -50,5 +45,5 @@ struct FRigUnit_SetSpaceTransform : public FRigUnitMutable
 
 	// Used to cache the internally used bone index
 	UPROPERTY()
-	FCachedRigElement CachedSpaceIndex;
+	int32 CachedSpaceIndex;
 };

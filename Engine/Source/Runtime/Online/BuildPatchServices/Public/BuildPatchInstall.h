@@ -1,9 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
-
-#include "Interfaces/IBuildManifest.h"
 
 namespace BuildPatchServices
 {
@@ -48,6 +46,4 @@ namespace BuildPatchServices
 			default: return InvalidOrMax;
 		}
 	}
-
-	BUILDPATCHSERVICES_API uint64 CalculateRequiredDiskSpace(const IBuildManifestPtr& CurrentManifest, const IBuildManifestRef& BuildManifest, const EInstallMode& InstallMode, const TSet<FString>& InstallTags);
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PixelInspectorDetailsCustomization.h"
 #include "PixelInspectorView.h"
@@ -141,7 +141,6 @@ void FPixelInspectorDetailsCustomization::CustomizeDetails(IDetailLayoutBuilder&
 	{
 		case MSM_DefaultLit:
 		case MSM_SingleLayerWater:
-		case MSM_ThinTranslucent:
 		case MSM_Unlit:
 		{
 			DetailBuilder.HideProperty(SubSurfaceColorProp);

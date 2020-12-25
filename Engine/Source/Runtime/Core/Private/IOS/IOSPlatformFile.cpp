@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IOS/IOSPlatformFile.h"
 #include "HAL/PlatformTLS.h"
@@ -40,7 +40,7 @@ namespace
 			IOSEpoch + FTimespan::FromSeconds(FileInfo.st_mtime), 
 			FileSize,
 			bIsDirectory,
-			!(FileInfo.st_mode & S_IWUSR)
+			!!(FileInfo.st_mode & S_IWUSR)
 			);
 	}
 }
@@ -246,9 +246,7 @@ public:
 			return false;
 		}
 #endif
-		int Result = 0;
-		do { Result = ftruncate(FileHandle, NewSize); } while (Result < 0 && errno == EINTR);
-		return Result == 0;
+		return ftruncate(FileHandle, NewSize) == 0;
 	}
 
 	virtual int64 Size( ) override
@@ -529,14 +527,18 @@ bool Initialize(IPlatformFile* Inner, const TCHAR* CommandLineParam)
 FString FIOSPlatformFile::NormalizeFilename(const TCHAR* Filename)
 {
 	FString Result(Filename);
-	Result.ReplaceInline(TEXT("\\"), TEXT("/"), ESearchCase::CaseSensitive);
+	Result.ReplaceInline(TEXT("\\"), TEXT("/"));
 	return Result;
 }
 
 FString FIOSPlatformFile::NormalizeDirectory(const TCHAR* Directory)
 {
 	FString Result(Directory);
-	Result.ReplaceInline(TEXT("\\"), TEXT("/"), ESearchCase::CaseSensitive);
+	Result.ReplaceInline(TEXT("\\"), TEXT("/"));
+	if (Result.EndsWith(TEXT("/")))
+	{
+		Result.LeftChop(1);
+	}
 	return Result;
 }
 
@@ -867,34 +869,30 @@ IMappedFileHandle* FIOSPlatformFile::OpenMapped(const TCHAR* Filename)
 	FString FinalPath = ConvertToIOSPath(NormalizedFilename, false, false);
 	FILE* FP;
 	FP = fopen(TCHAR_TO_UTF8(*FinalPath), "r");
-	if(FP == nullptr)
-	{
-		// if not in the read path, check the private write path
-		FinalPath = ConvertToIOSPath(NormalizedFilename, true, false);
-		FP = fopen(TCHAR_TO_UTF8(*FinalPath), "r");
-
-		if(FP == nullptr)
-		{
-			// if not in the private write path, check the public write path
-			FinalPath = ConvertToIOSPath(NormalizedFilename, true, true);
-			FP = fopen(TCHAR_TO_UTF8(*FinalPath), "r");
-		}
-	}
+//	if(Handle == -1)
+//	{
+//		// if not in the read path, check the private write path
+//		FinalPath = ConvertToIOSPath(NormalizedFilename, true, false);
+//		Handle = open(TCHAR_TO_UTF8(*FinalPath), O_RDONLY);
+//
+//		if(Handle == -1)
+//		{
+//			// if not in the private write path, check the public write path
+//			FinalPath = ConvertToIOSPath(NormalizedFilename, true, true);
+//			Handle = open(TCHAR_TO_UTF8(*FinalPath), O_RDONLY);
+//		}
+//	}
+	int32 Handle = fileno(FP);
 	
-	if (FP != nullptr)
+	if (Handle != -1)
 	{
-		int32 Handle = fileno(FP);
-	
-		if (Handle != -1)
-		{
-			struct stat FileInfo;
-			FileInfo.st_size = -1;
-			// check the read path
-			fstat(Handle, &FileInfo);
-			uint64 FileSize = FileInfo.st_size;
+		struct stat FileInfo;
+		FileInfo.st_size = -1;
+		// check the read path
+		fstat(Handle, &FileInfo);
+		uint64 FileSize = FileInfo.st_size;
 
-			return new FIOSMappedFileHandle(Handle, FileSize, FinalPath);
-		}
+		return new FIOSMappedFileHandle(Handle, FileSize, FinalPath);
 	}
 	return NULL;
 }

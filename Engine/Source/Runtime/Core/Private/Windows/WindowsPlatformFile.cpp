@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Windows/WindowsPlatformFile.h"
 #include "CoreTypes.h"
@@ -9,7 +9,6 @@
 #include "HAL/UnrealMemory.h"
 #include "GenericPlatform/GenericPlatformFile.h"
 #include "Containers/UnrealString.h"
-#include "Algo/Replace.h"
 #include "Templates/Function.h"
 #include "Misc/Paths.h"
 #include "CoreGlobals.h"
@@ -96,13 +95,13 @@ namespace
 		// This roundabout conversion clamps the precision of the returned time value to match that of time_t (1 second precision)
 		// This avoids issues when sending files over the network via cook-on-the-fly
 		SYSTEMTIME SysTime;
-		SysTime.wYear = (WORD)InDateTime.GetYear();
-		SysTime.wMonth = (WORD)InDateTime.GetMonth();
-		SysTime.wDay = (WORD)InDateTime.GetDay();
-		SysTime.wDayOfWeek = (WORD)UEDayOfWeekToWindowsSystemTimeDayOfWeek(InDateTime.GetDayOfWeek());
-		SysTime.wHour = (WORD)InDateTime.GetHour();
-		SysTime.wMinute = (WORD)InDateTime.GetMinute();
-		SysTime.wSecond = (WORD)InDateTime.GetSecond();
+		SysTime.wYear = InDateTime.GetYear();
+		SysTime.wMonth = InDateTime.GetMonth();
+		SysTime.wDay = InDateTime.GetDay();
+		SysTime.wDayOfWeek = UEDayOfWeekToWindowsSystemTimeDayOfWeek(InDateTime.GetDayOfWeek());
+		SysTime.wHour = InDateTime.GetHour();
+		SysTime.wMinute = InDateTime.GetMinute();
+		SysTime.wSecond = InDateTime.GetSecond();
 		SysTime.wMilliseconds = 0;
 
 		FILETIME FileTime;
@@ -181,19 +180,8 @@ protected:
 		{
 			// Close the file handle
 			TRACE_PLATFORMFILE_BEGIN_CLOSE(Handle);
-			BOOL CloseResult = CloseHandle(Handle);
-#if PLATFORMFILETRACE_ENABLED
-			if (CloseResult)
-			{
-				TRACE_PLATFORMFILE_END_CLOSE(Handle);
-			}
-			else
-			{
-				TRACE_PLATFORMFILE_FAIL_CLOSE(Handle);
-			}
-#else
-			(void)CloseResult;
-#endif
+			CloseHandle(Handle);
+			TRACE_PLATFORMFILE_END_CLOSE();
 			Handle = nullptr;
 		}
 		return true;
@@ -360,7 +348,7 @@ public:
 		if (bWithinSerializeBuffer)
 		{
 			// Still within the serialize buffer so just update the position
-			SerializePos += (int32)PosDelta;
+			SerializePos += PosDelta;
 		}
 		else
 		{
@@ -433,7 +421,7 @@ public:
 				FMemory::Memcpy(Dest, &Buffers[SerializeBuffer][SerializePos], NumToCopy);
 
 				// Update the internal positions
-				SerializePos += (int32)NumToCopy;
+				SerializePos += NumToCopy;
 				check(SerializePos <= BufferSize);
 				FilePos += NumToCopy;
 				check(FilePos <= FileSize);
@@ -534,19 +522,8 @@ public:
 	virtual ~FFileHandleWindows()
 	{
 		TRACE_PLATFORMFILE_BEGIN_CLOSE(FileHandle);
-		BOOL CloseResult = CloseHandle(FileHandle);
-#if PLATFORMFILETRACE_ENABLED
-		if (CloseResult)
-		{
-			TRACE_PLATFORMFILE_END_CLOSE(FileHandle);
-		}
-		else
-		{
-			TRACE_PLATFORMFILE_FAIL_CLOSE(FileHandle);
-		}
-#else
-		(void)CloseResult;
-#endif
+		CloseHandle(FileHandle);
+		TRACE_PLATFORMFILE_END_CLOSE();
 		FileHandle = NULL;
 	}
 	virtual int64 Tell(void) override
@@ -585,7 +562,7 @@ public:
 		int64 TotalNumRead = 0;
 		do
 		{
-			uint32 BytesToRead32 = (uint32)FMath::Min<int64>(BytesToRead, int64(UINT32_MAX));
+			uint32 BytesToRead32 = FMath::Min(BytesToRead, int64(UINT32_MAX));
 			uint32 NumRead = 0;
 
 			if (!ReadFile(FileHandle, Destination, BytesToRead32, (::DWORD*)&NumRead, &OverlappedIO))
@@ -613,14 +590,6 @@ public:
 			// Update where we are in the file
 			FilePos += NumRead;
 			UpdateOverlappedPos();
-			
-			// Early out as a failure case if we did not read all of the bytes that we expected to read
-			if (BytesToRead32 != NumRead)
-			{
-				TRACE_PLATFORMFILE_END_READ(&OverlappedIO, TotalNumRead);
-				return false;
-			}	
-					
 		} while (BytesToRead > 0);
 		TRACE_PLATFORMFILE_END_READ(&OverlappedIO, TotalNumRead);
 		return true;
@@ -634,7 +603,7 @@ public:
 		int64 TotalNumWritten = 0;
 		do
 		{
-			uint32 BytesToWrite32 = (uint32)FMath::Min<int64>(BytesToWrite, int64(UINT32_MAX));
+			uint32 BytesToWrite32 = FMath::Min(BytesToWrite, int64(UINT32_MAX));
 			uint32 NumWritten = 0;
 			// Now kick off an async write
 			if (!WriteFile(FileHandle, Source, BytesToWrite32, (::DWORD*)&NumWritten, &OverlappedIO))
@@ -655,7 +624,6 @@ public:
 					return false;
 				}
 			}
-	
 			BytesToWrite -= BytesToWrite32;
 			Source += BytesToWrite32;
 			TotalNumWritten += NumWritten;
@@ -663,14 +631,6 @@ public:
 			FilePos += NumWritten;
 			UpdateOverlappedPos();
 			FileSize = FMath::Max(FilePos, FileSize);
-			
-			// Early out as a failure case if we didn't write all of the data we expected
-			if (BytesToWrite32 != NumWritten)
-			{
-				TRACE_PLATFORMFILE_END_WRITE(this, TotalNumWritten);
-				return false;
-			}
-			
 		} while (BytesToWrite > 0);
 
 		TRACE_PLATFORMFILE_END_WRITE(this, TotalNumWritten);
@@ -685,12 +645,7 @@ public:
 	{
 		// SetEndOfFile isn't an overlapped operation, so we need to call UpdatedNonOverlappedPos after seeking to ensure that the file pointer is in the correct place
 		check(IsValid());
-		if (Seek(NewSize) && UpdatedNonOverlappedPos() && SetEndOfFile(FileHandle) != 0)
-		{
-			UpdateFileSize();
-			return true;
-		}
-		return false;
+		return Seek(NewSize) && UpdatedNonOverlappedPos() && SetEndOfFile(FileHandle) != 0;
 	}
 };
 
@@ -751,19 +706,8 @@ public:
 		check(!NumOutstandingRegions); // can't delete the file before you delete all outstanding regions
 		CloseHandle(MappingHandle);
 		TRACE_PLATFORMFILE_BEGIN_CLOSE(Handle);
-		BOOL CloseResult = CloseHandle(Handle);
-#if PLATFORMFILETRACE_ENABLED
-		if (CloseResult)
-		{
-			TRACE_PLATFORMFILE_END_CLOSE(Handle);
-		}
-		else
-		{
-			TRACE_PLATFORMFILE_FAIL_CLOSE(Handle);
-		}
-#else
-		(void)CloseResult;
-#endif
+		CloseHandle(Handle);
+		TRACE_PLATFORMFILE_END_CLOSE();
 	}
 	virtual IMappedFileRegion* MapRegion(int64 Offset = 0, int64 BytesToMap = MAX_int64, bool bPreloadHint = false) override
 	{
@@ -808,66 +752,27 @@ FMappedFileRegionWindows::~FMappedFileRegionWindows()
 **/
 class CORE_API FWindowsPlatformFile : public IPhysicalPlatformFile
 {
-private:
-	FString WindowsNormalizedFilename(const TCHAR* Filename)
+protected:
+	virtual FString NormalizeFilename(const TCHAR* Filename)
 	{
-		const bool bIsFilename = true; // TODO: Create a platform-independent EPathType enum and use that here
-		return WindowsNormalizedPath(Filename, bIsFilename);
+		FString Result(Filename);
+		FPaths::NormalizeFilename(Result);
+		if (Result.StartsWith(TEXT("//")))
+		{
+			Result = FString(TEXT("\\\\")) + Result.RightChop(2);
+		}
+		return FPaths::ConvertRelativePathToFull(Result);
 	}
-
-	FString WindowsNormalizedDirname(const TCHAR* Directory)
+	virtual FString NormalizeDirectory(const TCHAR* Directory)
 	{
-		const bool bIsFilename = false;
-		return WindowsNormalizedPath(Directory, bIsFilename);
+		FString Result(Directory);
+		FPaths::NormalizeDirectoryName(Result);
+		if (Result.StartsWith(TEXT("//")))
+		{
+			Result = FString(TEXT("\\\\")) + Result.RightChop(2);
+		}
+		return FPaths::ConvertRelativePathToFull(Result);
 	}
-
-	/**
-	  * Convert from a valid Unreal Path to a canonical and strict-valid Windows Path.
-	  * An Unreal Path may have either \ or / and may have empty directories (two / in a row), and may have .. and may be relative
-	  * A canonical and strict-valid Windows Path has only \, does not have .., does not have empty directories, and is an absolute path, either \\UNC or D:\
-	  * We need to use strict-valid Windows Paths when calling Windows API calls so that we can support the long-path prefix \\?\
-	  */
-	FString WindowsNormalizedPath(const TCHAR* PathString, bool bIsFilename)
-	{
-		FString Result = FPaths::ConvertRelativePathToFull(FString(PathString));
-		// NormalizeFilename was already called by ConvertRelativePathToFull, but we still need to do the extra steps in NormalizeDirectoryName if it is a directory
-		if (!bIsFilename)
-		{
-			FPaths::NormalizeDirectoryName(Result);
-		}
-
-		// Remove duplicate slashes
-		const bool bIsUNCPath = Result.StartsWith(TEXT("//"));
-		if (bIsUNCPath)
-		{
-			// Keep // at the beginning.  If There are more than two / at the beginning, replace them with just //.
-			FPaths::RemoveDuplicateSlashes(Result);
-			Result = TEXT("/") + Result;
-		}
-		else
-		{
-			FPaths::RemoveDuplicateSlashes(Result);
-		}
-
-		// We now have a canonical, strict-valid, absolute Unreal Path.  Convert it to a Windows Path.
-		Result.ReplaceCharInline(TEXT('/'), TEXT('\\'), ESearchCase::CaseSensitive);
-
-		// Handle Windows Path length over MAX_PATH
-		if (Result.Len() > MAX_PATH)
-		{
-			if (bIsUNCPath)
-			{
-				Result = TEXT("\\\\?\\UNC") + Result.RightChop(1);
-			}
-			else
-			{
-				Result = TEXT("\\\\?\\") + Result;
-			}
-		}
-
-		return Result;
-	}
-
 public:
 	//~ For visibility of overloads we don't override
 	using IPhysicalPlatformFile::IterateDirectory;
@@ -875,7 +780,7 @@ public:
 
 	virtual bool FileExists(const TCHAR* Filename) override
 	{
-		uint32 Result = GetFileAttributesW(*WindowsNormalizedFilename(Filename));
+		uint32 Result = GetFileAttributesW(*NormalizeFilename(Filename));
 		if (Result != 0xFFFFFFFF && !(Result & FILE_ATTRIBUTE_DIRECTORY))
 		{
 			return true;
@@ -885,7 +790,7 @@ public:
 	virtual int64 FileSize(const TCHAR* Filename) override
 	{
 		WIN32_FILE_ATTRIBUTE_DATA Info;
-		if (!!GetFileAttributesExW(*WindowsNormalizedFilename(Filename), GetFileExInfoStandard, &Info))
+		if (!!GetFileAttributesExW(*NormalizeFilename(Filename), GetFileExInfoStandard, &Info))
 		{
 			if ((Info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
 			{
@@ -899,12 +804,12 @@ public:
 	}
 	virtual bool DeleteFile(const TCHAR* Filename) override
 	{
-		const FString NormalizedFilename = WindowsNormalizedFilename(Filename);
+		const FString NormalizedFilename = NormalizeFilename(Filename);
 		return !!DeleteFileW(*NormalizedFilename);
 	}
 	virtual bool IsReadOnly(const TCHAR* Filename) override
 	{
-		uint32 Result = GetFileAttributesW(*WindowsNormalizedFilename(Filename));
+		uint32 Result = GetFileAttributesW(*NormalizeFilename(Filename));
 		if (Result != 0xFFFFFFFF)
 		{
 			return !!(Result & FILE_ATTRIBUTE_READONLY);
@@ -913,17 +818,17 @@ public:
 	}
 	virtual bool MoveFile(const TCHAR* To, const TCHAR* From) override
 	{
-		return !!MoveFileW(*WindowsNormalizedFilename(From), *WindowsNormalizedFilename(To));
+		return !!MoveFileW(*NormalizeFilename(From), *NormalizeFilename(To));
 	}
 	virtual bool SetReadOnly(const TCHAR* Filename, bool bNewReadOnlyValue) override
 	{
-		return !!SetFileAttributesW(*WindowsNormalizedFilename(Filename), bNewReadOnlyValue ? FILE_ATTRIBUTE_READONLY : FILE_ATTRIBUTE_NORMAL);
+		return !!SetFileAttributesW(*NormalizeFilename(Filename), bNewReadOnlyValue ? FILE_ATTRIBUTE_READONLY : FILE_ATTRIBUTE_NORMAL);
 	}
 
 	virtual FDateTime GetTimeStamp(const TCHAR* Filename) override
 	{
 		WIN32_FILE_ATTRIBUTE_DATA Info;
-		if (GetFileAttributesExW(*WindowsNormalizedFilename(Filename), GetFileExInfoStandard, &Info))
+		if (GetFileAttributesExW(*NormalizeFilename(Filename), GetFileExInfoStandard, &Info))
 		{
 			return WindowsFileTimeToUEDateTime(Info.ftLastWriteTime);
 		}
@@ -934,37 +839,21 @@ public:
 	virtual void SetTimeStamp(const TCHAR* Filename, FDateTime DateTime) override
 	{
 		TRACE_PLATFORMFILE_BEGIN_OPEN(Filename);
-		HANDLE Handle = CreateFileW(*WindowsNormalizedFilename(Filename), FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, nullptr);
+		HANDLE Handle = CreateFileW(*NormalizeFilename(Filename), FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, nullptr);
+		TRACE_PLATFORMFILE_END_OPEN(Handle);
 		if (Handle != INVALID_HANDLE_VALUE)
 		{
-			TRACE_PLATFORMFILE_END_OPEN(Handle);
 			const FILETIME ModificationFileTime = UEDateTimeToWindowsFileTime(DateTime);
 			if (!SetFileTime(Handle, nullptr, nullptr, &ModificationFileTime))
 			{
 				UE_LOG(LogTemp, Warning, TEXT("SetTimeStamp: Failed to SetFileTime on %s"), Filename);
 			}
 			TRACE_PLATFORMFILE_BEGIN_CLOSE(Handle);
-#if PLATFORMFILETRACE_ENABLED
-			// MSVC static analysis has a rule that reports the argument to CloseHandle as uninitialized memory after the call to CloseHandle, so we have to save it ahead of time
-			uint64 SavedHandle = uint64(Handle);
-#endif
-			BOOL CloseResult = CloseHandle(Handle);
-#if PLATFORMFILETRACE_ENABLED
-			if (CloseResult)
-			{
-				TRACE_PLATFORMFILE_END_CLOSE(SavedHandle);
-			}
-			else
-			{
-				TRACE_PLATFORMFILE_FAIL_CLOSE(SavedHandle);
-			}
-#else
-			(void)CloseResult;
-#endif
+			CloseHandle(Handle);
+			TRACE_PLATFORMFILE_END_CLOSE();
 		}
 		else
 		{
-			TRACE_PLATFORMFILE_FAIL_OPEN(Filename);
 			UE_LOG(LogTemp, Warning, TEXT("SetTimeStamp: Failed to open file %s"), Filename);
 		}
 	}
@@ -972,7 +861,7 @@ public:
 	virtual FDateTime GetAccessTimeStamp(const TCHAR* Filename) override
 	{
 		WIN32_FILE_ATTRIBUTE_DATA Info;
-		if (GetFileAttributesExW(*WindowsNormalizedFilename(Filename), GetFileExInfoStandard, &Info))
+		if (GetFileAttributesExW(*NormalizeFilename(Filename), GetFileExInfoStandard, &Info))
 		{
 			return WindowsFileTimeToUEDateTime(Info.ftLastAccessTime);
 		}
@@ -982,14 +871,17 @@ public:
 
 	virtual FString GetFilenameOnDisk(const TCHAR* Filename) override
 	{
-		FString NormalizedFileName = WindowsNormalizedFilename(Filename);
 		TRACE_PLATFORMFILE_BEGIN_OPEN(Filename);
-		HANDLE hFile = CreateFile(*NormalizedFileName, FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, 0, NULL);
-		// If the file exists on disk, read the capitalization from the path on disk, otherwise just return the (normalized) input filename
-		if (hFile != INVALID_HANDLE_VALUE)
+		HANDLE hFile = CreateFile(Filename, FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, 0, NULL);
+		TRACE_PLATFORMFILE_END_OPEN(hFile);
+		if(hFile == INVALID_HANDLE_VALUE)
 		{
-			TRACE_PLATFORMFILE_END_OPEN(hFile);
-			for (uint32 Length = NormalizedFileName.Len() + 10;;)
+			return NormalizeFilename(Filename);
+		}
+		else
+		{
+			FString NormalizedFileName;
+			for(uint32 Length = FCString::Strlen(Filename) + 10;;)
 			{
 				TArray<TCHAR>& CharArray = NormalizedFileName.GetCharArray();
 				CharArray.SetNum(Length);
@@ -997,7 +889,7 @@ public:
 				Length = GetFinalPathNameByHandle(hFile, CharArray.GetData(), CharArray.Num(), FILE_NAME_NORMALIZED);
 				if (Length == 0)
 				{
-					NormalizedFileName = WindowsNormalizedFilename(Filename);
+					NormalizedFileName = Filename;
 					break;
 				}
 				if (Length < (uint32)CharArray.Num())
@@ -1007,43 +899,14 @@ public:
 				}
 			}
 			TRACE_PLATFORMFILE_BEGIN_CLOSE(hFile);
-#if PLATFORMFILETRACE_ENABLED
-			// MSVC static analysis has a rule that reports the argument to CloseHandle as uninitialized memory after the call to CloseHandle, so we have to save it ahead of time
-			uint64 SavedHFile = uint64(hFile);
-#endif
-			BOOL CloseResult = CloseHandle(hFile);
-#if PLATFORMFILETRACE_ENABLED
-			if (CloseResult)
-			{
-				TRACE_PLATFORMFILE_END_CLOSE(SavedHFile);
-			}
-			else
-			{
-				TRACE_PLATFORMFILE_FAIL_CLOSE(SavedHFile);
-			}
-#else
-			(void)CloseResult;
-#endif
-		}
-		else
-		{
-			TRACE_PLATFORMFILE_FAIL_OPEN(Filename);
-		}
+			CloseHandle(hFile);
+			TRACE_PLATFORMFILE_END_CLOSE();
 
-		// Remove the Windows device path prefix.
-		if (NormalizedFileName.StartsWith(TEXT("\\\\?\\UNC\\"), ESearchCase::CaseSensitive))
-		{
-			NormalizedFileName.RemoveAt(2, 6); // remove ?\UNC\ to convert \\?\UNC\Path\... to \\Path\...
-		}
-		else
-		{
 			NormalizedFileName.RemoveFromStart(TEXT("\\\\?\\"), ESearchCase::CaseSensitive);
+			NormalizedFileName.ReplaceInline(TEXT("\\"), TEXT("/"));
+
+			return NormalizedFileName;
 		}
-
-		// Convert the result back into an UnrealPath (\\ -> /)
-		NormalizedFileName.ReplaceCharInline(TEXT('\\'), TEXT('/'), ESearchCase::CaseSensitive);
-
-		return NormalizedFileName;
 	}
 
 #define USE_WINDOWS_ASYNC_IMPL 0
@@ -1055,20 +918,10 @@ public:
 		uint32  Create = OPEN_EXISTING;
 
 
-		FString NormalizedFilename = WindowsNormalizedFilename(Filename);
+		FString NormalizedFilename = NormalizeFilename(Filename);
 		TRACE_PLATFORMFILE_BEGIN_OPEN(Filename);
 		HANDLE Handle = CreateFileW(*NormalizedFilename, Access, WinFlags, NULL, Create, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
-#if PLATFORMFILETRACE_ENABLED
-		if (Handle != INVALID_HANDLE_VALUE)
-		{
-			TRACE_PLATFORMFILE_END_OPEN(Handle);
-		}
-		else
-		{
-			TRACE_PLATFORMFILE_FAIL_OPEN(Filename);
-		}
-#endif
-
+		TRACE_PLATFORMFILE_END_OPEN(Handle);
 		// we can't really fail here because this is intended to be an async open
 		return new FWindowsAsyncReadFileHandle(Handle, *NormalizedFilename);
 
@@ -1082,27 +935,24 @@ public:
 		uint32  Create    = OPEN_EXISTING;
 #define USE_OVERLAPPED_IO (!IS_PROGRAM && !WITH_EDITOR)		// Use straightforward synchronous I/O in cooker/editor
 
-		TRACE_PLATFORMFILE_BEGIN_OPEN(Filename);
 #if USE_OVERLAPPED_IO
-		HANDLE Handle    = CreateFileW(*WindowsNormalizedFilename(Filename), Access, WinFlags, NULL, Create, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
+		TRACE_PLATFORMFILE_BEGIN_OPEN(Filename);
+		HANDLE Handle    = CreateFileW(*NormalizeFilename(Filename), Access, WinFlags, NULL, Create, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
+		TRACE_PLATFORMFILE_END_OPEN(Handle);
 		if (Handle != INVALID_HANDLE_VALUE)
 		{
-			TRACE_PLATFORMFILE_END_OPEN(Handle);
 			return new FAsyncBufferedFileReaderWindows(Handle);
 		}
 #else
-		HANDLE Handle = CreateFileW(*WindowsNormalizedFilename(Filename), Access, WinFlags, NULL, Create, FILE_ATTRIBUTE_NORMAL, NULL);
+		TRACE_PLATFORMFILE_BEGIN_OPEN(Filename);
+		HANDLE Handle = CreateFileW(*NormalizeFilename(Filename), Access, WinFlags, NULL, Create, FILE_ATTRIBUTE_NORMAL, NULL);
+		TRACE_PLATFORMFILE_END_OPEN(Handle);
 		if (Handle != INVALID_HANDLE_VALUE)
 		{
-			TRACE_PLATFORMFILE_END_OPEN(Handle);
 			return new FFileHandleWindows(Handle);
 		}
 #endif
-		else
-		{
-			TRACE_PLATFORMFILE_FAIL_OPEN(Filename);
-			return nullptr;
-		}
+		return NULL;
 	}
 
 	virtual IFileHandle* OpenReadNoBuffering(const TCHAR* Filename, bool bAllowWrite = false) override
@@ -1111,17 +961,13 @@ public:
 		uint32  WinFlags = FILE_SHARE_READ | (bAllowWrite ? FILE_SHARE_WRITE : 0);
 		uint32  Create = OPEN_EXISTING;
 		TRACE_PLATFORMFILE_BEGIN_OPEN(Filename);
-		HANDLE Handle = CreateFileW(*WindowsNormalizedFilename(Filename), Access, WinFlags, NULL, Create, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
+		HANDLE Handle = CreateFileW(*NormalizeFilename(Filename), Access, WinFlags, NULL, Create, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED, NULL);
+		TRACE_PLATFORMFILE_END_OPEN(Handle);
 		if (Handle != INVALID_HANDLE_VALUE)
 		{
-			TRACE_PLATFORMFILE_END_OPEN(Handle);
 			return new FFileHandleWindows(Handle);
 		}
-		else
-		{
-			TRACE_PLATFORMFILE_FAIL_OPEN(Filename);
-			return nullptr;
-		}
+		return NULL;
 	}
 
 	virtual IFileHandle* OpenWrite(const TCHAR* Filename, bool bAppend = false, bool bAllowRead = false) override
@@ -1130,10 +976,10 @@ public:
 		uint32  WinFlags  = bAllowRead ? FILE_SHARE_READ : 0;
 		uint32  Create    = bAppend ? OPEN_ALWAYS : CREATE_ALWAYS;
 		TRACE_PLATFORMFILE_BEGIN_OPEN(Filename);
-		HANDLE Handle    = CreateFileW(*WindowsNormalizedFilename(Filename), Access, WinFlags, NULL, Create, FILE_ATTRIBUTE_NORMAL, NULL);
+		HANDLE Handle    = CreateFileW(*NormalizeFilename(Filename), Access, WinFlags, NULL, Create, FILE_ATTRIBUTE_NORMAL, NULL);
+		TRACE_PLATFORMFILE_END_OPEN(Handle);
 		if(Handle != INVALID_HANDLE_VALUE)
 		{
-			TRACE_PLATFORMFILE_END_OPEN(Handle);
 			FFileHandleWindows *PlatformFileHandle = new FFileHandleWindows(Handle);
 			if (bAppend)
 			{
@@ -1141,11 +987,7 @@ public:
 			}
 			return PlatformFileHandle;
 		}
-		else
-		{
-			TRACE_PLATFORMFILE_FAIL_OPEN(Filename);
-			return nullptr;
-		}
+		return NULL;
 	}
 
 
@@ -1160,37 +1002,18 @@ public:
 		uint32  WinFlags = FILE_SHARE_READ;
 		uint32  Create = OPEN_EXISTING;
 		TRACE_PLATFORMFILE_BEGIN_OPEN(Filename);
-		HANDLE Handle = CreateFileW(*WindowsNormalizedFilename(Filename), Access, WinFlags, NULL, Create, FILE_ATTRIBUTE_NORMAL, NULL);
-		if (Handle != INVALID_HANDLE_VALUE)
+		HANDLE Handle = CreateFileW(*NormalizeFilename(Filename), Access, WinFlags, NULL, Create, FILE_ATTRIBUTE_NORMAL, NULL);
+		TRACE_PLATFORMFILE_END_OPEN(Handle);
+		if (Handle == INVALID_HANDLE_VALUE)
 		{
-			TRACE_PLATFORMFILE_END_OPEN(Handle);
-		}
-		else
-		{
-			TRACE_PLATFORMFILE_FAIL_OPEN(Filename);
 			return nullptr;
 		}
 		HANDLE MappingHandle = CreateFileMapping(Handle, NULL, PAGE_READONLY, 0, 0, NULL);
 		if (MappingHandle == INVALID_HANDLE_VALUE)
 		{
 			TRACE_PLATFORMFILE_BEGIN_CLOSE(Handle);
-#if PLATFORMFILETRACE_ENABLED
-			// MSVC static analysis has a rule that reports the argument to CloseHandle as uninitialized memory after the call to CloseHandle, so we have to save it ahead of time
-			uint64 SavedHandle = uint64(Handle);
-#endif
-			BOOL CloseResult = CloseHandle(Handle);
-#if PLATFORMFILETRACE_ENABLED
-			if (CloseResult)
-			{
-				TRACE_PLATFORMFILE_END_CLOSE(SavedHandle);
-			}
-			else
-			{
-				TRACE_PLATFORMFILE_FAIL_CLOSE(SavedHandle);
-			}
-#else
-			(void)CloseResult;
-#endif
+			CloseHandle(Handle);
+			TRACE_PLATFORMFILE_END_CLOSE();
 			return nullptr;
 		}
 		return new FMappedFileHandleWindows(Handle, MappingHandle, Size, Filename);
@@ -1201,30 +1024,24 @@ public:
 		bool bExists = !FCString::Strlen(Directory);
 		if (!bExists) 
 		{
-			uint32 Result = GetFileAttributesW(*WindowsNormalizedDirname(Directory));
+			uint32 Result = GetFileAttributesW(*NormalizeDirectory(Directory));
 			bExists = (Result != 0xFFFFFFFF && (Result & FILE_ATTRIBUTE_DIRECTORY));
 		}
 		return bExists;
 	}
 	virtual bool CreateDirectory(const TCHAR* Directory) override
 	{
-		return CreateDirectoryW(*WindowsNormalizedDirname(Directory), NULL) || GetLastError() == ERROR_ALREADY_EXISTS;
+		return CreateDirectoryW(*NormalizeDirectory(Directory), NULL) || GetLastError() == ERROR_ALREADY_EXISTS;
 	}
 	virtual bool DeleteDirectory(const TCHAR* Directory) override
 	{
-		RemoveDirectoryW(*WindowsNormalizedDirname(Directory));
-		uint32 LastError = GetLastError();
-		const bool bSucceeded = !DirectoryExists(Directory);
-		if (!bSucceeded)
-		{
-			SetLastError(LastError);
-		}
-		return bSucceeded;
+		RemoveDirectoryW(*NormalizeDirectory(Directory));
+		return !DirectoryExists(Directory);
 	}
 	virtual FFileStatData GetStatData(const TCHAR* FilenameOrDirectory) override
 	{
 		WIN32_FILE_ATTRIBUTE_DATA Info;
-		if (GetFileAttributesExW(*WindowsNormalizedFilename(FilenameOrDirectory), GetFileExInfoStandard, &Info))
+		if (GetFileAttributesExW(*NormalizeFilename(FilenameOrDirectory), GetFileExInfoStandard, &Info))
 		{
 			const bool bIsDirectory = !!(Info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
 
@@ -1291,8 +1108,7 @@ public:
 	{
 		bool Result = false;
 		WIN32_FIND_DATAW Data;
-		FString SearchWildcard = FString(Directory) / TEXT("*.*");
-		HANDLE Handle = FindFirstFileW(*(WindowsNormalizedFilename(*SearchWildcard)), &Data);
+		HANDLE Handle = FindFirstFileW(*(NormalizeDirectory(Directory) / TEXT("*.*")), &Data);
 		if (Handle != INVALID_HANDLE_VALUE)
 		{
 			Result = true;

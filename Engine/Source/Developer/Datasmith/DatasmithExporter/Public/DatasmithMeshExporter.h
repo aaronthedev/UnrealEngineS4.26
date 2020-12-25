@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "DatasmithExportOptions.h"
@@ -7,13 +7,11 @@
 class FDatasmithMesh;
 class FDatasmithMeshExporterImpl;
 class IDatasmithMeshElement;
+struct FMeshDescription;
 
 class DATASMITHEXPORTER_API FDatasmithMeshExporter
 {
 public:
-	FDatasmithMeshExporter();
-	virtual ~FDatasmithMeshExporter();
-
 	/**
 	 * Exports the DatasmithMesh as a UObject.
 	 *
@@ -26,26 +24,18 @@ public:
 	 * @return				A IDatasmithMeshElement that refers to the exported file
 	 */
 	TSharedPtr< IDatasmithMeshElement > ExportToUObject( const TCHAR* Filepath, const TCHAR* Filename, FDatasmithMesh& Mesh, FDatasmithMesh* CollisionMesh, EDSExportLightmapUV LightmapUV );
-	
-	/**
-	 * Exports a FDatasmithMesh as a UObject and link it to the given IDatasmithMeshElementElement.
-	 *
-	 * @param MeshElement	The existing MeshElement for with we want to export a FDatasmithMesh, the name of the MeshElement will determine the name of the exported file.
-	 * @param Filepath		The path where the resulting file will be written
-	 * @param Mesh	        The mesh to export
-	 * @param CollisionMesh An optional collision mesh
-	 * @param LightmapUV	The UV generation export option
-	 *
-	 * @return				True if export was successful.
-	 */
-	bool ExportToUObject( TSharedPtr< IDatasmithMeshElement >& MeshElement, const TCHAR* Filepath, FDatasmithMesh& Mesh, FDatasmithMesh* CollisionMesh, EDSExportLightmapUV LightmapUV );
 
 	/**
 	 * @return The error that happened during the last export, if any
 	 */
-	FString GetLastError() const;
+	FString GetLastError() const { return LastError; }
 
 private:
+	void PreExport( FDatasmithMesh& DatasmithMesh, const TCHAR* Filepath, const TCHAR* Filename, EDSExportLightmapUV LightmapUV );
+	void PostExport( const FDatasmithMesh& DatasmithMesh, TSharedRef< IDatasmithMeshElement > MeshElement );
 
-	FDatasmithMeshExporterImpl* Impl;
+	void CreateDefaultUVs( FDatasmithMesh& DatasmithMesh );
+	void RegisterStaticMeshAttributes( FMeshDescription& MeshDescription);
+
+	FString LastError;
 };

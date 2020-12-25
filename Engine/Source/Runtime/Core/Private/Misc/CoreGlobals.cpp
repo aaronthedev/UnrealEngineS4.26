@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreGlobals.h"
 #include "Internationalization/Text.h"
@@ -10,7 +10,6 @@
 #include "Misc/Compression.h"
 #include "Misc/LazySingleton.h"
 #include "ProfilingDebugging/MiscTrace.h"
-#include "GenericPlatform/GenericPlatformCrashContext.h"
 
 #ifndef FAST_PATH_UNIQUE_NAME_GENERATION
 #define FAST_PATH_UNIQUE_NAME_GENERATION (!WITH_EDITORONLY_DATA)
@@ -44,7 +43,7 @@ FOutputDeviceConsole*		GLogConsole					= nullptr;		/* Console log hook */
 CORE_API FMalloc*			GMalloc						= nullptr;		/* Memory allocator */
 CORE_API FMalloc**			GFixedMallocLocationPtr = nullptr;		/* Memory allocator pointer location when PLATFORM_USES_FIXED_GMalloc_CLASS is true */
 
-class FPropertyWindowManager*	GPropertyWindowManager	= nullptr;		/* Manages and tracks property editing windows */
+class UPropertyWindowManager*	GPropertyWindowManager	= nullptr;		/* Manages and tracks property editing windows */
 
 /** For building call stack text dump in guard/unguard mechanism. */
 TCHAR GErrorHist[16384]	= TEXT("");
@@ -222,8 +221,6 @@ FString				GInputIni;													/* Input ini filename */
 FString				GGameIni;													/* Game ini filename */
 FString				GGameUserSettingsIni;										/* User Game Settings ini filename */
 FString				GRuntimeOptionsIni;											/* Runtime Options ini filename */
-FString				GInstallBundleIni;											/* Install Bundle ini filename*/
-FString				GDeviceProfilesIni;											/* Runtime DeviceProfiles ini filename - use LoadLocalIni for other platforms' DPs */
 
 float					GNearClippingPlane				= 10.0f;				/* Near clipping plane */
 
@@ -261,8 +258,6 @@ void CORE_API RequestEngineExit(const TCHAR* ReasonString)
 {
 	ensureMsgf(ReasonString && FCString::Strlen(ReasonString) > 4, TEXT("RequestEngineExit must be given a valid reason (reason \"%s\""), ReasonString);
 
-	FGenericCrashContext::SetEngineExit(true);
-
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	UE_LOG(LogCore, Log, TEXT("Engine exit requested (reason: %s%s)"), ReasonString, GIsRequestingExit ? TEXT("; note: exit was already requested") : TEXT(""));
 	GIsRequestingExit = true;
@@ -271,7 +266,12 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 void CORE_API RequestEngineExit(const FString& ReasonString)
 {
-	RequestEngineExit(*ReasonString);
+	ensureMsgf(ReasonString.Len() > 4, TEXT("RequestEngineExit must be given a valid reason (reason \"%s\""), *ReasonString);
+
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	UE_LOG(LogCore, Log, TEXT("Engine exit requested (reason: %s%s)"), *ReasonString, GIsRequestingExit ? TEXT("; note: exit was already requested") : TEXT(""));
+	GIsRequestingExit = true;
+PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 /** Exec handler for game debugging tool, allowing commands like "editactor", ...							*/
@@ -415,7 +415,7 @@ static struct FBootTimingStart
 } GBootTimingStart;
 
 
-#define USE_BOOT_PROFILING 0
+#define USE_BOOT_PROFILING (BUILD_EMBEDDED_APP)
 
 #if !USE_BOOT_PROFILING
 FScopedBootTiming::FScopedBootTiming(const ANSICHAR *InMessage)

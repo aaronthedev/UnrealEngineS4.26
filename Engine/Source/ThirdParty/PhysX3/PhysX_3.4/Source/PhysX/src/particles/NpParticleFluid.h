@@ -54,7 +54,7 @@ class NpParticleFluid : public NpParticleFluidT
 public:
 // PX_SERIALIZATION
 											NpParticleFluid(PxBaseFlags baseFlags) : NpParticleFluidT(baseFlags)	{}
-	virtual		void						requiresObjects(PxProcessPxBaseCallback&){}	
+	virtual		void						requires(PxProcessPxBaseCallback&){}	
 	virtual		void						exportExtraData(PxSerializationContext& stream) { mParticleSystem.exportExtraData(stream); }
 				void						importExtraData(PxDeserializationContext& context) { mParticleSystem.importExtraData(context); }
 	static		NpParticleFluid*			createObject(PxU8*& address, PxDeserializationContext& context);

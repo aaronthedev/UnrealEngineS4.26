@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once 
 
@@ -142,42 +142,28 @@ public:
 	/**
 	 * Helper function that adds to the extracted comments.
 	 *
-	 * @param InComment	String representing an extracted comment entry.
+	 * @param InReference	String representing extracted comment entries of the following form: "File/path/file.cpp:20 File/path/file.cpp:21 File/path/file2.cpp:5".
 	 */
 	void AddExtractedComment( const FString& InComment );
 
 	/**
 	 * Helper function that adds to the reference comments.
 	 *
-	 * @param InReference	String representing reference comment entries of the following form: "File/path/file.cpp:20 File/path/file.cpp:21 File/path/file2.cpp:5".
+	 * @param InReference	String representing reference comment entries.
 	 */
 	void AddReference( const FString& InReference );
-
-	/**
-	 * Helper function that adds to the extracted comments.
-	 *
-	 * @param InComments	String array representing extracted comment entries.
-	 */
-	void AddExtractedComments( const TArray<FString>& InComments );
-
-	/**
-	 * Helper function that adds to the translator comments.
-	 *
-	 * @param InComment	String representing a translator comment entry.
-	 */
-	void AddTranslatorComment(const FString& InComment);
-
-	/**
-	 * Helper function that adds to the translator comments.
-	 *
-	 * @param InComments	String array representing the translator's notes.
-	 */
-	void AddTranslatorComments(const TArray<FString>& InComments);
 
 	/**
 	 * Helper function that adds to the reference comments.
 	 *
 	 * @param InReferences	String array representing reference comment entries of the following form: "File/path/file.cpp:20 File/path/file.cpp:21 File/path/file2.cpp:5".
+	 */
+	void AddExtractedComments( const TArray<FString>& InComments );
+
+	/**
+	 * Helper function that adds to the extracted comments.
+	 *
+	 * @param InReferences	String array representing extracted comment entries
 	 */
 	void AddReferences( const TArray<FString>& InReferences );
 
@@ -338,12 +324,6 @@ public:
 
 	/** Creates a header entry based on the project and language info. */
 	void CreateNewHeader();
-
-	/**
-	 * Sets a header entry value.
-	 * @note Must be called after CreateNewHeader.
-	 */
-	void SetHeaderValue(const FString& EntryKey, const FString& EntryValue);
 
 	/**
 	 * Sets the language.

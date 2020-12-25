@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -87,7 +87,7 @@ public:
 	//~ End UObject Interface
 
 	//~ Begin UActorComponent Interface
-	virtual void CreateRenderState_Concurrent(FRegisterComponentContext* Context) override;
+	virtual void CreateRenderState_Concurrent() override;
 	virtual void SendRenderTransform_Concurrent() override;
 	virtual void DestroyRenderState_Concurrent() override;
 	virtual void OnRegister() override;
@@ -109,8 +109,6 @@ public:
 	{
 		return PlanarReflectionId;
 	}
-
-	bool ShouldComponentAddToScene() const;
 
 protected:
 #if WITH_EDITORONLY_DATA

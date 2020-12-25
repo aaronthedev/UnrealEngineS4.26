@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*-----------------------------------------------------------------------------
 	Config cache.
@@ -10,7 +10,6 @@
 #include "Containers/Array.h"
 #include "Containers/UnrealString.h"
 #include "Containers/Map.h"
-#include "Containers/StringFwd.h"
 #include "Math/Color.h"
 #include "UObject/NameTypes.h"
 #include "Logging/LogMacros.h"
@@ -224,8 +223,6 @@ public:
 	// process the '+' and '.' commands, takingf into account ArrayOfStruct unique keys
 	void CORE_API HandleAddCommand(FName Key, FString&& Value, bool bAppendValueIfNotArrayOfStructsKeyUsed);
 
-	bool HandleArrayOfKeyedStructsCommand(FName Key, FString&& Value);
-
 	template<typename Allocator> 
 	void MultiFind(const FName Key, TArray<FConfigValue, Allocator>& OutValues, const bool bMaintainOrder = false) const
 	{
@@ -235,9 +232,12 @@ public:
 	template<typename Allocator> 
 	void MultiFind(const FName Key, TArray<FString, Allocator>& OutValues, const bool bMaintainOrder = false) const
 	{
-		for (typename ElementSetType::TConstKeyIterator It(Pairs, Key); It; ++It)
+		for (const TPair<FName, FConfigValue>& Pair : Pairs)
 		{
-			OutValues.Add(It->Value.GetValue());
+			if (Pair.Key == Key)
+			{
+				OutValues.Add(Pair.Value.GetValue());
+			}
 		}
 
 		if (bMaintainOrder)
@@ -248,11 +248,7 @@ public:
 
 	// look for "array of struct" keys for overwriting single entries of an array
 	TMap<FName, FString> ArrayOfStructKeys;
-
-	friend FArchive& operator<<(FArchive& Ar, FConfigSection& ConfigSection);
 };
-
-FArchive& operator<<(FArchive& Ar, FConfigSection& ConfigSection);
 
 /**
  * FIniFilename struct.
@@ -273,16 +269,6 @@ struct FIniFilename
 		, bRequired(InIsRequired) 
 		, CacheKey(InCacheKey)
 	{}
-
-	FIniFilename() = default;
-
-	friend FArchive& operator<<(FArchive& Ar, FIniFilename& IniFilename)
-	{
-		Ar << IniFilename.Filename;
-		Ar << IniFilename.bRequired;
-		Ar << IniFilename.CacheKey;
-		return Ar;
-	}
 };
 
 
@@ -303,17 +289,10 @@ private:
 public:
 	FConfigFileHierarchy();
 
-	friend FArchive& operator<<(FArchive& Ar, FConfigFileHierarchy& ConfigFileHierarchy)
-	{
-		Ar << static_cast<FConfigFileHierarchy::Super&>(ConfigFileHierarchy);
-		Ar << ConfigFileHierarchy.KeyGen;
-		return Ar;
-	}
-
 private:
 	int32 GenerateDynamicKey();
 
-	int32 AddStaticLayer(FIniFilename Filename, int32 LayerIndex, int32 ExpansionIndex=0, int32 PlatformIndex=0);
+	int32 AddStaticLayer(FIniFilename Filename, int32 LayerIndex, int32 LayerExpansionIndex = 0, int32 PlatformIndex = 0);
 	int32 AddDynamicLayer(FIniFilename Filename);
 
 	friend class FConfigFile;
@@ -361,23 +340,7 @@ public:
 	CORE_API bool Combine( const FString& Filename);
 	CORE_API void CombineFromBuffer(const FString& Buffer);
 	CORE_API void Read( const FString& Filename );
-
-	/** Write this ConfigFile to the given Filename, constructed the text from the config sections in *this, prepended by the optional PrefixText */
-	CORE_API bool Write( const FString& Filename, bool bDoRemoteWrite=true, const FString& PrefixText=FString());
-
-	/** Write a ConfigFile to the ginve Filename, constructed from the given SectionTexts, in the given order, with sections in *this overriding sections in SectionTexts
-	 * @param Filename - The file to write to
-	 * @param bDoRemoteWrite - If true, also write the file to FRemoteConfig::Get()
-	 * @param InOutSectionTexts - A map from section name to existing text for that section; text does not include the name of the section.
-	 *  Entries in the TMap that also exist in *this will be updated.
-	 *  If the empty string is present, it will be written out first (it is interpreted as a prefix before the first section)
-	 * @param InSectionOrder - List of section names in the order in which each section should be written to disk, from e.g. the existing file.
-	 *  Any section in this array that is not found in InOutSectionTexts will be ignored.
-	 *  Any section in InOutSectionTexts that is not in this array will be appended to the end.
-	 *  Duplicate entries are ignored; the first found index is used.
-	 * @return TRUE if the write was successful
-	 */
-	CORE_API bool Write(const FString& Filename, bool bDoRemoteWrite, TMap<FString, FString>& InOutSectionTexts, const TArray<FString>& InSectionOrder);
+	CORE_API bool Write( const FString& Filename, bool bDoRemoteWrite=true, const FString& InitialText=FString() );
 	CORE_API void Dump(FOutputDevice& Ar);
 
 	CORE_API bool GetString( const TCHAR* Section, const TCHAR* Key, FString& Value ) const;
@@ -391,7 +354,6 @@ public:
 	CORE_API void SetString( const TCHAR* Section, const TCHAR* Key, const TCHAR* Value );
 	CORE_API void SetText( const TCHAR* Section, const TCHAR* Key, const FText& Value );
 	CORE_API void SetInt64( const TCHAR* Section, const TCHAR* Key, const int64 Value );
-	CORE_API void SetArray(const TCHAR* Section, const TCHAR* Key, const TArray<FString>& Value);
 	
 	/**
 	 * Process the contents of an .ini file that has been read into an FString
@@ -406,8 +368,8 @@ public:
 	CORE_API void AddMissingProperties(const FConfigFile& InSourceFile);
 
 	/**
-	 * Saves only the sections in this FConfigFile into the given file. All other sections in the file are left alone. The sections in this
-	 * file are completely replaced. If IniRootName is specified, the current section settings are diffed against the file in the hierarchy up
+	 * Saves only the sections in this FConfigFile its source files. All other sections in the file are left alone. The sections in this
+	 * file are completely replaced. If IniRootName is specified, the saved settings are the diffed against the file in the hierarchy up
 	 * to right before this file (so, if you are saving DefaultEngine.ini, and IniRootName is "Engine", then Base.ini and BaseEngine.ini
 	 * will be loaded, and only differences against that will be saved into DefaultEngine.ini)
 	 *
@@ -437,10 +399,7 @@ public:
 
 	/** Generate a correctly escaped line to add to the config file for the given property */
 	static FString GenerateExportedPropertyLine(const FString& PropertyName, const FString& PropertyValue);
-
-	/** Append a correctly escaped line to add to the config file for the given property */
-	static void AppendExportedPropertyLine(FString& Out, const FString& PropertyName, const FString& PropertyValue);
-
+	
 	/** Checks the command line for any overridden config settings */
 	CORE_API static void OverrideFromCommandline(FConfigFile* File, const FString& Filename);
 
@@ -450,7 +409,6 @@ public:
 	/** Appends a new INI file to the SourceIniHierarchy and combines it */
 	CORE_API void AddDynamicLayerToHeirarchy(const FString& Filename);
 
-	friend FArchive& operator<<(FArchive& Ar, FConfigFile& ConfigFile);
 private:
 
 	// This holds per-object config class names, with their ArrayOfStructKeys. Since the POC sections are all unique,
@@ -472,7 +430,7 @@ private:
 	 * @param SectionName - The section name the array property is being written to
 	 * @param PropertyName - The property name of the array
 	 */
-	void ProcessPropertyAndWriteForDefaults(int32 IniCombineThreshold, const TArray<const FConfigValue*>& InCompletePropertyToProcess, FString& OutText, const FString& SectionName, const FString& PropertyName);
+	void ProcessPropertyAndWriteForDefaults(int32 IniCombineThreshold, const TArray<FConfigValue>& InCompletePropertyToProcess, FString& OutText, const FString& SectionName, const FString& PropertyName);
 
 	/**
 	 * Creates a chain of ini filenames to load and combine.
@@ -486,8 +444,6 @@ private:
 	// for AddStaticLayersToHierarchy
 	friend class FConfigCacheIni;
 };
-
-FArchive& operator<<(FArchive& Ar, FConfigFile& ConfigFile);
 
 /**
  * Declares a delegate type that's used by the config system to allow iteration of key value pairs.
@@ -595,11 +551,7 @@ public:
 	bool GetText( const TCHAR* Section, const TCHAR* Key, FText& Value, const FString& Filename );
 	bool GetSection( const TCHAR* Section, TArray<FString>& Result, const FString& Filename );
 	bool DoesSectionExist(const TCHAR* Section, const FString& Filename);
-	/**
-	 * @param Force Whether to create the Section on Filename if it did not exist previously.
-	 * @param Const If Const (and not Force), then it will not modify File->Dirty. If not Const (or Force is true), then File->Dirty will be set to true.
-	 */
-	FConfigSection* GetSectionPrivate( const TCHAR* Section, const bool Force, const bool Const, const FString& Filename );
+	FConfigSection* GetSectionPrivate( const TCHAR* Section, bool Force, bool Const, const FString& Filename );
 	void SetString( const TCHAR* Section, const TCHAR* Key, const TCHAR* Value, const FString& Filename );
 	void SetText( const TCHAR* Section, const TCHAR* Key, const FText& Value, const FString& Filename );
 	bool RemoveKey( const TCHAR* Section, const TCHAR* Key, const FString& Filename );
@@ -923,16 +875,7 @@ public:
 	 */
 	static FString GetGameUserSettingsDir();
 
-	/**
-	 * Save the current config cache state into a file for bootstrapping other processes.
-	 */
-	void SaveCurrentStateForBootstrap(const TCHAR* Filename);
-
-	friend FArchive& operator<<(FArchive& Ar, FConfigCacheIni& ConfigCacheIni);
 private:
-	/** Serialize a bootstrapping state into or from an archive */
-	void SerializeStateForBootstrap_Impl(FArchive& Ar);
-
 	/** true if file operations should not be performed */
 	bool bAreFileOperationsDisabled;
 
@@ -942,8 +885,6 @@ private:
 	/** The type of the cache (basically, do we call Flush in the destructor) */
 	EConfigCacheType Type;
 };
-
-FArchive& operator<<(FArchive& Ar, FConfigCacheIni& ConfigCacheIni);
 
 UE_DEPRECATED(4.24, "This functionality to generate Scalability@Level section string has been moved to Scalability.cpp. Explictly construct section you need manually.")
 CORE_API void ApplyCVarSettingsGroupFromIni(const TCHAR* InSectionBaseName, int32 InGroupNumber, const TCHAR* InIniFilename, uint32 SetBy);

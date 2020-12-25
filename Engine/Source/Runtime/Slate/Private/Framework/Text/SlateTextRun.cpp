@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Framework/Text/SlateTextRun.h"
 #include "Rendering/DrawElements.h"
@@ -284,12 +284,4 @@ FSlateTextRun::FSlateTextRun( const FSlateTextRun& Run )
 #endif
 {
 
-}
-
-void FSlateTextRun::ApplyFontSizeMultiplierOnTextStyle(float FontSizeMultiplier)
-{
-	if (FontSizeMultiplier != 0.0f)
-	{
-		Style.SetFontSize(Style.Font.Size * FontSizeMultiplier);
-	}
 }

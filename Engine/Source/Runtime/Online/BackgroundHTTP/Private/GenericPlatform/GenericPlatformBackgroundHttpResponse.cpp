@@ -1,11 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GenericPlatform/GenericPlatformBackgroundHttpResponse.h"
-
-#include "GenericPlatform/GenericPlatformBackgroundHttpManager.h"
 #include "GenericPlatform/GenericPlatformBackgroundHttp.h"
 
-#include "BackgroundHttpModule.h"
 #include "PlatformBackgroundHttp.h"
 
 #include "Interfaces/IHttpResponse.h"
@@ -34,7 +31,7 @@ FGenericPlatformBackgroundHttpResponse::FGenericPlatformBackgroundHttpResponse(F
 			if (ContentBuffer.Num() > 0)
 			{
 				const FString RequestURL = HttpRequestIn->GetURL();
-				const FString& FileDestination = FBackgroundHttpModule::Get().GetBackgroundHttpManager()->GetTempFileLocationForURL(RequestURL);
+				const FString& FileDestination = FPlatformBackgroundHttp::GetTemporaryFilePathFromURL(RequestURL);
 
 				FFileHelper::SaveArrayToFile(ContentBuffer, *FileDestination);
 				TempContentFilePath = FileDestination;

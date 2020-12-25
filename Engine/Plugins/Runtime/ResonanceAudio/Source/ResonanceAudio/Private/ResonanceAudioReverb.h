@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include "DSP/BufferVectorOperations.h"
 #include "IAudioExtensionPlugin.h"
 #include "Sound/SoundEffectSubmix.h"
 #include "Sound/SoundEffectPreset.h"
@@ -112,9 +111,9 @@ namespace ResonanceAudio
 		virtual void Initialize(const FAudioPluginInitializationParams InitializationParams) override;
 		virtual void OnInitSource(const uint32 SourceId, const FName& AudioComponentUserId, const uint32 NumChannels, UReverbPluginSourceSettingsBase* InSettings) override;
 		virtual void OnReleaseSource(const uint32 SourceId) override;
-		virtual FSoundEffectSubmixPtr GetEffectSubmix() override;
-		virtual USoundSubmix* GetSubmix() override;
+		virtual class FSoundEffectSubmix* GetEffectSubmix(class USoundSubmix* Submix) override;
 		virtual void ProcessSourceAudio(const FAudioPluginSourceInputData& InputData, FAudioPluginSourceOutputData& OutputData) override;
+		virtual bool DoesReverbOverrideMasterReverb() const override { return false; }
 
 		void SetResonanceAudioApi(vraudio::ResonanceAudioApi* InResonanceAudioApi) { ResonanceAudioApi = InResonanceAudioApi; };
 		void SetPreset(UResonanceAudioReverbPluginPreset* InPreset);
@@ -135,9 +134,6 @@ namespace ResonanceAudio
 		void SetReverbBrightness();
 
 	private:
-
-		void InitEffectSubmix();
-
 		FResonanceAudioReverbPluginSettings ReverbSettings;
 		RaRoomProperties RoomProperties;
 		RaReverbProperties ReverbProperties;
@@ -148,9 +144,7 @@ namespace ResonanceAudio
 		FResonanceAudioModule* ResonanceAudioModule;
 		UResonanceAudioReverbPluginPreset* ReverbPluginPreset;
 		UResonanceAudioReverbPluginPreset* GlobalReverbPluginPreset;
-		Audio::AlignedFloatBuffer TemporaryStereoBuffer;
-
-		FSoundEffectSubmixPtr SubmixEffect;
+		TArray<float, TAlignedHeapAllocator<AUDIO_BUFFER_ALIGNMENT>>  TemporaryStereoBuffer;
 	};
 
 } // namespace ResonanceAudio

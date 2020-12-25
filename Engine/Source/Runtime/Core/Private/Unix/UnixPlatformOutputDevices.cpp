@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Unix/UnixPlatformOutputDevices.h"
 #include "Containers/StringConv.h"
@@ -18,7 +18,7 @@ void FUnixOutputDevices::SetupOutputDevices()
 {
 	check(GLog);
 
-	InitDefaultOutputDeviceFile();
+	CachedAbsoluteFilename[0] = 0;
 
 	// add file log
 	GLog->AddOutputDevice(FPlatformOutputDevices::GetLog());

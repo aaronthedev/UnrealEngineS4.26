@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "JoinSessionCallbackProxy.h"
 #include "EngineGlobals.h"
@@ -16,12 +16,14 @@ UJoinSessionCallbackProxy::UJoinSessionCallbackProxy(const FObjectInitializer& O
 {
 }
 
-UJoinSessionCallbackProxy* UJoinSessionCallbackProxy::JoinSession(UObject* WorldContextObject, class APlayerController* PlayerController, const FBlueprintSessionResult& SearchResult)
+UJoinSessionCallbackProxy* UJoinSessionCallbackProxy::JoinSession(UObject* WorldContextObject, class APlayerController* PlayerController, FString inCode, FString steamID, const FBlueprintSessionResult& SearchResult)
 {
 	UJoinSessionCallbackProxy* Proxy = NewObject<UJoinSessionCallbackProxy>();
 	Proxy->PlayerControllerWeakPtr = PlayerController;
 	Proxy->OnlineSearchResult = SearchResult.OnlineResult;
 	Proxy->WorldContextObject = WorldContextObject;
+	Proxy->Code = inCode;
+	Proxy->steamID = steamID;
 	return Proxy;
 }
 
@@ -70,6 +72,11 @@ void UJoinSessionCallbackProxy::OnCompleted(FName SessionName, EOnJoinSessionCom
 				if (Sessions->GetResolvedConnectString(NAME_GameSession, ConnectString) && PlayerControllerWeakPtr.IsValid())
 				{
 					UE_LOG_ONLINE_SESSION(Log, TEXT("Join session: traveling to %s"), *ConnectString);
+					ConnectString.Append("?Param1=");
+					ConnectString.Append(Code);
+					ConnectString.Append("?Param2=");
+					ConnectString.Append(steamID);
+					GEngine->AddOnScreenDebugMessage(400, 10.0f, FColor::Purple, FString::Printf(TEXT("%s"), *ConnectString));
 					PlayerControllerWeakPtr->ClientTravel(ConnectString, TRAVEL_Absolute);
 					OnSuccess.Broadcast();
 					return;

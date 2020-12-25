@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_Abc_OSchema_h
-#define Alembic_Abc_OSchema_h
+#ifndef _Alembic_Abc_OSchema_h_
+#define _Alembic_Abc_OSchema_h_
 
 #include <Alembic/Abc/Foundation.h>
 #include <Alembic/Abc/OCompoundProperty.h>

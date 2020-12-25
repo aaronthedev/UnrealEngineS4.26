@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Engine/EngineTypes.h"
-#include "Chaos/ChaosEngineInterface.h"
 #include "PhysicsAssetUtils.generated.h"
 
 class UBodySetup;

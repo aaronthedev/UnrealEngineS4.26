@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Chaos/ChaosSolverEnginePlugin.h"
 
@@ -21,7 +21,7 @@ IMPLEMENT_MODULE( FChaosSolverEnginePlugin, ChaosSolverEngine )
 
 void FChaosSolverEnginePlugin::StartupModule()
 {
-	FChaosSolversModule* const ChaosModule = FChaosSolversModule::GetModule();
+	FChaosSolversModule* const ChaosModule = FModuleManager::Get().GetModulePtr<FChaosSolversModule>("ChaosSolvers");
 	check(ChaosModule);
 	ChaosModule->SetSolverActorClass(AChaosSolverActor::StaticClass(), AChaosSolverActor::StaticClass());
 

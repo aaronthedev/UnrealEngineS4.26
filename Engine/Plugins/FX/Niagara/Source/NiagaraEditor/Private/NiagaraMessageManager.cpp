@@ -1,23 +1,21 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraMessageManager.h"
 #include "NiagaraScriptSource.h"
+#include "NiagaraNodeFunctionCall.h"
+#include "NiagaraNodeEmitter.h"
 #include "Modules/ModuleManager.h"
 #include "AssetRegistryModule.h"
 #include "IAssetRegistry.h"
-#include "NiagaraMessages.h"
+
 #include "NiagaraScriptToolkit.h"
-#include "NiagaraEditorModule.h"
+#include "../Public/NiagaraEditorModule.h"
 #include "Subsystems/AssetEditorSubsystem.h"
-#include "NiagaraEditorUtilities.h"
-#include "NiagaraMessages.h"
 
 #define LOCTEXT_NAMESPACE "NiagaraMessageManager"
 
 FNiagaraMessageManager* FNiagaraMessageManager::Singleton = nullptr;
-uint32 FNiagaraMessageManager::NextTopicBitflag = 1;
-bool FNiagaraMessageManager::bNeedFlushMessages = false;
-bool FNiagaraMessageManager::bRefreshTimeElapsed = true;
+const double FNiagaraMessageManager::MaxJobWorkTime = .02f; // do message jobs at 50 fps
 
 FNiagaraMessageManager::FNiagaraMessageManager()
 {
@@ -32,63 +30,41 @@ FNiagaraMessageManager* FNiagaraMessageManager::Get()
 	return Singleton;
 }
 
-void FNiagaraMessageManager::AddMessage(const TSharedRef<const INiagaraMessage>& InMessage, const FGuid& InMessageAssetKey)
+void FNiagaraMessageManager::QueueMessageJob(TSharedPtr<const INiagaraMessageJob> InMessageJob, const FGuid& InMessageJobAssetKey)
 {
-	bNeedFlushMessages = true;
-
-	FAssetMessageInfo& AssetMessageInfo = AssetToMessageInfoMap.FindOrAdd(InMessageAssetKey);
-	AssetMessageInfo.Messages.Add(InMessage);
-	AssetMessageInfo.bDirty = true;
-	AssetMessageInfo.DirtyTopicBitfield |= InMessage->GetMessageTopicBitflag();
+	TArray<TSharedPtr<const INiagaraMessageJob>> JobBatch{ InMessageJob };
+	MessageJobBatchArr.Add(FNiagaraMessageJobBatch(JobBatch, InMessageJobAssetKey));
 }
 
-void FNiagaraMessageManager::AddMessageJob(TUniquePtr<const INiagaraMessageJob>&& InMessageJob, const FGuid& InMessageJobAssetKey)
+void FNiagaraMessageManager::QueueMessageJobBatch(TArray<TSharedPtr<const INiagaraMessageJob>> InMessageJobBatch, const FGuid& InMessageJobBatchAssetKey)
 {
-	//MessageJobs.Emplace(FMessageJobAndAssetKey(InMessageJob, InMessageJobAssetKey));
-	MessageJobs.Emplace(FMessageJobAndAssetKey(InMessageJobAssetKey)); //@todo(ng) touchup
-	MessageJobs.Last().MessageJob = MoveTemp(InMessageJob);
-}
-
-void FNiagaraMessageManager::ClearAssetMessages(const FGuid& AssetKey)
-{
-	AssetToMessageInfoMap.Remove(AssetKey);
-}
-
-void FNiagaraMessageManager::ClearAssetMessagesForTopic(const FGuid& AssetKey, const FName& Topic)
-{
-	FAssetMessageInfo* AssetMessageInfo = AssetToMessageInfoMap.Find(AssetKey);
-	if (AssetMessageInfo != nullptr)
+	if (ensureMsgf(InMessageJobBatch.Num() > 0, TEXT("Queued a message job batch with no messages!")))
 	{
-		const uint32 TopicBitflag = GetMessageTopicBitflag(Topic);
-		for(int i = AssetMessageInfo->Messages.Num() - 1; i > -1; --i)
-		{
-			if (TopicBitflag & AssetMessageInfo->Messages[i]->GetMessageTopicBitflag())
-			{
-				AssetMessageInfo->DirtyTopicBitfield |= AssetMessageInfo->Messages[i]->GetMessageTopicBitflag();
-				AssetMessageInfo->Messages.RemoveAt(i, 1, false);
-				AssetMessageInfo->bDirty = true;
-				bNeedFlushMessages = true;
-			}
-		}
+		MessageJobBatchArr.Add(FNiagaraMessageJobBatch(InMessageJobBatch, InMessageJobBatchAssetKey));
 	}
 }
 
-void FNiagaraMessageManager::ClearAssetMessagesForObject(const FGuid& AssetKey, const FObjectKey& ObjectKeys)
+void FNiagaraMessageManager::RefreshMessagesForAssetKey(const FGuid& InAssetKey)
 {
-	FAssetMessageInfo* AssetMessageInfo = AssetToMessageInfoMap.Find(AssetKey);
-	if (AssetMessageInfo != nullptr)
+	ObjectToTypeMappedMessagesMap.Remove(InAssetKey);
+	MessageJobBatchArr.RemoveAll([InAssetKey](const FNiagaraMessageJobBatch& Batch) {return Batch.MessageJobsAssetKey == InAssetKey; });
+}
+
+void FNiagaraMessageManager::RefreshMessagesForAssetKeyAndMessageJobType(const FGuid& InAssetKey, const ENiagaraMessageJobType& InMessageJobType)
+{
+	TMap<const ENiagaraMessageJobType, TArray<TSharedRef<const INiagaraMessage>>>* MessageJobTypeToMessageMap = ObjectToTypeMappedMessagesMap.Find(InAssetKey);
+	if (MessageJobTypeToMessageMap != nullptr)
 	{
-		for (int i = AssetMessageInfo->Messages.Num() - 1; i > -1; --i)
+		TArray<TSharedRef<const INiagaraMessage>>* MessageArr = MessageJobTypeToMessageMap->Find(InMessageJobType);
+		if (MessageArr != nullptr)
 		{
-			const TArray<FObjectKey>& MessageObjectKeys = AssetMessageInfo->Messages[i]->GetAssociatedObjectKeys();
-			if (MessageObjectKeys.Contains(ObjectKeys))
-			{
-				AssetMessageInfo->DirtyTopicBitfield |= AssetMessageInfo->Messages[i]->GetMessageTopicBitflag();
-				AssetMessageInfo->Messages.RemoveAt(i, 1, false);
-				AssetMessageInfo->bDirty = true;
-				bNeedFlushMessages = true;
-			}
+			MessageArr->Reset();
 		}
+	} 
+
+	for (FNiagaraMessageJobBatch& Batch : MessageJobBatchArr)
+	{
+		Batch.MessageJobs.RemoveAll([InMessageJobType](const TSharedPtr<const INiagaraMessageJob>& Job) {return Job->GetMessageJobType() == InMessageJobType; });
 	}
 }
 
@@ -109,9 +85,6 @@ const TOptional<const FString> FNiagaraMessageManager::GetStringForScriptUsageIn
 		
 	case ENiagaraScriptUsage::ParticleEventScript:
 		return TOptional<const FString>(TEXT("Particle Event Script"));
-
-	case ENiagaraScriptUsage::ParticleSimulationStageScript:
-		return TOptional<const FString>(FString("Particle Simulation Stage Script"));
 
 	case ENiagaraScriptUsage::EmitterSpawnScript:
 		return TOptional<const FString>(TEXT("Emitter Spawn Script"));
@@ -139,174 +112,356 @@ const TOptional<const FString> FNiagaraMessageManager::GetStringForScriptUsageIn
 	return TOptional<const FString>();
 }
 
-void FNiagaraMessageManager::RegisterMessageTopic(FName TopicName)
+const TArray<TSharedRef<const INiagaraMessage>> FNiagaraMessageManager::GetMessagesForAssetKey(const FGuid& InAssetKey) const
 {
-	const uint32* TopicBitflag = RegisteredTopicToBitflagsMap.Find(TopicName);
-	checkf(
-		TopicBitflag == nullptr,
-		TEXT("Tried to register topic '%s' but it has already been registered!"),
-			*TopicName.ToString());
-
-	RegisteredTopicToBitflagsMap.Add(TopicName, NextTopicBitflag);
-
-	// binary increment the topic bitflag for the next topic to be registered.
-	NextTopicBitflag <<= 1;
-}
-
-void FNiagaraMessageManager::RegisterAdditionalMessageLogTopic(FName MessageLogTopicName)
-{
-	AdditionalMessageLogTopics.AddUnique(MessageLogTopicName);
-}
-
-uint32 FNiagaraMessageManager::GetMessageTopicBitflag(FName TopicName) const
-{
-	const uint32* TopicBitflag = RegisteredTopicToBitflagsMap.Find(TopicName);
-	checkf(TopicBitflag != nullptr,
-		TEXT("Tried to get topic bitflag for topic '%s' but the topic has not been registered!"),
-			*TopicName.ToString());
-
-	return *TopicBitflag;
+ 	TArray<TSharedRef<const INiagaraMessage>> FoundMessages;
+	const TMap <const ENiagaraMessageJobType, TArray<TSharedRef<const INiagaraMessage>>>* MessageJobTypeToMessagesMapPtr = ObjectToTypeMappedMessagesMap.Find(InAssetKey);
+	if (MessageJobTypeToMessagesMapPtr != nullptr)
+	{
+		for (const TTuple<const ENiagaraMessageJobType, TArray<TSharedRef<const INiagaraMessage>>>& MessageJobTypeToMessagesPair : *MessageJobTypeToMessagesMapPtr)
+		{
+			FoundMessages.Append(MessageJobTypeToMessagesPair.Value);
+		}
+	}
+	return FoundMessages;
 }
 
 void FNiagaraMessageManager::Tick(float DeltaSeconds)
 {
-	DoMessageJobsTick();
-	TryFlushMessagesTick();
+	DoMessageJobsInQueueTick();
 }
 
-void FNiagaraMessageManager::DoMessageJobsTick()
+void FNiagaraMessageManager::DoMessageJobsInQueueTick()
 {
-	if (MessageJobs.Num() > 0)
+	if (MessageJobBatchArr.Num() > 0)
 	{
 		double WorkStartTime = FPlatformTime::Seconds();
 		double CurrentWorkLoopTime = WorkStartTime;
 
-		while(MessageJobs.Num() > 0)
+		while(MessageJobBatchArr.Num() > 0)
 		{ 
-			FMessageJobAndAssetKey CurrentMessageJobAndAssetKey = MessageJobs.Pop(false);
-			TSharedRef<const INiagaraMessage> GeneratedMessage = CurrentMessageJobAndAssetKey.MessageJob->GenerateNiagaraMessage();
-			AddMessage(GeneratedMessage, CurrentMessageJobAndAssetKey.AssetKey);
-			CurrentWorkLoopTime = FPlatformTime::Seconds();
-
-			if (CurrentWorkLoopTime - WorkStartTime > MaxJobWorkTime)
+			FNiagaraMessageJobBatch& CurrentMessageJobBatch = MessageJobBatchArr[0];
+			
+			while(CurrentMessageJobBatch.MessageJobs.Num() > 0)
 			{
-				// Max job work time has been reached, early exit so as to not stall the UI.
-				return;
+				TSharedPtr<const INiagaraMessageJob> CurrentMessageJob = CurrentMessageJobBatch.MessageJobs.Pop(false);
+				TSharedRef<const INiagaraMessage> GeneratedMessage = CurrentMessageJob->GenerateNiagaraMessage();
+				GeneratedMessagesForCurrentMessageJobBatch.Add(GeneratedMessage);
+				ObjectToTypeMappedMessagesMap.FindOrAdd(CurrentMessageJobBatch.MessageJobsAssetKey).FindOrAdd(CurrentMessageJob->GetMessageJobType()).Add(GeneratedMessage);
+				CurrentWorkLoopTime = FPlatformTime::Seconds();
+
+				if (CurrentWorkLoopTime - WorkStartTime > MaxJobWorkTime)
+				{
+					return;
+				}
 			}
+			OnRequestRefresh.Broadcast(CurrentMessageJobBatch.MessageJobsAssetKey, GeneratedMessagesForCurrentMessageJobBatch);
+			GeneratedMessagesForCurrentMessageJobBatch.Reset();
+			MessageJobBatchArr.Pop();
 		} 
 	}
 }
 
-void FNiagaraMessageManager::TryFlushMessagesTick()
+FNiagaraMessageCompileEvent::FNiagaraMessageCompileEvent(
+	  const FNiagaraCompileEvent& InCompileEvent
+	, TArray<FNiagaraScriptNameAndAssetPath>& InContextScriptNamesAndAssetPaths
+	, TOptional<const FText>& InOwningScriptNameAndUsageText
+	, TOptional<const FNiagaraScriptNameAndAssetPath>& InCompiledScriptNameAndAssetPath
+	)
+	: CompileEvent(InCompileEvent)
+	, ContextScriptNamesAndAssetPaths(InContextScriptNamesAndAssetPaths)
+	, OwningScriptNameAndUsageText(InOwningScriptNameAndUsageText)
+	, CompiledScriptNameAndAssetPath(InCompiledScriptNameAndAssetPath)
 {
-	if (bNeedFlushMessages && bRefreshTimeElapsed)
-	{
-		FlushMessages();
-	}
 }
 
-void FNiagaraMessageManager::FlushMessages()
+TSharedRef<FTokenizedMessage> FNiagaraMessageCompileEvent::GenerateTokenizedMessage() const
 {
-	bNeedFlushMessages = false;
-	bRefreshTimeElapsed = false;
-	FTimerDelegate SetRefreshTimerElapsedDelegate;
-	SetRefreshTimerElapsedDelegate.BindStatic(&SetRefreshTimerElapsed);
+	EMessageSeverity::Type MessageSeverity = EMessageSeverity::Info;
+	switch (CompileEvent.Severity) {
+	case FNiagaraCompileEventSeverity::Error:
+		MessageSeverity = EMessageSeverity::Error;
+		break;
+	case FNiagaraCompileEventSeverity::Warning:
+		MessageSeverity = EMessageSeverity::Warning;
+		break;
+	case FNiagaraCompileEventSeverity::Log:
+		MessageSeverity = EMessageSeverity::Info;
+		break;
+	default:
+		ensureMsgf(false, TEXT("Compile event severity type not handled!"));
+		MessageSeverity = EMessageSeverity::Info;
+		break;
+	}
+	TSharedRef<FTokenizedMessage> Message = FTokenizedMessage::Create(MessageSeverity);
 
-	GEditor->GetTimerManager()->SetTimer(
-		RefreshTimerHandle
-		, SetRefreshTimerElapsedDelegate
-		, RefreshHysterisisTime
-		, false);
-
-	for (auto AssetIt = AssetToMessageInfoMap.CreateIterator(); AssetIt; ++AssetIt)
-	{ 
-		FAssetMessageInfo& AssetMessageInfo = AssetIt.Value();
-		if (AssetMessageInfo.bDirty)
+	//Add message from compile event at start of message
+	if (CompiledScriptNameAndAssetPath.IsSet())
+	{
+		//Compile event is from a script asset
+		if (ContextScriptNamesAndAssetPaths.Num() == 0)
 		{
-			for (auto RegistrationIt = AssetMessageInfo.RegistrationKey_To_RegistrationHandleMap.CreateIterator(); RegistrationIt; ++RegistrationIt)
-			{
-				INiagaraMessageRegistrationHandle* RegistrationHandle = RegistrationIt.Value().Get();
 
-				// Only push messages that have a topic that is dirty AND in the registration handle topics.
-				const uint32 DesiredTopicBitfield = AssetMessageInfo.DirtyTopicBitfield & RegistrationHandle->GetTopicBitfield();
-				if (DesiredTopicBitfield != 0)
+			if (CompileEvent.PinGuid != FGuid())
+			{
+				Message->AddToken(FNiagaraCompileEventToken::Create(CompiledScriptNameAndAssetPath.GetValue().ScriptAssetPathString, FText::FromString(CompileEvent.Message), CompileEvent.NodeGuid, CompileEvent.PinGuid));
+			}
+			else if (CompileEvent.NodeGuid != FGuid())
+			{
+				Message->AddToken(FNiagaraCompileEventToken::Create(CompiledScriptNameAndAssetPath.GetValue().ScriptAssetPathString, FText::FromString(CompileEvent.Message), CompileEvent.NodeGuid));
+			}
+			else
+			{
+				Message->AddToken(FTextToken::Create(FText::FromString(CompileEvent.Message)));
+			}		
+		}
+		else
+		{
+			if (CompileEvent.PinGuid != FGuid())
+			{
+				Message->AddToken(FNiagaraCompileEventToken::Create(ContextScriptNamesAndAssetPaths.Last().ScriptAssetPathString, FText::FromString(CompileEvent.Message), CompileEvent.NodeGuid, CompileEvent.PinGuid));
+			}
+			else if (CompileEvent.NodeGuid != FGuid())
+			{
+				Message->AddToken(FNiagaraCompileEventToken::Create(ContextScriptNamesAndAssetPaths.Last().ScriptAssetPathString, FText::FromString(CompileEvent.Message), CompileEvent.NodeGuid));
+			}
+			else
+			{
+				Message->AddToken(FNiagaraCompileEventToken::Create(ContextScriptNamesAndAssetPaths.Last().ScriptAssetPathString, FText::FromString(CompileEvent.Message)));
+			}
+		}
+	}
+	else
+	{
+		//Compile event is from an emitter or system asset
+		if (ContextScriptNamesAndAssetPaths.Num() == 0)
+		{
+			Message->AddToken(FTextToken::Create(FText::FromString(CompileEvent.Message)));
+		}
+		else if (CompileEvent.PinGuid != FGuid())
+		{
+			Message->AddToken(FNiagaraCompileEventToken::Create(ContextScriptNamesAndAssetPaths.Last().ScriptAssetPathString, FText::FromString(CompileEvent.Message), CompileEvent.NodeGuid, CompileEvent.PinGuid));
+		}
+		else if (CompileEvent.NodeGuid != FGuid())
+		{
+			Message->AddToken(FNiagaraCompileEventToken::Create(ContextScriptNamesAndAssetPaths.Last().ScriptAssetPathString, FText::FromString(CompileEvent.Message), CompileEvent.NodeGuid));
+		}
+		else
+		{
+			Message->AddToken(FNiagaraCompileEventToken::Create(ContextScriptNamesAndAssetPaths.Last().ScriptAssetPathString, FText::FromString(CompileEvent.Message)));
+		}
+	}
+	
+	//Now add the owning script name and usage if it is set
+	if (OwningScriptNameAndUsageText.IsSet())
+	{
+		Message->AddToken(FTextToken::Create(OwningScriptNameAndUsageText.GetValue()));
+	}
+
+	//Finally add the context stack of the scripts that were passed through to get to the originating graph
+	for (const FNiagaraScriptNameAndAssetPath& ScriptNameAndPath : ContextScriptNamesAndAssetPaths)
+	{
+		Message->AddToken(FNiagaraCompileEventToken::Create(ScriptNameAndPath.ScriptAssetPathString, FText::FromString(*ScriptNameAndPath.ScriptNameString)));
+	}
+	return Message;
+}
+
+FNiagaraMessageJobCompileEvent::FNiagaraMessageJobCompileEvent(
+	  const FNiagaraCompileEvent& InCompileEvent
+	, const TWeakObjectPtr<const UNiagaraScript>& InOriginatingScriptWeakObjPtr
+	, const TOptional<const FString>& InOwningScriptNameString
+	, const TOptional<const FString>& InSourceScriptAssetPath
+	)
+	: CompileEvent(InCompileEvent)
+	, OriginatingScriptWeakObjPtr(InOriginatingScriptWeakObjPtr)
+	, OwningScriptNameString(InOwningScriptNameString)
+	, SourceScriptAssetPath(InSourceScriptAssetPath)
+{
+}
+
+TSharedRef<const INiagaraMessage> FNiagaraMessageJobCompileEvent::GenerateNiagaraMessage() const
+{
+	TArray<FGuid> ContextStackGuids = CompileEvent.StackGuids;
+
+	if (OriginatingScriptWeakObjPtr.IsValid())
+	{
+		const UNiagaraScriptSourceBase* FunctionScriptSourceBase = OriginatingScriptWeakObjPtr->GetSource();
+		checkf(FunctionScriptSourceBase->IsA<UNiagaraScriptSource>(), TEXT("Script source for function call node is not assigned or is not of type UNiagaraScriptSource!"))
+		const UNiagaraScriptSource* FunctionScriptSource = Cast<UNiagaraScriptSource>(FunctionScriptSourceBase);
+		checkf(FunctionScriptSource, TEXT("Script source base was somehow not a derived type!"));
+		const UNiagaraGraph* ScriptGraph = FunctionScriptSource->NodeGraph;
+		checkf(ScriptGraph, TEXT("Function Script does not have a UNiagaraGraph!"));
+
+		TArray<FNiagaraScriptNameAndAssetPath> ContextScriptNamesAndPaths;
+		TOptional<const FNiagaraScriptNameAndAssetPath> CompiledScriptNameAndPath;
+		TOptional<const FText> OwningScriptNameAndUsageText;
+		TOptional<const FText> ScriptNameAndPathsGetterFailureReason;
+		TOptional<const FString> OwningScriptNameStringCopy = OwningScriptNameString;
+		bool bSuccessfullyFoundScripts = RecursiveGetScriptNamesAndAssetPathsFromContextStack(ContextStackGuids, ScriptGraph, ContextScriptNamesAndPaths, OwningScriptNameStringCopy, ScriptNameAndPathsGetterFailureReason);
+
+		if (bSuccessfullyFoundScripts == false)
+		{
+			//If we can't find the scripts in the context stack of the compile event, return a message with the error and ask for a recompile.
+			return MakeShared<FNiagaraMessageNeedRecompile>(ScriptNameAndPathsGetterFailureReason.GetValue());
+		}
+
+		const ENiagaraScriptUsage ScriptUsage = OriginatingScriptWeakObjPtr->GetUsage();
+
+		if (OwningScriptNameStringCopy.IsSet())
+		{
+			FString ScriptAndUsage = OwningScriptNameStringCopy.GetValue();
+			const TOptional<const FString> ScriptUsageInStackString = FNiagaraMessageManager::GetStringForScriptUsageInStack(ScriptUsage);
+			if (ScriptUsageInStackString.IsSet())
+			{
+				ScriptAndUsage = ScriptAndUsage + FString(", ") + ScriptUsageInStackString.GetValue() + FString(", ");
+			}
+			OwningScriptNameAndUsageText = TOptional<const FText>(FText::FromString(ScriptAndUsage));
+		}
+
+		if (SourceScriptAssetPath.IsSet())
+		{
+			//If this compile event is from a script, set the compiled script name and asset path so the user can navigate to errors locally.
+			CompiledScriptNameAndPath = TOptional<const FNiagaraScriptNameAndAssetPath>(FNiagaraScriptNameAndAssetPath(OriginatingScriptWeakObjPtr->GetName(), SourceScriptAssetPath.GetValue()));
+		}
+		return MakeShared<FNiagaraMessageCompileEvent>(CompileEvent, ContextScriptNamesAndPaths, OwningScriptNameAndUsageText, CompiledScriptNameAndPath);
+	}
+	//The originating script weak ptr is no longer valid, send an error message asking for recompile.
+	FText MessageText = LOCTEXT("CompileEventMessageJobFail", "Cached info for compile event is out of date, recompile to get full info. Event: {0}");
+	//Add in the message of the compile event for visibility on which compile events do not have info.
+	FText::Format(MessageText, FText::FromString(CompileEvent.Message));
+	return MakeShared<FNiagaraMessageNeedRecompile>(MessageText);
+}
+
+bool FNiagaraMessageJobCompileEvent::RecursiveGetScriptNamesAndAssetPathsFromContextStack(
+	  TArray<FGuid>& InContextStackNodeGuids
+	, const UNiagaraGraph* InGraphToSearch
+	, TArray<FNiagaraScriptNameAndAssetPath>& OutContextScriptNamesAndAssetPaths
+	, TOptional<const FString>& OutEmitterName
+	, TOptional<const FText>& OutFailureReason
+) const
+{
+	checkf(InGraphToSearch, TEXT("Failed to get a node graph to search!"));
+
+	if (InGraphToSearch && InContextStackNodeGuids.Num() == 0)
+	{
+		//StackGuids arr has been cleared out which means we have walked the entire context stack.
+		return true;
+	}
+
+	// Search in the current graph for a node with a GUID that matches a GUID in the list of Function Call and Emitter node GUIDs that define the context stack for a compile event
+	auto FindNodeInGraphWithContextStackGuid = [&InGraphToSearch, &InContextStackNodeGuids]()->TOptional<UEdGraphNode*> {
+		for (UEdGraphNode* GraphNode : InGraphToSearch->Nodes)
+		{
+			for (int i = 0; i < InContextStackNodeGuids.Num(); i++)
+			{
+				if (GraphNode->NodeGuid == InContextStackNodeGuids[i])
 				{
-					// Note, filtering is not using desired topic bitfield here as that requires the registered view to recycle non-dirty messages
-					const TArray<TSharedRef<const INiagaraMessage>>& TopicalMessages = RegistrationHandle->FilterMessages(AssetMessageInfo.Messages, RegistrationHandle->GetTopicBitfield()); 
-					RegistrationHandle->GetOnRequestRefresh().Execute(TopicalMessages);
+					InContextStackNodeGuids.RemoveAt(i);
+					return GraphNode;
 				}
 			}
 		}
-		AssetMessageInfo.bDirty = false;
-		AssetMessageInfo.DirtyTopicBitfield = 0;
-	}
-}
+		return TOptional<UEdGraphNode*>();
+	};
 
-void FNiagaraMessageManager::SetRefreshTimerElapsed()
-{
-	bRefreshTimeElapsed = true;
-}
-
-uint32 FNiagaraMessageManager::MakeBitfieldForMessageTopics(const FText& DebugNameText, const TArray<FName>& MessageTopics)
-{
-	uint32 TopicBitfield = 0;
-	for (const FName& TopicName : MessageTopics)
+	TOptional<UEdGraphNode*> ContextNode = FindNodeInGraphWithContextStackGuid();
+	if (ContextNode.IsSet())
 	{
-		const uint32 TopicBitflag = GetMessageTopicBitflag(TopicName);
-		TopicBitfield |= TopicBitflag;
+		// found a node in the current graph that has a GUID in the context list
+
+		UNiagaraNodeFunctionCall* FunctionCallNode = Cast<UNiagaraNodeFunctionCall>(ContextNode.GetValue());
+		if (FunctionCallNode)
+		{
+			// node is a function call node, now get the Niagara Script assigned to this node, add a message token and recursively call into the graph of that script.
+			UNiagaraScript* FunctionCallNodeAssignedScript = FunctionCallNode->FunctionScript;
+			if (FunctionCallNodeAssignedScript == nullptr)
+			{
+				FText FailureReason = LOCTEXT("GenerateCompileEventMessage_FunctionCallNodeScriptNotFound", "Script for Function Call Node \"{0}\" not found!");
+				OutFailureReason = FText::Format(FailureReason, FText::FromString(FunctionCallNode->GetFunctionName()));
+				return false;
+			}
+			UNiagaraScriptSourceBase* FunctionScriptSourceBase = FunctionCallNodeAssignedScript->GetSource();
+			if (FunctionScriptSourceBase == nullptr)
+			{
+				FText FailureReason = LOCTEXT("GenerateCompileEventMessage_FunctionCallNodeScriptSourceBaseNotFound", "Source Script for Function Call Node \"{0}\" not found!");
+				OutFailureReason = FText::Format(FailureReason, FText::FromString(FunctionCallNode->GetFunctionName()));
+				return false;
+			}
+			UNiagaraScriptSource* FunctionScriptSource = Cast<UNiagaraScriptSource>(FunctionScriptSourceBase);
+			checkf(FunctionScriptSource, TEXT("Script source base was somehow not a derived type!"));
+
+			UNiagaraGraph* FunctionScriptGraph = FunctionScriptSource->NodeGraph;
+			if (FunctionScriptGraph == nullptr)
+			{
+				FText FailureReason = LOCTEXT("GenerateCompileEventMessage_FunctionCallNodeGraphNotFound", "Graph for Function Call Node \"{0}\" not found!");
+				OutFailureReason = FText::Format(FailureReason, FText::FromString(FunctionCallNode->GetFunctionName()));
+				return false;
+			}
+			OutContextScriptNamesAndAssetPaths.Add(FNiagaraScriptNameAndAssetPath(FunctionCallNodeAssignedScript->GetName(), FunctionCallNodeAssignedScript->GetPathName()));
+			return RecursiveGetScriptNamesAndAssetPathsFromContextStack(InContextStackNodeGuids, FunctionScriptGraph, OutContextScriptNamesAndAssetPaths, OutEmitterName, OutFailureReason);
+		}
+
+		UNiagaraNodeEmitter* EmitterNode = Cast<UNiagaraNodeEmitter>(ContextNode.GetValue());
+		if (EmitterNode)
+		{
+			// node is an emitter node, now get the Emitter name, add a message token and recursively call into the graph of that emitter.
+			UNiagaraScriptSource* EmitterScriptSource = EmitterNode->GetScriptSource();
+			checkf(EmitterScriptSource, TEXT("Emitter Node does not have a Script Source!"));
+			UNiagaraGraph* EmitterScriptGraph = EmitterScriptSource->NodeGraph;
+			checkf(EmitterScriptGraph, TEXT("Emitter Script Source does not have a UNiagaraGraph!"));
+
+			OutEmitterName = EmitterNode->GetEmitterUniqueName();
+			return RecursiveGetScriptNamesAndAssetPathsFromContextStack(InContextStackNodeGuids, EmitterScriptGraph, OutContextScriptNamesAndAssetPaths, OutEmitterName, OutFailureReason);
+		}
+		checkf(false, TEXT("Matching node is not a function call or emitter node!"));
 	}
-	return TopicBitfield;
+	FText FailureReason = LOCTEXT("CompileEventMessageGenerator_CouldNotFindMatchingNodeGUID", "Failed to walk the entire context stack, is this compile event out of date ? Event: '{0}'");
+	FText::Format(FailureReason, FText::FromString(CompileEvent.Message));
+	OutFailureReason = FailureReason;
+	return false;
 }
 
-FNiagaraMessageTopicRegistrationHandle::FOnRequestRefresh& FNiagaraMessageManager::SubscribeToAssetMessagesByTopic(
-	  const FText& DebugNameText
-	, const FGuid& MessageAssetKey
-	, const TArray<FName>& MessageTopics
-	, FGuid& OutMessageManagerRegistrationKey)
+TSharedRef<const INiagaraMessage> FNiagaraMessageJobPostCompileSummary::GenerateNiagaraMessage() const
 {
-	checkf(MessageAssetKey != FGuid(), TEXT("Tried to subscribe to an asset without a set asset key!"));
-	uint32 TopicBitfield = MakeBitfieldForMessageTopics(DebugNameText, MessageTopics);
-
-	TSharedPtr<FNiagaraMessageTopicRegistrationHandle> RegistrationHandle = MakeShared<FNiagaraMessageTopicRegistrationHandle>(TopicBitfield);
-	const FGuid RegistrationKey = FGuid::NewGuid();
-	OutMessageManagerRegistrationKey = RegistrationKey;
-	FAssetMessageInfo& AssetMessageInfo = AssetToMessageInfoMap.FindOrAdd(MessageAssetKey);
-	TSharedPtr<INiagaraMessageRegistrationHandle>& RegistrationHandleRef =
-		AssetMessageInfo.RegistrationKey_To_RegistrationHandleMap.Emplace(RegistrationKey, RegistrationHandle);
-
-	return RegistrationHandleRef->GetOnRequestRefresh();
-}
-
-FNiagaraMessageTopicRegistrationHandle::FOnRequestRefresh& FNiagaraMessageManager::SubscribeToAssetMessagesByObject(
-	  const FText& DebugNameText
-	, const FGuid& MessageAssetKey
-	, const FObjectKey& ObjectKey
-	, FGuid& OutMessageManagerRegistrationKey)
-{
-	checkf(MessageAssetKey != FGuid(), TEXT("Tried to subscribe to an asset without a set asset key!"));
-
-	TSharedPtr<FNiagaraMessageObjectRegistrationHandle> RegistrationHandle = MakeShared<FNiagaraMessageObjectRegistrationHandle>(ObjectKey);
-	const FGuid RegistrationKey = FGuid::NewGuid();
-	OutMessageManagerRegistrationKey = RegistrationKey;
-	FAssetMessageInfo& AssetMessageInfo = AssetToMessageInfoMap.FindOrAdd(MessageAssetKey);
-	TSharedPtr<INiagaraMessageRegistrationHandle>& RegistrationHandleRef =
-		AssetMessageInfo.RegistrationKey_To_RegistrationHandleMap.Emplace(RegistrationKey, RegistrationHandle);
-
-	return RegistrationHandleRef->GetOnRequestRefresh();
-}
-
-void FNiagaraMessageManager::Unsubscribe(const FText& DebugNameText, const FGuid& MessageAssetKey, FGuid& MessageManagerRegistrationKey)
-{
-	ensureMsgf(MessageAssetKey != FGuid(), TEXT("Tried to unsubscribe from an asset without a set asset key!"));
-
-	FAssetMessageInfo* AssetMessageInfo = AssetToMessageInfoMap.Find(MessageAssetKey);
-	if (ensureMsgf(AssetMessageInfo != nullptr,
-		TEXT("Tried to unbind message subscriber '%s' but failed to find the associated asset message info!"), *DebugNameText.ToString())
-		)
+	FText MessageText = FText();
+	EMessageSeverity::Type MessageSeverity = EMessageSeverity::Warning;
+	switch (ScriptCompileStatus)
 	{
-		AssetMessageInfo->RegistrationKey_To_RegistrationHandleMap.FindAndRemoveChecked(MessageManagerRegistrationKey);
+	default:
+	case ENiagaraScriptCompileStatus::NCS_Unknown:
+	case ENiagaraScriptCompileStatus::NCS_Dirty:
+		MessageText = LOCTEXT("NiagaraCompileStatusUnknownInfo", "{0} compile status unknown with {1} warning(s) and {2} error(s).");
+		MessageText = FText::Format(MessageText, CompiledObjectNameText, FText::FromString(FString::FromInt(NumCompileWarnings)), FText::FromString(FString::FromInt(NumCompileErrors)));
+		//MessageSeverity = EMessageSeverity::Warning;
+		break;
+	case ENiagaraScriptCompileStatus::NCS_Error:
+		MessageText = LOCTEXT("NiagaraCompileStatusErrorInfo", "{0} failed to compile with {1} warning(s) and {2} error(s).");
+		MessageText =  FText::Format(MessageText, CompiledObjectNameText, FText::FromString(FString::FromInt(NumCompileWarnings)), FText::FromString(FString::FromInt(NumCompileErrors)));
+		//MessageSeverity = EMessageSeverity::Error;
+		break;
+	case ENiagaraScriptCompileStatus::NCS_UpToDate:
+		MessageText = LOCTEXT("NiagaraCompileStatusSuccessInfo", "{0} successfully compiled.");
+		MessageText = FText::Format(MessageText, CompiledObjectNameText);
+		//MessageSeverity = EMessageSeverity::Info;
+		break;
+	case ENiagaraScriptCompileStatus::NCS_UpToDateWithWarnings:
+		MessageText = LOCTEXT("NiagaraCompileStatusWarningInfo", "{0} successfully compiled with {1} warning(s).");
+		MessageText =  FText::Format(MessageText, CompiledObjectNameText, FText::FromString(FString::FromInt(NumCompileWarnings)));
+		//MessageSeverity = EMessageSeverity::Warning;
+		break;
 	}
-	MessageManagerRegistrationKey = FGuid();
+	MessageSeverity = EMessageSeverity::Info;
+	return MakeShared<FNiagaraMessagePostCompileSummary>(MessageText, MessageSeverity);
+}
+
+TSharedRef<FTokenizedMessage> FNiagaraMessageNeedRecompile::GenerateTokenizedMessage() const
+{
+	return FTokenizedMessage::Create(EMessageSeverity::Error, NeedRecompileMessage);
+}
+
+TSharedRef<FTokenizedMessage> FNiagaraMessagePostCompileSummary::GenerateTokenizedMessage() const
+{
+	return FTokenizedMessage::Create(MessageSeverity, PostCompileSummaryText);
 }
 
 FNiagaraCompileEventToken::FNiagaraCompileEventToken(
@@ -341,8 +496,7 @@ void FNiagaraCompileEventToken::OpenScriptAssetByPathAndFocusNodeOrPinIfSet(
 	FAssetData AssetData = AssetRegistry.GetAssetByObjectPath(*InScriptAssetPath);
 	if (AssetData.IsValid())
 	{
-		UNiagaraScript* ScriptAsset = Cast<UNiagaraScript>(AssetData.GetAsset());
-		if (ScriptAsset != nullptr && ScriptAsset->IsAsset())
+		if (UNiagaraScript* ScriptAsset = Cast<UNiagaraScript>(AssetData.GetAsset()))
 		{
 			GEditor->GetEditorSubsystem<UAssetEditorSubsystem>()->OpenEditorForAsset(ScriptAsset, EToolkitMode::Standalone);
 			FNiagaraEditorModule& NiagaraEditorModule = FModuleManager::LoadModuleChecked<FNiagaraEditorModule>("NiagaraEditor");
@@ -362,9 +516,7 @@ void FNiagaraCompileEventToken::OpenScriptAssetByPathAndFocusNodeOrPinIfSet(
 		}
 		else
 		{
-			FNiagaraEditorUtilities::WarnWithToastAndLog(FText::Format(
-				LOCTEXT("CantNavigateWarning", "Could not navigate to script {0}\nIt was either was not a valid script, or it is not an asset which can be opened directly."),
-				FText::FromString(InScriptAssetPath)));
+			checkf(false, TEXT("CompileEventJob referenced asset was not a UNiagaraScript!"));
 		}
 	}
 }
@@ -376,19 +528,6 @@ TSharedRef<FNiagaraCompileEventToken> FNiagaraCompileEventToken::Create(
 	, const TOptional<const FGuid>& InPinGUID /*= TOptional<const FGuid>()*/ )
 {
 	return MakeShareable(new FNiagaraCompileEventToken(InScriptAssetPath, InMessage, InNodeGUID, InPinGUID));
-}
-
-TArray<TSharedRef<const INiagaraMessage>> FNiagaraMessageTopicRegistrationHandle::FilterMessages(const TArray<TSharedRef<const INiagaraMessage>>& Messages, const uint32& DesiredTopicBitfield) const
-{
-	return Messages.FilterByPredicate([DesiredTopicBitfield](const TSharedRef<const INiagaraMessage>& Message) {return Message->GetMessageTopicBitflag() & DesiredTopicBitfield; });
-}
-
-TArray<TSharedRef<const INiagaraMessage>> FNiagaraMessageObjectRegistrationHandle::FilterMessages(const TArray<TSharedRef<const INiagaraMessage>>& Messages, const uint32& DesiredTopicBitfield) const
-{
-	return Messages.FilterByPredicate([this](const TSharedRef<const INiagaraMessage>& Message) {
-		const TArray<FObjectKey>& MessageObjectKeys = Message->GetAssociatedObjectKeys();
-		return MessageObjectKeys.Contains(ObjectKey);
-		});
 }
 
 #undef LOCTEXT_NAMESPACE //NiagaraMessageManager

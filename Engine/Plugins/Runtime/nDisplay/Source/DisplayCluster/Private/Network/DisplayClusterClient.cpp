@@ -1,22 +1,34 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Network/DisplayClusterClient.h"
 #include "Common/TcpSocketBuilder.h"
 
+#include "Misc/DisplayClusterAppExit.h"
 #include "Misc/ScopeLock.h"
 
-#include "Misc/DisplayClusterLog.h"
+#include "DisplayClusterLog.h"
 
 
-bool FDisplayClusterClientBase::Connect(const FString& InAddr, const int32 InPort, const int32 TriesAmount, const float TryDelay)
+FDisplayClusterClient::FDisplayClusterClient(const FString& InName) :
+	FDisplayClusterSocketOps(CreateSocket(InName)),
+	Name(InName)
 {
-	FScopeLock Lock(&GetSyncObj());
+}
+
+FDisplayClusterClient::~FDisplayClusterClient()
+{
+	Disconnect();
+}
+
+bool FDisplayClusterClient::Connect(const FString& InAddr, const int32 InPort, const int32 TriesAmount, const float TryDelay)
+{
+	FScopeLock lock(&GetSyncObj());
 
 	// Generate IPv4 address
 	FIPv4Address IPAddr;
 	if (!FIPv4Address::Parse(InAddr, IPAddr))
 	{
-		UE_LOG(LogDisplayClusterNetwork, Error, TEXT("%s couldn't parse the address: %s"), *GetName(), *InAddr);
+		UE_LOG(LogDisplayClusterNetwork, Error, TEXT("%s couldn't parse the address [%s:%d]"), *GetName(), *InAddr, InPort);
 		return false;
 	}
 
@@ -33,7 +45,7 @@ bool FDisplayClusterClientBase::Connect(const FString& InAddr, const int32 InPor
 		if (TriesAmount > 0 && ++TryIdx >= TriesAmount)
 		{
 			UE_LOG(LogDisplayClusterNetwork, Error, TEXT("%s connection attempts limit reached"), *GetName());
-			return false;
+			break;
 		}
 
 		// Sleep some time before next try
@@ -43,9 +55,9 @@ bool FDisplayClusterClientBase::Connect(const FString& InAddr, const int32 InPor
 	return IsOpen();
 }
 
-void FDisplayClusterClientBase::Disconnect()
+void FDisplayClusterClient::Disconnect()
 {
-	FScopeLock Lock(&GetSyncObj());
+	FScopeLock lock(&GetSyncObj());
 
 	UE_LOG(LogDisplayClusterNetwork, Log, TEXT("%s disconnecting..."), *GetName());
 
@@ -55,13 +67,44 @@ void FDisplayClusterClientBase::Disconnect()
 	}
 }
 
-FSocket* FDisplayClusterClientBase::CreateSocket(const FString& InName)
+FSocket* FDisplayClusterClient::CreateSocket(const FString& InName)
 {
-	FSocket* NewSocket = FTcpSocketBuilder(*InName).AsBlocking();
-	check(NewSocket);
+	FSocket* pSock = FTcpSocketBuilder(*InName).AsBlocking();
+	check(pSock);
+	return pSock;
+}
 
-	// Set TCP_NODELAY=1
-	NewSocket->SetNoDelay(true);
+bool FDisplayClusterClient::SendMsg(const TSharedPtr<FDisplayClusterMessage>& Msg)
+{
+	const bool result = FDisplayClusterSocketOps::SendMsg(Msg);
+	if (result == false)
+	{
+		FDisplayClusterAppExit::ExitApplication(FDisplayClusterAppExit::ExitType::NormalSoft, FString("Something wrong with connection (send). The cluster is inconsistent. Exit required."));
+	}
 
-	return NewSocket;
+	return result;
+}
+
+TSharedPtr<FDisplayClusterMessage> FDisplayClusterClient::RecvMsg()
+{
+	TSharedPtr<FDisplayClusterMessage> Response = FDisplayClusterSocketOps::RecvMsg();
+	if (!Response.IsValid())
+	{
+		FDisplayClusterAppExit::ExitApplication(FDisplayClusterAppExit::ExitType::NormalSoft, FString("Something wrong with connection (recv). The cluster is inconsistent. Exit required."));
+	}
+
+	return Response;
+}
+
+TSharedPtr<FDisplayClusterMessage> FDisplayClusterClient::SendRecvMsg(const TSharedPtr<FDisplayClusterMessage>& Msg)
+{
+	SendMsg(Msg);
+	TSharedPtr<FDisplayClusterMessage> Response = RecvMsg();
+
+	if (!Response.IsValid())
+	{
+		UE_LOG(LogDisplayClusterNetworkMsg, Warning, TEXT("No response"));
+	}
+
+	return Response;
 }

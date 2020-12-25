@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -69,11 +69,9 @@ template<typename DataType> struct TMovieSceneInitialValueStore;
 			}
 		}
 	}
-	template<> struct TBlendableTokenTraits<double> { typedef UE::MovieScene::FBlendableDouble WorkingDataType; };
+	template<> struct TBlendableTokenTraits<double> { typedef MovieScene::FBlendableDouble WorkingDataType; };
  */
 
-namespace UE
-{
 namespace MovieScene
 {
 	template<typename InType, typename WorkingDataType, typename SourceDataType>
@@ -82,8 +80,7 @@ namespace MovieScene
 		// Always assert on instantiation
 		static_assert(TIsSame<WorkingDataType, void>::Value, "BlendValue must be implemented for the specified types in order to blend them with Sequencer.");
 	}
-} // namespace MovieScene
-} // namespace UE
+}
 
 template<typename DataType> struct TBlendableTokenTraits { typedef DataType WorkingDataType; };
 
@@ -154,7 +151,7 @@ private:
 		virtual void AddTo(WorkingDataType& CumulativeBlend, float InWeight, EMovieSceneBlendType InBlendType, TMovieSceneInitialValueStore<DataType>& InitialValueStore) const
 		{
 			// Use the default BlendValue function, or any other BlendValue function found through ADL on WorkingDataType
-			using UE::MovieScene::BlendValue;
+			using MovieScene::BlendValue;
 			BlendValue(CumulativeBlend, Data, InWeight, InBlendType, InitialValueStore);
 		}
 

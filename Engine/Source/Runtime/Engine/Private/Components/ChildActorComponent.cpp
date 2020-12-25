@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/ChildActorComponent.h"
 #include "Engine/World.h"
@@ -12,28 +12,13 @@ DEFINE_LOG_CATEGORY_STATIC(LogChildActorComponent, Warning, All);
 
 UChildActorComponent::UChildActorComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
-	, ActorOuter(nullptr)
 {
 	bAllowReregistration = false;
-
-#if WITH_EDITORONLY_DATA
-	EditorTreeViewVisualizationMode = EChildActorComponentTreeViewVisualizationMode::UseDefault;
-#endif
 }
 
 void UChildActorComponent::OnRegister()
 {
 	Super::OnRegister();
-
-	if (ActorOuter)
-	{
-		if (ActorOuter != GetOwner()->GetOuter())
-		{
-			ChildActorName = NAME_None;
-		}
-
-		ActorOuter = nullptr;
-	}
 
 	if (ChildActor)
 	{
@@ -50,20 +35,8 @@ void UChildActorComponent::OnRegister()
 		if (bNeedsRecreate)
 		{
 			bNeedsRecreate = false;
-
-			// Avoid dirtying packages if not necessary
-			FName PreviousChildActorName = ChildActorName;
-			bool bChildActorPackageWasDirty = ChildActor->GetPackage()->IsDirty();
-			bool bPackageWasDirty = GetPackage()->IsDirty();
-
 			DestroyChildActor();
 			CreateChildActor();
-			
-			if (ChildActor && ChildActorName == PreviousChildActorName)
-			{
-				ChildActor->GetPackage()->SetDirtyFlag(bChildActorPackageWasDirty);
-				GetPackage()->SetDirtyFlag(bPackageWasDirty);
-			}
 		}
 		else
 		{
@@ -164,12 +137,6 @@ void UChildActorComponent::Serialize(FArchive& Ar)
 }
 
 #if WITH_EDITOR
-void UChildActorComponent::SetPackageExternal(bool bExternal, bool bShouldDirty)
-{
-	DestroyChildActor();
-	CreateChildActor();
-}
-
 void UChildActorComponent::PostEditImport()
 {
 	Super::PostEditImport();
@@ -274,10 +241,16 @@ void UChildActorComponent::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>&
 	DOREPLIFETIME(UChildActorComponent, ChildActor);
 }
 
-void FActorParentComponentSetter::Set(AActor* ChildActor, UChildActorComponent* ParentComponent)
+struct FActorParentComponentSetter
 {
-	ChildActor->ParentComponent = ParentComponent;
-}
+private:
+	static void Set(AActor* ChildActor, UChildActorComponent* ParentComponent)
+	{
+		ChildActor->ParentComponent = ParentComponent;
+	}
+
+	friend UChildActorComponent;
+};
 
 void UChildActorComponent::PostRepNotifies()
 {
@@ -307,34 +280,25 @@ void UChildActorComponent::OnComponentDestroyed(bool bDestroyingHierarchy)
 void UChildActorComponent::OnUnregister()
 {
 	Super::OnUnregister();
-	ActorOuter = GetOwner()->GetOuter();
+
 	DestroyChildActor();
 }
 
 FChildActorComponentInstanceData::FChildActorComponentInstanceData(const UChildActorComponent* Component)
 	: FSceneComponentInstanceData(Component)
-	, ChildActorClass(Component->GetChildActorClass())
 	, ChildActorName(Component->GetChildActorName())
 	, ComponentInstanceData(nullptr)
 {
-	if (AActor* ChildActor = Component->GetChildActor())
+	if (Component->GetChildActor())
 	{
-#if WITH_EDITOR
-		ChildActorGUID = ChildActor->GetActorGuid();
-#endif
-		if (ChildActorName.IsNone())
-		{
-			ChildActorName = ChildActor->GetFName();
-		}
-
-		ComponentInstanceData = MakeShared<FComponentInstanceDataCache>(ChildActor);
+		ComponentInstanceData = MakeShared<FComponentInstanceDataCache>(Component->GetChildActor());
 		// If it is empty dump it
 		if (!ComponentInstanceData->HasInstanceData())
 		{
 			ComponentInstanceData.Reset();
 		}
 
-		USceneComponent* ChildRootComponent = ChildActor->GetRootComponent();
+		USceneComponent* ChildRootComponent = Component->GetChildActor()->GetRootComponent();
 		if (ChildRootComponent)
 		{
 			for (USceneComponent* AttachedComponent : ChildRootComponent->GetAttachChildren())
@@ -342,7 +306,7 @@ FChildActorComponentInstanceData::FChildActorComponentInstanceData(const UChildA
 				if (AttachedComponent)
 				{
 					AActor* AttachedActor = AttachedComponent->GetOwner();
-					if (AttachedActor != ChildActor)
+					if (AttachedActor != Component->GetChildActor())
 					{
 						FChildActorAttachedActorInfo Info;
 						Info.Actor = AttachedActor;
@@ -419,31 +383,16 @@ void UChildActorComponent::ApplyComponentInstanceData(FChildActorComponentInstan
 {
 	check(ChildActorInstanceData);
 
-	if (ChildActorClass == ChildActorInstanceData->ChildActorClass)
-	{
-		ChildActorName = ChildActorInstanceData->ChildActorName;
-	}
-
-	if (!ChildActor ||
-		ChildActor->GetClass() != ChildActorClass)
-	{
-		CreateChildActor(); 
-	}
-
+	ChildActorName = ChildActorInstanceData->ChildActorName;
 	if (ChildActor)
 	{
-		// Only rename if it is safe to, and it is needed
-		if(ChildActorName != NAME_None &&
-		   ChildActor != nullptr &&
-		   ChildActor->GetFName() != ChildActorName)
+		// Only rename if it is safe to
+		if(ChildActorName != NAME_None)
 		{
 			const FString ChildActorNameString = ChildActorName.ToString();
 			if (ChildActor->Rename(*ChildActorNameString, nullptr, REN_Test))
 			{
 				ChildActor->Rename(*ChildActorNameString, nullptr, REN_DoNotDirty | REN_ForceNoResetLoaders);
-#if WITH_EDITOR
-				ChildActor->ClearActorLabel();
-#endif
 			}
 		}
 
@@ -474,33 +423,27 @@ void UChildActorComponent::ApplyComponentInstanceData(FChildActorComponentInstan
 	}
 }
 
-void UChildActorComponent::SetChildActorClass(TSubclassOf<AActor> Class, AActor* ActorTemplate)
+void UChildActorComponent::SetChildActorClass(TSubclassOf<AActor> Class)
 {
 	ChildActorClass = Class;
 	if (IsTemplate())
 	{
 		if (ChildActorClass)
 		{
-			if (ChildActorTemplate == nullptr || ActorTemplate || (ChildActorTemplate->GetClass() != ChildActorClass))
+			if (ChildActorTemplate == nullptr || (ChildActorTemplate->GetClass() != ChildActorClass))
 			{
 				Modify();
 
-				AActor* NewChildActorTemplate = NewObject<AActor>(GetTransientPackage(), ChildActorClass, NAME_None, RF_ArchetypeObject | RF_Transactional | RF_Public, ActorTemplate);
+				AActor* NewChildActorTemplate = NewObject<AActor>(GetTransientPackage(), ChildActorClass, NAME_None, RF_ArchetypeObject | RF_Transactional | RF_Public);
 
 				if (ChildActorTemplate)
 				{
-					if (ActorTemplate == nullptr)
-					{
-						UEngine::FCopyPropertiesForUnrelatedObjectsParams Options;
-						Options.bNotifyObjectReplacement = true;
-						UEngine::CopyPropertiesForUnrelatedObjects(ChildActorTemplate, NewChildActorTemplate, Options);
-					}
+					UEngine::CopyPropertiesForUnrelatedObjects(ChildActorTemplate, NewChildActorTemplate);
+#if WITH_EDITOR
+					NewChildActorTemplate->ClearActorLabel();
+#endif
 					ChildActorTemplate->Rename(nullptr, GetTransientPackage(), REN_DontCreateRedirectors);
 				}
-
-#if WITH_EDITOR
-				NewChildActorTemplate->ClearActorLabel();
-#endif
 
 				ChildActorTemplate = NewChildActorTemplate;
 
@@ -533,15 +476,7 @@ void UChildActorComponent::SetChildActorClass(TSubclassOf<AActor> Class, AActor*
 		{
 			ChildActorName = NAME_None;
 			DestroyChildActor();
-
-			// If an actor template was supplied, temporarily set ChildActorTemplate to create the new Actor with ActorTemplate used as the template
-			TGuardValue<AActor*> ChildActorTemplateGuard(ChildActorTemplate, (ActorTemplate ? ActorTemplate : ChildActorTemplate));
-
 			CreateChildActor();
-		}
-		else if (ActorTemplate)
-		{
-			UE_LOG(LogChildActorComponent, Warning, TEXT("Call to SetChildActorClass on '%s' supplied ActorTemplate '%s', but it will not be used due to the component not being registered."), *GetPathName(), *ActorTemplate->GetPathName());
 		}
 	}
 }
@@ -614,12 +549,6 @@ void UChildActorComponent::CreateChildActor()
 				Params.bAllowDuringConstructionScript = true;
 				Params.OverrideLevel = (MyOwner ? MyOwner->GetLevel() : nullptr);
 				Params.Name = ChildActorName;
-				Params.NameMode = FActorSpawnParameters::ESpawnActorNameMode::Requested;
-#if WITH_EDITOR
-				Params.OverridePackage = GetOwner()->GetExternalPackage();
-				Params.OverrideParentComponent = this;
-				Params.OverrideActorGuid = CachedInstanceData ? CachedInstanceData->ChildActorGUID : FGuid();
-#endif
 				if (ChildActorTemplate && ChildActorTemplate->GetClass() == ChildActorClass)
 				{
 					Params.Template = ChildActorTemplate;
@@ -629,10 +558,9 @@ void UChildActorComponent::CreateChildActor()
 				{
 					Params.ObjectFlags &= ~RF_Transactional;
 				}
-				if (HasAllFlags(RF_Transient) || IsEditorOnly() || (MyOwner && (MyOwner->HasAllFlags(RF_Transient) || MyOwner->IsEditorOnly())))
+				if (HasAllFlags(RF_Transient) || IsEditorOnly())
 				{
-					// If this component or its owner are transient or editor only, set our created actor to transient. 
-					// We can't programatically set editor only on an actor so this is the best option
+					// If we are either transient or editor only, set our created actor to transient. We can't programatically set editor only on an actor so this is the best option
 					Params.ObjectFlags |= RF_Transient;
 				}
 
@@ -654,11 +582,7 @@ void UChildActorComponent::CreateChildActor()
 					const FComponentInstanceDataCache* ComponentInstanceData = (CachedInstanceData ? CachedInstanceData->ComponentInstanceData.Get() : nullptr);
 					ChildActor->FinishSpawning(GetComponentTransform(), false, ComponentInstanceData);
 
-					if (USceneComponent* ChildRoot = ChildActor->GetRootComponent())
-					{
-						TGuardValue<TEnumAsByte<EComponentMobility::Type>> MobilityGuard(ChildRoot->Mobility, Mobility);
-						ChildRoot->AttachToComponent(this, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
-					}
+					ChildActor->AttachToComponent(this, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
 
 					SetIsReplicated(ChildActor->GetIsReplicated());
 
@@ -692,22 +616,9 @@ void UChildActorComponent::CreateChildActor()
 void UChildActorComponent::DestroyChildActor()
 {
 	// If we own an Actor, kill it now unless we don't have authority on it, for that we rely on the server
-	// If the level is being removed then don't destroy the child actor so re-adding it doesn't
+	// If the level that the child actor is being removed then don't destory the child actor so re-adding it doesn't
 	// need to create a new actor
-	auto IsLevelBeingRemoved = [this]() -> bool
-	{
-		if (AActor* MyOwner = GetOwner())
-		{
-			if (ULevel* MyLevel = MyOwner->GetLevel())
-			{
-				return MyLevel->bIsBeingRemoved;
-			}
-		}
-
-		return false;
-	};
-
-	if (ChildActor && ChildActor->HasAuthority() && !IsLevelBeingRemoved())
+	if (ChildActor && ChildActor->HasAuthority() && !GetOwner()->GetLevel()->bIsBeingRemoved)
 	{
 		if (!GExitPurge)
 		{
@@ -781,12 +692,3 @@ void UChildActorComponent::BeginPlay()
 		ChildActor->DispatchBeginPlay(bFromLevelStreaming);
 	}
 }
-
-#if WITH_EDITOR
-void UChildActorComponent::SetEditorTreeViewVisualizationMode(EChildActorComponentTreeViewVisualizationMode InMode)
-{
-	Modify();
-
-	EditorTreeViewVisualizationMode = InMode;
-}
-#endif

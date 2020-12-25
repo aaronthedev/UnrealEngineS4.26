@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -63,17 +63,8 @@ namespace UnrealBuildTool
 					UEBuildTarget Target = UEBuildTarget.Create(TargetDescriptor, BuildConfiguration.bSkipRulesCompile, BuildConfiguration.bUsePrecompiled);
 
 					// Find the location of the compiler
-					VCEnvironment Environment = VCEnvironment.Create(WindowsCompiler.Clang, Target.Platform, Target.Rules.WindowsPlatform.Architecture, null, Target.Rules.WindowsPlatform.WindowsSdkVersion, null);
+					VCEnvironment Environment = VCEnvironment.Create(WindowsCompiler.Clang, Target.Platform, Target.Rules.WindowsPlatform.Architecture, null, Target.Rules.WindowsPlatform.WindowsSdkVersion);
 					FileReference ClangPath = FileReference.Combine(Environment.CompilerDir, "bin", "clang++.exe");
-
-					// Convince each module to output its generated code include path
-					foreach (UEBuildBinary Binary in Target.Binaries)
-					{
-						foreach (UEBuildModuleCPP Module in Binary.Modules.OfType<UEBuildModuleCPP>())
-						{
-							Module.bAddGeneratedCodeIncludePath = true;
-						}
-					}
 
 					// Create all the binaries and modules
 					CppCompileEnvironment GlobalCompileEnvironment = Target.CreateCompileEnvironmentForProjectFiles();
@@ -94,16 +85,6 @@ namespace UnrealBuildTool
 
 								StringBuilder CommandBuilder = new StringBuilder();
 								CommandBuilder.AppendFormat("\"{0}\"", ClangPath.FullName);
-
-								if (ModuleCompileEnvironment.CppStandard >= CppStandardVersion.Cpp17)
-								{
-									CommandBuilder.AppendFormat(" -std=c++17");
-								}
-								else if (ModuleCompileEnvironment.CppStandard >= CppStandardVersion.Cpp14)
-								{
-									CommandBuilder.AppendFormat(" -std=c++14");
-								}
-
 								foreach (FileItem ForceIncludeFile in ModuleCompileEnvironment.ForceIncludeFiles)
 								{
 									CommandBuilder.AppendFormat(" -include \"{0}\"", ForceIncludeFile.FullName);

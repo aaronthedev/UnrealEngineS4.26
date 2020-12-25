@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,7 +8,6 @@
 #include "Curves/RichCurve.h"
 #include "MovieSceneSection.h"
 #include "Channels/MovieSceneFloatChannel.h"
-#include "EntitySystem/IMovieSceneEntityProvider.h"
 #include "MovieSceneFloatSection.generated.h"
 
 
@@ -18,11 +17,8 @@
 UCLASS( MinimalAPI )
 class UMovieSceneFloatSection
 	: public UMovieSceneSection
-	, public IMovieSceneEntityProvider
 {
-	GENERATED_BODY()
-
-	MOVIESCENETRACKS_API UMovieSceneFloatSection(const FObjectInitializer& ObjectInitializer);
+	GENERATED_UCLASS_BODY()
 
 public:
 
@@ -36,9 +32,4 @@ protected:
 	/** Float data */
 	UPROPERTY()
 	FMovieSceneFloatChannel FloatCurve;
-
-private:
-
-	virtual void ImportEntityImpl(UMovieSceneEntitySystemLinker* EntityLinker, const FEntityImportParams& Params, FImportedEntity* OutImportedEntity) override;
-	virtual EMovieSceneChannelProxyType CacheChannelProxy() override;
 };

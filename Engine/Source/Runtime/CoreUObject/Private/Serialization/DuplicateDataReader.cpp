@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Serialization/ArchiveUObject.h"
@@ -105,8 +105,3 @@ FArchive& FDuplicateDataReader::operator<<(FSoftObjectPath& SoftObjectPath)
 	
 	return *this;
 }
-
-//FArchive& FDuplicateDataReader::operator<<(FField*& Field)
-//{
-//
-//}

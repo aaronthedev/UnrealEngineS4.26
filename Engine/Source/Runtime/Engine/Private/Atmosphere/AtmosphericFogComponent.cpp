@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Atmosphere/AtmosphericFogComponent.h"
 #include "Atmosphere/Atmosphere.h"
@@ -19,7 +19,6 @@
 #include "ObjectEditorUtils.h"
 #endif
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS 
 
 //////////////////////////////////////////////////////////////////////////
 // FAtmospherePrecomputeParameters
@@ -293,9 +292,9 @@ void UAtmosphericFogComponent::ReleaseResource()
 	}
 }
 
-void UAtmosphericFogComponent::CreateRenderState_Concurrent(FRegisterComponentContext* Context)
+void UAtmosphericFogComponent::CreateRenderState_Concurrent()
 {
-	Super::CreateRenderState_Concurrent(Context);
+	Super::CreateRenderState_Concurrent();
 	AddFogIfNeeded();
 }
 
@@ -516,7 +515,7 @@ void UAtmosphericFogComponent::PostEditChangeProperty(FPropertyChangedEvent& Pro
 }
 #endif // WITH_EDITOR
 
-void UAtmosphericFogComponent::PostInterpChange(FProperty* PropertyThatChanged)
+void UAtmosphericFogComponent::PostInterpChange(UProperty* PropertyThatChanged)
 {
 	Super::PostInterpChange(PropertyThatChanged);
 
@@ -799,4 +798,3 @@ static void AtmosphereRenderSinkFunction()
 
 FAutoConsoleVariableSink CVarAtmosphereRenderSink(FConsoleCommandDelegate::CreateStatic(&AtmosphereRenderSinkFunction));
 
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

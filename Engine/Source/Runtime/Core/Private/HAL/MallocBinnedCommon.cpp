@@ -1,4 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
+
+/*=============================================================================
+	MallocBinned.cpp: Binned memory allocator
+=============================================================================*/
 
 #include "HAL/MallocBinnedCommon.h"
 #include "Misc/AssertionMacros.h"
@@ -6,8 +10,6 @@
 #include "Templates/AlignmentTemplates.h"
 #include "Templates/UnrealTemplate.h"
 #include "Templates/Sorting.h"
-
-PRAGMA_DISABLE_UNSAFE_TYPECAST_WARNINGS
 
 #if PLATFORM_HAS_FPlatformVirtualMemoryBlock
 
@@ -153,7 +155,7 @@ uint8 FSizeTableEntry::FillSizeTable(uint64 PlatformPageSize, FSizeTableEntry* S
 		SizeTable[Index++] = FSizeTableEntry(Size, PlatformPageSize, Size / BasePageSize, BasePageSize, MinimumAlignment);
 	}
 	check(Index < 256);
-	return (uint8)Index;
+	return Index;
 }
 
 uint32 FBitTree::GetMemoryRequirements(uint32 DesiredCapacity)
@@ -472,5 +474,3 @@ uint32 FBitTree::CountOnes(uint32 UpTo) const
 }
 
 #endif
-
-PRAGMA_ENABLE_UNSAFE_TYPECAST_WARNINGS

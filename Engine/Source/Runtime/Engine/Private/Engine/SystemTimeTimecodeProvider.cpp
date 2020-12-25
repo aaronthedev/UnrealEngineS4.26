@@ -1,67 +1,27 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/SystemTimeTimecodeProvider.h"
 
-#include "HAL/PlatformTime.h"
 #include "Misc/CoreMisc.h"
 #include "Misc/DateTime.h"
 
-namespace
+static double ComputeTimeCodeOffset()
 {
-	static double ComputeTimeCodeOffset()
-	{
-		const FDateTime DateTime = FDateTime::Now();
-		const double HighPerformanceClock = FPlatformTime::Seconds();
-		return DateTime.GetTimeOfDay().GetTotalSeconds() - HighPerformanceClock;
-	}
+	const FDateTime DateTime = FDateTime::Now();
+	double HighPerformanceClock = FPlatformTime::Seconds();
+	const FTimespan Timespan = DateTime.GetTimeOfDay();
+	double Delta = Timespan.GetTotalSeconds() - HighPerformanceClock;
+	return Delta;
+}
 
+
+FTimecode USystemTimeTimecodeProvider::GetTimecode() const
+{
 	static double HighPerformanceClockDelta = ComputeTimeCodeOffset();
-};
+	static double SecondsPerDay = 24.0 * 60.0 * 60.0;
+	FTimespan Timespan;
+	Timespan = FTimespan::FromSeconds(fmod(HighPerformanceClockDelta + FPlatformTime::Seconds(), SecondsPerDay));
 
-
-USystemTimeTimecodeProvider::USystemTimeTimecodeProvider()
-	: FrameRate(60, 1)
-	, bGenerateFullFrame(true)
-	, bUseHighPerformanceClock(false)
-	, State(ETimecodeProviderSynchronizationState::Closed)
-{
-}
-
-
-FFrameTime USystemTimeTimecodeProvider::GenerateFrameTimeFromSystemTime(FFrameRate FrameRate)
-{
-	const FDateTime DateTime = FDateTime::Now();
-	const FTimespan Timespan = DateTime.GetTimeOfDay();
-	return FrameRate.AsFrameTime(Timespan.GetTotalSeconds());
-}
-
-
-FTimecode USystemTimeTimecodeProvider::GenerateTimecodeFromSystemTime(FFrameRate FrameRate)
-{
-	const FDateTime DateTime = FDateTime::Now();
-	const FTimespan Timespan = DateTime.GetTimeOfDay();
-	return FTimecode::FromTimespan(Timespan, FrameRate, false);
-}
-
-
-FFrameTime USystemTimeTimecodeProvider::GenerateFrameTimeFromHighPerformanceClock(FFrameRate FrameRate)
-{
-	constexpr double SecondsPerDay = 24.0 * 60.0 * 60.0;
-	return FrameRate.AsFrameTime(fmod(HighPerformanceClockDelta + FPlatformTime::Seconds(), SecondsPerDay));
-}
-
-
-FTimecode USystemTimeTimecodeProvider::GenerateTimecodeFromHighPerformanceClock(FFrameRate FrameRate)
-{
-	constexpr double SecondsPerDay = 24.0 * 60.0 * 60.0;
-	const FTimespan Timespan = FTimespan::FromSeconds(fmod(HighPerformanceClockDelta + FPlatformTime::Seconds(), SecondsPerDay));
-	return FTimecode::FromTimespan(Timespan, FrameRate, false);
-}
-
-
-FQualifiedFrameTime USystemTimeTimecodeProvider::GetQualifiedFrameTime() const
-{
-	return bGenerateFullFrame ? 
-		FQualifiedFrameTime(bUseHighPerformanceClock ? GenerateTimecodeFromHighPerformanceClock(FrameRate) : GenerateTimecodeFromSystemTime(FrameRate), FrameRate)
-		: FQualifiedFrameTime(bUseHighPerformanceClock ? GenerateFrameTimeFromHighPerformanceClock(FrameRate) : GenerateFrameTimeFromSystemTime(FrameRate), FrameRate);
+	FTimecode Result =  FTimecode::FromTimespan(Timespan, FrameRate, FTimecode::IsDropFormatTimecodeSupported(FrameRate), false);
+	return Result;
 }

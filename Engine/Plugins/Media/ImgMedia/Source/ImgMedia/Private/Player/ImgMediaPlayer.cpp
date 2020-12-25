@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ImgMediaPlayer.h"
 #include "ImgMediaPrivate.h"
@@ -104,10 +104,10 @@ FString FImgMediaPlayer::GetInfo() const
 }
 
 
-FGuid FImgMediaPlayer::GetPlayerPluginGUID() const
+FName FImgMediaPlayer::GetPlayerName() const
 {
-	static FGuid PlayerPluginGUID(0x0e4a60c0, 0x2c5947ea, 0xb233562a, 0x57e5761c);
-	return PlayerPluginGUID;
+	static FName PlayerName(TEXT("ImgMedia"));
+	return PlayerName;
 }
 
 
@@ -591,7 +591,7 @@ bool FImgMediaPlayer::FetchVideo(TRange<FTimespan> TimeRange, TSharedPtr<IMediaT
 		return false; // sample not loaded yet
 	}
 
-	const FTimespan SampleTime = Sample->GetTime().Time;
+	const FTimespan SampleTime = Sample->GetTime();
 
 	if (SampleTime == LastFetchTime)
 	{
@@ -610,12 +610,6 @@ void FImgMediaPlayer::FlushSamples()
 	LastFetchTime = FTimespan::MinValue();
 }
 
-
-bool FImgMediaPlayer::PeekVideoSampleTime(FMediaTimeStamp & TimeStamp)
-{
-	// player does not support v2 timing control at this point -> no need for this method, yet
-	return false;
-}
 
 /* IMediaTracks interface
  *****************************************************************************/

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,13 +7,11 @@
 #include "Containers/HashTable.h"
 #include "Misc/ScopeLock.h"
 #include "Common/StringStore.h"
-#include "Trace/Analysis.h"
 
 namespace Trace
 {
 
 class FModuleService;
-class IInDataStream;
 
 class FAnalysisSessionLock
 {
@@ -28,27 +26,26 @@ public:
 	void EndEdit();
 
 private:
-	FRWLock RWLock;
+	FCriticalSection CriticalSection;
+	uint32 OwnerThread = 0;
+	bool IsReadOnly = false;
 };
 
 class FAnalysisSession
 	: public IAnalysisSession
 {
 public:
-	FAnalysisSession(const TCHAR* SessionName, TUniquePtr<Trace::IInDataStream>&& InDataStream);
+	FAnalysisSession(const TCHAR* SessionName);
 	virtual ~FAnalysisSession();
-	void Start();
-	virtual void Stop(bool bAndWait) const override;
-	virtual void Wait() const override;
 
 	virtual const TCHAR* GetName() const { return *Name; }
-	virtual bool IsAnalysisComplete() const override { return !Processor.IsActive(); }
+	virtual bool IsAnalysisComplete() const override { return IsComplete; }
 	virtual double GetDurationSeconds() const { Lock.ReadAccessCheck(); return DurationSeconds; }
 	virtual void UpdateDurationSeconds(double Duration) override { Lock.WriteAccessCheck(); DurationSeconds = FMath::Max(Duration, DurationSeconds); }
+	void SetComplete() { IsComplete = true; }
 
 	virtual ILinearAllocator& GetLinearAllocator() override { return Allocator; }
 	virtual const TCHAR* StoreString(const TCHAR* String) override { return StringStore.Store(String); }
-	virtual const TCHAR* StoreString(const FStringView& String) override { return StringStore.Store(String); }
 
 	virtual void BeginRead() const override { Lock.BeginRead(); }
 	virtual void EndRead() const override { Lock.EndRead(); }
@@ -71,14 +68,13 @@ private:
 	mutable FAnalysisSessionLock Lock;
 
 	FString Name;
+	bool IsComplete = false;
 	double DurationSeconds = 0.0;
 	FSlabAllocator Allocator;
 	FStringStore StringStore;
 	TArray<IAnalyzer*> Analyzers;
 	TArray<IProvider*> Providers;
 	TMap<FName, IProvider*> ProvidersMap;
-	mutable TUniquePtr<Trace::IInDataStream> DataStream;
-	mutable Trace::FAnalysisProcessor Processor;
 };
 
 class FAnalysisService
@@ -87,12 +83,34 @@ class FAnalysisService
 public:
 	FAnalysisService(FModuleService& ModuleService);
 	virtual ~FAnalysisService();
-	virtual TSharedPtr<const IAnalysisSession> Analyze(const TCHAR* SessionUri) override;
-	virtual TSharedPtr<const IAnalysisSession> StartAnalysis(const TCHAR* SessionUri) override;
+	virtual TSharedPtr<const IAnalysisSession> Analyze(const TCHAR* SessionName, TUniquePtr<Trace::IInDataStream>&& DataStream) override;
 	virtual TSharedPtr<const IAnalysisSession> StartAnalysis(const TCHAR* SessionName, TUniquePtr<Trace::IInDataStream>&& DataStream) override;
+	virtual FAnalysisStartedEvent& OnAnalysisStarted() override { return AnalysisStartedEvent; }
+	virtual FAnalysisFinishedEvent& OnAnalysisFinished() override { return AnalysisFinishedEvent; }
 
 private:
+	class FAnalysisWorker : public FNonAbandonableTask
+	{
+	public:
+		FAnalysisWorker(FAnalysisService& Outer, TUniquePtr<Trace::IInDataStream>&& InDataStream, TSharedRef<FAnalysisSession> InAnalysisSession);
+		void DoWork();
+		FORCEINLINE TStatId GetStatId() const
+		{
+			RETURN_QUICK_DECLARE_CYCLE_STAT(FAnalysisWorker, STATGROUP_ThreadPoolAsyncTasks);
+		}
+
+	private:
+		FAnalysisService& Outer;
+		TUniquePtr<Trace::IInDataStream> DataStream;
+		TSharedPtr<FAnalysisSession> AnalysisSession;
+	};
+
+	void AnalyzeInternal(TSharedRef<FAnalysisSession> AnalysisSession, Trace::IInDataStream* DataStream);
+
 	FModuleService& ModuleService;
+	FAnalysisStartedEvent AnalysisStartedEvent;
+	FAnalysisFinishedEvent AnalysisFinishedEvent;
+	TArray<TSharedPtr<FAsyncTask<FAnalysisWorker>>> Tasks;
 };
 
 }

@@ -1,7 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AllocatedVirtualTexture.h"
-
 #include "VT/VirtualTextureScalability.h"
 #include "VT/VirtualTextureSystem.h"
 #include "VT/VirtualTextureSpace.h"
@@ -10,16 +9,17 @@
 FAllocatedVirtualTexture::FAllocatedVirtualTexture(FVirtualTextureSystem* InSystem,
 	uint32 InFrame,
 	const FAllocatedVTDescription& InDesc,
+	FVirtualTextureSpace* InSpace,
 	FVirtualTextureProducer* const* InProducers,
 	uint32 InBlockWidthInTiles,
 	uint32 InBlockHeightInTiles,
 	uint32 InWidthInBlocks,
 	uint32 InHeightInBlocks,
 	uint32 InDepthInTiles)
-	: IAllocatedVirtualTexture(InDesc, InBlockWidthInTiles, InBlockHeightInTiles, InWidthInBlocks, InHeightInBlocks, InDepthInTiles)
+	: IAllocatedVirtualTexture(InDesc, InSpace->GetID(), InSpace->GetPageTableFormat(), InBlockWidthInTiles, InBlockHeightInTiles, InWidthInBlocks, InHeightInBlocks, InDepthInTiles)
 	, RefCount(1)
 	, FrameAllocated(InFrame)
-	, Space(nullptr)
+	, Space(InSpace)
 {
 	check(IsInRenderingThread());
 	FMemory::Memzero(TextureLayers);
@@ -50,12 +50,12 @@ FAllocatedVirtualTexture::FAllocatedVirtualTexture(FVirtualTextureSystem* InSyst
 
 	// Must have at least 1 valid layer/producer
 	check(UniqueProducers.Num() > 0u);
+	// Layout should match the FVirtualTextureSpace
+	check(UniquePageTableLayers.Num() == Space->GetNumPageTableLayers());
 
 	// Max level of overall allocated VT is limited by size in tiles
 	// With multiple layers of different sizes, some layers may have mips smaller than a single tile
 	MaxLevel = FMath::Min(MaxLevel, FMath::CeilLogTwo(FMath::Max(GetWidthInTiles(), GetHeightInTiles())));
-
-	MaxLevel = FMath::Min(MaxLevel, VIRTUALTEXTURE_LOG2_MAX_PAGETABLE_SIZE);
 
 	// Lock lowest resolution mip from each producer
 	// Depending on the block dimensions of the producers that make up this allocated VT, different allocated VTs may need to lock different low resolution mips from the same producer
@@ -86,30 +86,7 @@ FAllocatedVirtualTexture::FAllocatedVirtualTexture(FVirtualTextureSystem* InSyst
 		}
 	}
 
-	// Use 16bit page table entries if all physical spaces are small enough
-	bool bSupport16BitPageTable = true;
-	for (int32 Index = 0; Index < UniquePageTableLayers.Num(); ++Index)
-	{
-		if (!UniquePageTableLayers[Index].PhysicalSpace->DoesSupport16BitPageTable())
-		{
-			bSupport16BitPageTable = false;
-			break;
-		}
-	}
-
-	FVTSpaceDescription SpaceDesc;
-	SpaceDesc.Dimensions = InDesc.Dimensions;
-	SpaceDesc.NumPageTableLayers = UniquePageTableLayers.Num();
-	SpaceDesc.TileSize = InDesc.TileSize;
-	SpaceDesc.TileBorderSize = InDesc.TileBorderSize;
-	SpaceDesc.bPrivateSpace = InDesc.bPrivateSpace;
-	SpaceDesc.MaxSpaceSize = InDesc.MaxSpaceSize > 0 ? InDesc.MaxSpaceSize : SpaceDesc.MaxSpaceSize;
-	SpaceDesc.IndirectionTextureSize = InDesc.IndirectionTextureSize;
-	SpaceDesc.PageTableFormat = bSupport16BitPageTable ? EVTPageTableFormat::UInt16 : EVTPageTableFormat::UInt32;
-
-	Space = InSystem->AcquireSpace(SpaceDesc, InDesc.ForceSpaceID, this);
-	SpaceID = Space->GetID();
-	PageTableFormat = Space->GetPageTableFormat();
+	VirtualAddress = Space->AllocateVirtualTexture(this);
 }
 
 FAllocatedVirtualTexture::~FAllocatedVirtualTexture()
@@ -158,7 +135,8 @@ void FAllocatedVirtualTexture::Release(FVirtualTextureSystem* System)
 		}
 	}
 
-	// Physical pool needs to evict all pages that belong to this VT
+	// Physical pool needs to evict all pages that belong to this VT's space
+	//todo[vt]: Could improve this to only evict pages belonging to this VT
 	{
 		TArray<FVirtualTexturePhysicalSpace*> UniquePhysicalSpaces;
 		for (int32 PageTableIndex = 0u; PageTableIndex < UniquePageTableLayers.Num(); ++PageTableIndex)
@@ -171,7 +149,13 @@ void FAllocatedVirtualTexture::Release(FVirtualTextureSystem* System)
 
 		for (FVirtualTexturePhysicalSpace* PhysicalSpace : UniquePhysicalSpaces)
 		{
-			PhysicalSpace->GetPagePool().UnmapPages(System, Space->GetID(), GetVirtualAddress(), GetMaxLevel());
+			PhysicalSpace->GetPagePool().UnmapAllPagesForSpace(System, Space->GetID());
+
+			for (int32 PageTableLayerIndex = 0u; PageTableLayerIndex < UniquePageTableLayers.Num(); ++PageTableLayerIndex)
+			{
+				FTexturePageMap& PageMap = Space->GetPageMapForPageTableLayer(PageTableLayerIndex);
+				PageMap.VerifyPhysicalSpaceUnmapped(PhysicalSpace->GetID());
+			}
 		}
 
 		for (int32 PageTableIndex = 0u; PageTableIndex < UniquePageTableLayers.Num(); ++PageTableIndex)
@@ -251,29 +235,9 @@ uint32 FAllocatedVirtualTexture::AddUniquePhysicalSpace(FVirtualTexturePhysicalS
 	return Index;
 }
 
-uint32 FAllocatedVirtualTexture::GetNumPageTableTextures() const
-{
-	return Space->GetNumPageTableTextures();
-}
-
 FRHITexture* FAllocatedVirtualTexture::GetPageTableTexture(uint32 InPageTableIndex) const
 {
 	return Space->GetPageTableTexture(InPageTableIndex);
-}
-
-FRHITexture* FAllocatedVirtualTexture::GetPageTableIndirectionTexture() const
-{
-	return Space->GetPageTableIndirectionTexture();
-}
-
-uint32 FAllocatedVirtualTexture::GetPhysicalTextureSize(uint32 InLayerIndex) const
-{
-	if (InLayerIndex < Description.NumTextureLayers)
-	{
-		const FVirtualTexturePhysicalSpace* PhysicalSpace = UniquePageTableLayers[TextureLayers[InLayerIndex].UniquePageTableLayerIndex].PhysicalSpace;
-		return PhysicalSpace ? PhysicalSpace->GetTextureSize() : 0u;
-	}
-	return 0u;
 }
 
 FRHITexture* FAllocatedVirtualTexture::GetPhysicalTexture(uint32 InLayerIndex) const
@@ -296,6 +260,21 @@ FRHIShaderResourceView* FAllocatedVirtualTexture::GetPhysicalTextureSRV(uint32 I
 	return nullptr;
 }
 
+uint32 FAllocatedVirtualTexture::GetPhysicalTextureSize(uint32 InLayerIndex) const
+{
+	if (InLayerIndex < Description.NumTextureLayers)
+	{
+		const FVirtualTexturePhysicalSpace* PhysicalSpace = UniquePageTableLayers[TextureLayers[InLayerIndex].UniquePageTableLayerIndex].PhysicalSpace;
+		return PhysicalSpace ? PhysicalSpace->GetTextureSize() : 0u;
+	}
+	return 0u;
+}
+
+uint32 FAllocatedVirtualTexture::GetNumPageTableTextures() const
+{
+	return Space->GetNumPageTableTextures();
+}
+
 static inline uint32 BitcastFloatToUInt32(float v)
 {
 	const union
@@ -306,7 +285,7 @@ static inline uint32 BitcastFloatToUInt32(float v)
 	return u.UIntValue;
 }
 
-void FAllocatedVirtualTexture::GetPackedPageTableUniform(FUintVector4* OutUniform) const
+void FAllocatedVirtualTexture::GetPackedPageTableUniform(FUintVector4* OutUniform, bool bApplyBlockScale) const
 {
 	const uint32 vPageX = FMath::ReverseMortonCode2(VirtualAddress);
 	const uint32 vPageY = FMath::ReverseMortonCode2(VirtualAddress >> 1);
@@ -319,25 +298,30 @@ void FAllocatedVirtualTexture::GetPackedPageTableUniform(FUintVector4* OutUnifor
 	const uint32 MaxAnisotropy = FMath::Clamp<int32>(VirtualTextureScalability::GetMaxAnisotropy(), 1, PageBorderSize);
 	const uint32 MaxAnisotropyLog2 = FMath::FloorLog2(MaxAnisotropy);
 
-	const uint32 AdaptiveLevelBias = 0; // todo[vt]: Required for handling SampleLevel correctly on adaptive page tables.
-
 	// make sure everything fits in the allocated number of bits
 	checkSlow(vPageX < 4096u);
 	checkSlow(vPageY < 4096u);
 	checkSlow(vPageTableMipBias < 16u);
 	checkSlow(MaxLevel < 16u);
-	checkSlow(AdaptiveLevelBias < 16u);
 	checkSlow(SpaceID < 16u);
 
-	OutUniform[0].X = BitcastFloatToUInt32(1.0f / (float)WidthInBlocks);
-	OutUniform[0].Y = BitcastFloatToUInt32(1.0f / (float)HeightInBlocks);
+	if (bApplyBlockScale)
+	{
+		OutUniform[0].X = BitcastFloatToUInt32(1.0f / (float)WidthInBlocks);
+		OutUniform[0].Y = BitcastFloatToUInt32(1.0f / (float)HeightInBlocks);
+	}
+	else
+	{
+		OutUniform[0].X = BitcastFloatToUInt32(1.0f);
+		OutUniform[0].Y = BitcastFloatToUInt32(1.0f);
+	}
 
 	OutUniform[0].Z = BitcastFloatToUInt32((float)WidthInPages);
 	OutUniform[0].W = BitcastFloatToUInt32((float)HeightInPages);
 
 	OutUniform[1].X = BitcastFloatToUInt32((float)MaxAnisotropyLog2);
 	OutUniform[1].Y = vPageX | (vPageY << 12) | (vPageTableMipBias << 24);
-	OutUniform[1].Z = MaxLevel | (AdaptiveLevelBias << 4);
+	OutUniform[1].Z = MaxLevel;
 	OutUniform[1].W = (SpaceID << 28);
 }
 

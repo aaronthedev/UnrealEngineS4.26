@@ -1,26 +1,18 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Sound/SoundConcurrency.h"
-
+#include "Components/AudioComponent.h"
 #include "ActiveSound.h"
-#include "AudioDefines.h"
 #include "AudioDevice.h"
 #include "AudioVirtualLoop.h"
-#include "Components/AudioComponent.h"
 #include "DSP/VolumeFader.h"
-#include "HAL/IConsoleManager.h"
 #include "Sound/SoundBase.h"
 
 
-static float ConcurrencyMinVolumeScaleCVar = 1.e-3f;
-FAutoConsoleVariableRef CVarConcurrencyMinVolumeScale(
-	TEXT("au.Concurrency.MinVolumeScale"),
-	ConcurrencyMinVolumeScaleCVar,
-	TEXT("Volume threshold considered silent for volume scaling (linear scale).\n"),
-	ECVF_Default);
+// Forward Declarations
+struct FListener;
 
-
-namespace SoundConcurrency
+namespace
 {
 	void SetSoundDataTarget(const FActiveSound& ActiveSound, FConcurrencySoundData& SoundData, float InTargetVolume, float InLerpTime)
 	{
@@ -44,43 +36,30 @@ namespace SoundConcurrency
 		}
 #endif // UE_BUILD_SHIPPING
 	}
-} // namespace SoundConcurrency
+} // namespace <>
 
+
+/************************************************************************/
+/* USoundConcurrency													*/
+/************************************************************************/
 
 USoundConcurrency::USoundConcurrency(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 }
 
+/************************************************************************/
+/* FSoundConcurrencySettings											*/
+/************************************************************************/
 float FSoundConcurrencySettings::GetVolumeScale() const
 {
 	return FMath::Clamp(VolumeScale, 0.0f, 1.0f);;
 }
 
-bool FSoundConcurrencySettings::IsEvictionSupported() const
-{
-	switch (ResolutionRule)
-	{
-		case EMaxConcurrentResolutionRule::StopLowestPriority:
-		case EMaxConcurrentResolutionRule::StopLowestPriorityThenPreventNew:
-		case EMaxConcurrentResolutionRule::StopQuietest:
-		{
-			return false;
-		}
 
-		case EMaxConcurrentResolutionRule::PreventNew:
-		case EMaxConcurrentResolutionRule::StopOldest:
-		case EMaxConcurrentResolutionRule::StopFarthestThenPreventNew:
-		case EMaxConcurrentResolutionRule::StopFarthestThenOldest:
-		default:
-		{
-			static_assert(static_cast<int32>(EMaxConcurrentResolutionRule::Count) == 7,
-				"Possible Missing EMaxConcurrentResolutionRule switch case coverage");
-			return true;
-		}
-	}
-}
-
+/************************************************************************/
+/* USoundConcurrency													*/
+/************************************************************************/
 
 FConcurrencyHandle::FConcurrencyHandle(const FSoundConcurrencySettings& InSettings)
 	: Settings(InSettings)
@@ -113,52 +92,36 @@ void FConcurrencySoundData::Update(float InElapsed)
 	Elapsed += InElapsed;
 }
 
-float FConcurrencySoundData::GetLerpTime() const
-{
-	return LerpTime;
-}
-
 float FConcurrencySoundData::GetVolume(bool bInDecibels) const
 {
-	const float Alpha = FMath::Clamp(Elapsed / FMath::Max(LerpTime, SMALL_NUMBER), 0.0f, 1.0f);
-	const float VolumeDb = FMath::Lerp(DbStartVolume, DbTargetVolume, Alpha);
+	if (FMath::IsNearlyZero(LerpTime) || Elapsed > LerpTime || FMath::IsNearlyEqual(DbTargetVolume, DbStartVolume))
+	{
+		return bInDecibels ? DbTargetVolume : Audio::ConvertToLinear(DbTargetVolume);
+	}
 
-	if (bInDecibels)
-	{
-		return VolumeDb;
-	}
-	
-	float VolumeLin = Audio::ConvertToLinear(VolumeDb);
-	if (VolumeLin < ConcurrencyMinVolumeScaleCVar || FMath::IsNearlyEqual(VolumeLin, ConcurrencyMinVolumeScaleCVar))
-	{
-		return 0.0f;
-	}
-	return VolumeLin;
+	float Alpha = Elapsed / LerpTime;
+	const float DbCurrentVolume = FMath::Lerp(DbStartVolume, DbTargetVolume, Alpha);
+	return bInDecibels ? DbCurrentVolume : Audio::ConvertToLinear(DbCurrentVolume);
 }
 
 float FConcurrencySoundData::GetTargetVolume(bool bInDecibels) const
 {
-	if (bInDecibels)
-	{
-		return DbTargetVolume;
-	}
-
-	const float VolumeLin = Audio::ConvertToLinear(DbTargetVolume);
-	if (VolumeLin < ConcurrencyMinVolumeScaleCVar || FMath::IsNearlyEqual(VolumeLin, ConcurrencyMinVolumeScaleCVar))
-	{
-		return 0.0f;
-	}
-
-	return VolumeLin;
+	return bInDecibels ? DbTargetVolume : Audio::ConvertToLinear(DbTargetVolume);
 }
 
 void FConcurrencySoundData::SetTarget(float InTargetVolume, float InLerpTime)
 {
-	DbStartVolume = GetVolume(true /* bInDecibels */);
-	DbTargetVolume = Audio::ConvertToDecibels(InTargetVolume, ConcurrencyMinVolumeScaleCVar);
+	DbStartVolume = GetVolume(true);
+
 	LerpTime = FMath::Max(InLerpTime, 0.0f);
 	Elapsed = 0.0f;
+
+	DbTargetVolume = Audio::ConvertToDecibels(InTargetVolume, KINDA_SMALL_NUMBER);
 }
+
+/************************************************************************/
+/* FConcurrencyGroup												*/
+/************************************************************************/
 
 FConcurrencyGroup::FConcurrencyGroup(FConcurrencyGroupID InGroupID, const FConcurrencyHandle& ConcurrencyHandle)
 	: GroupID(InGroupID)
@@ -184,17 +147,11 @@ void FConcurrencyGroup::AddActiveSound(FActiveSound& ActiveSound)
 	}
 
 	FConcurrencySoundData SoundData;
-
-	if (Settings.VolumeScaleMode == EConcurrencyVolumeScaleMode::Default)
-	{
-		SoundData.Generation = ActiveSounds.Num();
-		SoundConcurrency::SetSoundDataTarget(ActiveSound, SoundData, 1.0f, 0.0f);
-	}
+	SoundData.Generation = ActiveSounds.Num();
+	SetSoundDataTarget(ActiveSound, SoundData, 1.0f, 0.0f);
 
 	ActiveSounds.Add(&ActiveSound);
 	ActiveSound.ConcurrencyGroupData.Add(GroupID, MoveTemp(SoundData));
-
-	UpdateGeneration(&ActiveSound);
 }
 
 void FConcurrencyGroup::RemoveActiveSound(FActiveSound& ActiveSound)
@@ -221,178 +178,65 @@ void FConcurrencyGroup::RemoveActiveSound(FActiveSound& ActiveSound)
 			OtherSoundData.Generation--;
 		}
 
-		if (Settings.bVolumeScaleCanRelease && Settings.VolumeScaleMode == EConcurrencyVolumeScaleMode::Default)
+		if (Settings.bVolumeScaleCanRelease)
 		{
 			const float GenerationDelta = static_cast<float>(ActiveSounds.Num() - OtherSoundData.Generation) - 1.0f;
 			const float NewTargetVolume = FMath::Clamp(FMath::Pow(Settings.GetVolumeScale(), GenerationDelta), 0.0f, 1.0f);
-			SoundConcurrency::SetSoundDataTarget(*OtherSound, OtherSoundData, NewTargetVolume, Settings.VolumeScaleReleaseTime);
+			SetSoundDataTarget(*OtherSound, OtherSoundData, NewTargetVolume, Settings.VolumeScaleReleaseTime);
 		}
 	}
 }
 
-void FConcurrencyGroup::UpdateGeneration(FActiveSound* NewActiveSound)
-{
-	// Default uses value set at time of adding sound to group, so no sort required
-	if (Settings.VolumeScaleMode == EConcurrencyVolumeScaleMode::Default)
-	{
-		return;
-	}
-
-	struct FCompareActiveSounds
-	{
-		EConcurrencyVolumeScaleMode ScaleMode;
-
-		FCompareActiveSounds(EConcurrencyVolumeScaleMode InScaleMode)
-			: ScaleMode(InScaleMode)
-		{
-		}
-
-		FORCEINLINE bool operator()(const FActiveSound& A, const FActiveSound& B) const
-		{
-			switch(ScaleMode)
-			{
-				case EConcurrencyVolumeScaleMode::Distance:
-				{
-					float DistSqA = 0.0f;
-					float DistSqB = 0.0f;
-					A.AudioDevice->GetDistanceSquaredToNearestListener(A.LastLocation, DistSqA);
-					B.AudioDevice->GetDistanceSquaredToNearestListener(B.LastLocation, DistSqB);
-
-					// If sounds share the same distance, newer sounds will be sorted first to avoid volume ping-ponging 
-					if (FMath::IsNearlyEqual(DistSqA, DistSqB, KINDA_SMALL_NUMBER))
-					{
-						return A.GetPlayOrder() < B.GetPlayOrder();
-					}
-
-					return DistSqA > DistSqB;
-				}
-
-				case EConcurrencyVolumeScaleMode::Priority:
-				{
-					// Ensures sounds set to always play are sorted above those that aren't, but are sorted appropriately between one another
-					const float APriority = A.GetAlwaysPlay() ? A.GetHighestPriority(true /* bIgnoreAlwaysPlay */) + MAX_SOUND_PRIORITY + 1.0f : A.GetHighestPriority();
-					const float BPriority = B.GetAlwaysPlay() ? B.GetHighestPriority(true /* bIgnoreAlwaysPlay */) + MAX_SOUND_PRIORITY + 1.0f : B.GetHighestPriority();
-
-					// If sounds share the same priority, newer sounds will be sorted last to avoid volume ping-ponging 
-					if (FMath::IsNearlyEqual(APriority, BPriority, KINDA_SMALL_NUMBER))
-					{
-						return A.GetPlayOrder() < B.GetPlayOrder();
-					}
-
-					return APriority < BPriority;
-				}
-			}
-
-			return true;
-		}
-	};
-
-	ActiveSounds.Sort(FCompareActiveSounds(Settings.VolumeScaleMode));
-
-	for (int32 i = 0; i < ActiveSounds.Num(); ++i)
-	{
-		FActiveSound* ActiveSound = ActiveSounds[i];
-		
-		if (FConcurrencySoundData* SoundData = ActiveSound->ConcurrencyGroupData.Find(GetGroupID()))
-		{
-			SoundData->Generation = i;
-			const float GenerationDelta = static_cast<float>(ActiveSounds.Num() - SoundData->Generation) - 1.0f;
-			const float NewTargetVolume = FMath::Clamp(FMath::Pow(Settings.GetVolumeScale(), GenerationDelta), 0.0f, 1.0f);
-
-			// If new sound added, immediately lerp to the generation volume.
-			const float AttackTime = NewActiveSound == ActiveSound ? 0.0f : Settings.VolumeScaleAttackTime;
-
-			if (!FMath::IsNearlyEqual(AttackTime, SoundData->GetLerpTime()) || !FMath::IsNearlyEqual(SoundData->GetTargetVolume(), NewTargetVolume, ConcurrencyMinVolumeScaleCVar))
-			{
-				SoundConcurrency::SetSoundDataTarget(*ActiveSound, *SoundData, NewTargetVolume, AttackTime);
-			}
-		}
-	}
-}
-
-void FConcurrencyGroup::CullSoundsDueToMaxConcurrency()
+void FConcurrencyGroup::StopQuietSoundsDueToMaxConcurrency()
 {
 	// Nothing to do if our active sound count is less than or equal to our max active sounds
-	// or if eviction is supported
-	if (ActiveSounds.Num() <= Settings.MaxCount)
+	if (Settings.ResolutionRule != EMaxConcurrentResolutionRule::StopQuietest || ActiveSounds.Num() <= Settings.MaxCount)
 	{
 		return;
 	}
 
-	// Comparator for sorting group's ActiveSounds according to their dynamic concurrency nature.
-	// Quieter/lower priority sounds will be at the front of the array.
+	// Comparator for sorting group's ActiveSounds according to their "volume" concurrency. Quieter sounds will be
+	//  at the front of the array. If they share the same volume, newer sounds will be sorted first to avoid loop
+	// realization ping-ponging 
 	struct FCompareActiveSounds
 	{
-		EMaxConcurrentResolutionRule::Type ResolutionRule;
-
-		FCompareActiveSounds(EMaxConcurrentResolutionRule::Type InResolutionRule)
-			: ResolutionRule(InResolutionRule)
-		{
-		}
-
 		FORCEINLINE bool operator()(const FActiveSound& A, const FActiveSound& B) const
 		{
-			switch (ResolutionRule)
+			if (FMath::IsNearlyEqual(A.VolumeConcurrency, B.VolumeConcurrency, KINDA_SMALL_NUMBER))
 			{
-				case EMaxConcurrentResolutionRule::StopQuietest:
-				{
-					// If sounds share the same volume, newer sounds will be sorted first to avoid loop realization ping-ponging 
-					if (FMath::IsNearlyEqual(A.VolumeConcurrency, B.VolumeConcurrency, KINDA_SMALL_NUMBER))
-					{
-						return A.GetPlayOrder() > B.GetPlayOrder();
-					}
-					return A.VolumeConcurrency < B.VolumeConcurrency;
-				}
-				break;
-
-				case EMaxConcurrentResolutionRule::StopLowestPriority:
-				case EMaxConcurrentResolutionRule::StopLowestPriorityThenPreventNew:
-				{
-					// Ensures sounds set to always play are sorted above those that aren't, but are sorted appropriately between one another
-					const float APriority = A.GetAlwaysPlay() ? A.GetHighestPriority(true /* bIgnoreAlwaysPlay */) + MAX_SOUND_PRIORITY + 1.0f : A.GetHighestPriority();
-					const float BPriority = B.GetAlwaysPlay() ? B.GetHighestPriority(true /* bIgnoreAlwaysPlay */) + MAX_SOUND_PRIORITY + 1.0f : B.GetHighestPriority();
-					if (!FMath::IsNearlyEqual(APriority, BPriority, KINDA_SMALL_NUMBER))
-					{
-						return APriority < BPriority;
-					}
-
-					// Newer sounds pushed forward in sort to make them more likely to be culled if PreventNew
-					return ResolutionRule == EMaxConcurrentResolutionRule::StopLowestPriorityThenPreventNew
-						? A.GetPlayOrder() > B.GetPlayOrder()
-						: A.GetPlayOrder() < B.GetPlayOrder();
-				}
-				break;
-
-				default:
-				case EMaxConcurrentResolutionRule::PreventNew:
-				case EMaxConcurrentResolutionRule::StopOldest:
-				case EMaxConcurrentResolutionRule::StopFarthestThenPreventNew:
-				case EMaxConcurrentResolutionRule::StopFarthestThenOldest:
-				{
-					static_assert(static_cast<int32>(EMaxConcurrentResolutionRule::Count) == 7,
-						"Possible Missing EMaxConcurrentResolutionRule switch case coverage");
-					return true;
-				}
-				break;
+				return A.PlaybackTime > B.PlaybackTime;
 			}
+			return A.VolumeConcurrency < B.VolumeConcurrency;
 		}
 	};
 
-	ActiveSounds.Sort(FCompareActiveSounds(Settings.ResolutionRule));
+	ActiveSounds.Sort(FCompareActiveSounds());
+
+	const int32 NumActiveSounds = ActiveSounds.Num();
+	const int32 NumSoundsToStop = NumActiveSounds - Settings.MaxCount;
+	check(NumSoundsToStop > 0);
 
 	// Need to make a new list when stopping the sounds since the process of stopping an active sound
 	// will remove the sound from this concurrency group's ActiveSounds array.
-	const int32 NumSoundsToStop = ActiveSounds.Num() - Settings.MaxCount;
-	check(NumSoundsToStop > 0);
-	for (int32 i = 0; i < ActiveSounds.Num(); ++i)
+	int32 i = 0;
+	for (; i < NumSoundsToStop; ++i)
 	{
 		FActiveSound* ActiveSound = ActiveSounds[i];
 		check(ActiveSound);
-
-		const bool bShouldStop = i < NumSoundsToStop;
-		ActiveSound->bShouldStopDueToMaxConcurrency = bShouldStop;
+		ActiveSound->bShouldStopDueToMaxConcurrency = true;
 	}
+
+	for (; i < NumActiveSounds; ++i)
+	{
+		ActiveSounds[i]->bShouldStopDueToMaxConcurrency = false;
+	}
+
 }
+
+
+/************************************************************************/
+/* FSoundConcurrencyManager												*/
+/************************************************************************/
 
 FSoundConcurrencyManager::FSoundConcurrencyManager(class FAudioDevice* InAudioDevice)
 	: AudioDevice(InAudioDevice)
@@ -411,12 +255,6 @@ void FSoundConcurrencyManager::CreateNewGroupsFromHandles(
 {
 	for (const FConcurrencyHandle& ConcurrencyHandle : ConcurrencyHandles)
 	{
-		// Add an entry to the map if it hasn't already been added
-		if (!LastTimePlayedMap.Contains(ConcurrencyHandle.ObjectID))
-		{
-			LastTimePlayedMap.Add(ConcurrencyHandle.ObjectID, FPlatformTime::ToSeconds64(FPlatformTime::Cycles64()));
-		}
-	
 		switch (ConcurrencyHandle.GetMode(NewActiveSound))
 		{
 			case EConcurrencyMode::Group:
@@ -529,28 +367,6 @@ FConcurrencyGroup& FSoundConcurrencyManager::CreateNewConcurrencyGroup(const FCo
 	return *ConcurrencyGroups.FindRef(GroupID);
 }
 
-bool FSoundConcurrencyManager::IsRateLimited(const FConcurrencyHandle& InHandle)
-{
-	const float* LastTimePlayed = LastTimePlayedMap.Find(InHandle.ObjectID);
-	const float CurrentTime = FPlatformTime::ToSeconds64(FPlatformTime::Cycles64());
-
-	if (LastTimePlayed)
-	{
-		const float DeltaTime = CurrentTime - *LastTimePlayed;
-
-		if (*LastTimePlayed > 0.0f && InHandle.Settings.RetriggerTime > 0.0f && DeltaTime < InHandle.Settings.RetriggerTime)
-		{
-			// Retrieve the current game time
-			UE_LOG(LogAudio, VeryVerbose, TEXT("Rejected Sound for Group ID (%d) with DeltaTime: %.2f"), InHandle.ObjectID, DeltaTime);
-			return true;
-		}
-
-		LastTimePlayedMap.Add(InHandle.ObjectID, CurrentTime);
-	}
-
-	return false;
-}
-
 FConcurrencyGroup* FSoundConcurrencyManager::CanPlaySound(const FActiveSound& NewActiveSound, const FConcurrencyGroupID GroupID, TArray<FActiveSound*>& OutSoundsToEvict, bool bIsRetriggering)
 {
 	check(GroupID != 0);
@@ -563,9 +379,9 @@ FConcurrencyGroup* FSoundConcurrencyManager::CanPlaySound(const FActiveSound& Ne
 		return nullptr;
 	}
 
-	// Some settings don't support immediate eviction, they cull once we instantiate the sound.  This
-	// is because it is not possible to evaluate sound volumes/priorities/etc *before* they play.
-	if ( !ConcurrencyGroup->GetSettings().IsEvictionSupported() )
+	// StopQuietest doesn't evict, it culls once we instantiate the sound.  This
+	// is because it is not possible to evaluate sound volumes *before* they play.
+	if (ConcurrencyGroup->GetSettings().ResolutionRule == EMaxConcurrentResolutionRule::StopQuietest)
 	{
 		return ConcurrencyGroup;
 	}
@@ -613,10 +429,15 @@ FActiveSound* FSoundConcurrencyManager::GetEvictableSound(const FActiveSound& Ne
 		}
 		break;
 
-		// Eviction not supported by following rules due to requiring the sound to be initialized in order to calculate.
-		// Therefore, it is culled later and not evicted.
 		case EMaxConcurrentResolutionRule::StopLowestPriority:
 		case EMaxConcurrentResolutionRule::StopLowestPriorityThenPreventNew:
+		{
+			return GetEvictableSoundStopLowestPriority(NewActiveSound, ConcurrencyGroup, bIsRetriggering);
+		}
+		break;
+
+		// Eviction not supported by StopQuietest due to it requiring the sound to be initialized in order to calculate.
+		// Therefore, it is culled later but not evicted.
 		case EMaxConcurrentResolutionRule::StopQuietest:
 		{
 			return nullptr;
@@ -625,8 +446,7 @@ FActiveSound* FSoundConcurrencyManager::GetEvictableSound(const FActiveSound& Ne
 
 		default:
 		{
-			static_assert(static_cast<int32>(EMaxConcurrentResolutionRule::Count) == 7,
-				"Possible Missing EMaxConcurrentResolutionRule switch case coverage");
+			checkf(false, TEXT("Unknown EMaxConcurrentResolutionRule enumeration."));
 		}
 		break;
 	}
@@ -660,9 +480,10 @@ FActiveSound* FSoundConcurrencyManager::GetEvictableSoundStopFarthest(const FAct
 	const EMaxConcurrentResolutionRule::Type Rule = ConcurrencyGroup.GetSettings().ResolutionRule;
 
 	check(AudioDevice);
-	float DistanceToStopSoundSq;
-	const bool bAllowAttenuationOverrides = true;
-	int32 ClosestListenerIndex = AudioDevice->FindClosestListenerIndex(NewActiveSound.Transform.GetTranslation(), DistanceToStopSoundSq, bAllowAttenuationOverrides);
+	TArray<FListener>& Listeners = AudioDevice->Listeners;
+
+	int32 ClosestListenerIndex = NewActiveSound.FindClosestListener(Listeners);
+	float DistanceToStopSoundSq = FVector::DistSquared(Listeners[ClosestListenerIndex].Transform.GetTranslation(), NewActiveSound.Transform.GetTranslation());
 
 	FActiveSound* EvictableSound = nullptr;
 	const TArray<FActiveSound*>& ActiveSounds = ConcurrencyGroup.GetActiveSounds();
@@ -670,8 +491,8 @@ FActiveSound* FSoundConcurrencyManager::GetEvictableSoundStopFarthest(const FAct
 	{
 		check(ActiveSound);
 
-		float DistanceToActiveSoundSq;
-		ClosestListenerIndex = AudioDevice->FindClosestListenerIndex(ActiveSound->Transform.GetTranslation(), DistanceToActiveSoundSq, bAllowAttenuationOverrides);
+		ClosestListenerIndex = ActiveSound->FindClosestListener(Listeners);
+		const float DistanceToActiveSoundSq = FVector::DistSquared(Listeners[ClosestListenerIndex].Transform.GetTranslation(), ActiveSound->Transform.GetTranslation());
 
 		// Stop Farthest
 		if (DistanceToActiveSoundSq > DistanceToStopSoundSq)
@@ -700,6 +521,43 @@ FActiveSound* FSoundConcurrencyManager::GetEvictableSoundStopFarthest(const FAct
 	return EvictableSound;
 }
 
+FActiveSound* FSoundConcurrencyManager::GetEvictableSoundStopLowestPriority(const FActiveSound& NewActiveSound, const FConcurrencyGroup& ConcurrencyGroup, bool bIsRetriggering) const
+{
+	// Find oldest and oldest lowest priority sound in the group
+	FActiveSound* EvictableSound = nullptr;
+	const TArray<FActiveSound*>& ActiveSounds = ConcurrencyGroup.GetActiveSounds();
+	for (FActiveSound* ActiveSound : ActiveSounds)
+	{
+		check(ActiveSound);
+
+		if (EvictableSound == nullptr
+			|| (ActiveSound->GetPriority() < EvictableSound->GetPriority())
+			|| (ActiveSound->GetPriority() == EvictableSound->GetPriority() && ActiveSound->PlaybackTime > EvictableSound->PlaybackTime))
+		{
+			EvictableSound = ActiveSound;
+		}
+	}
+
+	if (EvictableSound)
+	{
+		// Drop request as same priority and preventing new
+		const EMaxConcurrentResolutionRule::Type Rule = ConcurrencyGroup.GetSettings().ResolutionRule;
+		if (Rule == EMaxConcurrentResolutionRule::StopLowestPriorityThenPreventNew
+			&& EvictableSound->GetPriority() == NewActiveSound.GetPriority())
+		{
+			return nullptr;
+		}
+
+		// Drop request as NewActiveSound's priority is lower than the lowest priority sound playing
+		else if (EvictableSound->GetPriority() > NewActiveSound.GetPriority())
+		{
+			return nullptr;
+		}
+	}
+
+	return EvictableSound;
+}
+
 FActiveSound* FSoundConcurrencyManager::EvaluateConcurrency(const FActiveSound& NewActiveSound, TArray<FConcurrencyHandle>& ConcurrencyHandles, bool bIsRetriggering)
 {
 	check(NewActiveSound.GetSound());
@@ -709,12 +567,6 @@ FActiveSound* FSoundConcurrencyManager::EvaluateConcurrency(const FActiveSound& 
 
 	for (const FConcurrencyHandle& ConcurrencyHandle : ConcurrencyHandles)
 	{
-		// If this concurrency handle has been rate limited, early exit
-		if (IsRateLimited(ConcurrencyHandle))
-		{
-			return nullptr;
-		}
-
 		switch (ConcurrencyHandle.GetMode(NewActiveSound))
 		{
 			case EConcurrencyMode::Group:
@@ -802,34 +654,31 @@ FActiveSound* FSoundConcurrencyManager::CreateAndEvictActiveSounds(const FActive
 		check(ConcurrencyGroup);
 
 		const FSoundConcurrencySettings& Settings = ConcurrencyGroup->GetSettings();
-		if (Settings.VolumeScaleMode == EConcurrencyVolumeScaleMode::Default)
+		const float Volume = Settings.GetVolumeScale();
+		if (!FMath::IsNearlyEqual(Volume, 1.0f))
 		{
-			const float Volume = Settings.GetVolumeScale();
-			if (!FMath::IsNearlyEqual(Volume, 1.0f))
+			check(Volume >= 0.0f);
+			const int32 NextGeneration = ConcurrencyGroup->GetNextGeneration();
+
+			// If we're ducking older sounds in the concurrency group, then loop through each sound in the concurrency group
+			// and update their duck amount based on each sound's generation and the next generation count. The older the sound, the more ducking.
+			const TArray<FActiveSound*>& ActiveSounds = ConcurrencyGroup->GetActiveSounds();
+			for (FActiveSound* OtherSound : ActiveSounds)
 			{
-				check(Volume >= 0.0f);
-				const int32 NextGeneration = ConcurrencyGroup->GetNextGeneration();
+				check(OtherSound);
 
-				// If we're ducking older sounds in the concurrency group, then loop through each sound in the concurrency group
-				// and update their duck amount based on each sound's generation and the next generation count. The older the sound, the more ducking.
-				const TArray<FActiveSound*>& ActiveSounds = ConcurrencyGroup->GetActiveSounds();
-				for (FActiveSound* OtherSound : ActiveSounds)
+				FConcurrencySoundData& OtherSoundData = OtherSound->ConcurrencyGroupData.FindChecked(ConcurrencyGroup->GetGroupID());
+				const float ActiveSoundGeneration = static_cast<float>(OtherSoundData.Generation);
+				const float GenerationDelta = NextGeneration - ActiveSoundGeneration;
+				const float NewTargetVolume = FMath::Pow(Volume, GenerationDelta);
+
+				// Don't allow volume to recover if release time is negative
+				if (Settings.bVolumeScaleCanRelease && OtherSoundData.GetTargetVolume() < NewTargetVolume)
 				{
-					check(OtherSound);
-
-					FConcurrencySoundData& OtherSoundData = OtherSound->ConcurrencyGroupData.FindChecked(ConcurrencyGroup->GetGroupID());
-					const float ActiveSoundGeneration = static_cast<float>(OtherSoundData.Generation);
-					const float GenerationDelta = NextGeneration - ActiveSoundGeneration;
-					const float NewTargetVolume = FMath::Pow(Volume, GenerationDelta);
-
-					// Don't allow volume to recover if release time is negative
-					if (Settings.bVolumeScaleCanRelease && OtherSoundData.GetTargetVolume() < NewTargetVolume)
-					{
-						continue;
-					}
-
-					SoundConcurrency::SetSoundDataTarget(*OtherSound, OtherSoundData, NewTargetVolume, Settings.VolumeScaleAttackTime);
+					continue;
 				}
+
+				SetSoundDataTarget(*OtherSound, OtherSoundData, NewTargetVolume, Settings.VolumeScaleAttackTime);
 			}
 		}
 
@@ -979,26 +828,15 @@ void FSoundConcurrencyManager::StopDueToVoiceStealing(FActiveSound& ActiveSound)
 	{
 		ActiveSound.FadeOut = FActiveSound::EFadeOut::Concurrency;
 		ActiveSound.ComponentVolumeFader.StartFade(0.0f, FadeOutDuration, Audio::EFaderCurve::Logarithmic);
-		ActiveSound.ComponentVolumeFader.SetActiveDuration(FadeOutDuration);
 	}
 }
 
-void FSoundConcurrencyManager::UpdateVolumeScaleGenerations()
-{
-	check(IsInAudioThread());
-
-	for (auto& ConcurrencyGroupEntry : ConcurrencyGroups)
-	{
-		ConcurrencyGroupEntry.Value->UpdateGeneration();
-	}
-}
-
-void FSoundConcurrencyManager::UpdateSoundsToCull()
+void FSoundConcurrencyManager::UpdateQuietSoundsToStop()
 {
 	check(IsInAudioThread());
 
 	for (auto& ConcurrenyGroupEntry : ConcurrencyGroups)
 	{
-		ConcurrenyGroupEntry.Value->CullSoundsDueToMaxConcurrency();
+		ConcurrenyGroupEntry.Value->StopQuietSoundsDueToMaxConcurrency();
 	}
 }

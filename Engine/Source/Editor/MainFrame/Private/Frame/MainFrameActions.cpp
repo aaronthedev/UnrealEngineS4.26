@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Frame/MainFrameActions.h"
@@ -46,13 +46,11 @@
 #include "Dialogs/SOutputLogDialog.h"
 #include "IUATHelperModule.h"
 #include "Menus/LayoutsMenu.h"
-#include "TargetReceipt.h"
 
 #include "Settings/EditorSettings.h"
 #include "AnalyticsEventAttribute.h"
 #include "Kismet2/DebuggerCommands.h"
 #include "GameMapsSettings.h"
-#include "DerivedDataCacheInterface.h"
 
 #define LOCTEXT_NAMESPACE "MainFrameActions"
 
@@ -62,11 +60,6 @@ DEFINE_LOG_CATEGORY_STATIC(MainFrameActions, Log, All);
 TSharedRef< FUICommandList > FMainFrameCommands::ActionList( new FUICommandList() );
 
 TWeakPtr<SNotificationItem> FMainFrameActionCallbacks::ChoosePackagesToCheckInNotification;
-
-namespace
-{
-	const FName SwitchProjectBundle = "SwitchProject";
-}
 
 FMainFrameCommands::FMainFrameCommands()
 	: TCommands<FMainFrameCommands>(
@@ -78,15 +71,13 @@ FMainFrameCommands::FMainFrameCommands()
 		TEXT( "MainFrame.ToggleFullscreen" ),
 		TEXT( "Toggles the editor between \"full screen\" mode and \"normal\" mode.  In full screen mode, the task bar and window title area are hidden." ),
 		FConsoleCommandDelegate::CreateStatic( &FMainFrameActionCallbacks::ToggleFullscreen_Execute ) )
-{
-	AddBundle(SwitchProjectBundle, LOCTEXT("SwitchProjectBundle", "Switch Project"));
-}
+{ }
 
 
 void FMainFrameCommands::RegisterCommands()
 {
 	// Some commands cannot be processed in a commandlet or if the editor is started without a project
-	if ( !IsRunningCommandlet() && FApp::HasProjectName() && !IsRunningDedicatedServer())
+	if ( !IsRunningCommandlet() && FApp::HasProjectName() )
 	{
 		// The global action list was created at static initialization time. Create a handler for otherwise unhandled keyboard input to route key commands through this list.
 		FSlateApplication::Get().SetUnhandledKeyDownEventHandler( FOnKeyEvent::CreateStatic( &FMainFrameActionCallbacks::OnUnhandledKeyDownEvent ) );
@@ -144,8 +135,7 @@ void FMainFrameCommands::RegisterCommands()
 				this->AsShared(),
 				FName( *FString::Printf( TEXT( "SwitchProject%i" ), CurProjectIndex ) ),
 				Message,
-				LOCTEXT( "SwitchProjectToolTip", "Restarts the editor and switches to selected project" ),
-				SwitchProjectBundle)
+				LOCTEXT( "SwitchProjectToolTip", "Restarts the editor and switches to selected project" ) )
 			.UserInterfaceType( EUserInterfaceActionType::Button )
 			.DefaultChord( FInputChord() );
 		SwitchProjectCommands.Add( SwitchProject );
@@ -174,10 +164,10 @@ void FMainFrameCommands::RegisterCommands()
 												FCanExecuteAction(),
 												FIsActionChecked::CreateStatic( &FMainFrameActionCallbacks::OpenSlateApp_IsChecked, FName("SessionFrontend" ) ) );
 
-	UI_COMMAND(VisitOnlineLearning, "Online Learning...", "Learn Unreal Engine for free with easy-to-follow video courses and guided learning paths.", EUserInterfaceActionType::Button, FInputChord());
-	ActionList->MapAction(VisitOnlineLearning, FExecuteAction::CreateStatic(&FMainFrameActionCallbacks::VisitOnlineLearning));
+	UI_COMMAND(VisitWiki, "Wiki...", "Go to the Unreal Engine Wiki page to view community-created resources, or to create your own.", EUserInterfaceActionType::Button, FInputChord());
+	ActionList->MapAction(VisitWiki, FExecuteAction::CreateStatic(&FMainFrameActionCallbacks::VisitWiki));
 
-	UI_COMMAND(VisitForums, "Forums...", "Go to the Unreal Engine forums to view announcements and engage in discussions with other developers.", EUserInterfaceActionType::Button, FInputChord());
+	UI_COMMAND(VisitForums, "Forums...", "Go the the Unreal Engine forums to view announcements and engage in discussions with other developers.", EUserInterfaceActionType::Button, FInputChord());
 	ActionList->MapAction(VisitForums, FExecuteAction::CreateStatic(&FMainFrameActionCallbacks::VisitForums));
 
 	UI_COMMAND(ReportABug, "Report a Bug...", "Found a bug?  Go here to fill out a bug report", EUserInterfaceActionType::Button, FInputChord());
@@ -205,22 +195,7 @@ void FMainFrameCommands::RegisterCommands()
 	ActionList->MapAction( CreditsUnrealEd, FExecuteAction::CreateStatic(&FMainFrameActionCallbacks::CreditsUnrealEd_Execute) );
 
 	// Layout commands
-	UI_COMMAND(ImportLayout, "Import Layout...", "Import a custom layout (or set of layouts) from a different directory and load it into your current instance of the Unreal Editor UI", EUserInterfaceActionType::Button, FInputChord());
-	ActionList->MapAction(ImportLayout, FExecuteAction::CreateStatic(&FLayoutsMenuLoad::ImportLayout));
-
-	UI_COMMAND(SaveLayoutAs, "Save Layout As...", "Save the current layout customization on disk so it can be loaded later", EUserInterfaceActionType::Button, FInputChord());
-	ActionList->MapAction(SaveLayoutAs, FExecuteAction::CreateStatic(&FLayoutsMenuSave::SaveLayoutAs));
-
-	UI_COMMAND(ExportLayout, "Export Layout...", "Export the custom layout customization to a different directory", EUserInterfaceActionType::Button, FInputChord());
-	ActionList->MapAction(ExportLayout, FExecuteAction::CreateStatic(&FLayoutsMenuSave::ExportLayout));
-
-	UI_COMMAND(RemoveUserLayouts, "Remove All User Layouts...", "Remove all the layout customizations created by the user", EUserInterfaceActionType::Button, FInputChord());
-	ActionList->MapAction(
-		RemoveUserLayouts,
-		FExecuteAction::CreateStatic(&FLayoutsMenuRemove::RemoveUserLayouts),
-		FCanExecuteAction::CreateStatic(&FLayoutsMenu::IsThereUserLayouts)
-	);
-
+	RegisterLayoutCommands();
 
 #if !PLATFORM_MAC && !PLATFORM_LINUX // Fullscreen mode in the editor is currently unsupported on Mac and Linux
 	UI_COMMAND( ToggleFullscreen, "Enable Fullscreen", "Enables fullscreen mode for the application, expanding across the entire monitor", EUserInterfaceActionType::ToggleButton, FInputChord(EModifierKey::Shift, EKeys::F11) );
@@ -235,6 +210,96 @@ void FMainFrameCommands::RegisterCommands()
 	ActionList->MapAction(OpenWidgetReflector, FExecuteAction::CreateStatic(&FMainFrameActionCallbacks::OpenWidgetReflector_Execute));
 
 	FGlobalEditorCommonCommands::MapActions(ActionList);
+}
+
+TSharedRef<FUICommandInfo> CreateFUICommandInfoInternal(const TSharedRef<FBindingContext>& InThisAsShared, const FName& InCommandName)
+{
+	// Default FUICommandInfoDecl command
+	return FUICommandInfoDecl(
+			InThisAsShared,
+			InCommandName,
+			FText::FromString("InLabel"),
+			FText::FromString("InDesc"))
+		.UserInterfaceType(EUserInterfaceActionType::Check)
+		.DefaultChord(FInputChord());
+}
+
+void FMainFrameCommands::RegisterLayoutCommands()
+{
+	// Load layout commands
+	UI_COMMAND(MainFrameLayoutCommands.ImportLayout, "Import Layout...", "Import a custom layout (or set of layouts) from a different directory and load it into your current instance of the Unreal Editor UI", EUserInterfaceActionType::Button, FInputChord());
+	ActionList->MapAction(MainFrameLayoutCommands.ImportLayout, FExecuteAction::CreateStatic(&FLayoutsMenuLoad::ImportLayout));
+
+	// Save layout commands
+	UI_COMMAND(MainFrameLayoutCommands.SaveLayoutAs, "Save Layout As...", "Save the current layout customization on disk so it can be loaded later", EUserInterfaceActionType::Button, FInputChord());
+	ActionList->MapAction(MainFrameLayoutCommands.SaveLayoutAs, FExecuteAction::CreateStatic(&FLayoutsMenuSave::SaveLayoutAs));
+	UI_COMMAND(MainFrameLayoutCommands.ExportLayout, "Export Layout...", "Export the custom layout customization to a different directory", EUserInterfaceActionType::Button, FInputChord());
+	ActionList->MapAction(MainFrameLayoutCommands.ExportLayout, FExecuteAction::CreateStatic(&FLayoutsMenuSave::ExportLayout));
+
+	// Remove layout commands
+	UI_COMMAND(MainFrameLayoutCommands.RemoveUserLayouts, "Remove All User Layouts...", "Remove all the layout customizations created by the user", EUserInterfaceActionType::Button, FInputChord());
+	ActionList->MapAction(
+		MainFrameLayoutCommands.RemoveUserLayouts,
+		FExecuteAction::CreateStatic(&FLayoutsMenuRemove::RemoveUserLayouts),
+		FCanExecuteAction::CreateStatic(&FLayoutsMenuBase::IsThereUserLayouts)
+	);
+
+	// Load/Override/Remove layout commands
+	const int32 MaxLayouts = 50;
+	for (int32 CurrentLayoutIndex = 0; CurrentLayoutIndex < MaxLayouts; ++CurrentLayoutIndex)
+	{
+		// NOTE: The actual label and tool-tip will be overridden at runtime when the command is bound to a menu item, however
+		// we still need to set one here so that the key bindings UI can function properly
+		// Thus, we remove any (NS)LOCTEXT from here to avoid unnecessary translations.
+
+		// Load Layout
+		{
+			// Default Layouts
+			TSharedRef<FUICommandInfo> LoadLayout = CreateFUICommandInfoInternal(this->AsShared(), FName(*FString::Printf(TEXT("LoadLayout%i"), CurrentLayoutIndex)));
+			MainFrameLayoutCommands.LoadLayoutCommands.Add(LoadLayout);
+			ActionList->MapAction(MainFrameLayoutCommands.LoadLayoutCommands[CurrentLayoutIndex], FExecuteAction::CreateStatic(&FLayoutsMenuLoad::LoadLayout, CurrentLayoutIndex),
+				FCanExecuteAction::CreateStatic(&FLayoutsMenuLoad::CanLoadChooseLayout, CurrentLayoutIndex),
+				FIsActionChecked::CreateStatic(&FLayoutsMenuBase::IsLayoutChecked, CurrentLayoutIndex));
+			// User Layouts
+			TSharedRef<FUICommandInfo> LoadUserLayout = CreateFUICommandInfoInternal(this->AsShared(), FName(*FString::Printf(TEXT("LoadUserLayout%i"), CurrentLayoutIndex)));
+			MainFrameLayoutCommands.LoadUserLayoutCommands.Add(LoadUserLayout);
+			ActionList->MapAction(MainFrameLayoutCommands.LoadUserLayoutCommands[CurrentLayoutIndex], FExecuteAction::CreateStatic(&FLayoutsMenuLoad::LoadUserLayout, CurrentLayoutIndex),
+				FCanExecuteAction::CreateStatic(&FLayoutsMenuLoad::CanLoadChooseUserLayout, CurrentLayoutIndex),
+				FIsActionChecked::CreateStatic(&FLayoutsMenuBase::IsUserLayoutChecked, CurrentLayoutIndex));
+		}
+
+		// Override Layout
+		{
+			// Default Layouts
+			TSharedRef<FUICommandInfo> OverrideLayout = CreateFUICommandInfoInternal(this->AsShared(), FName(*FString::Printf(TEXT("OverrideLayout%i"), CurrentLayoutIndex)));
+			MainFrameLayoutCommands.OverrideLayoutCommands.Add(OverrideLayout);
+			ActionList->MapAction(MainFrameLayoutCommands.OverrideLayoutCommands[CurrentLayoutIndex], FExecuteAction::CreateStatic(&FLayoutsMenuSave::OverrideLayout, CurrentLayoutIndex),
+				FCanExecuteAction::CreateStatic(&FLayoutsMenuSave::CanSaveChooseLayout, CurrentLayoutIndex),
+				FIsActionChecked::CreateStatic(&FLayoutsMenuBase::IsLayoutChecked, CurrentLayoutIndex));
+			// User Layouts
+			TSharedRef<FUICommandInfo> OverrideUserLayout = CreateFUICommandInfoInternal(this->AsShared(), FName(*FString::Printf(TEXT("OverrideUserLayout%i"), CurrentLayoutIndex)));
+			MainFrameLayoutCommands.OverrideUserLayoutCommands.Add(OverrideUserLayout);
+			ActionList->MapAction(MainFrameLayoutCommands.OverrideUserLayoutCommands[CurrentLayoutIndex], FExecuteAction::CreateStatic(&FLayoutsMenuSave::OverrideUserLayout, CurrentLayoutIndex),
+				FCanExecuteAction::CreateStatic(&FLayoutsMenuSave::CanSaveChooseUserLayout, CurrentLayoutIndex),
+				FIsActionChecked::CreateStatic(&FLayoutsMenuBase::IsUserLayoutChecked, CurrentLayoutIndex));
+		}
+
+		// Remove Layout
+		{
+			// Default Layouts
+			TSharedRef<FUICommandInfo> RemoveLayout = CreateFUICommandInfoInternal(this->AsShared(), FName(*FString::Printf(TEXT("RemoveLayout%i"), CurrentLayoutIndex)));
+			MainFrameLayoutCommands.RemoveLayoutCommands.Add(RemoveLayout);
+			ActionList->MapAction(MainFrameLayoutCommands.RemoveLayoutCommands[CurrentLayoutIndex], FExecuteAction::CreateStatic(&FLayoutsMenuRemove::RemoveLayout, CurrentLayoutIndex),
+				FCanExecuteAction::CreateStatic(&FLayoutsMenuRemove::CanRemoveChooseLayout, CurrentLayoutIndex),
+				FIsActionChecked::CreateStatic(&FLayoutsMenuBase::IsLayoutChecked, CurrentLayoutIndex));
+			// User Layouts
+			TSharedRef<FUICommandInfo> RemoveUserLayout = CreateFUICommandInfoInternal(this->AsShared(), FName(*FString::Printf(TEXT("RemoveUserLayout%i"), CurrentLayoutIndex)));
+			MainFrameLayoutCommands.RemoveUserLayoutCommands.Add(RemoveUserLayout);
+			ActionList->MapAction(MainFrameLayoutCommands.RemoveUserLayoutCommands[CurrentLayoutIndex], FExecuteAction::CreateStatic(&FLayoutsMenuRemove::RemoveUserLayout, CurrentLayoutIndex),
+				FCanExecuteAction::CreateStatic(&FLayoutsMenuRemove::CanRemoveChooseUserLayout, CurrentLayoutIndex),
+				FIsActionChecked::CreateStatic(&FLayoutsMenuBase::IsUserLayoutChecked, CurrentLayoutIndex));
+		}
+	}
 }
 
 FReply FMainFrameActionCallbacks::OnUnhandledKeyDownEvent(const FKeyEvent& InKeyEvent)
@@ -366,7 +431,9 @@ const TCHAR* GetUATCompilationFlags()
 {
 	// We never want to compile editor targets when invoking UAT in this context.
 	// If we are installed or don't have a compiler, we must assume we have a precompiled UAT.
-	return TEXT("-nocompileeditor");
+	return (FApp::GetEngineIsPromotedBuild() || FApp::IsEngineInstalled())
+		? TEXT("-nocompile -nocompileeditor")
+		: TEXT("-nocompileeditor");
 }
 
 FString GetCookingOptionalParams()
@@ -378,12 +445,6 @@ FString GetCookingOptionalParams()
 	{
 		OptionalParams += TEXT(" -SkipCookingEditorContent");
 	}
-
-	if (FDerivedDataCacheInterface* DDC = GetDerivedDataCache())
-	{
-		OptionalParams += FString::Printf(TEXT(" -ddc=%s"), DDC->GetGraphName());
-	}
-
 	return OptionalParams;
 }
 
@@ -671,22 +732,9 @@ void FMainFrameActionCallbacks::PackageProject( const FName InPlatformInfoName )
 
 	OptionalParams += GetCookingOptionalParams();
 
-	if (PackagingSettings->bUseIoStore)
-	{
-		OptionalParams += TEXT(" -iostore");
-
-		// Pak file(s) must be used when using container file(s)
-		PackagingSettings->UsePakFile = true;
-	}
-
 	if (PackagingSettings->UsePakFile)
 	{
 		OptionalParams += TEXT(" -pak");
-	}
-
-	if (PackagingSettings->bUseIoStore)
-	{
-		OptionalParams += TEXT(" -iostore");
 	}
 
 	if (PackagingSettings->IncludePrerequisites)
@@ -742,9 +790,6 @@ void FMainFrameActionCallbacks::PackageProject( const FName InPlatformInfoName )
 		OptionalParams += *PlatformInfo->TargetPlatformName.ToString();
 	}
 
-	// Get the target to build
-	const FTargetInfo* Target = PackagingSettings->GetBuildTargetInfo();
-
 	// Only build if the user elects to do so
 	bool bBuild = false;
 	if(PackagingSettings->Build == EProjectPackagingBuild::Always)
@@ -757,53 +802,8 @@ void FMainFrameActionCallbacks::PackageProject( const FName InPlatformInfoName )
 	}
 	else if(PackagingSettings->Build == EProjectPackagingBuild::IfProjectHasCode)
 	{
-		bBuild = true;
-		if (FApp::GetEngineIsPromotedBuild() && !bAssetNativizationEnabled)
-		{
-			FString BaseDir;
-
-			// Get the target name
-			FString TargetName;
-			if (Target == nullptr)
-			{
-				TargetName = TEXT("UE4Game");
-			}
-			else
-			{
-				TargetName = Target->Name;
-			}
-
-			// Get the directory containing the receipt for this target, depending on whether the project needs to be built or not
-			FString ProjectDir = FPaths::GetPath(FPaths::GetProjectFilePath());
-			if (Target != nullptr && FPaths::IsUnderDirectory(Target->Path, ProjectDir))
-			{
-				UE_LOG(LogMainFrame, Log, TEXT("Selected target: %s"), *Target->Name);
-				BaseDir = ProjectDir;
-			}
-			else
-			{
-				FText Reason;
-				if (Platform->RequiresTempTarget(bProjectHasCode, ConfigurationInfo.Configuration, false, Reason))
-				{
-					UE_LOG(LogMainFrame, Log, TEXT("Project requires temp target (%s)"), *Reason.ToString());
-					BaseDir = ProjectDir;
-				}
-				else
-				{
-					UE_LOG(LogMainFrame, Log, TEXT("Project does not require temp target"));
-					BaseDir = FPaths::EngineDir();
-				}
-			}
-
-			// Check if the receipt is for a matching promoted target
-			FString PlatformName = Platform->GetPlatformInfo().UBTTargetId.ToString();
-
-			extern LAUNCHERSERVICES_API bool HasPromotedTarget(const TCHAR* BaseDir, const TCHAR* TargetName, const TCHAR* Platform, EBuildConfiguration Configuration, const TCHAR* Architecture);
-			if (HasPromotedTarget(*BaseDir, *TargetName, *PlatformName, ConfigurationInfo.Configuration, nullptr))
-			{
-				bBuild = false;
-			}
-		}
+		FText Reason;
+		bBuild = bProjectHasCode || !FApp::GetEngineIsPromotedBuild() || (Platform == nullptr || Platform->RequiresTempTarget(bProjectHasCode, ConfigurationInfo.Configuration, bAssetNativizationEnabled, Reason));
 	}
 	else if(PackagingSettings->Build == EProjectPackagingBuild::IfEditorWasBuiltLocally)
 	{
@@ -831,6 +831,7 @@ void FMainFrameActionCallbacks::PackageProject( const FName InPlatformInfoName )
 		OptionalParams += FString::Printf(TEXT(" -NumCookersToSpawn=%d"), NumCookers); 
 	}
 
+	const FTargetInfo* Target = PackagingSettings->GetBuildTargetInfo();
 	if (Target == nullptr)
 	{
 		OptionalParams += FString::Printf(TEXT(" -clientconfig=%s"), LexToString(ConfigurationInfo.Configuration));
@@ -944,7 +945,7 @@ void FMainFrameActionCallbacks::ZipUpProject()
 			FString CommandLine = FString::Printf(TEXT("ZipProjectUp %s -project=\"%s\" -install=\"%s\""), GetUATCompilationFlags(), *ProjectPath, *FinalFileName);
 
 			IUATHelperModule::Get().CreateUatTask( CommandLine, PlatformName, LOCTEXT("ZipTaskName", "Zipping Up Project"),
-				LOCTEXT("ZipTaskShortName", "Zip Project Task"), FEditorStyle::GetBrush(TEXT("MainFrame.CookContent")), IUATHelperModule::UatTaskResultCallack(), FPaths::GetPath(FinalFileName));
+				LOCTEXT("ZipTaskShortName", "Zip Project Task"), FEditorStyle::GetBrush(TEXT("MainFrame.CookContent")));
 		}
 	}
 }
@@ -979,8 +980,8 @@ void FMainFrameActionCallbacks::ToggleFullscreen_Execute()
 #if !PLATFORM_MAC && !PLATFORM_LINUX // Fullscreen mode in the editor is currently unsupported on Mac or Linux
 	if ( GIsEditor && FApp::HasProjectName() )
 	{
-		TSharedPtr<SDockTab> LevelEditorTabPtr = FGlobalTabmanager::Get()->TryInvokeTab(FTabId("LevelEditor"));
-		const TSharedPtr<SWindow> LevelEditorWindow = FSlateApplication::Get().FindWidgetWindow( LevelEditorTabPtr.ToSharedRef() );
+		static TWeakPtr<SDockTab> LevelEditorTabPtr = FGlobalTabmanager::Get()->InvokeTab(FTabId("LevelEditor"));
+		const TSharedPtr<SWindow> LevelEditorWindow = FSlateApplication::Get().FindWidgetWindow( LevelEditorTabPtr.Pin().ToSharedRef() );
 
 		if (LevelEditorWindow->GetWindowMode() == EWindowMode::Windowed)
 		{
@@ -1065,7 +1066,7 @@ void FMainFrameActionCallbacks::OpenSlateApp_ViaModule( FName AppName, FName Mod
 
 void FMainFrameActionCallbacks::OpenSlateApp( FName AppName )
 {
-	FGlobalTabmanager::Get()->TryInvokeTab(FTabId(AppName));
+	FGlobalTabmanager::Get()->InvokeTab(FTabId(AppName));
 }
 
 bool FMainFrameActionCallbacks::OpenSlateApp_IsChecked( FName AppName )
@@ -1130,10 +1131,10 @@ void FMainFrameActionCallbacks::VisitEpicGamesDotCom()
 	}
 }
 
-void FMainFrameActionCallbacks::VisitOnlineLearning()
+void FMainFrameActionCallbacks::VisitWiki()
 {
 	FString URL;
-	if (FUnrealEdMisc::Get().GetURL(TEXT("OnlineLearningURL"), URL))
+	if (FUnrealEdMisc::Get().GetURL(TEXT("WikiURL"), URL))
 	{
 		FPlatformProcess::LaunchURL(*URL, NULL, NULL);
 	}
@@ -1205,7 +1206,7 @@ void FMainFrameActionCallbacks::CreditsUnrealEd_Execute()
 
 void FMainFrameActionCallbacks::OpenWidgetReflector_Execute()
 {
-	FGlobalTabmanager::Get()->TryInvokeTab(FTabId("WidgetReflector"));
+	FGlobalTabmanager::Get()->InvokeTab(FTabId("WidgetReflector"));
 }
 
 

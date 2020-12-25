@@ -36,8 +36,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_Prman_WriteMaterial_h
-#define Alembic_Prman_WriteMaterial_h
+#ifndef _Alembic_Prman_WriteMaterial_h_
+#define _Alembic_Prman_WriteMaterial_h_
 
 #include "ProcArgs.h"
 

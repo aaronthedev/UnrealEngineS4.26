@@ -1,92 +1,66 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "UObject/UObjectGlobals.h"
 #include "UObject/Class.h"
 #include "UObject/UnrealType.h"
-#include "UObject/UnrealTypePrivate.h"
 #include "UObject/PropertyHelper.h"
 #include "UObject/LinkerPlaceholderBase.h"
 #include "Serialization/ArchiveUObjectFromStructuredArchive.h"
 
-// WARNING: This should always be the last include in any file that needs it (except .generated.h)
-#include "UObject/UndefineUPropertyMacros.h"
-
-static inline void PreloadInnerStructMembers(FStructProperty* StructProperty)
+static inline void PreloadInnerStructMembers(UStructProperty* StructProperty)
 {
-	if (UseCircularDependencyLoadDeferring())
+#if USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
+	uint32 PropagatedLoadFlags = 0;
+	if (FLinkerLoad* Linker = StructProperty->GetLinker())
 	{
-		uint32 PropagatedLoadFlags = 0;
-		if (FLinkerLoad* Linker = StructProperty->GetLinker())
-		{
-			PropagatedLoadFlags |= (Linker->LoadFlags & LOAD_DeferDependencyLoads);
-		}
+		PropagatedLoadFlags |= (Linker->LoadFlags & LOAD_DeferDependencyLoads);
+	}
 
-		if (UScriptStruct* Struct = StructProperty->Struct)
+	if (UScriptStruct* Struct = StructProperty->Struct)
+	{
+		if (FLinkerLoad* StructLinker = Struct->GetLinker())
 		{
-			if (FLinkerLoad* StructLinker = Struct->GetLinker())
-			{
-				TGuardValue<uint32> LoadFlagGuard(StructLinker->LoadFlags, StructLinker->LoadFlags | PropagatedLoadFlags);
-				Struct->RecursivelyPreload();
-			}
+			TGuardValue<uint32> LoadFlagGuard(StructLinker->LoadFlags, StructLinker->LoadFlags | PropagatedLoadFlags);
+			Struct->RecursivelyPreload();
 		}
 	}
-	else
-	{
-		StructProperty->Struct->RecursivelyPreload();
-	}
+#else // USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
+	StructProperty->Struct->RecursivelyPreload();
+#endif // USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
 }
 
 /*-----------------------------------------------------------------------------
-	FStructProperty.
+	UStructProperty.
 -----------------------------------------------------------------------------*/
 
-IMPLEMENT_FIELD(FStructProperty)
-
-FStructProperty::FStructProperty(FFieldVariant InOwner, const FName& InName, EObjectFlags InObjectFlags)
-	: FProperty(InOwner, InName, InObjectFlags)
-	, Struct(nullptr)
+UStructProperty::UStructProperty(ECppProperty, int32 InOffset, EPropertyFlags InFlags, UScriptStruct* InStruct)
+	: UProperty(FObjectInitializer::Get(), EC_CppProperty, InOffset, InStruct->GetCppStructOps() ? InStruct->GetCppStructOps()->GetComputedPropertyFlags() | InFlags : InFlags)
+	, Struct(InStruct)
 {
-	ElementSize = 0;
+	ElementSize = Struct->PropertiesSize;
 }
 
-FStructProperty::FStructProperty(FFieldVariant InOwner, const FName& InName, EObjectFlags InObjectFlags, int32 InOffset, EPropertyFlags InFlags, UScriptStruct* InStruct)
-	: FProperty(InOwner, InName, InObjectFlags, InOffset, InStruct->GetCppStructOps() ? InStruct->GetCppStructOps()->GetComputedPropertyFlags() | InFlags : InFlags)
+UStructProperty::UStructProperty( const FObjectInitializer& ObjectInitializer, ECppProperty, int32 InOffset, EPropertyFlags InFlags, UScriptStruct* InStruct )
+	:	UProperty( ObjectInitializer, EC_CppProperty, InOffset, InStruct->GetCppStructOps() ? InStruct->GetCppStructOps()->GetComputedPropertyFlags() | InFlags : InFlags )
 	,	Struct( InStruct )
 {
 	ElementSize = Struct->PropertiesSize;
 }
 
-#if WITH_EDITORONLY_DATA
-FStructProperty::FStructProperty(UField* InField)
-	: FProperty(InField)
-{
-	UStructProperty* SourceProperty = CastChecked<UStructProperty>(InField);
-	Struct = SourceProperty->Struct;
-	check(ElementSize == SourceProperty->ElementSize); // this should've been set by FProperty
-}
-#endif // WITH_EDITORONLY_DATA
-
-int32 FStructProperty::GetMinAlignment() const
+int32 UStructProperty::GetMinAlignment() const
 {
 	return Struct->GetMinAlignment();
 }
 
-void FStructProperty::PostDuplicate(const FField& InField)
-{
-	const FStructProperty& Source = static_cast<const FStructProperty&>(InField);
-	Struct = Source.Struct;
-	Super::PostDuplicate(InField);
-}
-
-void FStructProperty::LinkInternal(FArchive& Ar)
+void UStructProperty::LinkInternal(FArchive& Ar)
 {
 	// We potentially have to preload the property itself here, if we were the inner of an array property
-	//if(HasAnyFlags(RF_NeedLoad))
-	//{
-	//	GetLinker()->Preload(this);
-	//}
+	if(HasAnyFlags(RF_NeedLoad))
+	{
+		GetLinker()->Preload(this);
+	}
 
 	if (Struct)
 	{
@@ -125,12 +99,12 @@ void FStructProperty::LinkInternal(FArchive& Ar)
 	}
 }
 
-bool FStructProperty::Identical( const void* A, const void* B, uint32 PortFlags ) const
+bool UStructProperty::Identical( const void* A, const void* B, uint32 PortFlags ) const
 {
 	return Struct->CompareScriptStruct(A, B, PortFlags);
 }
 
-bool FStructProperty::UseBinaryOrNativeSerialization(const FArchive& Ar) const
+bool UStructProperty::UseBinaryOrNativeSerialization(const FArchive& Ar) const
 {
 	check(Struct);
 
@@ -139,20 +113,24 @@ bool FStructProperty::UseBinaryOrNativeSerialization(const FArchive& Ar) const
 	return bUseBinarySerialization || bUseNativeSerialization;
 }
 
-uint32 FStructProperty::GetValueTypeHashInternal(const void* Src) const
+uint32 UStructProperty::GetValueTypeHashInternal(const void* Src) const
 {
 	check(Struct);
 	return Struct->GetStructTypeHash(Src);
 }
 
-void FStructProperty::SerializeItem(FStructuredArchive::FSlot Slot, void* Value, void const* Defaults) const
+void UStructProperty::SerializeItem(FStructuredArchive::FSlot Slot, void* Value, void const* Defaults) const
 {
+	check(Struct);
+
+#if USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
 	FScopedPlaceholderPropertyTracker ImportPropertyTracker(this);
+#endif
 
 	Struct->SerializeItem(Slot, Value, Defaults);
 }
 
-bool FStructProperty::NetSerializeItem( FArchive& Ar, UPackageMap* Map, void* Data, TArray<uint8> * MetaData ) const
+bool UStructProperty::NetSerializeItem( FArchive& Ar, UPackageMap* Map, void* Data, TArray<uint8> * MetaData ) const
 {
 	//------------------------------------------------
 	//	Custom NetSerialization
@@ -175,18 +153,18 @@ bool FStructProperty::NetSerializeItem( FArchive& Ar, UPackageMap* Map, void* Da
 	return 1;
 }
 
-bool FStructProperty::SupportsNetSharedSerialization() const
+bool UStructProperty::SupportsNetSharedSerialization() const
 {
 	return !(Struct->StructFlags & STRUCT_NetSerializeNative) || (Struct->StructFlags & STRUCT_NetSharedSerialization);
 }
 
-void FStructProperty::GetPreloadDependencies(TArray<UObject*>& OutDeps)
+void UStructProperty::GetPreloadDependencies(TArray<UObject*>& OutDeps)
 {
 	Super::GetPreloadDependencies(OutDeps);
 	OutDeps.Add(Struct);
 }
 
-void FStructProperty::Serialize( FArchive& Ar )
+void UStructProperty::Serialize( FArchive& Ar )
 {
 	Super::Serialize( Ar );
 
@@ -204,12 +182,12 @@ void FStructProperty::Serialize( FArchive& Ar )
 	{
 		if (!Struct && Ar.IsLoading())
 		{
-			UE_LOG(LogProperty, Error, TEXT("FStructProperty::Serialize Loading: Property '%s'. Unknown structure."), *GetFullName());
+			UE_LOG(LogProperty, Error, TEXT("UStructProperty::Serialize Loading: Property '%s'. Unknown structure."), *GetFullName());
 			Struct = FallbackStruct;
 		}
 		else if ((FallbackStruct == Struct) && Ar.IsSaving())
 		{
-			UE_LOG(LogProperty, Error, TEXT("FStructProperty::Serialize Saving: Property '%s'. FallbackStruct structure."), *GetFullName());
+			UE_LOG(LogProperty, Error, TEXT("UStructProperty::Serialize Saving: Property '%s'. FallbackStruct structure."), *GetFullName());
 		}
 	}
 #endif // WITH_EDITOR
@@ -222,15 +200,16 @@ void FStructProperty::Serialize( FArchive& Ar )
 		ensure(true);
 	}
 }
-void FStructProperty::AddReferencedObjects(FReferenceCollector& Collector)
+void UStructProperty::AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector)
 {
-	Collector.AddReferencedObject(Struct);
-	Super::AddReferencedObjects(Collector);
+	UStructProperty* This = CastChecked<UStructProperty>(InThis);
+	Collector.AddReferencedObject( This->Struct, This );
+	Super::AddReferencedObjects( This, Collector );
 }
 
 #if HACK_HEADER_GENERATOR
 
-bool FStructProperty::HasNoOpConstructor() const
+bool UStructProperty::HasNoOpConstructor() const
 {
 	Struct->PrepareCppStructOps();
 	UScriptStruct::ICppStructOps* CppStructOps = Struct->GetCppStructOps();
@@ -243,44 +222,43 @@ bool FStructProperty::HasNoOpConstructor() const
 
 #endif
 
-FString FStructProperty::GetCPPType( FString* ExtendedTypeText/*=NULL*/, uint32 CPPExportFlags/*=0*/ ) const
+FString UStructProperty::GetCPPType( FString* ExtendedTypeText/*=NULL*/, uint32 CPPExportFlags/*=0*/ ) const
 {
 	return Struct->GetStructCPPName();
 }
 
-FString FStructProperty::GetCPPTypeForwardDeclaration() const
+FString UStructProperty::GetCPPTypeForwardDeclaration() const
 {
 	return FString::Printf(TEXT("struct F%s;"), *Struct->GetName());
 }
 
-FString FStructProperty::GetCPPMacroType( FString& ExtendedTypeText ) const
+FString UStructProperty::GetCPPMacroType( FString& ExtendedTypeText ) const
 {
 	ExtendedTypeText = GetCPPType(NULL, CPPF_None);
 	return TEXT("STRUCT");
 }
 
-void FStructProperty::ExportTextItem_Static(UScriptStruct* InStruct, FString& ValueStr, const void* PropertyValue, const void* DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope)
+void UStructProperty::ExportTextItem_Static(UScriptStruct* InStruct, FString& ValueStr, const void* PropertyValue, const void* DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope)
 {
 	// For backward compatibility skip the native export 
 	InStruct->ExportText(ValueStr, PropertyValue, DefaultValue, Parent, PortFlags, ExportRootScope, false);
 }
 
-void FStructProperty::ExportTextItem( FString& ValueStr, const void* PropertyValue, const void* DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope ) const
+void UStructProperty::ExportTextItem( FString& ValueStr, const void* PropertyValue, const void* DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope ) const
 {
 	Struct->ExportText(ValueStr, PropertyValue, DefaultValue, Parent, PortFlags, ExportRootScope, true);
 }
 
-const TCHAR* FStructProperty::ImportText_Internal(const TCHAR* InBuffer, void* Data, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText) const
+const TCHAR* UStructProperty::ImportText_Internal(const TCHAR* InBuffer, void* Data, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText) const
 {
 #if USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
 	FScopedPlaceholderPropertyTracker ImportPropertyTracker(this);
 
 	uint32 PropagatedLoadFlags = 0;
-	// @todo: FProps
-	//if (FLinkerLoad* Linker = GetLinker())
-	//{
-	//	PropagatedLoadFlags |= (Linker->LoadFlags & LOAD_DeferDependencyLoads);
-	//}
+	if (FLinkerLoad* Linker = GetLinker())
+	{
+		PropagatedLoadFlags |= (Linker->LoadFlags & LOAD_DeferDependencyLoads);
+	}
 
 	uint32 OldFlags = 0;
 	FLinkerLoad* StructLinker = Struct->GetLinker();
@@ -290,39 +268,39 @@ const TCHAR* FStructProperty::ImportText_Internal(const TCHAR* InBuffer, void* D
 		StructLinker->LoadFlags |= OldFlags | PropagatedLoadFlags;
 	}
 #endif 
-	const TCHAR* Result = Struct->ImportText(InBuffer, Data, Parent, PortFlags, ErrorText, [this]() { return GetName(); }, true);
+	const TCHAR* Result = Struct->ImportText(InBuffer, Data, Parent, PortFlags, ErrorText, GetName(), true);
 
 #if USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
 	if (StructLinker)
 	{
 		StructLinker->LoadFlags = OldFlags;
-}
+	}
 #endif
-
+	
 	return Result;
 }
 
-const TCHAR* FStructProperty::ImportText_Static(UScriptStruct* InStruct, const FString& Name, const TCHAR* InBuffer, void* Data, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText)
+const TCHAR* UStructProperty::ImportText_Static(UScriptStruct* InStruct, const FString& Name, const TCHAR* InBuffer, void* Data, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText)
 {
 	return InStruct->ImportText(InBuffer, Data, Parent, PortFlags, ErrorText, Name, true);
 }
 
-void FStructProperty::CopyValuesInternal( void* Dest, void const* Src, int32 Count  ) const
+void UStructProperty::CopyValuesInternal( void* Dest, void const* Src, int32 Count  ) const
 {
 	Struct->CopyScriptStruct(Dest, Src, Count);
 }
 
-void FStructProperty::InitializeValueInternal( void* InDest ) const
+void UStructProperty::InitializeValueInternal( void* InDest ) const
 {
 	Struct->InitializeStruct(InDest, ArrayDim);
 }
 
-void FStructProperty::ClearValueInternal( void* Data ) const
+void UStructProperty::ClearValueInternal( void* Data ) const
 {
 	Struct->ClearScriptStruct(Data, 1); // clear only does one value
 }
 
-void FStructProperty::DestroyValueInternal( void* Dest ) const
+void UStructProperty::DestroyValueInternal( void* Dest ) const
 {
 	Struct->DestroyStruct(Dest, ArrayDim);
 }
@@ -335,24 +313,24 @@ void FStructProperty::DestroyValueInternal( void* Dest ) const
  * @param	Owner				the object that contains this property's data
  * @param	InstanceGraph		contains the mappings of instanced objects and components to their templates
  */
-void FStructProperty::InstanceSubobjects( void* Data, void const* DefaultData, UObject* InOwner, FObjectInstancingGraph* InstanceGraph )
+void UStructProperty::InstanceSubobjects( void* Data, void const* DefaultData, UObject* Owner, FObjectInstancingGraph* InstanceGraph )
 {
 	for (int32 Index = 0; Index < ArrayDim; Index++)
 	{
-		Struct->InstanceSubobjectTemplates( (uint8*)Data + ElementSize * Index, DefaultData ? (uint8*)DefaultData + ElementSize * Index : NULL, Struct, InOwner, InstanceGraph );
+		Struct->InstanceSubobjectTemplates( (uint8*)Data + ElementSize * Index, DefaultData ? (uint8*)DefaultData + ElementSize * Index : NULL, Struct, Owner, InstanceGraph );
 	}
 }
 
-bool FStructProperty::SameType(const FProperty* Other) const
+bool UStructProperty::SameType(const UProperty* Other) const
 {
-	return Super::SameType(Other) && (Struct == ((FStructProperty*)Other)->Struct);
+	return Super::SameType(Other) && (Struct == ((UStructProperty*)Other)->Struct);
 }
 
-EConvertFromTypeResult FStructProperty::ConvertFromType(const FPropertyTag& Tag, FStructuredArchive::FSlot Slot, uint8* Data, UStruct* DefaultsStruct)
+EConvertFromTypeResult UStructProperty::ConvertFromType(const FPropertyTag& Tag, FStructuredArchive::FSlot Slot, uint8* Data, UStruct* DefaultsStruct)
 {
 	FArchive& UnderlyingArchive = Slot.GetUnderlyingArchive();
 
-	auto CanSerializeFromStructWithDifferentName = [](const FArchive& InAr, const FPropertyTag& PropertyTag, const FStructProperty* StructProperty)
+	auto CanSerializeFromStructWithDifferentName = [](const FArchive& InAr, const FPropertyTag& PropertyTag, const UStructProperty* StructProperty)
 	{
 		if (InAr.UE4Ver() < VER_UE4_STRUCT_GUID_IN_PROPERTY_TAG)
 		{
@@ -416,4 +394,8 @@ EConvertFromTypeResult FStructProperty::ConvertFromType(const FPropertyTag& Tag,
 	return EConvertFromTypeResult::UseSerializeItem;
 }
 
-#include "UObject/DefineUPropertyMacros.h"
+IMPLEMENT_CORE_INTRINSIC_CLASS(UStructProperty, UProperty,
+	{
+		Class->EmitObjectReference(STRUCT_OFFSET(UStructProperty, Struct), TEXT("Struct"));
+	}
+);

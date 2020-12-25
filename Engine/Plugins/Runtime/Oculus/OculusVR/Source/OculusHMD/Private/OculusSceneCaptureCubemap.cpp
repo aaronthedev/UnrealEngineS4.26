@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OculusSceneCaptureCubemap.h"
 #include "OculusHMDPrivate.h"
@@ -142,7 +142,7 @@ void UOculusSceneCaptureCubemap::Tick(float DeltaTime)
 	}
 
 	ImageWrapper->SetRaw(WholeCubemapData.GetData(), WholeCubemapData.GetAllocatedSize(), CaptureBoxSideRes * 6, CaptureBoxSideRes, ERGBFormat::BGRA, 8);
-	const TArray64<uint8>& PNGData = ImageWrapper->GetCompressed(100);
+	const TArray<uint8>& PNGData = ImageWrapper->GetCompressed(100);
 
 	const FString Filename = OutputDir + FString::Printf(TEXT("/Cubemap-%d-%s.png"), CaptureBoxSideRes, *FDateTime::Now().ToString(TEXT("%m.%d-%H.%M.%S")));
 
@@ -171,8 +171,8 @@ void UOculusSceneCaptureCubemap::CaptureCubemapCommandHandler(const TArray<FStri
 		FParse::Value(*Arg, TEXT("YOFF="), CaptureOffset.Y);
 		FParse::Value(*Arg, TEXT("ZOFF="), CaptureOffset.Z);
 		FParse::Value(*Arg, TEXT("YAW="), Yaw);
-
-		if (Arg.Equals(TEXT("MOBILE"), ESearchCase::IgnoreCase))
+		// Leave GearVR for backwards compat
+		if (Arg.Equals(TEXT("GEARVR"), ESearchCase::IgnoreCase) || Arg.Equals(TEXT("MOBILE"), ESearchCase::IgnoreCase))
 		{
 			bCreateOculusMobileCubemap = true;
 		}

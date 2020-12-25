@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Customizations/MediaTextureCustomization.h"
 
@@ -17,7 +17,9 @@ void FMediaTextureCustomization::CustomizeDetails(IDetailLayoutBuilder& DetailBu
 	// customize 'Texture' category
 	IDetailCategoryBuilder& MediaTextureCategory = DetailBuilder.EditCategory("MediaTexture");
 	{
+		MediaTextureCategory.AddProperty(GET_MEMBER_NAME_CHECKED(UTexture, CompressionSettings), UTexture::StaticClass());
 		MediaTextureCategory.AddProperty(GET_MEMBER_NAME_CHECKED(UTexture, Filter), UTexture::StaticClass());
+		MediaTextureCategory.AddProperty(GET_MEMBER_NAME_CHECKED(UTexture, SRGB), UTexture::StaticClass());
 	}
 
 	DetailBuilder.HideCategory("Compression");

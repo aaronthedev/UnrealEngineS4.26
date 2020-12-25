@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -155,8 +155,6 @@ public:
 
 		FTransformRecord HandCenter;
 
-		bool IsHoldingControl = false;
-
 		bool IsValid() const { return Gesture != EMagicLeapHandTrackingGesture::NoHand; }
 		bool GetTransform(EMagicLeapHandTrackingKeypoint KeyPoint, FTransform& OutTransform) const;
 		const FTransformRecord& GetTransform(EMagicLeapHandTrackingKeypoint KeyPoint) const;
@@ -196,7 +194,6 @@ public:
 	virtual bool IsGamepadAttached() const override;
 
 	/** IMagicLeapTrackerEntity interface */
-	virtual void CreateEntityTracker() override;
 	virtual void DestroyEntityTracker() override;
 	virtual void OnBeginRendering_GameThread() override;
 
@@ -211,9 +208,6 @@ public:
 
 	void SetGestureConfidenceThreshold(EMagicLeapHandTrackingGesture Gesture, float Confidence);
 	float GetGestureConfidenceThreshold(EMagicLeapHandTrackingGesture Gesture) const;
-
-	bool GetMotionSourceForHandKeypoint(EControllerHand Hand, EMagicLeapHandTrackingKeypoint Keypoint, FName& OutMotionSource);
-	bool GetHandKeypointForMotionSource(FName MotionSource, EMagicLeapHandTrackingKeypoint& OutKeypoint);
 
 private:
 	void BuildKeypointMaps();
@@ -231,9 +225,9 @@ private:
 	void UpdateLiveLinkTransforms(TArray<FTransform>& OutTransforms, const FMagicLeapHandTracking::FHandState& HandState);
 
 #if WITH_MLSDK
-	const MLHandTrackingDataEx& GetCurrentHandTrackingData()				{ return HandTrackingDatas[CurrentHandTrackingDataIndex]; }
-	const MLHandTrackingDataEx& GetPreviousHandTrackingData()				{ return HandTrackingDatas[1 - CurrentHandTrackingDataIndex]; }
-	void SendControllerEventsForHand(const MLHandTrackingHandStateEx& NewHandState, const MLHandTrackingHandStateEx& OldHandState, const TArray<FName>& GestureMap);
+	const MLHandTrackingData& GetCurrentHandTrackingData()				{ return HandTrackingDatas[CurrentHandTrackingDataIndex]; }
+	const MLHandTrackingData& GetPreviousHandTrackingData()				{ return HandTrackingDatas[1 - CurrentHandTrackingDataIndex]; }
+	void SendControllerEventsForHand(const MLHandTrackingHandState& NewHandState, const MLHandTrackingHandState& OldHandState, const TArray<FName>& GestureMap);
 
 	static EMagicLeapHandTrackingGesture TranslateGestureEnum(MLHandTrackingKeyPose KeyPose);
 #endif //WITH_MLSDK
@@ -245,7 +239,7 @@ private:
 
 #if WITH_MLSDK
 	MLHandle HandTracker;
-	MLHandTrackingDataEx HandTrackingDatas[2];
+	MLHandTrackingData HandTrackingDatas[2];
 	int32 CurrentHandTrackingDataIndex = 0;
 	MLHandTrackingStaticData HandTrackingStaticData;
 #endif //WITH_MLSDK
@@ -264,9 +258,6 @@ private:
 
 	TMap<FName, FTransform*> SourceToTransformMap;
 	TMap<FName, FHandState*> SourceToHandMap;
-	TMap<FName, EMagicLeapHandTrackingKeypoint> SourceToKeypoint;
-	TMap<EMagicLeapHandTrackingKeypoint, FName> KeypointToLeftHandSource;
-	TMap<EMagicLeapHandTrackingKeypoint, FName> KeypointToRightHandSource;
 
 	struct FStaticHandTracking
 	{

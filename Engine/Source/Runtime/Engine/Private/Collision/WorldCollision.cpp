@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	WorldCollision.cpp: UWorld collision implementation
@@ -392,6 +392,7 @@ bool UWorld::ComponentSweepMulti(TArray<struct FHitResult>& OutHits, class UPrim
 	SCOPE_CYCLE_COUNTER(STAT_Collision_GeomSweepMultiple);
 	bool bHaveBlockingHit = false;
 
+#if WITH_PHYSX
 	FPhysicsCommand::ExecuteRead(BodyInstance->ActorHandle, [&](const FPhysicsActorHandle& Actor)
 	{
 		if(!FPhysicsInterface::IsValid(Actor))
@@ -443,6 +444,7 @@ bool UWorld::ComponentSweepMulti(TArray<struct FHitResult>& OutHits, class UPrim
 			OutHits.Append(TmpHits);	//todo: should these be made unique?
 		}
 	});
+#endif //WITH_PHYSX
 
 	return bHaveBlockingHit;
 }
@@ -459,7 +461,7 @@ public:
 #if ENABLE_COLLISION_ANALYZER
 		if (FParse::Command(&Cmd, TEXT("CANALYZER")))
 		{
-			FGlobalTabmanager::Get()->TryInvokeTab(FName(TEXT("CollisionAnalyzerApp")));
+			FGlobalTabmanager::Get()->InvokeTab(FName(TEXT("CollisionAnalyzerApp")));
 			return true;
 		}
 #endif // ENABLE_COLLISION_ANALYZER

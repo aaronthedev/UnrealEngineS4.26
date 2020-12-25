@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -93,9 +93,6 @@ protected:
 	/** The ID of the sequence to generate IDs relative to */
 	FMovieSceneSequenceID LocalSequenceID;
 
-	/** Update the cached text, tooltip and icon */
-	void UpdateCachedData();
-
 private:
 
 	/** Get the currently set binding ID, remapped to the root sequence if necessary */
@@ -103,6 +100,9 @@ private:
 
 	/** Set the binding ID, remapped to the local sequence if possible */
 	void SetRemappedCurrentValue(FMovieSceneObjectBindingID InValue);
+
+	/** UPdate the cached text, tooltip and icon */
+	void UpdateCachedData();
 
 	/** Called when the combo box has been clicked to populate its menu content */
 	void OnGetMenuContent(FMenuBuilder& MenuBuilder, TSharedPtr<FSequenceBindingNode> Node);

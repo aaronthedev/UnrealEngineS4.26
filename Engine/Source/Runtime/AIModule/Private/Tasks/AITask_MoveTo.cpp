@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Tasks/AITask_MoveTo.h"
 #include "UObject/Package.h"
@@ -242,13 +242,25 @@ void UAITask_MoveTo::ResetObservers()
 
 void UAITask_MoveTo::ResetTimers()
 {
-	if (OwnerController)
+	if (MoveRetryTimerHandle.IsValid())
 	{
-		// Remove all timers including the ones that might have been set with SetTimerForNextTick 
-		OwnerController->GetWorldTimerManager().ClearAllTimersForObject(this);
+		if (OwnerController)
+		{
+			OwnerController->GetWorldTimerManager().ClearTimer(MoveRetryTimerHandle);
+		}
+
+		MoveRetryTimerHandle.Invalidate();
 	}
-	MoveRetryTimerHandle.Invalidate();
-	PathRetryTimerHandle.Invalidate();
+
+	if (PathRetryTimerHandle.IsValid())
+	{
+		if (OwnerController)
+		{
+			OwnerController->GetWorldTimerManager().ClearTimer(PathRetryTimerHandle);
+		}
+
+		PathRetryTimerHandle.Invalidate();
+	}
 }
 
 void UAITask_MoveTo::OnDestroy(bool bInOwnerFinished)

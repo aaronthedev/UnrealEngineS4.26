@@ -1,9 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.Collections.Generic;
 
-[SupportedPlatforms("Win64")]
+[SupportedPlatforms(UnrealPlatformClass.Desktop)]
 public class DatasmithCADWorkerTarget : TargetRules
 {
 	public DatasmithCADWorkerTarget(TargetInfo Target) : base(Target)

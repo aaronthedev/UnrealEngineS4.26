@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "ShaderFormatVectorVM.h"
@@ -258,11 +258,9 @@ void BuildExpressionMap()
 		Info = &VMExpressionMap.Add(ir_binop_equal);
 		Info->Add(FVMExpresssionInfo(EVectorVMOp::cmpeq, glsl_type::bool_type, glsl_type::float_type, glsl_type::float_type));
 		Info->Add(FVMExpresssionInfo(EVectorVMOp::cmpeqi, glsl_type::bool_type, glsl_type::int_type, glsl_type::int_type));
-		Info->Add(FVMExpresssionInfo(EVectorVMOp::cmpeqi, glsl_type::bool_type, glsl_type::bool_type, glsl_type::bool_type));
 		Info = &VMExpressionMap.Add(ir_binop_nequal);
 		Info->Add(FVMExpresssionInfo(EVectorVMOp::cmpneq, glsl_type::bool_type, glsl_type::float_type, glsl_type::float_type));
 		Info->Add(FVMExpresssionInfo(EVectorVMOp::cmpneqi, glsl_type::bool_type, glsl_type::int_type, glsl_type::int_type));
-		Info->Add(FVMExpresssionInfo(EVectorVMOp::cmpneqi, glsl_type::bool_type, glsl_type::bool_type, glsl_type::bool_type));
 
 		/**
 		* Returns single boolean for whether all components of operands[0]
@@ -362,53 +360,17 @@ EVectorVMOp get_special_vm_opcode(ir_function_signature* signature)
 	{
 		return EVectorVMOp::noise;
 	}
-	else if (strncmp(signature->function_name(), "InputDataNoadvanceFloat", strlen("InputDataNoadvanceFloat")) == 0)
+	else if (strncmp(signature->function_name(), "InputDataNoadvance", strlen("InputDataNoadvance")) == 0)
 	{
-		return EVectorVMOp::inputdata_noadvance_float;
+		return EVectorVMOp::inputdata_noadvance_32bit;
 	}
-	else if (strncmp(signature->function_name(), "InputDataNoadvanceInt", strlen("InputDataNoadvanceInt")) == 0)
+	else if (strncmp(signature->function_name(), "InputData", strlen("InputData")) == 0)
 	{
-		return EVectorVMOp::inputdata_noadvance_int32;
+		return EVectorVMOp::inputdata_32bit;
 	}
-	else if (strncmp(signature->function_name(), "InputDataNoadvanceBool", strlen("InputDataNoadvanceBool")) == 0)
+	else if (strncmp(signature->function_name(), "OutputData", strlen("OutputData")) == 0)
 	{
-		return EVectorVMOp::inputdata_noadvance_int32;
-	}
-	else if (strncmp(signature->function_name(), "InputDataNoadvanceHalf", strlen("InputDataNoadvanceHalf")) == 0)
-	{
-		return EVectorVMOp::inputdata_noadvance_half;
-	}
-	else if (strncmp(signature->function_name(), "InputDataHalf", strlen("InputDataHalf")) == 0)
-	{
-		return EVectorVMOp::inputdata_half;
-	}
-	else if (strncmp(signature->function_name(), "OutputDataHalf", strlen("OutputDataHalf")) == 0)
-	{
-		return EVectorVMOp::outputdata_half;
-	}
-	else if (strncmp(signature->function_name(), "InputDataInt", strlen("InputDataInt")) == 0)
-	{
-		return EVectorVMOp::inputdata_int32;
-	}
-	else if (strncmp(signature->function_name(), "OutputDataInt", strlen("OutputDataInt")) == 0)
-	{
-		return EVectorVMOp::outputdata_int32;
-	}
-	else if (strncmp(signature->function_name(), "InputDataBool", strlen("InputDataBool")) == 0)
-	{
-		return EVectorVMOp::inputdata_int32;
-	}
-	else if (strncmp(signature->function_name(), "OutputDataBool", strlen("OutputDataBool")) == 0)
-	{
-		return EVectorVMOp::outputdata_int32;
-	}
-	else if (strncmp(signature->function_name(), "InputDataFloat", strlen("InputDataFloat")) == 0)
-	{
-		return EVectorVMOp::inputdata_float;
-	}
-	else if (strncmp(signature->function_name(), "OutputDataFloat", strlen("OutputDataFloat")) == 0)
-	{
-		return EVectorVMOp::outputdata_float;
+		return EVectorVMOp::outputdata_32bit;
 	}
 	else if (strcmp(signature->function_name(), "AcquireIndex") == 0)
 	{
@@ -587,8 +549,8 @@ void emit_byte(unsigned char b, TArray<uint8>& bytecode)
 
 void emit_short(unsigned short s, TArray<uint8>& bytecode)
 {
-	bytecode.Add(s & 255);
 	bytecode.Add(s >> 8);
+	bytecode.Add(s & 255);
 }
 
 void emit_external_func_input(variable_info_node* input, TArray<uint8>& bytecode)
@@ -596,8 +558,8 @@ void emit_external_func_input(variable_info_node* input, TArray<uint8>& bytecode
 	check((input->offset & VVM_EXT_FUNC_INPUT_LOC_BIT) == 0);//Ensure the offset isn't too large.
 
 	unsigned short offset = input->offset | (input->owner->location == EVectorVMOperandLocation::Constant ? 0 : VVM_EXT_FUNC_INPUT_LOC_BIT);
-	bytecode.Add(offset & 255);
 	bytecode.Add(offset >> 8);
+	bytecode.Add(offset & 255);
 }
 
 struct op_base
@@ -612,7 +574,7 @@ struct op_base
 
 	virtual FString to_string() = 0;
 	virtual void add_to_bytecode(TArray<uint8>& bytecode) = 0;
-	virtual bool finalize(_mesa_glsl_parse_state* parse_state, FVectorVMCompilationOutput&CompilationOutput, TArray<uint32>& temp_registers, unsigned op_idx) { return true; }
+	virtual bool finalize(_mesa_glsl_parse_state* parse_state, FVectorVMCompilationOutput&CompilationOutput, const unsigned num_temp_registers, unsigned *registers, unsigned op_idx) { return true; }
 	virtual void validate(_mesa_glsl_parse_state* parse_state, unsigned op_idx) = 0;
 
 	virtual struct op_standard* as_standard() { return nullptr; }
@@ -635,7 +597,7 @@ struct op_base
 
 	}
 
-	static bool finalize_component_temporary_allocation(_mesa_glsl_parse_state* parse_state, FVectorVMCompilationOutput& CompilationOutput, variable_info_node* component, TArray<uint32>& temp_registers, unsigned op_idx)
+	static bool finalize_component_temporary_allocation(_mesa_glsl_parse_state* parse_state, FVectorVMCompilationOutput& CompilationOutput, variable_info_node* component, const unsigned num_temp_registers, unsigned *registers, unsigned op_idx)
 	{
 		check(component);
 
@@ -652,12 +614,12 @@ struct op_base
 			{
 				if (component->offset == INDEX_NONE)
 				{
-					for (int32 j = 0; j < temp_registers.Num(); ++j)
+					for (unsigned j = 0; j < num_temp_registers; ++j)
 					{
-						if (temp_registers[j] < op_idx || temp_registers[j] == INDEX_NONE)
+						if (registers[j] < op_idx || registers[j] == INDEX_NONE)
 						{
-							component->offset = j;
-							temp_registers[j] = component->last_read;
+							component->offset = VectorVM::FirstTempRegister + j;
+							registers[j] = component->last_read;
 							CompilationOutput.MaxTempRegistersUsed = FMath::Max((int32)j, CompilationOutput.MaxTempRegistersUsed);
 #if VM_VERBOSE_LOGGING
 							UE_LOG(LogVVMBackend, Log, TEXT("OP:%d | Comp:%p allocated Reg: %d | Last Read: %d |"), op_idx, component, j, component->last_read);
@@ -666,22 +628,11 @@ struct op_base
 						}
 					}
 
-					//If we didn't find a free temp register to use, add a new one.
 					if (component->offset == INDEX_NONE)
 					{
-						component->offset = temp_registers.Num();
-						CompilationOutput.MaxTempRegistersUsed = FMath::Max(temp_registers.Num(), CompilationOutput.MaxTempRegistersUsed);
-						temp_registers.Add(component->last_read);
-#if VM_VERBOSE_LOGGING
-						UE_LOG(LogVVMBackend, Log, TEXT("OP:%d | Comp:%p allocated Reg: %d | Last Read: %d |"), op_idx, component, temp_registers.Num() - 1, component->last_read);
-#endif
+						FString ErrorStr = FString::Printf(TEXT("Failed to allocate temporary register for component %s of variable %s."), ANSI_TO_TCHAR(component->name), ANSI_TO_TCHAR(component->owner->root->name));
+						_mesa_glsl_error(parse_state, TCHAR_TO_ANSI(*ErrorStr));
 					}
- 
-// 					if (component->offset == INDEX_NONE)
-// 					{
-// 						FString ErrorStr = FString::Printf(TEXT("Failed to allocate temporary register for component %s of variable %s."), ANSI_TO_TCHAR(component->name), ANSI_TO_TCHAR(component->owner->root->name));
-// 						_mesa_glsl_error(parse_state, TCHAR_TO_ANSI(*ErrorStr));
-// 					}
 				}
 			}
 			else
@@ -717,14 +668,12 @@ struct op_hook : public op_base
 
 		static const TCHAR* FormatStrs[4] =
 		{
-			TEXT("{0}();\n"),
+			TEXT("{0};\n"),
 			TEXT("{0}({1}[{2}]);\n"),
 		};
 
 #if WITH_EDITOR
 		Args.Add(VectorVM::GetOpName(op_code));
-#else
-		Args.Add(FString::Printf(TEXT("__OP__%d"), op_code));
 #endif
 
 		if(source_component)
@@ -789,8 +738,6 @@ struct op_standard : public op_base
 
 #if WITH_EDITOR
 		Args.Add(VectorVM::GetOpName(op_code));
-#else
-		Args.Add(FString::Printf(TEXT("__OP__%d"), op_code));
 #endif
 
 		Args.Add(get_location_string(dest_component->owner->location));
@@ -828,9 +775,9 @@ struct op_standard : public op_base
 		emit_short(dest_component->offset, bytecode);
 	}
 
-	virtual bool finalize(_mesa_glsl_parse_state* parse_state, FVectorVMCompilationOutput&CompilationOutput, TArray<uint32>& temp_registers, unsigned op_idx)
+	virtual bool finalize(_mesa_glsl_parse_state* parse_state, FVectorVMCompilationOutput&CompilationOutput, const unsigned num_temp_registers, unsigned *registers, unsigned op_idx)
 	{
-		return finalize_component_temporary_allocation(parse_state, CompilationOutput, dest_component, temp_registers, op_idx);
+		return finalize_component_temporary_allocation(parse_state, CompilationOutput, dest_component, num_temp_registers, registers, op_idx);
 	}
 
 	virtual void validate(_mesa_glsl_parse_state* parse_state, unsigned op_idx)override
@@ -881,15 +828,15 @@ struct op_input : public op_base
 		check(op_code != EVectorVMOp::done);
 		emit_byte((uint8)op_code, bytecode);
 		emit_short(dataset_idx, bytecode);
-		emit_short(register_idx, bytecode);
+		emit_short(register_idx + VectorVM::FirstInputRegister, bytecode);
 		//Destination is a temp register which we emit as usual.
 		check(dest_component);
 		emit_short(dest_component->offset, bytecode);
 	}
 
-	virtual bool finalize(_mesa_glsl_parse_state* parse_state, FVectorVMCompilationOutput&CompilationOutput, TArray<uint32>& temp_registers, unsigned op_idx)
+	virtual bool finalize(_mesa_glsl_parse_state* parse_state, FVectorVMCompilationOutput&CompilationOutput, const unsigned num_temp_registers, unsigned *registers, unsigned op_idx)
 	{
-		return finalize_component_temporary_allocation(parse_state, CompilationOutput, dest_component, temp_registers, op_idx);
+		return finalize_component_temporary_allocation(parse_state, CompilationOutput, dest_component, num_temp_registers, registers, op_idx);
 	}
 
 	virtual void validate(_mesa_glsl_parse_state* parse_state, unsigned op_idx)override
@@ -898,72 +845,6 @@ struct op_input : public op_base
 	}
 };
 
-struct op_input_half : public op_input
-{
-	op_input_half(): op_input(){}
-
-	virtual FString to_string()
-	{
-		if (instance_idx_component)
-		{
-			return FString::Printf(TEXT("[R][%d] = InputDataHalf(%d, %d, [%s][%d]);\n"),
-				dest_component->offset,
-				dataset_idx,
-				register_idx,
-				get_location_string(instance_idx_component->owner->location),
-				instance_idx_component->offset);
-		}
-		else
-		{
-			return FString::Printf(TEXT("[R][%d] = InputDataHalf(%d, %d);\n"), dest_component->offset, dataset_idx, register_idx);
-		}
-	}
-};
-
-
-struct op_input_float : public op_input
-{
-	op_input_float() : op_input() {}
-
-	virtual FString to_string()
-	{
-		if (instance_idx_component)
-		{
-			return FString::Printf(TEXT("[R][%d] = InputDataFloat(%d, %d, [%s][%d]);\n"),
-				dest_component->offset,
-				dataset_idx,
-				register_idx,
-				get_location_string(instance_idx_component->owner->location),
-				instance_idx_component->offset);
-		}
-		else
-		{
-			return FString::Printf(TEXT("[R][%d] = InputDataFloat(%d, %d);\n"), dest_component->offset, dataset_idx, register_idx);
-		}
-	}
-};
-
-struct op_input_int : public op_input
-{
-	op_input_int() : op_input() {}
-
-	virtual FString to_string()
-	{
-		if (instance_idx_component)
-		{
-			return FString::Printf(TEXT("[R][%d] = InputDataInt(%d, %d, [%s][%d]);\n"),
-				dest_component->offset,
-				dataset_idx,
-				register_idx,
-				get_location_string(instance_idx_component->owner->location),
-				instance_idx_component->offset);
-		}
-		else
-		{
-			return FString::Printf(TEXT("[R][%d] = InputDataInt(%d, %d);\n"), dest_component->offset, dataset_idx, register_idx);
-		}
-	}
-};
 
 // TODO: make this a proper explicitly indexing op
 struct op_input_noadvance : public op_input
@@ -995,15 +876,15 @@ struct op_input_noadvance : public op_input
 		check(op_code != EVectorVMOp::done);
 		emit_byte((uint8)op_code, bytecode);
 		emit_short(dataset_idx, bytecode);
-		emit_short(register_idx, bytecode);
+		emit_short(register_idx + VectorVM::FirstInputRegister, bytecode);
 		//Destination is a temp register which we emit as usual.
 		check(dest_component);
 		emit_short(dest_component->offset, bytecode);
 	}
 
-	virtual bool finalize(_mesa_glsl_parse_state* parse_state, FVectorVMCompilationOutput&CompilationOutput, TArray<uint32>& temp_registers, unsigned op_idx)
+	virtual bool finalize(_mesa_glsl_parse_state* parse_state, FVectorVMCompilationOutput&CompilationOutput, const unsigned num_temp_registers, unsigned *registers, unsigned op_idx)
 	{
-		return finalize_component_temporary_allocation(parse_state, CompilationOutput, dest_component, temp_registers, op_idx);
+		return finalize_component_temporary_allocation(parse_state, CompilationOutput, dest_component, num_temp_registers, registers, op_idx);
 	}
 
 	virtual void validate(_mesa_glsl_parse_state* parse_state, unsigned op_idx)override
@@ -1012,68 +893,6 @@ struct op_input_noadvance : public op_input
 	}
 };
 
-struct op_input_noadvance_int : public op_input_noadvance
-{
-	op_input_noadvance_int() : op_input_noadvance() {}
-	virtual FString to_string()
-	{
-		if (instance_idx_component)
-		{
-			return FString::Printf(TEXT("[R][%d] = InputDataNoadvanceInt(%d, %d, [%s][%d]);\n"),
-				dest_component->offset,
-				dataset_idx,
-				register_idx,
-				get_location_string(instance_idx_component->owner->location),
-				instance_idx_component->offset);
-		}
-		else
-		{
-			return FString::Printf(TEXT("[R][%d] = InputDataNoadvanceInt(%d, %d);\n"), dest_component->offset, dataset_idx, register_idx);
-		}
-	}
-};
-
-struct op_input_noadvance_float : public op_input_noadvance
-{
-	op_input_noadvance_float() : op_input_noadvance() {}
-	virtual FString to_string()
-	{
-		if (instance_idx_component)
-		{
-			return FString::Printf(TEXT("[R][%d] = InputDataNoadvanceFloat(%d, %d, [%s][%d]);\n"),
-				dest_component->offset,
-				dataset_idx,
-				register_idx,
-				get_location_string(instance_idx_component->owner->location),
-				instance_idx_component->offset);
-		}
-		else
-		{
-			return FString::Printf(TEXT("[R][%d] = InputDataNoadvanceFloat(%d, %d);\n"), dest_component->offset, dataset_idx, register_idx);
-		}
-	}
-};
-
-struct op_input_noadvance_half : public op_input_noadvance
-{
-	op_input_noadvance_half() : op_input_noadvance() {}
-	virtual FString to_string()
-	{
-		if (instance_idx_component)
-		{
-			return FString::Printf(TEXT("[R][%d] = InputDataNoadvanceHalf(%d, %d, [%s][%d]);\n"),
-				dest_component->offset,
-				dataset_idx,
-				register_idx,
-				get_location_string(instance_idx_component->owner->location),
-				instance_idx_component->offset);
-		}
-		else
-		{
-			return FString::Printf(TEXT("[R][%d] = InputDataNoadvanceHalf(%d, %d);\n"), dest_component->offset, dataset_idx, register_idx);
-		}
-	}
-};
 
 struct op_output : public op_base
 {
@@ -1112,69 +931,12 @@ struct op_output : public op_base
 		emit_short(dataset_index, bytecode);
 		emit_short(instance_idx_component->offset, bytecode);
 		emit_short(value_component->offset, bytecode);
-		emit_short(register_idx, bytecode);
+		emit_short(register_idx + VectorVM::FirstOutputRegister, bytecode);
 	}
 
 	virtual void validate(_mesa_glsl_parse_state* parse_state, unsigned op_idx)override
 	{
 		validate_component_offset(parse_state, value_component, op_idx);
-	}
-};
-
-struct op_output_half : public op_output
-{
-	op_output_half(): op_output(){}
-
-	virtual FString to_string()
-	{
-		check(instance_idx_component);
-		check(value_component);
-
-		return FString::Printf(TEXT("OutputDataHalf(%d, %d, [%s][%d], [%s][%d]);\n"),
-			dataset_index,
-			register_idx,
-			get_location_string(instance_idx_component->owner->location),
-			instance_idx_component->offset,
-			get_location_string(value_component->owner->location),
-			value_component->offset);
-	}
-};
-
-struct op_output_float : public op_output
-{
-	op_output_float() : op_output() {}
-
-	virtual FString to_string()
-	{
-		check(instance_idx_component);
-		check(value_component);
-
-		return FString::Printf(TEXT("OutputDataFloat(%d, %d, [%s][%d], [%s][%d]);\n"),
-			dataset_index,
-			register_idx,
-			get_location_string(instance_idx_component->owner->location),
-			instance_idx_component->offset,
-			get_location_string(value_component->owner->location),
-			value_component->offset);
-	}
-};
-
-struct op_output_int : public op_output
-{
-	op_output_int() : op_output() {}
-
-	virtual FString to_string()
-	{
-		check(instance_idx_component);
-		check(value_component);
-
-		return FString::Printf(TEXT("OutputDataInt(%d, %d, [%s][%d], [%s][%d]);\n"),
-			dataset_index,
-			register_idx,
-			get_location_string(instance_idx_component->owner->location),
-			instance_idx_component->offset,
-			get_location_string(value_component->owner->location),
-			value_component->offset);
 	}
 };
 
@@ -1215,9 +977,9 @@ struct op_index_acquire : public op_base
 		emit_short(dest_component->offset, bytecode);
 	}
 
-	virtual bool finalize(_mesa_glsl_parse_state* parse_state, FVectorVMCompilationOutput&CompilationOutput, TArray<uint32>& temp_registers, unsigned op_idx)
+	virtual bool finalize(_mesa_glsl_parse_state* parse_state, FVectorVMCompilationOutput&CompilationOutput, const unsigned num_temp_registers, unsigned *registers, unsigned op_idx)
 	{
-		return finalize_component_temporary_allocation(parse_state, CompilationOutput, dest_component, temp_registers, op_idx);
+		return finalize_component_temporary_allocation(parse_state, CompilationOutput, dest_component, num_temp_registers, registers, op_idx);
 	}
 
 	virtual void validate(_mesa_glsl_parse_state* parse_state, unsigned op_idx)override
@@ -1259,14 +1021,14 @@ struct op_id_acquire : public op_base
 		emit_short(id_tag_component->offset, bytecode);
 	}
 
-	virtual bool finalize(_mesa_glsl_parse_state* parse_state, FVectorVMCompilationOutput&CompilationOutput, TArray<uint32>& temp_registers, unsigned op_idx)
+	virtual bool finalize(_mesa_glsl_parse_state* parse_state, FVectorVMCompilationOutput&CompilationOutput, const unsigned num_temp_registers, unsigned *registers, unsigned op_idx)
 	{
-		if (!finalize_component_temporary_allocation(parse_state, CompilationOutput, id_index_component, temp_registers, op_idx))
+		if (!finalize_component_temporary_allocation(parse_state, CompilationOutput, id_index_component, num_temp_registers, registers, op_idx))
 		{
 			_mesa_glsl_error(parse_state, "Failed to allocate temporary registers");
 			return false;
 		}
-		if (!finalize_component_temporary_allocation(parse_state, CompilationOutput, id_tag_component, temp_registers, op_idx))
+		if (!finalize_component_temporary_allocation(parse_state, CompilationOutput, id_tag_component, num_temp_registers, registers, op_idx))
 		{
 			_mesa_glsl_error(parse_state, "Failed to allocate temporary registers");
 			return false;
@@ -1317,7 +1079,7 @@ struct op_id_update : public op_base
 		emit_short(index_component->offset, bytecode);
 	}
 
-	virtual bool finalize(_mesa_glsl_parse_state* parse_state, FVectorVMCompilationOutput&CompilationOutput, TArray<uint32>& temp_registers, unsigned op_idx)
+	virtual bool finalize(_mesa_glsl_parse_state* parse_state, FVectorVMCompilationOutput&CompilationOutput, const unsigned num_temp_registers, unsigned *registers, unsigned op_idx)
 	{
 		return true;
 	}
@@ -1388,13 +1150,6 @@ struct op_external_func : public op_base
 
 	bool should_cull_function(unsigned int op_idx)
 	{
-		FString FuncName = FString::Printf(TEXT("%s"), ANSI_TO_TCHAR(sig->function_name()));
-		bool bPotentiallyHasSideEffects = FuncName.Contains(TEXT("_UEImpureCall"));
-		if (bPotentiallyHasSideEffects)
-		{
-			return false;
-		}
-
 		//If the outputs of this call are never used after the current op then we cull this function.
 		bool func_is_used = false;
 		for (variable_info_node* output : outputs)
@@ -1435,7 +1190,8 @@ struct op_external_func : public op_base
 	{
 		_mesa_glsl_parse_state* parse_state;
 		FVectorVMCompilationOutput* CompilationOutput;
-		TArray<uint32>* temp_registers;
+		unsigned num_temp_registers;
+		unsigned *registers;
 		unsigned op_idx;
 		bool success;
 	};
@@ -1446,10 +1202,10 @@ struct op_external_func : public op_base
 		check(node->is_scalar());
 
 		//Some outputs for an external function can have invalid locations. If the thing has *any* valid outputs then it's considered a success.
-		ctx->success |= finalize_component_temporary_allocation(ctx->parse_state, *ctx->CompilationOutput, node, *ctx->temp_registers, ctx->op_idx);
+		ctx->success |= finalize_component_temporary_allocation(ctx->parse_state, *ctx->CompilationOutput, node, ctx->num_temp_registers, ctx->registers, ctx->op_idx);
 	}
 
-	virtual bool finalize(_mesa_glsl_parse_state* parse_state, FVectorVMCompilationOutput&CompilationOutput, TArray<uint32>& temp_registers, unsigned op_idx)
+	virtual bool finalize(_mesa_glsl_parse_state* parse_state, FVectorVMCompilationOutput&CompilationOutput, const unsigned num_temp_registers, unsigned *registers, unsigned op_idx)
 	{
 		//don't allocate any temp registers if we're culling the function.
 		function_index = -1;
@@ -1461,7 +1217,7 @@ struct op_external_func : public op_base
 		//We also add this call to the compiler output here as we're now sure it's been called.
 		function_index = CompilationOutput.CalledVMFunctionTable.AddDefaulted();
 		check(function_index != INDEX_NONE);
-		FCalledVMFunction& CalledFunc = CompilationOutput.CalledVMFunctionTable[function_index];
+		FVectorVMCompilationOutput::FCalledVMFunction& CalledFunc = CompilationOutput.CalledVMFunctionTable[function_index];
 		CalledFunc.Name = sig->function_name();
 		CalledFunc.NumOutputs = outputs.Num();
 		for (variable_info_node* input : inputs)
@@ -1472,7 +1228,8 @@ struct op_external_func : public op_base
 		finalize_temp_register_ctx ctx;
 		ctx.parse_state = parse_state;
 		ctx.CompilationOutput = &CompilationOutput;
-		ctx.temp_registers = &temp_registers;
+		ctx.num_temp_registers = num_temp_registers;
+		ctx.registers = registers;
 		ctx.op_idx = op_idx;
 		ctx.success = true;
 		for (variable_info_node* output : outputs)
@@ -1575,7 +1332,7 @@ class ir_gen_vvm_visitor : public ir_hierarchical_visitor
 	{
 		ir_gen_vvm_visitor* v = (ir_gen_vvm_visitor*)user_ptr;
 		check(node->is_scalar());
-		node->offset = v->num_input_components++;
+		node->offset = VectorVM::FirstInputRegister + v->num_input_components++;
 	}
 
 	/** assigns an output register to a variable_info_node. */
@@ -1583,7 +1340,7 @@ class ir_gen_vvm_visitor : public ir_hierarchical_visitor
 	{
 		ir_gen_vvm_visitor* v = (ir_gen_vvm_visitor*)user_ptr;
 		check(node->is_scalar());
-		node->offset = v->num_output_components++;
+		node->offset = VectorVM::FirstOutputRegister + v->num_output_components++;
 	}
 
 	/** assigns an uniform buffer address to a variable_info_node. */
@@ -1986,15 +1743,9 @@ class ir_gen_vvm_visitor : public ir_hierarchical_visitor
 
 		switch (VVMOpCode)
 		{
-		case EVectorVMOp::inputdata_half: allocate<op_input_half>(); break;
-		case EVectorVMOp::inputdata_int32: allocate<op_input_int>(); break;
-		case EVectorVMOp::inputdata_float: allocate<op_input_float>(); break;
-		case EVectorVMOp::inputdata_noadvance_float: allocate<op_input_noadvance_float>(); break;
-		case EVectorVMOp::inputdata_noadvance_int32: allocate<op_input_noadvance_int>(); break;
-		case EVectorVMOp::inputdata_noadvance_half: allocate<op_input_noadvance_half>(); break;
-		case EVectorVMOp::outputdata_half: allocate<op_output_half>(); break;
-		case EVectorVMOp::outputdata_int32: allocate<op_output_int>(); break;
-		case EVectorVMOp::outputdata_float: allocate<op_output_float>(); break;
+		case EVectorVMOp::inputdata_32bit: allocate<op_input>(); break;
+		case EVectorVMOp::inputdata_noadvance_32bit: allocate<op_input_noadvance>(); break;
+		case EVectorVMOp::outputdata_32bit: allocate<op_output>(); break;
 		case EVectorVMOp::acquireindex: allocate<op_index_acquire>(); break;
 		case EVectorVMOp::acquire_id: allocate<op_id_acquire>(); break;
 		case EVectorVMOp::update_id: allocate<op_id_update>(); break;
@@ -2319,11 +2070,9 @@ class ir_gen_vvm_visitor : public ir_hierarchical_visitor
 	void Finalize()
 	{
 		//Allocate temp registers
-// 		const unsigned num_temp_registers = VectorVM::NumTempRegisters;
-// 		unsigned *registers = rzalloc_array(mem_ctx, unsigned, num_temp_registers);
-// 		FMemory::Memset(registers, 0xFF, sizeof(unsigned) * num_temp_registers);
-		TArray<uint32> temp_registers;
-		temp_registers.Reserve(100);
+		const unsigned num_temp_registers = VectorVM::NumTempRegisters;
+		unsigned *registers = rzalloc_array(mem_ctx, unsigned, num_temp_registers);
+		FMemory::Memset(registers, 0xFF, sizeof(unsigned) * num_temp_registers);
 #if VM_VERBOSE_LOGGING
 		UE_LOG(LogVVMBackend, Log, TEXT("\n-------------------------------\nTemporary Allocations\n------------------------------\n"));
 #endif
@@ -2331,7 +2080,7 @@ class ir_gen_vvm_visitor : public ir_hierarchical_visitor
 		stripped_ops.Reserve(ordered_ops.Num());
 		for (int32 i = 0; i < ordered_ops.Num(); ++i)
 		{
-			if (ordered_ops[i]->finalize(parse_state, CompilationOutput, temp_registers, i))
+			if (ordered_ops[i]->finalize(parse_state, CompilationOutput, num_temp_registers, registers, i))
 			{
 				stripped_ops.Add(ordered_ops[i]);
 				ordered_ops[i]->validate(parse_state, i);

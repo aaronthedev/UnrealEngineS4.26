@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MediaCapture.h"
 
-#include "Application/ThrottleManager.h"
 #include "Async/Async.h"
 #include "Engine/GameEngine.h"
 #include "Engine/RendererSettings.h"
@@ -24,8 +23,6 @@
 
 #if WITH_EDITOR
 #include "Editor.h"
-#include "IAssetViewport.h"
-#include "LevelEditor.h"
 #include "Editor/EditorEngine.h"
 #include "Engine/Engine.h"
 #include "Engine/EngineTypes.h"
@@ -51,12 +48,10 @@ namespace MediaCaptureDetails
 	bool ValidateSceneViewport(const TSharedPtr<FSceneViewport>& SceneViewport, const FMediaCaptureOptions& CaptureOption, const FIntPoint& DesiredSize, const EPixelFormat DesiredPixelFormat, const bool bCurrentlyCapturing);
 	bool ValidateTextureRenderTarget2D(const UTextureRenderTarget2D* RenderTarget, const FMediaCaptureOptions& CaptureOption, const FIntPoint& DesiredSize, const EPixelFormat DesiredPixelFormat, const bool bCurrentlyCapturing);
 
-	//Validation that there is a capture
+	//Validation that there is a capture 
 	bool ValidateIsCapturing(const UMediaCapture& CaptureToBeValidated);
 
 	void ShowSlateNotification();
-
-	static const FName LevelEditorName(TEXT("LevelEditor"));
 }
 
 
@@ -82,7 +77,6 @@ FMediaCaptureOptions::FMediaCaptureOptions()
 	: Crop(EMediaCaptureCroppingType::None)
 	, CustomCapturePoint(FIntPoint::ZeroValue)
 	, bResizeSourceBuffer(false)
-	, bSkipFrameWhenRunningExpensiveTasks(true)
 {
 
 }
@@ -95,7 +89,6 @@ UMediaCapture::UMediaCapture(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 	, CurrentResolvedTargetIndex(0)
 	, NumberOfCaptureFrame(2)
-	, CaptureRequestCount(0)
 	, MediaState(EMediaCaptureState::Stopped)
 	, DesiredSize(1280, 720)
 	, DesiredPixelFormat(EPixelFormat::PF_A2B10G10R10)
@@ -141,7 +134,7 @@ bool UMediaCapture::CaptureActiveSceneViewport(FMediaCaptureOptions CaptureOptio
 	TSharedPtr<FSceneViewport> FoundSceneViewport;
 	if (!MediaCaptureDetails::FindSceneViewportAndLevel(FoundSceneViewport) || !FoundSceneViewport.IsValid())
 	{
-		UE_LOG(LogMediaIOCore, Warning, TEXT("Can not start the capture. No viewport could be found."));
+		UE_LOG(LogMediaIOCore, Warning, TEXT("Can not start the capture. No viewport could be found. Play in 'Standalone' or in 'New Editor Window PIE'."));
 		return false;
 	}
 
@@ -183,30 +176,22 @@ bool UMediaCapture::CaptureSceneViewport(TSharedPtr<FSceneViewport>& InSceneView
 	}
 
 	SetState(EMediaCaptureState::Preparing);
-	bool bInitialized = CaptureSceneViewportImpl(InSceneViewport);
-
-	if (bInitialized)
-	{
-		InitializeResolveTarget(MediaOutput->NumberOfTextureBuffers);
-		bInitialized = GetState() != EMediaCaptureState::Stopped;
-	}
-
-	if (bInitialized)
-	{
-		//no lock required, the command on the render thread is not active
-		CapturingSceneViewport = InSceneViewport;
-
-		CurrentResolvedTargetIndex = 0;
-		FCoreDelegates::OnEndFrame.AddUObject(this, &UMediaCapture::OnEndFrame_GameThread);
-	}
-	else
+	if (!CaptureSceneViewportImpl(InSceneViewport))
 	{
 		ResetFixedViewportSize(InSceneViewport, false);
 		SetState(EMediaCaptureState::Stopped);
 		MediaCaptureDetails::ShowSlateNotification();
+		return false;
 	}
 
-	return bInitialized;
+	//no lock required, the command on the render thread is not active
+	CapturingSceneViewport = InSceneViewport;
+
+	InitializeResolveTarget(MediaOutput->NumberOfTextureBuffers);
+	CurrentResolvedTargetIndex = 0;
+	FCoreDelegates::OnEndFrame.AddUObject(this, &UMediaCapture::OnEndFrame_GameThread);
+
+	return true;
 }
 
 bool UMediaCapture::CaptureTextureRenderTarget2D(UTextureRenderTarget2D* InRenderTarget2D, FMediaCaptureOptions CaptureOptions)
@@ -243,29 +228,21 @@ bool UMediaCapture::CaptureTextureRenderTarget2D(UTextureRenderTarget2D* InRende
 	}
 
 	SetState(EMediaCaptureState::Preparing);
-	bool bInitialized = CaptureRenderTargetImpl(InRenderTarget2D);
-
-	if (bInitialized)
-	{
-		InitializeResolveTarget(MediaOutput->NumberOfTextureBuffers);
-		bInitialized = GetState() != EMediaCaptureState::Stopped;
-	}
-
-	if (bInitialized)
-	{
-		//no lock required the command on the render thread is not active yet
-		CapturingRenderTarget = InRenderTarget2D;
-
-		CurrentResolvedTargetIndex = 0;
-		FCoreDelegates::OnEndFrame.AddUObject(this, &UMediaCapture::OnEndFrame_GameThread);
-	}
-	else
+	if (!CaptureRenderTargetImpl(InRenderTarget2D))
 	{
 		SetState(EMediaCaptureState::Stopped);
 		MediaCaptureDetails::ShowSlateNotification();
+		return false;
 	}
 
-	return bInitialized;
+	//no lock required the command on the render thread is not active yet
+	CapturingRenderTarget = InRenderTarget2D;
+
+	InitializeResolveTarget(MediaOutput->NumberOfTextureBuffers);
+	CurrentResolvedTargetIndex = 0;
+	FCoreDelegates::OnEndFrame.AddUObject(this, &UMediaCapture::OnEndFrame_GameThread);
+
+	return true;
 }
 
 void UMediaCapture::CacheMediaOutput(EMediaCaptureSourceType InSourceType)
@@ -286,7 +263,7 @@ void UMediaCapture::CacheOutputOptions()
 }
 
 FIntPoint UMediaCapture::GetOutputSize(const FIntPoint & InSize, const EMediaCaptureConversionOperation & InConversionOperation) const
-{
+{	
 	switch (InConversionOperation)
 	{
 	case EMediaCaptureConversionOperation::RGBA8_TO_YUV_8BIT:
@@ -525,13 +502,6 @@ bool UMediaCapture::HasFinishedProcessing() const
 
 void UMediaCapture::InitializeResolveTarget(int32 InNumberOfBuffers)
 {
-	if (DesiredOutputSize.X <= 0 || DesiredOutputSize.Y <= 0)
-	{
-		UE_LOG(LogMediaIOCore, Error, TEXT("Can't start the capture. The size requested is negative or zero."));
-		SetState(EMediaCaptureState::Stopped);
-		return;
-	}
-
 	if (bShouldCaptureRHITexture)
 	{
 		// No buffer is needed if the callback is with the RHI Texture
@@ -611,11 +581,6 @@ void UMediaCapture::OnEndFrame_GameThread()
 		return;
 	}
 
-	if (DesiredCaptureOptions.bSkipFrameWhenRunningExpensiveTasks && !FSlateThrottleManager::Get().IsAllowingExpensiveTasks())
-	{
-		return;
-	}
-
 	CurrentResolvedTargetIndex = (CurrentResolvedTargetIndex + 1) % NumberOfCaptureFrame;
 	int32 ReadyFrameIndex = (CurrentResolvedTargetIndex + 1) % NumberOfCaptureFrame; // Next one in the buffer queue
 
@@ -635,7 +600,7 @@ void UMediaCapture::OnEndFrame_GameThread()
 
 	if (CapturingFrame)
 	{
-		//Verify if game thread is overrunning the render thread.
+		//Verify if game thread is overrunning the render thread. 
 		if (CapturingFrame->bResolvedTargetRequested)
 		{
 			FlushRenderingCommands();
@@ -644,7 +609,6 @@ void UMediaCapture::OnEndFrame_GameThread()
 		CapturingFrame->CaptureBaseData.SourceFrameTimecode = FApp::GetTimecode();
 		CapturingFrame->CaptureBaseData.SourceFrameTimecodeFramerate = FApp::GetTimecodeFrameRate();
 		CapturingFrame->CaptureBaseData.SourceFrameNumberRenderThread = GFrameNumber;
-		CapturingFrame->CaptureBaseData.SourceFrameNumber = ++CaptureRequestCount;
 		CapturingFrame->UserData = GetCaptureFrameUserData_GameThread();
 	}
 
@@ -826,7 +790,6 @@ void UMediaCapture::Capture_RenderThread(FRHICommandListImmediate& RHICmdList,
 				// convert the source with a draw call
 				FGraphicsPipelineStateInitializer GraphicsPSOInit;
 				FRHITexture* RenderTarget = DestRenderTarget.TargetableTexture.GetReference();
-				RHICmdList.Transition(FRHITransitionInfo(RenderTarget, ERHIAccess::Unknown, ERHIAccess::RTV));
 				FRHIRenderPassInfo RPInfo(RenderTarget,  ERenderTargetActions::DontLoad_Store);
 				RHICmdList.BeginRenderPass(RPInfo, TEXT("MediaCapture"));
 
@@ -842,7 +805,7 @@ void UMediaCapture::Capture_RenderThread(FRHICommandListImmediate& RHICmdList,
 				TShaderMapRef<FMediaShadersVS> VertexShader(ShaderMap);
 
 				GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GMediaVertexDeclaration.VertexDeclarationRHI;
-				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
 
 				const bool bDoLinearToSRGB = false;
 
@@ -851,7 +814,7 @@ void UMediaCapture::Capture_RenderThread(FRHICommandListImmediate& RHICmdList,
 				case EMediaCaptureConversionOperation::RGBA8_TO_YUV_8BIT:
 				{
 					TShaderMapRef<FRGB8toUYVY8ConvertPS> ConvertShader(ShaderMap);
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ConvertShader);
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 					ConvertShader->SetParameters(RHICmdList, SourceTexture, MediaShaders::RgbToYuvRec709Full, MediaShaders::YUVOffset8bits, bDoLinearToSRGB);
 				}
@@ -859,7 +822,7 @@ void UMediaCapture::Capture_RenderThread(FRHICommandListImmediate& RHICmdList,
 				case EMediaCaptureConversionOperation::RGB10_TO_YUVv210_10BIT:
 				{
 					TShaderMapRef<FRGB10toYUVv210ConvertPS> ConvertShader(ShaderMap);
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ConvertShader);
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 					ConvertShader->SetParameters(RHICmdList, SourceTexture, MediaShaders::RgbToYuvRec709Full, MediaShaders::YUVOffset10bits, bDoLinearToSRGB);
 				}
@@ -867,7 +830,7 @@ void UMediaCapture::Capture_RenderThread(FRHICommandListImmediate& RHICmdList,
 				case EMediaCaptureConversionOperation::INVERT_ALPHA:
 				{
 					TShaderMapRef<FInvertAlphaPS> ConvertShader(ShaderMap);
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ConvertShader);
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 					ConvertShader->SetParameters(RHICmdList, SourceTexture);
 				}
@@ -875,7 +838,7 @@ void UMediaCapture::Capture_RenderThread(FRHICommandListImmediate& RHICmdList,
 				case EMediaCaptureConversionOperation::SET_ALPHA_ONE:
 				{
 					TShaderMapRef<FSetAlphaOnePS> ConvertShader(ShaderMap);
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ConvertShader);
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 					ConvertShader->SetParameters(RHICmdList, SourceTexture);
 				}
@@ -889,9 +852,9 @@ void UMediaCapture::Capture_RenderThread(FRHICommandListImmediate& RHICmdList,
 				// set viewport to RT size
 				RHICmdList.SetViewport(0, 0, 0.0f, InMediaCapture->DesiredOutputSize.X, InMediaCapture->DesiredOutputSize.Y, 1.0f);
 				RHICmdList.DrawPrimitive(0, 2, 1);
-				RHICmdList.EndRenderPass();
-				RHICmdList.Transition(FRHITransitionInfo(DestRenderTarget.TargetableTexture, ERHIAccess::RTV, ERHIAccess::SRVGraphics));
+				RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, DestRenderTarget.TargetableTexture);
 
+				RHICmdList.EndRenderPass();
 			}
 
 			if (InMediaCapture->bShouldCaptureRHITexture)
@@ -953,40 +916,22 @@ namespace MediaCaptureDetails
 				{
 					UEditorEngine* EditorEngine = CastChecked<UEditorEngine>(GEngine);
 					FSlatePlayInEditorInfo& Info = EditorEngine->SlatePlayInEditorMap.FindChecked(Context.ContextHandle);
-
-					// The PIE window has priority over the regular editor window, so we need to break out of the loop if either of these are found
-					if (TSharedPtr<IAssetViewport> DestinationLevelViewport = Info.DestinationSlateViewport.Pin())
-					{
-						OutSceneViewport = DestinationLevelViewport->GetSharedActiveViewport();
-						break;
-					}
-					else if (Info.SlatePlayInEditorWindowViewport.IsValid())
+					if (Info.SlatePlayInEditorWindowViewport.IsValid())
 					{
 						OutSceneViewport = Info.SlatePlayInEditorWindowViewport;
-						break;
-					}
-				}
-				else if (Context.WorldType == EWorldType::Editor)
-				{
-					if (FLevelEditorModule* LevelEditorModule = FModuleManager::GetModulePtr<FLevelEditorModule>(LevelEditorName))
-					{
-						TSharedPtr<IAssetViewport> ActiveLevelViewport = LevelEditorModule->GetFirstActiveViewport();
-						if (ActiveLevelViewport.IsValid())
-						{
-							OutSceneViewport = ActiveLevelViewport->GetSharedActiveViewport();
-						}
+						return true;
 					}
 				}
 			}
+			return false;
 		}
 		else
 #endif
 		{
 			UGameEngine* GameEngine = CastChecked<UGameEngine>(GEngine);
 			OutSceneViewport = GameEngine->SceneViewport;
+			return true;
 		}
-
-		return (OutSceneViewport.IsValid());
 	}
 
 	bool ValidateSize(const FIntPoint TargetSize, const FIntPoint& DesiredSize, const FMediaCaptureOptions& CaptureOptions, const bool bCurrentlyCapturing)

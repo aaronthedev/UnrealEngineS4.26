@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	HairRendering.h: Hair strands LUT generation.
@@ -8,22 +8,18 @@
 
 #include "CoreMinimal.h"
 #include "RendererInterface.h"
-#include "RenderGraphDefinitions.h"
-
-class FViewInfo;
 
 enum FHairLUTType
 {
 	HairLUTType_DualScattering,
 	HairLUTType_MeanEnergy,
-	HairLUTType_Coverage,
 	HairLUTTypeCount
 };
 
 struct FHairLUT
 {
-	FRDGTextureRef Textures[HairLUTTypeCount] = { nullptr, nullptr, nullptr };
+	TRefCountPtr<IPooledRenderTarget> Textures[HairLUTTypeCount];
 };
 
 /// Returns Hair LUTs. LUTs are generated on demand.
-FHairLUT GetHairLUT(FRDGBuilder& GraphBuilder, const FViewInfo& View);
+FHairLUT GetHairLUT(FRHICommandListImmediate& RHICmdList, const FViewInfo& View);

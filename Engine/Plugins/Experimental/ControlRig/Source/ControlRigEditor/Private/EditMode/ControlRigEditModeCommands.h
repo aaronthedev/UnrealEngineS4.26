@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,28 +19,24 @@ public:
 	)
 	{}
 	
+	/** Sets a key at the current time for the selected nodes */
+	TSharedPtr< FUICommandInfo > SetKey;
 
 	/** Toggles hiding all manipulators in the viewport */
 	TSharedPtr< FUICommandInfo > ToggleManipulators;
 
-	/** Reset Transforms for Controls */
-	TSharedPtr< FUICommandInfo > ResetTransforms;
 
-	/** Reset Transforms for Controls */
-	TSharedPtr< FUICommandInfo > ResetAllTransforms;
+	/** Export this sequence to an optimized skeleton-specific animation sequence */
+	TSharedPtr< FUICommandInfo > ExportAnimSequence;
 
-	/** Frame selected elements */
-	TSharedPtr<FUICommandInfo> FrameSelection;
+	/** Re-export this sequence to an animation sequence using the previous export settings */
+	TSharedPtr< FUICommandInfo > ReExportAnimSequence;
 
-	/** Increase Gizmo Size */
-	TSharedPtr< FUICommandInfo > IncreaseGizmoSize;
+	/** Import this animation sequence from a source rig sequence */
+	TSharedPtr< FUICommandInfo > ImportFromRigSequence;
 
-	/** Decrease Gizmo Size */
-	TSharedPtr< FUICommandInfo > DecreaseGizmoSize;
-
-	/** Reset Gizmo Size */
-	TSharedPtr< FUICommandInfo > ResetGizmoSize;
-
+	/** Re-import this animation sequence from it's source rig sequence */
+	TSharedPtr< FUICommandInfo > ReImportFromRigSequence;
 
 	/**
 	 * Initialize commands

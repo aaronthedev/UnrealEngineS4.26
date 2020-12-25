@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UserInterface/SMessageLogMessageListRow.h"
 #include "Widgets/SToolTip.h"
@@ -86,6 +86,7 @@ TSharedRef<SWidget> SMessageLogMessageListRow::GenerateWidget()
 	}
 
 	return SNew(SHorizontalBox)
+		.ToolTipText(Message->ToText())
 
 		+ SHorizontalBox::Slot()
 		.AutoWidth()
@@ -282,7 +283,7 @@ void SMessageLogMessageListRow::CreateMessage(const TSharedRef<SHorizontalBox>& 
 				int32 LineNumber = FCString::Atoi(*FileAndLineRegexMatcher.GetCaptureGroup(2));
 
 				// Remove the hyperlink from the message, since we're splitting it into its own string.
-				MessageString.RightChopInline(FileAndLineRegexMatcher.GetMatchEnding(), false);
+				MessageString = MessageString.RightChop(FileAndLineRegexMatcher.GetMatchEnding());
 
 				SourceLink = SNew(SHyperlink)
 					.Style(FEditorStyle::Get(), "Common.GotoNativeCodeHyperlink")
@@ -306,7 +307,6 @@ void SMessageLogMessageListRow::CreateMessage(const TSharedRef<SHorizontalBox>& 
 			[
 				SNew(STextBlock)
 				.ColorAndOpacity(FSlateColor::UseSubduedForeground())
-				.TextStyle(FEditorStyle::Get(), "Log.Normal")
 				.Text(FText::FromString(MessageString))
 			];
 		}

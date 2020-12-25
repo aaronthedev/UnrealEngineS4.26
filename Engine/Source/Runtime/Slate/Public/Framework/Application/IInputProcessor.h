@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -48,7 +48,4 @@ public:
 
 	/** Called when a motion-driven device has new input */
 	virtual bool HandleMotionDetectedEvent(FSlateApplication& SlateApp, const FMotionEvent& MotionEvent) { return false; };
-
-	/** Debug name for logging purposes */
-	virtual const TCHAR* GetDebugName() const { return TEXT(""); }
 };

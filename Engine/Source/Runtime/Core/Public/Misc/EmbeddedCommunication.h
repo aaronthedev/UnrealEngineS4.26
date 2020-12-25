@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -37,11 +37,6 @@ public:
 	// calling out from engine to native wrapper
 	static FEmbeddedCommunicationParamsDelegate& GetEmbeddedToNativeParamsDelegateForSubsystem(FName SubsystemName);
 
-	// returns true if NativeToEmbedded delegate for subsystem exists
-	static bool IsEmbeddedSubsystemAvailable(FName SubsystemName);
-	
-	// FTicker-like delegate, to bind things to be ticked at a regular interval while the game thread is otherwise asleep.
-	static FSimpleMulticastDelegate SleepTickDelegate;
 
 	// get/set an object by name, thread safe
 	static void SetNamedObject(const FString& Name, void* Object);
@@ -86,10 +81,8 @@ public:
 	static void KeepAwake(FName Requester, bool bNeedsRendering);
 	static void AllowSleep(FName Requester);
 	
-	static void UELogFatal(const TCHAR* String);
 	static void UELogError(const TCHAR* String);
 	static void UELogWarning(const TCHAR* String);
-	static void UELogDisplay(const TCHAR* String);
 	static void UELogLog(const TCHAR* String);
 	static void UELogVerbose(const TCHAR* String);
 

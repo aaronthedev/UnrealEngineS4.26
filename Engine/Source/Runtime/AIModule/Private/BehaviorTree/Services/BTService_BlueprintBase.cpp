@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BehaviorTree/Services/BTService_BlueprintBase.h"
 #include "AIController.h"
@@ -128,18 +128,14 @@ bool UBTService_BlueprintBase::IsServiceActive() const
 
 FString UBTService_BlueprintBase::GetStaticServiceDescription() const
 {
-	FString ReturnDesc
-#if WITH_EDITORONLY_DATA
-		= CustomDescription
-#endif // WITH_EDITORONLY_DATA
-		;
+	FString ReturnDesc;
 
 	UBTService_BlueprintBase* CDO = (UBTService_BlueprintBase*)(GetClass()->GetDefaultObject());
 	if (CDO)
 	{
 		if (bShowEventDetails)
 		{
-			ReturnDesc += FString::Printf(TEXT("%s, %s, %s, %s\n"),
+			ReturnDesc = FString::Printf(TEXT("%s, %s, %s, %s\n"),
 				ReceiveTickImplementations != 0 ? *GetStaticTickIntervalDescription() : TEXT("No tick"),
 				ReceiveActivationImplementations != 0 ? TEXT("Activation") : TEXT("No Activation"),
 				ReceiveDeactivationImplementations != 0 ? TEXT("Deactivation") : TEXT("No Deactivation"),
@@ -147,7 +143,7 @@ FString UBTService_BlueprintBase::GetStaticServiceDescription() const
 		}
 		else
 		{
-			ReturnDesc += Super::GetStaticServiceDescription();
+			ReturnDesc = Super::GetStaticServiceDescription();
 			ReturnDesc += TEXT('\n');
 		}
 						

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BaseBehaviors/MultiClickSequenceInputBehavior.h"
 
@@ -6,162 +6,118 @@
 
 UMultiClickSequenceInputBehavior::UMultiClickSequenceInputBehavior()
 {
+	bInActiveSequence = false;
 }
 
 
 void UMultiClickSequenceInputBehavior::Initialize(IClickSequenceBehaviorTarget* TargetIn)
 {
 	this->Target = TargetIn;
+	bInActiveSequence = false;
 }
+
 
 FInputCaptureRequest UMultiClickSequenceInputBehavior::WantsCapture(const FInputDeviceState& input)
 {
-	if (!Target)
-	{
-		return FInputCaptureRequest::Ignore();
-	}
+	check(bInActiveSequence == false);   // should not happen...
+	bInActiveSequence = false;
 
-	if (IsPressed(input))
+	if ( IsPressed(input) && (ModifierCheckFunc == nullptr || ModifierCheckFunc(input) ) )
 	{
-		switch (State)
+		if ( Target->CanBeginClickSequence(GetDeviceRay(input)) )
 		{
-		case ESequenceState::NotStarted:
-		{
-			if ((ModifierCheckFunc == nullptr || ModifierCheckFunc(input))
-				&& Target->CanBeginClickSequence(GetDeviceRay(input)))
-			{
-				return FInputCaptureRequest::Begin(this, EInputCaptureSide::Any);
-			}
-			break;
-		}
-		case ESequenceState::WaitingForNextClick:
-		{
-			// TODO: we could consider doing the extra checks for non-first clicks as well.
 			return FInputCaptureRequest::Begin(this, EInputCaptureSide::Any);
-			break;
-		}
 		}
 	}
-
 	return FInputCaptureRequest::Ignore();
 }
 
 
 FInputCaptureUpdate UMultiClickSequenceInputBehavior::BeginCapture(const FInputDeviceState& input, EInputCaptureSide eSide)
 {
-	check(Target); // WantsCapture should not have allowed this if we didn't have a target
+	Modifiers.UpdateModifiers(input, Target);
 
+	Target->OnBeginClickSequence(GetDeviceRay(input));
+	bInActiveSequence = true;
+	
 	return FInputCaptureUpdate::Begin(this, EInputCaptureSide::Any);
 }
 
 
 FInputCaptureUpdate UMultiClickSequenceInputBehavior::UpdateCapture(const FInputDeviceState& input, const FInputCaptureData& data)
 {
-	check(Target);
+	check(bInActiveSequence == true);   // should always be the case!
 
 	Modifiers.UpdateModifiers(input, Target);
 
-	// Allow target to abort click sequence
-	if (State == ESequenceState::WaitingForNextClick && Target->RequestAbortClickSequence())
+	// allow target to abort click sequence
+	if (Target->RequestAbortClickSequence())
 	{
 		Target->OnTerminateClickSequence();
-		State = ESequenceState::NotStarted;
+		bInActiveSequence = false;
 		return FInputCaptureUpdate::End();
 	}
 
-	// Look for click completion
-	if (IsReleased(input))
+	if (IsReleased(input)) 
 	{
-		switch (State)
+		bool bContinue = Target->OnNextSequenceClick(GetDeviceRay(input));
+		if (bContinue == false)
 		{
-		case ESequenceState::NotStarted:
-		{
-			// Extra check when beginning the sequence
-			if (Target->CanBeginClickSequence(GetDeviceRay(input)))
-			{
-				Target->OnBeginClickSequence(GetDeviceRay(input));
-				State = ESequenceState::WaitingForNextClick;
-			}
-			break;
+			bInActiveSequence = false;
+			return FInputCaptureUpdate::End();
 		}
-		case ESequenceState::WaitingForNextClick:
-		{
-			bool bContinue = Target->OnNextSequenceClick(GetDeviceRay(input));
-			if (!bContinue)
-			{
-				// Done with the click sequence
-				State = ESequenceState::NotStarted;
-			}
-			break;
-		}
-		}
-
-		// Mouse release always ends the click capture
-		return FInputCaptureUpdate::End();
 	}
+	else
+	{
+		Target->OnNextSequencePreview(GetDeviceRay(input));
+	}
+
 	return FInputCaptureUpdate::Continue();
 }
 
+
 void UMultiClickSequenceInputBehavior::ForceEndCapture(const FInputCaptureData& data)
 {
-	// Only affects us if we were in the middle of a sequence
-	if (Target && State == ESequenceState::WaitingForNextClick)
-	{
-		Target->OnTerminateClickSequence();
-	}
+	Target->OnTerminateClickSequence();
+	bInActiveSequence = false;
 }
+
 
 bool UMultiClickSequenceInputBehavior::WantsHoverEvents()
 {
 	return true;
 }
 
+
 FInputCaptureRequest UMultiClickSequenceInputBehavior::WantsHoverCapture(const FInputDeviceState& InputState)
 {
-	return Target != nullptr ? FInputCaptureRequest::Begin(this, EInputCaptureSide::Any) : FInputCaptureRequest::Ignore();
+	return FInputCaptureRequest::Begin(this, EInputCaptureSide::Any);
 }
 
 FInputCaptureUpdate UMultiClickSequenceInputBehavior::BeginHoverCapture(const FInputDeviceState& InputState, EInputCaptureSide eSide) 
 {
-	check(Target); // WantsHoverCapture shouldn't have allowed this without a target
-
-	return FInputCaptureUpdate::Begin(this, EInputCaptureSide::Any);
+	if (Target != nullptr)
+	{
+		Modifiers.UpdateModifiers(InputState, Target);
+		Target->OnBeginSequencePreview(FInputDeviceRay(InputState.Mouse.WorldRay, InputState.Mouse.Position2D));
+		return FInputCaptureUpdate::Begin(this, EInputCaptureSide::Any);
+	}
+	return FInputCaptureUpdate::Ignore();
 }
 
 FInputCaptureUpdate UMultiClickSequenceInputBehavior::UpdateHoverCapture(const FInputDeviceState& InputState)
 {
-	check(Target);
-
-	Modifiers.UpdateModifiers(InputState, Target);
-
-	// Allow target to abort click sequence
-	if (State == ESequenceState::WaitingForNextClick && Target->RequestAbortClickSequence())
+	if (Target != nullptr)
 	{
-		Target->OnTerminateClickSequence();
-		State = ESequenceState::NotStarted;
-		return FInputCaptureUpdate::End();
-	}
-
-	// Dispatch the correct preview callback
-	switch (State)
-	{
-	case ESequenceState::NotStarted:
-	{
+		Modifiers.UpdateModifiers(InputState, Target);
 		Target->OnBeginSequencePreview(FInputDeviceRay(InputState.Mouse.WorldRay, InputState.Mouse.Position2D));
-		break;
+		return FInputCaptureUpdate::Continue();
 	}
-	case ESequenceState::WaitingForNextClick:
-	{
-		Target->OnNextSequencePreview(FInputDeviceRay(InputState.Mouse.WorldRay, InputState.Mouse.Position2D));
-		break;
-	}
-	}
-
-	return FInputCaptureUpdate::Continue();
+	return FInputCaptureUpdate::End();
 }
 
 
 void UMultiClickSequenceInputBehavior::EndHoverCapture()
 {
-	// Nothing to do.
+	// end
 }

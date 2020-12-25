@@ -41,8 +41,7 @@ namespace UnrealBuildTool.Rules
 					"Engine",
 					"InputCore",
 					"Projects",
-					"AudioMixer",
-					"AudioExtensions"
+					"AudioMixer"
 				}
 			);
 
@@ -50,11 +49,7 @@ namespace UnrealBuildTool.Rules
 			{
 				PrivateDependencyModuleNames.Add("UnrealEd");
 				PrivateDependencyModuleNames.Add("Landscape");
-            }
-            else
-            {
-                RuntimeDependencies.Add("$(ProjectDir)/Content/SteamAudio/Runtime/...");
-            }
+			}
 
 			AddEngineThirdPartyPrivateStaticDependencies(Target, "libPhonon");
 
@@ -62,15 +57,12 @@ namespace UnrealBuildTool.Rules
 			{
 				PrivateDependencyModuleNames.Add("XAudio2");
 				AddEngineThirdPartyPrivateStaticDependencies(Target, "DX11Audio");
-                RuntimeDependencies.Add("$(EngineDir)/Binaries/ThirdParty/Phonon/Win32/...");
-            }
+			}
 			else if (Target.Platform == UnrealTargetPlatform.Win64)
 			{
-                PrivateDependencyModuleNames.Add("XAudio2");
+				PrivateDependencyModuleNames.Add("XAudio2");
 				AddEngineThirdPartyPrivateStaticDependencies(Target, "DX11Audio");
-
-                RuntimeDependencies.Add("$(EngineDir)/Binaries/ThirdParty/Phonon/Win64/...");
-                PublicDelayLoadDLLs.Add("GPUUtilities.dll");
+				PublicDelayLoadDLLs.Add("GPUUtilities.dll");
 				PublicDelayLoadDLLs.Add("tanrt64.dll");
 				PublicDelayLoadDLLs.Add("embree.dll");
 				PublicDelayLoadDLLs.Add("tbb.dll");

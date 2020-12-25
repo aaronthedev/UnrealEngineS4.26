@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/StreamableManager.h"
 #include "UObject/WeakObjectPtr.h"
@@ -28,76 +28,50 @@ public:
 	/** Adds a delegate to deferred list */
 	void AddDelegate(const FStreamableDelegate& Delegate, const FStreamableDelegate& CancelDelegate, TSharedPtr<FStreamableHandle> AssociatedHandle)
 	{
-		FPendingDelegate* PendingDelegate = new FPendingDelegate(Delegate, CancelDelegate, AssociatedHandle);
+		DataLock.Lock();
 
-		{
-			FScopeLock Lock(&DataLock);
+		PendingDelegates.Emplace(Delegate, CancelDelegate, AssociatedHandle);
 
-			FPendingDelegateList& DelegatesForHandle = PendingDelegatesByHandle.FindOrAdd(AssociatedHandle);
-			FPendingDelegateList::AddTail(PendingDelegate, PendingDelegates, DelegatesForHandle);
-		}
+		DataLock.Unlock();
 	}
 
 	/** Cancels delegate for handle, this will either delete the delegate or replace with the cancel delegate */
 	void CancelDelegatesForHandle(TSharedPtr<FStreamableHandle> AssociatedHandle)
 	{
-		FPendingDelegateList PendingDelegatesToDelete;
-
+		if (!AssociatedHandle.IsValid())
 		{
-			FScopeLock _(&DataLock);
+			return;
+		}
 
-			FPendingDelegateList* DelegatesForHandle = PendingDelegatesByHandle.Find(AssociatedHandle);
-			if (!DelegatesForHandle)
-			{
-				return;
-			}
+		DataLock.Lock();
 
-			FPendingDelegate* CurrentNode = DelegatesForHandle->Head;
-			while (CurrentNode)
+		for (int32 DelegateIndex = 0; DelegateIndex < PendingDelegates.Num(); DelegateIndex++)
+		{
+			FPendingDelegate& PendingDelegate = PendingDelegates[DelegateIndex];
+			if (PendingDelegate.RelatedHandle == AssociatedHandle)
 			{
-				FPendingDelegate* NextNode = CurrentNode->NextByHandle;
-				if (CurrentNode->CancelDelegate.IsBound())
+				if (PendingDelegate.CancelDelegate.IsBound())
 				{
 					// Replace with cancel delegate
-					CurrentNode->Delegate = CurrentNode->CancelDelegate;
-					CurrentNode->CancelDelegate.Unbind();
+					PendingDelegate.Delegate = PendingDelegate.CancelDelegate;
+					PendingDelegate.CancelDelegate.Unbind();
 				}
 				else
 				{
 					// Remove entirely
-					FPendingDelegateList::Unlink(CurrentNode, PendingDelegates, *DelegatesForHandle);
-					if (PendingDelegatesToDelete.Tail)
-					{
-						PendingDelegatesToDelete.Tail->Next = CurrentNode;
-						PendingDelegatesToDelete.Tail = CurrentNode;
-					}
-					else
-					{
-						PendingDelegatesToDelete.Head = PendingDelegatesToDelete.Tail = CurrentNode;
-					}
-					CurrentNode->Next = nullptr;
+					PendingDelegates.RemoveAt(DelegateIndex);
+					DelegateIndex--;
 				}
-				CurrentNode = NextNode;
-			}
-			if (!DelegatesForHandle->Head)
-			{
-				PendingDelegatesByHandle.Remove(AssociatedHandle);
 			}
 		}
 
-		FPendingDelegate* NodeToDelete = PendingDelegatesToDelete.Head;
-		while (NodeToDelete)
-		{
-			FPendingDelegate* NextNodeToDelete = NodeToDelete->Next;
-			delete NodeToDelete;
-			NodeToDelete = NextNodeToDelete;
-		}
+		DataLock.Unlock();
 	}
 
 	/** Calls all delegates, call from synchronous flushes */
 	void FlushDelegates()
 	{
-		while (PendingDelegates.Head)
+		while (PendingDelegates.Num() > 0)
 		{
 			Tick(0.0f);
 		}
@@ -107,51 +81,34 @@ public:
 
 	void Tick(float DeltaTime) override
 	{
-		if (!PendingDelegates.Head)
+		if (PendingDelegates.Num() == 0)
 		{
 			return;
 		}
 
-		FPendingDelegateList DelegatesToCall;
-		{
-			FScopeLock Lock(&DataLock);
+		DataLock.Lock();
 
-			FPendingDelegate* CurrentNode = PendingDelegates.Head;
-			while (CurrentNode)
+		TArray<FPendingDelegate> DelegatesToCall;
+		DelegatesToCall.Reserve(PendingDelegates.Num());
+		for (int32 DelegateIndex = 0; DelegateIndex < PendingDelegates.Num(); DelegateIndex++)
+		{
+			if (--PendingDelegates[DelegateIndex].DelayFrames <= 0)
 			{
-				FPendingDelegate* NextNode = CurrentNode->Next;
-				if (--CurrentNode->DelayFrames <= 0)
-				{
-					// Add to call array and remove from tracking one
-					FPendingDelegateList* DelegatesForHandle = PendingDelegatesByHandle.Find(CurrentNode->RelatedHandle);
-					check(DelegatesForHandle);
-					FPendingDelegateList::Unlink(CurrentNode, PendingDelegates, *DelegatesForHandle);
-					if (DelegatesToCall.Tail)
-					{
-						DelegatesToCall.Tail->Next = CurrentNode;
-						DelegatesToCall.Tail = CurrentNode;
-					}
-					else
-					{
-						DelegatesToCall.Head = DelegatesToCall.Tail = CurrentNode;
-					}
-					if (!DelegatesForHandle->Head)
-					{
-						PendingDelegatesByHandle.Remove(CurrentNode->RelatedHandle);
-					}
-				}
-				CurrentNode = NextNode;
+				// Add to call array and remove from tracking one
+				DelegatesToCall.Emplace(PendingDelegates[DelegateIndex].Delegate, FStreamableDelegate(), PendingDelegates[DelegateIndex].RelatedHandle);
+				PendingDelegates.RemoveAt(DelegateIndex--);
 			}
 		}
 
-		FPendingDelegate* DelegateToCall = DelegatesToCall.Head;
-		while (DelegateToCall)
+		DataLock.Unlock();
+
+		for (const FPendingDelegate& PendingDelegate : DelegatesToCall)
 		{
-			FPendingDelegate* NextDelegateToCall = DelegateToCall->Next;
-			DelegateToCall->Delegate.ExecuteIfBound();
-			delete DelegateToCall;
-			DelegateToCall = NextDelegateToCall;
+			// Call delegates, these may add other deferred delegates
+			PendingDelegate.Delegate.ExecuteIfBound();
 		}
+
+		// When DelegatesToCall falls out of scope it may delete the referenced handles
 	}
 
 	virtual ETickableTickType GetTickableTickType() const override
@@ -178,12 +135,6 @@ private:
 
 	struct FPendingDelegate
 	{
-		FPendingDelegate* Prev;
-		FPendingDelegate* Next;
-
-		FPendingDelegate* PrevByHandle;
-		FPendingDelegate* NextByHandle;
-
 		/** Delegate to call when frames are up */
 		FStreamableDelegate Delegate;
 
@@ -204,89 +155,7 @@ private:
 		{}
 	};
 
-	struct FPendingDelegateList
-	{
-		FPendingDelegate* Head = nullptr;
-		FPendingDelegate* Tail = nullptr;
-
-		static void Unlink(FPendingDelegate* PendingDelegate, FPendingDelegateList& PendingDelegates, FPendingDelegateList& PendingDelegatesByHandle)
-		{
-			if (PendingDelegate->Prev)
-			{
-				PendingDelegate->Prev->Next = PendingDelegate->Next;
-			}
-			else
-			{
-				check(PendingDelegate == PendingDelegates.Head);
-				PendingDelegates.Head = PendingDelegate->Next;
-			}
-			if (PendingDelegate->Next)
-			{
-				PendingDelegate->Next->Prev = PendingDelegate->Prev;
-			}
-			else
-			{
-				check(PendingDelegate == PendingDelegates.Tail);
-				PendingDelegates.Tail = PendingDelegate->Prev;
-			}
-			PendingDelegate->Next = PendingDelegate->Prev = nullptr;
-
-			if (PendingDelegate->PrevByHandle)
-			{
-				PendingDelegate->PrevByHandle->NextByHandle = PendingDelegate->NextByHandle;
-			}
-			else
-			{
-				check(PendingDelegate == PendingDelegatesByHandle.Head);
-				PendingDelegatesByHandle.Head = PendingDelegate->NextByHandle;
-			}
-			if (PendingDelegate->NextByHandle)
-			{
-				PendingDelegate->NextByHandle->PrevByHandle = PendingDelegate->PrevByHandle;
-			}
-			else
-			{
-				check(PendingDelegate == PendingDelegatesByHandle.Tail);
-				PendingDelegatesByHandle.Tail = PendingDelegate->PrevByHandle;
-			}
-			PendingDelegate->NextByHandle = PendingDelegate->PrevByHandle = nullptr;
-
-		}
-
-		static void AddTail(FPendingDelegate* PendingDelegate, FPendingDelegateList& PendingDelegates, FPendingDelegateList& PendingDelegatesByHandle)
-		{
-			if (PendingDelegates.Tail)
-			{
-				PendingDelegates.Tail->Next = PendingDelegate;
-				PendingDelegate->Prev = PendingDelegates.Tail;
-				PendingDelegate->Next = nullptr;
-				PendingDelegates.Tail = PendingDelegate;
-			}
-			else
-			{
-				check(!PendingDelegates.Head);
-				PendingDelegates.Head = PendingDelegates.Tail = PendingDelegate;
-				PendingDelegate->Next = PendingDelegate->Prev = nullptr;
-			}
-
-			if (PendingDelegatesByHandle.Tail)
-			{
-				PendingDelegatesByHandle.Tail->NextByHandle = PendingDelegate;
-				PendingDelegate->PrevByHandle = PendingDelegatesByHandle.Tail;
-				PendingDelegate->NextByHandle = nullptr;
-				PendingDelegatesByHandle.Tail = PendingDelegate;
-			}
-			else
-			{
-				check(!PendingDelegatesByHandle.Head);
-				PendingDelegatesByHandle.Head = PendingDelegatesByHandle.Tail = PendingDelegate;
-				PendingDelegate->NextByHandle = PendingDelegate->PrevByHandle = nullptr;
-			}
-		}
-	};
-
-	FPendingDelegateList PendingDelegates;
-	TMap<TSharedPtr<FStreamableHandle>, FPendingDelegateList> PendingDelegatesByHandle;
+	TArray<FPendingDelegate> PendingDelegates;
 
 	FCriticalSection DataLock;
 };
@@ -528,12 +397,10 @@ void FStreamableHandle::CancelHandle()
 		}
 
 		bCanceled = true;
-		NotifyParentsOfCancellation();
 		return;
 	}
 
 	bCanceled = true;
-	NotifyParentsOfCancellation();
 
 	ExecuteDelegate(CancelDelegate, SharedThis);
 	UnbindDelegates();
@@ -558,8 +425,6 @@ void FStreamableHandle::CancelHandle()
 	}
 
 	ChildHandles.Empty();
-	CompletedChildCount = 0;
-	CanceledChildCount = 0;
 
 	OwningManager = nullptr;
 
@@ -613,8 +478,6 @@ void FStreamableHandle::ReleaseHandle()
 		}
 
 		ChildHandles.Empty();
-		CompletedChildCount = 0;
-		CanceledChildCount = 0;
 
 		OwningManager = nullptr;
 	}
@@ -662,8 +525,6 @@ void FStreamableHandle::CompleteLoad()
 		ExecuteDelegate(CompleteDelegate, AsShared(), CancelDelegate);
 		UnbindDelegates();
 
-		NotifyParentsOfCompletion();
-
 		if (ParentHandles.Num() > 0)
 		{
 			// Update any meta handles that are still active. Copy the array first as elements may be removed from original while iterating
@@ -681,42 +542,6 @@ void FStreamableHandle::CompleteLoad()
 	}
 }
 
-void FStreamableHandle::NotifyParentsOfCompletion()
-{
-	if (ParentHandles.Num() > 0)
-	{
-		// Update any meta handles that are still active. Copy the array first as elements may be removed from original while iterating
-		TArray<TWeakPtr<FStreamableHandle>> ParentHandlesCopy = ParentHandles;
-		for (TWeakPtr<FStreamableHandle>& WeakHandle : ParentHandlesCopy)
-		{
-			TSharedPtr<FStreamableHandle> Handle = WeakHandle.Pin();
-
-			if (Handle.IsValid())
-			{
-				++Handle->CompletedChildCount;
-			}
-		}
-	}
-}
-
-void FStreamableHandle::NotifyParentsOfCancellation()
-{
-	if (ParentHandles.Num() > 0)
-	{
-		// Update any meta handles that are still active. Copy the array first as elements may be removed from original while iterating
-		TArray<TWeakPtr<FStreamableHandle>> ParentHandlesCopy = ParentHandles;
-		for (TWeakPtr<FStreamableHandle>& WeakHandle : ParentHandlesCopy)
-		{
-			TSharedPtr<FStreamableHandle> Handle = WeakHandle.Pin();
-
-			if (Handle.IsValid())
-			{
-				++Handle->CanceledChildCount;
-			}
-		}
-	}
-}
-
 void FStreamableHandle::UpdateCombinedHandle()
 {
 	if (!IsActive())
@@ -725,11 +550,6 @@ void FStreamableHandle::UpdateCombinedHandle()
 	}
 
 	if (!ensure(IsCombinedHandle()))
-	{
-		return;
-	}
-
-	if (CompletedChildCount + CanceledChildCount < ChildHandles.Num())
 	{
 		return;
 	}
@@ -888,9 +708,6 @@ struct FStreamable
 					FStreamableHandle::ExecuteDelegate(ActiveHandle->CancelDelegate, ActiveHandle);
 					ActiveHandle->UnbindDelegates();
 				}
-
-				ActiveHandle->NotifyParentsOfCancellation();
-
 			}
 		}
 		ActiveHandles.Empty();
@@ -927,7 +744,6 @@ FStreamableManager::~FStreamableManager()
 void FStreamableManager::OnPreGarbageCollect()
 {
 	TSet<FSoftObjectPath> RedirectsToRemove;
-	TArray<FStreamable*> StreamablesToDelete;
 
 	// Remove any streamables with no active handles, as GC may have freed them
 	for (TStreamableMap::TIterator It(StreamableItems); It; ++It)
@@ -948,14 +764,9 @@ void FStreamableManager::OnPreGarbageCollect()
 		if (Existing->ActiveHandles.Num() == 0)
 		{
 			RedirectsToRemove.Add(It.Key());
-			StreamablesToDelete.Add(Existing);
+			delete Existing;
 			It.RemoveCurrent();
 		}
-	}
-
-	for (FStreamable* StreamableToDelete : StreamablesToDelete)
-	{
-		delete StreamableToDelete;
 	}
 
 	if (RedirectsToRemove.Num() > 0)
@@ -1116,10 +927,10 @@ FStreamable* FStreamableManager::StreamInternal(const FSoftObjectPath& InTargetN
 		{
 			// We always queue a new request in case the existing one gets cancelled
 			FString Package = TargetName.ToString();
-			int32 FirstDot = Package.Find(TEXT("."), ESearchCase::CaseSensitive);
+			int32 FirstDot = Package.Find(TEXT("."));
 			if (FirstDot != INDEX_NONE)
 			{
-				Package.LeftInline(FirstDot,false);
+				Package = Package.Left(FirstDot);
 			}
 
 			Existing->bAsyncLoadRequestOutstanding = true;
@@ -1139,9 +950,7 @@ TSharedPtr<FStreamableHandle> FStreamableManager::RequestAsyncLoad(TArray<FSoftO
 	NewRequest->CompleteDelegate = DelegateToCall;
 	NewRequest->OwningManager = this;
 	NewRequest->RequestedAssets = MoveTemp(TargetsToStream);
-#if (!PLATFORM_IOS && !PLATFORM_ANDROID)
 	NewRequest->DebugName = MoveTemp(DebugName);
-#endif
 	NewRequest->Priority = Priority;
 
 	int32 NumValidRequests = NewRequest->RequestedAssets.Num();
@@ -1156,7 +965,7 @@ TSharedPtr<FStreamableHandle> FStreamableManager::RequestAsyncLoad(TArray<FSoftO
 			--NumValidRequests;
 			continue;
 		}
-		else if (FPackageName::IsShortPackageName(TargetName.GetAssetPathName()))
+		else if (FPackageName::IsShortPackageName(TargetName.ToString()))
 		{
 			UE_LOG(LogStreamableManager, Error, TEXT("RequestAsyncLoad called with invalid package name %s"), *TargetName.ToString());
 			NewRequest->CancelHandle();
@@ -1536,14 +1345,6 @@ TSharedPtr<FStreamableHandle> FStreamableManager::CreateCombinedHandle(const TAr
 
 		ChildHandle->ParentHandles.Add(NewRequest);
 		NewRequest->ChildHandles.Add(ChildHandle);
-		if (ChildHandle->bLoadCompleted)
-		{
-			++NewRequest->CompletedChildCount;
-		}
-		if (ChildHandle->bCanceled)
-		{
-			++NewRequest->CanceledChildCount;
-		}
 	}
 
 	// Add to pending list so these handles don't free when not referenced

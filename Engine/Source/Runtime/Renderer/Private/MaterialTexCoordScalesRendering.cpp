@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 MaterialTexCoordScalesRendering.cpp: Contains definitions for rendering the viewmode.
@@ -14,8 +14,7 @@ MaterialTexCoordScalesRendering.cpp: Contains definitions for rendering the view
 
 IMPLEMENT_MATERIAL_SHADER_TYPE(,FMaterialTexCoordScalePS,TEXT("/Engine/Private/MaterialTexCoordScalesPixelShader.usf"),TEXT("Main"),SF_Pixel);
 
-void FMaterialTexCoordScaleBaseInterface::GetDebugViewModeShaderBindings(
-	const FDebugViewModePS& ShaderBase,
+void FMaterialTexCoordScalePS::GetDebugViewModeShaderBindings(
 	const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy,
 	const FMaterialRenderProxy& RESTRICT MaterialRenderProxy,
 	const FMaterial& RESTRICT Material,
@@ -30,7 +29,6 @@ void FMaterialTexCoordScaleBaseInterface::GetDebugViewModeShaderBindings(
 	FMeshDrawSingleShaderBindings& ShaderBindings
 ) const 
 {
-	const FMaterialTexCoordScalePS& Shader = static_cast<const FMaterialTexCoordScalePS&>(ShaderBase);
 	const int32 AnalysisIndex = ViewModeParam >= 0 ? FMath::Clamp<int32>(ViewModeParam, 0, TEXSTREAM_MAX_NUM_TEXTURES_PER_MATERIAL - 1) : -1;
 	FVector4 OneOverCPUTexCoordScales[TEXSTREAM_MAX_NUM_TEXTURES_PER_MATERIAL / 4];
 	FIntVector4 TexCoordIndices[TEXSTREAM_MAX_NUM_TEXTURES_PER_MATERIAL / 4];
@@ -44,16 +42,16 @@ void FMaterialTexCoordScaleBaseInterface::GetDebugViewModeShaderBindings(
 #endif
 	const bool bOutputScales = DebugViewMode == DVSM_OutputMaterialTextureScales;
 
-	ShaderBindings.Add(Shader.OneOverCPUTexCoordScalesParameter, OneOverCPUTexCoordScales);
-	ShaderBindings.Add(Shader.TexCoordIndicesParameter, TexCoordIndices);
-	ShaderBindings.Add(Shader.AnalysisParamsParameter, FIntPoint(bOutputScales ? -1 : AnalysisIndex, bOutputScales ? 1 : 0));
-	ShaderBindings.Add(Shader.PrimitiveAlphaParameter,  (!PrimitiveSceneProxy || PrimitiveSceneProxy->IsSelected()) ? 1.f : .2f);
+	ShaderBindings.Add(OneOverCPUTexCoordScalesParameter, OneOverCPUTexCoordScales);
+	ShaderBindings.Add(TexCoordIndicesParameter, TexCoordIndices);
+	ShaderBindings.Add(AnalysisParamsParameter, FIntPoint(bOutputScales ? -1 : AnalysisIndex, bOutputScales ? 1 : 0));
+	ShaderBindings.Add(PrimitiveAlphaParameter,  (!PrimitiveSceneProxy || PrimitiveSceneProxy->IsSelected()) ? 1.f : .2f);
 }
 
 void FOutputMaterialTexCoordScaleInterface::SetDrawRenderState(EBlendMode BlendMode, FRenderState& DrawRenderState, bool bHasDepthPrepassForMaskedMaterial) const
 {
 	DrawRenderState.BlendState = TStaticBlendState<>::GetRHI();
-	DrawRenderState.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+	DrawRenderState.DepthStencilState = TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI();
 }
 
 #endif // !(UE_BUILD_SHIPPING || UE_BUILD_TEST)

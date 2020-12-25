@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,21 +18,16 @@ class UMovieSceneEventSectionBase
 public:
 	GENERATED_BODY()
 
-	MOVIESCENETRACKS_API UMovieSceneEventSectionBase(const FObjectInitializer& ObjInit);
-
 	virtual TArrayView<FMovieSceneEvent> GetAllEntryPoints() { return TArrayView<FMovieSceneEvent>(); }
 
 	virtual void Serialize(FArchive& Ar) override;
 
 #if WITH_EDITOR
 
-	virtual void PostDuplicate(bool bDuplicateForPIE) override;
-
 	MOVIESCENETRACKS_API void AttemptUpgrade();
 
 	DECLARE_MULTICAST_DELEGATE_FourParams(FFixupPayloadParameterNameEvent, UMovieSceneEventSectionBase*, UK2Node*, FName, FName);
-	DECLARE_DELEGATE_RetVal_OneParam(bool, FUpgradeLegacyEventEndpoint, UMovieSceneEventSectionBase*);
-	DECLARE_DELEGATE_RetVal_OneParam(void, FPostDuplicateEvent, UMovieSceneEventSectionBase*);
+	DECLARE_DELEGATE_RetVal_TwoParams(bool, FUpgradeLegacyEventEndpoint, UMovieSceneEventSectionBase*, UBlueprint*);
 
 	/**
 	 * Handler should be invoked when an event endpoint that is referenced from this section has one of its pins renamed
@@ -41,6 +36,7 @@ public:
 	{
 		FixupPayloadParameterNameEvent.Broadcast(this, InNode, OldPinName, NewPinName);
 	}
+
 
 	/**
 	 * Post compilation handler that is invoked once generated function graphs have been compiled. Fixes up UFunction pointers for each event.
@@ -55,19 +51,17 @@ public:
 
 	/**
 	 * Delegate that is used to upgrade legacy event sections that need fixing up against a blueprint. Called on serialization and on compilation if necessary until successful upgrade occurs.
+	 * Must return true on success or false on failure.
 	 */
 	MOVIESCENETRACKS_API static FUpgradeLegacyEventEndpoint UpgradeLegacyEventEndpoint;
 
-	/**
-	 * Delegate that is used to ensure that a blueprint compile hook exists for this event section after it has been duplicated.
-	 */
-	MOVIESCENETRACKS_API static FPostDuplicateEvent PostDuplicateSectionEvent;
+#endif
 
 private:
 
-	/** Boolean that specifies whether AttemptUpgrade needs to do any work. This is necessary because all the data required for the upgrade may not be loaded at the time ::Serialize is called,
-	 * so another attempt may be necessary as the blueprint is compiled */
-	bool bDataUpgradeRequired;
-
+#if WITH_EDITORONLY_DATA
+	/** Legacy pointer to the sequence director BP */
+	UPROPERTY()
+	TWeakObjectPtr<UBlueprint> DirectorBlueprint_DEPRECATED;
 #endif
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -24,12 +24,12 @@ public class UEOpenExr : ModuleRules
 		}
 
         Type = ModuleType.External;
-		if (Target.Platform.IsInGroup(UnrealPlatformGroup.Windows) || Target.Platform == UnrealTargetPlatform.Mac || Target.IsInPlatformGroup(UnrealPlatformGroup.Unix))
+		if (Target.Platform == UnrealTargetPlatform.Win64 || Target.Platform == UnrealTargetPlatform.Win32 || Target.Platform == UnrealTargetPlatform.Mac || Target.IsInPlatformGroup(UnrealPlatformGroup.Unix))
         {
             bool bDebug = (Target.Configuration == UnrealTargetConfiguration.Debug && Target.bDebugBuildsActuallyUseDebugCRT);
             string LibDir = Target.UEThirdPartySourceDirectory + DeployDir + "/OpenEXR//lib/";
 			string Platform = "";
-			if (Target.Platform.IsInGroup(UnrealPlatformGroup.Windows) && Target.Platform != UnrealTargetPlatform.Win32)
+			if (Target.Platform == UnrealTargetPlatform.Win64)
             {
                     Platform = "x64";
                     LibDir += "VS" + Target.WindowsPlatform.GetVisualStudioCompilerVersionName() + "/";
@@ -52,7 +52,7 @@ public class UEOpenExr : ModuleRules
             LibDir = LibDir + "/" + Platform;
             LibDir = LibDir + "/Static" + (bDebug ? "Debug" : "Release");
 
-			if (Target.Platform.IsInGroup(UnrealPlatformGroup.Windows))
+			if (Target.Platform == UnrealTargetPlatform.Win64 || Target.Platform == UnrealTargetPlatform.Win32)
 			{
 				PublicAdditionalLibraries.AddRange(
 					new string[] {

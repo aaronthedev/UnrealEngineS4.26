@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	
@@ -44,6 +44,19 @@
 #include "SceneViewExtension.h"
 #include "GenerateMips.h"
 
+const TCHAR* GShaderSourceModeDefineName[] =
+{
+	TEXT("SOURCE_MODE_SCENE_COLOR_AND_OPACITY"),
+	TEXT("SOURCE_MODE_SCENE_COLOR_NO_ALPHA"),
+	nullptr,
+	TEXT("SOURCE_MODE_SCENE_COLOR_SCENE_DEPTH"),
+	TEXT("SOURCE_MODE_SCENE_DEPTH"),
+	TEXT("SOURCE_MODE_DEVICE_DEPTH"),
+	TEXT("SOURCE_MODE_NORMAL"),
+	TEXT("SOURCE_MODE_BASE_COLOR"),
+	nullptr
+};
+
 static TAutoConsoleVariable<int32> CVarEnableViewExtensionsForSceneCapture(
 	TEXT("r.SceneCapture.EnableViewExtensions"),
 	0,
@@ -52,67 +65,14 @@ static TAutoConsoleVariable<int32> CVarEnableViewExtensionsForSceneCapture(
 	TEXT("1: Enable view extensions.\n"),
 	ECVF_Default);
 
-/** A pixel shader for capturing a component of the rendered scene for a scene capture.*/
-class FSceneCapturePS : public FGlobalShader
+/**
+ * A pixel shader for capturing a component of the rendered scene for a scene capture.
+ */
+template<ESceneCaptureSource CaptureSource>
+class TSceneCapturePS : public FGlobalShader
 {
+	DECLARE_SHADER_TYPE(TSceneCapturePS,Global);
 public:
-	DECLARE_GLOBAL_SHADER(FSceneCapturePS);
-	SHADER_USE_PARAMETER_STRUCT(FSceneCapturePS, FGlobalShader);
-
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, View)
-		SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneTextureUniformParameters, SceneTextures)
-		RENDER_TARGET_BINDING_SLOTS()
-	END_SHADER_PARAMETER_STRUCT()
-
-	enum class ESourceMode : uint32
-	{
-		ColorAndOpacity,
-		ColorNoAlpha,
-		ColorAndSceneDepth,
-		SceneDepth,
-		DeviceDepth,
-		Normal,
-		BaseColor,
-		MAX
-	};
-
-	class FSourceModeDimension : SHADER_PERMUTATION_ENUM_CLASS("SOURCE_MODE", ESourceMode);
-	using FPermutationDomain = TShaderPermutationDomain<FSourceModeDimension>;
-
-	static FPermutationDomain GetPermutationVector(ESceneCaptureSource CaptureSource)
-	{
-		ESourceMode SourceMode = ESourceMode::MAX;
-		switch (CaptureSource)
-		{
-		case SCS_SceneColorHDR:
-			SourceMode = ESourceMode::ColorAndOpacity;
-			break;
-		case SCS_SceneColorHDRNoAlpha:
-			SourceMode = ESourceMode::ColorNoAlpha;
-			break;
-		case SCS_SceneColorSceneDepth:
-			SourceMode = ESourceMode::ColorAndSceneDepth;
-			break;
-		case SCS_SceneDepth:
-			SourceMode = ESourceMode::SceneDepth;
-			break;
-		case SCS_DeviceDepth:
-			SourceMode = ESourceMode::DeviceDepth;
-			break;
-		case SCS_Normal:
-			SourceMode = ESourceMode::Normal;
-			break;
-		case SCS_BaseColor:
-			SourceMode = ESourceMode::BaseColor;
-			break;
-		default:
-			checkf(false, TEXT("SceneCaptureSource not implemented."));
-		}
-		FPermutationDomain PermutationVector;
-		PermutationVector.Set<FSourceModeDimension>(SourceMode);
-		return PermutationVector;
-	}
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters) 
 	{ 
@@ -121,47 +81,116 @@ public:
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
-		static const TCHAR* ShaderSourceModeDefineName[] =
+		const TCHAR* DefineName = GShaderSourceModeDefineName[CaptureSource];
+		if (DefineName)
 		{
-			TEXT("SOURCE_MODE_SCENE_COLOR_AND_OPACITY"),
-			TEXT("SOURCE_MODE_SCENE_COLOR_NO_ALPHA"),
-			TEXT("SOURCE_MODE_SCENE_COLOR_SCENE_DEPTH"),
-			TEXT("SOURCE_MODE_SCENE_DEPTH"),
-			TEXT("SOURCE_MODE_DEVICE_DEPTH"),
-			TEXT("SOURCE_MODE_NORMAL"),
-			TEXT("SOURCE_MODE_BASE_COLOR")
-		};
-		static_assert(UE_ARRAY_COUNT(ShaderSourceModeDefineName) == (uint32)ESourceMode::MAX, "ESourceMode doesn't match define table.");
-
-		const FPermutationDomain PermutationVector(Parameters.PermutationId);
-		const uint32 SourceModeIndex = static_cast<uint32>(PermutationVector.Get<FSourceModeDimension>());
-		OutEnvironment.SetDefine(ShaderSourceModeDefineName[SourceModeIndex], 1u);
+			OutEnvironment.SetDefine(DefineName, 1);
+		}
 	}
+
+	TSceneCapturePS(const ShaderMetaType::CompiledShaderInitializerType& Initializer):
+		FGlobalShader(Initializer)
+	{
+		SceneTextureParameters.Bind(Initializer);
+	}
+	TSceneCapturePS() {}
+
+	void SetParameters(FRHICommandList& RHICmdList, const FSceneView& View)
+	{
+		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, GetPixelShader(), View.ViewUniformBuffer);
+		SceneTextureParameters.Set(RHICmdList, GetPixelShader(), View.FeatureLevel, ESceneTextureSetupMode::All);
+	}
+
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << SceneTextureParameters;
+		return bShaderHasOutdatedParameters;
+	}
+
+private:
+	FSceneTextureShaderParameters SceneTextureParameters;
 };
 
-IMPLEMENT_GLOBAL_SHADER(FSceneCapturePS, "/Engine/Private/SceneCapturePixelShader.usf", "Main", SF_Pixel);
+IMPLEMENT_SHADER_TYPE(template<>, TSceneCapturePS<SCS_SceneColorHDR>, TEXT("/Engine/Private/SceneCapturePixelShader.usf"), TEXT("Main"), SF_Pixel);
+IMPLEMENT_SHADER_TYPE(template<>, TSceneCapturePS<SCS_SceneColorHDRNoAlpha>, TEXT("/Engine/Private/SceneCapturePixelShader.usf"), TEXT("Main"), SF_Pixel);
+IMPLEMENT_SHADER_TYPE(template<>,TSceneCapturePS<SCS_SceneColorSceneDepth>,TEXT("/Engine/Private/SceneCapturePixelShader.usf"),TEXT("Main"),SF_Pixel);
+IMPLEMENT_SHADER_TYPE(template<>,TSceneCapturePS<SCS_SceneDepth>,TEXT("/Engine/Private/SceneCapturePixelShader.usf"),TEXT("Main"),SF_Pixel);
+IMPLEMENT_SHADER_TYPE(template<>, TSceneCapturePS<SCS_DeviceDepth>, TEXT("/Engine/Private/SceneCapturePixelShader.usf"), TEXT("Main"), SF_Pixel);
+IMPLEMENT_SHADER_TYPE(template<>,TSceneCapturePS<SCS_Normal>,TEXT("/Engine/Private/SceneCapturePixelShader.usf"),TEXT("Main"),SF_Pixel);
+IMPLEMENT_SHADER_TYPE(template<>,TSceneCapturePS<SCS_BaseColor>,TEXT("/Engine/Private/SceneCapturePixelShader.usf"),TEXT("Main"),SF_Pixel);
 
 class FODSCapturePS : public FGlobalShader
 {
+	DECLARE_SHADER_TYPE(FODSCapturePS, Global);
 public:
-	DECLARE_GLOBAL_SHADER(FODSCapturePS);
-	SHADER_USE_PARAMETER_STRUCT(FODSCapturePS, FGlobalShader);
 
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER_RDG_TEXTURE(TextureCube, LeftEyeTexture)
-		SHADER_PARAMETER_RDG_TEXTURE(TextureCube, RightEyeTexture)
-		SHADER_PARAMETER_SAMPLER(SamplerState, LeftEyeTextureSampler)
-		SHADER_PARAMETER_SAMPLER(SamplerState, RightEyeTextureSampler)
-		RENDER_TARGET_BINDING_SLOTS()
-	END_SHADER_PARAMETER_STRUCT()
+	static bool ShouldCache(EShaderPlatform Platform)
+	{
+		return true;
+	}
+
+	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
+	{
+		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+	}
+
+	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	{
+		return true;
+	}
+
+	FODSCapturePS(const ShaderMetaType::CompiledShaderInitializerType& Initializer) :
+		FGlobalShader(Initializer)
+	{
+		LeftEyeTexture.Bind(Initializer.ParameterMap, TEXT("LeftEyeTexture"));
+		RightEyeTexture.Bind(Initializer.ParameterMap, TEXT("RightEyeTexture"));
+		LeftEyeTextureSampler.Bind(Initializer.ParameterMap, TEXT("LeftEyeTextureSampler"));
+		RightEyeTextureSampler.Bind(Initializer.ParameterMap, TEXT("RightEyeTextureSampler"));
+	}
+
+	FODSCapturePS() {}
+
+	void SetParameters(FRHICommandList& RHICmdList, const FTextureRHIRef InLeftEyeTexture, const FTextureRHIRef InRightEyeTexture)
+	{
+		FRHIPixelShader* ShaderRHI = GetPixelShader();
+		
+		SetTextureParameter(
+			RHICmdList,
+			ShaderRHI,
+			LeftEyeTexture,
+			LeftEyeTextureSampler,
+			TStaticSamplerState<SF_Bilinear>::GetRHI(),
+			InLeftEyeTexture);
+
+		SetTextureParameter(
+			RHICmdList,
+			ShaderRHI,
+			RightEyeTexture,
+			RightEyeTextureSampler,
+			TStaticSamplerState<SF_Bilinear>::GetRHI(),
+			InRightEyeTexture);
+	}
+
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		const bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << LeftEyeTexture;
+		Ar << RightEyeTexture;
+		Ar << LeftEyeTextureSampler;
+		Ar << RightEyeTextureSampler;
+		return bShaderHasOutdatedParameters;
+	}
+
+	FShaderResourceParameter LeftEyeTexture;
+	FShaderResourceParameter RightEyeTexture;
+	FShaderResourceParameter LeftEyeTextureSampler;
+	FShaderResourceParameter RightEyeTextureSampler;
 };
 
-IMPLEMENT_GLOBAL_SHADER(FODSCapturePS, "/Engine/Private/ODSCapture.usf", "MainPS", SF_Pixel);
+IMPLEMENT_SHADER_TYPE(, FODSCapturePS, TEXT("/Engine/Private/ODSCapture.usf"), TEXT("MainPS"), SF_Pixel);
 
-void FDeferredShadingSceneRenderer::CopySceneCaptureComponentToTarget(
-	FRDGBuilder& GraphBuilder,
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
-	FRDGTextureRef ViewFamilyTexture)
+void FDeferredShadingSceneRenderer::CopySceneCaptureComponentToTarget(FRHICommandListImmediate& RHICmdList)
 {
 	ESceneCaptureSource SceneCaptureSource = ViewFamily.SceneCaptureSource;
 
@@ -170,60 +199,105 @@ void FDeferredShadingSceneRenderer::CopySceneCaptureComponentToTarget(
 		SceneCaptureSource = SCS_SceneColorHDR;
 	}
 
-	if (SceneCaptureSource != SCS_FinalColorLDR && SceneCaptureSource != SCS_FinalColorHDR && SceneCaptureSource != SCS_FinalToneCurveHDR)
+	if (SceneCaptureSource != SCS_FinalColorLDR && SceneCaptureSource != SCS_FinalColorHDR)
 	{
-		RDG_EVENT_SCOPE(GraphBuilder, "CaptureSceneComponent[%d]", SceneCaptureSource);
+		SCOPED_DRAW_EVENT(RHICmdList, CaptureSceneComponent);
 
 		FGraphicsPipelineStateInitializer GraphicsPSOInit;
 		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
 		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
 
-		if (SceneCaptureSource == SCS_SceneColorHDR && ViewFamily.SceneCaptureCompositeMode == SCCM_Composite)
-		{
-			// Blend with existing render target color. Scene capture color is already pre-multiplied by alpha.
-			GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_SourceAlpha, BO_Add, BF_Zero, BF_SourceAlpha>::GetRHI();
-		}
-		else if (SceneCaptureSource == SCS_SceneColorHDR && ViewFamily.SceneCaptureCompositeMode == SCCM_Additive)
-		{
-			// Add to existing render target color. Scene capture color is already pre-multiplied by alpha.
-			GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_Zero, BF_SourceAlpha>::GetRHI();
-		}
-		else
-		{
-			GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
-		}
-
-		const FSceneCapturePS::FPermutationDomain PixelPermutationVector = FSceneCapturePS::GetPermutationVector(SceneCaptureSource);
-
-		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextureUniformBuffer = CreateSceneTextureUniformBuffer(GraphBuilder, FeatureLevel, ESceneTextureSetupMode::GBuffers | ESceneTextureSetupMode::SceneColor | ESceneTextureSetupMode::SceneDepth);
-
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
 			FViewInfo& View = Views[ViewIndex];
 
-			FSceneCapturePS::FParameters* PassParameters = GraphBuilder.AllocParameters<FSceneCapturePS::FParameters>();
-			PassParameters->View = View.ViewUniformBuffer;
-			PassParameters->SceneTextures = SceneTexturesUniformBuffer;
-			PassParameters->RenderTargets[0] = FRenderTargetBinding(ViewFamilyTexture, ERenderTargetLoadAction::ENoAction);
-
-			TShaderMapRef<FScreenVS> VertexShader(View.ShaderMap);
-			TShaderMapRef<FSceneCapturePS> PixelShader(View.ShaderMap, PixelPermutationVector);
-
-			GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
-			GraphicsPSOInit.PrimitiveType = PT_TriangleList;
-
-			GraphBuilder.AddPass(
-				RDG_EVENT_NAME("View(%d)", ViewIndex),
-				PassParameters,
-				ERDGPassFlags::Raster,
-				[PassParameters, GraphicsPSOInit, VertexShader, PixelShader, &View] (FRHICommandListImmediate& RHICmdList)
+			FRHIRenderPassInfo RPInfo(ViewFamily.RenderTarget->GetRenderTargetTexture(), ERenderTargetActions::DontLoad_Store);
+			RHICmdList.BeginRenderPass(RPInfo, TEXT("ViewCapture"));
 			{
-				FGraphicsPipelineStateInitializer LocalGraphicsPSOInit = GraphicsPSOInit;
-				RHICmdList.ApplyCachedRenderTargets(LocalGraphicsPSOInit);
-				SetGraphicsPipelineState(RHICmdList, LocalGraphicsPSOInit);
-				SetShaderParameters(RHICmdList, PixelShader, PixelShader.GetPixelShader(), *PassParameters);
+				RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+
+				if (SceneCaptureSource == SCS_SceneColorHDR && ViewFamily.SceneCaptureCompositeMode == SCCM_Composite)
+				{
+					// Blend with existing render target color. Scene capture color is already pre-multiplied by alpha.
+					GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_SourceAlpha, BO_Add, BF_Zero, BF_SourceAlpha>::GetRHI();
+				}
+				else if (SceneCaptureSource == SCS_SceneColorHDR && ViewFamily.SceneCaptureCompositeMode == SCCM_Additive)
+				{
+					// Add to existing render target color. Scene capture color is already pre-multiplied by alpha.
+					GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGBA, BO_Add, BF_One, BF_One, BO_Add, BF_Zero, BF_SourceAlpha>::GetRHI();
+				}
+				else
+				{
+					GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
+				}
+
+				TShaderMapRef<FScreenVS> VertexShader(View.ShaderMap);
+				GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
+				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+				GraphicsPSOInit.PrimitiveType = PT_TriangleList;
+
+				if (SceneCaptureSource == SCS_SceneColorHDR)
+				{
+					TShaderMapRef<TSceneCapturePS<SCS_SceneColorHDR> > PixelShader(View.ShaderMap);
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+
+					PixelShader->SetParameters(RHICmdList, View);
+				}
+				else if (SceneCaptureSource == SCS_SceneColorHDRNoAlpha)
+				{
+					TShaderMapRef<TSceneCapturePS<SCS_SceneColorHDRNoAlpha> > PixelShader(View.ShaderMap);
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+
+					PixelShader->SetParameters(RHICmdList, View);
+				}
+				else if (SceneCaptureSource == SCS_SceneColorSceneDepth)
+				{
+					TShaderMapRef<TSceneCapturePS<SCS_SceneColorSceneDepth> > PixelShader(View.ShaderMap);
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+
+					PixelShader->SetParameters(RHICmdList, View);
+				}
+				else if (SceneCaptureSource == SCS_SceneDepth)
+				{
+					TShaderMapRef<TSceneCapturePS<SCS_SceneDepth> > PixelShader(View.ShaderMap);
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+
+					PixelShader->SetParameters(RHICmdList, View);
+				}
+				else if (ViewFamily.SceneCaptureSource == SCS_DeviceDepth)
+				{
+					TShaderMapRef<TSceneCapturePS<SCS_DeviceDepth> > PixelShader(View.ShaderMap);
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+
+					PixelShader->SetParameters(RHICmdList, View);
+				}
+				else if (SceneCaptureSource == SCS_Normal)
+				{
+					TShaderMapRef<TSceneCapturePS<SCS_Normal> > PixelShader(View.ShaderMap);
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+
+					PixelShader->SetParameters(RHICmdList, View);
+				}
+				else if (SceneCaptureSource == SCS_BaseColor)
+				{
+					TShaderMapRef<TSceneCapturePS<SCS_BaseColor> > PixelShader(View.ShaderMap);
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
+					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+
+					PixelShader->SetParameters(RHICmdList, View);
+				}
+				else
+				{
+					check(0);
+				}
+
+				VertexShader->SetParameters(RHICmdList, View.ViewUniformBuffer);
 
 				DrawRectangle(
 					RHICmdList,
@@ -233,10 +307,11 @@ void FDeferredShadingSceneRenderer::CopySceneCaptureComponentToTarget(
 					View.ViewRect.Width(), View.ViewRect.Height(),
 					View.UnconstrainedViewRect.Size(),
 					FSceneRenderTargets::Get(RHICmdList).GetBufferSizeXY(),
-					VertexShader,
+					*VertexShader,
 					EDRF_UseTriangleOptimization);
-			});
-		}
+			}
+			RHICmdList.EndRenderPass();
+		} // foreach view
 	}
 }
 
@@ -281,66 +356,52 @@ static void UpdateSceneCaptureContentDeferred_RenderThread(
 			SceneRenderer->Render(RHICmdList);
 		}
 
-		FRDGBuilder GraphBuilder(RHICmdList);
+		if (bGenerateMips)
 		{
-			FRDGTextureRef MipTexture = GraphBuilder.RegisterExternalTexture(CreateRenderTarget(RenderTarget->GetRenderTargetTexture(), TEXT("MipGenerationInput")));
-			FRDGTextureRef OutputTexture = GraphBuilder.RegisterExternalTexture(CreateRenderTarget(RenderTargetTexture->TextureRHI, TEXT("MipGenerationOutput")));
-
-			if (bGenerateMips)
-			{
-				FGenerateMips::Execute(GraphBuilder, MipTexture, GenerateMipsParams);
-			}
-
-			// Note: When the ViewFamily.SceneCaptureSource requires scene textures (i.e. SceneCaptureSource != SCS_FinalColorLDR), the copy to RenderTarget 
-			// will be done in CopySceneCaptureComponentToTarget while the GBuffers are still alive for the frame.
-			AddCopyToResolveTargetPass(GraphBuilder, MipTexture, OutputTexture, ResolveParams);
+			FGenerateMips::Execute(RHICmdList, RenderTarget->GetRenderTargetTexture(), GenerateMipsParams);
 		}
-		GraphBuilder.Execute();
+
+		// Note: When the ViewFamily.SceneCaptureSource requires scene textures (i.e. SceneCaptureSource != SCS_FinalColorLDR), the copy to RenderTarget 
+		// will be done in CopySceneCaptureComponentToTarget while the GBuffers are still alive for the frame.
+		RHICmdList.CopyToResolveTarget(RenderTarget->GetRenderTargetTexture(), RenderTargetTexture->TextureRHI, ResolveParams);		
 	}
 
 	FSceneRenderer::WaitForTasksClearSnapshotsAndDeleteSceneRenderer(RHICmdList, SceneRenderer);
 }
 
 static void ODSCapture_RenderThread(
-	FRDGBuilder& GraphBuilder,
-	FRDGTextureRef LeftEyeTexture,
-	FRDGTextureRef RightEyeTexture,
-	FRDGTextureRef OutputTexture,
+	FRHICommandListImmediate& RHICmdList,
+	const FTexture* const LeftEyeTexture,
+	const FTexture* const RightEyeTexture,
+	FRenderTarget* const RenderTarget, 
 	const ERHIFeatureLevel::Type FeatureLevel)
 {
-	FODSCapturePS::FParameters* PassParameters = GraphBuilder.AllocParameters<FODSCapturePS::FParameters>();
-	PassParameters->LeftEyeTexture = LeftEyeTexture;
-	PassParameters->RightEyeTexture = RightEyeTexture;
-	PassParameters->LeftEyeTextureSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
-	PassParameters->RightEyeTextureSampler = TStaticSamplerState<SF_Bilinear>::GetRHI();
-	PassParameters->RenderTargets[0] = FRenderTargetBinding(OutputTexture, ERenderTargetLoadAction::ELoad);
-
-	const auto ShaderMap = GetGlobalShaderMap(FeatureLevel);
-	TShaderMapRef<FScreenVS> VertexShader(ShaderMap);
-	TShaderMapRef<FODSCapturePS> PixelShader(ShaderMap);
-
-	GraphBuilder.AddPass(
-		RDG_EVENT_NAME("ODSCapture"),
-		PassParameters,
-		ERDGPassFlags::Raster,
-		[VertexShader, PixelShader, OutputTexture](FRHICommandListImmediate& RHICmdList)
+	FRHIRenderPassInfo RPInfo(RenderTarget->GetRenderTargetTexture(), ERenderTargetActions::Load_Store);
+	TransitionRenderPassTargets(RHICmdList, RPInfo);
+	RHICmdList.BeginRenderPass(RPInfo, TEXT("ODSCapture"));
 	{
+
 		FGraphicsPipelineStateInitializer GraphicsPSOInit;
 		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
 		GraphicsPSOInit.BlendState = TStaticBlendState<>::GetRHI();
 		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
 		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
 
+		const auto ShaderMap = GetGlobalShaderMap(FeatureLevel);
+		TShaderMapRef<FScreenVS> VertexShader(ShaderMap);
+		TShaderMapRef<FODSCapturePS> PixelShader(ShaderMap);
 		extern TGlobalResource<FFilterVertexDeclaration> GFilterVertexDeclaration;
 
 		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 		SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
-		const FIntPoint& TargetSize = OutputTexture->Desc.Extent;
+		PixelShader->SetParameters(RHICmdList, LeftEyeTexture->TextureRHI->GetTextureCube(), RightEyeTexture->TextureRHI->GetTextureCube());
+
+		const FIntPoint& TargetSize = RenderTarget->GetSizeXY();
 		RHICmdList.SetViewport(0, 0, 0.0f, TargetSize.X, TargetSize.Y, 1.0f);
 
 		DrawRectangle(
@@ -351,9 +412,10 @@ static void ODSCapture_RenderThread(
 			TargetSize.X, TargetSize.Y,
 			TargetSize,
 			TargetSize,
-			VertexShader,
+			*VertexShader,
 			EDRF_UseTriangleOptimization);
-	});
+	}
+	RHICmdList.EndRenderPass();
 }
 
 static void UpdateSceneCaptureContent_RenderThread(
@@ -364,8 +426,7 @@ static void UpdateSceneCaptureContent_RenderThread(
 	const FString& EventName,
 	const FResolveParams& ResolveParams,
 	bool bGenerateMips,
-	const FGenerateMipsParams& GenerateMipsParams,
-	const bool bDisableFlipCopyLDRGLES)
+	const FGenerateMipsParams& GenerateMipsParams)
 {
 	FMaterialRenderProxy::UpdateDeferredCachedUniformExpressions();
 
@@ -381,8 +442,7 @@ static void UpdateSceneCaptureContent_RenderThread(
 				EventName,
 				ResolveParams,
 				bGenerateMips,
-				GenerateMipsParams,
-				bDisableFlipCopyLDRGLES);
+				GenerateMipsParams);
 			break;
 		}
 		case EShadingPath::Deferred:
@@ -402,8 +462,8 @@ static void UpdateSceneCaptureContent_RenderThread(
 			checkNoEntry();
 			break;
 	}
-
-	RHICmdList.Transition(FRHITransitionInfo(RenderTargetTexture->TextureRHI, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+	// Unbind everything in case FX has to read.
+	UnbindRenderTargets(RHICmdList);
 }
 
 void BuildProjectionMatrix(FIntPoint RenderTargetSize, ECameraProjectionMode::Type ProjectionType, float FOV, float InOrthoWidth, float InNearClippingPlane, FMatrix& ProjectionMatrix)
@@ -457,7 +517,7 @@ void BuildProjectionMatrix(FIntPoint RenderTargetSize, ECameraProjectionMode::Ty
 	}
 }
 
-void SetupViewFamilyForSceneCapture(
+void SetupViewVamilyForSceneCapture(
 	FSceneViewFamily& ViewFamily,
 	USceneCaptureComponent* SceneCaptureComponent,
 	const TArrayView<const FSceneCaptureViewInfo> Views,
@@ -502,7 +562,6 @@ void SetupViewFamilyForSceneCapture(
 		FSceneView* View = new FSceneView(ViewInitOptions);
 
 		View->bIsSceneCapture = true;
-		View->bSceneCaptureUsesRayTracing = SceneCaptureComponent->bUseRayTracingIfEnabled;
 		// Note: this has to be set before EndFinalPostprocessSettings
 		View->bIsPlanarReflection = bIsPlanarReflection;
         // Needs to be reconfigured now that bIsPlanarReflection has changed.
@@ -619,7 +678,7 @@ static FSceneRenderer* CreateSceneRendererForSceneCapture(
 		ViewFamily.ViewExtensions = GEngine->ViewExtensions->GatherActiveExtensions(nullptr);
 	}
 	
-	SetupViewFamilyForSceneCapture(
+	SetupViewVamilyForSceneCapture(
 		ViewFamily,
 		SceneCaptureComponent,
 		MakeArrayView(&SceneCaptureViewInfo, 1),
@@ -673,7 +732,7 @@ void FScene::UpdateSceneCaptureContents(USceneCaptureComponent2D* CaptureCompone
 		}
 
 		const bool bUseSceneColorTexture = CaptureComponent->CaptureSource != SCS_FinalColorLDR &&
-			CaptureComponent->CaptureSource != SCS_FinalColorHDR && CaptureComponent->CaptureSource != SCS_FinalToneCurveHDR;
+			CaptureComponent->CaptureSource != SCS_FinalColorHDR;
 
 		FSceneRenderer* SceneRenderer = CreateSceneRendererForSceneCapture(
 			this, 
@@ -768,12 +827,10 @@ void FScene::UpdateSceneCaptureContents(USceneCaptureComponent2D* CaptureCompone
 			TextureRenderTarget->MipsAddressU == TA_Wrap ? AM_Wrap : (TextureRenderTarget->MipsAddressU == TA_Mirror ? AM_Mirror : AM_Clamp),
 			TextureRenderTarget->MipsAddressV == TA_Wrap ? AM_Wrap : (TextureRenderTarget->MipsAddressV == TA_Mirror ? AM_Mirror : AM_Clamp)};
 
-		const bool bDisableFlipCopyGLES = CaptureComponent->bDisableFlipCopyGLES;
-
 		ENQUEUE_RENDER_COMMAND(CaptureCommand)(
-			[SceneRenderer, TextureRenderTargetResource, EventName, bGenerateMips, GenerateMipsParams, bDisableFlipCopyGLES](FRHICommandListImmediate& RHICmdList)
+			[SceneRenderer, TextureRenderTargetResource, EventName, bGenerateMips, GenerateMipsParams](FRHICommandListImmediate& RHICmdList)
 			{
-				UpdateSceneCaptureContent_RenderThread(RHICmdList, SceneRenderer, TextureRenderTargetResource, TextureRenderTargetResource, EventName, FResolveParams(), bGenerateMips, GenerateMipsParams, bDisableFlipCopyGLES);
+				UpdateSceneCaptureContent_RenderThread(RHICmdList, SceneRenderer, TextureRenderTargetResource, TextureRenderTargetResource, EventName, FResolveParams(), bGenerateMips, GenerateMipsParams);
 			}
 		);
 	}
@@ -894,7 +951,7 @@ void FScene::UpdateSceneCaptureContents(USceneCaptureComponentCube* CaptureCompo
 				ENQUEUE_RENDER_COMMAND(CaptureCommand)(
 					[SceneRenderer, TextureRenderTarget, EventName, TargetFace](FRHICommandListImmediate& RHICmdList)
 				{
-					UpdateSceneCaptureContent_RenderThread(RHICmdList, SceneRenderer, TextureRenderTarget, TextureRenderTarget, EventName, FResolveParams(FResolveRect(), TargetFace), false, FGenerateMipsParams(), false);
+					UpdateSceneCaptureContent_RenderThread(RHICmdList, SceneRenderer, TextureRenderTarget, TextureRenderTarget, EventName, FResolveParams(FResolveRect(), TargetFace), false, FGenerateMipsParams());
 				}
 				);
 			}
@@ -911,17 +968,8 @@ void FScene::UpdateSceneCaptureContents(USceneCaptureComponentCube* CaptureCompo
 		ENQUEUE_RENDER_COMMAND(ODSCaptureCommand)(
 			[LeftEye, RightEye, RenderTarget, InFeatureLevel](FRHICommandListImmediate& RHICmdList)
 		{
-			const ERHIAccess FinalAccess = ERHIAccess::EWritable;
-
-			FRDGBuilder GraphBuilder(RHICmdList);
-			FRDGTextureRef OutputTexture = GraphBuilder.RegisterExternalTexture(CreateRenderTarget(RenderTarget->GetRenderTargetTexture(), TEXT("Output")));
-			FRDGTextureRef LeftEyeTexture = GraphBuilder.RegisterExternalTexture(CreateRenderTarget(LeftEye->TextureRHI, TEXT("LeftEye")));
-			FRDGTextureRef RightEyeTexture = GraphBuilder.RegisterExternalTexture(CreateRenderTarget(RightEye->TextureRHI, TEXT("RightEye")));
-			ODSCapture_RenderThread(GraphBuilder, LeftEyeTexture, RightEyeTexture, OutputTexture, InFeatureLevel);
-
-			GraphBuilder.SetTextureAccessFinal(LeftEyeTexture, FinalAccess);
-			GraphBuilder.SetTextureAccessFinal(RightEyeTexture, FinalAccess);
-			GraphBuilder.Execute();
-		});
+			ODSCapture_RenderThread(RHICmdList, LeftEye, RightEye, RenderTarget, InFeatureLevel);
+		}
+		);
 	}
 }

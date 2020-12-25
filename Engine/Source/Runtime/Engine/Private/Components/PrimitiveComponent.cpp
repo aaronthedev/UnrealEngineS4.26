@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PrimitiveComponent.cpp: Primitive component implementation.
@@ -37,7 +37,6 @@
 
 #if WITH_EDITOR
 #include "Engine/LODActor.h"
-#include "Rendering/StaticLightingSystemInterface.h"
 #endif // WITH_EDITOR
 
 #if DO_CHECK
@@ -83,13 +82,6 @@ static FAutoConsoleVariableRef CVarHitDistanceTolerance(
 	HitDistanceToleranceCVar,
 	TEXT("Tolerance for hit distance for overlap test in PrimitiveComponent movement.\n")
 	TEXT("Hits that are less than this distance are ignored."),
-	ECVF_Default);
-
-static int32 AlwaysCreatePhysicsStateConversionHackCVar = 0;
-static FAutoConsoleVariableRef CVarAlwaysCreatePhysicsStateConversionHack(
-	TEXT("p.AlwaysCreatePhysicsStateConversionHack"),
-	AlwaysCreatePhysicsStateConversionHackCVar,
-	TEXT("Hack to convert actors with query and ignore all to always create physics."),
 	ECVF_Default);
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
@@ -330,16 +322,13 @@ UPrimitiveComponent::UPrimitiveComponent(const FObjectInitializer& ObjectInitial
 	LpvBiasMultiplier = 1.0f;
 	bCastStaticShadow = true;
 	bCastVolumetricTranslucentShadow = false;
-	bCastContactShadow = true;
 	IndirectLightingCacheQuality = ILCQ_Point;
 	bSelectable = true;
-	bFillCollisionUnderneathForNavmesh = false;
 	AlwaysLoadOnClient = true;
 	AlwaysLoadOnServer = true;
 	SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
 	bAlwaysCreatePhysicsState = false;
 	bVisibleInReflectionCaptures = true;
-	bVisibleInRealTimeSkyCaptures = true;
 	bVisibleInRayTracing = true;
 	bRenderInMainPass = true;
 	bRenderInDepthPass = true;
@@ -381,7 +370,6 @@ UPrimitiveComponent::UPrimitiveComponent(const FObjectInitializer& ObjectInitial
 	bReceiveMobileCSMShadows = true;
 #if WITH_EDITORONLY_DATA
 	bEnableAutoLODGeneration = true;
-	HitProxyPriority = HPP_World;
 #endif // WITH_EDITORONLY_DATA
 }
 
@@ -473,7 +461,7 @@ void UPrimitiveComponent::GetStreamingRenderAssetInfoWithNULLRemoval(FStreamingT
 		for (int32 Index = 0; Index < OutStreamingRenderAssets.Num(); Index++)
 		{
 			const FStreamingRenderAssetPrimitiveInfo& Info = OutStreamingRenderAssets[Index];
-			if (!Info.RenderAsset || !Info.RenderAsset->IsStreamable())
+			if (!IsStreamingRenderAsset(Info.RenderAsset))
 			{
 				OutStreamingRenderAssets.RemoveAtSwap(Index--);
 			}
@@ -540,7 +528,7 @@ FORCEINLINE_DEBUGGABLE bool OwnerLevelHasRegisteredStaticComponentsInStreamingMa
 	return false;
 }
 
-void UPrimitiveComponent::CreateRenderState_Concurrent(FRegisterComponentContext* Context)
+void UPrimitiveComponent::CreateRenderState_Concurrent()
 {
 	// Make sure cached cull distance is up-to-date if its zero and we have an LD cull distance
 	if( CachedMaxDrawDistance == 0.f && LDMaxDrawDistance > 0.f )
@@ -549,21 +537,14 @@ void UPrimitiveComponent::CreateRenderState_Concurrent(FRegisterComponentContext
 		CachedMaxDrawDistance = bNeverCull ? 0.f : LDMaxDrawDistance;
 	}
 
-	Super::CreateRenderState_Concurrent(Context);
+	Super::CreateRenderState_Concurrent();
 
 	UpdateBounds();
 
 	// If the primitive isn't hidden and the detail mode setting allows it, add it to the scene.
 	if (ShouldComponentAddToScene())
 	{
-		if (Context != nullptr)
-		{
-			Context->AddPrimitive(this);
-		}
-		else
-		{
-			GetWorld()->Scene->AddPrimitive(this);
-		}
+		GetWorld()->Scene->AddPrimitive(this);
 	}
 
 	// Components are either registered as static or dynamic in the streaming manager.
@@ -616,13 +597,6 @@ void UPrimitiveComponent::OnRegister()
 		bNavigationRelevant = false;
 	}
 
-#if WITH_EDITOR
-	if (HasValidSettingsForStaticLighting(false))
-	{
-		FStaticLightingSystemInterface::OnPrimitiveComponentRegistered.Broadcast(this);
-	}
-#endif
-
 	// Update our Owner's LastRenderTime
 	SetLastRenderTime(LastRenderTime);
 }
@@ -652,10 +626,6 @@ void UPrimitiveComponent::OnUnregister()
 	{
 		FNavigationSystem::OnComponentUnregistered(*this);
 	}
-
-#if WITH_EDITOR
-	FStaticLightingSystemInterface::OnPrimitiveComponentUnregistered.Broadcast(this);
-#endif
 }
 
 FPrimitiveComponentInstanceData::FPrimitiveComponentInstanceData(const UPrimitiveComponent* SourceComponent)
@@ -759,16 +729,6 @@ void UPrimitiveComponent::OnCreatePhysicsState()
 	{
 		//UE_LOG(LogPrimitiveComponent, Warning, TEXT("Creating Physics State (%s : %s)"), *GetNameSafe(GetOuter()),  *GetName());
 
-		if (AlwaysCreatePhysicsStateConversionHackCVar > 0)
-		{
-			static FCollisionResponseContainer IgnoreAll(ECR_Ignore);
-			if (BodyInstance.GetCollisionEnabled() == ECollisionEnabled::QueryOnly && BodyInstance.GetResponseToChannels() == IgnoreAll)
-			{
-				bAlwaysCreatePhysicsState = true;
-				BodyInstance.SetCollisionEnabled(ECollisionEnabled::NoCollision);
-			}
-		}
-
 		UBodySetup* BodySetup = GetBodySetup();
 		if(BodySetup)
 		{
@@ -824,30 +784,6 @@ void UPrimitiveComponent::EnsurePhysicsStateCreated()
 		RecreatePhysicsState();
 	}
 }
-
-
-
-void UPrimitiveComponent::MarkChildPrimitiveComponentRenderStateDirty()
-{
-	// Go through all potential children and update them 
-	TArray<USceneComponent*, TInlineAllocator<8>> ProcessStack;
-	ProcessStack.Append(GetAttachChildren());
-
-	// Walk down the tree updating
-	while (ProcessStack.Num() > 0)
-	{
-		if (USceneComponent* Current = ProcessStack.Pop(/*bAllowShrinking=*/ false))
-		{
-			if (UPrimitiveComponent* CurrentPrimitive = Cast<UPrimitiveComponent>(Current))
-			{
-				CurrentPrimitive->MarkRenderStateDirty();
-			}
-
-			ProcessStack.Append(Current->GetAttachChildren());
-		}
-	}
-}
-
 
 bool UPrimitiveComponent::IsWelded() const
 {
@@ -967,7 +903,7 @@ void UPrimitiveComponent::PostEditChangeProperty(FPropertyChangedEvent& Property
 	float NewCachedMaxDrawDistance = CachedMaxDrawDistance;
 	bool bCullDistanceInvalidated = false;
 
-	FProperty* PropertyThatChanged = PropertyChangedEvent.Property;
+	UProperty* PropertyThatChanged = PropertyChangedEvent.Property;
 	if(PropertyThatChanged)
 	{
 		const FName PropertyName = PropertyThatChanged->GetFName();
@@ -990,22 +926,15 @@ void UPrimitiveComponent::PostEditChangeProperty(FPropertyChangedEvent& Property
 			MarkRenderStateDirty();
 		}
 
-		// In the light attachment as group has changed, we need to notify attachment children that they are invalid (they may have a new root)
-		// Unless multiple roots are in the way, in either case, they need to work this out.
-		if (PropertyName == GET_MEMBER_NAME_CHECKED(UPrimitiveComponent, bLightAttachmentsAsGroup))
-		{
-			MarkChildPrimitiveComponentRenderStateDirty();
-		}
 	}
 
-	if (FProperty* MemberPropertyThatChanged = PropertyChangedEvent.MemberProperty)
+	if (UProperty* MemberPropertyThatChanged = PropertyChangedEvent.MemberProperty)
 	{
 		const FName MemberPropertyName = MemberPropertyThatChanged->GetFName();
 
 		// Reregister to get the custom primitive data to the proxy
 		if (MemberPropertyName == GET_MEMBER_NAME_CHECKED(UPrimitiveComponent, CustomPrimitiveData))
 		{
-			ResetCustomPrimitiveData();
 			MarkRenderStateDirty();
 		}
 	}
@@ -1059,7 +988,7 @@ void UPrimitiveComponent::PostEditChangeProperty(FPropertyChangedEvent& Property
 	IStreamingManager::Get().NotifyPrimitiveUpdated(this);
 }
 
-bool UPrimitiveComponent::CanEditChange(const FProperty* InProperty) const
+bool UPrimitiveComponent::CanEditChange(const UProperty* InProperty) const
 {
 	bool bIsEditable = Super::CanEditChange( InProperty );
 	if (bIsEditable && InProperty)
@@ -1238,9 +1167,6 @@ void UPrimitiveComponent::PostLoad()
 	{
 		LightmapType = ELightmapType::Default;
 	}
-
-	// Setup the default here
-	ResetCustomPrimitiveData();
 }
 
 void UPrimitiveComponent::PostDuplicate(bool bDuplicateForPIE)
@@ -1271,9 +1197,6 @@ void UPrimitiveComponent::PostEditImport()
 	{
 		BodyInstance.FixupData(this);
 	}
-
-	// Setup the transient internal primitive data array here after import (to support duplicate/paste)
-	ResetCustomPrimitiveData();
 }
 #endif
 
@@ -1478,7 +1401,6 @@ void UPrimitiveComponent::SetLightAttachmentsAsGroup(bool bInLightAttachmentsAsG
 	{
 		bLightAttachmentsAsGroup = bInLightAttachmentsAsGroup;
 		MarkRenderStateDirty();
-		MarkChildPrimitiveComponentRenderStateDirty();
 	}
 }
 
@@ -1709,16 +1631,10 @@ UMaterialInstanceDynamic* UPrimitiveComponent::CreateDynamicMaterialInstance(int
 	return MID;
 }
 
-void UPrimitiveComponent::ResetCustomPrimitiveData()
-{
-	CustomPrimitiveDataInternal.Data = CustomPrimitiveData.Data;
-}
-
-/** Attempt to set the primitive data and return true if successful */
-bool SetPrimitiveData(FCustomPrimitiveData& PrimitiveData, int32 DataIndex, const TArray<float>& Values)
+void UPrimitiveComponent::SetCustomPrimitiveDataInternal(int32 DataIndex, const TArray<float>& Values)
 {
 	// Can only set data on valid indices and only if there's actually any data to set
-	if (DataIndex >= 0 && DataIndex < FCustomPrimitiveData::NumCustomPrimitiveDataFloats && Values.Num() > 0)
+	if (DataIndex < FCustomPrimitiveData::NumCustomPrimitiveDataFloats && Values.Num() > 0)
 	{
 		// Number of floats needed in the custom primitive data array
 		const int32 NeededFloats = FMath::Min(DataIndex + Values.Num(), FCustomPrimitiveData::NumCustomPrimitiveDataFloats);
@@ -1727,41 +1643,22 @@ bool SetPrimitiveData(FCustomPrimitiveData& PrimitiveData, int32 DataIndex, cons
 		const int32 NumValuesToSet = FMath::Min(Values.Num(), FCustomPrimitiveData::NumCustomPrimitiveDataFloats - DataIndex);
 
 		// If trying to set data on an index which doesn't exist yet, allocate up to it
-		if (NeededFloats > PrimitiveData.Data.Num())
+		if (NeededFloats > CustomPrimitiveData.Data.Num())
 		{
-			PrimitiveData.Data.SetNumZeroed(NeededFloats);
+			CustomPrimitiveData.Data.SetNumZeroed(NeededFloats);
 		}
 
 		// Only update data if it has changed
-		if (FMemory::Memcmp(&PrimitiveData.Data[DataIndex], Values.GetData(), NumValuesToSet * sizeof(float)) != 0)
+		if (FMemory::Memcmp(&CustomPrimitiveData.Data[DataIndex], Values.GetData(), NumValuesToSet * sizeof(float)) != 0)
 		{
-			FMemory::Memcpy(&PrimitiveData.Data[DataIndex], Values.GetData(), NumValuesToSet * sizeof(float));
+			FMemory::Memcpy(&CustomPrimitiveData.Data[DataIndex], Values.GetData(), NumValuesToSet * sizeof(float));
 
-			return true;
+			UWorld* World = GetWorld();
+			if (World && World->Scene)
+			{
+				World->Scene->UpdateCustomPrimitiveData(this);
+			}
 		}
-	}
-
-	return false;
-}
-
-void UPrimitiveComponent::SetCustomPrimitiveDataInternal(int32 DataIndex, const TArray<float>& Values)
-{
-	if (SetPrimitiveData(CustomPrimitiveDataInternal, DataIndex, Values))
-	{
-		UWorld* World = GetWorld();
-		if (World && World->Scene)
-		{
-			World->Scene->UpdateCustomPrimitiveData(this);
-		}
-	}
-}
-
-void UPrimitiveComponent::SetDefaultCustomPrimitiveData(int32 DataIndex, const TArray<float>& Values)
-{
-	if (SetPrimitiveData(CustomPrimitiveData, DataIndex, Values))
-	{
-		ResetCustomPrimitiveData();
-		MarkRenderStateDirty();
 	}
 }
 
@@ -1783,26 +1680,6 @@ void UPrimitiveComponent::SetCustomPrimitiveDataVector3(int32 DataIndex, FVector
 void UPrimitiveComponent::SetCustomPrimitiveDataVector4(int32 DataIndex, FVector4 Value)
 {
 	SetCustomPrimitiveDataInternal(DataIndex, {Value.X, Value.Y, Value.Z, Value.W});
-}
-
-void UPrimitiveComponent::SetDefaultCustomPrimitiveDataFloat(int32 DataIndex, float Value)
-{
-	SetDefaultCustomPrimitiveData(DataIndex, { Value });
-}
-
-void UPrimitiveComponent::SetDefaultCustomPrimitiveDataVector2(int32 DataIndex, FVector2D Value)
-{
-	SetDefaultCustomPrimitiveData(DataIndex, { Value.X, Value.Y });
-}
-
-void UPrimitiveComponent::SetDefaultCustomPrimitiveDataVector3(int32 DataIndex, FVector Value)
-{
-	SetDefaultCustomPrimitiveData(DataIndex, { Value.X, Value.Y, Value.Z });
-}
-
-void UPrimitiveComponent::SetDefaultCustomPrimitiveDataVector4(int32 DataIndex, FVector4 Value)
-{
-	SetDefaultCustomPrimitiveData(DataIndex, { Value.X, Value.Y, Value.Z, Value.W });
 }
 
 UMaterialInterface* UPrimitiveComponent::GetMaterialFromCollisionFaceIndex(int32 FaceIndex, int32& SectionIndex) const
@@ -2205,7 +2082,7 @@ bool UPrimitiveComponent::MoveComponentImpl( const FVector& Delta, const FQuat& 
 					{
 						if (!ShouldIgnoreHitResult(MyWorld, TestHit, Delta, Actor, MoveFlags))
 						{
-							if (TestHit.bStartPenetrating)
+							if (TestHit.Time == 0.f)
 							{
 								// We may have multiple initial hits, and want to choose the one with the normal most opposed to our movement.
 								const float NormalDotDelta = (TestHit.ImpactNormal | Delta);
@@ -2468,15 +2345,6 @@ void UPrimitiveComponent::DispatchWakeEvents(ESleepEvent WakeEvent, FName BoneNa
 	}
 }
 
-void UPrimitiveComponent::GetNavigationData(FNavigationRelevantData& OutData) const
-{
-	if (bFillCollisionUnderneathForNavmesh)
-	{
-		FCompositeNavModifier CompositeNavModifier;
-		CompositeNavModifier.SetFillCollisionUnderneathForNavmesh(bFillCollisionUnderneathForNavmesh);
-		OutData.Modifiers.Add(CompositeNavModifier);
-	}
-}
 
 bool UPrimitiveComponent::IsNavigationRelevant() const 
 { 
@@ -2497,8 +2365,7 @@ bool UPrimitiveComponent::IsNavigationRelevant() const
 
 FBox UPrimitiveComponent::GetNavigationBounds() const
 {
-	// Return invalid box when retrieving NavigationBounds before they are being computed at component registration
-	return bRegistered ? Bounds.GetBox() : FBox(ForceInit);
+	return Bounds.GetBox();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -2713,8 +2580,7 @@ void UPrimitiveComponent::BeginComponentOverlap(const FOverlapInfo& OtherOverlap
 			AddUniqueOverlapFast(OtherComp->OverlappingComponents, FOverlapInfo(this, INDEX_NONE));	// uniqueness unverified, so addunique
 			
 			const UWorld* World = GetWorld();
-			const bool bLevelStreamingOverlap = (bDoNotifies && MyActor->bGenerateOverlapEventsDuringLevelStreaming && MyActor->IsActorBeginningPlayFromLevelStreaming());
-			if (bDoNotifies && ((World && World->HasBegunPlay()) || bLevelStreamingOverlap))
+			if (bDoNotifies && World && World->HasBegunPlay())
 			{
 				// first execute component delegates
 				if (!IsPendingKill())
@@ -3200,7 +3066,6 @@ bool UPrimitiveComponent::UpdateOverlapsImpl(const TOverlapArrayView* NewPending
 				}
 				else
 				{
-					SCOPE_CYCLE_COUNTER(STAT_PerformOverlapQuery);
 					UE_LOG(LogPrimitiveComponent, VeryVerbose, TEXT("%s->%s Performing overlaps!"), *GetNameSafe(GetOwner()), *GetName());
 					UWorld* const MyWorld = GetWorld();
 					TArray<FOverlapResult> Overlaps;
@@ -3354,22 +3219,6 @@ void UPrimitiveComponent::SetGenerateOverlapEvents(bool bInGenerateOverlapEvents
 	{
 		bGenerateOverlapEvents = bInGenerateOverlapEvents;
 		ClearSkipUpdateOverlaps();
-	}
-}
-
-void UPrimitiveComponent::SetLightingChannels(bool bChannel0, bool bChannel1, bool bChannel2)
-{
-	if (bChannel0 != LightingChannels.bChannel0 ||
-		bChannel1 != LightingChannels.bChannel1 ||
-		bChannel2 != LightingChannels.bChannel2)
-	{
-		LightingChannels.bChannel0 = bChannel0;
-		LightingChannels.bChannel1 = bChannel1;
-		LightingChannels.bChannel2 = bChannel2;
-		if (SceneProxy)
-		{
-			SceneProxy->SetLightingChannels_GameThread(LightingChannels);
-		}
 	}
 }
 
@@ -3718,9 +3567,13 @@ void UPrimitiveComponent::SetRenderCustomDepth(bool bValue)
 	if( bRenderCustomDepth != bValue )
 	{
 		bRenderCustomDepth = bValue;
-		if (SceneProxy)
+		if ( SceneProxy )
 		{
 			SceneProxy->SetCustomDepthEnabled_GameThread(bRenderCustomDepth);
+		}
+		else
+		{
+			MarkRenderStateDirty();
 		}
 	}
 }
@@ -3733,9 +3586,13 @@ void UPrimitiveComponent::SetCustomDepthStencilValue(int32 Value)
 	if (CustomDepthStencilValue != ClampedValue)
 	{
 		CustomDepthStencilValue = ClampedValue;
-		if (SceneProxy)
+		if ( SceneProxy )
 		{
 			SceneProxy->SetCustomDepthStencilValue_GameThread(CustomDepthStencilValue);
+		}
+		else
+		{
+			MarkRenderStateDirty();
 		}
 	}
 }
@@ -3827,19 +3684,6 @@ void UPrimitiveComponent::SetCustomNavigableGeometry(const EHasCustomNavigableGe
 	bHasCustomNavigableGeometry = InType;
 }
  
-bool UPrimitiveComponent::WasRecentlyRendered(float Tolerance /*= 0.2*/) const
-{
-	if (const UWorld* const World = GetWorld())
-	{
-		// Adjust tolerance, so visibility is not affected by bad frame rate / hitches.
-		const float RenderTimeThreshold = FMath::Max(Tolerance, World->DeltaTimeSeconds + KINDA_SMALL_NUMBER);
-
-		// If the current cached value is less than the tolerance then we don't need to go look at the components
-		return World->TimeSince(GetLastRenderTime()) <= RenderTimeThreshold;
-	}
-	return false;
-}
-
 void UPrimitiveComponent::SetLastRenderTime(float InLastRenderTime)
 {
 	LastRenderTime = InLastRenderTime;

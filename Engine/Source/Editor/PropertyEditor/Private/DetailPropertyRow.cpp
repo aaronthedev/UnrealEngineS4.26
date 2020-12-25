@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DetailPropertyRow.h"
 #include "Modules/ModuleManager.h"
@@ -51,19 +51,10 @@ FDetailPropertyRow::FDetailPropertyRow(TSharedPtr<FPropertyNode> InPropertyNode,
 		}
 
 		if (PropertyNode->GetPropertyKeyNode().IsValid())
-		{							
-			TSharedPtr<IPropertyTypeCustomization> FoundPropertyCustomisation = GetPropertyCustomization(PropertyNode->GetPropertyKeyNode().ToSharedRef(), ParentCategory.Pin().ToSharedRef());
-
-			bool bInlineRow = FoundPropertyCustomisation != nullptr ? FoundPropertyCustomisation->ShouldInlineKey() : false;
-
-			static FName InlineKeyMeta("ForceInlineRow");
-			bInlineRow |= InPropertyNode->GetParentNode()->GetProperty()->HasMetaData(InlineKeyMeta);
-
-			// Only create the property editor if it's not a struct or if it requires to be inlined (and has customization)
-			if (!NeedsKeyNode(PropertyNodeRef, InParentCategory) || (bInlineRow && FoundPropertyCustomisation != nullptr))
+		{
+			// Only struct and customized properties require their own nodes. Everything else just needs a property editor.
+			if (!NeedsKeyNode(PropertyNodeRef, InParentCategory))
 			{
-				CachedKeyCustomTypeInterface = FoundPropertyCustomisation;
-				
 				MakePropertyEditor(PropertyNode->GetPropertyKeyNode().ToSharedRef(), Utilities, PropertyKeyEditor);
 			}
 		}
@@ -72,8 +63,12 @@ FDetailPropertyRow::FDetailPropertyRow(TSharedPtr<FPropertyNode> InPropertyNode,
 
 bool FDetailPropertyRow::NeedsKeyNode(TSharedRef<FPropertyNode> InPropertyNode, TSharedRef<FDetailCategoryImpl> InParentCategory)
 {
-	FStructProperty* KeyStructProp = CastField<FStructProperty>(InPropertyNode->GetPropertyKeyNode()->GetProperty());
-	return KeyStructProp != nullptr;
+	UStructProperty* KeyStructProp = Cast<UStructProperty>(InPropertyNode->GetPropertyKeyNode()->GetProperty());
+	UStructProperty* ValueStructProp = Cast<UStructProperty>(InPropertyNode->GetProperty());
+
+	return KeyStructProp != nullptr || ValueStructProp != nullptr ||
+		GetPropertyCustomization(InPropertyNode->GetPropertyKeyNode().ToSharedRef(), InParentCategory).IsValid() ||
+		GetPropertyCustomization(InPropertyNode, InParentCategory).IsValid();
 }
 
 IDetailPropertyRow& FDetailPropertyRow::DisplayName( const FText& InDisplayName )
@@ -182,16 +177,6 @@ FDetailWidgetRow& FDetailPropertyRow::CustomWidget( bool bShowChildren )
 	return *CustomPropertyWidget;
 }
 
-FDetailWidgetDecl* FDetailPropertyRow::CustomNameWidget()
-{
-	return CustomPropertyWidget.IsValid() ? &CustomPropertyWidget->NameContent() : nullptr;
-}
-
-FDetailWidgetDecl* FDetailPropertyRow::CustomValueWidget()
-{
-	return CustomPropertyWidget.IsValid() ? &CustomPropertyWidget->ValueContent() : nullptr;
-}
-
 TSharedPtr<FAssetThumbnailPool> FDetailPropertyRow::GetThumbnailPool() const
 {
 	TSharedPtr<FDetailCategoryImpl> ParentCategoryPinned = ParentCategory.Pin();
@@ -233,47 +218,6 @@ FDetailWidgetRow FDetailPropertyRow::GetWidgetRow()
 	}
 }
 
-static bool IsHeaderRowRequired(const TSharedPtr<IPropertyHandle>& PropertyHandle)
-{
-	TSharedPtr<IPropertyHandle> ParentHandle = PropertyHandle->GetParentHandle();
-	while (ParentHandle.IsValid())
-	{
-		if (ParentHandle->AsMap().IsValid())
-		{
-			return true;
-		}
-
-		ParentHandle = ParentHandle->GetParentHandle();
-	}
-
-	return false;
-}
-
-static void FixEmptyHeaderRowInContainers(const TSharedPtr<IPropertyHandle>& PropertyHandle, const TSharedPtr<FDetailWidgetRow>& HeaderRow)
-{
-	if (IsHeaderRowRequired(PropertyHandle))
-	{
-		if (!HeaderRow->HasAnyContent())
-		{
-			if (!HeaderRow->HasNameContent())
-			{
-				HeaderRow->NameContent()
-				[
-					PropertyHandle->CreatePropertyNameWidget()
-				];
-			}
-
-			if (!HeaderRow->HasValueContent())
-			{
-				HeaderRow->ValueContent()
-				[
-					PropertyHandle->CreatePropertyValueWidget(false)
-				];
-			}
-		}
-	}
-}
-
 void FDetailPropertyRow::OnItemNodeInitialized( TSharedRef<FDetailCategoryImpl> InParentCategory, const TAttribute<bool>& InIsParentEnabled, TSharedPtr<IDetailGroup> InParentGroup)
 {
 	IsParentEnabled = InIsParentEnabled;
@@ -285,8 +229,6 @@ void FDetailPropertyRow::OnItemNodeInitialized( TSharedRef<FDetailCategoryImpl> 
 		CustomPropertyWidget = MakeShareable(new FDetailWidgetRow);
 
 		CustomTypeInterface->CustomizeHeader(PropertyHandle.ToSharedRef(), *CustomPropertyWidget, *this);
-
-		FixEmptyHeaderRowInContainers(PropertyHandle, CustomPropertyWidget);
 
 		// set initial value of enabled attribute to settings from struct customization
 		if (CustomPropertyWidget->IsEnabledAttr.IsBound())
@@ -368,11 +310,11 @@ void FDetailPropertyRow::GenerateChildrenForPropertyNode( TSharedPtr<FPropertyNo
 	{
 		TSharedRef<FDetailCategoryImpl> ParentCategoryRef = ParentCategory.Pin().ToSharedRef();
 		IDetailLayoutBuilder& LayoutBuilder = ParentCategoryRef->GetParentLayout();
-		FProperty* ParentProperty = RootPropertyNode->GetProperty();
+		UProperty* ParentProperty = RootPropertyNode->GetProperty();
 
-		const bool bStructProperty = ParentProperty && ParentProperty->IsA<FStructProperty>();
-		const bool bMapProperty = ParentProperty && ParentProperty->IsA<FMapProperty>();
-		const bool bSetProperty = ParentProperty && ParentProperty->IsA<FSetProperty>();
+		const bool bStructProperty = ParentProperty && ParentProperty->IsA<UStructProperty>();
+		const bool bMapProperty = ParentProperty && ParentProperty->IsA<UMapProperty>();
+		const bool bSetProperty = ParentProperty && ParentProperty->IsA<USetProperty>();
 
 		TArray<TWeakObjectPtr<UObject> > Objects;
 		if (RootPropertyNode->AsObjectNode())
@@ -470,7 +412,7 @@ TSharedPtr<IPropertyTypeCustomization> FDetailPropertyRow::GetPropertyCustomizat
 
 	if (!PropertyEditorHelpers::IsStaticArray(*InPropertyNode))
 	{
-		FProperty* Property = InPropertyNode->GetProperty();
+		UProperty* Property = InPropertyNode->GetProperty();
 		TSharedPtr<IPropertyHandle> PropHandle = InParentCategory->GetParentLayoutImpl().GetPropertyHandle(InPropertyNode);
 
 		static FName NAME_PropertyEditor("PropertyEditor");
@@ -519,7 +461,7 @@ void FDetailPropertyRow::MakeExternalPropertyRowCustomization(TSharedPtr<FStruct
 		for (int32 ChildIdx = 0; ChildIdx < RootPropertyNode->GetNumChildNodes(); ++ChildIdx)
 		{
 			TSharedPtr< FPropertyNode > PropertyNode = RootPropertyNode->GetChildNode(ChildIdx);
-			if (FProperty* Property = PropertyNode->GetProperty())
+			if (UProperty* Property = PropertyNode->GetProperty())
 			{
 				if (Property->GetFName() == PropertyName)
 				{
@@ -536,7 +478,7 @@ void FDetailPropertyRow::MakeExternalPropertyRowCustomization(TSharedPtr<FStruct
 		FPropertyEditorModule& PropertyEditorModule = FModuleManager::GetModuleChecked<FPropertyEditorModule>(PropertyEditorModuleName);
 
 		// Make a "fake" struct property to represent the entire struct
-		FStructProperty* StructProperty = PropertyEditorModule.RegisterStructOnScopeProperty(StructData.ToSharedRef());
+		UStructProperty* StructProperty = PropertyEditorModule.RegisterStructOnScopeProperty(StructData.ToSharedRef());
 
 		// Generate a node for the struct
 		TSharedPtr<FItemPropertyNode> ItemNode = MakeShared<FItemPropertyNode>();
@@ -696,25 +638,12 @@ void FDetailPropertyRow::MakeNameOrKeyWidget( FDetailWidgetRow& Row, const TShar
 	// Key nodes take precedence over custom rows
 	if ( bHasKeyNode )
 	{
-		// Does this key have a custom type, use it
-		if (CachedKeyCustomTypeInterface)
-		{
-			// Create a widget that will properly represent the key
-			const TSharedPtr<FDetailWidgetRow> CustomTypeWidget = MakeShared<FDetailWidgetRow>();
-			CachedKeyCustomTypeInterface->CustomizeHeader(PropertyKeyEditor->GetPropertyHandle(), *CustomTypeWidget, const_cast<FDetailPropertyRow&>(*this));
+		const TSharedRef<IPropertyUtilities> PropertyUtilities = ParentCategory.Pin()->GetParentLayoutImpl().GetPropertyUtilities();
 
-			NameWidget = CustomTypeWidget->ValueWidget.Widget;
-		}
-		else
-		{
-			const TSharedRef<IPropertyUtilities> PropertyUtilities = ParentCategory.Pin()->GetParentLayoutImpl().GetPropertyUtilities();
-
-			NameWidget =
-				SNew(SPropertyValueWidget, PropertyKeyEditor, PropertyUtilities)
-				.IsEnabled(IsEnabledAttrib)
-				.ShowPropertyButtons(false);
-		}
-
+		NameWidget =
+			SNew(SPropertyValueWidget, PropertyKeyEditor, PropertyUtilities)
+			.IsEnabled(IsEnabledAttrib)
+			.ShowPropertyButtons(false);
 	}
 	else if( InCustomRow.IsValid() )
 	{

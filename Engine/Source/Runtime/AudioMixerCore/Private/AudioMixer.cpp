@@ -1,21 +1,20 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AudioMixer.h"
 #include "DSP/BufferVectorOperations.h"
 #include "HAL/RunnableThread.h"
+#include "Misc/ConfigCacheIni.h"
 #include "HAL/ThreadSafeCounter.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/Event.h"
 #include "HAL/LowLevelMemTracker.h"
-#include "Misc/ConfigCacheIni.h"
-#include "Misc/ScopeTryLock.h"
 #include "ProfilingDebugging/CsvProfiler.h"
 
 // Defines the "Audio" category in the CSV profiler.
 // This should only be defined here. Modules who wish to use this category should contain the line
 // 		CSV_DECLARE_CATEGORY_MODULE_EXTERN(AUDIOMIXERCORE_API, Audio);
 //
-CSV_DEFINE_CATEGORY_MODULE(AUDIOMIXERCORE_API, Audio, false);
+CSV_DEFINE_CATEGORY_MODULE(AUDIOMIXERCORE_API, Audio, true);
 
 // Command to enable logging to display accurate audio render times
 static int32 LogRenderTimesCVar = 0;
@@ -24,14 +23,6 @@ FAutoConsoleVariableRef CVarLogRenderTimes(
 	LogRenderTimesCVar,
 	TEXT("Logs Audio Render Times.\n")
 	TEXT("0: Not Log, 1: Log"),
-	ECVF_Default);
-
-static float MinTimeBetweenUnderrunWarningsMs = 1000.f*10.f;
-FAutoConsoleVariableRef CVarMinTimeBetweenUnderrunWarningsMs(
-	TEXT("au.MinLogTimeBetweenUnderrunWarnings"),
-	MinTimeBetweenUnderrunWarningsMs,
-	TEXT("Min time between underrun warnings (globally) in MS\n")
-	TEXT("Set the time between each subsequent underrun log warning globaly (defaults to 10secs)"),
 	ECVF_Default);
 
 // Command for setting the audio render thread priority.
@@ -74,27 +65,12 @@ FAutoConsoleVariableRef CVarUnderrunTimeout(
 	TEXT("Amount of time to wait for the render thread to generate the next buffer before submitting an underrun buffer. \n"),
 	ECVF_Default);
 
-static int32 FadeoutTimeoutCVar = 2000;
-FAutoConsoleVariableRef CVarFadeoutTimeout(
-	TEXT("au.FadeOutTimeoutMSec"),
-	FadeoutTimeoutCVar,
-	TEXT("Amount of time to wait for the FadeOut Event to fire. \n"),
-	ECVF_Default);
-
 static float LinearGainScalarForFinalOututCVar = 1.0f;
 FAutoConsoleVariableRef LinearGainScalarForFinalOutut(
 	TEXT("au.LinearGainScalarForFinalOutut"),
 	LinearGainScalarForFinalOututCVar,
 	TEXT("Linear gain scalar applied to the final float buffer to allow for hotfixable mitigation of clipping \n")
 	TEXT("Default is 1.0f \n"),
-	ECVF_Default);
-
-static int32 ExtraAudioMixerDeviceLoggingCVar = 0;
-FAutoConsoleVariableRef ExtraAudioMixerDeviceLogging(
-	TEXT("au.ExtraAudioMixerDeviceLogging"),
-	ExtraAudioMixerDeviceLoggingCVar,
-	TEXT("Enables extra logging for audio mixer device running \n")
-	TEXT("0: no logging, 1: logging every 500 callbacks \n"),
 	ECVF_Default);
 
 namespace Audio
@@ -155,43 +131,56 @@ namespace Audio
 		}
 	}
 
-
-	void FOutputBuffer::Init(IAudioMixer* InAudioMixer, const int32 InNumSamples, const int32 InNumBuffers, const EAudioMixerStreamDataFormat::Type InDataFormat)
+	FOutputBuffer::~FOutputBuffer()
 	{
-		RenderBuffer.Reset();
-		RenderBuffer.AddUninitialized(InNumSamples);
+		if (IsReadyEvent != nullptr)
+		{
+			FPlatformProcess::ReturnSynchEventToPool(IsReadyEvent);
+			IsReadyEvent = nullptr;
+		}
+	}
 
+
+	void FOutputBuffer::Init(IAudioMixer* InAudioMixer, const int32 InNumSamples, const EAudioMixerStreamDataFormat::Type InDataFormat)
+	{
+		Buffer.SetNumZeroed(InNumSamples);
 		DataFormat = InDataFormat;
 
 		check(InAudioMixer != nullptr);
 		AudioMixer = InAudioMixer;
 
-		CircularBuffer.SetCapacity(InNumSamples * InNumBuffers * GetSizeForDataFormat(DataFormat));
-
-		PopBuffer.Reset();
-		PopBuffer.AddUninitialized(InNumSamples * GetSizeForDataFormat(DataFormat));
-
-		if (DataFormat != EAudioMixerStreamDataFormat::Float)
+		if (IsReadyEvent == nullptr)
 		{
-			FormattedBuffer.SetNumZeroed(InNumSamples * GetSizeForDataFormat(DataFormat));
+			IsReadyEvent = FPlatformProcess::GetSynchEventFromPool(true /*Manual Reset*/);
+		}
+		check(IsReadyEvent != nullptr);
+
+		switch (DataFormat)
+		{
+			case EAudioMixerStreamDataFormat::Float:
+				// nothing to do...
+				break;
+
+			case EAudioMixerStreamDataFormat::Int16:
+				FormattedBuffer.SetNumZeroed(InNumSamples * sizeof(int16));	
+				break;
+
+			default:
+				// Not implemented/supported
+				check(false);
+				break;
 		}
 	}
 
-	bool FOutputBuffer::MixNextBuffer()
+	void FOutputBuffer::MixNextBuffer()
  	{
-		// If the circular queue is already full, exit.
-		if (CircularBuffer.Remainder() < static_cast<uint32>(RenderBuffer.Num()))
-		{
-			return false;
-		}
-
 		CSV_SCOPED_TIMING_STAT(Audio, RenderAudio);
 
 		// Zero the buffer
-		FPlatformMemory::Memzero(RenderBuffer.GetData(), RenderBuffer.Num() * sizeof(float));
+		FPlatformMemory::Memzero(Buffer.GetData(), Buffer.Num() * sizeof(float));
 		if (AudioMixer != nullptr)
 		{
-			AudioMixer->OnProcessAudioStream(RenderBuffer);
+			AudioMixer->OnProcessAudioStream(Buffer);
 		}
 
 		switch (DataFormat)
@@ -200,31 +189,25 @@ namespace Audio
 		{
 			if (!FMath::IsNearlyEqual(LinearGainScalarForFinalOututCVar, 1.0f))
 			{
-				MultiplyBufferByConstantInPlace(RenderBuffer, LinearGainScalarForFinalOututCVar);
+				MultiplyBufferByConstantInPlace(Buffer, LinearGainScalarForFinalOututCVar);
 			}
-			BufferRangeClampFast(RenderBuffer, -1.0f, 1.0f);
-
-			// No conversion is needed, so we push the RenderBuffer directly to the circular queue.
-			CircularBuffer.Push(reinterpret_cast<const uint8*>(RenderBuffer.GetData()), RenderBuffer.Num() * sizeof(float));
+			BufferRangeClampFast(Buffer, -1.0f, 1.0f);
 		}
 		break;
 
 		case EAudioMixerStreamDataFormat::Int16:
 		{
 			int16* BufferInt16 = (int16*)FormattedBuffer.GetData();
-			const int32 NumSamples = RenderBuffer.Num();
-			check(FormattedBuffer.Num() / GetSizeForDataFormat(DataFormat) == RenderBuffer.Num());			
+			const int32 NumSamples = Buffer.Num();
 
 			const float ConversionScalar = LinearGainScalarForFinalOututCVar * 32767.0f;
-			MultiplyBufferByConstantInPlace(RenderBuffer, ConversionScalar);
-			BufferRangeClampFast(RenderBuffer, -32767.0f, 32767.0f);
+			MultiplyBufferByConstantInPlace(Buffer, ConversionScalar);
+			BufferRangeClampFast(Buffer, -32767.0f, 32767.0f);
 
 			for (int32 i = 0; i < NumSamples; ++i)
 			{
-				BufferInt16[i] = (int16)RenderBuffer[i];
+				BufferInt16[i] = (int16)Buffer[i];
 			}
-
-			CircularBuffer.Push(reinterpret_cast<const uint8*>(FormattedBuffer.GetData()), FormattedBuffer.Num());
 		}
 		break;
 
@@ -234,43 +217,70 @@ namespace Audio
 			break;
 		}
 
-		static const int32 HeartBeatRate = 500;
-		if ((ExtraAudioMixerDeviceLoggingCVar > 0) && (++CallCounterMixNextBuffer > HeartBeatRate))
-		{
-			UE_LOG(LogAudioMixer, Display, TEXT("FOutputBuffer::MixNextBuffer() called %i times"), HeartBeatRate);
-			CallCounterMixNextBuffer = 0;
-		}
-
-		return true;
+		// Mark/signal that we're ready
+		bIsReady = true;
+		IsReadyEvent->Trigger();
  	}
  
-	TArrayView<const uint8> FOutputBuffer::PopBufferData(int32& OutNumBytesPopped) const
+	const uint8* FOutputBuffer::GetBufferData() const
 	{
-		FMemory::Memzero(reinterpret_cast<uint8*>(PopBuffer.GetData()), PopBuffer.Num());
-		OutNumBytesPopped = CircularBuffer.Pop(PopBuffer.GetData(), PopBuffer.Num());
-
-		return TArrayView<const uint8>(PopBuffer);
-	}
-
-	int32 FOutputBuffer::GetNumSamples() const
-	{
-		return RenderBuffer.Num();
-	}
-
-	size_t FOutputBuffer::GetSizeForDataFormat(EAudioMixerStreamDataFormat::Type InDataFormat)
-	{
-		switch (InDataFormat)
+		if (DataFormat == EAudioMixerStreamDataFormat::Float)
 		{
-		case EAudioMixerStreamDataFormat::Float:
-			return sizeof(float);
-
-		case EAudioMixerStreamDataFormat::Int16:
-			return sizeof(int16);
-
-		default:
-			checkNoEntry();
-			return 0;
+			return (const uint8*)Buffer.GetData();
 		}
+		else
+		{
+			return (const uint8*)FormattedBuffer.GetData();
+		}
+	}
+
+	uint8* FOutputBuffer::GetBufferData()
+	{
+		if (DataFormat == EAudioMixerStreamDataFormat::Float)
+		{
+			return (uint8*)Buffer.GetData();
+		}
+		else
+		{
+			return (uint8*)FormattedBuffer.GetData();
+		}
+	}
+
+	int32 FOutputBuffer::GetNumFrames() const
+	{
+		return Buffer.Num();
+	}
+
+	void FOutputBuffer::ResetReadyState()
+	{
+		bIsReady = false;
+		if (IsReadyEvent)
+		{
+			IsReadyEvent->Reset();
+		}
+	}
+
+
+	void FOutputBuffer::Reset(const int32 InNewNumSamples)
+	{
+		Buffer.Reset();
+		Buffer.AddZeroed(InNewNumSamples);
+
+		switch (DataFormat)
+		{
+			// Doesn't do anything...
+			case EAudioMixerStreamDataFormat::Float:
+				break;
+
+			case EAudioMixerStreamDataFormat::Int16:
+			{
+				FormattedBuffer.Reset();
+				FormattedBuffer.AddZeroed(InNewNumSamples * sizeof(int16));
+			}
+			break;
+		}
+
+		bIsReady = false;
 	}
 
 	/**
@@ -283,6 +293,8 @@ namespace Audio
 		, AudioRenderEvent(nullptr)
 		, bIsInDeviceSwap(false)
 		, AudioFadeEvent(nullptr)
+		, CurrentBufferReadIndex(INDEX_NONE)
+		, CurrentBufferWriteIndex(INDEX_NONE)
 		, NumOutputBuffers(0)
 		, FadeVolume(0.0f)
 		, LastError(TEXT("None"))
@@ -304,11 +316,6 @@ namespace Audio
 
 	void IAudioMixerPlatformInterface::FadeIn()
 	{
-		if (IsNonRealtime())
-		{
-			FadeParam.SetValue(1.0f);
-		}
-
 		bPerformingFade = true;
 		bFadedOut = false;
 		FadeVolume = 1.0f;
@@ -316,15 +323,6 @@ namespace Audio
 
 	void IAudioMixerPlatformInterface::FadeOut()
 	{
-		// Non Realtime isn't ticked when fade out is called, and the user can't hear
-		// the output anyways so there's no need to make it pleasant for their ears.
-		if (!FPlatformProcess::SupportsMultithreading() || IsNonRealtime())
-		{
-			bFadedOut = true;
-			FadeVolume = 0.f;
-			return;
-		}
-
 		if (bFadedOut || FadeVolume == 0.0f)
 		{
 			return;
@@ -332,11 +330,8 @@ namespace Audio
 
 		bPerformingFade = true;
 		if (AudioFadeEvent != nullptr)
-		{						
-			if (!AudioFadeEvent->Wait(FadeoutTimeoutCVar))
-			{
-				UE_LOG(LogAudioMixer, Warning, TEXT("FadeOutEvent timed out"));
-			}
+		{
+			AudioFadeEvent->Wait();
 		}
 
 		FadeVolume = 0.0f;
@@ -375,44 +370,26 @@ namespace Audio
 	}
 
 	template<typename BufferType>
-	void IAudioMixerPlatformInterface::ApplyAttenuationInternal(TArrayView<BufferType>& InOutBuffer)
+	void IAudioMixerPlatformInterface::ApplyAttenuationInternal(BufferType* BufferDataPtr, const int32 NumFrames)
 	{
-		static const int32 HeartBeatRate = 500;
-		const bool bLog = (ExtraAudioMixerDeviceLoggingCVar > 0) && (++CallCounterApplyAttenuationInternal > HeartBeatRate);
-		if (bLog)
-		{
-			UE_LOG(LogAudioMixer, Display, TEXT("IAudioMixerPlatformInterface::ApplyAttenuationInternal() called %i times"), HeartBeatRate);
-			CallCounterApplyAttenuationInternal = 0;
-		}
-
 		// Perform fade in and fade out global attenuation to avoid clicks/pops on startup/shutdown
 		if (bPerformingFade)
 		{
-			FadeParam.SetValue(FadeVolume, InOutBuffer.Num());
+			FadeParam.SetValue(FadeVolume, NumFrames);
 
-			for (int32 i = 0; i < InOutBuffer.Num(); ++i)
+			for (int32 i = 0; i < NumFrames; ++i)
 			{
-				InOutBuffer[i] = (BufferType)(InOutBuffer[i] * FadeParam.Update());
+				BufferDataPtr[i] = (BufferType)(BufferDataPtr[i] * FadeParam.Update());
 			}
 
 			bFadedOut = (FadeVolume == 0.0f);
 			bPerformingFade = false;
 			AudioFadeEvent->Trigger();
-
-			if (bLog)
-			{
-				UE_LOG(LogAudioMixer, Display, TEXT("IAudioMixerPlatformInterface::ApplyAttenuationInternal() Faded from %f to %f"), FadeVolume, FadeParam.GetValue());
-			}
 		}
 		else if (bFadedOut)
 		{
 			// If we're faded out, then just zero the data.
-			FPlatformMemory::Memzero((void*)InOutBuffer.GetData(), sizeof(BufferType)* InOutBuffer.Num());
-
-			if (bLog)
-			{
-				UE_LOG(LogAudioMixer, Display, TEXT("IAudioMixerPlatformInterface::ApplyAttenuationInternal() Zero'd out buffer"));
-			}
+			FPlatformMemory::Memzero((void*)BufferDataPtr, sizeof(BufferType)*NumFrames);
 		}
 
 		FadeParam.Reset();
@@ -420,12 +397,15 @@ namespace Audio
 
 	void IAudioMixerPlatformInterface::StartRunningNullDevice()
 	{
-		UE_LOG(LogAudioMixer, Display, TEXT("StartRunningNullDevice() called"));
-
 		if (!NullDeviceCallback.IsValid())
 		{
+			// Reset all of the buffers, then immediately kick off another render.
+			for (int32 Index = 0; Index < OutputBuffers.Num(); ++Index)
+			{
+				OutputBuffers[Index].Reset(OpenStreamParams.NumFrames * AudioStreamInfo.DeviceInfo.NumChannels);
+			}
 
-			check(OpenStreamParams.NumFrames * AudioStreamInfo.DeviceInfo.NumChannels == OutputBuffer.GetNumSamples());
+			check(OpenStreamParams.NumFrames * AudioStreamInfo.DeviceInfo.NumChannels == OutputBuffers[0].GetBuffer().Num());
 
 			AudioRenderEvent->Trigger();
 
@@ -440,8 +420,11 @@ namespace Audio
 
 	void IAudioMixerPlatformInterface::StopRunningNullDevice()
 	{
-		UE_LOG(LogAudioMixer, Display, TEXT("StopRunningNullDevice() called"));
-
+		if (bIsUsingNullDevice)
+		{
+			CurrentBufferReadIndex = 0;
+			CurrentBufferWriteIndex = 1;
+		}
 		if (NullDeviceCallback.IsValid())
 		{
 			NullDeviceCallback.Reset();
@@ -449,23 +432,21 @@ namespace Audio
 		}
 	}
 
-	void IAudioMixerPlatformInterface::ApplyMasterAttenuation(TArrayView<const uint8>& OutPoppedAudio)
+	void IAudioMixerPlatformInterface::ApplyMasterAttenuation()
 	{
-		EAudioMixerStreamDataFormat::Type Format = OutputBuffer.GetFormat();
+		const int32 NextReadIndex = (CurrentBufferReadIndex + 1) % NumOutputBuffers;
+		FOutputBuffer& CurrentReadBuffer = OutputBuffers[NextReadIndex];
 
+		EAudioMixerStreamDataFormat::Type Format = CurrentReadBuffer.GetFormat();
+		uint8* BufferDataPtr = CurrentReadBuffer.GetBufferData();
+		
 		if (Format == EAudioMixerStreamDataFormat::Float)
 		{
-			TArrayView<float> OutFloatBuffer = TArrayView<float>(const_cast<float*>(reinterpret_cast<const float*>(OutPoppedAudio.GetData())), OutPoppedAudio.Num() / sizeof(float));
-			ApplyAttenuationInternal(OutFloatBuffer);
-		}
-		else if (Format == EAudioMixerStreamDataFormat::Int16)
-		{
-			TArrayView<int16> OutIntBuffer = TArrayView<int16>(const_cast<int16*>(reinterpret_cast<const int16*>(OutPoppedAudio.GetData())), OutPoppedAudio.Num() / sizeof(int16));
-			ApplyAttenuationInternal(OutIntBuffer);
+			ApplyAttenuationInternal((float*)BufferDataPtr, CurrentReadBuffer.GetNumFrames());
 		}
 		else
 		{
-			checkNoEntry();
+			ApplyAttenuationInternal((int16*)BufferDataPtr, CurrentReadBuffer.GetNumFrames());
 		}
 	}
 
@@ -493,49 +474,69 @@ namespace Audio
 			DeviceSwapCriticalSection.Unlock();
 			return;
 		}
-		
+
+		// AudioRenderThread hasn't executed yet, return silence
+		if (CurrentBufferReadIndex == INDEX_NONE || CurrentBufferWriteIndex == INDEX_NONE)
+		{
+			SubmitBuffer(UnderrunBuffer.GetBufferData());
+			return;
+		}
+
+		// Reset the ready state of the buffer which was just finished playing
+		FOutputBuffer& CurrentReadBuffer = OutputBuffers[CurrentBufferReadIndex];
+		CurrentReadBuffer.ResetReadyState();
+
+		// Get the next index that we want to read
+		int32 NextReadIndex = (CurrentBufferReadIndex + 1) % NumOutputBuffers;
+
+		// If it's not ready, warn, and then wait here. This will cause underruns but is preferable than getting out-of-order buffer state.
 		static int32 UnderrunCount = 0;
 		static int32 CurrentUnderrunCount = 0;
-		static uint64 TimeLastWarningCycles = 0;
 
-		int32 NumSamplesPopped = 0;
-		TArrayView<const uint8> PoppedAudio = OutputBuffer.PopBufferData(NumSamplesPopped);
+		bool bSubmittingUnderrunBuffer = false;
 
-		bool bDidOutputUnderrun = NumSamplesPopped != PoppedAudio.Num();
+		if (!OutputBuffers[NextReadIndex].IsReady())
+		{
+			// try to wait for the buffer to be ready
+			FEvent* BufferReadyEvent = OutputBuffers[NextReadIndex].IsReadyEvent;
+			if (!BufferReadyEvent || !BufferReadyEvent->Wait(static_cast<uint32>(UnderrunTimeoutCVar)))
+			{
+				bSubmittingUnderrunBuffer = true; // Event didn't fire in time
+			}
+		}
 		
-		if (bDidOutputUnderrun)
+		if (bSubmittingUnderrunBuffer)
 		{
 			UnderrunCount++;
 			CurrentUnderrunCount++;
 			
 			if (!bWarnedBufferUnderrun)
-			{
-				float ElapsedTimeInMs = static_cast<float>(FPlatformTime::ToMilliseconds64(FPlatformTime::Cycles64() - TimeLastWarningCycles));
-				if( ElapsedTimeInMs > MinTimeBetweenUnderrunWarningsMs )
-				{
-					// Underrun/Starvation:
-					// Things to try: Increase # output buffers, ensure audio-render thread has time to run (affinity and priority), debug your mix and reduce # sounds playing.
-
-					UE_LOG(LogAudioMixer, Display, TEXT("Audio Buffer Underrun (starvation) detected."));
-					bWarnedBufferUnderrun = true;
-					TimeLastWarningCycles = FPlatformTime::Cycles64();
-				}
+			{						
+				UE_LOG(LogAudioMixer, Display, TEXT("Audio Buffer Underrun detected."));
+				bWarnedBufferUnderrun = true;
 			}
+		
+			SubmitBuffer(UnderrunBuffer.GetBufferData());
 		}
 		else
 		{
+			ApplyMasterAttenuation();
+
 			// As soon as a valid buffer goes through, allow more warning
 			if (bWarnedBufferUnderrun)
 			{
 				UE_LOG(LogAudioMixerDebug, Log, TEXT("Audio had %d underruns [Total: %d]."), CurrentUnderrunCount, UnderrunCount);
 			}
-
 			CurrentUnderrunCount = 0;
 			bWarnedBufferUnderrun = false;
-		}
 
-		ApplyMasterAttenuation(PoppedAudio);
-		SubmitBuffer(PoppedAudio.GetData());
+			// Submit the buffer at the next read index, but don't set the read index value yet
+			SubmitBuffer(OutputBuffers[NextReadIndex].GetBufferData());
+
+			// Update the current read index to the next read index
+			CurrentBufferReadIndex = NextReadIndex;
+			OutputBuffers[NextReadIndex].IsReadyEvent->Reset();
+		}
 
 		DeviceSwapCriticalSection.Unlock();
 
@@ -559,10 +560,16 @@ namespace Audio
 
 		// Set the number of buffers to be one more than the number to queue.
 		NumOutputBuffers = FMath::Max(OpenStreamParams.NumBuffers, 2);
-		UE_LOG(LogAudioMixer, Display, TEXT("Output buffers initialized: Frames=%i, Channels=%i, Samples=%i"), NumOutputFrames, NumOutputChannels, NumOutputSamples);
 
+		OutputBuffers.Reset();
+		OutputBuffers.AddDefaulted(NumOutputBuffers);
+		for (int32 Index = 0; Index < NumOutputBuffers; ++Index)
+		{
+			OutputBuffers[Index].Init(AudioStreamInfo.AudioMixer, NumOutputSamples, AudioStreamInfo.DeviceInfo.Format);
+		}
 
-		OutputBuffer.Init(AudioStreamInfo.AudioMixer, NumOutputSamples, NumOutputBuffers, AudioStreamInfo.DeviceInfo.Format);
+		// Create an underrun buffer
+		UnderrunBuffer.Init(AudioStreamInfo.AudioMixer, NumOutputSamples, AudioStreamInfo.DeviceInfo.Format);
 
 		AudioStreamInfo.StreamState = EAudioOutputStreamState::Running;
 
@@ -636,8 +643,13 @@ namespace Audio
 		if (AudioStreamInfo.StreamState == EAudioOutputStreamState::Running && bIsDeviceInitialized)
 		{
 			// Render mixed buffers till our queued buffers are filled up
-			while (OutputBuffer.MixNextBuffer())
+			while (CurrentBufferReadIndex != CurrentBufferWriteIndex)
 			{
+				RenderTimeAnalysis.Start();
+				OutputBuffers[CurrentBufferWriteIndex].MixNextBuffer();
+				RenderTimeAnalysis.End();
+
+				CurrentBufferWriteIndex = (CurrentBufferWriteIndex + 1) % NumOutputBuffers;
 			}
 		}
 	}
@@ -649,22 +661,31 @@ namespace Audio
 
 	uint32 IAudioMixerPlatformInterface::RunInternal()
 	{
-		UE_LOG(LogAudioMixer, Display, TEXT("Starting AudioMixerPlatformInterface::RunInternal()"));
-
 		// Lets prime and submit the first buffer (which is going to be the buffer underrun buffer)
-		int32 NumSamplesPopped;
-		TArrayView<const uint8> AudioToSubmit = OutputBuffer.PopBufferData(NumSamplesPopped);
+		SubmitBuffer(UnderrunBuffer.GetBufferData());
 
-		SubmitBuffer(AudioToSubmit.GetData());
+		OutputBuffers[0].MixNextBuffer();
 
-		OutputBuffer.MixNextBuffer();
+		// Start immediately processing the next buffer
+		checkf(CurrentBufferReadIndex == INDEX_NONE, TEXT("CurrentBufferReadIndex: %i, StreamState: %i"), CurrentBufferReadIndex.Load(), AudioStreamInfo.StreamState);
+		checkf(CurrentBufferWriteIndex == INDEX_NONE, TEXT("CurrentBufferWriteIndex: %i, StreamState: %i"), CurrentBufferWriteIndex.Load(), AudioStreamInfo.StreamState);
+
+		CurrentBufferReadIndex = 0;
+		CurrentBufferWriteIndex = 1;
 
 		while (AudioStreamInfo.StreamState != EAudioOutputStreamState::Stopping)
 		{
+			RenderTimeAnalysis.Start();
+
 			// Render mixed buffers till our queued buffers are filled up
-			while (bIsDeviceInitialized && OutputBuffer.MixNextBuffer())
+			while (CurrentBufferReadIndex != CurrentBufferWriteIndex && bIsDeviceInitialized)
 			{
+				OutputBuffers[CurrentBufferWriteIndex].MixNextBuffer();
+
+				CurrentBufferWriteIndex = (CurrentBufferWriteIndex + 1) % NumOutputBuffers;
 			}
+
+			RenderTimeAnalysis.End();
 
 			// Bounds check the timeout for our audio render event.
 			OverrunTimeoutCVar = FMath::Clamp(OverrunTimeoutCVar, 500, 5000);
@@ -678,6 +699,8 @@ namespace Audio
 			}
 		}
 
+		CurrentBufferReadIndex = INDEX_NONE;
+		CurrentBufferWriteIndex = INDEX_NONE;
 		OpenStreamParams.AudioMixer->OnAudioStreamShutdown();
 
 		AudioStreamInfo.StreamState = EAudioOutputStreamState::Stopped;

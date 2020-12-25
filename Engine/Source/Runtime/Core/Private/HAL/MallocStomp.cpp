@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "HAL/MallocStomp.h"
 #include "Math/UnrealMathUtility.h"
@@ -22,20 +22,13 @@
 #define MALLOC_STOMP_KEEP_VIRTUAL_MEMORY 0
 #endif
 
-#if PLATFORM_64BITS
-	// 64-bit ABIs on x86_64 expect a 16-byte alignment
-#define STOMPALIGNMENT 16U
-#else
-#define STOMPALIGNMENT 0U
-#endif
-
 static void MallocStompOverrunTest()
 {
 #if !USING_CODE_ANALYSIS
 	const uint32 ArraySize = 4;
 	uint8* Pointer = new uint8[ArraySize];
 	// Overrun.
-	Pointer[ArraySize+1+ STOMPALIGNMENT] = 0;
+	Pointer[ArraySize+1] = 0;
 #endif // !USING_CODE_ANALYSIS
 }
 
@@ -55,18 +48,6 @@ FMallocStomp::FMallocStomp(const bool InUseUnderrunMode)
 
 void* FMallocStomp::Malloc(SIZE_T Size, uint32 Alignment)
 {
-	void* Result = TryMalloc(Size, Alignment);
-
-	if (Result == nullptr)
-	{
-		FPlatformMemory::OnOutOfMemory(Size, Alignment);
-	}
-
-	return Result;
-}
-
-void* FMallocStomp::TryMalloc(SIZE_T Size, uint32 Alignment)
-{
 	if (Size == 0U)
 	{
 		Size = 1U;
@@ -74,7 +55,7 @@ void* FMallocStomp::TryMalloc(SIZE_T Size, uint32 Alignment)
 
 #if PLATFORM_64BITS
 	// 64-bit ABIs on x86_64 expect a 16-byte alignment
-	Alignment = FMath::Max<uint32>(Alignment, STOMPALIGNMENT);
+	Alignment = FMath::Max<uint32>(Alignment, 16U);
 #endif
 
 	const SIZE_T AlignedSize = (Alignment > 0U) ? ((Size + Alignment - 1U) & -static_cast<int32>(Alignment)) : Size;
@@ -112,10 +93,11 @@ void* FMallocStomp::TryMalloc(SIZE_T Size, uint32 Alignment)
 
 	if (!FullAllocationPointer)
 	{
-		return nullptr;
+		// this is expected not to return
+		FPlatformMemory::OnOutOfMemory(Size, Alignment);
 	}
 
-	void* ReturnedPointer = nullptr;
+	void *ReturnedPointer = nullptr;
 	static const SIZE_T AllocationDataSize = sizeof(FAllocationData);
 
 	const FAllocationData AllocData = { FullAllocationPointer, TotalAllocationSize, AlignedSize, SentinelExpectedValue };
@@ -131,8 +113,8 @@ void* FMallocStomp::TryMalloc(SIZE_T Size, uint32 Alignment)
 		void* CommittedMemory = VirtualAlloc(AllocDataPointerStart, AllocFullPageSize, MEM_COMMIT, PAGE_READWRITE);
 		if (!CommittedMemory)
 		{
-			// Failed to allocate and commit physical memory pages. 
-			return nullptr;
+			// Failed to allocate and commit physical memory pages. Report OOM.
+			FPlatformMemory::OnOutOfMemory(Size, Alignment);
 		}
 		check(CommittedMemory == AllocDataPointerStart);
 #else
@@ -149,8 +131,8 @@ void* FMallocStomp::TryMalloc(SIZE_T Size, uint32 Alignment)
 		void* CommittedMemory = VirtualAlloc(FullAllocationPointer, AllocFullPageSize, MEM_COMMIT, PAGE_READWRITE);
 		if (!CommittedMemory)
 		{
-			// Failed to allocate and commit physical memory pages
-			return nullptr;
+			// Failed to allocate and commit physical memory pages. Report OOM.
+			FPlatformMemory::OnOutOfMemory(Size, Alignment);
 		}
 		check(CommittedMemory == FullAllocationPointer);
 #else
@@ -167,40 +149,24 @@ void* FMallocStomp::TryMalloc(SIZE_T Size, uint32 Alignment)
 
 void* FMallocStomp::Realloc(void* InPtr, SIZE_T NewSize, uint32 Alignment)
 {
-	void* Result = TryRealloc(InPtr, NewSize, Alignment);
-
-	if (Result == nullptr && NewSize)
-	{
-		FPlatformMemory::OnOutOfMemory(NewSize, Alignment);
-	}
-
-	return Result;
-}
-
-void* FMallocStomp::TryRealloc(void* InPtr, SIZE_T NewSize, uint32 Alignment)
-{
-	if (NewSize == 0U)
+	if(NewSize == 0U)
 	{
 		Free(InPtr);
 		return nullptr;
 	}
 
-	void* ReturnPtr = nullptr;
-
-	if (InPtr != nullptr)
+	void *ReturnPtr = nullptr;
+	if(InPtr != nullptr)
 	{
-		ReturnPtr = TryMalloc(NewSize, Alignment);
+		ReturnPtr = Malloc(NewSize, Alignment);
 
-		if (ReturnPtr != nullptr)
-		{
-			FAllocationData* AllocDataPtr = reinterpret_cast<FAllocationData*>(reinterpret_cast<uint8*>(InPtr) - sizeof(FAllocationData));
-			FMemory::Memcpy(ReturnPtr, InPtr, FMath::Min(AllocDataPtr->Size, NewSize));
-			Free(InPtr);
-		}
+		FAllocationData *AllocDataPtr = reinterpret_cast<FAllocationData*>(reinterpret_cast<uint8*>(InPtr) - sizeof(FAllocationData));
+		FMemory::Memcpy(ReturnPtr, InPtr, FMath::Min(AllocDataPtr->Size, NewSize));
+		Free(InPtr);
 	}
 	else
 	{
-		ReturnPtr = TryMalloc(NewSize, Alignment);
+		ReturnPtr = Malloc(NewSize, Alignment);
 	}
 
 	return ReturnPtr;

@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayEffect.h"
 #include "TimerManager.h"
 #include "GameFramework/GameStateBase.h"
-#include "Engine/ChildConnection.h"
-#include "Engine/NetConnection.h"
 #include "Engine/PackageMapClient.h"
+#include "Engine/NetConnection.h"
 #include "AbilitySystemStats.h"
 #include "GameplayTagsModule.h"
 #include "AbilitySystemGlobals.h"
@@ -138,7 +137,7 @@ void UGameplayEffect::PostEditChangeProperty(FPropertyChangedEvent& PropertyChan
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
-	const FProperty* PropertyThatChanged = PropertyChangedEvent.MemberProperty;
+	const UProperty* PropertyThatChanged = PropertyChangedEvent.MemberProperty;
 	if (PropertyThatChanged)
 	{
 		UGameplayEffect* Parent = Cast<UGameplayEffect>(GetClass()->GetSuperClass()->GetDefaultObject());
@@ -250,18 +249,17 @@ bool FAttributeBasedFloat::operator==(const FAttributeBasedFloat& Other) const
 		PostMultiplyAdditiveValue != Other.PostMultiplyAdditiveValue ||
 		BackingAttribute != Other.BackingAttribute ||
 		AttributeCurve != Other.AttributeCurve ||
-		AttributeCalculationType != Other.AttributeCalculationType ||
-		FinalChannel != Other.FinalChannel)
+		AttributeCalculationType != Other.AttributeCalculationType)
 	{
 		return false;
 	}
 	if (SourceTagFilter.Num() != Other.SourceTagFilter.Num() ||
-		!SourceTagFilter.HasAllExact(Other.SourceTagFilter))
+		!SourceTagFilter.HasAll(Other.SourceTagFilter))
 	{
 		return false;
 	}
 	if (TargetTagFilter.Num() != Other.TargetTagFilter.Num() ||
-		!TargetTagFilter.HasAllExact(Other.TargetTagFilter))
+		!TargetTagFilter.HasAll(Other.TargetTagFilter))
 	{
 		return false;
 	}
@@ -308,8 +306,7 @@ bool FCustomCalculationBasedFloat::operator==(const FCustomCalculationBasedFloat
 	}
 	if (Coefficient != Other.Coefficient ||
 		PreMultiplyAdditiveValue != Other.PreMultiplyAdditiveValue ||
-		PostMultiplyAdditiveValue != Other.PostMultiplyAdditiveValue ||
-		FinalLookupCurve != Other.FinalLookupCurve)
+		PostMultiplyAdditiveValue != Other.PostMultiplyAdditiveValue)
 	{
 		return false;
 	}
@@ -800,11 +797,8 @@ void FGameplayEffectSpec::Initialize(const UGameplayEffect* InDef, const FGamepl
 {
 	Def = InDef;
 	check(Def);	
-	// SetContext requires the level to be set before it runs
-	// however, there are code paths in SetLevel that can potentially (depends on game data setup) require the context to be set
-	Level = InLevel;
-	SetContext(InEffectContext);
 	SetLevel(InLevel);
+	SetContext(InEffectContext);
 
 	// Init our ModifierSpecs
 	Modifiers.SetNum(Def->Modifiers.Num());
@@ -1722,12 +1716,6 @@ void FActiveGameplayEffect::CheckOngoingTagRequirements(const FGameplayTagContai
 
 bool FActiveGameplayEffect::CheckRemovalTagRequirements(const FGameplayTagContainer& OwnerTags, FActiveGameplayEffectsContainer& OwningContainer) const
 {
-	if (Spec.Def == nullptr)
-	{
-		ABILITY_LOG(Error, TEXT("FActiveGameplayEffect::CheckRemovalTagRequirements called with no UGameplayEffect def. (%s)"), *Spec.GetEffectContext().ToString());
-		return false;
-	}
-
 	if (!Spec.Def->RemovalTagRequirements.IsEmpty())
 	{
 		if (Spec.Def->RemovalTagRequirements.RequirementsMet(OwnerTags))
@@ -1769,7 +1757,7 @@ void FActiveGameplayEffect::PostReplicatedAdd(const struct FActiveGameplayEffect
 {
 	if (Spec.Def == nullptr)
 	{
-		ABILITY_LOG(Error, TEXT("FActiveGameplayEffect::PostReplicatedAdd Received ReplicatedGameplayEffect with no UGameplayEffect def. (%s)"), *Spec.GetEffectContext().ToString());
+		ABILITY_LOG(Error, TEXT("Received ReplicatedGameplayEffect with no UGameplayEffect def."));
 		return;
 	}
 
@@ -1838,7 +1826,7 @@ void FActiveGameplayEffect::PostReplicatedChange(const struct FActiveGameplayEff
 {
 	if (Spec.Def == nullptr)
 	{
-		ABILITY_LOG(Error, TEXT("FActiveGameplayEffect::PostReplicatedChange Received ReplicatedGameplayEffect with no UGameplayEffect def. (%s)"), *Spec.GetEffectContext().ToString());
+		ABILITY_LOG(Error, TEXT("Received ReplicatedGameplayEffect with no UGameplayEffect def."));
 		return;
 	}
 
@@ -1918,7 +1906,7 @@ FActiveGameplayEffectsContainer::~FActiveGameplayEffectsContainer()
 
 void FActiveGameplayEffectsContainer::RegisterWithOwner(UAbilitySystemComponent* InOwner)
 {
-	if (Owner != InOwner && InOwner != nullptr)
+	if (Owner != InOwner)
 	{
 		Owner = InOwner;
 		OwnerIsNetAuthority = Owner->IsOwnerActorAuthoritative();
@@ -1935,11 +1923,6 @@ void FActiveGameplayEffectsContainer::ExecuteActiveEffectsFrom(FGameplayEffectSp
 #if WITH_SERVER_CODE
 	SCOPE_CYCLE_COUNTER(STAT_ExecuteActiveEffectsFrom);
 #endif
-
-	if (!Owner)
-	{
-		return;
-	}
 
 	FGameplayEffectSpec& SpecToUse = Spec;
 
@@ -2060,7 +2043,7 @@ void FActiveGameplayEffectsContainer::ExecuteActiveEffectsFrom(FGameplayEffectSp
 	}
 
 	// Apply any conditional linked effects
-	for (const FGameplayEffectSpecHandle& TargetSpec : ConditionalEffectSpecs)
+	for (const FGameplayEffectSpecHandle TargetSpec : ConditionalEffectSpecs)
 	{
 		if (TargetSpec.IsValid())
 		{
@@ -2230,10 +2213,9 @@ void FActiveGameplayEffectsContainer::OnMagnitudeDependencyChange(FActiveGamepla
 					if (!bMarkedDirty)
 					{
 						bMarkedDirty = true;
-						AActor* OwnerActor = Owner ? Owner->GetOwnerActor() : nullptr;
-						if (IsNetAuthority() && OwnerActor)
+						if (Owner && Owner->OwnerActor && IsNetAuthority())
 						{
-							OwnerActor->FlushNetDormancy();
+							Owner->OwnerActor->FlushNetDormancy();
 						}
 						MarkItemDirty(*ActiveEffect);
 					}
@@ -2387,8 +2369,10 @@ bool FActiveGameplayEffectsContainer::ShouldUseMinimalReplication()
 	return IsNetAuthority() && (Owner->ReplicationMode == EGameplayEffectReplicationMode::Minimal || Owner->ReplicationMode == EGameplayEffectReplicationMode::Mixed);
 }
 
-void FActiveGameplayEffectsContainer::SetBaseAttributeValueFromReplication(const FGameplayAttribute& Attribute, float ServerValue, float OldValue)
+void FActiveGameplayEffectsContainer::SetBaseAttributeValueFromReplication(FGameplayAttribute Attribute, float ServerValue)
 {
+	float OldValue = Owner->GetNumericAttribute(Attribute);
+
 	FAggregatorRef* RefPtr = AttributeAggregatorMap.Find(Attribute);
 	if (RefPtr && RefPtr->Get())
 	{
@@ -2589,7 +2573,7 @@ void FActiveGameplayEffectsContainer::SetAttributeBaseValue(FGameplayAttribute A
 	bool bIsGameplayAttributeDataProperty = FGameplayAttribute::IsGameplayAttributeDataProperty(Attribute.GetUProperty());
 	if (bIsGameplayAttributeDataProperty)
 	{
-		const FStructProperty* StructProperty = CastField<FStructProperty>(Attribute.GetUProperty());
+		const UStructProperty* StructProperty = Cast<UStructProperty>(Attribute.GetUProperty());
 		check(StructProperty);
 		FGameplayAttributeData* DataPtr = StructProperty->ContainerPtrToValuePtr<FGameplayAttributeData>(const_cast<UAttributeSet*>(Set));
 		if (ensure(DataPtr))
@@ -2627,7 +2611,7 @@ float FActiveGameplayEffectsContainer::GetAttributeBaseValue(FGameplayAttribute 
 		// if this attribute is of type FGameplayAttributeData then use the base value stored there
 		if (FGameplayAttribute::IsGameplayAttributeDataProperty(Attribute.GetUProperty()))
 		{
-			const FStructProperty* StructProperty = CastField<FStructProperty>(Attribute.GetUProperty());
+			const UStructProperty* StructProperty = Cast<UStructProperty>(Attribute.GetUProperty());
 			check(StructProperty);
 			const FGameplayAttributeData* DataPtr = StructProperty->ContainerPtrToValuePtr<FGameplayAttributeData>(AttributeSet);
 			if (DataPtr)
@@ -2703,15 +2687,12 @@ bool FActiveGameplayEffectsContainer::InternalExecuteMod(FGameplayEffectSpec& Sp
 			}
 
 #if ENABLE_VISUAL_LOG
-			if (FVisualLogger::IsRecording())
-			{
-				DebugExecutedGameplayEffectData DebugData;
-				DebugData.GameplayEffectName = Spec.Def->GetName();
-				DebugData.ActivationState = "INSTANT";
-				DebugData.Attribute = ModEvalData.Attribute;
-				DebugData.Magnitude = Owner->GetNumericAttribute(ModEvalData.Attribute) - OldValueOfProperty;
-				DebugExecutedGameplayEffects.Add(DebugData);
-			}
+			DebugExecutedGameplayEffectData DebugData;
+			DebugData.GameplayEffectName = Spec.Def->GetName();
+			DebugData.ActivationState = "INSTANT";
+			DebugData.Attribute = ModEvalData.Attribute;
+			DebugData.Magnitude = Owner->GetNumericAttribute(ModEvalData.Attribute) - OldValueOfProperty;
+			DebugExecutedGameplayEffects.Add(DebugData);
 #endif // ENABLE_VISUAL_LOG
 
 			bExecuted = true;
@@ -2748,17 +2729,11 @@ FActiveGameplayEffect* FActiveGameplayEffectsContainer::ApplyGameplayEffectSpec(
 
 	GAMEPLAYEFFECT_SCOPE_LOCK();
 
-	if (!ensureMsgf(Spec.Def, TEXT("Tried to apply GE with no Def (context == %s)"), *Spec.GetEffectContext().ToString()))
-	{
-		return nullptr;
-	}
-
 	bFoundExistingStackableGE = false;
 
-	AActor* OwnerActor = Owner ? Owner->GetOwnerActor() : nullptr;
-	if (IsNetAuthority() && OwnerActor)
+	if (Owner && Owner->OwnerActor && IsNetAuthority())
 	{
-		OwnerActor->FlushNetDormancy();
+		Owner->OwnerActor->FlushNetDormancy();
 	}
 
 	FActiveGameplayEffect* AppliedActiveGE = nullptr;
@@ -2946,46 +2921,49 @@ FActiveGameplayEffect* FActiveGameplayEffectsContainer::ApplyGameplayEffectSpec(
 	// Register Source and Target non snapshot capture delegates here
 	AppliedEffectSpec.CapturedRelevantAttributes.RegisterLinkedAggregatorCallbacks(AppliedActiveGE->Handle);
 	
-	// Re-calculate the duration, as it could rely on target captured attributes
-	float DefCalcDuration = 0.f;
-	if (AppliedEffectSpec.AttemptCalculateDurationFromDef(DefCalcDuration))
+	if (bSetDuration)
 	{
-		AppliedEffectSpec.SetDuration(DefCalcDuration, false);
-	}
-	else if (AppliedEffectSpec.Def->DurationMagnitude.GetMagnitudeCalculationType() == EGameplayEffectMagnitudeCalculation::SetByCaller)
-	{
-		AppliedEffectSpec.Def->DurationMagnitude.AttemptCalculateMagnitude(AppliedEffectSpec, AppliedEffectSpec.Duration);
-	}
-
-	const float DurationBaseValue = AppliedEffectSpec.GetDuration();
-
-	// Calculate Duration mods if we have a real duration
-	if (DurationBaseValue > 0.f)
-	{
-		float FinalDuration = AppliedEffectSpec.CalculateModifiedDuration();
-
-		// We cannot mod ourselves into an instant or infinite duration effect
-		if (FinalDuration <= 0.f)
+		// Re-calculate the duration, as it could rely on target captured attributes
+		float DefCalcDuration = 0.f;
+		if (AppliedEffectSpec.AttemptCalculateDurationFromDef(DefCalcDuration))
 		{
-			ABILITY_LOG(Error, TEXT("GameplayEffect %s Duration was modified to %.2f. Clamping to 0.1s duration."), *AppliedEffectSpec.Def->GetName(), FinalDuration);
-			FinalDuration = 0.1f;
+			AppliedEffectSpec.SetDuration(DefCalcDuration, false);
+		}
+		else if (AppliedEffectSpec.Def->DurationMagnitude.GetMagnitudeCalculationType() == EGameplayEffectMagnitudeCalculation::SetByCaller)
+		{
+			AppliedEffectSpec.Def->DurationMagnitude.AttemptCalculateMagnitude(AppliedEffectSpec, AppliedEffectSpec.Duration);
 		}
 
-		AppliedEffectSpec.SetDuration(FinalDuration, true);
+		const float DurationBaseValue = AppliedEffectSpec.GetDuration();
 
-		// ABILITY_LOG(Warning, TEXT("SetDuration for %s. Base: %.2f, Final: %.2f"), *NewEffect.Spec.Def->GetName(), DurationBaseValue, FinalDuration);
-
-		// Register duration callbacks with the timer manager
-		if (Owner && bSetDuration)
+		// Calculate Duration mods if we have a real duration
+		if (DurationBaseValue > 0.f)
 		{
-			FTimerManager& TimerManager = Owner->GetWorld()->GetTimerManager();
-			FTimerDelegate Delegate = FTimerDelegate::CreateUObject(Owner, &UAbilitySystemComponent::CheckDurationExpired, AppliedActiveGE->Handle);
-			TimerManager.SetTimer(AppliedActiveGE->DurationHandle, Delegate, FinalDuration, false);
-			if (!ensureMsgf(AppliedActiveGE->DurationHandle.IsValid(), TEXT("Invalid Duration Handle after attempting to set duration for GE %s @ %.2f"), 
-				*AppliedActiveGE->GetDebugString(), FinalDuration))
+			float FinalDuration = AppliedEffectSpec.CalculateModifiedDuration();
+
+			// We cannot mod ourselves into an instant or infinite duration effect
+			if (FinalDuration <= 0.f)
 			{
-				// Force this off next frame
-				TimerManager.SetTimerForNextTick(Delegate);
+				ABILITY_LOG(Error, TEXT("GameplayEffect %s Duration was modified to %.2f. Clamping to 0.1s duration."), *AppliedEffectSpec.Def->GetName(), FinalDuration);
+				FinalDuration = 0.1f;
+			}
+
+			AppliedEffectSpec.SetDuration(FinalDuration, true);
+
+			// ABILITY_LOG(Warning, TEXT("SetDuration for %s. Base: %.2f, Final: %.2f"), *NewEffect.Spec.Def->GetName(), DurationBaseValue, FinalDuration);
+
+			// Register duration callbacks with the timer manager
+			if (Owner)
+			{
+				FTimerManager& TimerManager = Owner->GetWorld()->GetTimerManager();
+				FTimerDelegate Delegate = FTimerDelegate::CreateUObject(Owner, &UAbilitySystemComponent::CheckDurationExpired, AppliedActiveGE->Handle);
+				TimerManager.SetTimer(AppliedActiveGE->DurationHandle, Delegate, FinalDuration, false);
+				if (!ensureMsgf(AppliedActiveGE->DurationHandle.IsValid(), TEXT("Invalid Duration Handle after attempting to set duration for GE %s @ %.2f"), 
+					*AppliedActiveGE->GetDebugString(), FinalDuration))
+				{
+					// Force this off next frame
+					TimerManager.SetTimerForNextTick(Delegate);
+				}
 			}
 		}
 	}
@@ -3052,8 +3030,7 @@ void FActiveGameplayEffectsContainer::InternalOnActiveGameplayEffectAdded(FActiv
 	SCOPE_CYCLE_UOBJECT(EffectDef, EffectDef);
 
 	GAMEPLAYEFFECT_SCOPE_LOCK();
-	AActor* OwnerActor = Owner->GetOwnerActor();
-	UE_VLOG(OwnerActor ? OwnerActor : Owner->GetOuter(), LogGameplayEffects, Log, TEXT("Added: %s"), *GetNameSafe(EffectDef->GetClass()));
+	UE_VLOG(Owner->OwnerActor ? Owner->OwnerActor : Owner->GetOuter(), LogGameplayEffects, Log, TEXT("Added: %s"), *GetNameSafe(EffectDef->GetClass()));
 
 	// Add our ongoing tag requirements to the dependency map. We will actually check for these tags below.
 	for (const FGameplayTag& Tag : EffectDef->OngoingTagRequirements.IgnoreTags)
@@ -3223,16 +3200,15 @@ bool FActiveGameplayEffectsContainer::RemoveActiveGameplayEffect(FActiveGameplay
 		FActiveGameplayEffect& Effect = *GetActiveGameplayEffect(ActiveGEIdx);
 		if (Effect.Handle == Handle && Effect.IsPendingRemove == false)
 		{
-			AActor* OwnerActor = Owner->GetOwnerActor();
-			UE_VLOG(OwnerActor, LogGameplayEffects, Log, TEXT("Removed: %s"), *GetNameSafe(Effect.Spec.Def->GetClass()));
+			UE_VLOG(Owner->OwnerActor, LogGameplayEffects, Log, TEXT("Removed: %s"), *GetNameSafe(Effect.Spec.Def->GetClass()));
 			if (UE_LOG_ACTIVE(VLogAbilitySystem, Log))
 			{
-				ABILITY_VLOG(OwnerActor, Log, TEXT("Removed %s"), *Effect.Spec.Def->GetFName().ToString());
+				ABILITY_VLOG(Owner->OwnerActor, Log, TEXT("Removed %s"), *Effect.Spec.Def->GetFName().ToString());
 				for (FGameplayModifierInfo Modifier : Effect.Spec.Def->Modifiers)
 				{
 					float Magnitude = 0.f;
 					Modifier.ModifierMagnitude.AttemptCalculateMagnitude(Effect.Spec, Magnitude);
-					ABILITY_VLOG(OwnerActor, Log, TEXT("         %s: %s %f"), *Modifier.Attribute.GetName(), *EGameplayModOpToString(Modifier.ModifierOp), Magnitude);
+					ABILITY_VLOG(Owner->OwnerActor, Log, TEXT("         %s: %s %f"), *Modifier.Attribute.GetName(), *EGameplayModOpToString(Modifier.ModifierOp), Magnitude);
 				}
 			}
 
@@ -3253,13 +3229,12 @@ void FActiveGameplayEffectsContainer::InternalExecutePeriodicGameplayEffect(FAct
 
 		if (UE_LOG_ACTIVE(VLogAbilitySystem, Log))
 		{
-			AActor* OwnerActor = Owner->GetOwnerActor();
-			ABILITY_VLOG(OwnerActor, Log, TEXT("Executed Periodic Effect %s"), *ActiveEffect.Spec.Def->GetFName().ToString());
+			ABILITY_VLOG(Owner->OwnerActor, Log, TEXT("Executed Periodic Effect %s"), *ActiveEffect.Spec.Def->GetFName().ToString());
 			for (FGameplayModifierInfo Modifier : ActiveEffect.Spec.Def->Modifiers)
 			{
 				float Magnitude = 0.f;
 				Modifier.ModifierMagnitude.AttemptCalculateMagnitude(ActiveEffect.Spec, Magnitude);
-				ABILITY_VLOG(OwnerActor, Log, TEXT("         %s: %s %f"), *Modifier.Attribute.GetName(), *EGameplayModOpToString(Modifier.ModifierOp), Magnitude);
+				ABILITY_VLOG(Owner->OwnerActor, Log, TEXT("         %s: %s %f"), *Modifier.Attribute.GetName(), *EGameplayModOpToString(Modifier.ModifierOp), Magnitude);
 			}
 		}
 
@@ -3339,10 +3314,9 @@ bool FActiveGameplayEffectsContainer::InternalRemoveActiveGameplayEffect(int32 I
 			Owner->GetWorld()->GetTimerManager().ClearTimer(Effect.PeriodHandle);
 		}
 
-		AActor* OwnerActor = Owner->GetOwnerActor();
-		if (bIsNetAuthority && OwnerActor)
+		if (bIsNetAuthority && Owner->OwnerActor)
 		{
-			OwnerActor->FlushNetDormancy();
+			Owner->OwnerActor->FlushNetDormancy();
 		}
 
 		// Remove this handle from the global map
@@ -3636,10 +3610,9 @@ void FActiveGameplayEffectsContainer::OnCustomMagnitudeExternalDependencyFired(T
 					{
 						// By default, a dormancy flush should be required here. If a calculation class has requested that
 						// non-net authorities can respond to external dependencies, the dormancy flush is skipped as a desired optimization
-						AActor* OwnerActor = Owner ? Owner->GetOwnerActor() : nullptr;
-						if (bRequiresDormancyFlush && OwnerActor)
+						if (bRequiresDormancyFlush && Owner && Owner->OwnerActor)
 						{
-							OwnerActor->FlushNetDormancy();
+							Owner->OwnerActor->FlushNetDormancy();
 						}
 
 						MarkItemDirty(Effect);
@@ -3714,22 +3687,17 @@ void FActiveGameplayEffectsContainer::OnOwnerTagChange(FGameplayTag TagChange, i
 	{
 		for (int32 idx = GetNumGameplayEffects() - 1; idx >= 0; --idx)
 		{
-			const FActiveGameplayEffect* Effect = GetActiveGameplayEffect(idx);
-			if (ensureMsgf(Effect != nullptr && Effect->Spec.Def != nullptr, TEXT("GetActiveGameplayEffect(%i) returned %p. GetNumGameplayEffects is %i."), idx, Effect, GetNumGameplayEffects()))
+			const FActiveGameplayEffect& Effect = *GetActiveGameplayEffect(idx);
+			if (Effect.IsPendingRemove == false && Effect.CheckRemovalTagRequirements(OwnerTags, *this))
 			{
-				if (Effect->IsPendingRemove == false && Effect->CheckRemovalTagRequirements(OwnerTags, *this))
-				{
-					InternalRemoveActiveGameplayEffect(idx, -1, true);
-				}
+				InternalRemoveActiveGameplayEffect(idx, -1, true);
 			}
-
-			ensure(Effect == GetActiveGameplayEffect(idx));
 		}
 	}
 
 	// Removing effects could change and/or remove the dependency entries, so find the set after we
 	// perform any removals.
-	TSet<FActiveGameplayEffectHandle>* Ptr = ActiveEffectTagDependencies.Find(TagChange);
+	auto Ptr = ActiveEffectTagDependencies.Find(TagChange);
 	if (Ptr)
 	{
 		TSet<FActiveGameplayEffectHandle>& Handles = *Ptr;
@@ -3807,26 +3775,13 @@ bool FActiveGameplayEffectsContainer::NetDeltaSerialize(FNetDeltaSerializeInfo& 
 				UNetConnection* Connection = Client->GetConnection();
 
 				// Even in mixed mode, we should always replicate out to client side recorded replays so it has all information.
-				if (!Connection->IsReplay() || IsNetAuthority())
+				if (Connection->GetDriver()->NetDriverName != NAME_DemoNetDriver || IsNetAuthority())
 				{
 					// In mixed mode, we only want to replicate to the owner of this channel, minimal replication
 					// data will go to everyone else.
-					const AActor* ParentOwner = Owner->GetOwner();
-					if (!ParentOwner->IsOwnedBy(Connection->OwningActor))
+					if (!Owner->GetOwner()->IsOwnedBy(Connection->OwningActor))
 					{
-						bool bIsChildConnection = false;
-						for (UChildConnection* ChildConnection : Connection->Children)
-						{
-							if (ParentOwner->IsOwnedBy(ChildConnection->OwningActor))
-							{
-								bIsChildConnection = true;
-								break;
-							}
-						}
-						if (!bIsChildConnection)
-						{
-							return false;
-						}
+						return false;
 					}
 				}
 			}
@@ -4870,20 +4825,20 @@ bool FGameplayModifierInfo::operator==(const FGameplayModifierInfo& Other) const
 		return false;
 	}
 
-	if (SourceTags.RequireTags.Num() != Other.SourceTags.RequireTags.Num() || !SourceTags.RequireTags.HasAllExact(Other.SourceTags.RequireTags))
+	if (SourceTags.RequireTags.Num() != Other.SourceTags.RequireTags.Num() || !SourceTags.RequireTags.HasAll(Other.SourceTags.RequireTags))
 	{
 		return false;
 	}
-	if (SourceTags.IgnoreTags.Num() != Other.SourceTags.IgnoreTags.Num() || !SourceTags.IgnoreTags.HasAllExact(Other.SourceTags.IgnoreTags))
+	if (SourceTags.IgnoreTags.Num() != Other.SourceTags.IgnoreTags.Num() || !SourceTags.IgnoreTags.HasAll(Other.SourceTags.IgnoreTags))
 	{
 		return false;
 	}
 
-	if (TargetTags.RequireTags.Num() != Other.TargetTags.RequireTags.Num() || !TargetTags.RequireTags.HasAllExact(Other.TargetTags.RequireTags))
+	if (TargetTags.RequireTags.Num() != Other.TargetTags.RequireTags.Num() || !TargetTags.RequireTags.HasAll(Other.TargetTags.RequireTags))
 	{
 		return false;
 	}
-	if (TargetTags.IgnoreTags.Num() != Other.TargetTags.IgnoreTags.Num() || !TargetTags.IgnoreTags.HasAllExact(Other.TargetTags.IgnoreTags))
+	if (TargetTags.IgnoreTags.Num() != Other.TargetTags.IgnoreTags.Num() || !TargetTags.IgnoreTags.HasAll(Other.TargetTags.IgnoreTags))
 	{
 		return false;
 	}

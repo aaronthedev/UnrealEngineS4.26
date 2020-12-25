@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	HairStrandsComposition.h: Hair strands pixel composition implementation.
@@ -6,12 +6,10 @@
 
 #pragma once
 
-#include "RenderGraph.h"
-#include "Renderer/Private/SceneRendering.h"
+#include "CoreMinimal.h"
+#include "RendererInterface.h"
 
-void RenderHairComposition(
-	FRDGBuilder& GraphBuilder, 
+void RenderHairComposeSubPixel(
+	FRHICommandListImmediate& RHICmdList, 
 	const TArray<FViewInfo>& Views,
-	const struct FHairStrandsRenderingData* HairDatas,
-	FRDGTextureRef SceneColorTexture,
-	FRDGTextureRef SceneDepthTexture);
+	const struct FHairStrandsDatas* HairDatas);

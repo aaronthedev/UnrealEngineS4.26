@@ -1,4 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
+
+/*=============================================================================
+TranslucencyPass.h: Translucency pass enum.
+=============================================================================*/
 
 #pragma once
 
@@ -9,19 +13,9 @@ namespace ETranslucencyPass
 	{
 		TPT_StandardTranslucency,
 		TPT_TranslucencyAfterDOF,
-		TPT_TranslucencyAfterDOFModulate,
 
 		/** Drawing all translucency, regardless of separate or standard.  Used when drawing translucency outside of the main renderer, eg FRendererModule::DrawTile. */
 		TPT_AllTranslucency,
 		TPT_MAX
 	};
 };
-
-enum class ETranslucencyView
-{
-	None       = 0,
-	UnderWater = 1 << 0,
-	AboveWater = 1 << 1,
-	RayTracing = 1 << 2
-};
-ENUM_CLASS_FLAGS(ETranslucencyView);

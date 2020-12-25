@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShotgunEngine.h"
 
@@ -42,7 +42,7 @@ void UShotgunEngine::OnEngineInitialized() const
 void UShotgunEngine::SetSelection(const TArray<FAssetData>* InSelectedAssets, const TArray<AActor*>* InSelectedActors)
 {
 	SelectedAssets.Reset();
-	WeakSelectedActors.Reset();
+	SelectedActors.Reset();
 
 	if (InSelectedAssets)
 	{
@@ -50,13 +50,13 @@ void UShotgunEngine::SetSelection(const TArray<FAssetData>* InSelectedAssets, co
 	}
 	if (InSelectedActors)
 	{
+		SelectedActors = *InSelectedActors;
+
 		// Also set the assets referenced by the selected actors as selected assets
 		IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
 		TArray<FAssetData> AllReferencedAssets;
-		for (const AActor* Actor : *InSelectedActors)
+		for (const AActor* Actor : SelectedActors)
 		{
-			WeakSelectedActors.Add(Actor);
-
 			TArray<UObject*> ActorAssets = GetReferencedAssets(Actor);
 			for (UObject* Asset : ActorAssets)
 			{
@@ -69,19 +69,6 @@ void UShotgunEngine::SetSelection(const TArray<FAssetData>* InSelectedAssets, co
 		}
 		SelectedAssets = MoveTemp(AllReferencedAssets);
 	}
-}
-
-TArray<AActor*> UShotgunEngine::GetSelectedActors()
-{
-	TArray<AActor*> Actors;
-	for (const FWeakObjectPtr& ObjPtr : WeakSelectedActors)
-	{
-		if (AActor* Actor = Cast<AActor>(ObjPtr.Get()))
-		{
-			Actors.Add(Actor);
-		}
-	}
-	return Actors;
 }
 
 TArray<UObject*> UShotgunEngine::GetReferencedAssets(const AActor* Actor) const

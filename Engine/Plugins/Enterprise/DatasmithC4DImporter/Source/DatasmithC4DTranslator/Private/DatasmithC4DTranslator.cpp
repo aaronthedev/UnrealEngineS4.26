@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithC4DTranslator.h"
 
@@ -28,7 +28,7 @@ bool FDatasmithC4DTranslator::LoadScene(TSharedRef<IDatasmithScene> OutScene)
 {
 	OutScene->SetHost(TEXT("C4DTranslator"));
 
-    Importer = MakeShared<FDatasmithC4DImporter>(OutScene, GetOrCreateC4DImportOptions().Get());
+    Importer = MakeShared<FDatasmithC4DImporter>(OutScene, ImportOptions.Get());
 	Importer->OpenFile(GetSource().GetSourceFile());
 
 	return Importer->ProcessScene();
@@ -69,16 +69,22 @@ bool FDatasmithC4DTranslator::LoadLevelSequence(const TSharedRef<IDatasmithLevel
 	return false;
 }
 
-void FDatasmithC4DTranslator::GetSceneImportOptions(TArray<TStrongObjectPtr<UDatasmithOptionsBase>>& Options)
+void FDatasmithC4DTranslator::GetSceneImportOptions(TArray<TStrongObjectPtr<UObject>>& Options)
 {
-	Options.Add(GetOrCreateC4DImportOptions());
+	if (!ImportOptions.IsValid())
+	{
+		ImportOptions = Datasmith::MakeOptions<UDatasmithC4DImportOptions>();
+	}
+
+	Options.Add(ImportOptions);
 }
 
-void FDatasmithC4DTranslator::SetSceneImportOptions(TArray<TStrongObjectPtr<UDatasmithOptionsBase>>& Options)
+void FDatasmithC4DTranslator::SetSceneImportOptions(TArray<TStrongObjectPtr<UObject>>& Options)
 {
-	for (const TStrongObjectPtr<UDatasmithOptionsBase>& OptionPtr : Options)
+	for (TStrongObjectPtr<UObject>& OptionPtr : Options)
 	{
-		if (UDatasmithC4DImportOptions* InImportOptions = Cast<UDatasmithC4DImportOptions>(OptionPtr.Get()))
+		UObject* Option = OptionPtr.Get();
+		if (UDatasmithC4DImportOptions* InImportOptions = Cast<UDatasmithC4DImportOptions>(Option))
 		{
 			ImportOptions.Reset(InImportOptions);
 		}
@@ -86,17 +92,8 @@ void FDatasmithC4DTranslator::SetSceneImportOptions(TArray<TStrongObjectPtr<UDat
 
 	if (Importer.IsValid())
 	{
-		Importer->SetImportOptions(GetOrCreateC4DImportOptions().Get());
+		Importer->SetImportOptions(ImportOptions.Get());
 	}
-}
-
-TStrongObjectPtr<UDatasmithC4DImportOptions>& FDatasmithC4DTranslator::GetOrCreateC4DImportOptions()
-{
-	if (!ImportOptions.IsValid())
-	{
-		ImportOptions = Datasmith::MakeOptions<UDatasmithC4DImportOptions>();
-	}
-	return ImportOptions;
 }
 
 #endif // _MELANGE_SDK_

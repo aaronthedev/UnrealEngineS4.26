@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimNodes/AnimNode_MakeDynamicAdditive.h"
 #include "AnimationRuntime.h"
-#include "Animation/AnimTrace.h"
 
 /////////////////////////////////////////////////////
 // FAnimNode_MakeDynamicAdditive
@@ -33,8 +32,6 @@ void FAnimNode_MakeDynamicAdditive::Update_AnyThread(const FAnimationUpdateConte
 	DECLARE_SCOPE_HIERARCHICAL_COUNTER_ANIMNODE(Update_AnyThread)
 	Base.Update(Context.FractionalWeight(1.f));
 	Additive.Update(Context.FractionalWeight(1.f));
-
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Mesh Space Additive"), bMeshSpaceAdditive);
 }
 
 void FAnimNode_MakeDynamicAdditive::Evaluate_AnyThread(FPoseContext& Output)
@@ -53,8 +50,6 @@ void FAnimNode_MakeDynamicAdditive::Evaluate_AnyThread(FPoseContext& Output)
 
 	FAnimationRuntime::ConvertPoseToAdditive(Output.Pose, BaseEvalContext.Pose);
 	Output.Curve.ConvertToAdditive(BaseEvalContext.Curve);
-
-	FCustomAttributesRuntime::SubtractAttributes(BaseEvalContext.CustomAttributes, Output.CustomAttributes);
 }
 
 void FAnimNode_MakeDynamicAdditive::GatherDebugData(FNodeDebugData& DebugData)

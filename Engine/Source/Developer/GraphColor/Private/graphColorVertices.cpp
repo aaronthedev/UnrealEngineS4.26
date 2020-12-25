@@ -92,12 +92,7 @@ int _GetContractibleNeighbors(ColorVerticesContext *context, int v, int *pu, int
 
 int gp_ColorVertices(graphP theGraph)
 {
-	// Avoid false positive static analysis C6011 warning. Remove when it is fixed
-	CA_ASSUME(theGraph);
-	CA_ASSUME(theGraph->E);
-	CA_ASSUME(theGraph->V);
-
-	ColorVerticesContext *context = NULL;
+    ColorVerticesContext *context = NULL;
     int v, deg;
     int u=0, w=0, contractible;
 
@@ -281,14 +276,8 @@ int _IsConstantTimeContractible(ColorVerticesContext *context, int v)
 
 int _GetContractibleNeighbors(ColorVerticesContext *context, int v, int *pu, int *pw)
 {
-
 	int lowDegreeNeighbors[5], i, j, n=0, e;
 	graphP theGraph = context->theGraph;
-
-	// Avoid false positive static analysis C6011 warning. Remove when it is fixed
-	CA_ASSUME(theGraph);
-	CA_ASSUME(theGraph->E);
-	CA_ASSUME(theGraph->V);
 
 	// This method is only applicable to degree 5 vertices
 	if (_GetVertexDegree(context, v) != 5)
@@ -358,11 +347,6 @@ int _GetVertexToReduce(ColorVerticesContext *context, graphP theGraph)
 
 int _AssignColorToVertex(ColorVerticesContext *context, graphP theGraph, int v)
 {
-	// Avoid false positive static analysis C6011 warning. Remove when it is fixed
-	CA_ASSUME(theGraph);
-	CA_ASSUME(theGraph->E);
-	CA_ASSUME(theGraph->V);
-
 	int e, w, color;
 
 	// Run the neighbor list of v and flag all the colors in use
@@ -418,11 +402,6 @@ int gp_GetNumColorsUsed(graphP theGraph)
 
 void gp_CopyColors(graphP theGraph, unsigned char* colors)
 {
-	// Avoid false positive static analysis C6011 warning. Remove when it is fixed
-	CA_ASSUME(theGraph);
-	CA_ASSUME(theGraph->E);
-	CA_ASSUME(theGraph->V);
-
 	ColorVerticesContext *context = (ColorVerticesContext *) gp_GetExtension(theGraph, COLORVERTICES_ID);
 	
 	for ( int v = gp_GetFirstVertex(theGraph); gp_VertexInRange(theGraph, v); v++)

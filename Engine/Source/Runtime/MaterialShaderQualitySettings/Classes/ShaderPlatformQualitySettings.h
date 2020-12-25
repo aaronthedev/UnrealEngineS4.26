@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,23 +6,20 @@
 #include "UObject/ObjectMacros.h"
 #include "UObject/Object.h"
 #include "SceneTypes.h"
-#include "RHIDefinitions.h"
 #include "ShaderPlatformQualitySettings.generated.h"
 
 /**
 * 
 */
 UENUM()
-enum class EMobileShadowQuality : uint8
+enum class EMobileCSMQuality : uint8
 {
 	// Lowest quality, no filtering.
 	NoFiltering,
 	// Medium quality, 1x1 PCF filtering.
 	PCF_1x1 UMETA(DisplayName = "1x1 PCF"),
-	// Medium/High quality, 2x2 PCF filtering.
+	// Highest quality, 2x2 PCF filtering.
 	PCF_2x2 UMETA(DisplayName = "2x2 PCF"),
-	// Highest quality, 3x3 PCF filtering.
-	PCF_3x3 UMETA(DisplayName = "3x3 PCF")
 };
 
 // FMaterialQualityOverrides represents the full set of possible material overrides per quality level.
@@ -39,9 +36,8 @@ public:
 		, bForceNonMetal(false)
 		, bForceDisableLMDirectionality(false)
 		, bForceLQReflections(false)
-		, bForceDisablePreintegratedGF(false)
 		, bDisableMaterialNormalCalculation(false)
-		, MobileShadowQuality(EMobileShadowQuality::PCF_2x2)
+		, MobileCSMQuality(EMobileCSMQuality::PCF_2x2)
 	{
 	}
 
@@ -63,17 +59,13 @@ public:
 	UPROPERTY(EditAnywhere, Config, Meta = (DisplayName = "Force low quality reflections"), Category = "Quality")
 	bool bForceLQReflections;
 
-	UPROPERTY(EditAnywhere, Config, Meta = (DisplayName = "Force not use preintegrated GF for simple IBL"), Category = "Quality")
-	bool bForceDisablePreintegratedGF;
-
 	UPROPERTY(EditAnywhere, Config, Meta = (DisplayName = "Disable material normal calculation"), Category = "Quality")
 	bool bDisableMaterialNormalCalculation;
 
-	UPROPERTY(EditAnywhere, Config, Meta = (DisplayName = "Mobile shadow mapping quality"), Category = "Quality")
-	EMobileShadowQuality MobileShadowQuality;
+	UPROPERTY(EditAnywhere, Config, Meta = (DisplayName = "Cascade shadow mapping quality"), Category = "Quality")
+	EMobileCSMQuality MobileCSMQuality;
 
-	MATERIALSHADERQUALITYSETTINGS_API bool CanOverride(EShaderPlatform ShaderPlatform) const;
-	MATERIALSHADERQUALITYSETTINGS_API bool HasAnyOverridesSet() const;
+	bool HasAnyOverridesSet() const;
 };
 
 
@@ -92,7 +84,12 @@ public:
 		return QualityOverrides[(int32)QualityLevel];
 	}
 
-	const FMaterialQualityOverrides& GetQualityOverrides(EMaterialQualityLevel::Type QualityLevel) const;
+	const FMaterialQualityOverrides& GetQualityOverrides(EMaterialQualityLevel::Type QualityLevel) const
+	{
+		check(QualityLevel < EMaterialQualityLevel::Num);
+		return QualityOverrides[(int32)QualityLevel];
+	}
+
 	void BuildHash(EMaterialQualityLevel::Type QualityLevel, class FSHAHash& OutHash) const;
 	void AppendToHashState(EMaterialQualityLevel::Type QualityLevel, class FSHA1& HashState) const;
 	

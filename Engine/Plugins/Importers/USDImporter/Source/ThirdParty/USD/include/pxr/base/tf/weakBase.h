@@ -21,22 +21,23 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_WEAK_BASE_H
-#define PXR_BASE_TF_WEAK_BASE_H
+#ifndef TF_WEAKBASE_H
+#define TF_WEAKBASE_H
 
 /// \file tf/weakBase.h
 /// \ingroup group_tf_Memory
 
 #include "pxr/pxr.h"
 
-#include "pxr/base/tf/api.h"
 #include "pxr/base/tf/expiryNotifier.h"
 #include "pxr/base/tf/refPtr.h"
+#include "pxr/base/tf/traits.h"
+#include "pxr/base/tf/api.h"
 #include <atomic>
 
 PXR_NAMESPACE_OPEN_SCOPE
 
-// The _Remnant structure is simply a persistent memory of an object's
+// The _Remnant structure is simply a persisent memory of an object's
 // address. When the object dies, the pointer is set to NULL.  A _Remnant
 // object is destroyed when both the original whose address it was
 // initialized with, and there are no weak pointers left pointing to that
@@ -55,7 +56,7 @@ public:
     }
 
     // Note that only "false" is of value in a multi-threaded world...
-    bool _IsAlive() const {
+    bool _IsAlive() {
         return _alive;
     }
 
@@ -218,4 +219,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_WEAK_BASE_H
+#endif // TF_WEAKBASE_H

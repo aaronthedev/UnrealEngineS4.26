@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ImageComparer.h"
 
@@ -32,7 +32,7 @@ public:
 		Image.SetNumUninitialized(Width * Height * 4);
 	}
 
-	FString OutputComparisonFile;
+	FString ComparisonFile;
 
 	FORCEINLINE void SetPixel(int32 X, int32 Y, FColor Color)
 	{
@@ -80,16 +80,10 @@ public:
 		Image[Offset + 3] = ErrorColor.A;
 	}
 
-	void Save(FString OutputDeltaFile)
+	void Save(FString OutputDirectory)
 	{
-		// if the user supplies no path we use the temp dir
-		FString TempDeltaFile = OutputDeltaFile.IsEmpty() ? FString(FPlatformProcess::UserTempDir()) : OutputDeltaFile;
-
-		// if this is just a path, create a temp filename
-		if (FPaths::GetExtension(TempDeltaFile).IsEmpty())
-		{
-			TempDeltaFile = FPaths::CreateTempFilename(*TempDeltaFile, TEXT("ImageCompare-"), TEXT(".png"));
-		}
+		FString TempDir = OutputDirectory.IsEmpty() ? FString(FPlatformProcess::UserTempDir()) : OutputDirectory;
+		FString TempDeltaFile = FPaths::CreateTempFilename(*TempDir, TEXT("ImageCompare-"), TEXT(".png"));
 
 		IImageWrapperModule& ImageWrapperModule = FModuleManager::GetModuleChecked<IImageWrapperModule>(FName("ImageWrapper"));
 		TSharedPtr<IImageWrapper> ImageWriter = ImageWrapperModule.CreateImageWrapper(EImageFormat::PNG);
@@ -98,11 +92,11 @@ public:
 		{
 			if ( ImageWriter->SetRaw(Image.GetData(), Image.Num(), Width, Height, ERGBFormat::RGBA, 8) )
 			{
-				const TArray64<uint8>& PngData = ImageWriter->GetCompressed();
+				const TArray<uint8>& PngData = ImageWriter->GetCompressed();
 
 				if ( FFileHelper::SaveArrayToFile(PngData, *TempDeltaFile) )
 				{
-					OutputComparisonFile = TempDeltaFile;
+					ComparisonFile = FPaths::GetCleanFilename(TempDeltaFile);
 				}
 			}
 		}
@@ -208,7 +202,7 @@ FComparisonReport::FComparisonReport(const FString& InReportRootDirectory, const
 {
 	ReportRootDirectory = InReportRootDirectory;
 	ReportFile = InReportFile;
-	ReportPath = FPaths::GetPath(InReportFile);
+	ReportFolder = FPaths::GetPath(InReportFile);
 }
 
 void FComparableImage::Process()
@@ -249,7 +243,7 @@ TSharedPtr<FComparableImage> FImageComparer::Open(const FString& ImagePath, FTex
 		return nullptr;
 	}
 
-	TArray64<uint8> PngData;
+	TArray<uint8> PngData;
 	const bool OpenSuccess = FFileHelper::LoadFileToArray(PngData, *ImagePath);
 
 	if ( !OpenSuccess )
@@ -266,7 +260,9 @@ TSharedPtr<FComparableImage> FImageComparer::Open(const FString& ImagePath, FTex
 
 	TSharedPtr<FComparableImage> Image = MakeShareable(new FComparableImage());
 	
-	if ( !ImageReader->GetRaw(ERGBFormat::RGBA, 8, Image->Bytes) )
+	const TArray<uint8>* RawData = nullptr;
+
+	if ( !ImageReader->GetRaw(ERGBFormat::RGBA, 8, RawData) )
 	{
 		OutError = LOCTEXT("ErrorReadingRawDataA", "Unable decompress ImageA");
 		return nullptr;
@@ -275,18 +271,25 @@ TSharedPtr<FComparableImage> FImageComparer::Open(const FString& ImagePath, FTex
 	{
 		Image->Width = ImageReader->GetWidth();
 		Image->Height = ImageReader->GetHeight();
+		Image->Bytes = *RawData;
 	}
 
 	return Image;
 }
 
+FImageComparer::FImageComparer(const FString& Directory)
+	: DeltaDirectory(Directory.IsEmpty() ? FPlatformProcess::UserTempDir() : Directory)
+{
+}
 
-FImageComparisonResult FImageComparer::Compare(const FString& ImagePathA, const FString& ImagePathB, FImageTolerance Tolerance, const FString& OutDeltaPath)
+FImageComparisonResult FImageComparer::Compare(const FString& ImagePathA, const FString& ImagePathB, FImageTolerance Tolerance)
 {
 	FImageComparisonResult Results;
-	Results.ApprovedFilePath = ImagePathA;
-	Results.IncomingFilePath = ImagePathB;
-	
+	Results.ApprovedFile = ImagePathA;
+	FPaths::MakePathRelativeTo(Results.ApprovedFile, *ImageRootA);
+	Results.IncomingFile = ImagePathB;
+	FPaths::MakePathRelativeTo(Results.IncomingFile, *ImageRootB);
+
 	FText ErrorA, ErrorB;
 	TSharedPtr<FComparableImage> ImageA = Open(ImagePathA, ErrorA);
 	TSharedPtr<FComparableImage> ImageB = Open(ImagePathB, ErrorB);
@@ -391,10 +394,7 @@ FImageComparisonResult FImageComparer::Compare(const FString& ImagePathA, const 
 		}
 	});
 
-	if (!OutDeltaPath.IsEmpty())
-	{
-		ImageDelta.Save(OutDeltaPath);
-	}
+	ImageDelta.Save(DeltaDirectory);
 
 	int32 MaximumLocalMismatches = 0;
 	for ( int32 SpacialIndex = 0; SpacialIndex < 100; SpacialIndex++ )
@@ -405,8 +405,7 @@ FImageComparisonResult FImageComparer::Compare(const FString& ImagePathA, const 
 	Results.Tolerance = Tolerance;
 	Results.MaxLocalDifference = MaximumLocalMismatches / (double)( BlockSizeX * BlockSizeY );
 	Results.GlobalDifference = MismatchCount / (double)( CompareHeight * CompareWidth );
-	Results.ComparisonFilePath = ImageDelta.OutputComparisonFile;
-	Results.CreationTime = FDateTime::Now();
+	Results.ComparisonFile = ImageDelta.ComparisonFile;
 
 	// In the case of differently sized images we force a failure
 	if ( ImageA->Width != ImageB->Width || ImageA->Height != ImageB->Height )
@@ -423,11 +422,13 @@ FImageComparisonResult FImageComparer::Compare(const FString& ImagePathA, const 
 	return Results;
 }
 
-double FImageComparer::CompareStructuralSimilarity(const FString& ImagePathA, const FString& ImagePathB, EStructuralSimilarityComponent InCompareComponent, const FString& OutDeltaPath)
+double FImageComparer::CompareStructuralSimilarity(const FString& ImagePathA, const FString& ImagePathB, EStructuralSimilarityComponent InCompareComponent)
 {
 	FImageComparisonResult Results;
-	Results.ApprovedFilePath = ImagePathA;
-	Results.IncomingFilePath = ImagePathB;
+	Results.ApprovedFile = ImagePathA;
+	FPaths::MakePathRelativeTo(Results.ApprovedFile, *ImageRootA);
+	Results.IncomingFile = ImagePathB;
+	FPaths::MakePathRelativeTo(Results.IncomingFile, *ImageRootB);
 
 	FText ErrorA, ErrorB;
 	TSharedPtr<FComparableImage> ImageA = Open(ImagePathA, ErrorA);
@@ -567,10 +568,7 @@ double FImageComparer::CompareStructuralSimilarity(const FString& ImagePathA, co
 		}
 	}
 
-	if (!OutDeltaPath.IsEmpty())
-	{
-		ImageDelta.Save(OutDeltaPath);
-	}
+	ImageDelta.Save(DeltaDirectory);
 
 	double SSIM = TotalSSIM / TotalWindows;
 	

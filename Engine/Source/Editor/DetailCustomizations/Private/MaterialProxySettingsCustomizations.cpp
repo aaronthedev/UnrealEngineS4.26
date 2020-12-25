@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MaterialProxySettingsCustomizations.h"
 #include "Misc/Attribute.h"
@@ -132,7 +132,7 @@ void FMaterialProxySettingsCustomizations::AddTextureSizeClamping(TSharedPtr<IPr
 	//     with 16 bytes per pixel.
 	//     See implimentations of ImageUtils.cpp :: GetRawData()  and ImageCore.cpp :: CopyTo()
 	//     11585 = Floor( Sqrt ( Max_int32 / 16)  )
-	const int32 TmpMaxSize = FMath::FloorToInt(FMath::Sqrt(static_cast<float>(MAX_int32) / 16));
+	const int32 TmpMaxSize = FMath::FloorToInt(FMath::Sqrt(MAX_int32 / 16));
 	const int32 MaxProxyTextureResolution = FMath::Min(TmpMaxSize, (int32)GetMax2DTextureDimension());
 	
 	const FString MaxTextureResolutionString = FString::FromInt(MaxProxyTextureResolution);

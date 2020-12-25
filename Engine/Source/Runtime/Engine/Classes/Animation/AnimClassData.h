@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,31 +9,9 @@
 #include "Animation/AnimTypes.h"
 #include "Animation/AnimStateMachineTypes.h"
 #include "Animation/AnimClassInterface.h"
-#include "Algo/Transform.h"
-#include "AnimBlueprintGeneratedClass.h"
-#include "PropertyAccess.h"
-
 #include "AnimClassData.generated.h"
 
 class USkeleton;
-
-/** Serialized anim BP function data */
-USTRUCT()
-struct FAnimBlueprintFunctionData
-{
-	GENERATED_BODY()
-
-	UPROPERTY()
-	TFieldPath<FStructProperty> OutputPoseNodeProperty;
-
-	/** The properties of the input nodes, patched up during link */
-	UPROPERTY()
-	TArray<TFieldPath<FStructProperty>> InputPoseNodeProperties;
-
-	/** The input properties themselves */
-	UPROPERTY()
-	TArray<TFieldPath<FProperty>> InputProperties;
-};
 
 UCLASS()
 class ENGINE_API UAnimClassData : public UObject, public IAnimClassInterface
@@ -60,44 +38,33 @@ public:
 	UPROPERTY()
 	TArray<FAnimBlueprintFunction> AnimBlueprintFunctions;
 
-	// Serialized function data, used to patch up transient data in AnimBlueprintFunctions
-	UPROPERTY()
-	TArray<FAnimBlueprintFunctionData> AnimBlueprintFunctionData;
-
 	// The array of anim nodes
 	UPROPERTY()
-	TArray< TFieldPath<FStructProperty> > AnimNodeProperties;
-	TArray< FStructProperty* > ResolvedAnimNodeProperties;
+	TArray<UStructProperty*> AnimNodeProperties;
 
 	// The array of linked anim graph nodes
 	UPROPERTY()
-	TArray< TFieldPath<FStructProperty> > LinkedAnimGraphNodeProperties;
-	TArray< FStructProperty* > ResolvedLinkedAnimGraphNodeProperties;
+	TArray<UStructProperty*> LinkedAnimGraphNodeProperties;
 
 	// The array of linked anim layer nodes
 	UPROPERTY()
-	TArray< TFieldPath<FStructProperty> > LinkedAnimLayerNodeProperties;
-	TArray< FStructProperty* > ResolvedLinkedAnimLayerNodeProperties;
+	TArray<UStructProperty*> LinkedAnimLayerNodeProperties;
 
 	// Array of nodes that need a PreUpdate() call
 	UPROPERTY()
-	TArray< TFieldPath<FStructProperty> > PreUpdateNodeProperties;
-	TArray< FStructProperty* > ResolvedPreUpdateNodeProperties;
+	TArray<UStructProperty*> PreUpdateNodeProperties;
 
 	// Array of nodes that need a DynamicReset() call
 	UPROPERTY()
-	TArray< TFieldPath<FStructProperty> > DynamicResetNodeProperties;
-	TArray< FStructProperty* > ResolvedDynamicResetNodeProperties;
+	TArray<UStructProperty*> DynamicResetNodeProperties;
 
 	// Array of state machine nodes
 	UPROPERTY()
-	TArray< TFieldPath<FStructProperty> > StateMachineNodeProperties;
-	TArray< FStructProperty* > ResolvedStateMachineNodeProperties;
+	TArray<UStructProperty*> StateMachineNodeProperties;
 
 	// Array of nodes that need an OnInitializeAnimInstance call
 	UPROPERTY()
-	TArray< TFieldPath<FStructProperty> > InitializationNodeProperties;
-	TArray< FStructProperty* > ResolvedInitializationNodeProperties;
+	TArray<UStructProperty*> InitializationNodeProperties;
 
 	// Indices for any Asset Player found within a specific (named) Anim Layer Graph, or implemented Anim Interface Graph
 	UPROPERTY()
@@ -115,10 +82,6 @@ public:
 	UPROPERTY()
 	TMap<FName, FAnimGraphBlendOptions> GraphBlendOptions;
 
-	// Property access library
-	UPROPERTY()
-	FPropertyAccessLibrary PropertyAccessLibrary;
-
 public:
 	// IAnimClassInterface interface
 	virtual const TArray<FBakedAnimationStateMachine>& GetBakedStateMachines() const override { return BakedStateMachines; }
@@ -126,35 +89,38 @@ public:
 	virtual const TArray<FAnimNotifyEvent>& GetAnimNotifies() const override { return AnimNotifies; }
 	virtual const TArray<FAnimBlueprintFunction>& GetAnimBlueprintFunctions() const override { return AnimBlueprintFunctions; }
 	virtual const TMap<FName, FCachedPoseIndices>& GetOrderedSavedPoseNodeIndicesMap() const override { return OrderedSavedPoseIndicesMap; }
-	virtual const TArray<FStructProperty*>& GetAnimNodeProperties() const override { return ResolvedAnimNodeProperties; }
-	virtual const TArray<FStructProperty*>& GetLinkedAnimGraphNodeProperties() const override { return ResolvedLinkedAnimGraphNodeProperties; }
-	virtual const TArray<FStructProperty*>& GetLinkedAnimLayerNodeProperties() const override { return ResolvedLinkedAnimLayerNodeProperties; }
-	virtual const TArray<FStructProperty*>& GetPreUpdateNodeProperties() const override { return ResolvedPreUpdateNodeProperties; }
-	virtual const TArray<FStructProperty*>& GetDynamicResetNodeProperties() const override { return ResolvedDynamicResetNodeProperties; }
-	virtual const TArray<FStructProperty*>& GetStateMachineNodeProperties() const override { return ResolvedStateMachineNodeProperties; }
-	virtual const TArray<FStructProperty*>& GetInitializationNodeProperties() const override { return ResolvedInitializationNodeProperties; }
+	virtual const TArray<UStructProperty*>& GetAnimNodeProperties() const override { return AnimNodeProperties; }
+	virtual const TArray<UStructProperty*>& GetLinkedAnimGraphNodeProperties() const override { return LinkedAnimGraphNodeProperties; }
+	virtual const TArray<UStructProperty*>& GetLinkedAnimLayerNodeProperties() const override { return LinkedAnimLayerNodeProperties; }
+	virtual const TArray<UStructProperty*>& GetPreUpdateNodeProperties() const override { return PreUpdateNodeProperties; }
+	virtual const TArray<UStructProperty*>& GetDynamicResetNodeProperties() const override { return DynamicResetNodeProperties; }
+	virtual const TArray<UStructProperty*>& GetStateMachineNodeProperties() const override { return StateMachineNodeProperties; }
+	virtual const TArray<UStructProperty*>& GetInitializationNodeProperties() const override { return InitializationNodeProperties; }
 	virtual const TArray<FName>& GetSyncGroupNames() const override { return SyncGroupNames; }
 	virtual int32 GetSyncGroupIndex(FName SyncGroupName) const override { return SyncGroupNames.IndexOfByKey(SyncGroupName); }
-	virtual const TArray<FExposedValueHandler>& GetExposedValueHandlers() const override { return EvaluateGraphExposedInputs; }
-	virtual const TMap<FName, FGraphAssetPlayerInformation>& GetGraphAssetPlayerInformation() const override { return GraphNameAssetPlayers; }
-	virtual const TMap<FName, FAnimGraphBlendOptions>& GetGraphBlendOptions() const override { return GraphBlendOptions; }
-	virtual const FPropertyAccessLibrary& GetPropertyAccessLibrary() const override { return PropertyAccessLibrary; }
-
-private:
-	virtual const TArray<FBakedAnimationStateMachine>& GetBakedStateMachines_Direct() const override { return BakedStateMachines; }
-	virtual const TArray<FAnimNotifyEvent>& GetAnimNotifies_Direct() const override { return AnimNotifies; }
-	virtual const TArray<FName>& GetSyncGroupNames_Direct() const override { return SyncGroupNames; }
-	virtual const TMap<FName, FCachedPoseIndices>& GetOrderedSavedPoseNodeIndicesMap_Direct() const override { return OrderedSavedPoseIndicesMap; }
-	virtual const TMap<FName, FGraphAssetPlayerInformation>& GetGraphAssetPlayerInformation_Direct() const override { return GraphNameAssetPlayers; }
-	virtual const TMap<FName, FAnimGraphBlendOptions>& GetGraphBlendOptions_Direct() const override { return GraphBlendOptions; }
-	virtual const FPropertyAccessLibrary& GetPropertyAccessLibrary_Direct() const override { return PropertyAccessLibrary; }
-
-public:
-	// Resolve TFieldPaths to FStructPropertys, init value handlers
-	void DynamicClassInitialization(UDynamicClass* InDynamicClass);
-
+	virtual const TArray<FExposedValueHandler>& GetExposedValueHandlers() const { return EvaluateGraphExposedInputs; }
+	virtual const TMap<FName, FGraphAssetPlayerInformation>& GetGraphAssetPlayerInformation() const { return GraphNameAssetPlayers; }
+	virtual const TMap<FName, FAnimGraphBlendOptions>& GetGraphBlendOptions() const { return GraphBlendOptions; }
 #if WITH_EDITOR
-	// Copy data from an existing BP generated class to this class data
-	void CopyFrom(UAnimBlueprintGeneratedClass* AnimClass);
+	void CopyFrom(IAnimClassInterface* AnimClass)
+	{
+		check(AnimClass);
+		BakedStateMachines = AnimClass->GetBakedStateMachines();
+		TargetSkeleton = AnimClass->GetTargetSkeleton();
+		AnimNotifies = AnimClass->GetAnimNotifies();
+		AnimBlueprintFunctions = AnimClass->GetAnimBlueprintFunctions();
+		OrderedSavedPoseIndicesMap = AnimClass->GetOrderedSavedPoseNodeIndicesMap();
+		AnimNodeProperties = AnimClass->GetAnimNodeProperties();
+		LinkedAnimGraphNodeProperties = AnimClass->GetLinkedAnimGraphNodeProperties();
+		LinkedAnimLayerNodeProperties = AnimClass->GetLinkedAnimLayerNodeProperties();
+		PreUpdateNodeProperties = AnimClass->GetPreUpdateNodeProperties();
+		DynamicResetNodeProperties = AnimClass->GetDynamicResetNodeProperties();
+		StateMachineNodeProperties = AnimClass->GetStateMachineNodeProperties();
+		InitializationNodeProperties = AnimClass->GetInitializationNodeProperties();
+		SyncGroupNames = AnimClass->GetSyncGroupNames();
+		EvaluateGraphExposedInputs = AnimClass->GetExposedValueHandlers();
+		GraphNameAssetPlayers = AnimClass->GetGraphAssetPlayerInformation();
+		GraphBlendOptions = AnimClass->GetGraphBlendOptions();
+	}
 #endif // WITH_EDITOR
 };

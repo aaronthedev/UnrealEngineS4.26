@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Internationalization/LegacyCulture.h"
 #include "Containers/ArrayBuilder.h"
@@ -18,8 +18,7 @@ FLegacyCultureImplementation::FLegacyCultureImplementation(
 	const FString& InTwoLetterISOLanguageName,
 	const FDecimalNumberFormattingRules& InDecimalNumberFormattingRules,
 	const FDecimalNumberFormattingRules& InPercentFormattingRules,
-	const FDecimalNumberFormattingRules& InBaseCurrencyFormattingRules,
-	bool InIsRightToLeft
+	const FDecimalNumberFormattingRules& InBaseCurrencyFormattingRules
 	)
 	: DisplayName(InDisplayName)
 	, EnglishName(InEnglishName)
@@ -33,7 +32,6 @@ FLegacyCultureImplementation::FLegacyCultureImplementation(
 	, DecimalNumberFormattingRules( InDecimalNumberFormattingRules )
 	, PercentFormattingRules( InPercentFormattingRules )
 	, BaseCurrencyFormattingRules( InBaseCurrencyFormattingRules )
-	, bIsRightToLeft(InIsRightToLeft)
 { 
 }
 
@@ -107,11 +105,6 @@ FString FLegacyCultureImplementation::GetScript() const
 FString FLegacyCultureImplementation::GetVariant() const
 {
 	return FString();
-}
-
-bool FLegacyCultureImplementation::IsRightToLeft() const
-{
-	return bIsRightToLeft;
 }
 
 FString FLegacyCultureImplementation::GetUnrealLegacyThreeLetterISOLanguageName() const

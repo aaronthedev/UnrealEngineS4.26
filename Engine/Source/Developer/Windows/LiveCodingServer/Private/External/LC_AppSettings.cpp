@@ -474,15 +474,6 @@ void appSettings::Startup(const wchar_t* group)
 		L"File extensions treated as C/C++ files when splitting amalgamated/unity files",
 		L".cpp;.c;.cc;.c++;.cp;.cxx"
 	);
-
-	g_ue4EnableNatVisSupport = new SettingBool
-	(
-		group,
-		L"ue4_enable_natvis_support",
-		L"Enable NatVis support",
-		L"Specifies whether NatVis visualizers are supported by linking with a special helper library",
-		false
-	);
 }
 
 
@@ -534,8 +525,6 @@ void appSettings::Shutdown(void)
 	delete g_amalgamationSplitIntoSingleParts;
 	delete g_amalgamationSplitMinCppCount;
 	delete g_amalgamationCppFileExtensions;
-
-	delete g_ue4EnableNatVisSupport;
 }
 
 
@@ -653,7 +642,7 @@ void appSettings::UpdateAmalgamatedCppFileExtensions(void)
 
 void appSettings::ApplySettingBool(const char* const settingName, bool value)
 {
-	const unsigned int COUNT = 22u;
+	const unsigned int COUNT = 21u;
 	SettingBool* settings[COUNT] =
 	{
 		g_showFullPathInTitle,
@@ -676,8 +665,7 @@ void appSettings::ApplySettingBool(const char* const settingName, bool value)
 		g_forceLinkWeakSymbols,
 		g_continuousCompilationEnabled,
 		g_installCompiledPatchesMultiProcess,
-		g_amalgamationSplitIntoSingleParts,
-		g_ue4EnableNatVisSupport
+		g_amalgamationSplitIntoSingleParts
 	};
 
 	const SettingBool* setting = ApplySetting(settings, COUNT, settingName, value);
@@ -848,5 +836,3 @@ extern SettingBool* appSettings::g_installCompiledPatchesMultiProcess = nullptr;
 extern SettingBool* appSettings::g_amalgamationSplitIntoSingleParts = nullptr;
 extern SettingInt* appSettings::g_amalgamationSplitMinCppCount = nullptr;
 extern SettingString* appSettings::g_amalgamationCppFileExtensions = nullptr;
-
-extern SettingBool* appSettings::g_ue4EnableNatVisSupport = nullptr;

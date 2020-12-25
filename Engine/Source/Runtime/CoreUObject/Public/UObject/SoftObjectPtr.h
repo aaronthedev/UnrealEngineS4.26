@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	SoftObjectPtr.h: Pointer to UObject asset, keeps extra information so that it is works even if the asset is not in memory
@@ -96,9 +96,7 @@ public:
 		if (GPlayInEditorID != INDEX_NONE)
 		{
 			// Cannot use or set the cached value in PIE as it may affect other PIE instances or the editor
-			TWeakObjectPtr<UObject> Result = GetUniqueID().ResolveObject();
-			// If this object is pending kill or otherwise invalid, this will return nullptr just like TPersistentObjectPtr<FSoftObjectPath>::Get()
-			return Result.Get();
+			return GetUniqueID().ResolveObject();
 		}
 		return TPersistentObjectPtr<FSoftObjectPath>::Get();
 	}
@@ -126,14 +124,14 @@ public:
 	}
 	
 	/** Construct from another soft pointer */
-	template <class U, class = decltype(ImplicitConv<T*>((U*)nullptr))>
+	template <class U, class = typename TEnableIf<TPointerIsConvertibleFromTo<U, T>::Value>::Type>
 	FORCEINLINE TSoftObjectPtr(const TSoftObjectPtr<U>& Other)
 		: SoftObjectPtr(Other.SoftObjectPtr)
 	{
 	}
 
 	/** Construct from a moveable soft pointer */
-	template <class U, class = decltype(ImplicitConv<T*>((U*)nullptr))>
+	template <class U, class = typename TEnableIf<TPointerIsConvertibleFromTo<U, T>::Value>::Type>
 	FORCEINLINE TSoftObjectPtr(TSoftObjectPtr<U>&& Other)
 		: SoftObjectPtr(MoveTemp(Other.SoftObjectPtr))
 	{
@@ -193,7 +191,7 @@ public:
 	}
 
 	/** Copy from a weak pointer to an object already in memory */
-	template <class U, class = decltype(ImplicitConv<T*>((U*)nullptr))>
+	template <class U, class = typename TEnableIf<TPointerIsConvertibleFromTo<U, T>::Value>::Type>
 	FORCEINLINE TSoftObjectPtr& operator=(const TWeakObjectPtr<U>& Other)
 	{
 		SoftObjectPtr = Other;
@@ -201,7 +199,7 @@ public:
 	}
 
 	/** Copy from another soft pointer */
-	template <class U, class = decltype(ImplicitConv<T*>((U*)nullptr))>
+	template <class U, class = typename TEnableIf<TPointerIsConvertibleFromTo<U, T>::Value>::Type>
 	FORCEINLINE TSoftObjectPtr& operator=(TSoftObjectPtr<U> Other)
 	{
 		SoftObjectPtr = MoveTemp(Other.SoftObjectPtr);
@@ -411,7 +409,7 @@ public:
 	}
 		
 	/** Construct from another soft pointer */
-	template <class TClassA, class = decltype(ImplicitConv<TClass*>((TClassA*)nullptr))>
+	template <class TClassA, class = typename TEnableIf<TPointerIsConvertibleFromTo<TClassA, TClass>::Value>::Type>
 	FORCEINLINE TSoftClassPtr(const TSoftClassPtr<TClassA>& Other)
 		: SoftObjectPtr(Other.SoftObjectPtr)
 	{
@@ -454,7 +452,7 @@ public:
 	}
 
 	/** Copy from a weak pointer already in memory */
-	template<class TClassA, class = decltype(ImplicitConv<TClass*>((TClassA*)nullptr))>
+	template<class TClassA, class = typename TEnableIf<TPointerIsConvertibleFromTo<TClassA, UClass>::Value>::Type>
 	FORCEINLINE TSoftClassPtr& operator=(const TWeakObjectPtr<TClassA>& Other)
 	{
 		SoftObjectPtr = Other;
@@ -462,7 +460,7 @@ public:
 	}
 
 	/** Copy from another soft pointer */
-	template<class TClassA, class = decltype(ImplicitConv<TClass*>((TClassA*)nullptr))>
+	template<class TClassA, class = typename TEnableIf<TPointerIsConvertibleFromTo<TClassA, TClass>::Value>::Type>
 	FORCEINLINE TSoftClassPtr& operator=(const TSoftObjectPtr<TClassA>& Other)
 	{
 		SoftObjectPtr = Other.SoftObjectPtr;
@@ -621,26 +619,6 @@ private:
 
 template <class T> struct TIsPODType<TSoftClassPtr<T> > { enum { Value = TIsPODType<FSoftObjectPtr>::Value }; };
 template <class T> struct TIsWeakPointerType<TSoftClassPtr<T> > { enum { Value = TIsWeakPointerType<FSoftObjectPtr>::Value }; };
-
-/** Fast non-alphabetical order that is only stable during this process' lifetime. */
-struct FSoftObjectPtrFastLess : private FSoftObjectPathFastLess
-{
-	template <typename SoftObjectPtrType>
-	bool operator()(const SoftObjectPtrType& Lhs, const SoftObjectPtrType& Rhs) const
-	{
-		return FSoftObjectPathFastLess::operator()(Lhs.ToSoftObjectPath(), Rhs.ToSoftObjectPath());
-	}
-};
-
-/** Slow alphabetical order that is stable / deterministic over process runs. */
-struct FSoftObjectPtrLexicalLess : private FSoftObjectPathLexicalLess
-{
-	template <typename SoftObjectPtrType>
-	bool operator()(const SoftObjectPtrType& Lhs, const SoftObjectPtrType& Rhs) const
-	{
-		return FSoftObjectPathLexicalLess::operator()(Lhs.ToSoftObjectPath(), Rhs.ToSoftObjectPath());
-	}
-};
 
 UE_DEPRECATED(4.18, "FAssetPtr was renamed to FSoftObjectPtr as it is not necessarily an asset")
 typedef FSoftObjectPtr FAssetPtr;

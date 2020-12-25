@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_PY_CHILDREN_PROXY_H
-#define PXR_USD_SDF_PY_CHILDREN_PROXY_H
+#ifndef SDF_PYCHILDRENPROXY_H
+#define SDF_PYCHILDRENPROXY_H
 
 /// \file sdf/pyChildrenProxy.h
 
@@ -152,24 +152,18 @@ private:
             .def("__contains__", &This::_HasKey, TfPyRaiseOnError<>())
             .def("__contains__", &This::_HasValue, TfPyRaiseOnError<>())
             .def("__iter__",   &This::_GetValueIterator, TfPyRaiseOnError<>())
+            .def("itervalues", &This::_GetValueIterator, TfPyRaiseOnError<>())
+            .def("iterkeys",   &This::_GetKeyIterator, TfPyRaiseOnError<>())
+            .def("iteritems",  &This::_GetItemIterator, TfPyRaiseOnError<>())
             .def("clear", &This::_Clear, TfPyRaiseOnError<>())
             .def("append", &This::_AppendItem, TfPyRaiseOnError<>())
             .def("insert", &This::_InsertItemByIndex, TfPyRaiseOnError<>())
             .def("get", &This::_PyGet, TfPyRaiseOnError<>())
             .def("get", &This::_PyGetDefault, TfPyRaiseOnError<>())
-#if PY_MAJOR_VERSION < 3
             .def("has_key", &This::_HasKey, TfPyRaiseOnError<>())
-            .def("itervalues", &This::_GetValueIterator, TfPyRaiseOnError<>())
-            .def("iterkeys",   &This::_GetKeyIterator, TfPyRaiseOnError<>())
-            .def("iteritems",  &This::_GetItemIterator, TfPyRaiseOnError<>())
             .def("items", &This::_GetItems, TfPyRaiseOnError<>())
             .def("keys", &This::_GetKeys, TfPyRaiseOnError<>())
             .def("values", &This::_GetValues, TfPyRaiseOnError<>())
-#else
-            .def("items", &This::_GetItemIterator, TfPyRaiseOnError<>())
-            .def("keys", &This::_GetKeyIterator, TfPyRaiseOnError<>())
-            .def("values", &This::_GetValueIterator, TfPyRaiseOnError<>())
-#endif
             .def("index", &This::_FindIndexByKey, TfPyRaiseOnError<>())
             .def("index", &This::_FindIndexByValue, TfPyRaiseOnError<>())
             .def("__eq__", &This::operator==, TfPyRaiseOnError<>())
@@ -179,19 +173,19 @@ private:
         class_<_Iterator<_ExtractItem> >
             ((name + "_Iterator").c_str(), no_init)
             .def("__iter__", &This::template _Iterator<_ExtractItem>::GetCopy)
-            .def(TfPyIteratorNextMethodName, &This::template _Iterator<_ExtractItem>::GetNext)
+            .def("next", &This::template _Iterator<_ExtractItem>::GetNext)
             ;
 
         class_<_Iterator<_ExtractKey> >
             ((name + "_KeyIterator").c_str(), no_init)
             .def("__iter__", &This::template _Iterator<_ExtractKey>::GetCopy)
-            .def(TfPyIteratorNextMethodName, &This::template _Iterator<_ExtractKey>::GetNext)
+            .def("next", &This::template _Iterator<_ExtractKey>::GetNext)
             ;
 
         class_<_Iterator<_ExtractValue> >
             ((name + "_ValueIterator").c_str(), no_init)
             .def("__iter__", &This::template _Iterator<_ExtractValue>::GetCopy)
-            .def(TfPyIteratorNextMethodName, &This::template _Iterator<_ExtractValue>::GetNext)
+            .def("next", &This::template _Iterator<_ExtractValue>::GetNext)
             ;
     }
 
@@ -251,7 +245,9 @@ private:
 
     mapped_type _GetItemByIndex(int index) const
     {
-        index = TfPyNormalizeIndex(index, _proxy.size(), true /*throwError*/);
+        if (index >= _proxy.size()) {
+            TfPyThrowIndexError("list index out of range");
+        }
         return _GetView()[index];
     }
 
@@ -299,11 +295,9 @@ private:
 
     void _InsertItemByIndex(int index, const mapped_type& value)
     {
-        // Note that -1 below means to insert at end for the _proxy._Insert API.
-        index = index < (int)_proxy.size() 
-            ? TfPyNormalizeIndex(index, _proxy.size(), false /*throwError*/)
-            : -1;
-
+        if (index < -1 || index > static_cast<int>(_proxy.size())) {
+            TfPyThrowIndexError("list index out of range");
+        }
         _proxy._Insert(value, index);
     }
 
@@ -360,7 +354,6 @@ private:
         return result;
     }
 
-#if PY_MAJOR_VERSION < 3
     boost::python::list _GetItems() const
     {
         return _Get<_ExtractItem>();
@@ -375,7 +368,6 @@ private:
     {
         return _Get<_ExtractValue>();
     }
-#endif
 
     int _FindIndexByKey(const key_type& key) const
     {
@@ -397,4 +389,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_PY_CHILDREN_PROXY_H
+#endif // SDF_PYCHILDRENPROXY_H

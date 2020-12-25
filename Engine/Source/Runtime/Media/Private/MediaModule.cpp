@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IMediaModule.h"
 
@@ -7,18 +7,13 @@
 #include "Misc/ScopeLock.h"
 #include "Modules/ModuleManager.h"
 #include "Stats/Stats.h"
-#include "ProfilingDebugging/CsvProfiler.h"
 
 #include "IMediaCaptureSupport.h"
 #include "IMediaPlayerFactory.h"
-#include "IMediaInfo.h"
 #include "IMediaTimeSource.h"
 #include "MediaClock.h"
 #include "MediaTicker.h"
 
-CSV_DEFINE_CATEGORY_MODULE(MEDIA_API, MediaStreaming, false);
-
-// ------------------------------------------------------------------------------------------------------------------------------
 
 /**
  * Implements the Media module.
@@ -26,52 +21,9 @@ CSV_DEFINE_CATEGORY_MODULE(MEDIA_API, MediaStreaming, false);
 class FMediaModule
 	: public IMediaModule
 {
-	struct FPlatformInfo
-	{
-		FPlatformInfo()
-		{ }
-
-		FPlatformInfo(const FName& PlatformName, const FGuid& PlatformGuid, IMediaInfo* MediaInfo)
-			: Name(PlatformName), Guid(PlatformGuid), Info(MediaInfo)
-		{ }
-
-		FName Name;
-		FGuid Guid;
-		IMediaInfo* Info;
-	};
-
 public:
 
 	//~ IMediaModule interface
-
-	virtual void RegisterPlatform(const FName& PlatformName, const FGuid& PlatformGuid, IMediaInfo *MediaInfo) override
-	{
-		PlatformInfo.Add(FPlatformInfo(PlatformName, PlatformGuid, MediaInfo));
-	}
-
-	virtual FName GetPlatformName(const FGuid& PlatformGuid) const override
-	{
-		for (const FPlatformInfo& Info : PlatformInfo)
-		{
-			if (Info.Guid == PlatformGuid)
-			{
-				return Info.Name;
-			}
-		}
-		return FName();
-	}
-
-	virtual FGuid GetPlatformGuid(const FName& PlatformName) const override
-	{
-		for (const FPlatformInfo& Info : PlatformInfo)
-		{
-			if (Info.Name == PlatformName)
-			{
-				return Info.Guid;
-			}
-		}
-		return FGuid();
-	}
 
 	virtual const TArray<IMediaCaptureSupport*>& GetCaptureSupports() const override
 	{
@@ -93,19 +45,6 @@ public:
 		for (IMediaPlayerFactory* Factory : PlayerFactories)
 		{
 			if (Factory->GetPlayerName() == FactoryName)
-			{
-				return Factory;
-			}
-		}
-
-		return nullptr;
-	}
-
-	virtual IMediaPlayerFactory* GetPlayerFactory(const FGuid& PlayerpPluginGUID) const override
-	{
-		for (IMediaPlayerFactory* Factory : PlayerFactories)
-		{
-			if (Factory->GetPlayerPluginGUID() == PlayerpPluginGUID)
 			{
 				return Factory;
 			}
@@ -165,8 +104,6 @@ public:
 
 	virtual void TickPreEngine() override
 	{
-		FrameStartTime = FPlatformTime::Seconds();
-
 		if (TimeSource.IsValid())
 		{
 			Clock.UpdateTimecode(TimeSource->GetTimecode(), TimecodeLocked);
@@ -193,11 +130,6 @@ public:
 		PlayerFactories.Remove(&Factory);
 	}
 
-	virtual double GetFrameStartTime() const override
-	{
-		return FrameStartTime;
-	}
-
 public:
 
 	//~ IModuleInterface interface
@@ -207,17 +139,6 @@ public:
 		if (!IsRunningDedicatedServer())
 		{
 			TickerThread = FRunnableThread::Create(&Ticker, TEXT("FMediaTicker"));
-		}
-
-		TArray<FName> Modules;
-		FModuleManager::Get().FindModules(TEXT("*MediaInfo"), Modules);
-
-		for (int32 Index = 0; Index < Modules.Num(); Index++)
-		{
-			if (IMediaInfo* MediaInfo = FModuleManager::LoadModulePtr<IMediaInfo>(Modules[Index]))
-			{
-				MediaInfo->Initialize(this);
-			}
 		}
 	}
 
@@ -247,9 +168,6 @@ private:
 	/** The media clock. */
 	FMediaClock Clock;
 
-	/** Realtime at which frame started. */
-	double FrameStartTime;
-
 	/** Time code of the current frame. */
 	FTimespan CurrentTimecode;
 
@@ -270,9 +188,7 @@ private:
 
 	/** The media clock's time source. */
 	TSharedPtr<IMediaTimeSource, ESPMode::ThreadSafe> TimeSource;
-
-	/** List of supported platforms */
-	TArray<FPlatformInfo> PlatformInfo;
 };
+
 
 IMPLEMENT_MODULE(FMediaModule, Media);

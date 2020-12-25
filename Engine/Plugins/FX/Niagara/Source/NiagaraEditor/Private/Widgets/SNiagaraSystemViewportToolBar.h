@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -21,10 +21,7 @@ public:
 	// SCommonEditorViewportToolbarBase interface
 	virtual TSharedRef<SWidget> GenerateShowMenu() const override;
 	virtual void ExtendOptionsMenu(FMenuBuilder& OptionsMenuBuilder) const override;
-	virtual bool GetShowScalabilityMenu() const override
-	{
-		return true;
-	}
+
 	// End of SCommonEditorViewportToolbarBase
 
 	virtual bool IsViewModeSupported(EViewModeIndex ViewModeIndex) const override; 

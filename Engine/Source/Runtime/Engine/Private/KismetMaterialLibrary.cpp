@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Kismet/KismetMaterialLibrary.h"
 #include "EngineGlobals.h"
@@ -14,6 +14,12 @@
 // UKismetMaterialLibrary
 
 #define LOCTEXT_NAMESPACE "KismetMaterialLibrary"
+
+
+UKismetMaterialLibrary::UKismetMaterialLibrary(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer)
+{
+}
 
 void UKismetMaterialLibrary::SetScalarParameterValue(UObject* WorldContextObject, UMaterialParameterCollection* Collection, FName ParameterName, float ParameterValue)
 {
@@ -119,7 +125,7 @@ FLinearColor UKismetMaterialLibrary::GetVectorParameterValue(UObject* WorldConte
 	return ParameterValue;
 }
 
-class UMaterialInstanceDynamic* UKismetMaterialLibrary::CreateDynamicMaterialInstance(UObject* WorldContextObject, class UMaterialInterface* Parent, FName OptionalName, EMIDCreationFlags CreationFlags)
+class UMaterialInstanceDynamic* UKismetMaterialLibrary::CreateDynamicMaterialInstance(UObject* WorldContextObject, class UMaterialInterface* Parent, FName OptionalName)
 {
 	UMaterialInstanceDynamic* NewMID = nullptr;
 
@@ -129,7 +135,7 @@ class UMaterialInstanceDynamic* UKismetMaterialLibrary::CreateDynamicMaterialIns
 		// MIDs need to be created within a persistent object if in the construction script (or editor utility) or else they will not be saved.
 		// If this MID is created at runtime then put it in the transient package
 		UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::ReturnNull);
-		UObject* MIDOuter = (!EnumHasAnyFlags(CreationFlags, EMIDCreationFlags::Transient) &&  World && (World->bIsRunningConstructionScript  || !World->IsGameWorld()) ? WorldContextObject : nullptr);
+		UObject* MIDOuter = (World && (World->bIsRunningConstructionScript  || !World->IsGameWorld()) ? WorldContextObject : nullptr);
 		NewMID = UMaterialInstanceDynamic::Create(Parent, MIDOuter, OptionalName);
 		if (MIDOuter == nullptr)
 		{

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MobileJSScripting.h"
 
@@ -379,12 +379,12 @@ FString FMobileJSScripting::ConvertObject(UObject* Object)
 		Result.Append(TEXT(" ("));
 
 		bool firstArg = true;
-		for ( TFieldIterator<FProperty> It(Function); It; ++It )
+		for ( TFieldIterator<UProperty> It(Function); It; ++It )
 		{
-			FProperty* Param = *It;
+			UProperty* Param = *It;
 			if (Param->PropertyFlags & CPF_Parm && ! (Param->PropertyFlags & CPF_ReturnParm) )
 			{
-				FStructProperty *StructProperty = CastField<FStructProperty>(Param);
+				UStructProperty *StructProperty = Cast<UStructProperty>(Param);
 				if (!StructProperty || !StructProperty->Struct->IsChildOf(FWebJSResponse::StaticStruct()))
 				{
 					if(!firstArg)
@@ -490,15 +490,15 @@ bool FMobileJSScripting::HandleExecuteUObjectMethodMessage(const TArray<FString>
 	// Coerce arguments to function arguments.
 	uint16 ParamsSize = Function->ParmsSize;
 	TArray<uint8> Params;
-	FProperty* ReturnParam = nullptr;
-	FProperty* PromiseParam = nullptr;
+	UProperty* ReturnParam = nullptr;
+	UProperty* PromiseParam = nullptr;
 
 	if (ParamsSize > 0)
 	{
 		// Find return parameter and a promise argument if present, as we need to handle them differently
-		for ( TFieldIterator<FProperty> It(Function); It; ++It )
+		for ( TFieldIterator<UProperty> It(Function); It; ++It )
 		{
-			FProperty* Param = *It;
+			UProperty* Param = *It;
 			if (Param->PropertyFlags & CPF_Parm)
 			{
 				if (Param->PropertyFlags & CPF_ReturnParm)
@@ -507,7 +507,7 @@ bool FMobileJSScripting::HandleExecuteUObjectMethodMessage(const TArray<FString>
 				}
 				else
 				{
-					FStructProperty *StructProperty = CastField<FStructProperty>(Param);
+					UStructProperty *StructProperty = Cast<UStructProperty>(Param);
 					if (StructProperty && StructProperty->Struct->IsChildOf(FWebJSResponse::StaticStruct()))
 					{
 						PromiseParam = Param;
@@ -543,7 +543,7 @@ bool FMobileJSScripting::HandleExecuteUObjectMethodMessage(const TArray<FString>
 		if ( ReturnParam )
 		{
 			FStructSerializerPolicies ReturnPolicies;
-			ReturnPolicies.PropertyFilter = [&](const FProperty* CandidateProperty, const FProperty* ParentProperty)
+			ReturnPolicies.PropertyFilter = [&](const UProperty* CandidateProperty, const UProperty* ParentProperty)
 			{
 				return ParentProperty != nullptr || CandidateProperty == ReturnParam;
 			};

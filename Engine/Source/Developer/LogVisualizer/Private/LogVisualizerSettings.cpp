@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LogVisualizerSettings.h"
 #include "Materials/Material.h"
 #include "VisualLogger/VisualLoggerTypes.h"
 #include "VisualLoggerDatabase.h"
-#include "VisualLogger/VisualLogger.h"
 #if WITH_EDITOR
 #include "UnrealEdMisc.h"
 #endif // WITH_EDITOR
@@ -79,16 +78,9 @@ void ULogVisualizerSettings::LoadPresistentData()
 	}
 }
 
-void ULogVisualizerSettings::ConfigureVisLog()
-{
-	FVisualLogger::Get().SetUseUniqueNames(bForceUniqueLogNames);
-}
-
 #if WITH_EDITOR
 void ULogVisualizerSettings::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
 {
-	static const FName NAME_bForceUniqueLogNames = GET_MEMBER_NAME_CHECKED(ULogVisualizerSettings, bForceUniqueLogNames);
-
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
 	const FName Name = (PropertyChangedEvent.Property != nullptr) ? PropertyChangedEvent.Property->GetFName() : NAME_None;
@@ -96,10 +88,6 @@ void ULogVisualizerSettings::PostEditChangeProperty(struct FPropertyChangedEvent
 	{
 		SaveConfig();
 	}
-	if (Name == NAME_bForceUniqueLogNames)
-	{
-		FVisualLogger::Get().SetUseUniqueNames(bForceUniqueLogNames);
-	}	
 
 	SettingChangedEvent.Broadcast(Name);
 }

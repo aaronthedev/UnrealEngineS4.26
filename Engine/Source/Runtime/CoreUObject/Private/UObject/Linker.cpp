@@ -1,15 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Linker.cpp: Unreal object linker.
 =============================================================================*/
 
 #include "UObject/Linker.h"
-#include "Containers/StringView.h"
 #include "Misc/PackageName.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Paths.h"
-#include "Misc/PathViews.h"
 #include "UObject/Package.h"
 #include "Templates/Casts.h"
 #include "UObject/UnrealType.h"
@@ -23,7 +21,6 @@
 #include "UObject/UObjectThreadContext.h"
 #include "UObject/DebugSerializationFlags.h"
 #include "UObject/ObjectResource.h"
-#include "Algo/Transform.h"
 
 DEFINE_LOG_CATEGORY(LogLinker);
 
@@ -222,7 +219,7 @@ FString FLinker::GetImportPathName(int32 ImportIndex)
 	FString Result;
 	for (FPackageIndex LinkerIndex = FPackageIndex::FromImport(ImportIndex); !LinkerIndex.IsNull();)
 	{
-		const FObjectResource& Resource = ImpExp(LinkerIndex);
+		FObjectResource Resource = ImpExp(LinkerIndex);
 		bool bSubobjectDelimiter=false;
 
 		if (Result.Len() > 0 && GetClassName(LinkerIndex) != NAME_Package
@@ -266,15 +263,15 @@ FString FLinker::GetExportPathName(int32 ExportIndex, const TCHAR* FakeRoot,bool
 	FString Result;
 
 	bool bForcedExport = false;
-	for ( FPackageIndex LinkerIndex = FPackageIndex::FromExport(ExportIndex); !LinkerIndex.IsNull(); LinkerIndex = ImpExp(LinkerIndex).OuterIndex )
+	for ( FPackageIndex LinkerIndex = FPackageIndex::FromExport(ExportIndex); !LinkerIndex.IsNull(); LinkerIndex = Exp(LinkerIndex).OuterIndex )
 	{ 
-		const FObjectResource& Resource = ImpExp(LinkerIndex);
+		const FObjectExport Export = Exp(LinkerIndex);
 
 		// don't append a dot in the first iteration
 		if ( Result.Len() > 0 )
 		{
 			// if this export is not a UPackage but this export's Outer is a UPackage, we need to use subobject notation
-			if ((Resource.OuterIndex.IsNull() || GetExportClassName(Resource.OuterIndex) == NAME_Package)
+			if ((Export.OuterIndex.IsNull() || GetExportClassName(Export.OuterIndex) == NAME_Package)
 			  && GetExportClassName(LinkerIndex) != NAME_Package)
 			{
 				Result = FString(SUBOBJECT_DELIMITER) + Result;
@@ -284,11 +281,11 @@ FString FLinker::GetExportPathName(int32 ExportIndex, const TCHAR* FakeRoot,bool
 				Result = FString(TEXT(".")) + Result;
 			}
 		}
-		Result = Resource.ObjectName.ToString() + Result;
-		bForcedExport = bForcedExport || (LinkerIndex.IsExport() ? Exp(LinkerIndex).bForcedExport : false);
+		Result = Export.ObjectName.ToString() + Result;
+		bForcedExport = bForcedExport || Export.bForcedExport;
 	}
 
-	if ( bForcedExport && FakeRoot == nullptr && bResolveForcedExports )
+	if ( bForcedExport && FakeRoot == NULL && bResolveForcedExports )
 	{
 		// Result already contains the correct path name for this export
 		return Result;
@@ -308,78 +305,6 @@ FString FLinker::GetExportFullName(int32 ExportIndex, const TCHAR* FakeRoot,bool
 	FName ClassName = ClassIndex.IsNull() ? FName(NAME_Class) : ImpExp(ClassIndex).ObjectName;
 
 	return ClassName.ToString() + TEXT(" ") + GetExportPathName(ExportIndex, FakeRoot, bResolveForcedExports);
-}
-
-FPackageIndex FLinker::ResourceGetOutermost(FPackageIndex LinkerIndex) const
-{
-	const FObjectResource* Res = &ImpExp(LinkerIndex);
-	while (!Res->OuterIndex.IsNull())
-	{
-		LinkerIndex = Res->OuterIndex;
-		Res = &ImpExp(LinkerIndex);
-	}
-	return LinkerIndex;
-}
-
-bool FLinker::ResourceIsIn(FPackageIndex LinkerIndex, FPackageIndex OuterIndex) const
-{
-	LinkerIndex = ImpExp(LinkerIndex).OuterIndex;
-	while (!LinkerIndex.IsNull())
-	{
-		LinkerIndex = ImpExp(LinkerIndex).OuterIndex;
-		if (LinkerIndex == OuterIndex)
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-bool FLinker::DoResourcesShareOutermost(FPackageIndex LinkerIndexLHS, FPackageIndex LinkerIndexRHS) const
-{
-	return ResourceGetOutermost(LinkerIndexLHS) == ResourceGetOutermost(LinkerIndexRHS);
-}
-
-bool FLinker::ImportIsInAnyExport(int32 ImportIndex) const
-{
-	FPackageIndex LinkerIndex = ImportMap[ImportIndex].OuterIndex;
-	while (!LinkerIndex.IsNull())
-	{
-		LinkerIndex = ImpExp(LinkerIndex).OuterIndex;
-		if (LinkerIndex.IsExport())
-		{
-			return true;
-		}
-	}
-	return false;
-
-}
-
-bool FLinker::AnyExportIsInImport(int32 ImportIndex) const
-{
-	FPackageIndex OuterIndex = FPackageIndex::FromImport(ImportIndex);
-	for (int32 ExportIndex = 0; ExportIndex < ExportMap.Num(); ++ExportIndex)
-	{
-		if (ResourceIsIn(FPackageIndex::FromExport(ExportIndex), OuterIndex))
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-bool FLinker::AnyExportShareOuterWithImport(int32 ImportIndex) const
-{
-	FPackageIndex Import = FPackageIndex::FromImport(ImportIndex);
-	for (int32 ExportIndex = 0; ExportIndex < ExportMap.Num(); ++ExportIndex)
-	{
-		if (ExportMap[ExportIndex].OuterIndex.IsImport()
-			&& DoResourcesShareOutermost(FPackageIndex::FromExport(ExportIndex), Import))
-		{
-			return true;
-		}
-	}
-	return false;
 }
 
 /**
@@ -481,7 +406,7 @@ static void LogGetPackageLinkerError(FArchive* LinkerArchive, FUObjectSerializeC
 				Message->AddToken(FAssetNameToken::Create(LoadContextToReport->SerializedImportLinker->GetImportPathName(LoadContextToReport->SerializedImportIndex)));
 				Message->AddToken(FTextToken::Create(LOCTEXT("FailedLoad_Referenced", "Referenced by")));
 				Message->AddToken(FUObjectToken::Create(LoadContextToReport->SerializedObject));
-				FProperty* SerializedProperty = InLinkerArchive ? InLinkerArchive->GetSerializedProperty() : nullptr;
+				UProperty* SerializedProperty = InLinkerArchive ? InLinkerArchive->GetSerializedProperty() : nullptr;
 				if (SerializedProperty != nullptr)
 				{
 					FString PropertyPathName = SerializedProperty->GetPathName();
@@ -500,7 +425,7 @@ static void LogGetPackageLinkerError(FArchive* LinkerArchive, FUObjectSerializeC
 	Arguments.Add(TEXT("LoadingFile"), FText::FromString(LoadingFile));
 	Arguments.Add(TEXT("ErrorMessage"), InErrorMessage);
 
-	FText FullErrorMessage = FText::Format(LOCTEXT("FailedLoad", "Failed to load '{LoadingFile}': {ErrorMessage}"), Arguments);
+	FText FullErrorMessage;
 	if (SerializedPackageLinker || SerializedObject)
 	{
 		FLinkerLoad* LinkerToUse = SerializedPackageLinker;
@@ -509,7 +434,12 @@ static void LogGetPackageLinkerError(FArchive* LinkerArchive, FUObjectSerializeC
 			LinkerToUse = SerializedObject->GetLinker();
 		}
 		FString LoadedByFile = LinkerToUse ? *LinkerToUse->Filename : SerializedObject->GetOutermost()->GetName();
-		FullErrorMessage = FText::FromString(FAssetMsg::GetAssetLogString(*LoadedByFile, FullErrorMessage.ToString()));
+		Arguments.Add(TEXT("LoadedByFile"), FText::FromString(LoadedByFile));
+		FullErrorMessage = FText::Format(LOCTEXT("FailedLoadWithLoadedBy", "While loading '{LoadedByFile}' failed to load '{LoadingFile}': {ErrorMessage}"), Arguments);
+	}
+	else
+	{
+		FullErrorMessage = FText::Format(LOCTEXT("FailedLoad", "Failed to load '{LoadingFile}': {ErrorMessage}"), Arguments);
 	}
 
 	FMessageLog LoadErrors(NAME_LoadErrors);
@@ -645,9 +575,7 @@ FLinkerLoad* GetPackageLinker
 	UPackageMap*	Sandbox,
 	FGuid*			CompatibleGuid,
 	FArchive*		InReaderOverride,
-	FUObjectSerializeContext** InOutLoadContext,
-	FLinkerLoad*	ImportLinker,
-	const FLinkerInstancingContext* InstancingContext
+	FUObjectSerializeContext** InOutLoadContext
 )
 {
 	FUObjectSerializeContext* InExistingContext = InOutLoadContext ? *InOutLoadContext : nullptr;
@@ -687,7 +615,7 @@ FLinkerLoad* GetPackageLinker
 		// Process any package redirects
 		{
 			const FCoreRedirectObjectName NewPackageName = FCoreRedirects::GetRedirectedName(ECoreRedirectFlags::Type_Package, FCoreRedirectObjectName(NAME_None, NAME_None, *PackageNameToCreate));
-			NewPackageName.PackageName.ToString(PackageNameToCreate);
+			PackageNameToCreate = NewPackageName.PackageName.ToString();
 		}
 
 		// The editor must not redirect packages for localization. We also shouldn't redirect script or in-memory packages.
@@ -724,7 +652,7 @@ FLinkerLoad* GetPackageLinker
 		// Process any package redirects
 		{
 			const FCoreRedirectObjectName NewPackageName = FCoreRedirects::GetRedirectedName(ECoreRedirectFlags::Type_Package, FCoreRedirectObjectName(NAME_None, NAME_None, *PackageNameToCreate));
-			NewPackageName.PackageName.ToString(PackageNameToCreate);
+			PackageNameToCreate = NewPackageName.PackageName.ToString();
 		}
 
 		// The editor must not redirect packages for localization. We also shouldn't redirect script packages.
@@ -750,28 +678,21 @@ FLinkerLoad* GetPackageLinker
 		const bool DoesPackageExist = DoesPackageExistForGetPackageLinker(PackageNameToLoad, CompatibleGuid, NewFilename);
 		if( !DoesPackageExist )
 		{
-			// Issue a warning if the caller didn't request nowar/quiet, and the package isn't marked as known to be missing.
-			bool IssueWarning = (LoadFlags & (LOAD_NoWarn | LOAD_Quiet)) == 0 && !FLinkerLoad::IsKnownMissingPackage(InLongPackageName);
-
-			if (IssueWarning)
+			if (!FLinkerLoad::IsKnownMissingPackage(InLongPackageName))
 			{
 				// try to recover from this instead of throwing, it seems recoverable just by doing this
 				LogGetPackageLinkerError(Result, InExistingContext, InLongPackageName, LOCTEXT("FileNotFoundShort", "Can't find file."), InOuter, LoadFlags);
 			}
 			return nullptr;
 		}
-		UPackage* FilenamePkg = ExistingPackage;
-		if (!FilenamePkg)
-		{
+
 #if WITH_EDITORONLY_DATA
 		// Make sure the package name matches the name on disk
-		FPackageName::FixPackageNameCase(PackageNameToCreate, FPathViews::GetExtension(NewFilename));
+		FPackageName::FixPackageNameCase(PackageNameToCreate, FPaths::GetExtension(NewFilename));
 #endif
-			// Create the package with the provided long package name.
-			CreatedPackage = CreatePackage(*PackageNameToCreate);
-			FilenamePkg = CreatedPackage;
-		}
 
+		// Create the package with the provided long package name.
+		UPackage* FilenamePkg = (ExistingPackage ? ExistingPackage : (CreatedPackage = CreatePackage(nullptr, *PackageNameToCreate)));
 		if (FilenamePkg && FilenamePkg != ExistingPackage && (LoadFlags & LOAD_PackageForPIE))
 		{
 			check(FilenamePkg);
@@ -789,7 +710,7 @@ FLinkerLoad* GetPackageLinker
 			InOuter = FilenamePkg;
 			Result = FLinkerLoad::FindExistingLinkerForPackage(InOuter);
 		}
-		else if (InOuter != FilenamePkg && FLinkerLoad::FindExistingLinkerForPackage(InOuter)) //!!should be tested and validated in new UnrealEd
+		else if (InOuter != FilenamePkg) //!!should be tested and validated in new UnrealEd
 		{
 			// Loading a new file into an existing package, so reset the loader.
 			//UE_LOG(LogLinker, Log,  TEXT("New File, Existing Package (%s, %s)"), *InOuter->GetFullName(), *FilenamePkg->GetFullName() );
@@ -812,7 +733,7 @@ FLinkerLoad* GetPackageLinker
 		// we will already have found the filename above
 		check(NewFilename.Len() > 0);
 		TRefCountPtr<FUObjectSerializeContext> LoadContext(FUObjectThreadContext::Get().GetSerializeContext());
-		Result = FLinkerLoad::CreateLinker(LoadContext, InOuter, *NewFilename, LoadFlags, InReaderOverride, ImportLinker ? &ImportLinker->GetInstancingContext() : InstancingContext);
+		Result = FLinkerLoad::CreateLinker(LoadContext, InOuter, *NewFilename, LoadFlags, InReaderOverride);
 	}
 	else if (InExistingContext)
 	{
@@ -884,47 +805,35 @@ FLinkerLoad* LoadPackageLinker(UPackage* InOuter, const TCHAR* InLongPackageName
 	return LoadPackageLinker(InOuter, InLongPackageName, LoadFlags, Sandbox, CompatibleGuid, InReaderOverride, [](FLinkerLoad* InLinker) {});
 }
 
-
-void ResetLoadersForSave(UObject* InOuter, const TCHAR* Filename)
+/**
+ * 
+ * Ensure thumbnails are loaded and then reset the loader in preparation for a package save
+ *
+ * @param	InOuter			The outer for the package we are saving
+ * @param	Filename		The filename we are saving too
+ */
+void ResetLoadersForSave(UObject* InOuter, const TCHAR *Filename)
 {
 	UPackage* Package = dynamic_cast<UPackage*>(InOuter);
-	ResetLoadersForSave(Package, Filename);
-}
-
-void ResetLoadersForSave(UPackage* Package, const TCHAR* Filename)
-{
+	// If we have a loader for the package, unload it to prevent conflicts if we are resaving to the same filename
 	FLinkerLoad* Loader = FLinkerLoad::FindExistingLinkerForPackage(Package);
+	// This is the loader corresponding to the package we're saving.
 	if( Loader )
 	{
+		if (!Package->HasAnyPackageFlags(PKG_FilterEditorOnly))
+		{
+			// Before we save the package, make sure that we load up any thumbnails that aren't already
+			// in memory so that they won't be wiped out during this save
+			Loader->SerializeThumbnails();
+		}
+
 		// Compare absolute filenames to see whether we're trying to save over an existing file.
 		if( FPaths::ConvertRelativePathToFull(Filename) == FPaths::ConvertRelativePathToFull( Loader->Filename ) )
 		{
 			// Detach all exports from the linker and dissociate the linker.
-			ResetLoaders( Package );
+			ResetLoaders( InOuter );
 		}
 	}
-}
-
-void ResetLoadersForSave(TArrayView<FPackageSaveInfo> InPackages)
-{
-	TSet<FLinkerLoad*> LinkersToReset;
-	Algo::TransformIf(InPackages, LinkersToReset,
-		[](const FPackageSaveInfo& InPackageSaveInfo)
-		{
-			FLinkerLoad* Loader = FLinkerLoad::FindExistingLinkerForPackage(InPackageSaveInfo.Package);
-			return Loader && FPaths::ConvertRelativePathToFull(InPackageSaveInfo.Filename) == FPaths::ConvertRelativePathToFull(Loader->Filename);
-		},
-		[](const FPackageSaveInfo& InPackageSaveInfo)
-		{
-			return FLinkerLoad::FindExistingLinkerForPackage(InPackageSaveInfo.Package);
-		});
-	FlushAsyncLoading();
-	FLinkerManager::Get().ResetLoaders(LinkersToReset);
-}
-
-void EnsureLoadingComplete(UPackage* Package)
-{
-	FLinkerManager::Get().EnsureLoadingComplete(Package);
 }
 
 #undef LOCTEXT_NAMESPACE

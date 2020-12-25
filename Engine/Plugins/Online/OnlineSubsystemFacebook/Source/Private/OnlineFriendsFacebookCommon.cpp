@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineFriendsFacebookCommon.h"
 #include "OnlineSubsystemFacebookPrivate.h"
@@ -147,7 +147,7 @@ bool FOnlineFriendsFacebookCommon::ReadFriendsList(int32 LocalUserNum, const FSt
 	FOnlineFriendsList& FriendsList = FriendsMap.FindOrAdd(LocalUserNum);
 	FriendsList.Friends.Empty();
 	
-	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> HttpRequest = FHttpModule::Get().CreateRequest();
+	TSharedRef<IHttpRequest> HttpRequest = FHttpModule::Get().CreateRequest();
 	FriendsQueryRequests.Add(&HttpRequest.Get(), FPendingFriendsQuery(LocalUserNum));
 
 	// Optional list of fields to query for each friend
@@ -195,16 +195,6 @@ void FOnlineFriendsFacebookCommon::SetFriendAlias(int32 LocalUserNum, const FUni
 	FacebookSubsystem->ExecuteNextTick([LocalUserNum, FriendIdRef, ListName, Delegate]()
 	{
 		UE_LOG_ONLINE_FRIEND(Warning, TEXT("FOnlineFriendsFacebookCommon::SetFriendAlias is not supported"));
-		Delegate.ExecuteIfBound(LocalUserNum, *FriendIdRef, ListName, FOnlineError(EOnlineErrorResult::NotImplemented));
-	});
-}
-
-void FOnlineFriendsFacebookCommon::DeleteFriendAlias(int32 LocalUserNum, const FUniqueNetId& FriendId, const FString& ListName, const FOnDeleteFriendAliasComplete& Delegate)
-{
-	TSharedRef<const FUniqueNetId> FriendIdRef = FriendId.AsShared();
-	FacebookSubsystem->ExecuteNextTick([LocalUserNum, FriendIdRef, ListName, Delegate]()
-	{
-		UE_LOG_ONLINE_FRIEND(Warning, TEXT("FOnlineFriendsFacebookCommon::DeleteFriendAlias is not supported"));
 		Delegate.ExecuteIfBound(LocalUserNum, *FriendIdRef, ListName, FOnlineError(EOnlineErrorResult::NotImplemented));
 	});
 }
@@ -392,7 +382,7 @@ void FOnlineFriendsFacebookCommon::QueryFriendsList_HttpRequestComplete(FHttpReq
 
 				if (bMoreToProcess)
 				{
-					TSharedRef<IHttpRequest, ESPMode::ThreadSafe> NextHttpRequest = FHttpModule::Get().CreateRequest();
+					TSharedRef<IHttpRequest> NextHttpRequest = FHttpModule::Get().CreateRequest();
 					FriendsQueryRequests.Add(&NextHttpRequest.Get(), FPendingFriendsQuery(PendingFriendsQuery.LocalUserNum));
 
 					// read next page of friends

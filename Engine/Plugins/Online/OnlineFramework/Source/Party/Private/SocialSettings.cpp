@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SocialSettings.h"
 #include "SocialManager.h"
@@ -43,18 +43,6 @@ bool USocialSettings::MustSendPrimaryInvites()
 	return SettingsCDO.bMustSendPrimaryInvites;
 }
 
-bool USocialSettings::ShouldLeavePartyOnDisconnect()
-{
-	const USocialSettings& SettingsCDO = *GetDefault<USocialSettings>();
-	return SettingsCDO.bLeavePartyOnDisconnect;
-}
-
-bool USocialSettings::ShouldSetDesiredPrivacyOnLocalPlayerBecomesLeader()
-{
-	const USocialSettings& SettingsCDO = *GetDefault<USocialSettings>();
-	return SettingsCDO.bSetDesiredPrivacyOnLocalPlayerBecomesLeader;
-}
-
 int32 USocialSettings::GetDefaultMaxPartySize()
 {
 #if !UE_BUILD_SHIPPING
@@ -78,22 +66,4 @@ float USocialSettings::GetUserListAutoUpdateRate()
 {
 	const USocialSettings& SettingsCDO = *GetDefault<USocialSettings>();
 	return SettingsCDO.UserListAutoUpdateRate;
-}
-
-int32 USocialSettings::GetMinNicknameLength()
-{
-	const USocialSettings& SettingsCDO = *GetDefault<USocialSettings>();
-	return SettingsCDO.MinNicknameLength;
-}
-
-int32 USocialSettings::GetMaxNicknameLength()
-{
-	const USocialSettings& SettingsCDO = *GetDefault<USocialSettings>();
-	return SettingsCDO.MaxNicknameLength;
-}
-
-const TArray<FSocialPlatformDescription>& USocialSettings::GetSocialPlatformDescriptions()
-{
-	const USocialSettings& SettingsCDO = *GetDefault<USocialSettings>();
-	return SettingsCDO.SocialPlatformDescriptions;
 }

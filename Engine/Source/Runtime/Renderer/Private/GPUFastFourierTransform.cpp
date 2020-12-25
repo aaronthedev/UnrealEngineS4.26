@@ -1,10 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GPUFastFourierTransform.h"
 #include "SceneUtils.h"
 #include "GlobalShader.h"
 #include "RenderTargetPool.h" // used for on-the-fly acquisition of 
-#include "ShaderCompilerCore.h"
+
 
 uint32 GPUFFT::MaxScanLineLength() 
 {
@@ -200,7 +200,7 @@ namespace GPUFFT
 		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 		{
 			// @todo MetalMRT: Metal MRT can't cope with the threadgroup storage requirements for these shaders right now
-			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform) && IsPCPlatform(Parameters.Platform);
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform);
 		}
 
 		static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
@@ -215,7 +215,7 @@ namespace GPUFFT
 		{
 			using GPUFFTComputeShaderUtils::FComputeParamterValueSetter;
 
-			FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
+			FRHIComputeShader* ShaderRHI = GetComputeShader();
 
 			// Set up the input.  We have to do this explicitly because the FFT dispatches multiple compute shaders and manages their input/output.
 			FComputeParamterValueSetter ParamSetter(RHICmdList, ShaderRHI);
@@ -242,15 +242,30 @@ namespace GPUFFT
 		// Method for use with the FScopedUAVBind
 		FShaderResourceParameter& DestinationResourceParameter() { return DstRWTexture; }
 
+
+		// FShader interface.
+		virtual bool Serialize(FArchive& Ar) override
+		{
+			bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+			Ar << SrcROTexture
+				<< DstRWTexture
+				<< TransformType
+				<< SrcRect
+				<< DstRect
+				<< LogTransformLength
+				<< BitCount;
+			return bShaderHasOutdatedParameters;
+		}
+
 	public:
 
-		LAYOUT_FIELD(FShaderResourceParameter, SrcROTexture);
-		LAYOUT_FIELD(FShaderResourceParameter, DstRWTexture);
-		LAYOUT_FIELD(FShaderParameter, TransformType);
-		LAYOUT_FIELD(FShaderParameter, SrcRect);
-		LAYOUT_FIELD(FShaderParameter, DstRect);
-		LAYOUT_FIELD(FShaderParameter, LogTransformLength);
-		LAYOUT_FIELD(FShaderParameter, BitCount);
+		FShaderResourceParameter SrcROTexture;
+		FShaderResourceParameter DstRWTexture;
+		FShaderParameter TransformType;
+		FShaderParameter SrcRect;
+		FShaderParameter DstRect;
+		FShaderParameter LogTransformLength;
+		FShaderParameter BitCount;
 	};
 
 
@@ -291,7 +306,7 @@ namespace GPUFFT
 		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 		{
 			// @todo MetalMRT: Metal MRT can't cope with the threadgroup storage requirements for these shaders right now
-			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform) && IsPCPlatform(Parameters.Platform);
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform);
 		}
 
 		static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
@@ -315,7 +330,7 @@ namespace GPUFFT
 
 			using GPUFFTComputeShaderUtils::FComputeParamterValueSetter;
 
-			FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
+			FRHIComputeShader* ShaderRHI = GetComputeShader();
 
 			// Set up the input.  We have to do this explicitly because the FFT dispatches multiple compute shaders and manages their input/output.
 			FComputeParamterValueSetter ParamSetter(RHICmdList, ShaderRHI);
@@ -334,14 +349,28 @@ namespace GPUFFT
 		// Method for use with the FScopedUAVBind
 		FShaderResourceParameter& DestinationResourceParameter() { return DstRWTexture; }
 
+
+		// FShader interface.
+		virtual bool Serialize(FArchive& Ar) override
+		{
+			bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+			Ar << SrcROTexture
+				<< DstRWTexture
+				<< TransformType
+				<< SrcRect
+				<< TransformLength
+				<< NumSubRegions;
+			return bShaderHasOutdatedParameters;
+		}
+
 	public:
 
-		LAYOUT_FIELD(FShaderResourceParameter, SrcROTexture);
-		LAYOUT_FIELD(FShaderResourceParameter, DstRWTexture);
-		LAYOUT_FIELD(FShaderParameter, TransformType);
-		LAYOUT_FIELD(FShaderParameter, SrcRect);
-		LAYOUT_FIELD(FShaderParameter, TransformLength);
-		LAYOUT_FIELD(FShaderParameter, NumSubRegions);
+		FShaderResourceParameter SrcROTexture;
+		FShaderResourceParameter DstRWTexture;
+		FShaderParameter TransformType;
+		FShaderParameter SrcRect;
+		FShaderParameter TransformLength;
+		FShaderParameter NumSubRegions;
 	};
 
 	class FComplexFFTPassCS : public FGlobalShader
@@ -379,7 +408,7 @@ namespace GPUFFT
 		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 		{
 			// @todo MetalMRT: Metal MRT can't cope with the threadgroup storage requirements for these shaders right now
-			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform) && IsPCPlatform(Parameters.Platform);
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform);
 		}
 
 		static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
@@ -397,7 +426,7 @@ namespace GPUFFT
 
 			using GPUFFTComputeShaderUtils::FComputeParamterValueSetter;
 
-			FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
+			FRHIComputeShader* ShaderRHI = GetComputeShader();
 
 			// Set up the input.  We have to do this explicitly because the FFT dispatches multiple compute shaders and manages their input/output.
 			FComputeParamterValueSetter ParamSetter(RHICmdList, ShaderRHI);
@@ -421,15 +450,30 @@ namespace GPUFFT
 		// Method for use with the FScopedUAVBind
 		FShaderResourceParameter& DestinationResourceParameter() { return DstRWTexture; }
 
+
+		// FShader interface.
+		virtual bool Serialize(FArchive& Ar) override
+		{
+			bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+			Ar << SrcROTexture
+				<< DstRWTexture
+				<< TransformType
+				<< SrcRect
+				<< DstRect
+				<< BitCount
+				<< PowTwoLength;
+			return bShaderHasOutdatedParameters;
+		}
+
 	public:
 
-		LAYOUT_FIELD(FShaderResourceParameter, SrcROTexture);
-		LAYOUT_FIELD(FShaderResourceParameter, DstRWTexture);
-		LAYOUT_FIELD(FShaderParameter, TransformType);
-		LAYOUT_FIELD(FShaderParameter, SrcRect);
-		LAYOUT_FIELD(FShaderParameter, DstRect);
-		LAYOUT_FIELD(FShaderParameter, BitCount);
-		LAYOUT_FIELD(FShaderParameter, PowTwoLength);
+		FShaderResourceParameter SrcROTexture;
+		FShaderResourceParameter DstRWTexture;
+		FShaderParameter TransformType;
+		FShaderParameter SrcRect;
+		FShaderParameter DstRect;
+		FShaderParameter BitCount;
+		FShaderParameter PowTwoLength;
 	};
 
 
@@ -465,7 +509,7 @@ namespace GPUFFT
 		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 		{
 			// @todo MetalMRT: Metal MRT can't cope with the threadgroup storage requirements for these shaders right now
-			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform) && IsPCPlatform(Parameters.Platform);
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform);
 		}
 
 		static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
@@ -480,7 +524,7 @@ namespace GPUFFT
 		{
 			using GPUFFTComputeShaderUtils::FComputeParamterValueSetter;
 
-			FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
+			FRHIComputeShader* ShaderRHI = GetComputeShader();
 
 			// Set up the input.  We have to do this explicitly because the FFT dispatches multiple compute shaders and manages their input/output.
 			FComputeParamterValueSetter ParamSetter(RHICmdList, ShaderRHI);
@@ -497,12 +541,24 @@ namespace GPUFFT
 		// Method for use with the FScopedUAVBind
 		FShaderResourceParameter& DestinationResourceParameter() { return DstRWTexture; }
 
+
+		// FShader interface.
+		virtual bool Serialize(FArchive& Ar) override
+		{
+			bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+			Ar << SrcROTexture
+				<< DstRWTexture
+				<< TransformType
+				<< DstRect;
+			return bShaderHasOutdatedParameters;
+		}
+
 	public:
 
-		LAYOUT_FIELD(FShaderResourceParameter, SrcROTexture);
-		LAYOUT_FIELD(FShaderResourceParameter, DstRWTexture);
-		LAYOUT_FIELD(FShaderParameter, TransformType);
-		LAYOUT_FIELD(FShaderParameter, DstRect);
+		FShaderResourceParameter SrcROTexture;
+		FShaderResourceParameter DstRWTexture;
+		FShaderParameter TransformType;
+		FShaderParameter DstRect;
 	};
 
 
@@ -539,7 +595,7 @@ namespace GPUFFT
 		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 		{
 			// @todo MetalMRT: Metal MRT can't cope with the threadgroup storage requirements for these shaders right now
-			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform) && IsPCPlatform(Parameters.Platform);
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform);
 		}
 
 		static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
@@ -557,7 +613,7 @@ namespace GPUFFT
 		{
 			using GPUFFTComputeShaderUtils::FComputeParamterValueSetter;
 
-			FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
+			FRHIComputeShader* ShaderRHI = GetComputeShader();
 
 			// Set up the input.  We have to do this explicitly because the FFT dispatches multiple compute shaders and manages their input/output.
 			FComputeParamterValueSetter ParamSetter(RHICmdList, ShaderRHI);
@@ -571,13 +627,26 @@ namespace GPUFFT
 		// Method for use with the FScopedUAVBind
 		FShaderResourceParameter& DestinationResourceParameter() { return DstRWTexture; }
 
+
+		// FShader interface.
+		virtual bool Serialize(FArchive& Ar) override
+		{
+			bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+			Ar << SrcROTexture
+				<< DstRWTexture
+				<< SrcRect
+				<< DstRect
+				<< PreFilter;
+			return bShaderHasOutdatedParameters;
+		}
+
 	public:
 
-		LAYOUT_FIELD(FShaderResourceParameter, SrcROTexture);
-		LAYOUT_FIELD(FShaderResourceParameter, DstRWTexture);
-		LAYOUT_FIELD(FShaderParameter, SrcRect);
-		LAYOUT_FIELD(FShaderParameter, DstRect);
-		LAYOUT_FIELD(FShaderParameter, PreFilter);
+		FShaderResourceParameter SrcROTexture;
+		FShaderResourceParameter DstRWTexture;
+		FShaderParameter SrcRect;
+		FShaderParameter DstRect;
+		FShaderParameter PreFilter;
 	};
 
 	class FComplexMultiplyImagesCS : public FGlobalShader
@@ -611,7 +680,7 @@ namespace GPUFFT
 		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 		{
 			// @todo MetalMRT: Metal MRT can't cope with the threadgroup storage requirements for these shaders right now
-			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform) && IsPCPlatform(Parameters.Platform);
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform);
 		}
 
 		static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
@@ -628,7 +697,7 @@ namespace GPUFFT
 		{
 			using GPUFFTComputeShaderUtils::FComputeParamterValueSetter;
 
-			FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
+			FRHIComputeShader* ShaderRHI = GetComputeShader();
 
 			const uint32 DataLayoutValue = (bHorizontalScanlines) ? 1 : 0;
 			// Set up the input.  We have to do this explicitly because the FFT dispatches multiple compute shaders and manages their input/output.
@@ -644,18 +713,31 @@ namespace GPUFFT
 		// Method for use with the FScopedUAVBind
 		FShaderResourceParameter& DestinationResourceParameter() { return DstRWTexture; }
 
+
+		// FShader interface.
+		virtual bool Serialize(FArchive& Ar) override
+		{
+			bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+			Ar << SrcROTexture
+				<< KnlROTexture
+				<< DstRWTexture
+				<< SrcRect
+				<< DataLayout;
+			return bShaderHasOutdatedParameters;
+		}
+
 	public:
 
-		LAYOUT_FIELD(FShaderResourceParameter, SrcROTexture);
-		LAYOUT_FIELD(FShaderResourceParameter, KnlROTexture);
-		LAYOUT_FIELD(FShaderResourceParameter, DstRWTexture);
-		LAYOUT_FIELD(FShaderParameter, SrcRect);
-		LAYOUT_FIELD(FShaderParameter, DataLayout);
+		FShaderResourceParameter SrcROTexture;
+		FShaderResourceParameter KnlROTexture;
+		FShaderResourceParameter DstRWTexture;
+		FShaderParameter SrcRect;
+		FShaderParameter DataLayout;
 	};
 
 	class FGSComplexTransformBaseCS : public FGlobalShader
 	{
-		DECLARE_INLINE_TYPE_LAYOUT(FGSComplexTransformBaseCS, NonVirtual);
+
 	public:
 		
 
@@ -687,7 +769,7 @@ namespace GPUFFT
 		{
 			using GPUFFTComputeShaderUtils::FComputeParamterValueSetter;
 
-			FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
+			FRHIComputeShader* ShaderRHI = GetComputeShader();
 
 			// Set up the input.  We have to do this explicitly because the FFT dispatches multiple compute shaders and manages their input/output.
 			FComputeParamterValueSetter ParamSetter(RHICmdList, ShaderRHI);
@@ -715,15 +797,32 @@ namespace GPUFFT
 		// Method for use with the FScopedUAVBind
 		FShaderResourceParameter& DestinationResourceParameter() { return DstRWTexture; }
 
+
+		// FShader interface.
+		virtual bool Serialize(FArchive& Ar) override
+		{
+			bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+			Ar << SrcROTexture
+				<< DstRWTexture
+				<< TransformType
+				<< SrcRectMin
+				<< SrcRectMax
+				<< DstExtent
+				<< DstRect
+				<< BrightPixelGain;
+			return bShaderHasOutdatedParameters;
+		}
+
 	public:
-		LAYOUT_FIELD(FShaderResourceParameter, SrcROTexture);
-		LAYOUT_FIELD(FShaderResourceParameter, DstRWTexture);
-		LAYOUT_FIELD(FShaderParameter, TransformType);
-		LAYOUT_FIELD(FShaderParameter, SrcRectMin);
-		LAYOUT_FIELD(FShaderParameter, SrcRectMax);
-		LAYOUT_FIELD(FShaderParameter, DstExtent);
-		LAYOUT_FIELD(FShaderParameter, DstRect);
-		LAYOUT_FIELD(FShaderParameter, BrightPixelGain);
+
+		FShaderResourceParameter SrcROTexture;
+		FShaderResourceParameter DstRWTexture;
+		FShaderParameter TransformType;
+		FShaderParameter SrcRectMin;
+		FShaderParameter SrcRectMax;
+		FShaderParameter DstExtent;
+		FShaderParameter DstRect;
+		FShaderParameter BrightPixelGain;
 	};
 
 	template <int PowRadixSignalLength>
@@ -740,7 +839,7 @@ namespace GPUFFT
 		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 		{
 			// @todo MetalMRT: Metal MRT can't cope with the threadgroup storage requirements for these shaders right now
-			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform) && IsPCPlatform(Parameters.Platform);
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform);
 		}
 
 
@@ -777,7 +876,7 @@ namespace GPUFFT
 		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 		{
 			// @todo MetalMRT: Metal MRT can't cope with the threadgroup storage requirements for these shaders right now
-			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform) && IsPCPlatform(Parameters.Platform);
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform);
 		}
 
 
@@ -803,7 +902,7 @@ namespace GPUFFT
 	*/
 	class FGSConvolutionBaseCS : public FGlobalShader
 	{
-		DECLARE_INLINE_TYPE_LAYOUT(FGSConvolutionBaseCS, NonVirtual);
+
 	public:
 
 		FGSConvolutionBaseCS() {};
@@ -841,7 +940,7 @@ namespace GPUFFT
 				TransformTypeValue |= 8;
 			}
 
-			FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
+			FRHIComputeShader* ShaderRHI = GetComputeShader();
 
 			// Set up the input.  We have to do this explicitly because the FFT dispatches multiple compute shaders and manages their input/output.
 
@@ -858,13 +957,28 @@ namespace GPUFFT
 		// Method for use with the FScopedUAVBind
 		FShaderResourceParameter& DestinationResourceParameter() { return DstRWTexture; }
 
+
+		// FShader interface.
+		virtual bool Serialize(FArchive& Ar) override
+		{
+			bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+			Ar << SrcROTexture
+				<< DstRWTexture
+				<< SrcRectMin
+				<< SrcRectMax
+				<< DstExtent
+				<< TransformType;
+			return bShaderHasOutdatedParameters;
+		}
+
 	public:
-		LAYOUT_FIELD(FShaderResourceParameter, SrcROTexture);
-		LAYOUT_FIELD(FShaderResourceParameter, DstRWTexture);
-		LAYOUT_FIELD(FShaderParameter, SrcRectMin);
-		LAYOUT_FIELD(FShaderParameter, SrcRectMax);
-		LAYOUT_FIELD(FShaderParameter, DstExtent);
-		LAYOUT_FIELD(FShaderParameter, TransformType);
+
+		FShaderResourceParameter SrcROTexture;
+		FShaderResourceParameter DstRWTexture;
+		FShaderParameter SrcRectMin;
+		FShaderParameter SrcRectMax;
+		FShaderParameter DstExtent;
+		FShaderParameter TransformType;
 	};
 
 	/**
@@ -872,7 +986,7 @@ namespace GPUFFT
 	*/
 	class FGSConvolutionWithTextureKernelBaseCS : public FGSConvolutionBaseCS
 	{
-		DECLARE_INLINE_TYPE_LAYOUT(FGSConvolutionWithTextureKernelBaseCS, NonVirtual);
+
 	public:
 
 		FGSConvolutionWithTextureKernelBaseCS() {};
@@ -902,15 +1016,23 @@ namespace GPUFFT
 			FGSConvolutionBaseCS::SetCSParamters(RHICmdList, XFormType, SrcTexture, SrcRect, DstExtentValue);
 
 			// additional source input for sampling the spectral texture
-			FRHIComputeShader* ShaderRHI = RHICmdList.GetBoundComputeShader();
+			FRHIComputeShader* ShaderRHI = GetComputeShader();
 			GPUFFTComputeShaderUtils::FComputeParamterValueSetter ParamSetter(RHICmdList, ShaderRHI);
 			// set the texture
 			ParamSetter(FilterSrcROTexture, FilterSrcTexture);
 
 		}
 
+		// FShader interface.
+		virtual bool Serialize(FArchive& Ar) override
+		{
+			bool bShaderHasOutdatedParameters = FGSConvolutionBaseCS::Serialize(Ar);
+			Ar << FilterSrcROTexture;
+			return bShaderHasOutdatedParameters;
+		}
+
 	public:
-		LAYOUT_FIELD(FShaderResourceParameter, FilterSrcROTexture);
+		FShaderResourceParameter FilterSrcROTexture;
 	};
 
 
@@ -927,7 +1049,7 @@ namespace GPUFFT
 		static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 		{
 			// @todo MetalMRT: Metal MRT can't cope with the threadgroup storage requirements for these shaders right now
-			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform) && IsPCPlatform(Parameters.Platform);
+			return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) && !IsMetalMRTPlatform(Parameters.Platform);
 		}
 
 
@@ -1015,39 +1137,40 @@ namespace
 {
 	using namespace GPUFFT;
 
-	TShaderRef<FCopyWindowCS> GetCopyWindowCS(const FGPUFFTShaderContext::ShaderMapType& ShaderMap)
+	FCopyWindowCS* GetCopyWindowCS(const FGPUFFTShaderContext::ShaderMapType& ShaderMap)
 	{
 		return  ShaderMap.GetShader<FCopyWindowCS>();
 	}
 
-	TShaderRef<FComplexMultiplyImagesCS> GetComplexMultiplyImagesCS(const FGPUFFTShaderContext::ShaderMapType& ShaderMap)
+	FComplexMultiplyImagesCS* GetComplexMultiplyImagesCS(const FGPUFFTShaderContext::ShaderMapType& ShaderMap)
 	{
 		return  ShaderMap.GetShader<FComplexMultiplyImagesCS>();
 	}
 
-	TShaderRef<FGroupShardSubFFTPassCS> GetGroupSharedSubFFTPassCS(const FGPUFFTShaderContext::ShaderMapType& ShaderMap, const uint32 TransformLength)
+	FGroupShardSubFFTPassCS* GetGroupSharedSubFFTPassCS(const FGPUFFTShaderContext::ShaderMapType& ShaderMap, const uint32 TransformLength)
 	{
 		return ShaderMap.GetShader<FGroupShardSubFFTPassCS>();
 	}
 
-	TShaderRef<FReorderFFTPassCS> GetReorderFFTPassCS(const FGPUFFTShaderContext::ShaderMapType& ShaderMap)
+	FReorderFFTPassCS* GetReorderFFTPassCS(const FGPUFFTShaderContext::ShaderMapType& ShaderMap)
 	{
 		return ShaderMap.GetShader<FReorderFFTPassCS>();
 	}
-	TShaderRef<FPackTwoForOneFFTPassCS> GetPackTwoForOneFFTPassCS(const FGPUFFTShaderContext::ShaderMapType& ShaderMap, const uint32 TransformLength)
+	FPackTwoForOneFFTPassCS* GetPackTwoForOneFFTPassCS(const FGPUFFTShaderContext::ShaderMapType& ShaderMap, const uint32 TransformLength)
 	{
 		return  ShaderMap.GetShader<FPackTwoForOneFFTPassCS>();
 	}
 
-	TShaderRef<FComplexFFTPassCS> GetComplexFFTPassCS(const FGPUFFTShaderContext::ShaderMapType& ShaderMap, const uint32 TransformLength)
+	FComplexFFTPassCS* GetComplexFFTPassCS(const FGPUFFTShaderContext::ShaderMapType& ShaderMap, const uint32 TransformLength)
 	{
-		return ShaderMap.GetShader<FComplexFFTPassCS>();
+		FComplexFFTPassCS* Result = ShaderMap.GetShader<FComplexFFTPassCS>();
+		return Result;
 	}
 
 	// Shader Permutation picker.
-	TShaderRef<FGSComplexTransformBaseCS> GetComplexFFTCS(const FGPUFFTShaderContext::ShaderMapType& ShaderMap, const uint32 TransformLength)
+	FGSComplexTransformBaseCS* GetComplexFFTCS(const FGPUFFTShaderContext::ShaderMapType& ShaderMap, const uint32 TransformLength)
 	{
-		TShaderRef<FGSComplexTransformBaseCS> Result;
+		FGSComplexTransformBaseCS* Result = NULL;
 
 	#define GET_COMPLEX_SHADER(_LENGTH)  ShaderMap.GetShader<TGSComplexTransformCS<_LENGTH>>();
 
@@ -1078,9 +1201,9 @@ namespace
 	}
 
 	// Shader Permutation picker.
-	TShaderRef<FGSComplexTransformBaseCS> GetTwoForOneFFTCS(const FGPUFFTShaderContext::ShaderMapType& ShaderMap, const uint32 TransformLength)
+	FGSComplexTransformBaseCS* GetTwoForOneFFTCS(const FGPUFFTShaderContext::ShaderMapType& ShaderMap, const uint32 TransformLength)
 	{
-		TShaderRef<FGSComplexTransformBaseCS> Result;
+		FGSComplexTransformBaseCS* Result = NULL;
 
 	#define GET_TWOFORONE_SHADER(_LENGTH)  ShaderMap.GetShader<TGSTwoForOneTransformCS<_LENGTH>>();
 
@@ -1111,9 +1234,9 @@ namespace
 	}
 
 
-	TShaderRef<FGSConvolutionWithTextureKernelBaseCS> GetConvolutionWithTextureKernelCS(const FGPUFFTShaderContext::ShaderMapType& ShaderMap, const uint32 TransformLength)
+	FGSConvolutionWithTextureKernelBaseCS* GetConvolutionWithTextureKernelCS(const FGPUFFTShaderContext::ShaderMapType& ShaderMap, const uint32 TransformLength)
 	{
-		TShaderRef<FGSConvolutionWithTextureKernelBaseCS> Result;
+		FGSConvolutionWithTextureKernelBaseCS* Result = NULL;
 
 		// Get the spectral filter.
 	#define GET_GROUP_SHARED_TEXTURE_FILTER(_LENGTH)  ShaderMap.GetShader< TGSConvolutionWithTexturerCS<_LENGTH> >();
@@ -1179,8 +1302,11 @@ namespace
 		SCOPED_DRAW_EVENTF(RHICmdList, CopyWindowCS, TEXT("FFT Multipass: Copy Subwindow"));
 
 		// Get pointer to the shader
-		TShaderRef<FCopyWindowCS> ComputeShader = GetCopyWindowCS(ShaderMap);
-		RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
+		FCopyWindowCS* ComputeShader = GetCopyWindowCS(ShaderMap);
+
+		// #todo-renderpasses remove once everything is converted
+		UnbindRenderTargets(RHICmdList);
+		RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
 
 		// Bind output
 		FScopedUAVBind ScopedBind = FScopedUAVBind::BindOutput(RHICmdList, ComputeShader, DstUAV);
@@ -1237,8 +1363,11 @@ namespace
 		SCOPED_DRAW_EVENTF(RHICmdList, ComplexMultiplyImagesCS, TEXT("FFT Multipass: Convolution in freq-space"));
 
 		// Get pointer to the shader
-		TShaderRef<FComplexMultiplyImagesCS> ComputeShader = GetComplexMultiplyImagesCS(ShaderMap);
-		RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
+		FComplexMultiplyImagesCS* ComputeShader = GetComplexMultiplyImagesCS(ShaderMap);
+
+		// #todo-renderpasses remove once everything is converted
+		UnbindRenderTargets(RHICmdList);
+		RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
 
 		// Bind output
 		FScopedUAVBind ScopedBind = FScopedUAVBind::BindOutput(RHICmdList, ComputeShader, DstUAV);
@@ -1303,8 +1432,11 @@ namespace
 		}
 
 		// Get pointer to the shader
-		TShaderRef<FPackTwoForOneFFTPassCS> ComputeShader = GetPackTwoForOneFFTPassCS(ShaderMap, TransformLength);
-		RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
+		FPackTwoForOneFFTPassCS* ComputeShader = GetPackTwoForOneFFTPassCS(ShaderMap, TransformLength);
+
+		// #todo-renderpasses remove once everything is converted
+		UnbindRenderTargets(RHICmdList);
+		RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
 
 		// Bind output
 		FScopedUAVBind ScopedBind = FScopedUAVBind::BindOutput(RHICmdList, ComputeShader, DstUAV);
@@ -1350,8 +1482,12 @@ namespace
 		FIntPoint DstExtent = FFTDesc.TransformExtent();
 		
 		// Get a base pointer to the shader
-		TShaderRef<FComplexFFTPassCS> ComputeShader = GetComplexFFTPassCS(ShaderMap, TransformLength);
-		RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
+		FComplexFFTPassCS* ComputeShader = GetComplexFFTPassCS(ShaderMap, TransformLength);
+
+
+		// #todo-renderpasses remove once everything is converted
+		UnbindRenderTargets(RHICmdList);
+		RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
 
 		// Bind output
 		FScopedUAVBind ScopedBind = FScopedUAVBind::BindOutput(RHICmdList, ComputeShader, DstUAV);
@@ -1399,8 +1535,12 @@ namespace
 		FIntPoint DstExtent = FFTDesc.TransformExtent();
 
 		// Get a base pointer to the shader
-		TShaderRef<FReorderFFTPassCS> ComputeShader = GetReorderFFTPassCS(ShaderMap);
-		RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
+		FReorderFFTPassCS* ComputeShader = GetReorderFFTPassCS(ShaderMap);
+
+
+		// #todo-renderpasses remove once everything is converted
+		UnbindRenderTargets(RHICmdList);
+		RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
 
 		// Bind output
 		FScopedUAVBind ScopedBind = FScopedUAVBind::BindOutput(RHICmdList, ComputeShader, DstUAV);
@@ -1458,8 +1598,12 @@ namespace
 		FIntPoint DstExtent = FFTDesc.TransformExtent();
 
 		// Get a base pointer to the shader
-		TShaderRef<FGroupShardSubFFTPassCS> ComputeShader = GetGroupSharedSubFFTPassCS(ShaderMap, TransformLength);
-		RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
+		FGroupShardSubFFTPassCS* ComputeShader = GetGroupSharedSubFFTPassCS(ShaderMap, TransformLength);
+
+
+		// #todo-renderpasses remove once everything is converted
+		UnbindRenderTargets(RHICmdList);
+		RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
 
 		// Bind output
 		FScopedUAVBind ScopedBind = FScopedUAVBind::BindOutput(RHICmdList, ComputeShader, DstUAV);
@@ -1502,8 +1646,12 @@ namespace
 
 
 		// Get a base pointer to the shader
-		TShaderRef<FGSComplexTransformBaseCS> ComputeShader = GetComplexFFTCS(ShaderMap, TransformLength);
-		RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
+		FGSComplexTransformBaseCS* ComputeShader = GetComplexFFTCS(ShaderMap, TransformLength);
+
+
+		// #todo-renderpasses remove once everything is converted
+		UnbindRenderTargets(RHICmdList);
+		RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
 
 		// Bind output
 		FScopedUAVBind ScopedBind = FScopedUAVBind::BindOutput(RHICmdList, ComputeShader, DstUAV);
@@ -1550,8 +1698,12 @@ namespace
 		SCOPED_DRAW_EVENTF(RHICmdList, FRCPassFFT, TEXT("FFT: Two-For-One %s of size %d of buffer %d x %d"), *TransformName, TransformLength, SrcRect.Size().X, SrcRect.Size().Y);
 
 		// Get a base pointer to the shader
-		TShaderRef<FGSComplexTransformBaseCS> ComputeShader = GetTwoForOneFFTCS(ShaderMap, TransformLength);
-		RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
+		FGSComplexTransformBaseCS* ComputeShader = GetTwoForOneFFTCS(ShaderMap, TransformLength);
+
+		// DJH - do we need this SetRenderTarget?
+		// #todo-renderpasses remove once everything is converted
+		UnbindRenderTargets(RHICmdList);
+		RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
 
 
 		FScopedUAVBind ScopedBind = FScopedUAVBind::BindOutput(RHICmdList, ComputeShader, DstUAV);
@@ -1604,8 +1756,12 @@ namespace
 		SCOPED_DRAW_EVENTF(RHICmdList, FRCPassFFTBloom, TEXT("FFT: Apply %s Transform, Multiply Texture, and InverseTransform size %d of buffer %d x %d"), *XFormDirName, SignalLength, SrcRectSize.X, SrcRectSize.Y);
 
 		// Get a base pointer to the shader
-		TShaderRef<FGSConvolutionWithTextureKernelBaseCS> ComputeShader = GetConvolutionWithTextureKernelCS(ShaderMap, SignalLength);
-		RHICmdList.SetComputeShader(ComputeShader.GetComputeShader());
+		FGSConvolutionWithTextureKernelBaseCS* ComputeShader = GetConvolutionWithTextureKernelCS(ShaderMap, SignalLength);
+
+
+		// #todo-renderpasses remove once everything is converted
+		UnbindRenderTargets(RHICmdList);
+		RHICmdList.SetComputeShader(ComputeShader->GetComputeShader());
 		
 		FScopedUAVBind ScopedBind = FScopedUAVBind::BindOutput(RHICmdList, ComputeShader, DstUAV);
 
@@ -1693,7 +1849,7 @@ bool GPUFFT::ComplexFFTImage1D::MultiPass(FGPUFFTShaderContext& Context, const F
 		for (uint32 Ns = 2; Ns < TransformLength; Ns *= 2)
 		{
 			// Make it safe to read from the buffer we just wrote to.
-			RHICmdList.Transition(FRHITransitionInfo(Targets.DstTarget().UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+			RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, Targets.DstTarget().UAV);
 			Targets.Swap();
 
 			auto HasValidTargets = [&Targets, &DstExtent]()->bool
@@ -1724,7 +1880,7 @@ bool GPUFFT::ComplexFFTImage1D::MultiPass(FGPUFFTShaderContext& Context, const F
 	{
 		// Re-order the data so we can do a pass of group-shared transforms
 		DispatchReorderFFTPassCS(Context, FFTDesc, Window, SrcTexture, XFormWindow, Targets.DstTarget().UAV);
-		RHICmdList.Transition(FRHITransitionInfo(Targets.DstTarget().UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+		RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, Targets.DstTarget().UAV);
 		Targets.Swap();
 
 		DispatchGSSubComplexFFTPassCS(Context, FFTDesc, Targets.SrcTarget().ShaderResourceTexture, XFormWindow, Targets.DstTarget().UAV);
@@ -1732,7 +1888,7 @@ bool GPUFFT::ComplexFFTImage1D::MultiPass(FGPUFFTShaderContext& Context, const F
 		for (uint32 Ns = FGroupShardSubFFTPassCS::SubPassLength(); Ns < TransformLength; Ns *= 2)
 		{
 			// Make it safe to read from the buffer we just wrote to.
-			RHICmdList.Transition(FRHITransitionInfo(Targets.DstTarget().UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+			RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, Targets.DstTarget().UAV);
 			Targets.Swap();
 
 			auto HasValidTargets = [&Targets, &DstExtent]()->bool
@@ -1810,7 +1966,7 @@ bool GPUFFT::TwoForOneRealFFTImage1D::MultiPass(FGPUFFTShaderContext& Context, c
 			// Copy data into DstBuffer
 			CopyImage2D(Context, SrcWindow, SrcTexture, SrcWindow, DstBuffer.UAV, PreFilter);
 
-			Context.GetRHICmdList().Transition(FRHITransitionInfo(DstBuffer.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+			Context.GetRHICmdList().TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, DstBuffer.UAV);
 
 			// Transform as 2 sets of complex data, putting the result in the DstBuffer.  This performs multiple dispatches.
 			// Transform into DstBuffer.
@@ -1827,7 +1983,7 @@ bool GPUFFT::TwoForOneRealFFTImage1D::MultiPass(FGPUFFTShaderContext& Context, c
 			SwapContents(DstBuffer, TmpBuffer);
 		}
 
-		Context.GetRHICmdList().Transition(FRHITransitionInfo(TmpBuffer.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+		Context.GetRHICmdList().TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, TmpBuffer.UAV);
 
 		// Unpack the complex transform into transform of real data
 		DispatchPackTwoForOneFFTPassCS(Context, FFTDesc, TmpBuffer.ShaderResourceTexture, DstBuffer.UAV);
@@ -1838,7 +1994,7 @@ bool GPUFFT::TwoForOneRealFFTImage1D::MultiPass(FGPUFFTShaderContext& Context, c
 		// Pack the 4 transforms of real data as 2 transforms of complex data 
 		DispatchPackTwoForOneFFTPassCS(Context, FFTDesc, SrcTexture, DstBuffer.UAV);
 
-		Context.GetRHICmdList().Transition(FRHITransitionInfo(DstBuffer.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+		Context.GetRHICmdList().TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, DstBuffer.UAV);
 
 		// Transform as complex data
 		SuccessValue = SuccessValue &&
@@ -1904,8 +2060,8 @@ bool GPUFFT::FFTImage2D(FGPUFFTShaderContext& Context, const FIntPoint& Frequenc
 
 	}
 
-	Context.GetRHICmdList().Transition(FRHITransitionInfo(DstBuffer.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
-	Context.GetRHICmdList().Transition(FRHITransitionInfo(TmpBuffer.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+	RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, DstBuffer.UAV);
+	RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, TmpBuffer.UAV);
 
 	// Complex transform in the other direction: TmpBuffer fills DstBuffer
 	if (FitsInGroupSharedMemory(ComplexFFTDesc))
@@ -1969,12 +2125,12 @@ bool GPUFFT::ConvolutionWithTextureImage1D::MultiPass(FGPUFFTShaderContext& Cont
 	// Forward transform: Results in DstBuffer
 	SuccessValue = SuccessValue &&
 		ComplexFFTImage1D::MultiPass(Context, FFTDesc, SrcWindow, SrcTexture, DstBuffer, TmpBuffer);
-	Context.GetRHICmdList().Transition(FRHITransitionInfo(DstBuffer.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+	Context.GetRHICmdList().TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, DstBuffer.UAV);
 
 
 	// Convolution: Results in TmpBuffer
 	DispatchComplexMultiplyImagesCS(Context, FFTDesc.IsHorizontal(), TargetRect, DstBuffer.ShaderResourceTexture, TransformedKernel,  TmpBuffer.UAV);
-	Context.GetRHICmdList().Transition(FRHITransitionInfo(TmpBuffer.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+	Context.GetRHICmdList().TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, TmpBuffer.UAV);
 
 	// Inverse Transform: Results in DstBuffer
 	
@@ -1985,7 +2141,8 @@ bool GPUFFT::ConvolutionWithTextureImage1D::MultiPass(FGPUFFTShaderContext& Cont
 	SuccessValue = SuccessValue &&
 		ComplexFFTImage1D::MultiPass(Context, InvFFTDesc, TargetRect, TmpBuffer.ShaderResourceTexture, DstBuffer, TmpBuffer);
 	
-	Context.GetRHICmdList().Transition(FRHITransitionInfo(DstBuffer.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+	
+	Context.GetRHICmdList().TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, DstBuffer.UAV);
 
 	// Copy back to the correct sized sub-window
 	DispatchCopyWindowCS(Context, TargetRect, DstBuffer.ShaderResourceTexture, SrcWindow, TmpBuffer.UAV);
@@ -2091,7 +2248,7 @@ bool GPUFFT::ConvolutionWithTextureImage2D(FGPUFFTShaderContext& Context, const 
 		SuccessValue = SuccessValue &&
 			TwoForOneRealFFTImage1D::MultiPass(Context, TwoForOneFFTDesc, ROIRect, SrcTexture, TmpBuffer0, TmpBuffer1, PreFilter);
 	}
-	RHICmdList.Transition(FRHITransitionInfo(TmpBuffer0.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+	RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, TmpBuffer0.UAV);
 	
 	// ---- 1 D Convolution --- 
 
@@ -2107,7 +2264,7 @@ bool GPUFFT::ConvolutionWithTextureImage2D(FGPUFFTShaderContext& Context, const 
 		SuccessValue = SuccessValue &&
 			ConvolutionWithTextureImage1D::MultiPass(Context, ConvolutionFFTDesc, TransformedKernel, TwoForOneOutputRect, TmpBuffer0.ShaderResourceTexture, TmpBuffer1, TmpBuffer0);
 	}
-	RHICmdList.Transition(FRHITransitionInfo(TmpBuffer1.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+	RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, TmpBuffer1.UAV);
 
 
 	// ---- Inverse Two For One ---
@@ -2125,7 +2282,7 @@ bool GPUFFT::ConvolutionWithTextureImage2D(FGPUFFTShaderContext& Context, const 
 		SuccessValue = SuccessValue &&
 			TwoForOneRealFFTImage1D::MultiPass(Context, TwoForOneIvnFFTDesc, TwoForOneOutputRect, TmpBuffer1.ShaderResourceTexture, TmpBuffer0, TmpBuffer1);
 		
-		RHICmdList.Transition(FRHITransitionInfo(TmpBuffer0.UAV, ERHIAccess::Unknown, ERHIAccess::SRVCompute));
+		RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToCompute, TmpBuffer0.UAV);
 
 		DispatchCopyWindowCS(Context, TwoForOneOutputRect, TmpBuffer0.ShaderResourceTexture, ROIRect, ResultUAV);
 	}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -259,11 +259,6 @@ public:
 		return RefSkeleton->GetRefBonePose();
 	}
 
-	const TArray<FCompactPoseBoneIndex>& GetCompactPoseParentBoneArray() const
-	{
-		return CompactPoseParentBones;
-	}
-
 	const FTransform& GetRefPoseTransform(const FCompactPoseBoneIndex& BoneIndex) const
 	{
 		return CompactPoseRefPoseBones[BoneIndex.GetInt()];
@@ -386,12 +381,7 @@ public:
 
 	FCompactPoseBoneIndex GetCompactPoseIndexFromSkeletonIndex(const int32 SkeletonIndex) const
 	{
-		if (ensure(SkeletonToCompactPose.IsValidIndex(SkeletonIndex)))
-		{
-			return SkeletonToCompactPose[SkeletonIndex];
-		}
-
-		return FCompactPoseBoneIndex(INDEX_NONE);
+		return SkeletonToCompactPose[SkeletonIndex];
 	}
 
 	FMeshPoseBoneIndex MakeMeshPoseIndex(const FCompactPoseBoneIndex& BoneIndex) const

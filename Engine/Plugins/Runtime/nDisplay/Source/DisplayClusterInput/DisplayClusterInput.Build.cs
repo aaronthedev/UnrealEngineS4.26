@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -8,20 +8,17 @@ public class DisplayClusterInput : ModuleRules
 	public DisplayClusterInput(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PrivateIncludePathModuleNames.AddRange(
-			new string[] {
+			new string[]
+			{
 				"InputDevice",
 				"HeadMountedDisplay",
 				"DisplayCluster"
-			});
-		
-		PrivateIncludePaths.AddRange(
-			new string[] {
-				"DisplayClusterInput/Private",
-				"DisplayCluster/Private",
-			});
+			}
+		);
 
 		PublicDependencyModuleNames.AddRange(
-			new string[] {
+			new string[]
+			{
 				"Core",
 				"CoreUObject",
 				"Engine",
@@ -30,11 +27,24 @@ public class DisplayClusterInput : ModuleRules
 			});
 
 		PrivateDependencyModuleNames.AddRange(
-			new string[] {
+			new string[]
+			{
 				"ApplicationCore",
+				"Core",
+				"CoreUObject",
 				"DisplayCluster",
-				"DisplayClusterConfiguration",
+				"Engine",
+				"InputCore",
+				"InputDevice",
 				"HeadMountedDisplay"
-			});
+			}
+		);
+
+		PrivateIncludePaths.AddRange(
+			new string[] {
+				"DisplayClusterInput/Private",
+				"DisplayCluster/Private",
+			}
+		);
 	}
 }

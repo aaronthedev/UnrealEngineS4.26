@@ -17,10 +17,8 @@
 #include "dxc/DXIL/DxilSampler.h"
 #include "dxc/DXIL/DxilUtil.h"
 #include "dxc/Support/Global.h"
-#include "llvm/ADT/DenseSet.h"
-#include "llvm/ADT/MapVector.h"
-#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringSet.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
@@ -52,7 +50,7 @@ using namespace hlsl;
 namespace {
 
 void CollectUsedFunctions(Constant *C,
-                          llvm::SetVector<Function *> &funcSet) {
+                          std::unordered_set<Function *> &funcSet) {
   for (User *U : C->users()) {
     if (Instruction *I = dyn_cast<Instruction>(U)) {
       funcSet.insert(I->getParent()->getParent());
@@ -66,7 +64,7 @@ void CollectUsedFunctions(Constant *C,
 template <class T>
 void AddResourceMap(
     const std::vector<std::unique_ptr<T>> &resTab, DXIL::ResourceClass resClass,
-    llvm::MapVector<const llvm::Constant *, DxilResourceBase *> &resMap,
+    std::unordered_map<const llvm::Constant *, DxilResourceBase *> &resMap,
     DxilModule &DM) {
   for (auto &Res : resTab) {
     resMap[Res->GetGlobalSymbol()] = Res.get();
@@ -103,9 +101,9 @@ namespace {
 struct DxilFunctionLinkInfo {
   DxilFunctionLinkInfo(llvm::Function *F);
   llvm::Function *func;
-  // SetVectors for deterministic iteration
-  llvm::SetVector<llvm::Function *> usedFunctions;
-  llvm::SetVector<llvm::GlobalVariable *> usedGVs;
+  std::unordered_set<llvm::Function *> usedFunctions;
+  std::unordered_set<llvm::GlobalVariable *> usedGVs;
+  std::unordered_set<DxilResourceBase *> usedResources;
 };
 
 // Library to link.
@@ -125,7 +123,7 @@ public:
   DxilModule &GetDxilModule() { return m_DM; }
   void LazyLoadFunction(Function *F);
   void BuildGlobalUsage();
-  void CollectUsedInitFunctions(SetVector<StringRef> &addedFunctionSet,
+  void CollectUsedInitFunctions(StringSet<> &addedFunctionSet,
                                 SmallVector<StringRef, 4> &workList);
 
 private:
@@ -133,10 +131,10 @@ private:
   DxilModule &m_DM;
   // Map from name to Link info for extern functions.
   llvm::StringMap<std::unique_ptr<DxilFunctionLinkInfo>> m_functionNameMap;
-  // Map from resource link global to resource. MapVector for deterministic iteration.
-  llvm::MapVector<const llvm::Constant *, DxilResourceBase *> m_resourceMap;
-  // Set of initialize functions for global variable. SetVector for deterministic iteration.
-  llvm::SetVector<llvm::Function *> m_initFuncSet;
+  // Map from resource link global to resource.
+  std::unordered_map<const llvm::Constant *, DxilResourceBase *> m_resourceMap;
+  // Set of initialize functions for global variable.
+  std::unordered_set<llvm::Function *> m_initFuncSet;
 };
 
 struct DxilLinkJob;
@@ -159,7 +157,7 @@ private:
   bool AttachLib(DxilLib *lib);
   bool DetachLib(DxilLib *lib);
   bool AddFunctions(SmallVector<StringRef, 4> &workList,
-                    SetVector<DxilLib *> &libSet, SetVector<StringRef> &addedFunctionSet,
+                    DenseSet<DxilLib *> &libSet, StringSet<> &addedFunctionSet,
                     DxilLinkJob &linkJob, bool bLazyLoadDone,
                     bool bAllowFuncionDecls);
   // Attached libs to link.
@@ -266,7 +264,7 @@ void DxilLib::BuildGlobalUsage() {
 
   // Build used globals.
   for (GlobalVariable &GV : M.globals()) {
-    llvm::SetVector<Function *> funcSet;
+    std::unordered_set<Function *> funcSet;
     CollectUsedFunctions(&GV, funcSet);
     for (Function *F : funcSet) {
       DXASSERT(m_functionNameMap.count(F->getName()), "must exist in table");
@@ -284,7 +282,7 @@ void DxilLib::BuildGlobalUsage() {
                  m_resourceMap, m_DM);
 }
 
-void DxilLib::CollectUsedInitFunctions(SetVector<StringRef> &addedFunctionSet,
+void DxilLib::CollectUsedInitFunctions(StringSet<> &addedFunctionSet,
                                        SmallVector<StringRef, 4> &workList) {
   // Add init functions to used functions.
   for (Function *Ctor : m_initFuncSet) {
@@ -294,7 +292,7 @@ void DxilLib::CollectUsedInitFunctions(SetVector<StringRef> &addedFunctionSet,
     // If function other than Ctor used GV of Ctor.
     // Add Ctor to usedFunctions for it.
     for (GlobalVariable *GV : linkInfo->usedGVs) {
-      llvm::SetVector<Function *> funcSet;
+      std::unordered_set<Function *> funcSet;
       CollectUsedFunctions(GV, funcSet);
       bool bAdded = false;
       for (Function *F : funcSet) {
@@ -350,10 +348,11 @@ private:
   void AddFunctionDecls(Module *pM);
   bool AddGlobals(DxilModule &DM, ValueToValueMapTy &vmap);
   void CloneFunctions(ValueToValueMapTy &vmap);
-  void AddFunctions(DxilModule &DM, ValueToValueMapTy &vmap);
+  void AddFunctions(DxilModule &DM, ValueToValueMapTy &vmap,
+                    std::unordered_set<Function *> &initFuncSet);
   bool AddResource(DxilResourceBase *res, llvm::GlobalVariable *GV);
   void AddResourceToDM(DxilModule &DM);
-  llvm::MapVector<DxilFunctionLinkInfo *, DxilLib *> m_functionDefs;
+  std::unordered_map<DxilFunctionLinkInfo *, DxilLib *> m_functionDefs;
   llvm::StringMap<llvm::Function *> m_functionDecls;
   // New created functions.
   llvm::StringMap<llvm::Function *> m_newFunctions;
@@ -659,7 +658,8 @@ void DxilLinkJob::CloneFunctions(ValueToValueMapTy &vmap) {
   }
 }
 
-void DxilLinkJob::AddFunctions(DxilModule &DM, ValueToValueMapTy &vmap) {
+void DxilLinkJob::AddFunctions(DxilModule &DM, ValueToValueMapTy &vmap,
+                               std::unordered_set<Function *> &initFuncSet) {
   DxilTypeSystem &typeSys = DM.GetTypeSystem();
   Module *pM = DM.GetModule();
   for (auto &it : m_functionDefs) {
@@ -684,6 +684,8 @@ void DxilLinkJob::AddFunctions(DxilModule &DM, ValueToValueMapTy &vmap) {
 
     // Add to function map.
     m_newFunctions[NewF->getName()] = NewF;
+    if (pLib->IsInitFunc(F))
+      initFuncSet.insert(NewF);
 
     vmap[F] = NewF;
   }
@@ -728,8 +730,9 @@ DxilLinkJob::Link(std::pair<DxilFunctionLinkInfo *, DxilLib *> &entryLinkPair,
 
   ValueToValueMapTy vmap;
 
+  std::unordered_set<Function *> initFuncSet;
   // Add function
-  AddFunctions(DM, vmap);
+  AddFunctions(DM, vmap, initFuncSet);
 
   // Set Entry
   Function *NewEntryFunc = m_newFunctions[entryFunc->getName()];
@@ -819,8 +822,9 @@ DxilLinkJob::LinkToLib(const ShaderModel *pSM) {
 
   ValueToValueMapTy vmap;
 
+  std::unordered_set<Function *> initFuncSet;
   // Add function
-  AddFunctions(DM, vmap);
+  AddFunctions(DM, vmap, initFuncSet);
 
   // Set DxilFunctionProps.
   DxilEntryPropsMap EntryPropMap;
@@ -1168,8 +1172,8 @@ bool DxilLinkerImpl::DetachLib(DxilLib *lib) {
 }
 
 bool DxilLinkerImpl::AddFunctions(SmallVector<StringRef, 4> &workList,
-                                  SetVector<DxilLib *> &libSet,
-                                  SetVector<StringRef> &addedFunctionSet,
+                                  DenseSet<DxilLib *> &libSet,
+                                  StringSet<> &addedFunctionSet,
                                   DxilLinkJob &linkJob, bool bLazyLoadDone,
                                   bool bAllowFuncionDecls) {
   while (!workList.empty()) {
@@ -1241,8 +1245,8 @@ DxilLinkerImpl::Link(StringRef entry, StringRef profile, dxilutil::ExportMap &ex
 
   DxilLinkJob linkJob(m_ctx, exportMap, m_valMajor, m_valMinor);
 
-  SetVector<DxilLib *> libSet;
-  SetVector<StringRef> addedFunctionSet;
+  DenseSet<DxilLib *> libSet;
+  StringSet<> addedFunctionSet;
 
   bool bIsLib = pSM->IsLib();
   if (!bIsLib) {

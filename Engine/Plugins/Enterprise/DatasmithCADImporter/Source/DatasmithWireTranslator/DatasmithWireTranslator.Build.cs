@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System.IO;
 using UnrealBuildTool;
@@ -23,23 +23,13 @@ public class DatasmithWireTranslator : ModuleRules
                 "CADTools",
                 "DatasmithContent",
 				"DatasmithCore",
-				"DatasmithCoreTechParametricSurfaceData",
-				"DatasmithTranslator",
+				"DatasmithCoreTechExtension",
+				"DatasmithImporter",
 				"Engine",
 				"MeshDescription",
                 "StaticMeshDescription",
             }
         );
-
-		if (Target.bBuildEditor == true)
-		{
-			PrivateDependencyModuleNames.AddRange(
-				new string[]
-				{
- 					"MessageLog",
-				}
-			);
-		}
 
 		if (System.Type.GetType("OpenModel") != null)
 		{

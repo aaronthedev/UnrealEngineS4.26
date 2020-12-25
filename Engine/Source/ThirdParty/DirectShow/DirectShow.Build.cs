@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using UnrealBuildTool;
 
 public class DirectShow : ModuleRules
@@ -7,7 +7,8 @@ public class DirectShow : ModuleRules
 	{
 		Type = ModuleType.External;
 
-		if (Target.Platform.IsInGroup(UnrealPlatformGroup.Windows))
+		if ((Target.Platform == UnrealTargetPlatform.Win64) ||
+			(Target.Platform == UnrealTargetPlatform.Win32))
 		{
 
             string DirectShowLibPath = Target.UEThirdPartySourceDirectory
@@ -20,7 +21,7 @@ public class DirectShow : ModuleRules
 			{
 				LibraryName += "d";
 			}
-			if (Target.Platform != UnrealTargetPlatform.Win32)
+			if (Target.Platform == UnrealTargetPlatform.Win64)
 			{
 				LibraryName += "_64";
 			}

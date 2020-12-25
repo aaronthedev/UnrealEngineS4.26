@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -6,9 +6,7 @@ public class AIGraph : ModuleRules
 {
     public AIGraph(ReadOnlyTargetRules Target) : base(Target)
     {
-		OverridePackageType = PackageOverrideType.EngineDeveloper;
-
-		PrivateIncludePaths.AddRange(
+        PrivateIncludePaths.AddRange(
             new string[] {
 				"Editor/GraphEditor/Private",
 				"Editor/Kismet/Private",

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -48,8 +48,6 @@ struct FFoliageCustomVersion
 		FoliageActorSupportNoWeakPtr = 13,
 		// Foliage Instances are now always saved local to Level
 		FoliageRepairInstancesWithLevelTransform = 14,
-		// Supports discarding foliage types on load independently from density scaling
-		FoliageDiscardOnLoad = 15,
 		// -----<new versions can be added above this line>-------------------------------------------------
 		VersionPlusOne,
 		LatestVersion = VersionPlusOne - 1
@@ -76,8 +74,6 @@ public:
 #if WITH_EDITORONLY_DATA
 	// Cross level references cache for instances base
 	FFoliageInstanceBaseCache InstanceBaseCache;
-
-	UActorComponent* GetBaseComponentFromBaseId(const FFoliageInstanceBaseId& BaseId) const;
 #endif// WITH_EDITORONLY_DATA
 
 	TMap<UFoliageType*, TUniqueObj<FFoliageInfo>> FoliageInfos;
@@ -170,7 +166,6 @@ public:
 
 	// Moves instances based on the specified component to the current streaming level
 	static FOLIAGE_API void MoveInstancesForComponentToCurrentLevel(UActorComponent* InComponent);
-	static FOLIAGE_API void MoveInstancesForComponentToLevel(UActorComponent* InComponent, ULevel* TargetLevel);
 
 	// Change all instances based on one component to a new component (possible in another level).
 	// The instances keep the same world locations
@@ -185,9 +180,6 @@ public:
 	// Move all instances to a foliage actor in target level
 	FOLIAGE_API void MoveAllInstancesToLevel(ULevel* InTargetLevel);
 	
-	// Move instances to a foliage actor in target level
-	FOLIAGE_API void MoveInstancesToLevel(ULevel* InTargetLevel, TSet<int32>& InInstanceList, FFoliageInfo* InCurrentMeshInfo, UFoliageType* InFoliageType, bool bSelect = false);
-
 	// Move instances based on a component that has just been moved.
 	void MoveInstancesForMovedComponent(UActorComponent* InComponent);
 
@@ -233,9 +225,6 @@ public:
 	// Will return all the foliage type used by currently selected instances
 	FOLIAGE_API TMap<UFoliageType*, FFoliageInfo*> GetSelectedInstancesFoliageType();
 
-	// Returns FoliageType associated to this FoliageInfo
-	FOLIAGE_API const UFoliageType* FindFoliageType(const FFoliageInfo* InFoliageInfo) const;
-
 	// Will return all the foliage type used
 	FOLIAGE_API TMap<UFoliageType*, FFoliageInfo*> GetAllInstancesFoliageType();
 
@@ -243,7 +232,7 @@ public:
 	FOLIAGE_API void ApplySelection(bool bApply);
 
 	// Returns the location for the widget
-	FOLIAGE_API bool GetSelectionLocation(FBox& OutLocation) const;
+	FOLIAGE_API bool GetSelectionLocation(FVector& OutLocation) const;
 
 	/** Whether there any foliage instances painted on specified component */
 	static FOLIAGE_API bool HasFoliageAttached(UActorComponent* InComponent);
@@ -271,17 +260,18 @@ private:
 #if WITH_EDITOR
 	void ClearSelection();
 	void OnLevelActorMoved(AActor* InActor);
-	void OnLevelActorOuterChanged(AActor* InActor, UObject* OldOuter);
 	void OnLevelActorDeleted(AActor* InActor);
 	void OnApplyLevelTransform(const FTransform& InTransform);
 	void OnPostApplyLevelOffset(ULevel* InLevel, UWorld* InWorld, const FVector& InOffset, bool bWorldShift);
 	void OnPostWorldInitialization(UWorld* World, const UWorld::InitializationValues IVS);
+
+	// Move instances to a foliage actor in target level
+	FOLIAGE_API void MoveInstancesToLevel(ULevel* InTargetLevel, TSet<int32>& InInstanceList, FFoliageInfo* InCurrentMeshInfo, UFoliageType* InFoliageType);
 #endif
 private:
 #if WITH_EDITOR
 	FDelegateHandle OnLevelActorMovedDelegateHandle;
 	FDelegateHandle OnLevelActorDeletedDelegateHandle;
-	FDelegateHandle OnLevelActorOuterChangedDelegateHandle;
 	FDelegateHandle OnPostApplyLevelOffsetDelegateHandle;
 	FDelegateHandle OnApplyLevelTransformDelegateHandle;
 	FDelegateHandle OnPostWorldInitializationDelegateHandle;

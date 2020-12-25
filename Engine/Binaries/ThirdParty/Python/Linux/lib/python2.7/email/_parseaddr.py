@@ -336,12 +336,7 @@ class AddrlistClass:
         aslist.append('@')
         self.pos += 1
         self.gotonext()
-        domain = self.getdomain()
-        if not domain:
-            # Invalid domain, return an empty address instead of returning a
-            # local part to denote failed parsing.
-            return EMPTYSTRING
-        return EMPTYSTRING.join(aslist) + domain
+        return EMPTYSTRING.join(aslist) + self.getdomain()
 
     def getdomain(self):
         """Get the complete domain name from an address."""
@@ -356,10 +351,6 @@ class AddrlistClass:
             elif self.field[self.pos] == '.':
                 self.pos += 1
                 sdlist.append('.')
-            elif self.field[self.pos] == '@':
-                # bpo-34155: Don't parse domains with two `@` like
-                # `a@malicious.org@important.com`.
-                return EMPTYSTRING
             elif self.field[self.pos] in self.atomends:
                 break
             else:

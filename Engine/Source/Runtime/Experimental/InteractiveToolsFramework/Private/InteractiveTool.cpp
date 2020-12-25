@@ -1,21 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "InteractiveTool.h"
 #include "InteractiveToolManager.h"
-#include "UObject/Class.h"
 
-
-#define LOCTEXT_NAMESPACE "UInteractiveTool"
-
-#if WITH_EDITOR
-void UInteractiveToolPropertySet::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
-{
-	Super::PostEditChangeProperty(PropertyChangedEvent);
-
-	OnModified.Broadcast(this, PropertyChangedEvent.Property);
-}
-#endif
 
 UInteractiveTool::UInteractiveTool()
 {
@@ -26,13 +14,6 @@ UInteractiveTool::UInteractiveTool()
 	//SetFlags(RF_Transient);
 
 	InputBehaviors = NewObject<UInputBehaviorSet>(this, TEXT("InputBehaviors"));
-
-	// initialize ToolInfo
-#if WITH_EDITORONLY_DATA
-	DefaultToolInfo.ToolDisplayName = GetClass()->GetDisplayNameText();
-#else
-	DefaultToolInfo.ToolDisplayName = FText(LOCTEXT("DefaultInteractiveToolName", "DefaultToolName"));
-#endif
 }
 
 void UInteractiveTool::Setup()
@@ -49,9 +30,6 @@ void UInteractiveTool::Render(IToolsContextRenderAPI* RenderAPI)
 {
 }
 
-void UInteractiveTool::DrawHUD(FCanvas* Canvas, IToolsContextRenderAPI* RenderAPI)
-{
-}
 
 void UInteractiveTool::AddInputBehavior(UInputBehavior* Behavior)
 {
@@ -68,8 +46,6 @@ void UInteractiveTool::AddToolPropertySource(UObject* PropertyObject)
 {
 	check(ToolPropertyObjects.Contains(PropertyObject) == false);
 	ToolPropertyObjects.Add(PropertyObject);
-
-	OnPropertySetsModified.Broadcast();
 }
 
 void UInteractiveTool::AddToolPropertySource(UInteractiveToolPropertySet* PropertySet)
@@ -77,118 +53,18 @@ void UInteractiveTool::AddToolPropertySource(UInteractiveToolPropertySet* Proper
 	check(ToolPropertyObjects.Contains(PropertySet) == false);
 	ToolPropertyObjects.Add(PropertySet);
 	// @todo do we need to create a lambda every time for this?
-	PropertySet->GetOnModified().AddLambda([this](UObject* PropertySetArg, FProperty* PropertyArg)
+	PropertySet->GetOnModified().AddLambda([this](UObject* PropertySetArg, UProperty* PropertyArg)
 	{
 		OnPropertyModified(PropertySetArg, PropertyArg);
 	});
-
-	OnPropertySetsModified.Broadcast();
 }
 
-bool UInteractiveTool::RemoveToolPropertySource(UInteractiveToolPropertySet* PropertySet)
+
+const TArray<UObject*>& UInteractiveTool::GetToolProperties() const
 {
-	int32 NumRemoved = ToolPropertyObjects.Remove(PropertySet);
-	if (NumRemoved == 0)
-	{
-		return false;
-	}
-
-	PropertySet->GetOnModified().Clear();
-	OnPropertySetsModified.Broadcast();
-	return true;
+	return ToolPropertyObjects;
 }
 
-bool UInteractiveTool::ReplaceToolPropertySource(UInteractiveToolPropertySet* CurPropertySet, UInteractiveToolPropertySet* ReplaceWith, bool bSetToEnabled)
-{
-	int32 Index = ToolPropertyObjects.Find(CurPropertySet);
-	if (Index == INDEX_NONE)
-	{
-		return false;
-	}
-	CurPropertySet->GetOnModified().Clear();
-
-	ReplaceWith->GetOnModified().AddLambda([this](UObject* PropertySetArg, FProperty* PropertyArg)
-	{
-		OnPropertyModified(PropertySetArg, PropertyArg);
-	});
-
-	ToolPropertyObjects[Index] = ReplaceWith;
-
-	if (bSetToEnabled)
-	{
-		ReplaceWith->bIsPropertySetEnabled = true;
-	}
-
-	OnPropertySetsModified.Broadcast();
-	return true;
-}
-
-bool UInteractiveTool::SetToolPropertySourceEnabled(UInteractiveToolPropertySet* PropertySet, bool bEnabled)
-{
-	int32 Index = ToolPropertyObjects.Find(PropertySet);
-	if (Index == INDEX_NONE)
-	{
-		return false;
-	}
-	if (PropertySet->bIsPropertySetEnabled != bEnabled)
-	{
-		PropertySet->bIsPropertySetEnabled = bEnabled;
-		OnPropertySetsModified.Broadcast();
-	}
-	return true;
-}
-
-TArray<UObject*> UInteractiveTool::GetToolProperties(bool bEnabledOnly) const
-{
-	if (bEnabledOnly == false)
-	{
-		return ToolPropertyObjects;
-	}
-
-	TArray<UObject*> Properties;
-	for (UObject* Object : ToolPropertyObjects)
-	{
-		UInteractiveToolPropertySet* Prop = Cast<UInteractiveToolPropertySet>(Object);
-		if (Prop == nullptr || Prop->IsPropertySetEnabled())
-		{
-			Properties.Add(Object);
-		}
-	}
-
-	return Properties;
-}
-
-void
-UInteractiveToolPropertySet::SaveProperties(UInteractiveTool* SaveFromTool)
-{
-	SaveRestoreProperties(SaveFromTool, true);
-}
-
-void
-UInteractiveToolPropertySet::RestoreProperties(UInteractiveTool* RestoreToTool)
-{
-	SaveRestoreProperties(RestoreToTool, false);
-}
-
-void UInteractiveToolPropertySet::SaveRestoreProperties(UInteractiveTool* RestoreToTool, bool bSaving)
-{
-	UInteractiveToolPropertySet* PropertyCache = GetDynamicPropertyCache();
-	for ( FProperty* Prop : TFieldRange<FProperty>(GetClass()) )
-	{
-#if WITH_EDITOR
-		if (!Prop->HasMetaData(TEXT("TransientToolProperty")))
-#endif
-		{
-			void* DestValue = Prop->ContainerPtrToValuePtr<void>(this);
-			void* SrcValue = Prop->ContainerPtrToValuePtr<void>(PropertyCache);
-			if ( bSaving )
-			{
-				Swap(SrcValue, DestValue);
-			}
-			Prop->CopySingleValue(DestValue, SrcValue);
-		}
-	}
-}
 
 void UInteractiveTool::RegisterActions(FInteractiveToolActionSet& ActionSet)
 {
@@ -229,22 +105,6 @@ bool UInteractiveTool::CanAccept() const
 
 void UInteractiveTool::Tick(float DeltaTime)
 {
-	for (auto* Object : ToolPropertyObjects)
-	{
-		auto* Propset = Cast<UInteractiveToolPropertySet>(Object);
-		if ( Propset != nullptr )
-		{
-			if ( Propset->IsPropertySetEnabled() )
-			{
-				Propset->CheckAndUpdateWatched();
-			}
-			else
-			{
-				Propset->SilentUpdateWatched();
-			}
-		}
-	}
-	OnTick(DeltaTime);
 }
 
 UInteractiveToolManager* UInteractiveTool::GetToolManager() const
@@ -253,6 +113,3 @@ UInteractiveToolManager* UInteractiveTool::GetToolManager() const
 	check(ToolManager != nullptr);
 	return ToolManager;
 }
-
-
-#undef LOCTEXT_NAMESPACE

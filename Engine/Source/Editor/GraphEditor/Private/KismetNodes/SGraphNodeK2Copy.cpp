@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "KismetNodes/SGraphNodeK2Copy.h"
 #include "Widgets/SBoxPanel.h"
@@ -75,7 +75,7 @@ public:
 		// Create the widget used for the pin body (status indicator, label, and value)
 		TSharedRef<SWrapBox> LocalLabelAndValue =
 			SNew(SWrapBox)
-			.PreferredSize(150.f);
+			.PreferredWidth(150.f);
 
 		LocalLabelAndValue->AddSlot()
 			.VAlign(VAlign_Center)

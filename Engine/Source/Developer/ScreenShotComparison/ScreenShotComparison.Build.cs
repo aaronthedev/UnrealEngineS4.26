@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -14,9 +14,8 @@ public class ScreenShotComparison : ModuleRules
 
 		PrivateDependencyModuleNames.AddRange(
 			new string[] {
-				"AutomationController",
-				"EditorStyle",
-				"InputCore",
+                "EditorStyle",
+                "InputCore",
 				"ScreenShotComparisonTools",
 				"Slate",
 				"SlateCore",

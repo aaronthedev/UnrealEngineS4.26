@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -34,13 +34,6 @@ struct FBoneContainer;
 struct FAnimNode_LinkedAnimLayer;
 
 typedef TArray<FTransform> FTransformArrayA2;
-
-struct FParallelEvaluationData
-{
-	FBlendedHeapCurve& OutCurve;
-	FCompactPose& OutPose;
-	FHeapCustomAttributes& OutAttributes;
-};
 
 UENUM()
 enum class EMontagePlayReturnType : uint8
@@ -180,7 +173,6 @@ struct FSlotEvaluationPose
 	/* These Pose/Curve is stack allocator. You should not use it outside of stack. */
 	FCompactPose Pose;
 	FBlendedCurve Curve;
-	FStackCustomAttributes Attributes;
 
 	FSlotEvaluationPose()
 		: AdditiveType(AAT_None)
@@ -200,7 +192,6 @@ struct FSlotEvaluationPose
 	{
 		Pose.MoveBonesFrom(InEvaluationPose.Pose);
 		Curve.MoveFrom(InEvaluationPose.Curve);
-		Attributes.MoveFrom(InEvaluationPose.Attributes);
 	}
 
 	FSlotEvaluationPose(const FSlotEvaluationPose& InEvaluationPose) = default;
@@ -432,17 +423,6 @@ class ENGINE_API UAnimInstance : public UObject
 	/** Flag to check back on the game thread that indicates we need to run PostUpdateAnimation() in the post-eval call */
 	uint8 bNeedsUpdate : 1;
 
-	/** Flag to check if created by LinkedAnimGraph in ReinitializeLinkedAnimInstance */
-	uint8 bCreatedByLinkedAnimGraph : 1;
-
-	/** Whether to process notifies from any linked anim instances */
-	UPROPERTY(EditDefaultsOnly, Category = Notifies)
-	uint8 bReceiveNotifiesFromLinkedInstances : 1;
-
-	/** Whether to propagate notifies to any linked anim instances */
-	UPROPERTY(EditDefaultsOnly, Category = Notifies)
-	uint8 bPropagateNotifiesToLinkedInstances : 1;
-
 private:
 	/** True when Montages are being ticked, and Montage Events should be queued. 
 	 * When Montage are being ticked, we queue AnimNotifies and Events. We trigger notifies first, then Montage events. */
@@ -461,6 +441,8 @@ public:
 
 	// @todo document
 	void MakeMontageTickRecord(FAnimTickRecord& TickRecord, class UAnimMontage* Montage, float CurrentPosition, float PreviousPosition, float MoveDelta, float Weight, TArray<FPassedMarker>& MarkersPassedThisTick, FMarkerTickRecord& MarkerTickRecord);
+
+	bool IsSlotNodeRelevantForNotifies(FName SlotNodeName) const;
 
 	/** Get global weight in AnimGraph for this slot node.
 	* Note: this is the weight of the node, not the weight of any potential montage it is playing. */
@@ -513,22 +495,6 @@ public:
 	// Can does this anim instance need an update (parallel or not)?
 	bool NeedsUpdate() const;
 
-	/** Get whether to process notifies from any linked anim instances */
-	UFUNCTION(BlueprintPure, Category = "Notifies")
-	bool GetReceiveNotifiesFromLinkedInstances() const { return bReceiveNotifiesFromLinkedInstances; }
-
-	/** Set whether to process notifies from any linked anim instances */
-	UFUNCTION(BlueprintCallable, Category = "Notifies")
-	void SetReceiveNotifiesFromLinkedInstances(bool bSet) { bReceiveNotifiesFromLinkedInstances = bSet; }
-
-	/** Get whether to propagate notifies to any linked anim instances */
-	UFUNCTION(BlueprintPure, Category = "Notifies")
-	bool GetPropagateNotifiesToLinkedInstances() const { return bPropagateNotifiesToLinkedInstances; }
-
-	/** Set whether to propagate notifies to any linked anim instances */
-	UFUNCTION(BlueprintCallable, Category = "Notifies")
-	void SetPropagateNotifiesToLinkedInstances(bool bSet) { bPropagateNotifiesToLinkedInstances = bSet; }
-
 private:
 	// Does this anim instance need immediate update (rather than parallel)?
 	bool NeedsImmediateUpdate(float DeltaSeconds) const;
@@ -559,10 +525,6 @@ public:
 	/** Executed when begin play is called on the owning component */
 	UFUNCTION(BlueprintImplementableEvent)
 	void BlueprintBeginPlay();
-
-	/** Executed when the all Linked Animation Layers are initialized */
-	UFUNCTION(BlueprintImplementableEvent)
-	void BlueprintLinkedAnimationLayersInitialized();
 
 	bool CanTransitionSignature() const;
 	
@@ -603,10 +565,6 @@ public:
 	/** Stops the animation montage. If reference is NULL, it will stop ALL active montages. */
 	UFUNCTION(BlueprintCallable, Category = "Montage")
 	void Montage_Stop(float InBlendOutTime, const UAnimMontage* Montage = NULL);
-
-	/** Stops all active montages belonging to a group. */
-	UFUNCTION(BlueprintCallable, Category = "Montage")
-	void Montage_StopGroupByName(float InBlendOutTime, FName GroupName);
 
 	/** Pauses the animation montage. If reference is NULL, it will pause ALL active montages. */
 	UFUNCTION(BlueprintCallable, Category = "Montage")
@@ -802,14 +760,6 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Animation Blueprint Linking")
 	UAnimInstance* GetLinkedAnimLayerInstanceByGroup(FName InGroup) const;
 
-	/** Runs through all nodes, attempting to find all distinct layer linked instances in the group */
-	UFUNCTION(BlueprintPure, Category = "Animation Blueprint Linking")
-	void GetLinkedAnimLayerInstancesByGroup(FName InGroup, TArray<UAnimInstance*>& OutLinkedInstances) const;
-
-	/** Gets layer linked instance that matches group and class */
-	UFUNCTION(BlueprintPure, Category = "Animation Blueprint Linking")
-	UAnimInstance* GetLinkedAnimLayerInstanceByGroupAndClass(FName InGroup, TSubclassOf<UAnimInstance> InClass) const;
-
 	UE_DEPRECATED(4.24, "Function renamed, please use GetLinkedAnimLayerInstanceByClass")
 	UAnimInstance* GetLayerSubInstanceByClass(TSubclassOf<UAnimInstance> InClass) const { return GetLinkedAnimLayerInstanceByClass(InClass); }
 
@@ -819,11 +769,6 @@ public:
 
 	/** Sets up initial layer groupings */
 	void InitializeGroupedLayers(bool bInDeferSubGraphInitialization);
-
-	/** Allows other UObjects to bind custom event notifies similarly to the AnimBP */
-	void AddExternalNotifyHandler(UObject* ExternalHandlerObject, FName NotifyEventName);
-	/** Other UObjects should call this to remove themselves from the callbacks */
-	void RemoveExternalNotifyHandler(UObject* ExternalHandlerObject, FName NotifyEventName);
 
 private:
 	/** Helper function to perform layer overlay actions (set, clear) */
@@ -1122,10 +1067,10 @@ public:
 	bool ParallelCanEvaluate(const USkeletalMesh* InSkeletalMesh) const;
 
 	/** Perform evaluation. Can be called from worker threads. */
-	void ParallelEvaluateAnimation(bool bForceRefPose, const USkeletalMesh* InSkeletalMesh, FParallelEvaluationData& OutAnimationPoseData);
-
-	UE_DEPRECATED(4.26, "Please use ParallelEvaluateAnimation with different signature.")
 	void ParallelEvaluateAnimation(bool bForceRefPose, const USkeletalMesh* InSkeletalMesh, FBlendedHeapCurve& OutCurve, FCompactPose& OutPose);
+
+	UE_DEPRECATED(4.23, "Please use ParallelEvaluateAnimation without passing OutBoneSpaceTransforms.")
+	void ParallelEvaluateAnimation(bool bForceRefPose, const USkeletalMesh* InSkeletalMesh, TArray<FTransform>& OutBoneSpaceTransforms, FBlendedHeapCurve& OutCurve, FCompactPose& OutPose);
 
 	void PostEvaluateAnimation();
 	void UninitializeAnimation();
@@ -1265,7 +1210,6 @@ public:
 
 private:
 	TMap<FName, FMontageActiveSlotTracker> SlotWeightTracker;
-	TMap<FName, FSimpleMulticastDelegate> ExternalNotifyHandlers;
 
 public:
 	/** 
@@ -1306,7 +1250,7 @@ public:
 	void AddCurveValue(const FName& CurveName, float Value);
 
 	/** Given a machine and state index, record a state weight for this frame */
-	void RecordStateWeight(const int32 InMachineClassIndex, const int32 InStateIndex, const float InStateWeight, const float InElapsedTime);
+	void RecordStateWeight(const int32 InMachineClassIndex, const int32 InStateIndex, const float InStateWeight);
 
 protected:
 #if WITH_EDITORONLY_DATA
@@ -1379,36 +1323,22 @@ protected:
 	/** Override point for derived classes to destroy their own proxy objects (allows custom allocation) */
 	virtual void DestroyAnimInstanceProxy(FAnimInstanceProxy* InProxy);
 
-	/** Access the proxy but block if a task is currently in progress as it wouldn't be safe to access it 
-	 *	This is protected static member for allowing derived to access
-	 */
-	template <typename T /*= FAnimInstanceProxy*/>	// @TODO: Cant default parameters to this function on Xbox One until we move off the VS2012 compiler
-	FORCEINLINE static T* GetProxyOnGameThreadStatic(UAnimInstance* InAnimInstance)
-	{
-		if (InAnimInstance)
-		{
-			check(IsInGameThread());
-			UObject* OuterObj = InAnimInstance->GetOuter();
-			if (OuterObj && OuterObj->IsA<USkeletalMeshComponent>())
-			{
-				bool bBlockOnTask = true;
-				bool bPerformPostAnimEvaluation = true;
-				InAnimInstance->GetSkelMeshComponent()->HandleExistingParallelEvaluationTask(bBlockOnTask, bPerformPostAnimEvaluation);
-			}
-			if (InAnimInstance->AnimInstanceProxy == nullptr)
-			{
-				InAnimInstance->AnimInstanceProxy = InAnimInstance->CreateAnimInstanceProxy();
-			}
-			return static_cast<T*>(InAnimInstance->AnimInstanceProxy);
-		}
-
-		return nullptr;
-	}
 	/** Access the proxy but block if a task is currently in progress as it wouldn't be safe to access it */
 	template <typename T /*= FAnimInstanceProxy*/>	// @TODO: Cant default parameters to this function on Xbox One until we move off the VS2012 compiler
 	FORCEINLINE T& GetProxyOnGameThread()
 	{
-		return *GetProxyOnGameThreadStatic<T>(this);
+		check(IsInGameThread());
+		if(GetOuter() && GetOuter()->IsA<USkeletalMeshComponent>())
+		{
+			bool bBlockOnTask = true;
+			bool bPerformPostAnimEvaluation = true;
+			GetSkelMeshComponent()->HandleExistingParallelEvaluationTask(bBlockOnTask, bPerformPostAnimEvaluation);
+		}
+		if(AnimInstanceProxy == nullptr)
+		{
+			AnimInstanceProxy = CreateAnimInstanceProxy();
+		}
+		return *static_cast<T*>(AnimInstanceProxy);
 	}
 
 	/** Access the proxy but block if a task is currently in progress as it wouldn't be safe to access it */
@@ -1470,10 +1400,9 @@ protected:
 	}
 
 	friend struct FAnimNode_LinkedAnimGraph;
-	friend struct FAnimInstanceProxy;
 	
-	/** Return whether this AnimNotifyState should be triggered */
-	virtual bool ShouldTriggerAnimNotifyState(const UAnimNotifyState* AnimNotifyState) const;
+	/** Return whethere this AnimNotifyState should be triggered */
+	virtual bool ShouldTriggerAnimNotifyState(const UAnimNotifyState* AnimNotifyState) const { return true; }
 
 protected:
 	/** Proxy object, nothing should access this from an externally-callable API as it is used as a scratch area on worker threads */

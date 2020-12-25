@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,10 +15,9 @@ public:
 
 	// IHeadMountedDisplayVulkanExtensions
 	virtual bool GetVulkanInstanceExtensionsRequired(TArray<const ANSICHAR*>& Out) override;
-	virtual bool GetVulkanDeviceExtensionsRequired(struct VkPhysicalDevice_T* pPhysicalDevice, TArray<const ANSICHAR*>& Out) override;
+	virtual bool GetVulkanDeviceExtensionsRequired(struct VkPhysicalDevice_T *pPhysicalDevice, TArray<const ANSICHAR*>& Out) override;
 
 private:
-#if PLATFORM_WINDOWS
-	struct FMagicLeapVulkanExtensionsImpl* ImpPtr;
-#endif // PLATFORM_WINDOWS
+	struct Implementation;
+	TUniquePtr<Implementation> ImpPtr;
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 // Modified version of Recast/Detour's source file
 
 //
@@ -20,7 +20,6 @@
 //
 
 #include "DebugUtils/DebugDraw.h"
-#include "Recast/RecastAlloc.h" // UE4
 #define _USE_MATH_DEFINES
 
 
@@ -575,22 +574,22 @@ duDisplayList::duDisplayList(int cap) :
 
 duDisplayList::~duDisplayList()
 {
-	rcFree(m_pos); // UE4
-	rcFree(m_color); // UE4
+	delete [] m_pos;
+	delete [] m_color;
 }
 
 void duDisplayList::resize(int cap)
 {
-	float* newPos = (float*)rcAlloc(sizeof(float)*3*cap, RC_ALLOC_PERM); // UE4
+	float* newPos = new float[cap*3];
 	if (m_size)
 		memcpy(newPos, m_pos, sizeof(float)*3*m_size);
-	rcFree(m_pos); // UE4
+	delete [] m_pos;
 	m_pos = newPos;
 
-	unsigned int* newColor = (unsigned int*)rcAlloc(sizeof(unsigned int)*cap, RC_ALLOC_PERM); // UE4
+	unsigned int* newColor = new unsigned int[cap];
 	if (m_size)
 		memcpy(newColor, m_color, sizeof(unsigned int)*m_size);
-	rcFree(m_color); // UE4
+	delete [] m_color;
 	m_color = newColor;
 	
 	m_cap = cap;

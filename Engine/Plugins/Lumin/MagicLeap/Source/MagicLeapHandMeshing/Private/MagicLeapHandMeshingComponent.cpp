@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MagicLeapHandMeshingComponent.h"
 #include "MagicLeapHandMeshingModule.h"
@@ -23,9 +23,4 @@ bool UMagicLeapHandMeshingComponent::ConnectMRMesh(UMRMeshComponent* InMRMeshPtr
 bool UMagicLeapHandMeshingComponent::DisconnectMRMesh(class UMRMeshComponent* InMRMeshPtr)
 {
 	return GetMagicLeapHandMeshingModule().DisconnectMRMesh(InMRMeshPtr);
-}
-
-void UMagicLeapHandMeshingComponent::SetUseWeightedNormals(const bool bInUseWeightedNormals)
-{
-	GetMagicLeapHandMeshingModule().SetUseWeightedNormals(bInUseWeightedNormals);
 }

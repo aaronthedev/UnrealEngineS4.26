@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,15 +11,14 @@
 
 enum EMetalPipelineHashBits
 {
-	NumBits_RenderTargetFormat = 6, //(x8=48),
+	NumBits_RenderTargetFormat = 5, //(x8=40),
 	NumBits_DepthFormat = 3, //(x1=3),
 	NumBits_StencilFormat = 3, //(x1=3),
 	NumBits_SampleCount = 3, //(x1=3),
 
-	NumBits_BlendState = 7, //(x8=56),
+	NumBits_BlendState = 5, //(x8=40),
 	NumBits_PrimitiveTopology = 2, //(x1=2)
 	NumBits_IndexType = 2, //(x1=2)
-	NumBits_AlphaToCoverage = 1, //(x1=1)
 };
 
 enum EMetalPipelineHashOffsets
@@ -47,8 +46,7 @@ enum EMetalPipelineHashOffsets
 	Offset_DepthFormat = Offset_RenderTargetFormat7 + NumBits_RenderTargetFormat,
 	Offset_StencilFormat = Offset_DepthFormat + NumBits_DepthFormat,
 	Offset_SampleCount = Offset_StencilFormat + NumBits_StencilFormat,
-	Offset_AlphaToCoverage = Offset_SampleCount + NumBits_SampleCount,
-	Offset_End = Offset_AlphaToCoverage + NumBits_AlphaToCoverage
+	Offset_End = Offset_SampleCount + NumBits_SampleCount
 };
 
 class FMetalPipelineStateCacheManager

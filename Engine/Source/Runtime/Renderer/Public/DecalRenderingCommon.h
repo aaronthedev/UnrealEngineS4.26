@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	DecalRenderingShared.h
@@ -124,7 +124,7 @@ struct FDecalRenderingCommon
 	{
 		if (IsMobilePlatform(Platform))
 		{
-			return IsMobileDeferredShadingEnabled(Platform) ? RTM_SceneColorAndGBufferWithNormal : RTM_SceneColor;
+			return RTM_SceneColor;
 		}
 	
 		// Can't modify GBuffers when forward shading, just modify scene color
@@ -235,14 +235,14 @@ struct FDecalRenderingCommon
 	static uint32 ComputeRenderTargetCount(EShaderPlatform Platform, ERenderTargetMode RenderTargetMode)
 	{
 		// has to be SceneColor on mobile 
-		check(!IsMobilePlatform(Platform) || RenderTargetMode == RTM_SceneColor || IsMobileDeferredShadingEnabled(Platform));
+		check(!IsMobilePlatform(Platform) || RenderTargetMode == RTM_SceneColor);
 
 		switch(RenderTargetMode)
 		{
 			case RTM_SceneColorAndGBufferWithNormal:				return 4;
-			case RTM_SceneColorAndGBufferNoNormal:					return 3;
+			case RTM_SceneColorAndGBufferNoNormal:					return 4;
 			case RTM_SceneColorAndGBufferDepthWriteWithNormal:		return 5;
-			case RTM_SceneColorAndGBufferDepthWriteNoNormal:		return 4;
+			case RTM_SceneColorAndGBufferDepthWriteNoNormal:		return 5;
 			case RTM_DBuffer:										return IsUsingPerPixelDBufferMask(Platform) ? 4 : 3;
 			case RTM_GBufferNormal:									return 1;
 			case RTM_SceneColor:									return 1;
@@ -269,46 +269,11 @@ struct FDecalRenderingCommon
 		return bClockwise ? DRS_CW : DRS_CCW;
 	}
 
-	static bool IsBlendModeSupported(EShaderPlatform Platform, EDecalBlendMode DecalBlendMode)
-	{	
-		if (IsMobilePlatform(Platform))
-		{
-			// support modes that write to color
-			switch (DecalBlendMode)
-			{
-				case DBM_Stain:			 // Modulate
-				case DBM_Emissive:		 // Additive
-				case DBM_Translucent:	 // Translucent
-				case DBM_AlphaComposite: // Premultiplied Alpha
-				case DBM_DBuffer_Color:
-				case DBM_DBuffer_ColorNormal:
-				case DBM_DBuffer_ColorRoughness:
-				case DBM_DBuffer_ColorNormalRoughness:
-				case DBM_DBuffer_Emissive:
-				case DBM_DBuffer_AlphaComposite:
-				case DBM_DBuffer_EmissiveAlphaComposite:
-					return true;
-					break;
-				default:
-					// all other blend modes are supported when deferred shading is enabled
-					return IsMobileDeferredShadingEnabled(Platform);
-			}
-		}
-
-		return true;
-	}
-
-	static bool IsCompatibleWithRenderStage(EShaderPlatform Platform,
-		EDecalRenderStage CurrentRenderStage,
+	static bool IsCompatibleWithRenderStage(EDecalRenderStage CurrentRenderStage,
 		EDecalRenderStage DecalRenderStage,
 		EDecalBlendMode DecalBlendMode,
 		const FMaterial* DecalMaterial)
 	{
-		if (DecalRenderStage == DRS_Mobile)
-		{
-			return (CurrentRenderStage == DRS_Mobile) && IsBlendModeSupported(Platform, DecalBlendMode);
-		}
-
 		if (CurrentRenderStage == DecalRenderStage)
 		{
 			return true;

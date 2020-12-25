@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AudioAnalyzerNRT.h"
 #include "AudioAnalyzerNRTFacade.h"
@@ -82,7 +82,7 @@ bool UAudioAnalyzerNRTSettings::ShouldEventTriggerAnalysis(struct FPropertyChang
 /***********      UAudioAnalyzerNRT    ***************/
 /*****************************************************/
 
-void UAudioAnalyzerNRT::PreEditChange(FProperty* PropertyAboutToChange)
+void UAudioAnalyzerNRT::PreEditChange(UProperty* PropertyAboutToChange)
 {
 	// If the settings object is replaced, need to unbind any existing settings objects
 	// from calling the analyze audio delegate.
@@ -171,16 +171,16 @@ void UAudioAnalyzerNRT::AnalyzeAudio()
 }
 
 // Returns UAudioAnalyzerNRTSettings* if property points to a valid UAudioAnalyzerNRTSettings, otherwise returns nullptr.
-UAudioAnalyzerNRTSettings* UAudioAnalyzerNRT::GetSettingsFromProperty(FProperty* Property)
+UAudioAnalyzerNRTSettings* UAudioAnalyzerNRT::GetSettingsFromProperty(UProperty* Property)
 {
 	if (nullptr == Property)
 	{
 		return nullptr;
 	}
 
-	if (Property->IsA(FObjectPropertyBase::StaticClass()))
+	if (Property->IsA(UObjectPropertyBase::StaticClass()))
 	{
-		FObjectPropertyBase* ObjectPropertyBase = CastFieldChecked<FObjectPropertyBase>(Property);
+		UObjectPropertyBase* ObjectPropertyBase = CastChecked<UObjectPropertyBase>(Property);
 		
 		if (nullptr == ObjectPropertyBase)
 		{

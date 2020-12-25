@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System;
@@ -169,6 +169,21 @@ public class NvCloth : ModuleRules
 				NvClothLibraries.Add("NvCloth{0}");
 				LibraryFormatString = Path.Combine("Linux", Target.Architecture, "lib{0}.a");
 			}
+		}
+        else if (Target.Platform == UnrealTargetPlatform.Switch)
+        {
+			NvClothLibraries.Add("NvCloth{0}");
+			LibraryFormatString = Path.Combine("Switch", "lib{0}.a");
+        }
+        else if (Target.Platform == UnrealTargetPlatform.XboxOne)
+		{
+			PublicDefinitions.Add("_XBOX_ONE=1");
+
+			// This MUST be defined for XboxOne!
+			PublicDefinitions.Add("PX_HAS_SECURE_STRCPY=1");
+
+			NvClothLibraries.Add("NvCloth{0}");
+			LibraryFormatString = Path.Combine("XboxOne", "VS2015", "{0}.lib");
 		}
 
 		// Add the libraries needed (used for all platforms except Windows)

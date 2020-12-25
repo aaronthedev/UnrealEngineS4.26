@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AssetSelection.h"
 #include "Engine/Level.h"
@@ -48,9 +48,7 @@
 #include "Engine/LevelStreaming.h"
 #include "Engine/LevelBounds.h"
 #include "SourceControlHelpers.h"
-#include "ISourceControlModule.h"
-#include "ISourceControlProvider.h"
-#include "Misc/MessageDialog.h"
+#include "Dialogs/Dialogs.h"
 
 
 namespace AssetSelectionUtils
@@ -89,7 +87,7 @@ namespace AssetSelectionUtils
 			// Get the class type of the first actor.
 			AActor* FirstActor = SelectedActors[0];
 
-			if( FirstActor && !FirstActor->IsTemplate() )
+			if( FirstActor && !FirstActor->HasAnyFlags( RF_ClassDefaultObject ) )
 			{
 				UClass* FirstClass = FirstActor->GetClass();
 				UObject* FirstArchetype = FirstActor->GetArchetype();
@@ -102,7 +100,7 @@ namespace AssetSelectionUtils
 				{
 					AActor* CurrentActor = SelectedActors[ ActorIndex ];
 
-					if( CurrentActor->IsTemplate() )
+					if( CurrentActor->HasAnyFlags( RF_ClassDefaultObject ) )
 					{
 						continue;
 					}
@@ -455,11 +453,10 @@ namespace ActorPlacementUtils
 		{
 			FString FileName = SourceControlHelpers::PackageFilename(InLevel->GetPathName());
 			// Query file state also checks the source control status
-			FSourceControlStatePtr SCState = ISourceControlModule::Get().GetProvider().GetState(FileName, EStateCacheUsage::Use);
-			if (!InLevel->bLevelOkayForPlacementWhileCheckedIn && !(SCState->IsCheckedOut() || SCState->IsAdded() || SCState->CanAdd() || SCState->IsUnknown()))
+			FSourceControlState SCState = SourceControlHelpers::QueryFileState(FileName, true);
+			if (!InLevel->bLevelOkayForPlacementWhileCheckedIn && !(SCState.bIsCheckedOut || SCState.bIsAdded || SCState.bCanAdd || SCState.bIsUnknown))
 			{
-				FText Title = NSLOCTEXT("UnrealEd", "LevelCheckout_Title", "Level Checkout Warning");
-				if (EAppReturnType::Ok != FMessageDialog::Open(EAppMsgType::OkCancel, NSLOCTEXT("UnrealEd","LevelNotCheckedOutMsg", "This actor will be placed in a level that is in source control but not currently checked out. Continue?"), &Title))
+				if (EAppReturnType::Ok != OpenMsgDlgInt(EAppMsgType::OkCancel, NSLOCTEXT("UnrealEd","LevelNotCheckedOutMsg", "This actor will be placed in a level that is in source control but not currently checked out. Continue?"), NSLOCTEXT("UnrealEd", "LevelCheckout_Title", "Level Checkout Warning")))
 				{
 					return false;
 				}
@@ -486,16 +483,7 @@ namespace ActorPlacementUtils
 		}
 		if (InLevel && GetDefault<ULevelEditorMiscSettings>()->bPromptWhenAddingToLevelOutsideBounds)
 		{
-			FBox CurrentLevelBounds(ForceInit);
-			if (InLevel->LevelBoundsActor.IsValid())
-			{
-				CurrentLevelBounds = InLevel->LevelBoundsActor.Get()->GetComponentsBoundingBox();
-			}
-			else
-			{
-				CurrentLevelBounds = ALevelBounds::CalculateLevelBounds(InLevel);
-			}
-
+			FBox CurrentLevelBounds = ALevelBounds::CalculateLevelBounds(InLevel);
 			FVector BoundsExtent = CurrentLevelBounds.GetExtent();
 			if (BoundsExtent.X < GetDefault<ULevelEditorMiscSettings>()->MinimumBoundsForCheckingSize.X
 				&& BoundsExtent.Y < GetDefault<ULevelEditorMiscSettings>()->MinimumBoundsForCheckingSize.Y
@@ -512,8 +500,7 @@ namespace ActorPlacementUtils
 				FTransform ActorTransform = InActorTransforms[ActorTransformIndex];
 				if (!CurrentLevelBounds.IsInsideOrOn(ActorTransform.GetLocation()))
 				{
-					FText Title = NSLOCTEXT("UnrealEd", "ActorPlacement_Title", "Actor Placement Warning");
-					if (EAppReturnType::Ok != FMessageDialog::Open(EAppMsgType::OkCancel, NSLOCTEXT("UnrealEd", "LevelBoundsMsg", "The actor will be placed outside the bounds of the current level. Continue?"), &Title))
+					if (EAppReturnType::Ok != OpenMsgDlgInt(EAppMsgType::OkCancel, NSLOCTEXT("UnrealEd", "LevelBoundsMsg", "The actor will be placed outside the bounds of the current level. Continue?"), NSLOCTEXT("UnrealEd", "ActorPlacement_Title", "Actor Placement Warning")))
 					{
 						return false;
 					}
@@ -565,16 +552,13 @@ static AActor* PrivateAddActor( UObject* Asset, UActorFactory* Factory, bool Sel
 
 	if (GetDefault<ULevelEditorViewportSettings>()->SnapToSurface.bEnabled)
 	{
-		// HACK: If we are aligning rotation to surfaces, we have to factor in the inverse of the actor's rotation and translation so that the resulting transform after SpawnActor is correct.
+		// HACK: If we are aligning rotation to surfaces, we have to factor in the inverse of the actor transform so that the resulting transform after SpawnActor is correct.
 
 		if (auto* RootComponent = NewActorTemplate->GetRootComponent())
 		{
 			RootComponent->UpdateComponentToWorld();
 		}
-
-		FVector OrigActorScale3D = ActorTransform.GetScale3D();
 		ActorTransform = NewActorTemplate->GetTransform().Inverse() * ActorTransform;
-		ActorTransform.SetScale3D(OrigActorScale3D);
 	}
 
 	// Do not fade snapping indicators over time if the viewport is not realtime
@@ -582,16 +566,6 @@ static AActor* PrivateAddActor( UObject* Asset, UActorFactory* Factory, bool Sel
 	FSnappingUtils::ClearSnappingHelpers( bClearImmediately );
 
 	ULevel* DesiredLevel = GWorld->GetCurrentLevel();
-
-	// If DesireLevel is part of a LevelPartition find the proper DesiredLevel by asking the Partition
-	if (const ILevelPartitionInterface* LevelPartition = DesiredLevel->GetLevelPartition())
-	{
-		if (ULevel* SubLevel = LevelPartition->GetSubLevel(ActorTransform.GetLocation()))
-		{
-			DesiredLevel = SubLevel;
-		}
-	}
-
 	bool bSpawnActor = true;
 
 	if ((ObjectFlags & RF_Transactional) != 0)
@@ -912,7 +886,7 @@ bool FActorFactoryAssetProxy::ApplyMaterialToActor( AActor* TargetActor, UMateri
 		ALandscapeProxy* Landscape = Cast<ALandscapeProxy>(TargetActor);
 		if (Landscape != NULL)
 		{
-			FProperty* MaterialProperty = FindFProperty<FProperty>(ALandscapeProxy::StaticClass(), "LandscapeMaterial");
+			UProperty* MaterialProperty = FindField<UProperty>(ALandscapeProxy::StaticClass(), "LandscapeMaterial");
 			Landscape->PreEditChange(MaterialProperty);
 			Landscape->LandscapeMaterial = MaterialToApply;
 			FPropertyChangedEvent PropertyChangedEvent(MaterialProperty);

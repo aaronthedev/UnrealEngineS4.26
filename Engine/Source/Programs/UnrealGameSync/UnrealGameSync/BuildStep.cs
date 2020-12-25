@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -37,20 +37,6 @@ namespace UnrealGameSync
 		public bool bNormalSync;
 		public bool bScheduledSync;
 		public bool bShowAsTool;
-
-		public BuildStep(Guid InUniqueId, int InOrderIndex, string InDescription, string InStatusText, int InEstimatedDuration, string InFileName, string InArguments, string InWorkingDir, bool bInUseLogWindow)
-		{
-			UniqueId = InUniqueId;
-			OrderIndex = InOrderIndex;
-			Description = InDescription;
-			StatusText = InStatusText;
-			EstimatedDuration = InEstimatedDuration;
-			Type = BuildStepType.Other;
-			FileName = InFileName;
-			Arguments = InArguments;
-			WorkingDir = InWorkingDir;
-			bUseLogWindow = bInUseLogWindow;
-		}
 
 		public BuildStep(Guid InUniqueId, int InOrderIndex, string InDescription, string InStatusText, int InEstimatedDuration, string InTarget, string InPlatform, string InConfiguration, string InArguments, bool bInSyncDefault)
 		{

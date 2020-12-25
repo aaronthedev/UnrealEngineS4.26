@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Units/Highlevel/Hierarchy/RigUnit_SlideChain.h"
 #include "Math/ControlRigMathLibrary.h"
@@ -6,93 +6,79 @@
 
 FRigUnit_SlideChain_Execute()
 {
-	if (Context.State == EControlRigState::Init)
-	{
-		WorkData.CachedItems.Reset();
-		return;
-	}
 
-	FRigElementKeyCollection Items;
-	if(WorkData.CachedItems.Num() == 0)
-	{
-		Items = FRigElementKeyCollection::MakeFromChain(
-			Context.Hierarchy,
-			FRigElementKey(StartBone, ERigElementType::Bone),
-			FRigElementKey(EndBone, ERigElementType::Bone),
-			false /* reverse */
-		);
-	}
-
-	FRigUnit_SlideChainPerItem::StaticExecute(
-		RigVMExecuteContext, 
-		Items,
-		SlideAmount,
-		bPropagateToChildren,
-		WorkData,
-		ExecuteContext, 
-		Context);
-}
-
-FRigUnit_SlideChainPerItem_Execute()
-{
-	FRigHierarchyContainer* Hierarchy = ExecuteContext.Hierarchy;
+	FRigBoneHierarchy* Hierarchy = ExecuteContext.GetBones();
 	if (Hierarchy == nullptr)
 	{
 		return;
 	}
 
 	float& ChainLength = WorkData.ChainLength;
-	TArray<float>& ItemSegments = WorkData.ItemSegments;
-	TArray<FCachedRigElement>& CachedItems = WorkData.CachedItems;
+	TArray<float>& BoneSegments = WorkData.BoneSegments;
+	TArray<int32>& BoneIndices = WorkData.BoneIndices;
 	TArray<FTransform>& Transforms = WorkData.Transforms;
 	TArray<FTransform>& BlendedTransforms = WorkData.BlendedTransforms;
 
 	if (Context.State == EControlRigState::Init)
 	{
-		CachedItems.Reset();
-		return;
-	}
-
-	if(CachedItems.Num() == 0 && Items.Num() > 1)
-	{
-		ItemSegments.Reset();
+		BoneSegments.Reset();
+		BoneIndices.Reset();
 		Transforms.Reset();
 		BlendedTransforms.Reset();
+
 		ChainLength = 0.f;
 
-		for (FRigElementKey Item : Items)
+		int32 EndBoneIndex = Hierarchy->GetIndex(EndBone);
+		if (EndBoneIndex != INDEX_NONE)
 		{
-			CachedItems.Add(FCachedRigElement(Item, Hierarchy));
+			int32 StartBoneIndex = Hierarchy->GetIndex(StartBone);
+			if (StartBoneIndex == EndBoneIndex)
+			{
+				return;
+			}
+
+			while (EndBoneIndex != INDEX_NONE)
+			{
+				BoneIndices.Add(EndBoneIndex);
+				if (EndBoneIndex == StartBoneIndex)
+				{
+					break;
+				}
+				EndBoneIndex = (*Hierarchy)[EndBoneIndex].ParentIndex;
+			}
 		}
 
-		if (CachedItems.Num() < 2)
+		if (BoneIndices.Num() < 2)
 		{
 			UE_CONTROLRIG_RIGUNIT_REPORT_WARNING(TEXT("Didn't find enough bones. You need at least two in the chain!"));
 			return;
 		}
 
-		ItemSegments.SetNumZeroed(CachedItems.Num());
-		ItemSegments[0] = 0;
-		for (int32 Index = 1; Index < CachedItems.Num(); Index++)
+		Algo::Reverse(BoneIndices);
+
+		BoneSegments.SetNumZeroed(BoneIndices.Num());
+		BoneSegments[0] = 0;
+		for (int32 Index = 1; Index < BoneIndices.Num(); Index++)
 		{
-			FVector A = Hierarchy->GetGlobalTransform(CachedItems[Index - 1]).GetLocation();
-			FVector B = Hierarchy->GetGlobalTransform(CachedItems[Index]).GetLocation();
-			ItemSegments[Index] = (A - B).Size();
-			ChainLength += ItemSegments[Index];
+			FVector A = Hierarchy->GetGlobalTransform(BoneIndices[Index - 1]).GetLocation();
+			FVector B = Hierarchy->GetGlobalTransform(BoneIndices[Index]).GetLocation();
+			BoneSegments[Index] = (A - B).Size();
+			ChainLength += BoneSegments[Index];
 		}
 
-		Transforms.SetNum(CachedItems.Num());
-		BlendedTransforms.SetNum(CachedItems.Num());
+		Transforms.SetNum(BoneIndices.Num());
+		BlendedTransforms.SetNum(BoneIndices.Num());
+		return;
 	}
 
-	if (CachedItems.Num() < 2 || ChainLength < SMALL_NUMBER)
+	if (BoneIndices.Num() == 0 || ChainLength < SMALL_NUMBER)
 	{
 		return;
 	}
 
-	for (int32 Index = 0; Index < CachedItems.Num(); Index++)
+	for (int32 Index = 0; Index < BoneIndices.Num(); Index++)
 	{
-		Transforms[Index] = Hierarchy->GetGlobalTransform(CachedItems[Index]);
+		Transforms[Index] = Hierarchy->GetGlobalTransform(BoneIndices[Index]);
 	}
 
 	for (int32 Index = 0; Index < Transforms.Num(); Index++)
@@ -106,29 +92,29 @@ FRigUnit_SlideChainPerItem_Execute()
 			while (SlidePerBone > SMALL_NUMBER && TargetIndex < Transforms.Num() - 1)
 			{
 				TargetIndex++;
-				SlidePerBone -= ItemSegments[TargetIndex];
+				SlidePerBone -= BoneSegments[TargetIndex];
 			}
 		}
 		else
 		{
 			while (SlidePerBone < -SMALL_NUMBER && TargetIndex > 0)
 			{
-				SlidePerBone += ItemSegments[TargetIndex];
+				SlidePerBone += BoneSegments[TargetIndex];
 				TargetIndex--;
 			}
 		}
 
 		if (TargetIndex < Transforms.Num() - 1)
 		{
-			if (ItemSegments[TargetIndex + 1] > SMALL_NUMBER)
+			if (BoneSegments[TargetIndex + 1] > SMALL_NUMBER)
 			{
 				if (SlideAmount < -SMALL_NUMBER)
 				{
-					Ratio = FMath::Clamp<float>(1.f - FMath::Abs<float>(SlidePerBone / ItemSegments[TargetIndex + 1]), 0.f, 1.f);
+					Ratio = FMath::Clamp<float>(1.f - FMath::Abs<float>(SlidePerBone / BoneSegments[TargetIndex + 1]), 0.f, 1.f);
 				}
 				else
 				{
-					Ratio = FMath::Clamp<float>(SlidePerBone / ItemSegments[TargetIndex + 1], 0.f, 1.f);
+					Ratio = FMath::Clamp<float>(SlidePerBone / BoneSegments[TargetIndex + 1], 0.f, 1.f);
 				}
 			}
 		}
@@ -140,15 +126,15 @@ FRigUnit_SlideChainPerItem_Execute()
 		}
 	}
 
-	for (int32 Index = 0; Index < CachedItems.Num(); Index++)
+	for (int32 Index = 0; Index < BoneIndices.Num(); Index++)
 	{
-		if (Index < CachedItems.Num() - 1)
+		if (Index < BoneIndices.Num() - 1)
 		{
 			FVector CurrentX = BlendedTransforms[Index].GetRotation().GetAxisX();
 			FVector DesiredX = BlendedTransforms[Index + 1].GetLocation() - BlendedTransforms[Index].GetLocation();
 			FQuat OffsetQuat = FQuat::FindBetweenVectors(CurrentX, DesiredX);
 			BlendedTransforms[Index].SetRotation(OffsetQuat * BlendedTransforms[Index].GetRotation());
 		}
-		Hierarchy->SetGlobalTransform(CachedItems[Index], BlendedTransforms[Index], bPropagateToChildren);
+		Hierarchy->SetGlobalTransform(BoneIndices[Index], BlendedTransforms[Index], bPropagateToChildren);
 	}
 }

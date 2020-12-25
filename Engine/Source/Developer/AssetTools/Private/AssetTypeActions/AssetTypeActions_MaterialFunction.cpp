@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AssetTypeActions/AssetTypeActions_MaterialFunction.h"
 #include "Factories/MaterialFunctionInstanceFactory.h"
@@ -30,15 +30,19 @@ void FAssetTypeActions_MaterialFunction::GetActions(const TArray<UObject*>& InOb
 {
 	const TArray<TWeakObjectPtr<UMaterialFunctionInterface>> Functions = GetTypedWeakObjectPtrs<UMaterialFunctionInterface>(InObjects);
 
-	Section.AddMenuEntry(
-		"MaterialFunction_NewMFI",
-		GetInstanceText(),
-		LOCTEXT("Material_NewMFITooltip", "Creates a parameterized function using this function as a base."),
-		FSlateIcon(FEditorStyle::GetStyleSetName(), "ClassIcon.MaterialInstanceActor"),
-		FUIAction(
-			FExecuteAction::CreateSP(this, &FAssetTypeActions_MaterialFunction::ExecuteNewMFI, Functions)
-		)
-	);
+	IMaterialEditorModule& MaterialEditorModule = FModuleManager::LoadModuleChecked<IMaterialEditorModule>("MaterialEditor");
+	if (MaterialEditorModule.MaterialLayersEnabled())
+	{
+		Section.AddMenuEntry(
+			"MaterialFunction_NewMFI",
+			GetInstanceText(),
+			LOCTEXT("Material_NewMFITooltip", "Creates a parameterized function using this function as a base."),
+			FSlateIcon(FEditorStyle::GetStyleSetName(), "ClassIcon.MaterialInstanceActor"),
+			FUIAction(
+				FExecuteAction::CreateSP(this, &FAssetTypeActions_MaterialFunction::ExecuteNewMFI, Functions)
+			)
+		);
+	}
 
 	if (FEditorDelegates::OnOpenReferenceViewer.IsBound())
 	{
@@ -128,7 +132,7 @@ void FAssetTypeActions_MaterialFunction::ExecuteNewMFI(TArray<TWeakObjectPtr<UMa
 
 void FAssetTypeActions_MaterialFunction::ExecuteFindMaterials(TArray<TWeakObjectPtr<UMaterialFunctionInterface>> Objects)
 {
-#if WITH_EDITOR
+#ifdef WITH_EDITOR
 	if (FEditorDelegates::OnOpenReferenceViewer.IsBound())
 	{
 		// TArray that will be send to the ReferenceViewer for display
@@ -171,13 +175,13 @@ UThumbnailInfo* FAssetTypeActions_MaterialFunction::GetThumbnailInfo(UObject* As
 
 UClass* FAssetTypeActions_MaterialFunctionLayer::GetSupportedClass() const
 {
-	UClass* SupportedClass = UMaterialFunctionMaterialLayer::StaticClass();
+	UClass* SupportedClass = IMaterialEditorModule::Get().MaterialLayersEnabled() ? UMaterialFunctionMaterialLayer::StaticClass() : nullptr;
 	return SupportedClass;
 }
 
 bool FAssetTypeActions_MaterialFunctionLayer::CanFilter()
 {
-	return true;
+	return IMaterialEditorModule::Get().MaterialLayersEnabled();
 }
 
 
@@ -241,13 +245,13 @@ void FAssetTypeActions_MaterialFunctionLayer::ExecuteNewMFI(TArray<TWeakObjectPt
 
 UClass* FAssetTypeActions_MaterialFunctionLayerBlend::GetSupportedClass() const
 {
-	UClass* SupportedClass = UMaterialFunctionMaterialLayerBlend::StaticClass();
+	UClass* SupportedClass = IMaterialEditorModule::Get().MaterialLayersEnabled() ? UMaterialFunctionMaterialLayerBlend::StaticClass() : nullptr;
 	return SupportedClass;
 }
 
 bool FAssetTypeActions_MaterialFunctionLayerBlend::CanFilter()
 {
-	return true;
+	return IMaterialEditorModule::Get().MaterialLayersEnabled();
 }
 
 void FAssetTypeActions_MaterialFunctionLayerBlend::ExecuteNewMFI(TArray<TWeakObjectPtr<UMaterialFunctionInterface>> Objects)

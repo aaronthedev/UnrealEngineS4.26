@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -23,7 +23,6 @@ class SMultiBoxWidget;
 class STableViewBase;
 class SVerticalBox;
 class UToolMenuBase;
-class SUniformToolbarPanel;
 
 namespace MultiBoxConstants
 {	
@@ -68,7 +67,6 @@ public:
 		, ExtensionHook( InExtensionHook )
 		, Type( InType )
 		, TutorialHighlightName( NAME_None )
-		, bSearchable(true)
 		, bIsPartOfHeading(bInIsPartOfHeading)
 	{
 	}
@@ -78,13 +76,11 @@ public:
 	 *
 	 * @InAction UI action delegates that should be used in place of UI commands (dynamic menu items)
 	 */
-	FMultiBlock( const FUIAction& InAction,  FName InExtensionHook = NAME_None, EMultiBlockType InType = EMultiBlockType::None, bool bInIsPartOfHeading = false, TSharedPtr< const FUICommandList > InCommandList = nullptr )
+	FMultiBlock( const FUIAction& InAction,  FName InExtensionHook = NAME_None, EMultiBlockType InType = EMultiBlockType::None, bool bInIsPartOfHeading = false )
 		: DirectActions( InAction )
-		, ActionList( InCommandList )
 		, ExtensionHook( InExtensionHook )
 		, Type( InType )
 		, TutorialHighlightName( NAME_None )
-		, bSearchable(true)
 		, bIsPartOfHeading(bInIsPartOfHeading)
 	{
 	}
@@ -161,7 +157,7 @@ public:
 	 */
 	bool IsSeparator() const
 	{
-		return Type == EMultiBlockType::Separator;
+		return (Type == EMultiBlockType::MenuSeparator) || (Type == EMultiBlockType::ToolBarSeparator);
 	}
 
 	/**
@@ -276,11 +272,6 @@ public:
 	void AddMultiBlock( TSharedRef< const FMultiBlock > InBlock );
 
 	/**
-	 * Adds a MultiBlock to this MultiBox, to the front of the list
-	 */
-	void AddMultiBlockToFront(TSharedRef< const FMultiBlock > InBlock);
-
-	/**
 	 * Removes a MultiBlock from the list for user customization
 	 */
 	void RemoveCustomMultiBlock( TSharedRef< const FMultiBlock> InBlock );
@@ -304,7 +295,7 @@ public:
 	 *
 	 * @return  MultiBox widget object
 	 */
-	TSharedRef< class SMultiBoxWidget > MakeWidget( bool bSearchable, FOnMakeMultiBoxBuilderOverride* InMakeMultiBoxBuilderOverride = nullptr, TAttribute<float> InMaxHeight = TAttribute<float>() );
+	TSharedRef< class SMultiBoxWidget > MakeWidget( bool bSearchable, FOnMakeMultiBoxBuilderOverride* InMakeMultiBoxBuilderOverride = nullptr );
 
 
 	/**
@@ -369,11 +360,11 @@ public:
 	/** Delegate to call while editing when selected block has changed */
 	FEditSelectionChangedDelegate& OnEditSelectionChanged() { return EditSelectionChanged; }
 
+	/* The search widget to be displayed at the top of the multibox */
+	TSharedPtr<STextBlock> SearchTextWidget;
+
 	/** Weak reference to tool menu that created this multibox */
 	TWeakObjectPtr<UToolMenuBase> WeakToolMenu;
-
-	/* Whether the MultiBox has a search widget */
-	bool bHasSearchWidget;
 
 private:
 	
@@ -591,12 +582,7 @@ public:
 	* @return	Whether this block is searchable
 	*/
 	bool GetSearchable() const;
-
-	/**
-	* Sets optional maximum height of widget
-	*/
-	void SetMaxHeight(TAttribute<float> InMaxHeight) { MaxHeight = InMaxHeight; }
-
+	
 	/**
 	 * Builds this MultiBox widget up from the MultiBox associated with it
 	 */
@@ -644,20 +630,24 @@ public:
 	virtual bool SupportsKeyboardFocus() const override;
 	virtual FReply OnFocusReceived( const FGeometry& MyGeometry, const FFocusEvent& InFocusEvent ) override;
 	virtual FReply OnKeyDown( const FGeometry& MyGeometry, const FKeyEvent& KeyEvent ) override;
-	virtual FReply OnKeyChar(const FGeometry& MyGeometry, const FCharacterEvent& InCharacterEvent) override;
+	virtual FReply OnKeyChar( const FGeometry& MyGeometry, const FCharacterEvent& InCharacterEvent ) override;
 	virtual bool OnVisualizeTooltip(const TSharedPtr<SWidget>& TooltipContent) override;
 
+	void TypeChar(const TCHAR InChar);
+
 	/**
-	* Starts a search and makes the search box visible
+	* Changes visibility of widgets in the multibox
 	*
-	* @param	InChar		The first character typed in
+	* @param	InSearchText	The search text to check against
 	*/
-	void BeginSearch(const TCHAR InChar);
+	void UpdateSearch(const TCHAR);
 
 	/**
 	* Resets the search to be empty
 	*/
 	void ResetSearch();
+
+	void ReduceSearch();
 
 	/**
 	* Changes visibility of widgets in the multibox
@@ -676,7 +666,7 @@ public:
 	*
 	* @return	The widget to get
 	*/
-	TSharedPtr<SWidget> GetSearchTextWidget();
+	TSharedPtr<STextBlock> GetSearchTextWidget(); 
 
 	/**
 	* Set the block widget holding the search text
@@ -691,17 +681,7 @@ public:
 	* @param	BlockWidget			The widget to add
 	* @param	BlockDisplayText	The display text of the widget to search by
 	*/
-	UE_DEPRECATED(4.26, "AddSearchElement is deprecated as non-searchable elements also need to be stored, use AddElement instead")
 	void AddSearchElement( TSharedPtr<SWidget>, FText );
-
-	/**
-	* Adds a widget to MultiBoxWidgets map, to access and modify its visibility based on search filters
-	*
-	* @param	BlockWidget			The widget to add
-	* @param	BlockDisplayText	The display text of the widget to search by
-	  @param    bSearchable			Whether the text is searchable
-	*/
-	void AddElement(TSharedPtr<SWidget> BlockWidget, FText BlockDisplayText, bool bInSearchable = true);
 
 	/**
 	 * @return True if the passed in block is being dragged
@@ -726,12 +706,6 @@ private:
 	 * Updates the preview block being dragged.  The drag area is where the users dragged block will be dropped
 	 */
 	void UpdateDropAreaPreviewBlock( TSharedRef<const FMultiBlock> MultiBlock, TSharedPtr<FUICommandDragDropOp> DragDropContent, const FGeometry& DragArea, const FVector2D& DragPos );
-
-	/** Creates the SearchTextWidget if the MultiBox has requested one */
-	void CreateSearchTextWidget();
-
-	/** Called when the SearchText changes */
-	void OnFilterTextChanged(const FText& InFilterText);
 
 private:
 	/** A preview of a block being dragged */
@@ -778,17 +752,14 @@ private:
 	/** Specialized box widget to handle clipping of toolbars and menubars */
 	TSharedPtr<class SClippingHorizontalBox> ClippedHorizontalBox;
 
-	/** Specialized box widget to handle clipping of toolbars and menubars */
-	TSharedPtr<SUniformToolbarPanel> UniformToolbarPanel;
-
 	/** A preview of a block being dragged inside this box */
 	FDraggedMultiBlockPreview DragPreview;
 
-	/* The multibox widgets that are contained, linked to their display text */
-	TMap<TSharedPtr<SWidget>, FText > MultiBoxWidgets;
+	/* The multibox widgets that should be search, linked with their display text */
+	TMap<TSharedPtr<SWidget>, FText > SearchElements;
 
 	/* The search widget to be displayed at the top of the multibox */
-	TSharedPtr<SSearchBox> SearchTextWidget;
+	TSharedPtr<STextBlock> SearchTextWidget;
 
 	/* The search widget to be displayed at the top of the multibox */
 	TSharedPtr<SWidget> SearchBlockWidget;
@@ -798,7 +769,4 @@ private:
 
 	/** Whether this multibox can be searched */
 	bool bSearchable;
-
-	/** Optional maximum height of widget */
-	TAttribute<float> MaxHeight;
 };

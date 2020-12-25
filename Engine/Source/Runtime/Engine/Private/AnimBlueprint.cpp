@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Animation/AnimBlueprint.h"
 #include "UObject/FrameworkObjectVersion.h"
 #include "Animation/AnimBlueprintGeneratedClass.h"
 #if WITH_EDITOR
 #include "Settings/EditorExperimentalSettings.h"
-#include "Modules/ModuleManager.h"
 #endif
 #if WITH_EDITORONLY_DATA
 #include "AnimationEditorUtils.h"
@@ -18,14 +17,6 @@ UAnimBlueprint::UAnimBlueprint(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	bUseMultiThreadedAnimationUpdate = true;
-
-#if WITH_EDITOR
-	if(!HasAnyFlags(RF_ClassDefaultObject))
-	{
-		// Ensure that we are able to compile this anim BP by loading the compiler's module
-		FModuleManager::Get().LoadModuleChecked("AnimGraph");
-	}
-#endif
 }
 
 UAnimBlueprintGeneratedClass* UAnimBlueprint::GetAnimBlueprintGeneratedClass() const

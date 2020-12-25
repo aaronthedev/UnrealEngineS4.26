@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IAutomationDriverModule.h"
 #include "PassThroughMessageHandler.h"
@@ -60,11 +60,6 @@ public:
 			RealApplication.ToSharedRef(),
 			FPassThroughMessageHandlerFactoryFactory::Create());
 
-		if (AutomatedApplication.IsValid())
-		{
-			AutomatedApplication->AllowPlatformMessageHandling();
-		}
-		
 		FSlateApplication::Get().SetPlatformApplication(AutomatedApplication.ToSharedRef());
 	}
 
@@ -74,8 +69,6 @@ public:
 		{
 			return;
 		}
-
-		AutomatedApplication->DisablePlatformMessageHandling();
 
 		FSlateApplication::Get().SetPlatformApplication(RealApplication.ToSharedRef());
 		RealApplication->SetMessageHandler(RealMessageHandler.ToSharedRef());

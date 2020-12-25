@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -20,7 +20,7 @@ public:
 	virtual void LoadAsset(bool bAddToRoot = false) PURE_VIRTUAL(USoundNodeAssetReferencer::LoadAsset,);
 	virtual void ClearAssetReferences() PURE_VIRTUAL(USoundNodeAssetReferencer::ClearAssetReferences, );
 
-	bool ShouldHardReferenceAsset(const class ITargetPlatform*) const;
+	bool ShouldHardReferenceAsset() const;
 
 #if WITH_EDITOR
 	virtual void PostEditImport() override;

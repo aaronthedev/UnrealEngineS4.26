@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SPlacementModeTools.h"
 #include "Application/SlateApplicationBase.h"
@@ -14,7 +14,7 @@
 #include "AssetThumbnail.h"
 #include "LevelEditor.h"
 #include "PlacementMode.h"
-#include "ContentBrowserDataDragDropOp.h"
+#include "DragAndDrop/AssetDragDropOp.h"
 #include "EditorClassUtils.h"
 #include "Widgets/Input/SSearchBox.h"
 
@@ -55,11 +55,6 @@ namespace PlacementViewFilter
 	void GetBasicStrings(const FPlaceableItem& InPlaceableItem, TArray<FString>& OutBasicStrings)
 	{
 		OutBasicStrings.Add(InPlaceableItem.DisplayName.ToString());
-
-		if (!InPlaceableItem.NativeName.IsEmpty())
-		{
-			OutBasicStrings.Add(InPlaceableItem.NativeName);
-		}
 
 		const FString* SourceString = FTextInspector::GetSourceString(InPlaceableItem.DisplayName);
 		if (SourceString)
@@ -258,7 +253,7 @@ FReply SPlacementAssetEntry::OnDragDetected(const FGeometry& MyGeometry, const F
 
 	if( MouseEvent.IsMouseButtonDown( EKeys::LeftMouseButton ) )
 	{
-		return FReply::Handled().BeginDragDrop( FContentBrowserDataDragDropOp::Legacy_New( MakeArrayView(&Item->AssetData, 1), TArrayView<const FString>(), Item->Factory ) );
+		return FReply::Handled().BeginDragDrop( FAssetDragDropOp::New( Item->AssetData, Item->Factory ) );
 	}
 	else
 	{
@@ -303,10 +298,7 @@ void SPlacementModeTools::Construct( const FArguments& InArgs )
 	bNeedsUpdate = true;
 
 	FPlacementMode* PlacementEditMode = (FPlacementMode*)GLevelEditorModeTools().GetActiveMode( FBuiltinEditorModes::EM_Placement );
-	if (PlacementEditMode)
-	{
-		PlacementEditMode->AddValidFocusTargetForPlacement(SharedThis(this));
-	}
+	PlacementEditMode->AddValidFocusTargetForPlacement( SharedThis( this ) );
 
 	SearchTextFilter = MakeShareable(new FPlacementAssetEntryTextFilter(
 		FPlacementAssetEntryTextFilter::FItemToStringArray::CreateStatic(&PlacementViewFilter::GetBasicStrings)
@@ -607,11 +599,7 @@ FReply SPlacementModeTools::OnKeyDown( const FGeometry& MyGeometry, const FKeyEv
 	if ( InKeyEvent.GetKey() == EKeys::Escape )
 	{
 		FPlacementMode* PlacementEditMode = (FPlacementMode*)GLevelEditorModeTools().GetActiveMode( FBuiltinEditorModes::EM_Placement );
-		// Catch potential nullptr
-		if (ensureMsgf(PlacementEditMode, TEXT("PlacementEditMode was null, but SPlacementModeTools is still accepting KeyDown events")))
-		{
-			PlacementEditMode->StopPlacing();
-		}
+		PlacementEditMode->StopPlacing();
 		Reply = FReply::Handled();
 	}
 

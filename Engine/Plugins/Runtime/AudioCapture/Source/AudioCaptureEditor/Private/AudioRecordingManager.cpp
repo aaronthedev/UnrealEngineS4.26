@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AudioRecordingManager.h"
 #include "AudioCaptureEditor.h"
@@ -377,7 +377,7 @@ void FAudioRecordingManager::StopRecording(TArray<USoundWave*>& OutSoundWaves)
 						PackageName = Settings.Directory.Path / AssetName;
 					}
 
-					UPackage* Package = CreatePackage(*PackageName);
+					UPackage* Package = CreatePackage(nullptr, *PackageName);
 
 					// Create a raw .wav file to stuff the raw PCM data in so when we create the sound wave asset it's identical to a normal imported asset
 					check(RawData != nullptr);

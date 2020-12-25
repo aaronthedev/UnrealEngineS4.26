@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,7 +25,7 @@ public:
 		, _DisplayFrameRate(true)
 		, _DisplaySynchronizationState(true)
 		, _TimecodeColor(FLinearColor::White)
-		, _DisplayLabel(false)
+		, _DisplayLabel(true)
 		, _LabelColor(FLinearColor::Gray)
 	{
 		FSlateFontInfo NormalFontInfo = FCoreStyle::Get().GetFontStyle(TEXT("NormalText"));

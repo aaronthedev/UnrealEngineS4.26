@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ToolBuilderUtil.h"
 #include "CoreMinimal.h"
@@ -35,20 +35,16 @@ UActorComponent* ToolBuilderUtil::FindFirstComponent(const FToolBuilderState& In
 {
 	if (InputState.SelectedComponents.Num() > 0)
 	{
-		UActorComponent* const* ComponentPtr = InputState.SelectedComponents.FindByPredicate(Predicate);
-		if (ComponentPtr)
-		{
-			return *ComponentPtr;
-		}
+		return *InputState.SelectedComponents.FindByPredicate(Predicate);
 	}
 	else
 	{
 		for ( AActor* Actor : InputState.SelectedActors )
 		{
-			UActorComponent* const* ComponentPtr = Algo::FindByPredicate(Actor->GetComponents(), Predicate);
-			if (ComponentPtr)
+			UActorComponent* Component = *Algo::FindByPredicate(Actor->GetComponents(), Predicate);
+			if ( Component )
 			{
-				return *ComponentPtr;
+				return Component;
 			}
 		}
 	}
@@ -81,31 +77,3 @@ TArray<UActorComponent*> ToolBuilderUtil::FindAllComponents(const FToolBuilderSt
 										 });
 	}
 }
-
-
-
-
-
-
-int32 ToolBuilderUtil::CountActors(const FToolBuilderState& InputState, const TFunction<bool(AActor*)>& Predicate)
-{
-	return Algo::CountIf(InputState.SelectedActors, Predicate);
-}
-
-
-AActor* ToolBuilderUtil::FindFirstActor(const FToolBuilderState& InputState, const TFunction<bool(AActor*)>& Predicate)
-{
-	AActor* const* Actor = InputState.SelectedActors.FindByPredicate(Predicate);
-	if (Actor)
-	{
-		return *Actor;
-	}
-	return nullptr;
-
-}
-
-TArray<AActor*> ToolBuilderUtil::FindAllActors(const FToolBuilderState& InputState, const TFunction<bool(AActor*)>& Predicate)
-{
-	return InputState.SelectedActors.FilterByPredicate(Predicate);
-}
-

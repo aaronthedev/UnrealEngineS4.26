@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AsyncPackage.h: Unreal async loading definitions.
@@ -12,11 +12,11 @@
 class COREUOBJECT_API FSerializedPropertyScope
 {
 	FArchive& Ar;
-	FProperty* Property;
+	UProperty* Property;
 	void PushProperty();
 	void PopProperty();
 public:
-	FSerializedPropertyScope(FArchive& InAr, FProperty* InProperty, const FProperty* OnlyIfOldProperty = nullptr)
+	FSerializedPropertyScope(FArchive& InAr, UProperty* InProperty, const UProperty* OnlyIfOldProperty = nullptr)
 		: Ar(InAr)
 		, Property(InProperty)
 	{

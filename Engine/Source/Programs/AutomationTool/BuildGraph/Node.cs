@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -159,54 +159,47 @@ namespace AutomationTool
 			HashSet<FileReference> BuildProducts = TagNameToFileSet[DefaultOutput.TagName];
 			for(int Idx = 0; Idx < Tasks.Count; Idx++)
 			{
-				using (ITraceSpan Span = TraceSpan.Create("Task", Tasks[Idx].GetTraceName()))
+				ITaskExecutor Executor = Tasks[Idx].GetExecutor();
+				if (Executor == null)
 				{
-					ITaskExecutor Executor = Tasks[Idx].GetExecutor();
-					if (Executor == null)
+					// Execute this task directly
+					try
 					{
-						// Execute this task directly
-						try
-						{
-							Tasks[Idx].GetTraceMetadata(Span, "");
-							Tasks[Idx].Execute(Job, BuildProducts, TagNameToFileSet);
-						}
-						catch (Exception Ex)
-						{
-							ExceptionUtils.AddContext(Ex, "while executing task {0}", Tasks[Idx].GetTraceString());
-							if (Tasks[Idx].SourceLocation != null)
-							{
-								ExceptionUtils.AddContext(Ex, "at {0}({1})", GetReadablePathForDiagnostics(Tasks[Idx].SourceLocation.Item1), Tasks[Idx].SourceLocation.Item2);
-							}
-							throw;
-						}
+						Tasks[Idx].Execute(Job, BuildProducts, TagNameToFileSet);
 					}
-					else
+					catch (Exception Ex)
 					{
-						Tasks[Idx].GetTraceMetadata(Span, "1.");
-
-						// The task has a custom executor, which may be able to execute several tasks simultaneously. Try to add the following tasks.
-						int FirstIdx = Idx;
-						while (Idx + 1 < Tasks.Count && Executor.Add(Tasks[Idx + 1]))
+						ExceptionUtils.AddContext(Ex, "while executing task {0}", Tasks[Idx].GetTraceString());
+						if(Tasks[Idx].SourceLocation != null)
 						{
-							Idx++;
-							Tasks[Idx].GetTraceMetadata(Span, string.Format("{0}.", 1 + Idx - FirstIdx));
+							ExceptionUtils.AddContext(Ex, "at {0}({1})", GetReadablePathForDiagnostics(Tasks[Idx].SourceLocation.Item1), Tasks[Idx].SourceLocation.Item2);
 						}
-						try
+						throw;
+					}
+				}
+				else
+				{
+					// The task has a custom executor, which may be able to execute several tasks simultaneously. Try to add the following tasks.
+					int FirstIdx = Idx; 
+					while (Idx + 1 < Tasks.Count && Executor.Add(Tasks[Idx + 1]))
+					{
+						Idx++;
+					}
+					try
+					{
+						Executor.Execute(Job, BuildProducts, TagNameToFileSet);
+					}
+					catch (Exception Ex)
+					{
+						for(int TaskIdx = FirstIdx; TaskIdx <= Idx; TaskIdx++)
 						{
-							Executor.Execute(Job, BuildProducts, TagNameToFileSet);
+							ExceptionUtils.AddContext(Ex, "while executing {0}", Tasks[TaskIdx].GetTraceString());
 						}
-						catch (Exception Ex)
+						if (Tasks[FirstIdx].SourceLocation != null)
 						{
-							for (int TaskIdx = FirstIdx; TaskIdx <= Idx; TaskIdx++)
-							{
-								ExceptionUtils.AddContext(Ex, "while executing {0}", Tasks[TaskIdx].GetTraceString());
-							}
-							if (Tasks[FirstIdx].SourceLocation != null)
-							{
-								ExceptionUtils.AddContext(Ex, "at {0}({1})", GetReadablePathForDiagnostics(Tasks[FirstIdx].SourceLocation.Item1), Tasks[FirstIdx].SourceLocation.Item2);
-							}
-							throw;
+							ExceptionUtils.AddContext(Ex, "at {0}({1})", GetReadablePathForDiagnostics(Tasks[FirstIdx].SourceLocation.Item1), Tasks[FirstIdx].SourceLocation.Item2);
 						}
+						throw;
 					}
 				}
 			}

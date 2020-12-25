@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -6,6 +6,8 @@
 #include "ChaosFilter.h"
 #include "EventsData.h"
 #include "ChaosCollisionEventFilter.generated.h"
+
+using namespace Chaos;
 
 // A collision event data structure
 USTRUCT(BlueprintType)

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieSceneGeometryCacheTrack.h"
 #include "GeometryCacheComponent.h"
@@ -7,7 +7,6 @@
 #include "Evaluation/MovieSceneEvaluationTrack.h"
 #include "MovieSceneGeometryCacheTemplate.h"
 #include "Compilation/IMovieSceneTemplateGenerator.h"
-#include "MovieSceneGeometryCacheTemplate.h"
 #include "MovieScene.h"
 
 #define LOCTEXT_NAMESPACE "MovieSceneGeometryCacheTrack"
@@ -64,10 +63,6 @@ TArray<UMovieSceneSection*> UMovieSceneGeometryCacheTrack::GetAnimSectionsAtTime
 	return Sections;
 }
 
-FMovieSceneEvalTemplatePtr UMovieSceneGeometryCacheTrack::CreateTemplateForSection(const UMovieSceneSection& InSection) const
-{
-	return FMovieSceneGeometryCacheSectionTemplate(*CastChecked<UMovieSceneGeometryCacheSection>(&InSection));
-}
 
 /* UMovieSceneTrack interface
  *****************************************************************************/

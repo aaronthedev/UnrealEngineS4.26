@@ -110,7 +110,7 @@ static void PrintOptOutput(LPCWSTR pFileName, IDxcBlob *pBlob, IDxcBlobEncoding 
   wprintf(L"%*s", (int)pOutputText16->GetBufferSize(),
           (wchar_t *)pOutputText16->GetBufferPointer());
   if (pBlob && pFileName && *pFileName) {
-    dxc::WriteBlobToFile(pBlob, pFileName, DXC_CP_UTF8); // TODO: Support DefaultTextCodePage
+    dxc::WriteBlobToFile(pBlob, pFileName);
   }
 }
 
@@ -164,10 +164,10 @@ static void ReadFileOpts(LPCWSTR pPassFileName, IDxcBlobEncoding **ppPassOpts, s
   }
 
   CComPtr<IDxcBlob> pPassOptsBlob;
-  CComPtr<IDxcBlobUtf16> pPassOpts;
+  CComPtr<IDxcBlobEncoding> pPassOpts;
   BlobFromFile(pPassFileName, &pPassOptsBlob);
   IFT(hlsl::DxcGetBlobAsUtf16(pPassOptsBlob, hlsl::GetGlobalHeapMalloc(), &pPassOpts));
-  LPWSTR pCursor = const_cast<LPWSTR>(pPassOpts->GetStringPointer());
+  LPWSTR pCursor = (LPWSTR)pPassOpts->GetBufferPointer();
   while (*pCursor) {
     passes.push_back(pCursor);
     while (*pCursor && *pCursor != L'\n' && *pCursor != L'\r') {
@@ -190,7 +190,7 @@ static void ReadFileOpts(LPCWSTR pPassFileName, IDxcBlobEncoding **ppPassOpts, s
 
   *pOptArgs = passes.data();
   *pOptArgCount = passes.size();
-  pPassOpts->QueryInterface(ppPassOpts);
+  *ppPassOpts = pPassOpts.Detach();
 }
 
 static void PrintHelp() {

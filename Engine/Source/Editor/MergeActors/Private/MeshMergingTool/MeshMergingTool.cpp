@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MeshMergingTool/MeshMergingTool.h"
 #include "Misc/Paths.h"
@@ -12,7 +12,7 @@
 #include "Engine/StaticMeshActor.h"
 #include "Engine/Selection.h"
 #include "Editor.h"
-#include "Misc/MessageDialog.h"
+#include "Dialogs/Dialogs.h"
 #include "MeshUtilities.h"
 #include "MeshMergingTool/SMeshMergingDialog.h"
 #include "IContentBrowserSingleton.h"
@@ -96,8 +96,7 @@ bool FMeshMergingTool::RunMerge(const FString& PackageName)
 	if (UniqueLevels.Num() > 1 && bReplaceSourceActors)
 	{
 		FText Message = NSLOCTEXT("UnrealEd", "FailedToMergeActorsSublevels_Msg", "The selected actors should be in the same level");
-		const FText Title = NSLOCTEXT("UnrealEd", "FailedToMergeActors_Title", "Unable to merge actors");
-		FMessageDialog::Open(EAppMsgType::Ok, Message, &Title);
+		OpenMsgDlgInt(EAppMsgType::Ok, Message, NSLOCTEXT("UnrealEd", "FailedToMergeActors_Title", "Unable to merge actors"));
 		return false;
 	}
 
@@ -126,18 +125,7 @@ bool FMeshMergingTool::RunMerge(const FString& PackageName)
 			UWorld* World = ComponentsToMerge[0]->GetWorld();
 			checkf(World != nullptr, TEXT("Invalid World retrieved from Mesh components"));
 			const float ScreenAreaSize = TNumericLimits<float>::Max();
-
-			// If the merge destination package already exists, it is possible that the mesh is already used in a scene somewhere, or its materials or even just its textures.
-			// Static primitives uniform buffers could become invalid after the operation completes and lead to memory corruption. To avoid it, we force a global reregister.
-			if (FindObject<UObject>(nullptr, *PackageName))
-			{
-				FGlobalComponentReregisterContext GlobalReregister;
-				MeshUtilities.MergeComponentsToStaticMesh(ComponentsToMerge, World, SettingsObject->Settings, nullptr, nullptr, PackageName, AssetsToSync, MergedActorLocation, ScreenAreaSize, true);
-			}
-			else
-			{
-				MeshUtilities.MergeComponentsToStaticMesh(ComponentsToMerge, World, SettingsObject->Settings, nullptr, nullptr, PackageName, AssetsToSync, MergedActorLocation, ScreenAreaSize, true);
-			}
+			MeshUtilities.MergeComponentsToStaticMesh(ComponentsToMerge, World, SettingsObject->Settings, nullptr, nullptr, PackageName, AssetsToSync, MergedActorLocation, ScreenAreaSize, true);
 		}
 	}
 
@@ -173,8 +161,6 @@ bool FMeshMergingTool::RunMerge(const FString& PackageName)
 				MergedActor->GetStaticMeshComponent()->SetStaticMesh(MergedMesh);
 				MergedActor->SetActorLabel(MergedMesh->GetName());
 				World->UpdateCullDistanceVolumes(MergedActor, MergedActor->GetStaticMeshComponent());
-				GEditor->SelectNone(true, true);
-				GEditor->SelectActor(MergedActor, true, true);
 				// Remove source actors
 				for (AActor* Actor : Actors)
 				{

@@ -1,36 +1,22 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DesignerExtension.h"
 #include "ScopedTransaction.h"
-#include "WidgetBlueprint.h"
 
 #define LOCTEXT_NAMESPACE "UMG"
 
 // Designer Extension
 
 FDesignerExtension::FDesignerExtension()
-	: ScopedTransaction(nullptr)
+	: ScopedTransaction(NULL)
 {
 
-}
-
-FDesignerExtension::~FDesignerExtension()
-{
-	ensure(Designer == nullptr);
-	ensure(ScopedTransaction == nullptr);
 }
 
 void FDesignerExtension::Initialize(IUMGDesigner* InDesigner, UWidgetBlueprint* InBlueprint)
 {
 	Designer = InDesigner;
 	Blueprint = InBlueprint;
-}
-
-void FDesignerExtension::Uninitialize()
-{
-	Designer = nullptr;
-	Blueprint.Reset();
-	ensure(ScopedTransaction == nullptr);
 }
 
 FName FDesignerExtension::GetExtensionId() const
@@ -40,7 +26,7 @@ FName FDesignerExtension::GetExtensionId() const
 
 void FDesignerExtension::BeginTransaction(const FText& SessionName)
 {
-	if ( ensure(ScopedTransaction == nullptr) )
+	if ( ScopedTransaction == NULL )
 	{
 		ScopedTransaction = new FScopedTransaction(SessionName);
 	}
@@ -57,10 +43,10 @@ void FDesignerExtension::BeginTransaction(const FText& SessionName)
 
 void FDesignerExtension::EndTransaction()
 {
-	if ( ensure(ScopedTransaction != nullptr) )
+	if ( ScopedTransaction != NULL )
 	{
 		delete ScopedTransaction;
-		ScopedTransaction = nullptr;
+		ScopedTransaction = NULL;
 	}
 }
 

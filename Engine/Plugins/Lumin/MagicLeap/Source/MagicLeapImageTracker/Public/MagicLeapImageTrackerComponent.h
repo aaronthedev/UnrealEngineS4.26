@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -76,25 +76,22 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ImageTracking|MagicLeap")
 	bool bUseUnreliablePose;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ImageTracking|MagicLeap")
-	EMagicLeapImageTargetOrientation AxisOrientation;
-
 //private:
 	/** Activated when the target image is successfully set. */
 	UPROPERTY(BlueprintAssignable, Category = "ImageTracking | MagicLeap", meta = (AllowPrivateAccess = true))
-	FMagicLeapSetImageTargetSucceededMulti OnSetImageTargetSucceeded;
+	FSetImageTargetSucceededMulti OnSetImageTargetSucceeded;
 
 	/** Activated when the target image fails to be set. */
 	UPROPERTY(BlueprintAssignable, Category = "ImageTracking | MagicLeap", meta = (AllowPrivateAccess = true))
-	FMagicLeapSetImageTargetFailedMulti OnSetImageTargetFailed;
+	FSetImageTargetFailedMulti OnSetImageTargetFailed;
 
 	/** Activated when the target image becomes visible to the camera */
 	UPROPERTY(BlueprintAssignable, Category = "ImageTracking | MagicLeap", meta = (AllowPrivateAccess = true))
-	FMagicLeapImageTargetFoundMulti OnImageTargetFound;
+	FImageTargetFoundMulti OnImageTargetFound;
 
 	/** Activated the target image becomes invisible to the camera */
 	UPROPERTY(BlueprintAssignable, Category = "ImageTracking | MagicLeap", meta = (AllowPrivateAccess = true))
-	FMagicLeapImageTargetLostMulti OnImageTargetLost;
+	FImageTargetLostMulti OnImageTargetLost;
 
 	/**
 	  Activated when the target image is tracked with low confidence.
@@ -106,16 +103,14 @@ public:
 	  status will change to NotTracked.
 	*/
 	UPROPERTY(BlueprintAssignable, Category = "ImageTracking | MagicLeap", meta = (AllowPrivateAccess = true))
-	FMagicLeapImageTargetUnreliableTrackingMulti OnImageTargetUnreliableTracking;
+	FImageTargetUnreliableTrackingMulti OnImageTargetUnreliableTracking;
 
 private:
-	bool bTargetSet;
-	EMagicLeapImageTargetStatus LastStatus;
-
+	bool bIsTracking;
 #if WITH_EDITOR
 	UTexture2D* TextureBeforeEdit;
 public:
-	void PreEditChange(FProperty* PropertyAboutToChange) override;
+	void PreEditChange(UProperty* PropertyAboutToChange) override;
 	void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 #endif
 };

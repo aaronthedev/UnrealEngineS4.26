@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	HoloLensTargetSettings.h: Declares the UHoloLensTargetSettings class.
@@ -40,9 +40,6 @@ public:
 	UPROPERTY(EditAnywhere, Config, Category="HoloLens", Meta=(DisplayName="Build for HoloLens Device"))
 	bool bBuildForDevice = true;
 
-	UPROPERTY(EditAnywhere, config, Category = "Packaging", AdvancedDisplay, Meta = (DisplayName = "Use Name in App Logo"))
-	bool bUseNameForLogo = true;
-
 	/**
 	 * Controls whether to use the retail Windows Store environment for license checks.  This must be turned on
 	 * when building for submission to the Windows Store, or when sideloading outside of Developer Mode.  Note,
@@ -51,18 +48,6 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, config, Category = "Packaging", AdvancedDisplay, Meta = (DisplayName = "Use Retail Windows Store Environment"))
 	bool bBuildForRetailWindowsStore;
-	
-	UPROPERTY(EditAnywhere, Config, Category = "Packaging")
-	bool bAutoIncrementVersion;
-	
-	UPROPERTY(EditAnywhere, Config, Category = "App Installer")
-	bool bShouldCreateAppInstaller;
-
-	UPROPERTY(EditAnywhere, Config, Category = "App Installer")
-	FString AppInstallerInstallationURL;
-
-	UPROPERTY(EditAnywhere, Config, Category = "App Installer", meta = (ToolTip = "0 will check on every app launch."))
-	int HoursBetweenUpdateChecks = 0;
 
 	UPROPERTY(EditAnywhere, config, Category = "Rendering", meta = (DisplayName = "Enable PIX Profiling"))
 	bool bEnablePIXProfiling;

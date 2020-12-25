@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -26,15 +26,42 @@ public:
 		: Scope                (MakeShareable(new FFileScope(*(FString(TEXT("__")) + FPaths::GetBaseFilename(InFilename) + FString(TEXT("__File"))), this)))
 		, Filename             (MoveTemp(InFilename))
 		, Package              (InPackage)
-		, Content              (MoveTemp(InContent))
 		, bHasChanged          (false)
+		, Content              (MoveTemp(InContent))
 		, bParsed              (false)
 		, bDependenciesResolved(false)
 	{
 		if (GetStrippedFilename() != "NoExportTypes")
 		{
-			Includes.Emplace(FHeaderProvider(EHeaderProviderSourceType::FileName, "NoExportTypes.h"));
+			Includes.Add(FHeaderProvider(EHeaderProviderSourceType::FileName, "NoExportTypes.h"));
 		}
+	}
+
+	/**
+	 * Appends array with classes defined in this source file.
+	 *
+	 * @param OutClasses (Output parameter) Array to fill with classes defined.
+	 */
+	void AppendDefinedClasses(TArray<UClass*>& OutClasses) const
+	{
+		for (const auto& KeyValuePair : DefinedClasses)
+		{
+			OutClasses.Add(KeyValuePair.Key);
+		}
+	}
+
+	/**
+	 * Gets array with classes defined in this source file.
+	 *
+	 * @returns Array with classes defined in this source file.
+	 */
+	TArray<UClass*> GetDefinedClasses() const
+	{
+		TArray<UClass*> Array;
+
+		AppendDefinedClasses(Array);
+
+		return Array;
 	}
 
 	/**
@@ -62,20 +89,15 @@ public:
 	 */
 	int32 GetDefinedClassesCount() const
 	{
-		return DefinedClasses.Num();
+		return GetDefinedClasses().Num();
 	}
 
 	/**
 	 * Gets generated header filename.
 	 */
-	const FString& GetGeneratedHeaderFilename() const
+	FString GetGeneratedHeaderFilename() const
 	{
-		if (GeneratedHeaderFilename.Len() == 0)
-		{
-			GeneratedHeaderFilename = FString::Printf(TEXT("%s.generated.h"), *FPaths::GetBaseFilename(Filename));
-		}
-
-		return GeneratedHeaderFilename;
+		return FString::Printf(TEXT("%s.generated.h"), *FPaths::GetBaseFilename(Filename));
 	}
 
 	/**
@@ -89,12 +111,17 @@ public:
 	/**
 	 * Gets stripped filename.
 	 */
-	const FString& GetStrippedFilename() const;
+	FString GetStrippedFilename() const;
 
 	/**
 	 * Gets unique file id.
 	 */
-	const FString& GetFileId() const;
+	FString GetFileId() const;
+
+	/**
+	 * Gets source file API.
+	 */
+	FString GetAPI() const;
 
 	/**
 	 * Gets define name of this source file.
@@ -131,7 +158,7 @@ public:
 	 * @param Class Class to add to list.
 	 * @param ParsingInfo Data from simplified parsing step.
 	 */
-	void AddDefinedClass(UClass* Class, FSimplifiedParsingClassInfo&& ParsingInfo);
+	void AddDefinedClass(UClass* Class, FSimplifiedParsingClassInfo ParsingInfo);
 
 	/**
 	 * Gets scope for this file.
@@ -218,7 +245,7 @@ public:
 	/**
 	 * Sets generated filename.
 	 */
-	void SetGeneratedFilename(FString&& GeneratedFilename);
+	void SetGeneratedFilename(FString GeneratedFilename);
 
 	/**
 	 * Sets has changed flag.
@@ -228,12 +255,12 @@ public:
 	/**
 	 * Sets module relative path.
 	 */
-	void SetModuleRelativePath(FString&& ModuleRelativePath);
+	void SetModuleRelativePath(FString ModuleRelativePath);
 
 	/**
 	 * Sets include path.
 	 */
-	void SetIncludePath(FString&& IncludePath);
+	void SetIncludePath(FString IncludePath);
 
 	/**
 	 * Mark this file as parsed.
@@ -270,20 +297,14 @@ private:
 	// Path of this file.
 	FString Filename;
 
-	// Stripped path of this file
-	mutable FString StrippedFilename;
-
-	// Cached FileId for this file
-	mutable FString FileId;
-
 	// Package of this file.
 	UPackage* Package;
 
 	// File name of the generated header file associated with this file.
 	FString GeneratedFilename;
 
-	// File name of the generated header file associated with this file.
-	mutable FString GeneratedHeaderFilename;
+	// Tells if generated header file was changed.
+	bool bHasChanged;
 
 	// Module relative path.
 	FString ModuleRelativePath;
@@ -293,9 +314,6 @@ private:
 
 	// Source file content.
 	FString Content;
-
-	// Tells if generated header file was changed.
-	bool bHasChanged;
 
 	// Tells if this file was parsed.
 	bool bParsed;

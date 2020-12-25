@@ -1,14 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShaderFormatD3D.h"
 #include "Modules/ModuleInterface.h"
 #include "Modules/ModuleManager.h"
 #include "Interfaces/IShaderFormat.h"
 #include "Interfaces/IShaderFormatModule.h"
-#include "DxcWrapper.h"
 
 static FName NAME_PCD3D_SM5(TEXT("PCD3D_SM5"));
 static FName NAME_PCD3D_ES3_1(TEXT("PCD3D_ES31"));
+static FName NAME_PCD3D_ES2(TEXT("PCD3D_ES2"));
 
 class FShaderFormatD3D : public IShaderFormat
 {
@@ -16,12 +16,13 @@ class FShaderFormatD3D : public IShaderFormat
 	{
 		/** Version for shader format, this becomes part of the DDC key. */
 		UE_SHADER_PCD3D_SM5_VER = 8,
+		UE_SHADER_PCD3D_ES2_VER = 8,
 		UE_SHADER_PCD3D_ES3_1_VER = 8,
 	};
 
 	void CheckFormat(FName Format) const
 	{
-		check(Format == NAME_PCD3D_SM5 || Format == NAME_PCD3D_ES3_1);
+		check(Format == NAME_PCD3D_SM5 ||  Format == NAME_PCD3D_ES2 || Format == NAME_PCD3D_ES3_1);
 	}
 
 public:
@@ -36,29 +37,37 @@ public:
 		{
 			return UE_SHADER_PCD3D_ES3_1_VER;
 		}
-		checkf(0, TEXT("Unknown Format %s"), *Format.ToString());
+		else if (Format == NAME_PCD3D_ES2)
+		{
+			return UE_SHADER_PCD3D_ES2_VER;
+		}
+		check(0);
 		return 0;
 	}
 	virtual void GetSupportedFormats(TArray<FName>& OutFormats) const
 	{
 		OutFormats.Add(NAME_PCD3D_SM5);
 		OutFormats.Add(NAME_PCD3D_ES3_1);
+		OutFormats.Add(NAME_PCD3D_ES2);
 	}
-
 	virtual void CompileShader(FName Format, const struct FShaderCompilerInput& Input, struct FShaderCompilerOutput& Output,const FString& WorkingDirectory) const
 	{
 		CheckFormat(Format);
 		if (Format == NAME_PCD3D_SM5)
 		{
-			CompileShader_Windows(Input, Output, WorkingDirectory, ELanguage::SM5);
+			CompileShader_Windows_SM5(Input, Output, WorkingDirectory);
+		}
+		else if (Format == NAME_PCD3D_ES2)
+		{
+			CompileShader_Windows_ES2(Input, Output, WorkingDirectory);
 		}
 		else if (Format == NAME_PCD3D_ES3_1)
 		{
-			CompileShader_Windows(Input, Output, WorkingDirectory, ELanguage::ES3_1);
+			CompileShader_Windows_ES3_1(Input, Output, WorkingDirectory);
 		}
 		else
 		{
-			checkf(0, TEXT("Unknown format %s"), *Format.ToString());
+			check(0);
 		}
 	}
 	virtual const TCHAR* GetPlatformIncludeDirectory() const
@@ -72,17 +81,16 @@ public:
  * Module for D3D shaders
  */
 
-static IShaderFormat* Singleton = nullptr;
+static IShaderFormat* Singleton = NULL;
 
-class FShaderFormatD3DModule : public IShaderFormatModule, public FDxcModuleWrapper
+class FShaderFormatD3DModule : public IShaderFormatModule
 {
 public:
 	virtual ~FShaderFormatD3DModule()
 	{
 		delete Singleton;
-		Singleton = nullptr;
+		Singleton = NULL;
 	}
-
 	virtual IShaderFormat* GetShaderFormat()
 	{
 		if (!Singleton)

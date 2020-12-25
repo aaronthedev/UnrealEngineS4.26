@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -11,11 +11,7 @@ public class RenderCore : ModuleRules
         if (Target.bBuildEditor == true)
         {
             PrivateDependencyModuleNames.Add("TargetPlatform");
-			// PakFileUtitilities due to file open order usage by the shader library
-			PrivateDependencyModuleNames.Add("PakFileUtilities");
-			// JSON is used for the asset info in the shader library
-			PrivateDependencyModuleNames.Add("Json");
-		}
+        }
 		else
         {
 
@@ -23,7 +19,7 @@ public class RenderCore : ModuleRules
 
         }
 
-        PrivateDependencyModuleNames.AddRange(new string[] { "Core", "Projects", "RHI", "ApplicationCore", "TraceLog" });
+        PrivateDependencyModuleNames.AddRange(new string[] { "Core", "Projects", "RHI", "ApplicationCore" });
 
         PrivateIncludePathModuleNames.AddRange(new string[] { "DerivedDataCache" });
 		

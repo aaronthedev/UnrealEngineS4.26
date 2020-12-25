@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DSP/EQ.h"
 #include "DSP/Dsp.h"
@@ -6,82 +6,110 @@
 namespace Audio
 {
 	FEqualizer::FEqualizer()
-		: NumChannels(0)
+		: NumBands(0)
+		, NumChannels(0)
+		, FilterBands(nullptr)
 	{
 	}
 
 	FEqualizer::~FEqualizer()
 	{
+		if (FilterBands)
+		{
+			delete[] FilterBands;
+			FilterBands = nullptr;
+		}
 	}
 
 	void FEqualizer::Init(const float InSampleRate, const int32 InNumBands, const int32 InNumChannels)
 	{
-		NumChannels = InNumChannels;
-
-		WorkBuffer.SetNum(InNumChannels);
-
-		FilterBands.SetNum(InNumBands);
-
-		for (FBiquadFilter& Filter : FilterBands)
+		if (FilterBands)
 		{
-			Filter.Init(InSampleRate, InNumChannels, EBiquadFilter::ParametricEQ, 500.0f, 1.0f, 0.0f);
+			delete[] FilterBands;
+			FilterBands = nullptr;
+		}
+
+		NumBands = InNumBands;
+		NumChannels = InNumChannels;
+		FilterBands = new FBiquadFilter[NumBands];
+
+		for (int32 Band = 0; Band < NumBands; ++Band)
+		{
+			FilterBands[Band].Init(InSampleRate, InNumChannels, EBiquadFilter::ParametricEQ, 500.0f, 1.0f, 0.0f);
 		}
 
 	}
 
 	void FEqualizer::SetBandEnabled(const int32 InBand, const bool bInEnabled)
 	{
+		if (!FilterBands || InBand >= NumBands)
+		{
+			return;
+		}
+
 		FilterBands[InBand].SetEnabled(bInEnabled);
 	}
 
 	void FEqualizer::SetBandParams(const int32 InBand, const float InFrequency, const float InBandwidth, const float InGainDB)
 	{
+		if (!FilterBands || InBand >= NumBands)
+		{
+			return;
+		}
+
 		FilterBands[InBand].SetParams(EBiquadFilter::ParametricEQ, InFrequency, InBandwidth, InGainDB);
 	}
 
 	void FEqualizer::SetBandFrequency(const int32 InBand, const float InFrequency)
 	{
+		if (!FilterBands || InBand >= NumBands)
+		{
+			return;
+		}
+
+
 		FilterBands[InBand].SetFrequency(InFrequency);
 	}
 
 	void FEqualizer::SetBandBandwidth(const int32 InBand, const float InBandwidth)
 	{
+		if (!FilterBands || InBand >= NumBands)
+		{
+			return;
+		}
+
 		FilterBands[InBand].SetBandwidth(InBandwidth);
 	}
 
 	void FEqualizer::SetBandGainDB(const int32 InBand, const float InGainDB)
 	{
+		if (!FilterBands || InBand >= NumBands)
+		{
+			return;
+		}
+
 		FilterBands[InBand].SetGainDB(InGainDB);
 	}
 
 	void FEqualizer::ProcessAudioFrame(const float* InAudio, float* OutAudio)
 	{
-		if (NumChannels < 1)
+		float AudioBufferScratchInput[8];
+
+		for (int32 Channel = 0; Channel < NumChannels; ++Channel)
 		{
-			return;
+			AudioBufferScratchInput[Channel] = InAudio[Channel];
 		}
 
-		// Copy input to output in case there are no bands to process.
-		FMemory::Memcpy(OutAudio, InAudio, sizeof(float) * NumChannels);
-
-		// Get pointers to working buffers
-		float* WorkInput = OutAudio;
-		float* WorkOutput = WorkBuffer.GetData();
-
-		for (FBiquadFilter& Filter : FilterBands)
+		// Process each band in parallel
+		for (int32 Band = 0; Band < NumBands; ++Band)
 		{
-			Filter.ProcessAudioFrame(WorkInput, WorkOutput);
+			FilterBands[Band].ProcessAudioFrame(AudioBufferScratchInput, OutAudio);
 
-			// Swap pointers for internal buffers
-			Swap<float*>(WorkInput, WorkOutput);
-		}
-
-		if (WorkInput != OutAudio)
-		{
-			// Note: the pointer comparison is done after a Swap
-			// If pointers do not point to same buffer, then copy  to output.
-			// Whether or not this gets called is dependent upon number of channels.
-			FMemory::Memcpy(OutAudio, WorkInput, sizeof(float) * NumChannels);
+			for (int32 Channel = 0; Channel < NumChannels; ++Channel)
+			{
+				AudioBufferScratchInput[Channel] = OutAudio[Channel];
+			}
 		}
 	}
+
 }

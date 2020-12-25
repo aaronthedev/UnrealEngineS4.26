@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,7 +12,6 @@
 
 class IConcertClientSession;
 class IConcertClientPackageBridge;
-class IConcertFileSharingService;
 class FConcertClientPackageManager;
 class IConcertClientTransactionBridge;
 class FConcertClientTransactionManager;
@@ -27,7 +26,7 @@ struct FScopedSlowTask;
 class FConcertClientWorkspace : public IConcertClientWorkspace
 {
 public:
-	FConcertClientWorkspace(TSharedRef<FConcertSyncClientLiveSession> InLiveSession, IConcertClientPackageBridge* InPackageBridge, IConcertClientTransactionBridge* InTransactionBridge, TSharedPtr<IConcertFileSharingService> InFileSharingService);
+	FConcertClientWorkspace(TSharedRef<FConcertSyncClientLiveSession> InLiveSession, IConcertClientPackageBridge* InPackageBridge, IConcertClientTransactionBridge* InTransactionBridge);
 	virtual ~FConcertClientWorkspace();
 
 	// IConcertClientWorkspace interface
@@ -44,7 +43,8 @@ public:
 	virtual bool ShouldIgnorePackageDirtyEvent(class UPackage* InPackage) const override;
 	virtual bool FindTransactionEvent(const int64 TransactionEventId, FConcertSyncTransactionEvent& OutTransactionEvent, const bool bMetaDataOnly) const override;
 	virtual TFuture<TOptional<FConcertSyncTransactionEvent>> FindOrRequestTransactionEvent(const int64 TransactionEventId, const bool bMetaDataOnly) override;
-	virtual bool FindPackageEvent(const int64 PackageEventId, FConcertSyncPackageEventMetaData& OutPackageEvent) const override;
+	virtual bool FindPackageEvent(const int64 PackageEventId, FConcertSyncPackageEvent& OutPackageEvent, const bool bMetaDataOnly) const override;
+	virtual TFuture<TOptional<FConcertSyncPackageEvent>> FindOrRequestPackageEvent(const int64 PackageEventId, const bool bMetaDataOnly) override;
 	virtual void GetActivities(const int64 FirstActivityIdToFetch, const int64 MaxNumActivities, TMap<FGuid, FConcertClientInfo>& OutEndpointClientInfoMap, TArray<FConcertClientSessionActivity>& OutActivities) const override;
 	virtual int64 GetLastActivityId() const override;
 	virtual FOnActivityAddedOrUpdated& OnActivityAddedOrUpdated() override;
@@ -163,6 +163,13 @@ private:
 	void PostActivityUpdated(const FConcertSyncActivity& InActivity);
 
 	/**
+	 * Check whether a package activity is partially synced, i.e. that only the meta data
+	 * was synced because the activity event was superseded by another one and the package data
+	 * wasn't required to reconstruct the state of a level.
+	 */
+	bool IsPackageEventPartiallySynced(const FConcertSyncPackageEvent& PackageEvent) const;
+
+	/**
 	 * Check whether a transaction activity is partially synced, i.e. that only the meta data
 	 * was synced because the activity event was superseded by another one and the transaction data
 	 * wasn't required to reconstruct the state of a level.
@@ -212,7 +219,4 @@ private:
 
 	/** True if the client has marked the further transaction as 'non-ignored'. This is sent at the end of the frame. */
 	bool bPendingStopIgnoringActivityOnRestore = false;
-
-	/** Optional side channel to exchange large blobs (package data) with the server in a scalable way (ex. the request/response transport layer is not designed and doesn't support exchanging 3GB packages). */
-	TSharedPtr<IConcertFileSharingService> FileSharingService;
 };

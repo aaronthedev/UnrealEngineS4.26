@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_GEOM_BOUNDABLE_COMPUTE_EXTENT_H
-#define PXR_USD_USD_GEOM_BOUNDABLE_COMPUTE_EXTENT_H
+#ifndef USDGEOM_BOUNDABLE_COMPUTE_EXTENT_H
+#define USDGEOM_BOUNDABLE_COMPUTE_EXTENT_H
 
 /// \file usdGeom/boundableComputeExtent.h
 
@@ -107,4 +107,4 @@ UsdGeomRegisterComputeExtentFunction(
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_USD_GEOM_BOUNDABLE_COMPUTE_EXTENT_H
+#endif // USDGEOM_BOUNDABLE_COMPUTE_EXTENT_H

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "NavigationOctreeController.h"
@@ -12,7 +12,7 @@ struct NAVIGATIONSYSTEM_API FNavigationDataHandler
 
 	FNavigationDataHandler(FNavigationOctreeController& InOctreeController, FNavigationDirtyAreasController& InDirtyAreasController);
 
-	void RemoveNavOctreeElementId(const FOctreeElementId2& ElementId, int32 UpdateFlags);
+	void RemoveNavOctreeElementId(const FOctreeElementId& ElementId, int32 UpdateFlags);
 	FSetElementId RegisterNavOctreeElement(UObject& ElementOwner, INavRelevantInterface& ElementInterface, int32 UpdateFlags);
 	void AddElementToNavOctree(const FNavigationDirtyElement& DirtyElement);
 
@@ -34,5 +34,4 @@ struct NAVIGATIONSYSTEM_API FNavigationDataHandler
 	void RemoveLevelCollisionFromOctree(ULevel& Level);
 	void UpdateActorAndComponentsInNavOctree(AActor& Actor);
 	void ProcessPendingOctreeUpdates();
-	void DemandLazyDataGathering(FNavigationRelevantData& ElementData);
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -30,10 +30,6 @@ class UNREALED_API UEditorSettings : public UObject
 	/** Path to a network share that can be used for sharing derived data (native textures, compiled shaders, etc...) with a team. Will not disabled if this directory cannot be accessed. The editor must be restarted for changes to take effect. */
 	UPROPERTY(EditAnywhere, config, Category=DerivedData, meta = (ConfigRestartRequired = true))
 	FDirectoryPath SharedDerivedDataCache;
-
-	/** Whether to enable the S3 derived data cache backend */
-	UPROPERTY(EditAnywhere, config, Category=DerivedData, meta = (DisplayName = "Enable AWS S3 Cache", Tooltip = "Enables the experimental S3 derived data cache.", ConfigRestartRequired = true))
-	bool bEnableS3DDC = true;
 
 	// =====================================================================
 	// The following options are NOT exposed in the preferences Editor

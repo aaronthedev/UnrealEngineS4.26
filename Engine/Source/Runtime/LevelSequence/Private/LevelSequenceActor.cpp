@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LevelSequenceActor.h"
 #include "UObject/ConstructorHelpers.h"
@@ -6,12 +6,12 @@
 #include "Components/BillboardComponent.h"
 #include "LevelSequenceBurnIn.h"
 #include "DefaultLevelSequenceInstanceData.h"
+#include "Evaluation/MovieScene3DTransformTemplate.h"
 #include "Engine/ActorChannel.h"
 #include "Logging/MessageLog.h"
 #include "Misc/UObjectToken.h"
 #include "Net/UnrealNetwork.h"
 #include "LevelSequenceModule.h"
-#include "MovieSceneSequenceTickManager.h"
 
 #if WITH_EDITOR
 	#include "PropertyCustomizationHelpers.h"
@@ -86,14 +86,6 @@ void ALevelSequenceActor::PostInitProperties()
 	SequencePlayer->SetPlaybackClient(this);
 }
 
-void ALevelSequenceActor::RewindForReplay()
-{
-	if (SequencePlayer)
-	{
-		SequencePlayer->RewindForReplay();
-	}
-}
-
 bool ALevelSequenceActor::RetrieveBindingOverrides(const FGuid& InBindingId, FMovieSceneSequenceID InSequenceID, TArray<UObject*, TInlineAllocator<1>>& OutObjects) const
 {
 	return BindingOverrides->LocateBoundObjects(InBindingId, InSequenceID, OutObjects);
@@ -145,11 +137,7 @@ void ALevelSequenceActor::PostInitializeComponents()
 
 void ALevelSequenceActor::BeginPlay()
 {
-	UMovieSceneSequenceTickManager* TickManager = UMovieSceneSequenceTickManager::Get(this);
-	if (ensure(TickManager))
-	{
-		TickManager->SequenceActors.Add(this);
-	}
+	GetWorld()->LevelSequenceActors.Add(this);
 
 	Super::BeginPlay();
 
@@ -171,11 +159,7 @@ void ALevelSequenceActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		SequencePlayer->Stop();
 	}
 
-	UMovieSceneSequenceTickManager* TickManager = UMovieSceneSequenceTickManager::Get(this);
-	if (ensure(TickManager))
-	{
-		TickManager->SequenceActors.Remove(this);
-	}
+ 	GetWorld()->LevelSequenceActors.Remove(this);
 
 	Super::EndPlay(EndPlayReason);
 }
@@ -186,6 +170,25 @@ void ALevelSequenceActor::Tick(float DeltaSeconds)
 
 	if (SequencePlayer)
 	{
+		// If the global instance data implements a transform origin interface, use its transform as an origin for this frame
+		{
+			UObject*                          InstanceData = GetInstanceData();
+			const IMovieSceneTransformOrigin* RawInterface = Cast<IMovieSceneTransformOrigin>(InstanceData);
+
+			const bool bHasInterface = RawInterface || (InstanceData && InstanceData->GetClass()->ImplementsInterface(UMovieSceneTransformOrigin::StaticClass()));
+			if (bHasInterface)
+			{
+				static FSharedPersistentDataKey GlobalTransformDataKey = FGlobalTransformPersistentData::GetDataKey();
+
+				// Retrieve the current origin
+				FTransform TransformOrigin = RawInterface ? RawInterface->GetTransformOrigin() : IMovieSceneTransformOrigin::Execute_BP_GetTransformOrigin(InstanceData);
+
+				// Assign the transform origin to the peristent data so it can be queried in Evaluate
+				FPersistentEvaluationData PersistentData(*SequencePlayer);
+				PersistentData.GetOrAdd<FGlobalTransformPersistentData>(GlobalTransformDataKey).Origin = TransformOrigin;
+			}
+		}
+
 		SequencePlayer->Update(DeltaSeconds);
 	}
 }

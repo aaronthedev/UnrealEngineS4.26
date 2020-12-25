@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraEnumTypeEditorUtilities.h"
 #include "SNiagaraParameterEditor.h"
@@ -7,8 +7,102 @@
 #include "NiagaraEditorCommon.h"
 
 #include "Widgets/Input/SSpinBox.h"
-#include "EditorWidgets/Public/SEnumCombobox.h"
-#include "EditorStyleSet.h"
+#include "Widgets/Input/SComboBox.h"
+
+class SEnumCombobox : public SComboBox<TSharedPtr<int32>>
+{
+public:
+	DECLARE_DELEGATE_TwoParams(FOnValueChanged, int32, ESelectInfo::Type);
+
+public:
+	SLATE_BEGIN_ARGS(SEnumCombobox) {}
+		SLATE_ATTRIBUTE(int32, Value)
+		SLATE_EVENT(FOnValueChanged, OnValueChanged)
+	SLATE_END_ARGS()
+
+	void Construct(const FArguments& InArgs, const UEnum* InEnum)
+	{
+		Enum = InEnum;
+		Value = InArgs._Value;
+		check(Value.IsBound());
+		OnValueChanged = InArgs._OnValueChanged;
+
+		bUpdatingSelectionInternally = false;
+
+		for (int32 i = 0; i < Enum->NumEnums() - 1; i++)
+		{
+			if (Enum->HasMetaData(TEXT("Hidden"), i) == false)
+			{
+				VisibleEnumNameIndices.Add(MakeShareable(new int32(i)));
+			}
+		}
+
+		SComboBox::Construct(SComboBox<TSharedPtr<int32>>::FArguments()
+			//.ButtonStyle(FEditorStyle::Get(), "FlatButton.Light")
+			.OptionsSource(&VisibleEnumNameIndices)
+			.OnGenerateWidget(this, &SEnumCombobox::OnGenerateWidget)
+			.OnSelectionChanged(this, &SEnumCombobox::OnComboSelectionChanged)
+			.OnComboBoxOpening(this, &SEnumCombobox::OnComboMenuOpening)
+			.ContentPadding(FMargin(2, 0))
+			[
+				SNew(STextBlock)
+				//.Font(FEditorStyle::GetFontStyle("Sequencer.AnimationOutliner.RegularFont"))
+				.Text(this, &SEnumCombobox::GetValueText)
+			]);
+	}
+
+private:
+	FText GetValueText() const
+	{
+		int32 ValueNameIndex = Enum->GetIndexByValue(Value.Get());
+		return Enum->GetDisplayNameTextByIndex(ValueNameIndex);
+	}
+
+	TSharedRef<SWidget> OnGenerateWidget(TSharedPtr<int32> InItem)
+	{
+		return SNew(STextBlock)
+			.Text(Enum->GetDisplayNameTextByIndex(*InItem));
+	}
+
+	void OnComboSelectionChanged(TSharedPtr<int32> InSelectedItem, ESelectInfo::Type SelectInfo)
+	{
+		if (bUpdatingSelectionInternally == false)
+		{
+			OnValueChanged.ExecuteIfBound(*InSelectedItem, SelectInfo);
+		}
+	}
+
+	void OnComboMenuOpening()
+	{
+		int32 CurrentNameIndex = Enum->GetIndexByValue(Value.Get());
+		TSharedPtr<int32> FoundNameIndexItem;
+		for (int32 i = 0; i < VisibleEnumNameIndices.Num(); i++)
+		{
+			if (*VisibleEnumNameIndices[i] == CurrentNameIndex)
+			{
+				FoundNameIndexItem = VisibleEnumNameIndices[i];
+				break;
+			}
+		}
+		if (FoundNameIndexItem.IsValid())
+		{
+			bUpdatingSelectionInternally = true;
+			SetSelectedItem(FoundNameIndexItem);
+			bUpdatingSelectionInternally = false;
+		}
+	}
+
+private:
+	const UEnum* Enum;
+
+	TAttribute<int32> Value;
+
+	TArray<TSharedPtr<int32>> VisibleEnumNameIndices;
+
+	bool bUpdatingSelectionInternally;
+
+	FOnValueChanged OnValueChanged;
+};
 
 class SNiagaraEnumParameterEditor : public SNiagaraParameterEditor
 {
@@ -24,12 +118,9 @@ public:
 
 		ChildSlot
 		[
-			SNew(SEnumComboBox, Enum)
-			.CurrentValue(this, &SNiagaraEnumParameterEditor::GetValue)
-			.ButtonStyle(FEditorStyle::Get(), "FlatButton.Light")
-			.ContentPadding(FMargin(2, 0))
-			.Font(FEditorStyle::GetFontStyle("Sequencer.AnimationOutliner.RegularFont"))
-			.OnEnumSelectionChanged(SEnumComboBox::FOnEnumSelectionChanged::CreateSP(this, &SNiagaraEnumParameterEditor::ValueChanged))
+			SNew(SEnumCombobox, Enum)
+			.Value(this, &SNiagaraEnumParameterEditor::GetValue)
+			.OnValueChanged(this, &SNiagaraEnumParameterEditor::ValueChanged)
 		];
 	}
 
@@ -114,7 +205,7 @@ bool FNiagaraEditorEnumTypeUtilities::SetValueFromPinDefaultString(const FString
 	checkf(Enum != nullptr, TEXT("Variable is not an enum type."));
 
 	FNiagaraInt32 EnumValue;
-	EnumValue.Value = (int32)Enum->GetValueByNameString(StringValue);
+	EnumValue.Value = (int32)Enum->GetValueByNameString(StringValue, EGetByNameFlags::ErrorIfNotFound);
 	if(EnumValue.Value != INDEX_NONE)
 	{
 		Variable.AllocateData();
@@ -164,9 +255,4 @@ FText FNiagaraEditorEnumTypeUtilities::GetSearchTextFromValue(const FNiagaraVari
 
 	const int32 EnumNameIndex = Enum->GetIndexByValue(AllocatedVariable.GetValue<int32>());
 	return Enum->GetDisplayNameTextByIndex(EnumNameIndex);
-}
-
-FText FNiagaraEditorEnumTypeUtilities::GetStackDisplayText(FNiagaraVariable& Variable) const
-{
-	return Variable.GetType().GetEnum()->GetDisplayNameTextByIndex(Variable.GetValue<int32>());
 }

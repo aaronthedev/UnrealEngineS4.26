@@ -1,21 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 #include "UObject/UObjectArray.h"
-#include "Stats/Stats2.h"
-
-DECLARE_STATS_GROUP_VERBOSE(TEXT("Async Load"), STATGROUP_AsyncLoad, STATCAT_Advanced);
-DECLARE_CYCLE_STAT(TEXT("Async Loading Time"),STAT_AsyncLoadingTime,STATGROUP_AsyncLoad);
-
-DECLARE_STATS_GROUP(TEXT("Async Load Game Thread"), STATGROUP_AsyncLoadGameThread, STATCAT_Advanced);
-
-DECLARE_CYCLE_STAT(TEXT("PostLoadObjects GT"), STAT_FAsyncPackage_PostLoadObjectsGameThread, STATGROUP_AsyncLoadGameThread);
-DECLARE_CYCLE_STAT(TEXT("TickAsyncLoading GT"), STAT_FAsyncPackage_TickAsyncLoadingGameThread, STATGROUP_AsyncLoadGameThread);
-DECLARE_CYCLE_STAT(TEXT("Flush Async Loading GT"), STAT_FAsyncPackage_FlushAsyncLoadingGameThread, STATGROUP_AsyncLoadGameThread);
-DECLARE_CYCLE_STAT(TEXT("CreateClusters GT"), STAT_FAsyncPackage_CreateClustersGameThread, STATGROUP_AsyncLoadGameThread);
 
 enum class ENotifyRegistrationType;
 enum class ENotifyRegistrationPhase;
@@ -24,6 +13,9 @@ extern const FName PrestreamPackageClassNameLoad;
 
 /** Returns true if we're inside a FGCScopeLock */
 extern bool IsGarbageCollectionLocked();
+
+/** Returns true if GC wants to run */
+extern bool IsGarbageCollectionWaiting();
 
 bool IsFullyLoadedObj(UObject* Obj);
 
@@ -51,29 +43,17 @@ void ClearFlagsAndDissolveClustersFromLoadedObjects(T& LoadedObjects)
 
 class IAsyncPackageLoader;
 class FPackageIndex;
-class LinkerInstancingContext;
+class FGCObject;
 
 class IEDLBootNotificationManager
 {
 public:
 	virtual ~IEDLBootNotificationManager() = default;
 
-	virtual bool AddWaitingPackage(void* Pkg, FName PackageName, FName ObjectName, FPackageIndex Import, bool bIgnoreMissingPackage) = 0;
+	virtual bool AddWaitingPackage(FGCObject* Pkg, FName PackageName, FName ObjectName, FPackageIndex Import) = 0;
 	virtual bool ConstructWaitingBootObjects() = 0;
 	virtual bool FireCompletedCompiledInImports(bool bFinalRun = false) = 0;
 	virtual bool IsWaitingForSomething() = 0;
-};
-
-/** Structure that holds the async loading thread ini settings */
-struct FAsyncLoadingThreadSettings
-{
-	bool bAsyncLoadingThreadEnabled;
-	bool bAsyncPostLoadEnabled;
-
-	FAsyncLoadingThreadSettings();
-
-	/** Gets the ALT settigns from ini (or command line). */
-	static FAsyncLoadingThreadSettings& Get();
 };
 
 /**
@@ -115,8 +95,7 @@ public:
 			FLoadPackageAsyncDelegate InCompletionDelegate,
 			EPackageFlags InPackageFlags,
 			int32 InPIEInstanceID,
-			int32 InPackagePriority,
-			const FLinkerInstancingContext* InstancingContext) = 0;
+			int32 InPackagePriority) = 0;
 
 	/**
 	 * Process all currently loading package requests.
@@ -164,11 +143,6 @@ public:
 	virtual void FlushLoading(int32 PackageId) = 0;
 
 	/**
-	 *	Returns the number of queued packages.
-	 */
-	virtual int32 GetNumQueuedPackages() = 0;
-
-	/**
 	 *	Returns the number of loading packages.
 	 */
 	virtual int32 GetNumAsyncPackages() = 0;
@@ -206,9 +180,7 @@ public:
 
 	virtual void NotifyConstructedDuringAsyncLoading(UObject* Object, bool bSubObject) = 0;
 
-	virtual void NotifyUnreachableObjects(const TArrayView<FUObjectItem*>& UnreachableObjects) = 0;
-
-	virtual void FireCompletedCompiledInImport(void* AsyncPackage, FPackageIndex Import) = 0;
+	virtual void FireCompletedCompiledInImport(FGCObject* AsyncPackage, FPackageIndex Import) = 0;
 };
 
 // Stats for ChartCreation.cpp
@@ -217,17 +189,3 @@ extern COREUOBJECT_API uint32 GFlushAsyncLoadingCount;
 extern COREUOBJECT_API uint32 GSyncLoadCount;
 
 extern COREUOBJECT_API void ResetAsyncLoadingStats();
-
-// Time limit
-extern COREUOBJECT_API int32 GWarnIfTimeLimitExceeded;
-extern COREUOBJECT_API float GTimeLimitExceededMultiplier;
-extern COREUOBJECT_API float GTimeLimitExceededMinTime;
-
-void IsTimeLimitExceededPrint(
-	double InTickStartTime,
-	double CurrentTime,
-	double LastTestTime,
-	float InTimeLimit,
-	const TCHAR* InLastTypeOfWorkPerformed = nullptr,
-	UObject* InLastObjectWorkWasPerformedOn = nullptr);
-

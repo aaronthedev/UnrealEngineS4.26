@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -16,12 +16,6 @@ namespace FMovieSceneEvaluationCustomVersion
 
 		// Added support for blending
 		AddBlendingSupport,
-
-		// Added ECS evaluation
-		EntityManager,
-
-		// Removed GUID references to blueprint graphs and replaced with direct weak ptrs
-		DeprecateEventGUIDs,
 
 		// -----<new versions can be added above this line>-------------------------------------------------
 		VersionPlusOne,

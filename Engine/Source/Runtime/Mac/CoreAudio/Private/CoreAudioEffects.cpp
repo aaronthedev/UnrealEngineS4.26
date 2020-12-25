@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	CodeAudioEffects.cpp: Unreal CoreAudio audio effects interface object.
@@ -104,11 +104,9 @@ FCoreAudioEffectsManager::~FCoreAudioEffectsManager()
 /** 
  * Calls the platform specific code to set the parameters that define reverb
  */
-void FCoreAudioEffectsManager::SetReverbEffectParameters(const FAudioEffectParameters& InEffectParameters)
+void FCoreAudioEffectsManager::SetReverbEffectParameters( const FAudioReverbEffect& ReverbEffectParameters )
 {
 #if CORE_AUDIO_REVERB_ENABLED
-	const FAudioReverbEffect& ReverbEffectParameters = static_cast<FAudioReverbEffect&>(InEffectParameters);
-
 	float DryWetMix = FMath::Sin(ReverbEffectParameters.Volume*M_PI_2) * 100.0f;										// 0.0-100.0, 100.0
 	float SmallLargeMix = ReverbEffectParameters.GainHF * 100.0f;	// 0.0-100.0, 50.0
 	float PreDelay = ReverbEffectParameters.ReflectionsDelay;										// 0.001->0.03, 0.025
@@ -161,10 +159,8 @@ void FCoreAudioEffectsManager::SetReverbEffectParameters(const FAudioEffectParam
 /** 
  * Calls the platform specific code to set the parameters that define EQ
  */
-void FCoreAudioEffectsManager::SetEQEffectParameters(const FAudioEffectParameters& InEffectParameters)
+void FCoreAudioEffectsManager::SetEQEffectParameters( const FAudioEQEffect& Params )
 {
-	const FAudioEQEffect& Params = static_cast<const FAudioEQEffect&>(InEffectParameters);
-
 	float Gain0 = VolumeToDeciBels(Params.Gain0);
 	float Gain1 = VolumeToDeciBels(Params.Gain1);
 	float Gain2 = VolumeToDeciBels(Params.Gain2);
@@ -210,7 +206,7 @@ void FCoreAudioEffectsManager::SetEQEffectParameters(const FAudioEffectParameter
  * 
  * @param	RadioEffectParameters	The new parameters for the radio distortion effect. 
  */
-void FCoreAudioEffectsManager::SetRadioEffectParameters(const FAudioEffectParameters& InEffectParameters)
+void FCoreAudioEffectsManager::SetRadioEffectParameters( const FAudioRadioEffect& RadioEffectParameters )
 {
 	enum ERadioEffectParams
 	{

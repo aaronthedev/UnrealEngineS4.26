@@ -214,8 +214,6 @@ public:
   hlsl::DXIL::DefaultLinkage DefaultLinkage = hlsl::DXIL::DefaultLinkage::Default;
   /// Assume UAVs/SRVs may alias.
   bool HLSLResMayAlias = false;
-  /// Lookback scan limit for memory dependencies
-  unsigned ScanLimit = 0;
   // HLSL Change Ends
 
   // SPIRV Change Starts

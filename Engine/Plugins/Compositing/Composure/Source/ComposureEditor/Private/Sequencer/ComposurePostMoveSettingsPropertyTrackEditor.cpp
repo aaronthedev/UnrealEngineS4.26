@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ComposurePostMoveSettingsPropertyTrackEditor.h"
 #include "MovieScene/MovieSceneComposurePostMoveSettingsSection.h"
@@ -176,7 +176,7 @@ void FComposurePostMoveSettingsPropertyTrackEditor::ImportCanceled()
 }
 
 
-void FComposurePostMoveSettingsPropertyTrackEditor::GenerateKeysFromPropertyChanged(const FPropertyChangedParams& PropertyChangedParams, UMovieSceneSection* SectionToKey, FGeneratedTrackKeys& OutGeneratedKeys)
+void FComposurePostMoveSettingsPropertyTrackEditor::GenerateKeysFromPropertyChanged(const FPropertyChangedParams& PropertyChangedParams, FGeneratedTrackKeys& OutGeneratedKeys)
 {
 	FPropertyPath StructPath = PropertyChangedParams.StructPathToKey;
 	FName ChannelName = StructPath.GetNumProperties() != 0 ? StructPath.GetLeafMostProperty().Property->GetFName() : NAME_None;

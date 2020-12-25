@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -26,11 +26,6 @@ namespace Audio
 		~FChorus();
 
 		void Init(const float InSampleRate, const int32 InNumChannels, const float InDelayLengthSec = 2.0f, const int32 InControlSamplePeriod = 256);
-
-		FORCEINLINE int32 GetNumChannels() const
-		{
-			return NumChannels;
-		}
 
 		void SetDepth(const EChorusDelays::Type InType, const float InDepth);
 		void SetFrequency(const EChorusDelays::Type InType, const float InFrequency);

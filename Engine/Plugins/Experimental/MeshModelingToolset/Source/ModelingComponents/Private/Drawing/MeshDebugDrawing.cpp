@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Drawing/MeshDebugDrawing.h"
 #include "DynamicMesh3.h"
 #include "FrameTypes.h"
-#include "ToolSceneQueriesUtil.h"
 
 #include "SceneManagement.h" // FPrimitiveDrawInterface
 
@@ -20,7 +19,7 @@ void MeshDebugDraw::DrawNormals(
 		int ParentVID = Overlay->GetParentVertex(ElementID);
 		FVector3f ParentPos = (FVector3f)Mesh->GetVertex(ParentVID);
 
-		FVector A = (FVector)ParentPos, B = (FVector)(ParentPos + Length * Normal);
+		FVector A = ParentPos, B = ParentPos + Length * Normal;
 		PDI->DrawLine(Transform.TransformPosition(A), Transform.TransformPosition(B),
 			Color, 0, Thickness, 0, bScreenSpace);
 	}
@@ -38,7 +37,7 @@ void MeshDebugDraw::DrawVertices(
 	for (int VertID : Indices)
 	{
 		FVector3d Pos = Mesh->GetVertex(VertID);
-		PDI->DrawPoint(Transform.TransformPosition((FVector)Pos), Color, PointSize, SDPG_World);
+		PDI->DrawPoint(Transform.TransformPosition(Pos), Color, PointSize, SDPG_World);
 	}
 }
 
@@ -50,7 +49,7 @@ void MeshDebugDraw::DrawVertices(
 	for (int VertID : Indices)
 	{
 		FVector3d Pos = Mesh->GetVertex(VertID);
-		PDI->DrawPoint(Transform.TransformPosition((FVector)Pos), Color, PointSize, SDPG_World);
+		PDI->DrawPoint(Transform.TransformPosition(Pos), Color, PointSize, SDPG_World);
 	}
 }
 
@@ -64,7 +63,7 @@ void MeshDebugDraw::DrawTriCentroids(
 	for (int TriID : Indices)
 	{
 		FVector3d Pos = Mesh->GetTriCentroid(TriID);
-		PDI->DrawPoint(Transform.TransformPosition((FVector)Pos), Color, PointSize, SDPG_World);
+		PDI->DrawPoint(Transform.TransformPosition(Pos), Color, PointSize, SDPG_World);
 	}
 }
 
@@ -86,7 +85,7 @@ void MeshDebugDraw::DrawSimpleGrid(
 	FVector3f Origin = WorldFrame.Origin;
 	FVector3f X = WorldFrame.X();
 	FVector3f Y = WorldFrame.Y();
-	FVector3f A, B;
+	FVector A, B;
 
 	int LineSteps = GridLines / 2;
 	for (int i = 0; i < LineSteps; i++)
@@ -94,29 +93,17 @@ void MeshDebugDraw::DrawSimpleGrid(
 		float dx = (float)i * GridLineSpacing;
 		A = Origin - Extent * Y - dx * X;
 		B = Origin + Extent * Y - dx * X;
-		PDI->DrawLine((FVector)A, (FVector)B, Color, DepthPriority, LineWidth, 0, true);
+		PDI->DrawLine(A, B, Color, DepthPriority, LineWidth, 0, true);
 		A = Origin - Extent * Y + dx * X;
 		B = Origin + Extent * Y + dx * X;
-		PDI->DrawLine((FVector)A, (FVector)B, Color, DepthPriority, LineWidth, 0, true);
+		PDI->DrawLine(A, B, Color, DepthPriority, LineWidth, 0, true);
 
 		A = Origin - Extent * X - dx * Y;
 		B = Origin + Extent * X - dx * Y;
-		PDI->DrawLine((FVector)A, (FVector)B, Color, DepthPriority, LineWidth, 0, true);
+		PDI->DrawLine(A, B, Color, DepthPriority, LineWidth, 0, true);
 		A = Origin - Extent * X + dx * Y;
 		B = Origin + Extent * X + dx * Y;
-		PDI->DrawLine((FVector)A, (FVector)B, Color, DepthPriority, LineWidth, 0, true);
+		PDI->DrawLine(A, B, Color, DepthPriority, LineWidth, 0, true);
 	}
-}
 
-
-void MeshDebugDraw::DrawSimpleFixedScreenAreaGrid(
-	const FViewCameraState& CameraState,
-	const FFrame3f& LocalFrame, int32 NumGridLines, float VisualAngleSpan,
-	float LineWidth, FColor Color, bool bDepthTested,
-	FPrimitiveDrawInterface* PDI, const FTransform& Transform)
-{
-	FVector WorldOrigin = Transform.TransformPosition((FVector)LocalFrame.Origin);
-	float GridWidth = ToolSceneQueriesUtil::CalculateDimensionFromVisualAngleD(CameraState, (FVector3d)WorldOrigin, VisualAngleSpan);
-	float GridLineSpacing = GridWidth / (float)NumGridLines;
-	DrawSimpleGrid(LocalFrame, NumGridLines, GridLineSpacing, LineWidth, Color, bDepthTested, PDI, Transform);
 }

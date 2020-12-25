@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,7 +10,7 @@
 #include "Misc/Change.h"		// For TUniquePtr<FChange>
 #include "Logging/LogMacros.h"
 #include "Materials/MaterialInterface.h"
-#include "Math/GenericOctreePublic.h"	// For FOctreeElementId2
+#include "Math/GenericOctreePublic.h"	// For FOctreeElementId
 #include "GeometryHitTest.h"
 #include "EditableMesh.generated.h"
 
@@ -625,7 +625,7 @@ public:
 	TSharedPtr<class FEditableMeshOctree> Octree;
 
 	/** Maps our polygon IDs to octree element IDs */
-	TMap<FPolygonID, FOctreeElementId2> PolygonIDToOctreeElementIDMap;
+	TMap<FPolygonID, FOctreeElementId> PolygonIDToOctreeElementIDMap;
 
 	/** Polygons that were deleted since the last time our octree was refreshed */
 	TSet<FPolygonID> DeletedOctreePolygonIDs;

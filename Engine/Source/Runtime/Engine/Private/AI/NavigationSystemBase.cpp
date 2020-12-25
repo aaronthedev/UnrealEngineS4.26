@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AI/NavigationSystemBase.h"
 #include "Engine/Engine.h"
@@ -12,8 +12,6 @@
 #include "AI/Navigation/NavigationDataChunk.h"
 
 DEFINE_LOG_CATEGORY(LogNavigation);
-DEFINE_LOG_CATEGORY(LogNavigationDataBuild);
-DEFINE_LOG_CATEGORY(LogNavLink);
 
 #if !UE_BUILD_SHIPPING
 #include "CoreGlobals.h"
@@ -38,38 +36,8 @@ namespace FNavigationSystem
 		}
 	}
 
-	FNavigationSystemRunMode FindRunModeFromWorldType(const UWorld& World)
-	{
-		switch (World.WorldType)
-		{
-		case EWorldType::Editor:
-		case EWorldType::EditorPreview:
-			return FNavigationSystemRunMode::EditorMode;
-
-		case EWorldType::PIE:
-			return FNavigationSystemRunMode::PIEMode;
-
-		case EWorldType::Game:
-		case EWorldType::GamePreview:
-		case EWorldType::GameRPC:
-			return FNavigationSystemRunMode::GameMode;
-
-		case EWorldType::Inactive:
-		case EWorldType::None:
-			return FNavigationSystemRunMode::InvalidMode;
-
-		default:
-			UE_LOG(LogNavigation, Warning, TEXT("%s Unhandled world type, defaulting to FNavigationSystemRunMode::InvalidMode."), ANSI_TO_TCHAR(__FUNCTION__));
-			return FNavigationSystemRunMode::InvalidMode;
-		}
-	}
-
 	void AddNavigationSystemToWorld(UWorld& WorldOwner, const FNavigationSystemRunMode RunMode, UNavigationSystemConfig* NavigationSystemConfig, const bool bInitializeForWorld, const bool bOverridePreviousNavSys)
 	{
-		UE_LOG(LogNavigation, VeryVerbose, TEXT("%s (WorldOwner: %s)"), ANSI_TO_TCHAR(__FUNCTION__), *WorldOwner.GetOuter()->GetName());
-
-		const FNavigationSystemRunMode ResolvedRunMode = (RunMode == FNavigationSystemRunMode::InferFromWorldMode) ? FindRunModeFromWorldType(WorldOwner) : RunMode;
-
 		if (WorldOwner.GetNavigationSystem() == nullptr || bOverridePreviousNavSys)
 		{
 			if (NavigationSystemConfig == nullptr)
@@ -92,9 +60,9 @@ namespace FNavigationSystem
 		{
 			if (WorldOwner.GetNavigationSystem())
 			{
-				WorldOwner.GetNavigationSystem()->InitializeForWorld(WorldOwner, ResolvedRunMode);
+				WorldOwner.GetNavigationSystem()->InitializeForWorld(WorldOwner, RunMode);
 			}
-			else if (ResolvedRunMode == FNavigationSystemRunMode::EditorMode)
+			else if (RunMode == FNavigationSystemRunMode::EditorMode)
 			{
 				DiscardNavigationDataChunks(WorldOwner);
 			}

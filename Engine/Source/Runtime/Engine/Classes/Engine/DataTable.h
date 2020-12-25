@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -46,16 +46,6 @@ struct FTableRowBase
 	 * @param OutCollectedImportProblems	List of problems accumulated during import; Can be added to via this method
 	 */
 	virtual void OnPostDataImport(const UDataTable* InDataTable, const FName InRowName, TArray<FString>& OutCollectedImportProblems) {}
-
-	/**
-	 * Can be overridden by subclasses; Called on every row when the owning data table is modified
-	 * Allows for custom fix-ups, parsing, etc for user changes
-	 * This will be called in addition to OnPostDataImport when importing
-	 *
-	 * @param InDataTable					The data table that owns this row
-	 * @param InRowName						The name of the row we're performing fix-up on
-	 */
-	virtual void OnDataTableChanged(const UDataTable* InDataTable, const FName InRowName) {}
 };
 
 
@@ -63,7 +53,7 @@ struct FTableRowBase
  * Imported spreadsheet table.
  */
 UCLASS(MinimalAPI, BlueprintType, AutoExpandCategories = "DataTable,ImportOptions")
-class UDataTable
+class ENGINE_VTABLE UDataTable
 	: public UObject
 {
 	GENERATED_UCLASS_BODY()
@@ -159,16 +149,19 @@ private:
 	/** A multicast delegate that is called any time the data table changes. */
 	FOnDataTableChanged OnDataTableChangedDelegate;
 
+	/** A multicast delegate that is called any time a data table is imported. */
+	FOnDataTableChanged OnDataTableImportedDelegate;
+
 public:
 	/** Gets a multicast delegate that is called any time the data table changes. */
 	FOnDataTableChanged& OnDataTableChanged() { return OnDataTableChangedDelegate; }
 
-	/** 
-	 * Call whenever the data of a table has changed, this calls the OnDataTableChanged() delegate and per-row callbacks.
-	 * If ChangedRowName is not none, only that row was changed, otherwise assume all rows have changed
-	 */
-	ENGINE_API void HandleDataTableChanged(FName ChangedRowName = NAME_None);
-	
+	/** Gets a multicast delegate that is called any time a data table is imported. */
+	FOnDataTableImport& OnDataTableImported() { return OnDataTableImportedDelegate; }
+
+
+	//~ Begin UDataTable Interface
+
 	/** Get all of the rows in the table, regardless of name */
 	template <class T>
 	void GetAllRows(const TCHAR* ContextString, OUT TArray<T*>& OutRowArray) const
@@ -270,7 +263,7 @@ public:
 	}
 
 	/** Returns the column property where PropertyName matches the name of the column property. Returns nullptr if no match is found or the match is not a supported table property */
-	ENGINE_API FProperty* FindTableProperty(const FName& PropertyName) const;
+	ENGINE_API UProperty* FindTableProperty(const FName& PropertyName) const;
 
 	uint8* FindRowUnchecked(FName RowName, bool MustExist=false) const
 	{
@@ -324,16 +317,13 @@ public:
 	ENGINE_API FString GetTableAsJSON(const EDataTableExportFlags InDTExportFlags = EDataTableExportFlags::None) const;
 
 	/** Output entire contents of table as JSON */
-	template<typename CharType = TCHAR>
-	ENGINE_API bool WriteTableAsJSON(const TSharedRef< TJsonWriter<CharType, TPrettyJsonPrintPolicy<CharType> > >& JsonWriter, const EDataTableExportFlags InDTExportFlags = EDataTableExportFlags::None) const;
+	ENGINE_API bool WriteTableAsJSON(const TSharedRef< TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR> > >& JsonWriter, const EDataTableExportFlags InDTExportFlags = EDataTableExportFlags::None) const;
 
 	/** Output entire contents of table as a JSON Object*/
-	template<typename CharType = TCHAR>
-	ENGINE_API bool WriteTableAsJSONObject(const TSharedRef< TJsonWriter<CharType, TPrettyJsonPrintPolicy<CharType> > >& JsonWriter, const EDataTableExportFlags InDTExportFlags = EDataTableExportFlags::None) const;
+	ENGINE_API bool WriteTableAsJSONObject(const TSharedRef< TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR> > >& JsonWriter, const EDataTableExportFlags InDTExportFlags = EDataTableExportFlags::None) const;
 
 	/** Output the fields from a particular row (use RowMap to get RowData) to an existing JsonWriter */
-	template<typename CharType = TCHAR>
-	ENGINE_API bool WriteRowAsJSON(const TSharedRef< TJsonWriter<CharType, TPrettyJsonPrintPolicy<CharType> > >& JsonWriter, const void* RowData, const EDataTableExportFlags InDTExportFlags = EDataTableExportFlags::None) const;
+	ENGINE_API bool WriteRowAsJSON(const TSharedRef< TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR> > >& JsonWriter, const void* RowData, const EDataTableExportFlags InDTExportFlags = EDataTableExportFlags::None) const;
 
 	/** Copies all the import options from another table, this does not copy row dawta */
 	ENGINE_API bool CopyImportOptions(UDataTable* SourceTable);
@@ -353,7 +343,7 @@ public:
 	ENGINE_API TArray<FString> CreateTableFromJSONString(const FString& InString);
 
 	/** Get array of UProperties that corresponds to columns in the table */
-	TArray<FProperty*> GetTablePropertyArray(const TArray<const TCHAR*>& Cells, UStruct* RowStruct, TArray<FString>& OutProblems, int32 KeyColumn = 0);
+	TArray<UProperty*> GetTablePropertyArray(const TArray<const TCHAR*>& Cells, UStruct* RowStruct, TArray<FString>& OutProblems, int32 KeyColumn = 0);
 	
 	/** 
 	 *	Create table from another Data Table
@@ -386,20 +376,8 @@ protected:
 	 */
 	void OnPostDataImported(OUT TArray<FString>& OutCollectedImportProblems);
 
+
 	UScriptStruct& GetEmptyUsingStruct() const;
-
-	/** Used to trigger the data table changed delegate. This allows us to trigger the delegate only once from more complex changes */
-	struct FScopedDataTableChange
-	{
-		FScopedDataTableChange(UDataTable* InTable);
-		~FScopedDataTableChange();
-
-	private:
-		UDataTable* Table;
-
-		static TMap<UDataTable*, int32> ScopeCount;
-		static FCriticalSection CriticalSection;
-	};
 };
 
 
@@ -526,7 +504,7 @@ struct ENGINE_API FDataTableCategoryHandle
 		}
 
 		// Find the property that matches the desired column (ColumnName)
-		FProperty* Property = DataTable->FindTableProperty(ColumnName);
+		UProperty* Property = DataTable->FindTableProperty(ColumnName);
 		if (Property == nullptr)
 		{
 			return;

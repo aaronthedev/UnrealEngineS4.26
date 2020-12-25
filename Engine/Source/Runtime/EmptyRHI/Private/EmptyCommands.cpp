@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	EmptyCommands.cpp: Empty RHI commands implementation.
@@ -35,7 +35,7 @@ void FEmptyDynamicRHI::RHIDispatchIndirectComputeShader(FRHIVertexBuffer* Argume
 
 }
 
-void FEmptyDynamicRHI::RHISetViewport(float MinX, float MinY,float MinZ, float MaxX, float MaxY,float MaxZ)
+void FEmptyDynamicRHI::RHISetViewport(uint32 MinX,uint32 MinY,float MinZ,uint32 MaxX,uint32 MaxY,float MaxZ)
 {
 
 }
@@ -56,11 +56,6 @@ void FEmptyDynamicRHI::RHISetBoundShaderState(FRHIBoundShaderState* BoundShaderS
 
 }
 
-void FEmptyDynamicRHI::RHISetUAVParameter(FRHIPixelShader* PixelShaderRHI, uint32 UAVIndex, FRHIUnorderedAccessView* UAVRHI)
-{
-	FEmptyUnorderedAccessView* UAV = ResourceCast(UAVRHI);
-
-}
 
 void FEmptyDynamicRHI::RHISetUAVParameter(FRHIComputeShader* ComputeShaderRHI, uint32 UAVIndex, FRHIUnorderedAccessView* UAVRHI)
 {
@@ -106,7 +101,27 @@ void FEmptyDynamicRHI::RHISetShaderTexture(FRHIComputeShader* ComputeShader, uin
 }
 
 
-void FEmptyDynamicRHI::RHISetShaderResourceViewParameter(FRHIGraphicsShader* ShaderRHI, uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
+void FEmptyDynamicRHI::RHISetShaderResourceViewParameter(FRHIVertexShader* VertexShaderRHI, uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
+{
+
+}
+
+void FEmptyDynamicRHI::RHISetShaderResourceViewParameter(FRHIHullShader* HullShaderRHI,uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
+{
+
+}
+
+void FEmptyDynamicRHI::RHISetShaderResourceViewParameter(FRHIDomainShader* DomainShaderRHI,uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
+{
+
+}
+
+void FEmptyDynamicRHI::RHISetShaderResourceViewParameter(FRHIGeometryShader* GeometryShaderRHI,uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
+{
+
+}
+
+void FEmptyDynamicRHI::RHISetShaderResourceViewParameter(FRHIPixelShader* PixelShaderRHI,uint32 TextureIndex, FRHIShaderResourceView* SRVRHI)
 {
 
 }
@@ -117,9 +132,35 @@ void FEmptyDynamicRHI::RHISetShaderResourceViewParameter(FRHIComputeShader* Comp
 }
 
 
-void FEmptyDynamicRHI::RHISetShaderSampler(FRHIGraphicsShader* ShaderRHI, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
+void FEmptyDynamicRHI::RHISetShaderSampler(FRHIVertexShader* VertexShaderRHI, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
 {
 	FEmptySamplerState* NewState = ResourceCast(NewStateRHI);
+	FEmptyVertexShader* VertexShader = ResourceCast(VertexShaderRHI);
+
+}
+
+void FEmptyDynamicRHI::RHISetShaderSampler(FRHIHullShader* HullShader, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
+{
+	FEmptySamplerState* NewState = ResourceCast(NewStateRHI);
+
+}
+
+void FEmptyDynamicRHI::RHISetShaderSampler(FRHIDomainShader* DomainShader, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
+{
+	FEmptySamplerState* NewState = ResourceCast(NewStateRHI);
+
+}
+
+void FEmptyDynamicRHI::RHISetShaderSampler(FRHIGeometryShader* GeometryShader, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
+{
+	FEmptySamplerState* NewState = ResourceCast(NewStateRHI);
+
+}
+
+void FEmptyDynamicRHI::RHISetShaderSampler(FRHIPixelShader* PixelShader, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
+{
+	FEmptySamplerState* NewState = ResourceCast(NewStateRHI);
+
 }
 
 void FEmptyDynamicRHI::RHISetShaderSampler(FRHIComputeShader* ComputeShader, uint32 SamplerIndex, FRHISamplerState* NewStateRHI)
@@ -204,6 +245,16 @@ void FEmptyDynamicRHI::RHISetBlendState(FRHIBlendState* NewStateRHI, const FLine
 
 }
 
+
+void FEmptyDynamicRHI::RHISetRenderTargets(uint32 NumSimultaneousRenderTargets, const FRHIRenderTargetView* NewRenderTargets, 
+	FRHITexture* NewDepthStencilTargetRHI, uint32 NumUAVs, FRHIUnorderedAccessView* const* UAVs)
+{
+
+}
+
+void FEmptyDynamicRHI::RHISetRenderTargetsAndClear(const FRHISetRenderTargetsInfo& RenderTargetsInfo)
+{
+}
 
 // Occlusion/Timer queries.
 void FEmptyDynamicRHI::RHIBeginRenderQuery(FRHIRenderQuery* QueryRHI)
@@ -318,14 +369,28 @@ void FEmptyDynamicRHI::RHIClearMRT(bool bClearColor,int32 NumClearColors,const F
 
 }
 
+void FEmptyDynamicRHI::RHIBindClearMRTValues(bool bClearColor, bool bClearDepth, bool bClearStencil)
+{
+}
+
 void FEmptyDynamicRHI::RHIBlockUntilGPUIdle()
 {
 
 }
 
-uint32 FEmptyDynamicRHI::RHIGetGPUFrameCycles(uint32 GPUIndex)
+uint32 FEmptyDynamicRHI::RHIGetGPUFrameCycles()
 {
 	return GGPUFrameTime;
+}
+
+void FEmptyDynamicRHI::RHIAutomaticCacheFlushAfterComputeShader(bool bEnable) 
+{
+
+}
+
+void FEmptyDynamicRHI::RHIFlushComputeShaderCache()
+{
+
 }
 
 void* FEmptyDynamicRHI::RHIGetNativeDevice()

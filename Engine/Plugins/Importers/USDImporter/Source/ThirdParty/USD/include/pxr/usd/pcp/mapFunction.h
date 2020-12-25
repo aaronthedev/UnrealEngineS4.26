@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_PCP_MAP_FUNCTION_H
-#define PXR_USD_PCP_MAP_FUNCTION_H
+#ifndef PCP_MAPFUNCTION_H
+#define PCP_MAPFUNCTION_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/pcp/api.h"
@@ -149,12 +149,6 @@ public:
     /// the application of this function.
     PCP_API
     PcpMapFunction Compose(const PcpMapFunction &f) const;
-
-    /// Compose this map function over a hypothetical map function that has an
-    /// identity path mapping and \p offset.  This is equivalent to building
-    /// such a map function and invoking Compose(), but is faster.
-    PCP_API
-    PcpMapFunction ComposeOffset(const SdfLayerOffset &newOffset) const;
 
     /// Return the inverse of this map function.
     /// This returns a true inverse \p inv: for any path p in this function's
@@ -306,4 +300,4 @@ size_t hash_value(const PcpMapFunction& x)
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_PCP_MAP_FUNCTION_H
+#endif // PCP_MAPFUNCTION_H

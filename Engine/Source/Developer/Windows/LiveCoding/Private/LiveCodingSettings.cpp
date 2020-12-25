@@ -1,14 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LiveCodingSettings.h"
 #include "Misc/App.h"
 
 ULiveCodingSettings::ULiveCodingSettings(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
 {
-	FProperty* EngineModulesProperty = StaticClass()->FindPropertyByName("bPreloadEngineModules");
+	UProperty* EngineModulesProperty = StaticClass()->FindPropertyByName("bPreloadEngineModules");
 	check(EngineModulesProperty != nullptr);
 
-	FProperty* EnginePluginModulesProperty = StaticClass()->FindPropertyByName("bPreloadEnginePluginModules");
+	UProperty* EnginePluginModulesProperty = StaticClass()->FindPropertyByName("bPreloadEnginePluginModules");
 	check(EnginePluginModulesProperty != nullptr);
 
 	if (FApp::IsEngineInstalled())

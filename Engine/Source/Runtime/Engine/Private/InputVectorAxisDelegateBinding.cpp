@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/InputVectorAxisDelegateBinding.h"
 #include "GameFramework/Actor.h"
 #include "Components/InputComponent.h"
-
 
 UInputVectorAxisDelegateBinding::UInputVectorAxisDelegateBinding(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)

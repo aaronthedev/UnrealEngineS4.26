@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PhysXVehicleManager.h"
 #include "UObject/UObjectIterator.h"
@@ -10,8 +10,6 @@
 #include "Physics/PhysicsInterfaceCore.h"
 
 DEFINE_LOG_CATEGORY(LogVehicles);
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 #if WITH_PHYSX_VEHICLES
 
@@ -499,5 +497,3 @@ PxWheelQueryResult* FPhysXVehicleManager::GetWheelsStates_AssumesLocked(TWeakObj
 }
 
 #endif // WITH_PHYSX
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

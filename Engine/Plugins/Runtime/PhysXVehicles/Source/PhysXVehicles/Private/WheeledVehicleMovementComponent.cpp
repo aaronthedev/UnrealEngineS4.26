@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WheeledVehicleMovementComponent.h"
 #include "EngineGlobals.h"
@@ -32,9 +32,9 @@
 
 #define LOCTEXT_NAMESPACE "UWheeledVehicleMovementComponent"
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
+
 /**
  * PhysX shader for tire friction forces
  * tireFriction - friction value of the tire contact.
@@ -141,7 +141,7 @@ UWheeledVehicleMovementComponent::UWheeledVehicleMovementComponent(const FObject
 	
 	bReverseAsBrake = true;	//Treats reverse button as break for a more arcade feel (also automatically goes into reverse)
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 	// tire load filtering
 	PxVehicleTireLoadFilterData PTireLoadFilterDef;
 	MinNormalizedTireLoad = PTireLoadFilterDef.mMinNormalisedLoad;
@@ -294,7 +294,7 @@ void UWheeledVehicleMovementComponent::SetupVehicleShapes()
 					{
 						if(const FBodyInstance* WheelBI = SkinnedMesh->GetBodyInstance(WheelSetup.BoneName))
 						{
-							WheelBodySetup = WheelBI->GetBodySetup();
+							WheelBodySetup = WheelBI->BodySetup.Get();
 						}
 					}
 
@@ -587,7 +587,7 @@ void UWheeledVehicleMovementComponent::SetupWheels(PxVehicleWheelsSimData* PWhee
 #define ONE_TWENTYSEVENTH 0.037037f
 #define ONE_THIRD 0.33333f
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 PX_FORCE_INLINE PxF32 smoothingFunction1(const PxF32 K)
 {
 	//Equation 20 in CarSimEd manual Appendix F.
@@ -668,7 +668,6 @@ void PxVehicleComputeTireForceDefault
 	tireAlignMoment=fMy;
 }
 #endif // WITH_PHYSX
-
 
 void UWheeledVehicleMovementComponent::GenerateTireForces( UVehicleWheel* Wheel, const FTireShaderInput& Input, FTireShaderOutput& Output )
 {
@@ -2007,32 +2006,32 @@ void UWheeledVehicleMovementComponent::CalculateAvoidanceVelocity(float DeltaTim
 
 void UWheeledVehicleMovementComponent::SetAvoidanceGroup(int32 GroupFlags)
 {
-	SetAvoidanceGroupMask(GroupFlags);
+	AvoidanceGroup.SetFlagsDirectly(GroupFlags);
 }
 
 void UWheeledVehicleMovementComponent::SetAvoidanceGroupMask(const FNavAvoidanceMask& GroupMask)
 {
-	SetAvoidanceGroupMask(GroupMask.Packed);
+	AvoidanceGroup.SetFlagsDirectly(GroupMask.Packed);
 }
 
 void UWheeledVehicleMovementComponent::SetGroupsToAvoid(int32 GroupFlags)
 {
-	SetGroupsToAvoidMask(GroupFlags);
+	GroupsToAvoid.SetFlagsDirectly(GroupFlags);
 }
 
 void UWheeledVehicleMovementComponent::SetGroupsToAvoidMask(const FNavAvoidanceMask& GroupMask)
 {
-	SetGroupsToAvoidMask(GroupMask.Packed);
+	GroupsToAvoid.SetFlagsDirectly(GroupMask.Packed);
 }
 
 void UWheeledVehicleMovementComponent::SetGroupsToIgnore(int32 GroupFlags)
 {
-	SetGroupsToIgnoreMask(GroupFlags);
+	GroupsToIgnore.SetFlagsDirectly(GroupFlags);
 }
 
 void UWheeledVehicleMovementComponent::SetGroupsToIgnoreMask(const FNavAvoidanceMask& GroupMask)
 {
-	SetGroupsToIgnoreMask(GroupMask.Packed);
+	GroupsToIgnore.SetFlagsDirectly(GroupMask.Packed);
 }
 
 void UWheeledVehicleMovementComponent::SetAvoidanceEnabled(bool bEnable)
@@ -2101,29 +2100,14 @@ FVector UWheeledVehicleMovementComponent::GetVelocityForRVOConsideration()
 	return Velocity2D;
 }
 
-void UWheeledVehicleMovementComponent::SetAvoidanceGroupMask(int32 GroupFlags)
-{
-	AvoidanceGroup.SetFlagsDirectly(GroupFlags);
-}
-
 int32 UWheeledVehicleMovementComponent::GetAvoidanceGroupMask()
 {
 	return AvoidanceGroup.Packed;
 }
 
-void UWheeledVehicleMovementComponent::SetGroupsToAvoidMask(int32 GroupFlags)
-{
-	GroupsToAvoid.SetFlagsDirectly(GroupFlags);
-}
-
 int32 UWheeledVehicleMovementComponent::GetGroupsToAvoidMask()
 {
 	return GroupsToAvoid.Packed;
-}
-
-void UWheeledVehicleMovementComponent::SetGroupsToIgnoreMask(int32 GroupFlags)
-{
-	GroupsToIgnore.SetFlagsDirectly(GroupFlags);
 }
 
 int32 UWheeledVehicleMovementComponent::GetGroupsToIgnoreMask()
@@ -2141,5 +2125,3 @@ FWheelSetup::FWheelSetup()
 {
 
 }
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

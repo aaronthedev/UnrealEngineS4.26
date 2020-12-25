@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -20,8 +20,6 @@
 
 @class FStoreKitHelperV2;
 @class FAppStoreUtils;
-@class GKPlayer;
-@class GKLocalPlayer;
 
 
 /**
@@ -84,12 +82,6 @@ PACKAGE_SCOPE:
 	static bool IsInAppPurchasingEnabled();
 	
 	/**
-	 * Is GameCenter enabled
-	 * @return true if enabled, false otherwise
-	 */
-	static bool IsGameCenterEnabled();
-	
-	/**
 	 * Is CloudKit enabled
 	 * @return true if enabled, false otherwise
 	 */
@@ -105,10 +97,6 @@ PACKAGE_SCOPE:
 	 * @return access to the app store utility class
 	 */
 	FAppStoreUtils* GetAppStoreUtils();
-
-public:
-	static NSString* GetPlayerId(GKPlayer* Player);
-	static NSString* GetPlayerId(GKLocalPlayer* Player);
 
 private:
 	

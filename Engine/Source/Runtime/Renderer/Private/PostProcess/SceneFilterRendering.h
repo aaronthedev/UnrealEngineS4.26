@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	SceneFilterRendering.h: Filter rendering definitions.
@@ -11,7 +11,7 @@
 #include "RendererInterface.h"
 #include "ShaderParameters.h"
 #include "Shader.h"
-#include "SceneRenderTargets.h"
+#include "PostProcess/SceneRenderTargets.h"
 #include "ShaderParameterUtils.h"
 
 /** Uniform buffer for computing the vertex positional and UV adjustments in the vertex shader. */
@@ -50,7 +50,7 @@ extern RENDERER_API void DrawRectangle(
 	float SizeV,
 	FIntPoint TargetSize,
 	FIntPoint TextureSize,
-	const TShaderRef<FShader>& VertexShader,
+	class FShader* VertexShader,
 	EDrawRectangleFlags Flags = EDRF_Default,
 	uint32 InstanceCount = 1
 	);
@@ -86,7 +86,7 @@ extern RENDERER_API void DrawHmdMesh(
 	FIntPoint TargetSize,
 	FIntPoint TextureSize,
 	EStereoscopicPass StereoView,
-	const TShaderRef<FShader>& VertexShader
+	FShader* VertexShader
 	);
 
 // NOTE: Assumes previously set PSO has PrimitiveType = PT_TriangleList
@@ -102,7 +102,7 @@ extern RENDERER_API void DrawPostProcessPass(
 	float SizeV,
 	FIntPoint TargetSize,
 	FIntPoint TextureSize,
-	const TShaderRef<FShader>& VertexShader,
+	class FShader* VertexShader,
 	EStereoscopicPass StereoView,
 	bool bHasCustomMesh,
 	EDrawRectangleFlags Flags = EDRF_Default
@@ -117,7 +117,6 @@ FMGammaShaderParameters
 /** Encapsulates the gamma correction parameters. */
 class FGammaShaderParameters
 {
-	DECLARE_TYPE_LAYOUT(FGammaShaderParameters, NonVirtual);
 public:
 
 	/** Default constructor. */
@@ -132,7 +131,7 @@ public:
 	}
 
 	/** Set the material shader parameter values. */
-	void Set(FRHICommandList& RHICmdList, FRHIPixelShader* RHIShader, float DisplayGamma, FLinearColor const& ColorScale, FLinearColor const& ColorOverlay)
+	void Set(FRHICommandList& RHICmdList, FShader* PixelShader, float DisplayGamma, FLinearColor const& ColorScale, FLinearColor const& ColorOverlay)
 	{
 		// GammaColorScaleAndInverse
 
@@ -148,7 +147,7 @@ public:
 
 		SetShaderValue(
 			RHICmdList,
-			RHIShader,
+			PixelShader->GetPixelShader(),
 			GammaColorScaleAndInverse,
 			ColorScaleAndInverse
 			);
@@ -164,7 +163,7 @@ public:
 
 		SetShaderValue(
 			RHICmdList,
-			RHIShader,
+			PixelShader->GetPixelShader(),
 			GammaOverlayColor,
 			OverlayColor
 			);
@@ -179,7 +178,7 @@ public:
 
 		SetShaderValue(
 			RHICmdList,
-			RHIShader,
+			PixelShader->GetPixelShader(),
 			RenderTargetExtent,
 			vRenderTargetExtent);
 	}
@@ -196,11 +195,9 @@ public:
 
 
 private:
-	
-		LAYOUT_FIELD(FShaderParameter, GammaColorScaleAndInverse)
-		LAYOUT_FIELD(FShaderParameter, GammaOverlayColor)
-		LAYOUT_FIELD(FShaderParameter, RenderTargetExtent)
-	
+	FShaderParameter				GammaColorScaleAndInverse;
+	FShaderParameter				GammaOverlayColor;
+	FShaderParameter				RenderTargetExtent;
 };
 
 

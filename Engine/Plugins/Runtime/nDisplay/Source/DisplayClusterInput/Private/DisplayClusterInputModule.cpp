@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DisplayClusterInputModule.h"
 
@@ -11,14 +11,18 @@
 FDisplayClusterInputModule::FDisplayClusterInputModule()
 	: bIsSessionStarted(false)
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputModule);
 }
 FDisplayClusterInputModule::~FDisplayClusterInputModule()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputModule);
 }
 
 
 void FDisplayClusterInputModule::StartupModule()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputModule)
+
 	IInputDeviceModule::StartupModule();
 
 	ButtonController.Initialize();
@@ -34,11 +38,14 @@ void FDisplayClusterInputModule::StartupModule()
 
 void FDisplayClusterInputModule::ShutdownModule()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputModule);
 }
 
 
 TSharedPtr< class IInputDevice > FDisplayClusterInputModule::CreateInputDevice( const TSharedRef< FGenericApplicationMessageHandler >& InMessageHandler )
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputModule)
+
 	TSharedPtr< FDisplayClusterInput > InputDevice(new FDisplayClusterInput(InMessageHandler, *this));
 	DisplayClusterInputDevice = InputDevice;
 
@@ -47,6 +54,8 @@ TSharedPtr< class IInputDevice > FDisplayClusterInputModule::CreateInputDevice( 
 
 void FDisplayClusterInputModule::SendControllerEvents(const TSharedPtr<FGenericApplicationMessageHandler>& MessageHandler, int UnrealControllerIndex)
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputModule);
+
 	const double CurrentTime = FPlatformTime::Seconds();
 	
 	// Send all changes for button and analog to UE4 core
@@ -58,11 +67,13 @@ void FDisplayClusterInputModule::SendControllerEvents(const TSharedPtr<FGenericA
 
 void FDisplayClusterInputModule::UpdateVrpnBindings()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputModule);
+
 	{
 		// Set up delayed keyboard reflections
 		for (const auto& It : DelayedKeyboardReflects)
 		{
-			KeyboardController.ReflectKeyboard(It.VrpnDeviceId, It.ReflectionMode);
+			KeyboardController.ReflectKeyboard(It.VrpnDeviceId, It.ReflectMode);
 		}
 
 		DelayedKeyboardReflects.Empty();
@@ -106,13 +117,15 @@ bool FDisplayClusterInputModule::BindVrpnChannel(const FString& VrpnDeviceId, ui
 }
 
 // Bind all keyboard keys to ue4 (default keyboard and|or nDisplay second keyboard namespaces)
-bool FDisplayClusterInputModule::SetVrpnKeyboardReflectionMode(const FString& VrpnDeviceId, EDisplayClusterInputKeyboardReflectionMode ReflectionMode)
+bool FDisplayClusterInputModule::SetVrpnKeyboardReflectionMode(const FString& VrpnDeviceId, EDisplayClusterInputKeyboardReflectMode ReflectMode)
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputModule);
+
 	if (IsSessionStarted())
 	{
 		if (KeyboardController.HasDevice(VrpnDeviceId))
 		{
-			DelayedKeyboardReflects.Add(VrpnKeyboardReflect(VrpnDeviceId, ReflectionMode));
+			DelayedKeyboardReflects.Add(VrpnKeyboardReflect(VrpnDeviceId, ReflectMode));
 			return true;
 		}
 	}
@@ -122,6 +135,8 @@ bool FDisplayClusterInputModule::SetVrpnKeyboardReflectionMode(const FString& Vr
 
 void FDisplayClusterInputModule::OnDisplayClusterStartSession()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputModule);
+
 	bIsSessionStarted = true;
 
 	for (auto& Controller : Controllers)
@@ -132,6 +147,8 @@ void FDisplayClusterInputModule::OnDisplayClusterStartSession()
 
 void FDisplayClusterInputModule::OnDisplayClusterEndSession()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputModule);
+
 	bIsSessionStarted = false;
 
 	for (auto& Controller : Controllers)
@@ -142,6 +159,8 @@ void FDisplayClusterInputModule::OnDisplayClusterEndSession()
 
 void FDisplayClusterInputModule::OnDisplayClusterPreTick()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterInputModule);
+	
 	if (IsSessionStarted())
 	{
 		for (auto& Controller : Controllers)

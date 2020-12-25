@@ -15,7 +15,6 @@
 #include <string>
 
 #include "gmock/gmock.h"
-#include "source/util/string_utils.h"
 #include "test/test_fixture.h"
 #include "test/unit_spirv.h"
 
@@ -24,7 +23,7 @@ namespace {
 
 using spvtest::Concatenate;
 using spvtest::MakeInstruction;
-using utils::MakeVector;
+using spvtest::MakeVector;
 using spvtest::TextToBinaryTest;
 using testing::Eq;
 

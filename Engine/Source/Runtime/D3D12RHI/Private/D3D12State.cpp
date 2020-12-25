@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	D3D12State.cpp: D3D state implementation.
@@ -291,8 +291,6 @@ FD3D12SamplerState* FD3D12Device::CreateSampler(const FSamplerStateInitializerRH
 
 		SamplerID++;
 
-		INC_DWORD_STAT(STAT_UniqueSamplers);
-
 		return NewSampler;
 	}
 }
@@ -407,7 +405,7 @@ FBlendStateRHIRef FD3D12DynamicRHI::RHICreateBlendState(const FBlendStateInitial
 	D3D12_BLEND_DESC &BlendDesc = BlendState->Desc;
 	FMemory::Memzero(&BlendDesc, sizeof(D3D12_BLEND_DESC));
 
-	BlendDesc.AlphaToCoverageEnable = Initializer.bUseAlphaToCoverage;
+	BlendDesc.AlphaToCoverageEnable = false;
 	BlendDesc.IndependentBlendEnable = Initializer.bUseIndependentRenderTargetBlendStates;
 
 	static_assert(MaxSimultaneousRenderTargets <= D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT, "Too many MRTs.");

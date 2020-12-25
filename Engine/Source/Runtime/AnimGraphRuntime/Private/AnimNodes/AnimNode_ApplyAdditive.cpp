@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimNodes/AnimNode_ApplyAdditive.h"
 #include "AnimationRuntime.h"
 #include "Animation/AnimInstanceProxy.h"
-#include "Animation/AnimTrace.h"
 
 /////////////////////////////////////////////////////
 // FAnimNode_ApplyAdditive
@@ -60,8 +59,6 @@ void FAnimNode_ApplyAdditive::Update_AnyThread(const FAnimationUpdateContext& Co
 			Additive.Update(Context.FractionalWeight(ActualAlpha));
 		}
 	}
-
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Alpha"), ActualAlpha);
 }
 
 void FAnimNode_ApplyAdditive::Evaluate_AnyThread(FPoseContext& Output)
@@ -76,10 +73,7 @@ void FAnimNode_ApplyAdditive::Evaluate_AnyThread(FPoseContext& Output)
 		Base.Evaluate(Output);
 		Additive.Evaluate(AdditiveEvalContext);
 
-		FAnimationPoseData OutAnimationPoseData(Output);
-		const FAnimationPoseData AdditiveAnimationPoseData(AdditiveEvalContext);
-
-		FAnimationRuntime::AccumulateAdditivePose(OutAnimationPoseData, AdditiveAnimationPoseData, ActualAlpha, AAT_LocalSpaceBase);
+		FAnimationRuntime::AccumulateAdditivePose(Output.Pose, AdditiveEvalContext.Pose, Output.Curve, AdditiveEvalContext.Curve, ActualAlpha, AAT_LocalSpaceBase);
 		Output.Pose.NormalizeRotations();
 	}
 	else

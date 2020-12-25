@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Sections/MovieScene3DConstraintSection.h"
 #include "MovieSceneObjectBindingID.h"
@@ -30,8 +30,6 @@ void UMovieScene3DConstraintSection::OnBindingsUpdated(const TMap<FGuid, FGuid>&
 {
 	if (OldGuidToNewGuidMap.Contains(ConstraintBindingID.GetGuid()))
 	{
-		Modify();
-
 		ConstraintBindingID.SetGuid(OldGuidToNewGuidMap[ConstraintBindingID.GetGuid()]);
 	}
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,7 +18,6 @@ public:
 
 	//~ Begin FArchive Interface
 	virtual FArchive& operator<<(FName& Name) override;
-	virtual FArchive& operator<<(FSoftObjectPath& AssetPtr) override;
 	virtual FString GetArchiveName() const override;
 	//~ End FArchive Interface
 
@@ -36,7 +35,6 @@ public:
 
 	//~ Begin FArchive Interface
 	virtual FArchive& operator<<(FName& Name) override;
-	FArchive& operator<<(FSoftObjectPath& AssetPtr) override;
 	virtual FString GetArchiveName() const override;
 	//~ End FArchive Interface
 

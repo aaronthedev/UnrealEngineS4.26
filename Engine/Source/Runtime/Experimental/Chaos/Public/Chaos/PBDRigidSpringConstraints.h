@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Chaos/Array.h"
@@ -8,51 +8,63 @@
 
 namespace Chaos
 {
-	class FPBDRigidSpringConstraints;
+	template<class T, int d>
+	class TPBDRigidSpringConstraints;
 
-	class CHAOS_API FPBDRigidSpringConstraintHandle : public TContainerConstraintHandle<FPBDRigidSpringConstraints>
+	template<class T, int d>
+	class CHAOS_API TPBDRigidSpringConstraintHandle : public TContainerConstraintHandle<TPBDRigidSpringConstraints<T, d>>
 	{
 	public:
-		using Base = TContainerConstraintHandle<FPBDRigidSpringConstraints>;
-		using FConstraintContainer = FPBDRigidSpringConstraints;
-		using FGeometryParticleHandle = TGeometryParticleHandle<FReal, 3>;
+		using Base = TContainerConstraintHandle<TPBDRigidSpringConstraints<T, d>>;
+		using FConstraintContainer = TPBDRigidSpringConstraints<T, d>;
 
-		FPBDRigidSpringConstraintHandle()
-		{
-		}
-		
-		FPBDRigidSpringConstraintHandle(FConstraintContainer* InConstraintContainer, int32 InConstraintIndex) 
-		: TContainerConstraintHandle<FPBDRigidSpringConstraints>(StaticType(), InConstraintContainer, InConstraintIndex) 
-		{
-		}
+		TPBDRigidSpringConstraintHandle() {}
+		TPBDRigidSpringConstraintHandle(FConstraintContainer* InConstraintContainer, int32 InConstraintIndex) : TContainerConstraintHandle<TPBDRigidSpringConstraints<T, d>>(InConstraintContainer, InConstraintIndex) {}
 
-		static FConstraintHandle::EType StaticType() { return FConstraintHandle::EType::RigidSpring; }
+		const TVector<TVector<T, 3>, 2>& GetConstraintPositions() const;
+		void SetConstraintPositions(const TVector<TVector<T, 3>, 2>& ConstraintPositions);
 
-		const TVector<FVec3, 2>& GetConstraintPositions() const;
-		void SetConstraintPositions(const TVector<FVec3, 2>& ConstraintPositions);
-		
-		TVector<FGeometryParticleHandle*, 2> GetConstrainedParticles() const;
-
-		// Get the rest length of the spring
-		FReal GetRestLength() const;
-		void SetRestLength(const FReal SpringLength);
-
+	protected:
+		using Base::ConstraintIndex;
+		using Base::ConstraintContainer;
 	};
 
 
-	class FPBDRigidSpringConstraints : public FPBDConstraintContainer
+	template<class T, int d>
+	class TPBDRigidSpringConstraints : public TPBDConstraintContainer<T, d>
 	{
 	public:
-		// @todo(ccaulfield): an alternative AddConstraint which takes the constrain settings rather than assuming everything is in world-space rest pose
+		using Base = TPBDConstraintContainer<T, d>;
+		using FReal = T;
+		static const int Dimensions = d;
+		using FConstraintHandle = TPBDRigidSpringConstraintHandle<FReal, Dimensions>;
+		using FConstraintHandleAllocator = TConstraintHandleAllocator<TPBDRigidSpringConstraints<FReal, Dimensions>>;
+		using FConstrainedParticlePair = TVector<TGeometryParticleHandle<T, d>*, 2>;
 
-		using Base = FPBDConstraintContainer;
-		using FConstraintContainerHandle = FPBDRigidSpringConstraintHandle;
-		using FConstraintHandleAllocator = TConstraintHandleAllocator<FPBDRigidSpringConstraints>;
-		using FConstrainedParticlePair = TVector<TGeometryParticleHandle<FReal, 3>*, 2>;
-		using FHandles = TArray<FConstraintContainerHandle*>;
+		TPBDRigidSpringConstraints(const T InStiffness = (T)1)
+			: Stiffness(InStiffness) 
+		{}
 
-		FPBDRigidSpringConstraints();
-		virtual ~FPBDRigidSpringConstraints();
+		TPBDRigidSpringConstraints(const TArray<TVector<T, 3>>& Locations0, const TArray<TVector<T, 3>>& Locations1, TArray<FConstrainedParticlePair>&& InConstraints, const T InStiffness = (T)1)
+			: Constraints(MoveTemp(InConstraints)), Stiffness(InStiffness)
+		{
+			if (Constraints.Num() > 0)
+			{
+				Handles.Reserve(Constraints.Num());
+				Distances.Reserve(Constraints.Num());
+				SpringDistances.Reserve(Constraints.Num());
+				for (int32 ConstraintIndex = 0; ConstraintIndex < Constraints.Num(); ++ConstraintIndex)
+				{
+					Handles.Add(HandleAllocator.AllocHandle(this, ConstraintIndex));
+					Distances.Add({});
+					SpringDistances.Add({});
+					UpdateDistance(ConstraintIndex, Locations0[ConstraintIndex], Locations1[ConstraintIndex]);
+				}
+			}
+		}
+
+		virtual ~TPBDRigidSpringConstraints() {}
+
 		//
 		// Constraint Container API
 		//
@@ -68,44 +80,57 @@ namespace Chaos
 		/**
 		 * Add a constraint initialized from current world-space particle positions.
 		 * You would use this method when your objects are already positioned in the world.
-		 *
-		 * \param InConstrainedParticles the two particles connected by the spring
-		 * \param InLocations the world-space locations of the spring connectors on each particle
 		 */
-		FConstraintContainerHandle* AddConstraint(const FConstrainedParticlePair& InConstrainedParticles, const  TVector<FVec3, 2>& InLocations, FReal Stiffness, FReal Damping, FReal RestLength);
+		FConstraintHandle* AddConstraint(const FConstrainedParticlePair& InConstrainedParticles, const  TVector<TVector<T, 3>, 2>& InLocations)
+		{
+			Handles.Add(HandleAllocator.AllocHandle(this, Handles.Num()));
+			int32 ConstraintIndex = Constraints.Add(InConstrainedParticles);
+			Distances.Add({});
+			SpringDistances.Add({});
+			UpdateDistance(ConstraintIndex, InLocations[0], InLocations[1]);
+			return Handles.Last();
+		}
 
 		/**
 		 * Remove the specified constraint.
 		 */
-		void RemoveConstraint(int ConstraintIndex);
-
-		/**
-		 * Disabled the specified constraint.
-		 */
-		void DisableConstraints(const TSet<TGeometryParticleHandle<FReal, 3>*>& RemovedParticles) 
+		void RemoveConstraint(int ConstraintIndex)
 		{
-			// @todo(chaos)
+			FConstraintHandle* ConstraintHandle = Handles[ConstraintIndex];
+			if (ConstraintHandle != nullptr)
+			{
+				// Release the handle for the freed constraint
+				HandleAllocator.FreeHandle(ConstraintHandle);
+				Handles[ConstraintIndex] = nullptr;
+			}
+
+			// Swap the last constraint into the gap to keep the array packed
+			Constraints.RemoveAtSwap(ConstraintIndex);
+			Distances.RemoveAtSwap(ConstraintIndex);
+			Handles.RemoveAtSwap(ConstraintIndex);
+
+			// Update the handle for the constraint that was moved
+			if (ConstraintIndex < Handles.Num())
+			{
+				SetConstraintIndex(Handles[ConstraintIndex], ConstraintIndex);
+			}
 		}
 
+		// @todo(ccaulfield): rename/remove  this
+		void RemoveConstraints(const TSet<TGeometryParticleHandle<T, d>*>& RemovedParticles)
+		{
+		}
 
 		//
 		// Constraint API
 		//
-		FHandles& GetConstraintHandles()
-		{
-			return Handles;
-		}
-		const FHandles& GetConstConstraintHandles() const
-		{
-			return Handles;
-		}
 
-		const FConstraintContainerHandle* GetConstraintHandle(int32 ConstraintIndex) const
+		const FConstraintHandle* GetConstraintHandle(int32 ConstraintIndex) const
 		{
 			return Handles[ConstraintIndex];
 		}
 
-		FConstraintContainerHandle* GetConstraintHandle(int32 ConstraintIndex)
+		FConstraintHandle* GetConstraintHandle(int32 ConstraintIndex)
 		{
 			return Handles[ConstraintIndex];
 		}
@@ -121,7 +146,7 @@ namespace Chaos
 		/**
 		 * Get the local-space constraint positions for each body.
 		 */
-		const TVector<FVec3, 2>& GetConstraintPositions(int ConstraintIndex) const
+		const TVector<TVector<T, 3>, 2>& GetConstraintPositions(int ConstraintIndex) const
 		{
 			return Distances[ConstraintIndex];
 		}
@@ -129,25 +154,9 @@ namespace Chaos
 		/**
 		 * Set the local-space constraint positions for each body.
 		 */
-		void SetConstraintPositions(int ConstraintIndex, const TVector<FVec3, 2>& ConstraintPositions)
+		void SetConstraintPositions(int ConstraintIndex, const TVector<TVector<T, 3>, 2>& ConstraintPositions)
 		{
 			Distances[ConstraintIndex] = ConstraintPositions;
-		}
-
-		/**
-		 * Get the rest length of the spring
-		 */
-		FReal GetRestLength(int32 ConstraintIndex) const
-		{
-			return SpringSettings[ConstraintIndex].RestLength;
-		}
-
-		/**
-		 * Set the rest length of the spring
-		 */
-		void SetRestLength(int32 ConstraintIndex, const FReal SpringLength)
-		{
-			SpringSettings[ConstraintIndex].RestLength = SpringLength;
 		}
 
 
@@ -155,28 +164,21 @@ namespace Chaos
 		// Island Rule API
 		//
 
-		void PrepareTick() {}
-
-		void UnprepareTick() {}
-
-		void PrepareIteration(FReal Dt) {}
-
-		void UnprepareIteration(FReal Dt) {}
-
-		void UpdatePositionBasedState(const FReal Dt) {}
-
-		bool Apply(const FReal Dt, const int32 It, const int32 NumIts);
-
-		bool ApplyPushOut(const FReal Dt, const int32 It, const int32 NumIts)
+		void UpdatePositionBasedState(const T Dt)
 		{
-			return false;
 		}
 
-		bool Apply(const FReal Dt, const TArray<FConstraintContainerHandle*>& InConstraintHandles, const int32 It, const int32 NumIts);
-
-		bool ApplyPushOut(const FReal Dt, const TArray<FConstraintContainerHandle*>& InConstraintHandles, const int32 It, const int32 NumIts)
+		void Apply(const T Dt, const TArray<FConstraintHandle*>& InConstraintHandles, const int32 It, const int32 NumIts)
 		{
-			return false;
+			for (FConstraintHandle* ConstraintHandle : InConstraintHandles)
+			{
+				ApplySingle(Dt, ConstraintHandle->GetConstraintIndex());
+			}
+		}
+
+		// @todo(ccaulfield): remove  this
+		void ApplyPushOut(const T Dt, const TArray<FConstraintHandle*>& InConstraintHandles)
+		{
 		}
 
 	protected:
@@ -184,24 +186,18 @@ namespace Chaos
 		using Base::SetConstraintIndex;
 
 	private:
-		void ApplySingle(const FReal Dt, int32 ConstraintIndex) const;
+		void ApplySingle(const T Dt, int32 ConstraintIndex) const;
 
-		void UpdateDistance(int32 ConstraintIndex, const FVec3& Location0, const FVec3& Location1);
+		void UpdateDistance(int32 ConstraintIndex, const TVector<T, d>& Location0, const TVector<T, d>& Location1);
 
-		FVec3 GetDelta(int32 ConstraintIndex, const FVec3& WorldSpaceX1, const FVec3& WorldSpaceX2) const;
-
-		struct FSpringSettings
-		{
-			FReal Stiffness;
-			FReal Damping;
-			FReal RestLength;
-		};
+		TVector<T, d> GetDelta(int32 ConstraintIndex, const TVector<T, d>& WorldSpaceX1, const TVector<T, d>& WorldSpaceX2) const;
 
 		TArray<FConstrainedParticlePair> Constraints;
-		TArray<TVector<FVec3, 2>> Distances;
-		TArray<FSpringSettings> SpringSettings;
+		TArray<TVector<TVector<T, 3>, 2>> Distances;
+		TArray<T> SpringDistances;
+		T Stiffness;
 
-		TArray<FConstraintContainerHandle*> Handles;
+		TArray<FConstraintHandle*> Handles;
 		FConstraintHandleAllocator HandleAllocator;
 	};
 }

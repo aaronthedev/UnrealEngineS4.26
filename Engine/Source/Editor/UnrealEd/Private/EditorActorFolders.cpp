@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EditorActorFolders.h"
 #include "GameFramework/Actor.h"
@@ -174,6 +174,10 @@ void FActorFolders::OnActorFolderChanged(const AActor* InActor, FName OldPath)
 	if (AddFolderToWorld(*World, NewPath))
 	{
 		OnFolderCreate.Broadcast(*World, NewPath);
+	}
+	else
+	{
+		Transaction.Cancel();
 	}
 }
 
@@ -421,6 +425,10 @@ void FActorFolders::CreateFolder(UWorld& InWorld, FName Path)
 	if (AddFolderToWorld(InWorld, Path))
 	{
 		OnFolderCreate.Broadcast(InWorld, Path);
+	}
+	else
+	{
+		Transaction.Cancel();
 	}
 }
 

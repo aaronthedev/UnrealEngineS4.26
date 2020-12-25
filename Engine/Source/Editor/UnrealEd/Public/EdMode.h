@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,7 +10,6 @@
 #include "EngineGlobals.h"
 #include "EditorModeRegistry.h"
 #include "Tools/UEdMode.h"
-#include "Templates/SharedPointer.h"
 
 class FCanvas;
 class FEditorModeTools;
@@ -169,7 +168,7 @@ public:
 
 	virtual void Enter();
 	virtual void Exit();
-	virtual UTexture2D* GetVertexTexture();
+	virtual UTexture2D* GetVertexTexture() { return GEngine->DefaultBSPVertexTexture; }
 	
 	/**
 	 * Lets each tool determine if it wants to use the editor widget or not.  If the tool doesn't want to use it,
@@ -313,9 +312,9 @@ public:
 	/** Returns true if this structure can support creating a widget in the editor */
 	static bool CanCreateWidgetForStructure(const UStruct* InPropStruct);
 	/** Returns true if this property can support creating a widget in the editor */
-	static bool CanCreateWidgetForProperty(FProperty* InProp);
+	static bool CanCreateWidgetForProperty(UProperty* InProp);
 	/** See if we should create a widget for the supplied property when selecting an actor instance */
-	static bool ShouldCreateWidgetForProperty(FProperty* InProp);
+	static bool ShouldCreateWidgetForProperty(UProperty* InProp);
 
 public:
 
@@ -404,7 +403,7 @@ protected:
 ------------------------------------------------------------------------------*/
 
 /**
- * The default editing mode. 
+ * The default editing mode.  User can work with BSP and the builder brush. Vector and array properties are also visually editable.
  */
 class FEdModeDefault : public FEdMode
 {

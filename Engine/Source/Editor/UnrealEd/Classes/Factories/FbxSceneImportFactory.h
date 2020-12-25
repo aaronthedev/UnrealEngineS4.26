@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -341,7 +341,7 @@ namespace UnFbx
 typedef TMap<FString, UnFbx::FBXImportOptions*> ImportOptionsNameMap;
 typedef ImportOptionsNameMap* ImportOptionsNameMapPtr;
 
-UCLASS(BlueprintType, hidecategories=Object)
+UCLASS(hidecategories=Object)
 class UNREALED_API UFbxSceneImportFactory : public USceneImportFactory
 {
 	GENERATED_UCLASS_BODY()
@@ -356,15 +356,15 @@ class UNREALED_API UFbxSceneImportFactory : public USceneImportFactory
 	virtual bool ImportsAssets() const override { return true; }
 
 	/** Import options UI detail when importing fbx scene */
-	UPROPERTY(BlueprintReadWrite, Category = "Editor Scripting | Fbx Scene Import", Transient)
+	UPROPERTY(Transient)
 	class UFbxSceneImportOptions* SceneImportOptions;
 	
 	/** Import options UI detail when importing fbx scene static mesh*/
-	UPROPERTY(BlueprintReadWrite, Category = "Editor Scripting | Fbx Scene Import", Transient)
+	UPROPERTY(Transient)
 	class UFbxSceneImportOptionsStaticMesh* SceneImportOptionsStaticMesh;
 	
 	/** Import options UI detail when importing fbx scene skeletal mesh*/
-	UPROPERTY(BlueprintReadWrite, Category = "Editor Scripting | Fbx Scene Import", Transient)
+	UPROPERTY(Transient)
 	class UFbxSceneImportOptionsSkeletalMesh* SceneImportOptionsSkeletalMesh;
 	
 	/** Import data used when importing static meshes */

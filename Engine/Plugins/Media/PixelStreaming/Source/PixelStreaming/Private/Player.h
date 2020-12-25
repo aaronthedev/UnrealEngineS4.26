@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -62,7 +62,7 @@ public:
 		return GetUrl();
 	}
 	
-	FGuid GetPlayerPluginGUID() const override;
+	FName GetPlayerName() const override;
 
 	IMediaSamples& GetSamples() override;
 			

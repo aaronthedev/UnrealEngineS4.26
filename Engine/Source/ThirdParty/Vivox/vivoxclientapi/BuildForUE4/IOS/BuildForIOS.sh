@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Copyright Epic Games, Inc. All Rights Reserved.
+# Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 SCRIPT_DIR=$(cd $(dirname $0) && pwd)
 
@@ -12,7 +12,7 @@ fi
 mkdir -pv "${BUILD_DIR}"
 
 cd "${BUILD_DIR}"
-../../../../../../Extras/ThirdPartyNotUE/CMake/bin/cmake -G "Xcode" -DVIVOXSDK_PATH=../../vivox-sdk/Include -DCMAKE_XCODE_ATTRIBUTE_SDKROOT=iphoneos -DCMAKE_XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET=8.0 -DCMAKE_XCODE_ATTRIBUTE_ONLY_ACTIVE_ARCH=NO -DCMAKE_XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY=1,2 -DCMAKE_XCODE_ATTRIBUTE_BITCODE_GENERATION_MODE=bitcode -DUSE_LOGIN_SESSION_AUDIO_SETTINGS=1 -DVALIDATE_AUDIO_DEVICE_SELECTION=1 "${SCRIPT_DIR}/.."
+../../../../../../Extras/ThirdPartyNotUE/CMake/bin/cmake -G "Xcode" -DVIVOXSDK_PATH=../../vivox-sdk/Include -DCMAKE_XCODE_ATTRIBUTE_SDKROOT=iphoneos -DCMAKE_XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET=8.0 -DCMAKE_XCODE_ATTRIBUTE_ONLY_ACTIVE_ARCH=NO -DCMAKE_XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY=1,2 -DCMAKE_XCODE_ATTRIBUTE_BITCODE_GENERATION_MODE=bitcode "${SCRIPT_DIR}/.."
 
 function build()
 {
@@ -21,8 +21,7 @@ function build()
 }
 
 build RelWithDebInfo
-rm -rf ../Release
-mv -v ../RelWithDebInfo ../Release
+mv -v ../RelWithDebInfo/libvivoxclientapi.a ../Release/libvivoxclientapi.a
 build Debug
 cd "${SCRIPT_DIR}"
 rm -rf "${BUILD_DIR}"

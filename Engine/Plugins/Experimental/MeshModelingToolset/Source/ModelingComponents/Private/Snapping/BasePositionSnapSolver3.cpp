@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Snapping/BasePositionSnapSolver3.h"
 #include "VectorUtil.h"
@@ -29,25 +29,10 @@ void FBasePositionSnapSolver3::ResetActiveSnap()
 	ClearActiveSnapData();
 }
 
-void FBasePositionSnapSolver3::AddPointTarget(const FVector3d& Position, int TargetID, int Priority)
-{
-	FSnapTargetPoint Point;
-	Point.Position = Position;
-	Point.TargetID = TargetID;
-	Point.Priority = Priority;
-	Point.bHaveCustomMetric = false;
-	TargetPoints.Add(Point);
-}
 
-
-void FBasePositionSnapSolver3::AddPointTarget(const FVector3d& Position, int TargetID, const FCustomMetric& CustomMetric, int Priority)
+void FBasePositionSnapSolver3::AddPointTarget(const FVector3d& Position, int TargetID, int Priority, double OverrideMetric)
 {
-	FSnapTargetPoint Point;
-	Point.Position = Position;
-	Point.TargetID = TargetID;
-	Point.Priority = Priority;
-	Point.bHaveCustomMetric = true;
-	Point.CustomMetric = CustomMetric;
+	FSnapTargetPoint Point = { Position, TargetID, Priority, OverrideMetric };
 	TargetPoints.Add(Point);
 }
 
@@ -137,10 +122,10 @@ bool FBasePositionSnapSolver3::IsIgnored(int TargetID) const
 }
 
 
-int32 FBasePositionSnapSolver3::FindIndexOfBestSnapInSet(const TArray<FSnapTargetPoint>& TestTargets, double& MinMetric, int& MinPriority,
+const FBasePositionSnapSolver3::FSnapTargetPoint* FBasePositionSnapSolver3::FindBestSnapInSet(const TArray<FSnapTargetPoint>& TestTargets, double& MinMetric, int& MinPriority,
 	const TFunction<FVector3d(const FVector3d&)>& GetSnapPointFromFunc)
 {
-	int32 BestIndex = -1;
+	const FSnapTargetPoint* BestTarget = nullptr;
 	int NumTargets = TestTargets.Num();
 	for (int k = 0; k < NumTargets; ++k)
 	{
@@ -153,47 +138,17 @@ int32 FBasePositionSnapSolver3::FindIndexOfBestSnapInSet(const TArray<FSnapTarge
 			continue;
 		}
 
-		double TestMetric = SnapMetricTolerance;
-		if (TestTargets[k].bHaveCustomMetric)
-		{
-			switch (TestTargets[k].CustomMetric.Type)
-			{
-			case ECustomMetricType::MinValue:
-				TestMetric = FMathd::Min(SnapMetricTolerance, TestTargets[k].CustomMetric.Value);
-				break;
-			case ECustomMetricType::Multiplier:
-				TestMetric = TestTargets[k].CustomMetric.Value * SnapMetricTolerance;
-				break;
-			case ECustomMetricType::ReplaceValue:
-				TestMetric = TestTargets[k].CustomMetric.Value;
-				break;
-			}
-		}
-
 		FVector3d SnapPoint = GetSnapPointFromFunc(TestTargets[k].Position);
 		double Metric = SnapMetricFunc(SnapPoint, TestTargets[k].Position);
-
-		if (Metric < TestMetric)
+		if (Metric < SnapMetricTolerance && Metric < TestTargets[k].OverrideMetric)
 		{
 			if (Metric < MinMetric || TestTargets[k].Priority < MinPriority)
 			{
 				MinMetric = Metric;
-				BestIndex = k;
+				BestTarget = &TestTargets[k];
 				MinPriority = TestTargets[k].Priority;
 			}
 		}
-	}
-	return BestIndex;
-}
-
-const FBasePositionSnapSolver3::FSnapTargetPoint* FBasePositionSnapSolver3::FindBestSnapInSet(const TArray<FSnapTargetPoint>& TestTargets, double& MinMetric, int& MinPriority,
-	const TFunction<FVector3d(const FVector3d&)>& GetSnapPointFromFunc)
-{
-	const FSnapTargetPoint* BestTarget = nullptr;
-	int32 BestIndex = FindIndexOfBestSnapInSet(TestTargets, MinMetric, MinPriority, GetSnapPointFromFunc);
-	if (BestIndex >= 0)
-	{
-		BestTarget = &TestTargets[BestIndex];
 	}
 	return BestTarget;
 }

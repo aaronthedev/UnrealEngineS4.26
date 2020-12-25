@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	HeightfieldLighting.h
@@ -102,18 +102,18 @@ public:
 
 	void SetupHeightfieldsForScene(const FScene& Scene, FRHICommandListImmediate& RHICmdList);
 
-	void ClearShadowing(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FLightSceneInfo& LightSceneInfo) const;
+	void ClearShadowing(const FViewInfo& View, FRHICommandListImmediate& RHICmdList, const FLightSceneInfo& LightSceneInfo) const;
 
-	void ComputeShadowMapShadowing(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FProjectedShadowInfo* ProjectedShadowInfo) const;
+	void ComputeShadowMapShadowing(const FViewInfo& View, FRHICommandListImmediate& RHICmdList, const FProjectedShadowInfo* ProjectedShadowInfo) const;
 
 	void ComputeRayTracedShadowing(
-		FRDGBuilder& GraphBuilder,
 		const FViewInfo& View, 
+		FRHICommandListImmediate& RHICmdList, 
 		const FProjectedShadowInfo* ProjectedShadowInfo, 
 		FLightTileIntersectionResources* TileIntersectionResources,
 		class FDistanceFieldObjectBufferResource& CulledObjectBuffers) const;
 
-	void ComputeLighting(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FLightSceneInfo& LightSceneInfo) const;
+	void ComputeLighting(const FViewInfo& View, FRHICommandListImmediate& RHICmdList, const FLightSceneInfo& LightSceneInfo) const;
 
 	void ComputeOcclusionForScreenGrid(
 		const FViewInfo& View, 
@@ -121,6 +121,13 @@ public:
 		FSceneRenderTargetItem& DistanceFieldNormal,
 		const class FAOScreenGridResources& ScreenGridResources,
 		const class FDistanceFieldAOParameters& Parameters) const;
+
+	void ComputeIrradianceForScreenGrid(
+		const FViewInfo& View, 
+		FRHICommandListImmediate& RHICmdList, 
+		FSceneRenderTargetItem& DistanceFieldNormal, 
+		const FAOScreenGridResources& ScreenGridResources,
+		const FDistanceFieldAOParameters& Parameters) const;
 
 	void CompositeHeightfieldsIntoGlobalDistanceField(
 		FRHICommandList& RHICmdList,
@@ -141,7 +148,6 @@ extern FRHIShaderResourceView* GetHeightfieldDescriptionsSRV();
 
 class FHeightfieldDescriptionParameters
 {
-	DECLARE_TYPE_LAYOUT(FHeightfieldDescriptionParameters, NonVirtual);
 public:
 	void Bind(const FShaderParameterMap& ParameterMap)
 	{
@@ -164,15 +170,12 @@ public:
 	}
 
 private:
-	
-		LAYOUT_FIELD(FShaderResourceParameter, HeightfieldDescriptions)
-		LAYOUT_FIELD(FShaderParameter, NumHeightfields)
-	
+	FShaderResourceParameter HeightfieldDescriptions;
+	FShaderParameter NumHeightfields;
 };
 
 class FHeightfieldTextureParameters
 {
-	DECLARE_TYPE_LAYOUT(FHeightfieldTextureParameters, NonVirtual);
 public:
 	void Bind(const FShaderParameterMap& ParameterMap)
 	{
@@ -221,12 +224,10 @@ public:
 	}
 
 private:
-	
-		LAYOUT_FIELD(FShaderResourceParameter, HeightfieldTexture)
-		LAYOUT_FIELD(FShaderResourceParameter, HeightfieldSampler)
-		LAYOUT_FIELD(FShaderResourceParameter, DiffuseColorTexture)
-		LAYOUT_FIELD(FShaderResourceParameter, DiffuseColorSampler)
-		LAYOUT_FIELD(FShaderResourceParameter, VisibilityTexture)
-		LAYOUT_FIELD(FShaderResourceParameter, VisibilitySampler)
-	
+	FShaderResourceParameter HeightfieldTexture;
+	FShaderResourceParameter HeightfieldSampler;
+	FShaderResourceParameter DiffuseColorTexture;
+	FShaderResourceParameter DiffuseColorSampler;
+	FShaderResourceParameter VisibilityTexture;
+	FShaderResourceParameter VisibilitySampler;
 };

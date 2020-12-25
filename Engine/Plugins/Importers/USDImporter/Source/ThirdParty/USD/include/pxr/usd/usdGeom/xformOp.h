@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_GEOM_XFORM_OP_H
-#define PXR_USD_USD_GEOM_XFORM_OP_H
+#ifndef USDGEOM_XFORMOP_H
+#define USDGEOM_XFORMOP_H
 
 /// \file usdGeom/xformOp.h
 
@@ -343,20 +343,6 @@ public:
     /// \c false otherwise.
     explicit operator bool() const {
         return IsDefined();
-    }
-
-    /// Equality comparison.  Return true if \a lhs and \a rhs represent the
-    /// same underlying UsdAttribute, false otherwise.
-    friend bool operator==(const UsdGeomXformOp &lhs,
-                           const UsdGeomXformOp &rhs) {
-        return lhs.GetAttr() == rhs.GetAttr();
-    }
-
-    /// Inequality comparison. Return false if \a lhs and \a rhs represent the
-    /// same underlying UsdAttribute, true otherwise.
-    friend bool operator!=(const UsdGeomXformOp &lhs,
-                           const UsdGeomXformOp &rhs) {
-        return !(lhs == rhs);
     }
 
     /// \sa UsdAttribute::GetName()

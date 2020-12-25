@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-#include "Trace/Config.h"
+#include "Trace/Trace.h"
 
 #if UE_TRACE_ENABLED
 
-#include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <mach/mach.h>
@@ -19,6 +18,33 @@
 
 namespace Trace {
 namespace Private {
+
+////////////////////////////////////////////////////////////////////////////////
+uint8* MemoryReserve(SIZE_T Size)
+{
+	void* Ptr = mmap(nullptr, Size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+	return (Ptr != MAP_FAILED) ? reinterpret_cast<uint8*>(Ptr) : nullptr;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void MemoryFree(void* Address, SIZE_T Size)
+{
+	munmap(Address, Size);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void MemoryMap(void* Address, SIZE_T Size)
+{
+	// no-op if mmap()ed with R/W
+}
+
+////////////////////////////////////////////////////////////////////////////////
+void MemoryUnmap(void* Address, SIZE_T Size)
+{
+	madvise(Address, Size, MADV_DONTNEED);
+}
+
+
 
 ////////////////////////////////////////////////////////////////////////////////
 UPTRINT ThreadCreate(const ANSICHAR* Name, void (*Entry)())
@@ -58,15 +84,27 @@ void ThreadDestroy(UPTRINT Handle)
 
 
 ////////////////////////////////////////////////////////////////////////////////
+const mach_timebase_info_data_t& TimeGetInfo()
+{
+    static mach_timebase_info_data_t Info;
+    static dispatch_once_t OnceToken;
+
+	dispatch_once(&OnceToken, ^{
+		   (void) mach_timebase_info(&Info);
+	   });
+
+	return Info;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 uint64 TimeGetFrequency()
 {
-	mach_timebase_info_data_t Info;
-	mach_timebase_info(&Info);
+	const mach_timebase_info_data_t& Info = TimeGetInfo();
 	return (uint64(1 * 1000 * 1000 * 1000) * uint64(Info.denom)) / uint64(Info.numer);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-TRACELOG_API uint64 TimeGetTimestamp()
+uint64 TimeGetTimestamp()
 {
 	return mach_absolute_time();
 }
@@ -89,7 +127,6 @@ static bool TcpSocketSetNonBlocking(int Socket, bool bNonBlocking)
 ////////////////////////////////////////////////////////////////////////////////
 UPTRINT TcpSocketConnect(const ANSICHAR* Host, uint16 Port)
 {
-#if PLATFORM_MAC // We're only accepting named hosts on desktop platforms
 	struct FAddrInfoPtr
 	{
 					~FAddrInfoPtr()	{ freeaddrinfo(Value); }
@@ -115,16 +152,6 @@ UPTRINT TcpSocketConnect(const ANSICHAR* Host, uint16 Port)
 
 	auto* SockAddr = (sockaddr_in*)Info->ai_addr;
 	SockAddr->sin_port = htons(Port);
-	int SockAddrSize = int(Info->ai_addrlen);
-#else
-	sockaddr_in SockAddrIp;
-	SockAddrIp.sin_family = AF_INET;
-	SockAddrIp.sin_addr.s_addr = inet_addr(Host);
-	SockAddrIp.sin_port = htons(Port);
-
-	auto* SockAddr = &SockAddrIp;
-	int SockAddrSize = sizeof(SockAddrIp);
-#endif
 
 	int Socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (Socket < 0)
@@ -132,7 +159,7 @@ UPTRINT TcpSocketConnect(const ANSICHAR* Host, uint16 Port)
 		return 0;
 	}
 
-	int Result = connect(Socket, (sockaddr*)SockAddr, SockAddrSize);
+	int Result = connect(Socket, Info->ai_addr, int(Info->ai_addrlen));
 	if (Result < 0)
 	{
 		close(Socket);
@@ -192,7 +219,7 @@ int32 TcpSocketAccept(UPTRINT Socket, UPTRINT& Out)
 	Inner = accept(Inner, nullptr, nullptr);
 	if (Inner < 0)
 	{
-		return (errno == EAGAIN || errno == EWOULDBLOCK) - 1; // 0 if would block else -1
+		return (Inner == EAGAIN || Inner == EWOULDBLOCK) - 1; // 0 if would block else -1
 	}
 
 	if (!TcpSocketSetNonBlocking(Inner, false))

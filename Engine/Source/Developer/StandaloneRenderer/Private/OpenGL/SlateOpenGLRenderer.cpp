@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OpenGL/SlateOpenGLRenderer.h"
 #include "Fonts/FontTypes.h"
@@ -94,7 +94,7 @@ bool FSlateOpenGLRenderer::Initialize()
 
 	ElementBatcher = MakeUnique<FSlateElementBatcher>(RenderingPolicy.ToSharedRef());
 
-#if !PLATFORM_USES_GLES
+#if !PLATFORM_USES_ES2
 	// Load OpenGL extensions if needed.  Need a current rendering context to do this
 	LoadOpenGLExtensions();
 #endif
@@ -278,7 +278,11 @@ FSlateUpdatableTexture* FSlateOpenGLRenderer::CreateUpdatableTexture(uint32 Widt
 	TArray<uint8> RawData;
 	RawData.AddZeroed(Width * Height * 4);
 	FSlateOpenGLTexture* NewTexture = new FSlateOpenGLTexture(Width, Height);
-	NewTexture->Init(GL_RGBA, RawData);
+#if !PLATFORM_USES_ES2
+	NewTexture->Init(GL_SRGB8_ALPHA8, RawData);
+#else
+	NewTexture->Init(GL_SRGB8_ALPHA8_EXT, RawData);
+#endif
 	return NewTexture;
 }
 

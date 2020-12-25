@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ProceduralMeshConversion.h"
 #include "Engine/StaticMesh.h"
-#include "Materials/Material.h"
 #include "ProceduralMeshComponent.h"
 #include "StaticMeshAttributes.h"
 #include "MeshDescription.h"
@@ -21,11 +20,6 @@ TMap<UMaterialInterface*, FPolygonGroupID> BuildMaterialMap(UProceduralMeshCompo
 		FProcMeshSection *ProcSection =
 			ProcMeshComp->GetProcMeshSection(SectionIdx);
 		UMaterialInterface *Material = ProcMeshComp->GetMaterial(SectionIdx);
-		if (Material == nullptr)
-		{
-			Material = UMaterial::GetDefaultMaterial(MD_Surface);
-		}
-
 		if (!UniqueMaterials.Contains(Material))
 		{
 			FPolygonGroupID NewPolygonGroup = MeshDescription.CreatePolygonGroup();
@@ -70,7 +64,7 @@ void MeshDescriptionToProcMesh( const FMeshDescription& MeshDescription, UProced
 	{
 		FPolygonGroupID PolygonGroupID = MeshDescription.GetTrianglePolygonGroup( TriangleID );
 		FMeshSectionAttributeData& SectionData = GroupedData.FindOrAdd(PolygonGroupID);
-		for ( const FVertexInstanceID& VertexInstanceID : MeshDescription.GetTriangleVertexInstances( TriangleID ) )
+		for ( const FVertexInstanceID VertexInstanceID : MeshDescription.GetTriangleVertexInstances( TriangleID ) )
 		{
 			auto* FoundVertexIndex = SectionData.IndexOfInstances.Find( VertexInstanceID );
 			if ( FoundVertexIndex ){
@@ -150,11 +144,6 @@ FMeshDescription BuildMeshDescription( UProceduralMeshComponent* ProcMeshComp )
 		FProcMeshSection *ProcSection =
 			ProcMeshComp->GetProcMeshSection(SectionIdx);
 		UMaterialInterface *Material = ProcMeshComp->GetMaterial(SectionIdx);
-		if (Material == nullptr)
-		{
-			Material = UMaterial::GetDefaultMaterial(MD_Surface);
-		}
-
 		FPolygonGroupID *PolygonGroupID = UniqueMaterials.Find(Material);
 		check(PolygonGroupID != nullptr);
 		PolygonGroupForSection.Add(*PolygonGroupID);

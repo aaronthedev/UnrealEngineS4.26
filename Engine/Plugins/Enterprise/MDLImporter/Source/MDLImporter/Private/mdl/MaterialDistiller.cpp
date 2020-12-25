@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #ifdef USE_MDLSDK
 
@@ -228,8 +228,7 @@ namespace Mdl
 		void SetupBaseMaterial(mi::neuraylib::ITransaction*             Transaction,
 		                       const mi::neuraylib::ICompiled_material* DistilledMaterial,
 		                       Mdl::FMaterial&                          Material,
-		                       TArray<FBakeParam>&                      MaterialBakeParams,
-		                       float MetersPerSceneUnit)
+		                       TArray<FBakeParam>&                      MaterialBakeParams)
 		{
 			TArray<FBakeParam>& BakeParams = MaterialBakeParams;
 			BakeParams.Empty();
@@ -259,7 +258,7 @@ namespace Mdl
 
 			BakeParams.Emplace((int)EParameterType::Displacement, Material.Displacement.ExpressionData, Material.Displacement.Texture,
 			                   Mdl::EValueType::Float3,
-			                   [&Material, MetersPerSceneUnit](mi::base::IInterface& ColorInterface)  //
+			                   [&Material](mi::base::IInterface& ColorInterface)  //
 			                   {
 				                   mi::base::Handle<mi::neuraylib::ICanvas> Canvas(ColorInterface.get_interface<mi::neuraylib::ICanvas>());
 				                   mi::base::Handle<mi::neuraylib::ITile>   Tile(Canvas->get_tile(0, 0));
@@ -276,7 +275,7 @@ namespace Mdl
 					                   MaxValue = FMath::Max(Data[Index + 1], MaxValue);
 					                   MaxValue = FMath::Max(Data[Index + 2], MaxValue);
 				                   }
-				                   Material.Displacement.Strength = MaxValue / MetersPerSceneUnit; // meters to unreal units
+				                   Material.Displacement.Strength = MaxValue * 100.f; // meters to unreal units
 				                   for (mi::Uint32 Index = 0; Index < Count; Index += ChannelCount)
 				                   {
 					                   Data[Index]     = Data[Index] / MaxValue;
@@ -454,7 +453,7 @@ namespace Mdl
 		PrintDebug(CompiledMaterial.get(), DistilledMaterial, Transaction);
 
 		// Setup material maps and bake them after
-		SetupBaseMaterial(Transaction, DistilledMaterial, Material, MaterialBakeParams, MetersPerSceneUnit);
+		SetupBaseMaterial(Transaction, DistilledMaterial, Material, MaterialBakeParams);
 		if (Material.PreProcessFunction)
 		{
 			Material.PreProcessFunction(Transaction, MaterialBakeParams);

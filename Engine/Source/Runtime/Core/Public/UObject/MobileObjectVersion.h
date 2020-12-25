@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreTypes.h"
@@ -17,9 +17,6 @@ struct CORE_API FMobileObjectVersion
 
 		// Added stationary point/spot light direct contribution to volumetric lightmaps. 
 		LQVolumetricLightmapLayers,
-		
-		// Store Reflection Capture in compressed format for mobile
-		StoreReflectionCaptureCompressedMobile,
 		
 		// -----<new versions can be added above this line>-------------------------------------------------
 		VersionPlusOne,

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -26,17 +26,14 @@ struct FMeshTriInfoCache
 	static FMeshTriInfoCache BuildTriInfoCache(const TriangleMeshType& Mesh)
 	{
 		FMeshTriInfoCache Cache;
-		int NT = Mesh.MaxTriangleID();
+		int NT = Mesh.TriangleCount();
 		Cache.Centroids.Resize(NT);
 		Cache.Normals.Resize(NT);
 		Cache.Areas.Resize(NT);
 
-		ParallelFor(NT, [&](int TID)
+		ParallelFor(NT, [&](int TriIdx)
 		{
-			if (Mesh.IsTriangle(TID))
-			{
-				TMeshQueries<TriangleMeshType>::GetTriNormalAreaCentroid(Mesh, TID, Cache.Normals[TID], Cache.Areas[TID], Cache.Centroids[TID]);
-			}
+			TMeshQueries<TriangleMeshType>::GetTriNormalAreaCentroid(Mesh, TriIdx, Cache.Normals[TriIdx], Cache.Areas[TriIdx], Cache.Centroids[TriIdx]);
 		});
 
 		return Cache;

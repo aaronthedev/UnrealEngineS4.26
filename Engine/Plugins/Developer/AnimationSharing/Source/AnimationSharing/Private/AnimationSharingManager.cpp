@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimationSharingManager.h"
 #include "AnimationSharingModule.h"
@@ -431,8 +431,8 @@ void UAnimationSharingManager::RegisterActorWithSkeleton(AActor* InActor, const 
 				ComponentData.ActorIndex = ActorIndex;
 				ComponentData.Component = Component;
 
-				Component->SetComponentTickEnabled(false);
 				Component->PrimaryComponentTick.bCanEverTick = false;
+				Component->SetComponentTickEnabled(false);
 				Component->bIgnoreMasterPoseComponentLOD = true;
 
 				ActorData.ComponentIndices.Add(Data->PerComponentData.Num() - 1);
@@ -484,7 +484,6 @@ void UAnimationSharingManager::UnregisterActor(AActor* InActor)
 			for (int32 ComponentIndex : ActorData.ComponentIndices)
 			{
 				SkeletonData->PerComponentData[ComponentIndex].Component->SetMasterPoseComponent(nullptr, true);
-				SkeletonData->PerComponentData[ComponentIndex].Component->PrimaryComponentTick.bCanEverTick = true;
 				SkeletonData->PerComponentData[ComponentIndex].Component->SetComponentTickEnabled(true);
 				SkeletonData->RemoveComponent(ComponentIndex);
 			}
@@ -638,6 +637,22 @@ void UAnimationSharingManager::SetMasterComponentsVisibility(bool bVisible)
 				Component->SetVisibility(bVisible);
 			}
 		}
+
+		for (FAdditiveAnimationInstance* Instance : Data->AdditiveInstanceStack.AvailableInstances)
+		{
+			if (USceneComponent* Component = Instance->GetComponent())
+			{
+				Component->SetVisibility(bVisible);
+			}
+		}
+
+		for (FAdditiveAnimationInstance* Instance : Data->AdditiveInstanceStack.InUseInstances)
+		{
+			if (USceneComponent* Component = Instance->GetComponent())
+			{
+				Component->SetVisibility(bVisible);
+			}
+		}
 	}
 }
 
@@ -773,7 +788,7 @@ bool UAnimSharingInstance::Setup(UAnimationSharingManager* AnimationSharingManag
 				SetupState(StateData, StateEntry, SkeletalMesh, SkeletonSetup, Index);
 
 				// Make sure we have at least one component set up
-				if (StateData.Components.Num() == 0)
+				if ((!StateData.bIsAdditive && StateData.Components.Num() == 0) ||(StateData.bIsAdditive && AdditiveInstanceStack.AvailableInstances.Num() == 0))
 				{
 					UE_LOG(LogAnimationSharing, Error, TEXT("No Components available for State %s"), *StateEnum->GetDisplayNameTextByValue(StateValue).ToString());
 					bErrors = true;
@@ -912,7 +927,7 @@ void UAnimSharingInstance::SetupState(FPerStateData& StateData, const FAnimation
 					Component->SetVisibility(GMasterComponentsVisible == 1);
 					Component->bPropagateCurvesToSlaves = StateEntry.bRequiresCurves;
 
-					if (AnimBPClass != nullptr && AnimSequence != nullptr && !StateEntry.bOnDemand)
+					if (AnimBPClass != nullptr && AnimSequence != nullptr)
 					{
 						Component->SetAnimInstanceClass(AnimBPClass);
 						if (UAnimSharingStateInstance* AnimInstance = Cast<UAnimSharingStateInstance>(Component->GetAnimInstance()))
@@ -978,7 +993,7 @@ void UAnimSharingInstance::SetupState(FPerStateData& StateData, const FAnimation
 
 					FAdditiveAnimationInstance* AdditiveInstance = new FAdditiveAnimationInstance();
 					AdditiveInstance->Initialise(AdditiveComponent, SkeletonSetup.AdditiveAnimBlueprint.Get());
-					StateData.AdditiveInstanceStack.AddInstance(AdditiveInstance);
+					AdditiveInstanceStack.AddInstance(AdditiveInstance);
 					
 					/** Set the current animation length length */
 					StateData.AnimationLengths.Add(AnimSequence->SequenceLength);
@@ -1315,7 +1330,7 @@ void UAnimSharingInstance::TickAdditiveInstances()
 					// Set it to base component on top of the additive animation is playing
 					SetMasterComponentForActor(Instance.ActorIndex, Instance.AdditiveAnimationInstance->GetBaseComponent());
 				}
-				FreeAdditiveInstance(Instance.State, Instance.AdditiveAnimationInstance);
+				FreeAdditiveInstance(Instance.AdditiveAnimationInstance);
 				RemoveAdditiveInstance(InstanceIndex);
 				--InstanceIndex;
 
@@ -1714,11 +1729,10 @@ void UAnimSharingInstance::FreeBlendInstance(FTransitionBlendInstance* Instance)
 	BlendInstanceStack.FreeInstance(Instance);
 }
 
-void UAnimSharingInstance::FreeAdditiveInstance(uint8 StateIndex, FAdditiveAnimationInstance* Instance)
+void UAnimSharingInstance::FreeAdditiveInstance(FAdditiveAnimationInstance* Instance)
 {
 	Instance->Stop();
-
-	PerStateData[StateIndex].AdditiveInstanceStack.FreeInstance(Instance);
+	AdditiveInstanceStack.FreeInstance(Instance);
 }
 
 void UAnimSharingInstance::SetMasterComponentForActor(uint32 ActorIndex, USkeletalMeshComponent* Component)
@@ -2012,10 +2026,10 @@ uint32 UAnimSharingInstance::SetupAdditiveInstance(uint8 StateIndex, uint8 FromS
 {
 	uint32 InstanceIndex = INDEX_NONE;
 
-	FPerStateData& StateData = PerStateData[StateIndex];
-	if (StateData.AdditiveInstanceStack.InstanceAvailable())
+	const FPerStateData& StateData = PerStateData[StateIndex];
+	if (AdditiveInstanceStack.InstanceAvailable())
 	{
-		FAdditiveAnimationInstance* AnimationInstance = StateData.AdditiveInstanceStack.GetInstance();
+		FAdditiveAnimationInstance* AnimationInstance = AdditiveInstanceStack.GetInstance();
 		FAdditiveInstance& Instance = AdditiveInstances.AddDefaulted_GetRef();
 		Instance.bActive = false;
 		Instance.AdditiveAnimationInstance = AnimationInstance;

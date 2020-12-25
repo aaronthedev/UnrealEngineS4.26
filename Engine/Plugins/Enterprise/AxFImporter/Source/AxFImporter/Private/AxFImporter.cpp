@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AxFImporter.h"
 
@@ -309,7 +309,7 @@ public:
 			const FString& AssetPath = TEXT("/Game/AxF");
 
 			FString   FunctionPackageName = UPackageTools::SanitizePackageName(*(AssetPath / FunctionName));
-			UPackage* Package = CreatePackage(*FunctionPackageName);
+			UPackage* Package = CreatePackage(nullptr, *FunctionPackageName);
 
 			UMaterialFunction* Function = NewObject<UMaterialFunction>(Package, UMaterialFunction::StaticClass(), FName(*Name), RF_Public | RF_Standalone);
 
@@ -1419,10 +1419,8 @@ private:
 
 			if (ExpressionHeight)
 			{
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 				Material->D3D11TessellationMode = EMaterialTessellationMode::MTM_FlatTessellation;
 				Material->bEnableAdaptiveTessellation = true;
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 				UMaterialExpressionVertexNormalWS* VertexNormalWS = CreateMaterialExpression<UMaterialExpressionVertexNormalWS>();
 
@@ -1714,7 +1712,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 			Log.Info(TEXT("Importing material: ") + MaterialName);
 
 			FString  MaterialPackageName = UPackageTools::SanitizePackageName(*(ParentPackage->GetName() / MaterialName));
-			UObject* MaterialPackage = CreatePackage(*MaterialPackageName);
+			UObject* MaterialPackage = CreatePackage(nullptr, *MaterialPackageName);
 
 			UMaterial* NewMaterial = NewObject<UMaterial>(MaterialPackage, UMaterial::StaticClass(), FName(*MaterialName), Flags);
 			check(NewMaterial != nullptr);
@@ -1858,7 +1856,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 							{
 								FString TextureName = PropertyName;
 								FString  TexturePackageName = UPackageTools::SanitizePackageName(*(ParentPackage->GetName() / TEXT("Textures") / TextureName));
-								UPackage* TexturePackage = CreatePackage(*TexturePackageName);
+								UPackage* TexturePackage = CreatePackage(nullptr, *TexturePackageName);
 
 
 								UTexture2D* Texture = TextureFactory->CreateTexture2D(TexturePackage, *TextureName, RF_Standalone | RF_Public);
@@ -2019,7 +2017,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 					if (!bReplaceTextureByConstant)
 					{
 						FString  TexturePackageName = UPackageTools::SanitizePackageName(*(ParentPackage->GetName() / TEXT("Textures") / TextureName));
-						UPackage* TexturePackage = CreatePackage(*TexturePackageName);
+						UPackage* TexturePackage = CreatePackage(nullptr, *TexturePackageName);
 						UTexture2D* Texture = nullptr;
 
 						Texture = TextureFactory->CreateTexture2D(TexturePackage, *TextureName, RF_Standalone | RF_Public);
@@ -2166,7 +2164,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 // 					}
 					else if (TextureName == AXF_SVBRDF_TEXTURE_NAME_ANISO_ROTATION)
 					{
-						Log.Warn(TEXT("Anisotropic AxF materials are not supported yet - will use isotropic approximation."));
+						Log.Warn(TEXT("Anisotropic AxF materials are supported yet - will use isotropic approximation."));
 					}
 					else
 					{
@@ -2364,7 +2362,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		Image.Init(TextureSource.Width, TextureSource.Height, ERawImageFormat::RGBA32F);
 		for (int PixelIndex = 0; PixelIndex < TextureSource.Width * TextureSource.Height; PixelIndex++)
 		{
-			Image.AsRGBA32F()[PixelIndex] = TextureSource.GetPixel(PixelIndex);
+			*(Image.AsRGBA32F() + PixelIndex) = TextureSource.GetPixel(PixelIndex);
 		}
 
 		int32 TargetWidth;
@@ -2505,7 +2503,7 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 			if (MaterialName == OutMaterial->GetName())
 			{
 				FString RootPackageName = *FPaths::GetPath(OutMaterial->GetOuter()->GetName());
-				UPackage* RootPackage = CreatePackage(*RootPackageName);
+				UPackage* RootPackage = CreatePackage(nullptr, *RootPackageName);
 				
 				ImportMaterial(CreatedMaterial, Material, RootPackage);
 				Log.Info(TEXT("Done re-importing material: ") + MaterialName);

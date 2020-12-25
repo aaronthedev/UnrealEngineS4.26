@@ -1,23 +1,17 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Components/MeshComponent.h"
-#include "Chaos/ChaosNotifyHandlerInterface.h"
+#include "Chaos/ChaosSolverActor.h"
 #include "GameFramework/Actor.h"
+#include "Physics/Experimental/PhysScene_Chaos.h"
+#include "PhysicalMaterials/Experimental/ChaosPhysicalMaterial.h"
 #include "GeometryCollection/GeometryCollectionSimulationTypes.h"
+#include "Chaos/ChaosNotifyHandlerInterface.h"
 
 #include "SkeletalMeshSimulationComponent.generated.h"
 
 class FSkeletalMeshSimulationComponentPhysicsProxy;
-
-namespace Chaos
-{
-class FChaosPhysicsMaterial;
-}
-
-class AChaosSolverActor;
-class UChaosPhysicalMaterial;
-class FSkeletalMeshPhysicsProxy;
 
 /**
 *	USkeletalMeshSimulationComponent
@@ -26,8 +20,6 @@ UCLASS(ClassGroup = Physics, Experimental, meta = (BlueprintSpawnableComponent))
 class GEOMETRYCOLLECTIONENGINE_API USkeletalMeshSimulationComponent : public UActorComponent, public IChaosNotifyHandlerInterface
 {
 	GENERATED_UCLASS_BODY()
-	USkeletalMeshSimulationComponent(FVTableHelper& Helper);
-	virtual ~USkeletalMeshSimulationComponent();
 
 public:
 	//
@@ -180,5 +172,5 @@ private:
 	FSkeletalMeshPhysicsProxy* PhysicsProxy;
 
 	//@todo(mlentine): Don't have one per static mesh
-	TUniquePtr<Chaos::FChaosPhysicsMaterial> ChaosMaterial;
+	TUniquePtr<Chaos::TChaosPhysicsMaterial<float>> ChaosMaterial;
 };

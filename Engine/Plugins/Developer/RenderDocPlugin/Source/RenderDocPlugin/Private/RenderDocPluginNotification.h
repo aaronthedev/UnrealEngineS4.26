@@ -1,13 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #if WITH_EDITOR
 
 #include "Framework/Notifications/NotificationManager.h"
-#include "Tickable.h"
+#include "TickableEditorObject.h"
 
-class FRenderDocPluginNotification : public FTickableGameObject
+class FRenderDocPluginNotification : public FTickableEditorObject
 {
 public:
 	static FRenderDocPluginNotification& Get()
@@ -16,16 +16,17 @@ public:
 		return Instance;
 	}
 
-	void ShowNotification(const FText& Message, bool bForceNewNotification);
+	void ShowNotification(const FText& Message);
 	void HideNotification();
 
 protected:
-	/** FTickableGameObject interface */
+	/** FTickableEditorObject interface */
 	virtual void Tick(float DeltaTime);
-	virtual ETickableTickType GetTickableTickType() const { return ETickableTickType::Always; }
+	virtual ETickableTickType GetTickableTickType() const
+	{
+		return ETickableTickType::Always;
+	}
 	virtual TStatId GetStatId() const override;
-	virtual bool IsTickableWhenPaused() const override { return true; }
-	virtual bool IsTickableInEditor() const override { return true; }
 
 private:
 	FRenderDocPluginNotification();

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "K2Node_AddComponent.h"
@@ -11,7 +11,6 @@
 #include "Engine/BlueprintGeneratedClass.h"
 #include "EdGraphSchema_K2.h"
 #include "Kismet2/BlueprintEditorUtils.h"
-#include "Kismet2/KismetEditorUtilities.h"
 #include "UObject/ReleaseObjectVersion.h"
 #include "KismetCompilerMisc.h"
 #include "KismetCompiler.h"
@@ -19,9 +18,6 @@
 #include "UObject/BlueprintsObjectVersion.h" // for ComponentTemplateClassSupport
 
 #define LOCTEXT_NAMESPACE "K2Node_AddComponent"
-
-const FName UK2Node_AddComponent::NAME_RelativeTransform(TEXT("RelativeTransform"));
-const FName UK2Node_AddComponent::NAME_ManualAttachment(TEXT("bManualAttachment"));
 
 //////////////////////////////////////////////////////////////////////////
 // FKCHandler_AddComponent
@@ -98,10 +94,10 @@ void UK2Node_AddComponent::AllocatePinsForExposedVariables()
 	{
 		const UObject* ClassDefaultObject = ComponentClass->ClassDefaultObject;
 
-		for (TFieldIterator<FProperty> PropertyIt(ComponentClass, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
+		for (TFieldIterator<UProperty> PropertyIt(ComponentClass, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
 		{
-			FProperty* Property = *PropertyIt;
-			const bool bNotDelegate = !Property->IsA(FMulticastDelegateProperty::StaticClass());
+			UProperty* Property = *PropertyIt;
+			const bool bNotDelegate = !Property->IsA(UMulticastDelegateProperty::StaticClass());
 			const bool bIsExposedToSpawn = UEdGraphSchema_K2::IsPropertyExposedOnSpawn(Property);
 			const bool bIsVisible = Property->HasAllPropertyFlags(CPF_BlueprintVisible);
 			const bool bNotParam = !Property->HasAllPropertyFlags(CPF_Parm);
@@ -182,6 +178,7 @@ void UK2Node_AddComponent::ReallocatePinsDuringReconstruction(TArray<UEdGraphPin
 	Super::ReallocatePinsDuringReconstruction(OldPins);
 
 	UEdGraphPin* TemplateNamePin = GetTemplateNamePinChecked();
+	//UEdGraphPin* ReturnValuePin = GetReturnValuePin();
 	for(int32 OldPinIdx = 0; TemplateNamePin && OldPinIdx < OldPins.Num(); ++OldPinIdx)
 	{
 		if(TemplateNamePin && (TemplateNamePin->PinName == OldPins[OldPinIdx]->PinName))
@@ -213,7 +210,7 @@ void UK2Node_AddComponent::ValidateNodeDuringCompilation(FCompilerResultsLog& Me
 	const UClass* TemplateClass = GetSpawnedType();
 	if (TemplateClass)
 	{
-		if (!FKismetEditorUtilities::IsClassABlueprintSpawnableComponent(TemplateClass))
+		if (!TemplateClass->IsChildOf(UActorComponent::StaticClass()) || TemplateClass->HasAnyClassFlags(CLASS_Abstract) || !TemplateClass->HasMetaData(FBlueprintMetadata::MD_BlueprintSpawnableComponent) )
 		{
 			FFormatNamedArguments Args;
 			Args.Add(TEXT("TemplateClass"), FText::FromString(TemplateClass->GetName()));
@@ -437,7 +434,7 @@ void UK2Node_AddComponent::ExpandNode(class FKismetCompilerContext& CompilerCont
 {
 	Super::ExpandNode(CompilerContext, SourceGraph);
 
-	UEdGraphPin* TransformPin = GetRelativeTransformPin();
+	auto TransformPin = GetRelativeTransformPin();
 	if (TransformPin && !TransformPin->LinkedTo.Num())
 	{
 		FString DefaultValue;
@@ -453,7 +450,7 @@ void UK2Node_AddComponent::ExpandNode(class FKismetCompilerContext& CompilerCont
 			DefaultValue = TemplateTransform.ToString();
 		}
 
-		UEdGraphPin* ValuePin = InnerHandleAutoCreateRef(this, TransformPin, CompilerContext, SourceGraph, !DefaultValue.IsEmpty());
+		auto ValuePin = InnerHandleAutoCreateRef(this, TransformPin, CompilerContext, SourceGraph, !DefaultValue.IsEmpty());
 		if (ValuePin)
 		{
 			ValuePin->DefaultValue = DefaultValue;
@@ -462,6 +459,10 @@ void UK2Node_AddComponent::ExpandNode(class FKismetCompilerContext& CompilerCont
 
 	if (bHasExposedVariable)
 	{
+		static FString ObjectParamName = FString(TEXT("Object"));
+		static FString ValueParamName = FString(TEXT("Value"));
+		static FString PropertyNameParamName = FString(TEXT("PropertyName"));
+
 		UK2Node_AddComponent* NewNode = CompilerContext.SpawnIntermediateNode<UK2Node_AddComponent>(this, SourceGraph); 
 		NewNode->SetFromFunction(GetTargetFunction());
 		NewNode->AllocateDefaultPinsWithoutExposedVariables();
@@ -472,14 +473,9 @@ void UK2Node_AddComponent::ExpandNode(class FKismetCompilerContext& CompilerCont
 		CompilerContext.MovePinLinksToIntermediate(*GetRelativeTransformPin(), *NewNode->GetRelativeTransformPin());
 		CompilerContext.MovePinLinksToIntermediate(*GetManualAttachmentPin(), *NewNode->GetManualAttachmentPin());
 
-		static const FName DeferredFinishPinName = TEXT("bDeferredFinish");
-
-		UEdGraphPin* DeferredFinishPin = NewNode->FindPinChecked(DeferredFinishPinName);
-		DeferredFinishPin->DefaultValue = TEXT("true");
-
 		UEdGraphPin* ReturnPin = NewNode->GetReturnValuePin();
 		UEdGraphPin* OriginalReturnPin = GetReturnValuePin();
-		check(ReturnPin && OriginalReturnPin);
+		check((NULL != ReturnPin) && (NULL != OriginalReturnPin));
 		ReturnPin->PinType = OriginalReturnPin->PinType;
 		CompilerContext.MovePinLinksToIntermediate(*OriginalReturnPin, *ReturnPin);
 		// exec in
@@ -487,23 +483,7 @@ void UK2Node_AddComponent::ExpandNode(class FKismetCompilerContext& CompilerCont
 
 		UEdGraphPin* LastThen = FKismetCompilerUtilities::GenerateAssignmentNodes( CompilerContext, SourceGraph, NewNode, this, ReturnPin, GetSpawnedType() );
 
-		static const FName FinishAddFuncName = GET_FUNCTION_NAME_CHECKED(AActor, FinishAddComponent);
-		static const FName ComponentParamName = TEXT("Component");
-
-		UK2Node_CallFunction* FinishAdd = CompilerContext.SpawnIntermediateNode<UK2Node_CallFunction>(this, SourceGraph);
-		FinishAdd->FunctionReference.SetExternalMember(FinishAddFuncName, AActor::StaticClass());
-		FinishAdd->AllocateDefaultPins();
-
-		UEdGraphPin* FinishAdd_ComponentPin = FinishAdd->FindPinChecked(ComponentParamName);
-		UEdGraphPin* FinishAdd_RelativeTransformPin = FinishAdd->FindPinChecked(NAME_RelativeTransform);
-		UEdGraphPin* FinishAdd_ManualAttachmentPin = FinishAdd->FindPinChecked(NAME_ManualAttachment);
-
-		FinishAdd_ComponentPin->MakeLinkTo(ReturnPin);
-		CompilerContext.CopyPinLinksToIntermediate(*NewNode->GetRelativeTransformPin(), *FinishAdd_RelativeTransformPin);
-		CompilerContext.CopyPinLinksToIntermediate(*NewNode->GetManualAttachmentPin(), *FinishAdd_ManualAttachmentPin);
-
-		LastThen->MakeLinkTo(FinishAdd->GetExecPin());
-		CompilerContext.MovePinLinksToIntermediate(*GetThenPin(), *FinishAdd->GetThenPin());
+		CompilerContext.MovePinLinksToIntermediate(*GetThenPin(), *LastThen);
 		BreakAllNodeLinks();
 	}
 }

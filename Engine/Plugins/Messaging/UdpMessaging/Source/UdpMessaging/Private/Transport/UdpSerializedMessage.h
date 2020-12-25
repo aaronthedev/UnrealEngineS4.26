@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,7 +10,6 @@
 #include "Serialization/MemoryWriter.h"
 #include "Serialization/MemoryReader.h"
 #include "IMessageContext.h"
-#include "UdpMessagingSettings.h"
 
 /**
  * Enumerates possibly states of a serialized message.
@@ -37,12 +36,12 @@ class FUdpSerializedMessage
 	: public FMemoryWriter
 {
 public:
+
 	/** Default constructor. */
-	FUdpSerializedMessage(EUdpMessageFormat InMessageFormat, uint8 InProtocolVersion, EMessageFlags InFlags)
+	FUdpSerializedMessage(uint8 InProtocolVersion, EMessageFlags InFlags)
 		: FMemoryWriter(DataArray, true)
 		, State(EUdpSerializedMessageState::Incomplete)
 		, Flags(InFlags)
-		, Format(InMessageFormat)
 		, ProtocolVersion(InProtocolVersion)
 	{
 		// Flags aren't supported in protocol version previous to 11
@@ -111,13 +110,8 @@ public:
 		return ProtocolVersion;
 	}
 
-	/** @return the format used to encode the message. */
-	EUdpMessageFormat GetFormat() const
-	{
-		return Format;
-	}
-
 private:
+
 	/** Holds the serialized data. */
 	TArray<uint8> DataArray;
 
@@ -126,9 +120,6 @@ private:
 
 	/** Holds message flags, captured from context. */
 	EMessageFlags Flags;
-
-	/** The format used to serialize the message. */
-	EUdpMessageFormat Format;
 
 	/** Holds the Protocol Version the message will be serialized in. */
 	uint8 ProtocolVersion;

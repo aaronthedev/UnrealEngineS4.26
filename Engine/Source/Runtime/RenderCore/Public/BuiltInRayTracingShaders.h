@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -84,24 +84,13 @@ public:
 	{}
 };
 
-class FDefaultPayloadMS : public FBuiltInRayTracingShader
+class FDefaultMainMS : public FBuiltInRayTracingShader
 {
-	DECLARE_EXPORTED_SHADER_TYPE(FDefaultPayloadMS, Global, RENDERCORE_API);
+	DECLARE_EXPORTED_SHADER_TYPE(FDefaultMainMS, Global, RENDERCORE_API);
 public:
 
-	FDefaultPayloadMS() = default;
-	FDefaultPayloadMS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
-		: FBuiltInRayTracingShader(Initializer)
-	{}
-};
-
-class FPackedMaterialClosestHitPayloadMS : public FBuiltInRayTracingShader
-{
-	DECLARE_EXPORTED_SHADER_TYPE(FPackedMaterialClosestHitPayloadMS, Global, RENDERCORE_API);
-public:
-
-	FPackedMaterialClosestHitPayloadMS() = default;
-	FPackedMaterialClosestHitPayloadMS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
+	FDefaultMainMS() = default;
+	FDefaultMainMS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FBuiltInRayTracingShader(Initializer)
 	{}
 };

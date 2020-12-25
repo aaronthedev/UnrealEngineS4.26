@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OodleTrainerCommandlet.h"
 #include "GenericPlatform/GenericPlatformFile.h"
@@ -274,50 +274,45 @@ bool UOodleTrainerCommandlet::HandleMergePackets(FString OutputCapFile, const TA
 		{
 			UE_LOG(OodleHandlerComponentLog, Log, TEXT("Merging files into output file: %s"), *OutputCapFile);
 
+			FPacketCaptureArchive OutputFile(*OutArc);
+			bool bErrorAppending = false;
+
+			OutputFile.SerializeCaptureHeader();
+
+			for (TMap<FArchive*, FString>::TConstIterator It(MergeMap); It; ++It)
 			{
-				FPacketCaptureArchive OutputFile(*OutArc);
-				bool bErrorAppending = false;
+				FArchive* CurReadArc = It.Key();
+				FPacketCaptureArchive ReadFile(*CurReadArc);
 
-				OutputFile.SerializeCaptureHeader();
+				UE_LOG(OodleHandlerComponentLog, Log, TEXT("    Merging: %s"), *It.Value());
 
-				for (TMap<FArchive*, FString>::TConstIterator It(MergeMap); It; ++It)
+				OutputFile.AppendPacketFile(ReadFile);
+
+				if (OutputFile.IsError())
 				{
-					FArchive* CurReadArc = It.Key();
-
-					{
-						FPacketCaptureArchive ReadFile(*CurReadArc);
-
-						UE_LOG(OodleHandlerComponentLog, Log, TEXT("    Merging: %s"), *It.Value());
-
-						OutputFile.AppendPacketFile(ReadFile);
-					}
-
-					if (OutputFile.IsError())
-					{
-						bErrorAppending = true;
-						break;
-					}
-
-					delete CurReadArc;
+					bErrorAppending = true;
+					break;
 				}
 
-				MergeMap.Empty();
+				delete CurReadArc;
+			}
+
+			MergeMap.Empty();
 
 
-				if (!bErrorAppending)
-				{
-					bSuccess =  true;
-				}
-				else
-				{
-					UE_LOG(OodleHandlerComponentLog, Error, TEXT("Error appending packet file."));
-				}
+			if (!bErrorAppending)
+			{
+				bSuccess =  true;
+			}
+			else
+			{
+				UE_LOG(OodleHandlerComponentLog, Error, TEXT("Error appending packet file."));
+			}
 
 
-				if (bSuccess)
-				{
-					UE_LOG(OodleHandlerComponentLog, Log, TEXT("Merge packets success."));
-				}
+			if (bSuccess)
+			{
+				UE_LOG(OodleHandlerComponentLog, Log, TEXT("Merge packets success."));
 			}
 
 
@@ -393,57 +388,54 @@ bool UOodleTrainerCommandlet::HandleDebugDumpPackets(FString OutputDirectory, FS
 		for (TMap<FArchive*, FString>::TConstIterator It(SourceMap); It; ++It)
 		{
 			FArchive* CurReadArc = It.Key();
+			FPacketCaptureArchive ReadFile(*CurReadArc);
 
+			UE_LOG(OodleHandlerComponentLog, Log, TEXT("    Dumping: %s"), *It.Value());
+
+			FString PartialFileDir = FPaths::ChangeExtension(*(It.Value().Mid(SourceDirectory.Len())), TEXT(".bin"));
+			FString OutputFile = FPaths::Combine(*OutputDirectory, *PartialFileDir);
+			FArchive* OutputArc = IFileManager::Get().CreateFileWriter(*OutputFile);
+
+			// Oodle example packet format:
+			//		[4:ChannelNum][?:PacketData]
+			//	PacketData:
+			//		[4:PacketChannel][4:PacketSize][PacketSize:PacketData]
+			if (OutputArc != nullptr)
 			{
-				FPacketCaptureArchive ReadFile(*CurReadArc);
+				uint32 DudChannelNum = 0;
 
-				UE_LOG(OodleHandlerComponentLog, Log, TEXT("    Dumping: %s"), *It.Value());
+				OutputArc->ByteOrderSerialize(&DudChannelNum, sizeof(uint32));
 
-				FString PartialFileDir = FPaths::ChangeExtension(*(It.Value().Mid(SourceDirectory.Len())), TEXT(".bin"));
-				FString OutputFile = FPaths::Combine(*OutputDirectory, *PartialFileDir);
-				FArchive* OutputArc = IFileManager::Get().CreateFileWriter(*OutputFile);
+				ReadFile.SerializeCaptureHeader();
 
-				// Oodle example packet format:
-				//		[4:ChannelNum][?:PacketData]
-				//	PacketData:
-				//		[4:PacketChannel][4:PacketSize][PacketSize:PacketData]
-				if (OutputArc != nullptr)
+				uint32 InPacketCount = ReadFile.GetPacketCount();
+
+				const uint32 BufferSize = 1048576;
+				uint8* ReadBuffer = new uint8[BufferSize];
+
+				for (int32 PacketIdx=0; PacketIdx<(int32)InPacketCount; PacketIdx++)
 				{
-					uint32 DudChannelNum = 0;
+					uint32 InPacketSize = BufferSize;
 
-					OutputArc->ByteOrderSerialize(&DudChannelNum, sizeof(uint32));
+					ReadFile.SerializePacket(ReadBuffer, InPacketSize);
 
-					ReadFile.SerializeCaptureHeader();
+					uint32 DudPacketChannel = 0;
 
-					uint32 InPacketCount = ReadFile.GetPacketCount();
-
-					const uint32 BufferSize = 1048576;
-					uint8* ReadBuffer = new uint8[BufferSize];
-
-					for (int32 PacketIdx=0; PacketIdx<(int32)InPacketCount; PacketIdx++)
-					{
-						uint32 InPacketSize = BufferSize;
-
-						ReadFile.SerializePacket(ReadBuffer, InPacketSize);
-
-						uint32 DudPacketChannel = 0;
-
-						OutputArc->ByteOrderSerialize(&DudPacketChannel, sizeof(uint32));
-						OutputArc->ByteOrderSerialize(&InPacketSize, sizeof(uint32));
-						OutputArc->Serialize(ReadBuffer, InPacketSize);
-					}
-
-					delete[] ReadBuffer;
-					ReadBuffer = nullptr;
-
-					OutputArc->Close();
-
-					delete OutputArc;
-
-					UE_LOG(OodleHandlerComponentLog, Log, TEXT("Successfully dumped packet data to file: %s"), *OutputFile);
-
-					bSuccess = true;
+					OutputArc->ByteOrderSerialize(&DudPacketChannel, sizeof(uint32));
+					OutputArc->ByteOrderSerialize(&InPacketSize, sizeof(uint32));
+					OutputArc->Serialize(ReadBuffer, InPacketSize);
 				}
+
+				delete[] ReadBuffer;
+				ReadBuffer = nullptr;
+
+				OutputArc->Close();
+
+				delete OutputArc;
+
+				UE_LOG(OodleHandlerComponentLog, Log, TEXT("Successfully dumped packet data to file: %s"), *OutputFile);
+
+				bSuccess = true;
 			}
 
 			delete CurReadArc;
@@ -739,7 +731,7 @@ bool FOodleDictionaryGenerator::ReadPackets(const TArray<FString>& InputCaptureF
 	// Now begin training
 	bool bSuccess = true;
 	TArray<FArchive*> UnboundArchives;
-	TArray<TUniquePtr<FPacketCaptureArchive>> BoundArchives;
+	TArray<FPacketCaptureArchive> BoundArchives;
 
 	bSuccess = MergeMap.Num() > 0;
 
@@ -749,7 +741,7 @@ bool FOodleDictionaryGenerator::ReadPackets(const TArray<FString>& InputCaptureF
 
 		for (FArchive* CurArc : UnboundArchives)
 		{
-			BoundArchives.Emplace(MakeUnique<FPacketCaptureArchive>(*CurArc));
+			new(BoundArchives) FPacketCaptureArchive(*CurArc);
 		}
 	}
 	else
@@ -763,13 +755,13 @@ bool FOodleDictionaryGenerator::ReadPackets(const TArray<FString>& InputCaptureF
 
 	if (bSuccess)
 	{
-		for (TUniquePtr<FPacketCaptureArchive>& CurArc : BoundArchives)
+		for (FPacketCaptureArchive& CurArc : BoundArchives)
 		{
-			CurArc->SerializeCaptureHeader();
+			CurArc.SerializeCaptureHeader();
 
-			if (!CurArc->IsError())
+			if (!CurArc.IsError())
 			{
-				PacketCount += CurArc->GetPacketCount();
+				PacketCount += CurArc.GetPacketCount();
 			}
 		}
 
@@ -855,15 +847,15 @@ bool FOodleDictionaryGenerator::ReadPackets(const TArray<FString>& InputCaptureF
 	uint8* ReadBuffer = new uint8[BufferSize];
 	uint32 PacketIdx = 0;
 
-	for (TUniquePtr<FPacketCaptureArchive>& CurArc : BoundArchives)
+	for (FPacketCaptureArchive& CurArc : BoundArchives)
 	{
-		while (CurArc->Tell() < CurArc->TotalSize() && PacketIdx < (uint32)PacketCount)
+		while (CurArc.Tell() < CurArc.TotalSize() && PacketIdx < (uint32)PacketCount)
 		{
 			uint32 PacketSize = BufferSize;
 
-			CurArc->SerializePacket(ReadBuffer, PacketSize);
+			CurArc.SerializePacket(ReadBuffer, PacketSize);
 
-			if (CurArc->IsError())
+			if (CurArc.IsError())
 			{
 				UE_LOG(OodleHandlerComponentLog, Warning, TEXT("Error serializing packet from packet capture archive. Skipping."));
 
@@ -939,8 +931,6 @@ bool FOodleDictionaryGenerator::ReadPackets(const TArray<FString>& InputCaptureF
 		}
 	}
 
-	BoundArchives.Empty();
-
 	delete[] ReadBuffer;
 	ReadBuffer = nullptr;
 
@@ -1010,42 +1000,41 @@ bool FOodleDictionaryGenerator::GenerateAndWriteDictionary()
 
 	if (OutArc != nullptr)
 	{
+		FOodleDictionaryArchive OutputFile(*OutArc);
+
+		OutputFile.SetDictionaryHeaderValues(HashTableSize);
+		OutputFile.SerializeHeader();
+
+		bSuccess = !OutputFile.IsError();
+
+		bSuccess = bSuccess && OutputFile.SerializeOodleCompressData(OutputFile.Header.DictionaryData, NewDictionaryData, DictionarySize);
+
+		bSuccess = bSuccess && OutputFile.SerializeOodleCompressData(OutputFile.Header.CompressorData, (uint8*)CompactCompressorState,
+																		CompactCompressorStateBytes);
+
+
+		// Important warning for unusually small dictionary files - if they compress down this much, something is usually wrong.
 		bool bDeleteFile = false;
 
+		if (bSuccess && OutputFile.TotalSize() < 65536)
 		{
-			FOodleDictionaryArchive OutputFile(*OutArc);
+			FText Msg = LOCTEXT("BadOodleDictionaryGen",
+				"The generated dictionary is less than 64KB. This is unusually small, indicating a problem - do NOT use for production! Delete the file?");
 
-			OutputFile.SetDictionaryHeaderValues(HashTableSize);
-			OutputFile.SerializeHeader();
+			EAppReturnType::Type Result = FMessageDialog::Open(EAppMsgType::YesNo, Msg);
 
-			bSuccess = !OutputFile.IsError();
-
-			bSuccess = bSuccess && OutputFile.SerializeOodleCompressData(OutputFile.Header.DictionaryData, NewDictionaryData, DictionarySize);
-
-			bSuccess = bSuccess && OutputFile.SerializeOodleCompressData(OutputFile.Header.CompressorData, (uint8*)CompactCompressorState,
-																			CompactCompressorStateBytes);
+			bDeleteFile = (Result == EAppReturnType::Yes);
+			bSuccess = false;
+		}
 
 
-			// Important warning for unusually small dictionary files - if they compress down this much, something is usually wrong.
-			if (bSuccess && OutputFile.TotalSize() < 65536)
-			{
-				FText Msg = LOCTEXT("BadOodleDictionaryGen", "The generated dictionary is less than 64KB. This is unusually small, indicating a problem - do NOT use for production! Delete the file?");
-
-				EAppReturnType::Type Result = FMessageDialog::Open(EAppMsgType::YesNo, Msg);
-
-				bDeleteFile = (Result == EAppReturnType::Yes);
-				bSuccess = false;
-			}
-
-
-			if (bSuccess)
-			{
-				UE_LOG(OodleHandlerComponentLog, Log, TEXT("Successfully processed packet captures, and wrote dictionary file."));
-			}
-			else
-			{
-				UE_LOG(OodleHandlerComponentLog, Error, TEXT("Error writing dictionary file."));
-			}
+		if (bSuccess)
+		{
+			UE_LOG(OodleHandlerComponentLog, Log, TEXT("Successfully processed packet captures, and wrote dictionary file."));
+		}
+		else
+		{
+			UE_LOG(OodleHandlerComponentLog, Error, TEXT("Error writing dictionary file."));
 		}
 
 

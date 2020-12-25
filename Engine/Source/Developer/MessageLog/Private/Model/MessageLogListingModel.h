@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,7 +10,7 @@
 typedef TArray< TSharedRef<FTokenizedMessage> > MessageContainer;
 
 /** This class represents a set of rich tokenized messages for a particular system */
-class MESSAGELOG_API FMessageLogListingModel : public TSharedFromThis< FMessageLogListingModel >
+class FMessageLogListingModel : public TSharedFromThis< FMessageLogListingModel >
 {
 protected:
 	struct FPage

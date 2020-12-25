@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ## Unreal Engine 4 Build script for SDL2
-## Copyright Epic Games, Inc. All Rights Reserved.
+## Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 # Should be run in docker image, launched something like this (see RunMe.sh script):
 #   docker run --name ${ImageName} -v ${SCRIPT_DIR}/../../Vulkan:/Vulkan -v ${SDL_DIR}:/SDL-gui-backend -v ${SCRIPT_DIR}:/src ${Image} /src/docker-build-sdl2.sh
@@ -67,15 +67,10 @@ BuildWithOptions()
 
 set -e
 
-OPTS=()
-OPTS+=(-DSDL_SHARED_ENABLED_BY_DEFAULT=OFF)
-OPTS+=(-DSDL_STATIC_ENABLED_BY_DEFAULT=ON)
-OPTS+=(-DVIDEO_KMSDRM=OFF)
-OPTS+=(-DCMAKE_C_FLAGS=-gdwarf-4)
-
 # build Debug with -fPIC so it's usable in any type of build
-BuildWithOptions Debug      libSDL2d.a libSDL2_fPIC_Debug.a -DCMAKE_BUILD_TYPE=Debug   -DSDL_STATIC_PIC=ON   "${OPTS[@]}"
-BuildWithOptions Release    libSDL2.a  libSDL2.a            -DCMAKE_BUILD_TYPE=Release                       "${OPTS[@]}"
-BuildWithOptions ReleasePIC libSDL2.a  libSDL2_fPIC.a       -DCMAKE_BUILD_TYPE=Release -DSDL_STATIC_PIC=ON   "${OPTS[@]}"
+BuildWithOptions Debug      libSDL2d.a libSDL2_fPIC_Debug.a -DCMAKE_BUILD_TYPE=Debug   -DSDL_STATIC_PIC=ON -DVIDEO_MIR=OFF -DVIDEO_KMSDRM=OFF -DCMAKE_C_FLAGS=-gdwarf-4
+BuildWithOptions Release    libSDL2.a  libSDL2.a            -DCMAKE_BUILD_TYPE=Release                     -DVIDEO_MIR=OFF -DVIDEO_KMSDRM=OFF -DCMAKE_C_FLAGS=-gdwarf-4
+BuildWithOptions ReleasePIC libSDL2.a  libSDL2_fPIC.a       -DCMAKE_BUILD_TYPE=Release -DSDL_STATIC_PIC=ON -DVIDEO_MIR=OFF -DVIDEO_KMSDRM=OFF -DCMAKE_C_FLAGS=-gdwarf-4
 
 set +e
+

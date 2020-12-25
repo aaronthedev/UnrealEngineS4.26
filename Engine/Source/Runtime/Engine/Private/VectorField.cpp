@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*==============================================================================
 	VectorField.cpp: Implementation of vector fields.
@@ -263,22 +263,6 @@ public:
 			});
 	}
 
-	void GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize) const
-	{
-		if (VolumeData)
-		{
-			CumulativeResourceSize.AddDedicatedSystemMemoryBytes(SizeX * SizeY * SizeZ * sizeof(FFloat16Color));
-		}
-		if (VolumeTextureRHI)
-		{
-			const FPixelFormatInfo& FormatInfo = GPixelFormats[PF_FloatRGBA];
-			const SIZE_T NumBlocksX = (SIZE_T)FMath::DivideAndRoundUp(SizeX, FormatInfo.BlockSizeX);
-			const SIZE_T NumBlocksY = (SIZE_T)FMath::DivideAndRoundUp(SizeY, FormatInfo.BlockSizeY);
-			const SIZE_T NumBlocksZ = (SIZE_T)FMath::DivideAndRoundUp(SizeZ, FormatInfo.BlockSizeZ);
-			CumulativeResourceSize.AddDedicatedVideoMemoryBytes(NumBlocksX * NumBlocksY * NumBlocksZ * (SIZE_T)FormatInfo.BlockBytes);
-		}
-	}
-
 private:
 
 	/** Static volume texture data. */
@@ -302,9 +286,9 @@ void UVectorFieldStatic::InitResource()
 	check(!Resource);
 
 	// Loads and copies the bulk data into CPUData if bAllowCPUAccess is set, otherwise clear CPUData. 
-	UpdateCPUData(false);
+	UpdateCPUData();
 
-	Resource = new FVectorFieldStaticResource(this); // Will discard the contents of SourceData
+	Resource = new FVectorFieldStaticResource(this);
 	Resource->AddRef(); // Increment refcount because of UVectorFieldStatic::Resource is not a TRefCountPtr.
 
 	BeginInitResource(Resource);
@@ -316,72 +300,21 @@ void UVectorFieldStatic::UpdateResource()
 	check(Resource);
 
 	// Loads and copies the bulk data into CPUData if bAllowCPUAccess is set, otherwise clears CPUData. 
-	UpdateCPUData(false);
+	UpdateCPUData();
 
 	FVectorFieldStaticResource* StaticResource = (FVectorFieldStaticResource*)Resource;
-	StaticResource->UpdateResource(this); // Will discard the contents of SourceData
-}
-
-// Simple implementation of an accessor struct for grabbing the, now, inited resource on the render thread
-// Impl structure is required because of the private nature of the FVectorFieldResource, which could be
-// resolved...
-struct FVectorFieldTextureAccessorImpl
-{
-	FVectorFieldTextureAccessorImpl(FVectorFieldResource* InResource)
-		: Resource(InResource)
-	{
-	}
-
-	FVectorFieldTextureAccessorImpl(const FVectorFieldTextureAccessorImpl& rhs)
-		: Resource(rhs.Resource)
-	{
-	}
-
-	TRefCountPtr<FVectorFieldResource> Resource;
-};
-
-FVectorFieldTextureAccessor::FVectorFieldTextureAccessor(UVectorField* InVectorField)
-	: Impl(nullptr)
-{
-	if (UVectorFieldStatic* VectorFieldStatic = Cast<UVectorFieldStatic>(InVectorField))
-	{
-		Impl = MakeUnique<FVectorFieldTextureAccessorImpl>(VectorFieldStatic->Resource);
-	}
-}
-
-FVectorFieldTextureAccessor::FVectorFieldTextureAccessor(const FVectorFieldTextureAccessor& rhs)
-	: Impl(nullptr)
-{
-	if (rhs.Impl)
-	{
-		Impl = MakeUnique<FVectorFieldTextureAccessorImpl>(rhs.Impl->Resource);
-	}
-}
-
-FVectorFieldTextureAccessor::~FVectorFieldTextureAccessor()
-{
-
-}
-
-FRHITexture* FVectorFieldTextureAccessor::GetTexture() const
-{
-	if (Impl && Impl->Resource && Impl->Resource->VolumeTextureRHI)
-	{
-		return Impl->Resource->VolumeTextureRHI;
-	}
-
-	return GBlackVolumeTexture->TextureRHI;
+	StaticResource->UpdateResource(this);
 }
 
 #if WITH_EDITOR
 ENGINE_API void UVectorFieldStatic::SetCPUAccessEnabled()
 {
 	bAllowCPUAccess = true;
-	UpdateCPUData(true);
+	UpdateCPUData();
 }
 #endif // WITH_EDITOR
 
-void UVectorFieldStatic::UpdateCPUData(bool bDiscardData)
+void UVectorFieldStatic::UpdateCPUData()
 {
 	if (bAllowCPUAccess)
 	{
@@ -389,7 +322,7 @@ void UVectorFieldStatic::UpdateCPUData(bool bDiscardData)
 		// If the data is already loaded it makes a copy and discards the old content,
 		// otherwise it simply loads the data directly from file into the pointer after allocating.
 		FFloat16Color *Ptr = nullptr;
-		SourceData.GetCopy((void**)&Ptr, bDiscardData);
+		SourceData.GetCopy((void**)&Ptr, /* bDiscardInternalCopy */ true);
 
 		// Make sure the data is actually valid. 
 		if (!ensure(Ptr))
@@ -407,7 +340,7 @@ void UVectorFieldStatic::UpdateCPUData(bool bDiscardData)
 		}
 
 		// GetCopy should free/unload the data.
-		if (bDiscardData && SourceData.IsBulkDataLoaded())
+		if (SourceData.IsBulkDataLoaded())
 		{
 			// NOTE(mv): This assertion will fail in the case where the bulk data is still available even though the bDiscardInternalCopy
 			//           flag is toggled when FUntypedBulkData::CanLoadFromDisk() also fail. This happens when the user tries to allow 
@@ -416,31 +349,15 @@ void UVectorFieldStatic::UpdateCPUData(bool bDiscardData)
 			UE_LOG(LogVectorField, Warning, TEXT("SourceData.GetCopy() is supposed to unload the data after copying, but it is still loaded."));
 		}
 
-		const size_t SampleCount = SizeX * SizeY * SizeZ;
-
-		FMemoryWriter Ar(CPUData);
-
-#if VECTOR_FIELD_DATA_AS_HALF
-		// because of vector implementations in VectorLoadHalf we want to make sure that our buffer
-		// is padded out to support reading the last element
-		constexpr int32 DestComponentCount = 3;
-		CPUData.Reset(FMath::DivideAndRoundUp<int32>(SampleCount * DestComponentCount * sizeof(FFloat16), sizeof(FVector4)));
-
-		for (size_t SampleIt = 0; SampleIt < SampleCount; ++SampleIt)
+		// Convert from 16-bit to 32-bit floats.
+			// Use vec4s instead of vec3s because of alignment, which in principle would be better for 
+			// cache and automatic or manual vectorization, even if the memory usage is 33% larger. 
+			// Need to profile to to make sure.
+		CPUData.SetNumUninitialized(SizeX*SizeY*SizeZ);
+		for (size_t i = 0; i < (size_t)(SizeX*SizeY*SizeZ); i++)
 		{
-			Ar << Ptr[SampleIt].R;
-			Ar << Ptr[SampleIt].G;
-			Ar << Ptr[SampleIt].B;
+			CPUData[i] = FVector4(float(Ptr[i].R), float(Ptr[i].G), float(Ptr[i].B), 0.0f);
 		}
-#else
-		CPUData.Reset(FMath::DivideAndRoundUp<int32>(SampleCount * sizeof(FVector), sizeof(FVector4)));
-
-		for (size_t SampleIt = 0; SampleIt < SampleCount; ++SampleIt)
-		{
-			FVector Value(Ptr[SampleIt].R.GetFloat(), Ptr[SampleIt].G.GetFloat(), Ptr[SampleIt].B.GetFloat());
-			Ar << Value;
-		}
-#endif
 
 		FMemory::Free(Ptr);
 	}
@@ -449,99 +366,6 @@ void UVectorFieldStatic::UpdateCPUData(bool bDiscardData)
 		// If there's no need to access the CPU data just empty the array.
 		CPUData.Empty();
 	}
-}
-
-FVector UVectorFieldStatic::FilteredSample(const FVector& SamplePosition, const FVector& TilingAxes) const
-{
-	check(bAllowCPUAccess);
-
-	static auto FVectorClamp = [](const FVector& v, const FVector& a, const FVector& b) {
-		return FVector(FMath::Clamp(v.X, a.X, b.X),
-			FMath::Clamp(v.Y, a.Y, b.Y),
-			FMath::Clamp(v.Z, a.Z, b.Z));
-	};
-
-	static auto FVectorFloor = [](const FVector& v) {
-		return FVector(FGenericPlatformMath::FloorToFloat(v.X),
-			FGenericPlatformMath::FloorToFloat(v.Y),
-			FGenericPlatformMath::FloorToFloat(v.Z));
-	};
-
-	const FVector Size(SizeX, SizeY, SizeZ);
-
-	// 
-	FVector Index0 = FVectorFloor(SamplePosition);
-	FVector Index1 = Index0 + FVector::OneVector;
-
-	// 
-	FVector Fraction = SamplePosition - Index0;
-
-	Index0 = Index0 - TilingAxes * FVectorFloor(Index0 / Size) * Size;
-	Index1 = Index1 - TilingAxes * FVectorFloor(Index1 / Size) * Size;
-
-	Index0 = FVectorClamp(Index0, FVector::ZeroVector, Size - FVector::OneVector);
-	Index1 = FVectorClamp(Index1, FVector::ZeroVector, Size - FVector::OneVector);
-
-	// Sample by regular trilinear interpolation:
-
-	// Fetch corners
-	FVector V000 = SampleInternal(int32(Index0.X + SizeX * Index0.Y + SizeX * SizeY * Index0.Z));
-	FVector V100 = SampleInternal(int32(Index1.X + SizeX * Index0.Y + SizeX * SizeY * Index0.Z));
-	FVector V010 = SampleInternal(int32(Index0.X + SizeX * Index1.Y + SizeX * SizeY * Index0.Z));
-	FVector V110 = SampleInternal(int32(Index1.X + SizeX * Index1.Y + SizeX * SizeY * Index0.Z));
-	FVector V001 = SampleInternal(int32(Index0.X + SizeX * Index0.Y + SizeX * SizeY * Index1.Z));
-	FVector V101 = SampleInternal(int32(Index1.X + SizeX * Index0.Y + SizeX * SizeY * Index1.Z));
-	FVector V011 = SampleInternal(int32(Index0.X + SizeX * Index1.Y + SizeX * SizeY * Index1.Z));
-	FVector V111 = SampleInternal(int32(Index1.X + SizeX * Index1.Y + SizeX * SizeY * Index1.Z));
-
-	// Blend x-axis
-	FVector V00 = FMath::Lerp(V000, V100, Fraction.X);
-	FVector V01 = FMath::Lerp(V001, V101, Fraction.X);
-	FVector V10 = FMath::Lerp(V010, V110, Fraction.X);
-	FVector V11 = FMath::Lerp(V011, V111, Fraction.X);
-
-	// Blend y-axis
-	FVector V0 = FMath::Lerp(V00, V10, Fraction.Y);
-	FVector V1 = FMath::Lerp(V01, V11, Fraction.Y);
-
-	// Blend z-axis
-	return FMath::Lerp(V0, V1, Fraction.Z);
-}
-
-FVector UVectorFieldStatic::Sample(const FIntVector& SamplePosition) const
-{
-	check(bAllowCPUAccess);
-
-	const int32 SampleX = FMath::Clamp(SamplePosition.X, 0, SizeX);
-	const int32 SampleY = FMath::Clamp(SamplePosition.Y, 0, SizeY);
-	const int32 SampleZ = FMath::Clamp(SamplePosition.Z, 0, SizeZ);
-	const int32 SampleIndex = SampleX + SizeX * (SampleY + SampleZ * SizeY);
-
-	return SampleInternal(SampleIndex);
-}
-
-FORCEINLINE static FVector SampleInternalData(TConstArrayView<FFloat16> Samples, int32 SampleIndex)
-{
-	constexpr int32 ComponentCount = 3;
-	const FFloat16* HalfData = Samples.GetData() + SampleIndex * ComponentCount;
-
-	FVector4 Result;
-	FPlatformMath::VectorLoadHalf(reinterpret_cast<float*>(&Result), reinterpret_cast<const uint16*>(HalfData));
-
-	return FVector(Result);
-}
-
-FORCEINLINE static FVector SampleInternalData(TConstArrayView<float> Samples, int32 SampleIndex)
-{
-	constexpr int32 ComponentCount = 3;
-	const float* FloatData = Samples.GetData() + SampleIndex * ComponentCount;
-	return FVector(FloatData[0], FloatData[1], FloatData[2]);
-}
-
-FORCEINLINE FVector UVectorFieldStatic::SampleInternal(int32 SampleIndex) const
-{
-	check(bAllowCPUAccess);
-	return SampleInternalData(ReadCPUData(), SampleIndex);
 }
 
 FRHITexture* UVectorFieldStatic::GetVolumeTextureRef()
@@ -609,21 +433,6 @@ void UVectorFieldStatic::BeginDestroy()
 {
 	ReleaseResource();
 	Super::BeginDestroy();
-}
-
-void UVectorFieldStatic::GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize)
-{
-	Super::GetResourceSizeEx(CumulativeResourceSize);
-
-	CumulativeResourceSize.AddDedicatedSystemMemoryBytes(CPUData.GetAllocatedSize());
-	if (SourceData.IsBulkDataLoaded())
-	{
-		CumulativeResourceSize.AddDedicatedSystemMemoryBytes(SourceData.GetBulkDataSize());
-	}
-	if (Resource)
-	{
-		((const FVectorFieldStaticResource*)Resource)->GetResourceSizeEx(CumulativeResourceSize);
-	}
 }
 
 #if WITH_EDITOR
@@ -742,7 +551,7 @@ public:
 		FPrimitiveViewRelevance Result;
 		Result.bDrawRelevance = IsShown(View); 
 		Result.bDynamicRelevance = true;
-		Result.bOpaque = true;
+		Result.bOpaqueRelevance = true;
 		return Result;
 	}
 
@@ -885,7 +694,7 @@ void UVectorFieldComponent::SetIntensity(float NewIntensity)
 }
 
 
-void UVectorFieldComponent::PostInterpChange(FProperty* PropertyThatChanged)
+void UVectorFieldComponent::PostInterpChange(UProperty* PropertyThatChanged)
 {
 	static const FName IntensityPropertyName(TEXT("Intensity"));
 
@@ -977,6 +786,19 @@ public:
 		OutVolumeTextureSampler.Bind( Initializer.ParameterMap, TEXT("OutVolumeTextureSampler") );
 	}
 
+	/** Serialization. */
+	virtual bool Serialize( FArchive& Ar ) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize( Ar );
+		Ar << AtlasTexture;
+		Ar << AtlasTextureSampler;
+		Ar << NoiseVolumeTexture;
+		Ar << NoiseVolumeTextureSampler;
+		Ar << OutVolumeTexture;
+		Ar << OutVolumeTextureSampler;
+		return bShaderHasOutdatedParameters;
+	}
+
 	/**
 	 * Set parameters for this shader.
 	 * @param UniformBuffer - Uniform buffer containing parameters for compositing vector fields.
@@ -989,7 +811,7 @@ public:
 		FRHITexture* AtlasTextureRHI,
 		FRHITexture* NoiseVolumeTextureRHI )
 	{
-		FRHIComputeShader* ComputeShaderRHI = RHICmdList.GetBoundComputeShader();
+		FRHIComputeShader* ComputeShaderRHI = GetComputeShader();
 		FRHISamplerState* SamplerStateLinear = TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI();
 		SetUniformBufferParameter(RHICmdList, ComputeShaderRHI, GetUniformBufferParameter<FCompositeAnimatedVectorFieldUniformParameters>(), UniformBuffer );
 		SetTextureParameter(RHICmdList, ComputeShaderRHI, AtlasTexture, AtlasTextureSampler, SamplerStateLinear, AtlasTextureRHI );
@@ -1001,7 +823,7 @@ public:
 	 */
 	void SetOutput(FRHICommandList& RHICmdList, FRHIUnorderedAccessView* VolumeTextureUAV)
 	{
-		FRHIComputeShader* ComputeShaderRHI = RHICmdList.GetBoundComputeShader();
+		FRHIComputeShader* ComputeShaderRHI = GetComputeShader();
 		if ( OutVolumeTexture.IsBound() )
 		{
 			RHICmdList.SetUAVParameter(ComputeShaderRHI, OutVolumeTexture.GetBaseIndex(), VolumeTextureUAV);
@@ -1013,7 +835,7 @@ public:
 	 */
 	void UnbindBuffers(FRHICommandList& RHICmdList)
 	{
-		FRHIComputeShader* ComputeShaderRHI = RHICmdList.GetBoundComputeShader();
+		FRHIComputeShader* ComputeShaderRHI = GetComputeShader();
 		if ( OutVolumeTexture.IsBound() )
 		{
 			RHICmdList.SetUAVParameter(ComputeShaderRHI, OutVolumeTexture.GetBaseIndex(), nullptr);
@@ -1021,15 +843,16 @@ public:
 	}
 
 private:
+
 	/** Vector field volume textures to composite. */
-	LAYOUT_FIELD(FShaderResourceParameter, AtlasTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, AtlasTextureSampler);
+	FShaderResourceParameter AtlasTexture;
+	FShaderResourceParameter AtlasTextureSampler;
 	/** Volume texture to sample as noise. */
-	LAYOUT_FIELD(FShaderResourceParameter, NoiseVolumeTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, NoiseVolumeTextureSampler);
+	FShaderResourceParameter NoiseVolumeTexture;
+	FShaderResourceParameter NoiseVolumeTextureSampler;
 	/** The global vector field volume texture to write to. */
-	LAYOUT_FIELD(FShaderResourceParameter, OutVolumeTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, OutVolumeTextureSampler);
+	FShaderResourceParameter OutVolumeTexture;
+	FShaderResourceParameter OutVolumeTextureSampler;
 };
 IMPLEMENT_SHADER_TYPE(,FCompositeAnimatedVectorFieldCS,TEXT("/Engine/Private/VectorFieldCompositeShaders.usf"),TEXT("CompositeAnimatedVectorField"),SF_Compute);
 
@@ -1081,7 +904,7 @@ public:
 			check(SizeZ > 0);
 			UE_LOG(LogVectorField,Verbose,TEXT("InitRHI for 0x%016x %dx%dx%d"),(PTRINT)this,SizeX,SizeY,SizeZ);
 
-			ETextureCreateFlags TexCreateFlags = TexCreate_None;
+			uint32 TexCreateFlags = 0;
 			if (GetFeatureLevel() >= ERHIFeatureLevel::SM5)
 			{
 				TexCreateFlags = TexCreate_ShaderResource | TexCreate_UAV;
@@ -1171,8 +994,8 @@ public:
 				NoiseVolumeTextureRHI = AnimatedVectorField->NoiseField->Resource->VolumeTextureRHI;
 			}
 
-			RHICmdList.Transition(FRHITransitionInfo(VolumeTextureUAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
-			RHICmdList.SetComputeShader(CompositeCS.GetComputeShader());
+			RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EGfxToCompute, VolumeTextureUAV);
+			RHICmdList.SetComputeShader(CompositeCS->GetComputeShader());
 			CompositeCS->SetOutput(RHICmdList, VolumeTextureUAV);
 			/// ?
 			CompositeCS->SetParameters(
@@ -1182,12 +1005,12 @@ public:
 				NoiseVolumeTextureRHI );
 			DispatchComputeShader(
 				RHICmdList,
-				CompositeCS.GetShader(),
+				*CompositeCS,
 				SizeX / THREADS_PER_AXIS,
 				SizeY / THREADS_PER_AXIS,
 				SizeZ / THREADS_PER_AXIS );
 			CompositeCS->UnbindBuffers(RHICmdList);
-			RHICmdList.Transition(FRHITransitionInfo(VolumeTextureUAV, ERHIAccess::ERWBarrier, ERHIAccess::SRVMask));
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, VolumeTextureUAV);
 		}
 	}
 

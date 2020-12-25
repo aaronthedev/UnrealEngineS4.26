@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MaterialShaderQualitySettingsCustomization.h"
 
@@ -81,10 +81,6 @@ public:
 			else if (ColumnName == TEXT("High"))
 			{
 				MaterialQualityLevel = EMaterialQualityLevel::High;
-			}
-			else if (ColumnName == TEXT("Epic"))
-			{
-				MaterialQualityLevel = EMaterialQualityLevel::Epic;
 			}
 
 			if (MaterialQualityLevel < EMaterialQualityLevel::Num)
@@ -182,6 +178,26 @@ void FMaterialShaderQualitySettingsCustomization::CustomizeDetails(IDetailLayout
 		QualityOverrideListSource.Add(MakeShareable(new FShaderQualityOverridesListItem(DisplayName, OverrideHandles, EnabledHandles)));
 	}
 
+	TArray<TWeakObjectPtr<UObject>> CustomizedObjects;
+	DetailLayout.GetObjectsBeingCustomized(CustomizedObjects);
+	if (CustomizedObjects.Num() && CustomizedObjects[0]->GetName() == TEXT("ForwardShadingQuality_GLSL_ES2"))
+	{
+		TSharedPtr<SWidget> ES2Warning = SNew(SBorder)
+			.BorderBackgroundColor(FLinearColor::Red)
+			.BorderImage(FEditorStyle::GetBrush("ToolPanel.LightGroupBorder"))
+			.Padding(8.0f)
+			[
+				SNew(STextBlock)
+				.Text(LOCTEXT("ES2Deprecation", "Warning: This feature level is deprecated. Please use ES3.1"))
+			];
+
+		ForwardRenderingCategory.AddCustomRow(LOCTEXT("Warning", "Warning"), false)
+			.WholeRowWidget
+			[
+				ES2Warning.ToSharedRef()
+			];
+	}
+
 	ForwardRenderingCategory.AddCustomRow(LOCTEXT("ForwardRenderingMaterialOverrides", "Forward Rendering Material Overrides"))
 		[
 			SAssignNew(MaterialQualityOverridesListView, SMaterialQualityOverridesListView)
@@ -234,16 +250,6 @@ void FMaterialShaderQualitySettingsCustomization::CustomizeDetails(IDetailLayout
 				[
 					SNew(STextBlock)
 					.Text(LOCTEXT("MaterialQualityList_High", "High"))
-					.Font(IDetailLayoutBuilder::GetDetailFont())
-				]
-			//
-			+ SHeaderRow::Column("Epic")
-				.HAlignCell(HAlign_Left)
-				.FillWidth(1)
-				.HeaderContentPadding(FMargin(0, 3))
-				[
-					SNew(STextBlock)
-					.Text(LOCTEXT("MaterialQualityList_Epic", "Epic"))
 					.Font(IDetailLayoutBuilder::GetDetailFont())
 				]
 			)

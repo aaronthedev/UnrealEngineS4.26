@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "GraphEditor.h"
@@ -17,7 +17,6 @@ void SGraphEditor::ConstructImplementation( const FArguments& InArgs )
 {
 	FGraphEditorModule& GraphEdModule = FModuleManager::LoadModuleChecked<FGraphEditorModule>(TEXT("GraphEditor"));
 	
-
 	// Construct the implementation and make it the contents of this widget.
 	Implementation = GraphEdModule.PRIVATE_MakeGraphEditor( InArgs._AdditionalCommands, 
 		InArgs._IsEditable, 
@@ -33,8 +32,6 @@ void SGraphEditor::ConstructImplementation( const FArguments& InArgs )
 		InArgs._OnNavigateHistoryForward,
 		InArgs._ShowGraphStateOverlay
 		);
-
-	Implementation->AssetEditorToolkit = InArgs._AssetEditorToolkit;
 
 	this->ChildSlot
 	[
@@ -56,7 +53,6 @@ void SGraphEditor::Construct( const FArguments& InArgs )
 {
 	EdGraphObj = InArgs._GraphToEdit;
 	OnGraphModuleReloadedCallback = InArgs._OnGraphModuleReloaded;
-	AssetEditorToolkit = InArgs._AssetEditorToolkit;
 
 	// Register this widget with the module so that we can gracefully handle the module being unloaded.
 	// See OnModuleUnloading()

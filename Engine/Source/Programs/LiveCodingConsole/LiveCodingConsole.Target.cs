@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.Collections.Generic;
@@ -25,8 +25,8 @@ public class LiveCodingConsoleTarget : TargetRules
 		bCompileAgainstCoreUObject = true;
 		bCompileAgainstEngine = false;
 
-		// ICU is needed for regex during click to source code
-		bCompileICU = true;
+		// ICU is not needed
+		bCompileICU = false;
 
 		// UnrealHeaderTool is a console application, not a Windows app (sets entry point to main(), instead of WinMain())
 		bIsBuildingConsoleApplication = false;

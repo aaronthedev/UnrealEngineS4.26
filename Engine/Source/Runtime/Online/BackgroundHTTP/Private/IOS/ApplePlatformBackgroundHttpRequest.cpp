@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IOS/ApplePlatformBackgroundHttpRequest.h"
 #include "IOS/ApplePlatformBackgroundHttpManager.h"
@@ -49,8 +49,7 @@ void FApplePlatformBackgroundHttpRequest::CompleteRequest_Internal(bool bWasRequ
 {
     UE_LOG(LogBackgroundHttpRequest, Display, TEXT("Marking Request Complete -- RequestDebugID:%s | bWasRequestSuccess:%d | CompletedTempDownloadLocation:%s"), *GetRequestDebugID(), (int)bWasRequestSuccess, *CompletedTempDownloadLocationIn);
     
-	//Purposefully avoid setting bIsTaskActive to false here as we still expect that to be set until the request is deleted.
-	
+    FPlatformAtomics::InterlockedExchange(&bIsTaskActive, false);
 	FPlatformAtomics::InterlockedExchange(&bIsCompleted, true);
 	FPlatformAtomics::InterlockedExchange(&bIsFailed, !bWasRequestSuccess);
     FPlatformAtomics::InterlockedExchange(&bIsPendingCancel, false);
@@ -129,6 +128,7 @@ void FApplePlatformBackgroundHttpRequest::PauseUnderlyingTask()
             
             UE_LOG(LogBackgroundHttpRequest, Display, TEXT("Pausing Task for Request -- RequestDebugID:%s | TaskIdentifier:%d | TaskURL:%s"), *GetRequestDebugID(), TaskIdentifier, *TaskURL);
             
+            FPlatformAtomics::InterlockedExchange(&bIsTaskActive, false);
             FPlatformAtomics::InterlockedExchange(&bIsPendingCancel, false);
             FPlatformAtomics::InterlockedExchange(&bIsTaskPaused, true);
             
@@ -212,18 +212,7 @@ void FApplePlatformBackgroundHttpRequest::PauseRequest()
 
 void FApplePlatformBackgroundHttpRequest::ResumeRequest()
 {
-	FPlatformAtomics::InterlockedExchange(&bIsTaskPaused, false);
-	
-	//We only want to re-activate tasks that have already been flagged as active.
-	//Otherwise let our BackgroundHTTP Manager handle activating us on a tick now that we aren't paused.
-	if (IsUnderlyingTaskActive())
-	{
-		ActivateUnderlyingTask();
-	}
-	else
-	{
-		UE_LOG(LogBackgroundHttpRequest, Display, TEXT("ResumeRequest called on a task that wasn't active -- RequestDebugID:%s"), *GetRequestDebugID());
-	}
+    ActivateUnderlyingTask();
 }
 
 void FApplePlatformBackgroundHttpRequest::CancelActiveTask()

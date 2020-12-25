@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ThumbnailRendering/MaterialFunctionThumbnailRenderer.h"
 #include "Misc/App.h"
@@ -9,7 +9,6 @@
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceConstant.h"
 #include "ThumbnailHelpers.h"
-#include "Settings/ContentBrowserSettings.h"
 
 
 UMaterialFunctionThumbnailRenderer::UMaterialFunctionThumbnailRenderer(const FObjectInitializer& ObjectInitializer)
@@ -18,7 +17,7 @@ UMaterialFunctionThumbnailRenderer::UMaterialFunctionThumbnailRenderer(const FOb
 	ThumbnailScene = nullptr;
 }
 
-void UMaterialFunctionThumbnailRenderer::Draw(UObject* Object, int32 X, int32 Y, uint32 Width, uint32 Height, FRenderTarget* RenderTarget, FCanvas* Canvas, bool bAdditionalViewFamily)
+void UMaterialFunctionThumbnailRenderer::Draw(UObject* Object, int32 X, int32 Y, uint32 Width, uint32 Height, FRenderTarget* RenderTarget, FCanvas* Canvas)
 {
 	UMaterialFunctionInterface* MatFunc = Cast<UMaterialFunctionInterface>(Object);
 	UMaterialFunctionInstance* MatFuncInst = Cast<UMaterialFunctionInstance>(Object);
@@ -51,8 +50,7 @@ void UMaterialFunctionThumbnailRenderer::Draw(UObject* Object, int32 X, int32 Y,
 				ThumbnailScene->SetMaterialInterface(PreviewMaterial);
 	
 			FSceneViewFamilyContext ViewFamily( FSceneViewFamily::ConstructionValues( RenderTarget, ThumbnailScene->GetScene(), FEngineShowFlags(ESFIM_Game) )
-				.SetWorldTimes(FApp::GetCurrentTime() - GStartTime, FApp::GetDeltaTime(), FApp::GetCurrentTime() - GStartTime)
-				.SetAdditionalViewFamily(bAdditionalViewFamily));
+				.SetWorldTimes(FApp::GetCurrentTime() - GStartTime, FApp::GetDeltaTime(), FApp::GetCurrentTime() - GStartTime));
 
 			ViewFamily.EngineShowFlags.DisableAdvancedFeatures();
 			ViewFamily.EngineShowFlags.MotionBlur = 0;
@@ -67,11 +65,6 @@ void UMaterialFunctionThumbnailRenderer::Draw(UObject* Object, int32 X, int32 Y,
 			ThumbnailScene->SetMaterialInterface(nullptr);
 		}
 	}
-}
-
-bool UMaterialFunctionThumbnailRenderer::CanVisualizeAsset(UObject* Object)
-{
-	return GetDefault<UContentBrowserSettings>()->bEnableRealtimeMaterialInstanceThumbnails;
 }
 
 void UMaterialFunctionThumbnailRenderer::BeginDestroy()

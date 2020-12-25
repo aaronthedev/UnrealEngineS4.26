@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TrackRecorders/MovieScene3DTransformTrackRecorder.h"
 #include "TrackRecorders/MovieSceneAnimationTrackRecorder.h"
@@ -239,7 +239,6 @@ void UMovieScene3DTransformTrackRecorder::FinalizeTrackImpl()
 	{
 		FKeyDataOptimizationParams Params;
 		Params.bAutoSetInterpolation = true;
-		Params.Tolerance = TrackRecorderSettings.ReduceKeysTolerance;
 		for (FMovieSceneFloatChannel* Channel : FloatChannels)
 		{
 			Channel->Optimize(Params);
@@ -403,18 +402,10 @@ bool UMovieScene3DTransformTrackRecorder::ResolveTransformToRecord(FTransform& O
  		USceneComponent* AttachParent = RootComponent ? RootComponent->GetAttachParent() : nullptr;
  
  		bWasAttached = AttachParent != nullptr;
-
-		if (AttachParent && OwningTakeRecorderSource)
+ 		if (AttachParent && OwningTakeRecorderSource)
  		{
  			// We capture world space transforms for actors if they're attached, but we're not recording the attachment parent
 			bCaptureWorldSpaceTransform = !OwningTakeRecorderSource->IsOtherActorBeingRecorded(AttachParent->GetOwner());
-
-			// Except when recording to possessable because the possessable will still be attached to the parent
-			FTrackRecorderSettings TrackRecorderSettings = OwningTakeRecorderSource->GetTrackRecorderSettings();
-			if (TrackRecorderSettings.bRecordToPossessable)
-			{
-				bCaptureWorldSpaceTransform = false;
-			}
  		}
 
  		if (!RootComponent)

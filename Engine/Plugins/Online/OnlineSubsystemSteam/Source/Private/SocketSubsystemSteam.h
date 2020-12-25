@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -378,12 +378,19 @@ public:
 	 *
 	 * @return true on success, false otherwise.
 	 */
-	virtual bool GetLocalAdapterAddresses(TArray<TSharedPtr<FInternetAddr>>& OutAddresses) override;
+	virtual bool GetLocalAdapterAddresses( TArray<TSharedPtr<FInternetAddr> >& OutAdresses ) override
+	{
+		bool bCanBindAll;
+
+		OutAdresses.Add(GetLocalHostAddr(*GLog, bCanBindAll));
+
+		return true;
+	}
 
 	/**
 	 *	Get local IP to bind to
 	 */
-	virtual TArray<TSharedRef<FInternetAddr>> GetLocalBindAddresses() override;
+	virtual TSharedRef<FInternetAddr> GetLocalBindAddr(FOutputDevice& Out) override;
 
 	/**
 	 * Chance for the socket subsystem to get some time

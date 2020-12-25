@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 //
 
 #include "ShaderFormatVectorVM.h"
@@ -66,11 +66,6 @@ public:
 	virtual const TCHAR* GetPlatformIncludeDirectory() const
 	{
 		return TEXT("");
-	}
-
-	virtual bool UsesHLSLcc(const struct FShaderCompilerInput& Input) const override
-	{
-		return true;
 	}
 };
 

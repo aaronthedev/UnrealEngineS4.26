@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "K2Node.h"
@@ -57,32 +57,6 @@ UK2Node::UK2Node(const FObjectInitializer& ObjectInitializer)
 	OrphanedPinSaveMode = ESaveOrphanPinMode::SaveAllButExec;
 }
 
-void UK2Node::PreEditChange(FProperty* PropertyThatWillChange)
-{
-	Super::PreEditChange(PropertyThatWillChange);
-
-	const FName PropertyName = PropertyThatWillChange ? PropertyThatWillChange->GetFName() : FName();
-	if (PropertyName == FName() ||
-		// don't dirty on cosmetic property changes:
-		(	PropertyName != GET_MEMBER_NAME_CHECKED(UEdGraphNode, NodePosX) &&
-			PropertyName != GET_MEMBER_NAME_CHECKED(UEdGraphNode, NodePosY) &&
-			PropertyName != GET_MEMBER_NAME_CHECKED(UEdGraphNode, NodeWidth) &&
-			PropertyName != GET_MEMBER_NAME_CHECKED(UEdGraphNode, NodeHeight) &&
-			PropertyName != GET_MEMBER_NAME_CHECKED(UEdGraphNode, bCommentBubblePinned) &&
-			PropertyName != GET_MEMBER_NAME_CHECKED(UEdGraphNode, bCommentBubbleVisible) &&
-			PropertyName != GET_MEMBER_NAME_CHECKED(UEdGraphNode, bCommentBubbleMakeVisible) ))
-	{
-		// we call 'preeditchange' on uk2nodes in the transaction buffer, and they
-		// may be outered to the transient package:
-		if (HasValidBlueprint())
-		{
-			UBlueprint* BP = GetBlueprint();
-			BP->Status = BS_Dirty;
-		}
-		
-	}
-}
-
 void UK2Node::PostLoad()
 {
 #if WITH_EDITORONLY_DATA
@@ -117,7 +91,7 @@ void UK2Node::Serialize(FArchive& Ar)
 {
 	Ar.UsingCustomVersion(FFrameworkObjectVersion::GUID);
 
-	if (Ar.IsSaving())
+	if (Ar.IsSaving() && !GIsSavingPackage)
 	{
 		if (Ar.IsObjectReferenceCollector() || Ar.Tell() < 0)
 		{
@@ -309,9 +283,9 @@ bool UK2Node::CreatePinsForFunctionEntryExit(const UFunction* Function, bool bFo
 
 	// Create the inputs and outputs
 	bool bAllPinsGood = true;
-	for (TFieldIterator<FProperty> PropIt(Function); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
+	for (TFieldIterator<UProperty> PropIt(Function); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
 	{
-		FProperty* Param = *PropIt;
+		UProperty* Param = *PropIt;
 
 		// Don't create a new pin if one exists already! 
 		// @see UE-79032, UE-58390
@@ -909,7 +883,7 @@ UK2Node::ERedirectType UK2Node::DoPinsMatchForReconstruction(const UEdGraphPin* 
 					const UEdGraphPin* ParentPin = CurPin ? CurPin->ParentPin : nullptr;
 					UStruct* SubCategoryStruct = ParentPin ? Cast<UStruct>(ParentPin->PinType.PinSubCategoryObject.Get()) : nullptr;
 
-					FName RedirectedPinName = SubCategoryStruct ? FProperty::FindRedirectedPropertyName(SubCategoryStruct, FName(*ParentHierarchy[ParentIndex].PropertyName)) : NAME_None;
+					FName RedirectedPinName = SubCategoryStruct ? UProperty::FindRedirectedPropertyName(SubCategoryStruct, FName(*ParentHierarchy[ParentIndex].PropertyName)) : NAME_None;
 
 					if (RedirectedPinName != NAME_None)
 					{
@@ -928,21 +902,6 @@ UK2Node::ERedirectType UK2Node::DoPinsMatchForReconstruction(const UEdGraphPin* 
 	}
 
 	return RedirectType;
-}
-
-bool UK2Node::DoesWildcardPinAcceptContainer(const UEdGraphPin* Pin)
-{
-	check(Pin);
-	if (Pin->Direction == EGPD_Input)
-	{
-		return DoesInputWildcardPinAcceptArray(Pin);
-	}
-	else if (Pin->Direction == EGPD_Output)
-	{
-		return DoesOutputWildcardPinAcceptContainer(Pin);
-	}
-
-	return false;
 }
 
 void UK2Node::ReconstructSinglePin(UEdGraphPin* NewPin, UEdGraphPin* OldPin, ERedirectType RedirectType)
@@ -1045,8 +1004,6 @@ void UK2Node::ValidateNodeDuringCompilation(FCompilerResultsLog& MessageLog) con
 			ValidateOrphanPins(MessageLog, false);
 		}
 	}
-
-	FBlueprintEditorUtils::ValidateEditorOnlyNodes(this, MessageLog);
 }
 
 FString UK2Node::GetPinMetaData(FName InPinName, FName InKey)
@@ -1061,9 +1018,9 @@ FString UK2Node::GetPinMetaData(FName InPinName, FName InKey)
 		UStruct* StructType = Cast<UStruct>(Pin->ParentPin->PinType.PinSubCategoryObject.Get());
 		if (StructType)
 		{
-			for (TFieldIterator<FProperty> It(StructType); It; ++It)
+			for (TFieldIterator<UProperty> It(StructType); It; ++It)
 			{
-				const FProperty* Property = *It;
+				const UProperty* Property = *It;
 				if (Property && Property->GetFName() == NewPinPropertyName)
 				{
 					return Property->GetMetaData(InKey);
@@ -1309,11 +1266,6 @@ UK2Node* UK2Node::ExpandSplitPin(FKismetCompilerContext* CompilerContext, UEdGra
 
 void UK2Node::ExpandNode(FKismetCompilerContext& CompilerContext, UEdGraph* SourceGraph)
 {
-	ExpandSplitPins(CompilerContext, SourceGraph);
-}
-
-void UK2Node::ExpandSplitPins(FKismetCompilerContext& CompilerContext, UEdGraph* SourceGraph)
-{
 	// We iterate the array in reverse so we can both remove the subpins safely after we've read them and
 	// so we have split nested structs we combine them back together in the right order
 	for (int32 PinIndex=Pins.Num() - 1; PinIndex >= 0; --PinIndex)
@@ -1382,7 +1334,7 @@ FOnUserDefinedPinRenamed& UK2Node::OnUserDefinedPinRenamed()
 	{
 		FPinRenamedAnnotation NewEvent;
 		NewEvent.bIsDefault = false;
-		GOnUserDefinedPinRenamedAnnotation.AddAnnotation(this, MoveTemp(NewEvent));
+		GOnUserDefinedPinRenamedAnnotation.AddAnnotation(this, NewEvent);
 	}
 
 	return Map.FindChecked(this).PinRenamedEvent;
@@ -1445,13 +1397,13 @@ ERenamePinResult UK2Node::RenameUserDefinedPinImpl(const FName OldName, const FN
 /////////////////////////////////////////////////////
 // FOptionalPinManager
 
-void FOptionalPinManager::GetRecordDefaults(FProperty* TestProperty, FOptionalPinFromProperty& Record) const
+void FOptionalPinManager::GetRecordDefaults(UProperty* TestProperty, FOptionalPinFromProperty& Record) const
 {
 	Record.bShowPin = true;
 	Record.bCanToggleVisibility = true;
 }
 
-bool FOptionalPinManager::CanTreatPropertyAsOptional(FProperty* TestProperty) const
+bool FOptionalPinManager::CanTreatPropertyAsOptional(UProperty* TestProperty) const
 {
 	return TestProperty->HasAnyPropertyFlags(CPF_Edit|CPF_BlueprintVisible); // TODO: ANIMREFACTOR: Maybe only CPF_Edit?
 }
@@ -1469,11 +1421,11 @@ void FOptionalPinManager::RebuildPropertyList(TArray<FOptionalPinFromProperty>& 
 	Properties.Reset();
 
 	// find all "bOverride_" properties
-	TMap<FName, FProperty*> OverridesMap;
+	TMap<FName, UProperty*> OverridesMap;
 	const FString OverridePrefix(TEXT("bOverride_"));
-	for (TFieldIterator<FProperty> It(SourceStruct, EFieldIteratorFlags::IncludeSuper); It; ++It)
+	for (TFieldIterator<UProperty> It(SourceStruct, EFieldIteratorFlags::IncludeSuper); It; ++It)
 	{
-		FProperty* TestProperty = *It;
+		UProperty* TestProperty = *It;
 		if (CanTreatPropertyAsOptional(TestProperty) && TestProperty->GetName().StartsWith(OverridePrefix))
 		{
 			FString OriginalName = TestProperty->GetName();
@@ -1485,9 +1437,9 @@ void FOptionalPinManager::RebuildPropertyList(TArray<FOptionalPinFromProperty>& 
 	}
 
 	// handle regular properties
-	for (TFieldIterator<FProperty> It(SourceStruct, EFieldIteratorFlags::IncludeSuper); It; ++It)
+	for (TFieldIterator<UProperty> It(SourceStruct, EFieldIteratorFlags::IncludeSuper); It; ++It)
 	{
-		FProperty* TestProperty = *It;
+		UProperty* TestProperty = *It;
 		if (CanTreatPropertyAsOptional(TestProperty) && !TestProperty->GetName().StartsWith(OverridePrefix))
 		{
 			FName CategoryName = NAME_None;
@@ -1501,9 +1453,9 @@ void FOptionalPinManager::RebuildPropertyList(TArray<FOptionalPinFromProperty>& 
 	}
 
 	// add remaining "bOverride_" properties
-	for (const TPair<FName, FProperty*>& Pair : OverridesMap)
+	for (const TPair<FName, UProperty*>& Pair : OverridesMap)
 	{
-		FProperty* TestProperty = Pair.Value;
+		UProperty* TestProperty = Pair.Value;
 
 		FName CategoryName = NAME_None;
 #if WITH_EDITOR
@@ -1514,7 +1466,7 @@ void FOptionalPinManager::RebuildPropertyList(TArray<FOptionalPinFromProperty>& 
 	}
 }
 
-void FOptionalPinManager::RebuildProperty(FProperty* TestProperty, FName CategoryName, TArray<FOptionalPinFromProperty>& Properties, UStruct* SourceStruct, TMap<FName, FOldOptionalPinSettings>& OldSettings)
+void FOptionalPinManager::RebuildProperty(UProperty* TestProperty, FName CategoryName, TArray<FOptionalPinFromProperty>& Properties, UStruct* SourceStruct, TMap<FName, FOldOptionalPinSettings>& OldSettings)
 {
 	FOptionalPinFromProperty* Record = new (Properties)FOptionalPinFromProperty;
 	Record->PropertyName = TestProperty->GetFName();
@@ -1523,7 +1475,7 @@ void FOptionalPinManager::RebuildProperty(FProperty* TestProperty, FName Categor
 	Record->CategoryName = CategoryName;
 
 	bool bNegate = false;
-	FProperty* OverrideProperty = PropertyCustomizationHelpers::GetEditConditionProperty(TestProperty, bNegate);
+	UProperty* OverrideProperty = PropertyCustomizationHelpers::GetEditConditionProperty(TestProperty, bNegate);
 	Record->bHasOverridePin = OverrideProperty != nullptr && OverrideProperty->HasAllPropertyFlags(CPF_BlueprintVisible) && !OverrideProperty->HasAllPropertyFlags(CPF_BlueprintReadOnly);
 	Record->bIsMarkedForAdvancedDisplay = TestProperty->HasAnyPropertyFlags(CPF_AdvancedDisplay);
 
@@ -1549,14 +1501,14 @@ void FOptionalPinManager::CreateVisiblePins(TArray<FOptionalPinFromProperty>& Pr
 
 	for (FOptionalPinFromProperty& PropertyEntry : Properties)
 	{
-		if (FProperty* OuterProperty = FindFieldChecked<FProperty>(SourceStruct, PropertyEntry.PropertyName))
+		if (UProperty* OuterProperty = FindFieldChecked<UProperty>(SourceStruct, PropertyEntry.PropertyName))
 		{
 			// Do we treat an array property as one pin, or a pin per entry in the array?
 			// Depends on if we have an instance of the struct to work with.
-			FArrayProperty* ArrayProperty = CastField<FArrayProperty>(OuterProperty);
+			UArrayProperty* ArrayProperty = Cast<UArrayProperty>(OuterProperty);
 			if ((ArrayProperty != nullptr) && (StructBasePtr != nullptr))
 			{
-				FProperty* InnerProperty = ArrayProperty->Inner;
+				UProperty* InnerProperty = ArrayProperty->Inner;
 
 				FEdGraphPinType PinType;
 				if (Schema->ConvertPropertyToPinType(InnerProperty, /*out*/ PinType))
@@ -1877,7 +1829,7 @@ void UK2Node::GetPinHoverText(const UEdGraphPin& Pin, FString& HoverTextOut) con
 			if (LineCounter >= MaxArrayPinTooltipLineCount)
 			{
 				// truncate WatchText so it contains a finite number of lines
-				WatchText.LeftInline(NewWatchTextLen, false);
+				WatchText  = WatchText.Left(NewWatchTextLen);
 				WatchText += "..."; // WatchText should already have a trailing newline (no need to prepend this with one)
 				break;
 			}
@@ -1888,7 +1840,7 @@ void UK2Node::GetPinHoverText(const UEdGraphPin& Pin, FString& HoverTextOut) con
 	switch (WatchStatus)
 	{
 	case FKismetDebugUtilities::EWTR_Valid:
-		HoverTextOut += FString::Printf(TEXT("\nCurrent value = \n%s"), *WatchText); //@TODO: Print out object being debugged name?
+		HoverTextOut += FString::Printf(TEXT("\nCurrent value = %s"), *WatchText); //@TODO: Print out object being debugged name?
 		break;
 	case FKismetDebugUtilities::EWTR_NotInScope:
 		HoverTextOut += TEXT("\n(Variable is not in scope)");

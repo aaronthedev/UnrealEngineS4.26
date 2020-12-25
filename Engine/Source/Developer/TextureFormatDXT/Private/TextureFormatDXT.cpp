@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Misc/ScopeLock.h"
@@ -226,7 +226,6 @@ public:
 	/** Run the compressor. */
 	bool Compress()
 	{
-		TRACE_CPUPROFILER_EVENT_SCOPE(FNVTTCompressor::Compress);
 		return Compressor.process(InputOptions, CompressionOptions, OutputOptions) && ErrorHandler.bSuccess;
 	}
 };
@@ -296,7 +295,7 @@ static bool CompressImageUsingNVTT(
 	bool bSRGB,
 	bool bIsNormalMap,
 	bool bIsPreview,
-	TArray64<uint8>& OutCompressedData
+	TArray<uint8>& OutCompressedData
 	)
 {
 	check(PixelFormat == PF_DXT1 || PixelFormat == PF_DXT3 || PixelFormat == PF_DXT5 || PixelFormat == PF_BC4 || PixelFormat == PF_BC5);
@@ -311,16 +310,9 @@ static bool CompressImageUsingNVTT(
 	const int32 RowsPerBatch = BlocksPerBatch / ImageBlocksX;
 	const int32 NumBatches = ImageBlocksY / RowsPerBatch;
 
-	// nvtt doesn't support 64-bit output sizes.
-	int64 OutDataSize = (int64)ImageBlocksX * ImageBlocksY * BlockBytes;
-	if (OutDataSize > MAX_uint32)
-	{
-		return false;
-	}
-
 	// Allocate space to store compressed data.
-	OutCompressedData.Empty(OutDataSize);
-	OutCompressedData.AddUninitialized(OutDataSize);
+	OutCompressedData.Empty(ImageBlocksX * ImageBlocksY * BlockBytes);
+	OutCompressedData.AddUninitialized(ImageBlocksX * ImageBlocksY * BlockBytes);
 
 	if (ImageBlocksX * ImageBlocksY <= BlocksPerBatch ||
 		BlocksPerBatch % ImageBlocksX != 0 ||
@@ -350,7 +342,7 @@ static bool CompressImageUsingNVTT(
 		return bSuccess;
 	}
 
-	int64 UncompressedStride = (int64)RowsPerBatch * BlockSizeY * SizeX * sizeof(FColor);
+	int32 UncompressedStride = RowsPerBatch * BlockSizeY * SizeX * sizeof(FColor);
 	int32 CompressedStride = RowsPerBatch * ImageBlocksX * BlockBytes;
 
 	// Create compressors for each batch.
@@ -446,8 +438,6 @@ class FTextureFormatDXT : public ITextureFormat
 		FCompressedImage2D& OutCompressedImage
 		) const override
 	{
-		TRACE_CPUPROFILER_EVENT_SCOPE(FTextureFormatDXT::CompressImage);
-
 		FImage Image;
 		InImage.CopyTo(Image, ERawImageFormat::BGRA8, BuildSettings.GetGammaSpace());
 
@@ -485,39 +475,21 @@ class FTextureFormatDXT : public ITextureFormat
 		}
 
 		bool bCompressionSucceeded = true;
-		int64 SliceSize = (int64)Image.SizeX * Image.SizeY;
-
-		if (Image.NumSlices == 1 && OutCompressedImage.RawData.Num() == 0)
+		int32 SliceSize = Image.SizeX * Image.SizeY;
+		for (int32 SliceIndex = 0; SliceIndex < Image.NumSlices && bCompressionSucceeded; ++SliceIndex)
 		{
-			// Avoid using a temp buffer when it's not needed
+			TArray<uint8> CompressedSliceData;
 			bCompressionSucceeded = CompressImageUsingNVTT(
-				(&Image.AsBGRA8()[0]),
+				Image.AsBGRA8() + SliceIndex * SliceSize,
 				CompressedPixelFormat,
 				Image.SizeX,
 				Image.SizeY,
 				Image.IsGammaCorrected(),
 				bIsNormalMap,
 				false, // Daniel Lamb: Testing with this set to true didn't give large performance gain to lightmaps.  Encoding of 140 lightmaps was 19.2seconds with preview 20.1 without preview.  11/30/2015
-				OutCompressedImage.RawData
+				CompressedSliceData
 				);
-		}
-		else
-		{
-			for (int32 SliceIndex = 0; SliceIndex < Image.NumSlices && bCompressionSucceeded; ++SliceIndex)
-			{
-				TArray64<uint8> CompressedSliceData;
-				bCompressionSucceeded = CompressImageUsingNVTT(
-					(&Image.AsBGRA8()[0]) + SliceIndex * SliceSize,
-					CompressedPixelFormat,
-					Image.SizeX,
-					Image.SizeY,
-					Image.IsGammaCorrected(),
-					bIsNormalMap,
-					false, // Daniel Lamb: Testing with this set to true didn't give large performance gain to lightmaps.  Encoding of 140 lightmaps was 19.2seconds with preview 20.1 without preview.  11/30/2015
-					CompressedSliceData
-					);
-				OutCompressedImage.RawData.Append(MoveTemp(CompressedSliceData));
-			}
+			OutCompressedImage.RawData.Append(CompressedSliceData);
 		}
 
 		if (bCompressionSucceeded)

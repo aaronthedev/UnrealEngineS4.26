@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "SEditorViewportToolBarMenu.h"
@@ -102,7 +102,7 @@ void SEditorViewportToolbarMenu::Construct( const FArguments& Declaration )
 			.ClickMethod( EButtonClickMethod::MouseDown )
 			.ContentPadding( FMargin( 5.0f, 2.0f ) )
 			.VAlign( VAlign_Center )
-			.ButtonStyle(Declaration._MenuStyle)
+			.ButtonStyle( FEditorStyle::Get(), "EditorViewportToolBar.MenuButton" )
 			.OnClicked( this, &SEditorViewportToolbarMenu::OnMenuClicked )
 			[
 				ButtonContent.ToSharedRef()
@@ -148,7 +148,3 @@ EVisibility SEditorViewportToolbarMenu::GetLabelIconVisibility() const
 	return LabelIconBrush.Get() != NULL ? EVisibility::Visible : EVisibility::Collapsed;
 }
 
-TWeakPtr<class SViewportToolBar> SEditorViewportToolbarMenu::GetParentToolBar() const
-{
-	return ParentToolBar;
-}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -22,12 +22,11 @@ public:
 	void SetOpenXRHMD(FOpenXRHMD* InHMD) { OpenXRHMD = InHMD; }
 	virtual uint64 GetGraphicsAdapterLuid() { return AdapterLuid; }
 
-	virtual void* GetGraphicsBinding() = 0;
-	virtual FXRSwapChainPtr CreateSwapchain(XrSession InSession, uint8 Format, uint32 SizeX, uint32 SizeY, uint32 ArraySize, uint32 NumMips, uint32 NumSamples, ETextureCreateFlags Flags, ETextureCreateFlags TargetableTextureFlags, const FClearValueBinding& ClearValueBinding) = 0;
+	virtual void* GetGraphicsBinding_RenderThread() = 0;
+	virtual FXRSwapChainPtr CreateSwapchain(XrSession InSession, uint8 Format, uint32 SizeX, uint32 SizeY, uint32 NumMips, uint32 NumSamples, uint32 Flags, uint32 TargetableTextureFlags) = 0;
 
 	/** FRHICustomPresent */
-	virtual void BeginDrawing() override;
-	virtual bool Present(int32& InOutSyncInterval) override;
+	virtual bool Present(int32& InOutSyncInterval);
 
 protected:
 	uint64 AdapterLuid;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -239,7 +239,7 @@ public:
 	EGraphRenderingLOD::Type GetCurrentLOD() const;
 
 	/** Called when GraphNode changes its error information, may be called when no change has actually occurred: */
-	virtual void RefreshErrorInfo();
+	void RefreshErrorInfo();
 	
 	/** Called when ed graph data is cleared, indicating this widget can no longer safely access GraphNode - forwards call to owned pins: */
 	void InvalidateGraphData();
@@ -299,7 +299,7 @@ protected:
 	FString GetErrorMessage() const {return ErrorMsg;}
 
 	/** Called to set error text on the node */
-	virtual void UpdateErrorInfo();
+	void UpdateErrorInfo();
 
 	/** Set-up the error reporting widget for the node */
 	void SetupErrorReporting();
@@ -332,9 +332,6 @@ protected:
 
 	virtual void SetDefaultTitleAreaWidget(TSharedRef<SOverlay> DefaultTitleAreaWidget) {}
 	virtual TSharedRef<SWidget> CreateTitleWidget(TSharedPtr<SNodeTitle> NodeTitle);
-	
-	/** Optionally create a widget to dock to the right in the title bar of the node. */
-	virtual TSharedRef<SWidget> CreateTitleRightWidget();
 	
 	/** Create the inner node content area, including the left/right pin boxes */
 	virtual TSharedRef<SWidget> CreateNodeContentArea();

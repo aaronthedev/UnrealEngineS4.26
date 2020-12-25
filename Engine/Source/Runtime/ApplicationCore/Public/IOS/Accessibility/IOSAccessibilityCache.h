@@ -1,12 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #if WITH_ACCESSIBILITY
 
-#include "GenericPlatform/Accessibility/GenericAccessibleInterfaces.h"
+#include "GenericPlatform/GenericAccessibleInterfaces.h"
 
-@class FIOSAccessibilityLeaf;
+@class FIOSAccessibilityContainer;
 
 /**
  * This class is a singleton and should be accessed through [FIOSAccessibilityCache AccessibilityElementCache].
@@ -21,13 +21,12 @@
 @interface FIOSAccessibilityCache : NSObject
 {
 @private
-	/** AccessibleWidgetId(String)->FIOSAccessibilityLeaf map for all created containers. */
+	/** AccessibleWidgetId(String)->FIOSAccessibilityContainer map for all created containers. */
 	NSMutableDictionary* Cache;
 }
-/** The Id of the root IAccessibleWindow that backs the IOS application */
-@property (nonatomic) AccessibleWidgetId RootWindowId;
-/** Retrieve a cached leaf, or create one if it doesn't exist yet. */
--(FIOSAccessibilityLeaf*)GetAccessibilityElement:(AccessibleWidgetId)Id;
+
+/** Retrieve a cached container, or create one if it doesn't exist yet. */
+-(FIOSAccessibilityContainer*)GetAccessibilityElement:(AccessibleWidgetId)Id;
 /** Returns true if the Cache contains the Id. Does not create one if it doesn't exist. */
 -(bool)AccessibilityElementExists:(AccessibleWidgetId)Id;
 /** Removes an entry from the Cache. */
@@ -36,8 +35,9 @@
 -(void)Clear;
 /** Loop over all cached elements and update any properties necessary on the Game thread. */
 -(void)UpdateAllCachedProperties;
+
 /** Singleton accessor */
-+(FIOSAccessibilityCache*)AccessibilityElementCache;
++(id)AccessibilityElementCache;
 
 #if !UE_BUILD_SHIPPING
 -(void)DumpAccessibilityStats;

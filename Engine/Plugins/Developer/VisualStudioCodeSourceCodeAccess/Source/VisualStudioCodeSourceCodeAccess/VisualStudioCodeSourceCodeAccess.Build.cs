@@ -1,5 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-using System;
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using Microsoft.Win32;
 
 namespace UnrealBuildTool.Rules
@@ -29,18 +28,12 @@ namespace UnrealBuildTool.Rules
 				string DTEKey = null;
 				switch (Target.WindowsPlatform.Compiler)
 				{
-					case WindowsCompiler.VisualStudio2019:
-						DTEKey = "VisualStudio.DTE.16.0";
-						break;
 					case WindowsCompiler.VisualStudio2017:
 						DTEKey = "VisualStudio.DTE.15.0";
 						break;
 					case WindowsCompiler.VisualStudio2015_DEPRECATED:
 						DTEKey = "VisualStudio.DTE.14.0";
 						break;
-					default:
-						throw new Exception("Unknown visual studio version when mapping to DTEKey: " +
-						                    Target.WindowsPlatform.Compiler.ToString());
 				}
 				bHasVisualStudioDTE = RegistryKey.OpenBaseKey(RegistryHive.ClassesRoot, RegistryView.Registry32).OpenSubKey(DTEKey) != null;
 			}

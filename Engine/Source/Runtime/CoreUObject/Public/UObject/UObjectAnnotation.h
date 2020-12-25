@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	UObjectAnnotation.h: Unreal object annotation template
@@ -75,14 +75,18 @@ public:
 		RemoveAllAnnotations();		
 	}
 
-private:
-	template<typename T>
-	void AddAnnotationInternal(const UObjectBase* Object, T&& Annotation)
+	/**
+	 * Add an annotation to the annotation list. If the Annotation is the default, then the annotation is removed.
+	 *
+	 * @param Object		Object to annotate.
+	 * @param Annotation	Annotation to associate with Object.
+	 */
+	void AddAnnotation(const UObjectBase *Object,TAnnotation Annotation)
 	{
 		check(Object);
 		FScopeLock AnnotationMapLock(&AnnotationMapCritical);
 		AnnotationCacheKey = Object;
-		AnnotationCacheValue = Forward<T>(Annotation);
+		AnnotationCacheValue = MoveTemp(Annotation);
 		if (AnnotationCacheValue.IsDefault())
 		{
 			RemoveAnnotation(Object); // adding the default annotation is the same as removing an annotation
@@ -99,25 +103,8 @@ private:
 					GUObjectArray.AddUObjectDeleteListener(this);
 				}
 			}
-			AnnotationMap.Add(AnnotationCacheKey, AnnotationCacheValue);
+			AnnotationMap.Add(AnnotationCacheKey,AnnotationCacheValue);
 		}
-	}
-
-public:
-	/**
-	 * Add an annotation to the annotation list. If the Annotation is the default, then the annotation is removed.
-	 *
-	 * @param Object        Object to annotate.
-	 * @param Annotation    Annotation to associate with Object.
-	 */
-	void AddAnnotation(const UObjectBase* Object, TAnnotation&& Annotation)
-	{
-		AddAnnotationInternal(Object, MoveTemp(Annotation));
-	}
-
-	void AddAnnotation(const UObjectBase* Object, const TAnnotation& Annotation)
-	{
-		AddAnnotationInternal(Object, Annotation);
 	}
 	/**
 	 * Removes an annotation from the annotation list and returns the annotation if it had one 
@@ -303,16 +290,20 @@ public:
 	 * @param Annotation	Annotation to find
 	 * @return				Object associated with this annotation or NULL if none found
 	 */
-	UObject* Find(const TAnnotation& Annotation)
+	UObject *Find(TAnnotation Annotation)
 	{
 		FScopeLock InverseAnnotationMapLock(&InverseAnnotationMapCritical);
 		checkSlow(!Annotation.IsDefault()); // it is not legal to search for the default annotation
-		return (UObject*)InverseAnnotationMap.FindRef(Annotation);
+		return (UObject *)InverseAnnotationMap.FindRef(Annotation);
 	}
 
-private:
-	template<typename T> 
-	void AddAnnotationInternal(const UObjectBase* Object, T&& Annotation)
+	/**
+	 * Add an annotation to the annotation list. If the Annotation is the default, then the annotation is removed.
+	 *
+	 * @param Object		Object to annotate.
+	 * @param Annotation	Annotation to associate with Object.
+	 */
+	void AddAnnotation(const UObjectBase *Object,TAnnotation Annotation)
 	{
 		FScopeLock InverseAnnotationMapLock(&InverseAnnotationMapCritical);
 		if (Annotation.IsDefault())
@@ -329,29 +320,9 @@ private:
 			// should not exist in the mapping; we require uniqueness
 			int32 NumRemoved = InverseAnnotationMap.Remove(Annotation);
 			checkSlow(NumRemoved == 0);
-			InverseAnnotationMap.Add(Forward<T>(Annotation), Object);
+			InverseAnnotationMap.Add(Annotation, Object);
 		}
 	}
-
-
-public:
-
-	/**
-	 * Add an annotation to the annotation list. If the Annotation is the default, then the annotation is removed.
-	 *
-	 * @param Object        Object to annotate.
-	 * @param Annotation    Annotation to associate with Object.
-	 */
-	void AddAnnotation(const UObjectBase* Object, const TAnnotation& Annotation)
-	{
-		AddAnnotationInternal(Object, Annotation);
-	}
-
-	void AddAnnotation(const UObjectBase* Object, TAnnotation&& Annotation)
-	{
-		AddAnnotationInternal(Object, MoveTemp(Annotation));
-	}
-
 	/**
 	 * Removes an annotation from the annotation list. 
 	 *
@@ -625,8 +596,7 @@ class FUObjectAnnotationChunked : public FUObjectArray::FUObjectDeleteListener
 	/**
 	* Adds a new annotation for the specified index
 	**/
-	template<typename T>
-	void AddAnnotationInternal(int32 Index, T&& Annotation)
+	void AddAnnotationInternal(int32 Index, TAnnotation Annotation)
 	{
 		check(Index >= 0);
 		if (Annotation.IsDefault())
@@ -647,7 +617,7 @@ class FUObjectAnnotationChunked : public FUObjectArray::FUObjectDeleteListener
 			}
 
 			TAnnotation& NewAnnotation = AllocateAnnotation(Index);
-			NewAnnotation = Forward<T>(Annotation);
+			NewAnnotation = Annotation;
 		}
 	}
 
@@ -672,43 +642,36 @@ public:
 	/**
 	 * Add an annotation to the annotation list. If the Annotation is the default, then the annotation is removed.
 	 *
-	 * @param Object        Object to annotate.
-	 * @param Annotation    Annotation to associate with Object.
+	 * @param Object		Object to annotate.
+	 * @param Annotation	Annotation to associate with Object.
 	 */
-	void AddAnnotation(const UObjectBase *Object, const TAnnotation& Annotation)
+	void AddAnnotation(const UObjectBase *Object, TAnnotation Annotation)
 	{
 		check(Object);
 		AddAnnotation(GUObjectArray.ObjectToIndex(Object), Annotation);
 	}
-
-	void AddAnnotation(const UObjectBase* Object, TAnnotation&& Annotation)
-	{
-		check(Object);
-		AddAnnotation(GUObjectArray.ObjectToIndex(Object), MoveTemp(Annotation));
-	}
-
 	/**
 	 * Add an annotation to the annotation list. If the Annotation is the default, then the annotation is removed.
 	 *
-	 * @param Index         Index of object to annotate.
-	 * @param Annotation    Annotation to associate with Object.
+	 * @param Index			Index of object to annotate.
+	 * @param Annotation	Annotation to associate with Object.
 	 */
-	void AddAnnotation(int32 Index, const TAnnotation& Annotation)
+	void AddAnnotation(int32 Index, TAnnotation Annotation)
 	{
 		FRWScopeLock AnnotationArrayLock(AnnotationArrayCritical, SLT_Write);
 		AddAnnotationInternal(Index, Annotation);
 	}
 
-	void AddAnnotation(int32 Index, TAnnotation&& Annotation)
-	{
-		FRWScopeLock AnnotationArrayLock(AnnotationArrayCritical, SLT_Write);
-		AddAnnotationInternal(Index, MoveTemp(Annotation));
-	}
-
+	/**
+	 * Add an annotation to the annotation list. If the Annotation is the default, then the annotation is removed.
+	 *
+	 * @param Object		Object to annotate.
+	 * @param Annotation	Annotation to associate with Object.
+	 */
 	TAnnotation& AddOrGetAnnotation(const UObjectBase *Object, TFunctionRef<TAnnotation()> NewAnnotationFn)
 	{
 		check(Object);
-		return AddOrGetAnnotation(GUObjectArray.ObjectToIndex(Object), NewAnnotationFn);
+		AddOrGetAnnotation(GUObjectArray.ObjectToIndex(Object), NewAnnotationFn);
 	}
 	/**
 	 * Add an annotation to the annotation list. If the Annotation is the default, then the annotation is removed.
@@ -984,43 +947,28 @@ public:
 	/**
 	 * Add an annotation to the annotation list. If the Annotation is the default, then the annotation is removed.
 	 *
-	 * @param Object        Object to annotate.
-	 * @param Annotation    Annotation to associate with Object.
+	 * @param Object		Object to annotate.
+	 * @param Annotation	Annotation to associate with Object.
 	 */
-	void AddAnnotation(const UObjectBase* Object, const TAnnotation& Annotation)
+	void AddAnnotation(const UObjectBase *Object,TAnnotation Annotation)
 	{
 		check(Object);
-		AddAnnotation(GUObjectArray.ObjectToIndex(Object), Annotation);
+		AddAnnotation(GUObjectArray.ObjectToIndex(Object),Annotation);
 	}
-
-	void AddAnnotation(const UObjectBase* Object, TAnnotation&& Annotation)
-	{
-		check(Object);
-		AddAnnotation(GUObjectArray.ObjectToIndex(Object), MoveTemp(Annotation));
-	}
-
 	/**
 	 * Add an annotation to the annotation list. If the Annotation is the default, then the annotation is removed.
 	 *
-	 * @param Index         Index of object to annotate.
-	 * @param Annotation    Annotation to associate with Object.
+	 * @param Index			Index of object to annotate.
+	 * @param Annotation	Annotation to associate with Object.
 	 */
-	void AddAnnotation(int32 Index, const TAnnotation& Annotation)
+	void AddAnnotation(int32 Index, TAnnotation Annotation)
 	{
 		FRWScopeLock AnnotationArrayLock(AnnotationArrayCritical, SLT_Write);
 		AddAnnotationInternal(Index, Annotation);
 	}
 
-	void AddAnnotation(int32 Index, TAnnotation&& Annotation)
-	{
-		FRWScopeLock AnnotationArrayLock(AnnotationArrayCritical, SLT_Write);
-		AddAnnotationInternal(Index, MoveTemp(Annotation));
-	}
-
-
 private:
-	template<typename T>
-	void AddAnnotationInternal(int32 Index, T&& Annotation)
+	void AddAnnotationInternal(int32 Index,TAnnotation Annotation)
 	{
 		check(Index >= 0);
 		if (Annotation.IsDefault())
@@ -1048,7 +996,7 @@ private:
 					new (AnnotationArray.GetData() + Start++) TAnnotation();
 				}
 			}
-			AnnotationArray[Index] = Forward<T>(Annotation);
+			AnnotationArray[Index] = Annotation;
 		}
 	}
 

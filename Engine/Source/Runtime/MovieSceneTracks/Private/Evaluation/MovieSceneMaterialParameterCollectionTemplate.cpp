@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Evaluation/MovieSceneMaterialParameterCollectionTemplate.h"
 #include "Evaluation/MovieSceneEvaluationTemplateInstance.h"
@@ -102,7 +102,7 @@ struct FMaterialParameterCollectionExecutionToken : IMovieSceneExecutionToken
 		UObject* WorldContextObject = Player.GetPlaybackContext();
 		UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
 
-		if (!World || !Collection)
+		if (!World)
 		{
 			return;
 		}

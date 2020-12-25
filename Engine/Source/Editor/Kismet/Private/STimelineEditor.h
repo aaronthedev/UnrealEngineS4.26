@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,7 +11,6 @@
 #include "Widgets/Views/STableViewBase.h"
 #include "Widgets/Views/STableRow.h"
 #include "Widgets/Views/SListView.h"
-#include "Engine/TimelineTemplate.h"
 #include "SCurveEditor.h"
 
 class FBlueprintEditor;
@@ -31,25 +30,41 @@ struct FAssetData;
 class FTimelineEdTrack
 {
 public:
+	/** Enum to indicate whether this is an event track, a float interp track or a vector interp track */
+	enum ETrackType
+	{
+		TT_Event,
+		TT_FloatInterp,
+		TT_VectorInterp,
+		TT_LinearColorInterp,
+	};
 
 public:
-	/** The index of the curve (due to re-ordering) */
-	int32 DisplayIndex;
-
+	/** The type of track this is */
+	ETrackType TrackType;
+	/** The index of this track within its type's array */
+	int32 TrackIndex;
 	/** Trigger when a rename is requested on the track */
 	FSimpleDelegate OnRenameRequest;
+	/** Whether or not this track is expanded in the UI. */
+	bool bIsExpanded;
+	/** Whether or not this track has its curve's view synchronized with the other curve views. */
+	bool bIsCurveViewSynchronized;
 
 public:
-	static TSharedRef<FTimelineEdTrack> Make(int32 DisplayIndex)
+	static TSharedRef<FTimelineEdTrack> Make(ETrackType InType, int32 InIndex)
 	{
-		return MakeShareable(new FTimelineEdTrack(DisplayIndex));
+		return MakeShareable(new FTimelineEdTrack(InType, InIndex));
 	}
 
 private:
 	/** Hidden constructor, always use Make above */
-	FTimelineEdTrack(int32 InDisplayIndex)
-		: DisplayIndex(InDisplayIndex)
+	FTimelineEdTrack(ETrackType InType, int32 InIndex)
+		: TrackType(InType)
+		, TrackIndex(InIndex)
 	{
+		bIsExpanded = true;
+		bIsCurveViewSynchronized = true;
 	}
 
 	/** Hidden constructor, always use Make above */
@@ -144,18 +159,6 @@ private:
 	/** Callback for when the check box state representing whether or not this track's curve view is synchronized with other tracks changes. */
 	void OnIsCurveViewSynchronizedStateChanged(ECheckBoxState IsCurveViewSynchronized);
 
-	/** Moves selected track up in the track list */
-	FReply OnMoveUp();
-	/** Checks if you can move the selected track up */
-	bool CanMoveUp() const;
-
-	/** Moves selected track down in the track list */
-	FReply OnMoveDown();
-	/** Checks if you can move the selected track down */
-	bool CanMoveDown() const;
-
-	void MoveTrack(int32 DirectionDelta);
-
 	/** Get the minimum input for the curve view. */
 	float GetMinInput() const;
 	/** Get the maximum input for the curve view. */
@@ -172,10 +175,6 @@ private:
 	void OnSetOutputViewRange(float Min, float Max);
 	/** Callback when the user picks a curve from the asset picker for a track */
 	void OnChooseCurve(const FAssetData& InObject);
-
-	//helper function to make getting expanded and synchronized state easier
-	FTTTrackBase* GetTrackBase();
-	const FTTTrackBase* GetTrackBase() const;
 
 public:
 	/** Inline block for changing name of track */
@@ -275,9 +274,7 @@ public:
 	void OnTrackNameCommitted(const FText& Name, ETextCommit::Type CommitInfo, FTTTrackBase* TrackBase, STimelineEdTrack* Track );
 
 	/**Create curve object based on curve type*/
-	UCurveBase* CreateNewCurve(FTTTrackBase::ETrackType Type );
-
-	void OnReorderTracks(int32 DisplayIndex, int32 DirectionDelta);
+	UCurveBase* CreateNewCurve( FTimelineEdTrack::ETrackType Type );
 
 	/** Gets the desired size for timelines */
 	FVector2D GetTimelineDesiredSize() const;
@@ -289,7 +286,7 @@ private:
 	/** Used by list view to create a track widget from the track item struct */
 	TSharedRef<ITableRow> MakeTrackWidget( TSharedPtr<FTimelineEdTrack> Track, const TSharedRef<STableViewBase>& OwnerTable );
 	/** Add a new track to the timeline */
-	FReply CreateNewTrack(FTTTrackBase::ETrackType Type );
+	FReply CreateNewTrack( FTimelineEdTrack::ETrackType Type );
 
 	/** Checks if the user can delete the selected tracks */
 	bool CanDeleteSelectedTracks() const;

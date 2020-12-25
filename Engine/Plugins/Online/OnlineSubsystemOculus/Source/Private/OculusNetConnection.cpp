@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OculusNetConnection.h"
 #include "OnlineSubsystemOculusPrivate.h"
@@ -14,8 +14,6 @@ void UOculusNetConnection::InitBase(UNetDriver* InDriver, class FSocket* InSocke
 		UIpConnection::InitBase(InDriver, InSocket, InURL, InState, InMaxPacket, InPacketOverhead);
 		return;
 	}
-
-	DisableAddressResolution();
 
 	// Pass the call up the chain
 	UNetConnection::InitBase(InDriver, InSocket, InURL, InState,
@@ -117,7 +115,7 @@ void UOculusNetConnection::LowLevelSend(void* Data, int32 CountBits, FOutPacketT
 	if (!bBlockSend && CountBytes > 0)
 	{
 		UE_LOG(LogNetTraffic, VeryVerbose, TEXT("Low level send to: %llu Count: %d"), PeerID, CountBytes);
-		ovr_Net_SendPacket(PeerID, static_cast<size_t>(CountBytes), DataToSend, (IsInternalAck()) ? ovrSend_Reliable : ovrSend_Unreliable);
+		ovr_Net_SendPacket(PeerID, static_cast<size_t>(CountBytes), DataToSend, (InternalAck) ? ovrSend_Reliable : ovrSend_Unreliable);
 	}
 }
 

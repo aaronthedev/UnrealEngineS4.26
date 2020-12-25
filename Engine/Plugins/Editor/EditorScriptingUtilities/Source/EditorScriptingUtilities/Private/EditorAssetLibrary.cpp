@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EditorAssetLibrary.h"
 
@@ -225,7 +225,7 @@ namespace InternalEditorLevelLibrary
 				FString ObjectName = FPackageName::ObjectPathToObjectName(ObjectPackageName);
 
 				// Remove source from the object name
-				ObjectLongPackagePath.MidInline(OutValidatedPaths.SourceValidDirectoryPath.Len(), MAX_int32, false);
+				ObjectLongPackagePath = ObjectLongPackagePath.Mid(OutValidatedPaths.SourceValidDirectoryPath.Len());
 
 				// Create AssetPath /Game/MyFolder/MyAsset.MyAsset
 				FString NewAssetPackageName;
@@ -437,8 +437,9 @@ TArray<FString> UEditorAssetLibrary::FindPackageReferencersForAsset(const FStrin
 	// Find the reference in packages. Load them to confirm the reference.
 	TArray<FName> PackageReferencers;
 	{
+		EAssetRegistryDependencyType::Type ReferenceType = EAssetRegistryDependencyType::Packages;
 		FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
-		AssetRegistryModule.Get().GetReferencers(*FPackageName::ObjectPathToPackageName(AssetPath), PackageReferencers, UE::AssetRegistry::EDependencyCategory::Package);
+		AssetRegistryModule.Get().GetReferencers(*FPackageName::ObjectPathToPackageName(AssetPath), PackageReferencers, ReferenceType);
 	}
 
 	if (bLoadAssetsToConfirm)

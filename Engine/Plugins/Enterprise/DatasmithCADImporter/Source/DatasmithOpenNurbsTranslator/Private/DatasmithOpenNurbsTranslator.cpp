@@ -1,47 +1,42 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithOpenNurbsTranslator.h"
 #include "DatasmithOpenNurbsTranslatorModule.h"
 
-#ifdef USE_OPENNURBS // The whole translation unit is skipped without OpenNurbs TPS library
-
 #ifdef CAD_LIBRARY
 #include "CoreTechParametricSurfaceExtension.h"
-#include "RhinoCoretechWrapper.h"
-#endif // CAD_LIBRARY
-
-#include "CADInterfacesModule.h"
+#endif
 #include "DatasmithImportOptions.h"
 #include "DatasmithMaterialElements.h"
 #include "DatasmithMaterialsUtils.h"
 #include "DatasmithMesh.h"
+#include "DatasmithMeshHelper.h"
 #include "DatasmithSceneFactory.h"
 #include "DatasmithSceneSource.h"
 #include "DatasmithUtils.h"
-#include "Utility/DatasmithMeshHelper.h"
 
-#if WITH_EDITOR
-#include "IMessageLogListing.h"
-#include "MessageLogModule.h"
-#endif
-#include "Misc/FileHelper.h"
-#include "Misc/Paths.h"
 #include "StaticMeshAttributes.h"
 #include "StaticMeshOperations.h"
+#include "MeshDescriptionOperations.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Paths.h"
 
+#ifdef USE_OPENNURBS
 // Disable macro redefinition warning
 #pragma warning(push)
 #pragma warning(disable:4005)
 #include "opennurbs.h"
 #pragma warning(pop)
+#endif
+
+#ifdef CAD_LIBRARY
+#include "RhinoCoretechWrapper.h" // requires CoreTech as public dependency
+#endif
 
 #include <deque>
 #include <map>
 #include <set>
 
-DEFINE_LOG_CATEGORY_STATIC(LogDatasmithOpenNurbsTranslator, Log, All);
-
-#define LOCTEXT_NAMESPACE "DatasmithOpenNurbsTranslator"
 
 // Cache for already processed data (only linked file references for now)
 class FTranslationCache
@@ -94,37 +89,10 @@ TSharedPtr<IDatasmithActorElement> DuplicateActorElement(TSharedPtr<IDatasmithAc
 		TSharedPtr<IDatasmithActorElement> Child = ActorElement->GetChild(Index);
 		DuplicatedElement->AddChild(DuplicateActorElement(Child, DuplicateName));
 	}
-
-	int NumTags = ActorElement->GetTagsCount();
-	for (int32 TagIndex = 0; TagIndex < NumTags; ++TagIndex)
-	{
-		DuplicatedElement->AddTag(ActorElement->GetTag(TagIndex));
-	}
-
 	return DuplicatedElement;
 }
 
-TSharedPtr<IDatasmithMetaDataElement> DuplicateMetaDataElement(const TSharedPtr<IDatasmithMetaDataElement>& SourceMetaData, const TSharedPtr<IDatasmithActorElement>& TargetActorElement)
-{
-	FString MetaDataName = FString::Printf(TEXT("%s%s"), TargetActorElement->GetName(), TEXT("_DATA"));
-	TSharedPtr<IDatasmithMetaDataElement> DuplicatedMetaData = FDatasmithSceneFactory::CreateMetaData(*MetaDataName);
-	DuplicatedMetaData->SetAssociatedElement(TargetActorElement);
-
-	for (int32 PropertyIndex = 0, PropertyCount = SourceMetaData->GetPropertiesCount(); PropertyIndex < PropertyCount; ++PropertyIndex)
-	{
-		TSharedPtr<IDatasmithKeyValueProperty> SourceProperty = SourceMetaData->GetProperty(PropertyIndex);
-		if (SourceProperty)
-		{
-			TSharedRef<IDatasmithKeyValueProperty> DuplicatedProperty = FDatasmithSceneFactory::CreateKeyValueProperty(SourceProperty->GetName());
-			
-			DuplicatedProperty->SetValue(SourceProperty->GetValue());
-			DuplicatedMetaData->AddProperty(DuplicatedProperty);
-		}
-	}
-
-	return DuplicatedMetaData;
-}
-
+#ifdef USE_OPENNURBS
 // #ueent_wip: test with CADSDK_ENABLED undefined
 class FOpenNurbsObjectWrapper
 {
@@ -287,9 +255,11 @@ namespace DatasmithOpenNurbsTranslatorUtils
 		FVector2D UVCoords[3];
 	};
 
-	bool TranslateMesh(const ON_Mesh** Meshes, int MeshCount, FMeshDescription& MeshDescription, bool& bHasNormal, double ScalingFactor, const ON_3dVector& Offset, bool bHasFaceMaterialChannel, int32* FaceMaterialChannel)
+	bool TranslateMesh(const ON_Mesh *Mesh, FMeshDescription& MeshDescription, bool& bHasNormal, double ScalingFactor)
 	{
-		if (!Meshes || !MeshCount)
+		// Ref. GP3DMVisitorImpl::visitMesh
+		// Ref. FGPureMeshInterface::CreateMesh
+		if (Mesh == nullptr || Mesh->VertexCount() == 0 || Mesh->FaceCount() == 0)
 		{
 			return false;
 		}
@@ -307,235 +277,227 @@ namespace DatasmithOpenNurbsTranslatorUtils
 			return false;
 		}
 
-		FPolygonGroupID PolyGroupId;
-		if (bHasFaceMaterialChannel)
-		{
-			MeshDescription.ReserveNewPolygonGroups(MeshCount);
-		}
-		else
-		{
-			MeshDescription.ReserveNewPolygonGroups(1);
-			PolyGroupId = MeshDescription.CreatePolygonGroup();
-			PolygonGroupImportedMaterialSlotNames[PolyGroupId] = DatasmithMeshHelper::DefaultSlotName(0);
-		}
-		// At least one UV set must exist.
-		VertexInstanceUVs.SetNumIndices(1);
+		bool bHasPackedTexCoords = HasPackedTextureRegion(*Mesh);
+		bool bHasUVData = Mesh->HasTextureCoordinates() || bHasPackedTexCoords;
 
-		for (int32 MeshIndex = 0; MeshIndex < MeshCount; ++MeshIndex)
-		{
-			const ON_Mesh* Mesh = Meshes[MeshIndex];
+		int VertexCount = Mesh->VertexCount();
+		TArray<FNode> Nodes;
+		Nodes.Reserve(VertexCount);
 
-			if (Mesh == nullptr || Mesh->VertexCount() == 0 || Mesh->FaceCount() == 0)
+		for (int Index = 0; Index < VertexCount; ++Index)
+		{
+			ON_3fPoint p1 = Mesh->m_V[Index];
+			Nodes.Add(FNode(p1.x * ScalingFactor, p1.y * ScalingFactor, p1.z * ScalingFactor));
+		}
+
+		int faceCount = Mesh->FaceCount();
+		TArray<FVector2D> UvCoords;
+		TArray<FFace> Faces;
+		Faces.Reserve(faceCount);
+
+		for (int Index = 0; Index < faceCount; ++Index)
+		{
+			const ON_MeshFace& meshFace = Mesh->m_F[Index];
+
+			FNode& n1 = Nodes[meshFace.vi[0]];
+			FNode& n2 = Nodes[meshFace.vi[1]];
+			FNode& n3 = Nodes[meshFace.vi[2]];
+			Faces.Push(FFace(n1, n2, n3));
+
+			if (Mesh->HasFaceNormals())
 			{
-				return false;
+				const ON_3fVector& NormalN1 = Mesh->m_FN[Index];
+
+				n1.SetNormal(NormalN1);
+				n2.SetNormal(NormalN1);
+				n3.SetNormal(NormalN1);
+
+				bHasNormal = true;
+			}
+			else if (Mesh->HasVertexNormals())
+			{
+				const ON_3fVector& NormalN1 = Mesh->m_N[meshFace.vi[0]];
+				const ON_3fVector& NormalN2 = Mesh->m_N[meshFace.vi[1]];
+				const ON_3fVector& NormalN3 = Mesh->m_N[meshFace.vi[2]];
+
+				n1.SetNormal(NormalN1);
+				n2.SetNormal(NormalN2);
+				n3.SetNormal(NormalN3);
+
+				bHasNormal = true;
 			}
 
-			bool bHasPackedTexCoords = HasPackedTextureRegion(*Mesh);
-			bool bHasUVData = Mesh->HasTextureCoordinates() || bHasPackedTexCoords;
-
-			int VertexCount = Mesh->VertexCount();
-			TArray<FNode> Nodes;
-			Nodes.Reserve(VertexCount);
-
-			for (int Index = 0; Index < VertexCount; ++Index)
+			if (bHasUVData)
 			{
-				ON_3fPoint p1 = Mesh->m_V[Index] + ON_3fVector(Offset);
-				Nodes.Add(FNode(p1.x * ScalingFactor, p1.y * ScalingFactor, p1.z * ScalingFactor));
+				UvCoords.Add(GetMeshTexCoords(Mesh, VertexCount, meshFace.vi[0], bHasPackedTexCoords));
+				UvCoords.Add(GetMeshTexCoords(Mesh, VertexCount, meshFace.vi[1], bHasPackedTexCoords));
+				UvCoords.Add(GetMeshTexCoords(Mesh, VertexCount, meshFace.vi[2], bHasPackedTexCoords));
 			}
 
-			int faceCount = Mesh->FaceCount();
-			TArray<FVector2D> UvCoords;
-			TArray<FFace> Faces;
-			Faces.Reserve(faceCount);
-
-			for (int Index = 0; Index < faceCount; ++Index)
+			if (meshFace.IsQuad())
 			{
-				const ON_MeshFace& meshFace = Mesh->m_F[Index];
-
-				FNode& n1 = Nodes[meshFace.vi[0]];
-				FNode& n2 = Nodes[meshFace.vi[1]];
-				FNode& n3 = Nodes[meshFace.vi[2]];
-				Faces.Push(FFace(n1, n2, n3));
+				FNode& n4 = Nodes[meshFace.vi[3]];
+				Faces.Push(FFace(n1, n3, n4));
 
 				if (Mesh->HasFaceNormals())
 				{
-					const ON_3fVector& NormalN1 = Mesh->m_FN[Index];
-
-					n1.SetNormal(NormalN1);
-					n2.SetNormal(NormalN1);
-					n3.SetNormal(NormalN1);
-
-					bHasNormal = true;
+					const ON_3fVector& NormalN4 = Mesh->m_FN[Index];
+					n4.SetNormal(NormalN4);
 				}
 				else if (Mesh->HasVertexNormals())
 				{
-					const ON_3fVector& NormalN1 = Mesh->m_N[meshFace.vi[0]];
-					const ON_3fVector& NormalN2 = Mesh->m_N[meshFace.vi[1]];
-					const ON_3fVector& NormalN3 = Mesh->m_N[meshFace.vi[2]];
-
-					n1.SetNormal(NormalN1);
-					n2.SetNormal(NormalN2);
-					n3.SetNormal(NormalN3);
-
-					bHasNormal = true;
+					const ON_3fVector& NormalN4 = Mesh->m_N[meshFace.vi[3]];
+					n4.SetNormal(NormalN4);
 				}
 
 				if (bHasUVData)
 				{
 					UvCoords.Add(GetMeshTexCoords(Mesh, VertexCount, meshFace.vi[0], bHasPackedTexCoords));
-					UvCoords.Add(GetMeshTexCoords(Mesh, VertexCount, meshFace.vi[1], bHasPackedTexCoords));
 					UvCoords.Add(GetMeshTexCoords(Mesh, VertexCount, meshFace.vi[2], bHasPackedTexCoords));
-				}
-
-				if (meshFace.IsQuad())
-				{
-					FNode& n4 = Nodes[meshFace.vi[3]];
-					Faces.Push(FFace(n1, n3, n4));
-
-					if (Mesh->HasFaceNormals())
-					{
-						const ON_3fVector& NormalN4 = Mesh->m_FN[Index];
-						n4.SetNormal(NormalN4);
-					}
-					else if (Mesh->HasVertexNormals())
-					{
-						const ON_3fVector& NormalN4 = Mesh->m_N[meshFace.vi[3]];
-						n4.SetNormal(NormalN4);
-					}
-
-					if (bHasUVData)
-					{
-						UvCoords.Add(GetMeshTexCoords(Mesh, VertexCount, meshFace.vi[0], bHasPackedTexCoords));
-						UvCoords.Add(GetMeshTexCoords(Mesh, VertexCount, meshFace.vi[2], bHasPackedTexCoords));
-						UvCoords.Add(GetMeshTexCoords(Mesh, VertexCount, meshFace.vi[3], bHasPackedTexCoords));
-					}
+					UvCoords.Add(GetMeshTexCoords(Mesh, VertexCount, meshFace.vi[3], bHasPackedTexCoords));
 				}
 			}
+		}
 
-			if (bHasUVData)
+		if (bHasUVData)
+		{
+			// Reorient UV along V axis
+			float vMin = FLT_MAX;
+			float vMax = -FLT_MAX;
+
+			for (FVector2D& uvTextCoord : UvCoords)
 			{
-				for (int Index = 0; Index < Faces.Num(); ++Index)
+				if (uvTextCoord[1] < vMin)
 				{
-					FFace& Face = Faces[Index];
-					for (int iTriangleNode = 0; iTriangleNode < 3; ++iTriangleNode)
-					{
-						Face.UVCoords[iTriangleNode] = FVector2D(UvCoords[iTriangleNode + 3 * Index][0], UvCoords[iTriangleNode + 3 * Index][1]);
-					}
+					vMin = uvTextCoord[1];
+				}
+				if (uvTextCoord[1] > vMax)
+				{
+					vMax = uvTextCoord[1];
 				}
 			}
 
-			// Fill out the MeshDescription with the processed data from the ON_Mesh
-			// Ref. FDatasmithMeshUtils::ToMeshDescription
-
-			// Reserve space for attributes
-			// At this point, all the faces are triangles
-			const int32 TriangleCount = Faces.Num();
-			const int32 VertexInstanceCount = 3 * TriangleCount;
-
-			int32 VertexIndexBase = MeshDescription.Vertices().Num();
-
-			MeshDescription.ReserveNewVertices(VertexCount);
-
-			// Do not reserve vertex instances -  UUVGenerationFlattenMapping::GetOverlappingCornersRemapping is crashing because it assumes that vertex instances has no gaps
-			// but they appear when we skip triangles(degenerates) between meshes(if there are few meshes combine mesh description)
-			// MeshDescription.ReserveNewVertexInstances(VertexInstanceCount);
-			MeshDescription.ReserveNewEdges(VertexInstanceCount);
-			MeshDescription.ReserveNewPolygons(TriangleCount);
-
-			if (bHasFaceMaterialChannel)
+			for (FVector2D& uvTextCoord : UvCoords)
 			{
-				PolyGroupId = MeshDescription.CreatePolygonGroup();
-				PolygonGroupImportedMaterialSlotNames[PolyGroupId] = DatasmithMeshHelper::DefaultSlotName(FaceMaterialChannel[MeshIndex]);
+				uvTextCoord[1] = vMin + vMax - uvTextCoord[1];
 			}
 
-			// Set vertex positions
-			TMap<const FNode*, int> NodeToIndex;
-			for (int Index = 0; Index < VertexCount; ++Index)
+			for (int Index = 0; Index < Faces.Num(); ++Index)
 			{
-				const FNode& Node = Nodes[Index];
-				const FVector& Pos = Node.Vertex;
-				NodeToIndex.Add(&Node, VertexIndexBase + Index);
-
-				// Fill the vertex array
-				FVertexID AddedVertexId = MeshDescription.CreateVertex();
-				VertexPositions[AddedVertexId] = FDatasmithUtils::ConvertVector(FDatasmithUtils::EModelCoordSystem::ZUp_RightHanded_FBXLegacy, Pos);
+				FFace& Face = Faces[Index];
+				for (int iTriangleNode = 0; iTriangleNode < 3; ++iTriangleNode)
+				{
+					Face.UVCoords[iTriangleNode] = FVector2D(UvCoords[iTriangleNode + 3 * Index][0], UvCoords[iTriangleNode + 3 * Index][1]);
+				}
 			}
+		}
 
-			int32 VertexIndices[3];
+		// Fill out the MeshDescription with the processed data from the ON_Mesh
+		// Ref. FDatasmithMeshUtils::ToMeshDescription
 
-			const int32 CornerCount = 3; // only triangles
-			FVector CornerPositions[3];
-			TArray<FVertexInstanceID> CornerVertexInstanceIDs;
-			CornerVertexInstanceIDs.SetNum(3);
-			FVertexID CornerVertexIDs[3];
+		// Reserve space for attributes
+		// At this point, all the faces are triangles
+		const int32 TriangleCount = Faces.Num();
+		const int32 VertexInstanceCount = 3 * TriangleCount;
 
-			// Get per-triangle data: indices, normals and uvs
-			//int WedgeIndex = 0;
-			for (int FaceIndex = 0; FaceIndex < TriangleCount; ++FaceIndex)
+		MeshDescription.ReserveNewVertices(VertexCount);
+		MeshDescription.ReserveNewVertexInstances(VertexInstanceCount);
+		MeshDescription.ReserveNewEdges(VertexInstanceCount);
+		MeshDescription.ReserveNewPolygons(TriangleCount);
+
+		// Assume one material per mesh, no partitioning
+		MeshDescription.ReserveNewPolygonGroups(1);
+
+		FPolygonGroupID PolyGroupId = MeshDescription.CreatePolygonGroup();
+		FName ImportedSlotName = *FString::FromInt(0); // No access to DatasmithMeshHelper::DefaultSlotName
+		PolygonGroupImportedMaterialSlotNames[PolyGroupId] = ImportedSlotName;
+
+		// At least one UV set must exist.
+		VertexInstanceUVs.SetNumIndices(1);
+
+		// Set vertex positions
+		TMap<const FNode*, int> NodeToIndex;
+		for (int Index = 0; Index < VertexCount; ++Index)
+		{
+			const FNode& Node = Nodes[Index];
+			const FVector& Pos = Node.Vertex;
+			NodeToIndex.Add(&Node, Index);
+
+			// Fill the vertex array
+			FVertexID AddedVertexId = MeshDescription.CreateVertex();
+			VertexPositions[AddedVertexId] = FVector(-Pos.X, Pos.Y, Pos.Z);
+		}
+
+		int32 VertexIndices[3];
+		FBox UVBBox(FVector(MAX_FLT), FVector(-MAX_FLT));
+
+		const int32 CornerCount = 3; // only triangles
+		FVector CornerPositions[3];
+		TArray<FVertexInstanceID> CornerVertexInstanceIDs;
+		CornerVertexInstanceIDs.SetNum(3);
+		FVertexID CornerVertexIDs[3];
+
+		// Get per-triangle data: indices, normals and uvs
+		//int WedgeIndex = 0;
+		for (int FaceIndex = 0; FaceIndex < TriangleCount; ++FaceIndex)
+		{
+			const FFace& Face = Faces[FaceIndex];
+			for (int32 CornerIndex = 0; CornerIndex < CornerCount; ++CornerIndex)
 			{
-				const FFace& Face = Faces[FaceIndex];
-				for (int32 CornerIndex = 0; CornerIndex < CornerCount; ++CornerIndex)
-				{
-					const FNode& FaceNode = *Face.Nodes[CornerIndex];
-					VertexIndices[CornerIndex] = NodeToIndex[&FaceNode];
+				const FNode& FaceNode = *Face.Nodes[CornerIndex];
+				VertexIndices[CornerIndex] = NodeToIndex[&FaceNode];
 
-					CornerVertexIDs[CornerIndex] = FVertexID(VertexIndices[CornerIndex]);
-					CornerPositions[CornerIndex] = VertexPositions[CornerVertexIDs[CornerIndex]];
-				}
-
-				// Skip degenerated polygons
-				FVector RawNormal = ((CornerPositions[1] - CornerPositions[2]) ^ (CornerPositions[0] - CornerPositions[2]));
-				if (RawNormal.SizeSquared() < SMALL_NUMBER)
-				{
-					continue; // this will leave holes...
-				}
-
-				// Create Vertex instances and set their attributes
-				for (int32 CornerIndex = 0; CornerIndex < CornerCount; ++CornerIndex)
-				{
-					CornerVertexInstanceIDs[CornerIndex] = MeshDescription.CreateVertexInstance(CornerVertexIDs[CornerIndex]);
-
-					const FNode& FaceNode = *Face.Nodes[CornerIndex];
-
-					// Set the normal
-					FVector UENormal = FDatasmithUtils::ConvertVector(FDatasmithUtils::EModelCoordSystem::ZUp_RightHanded_FBXLegacy, FaceNode.Normal);
-					UENormal = UENormal.GetSafeNormal();
-
-					// Check to see if normal is correct. If not replace by face's normal
-					if (UENormal.IsNormalized())
-					{
-						VertexInstanceNormals[CornerVertexInstanceIDs[CornerIndex]] = UENormal;
-					}
-					else
-					{
-						// TODO: Check if this case could happen in Rhino
-					}
-
-					// Set the UV
-					if (bHasUVData)
-					{
-						const FVector2D& UVValues = Face.UVCoords[CornerIndex];
-						if (!UVValues.ContainsNaN())
-						{
-							// Convert UVs - bottom-left Rhino's texture origin to Unreal's top-left
-							VertexInstanceUVs.Set(CornerVertexInstanceIDs[CornerIndex], 0, FVector2D(UVValues[0], 1.f - UVValues[1]));
-						}
-					}
-				}
-
-				const FPolygonID NewPolygonID = MeshDescription.CreatePolygon(PolyGroupId, CornerVertexInstanceIDs);
+				CornerVertexIDs[CornerIndex] = FVertexID(VertexIndices[CornerIndex]);
+				CornerPositions[CornerIndex] = VertexPositions[CornerVertexIDs[CornerIndex]];
 			}
+
+			// Skip degenerated polygons
+			FVector RawNormal = ((CornerPositions[1] - CornerPositions[2]) ^ (CornerPositions[0] - CornerPositions[2]));
+			if (RawNormal.SizeSquared() < SMALL_NUMBER)
+			{
+				continue; // this will leave holes...
+			}
+
+			// Create Vertex instances and set their attributes
+			for (int32 CornerIndex = 0; CornerIndex < CornerCount; ++CornerIndex)
+			{
+				CornerVertexInstanceIDs[CornerIndex] = MeshDescription.CreateVertexInstance(CornerVertexIDs[CornerIndex]);
+
+				const FNode& FaceNode = *Face.Nodes[CornerIndex];
+
+				// Set the normal
+				FVector UENormal = FDatasmithUtils::ConvertVector(FDatasmithUtils::EModelCoordSystem::ZUp_RightHanded, FaceNode.Normal);
+				UENormal = UENormal.GetSafeNormal();
+
+				// Check to see if normal is correct. If not replace by face's normal
+				if (UENormal.IsNormalized())
+				{
+					VertexInstanceNormals[CornerVertexInstanceIDs[CornerIndex]] = UENormal;
+				}
+				else
+				{
+					// TODO: Check if this case could happen in Rhino
+				}
+
+				// Set the UV
+				if (bHasUVData)
+				{
+					const FVector2D& UVValues = Face.UVCoords[CornerIndex];
+					if (!UVValues.ContainsNaN())
+					{
+						UVBBox += FVector(UVValues, 0.0f);
+						VertexInstanceUVs.Set(CornerVertexInstanceIDs[CornerIndex], 0, UVValues);
+					}
+				}
+			}
+
+			const FPolygonID NewPolygonID = MeshDescription.CreatePolygon(PolyGroupId, CornerVertexInstanceIDs);
 		}
 
 		// Build edge meta data
 		FStaticMeshOperations::DetermineEdgeHardnessesFromVertexInstanceNormals(MeshDescription);
 
 		return true;
-	}
-
-	bool TranslateMesh(const ON_Mesh* Mesh, FMeshDescription& MeshDescription, bool& bHasNormal, double ScalingFactor, const ON_3dVector& Offset)
-	{
-		return TranslateMesh(&Mesh, 1, MeshDescription, bHasNormal, ScalingFactor, Offset, false, nullptr);
 	}
 
 	void PropagateLayers(const TSharedPtr<IDatasmithActorElement>& ActorElement, const FString& LayerNames)
@@ -636,7 +598,7 @@ public:
 		, TranslationCache(InTranslationCache)
 		, SceneName(InSceneName)
 		, CurrentPath(InCurrentPath)
-		, OpenNurbsOptionsHash(0)
+		, TessellationOptionsHash(0)
 		, FileVersion(0)
 		, ArchiveOpenNurbsVersion(0)
 		, FileLength(0)
@@ -651,14 +613,14 @@ public:
 
 #ifdef CAD_LIBRARY
 		LocalSession = FRhinoCoretechWrapper::GetSharedSession(MetricUnit, ScalingFactor);
-#endif // CAD_LIBRARY
+#endif
 	}
 
 	~FOpenNurbsTranslatorImpl()
 	{
 #ifdef CAD_LIBRARY
 		LocalSession.Reset();
-#endif // CAD_LIBRARY
+#endif
 
 		for (FOpenNurbsTranslatorImpl* ChildTranslator : ChildTranslators)
 		{
@@ -671,12 +633,10 @@ public:
 	TOptional<FMeshDescription> GetMeshDescription(TSharedRef<IDatasmithMeshElement> MeshElement);
 
 	void SetBaseOptions(const FDatasmithImportBaseOptions& InBaseOptions);
-	void SetOpenNurbsOptions(const FDatasmithOpenNurbsOptions& Options);
+	void SetTessellationOptions(const FDatasmithTessellationOptions& Options);
 	void SetOutputPath(const FString& Path) { OutputPath = Path; }
 	double GetScalingFactor () const { return ScalingFactor; }
 	double GetMetricUnit() const { return MetricUnit; }
-
-	void ShowMessageLog(const FString& Filename);
 
 private:
 	void TranslateTextureMappingTable(const ON_ObjectArray<ON_TextureMapping>& TextureMappingTable);
@@ -693,46 +653,19 @@ private:
 	const ON_UUID& GetInstanceForObject(const ON_UUID& objectUUID);
 	bool HasUnprocessedChildren(const ON_UUID& instanceDefUuid);
 
-	TSharedPtr<IDatasmithActorElement> GetActorElement(const FOpenNurbsObjectWrapper& Object);
 	TSharedPtr<IDatasmithMeshActorElement> GetMeshActorElement(const FOpenNurbsObjectWrapper& Object);
-	TSharedPtr<IDatasmithActorElement> GetPointActorElement(const FOpenNurbsObjectWrapper& Object);
 	TSharedPtr<IDatasmithMeshElement> GetMeshElement(const FOpenNurbsObjectWrapper& Object, const FString& Uuid, const FString& Label);
-	TSharedPtr<IDatasmithMetaDataElement> GetObjectMetaData(const FOpenNurbsObjectWrapper& Object, const TSharedPtr<IDatasmithElement>& DatasmithElement);
 
-	struct FMaterial
-	{
-		TSharedPtr<IDatasmithBaseMaterialElement> MaterialElement;
-		const ON_Material* OpenNurbsMaterialPtr = nullptr;
-	};
-	FMaterial GetObjectMaterial(const FOpenNurbsObjectWrapper& Object);
-	ON_Material* GetOpenNurbsMaterial(int MaterialIndex);
+	TSharedPtr<IDatasmithBaseMaterialElement> FindMaterial(const FOpenNurbsObjectWrapper& Object);
+	TSharedPtr<IDatasmithBaseMaterialElement> GetObjectMaterial(const FOpenNurbsObjectWrapper& Object);
 	TSharedPtr<IDatasmithBaseMaterialElement> GetMaterial(int MaterialIndex);
 	TSharedPtr<IDatasmithBaseMaterialElement> GetDefaultMaterial();
 
 	TSharedPtr<IDatasmithActorElement> GetParentElement(const FOpenNurbsObjectWrapper & Object);
 	FString GetLayerName(const TSharedPtr<IDatasmithActorElement>& LayerElement);
 	void SetLayers(const TSharedPtr<IDatasmithActorElement>& ActorElement, const FOpenNurbsObjectWrapper& Object);
-	void SetTags(const TSharedPtr<IDatasmithActorElement>& ActorElement, const FOpenNurbsObjectWrapper& Object);
-
-	void SetMaterialToMeshElement(TSharedPtr<IDatasmithMeshElement> MeshElement, TSharedPtr<IDatasmithBaseMaterialElement> MaterialElement, int32 SlotId);
 
 	bool TranslateBRep(ON_Brep* brep, const ON_3dmObjectAttributes& Attributes, FMeshDescription& OutMesh, const TSharedRef< IDatasmithMeshElement >& MeshElement, const FString& Name, bool& bHasNormal);
-
-
-	bool ComputeObjectGeometryCenter(const FOpenNurbsObjectWrapper& Object, ON_3dVector& OutGeometryCenter);
-	bool ComputeGeometryCenter(ON_Geometry* Geometry, ON_3dVector& OutCenter);
-
-	// Returns vector to shift geometry to its bounding box center
-	// done before tessellating or creating MeshDescription
-	ON_3dVector GetGeometryOffset(TSharedRef<IDatasmithMeshElement> MeshElement)
-	{
-		ON_3dVector Offset = ON_3fVector::ZeroVector;
-		if (ON_3dVector* OffsetPtr = MeshElementToGeometryCenter.Find(MeshElement))
-		{
-			Offset = *OffsetPtr;
-		}
-		return -Offset;
-	}
 
 private:
 	TArray<FOpenNurbsTranslatorImpl*> ChildTranslators;
@@ -741,13 +674,13 @@ private:
 	FString SceneName;
 	FString CurrentPath;
 	FString OutputPath;
-	FDatasmithOpenNurbsOptions OpenNurbsOptions;
-	uint32 OpenNurbsOptionsHash;
+	FDatasmithTessellationOptions TessellationOptions;
+	uint32 TessellationOptionsHash;
 	FDatasmithImportBaseOptions BaseOptions;
-	
+
 #ifdef CAD_LIBRARY
 	TSharedPtr<FRhinoCoretechWrapper> LocalSession;
-#endif // CAD_LIBRARY
+#endif
 
 private:
 	// For OpenNurbs archive parsing
@@ -794,15 +727,13 @@ private:
 	// Materials
 	TMap<FMD5Hash, TSharedPtr<IDatasmithBaseMaterialElement>> HashToMaterial;
 	TMap<int, TSharedPtr<IDatasmithBaseMaterialElement>> MaterialIndexToMaterial;
-	TMap<int, int> MaterialIndexToMaterialTableIndex;
-	TMap<ON_UUID, int> MaterialIdToIndex;
 	TSet<TSharedPtr<IDatasmithBaseMaterialElement>> UsedMaterials;
 	TSharedPtr<IDatasmithBaseMaterialElement> DefaultMaterial;
 
 	// Layers
 	TMap<ON_UUID, TSharedPtr<IDatasmithActorElement>> LayerUUIDToContainer;
 	TMap<int, TSharedPtr<IDatasmithActorElement>> LayerIndexToContainer;
-	TMap<int, int> LayerIndexToMaterialIndex;
+	TMap<int, TSharedPtr<IDatasmithBaseMaterialElement>> LayerIndexToMaterial;
 	TMap<TSharedPtr<IDatasmithActorElement>, FString> LayerNames;
 	TSet<int> HiddenLayersIndices;
 
@@ -814,7 +745,6 @@ private:
 	std::map<ON_UUID, TSharedPtr<IDatasmithActorElement>> uuidToInstanceContainer;
 	std::map<ON_UUID, int> uuidToInstanceChildrenCount;
 	std::map<ON_UUID, ON_UUID> objectUUIDToInstanceUUID;
-	TMap<TSharedPtr<IDatasmithActorElement>, TSharedPtr<IDatasmithMetaDataElement>> ActorElementToMetaDataMap;
 	TMap<IDatasmithMeshElement*, FOpenNurbsTranslatorImpl*> MeshElementToTranslatorMap;
 
 	//Objects
@@ -823,35 +753,7 @@ private:
 
 	/** OpenNurbs objects to Datasmith mesh elements */
 	TMap<const FOpenNurbsObjectWrapper* , TSharedPtr< IDatasmithMeshElement > > ObjectToMeshElementMap;
-
-	TMap< TSharedPtr< IDatasmithMeshElement >, ON_3dVector > MeshElementToGeometryCenter;
-
-	TArray<FString> MissingRenderMeshes;
 };
-
-void FOpenNurbsTranslatorImpl::ShowMessageLog(const FString& Filename)
-{
-#if WITH_EDITOR
-	if (MissingRenderMeshes.Num())
-	{
-		FMessageLogModule& MessageLogModule = FModuleManager::LoadModuleChecked<FMessageLogModule>("MessageLog");
-		TSharedRef<IMessageLogListing> LogListing = (MessageLogModule.GetLogListing(FName(TEXT("DatasmithOpenNurbs"))));
-		LogListing->SetLabel(LOCTEXT("DatasmithOpenNurbsTranslatorDescription", "DatasmithOpenNurbs"));
-
-		LogListing->ClearMessages();
-
-		LogListing->AddMessage(FTokenizedMessage::Create(EMessageSeverity::Warning,
-			FText::Format(LOCTEXT("DatasmithOpenNurbsTranslator_NoMeshDataForAllMeshes", "Rhino model \"{0}\" doesn't contain mesh data for all objects. \nEither resave the 3dm file with a \"rendered view\" or change the import settings to \"Import as NURBS, Tessellate in Unreal\""), FText::FromString(Filename))
-		));
-
-		for (const FString& Name: MissingRenderMeshes)
-		{
-			FText ErrorMessage = FText::Format(LOCTEXT("DatasmithOpenNurbsTranslator_NoMesh", "  {0} doesn't have mesh information."), FText::FromString(Name));
-			LogListing->AddMessage(FTokenizedMessage::Create(EMessageSeverity::Error, ErrorMessage));
-		}
-	}
-#endif
-}
 
 void FOpenNurbsTranslatorImpl::TranslateTextureMappingTable(const ON_ObjectArray<ON_TextureMapping>& InTextureMappingTable)
 {
@@ -873,10 +775,6 @@ void FOpenNurbsTranslatorImpl::TranslateMaterialTable(const ON_ObjectArray<ON_Ma
 		FMD5Hash Hash = DatasmithOpenNurbsTranslatorUtils::ComputeMaterialHash(OpenNurbsMaterial);
 		TSharedPtr<IDatasmithBaseMaterialElement>* MaterialPtr = HashToMaterial.Find(Hash);
 
-		MaterialIndexToMaterialTableIndex.Add(OpenNurbsMaterial.Index(), Index);
-
-		MaterialIdToIndex.Add(OpenNurbsMaterial.Id(), OpenNurbsMaterial.Index());
-
 		if (MaterialPtr)
 		{
 			MaterialIndexToMaterial.Add(OpenNurbsMaterial.Index(), *MaterialPtr);
@@ -889,7 +787,7 @@ void FOpenNurbsTranslatorImpl::TranslateMaterialTable(const ON_ObjectArray<ON_Ma
 		// Note that in OpenNurbs, Alpha means Transparency, whereas it is usually an Opacity.
 		// Hence the (255 - Transparency) where an opacity is expected
 		FColor Color((uint8) Diffuse.Red(), (uint8) Diffuse.Green(), (uint8) Diffuse.Blue(), (uint8) (255 - Transparency));
-		FLinearColor LinearColor = FLinearColor::FromSRGBColor(Color);
+		FLinearColor LinearColor = FLinearColor::FromPow22Color(Color);
 
 		FString MaterialLabel(OpenNurbsMaterial.Name().Array());
 		if (MaterialLabel.IsEmpty())
@@ -1019,12 +917,13 @@ void FOpenNurbsTranslatorImpl::TranslateMaterialTable(const ON_ObjectArray<ON_Ma
 				// Extract texture mapping info
 				DatasmithMaterialsUtils::FUVEditParameters UVParameters;
 
-				// Use cached texture coordinates(channel 0)
-				UVParameters.ChannelIndex = 0;
-				// Note - Texture->m_mapping_channel_id may used to get TextureMapping in order to generate texture coordinates from it.
-				// Specifically, from object's attributes get MappingRef - attributes.m_rendering_attributes.m_mappings
-				// Next, find channel within MappingRef's m_mapping_channels which m_mapping_channel_id is equal to Texture's
-				// Then m_mapping_id of that channel will be UUID in the UUIDToTextureMapping
+				uint8 ChannelIndex = 0;
+				if (!ON_Texture::IsBuiltInMappingChannel(Texture->m_mapping_channel_id))
+				{
+					// Non built-in channels start at 2 and use 1-based indexing
+					ChannelIndex = Texture->m_mapping_channel_id - 1;
+				}
+				UVParameters.ChannelIndex = ChannelIndex;
 
 				// Extract the UV tiling, offset and rotation angle from the UV transform matrix
 				FMatrix Matrix;
@@ -1038,26 +937,10 @@ void FOpenNurbsTranslatorImpl::TranslateMaterialTable(const ON_ObjectArray<ON_Ma
 				FVector RotationAngles = Transform.GetRotation().Euler();
 
 				UVParameters.UVTiling.X = Tiling.X;
+				UVParameters.UVOffset.X = Translation.X;
 
 				UVParameters.UVTiling.Y = Tiling.Y;
-
-				if ( !FMath::IsNearlyZero( Tiling.X, KINDA_SMALL_NUMBER )
-					&& !FMath::IsNearlyZero( Tiling.Y, KINDA_SMALL_NUMBER ) )
-				{
-					UVParameters.UVOffset.X = Translation.X / Tiling.X;
-
-					// Recomputing offset from Rhino to Unreal, taking into account how tiling Pivot is set in SetupUVEdit:
-					// P = pivot, C - input uv, T - tiling, O - offset
-					// Texture coordinate transformed like this: UV = T*(C+O-P)+P (ignoring mirror/rotation)
-					// P is 0.5 (for V), so  UV = T*(C+O - 0.5) + 0.5 = T*C + T*O - T*0.5 + 0.5
-					// Also, for Rhino we P` = 1 (Rhino image origin bottom-left),
-					// so tiling in Rhino is defined as  UV = T`*(C` + O` - 1) + 1
-					// T`*C + T`*O` - T`*1 + 1 = T*C + T*O - T*0.5 + 0.5
-					// T` = T, reducing further and get:
-					// O` = O + 0.5 - 0.5 / T
-					// #ueent_todo: this could be simplified if we were able to pass custom Tiling Pivot
-					UVParameters.UVOffset.Y = -(Translation.Y / Tiling.Y + 0.5f - 0.5f / Tiling.Y); // V-coordinate is inverted in Unreal
-				}
+				UVParameters.UVOffset.Y = -Translation.Y; // V-coordinate is inverted in Unreal
 
 				// Rotation angle is reversed because V-axis points down in Unreal while it points up in OpenNurbs
 				UVParameters.RotationAngle = -RotationAngles.Z;
@@ -1113,7 +996,6 @@ void FOpenNurbsTranslatorImpl::TranslateMaterialTable(const ON_ObjectArray<ON_Ma
 			{
 				// Transparent color
 				IDatasmithMaterialExpressionScalar* Scalar = static_cast<IDatasmithMaterialExpressionScalar*>(Material->AddMaterialExpression(EDatasmithMaterialExpressionType::ConstantScalar));
-				Scalar->SetName( TEXT( "Opacity" ) );
 				Scalar->GetScalar() = LinearColor.A;
 
 				Material->GetOpacity().SetExpression(Scalar);
@@ -1122,10 +1004,9 @@ void FOpenNurbsTranslatorImpl::TranslateMaterialTable(const ON_ObjectArray<ON_Ma
 			{
 				// Modulate the opacity map with the color transparency setting
 				IDatasmithMaterialExpressionGeneric* Multiply = static_cast<IDatasmithMaterialExpressionGeneric*>(Material->AddMaterialExpression(EDatasmithMaterialExpressionType::Generic));
-				Multiply->SetExpressionName( TEXT( "Multiply" ) );
+				Multiply->SetExpressionName(TEXT("Multiply"));
 
 				IDatasmithMaterialExpressionScalar* Scalar = static_cast<IDatasmithMaterialExpressionScalar*>(Material->AddMaterialExpression(EDatasmithMaterialExpressionType::ConstantScalar));
-				Scalar->SetName( TEXT( "Opacity Output Level" ) );
 				Scalar->GetScalar() = LinearColor.A;
 				Scalar->ConnectExpression(*Multiply->GetInput(0));
 
@@ -1141,7 +1022,6 @@ void FOpenNurbsTranslatorImpl::TranslateMaterialTable(const ON_ObjectArray<ON_Ma
 		if (!FMath::IsNearlyZero(Shininess))
 		{
 			IDatasmithMaterialExpressionScalar* Scalar = static_cast<IDatasmithMaterialExpressionScalar*>(Material->AddMaterialExpression(EDatasmithMaterialExpressionType::ConstantScalar));
-			Scalar->SetName( TEXT( "Roughness" ) );
 			Scalar->GetScalar() = 1.f - Shininess;
 			Material->GetRoughness().SetExpression(Scalar);
 		}
@@ -1150,7 +1030,6 @@ void FOpenNurbsTranslatorImpl::TranslateMaterialTable(const ON_ObjectArray<ON_Ma
 		if (!FMath::IsNearlyZero(Reflectivity))
 		{
 			IDatasmithMaterialExpressionScalar* Scalar = static_cast<IDatasmithMaterialExpressionScalar*>(Material->AddMaterialExpression(EDatasmithMaterialExpressionType::ConstantScalar));
-			Scalar->SetName( TEXT( "Metallic" ) );
 			Scalar->GetScalar() = Reflectivity;
 			Material->GetMetallic().SetExpression(Scalar);
 		}
@@ -1214,7 +1093,9 @@ void FOpenNurbsTranslatorImpl::TranslateLayerTable(const ON_ObjectArray<ON_Layer
 		// Use the layer's render material, no fallback on the display color
 		if (CurrentLayer.RenderMaterialIndex() != -1)
 		{
-			LayerIndexToMaterialIndex.Add(CurrentLayer.Index(), CurrentLayer.RenderMaterialIndex());
+			// The layer's render material index should match a material previously translated from the material table
+			TSharedPtr<IDatasmithBaseMaterialElement> MaterialElement = GetMaterial(CurrentLayer.RenderMaterialIndex());
+			LayerIndexToMaterial.Add(CurrentLayer.Index(), MaterialElement);
 		}
 	}
 }
@@ -1306,7 +1187,7 @@ void FOpenNurbsTranslatorImpl::TranslateLightTable(const ON_ClassArray<FOpenNurb
 		{
 			FVector Location(LightObj.Location().x, LightObj.Location().y, LightObj.Location().z);
 			Location *= ScalingFactor;
-			Location = FDatasmithUtils::ConvertVector(FDatasmithUtils::EModelCoordSystem::ZUp_RightHanded_FBXLegacy, Location);
+			Location = FDatasmithUtils::ConvertVector(FDatasmithUtils::EModelCoordSystem::ZUp_RightHanded, Location);
 			LightElement->SetTranslation(Location);
 		}
 
@@ -1315,7 +1196,7 @@ void FOpenNurbsTranslatorImpl::TranslateLightTable(const ON_ClassArray<FOpenNurb
 			LightType == EDatasmithElementType::SpotLight)
 		{
 			FVector Direction(LightObj.Direction().x, LightObj.Direction().y, LightObj.Direction().z);
-			Direction = FDatasmithUtils::ConvertVector(FDatasmithUtils::EModelCoordSystem::ZUp_RightHanded_FBXLegacy, Direction);
+			Direction = FDatasmithUtils::ConvertVector(FDatasmithUtils::EModelCoordSystem::ZUp_RightHanded, Direction);
 			LightElement->SetRotation(FQuat::FindBetweenVectors(FVector::ForwardVector, Direction));
 		}
 
@@ -1399,12 +1280,6 @@ void FOpenNurbsTranslatorImpl::TranslateLightTable(const ON_ClassArray<FOpenNurb
 		else
 		{
 			Scene->AddActor(LightElement);
-		}
-
-		TSharedPtr<IDatasmithMetaDataElement> MetaData = GetObjectMetaData(Object, LightElement);
-		if (MetaData.IsValid())
-		{
-			Scene->AddMetaData(MetaData);
 		}
 	}
 }
@@ -1499,7 +1374,7 @@ void FOpenNurbsTranslatorImpl::TranslateInstanceDefinitionTable(const TArray<ON_
 
 					ChildTranslators.Add(LinkedFileTranslator);
 
-					LinkedFileTranslator->SetOpenNurbsOptions(OpenNurbsOptions);
+					LinkedFileTranslator->SetTessellationOptions(TessellationOptions);
 
 					ON_BinaryFile Archive(ON::archive_mode::read3dm, FileHandle);
 
@@ -1512,7 +1387,6 @@ void FOpenNurbsTranslatorImpl::TranslateInstanceDefinitionTable(const TArray<ON_
 						// Propagate data from child to parent translator for use by the "root" translator
 						MeshElementToTranslatorMap.Append(LinkedFileTranslator->MeshElementToTranslatorMap);
 						MeshElementToObjectMap.Append(LinkedFileTranslator->MeshElementToObjectMap);
-						MeshElementToGeometryCenter.Append(LinkedFileTranslator->MeshElementToGeometryCenter);
 
 						// Merge ChildScene with ParentScene
 						int32 NumActors = ChildScene->GetActorsCount();
@@ -1570,7 +1444,7 @@ void FOpenNurbsTranslatorImpl::TranslateObjectTable(const ON_ClassArray<FOpenNur
 	for (int Index = 0; Index < NumObjects; ++Index)
 	{
 		const FOpenNurbsObjectWrapper& Object = *InObjectTable.At(Index);
-		if (!ON_InstanceRef::Cast(Object.ObjectPtr))
+		if (!Object.ObjectPtr->IsKindOf(&ON_InstanceRef::m_ON_InstanceRef_class_rtti))
 		{
 			TranslateNonInstanceObject(Object);
 		}
@@ -1643,64 +1517,6 @@ void FOpenNurbsTranslatorImpl::SetLayers(const TSharedPtr<IDatasmithActorElement
 	DatasmithOpenNurbsTranslatorUtils::PropagateLayers(ActorElement, *Layers);
 }
 
-void FOpenNurbsTranslatorImpl::SetTags(const TSharedPtr<IDatasmithActorElement>& ActorElement, const FOpenNurbsObjectWrapper& Object)
-{
-	ON_wString UUIDString;
-	ON_UuidToString(Object.Attributes.m_uuid, UUIDString);
-	FString UUID(UUIDString.Array());
-
-	ON::object_type objType = Object.ObjectPtr->ObjectType();
-	const TCHAR* StrObjectType;
-	switch (objType)
-	{
-		case ON::instance_definition:
-			StrObjectType = TEXT("block definition");
-			break;
-		case ON::instance_reference:
-			StrObjectType = TEXT("block instance");
-			break;
-		case ON::point_object:
-			StrObjectType = TEXT("point");
-			break;
-		case ON::curve_object:
-			StrObjectType = TEXT("curve");
-			break;
-		case ON::surface_object:
-			StrObjectType = TEXT("surface");
-			break;
-		case ON::brep_object:
-			StrObjectType = TEXT("brep");
-			break;
-		case ON::mesh_object:
-			StrObjectType = TEXT("mesh");
-			break;
-		case ON::text_dot:
-			StrObjectType = TEXT("textdot");
-			break;
-		case ON::subd_object:
-			StrObjectType = TEXT("subd");
-			break;
-		case ON::loop_object:
-			StrObjectType = TEXT("loop");
-			break;
-		case ON::cage_object:
-			StrObjectType = TEXT("cage");
-			break;
-		case ON::clipplane_object:
-			StrObjectType = TEXT("clip plane");
-			break;
-		case ON::extrusion_object:
-			StrObjectType = TEXT("extrusion");
-			break;
-		default:
-			StrObjectType = TEXT("unknown");
-			break;
-	}
-
-	ActorElement->AddTag(*FString::Printf(TEXT("Rhino.ID: %s"), *UUID));
-	ActorElement->AddTag(*FString::Printf(TEXT("Rhino.Entity.Type: %s"), StrObjectType));
-}
-
 void FOpenNurbsTranslatorImpl::TranslateNonInstanceObject(const FOpenNurbsObjectWrapper& Object)
 {
 	// Ref. visitNonInstanceObject
@@ -1712,30 +1528,29 @@ void FOpenNurbsTranslatorImpl::TranslateNonInstanceObject(const FOpenNurbsObject
 	// Get UUID of possible instance definition referring to this object
 	ON_UUID instanceUuid = GetInstanceForObject(Object.Attributes.m_uuid);
 
-	TSharedPtr<IDatasmithActorElement> PartElement = GetActorElement(Object);
-	if (!PartElement.IsValid())
-	{
-		return;
-	}
-
+	TSharedPtr<IDatasmithMeshActorElement> PartElement;
 	if (ON_UuidIsNotNil(instanceUuid))
 	{
+		PartElement = GetMeshActorElement(Object);
+		if (!PartElement.IsValid())
+		{
+			return;
+		}
+
 		TSharedPtr<IDatasmithActorElement> ContainerElement = uuidToInstanceContainer[instanceUuid];
 		if (ContainerElement.IsValid())
 		{
 			ContainerElement->AddChild(PartElement);
-
-			TSharedPtr<IDatasmithMetaDataElement> MetaData = GetObjectMetaData(Object, PartElement);
-			if (MetaData.IsValid())
-			{
-				ActorElementToMetaDataMap.FindOrAdd(PartElement) = MetaData;
-			}
 		}
-
-		SetTags(PartElement, Object);
 	}
 	else
 	{
+		PartElement = GetMeshActorElement(Object);
+		if (!PartElement.IsValid())
+		{
+			return;
+		}
+
 		TSharedPtr<IDatasmithActorElement> Parent = GetParentElement(Object);
 
 		if (Parent.IsValid())
@@ -1747,14 +1562,7 @@ void FOpenNurbsTranslatorImpl::TranslateNonInstanceObject(const FOpenNurbsObject
 			Scene->AddActor(PartElement);
 		}
 
-		TSharedPtr<IDatasmithMetaDataElement> MetaData = GetObjectMetaData(Object, PartElement);
-		if (MetaData.IsValid())
-		{
-			Scene->AddMetaData(MetaData);
-		}
-
 		SetLayers(PartElement, Object);
-		SetTags(PartElement, Object);
 	}
 
 	// Register UUID of fully processed object
@@ -1778,7 +1586,6 @@ bool FOpenNurbsTranslatorImpl::IsValidObject(const FOpenNurbsObjectWrapper& Obje
 		Object.ObjectPtr->IsKindOf(&ON_Brep::m_ON_Brep_class_rtti) ||
 		Object.ObjectPtr->IsKindOf(&ON_PlaneSurface::m_ON_PlaneSurface_class_rtti) ||
 		Object.ObjectPtr->IsKindOf(&ON_InstanceRef::m_ON_InstanceRef_class_rtti) ||
-		Object.ObjectPtr->IsKindOf(&ON_Point::m_ON_Point_class_rtti) ||
 		//object.ObjectPtr->IsKindOf(&ON_LineCurve::m_ON_LineCurve_class_rtti) ||
 		Object.ObjectPtr->IsKindOf(&ON_Extrusion::m_ON_Extrusion_class_rtti) ||
 		Object.ObjectPtr->IsKindOf(&ON_Hatch::m_ON_Hatch_class_rtti) ||
@@ -1870,25 +1677,18 @@ bool FOpenNurbsTranslatorImpl::TranslateInstance(const FOpenNurbsObjectWrapper& 
 
 	// Ref. FDatasmithCADImporter::SetWorldTransform
 	FTransform Transform(Matrix);
-	FTransform CorrectedTransform = FDatasmithUtils::ConvertTransform(FDatasmithUtils::EModelCoordSystem::ZUp_RightHanded_FBXLegacy, Transform);
+	const FTransform RightHanded = FTransform(FRotator(0.0f, 0.0f, 0.0f), FVector(0.0f, 0.0f, 0.0f), FVector(-1.0f, 1.0f, 1.0f));
+	FTransform CorrectedTransform = RightHanded * Transform * RightHanded;
 
 	ContainerElement->SetTranslation(CorrectedTransform.GetTranslation() * ScalingFactor);
 	ContainerElement->SetScale(CorrectedTransform.GetScale3D());
 	ContainerElement->SetRotation(CorrectedTransform.GetRotation());
-	bool bIsPartOfInstanceDefinition = false;
 
 	// If instance of an instance, parent to parent instance definition
 	if (ON_UuidIsNotNil(instanceUuid) == true)
 	{
-		bIsPartOfInstanceDefinition = true;
 		TSharedPtr<IDatasmithActorElement> InstanceContainer = uuidToInstanceContainer[instanceUuid];
 		InstanceContainer->AddChild(ContainerElement);
-
-		TSharedPtr<IDatasmithMetaDataElement> MetaData = GetObjectMetaData(Object, ContainerElement);
-		if (MetaData.IsValid())
-		{
-			ActorElementToMetaDataMap.FindOrAdd(ContainerElement) = MetaData;
-		}
 	}
 	else
 	{
@@ -1900,12 +1700,6 @@ bool FOpenNurbsTranslatorImpl::TranslateInstance(const FOpenNurbsObjectWrapper& 
 		else
 		{
 			Scene->AddActor(ContainerElement);
-		}
-
-		TSharedPtr<IDatasmithMetaDataElement> MetaData = GetObjectMetaData(Object, ContainerElement);
-		if (MetaData.IsValid())
-		{
-			Scene->AddMetaData(MetaData);
 		}
 	}
 
@@ -1923,75 +1717,12 @@ bool FOpenNurbsTranslatorImpl::TranslateInstance(const FOpenNurbsObjectWrapper& 
 
 		TSharedPtr<IDatasmithActorElement> DuplicatedChild = DuplicateActorElement(Child, ContainerElement->GetName());
 		ContainerElement->AddChild(DuplicatedChild, EDatasmithActorAttachmentRule::KeepRelativeTransform);
-
-		if (TSharedPtr<IDatasmithMetaDataElement>* SourceMetaData = ActorElementToMetaDataMap.Find(Child))
-		{
-			TSharedPtr<IDatasmithMetaDataElement> DuplicatedMetaData = DuplicateMetaDataElement(*SourceMetaData, DuplicatedChild);
-
-			if (bIsPartOfInstanceDefinition)
-			{
-				ActorElementToMetaDataMap.FindOrAdd(DuplicatedChild) = DuplicatedMetaData;
-			}
-			else
-			{
-				Scene->AddMetaData(DuplicatedMetaData);
-			}
-		}
 	}
 
 	SetLayers(ContainerElement, Object);
-	SetTags(ContainerElement, Object);
 
 	// TODO: Apply material override
 	return true;
-}
-
-TSharedPtr<IDatasmithMetaDataElement> FOpenNurbsTranslatorImpl::GetObjectMetaData(const FOpenNurbsObjectWrapper& Object, const TSharedPtr<IDatasmithElement>& DatasmithElement)
-{
-	ON_ClassArray<ON_wString> UserStringKeys;
-	if (Object.Attributes.GetUserStringKeys(UserStringKeys))
-	{
-		FString MetaDataName = FString::Printf(TEXT("%s%s"), DatasmithElement->GetName(), TEXT("_DATA"));
-		TSharedPtr<IDatasmithMetaDataElement> MetaData = FDatasmithSceneFactory::CreateMetaData(*MetaDataName);
-		MetaData->SetAssociatedElement(DatasmithElement);
-
-		for (int32 UserTextIndex = 0; UserTextIndex < UserStringKeys.Count(); ++UserTextIndex)
-		{
-			ON_wString& KeyString = *UserStringKeys.At(UserTextIndex);
-			ON_wString Value;
-			if (Object.Attributes.GetUserString(KeyString.Array(), Value))
-			{
-				TSharedRef<IDatasmithKeyValueProperty> MetaDataProperty = FDatasmithSceneFactory::CreateKeyValueProperty(KeyString.Array());
-				MetaDataProperty->SetValue(Value.Array());
-				MetaDataProperty->SetPropertyType(EDatasmithKeyValuePropertyType::String);
-
-				MetaData->AddProperty(MetaDataProperty);
-			}
-		}
-
-		if (MetaData->GetPropertiesCount() > 0)
-		{
-			return  MetaData;
-		}
-	}
-
-	return TSharedPtr<IDatasmithMetaDataElement>();
-}
-
-TSharedPtr<IDatasmithActorElement> FOpenNurbsTranslatorImpl::GetActorElement(const FOpenNurbsObjectWrapper& Object)
-{
-	TSharedPtr<IDatasmithActorElement> ActorElement;
-
-	if (Object.ObjectPtr->ObjectType() == ON::object_type::point_object)
-	{
-		ActorElement = GetPointActorElement(Object);
-	}
-	else
-	{
-		ActorElement = GetMeshActorElement(Object);
-	}
-
-	return ActorElement;
 }
 
 TSharedPtr<IDatasmithMeshActorElement> FOpenNurbsTranslatorImpl::GetMeshActorElement(const FOpenNurbsObjectWrapper& Object)
@@ -2040,78 +1771,9 @@ TSharedPtr<IDatasmithMeshActorElement> FOpenNurbsTranslatorImpl::GetMeshActorEle
 	ActorElement->SetLabel(*ActorLabel);
 	ActorElement->SetStaticMeshPathName(MeshElement->GetName());
 
-	ON_3dVector GeometryCenter;
-	if (ComputeObjectGeometryCenter(Object, GeometryCenter))
-	{
-		MeshElementToGeometryCenter.Add(MeshElement.ToSharedRef(), GeometryCenter);
-		FVector ActorOffset = ScalingFactor * FDatasmithUtils::ConvertVector(FDatasmithUtils::EModelCoordSystem::ZUp_RightHanded_FBXLegacy, GeometryCenter);
-		ActorElement->SetTranslation(ActorOffset);
-	}
-
 	// TODO: TBD if need to set Material Override
 
 	return ActorElement;
-}
-
-TSharedPtr<IDatasmithActorElement> FOpenNurbsTranslatorImpl::GetPointActorElement(const FOpenNurbsObjectWrapper& Object)
-{
-	TSharedPtr<IDatasmithActorElement> ActorElement;
-
-	ON_Point* pointObj = ON_Point::Cast(Object.ObjectPtr);
-	if (pointObj == nullptr)
-	{
-		return ActorElement;
-	}
-
-	ON_wString uuidString;
-	ON_UuidToString(Object.Attributes.m_uuid, uuidString);
-
-	FString ActorName = uuidString.Array();
-	FString ActorLabel;
-	if (Object.Attributes.m_name.Length() > 0)
-	{
-		ActorLabel = Object.Attributes.m_name.Array();
-	}
-	else
-	{
-		const ON_ClassId* classId = Object.ObjectPtr->ClassId();
-		ActorLabel = classId->ClassName();
-	}
-
-	if (ActorName.IsEmpty())
-	{
-		ActorName = ActorLabel;
-	}
-
-	ActorElement = FDatasmithSceneFactory::CreateActor(*ActorName);
-	if (!ActorElement.IsValid())
-	{
-		return ActorElement;
-	}
-
-	FVector Location(pointObj->point.x, pointObj->point.y, pointObj->point.z);
-	Location *= ScalingFactor;
-	Location = FDatasmithUtils::ConvertVector(FDatasmithUtils::EModelCoordSystem::ZUp_RightHanded_FBXLegacy, Location);
-
-	ActorElement->SetTranslation(Location);
-	ActorElement->SetLabel(*ActorLabel);
-
-	return ActorElement;
-}
-
-void FOpenNurbsTranslatorImpl::SetMaterialToMeshElement(TSharedPtr<IDatasmithMeshElement> MeshElement, TSharedPtr<IDatasmithBaseMaterialElement> MaterialElement, int32 SlotId)
-{
-	if (MaterialElement.IsValid())
-	{
-		MeshElement->SetMaterial(MaterialElement->GetName(), SlotId);
-
-		// And add it to the Datasmith Scene as needed
-		if (!UsedMaterials.Contains(MaterialElement))
-		{
-			UsedMaterials.Add(MaterialElement);
-			Scene->AddMaterial(MaterialElement);
-		}
-	}
 }
 
 TSharedPtr<IDatasmithMeshElement> FOpenNurbsTranslatorImpl::GetMeshElement(const FOpenNurbsObjectWrapper& Object, const FString& Uuid, const FString& Label)
@@ -2131,28 +1793,10 @@ TSharedPtr<IDatasmithMeshElement> FOpenNurbsTranslatorImpl::GetMeshElement(const
 	MeshElement->SetLabel(*Label);
 	MeshElement->SetLightmapSourceUV(-1);
 
-	if (BaseOptions.bIncludeMaterial)
+	TSharedPtr<IDatasmithBaseMaterialElement> Material = FindMaterial(Object);
+	if (Material.IsValid() && BaseOptions.bIncludeMaterial)
 	{
-		FMaterial Material = GetObjectMaterial(Object);
-
-		SetMaterialToMeshElement(MeshElement, Material.MaterialElement, 0);
-
-		// Material slots(OpenNurbs 'channels')
-		// https://developer.rhino3d.com/guides/opennurbs/reading-per-face-render-materials/
-		if (Material.OpenNurbsMaterialPtr)
-		{
-			const ON_Material& OpenNurbsMaterial = *Material.OpenNurbsMaterialPtr;
-			for (int MaterialChannel = 0; MaterialChannel < OpenNurbsMaterial.m_material_channel.Count(); ++MaterialChannel)
-			{
-				const ON_UuidIndex& MaterialIdx = OpenNurbsMaterial.m_material_channel[MaterialChannel];
-				if (int* IndexPtr = MaterialIdToIndex.Find(MaterialIdx.m_id))
-				{
-					// In OpenNurbs, m_material_channel is indexed by "m_face_material_channel-1"(where m_face_material_channel==0 means 'parent' material)
-					// We put "channel material" into slot "channel+1" so 'parent' material can go into slot 0 and can index slots by unmodified m_face_material_channel
-					SetMaterialToMeshElement(MeshElement, GetMaterial(*IndexPtr), MaterialChannel + 1);
-				}
-			}
-		}
+		MeshElement->SetMaterial(Material->GetName(), 0);
 	}
 
 	Scene->AddMesh(MeshElement);
@@ -2171,7 +1815,7 @@ TSharedPtr<IDatasmithMeshElement> FOpenNurbsTranslatorImpl::GetMeshElement(const
 	uint32 CRC = Object.ObjectPtr->DataCRC(0);
 	if (ON_Brep::Cast(Object.ObjectPtr))
 	{
-		CRC ^= OpenNurbsOptionsHash;
+		CRC ^= TessellationOptionsHash;
 	}
 	MD5.Update(reinterpret_cast<const uint8*>(&CRC), sizeof CRC);
 
@@ -2182,7 +1826,22 @@ TSharedPtr<IDatasmithMeshElement> FOpenNurbsTranslatorImpl::GetMeshElement(const
 	return MeshElement;
 }
 
-FOpenNurbsTranslatorImpl::FMaterial FOpenNurbsTranslatorImpl::GetObjectMaterial(const FOpenNurbsObjectWrapper& Object)
+TSharedPtr<IDatasmithBaseMaterialElement> FOpenNurbsTranslatorImpl::FindMaterial(const FOpenNurbsObjectWrapper& Object)
+{
+	// Find a previously translated material for the Object
+	TSharedPtr<IDatasmithBaseMaterialElement> Material = GetObjectMaterial(Object);
+
+	// And add it to the Datasmith Scene as needed
+	if (!UsedMaterials.Contains(Material))
+	{
+		UsedMaterials.Add(Material);
+		Scene->AddMaterial(Material);
+	}
+
+	return Material;
+}
+
+TSharedPtr<IDatasmithBaseMaterialElement> FOpenNurbsTranslatorImpl::GetObjectMaterial(const FOpenNurbsObjectWrapper& Object)
 {
 	// Ref: getObjectMaterialID(const ONX_Model_Object& object)
 	ON::object_material_source MaterialSource = Object.Attributes.MaterialSource();
@@ -2197,33 +1856,23 @@ FOpenNurbsTranslatorImpl::FMaterial FOpenNurbsTranslatorImpl::GetObjectMaterial(
 		{
 			if (Object.Attributes.m_material_index != -1)
 			{
-				return { GetMaterial(Object.Attributes.m_material_index) , GetOpenNurbsMaterial(Object.Attributes.m_material_index) };
+				// Get material from Material table
+				return GetMaterial(Object.Attributes.m_material_index);
 			}
 			break;
 		}
 		case ON::material_from_layer:
 		{
-			if (int* MaterialIndexPtr = LayerIndexToMaterialIndex.Find(Object.Attributes.m_layer_index))
+			TSharedPtr<IDatasmithBaseMaterialElement>* Material = LayerIndexToMaterial.Find(Object.Attributes.m_layer_index);
+			if (Material)
 			{
-				return { GetMaterial(*MaterialIndexPtr), GetOpenNurbsMaterial(*MaterialIndexPtr) };
+				return *Material;
 			}
 			break;
 		}
 	}
 
-	return { GetDefaultMaterial() };
-}
-
-ON_Material* FOpenNurbsTranslatorImpl::GetOpenNurbsMaterial(int MaterialIndex)
-{
-	int* MaterialTableIndexPtr = MaterialIndexToMaterialTableIndex.Find(MaterialIndex);
-
-	if (!MaterialTableIndexPtr)
-	{
-		return nullptr;
-	}
-
-	return MaterialTable.At(*MaterialTableIndexPtr);
+	return GetDefaultMaterial();
 }
 
 TSharedPtr<IDatasmithBaseMaterialElement> FOpenNurbsTranslatorImpl::GetMaterial(int MaterialIndex)
@@ -2249,7 +1898,7 @@ TSharedPtr<IDatasmithBaseMaterialElement> FOpenNurbsTranslatorImpl::GetDefaultMa
 	Material->SetLabel(TEXT("Default"));
 
 	FColor Color(250, 250, 250, 255);
-	FLinearColor LinearColor = FLinearColor::FromSRGBColor(Color);
+	FLinearColor LinearColor = FLinearColor::FromPow22Color(Color);
 
 	IDatasmithMaterialExpressionColor* ColorExpression = Material->AddMaterialExpression<IDatasmithMaterialExpressionColor>();
 	ColorExpression->SetName(TEXT("Diffuse Color"));
@@ -2336,7 +1985,7 @@ bool FOpenNurbsTranslatorImpl::Read(ON_BinaryFile& Archive, TSharedRef<IDatasmit
 	ScalingFactor = 100 / Settings.m_ModelUnitsAndTolerances.Scale(ON::LengthUnitSystem::Meters);
 #ifdef CAD_LIBRARY
 	LocalSession->SetScaleFactor(ScalingFactor);
-#endif // CAD_LIBRARY
+#endif
 
 	// Step 4: REQUIRED - Read bitmap table (it can be empty)
 	int Count = 0;
@@ -2927,7 +2576,6 @@ bool FOpenNurbsTranslatorImpl::Read(ON_BinaryFile& Archive, TSharedRef<IDatasmit
 			ON_Object* pObject = nullptr;
 			ON_3dmObjectAttributes attributes;
 			ReturnCode = Archive.Read3dmObject(&pObject, &attributes, object_filter);
-
 			if (ReturnCode == 0)
 			{
 				break; // end of object table
@@ -3182,165 +2830,65 @@ bool FOpenNurbsTranslatorImpl::TranslateBRep(ON_Brep* Brep, const ON_3dmObjectAt
 		return false;
 	}
 
-	ON_3dVector Offset = GetGeometryOffset(MeshElement);
-
 	// No tessellation if CAD library is not present...
 #ifdef CAD_LIBRARY
-	if (OpenNurbsOptions.Geometry == EDatasmithOpenNurbsBrepTessellatedSource::UseUnrealNurbsTessellation)
+	// Ref. visitBRep
+	LocalSession->SetImportParameters(TessellationOptions.ChordTolerance, TessellationOptions.MaxEdgeLength, TessellationOptions.NormalTolerance, (CADLibrary::EStitchingTechnique) TessellationOptions.StitchingTechnique, false);
+
+	CADLibrary::CheckedCTError Result;
+
+	LocalSession->ClearData();
+
+	Result = LocalSession->AddBRep(*Brep);
+
+	FString Filename = FString::Printf(TEXT("%s.ct"), *Name);
+	FString FilePath = FPaths::Combine(OutputPath, Filename);
+	Result = LocalSession->SaveBrep(FilePath);
+	if (Result)
 	{
-		// Ref. visitBRep
-		const FDatasmithOpenNurbsOptions& TessellationOptions = OpenNurbsOptions;
-		LocalSession->SetImportParameters(TessellationOptions.ChordTolerance, TessellationOptions.MaxEdgeLength, TessellationOptions.NormalTolerance, (CADLibrary::EStitchingTechnique) TessellationOptions.StitchingTechnique, false);
-		LocalSession->GetImportParameters().ModelCoordSys = FDatasmithUtils::EModelCoordSystem::ZUp_RightHanded_FBXLegacy;
+		MeshElement->SetFile(*FilePath);
+	}
 
-		CADLibrary::CheckedCTError Result;
+	Result = LocalSession->TopoFixes();
 
-		LocalSession->ClearData();
+	CADLibrary::FMeshParameters MeshParameters;
+	Result = LocalSession->Tessellate(OutMesh, MeshParameters);
 
-		Result = LocalSession->AddBRep(*Brep, Offset);
+	return bool(Result);
+#else
+	// .. Trying to load the mesh tessellated by Rhino
+	ON_SimpleArray<const ON_Mesh*> RenderMeshes;
+	ON_SimpleArray<const ON_Mesh*> AnyMeshes;
+	Brep->GetMesh(ON::mesh_type::render_mesh, RenderMeshes);
+	Brep->GetMesh(ON::mesh_type::any_mesh, AnyMeshes);
 
-		FString Filename = FString::Printf(TEXT("%s.ct"), *Name);
-		FString FilePath = FPaths::Combine(OutputPath, Filename);
-		Result = LocalSession->SaveBrep(FilePath);
-		if (Result)
-		{
-			MeshElement->SetFile(*FilePath);
-		}
+	// Aborting because there is no mesh associated with the BRep
+	if(RenderMeshes.Count() == 0 && AnyMeshes.Count() == 0)
+	{
+		return false;
+	}
 
-		Result = LocalSession->TopoFixes();
+	ON_Mesh BRepMesh;
 
-		CADLibrary::FMeshParameters MeshParameters;
-		Result = LocalSession->Tessellate(OutMesh, MeshParameters);
-
-		return bool(Result);
+	if (RenderMeshes.Count() == AnyMeshes.Count())
+	{
+		BRepMesh.Append(RenderMeshes.Count(), RenderMeshes.Array());
 	}
 	else
-#endif // CAD_LIBRARY
 	{
-		// .. Trying to load the mesh tessellated by Rhino
-		ON_Mesh BRepMesh;
-
-		ON_SimpleArray<const ON_Mesh*> RenderMeshes;
-		Brep->GetMesh(ON::mesh_type::render_mesh, RenderMeshes);
-
-		// Aborting because there is no mesh associated with the BRep
-		if (RenderMeshes.Count() == 0)
-		{
-			MissingRenderMeshes.Add(MeshElement->GetLabel());
-			return false;
-		}
-
-		TArray<int32> FaceMaterialChannel;
-		bool bHasFaceMaterialChannel = false;
-		// Use BRep's face material channel for each of the render meshes
-		// Assuming that meshes correspond to brep faces
-		if (ensure(RenderMeshes.Count() == Brep->m_F.Count()))
-		{
-			FaceMaterialChannel.Reserve(Brep->m_F.Count());
-			for (int FaceIndex = 0; FaceIndex < Brep->m_F.Count(); ++FaceIndex)
-			{
-				const ON_BrepFace& Face = Brep->m_F[FaceIndex];
-				int Channel = Face.m_face_material_channel;
-
-				if (Channel != 0 && (Channel < MeshElement->GetMaterialSlotCount()))
-				{
-					bHasFaceMaterialChannel = true;
-				}
-
-				FaceMaterialChannel.Add(Channel);
-			}
-		}
-		if (bHasFaceMaterialChannel)
-		{
-			if (!DatasmithOpenNurbsTranslatorUtils::TranslateMesh(RenderMeshes, RenderMeshes.Count(), OutMesh, bHasNormal, ScalingFactor, Offset, bHasFaceMaterialChannel, FaceMaterialChannel.GetData()))
-			{
-				return false;
-			}
-		}
-		else
-		{
-			ON_Mesh Mesh;
-			Mesh.Append(RenderMeshes.Count(), RenderMeshes);
-
-			if (!DatasmithOpenNurbsTranslatorUtils::TranslateMesh(&Mesh, OutMesh, bHasNormal, ScalingFactor, Offset))
-			{
-				return false;
-			}
-		}
-
-
-		return true;
+		BRepMesh.Append(AnyMeshes.Count(), AnyMeshes.Array());
 	}
-}
 
-bool FOpenNurbsTranslatorImpl::ComputeGeometryCenter(ON_Geometry* Geometry, ON_3dVector& OutCenter)
-{
-	if (Geometry == nullptr)
+	if(!DatasmithOpenNurbsTranslatorUtils::TranslateMesh(&BRepMesh, OutMesh, bHasNormal, ScalingFactor))
 	{
 		return false;
 	}
-
-	double BoxMin[3];
-	double BoxMax[3];
-	if (!Geometry->GetBBox(BoxMin, BoxMax))
-	{
-		return false;
-	}
-
-	OutCenter = (ON_3dVector(BoxMin[0], BoxMin[1], BoxMin[2]) + ON_3dVector(BoxMax[0], BoxMax[1], BoxMax[2])) * 0.5f;
 
 	return true;
+#endif
 }
 
-bool FOpenNurbsTranslatorImpl::ComputeObjectGeometryCenter(const FOpenNurbsObjectWrapper& Object, ON_3dVector& OutGeometryCenter)
-{
-	bool bIsValid = false;
-	ON_3dVector GeometryCenter;
-	GeometryCenter.Zero();
-	if (Object.ObjectPtr->IsKindOf(&ON_Mesh::m_ON_Mesh_class_rtti))
-	{
-		bIsValid = ComputeGeometryCenter(ON_Mesh::Cast(Object.ObjectPtr), GeometryCenter);
-	}
-	else if (Object.ObjectPtr->IsKindOf(&ON_Brep::m_ON_Brep_class_rtti))
-	{
-		bIsValid = ComputeGeometryCenter(ON_Brep::Cast(Object.ObjectPtr), GeometryCenter);
-	}
-	else if (Object.ObjectPtr->IsKindOf(&ON_Extrusion::m_ON_Extrusion_class_rtti))
-	{
-		const ON_Extrusion* extrusion = ON_Extrusion::Cast(Object.ObjectPtr);
-		ON_Brep brep;
-		if (extrusion != nullptr && extrusion->BrepForm(&brep) != nullptr)
-		{
-			bIsValid = ComputeGeometryCenter(&brep, GeometryCenter);
-		}
-	}
-	else if (Object.ObjectPtr->IsKindOf(&ON_Hatch::m_ON_Hatch_class_rtti))
-	{
-		const ON_Hatch* hatch = ON_Hatch::Cast(Object.ObjectPtr);
-		ON_Brep brep;
-		if (hatch != nullptr && hatch->BrepForm(&brep) != nullptr)
-		{
-			bIsValid = ComputeGeometryCenter(&brep, GeometryCenter);
-		}
-	}
-	else if (Object.ObjectPtr->IsKindOf(&ON_PlaneSurface::m_ON_PlaneSurface_class_rtti))
-	{
-		//
-	}
-	else if (Object.ObjectPtr->IsKindOf(&ON_LineCurve::m_ON_LineCurve_class_rtti))
-	{
-		// Not supported
-	}
-
-	if (bIsValid)
-	{
-		OutGeometryCenter = GeometryCenter;
-		return true;
-	}
-	return false;
-}
-
-TOptional<FMeshDescription> FOpenNurbsTranslatorImpl::GetMeshDescription(TSharedRef<IDatasmithMeshElement> MeshElement)
+TOptional< FMeshDescription > FOpenNurbsTranslatorImpl::GetMeshDescription(TSharedRef< IDatasmithMeshElement > MeshElement)
 {
 	// Ref. visitNonInstanceObject (mesh collection part)
 	const FOpenNurbsObjectWrapper** ObjectPtr = MeshElementToObjectMap.Find(&MeshElement.Get());
@@ -3371,33 +2919,17 @@ TOptional<FMeshDescription> FOpenNurbsTranslatorImpl::GetMeshDescription(TShared
 	bool bIsValid = false;
 	if (Object.ObjectPtr->IsKindOf(&ON_Mesh::m_ON_Mesh_class_rtti))
 	{
-		ON_3dVector Offset = GetGeometryOffset(MeshElement);
-		bIsValid = DatasmithOpenNurbsTranslatorUtils::TranslateMesh(ON_Mesh::Cast(Object.ObjectPtr), MeshDescription, bHasNormal, SelectedTranslator->ScalingFactor, Offset);
+		bIsValid = DatasmithOpenNurbsTranslatorUtils::TranslateMesh(ON_Mesh::Cast(Object.ObjectPtr), MeshDescription, bHasNormal, SelectedTranslator->ScalingFactor);
 	}
 	else if (Object.ObjectPtr->IsKindOf(&ON_Brep::m_ON_Brep_class_rtti) )
 	{
 		bIsValid = SelectedTranslator->TranslateBRep(ON_Brep::Cast(Object.ObjectPtr), Object.Attributes, MeshDescription, MeshElement, UUID, bHasNormal);
 	}
-	else if (const ON_Extrusion* extrusion = ON_Extrusion::Cast(Object.ObjectPtr))
+	else if (Object.ObjectPtr->IsKindOf(&ON_Extrusion::m_ON_Extrusion_class_rtti) )
 	{
-		if (OpenNurbsOptions.Geometry == EDatasmithOpenNurbsBrepTessellatedSource::UseRenderMeshes)
-		{
-			ON_3dVector Offset = GetGeometryOffset(MeshElement);
-			if (const ON_Mesh* Mesh = extrusion->m_mesh_cache.Mesh(ON::mesh_type::render_mesh))
-			{
-				if (DatasmithOpenNurbsTranslatorUtils::TranslateMesh(Mesh, MeshDescription, bHasNormal, ScalingFactor, Offset))
-				{
-					return MeshDescription;
-				}
-			}
-			else
-			{
-				MissingRenderMeshes.Add(MeshElement->GetLabel());
-			}
-		}
-
+		const ON_Extrusion *extrusion = ON_Extrusion::Cast(Object.ObjectPtr);
 		ON_Brep brep;
-		if (extrusion->BrepForm(&brep) != nullptr)
+		if (extrusion != nullptr && extrusion->BrepForm(&brep) != nullptr)
 		{
 			bIsValid = SelectedTranslator->TranslateBRep(&brep, Object.Attributes, MeshDescription, MeshElement, UUID, bHasNormal);
 		}
@@ -3441,28 +2973,47 @@ void FOpenNurbsTranslatorImpl::SetBaseOptions(const FDatasmithImportBaseOptions&
 	BaseOptions = InBaseOptions;
 }
 
-void FOpenNurbsTranslatorImpl::SetOpenNurbsOptions(const FDatasmithOpenNurbsOptions& Options)
+void FOpenNurbsTranslatorImpl::SetTessellationOptions(const FDatasmithTessellationOptions& Options)
 {
-	OpenNurbsOptions = Options;
-	OpenNurbsOptionsHash = OpenNurbsOptions.GetHash();
-
+	TessellationOptions = Options;
+	TessellationOptionsHash = TessellationOptions.GetHash();
 	for (FOpenNurbsTranslatorImpl* ChildTranslator : ChildTranslators)
 	{
-		ChildTranslator->SetOpenNurbsOptions(OpenNurbsOptions);
+		ChildTranslator->SetTessellationOptions(Options);
 	}
 }
+#endif
 
 //////////////////////////////////////////////////////////////////////////
 // UDatasmithOpenNurbsTranslator
 //////////////////////////////////////////////////////////////////////////
 
+FDatasmithOpenNurbsTranslator::FDatasmithOpenNurbsTranslator()
+	: Translator(nullptr)
+{
+}
+
 void FDatasmithOpenNurbsTranslator::Initialize(FDatasmithTranslatorCapabilities& OutCapabilities)
 {
+#ifdef USE_OPENNURBS
 	OutCapabilities.SupportedFileFormats.Add(FFileFormatInfo{TEXT("3dm"), TEXT("Rhino file format")});
+#else
+	OutCapabilities.bIsEnabled = false;
+#endif
+}
+
+bool FDatasmithOpenNurbsTranslator::IsSourceSupported(const FDatasmithSceneSource& Source)
+{
+#ifdef USE_OPENNURBS
+	return Source.GetSourceFile().EndsWith(TEXT(".3dm"));
+#else
+	return false;
+#endif
 }
 
 bool FDatasmithOpenNurbsTranslator::LoadScene(TSharedRef<IDatasmithScene> OutScene)
 {
+#ifdef USE_OPENNURBS
 	const FString& Filename = GetSource().GetSourceFile();
 	FILE* FileHandle = ON::OpenFile(*Filename, L"rb");
 	if (!FileHandle)
@@ -3479,7 +3030,8 @@ bool FDatasmithOpenNurbsTranslator::LoadScene(TSharedRef<IDatasmithScene> OutSce
 	FString OutputPath = FPaths::ConvertRelativePathToFull(FPaths::Combine(FDatasmithOpenNurbsTranslatorModule::Get().GetTempDir(), TEXT("Cache"), GetSource().GetSceneName()));
 	IFileManager::Get().MakeDirectory(*OutputPath, true);
 	Translator->SetOutputPath(OutputPath);
-	Translator->SetOpenNurbsOptions(OpenNurbsOptions);
+
+	Translator->SetTessellationOptions(GetCommonTessellationOptions());
 	Translator->SetBaseOptions(BaseOptions);
 
 	ON_BinaryFile Archive(ON::archive_mode::read3dm, FileHandle);
@@ -3489,70 +3041,69 @@ bool FDatasmithOpenNurbsTranslator::LoadScene(TSharedRef<IDatasmithScene> OutSce
 	ON::CloseFile(FileHandle);
 
 	return bResult;
+#else
+	return false;
+#endif
 }
 
 void FDatasmithOpenNurbsTranslator::UnloadScene()
 {
-	if (Translator)
-	{
-		Translator->ShowMessageLog(GetSource().GetSourceFile());
-		Translator.Reset();
-	}
+#ifdef USE_OPENNURBS
+	Translator.Reset();
+#endif
 }
 
 bool FDatasmithOpenNurbsTranslator::LoadStaticMesh(const TSharedRef<IDatasmithMeshElement> MeshElement, FDatasmithMeshElementPayload& OutMeshPayload)
 {
-	if (TOptional< FMeshDescription > Mesh = Translator->GetMeshDescription(MeshElement))
+#ifdef USE_OPENNURBS
+	if ( TOptional< FMeshDescription > Mesh = Translator->GetMeshDescription( MeshElement ) )
 	{
 		OutMeshPayload.LodMeshes.Add(MoveTemp(Mesh.GetValue()));
 
 #ifdef CAD_LIBRARY
-		CADLibrary::FImportParameters ImportParameters;
-		ImportParameters.ModelCoordSys = FDatasmithUtils::EModelCoordSystem::ZUp_RightHanded_FBXLegacy;
-		ImportParameters.MetricUnit = Translator->GetMetricUnit();
-		ImportParameters.ScaleFactor = Translator->GetScalingFactor();
-
-		CADLibrary::FMeshParameters MeshParameters;
-
-		DatasmithCoreTechParametricSurfaceData::AddCoreTechSurfaceDataForMesh(MeshElement, ImportParameters, MeshParameters, OpenNurbsOptions, OutMeshPayload);
-#endif // CAD_LIBRARY
-
+		// Store CoreTech additional data if provided
+		const TCHAR* CoretechFile = MeshElement->GetFile();
+		if (FPaths::FileExists(CoretechFile))
+		{
+			TArray<uint8> ByteArray;
+			if (FFileHelper::LoadFileToArray(ByteArray, CoretechFile))
+			{
+				UCoreTechParametricSurfaceData* CoreTechData = Datasmith::MakeAdditionalData<UCoreTechParametricSurfaceData>();
+				CoreTechData->SourceFile = CoretechFile;
+				CoreTechData->RawData = MoveTemp(ByteArray);
+				CoreTechData->SceneParameters.ModelCoordSys = uint8(FDatasmithUtils::EModelCoordSystem::ZUp_RightHanded);
+				CoreTechData->SceneParameters.ScaleFactor = Translator->GetScalingFactor();
+				CoreTechData->SceneParameters.MetricUnit = Translator->GetMetricUnit(); 
+				CoreTechData->LastTessellationOptions = GetCommonTessellationOptions();
+				OutMeshPayload.AdditionalData.Add(CoreTechData);
+			}
+		}
+#endif
 	}
 
 	return OutMeshPayload.LodMeshes.Num() > 0;
+#else
+	return false;
+#endif
 }
 
-void FDatasmithOpenNurbsTranslator::SetSceneImportOptions(TArray<TStrongObjectPtr<UDatasmithOptionsBase>>& Options)
+void FDatasmithOpenNurbsTranslator::SetSceneImportOptions(TArray<TStrongObjectPtr<UObject>>& Options)
 {
-	for (const TStrongObjectPtr<UDatasmithOptionsBase>& Option : Options)
+#ifdef USE_OPENNURBS
+	FDatasmithCoreTechTranslator::SetSceneImportOptions(Options);
+
+	for (TStrongObjectPtr<UObject>& Option : Options)
 	{
 		if (UDatasmithImportOptions* DatasmithOptions = Cast<UDatasmithImportOptions>(Option.Get()))
 		{
 			BaseOptions = DatasmithOptions->BaseOptions;
 		}
-		else if (UDatasmithOpenNurbsImportOptions* OpenNurbsOptionsObj = Cast<UDatasmithOpenNurbsImportOptions>(Option.Get()))
-		{
-			OpenNurbsOptions = OpenNurbsOptionsObj->Options;
-		}
 	}
 
 	if (Translator)
 	{
-		Translator->SetOpenNurbsOptions(OpenNurbsOptions);
+		Translator->SetTessellationOptions( GetCommonTessellationOptions() );
 		Translator->SetBaseOptions(BaseOptions);
 	}
+#endif
 }
-
-void FDatasmithOpenNurbsTranslator::GetSceneImportOptions(TArray<TStrongObjectPtr<UDatasmithOptionsBase>>& Options)
-{
-	TStrongObjectPtr<UDatasmithOpenNurbsImportOptions> OpenNurbsOptionsPtr = Datasmith::MakeOptions<UDatasmithOpenNurbsImportOptions>();
-	if (ICADInterfacesModule::IsAvailable() == ECADInterfaceAvailability::Unavailable)
-	{
-		OpenNurbsOptionsPtr->Options.Geometry = EDatasmithOpenNurbsBrepTessellatedSource::UseRenderMeshes;
-	}
-	Options.Add(OpenNurbsOptionsPtr);
-}
-
-#undef LOCTEXT_NAMESPACE // "DatasmithOpenNurbsTranslator"
-
-#endif // USE_OPENNURBS

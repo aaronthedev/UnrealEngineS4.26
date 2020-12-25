@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -23,10 +23,6 @@ namespace Chaos
 
 		virtual EMultiBufferMode GetBufferMode() = 0;
 		virtual ResourceType* AccessProducerBuffer() = 0;
-
-		//NOTE: these changes may not make it to producer side, it is meant for resource management not to pass information back
-		virtual ResourceType* GetConsumerBufferMutable() = 0;
-
 		virtual const ResourceType* GetProducerBuffer() const = 0;
 		virtual const ResourceType* GetConsumerBuffer() const = 0;
 		virtual void FlipProducer() = 0;
@@ -37,7 +33,7 @@ namespace Chaos
 	 * Single Buffer Implementation
 	 */
 	template<typename ResourceType>
-	class FSingleBuffer final : public IBufferResource<ResourceType>
+	class FSingleBuffer : public IBufferResource<ResourceType>
 	{
 	public:
 
@@ -46,7 +42,6 @@ namespace Chaos
 
 		virtual EMultiBufferMode GetBufferMode() override { return EMultiBufferMode::Single; }
 		virtual ResourceType* AccessProducerBuffer() override { return &Data; }
-		virtual ResourceType* GetConsumerBufferMutable() override {return &Data;}
 		virtual const ResourceType* GetProducerBuffer() const override { return &Data; }
 		virtual const ResourceType* GetConsumerBuffer() const override { return &Data; }
 
@@ -61,7 +56,7 @@ namespace Chaos
 	* Double Buffer Implementation - Not thread-safe requires external locks
 	*/
 	template<typename ResourceType>
-	class FDoubleBuffer final : public IBufferResource<ResourceType>
+	class FDoubleBuffer : public IBufferResource<ResourceType>
 	{
 	public:
 
@@ -73,7 +68,6 @@ namespace Chaos
 
 		virtual EMultiBufferMode GetBufferMode() override { return EMultiBufferMode::Double; }
 		virtual ResourceType* AccessProducerBuffer() override { return Data_Producer; }
-		virtual ResourceType* GetConsumerBufferMutable() override {return Data_Consumer;}
 		virtual const ResourceType* GetProducerBuffer() const override { return Data_Producer; }
 		virtual const ResourceType* GetConsumerBuffer() const override { return Data_Consumer; }
 
@@ -103,7 +97,7 @@ namespace Chaos
 	* Triple Buffer Implementation - Not thread-safe requires external locks
 	*/
 	template<typename ResourceType>
-	class FTripleBuffer final : public IBufferResource<ResourceType>
+	class FTripleBuffer : public IBufferResource<ResourceType>
 	{
 	public:
 
@@ -116,8 +110,6 @@ namespace Chaos
 
 		virtual EMultiBufferMode GetBufferMode() override { return EMultiBufferMode::Triple; }
 		virtual ResourceType* AccessProducerBuffer() override { return &Data[GetWriteIndex()]; }
-		virtual ResourceType* GetConsumerBufferMutable() override {return &Data[GetReadIndex()];}
-
 		virtual const ResourceType* GetProducerBuffer() const override { return &Data[GetWriteIndex()]; }
 		virtual const ResourceType* GetConsumerBuffer() const override { return &Data[GetReadIndex()]; }
 
@@ -149,7 +141,7 @@ namespace Chaos
 	 * Not thread-safe, requires external locks.
 	 */
 	template<typename ResourceType>
-	class FGuardedTripleBuffer final : public IBufferResource<ResourceType>
+	class FGuardedTripleBuffer : public IBufferResource<ResourceType>
 	{
 	public:
 		/** This class implements a circular buffer access pattern, such that during
@@ -217,12 +209,6 @@ namespace Chaos
 			return ProducerThreadBuffer->Value.Get();
 		}
 
-		virtual ResourceType* GetConsumerBufferMutable() override
-		{
-			check(false);
-			return nullptr;
-		}
-
 		/**
 		 * Get the current producer buffer.
 		 *
@@ -253,15 +239,6 @@ namespace Chaos
 			}
 			// Mark the buffer as invalid so we don't use this value again.
 			ConsumerThreadBuffer->bValid = false;
-			return ConsumerThreadBuffer->Value.Get();
-		}
-
-		/**
-		 * Get access to the currently held consumer buffer, ignoring whether
-		 * it's already been consumed.
-		 */
-		const ResourceType* PeekConsumerBuffer() const
-		{
 			return ConsumerThreadBuffer->Value.Get();
 		}
 

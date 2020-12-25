@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SubversionSourceControlRevision.h"
 #include "HAL/FileManager.h"
@@ -71,13 +71,13 @@ static FString NextToken( const FString& InString, int32& InIndex, bool bInclude
 	FString Result;
 
 	// find first non-whitespace char
-	while(InIndex < InString.Len() && !bIncludeWhiteSpace && IsWhiteSpace(InString[InIndex]))
+	while(!bIncludeWhiteSpace && IsWhiteSpace(InString[InIndex]) && InIndex < InString.Len())
 	{
 		InIndex++;
 	}
 
 	// copy non-whitespace chars
-	while(InIndex < InString.Len() && ((!IsWhiteSpace(InString[InIndex]) || bIncludeWhiteSpace)))
+	while(((!IsWhiteSpace(InString[InIndex]) || bIncludeWhiteSpace) && InIndex < InString.Len()))
 	{
 		Result += InString[InIndex];
 		InIndex++;

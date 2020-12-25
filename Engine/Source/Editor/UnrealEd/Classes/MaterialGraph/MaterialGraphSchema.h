@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,7 +8,6 @@
 #include "MaterialGraphSchema.generated.h"
 
 class UEdGraph;
-struct FToolMenuContext;
 
 /** Action to add an expression node to the graph */
 USTRUCT()
@@ -149,7 +148,6 @@ class UMaterialGraphSchema : public UEdGraphSchema
 	 *	@param	Graph			CurrentGraph
 	 *	@param	InGraphPin		Pin clicked on
 	 */
-	UE_DEPRECATED(4.26, "Selecting all connected nodes is now handled through common pin actions on graph schemas. See SGraphEditorImpl::SelectAllNodesInDirection.")
 	void SelectAllInputNodes(UEdGraph* Graph, UEdGraphPin* InGraphPin);
 
 	/**
@@ -158,7 +156,6 @@ class UMaterialGraphSchema : public UEdGraphSchema
 	 * @param	Menu		Menu we are populating
 	 * @param	InGraphPin	Pin with links to break
 	 */
-	UE_DEPRECATED(4.26, "Populating the break link to menu is handled through common pin actions on graph schemas. This function is no longer necessary.")
 	void GetBreakLinkToSubMenuActions(class UToolMenu* Menu, class UEdGraphPin* InGraphPin) const;
 
 	/**
@@ -222,15 +219,6 @@ private:
 	 * @param	TestDirection		Pin Direction we are testing.
 	*/
 	bool HasCompatibleConnection(const FAssetData& FunctionAssetData, uint32 TestType, EEdGraphPinDirection TestDirection) const;
-
-	/** Will promote selected pin to a parameter of the pin type */
-	void OnPromoteToParameter(const FToolMenuContext& InMenuContext);
-
-	/** Used to know if we can promote selected pin to a parameter of the pin type */
-	bool OnCanPromoteToParameter(const FToolMenuContext& InMenuContext);
-
-	/** Will  return the UClass to create from the Pin Type */
-	UClass* GetOnPromoteToParameterClass(const UEdGraphPin* TargetPin) const;
 
 private:
 	// ID for checking dirty status of node titles against, increases whenever 

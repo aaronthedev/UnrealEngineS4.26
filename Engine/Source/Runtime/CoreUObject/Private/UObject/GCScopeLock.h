@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Garbage Collection scope lock. 
@@ -12,6 +12,34 @@
 #include "Misc/ScopeLock.h"
 #include "HAL/ThreadSafeBool.h"
 #include "HAL/Event.h"
+
+/** Locks all UObject hash tables when performing GC */
+class FGCScopeLock
+{
+	/** Previous value of the GetGarbageCollectingFlag() */
+	bool bPreviousGabageCollectingFlagValue;
+public:
+
+	static FThreadSafeBool& GetGarbageCollectingFlag();
+
+	/** 
+	 * We're storing the value of GetGarbageCollectingFlag in the constructor, it's safe as only 
+	 * one thread is ever going to be setting it and calling this code - the game thread.
+	 **/
+	FORCEINLINE FGCScopeLock()
+		: bPreviousGabageCollectingFlagValue(GetGarbageCollectingFlag())
+	{		
+		void LockUObjectHashTables();
+		LockUObjectHashTables();		
+		GetGarbageCollectingFlag() = true;
+	}
+	FORCEINLINE ~FGCScopeLock()
+	{		
+		GetGarbageCollectingFlag() = bPreviousGabageCollectingFlagValue;
+		void UnlockUObjectHashTables();
+		UnlockUObjectHashTables();		
+	}
+};
 
 
 /**
@@ -151,8 +179,8 @@ public:
 	}
 
 	/** True if GC wants to run on the game thread but is maybe blocked by some other thread */
-	FORCEINLINE bool IsGCWaiting() const
+	bool IsGCWaiting() const
 	{
-		return !!GCWantsToRunCounter.GetValue();
+		return GCWantsToRunCounter.GetValue() > 0;
 	}
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MaterialExpressionClasses.h"
 #include "UObject/ObjectMacros.h"
@@ -26,6 +26,7 @@
 
 MaterialExpressionClasses::MaterialExpressionClasses()
 	: bInitialized( false )
+	, bMaterialLayersEnabled( false )
 {
 
 }
@@ -75,13 +76,19 @@ FCategorizedMaterialExpressionNode* MaterialExpressionClasses::GetCategoryNode(c
 
 void MaterialExpressionClasses::InitMaterialExpressionClasses()
 {
-	if(!bInitialized)
+	// @TODO: Remove this. Temporary flag for toggling experimental material layers functionality
+	IMaterialEditorModule& MaterialEditorModule = FModuleManager::LoadModuleChecked<IMaterialEditorModule>("MaterialEditor");
+	const bool bNewMaterialLayersEnabled = MaterialEditorModule.MaterialLayersEnabled();
+
+	if( !bInitialized || bMaterialLayersEnabled != bNewMaterialLayersEnabled )
 	{
+		bMaterialLayersEnabled = bNewMaterialLayersEnabled;
+
 		UMaterialEditorOptions* TempEditorOptions = NewObject<UMaterialEditorOptions>();
 		UClass* BaseType = UMaterialExpression::StaticClass();
 		if( BaseType )
 		{
-			TArray<FStructProperty*>	ExpressionInputs;
+			TArray<UStructProperty*>	ExpressionInputs;
 			const UStruct*				ExpressionInputStruct = GetExpressionInputStruct();
 
 			for( TObjectIterator<UClass> It ; It ; ++It )
@@ -93,6 +100,11 @@ void MaterialExpressionClasses::InitMaterialExpressionClasses()
 					{
 						ExpressionInputs.Empty();
 
+						// @TODO: Remove this. Temporary flag for toggling experimental material layers functionality
+						if (!bMaterialLayersEnabled && Class == UMaterialExpressionMaterialAttributeLayers::StaticClass())
+						{
+							continue;
+						}
 						if (Class == UMaterialExpressionMaterialLayerOutput::StaticClass())
 						{
 							continue;
@@ -114,7 +126,7 @@ void MaterialExpressionClasses::InitMaterialExpressionClasses()
 
 							if (ClassName.StartsWith(ExpressionPrefix, ESearchCase::CaseSensitive))
 							{
-								ClassName.MidInline(ExpressionPrefix.Len(), MAX_int32, false);
+								ClassName = ClassName.Mid(ExpressionPrefix.Len());
 							}
 							MaterialExpression.Name = ClassName;
 							MaterialExpression.MaterialClass = Class;
@@ -128,9 +140,9 @@ void MaterialExpressionClasses::InitMaterialExpressionClasses()
 							AllExpressionClasses.Add(MaterialExpression);
 
 							// Initialize the expression class input map.							
-							for( TFieldIterator<FStructProperty> InputIt(Class) ; InputIt ; ++InputIt )
+							for( TFieldIterator<UStructProperty> InputIt(Class) ; InputIt ; ++InputIt )
 							{
-								FStructProperty* StructProp = *InputIt;
+								UStructProperty* StructProp = *InputIt;
 								if( StructProp->Struct == ExpressionInputStruct )
 								{
 									ExpressionInputs.Add( StructProp );

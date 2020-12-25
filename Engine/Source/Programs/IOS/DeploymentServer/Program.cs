@@ -1,5 +1,5 @@
 /**
- * Copyright Epic Games, Inc. All Rights Reserved.
+ * Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
  */
 
 using System;
@@ -328,12 +328,6 @@ namespace DeploymentServer
 							case "listdevices":
 								Console.SetOut(Writer);
 								DeploymentProxy.Deployer.ListDevices();
-								Writer.Flush();
-								break;
-
-							case "listapplications":
-								Console.SetOut(Writer);
-								DeploymentProxy.Deployer.ListApplications();
 								Writer.Flush();
 								break;
 
@@ -1080,8 +1074,12 @@ namespace DeploymentServer
 		{
 			LocalConsole = Console.Out;
 			string LocalCommand = "";
-			if (Args.Length == 0 || Args[0].Contains("help"))
-			{ 
+			if (Args.Length > 0)
+			{
+				LocalCommand = Args[0].ToLowerInvariant();
+			}
+			else
+			{
 				Console.WriteLine("Deployment Server usage: ");
 				Console.WriteLine("DeploymentServer.exe <command> [<parameter> [<value>] ...]");
 				Console.WriteLine("Valid Commands:");
@@ -1093,7 +1091,6 @@ namespace DeploymentServer
 				Console.WriteLine("\t install");
 				Console.WriteLine("\t enumerate");
 				Console.WriteLine("\t listdevices");
-				Console.WriteLine("\t listapplications");
 				Console.WriteLine("\t listentodevice");
 				Console.WriteLine("\t command");
 				Console.WriteLine("\t forward");
@@ -1104,17 +1101,13 @@ namespace DeploymentServer
 				Console.WriteLine("\t -bundle <bundle name>");
 				Console.WriteLine("\t -manifest <manifest file>");
 				Console.WriteLine("\t -ipa <ipa path>");
-				Console.WriteLine("\t -device <string> (can be a partial name match of Name/UUID e.g. 'iPad' or All_tvOS, All_iOS)");
+				Console.WriteLine("\t -device <device ID>");
 				Console.WriteLine("\t -nokeepalive");
 				Console.WriteLine("\t -timeout <miliseconds>");
 				Console.WriteLine("\t -param <string parameter to be used for command>");
 				Console.WriteLine("");
 
 				return 0;
-			}
-			else
-			{
-				LocalCommand = Args[0].ToLowerInvariant();
 			}
 			int.TryParse(ConfigurationManager.AppSettings["DSPort"], out Port);
 			if (Port < 1 || Port > 65535)

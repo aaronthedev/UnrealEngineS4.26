@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "K2Node_LatentGameplayTaskCall.h"
 #include "EdGraphSchema_K2.h"
@@ -68,7 +68,7 @@ void UK2Node_LatentGameplayTaskCall::GetMenuActions(FBlueprintActionDatabaseRegi
 			if (FunctionPtr.IsValid())
 			{
 				UFunction* Func = FunctionPtr.Get();
-				FObjectProperty* ReturnProp = CastFieldChecked<FObjectProperty>(Func->GetReturnProperty());
+				UObjectProperty* ReturnProp = CastChecked<UObjectProperty>(Func->GetReturnProperty());
 						
 				AsyncTaskNode->ProxyFactoryFunctionName = Func->GetFName();
 				AsyncTaskNode->ProxyFactoryClass        = Func->GetOuterUClass();
@@ -124,7 +124,7 @@ void UK2Node_LatentGameplayTaskCall::ReallocatePinsDuringReconstruction(TArray<U
 {
 	AllocateDefaultPins();
 	UClass* UseSpawnClass = GetClassToSpawn(&OldPins);
-	if (UseSpawnClass != nullptr)
+	if (UseSpawnClass != NULL)
 	{
 		CreatePinsForClass(UseSpawnClass);
 	}
@@ -169,7 +169,7 @@ UClass* UK2Node_LatentGameplayTaskCall::GetClassToSpawn(const TArray<UEdGraphPin
 
 void UK2Node_LatentGameplayTaskCall::CreatePinsForClass(UClass* InClass)
 {
-	check(InClass != nullptr);
+	check(InClass != NULL);
 
 	const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
 
@@ -192,11 +192,11 @@ void UK2Node_LatentGameplayTaskCall::CreatePinsForClass(UClass* InClass)
 		}
 	}
 
-	for (TFieldIterator<FProperty> PropertyIt(InClass, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
+	for (TFieldIterator<UProperty> PropertyIt(InClass, EFieldIteratorFlags::IncludeSuper); PropertyIt; ++PropertyIt)
 	{
-		FProperty* Property = *PropertyIt;
-		UClass* PropertyClass = Property->GetOwnerChecked<UClass>();
-		const bool bIsDelegate = Property->IsA(FMulticastDelegateProperty::StaticClass());
+		UProperty* Property = *PropertyIt;
+		UClass* PropertyClass = CastChecked<UClass>(Property->GetOuter());
+		const bool bIsDelegate = Property->IsA(UMulticastDelegateProperty::StaticClass());
 		const bool bIsExposedToSpawn = UEdGraphSchema_K2::IsPropertyExposedOnSpawn(Property);
 		const bool bIsSettableExternally = !Property->HasAnyPropertyFlags(CPF_DisableEditOnInstance);
 
@@ -235,31 +235,27 @@ void UK2Node_LatentGameplayTaskCall::PinDefaultValueChanged(UEdGraphPin* Changed
 	{
 		const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
 
-		// Track removed pins so that we can reconnect it later if possible
-		TArray<UEdGraphPin*> RemovedPins;
+		// Because the archetype has changed, we break the output link as the output pin type will change
+		//UEdGraphPin* ResultPin = GetResultPin();
+		//ResultPin->BreakAllPinLinks();
 
-		// Orphan all pins related to archetype variables that have connections, otherwise just remove them
+		// Remove all pins related to archetype variables
 		for (const FName& OldPinReference : SpawnParamPins)
 		{
-			if(UEdGraphPin* OldPin = FindPin(OldPinReference))
+			UEdGraphPin* OldPin = FindPin(OldPinReference);
+			if(OldPin)
 			{
-				if(OldPin->HasAnyConnections())
-				{
-					RemovedPins.Add(OldPin);
-				}
+				OldPin->MarkPendingKill();
 				Pins.Remove(OldPin);
 			}
 		}
-		
 		SpawnParamPins.Reset();
 
 		UClass* UseSpawnClass = GetClassToSpawn();
-		if (UseSpawnClass != nullptr)
+		if (UseSpawnClass != NULL)
 		{
 			CreatePinsForClass(UseSpawnClass);
 		}
-
-		RewireOldPinsToNewPins(/* InOldPins = */ RemovedPins, /* InNewPins = */ Pins, /* NewPinToOldPin = */ nullptr);
 
 		// Refresh the UI for the graph so the pin changes show up
 		UEdGraph* Graph = GetGraph();
@@ -424,7 +420,7 @@ bool UK2Node_LatentGameplayTaskCall::ConnectSpawnProperties(UClass* ClassToSpawn
 		{
 			if (SpawnVarPin->LinkedTo.Num() == 0)
 			{
-				FProperty* Property = FindFProperty<FProperty>(ClassToSpawn, SpawnVarPin->PinName);
+				UProperty* Property = FindField<UProperty>(ClassToSpawn, SpawnVarPin->PinName);
 				// NULL property indicates that this pin was part of the original node, not the 
 				// class we're assigning to:
 				if (!Property)
@@ -432,7 +428,7 @@ bool UK2Node_LatentGameplayTaskCall::ConnectSpawnProperties(UClass* ClassToSpawn
 					continue;
 				}
 
-				// This is sloppy, we should be comparing to defaults much later in the compile process:
+				// This is sloppy, we should be comparing to defaults mutch later in the compile process:
 				if (ClassToSpawn->ClassDefaultObject != nullptr)
 				{
 					// We don't want to generate an assignment node unless the default value 
@@ -624,7 +620,7 @@ void UK2Node_LatentGameplayTaskCall::ExpandNode(class FKismetCompilerContext& Co
 	bIsErrorFree &= Schema->TryCreateConnection(LastThenPin, ValidateProxyNode->GetExecPin());
 	LastThenPin = ValidateProxyNode->GetThenPin();
 
-	for (TFieldIterator<FMulticastDelegateProperty> PropertyIt(ProxyClass, EFieldIteratorFlags::ExcludeSuper); PropertyIt && bIsErrorFree; ++PropertyIt)
+	for (TFieldIterator<UMulticastDelegateProperty> PropertyIt(ProxyClass, EFieldIteratorFlags::ExcludeSuper); PropertyIt && bIsErrorFree; ++PropertyIt)
 	{
 		bIsErrorFree &= FBaseAsyncTaskHelper::HandleDelegateImplementation(*PropertyIt, VariableOutputs, ProxyObjectPin, LastThenPin, this, SourceGraph, CompilerContext);
 	}

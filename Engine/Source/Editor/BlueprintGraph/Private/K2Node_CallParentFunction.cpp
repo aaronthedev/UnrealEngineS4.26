@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "K2Node_CallParentFunction.h"
 #include "UObject/UObjectHash.h"
@@ -69,11 +69,6 @@ void UK2Node_CallParentFunction::SetFromFunction(const UFunction* Function)
 
 		FunctionReference.SetDirect(Function->GetFName(), FunctionGuid, OwnerClass, /*bIsConsideredSelfContext =*/false);
 	}
-}
-
-void UK2Node_CallParentFunction::FixupSelfMemberContext()
-{
-	// Do nothing. We want the context to continue to be our parent class.
 }
 
 void UK2Node_CallParentFunction::PostPlacedNewNode()

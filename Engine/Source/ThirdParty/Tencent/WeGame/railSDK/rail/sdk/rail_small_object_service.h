@@ -1,8 +1,9 @@
-// Copyright (C) 2020, Entropy Game Global Limited.
+// Copyright (c) 2018, Entropy Game Global Limited.
 // All rights reserved.
+// Rail Small Object Service
 
-#ifndef RAIL_SDK_RAIL_SMALL_OBJECT_SERVICE_H
-#define RAIL_SDK_RAIL_SMALL_OBJECT_SERVICE_H
+#ifndef RAIL_SDK_RAIL_SMALL_OBJECT_SERVICE
+#define RAIL_SDK_RAIL_SMALL_OBJECT_SERVICE
 
 #include "rail/sdk/rail_small_object_service_define.h"
 
@@ -10,7 +11,7 @@ namespace rail {
 
 class IRailSmallObjectServiceHelper {
   public:
-    virtual ~IRailSmallObjectServiceHelper() {}
+    virtual ~IRailSmallObjectServiceHelper(){};
 
     // download the Object at those indexes
     // @callback RailSmallObjectDownloadResult
@@ -37,4 +38,4 @@ class IRailSmallObjectServiceHelper {
 };
 };  // namespace rail
 
-#endif  // RAIL_SDK_RAIL_SMALL_OBJECT_SERVICE_H
+#endif  // RAIL_SDK_RAIL_SMALL_OBJECT_SERVICE

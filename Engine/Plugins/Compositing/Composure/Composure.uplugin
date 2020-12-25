@@ -48,10 +48,6 @@
 		{
 			"Name": "OpenColorIO",
 			"Enabled": true
-		},
-		{
-			"Name": "ActorLayerUtilities",
-			"Enabled": true
 		}
 	]
 }

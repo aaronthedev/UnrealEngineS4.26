@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -23,19 +23,13 @@ public:
 private:
 
 	void CacheBlackboardData();
-	void FindBlackboardAsset(const UObject* InObj, const UObject*& OutBlackboardOwner, UBlackboardData*& OutBlackboardAsset) const;
-
-	void OnBlackboardDataChanged(UBlackboardData* Asset);
-	void OnBlackboardOwnerChanged(UObject* Owner, UBlackboardData* Asset);
+	const class UBlackboardData* FindBlackboardAsset(UObject* InObj);
 
 	void InitKeyFromProperty();
 	void OnKeyComboChange(int32 Index);
 	TSharedRef<SWidget> OnGetKeyContent() const;
 	FText GetCurrentKeyDesc() const;
 	bool IsEditingEnabled() const;
-
-	FDelegateHandle	OnBlackboardDataChangedHandle;
-	FDelegateHandle	OnBlackboardOwnerChangedHandle;
 
 	TSharedPtr<IPropertyHandle> MyStructProperty;
 	TSharedPtr<IPropertyHandle> MyKeyNameProperty;
@@ -49,7 +43,6 @@ private:
 
 	/** cached blackboard asset */
 	TWeakObjectPtr<class UBlackboardData> CachedBlackboardAsset;
-	TWeakObjectPtr<const class UObject> CachedBlackboardAssetOwner;
 
 	/** property utils */
 	class IPropertyUtilities* PropUtils;

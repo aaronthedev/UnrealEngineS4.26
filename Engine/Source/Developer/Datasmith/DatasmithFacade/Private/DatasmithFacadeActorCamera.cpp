@@ -1,29 +1,24 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithFacadeActorCamera.h"
 
-#include "IDatasmithSceneElements.h"
 
 FDatasmithFacadeActorCamera::FDatasmithFacadeActorCamera(
-	const TCHAR* InElementName
-)
-	: FDatasmithFacadeActor(FDatasmithSceneFactory::CreateCameraActor(InElementName))
+	const TCHAR* InElementName,
+	const TCHAR* InElementLabel
+) :
+	FDatasmithFacadeActor(InElementName, InElementLabel),
+	WorldCameraPosition(0.0, 0.0, 0.0), // default camera position at world origin
+	SensorWidth(36.0),                  // default Datasmith sensor width of 36 mm
+	AspectRatio(16.0 / 9.0),            // default Datasmith aspect ratio of 16:9
+	FocusDistance(1000.0),              // default Datasmith focus distance of 1000 centimeters
+	FocalLength(35.0),                  // default Datasmith focal length of 35 millimeters
+	LookAtActorName(),					// default Datasmith look-at actor name
+	bLookAtAllowRoll(false)				// default Datasmith look-at allow roll state
 {
-	SetCameraPosition(0.0, 0.0, 0.0); // default camera position at world origin
-	SetSensorWidth(36.0);                  // default Datasmith sensor width of 36 mm
-	SetAspectRatio(16.0 / 9.0);            // default Datasmith aspect ratio of 16:9
-	SetFocusDistance(1000.0);              // default Datasmith focus distance of 1000 centimeters
-	SetFocalLength(35.0);                  // default Datasmith focal length of 35 millimeters
-	SetLookAtAllowRoll(false);
-	GetDatasmithActorCameraElement()->SetEnableDepthOfField(false); // no depth of field
-	GetDatasmithActorCameraElement()->SetFStop(5.6); // default Datasmith f-stop of f/5.6
+	// Prevent the Datasmith camera actor from being removed by optimization.
+	KeepActor();
 }
-
-FDatasmithFacadeActorCamera::FDatasmithFacadeActorCamera(
-	const TSharedRef<IDatasmithCameraActorElement>& InInternalElement
-)
-	: FDatasmithFacadeActor(InInternalElement)
-{}
 
 void FDatasmithFacadeActorCamera::SetCameraPosition(
 	float InX,
@@ -32,7 +27,7 @@ void FDatasmithFacadeActorCamera::SetCameraPosition(
 )
 {
 	// Scale and convert the camera position into a Datasmith actor world translation.
-	GetDatasmithActorCameraElement()->SetTranslation(ConvertPosition(InX, InY, InZ));
+	WorldTransform.SetTranslation(ConvertPosition(InX, InY, InZ));
 }
 
 void FDatasmithFacadeActorCamera::SetCameraRotation(
@@ -47,31 +42,21 @@ void FDatasmithFacadeActorCamera::SetCameraRotation(
 	// Convert the camera orientation into a Datasmith actor world look-at rotation quaternion.
 	FVector XAxis = ConvertDirection(InForwardX, InForwardY, InForwardZ);
 	FVector ZAxis = ConvertDirection(InUpX, InUpY, InUpZ);
-	GetDatasmithActorCameraElement()->SetRotation(FQuat(FRotationMatrix::MakeFromXZ(XAxis, ZAxis))); // axis vectors do not need to be normalized
+	WorldTransform.SetRotation(FQuat(FRotationMatrix::MakeFromXZ(XAxis, ZAxis))); // axis vectors do not need to be normalized
 }
 
 void FDatasmithFacadeActorCamera::SetSensorWidth(
 	float InSensorWidth
 )
 {
-	GetDatasmithActorCameraElement()->SetSensorWidth(InSensorWidth);
-}
-
-float FDatasmithFacadeActorCamera::GetSensorWidth() const
-{
-	return GetDatasmithActorCameraElement()->GetSensorWidth();
+	SensorWidth = InSensorWidth;
 }
 
 void FDatasmithFacadeActorCamera::SetAspectRatio(
 	float InAspectRatio
 )
 {
-	GetDatasmithActorCameraElement()->SetSensorAspectRatio(InAspectRatio);
-}
-
-float FDatasmithFacadeActorCamera::GetAspectRatio() const
-{
-	return GetDatasmithActorCameraElement()->GetSensorAspectRatio();
+	AspectRatio = InAspectRatio;
 }
 
 void FDatasmithFacadeActorCamera::SetFocusDistance(
@@ -80,30 +65,24 @@ void FDatasmithFacadeActorCamera::SetFocusDistance(
 	float InTargetZ
 )
 {
-	TSharedRef<IDatasmithCameraActorElement> CameraActor(GetDatasmithActorCameraElement());
-	FVector CameraPosition(CameraActor->GetTranslation());
-
-	FVector DistanceVector(InTargetX - CameraPosition.X, InTargetY - CameraPosition.Y, InTargetZ - CameraPosition.Z);
-	CameraActor->SetFocusDistance(DistanceVector.Size() * WorldUnitScale);
+	// Set the Datasmith camera focus distance (in centimeters).
+	FVector DistanceVector(InTargetX - WorldCameraPosition.X, InTargetY - WorldCameraPosition.Y, InTargetZ - WorldCameraPosition.Z);
+	FocusDistance = DistanceVector.Size() * WorldUnitScale;
 }
 
 void FDatasmithFacadeActorCamera::SetFocusDistance(
 	float InFocusDistance
 )
 {
-	GetDatasmithActorCameraElement()->SetFocusDistance(InFocusDistance * WorldUnitScale);
+	// Set the Datasmith camera focus distance (in centimeters).
+	FocusDistance = InFocusDistance * WorldUnitScale;
 }
-
-float FDatasmithFacadeActorCamera::GetFocusDistance() const
-{
-	return GetDatasmithActorCameraElement()->GetFocusDistance() / WorldUnitScale;
-};
 
 void FDatasmithFacadeActorCamera::SetFocalLength(
 	float InFocalLength
 )
 {
-	GetDatasmithActorCameraElement()->SetFocalLength(InFocalLength);
+	FocalLength = InFocalLength;
 }
 
 void FDatasmithFacadeActorCamera::SetFocalLength(
@@ -111,67 +90,62 @@ void FDatasmithFacadeActorCamera::SetFocalLength(
 	bool  bInVerticalFOV
 )
 {
-	const float SensorWidth = GetDatasmithActorCameraElement()->GetSensorWidth();
-	const float AspectRatio = GetDatasmithActorCameraElement()->GetSensorAspectRatio();
-	const float FocalLength = float(( bInVerticalFOV ? ( SensorWidth / AspectRatio ) : SensorWidth ) / ( 2.0 * tan(FMath::DegreesToRadians<double>(InFOV) / 2.0) ));
-
-	SetFocalLength(FocalLength);
-}
-
-float FDatasmithFacadeActorCamera::GetFocalLength() const
-{
-	return GetDatasmithActorCameraElement()->GetFocalLength();
+	FocalLength = float((bInVerticalFOV ? (SensorWidth / AspectRatio) : SensorWidth) / (2.0 * tan(FMath::DegreesToRadians<double>(InFOV) / 2.0)));
 }
 
 void FDatasmithFacadeActorCamera::SetLookAtActor(
 	const TCHAR* InActorName
 )
 {
-	GetDatasmithActorCameraElement()->SetLookAtActor(InActorName);
-}
-
-const TCHAR* FDatasmithFacadeActorCamera::GetLookAtActor() const
-{
-	return GetDatasmithActorCameraElement()->GetLookAtActor();
+	LookAtActorName = InActorName;
 }
 
 void FDatasmithFacadeActorCamera::SetLookAtAllowRoll(
 	bool bInAllow
 )
 {
-	GetDatasmithActorCameraElement()->SetLookAtAllowRoll(bInAllow);
+	bLookAtAllowRoll = bInAllow;
 }
 
-bool FDatasmithFacadeActorCamera::GetLookAtAllowRoll() const
+TSharedPtr<IDatasmithActorElement> FDatasmithFacadeActorCamera::CreateActorHierarchy(
+	TSharedRef<IDatasmithScene> IOSceneRef
+) const
 {
-	return GetDatasmithActorCameraElement()->GetLookAtAllowRoll();
-}
+	// Create a Datasmith camera actor element.
+	TSharedPtr<IDatasmithCameraActorElement> CameraActorPtr = FDatasmithSceneFactory::CreateCameraActor(*ElementName);
 
-void FDatasmithFacadeActorCamera::SetEnableDepthOfField(
-	bool bInEnableDepthOfField
-)
-{
-	GetDatasmithActorCameraElement()->SetEnableDepthOfField(bInEnableDepthOfField);
-}
+	// Set the Datasmith camera actor base properties.
+	SetActorProperties(IOSceneRef, CameraActorPtr);
 
-bool FDatasmithFacadeActorCamera::GetEnableDepthOfField() const
-{
-	return GetDatasmithActorCameraElement()->GetEnableDepthOfField();
-}
+	// Set the Datasmith camera sensor width.
+	CameraActorPtr->SetSensorWidth(SensorWidth);
 
-float FDatasmithFacadeActorCamera::GetFStop() const
-{
-	return GetDatasmithActorCameraElement()->GetFStop();
-}
+	// Set the Datasmith camera aspect ratio.
+	CameraActorPtr->SetSensorAspectRatio(AspectRatio);
 
-void FDatasmithFacadeActorCamera::SetFStop(
-	float InFStop
-)
-{
-	GetDatasmithActorCameraElement()->SetFStop(InFStop);
-}
+	// Set the Datasmith camera focus method.
+	CameraActorPtr->SetEnableDepthOfField(false); // no depth of field
 
-TSharedRef<IDatasmithCameraActorElement> FDatasmithFacadeActorCamera::GetDatasmithActorCameraElement() const
-{
-	return StaticCastSharedRef<IDatasmithCameraActorElement>(InternalDatasmithElement);
+	// Set the Datasmith camera focus distance.
+	CameraActorPtr->SetFocusDistance(FocusDistance);
+
+	// Set the Datasmith camera f-stop.
+	CameraActorPtr->SetFStop(5.6); // default Datasmith f-stop of f/5.6
+
+	// Set the Datasmith camera focal length.
+	CameraActorPtr->SetFocalLength(FocalLength);
+
+	// Set the Datasmith camera look-at actor.
+	if (!LookAtActorName.IsEmpty())
+	{
+		CameraActorPtr->SetLookAtActor(*LookAtActorName);
+	}
+
+	// Set the Datasmith camera look-at allow roll state.
+	CameraActorPtr->SetLookAtAllowRoll(bLookAtAllowRoll);
+
+	// Add the hierarchy of children to the Datasmith actor.
+	AddActorChildren(IOSceneRef, CameraActorPtr);
+
+	return CameraActorPtr;
 }

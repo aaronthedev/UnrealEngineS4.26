@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "XmppJingle/XmppMessagesJingle.h"
 #include "XmppJingle/XmppConnectionJingle.h"
@@ -7,7 +7,6 @@
 #include "Serialization/JsonSerializer.h"
 #include "Policies/CondensedJsonPrintPolicy.h"
 #include "Containers/BackgroundableTicker.h"
-#include "Stats/Stats.h"
 
 #if WITH_XMPP_JINGLE
 
@@ -321,8 +320,6 @@ bool FXmppMessagesJingle::SendMessage(const FXmppUserJid& RecipientId, const FSt
 
 bool FXmppMessagesJingle::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FXmppMessagesJingle_Tick);
-
 	while (!ReceivedMessageQueue.IsEmpty())
 	{
 		FXmppMessage* NewMessage = NULL;

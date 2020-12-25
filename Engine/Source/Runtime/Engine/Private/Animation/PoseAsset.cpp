@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Animation/PoseAsset.h"
 #include "UObject/FrameworkObjectVersion.h"
@@ -6,8 +6,6 @@
 #include "AnimationRuntime.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Animation/AnimSequence.h"
-#include "Animation/AnimSequenceBase.h"
-#include "Animation/AnimationPoseData.h"
 #define LOCTEXT_NAMESPACE "PoseAsset"
 
 // utility function 
@@ -64,24 +62,6 @@ void FPoseDataContainer::GetPoseCurve(const FPoseData* PoseData, FBlendedCurve& 
 		}
 	}
 }
-
-void FPoseDataContainer::BlendPoseCurve(const FPoseData* PoseData, FBlendedCurve& InOutCurve, float Weight) const
-{
-	if (PoseData)
-	{
-		const TArray<float>& CurveValues = PoseData->CurveData;
-		checkSlow(CurveValues.Num() == Curves.Num());
-
-		for (int32 CurveIndex = 0; CurveIndex < Curves.Num(); ++CurveIndex)
-		{
-			const FAnimCurveBase& Curve = Curves[CurveIndex];
-
-			InOutCurve.Set(Curve.Name.UID, CurveValues[CurveIndex] * Weight + InOutCurve.Get(Curve.Name.UID));
-		}
-	}
-}
-
-
 
 FPoseData* FPoseDataContainer::FindPoseData(FSmartName PoseName)
 {
@@ -213,17 +193,17 @@ void FPoseDataContainer::RenamePose(FSmartName OldPoseName, FSmartName NewPoseNa
 	}
 }
 
-int32 FPoseDataContainer::DeletePose(FSmartName PoseName)
+bool FPoseDataContainer::DeletePose(FSmartName PoseName)
 {
 	int32 PoseIndex = PoseNames.Find(PoseName);
 	if (PoseIndex != INDEX_NONE)
 	{
 		PoseNames.RemoveAt(PoseIndex);
 		Poses.RemoveAt(PoseIndex);
-		return PoseIndex;
+		return true;
 	}
 
-	return INDEX_NONE;
+	return false;
 }
 
 bool FPoseDataContainer::DeleteCurve(FSmartName CurveName)
@@ -380,18 +360,8 @@ struct FBoneIndices
 
 void UPoseAsset::GetBaseAnimationPose(struct FCompactPose& OutPose, FBlendedCurve& OutCurve) const
 {
-	FStackCustomAttributes TempAttributes;
-	FAnimationPoseData OutPoseData(OutPose, OutCurve, TempAttributes);
-	GetBaseAnimationPose(OutPoseData);
-}
-
-void UPoseAsset::GetBaseAnimationPose(FAnimationPoseData& OutAnimationPoseData) const
-{
-	FCompactPose& OutPose = OutAnimationPoseData.GetPose();
 	if (bAdditivePose && PoseContainer.Poses.IsValidIndex(BasePoseIndex))
 	{
-		FBlendedCurve& OutCurve = OutAnimationPoseData.GetCurve();
-
 		const FBoneContainer& RequiredBones = OutPose.GetBoneContainer();
 		USkeleton* MySkeleton = GetSkeleton();
 
@@ -493,6 +463,9 @@ void UPoseAsset::GetAnimationCurveOnly(TArray<FName>& InCurveNames, TArray<float
 		const int32 TotalNumberOfValidPoses = IndexToWeightMap.Num();
 		if (TotalNumberOfValidPoses > 0)
 		{
+			TArray<FBlendedCurve> PoseCurves;
+			TArray<float>	CurveWeights;
+
 			//if full pose, we'll have to normalize by weight
 			if (bNormalizeWeight && TotalWeight > 1.f)
 			{
@@ -503,6 +476,10 @@ void UPoseAsset::GetAnimationCurveOnly(TArray<FName>& InCurveNames, TArray<float
 			}
 
 			// collect curves
+			PoseCurves.AddDefaulted(TotalNumberOfValidPoses);
+			CurveWeights.AddUninitialized(TotalNumberOfValidPoses);
+			int32 PoseIndex = 0;
+
 			TArray<uint16> CurveUIDList;
 			CurveUIDList.AddUninitialized(PoseContainer.Curves.Num());
 			for (int32 CurveIndex = 0; CurveIndex < PoseContainer.Curves.Num(); ++CurveIndex)
@@ -510,16 +487,21 @@ void UPoseAsset::GetAnimationCurveOnly(TArray<FName>& InCurveNames, TArray<float
 				CurveUIDList[CurveIndex] = PoseContainer.Curves[CurveIndex].Name.UID;
 			}
 
-			// blend curves
-			FBlendedCurve BlendedCurve;
-			BlendedCurve.InitFrom(&CurveUIDList);
 			for (const TPair<const FPoseData*, float>& ActivePosePair : IndexToWeightMap)
 			{
 				const FPoseData* Pose = ActivePosePair.Key;
 				const float Weight = ActivePosePair.Value;
 
-				PoseContainer.BlendPoseCurve(Pose, BlendedCurve, Weight);
+				CurveWeights[PoseIndex] = Weight;
+				PoseCurves[PoseIndex].InitFrom(&CurveUIDList);
+				PoseContainer.GetPoseCurve(Pose, PoseCurves[PoseIndex]);
+
+				++PoseIndex;
 			}
+
+			// blend curves
+			FBlendedCurve BlendedCurve;
+			BlendCurves(PoseCurves, CurveWeights, BlendedCurve);
 
 			OutCurveNames.Reset();
 			OutCurveValues.Reset();
@@ -542,21 +524,11 @@ void UPoseAsset::GetAnimationCurveOnly(TArray<FName>& InCurveNames, TArray<float
 
 bool UPoseAsset::GetAnimationPose(struct FCompactPose& OutPose, FBlendedCurve& OutCurve, const FAnimExtractContext& ExtractionContext) const
 {
-	FStackCustomAttributes TempAttributes;
-	FAnimationPoseData OutPoseData(OutPose, OutCurve, TempAttributes);
-	return GetAnimationPose(OutPoseData, ExtractionContext);
-}
-
-bool UPoseAsset::GetAnimationPose(struct FAnimationPoseData& OutAnimationPoseData, const FAnimExtractContext& ExtractionContext) const
-{
 	ANIM_MT_SCOPE_CYCLE_COUNTER(PoseAssetGetAnimationPose, !IsInGameThread());
 
 	// if we have any pose curve
 	if (ExtractionContext.PoseCurves.Num() > 0)
 	{
-		FCompactPose& OutPose = OutAnimationPoseData.GetPose();
-		FBlendedCurve& OutCurve = OutAnimationPoseData.GetCurve();
-
 		const FBoneContainer& RequiredBones = OutPose.GetBoneContainer();
 		USkeleton* MySkeleton = GetSkeleton();
 
@@ -615,6 +587,9 @@ bool UPoseAsset::GetAnimationPose(struct FAnimationPoseData& OutAnimationPoseDat
 		if (TotalNumberOfValidPoses > 0)
 		{
 			TArray<FTransform> BlendedBoneTransform;
+			bool bFirstPose = true;
+			TArray<FBlendedCurve> PoseCurves;
+			TArray<float>	CurveWeights;
 
 			//if full pose, we'll have to normalize by weight
 			if (bNormalizeWeight && TotalWeight > 1.f)
@@ -692,17 +667,23 @@ bool UPoseAsset::GetAnimationPose(struct FAnimationPoseData& OutAnimationPoseDat
 				}
 			}
 
-			// Take the matching curve weights from the selected poses, and blend them using the
-			// weighting that we need from each pose. This is much faster than grabbing each
-			// blend curve and blending them in their entirety, especially when there are very
-			// few active curves for each pose and many curves for the entire pose asset.
+			// collect curves
+			PoseCurves.AddDefaulted(TotalNumberOfValidPoses);
+			CurveWeights.AddUninitialized(TotalNumberOfValidPoses);
+			int32 PoseIndex = 0;
 			for (const TPair<const FPoseData*, float>& ActivePosePair : IndexToWeightMap)
 			{
 				const FPoseData* Pose = ActivePosePair.Key;
 				const float Weight = ActivePosePair.Value;
 
-				PoseContainer.BlendPoseCurve(Pose, OutCurve, Weight);
+				CurveWeights[PoseIndex] = Weight;
+				PoseCurves[PoseIndex].InitFrom(OutCurve);
+				PoseContainer.GetPoseCurve(Pose, PoseCurves[PoseIndex]);
+				++PoseIndex;
 			}
+
+			// blend curves
+			BlendCurves(PoseCurves, CurveWeights, OutCurve);
 
 			for (int32 TrackIndex = 0; TrackIndex < TrackNum; ++TrackIndex)
 			{
@@ -1310,23 +1291,10 @@ int32 UPoseAsset::DeletePoses(TArray<FName> PoseNamesToDelete)
 	for (const auto& PoseName : PoseNamesToDelete)
 	{
 		FSmartName PoseSmartName;
-		if (MySkeleton->GetSmartNameByName(USkeleton::AnimCurveMappingName, PoseName, PoseSmartName))
+		if (MySkeleton->GetSmartNameByName(USkeleton::AnimCurveMappingName, PoseName, PoseSmartName) 
+			&& 	PoseContainer.DeletePose(PoseSmartName))
 		{
-			int32 PoseIndexDeleted = PoseContainer.DeletePose(PoseSmartName);
-			if (PoseIndexDeleted != INDEX_NONE)
-			{
-				++ItemsDeleted;
-				// if base pose index is same as pose index deleted
-				if (BasePoseIndex == PoseIndexDeleted)
-				{
-					BasePoseIndex = INDEX_NONE;
-				}
-				// if base pose index is after this, we reduce the number
-				else if (BasePoseIndex > PoseIndexDeleted)
-				{
-					--BasePoseIndex;
-				}
-			}
+			++ItemsDeleted;
 		}
 	}
 

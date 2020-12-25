@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EditConditionContext.h"
 #include "EditConditionParser.h"
@@ -11,18 +11,24 @@ DEFINE_LOG_CATEGORY_STATIC(LogEditCondition, Log, All);
 FEditConditionContext::FEditConditionContext(FPropertyNode& InPropertyNode)
 {
 	PropertyNode = InPropertyNode.AsShared();
+
+	FComplexPropertyNode* ComplexParentNode = InPropertyNode.FindComplexParent();
+	check(ComplexParentNode);
+
+	const UProperty* Property = InPropertyNode.GetProperty();
+	check(Property);
 }
 
-const FBoolProperty* FEditConditionContext::GetSingleBoolProperty(const TSharedPtr<FEditConditionExpression>& Expression) const
+const UBoolProperty* FEditConditionContext::GetSingleBoolProperty(const TSharedPtr<FEditConditionExpression>& Expression) const
 {
 	if (!PropertyNode.IsValid())
 	{
 		return nullptr;
 	}
 
-	const FProperty* Property = PropertyNode.Pin()->GetProperty();
+	const UProperty* Property = PropertyNode.Pin()->GetProperty();
 
-	const FBoolProperty* BoolProperty = nullptr;
+	const UBoolProperty* BoolProperty = nullptr;
 	for (const FCompiledToken& Token : Expression->Tokens)
 	{
 		if (const EditConditionParserTokens::FPropertyToken* PropertyToken = Token.Node.Cast<EditConditionParserTokens::FPropertyToken>())
@@ -33,8 +39,8 @@ const FBoolProperty* FEditConditionContext::GetSingleBoolProperty(const TSharedP
 				return nullptr;
 			}
 
-			const FProperty* Field = FindFProperty<FProperty>(Property->GetOwnerStruct(), *PropertyToken->PropertyName);
-			BoolProperty = CastField<FBoolProperty>(Field);
+			const UProperty* Field = FindField<UProperty>(Property->GetOwnerStruct(), *PropertyToken->PropertyName);
+			BoolProperty = Cast<UBoolProperty>(Field);
 			
 			// not a bool
 			if (BoolProperty == nullptr)
@@ -47,7 +53,7 @@ const FBoolProperty* FEditConditionContext::GetSingleBoolProperty(const TSharedP
 	return BoolProperty;
 }
 
-static TSet<const FProperty*> AlreadyLogged;
+static TSet<const UProperty*> AlreadyLogged;
 
 template<typename T>
 T* FindTypedField(const TWeakPtr<FPropertyNode>& PropertyNode, const FString& PropertyName)
@@ -55,9 +61,9 @@ T* FindTypedField(const TWeakPtr<FPropertyNode>& PropertyNode, const FString& Pr
 	if (PropertyNode.IsValid())
 	{
 		TSharedPtr<FPropertyNode> PinnedNode = PropertyNode.Pin();
-		const FProperty* Property = PinnedNode->GetProperty();
+		const UProperty* Property = PinnedNode->GetProperty();
 
-		FProperty* Field = FindFProperty<FProperty>(Property->GetOwnerStruct(), *PropertyName);
+		UProperty* Field = FindField<UProperty>(Property->GetOwnerStruct(), *PropertyName);
 		if (Field == nullptr)
 		{
 			if (!AlreadyLogged.Find(Field))
@@ -69,7 +75,7 @@ T* FindTypedField(const TWeakPtr<FPropertyNode>& PropertyNode, const FString& Pr
 			return nullptr;
 		}
 
-		return CastField<T>(Field);
+		return Cast<T>(Field);
 	}
 
 	return nullptr;
@@ -85,34 +91,46 @@ T* FindTypedField(const TWeakPtr<FPropertyNode>& PropertyNode, const FString& Pr
 static FPropertyNode* GetEditConditionParentNode(const TSharedPtr<FPropertyNode>& PropertyNode)
 {
 	FPropertyNode* ParentNode = PropertyNode->GetParentNode();
-	FFieldVariant PropertyOuter = PropertyNode->GetProperty()->GetOwnerVariant();
+	const UObject* PropertyOuter = PropertyNode->GetProperty()->GetOuter();
 
-	if (PropertyOuter.Get<FArrayProperty>() != nullptr ||
-		PropertyOuter.Get<FSetProperty>() != nullptr ||
-		PropertyOuter.Get<FMapProperty>() != nullptr)
+	if (Cast<UArrayProperty>(PropertyOuter) != nullptr ||
+		Cast<USetProperty>(PropertyOuter) != nullptr ||
+		Cast<UMapProperty>(PropertyOuter) != nullptr)
 	{
 		// in a dynamic container, parent is actually one level up
-		return ParentNode->GetParentNode();
-	}
-
-	if (PropertyNode->GetProperty()->ArrayDim > 1 && PropertyNode->GetArrayIndex() != INDEX_NONE)
-	{
-		// in a fixed size container, parent node is just the header field
 		return ParentNode->GetParentNode();
 	}
 
 	return ParentNode;
 }
 
-static uint8* GetPropertyValuePtr(const FProperty* Property, const TSharedPtr<FPropertyNode>& PropertyNode, FPropertyNode* ParentNode, FComplexPropertyNode* ComplexParentNode, int32 Index)
+static uint8* GetPropertyValuePtr(const UProperty* Property, const TSharedPtr<FPropertyNode>& PropertyNode, FPropertyNode* ParentNode, FComplexPropertyNode* ComplexParentNode, int32 Index)
 {
+	uint8* BasePtr = ComplexParentNode->GetMemoryOfInstance(Index);
+	if (BasePtr == nullptr)
+	{
+		return nullptr;
+	}
+
+	uint8* ParentPtr = ParentNode->GetValueAddress(BasePtr, PropertyNode->HasNodeFlags(EPropertyNodeFlags::IsSparseClassData) != 0);
+	if (ParentPtr == nullptr)
+	{
+		return nullptr;
+	}
+
 	uint8* ValuePtr = ComplexParentNode->GetValuePtrOfInstance(Index, Property, ParentNode);
+
+	// SPARSEDATA_TODO: remove the next three lines once we're sure the pointer math is correct
+	uint8* OldValuePtr = Property->ContainerPtrToValuePtr<uint8>(ParentPtr);
+	check(OldValuePtr == ValuePtr || PropertyNode->HasNodeFlags(EPropertyNodeFlags::IsSparseClassData));
+	ensure(ValuePtr != nullptr);
+
 	return ValuePtr;
 }
 
 TOptional<bool> FEditConditionContext::GetBoolValue(const FString& PropertyName) const
 {
-	const FBoolProperty* BoolProperty = FindTypedField<FBoolProperty>(PropertyNode, PropertyName);
+	const UBoolProperty* BoolProperty = FindTypedField<UBoolProperty>(PropertyNode, PropertyName);
 	if (BoolProperty == nullptr)
 	{
 		return TOptional<bool>();
@@ -131,10 +149,6 @@ TOptional<bool> FEditConditionContext::GetBoolValue(const FString& PropertyName)
 	}
 
 	FComplexPropertyNode* ComplexParentNode = PinnedNode->FindComplexParent();
-	if (ComplexParentNode == nullptr)
-	{
-		return TOptional<bool>();
-	}
 
 	TOptional<bool> Result;
 	for (int32 Index = 0; Index < ComplexParentNode->GetInstancesNum(); ++Index)
@@ -160,64 +174,9 @@ TOptional<bool> FEditConditionContext::GetBoolValue(const FString& PropertyName)
 	return Result;
 }
 
-TOptional<int64> FEditConditionContext::GetIntegerValue(const FString& PropertyName) const
-{
-	const FNumericProperty* NumericProperty = FindTypedField<FNumericProperty>(PropertyNode, PropertyName);
-	if (NumericProperty == nullptr)
-	{
-		return TOptional<int64>();
-	}
-
-	if (!NumericProperty->IsInteger())
-	{
-		return TOptional<int64>();
-	}
-
-	TSharedPtr<FPropertyNode> PinnedNode = PropertyNode.Pin();
-	if (!PinnedNode.IsValid())
-	{
-		return TOptional<int64>();
-	}
-
-	FPropertyNode* ParentNode = GetEditConditionParentNode(PinnedNode);
-	if (ParentNode == nullptr)
-	{
-		return TOptional<int64>();
-	}
-
-	FComplexPropertyNode* ComplexParentNode = PinnedNode->FindComplexParent();
-	if (ComplexParentNode == nullptr)
-	{
-		return TOptional<int64>();
-	}
-
-	TOptional<int64> Result;
-	for (int32 Index = 0; Index < ComplexParentNode->GetInstancesNum(); ++Index)
-	{
-		uint8* ValuePtr = GetPropertyValuePtr(NumericProperty, PinnedNode, ParentNode, ComplexParentNode, Index);
-		if (ValuePtr == nullptr)
-		{
-			return TOptional<int64>();
-		}
-
-		int64 Value = NumericProperty->GetSignedIntPropertyValue(ValuePtr);
-		if (!Result.IsSet())
-		{
-			Result = Value;
-		}
-		else if (Result.GetValue() != Value)
-		{
-			// all values aren't the same...
-			return TOptional<int64>();
-		}
-	}
-
-	return Result;
-}
-
 TOptional<double> FEditConditionContext::GetNumericValue(const FString& PropertyName) const
 {
-	const FNumericProperty* NumericProperty = FindTypedField<FNumericProperty>(PropertyNode, PropertyName);
+	const UNumericProperty* NumericProperty = FindTypedField<UNumericProperty>(PropertyNode, PropertyName);
 	if (NumericProperty == nullptr)
 	{
 		return TOptional<double>();
@@ -236,10 +195,6 @@ TOptional<double> FEditConditionContext::GetNumericValue(const FString& Property
 	}
 
 	FComplexPropertyNode* ComplexParentNode = PinnedNode->FindComplexParent();
-	if (ComplexParentNode == nullptr)
-	{
-		return TOptional<double>();
-	}
 
 	TOptional<double> Result;
 	for (int32 Index = 0; Index < ComplexParentNode->GetInstancesNum(); ++Index)
@@ -277,20 +232,20 @@ TOptional<double> FEditConditionContext::GetNumericValue(const FString& Property
 
 TOptional<FString> FEditConditionContext::GetEnumValue(const FString& PropertyName) const
 {
-	const FProperty* Property = FindTypedField<FProperty>(PropertyNode, PropertyName);
+	const UProperty* Property = FindTypedField<UProperty>(PropertyNode, PropertyName);
 	if (Property == nullptr)
 	{
 		return TOptional<FString>();
 	}
 
 	const UEnum* EnumType = nullptr;
-	const FNumericProperty* NumericProperty = nullptr;
-	if (const FEnumProperty* EnumProperty = CastField<FEnumProperty>(Property))
+	const UNumericProperty* NumericProperty = nullptr;
+	if (const UEnumProperty* EnumProperty = Cast<UEnumProperty>(Property))
 	{
 		NumericProperty = EnumProperty->GetUnderlyingProperty();
 		EnumType = EnumProperty->GetEnum();
 	}
-	else if (const FByteProperty* ByteProperty = CastField<FByteProperty>(Property))
+	else if (const UByteProperty* ByteProperty = Cast<UByteProperty>(Property))
 	{
 		NumericProperty = ByteProperty;
 		EnumType = ByteProperty->GetIntPropertyEnum();
@@ -318,10 +273,6 @@ TOptional<FString> FEditConditionContext::GetEnumValue(const FString& PropertyNa
 	}
 
 	FComplexPropertyNode* ComplexParentNode = PinnedNode->FindComplexParent();
-	if (ComplexParentNode == nullptr)
-	{
-		return TOptional<FString>();
-	}
 
 	TOptional<int64> Result;
 	for (int32 Index = 0; Index < ComplexParentNode->GetInstancesNum(); ++Index)
@@ -352,95 +303,22 @@ TOptional<FString> FEditConditionContext::GetEnumValue(const FString& PropertyNa
 	return EnumType->GetNameStringByValue(Result.GetValue());
 }
 
-TOptional<UObject*> FEditConditionContext::GetPointerValue(const FString& PropertyName) const
-{
-	const FProperty* Property = FindTypedField<FProperty>(PropertyNode, PropertyName);
-	if (Property == nullptr)
-	{
-		return TOptional<UObject*>();
-	}
-
-	const FObjectPropertyBase* ObjectProperty = CastField<FObjectPropertyBase>(Property);
-	if (ObjectProperty == nullptr)
-	{
-		return TOptional<UObject*>();
-	}
-
-	TSharedPtr<FPropertyNode> PinnedNode = PropertyNode.Pin();
-	if (!PinnedNode.IsValid())
-	{
-		return TOptional<UObject*>();
-	}
-
-	FPropertyNode* ParentNode = GetEditConditionParentNode(PinnedNode);
-	if (ParentNode == nullptr)
-	{
-		return TOptional<UObject*>();
-	}
-
-	FComplexPropertyNode* ComplexParentNode = PinnedNode->FindComplexParent();
-	if (ComplexParentNode == nullptr)
-	{
-		return TOptional<UObject*>();
-	}
-
-	TOptional<UObject*> Result;
-	for (int32 Index = 0; Index < ComplexParentNode->GetInstancesNum(); ++Index)
-	{
-		uint8* ValuePtr = GetPropertyValuePtr(Property, PinnedNode, ParentNode, ComplexParentNode, Index);
-		if (ValuePtr == nullptr)
-		{
-			return TOptional<UObject*>();
-		}
-
-		UObject* Value = ObjectProperty->GetObjectPropertyValue(ValuePtr);
-		if (!Result.IsSet())
-		{
-			Result = Value;
-		}
-		else if (Result.GetValue() != Value)
-		{
-			// all values aren't the same
-			return TOptional<UObject*>();
-		}
-	}
-
-	return Result;
-}
-
 TOptional<FString> FEditConditionContext::GetTypeName(const FString& PropertyName) const
 {
-	const FProperty* Property = FindTypedField<FProperty>(PropertyNode, PropertyName);
+	const UProperty* Property = FindTypedField<UProperty>(PropertyNode, PropertyName);
 	if (Property == nullptr)
 	{
 		return TOptional<FString>();
 	}
 
-	if (const FEnumProperty* EnumProperty = CastField<FEnumProperty>(Property))
+	if (const UEnumProperty* EnumProperty = Cast<UEnumProperty>(Property))
 	{
 		return EnumProperty->GetEnum()->GetName();
 	}
-	else if (const FByteProperty* ByteProperty = CastField<FByteProperty>(Property))
+	else if (const UByteProperty* ByteProperty = Cast<UByteProperty>(Property))
 	{
 		return ByteProperty->GetIntPropertyEnum()->GetName();
 	}
 
 	return Property->GetCPPType();
-}
-
-TOptional<int64> FEditConditionContext::GetIntegerValueOfEnum(const FString& EnumTypeName, const FString& MemberName) const
-{
-	UEnum* EnumType = FindObject<UEnum>((UObject*) ANY_PACKAGE, *EnumTypeName, true);
-	if (EnumType == nullptr)
-	{
-		return TOptional<int64>();
-	}
-
-	int64 EnumValue = EnumType->GetValueByName(FName(*MemberName));
-	if (EnumValue == INDEX_NONE)
-	{
-		return TOptional<int64>();
-	}
-
-	return EnumValue;
 }

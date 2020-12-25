@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Static mesh creation from FBX data.
@@ -136,16 +136,16 @@ void FFbxImporter::ShowFbxSkeletonConflictWindow(USkeletalMesh* SkeletalMesh, US
 			const FName SelectedPackageName = SelectedObject->GetOutermost()->GetFName();
 			//Get the Hard dependencies
 			TArray<FName> HardDependencies;
-			AssetRegistryModule.Get().GetReferencers(SelectedPackageName, HardDependencies, UE::AssetRegistry::EDependencyCategory::Package, UE::AssetRegistry::EDependencyQuery::Hard);
+			AssetRegistryModule.Get().GetReferencers(SelectedPackageName, HardDependencies, EAssetRegistryDependencyType::Hard);
 			//Get the Soft dependencies
 			TArray<FName> SoftDependencies;
-			AssetRegistryModule.Get().GetReferencers(SelectedPackageName, SoftDependencies, UE::AssetRegistry::EDependencyCategory::Package, UE::AssetRegistry::EDependencyQuery::Soft);
+			AssetRegistryModule.Get().GetReferencers(SelectedPackageName, SoftDependencies, EAssetRegistryDependencyType::Soft);
 			//Compose the All dependencies array
 			TArray<FName> AllDependencies = HardDependencies;
 			AllDependencies += SoftDependencies;
 			if (AllDependencies.Num() > 0)
 			{
-				for (const FName& AssetDependencyName : AllDependencies)
+				for (const FName AssetDependencyName : AllDependencies)
 				{
 					const FString PackageString = AssetDependencyName.ToString();
 					const FString FullAssetPathName = FString::Printf(TEXT("%s.%s"), *PackageString, *FPackageName::GetLongPackageAssetName(PackageString));
@@ -227,7 +227,7 @@ void ResetMaterialSlot(const TArray<TMaterialType>& CurrentMaterial, TArray<TMat
 }
 
 template<typename TMaterialType>
-void FFbxImporter::PrepareAndShowMaterialConflictDialog(const TArray<TMaterialType>& CurrentMaterial, TArray<TMaterialType>& ResultMaterial, TArray<int32>& RemapMaterial, TArray<FName>& RemapMaterialName, bool bCanShowDialog, bool bIsPreviewDialog, bool bForceResetOnConflict, EFBXReimportDialogReturnOption& OutReturnOption)
+void FFbxImporter::PrepareAndShowMaterialConflictDialog(const TArray<TMaterialType>& CurrentMaterial, TArray<TMaterialType>& ResultMaterial, TArray<int32>& RemapMaterial, TArray<FName>& RemapMaterialName, bool bCanShowDialog, bool bIsPreviewDialog, EFBXReimportDialogReturnOption& OutReturnOption)
 {
 	OutReturnOption = EFBXReimportDialogReturnOption::FBXRDRO_Ok;
 	bool bHasSomeUnmatchedMaterial = false;
@@ -287,27 +287,20 @@ void FFbxImporter::PrepareAndShowMaterialConflictDialog(const TArray<TMaterialTy
 				AutoRemapMaterials[BestMaterialIndex] = true;
 			}
 		}
-		
-		if (bForceResetOnConflict)
-		{
-			OutReturnOption = EFBXReimportDialogReturnOption::FBXRDRO_ResetToFbx;
-		}
-		else if (bCanShowDialog)
+		if (bCanShowDialog)
 		{
 			ShowFbxMaterialConflictWindow<TMaterialType>(CurrentMaterial, ResultMaterial, RemapMaterial, AutoRemapMaterials, OutReturnOption, bIsPreviewDialog);
-		}
-
-		if (OutReturnOption == EFBXReimportDialogReturnOption::FBXRDRO_ResetToFbx)
-		{
-			//Make identity remap because we reset to ResultMaterial
-			for (int32 MaterialIndex = 0; MaterialIndex < ResultMaterial.Num(); ++MaterialIndex)
+			if (OutReturnOption == EFBXReimportDialogReturnOption::FBXRDRO_ResetToFbx)
 			{
-				RemapMaterial[MaterialIndex] = MaterialIndex;
-				RemapMaterialName[MaterialIndex] = ResultMaterial[MaterialIndex].ImportedMaterialSlotName;
+				//Make identity remap because we reset to ResultMaterial
+				for (int32 MaterialIndex = 0; MaterialIndex < ResultMaterial.Num(); ++MaterialIndex)
+				{
+					RemapMaterial[MaterialIndex] = MaterialIndex;
+					RemapMaterialName[MaterialIndex] = ResultMaterial[MaterialIndex].ImportedMaterialSlotName;
+				}
+				ResetMaterialSlot(CurrentMaterial, ResultMaterial);
 			}
-			ResetMaterialSlot(CurrentMaterial, ResultMaterial);
 		}
-		
 	}
 }
 
@@ -369,7 +362,7 @@ void FFbxImporter::ShowFbxMaterialConflictWindow(const TArray<TMaterialType>& In
 template void FFbxImporter::ShowFbxMaterialConflictWindow<FStaticMaterial>(const TArray<FStaticMaterial>& InSourceMaterials, const TArray<FStaticMaterial>& InResultMaterials, TArray<int32>& RemapMaterials, TArray<bool>& AutoRemapMaterials, EFBXReimportDialogReturnOption& OutReturnOption, bool bIsPreviewConflict);
 template void FFbxImporter::ShowFbxMaterialConflictWindow<FSkeletalMaterial>(const TArray<FSkeletalMaterial>& InSourceMaterials, const TArray<FSkeletalMaterial>& InResultMaterials, TArray<int32>& RemapMaterials, TArray<bool>& AutoRemapMaterials, EFBXReimportDialogReturnOption& OutReturnOption, bool bIsPreviewConflict);
 
-template void FFbxImporter::PrepareAndShowMaterialConflictDialog<FStaticMaterial>(const TArray<FStaticMaterial>& CurrentMaterial, TArray<FStaticMaterial>& ResultMaterial, TArray<int32>& RemapMaterial, TArray<FName>& RemapMaterialName, bool bCanShowDialog, bool bIsPreviewDialog, bool bForceResetOnConflict, EFBXReimportDialogReturnOption& OutReturnOption);
-template void FFbxImporter::PrepareAndShowMaterialConflictDialog<FSkeletalMaterial>(const TArray<FSkeletalMaterial>& CurrentMaterial, TArray<FSkeletalMaterial>& ResultMaterial, TArray<int32>& RemapMaterial, TArray<FName>& RemapMaterialName, bool bCanShowDialog, bool bIsPreviewDialog, bool bForceResetOnConflict, EFBXReimportDialogReturnOption& OutReturnOption);
+template void FFbxImporter::PrepareAndShowMaterialConflictDialog<FStaticMaterial>(const TArray<FStaticMaterial>& CurrentMaterial, TArray<FStaticMaterial>& ResultMaterial, TArray<int32>& RemapMaterial, TArray<FName>& RemapMaterialName, bool bCanShowDialog, bool bIsPreviewDialog, EFBXReimportDialogReturnOption& OutReturnOption);
+template void FFbxImporter::PrepareAndShowMaterialConflictDialog<FSkeletalMaterial>(const TArray<FSkeletalMaterial>& CurrentMaterial, TArray<FSkeletalMaterial>& ResultMaterial, TArray<int32>& RemapMaterial, TArray<FName>& RemapMaterialName, bool bCanShowDialog, bool bIsPreviewDialog, EFBXReimportDialogReturnOption& OutReturnOption);
 
 #undef LOCTEXT_NAMESPACE

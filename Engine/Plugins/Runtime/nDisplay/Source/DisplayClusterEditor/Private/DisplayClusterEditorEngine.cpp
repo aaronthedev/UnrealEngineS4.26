@@ -1,12 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DisplayClusterEditorEngine.h"
 #include "DisplayClusterEditorLog.h"
 
 #include "DisplayClusterRootActor.h"
-
-#include "IDisplayClusterConfiguration.h"
-#include "DisplayClusterConfigurationTypes.h"
 
 #include "DisplayCluster/Private/IPDisplayCluster.h"
 
@@ -53,18 +50,15 @@ void UDisplayClusterEditorEngine::PreExit()
 
 ADisplayClusterRootActor* UDisplayClusterEditorEngine::FindDisplayClusterRootActor(UWorld* InWorld)
 {
-	if (InWorld && InWorld->PersistentLevel)
+	for (AActor* const Actor : InWorld->PersistentLevel->Actors)
 	{
-		for (AActor* const Actor : InWorld->PersistentLevel->Actors)
+		if (Actor && !Actor->IsPendingKill())
 		{
-			if (Actor && !Actor->IsPendingKill())
+			ADisplayClusterRootActor* RootActor = Cast<ADisplayClusterRootActor>(Actor);
+			if (RootActor)
 			{
-				ADisplayClusterRootActor* RootActor = Cast<ADisplayClusterRootActor>(Actor);
-				if (RootActor)
-				{
-					UE_LOG(LogDisplayClusterEditorEngine, Log, TEXT("Found root actor - %s"), *RootActor->GetName());
-					return RootActor;
-				}
+				UE_LOG(LogDisplayClusterEditorEngine, Log, TEXT("Found root actor - %s"), *RootActor->GetName());
+				return RootActor;
 			}
 		}
 	}
@@ -72,32 +66,35 @@ ADisplayClusterRootActor* UDisplayClusterEditorEngine::FindDisplayClusterRootAct
 	return nullptr;
 }
 
-void UDisplayClusterEditorEngine::StartPlayInEditorSession(FRequestPlaySessionParams& InRequestParams)
+void UDisplayClusterEditorEngine::PlayInEditor(UWorld* InWorld, bool bInSimulateInEditor, FPlayInEditorOverrides Overrides)
 {
-	UE_LOG(LogDisplayClusterEditorEngine, VeryVerbose, TEXT("UDisplayClusterEditorEngine::StartPlayInEditorSession"));
-
-	UWorld* EditorWorldPreDup = GetEditorWorldContext().World();
+	UE_LOG(LogDisplayClusterEditorEngine, VeryVerbose, TEXT("UDisplayClusterEditorEngine::PlayInEditor"));
 
 	if (DisplayClusterModule)
 	{
 		// Find nDisplay root actor
-		ADisplayClusterRootActor* RootActor = FindDisplayClusterRootActor(EditorWorldPreDup);
-		if (!RootActor && EditorWorldPreDup)
+		ADisplayClusterRootActor* RootActor = FindDisplayClusterRootActor(InWorld);
+		if (!RootActor)
 		{
 			// Also search inside streamed levels
-			const TArray<ULevelStreaming*>& StreamingLevels = EditorWorldPreDup->GetStreamingLevels();
-			for (const ULevelStreaming* const StreamingLevel : StreamingLevels)
+			const TArray<ULevelStreaming*>& StreamingLevels = InWorld->GetStreamingLevels();
+			for (ULevelStreaming* StreamingLevel : StreamingLevels)
 			{
-				if (StreamingLevel && StreamingLevel->GetCurrentState() == ULevelStreaming::ECurrentState::LoadedVisible)
+				switch (StreamingLevel->GetCurrentState())
 				{
-					// Look for the actor in those sub-levels that have been loaded already
-					const TSoftObjectPtr<UWorld>& SubWorldAsset = StreamingLevel->GetWorldAsset();
-					RootActor = FindDisplayClusterRootActor(SubWorldAsset.Get());
-				}
+					case ULevelStreaming::ECurrentState::LoadedVisible:
+					{
+						// Look for the actor in those sub-levels that have been loaded already
+						const TSoftObjectPtr<UWorld>& SubWorldAsset = StreamingLevel->GetWorldAsset();
+						RootActor = FindDisplayClusterRootActor(SubWorldAsset.Get());
+						if (RootActor)
+						{
+							break;
+						}
+					}
 
-				if (RootActor)
-				{
-					break;
+					default:
+						break;
 				}
 			}
 		}
@@ -107,24 +104,19 @@ void UDisplayClusterEditorEngine::StartPlayInEditorSession(FRequestPlaySessionPa
 		{
 			bIsNDisplayPIE = true;
 
-			// Load config data
-			const UDisplayClusterConfigurationData* ConfigData = IDisplayClusterConfiguration::Get().LoadConfig(RootActor->GetPreviewConfigPath());
-			if (ConfigData)
+			if (!DisplayClusterModule->StartSession(RootActor->GetEditorConfigPath(), RootActor->GetEditorNodeId()))
 			{
-				if (!DisplayClusterModule->StartSession(ConfigData, ConfigData->Cluster->MasterNode.Id))
-				{
-					UE_LOG(LogDisplayClusterEditorEngine, Error, TEXT("An error occurred during DisplayCluster session start"));
-				}
-			}
-			else
-			{
-				UE_LOG(LogDisplayClusterEditorEngine, Error, TEXT("Couldn't load config data"));
+				UE_LOG(LogDisplayClusterEditorEngine, Error, TEXT("Couldn't start DisplayCluster session"));
+
+				// Couldn't start a new session
+				RequestEndPlayMap();
+				return;
 			}
 		}
 	}
 
 	// Start PIE
-	Super::StartPlayInEditorSession(InRequestParams);
+	Super::PlayInEditor(InWorld, bInSimulateInEditor, Overrides);
 
 	// Pass PIE world to nDisplay
 	if (bIsNDisplayPIE)
@@ -138,30 +130,6 @@ void UDisplayClusterEditorEngine::StartPlayInEditorSession(FRequestPlaySessionPa
 			}
 		}
 	}
-}
-
-bool UDisplayClusterEditorEngine::LoadMap(FWorldContext& WorldContext, FURL URL, class UPendingNetGame* Pending, FString& Error)
-{
-	if (bIsNDisplayPIE)
-	{
-		// Finish previous scene
-		DisplayClusterModule->EndScene();
-
-		// Perform map loading
-		if (!Super::LoadMap(WorldContext, URL, Pending, Error))
-		{
-			return false;
-		}
-
-		// Start new scene
-		DisplayClusterModule->StartScene(WorldContext.World());
-	}
-	else
-	{
-		return Super::LoadMap(WorldContext, URL, Pending, Error);
-	}
-
-	return true;
 }
 
 void UDisplayClusterEditorEngine::Tick(float DeltaSeconds, bool bIdleMode)

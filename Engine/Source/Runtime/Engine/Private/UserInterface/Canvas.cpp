@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Canvas.cpp: Unreal canvas rendering.
@@ -256,7 +256,6 @@ FCanvas::FCanvas(FRenderTarget* InRenderTarget,FHitProxyConsumer* InHitProxyCons
 ,	CurrentRealTime(InRealTime)
 ,	CurrentWorldTime(InWorldTime)
 ,	CurrentDeltaWorldTime(InWorldDeltaTime)
-,	bAllowsToSwitchVerticalAxis(false)
 ,	FeatureLevel(InFeatureLevel)
 ,	bUseInternalTexture(false)
 ,	DrawMode(CDM_DeferDrawing)
@@ -269,7 +268,7 @@ void FCanvas::Construct()
 {
 	bStereoRendering = false;
 	bScaledToRenderTarget = false;
-	bAllowsToSwitchVerticalAxis = false;
+	bAllowsToSwitchVerticalAxis = true;
 
 	const FIntPoint RenderTargetSizeXY = RenderTarget ? RenderTarget->GetSizeXY() : FIntPoint(1, 1);
 
@@ -393,7 +392,7 @@ bool FCanvasBatchedElementRenderItem::Render_RenderThread(FRHICommandListImmedia
 			Gamma = 1.0f;
 		}
 
-		bool bNeedsToSwitchVerticalAxis = RHINeedsToSwitchVerticalAxis(Canvas->GetShaderPlatform()) && Canvas->GetAllowSwitchVerticalAxis();
+		bool bNeedsToSwitchVerticalAxis = RHINeedsToSwitchVerticalAxis(Canvas->GetShaderPlatform()) && !Canvas->GetAllowSwitchVerticalAxis();
 
 		// draw batched items
 		Data->BatchedElements.Draw(
@@ -431,7 +430,7 @@ bool FCanvasBatchedElementRenderItem::Render_GameThread(const FCanvas* Canvas, F
 			Gamma = 1.0f;
 		}
 
-		bool bNeedsToSwitchVerticalAxis = RHINeedsToSwitchVerticalAxis(Canvas->GetShaderPlatform()) && Canvas->GetAllowSwitchVerticalAxis();
+		bool bNeedsToSwitchVerticalAxis = RHINeedsToSwitchVerticalAxis(Canvas->GetShaderPlatform()) && !Canvas->GetAllowSwitchVerticalAxis();
 
 		// Render the batched elements.
 		struct FBatchedDrawParameters
@@ -628,7 +627,16 @@ void FCanvas::AddTriangleRenderItem(const FCanvasUVTri& Tri, const FMaterialRend
 
 FCanvas::~FCanvas()
 {
-	ClearBatchesToRender();
+	// delete batches from elements entries
+	for( int32 Idx=0; Idx < SortedElements.Num(); Idx++ )
+	{
+		FCanvasSortElement& SortElement = SortedElements[Idx];
+		for( int32 BatchIdx=0; BatchIdx < SortElement.RenderBatchArray.Num(); BatchIdx++ )
+		{
+			FCanvasBaseRenderItem* RenderItem = SortElement.RenderBatchArray[BatchIdx];
+			delete RenderItem;
+		}
+	}
 }
 
 void FCanvas::Flush_RenderThread(FRHICommandListImmediate& RHICmdList, bool bForce, bool bInsideRenderPass)
@@ -667,7 +675,6 @@ void FCanvas::Flush_RenderThread(FRHICommandListImmediate& RHICmdList, bool bFor
 
 	if (!bInsideRenderPass)
 	{
-		GetRendererModule().InitializeSystemTextures(RHICmdList);
 		const FTexture2DRHIRef& RenderTargetTexture = RenderTarget->GetRenderTargetTexture();
 
 		check(IsValidRef(RenderTargetTexture));
@@ -856,10 +863,9 @@ void FCanvas::Flush_GameThread(bool bForce)
 		}
 
 		RenderThreadScope.EnqueueRenderCommand(
-			[FlushParameters](FRHICommandListImmediate& RHICmdList)
+			[](FRHICommandListImmediate& RHICmdList)
 		{
 			RHICmdList.EndRenderPass();
-			RHICmdList.Transition(FRHITransitionInfo(FlushParameters.CanvasRenderTarget->GetRenderTargetTexture(), ERHIAccess::RTV, ERHIAccess::SRVMask));
 		});
 	}
 	
@@ -935,22 +941,6 @@ bool FCanvas::HasBatchesToRender() const
 	return false;
 }
 
-void FCanvas::ClearBatchesToRender()
-{
-	// delete batches from elements entries
-	for (FCanvasSortElement& SortElement : SortedElements)
-	{
-		for (FCanvasBaseRenderItem* RenderItem : SortElement.RenderBatchArray)
-		{
-			delete RenderItem;
-		}
-	}
-
-	// empty the array of entries
-	SortedElements.Empty();
-	SortedElementLookupMap.Empty();
-	LastElementIndex = INDEX_NONE;
-}
 
 void FCanvas::CopyTransformStack(const FCanvas& Copy)
 { 

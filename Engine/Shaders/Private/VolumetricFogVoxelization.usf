@@ -5,9 +5,6 @@
 // So vertex factories can interpolate dependencies of VertexFactoryGetTranslatedPrimitiveVolumeBounds
 #define PASS_NEEDS_PRIMITIVE_VOLUME_BOUNDS 1
 
-// Force inclusion of VertexId FVertexFactoryInput even if not otherwise required
-#define PASS_NEEDS_VERTEX_ID 1
-
 #include "Common.ush"
 
 #define SceneTexturesStruct VoxelizeVolumePass.SceneTextures 
@@ -91,12 +88,10 @@ void VoxelizeGS(triangle FVoxelizeVolumePrimitiveVSToGS Inputs[3], inout Triangl
 		float InvPrimitiveVolumeRadius = 1.0f / PrimitiveVolumeBounds.w;
 		float2 PrimitiveCenterToVertex[NUM_INPUT_VERTICES];
 
+		UNROLL
+		for (uint VertexIndex = 0; VertexIndex < NUM_INPUT_VERTICES; VertexIndex++)
 		{
-			UNROLL
-			for (uint VertexIndex = 0; VertexIndex < NUM_INPUT_VERTICES; VertexIndex++)
-			{
-				PrimitiveCenterToVertex[VertexIndex] = (Inputs[VertexIndex].VertexQuadCoordinate - ViewSpacePrimitiveVolumeOrigin.xy) * InvPrimitiveVolumeRadius;
-			}
+			PrimitiveCenterToVertex[VertexIndex] = (Inputs[VertexIndex].VertexQuadCoordinate - ViewSpacePrimitiveVolumeOrigin.xy) * InvPrimitiveVolumeRadius;
 		}
 
 #elif VOXELIZE_SHAPE_MODE == OBJECT_BOX_MODE
@@ -127,39 +122,35 @@ void VoxelizeGS(triangle FVoxelizeVolumePrimitiveVSToGS Inputs[3], inout Triangl
 
 				float2 ViewSpaceVertices[NUM_INPUT_VERTICES];
 
+				UNROLL
+				for (uint VertexIndex = 0; VertexIndex < NUM_INPUT_VERTICES; VertexIndex++)
 				{
-					UNROLL
-					for (uint VertexIndex = 0; VertexIndex < NUM_INPUT_VERTICES; VertexIndex++)
-					{
-						#if VOXELIZE_SHAPE_MODE == PRIMITIVE_SPHERE_MODE
-							// Use vertex positions that bound this slice of the sphere in view space
-							ViewSpaceVertices[VertexIndex] = ViewSpacePrimitiveVolumeOrigin.xy + PrimitiveCenterToVertex[VertexIndex] * SliceRadius;
-						#elif VOXELIZE_SHAPE_MODE == OBJECT_BOX_MODE
-							// Use vertex positions that bound the OBB in view space
-							//@todo - accurately intersect each slice with the OBB producing a 3-6 vertex polygon like "A Vertex Program for Efficient Box-Plane Intersection"
-							float2 CornerMask = Inputs[VertexIndex].VertexQuadCoordinate;
-							ViewSpaceVertices[VertexIndex] = ViewSpaceBoundingBoxMin + (ViewSpaceBoundingBoxMax - ViewSpaceBoundingBoxMin) * CornerMask;
-						#endif
-					}
+					#if VOXELIZE_SHAPE_MODE == PRIMITIVE_SPHERE_MODE
+						// Use vertex positions that bound this slice of the sphere in view space
+						ViewSpaceVertices[VertexIndex] = ViewSpacePrimitiveVolumeOrigin.xy + PrimitiveCenterToVertex[VertexIndex] * SliceRadius;
+					#elif VOXELIZE_SHAPE_MODE == OBJECT_BOX_MODE
+						// Use vertex positions that bound the OBB in view space
+						//@todo - accurately intersect each slice with the OBB producing a 3-6 vertex polygon like "A Vertex Program for Efficient Box-Plane Intersection"
+						float2 CornerMask = Inputs[VertexIndex].VertexQuadCoordinate;
+						ViewSpaceVertices[VertexIndex] = ViewSpaceBoundingBoxMin + (ViewSpaceBoundingBoxMax - ViewSpaceBoundingBoxMin) * CornerMask;
+					#endif
 				}
 
+				UNROLL
+				for (uint VertexIndex = 0; VertexIndex < NUM_INPUT_VERTICES; VertexIndex++)
 				{
-					UNROLL
-					for (uint VertexIndex = 0; VertexIndex < NUM_INPUT_VERTICES; VertexIndex++)
-					{
 #if !USING_VERTEX_SHADER_LAYER
-						FVoxelizeVolumePrimitiveGSToPS Output;
+					FVoxelizeVolumePrimitiveGSToPS Output;
 #endif
-						Output.SliceIndex = SliceIndex;
+					Output.SliceIndex = SliceIndex;
 
-						float3 ViewSpaceVertexPosition = float3(ViewSpaceVertices[VertexIndex], SliceDepth);
-						Output.OutPosition = mul(float4(ViewSpaceVertexPosition, 1), VoxelizeVolumePass.ViewToVolumeClip);
-						Output.FactoryInterpolants = Inputs[VertexIndex].FactoryInterpolants;
+					float3 ViewSpaceVertexPosition = float3(ViewSpaceVertices[VertexIndex], SliceDepth);
+					Output.OutPosition = mul(float4(ViewSpaceVertexPosition, 1), VoxelizeVolumePass.ViewToVolumeClip);
+					Output.FactoryInterpolants = Inputs[VertexIndex].FactoryInterpolants;
 
 #if !USING_VERTEX_SHADER_LAYER
-						OutStream.Append(Output);
+					OutStream.Append(Output);
 #endif
-					}
 				}
 
 #if !USING_VERTEX_SHADER_LAYER
@@ -172,12 +163,13 @@ void VoxelizeGS(triangle FVoxelizeVolumePrimitiveVSToGS Inputs[3], inout Triangl
 
 void VoxelizeVS(
 	FVertexFactoryInput Input,
+	uint VertexId : SV_VertexID,
 #if USING_VERTEX_SHADER_LAYER
 	out FVoxelizeVolumePrimitiveGSToPS Output
 #else
 	out FVoxelizeVolumePrimitiveVSToGS Output
 #endif
-)
+	)
 {
 	ResolvedView = ResolveView();
 
@@ -198,7 +190,7 @@ void VoxelizeVS(
 	#if VOXELIZE_SHAPE_MODE == PRIMITIVE_SPHERE_MODE
 		Inputs[0].VertexQuadCoordinate = ViewSpacePosition.xy;
 	#elif VOXELIZE_SHAPE_MODE == OBJECT_BOX_MODE
-		Inputs[0].VertexQuadCoordinate = float2(Input.VertexId & 1, (Input.VertexId >> 1) & 1);
+		Inputs[0].VertexQuadCoordinate = float2(VertexId & 1, (VertexId >> 1) & 1);
 	#endif
 
 	Voxelize(Inputs, Output);
@@ -206,7 +198,7 @@ void VoxelizeVS(
 	#if VOXELIZE_SHAPE_MODE == PRIMITIVE_SPHERE_MODE
 		Output.VertexQuadCoordinate = ViewSpacePosition.xy;
 	#elif VOXELIZE_SHAPE_MODE == OBJECT_BOX_MODE
-		Output.VertexQuadCoordinate = float2(Input.VertexId & 1, (Input.VertexId >> 1) & 1);
+		Output.VertexQuadCoordinate = float2(VertexId & 1, (VertexId >> 1) & 1);
 	#endif
 #endif
 }
@@ -247,12 +239,11 @@ float ComputeVolumeShapeMasking(float3 WorldPosition, uint PrimitiveId, FVertexF
 
 void VoxelizePS(
 	FVoxelizeVolumePrimitiveGSToPS Interpolants,
+	in float4 SvPosition : SV_Position,
 	out float4 OutVBufferA : SV_Target0,
 	out float4 OutVBufferB : SV_Target1
 	)
 {
-	float4 SvPosition = Interpolants.OutPosition;
-
 	ResolvedView = ResolveView();
 
 	float ValidRegionMask = 1;
@@ -268,7 +259,7 @@ void VoxelizePS(
 
 #if !MATERIAL_SHADINGMODEL_UNLIT
 	Albedo = GetMaterialBaseColor(PixelMaterialInputs) * View.DiffuseOverrideParameter.w + View.DiffuseOverrideParameter.xyz;
-	Extinction = clamp(GetMaterialSubsurfaceDataRaw(PixelMaterialInputs).r, 0.0f, 65000.0f);
+	Extinction = clamp(GetMaterialOpacityRaw(PixelMaterialInputs), 0.0f, 65000.0f);
 #endif
 
 	float3 Scattering = Albedo * Extinction;

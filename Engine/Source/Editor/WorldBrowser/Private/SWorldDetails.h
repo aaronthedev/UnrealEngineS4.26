@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -58,9 +58,6 @@ private:
 private:
 	TSharedPtr<FLevelCollectionModel>				WorldModel;
 	TSharedPtr<IDetailsView>						DetailsView;
-	TSharedPtr<IDetailsView>						WorldDetailsView;
-	TSharedPtr<SVerticalBox>						VerticalBox;
-	TSharedPtr<SBorder>								VerticalBoxBorder;
 	TSharedPtr<SComboBox<TSharedPtr<FLevelModel>>>	SubLevelsComboBox;
 	bool											bUpdatingSelection;	
 };

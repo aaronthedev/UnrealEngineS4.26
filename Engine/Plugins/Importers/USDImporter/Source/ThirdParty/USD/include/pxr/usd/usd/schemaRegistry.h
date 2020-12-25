@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_SCHEMA_REGISTRY_H
-#define PXR_USD_USD_SCHEMA_REGISTRY_H
+#ifndef USD_SCHEMAREGISTRY_H
+#define USD_SCHEMAREGISTRY_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/usd/api.h"
@@ -39,57 +39,133 @@ PXR_NAMESPACE_OPEN_SCOPE
 SDF_DECLARE_HANDLES(SdfAttributeSpec);
 SDF_DECLARE_HANDLES(SdfRelationshipSpec);
 
-class UsdPrimDefinition;
-
 /// \class UsdSchemaRegistry
 ///
-/// Singleton registry that provides access to schema type information and
-/// the prim definitions for registered Usd "IsA" and applied API schema 
-/// types. It also contains the data from the generated schemas that is used
-/// by prim definitions to provide properties and fallbacks.
+/// Singleton registry that provides access to prim and property definition
+/// information for registered Usd "IsA" schema types.
 ///
-/// The data contained herein comes from the generatedSchema.usda file
-/// (generated when a schema.usda file is processed by \em usdGenSchema)
-/// of each schema-defining module. The registry expects each schema type to
-/// be represented as a single prim spec with its inheritance flattened, i.e.
-/// the prim spec contains a union of all its local and class inherited property
-/// specs and metadata fields.
+/// The data contained herein comes from the processed (by \em usdGenSchema)
+/// schema.usda files of each schema-defining module.  The data is returned
+/// in the form of SdfSpec's of the appropriate subtype.
 ///
-/// It is used by the Usd core, via UsdPrimDefinition, to determine how to 
-/// create scene description for unauthored "built-in" properties of schema
-/// classes, to enumerate all properties for a given schema class, and finally 
-/// to provide fallback values for unauthored built-in properties.
+/// It is used by the Usd core to determine how to create scene description
+/// for un-instantiated "builtin" properties of schema classes, and also
+/// to enumerate all properties for a given schema class, and finally to
+/// provide fallback values for unauthored builtin properties.
 ///
-class UsdSchemaRegistry : public TfWeakBase, boost::noncopyable {
+class UsdSchemaRegistry : public TfSingleton<UsdSchemaRegistry> {
 public:
     USD_API
     static UsdSchemaRegistry& GetInstance() {
         return TfSingleton<UsdSchemaRegistry>::GetInstance();
     }
 
-    /// Return the type name in the USD schema for prims of the given registered
-    /// \p primType.
-    TfToken GetSchemaTypeName(const TfType &schemaType) const {
-        auto iter = _typeToUsdTypeNameMap.find(schemaType);
-        return iter != _typeToUsdTypeNameMap.end() ? iter->second : TfToken();
+    static const SdfLayerRefPtr & GetSchematics() {
+        return GetInstance()._schematics;
     }
 
-    /// Return the type name in the USD schema for prims of the given
-    /// \p SchemaType.
+    /// Return the PrimSpec that contains all the builtin metadata and
+    /// properties for the given \a primType.  Return null if there is no such
+    /// prim definition.
+    USD_API
+    static SdfPrimSpecHandle GetPrimDefinition(const TfToken &primType);
+
+    /// Return the PrimSpec that contains all the bulitin metadata and
+    /// properties for the given \a primType.  Return null if there is no such
+    /// prim definition.
+    USD_API
+    static SdfPrimSpecHandle GetPrimDefinition(const TfType &primType);
+
+    /// Return the PrimSpec that contains all the builtin metadata and
+    /// properties for the given \p SchemaType.  Return null if there is no such
+    /// prim definition.
     template <class SchemaType>
-    TfToken GetSchemaTypeName() const {
-        return GetSchemaTypeName(SchemaType::_GetStaticTfType());
+    static SdfPrimSpecHandle GetPrimDefinition() {
+        return GetPrimDefinition(SchemaType::_GetStaticTfType());
     }
 
-    /// Returns true if the field \p fieldName cannot have fallback values 
+    /// Return the property spec that defines the fallback for the property
+    /// named \a propName on prims of type \a primType.  Return null if there is
+    /// no such property definition.
+    USD_API
+    static SdfPropertySpecHandle
+    GetPropertyDefinition(const TfToken& primType,
+                          const TfToken& propName);
+
+    /// This is a convenience method. It is shorthand for
+    /// TfDynamic_cast<SdfAttributeSpecHandle>(
+    ///     GetPropertyDefinition(primType, attrName));
+    USD_API
+    static SdfAttributeSpecHandle
+    GetAttributeDefinition(const TfToken& primType,
+                           const TfToken& attrName);
+
+    /// This is a convenience method. It is shorthand for
+    /// TfDynamic_cast<SdfRelationshipSpecHandle>(
+    ///     GetPropertyDefinition(primType, relName));
+    USD_API
+    static SdfRelationshipSpecHandle
+    GetRelationshipDefinition(const TfToken& primType, const TfToken& relName);
+
+    /// Return the SdfSpecType for \p primType and \p propName if those identify
+    /// a builtin property.  Otherwise return SdfSpecTypeUnknown.
+    static SdfSpecType GetSpecType(const TfToken &primType,
+                                   const TfToken &propName) {
+        const UsdSchemaRegistry &self = GetInstance();
+        if (const SdfAbstractDataSpecId *specId =
+            self._GetSpecId(primType, propName)) {
+            return self._schematics->GetSpecType(*specId);
+        }
+        return SdfSpecTypeUnknown;
+    }
+
+    /// Return in \p value the field for the property named \p propName
+    /// under the prim for type \p primType or for the prim if \p propName
+    /// is empty.  Returns \c true if the value exists, \c false otherwise.
+    // XXX: Getting these fields via the methods that return spec
+    //      handles will be slower than using this method.  It's
+    //      questionable if those methods should exist at all.
+    template <class T>
+    static bool HasField(const TfToken& primType,
+                         const TfToken& propName,
+                         const TfToken& fieldName, T* value)
+    {
+        const UsdSchemaRegistry &self = GetInstance();
+        if (const SdfAbstractDataSpecId *specId =
+            self._GetSpecId(primType, propName)) {
+            if (self._schematics->HasField(*specId, fieldName, value))
+                return true;
+        }
+        return false;
+    }
+
+    template <class T>
+    static bool HasFieldDictKey(const TfToken& primType,
+                                const TfToken& propName,
+                                const TfToken& fieldName,
+                                const TfToken& keyPath,
+                                T* value)
+    {
+        const UsdSchemaRegistry &self = GetInstance();
+        if (const SdfAbstractDataSpecId *specId =
+            self._GetSpecId(primType, propName)) {
+            if (self._schematics->HasFieldDictKey(
+                    *specId, fieldName, keyPath, value)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Returns list of fields that cannot have fallback values
     /// specified in schemas. 
     /// 
-    /// Fields are generally disallowed because their fallback values
+    /// Fields are generally in this list because their fallback values
     /// aren't used. For instance, fallback values for composition arcs
     /// aren't used during composition, so allowing them to be set in
     /// schemas would be misleading.
     USD_API
-    static bool IsDisallowedField(const TfToken &fieldName);
+    static std::vector<TfToken> GetDisallowedFields();
 
     /// Returns true if the prim type \p primType inherits from \ref UsdTyped. 
     USD_API
@@ -98,29 +174,17 @@ public:
     /// Returns true if the prim type \p primType is instantiable
     /// in scene description.
     USD_API
-    bool IsConcrete(const TfType& primType) const;
-
-    /// Returns true if the prim type \p primType is instantiable
-    /// in scene description.
-    USD_API
-    bool IsConcrete(const TfToken& primType) const;
+    static bool IsConcrete(const TfType& primType);
 
     /// Returns true if \p apiSchemaType is an applied API schema type.
     USD_API
-    bool IsAppliedAPISchema(const TfType& apiSchemaType) const;
-
-    /// Returns true if \p apiSchemaType is an applied API schema type.
-    USD_API
-    bool IsAppliedAPISchema(const TfToken& apiSchemaType) const;
+    bool IsAppliedAPISchema(const TfType& apiSchemaType);
 
     /// Returns true if \p apiSchemaType is a multiple-apply API schema type.
     USD_API
-    bool IsMultipleApplyAPISchema(const TfType& apiSchemaType) const;
+    bool IsMultipleApplyAPISchema(const TfType& apiSchemaType);
     
-    /// Returns true if \p apiSchemaType is a multiple-apply API schema type.
-    USD_API
-    bool IsMultipleApplyAPISchema(const TfToken& apiSchemaType) const;
-        
+
     /// Finds the TfType of a schema with \p typeName
     ///
     /// This is primarily for when you have been provided Schema typeName
@@ -146,69 +210,64 @@ public:
     USD_API
     static TfType GetTypeFromName(const TfToken& typeName);
 
-    /// Finds the prim definition for the given \p typeName token if 
-    /// \p typeName is a registered concrete typed schema type. Returns null if
-    /// it is not.
-    const UsdPrimDefinition* FindConcretePrimDefinition(
-        const TfToken &typeName) const {
-        auto it = _concreteTypedPrimDefinitions.find(typeName);
-        return it != _concreteTypedPrimDefinitions.end() ? it->second : nullptr;
-    }
-
-    /// Finds the prim definition for the given \p typeName token if 
-    /// \p typeName is a registered applied API schema type. Returns null if
-    /// it is not.
-    const UsdPrimDefinition *FindAppliedAPIPrimDefinition(
-        const TfToken &typeName) const {
-        auto it = _appliedAPIPrimDefinitions.find(typeName);
-        return it != _appliedAPIPrimDefinitions.end() ? it->second : nullptr;
-    }
-
-    /// Returns the empty prim definition.
-    const UsdPrimDefinition *GetEmptyPrimDefinition() const {
-        return _emptyPrimDefinition;
-    }
-
-    /// Composes and returns a new UsdPrimDefinition from the given \p primType
-    /// and list of \p applieSchemas. This prim definition will contain a union
-    /// of properties from the registered prim definitions of each of the 
-    /// provided types. 
-    USD_API
-    std::unique_ptr<UsdPrimDefinition>
-    BuildComposedPrimDefinition(
-        const TfToken &primType, const TfTokenVector &appliedAPISchemas) const;
-
 private:
     friend class TfSingleton<UsdSchemaRegistry>;
 
     UsdSchemaRegistry();
 
+    // Helper for template GetPrimDefinition.
+    static SdfPrimSpecHandle
+    _GetPrimDefinitionAtPath(const SdfPath &path);
+
+    // Helper for looking up the prim definition path for a given primType.
+    const SdfPath& _GetSchemaPrimPath(const TfToken &primType) const;
+
+    // Helper for looking up the prim definition path for a given primType.
+    const SdfPath& _GetSchemaPrimPath(const TfType &primType) const;
+
+    USD_API
+    const SdfAbstractDataSpecId *_GetSpecId(const TfToken &primType,
+                                            const TfToken &propName) const;
+
     void _FindAndAddPluginSchema();
 
-    void _ApplyAPISchemasToPrimDefinition(
-        UsdPrimDefinition *primDef, const TfTokenVector &appliedAPISchemas) const;
+    void _BuildPrimTypePropNameToSpecIdMap(const TfToken &typeName,
+                                           const SdfPath &primPath);
 
     SdfLayerRefPtr _schematics;
 
-    // Registered map of schema class type -> Usd schema type name token.
-    typedef TfHashMap<TfType, TfToken, TfHash> _TypeToTypeNameMap;
-    _TypeToTypeNameMap _typeToUsdTypeNameMap;
+    // Registered map of schema class type -> definition prim path.
+    // XXX: Should drop this in favor of _TypeNameToPathMap but
+    //      TfType should have a GetTypeNameToken() method so we
+    //      don't have to construct a TfToken from a std::string.
+    typedef TfHashMap<TfType, SdfPath, TfHash> _TypeToPathMap;
+    _TypeToPathMap _typeToPathMap;
 
-    typedef TfHashMap<TfToken, UsdPrimDefinition *, 
-                      TfToken::HashFunctor> _TypeNameToPrimDefinitionMap;
+    typedef TfHashMap<TfToken, SdfPath, TfToken::HashFunctor>
+        _TypeNameToPathMap;
+    _TypeNameToPathMap _typeNameToPathMap;
 
-    _TypeNameToPrimDefinitionMap _concreteTypedPrimDefinitions;
-    _TypeNameToPrimDefinitionMap _appliedAPIPrimDefinitions;
-    UsdPrimDefinition *_emptyPrimDefinition;
+    struct _TokenPairHash {
+        inline size_t operator()(const std::pair<TfToken, TfToken> &p) const {
+            size_t hash = p.first.Hash();
+            boost::hash_combine(hash, p.second);
+            return hash;
+        }
+    };
 
-    TfHashMap<TfToken, TfToken, TfToken::HashFunctor> 
-        _multipleApplyAPISchemaNamespaces;
+    // Cache of primType/propName to specId.
+    typedef TfHashMap<
+        std::pair<TfToken, TfToken>,
+        const SdfAbstractDataSpecId *,
+        _TokenPairHash> _PrimTypePropNameToSpecIdMap;
+    _PrimTypePropNameToSpecIdMap _primTypePropNameToSpecIdMap;
 
-    friend class UsdPrimDefinition;
+    TfToken::HashSet _appliedAPISchemaNames;
+    TfToken::HashSet _multipleApplyAPISchemaNames;
 };
 
 USD_API_TEMPLATE_CLASS(TfSingleton<UsdSchemaRegistry>);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif //PXR_USD_USD_SCHEMA_REGISTRY_H
+#endif //USD_SCHEMAREGISTRY_H

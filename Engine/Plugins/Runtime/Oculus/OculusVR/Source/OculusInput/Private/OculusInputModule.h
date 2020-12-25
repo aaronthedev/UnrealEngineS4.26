@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "IOculusInputModule.h"
@@ -29,8 +29,6 @@ class FOculusInputModule : public IOculusInputModule
 
 	// IOculusInputModule overrides
 	virtual uint32 GetNumberOfTouchControllers() const override;
-	virtual uint32 GetNumberOfHandControllers() const override;
-	virtual TSharedPtr<IInputDevice> GetInputDevice() const override;
 };
 
 #else	//	OCULUS_INPUT_SUPPORTED_PLATFORMS
@@ -38,11 +36,6 @@ class FOculusInputModule : public IOculusInputModule
 class FOculusInputModule : public FDefaultModuleImpl
 {
 	virtual uint32 GetNumberOfTouchControllers() const
-	{
-		return 0;
-	};
-
-	virtual uint32 GetNumberOfHandControllers() const
 	{
 		return 0;
 	};

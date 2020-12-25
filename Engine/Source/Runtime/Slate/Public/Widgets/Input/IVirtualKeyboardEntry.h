@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -46,8 +46,6 @@ public:
 	}
 };
 
-DECLARE_DELEGATE(FOnSelectionChangedDelegateVK);
-
 class SLATE_API IVirtualKeyboardEntry
 {
 
@@ -71,10 +69,6 @@ public:
 	* @return  Text
 	*/
 	virtual FText GetText() const = 0;
-
-	virtual bool GetSelection(int& OutSelStart, int& OutSelEnd) = 0;
-
-	FOnSelectionChangedDelegateVK OnSelectionChanged;
 
 	/**
 	* Returns the hint text.

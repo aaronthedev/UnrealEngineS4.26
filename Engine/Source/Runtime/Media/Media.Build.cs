@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -12,18 +12,10 @@ namespace UnrealBuildTool.Rules
 					"Core",
 				});
 
-			// Make sure we always have the info module for the common platforms
-			DynamicallyLoadedModuleNames.Add(GetMediaInfoModuleName());
-
 			PrivateIncludePaths.AddRange(
 				new string[] {
 					"Runtime/Media/Private",
 				});
-		}
-
-		protected virtual string GetMediaInfoModuleName()
-        {
-			return "MediaInfo";
 		}
 	}
 }

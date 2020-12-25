@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Chaos/ArrayCollectionArray.h"
@@ -25,7 +25,6 @@ class TPBDParticles : public TDynamicParticles<T, d>
 
 	const TVector<T, d>& P(const int32 index) const { return MP[index]; }
 	TVector<T, d>& P(const int32 index) { return MP[index]; }
-	TArrayCollectionArray<TVector<T, d>>& GetP() { return MP; }
 
   private:
 	TArrayCollectionArray<TVector<T, d>> MP;

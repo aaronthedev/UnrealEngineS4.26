@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieSceneComposurePostMoveSettingsSectionTemplate.h"
 #include "MovieScene/MovieSceneComposurePostMoveSettingsTrack.h"
@@ -13,7 +13,7 @@ FMovieSceneAnimTypeID GetBlendingDataType<FComposurePostMoveSettings>()
 }
 
 FMovieSceneComposurePostMoveSettingsSectionTemplate::FMovieSceneComposurePostMoveSettingsSectionTemplate(const UMovieSceneComposurePostMoveSettingsSection& Section, const UMovieScenePropertyTrack& Track)
-	: FMovieScenePropertySectionTemplate(Track.GetPropertyName(), Track.GetPropertyPath().ToString())
+	: FMovieScenePropertySectionTemplate(Track.GetPropertyName(), Track.GetPropertyPath())
 	, BlendType(Section.GetBlendType().Get())
 {
 	Pivot[0] = Section.Pivot[0];
@@ -30,7 +30,7 @@ FMovieSceneComposurePostMoveSettingsSectionTemplate::FMovieSceneComposurePostMov
 void FMovieSceneComposurePostMoveSettingsSectionTemplate::Evaluate(const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const
 {
 	const FFrameTime Time = Context.GetTime();
-	UE::MovieScene::TMultiChannelValue<float, 6> AnimatedData;
+	MovieScene::TMultiChannelValue<float, 6> AnimatedData;
 
 	// Only activate channels if the curve has data associated with it
 	auto EvalChannel = [&AnimatedData, Time](uint8 ChanneIndex, const FMovieSceneFloatChannel& Channel)

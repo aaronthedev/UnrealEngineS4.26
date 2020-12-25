@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/Input/SSearchBox.h"
 #include "Widgets/SBoxPanel.h"
@@ -75,7 +75,7 @@ void SSearchBox::Construct( const FArguments& InArgs )
 		.AutoWidth()
 		.Padding(InArgs._Style->ImagePadding)
 		.HAlign(HAlign_Center)
-		.VAlign(VAlign_Fill)
+		.VAlign(VAlign_Center)
 		[
 			SNew(SButton)
 			.ButtonStyle( FCoreStyle::Get(), "NoBorder" )
@@ -97,7 +97,7 @@ void SSearchBox::Construct( const FArguments& InArgs )
 		.AutoWidth()
 		.Padding(InArgs._Style->ImagePadding)
 		.HAlign(HAlign_Center)
-		.VAlign(VAlign_Fill)
+		.VAlign(VAlign_Center)
 		[
 			SNew(SButton)
 			.ButtonStyle( FCoreStyle::Get(), "NoBorder" )

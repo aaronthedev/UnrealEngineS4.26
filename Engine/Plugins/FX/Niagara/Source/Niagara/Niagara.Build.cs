@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -15,16 +15,8 @@ public class Niagara : ModuleRules
                 "Core",
                 "Engine",
                 "TimeManagement",
-                "TraceLog",
                 "Renderer",
-                "JsonUtilities",
-				"Landscape",
-				"Json",
-				"AudioPlatformConfiguration",
-				"SignalProcessing",
-				"ApplicationCore",
-				"DeveloperSettings"
-			}
+            }
         );
 
 
@@ -39,7 +31,6 @@ public class Niagara : ModuleRules
                 "RHI",
                 "NiagaraVertexFactories",
                 "RenderCore",
-                "IntelISPC",
             }
         );
 
@@ -65,9 +56,6 @@ public class Niagara : ModuleRules
             PrivateDependencyModuleNames.AddRange(
                 new string[] {
                 "TargetPlatform",
-                "UnrealEd",
-				"SlateCore",
-				"Slate"
             });
         }
     }

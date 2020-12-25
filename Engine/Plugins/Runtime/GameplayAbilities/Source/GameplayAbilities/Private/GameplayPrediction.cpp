@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayPrediction.h"
 #include "AbilitySystemComponent.h"
@@ -264,16 +264,8 @@ FScopedPredictionWindow::FScopedPredictionWindow(UAbilitySystemComponent* InAbil
 
 	ClearScopedPredictionKey = false;
 	SetReplicatedPredictionKey = false;
-
-	// Owners that are mid destruction will not be valid and will trigger the ensure below (ie. when they stop their anim montages)
-	// Original ensure has been left in to catch other cases of invalid Owner ASCs
-	if ((!InAbilitySystemComponent) || (InAbilitySystemComponent->IsBeingDestroyed()) || (InAbilitySystemComponent->IsPendingKillOrUnreachable()))
-	{
-		ABILITY_LOG(Verbose, TEXT("FScopedPredictionWindow() aborting due to Owner (ASC) being null, destroyed or pending kill / unreachable [%s]"), *ScopedPredictionKey.ToString());
-		return;
-	}
-
 	Owner = InAbilitySystemComponent;
+
 	if (!ensure(Owner.IsValid()) || InAbilitySystemComponent->IsNetSimulating() == false)
 	{
 		return;
@@ -285,7 +277,8 @@ FScopedPredictionWindow::FScopedPredictionWindow(UAbilitySystemComponent* InAbil
 		check(InAbilitySystemComponent != NULL); // Should have bailed above with ensure(Owner.IsValid())
 		ClearScopedPredictionKey = true;
 		RestoreKey = InAbilitySystemComponent->ScopedPredictionKey;
-		InAbilitySystemComponent->ScopedPredictionKey.GenerateDependentPredictionKey();		
+		InAbilitySystemComponent->ScopedPredictionKey.GenerateDependentPredictionKey();
+		
 	}
 }
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PreLoadSettingsContainer.h"
 
@@ -13,11 +13,11 @@
 
 FString FPreLoadSettingsContainerBase::UseSystemFontOverride = TEXT("SYSTEM");
 FString FPreLoadSettingsContainerBase::DefaultInitialLoadingGroupIdentifier = TEXT("InitialLoad");
-FPreLoadSettingsContainerBase* FPreLoadSettingsContainerBase::Instance = nullptr;
+FPreLoadSettingsContainerBase* FPreLoadSettingsContainerBase::Instance;
 
 FPreLoadSettingsContainerBase::~FPreLoadSettingsContainerBase()
 {
-	for (auto& KVPair : BrushResources)
+	for (auto KVPair : BrushResources)
 	{
 		FSlateApplication::Get().GetRenderer()->ReleaseDynamicResource(*KVPair.Value);
 		delete KVPair.Value;
@@ -28,14 +28,6 @@ FPreLoadSettingsContainerBase::~FPreLoadSettingsContainerBase()
 	ScreenGroupings.Empty();
 
 	Instance = nullptr;
-}
-
-void FPreLoadSettingsContainerBase::AddReferencedObjects(FReferenceCollector& Collector)
-{
-	for (auto& KVPair : BrushResources)
-	{
-		KVPair.Value->AddReferencedObjects(Collector);
-	}
 }
 
 bool FPreLoadSettingsContainerBase::IsValidBrushConfig(TArray<FString>& SplitConfigEntry)
@@ -248,10 +240,10 @@ void FPreLoadSettingsContainerBase::BuildCustomFont(const FString& FontIdentifie
 	}
 
 	//Try and find existing font, if we can't, make a new one
-	TSharedPtr<FStandaloneCompositeFont>& FontToBuild = FontResources.FindOrAdd(*FontIdentifier);
+	TSharedPtr<FCompositeFont>& FontToBuild = FontResources.FindOrAdd(*FontIdentifier);
 	if (!FontToBuild.IsValid())
 	{
-		FontToBuild = MakeShared<FStandaloneCompositeFont>();
+		FontToBuild = MakeShared<FCompositeFont>();
 	}
 
 	if (ensureAlwaysMsgf(FontToBuild.IsValid(), TEXT("Error creating custom font!")))
@@ -517,8 +509,8 @@ FText FPreLoadSettingsContainerBase::GetLocalizedText(const FString& Identifier)
 
 TSharedPtr<FCompositeFont> FPreLoadSettingsContainerBase::GetFont(const FString& Identifier)
 {
-    TSharedPtr<FStandaloneCompositeFont>* FoundFontPointer = FontResources.Find(*Identifier);
-    return FoundFontPointer ? *FoundFontPointer : TSharedPtr<FStandaloneCompositeFont>();
+    TSharedPtr<FCompositeFont>* FoundFontPointer = FontResources.Find(*Identifier);
+    return FoundFontPointer ? *FoundFontPointer : TSharedPtr<FCompositeFont>();
 }
 
 FPreLoadSettingsContainerBase::FScreenGroupingBase* FPreLoadSettingsContainerBase::GetScreenGrouping(const FString& Identifier)

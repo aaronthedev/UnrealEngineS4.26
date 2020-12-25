@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ActorSequenceComponentCustomization.h"
 
@@ -153,34 +153,33 @@ FReply FActorSequenceComponentCustomization::InvokeSequencer()
 	TSharedPtr<FTabManager> TabManager = WeakTabManager.Pin();
 	if (TabManager.IsValid() && TabManager->HasTabSpawner(SequenceTabId))
 	{
-		if (TSharedPtr<SDockTab> Tab = TabManager->TryInvokeTab(SequenceTabId))
+		TSharedRef<SDockTab> Tab = TabManager->InvokeTab(SequenceTabId);
+
 		{
+			// Set up a delegate that forces a refresh of this panel when the tab is closed to ensure we see the inline widget
+			TWeakPtr<IPropertyUtilities> WeakUtilities = PropertyUtilities;
+			auto OnClosed = [WeakUtilities](TSharedRef<SDockTab>)
 			{
-				// Set up a delegate that forces a refresh of this panel when the tab is closed to ensure we see the inline widget
-				TWeakPtr<IPropertyUtilities> WeakUtilities = PropertyUtilities;
-				auto OnClosed = [WeakUtilities](TSharedRef<SDockTab>)
+				TSharedPtr<IPropertyUtilities> PinnedPropertyUtilities = WeakUtilities.Pin();
+				if (PinnedPropertyUtilities.IsValid())
 				{
-					TSharedPtr<IPropertyUtilities> PinnedPropertyUtilities = WeakUtilities.Pin();
-					if (PinnedPropertyUtilities.IsValid())
-					{
-						PinnedPropertyUtilities->EnqueueDeferredAction(FSimpleDelegate::CreateSP(PinnedPropertyUtilities.ToSharedRef(), &IPropertyUtilities::ForceRefresh));
-					}
-				};
+					PinnedPropertyUtilities->EnqueueDeferredAction(FSimpleDelegate::CreateSP(PinnedPropertyUtilities.ToSharedRef(), &IPropertyUtilities::ForceRefresh));
+				}
+			};
 
-				Tab->SetOnTabClosed(SDockTab::FOnTabClosedCallback::CreateLambda(OnClosed));
-			}
+			Tab->SetOnTabClosed(SDockTab::FOnTabClosedCallback::CreateLambda(OnClosed));
+		}
 
-			// Move our inline widget content to the tab (so that we keep the existing sequencer state)
-			if (InlineSequencer.IsValid())
-			{
-				Tab->SetContent(InlineSequencer->GetChildren()->GetChildAt(0));
-				InlineSequencer->SetContent(SNullWidget::NullWidget);
-				InlineSequencer->SetVisibility(EVisibility::Collapsed);
-			}
-			else
-			{
-				StaticCastSharedRef<SActorSequenceEditorWidget>(Tab->GetContent())->AssignSequence(GetActorSequence());
-			}
+		// Move our inline widget content to the tab (so that we keep the existing sequencer state)
+		if (InlineSequencer.IsValid())
+		{
+			Tab->SetContent(InlineSequencer->GetChildren()->GetChildAt(0));
+			InlineSequencer->SetContent(SNullWidget::NullWidget);
+			InlineSequencer->SetVisibility(EVisibility::Collapsed);
+		}
+		else 
+		{
+			StaticCastSharedRef<SActorSequenceEditorWidget>(Tab->GetContent())->AssignSequence(GetActorSequence());
 		}
 	}
 

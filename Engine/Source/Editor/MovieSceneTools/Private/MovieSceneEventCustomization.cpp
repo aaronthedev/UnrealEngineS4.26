@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieSceneEventCustomization.h"
 #include "Modules/ModuleManager.h"
@@ -76,7 +76,7 @@ namespace UE4_MovieSceneEventCustomization
 			CallOnMemberFilter.PermittedNodeTypes.Add(UK2Node_CallFunction::StaticClass());
 			CallOnMemberFilter.Context.Blueprints.Add(Blueprint);
 
-			for (FObjectProperty* ObjectProperty : TFieldRange<FObjectProperty>(BoundObjectPinClass))
+			for (UObjectProperty* ObjectProperty : TFieldRange<UObjectProperty>(BoundObjectPinClass))
 			{
 				if (ObjectProperty->HasAnyPropertyFlags(CPF_BlueprintVisible) && (ObjectProperty->HasMetaData(FBlueprintMetadata::MD_ExposeFunctionCategories) || FBlueprintEditorUtils::IsSCSComponentProperty(ObjectProperty)))
 				{
@@ -375,7 +375,7 @@ void FMovieSceneEventCustomization::CustomizeChildren(TSharedRef<IPropertyHandle
 
 			TArray<FName, TInlineAllocator<8>> AllValidNames;
 
-			for (FProperty* Field : TFieldRange<FProperty>(CommonFunction))
+			for (UProperty* Field : TFieldRange<UProperty>(CommonFunction))
 			{
 				if (Field->HasAnyPropertyFlags(CPF_OutParm | CPF_ReturnParm | CPF_ReferenceParm) || Field->GetFName() == EntryPoint->BoundObjectPinName)
 				{
@@ -450,7 +450,7 @@ void FMovieSceneEventCustomization::CustomizeChildren(TSharedRef<IPropertyHandle
 void FMovieSceneEventCustomization::OnPayloadVariableChanged(TSharedRef<FStructOnScope> InStructData, TSharedPtr<IPropertyHandle> LocalVariableProperty)
 {
 	// This function should only ever be bound if all the entry points call the same function
-	FProperty* Property = LocalVariableProperty->GetProperty();
+	UProperty* Property = LocalVariableProperty->GetProperty();
 	if (!Property)
 	{
 		return;
@@ -1250,7 +1250,7 @@ void FMovieSceneEventCustomization::SetEventEndpoint(UK2Node* NewEndpoint, UEdGr
 
 		for (UEdGraphPin* PayloadPin : PayloadTemplate->Pins)
 		{
-			if (PayloadPin != BoundObjectPin && PayloadPin->Direction == EGPD_Input && PayloadPin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec && PayloadPin->LinkedTo.Num() == 0 && PayloadPin->PinName != UEdGraphSchema_K2::PN_Self)
+			if (PayloadPin != BoundObjectPin && PayloadPin->Direction == EGPD_Input && PayloadPin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec && PayloadPin->LinkedTo.Num() == 0)
 			{
 				// Make a payload variable for this pin
 				if (EnumHasAnyFlags(AutoCreatePayload, EAutoCreatePayload::Variables))
@@ -1306,11 +1306,6 @@ void FMovieSceneEventCustomization::SetEventEndpoint(UK2Node* NewEndpoint, UEdGr
 
 	// Forcibly update the panel now that our endpoint has changed
 	PropertyUtilities->ForceRefresh();
-
-	if (NewEndpoint)
-	{
-		FKismetEditorUtilities::BringKismetToFocusAttentionOnObject(NewEndpoint, false);
-	}
 }
 
 void FMovieSceneEventCustomization::CreateEventEndpoint()
@@ -1356,8 +1351,6 @@ void FMovieSceneEventCustomization::CreateEventEndpoint()
 		}
 	}
 
-	UK2Node_CustomEvent* NewEventEndpoint = nullptr;
-
 	FScopedTransaction Transaction(LOCTEXT("CreateEventEndpoint", "Create Event Endpoint"));
 
 	for (const TPair<UMovieSceneSequence*, FSequenceData>& SequencePair : PerSequenceData)
@@ -1395,7 +1388,7 @@ void FMovieSceneEventCustomization::CreateEventEndpoint()
 
 		SequenceDirectorBP->Modify();
 
-		NewEventEndpoint = FMovieSceneEventUtils::CreateUserFacingEvent(SequenceDirectorBP, Parameters);
+		UK2Node_CustomEvent* NewEventEndpoint = FMovieSceneEventUtils::CreateUserFacingEvent(SequenceDirectorBP, Parameters);
 		if (!NewEventEndpoint)
 		{
 			continue;
@@ -1422,11 +1415,6 @@ void FMovieSceneEventCustomization::CreateEventEndpoint()
 	// Ensure that anything listening for property changed notifications are notified of the new binding
 	PropertyHandle->NotifyFinishedChangingProperties();
 	PropertyUtilities->ForceRefresh();
-
-	if (NewEventEndpoint)
-	{
-		FKismetEditorUtilities::BringKismetToFocusAttentionOnObject(NewEventEndpoint, false);
-	}
 }
 
 void FMovieSceneEventCustomization::ClearEventEndpoint()

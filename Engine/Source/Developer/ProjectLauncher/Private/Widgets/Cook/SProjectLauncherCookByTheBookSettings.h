@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -23,10 +23,7 @@ namespace EShowMapsChoices
 		ShowAllMaps,
 
 		/** Only show maps that are to be cooked. */
-		ShowCookedMaps,
-
-		/** Only show maps that are to be cooked but missing. */
-		ShowMissingMaps,
+		ShowCookedMaps
 	};
 }
 

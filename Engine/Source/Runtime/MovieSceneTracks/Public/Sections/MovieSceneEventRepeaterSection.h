@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Sections/MovieSceneEventSectionBase.h"
 #include "Channels/MovieSceneEvent.h"
-#include "EntitySystem/IMovieSceneEntityProvider.h"
 #include "MovieSceneEventRepeaterSection.generated.h"
 
 
@@ -14,13 +13,9 @@
 UCLASS(MinimalAPI)
 class UMovieSceneEventRepeaterSection
 	: public UMovieSceneEventSectionBase
-	, public IMovieSceneEntityProvider
 {
 public:
 	GENERATED_BODY()
-
-	virtual bool PopulateEvaluationFieldImpl(const TRange<FFrameNumber>& EffectiveRange, const FMovieSceneEvaluationFieldEntityMetaData& InMetaData, FMovieSceneEntityComponentFieldBuilder* OutFieldBuilder) override;
-	virtual void ImportEntityImpl(UMovieSceneEntitySystemLinker* EntityLinker, const FEntityImportParams& Params, FImportedEntity* OutImportedEntity) override;
 
 #if WITH_EDITORONLY_DATA
 	virtual TArrayView<FMovieSceneEvent> GetAllEntryPoints() override { return MakeArrayView(&Event, 1); }

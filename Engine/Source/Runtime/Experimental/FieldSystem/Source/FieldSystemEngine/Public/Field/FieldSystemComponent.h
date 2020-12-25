@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,6 +12,7 @@
 #include "FieldSystemComponent.generated.h"
 
 struct FFieldSystemSampleData;
+class FFieldSystemPhysicsProxy;
 class FChaosSolversModule;
 
 /**
@@ -24,15 +25,18 @@ class FIELDSYSTEMENGINE_API UFieldSystemComponent : public UPrimitiveComponent
 	friend class FFieldSystemEditorCommands;
 
 public:
+
+
+
 	//~ Begin USceneComponent Interface.
 	virtual bool HasAnySockets() const override { return false; }
 	//~ Begin USceneComponent Interface.
+
 
 	//~ Begin UPrimitiveComponent Interface.
 	virtual FPrimitiveSceneProxy* CreateSceneProxy() override;
 	//~ End UPrimitiveComponent Interface.
 
-	TSet<FPhysScene_Chaos*> GetPhysicsScenes() const;
 
 	/** FieldSystem @todo(remove the field system, we dont need the asset*/
 	void SetFieldSystem(UFieldSystem * FieldSystemIn) { FieldSystem = FieldSystemIn; }
@@ -40,6 +44,7 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Field")
 	UFieldSystem* FieldSystem;
+
 
 	//
 	// Blueprint based field interface
@@ -57,6 +62,7 @@ public:
 	*/
 	UFUNCTION(BlueprintCallable, Category = "Field")
 	void ApplyLinearForce(bool Enabled, FVector Direction, float Magnitude);
+
 
 	/**
 	*  ApplyStayDynamicField
@@ -134,7 +140,11 @@ public:
 	/**
 	*  ApplyPhysicsField
 	*    This function will dispatch a command to the physics thread to apply
-	*    a generic evaluation of a user defined field network. 
+	*    a generic evaluation of a user defined field network. See documentation,
+	*    for examples of how to recreate variations of the above generic
+	*    fields using field networks
+	*
+	*    (https://wiki.it.epicgames.net/display/~Brice.Criswell/Fields)
 	*
 	*    @param Enabled : Is this force enabled for evaluation.
 	*    @param EFieldPhysicsType : Type of field supported by the solver.
@@ -144,6 +154,8 @@ public:
 	*/
 	UFUNCTION(BlueprintCallable, Category = "Field")
 	void ApplyPhysicsField(bool Enabled, EFieldPhysicsType Target, UFieldSystemMetaData* MetaData, UFieldNodeBase* Field);
+
+
 
 	//
 	// Blueprint Construction based field interface
@@ -175,7 +187,9 @@ protected:
 
 	void DispatchCommand(const FFieldSystemCommand& InCommand);
 
+	FFieldSystemPhysicsProxy* PhysicsProxy;
 	FChaosSolversModule* ChaosModule;
 
 	bool bHasPhysicsState;
+
 };

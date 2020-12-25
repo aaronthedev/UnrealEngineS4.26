@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -21,10 +21,6 @@ class POINTCLOUD_API UPointCloudComponent :
 	/**	If true, each tick the component will render its point cloud */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Point Cloud")
 	bool bIsVisible;
-	
-	/**	If > 0, will automatically update the point cloud data from AR system based on this interval (sec) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Point Cloud")
-	float PointCloudUpdateInterval = 0.f;
 	
 	/** Changes the visibility setting */
 	UFUNCTION(BlueprintCallable, Category = "Point Cloud")
@@ -63,7 +59,7 @@ class POINTCLOUD_API UPointCloudComponent :
 	
 	/** The color to render the points with */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Point Cloud")
-	FLinearColor PointColor = FLinearColor::White;
+	FLinearColor PointColor;
 
 	/** Allows you to change the color of the points being rendered */
 	UFUNCTION(BlueprintCallable, Category = "Point Cloud")
@@ -71,7 +67,7 @@ class POINTCLOUD_API UPointCloudComponent :
 
 	/** The size of the point when rendering */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Point Cloud")
-	float PointSize = 5.f;
+	float PointSize;
 	
 	/** Allows you to change the size of the points being rendered */
 	UFUNCTION(BlueprintCallable, Category = "Point Cloud")
@@ -88,20 +84,13 @@ class POINTCLOUD_API UPointCloudComponent :
 	/** The material to render with */
 	UPROPERTY()
 	UMaterialInterface* PointCloudMaterial;
-	
-	/** An optional sprite texture to render the point with */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Point Cloud")
-	UTexture* SpriteTexture;
-	
+
 private:
-	virtual void BeginPlay() override;
 	virtual FMatrix GetRenderMatrix() const override;
 	virtual FPrimitiveSceneProxy* CreateSceneProxy() override;
 	virtual int32 GetNumMaterials() const override { return 1; }
 	virtual void GetUsedMaterials(TArray<UMaterialInterface*>& OutMaterials, bool bGetDebugMaterials = false) const override;
 	virtual FBoxSphereBounds CalcBounds(const FTransform& LocalToWorld) const override;
-	
-	void UpdatePointCloud();
 
 	/** World space bounds of the point cloud */
 	UPROPERTY()

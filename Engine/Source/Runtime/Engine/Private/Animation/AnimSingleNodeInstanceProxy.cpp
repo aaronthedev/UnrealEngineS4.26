@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Animation/AnimSingleNodeInstanceProxy.h"
 #include "AnimationRuntime.h"
@@ -8,8 +8,6 @@
 #include "Animation/AnimStreamable.h"
 #include "Animation/AnimSingleNodeInstance.h"
 #include "AnimEncoding.h"
-#include "Animation/AnimTrace.h"
-#include "Animation/AnimationPoseData.h"
 
 FAnimSingleNodeInstanceProxy::~FAnimSingleNodeInstanceProxy()
 {
@@ -157,21 +155,19 @@ void FAnimSingleNodeInstanceProxy::SetMontagePreviewSlot(FName PreviewSlot)
 
 void FAnimSingleNodeInstanceProxy::InternalBlendSpaceEvaluatePose(class UBlendSpaceBase* BlendSpace, TArray<FBlendSampleData>& BlendSampleDataCache, FPoseContext& OutContext)
 {
-	FAnimationPoseData AnimationPoseData = { OutContext.Pose, OutContext.Curve, OutContext.CustomAttributes };
-
 	if (BlendSpace->IsValidAdditive())
 	{
 		FCompactPose& OutPose = OutContext.Pose;
 		FBlendedCurve& OutCurve = OutContext.Curve;
 		FCompactPose AdditivePose;
 		FBlendedCurve AdditiveCurve;
-		FStackCustomAttributes AdditiveAttributes;
 		AdditivePose.SetBoneContainer(&OutPose.GetBoneContainer());
 		AdditiveCurve.InitFrom(OutCurve);
+
 #if WITH_EDITORONLY_DATA
 		if (BlendSpace->PreviewBasePose)
 		{
-			BlendSpace->PreviewBasePose->GetBonePose(AnimationPoseData, FAnimExtractContext(PreviewPoseCurrentTime));
+			BlendSpace->PreviewBasePose->GetBonePose(/*out*/ OutPose, /*out*/OutCurve, FAnimExtractContext(PreviewPoseCurrentTime));
 		}
 		else
 #endif // WITH_EDITORONLY_DATA
@@ -180,15 +176,15 @@ void FAnimSingleNodeInstanceProxy::InternalBlendSpaceEvaluatePose(class UBlendSp
 			OutPose.ResetToRefPose();
 		}
 
-		FAnimationPoseData AdditiveAnimationPoseData = { AdditivePose, AdditiveCurve, AdditiveAttributes };
-		BlendSpace->GetAnimationPose(BlendSampleDataCache, AdditiveAnimationPoseData);
+		BlendSpace->GetAnimationPose(BlendSampleDataCache, AdditivePose, AdditiveCurve);
 
 		enum EAdditiveAnimationType AdditiveType = BlendSpace->bRotationBlendInMeshSpace? AAT_RotationOffsetMeshSpace : AAT_LocalSpaceBase;
-		FAnimationRuntime::AccumulateAdditivePose(AnimationPoseData, AdditiveAnimationPoseData, 1.f, AdditiveType);
+
+		FAnimationRuntime::AccumulateAdditivePose(OutPose, AdditivePose, OutCurve, AdditiveCurve, 1.f, AdditiveType);
 	}
 	else
 	{
-		BlendSpace->GetAnimationPose(BlendSampleDataCache, AnimationPoseData);
+		BlendSpace->GetAnimationPose(BlendSampleDataCache, OutContext.Pose, OutContext.Curve);
 	}
 }
 
@@ -268,8 +264,6 @@ void FAnimNode_SingleNode::Evaluate_AnyThread(FPoseContext& Output)
 
 	if (Proxy->CurrentAsset != NULL && !Proxy->CurrentAsset->HasAnyFlags(RF_BeginDestroyed))
 	{
-		FAnimationPoseData OutputAnimationPoseData(Output);
-
 		//@TODO: animrefactor: Seems like more code duplication than we need
 		if (UBlendSpaceBase* BlendSpace = Cast<UBlendSpaceBase>(Proxy->CurrentAsset))
 		{
@@ -283,7 +277,7 @@ void FAnimNode_SingleNode::Evaluate_AnyThread(FPoseContext& Output)
 
 				if (bCanProcessAdditiveAnimationsLocal)
 				{
-					Sequence->GetAdditiveBasePose(OutputAnimationPoseData, ExtractionContext);
+					Sequence->GetAdditiveBasePose(Output.Pose, Output.Curve, ExtractionContext);
 				}
 				else
 				{
@@ -292,20 +286,17 @@ void FAnimNode_SingleNode::Evaluate_AnyThread(FPoseContext& Output)
 
 				FCompactPose AdditivePose;
 				FBlendedCurve AdditiveCurve;
-				FStackCustomAttributes AdditiveAttributes;
 				AdditivePose.SetBoneContainer(&Output.Pose.GetBoneContainer());
 				AdditiveCurve.InitFrom(Output.Curve);
+				Sequence->GetAnimationPose(AdditivePose, AdditiveCurve, ExtractionContext);
 
-				FAnimationPoseData AdditivePoseData = { AdditivePose, AdditiveCurve, AdditiveAttributes };
-				Sequence->GetAnimationPose(AdditivePoseData, ExtractionContext);
-				FAnimationRuntime::AccumulateAdditivePose(OutputAnimationPoseData, AdditivePoseData, 1.f, Sequence->AdditiveAnimType);
-
+				FAnimationRuntime::AccumulateAdditivePose(Output.Pose, AdditivePose, Output.Curve, AdditiveCurve, 1.f, Sequence->AdditiveAnimType);
 				Output.Pose.NormalizeRotations();
 			}
 			else
 			{
 				// if SkeletalMesh isn't there, we'll need to use skeleton
-				Sequence->GetAnimationPose(OutputAnimationPoseData, FAnimExtractContext(Proxy->CurrentTime, Sequence->bEnableRootMotion));
+				Sequence->GetAnimationPose(Output.Pose, Output.Curve, FAnimExtractContext(Proxy->CurrentTime, Sequence->bEnableRootMotion));
 			}
 		}
 		else if (UAnimStreamable* Streamable = Cast<UAnimStreamable>(Proxy->CurrentAsset))
@@ -336,7 +327,7 @@ void FAnimNode_SingleNode::Evaluate_AnyThread(FPoseContext& Output)
 			else*/
 			{
 				// if SkeletalMesh isn't there, we'll need to use skeleton
-				Streamable->GetAnimationPose(OutputAnimationPoseData, FAnimExtractContext(Proxy->CurrentTime, Streamable->bEnableRootMotion));
+				Streamable->GetAnimationPose(Output.Pose, Output.Curve, FAnimExtractContext(Proxy->CurrentTime, Streamable->bEnableRootMotion));
 			}
 		}
 		else if (UAnimComposite* Composite = Cast<UAnimComposite>(Proxy->CurrentAsset))
@@ -350,7 +341,7 @@ void FAnimNode_SingleNode::Evaluate_AnyThread(FPoseContext& Output)
 #if WITH_EDITORONLY_DATA
 				if (bCanProcessAdditiveAnimationsLocal && Composite->PreviewBasePose)
 				{
-					Composite->PreviewBasePose->GetAdditiveBasePose(OutputAnimationPoseData, ExtractionContext);
+					Composite->PreviewBasePose->GetAdditiveBasePose(Output.Pose, Output.Curve, ExtractionContext);
 				}
 				else
 #endif
@@ -363,19 +354,16 @@ void FAnimNode_SingleNode::Evaluate_AnyThread(FPoseContext& Output)
 
 				FCompactPose AdditivePose;
 				FBlendedCurve AdditiveCurve;
-				FStackCustomAttributes AdditiveAttributes;
 				AdditivePose.SetBoneContainer(&Output.Pose.GetBoneContainer());
 				AdditiveCurve.InitFrom(Output.Curve);
+				Composite->GetAnimationPose(AdditivePose, AdditiveCurve, ExtractionContext);
 
-				FAnimationPoseData AdditiveAnimationPoseData = { AdditivePose, AdditiveCurve, AdditiveAttributes };
-				Composite->GetAnimationPose(AdditiveAnimationPoseData, ExtractionContext);
-
-				FAnimationRuntime::AccumulateAdditivePose(OutputAnimationPoseData, AdditiveAnimationPoseData, 1.f, AdditiveAnimType);
+				FAnimationRuntime::AccumulateAdditivePose(Output.Pose, AdditivePose, Output.Curve, AdditiveCurve, 1.f, AdditiveAnimType);
 			}
 			else
 			{
 				//doesn't handle additive yet
-				Composite->GetAnimationPose(OutputAnimationPoseData, ExtractionContext);
+				Composite->GetAnimationPose(Output.Pose, Output.Curve, ExtractionContext);
 			}
 		}
 		else if (UAnimMontage* Montage = Cast<UAnimMontage>(Proxy->CurrentAsset))
@@ -388,8 +376,6 @@ void FAnimNode_SingleNode::Evaluate_AnyThread(FPoseContext& Output)
 				FBlendedCurve LocalSourceCurve;
 				LocalSourcePose.SetBoneContainer(&Output.Pose.GetBoneContainer());
 				LocalSourceCurve.InitFrom(Output.Curve);
-
-				FStackCustomAttributes LocalSourceAttributes;
 			
 				FAnimTrack const* const AnimTrack = Montage->GetAnimationData(ActiveMontageSlot);
 				if (AnimTrack && AnimTrack->IsAdditive())
@@ -398,8 +384,7 @@ void FAnimNode_SingleNode::Evaluate_AnyThread(FPoseContext& Output)
 					// if montage is additive, we need to have base pose for the slot pose evaluate
 					if (bCanProcessAdditiveAnimationsLocal && Montage->PreviewBasePose && Montage->SequenceLength > 0.f)
 					{
-						FAnimationPoseData LocalAnimationPoseData = { LocalSourcePose, LocalSourceCurve, LocalSourceAttributes };
-						Montage->PreviewBasePose->GetBonePose(LocalAnimationPoseData, FAnimExtractContext(Proxy->CurrentTime));
+						Montage->PreviewBasePose->GetBonePose(LocalSourcePose, LocalSourceCurve, FAnimExtractContext(Proxy->CurrentTime));
 					}
 					else
 #endif // WITH_EDITORONLY_DATA
@@ -412,8 +397,7 @@ void FAnimNode_SingleNode::Evaluate_AnyThread(FPoseContext& Output)
 					LocalSourcePose.ResetToRefPose();
 				}
 
-				const FAnimationPoseData LocalAnimationPoseData(LocalSourcePose, LocalSourceCurve, LocalSourceAttributes);
-				Proxy->SlotEvaluatePose(ActiveMontageSlot, LocalAnimationPoseData, Proxy->WeightInfo.SourceWeight, OutputAnimationPoseData, Proxy->WeightInfo.SlotNodeWeight, Proxy->WeightInfo.TotalNodeWeight);
+				Proxy->SlotEvaluatePose(ActiveMontageSlot, LocalSourcePose, LocalSourceCurve, Proxy->WeightInfo.SourceWeight, Output.Pose, Output.Curve, Proxy->WeightInfo.SlotNodeWeight, Proxy->WeightInfo.TotalNodeWeight);
 			}
 		}
 		else
@@ -454,13 +438,10 @@ void FAnimNode_SingleNode::Evaluate_AnyThread(FPoseContext& Output)
 				{
 					FCompactPose AdditivePose;
 					FBlendedCurve AdditiveCurve;
-					FStackCustomAttributes AdditiveAttributes;
 					AdditivePose.SetBoneContainer(&Output.Pose.GetBoneContainer());
 					AdditiveCurve.InitFrom(Output.Curve);
-
-					FAnimationPoseData AdditiveAnimationPoseData { AdditivePose, AdditiveCurve, AdditiveAttributes };
-					PoseAsset->GetAnimationPose(AdditiveAnimationPoseData, ExtractContext);
-					FAnimationRuntime::AccumulateAdditivePose(OutputAnimationPoseData, AdditiveAnimationPoseData, 1.f, EAdditiveAnimationType::AAT_LocalSpaceBase);
+					float Weight = PoseAsset->GetAnimationPose(AdditivePose, AdditiveCurve, ExtractContext);
+					FAnimationRuntime::AccumulateAdditivePose(Output.Pose, AdditivePose, Output.Curve, AdditiveCurve, 1.f, EAdditiveAnimationType::AAT_LocalSpaceBase);
 				}
 				else
 				{
@@ -469,8 +450,7 @@ void FAnimNode_SingleNode::Evaluate_AnyThread(FPoseContext& Output)
 
 					LocalSourcePose = Output;
 
-					FAnimationPoseData CurrentAnimationPoseData(LocalCurrentPose);
-					if (PoseAsset->GetAnimationPose(CurrentAnimationPoseData, ExtractContext))
+					if (PoseAsset->GetAnimationPose(LocalCurrentPose.Pose, LocalCurrentPose.Curve, ExtractContext))
 					{
 						TArray<float> BoneBlendWeights;
 
@@ -488,12 +468,8 @@ void FAnimNode_SingleNode::Evaluate_AnyThread(FPoseContext& Output)
 								BoneBlendWeights[CompactBoneIndex.GetInt()] = 1.f;
 							}
 						}
-
 						// once we get it, we have to blend by weight
-						FAnimationPoseData AnimationPoseData = { Output.Pose, Output.Curve, Output.CustomAttributes };
-
-						const FAnimationPoseData SourceAnimationPoseData(LocalSourcePose);
-						FAnimationRuntime::BlendTwoPosesTogetherPerBone(SourceAnimationPoseData, CurrentAnimationPoseData, BoneBlendWeights, AnimationPoseData);
+						FAnimationRuntime::BlendTwoPosesTogetherPerBone(LocalSourcePose.Pose, LocalCurrentPose.Pose, LocalSourcePose.Curve, LocalCurrentPose.Curve, BoneBlendWeights, Output.Pose, Output.Curve);
 					}
 				}
 			}
@@ -502,7 +478,6 @@ void FAnimNode_SingleNode::Evaluate_AnyThread(FPoseContext& Output)
 	}
 	else
 	{
-		Output.ResetToRefPose();
 #if WITH_EDITORONLY_DATA
 		// even if you don't have any asset curve, we want to output this curve values
 		Proxy->PropagatePreviewCurve(Output);
@@ -526,21 +501,16 @@ void FAnimNode_SingleNode::Update_AnyThread(const FAnimationUpdateContext& Conte
 		FAnimGroupInstance* SyncGroup;
 		if (UBlendSpaceBase* BlendSpace = Cast<UBlendSpaceBase>(Proxy->CurrentAsset))
 		{
-			FAnimTickRecord& TickRecord = Proxy->CreateUninitializedTickRecord(/*out*/ SyncGroup, NAME_None);
+			FAnimTickRecord& TickRecord = Proxy->CreateUninitializedTickRecord(INDEX_NONE, /*out*/ SyncGroup);
 			Proxy->MakeBlendSpaceTickRecord(TickRecord, BlendSpace, Proxy->BlendSpaceInput, Proxy->BlendSampleData, Proxy->BlendFilter, Proxy->bLooping, NewPlayRate, 1.f, /*inout*/ Proxy->CurrentTime, Proxy->MarkerTickRecord);
-
-			TRACE_ANIM_TICK_RECORD(Context, TickRecord);
 #if WITH_EDITORONLY_DATA
 			PreviewBasePose = BlendSpace->PreviewBasePose;
 #endif
 		}
 		else if (UAnimSequence* Sequence = Cast<UAnimSequence>(Proxy->CurrentAsset))
 		{
-			FAnimTickRecord& TickRecord = Proxy->CreateUninitializedTickRecord(/*out*/ SyncGroup, NAME_None);
+			FAnimTickRecord& TickRecord = Proxy->CreateUninitializedTickRecord(INDEX_NONE, /*out*/ SyncGroup);
 			Proxy->MakeSequenceTickRecord(TickRecord, Sequence, Proxy->bLooping, NewPlayRate, 1.f, /*inout*/ Proxy->CurrentTime, Proxy->MarkerTickRecord);
-
-			TRACE_ANIM_TICK_RECORD(Context, TickRecord);
-
 			// if it's not looping, just set play to be false when reached to end
 			if (!Proxy->bLooping)
 			{
@@ -553,11 +523,8 @@ void FAnimNode_SingleNode::Update_AnyThread(const FAnimationUpdateContext& Conte
 		}
 		else if (UAnimStreamable* Streamable = Cast<UAnimStreamable>(Proxy->CurrentAsset))
 		{
-			FAnimTickRecord& TickRecord = Proxy->CreateUninitializedTickRecord(/*out*/ SyncGroup, NAME_None);
+			FAnimTickRecord& TickRecord = Proxy->CreateUninitializedTickRecord(INDEX_NONE, /*out*/ SyncGroup);
 			Proxy->MakeSequenceTickRecord(TickRecord, Streamable, Proxy->bLooping, NewPlayRate, 1.f, /*inout*/ Proxy->CurrentTime, Proxy->MarkerTickRecord);
-
-			TRACE_ANIM_TICK_RECORD(Context, TickRecord);
-
 			// if it's not looping, just set play to be false when reached to end
 			if (!Proxy->bLooping)
 			{
@@ -570,11 +537,8 @@ void FAnimNode_SingleNode::Update_AnyThread(const FAnimationUpdateContext& Conte
 		}
 		else if(UAnimComposite* Composite = Cast<UAnimComposite>(Proxy->CurrentAsset))
 		{
-			FAnimTickRecord& TickRecord = Proxy->CreateUninitializedTickRecord(/*out*/ SyncGroup, NAME_None);
+			FAnimTickRecord& TickRecord = Proxy->CreateUninitializedTickRecord(INDEX_NONE, /*out*/ SyncGroup);
 			Proxy->MakeSequenceTickRecord(TickRecord, Composite, Proxy->bLooping, NewPlayRate, 1.f, /*inout*/ Proxy->CurrentTime, Proxy->MarkerTickRecord);
-
-			TRACE_ANIM_TICK_RECORD(Context, TickRecord);
-
 			// if it's not looping, just set play to be false when reached to end
 			if (!Proxy->bLooping)
 			{
@@ -609,10 +573,8 @@ void FAnimNode_SingleNode::Update_AnyThread(const FAnimationUpdateContext& Conte
 		}
 		else if (UPoseAsset* PoseAsset = Cast<UPoseAsset>(Proxy->CurrentAsset))
 		{
-			FAnimTickRecord& TickRecord = Proxy->CreateUninitializedTickRecord(/*out*/ SyncGroup, NAME_None);
+			FAnimTickRecord& TickRecord = Proxy->CreateUninitializedTickRecord(INDEX_NONE, /*out*/ SyncGroup);
 			Proxy->MakePoseAssetTickRecord(TickRecord, PoseAsset, 1.f);
-
-			TRACE_ANIM_TICK_RECORD(Context, TickRecord);
 		}
 	}
 

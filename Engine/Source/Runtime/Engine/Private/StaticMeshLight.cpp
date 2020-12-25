@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	StaticMeshLight.cpp: Static mesh lighting code.
@@ -17,9 +17,6 @@
 #include "Components/LightComponent.h"
 #include "ShadowMap.h"
 #include "Engine/StaticMesh.h"
-#if WITH_EDITOR
-#include "Rendering/StaticLightingSystemInterface.h"
-#endif
 
 /**
  * Creates a static lighting vertex to represent the given static mesh vertex.
@@ -218,7 +215,9 @@ void FStaticMeshStaticLightingTextureMapping::Apply(FQuantizedLightmapData* Quan
 
 	UStaticMeshComponent* StaticMeshComponent = Primitive.Get();
 
-	if (StaticMeshComponent && StaticMeshComponent->GetOwner() && StaticMeshComponent->GetOwner()->GetLevel())
+	if (StaticMeshComponent && StaticMeshComponent->GetOwner() && StaticMeshComponent->GetOwner()->GetLevel() && 
+		(LODIndex >= StaticMeshComponent->LODData.Num() || StaticMeshComponent->LODData[LODIndex].MapBuildDataId.IsValid())
+		)
 	{
 		// Should have happened at a higher level
 		check(!StaticMeshComponent->IsRenderStateCreated());
@@ -234,14 +233,7 @@ void FStaticMeshStaticLightingTextureMapping::Apply(FQuantizedLightmapData* Quan
 			StaticMeshComponent->MarkPackageDirty();
 		}
 
-		FStaticMeshComponentLODInfo& ComponentLODInfo = StaticMeshComponent->LODData[LODIndex];
-
-		// Ensure this LODInfo has a valid MapBuildDataId
-		if (ComponentLODInfo.CreateMapBuildDataId(LODIndex))
-		{
-			StaticMeshComponent->MarkPackageDirty();
-		}
-
+		const FStaticMeshComponentLODInfo& ComponentLODInfo = StaticMeshComponent->LODData[LODIndex];
 		ELightMapPaddingType PaddingType = GAllowLightmapPadding ? LMPT_NormalPadding : LMPT_NoPadding;
 		const bool bHasNonZeroData = (QuantizedData != NULL && QuantizedData->HasNonZeroData());
 
@@ -436,10 +428,6 @@ bool UStaticMeshComponent::IsPrecomputedLightingValid() const
 		return GetMeshMapBuildData(LODData[0]) != NULL;
 	}
 
-#if WITH_EDITOR
-	return FStaticLightingSystemInterface::GetPrimitiveMeshMapBuildData(this, MinLOD) != nullptr;
-#endif
-
 	return false;
 }
 
@@ -460,13 +448,6 @@ FStaticMeshStaticLightingMesh* UStaticMeshComponent::AllocateStaticLightingMesh(
 
 void UStaticMeshComponent::InvalidateLightingCacheDetailed(bool bInvalidateBuildEnqueuedLighting, bool bTranslationOnly)
 {
-#if WITH_EDITOR
-	if (HasStaticLighting() && HasValidSettingsForStaticLighting(false))
-	{
-		FStaticLightingSystemInterface::OnPrimitiveComponentUnregistered.Broadcast(this);
-	}
-#endif
-
 	// Save the static mesh state for transactions, force it to be marked dirty if we are going to discard any static lighting data.
 	Modify(true);
 
@@ -475,15 +456,11 @@ void UStaticMeshComponent::InvalidateLightingCacheDetailed(bool bInvalidateBuild
 	for(int32 i = 0; i < LODData.Num(); i++)
 	{
 		FStaticMeshComponentLODInfo& LODDataElement = LODData[i];
-		LODDataElement.MapBuildDataId.Invalidate();
+		LODDataElement.MapBuildDataId = FGuid::NewGuid();
+		#if WITH_EDITOR
+			LODDataElement.bMapBuildDataIdLoaded = false;
+		#endif
 	}
-
-#if WITH_EDITOR
-	if (HasStaticLighting() && HasValidSettingsForStaticLighting(false))
-	{
-		FStaticLightingSystemInterface::OnPrimitiveComponentRegistered.Broadcast(this);
-	}
-#endif
 
 	MarkRenderStateDirty();
 }

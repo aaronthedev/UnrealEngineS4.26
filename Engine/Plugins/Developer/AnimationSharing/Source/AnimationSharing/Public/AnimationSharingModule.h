@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,8 +11,6 @@
 
 class UAnimationSharingManager;
 class UAnimationSharingSetup;
-
-DECLARE_MULTICAST_DELEGATE_TwoParams(FOnAnimationSharingManagerCreated, UAnimationSharingManager*, const UWorld*);
 
 class ANIMATIONSHARING_API FAnimSharingModule : public FDefaultModuleImpl, public FGCObject
 {
@@ -30,15 +28,9 @@ public:
 		return WorldAnimSharingManagers.FindRef(World);
 	}
 
-	FORCEINLINE static FOnAnimationSharingManagerCreated& GetOnAnimationSharingManagerCreated()
-	{
-		return OnAnimationSharingManagerCreated;
-	}
-
 	/** Creates an animation sharing manager for the given UWorld (must be a Game World) */
 	static bool CreateAnimationSharingManager(UWorld* InWorld, const UAnimationSharingSetup* Setup);
 private:	
 	static void OnWorldCleanup(UWorld* World, bool bSessionEnded, bool bCleanupResources);
 	static TMap<const UWorld*, UAnimationSharingManager*> WorldAnimSharingManagers;
-	static FOnAnimationSharingManagerCreated OnAnimationSharingManagerCreated;
 };

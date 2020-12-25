@@ -1,12 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "MovieSceneNameableTrack.h"
-#include "MovieSceneCommonHelpers.h"
-#include "EntitySystem/BuiltInComponentTypes.h"
 #include "MovieScenePropertyTrack.generated.h"
 
 /**
@@ -37,7 +35,6 @@ public:
 #endif
 
 	virtual void PostLoad() override;
-	virtual void Serialize(FArchive& Ar) override;
 
 public:
 
@@ -46,22 +43,13 @@ public:
 	 *
 	 * @param InPropertyName The property being animated
 	 */
-	void SetPropertyNameAndPath(FName InPropertyName, const FString& InPropertyPath);
+	virtual void SetPropertyNameAndPath(FName InPropertyName, const FString& InPropertyPath);
 
 	/** @return the name of the property being animated by this track */
-	FName GetPropertyName() const { return PropertyBinding.PropertyName; }
-
+	FName GetPropertyName() const { return PropertyName; }
+	
 	/** @return The property path for this track */
-	FName GetPropertyPath() const { return PropertyBinding.PropertyPath; }
-
-	/** Access the property binding for this track */
-	const FMovieScenePropertyBinding& GetPropertyBinding() const { return PropertyBinding; }
-
-	template <typename ValueType>
-	TOptional<ValueType> GetCurrentValue(const UObject* Object) const
-	{
-		return FTrackInstancePropertyBindings::StaticValue<ValueType>(Object, PropertyBinding.PropertyPath.ToString());
-	}
+	const FString& GetPropertyPath() const { return PropertyPath; }
 
 	/**
 	* Find all sections at the current time.
@@ -109,21 +97,11 @@ public:
 	 * @return The Section that changes.
 	 */
 	virtual UMovieSceneSection* GetSectionToKey() const override;
-
 #if WITH_EDITORONLY_DATA
 public:
 	/** Unique name for this track to afford multiple tracks on a given object (i.e. for array properties) */
 	UPROPERTY()
 	FName UniqueTrackName;
-
-	/** Name of the property being changed */
-	UPROPERTY()
-	FName PropertyName_DEPRECATED;
-
-	/** Path to the property from the source object being changed */
-	UPROPERTY()
-	FString PropertyPath_DEPRECATED;
-
 #endif
 
 
@@ -134,8 +112,13 @@ private:
 
 protected:
 
+	/** Name of the property being changed */
 	UPROPERTY()
-	FMovieScenePropertyBinding PropertyBinding;
+	FName PropertyName;
+
+	/** Path to the property from the source object being changed */
+	UPROPERTY()
+	FString PropertyPath;
 
 	/** All the sections in this list */
 	UPROPERTY()

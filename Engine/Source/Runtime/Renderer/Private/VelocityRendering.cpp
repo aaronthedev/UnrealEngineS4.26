@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VelocityRendering.h"
 #include "SceneUtils.h"
@@ -38,16 +38,10 @@ static TAutoConsoleVariable<int32> CVarParallelVelocity(
 	ECVF_RenderThreadSafe
 	);
 
-static TAutoConsoleVariable<int32> CVarVertexDeformationOutputsVelocity(
-	TEXT("r.VertexDeformationOutputsVelocity"),
-	0,
-	TEXT("Enables materials with World Position Offset and/or World Displacement to output velocities during velocity pass even when the actor has not moved. ")
-	TEXT("This incurs a performance cost and can be quite significant if many objects are using WPO, such as a forest of trees - in that case consider r.BasePassOutputsVelocity and disabling this option."));
-
-static TAutoConsoleVariable<int32> CVarRHICmdFlushRenderThreadTasksVelocityPass(
-	TEXT("r.RHICmdFlushRenderThreadTasksVelocityPass"),
-	0,
-	TEXT("Wait for completion of parallel render thread tasks at the end of the velocity pass.  A more granular version of r.RHICmdFlushRenderThreadTasks. If either r.RHICmdFlushRenderThreadTasks or r.RHICmdFlushRenderThreadTasksVelocityPass is > 0 we will flush."));
+static TAutoConsoleVariable<int32> CVarRHICmdVelocityPassDeferredContexts(
+	TEXT("r.RHICmdVelocityPassDeferredContexts"),
+	1,
+	TEXT("True to use deferred contexts to parallelize velocity pass command list execution."));
 
 DECLARE_GPU_STAT_NAMED(RenderVelocities, TEXT("Render Velocities"));
 
@@ -56,29 +50,26 @@ bool IsParallelVelocity()
 	return GRHICommandList.UseParallelAlgorithms() && CVarParallelVelocity.GetValueOnRenderThread();
 }
 
-bool IsVelocityWaitForTasksEnabled()
-{
-	return IsParallelVelocity() && (CVarRHICmdFlushRenderThreadTasksVelocityPass.GetValueOnRenderThread() > 0 || CVarRHICmdFlushRenderThreadTasks.GetValueOnRenderThread() > 0);
-}
-
 class FVelocityVS : public FMeshMaterialShader
 {
 public:
-	DECLARE_SHADER_TYPE(FVelocityVS, MeshMaterial);
+	DECLARE_MESH_MATERIAL_SHADER(FVelocityVS);
 
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
+		const FMaterial* Material = Parameters.Material;
+
 		// Compile for default material.
-		const bool bIsDefault = Parameters.MaterialParameters.bIsSpecialEngineMaterial;
+		const bool bIsDefault = Material->IsSpecialEngineMaterial();
 
 		// Compile for masked materials.
-		const bool bIsMasked = !Parameters.MaterialParameters.bWritesEveryPixel;
+		const bool bIsMasked = !Material->WritesEveryPixel();
 
 		// Compile for opaque and two-sided materials.
-		const bool bIsOpaqueAndTwoSided = (Parameters.MaterialParameters.bIsTwoSided && !IsTranslucentBlendMode(Parameters.MaterialParameters.BlendMode));
+		const bool bIsOpaqueAndTwoSided = (Material->IsTwoSided() && !IsTranslucentBlendMode(Material->GetBlendMode()));
 
 		// Compile for materials which modify meshes.
-		const bool bMayModifyMeshes = Parameters.MaterialParameters.bMaterialMayModifyMeshPosition;
+		const bool bMayModifyMeshes = Material->MaterialMayModifyMeshPosition();
 
 		// Compile if supported by the hardware.
 		const bool bIsFeatureSupported = IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
@@ -92,7 +83,7 @@ public:
 			FVelocityRendering::IsSeparateVelocityPassRequiredByVertexFactory(Parameters.Platform, Parameters.VertexFactoryType->SupportsStaticLighting());
 
 		// The material may explicitly override and request that it be rendered into the velocity pass.
-		const bool bIsSeparateVelocityPassRequiredByMaterial = Parameters.MaterialParameters.bIsTranslucencyWritingVelocity;
+		const bool bIsSeparateVelocityPassRequiredByMaterial = Material->IsTranslucencyWritingVelocity();
 
 		return bIsFeatureSupported && (bIsSeparateVelocityPassRequired || bIsSeparateVelocityPassRequiredByMaterial);
 	}
@@ -100,13 +91,15 @@ public:
 	FVelocityVS() = default;
 	FVelocityVS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FMeshMaterialShader(Initializer)
-	{}
+	{
+		PassUniformBuffer.Bind(Initializer.ParameterMap, FSceneTexturesUniformParameters::StaticStructMetadata.GetShaderVariableName());
+	}
 };
 
 class FVelocityHS : public FBaseHS
 {
 public:
-	DECLARE_SHADER_TYPE(FVelocityHS, MeshMaterial);
+	DECLARE_MESH_MATERIAL_SHADER(FVelocityHS);
 
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
@@ -122,7 +115,7 @@ public:
 class FVelocityDS : public FBaseDS
 {
 public:
-	DECLARE_SHADER_TYPE(FVelocityDS, MeshMaterial);
+	DECLARE_MESH_MATERIAL_SHADER(FVelocityDS);
 
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
@@ -138,7 +131,7 @@ public:
 class FVelocityPS : public FMeshMaterialShader
 {
 public:
-	DECLARE_SHADER_TYPE(FVelocityPS, MeshMaterial);
+	DECLARE_MESH_MATERIAL_SHADER(FVelocityPS);
 
 	static bool ShouldCompilePermutation(const FMeshMaterialShaderPermutationParameters& Parameters)
 	{
@@ -148,19 +141,21 @@ public:
 	static void ModifyCompilationEnvironment(const FMaterialShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FMaterialShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-		OutEnvironment.SetRenderTargetOutputFormat(0, FVelocityRendering::GetFormat(Parameters.Platform));
+		OutEnvironment.SetRenderTargetOutputFormat(0, PF_G16R16);
 	}
 
 	FVelocityPS() = default;
 	FVelocityPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FMeshMaterialShader(Initializer)
-	{}
+	{
+		PassUniformBuffer.Bind(Initializer.ParameterMap, FSceneTexturesUniformParameters::StaticStructMetadata.GetShaderVariableName());
+	}
 };
 
-IMPLEMENT_SHADER_TYPE(,FVelocityVS, TEXT("/Engine/Private/VelocityShader.usf"), TEXT("MainVertexShader"), SF_Vertex);
-IMPLEMENT_SHADER_TYPE(,FVelocityHS, TEXT("/Engine/Private/VelocityShader.usf"), TEXT("MainHull"), SF_Hull);
-IMPLEMENT_SHADER_TYPE(,FVelocityDS, TEXT("/Engine/Private/VelocityShader.usf"), TEXT("MainDomain"), SF_Domain);
-IMPLEMENT_SHADER_TYPE(,FVelocityPS, TEXT("/Engine/Private/VelocityShader.usf"), TEXT("MainPixelShader"), SF_Pixel);
+IMPLEMENT_MESH_MATERIAL_SHADER(FVelocityVS, "/Engine/Private/VelocityShader.usf", "MainVertexShader", SF_Vertex); 
+IMPLEMENT_MESH_MATERIAL_SHADER(FVelocityHS, "/Engine/Private/VelocityShader.usf", "MainHull", SF_Hull); 
+IMPLEMENT_MESH_MATERIAL_SHADER(FVelocityDS, "/Engine/Private/VelocityShader.usf", "MainDomain", SF_Domain);
+IMPLEMENT_MESH_MATERIAL_SHADER(FVelocityPS, "/Engine/Private/VelocityShader.usf", "MainPixelShader", SF_Pixel);
 IMPLEMENT_SHADERPIPELINE_TYPE_VSPS(VelocityPipeline, FVelocityVS, FVelocityPS, true);
 
 EMeshPass::Type GetMeshPassFromVelocityPass(EVelocityPass VelocityPass)
@@ -176,11 +171,205 @@ EMeshPass::Type GetMeshPassFromVelocityPass(EVelocityPass VelocityPass)
 	return EMeshPass::Velocity;
 }
 
+static void BeginVelocityRendering(
+	FRHICommandList& RHICmdList,
+	TRefCountPtr<IPooledRenderTarget>& VelocityRT,
+	EVelocityPass VelocityPass,
+	bool bPerformClear)
+{
+	check(RHICmdList.IsOutsideRenderPass());
+
+	FTextureRHIRef VelocityTexture = VelocityRT->GetRenderTargetItem().TargetableTexture;
+	FTexture2DRHIRef DepthTexture = FSceneRenderTargets::Get(RHICmdList).GetSceneDepthTexture();	
+
+	FRHIRenderPassInfo RPInfo(VelocityTexture, ERenderTargetActions::Load_Store);
+	RPInfo.DepthStencilRenderTarget.Action = MakeDepthStencilTargetActions(ERenderTargetActions::Load_Store, ERenderTargetActions::Load_Store);
+	RPInfo.DepthStencilRenderTarget.DepthStencilTarget = DepthTexture;
+	RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = VelocityPass == EVelocityPass::Opaque ? FExclusiveDepthStencil::DepthRead_StencilWrite : FExclusiveDepthStencil::DepthWrite_StencilWrite;
+
+	if (bPerformClear)
+	{
+		RPInfo.ColorRenderTargets[0].Action = ERenderTargetActions::Clear_Store;
+	}
+
+	RHICmdList.BeginRenderPass(RPInfo, TEXT("VelocityRendering"));
+
+	if (!bPerformClear)
+	{
+		// some platforms need the clear color when rendertargets transition to SRVs.  We propagate here to allow parallel rendering to always
+		// have the proper mapping when the RT is transitioned.
+		RHICmdList.BindClearMRTValues(true, false, false);
+	}
+}
+
+static void SetVelocitiesState(
+	FRHICommandList& RHICmdList,
+	const FViewInfo& View,
+	const FSceneRenderer* SceneRender,
+	FMeshPassProcessorRenderState& DrawRenderState,
+	TRefCountPtr<IPooledRenderTarget>& VelocityRT,
+	EVelocityPass VelocityPass)
+{
+	const FIntPoint BufferSize = FSceneRenderTargets::Get(RHICmdList).GetBufferSizeXY();
+	const FIntPoint VelocityBufferSize = BufferSize;		// full resolution so we can reuse the existing full res z buffer
+
+	if (!View.IsInstancedStereoPass())
+	{
+		const uint32 MinX = View.ViewRect.Min.X * VelocityBufferSize.X / BufferSize.X;
+		const uint32 MinY = View.ViewRect.Min.Y * VelocityBufferSize.Y / BufferSize.Y;
+		const uint32 MaxX = View.ViewRect.Max.X * VelocityBufferSize.X / BufferSize.X;
+		const uint32 MaxY = View.ViewRect.Max.Y * VelocityBufferSize.Y / BufferSize.Y;
+		RHICmdList.SetViewport(MinX, MinY, 0.0f, MaxX, MaxY, 1.0f);
+	}
+	else
+	{
+		if (View.bIsMultiViewEnabled)
+		{
+			const uint32 LeftMinX = SceneRender->Views[0].ViewRect.Min.X;
+			const uint32 LeftMaxX = SceneRender->Views[0].ViewRect.Max.X;
+			const uint32 RightMinX = SceneRender->Views[1].ViewRect.Min.X;
+			const uint32 RightMaxX = SceneRender->Views[1].ViewRect.Max.X;
+			
+			const uint32 LeftMaxY = SceneRender->Views[0].ViewRect.Max.Y;
+			const uint32 RightMaxY = SceneRender->Views[1].ViewRect.Max.Y;
+			
+			RHICmdList.SetStereoViewport(LeftMinX, RightMinX, 0, 0, 0.0f, LeftMaxX, RightMaxX, LeftMaxY, RightMaxY, 1.0f);
+		}
+		else
+		{
+			const uint32 MaxX = SceneRender->InstancedStereoWidth * VelocityBufferSize.X / BufferSize.X;
+			const uint32 MaxY = View.ViewRect.Max.Y * VelocityBufferSize.Y / BufferSize.Y;
+			RHICmdList.SetViewport(0, 0, 0.0f, MaxX, MaxY, 1.0f);
+		}
+	}
+
+	DrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA>::GetRHI());
+
+	switch (VelocityPass)
+	{
+	case EVelocityPass::Opaque:
+		DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_DepthNearOrEqual>::GetRHI());
+		break;
+
+	case EVelocityPass::Translucent:
+		DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<true, CF_DepthNearOrEqual>::GetRHI());
+		break;
+	}
+}
+
 DECLARE_CYCLE_STAT(TEXT("Velocity"), STAT_CLP_Velocity, STATGROUP_ParallelCommandListMarkers);
+
+class FVelocityPassParallelCommandListSet : public FParallelCommandListSet
+{
+	TRefCountPtr<IPooledRenderTarget>& VelocityRT;
+	EVelocityPass VelocityPass;
+
+public:
+	FVelocityPassParallelCommandListSet(
+		const FViewInfo& InView,
+		const FSceneRenderer* InSceneRenderer,
+		FRHICommandListImmediate& InParentCmdList,
+		bool bInParallelExecute,
+		bool bInCreateSceneContext,
+		const FMeshPassProcessorRenderState& InDrawRenderState,
+		TRefCountPtr<IPooledRenderTarget>& InVelocityRT,
+		EVelocityPass InVelocityPass)
+		: FParallelCommandListSet(GET_STATID(STAT_CLP_Velocity), InView, InSceneRenderer, InParentCmdList, bInParallelExecute, bInCreateSceneContext, InDrawRenderState)
+		, VelocityRT(InVelocityRT)
+		, VelocityPass(InVelocityPass)
+	{
+	}
+
+	virtual ~FVelocityPassParallelCommandListSet()
+	{
+		Dispatch();
+	}	
+
+	virtual void SetStateOnCommandList(FRHICommandList& CmdList) override
+	{
+		FParallelCommandListSet::SetStateOnCommandList(CmdList);
+		BeginVelocityRendering(CmdList, VelocityRT, VelocityPass, false);
+		SetVelocitiesState(CmdList, View, SceneRenderer, DrawRenderState, VelocityRT, VelocityPass);
+	}
+};
+
+static TAutoConsoleVariable<int32> CVarRHICmdFlushRenderThreadTasksVelocityPass(
+	TEXT("r.RHICmdFlushRenderThreadTasksVelocityPass"),
+	0,
+	TEXT("Wait for completion of parallel render thread tasks at the end of the velocity pass.  A more granular version of r.RHICmdFlushRenderThreadTasks. If either r.RHICmdFlushRenderThreadTasks or r.RHICmdFlushRenderThreadTasksVelocityPass is > 0 we will flush."));
+
+void FDeferredShadingSceneRenderer::RenderVelocitiesInnerParallel(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget>& VelocityRT, EVelocityPass VelocityPass)
+{
+	// Parallel rendering requires its own renderpasses so we cannot have an active one at this point
+	check(RHICmdList.IsOutsideRenderPass());
+	// parallel version
+	FScopedCommandListWaitForTasks Flusher(CVarRHICmdFlushRenderThreadTasksVelocityPass.GetValueOnRenderThread() > 0 || CVarRHICmdFlushRenderThreadTasks.GetValueOnRenderThread() > 0, RHICmdList);
+
+	for(int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+	{
+		const FViewInfo& View = Views[ViewIndex];
+
+		if (View.ShouldRenderView())
+		{
+			SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+
+			Scene->UniformBuffers.UpdateViewUniformBuffer(View);
+
+			FSceneTexturesUniformParameters SceneTextureParameters;
+			FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+			SetupSceneTextureUniformParameters(SceneContext, View.FeatureLevel, VelocityPass == EVelocityPass::Opaque ? ESceneTextureSetupMode::None : ESceneTextureSetupMode::All, SceneTextureParameters);
+			Scene->UniformBuffers.VelocityPassUniformBuffer.UpdateUniformBufferImmediate(SceneTextureParameters);
+
+			FMeshPassProcessorRenderState DrawRenderState(View, Scene->UniformBuffers.VelocityPassUniformBuffer);
+
+			FVelocityPassParallelCommandListSet ParallelCommandListSet(View,
+				this,
+				RHICmdList,
+				CVarRHICmdVelocityPassDeferredContexts.GetValueOnRenderThread() > 0,
+				CVarRHICmdFlushRenderThreadTasksVelocityPass.GetValueOnRenderThread() == 0 && CVarRHICmdFlushRenderThreadTasks.GetValueOnRenderThread() == 0,
+				DrawRenderState,
+				VelocityRT,
+				VelocityPass);
+
+			const EMeshPass::Type MeshPass = GetMeshPassFromVelocityPass(VelocityPass);
+
+			View.ParallelMeshDrawCommandPasses[MeshPass].DispatchDraw(&ParallelCommandListSet, RHICmdList);
+		}
+	}
+}
+
+void FDeferredShadingSceneRenderer::RenderVelocitiesInner(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget>& VelocityRT, EVelocityPass VelocityPass)
+{
+	check(RHICmdList.IsInsideRenderPass());
+	for(int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
+	{
+		const FViewInfo& View = Views[ViewIndex];
+		
+		FSceneTexturesUniformParameters SceneTextureParameters;
+		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);		
+		SetupSceneTextureUniformParameters(SceneContext, View.FeatureLevel, VelocityPass == EVelocityPass::Opaque ? ESceneTextureSetupMode::None : ESceneTextureSetupMode::All, SceneTextureParameters);
+		Scene->UniformBuffers.VelocityPassUniformBuffer.UpdateUniformBufferImmediate(SceneTextureParameters);
+
+		FMeshPassProcessorRenderState DrawRenderState(View, Scene->UniformBuffers.VelocityPassUniformBuffer);
+
+		if (View.ShouldRenderView())
+		{
+			SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+
+			Scene->UniformBuffers.UpdateViewUniformBuffer(View);
+
+			SetVelocitiesState(RHICmdList, View, this, DrawRenderState, VelocityRT, VelocityPass);
+
+			const EMeshPass::Type MeshPass = GetMeshPassFromVelocityPass(VelocityPass);
+
+			View.ParallelMeshDrawCommandPasses[MeshPass].DispatchDraw(nullptr, RHICmdList);
+		}
+	}
+}
 
 bool FDeferredShadingSceneRenderer::ShouldRenderVelocities() const
 {
-	if (!FVelocityRendering::IsSeparateVelocityPassSupported(ShaderPlatform) || ViewFamily.UseDebugViewPS())
+	if (!FVelocityRendering::IsSeparateVelocityPassSupported())
 	{
 		return false;
 	}
@@ -207,144 +396,78 @@ bool FDeferredShadingSceneRenderer::ShouldRenderVelocities() const
 	return bNeedsVelocity;
 }
 
-BEGIN_SHADER_PARAMETER_STRUCT(FVelocityPassParameters, )
-	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneTextureUniformParameters, SceneTextures)
-	RENDER_TARGET_BINDING_SLOTS()
-END_SHADER_PARAMETER_STRUCT()
-
-void FDeferredShadingSceneRenderer::RenderVelocities(
-	FRDGBuilder& GraphBuilder,
-	FRDGTextureRef DepthTexture,
-	FRDGTextureRef& InOutVelocityTexture,
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
-	EVelocityPass VelocityPass,
-	bool bForceVelocity)
+void FDeferredShadingSceneRenderer::RenderVelocities(FRHICommandListImmediate& RHICmdList, TRefCountPtr<IPooledRenderTarget>& VelocityRT, EVelocityPass VelocityPass, bool bClearVelocityRT)
 {
+	SCOPED_NAMED_EVENT(FDeferredShadingSceneRenderer_RenderVelocities, FColor::Emerald);
+
 	check(FeatureLevel >= ERHIFeatureLevel::SM5);
+	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(RenderVelocities);
+	SCOPE_CYCLE_COUNTER(STAT_RenderVelocities);
 
 	if (!ShouldRenderVelocities())
 	{
 		return;
 	}
 
-	RDG_CSV_STAT_EXCLUSIVE_SCOPE(GraphBuilder, RenderVelocities);
-	SCOPED_NAMED_EVENT(FDeferredShadingSceneRenderer_RenderVelocities, FColor::Emerald);
-	SCOPE_CYCLE_COUNTER(STAT_RenderVelocities);
+	SCOPED_DRAW_EVENT(RHICmdList, RenderVelocities);
+	SCOPED_GPU_STAT(RHICmdList, RenderVelocities);
 
-	ERenderTargetLoadAction VelocityLoadAction = ERenderTargetLoadAction::ELoad;
-	FRDGTextureRef VelocityTexture = InOutVelocityTexture;
-	bool bVelocityRendered = false;
-
-	if (!VelocityTexture)
+	if (!VelocityRT)
 	{
-		VelocityTexture = GraphBuilder.CreateTexture(FVelocityRendering::GetRenderTargetDesc(ShaderPlatform), TEXT("Velocity"));
-		VelocityLoadAction = ERenderTargetLoadAction::EClear;
+		FPooledRenderTargetDesc Desc = FVelocityRendering::GetRenderTargetDesc();
+		GRenderTargetPool.FindFreeElement(RHICmdList, Desc, VelocityRT, TEXT("Velocity"));
 	}
 
-	RDG_GPU_STAT_SCOPE(GraphBuilder, RenderVelocities);
-	RDG_WAIT_FOR_TASKS_CONDITIONAL(GraphBuilder, IsVelocityWaitForTasksEnabled());
-
-	const EMeshPass::Type MeshPass = GetMeshPassFromVelocityPass(VelocityPass);
-
-	for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 	{
-		const FViewInfo& View = Views[ViewIndex];
+		static const auto MotionBlurDebugVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MotionBlurDebug"));
 
-		if (View.ShouldRenderView())
+		if(MotionBlurDebugVar->GetValueOnRenderThread())
 		{
-			const FParallelMeshDrawCommandPass& ParallelMeshPass = View.ParallelMeshDrawCommandPasses[MeshPass];
-
-			const bool bHasAnyDraw = ParallelMeshPass.HasAnyDraw();
-			if (!bHasAnyDraw && !bForceVelocity)
-			{
-				continue;
-			}
-
-			RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
-
-			if (VelocityLoadAction == ERenderTargetLoadAction::EClear)
-			{
-				AddClearRenderTargetPass(GraphBuilder, VelocityTexture);
-
-				if (!View.Family->bMultiGPUForkAndJoin)
-				{
-					VelocityLoadAction = ERenderTargetLoadAction::ELoad;
-				}
-			}
-			bVelocityRendered = true;
-
-			if (!bHasAnyDraw)
-			{
-				continue;
-			}
-
-			FVelocityPassParameters* PassParameters = GraphBuilder.AllocParameters<FVelocityPassParameters>();
-			PassParameters->SceneTextures = SceneTexturesUniformBuffer;
-			PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(
-				DepthTexture,
-				ERenderTargetLoadAction::ELoad,
-				ERenderTargetLoadAction::ELoad,
-				VelocityPass == EVelocityPass::Opaque
-				? FExclusiveDepthStencil::DepthRead_StencilWrite
-				: FExclusiveDepthStencil::DepthWrite_StencilWrite);
-
-			if (IsParallelVelocity())
-			{
-				PassParameters->RenderTargets[0] = FRenderTargetBinding(VelocityTexture, ERenderTargetLoadAction::ELoad);
-
-				GraphBuilder.AddPass(
-					RDG_EVENT_NAME("VelocityParallel"),
-					PassParameters,
-					ERDGPassFlags::Raster | ERDGPassFlags::SkipRenderPass,
-					[this, &View, &ParallelMeshPass, VelocityPass, PassParameters](FRHICommandListImmediate& RHICmdList)
-				{
-					Scene->UniformBuffers.UpdateViewUniformBuffer(View);
-					FRDGParallelCommandListSet ParallelCommandListSet(RHICmdList, GET_STATID(STAT_CLP_Velocity), *this, View, FParallelCommandListBindings(PassParameters));
-					ParallelMeshPass.DispatchDraw(&ParallelCommandListSet, RHICmdList);
-				});
-			}
-			else
-			{
-				PassParameters->RenderTargets[0] = FRenderTargetBinding(VelocityTexture, ERenderTargetLoadAction::ELoad);
-
-				GraphBuilder.AddPass(
-					RDG_EVENT_NAME("Velocity"),
-					PassParameters,
-					ERDGPassFlags::Raster,
-					[this, &View, &ParallelMeshPass](FRHICommandListImmediate& RHICmdList)
-				{
-					Scene->UniformBuffers.UpdateViewUniformBuffer(View);
-					SetStereoViewport(RHICmdList, View);
-
-					ParallelMeshPass.DispatchDraw(nullptr, RHICmdList);
-				});
-			}
-
+			UE_LOG(LogEngine, Log, TEXT("r.MotionBlurDebug: FrameNumber=%d Pause=%d"), ViewFamily.FrameNumber, ViewFamily.bWorldIsPaused ? 1 : 0);
 		}
 	}
 
-	if (!InOutVelocityTexture && bVelocityRendered)
+	BeginVelocityRendering(RHICmdList, VelocityRT, VelocityPass, bClearVelocityRT);
+
 	{
-		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
-		ConvertToExternalTexture(GraphBuilder, VelocityTexture, SceneContext.SceneVelocity);
-		InOutVelocityTexture = VelocityTexture;
+		if (IsParallelVelocity())
+		{
+			// This initial renderpass will just be a clear in the parallel case.
+			RHICmdList.EndRenderPass();
+
+			// Now do parallel encoding.
+			RenderVelocitiesInnerParallel(RHICmdList, VelocityRT, VelocityPass);
+		}
+		else
+		{
+			RenderVelocitiesInner(RHICmdList, VelocityRT, VelocityPass);
+			RHICmdList.EndRenderPass();
+		}
+		if(VelocityPass != EVelocityPass::Opaque)
+		{
+			FTexture2DRHIRef DepthTexture = FSceneRenderTargets::Get(RHICmdList).GetSceneDepthTexture();
+			if(DepthTexture)
+			{
+				RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, DepthTexture);
+			}
+		}
+		RHICmdList.CopyToResolveTarget(VelocityRT->GetRenderTargetItem().TargetableTexture, VelocityRT->GetRenderTargetItem().ShaderResourceTexture, FResolveParams());
 	}
+
+	// to be able to observe results with VisualizeTexture
+	GVisualizeTexture.SetCheckPoint(RHICmdList, VelocityRT);
 }
 
-EPixelFormat FVelocityRendering::GetFormat(EShaderPlatform ShaderPlatform)
-{
-	return FDataDrivenShaderPlatformInfo::GetSupportsRayTracing(ShaderPlatform) ? PF_A16B16G16R16 : PF_G16R16;
-}
-
-FRDGTextureDesc FVelocityRendering::GetRenderTargetDesc(EShaderPlatform ShaderPlatform)
+FPooledRenderTargetDesc FVelocityRendering::GetRenderTargetDesc()
 {
 	const FIntPoint BufferSize = FSceneRenderTargets::Get_FrameConstantsOnly().GetBufferSizeXY();
-	return FRDGTextureDesc::Create2D(BufferSize, GetFormat(ShaderPlatform), FClearValueBinding::Transparent, TexCreate_RenderTargetable | TexCreate_UAV | TexCreate_ShaderResource);
+	const FIntPoint VelocityBufferSize = BufferSize;		// full resolution so we can reuse the existing full res z buffer
+	return FPooledRenderTargetDesc(FPooledRenderTargetDesc::Create2DDesc(VelocityBufferSize, PF_G16R16, FClearValueBinding::Transparent, TexCreate_None, TexCreate_RenderTargetable | TexCreate_UAV | TexCreate_ShaderResource, false));
 }
 
-bool FVelocityRendering::IsSeparateVelocityPassSupported(EShaderPlatform ShaderPlatform)
+bool FVelocityRendering::IsSeparateVelocityPassSupported()
 {
-	return GPixelFormats[GetFormat(ShaderPlatform)].Supported;
+	return GPixelFormats[PF_G16R16].Supported;
 }
 
 bool FVelocityRendering::BasePassCanOutputVelocity(EShaderPlatform ShaderPlatform)
@@ -395,7 +518,7 @@ bool FVelocityMeshProcessor::PrimitiveHasVelocityForView(const FViewInfo& View, 
 
 bool FOpaqueVelocityMeshProcessor::PrimitiveCanHaveVelocity(EShaderPlatform ShaderPlatform, const FPrimitiveSceneProxy* PrimitiveSceneProxy)
 {
-	if (!FVelocityRendering::IsSeparateVelocityPassSupported(ShaderPlatform))
+	if (!FVelocityRendering::IsSeparateVelocityPassSupported())
 	{
 		return false;
 	}
@@ -479,9 +602,8 @@ void FOpaqueVelocityMeshProcessor::AddMeshBatch(
 	if (MeshBatch.bUseForMaterial && bIsNotTranslucent && ShouldIncludeMaterialInDefaultOpaquePass(*Material))
 	{
 		// This is specifically done *before* the material swap, as swapped materials may have different fill / cull modes.
-		const FMeshDrawingPolicyOverrideSettings OverrideSettings = ComputeMeshOverrideSettings(MeshBatch);
-		const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, *Material, OverrideSettings);
-		const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, *Material, OverrideSettings);
+		const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, *Material);
+		const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, *Material);
 
 		/**
 		 * Materials without masking or custom vertex modifications can be swapped out
@@ -509,7 +631,7 @@ bool FTranslucentVelocityMeshProcessor::PrimitiveCanHaveVelocity(EShaderPlatform
 	 * Therefore, the primitive can't be filtered based on motion, or it will break post
 	 * effects like depth of field which rely on depth information.
 	 */
-	return FVelocityRendering::IsSeparateVelocityPassSupported(ShaderPlatform);
+	return FVelocityRendering::IsSeparateVelocityPassSupported();
 }
 
 bool FTranslucentVelocityMeshProcessor::PrimitiveHasVelocityForFrame(const FPrimitiveSceneProxy* PrimitiveSceneProxy)
@@ -554,9 +676,8 @@ void FTranslucentVelocityMeshProcessor::AddMeshBatch(
 
 	if (MeshBatch.bUseForMaterial && bMaterialWritesVelocity)
 	{
-		const FMeshDrawingPolicyOverrideSettings OverrideSettings = ComputeMeshOverrideSettings(MeshBatch);
-		const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, *Material, OverrideSettings);
-		const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, *Material, OverrideSettings);
+		const ERasterizerFillMode MeshFillMode = ComputeMeshFillMode(MeshBatch, *Material);
+		const ERasterizerCullMode MeshCullMode = ComputeMeshCullMode(MeshBatch, *Material);
 
 		Process(MeshBatch, BatchElementMask, StaticMeshId, PrimitiveSceneProxy, *MaterialRenderProxy, *Material, MeshFillMode, MeshCullMode);
 	}
@@ -566,10 +687,10 @@ void GetVelocityPassShaders(
 	const FMaterial& Material,
 	FVertexFactoryType* VertexFactoryType,
 	ERHIFeatureLevel::Type FeatureLevel,
-	TShaderRef<FVelocityHS>& HullShader,
-	TShaderRef<FVelocityDS>& DomainShader,
-	TShaderRef<FVelocityVS>& VertexShader,
-	TShaderRef<FVelocityPS>& PixelShader)
+	FVelocityHS*& HullShader,
+	FVelocityDS*& DomainShader,
+	FVelocityVS*& VertexShader,
+	FVelocityPS*& PixelShader)
 {
 	const EMaterialTessellationMode MaterialTessellationMode = Material.GetTessellationMode();
 
@@ -586,18 +707,18 @@ void GetVelocityPassShaders(
 	static const auto* CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.ShaderPipelines"));
 	const bool bUseShaderPipelines = RHISupportsShaderPipelines(GShaderPlatformForFeatureLevel[FeatureLevel]) && !bNeedsHSDS && CVar && CVar->GetValueOnAnyThread() != 0;
 
-	FShaderPipelineRef ShaderPipeline = bUseShaderPipelines ? Material.GetShaderPipeline(&VelocityPipeline, VertexFactoryType, false) : FShaderPipelineRef();
-	if (ShaderPipeline.IsValid())
+	FShaderPipeline* ShaderPipeline = bUseShaderPipelines ? Material.GetShaderPipeline(&VelocityPipeline, VertexFactoryType, false) : nullptr;
+	if (ShaderPipeline)
 	{
-		VertexShader = ShaderPipeline.GetShader<FVelocityVS>();
-		PixelShader = ShaderPipeline.GetShader<FVelocityPS>();
-		check(VertexShader.IsValid() && PixelShader.IsValid());
+		VertexShader = ShaderPipeline->GetShader<FVelocityVS>();
+		PixelShader = ShaderPipeline->GetShader<FVelocityPS>();
+		check(VertexShader && PixelShader);
 	}
 	else
 	{
 		VertexShader = Material.GetShader<FVelocityVS>(VertexFactoryType);
 		PixelShader = Material.GetShader<FVelocityPS>(VertexFactoryType);
-		check(VertexShader.IsValid() && PixelShader.IsValid());
+		check(VertexShader && PixelShader);
 	}
 }
 
@@ -655,6 +776,7 @@ FVelocityMeshProcessor::FVelocityMeshProcessor(const FScene* Scene, const FScene
 	PassDrawRenderState = InPassDrawRenderState;
 	PassDrawRenderState.SetViewUniformBuffer(Scene->UniformBuffers.ViewUniformBuffer);
 	PassDrawRenderState.SetInstancedViewUniformBuffer(Scene->UniformBuffers.InstancedViewUniformBuffer);
+	PassDrawRenderState.SetPassUniformBuffer(Scene->UniformBuffers.VelocityPassUniformBuffer);
 }
 
 FOpaqueVelocityMeshProcessor::FOpaqueVelocityMeshProcessor(const FScene* Scene, const FSceneView* InViewIfDynamicMeshCommand, const FMeshPassProcessorRenderState& InPassDrawRenderState, FMeshPassDrawListContext* InDrawListContext)
@@ -671,6 +793,7 @@ FMeshPassProcessor* CreateVelocityPassProcessor(const FScene* Scene, const FScen
 }
 
 FRegisterPassProcessorCreateFunction RegisterVelocityPass(&CreateVelocityPassProcessor, EShadingPath::Deferred,  EMeshPass::Velocity, EMeshPassFlags::CachedMeshCommands | EMeshPassFlags::MainView);
+
 FTranslucentVelocityMeshProcessor::FTranslucentVelocityMeshProcessor(const FScene* Scene, const FSceneView* InViewIfDynamicMeshCommand, const FMeshPassProcessorRenderState& InPassDrawRenderState, FMeshPassDrawListContext* InDrawListContext)
 	: FVelocityMeshProcessor(Scene, InViewIfDynamicMeshCommand, InPassDrawRenderState, InDrawListContext)
 {}

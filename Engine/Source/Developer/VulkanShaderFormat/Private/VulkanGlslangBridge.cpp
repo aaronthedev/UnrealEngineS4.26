@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 // Updated to SDK 1.1.82.1
 
 #include "VulkanShaderFormat.h"
 #include "ShaderCore.h"
-#include "ShaderCompilerCore.h"
 
 #if defined(_MSC_VER) && _MSC_VER == 1800
 	#pragma warning(push)
@@ -295,7 +294,7 @@ static void ComputeMovableWordIndices(FSpirv& Spirv)
 	check((bDone && Ptr < PtrEnd) || (!bDone && Ptr == PtrEnd));
 
 	// Go through all found uniform variables and make sure we found the right info
-	for (const auto& Pair : VariableUniformTypes)
+	for (const auto Pair : VariableUniformTypes)
 	{
 		const uint32 VariableId = Pair.Key;
 		const FString* FoundVariableName = Names.Find(VariableId);
@@ -322,7 +321,7 @@ static void ComputeMovableWordIndices(FSpirv& Spirv)
 			{
 				// Standalone global var
 				FSpirv::FEntry* FoundEntry = Spirv.GetEntry(*FoundVariableName);
-				checkf(FoundEntry, TEXT("Entry name not found in SPIR-V module: %s"), *(*FoundVariableName));
+				check(FoundEntry);
 				FDecorations& FoundDecorations = Decorations.FindChecked(VariableId);
 				FoundEntry->Binding = FoundDecorations.BindingIndex;
 				FoundEntry->WordBindingIndex = FoundDecorations.WordBindingIndex;
@@ -331,25 +330,6 @@ static void ComputeMovableWordIndices(FSpirv& Spirv)
 			}
 		}
 	}
-}
-
-static void PatchSpirvEntryPoint(FSpirv& OutSpirv, uint32 OffsetToName)
-{
-	char* EntryPointName = (char*)(OutSpirv.Data.GetData() + OffsetToName);
-	check(!FCStringAnsi::Strcmp(EntryPointName, "main_00000000_00000000"));
-	FCStringAnsi::Sprintf(EntryPointName, "main_%0.8x_%0.8x", OutSpirv.Data.Num() * sizeof(uint32), OutSpirv.CRC);
-};
-
-bool PatchSpirvReflectionEntriesAndEntryPoint(FSpirv& OutSpirv)
-{
-	// Re-compute movable word indices and update CRC code
-	ComputeMovableWordIndices(OutSpirv);
-	OutSpirv.CRC = FCrc::MemCrc32(OutSpirv.Data.GetData(), OutSpirv.Data.Num() * sizeof(uint32));
-
-	// Patch the entry point name
-	PatchSpirvEntryPoint(OutSpirv, OutSpirv.OffsetToMainName);
-	PatchSpirvEntryPoint(OutSpirv, OutSpirv.OffsetToEntryPoint);
-	return true;
 }
 
 bool GenerateSpirv(const ANSICHAR* Source, FCompilerInfo& CompilerInfo, FString& OutErrors, const FString& DumpDebugInfoPath, FSpirv& OutSpirv)
@@ -442,8 +422,18 @@ bool GenerateSpirv(const ANSICHAR* Source, FCompilerInfo& CompilerInfo, FString&
 			OutSpirv.ReflectionInfo.Add(Entry);
 		}
 
-		PatchSpirvReflectionEntriesAndEntryPoint(OutSpirv);
+		ComputeMovableWordIndices(OutSpirv);
+		OutSpirv.CRC = FCrc::MemCrc32(OutSpirv.Data.GetData(), OutSpirv.Data.Num() * sizeof(uint32));
 
+		// Patch the entry point name
+		auto FixEntryPoint = [&](uint32 OffsetToName)
+		{
+			char* EntryPointName = (char*)(OutSpirv.Data.GetData() + OffsetToName);
+			check(!FCStringAnsi::Strcmp(EntryPointName, "main_00000000_00000000"));
+			FCStringAnsi::Sprintf(EntryPointName, "main_%0.8x_%0.8x", OutSpirv.Data.Num() * sizeof(uint32), OutSpirv.CRC);
+		};
+		FixEntryPoint(OutSpirv.OffsetToMainName);
+		FixEntryPoint(OutSpirv.OffsetToEntryPoint);
 		// Copy back to original spirv data as it is used for dumping information
 		FMemory::Memcpy(&Spirv[0], OutSpirv.Data.GetData(), SizeInWords * sizeof(uint32));
 

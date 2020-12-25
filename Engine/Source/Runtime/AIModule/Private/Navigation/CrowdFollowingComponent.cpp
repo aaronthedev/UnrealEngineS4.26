@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Navigation/CrowdFollowingComponent.h"
 #include "NavigationSystem.h"
@@ -252,9 +252,9 @@ void UCrowdFollowingComponent::SetCrowdRotateToVelocity(bool bEnable)
 
 void UCrowdFollowingComponent::SetAvoidanceGroup(int32 GroupFlags, bool bUpdateAgent)
 {
-	if (AvoidanceInterface.IsValid() && AvoidanceInterface->GetAvoidanceGroupMask() != GroupFlags)
+	if (CharacterMovement && CharacterMovement->GetAvoidanceGroupMask() != GroupFlags)
 	{
-		AvoidanceInterface->SetAvoidanceGroupMask(GroupFlags);
+		CharacterMovement->SetAvoidanceGroup(GroupFlags);
 
 		if (bUpdateAgent)
 		{
@@ -265,9 +265,9 @@ void UCrowdFollowingComponent::SetAvoidanceGroup(int32 GroupFlags, bool bUpdateA
 
 void UCrowdFollowingComponent::SetGroupsToAvoid(int32 GroupFlags, bool bUpdateAgent)
 {
-	if (AvoidanceInterface.IsValid() && AvoidanceInterface->GetGroupsToAvoidMask() != GroupFlags)
+	if (CharacterMovement && CharacterMovement->GetGroupsToAvoidMask() != GroupFlags)
 	{
-		AvoidanceInterface->SetGroupsToAvoidMask(GroupFlags);
+		CharacterMovement->SetGroupsToAvoid(GroupFlags);
 
 		if (bUpdateAgent)
 		{
@@ -278,9 +278,9 @@ void UCrowdFollowingComponent::SetGroupsToAvoid(int32 GroupFlags, bool bUpdateAg
 
 void UCrowdFollowingComponent::SetGroupsToIgnore(int32 GroupFlags, bool bUpdateAgent)
 {
-	if (AvoidanceInterface.IsValid() && AvoidanceInterface->GetGroupsToIgnoreMask() != GroupFlags)
+	if (CharacterMovement && CharacterMovement->GetGroupsToIgnoreMask() != GroupFlags)
 	{
-		AvoidanceInterface->SetGroupsToIgnoreMask(GroupFlags);
+		CharacterMovement->SetGroupsToIgnore(GroupFlags);
 
 		if (bUpdateAgent)
 		{
@@ -291,17 +291,17 @@ void UCrowdFollowingComponent::SetGroupsToIgnore(int32 GroupFlags, bool bUpdateA
 
 int32 UCrowdFollowingComponent::GetAvoidanceGroup() const
 {
-	return AvoidanceInterface.IsValid() ? AvoidanceInterface->GetAvoidanceGroupMask() : 0;
+	return CharacterMovement ? CharacterMovement->GetAvoidanceGroupMask() : 0;
 }
 
 int32 UCrowdFollowingComponent::GetGroupsToAvoid() const
 {
-	return AvoidanceInterface.IsValid() ? AvoidanceInterface->GetGroupsToAvoidMask() : 0;
+	return CharacterMovement ? CharacterMovement->GetGroupsToAvoidMask() : 0;
 }
 
 int32 UCrowdFollowingComponent::GetGroupsToIgnore() const
 {
-	return AvoidanceInterface.IsValid() ? AvoidanceInterface->GetGroupsToIgnoreMask() : 0;
+	return CharacterMovement ? CharacterMovement->GetGroupsToIgnoreMask() : 0;
 }
 
 void UCrowdFollowingComponent::SuspendCrowdSteering(bool bSuspend)
@@ -334,7 +334,7 @@ void UCrowdFollowingComponent::UpdateCachedDirections(const FVector& NewVelocity
 	}
 
 	// CrowdAgentMoveDirection either direction on path or aligned with current velocity
-	const bool bIsNotFalling = (MovementComp == nullptr || !MovementComp->IsFalling());
+	const bool bIsNotFalling = (CharacterMovement == nullptr || CharacterMovement->MovementMode != MOVE_Falling);
 	if (bIsNotFalling)
 	{
 		if (bUpdateDirectMoveVelocity)
@@ -385,7 +385,7 @@ void UCrowdFollowingComponent::ApplyCrowdAgentVelocity(const FVector& NewVelocit
 	bCanCheckMovingTooFar = !bTraversingLink && bIsNearEndOfPath;
 	if (IsCrowdSimulationEnabled() && Status == EPathFollowingStatus::Moving && MovementComp)
 	{
-		const bool bIsNotFalling = (MovementComp == nullptr || !MovementComp->IsFalling());
+		const bool bIsNotFalling = (CharacterMovement == nullptr || CharacterMovement->MovementMode != MOVE_Falling);
 		if (bAffectFallingVelocity || bIsNotFalling)
 		{
 			UpdateCachedDirections(NewVelocity, DestPathCorner, bTraversingLink);
@@ -576,8 +576,7 @@ void UCrowdFollowingComponent::Reset()
 bool UCrowdFollowingComponent::UpdateMovementComponent(bool bForce)
 {
 	bool bRet = Super::UpdateMovementComponent(bForce);
-
-	AvoidanceInterface = TWeakInterfacePtr<IRVOAvoidanceInterface>(MovementComp);
+	CharacterMovement = Cast<UCharacterMovementComponent>(MovementComp);
 
 	return bRet;
 }
@@ -1049,7 +1048,7 @@ FVector UCrowdFollowingComponent::GetMoveFocus(bool bAllowStrafe) const
 
 		// if we're not moving, falling, or don't have a crowd agent move direction, set our focus to ahead of the rotation of our owner to keep the same rotation,
 		// otherwise use the Crowd Agent Move Direction to move in the direction we're supposed to be going
-		const FVector ForwardDir = MovementComp->GetOwner() && ((Status != EPathFollowingStatus::Moving) || (MovementComp->IsFalling()) || CrowdAgentMoveDirection.IsNearlyZero()) ?
+		const FVector ForwardDir = MovementComp->GetOwner() && ((Status != EPathFollowingStatus::Moving) || (CharacterMovement && (CharacterMovement->MovementMode == MOVE_Falling)) || CrowdAgentMoveDirection.IsNearlyZero()) ?
 			MovementComp->GetOwner()->GetActorForwardVector() :
 			CrowdAgentMoveDirection.GetSafeNormal2D();
 

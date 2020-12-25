@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "GPUSkinPublicDefs.h"
 #include "UObject/ObjectMacros.h"
 #include "UObject/Object.h"
 #include "Engine/EngineTypes.h"
@@ -12,10 +11,7 @@
 #include "Engine/TextureStreamingTypes.h"
 #include "Components/MeshComponent.h"
 #include "Containers/SortedMap.h"
-#include "LODSyncInterface.h"
 #include "SkinnedMeshComponent.generated.h"
-
-enum class ESkinCacheUsage : uint8;
 
 class FPrimitiveSceneProxy;
 class FColorVertexBuffer;
@@ -103,15 +99,6 @@ namespace EBoneSpaces
 	};
 }
 
-UENUM(BlueprintType, meta = (Bitflags, UseEnumValuesAsMaskValuesInEditor = "true"))
-enum class EVertexOffsetUsageType : uint8
-{
-	None = 0,
-	PreSkinningOffset = (1 << 0),
-	PostSkinningOffset = (1 << 1),
-};
-ENUM_CLASS_FLAGS(EVertexOffsetUsageType);
-
 /** Struct used to indicate one active morph target that should be applied to this USkeletalMesh when rendered. */
 struct FActiveMorphTarget
 {
@@ -142,6 +129,18 @@ struct FActiveMorphTarget
 	}
 };
 
+struct FSkeletalMeshObjectCallbackData
+{
+	enum class EEventType { Register, Unregister, Update };
+	typedef void (*TCallbackMeshObjectCallback)(
+		EEventType Event, 
+		class FSkeletalMeshObject* MeshObject,
+		uint64 UserData);
+
+	uint64 UserData = 0;
+	TCallbackMeshObjectCallback Run = nullptr;
+};
+
 /** Vertex skin weight info supplied for a component override. */
 USTRUCT(BlueprintType, meta = (HasNativeMake = "Engine.KismetRenderingLibrary.MakeSkinWeightInfo", HasNativeBreak = "Engine.KismetRenderingLibrary.BreakSkinWeightInfo"))
 struct FSkelMeshSkinWeightInfo
@@ -150,10 +149,10 @@ struct FSkelMeshSkinWeightInfo
 
 	/** Index of bones that influence this vertex */
 	UPROPERTY()
-	int32	Bones[MAX_TOTAL_INFLUENCES];
+	int32	Bones[8];
 	/** Influence of each bone on this vertex */
 	UPROPERTY()
-	uint8	Weights[MAX_TOTAL_INFLUENCES];
+	uint8	Weights[8];
 };
 
 /** LOD specific setup for the skeletal mesh component. */
@@ -174,9 +173,6 @@ struct ENGINE_API FSkelMeshComponentLODInfo
 
 	/** Vertex buffer used to override skin weights from one of the profiles */
 	FSkinWeightVertexBuffer* OverrideProfileSkinWeights;
-
-	TArray<FVector> PreSkinningOffsets;
-	TArray<FVector> PostSkinningOffsets;
 
 	FSkelMeshComponentLODInfo();
 	~FSkelMeshComponentLODInfo();
@@ -202,15 +198,6 @@ struct FSkelMeshRefPoseOverride
 	TArray<FTransform> RefBonePoses;
 };
 
-USTRUCT(BlueprintType)
-struct FVertexOffsetUsage
-{
-	GENERATED_BODY()
-
-	UPROPERTY(EditAnywhere, Category = "Mesh", meta = (Bitmask, BitmaskEnum = EVertexOffsetUsageType))
-	int32 Usage = 0;
-};
-
 /**
  *
  * Skinned mesh component that supports bone skinned mesh rendering.
@@ -220,7 +207,7 @@ struct FVertexOffsetUsage
 */
 
 UCLASS(hidecategories=Object, config=Engine, editinlinenew, abstract)
-class ENGINE_API USkinnedMeshComponent : public UMeshComponent, public ILODSyncInterface
+class ENGINE_API USkinnedMeshComponent : public UMeshComponent
 {
 	GENERATED_UCLASS_BODY()
 
@@ -242,15 +229,6 @@ class ENGINE_API USkinnedMeshComponent : public UMeshComponent, public ILODSyncI
 	 */
 	UPROPERTY(BlueprintReadOnly, Category="Mesh")
 	TWeakObjectPtr<USkinnedMeshComponent> MasterPoseComponent;
-
-	/**
-	 * How this Component's LOD uses the skin cache feature. Auto will defer to the asset's (SkeletalMesh) option. If Ray Tracing is enabled, will imply Enabled
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mesh")
-	TArray<ESkinCacheUsage> SkinCacheUsage;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Mesh", meta=(DisplayName="Pre/Post Skin Deltas Usage"))
-	TArray<FVertexOffsetUsage> VertexOffsetUsage;
 
 	/** const getters for previous transform idea */
 	const TArray<uint8>& GetPreviousBoneVisibilityStates() const
@@ -356,11 +334,6 @@ public:
 	FColor WireframeColor_DEPRECATED;
 #endif
 
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	/** Debug draw color */
-	TOptional<FLinearColor> DebugDrawColor;
-#endif
-
 protected:
 	/** Information for current ref pose override, if present */
 	FSkelMeshRefPoseOverride* RefPoseOverride;
@@ -376,20 +349,6 @@ public:
 	 * @param	InLODIndex		The LOD we want to export
 	 */
 	void GetCPUSkinnedVertices(TArray<struct FFinalSkinVertex>& OutVertices, int32 InLODIndex);
-
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-	/** Get whether to draw this mesh's debug skeleton */
-	bool ShouldDrawDebugSkeleton() const { return bDrawDebugSkeleton; }
-
-	/** Set whether to draw this mesh's debug skeleton */
-	void SetDrawDebugSkeleton(bool bInDraw) { bDrawDebugSkeleton = bInDraw; }
-
-	/** Get debug draw color */
-	const TOptional<FLinearColor>& GetDebugDrawColor() const { return DebugDrawColor; }
-
-	/** Set debug draw color */
-	void SetDebugDrawColor(const FLinearColor& InColor) { DebugDrawColor = InColor; }
-#endif
 
 	/** Array indicating all active morph targets. This array is updated inside RefreshBoneTransforms based on the Anim Blueprint. */
 	TArray<FActiveMorphTarget> ActiveMorphTargets;
@@ -482,7 +441,7 @@ public:
 	 *  You can change this default value in the INI file 
 	 * Mostly related with performance
 	 */
-	UPROPERTY(Interp, EditAnywhere, AdvancedDisplay, BlueprintReadWrite, Config, Category=Optimization)
+	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadWrite, Config, Category=Optimization)
 	EVisibilityBasedAnimTickOption VisibilityBasedAnimTickOption;
 
 #if WITH_EDITOR
@@ -500,9 +459,6 @@ protected:
 
 	/** Whether or not a Skin Weight profile is currently set for this component */
 	uint8 bSkinWeightProfileSet:1;
-
-	/** Whether or not a Skin Weight profile is currently pending load and creation for this component */
-	uint8 bSkinWeightProfilePending:1;
 public:
 
 	/** Whether we should use the min lod specified in MinLodModel for this component instead of the min lod in the mesh */
@@ -638,12 +594,6 @@ protected:
 	/** External flag indicating that we may not be evaluated every frame */
 	uint8 bExternalEvaluationRateLimited:1;
 
-#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-private:
-	/** Whether to draw this mesh's debug skeleton (regardless of showflags) */
-	uint8 bDrawDebugSkeleton:1;
-#endif
-
 public:
 	/** Set whether we have our tick rate externally controlled non-URO-based interpolation */
 	void EnableExternalTickRateControl(bool bInEnable) { bExternalTickRateControlled = bInEnable; }
@@ -683,6 +633,7 @@ public:
 
 	/** Object responsible for sending bone transforms, morph target state etc. to render thread. */
 	class FSkeletalMeshObject*	MeshObject;
+	FSkeletalMeshObjectCallbackData MeshObjectCallbackData;
 
 	/** Gets the skeletal mesh resource used for rendering the component. */
 	FSkeletalMeshRenderData* GetSkeletalMeshRenderData() const;
@@ -822,12 +773,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Components|SkinnedMesh")
 	bool GetTwistAndSwingAngleOfDeltaRotationFromRefPose(FName BoneName, float& OutTwistAngle, float& OutSwingAngle) const;
 
-	bool IsSkinCacheAllowed(int32 LodIdx) const;
-	/**
-	 *	Compute SkeletalMesh MinLOD that will be used by this component
-	 */
-	int32 ComputeMinLOD() const;
-
 public:
 	//~ Begin UObject Interface
 	virtual void BeginDestroy() override;
@@ -835,7 +780,7 @@ public:
 	virtual void GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize) override;
 	virtual FString GetDetailedInfoInternal() const override;
 #if WITH_EDITOR
-	virtual bool CanEditChange(const FProperty* InProperty) const override;
+	virtual bool CanEditChange(const UProperty* InProperty) const override;
 #endif // WITH_EDITOR
 	//~ End UObject Interface
 
@@ -843,10 +788,13 @@ protected:
 	//~ Begin UActorComponent Interface
 	virtual void OnRegister() override;
 	virtual void OnUnregister() override;
-	virtual void CreateRenderState_Concurrent(FRegisterComponentContext* Context) override;
+	virtual void CreateRenderState_Concurrent() override;
 	virtual void SendRenderDynamicData_Concurrent() override;
 	virtual void DestroyRenderState_Concurrent() override;
-	virtual bool RequiresGameThreadEndOfFrameRecreate() const override;
+	virtual bool RequiresGameThreadEndOfFrameRecreate() const override
+	{
+		return false;
+	}
 	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction) override;
 	virtual UObject const* AdditionalStatObject() const override;
 	//~ End UActorComponent Interface
@@ -872,10 +820,6 @@ public:
 	virtual void GetStreamingRenderAssetInfo(FStreamingTextureLevelContext& LevelContext, TArray<FStreamingRenderAssetPrimitiveInfo>& OutStreamingRenderAssets) const override;
 	virtual int32 GetNumMaterials() const override;
 	//~ End UPrimitiveComponent Interface
-
-	//~ Begin UMeshComponent Interface
-	virtual void RegisterLODStreamingCallback(FLODStreamingCallback&& Callback, int32 LODIdx, float TimeoutSecs, bool bOnStreamIn) override;
-	//~ End UMeshComponent Interface
 
 	/** Get the pre-skinning local space bounds for this component. */
 	void GetPreSkinnedLocalBounds(FBoxSphereBounds& OutBounds) const;
@@ -1031,28 +975,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Components|SkinnedMesh")
 	bool IsUsingSkinWeightProfile() const { return bSkinWeightProfileSet == 1;  }
 
-	UE_DEPRECATED(4.26, "GetVertexOffsetUsage() has been deprecated. Support will be dropped in the future.")
-	UFUNCTION(BlueprintCallable, Category = "Components|SkinnedMesh")
-	int32 GetVertexOffsetUsage(int32 LODIndex) const;
-
-	UE_DEPRECATED(4.26, "SetVertexOffsetUsage() has been deprecated. Support will be dropped in the future.")
-	UFUNCTION(BlueprintCallable, Category = "Components|SkinnedMesh")
-	void SetVertexOffsetUsage(int32 LODIndex, int32 Usage);
-
-	UE_DEPRECATED(4.26, "SetPreSkinningOffsets() has been deprecated. Support will be dropped in the future.")
-	UFUNCTION(BlueprintCallable, Category = "Components|SkinnedMesh")
-	void SetPreSkinningOffsets(int32 LODIndex, TArray<FVector> Offsets);
-
-	UE_DEPRECATED(4.26, "SetPostSkinningOffsets() has been deprecated. Support will be dropped in the future.")
-	UFUNCTION(BlueprintCallable, Category = "Components|SkinnedMesh")
-	void SetPostSkinningOffsets(int32 LODIndex, TArray<FVector> Offsets);
-
-	/** Check whether or not a Skin Weight Profile is currently pending load / create */
-	bool IsSkinWeightProfilePending() const { return bSkinWeightProfilePending == 1; }
-
+protected:
 	/** Queues an update of the Skin Weight Buffer used by the current MeshObject */
 	void UpdateSkinWeightOverrideBuffer();
-protected:	
 
 	/** Name of currently set up Skin Weight profile, otherwise is 'none' */
 	FName CurrentSkinWeightProfileName;
@@ -1469,7 +1394,7 @@ public:
 
 	/**
 	 *	Hides the specified bone with name.  Currently this just enforces a scale of 0 for the hidden bones.
-	 *	Compared to HideBone By Index - This keeps track of list of bones and update when LOD changes
+	 *	Compoared to HideBone By Index - This keeps track of list of bones and update when LOD changes
 	 *
 	 *	@param  BoneName            Name of bone to hide
 	 *	@param	PhysBodyOption		Option for physics bodies that attach to the bones to be hidden
@@ -1479,7 +1404,7 @@ public:
 
 	/**
 	 *	UnHide the specified bone with name.  Currently this just enforces a scale of 0 for the hidden bones.
-	 *	Compared to HideBone By Index - This keeps track of list of bones and update when LOD changes
+	 *	Compoared to HideBone By Index - This keeps track of list of bones and update when LOD changes
 	 *	@param  BoneName            Name of bone to unhide
 	 */
 	UFUNCTION(BlueprintCallable, Category="Components|SkinnedMesh")
@@ -1540,13 +1465,6 @@ private:
 	 * relative transforms.
 	 */
 	bool GetMissingMasterBoneRelativeTransform(int32 InBoneIndex, FMissingMasterBoneCacheEntry& OutInfo) const;
-
-	// BEGIN ILODSyncComponent
-	virtual int32 GetDesiredSyncLOD() const override;
-	virtual void SetSyncLOD(int32 LODIndex) override;
-	virtual int32 GetNumSyncLODs() const override;
-	virtual int32 GetCurrentSyncLOD() const override;
-	// END ILODSyncComponent
 
 	// Animation update rate control.
 public:
@@ -1613,25 +1531,14 @@ public:
 
 		if (bWasRenderStateCreated && bIsRegistered)
 		{
-			Component->CreateRenderState_Concurrent(nullptr);
+			Component->CreateRenderState_Concurrent();
 		}
 	}
 };
 
-/** Simple, CPU evaluation of a vertex's skinned tangent basis */
-void GetTypedSkinnedTangentBasis(
-	const USkinnedMeshComponent* SkinnedComp,
-	const FSkelMeshRenderSection& Section,
-	const FStaticMeshVertexBuffers& StaticVertexBuffers,
-	const FSkinWeightVertexBuffer& SkinWeightVertexBuffer,
-	const int32 VertIndex,
-	const TArray<FMatrix> & RefToLocals,
-	FVector& OutTangentX,
-	FVector& OutTangentZ
-);
 
 /** Simple, CPU evaluation of a vertex's skinned position helper function */
-template <bool bCachedMatrices>
+template <bool bExtraBoneInfluencesT, bool bCachedMatrices>
 FVector GetTypedSkinnedVertexPosition(
 	const USkinnedMeshComponent* SkinnedComp,
 	const FSkelMeshRenderSection& Section,

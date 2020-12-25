@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EditorTutorial.h"
 #include "Modules/ModuleManager.h"
@@ -85,9 +85,9 @@ void UEditorTutorial::HandleTutorialStageEnded(FName StageName)
 
 void UEditorTutorial::HandleTutorialLaunched()
 {
-	FIntroTutorials& IntroTutorials = FModuleManager::GetModuleChecked<FIntroTutorials>(TEXT("IntroTutorials"));
-	IntroTutorials.DismissTutorialBrowser();
 	FEditorScriptExecutionGuard ScriptGuard;
+	FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>(TEXT("LevelEditor"));
+	LevelEditorModule.GetLevelEditorTabManager()->InvokeTab(FTabId("TutorialsBrowser"))->RequestCloseTab();
 	OnTutorialLaunched();
 }
 

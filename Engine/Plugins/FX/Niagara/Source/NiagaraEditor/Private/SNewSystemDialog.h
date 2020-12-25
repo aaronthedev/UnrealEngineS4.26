@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,7 +9,7 @@
 #include "ContentBrowserDelegates.h"
 #include "SNiagaraNewAssetDialog.h"
 
-class SNiagaraAssetPickerList;
+class SNiagaraTemplateAssetPicker;
 class SWrapBox;
 
 /** A modal dialog to collect information needed to create a new niagara system. */
@@ -27,14 +27,17 @@ public:
 	TArray<FAssetData> GetSelectedEmitterAssets() const;
 
 private:
-
-	void OnEmitterAssetsActivated(const FAssetData& ActivatedTemplateAsset);
-
 	void GetSelectedSystemTemplateAssets(TArray<FAssetData>& OutSelectedAssets);
 
 	void GetSelectedProjectSystemAssets(TArray<FAssetData>& OutSelectedAssets);
 
 	void GetSelectedProjectEmiterAssets(TArray<FAssetData>& OutSelectedAssets);
+
+	void OnTemplateAssetActivated(const FAssetData& ActivatedTemplateAsset);
+
+	void OnSystemAssetsActivated(const TArray<FAssetData>& ActivatedAssets, EAssetTypeActivationMethod::Type ActivationMethod);
+
+	void OnEmitterAssetsActivated(const TArray<FAssetData>& ActivatedAssets, EAssetTypeActivationMethod::Type ActivationMethod);
 
 	bool IsAddEmittersToSelectionButtonEnabled() const;
 	
@@ -45,6 +48,13 @@ private:
 	FReply RemoveEmitterFromSelectionButtonClicked(FAssetData EmitterAsset);
 
 private:
+	FGetCurrentSelectionDelegate GetSelectedSystemAssetsFromPicker;
+
+	FGetCurrentSelectionDelegate GetSelectedEmitterAssetsFromPicker;
+
+	FAssetData ActivatedTemplateSystemAsset;
+
+	FAssetData ActivatedProjectSystemAsset;
 
 	TArray<FAssetData> SelectedEmitterAssets;
 
@@ -52,9 +62,5 @@ private:
 
 	TSharedPtr<SWrapBox> SelectedEmitterBox;
 
-	TSharedPtr<SNiagaraAssetPickerList> TemplateAssetPicker;
-
-	TSharedPtr<SNiagaraAssetPickerList> EmitterAssetPicker;
-
-	TSharedPtr<SNiagaraAssetPickerList> SystemAssetPicker;
+	TSharedPtr<SNiagaraTemplateAssetPicker> TemplateAssetPicker;
 };

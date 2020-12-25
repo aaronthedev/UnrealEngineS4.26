@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Audio.h"
@@ -16,7 +16,6 @@
 #include "Sound/SoundClass.h"
 #include "Sound/SoundConcurrency.h"
 #include "Sound/SoundMix.h"
-#include "Sound/SoundSubmix.h"
 #include "Sound/SoundSubmixSend.h"
 #include "Sound/SoundSourceBus.h"
 #include "AudioVirtualLoop.h"
@@ -27,6 +26,7 @@
  */
 
 class FArchive;
+class FAudioDebugger;
 class FAudioDevice;
 class FAudioEffectsManager;
 class FCanvas;
@@ -40,11 +40,12 @@ class ICompressedAudioInfo;
 class UReverbEffect;
 class USoundAttenuation;
 class USoundBase;
+class USoundClass;
 class USoundConcurrency;
 class USoundEffectSourcePreset;
 class USoundEffectSubmixPreset;
 class USoundMix;
-class USoundSubmixBase;
+class USoundSubmix;
 class USoundSourceBus;
 class USoundWave;
 class UWorld;
@@ -56,10 +57,6 @@ struct FAudioQualitySettings;
 struct FRotator;
 struct FWaveInstance;
 
-namespace Audio
-{
-	class FAudioDebugger;
-}
 
 /**
  * Debug state of the audio system
@@ -76,6 +73,8 @@ enum EDebugState
 	DEBUGSTATE_TestLPF,
 	// Force LPF on all sources
 	DEBUGSTATE_TestHPF,
+	// Bleed stereo sounds fully to the rear speakers
+	DEBUGSTATE_TestStereoBleed,
 	// Bleed all sounds to the LFE speaker
 	DEBUGSTATE_TestLFEBleed,
 	// Disable any LPF filter effects
@@ -138,12 +137,6 @@ struct FListener
 	FTransform Transform;
 	FVector Velocity;
 
-	/** An attenuation override to use for distance and attenuation calculations */
-	FVector AttenuationOverride;
-
-	/** Is our attenuation override active */
-	uint32 bUseAttenuationOverride:1;
-
 	struct FInteriorSettings InteriorSettings;
 
 	/** The ID of the volume the listener resides in */
@@ -151,9 +144,6 @@ struct FListener
 
 	/** The ID of the world the listener resides in */
 	uint32 WorldID;
-
-	/** Index of this listener inside the AudioDevice's listener array */
-	int32 ListenerIndex;
 
 	/** The times of interior volumes fading in and out */
 	double InteriorStartTime;
@@ -170,11 +160,6 @@ struct FListener
 	FVector GetUp() const		{ return Transform.GetUnitAxis(EAxis::Z); }
 	FVector GetFront() const	{ return Transform.GetUnitAxis(EAxis::Y); }
 	FVector GetRight() const	{ return Transform.GetUnitAxis(EAxis::X); }
-
-	/**
-	 * Gets the position of the listener
-	 */
-	FVector GetPosition(bool bAllowOverride) const;
 
 	/**
 	 * Works out the interp value between source and end
@@ -194,10 +179,7 @@ struct FListener
 	FListener(FAudioDevice* InAudioDevice)
 		: Transform(FTransform::Identity)
 		, Velocity(ForceInit)
-		, AttenuationOverride(ForceInit)
-		, bUseAttenuationOverride(false)
 		, AudioVolumeID(0)
-		, ListenerIndex(0)
 		, InteriorStartTime(0.0)
 		, InteriorEndTime(0.0)
 		, ExteriorEndTime(0.0)
@@ -213,37 +195,6 @@ struct FListener
 
 private:
 	FListener();
-};
-
-/**
- * Game thread representation of a listener
- */
-struct FListenerProxy
-{
-	FTransform Transform;
-
-	/** An attenuation override to use for distance and attenuation calculations */
-	FVector AttenuationOverride;
-
-	/** Is our attenuation override active */
-	uint32 bUseAttenuationOverride :1;
-
-	/**
-	 * Gets the position of the listener proxy
-	 */
-	FVector GetPosition(bool bAllowOverride) const;
-
-	FListenerProxy()
-		: bUseAttenuationOverride(false)
-	{
-	}
-
-	FListenerProxy(const FListener& Listener)
-		: Transform(Listener.Transform)
-		, AttenuationOverride(Listener.AttenuationOverride)
-		, bUseAttenuationOverride(Listener.bUseAttenuationOverride)
-	{
-	}
 };
 
 /**
@@ -332,11 +283,7 @@ struct FAttenuationListenerData
 	const FSoundAttenuationSettings* AttenuationSettings;
 
 	/** Computes and returns some geometry related to the listener and the given sound transform. */
-	UE_DEPRECATED(4.25, "Use FAttenuationListenerData::Create that passes a ListenerIndex")
 	static FAttenuationListenerData Create(const FAudioDevice& AudioDevice, const FTransform& InListenerTransform, const FTransform& InSoundTransform, const FSoundAttenuationSettings& InAttenuationSettings);
-
-	/** Computes and returns some geometry related to the listener and the given sound transform. */
-	static FAttenuationListenerData Create(const FAudioDevice& AudioDevice, int32 ListenerIndex, const FTransform& InSoundTransform, const FSoundAttenuationSettings& InAttenuationSettings);
 
 private:
 	FAttenuationListenerData(const FTransform& InListenerTransform, const FTransform& InSoundTransform, const FSoundAttenuationSettings& InAttenuationSettings)
@@ -444,6 +391,7 @@ private:
 	bool HandleIsolateReverbCommand(const TCHAR* Cmd, FOutputDevice& Ar);
 	bool HandleTestLPFCommand(const TCHAR* Cmd, FOutputDevice& Ar);
 	bool HandleTestHPFCommand(const TCHAR* Cmd, FOutputDevice& Ar);
+	bool HandleTestStereoBleedCommand(const TCHAR* Cmd, FOutputDevice& Ar);
 	bool HandleTestLFEBleedCommand(const TCHAR* Cmd, FOutputDevice& Ar);
 	bool HandleDisableLPFCommand(const TCHAR* Cmd, FOutputDevice& Ar);
 	bool HandleDisableHPFCommand(const TCHAR* Cmd, FOutputDevice& Ar);
@@ -469,7 +417,7 @@ private:
 	bool HandleSetDynamicSoundCommand(const TCHAR* Cmd, FOutputDevice& Ar);
 
 	/** Handles all argument parsing for the solo commands in one place */
-	using FToggleSoloPtr = void (Audio::FAudioDebugger::*)(FName InName, bool bExclusive);
+	using FToggleSoloPtr = void (FAudioDebugger::*)(FName InName, bool bExclusive);
 	void HandleAudioSoloCommon(const TCHAR* Cmd, FOutputDevice& Ar, FToggleSoloPtr Funct);
 
 	/**
@@ -507,7 +455,7 @@ public:
 	/**
 	 * Basic initialization of the platform agnostic layer of the audio system
 	 */
-	bool Init(Audio::FDeviceId InDeviceID, int32 InMaxSources);
+	bool Init(int32 InMaxSources);
 
 	/**
 	 * Tears down the audio device
@@ -558,18 +506,11 @@ public:
 	 */
 	void Flush(UWorld* WorldToFlush, bool bClearActivatedReverb = true);
 
-	/*
-	* Derived classes can override this method to do their own cleanup. Called at the end of FAudioDevice::Flush()
-	*/
-	virtual void FlushExtended(UWorld* WorldToFlush, bool bClearActivatedReverb);
-
 	/**
 	 * Allows audio rendering command queue to flush during audio device flush.
 	 * @param bPumpSynchronously must be called in situations where the audio render thread is not being called.
 	 */
 	virtual void FlushAudioRenderingCommands(bool bPumpSynchronously = false) {}
-
-	void OnPreGarbageCollect();
 
 	/**
 	 * Stop any playing sounds that are using a particular SoundWave
@@ -657,20 +598,17 @@ public:
 	void SetListener(UWorld* World, int32 InListenerIndex, const FTransform& ListenerTransform, float InDeltaSeconds);
 
 	/** Sets an override for the listener to do attenuation calculations. */
-	UE_DEPRECATED(4.25, "Use SetListenerAttenuationOverride that passes a ListenerIndex instead")
-	void SetListenerAttenuationOverride(const FVector AttenuationPosition) { SetListenerAttenuationOverride(0, AttenuationPosition); }
-
-	/** Sets an override position for the specified listener to do attenuation calculations. */
-	void SetListenerAttenuationOverride(int32 ListenerIndex, const FVector AttenuationPosition);
+	void SetListenerAttenuationOverride(const FVector AttenuationPosition);
 
 	/** Removes a listener attenuation override. */
-	UE_DEPRECATED(4.25, "Use ClearListenerAttenuationOverride that passes a ListenerIndex instead")
-	void ClearListenerAttenuationOverride() { ClearListenerAttenuationOverride(0); }
-
-	/** Removes a listener attenuation override for the specified listener. */
-	void ClearListenerAttenuationOverride(int32 ListenerIndex);
+	void ClearListenerAttenuationOverride();
 
 	const TArray<FListener>& GetListeners() const { check(IsInAudioThread()); return Listeners; }
+
+	/**
+	* Get ambisonics mixer, if one is available
+	*/
+	TAmbisonicsMixerPtr GetAmbisonicsMixer() { return AmbisonicsMixer; };
 
 	/**
 	 * Returns the currently applied reverb effect if there is one.
@@ -787,12 +725,10 @@ public:
 
 	struct FAudioVolumeSettings
 	{
-		uint32 AudioVolumeID = INDEX_NONE;
-		float Priority = 0.0f;
+		uint32 AudioVolumeID;
+		float Priority;
 		FReverbSettings ReverbSettings;
 		FInteriorSettings InteriorSettings;
-		TArray<FAudioVolumeSubmixSendSettings> SubmixSendSettings;
-		TArray<FAudioVolumeSubmixOverrideSettings> SubmixOverrideSettings;
 	};
 
 	void GetAudioVolumeSettings(const uint32 WorldID, const FVector& Location, FAudioVolumeSettings& OutSettings) const;
@@ -838,10 +774,10 @@ public:
 	virtual void InitSoundSubmixes() {}
 
 	/** Registers the sound submix */
-	virtual void RegisterSoundSubmix(const USoundSubmixBase* SoundSubmix, bool bInit) {}
+	virtual void RegisterSoundSubmix(USoundSubmix* SoundSubmix, bool bInit) {}
 
 	/** Unregisters the sound submix */
-	virtual void UnregisterSoundSubmix(const USoundSubmixBase* SoundSubmix) {}
+	virtual void UnregisterSoundSubmix(USoundSubmix* SoundSubmix) {}
 
 	/**
 	 * Registers the submix buffer listener with the given submix.
@@ -871,11 +807,6 @@ public:
 	*/
 	FSoundClassProperties* GetSoundClassCurrentProperties(USoundClass* InSoundClass);
 
-	/** 
-	* Returns the parameters which are dynamic from the given sound class. 
-	*/
-	FSoundClassDynamicProperties* GetSoundClassDynamicProperties(USoundClass* InSoundClass);
-
 	/**
 	* Checks to see if a coordinate is within a distance of any listener
 	*/
@@ -884,48 +815,14 @@ public:
 	/**
 	* Checks to see if a coordinate is within a distance of the given listener
 	*/
-	UE_DEPRECATED(4.25, "Use LocationIsAudible that passes a ListenerIndex to check against a specific Listener")
 	bool LocationIsAudible(const FVector& Location, const FTransform& ListenerTransform, const float MaxDistance) const;
-
-	/**
-	* Checks to see if a coordinate is within a distance of a specific listener
-	*/
-	bool LocationIsAudible(const FVector& Location, int32 ListenerIndex, const float MaxDistance) const;
 
 	/**
 	* Returns the distance to the nearest listener from the given location
 	*/
 	float GetDistanceToNearestListener(const FVector& Location) const;
 
-	UE_DEPRECATED(4.25, "Use GetDistanceSquaredToListener to check against a specific Listener")
 	float GetSquaredDistanceToListener(const FVector& Location, const FTransform& ListenerTransform) const;
-
-	/**
-	* Sets OutSqDistance to the distance from location to the appropriate listener representation, depending on calling thread.
-	* Returns true if listener position is valid, false if not (in which case, OutSqDistance is undefined).
-	*/
-	bool GetDistanceSquaredToListener(const FVector& Location, int32 ListenerIndex, float& OutSqDistance) const;
-
-	/**
-	* Sets OutSqDistance to the distance from location the closest listener, depending on calling thread.
-	* Returns true if listener position is valid, false if not (in which case, OutSqDistance is undefined).
-	*/
-	bool GetDistanceSquaredToNearestListener(const FVector& Location, float& OutSqDistance) const;
-		
-		/**
-	* Returns a position from the appropriate listener representation, depending on calling thread.
-	*
-	* @param	ListenerIndex	index of the listener or proxy
-	* @param	OutPosition		filled in position of the listener or proxy
-	* @param	bAllowOverride	if true we will use the attenuation override for position, if set
-	* @return	true if successful
-	*/
-	bool GetListenerPosition(int32 ListenerIndex, FVector& OutPosition, bool bAllowOverride) const;
-
-	/**
-	* Returns the transform of the appropriate listener representation, depending on calling thread
-	*/
-	bool GetListenerTransform(int32 ListenerIndex, FTransform& OutTransform) const;
 
 	/**
 	 * Sets the Sound Mix that should be active by default
@@ -1132,10 +1029,7 @@ public:
 
 	/** Returns the index of the listener closest to the given sound transform */
 	static int32 FindClosestListenerIndex(const FTransform& SoundTransform, const TArray<FListener>& InListeners);
-
-	/** Returns the index of the listener closest to the given sound transform */
 	int32 FindClosestListenerIndex(const FTransform& SoundTransform) const;
-	int32 FindClosestListenerIndex(const FVector& Position, float& OutSqDistance, bool AllowAttenuationOverrides) const;
 
 	/** Disables ActiveSound from responding to calls from its associated AudioComponent. */
 	void UnlinkActiveSoundFromComponent(const FActiveSound& InActiveSound);
@@ -1152,10 +1046,10 @@ public:
 	}
 
 	/** Returns the main audio device of the engine */
-	static FAudioDeviceHandle GetMainAudioDevice()
+	static FAudioDevice* GetMainAudioDevice()
 	{
 		// Try to get GEngine's main audio device
-		FAudioDeviceHandle AudioDevice = GEngine->GetMainAudioDevice();
+		FAudioDevice* AudioDevice = GEngine->GetMainAudioDevice();
 
 		// If we don't have a main audio device (maybe we're running in a non-standard mode like a commandlet)
 		if (!AudioDevice)
@@ -1214,7 +1108,7 @@ public:
 
 	static bool IsOcclusionPluginLoaded()
 	{
-		if (FAudioDeviceHandle MainAudioDevice = GEngine->GetMainAudioDevice())
+		if (FAudioDevice* MainAudioDevice = GEngine->GetMainAudioDevice())
 		{
 			return MainAudioDevice->bOcclusionInterfaceEnabled;
 		}
@@ -1227,9 +1121,15 @@ public:
 		return bReverbInterfaceEnabled;
 	}
 
+	/** Whether or not the reverb plugin is bypassing the master reverb. */
+	bool IsReverbPluginBypassingMasterReverb() const
+	{
+		return IsReverbPluginEnabled() && bReverbPluginBypassesMasterReverb;
+	}
+
 	static bool IsReverbPluginLoaded()
 	{
-		if (FAudioDeviceHandle MainAudioDevice = GEngine->GetMainAudioDevice())
+		if (FAudioDevice* MainAudioDevice = GEngine->GetMainAudioDevice())
 		{
 			return MainAudioDevice->bReverbInterfaceEnabled;
 		}
@@ -1254,10 +1154,8 @@ public:
 		return bIsBakedAnalysisEnabled;
 	}
 
-	virtual bool IsNonRealtime() const
-	{
-		return false;
-	}
+	/** Updates the source's modulation controls. */
+	virtual void UpdateModulationControls(const uint32 SourceId, const FSoundModulationControls& InControls) {}
 
 	/** Updates the source effect chain. Only implemented in audio mixer. */
 	virtual void UpdateSourceEffectChain(const uint32 SourceEffectChainId, const TArray<FSourceEffectChainEntry>& SourceEffectChain, const bool bPlayEffectChainTails) {}
@@ -1266,7 +1164,13 @@ public:
 	virtual bool GetCurrentSourceEffectChain(const uint32 SourceEffectChainId, TArray<FSourceEffectChainEntry>& OutCurrentSourceEffectChainEntries) { return false; }
 
 	/** Updates the submix properties of any playing submix instances. Allows editor to make changes to submix properties and hear them propagate live.*/
-	virtual void UpdateSubmixProperties(USoundSubmixBase* InSubmix)
+	virtual void UpdateSubmixProperties(USoundSubmix* InSubmix)
+	{
+		UE_LOG(LogAudio, Error, TEXT("Submixes are only supported in audio mixer."));
+	}
+
+	/** Sets the dynamic volume of the given submix. */
+	virtual void SetSubmixOutputVolume(USoundSubmix* InSubmix, float NewVolume)
 	{
 		UE_LOG(LogAudio, Error, TEXT("Submixes are only supported in audio mixer."));
 	}
@@ -1298,52 +1202,12 @@ public:
 		UE_LOG(LogAudio, Error, TEXT("Envelope following submixes only works with the audio mixer. Please run using -audiomixer or set INI file to use submix recording."));
 	}
 
-	/** Set the wet-dry level of the given submix */
-	virtual void SetSubmixWetDryLevel(USoundSubmix* InSoundSubmix, float InOutputVolume, float InWetLevel, float InDryLevel)
-	{
-		UE_LOG(LogAudio, Error, TEXT("Submixes are only supported in audio mixer."));
-	}
-
-	/** Set the wet-dry level of the given submix */
-	virtual void SetSubmixOutputVolume(USoundSubmix* InSoundSubmix, float InOutputVolume)
-	{
-		UE_LOG(LogAudio, Error, TEXT("Submixes are only supported in audio mixer."));
-	}
-
-	/** Set the wet-dry level of the given submix */
-	virtual void SetSubmixWetLevel(USoundSubmix* InSoundSubmix, float InWetLevel)
-	{
-		UE_LOG(LogAudio, Error, TEXT("Submixes are only supported in audio mixer."));
-	}
-
-	/** Set the wet-dry level of the given submix */
-	virtual void SetSubmixDryLevel(USoundSubmix* InSoundSubmix, float InDryLevel)
-	{
-		UE_LOG(LogAudio, Error, TEXT("Submixes are only supported in audio mixer."));
-	}
-
-	/** Sets a submix effect chain override for the given submix */
-	virtual void SetSubmixEffectChainOverride(USoundSubmix* InSoundSubmix, const TArray<FSoundEffectSubmixPtr>& InSubmixEffectChain, float InCrossfadeTime)
-	{
-		UE_LOG(LogAudio, Error, TEXT("Submixes are only supported in audio mixer."));
-	}
-
-	/** Clears all submix effect chain overrides from the submix. */
-	virtual void ClearSubmixEffectChainOverride(USoundSubmix* InSoundSubmix, float InCrossfadeTime)
-	{
-		UE_LOG(LogAudio, Error, TEXT("Submixes are only supported in audio mixer."));
-	}
-
 	/** Adds an envelope follower delegate to the submix for this audio device. */
 	virtual void AddEnvelopeFollowerDelegate(USoundSubmix* InSubmix, const FOnSubmixEnvelopeBP& OnSubmixEnvelopeBP);
-
-	virtual void StartSpectrumAnalysis(USoundSubmix* InSubmix, const FSoundSpectrumAnalyzerSettings& InSettings);
+	virtual void StartSpectrumAnalysis(USoundSubmix* InSubmix, const Audio::FSpectrumAnalyzerSettings& InSettings);
 	virtual void StopSpectrumAnalysis(USoundSubmix* InSubmix);
 	virtual void GetMagnitudesForFrequencies(USoundSubmix* InSubmix, const TArray<float>& InFrequencies, TArray<float>& OutMagnitudes);
 	virtual void GetPhasesForFrequencies(USoundSubmix* InSubmix, const TArray<float>& InFrequencies, TArray<float>& OutPhases);
-	virtual void AddSpectralAnalysisDelegate(USoundSubmix* InSubmix, const FSoundSpectrumAnalyzerDelegateSettings& InDelegateSettings, const FOnSubmixSpectralAnalysisBP& OnSubmixSpectralAnalysisBP);
-	virtual void RemoveSpectralAnalysisDelegate(USoundSubmix* InSubmix, const FOnSubmixSpectralAnalysisBP& OnSubmixSpectralAnalysisBP);
-
 
 protected:
 	friend class FSoundSource;
@@ -1401,11 +1265,11 @@ private:
 	/**
 	 * Parses the sound classes and propagates multiplicative properties down the tree.
 	 */
-	void ParseSoundClasses(float InDeltaTime);
+	void ParseSoundClasses();
 
-	/** Stops quiet/low priority sounds due to being evaluated as not fulfilling concurrency requirements
+	/** Stops quiet sounds due to being evaluated as not fulfilling concurrency requirements
 	 */
-	void UpdateConcurrency(TArray<FWaveInstance*>& WaveInstances, TArray<FActiveSound*>& ActiveSoundsCopy);
+	void StopQuietSoundsDueToMaxConcurrency(TArray<FWaveInstance*>& WaveInstances, TArray<FActiveSound*>& ActiveSoundsCopy);
 
 	/**
 	 * Checks if the given sound would be audible.
@@ -1512,9 +1376,6 @@ private:
 
 	/** Allow platforms to optionally specify low-level audio platform settings. */
 	virtual FAudioPlatformSettings GetPlatformSettings() const { return FAudioPlatformSettings(); }
-
-	/** Updates audio volume effects. */
-	void UpdateAudioVolumeEffects();
 
 public:
 
@@ -1647,18 +1508,16 @@ public:
 	float GetGameDeltaTime() const;
 
 	/** Whether device is using listener attenuation override or not. */
-	UE_DEPRECATED(4.25, "Use ParseAttenuation that passes a ListenerIndex instead")
-	bool IsUsingListenerAttenuationOverride() const { return IsUsingListenerAttenuationOverride(0); }
-
-	/** Returns if the specific listener is using an attenuation override position. */
-	bool IsUsingListenerAttenuationOverride(int32 ListenerIndex) const;
+	bool IsUsingListenerAttenuationOverride() const
+	{
+		return bUseListenerAttenuationOverride;
+	}
 
 	/** Returns the listener attenuation override */
-	UE_DEPRECATED(4.25, "Use ParseAttenuation that passes a ListenerIndex instead")
-	const FVector& GetListenerAttenuationOverride() const { return GetListenerAttenuationOverride(0); }
-
-	/** Returns the listener attenuation override for the specified listener */
-	const FVector& GetListenerAttenuationOverride(int32 ListenerIndex) const;
+	const FVector& GetListenerAttenuationOverride() const
+	{
+		return ListenerAttenuationOverride;
+	}
 
 	void UpdateVirtualLoops(bool bForceUpdate);
 
@@ -1668,6 +1527,12 @@ public:
 		const double CurrTime = FPlatformTime::Seconds();
 		DeviceDeltaTime = CurrTime - LastUpdateTime;
 		LastUpdateTime = CurrTime;
+	}
+
+	/** Update the audio clock to be based off the update delta time */
+	virtual void UpdateAudioClock()
+	{
+		AudioClock += GetDeviceDeltaTime();
 	}
 
 private:
@@ -1711,9 +1576,6 @@ public:
 	void SetGlobalPitchModulation(float PitchScale, float TimeSec);
 	float ClampPitch(float InPitchScale) const;
 
-	/** Overrides the attenuation scale used on a sound class. */
-	void SetSoundClassDistanceScale(USoundClass* InSoundClass, float DistanceScale, float TimeSec);
-
 	float GetPlatformAudioHeadroom() const { check(IsInAudioThread()); return PlatformAudioHeadroom; }
 	void SetPlatformAudioHeadroom(float PlatformHeadRoom);
 
@@ -1731,8 +1593,8 @@ public:
 
 	bool IsMainAudioDevice()
 	{
-		FAudioDeviceHandle MainAudioDevice = GEngine->GetMainAudioDevice();
-		return (!MainAudioDevice || MainAudioDevice.GetAudioDevice() == this);
+		FAudioDevice* MainAudioDevice = GEngine->GetMainAudioDevice();
+		return (MainAudioDevice == nullptr || MainAudioDevice == this);
 	}
 
 	/** Set whether or not we force the use of attenuation for non-game worlds (as by default we only care about game worlds) */
@@ -1763,7 +1625,7 @@ public:
 	int32 NumPrecacheFrames;
 
 	/** The handle for this audio device used in the audio device manager. */
-	Audio::FDeviceId DeviceID;
+	Audio::FDeviceId DeviceHandle;
 
 	/** 3rd party audio spatialization interface. */
 	TAudioSpatializationPtr SpatializationPluginInterface;
@@ -1777,11 +1639,14 @@ public:
 	/** 3rd party modulation interface */
 	TAudioModulationPtr ModulationInterface;
 
+	/** This devices ambisonics pointer, if one exists */
+	TAmbisonicsMixerPtr AmbisonicsMixer;
+
 	/** 3rd party listener observers registered to this audio device. */
 	TArray<TAudioPluginListenerPtr> PluginListeners;
 
 	// Game thread cache of listener transforms
-	TArray<FListenerProxy> ListenerProxies;
+	TArray<FTransform> ListenerTransforms;
 
 private:
 	/** The maximum number of sources.  Value cannot change after initialization. */
@@ -1827,6 +1692,12 @@ protected:
 	// Audio thread representation of listeners
 	TArray<FListener> Listeners;
 
+	// A listener attenuation override to use for distance and attenuation calculations
+	FVector ListenerAttenuationOverride;
+
+	// Whether or not to use the listener attenuation override
+	bool bUseListenerAttenuationOverride;
+
 	TArray<FSoundSource*> Sources;
 	TArray<FSoundSource*> FreeSources;
 
@@ -1834,8 +1705,7 @@ private:
 	TMap<FWaveInstance*, FSoundSource*>	WaveInstanceSourceMap;
 
 	/** Current properties of all sound classes */
-	TMap<USoundClass*, FSoundClassProperties> SoundClasses;
-	TMap<USoundClass*, FSoundClassDynamicProperties> DynamicSoundClassProperties;
+	TMap<USoundClass*, FSoundClassProperties>	SoundClasses;
 
 	/** The Base SoundMix that's currently active */
 	USoundMix* BaseSoundMix;
@@ -1870,9 +1740,6 @@ private:
 
 	/** The activated reverb that currently has the highest priority - Audio Thread owned */
 	FActivatedReverb HighestPriorityActivatedReverb;
-
-	/** The current audio volume settings the listener is in. */
-	FAudioVolumeSettings CurrentAudioVolumeSettings;
 
 	/** Gamethread representation of whether HRTF is enabled for all 3d sounds. (not bitpacked to avoid thread issues) */
 	bool bHRTFEnabledForAll_OnGameThread;
@@ -1913,6 +1780,7 @@ private:
 	uint8 bSpatializationInterfaceEnabled:1;
 	uint8 bOcclusionInterfaceEnabled:1;
 	uint8 bReverbInterfaceEnabled:1;
+	uint8 bReverbPluginBypassesMasterReverb:1;
 	uint8 bModulationInterfaceEnabled:1;
 
 	/** Whether or not we've initialized plugin listeners array. */
@@ -2011,4 +1879,5 @@ private:
 	float GlobalMinPitch;
 	float GlobalMaxPitch;
 };
+
 

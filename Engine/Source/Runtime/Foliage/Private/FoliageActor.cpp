@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "FoliageActor.h"
 #include "InstancedFoliageActor.h"
 #include "FoliageType_Actor.h"
 #include "FoliageHelper.h"
-#include "Engine/Engine.h"
 
 //
 //
@@ -85,12 +84,10 @@ AActor* FFoliageActor::Spawn(AInstancedFoliageActor* IFA, const FFoliageInstance
 	FActorSpawnParameters SpawnParameters;
 	SpawnParameters.ObjectFlags = RF_Transactional;
 	SpawnParameters.bHideFromSceneOutliner = true;
-	SpawnParameters.bCreateActorPackage = true;
 	SpawnParameters.OverrideLevel = IFA->GetLevel();
-	AActor* NewActor = IFA->GetWorld()->SpawnActor(ActorClass, nullptr, nullptr, SpawnParameters);
+	AActor* NewActor = IFA->GetWorld()->SpawnActor<AActor>(ActorClass, Instance.GetInstanceWorldTransform(), SpawnParameters);
 	if (NewActor)
 	{
-		NewActor->SetActorTransform(Instance.GetInstanceWorldTransform());
 		FFoliageHelper::SetIsOwnedByFoliage(NewActor);
 	}
 	return NewActor;
@@ -131,30 +128,16 @@ void FFoliageActor::AddInstance(AInstancedFoliageActor* IFA, const FFoliageInsta
 	ActorInstances.Add(Spawn(IFA, NewInstance));
 }
 
-void FFoliageActor::AddExistingInstance(AInstancedFoliageActor* IFA, const FFoliageInstance& ExistingInstance, UObject* InstanceImplementation)
-{
-	AActor* Actor = Cast<AActor>(InstanceImplementation);
-	check(Actor);
-	check(Actor->GetClass() == ActorClass);
-	Actor->SetActorTransform(ExistingInstance.GetInstanceWorldTransform());
-	FFoliageHelper::SetIsOwnedByFoliage(Actor);
-	check(IFA->GetLevel() == Actor->GetLevel());
-	ActorInstances.Add(Actor);
-}
-
 void FFoliageActor::RemoveInstance(int32 InstanceIndex)
 {
 	AActor* Actor = ActorInstances[InstanceIndex];
 	ActorInstances.RemoveAtSwap(InstanceIndex);
-	Actor->GetWorld()->DestroyActor(Actor, true);
-	bActorsDestroyed = true;
-}
 
-void FFoliageActor::MoveInstance(int32 InstanceIndex, UObject*& OutInstanceImplementation)
-{
-	AActor* Actor = ActorInstances[InstanceIndex];
-	OutInstanceImplementation = Actor;
-	ActorInstances.RemoveAtSwap(InstanceIndex);
+	if (Actor && Actor->GetWorld())
+	{
+		Actor->GetWorld()->DestroyActor(Actor, true);
+		bActorsDestroyed = true;
+	}
 }
 
 void FFoliageActor::BeginUpdate()
@@ -246,37 +229,6 @@ void FFoliageActor::UpdateActorTransforms(const TArray<FFoliageInstance>& Instan
 void FFoliageActor::PostEditUndo(AInstancedFoliageActor* IFA, UFoliageType* FoliageType, const TArray<FFoliageInstance>& Instances, const TSet<int32>& SelectedIndices)
 {
 	UpdateActorTransforms(Instances);
-}
-
-void FFoliageActor::PreMoveInstances(AInstancedFoliageActor* InIFA, const TArray<int32>& InInstancesMoved)
-{
-	for (int32 Index : InInstancesMoved)
-	{
-		if (AActor* Actor = ActorInstances[Index])
-		{
-			Actor->Modify();
-		}
-	}
-}
-
-void FFoliageActor::PostMoveInstances(AInstancedFoliageActor* InIFA, const TArray<int32>& InInstancesMoved, bool bFinished)
-{
-	// Copy because moving actors might remove them from ActorInstances
-	TArray<AActor*> MovedActors;
-	MovedActors.Reserve(InInstancesMoved.Num());
-	for (int32 Index : InInstancesMoved)
-	{
-		if (AActor * Actor = ActorInstances[Index])
-		{
-			MovedActors.Add(Actor);
-			Actor->PostEditMove(bFinished);
-		}
-	}
-
-	if (GIsEditor && GEngine && MovedActors.Num() && bFinished)
-	{
-		GEngine->BroadcastActorsMoved(MovedActors);
-	}
 }
 
 void FFoliageActor::NotifyFoliageTypeChanged(AInstancedFoliageActor* IFA, UFoliageType* FoliageType, const TArray<FFoliageInstance>& Instances, const TSet<int32>& SelectedIndices, bool bSourceChanged)

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,7 +7,6 @@
 #include "IContentBrowserSingleton.h"
 
 class FMenuBuilder;
-struct FContentBrowserDataFilter;
 
 class FFrontendFilterCategory
 {
@@ -44,8 +43,8 @@ public:
 	/** Returns true if the filter should be in the list when disabled and not in the list when enabled */
 	virtual bool IsInverseFilter() const { return false; }
 
-	/** Invoke to set the source filter that is currently used to filter assets in the asset view */
-	virtual void SetCurrentFilter(TArrayView<const FName> InSourcePaths, const FContentBrowserDataFilter& InBaseFilter) { }
+	/** Invoke to set the ARFilter that is currently used to filter assets in the asset view */
+	virtual void SetCurrentFilter(const FARFilter& InBaseFilter) { }
 
 	/** Notification that the filter became active or inactive */
 	virtual void ActiveStateChanged(bool bActive) { }

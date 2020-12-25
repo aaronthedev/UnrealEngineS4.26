@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Animation/MovieSceneMarginTemplate.h"
 
@@ -13,7 +13,7 @@ template<> FMovieSceneAnimTypeID GetBlendingDataType<FMargin>()
 }
 
 FMovieSceneMarginSectionTemplate::FMovieSceneMarginSectionTemplate(const UMovieSceneMarginSection& Section, const UMovieScenePropertyTrack& Track)
-	: FMovieScenePropertySectionTemplate(Track.GetPropertyName(), Track.GetPropertyPath().ToString())
+	: FMovieScenePropertySectionTemplate(Track.GetPropertyName(), Track.GetPropertyPath())
 	, TopCurve(Section.TopCurve)
 	, LeftCurve(Section.LeftCurve)
 	, RightCurve(Section.RightCurve)
@@ -25,7 +25,7 @@ FMovieSceneMarginSectionTemplate::FMovieSceneMarginSectionTemplate(const UMovieS
 void FMovieSceneMarginSectionTemplate::Evaluate(const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const
 {
 	const FFrameTime Time = Context.GetTime();
-	UE::MovieScene::TMultiChannelValue<float, 4> AnimatedData;
+	MovieScene::TMultiChannelValue<float, 4> AnimatedData;
 
 	float Value = 0.f;
 	if (LeftCurve.Evaluate(Time, Value))
@@ -62,7 +62,7 @@ void FMovieSceneMarginSectionTemplate::Evaluate(const FMovieSceneEvaluationOpera
 void FMovieSceneMarginSectionTemplate::Interrogate(const FMovieSceneContext& Context, FMovieSceneInterrogationData& Container, UObject* BindingOverride) const
 {
 	const FFrameTime Time = Context.GetTime();
-	UE::MovieScene::TMultiChannelValue<float, 4> AnimatedData;
+	MovieScene::TMultiChannelValue<float, 4> AnimatedData;
 
 	float Value = 0.f;
 	if (LeftCurve.Evaluate(Time, Value))
@@ -90,7 +90,7 @@ void FMovieSceneMarginSectionTemplate::Interrogate(const FMovieSceneContext& Con
 	if (!Container.GetAccumulator().FindActuator<FMargin>(ActuatorTypeID))
 	{
 		PropertyTemplate::FSectionData SectionData;
-		SectionData.Initialize(PropertyData.PropertyName, PropertyData.PropertyPath);
+		SectionData.Initialize(PropertyData.PropertyName, PropertyData.PropertyPath, PropertyData.FunctionName, PropertyData.NotifyFunctionName);
 		Container.GetAccumulator().DefineActuator(ActuatorTypeID, MakeShared<TPropertyActuator<FMargin>>(SectionData));
 	}
 

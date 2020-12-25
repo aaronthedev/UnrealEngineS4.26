@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcGeom_ICamera_h
-#define Alembic_AbcGeom_ICamera_h
+#ifndef _Alembic_AbcGeom_ICamera_h_
+#define _Alembic_AbcGeom_ICamera_h_
 
 #include <Alembic/Util/Export.h>
 #include <Alembic/AbcGeom/Foundation.h>

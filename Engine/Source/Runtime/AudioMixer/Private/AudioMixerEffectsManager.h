@@ -1,19 +1,18 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
-AudioMixerEffectsManager.h: Implementation of backwards compatible effects
-manager for the multi-platform audio mixer device.
+AudioMixerEffectsManager.h: Implementation of backwarwds compatible effects manager
+for the multiplatform audio mixer
 =============================================================================*/
 
 #pragma once
 
 #include "AudioEffect.h"
-#include "Curves/CurveFloat.h"
-#include "Sound/SoundEffectSubmix.h"
-
 
 namespace Audio
 {
+	class FMixerDevice;
+
 	class FAudioMixerEffectsManager : public FAudioEffectsManager
 	{
 	public:
@@ -21,16 +20,14 @@ namespace Audio
 		~FAudioMixerEffectsManager() override;
 
 		//~ Begin FAudioEffectsManager
-		virtual void SetReverbEffectParameters(const FAudioEffectParameters& InEffectParameters) override;
-		virtual void SetEQEffectParameters(const FAudioEffectParameters& InEffectParameters) override;
-		virtual void SetRadioEffectParameters(const FAudioEffectParameters& InEffectParameters) override;
+		virtual void SetReverbEffectParameters(const FAudioReverbEffect& ReverbEffectParameters) override;
+		virtual void SetEQEffectParameters(const FAudioEQEffect& ReverbEffectParameters) override;
+		virtual void SetRadioEffectParameters(const FAudioRadioEffect& ReverbEffectParameters) override;
 		//~ End FAudioEffectsManager
 
 	protected:
-		FRuntimeFloatCurve MasterReverbWetLevelCurve;
 
-	private:
-		FSoundEffectSubmixPtr InvalidReverbEffect;
-		FSoundEffectSubmixPtr InvalidEQEffect;
+		FRuntimeFloatCurve MasterReverbWetLevelCurve;
 	};
-} // namespace Audio
+}
+

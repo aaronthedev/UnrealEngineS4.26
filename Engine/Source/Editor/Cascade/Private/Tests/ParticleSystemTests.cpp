@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
@@ -54,7 +54,7 @@ namespace ParticleEditorPromotionTestUtils
 	static UObject* CreateAsset(UFactory* CreateFactory, UClass* AssetClass, const FString& AssetName)
 	{
 		FString PackageName = FString::Printf(TEXT("%s/%s"), *FEditorPromotionTestUtilities::GetGamePath(), *AssetName);
-		UPackage* AssetPackage = CreatePackage( *PackageName);
+		UPackage* AssetPackage = CreatePackage(NULL, *PackageName);
 		EObjectFlags Flags = RF_Public | RF_Standalone;
 
 		UObject* CreatedAsset = CreateFactory->FactoryCreateNew(AssetClass, AssetPackage, FName(*AssetName), Flags, NULL, GWarn);

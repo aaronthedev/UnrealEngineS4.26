@@ -1,18 +1,17 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Windows/WindowsPlatformHttp.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Misc/ConfigCacheIni.h"
-#if WITH_LIBCURL
-	#include "Curl/CurlHttp.h"
-	#include "Curl/CurlHttpManager.h"
-#else // ^^^ WITH_LIBCURL ^^^ // vvv !WITH_LIBCURL vvv
-	#include "WinHttp/WinHttpHttpManager.h"
-	#include "WinHttp/WinHttpHttpRequest.h"
-#endif // !WITH_LIBCURL
+#include "Curl/CurlHttp.h"
+#include "Curl/CurlHttpManager.h"
 #include "Http.h"
-#include "WinHttp/Support/WinHttpTypes.h" // Always include for OS proxy settings
+
+#include "Windows/AllowWindowsPlatformTypes.h"
+#include <winhttp.h>
+#include "Windows/HideWindowsPlatformTypes.h"
+
 
 static bool IsUnsignedInteger(const FString& InString)
 {
@@ -73,6 +72,7 @@ static bool IsValidIPv4Address(const FString& InString)
 
 void FWindowsPlatformHttp::Init()
 {
+	// warn when old http command line argument is used
 	FString HttpMode;
 	if (FParse::Value(FCommandLine::Get(), TEXT("HTTP="), HttpMode) &&
 		(HttpMode.Equals(TEXT("WinInet"), ESearchCase::IgnoreCase)))
@@ -80,39 +80,23 @@ void FWindowsPlatformHttp::Init()
 		UE_LOG(LogHttp, Warning, TEXT("-HTTP=WinInet is no longer valid"));
 	}
 
-	FGenericPlatformHttp::Init();
-
-#if WITH_LIBCURL
-	FCurlHttpManager::InitCurl();
-#endif // WITH_WINHTTP
-}
+		FCurlHttpManager::InitCurl();
+	}
 
 void FWindowsPlatformHttp::Shutdown()
 {
-#if WITH_LIBCURL
-	FCurlHttpManager::ShutdownCurl();
-#endif // WITH_LIBCURL
-
-	FGenericPlatformHttp::Shutdown();
-}
+		FCurlHttpManager::ShutdownCurl();
+	}
 
 FHttpManager * FWindowsPlatformHttp::CreatePlatformHttpManager()
 {
-#if WITH_LIBCURL
-	return new FCurlHttpManager();
-#else // ^^^ WITH_LIBCURL ^^^ // vvv WITH_LIBCURL vvv
-	return new FWinHttpHttpManager();
-#endif // !WITH_LIBCURL
-}
+		return new FCurlHttpManager();
+	}
 
 IHttpRequest* FWindowsPlatformHttp::ConstructRequest()
 {
-#if WITH_LIBCURL
 		return new FCurlHttpRequest();
-#else // ^^^ WITH_LIBCURL ^^^ // vvv WITH_LIBCURL vvv
-		return new FWinHttpHttpRequest();
-#endif // !WITH_LIBCURL
-}
+	}
 
 FString FWindowsPlatformHttp::GetMimeType(const FString& FilePath)
 {
@@ -199,14 +183,4 @@ TOptional<FString> FWindowsPlatformHttp::GetOperatingSystemProxyAddress()
 bool FWindowsPlatformHttp::IsOperatingSystemProxyInformationSupported()
 {
 	return true;
-}
-
-bool FWindowsPlatformHttp::VerifyPeerSslCertificate(bool verify)
-{
-	bool prev = false;
-#if WITH_LIBCURL
-	prev = FCurlHttpManager::CurlRequestOptions.bVerifyPeer;
-	FCurlHttpManager::CurlRequestOptions.bVerifyPeer = verify;
-#endif // #if WITH_LIBCURL
-	return prev;
 }

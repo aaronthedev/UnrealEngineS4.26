@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PackageAutoSaver.h"
 #include "UObject/Package.h"
@@ -28,7 +28,6 @@
 #include "EditorLevelUtils.h"
 #include "IVREditorModule.h"
 #include "LevelEditorViewport.h"
-#include "Animation/AnimCompressionDerivedDataPublic.h"
 
 namespace PackageAutoSaverJson
 {
@@ -123,12 +122,6 @@ void FPackageAutoSaver::UpdateAutoSaveCount(const float DeltaSeconds)
 	else
 	{
 		AutoSaveCount += DeltaSeconds;
-	}
-
-	// Update the restore information too, if needed
-	if (bNeedRestoreFileUpdate)
-	{
-		UpdateRestoreFile(PackageAutoSaverJson::IsRestoreEnabled());
 	}
 }
 
@@ -282,10 +275,9 @@ void FPackageAutoSaver::LoadRestoreFile()
 	PackagesThatCanBeRestored = PackageAutoSaverJson::LoadRestoreFile();
 }
 
-void FPackageAutoSaver::UpdateRestoreFile(const bool bRestoreEnabled)
+void FPackageAutoSaver::UpdateRestoreFile(const bool bRestoreEnabled) const
 {
 	PackageAutoSaverJson::SaveRestoreFile(bRestoreEnabled, DirtyPackagesForUserSave);
-	bNeedRestoreFileUpdate = false;
 }
 
 bool FPackageAutoSaver::HasPackagesToRestore() const
@@ -298,7 +290,7 @@ void FPackageAutoSaver::OfferToRestorePackages()
 {
 	bool bRemoveRestoreFile = true;
 
-	if(HasPackagesToRestore() && !bAutoDeclineRecovery && !FApp::IsUnattended()) // if bAutoDeclineRecovery is true, do like the user selected to decline. (then remove the restore files)
+	if(HasPackagesToRestore() && !bAutoDeclineRecovery) // if bAutoDeclineRecovery is true, do like the user selected to decline. (then remove the restore files)
 	{
 		// If we failed to restore, keep the restore information around
 		if(PackageRestore::PromptToRestorePackages(PackagesThatCanBeRestored) == FEditorFileUtils::PR_Failure)
@@ -324,7 +316,8 @@ void FPackageAutoSaver::OnPackagesDeleted(const TArray<UPackage*>& DeletedPackag
 		DirtyContentForAutoSave.Remove(DeletedPackage);
 		DirtyPackagesForUserSave.Remove(DeletedPackage);
 	}
-	bNeedRestoreFileUpdate = true;
+
+	UpdateRestoreFile(PackageAutoSaverJson::IsRestoreEnabled());
 }
 
 void FPackageAutoSaver::OnPackageDirtyStateUpdated(UPackage* Pkg)
@@ -356,6 +349,7 @@ void FPackageAutoSaver::OnPackageSaved(const FString& Filename, UObject* Obj)
 			(*AutoSaveFilename) = RelativeFilename;
 		}
 	}
+
 	UpdateDirtyListsForPackage(Pkg);
 }
 
@@ -364,7 +358,7 @@ void FPackageAutoSaver::UpdateDirtyListsForPackage(UPackage* Pkg)
 	const UPackage* TransientPackage = GetTransientPackage();
 
 	// Don't auto-save the transient package or packages with the transient flag.
-	if ( Pkg == TransientPackage || Pkg->HasAnyFlags(RF_Transient) || Pkg->HasAnyPackageFlags(PKG_InMemoryOnly) )
+	if ( Pkg == TransientPackage || Pkg->HasAnyFlags(RF_Transient) || Pkg->HasAnyPackageFlags(PKG_CompiledIn) )
 	{
 		return;
 	}
@@ -378,38 +372,24 @@ void FPackageAutoSaver::UpdateDirtyListsForPackage(UPackage* Pkg)
 		// Note: Packages get dirtied again after they're auto-saved, so this would add them back again, which we don't want
 		if ( !IsAutoSaving() )
 		{
-			auto FindAssetInPackage = [](UPackage* InPackage)
-			{
-				UObject* Asset = nullptr;
-				ForEachObjectWithPackage(InPackage, [&Asset](UObject* Object)
-					{
-						if (Object->IsAsset())
-						{
-							ensure(Asset == nullptr);
-							Asset = Object;
-							return false;
-						}
-						return true;
-					}, false);
-				return Asset;
-			};
-			UObject* Asset = FindAssetInPackage(Pkg);
-
 			// Get the set of all reference worlds.
 			FWorldContext& EditorContext = GEditor->GetEditorWorldContext();
+			TArray<UWorld*> WorldsArray;
+			EditorLevelUtils::GetWorlds(EditorContext.World(), WorldsArray, true);
 
 			bool bPackageIsMap = false;
-			EditorLevelUtils::ForEachWorlds(EditorContext.World(), [&bPackageIsMap, Pkg](UWorld* World)
+			for (UWorld* World : WorldsArray)
 			{
 				UPackage* Package = CastChecked<UPackage>(World->GetOuter());
-				bPackageIsMap = Package == Pkg;
-				return !bPackageIsMap;
-			}, true);
-
-			bool bForMapAutosave = Asset && Asset->GetTypedOuter<UWorld>()/** This handles external packages. */;
+				if (Package == Pkg)
+				{
+					bPackageIsMap = true;
+					break;
+				}
+			}
 
 			// Add package into the appropriate list (map or content)
-			if (bPackageIsMap || bForMapAutosave)
+			if (bPackageIsMap)
 			{
 				DirtyMapsForAutoSave.Add(Pkg);
 			}
@@ -424,10 +404,16 @@ void FPackageAutoSaver::UpdateDirtyListsForPackage(UPackage* Pkg)
 		// Always remove the package from the auto-save list
 		DirtyMapsForAutoSave.Remove(Pkg);
 		DirtyContentForAutoSave.Remove(Pkg);
-		if (!IsAutoSaving())
+
+		// Only remove the package from the user list if we're not auto-saving
+		// Note: Packages call this even when auto-saving, so this would remove them from the user list, which we don't want as they're still dirty
+		if ( !IsAutoSaving() )
 		{
-			DirtyPackagesForUserSave.Remove(Pkg);
-			bNeedRestoreFileUpdate = true;
+			if ( DirtyPackagesForUserSave.Remove(Pkg) )
+			{
+				// Update the restore information too
+				UpdateRestoreFile(PackageAutoSaverJson::IsRestoreEnabled());
+			}
 		}
 	}
 }
@@ -453,7 +439,6 @@ bool FPackageAutoSaver::CanAutoSave() const
 	const bool bHasGameOrProjectLoaded = FApp::HasProjectName();
 	const bool bAreShadersCompiling = GShaderCompilingManager->IsCompiling();
 	const bool bIsVREditorActive = IVREditorModule::Get().IsVREditorEnabled();	// @todo vreditor: Eventually we should support this while in VR (modal VR progress, with sufficient early warning)
-	const bool bAreAnimationsCompressing = GAsyncCompressedAnimationsTracker ? GAsyncCompressedAnimationsTracker->GetNumRemainingJobs() > 0 : false;
 
 	bool bIsSequencerPlaying = false;
 	for (FLevelEditorViewportClient* LevelVC : GEditor->GetLevelViewportClients())
@@ -468,7 +453,7 @@ bool FPackageAutoSaver::CanAutoSave() const
 	// query any active editor modes and allow them to prevent autosave
 	const bool bActiveModesAllowAutoSave = GLevelEditorModeTools().CanAutoSave();
 
-	return (bAutosaveEnabled && !bSlowTask && !bInterpEditMode && !bPlayWorldValid && !bAnyMenusVisible && !bAutomationTesting && !bIsInteracting && !GIsDemoMode && bHasGameOrProjectLoaded && !bAreShadersCompiling && !bAreAnimationsCompressing && !bIsVREditorActive && !bIsSequencerPlaying && bActiveModesAllowAutoSave);
+	return (bAutosaveEnabled && !bSlowTask && !bInterpEditMode && !bPlayWorldValid && !bAnyMenusVisible && !bAutomationTesting && !bIsInteracting && !GIsDemoMode && bHasGameOrProjectLoaded && !bAreShadersCompiling && !bIsVREditorActive && !bIsSequencerPlaying && bActiveModesAllowAutoSave);
 }
 
 bool FPackageAutoSaver::DoPackagesNeedAutoSave() const

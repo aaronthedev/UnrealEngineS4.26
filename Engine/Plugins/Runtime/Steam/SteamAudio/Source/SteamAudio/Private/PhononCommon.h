@@ -8,8 +8,6 @@
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 
-class UPhononGeometryComponent;
-
 DECLARE_LOG_CATEGORY_EXTERN(LogSteamAudio, Log, All);
 
 UENUM(BlueprintType)
@@ -108,14 +106,6 @@ namespace SteamAudio
 		int32 SecondaryRays;
 	};
 
-	struct FDynamicGeometryMap
-	{
-		FString ID;
-		UPhononGeometryComponent* DynamicGeometryComponent;
-		IPLhandle DynamicScene;
-		IPLhandle DynamicGeometry;
-	};
-
 	/** 1 Unreal Unit = 1cm, 1 Phonon Unit = 1m */
 	const float SCALEFACTOR = 0.01f;
 
@@ -130,9 +120,7 @@ namespace SteamAudio
 
 	extern FString STEAMAUDIO_API BasePath;
 	extern FString STEAMAUDIO_API RuntimePath;
-	extern FString STEAMAUDIO_API DynamicRuntimePath;
 	extern FString STEAMAUDIO_API EditorOnlyPath;
-	extern FString STEAMAUDIO_API DynamicEditorOnlyPath;
 
 	/** Functions to convert to/from Phonon/UE4 and IPLVector3/FVector. */
 	IPLVector3 STEAMAUDIO_API IPLVector3FromFVector(const FVector& Coords);
@@ -143,10 +131,7 @@ namespace SteamAudio
 	IPLVector3 STEAMAUDIO_API PhononToUnrealIPLVector3(const FVector& Coords, const bool bScale = true);
 
 	/** Given a UE4 transform, produces a corresponding 4x4 transformation matrix. */
-	void STEAMAUDIO_API GetMatrixForTransform(const FTransform& Transform, float* OutMatrix, bool bOutputRowMajor = false, bool bApplyScale = true);
-
-	/** Given a matrix (16 contiguous floats), return a corresponding IPL 4x4 transformation matrix. */
-	IPLMatrix4x4 STEAMAUDIO_API GetIPLMatrix(float* InMatrix);
+	void STEAMAUDIO_API GetMatrixForTransform(const FTransform& Transform, float* OutMatrix);
 
 	/** Phonon raytracer callback that routes ClosestHit queries to the UE4 raytracer. */
 	void STEAMAUDIO_API ClosestHit(const IPLfloat32* Origin, const IPLfloat32* Direction, const IPLfloat32 MinDistance,

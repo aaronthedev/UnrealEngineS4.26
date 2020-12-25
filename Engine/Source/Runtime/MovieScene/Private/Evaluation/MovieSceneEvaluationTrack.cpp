@@ -1,8 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Evaluation/MovieSceneEvaluationTrack.h"
 #include "Evaluation/MovieSceneExecutionTokens.h"
 
+#include "Compilation/MovieSceneSegmentCompiler.h"
 #include "Compilation/MovieSceneCompilerRules.h"
 #include "MovieSceneTrack.h"
 #include "MovieSceneCommonHelpers.h"
@@ -59,6 +60,54 @@
 
 #endif	// WITH_DEV_AUTOMATION_TESTS
 
+FMovieSceneSegmentIdentifier FMovieSceneEvaluationTrackSegments::Add(FMovieSceneSegment&& Segment)
+{
+	int32 InsertIndex = 0;
+	if (Segment.Range.GetLowerBound().IsClosed())
+	{
+		// Determine where to insert the segment
+		auto GetLowerBound = [](const FMovieSceneSegment& In) {
+			return In.Range.GetLowerBound();
+		};
+
+		// Find the index of the first segment with a lower bound > than this lower bound.
+		InsertIndex = Algo::UpperBoundBy(SortedSegments, Segment.Range.GetLowerBound(), GetLowerBound, MovieSceneHelpers::SortLowerBounds);
+		InsertIndex = FMath::Clamp(InsertIndex, 0, SortedSegments.Num());
+	}
+
+	if (!ensureMsgf(   ( !SortedSegments.IsValidIndex(InsertIndex  ) || !SortedSegments[InsertIndex  ].Range.Overlaps(Segment.Range) ) && 
+			           ( !SortedSegments.IsValidIndex(InsertIndex+1) || !SortedSegments[InsertIndex+1].Range.Overlaps(Segment.Range) ), TEXT("Attempting to add overlapping segment to segment array. This is invalid.")))
+	{
+		return FMovieSceneSegmentIdentifier();
+	}
+
+	// Attempt to combine into the previous or next segment
+	if (SortedSegments.IsValidIndex(InsertIndex-1) && SortedSegments[InsertIndex-1].CombineWith(Segment))
+	{
+		return FMovieSceneSegmentIdentifier(SegmentIdentifierToIndex.Add(InsertIndex-1));
+	}
+	if (SortedSegments.IsValidIndex(InsertIndex  ) && SortedSegments[InsertIndex  ].CombineWith(Segment))
+	{
+		return FMovieSceneSegmentIdentifier(SegmentIdentifierToIndex.Add(InsertIndex  ));
+	}
+
+	// Fixup any indices that occur after this index
+	for (int32& Index : SegmentIdentifierToIndex)
+	{
+		if (Index >= InsertIndex)
+		{
+			++Index;
+		}
+	}
+
+	FMovieSceneSegmentIdentifier ID(SegmentIdentifierToIndex.Num());
+	Segment.ID = ID;
+
+	SegmentIdentifierToIndex.Add(InsertIndex);
+	SortedSegments.Insert(MoveTemp(Segment), InsertIndex);
+
+	return ID;
+}
 
 FMovieSceneEvaluationTrack::FMovieSceneEvaluationTrack()
 	: EvaluationPriority(1000)
@@ -83,21 +132,238 @@ FMovieSceneEvaluationTrack::FMovieSceneEvaluationTrack(const FGuid& InObjectBind
 
 void FMovieSceneEvaluationTrack::PostSerialize(const FArchive& Ar)
 {
-	if (Ar.IsLoading() && !Ar.IsObjectReferenceCollector())
+	if (Ar.IsLoading())
 	{
-		SetupOverrides();
+		// Guard against serialization mismatches where structs have been removed
+		TArray<int32, TInlineAllocator<2>> ImplsToRemove;
+		for (int32 Index = 0; Index < ChildTemplates.Num(); ++Index)
+		{
+			FMovieSceneEvalTemplatePtr& Child = ChildTemplates[Index];
+			if (!Child.IsValid() || &Child->GetScriptStruct() == FMovieSceneEvalTemplate::StaticStruct())
+			{
+				ImplsToRemove.Add(Index);
+			}
+		}
+
+		if (ImplsToRemove.Num())
+		{
+			for (FMovieSceneSegment& Segment : Segments.GetSorted())
+			{
+				Segment.Impls.RemoveAll([&](const FSectionEvaluationData& In) { return ImplsToRemove.Contains(In.ImplIndex); });
+			}
+		}
 	}
+	SetupOverrides();
 }
 
 void FMovieSceneEvaluationTrack::DefineAsSingleTemplate(FMovieSceneEvalTemplatePtr&& InTemplate)
 {
 	ChildTemplates.Reset(1);
+	Segments.Reset(1);
+
 	ChildTemplates.Add(MoveTemp(InTemplate));
+
+	FSectionEvaluationData EvalData(0);
+	Segments.Add(FMovieSceneSegment(TRange<FFrameNumber>::All(), TArrayView<FSectionEvaluationData>(&EvalData, 1)));
 }
 
 int32 FMovieSceneEvaluationTrack::AddChildTemplate(FMovieSceneEvalTemplatePtr&& InTemplate)
 {
 	return ChildTemplates.Add(MoveTemp(InTemplate));
+}
+
+FMovieSceneSegmentIdentifier FMovieSceneEvaluationTrack::CompileSegment(FMovieSceneEvaluationTreeRangeIterator CurrentNode)
+{
+	// Define a new segment for the specified iterator's range
+	FMovieSceneSegment NewSegment(CurrentNode.Range());
+
+	// Get the segment blender required to blend at the track level for this segment
+	FMovieSceneTrackSegmentBlenderPtr TrackSegmentBlenderValue;
+	FMovieSceneTrackSegmentBlender* TrackSegmentBlender = GetTrackSegmentBlender(SourceTrack, TrackSegmentBlenderValue);
+
+	// Iterate all the section evaluation data for the current segment range
+	TMovieSceneEvaluationTreeDataIterator<FSectionEvaluationData> DataIterator = GetData(CurrentNode.Node());
+	if (DataIterator)
+	{
+		// Track section data
+		FSegmentBlendData TrackBlendData;
+
+		FMovieSceneTrackRowSegmentBlenderPtr RowSegmentBlender = SourceTrack ? SourceTrack->GetRowSegmentBlender() : FMovieSceneTrackRowSegmentBlenderPtr();
+		// Compile at the row level first
+		if (RowSegmentBlender.IsValid())
+		{
+			TMap<int32, FSegmentBlendData> RowBlendData;
+
+			// Add every FSectionEvaluationData for the current time range to the section data
+			for (const FSectionEvaluationData& EvalData : DataIterator)
+			{
+				const UMovieSceneSection* Section = ChildTemplates[EvalData.ImplIndex]->GetSourceSection();
+				if (Section)
+				{
+					RowBlendData.FindOrAdd(Section->GetRowIndex()).Add(FMovieSceneSectionData(Section, EvalData.ImplIndex, EvalData.Flags));
+				}
+			}
+
+			for (TPair<int32, FSegmentBlendData>& Pair : RowBlendData)
+			{
+				RowSegmentBlender->Blend(Pair.Value);
+				TrackBlendData.Append(Pair.Value);
+			}
+		}
+		else for (const FSectionEvaluationData& EvalData : DataIterator)
+		{
+			const UMovieSceneSection* Section = ChildTemplates.IsValidIndex(EvalData.ImplIndex) ? ChildTemplates[EvalData.ImplIndex]->GetSourceSection() : nullptr;
+			TrackBlendData.Add(FMovieSceneSectionData(Section, EvalData.ImplIndex, EvalData.Flags));
+		}
+
+		// Compile at the track level
+		if (TrackSegmentBlender)
+		{
+			TrackSegmentBlender->Blend(TrackBlendData);
+		}
+
+		TrackBlendData.AddToSegment(NewSegment);
+	}
+
+	// Insert an empty segment
+	if (NewSegment.Impls.Num() == 0)
+	{
+		if (TrackSegmentBlender && TrackSegmentBlender->CanFillEmptySpace())
+		{
+			FMovieSceneEvaluationTreeRangeIterator PrevSegmentIt = CurrentNode.Previous();
+			FMovieSceneEvaluationTreeRangeIterator NextSegmentIt = CurrentNode.Next();
+
+			ensure(
+				( !PrevSegmentIt || !PrevSegmentIt.Range().Overlaps(CurrentNode.Range()) ) &&
+				( !NextSegmentIt || !NextSegmentIt.Range().Overlaps(CurrentNode.Range()) )
+			);
+
+			FMovieSceneSegmentIdentifier PrevSegmentID = PrevSegmentIt ? GetSegmentFromIterator(PrevSegmentIt) : FMovieSceneSegmentIdentifier();
+			FMovieSceneSegmentIdentifier NextSegmentID = NextSegmentIt ? GetSegmentFromIterator(NextSegmentIt) : FMovieSceneSegmentIdentifier();
+
+			FMovieSceneSegment* PrevSegment = PrevSegmentID.IsValid() ? &Segments[PrevSegmentID] : nullptr;
+			FMovieSceneSegment* NextSegment = NextSegmentID.IsValid() ? &Segments[NextSegmentID] : nullptr;
+
+			TOptional<FMovieSceneSegment> EmptySegment = TrackSegmentBlender->InsertEmptySpace(NewSegment.Range, PrevSegment, NextSegment);
+			if (EmptySegment.IsSet())
+			{
+				NewSegment.Range = EmptySegment->Range;
+				NewSegment.Impls = EmptySegment->Impls;
+			}
+		}
+	}
+
+	NewSegment.bAllowEmpty = TrackSegmentBlender ? TrackSegmentBlender->AllowEmptySegments() : false;
+	if (!NewSegment.bAllowEmpty && NewSegment.Impls.Num() == 0)
+	{
+		return FMovieSceneSegmentIdentifier();
+	}
+
+	return Segments.Add(MoveTemp(NewSegment));
+}
+
+FMovieSceneSegmentIdentifier FMovieSceneEvaluationTrack::FindFirstSegment(TRange<FFrameNumber> InLocalRange)
+{
+	// Binary search for an existing compiled segment in the sorted array
+	auto GetLowerBound = [](const FMovieSceneSegment& In) {
+		return In.Range.GetLowerBound();
+	};
+
+	// Find a segment with a lowerbound >= to this iterator range
+	TArrayView<const FMovieSceneSegment> SortedSegments = Segments.GetSorted();
+	int32 SegmentIndex = Algo::LowerBoundBy(SortedSegments, InLocalRange.GetLowerBound(), GetLowerBound, MovieSceneHelpers::SortLowerBounds);
+	if (SortedSegments.IsValidIndex(SegmentIndex) && SortedSegments[SegmentIndex].Range.GetLowerBound() == InLocalRange.GetLowerBound())
+	{
+		return SortedSegments[SegmentIndex].ID;
+	}
+	else if (SortedSegments.IsValidIndex(SegmentIndex-1) && SortedSegments[SegmentIndex-1].Range.Overlaps(InLocalRange))
+	{
+		return SortedSegments[SegmentIndex-1].ID;
+	}
+
+	return FMovieSceneSegmentIdentifier();
+}
+
+TArray<FMovieSceneSegmentIdentifier> FMovieSceneEvaluationTrack::GetSegmentsInRange(TRange<FFrameNumber> InLocalRange)
+{
+	TArray<FMovieSceneSegmentIdentifier> SegmentsInRange;
+
+	while (!InLocalRange.IsEmpty())
+	{
+		FMovieSceneSegmentIdentifier SegmentID = FindFirstSegment(InLocalRange);
+
+		if (!SegmentID.IsValid())
+		{
+			FMovieSceneEvaluationTreeRangeIterator NodeAtTime = EvaluationTree.Tree.IterateFromLowerBound(InLocalRange.GetLowerBound());
+			check(NodeAtTime)
+			SegmentID = CompileSegment(NodeAtTime);
+
+			if (!SegmentID.IsValid())
+			{
+				if (NodeAtTime.Range().GetUpperBound().IsOpen())
+				{
+					break;
+				}
+
+				InLocalRange.SetLowerBound(TRangeBound<FFrameNumber>::FlipInclusion(NodeAtTime.Range().GetUpperBound()));
+				continue;
+			}
+		}
+
+		SegmentsInRange.Add(SegmentID);
+		if (Segments[SegmentID].Range.GetUpperBound().IsOpen())
+		{
+			break;
+		}
+
+		InLocalRange.SetLowerBound(TRangeBound<FFrameNumber>::FlipInclusion(Segments[SegmentID].Range.GetUpperBound()));
+	}
+
+	return SegmentsInRange;
+}
+
+FMovieSceneSegmentIdentifier FMovieSceneEvaluationTrack::GetSegmentFromTime(FFrameNumber InTime)
+{
+	FMovieSceneSegmentIdentifier Existing = FindFirstSegment(TRange<FFrameNumber>::Inclusive(InTime, InTime));
+	if (Existing.IsValid())
+	{
+		return Existing;
+	}
+
+	FMovieSceneEvaluationTreeRangeIterator NodeAtTime = EvaluationTree.Tree.IterateFromTime(InTime);
+	check(NodeAtTime)
+	return CompileSegment(NodeAtTime);
+}
+
+FMovieSceneSegmentIdentifier FMovieSceneEvaluationTrack::GetSegmentFromIterator(FMovieSceneEvaluationTreeRangeIterator Iterator)
+{
+	check(Iterator);
+
+	FMovieSceneSegmentIdentifier Existing = FindFirstSegment(Iterator.Range());
+	if (Existing.IsValid())
+	{
+		ensure(Segments[Existing].Range.Contains(Iterator.Range()));
+		return Existing;
+	}
+
+	return CompileSegment(Iterator);
+}
+
+void FMovieSceneEvaluationTrack::ValidateSegments()
+{
+	// We don't remove segments as this may break ptrs that have been set up in the evaluation field. Instead we just remove invalid track indices.
+
+	for (FMovieSceneSegment& Segment : Segments.GetSorted())
+	{
+		for (int32 Index = Segment.Impls.Num() - 1; Index >= 0; --Index)
+		{
+			int32 TemplateIndex = Segment.Impls[Index].ImplIndex;
+			if (!HasChildTemplate(TemplateIndex))
+			{
+				Segment.Impls.RemoveAt(Index, 1, false);
+			}
+		}
+	}
 }
 
 void FMovieSceneEvaluationTrack::SetupOverrides()
@@ -116,152 +382,213 @@ void FMovieSceneEvaluationTrack::SetupOverrides()
 	}
 }
 
-void FMovieSceneEvaluationTrack::Initialize(TArrayView<const FMovieSceneFieldEntry_ChildTemplate> Children, const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, FPersistentEvaluationData& PersistentData, IMovieScenePlayer& Player) const
+void FMovieSceneEvaluationTrack::Initialize(FMovieSceneSegmentIdentifier SegmentID, const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, FPersistentEvaluationData& PersistentData, IMovieScenePlayer& Player) const
 {
 	if (!TrackTemplate.IsValid() || !TrackTemplate->HasCustomInitialize())
 	{
-		DefaultInitialize(Children, Operand, Context, PersistentData, Player);
+		DefaultInitialize(SegmentID, Operand, Context, PersistentData, Player);
 	}
 	else
 	{
-		TrackTemplate->Initialize(*this, Children, Operand, Context, PersistentData, Player);
+		TrackTemplate->Initialize(*this, SegmentID, Operand, Context, PersistentData, Player);
 	}
 }
 
-void FMovieSceneEvaluationTrack::DefaultInitialize(TArrayView<const FMovieSceneFieldEntry_ChildTemplate> Children, const FMovieSceneEvaluationOperand& Operand, FMovieSceneContext Context, FPersistentEvaluationData& PersistentData, IMovieScenePlayer& Player) const
+void FMovieSceneEvaluationTrack::DefaultInitialize(FMovieSceneSegmentIdentifier SegmentID, const FMovieSceneEvaluationOperand& Operand, FMovieSceneContext Context, FPersistentEvaluationData& PersistentData, IMovieScenePlayer& Player) const
 {
-	for (FMovieSceneFieldEntry_ChildTemplate FieldEntry : Children)
+	// If we only have a single child template and a single segment, short-circuit the lookup into the impl array to avoid the unnecessary cache misses
+	if (ChildTemplates.Num() == 1 && Segments.Num() == 1)
 	{
-		const FMovieSceneEvalTemplate* Template = HasChildTemplate(FieldEntry.ChildIndex) ? &GetChildTemplate(FieldEntry.ChildIndex) : nullptr;
-		if (!Template)
+		PersistentData.DeriveSectionKey(0);
+		ChildTemplates[0]->Initialize(Operand, Context, PersistentData, Player);
+		return;
+	}
+
+	const FMovieSceneSegment& Segment = Segments[SegmentID];
+	for (const FSectionEvaluationData& EvalData : Segment.Impls)
+	{
+		const FMovieSceneEvalTemplate& Template = GetChildTemplate(EvalData.ImplIndex);
+
+		if (Template.RequiresInitialization())
 		{
-			continue;
-		}
+			PersistentData.DeriveSectionKey(EvalData.ImplIndex);
 
-		if (Template->RequiresInitialization())
-		{
-			PersistentData.DeriveSectionKey(FieldEntry.ChildIndex);
-			Context.OverrideTime(FieldEntry.ForcedTime);
+			Context.OverrideTime(EvalData.ForcedTime);
+			Context.ApplySectionPrePostRoll(EvalData.IsPreRoll(), EvalData.IsPostRoll());
 
-			const bool bIsPreRoll  = EnumHasAnyFlags(FieldEntry.Flags, ESectionEvaluationFlags::PreRoll);
-			const bool bIsPostRoll = EnumHasAnyFlags(FieldEntry.Flags, ESectionEvaluationFlags::PostRoll);
-
-			Context.ApplySectionPrePostRoll(bIsPreRoll, bIsPostRoll);
-
-			Template->Initialize(Operand, Context, PersistentData, Player);
+			Template.Initialize(Operand, Context, PersistentData, Player);
 		}
 	}
 }
 
-void FMovieSceneEvaluationTrack::Evaluate(TArrayView<const FMovieSceneFieldEntry_ChildTemplate> Children, const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const
+void FMovieSceneEvaluationTrack::Evaluate(FMovieSceneSegmentIdentifier SegmentID, const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const
 {
 	if (!TrackTemplate.IsValid() || !TrackTemplate->HasCustomEvaluate())
 	{
-		DefaultEvaluate(Children, Operand, Context, PersistentData, ExecutionTokens);
+		DefaultEvaluate(SegmentID, Operand, Context, PersistentData, ExecutionTokens);
 	}
 	else
 	{
-		TrackTemplate->Evaluate(*this, Children, Operand, Context, PersistentData, ExecutionTokens);
+		TrackTemplate->Evaluate(*this, SegmentID, Operand, Context, PersistentData, ExecutionTokens);
 	}
 }
 
-void FMovieSceneEvaluationTrack::DefaultEvaluate(TArrayView<const FMovieSceneFieldEntry_ChildTemplate> Children, const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const
+void FMovieSceneEvaluationTrack::DefaultEvaluate(FMovieSceneSegmentIdentifier SegmentID, const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const
 {
 	switch (EvaluationMethod)
 	{
 	case EEvaluationMethod::Static:
-		EvaluateStatic(Children, Operand, Context, PersistentData, ExecutionTokens);
+		EvaluateStatic(SegmentID, Operand, Context, PersistentData, ExecutionTokens);
 		break;
 	case EEvaluationMethod::Swept:
-		EvaluateSwept(Children, Operand, Context, PersistentData, ExecutionTokens);
+		EvaluateSwept(SegmentID, Operand, Context, PersistentData, ExecutionTokens);
 		break;
 	}
 }
 
-void FMovieSceneEvaluationTrack::EvaluateStatic(TArrayView<const FMovieSceneFieldEntry_ChildTemplate> Children, const FMovieSceneEvaluationOperand& Operand, FMovieSceneContext Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const
+void FMovieSceneEvaluationTrack::EvaluateStatic(FMovieSceneSegmentIdentifier SegmentID, const FMovieSceneEvaluationOperand& Operand, FMovieSceneContext Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const
 {
 	// If we only have a single child template and a single segment, short-circuit the lookup into the impl array to avoid the unnecessary cache misses
-	for (FMovieSceneFieldEntry_ChildTemplate FieldEntry : Children)
+	if (ChildTemplates.Num() == 1 && Segments.Num() == 1)
 	{
-		const FMovieSceneEvalTemplate* Template = HasChildTemplate(FieldEntry.ChildIndex) ? &GetChildTemplate(FieldEntry.ChildIndex) : nullptr;
-		if (!Template)
-		{
-			continue;
-		}
+		const FMovieSceneEvalTemplate& Template = ChildTemplates[0].GetValue();
 
-		Context.OverrideTime(FieldEntry.ForcedTime);
-
-		const bool bIsPreRoll  = EnumHasAnyFlags(FieldEntry.Flags, ESectionEvaluationFlags::PreRoll);
-		const bool bIsPostRoll = EnumHasAnyFlags(FieldEntry.Flags, ESectionEvaluationFlags::PostRoll);
-
-		Context.ApplySectionPrePostRoll(bIsPreRoll, bIsPostRoll);
-
-		PersistentData.DeriveSectionKey(FieldEntry.ChildIndex);
-		ExecutionTokens.SetCurrentScope(FMovieSceneEvaluationScope(PersistentData.GetSectionKey(), Template->GetCompletionMode()));
+		PersistentData.DeriveSectionKey(0);
+		ExecutionTokens.SetCurrentScope(FMovieSceneEvaluationScope(PersistentData.GetSectionKey(), Template.GetCompletionMode()));
 		ExecutionTokens.SetContext(Context);
 
-		Template->Evaluate(Operand, Context, PersistentData, ExecutionTokens);
+		Template.Evaluate(Operand, Context, PersistentData, ExecutionTokens);
+		return;
 	}
-}
 
-void FMovieSceneEvaluationTrack::EvaluateSwept(TArrayView<const FMovieSceneFieldEntry_ChildTemplate> Children, const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const
-{
-	FFrameNumber Time = Context.GetTime().FrameNumber;
-	for (const FMovieSceneTrackEvaluationFieldEntry& Entry : SourceTrack->GetEvaluationField().Entries)
+	int32 SortedIndex = Segments.GetSortedIndex(SegmentID);
+	if (SortedIndex == INDEX_NONE)
 	{
-		if (!Entry.Range.Contains(Time) || Entry.Flags != ESectionEvaluationFlags::None)
+		return;
+	}
+
+	for (const FSectionEvaluationData& EvalData : GetSegment(SegmentID).Impls)
+	{
+		const FMovieSceneEvalTemplate& Template = GetChildTemplate(EvalData.ImplIndex);
+
+		Context.OverrideTime(EvalData.ForcedTime);
+		Context.ApplySectionPrePostRoll(EvalData.IsPreRoll(), EvalData.IsPostRoll());
+
+		PersistentData.DeriveSectionKey(EvalData.ImplIndex);
+		ExecutionTokens.SetCurrentScope(FMovieSceneEvaluationScope(PersistentData.GetSectionKey(), Template.GetCompletionMode()));
+		ExecutionTokens.SetContext(Context);
+
+		Template.Evaluate(Operand, Context, PersistentData, ExecutionTokens);
+	}
+}
+
+namespace
+{
+
+	bool IntersectSegmentRanges(const FMovieSceneSegment& Segment, TRange<FFrameNumber> TraversedRange, TMap<int32, TRange<FFrameNumber>>& ImplToAccumulatedRange)
+	{
+		TRange<FFrameNumber> Intersection = TRange<FFrameNumber>::Intersection(Segment.Range, TraversedRange);
+		if (Intersection.IsEmpty())
 		{
-			continue;
+			return false;
 		}
 
-		auto MatchTemplateToSection = [Section=Entry.Section](const FMovieSceneEvalTemplatePtr& ChildTemplate)
+		for (const FSectionEvaluationData& EvalData : Segment.Impls)
 		{
-			return ChildTemplate.IsValid() && ChildTemplate->GetSourceSection() == Section;
-		};
+			TRange<FFrameNumber>* AccumulatedRange = ImplToAccumulatedRange.Find(EvalData.ImplIndex);
+			if (!AccumulatedRange)
+			{
+				ImplToAccumulatedRange.Add(EvalData.ImplIndex, Intersection);
+			}
+			else
+			{
+				*AccumulatedRange = TRange<FFrameNumber>::Hull(*AccumulatedRange, Intersection);
+			}
+		}
 
-		const int32 ChildIndex = ChildTemplates.IndexOfByPredicate(MatchTemplateToSection);
-		if (ChildIndex != INDEX_NONE)
+		return true;
+	}
+
+	void GatherSweptSegments(TRange<FFrameNumber> TraversedRange, int32 CurrentSegmentIndex, TArrayView<const FMovieSceneSegment> Segments, TMap<int32, TRange<FFrameNumber>>& ImplToAccumulatedRange)
+	{
+		// Search backwards from the current segment for any segments intersecting the traversed range
 		{
-			const FMovieSceneEvalTemplate& Template = *ChildTemplates[ChildIndex];
+			int32 PreviousIndex = CurrentSegmentIndex;
+			while(--PreviousIndex >= 0 && IntersectSegmentRanges(Segments[PreviousIndex], TraversedRange, ImplToAccumulatedRange));
+		}
 
-			PersistentData.DeriveSectionKey(ChildIndex);
-			ExecutionTokens.SetCurrentScope(FMovieSceneEvaluationScope(PersistentData.GetSectionKey(), Template.GetCompletionMode()));
-			ExecutionTokens.SetContext(Context);
+		// Obviously the current segment intersects otherwise we wouldn't be in here
+		IntersectSegmentRanges(Segments[CurrentSegmentIndex], TraversedRange, ImplToAccumulatedRange);
 
-			Template.EvaluateSwept(
-				Operand,
-				Context,
-				TRange<FFrameNumber>::Intersection(Entry.Range, Context.GetFrameNumberRange()),
-				PersistentData,
-				ExecutionTokens);
+		// Search forwards from the current segment for any segments intersecting the traversed range
+		{
+			int32 NextIndex = CurrentSegmentIndex;
+			while(++NextIndex < Segments.Num() && IntersectSegmentRanges(Segments[NextIndex], TraversedRange, ImplToAccumulatedRange));
 		}
 	}
 }
 
-void FMovieSceneEvaluationTrack::Interrogate(const FMovieSceneContext& Context, FMovieSceneInterrogationData& Container, UObject* BindingOverride) const
+void FMovieSceneEvaluationTrack::EvaluateSwept(FMovieSceneSegmentIdentifier SegmentID, const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const
+{
+	// Accumulate the relevant ranges that each section intersects with the evaluated range
+	TMap<int32, TRange<FFrameNumber>> ImplToAccumulatedRange;
+
+	int32 SortedIndex = Segments.GetSortedIndex(SegmentID);
+	if (SortedIndex == INDEX_NONE)
+	{
+		return;
+	}
+
+	GatherSweptSegments(Context.GetFrameNumberRange(), SortedIndex, Segments.GetSorted(), ImplToAccumulatedRange);
+
+	ExecutionTokens.SetContext(Context);
+	for (const TTuple<int32, TRange<FFrameNumber>>& Pair : ImplToAccumulatedRange)
+	{
+		const int32 SectionIndex = Pair.Key;
+		const TRange<FFrameNumber>&    SweptRange = Pair.Value;
+		const FMovieSceneEvalTemplate& Template   = GetChildTemplate(SectionIndex);
+
+		PersistentData.DeriveSectionKey(SectionIndex);
+		ExecutionTokens.SetCurrentScope(FMovieSceneEvaluationScope(PersistentData.GetSectionKey(), Template.GetCompletionMode()));
+
+		Template.EvaluateSwept(
+			Operand,
+			Context,
+			SweptRange,
+			PersistentData,
+			ExecutionTokens);
+	}
+}
+
+void FMovieSceneEvaluationTrack::Interrogate(const FMovieSceneContext& Context, FMovieSceneInterrogationData& Container, UObject* BindingOverride)
 {
 	if (TrackTemplate.IsValid() && TrackTemplate->Interrogate(Context, Container, BindingOverride))
 	{
 		return;
 	}
 
-	FFrameNumber Time = Context.GetTime().FrameNumber;
-	for (const FMovieSceneTrackEvaluationFieldEntry& Entry : SourceTrack->GetEvaluationField().Entries)
+	FMovieSceneSegmentIdentifier SegmentID = GetSegmentFromTime(Context.GetTime().FrameNumber);
+	if (!SegmentID.IsValid())
 	{
-		if (!Entry.Range.Contains(Time) || Entry.Flags != ESectionEvaluationFlags::None)
+		return;
+	}
+
+	if (EvaluationMethod == EEvaluationMethod::Static)
+	{
+		for (const FSectionEvaluationData& EvalData : GetSegment(SegmentID).Impls)
 		{
-			continue;
+			GetChildTemplate(EvalData.ImplIndex).Interrogate(Context, Container, BindingOverride);
 		}
+	}
+	else
+	{
+		// Accumulate the relevant ranges that each section intersects with the evaluated range
+		TMap<int32, TRange<FFrameNumber>> ImplToAccumulatedRange;
 
-		auto MatchTemplateToSection = [Section=Entry.Section](const FMovieSceneEvalTemplatePtr& ChildTemplate)
+		GatherSweptSegments(Context.GetFrameNumberRange(), Segments.GetSortedIndex(SegmentID), Segments.GetSorted(), ImplToAccumulatedRange);
+		for (auto& Pair : ImplToAccumulatedRange)
 		{
-			return ChildTemplate.IsValid() && ChildTemplate->GetSourceSection() == Section;
-		};
-
-		const int32 ChildIndex = ChildTemplates.IndexOfByPredicate(MatchTemplateToSection);
-		if (ChildIndex != INDEX_NONE)
-		{
-			ChildTemplates[ChildIndex]->Interrogate(Context, Container, BindingOverride);
+			GetChildTemplate(Pair.Key).Interrogate(Context, Pair.Value, Container, BindingOverride);
 		}
 	}
 

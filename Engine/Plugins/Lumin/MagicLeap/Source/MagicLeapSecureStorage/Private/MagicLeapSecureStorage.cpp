@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MagicLeapSecureStorage.h"
 #include "IMagicLeapSecureStoragePlugin.h"
@@ -64,128 +64,92 @@ bool UMagicLeapSecureStorage::GetSecureBlob<FString>(const FString& Key, FString
 
 bool UMagicLeapSecureStorage::PutSecureBool(const FString& Key, bool DataToStore)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return PutSecureBlob<bool>(Key, &DataToStore);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 bool UMagicLeapSecureStorage::PutSecureByte(const FString& Key, uint8 DataToStore)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return PutSecureBlob<uint8>(Key, &DataToStore);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 bool UMagicLeapSecureStorage::PutSecureInt(const FString& Key, int32 DataToStore)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return PutSecureBlob<int32>(Key, &DataToStore);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 bool UMagicLeapSecureStorage::PutSecureInt64(const FString& Key, int64 DataToStore)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return PutSecureBlob<int64>(Key, &DataToStore);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 bool UMagicLeapSecureStorage::PutSecureFloat(const FString& Key, float DataToStore)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return PutSecureBlob<float>(Key, &DataToStore);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 bool UMagicLeapSecureStorage::PutSecureString(const FString& Key, const FString& DataToStore)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return PutSecureBlob<FString>(Key, &DataToStore);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 bool UMagicLeapSecureStorage::PutSecureVector(const FString& Key, const FVector& DataToStore)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return PutSecureBlob<FVector>(Key, &DataToStore);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 bool UMagicLeapSecureStorage::PutSecureRotator(const FString& Key, const FRotator& DataToStore)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return PutSecureBlob<FRotator>(Key, &DataToStore);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 bool UMagicLeapSecureStorage::PutSecureTransform(const FString& Key, const FTransform& DataToStore)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return PutSecureBlob<FTransform>(Key, &DataToStore);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 bool UMagicLeapSecureStorage::GetSecureBool(const FString& Key, bool& DataToRetrieve)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return GetSecureBlob<bool>(Key, DataToRetrieve);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 bool UMagicLeapSecureStorage::GetSecureByte(const FString& Key, uint8& DataToRetrieve)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return GetSecureBlob<uint8>(Key, DataToRetrieve);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 bool UMagicLeapSecureStorage::GetSecureInt(const FString& Key, int32& DataToRetrieve)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return GetSecureBlob<int32>(Key, DataToRetrieve);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 bool UMagicLeapSecureStorage::GetSecureInt64(const FString& Key, int64& DataToRetrieve)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return GetSecureBlob<int64>(Key, DataToRetrieve);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 bool UMagicLeapSecureStorage::GetSecureFloat(const FString& Key, float& DataToRetrieve)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return GetSecureBlob<float>(Key, DataToRetrieve);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 bool UMagicLeapSecureStorage::GetSecureString(const FString& Key, FString& DataToRetrieve)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return GetSecureBlob<FString>(Key, DataToRetrieve);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 bool UMagicLeapSecureStorage::GetSecureVector(const FString& Key, FVector& DataToRetrieve)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return GetSecureBlob<FVector>(Key, DataToRetrieve);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 bool UMagicLeapSecureStorage::GetSecureRotator(const FString& Key, FRotator& DataToRetrieve)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return GetSecureBlob<FRotator>(Key, DataToRetrieve);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 bool UMagicLeapSecureStorage::GetSecureTransform(const FString& Key, FTransform& DataToRetrieve)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return GetSecureBlob<FTransform>(Key, DataToRetrieve);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 bool UMagicLeapSecureStorage::PutSecureSaveGame(const FString& Key, USaveGame* ObjectToStore)
@@ -199,18 +163,10 @@ bool UMagicLeapSecureStorage::PutSecureSaveGame(const FString& Key, USaveGame* O
 		return false;
 	}
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	return PutSecureBlobImpl(Key, Bytes.GetData(), Bytes.Num());
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
-bool UMagicLeapSecureStorage::PutSecureArray(const FString& Key, const TArray<int32>& DataToStore)
-{
-	checkf(0, TEXT("'PutSecureArray' has a CustomThunk, so this should never execute"));
-	return false;
-}
-
-bool UMagicLeapSecureStorage::GenericPutSecureArray(const FString& Key, const FArrayProperty* ArrayProperty, void* TargetArray)
+bool UMagicLeapSecureStorage::GenericPutSecureArray(const FString& Key, const UArrayProperty* ArrayProperty, void* TargetArray)
 {
 
 	FScriptArrayHelper ArrayHelper(ArrayProperty, TargetArray);
@@ -221,14 +177,14 @@ bool UMagicLeapSecureStorage::GenericPutSecureArray(const FString& Key, const FA
 	TArray<uint8> Bytes;
 	Bytes.SetNum(ByteNum);
 
-	// Generate the contiguous array from the FArrayProperty
+	// Generate the contiguous array from the UArrayProperty
 	for (int32 i = 0; i < ArrayHelper.Num(); ++i)
 	{
 		ArrayProperty->Inner->CopySingleValueFromScriptVM(Bytes.GetData() + i * ElementSize, ArrayHelper.GetRawPtr(i));
 	}
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
+
 	return PutSecureBlobImpl(Key, Bytes.GetData(), ByteNum);
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
+
 }
 
 bool UMagicLeapSecureStorage::GetSecureSaveGame(const FString& Key, USaveGame*& ObjectToRetrieve)
@@ -255,13 +211,7 @@ bool UMagicLeapSecureStorage::GetSecureSaveGame(const FString& Key, USaveGame*& 
 	return bSuccess;
 }
 
-bool UMagicLeapSecureStorage::GetSecureArray(const FString& Key, TArray<int32>& DataToRetrieve)
-{
-	checkf(0, TEXT("'GetSecureArray' has a CustomThunk, so this should never execute"));
-	return false;
-}
-
-bool UMagicLeapSecureStorage::GenericGetSecureArray(const FString& Key, FArrayProperty* ArrayProperty, void* TargetArray)
+bool UMagicLeapSecureStorage::GenericGetSecureArray(const FString& Key, UArrayProperty* ArrayProperty, void* TargetArray)
 {
 
 	FScriptArrayHelper ArrayHelper(ArrayProperty, TargetArray);

@@ -1,10 +1,5 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
-
-#include "Chaos/ParticleHandle.h"
-#include "Chaos/ParticleHandleFwd.h"
-#include "Chaos/Defines.h"
 
 namespace Chaos
 {
@@ -12,16 +7,9 @@ namespace Chaos
 	class TBVHParticles;
 
 	template <typename T>
-	struct CHAOS_API FClusterCreationParameters
+	struct FClusterCreationParameters
 	{
-		enum EConnectionMethod
-		{
-			PointImplicit = 0,
-			DelaunayTriangulation,
-			MinimalSpanningSubsetDelaunayTriangulation,
-			PointImplicitAugmentedWithMinimalDelaunay,
-			None
-		};
+		enum EConnectionMethod { None = 0, PointImplicit, DelaunayTriangulation, MinimalSpanningSubsetDelaunayTriangulation, PointImplicitAugmentedWithMinimalDelaunay };
 
 
 		FClusterCreationParameters(
@@ -29,9 +17,10 @@ namespace Chaos
 			, int32 MaxNumConnectionsIn = 100
 			, bool bCleanCollisionParticlesIn = true
 			, bool bCopyCollisionParticlesIn = true
-			, bool bGenerateConnectionGraphIn = true, EConnectionMethod ConnectionMethodIn = EConnectionMethod::MinimalSpanningSubsetDelaunayTriangulation
+			, bool bGenerateConnectionGraphIn = true
+			, EConnectionMethod ConnectionMethodIn = EConnectionMethod::PointImplicitAugmentedWithMinimalDelaunay
 			, TBVHParticles<float, 3>* CollisionParticlesIn = nullptr
-			, Chaos::TPBDRigidClusteredParticleHandle<float,3>* ClusterParticleHandleIn = nullptr
+			, int32 RigidBodyIndexIn = INDEX_NONE
 		)
 			: CoillisionThicknessPercent(CoillisionThicknessPercentIn)
 			, MaxNumConnections(MaxNumConnectionsIn)
@@ -40,7 +29,7 @@ namespace Chaos
 			, bGenerateConnectionGraph(bGenerateConnectionGraphIn)
 			, ConnectionMethod(ConnectionMethodIn)
 			, CollisionParticles(CollisionParticlesIn)
-			, ClusterParticleHandle(ClusterParticleHandleIn)
+			, RigidBodyIndex(RigidBodyIndexIn)
 		{}
 
 		T CoillisionThicknessPercent;
@@ -49,7 +38,7 @@ namespace Chaos
 		bool bCopyCollisionParticles;
 		bool bGenerateConnectionGraph;
 		EConnectionMethod ConnectionMethod;
-		TBVHParticles<T, 3>* CollisionParticles;
-		Chaos::TPBDRigidClusteredParticleHandle<float, 3>* ClusterParticleHandle;
+		TBVHParticles<float, 3>* CollisionParticles;
+		int32 RigidBodyIndex;
 	};
 }

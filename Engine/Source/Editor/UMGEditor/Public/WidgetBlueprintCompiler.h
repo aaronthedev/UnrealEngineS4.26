@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -51,6 +51,9 @@ public:
 	FWidgetBlueprintCompilerContext(UWidgetBlueprint* SourceSketch, FCompilerResultsLog& InMessageLog, const FKismetCompilerOptions& InCompilerOptions);
 	virtual ~FWidgetBlueprintCompilerContext();
 
+	static bool CanAllowTemplate(FCompilerResultsLog& MessageLog, UWidgetBlueprintGeneratedClass* InClass);
+	static bool CanTemplateWidget(FCompilerResultsLog& MessageLog, UUserWidget* ThisWidget, TArray<FText>& OutErrors);
+
 protected:
 	UWidgetBlueprint* WidgetBlueprint() const { return Cast<UWidgetBlueprint>(Blueprint); }
 
@@ -84,10 +87,10 @@ protected:
 	class UWidgetGraphSchema* WidgetSchema;
 
 	// Map of properties created for widgets; to aid in debug data generation
-	TMap<class UWidget*, class FProperty*> WidgetToMemberVariableMap;
+	TMap<class UWidget*, class UProperty*> WidgetToMemberVariableMap;
 
 	// Map of properties created for widget animations; to aid in debug data generation
-	TMap<class UWidgetAnimation*, class FProperty*> WidgetAnimToMemberVariableMap;
+	TMap<class UWidgetAnimation*, class UProperty*> WidgetAnimToMemberVariableMap;
 
 	///----------------------------------------------------------------
 };

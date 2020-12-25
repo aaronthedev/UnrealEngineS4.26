@@ -1,9 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-#include "DeferredShadingCommon.ush"
+/*=============================================================================
+	PostProcessGBufferHints.usf: PostProcessing shader to show where material have performance issues or are unrealistic
+=============================================================================*/
+
+#include "Common.ush"
 #include "ScreenPass.ush"
+#include "SceneTextureParameters.ush"
 
-float2 Input_ExtentInverse;
+SCREEN_PASS_TEXTURE_VIEWPORT(Input)
 
 Texture2D SceneColorTexture;
 SamplerState SceneColorSampler;
@@ -52,7 +57,7 @@ uint ComputeAdvice(float2 UV)
 {
 	// Ideally without GI as we want the emissive, we should do that later.
 	float3 OriginalSceneColor = Texture2DSample(OriginalSceneColorTexture, OriginalSceneColorSampler, UV).rgb;
-	FGBufferData BufferData = GetGBufferData(UV);
+	FGBufferData BufferData = GetGBufferDataFromSceneTextures(UV);
 
 	return ComputeAdvice(BufferData, OriginalSceneColor);
 }

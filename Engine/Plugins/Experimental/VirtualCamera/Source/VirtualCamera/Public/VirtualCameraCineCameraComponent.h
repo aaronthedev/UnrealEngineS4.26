@@ -1,11 +1,25 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CineCameraComponent.h"
-#include "IVirtualCameraController.h"
-
 #include "VirtualCameraCineCameraComponent.generated.h"
+
+UENUM()
+enum class EVirtualCameraFocusMethod : uint8
+{
+	/* Depth of Field disabled entirely */
+	None,
+
+	/* User controls focus distance directly */
+	Manual,
+
+	/* Focus distance is locked onto a specific point in relation to an actor */
+	Tracking,
+
+	/* Focus distance automatically changes to focus on actors in a specific screen location */
+	Auto,
+};
 
 UCLASS(Blueprintable, BlueprintType)
 class VIRTUALCAMERA_API UVirtualCameraCineCameraComponent : public UCineCameraComponent

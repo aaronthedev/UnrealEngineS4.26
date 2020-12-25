@@ -1,68 +1,25 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "SoundSubmixGraph/SoundSubmixGraph.h"
 
 #include "GraphEditor.h"
-#include "Editor.h"
-#include "Editor/EditorEngine.h"
 #include "Sound/SoundSubmix.h"
 #include "SoundSubmixGraph/SoundSubmixGraphNode.h"
-#include "Subsystems/AssetEditorSubsystem.h"
-#include "TimerManager.h"
 #include "UObject/Package.h"
 
 
 USoundSubmixGraph::USoundSubmixGraph(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
+	, RootSoundSubmix(nullptr)
 {
 }
 
-void USoundSubmixGraph::SetRootSoundSubmix(USoundSubmixBase* InSoundSubmix)
+void USoundSubmixGraph::SetRootSoundSubmix(USoundSubmix* InSoundSubmix)
 {
-	if (RootSoundSubmix)
-	{
-		// Defer request to close stale editor(s) to avoid property assignments being
-		// added to undo/redo transaction stack from the process of reopening the new editor.
-		// This can occur if client code calling this function is performed within a scoped
-		// transaction (as it most likely is).
-		const int32 Size = StaleRoots.Num();
-		const int32 Index = StaleRoots.AddUnique(RootSoundSubmix);
-		if (Size == Index && GEditor)
-		{
-			GEditor->GetTimerManager()->SetTimerForNextTick(FTimerDelegate::CreateLambda([this]()
-			{
-				if(StaleRoots.Num() > 0)
-				{
-					check(GEditor);
-					if (UAssetEditorSubsystem* EditorSubsystem = GEditor->GetEditorSubsystem<UAssetEditorSubsystem>())
-					{
-						for (USoundSubmixBase* Submix : StaleRoots)
-						{
-							TArray<IAssetEditorInstance*> SubmixEditors = EditorSubsystem->FindEditorsForAsset(Submix);
-							for (IAssetEditorInstance* Editor : SubmixEditors)
-							{
-								Editor->CloseWindow();
-							}
-						}
-
-						if (RootSoundSubmix)
-						{
-							if (EditorSubsystem->FindEditorsForAsset(RootSoundSubmix).Num() == 0)
-							{
-								EditorSubsystem->OpenEditorForAsset(RootSoundSubmix);
-							}
-						}
-					}
-
-					StaleRoots.Reset();
-				}
-			}));
-		}
-	}
-
+	check(!RootSoundSubmix);
 	RootSoundSubmix = InSoundSubmix;
 }
 
-USoundSubmixBase* USoundSubmixGraph::GetRootSoundSubmix() const
+USoundSubmix* USoundSubmixGraph::GetRootSoundSubmix() const
 {
 	return RootSoundSubmix;
 }
@@ -87,11 +44,11 @@ void USoundSubmixGraph::RebuildGraph()
 	Package->SetDirtyFlag(bIsDirty);
 }
 
-void USoundSubmixGraph::AddDroppedSoundSubmixes(const TSet<USoundSubmixBase*>& SoundSubmixes, int32 NodePosX, int32 NodePosY)
+void USoundSubmixGraph::AddDroppedSoundSubmixes(const TSet<USoundSubmix*>& SoundSubmixes, int32 NodePosX, int32 NodePosY)
 {
 	Modify();
 
-	for (USoundSubmixBase* SoundSubmix : SoundSubmixes)
+	for (USoundSubmix* SoundSubmix : SoundSubmixes)
 	{
 		NodePosY += ConstructNodes(SoundSubmix, NodePosX, NodePosY);
 	}
@@ -99,7 +56,7 @@ void USoundSubmixGraph::AddDroppedSoundSubmixes(const TSet<USoundSubmixBase*>& S
 	NotifyGraphChanged();
 }
 
-void USoundSubmixGraph::AddNewSoundSubmix(UEdGraphPin* FromPin, USoundSubmixBase* SoundSubmix, int32 NodePosX, int32 NodePosY, bool bSelectNewNode/* = true*/)
+void USoundSubmixGraph::AddNewSoundSubmix(UEdGraphPin* FromPin, USoundSubmix* SoundSubmix, int32 NodePosX, int32 NodePosY, bool bSelectNewNode/* = true*/)
 {
 	check(SoundSubmix->ChildSubmixes.Num() == 0);
 
@@ -111,7 +68,7 @@ void USoundSubmixGraph::AddNewSoundSubmix(UEdGraphPin* FromPin, USoundSubmixBase
 	NotifyGraphChanged();
 }
 
-bool USoundSubmixGraph::IsSubmixDisplayed(USoundSubmixBase* SoundSubmix) const
+bool USoundSubmixGraph::IsSubmixDisplayed(USoundSubmix* SoundSubmix) const
 {
 	return FindExistingNode(SoundSubmix) != nullptr;
 }
@@ -127,15 +84,12 @@ void USoundSubmixGraph::LinkSoundSubmixes()
 			Node->SoundSubmix->Modify();
 
 			// remove parents of existing children
-			for (USoundSubmixBase* ChildSubmix : Node->SoundSubmix->ChildSubmixes)
+			for (USoundSubmix* ChildSubmix : Node->SoundSubmix->ChildSubmixes)
 			{
 				if (ChildSubmix)
 				{
 					ChildSubmix->Modify();
-					if (USoundSubmixWithParentBase* SubmixWithParent = CastChecked<USoundSubmixWithParentBase>(ChildSubmix))
-					{
-						SubmixWithParent->ParentSubmix = nullptr;
-					}
+					ChildSubmix->ParentSubmix = nullptr;
 				}
 			}
 
@@ -145,23 +99,14 @@ void USoundSubmixGraph::LinkSoundSubmixes()
 			{
 				for (UEdGraphPin* GraphPin : ChildPin->LinkedTo)
 				{
-					
-
 					if (!GraphPin)
 					{
 						continue;
 					}
 
 					USoundSubmixGraphNode* ChildNode = CastChecked<USoundSubmixGraphNode>(GraphPin->GetOwningNode());
-
-					// If the child submix we're connecting to isn't the type of submix that has an output, continue.
-					USoundSubmixWithParentBase* ChildSubmixWithParent = Cast<USoundSubmixWithParentBase>(ChildNode->SoundSubmix);
-
-					if (ChildSubmixWithParent)
-					{
-						Node->SoundSubmix->ChildSubmixes.Add(ChildNode->SoundSubmix);
-						ChildSubmixWithParent->SetParentSubmix(Node->SoundSubmix);
-					}
+					Node->SoundSubmix->ChildSubmixes.Add(ChildNode->SoundSubmix);
+					ChildNode->SoundSubmix->SetParentSubmix(Node->SoundSubmix);
 				}
 			}
 
@@ -191,7 +136,7 @@ void USoundSubmixGraph::RefreshGraphLinks()
 			{
 				for (int32 ChildIndex = 0; ChildIndex < Node->SoundSubmix->ChildSubmixes.Num(); ChildIndex++)
 				{
-					USoundSubmixBase* ChildSubmix = Node->SoundSubmix->ChildSubmixes[ChildIndex];
+					USoundSubmix* ChildSubmix = Node->SoundSubmix->ChildSubmixes[ChildIndex];
 
 					if (ChildSubmix)
 					{
@@ -233,11 +178,11 @@ void USoundSubmixGraph::RecursivelyRemoveNodes(const TSet<UObject*> NodesToRemov
 	LinkSoundSubmixes();
 }
 
-int32 USoundSubmixGraph::ConstructNodes(USoundSubmixBase* SoundSubmix, int32 NodePosX, int32 NodePosY, bool bSelectNewNode/* = true*/)
+int32 USoundSubmixGraph::ConstructNodes(USoundSubmix* SoundSubmix, int32 NodePosX, int32 NodePosY, bool bSelectNewNode/* = true*/)
 {
 	check(SoundSubmix);
 
-	TMap<USoundSubmixBase*, int32> ChildCounts;
+	TMap<USoundSubmix*, int32> ChildCounts;
 
 	RecursivelyGatherChildCounts(SoundSubmix, ChildCounts);
 
@@ -246,7 +191,7 @@ int32 USoundSubmixGraph::ConstructNodes(USoundSubmixBase* SoundSubmix, int32 Nod
 	return RecursivelyConstructChildNodes(GraphNode, ChildCounts);
 }
 
-int32 USoundSubmixGraph::RecursivelyGatherChildCounts(USoundSubmixBase* ParentSubmix, TMap<USoundSubmixBase*, int32>& OutChildCounts)
+int32 USoundSubmixGraph::RecursivelyGatherChildCounts(USoundSubmix* ParentSubmix, TMap<USoundSubmix*, int32>& OutChildCounts)
 {
 	int32 ChildSize = 0;
 
@@ -267,12 +212,12 @@ int32 USoundSubmixGraph::RecursivelyGatherChildCounts(USoundSubmixBase* ParentSu
 	return ChildSize;
 }
 
-int32 USoundSubmixGraph::RecursivelyConstructChildNodes(USoundSubmixGraphNode* ParentNode, const TMap<USoundSubmixBase*, int32>& InChildCounts, bool bSelectNewNode /* = true*/)
+int32 USoundSubmixGraph::RecursivelyConstructChildNodes(USoundSubmixGraphNode* ParentNode, const TMap<USoundSubmix*, int32>& InChildCounts, bool bSelectNewNode /* = true*/)
 {
 	static const int32 HorizontalSpacing = -400;
 	static const int32 VerticalSpacing = 100;
 
-	USoundSubmixBase* ParentSubmix = ParentNode->SoundSubmix;
+	USoundSubmix* ParentSubmix = ParentNode->SoundSubmix;
 	int32 TotalChildSizeY = InChildCounts.FindChecked(ParentSubmix) * VerticalSpacing;
 	int32 NodeStartY = ParentNode->NodePosY - (TotalChildSizeY * 0.5f) + (VerticalSpacing * 0.5f);
 	int32 NodePosX = ParentNode->NodePosX + HorizontalSpacing;
@@ -317,7 +262,7 @@ void USoundSubmixGraph::RemoveAllNodes()
 	}
 }
 
-USoundSubmixGraphNode* USoundSubmixGraph::CreateNode(USoundSubmixBase* SoundSubmix, int32 NodePosX, int32 NodePosY, bool bSelectNewNode/* = true*/)
+USoundSubmixGraphNode* USoundSubmixGraph::CreateNode(USoundSubmix* SoundSubmix, int32 NodePosX, int32 NodePosY, bool bSelectNewNode/* = true*/)
 {
 	USoundSubmixGraphNode* GraphNode = FindExistingNode(SoundSubmix);
 
@@ -333,7 +278,7 @@ USoundSubmixGraphNode* USoundSubmixGraph::CreateNode(USoundSubmixBase* SoundSubm
 	return GraphNode;
 }
 
-USoundSubmixGraphNode* USoundSubmixGraph::FindExistingNode(USoundSubmixBase* SoundSubmix) const
+USoundSubmixGraphNode* USoundSubmixGraph::FindExistingNode(USoundSubmix* SoundSubmix) const
 {
 	for (int32 NodeIndex = 0; NodeIndex < Nodes.Num(); ++NodeIndex)
 	{

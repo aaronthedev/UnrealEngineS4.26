@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,7 @@
 #include "Chaos/Declares.h"
 #include "Chaos/Framework/PhysicsSolverBase.h"
 #include "Chaos/Framework/PhysicsProxyBase.h"
-#include "Chaos/PBDCollisionConstraints.h"
+#include "Chaos/PBDCollisionConstraint.h"
 #include "Chaos/PBDRigidParticles.h"
 #include "UObject/GCObject.h"
 
@@ -38,9 +38,10 @@ class TPhysicsProxy : public IPhysicsProxyBase
 
 public:
 	using FParticleType = Concrete;
+	using FParticleData = ConcreteData;
 
 	using FParticlesType = Chaos::TPBDRigidParticles<float, 3>;
-	using FCollisionConstraintsType = Chaos::FPBDCollisionConstraints;
+	using FCollisionConstraintsType = Chaos::TPBDCollisionConstraint<float, 3>;
 	using FIntArray = Chaos::TArrayCollectionArray<int32>;
 
 	TPhysicsProxy()
@@ -72,16 +73,13 @@ public:
 	void ParameterUpdateCallback(FParticlesType& InParticles, const float InTime) { static_cast<Concrete*>(this)->ParameterUpdateCallback(InParticles, InTime); }
 	void DisableCollisionsCallback(TSet<TTuple<int32, int32>>& InPairs) { static_cast<Concrete*>(this)->DisableCollisionsCallback(InPairs); }
 	void AddForceCallback(FParticlesType& InParticles, const float InDt, const int32 InIndex) { static_cast<Concrete*>(this)->AddForceCallback(InParticles, InDt, InIndex); }
-
-	template <typename Traits>
-	void FieldForcesUpdateCallback(Chaos::TPBDRigidsSolver<Traits>* InSolver, FParticlesType& Particles, Chaos::TArrayCollectionArray<FVector> & Force, Chaos::TArrayCollectionArray<FVector> & Torque, const float Time) { static_cast<Concrete*>(this)->FieldForcesUpdateCallback(InSolver, Particles, Force, Torque, Time); }
+	void FieldForcesUpdateCallback(Chaos::FPhysicsSolver* InSolver, FParticlesType& Particles, Chaos::TArrayCollectionArray<FVector> & Force, Chaos::TArrayCollectionArray<FVector> & Torque, const float Time) { static_cast<Concrete*>(this)->FieldForcesUpdateCallback(InSolver, Particles, Force, Torque, Time); }
 
 	/** The Particle Binding creates a connection between the particles in the simulation and the solver objects dataset. */
 	void BindParticleCallbackMapping(Chaos::TArrayCollectionArray<PhysicsProxyWrapper> & PhysicsProxyReverseMap, Chaos::TArrayCollectionArray<int32> & ParticleIDReverseMap) {static_cast<Concrete*>(this)->BindParticleCallbackMapping(PhysicsProxyReverseMap, ParticleIDReverseMap);}
 
 	/** Called to buffer a command to be processed at the next available safe opportunity */
-	template <typename Traits>
-	void BufferCommand(Chaos::TPBDRigidsSolver<Traits>* InSolver, const FFieldSystemCommand& InCommand) { static_cast<Concrete*>(this)->BufferCommand(InSolver, InCommand); }
+	void BufferCommand(Chaos::FPhysicsSolver* InSolver, const FFieldSystemCommand& InCommand) { static_cast<Concrete*>(this)->BufferCommand(InSolver, InCommand); }
 
 	/** Returns the concrete type of the derived class*/
 	EPhysicsProxyType ConcreteType() { return static_cast<Concrete*>(this)->ConcreteType(); }
@@ -90,7 +88,7 @@ public:
 	 * CONTEXT: GAMETHREAD
 	* Returns a new unmanaged allocation of the data saved on the handle, otherwise nullptr
 	*/
-	//ConcreteData* NewData() { return static_cast<Concrete*>(this)->NewData(); }
+	Chaos::FParticleData* NewData() { return static_cast<Concrete*>(this)->NewData(); }
 
 	/**
 	* CONTEXT: GAMETHREAD -> to -> PHYSICSTHREAD
@@ -98,7 +96,7 @@ public:
 	* callback should Enqueue commands on the PhysicsThread to update the state of
 	* the solver
 	*/
-	//void PushToPhysicsState(const ConcreteData* InData) { static_cast<Concrete*>(this)->PushToPhysicsState(InData); }
+	void PushToPhysicsState(const Chaos::FParticleData* InData) { static_cast<Concrete*>(this)->PushToPhysicsState(InData); }
 
 	/**
 	* CONTEXT: GAMETHREAD
@@ -131,14 +129,10 @@ public:
 	 * from the game thread when it cannot sync to the physics thread. The simulation is very likely to be running
 	 * when this happens so never read any physics thread data here!
 	 *
-	 * SyncTimestamp indicates which inputs the solver used to generate these results. Proxy can stomp results if needed
-	 * For example of particle has been deleted, or a position was set manually by game thread, the proxy ignores the solver results
-	 * Returns true if the data was pulled. If false is returned the proxy's particle pointer may be dangling so do not read from it. Skip sync entirely
-	 *
 	 * Note: A read lock will have been acquired for this - so the physics thread won't force a buffer flip while this
 	 * sync is ongoing
 	 */
-	bool PullFromPhysicsState(const int32 SolverSyncTimestamp) { return static_cast<Concrete*>(this)->PullFromPhysicsState(SolverSyncTimestamp); }
+	void PullFromPhysicsState() { static_cast<Concrete*>(this)->PullFromPhysicsState(); }
 
 	/**
 	 * CONTEXT: GAMETHREAD

@@ -1,11 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PositionPlaneGizmo.h"
 #include "InteractiveGizmoManager.h"
 #include "Generators/MinimalBoxMeshGenerator.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Engine/Engine.h"  // for GEngine - @todo remove this?
-#include "ToolSceneQueriesUtil.h"
+
 
 
 
@@ -114,7 +114,7 @@ void UPositionPlaneGizmo::Render(IToolsContextRenderAPI* RenderAPI)
 
 bool UPositionPlaneGizmo::HitTest(const FRay& Ray, FHitResult& OutHit)
 {
-	if (CenterBallShape->TestRayIntersection(FRay3d(Ray)))
+	if (CenterBallShape->TestRayIntersection(Ray))
 	{
 		OutHit.Distance = 0.1;
 		return true;
@@ -136,7 +136,7 @@ void UPositionPlaneGizmo::OnUpdateDrag(const FRay& Ray)
 	if (bInTransformDrag)
 	{
 		FVector3d SnapPos;
-		if (QuickTransformer.UpdateSnap(FRay3d(Ray), SnapPos))
+		if (QuickTransformer.UpdateSnap(Ray, SnapPos))
 		{
 			FTransform CurTransform = CenterBallShape->GetTransform();
 			CurTransform.SetTranslation((FVector)SnapPos);
@@ -146,8 +146,11 @@ void UPositionPlaneGizmo::OnUpdateDrag(const FRay& Ray)
 	}
 	else
 	{
+		FVector RayStart = Ray.Origin;
+		FVector RayEnd = Ray.PointAt(999999);
+		FCollisionObjectQueryParams QueryParams(FCollisionObjectQueryParams::AllObjects);
 		FHitResult Result;
-		bool bHitWorld = ToolSceneQueriesUtil::FindNearestVisibleObjectHit(TargetWorld, Result, Ray);
+		bool bHitWorld = TargetWorld->LineTraceSingleByObjectType(Result, RayStart, RayEnd, QueryParams);
 		if (bHitWorld)
 		{
 			FFrame3f UpdatedFrame(CenterBallShape->GetTransform());

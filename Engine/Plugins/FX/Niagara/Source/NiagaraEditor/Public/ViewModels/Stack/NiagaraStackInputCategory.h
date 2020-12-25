@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,7 +8,6 @@
 
 class UNiagaraStackFunctionInput;
 class UNiagaraNodeFunctionCall;
-class UNiagaraClipboardFunctionInput;
 
 UENUM()
 enum class EStackParameterBehavior
@@ -33,7 +32,7 @@ public:
 
 	void ResetInputs();
 
-	void AddInput(FName InInputParameterHandle, FNiagaraTypeDefinition InInputType, EStackParameterBehavior InParameterBehavior, bool bIsVisible, bool bIsChildInput);
+	void AddInput(FName InInputParameterHandle, FNiagaraTypeDefinition InInputType, EStackParameterBehavior InParameterBehavior, bool bIsVisible);
 
 	//~ UNiagaraStackEntry interface
 	virtual FText GetDisplayName() const override;
@@ -43,14 +42,7 @@ public:
 
 	void SetShouldShowInStack(bool bInShouldShowInStack);
 
-	void ToClipboardFunctionInputs(UObject* InOuter, TArray<const UNiagaraClipboardFunctionInput*>& OutClipboardFunctionInputs) const;
-
-	void SetStaticSwitchValuesFromClipboardFunctionInputs(const TArray<const UNiagaraClipboardFunctionInput*>& ClipboardFunctionInputs);
-
-	void SetStandardValuesFromClipboardFunctionInputs(const TArray<const UNiagaraClipboardFunctionInput*>& ClipboardFunctionInputs);
 protected:
-
-
 	//~ UNiagaraStackEntry interface
 	virtual void RefreshChildrenInternal(const TArray<UNiagaraStackEntry*>& CurrentChildren, TArray<UNiagaraStackEntry*>& NewChildren, TArray<FStackIssue>& NewIssues) override;
 
@@ -65,7 +57,6 @@ private:
 		FNiagaraTypeDefinition Type;
 		EStackParameterBehavior ParameterBehavior;
 		bool bIsVisible;
-		bool bIsChildInput;
 	};
 
 	UNiagaraNodeFunctionCall* ModuleNode;

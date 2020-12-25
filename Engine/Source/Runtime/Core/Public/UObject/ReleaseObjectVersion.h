@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreTypes.h"
@@ -26,7 +26,7 @@ struct CORE_API FReleaseObjectVersion
 		// Add Component node templates now use their own unique naming scheme to ensure more reliable archetype lookups.
 		AddComponentNodeTemplateUniqueNames,
 
-		// Fix a serialization issue with static mesh FMeshSectionInfoMap FProperty
+		// Fix a serialization issue with static mesh FMeshSectionInfoMap UProperty
 		UPropertryForMeshSectionSerialize,
 
 		// Existing HLOD settings screen size to screen area conversion
@@ -95,36 +95,6 @@ struct CORE_API FReleaseObjectVersion
 
 		// Upgrade filmback
 		DeprecateFilmbackSettings,
-		
-		// custom collision type
-		CustomImplicitCollisionType,
-
-		// FFieldPath will serialize the owner struct reference and only a short path to its property
-		FFieldPathOwnerSerialization,
-
-		// Dummy version to allow us to fix up the fact that ReleaseObjectVersion was changed elsewhere
-		ReleaseObjectVersionFixup,
-
-		// Pin types include a flag that propagates the 'CPF_UObjectWrapper' flag to generated properties
-		PinTypeIncludesUObjectWrapperFlag,
-
-		// Added Weight member to FMeshToMeshVertData
-		WeightFMeshToMeshVertData,
-
-		// Animation graph node bindings displayed as pins
-		AnimationGraphNodeBindingsDisplayedAsPins,
-
-		// Serialized rigvm offset segment paths
-		SerializeRigVMOffsetSegmentPaths,
-
-		// Upgrade AbcGeomCacheImportSettings for velocities
-		AbcVelocitiesSupport,
-
-		// Add margin support to Chaos Convex
-		MarginAddedToConvexAndBox,
-
-		// Add structure data to Chaos Convex
-		StructureDataAddedToConvex,
 
 		// -----<new versions can be added above this line>-------------------------------------------------
 		VersionPlusOne,

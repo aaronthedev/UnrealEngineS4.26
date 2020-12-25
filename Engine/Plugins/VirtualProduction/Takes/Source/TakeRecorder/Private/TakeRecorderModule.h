@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,7 +10,6 @@
 
 class FExtender;
 class FTakePresetActions;
-class UTakePreset;
 class FSerializedRecorder;
 class UTakeRecorderSources;
 class USequencerSettings;
@@ -21,10 +20,6 @@ public:
 	FTakeRecorderModule();
 
 	void PopulateSourcesMenu(TSharedRef<FExtender> InExtender, UTakeRecorderSources* InSources);
-	virtual UTakePreset* GetPendingTake() const override;
-
-	//~ ITakeRecorderModule API
-	virtual FOnGenerateToolbarExtensions& GetToolbarExtensionGenerators() override { return ToolbarExtensionGenerators; }
 
 private:
 
@@ -37,10 +32,6 @@ private:
 
 	/** FGCObject interface */
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
-	virtual FString GetReferencerName() const override
-	{
-		return "FTakeRecorderModule";
-	}
 
 private:
 
@@ -71,7 +62,6 @@ private:
 	DECLARE_MULTICAST_DELEGATE_TwoParams(FOnExtendSourcesMenuEvent, TSharedRef<FExtender>, UTakeRecorderSources*);
 
 	FOnExtendSourcesMenuEvent SourcesMenuExtenderEvent;
-	FOnGenerateToolbarExtensions ToolbarExtensionGenerators;
 
 	FDelegateHandle LevelEditorLayoutExtensionHandle;
 	FDelegateHandle LevelEditorTabManagerChangedHandle;

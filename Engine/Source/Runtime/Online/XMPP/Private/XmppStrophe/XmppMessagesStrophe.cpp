@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "XmppStrophe/XmppMessagesStrophe.h"
 #include "XmppStrophe/XmppConnectionStrophe.h"
@@ -16,7 +16,6 @@
 #include "Misc/Guid.h"
 #include "Misc/EmbeddedCommunication.h"
 #include "Containers/BackgroundableTicker.h"
-#include "Stats/Stats.h"
 
 #if WITH_XMPP_STROPHE
 
@@ -52,7 +51,7 @@ bool FXmppMessagesStrophe::ReceiveStanza(const FStropheStanza& IncomingStanza)
 		return false;
 	}
 
-	const TOptional<const FStropheStanza> ErrorStanza = IncomingStanza.GetChildStropheStanza(Strophe::SN_ERROR);
+	const TOptional<const FStropheStanza> ErrorStanza = IncomingStanza.GetChild(Strophe::SN_ERROR);
 	if (ErrorStanza.IsSet())
 	{
 		return HandleMessageErrorStanza(ErrorStanza.GetValue());
@@ -102,10 +101,6 @@ bool FXmppMessagesStrophe::HandleMessageStanza(const FStropheStanza& IncomingSta
 		{
 			FDateTime::ParseIso8601(*TimestampStr, Message.Timestamp);
 		}
-	}
-	else
-	{
-		UE_LOG(LogXmpp, Warning, TEXT("Message: Failed to Deserialize JsonBody %s"), *IncomingStanza.GetBodyText().GetValue());
 	}
 
 	FEmbeddedCommunication::KeepAwake(TickRequesterId, false);
@@ -195,8 +190,6 @@ bool FXmppMessagesStrophe::SendMessage(const FXmppUserJid& RecipientId, const FS
 
 bool FXmppMessagesStrophe::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FXmppMessagesStrophe_Tick);
-
 	while (!IncomingMessages.IsEmpty())
 	{
 		TUniquePtr<FXmppMessage> Message;

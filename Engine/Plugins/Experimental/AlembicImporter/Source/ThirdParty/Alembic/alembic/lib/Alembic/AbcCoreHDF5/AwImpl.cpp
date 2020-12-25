@@ -258,7 +258,7 @@ AwImpl::~AwImpl()
                  << ", Attributes: " << attrCount;
 
             m_file = -1;
-            std::cerr << strm.str() << std::endl;
+            ABCA_THROW( strm.str() );
         }
 
         H5Fclose( m_file );

@@ -1,7 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
-#include "Templates/ValueOrError.h"
 #include "BuildPatchManifest.h"
 #include "BuildPatchSettings.h"
 
@@ -16,21 +15,18 @@ namespace BuildPatchServices
 	{
 	public:
 		virtual ~IOptimisedDelta() {}
-		typedef TValueOrError<FBuildPatchAppManifestPtr, FString> FResultValueOrError;
 
 		/**
-		 * Gets the manifest that should be used as the destination manifest, or the error instead if there was one.
-		 * If DeltaPolicy configuration is EDeltaPolicy::TryFetchContinueWithout then the result is guarenteed to always contain a valid manifest, which
-		 * may equal the original DestinationManifest provided.
+		 * Gets the manifest that should be used as the destination manifest. Invalid if there was an error.
 		 * @return the destination manifest.
 		 */
-		virtual const IOptimisedDelta::FResultValueOrError& GetResult() const = 0;
+		virtual FBuildPatchAppManifestPtr GetDestinationManifest() = 0;
 
 		/**
 		 * Gets the size of the metadata downloaded to create the optimised manifest.
 		 * @return the downloaded size in bytes.
 		 */
-		virtual int32 GetMetaDownloadSize() const = 0;
+		virtual int32 GetMetaDownloadSize() = 0;
 	};
 
 	/**
@@ -71,8 +67,8 @@ namespace BuildPatchServices
 	public:
 		// A download service instance.
 		IDownloadService* DownloadService;
-		// Function to call once the destination manifest has been selected. Receives manifest or error.
-		TFunction<void(const IOptimisedDelta::FResultValueOrError&)> OnComplete;
+		// Function to call once the destination manifest has been selected.
+		TFunction<void(FBuildPatchAppManifestPtr)> OnComplete;
 	};
 
 	class FOptimisedDeltaFactory

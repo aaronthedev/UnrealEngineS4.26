@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineSubsystemSteam.h"
 #include "GenericPlatform/GenericPlatformFile.h"
@@ -10,7 +10,6 @@
 #include "Serialization/BufferArchive.h"
 #include "Interfaces/IPluginManager.h"
 #include "SocketSubsystem.h"
-#include "Stats/Stats.h"
 
 #include "IPAddress.h"
 #include "OnlineSubsystemSteamPrivate.h"
@@ -41,7 +40,7 @@
  * if your game is launched outside of Steam.
  */
 #ifndef UE4_PROJECT_STEAMSHIPPINGID
-#define UE4_PROJECT_STEAMSHIPPINGID 0
+#define UE4_PROJECT_STEAMSHIPPINGID 1137980
 #endif
 
 namespace FNetworkProtocolTypes
@@ -49,23 +48,24 @@ namespace FNetworkProtocolTypes
 	const FLazyName Steam(TEXT("Steam"));
 }
 
+#if !UE_BUILD_SHIPPING
 namespace OSSConsoleVariables
 {
+	/** This CVar is for use by NetcodeUnitTest, and is completely unsupported for use outside of this */
 	TAutoConsoleVariable<int32> CVarSteamInitServerOnClient(
 			TEXT("OSS.SteamInitServerOnClient"),
-			0,
-			TEXT("Whether or not to initialize the Steam server interface on clients (default false)"),
-			ECVF_Default | ECVF_Cheat);
+			1,
+			TEXT("Whether or not to initialize the Steam server interface on clients (default true)"),
+			ECVF_Default);
 
-#if !UE_BUILD_SHIPPING
 	/** CVar used by NetcodeUnitTest, to force-enable Steam within the unit test commandlet */
 	TAutoConsoleVariable<int32> CVarSteamUnitTest(
 			TEXT("OSS.SteamUnitTest"),
 			0,
 			TEXT("Whether or not Steam is being force-enabled by NetcodeUnitTest"),
 			ECVF_Default);
-#endif
 }
+#endif
 
 
 extern "C" 
@@ -322,6 +322,11 @@ IOnlineEntitlementsPtr FOnlineSubsystemSteam::GetEntitlementsInterface() const
 	return nullptr;
 }
 
+IOnlineStorePtr FOnlineSubsystemSteam::GetStoreInterface() const
+{
+	return nullptr;
+}
+
 IOnlineEventsPtr FOnlineSubsystemSteam::GetEventsInterface() const
 {
 	return nullptr;
@@ -386,8 +391,6 @@ void FOnlineSubsystemSteam::QueueAsyncOutgoingItem(FOnlineAsyncItem* AsyncItem)
 
 bool FOnlineSubsystemSteam::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FOnlineSubsystemSteam_Tick);
-
 	if (!FOnlineSubsystemImpl::Tick(DeltaTime))
 	{
 		return false;
@@ -419,7 +422,7 @@ bool FOnlineSubsystemSteam::Tick(float DeltaTime)
 bool FOnlineSubsystemSteam::Init()
 {
 	bool bRelaunchInSteam = false;
-	int RelaunchAppId = 0;
+	int RelaunchAppId = 1137980;
 
 	if (!ConfigureSteamInitDevOptions(bRelaunchInSteam, RelaunchAppId))
 	{
@@ -428,17 +431,20 @@ bool FOnlineSubsystemSteam::Init()
 	}
 
 	const bool bIsServer = IsRunningDedicatedServer();
-	bool bInitServerOnClient = false;
-	GConfig->GetBool(TEXT("OnlineSubsystemSteam"), TEXT("bInitServerOnClient"), bInitServerOnClient, GEngineIni);
-	bool bAttemptServerInit = bIsServer || !!OSSConsoleVariables::CVarSteamInitServerOnClient.GetValueOnGameThread() || bInitServerOnClient;
+	bool bAttemptServerInit = true;
 
-	UE_LOG_ONLINE(Verbose, TEXT("Steam: Starting SteamWorks. Client [%d] Server [%d]"), !bIsServer, bAttemptServerInit);
+#if !UE_BUILD_SHIPPING
+	// Add a bypass for NetcodeUnitTest, to allow running a Steam server + client from same machine, by disabling server init on client.
+	// This is an unapproved/unsupported method for using OnlineSubsystemSteam.
+	bAttemptServerInit = bIsServer || !!OSSConsoleVariables::CVarSteamInitServerOnClient.GetValueOnGameThread();
+#endif
 	
 	// Don't initialize the Steam Client API if we are launching as a server
 	bool bClientInitSuccess = !bIsServer ? InitSteamworksClient(bRelaunchInSteam, RelaunchAppId) : true;
 
-	// Initialize the Steam Server API if this is a dedicated server or servers should initialize on clients
-	bool bServerInitSuccess = bAttemptServerInit ? (InitSteamworksServer()) : true;
+	// Initialize the Steam Server API if this is a dedicated server or
+	//  the Client API was successfully initialized
+	bool bServerInitSuccess = bClientInitSuccess ? (!bAttemptServerInit || InitSteamworksServer()) : false;
 
 	if (bClientInitSuccess && bServerInitSuccess)
 	{
@@ -650,8 +656,6 @@ bool FOnlineSubsystemSteam::InitSteamworksClient(bool bRelaunchInSteam, int32 St
 
 	if (bSteamworksClientInitialized)
 	{
-		GameServerGamePort = SteamAPIClientHandle->GetGamePort();
-
 		bool bIsSubscribed = true;
 		if (FPlatformProperties::IsGameOnly() || FPlatformProperties::IsServerOnly())
 		{

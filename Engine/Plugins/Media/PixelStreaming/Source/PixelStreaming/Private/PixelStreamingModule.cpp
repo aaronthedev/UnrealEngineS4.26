@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PixelStreamingModule.h"
 #include "FreezeFrame.h"
@@ -7,6 +7,7 @@
 #include "InputDevice.h"
 #include "PixelStreamerInputComponent.h"
 #include "PixelStreamerDelegates.h"
+#include "SessionMonitorConnection.h"
 #include "SignallingServerConnection.h"
 #include "HUDStats.h"
 #include "PixelStreamingPrivate.h"
@@ -128,6 +129,13 @@ void FPixelStreamingModule::InitStreamer()
 	UFreezeFrame::CreateInstance();
 	verify(FModuleManager::Get().LoadModule(FName("ImageWrapper")));
 
+	uint16 SessionMonitorPort = 0;
+	FParse::Value(FCommandLine::Get(), TEXT("PixelStreamingSessionMonitorPort="), SessionMonitorPort);
+	if (SessionMonitorPort)
+	{
+		SessionMonitorConnection = MakeUnique<FSessionMonitorConnection>(SessionMonitorPort);
+	}
+
 	Streamer = MakeUnique<FStreamer>(FString::Printf(TEXT("ws://%s:%d"), *SignallingServerIP, SignallingServerPort));
 }
 
@@ -166,33 +174,18 @@ void FPixelStreamingModule::InitPlayer()
 /** IModuleInterface implementation */
 void FPixelStreamingModule::StartupModule()
 {
-	FString DynamicRHIName = TEXT("[null]");
-	bool bIsD3D11 = false;
-	bool bIsD3D12 = false;
-	if (GDynamicRHI != nullptr)
-	{
-		DynamicRHIName = GDynamicRHI->GetName();
-		bIsD3D11 = GDynamicRHI->GetName() == FString(TEXT("D3D11"));
-		bIsD3D12 = GDynamicRHI->GetName() == FString(TEXT("D3D12"));
-	}
-	
 	// only D3D11/D3D12 is supported
-	if (!bIsD3D11 && !bIsD3D12)
+	if (
+		GDynamicRHI == nullptr ||
+		!(GDynamicRHI->GetName() == FString(TEXT("D3D11")) || GDynamicRHI->GetName() == FString(TEXT("D3D12")))
+		)
 	{
-		UE_LOG(PixelStreaming, Log, TEXT("Only D3D11/D3D12 Dynamic RHI is supported. Detected %s"), *DynamicRHIName);
+		UE_LOG(PixelStreaming, Log, TEXT("Only D3D11/D3D12 Dynamic RHI is supported. Detected %s"), GDynamicRHI != nullptr ? GDynamicRHI->GetName() : TEXT("[null]"));
 		return;
 	}
 
 	InitStreamer();
-	if (bIsD3D11)
-	{
-		// The player is currently only supported on DX11.
-		InitPlayer();
-	}
-	else
-	{
-		UE_LOG(PixelStreaming, Log, TEXT("Player is supported only on DX11"));
-	}
+	InitPlayer();
 }
 
 void FPixelStreamingModule::ShutdownModule()
@@ -212,7 +205,7 @@ bool FPixelStreamingModule::CheckPlatformCompatibility() const
 {
 	bool bCompatible = true;
 
-	bool bWin8OrHigher = FPlatformMisc::VerifyWindowsVersion(6, 2);
+	bool bWin8OrHigher = FWindowsPlatformMisc::VerifyWindowsVersion(6, 2);
 	if (!bWin8OrHigher)
 	{
 		FString ErrorString(TEXT("Failed to initialize Pixel Streaming plugin because minimum requirement is Windows 8"));
@@ -400,7 +393,7 @@ void FPixelStreamingModule::SendJpeg(TArray<FColor> RawData, const FIntRect& Rec
 	{
 		// Compress to a JPEG of the maximum possible quality.
 		int32 Quality = CVarFreezeFrameQuality.GetValueOnAnyThread();
-		const TArray64<uint8>& JpegBytes = ImageWrapper->GetCompressed(Quality);
+		const TArray<uint8>& JpegBytes = ImageWrapper->GetCompressed(Quality);
 		Streamer->SendFreezeFrame(JpegBytes);
 	}
 	else
@@ -421,6 +414,17 @@ bool FPixelStreamingModule::IsTickableInEditor() const
 
 void FPixelStreamingModule::Tick(float DeltaTime)
 {
+	if (SessionMonitorConnection)
+	{
+		HeartbeatCountdown -= DeltaTime;
+		if (HeartbeatCountdown <= 0)
+		{
+			SessionMonitorConnection->Heartbeat();
+			//  Hardcoded value for now
+			HeartbeatCountdown = 2.0f;
+		}
+	}
+
 	FHUDStats::Get().Tick();
 }
 

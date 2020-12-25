@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CineCameraComponent.h"
 #include "UObject/CineCameraObjectVersion.h"
@@ -25,8 +25,15 @@
 UCineCameraComponent::UCineCameraComponent()
 {
 	// Super 35mm 4 Perf
-	// Default filmback and lens settings will be overridden if valid default presets are specified in ini
-	
+	// These will be overridden if valid default presets are specified in ini
+	Filmback.SensorWidth = 24.89f;
+	Filmback.SensorHeight = 18.67;
+	LensSettings.MinFocalLength = 50.f;
+	LensSettings.MaxFocalLength = 50.f;
+	LensSettings.MinFStop = 2.f;
+	LensSettings.MaxFStop = 2.f;
+	LensSettings.MinimumFocusDistance = 15.f;
+	LensSettings.DiaphragmBladeCount = FPostProcessSettings::kDefaultDepthOfFieldBladeCount;
 
 #if WITH_EDITORONLY_DATA
 	bTickInEditor = true;
@@ -65,7 +72,7 @@ UCineCameraComponent::UCineCameraComponent()
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> PlaneMesh(TEXT("/Engine/ArtTools/RenderToTexture/Meshes/S_1_Unit_Plane.S_1_Unit_Plane"));
 	FocusPlaneVisualizationMesh = PlaneMesh.Object;
 
-	static ConstructorHelpers::FObjectFinder<UMaterial> PlaneMat(TEXT("/Engine/EngineDebugMaterials/M_SimpleUnlitTranslucent.M_SimpleUnlitTranslucent"));
+	static ConstructorHelpers::FObjectFinder<UMaterial> PlaneMat(TEXT("/Engine/EngineDebugMaterials/M_SimpleTranslucent.M_SimpleTranslucent"));
 	FocusPlaneVisualizationMaterial = PlaneMat.Object;
 #endif
 }
@@ -76,11 +83,21 @@ void UCineCameraComponent::Serialize(FArchive& Ar)
 	Ar.UsingCustomVersion(FReleaseObjectVersion::GUID);
 
 	Super::Serialize(Ar);
+}
 
-	if (Ar.IsLoading() && Ar.CustomVer(FReleaseObjectVersion::GUID) < FReleaseObjectVersion::DeprecateFilmbackSettings)
+void UCineCameraComponent::PostInitProperties()
+{
+	Super::PostInitProperties();
+
+	RecalcDerivedData();
+}
+
+void UCineCameraComponent::PostLoad()
+{
+	if (GetLinkerCustomVersion(FReleaseObjectVersion::GUID) < FReleaseObjectVersion::DeprecateFilmbackSettings)
 	{
 		bool bUpgradeFilmback = true;
-		if (Ar.CustomVer(FCineCameraObjectVersion::GUID) == FCineCameraObjectVersion::ChangeDefaultFilmbackToDigitalFilm)
+		if (GetLinkerCustomVersion(FCineCameraObjectVersion::GUID) == FCineCameraObjectVersion::ChangeDefaultFilmbackToDigitalFilm)
 		{
 			UCineCameraComponent* Template = Cast<UCineCameraComponent>(GetArchetype());
 			if (Template)
@@ -112,26 +129,10 @@ void UCineCameraComponent::Serialize(FArchive& Ar)
 			Filmback = FilmbackSettings_DEPRECATED;
 		}
 	}
-}
-
-void UCineCameraComponent::PostInitProperties()
-{
-	Super::PostInitProperties();
-
-	RecalcDerivedData();
-}
-
-void UCineCameraComponent::PostLoad()
-{
-	Super::PostLoad();
-
-	if (FocusSettings.FocusMethod >= ECameraFocusMethod::MAX )
-	{
-		FocusSettings.FocusMethod = ECameraFocusMethod::DoNotOverride;
-	}
 
 	RecalcDerivedData();
 	bResetInterpolation = true;
+	Super::PostLoad();
 }
 
 static const FColor DebugFocusPointSolidColor(102, 26, 204, 153);		// purple
@@ -187,23 +188,6 @@ void UCineCameraComponent::TickComponent(float DeltaTime, ELevelTick TickType, F
 
 void UCineCameraComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
-	static const FName NAME_MinFocalLength = GET_MEMBER_NAME_CHECKED(FCameraLensSettings, MinFocalLength);
-	static const FName NAME_MaxFocalLength = GET_MEMBER_NAME_CHECKED(FCameraLensSettings, MaxFocalLength);
-
-	const FName PropertyChangedName = PropertyChangedEvent.GetPropertyName();
-
-	// If the user changed one of these 2 properties, leave the one that they changed alone, and 
-	// re-adjust the other one.
-	if (PropertyChangedName == NAME_MinFocalLength)
-	{
-		LensSettings.MaxFocalLength = FMath::Max(LensSettings.MinFocalLength, LensSettings.MaxFocalLength);
-	}
-	else if (PropertyChangedName == NAME_MaxFocalLength)
-	{
-		LensSettings.MinFocalLength = FMath::Min(LensSettings.MinFocalLength, LensSettings.MaxFocalLength);
-	}
-
-	// Recalculate everything based on any new values.
 	RecalcDerivedData();
 
 	// handle debug focus plane
@@ -249,7 +233,7 @@ void UCineCameraComponent::SetFieldOfView(float InFieldOfView)
 	CurrentFocalLength = (Filmback.SensorWidth / 2.f) / FMath::Tan(FMath::DegreesToRadians(InFieldOfView / 2.f));
 }
 
-void UCineCameraComponent::SetCurrentFocalLength(float InFocalLength)
+void UCineCameraComponent::SetCurrentFocalLength(const float& InFocalLength)
 {
 	CurrentFocalLength = InFocalLength;
 	RecalcDerivedData();
@@ -353,12 +337,6 @@ float UCineCameraComponent::GetWorldToMetersScale() const
 }
 
 // static
-TArray<FNamedFilmbackPreset> UCineCameraComponent::GetFilmbackPresetsCopy()
-{
-	return GetDefault<UCineCameraComponent>()->FilmbackPresets;
-}
-
-// static
 TArray<FNamedLensPreset> UCineCameraComponent::GetLensPresetsCopy()
 {
 	return GetDefault<UCineCameraComponent>()->LensPresets;
@@ -378,9 +356,6 @@ TArray<FNamedLensPreset> const& UCineCameraComponent::GetLensPresets()
 
 void UCineCameraComponent::RecalcDerivedData()
 {
-	// validate incorrect values
-	LensSettings.MaxFocalLength = FMath::Max(LensSettings.MinFocalLength, LensSettings.MaxFocalLength);
-	
 	// respect physical limits of the (simulated) hardware
 	CurrentFocalLength = FMath::Clamp(CurrentFocalLength, LensSettings.MinFocalLength, LensSettings.MaxFocalLength);
 	CurrentAperture = FMath::Clamp(CurrentAperture, LensSettings.MinFStop, LensSettings.MaxFStop);
@@ -471,7 +446,7 @@ FText UCineCameraComponent::GetFilmbackText() const
 	{
 		FNumberFormattingOptions Opts = FNumberFormattingOptions().SetMaximumFractionalDigits(1);
 		return FText::Format(
-			LOCTEXT("CustomFilmbackFormat", "Custom ({0}mm x {1}mm) | Zoom: {2}mm | Av: {3}"),
+			LOCTEXT("CustomFilmbackFormat", "Custom ({0}mm x {1}mm) | Zoom: {1}mm | Av: {2}"),
 			FText::AsNumber(SensorWidth, &Opts),
 			FText::AsNumber(SensorHeight, &Opts),
 			FText::AsNumber(CurrentFocalLength),
@@ -501,19 +476,13 @@ void UCineCameraComponent::UpdateDebugFocusPlane()
 
 void UCineCameraComponent::UpdateCameraLens(float DeltaTime, FMinimalViewInfo& DesiredView)
 {
-	if (FocusSettings.FocusMethod == ECameraFocusMethod::DoNotOverride)
+	if (FocusSettings.FocusMethod == ECameraFocusMethod::None)
 	{
 		DesiredView.PostProcessSettings.bOverride_DepthOfFieldFstop = false;
 		DesiredView.PostProcessSettings.bOverride_DepthOfFieldMinFstop = false;
 		DesiredView.PostProcessSettings.bOverride_DepthOfFieldBladeCount = false;
 		DesiredView.PostProcessSettings.bOverride_DepthOfFieldFocalDistance = false;
 		DesiredView.PostProcessSettings.bOverride_DepthOfFieldSensorWidth = false;
-	}
-	else if (FocusSettings.FocusMethod == ECameraFocusMethod::Disable)
-	{
-		// There might be a post process volume that is enabled with depth of field settings, override it and disable depth of field by setting the distance to 0
-		DesiredView.PostProcessSettings.bOverride_DepthOfFieldFocalDistance = true;
-		DesiredView.PostProcessSettings.DepthOfFieldFocalDistance = 0.f;
 	}
 	else
 	{

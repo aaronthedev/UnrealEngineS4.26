@@ -25,6 +25,10 @@
 #include "llvm/Transforms/Utils/GlobalStatus.h"
 #include "llvm/Pass.h"
 #include <unordered_map>
+#include "dxc/HLSL/HLModule.h" // HLSL Change
+#include "dxc/DXIL/DxilModule.h" // HLSL Change
+#include "dxc/DXIL/DxilOperations.h" // HLSL Change
+#include "dxc/DXIL/DxilInstructions.h" // HLSL Change
 using namespace llvm;
 
 #define DEBUG_TYPE "globaldce"
@@ -162,12 +166,14 @@ bool GlobalDCE::runOnModule(Module &M) {
       I->setAliasee(nullptr);
     } 
 
+  hlsl::HLModule *HLM = M.HasHLModule() ? &M.GetHLModule() : nullptr; // HLSL Change
+
   if (!DeadFunctions.empty()) {
     // Now that all interferences have been dropped, delete the actual objects
     // themselves.
     for (unsigned i = 0, e = DeadFunctions.size(); i != e; ++i) {
       RemoveUnusedGlobalValue(*DeadFunctions[i]);
-      M.CallRemoveGlobalHook(DeadFunctions[i]); // HLSL Change
+      if (HLM != nullptr) HLM->RemoveFunction(DeadFunctions[i]); // HLSL Change
       M.getFunctionList().erase(DeadFunctions[i]);
     }
     NumFunctions += DeadFunctions.size();
@@ -177,7 +183,7 @@ bool GlobalDCE::runOnModule(Module &M) {
   if (!DeadGlobalVars.empty()) {
     for (unsigned i = 0, e = DeadGlobalVars.size(); i != e; ++i) {
       RemoveUnusedGlobalValue(*DeadGlobalVars[i]);
-      M.CallRemoveGlobalHook(DeadGlobalVars[i]); // HLSL Change
+      if (HLM != nullptr) HLM->RemoveGlobal(DeadGlobalVars[i]); // HLSL Change
       M.getGlobalList().erase(DeadGlobalVars[i]);
     }
     NumVariables += DeadGlobalVars.size();

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AutomationTestSettings.h: Declares the UAutomationTestSettings class.
@@ -48,18 +48,18 @@ struct FExternalToolDefinition
 };
 
 /**
- * Holds FProperty names and values to customize factory settings
+ * Holds UProperty names and values to customize factory settings
  */
 USTRUCT()
 struct FImportFactorySettingValues
 {
 	GENERATED_USTRUCT_BODY()
 
-	/* The name of the FProperty to change */
+	/* The name of the UProperty to change */
 	UPROPERTY(config, EditAnywhere, Category = Automation, meta = (ToolTip = "Name of the property to change.  Nested settings can be modified using \"Outer.Property\""))
 	FString SettingName;
 
-	/* The value to apply to the FProperty */
+	/* The value to apply to the UProperty */
 	UPROPERTY(config, EditAnywhere, Category = Automation, meta = (ToolTip = "Value to import for the specified property."))
 	FString Value;
 };
@@ -374,12 +374,6 @@ public:
 	TArray<FSoftObjectPath> AssetsToOpen;
 
 	/**
-	 * Maps to PIE during the PIE test
-	 */
-	UPROPERTY(EditAnywhere, config, Category = "PIE Test Maps")
-	TArray<FString> MapsToPIETest;
-
-	/**
 	* Editor build promotion test settings
 	*/
 	UPROPERTY(EditAnywhere, config, Category = Automation)
@@ -432,10 +426,4 @@ public:
 	 */
 	UPROPERTY(EditAnywhere, config, Category=Screenshots)
 	FIntPoint DefaultScreenshotResolution;
-
-	/**
-	 * PIE test duration in seconds. Only applied if you do PIETest
-	 */
-	UPROPERTY(EditAnywhere, config, Category = Automation)
-	float PIETestDuration;
 };

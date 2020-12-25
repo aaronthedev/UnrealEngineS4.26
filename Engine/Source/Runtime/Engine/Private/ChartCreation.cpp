@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /** 
  * ChartCreation
@@ -626,20 +626,12 @@ void FPerformanceTrackingChart::Reset(const FDateTime& InStartTime)
 	MaxPlayerTicks = 0;
 	MinPlayerTicks = INT_MAX;
 	TotalPlayerTicks = 0;
-	MaxVehicleTicks = 0;
-	TotalVehicleTicks = 0;
 	MaxDrawnPrimitives = 0;
 	MinDrawnPrimitives = INT_MAX;
 	TotalDrawnPrimitives = 0;
 	AccumulatedChartTime = 0.0;
 	TimeDisregarded = 0.0;
 	FramesDisregarded = 0;
-	MaxPhysicalMemory = 0;
-	MaxVirtualMemory = 0;
-	MinPhysicalMemory = ULONG_MAX;
-	MinVirtualMemory = ULONG_MAX;
-	TotalPhysicalMemoryUsed = 0;
-	TotalVirtualMemoryUsed = 0;
 
 	FrametimeHistogram.InitFromArray({ 0.0/1000.0, 15.0/1000.0, 20.0/1000.0, 30.0/1000.0, 35.0/1000.0, 60.0/1000.0, 100.0/1000.0, 1000.0/1000.0 });
 
@@ -669,7 +661,7 @@ void FPerformanceTrackingChart::Reset(const FDateTime& InStartTime)
 
 	StartBatteryLevel = -1;
 	StopBatteryLevel = -1;
-	DeviceProfileName = UDeviceProfileManager::Get().GetActiveDeviceProfileName();
+	DeviceProfileName = UDeviceProfileManager::GetActiveProfileName();
 	bIsChartingPaused = false;
 }
 
@@ -704,8 +696,6 @@ void FPerformanceTrackingChart::AccumulateWith(const FPerformanceTrackingChart& 
 	MaxPlayerTicks = FMath::Max(MaxPlayerTicks, Chart.MaxPlayerTicks);
 	MinPlayerTicks = FMath::Min(MinPlayerTicks, Chart.MinPlayerTicks);
 	TotalPlayerTicks += Chart.TotalPlayerTicks;
-	MaxVehicleTicks = FMath::Max(MaxVehicleTicks, Chart.MaxVehicleTicks);
-	TotalVehicleTicks += Chart.TotalVehicleTicks;
 	MaxDrawnPrimitives = FMath::Max(MaxDrawnPrimitives, Chart.MaxDrawnPrimitives);
 	MinDrawnPrimitives = FMath::Min(MinDrawnPrimitives, Chart.MinDrawnPrimitives);
 	TotalDrawnPrimitives += Chart.TotalDrawnPrimitives;
@@ -716,19 +706,13 @@ void FPerformanceTrackingChart::AccumulateWith(const FPerformanceTrackingChart& 
 	TimeDisregarded += Chart.TimeDisregarded;
 	FramesDisregarded += Chart.FramesDisregarded;
 	CaptureStartTime = FMath::Min(CaptureStartTime, Chart.CaptureStartTime);
-	MaxPhysicalMemory = FMath::Max(MaxPhysicalMemory, Chart.MaxPhysicalMemory);
-	MaxVirtualMemory = FMath::Min(MaxVirtualMemory, Chart.MaxVirtualMemory);
-	MinPhysicalMemory = FMath::Min(MinPhysicalMemory, Chart.MinPhysicalMemory);
-	MinVirtualMemory = FMath::Min(MinVirtualMemory, Chart.MinVirtualMemory);
-	TotalPhysicalMemoryUsed += Chart.TotalPhysicalMemoryUsed;
-	TotalVirtualMemoryUsed += Chart.TotalVirtualMemoryUsed;
 }
 
 void FPerformanceTrackingChart::StartCharting()
 {
 	StartTemperatureLevel = FPlatformMisc::GetDeviceTemperatureLevel();
 	StartBatteryLevel = FPlatformMisc::GetBatteryLevel();
-	DeviceProfileName = UDeviceProfileManager::Get().GetActiveDeviceProfileName();
+	DeviceProfileName = UDeviceProfileManager::GetActiveProfileName();
 	bIsChartingPaused = false;
 }
 
@@ -750,7 +734,7 @@ void FPerformanceTrackingChart::ResumeCharting()
 
 void FPerformanceTrackingChart::OnDeviceProfileManagerUpdated()
 {
-	FString CurrentDeviceProfileName = UDeviceProfileManager::Get().GetActiveDeviceProfileName();
+	FString CurrentDeviceProfileName = UDeviceProfileManager::GetActiveProfileName();
 	if (CurrentDeviceProfileName != DeviceProfileName)
 	{
 		DeviceProfileName = TEXT("Mixed");
@@ -814,15 +798,6 @@ void FPerformanceTrackingChart::ProcessFrame(const FFrameData& FrameData)
 		MaxDrawnPrimitives = FMath::Max(MaxDrawnPrimitives, GNumPrimitivesDrawnRHI);
 		MinDrawnPrimitives = FMath::Min(MinDrawnPrimitives, GNumPrimitivesDrawnRHI);
 		TotalDrawnPrimitives += GNumPrimitivesDrawnRHI;
-
-		// track memory
-		FPlatformMemoryStats MemoryStats = FPlatformMemory::GetStats();
-		MaxPhysicalMemory = FMath::Max(MaxPhysicalMemory, static_cast<uint64>(MemoryStats.UsedPhysical));
-		MaxVirtualMemory = FMath::Max(MaxVirtualMemory, static_cast<uint64>(MemoryStats.UsedVirtual));
-		MinPhysicalMemory = FMath::Min(MinPhysicalMemory, static_cast<uint64>(MemoryStats.UsedPhysical));
-		MinVirtualMemory = FMath::Min(MinVirtualMemory, static_cast<uint64>(MemoryStats.UsedVirtual));
-		TotalPhysicalMemoryUsed += MemoryStats.UsedPhysical;
-		TotalVirtualMemoryUsed += MemoryStats.UsedVirtual;
 
 		// Handle hitching
 		if (FrameData.HitchStatus != EFrameHitchType::NoHitch)

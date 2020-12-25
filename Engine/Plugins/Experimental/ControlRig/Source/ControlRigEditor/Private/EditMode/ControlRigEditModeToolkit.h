@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,7 +18,7 @@ public:
 	FControlRigEditModeToolkit(FControlRigEditMode& InEditMode)
 		: EditMode(InEditMode)
 	{
-		SAssignNew(ModeTools, SControlRigEditModeTools, EditMode, EditMode.GetWorld());
+		SAssignNew(ModeTools, SControlRigEditModeTools, EditMode.GetWorld());
 	}
 
 	/** IToolkit interface */
@@ -26,14 +26,6 @@ public:
 	virtual FText GetBaseToolkitName() const override { return NSLOCTEXT("AnimationModeToolkit", "DisplayName", "Animation"); }
 	virtual class FEdMode* GetEditorMode() const override { return &EditMode; }
 	virtual TSharedPtr<class SWidget> GetInlineContent() const override { return ModeTools; }
-	virtual bool ProcessCommandBindings(const FKeyEvent& InKeyEvent) const override
-	{
-		if (EditMode.GetCommandBindings() && EditMode.GetCommandBindings()->ProcessCommandBindings(InKeyEvent))
-		{
-			return true;
-		}
-		return false;
-	}
 
 private:
 	/** The edit mode we are bound to */

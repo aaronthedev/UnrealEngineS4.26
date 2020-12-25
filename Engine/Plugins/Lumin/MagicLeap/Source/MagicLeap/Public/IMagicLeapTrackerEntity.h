@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,7 +12,7 @@
 
 	Entities must register with the IMagicLeapPlugin using it's RegisterMagicLeapTrackerEntity() function.
 */
-class MAGICLEAP_API IMagicLeapTrackerEntity
+class IMagicLeapTrackerEntity
 {
 public:
 	virtual void CreateEntityTracker() {}
@@ -29,7 +29,7 @@ namespace MagicLeap
 	 *
 	 * { MagicLeap::EnableInput EnableInput; PostSomeInputToMessageHandlers(); }
 	 */
-	struct MAGICLEAP_API EnableInput
+	struct EnableInput
 	{
 	#if WITH_EDITOR
 		inline EnableInput()

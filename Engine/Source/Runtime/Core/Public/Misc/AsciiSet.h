@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -87,16 +87,11 @@ public:
 		return Last;
 	}
 
-	/** Find first character of string outside of set. Never returns null. */
+	/** Find first character of string outside set or end pointer. Never returns null. */
 	template<typename CharType>
 	static constexpr const CharType* Skip(const CharType* Str, FAsciiSet Set)
 	{
-		while (Set.Contains(*Str))
-		{
-			++Str;
-		}
-        
-        return Str;
+		return FindFirstOrEnd(Str, ~Set);
 	}
 
 	/** Test if string contains any character in set */

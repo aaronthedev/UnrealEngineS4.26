@@ -1,98 +1,74 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
 
 #include "Chaos/Array.h"
-#include "Chaos/Core.h"
 #include "Chaos/Transform.h"
 #include "Chaos/Vector.h"
 
 #include "Chaos/ConstraintHandle.h"
-#include "Chaos/Joint/JointSolverConstraints.h"
-#include "Chaos/Joint/PBDJointSolverGaussSeidel.h"
 #include "Chaos/ParticleHandleFwd.h"
 #include "Chaos/PBDConstraintContainer.h"
 #include "Chaos/PBDJointConstraintTypes.h"
-#include "Chaos/PBDJointConstraintData.h"
 
 namespace Chaos
 {
-	class FJointSolverConstraints;
-	class FJointSolverGaussSeidel;
-
-	class CHAOS_API FPBDJointConstraintHandle : public TContainerConstraintHandle<FPBDJointConstraints>
+	template<class T, int d>
+	class TPBDJointConstraintHandle : public TContainerConstraintHandle<TPBDJointConstraints<T, d>>
 	{
 	public:
-		using Base = TContainerConstraintHandle<FPBDJointConstraints>;
-		using FConstraintContainer = FPBDJointConstraints;
+		using Base = TContainerConstraintHandle<TPBDJointConstraints<T, d>>;
+		using FConstraintContainer = TPBDJointConstraints<T, d>;
 
-		FPBDJointConstraintHandle();
-		FPBDJointConstraintHandle(FConstraintContainer* InConstraintContainer, int32 InConstraintIndex);
-		static FConstraintHandle::EType StaticType() { return FConstraintHandle::EType::Joint; }
+		CHAOS_API TPBDJointConstraintHandle();
+		CHAOS_API TPBDJointConstraintHandle(FConstraintContainer* InConstraintContainer, int32 InConstraintIndex);
 
-		void SetConstraintEnabled(bool bEnabled);
-
-		void CalculateConstraintSpace(FVec3& OutXa, FMatrix33& OutRa, FVec3& OutXb, FMatrix33& OutRb) const;
-		int32 GetConstraintIsland() const;
-		int32 GetConstraintLevel() const;
-		int32 GetConstraintColor() const;
-		int32 GetConstraintBatch() const;
-
-		bool IsConstraintEnabled() const;
-		FVec3 GetLinearImpulse() const;
-		FVec3 GetAngularImpulse() const;
-
-		FPBDJointSettings& GetSettings();
-		const FPBDJointSettings& GetSettings() const;
-
-		void SetSettings(const FPBDJointSettings& Settings);
-		TVector<TGeometryParticleHandle<float, 3>*, 2> GetConstrainedParticles() const;
-
+		CHAOS_API void CalculateConstraintSpace(TVector<T, d>& OutXa, PMatrix<T, d, d>& OutRa, TVector<T, d>& OutXb, PMatrix<T, d, d>& OutRb, TVector<T, d>& OutCR) const;
+		CHAOS_API void SetParticleLevels(const TVector<int32, 2>& ParticleLevels);
+		CHAOS_API int32 GetConstraintLevel() const;
+		CHAOS_API const TPBDJointSettings<T, d>& GetSettings() const;
 	protected:
 		using Base::ConstraintIndex;
 		using Base::ConstraintContainer;
 	};
 
-	class CHAOS_API FPBDJointState
+	template<class T, int d>
+	class CHAOS_API TPBDJointState
 	{
 	public:
-		FPBDJointState();
+		TPBDJointState();
 
-		int32 Batch;
-		int32 Island;
+		// Priorities used for ordering, mass conditioning, projection, and freezing
 		int32 Level;
-		int32 Color;
-		int32 IslandSize;
-		bool bDisabled;
-		FVec3 LinearImpulse;
-		FVec3 AngularImpulse;
+		TVector<int32, 2> ParticleLevels;
 	};
 
 	/**
 	 * A joint restricting up to 6 degrees of freedom, with linear and angular limits.
 	 */
-	class CHAOS_API FPBDJointConstraints : public FPBDConstraintContainer
+	template<class T, int d>
+	class TPBDJointConstraints : public TPBDConstraintContainer<T, d>
 	{
 	public:
-		using Base = FPBDConstraintContainer;
+		using Base = TPBDConstraintContainer<T, d>;
+		using FReal = T;
+		static const int Dimensions = d;
 
-		using FConstraintContainerHandle = FPBDJointConstraintHandle;
-		using FConstraintHandleAllocator = TConstraintHandleAllocator<FPBDJointConstraints>;
-		using FParticlePair = TVector<TGeometryParticleHandle<FReal, 3>*, 2>;
-		using FVectorPair = TVector<FVec3, 2>;
-		using FTransformPair = TVector<FRigidTransform3, 2>;
-		using FHandles = TArray<FConstraintContainerHandle*>;
+		using FConstraintHandle = TPBDJointConstraintHandle<FReal, Dimensions>;
+		using FConstraintHandleAllocator = TConstraintHandleAllocator<TPBDJointConstraints<FReal, Dimensions>>;
+		using FParticlePair = TVector<TGeometryParticleHandle<FReal, Dimensions>*, 2>;
+		using FVectorPair = TVector<TVector<FReal, Dimensions>, 2>;
+		using FTransformPair = TVector<TRigidTransform<FReal, Dimensions>, 2>;
+		using FJointSettings = TPBDJointSettings<FReal, Dimensions>;
+		using FJointState = TPBDJointState<FReal, Dimensions>;
 
-		FPBDJointConstraints(const FPBDJointSolverSettings& InSettings = FPBDJointSolverSettings());
+		CHAOS_API TPBDJointConstraints(const TPBDJointSolverSettings<T, d>& InSettings = TPBDJointSolverSettings<T, d>());
 
-		virtual ~FPBDJointConstraints();
+		CHAOS_API virtual ~TPBDJointConstraints();
 
-		const FPBDJointSolverSettings& GetSettings() const;
-		void SetSettings(const FPBDJointSolverSettings& InSettings);
-
-		void SetNumPairIterations(const int32 NumPairIterationss) { Settings.ApplyPairIterations = NumPairIterationss; }
-		void SetNumPushOutPairIterations(const int32 NumPairIterationss) { Settings.ApplyPushOutPairIterations = NumPairIterationss; }
+		CHAOS_API const TPBDJointSolverSettings<T, d>& GetSettings() const;
+		CHAOS_API void SetSettings(const TPBDJointSolverSettings<T, d>& InSettings);
 
 		//
 		// Constraint Container API
@@ -101,172 +77,79 @@ namespace Chaos
 		/**
 		 * Get the number of constraints.
 		 */
-		int32 NumConstraints() const;
+		CHAOS_API int32 NumConstraints() const;
 
 		/**
 		 * Add a constraint with particle-space constraint offsets.
 		 */
-		FConstraintContainerHandle* AddConstraint(const FParticlePair& InConstrainedParticles, const FRigidTransform3& WorldConstraintFrame);
-		FConstraintContainerHandle* AddConstraint(const FParticlePair& InConstrainedParticles, const FTransformPair& ConstraintFrames);
-		FConstraintContainerHandle* AddConstraint(const FParticlePair& InConstrainedParticles, const FTransformPair& ConstraintFrames, const FPBDJointSettings& InConstraintSettings);
+		CHAOS_API FConstraintHandle* AddConstraint(const FParticlePair& InConstrainedParticles, const TRigidTransform<FReal, Dimensions>& WorldConstraintFrame);
+		CHAOS_API FConstraintHandle* AddConstraint(const FParticlePair& InConstrainedParticles, const FTransformPair& ConstraintFrames);
+		CHAOS_API FConstraintHandle* AddConstraint(const FParticlePair& InConstrainedParticles, const TPBDJointSettings<T, d>& InConstraintSettings);
 
 		/**
 		 * Remove the specified constraint.
 		 */
-		void RemoveConstraint(int ConstraintIndex);
-		void RemoveConstraints(const TSet<TGeometryParticleHandle<FReal, 3>*>& RemovedParticles) {}
+		CHAOS_API void RemoveConstraint(int ConstraintIndex);
 
-		/*
-		* Disable the constraints attached to the input particles. 
-		*/
-		void DisableConstraints(const TSet<TGeometryParticleHandle<FReal, 3>*>& RemovedParticles);
+		// @todo(ccaulfield): rename/remove  this
+		CHAOS_API void RemoveConstraints(const TSet<TGeometryParticleHandle<T, d>*>& RemovedParticles);
 
-		/*
-		 * Whether the constraint is enabled
-		 */
-		bool IsConstraintEnabled(int32 ConstraintIndex) const;
+		CHAOS_API void SetPreApplyCallback(const TJointPostApplyCallback<T, d>& Callback);
+		CHAOS_API void ClearPreApplyCallback();
 
-		/*
-		 * Enable or disable a constraints
-		 */
-		void SetConstraintEnabled(int32 ConstraintIndex, bool bEnabled);
-
-		/*
-		 * Force a constraints to break
-		 */
-		void BreakConstraint(int32 ConstraintIndex);
-
-		/**
-		 * Repair a broken constraints (does not adjust particle positions)
-		 */
-		void FixConstraints(int32 ConstraintIndex);
-
-		void SetPreApplyCallback(const FJointPostApplyCallback& Callback);
-		void ClearPreApplyCallback();
-
-		void SetPostApplyCallback(const FJointPostApplyCallback& Callback);
-		void ClearPostApplyCallback();
-
-		void SetPostProjectCallback(const FJointPostApplyCallback& Callback);
-		void ClearPostProjectCallback();
-
-		void SetBreakCallback(const FJointBreakCallback& Callback);
-		void ClearBreakCallback();
+		CHAOS_API void SetPostApplyCallback(const TJointPostApplyCallback<T, d>& Callback);
+		CHAOS_API void ClearPostApplyCallback();
 
 		//
 		// Constraint API
 		//
-		FHandles& GetConstraintHandles()
-		{
-			return Handles;
-		}
-		const FHandles& GetConstConstraintHandles() const
-		{
-			return Handles;
-		}
 
-		const FConstraintContainerHandle* GetConstraintHandle(int32 ConstraintIndex) const;
-		FConstraintContainerHandle* GetConstraintHandle(int32 ConstraintIndex);
+		CHAOS_API const FConstraintHandle* GetConstraintHandle(int32 ConstraintIndex) const;
+		CHAOS_API FConstraintHandle* GetConstraintHandle(int32 ConstraintIndex);
 
 		/**
 		 * Get the particles that are affected by the specified constraint.
 		 */
-		const FParticlePair& GetConstrainedParticles(int32 ConstraintIndex) const;
+		CHAOS_API const FParticlePair& GetConstrainedParticles(int32 ConstraintIndex) const;
 
-		FPBDJointSettings& GetConstraintSettings(int32 ConstraintIndex);
-		const FPBDJointSettings& GetConstraintSettings(int32 ConstraintIndex) const;
+		CHAOS_API const TPBDJointSettings<T, d>& GetConstraintSettings(int32 ConstraintIndex) const;
 
-		void SetConstraintSettings(int32 ConstraintIndex, const FPBDJointSettings& InConstraintSettings);
-
-		int32 GetConstraintIsland(int32 ConstraintIndex) const;
-		int32 GetConstraintLevel(int32 ConstraintIndex) const;
-		int32 GetConstraintColor(int32 ConstraintIndex) const;
-		int32 GetConstraintBatch(int32 ConstraintIndex) const;
-
-		FVec3 GetConstraintLinearImpulse(int32 ConstraintIndex) const;
-		FVec3 GetConstraintAngularImpulse(int32 ConstraintIndex) const;
-
-		//
-		// General Rule API
-		//
-
-		void PrepareTick();
-
-		void UnprepareTick();
-
-		void PrepareIteration(FReal Dt);
-
-		void UnprepareIteration(FReal Dt);
-
-		void UpdatePositionBasedState(const FReal Dt);
-
-		//
-		// Simple Rule API
-		//
-
-		bool Apply(const FReal Dt, const int32 It, const int32 NumIts);
-		bool ApplyPushOut(const FReal Dt, const int32 It, const int32 NumIts);
+		CHAOS_API int32 GetConstraintLevel(int32 ConstraintIndex) const;
+		CHAOS_API void SetParticleLevels(int32 ConstraintIndex, const TVector<int32, 2>& ParticleLevels);
 
 		//
 		// Island Rule API
 		//
 
-		bool Apply(const FReal Dt, const TArray<FConstraintContainerHandle*>& InConstraintHandles, const int32 It, const int32 NumIts);
-		bool ApplyPushOut(const FReal Dt, const TArray<FConstraintContainerHandle*>& InConstraintHandles, const int32 It, const int32 NumIts);
+		CHAOS_API void UpdatePositionBasedState(const T Dt);
 
+		CHAOS_API void Apply(const T Dt, const TArray<FConstraintHandle*>& InConstraintHandles, const int32 It, const int32 NumIts);
+
+		// @todo(ccaulfield): remove  this
+		CHAOS_API void ApplyPushOut(const T Dt, const TArray<FConstraintHandle*>& InConstraintHandles);
 
 	protected:
 		using Base::GetConstraintIndex;
 		using Base::SetConstraintIndex;
 
 	private:
-		friend class FPBDJointConstraintHandle;
+		friend class TPBDJointConstraintHandle<T, d>;
 
-		void GetConstrainedParticleIndices(const int32 ConstraintIndex, int32& Index0, int32& Index1) const;
-		void CalculateConstraintSpace(int32 ConstraintIndex, FVec3& OutX0, FMatrix33& OutR0, FVec3& OutX1, FMatrix33& OutR1) const;
-		void UpdateParticleState(TPBDRigidParticleHandle<FReal, 3>* Rigid, const FReal Dt, const FVec3& PrevP, const FRotation3& PrevQ, const FVec3& P, const FRotation3& Q, const bool bUpdateVelocity = true);
-		void UpdateParticleStateExplicit(TPBDRigidParticleHandle<FReal, 3>* Rigid, const FReal Dt, const FVec3& P, const FRotation3& Q, const FVec3& V, const FVec3& W);
-		
-		void InitSolverJointData();
-		void DeinitSolverJointData();
-		void GatherSolverJointState(int32 ConstraintIndex);
-		void ScatterSolverJointState(const FReal Dt, int32 ConstraintIndex);
+		CHAOS_API void CalculateConstraintSpace(int32 ConstraintIndex, TVector<T, d>& OutX0, PMatrix<T, d, d>& OutR0, TVector<T, d>& OutX1, PMatrix<T, d, d>& OutR1, TVector<T, d>& OutAngles) const;
 
-		void ColorConstraints();
-		void SortConstraints();
-		void BatchConstraints();
-		void CheckBatches();
+		CHAOS_API void ApplySingle(const T Dt, const int32 ConstraintIndex, const int32 It, const int32 NumIts);
 
-		bool ApplyBatch(const FReal Dt, const int32 BatchIndex, const int32 NumPairIts, const int32 It, const int32 NumIts);
-		bool ApplySingle(const FReal Dt, const int32 ConstraintIndex, const int32 NumPairIts, const int32 It, const int32 NumIts);
-		bool ApplyPushOutSingle(const FReal Dt, const int32 ConstraintIndex, const int32 NumPairIts, const int32 It, const int32 NumIts);
-		void ApplyBreakThreshold(const FReal Dt, int32 ConstraintIndex, const FVec3& LinearImpulse, const FVec3& AngularImpulse);
+		TPBDJointSolverSettings<T, d> Settings;
 
-		FPBDJointSolverSettings Settings;
-
-		TArray<FPBDJointSettings> ConstraintSettings;
-		TArray<FTransformPair> ConstraintFrames;
+		TArray<FJointSettings> ConstraintSettings;
 		TArray<FParticlePair> ConstraintParticles;
-		TArray<FPBDJointState> ConstraintStates;
+		TArray<FJointState> ConstraintStates;
 
-		FHandles Handles;
+		TArray<FConstraintHandle*> Handles;
 		FConstraintHandleAllocator HandleAllocator;
-		bool bJointsDirty;
-		bool bIsBatched;
 
-		FJointPreApplyCallback PreApplyCallback;
-		FJointPostApplyCallback PostApplyCallback;
-		FJointPostApplyCallback PostProjectCallback;
-		FJointBreakCallback BreakCallback;
-
-		// @todo(ccaulfield): optimize storage for joint solver
-		TArray<FJointSolverGaussSeidel> ConstraintSolvers;
-
-		TArray<FJointSolverConstraints> SolverConstraints;
-		TArray<TVector<int32, 2>> JointBatches;
-		TArray< FJointSolverJointState> SolverConstraintStates;
-		TArray<FJointSolverConstraintRowData> SolverConstraintRowDatas;
-		TArray<FJointSolverConstraintRowState> SolverConstraintRowStates;
+		TJointPreApplyCallback<T, d> PreApplyCallback;
+		TJointPostApplyCallback<T, d> PostApplyCallback;
 	};
 
 }

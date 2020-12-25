@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MeshEditorSelectionModifiers.h"
 
@@ -232,7 +232,7 @@ bool USelectPolygonsBySmoothingGroup::ModifySelection(TMap< UEditableMesh*, TArr
 					{
 						if (!EdgeHardnesses[EdgeID])
 						{
-							for (const FPolygonID& ConnectedPolygonID : MeshDescription->GetEdgeConnectedPolygons(EdgeID))
+							for (const FPolygonID ConnectedPolygonID : MeshDescription->GetEdgeConnectedPolygons(EdgeID))
 							{
 								if (!CheckedPolygons.Contains(ConnectedPolygonID))
 								{

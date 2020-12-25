@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,15 +6,12 @@
 #include "UObject/WeakObjectPtr.h"
 #include "IControlRigEditorModule.h"
 #include "IControlRigModule.h"
-#include "IAnimationEditor.h"
-#include "IAnimationEditorModule.h"
 
 class UBlueprint;
 class IAssetTypeActions;
 class UMaterial;
 class UAnimSequence;
 class USkeletalMesh;
-class USkeleton;
 class FToolBarBuilder;
 class FExtender;
 class FUICommandList;
@@ -38,24 +35,19 @@ public:
 
 	/** IHasToolBarExtensibility interface */
 	virtual TSharedPtr<FExtensibilityManager> GetToolBarExtensibilityManager() override { return ToolBarExtensibilityManager; }
-	
-	/** Animation Toolbar Extender*/
-	TSharedRef<FExtender> GetAnimationEditorToolbarExtender(const TSharedRef<FUICommandList> CommandList, TSharedRef<IAnimationEditor> InAnimationEditor);
-	void HandleAddControlRigExtenderToToolbar(FToolBarBuilder& ParentToolbarBuilder, UAnimSequence* AnimSequence, USkeletalMesh* SkeletalMesh,USkeleton* Skeleton);
-	TSharedRef< SWidget > GenerateAnimationMenu(UAnimSequence* AnimSequence, USkeletalMesh* SkeletalMesh,USkeleton* Skeleton) ;
-	void ToggleIsDrivenByLevelSequence(UAnimSequence* AnimSequence)const;
-	bool IsDrivenByLevelSequence(UAnimSequence* AnimSequence)const;
-	void EditWithFKControlRig(UAnimSequence* AnimSequence, USkeletalMesh* SkelMesh, USkeleton* InSkeleton);
-	void BakeToControlRig(UClass* InClass,UAnimSequence* AnimSequence, USkeletalMesh* SkelMesh,USkeleton* InSkeleton);
-	static void OpenLevelSequence(UAnimSequence* AnimSequence);
-	static void UnLinkLevelSequence(UAnimSequence* AnimSequence);
-	void ExtendAnimSequenceMenu();
 
-	virtual void GetTypeActions(UControlRigBlueprint* CRB, FBlueprintActionDatabaseRegistrar& ActionRegistrar) override;
-	virtual void GetInstanceActions(UControlRigBlueprint* CRB, FBlueprintActionDatabaseRegistrar& ActionRegistrar) override;
+
+	
+	virtual void RegisterRigUnitEditorClass(FName RigUnitClassName, TSubclassOf<URigUnitEditor_Base> Class) override;
+	virtual void UnregisterRigUnitEditorClass(FName RigUnitClassName) override;
+	
+	virtual void GetTypeActions(const UControlRigBlueprint* CRB, FBlueprintActionDatabaseRegistrar& ActionRegistrar) override;
+	virtual void GetInstanceActions(const UControlRigBlueprint* CRB, FBlueprintActionDatabaseRegistrar& ActionRegistrar) override;
 	virtual FConnectionDrawingPolicy* CreateConnectionDrawingPolicy(int32 InBackLayerID, int32 InFrontLayerID, float InZoomFactor, const FSlateRect& InClippingRect, class FSlateWindowElementList& InDrawElements, class UEdGraph* InGraphObj) override;
 	virtual void GetNodeContextMenuActions(const UControlRigGraphNode* Node, class UToolMenu* Menu, class UGraphNodeContextMenuContext* Context) const override;
 	virtual void GetContextMenuActions(const UControlRigGraphSchema* Schema, class UToolMenu* Menu, class UGraphNodeContextMenuContext* Context) const override;
+
+	static TSubclassOf<URigUnitEditor_Base> GetEditorObjectByRigUnit(const FName& RigUnitClassName);
 
 private:
 	/** Handle a new animation controller blueprint being created */
@@ -84,12 +76,8 @@ private:
 	/** Delegate handles for blueprint utils */
 	FDelegateHandle RefreshAllNodesDelegateHandle;
 	FDelegateHandle ReconstructAllNodesDelegateHandle;
+	FDelegateHandle RenameVariableReferencesDelegateHandle;
 
-	/** Animation Editor Handle*/
-	FDelegateHandle AnimationEditorExtenderHandle;
-
-	/** Param to hold Filter Result to pass to Filter*/
-	bool bFilterAssetBySkeleton;
-
-
+	/** Rig Unit Editor Classes Handler */
+	static TMap<FName, TSubclassOf<URigUnitEditor_Base>> RigUnitEditorClasses;
 };

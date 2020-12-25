@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/WidgetInteractionComponent.h"
 #include "CollisionQueryParams.h"
@@ -23,8 +23,6 @@ UWidgetInteractionComponent::UWidgetInteractionComponent(const FObjectInitialize
 	, InteractionSource(EWidgetInteractionSource::World)
 	, bEnableHitTesting(true)
 	, bShowDebug(false)
-	, DebugSphereLineThickness(2.f)
-	, DebugLineThickness(1.f)
 	, DebugColor(FLinearColor::Red)
 {
 	PrimaryComponentTick.bCanEverTick = true;
@@ -45,8 +43,6 @@ UWidgetInteractionComponent::UWidgetInteractionComponent(const FObjectInitialize
 
 void UWidgetInteractionComponent::OnComponentCreated()
 {
-	Super::OnComponentCreated();
-	
 #if WITH_EDITORONLY_DATA
 	if ( ArrowComponent )
 	{
@@ -320,18 +316,18 @@ FWidgetPath UWidgetInteractionComponent::DetermineWidgetUnderPointer()
 	{
 		if ( HoveredWidgetComponent )
 		{
-			UKismetSystemLibrary::DrawDebugSphere(this, LastHitResult.ImpactPoint, 2.5f, 12, DebugColor, 0, DebugSphereLineThickness);
+			UKismetSystemLibrary::DrawDebugSphere(this, LastHitResult.ImpactPoint, 2.5f, 12, DebugColor, 0, 2);
 		}
 
 		if ( InteractionSource == EWidgetInteractionSource::World || InteractionSource == EWidgetInteractionSource::Custom )
 		{
 			if ( HoveredWidgetComponent )
 			{
-				UKismetSystemLibrary::DrawDebugLine(this, LastHitResult.TraceStart, LastHitResult.ImpactPoint, DebugColor, 0, DebugLineThickness);
+				UKismetSystemLibrary::DrawDebugLine(this, LastHitResult.TraceStart, LastHitResult.ImpactPoint, DebugColor, 0, 1);
 			}
 			else
 			{
-				UKismetSystemLibrary::DrawDebugLine(this, TraceResult.LineStartLocation, TraceResult.LineEndLocation, DebugColor, 0, DebugLineThickness);
+				UKismetSystemLibrary::DrawDebugLine(this, TraceResult.LineStartLocation, TraceResult.LineEndLocation, DebugColor, 0, 1);
 			}
 		}
 	}
@@ -394,11 +390,10 @@ void UWidgetInteractionComponent::SimulatePointerMovement()
 	}
 	
 	FWidgetPath WidgetPathUnderFinger = DetermineWidgetUnderPointer();
-
-	ensure(PointerIndex >= 0);
+	
 	FPointerEvent PointerEvent(
 		VirtualUser->GetUserIndex(),
-		(uint32)PointerIndex,
+		PointerIndex,
 		LocalHitLocation,
 		LastLocalHitLocation,
 		PressedKeys,
@@ -443,11 +438,10 @@ void UWidgetInteractionComponent::PressPointerKey(FKey Key)
 	}
 
 	FWidgetPath WidgetPathUnderFinger = LastWidgetPath.ToWidgetPath();
-
-	ensure(PointerIndex >= 0);
+		
 	FPointerEvent PointerEvent(
 		VirtualUser->GetUserIndex(),
-		(uint32)PointerIndex,
+		PointerIndex,
 		LocalHitLocation,
 		LastLocalHitLocation,
 		PressedKeys,
@@ -478,10 +472,9 @@ void UWidgetInteractionComponent::ReleasePointerKey(FKey Key)
 	
 	FWidgetPath WidgetPathUnderFinger = LastWidgetPath.ToWidgetPath();
 
-	ensure(PointerIndex >= 0);
 	FPointerEvent PointerEvent(
 		VirtualUser->GetUserIndex(),
-		(uint32)PointerIndex,
+		PointerIndex,
 		LocalHitLocation,
 		LastLocalHitLocation,
 		PressedKeys,
@@ -600,11 +593,10 @@ void UWidgetInteractionComponent::ScrollWheel(float ScrollDelta)
 	}
 
 	FWidgetPath WidgetPathUnderFinger = LastWidgetPath.ToWidgetPath();
-
-	ensure(PointerIndex >= 0);
+	
 	FPointerEvent MouseWheelEvent(
 		VirtualUser->GetUserIndex(),
-		(uint32)PointerIndex,
+		PointerIndex,
 		LocalHitLocation,
 		LastLocalHitLocation,
 		PressedKeys,

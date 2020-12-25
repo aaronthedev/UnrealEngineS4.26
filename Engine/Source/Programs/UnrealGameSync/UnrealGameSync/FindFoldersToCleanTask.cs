@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -54,7 +54,6 @@ namespace UnrealGameSync
 		int RemainingFoldersToScan;
 		ManualResetEvent FinishedScan = new ManualResetEvent(false);
 		bool bAbortScan;
-		string ScanError;
 
 		public List<string> FileNames = new List<string>();
 
@@ -81,28 +80,19 @@ namespace UnrealGameSync
 		{
 			if(!bAbortScan)
 			{
-				try
+				if((Folder.Directory.Attributes & FileAttributes.ReparsePoint) == 0)
 				{
-					if ((Folder.Directory.Attributes & FileAttributes.ReparsePoint) == 0)
+					foreach(DirectoryInfo SubDirectory in Folder.Directory.EnumerateDirectories())
 					{
-						foreach (DirectoryInfo SubDirectory in Folder.Directory.EnumerateDirectories())
-						{
-							FolderToClean SubFolder = new FolderToClean(SubDirectory);
-							Folder.NameToSubFolder[SubFolder.Name] = SubFolder;
-							QueueFolderToPopulate(SubFolder);
-						}
-						foreach (FileInfo File in Folder.Directory.EnumerateFiles())
-						{
-							FileAttributes Attributes = File.Attributes; // Force the value to be cached.
-							Folder.NameToFile[File.Name] = File;
-						}
+						FolderToClean SubFolder = new FolderToClean(SubDirectory);
+						Folder.NameToSubFolder[SubFolder.Name] = SubFolder;
+						QueueFolderToPopulate(SubFolder);
 					}
-				}
-				catch (Exception Ex)
-				{
-					string NewError = String.Format("Unable to enumerate contents of {0} due to an error:\n\n{1}", Folder.Directory.FullName, Ex);
-					Interlocked.CompareExchange(ref ScanError, NewError, null);
-					bAbortScan = true;
+					foreach(FileInfo File in Folder.Directory.EnumerateFiles())
+					{
+						FileAttributes Attributes = File.Attributes; // Force the value to be cached.
+						Folder.NameToFile[File.Name] = File;
+					}
 				}
 			}
 
@@ -211,9 +201,6 @@ namespace UnrealGameSync
 			Log.WriteLine("Finding files in workspace...");
 			Log.WriteLine();
 
-			// Clear the current error
-			ScanError = null;
-
 			// Start enumerating all the files that exist locally
 			foreach(string SyncPath in SyncPaths)
 			{
@@ -312,13 +299,6 @@ namespace UnrealGameSync
 
 			// Wait to finish scanning the directory
 			FinishedScan.WaitOne();
-
-			// Check if there was an error
-			if (ScanError != null)
-			{
-				ErrorMessage = ScanError;
-				return false;
-			}
 
 			// Find the value of the P4CONFIG variable
 			string PerforceConfigFile;

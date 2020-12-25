@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -27,7 +27,7 @@ public:
 	virtual void Convert( TSharedRef< IDatasmithScene > DatasmithScene, TSharedPtr< IDatasmithBaseMaterialElement >& MaterialElement, Mtl* Material, const TCHAR* AssetsPath ) override;
 };
 
-class FDatasmithMaxVRayBlendMaterialToUEPbr : public FDatasmithMaxVRayMaterialsToUEPbr 
+class FDatasmithMaxVRayBlendMaterialToUEPbr : public FDatasmithMaxMaterialsToUEPbr 
 {
 public:
 	virtual bool IsSupported( Mtl* Material ) override;

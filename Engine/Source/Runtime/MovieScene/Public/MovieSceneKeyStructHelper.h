@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -142,7 +142,7 @@ struct TChannelValueHelper : FMovieSceneChannelValueHelper::IChannelValueHelper
 	{
 		if (ChannelType* Channel = ChannelHandle.Get())
 		{
-			using namespace UE::MovieScene;
+			using namespace MovieScene;
 			EvaluateChannel(Channel, InUnifiedTime, *UserValue);
 		}
 	}
@@ -152,7 +152,7 @@ struct TChannelValueHelper : FMovieSceneChannelValueHelper::IChannelValueHelper
 	{
 		ChannelType* Channel = ChannelHandle.Get();
 
-		using namespace UE::MovieScene;
+		using namespace MovieScene;
 		if (Channel && KeyHandleAndTime.IsSet())
 		{
 			FKeyHandle Handle = KeyHandleAndTime->Get<0>();

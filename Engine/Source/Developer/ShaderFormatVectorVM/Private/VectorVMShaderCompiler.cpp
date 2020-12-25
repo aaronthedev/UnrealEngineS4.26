@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 // .
 
 #include "ShaderFormatVectorVM.h"
@@ -11,7 +11,6 @@
 #include "ShaderPreprocessor.h"
 
 #include "VectorVM.h"
-#include "Serialization/MemoryWriter.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogVectorVMShaderCompiler, Log, All); 
 
@@ -23,27 +22,13 @@ DECLARE_CYCLE_STAT(TEXT("VectorVM - Compiler - CrossCompilerContextRun"), STAT_V
 
 
 /**
- * Compile a shader for the VectorVM
+ * Compile a shader for the VectorVM on Windows.
  * @param Input - The input shader code and environment.
  * @param Output - Contains shader compilation results upon return.
  */
 bool CompileShader_VectorVM(const FShaderCompilerInput& Input, FShaderCompilerOutput& Output, const FString& WorkingDirectory, uint8 Version)
 {
-	FVectorVMCompilationOutput CompilationOutput;
-	bool Result = CompileShader_VectorVM(Input, Output, WorkingDirectory, Version, CompilationOutput, Input.Environment.CompilerFlags.Contains(CFLAG_SkipOptimizations));
-	
-	if (Result)
-	{
-		FMemoryWriter Ar(Output.ShaderCode.GetWriteAccess(), true);
-		Ar << CompilationOutput;
-		Output.bSucceeded = true;
-	}
-	else if (CompilationOutput.Errors.Len() > 0)
-	{
-		Output.Errors.Add(FShaderCompilerError(*CompilationOutput.Errors));
-	}
-	
-	return Result;
+	return false;
 }
 
 //TODO: Move to this output living in the shader eco-system with the compute shaders too but for now just do things more directly.
@@ -58,8 +43,7 @@ bool CompileShader_VectorVM(const FShaderCompilerInput& Input, FShaderCompilerOu
 
 	AdditionalDefines.SetDefine(TEXT("COMPILER_HLSLCC"), 1);
 	AdditionalDefines.SetDefine(TEXT("COMPILER_VECTORVM"), 1);
-	AdditionalDefines.SetDefine(TEXT("VECTORVM_PROFILE"), 1);
-	
+
 	const bool bDumpDebugInfo = (Input.DumpDebugInfoPath != TEXT("") && IFileManager::Get().DirectoryExists(*Input.DumpDebugInfoPath));
 
 	AdditionalDefines.SetDefine(TEXT("FORCE_FLOATS"), (uint32)1);
@@ -79,18 +63,9 @@ bool CompileShader_VectorVM(const FShaderCompilerInput& Input, FShaderCompilerOu
 		SCOPE_CYCLE_COUNTER(STAT_VectorVM_Compiler_CompileShader_VectorVMPreprocessShader);
 
 		// Don't include shader definitions since it creates shader compilation errors.
-		if (!PreprocessShader(PreprocessedShader, Output, Input, AdditionalDefines, EDumpShaderDefines::DontIncludeDefines))
+		if (!PreprocessShader(PreprocessedShader, Output, Input, AdditionalDefines, false))
 		{
 			// The preprocessing stage will add any relevant errors.
-			if (Output.Errors.Num() != 0)
-			{
-				FString Errors;
-				for (const FShaderCompilerError& Error : Output.Errors)
-				{
-					Errors += Error.GetErrorString() + TEXT("\r\n");
-				}
-				VMCompilationOutput.Errors = Errors;
-			}
 			return false;
 		}
 	}
@@ -184,12 +159,10 @@ bool CompileShader_VectorVM(const FShaderCompilerInput& Input, FShaderCompilerOu
 		TArray<FString> OutputByLines;
 		PreprocessedShader.ParseIntoArrayLines(OutputByLines, false);
 
-		UE_LOG(LogVectorVMShaderCompiler, Warning, TEXT("Warnings while processing %s"), *Input.DebugGroupName);
-
 		FString OutputHlsl;
 		for (int32 i = 0; i < OutputByLines.Num(); i++)
 		{
-			UE_LOG(LogVectorVMShaderCompiler, Display, TEXT("/*%d*/%s"), i, *OutputByLines[i]);
+			UE_LOG(LogVectorVMShaderCompiler, Warning, TEXT("/*%d*/%s"), i, *OutputByLines[i]);
 		}
 	}
 	else

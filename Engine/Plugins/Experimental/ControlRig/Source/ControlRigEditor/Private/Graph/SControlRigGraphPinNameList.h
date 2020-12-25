@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,18 +6,16 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SWidget.h"
 #include "SGraphPin.h"
-#include "RigVMModel/RigVMPin.h"
 #include "SControlRigGraphPinNameListValueWidget.h"
 
 class SControlRigGraphPinNameList : public SGraphPin
 {
 public:
 
-	DECLARE_DELEGATE_RetVal_OneParam( const TArray<TSharedPtr<FString>>&, FOnGetNameListContent, URigVMPin*);
+	DECLARE_DELEGATE_RetVal( const TArray<TSharedPtr<FString>>&, FOnGetNameListContent );
 
 	SLATE_BEGIN_ARGS(SControlRigGraphPinNameList){}
 
-		SLATE_ARGUMENT(URigVMPin*, ModelPin)
 		SLATE_EVENT(FOnGetNameListContent, OnGetNameListContent)
 
 	SLATE_END_ARGS()
@@ -38,8 +36,7 @@ protected:
 	void OnNameListComboBox();
 
 	FOnGetNameListContent OnGetNameListContent;
-	URigVMPin* ModelPin;
 	TSharedPtr<SControlRigGraphPinNameListValueWidget> NameListComboBox;
 	TArray<TSharedPtr<FString>> EmptyList;
-	TArray<TSharedPtr<FString>> CurrentList;
+
 };

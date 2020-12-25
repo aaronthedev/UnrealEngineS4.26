@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VREditorUISystem.h"
 #include "Misc/CommandLine.h"
@@ -1855,8 +1855,14 @@ void UVREditorUISystem::MakeRadialBoxMenu(const TSharedRef<FMultiBox>& MultiBox,
 	}
 	MultiBox.Get().SetStyle(&FVREditorStyle::Get(), StyleName);
 
-	QuickRadialMenu->SetNumberOfEntries(NumItems);
-
+	if (ButtonTypeOverride == FName(TEXT("SMenuEntryButton")))
+	{
+		QuickRadialMenu->SetNumberOfEntries(NumItems - 1);
+	}
+	else
+	{
+		QuickRadialMenu->SetNumberOfEntries(NumItems);
+	}
 	for (const TSharedRef<const FMultiBlock>& MultiBlock : Blocks)
 	{
 		const TSharedRef<const FMultiBlock>& Block = MultiBlock;

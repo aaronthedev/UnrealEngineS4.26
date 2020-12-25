@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // Port of geometry3sharp FMeshVertexSelection
 
@@ -98,39 +98,6 @@ public:
 			}
 		}
 	}
-
-	/**
-	 * Select vertices where PredicteFunc(VertexID) == bSelectTrue
-	 */
-	template<typename PredicateFuncType>
-	void SelectByVertexID(PredicateFuncType PredicateFunc, bool bSelectTrue = true)
-	{
-		int32 NumV = Mesh->MaxVertexID();
-		for (int32 vid = 0; vid < NumV; ++vid)
-		{
-			if (Mesh->IsVertex(vid) && PredicateFunc(vid) == bSelectTrue)
-			{
-				add(vid);
-			}
-		}
-	}
-
-	/**
-	 * Select vertices where PredicteFunc(VertexPosition) == bSelectTrue
-	 */
-	template<typename PredicateFuncType>
-	void SelectByPosition(PredicateFuncType PredicateFunc, bool bSelectTrue = true)
-	{
-		int32 NumV = Mesh->MaxVertexID();
-		for (int32 vid = 0; vid < NumV; ++vid)
-		{
-			if (Mesh->IsVertex(vid) && PredicateFunc(Mesh->GetVertex(vid)) == bSelectTrue)
-			{
-				add(vid);
-			}
-		}
-	}
-
 
 	void SelectTriangleVertices(TArrayView<const int> Triangles)
 	{

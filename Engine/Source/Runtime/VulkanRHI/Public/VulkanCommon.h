@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	VulkanCommon.h: Common definitions used for both runtime and compiling shaders.
@@ -14,8 +14,7 @@
 
 // This defines controls shader generation (so will cause a format rebuild)
 // be careful wrt cooker/target platform not matching define-wise!!!
-// ONLY used for debugging binding table/descriptor set bugs/mismatches.
-#define VULKAN_ENABLE_BINDING_DEBUG_NAMES						0
+#define VULKAN_ENABLE_SHADER_DEBUG_NAMES		1
 
 namespace ShaderStage
 {
@@ -141,17 +140,4 @@ namespace EVulkanBindingType
 
 		return 0;
 	}
-}
-
-DECLARE_LOG_CATEGORY_EXTERN(LogVulkan, Display, All);
-
-template< class T >
-static FORCEINLINE void ZeroVulkanStruct(T& Struct, int32 VkStructureType)
-{
-	static_assert(!TIsPointer<T>::Value, "Don't use a pointer!");
-	static_assert(STRUCT_OFFSET(T, sType) == 0, "Assumes sType is the first member in the Vulkan type!");
-	static_assert(sizeof(T::sType) == sizeof(int32), "Assumed sType is compatible with int32!");
-	// Horrible way to coerce the compiler to not have to know what T::sType is so we can have this header not have to include vulkan.h
-	(int32&)Struct.sType = VkStructureType;
-	FMemory::Memzero(((uint8*)&Struct) + sizeof(VkStructureType), sizeof(T) - sizeof(VkStructureType));
 }

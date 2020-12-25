@@ -56,13 +56,11 @@ struct SpirvCodeGenOptions {
   bool useDxLayout;
   bool useGlLayout;
   bool useScalarLayout;
-  bool flattenResourceArrays;
   bool ue4Layout;
   bool globalsAsPushConstants;
   SpirvLayoutRule cBufferLayoutRule;
   SpirvLayoutRule sBufferLayoutRule;
   SpirvLayoutRule tBufferLayoutRule;
-  SpirvLayoutRule ampPayloadLayoutRule;
   llvm::StringRef stageIoOrder;
   llvm::StringRef targetEnv;
   llvm::SmallVector<int32_t, 4> bShift;

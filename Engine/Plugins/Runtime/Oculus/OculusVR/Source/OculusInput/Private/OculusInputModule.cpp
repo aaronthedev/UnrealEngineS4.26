@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OculusInputModule.h"
 
@@ -46,24 +46,6 @@ uint32 FOculusInputModule::GetNumberOfTouchControllers() const
 		return OculusInputDevice.Pin()->GetNumberOfTouchControllers();
 	}
 	return 0;
-}
-
-uint32 FOculusInputModule::GetNumberOfHandControllers() const
-{
-	if (OculusInputDevice.IsValid())
-	{
-		return OculusInputDevice.Pin()->GetNumberOfHandControllers();
-	}
-	return 0;
-}
-
-TSharedPtr<IInputDevice> FOculusInputModule::GetInputDevice() const
-{
-	if (OculusInputDevice.IsValid())
-	{
-		return OculusInputDevice.Pin();
-	}
-	return NULL;
 }
 
 

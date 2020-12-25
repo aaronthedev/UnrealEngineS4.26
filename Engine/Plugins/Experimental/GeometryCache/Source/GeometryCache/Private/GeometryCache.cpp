@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GeometryCache.h"
 #include "EditorFramework/AssetImportData.h"
@@ -89,7 +89,7 @@ void UGeometryCache::Serialize(FArchive& Ar)
 FString UGeometryCache::GetDesc()
 {
 	const int32 NumTracks = Tracks.Num();
-	return FString::Printf(TEXT("%d Tracks"), NumTracks);
+	return FString("%d Tracks", NumTracks);
 }
 
 void UGeometryCache::GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const
@@ -128,7 +128,7 @@ bool UGeometryCache::IsReadyForFinishDestroy()
 }
 
 #if WITH_EDITOR
-void UGeometryCache::PreEditChange(FProperty* PropertyAboutToChange)
+void UGeometryCache::PreEditChange(UProperty* PropertyAboutToChange)
 {
 	// Flush the resource release commands to the rendering thread to ensure that the edit change doesn't occur while a resource is still allocated
 	ReleaseResourcesFence.Wait();
@@ -163,8 +163,8 @@ float UGeometryCache::CalculateDuration() const
 	// Create mesh sections for each GeometryCacheTrack
 	for (int32 TrackIndex = 0; TrackIndex < NumTracks; ++TrackIndex)
 	{
-		const float TrackDuration = Tracks[TrackIndex]->GetDuration();
-		Duration = FMath::Max(Duration, TrackDuration);
+		const float TrackMaxSampleTime = Tracks[TrackIndex]->GetMaxSampleTime();
+		Duration = (Duration > TrackMaxSampleTime) ? Duration : TrackMaxSampleTime;
 	}
 	return Duration;
 }

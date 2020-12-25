@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 Texture2DStreamIn.h: Stream in helper for 2D textures.
@@ -14,13 +14,15 @@ class FTexture2DStreamIn : public FTexture2DUpdate
 {
 public:
 
-	FTexture2DStreamIn(UTexture2D* InTexture);
+	FTexture2DStreamIn(UTexture2D* InTexture, int32 InRequestedMips);
 	~FTexture2DStreamIn();
+
 
 protected:
 
 	// StreamIn_Default : Locked mips of the intermediate textures, used as disk load destination.
 	TArray<void*, TInlineAllocator<MAX_TEXTURE_MIP_COUNT> > MipData;
+
 
 	// ****************************
 	// ********* Helpers **********

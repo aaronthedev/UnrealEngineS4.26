@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_LAYER_OFFSET_H
-#define PXR_USD_SDF_LAYER_OFFSET_H
+#ifndef SDF_LAYER_OFFSET
+#define SDF_LAYER_OFFSET
 
 /// \file sdf/layerOffset.h
 
@@ -34,8 +34,6 @@
 #include <vector>
 
 PXR_NAMESPACE_OPEN_SCOPE
-
-class SdfTimeCode;
 
 /// \class SdfLayerOffset 
 ///
@@ -141,10 +139,6 @@ public:
     SDF_API
     double operator*(double rhs) const;
 
-    /// Applies the offset to the given value.
-    SDF_API
-    SdfTimeCode operator*(const SdfTimeCode &rhs) const;
-
     /// @}
 
 private:
@@ -162,4 +156,4 @@ std::ostream & operator<<( std::ostream &out,
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_LAYER_OFFSET_H
+#endif // SDF_LAYER_OFFSET

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 Renderer.cpp: Renderer module implementation.
@@ -573,7 +573,6 @@ public:
 		else
 		{
 			// If RHI does not support GPU busy time queries, fall back to what stat unit does.
-			// Multi-GPU support : should be updated to use GPUIndex for AFR.
 			float PrevFrameGPUTimeMs = FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles());
 
 			uint64 HistoryEntryId = Heuristic.CreateNewPreviousFrameTimings_RenderThread(

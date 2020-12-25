@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,6 +12,7 @@ class APlayerController;
 class FSceneViewport;
 class FStreamer;
 class UPixelStreamerInputComponent;
+class FSessionMonitorConnection;
 class SWindow;
 
 /**
@@ -72,5 +73,8 @@ private:
 	TArray<UPixelStreamerInputComponent*> InputComponents;
 	bool bFrozen = false;
 	bool bCaptureNextBackBufferAndStream = false;
+	TUniquePtr<FSessionMonitorConnection> SessionMonitorConnection;
+	float HeartbeatCountdown = 2.0f;
+	
 	bool bPlayerInitialized = false;
 };

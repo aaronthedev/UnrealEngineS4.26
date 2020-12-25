@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -19,8 +19,7 @@ public class InputBindingEditor : ModuleRules
 				"Engine",
 				"UnrealEd",
 				"PropertyEditor",
-				"Settings",
-				"DeveloperSettings"
+				"Settings"
 			}
 		);
 

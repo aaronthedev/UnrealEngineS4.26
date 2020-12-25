@@ -33,8 +33,8 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //
 //-*****************************************************************************
-#ifndef Alembic_Arnold_SampleUtil_h
-#define Alembic_Arnold_SampleUtil_h
+#ifndef _Alembic_Arnold_SampleUtil_h_
+#define _Alembic_Arnold_SampleUtil_h_
 
 #include <Alembic/AbcGeom/All.h>
 

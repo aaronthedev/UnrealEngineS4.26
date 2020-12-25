@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 DynamicTextureInstanceManager.h: Definitions of classes used for texture streaming.
@@ -60,8 +60,6 @@ public:
 
 	/** Return the size taken for sub-allocation. */
 	uint32 GetAllocatedSize() const final override;
-
-	const FRenderAssetInstanceView* GetGameThreadView();
 
 protected:
 

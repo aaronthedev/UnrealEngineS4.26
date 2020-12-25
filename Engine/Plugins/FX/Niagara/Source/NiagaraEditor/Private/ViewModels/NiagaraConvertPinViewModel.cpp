@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraConvertPinViewModel.h"
 #include "NiagaraNodeConvert.h"
@@ -43,13 +43,13 @@ void GenerateSocketViewModelsRecursive(const UEdGraphSchema_Niagara* Schema, TSh
 	int32 NumProperties = 0;
 	int32 NumStructProperties = 0;
 	const UStruct* Struct = TypeDef.GetStruct();
-	for (TFieldIterator<FProperty> PropertyIterator(Struct); PropertyIterator; ++PropertyIterator)
+	for (TFieldIterator<UProperty> PropertyIterator(Struct); PropertyIterator; ++PropertyIterator)
 	{
-		FProperty* Property = *PropertyIterator;
+		UProperty* Property = *PropertyIterator;
 		if (Property != nullptr)
 		{
 			NumProperties++;
-			FStructProperty* StructProperty = CastField<FStructProperty>(Property);
+			UStructProperty* StructProperty = Cast<UStructProperty>(Property);
 			if (StructProperty != nullptr)
 			{
 				NumStructProperties++;
@@ -77,15 +77,15 @@ void GenerateSocketViewModelsRecursive(const UEdGraphSchema_Niagara* Schema, TSh
 	TArray<TSharedRef<FNiagaraConvertPinSocketViewModel>> OwnerChildSocketViewModels;
 
 	// Now iterate all properties and create their sockets recursively.
-	for (TFieldIterator<FProperty> PropertyIterator(Struct); PropertyIterator; ++PropertyIterator)
+	for (TFieldIterator<UProperty> PropertyIterator(Struct); PropertyIterator; ++PropertyIterator)
 	{
-		FProperty* Property = *PropertyIterator;
+		UProperty* Property = *PropertyIterator;
 		if (Property != nullptr)
 		{
 			FNiagaraTypeDefinition ChildTypeDef = Schema->GetTypeDefForProperty(Property);
 			TSharedRef<FNiagaraConvertPinSocketViewModel> SocketViewModel = MakeShareable(new FNiagaraConvertPinSocketViewModel(OwnerPinViewModel, OwnerPinSocketViewModel, Property->GetFName(), FName(*Property->GetDisplayNameText().ToString()), ChildTypeDef, Direction, TypeTraversalDepth));
 
-			FStructProperty* StructProperty = CastField<FStructProperty>(Property);
+			UStructProperty* StructProperty = Cast<UStructProperty>(Property);
 			if (StructProperty != nullptr)
 			{
 				TArray<TSharedRef<FNiagaraConvertPinSocketViewModel>> ChildSocketViewModels;

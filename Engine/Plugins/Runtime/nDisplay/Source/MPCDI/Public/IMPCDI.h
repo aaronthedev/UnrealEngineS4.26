@@ -1,10 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-
-#include "Blueprints/MPCDIContainers.h"
 
 #include "Modules/ModuleInterface.h"
 #include "Modules/ModuleManager.h"
@@ -14,11 +12,7 @@
 #include "RHIResources.h"
 #include "RHIUtilities.h"
 
-#include "Components/SceneComponent.h"
-#include "Components/StaticMeshComponent.h"
-
 class FMPCDIData;
-
 
 class IMPCDI : public IModuleInterface
 {
@@ -30,7 +24,7 @@ public:
 	enum EMPCDIProfileType: uint8
 	{
 		mpcdi_2D = 0, // 2D mode
-		mpcdi_3D,     // 3D mode (2D + static Frustum)
+		mpcdi_3D,     // 3D mode
 		mpcdi_A3D,    // Advanced 3D mode
 		mpcdi_SL,     // Shader lamps
 		Invalid,
@@ -38,7 +32,7 @@ public:
 
 	struct ConfigParser
 	{
-		TMap<FString, FString> ConfigParameters;// Saved viewport config parameters
+		FString  ConfigLineStr;// Saved viewport config line string
 		FString  MPCDIFileName; // Single mpcdi file name
 
 		FString  BufferId;
@@ -71,7 +65,7 @@ public:
 		int BufferIndex = -1;
 		int RegionIndex = -1;
 
-		inline bool IsValid() const
+		inline bool isValid() const
 		{ 
 			return FileIndex >= 0 && BufferIndex >= 0 && RegionIndex >= 0; 
 		}
@@ -108,15 +102,11 @@ public:
 		// Viewport Size forthis view
 		FIntPoint ViewportSize;
 
-		// Camera
-		FRotator OutCameraRotation;
-		FVector  OutCameraOrigin;
+		// Local2World
+		FMatrix  Local2WorldMatrix;
 
 		// From the texture's perspective
 		FMatrix  UVMatrix;
-
-		// From the mesh local space to cave
-		FMatrix  MeshToCaveMatrix;
 
 		float    WorldScale;
 		bool     bIsValid;
@@ -285,17 +275,6 @@ public:
 	virtual bool SetMPCDIProfileType(const IMPCDI::FRegionLocator& InRegionLocator, const EMPCDIProfileType ProfileType) = 0;
 
 	/**
-	* Use StaticMesh to warp
-	*
-	* @param InRegionLocator - region locator
-	* @param MeshComponent - warp static mesh component
-	* @param OriginComponent - cave origin component
-	*
-	* @return - true if success
-	*/
-	virtual bool SetStaticMeshWarp(const IMPCDI::FRegionLocator& InRegionLocator, UStaticMeshComponent* MeshComponent, USceneComponent* OriginComponent) = 0;
-
-	/**
 	* Load warp map data from external PFM file, used custom scale and axis orientation (by default asis in mpcdi orientation)
 	*
 	* @param InRegionLocator - region locator
@@ -346,12 +325,12 @@ public:
 	/**
 	* Helper. Load config data from string
 	*
-	* @param InConfigParameters - config parameters map
-	* @param OutCfgData - result condig data
+	* @param InConfigLineStr - config string
+	* @param OutCfgData - result condig data 
 	*
 	* @return - true if success
 	*/
-	virtual bool LoadConfig(const TMap<FString, FString>& InConfigParameters, ConfigParser& OutCfgData) = 0;
+	virtual bool LoadConfig(const FString& InConfigLineStr, ConfigParser& OutCfgData) = 0;
 
 	/**
 	* Helper. Load or create mpcdi data
@@ -369,16 +348,4 @@ public:
 	*/
 	virtual void ReloadAll() = 0;
 	virtual void ReloadAll_RenderThread() = 0;
-
-	/**
-	* Exports mesh data of a specified file#buffer#region
-	*
-	* @param MPCDIFile - .mpcdi file path
-	* @param BufferName - Buffer ID
-	* @param RegionName - Region ID
-	* @param MeshData - (out) Requested mesh data
-	*
-	* @return - true if success
-	*/
-	virtual bool GetMPCDIMeshData(const FString& MPCDIFile, const FString& BufferName, const FString& RegionName, FMPCDIGeometryExportData& MeshData) = 0;
 };

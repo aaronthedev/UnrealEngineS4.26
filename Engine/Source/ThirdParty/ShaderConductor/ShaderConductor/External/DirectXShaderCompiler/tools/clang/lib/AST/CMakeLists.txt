@@ -36,8 +36,7 @@ add_clang_library(clangAST
   ExprConstant.cpp
   ExprCXX.cpp
   ExternalASTSource.cpp
-  HlslBuiltinTypeDeclBuilder.cpp # HLSL Change
-  HlslTypes.cpp # HLSL Change
+  HlslTypes.cpp
   InheritViz.cpp
   ItaniumCXXABI.cpp
   ItaniumMangle.cpp

@@ -1,12 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Input/Devices/VRPN/Button/DisplayClusterVrpnButtonInputDataHolder.h"
-#include "DisplayClusterConfigurationTypes.h"
-#include "Misc/DisplayClusterLog.h"
+#include "DisplayClusterLog.h"
 
 
-FDisplayClusterVrpnButtonInputDataHolder::FDisplayClusterVrpnButtonInputDataHolder(const FString& DeviceId, const UDisplayClusterConfigurationInputDeviceButton* CfgDevice)
-	: FDisplayClusterInputDeviceBase<EDisplayClusterInputDeviceType::VrpnButton>(DeviceId, CfgDevice)
+FDisplayClusterVrpnButtonInputDataHolder::FDisplayClusterVrpnButtonInputDataHolder(const FDisplayClusterConfigInput& config) :
+	FDisplayClusterInputDeviceBase<EDisplayClusterInputDeviceType::VrpnButton>(config)
 {
 }
 
@@ -29,34 +28,34 @@ bool FDisplayClusterVrpnButtonInputDataHolder::Initialize()
 //////////////////////////////////////////////////////////////////////////////////////////////
 FString FDisplayClusterVrpnButtonInputDataHolder::SerializeToString() const
 {
-	FString Result;
-	Result.Reserve(64);
+	FString result;
+	result.Reserve(64);
 
 	for (auto it = DeviceData.CreateConstIterator(); it; ++it)
 	{
-		Result += FString::Printf(TEXT("%d%s%d%s%d%s"), it->Key, SerializationDelimiter, it->Value.BtnStateOld, SerializationDelimiter, it->Value.BtnStateNew, SerializationDelimiter);
+		result += FString::Printf(TEXT("%d%s%d%s%d%s"), it->Key, SerializationDelimiter, it->Value.btnStateOld, SerializationDelimiter, it->Value.btnStateNew, SerializationDelimiter);
 	}
 
-	return Result;
+	return result;
 }
 
-bool FDisplayClusterVrpnButtonInputDataHolder::DeserializeFromString(const FString& Data)
+bool FDisplayClusterVrpnButtonInputDataHolder::DeserializeFromString(const FString& data)
 {
-	TArray<FString> Parsed;
-	Data.ParseIntoArray(Parsed, SerializationDelimiter);
+	TArray<FString> parsed;
+	data.ParseIntoArray(parsed, SerializationDelimiter);
 
-	if (Parsed.Num() % SerializationItems)
+	if (parsed.Num() % SerializationItems)
 	{
-		UE_LOG(LogDisplayClusterInputVRPN, Error, TEXT("Wrong items amount after deserialization [%s]"), *Data);
+		UE_LOG(LogDisplayClusterInputVRPN, Error, TEXT("Wrong items amount after deserialization [%s]"), *data);
 		return false;
 	}
 
-	for (int i = 0; i < Parsed.Num(); i += SerializationItems)
+	for (int i = 0; i < parsed.Num(); i += SerializationItems)
 	{
-		const int  Ch = FCString::Atoi(*Parsed[i]);
-		const bool StateOld = (FCString::Atoi(*Parsed[i + 1]) != 0);
-		const bool StateNew = (FCString::Atoi(*Parsed[i + 2]) != 0);
-		DeviceData.Add(Ch, FDisplayClusterVrpnButtonChannelData{ StateOld, StateNew });
+		const int  ch = FCString::Atoi(*parsed[i]);
+		const bool stateOld = (FCString::Atoi(*parsed[i + 1]) != 0);
+		const bool stateNew = (FCString::Atoi(*parsed[i + 2]) != 0);
+		DeviceData.Add(ch, FDisplayClusterVrpnButtonChannelData{ stateOld, stateNew });
 	}
 
 	return true;

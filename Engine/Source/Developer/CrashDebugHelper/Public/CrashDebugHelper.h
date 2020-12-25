@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,6 +7,7 @@
 #include "Templates/SharedPointer.h"
 
 class FArchive;
+struct FPDBCacheEntry;
 
 enum EProcessorArchitecture
 {
@@ -26,12 +27,22 @@ public:
 
 	FString Name;
 	FString Extension;
-	uint64 BaseOfImage = 0;
-	uint32 SizeOfImage = 0;
-	uint16 Major = 0;
-	uint16 Minor = 0;
-	uint16 Patch = 0;
-	uint16 Revision = 0;
+	uint64 BaseOfImage;
+	uint32 SizeOfImage;
+	uint16 Major;
+	uint16 Minor;
+	uint16 Patch;
+	uint16 Revision;
+
+	FCrashModuleInfo()
+		: BaseOfImage( 0 )
+		, SizeOfImage( 0 )
+		, Major( 0 )
+		, Minor( 0 )
+		, Patch( 0 )
+		, Revision( 0 )
+	{
+	}
 };
 
 /** 
@@ -42,10 +53,20 @@ class FCrashThreadInfo
 public:
 	FString Report;
 
-	uint32 ThreadId = 0;
-	uint32 SuspendCount = 0;
+	uint32 ThreadId;
+	uint32 SuspendCount;
 
 	TArray<uint64> CallStack;
+
+	FCrashThreadInfo()
+		: ThreadId( 0 )
+		, SuspendCount( 0 )
+	{
+	}
+
+	~FCrashThreadInfo()
+	{
+	}
 };
 
 /** 
@@ -56,12 +77,23 @@ class FCrashExceptionInfo
 public:
 	FString Report;
 
-	uint32 ProcessId = 0;
-	uint32 ThreadId = 0;
-	uint32 Code = 0;
+	uint32 ProcessId;
+	uint32 ThreadId;
+	uint32 Code;
 	FString ExceptionString;
 
 	TArray<FString> CallStackString;
+
+	FCrashExceptionInfo()
+		: ProcessId( 0 )
+		, ThreadId( 0 )
+		, Code( 0 )
+	{
+	}
+
+	~FCrashExceptionInfo()
+	{
+	}
 };
 
 /** 
@@ -72,13 +104,23 @@ class FCrashSystemInfo
 public:
 	FString Report;
 
-	EProcessorArchitecture ProcessorArchitecture = PA_UNKNOWN;
-	uint32 ProcessorCount = 0;
+	EProcessorArchitecture ProcessorArchitecture;
+	uint32 ProcessorCount;
 
-	uint16 OSMajor = 0;
-	uint16 OSMinor = 0;
-	uint16 OSBuild = 0;
-	uint16 OSRevision = 0;
+	uint16 OSMajor;
+	uint16 OSMinor;
+	uint16 OSBuild;
+	uint16 OSRevision;
+
+	FCrashSystemInfo()
+		: ProcessorArchitecture( PA_UNKNOWN )
+		, ProcessorCount( 0 )
+		, OSMajor( 0 )
+		, OSMinor( 0 )
+		, OSBuild( 0 )
+		, OSRevision( 0 )
+	{
+	}
 };
 
 // #TODO 2015-07-24 Refactor
@@ -105,7 +147,7 @@ public:
 	FString BuildVersion;
 
 	/** CL built from. */
-	int32 BuiltFromCL = INVALID_CHANGELIST;
+	int32 BuiltFromCL;
 
 	/** The label the describes the executables and symbols. */
 	FString LabelName;
@@ -117,7 +159,7 @@ public:
 	FString SymbolsPath;
 
 	FString SourceFile;
-	uint32 SourceLineNumber = 0;
+	uint32 SourceLineNumber;
 	TArray<FString> SourceContext;
 
 	/** Only modules names, retrieved from the minidump file. */
@@ -128,8 +170,27 @@ public:
 	TArray<FCrashThreadInfo> Threads;
 	TArray<FCrashModuleInfo> Modules;
 
+	/** Shared pointer to the PDB Cache entry, if valid contains all information about synced PDBs. */
+	TSharedPtr<FPDBCacheEntry> PDBCacheEntry;
+
 	FString PlatformName;
 	FString PlatformVariantName;
+
+	/** If we are using a PDBCache, this is whether we should use a system-wide lock to access it. */
+	bool bMutexPDBCache;
+
+	/** If we are using a PDBCache, this is the name of the system-wide lock we should use to access it. */
+	FString PDBCacheLockName;
+
+	FCrashInfo()
+		: BuiltFromCL( INVALID_CHANGELIST )
+		, SourceLineNumber( 0 )
+	{
+	}
+
+	~FCrashInfo()
+	{
+	}
 
 	/** 
 	 * Generate a report for the crash in the requested path
@@ -145,14 +206,19 @@ private:
 	/** 
 	 * Convert the processor architecture to a human readable string
 	 */
-	static const TCHAR* GetProcessorArchitecture( EProcessorArchitecture PA );
+	const TCHAR* GetProcessorArchitecture( EProcessorArchitecture PA );
+
+	/**
+	 * Calculate the byte size of a UTF-8 string
+	 */
+	int64 StringSize( const ANSICHAR* Line );
 
 	/** 
-	* Write a line as UTF-8 to a file
+	* Write a line of UTF-8 to a file
 	*/
-	static void WriteLine(FArchive* ReportFile, const TCHAR* Line = nullptr);
-	static void WriteLine(FArchive* ReportFile, const FString& Line);
+	void WriteLine( FArchive* ReportFile, const ANSICHAR* Line = NULL );
 };
+
 
 /** Helper structure for tracking crash debug information */
 struct FCrashDebugInfo
@@ -171,8 +237,28 @@ struct FCrashDebugInfo
 class CRASHDEBUGHELPER_API ICrashDebugHelper
 {
 public:
+	/** Replaces %DEPOT_INDEX% with the command line DepotIndex in the specified path. */
+	static void SetDepotIndex( FString& PathToChange );
+
+protected:
+	/**
+	 *	Pattern to search in source control for the label.
+	 *	This somehow works for older crashes, before 4.2 and for the newest one,
+	 *	bur for the newest we also need to look for the executables on the network drive.
+	 *	This may change in future.
+	 */
+	FString SourceControlBuildLabelPattern;
+	
+	/** Indicates that the crash handler is ready to do work */
+	bool bInitialized;
+
+public:
+	/** A platform independent representation of a crash */
+	FCrashInfo CrashInfo;
+	
 	/** Virtual destructor */
-	virtual ~ICrashDebugHelper() = default;
+	virtual ~ICrashDebugHelper()
+	{}
 
 	/**
 	 *	Initialize the helper
@@ -209,11 +295,34 @@ public:
 	}
 
 	/**
+	 * Sync the branch root relative file names to the requested label
+	 *
+	 *	@param	bOutPDBCacheEntryValid		Returns whether the PDB cache entry was found or created and whether it contains files.
+	 *
+	 *	@return	bool						true if successful, false if not
+	 */
+	virtual bool SyncModules(bool& bOutPDBCacheEntryValid);
+
+	/**
+	 *	Sync a single source file to the requested CL.
+	 */
+	virtual bool SyncSourceFile();
+
+	/**
 	 *	Extract lines from a source file, and add to the crash report.
 	 */
 	virtual void AddSourceToReport();
 
+	/**
+	 *	Extract annotated lines from a source file stored in Perforce, and add to the crash report.
+	 */
+	virtual bool AddAnnotatedSourceToReport();
+
 protected:
+
+	/** Finds the storage of the symbols and the executables for the specified changelist and the depot name, it can be Perforce, network drive or stored locally. */
+	void FindSymbolsAndBinariesStorage();
+
 	/**
 	 *	Load the given ANSI text file to an array of strings - one FString per line of the file.
 	 *	Intended for use in simple text parsing actions
@@ -225,10 +334,6 @@ protected:
 	bool ReadSourceFile( TArray<FString>& OutStrings );
 
 public:
-	/** A platform independent representation of a crash */
-	FCrashInfo CrashInfo;
-
-protected:
-	/** Indicates that the crash handler is ready to do work */
-	bool bInitialized = false;
+	bool InitSourceControl(bool bShowLogin);
+	void ShutdownSourceControl();
 };

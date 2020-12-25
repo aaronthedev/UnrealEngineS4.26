@@ -63,7 +63,7 @@ public:
 	static		NpClothFabric*				createObject(PxU8*& address, PxDeserializationContext&);
 	static		void						getBinaryMetaData(PxOutputStream& stream);
 				void						resolveReferences(PxDeserializationContext&) {}
-	virtual		void						requiresObjects(PxProcessPxBaseCallback&){}
+	virtual		void						requires(PxProcessPxBaseCallback&){}
 //~PX_SERIALIZATION
 											NpClothFabric();
 

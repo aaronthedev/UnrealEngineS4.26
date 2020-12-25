@@ -1,22 +1,24 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GenerateMips.h"
+#include "RenderGraph.h"
 #include "RenderGraphUtils.h"
-#include "ShaderParameterUtils.h"
-#include "PipelineStateCache.h"
-#include "GlobalShader.h"
-#include "CommonRenderResources.h"
-#include "RHIStaticStates.h"
+#include "RenderTargetPool.h"
 
+#define MIPSSHADER_NUMTHREADS 8
+
+//Struct for tracking GenerateMip resources that should only need to be created once.
+struct FGenerateMipsStruct
+{
+	TRefCountPtr<IPooledRenderTarget> RenderTarget;
+	FSamplerStateInitializerRHI Sampler;
+};
+
+//Generate mips compute shader declaration
 class FGenerateMipsCS : public FGlobalShader
 {
-public:
 	DECLARE_GLOBAL_SHADER(FGenerateMipsCS)
 	SHADER_USE_PARAMETER_STRUCT(FGenerateMipsCS, FGlobalShader)
-
-	class FGenMipsSRGB : SHADER_PERMUTATION_BOOL("GENMIPS_SRGB");
-	class FGenMipsSwizzle : SHADER_PERMUTATION_BOOL("GENMIPS_SWIZZLE");
-	using FPermutationDomain = TShaderPermutationDomain<FGenMipsSRGB, FGenMipsSwizzle>;
 
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(FVector2D, TexelSize)
@@ -27,205 +29,189 @@ public:
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return RHISupportsComputeShaders(Parameters.Platform);
-	}
-
-	static void ModifyCompilationEnvironment(const FShaderPermutationParameters&, FShaderCompilerEnvironment& OutEnvironment)
-	{
-		OutEnvironment.SetDefine(TEXT("GENMIPS_COMPUTE"), 1);
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 };
-
 IMPLEMENT_GLOBAL_SHADER(FGenerateMipsCS, "/Engine/Private/ComputeGenerateMips.usf", "MainCS", SF_Compute);
 
-class FGenerateMipsVS : public FGlobalShader
+//Initialise the texture for usage with RenderGraph and ComputeGenerateMips shader
+FGenerateMipsStruct* FGenerateMips::SetupTexture(FRHITexture* InTexture,
+	const FGenerateMipsParams& InParams)
 {
-public:
-	DECLARE_GLOBAL_SHADER(FGenerateMipsVS);
-	SHADER_USE_PARAMETER_STRUCT(FGenerateMipsVS, FGlobalShader);
-	using FParameters = FEmptyShaderParameters;
-
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
+	//Currently only 2D textures supported
+	check(InTexture->GetTexture2D());
+	if (!InTexture->GenMipsStruct)
 	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::ES3_1);
-	}
+		InTexture->GenMipsStruct = MakeShareable(new FGenerateMipsStruct());
 
-	static void ModifyCompilationEnvironment(const FShaderPermutationParameters&, FShaderCompilerEnvironment& OutEnvironment)
-	{
-		OutEnvironment.SetDefine(TEXT("GENMIPS_COMPUTE"), 0);
-	}
-};
+		FPooledRenderTargetDesc Desc;
+		Desc.Extent.X = InTexture->GetSizeXYZ().X;
+		Desc.Extent.Y = InTexture->GetSizeXYZ().Y;
+		Desc.TargetableFlags = TexCreate_ShaderResource | TexCreate_RenderTargetable | TexCreate_UAV;
+		Desc.Format = InTexture->GetFormat();
+		Desc.NumMips = InTexture->GetNumMips();;
+		Desc.DebugName = TEXT("GenerateMipPooledRTTexture");
 
-IMPLEMENT_GLOBAL_SHADER(FGenerateMipsVS, "/Engine/Private/ComputeGenerateMips.usf", "MainVS", SF_Vertex);
+		//Create the Pooled Render Target Resource from the input texture
+		FRHIResourceCreateInfo CreateInfo(Desc.DebugName);
 
-class FGenerateMipsPS : public FGlobalShader
-{
-public:
-	DECLARE_GLOBAL_SHADER(FGenerateMipsPS);
-	SHADER_USE_PARAMETER_STRUCT(FGenerateMipsPS, FGlobalShader);
+		//Initialise a new render target texture for creating an RDG Texture
+		FSceneRenderTargetItem RenderTexture;
 
-	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
-		SHADER_PARAMETER(FVector2D, HalfTexelSize)
-		SHADER_PARAMETER(float, Level)
-		SHADER_PARAMETER_RDG_TEXTURE_SRV(Texture2D, MipInSRV)
-		SHADER_PARAMETER_SAMPLER(SamplerState, MipSampler)
-		RENDER_TARGET_BINDING_SLOTS()
-	END_SHADER_PARAMETER_STRUCT()
+		//Update all the RenderTexture info
+		RenderTexture.TargetableTexture = InTexture;
+		RenderTexture.ShaderResourceTexture = InTexture;
 
-	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
-	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::ES3_1);
-	}
-
-	static void ModifyCompilationEnvironment(const FShaderPermutationParameters&, FShaderCompilerEnvironment& OutEnvironment)
-	{
-		OutEnvironment.SetDefine(TEXT("GENMIPS_COMPUTE"), 0);
-	}
-};
-
-IMPLEMENT_GLOBAL_SHADER(FGenerateMipsPS, "/Engine/Private/ComputeGenerateMips.usf", "MainPS", SF_Pixel);
-
-void FGenerateMips::ExecuteRaster(FRDGBuilder& GraphBuilder, FRDGTextureRef Texture, FRHISamplerState* Sampler)
-{
-	check(Texture);
-	check(Sampler);
-
-	auto ShaderMap = GetGlobalShaderMap(GMaxRHIFeatureLevel);
-	TShaderMapRef<FGenerateMipsVS> VertexShader(ShaderMap);
-	TShaderMapRef<FGenerateMipsPS> PixelShader(ShaderMap);
-
-	const FRDGTextureDesc& TextureDesc = Texture->Desc;
-
-	for (uint32 MipLevel = 1, MipCount = TextureDesc.NumMips; MipLevel < MipCount; ++MipLevel)
-	{
-		const uint32 InputMipLevel = MipLevel - 1;
-
-		const FIntPoint DestTextureSize(
-			FMath::Max(TextureDesc.Extent.X >> MipLevel, 1),
-			FMath::Max(TextureDesc.Extent.Y >> MipLevel, 1));
-
-		FGenerateMipsPS::FParameters* PassParameters = GraphBuilder.AllocParameters<FGenerateMipsPS::FParameters>();
-		PassParameters->HalfTexelSize = FVector2D(0.5f / DestTextureSize.X, 0.5f / DestTextureSize.Y);
-		PassParameters->Level = InputMipLevel;
-		PassParameters->MipInSRV = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::CreateForMipLevel(Texture, InputMipLevel));
-		PassParameters->MipSampler = Sampler;
-		PassParameters->RenderTargets[0] = FRenderTargetBinding(Texture, ERenderTargetLoadAction::ELoad, MipLevel);
-
-		GraphBuilder.AddPass(
-			RDG_EVENT_NAME("GenerateMips DestMipLevel=%d", MipLevel),
-			PassParameters,
-			ERDGPassFlags::Raster,
-			[VertexShader, PixelShader, DestTextureSize](FRHICommandList& RHICmdList)
+		RenderTexture.SRVs.Reserve(Desc.NumMips);
+		RenderTexture.MipUAVs.Reserve(Desc.NumMips);
+		for (uint8 MipLevel = 0; MipLevel < Desc.NumMips; MipLevel++)
 		{
-			RHICmdList.SetViewport(0.0f, 0.0f, 0.0f, (float)DestTextureSize.X, (float)DestTextureSize.Y, 1.0f);
+			FRHITextureSRVCreateInfo SRVDesc;
+			SRVDesc.MipLevel = MipLevel;
+			RenderTexture.SRVs.Add(SRVDesc, RHICreateShaderResourceView((FTexture2DRHIRef&)InTexture, SRVDesc));
 
-			FGraphicsPipelineStateInitializer GraphicsPSOInit;
-			GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
-			GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
-			GraphicsPSOInit.BlendState = TStaticBlendStateWriteMask<CW_RGBA, CW_NONE, CW_NONE, CW_NONE, CW_NONE, CW_NONE, CW_NONE, CW_NONE>::GetRHI();
-			GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
-			GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
-			RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
-			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
+			RenderTexture.MipUAVs.Add(RHICreateUnorderedAccessView(InTexture, MipLevel));
+		}
+		RHIBindDebugLabelName(RenderTexture.TargetableTexture, Desc.DebugName);
+		RenderTexture.UAV = RenderTexture.MipUAVs[0];
 
-			RHICmdList.SetStreamSource(0, GScreenRectangleVertexBuffer.VertexBufferRHI, 0);
-			RHICmdList.DrawPrimitive(0, 2, 1);
-		});
+		//Create the RenderTarget from the PooledRenderTarget Desc and the new RenderTexture object.
+		GRenderTargetPool.CreateUntrackedElement(Desc, InTexture->GenMipsStruct->RenderTarget, RenderTexture);
+
+		//Specify the Sampler details based on the input.
+		InTexture->GenMipsStruct->Sampler.Filter = InParams.Filter;
+		InTexture->GenMipsStruct->Sampler.AddressU = InParams.AddressU;
+		InTexture->GenMipsStruct->Sampler.AddressV = InParams.AddressV;
+		InTexture->GenMipsStruct->Sampler.AddressW = InParams.AddressW;
 	}
+
+	//Return the raw pointer
+	return InTexture->GenMipsStruct.Get();
 }
 
-void FGenerateMips::ExecuteCompute(FRDGBuilder& GraphBuilder, FRDGTextureRef Texture, FRHISamplerState* Sampler)
+//Compute shader execution function for generating mips in real time.
+void FGenerateMips::Compute(FRHICommandListImmediate& RHIImmCmdList, FRHITexture* InTexture)
 {
-	check(Texture);
-	check(Sampler);
+	check(IsInRenderingThread());	
+	//Currently only 2D textures supported
+	check(InTexture->GetTexture2D());
 
-	const FRDGTextureDesc& TextureDesc = Texture->Desc;
+	//Ensure the generate mips structure has been initialised correctly.
+	FGenerateMipsStruct* GenMipsStruct = SetupTexture(InTexture);
+	check(GenMipsStruct);
 
-	// Select compute shader variant (normal vs. sRGB etc.)
-#if PLATFORM_ANDROID
-	const bool bIsUsingVulkan = FAndroidMisc::ShouldUseVulkan();
-#else
-	const bool bIsUsingVulkan = false;
-#endif
+	//Begin rendergraph for executing the compute shader
+	FRDGBuilder GraphBuilder(RHIImmCmdList);
+	FRDGTextureRef GraphTexture = GraphBuilder.RegisterExternalTexture(GenMipsStruct->RenderTarget, TEXT("GenerateMipsGraphTexture"));
+	TShaderMapRef<FGenerateMipsCS> ComputeShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 
-	FGenerateMipsCS::FPermutationDomain PermutationVector;
-	PermutationVector.Set<FGenerateMipsCS::FGenMipsSRGB>(EnumHasAnyFlags(TextureDesc.Flags, TexCreate_SRGB));
-	PermutationVector.Set<FGenerateMipsCS::FGenMipsSwizzle>(bIsUsingVulkan); // On Vulkan we experience RGB being swizzled around, this little switch circumvents the issue.
-	TShaderMapRef<FGenerateMipsCS> ComputeShader(GetGlobalShaderMap(GMaxRHIFeatureLevel), PermutationVector);
-
-	// Loop through each level of the mips that require creation and add a dispatch pass per level.
-	for (uint32 MipLevel = 1, MipCount = TextureDesc.NumMips; MipLevel < MipCount; ++MipLevel)
+	//Loop through each level of the mips that require creation and add a dispatch pass per level,.
+	for (uint8 MipLevel = 1; MipLevel < InTexture->GetNumMips(); MipLevel++)
 	{
-		const FIntPoint DestTextureSize(
-			FMath::Max(TextureDesc.Extent.X >> MipLevel, 1),
-			FMath::Max(TextureDesc.Extent.Y >> MipLevel, 1));
+		int DestTextureSizeX = InTexture->GetSizeXYZ().X >> MipLevel;
+		int DestTextureSizeY = InTexture->GetSizeXYZ().Y >> MipLevel;
+
+		//Create the RDG viewable SRV, of a complete Mip, to read from
+		FRDGTextureSRVDesc SRVDesc = FRDGTextureSRVDesc::CreateForMipLevel(GraphTexture, MipLevel - 1);
+		//Create the RDG writeable UAV for the next mip level to be written to.
+		FRDGTextureUAVDesc UAVDesc(GraphTexture, MipLevel);
 
 		FGenerateMipsCS::FParameters* PassParameters = GraphBuilder.AllocParameters<FGenerateMipsCS::FParameters>();
-		PassParameters->TexelSize  = FVector2D(1.0f / DestTextureSize.X, 1.0f / DestTextureSize.Y);
-		PassParameters->MipInSRV   = GraphBuilder.CreateSRV(FRDGTextureSRVDesc::CreateForMipLevel(Texture, MipLevel - 1));
-		PassParameters->MipOutUAV  = GraphBuilder.CreateUAV(FRDGTextureUAVDesc(Texture, MipLevel));
-		PassParameters->MipSampler = Sampler;
+		//Texel size is 1/the total length of a side.
+		PassParameters->TexelSize = FVector2D(1.0f / DestTextureSizeX, 1.0f / DestTextureSizeY);
+		PassParameters->MipInSRV = GraphBuilder.CreateSRV(SRVDesc);
+		PassParameters->MipOutUAV = GraphBuilder.CreateUAV(UAVDesc);
+		PassParameters->MipSampler = RHIImmCmdList.CreateSamplerState(GenMipsStruct->Sampler);
 
-		FComputeShaderUtils::AddPass(
-			GraphBuilder,
-			RDG_EVENT_NAME("GenerateMips DestMipLevel=%d", MipLevel),
-			ComputeShader,
+		//Dispatch count is the destination's mip texture dimensions, so only the number required is executed.
+		FIntVector GenMipsGroupCount(
+			FMath::Max(DestTextureSizeX / MIPSSHADER_NUMTHREADS, 1),
+			FMath::Max(DestTextureSizeY / MIPSSHADER_NUMTHREADS, 1),
+			1);
+		//Pass added per mip level to be written.
+		ClearUnusedGraphResources(*ComputeShader, PassParameters);
+
+		GraphBuilder.AddPass(
+			RDG_EVENT_NAME("Generate2DTextureMips DestMipLevel=%d", MipLevel),
 			PassParameters,
-			FComputeShaderUtils::GetGroupCount(DestTextureSize, FComputeShaderUtils::kGolden2DGroupSize));
+			ERDGPassFlags::Compute | ERDGPassFlags::GenerateMips,
+			[PassParameters, ComputeShader, GenMipsGroupCount](FRHICommandList& RHICmdList)
+		{
+			FComputeShaderUtils::Dispatch(RHICmdList, *ComputeShader, *PassParameters, GenMipsGroupCount);
+		});
 	}
+	GraphBuilder.QueueTextureExtraction(GraphTexture, &GenMipsStruct->RenderTarget);
+	GraphBuilder.Execute();	
 }
 
-BEGIN_SHADER_PARAMETER_STRUCT(FCopyDestParameters, )
-	RDG_TEXTURE_ACCESS(Texture, ERHIAccess::CopyDest)
-END_SHADER_PARAMETER_STRUCT()
-
-void FGenerateMips::Execute(FRDGBuilder& GraphBuilder, FRDGTextureRef Texture, FGenerateMipsParams Params, EGenerateMipsPass Pass)
+//Public execute function for calling the generate mips compute shader. Handles everything per platform.
+void FGenerateMips::Execute(FRHICommandListImmediate& RHICmdList, FRHITexture* InTexture,
+	const FGenerateMipsParams& InParams)
 {
-	if (Texture->Desc.NumMips > 1)
+	//Only executes if mips are required.
+	if (InTexture->GetNumMips() > 1)
 	{
+		//Checks whether the platform requires the compute shader. If not,executes that RHI's native generate mips call.
 		if (RHIRequiresComputeGenerateMips())
 		{
-			FSamplerStateInitializerRHI SamplerInit;
-			SamplerInit.Filter   = Params.Filter;
-			SamplerInit.AddressU = Params.AddressU;
-			SamplerInit.AddressV = Params.AddressV;
-			SamplerInit.AddressW = Params.AddressW;
-
-			Execute(GraphBuilder, Texture, RHICreateSamplerState(SamplerInit), Pass);
+			//Generate the RenderGraph texture if required.
+			if (!InTexture->GenMipsStruct)
+			{
+				SetupTexture(InTexture, InParams);
+			}
+			Compute(RHICmdList, InTexture);
 		}
 		else
 		{
-			FCopyDestParameters* PassParameters = GraphBuilder.AllocParameters<FCopyDestParameters>();
-			PassParameters->Texture = Texture;
-
-			GraphBuilder.AddPass(
-				RDG_EVENT_NAME("GenerateMipsTexture"),
-				PassParameters,
-				ERDGPassFlags::Copy,
-				[Texture](FRHICommandListImmediate& RHICmdList)
-			{
-				RHICmdList.GenerateMips(Texture->GetRHI());
-			});
+			RHICmdList.GenerateMips(InTexture);
 		}
 	}
 }
 
-void FGenerateMips::Execute(FRHICommandListImmediate& RHICmdList, FRHITexture* Texture, TSharedPtr<FGenerateMipsStruct>& ExternalMipsStructCache, FGenerateMipsParams Params, bool bAllowRenderBasedGeneration)
+void FGenerateMips::Execute(FRDGBuilder* GraphBuilder, FRDGTextureRef InGraphTexture, FRHISamplerState* InSampler)
 {
-	TRefCountPtr<IPooledRenderTarget> PooledRenderTarget = CreateRenderTarget(Texture, TEXT("MipGeneration"));
+	check(IsInRenderingThread());
+	check(GraphBuilder);
+	check(InGraphTexture);
+	check(InSampler);
 
-	FRDGBuilder GraphBuilder(RHICmdList);
-	Execute(GraphBuilder, GraphBuilder.RegisterExternalTexture(PooledRenderTarget), Params, bAllowRenderBasedGeneration ? EGenerateMipsPass::Raster : EGenerateMipsPass::Compute);
-	GraphBuilder.Execute();
-}
+	TShaderMapRef<FGenerateMipsCS> ComputeShader(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
+	
+	//Loop through each level of the mips that require creation and add a dispatch pass per level,.
+	for (uint8 MipLevel = 1; MipLevel < InGraphTexture->Desc.NumMips; MipLevel++)
+	{
+		int DestTextureSizeX = InGraphTexture->Desc.Extent.X >> MipLevel;
+		int DestTextureSizeY = InGraphTexture->Desc.Extent.Y >> MipLevel;
 
-void FGenerateMips::Execute(FRHICommandListImmediate& RHICmdList, FRHITexture* Texture, FGenerateMipsParams Params, bool bAllowRenderBasedGeneration)
-{
-	TRefCountPtr<IPooledRenderTarget> PooledRenderTarget = CreateRenderTarget(Texture, TEXT("MipGeneration"));
+		//Create the RDG viewable SRV, of a complete Mip, to read from
+		FRDGTextureSRVDesc SRVDesc = FRDGTextureSRVDesc::CreateForMipLevel(InGraphTexture, MipLevel - 1);
+		//Create the RDG writeable UAV for the next mip level to be written to.
+		FRDGTextureUAVDesc UAVDesc(InGraphTexture, MipLevel);
 
-	FRDGBuilder GraphBuilder(RHICmdList);
-	Execute(GraphBuilder, GraphBuilder.RegisterExternalTexture(PooledRenderTarget), Params, bAllowRenderBasedGeneration ? EGenerateMipsPass::Raster : EGenerateMipsPass::Compute);
-	GraphBuilder.Execute();
+		FGenerateMipsCS::FParameters* PassParameters = GraphBuilder->AllocParameters<FGenerateMipsCS::FParameters>();
+		//Texel size is 1/the total length of a side.
+		PassParameters->TexelSize = FVector2D(1.0f / DestTextureSizeX, 1.0f / DestTextureSizeY);
+		PassParameters->MipInSRV = GraphBuilder->CreateSRV(SRVDesc);
+		PassParameters->MipOutUAV = GraphBuilder->CreateUAV(UAVDesc);
+		PassParameters->MipSampler = InSampler;
+
+		//Dispatch count is the destination's mip texture dimensions, so only the number required is executed.
+		FIntVector GenMipsGroupCount(
+			FMath::Max((DestTextureSizeX + MIPSSHADER_NUMTHREADS -1)/ MIPSSHADER_NUMTHREADS, 1),
+			FMath::Max((DestTextureSizeY + MIPSSHADER_NUMTHREADS -1)/ MIPSSHADER_NUMTHREADS, 1),
+			1);
+		
+		//Pass added per mip level to be written.
+		ClearUnusedGraphResources(*ComputeShader, PassParameters);
+
+		GraphBuilder->AddPass(
+			RDG_EVENT_NAME("Generate2DTextureMips DestMipLevel=%d", MipLevel),
+			PassParameters,
+			ERDGPassFlags::Compute | ERDGPassFlags::GenerateMips,
+			[PassParameters, ComputeShader, GenMipsGroupCount](FRHICommandList& RHICmdList)
+		{
+			FComputeShaderUtils::Dispatch(RHICmdList, *ComputeShader, *PassParameters, GenMipsGroupCount);
+		});
+
+	}
 }

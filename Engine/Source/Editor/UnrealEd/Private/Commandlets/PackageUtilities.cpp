@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PackageUtilities.cpp: Commandlets for viewing information about package files
@@ -36,7 +36,10 @@
 #include "GameFramework/WorldSettings.h"
 #include "Editor.h"
 #include "FileHelpers.h"
-#include "IAssetRegistry.h"
+
+#include "Animation/AnimCompress_BitwiseCompressOnly.h"
+#include "Animation/AnimCompress_Automatic.h"
+
 
 #include "CollectionManagerTypes.h"
 #include "ICollectionManager.h"
@@ -904,7 +907,7 @@ FLinkerLoad* CreateLinkerForFilename(FUObjectSerializeContext* LoadContext, cons
 	UPackage* Package = FindObjectFast<UPackage>(nullptr, *TempPackageName);
 	if (!Package)
 	{
-		Package = CreatePackage( *TempPackageName);
+		Package = CreatePackage(nullptr, *TempPackageName);
 	}
 	FLinkerLoad* Linker = FLinkerLoad::CreateLinker(LoadContext, Package, *InFilename, LOAD_NoVerify);
 	return Linker;
@@ -957,11 +960,12 @@ void FPkgInfoReporter_Log::GeneratePackageReport( FLinkerLoad* InLinker /*=nullp
 	Out.Logf(ELogVerbosity::Display, TEXT("\t  Custom Versions:\n%s"), *Linker->Summary.GetCustomVersionContainer().ToString("\t\t"));
 	
 
-	if (!IsHideSaveUnstable())
+	Out.Logf(ELogVerbosity::Display, TEXT("\t             Guid: %s"), *Linker->Summary.Guid.ToString() );
+	Out.Logf(ELogVerbosity::Display, TEXT("\t   PersistentGuid: %s"), *Linker->Summary.PersistentGuid.ToString() );
+	if (Linker->Summary.OwnerPersistentGuid.IsValid())
 	{
-		Out.Logf(ELogVerbosity::Display, TEXT("\t             Guid: %s"), *Linker->Summary.Guid.ToString());
+		Out.Logf(ELogVerbosity::Display, TEXT("\t    OwnerGuid: %s"), *Linker->Summary.OwnerPersistentGuid.ToString() );
 	}
-	Out.Logf(ELogVerbosity::Display, TEXT("\t   PersistentGuid: %s"), *Linker->Summary.PersistentGuid.ToString());
 	Out.Logf(ELogVerbosity::Display, TEXT("\t      Generations:"));
 	for( int32 i = 0; i < Linker->Summary.Generations.Num(); ++i )
 	{
@@ -977,14 +981,7 @@ void FPkgInfoReporter_Log::GeneratePackageReport( FLinkerLoad* InLinker /*=nullp
 		for( int32 i = 0; i < Linker->NameMap.Num(); ++i )
 		{
 			FName name = FName::CreateFromDisplayId(Linker->NameMap[ i ], 0);
-			if (IsHideProcessUnstable())
-			{
-				Out.Logf(ELogVerbosity::Display, TEXT("\t%d: Name '%s' [Internal: %s, %d]"), i, *name.ToString(), *name.GetPlainNameString(), name.GetNumber());
-			}
-			else
-			{
-				Out.Logf(ELogVerbosity::Display, TEXT("\t%d: Name '%s' Comparison Index %d Display Index %d [Internal: %s, %d]"), i, *name.ToString(), name.GetComparisonIndex().ToUnstableInt(), name.GetDisplayIndex().ToUnstableInt(), *name.GetPlainNameString(), name.GetNumber());
-			}
+			Out.Logf(ELogVerbosity::Display, TEXT("\t%d: Name '%s' Comparison Index %d Display Index %d [Internal: %s, %d]"), i, *name.ToString(), name.GetComparisonIndex().ToUnstableInt(), name.GetDisplayIndex().ToUnstableInt(), *name.GetPlainNameString(), name.GetNumber() );
 		}
 	}
 
@@ -1203,12 +1200,12 @@ void FPkgInfoReporter_Log::GeneratePackageReport( FLinkerLoad* InLinker /*=nullp
 				Out.Logf(ELogVerbosity::Display, TEXT("\t\t      Pkg Guid: %s"), *Export.PackageGuid.ToString());
 				Out.Logf(ELogVerbosity::Display, TEXT("\t\t   ObjectFlags: 0x%08X"), (uint32)Export.ObjectFlags );
 				Out.Logf(ELogVerbosity::Display, TEXT("\t\t          Size: %d"), Export.SerialSize );
-				if ( !IsHideOffsets())
+				if ( !bHideOffsets )
 				{
 					Out.Logf(ELogVerbosity::Display, TEXT("\t\t      Offset: %d"), Export.SerialOffset );
 				}
 				Out.Logf(ELogVerbosity::Display, TEXT("\t\t       Object: %s"), Export.Object ? TEXT("VALID") : TEXT("NULL"));
-				if ( !IsHideOffsets() )
+				if ( !bHideOffsets )
 				{
 					Out.Logf(ELogVerbosity::Display, TEXT("\t\t    HashNext: %d"), Export.HashNext );
 				}
@@ -1368,27 +1365,37 @@ void FPkgInfoReporter_Log::GeneratePackageReport( FLinkerLoad* InLinker /*=nullp
 		{
 			// Seek to the AssetRegistry table of contents
 			Linker->GetLoader_Unsafe()->Seek( Linker->Summary.AssetRegistryDataOffset );
-			TArray<FAssetData*> AssetDatas;
-			UE::AssetRegistry::EReadPackageDataMainErrorCode ErrorCode;
-			int64 DependencyDataOffset;
-			UE::AssetRegistry::ReadPackageDataMain(*Linker->GetLoader_Unsafe(), LinkerName.ToString(), Linker->Summary, DependencyDataOffset, AssetDatas, ErrorCode);
 
-			Out.Logf(ELogVerbosity::Display, TEXT("Number of assets with Asset Registry data: %d"), AssetDatas.Num() );
+			// Load the number of assets in the tag map
+			int32 AssetCount = 0;
+			*Linker << AssetCount;
+
+			Out.Logf(ELogVerbosity::Display, TEXT("Number of assets with Asset Registry data: %d"), AssetCount );
 
 			// If there are any Asset Registry tags, print them
-			int AssetIdx = 0;
-			for (FAssetData* AssetData : AssetDatas)
+			for (int32 AssetIdx = 0; AssetIdx < AssetCount; ++AssetIdx)
 			{
 				// Display the asset class and path
-				Out.Logf(ELogVerbosity::Display, TEXT("\t\t%d) %s'%s' (%d Tags)"), AssetIdx++, *AssetData->AssetClass.ToString(), *AssetData->ObjectPath.ToString(), AssetData->TagsAndValues.Num());
+				FString ObjectPath;
+				FString ObjectClassName;
+				int32 TagCount = 0;
 
-				// Display all tags on the asset
-				for (const TPair<FName,FString>& Pair : AssetData->TagsAndValues)
+				*Linker << ObjectPath;
+				*Linker << ObjectClassName;
+				*Linker << TagCount;
+
+				Out.Logf(ELogVerbosity::Display, TEXT("\t\t%d) %s'%s' (%d Tags)"), AssetIdx, *ObjectClassName, *ObjectPath, TagCount );
+
+				// Now display all tags on this asset
+				for (int32 TagIdx = 0; TagIdx < TagCount; ++TagIdx)
 				{
-					Out.Logf(ELogVerbosity::Display, TEXT("\t\t\t\"%s\": \"%s\""), *Pair.Key.ToString(), *Pair.Value );
-				}
+					FString Key;
+					FString Value;
+					*Linker << Key;
+					*Linker << Value;
 
-				delete AssetData;
+					Out.Logf(ELogVerbosity::Display, TEXT("\t\t\t\"%s\": \"%s\""), *Key, *Value );
+				}
 			}
 		}
 	}
@@ -1460,31 +1467,21 @@ int32 UPkgInfoCommandlet::Main( const FString& Params )
 	// Create a file writer to dump the info to
 	FOutputDevice* OutputOverride = GWarn;
 	FString OutputFilename;
-	TUniquePtr<FOutputDeviceFile> OutputBuffer;
 	if (FParse::Value(*Params, TEXT("dumptofile="), OutputFilename))
 	{
-		OutputBuffer = MakeUnique<FOutputDeviceFile>(*OutputFilename, true);
-		OutputBuffer->SetSuppressEventTag(true);
-		OutputOverride = OutputBuffer.Get();
+		OutputOverride = new FOutputDeviceFile(*OutputFilename, true);
 	}
 
+	const bool bHideOffsets = Switches.Contains(TEXT("HideOffsets"));
 
-	uint32 DisplayFlags = PKGINFODISPLAY_None;
-	DisplayFlags |= Switches.Contains(TEXT("HideUnstable")) ? PKGINFODISPLAY_HideAllUnstable : 0;
-	DisplayFlags |= Switches.Contains(TEXT("HideProcessUnstable")) ? PKGINFODISPLAY_HideProcessUnstable : 0;
-	DisplayFlags |= Switches.Contains(TEXT("HideSaveUnstable")) ? PKGINFODISPLAY_HideSaveUnstable : 0;
-	DisplayFlags |= Switches.Contains(TEXT("HideOffsets")) ? PKGINFODISPLAY_HideOffsets : 0;
-
-	FPkgInfoReporter* Reporter = new FPkgInfoReporter_Log(InfoFlags, (EPackageInfoDisplayFlags)DisplayFlags);
+	FPkgInfoReporter* Reporter = new FPkgInfoReporter_Log(InfoFlags, bHideOffsets);
 
 	TArray<FString> FilesInPath;
+
 	FString PathWithPackages;
-	FString RelPathSibling;
 	if (FParse::Value(*Params, TEXT("AllPackagesIn="), PathWithPackages))
 	{
-		FPackageName::FindPackagesInDirectory(FilesInPath, PathWithPackages);
-		RelPathSibling = FPaths::ConvertRelativePathToFull(PathWithPackages);
-		RelPathSibling = FPaths::Combine(RelPathSibling, TEXT("Placeholder"));
+		FPackageName::FindPackagesInDirectory(FilesInPath, *PathWithPackages);
 	}
 	else if( Switches.Contains(TEXT("AllPackages")) )
 	{
@@ -1541,41 +1538,9 @@ int32 UPkgInfoCommandlet::Main( const FString& Params )
 		}
 	}
 
-	FString OutputPath;
-	if (FParse::Value(*Params, TEXT("dumptopath="), OutputPath))
-	{
-		if (!OutputFilename.IsEmpty())
-		{
-			UE_LOG(LogPackageUtilities, Warning, TEXT("-dumptopath is not supported with -dumptofile, ignoring -dumptopath."));
-			OutputPath.Empty();
-		}
-		else if (RelPathSibling.IsEmpty())
-		{
-			UE_LOG(LogPackageUtilities, Warning, TEXT("-dumptopath is only supported with -AllPackagesIn, ignoring -dumptopath."));
-			OutputPath.Empty();
-		}
-		else
-		{
-			OutputPath = FPaths::ConvertRelativePathToFull(OutputPath);
-		}
-	}
-
 	for( int32 FileIndex = 0; FileIndex < FilesInPath.Num(); FileIndex++ )
 	{
 		FString Filename = FPaths::ConvertRelativePathToFull(FilesInPath[FileIndex]);
-		FString PackageOutputFilename;
-
-		if (!OutputPath.IsEmpty())
-		{
-			PackageOutputFilename = Filename;
-			if (!FPaths::MakePathRelativeTo(PackageOutputFilename, *RelPathSibling))
-			{
-				UE_LOG(LogPackageUtilities, Error, TEXT("Package filename '%s' is not a child path of root content path '%s', unable to create Outputfile, skipping the file."),
-					*Filename, *FPaths::GetPath(RelPathSibling));
-				continue;
-			}
-			PackageOutputFilename = FPaths::Combine(OutputPath, PackageOutputFilename) + TEXT(".txt");
-		}
 
 		{
 			// reset the loaders for the packages we want to load so that we don't find the wrong version of the file
@@ -1617,7 +1582,7 @@ int32 UPkgInfoCommandlet::Main( const FString& Params )
 			Package = FindObjectFast<UPackage>(nullptr, *TempPackageName);
 			if (!Package)
 			{
-				Package = CreatePackage( *TempPackageName);
+				Package = CreatePackage(nullptr, *TempPackageName);
 			}
 
 			Reader = FArchiveStackTraceReader::CreateFromFile(*Filename);
@@ -1644,14 +1609,6 @@ int32 UPkgInfoCommandlet::Main( const FString& Params )
 				bDumpProperties = false;
 			}
 		}
-
-		if (!PackageOutputFilename.IsEmpty())
-		{
-			OutputBuffer = MakeUnique<FOutputDeviceFile>(*PackageOutputFilename, true);
-			OutputBuffer->SetSuppressEventTag(true);
-			OutputOverride = OutputBuffer.Get();
-		}
-
 		{
 			// Turn off log categories etc as it makes diffing hard
 			TGuardValue<ELogTimes::Type> GuardPrintLogTimes(GPrintLogTimes, ELogTimes::None);
@@ -1683,7 +1640,7 @@ int32 UPkgInfoCommandlet::Main( const FString& Params )
 						*IndexString,
 						SerializeData.Offset,
 						Indent, *GetFullNameSafe(SerializeData.Object),
-						Indent, *SerializeData.FullPropertyName,
+						Indent, *GetFullNameSafe(SerializeData.Property),
 						Indent, SerializeData.Size,
 						Indent, SerializeData.Count);
 					Out.Logf(ELogVerbosity::Display, TEXT("%s"), *DisplayText);
@@ -1696,6 +1653,10 @@ int32 UPkgInfoCommandlet::Main( const FString& Params )
 		CollectGarbage(RF_NoFlags);
 	}
 
+	if (OutputOverride != GWarn)
+	{
+		delete OutputOverride;		
+	}
 	delete Reporter;
 	Reporter = NULL;
 	return 0;
@@ -1762,8 +1723,12 @@ struct CompressAnimationsFunctor
 
 		const bool bSkipCinematicPackages = Switches.Contains(TEXT("SKIPCINES"));
 		const bool bSkipLongAnimations = Switches.Contains(TEXT("SKIPLONGANIMS"));
+		// Reset compression, don't do incremental compression, start from scratch
+		const bool bResetCompression = Switches.Contains(TEXT("RESETCOMPRESSION"));
 		/** Clear bDoNotOverrideCompression flag in animations */
 		const bool bClearNoCompressionOverride = Switches.Contains(TEXT("CLEARNOCOMPRESSIONOVERRIDE"));
+		/** If we're analyzing, we're not actually going to recompress, so we can skip some significant work. */
+		const bool bAnalyze = Switches.Contains(TEXT("ANALYZE"));
 		// See if we can save this package. If we can't, don't bother...
 		/** if we should auto checkout packages that need to be saved **/
 		const bool bAutoCheckOut = Switches.Contains(TEXT("AUTOCHECKOUTPACKAGES"));
@@ -1771,7 +1736,7 @@ struct CompressAnimationsFunctor
 		FSourceControlStatePtr SourceControlState = SourceControl.GetProvider().GetState(PackageFileName, EStateCacheUsage::ForceUpdate);
 
 		// check to see if we need to check this package out
-		if( SourceControlState.IsValid() && SourceControlState->CanCheckout() )
+		if( !bAnalyze && SourceControlState.IsValid() && SourceControlState->CanCheckout() )
 		{
 			// Cant check out, check to see why
 			if (bAutoCheckOut == true)
@@ -1833,13 +1798,13 @@ struct CompressAnimationsFunctor
 
 			// If animation has already been compressed with the commandlet and version is the same. then skip.
 			// We're only interested in new animations.
-			if( !bForceCompression && AnimSeq->CompressCommandletVersion == CompressCommandletVersion )
+			if( !bAnalyze && !bForceCompression && AnimSeq->CompressCommandletVersion == CompressCommandletVersion )
 			{
 				UE_LOG(LogPackageUtilities, Warning, TEXT("Same CompressCommandletVersion (%i) skip animation: %s (%s)"), CompressCommandletVersion, *AnimSeq->GetName(), *AnimSeq->GetFullName());
 				continue;
 			}
 
-			if( !bForceCompression && bSkipLongAnimations && (AnimSeq->GetRawNumberOfFrames() > 300) )
+			if( !bAnalyze && !bForceCompression && bSkipLongAnimations && (AnimSeq->GetRawNumberOfFrames() > 300) )
 			{
 				UE_LOG(LogPackageUtilities, Warning, TEXT("Animation (%s) has more than 300 frames (%i frames) and SKIPLONGANIMS switch is set. Skipping."), *AnimSeq->GetName(), AnimSeq->GetRawNumberOfFrames());
 				continue;
@@ -1850,6 +1815,349 @@ struct CompressAnimationsFunctor
 			if (Skeleton->HasAnyFlags(RF_NeedLoad))
 			{
 				Skeleton->GetLinker()->Preload(Skeleton);
+			}
+
+			if( bAnalyze )
+			{
+				static int32 NumTotalAnimations = 0;
+				static int32 NumTotalSize = 0;
+				static int32 Trans96Savings = 0;
+				static int32 Trans48Savings = 0;
+				static int32 Rot96Savings = 0;
+				static int32 Rot48Savings = 0;
+				static int32 Scale96Savings = 0;
+				static int32 Scale48Savings = 0;
+				static int32 Num96TransTracks = 0;
+				static int32 Num96RotTracks = 0;
+				static int32 Num96ScaleTracks = 0;
+				static int32 Num48TransTracks = 0;
+				static int32 Num48RotTracks = 0;
+				static int32 Num48ScaleTracks = 0;
+				static int32 Num32TransTracks = 0;
+				static int32 Num32ScaleTracks = 0;
+				static int32 UnknownTransTrack = 0;
+				static int32 UnknownRotTrack = 0;
+				static int32 UnknownScaleTrack = 0;
+				static int32 RotationOnlySavings = 0;
+				static int32 RotationOnlyManyKeys = 0;
+
+				NumTotalAnimations++;
+
+				FArchiveCountMem CountBytesSize( AnimSeq );
+				int32 ResourceSize = CountBytesSize.GetNum();
+
+				NumTotalSize += ResourceSize;
+				
+				FUECompressedAnimData& CompressedData = AnimSeq->CompressedData.CompressedDataStructure;
+
+				// Looking for PerTrackCompression using 96bit translation compression.
+				if( CompressedData.KeyEncodingFormat == AKF_PerTrackCompression && CompressedData.CompressedByteStream.Num() > 0 )
+				{
+					bool bCandidate = false;
+
+					for (int32 i = 0; i<AnimSeq->GetCompressedTrackToSkeletonMapTable().Num(); i++)
+ 					{
+ 						const int32 TrackIndex = i;
+						const int32 BoneTreeIndex = AnimSeq->GetCompressedTrackToSkeletonMapTable()[TrackIndex].BoneTreeIndex;
+						const FName BoneTreeName = Skeleton->GetReferenceSkeleton().GetBoneName(BoneTreeIndex);
+
+ 						// Translation
+						{
+							// Use the CompressedTrackOffsets stream to find the data addresses
+							const int32* RESTRICT TrackDataForTransKey = CompressedData.CompressedTrackOffsets.GetData() + (TrackIndex * 2);
+							const int32 TransKeysOffset = TrackDataForTransKey[0];
+ 							if( TransKeysOffset != INDEX_NONE )
+ 							{
+								const uint8* RESTRICT TrackData = CompressedData.CompressedByteStream.GetData() + TransKeysOffset + 4;
+								const int32 Header = *((int32*)(CompressedData.CompressedByteStream.GetData() + TransKeysOffset));
+	 
+ 								int32 KeyFormat;
+ 								int32 NumKeys;
+ 								int32 FormatFlags;
+ 								int32 BytesPerKey;
+ 								int32 FixedBytes;
+ 								FAnimationCompression_PerTrackUtils::DecomposeHeader(Header, /*OUT*/ KeyFormat, /*OUT*/ NumKeys, /*OUT*/ FormatFlags, /*OUT*/BytesPerKey, /*OUT*/ FixedBytes);
+ 								if( KeyFormat == ACF_Float96NoW )
+ 								{
+									Num96TransTracks++;
+
+ 									// Determine which components we could let go, and bytes we could save.
+									const FBox KeyBounds((FVector*)(TrackData + FixedBytes), NumKeys);
+									const bool bHasX = (FMath::Abs(KeyBounds.Max.X) >= 0.0002f) || (FMath::Abs(KeyBounds.Min.X) >= 0.0002f);
+									const bool bHasY = (FMath::Abs(KeyBounds.Max.Y) >= 0.0002f) || (FMath::Abs(KeyBounds.Min.Y) >= 0.0002f);
+									const bool bHasZ = (FMath::Abs(KeyBounds.Max.Z) >= 0.0002f) || (FMath::Abs(KeyBounds.Min.Z) >= 0.0002f);
+
+									if( !bHasX )
+									{
+										Trans96Savings += (4 * NumKeys);
+										bCandidate = true;
+									}
+									if( !bHasY )
+									{
+										Trans96Savings += (4 * NumKeys);
+										bCandidate = true;
+									}
+									if( !bHasZ )
+									{
+										Trans96Savings += (4 * NumKeys);
+										bCandidate = true;
+									}
+								}
+								// Measure savings on 48bits translations
+								else if( KeyFormat == ACF_Fixed48NoW )
+								{
+									Num48TransTracks++;
+
+									const int32 SavedBytes = (6 - BytesPerKey) * NumKeys;
+									if( SavedBytes > 0 )
+									{
+										bCandidate = true;
+										Trans48Savings += SavedBytes;
+									}
+								}
+								else if( KeyFormat == ACF_IntervalFixed32NoW )
+								{
+									Num32TransTracks++;
+								}
+								else
+								{
+									UnknownTransTrack++;
+								}
+
+								// Measure how much we'd save if we used "rotation only" for compression
+								// root bone is true if BoneTreeIndex == 0 
+								// @todoanim : @fixmelh : AnimRotationOnly fix
+								if( BoneTreeIndex > 0 )
+// 									&& ((AnimSet->UseTranslationBoneNames.Num() > 0 && AnimSet->UseTranslationBoneNames.FindItemIndex(BoneName) == INDEX_NONE) 
+// 										|| (AnimSet->ForceMeshTranslationBoneNames.FindItemIndex(BoneName) != INDEX_NONE)) 
+// 									)
+								{
+									RotationOnlySavings += (BytesPerKey * NumKeys);
+									if( NumKeys > 1 )
+									{
+										const uint8* RESTRICT KeyData0 = TrackData + FixedBytes;
+										FVector V0;
+										FAnimationCompression_PerTrackUtils::DecompressTranslation(KeyFormat, FormatFlags, V0, TrackData, KeyData0);
+
+										float MaxErrorFromFirst = 0.f;
+										float MaxErrorFromDefault = 0.f;
+										const TArray<FTransform> & LocalRefPoses = Skeleton->GetRefLocalPoses();
+										for(int32 KeyIdx=0; KeyIdx<NumKeys; KeyIdx++)
+										{
+											const uint8* RESTRICT KeyDataN = TrackData + FixedBytes + KeyIdx * BytesPerKey;
+											FVector VN;
+											FAnimationCompression_PerTrackUtils::DecompressTranslation(KeyFormat, FormatFlags, VN, TrackData, KeyDataN);
+
+											// @todoanim: we will need more discussion, but we might use Skeleton->RefLocalPoses for compression
+											MaxErrorFromDefault = FMath::Max(MaxErrorFromDefault, FMath::Abs(VN.X - LocalRefPoses[BoneTreeIndex].GetLocation().X));
+											MaxErrorFromDefault = FMath::Max(MaxErrorFromDefault, FMath::Abs(VN.Y - LocalRefPoses[BoneTreeIndex].GetLocation().Y));
+											MaxErrorFromDefault = FMath::Max(MaxErrorFromDefault, FMath::Abs(VN.Z - LocalRefPoses[BoneTreeIndex].GetLocation().Z));
+
+											MaxErrorFromFirst = FMath::Max(MaxErrorFromFirst, FMath::Abs(VN.X - V0.X));
+											MaxErrorFromFirst = FMath::Max(MaxErrorFromFirst, FMath::Abs(VN.Y - V0.Y));
+											MaxErrorFromFirst = FMath::Max(MaxErrorFromFirst, FMath::Abs(VN.Z - V0.Z));
+										}
+
+										UE_LOG(LogPackageUtilities, Warning, TEXT("RotationOnly translation track that is animated! %s, %s (%s) NumKeys: %i, MaxErrorFromDefault: %f, MaxErrorFromFirst: %f"), 
+											*BoneTreeName.ToString(), *AnimSeq->GetName(), *AnimSeq->GetFullName(), NumKeys, MaxErrorFromDefault, MaxErrorFromFirst);
+										RotationOnlyManyKeys += (BytesPerKey * (NumKeys-1));
+									}
+								}
+ 							}
+						}
+
+						// Rotation
+						{
+							// Use the CompressedTrackOffsets stream to find the data addresses
+							const int32* RESTRICT TrackDataForRotKey = CompressedData.CompressedTrackOffsets.GetData() + (TrackIndex * 2);
+							const int32 RotKeysOffset = TrackDataForRotKey[1];
+							if( RotKeysOffset != INDEX_NONE )
+							{
+								const uint8* RESTRICT TrackData = CompressedData.CompressedByteStream.GetData() + RotKeysOffset + 4;
+								const int32 Header = *((int32*)(CompressedData.CompressedByteStream.GetData() + RotKeysOffset));
+
+								int32 KeyFormat;
+								int32 NumKeys;
+								int32 FormatFlags;
+								int32 BytesPerKey;
+								int32 FixedBytes;
+								FAnimationCompression_PerTrackUtils::DecomposeHeader(Header, /*OUT*/ KeyFormat, /*OUT*/ NumKeys, /*OUT*/ FormatFlags, /*OUT*/BytesPerKey, /*OUT*/ FixedBytes);
+								if( KeyFormat == ACF_Float96NoW )
+								{
+									Num96RotTracks++;
+
+									// Determine which components we could let go, and bytes we could save.
+									const FBox KeyBounds((FVector*)(TrackData + FixedBytes), NumKeys);
+									const bool bHasX = (FMath::Abs(KeyBounds.Max.X) >= 0.0002f) || (FMath::Abs(KeyBounds.Min.X) >= 0.0002f);
+									const bool bHasY = (FMath::Abs(KeyBounds.Max.Y) >= 0.0002f) || (FMath::Abs(KeyBounds.Min.Y) >= 0.0002f);
+									const bool bHasZ = (FMath::Abs(KeyBounds.Max.Z) >= 0.0002f) || (FMath::Abs(KeyBounds.Min.Z) >= 0.0002f);
+
+									if( !bHasX )
+									{
+										Rot96Savings += (4 * NumKeys);
+										bCandidate = true;
+									}
+									if( !bHasY )
+									{
+										Rot96Savings += (4 * NumKeys);
+										bCandidate = true;
+									}
+									if( !bHasZ )
+									{
+										Rot96Savings += (4 * NumKeys);
+										bCandidate = true;
+									}
+								}
+								// Measure savings on 48bits rotations.
+								else if( KeyFormat == ACF_Fixed48NoW )
+								{
+									Num48RotTracks++;
+
+									const int32 SavedBytes = (6 - BytesPerKey) * NumKeys;
+									if( SavedBytes > 0 )
+									{
+										bCandidate = true;
+										Rot48Savings += SavedBytes;
+									}
+								}
+								else
+								{
+									UnknownRotTrack++;
+								}
+							}
+						}
+
+						// Scale
+						{
+							// Use the CompressedTrackOffsets stream to find the data addresses
+							const int32 ScaleKeysOffset = CompressedData.CompressedScaleOffsets.GetOffsetData(TrackIndex, 0);
+							if( ScaleKeysOffset != INDEX_NONE )
+							{
+								const uint8* RESTRICT TrackData = CompressedData.CompressedByteStream.GetData() + ScaleKeysOffset + 4;
+								const int32 Header = *((int32*)(CompressedData.CompressedByteStream.GetData() + ScaleKeysOffset));
+
+								int32 KeyFormat;
+								int32 NumKeys;
+								int32 FormatFlags;
+								int32 BytesPerKey;
+								int32 FixedBytes;
+								FAnimationCompression_PerTrackUtils::DecomposeHeader(Header, /*OUT*/ KeyFormat, /*OUT*/ NumKeys, /*OUT*/ FormatFlags, /*OUT*/BytesPerKey, /*OUT*/ FixedBytes);
+								if( KeyFormat == ACF_Float96NoW )
+								{
+									Num96ScaleTracks++;
+
+									// Determine which components we could let go, and bytes we could save.
+									const FBox KeyBounds((FVector*)(TrackData + FixedBytes), NumKeys);
+									const bool bHasX = (FMath::Abs(KeyBounds.Max.X) >= 0.0002f) || (FMath::Abs(KeyBounds.Min.X) >= 0.0002f);
+									const bool bHasY = (FMath::Abs(KeyBounds.Max.Y) >= 0.0002f) || (FMath::Abs(KeyBounds.Min.Y) >= 0.0002f);
+									const bool bHasZ = (FMath::Abs(KeyBounds.Max.Z) >= 0.0002f) || (FMath::Abs(KeyBounds.Min.Z) >= 0.0002f);
+
+									if( !bHasX )
+									{
+										Scale96Savings += (4 * NumKeys);
+										bCandidate = true;
+									}
+									if( !bHasY )
+									{
+										Scale96Savings += (4 * NumKeys);
+										bCandidate = true;
+									}
+									if( !bHasZ )
+									{
+										Scale96Savings += (4 * NumKeys);
+										bCandidate = true;
+									}
+								}
+								// Measure savings on 48bits Scales
+								else if( KeyFormat == ACF_Fixed48NoW )
+								{
+									Num48ScaleTracks++;
+
+									const int32 SavedBytes = (6 - BytesPerKey) * NumKeys;
+									if( SavedBytes > 0 )
+									{
+										bCandidate = true;
+										Scale48Savings += SavedBytes;
+									}
+								}
+								else if( KeyFormat == ACF_IntervalFixed32NoW )
+								{
+									Num32ScaleTracks++;
+								}
+								else
+								{
+									UnknownScaleTrack++;
+								}
+
+								// Measure how much we'd save if we used "rotation only" for compression
+								// root bone is true if BoneTreeIndex == 0 
+								// @todoanim : @fixmelh : AnimRotationOnly fix
+								if( BoneTreeIndex > 0 )
+									// 									&& ((AnimSet->UseScaleBoneNames.Num() > 0 && AnimSet->UseScaleBoneNames.FindItemIndex(BoneName) == INDEX_NONE) 
+										// 										|| (AnimSet->ForceMeshScaleBoneNames.FindItemIndex(BoneName) != INDEX_NONE)) 
+											// 									)
+								{
+									RotationOnlySavings += (BytesPerKey * NumKeys);
+									if( NumKeys > 1 )
+									{
+										const uint8* RESTRICT KeyData0 = TrackData + FixedBytes;
+										FVector V0;
+										FAnimationCompression_PerTrackUtils::DecompressScale(KeyFormat, FormatFlags, V0, TrackData, KeyData0);
+
+										float MaxErrorFromFirst = 0.f;
+										float MaxErrorFromDefault = 0.f;
+										const TArray<FTransform> & LocalRefPoses = Skeleton->GetRefLocalPoses();
+										for(int32 KeyIdx=0; KeyIdx<NumKeys; KeyIdx++)
+										{
+											const uint8* RESTRICT KeyDataN = TrackData + FixedBytes + KeyIdx * BytesPerKey;
+											FVector VN;
+											FAnimationCompression_PerTrackUtils::DecompressScale(KeyFormat, FormatFlags, VN, TrackData, KeyDataN);
+
+											// @todoanim: we will need more discussion, but we might use Skeleton->RefLocalPoses for compression
+											MaxErrorFromDefault = FMath::Max(MaxErrorFromDefault, FMath::Abs(VN.X - LocalRefPoses[BoneTreeIndex].GetLocation().X));
+											MaxErrorFromDefault = FMath::Max(MaxErrorFromDefault, FMath::Abs(VN.Y - LocalRefPoses[BoneTreeIndex].GetLocation().Y));
+											MaxErrorFromDefault = FMath::Max(MaxErrorFromDefault, FMath::Abs(VN.Z - LocalRefPoses[BoneTreeIndex].GetLocation().Z));
+
+											MaxErrorFromFirst = FMath::Max(MaxErrorFromFirst, FMath::Abs(VN.X - V0.X));
+											MaxErrorFromFirst = FMath::Max(MaxErrorFromFirst, FMath::Abs(VN.Y - V0.Y));
+											MaxErrorFromFirst = FMath::Max(MaxErrorFromFirst, FMath::Abs(VN.Z - V0.Z));
+										}
+
+										UE_LOG(LogPackageUtilities, Warning, TEXT("RotationOnly Scale track that is animated! %s, %s (%s) NumKeys: %i, MaxErrorFromDefault: %f, MaxErrorFromFirst: %f"), 
+											*BoneTreeName.ToString(), *AnimSeq->GetName(), *AnimSeq->GetFullName(), NumKeys, MaxErrorFromDefault, MaxErrorFromFirst);
+										RotationOnlyManyKeys += (BytesPerKey * (NumKeys-1));
+									}
+								}
+							}
+						}
+ 					}
+
+					if( bCandidate )
+					{
+						++AnalyzeCompressionCandidates;
+						UE_LOG(LogPackageUtilities, Warning, TEXT("[%i] Animation could be recompressed: %s (%s), Trans96Savings: %i, Rot96Savings: %i, Scale96Savings: %i, Trans48Savings: %i, Rot48Savings: %i, Scale48Savings: %i, RotationOnlySavings: %i, RotationOnlyManyKeys: %i (bytes)"), 
+							AnalyzeCompressionCandidates, *AnimSeq->GetName(), *AnimSeq->GetFullName(), Trans96Savings, Rot96Savings, Scale96Savings, Trans48Savings, Rot48Savings, Scale48Savings, RotationOnlySavings, RotationOnlyManyKeys);
+						UE_LOG(LogPackageUtilities, Warning, TEXT("Translation Track Count, Num96TransTracks: %i, Num48TransTracks: %i, Num32TransTracks: %i, UnknownTransTrack: %i"), 
+							Num96TransTracks, Num48TransTracks, Num32TransTracks, UnknownTransTrack);
+						UE_LOG(LogPackageUtilities, Warning, TEXT("Rotation Track Count, Num96RotTracks: %i, Num48RotTracks: %i, UnknownRotTrack: %i"), 
+							Num96RotTracks, Num48RotTracks, UnknownRotTrack);
+						UE_LOG(LogPackageUtilities, Warning, TEXT("Scale Track Count, Num96ScaleTracks: %i, Num48ScaleTracks: %i, Num32ScaleTracks: %i, UnknownScaleTrack: %i"), 
+							Num96ScaleTracks, Num48ScaleTracks, Num32ScaleTracks, UnknownScaleTrack);
+					}
+				}
+
+// 				if( AnimSeq->NumFrames > 1 && AnimSeq->KeyEncodingFormat != AKF_PerTrackCompression )
+// 				{
+// 					++AnalyzeCompressionCandidates;
+// 
+// 					FArchiveCountMem CountBytesSize( AnimSeq );
+// 					int32 ResourceSize = CountBytesSize.GetNum();
+// 
+// 					UE_LOG(LogPackageUtilities, Warning, TEXT("[%i] Animation could be recompressed: %s (%s), frames: %i, length: %f, size: %i bytes, compression scheme: %s"), 
+// 						AnalyzeCompressionCandidates, *AnimSeq->GetName(), *AnimSet->GetFullName(),  AnimSeq->NumFrames, AnimSeq->SequenceLength, ResourceSize, AnimSeq->CompressionScheme ? *AnimSeq->CompressionScheme->GetClass()->GetName() : TEXT("NULL"));
+// 				}
+
+				continue;
 			}
 
 			float HighestRatio = 0.f;
@@ -1925,9 +2233,24 @@ struct CompressAnimationsFunctor
 				bDirtyPackage = true;
 			}
 
-			// Do not perform recompression on animations marked as 'bDoNotOverrideCompression'
-			// Unless they have no compression scheme.
-			if (AnimSeq->bDoNotOverrideCompression && AnimSeq->BoneCompressionSettings != nullptr)
+			// Reset to default compressor
+			if( bResetCompression )
+			{
+				UE_LOG(LogPackageUtilities, Warning, TEXT("%s (%s) Resetting with BitwiseCompressOnly."), *AnimSeq->GetName(), *AnimSeq->GetFullName());
+				UAnimCompress* CompressionAlgorithm = NewObject<UAnimCompress_BitwiseCompressOnly>();
+				CompressionAlgorithm->RotationCompressionFormat = ACF_Float96NoW;
+				CompressionAlgorithm->TranslationCompressionFormat = ACF_None;
+				CompressionAlgorithm->ScaleCompressionFormat = ACF_Float96NoW;
+				AnimSeq->CompressionScheme = CompressionAlgorithm;
+				AnimSeq->RequestSyncAnimRecompression();
+
+				// Force an update.
+				AnimSeq->CompressCommandletVersion = 0;
+			}
+			
+			// Do not perform automatic recompression on animations marked as 'bDoNotOverrideCompression'
+			// Unless they have no compression scheme, or they're using automatic compression.
+			if (AnimSeq->bDoNotOverrideCompression && (AnimSeq->CompressionScheme != nullptr) && !AnimSeq->CompressionScheme->IsA(UAnimCompress_Automatic::StaticClass()))
 			{
 				continue;
 			}
@@ -1938,13 +2261,16 @@ struct CompressAnimationsFunctor
 				NumAnimationsInPackage,
 				*PackageFileName);
 
-			UE_LOG(LogPackageUtilities, Warning, TEXT("%s (%s) Resetting with to default compression settings."), *AnimSeq->GetName(), *AnimSeq->GetFullName());
-			AnimSeq->BoneCompressionSettings = nullptr;
-			AnimSeq->CurveCompressionSettings = nullptr;
+			// First set automatic compressor and call it.
+			// This will run through a bunch of compressors and pick the best.
+			// Problem is this is going to create a DDC key with 'Automatic Compressor'
+			UAnimCompress* CompressionAlgorithm = NewObject<UAnimCompress_Automatic>();
+			AnimSeq->CompressionScheme = static_cast<UAnimCompress*>(StaticDuplicateObject(CompressionAlgorithm, AnimSeq));
 			AnimSeq->RequestAnimCompression(FRequestAnimCompressionParams(false, true, false));
 
-			// Automatic compression should have picked a suitable compressor
-			if (!AnimSeq->IsCompressedDataValid())
+			// Automatic compression should have picked a suitable compressor that is not UAnimCompress_Automatic
+			// May still be automatic if we read the data from the DDC
+			if (!AnimSeq->CompressionScheme->IsA(UAnimCompress_Automatic::StaticClass()))
 			{
 				// Update CompressCommandletVersion in that case, and create a proper DDC entry
 				// (with actual compressor)
@@ -2012,7 +2338,7 @@ struct CompressAnimationsFunctor
 /*		bDirtyPackage = bDirtyPackage || Package->IsDirty();*/
 
 		// If we need to save package, do so.
-		if( bDirtyPackage )
+		if( bDirtyPackage && !bAnalyze )
 		{
 			bool bCorrectlySaved = false;
 
@@ -2330,7 +2656,7 @@ int32 UReplaceActorCommandlet::Main(const FString& Params)
 						AActor* NewActor = World->SpawnActor<AActor>( ReplaceWithClass, OldLocation, OldRotator, SpawnInfo );
 
 						// copy non-native non-transient properties common to both that were modified in the old actor to the new actor
-						for (FProperty* Property = CommonSuperclass->PropertyLink; Property != NULL; Property = Property->PropertyLinkNext)
+						for (UProperty* Property = CommonSuperclass->PropertyLink; Property != NULL; Property = Property->PropertyLinkNext)
 						{
 							if ( !(Property->PropertyFlags & CPF_Transient) &&
 								!(Property->PropertyFlags & (CPF_InstancedReference | CPF_ContainsInstancedReference)) &&

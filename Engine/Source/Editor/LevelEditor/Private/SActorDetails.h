@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,7 +19,7 @@ class SBox;
 class SSCSEditor;
 class SSplitter;
 class UBlueprint;
-class FDetailsViewObjectFilter;
+
 
 /**
  * Wraps a details panel customized for viewing actors
@@ -43,16 +43,6 @@ public:
 	/** FEditorUndoClient Interface */
 	virtual void PostUndo(bool bSuccess) override;
 	virtual void PostRedo(bool bSuccess) override;
-	
-	/**
-	 * Sets the filter that should be used to filter incoming actors in or out of the details panel
-	 *
-	 * @param InFilter	The filter to use or nullptr to remove the active filter
-	 */
-	void SetActorDetailsRootCustomization(TSharedPtr<FDetailsViewObjectFilter> ActorDetailsObjectFilter, TSharedPtr<class IDetailRootObjectCustomization> ActorDetailsRootCustomization);
-
-	/** Sets the UI customization of the SCSEditor inside this details panel. */
-	void SetSCSEditorUICustomization(TSharedPtr<class ISCSEditorUICustomization> ActorDetailsSCSEditorUICustomization);
 
 private:
 	AActor* GetSelectedActorInEditor() const;
@@ -61,14 +51,14 @@ private:
 
 	void OnComponentsEditedInWorld();
 	void OnEditorSelectionChanged(UObject* Object);
+	void OnSCSEditorRootSelected(AActor* Actor);
 	void OnSCSEditorTreeViewSelectionChanged(const TArray<TSharedPtr<class FSCSEditorTreeNode> >& SelectedNodes);
 	void OnSCSEditorTreeViewItemDoubleClicked(const TSharedPtr<class FSCSEditorTreeNode> ClickedNode);
 	void UpdateComponentTreeFromEditorSelection();
-	void OnDetailsViewObjectArrayChanged(const FString& InTitle, const TArray<UObject*>& InObjects);
+	void OnDetailsViewObjectArrayChanged(const FString& InTitle, const TArray<TWeakObjectPtr<UObject>>& InObjects);
 
 	bool IsPropertyReadOnly(const struct FPropertyAndParent& PropertyAndParent) const;
 	bool IsPropertyEditingEnabled() const;
-	EVisibility GetComponentsBoxVisibility() const;
 	EVisibility GetUCSComponentWarningVisibility() const;
 	EVisibility GetInheritedBlueprintComponentWarningVisibility() const;
 	EVisibility GetNativeComponentWarningVisibility() const;
@@ -90,14 +80,11 @@ private:
 
 	// The current component blueprint selection
 	TWeakObjectPtr<UBlueprint> SelectedBPComponentBlueprint;
-	bool bSelectedComponentRecompiled = false;
+	bool bSelectedComponentRecompiled;
 
 	// Used to prevent reentrant changes
-	bool bSelectionGuard = false;
-
-	// True if the actor details has any component to show.
-	bool bHasComponentsToShow = false;
+	bool bSelectionGuard;
 
 	// True if the actor "root" node in the SCS editor is currently shown as selected
-	bool bShowingRootActorNodeSelected = false;
+	bool bShowingRootActorNodeSelected;
 };

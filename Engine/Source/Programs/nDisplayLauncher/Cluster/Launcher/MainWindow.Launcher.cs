@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.IO;
@@ -129,7 +129,6 @@ namespace nDisplayLauncher
 			if (openFileDialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
 			{
 				string configPath = openFileDialog.FileName;
-
 				if (!TheLauncher.Configs.Exists(x => x == configPath))
 				{
 					TheLauncher.AddConfig(configPath);

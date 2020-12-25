@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 ConsoleManager.cpp: console command handling
@@ -109,19 +109,8 @@ public:
 	{
 		return this;
 	}
-	
-	/** Legacy funciton to add old single delegates to the new multicast delegate. */
-	virtual void SetOnChangedCallback(const FConsoleVariableDelegate& Callback) 
-	{
-		OnChangedCallback.Remove(LegacyDelegateHandle);
-		OnChangedCallback.Add(Callback); 
-	}
 
-	/** Returns a multicast delegate with which to register. Called when this CVar changes. */
-	virtual FConsoleVariableMulticastDelegate& OnChangedDelegate()
-	{
-		return OnChangedCallback;
-	}
+	virtual void SetOnChangedCallback(const FConsoleVariableDelegate& Callback) { OnChangedCallback = Callback; }
 
 	// ------
 
@@ -180,7 +169,7 @@ public:
 
 		Flags = (EConsoleVariableFlags)(((uint32)Flags & ECVF_FlagMask) | SetBy);
 
-		OnChangedCallback.Broadcast(this);
+		OnChangedCallback.ExecuteIfBound(this);
 	}
 
 	
@@ -191,9 +180,7 @@ protected: // -----------------------------------------
 	//
 	EConsoleVariableFlags Flags;
 	/** User function to call when the console variable is changed */
-	FConsoleVariableMulticastDelegate OnChangedCallback;
-	/** Store the handle to the delegate assigned via the legacy SetOnChangedCallback() so that the previous can be removed if called again. */
-	FDelegateHandle LegacyDelegateHandle;
+	FConsoleVariableDelegate OnChangedCallback;
 
 	/** True if this console variable has been used on the wrong thread and we have warned about it. */
 	mutable bool bWarnedAboutThreadSafety;
@@ -1348,7 +1335,7 @@ bool FConsoleManager::ProcessUserConsoleInput(const TCHAR* InInput, FOutputDevic
 	const bool bCommandEndedInQuestion = Param1.EndsWith(TEXT("?"), ESearchCase::CaseSensitive);
 	if (bCommandEndedInQuestion)
 	{
-		Param1.MidInline(0, Param1.Len() - 1, false);
+		Param1 = Param1.Mid(0, Param1.Len() - 1);
 	}
 
 	IConsoleObject* CObj = FindConsoleObject(*Param1);
@@ -1415,13 +1402,13 @@ bool FConsoleManager::ProcessUserConsoleInput(const TCHAR* InInput, FOutputDevic
 			{
 				if(Param2[0] == (TCHAR)'\"' && Param2[Param2.Len() - 1] == (TCHAR)'\"')
 				{
-					Param2.MidInline(1, Param2.Len() - 2, false);
+					Param2 = Param2.Mid(1, Param2.Len() - 2);
 				}
 				// this is assumed to be unintended e.g. copy and paste accident from ini file
 				if(Param2.Len() > 0 && Param2[0] == (TCHAR)'=')
 				{
 					Ar.Logf(TEXT("Warning: Processing the console input parameters the leading '=' is ignored (only needed for ini files)."));
-					Param2.MidInline(1, Param2.Len() - 1, false);
+					Param2 = Param2.Mid(1, Param2.Len() - 1);
 				}
 			}
 
@@ -1751,7 +1738,7 @@ void FConsoleManager::RegisterThreadPropagation(uint32 ThreadId, IConsoleThreadP
 	}
 
 	ThreadPropagationCallback = InCallback;
-	// `ThreadId` is ignored as only RenderingThread is supported
+	ThreadPropagationThreadId = ThreadId;
 }
 
 IConsoleThreadPropagation* FConsoleManager::GetThreadPropagationCallback()
@@ -1761,7 +1748,7 @@ IConsoleThreadPropagation* FConsoleManager::GetThreadPropagationCallback()
 
 bool FConsoleManager::IsThreadPropagationThread()
 {
-	return IsInActualRenderingThread();
+	return FPlatformTLS::GetCurrentThreadId() == ThreadPropagationThreadId;
 }
 
 void FConsoleManager::OnCVarChanged()
@@ -1986,7 +1973,6 @@ void CreateConsoleVariables()
 	IConsoleManager::Get().RegisterConsoleCommand(TEXT("DumpUnbuiltLightInteractions"),	TEXT("Logs all lights and primitives that have an unbuilt interaction."), ECVF_Cheat);
 	IConsoleManager::Get().RegisterConsoleCommand(TEXT("Stat MapBuildData"),	TEXT(""), ECVF_Cheat);
 	IConsoleManager::Get().RegisterConsoleCommand(TEXT("r.ResetViewState"), TEXT("Reset some state (e.g. TemporalAA index) to make rendering more deterministic (for automated screenshot verification)"), ECVF_Cheat);
-	IConsoleManager::Get().RegisterConsoleCommand(TEXT("r.RHI.Name"),		TEXT("Show current RHI's name"), ECVF_Cheat);
 #endif // !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 
 
@@ -2080,13 +2066,6 @@ static TAutoConsoleVariable<int32> CVarMobileHDR(
 	TEXT("1: Mobile renders in HDR linear space. (default)"),
 	ECVF_RenderThreadSafe | ECVF_ReadOnly);
 
-static TAutoConsoleVariable<int32> CVarMobileShadingPath(
-	TEXT("r.Mobile.ShadingPath"),
-	0,
-	TEXT("0: Forward shading (default)")
-	TEXT("1: Deferred shading"),
-	ECVF_RenderThreadSafe | ECVF_ReadOnly);
-
 static TAutoConsoleVariable<int32> CVarMobileNumDynamicPointLights(
 	TEXT("r.MobileNumDynamicPointLights"),
 	4,
@@ -2141,6 +2120,15 @@ static TAutoConsoleVariable<int32> CVarMobileSkyLightPermutation(
 	TEXT("1: Generate only non-skylight permutations.\n")
 	TEXT("2: Generate only skylight permutations"),
 	ECVF_RenderThreadSafe | ECVF_ReadOnly);
+
+static TAutoConsoleVariable<int32> CVarMobileHDR32bppMode(
+	TEXT("r.MobileHDR32bppMode"),
+	0,
+	TEXT("0: If 32bpp is required mobile HDR will use best suited 32 bpp mode. (default)\n")
+	TEXT("1: Force Mobile 32bpp HDR with mosaic encoding.\n")
+	TEXT("2: Force Mobile 32bpp HDR with RGBE encoding mode. (device must support framebuffer fetch)\n")
+	TEXT("3: Force Mobile 32bpp HDR with direct RGBA8 rendering."),
+	ECVF_RenderThreadSafe);
 
 static TAutoConsoleVariable<int32> CVarMobileForceFullPrecisionInPS(
 	TEXT("r.Mobile.ForceFullPrecisionInPS"),
@@ -2314,7 +2302,7 @@ static TAutoConsoleVariable<int32> CVarHighResScreenshotDelay(
 static TAutoConsoleVariable<int32> CVarMaterialQualityLevel(
 	TEXT("r.MaterialQualityLevel"),
 	1,
-	TEXT("0 corresponds to low quality materials, as defined by quality switches in materials, 1 corresponds to high, 2 for medium, and 3 for Epic."),
+	TEXT("0 corresponds to low quality materials, as defined by quality switches in materials, 1 corresponds to high and 2 for medium."),
 	ECVF_Scalability | ECVF_RenderThreadSafe);
 
 static TAutoConsoleVariable<int32> CVarUseDXT5NormalMaps(
@@ -2334,12 +2322,6 @@ static TAutoConsoleVariable<int32> CVarContactShadows(
 	1,
 	TEXT(" 0: disabled.\n")
 	TEXT(" 1: enabled.\n"),
-	ECVF_Scalability | ECVF_RenderThreadSafe);
-
-static TAutoConsoleVariable<float> CVarContactShadowsNonShadowCastingIntensity(
-	TEXT("r.ContactShadows.NonShadowCastingIntensity"),
-	0.0f,
-	TEXT("Intensity of contact shadows from objects with cast contact shadows disabled. Usually 0 (off).\n"),
 	ECVF_Scalability | ECVF_RenderThreadSafe);
 
 // Changing this causes a full shader recompile
@@ -2546,7 +2528,7 @@ static TAutoConsoleVariable<float> CVarViewDistanceScaleSecondaryScale(
 	1.0f,
 	TEXT("Controls the secondary view distance scale, Default = 1.0.\n")
 	TEXT("This is an optional scale intended to allow some features or gamemodes to opt-in.\n"),
-	ECVF_RenderThreadSafe);
+	ECVF_Scalability | ECVF_RenderThreadSafe);
 
 static TAutoConsoleVariable<float> CVarViewDistanceScale_FieldOfViewMinAngle(
 	TEXT("r.ViewDistanceScale.FieldOfViewMinAngle"),
@@ -2730,20 +2712,12 @@ static TAutoConsoleVariable<int32> CVarDisableVulkanSupport(
 	TEXT("  1 = vulkan will be disabled, opengl fall back will be used."),
 	ECVF_ReadOnly);
 
-static TAutoConsoleVariable<int32> CVarDisableVulkanSM5Support(
-	TEXT("r.Android.DisableVulkanSM5Support"),
-	0,
-	TEXT("Disable support for vulkan API. (Android Only)\n")
-	TEXT("  0 = Vulkan SM5 API will be used (providing device and project supports it) [default]\n")
-	TEXT("  1 = Vulkan SM5 will be disabled, Vulkan or OpenGL fall back will be used."),
-	ECVF_ReadOnly);
-
 static TAutoConsoleVariable<int32> CVarDisableOpenGLES31Support(
 	TEXT("r.Android.DisableOpenGLES31Support"),
 	0,
 	TEXT("Disable support for OpenGLES 3.1 API. (Android Only)\n")
 	TEXT("  0 = OpenGLES 3.1 API will be used (providing device and project supports it) [default]\n")
-	TEXT("  1 = OpenGLES 3.1 will be disabled, Vulkan will be used."),
+	TEXT("  1 = OpenGLES 3.1 will be disabled, OpenGL ES2 fall back will be used."),
 	ECVF_ReadOnly);
 
 static TAutoConsoleVariable<int32> CVarDisableAndroidGLASTCSupport(
@@ -2761,14 +2735,6 @@ static TAutoConsoleVariable<int32> CVarDisableOpenGLTextureStreamingSupport(
 	TEXT("  0 = Texture streaming will be used if device supports it [default]\n")
 	TEXT("  1 = Texture streaming will be disabled."),
 	ECVF_ReadOnly);
-
-// Moved here from OpenGLRHI module to make sure its always accessible on all platforms
-static FAutoConsoleVariable CVarOpenGLUseEmulatedUBs(
-	TEXT("OpenGL.UseEmulatedUBs"),
-	1,
-	TEXT("If true, enable using emulated uniform buffers on OpenGL ES3.1 mode."),
-	ECVF_ReadOnly
-	);
 
 static TAutoConsoleVariable<int32> CVarAndroidOverrideExternalTextureSupport(
 	TEXT("r.Android.OverrideExternalTextureSupport"),

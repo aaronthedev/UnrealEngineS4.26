@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LiveLinkSubjectRepresentationDetailCustomization.h"
 
@@ -26,7 +26,7 @@ void FLiveLinkSubjectRepresentationDetailCustomization::CustomizeHeader(TSharedR
 	StructPropertyHandle = InPropertyHandle;
 	TSharedPtr<IPropertyUtilities> PropertyUtils = CustomizationUtils.GetPropertyUtilities();
 
-	check(CastFieldChecked<FStructProperty>(StructPropertyHandle->GetProperty())->Struct == FLiveLinkSubjectRepresentation::StaticStruct());
+	check(CastChecked<UStructProperty>(StructPropertyHandle->GetProperty())->Struct == FLiveLinkSubjectRepresentation::StaticStruct());
 
 	HeaderRow.NameContent()
 	[
@@ -61,7 +61,7 @@ void FLiveLinkSubjectRepresentationDetailCustomization::CustomizeChildren(TShare
 	}
 }
 
-SLiveLinkSubjectRepresentationPicker::FLiveLinkSourceSubjectRole FLiveLinkSubjectRepresentationDetailCustomization::GetValue() const
+FLiveLinkSubjectRepresentation FLiveLinkSubjectRepresentationDetailCustomization::GetValue() const
 {
 	TArray<const void*> RawData;
 	StructPropertyHandle->AccessRawData(RawData);
@@ -70,24 +70,23 @@ SLiveLinkSubjectRepresentationPicker::FLiveLinkSourceSubjectRole FLiveLinkSubjec
 	{
 		if (RawPtr)
 		{
-			return SLiveLinkSubjectRepresentationPicker::FLiveLinkSourceSubjectRole(*reinterpret_cast<const FLiveLinkSubjectRepresentation *>(RawPtr));
+			return *reinterpret_cast<const FLiveLinkSubjectRepresentation *>(RawPtr);
 		}
 	}
 
-	return SLiveLinkSubjectRepresentationPicker::FLiveLinkSourceSubjectRole();
+	return FLiveLinkSubjectRepresentation();
 }
 
-void FLiveLinkSubjectRepresentationDetailCustomization::SetValue(SLiveLinkSubjectRepresentationPicker::FLiveLinkSourceSubjectRole NewValue)
+void FLiveLinkSubjectRepresentationDetailCustomization::SetValue(FLiveLinkSubjectRepresentation NewValue)
 {
-	FStructProperty* StructProperty = CastFieldChecked<FStructProperty>(StructPropertyHandle->GetProperty());
+	UStructProperty* StructProperty = CastChecked<UStructProperty>(StructPropertyHandle->GetProperty());
 
 	TArray<void*> RawData;
 	StructPropertyHandle->AccessRawData(RawData);
 	FLiveLinkSubjectRepresentation* PreviousValue = reinterpret_cast<FLiveLinkSubjectRepresentation*>(RawData[0]);
-	FLiveLinkSubjectRepresentation NewSubRep = NewValue.ToSubjectRepresentation();
 
 	FString TextValue;
-	StructProperty->Struct->ExportText(TextValue, &NewSubRep, PreviousValue, nullptr, EPropertyPortFlags::PPF_None, nullptr);
+	StructProperty->Struct->ExportText(TextValue, &NewValue, PreviousValue, nullptr, EPropertyPortFlags::PPF_None, nullptr);
 	ensure(StructPropertyHandle->SetValueFromFormattedString(TextValue, EPropertyValueSetFlags::DefaultFlags) == FPropertyAccess::Result::Success);
 }
 

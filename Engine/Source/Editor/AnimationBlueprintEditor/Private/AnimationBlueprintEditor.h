@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -92,7 +92,6 @@ public:
 	virtual const FEdGraphPinType& GetLastGraphPinTypeUsed() const override { return LastGraphPinType; }
 	virtual void SetLastGraphPinTypeUsed(const FEdGraphPinType& InType) override { LastGraphPinType = InType; }
 	virtual IAnimationSequenceBrowser* GetAssetBrowser() const override;
-	virtual UAnimInstance* GetPreviewInstance() const override;
 
 	/** IHasPersonaToolkit interface */
 	virtual TSharedRef<class IPersonaToolkit> GetPersonaToolkit() const { return PersonaToolkit.ToSharedRef(); }
@@ -177,6 +176,7 @@ protected:
 	virtual bool CanAddPosePin() const override;
 	virtual void OnRemovePosePin() override;
 	virtual bool CanRemovePosePin() const override;
+	virtual void Compile() override;
 	virtual void OnGraphEditorFocused(const TSharedRef<class SGraphEditor>& InGraphEditor) override;
 	virtual void OnGraphEditorBackgrounded(const TSharedRef<SGraphEditor>& InGraphEditor) override;
 	virtual void OnConvertToSequenceEvaluator() override;
@@ -203,7 +203,7 @@ protected:
 	// End of FEditorUndoClient
 
 	//~ Begin FNotifyHook Interface
-	virtual void NotifyPostChange(const FPropertyChangedEvent& PropertyChangedEvent, FProperty* PropertyThatChanged) override;
+	virtual void NotifyPostChange(const FPropertyChangedEvent& PropertyChangedEvent, UProperty* PropertyThatChanged) override;
 	//~ End FNotifyHook Interface
 
 	// Toggle pose watch on selected nodes
@@ -254,17 +254,11 @@ private:
 	/** Extend menu */
 	void ExtendMenu();
 
-	/** Register menus */
-	void RegisterMenus();
-
 	/** Extend toolbar */
 	void ExtendToolbar();
 
 	/** Called immediately prior to a blueprint compilation */
 	void OnBlueprintPreCompile(UBlueprint* BlueprintToCompile);
-
-	/** Called immediately after to a blueprint compilation */
-	void OnBlueprintPostCompile(UBlueprint* InBlueprint);
 
 	/** Called post compile to copy node data */
 	void OnPostCompile();
@@ -325,7 +319,4 @@ private:
 
     /** Configuration class used to store editor settings across sessions. */
 	UAnimationBlueprintEditorOptions* EditorOptions;
-
-	/** Cached mesh component held during compilation, used to reconnect debugger */
-	USkeletalMeshComponent* DebuggedMeshComponent;
 };

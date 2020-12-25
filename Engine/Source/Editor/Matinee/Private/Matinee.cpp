@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Matinee.h"
 #include "Engine/Texture2D.h"
@@ -259,7 +259,7 @@ void FMatinee::SetCurveTabVisibility(bool Visible)
 	}
 	else if ( !CurveEdTab.IsValid() && Visible )
 	{
-		TabManager->TryInvokeTab(MatineeCurveEdName);
+		TabManager->InvokeTab(MatineeCurveEdName);
 	}
 }
 
@@ -956,9 +956,8 @@ void FMatinee::InitMatinee(const EToolkitMode::Type Mode, const TSharedPtr< clas
 			// If there is a director group, set the perspective viewports to realtime automatically.
 			if(LevelVC->IsPerspective() && LevelVC->AllowsCinematicControl())
 			{				
-				//Ensure Realtime is turned on temporarily
-				const bool bShouldBeRealtime = true;
-				LevelVC->AddRealtimeOverride(bShouldBeRealtime, LOCTEXT("RealtimeOverrideMessage_Matinee", "Matinee"));
+				//Ensure Realtime is turned on and store the original setting so we can restore it later.
+				LevelVC->SetRealtime(true, true);
 			}
 		}
 	}
@@ -2085,7 +2084,8 @@ void FMatinee::OnClose()
 			// Turn off realtime when exiting.
 			if( LevelVC->IsPerspective() && LevelVC->AllowsCinematicControl() )
 			{				
-				LevelVC->RemoveRealtimeOverride(LOCTEXT("RealtimeOverrideMessage_Matinee", "Matinee"));
+				//Specify true so RestoreRealtime will allow us to disable Realtime if it was original disabled
+				LevelVC->RestoreRealtime(true);
 			}
 		}
 	}
@@ -2630,12 +2630,12 @@ void FMatinee::DrawModeHUD(FEditorViewportClient* ViewportClient,FViewport* View
 
 ///////////////////////////////////////////////////////////////////////////////////////
 // Properties window NotifyHook stuff
-void FMatinee::NotifyPreChange( FProperty* PropertyAboutToChange )
+void FMatinee::NotifyPreChange( UProperty* PropertyAboutToChange )
 {
 
 }
 
-void FMatinee::NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, FProperty* PropertyThatChanged )
+void FMatinee::NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, UProperty* PropertyThatChanged )
 {
 	CurveEd->CurveChanged();
 

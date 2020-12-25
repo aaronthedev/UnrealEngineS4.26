@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -17,13 +17,13 @@ struct ENGINE_API FAnimNode_AssetPlayerBase : public FAnimNode_Base
 	FAnimNode_AssetPlayerBase();
 
 	/** Get the last encountered blend weight for this node */
-	virtual float GetCachedBlendWeight() const;
+	virtual float GetCachedBlendWeight();
 	
 	/** Set the cached blendweight to zero */
 	void ClearCachedBlendWeight();
 
 	/** Get the currently referenced time within the asset player node */
-	virtual float GetAccumulatedTime() const;
+	virtual float GetAccumulatedTime();
 
 	/** Override the currently accumulated time */
 	virtual void SetAccumulatedTime(const float& NewTime);
@@ -43,22 +43,13 @@ struct ENGINE_API FAnimNode_AssetPlayerBase : public FAnimNode_Base
 	/** Update method for the asset player, to be implemented by derived classes */
 	virtual void UpdateAssetPlayer(const FAnimationUpdateContext& Context) {};
 
-	// The group name (NAME_None if it is not part of any group)
+	// The group index, assigned at compile time based on the editoronly GroupName (or INDEX_NONE if it is not part of any group)
 	UPROPERTY()
-	FName GroupName;
-
-#if WITH_EDITORONLY_DATA
-	UPROPERTY()
-	int32 GroupIndex_DEPRECATED;
-#endif
+	int32 GroupIndex;
 
 	// The role this player can assume within the group (ignored if GroupIndex is INDEX_NONE)
 	UPROPERTY()
 	TEnumAsByte<EAnimGroupRole::Type> GroupRole;
-
-	// The scope at which marker-based sync is applied
-	UPROPERTY()
-	EAnimSyncGroupScope GroupScope;
 
 	/** If true, "Relevant anim" nodes that look for the highest weighted animation in a state will ignore
 	 *  this node

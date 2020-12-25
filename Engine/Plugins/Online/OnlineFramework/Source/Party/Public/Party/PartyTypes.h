@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -409,10 +409,9 @@ protected:
 	/**
 	 * Called directly after an updated member state is received and copied into the local state
 	 */
-	virtual void PostReplication(const FOnlinePartyRepDataBase& OldData) {}
+	virtual void PostReplication() {}
 	virtual bool CanEditData() const { return false; }
 	virtual const USocialParty* GetOwnerParty() const { return nullptr; }
-	virtual const UPartyMember* GetOwningMember() const { return nullptr; }
 
 	void LogSetPropertyFailure(const TCHAR* OwningStructTypeName, const TCHAR* PropertyName) const;
 	void LogPropertyChanged(const TCHAR* OwningStructTypeName, const TCHAR* PropertyName, bool bFromReplication) const;

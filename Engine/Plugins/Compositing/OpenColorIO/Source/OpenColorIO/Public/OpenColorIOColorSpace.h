@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -47,7 +47,6 @@ public:
 
 public:
 	bool operator==(const FOpenColorIOColorSpace& Other) const { return Other.ColorSpaceIndex == ColorSpaceIndex && Other.ColorSpaceName == ColorSpaceName; }
-	bool operator!=(const FOpenColorIOColorSpace& Other) const { return !operator==(Other); }
 
 	/**
 	 * Get the string representation of this color space.
@@ -67,8 +66,8 @@ public:
 };
 
 /**
- * Identifies a OCIO ColorSpace conversion.
- */
+* Identifies a OCIO ColorSpace.
+*/
 USTRUCT(BlueprintType)
 struct OPENCOLORIO_API FOpenColorIOColorConversionSettings
 {
@@ -98,31 +97,5 @@ public:
 	 * @return String representation, i.e. "ConfigurationAssetName - SourceColorSpace to DestinationColorSpace".
 	 */
 	FString ToString() const;
-
-	/**
-	 * Returns true if the source and destination color spaces are found in the configuration file
-	 */
-	bool IsValid() const;
-};
-
-/**
- * Identifies an OCIO Display look configuration 
- */
-USTRUCT(BlueprintType)
-struct OPENCOLORIO_API FOpenColorIODisplayConfiguration
-{
-	GENERATED_BODY()
-
-public:
-	/** Whether or not this display configuration is enabled
-	 *  Since display look are applied on viewports, this will 
-	 * dictate whether it's applied or not to it
-	 */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ColorSpace)
-	bool bIsEnabled = false;
-	
-	/** Conversion to apply when this display is enabled */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = ColorSpace)
-	FOpenColorIOColorConversionSettings ColorConfiguration;
 };
 

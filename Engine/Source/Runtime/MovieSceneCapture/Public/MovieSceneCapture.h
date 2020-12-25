@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -56,6 +56,10 @@ public:
 	const FMovieSceneCaptureSettings& GetSettings() const override { return Settings; }
 	const int32 GetFrameNumberOffset() const override { return FrameNumberOffset; }
 	// End IMovieSceneCaptureInterface
+
+	/*~ Begin UObject interface */
+	virtual bool IsDestructionThreadSafe() const override { return false; }
+	/*~ End UObject interface */
 
 	/** Load save from config helpers */
 	virtual void LoadFromConfig();

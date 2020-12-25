@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Sections/MovieSceneCameraAnimSection.h"
 #include "Evaluation/MovieSceneCameraAnimTemplate.h"
@@ -54,4 +54,13 @@ void UMovieSceneCameraAnimSection::PostLoad()
 	}
 
 	Super::PostLoad();
+}
+
+FMovieSceneEvalTemplatePtr UMovieSceneCameraAnimSection::GenerateTemplate() const
+{
+	if (AnimData.CameraAnim)
+	{
+		return FMovieSceneCameraAnimSectionTemplate(*this);
+	}
+	return FMovieSceneEvalTemplatePtr();
 }

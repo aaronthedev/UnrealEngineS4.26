@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -18,11 +18,6 @@ namespace Gauntlet
 		/// Override this to set the max running time for this test
 		/// </summary>
 		public abstract float MaxDuration { get; protected set; }
-
-		/// <summary>
-		/// What the test result should be treated as if we reach max duration.
-		/// </summary>
-		public virtual EMaxDurationReachedResult MaxDurationReachedResult { get; set; }
 
 		/// <summary>
 		/// Override this to set the priority of this test
@@ -48,11 +43,6 @@ namespace Gauntlet
 		/// Internal status state
 		/// </summary>
 		private TestStatus InnerStatus;
-
-		/// <summary>
-		/// Return true if the warnings and errors needs to log after summary
-		/// </summary>
-		public virtual bool LogWarningsAndErrorsAfterSummary { get; protected set; } = true;
 
 		/// <summary>
 		/// 
@@ -176,13 +166,6 @@ namespace Gauntlet
 		/// <returns></returns>
 		public virtual void SetContext(ITestContext InContext)
 		{
-		}
-
-		/// <summary>
-		/// Output all defined commandline information for this test to the gauntlet window and exit test early.
-		/// </summary>
-		public virtual void DisplayCommandlineHelp()
-		{ 
-		}
+		}	
 	}
 }

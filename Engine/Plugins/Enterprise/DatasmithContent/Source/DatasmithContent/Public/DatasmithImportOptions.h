@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -110,13 +110,6 @@ enum class EDatasmithCADStitchingTechnique : uint8
 	StitchingSew,
 };
 
-UENUM()
-enum class EDatasmithCADRetessellationRule : uint8
-{
-	All = 0,
-	SkipDeletedSurfaces,
-};
-
 USTRUCT(BlueprintType)
 struct DATASMITHCONTENT_API FDatasmithAssetImportOptions
 {
@@ -153,14 +146,7 @@ public:
 
 	bool operator == (const FDatasmithStaticMeshImportOptions& Other) const
 	{
-		return MinLightmapResolution == Other.MinLightmapResolution
-			&& MaxLightmapResolution == Other.MaxLightmapResolution
-			&& bGenerateLightmapUVs == Other.bGenerateLightmapUVs
-			&& bRemoveDegenerates == Other.bRemoveDegenerates;
-	}
-
-	bool operator != (const FDatasmithStaticMeshImportOptions& Other) const {
-		return !operator==(Other);
+		return (MinLightmapResolution == Other.MinLightmapResolution && MaxLightmapResolution == Other.MaxLightmapResolution && bRemoveDegenerates == Other.bRemoveDegenerates);
 	}
 };
 
@@ -274,11 +260,16 @@ struct DATASMITHCONTENT_API FDatasmithTessellationOptions
 public:
 	bool operator == (const FDatasmithTessellationOptions& Other) const
 	{
-		return FMath::IsNearlyEqual(ChordTolerance, Other.ChordTolerance)
-			&& FMath::IsNearlyEqual(MaxEdgeLength, Other.MaxEdgeLength)
-			&& FMath::IsNearlyEqual(NormalTolerance, Other.NormalTolerance)
-			&& StitchingTechnique == Other.StitchingTechnique;
+		return (FMath::IsNearlyEqual(ChordTolerance, Other.ChordTolerance) && FMath::IsNearlyEqual(MaxEdgeLength, Other.MaxEdgeLength) && FMath::IsNearlyEqual(NormalTolerance, Other.NormalTolerance) && StitchingTechnique == Other.StitchingTechnique);
 	}
+
+	//void operator = (const FDatasmithTessellationOptions& Other)
+	//{
+	//	ChordTolerance = Other.ChordTolerance;
+	//	MaxEdgeLength = Other.MaxEdgeLength;
+	//	NormalTolerance = Other.NormalTolerance;
+	//	StitchingTechnique = Other.StitchingTechnique;
+	//}
 
 	uint32 GetHash() const
 	{
@@ -291,49 +282,8 @@ public:
 	}
 };
 
-USTRUCT(BlueprintType)
-struct DATASMITHCONTENT_API FDatasmithRetessellationOptions : public FDatasmithTessellationOptions
-{
-	GENERATED_BODY()
-
-	FDatasmithRetessellationOptions(float InChordTolerance = 0.2f, float InMaxEdgeLength = 0.0f, float InNormalTolerance = 20.0f, EDatasmithCADStitchingTechnique InStitchingTechnique = EDatasmithCADStitchingTechnique::StitchingSew, EDatasmithCADRetessellationRule InRetessellationRule = EDatasmithCADRetessellationRule::All)
-		: FDatasmithTessellationOptions(InChordTolerance, InMaxEdgeLength, InNormalTolerance, InStitchingTechnique)
-		, RetessellationRule(InRetessellationRule)
-	{
-	}
-
-	UPROPERTY(config, EditAnywhere, BlueprintReadWrite, AdvancedDisplay, Category = "Retessellation Options", meta = (ToolTip = "Regenerate deleted surfaces during retesselate or ignore them"))
-	EDatasmithCADRetessellationRule RetessellationRule;
-
-public:
-	void operator = (const FDatasmithTessellationOptions& Other)
-	{
-		ChordTolerance = Other.ChordTolerance;
-		MaxEdgeLength = Other.MaxEdgeLength;
-		NormalTolerance = Other.NormalTolerance;
-		StitchingTechnique = Other.StitchingTechnique;
-	}
-};
-
-/**
- * Base class for all import options in datasmith.
- *
- * Notable feature: forces a full serialization of its properties (by opposition
- * to the standard delta serialization which stores only the diff wrt the CDO)
- * The intent is to store the exact options used in a previous import.
- */
-UCLASS()
-class DATASMITHCONTENT_API UDatasmithOptionsBase : public UObject
-{
-	GENERATED_BODY()
-
-public:
-	void Serialize(FStructuredArchive::FRecord Record) override;
-};
-
-
-UCLASS(BlueprintType, config = EditorPerProjectUserSettings)
-class DATASMITHCONTENT_API UDatasmithCommonTessellationOptions : public UDatasmithOptionsBase
+UCLASS(BlueprintType, config = EditorPerProjectUserSettings, Transient)
+class DATASMITHCONTENT_API UDatasmithCommonTessellationOptions : public UObject
 {
 	GENERATED_BODY()
 
@@ -343,7 +293,7 @@ public:
 };
 
 UCLASS(config = EditorPerProjectUserSettings, HideCategories = ("NotVisible"))
-class DATASMITHCONTENT_API UDatasmithImportOptions : public UDatasmithOptionsBase
+class DATASMITHCONTENT_API UDatasmithImportOptions : public UObject
 {
 	GENERATED_UCLASS_BODY()
 
@@ -405,7 +355,7 @@ public:
 
 	//~ UObject interface
 #if WITH_EDITOR
-	virtual bool CanEditChange(const FProperty* InProperty) const override;
+	virtual bool CanEditChange(const UProperty* InProperty) const override;
 #endif //WITH_EDITOR
 	//~ End UObject interface
 };

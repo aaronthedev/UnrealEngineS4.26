@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GoogleARCoreFaceMeshComponent.h"
 
@@ -7,13 +7,13 @@
 #include "ARSessionConfig.h"
 #include "DrawDebugHelpers.h"
 
-UDEPRECATED_GoogleARCoreFaceMeshComponent::UDEPRECATED_GoogleARCoreFaceMeshComponent(const FObjectInitializer& ObjectInitializer)
+UGoogleARCoreFaceMeshComponent::UGoogleARCoreFaceMeshComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	PrimaryComponentTick.bCanEverTick = true;
 }
 
-void UDEPRECATED_GoogleARCoreFaceMeshComponent::InitializeComponent()
+void UGoogleARCoreFaceMeshComponent::InitializeComponent()
 {
 	Super::InitializeComponent();
 
@@ -23,7 +23,7 @@ void UDEPRECATED_GoogleARCoreFaceMeshComponent::InitializeComponent()
 	}
 }
 
-void UDEPRECATED_GoogleARCoreFaceMeshComponent::CreateMesh(const TArray<FVector>& Vertices, const TArray<int32>& Triangles, const TArray<FVector2D>& UV0)
+void UGoogleARCoreFaceMeshComponent::CreateMesh(const TArray<FVector>& Vertices, const TArray<int32>& Triangles, const TArray<FVector2D>& UV0)
 {
 	TArray<FVector> Normals;
 	TArray<FLinearColor> VertexColors;
@@ -32,7 +32,7 @@ void UDEPRECATED_GoogleARCoreFaceMeshComponent::CreateMesh(const TArray<FVector>
 	CreateMeshSection_LinearColor(0, Vertices, Triangles, Normals, UV0, VertexColors, Tangents, bWantsCollision);
 }
 
-FMatrix UDEPRECATED_GoogleARCoreFaceMeshComponent::GetRenderMatrix() const
+FMatrix UGoogleARCoreFaceMeshComponent::GetRenderMatrix() const
 {
 	FTransform RenderTrans;
 
@@ -59,7 +59,7 @@ FMatrix UDEPRECATED_GoogleARCoreFaceMeshComponent::GetRenderMatrix() const
 	return RenderTrans.ToMatrixWithScale();
 }
 
-class UMaterialInterface* UDEPRECATED_GoogleARCoreFaceMeshComponent::GetMaterial(int32 ElementIndex) const
+class UMaterialInterface* UGoogleARCoreFaceMeshComponent::GetMaterial(int32 ElementIndex) const
 {
 	if (ElementIndex == 0)
 	{
@@ -68,7 +68,7 @@ class UMaterialInterface* UDEPRECATED_GoogleARCoreFaceMeshComponent::GetMaterial
 	return nullptr;
 }
 
-void UDEPRECATED_GoogleARCoreFaceMeshComponent::SetMaterial(int32 ElementIndex, class UMaterialInterface* Material)
+void UGoogleARCoreFaceMeshComponent::SetMaterial(int32 ElementIndex, class UMaterialInterface* Material)
 {
 	if (ElementIndex == 0)
 	{
@@ -76,7 +76,7 @@ void UDEPRECATED_GoogleARCoreFaceMeshComponent::SetMaterial(int32 ElementIndex, 
 	}
 }
 
-void UDEPRECATED_GoogleARCoreFaceMeshComponent::UpdateMesh(const TArray<FVector>& Vertices)
+void UGoogleARCoreFaceMeshComponent::UpdateMesh(const TArray<FVector>& Vertices)
 {
 	TArray<FVector> Normals;
 	TArray<FVector2D> UV0;
@@ -86,7 +86,7 @@ void UDEPRECATED_GoogleARCoreFaceMeshComponent::UpdateMesh(const TArray<FVector>
 	UpdateMeshSection_LinearColor(0, Vertices, Normals, UV0, VertexColors, Tangents);
 }
 
-UARFaceGeometry* UDEPRECATED_GoogleARCoreFaceMeshComponent::FindFaceGeometry()
+UARFaceGeometry* UGoogleARCoreFaceMeshComponent::FindFaceGeometry()
 {
 	const TArray<UARTrackedGeometry*> Geometries = UARBlueprintLibrary::GetAllGeometries();
 	for (UARTrackedGeometry* Geo : Geometries)
@@ -100,7 +100,7 @@ UARFaceGeometry* UDEPRECATED_GoogleARCoreFaceMeshComponent::FindFaceGeometry()
 	return nullptr;
 }
 
-void UDEPRECATED_GoogleARCoreFaceMeshComponent::SetAutoBind(bool bAutoBind)
+void UGoogleARCoreFaceMeshComponent::SetAutoBind(bool bAutoBind)
 {
 	if (bAutoBindToLocalFaceMesh != bAutoBind)
 	{
@@ -109,12 +109,12 @@ void UDEPRECATED_GoogleARCoreFaceMeshComponent::SetAutoBind(bool bAutoBind)
 	}
 }
 
-void UDEPRECATED_GoogleARCoreFaceMeshComponent::BindARFaceGeometry(UARFaceGeometry* FaceGeometry)
+void UGoogleARCoreFaceMeshComponent::BindARFaceGeometry(UARFaceGeometry* FaceGeometry)
 {
 	BoundFaceGeometry = FaceGeometry;
 }
 
-void UDEPRECATED_GoogleARCoreFaceMeshComponent::TickComponent(float DeltaTime, ELevelTick, FActorComponentTickFunction*)
+void UGoogleARCoreFaceMeshComponent::TickComponent(float DeltaTime, ELevelTick, FActorComponentTickFunction*)
 {
 	if (bAutoBindToLocalFaceMesh)
 	{
@@ -147,7 +147,7 @@ void UDEPRECATED_GoogleARCoreFaceMeshComponent::TickComponent(float DeltaTime, E
 	}
 }
 
-FTransform UDEPRECATED_GoogleARCoreFaceMeshComponent::GetTransform() const
+FTransform UGoogleARCoreFaceMeshComponent::GetTransform() const
 {
 	return LocalToWorldTransform;
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SProjectLauncherSimpleDeviceListView.h"
 
@@ -127,7 +127,7 @@ bool SProjectLauncherSimpleDeviceListView::HandleDeviceListRowIsEnabled(TSharedP
 
 void SProjectLauncherSimpleDeviceListView::HandleDeviceManagerHyperlinkNavigate() const
 {
-	FGlobalTabmanager::Get()->TryInvokeTab(FTabId("DeviceManager"));
+	FGlobalTabmanager::Get()->InvokeTab(FTabId("DeviceManager"));
 }
 
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MfMediaUtils.h"
 
@@ -16,19 +16,7 @@
 #if PLATFORM_WINDOWS || PLATFORM_HOLOLENS
 	#include "Windows/AllowWindowsPlatformTypes.h"
 #else
-	#include "XboxCommonAllowPlatformTypes.h"
-#endif
-
-#ifndef MFMEDIA_PLATFORM_SUPPORTS_ONLY_AAC
-	#define MFMEDIA_PLATFORM_SUPPORTS_ONLY_AAC PLATFORM_XBOXONE
-#endif
-
-#ifndef MFMEDIA_PLATFORM_SUPPORTS_ONLY_H264
-	#define MFMEDIA_PLATFORM_SUPPORTS_ONLY_H264 PLATFORM_XBOXONE
-#endif
-
-#ifndef  MFMEDIA_PLATFORM_SUPPORTS_ONLY_NV12
-	#define MFMEDIA_PLATFORM_SUPPORTS_ONLY_NV12 PLATFORM_XBOXONE
+	#include "XboxOne/XboxOneAllowPlatformTypes.h"
 #endif
 
 
@@ -57,14 +45,15 @@ namespace MfMedia
 
 		if (MajorType == MFMediaType_Audio)
 		{
-			// filter unsupported audio formats
-#if MFMEDIA_PLATFORM_SUPPORTS_ONLY_AAC
+#if PLATFORM_XBOXONE
+			// filter unsupported audio formats (XboxOne only supports AAC)
 			if (SubType != MFAudioFormat_AAC)
 			{
 				UE_LOG(LogMfMedia, Warning, TEXT("Skipping unsupported audio type %s (%s) \"%s\""), *SubTypeToString(SubType), *GuidToString(SubType), *FourccToString(SubType.Data1));
 				return NULL;
 			}
 #else
+			// filter unsupported audio formats
 			if (FMemory::Memcmp(&SubType.Data2, &MFMPEG4Format_Base.Data2, 12) == 0)
 			{
 				if (AllowNonStandardCodecs)
@@ -106,7 +95,7 @@ namespace MfMedia
 					return NULL;
 				}
 			}
-#endif //MFMEDIA_PLATFORM_SUPPORTS_ONLY_AAC
+#endif //PLATFORM_XBOXONE
 
 			// configure audio output
 			if (FAILED(OutputType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio)) ||
@@ -132,14 +121,15 @@ namespace MfMedia
 		}
 		else if (MajorType == MFMediaType_Video)
 		{
-			// filter unsupported video types
-#if MFMEDIA_PLATFORM_SUPPORTS_ONLY_H264
+#if PLATFORM_XBOXONE
+			// filter unsupported video types (XboxOne only supports H.264)
 			if ((SubType != MFVideoFormat_H264) && (SubType == MFVideoFormat_H264_ES))
 			{
 				UE_LOG(LogMfMedia, Warning, TEXT("Unsupported video type %s (%s) \"%i\""), *SubTypeToString(SubType), *GuidToString(SubType), *FourccToString(SubType.Data1));
 				return NULL;
 			}
 #else
+			// filter unsupported video types
 			if (FMemory::Memcmp(&SubType.Data2, &MFVideoFormat_Base.Data2, 12) != 0)
 			{
 				if (AllowNonStandardCodecs)
@@ -155,7 +145,7 @@ namespace MfMedia
 #if !PLATFORM_HOLOLENS
 			if ((SubType == MFVideoFormat_H264) || (SubType == MFVideoFormat_H264_ES))
 			{
-				if (!FPlatformMisc::VerifyWindowsVersion(6, 1) /*Win7*/)
+				if (!FWindowsPlatformMisc::VerifyWindowsVersion(6, 1) /*Win7*/)
 				{
 					UE_LOG(LogMfMedia, Warning, TEXT("H264 video type requires Windows 7 or newer (your version is %s)"), *FPlatformMisc::GetOSVersion());
 					return NULL;
@@ -164,9 +154,9 @@ namespace MfMedia
 
 			if ((SubType == MFVideoFormat_HEVC) || (SubType == MFVideoFormat_HEVC_ES))
 			{
-				if (!FPlatformMisc::VerifyWindowsVersion(10, 0) /*Win10*/)
+				if (!FWindowsPlatformMisc::VerifyWindowsVersion(10, 0) /*Win10*/)
 				{
-					if (!FPlatformMisc::VerifyWindowsVersion(6, 2) /*Win8*/)
+					if (!FWindowsPlatformMisc::VerifyWindowsVersion(6, 2) /*Win8*/)
 					{
 						UE_LOG(LogMfMedia, Warning, TEXT("HEVC video type requires Windows 10 or newer (your version is %s"), *FPlatformMisc::GetOSVersion());
 						return NULL;
@@ -177,7 +167,7 @@ namespace MfMedia
 			}
 #endif // PLATFORM_HOLOLENS
 
-#endif //MFMEDIA_PLATFORM_SUPPORTS_ONLY_H264
+#endif //PLATFORM_XBOXONE
 
 			// configure video output
 			HRESULT Result = OutputType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
@@ -188,8 +178,8 @@ namespace MfMedia
 				return NULL;
 			}
 
-#if MFMEDIA_PLATFORM_SUPPORTS_ONLY_NV12
-			Result = OutputType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
+#if PLATFORM_XBOXONE
+			Result = OutputType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12); // XboxOne only supports NV12
 #else
 			if ((SubType == MFVideoFormat_HEVC) ||
 				(SubType == MFVideoFormat_HEVC_ES) ||
@@ -209,7 +199,7 @@ namespace MfMedia
 
 				Result = OutputType->SetGUID(MF_MT_SUBTYPE, Uncompressed ? MFVideoFormat_RGB32 : MFVideoFormat_YUY2);
 			}
-#endif //MFMEDIA_PLATFORM_SUPPORTS_ONLY_NV12
+#endif
 
 			if (FAILED(Result))
 			{
@@ -903,7 +893,7 @@ namespace MfMedia
 #if PLATFORM_WINDOWS || PLATFORM_HOLOLENS
 	#include "Windows/HideWindowsPlatformTypes.h"
 #else
-	#include "XboxCommonHidePlatformTypes.h"
+	#include "XboxOne/XboxOneHidePlatformTypes.h"
 #endif
 
 #endif //MFMEDIA_SUPPORTED_PLATFORM

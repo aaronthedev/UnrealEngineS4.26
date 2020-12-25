@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "K2Node_VariableSetRef.h"
@@ -34,18 +34,18 @@ public:
 	void InnerAssignment(FKismetFunctionContext& Context, UEdGraphNode* Node, UEdGraphPin* VariablePin, UEdGraphPin* ValuePin)
 	{
 		FBPTerminal** VariableTerm = Context.NetMap.Find(VariablePin);
-		if (VariableTerm == nullptr)
+		if (VariableTerm == NULL)
 		{
 			VariableTerm = Context.NetMap.Find(FEdGraphUtilities::GetNetFromPin(VariablePin));
 		}
 
 		FBPTerminal** ValueTerm = Context.LiteralHackMap.Find(ValuePin);
-		if (ValueTerm == nullptr)
+		if (ValueTerm == NULL)
 		{
 			ValueTerm = Context.NetMap.Find(FEdGraphUtilities::GetNetFromPin(ValuePin));
 		}
 
-		if ((VariableTerm != nullptr) && (ValueTerm != nullptr))
+		if ((VariableTerm != NULL) && (ValueTerm != NULL))
 		{
 			FBlueprintCompiledStatement& Statement = Context.AppendStatementForNode(Node);
 
@@ -176,28 +176,8 @@ void UK2Node_VariableSetRef::NotifyPinConnectionListChanged(UEdGraphPin* Pin)
 
 	if( (Pin == TargetPin) || (Pin == ValuePin) )
 	{
-		UEdGraphPin* ConnectedToPin = (Pin->LinkedTo.Num() > 0) ? Pin->LinkedTo[0] : nullptr;
+		UEdGraphPin* ConnectedToPin = (Pin->LinkedTo.Num() > 0) ? Pin->LinkedTo[0] : NULL;
 		CoerceTypeFromPin(ConnectedToPin);
-
-		// If both target and value pins are unlinked, then reset types to wildcard
-		if(TargetPin->LinkedTo.Num() == 0 && ValuePin->LinkedTo.Num() == 0)
-		{
-			// Pin disconnected...revert to wildcard
-			TargetPin->PinType.PinCategory = UEdGraphSchema_K2::PC_Wildcard;
-			TargetPin->PinType.PinSubCategory = NAME_None;
-			TargetPin->PinType.PinSubCategoryObject = nullptr;
-			TargetPin->BreakAllPinLinks();
-
-			ValuePin->PinType.PinCategory = UEdGraphSchema_K2::PC_Wildcard;
-			ValuePin->PinType.PinSubCategory = NAME_None;
-			ValuePin->PinType.PinSubCategoryObject = nullptr;
-			ValuePin->BreakAllPinLinks();			
-		}
-
-		CachedNodeTitle.MarkDirty();
-		
-		// Get the graph to refresh our title and default value info
-		GetGraph()->NotifyGraphChanged();
 	}
 }
 
@@ -208,11 +188,7 @@ void UK2Node_VariableSetRef::CoerceTypeFromPin(const UEdGraphPin* Pin)
 
 	check(TargetPin && ValuePin);
 
-	if( Pin && 
-		(Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Wildcard ||
-		(	Pin->PinType.PinCategory == TargetPin->PinType.PinCategory &&
-			Pin->PinType.PinCategory == ValuePin->PinType.PinCategory )
-		) )
+	if( Pin )
 	{
 		check((Pin != TargetPin) || (Pin->PinType.bIsReference && !Pin->PinType.IsContainer()));
 
@@ -221,6 +197,21 @@ void UK2Node_VariableSetRef::CoerceTypeFromPin(const UEdGraphPin* Pin)
 
 		ValuePin->PinType = Pin->PinType;
 		ValuePin->PinType.bIsReference = false;
+	}
+	else
+	{
+		// Pin disconnected...revert to wildcard
+		TargetPin->PinType.PinCategory = UEdGraphSchema_K2::PC_Wildcard;
+		TargetPin->PinType.PinSubCategory = NAME_None;
+		TargetPin->PinType.PinSubCategoryObject = nullptr;
+		TargetPin->BreakAllPinLinks();
+
+		ValuePin->PinType.PinCategory = UEdGraphSchema_K2::PC_Wildcard;
+		ValuePin->PinType.PinSubCategory = NAME_None;
+		ValuePin->PinType.PinSubCategoryObject = nullptr;
+		ValuePin->BreakAllPinLinks();
+
+		CachedNodeTitle.MarkDirty();
 	}
 }
 

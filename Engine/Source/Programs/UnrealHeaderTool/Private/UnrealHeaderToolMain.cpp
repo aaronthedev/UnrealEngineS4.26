@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "UnrealHeaderTool.h"
@@ -13,6 +13,7 @@
 #include "Modules/ModuleManager.h"
 #include "Misc/CompilationResult.h"
 #include "UnrealHeaderToolGlobals.h"
+
 #include "RequiredProgramMainCPPInclude.h"
 
 IMPLEMENT_APPLICATION(UnrealHeaderTool, "UnrealHeaderTool");
@@ -35,7 +36,7 @@ INT32_MAIN_INT32_ARGC_TCHAR_ARGV()
 	for (int32 Arg = 0; Arg < ArgC; Arg++)
 	{
 		FString LocalArg = ArgV[Arg];
-		if (LocalArg.Contains(TEXT(" "), ESearchCase::CaseSensitive))
+		if (LocalArg.Contains(TEXT(" ")))
 		{
 			CmdLine += TEXT("\"");
 			CmdLine += LocalArg;

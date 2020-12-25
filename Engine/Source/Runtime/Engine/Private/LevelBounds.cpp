@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/LevelBounds.h"
 #include "Engine/CollisionProfile.h"
@@ -12,11 +12,11 @@ static const FVector DefaultLevelSize = FVector(1000.f);
 ALevelBounds::ALevelBounds(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	BoxComponent = CreateDefaultSubobject<UBoxComponent>(TEXT("BoxComponent0"));
+	UBoxComponent* BoxComponent = CreateDefaultSubobject<UBoxComponent>(TEXT("BoxComponent0"));
 	RootComponent = BoxComponent;
-	BoxComponent->Mobility = EComponentMobility::Movable;
-	BoxComponent->SetRelativeScale3D(DefaultLevelSize);
-	BoxComponent->SetCanEverAffectNavigation(false);
+	RootComponent->Mobility = EComponentMobility::Movable;
+	RootComponent->SetRelativeScale3D(DefaultLevelSize);
+	RootComponent->SetCanEverAffectNavigation(false);
 
 	bAutoUpdateBounds = true;
 
@@ -47,7 +47,7 @@ void ALevelBounds::PostLoad()
 	}
 }
 
-FBox ALevelBounds::GetComponentsBoundingBox(bool bNonColliding, bool bIncludeFromChildActors) const
+FBox ALevelBounds::GetComponentsBoundingBox(bool bNonColliding) const
 {
 	checkf(RootComponent != nullptr, TEXT("LevelBounds actor with null root component: %s"), *GetPathNameSafe(this));
 	FVector BoundsCenter = RootComponent->GetComponentLocation();

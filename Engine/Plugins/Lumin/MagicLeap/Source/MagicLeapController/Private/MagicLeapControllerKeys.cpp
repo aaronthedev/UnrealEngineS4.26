@@ -1,5 +1,3 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
 #include "MagicLeapControllerKeys.h"
 
 const FName FMagicLeapMotionSourceNames::Control0(TEXT("MagicLeapControl0"));

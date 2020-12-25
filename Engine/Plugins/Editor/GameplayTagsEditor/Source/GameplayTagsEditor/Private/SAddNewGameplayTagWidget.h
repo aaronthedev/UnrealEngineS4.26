@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,15 +12,9 @@
 #include "Widgets/Input/SComboBox.h"
 
 /** Widget allowing the user to create new gameplay tags */
-class SAddNewGameplayTagWidget : public SCompoundWidget
+class GAMEPLAYTAGSEDITOR_VTABLE SAddNewGameplayTagWidget : public SCompoundWidget
 {
 public:
-
-	enum class EResetType : uint8
-	{
-		ResetAll,
-		DoNotResetSource
-	};
 
 	DECLARE_DELEGATE_ThreeParams(FOnGameplayTagAdded, const FString& /*TagName*/, const FString& /*TagComment*/, const FName& /*TagSource*/);
 
@@ -50,7 +44,7 @@ public:
 	void AddSubtagFromParent(const FString& ParentTagName, const FName& ParentTagSource);
 
 	/** Resets all input fields */
-	void Reset(EResetType ResetType);
+	void Reset();
 
 private:
 
@@ -77,10 +71,6 @@ private:
 
 	/** Creates the text displayed by the combo box when an option is selected */
 	FText CreateTagSourcesComboBoxContent() const;
-
-	EVisibility OnGetTagSourceFavoritesVisibility() const;
-	FReply OnToggleTagSourceFavoriteClicked();
-	const FSlateBrush* OnGetTagSourceFavoriteImage() const;
 
 private:
 

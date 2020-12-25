@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DataValidationModule.h"
 #include "UObject/Object.h"
@@ -22,7 +22,6 @@
 #include "WorkspaceMenuStructure.h"
 #include "WorkspaceMenuStructureModule.h"
 #include "EditorValidatorSubsystem.h"
-#include "ISettingsModule.h"
 
 #define LOCTEXT_NAMESPACE "DataValidationModule"
 
@@ -79,13 +78,6 @@ void FDataValidationModule::StartupModule()
 
 		// Add save callback
 		UPackage::PackageSavedEvent.AddRaw(this, &FDataValidationModule::OnPackageSaved);
-
-		ISettingsModule& SettingsModule = FModuleManager::LoadModuleChecked<ISettingsModule>("Settings");
-		SettingsModule.RegisterSettings("Editor", "Advanced", "DataValidation",
-			LOCTEXT("DataValidationName", "Data Validation"),
-			LOCTEXT("DataValidationDescription", "Settings related to validating assets in the editor."),
-			GetMutableDefault<UDataValidationSettings>()
-		);
 	}
 }
 
@@ -170,9 +162,9 @@ void FDataValidationModule::FindAssetDependencies(const FAssetRegistryModule& As
 				DependentAssets.Add(Asset);
 
 				TArray<FName> Dependencies;
-				AssetRegistryModule.Get().GetDependencies(SelectedPackageName, Dependencies, UE::AssetRegistry::EDependencyCategory::Package);
+				AssetRegistryModule.Get().GetDependencies(SelectedPackageName, Dependencies, EAssetRegistryDependencyType::Packages);
 
-				for (const FName& Dependency : Dependencies)
+				for (const FName Dependency : Dependencies)
 				{
 					const FString DependencyPackageString = Dependency.ToString();
 					FString DependencyObjectString = FString::Printf(TEXT("%s.%s"), *DependencyPackageString, *FPackageName::GetLongPackageAssetName(DependencyPackageString));

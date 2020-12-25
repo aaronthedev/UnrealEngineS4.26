@@ -1,26 +1,27 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VT/VirtualTexture.h"
-
-#include "EngineModule.h"
-#include "FileCache/FileCache.h"
-#include "RendererInterface.h"
-#include "Serialization/Archive.h"
 #include "VT/VirtualTextureBuiltData.h"
+#include "Serialization/MemoryWriter.h"
+#include "LightMap.h"
 #include "EngineModule.h"
+#include "RendererInterface.h"
+#include "FileCache/FileCache.h"
+#include "EngineModule.h"
+
+DEFINE_LOG_CATEGORY(LogVirtualTexturingModule);
 
 static FAutoConsoleCommand GVTFlushAndEvictFileCacheCommand(
 	TEXT("r.VT.FlushAndEvictFileCache"),
-	TEXT("Flush both the virtual texture physcial page cache and disk file cache"),
+	TEXT("Flush both the virtual texture physcial page cache and disk file cachje"),
 	FConsoleCommandDelegate::CreateStatic(
 		[]()
-	{
-		IFileCacheHandle::EvictAll();
-		GetRendererModule().FlushVirtualTextureCache();
-	})
+{
+	IFileCacheHandle::EvictAll();
+	GetRendererModule().FlushVirtualTextureCache();
+})
 );
 
-// Deprecated serialization code
 namespace
 {
 	// Version used to serialize dummy data for UVirtualTexture
@@ -74,10 +75,7 @@ namespace
 	};
 }
 
-UVirtualTexture::UVirtualTexture(const FObjectInitializer& ObjectInitializer) 
-	: Super(ObjectInitializer) 
-{
-}
+UVirtualTexture::UVirtualTexture(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer) {}
 
 void UVirtualTexture::Serialize(FArchive& Ar)
 {
@@ -168,57 +166,28 @@ void UVirtualTexture::Serialize(FArchive& Ar)
 	}
 }
 
-ULightMapVirtualTexture::ULightMapVirtualTexture(const FObjectInitializer& ObjectInitializer) 
-	: Super(ObjectInitializer) 
-{
-}
+ULightMapVirtualTexture::ULightMapVirtualTexture(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer) {}
 
-URuntimeVirtualTextureStreamingProxy::URuntimeVirtualTextureStreamingProxy(const FObjectInitializer& ObjectInitializer)
+ULightMapVirtualTexture2D::ULightMapVirtualTexture2D(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
+	VirtualTextureStreaming = true;
+	SetLayerForType(ELightMapVirtualTextureType::HqLayer0, 0u);
+	SetLayerForType(ELightMapVirtualTextureType::HqLayer1, 1u);
 }
 
-
-UVirtualTexture2D::UVirtualTexture2D(const FObjectInitializer& ObjectInitializer)
-	: UTexture2D(ObjectInitializer)
-	, bContinuousUpdate(false)
-	, bSinglePhysicalSpace(false)
+void ULightMapVirtualTexture2D::SetLayerForType(ELightMapVirtualTextureType InType, uint8 InLayer)
 {
-}
-
-#if WITH_EDITOR
-
-void UVirtualTexture2D::BeginCacheForCookedPlatformData(const ITargetPlatform* TargetPlatform)
-{
-	// Even though we skip the cook of this object for non VT platforms in URuntimeVirtualTexture::Serialize()
-	// we still load the object at cook time and kick off the DDC build. This will trigger an error in the texture DDC code.
-	// Either we need to make the DDC code more robust for non VT platforms or we can skip the process here...
-	if (!UseVirtualTexturing(GMaxRHIFeatureLevel, TargetPlatform))
+	const int TypeIndex = (int)InType;
+	while (TypeIndex >= TypeToLayer.Num())
 	{
-		return;
+		TypeToLayer.Add(-1);
 	}
-
-	Super::BeginCacheForCookedPlatformData(TargetPlatform);
+	TypeToLayer[TypeIndex] = InLayer;
 }
 
-bool UVirtualTexture2D::IsCachedCookedPlatformDataLoaded(const ITargetPlatform* TargetPlatform)
+uint32 ULightMapVirtualTexture2D::GetLayerForType(ELightMapVirtualTextureType InType) const
 {
-	if (!UseVirtualTexturing(GMaxRHIFeatureLevel, TargetPlatform))
-	{
-		return true;
-	}
-
-	return Super::IsCachedCookedPlatformDataLoaded(TargetPlatform);
+	const int TypeIndex = (int)InType;
+	return (TypeIndex >= TypeToLayer.Num()) ? ~0u : (uint32)TypeToLayer[TypeIndex];
 }
-
-void UVirtualTexture2D::ClearCachedCookedPlatformData(const ITargetPlatform* TargetPlatform)
-{
-	if (!UseVirtualTexturing(GMaxRHIFeatureLevel, TargetPlatform))
-	{
-		return;
-	}
-
-	Super::ClearCachedCookedPlatformData(TargetPlatform);
-}
-
-#endif

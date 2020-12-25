@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  * Factory for importing SpeedTrees
@@ -11,10 +11,7 @@
 #include "Factories/Factory.h"
 #include "SpeedTreeImportFactory.generated.h"
 
-class UMaterialInterface;
-class USpeedTreeImportData;
-
-UCLASS(BlueprintType, hidecategories=Object)
+UCLASS(hidecategories=Object)
 class USpeedTreeImportFactory : public UFactory
 {
 	GENERATED_UCLASS_BODY()
@@ -27,18 +24,11 @@ class USpeedTreeImportFactory : public UFactory
 	virtual UClass* ResolveSupportedClass() override;
 	virtual UObject* FactoryCreateBinary(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, UObject* Context, const TCHAR* Type, const uint8*& Buffer, const uint8* BufferEnd, FFeedbackContext* Warn, bool& bOutOperationCanceled) override;
 
-	UObject* FactoryCreateBinary7(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, UObject* Context, const TCHAR* Type, const uint8*& Buffer, const uint8* BufferEnd, FFeedbackContext* Warn, bool& bOutOperationCanceled);
-	UObject* FactoryCreateBinary8(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, UObject* Context, const TCHAR* Type, const uint8*& Buffer, const uint8* BufferEnd, FFeedbackContext* Warn, bool& bOutOperationCanceled);
-	UObject* FactoryCreateBinary9(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, UObject* Context, const TCHAR* Type, const uint8*& Buffer, const uint8* BufferEnd, FFeedbackContext* Warn, bool& bOutOperationCanceled);
+			UObject* FactoryCreateBinary7(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, UObject* Context, const TCHAR* Type, const uint8*& Buffer, const uint8* BufferEnd, FFeedbackContext* Warn, bool& bOutOperationCanceled);
+			UObject* FactoryCreateBinary8(UClass* InClass, UObject* InParent, FName InName, EObjectFlags Flags, UObject* Context, const TCHAR* Type, const uint8*& Buffer, const uint8* BufferEnd, FFeedbackContext* Warn, bool& bOutOperationCanceled);
 
-private:
-	USpeedTreeImportData* GetAutomatedImportOptions(USpeedTreeImportData* ExistingImportData) const;
-
-public:
 #endif
 
 	TSet<UPackage*> LoadedPackages;
-	UMaterialInterface* MasterMaterial;
-	UMaterialInterface* MasterBillboardMaterial;
 };
 

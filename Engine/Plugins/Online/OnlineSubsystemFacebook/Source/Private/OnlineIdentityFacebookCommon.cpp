@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineIdentityFacebookCommon.h"
 #if USES_RESTFUL_FACEBOOK
@@ -81,7 +81,7 @@ void FOnlineIdentityFacebookCommon::ProfileRequest(int32 LocalUserNum, const FSt
 				bStarted = true;
 
 				// kick off http request to get user info with the access token
-				TSharedRef<IHttpRequest, ESPMode::ThreadSafe> HttpRequest = FHttpModule::Get().CreateRequest();
+				TSharedRef<IHttpRequest> HttpRequest = FHttpModule::Get().CreateRequest();
 				LoginUserRequests.Add(&HttpRequest.Get(), FPendingLoginUser(LocalUserNum, AccessToken));
 
 				FString FinalURL = MeURL.Replace(TEXT("`token"), *AccessToken, ESearchCase::IgnoreCase);

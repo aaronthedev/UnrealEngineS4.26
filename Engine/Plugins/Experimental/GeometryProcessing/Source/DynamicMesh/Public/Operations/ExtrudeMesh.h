@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // Port of geometry3Sharp MergeCoincidentEdges
 
@@ -7,11 +7,10 @@
 #include "MathUtil.h"
 #include "VectorTypes.h"
 #include "GeometryTypes.h"
-#include "MeshRegionBoundaryLoops.h"
+#include "MeshBoundaryLoops.h"
 
 
 class FDynamicMesh3;
-class FMeshNormals;
 
 /**
  * FExtrudeMesh implements a full-mesh extrusion of a mesh. This happens in two stages:
@@ -49,37 +48,28 @@ public:
 	// Outputs
 	//
 
-	/**
-	 * FExtrusionInfo stores info about extrusion for a single mesh connected component. 
-	 * Note that this may involve multiple boundary loops (eg if a region has holes)
-	 */
-	struct FExtrusionInfo
-	{
-		/** Initial boundary loops on the mesh (may be empty) */
-		FMeshRegionBoundaryLoops InitialLoops;
-		/** set of triangles that were extruded */
-		TArray<int> InitialTriangles;
-		/** set of vertices that were extruded */
-		TArray<int> InitialVertices;
-		/** Map from initial vertices to new offset vertices */
-		TMap<int, int> InitialToOffsetMapV;
-		/** list of triangles on offset surface, in correspondence with InitialTriangles (note: can get vertices via InitialToOffsetMapV(InitialVertices) */
-		TArray<int> OffsetTriangles;
-		/** list of new groups of triangles on offset surface */
-		TArray<int> OffsetTriGroups;
+	/** Initial boundary loops on the mesh (may be empty) */
+	FMeshBoundaryLoops InitialLoops;
+	/** set of triangles that were extruded */
+	TArray<int> InitialTriangles;
+	/** set of vertices that were extruded */
+	TArray<int> InitialVertices;
+	/** Map from initial vertices to new offset vertices */
+	TMap<int,int> InitialToOffsetMapV;
+	/** list of triangles on offset surface, in correspondence with InitialTriangles (note: can get vertices via InitialToOffsetMapV(InitialVertices) */
+	TArray<int> OffsetTriangles;
+	/** list of new groups of triangles on offset surface */
+	TArray<int> OffsetTriGroups;
 
-		/** New edge loops on borders of offset patches (1-1 correspondence w/ InitialLoops.Loops) */
-		TArray<FEdgeLoop> NewLoops;
-		/** Lists of triangle-strip "tubes" that connect each loop-pair */
-		TArray<TArray<int>> StitchTriangles;
-		/** List of group ids / polygon ids on each triangle-strip "tube" */
-		TArray<TArray<int>> StitchPolygonIDs;
-	};
+	/** New edge loops on borders of offset patches (1-1 correspondence w/ InitialLoops.Loops) */
+	TArray<FEdgeLoop> NewLoops;
+	/** Lists of triangle-strip "tubes" that connect each loop-pair */
+	TArray<TArray<int>> StitchTriangles;
+	/** List of group ids / polygon ids on each triangle-strip "tube" */
+	TArray<TArray<int>> StitchPolygonIDs;	
 
-	/**
-	 * List of extrusion regions, one per connected component of input
-	 */
-	TArray<FExtrusionInfo> Extrusions;
+
+
 
 public:
 	FExtrudeMesh(FDynamicMesh3* mesh);
@@ -105,10 +95,4 @@ public:
 	 * @return true if the algorithm succeeds
 	 */
 	virtual bool Apply();
-
-
-
-protected:
-
-	bool ApplyExtrude(FExtrusionInfo& Region, FMeshNormals* UseNormals = nullptr);
 };

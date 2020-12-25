@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,10 +14,6 @@
 #endif
 #if !defined(PLATFORM_MAC)
 	#define PLATFORM_MAC 0
-	// If PLATFORM_MAC is defined these will be set appropriately in
-	// MacPlatform.h
-	#define PLATFORM_MAC_X86 0
-	#define PLATFORM_MAC_ARM64 0
 #endif
 #if !defined(PLATFORM_PS4)
 	#define PLATFORM_PS4 0
@@ -46,6 +42,12 @@
 #if !defined(PLATFORM_ANDROID_VULKAN)
 	#define PLATFORM_ANDROID_VULKAN 0
 #endif
+#if !defined(PLATFORM_QUAIL)
+	#define PLATFORM_QUAIL 0
+#endif
+#if !defined(PLATFORM_ANDROIDESDEFERRED)
+	#define PLATFORM_ANDROIDESDEFERRED 0
+#endif
 #if !defined(PLATFORM_ANDROIDGL4)
 	#define PLATFORM_ANDROIDGL4 0
 #endif
@@ -61,9 +63,6 @@
 #if !defined(PLATFORM_LINUX)
 	#define PLATFORM_LINUX 0
 #endif
-#if !defined(PLATFORM_LINUXAARCH64)
-	#define PLATFORM_LINUXAARCH64 0
-#endif
 #if !defined(PLATFORM_SWITCH)
 	#define PLATFORM_SWITCH 0
 #endif
@@ -72,9 +71,6 @@
 #endif
 #if !defined(PLATFORM_UNIX)
 	#define PLATFORM_UNIX 0
-#endif
-#if !defined(PLATFORM_MICROSOFT)
-	#define PLATFORM_MICROSOFT 0
 #endif
 #if !defined(PLATFORM_HOLOLENS)
 #define PLATFORM_HOLOLENS 0
@@ -166,29 +162,9 @@
 #ifndef PLATFORM_SUPPORTS_PRAGMA_PACK
 	#define PLATFORM_SUPPORTS_PRAGMA_PACK		0
 #endif
-
-// Defines for the availibility of the various levels of vector intrinsics.
-// These may be set from UnrealBuildTool, otherwise each platform-specific platform.h is expected to set them appropriately.
 #ifndef PLATFORM_ENABLE_VECTORINTRINSICS
 	#define PLATFORM_ENABLE_VECTORINTRINSICS	0
 #endif
-// If PLATFORM_MAYBE_HAS_### is 1, then ### intrinsics are compilable.
-// This does not guarantee that the intrinsics are runnable on all instances of the platform however; a runtime check such as cpuid may be required to confirm availability.
-// If PLATFORM_ALWAYS_HAS_### is 1, then ## intrinsics will compile and run on all instances of the platform.  PLATFORM_ALWAYS_HAS_### == 1 implies PLATFORM_MAYBE_HAS_### == 1.
-#ifndef PLATFORM_MAYBE_HAS_SSE4_1
-	#define PLATFORM_MAYBE_HAS_SSE4_1			0
-#endif
-#ifndef PLATFORM_ALWAYS_HAS_SSE4_1
-	#define PLATFORM_ALWAYS_HAS_SSE4_1			0
-#endif
-#ifndef PLATFORM_MAYBE_HAS_AVX
-	#define PLATFORM_MAYBE_HAS_AVX				0
-#endif
-#ifndef PLATFORM_ALWAYS_HAS_AVX
-	#define PLATFORM_ALWAYS_HAS_AVX				0
-#endif
-
-
 #ifndef PLATFORM_HAS_CPUID
 	#if defined(_M_IX86) || defined(__i386__) || defined(_M_X64) || defined(__x86_64__) || defined (__amd64__)
 		#define PLATFORM_HAS_CPUID				1
@@ -244,9 +220,6 @@
 #ifndef PLATFORM_COMPILER_HAS_IF_CONSTEXPR
 	#define PLATFORM_COMPILER_HAS_IF_CONSTEXPR 1
 #endif
-#ifndef PLATFORM_COMPILER_HAS_FOLD_EXPRESSIONS
-	#define PLATFORM_COMPILER_HAS_FOLD_EXPRESSIONS 0
-#endif
 #ifndef PLATFORM_TCHAR_IS_1_BYTE
 	#define PLATFORM_TCHAR_IS_1_BYTE			0
 #endif
@@ -285,9 +258,6 @@
 #endif
 #ifndef PLATFORM_SUPPORTS_VIRTUAL_TEXTURES
 	#define PLATFORM_SUPPORTS_VIRTUAL_TEXTURES		0
-#endif
-#ifndef PLATFORM_SUPPORTS_VARIABLE_RATE_SHADING
-	#define PLATFORM_SUPPORTS_VARIABLE_RATE_SHADING		0
 #endif
 #ifndef PLATFORM_REQUIRES_FILESERVER
 	#define PLATFORM_REQUIRES_FILESERVER		0
@@ -339,8 +309,8 @@
 	#define PLATFORM_SUPPORTS_DRAW_MESH_EVENTS	1
 #endif
 
-#ifndef PLATFORM_USES_GLES
-	#define PLATFORM_USES_GLES					0
+#ifndef PLATFORM_USES_ES2
+	#define PLATFORM_USES_ES2					0
 #endif
 
 #ifndef PLATFORM_SUPPORTS_GEOMETRY_SHADERS
@@ -504,10 +474,6 @@
 	#define PLATFORM_USE_MINIMAL_HANG_DETECTION					0
 #endif
 
-#ifndef PLATFORM_PRESENT_HANG_DETECTION_ON_BY_DEFAULT
-	#define PLATFORM_PRESENT_HANG_DETECTION_ON_BY_DEFAULT		0
-#endif
-
 #ifndef PLATFORM_USE_GENERIC_STRING_IMPLEMENTATION
 	#define PLATFORM_USE_GENERIC_STRING_IMPLEMENTATION			1
 #endif
@@ -583,33 +549,6 @@
 	#define	PLATFORM_HAS_FPlatformVirtualMemoryBlock 1
 #endif
 
-#ifndef PLATFORM_SUPPORTS_LANDSCAPE_VISUAL_MESH_LOD_STREAMING
-	#define PLATFORM_SUPPORTS_LANDSCAPE_VISUAL_MESH_LOD_STREAMING 0
-#endif
-
-#ifndef PLATFORM_USE_GENERIC_LAUNCH_IMPLEMENTATION
-	#define PLATFORM_USE_GENERIC_LAUNCH_IMPLEMENTATION			0
-#endif
-
-#ifndef PLATFORM_USES_FIXED_HDR_SETTING
-	#define PLATFORM_USES_FIXED_HDR_SETTING 0
-#endif
-
-#ifndef PLATFORM_MANAGES_HDR_SETTING
-	#define PLATFORM_MANAGES_HDR_SETTING 0
-#endif
-
-#ifndef PLATFORM_SUPPORTS_COLORIZED_OUTPUT_DEVICE
-	#define PLATFORM_SUPPORTS_COLORIZED_OUTPUT_DEVICE PLATFORM_DESKTOP
-#endif
-
-#ifndef PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
-	#define PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING 0
-#endif
-
-#ifndef PLATFORM_USE_PLATFORM_FILE_MANAGED_STORAGE_WRAPPER
-	#define PLATFORM_USE_PLATFORM_FILE_MANAGED_STORAGE_WRAPPER	0
-#endif
 
 // deprecated, do not use
 #define PLATFORM_HAS_THREADSAFE_RHIGetRenderQueryResult	#
@@ -650,42 +589,18 @@
 
 /* Wrap a function signature in these to warn that callers should not ignore the return value */
 #ifndef FUNCTION_CHECK_RETURN_START
-	#define FUNCTION_CHECK_RETURN_START \
-		DEPRECATED_MACRO(4.26, "FUNCTION_CHECK_RETURN_START has been deprecated - please use UE_NODISCARD")
+	#define FUNCTION_CHECK_RETURN_START
 #endif
 #ifndef FUNCTION_CHECK_RETURN_END
-	#define FUNCTION_CHECK_RETURN_END \
-		DEPRECATED_MACRO(4.26, "FUNCTION_CHECK_RETURN_END has been deprecated - please use UE_NODISCARD")
+	#define FUNCTION_CHECK_RETURN_END
 #endif
 
 /* Wrap a function signature in these to indicate that the function never returns */
 #ifndef FUNCTION_NO_RETURN_START
-	#define FUNCTION_NO_RETURN_START \
-		DEPRECATED_MACRO(4.26, "FUNCTION_NO_RETURN_START has been deprecated - please use UE_NORETURN")
+	#define FUNCTION_NO_RETURN_START
 #endif
 #ifndef FUNCTION_NO_RETURN_END
-	#define FUNCTION_NO_RETURN_END \
-		DEPRECATED_MACRO(4.26, "FUNCTION_NO_RETURN_END has been deprecated - please use UE_NORETURN")
-#endif
-
-/* Use before a function declaration to warn that callers should not ignore the return value */
-#if !defined(UE_NODISCARD) && defined(__has_cpp_attribute)
-	#if __has_cpp_attribute(nodiscard)
-		#define UE_NODISCARD [[nodiscard]]
-	#endif
-#endif
-#ifndef UE_NODISCARD
-	#define UE_NODISCARD
-#endif
-
-/* Use before a function declaration to indicate that the function never returns */
-#if !defined(UE_NORETURN) && defined(__has_cpp_attribute)
-	#if __has_cpp_attribute(noreturn)
-		#define UE_NORETURN [[noreturn]]
-	#endif
-#endif
-#ifndef UE_NORETURN
-	#define UE_NORETURN
+	#define FUNCTION_NO_RETURN_END
 #endif
 
 /* Wrap a function signature in these to indicate that the function never returns nullptr */
@@ -700,21 +615,12 @@
 	#define FUNCTION_CHECK_RETURN(...) DEPRECATED_MACRO(4.12, "FUNCTION_CHECK_RETURN has been deprecated and should be replaced with FUNCTION_CHECK_RETURN_START and FUNCTION_CHECK_RETURN_END.") FUNCTION_CHECK_RETURN_START __VA_ARGS__ FUNCTION_CHECK_RETURN_END
 #endif
 
-/** Promise expression is true. Compiler can optimize accordingly with undefined behavior if wrong. Static analyzers understand this.  */
-#ifndef UE_ASSUME
-	#if defined(__clang__)
-		#define UE_ASSUME(x) __builtin_assume(x)
-	#elif defined(_MSC_VER)
-		#define UE_ASSUME(x) __assume(x)
-	#else
-		#define UE_ASSUME(x)
-	#endif
+#ifndef ASSUME										/* Hints compiler that expression is true; generally restricted to comparisons against constants */
+	#define ASSUME(...)
 #endif
 
-#define ASSUME(x) UE_ASSUME(x) DEPRECATED_MACRO(4.25, "Please use UE_ASSUME instead.")
-
 /** Branch prediction hints */
-#ifndef LIKELY						/* Hints compiler that expression is likely to be true, much softer than UE_ASSUME - allows (penalized by worse performance) expression to be false */
+#ifndef LIKELY						/* Hints compiler that expression is likely to be true, much softer than ASSUME - allows (penalized by worse performance) expression to be false */
 	#if ( defined(__clang__) || defined(__GNUC__) ) && (PLATFORM_UNIX)	// effect of these on non-Linux platform has not been analyzed as of 2016-03-21
 		#define LIKELY(x)			__builtin_expect(!!(x), 1)
 	#else
@@ -855,6 +761,11 @@
 	#define DLLIMPORT
 #endif
 
+#ifndef DLLEXPORT_VTABLE
+	#define DLLEXPORT_VTABLE
+	#define DLLIMPORT_VTABLE
+#endif
+
 // embedded app is not default (embedding UE4 in a native view, right now just for IOS and Android)
 #ifndef BUILD_EMBEDDED_APP
 	#define BUILD_EMBEDDED_APP  0
@@ -865,6 +776,13 @@
 
 #ifndef DEPRECATED_FORGAME
 	#define DEPRECATED_FORGAME(...) DEPRECATED_MACRO(4.22, "The DEPRECATED_FORGAME macro has been deprecated in favor of UE_DEPRECATED_FORGAME().")
+#endif
+
+// This is a temporary macro, will be removed when TSubobjectPtr can be safely removed
+#ifndef private_subobject
+#define private_subobject \
+DEPRECATED_MACRO(4.17, "private_subobject macro is deprecated.  Please use the standard 'private' keyword instead.") \
+private
 #endif
 
 // Console ANSICHAR/TCHAR command line handling

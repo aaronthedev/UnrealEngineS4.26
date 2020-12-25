@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Evaluation/MovieSceneEvaluationTemplate.h"
 #include "MovieSceneSequence.h"
@@ -8,7 +8,7 @@ FMovieSceneSubSectionData::FMovieSceneSubSectionData(UMovieSceneSubSection& InSu
 	: Section(&InSubSection), ObjectBindingId(InObjectBindingId), Flags(InFlags)
 {}
 
-FMovieSceneTrackIdentifier FMovieSceneTemplateGenerationLedger::FindTrackIdentifier(const FGuid& InSignature) const
+FMovieSceneTrackIdentifier FMovieSceneTemplateGenerationLedger::FindTrack(const FGuid& InSignature) const
 {
 	return TrackSignatureToTrackIdentifier.FindRef(InSignature);
 }
@@ -19,7 +19,6 @@ void FMovieSceneTemplateGenerationLedger::AddTrack(const FGuid& InSignature, FMo
 	TrackSignatureToTrackIdentifier.Add(InSignature, Identifier);
 }
 
-#if WITH_EDITORONLY_DATA
 void FMovieSceneEvaluationTemplate::PostSerialize(const FArchive& Ar)
 {
 	if (Ar.IsLoading())
@@ -35,7 +34,52 @@ void FMovieSceneEvaluationTemplate::PostSerialize(const FArchive& Ar)
 		}
 	}
 }
-#endif
+
+void FMovieSceneEvaluationTemplate::ResetFieldData()
+{
+	TrackFieldData.Field.Reset();
+	SubSectionFieldData.Field.Reset();
+}
+
+const TMovieSceneEvaluationTree<FMovieSceneTrackIdentifier>& FMovieSceneEvaluationTemplate::GetTrackField() const
+{
+	return TrackFieldData.Field;
+}
+
+const TMovieSceneEvaluationTree<FMovieSceneSubSectionData>& FMovieSceneEvaluationTemplate::GetSubSectionField() const
+{
+	return SubSectionFieldData.Field;
+}
+
+void FMovieSceneEvaluationTemplate::AddSubSectionRange(UMovieSceneSubSection& InSubSection, const FGuid& InObjectBindingId, const TRange<FFrameNumber>& InRange, ESectionEvaluationFlags InFlags)
+{
+	if (!ensure(InRange.GetLowerBound().IsClosed() && InRange.GetUpperBound().IsClosed()))
+	{
+		return;
+	}
+
+	// Add the sub section to the field, but we don't invalidate the evaluation field unless we know the section has actually changed
+	SubSectionFieldData.Field.Add(InRange, FMovieSceneSubSectionData(InSubSection, InObjectBindingId, InFlags));
+
+	// Don't need to do anything else if the section was already generated
+	if (!TemplateLedger.ContainsSubSection(InSubSection.GetSignature()))
+	{
+		TRange<FFrameNumber> EntireSectionRange = InSubSection.GetRange();
+		EntireSectionRange.SetLowerBoundValue(EntireSectionRange.GetLowerBoundValue() - InSubSection.GetPreRollFrames());
+		EntireSectionRange.SetUpperBoundValue(EntireSectionRange.GetUpperBoundValue() + InSubSection.GetPostRollFrames());
+
+		// Add the section to the ledger
+		TemplateLedger.SubSectionRanges.Add(InSubSection.GetSignature(), EntireSectionRange);
+
+		// Invalidate the overlapping field
+		EvaluationField.Invalidate(EntireSectionRange);
+
+		// Invalidate the sequence hierarchy for the leaf starting at this sub section.
+		// The hierarchy will be populated by the compiler when this template is compiled
+		FMovieSceneSequenceID SubSequenceID = InSubSection.GetSequenceID();
+		Hierarchy.Remove(MakeArrayView(&SubSequenceID, 1));
+	}
+}
 
 FMovieSceneTrackIdentifier FMovieSceneEvaluationTemplate::AddTrack(const FGuid& InSignature, FMovieSceneEvaluationTrack&& InTrack)
 {
@@ -45,12 +89,51 @@ FMovieSceneTrackIdentifier FMovieSceneEvaluationTemplate::AddTrack(const FGuid& 
 	Tracks.Add(NewIdentifier, MoveTemp(InTrack));
 	TemplateLedger.AddTrack(InSignature, NewIdentifier);
 
+	// Add this track's segments to the unsorted track field, invalidating anything in the compiled evaluation field
+	DefineTrackStructure(NewIdentifier, true);
+
 	return NewIdentifier;
+}
+
+void FMovieSceneEvaluationTemplate::DefineTrackStructure(FMovieSceneTrackIdentifier TrackIdentifier, bool bInvalidateEvaluationField)
+{
+	const FMovieSceneEvaluationTrack* Track = FindTrack(TrackIdentifier);
+	if (!ensure(Track))
+	{
+		return;
+	}
+
+	FMovieSceneTrackSegmentBlenderPtr TrackBlender = Track->GetSourceTrack()->GetTrackSegmentBlender();
+	const bool bAddEmptySpace = TrackBlender.IsValid() && TrackBlender->CanFillEmptySpace();
+
+	if (bAddEmptySpace && bInvalidateEvaluationField)
+	{
+		// Optimization - when tracks can add empty space, we just invalidate the entire field once
+		EvaluationField.Invalidate(TRange<FFrameNumber>::All());
+		bInvalidateEvaluationField = false;
+	}
+
+	// Add each range
+	for (FMovieSceneEvaluationTreeRangeIterator It(Track->Iterate()); It; ++It)
+	{
+		const bool bShouldAddEntry = bAddEmptySpace || Track->GetData(It.Node());
+		if (!bShouldAddEntry)
+		{
+			continue;
+		}
+
+		TrackFieldData.Field.Add(It.Range(), TrackIdentifier);
+
+		if (bInvalidateEvaluationField)
+		{
+			EvaluationField.Invalidate(It.Range());
+		}
+	}
 }
 
 void FMovieSceneEvaluationTemplate::RemoveTrack(const FGuid& InSignature)
 {
-	FMovieSceneTrackIdentifier TrackIdentifier = TemplateLedger.FindTrackIdentifier(InSignature);
+	FMovieSceneTrackIdentifier TrackIdentifier = TemplateLedger.FindTrack(InSignature);
 	if (TrackIdentifier == FMovieSceneTrackIdentifier::Invalid())
 	{
 		return;
@@ -59,6 +142,15 @@ void FMovieSceneEvaluationTemplate::RemoveTrack(const FGuid& InSignature)
 	FMovieSceneEvaluationTrack* Track = Tracks.Find(TrackIdentifier);
 	if (Track)
 	{
+		// Invalidate any ranges occupied by this track
+		for (FMovieSceneEvaluationTreeRangeIterator It = Track->Iterate(); It; ++It)
+		{
+			if (Track->GetData(It.Node()))
+			{
+				EvaluationField.Invalidate(It.Range());
+			}
+		}
+
 		StaleTracks.Add(TrackIdentifier, MoveTemp(*Track));
 	}
 
@@ -102,6 +194,7 @@ void FMovieSceneEvaluationTemplate::RemoveStaleData(const TSet<FGuid>& ActiveSig
 		for (const TTuple<FGuid, FMovieSceneFrameRange>& Pair : SubSectionsToRemove)
 		{
 			TemplateLedger.SubSectionRanges.Remove(Pair.Key);
+			EvaluationField.Invalidate(Pair.Value.Value);
 		}
 	}
 }
@@ -114,9 +207,4 @@ const TMap<FMovieSceneTrackIdentifier, FMovieSceneEvaluationTrack>& FMovieSceneE
 TMap<FMovieSceneTrackIdentifier, FMovieSceneEvaluationTrack>& FMovieSceneEvaluationTemplate::GetTracks()
 {
 	return Tracks;
-}
-
-const TMap<FMovieSceneTrackIdentifier, FMovieSceneEvaluationTrack>& FMovieSceneEvaluationTemplate::GetStaleTracks() const
-{
-	return StaleTracks;
 }

@@ -132,9 +132,9 @@ namespace
             }
 
 #ifdef _WIN32
-            const char* dllName = "dxcompiler.dll";
+            const char* dllName = "dxcompiler_sc.dll";
 #elif __APPLE__
-            const char* dllName = "libdxcompiler.dylib";
+            const char* dllName = "libdxcompiler.3.7.dylib";
 #else
             const char* dllName = "libdxcompiler.so";
 #endif
@@ -384,7 +384,7 @@ namespace
         HRESULT statusRewrite;
         IFT(rewriteResult->GetStatus(&statusRewrite));
 		
-		Compiler::ResultDesc ret = {};
+		Compiler::ResultDesc ret;
 		ret.isText = true;
 		ret.hasError = true;
 
@@ -408,12 +408,6 @@ namespace
 					ret.hasError = false;
 					ret.target = CreateBlob(rewritten->GetBufferPointer(), static_cast<uint32_t>(rewritten->GetBufferSize()));
                 }
-				else
-				{
-					CComPtr<IDxcBlobEncoding> errorMsg;
-					IFT(removeUnusedGlobalsResult->GetErrorBuffer((IDxcBlobEncoding**)&errorMsg));
-					ret.errorWarningMsg = CreateBlob(errorMsg->GetBufferPointer(), static_cast<uint32_t>(errorMsg->GetBufferSize()));
-				}
             }
 			else
 			{
@@ -424,9 +418,7 @@ namespace
         }
 		else
 		{
-			CComPtr<IDxcBlobEncoding> errorMsg;
-			IFT(rewriteResult->GetErrorBuffer((IDxcBlobEncoding**)&errorMsg));
-			ret.errorWarningMsg = CreateBlob(errorMsg->GetBufferPointer(), static_cast<uint32_t>(errorMsg->GetBufferSize()));
+			ret.target = CreateBlob(sourceBlob->GetBufferPointer(), static_cast<uint32_t>(sourceBlob->GetBufferSize()));
 		}
         
         return ret;
@@ -829,9 +821,6 @@ namespace ShaderConductor
 				}
 			}
 			mslOpts.swizzle_texture_samples = false;
-			/* UE Change Begin: Ensure base vertex and instance indices start with zero if source language is HLSL */
-			mslOpts.enable_base_index_zero = true;
-			/* UE Change End: Ensure base vertex and instance indices start with zero if source language is HLSL */
             for (unsigned i = 0; i < target.numOptions; i++)
 			{
                 auto& Define = target.options[i];
@@ -923,15 +912,6 @@ namespace ShaderConductor
 					mslOpts.enable_decoration_binding = (std::stoi(Define.value) != 0);
 				}
 				/* UE Change End: Allow user to enable decoration binding */
-				/* UE Change Begin: Specify dimension of subpass input attachments */
-				static const char* subpassInputDimIdent = "subpass_input_dimension";
-				static const size_t subpassInputDimIdentLen = std::strlen(subpassInputDimIdent);
-				if (!strncmp(Define.name, subpassInputDimIdent, subpassInputDimIdentLen))
-				{
-					int binding = std::stoi(Define.name + subpassInputDimIdentLen);
-					mslOpts.subpass_input_dimensions[static_cast<uint32_t>(binding)] = std::stoi(Define.value);
-				}
-				/* UE Change End: Specify dimension of subpass input attachments */
 			}
 			
 			mslCompiler->set_msl_options(mslOpts);

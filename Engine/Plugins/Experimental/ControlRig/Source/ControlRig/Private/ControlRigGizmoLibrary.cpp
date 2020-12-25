@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ControlRigGizmoLibrary.h"
 
@@ -15,7 +15,7 @@ void UControlRigGizmoLibrary::PostEditChangeChainProperty(struct FPropertyChange
 {
 	if (PropertyChangedEvent.Property->GetName() == TEXT("GizmoName"))
 	{
-		FProperty* MemberProperty = PropertyChangedEvent.PropertyChain.GetHead()->GetValue();
+		UProperty* MemberProperty = PropertyChangedEvent.PropertyChain.GetHead()->GetValue();
 		if (MemberProperty->GetName() == TEXT("DefaultGizmo"))
 		{
 			DefaultGizmo.GizmoName = TEXT("Gizmo");

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MathExpressionHandler.h"
 #include "UObject/UnrealType.h"
@@ -47,9 +47,9 @@ bool FKCHandler_MathExpression::CanBeCalledByMathExpression(const UFunction* Fun
 		return false;
 	}
 
-	for (TFieldIterator<const FProperty> It(Function); It && (It->PropertyFlags & CPF_Parm); ++It)
+	for (TFieldIterator<const UProperty> It(Function); It && (It->PropertyFlags & CPF_Parm); ++It)
 	{
-		const FProperty* Property = *It;
+		const UProperty* Property = *It;
 		const bool bGoodProperty = Property && (!Property->HasAnyPropertyFlags(CPF_OutParm) || Property->HasAllPropertyFlags(CPF_ReturnParm));
 		if (!bGoodProperty)
 		{
@@ -78,9 +78,9 @@ FBlueprintCompiledStatement* FKCHandler_MathExpression::GenerateFunctionRPN(UEdG
 	check(CallFunctionNode);
 
 	TArray<FBPTerminal*> RHSTerms;
-	for (TFieldIterator<FProperty> It(Function); It && (It->PropertyFlags & CPF_Parm); ++It)
+	for (TFieldIterator<UProperty> It(Function); It && (It->PropertyFlags & CPF_Parm); ++It)
 	{
-		FProperty* Property = *It;
+		UProperty* Property = *It;
 		if (Property && !Property->HasAnyPropertyFlags(CPF_ReturnParm | CPF_OutParm))
 		{
 			UEdGraphPin* PinToTry = nullptr;

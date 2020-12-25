@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AnimEncoding_PerTrackCompression.h: Per-track decompressor.
@@ -37,6 +37,18 @@ public:
 		FUECompressedAnimData& CompressedData,
 		FMemoryWriter& MemoryWriter) override;
 
+	/**
+	 * Extracts a single BoneAtom from an Animation Sequence.
+	 *
+	 * @param	OutAtom			The BoneAtom to fill with the extracted result.
+	 * @param	DecompContext	The decompression context to use.
+	 * @param	TrackIndex		The index of the track desired in the Animation Sequence.
+	 */
+	virtual void GetBoneAtom(
+		FTransform& OutAtom,
+		FAnimSequenceDecompressionContext& DecompContext,
+		int32 TrackIndex) override;
+
 #if USE_ANIMATION_CODEC_BATCH_SOLVER
 
 	/**
@@ -47,7 +59,7 @@ public:
 	 * @param	DecompContext	The decompression context to use.
 	 */
 	virtual void GetPoseRotations(
-		TArrayView<FTransform>& Atoms,
+		FTransformArray& Atoms,
 		const BoneTrackArray& DesiredPairs,
 		FAnimSequenceDecompressionContext& DecompContext) override;
 
@@ -59,7 +71,7 @@ public:
 	 * @param	DecompContext	The decompression context to use.
 	 */
 	virtual void GetPoseTranslations(
-		TArrayView<FTransform>& Atoms,
+		FTransformArray& Atoms,
 		const BoneTrackArray& DesiredPairs,
 		FAnimSequenceDecompressionContext& DecompContext) override;
 
@@ -71,9 +83,14 @@ public:
 	 * @param	DecompContext	The decompression context to use.
 	 */
 	virtual void GetPoseScales(
-		TArrayView<FTransform>& Atoms,
+		FTransformArray& Atoms,
 		const BoneTrackArray& DesiredPairs,
 		FAnimSequenceDecompressionContext& DecompContext) override;
+#endif
+
+#if USE_SEGMENTING_CONTEXT
+	virtual void CreateEncodingContext(FAnimSequenceDecompressionContext& DecompContext) override;
+	virtual void ReleaseEncodingContext(FAnimSequenceDecompressionContext& DecompContext) override;
 #endif
 
 protected:
@@ -130,6 +147,24 @@ protected:
 		FTransform& OutAtom,
 		FAnimSequenceDecompressionContext& DecompContext,
 		int32 TrackIndex);
+};
 
-	friend class UAnimCompress_PerTrackCompression;
+/**
+ * Structure to wrap per track flags.
+ */
+struct FPerTrackFlags
+{
+	constexpr explicit FPerTrackFlags(uint8 InFlags) : Flags(InFlags) {}
+	FPerTrackFlags(bool bHasTimeMarkers, AnimationCompressionFormat Format, uint8 FormatFlags)
+		: Flags((bHasTimeMarkers ? 0x80 : 0) | (FormatFlags << 4) | (uint8)Format)
+	{
+		check((FormatFlags & ~0x7) == 0);
+		check(((uint8)Format & ~0xF) == 0);
+	}
+
+	constexpr bool IsUniform() const { return (Flags & 0x80) == 0; }
+	constexpr uint8 GetFormatFlags() const { return (Flags >> 4) & 0x7; }
+	constexpr uint8 GetFormat() const { return Flags & 0xF; }
+
+	uint8 Flags;
 };

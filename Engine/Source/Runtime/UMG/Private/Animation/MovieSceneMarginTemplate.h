@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -65,11 +65,9 @@ template<> UMG_API FMovieSceneAnimTypeID GetBlendingDataType<FMargin>();
 /** Inform the blending accumulator to use a 4 channel float to blend margins */
 template<> struct TBlendableTokenTraits<FMargin>
 {
-	typedef UE::MovieScene::TMaskedBlendable<float, 4> WorkingDataType;
+	typedef MovieScene::TMaskedBlendable<float, 4> WorkingDataType;
 };
 
-namespace UE
-{
 namespace MovieScene
 {
 	/** Convert a margin into a 4 channel blendable float */
@@ -83,5 +81,4 @@ namespace MovieScene
 	{
 		Out = FMargin(In[0], In[1], In[2], In[3]);
 	}
-} // namespace MovieScene
-} // namespace UE
+}

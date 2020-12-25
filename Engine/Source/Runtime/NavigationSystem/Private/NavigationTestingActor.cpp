@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NavigationTestingActor.h"
 #include "NavigationSystem.h"
@@ -41,8 +41,6 @@ ANavigationTestingActor::ANavigationTestingActor(const FObjectInitializer& Objec
 	bIsEditorOnlyActor = true;
 	NavAgentProps.AgentRadius = 34.f;
 	NavAgentProps.AgentHeight = 144.f;
-	CostLimitFactor = FLT_MAX;
-	MinimumCostLimit = 0.f;
 	ShowStepIndex = -1;
 	bShowNodePool = true;
 	bShowBestPath = true;
@@ -90,7 +88,7 @@ void ANavigationTestingActor::BeginDestroy()
 }
 
 #if WITH_EDITOR
-void ANavigationTestingActor::PreEditChange(FProperty* PropertyThatWillChange)
+void ANavigationTestingActor::PreEditChange(UProperty* PropertyThatWillChange)
 {
 	static const FName NAME_OtherActor = GET_MEMBER_NAME_CHECKED(ANavigationTestingActor, OtherActor);
 
@@ -202,17 +200,6 @@ void ANavigationTestingActor::PostEditChangeProperty(FPropertyChangedEvent& Prop
 				if (OtherActor != NULL)
 				{
 					OtherActor->bSearchStart = !bSearchStart;
-					OtherActor->LastPath.Reset();
-					if (OtherActor->EdRenderComp)
-					{
-						OtherActor->EdRenderComp->MarkRenderStateDirty();
-					}
-				}
-
-				LastPath.Reset();
-				if (EdRenderComp)
-				{
-					EdRenderComp->MarkRenderStateDirty();
 				}
 			}
 
@@ -424,16 +411,14 @@ void ANavigationTestingActor::SearchPathTo(ANavigationTestingActor* Goal)
 
 	if (bBacktracking)
 	{
-		FSharedConstNavQueryFilter NavQueryFilter = Query.QueryFilter ? Query.QueryFilter : NavData->GetDefaultQueryFilter();
+		FSharedConstNavQueryFilter NavQueryFilter = Query.QueryFilter
+			? Query.QueryFilter
+			: NavData->GetDefaultQueryFilter();
+
 		FSharedNavQueryFilter NavigationFilterCopy = NavQueryFilter->GetCopy();
 		NavigationFilterCopy->SetBacktrackingEnabled(true);
 		Query.QueryFilter = NavigationFilterCopy;
 	}
-	
-	//Apply cost limit factor
-	FSharedConstNavQueryFilter NavQueryFilter = Query.QueryFilter ? Query.QueryFilter : NavData->GetDefaultQueryFilter();
-	const float HeuristicScale = NavQueryFilter->GetHeuristicScale();
-	Query.CostLimit = Query.ComputeCostLimitFromHeuristic(Query.StartLocation, Query.EndLocation, HeuristicScale, CostLimitFactor, MinimumCostLimit);
 
 	EPathFindingMode::Type Mode = bUseHierarchicalPathfinding ? EPathFindingMode::Hierarchical : EPathFindingMode::Regular;
 	FPathFindingResult Result = NavSys->FindPathSync(NavAgentProps, Query, Mode);

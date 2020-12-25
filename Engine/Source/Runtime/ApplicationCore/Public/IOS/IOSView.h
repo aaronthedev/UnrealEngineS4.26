@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,7 +15,7 @@
 #endif
 
 #if WITH_ACCESSIBILITY
-#include "GenericPlatform/Accessibility/GenericAccessibleInterfaces.h"
+#include "GenericPlatform/GenericAccessibleInterfaces.h"
 #endif
 
 struct FKeyboardConfig
@@ -77,6 +77,11 @@ APPLICATIONCORE_API
 	
 	volatile int32 KeyboardShowCount;
 
+#if WITH_ACCESSIBILITY
+@private
+	// Single-element array used for the accessibilityElements property. It holds the IAccessibleWindow for the app.
+	NSMutableArray* _accessibilityElements;
+#endif
 }
 
 #if WITH_ACCESSIBILITY

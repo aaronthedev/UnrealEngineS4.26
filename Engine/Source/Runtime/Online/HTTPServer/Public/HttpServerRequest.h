@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -39,9 +39,6 @@ public:
 
 	/** The query parameters */
 	TMap<FString, FString> QueryParams;
-
-	/** The path parameters */
-	TMap<FString, FString> PathParams;
 
 	/** The raw body contents */
 	TArray<uint8> Body;

@@ -1,7 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RigUnit_SetRelativeBoneTransform.h"
 #include "Units/RigUnitContext.h"
+
+FString FRigUnit_SetRelativeBoneTransform::GetUnitLabel() const
+{
+	return FString::Printf(TEXT("Set Relative Transform %s"), *Bone.ToString());
+}
 
 FRigUnit_SetRelativeBoneTransform_Execute()
 {
@@ -13,21 +18,13 @@ FRigUnit_SetRelativeBoneTransform_Execute()
 		{
 			case EControlRigState::Init:
 			{
-				CachedBone.Reset();
-				CachedSpaceIndex.Reset();
+				CachedBoneIndex = Hierarchy->GetIndex(Bone);
+				CachedSpaceIndex = Hierarchy->GetIndex(Space);
+				// fall through to update
 			}
 			case EControlRigState::Update:
 			{
-				if (!CachedBone.UpdateCache(Bone, Hierarchy))
-				{
-					UE_CONTROLRIG_RIGUNIT_REPORT_WARNING(TEXT("Bone '%s' is not valid."), *Bone.ToString());
-				}
-				else if (!CachedSpaceIndex.UpdateCache(Space, Hierarchy))
-				{
-					UE_CONTROLRIG_RIGUNIT_REPORT_WARNING(TEXT("Bone '%s' is not valid."), *Bone.ToString());
-					UE_CONTROLRIG_RIGUNIT_REPORT_WARNING(TEXT("Space '%s' is not valid."), *Space.ToString());
-				}
-				else
+				if (CachedBoneIndex != INDEX_NONE && CachedSpaceIndex != INDEX_NONE)
 				{
 					const FTransform SpaceTransform = Hierarchy->GetGlobalTransform(CachedSpaceIndex);
 					FTransform TargetTransform = Transform * SpaceTransform;
@@ -35,11 +32,11 @@ FRigUnit_SetRelativeBoneTransform_Execute()
 					if (!FMath::IsNearlyEqual(Weight, 1.f))
 					{
 						float T = FMath::Clamp<float>(Weight, 0.f, 1.f);
-						const FTransform PreviousTransform = Hierarchy->GetGlobalTransform(CachedBone);
+						const FTransform PreviousTransform = Hierarchy->GetGlobalTransform(CachedBoneIndex);
 						TargetTransform = FControlRigMathLibrary::LerpTransform(PreviousTransform, TargetTransform, T);
 					}
 
-					Hierarchy->SetGlobalTransform(CachedBone, TargetTransform, bPropagateToChildren);
+					Hierarchy->SetGlobalTransform(CachedBoneIndex, TargetTransform, bPropagateToChildren);
 				}
 			}
 			default:

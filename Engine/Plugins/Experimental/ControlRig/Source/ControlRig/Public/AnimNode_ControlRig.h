@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -29,13 +29,9 @@ struct CONTROLRIG_API FAnimNode_ControlRig : public FAnimNode_ControlRigBase
 	virtual void Update_AnyThread(const FAnimationUpdateContext& Context) override;
 	virtual void CacheBones_AnyThread(const FAnimationCacheBonesContext& Context) override;
 	virtual void Evaluate_AnyThread(FPoseContext & Output) override;
-	virtual int32 GetLODThreshold() const override { return LODThreshold; }
+
 	void SetIOMapping(bool bInput, const FName& SourceProperty, const FName& TargetCurve);
 	FName GetIOMapping(bool bInput, const FName& SourceProperty) const;
-
-	virtual void InitializeProperties(const UObject* InSourceInstance, UClass* InTargetClass) override;
-	virtual void PropagateInputProperties(const UObject* InSourceInstance) override;
-
 private:
 
 	/** Cached ControlRig */
@@ -78,27 +74,15 @@ private:
 
 	TMap<FName, FName> InputTypes;
 	TMap<FName, FName> OutputTypes;
-	TArray<uint8*> DestParameters;
-
-	/*
-	 * Max LOD that this node is allowed to run
-	 * For example if you have LODThreadhold to be 2, it will run until LOD 2 (based on 0 index)
-	 * when the component LOD becomes 3, it will stop update/evaluate
-	 * currently transition would be issue and that has to be re-visited
-	 */
-	UPROPERTY(EditAnywhere, Category = Performance, meta = (DisplayName = "LOD Threshold"))
-	int32 LODThreshold;
 
 #if WITH_EDITOR
 	void OnObjectsReplaced(const TMap<UObject*, UObject*>& OldToNewInstanceMap);
 #endif // WITH_EDITOR
 protected:
-	virtual UClass* GetTargetClass() const override { return *ControlRigClass; }
+	virtual UClass* GetTargetClass() const override { return *ControlRigClass; } 
 	virtual void UpdateInput(UControlRig* InControlRig, const FPoseContext& InOutput) override;
 	virtual void UpdateOutput(UControlRig* InControlRig, FPoseContext& InOutput) override;
-
 public:
-
 	void PostSerialize(const FArchive& Ar);
 
 	friend class UAnimGraphNode_ControlRig;

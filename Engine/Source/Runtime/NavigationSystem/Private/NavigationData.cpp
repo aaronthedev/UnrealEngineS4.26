@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NavigationData.h"
 #include "EngineGlobals.h"
@@ -19,8 +19,8 @@
 //----------------------------------------------------------------------//
 // FPathFindingQuery
 //----------------------------------------------------------------------//
-FPathFindingQuery::FPathFindingQuery(const UObject* InOwner, const ANavigationData& InNavData, const FVector& Start, const FVector& End, FSharedConstNavQueryFilter SourceQueryFilter, FNavPathSharedPtr InPathInstanceToFill, const float CostLimit) :
-	FPathFindingQueryData(InOwner, Start, End, SourceQueryFilter, 0 /*InNavDataFlags*/, true /*bInAllowPartialPaths*/, CostLimit),
+FPathFindingQuery::FPathFindingQuery(const UObject* InOwner, const ANavigationData& InNavData, const FVector& Start, const FVector& End, FSharedConstNavQueryFilter SourceQueryFilter, FNavPathSharedPtr InPathInstanceToFill) :
+	FPathFindingQueryData(InOwner, Start, End, SourceQueryFilter), 
 	NavData(&InNavData), PathInstanceToFill(InPathInstanceToFill), NavAgentProperties(InNavData.GetConfig())
 {
 	if (!QueryFilter.IsValid() && NavData.IsValid())
@@ -29,8 +29,8 @@ FPathFindingQuery::FPathFindingQuery(const UObject* InOwner, const ANavigationDa
 	}
 }
 
-FPathFindingQuery::FPathFindingQuery(const INavAgentInterface& InNavAgent, const ANavigationData& InNavData, const FVector& Start, const FVector& End, FSharedConstNavQueryFilter SourceQueryFilter, FNavPathSharedPtr InPathInstanceToFill, const float CostLimit) :
-	FPathFindingQueryData(Cast<UObject>(&InNavAgent), Start, End, SourceQueryFilter, 0 /*InNavDataFlags*/, true /*bInAllowPartialPaths*/, CostLimit),
+FPathFindingQuery::FPathFindingQuery(const INavAgentInterface& InNavAgent, const ANavigationData& InNavData, const FVector& Start, const FVector& End, FSharedConstNavQueryFilter SourceQueryFilter, FNavPathSharedPtr InPathInstanceToFill) :
+	FPathFindingQueryData(Cast<UObject>(&InNavAgent), Start, End, SourceQueryFilter),
 	NavData(&InNavData), PathInstanceToFill(InPathInstanceToFill), NavAgentProperties(InNavAgent.GetNavAgentPropertiesRef())
 {
 	if (!QueryFilter.IsValid() && NavData.IsValid())
@@ -40,7 +40,7 @@ FPathFindingQuery::FPathFindingQuery(const INavAgentInterface& InNavAgent, const
 }
 
 FPathFindingQuery::FPathFindingQuery(const FPathFindingQuery& Source) :
-	FPathFindingQueryData(Source.Owner.Get(), Source.StartLocation, Source.EndLocation, Source.QueryFilter, Source.NavDataFlags, Source.bAllowPartialPaths, Source.CostLimit),
+	FPathFindingQueryData(Source.Owner.Get(), Source.StartLocation, Source.EndLocation, Source.QueryFilter, Source.NavDataFlags, Source.bAllowPartialPaths),
 	NavData(Source.NavData), PathInstanceToFill(Source.PathInstanceToFill), NavAgentProperties(Source.NavAgentProperties)
 {
 	if (!QueryFilter.IsValid() && NavData.IsValid())
@@ -82,25 +82,12 @@ FPathFindingQuery::FPathFindingQuery(FNavPathSharedRef PathToRecalculate, const 
 	}
 }
 
-float FPathFindingQuery::ComputeCostLimitFromHeuristic(const FVector& StartPos, const FVector& EndPos, const float HeuristicScale, const float CostLimitFactor, const float MinimumCostLimit) const
-{
-	if (CostLimitFactor == FLT_MAX)
-	{
-		return FLT_MAX;
-	}
-	else
-	{
-		const float OriginalHeuristicEstimate = HeuristicScale * FVector::Dist(StartPos, EndPos);
-		return FMath::Clamp(CostLimitFactor * OriginalHeuristicEstimate, MinimumCostLimit, FLT_MAX);
-	}
-}
-
 //----------------------------------------------------------------------//
 // FAsyncPathFindingQuery
 //----------------------------------------------------------------------//
 uint32 FAsyncPathFindingQuery::LastPathFindingUniqueID = INVALID_NAVQUERYID;
 
-FAsyncPathFindingQuery::FAsyncPathFindingQuery(const UObject* InOwner, const ANavigationData& InNavData, const FVector& Start, const FVector& End, const FNavPathQueryDelegate& Delegate, FSharedConstNavQueryFilter SourceQueryFilter, const float CostLimit)
+FAsyncPathFindingQuery::FAsyncPathFindingQuery(const UObject* InOwner, const ANavigationData& InNavData, const FVector& Start, const FVector& End, const FNavPathQueryDelegate& Delegate, FSharedConstNavQueryFilter SourceQueryFilter)
 : FPathFindingQuery(InOwner, InNavData, Start, End, SourceQueryFilter)
 , QueryID(GetUniqueID())
 , OnDoneDelegate(Delegate)
@@ -117,7 +104,6 @@ FAsyncPathFindingQuery::FAsyncPathFindingQuery(const FPathFindingQuery& Query, c
 {
 
 }
-
 //----------------------------------------------------------------------//
 // FSupportedAreaData
 //----------------------------------------------------------------------//
@@ -150,9 +136,6 @@ ANavigationData::ANavigationData(const FObjectInitializer& ObjectInitializer)
 	, FindHierarchicalPathImplementation(NULL)
 	, bRegistered(false)
 	, bRebuildingSuspended(false)
-#if WITH_EDITORONLY_DATA
-	, bIsBuildingOnLoad(false)
-#endif
 	, NavDataUniqueID(GetNextUniqueID())
 {
 	PrimaryActorTick.bCanEverTick = true;
@@ -417,10 +400,6 @@ void ANavigationData::InstantiateAndRegisterRenderingComponent()
 void ANavigationData::PurgeUnusedPaths()
 {
 	check(IsInGameThread());
-
-	// Paths can be registered from async pathfinding thread 
-	// while unused paths are purged in main thread (actor tick)
-	FScopeLock PathLock(&ActivePathsLock);
 
 	const int32 Count = ActivePaths.Num();
 	FNavPathWeakPtr* WeakPathPtr = (ActivePaths.GetData() + Count - 1);
@@ -817,15 +796,7 @@ void ANavigationData::RemoveQueryFilter(TSubclassOf<UNavigationQueryFilter> Filt
 
 uint32 ANavigationData::LogMemUsed() const
 {
-	uint32 ActivePathsMemSize = 0;
-	{
-		// Paths can be registered from async pathfinding thread
-		// while logging is requested on main thread (console command)
-		FScopeLock PathLock(&ActivePathsLock);
-		ActivePathsMemSize = ActivePaths.GetAllocatedSize();
-	}
-
-	const uint32 MemUsed = ActivePathsMemSize + SupportedAreas.GetAllocatedSize() +
+	const uint32 MemUsed = ActivePaths.GetAllocatedSize() + SupportedAreas.GetAllocatedSize() +
 		QueryFilters.GetAllocatedSize() + AreaClassToIdMap.GetAllocatedSize();
 
 	UE_VLOG_UELOG(this, LogNavigation, Display, TEXT("%s: ANavigationData: %u\n    self: %d"), *GetName(), MemUsed, sizeof(ANavigationData));

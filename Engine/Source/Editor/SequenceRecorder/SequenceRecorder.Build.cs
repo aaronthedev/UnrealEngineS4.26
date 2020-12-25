@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -40,6 +40,7 @@ namespace UnrealBuildTool.Rules
 					"EditorStyle",
 					"Projects",
 					"LevelEditor",
+					"Persona",
 					"WorkspaceMenuStructure",
 					"PropertyEditor",
 					"MovieScene",
@@ -55,18 +56,10 @@ namespace UnrealBuildTool.Rules
                 }
                 );
 
-            PrivateIncludePathModuleNames.AddRange(
-                new string[]
-                {
-                    "Persona",
-                }
-                );
-
-            DynamicallyLoadedModuleNames.AddRange(
+			DynamicallyLoadedModuleNames.AddRange(
 				new string[]
 				{
-                    "Persona",
-                }
+				}
 				);
 
 			if (Target.Platform == UnrealTargetPlatform.Win64 || Target.Platform == UnrealTargetPlatform.Win32)

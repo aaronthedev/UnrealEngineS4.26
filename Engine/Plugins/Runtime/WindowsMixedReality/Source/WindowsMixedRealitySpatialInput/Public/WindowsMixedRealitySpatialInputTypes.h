@@ -4,7 +4,7 @@
 
 #pragma once
 
-UENUM(meta = (DeprecationMessage = "Use ESpatialInputGestureAxis."))
+UENUM()
 enum class ESpatialInputAxisGestureType : uint8
 {
 	None = 0,

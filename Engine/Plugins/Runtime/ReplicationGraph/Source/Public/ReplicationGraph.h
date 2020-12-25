@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 /*=============================================================================
@@ -63,8 +63,6 @@ UReplicationGraph::InitConnectionGraphNodes
 
 #include "ReplicationGraph.generated.h"
 
-struct FReplicationGraphDestructionSettings;
-
 #define DO_ENABLE_REPGRAPH_DEBUG_ACTOR !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 
 UCLASS(transient, config=Engine)
@@ -125,8 +123,8 @@ public:
 		KeepOrder,		// Use slower removal but keep the node order intact
 	};
 
-	/** Remove a child node from our list and flag it for destruction. Returns if the node was found or not */
-	bool RemoveChildNode(UReplicationGraphNode* OutChildNode, UReplicationGraphNode::NodeOrdering NodeOrder=UReplicationGraphNode::NodeOrdering::IgnoreOrdering);
+	/** Remove a child node from our list and flag it for destruction */
+	void RemoveChildNode(UReplicationGraphNode* OutChildNode, UReplicationGraphNode::NodeOrdering NodeOrder=UReplicationGraphNode::NodeOrdering::IgnoreOrdering);
 
 	/** Remove all null and about to be destroyed nodes from our list */
 	void CleanChildNodes(UReplicationGraphNode::NodeOrdering NodeOrder);
@@ -149,7 +147,6 @@ struct FStreamingLevelActorListCollection
 {
 	void AddActor(const FNewReplicatedActorInfo& ActorInfo);
 	bool RemoveActor(const FNewReplicatedActorInfo& ActorInfo, bool bWarnIfNotFound, UReplicationGraphNode* Outer);
-	bool RemoveActorFast(const FNewReplicatedActorInfo& ActorInfo, UReplicationGraphNode* Outer);
 	void Reset();
 	void Gather(const FConnectionGatherActorListParameters& Params);
 	void DeepCopyFrom(const FStreamingLevelActorListCollection& Source);
@@ -199,9 +196,6 @@ public:
 	virtual void LogNode(FReplicationGraphDebugInfo& DebugInfo, const FString& NodeName) const override;
 
 	virtual void GetAllActorsInNode_Debugging(TArray<FActorRepListType>& OutArray) const;
-
-	/** Removes the actor very quickly but breaks the list order */
-	bool RemoveNetworkActorFast(const FNewReplicatedActorInfo& ActorInfo);
 
 	/** Copies the contents of Source into this node. Note this does not copy child nodes, just the ReplicationActorList/StreamingLevelCollection lists on this node. */
 	void DeepCopyActorListsFrom(const UReplicationGraphNode_ActorList* Source);
@@ -387,6 +381,8 @@ protected:
 	virtual void GatherActors_DistanceOnly(const FActorRepListRefView& RepList, FGlobalActorReplicationInfoMap& GlobalMap, FPerConnectionActorInfoMap& ConnectionMap, const FConnectionGatherActorListParameters& Params);
 
 	void CalcFrequencyForActor(AActor* Actor, UReplicationGraph* RepGraph, UNetConnection* NetConnection, FGlobalActorReplicationInfo& GlobalInfo, FConnectionReplicationActorInfo& ConnectionInfo, FSettings& MySettings, const FNetViewerArray& Viewers, const uint32 FrameNum, int32 ExistingItemIndex);
+	UE_DEPRECATED(4.23, "Use the other function to allow for multiple viewers")
+	void CalcFrequencyForActor(AActor* Actor, UReplicationGraph* RepGraph, UNetConnection* NetConnection, FGlobalActorReplicationInfo& GlobalInfo, FConnectionReplicationActorInfo& ConnectionInfo, FSettings& MySettings, const FVector& ConnectionViewLocation, const FVector& ConnectionViewDir, const uint32 FrameNum, int32 ExistingItemIndex);
 };
 
 
@@ -445,20 +441,7 @@ public:
 
 private:
 
-	/** Function called on every ConnectionDormancyNode in our list */
-	typedef TFunction<void(UReplicationGraphNode_ConnectionDormancyNode*)> FConnectionDormancyNodeFunction;
-
-	/**
-	 * Iterates over all ConnectionDormancyNodes and calls the function on those still valid.
-	 * If a RepGraphConnection was torn down since the last iteration, it removes and destroys the ConnectionDormancyNode associated with the Connection.
-	 */
-	void CallFunctionOnValidConnectionNodes(FConnectionDormancyNodeFunction Function);
-
-private:
-
-	typedef TObjectKey<UNetReplicationGraphConnection> FRepGraphConnectionKey;
-	typedef TSortedMap<FRepGraphConnectionKey, UReplicationGraphNode_ConnectionDormancyNode*> FConnectionDormancyNodeMap;
-	FConnectionDormancyNodeMap ConnectionNodes;
+	TMap<UNetReplicationGraphConnection*, UReplicationGraphNode_ConnectionDormancyNode*> ConnectionNodes;
 };
 
 UCLASS()
@@ -742,6 +725,14 @@ public:
 	/** List of previously (or currently if nothing changed last tick) focused actor data per connection */
 	UPROPERTY()
 	TArray<FAlwaysRelevantActorInfo> PastRelevantActors;
+
+	UE_DEPRECATED(4.23, "ViewTargets are now handled inside the PastRelevantActorMap")
+	UPROPERTY()
+	AActor* LastViewer = nullptr;
+	
+	UE_DEPRECATED(4.23, "ViewTargets are now handled inside the PastRelevantActorMap")
+	UPROPERTY()
+	AActor* LastViewTarget = nullptr;
 };
 
 // -----------------------------------
@@ -837,7 +828,6 @@ public:
 	virtual void NotifyActorTearOff(AActor* Actor) override;
 	virtual void NotifyActorFullyDormantForConnection(AActor* Actor, UNetConnection* Connection) override;
 	virtual void NotifyActorDormancyChange(AActor* Actor, ENetDormancy OldDormancyState) override;
-	virtual void SetRoleSwapOnReplicate(AActor* Actor, bool bSwapRoles) override;
 	virtual bool ProcessRemoteFunction(class AActor* Actor, UFunction* Function, void* Parameters, FOutParmRec* OutParms, FFrame* Stack, class UObject* SubObject) override;
 	virtual int32 ServerReplicateActors(float DeltaSeconds) override;
 	virtual void PostTickDispatch() override;
@@ -850,9 +840,6 @@ public:
 	bool IsConnectionReady(UNetConnection* Connection);
 
 	void SetActorDiscoveryBudget(int32 ActorDiscoveryBudgetInKBytesPerSec);
-
-	/** Sets the global and connection-specific cull distance setting of this actor */
-	void SetAllCullDistanceSettingsForActor(const FActorRepListType& Actor, float CullDistanceSquared);
 
 	// --------------------------------------------------------------
 
@@ -923,20 +910,6 @@ public:
 
 	void NotifyConnectionSaturated(class UNetReplicationGraphConnection& Connection);
 
-	void SetActorDestructionInfoToIgnoreDistanceCulling(AActor* DestroyedActor);
-
-	uint16 GetReplicationPeriodFrameForFrequency(float NetUpdateFrequency) const
-	{
-		check(NetDriver);
-		check(NetUpdateFrequency != 0.0f);
-
-		// Replication Graph is frame based. Convert NetUpdateFrequency to ReplicationPeriodFrame based on Server MaxTickRate.
-		uint32 FramesBetweenUpdates = (uint32)FMath::RoundToInt(NetDriver->NetServerMaxTickRate / NetUpdateFrequency);
-		FramesBetweenUpdates = FMath::Clamp<uint32>(FramesBetweenUpdates, 1, MAX_uint16);
-
-		return (uint16)FramesBetweenUpdates;
-	}
-
 protected:
 
 	virtual void InitializeForWorld(UWorld* World);
@@ -993,18 +966,16 @@ protected:
 
 	/** Default Replication Path */
 	void ReplicateActorListsForConnections_Default(UNetReplicationGraphConnection* ConnectionManager, FGatheredReplicationActorLists& GatheredReplicationListsForConnection, FNetViewerArray& Viewers);
+	UE_DEPRECATED(4.23, "Use the array format to support subconnections as well")
+	void ReplicateActorListsForConnection_Default(UNetReplicationGraphConnection* ConnectionManager, FGatheredReplicationActorLists& GatheredReplicationListsForConnection, FNetViewer& Viewer);
 
 	/** "FastShared" Replication Path */
 	void ReplicateActorListsForConnections_FastShared(UNetReplicationGraphConnection* ConnectionManager, FGatheredReplicationActorLists& GatheredReplicationListsForConnection, FNetViewerArray& Viewers);
+	UE_DEPRECATED(4.23, "Use the array format to support subconnections as well")
+	void ReplicateActorListsForConnection_FastShared(UNetReplicationGraphConnection* ConnectionManager, FGatheredReplicationActorLists& GatheredReplicationListsForConnection, FNetViewer& Viewer);
 
 	/** Connections needing a FlushNet in PostTickDispatch */
 	TArray<UNetConnection*> ConnectionsNeedingsPostTickDispatchFlush;
-
-	virtual void AddReplayViewers(UNetConnection* NetConnection, FNetViewerArray& Viewers) {}
-
-private:
-
-	UNetReplicationGraphConnection* FixGraphConnectionList(TArray<UNetReplicationGraphConnection*>& OutList, int32& ConnectionId, UNetConnection* RemovedNetConnection);
 
 private:
 
@@ -1034,17 +1005,14 @@ struct FLastLocationGatherInfo
 {
 	GENERATED_BODY()
 
-	FLastLocationGatherInfo() : Connection(nullptr), LastLocation(ForceInitToZero), LastOutOfRangeLocationCheck(ForceInitToZero) {}
-	FLastLocationGatherInfo(const UNetConnection* InConnection, FVector InLastLocation) : Connection(InConnection), LastLocation(InLastLocation), LastOutOfRangeLocationCheck(InLastLocation)  {}
+	FLastLocationGatherInfo() : Connection(nullptr), LastLocation(FVector(ForceInitToZero)) {}
+	FLastLocationGatherInfo(const UNetConnection* InConnection, FVector InLastLocation) : Connection(InConnection), LastLocation(InLastLocation) {}
 
 	UPROPERTY()
 	const UNetConnection* Connection;
 
 	UPROPERTY()
 	FVector LastLocation;
-
-	UPROPERTY()
-	FVector LastOutOfRangeLocationCheck;
 
 	bool operator==(UNetConnection* Other) const
 	{
@@ -1088,12 +1056,11 @@ public:
 
 	bool bEnableDebugging;
 
-	/** Index of the connection in the global list. Will be reassigned when any client disconnects so it is a key that can be referenced only during a single tick */
-	int32 ConnectionOrderNum;
-
 	// ID that is assigned by the replication graph. Will be reassigned/compacted as clients disconnect. Useful for spacing out connection operations. E.g., not stable but always compact.
-	UE_DEPRECATED(4.26, "This variable was renamed to ConnectionOrderNum to better reflect that it is not persistent and should not be considered an ID.")
 	int32 ConnectionId; 
+
+	UE_DEPRECATED(4.23, "Use the LastGatherLocations to have support for subconnection lookups")
+	FVector LastGatherLocation;
 
 	UPROPERTY()
 	TArray<FLastLocationGatherInfo> LastGatherLocations;
@@ -1103,6 +1070,8 @@ public:
 
 	/** Returns connection graph nodes. This is const so that you do not mutate the array itself. You should use AddConnectionGraphNode/RemoveConnectionGraphNode.  */
 	const TArray<UReplicationGraphNode*>& GetConnectionGraphNodes() const { return ConnectionGraphNodes; }
+
+	virtual void NotifyAddDormantDestructionInfo(AActor* Actor) override;
 
 	//~ Begin UObject Interface
 	virtual void Serialize(FArchive& Ar) override;
@@ -1125,12 +1094,8 @@ public:
 
 	virtual void NotifyRemoveDestructionInfo(FActorDestructionInfo* DestructInfo) override;
 
-	virtual void NotifyAddDormantDestructionInfo(AActor* Actor) override;
-
 	virtual void NotifyResetDestructionInfo() override;
 	//~ End UReplicationConnectionDriver Interface
-
-	virtual void NotifyResetAllNetworkActors();
 
 	/** Generates a set of all the visible level names for this connection and its subconnections (if any) */
 	virtual void GetClientVisibleLevelNames(TSet<FName>& OutLevelNames) const;
@@ -1159,12 +1124,6 @@ private:
 	
 	int64 ReplicateDormantDestructionInfos();
 
-	/** Update the last location for viewers on a connection */
-	void UpdateGatherLocationsForConnection(const FNetViewerArray& ConnectionViewers, const FReplicationGraphDestructionSettings& DestructionSettings);
-
-    /** Update the location info of a specific viewer */
-	void OnUpdateViewerLocation(FLastLocationGatherInfo* LocationInfo, const FNetViewer& Viewer, const FReplicationGraphDestructionSettings& DestructionSettings);
-
 	UPROPERTY()
 	TArray<UReplicationGraphNode*> ConnectionGraphNodes;
 
@@ -1175,7 +1134,6 @@ private:
 	struct FCachedDestructInfo
 	{
 		FCachedDestructInfo(FActorDestructionInfo* InDestructInfo) : DestructionInfo(InDestructInfo), CachedPosition(InDestructInfo->DestroyedPosition) {}
-		bool operator==(const FCachedDestructInfo& rhs) const { return DestructionInfo == rhs.DestructionInfo; };
 		bool operator==(const FActorDestructionInfo* InDestructInfo) const { return InDestructInfo == DestructionInfo; };
 		
 		FActorDestructionInfo* DestructionInfo;
@@ -1191,17 +1149,8 @@ private:
 		}
 	};
 
-	/** 
-	* List of destroyed actors that were too far from the connection to be relevant.
-	* Is periodically evaluated when the viewer crosses a specific distance.
-	*/
-	TArray<FCachedDestructInfo> OutOfRangeDestroyedActors;
-
-	/** List of destroyed actors that need to be replicated */
 	TArray<FCachedDestructInfo> PendingDestructInfoList;
-
-	/** Set used to guard against double adds into PendingDestructInfoList */
-	TSet<FActorDestructionInfo*> TrackedDestructionInfoPtrs;
+	TSet<FActorDestructionInfo*> TrackedDestructionInfoPtrs; // Set used to guard against double adds into PendingDestructInfoList
 
 	struct FCachedDormantDestructInfo
 	{
@@ -1211,7 +1160,6 @@ private:
 		FString PathName;
 	};
 
-	/** List of dormant actors that should be removed from the client */
 	TArray<FCachedDormantDestructInfo> PendingDormantDestructList;
 };
 
@@ -1276,18 +1224,4 @@ public:
 	UNetReplicationGraphConnection* ConnectionManager;
 
 	virtual UNetConnection* GetNetConnection() const override;
-};
-
-// --------------------------------------------------------------------------------------------------------------------------------------------
-// --------------------------------------------------------------------------------------------------------------------------------------------
-// --------------------------------------------------------------------------------------------------------------------------------------------
-struct FReplicationGraphDestructionSettings
-{
-	FReplicationGraphDestructionSettings(float InDestructInfoMaxDistanceSquared, float InOutOfRangeDistanceCheckThresholdSquared)
-		: DestructInfoMaxDistanceSquared(InDestructInfoMaxDistanceSquared)
-		, OutOfRangeDistanceCheckThresholdSquared(InOutOfRangeDistanceCheckThresholdSquared)
-	{ }
-
-	float DestructInfoMaxDistanceSquared;
-	float OutOfRangeDistanceCheckThresholdSquared;
 };

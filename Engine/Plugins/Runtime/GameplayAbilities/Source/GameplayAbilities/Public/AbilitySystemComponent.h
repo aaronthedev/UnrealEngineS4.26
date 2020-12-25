@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -21,7 +21,6 @@
 #include "Abilities/GameplayAbilityTargetTypes.h"
 #include "Abilities/GameplayAbility.h"
 #include "AbilitySystemReplicationProxyInterface.h"
-#include "Net/Core/PushModel/PushModel.h"
 #include "AbilitySystemComponent.generated.h"
 
 class AGameplayAbilityTargetActor;
@@ -122,21 +121,11 @@ class GAMEPLAYABILITIES_API UAbilitySystemComponent : public UGameplayTasksCompo
 		return (T*)GetOrCreateAttributeSubobject(T::StaticClass());
 	}
 
+	/** Adds a new AttributeSet that is a DSO (created by called in their CStor) */
 	template <class T>
-	UE_DEPRECATED(4.25, "AddDefaultSubobjectSet is deprecated. Use AddAttributeSetSubobject instead.")
 	const T*	AddDefaultSubobjectSet(T* Subobject)
 	{
-		return AddAttributeSetSubobject(Subobject);
-	}
-
-	/** 
-	 * Manually add a new attribute set that is a subobject of this ability system component.
-	 * All subobjects of this component are automatically added during initialization.
-	 */
-	template <class T>
-	const T* AddAttributeSetSubobject(T* Subobject)
-	{
-		GetSpawnedAttributes_Mutable().AddUnique(Subobject);
+		SpawnedAttributes.AddUnique(Subobject);
 		return Subobject;
 	}
 
@@ -162,19 +151,8 @@ class GAMEPLAYABILITIES_API UAbilitySystemComponent : public UGameplayTasksCompo
 	TArray<FAttributeDefaults>	DefaultStartingData;
 
 	/** List of attribute sets */
-	UE_DEPRECATED(4.26, "This will be made private in future engine versions. Use SetSpawnedAttributes, GetSpawnedAttributes, or GetSpawnedAttributes_Mutable instead.")
 	UPROPERTY(Replicated)
 	TArray<UAttributeSet*>	SpawnedAttributes;
-
-	void SetSpawnedAttributes(const TArray<UAttributeSet*>& NewAttributeSet);
-	TArray<UAttributeSet*>& GetSpawnedAttributes_Mutable();
-	const TArray<UAttributeSet*>& GetSpawnedAttributes() const;
-
-
-	/** The linked Anim Instance that this component will play montages in. Use NAME_None for the main anim instance. */
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Skills")
-	FName AffectedAnimInstanceTag; 
-
 
 	/** Sets the base value of an attribute. Existing active modifiers are NOT cleared and will act upon the new base value. */
 	void SetNumericAttributeBase(const FGameplayAttribute &Attribute, float NewBaseValue);
@@ -530,9 +508,43 @@ class GAMEPLAYABILITIES_API UAbilitySystemComponent : public UGameplayTasksCompo
 	/** Update the number of instances of a given tag and calls callback */
 	FORCEINLINE void UpdateTagMap(const FGameplayTagContainer& Container, int32 CountDelta)
 	{
-		if (!Container.IsEmpty())
+		// For removal, reorder calls so that FillParentTags is only called once
+		if (CountDelta > 0)
 		{
-			UpdateTagMap_Internal(Container, CountDelta);
+			for (auto TagIt = Container.CreateConstIterator(); TagIt; ++TagIt)
+			{
+				const FGameplayTag& Tag = *TagIt;
+				if (GameplayTagCountContainer.UpdateTagCount(Tag, CountDelta))
+				{
+					OnTagUpdated(Tag, true);
+				}
+			}
+		}
+		else if (CountDelta < 0)
+		{
+			// Defer FillParentTags until all Tags have been removed
+			TArray<FGameplayTag> RemovedTags;
+			RemovedTags.Reserve(Container.Num()); // pre-allocate max number (if all are removed)
+
+			for (auto TagIt = Container.CreateConstIterator(); TagIt; ++TagIt)
+			{
+				const FGameplayTag& Tag = *TagIt;
+				if (GameplayTagCountContainer.UpdateTagCount(Tag, CountDelta, true))
+				{
+					RemovedTags.Add(Tag);
+				}
+			}
+			
+			if (RemovedTags.Num() > 0)
+			{
+				GameplayTagCountContainer.FillParentTags();
+			}
+
+			// Notify last in case OnTagUpdated queries this container
+			for (FGameplayTag& Tag : RemovedTags)
+			{
+				OnTagUpdated(Tag, false);
+			}
 		}
 	}
 
@@ -580,25 +592,25 @@ class GAMEPLAYABILITIES_API UAbilitySystemComponent : public UGameplayTasksCompo
 	 */
 	FORCEINLINE void AddMinimalReplicationGameplayTag(const FGameplayTag& GameplayTag)
 	{
-		GetMinimalReplicationTags_Mutable().AddTag(GameplayTag);
+		MinimalReplicationTags.AddTag(GameplayTag);
 		bIsNetDirty = true;
 	}
 
 	FORCEINLINE void AddMinimalReplicationGameplayTags(const FGameplayTagContainer& GameplayTags)
 	{
-		GetMinimalReplicationTags_Mutable().AddTags(GameplayTags);
+		MinimalReplicationTags.AddTags(GameplayTags);
 		bIsNetDirty = true;
 	}
 
 	FORCEINLINE void RemoveMinimalReplicationGameplayTag(const FGameplayTag& GameplayTag)
 	{
-		GetMinimalReplicationTags_Mutable().RemoveTag(GameplayTag);
+		MinimalReplicationTags.RemoveTag(GameplayTag);
 		bIsNetDirty = true;
 	}
 
 	FORCEINLINE void RemoveMinimalReplicationGameplayTags(const FGameplayTagContainer& GameplayTags)
 	{
-		GetMinimalReplicationTags_Mutable().RemoveTags(GameplayTags);
+		MinimalReplicationTags.RemoveTags(GameplayTags);
 		bIsNetDirty = true;
 	}
 
@@ -638,8 +650,8 @@ class GAMEPLAYABILITIES_API UAbilitySystemComponent : public UGameplayTasksCompo
 	UPROPERTY(meta = (SystemGameplayAttribute = "true"))
 	float IncomingDuration;
 
-	static FProperty* GetOutgoingDurationProperty();
-	static FProperty* GetIncomingDurationProperty();
+	static UProperty* GetOutgoingDurationProperty();
+	static UProperty* GetIncomingDurationProperty();
 
 	static const FGameplayEffectAttributeCaptureDefinition& GetOutgoingDurationCapture();
 	static const FGameplayEffectAttributeCaptureDefinition& GetIncomingDurationCapture();
@@ -671,15 +683,15 @@ class GAMEPLAYABILITIES_API UAbilitySystemComponent : public UGameplayTasksCompo
 	}
 
 	/** Call from OnRep functions to set the attribute base value on the client */
-	void SetBaseAttributeValueFromReplication(const FGameplayAttribute& Attribute, float NewValue, float OldValue)
+	void SetBaseAttributeValueFromReplication(float NewValue, FGameplayAttribute Attribute)
 	{
-		ActiveGameplayEffects.SetBaseAttributeValueFromReplication(Attribute, NewValue, OldValue);
+		ActiveGameplayEffects.SetBaseAttributeValueFromReplication(Attribute, NewValue);
 	}
 
 	/** Call from OnRep functions to set the attribute base value on the client */
-	void SetBaseAttributeValueFromReplication(const FGameplayAttribute& Attribute, const FGameplayAttributeData& NewValue, const FGameplayAttributeData& OldValue)
+	void SetBaseAttributeValueFromReplication(FGameplayAttributeData NewValue, FGameplayAttribute Attribute)
 	{
-		ActiveGameplayEffects.SetBaseAttributeValueFromReplication(Attribute, NewValue.GetBaseValue(), OldValue.GetBaseValue());
+		ActiveGameplayEffects.SetBaseAttributeValueFromReplication(Attribute, NewValue.GetBaseValue());
 	}
 
 	/** Tests if all modifiers in this GameplayEffect will leave the attribute > 0.f */
@@ -700,10 +712,6 @@ class GAMEPLAYABILITIES_API UAbilitySystemComponent : public UGameplayTasksCompo
 	/** Returns list of active effects, for a query */
 	UFUNCTION(BlueprintCallable, BlueprintPure=false, Category = "GameplayEffects", meta=(DisplayName = "Get Activate Gameplay Effects for Query"))
 	TArray<FActiveGameplayEffectHandle> GetActiveEffects(const FGameplayEffectQuery& Query) const;
-
-	/** Returns list of active effects that have all of the passed in tags */
-	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = "GameplayEffects")
-	TArray<FActiveGameplayEffectHandle> GetActiveEffectsWithAllTags(FGameplayTagContainer Tags) const;
 
 	/** This will give the world time that all effects matching this query will be finished. If multiple effects match, it returns the one that returns last */
 	float GetActiveEffectsEndTime(const FGameplayEffectQuery& Query) const;
@@ -832,7 +840,7 @@ class GAMEPLAYABILITIES_API UAbilitySystemComponent : public UGameplayTasksCompo
 	FGameplayAbilitySpecHandle GiveAbility(const FGameplayAbilitySpec& AbilitySpec);
 
 	/** Grants an ability and attempts to activate it exactly one time, which will cause it to be removed. Only valid on the server! */
-	FGameplayAbilitySpecHandle GiveAbilityAndActivateOnce(FGameplayAbilitySpec& AbilitySpec);
+	FGameplayAbilitySpecHandle GiveAbilityAndActivateOnce(const FGameplayAbilitySpec& AbilitySpec);
 
 	/** Wipes all 'given' abilities. */
 	void ClearAllAbilities();
@@ -1046,21 +1054,11 @@ class GAMEPLAYABILITIES_API UAbilitySystemComponent : public UGameplayTasksCompo
 	void ClearDebugInstantEffects();
 #endif // ENABLE_VISUAL_LOG
 
-	UE_DEPRECATED(4.26, "This will be made private in future engine versions. Use SetClientDebugStrings, GetClientDebugStrings, or GetClientDebugStrings_Mutable instead.")
 	UPROPERTY(ReplicatedUsing=OnRep_ClientDebugString)
 	TArray<FString>	ClientDebugStrings;
 
-	void SetClientDebugStrings(TArray<FString>&& NewClientDebugStrings);
-	TArray<FString>& GetClientDebugStrings_Mutable();
-	const TArray<FString>& GetClientDebugStrings() const;
-
-	UE_DEPRECATED(4.26, "This will be made private in future engine versions. Use SetServerDebugStrings, GetServerDebugStrings, or GetServerDebugStrings_Mutable instead.")
 	UPROPERTY(ReplicatedUsing=OnRep_ServerDebugString)
 	TArray<FString>	ServerDebugStrings;
-
-	void SetServerDebugStrings(TArray<FString>&& NewServerDebugStrings);
-	TArray<FString>& GetServerDebugStrings_Mutable();
-	const TArray<FString>& GetServerDebugStrings() const;
 
 	UFUNCTION()
 	virtual void OnRep_ClientDebugString();
@@ -1110,7 +1108,7 @@ class GAMEPLAYABILITIES_API UAbilitySystemComponent : public UGameplayTasksCompo
 	UPROPERTY()
 	bool UserAbilityActivationInhibited;
 
-	/** When enabled GameplayCue RPCs will be routed through the AvatarActor's IAbilitySystemReplicationProxyInterface rather than this component */
+	/** When enabled, we will not replicate this ASC to simulated proxies. We will route multicast RPCs through   */
 	UPROPERTY()
 	bool ReplicationProxyEnabled;
 
@@ -1169,7 +1167,7 @@ class GAMEPLAYABILITIES_API UAbilitySystemComponent : public UGameplayTasksCompo
 	// ----------------------------------------------------------------------------------------------------------------	
 
 	/** Plays a montage and handles replication and prediction based on passed in ability/activation info */
-	virtual float PlayMontage(UGameplayAbility* AnimatingAbility, FGameplayAbilityActivationInfo ActivationInfo, UAnimMontage* Montage, float InPlayRate, FName StartSectionName = NAME_None, float StartTimeSeconds = 0.0f);
+	virtual float PlayMontage(UGameplayAbility* AnimatingAbility, FGameplayAbilityActivationInfo ActivationInfo, UAnimMontage* Montage, float InPlayRate, FName StartSectionName = NAME_None);
 
 	/** Plays a montage without updating replication/prediction structures. Used by simulated proxies when replication tells them to play a montage. */
 	virtual float PlayMontageSimulated(UAnimMontage* Montage, float InPlayRate, FName StartSectionName = NAME_None);
@@ -1213,28 +1211,17 @@ class GAMEPLAYABILITIES_API UAbilitySystemComponent : public UGameplayTasksCompo
 	/** Returns amount of time left in current section */
 	float GetCurrentMontageSectionTimeLeft() const;
 
-	/** Method to set the replication method for the position in the montage */
-	void SetMontageRepAnimPositionMethod(ERepAnimPositionMethod InMethod);
-
 	// ----------------------------------------------------------------------------------------------------------------
 	//	Actor interaction
 	// ----------------------------------------------------------------------------------------------------------------	
 
 	/** The actor that owns this component logically */
-	UE_DEPRECATED(4.26, "This will be made private in future engine versions. Use SetOwnerActor or GetOwnerActor instead.")
 	UPROPERTY(ReplicatedUsing = OnRep_OwningActor)
 	AActor* OwnerActor;
 
-	void SetOwnerActor(AActor* NewOwnerActor);
-	AActor* GetOwnerActor() const;
-
-	UE_DEPRECATED(4.26, "This will be made private in future engine versions. Use SetAvatarActor or GetAvatarActor instead.")
 	/** The actor that is the physical representation used for abilities. Can be NULL */
 	UPROPERTY(ReplicatedUsing = OnRep_OwningActor)
 	AActor* AvatarActor;
-
-	void SetAvatarActor_Direct(AActor* NewAvatarActor);
-	AActor* GetAvatarActor_Direct() const;
 	
 	UFUNCTION()
 	void OnRep_OwningActor();
@@ -1386,7 +1373,7 @@ protected:
 	 */
 
 	UPROPERTY(ReplicatedUsing=OnRep_ActivateAbilities, BlueprintReadOnly, Category = "Abilities")
-	FGameplayAbilitySpecContainer ActivatableAbilities;
+	FGameplayAbilitySpecContainer	ActivatableAbilities;
 
 	/** Maps from an ability spec to the target data. Used to track replicated data and callbacks */
 	FGameplayAbilityReplicatedDataContainer AbilityTargetDataMap;
@@ -1462,7 +1449,7 @@ protected:
 	void	ClientActivateAbilitySucceedWithEventData(FGameplayAbilitySpecHandle AbilityToActivate, FPredictionKey PredictionKey, FGameplayEventData TriggerEventData);
 
 	/** Implementation of ServerTryActivateAbility */
-	virtual void InternalServerTryActivateAbility(FGameplayAbilitySpecHandle AbilityToActivate, bool InputPressed, const FPredictionKey& PredictionKey, const FGameplayEventData* TriggerEventData);
+	virtual void InternalServerTryActiveAbility(FGameplayAbilitySpecHandle AbilityToActivate, bool InputPressed, const FPredictionKey& PredictionKey, const FGameplayEventData* TriggerEventData);
 
 	/** Called when a prediction key that played a montage is rejected */
 	void OnPredictiveMontageRejected(UAnimMontage* PredictiveMontage);
@@ -1474,14 +1461,9 @@ protected:
 	/** Copy over playing flags for duplicate animation data */
 	void AnimMontage_UpdateForcedPlayFlags(FGameplayAbilityRepAnimMontage& OutRepAnimMontageInfo);
 
-	UE_DEPRECATED(4.26, "This will be made private in future engine versions. Use SetRepAnimMontageInfo, GetRepAnimMontageInfo, or GetRepAnimMontageInfo_Mutable instead.")
 	/** Data structure for replicating montage info to simulated clients */
 	UPROPERTY(ReplicatedUsing=OnRep_ReplicatedAnimMontage)
 	FGameplayAbilityRepAnimMontage RepAnimMontageInfo;
-
-	void SetRepAnimMontageInfo(const FGameplayAbilityRepAnimMontage& NewRepAnimMontageInfo);
-	FGameplayAbilityRepAnimMontage& GetRepAnimMontageInfo_Mutable();
-	const FGameplayAbilityRepAnimMontage& GetRepAnimMontageInfo() const;
 
 	/** Cached value of rather this is a simulated actor */
 	UPROPERTY()
@@ -1547,40 +1529,30 @@ protected:
 	
 	/** Contains all of the gameplay effects that are currently active on this component */
 	UPROPERTY(Replicated)
-	FActiveGameplayEffectsContainer ActiveGameplayEffects;
+	FActiveGameplayEffectsContainer	ActiveGameplayEffects;
 
 	/** List of all active gameplay cues, including ones applied manually */
 	UPROPERTY(Replicated)
-	FActiveGameplayCueContainer ActiveGameplayCues;
+	FActiveGameplayCueContainer	ActiveGameplayCues;
 
 	/** Replicated gameplaycues when in minimal replication mode. These are cues that would come normally come from ActiveGameplayEffects */
 	UPROPERTY(Replicated)
-	FActiveGameplayCueContainer MinimalReplicationGameplayCues;
+	FActiveGameplayCueContainer	MinimalReplicationGameplayCues;
 
 	/** Abilities with these tags are not able to be activated */
 	FGameplayTagCountContainer BlockedAbilityTags;
 
-	UE_DEPRECATED(4.26, "This will be made private in future engine versions. Use SetBlockedAbilityBindings, GetBlockedAbilityBindings, or GetBlockedAbilityBindings_Mutable instead.")
 	/** Tracks abilities that are blocked based on input binding. An ability is blocked if BlockedAbilityBindings[InputID] > 0 */
 	UPROPERTY(Transient, Replicated)
 	TArray<uint8> BlockedAbilityBindings;
-
-	void SetBlockedAbilityBindings(const TArray<uint8>& NewBlockedAbilityBindings);
-	TArray<uint8>& GetBlockedAbilityBindings_Mutable();
-	const TArray<uint8>& GetBlockedAbilityBindings() const;
 
 	void DebugCyclicAggregatorBroadcasts(struct FAggregator* Aggregator);
 	
 	/** Acceleration map for all gameplay tags (OwnedGameplayTags from GEs and explicit GameplayCueTags) */
 	FGameplayTagCountContainer GameplayTagCountContainer;
 
-	UE_DEPRECATED(4.26, "This will be made private in future engine versions. Use SetMinimalReplicationTags, GetMinimalReplicationTags, or GetMinimalReplicationTags_Mutable instead.")
 	UPROPERTY(Replicated)
 	FMinimalReplicationTagCountMap MinimalReplicationTags;
-
-	void SetMinimalReplicationTags(const FMinimalReplicationTagCountMap& NewMinimalReplicationTags);
-	FMinimalReplicationTagCountMap& GetMinimalReplicationTags_Mutable();
-	const FMinimalReplicationTagCountMap& GetMinimalReplicationTags() const;
 
 	void ResetTagMap();
 
@@ -1591,8 +1563,6 @@ protected:
 	const UAttributeSet*	GetAttributeSubobject(const TSubclassOf<UAttributeSet> AttributeClass) const;
 	const UAttributeSet*	GetAttributeSubobjectChecked(const TSubclassOf<UAttributeSet> AttributeClass) const;
 	const UAttributeSet*	GetOrCreateAttributeSubobject(TSubclassOf<UAttributeSet> AttributeClass);
-
-	void UpdateTagMap_Internal(const FGameplayTagContainer& Container, int32 CountDelta);
 
 	friend struct FActiveGameplayEffect;
 	friend struct FActiveGameplayEffectAction;
@@ -1605,7 +1575,6 @@ protected:
 	friend struct FActiveGameplayEffectAction_Add;
 	friend struct FGameplayEffectSpec;
 	friend class AAbilitySystemDebugHUD;
-	friend class UAbilitySystemGlobals;
 
 private:
 	FDelegateHandle MonitoredTagChangedDelegateHandle;
@@ -1614,10 +1583,11 @@ private:
 	/** Caches the flags that indicate whether this component has network authority. */
 	void CacheIsNetSimulated();
 
-	uint8 bDestroyActiveStateInitiated : 1;
 public:
 
 	/** PredictionKeys, see more info in GameplayPrediction.h. This has to come *last* in all replicated properties on the AbilitySystemComponent to ensure OnRep/callback order. */
 	UPROPERTY(Replicated)
-	FReplicatedPredictionKeyMap ReplicatedPredictionKeyMap;
+	FReplicatedPredictionKeyMap	ReplicatedPredictionKeyMap;
+
+	const FMinimalReplicationTagCountMap& GetMinimalReplicationTags() const { return MinimalReplicationTags; }
 };

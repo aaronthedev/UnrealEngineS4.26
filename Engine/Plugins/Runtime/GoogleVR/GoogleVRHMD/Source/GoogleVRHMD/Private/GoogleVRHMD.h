@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -68,7 +68,7 @@ public:
 		EPixelFormat InFormat,
 		bool bInCubemap,
 		bool bInAllocatedStorage,
-		ETextureCreateFlags InFlags,
+		uint32 InFlags,
 		uint8* InTextureRange
 	);
 
@@ -81,7 +81,7 @@ public:
 		uint32 InNumSamples,
 		uint32 InNumSamplesTileMem,
 		EPixelFormat InFormat,
-		ETextureCreateFlags InFlags);
+		uint32 InFlags);
 };
 
 class FGoogleVRHMDCustomPresent : public FXRRenderBridge
@@ -116,7 +116,7 @@ public:
 	 * @param Index			(in) index of the buffer, changing from 0 to GetNumberOfBufferedFrames()
 	 * @return				true, if texture was allocated; false, if the default texture allocation should be used.
 	 */
-	bool AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumLayers, uint32 NumMips, ETextureCreateFlags Flags, ETextureCreateFlags TargetableTextureFlags);
+	bool AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumLayers, uint32 NumMips, uint32 Flags, uint32 TargetableTextureFlags);
 
 	// Frame operations
 	void UpdateRenderingViewportList(const gvr_buffer_viewport_list* BufferViewportList);
@@ -178,11 +178,6 @@ public:
 	{
 		static FName DefaultName(TEXT("FGoogleVRHMD"));
 		return DefaultName;
-	}
-
-	virtual int32 GetXRSystemFlags() const override
-	{
-		return EXRSystemFlags::IsHeadMounted;
 	}
 
 	/** @return	True if the HMD was initialized OK */
@@ -256,10 +251,10 @@ public:
 	/** Check if the application is running in Daydream mode*/
 	bool IsInDaydreamMode() const;
 
-	/** Check if mobile multi-view is enabled */
-	bool IsMobileMultiView() const
+	/** Check if mobile multi-view direct is enabled */
+	bool IsMobileMultiViewDirect() const
 	{
-		return bIsMobileMultiView;
+		return bIsMobileMultiViewDirect;
 	}
 
 	void SetSPMEnable(bool bEnable) const;
@@ -379,7 +374,7 @@ private:
 	bool		bUseOffscreenFramebuffers;
 	bool		bIsInDaydreamMode;
 	bool		bForceStopPresentScene;
-	bool		bIsMobileMultiView;
+	bool		bIsMobileMultiViewDirect;
 	float		NeckModelScale;
 	FQuat		BaseOrientation;
 
@@ -526,7 +521,7 @@ public:
 	// Begin FXRRenderTargetManager Interface //
 	////////////////////////////////////////////
 
-	/**
+	/** 
 	 * Returns an instance of the currently active render bridge (aka. custom present)
 	 */
 	virtual FXRRenderBridge* GetActiveRenderBridge_GameThread(bool bUseSeparateRenderTarget) override;
@@ -545,7 +540,7 @@ public:
 	 * @param Index			(in) index of the buffer, changing from 0 to GetNumberOfBufferedFrames()
 	 * @return				true, if texture was allocated; false, if the default texture allocation should be used.
 	 */
-	virtual bool AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, ETextureCreateFlags Flags, ETextureCreateFlags TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples = 1) override;
+	virtual bool AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 Flags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples = 1) override;
 
 	////////////////////////////////////////////////////
 	// Begin IXRTrackingSystem Pure-Virtual Interface //
@@ -606,7 +601,7 @@ public:
 	// Begin IXRTrackingSystem Virtual Interface //
 	///////////////////////////////////////////////
 
-	/**
+	/** 
 	 * GoogleVR currently does not support late update
 	 */
 	virtual bool DoesSupportLateUpdate() const override

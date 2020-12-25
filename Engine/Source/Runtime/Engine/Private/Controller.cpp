@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Controller.cpp: 
@@ -28,16 +28,6 @@ DEFINE_LOG_CATEGORY(LogController);
 DEFINE_LOG_CATEGORY(LogPath);
 
 #define LOCTEXT_NAMESPACE "Controller"
-
-namespace ControllerStatics
-{
-	static float InvalidControlRotationMagnitude = 8388608.f; // 2^23, largest float when fractions are lost, and where FMod loses meaningful precision.
-	static FAutoConsoleVariableRef CVarInvalidControlRotationMagnitude(
-		TEXT("Controller.InvalidControlRotationMagnitude"), InvalidControlRotationMagnitude,
-		TEXT("If any component of an FRotator passed to SetControlRotation is larger than this magnitude, ignore the value. Huge values are usually from uninitialized variables and can cause NaN/Inf to propagate later."),
-		ECVF_Default);
-}
-
 
 
 AController::AController(const FObjectInitializer& ObjectInitializer)
@@ -104,7 +94,7 @@ void AController::FailedToSpawnPawn()
 
 void AController::SetInitialLocationAndRotation(const FVector& NewLocation, const FRotator& NewRotation)
 {
-	SetActorLocationAndRotation(NewLocation, NewRotation, false, nullptr, ETeleportType::ResetPhysics);
+	SetActorLocationAndRotation(NewLocation, NewRotation);
 	SetControlRotation(NewRotation);
 }
 
@@ -116,12 +106,13 @@ FRotator AController::GetControlRotation() const
 
 void AController::SetControlRotation(const FRotator& NewRotation)
 {
-	if (!IsValidControlRotation(NewRotation))
+#if ENABLE_NAN_DIAGNOSTIC
+	if (NewRotation.ContainsNaN())
 	{
-		logOrEnsureNanError(TEXT("AController::SetControlRotation attempted to apply NaN-containing or NaN-causing rotation! (%s)"), *NewRotation.ToString());
+		logOrEnsureNanError(TEXT("AController::SetControlRotation about to apply NaN-containing rotation! (%s)"), *NewRotation.ToString());
 		return;
 	}
-
+#endif
 	if (!ControlRotation.Equals(NewRotation, 1e-3f))
 	{
 		ControlRotation = NewRotation;
@@ -133,27 +124,8 @@ void AController::SetControlRotation(const FRotator& NewRotation)
 	}
 	else
 	{
-		//UE_LOG(LogPlayerController, Log, TEXT("Skipping SetControlRotation %s for %s (Pawn %s)"), *NewRotation.ToString(), *GetNameSafe(this), *GetNameSafe(GetPawn()));
+		//UE_LOG(LogPlayerController, Log, TEXT("Skipping SetControlRotation for %s (Pawn %s)"), *GetNameSafe(this), *GetNameSafe(GetPawn()));
 	}
-}
-
-bool AController::IsValidControlRotation(FRotator CheckRotation) const
-{
-	if (CheckRotation.ContainsNaN())
-	{
-		return false;
-	}
-
-	// Really large values can be technically valid but are usually the result of uninitialized values, and those can cause
-	// conversion to FQuat or Vector to fail and generate NaN or Inf.
-	if (FMath::Abs(CheckRotation.Pitch) >= ControllerStatics::InvalidControlRotationMagnitude ||
-		FMath::Abs(CheckRotation.Yaw  ) >= ControllerStatics::InvalidControlRotationMagnitude ||
-		FMath::Abs(CheckRotation.Roll ) >= ControllerStatics::InvalidControlRotationMagnitude)
-	{
-		return false;
-	}
-
-	return true;
 }
 
 
@@ -316,80 +288,53 @@ void AController::Possess(APawn* InPawn)
 
 	REDIRECT_OBJECT_TO_VLOG(InPawn, this);
 
-	const APawn* CurrentPawn = GetPawn();
-
-	// A notification is required when the current assigned pawn is not possessed (i.e. pawn assigned before calling Possess)
-	const bool bNotificationRequired = (CurrentPawn != nullptr && CurrentPawn->GetController() == nullptr);
-
-	// To preserve backward compatibility we keep notifying derived classed for null pawn in case some
-	// overrides decided to react differently when asked to possess a null pawn.
-	// Default engine implementation is to unpossess the current pawn.
 	OnPossess(InPawn);
 
-	// Notify when pawn to possess (different than the assigned one) has been accepted by the native class or notification is explicitly required
-	APawn* NewPawn = GetPawn();
-	if (NewPawn != CurrentPawn || bNotificationRequired)
-	{
-		ReceivePossess(NewPawn);
-		OnNewPawn.Broadcast(NewPawn);
-	}
+	ReceivePossess(InPawn);
 }
 
 void AController::OnPossess(APawn* InPawn)
 {
 	const bool bNewPawn = GetPawn() != InPawn;
 
-	// Unpossess current pawn (if any) when current pawn changes
-	if (bNewPawn && GetPawn() != nullptr)
+	if (InPawn != NULL)
 	{
-		UnPossess();
+		if (bNewPawn && GetPawn())
+		{
+			UnPossess();
+		}
+
+		if (InPawn->Controller != NULL)
+		{
+			InPawn->Controller->UnPossess();
+		}
+
+		InPawn->PossessedBy(this);
+		SetPawn(InPawn);
+
+		// update rotation to match possessed pawn's rotation
+		SetControlRotation( Pawn->GetActorRotation() );
+
+		Pawn->Restart();
 	}
 
-	if (InPawn == nullptr)
+	if (bNewPawn)
 	{
-		return;
+		OnNewPawn.Broadcast(GetPawn());
 	}
-
-	if (InPawn->Controller != nullptr)
-	{
-		UE_CLOG(InPawn->Controller == this, LogController, Warning, TEXT("Asking %s to possess pawn %s more than once; pawn will be restarted! Should call Unpossess first."), *GetNameSafe(this), *GetNameSafe(InPawn));
-		InPawn->Controller->UnPossess();
-	}
-
-	InPawn->PossessedBy(this);
-	SetPawn(InPawn);
-
-	// update rotation to match possessed pawn's rotation
-	SetControlRotation(Pawn->GetActorRotation());
-
-	Pawn->Restart();
 }
 
 void AController::UnPossess()
 {
 	APawn* CurrentPawn = GetPawn();
 
-	// No need to notify if we don't have a pawn
-	if (CurrentPawn == nullptr)
-	{
-		return;
-	}
-
 	OnUnPossess();
 
-	// Notify only when pawn has been successfully unpossessed by the native class.
-	APawn* NewPawn = GetPawn();
-	if (NewPawn != CurrentPawn)
-	{
-		ReceiveUnPossess(CurrentPawn);
-		OnNewPawn.Broadcast(NewPawn);
-	}
+	ReceiveUnPossess(CurrentPawn);
 }
 
 void AController::OnUnPossess()
 {
-	// Should not be called when Pawn is null but since OnUnPossess could be overridden
-	// the derived class could have already cleared the pawn and then call its base class.
 	if ( Pawn != NULL )
 	{
 		Pawn->UnPossessed();
@@ -426,11 +371,6 @@ void AController::Reset()
 
 /// @cond DOXYGEN_WARNINGS
 
-bool AController::ClientSetLocation_Validate(FVector NewLocation, FRotator NewRotation)
-{
-	return true;
-}
-
 void AController::ClientSetLocation_Implementation( FVector NewLocation, FRotator NewRotation )
 {
 	ClientSetRotation(NewRotation);
@@ -438,11 +378,6 @@ void AController::ClientSetLocation_Implementation( FVector NewLocation, FRotato
 	{
 		Pawn->TeleportTo(NewLocation, Pawn->GetActorRotation());
 	}
-}
-
-bool AController::ClientSetRotation_Validate(FRotator NewRotation, bool bResetCamera)
-{
-	return true;
 }
 
 void AController::ClientSetRotation_Implementation( FRotator NewRotation, bool bResetCamera )

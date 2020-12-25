@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -25,19 +25,23 @@ class UJoinSessionCallbackProxy : public UOnlineBlueprintCallProxyBase
 
 	// Joins a remote session with the default online subsystem
 	UFUNCTION(BlueprintCallable, meta=(BlueprintInternalUseOnly = "true", WorldContext="WorldContextObject"), Category = "Online|Session")
-	static UJoinSessionCallbackProxy* JoinSession(UObject* WorldContextObject, class APlayerController* PlayerController, const FBlueprintSessionResult& SearchResult);
+	static UJoinSessionCallbackProxy* JoinSession(UObject* WorldContextObject, class APlayerController* PlayerController, FString inCode, FString steamID, const FBlueprintSessionResult& SearchResult);
 
 	// UOnlineBlueprintCallProxyBase interface
 	virtual void Activate() override;
 	// End of UOnlineBlueprintCallProxyBase interface
 
-private:
+public:
 	// Internal callback when the join completes, calls out to the public success/failure callbacks
 	void OnCompleted(FName SessionName, EOnJoinSessionCompleteResult::Type Result);
 
 private:
 	// The player controller triggering things
 	TWeakObjectPtr<APlayerController> PlayerControllerWeakPtr;
+
+	FString Code;
+
+	FString steamID;
 
 	// The search result we are sttempting to join
 	FOnlineSessionSearchResult OnlineSearchResult;

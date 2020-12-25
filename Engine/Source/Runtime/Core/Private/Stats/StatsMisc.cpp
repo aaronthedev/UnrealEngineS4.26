@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Stats/StatsMisc.h"
 #include "Stats/Stats.h"
@@ -16,9 +16,8 @@ void FLightweightStatScope::ReportHitch()
 	{
 		float Delta = float(FGameThreadHitchHeartBeat::Get().GetCurrentTime() - FGameThreadHitchHeartBeat::Get().GetFrameStartTime()) * 1000.0f;
 
-		const uint32 CurrentThreadId = FPlatformTLS::GetCurrentThreadId();
-		const bool isGT = CurrentThreadId == GGameThreadId;
-		const FString& ThreadString = FThreadManager::GetThreadName(CurrentThreadId);
+		bool isGT = FPlatformTLS::GetCurrentThreadId() == GGameThreadId;
+		FString ThreadString(isGT ? TEXT("GameThread") : FThreadManager::Get().GetThreadName(FPlatformTLS::GetCurrentThreadId()));
 		FString StackString = StatString; // possibly convert from ANSICHAR
 
 		if (!isGT && (StackString == TEXT("STAT_EventWait") || StackString == TEXT("STAT_FQueuedThread_Run_WaitForWork")))

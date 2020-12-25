@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "STutorialEditableText.h"
 #include "Misc/PackageName.h"
@@ -439,7 +439,7 @@ void STutorialEditableText::HandleHyperlinkComboOpened()
 		{
 			if(FChar::IsLinebreak(SelectedText[SelectedTextIndex]))
 			{
-				SelectedText.LeftInline(SelectedTextIndex, false);
+				SelectedText = SelectedText.Left(SelectedTextIndex);
 				break;
 			}
 		}

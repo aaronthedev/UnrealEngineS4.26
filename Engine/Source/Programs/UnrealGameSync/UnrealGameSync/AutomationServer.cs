@@ -1,24 +1,23 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using Microsoft.Win32;
 using System;
+using System.Collections.Generic;
 using System.IO;
-using System.IO.Pipes;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
-using System.Windows.Forms;
+using System.Threading.Tasks;
 
 namespace UnrealGameSync
 {
 	enum AutomationRequestType
 	{
-		SyncProject = 0,
-		FindProject = 1,
-		OpenProject = 2,
-		ExecCommand = 3,
-		OpenIssue = 4,
+		SyncProject,
+		FindProject,
+		OpenProject,
 	}
 
 	class AutomationRequestInput
@@ -132,60 +131,35 @@ namespace UnrealGameSync
 
 	class AutomationServer : IDisposable
 	{
-		TcpListener Listener;
 		public const int DefaultPortNumber = 30422;
 
-		NamedPipeServerStream IPCStream;
-		static UnicodeEncoding StreamEncoding = new UnicodeEncoding();
-		const string UGSChannel = @"\.\pipe\UGSChannel";
-
-		Thread UriThread;
-		Thread TcpThread;
-
-		EventWaitHandle ShutdownEvent;		
+		TcpListener Listener;
+		TcpClient CurrentClient;
+		Thread BackgroundThread;
 		Action<AutomationRequest> PostRequest;
-
 		bool bDisposing;
 		TextWriter Log;
-		string CommandLineUri;
 
-		public AutomationServer(Action<AutomationRequest> PostRequest, TextWriter Log, string Uri)
+		public AutomationServer(Action<AutomationRequest> PostRequest, TextWriter Log)
 		{
-			try
-			{
-				ShutdownEvent = new ManualResetEvent(false);
-				this.PostRequest = PostRequest;
-				this.Log = Log;
-				this.CommandLineUri = Uri;
-				
-				// IPC named pipe
-				IPCStream = new NamedPipeServerStream(UGSChannel, PipeDirection.In, 1, PipeTransmissionMode.Message, PipeOptions.Asynchronous);
+			this.PostRequest = PostRequest;
+			this.Log = Log;
 
-				// TCP listener setup
-				int PortNumber = GetPortNumber();
-				if (PortNumber > 0)
+			int PortNumber = GetPortNumber();
+			if(PortNumber > 0)
+			{
+				try
 				{
-					try
-					{
-						Listener = new TcpListener(IPAddress.Loopback, PortNumber);
-						Listener.Start();
-						TcpThread = new Thread(() => RunTcp());
-						TcpThread.Start();
+					Listener = new TcpListener(IPAddress.Loopback, PortNumber);
+					Listener.Start();
 
-					}
-					catch (Exception Ex)
-					{
-						Listener = null;
-						Log.WriteLine("Unable to start automation server tcp listener: {0}", Ex.ToString());
-					}
+					BackgroundThread = new Thread(() => Run());
+					BackgroundThread.Start();
 				}
-
-				UriThread = new Thread(() => RunUri());
-				UriThread.Start();
-			}
-			catch (Exception Ex)
-			{
-				Log.WriteLine("Unable to start automation server: {0}", Ex.ToString());
+				catch(Exception Ex)
+				{
+					Log.WriteLine("Unable to start automation server: {0}", Ex.ToString());
+				}
 			}
 		}
 
@@ -214,83 +188,15 @@ namespace UnrealGameSync
 			}
 		}
 
-		void RunUri()
+		public void Run()
 		{
-			// Handle main process command line URI request
-			if (!string.IsNullOrEmpty(CommandLineUri))
+			try
 			{
-				HandleUri(CommandLineUri);
-			}
-
-			for (;;)
-			{
-				try
+				for(;;)
 				{
-
-					IAsyncResult IPCResult = IPCStream.BeginWaitForConnection(null, null);
-
-					int WaitResult = WaitHandle.WaitAny(new WaitHandle[] { ShutdownEvent, IPCResult.AsyncWaitHandle });
-
-					// Shutting down
-					if (WaitResult == 0)
-					{
-						break;
-					}
-
+					TcpClient Client = CurrentClient = Listener.AcceptTcpClient();
 					try
 					{
-						IPCStream.EndWaitForConnection(IPCResult);
-
-						Log.WriteLine("Accepted Uri connection");
-
-						// Read URI
-						string Uri = ReadString(IPCStream);
-
-						Log.WriteLine("Received Uri: {0}", Uri);
-
-						IPCStream.Disconnect();
-
-						HandleUri(Uri);
-
-					}
-					catch (Exception Ex)
-					{
-						Log.WriteLine("Exception: {0}", Ex.ToString());
-					}
-				}
-				catch (Exception Ex)
-				{
-					if (!bDisposing)
-					{
-						Log.WriteLine("Exception: {0}", Ex.ToString());
-					}
-				}
-			}
-		}
-
-
-		void RunTcp()
-		{
-			
-			for (;;)
-			{
-				try
-				{
-
-					IAsyncResult TCPResult = Listener.BeginAcceptTcpClient(null, null);
-
-					int WaitResult = WaitHandle.WaitAny(new WaitHandle[] { ShutdownEvent, TCPResult.AsyncWaitHandle });
-
-					// Shutting down
-					if (WaitResult == 0)
-					{
-						break;
-					}
-
-					try
-					{
-						TcpClient Client = Listener.EndAcceptTcpClient(TCPResult);
-
 						Log.WriteLine("Accepted connection from {0}", Client.Client.RemoteEndPoint);
 
 						NetworkStream Stream = Client.GetStream();
@@ -299,7 +205,7 @@ namespace UnrealGameSync
 						Log.WriteLine("Received input: {0} (+{1} bytes)", Input.Type, Input.Data.Length);
 
 						AutomationRequestOutput Output;
-						using (AutomationRequest Request = new AutomationRequest(Input))
+						using(AutomationRequest Request = new AutomationRequest(Input))
 						{
 							PostRequest(Request);
 							Request.Complete.Wait();
@@ -309,137 +215,50 @@ namespace UnrealGameSync
 						Output.Write(Stream);
 						Log.WriteLine("Sent output: {0} (+{1} bytes)", Output.Result, Output.Data.Length);
 					}
-					catch (Exception Ex)
+					catch(Exception Ex)
 					{
 						Log.WriteLine("Exception: {0}", Ex.ToString());
 					}
 					finally
 					{
-						TCPResult = null;
+						Client.Close();
 						Log.WriteLine("Closed connection.");
 					}
-				}
-				catch (Exception Ex)
-				{
-					if (!bDisposing)
-					{
-						Log.WriteLine("Exception: {0}", Ex.ToString());
-					}
+					CurrentClient = null;
 				}
 			}
-		}
-
-		void HandleUri(string Uri)
-		{
-			try
+			catch(Exception Ex)
 			{
-				UriResult Result = UriHandler.HandleUri(Uri);
-				if (!Result.Success)
+				if(!bDisposing)
 				{
-					if (!string.IsNullOrEmpty(Result.Error))
-					{
-						MessageBox.Show(String.Format("Error handling uri: {0}", Result.Error));
-					}
-
-					return;
-				}
-
-				if (Result.Request != null)
-				{
-					PostRequest(Result.Request);
-					Result.Request.Complete.Wait();
-					Result.Request.Dispose();
+					Log.WriteLine("Exception: {0}", Ex.ToString());
 				}
 			}
-			catch { }
+			Log.WriteLine("Closing socket.");
 		}
-
-		/// <summary>
-		/// Sends UGS scope URI from secondary process to main for handling
-		/// </summary>		
-		public static void SendUri(string Uri)
-		{
-			using (NamedPipeClientStream ClientStream = new NamedPipeClientStream(".", UGSChannel, PipeDirection.Out, PipeOptions.None))
-			{
-				try
-				{
-					ClientStream.Connect(5000);
-					WriteString(ClientStream, Uri);
-				}
-				catch (Exception)
-				{
-
-				}
-			}
-		}
-
-		static string ReadString(Stream Stream)
-		{
-			int Len = Stream.ReadByte() * 256;
-			Len += Stream.ReadByte();
-			byte[] InBuffer = new byte[Len];
-			Stream.Read(InBuffer, 0, Len);
-
-			return StreamEncoding.GetString(InBuffer);
-		}
-
-		static void WriteString(Stream Stream, string Output)
-		{
-			byte[] OutBuffer = StreamEncoding.GetBytes(Output);
-
-			int Len = OutBuffer.Length;
-
-			if (Len > ushort.MaxValue)
-			{
-				Len = ushort.MaxValue;
-			}
-
-			Stream.WriteByte((byte)(Len / 256));
-			Stream.WriteByte((byte)(Len & 255));
-			Stream.Write(OutBuffer, 0, Len);
-			Stream.Flush();
-		}
-
-
+		
 		public void Dispose()
 		{
-			const int Timeout = 5000;
 			bDisposing = true;
-			ShutdownEvent.Set();
 
-			if (UriThread != null)
+			TcpClient Client = CurrentClient;
+			if(Client != null)
 			{
-				if (!UriThread.Join(Timeout))
-				{
-					try { UriThread.Abort(); } catch { }
-				}
-
-				UriThread = null;
+				try { Client.Close(); } catch { }
+				Client = null;
 			}
 
-			if (TcpThread != null)
-			{
-				if (!TcpThread.Join(Timeout))
-				{
-					try { TcpThread.Abort(); } catch { }
-				}
-
-				TcpThread = null;
-			}
-
-
-			// clean up IPC stream
-			if (IPCStream != null)
-			{
-				IPCStream.Dispose();
-			}
-
-			if (Listener != null)
+			if(Listener != null)
 			{
 				Listener.Stop();
 				Listener = null;
 			}
 
+			if(BackgroundThread != null)
+			{
+				BackgroundThread.Join();
+				BackgroundThread = null;
+			}
 		}
 	}
 }

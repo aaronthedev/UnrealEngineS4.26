@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AbilitySystemGlobals.h"
 #include "Abilities/GameplayAbilityTypes.h"
@@ -6,7 +6,6 @@
 #include "GameplayCueInterface.h"
 #include "AbilitySystemComponent.h"
 #include "AbilitySystemInterface.h"
-#include "GameFramework/PlayerController.h"
 #include "GameplayCueManager.h"
 #include "GameplayTagResponseTable.h"
 #include "GameplayTagsManager.h"
@@ -48,7 +47,7 @@ void UAbilitySystemGlobals::InitGlobalData()
 	GetGameplayTagResponseTable();
 	InitGlobalTags();
 
-	InitTargetDataScriptStructCache();
+	TargetDataStructCache.InitForType(FGameplayAbilityTargetData::StaticStruct());
 
 	// Register for PreloadMap so cleanup can occur on map transitions
 	FCoreUObjectDelegates::PreLoadMap.AddUObject(this, &UAbilitySystemGlobals::HandlePreLoadMap);
@@ -230,11 +229,6 @@ UFunction* UAbilitySystemGlobals::GetGameplayCueFunction(const FGameplayTag& Chi
 	}
 
 	return nullptr;
-}
-
-void UAbilitySystemGlobals::InitTargetDataScriptStructCache()
-{
-	TargetDataStructCache.InitForType(FGameplayAbilityTargetData::StaticStruct());
 }
 
 // --------------------------------------------------------------------
@@ -432,129 +426,34 @@ void UAbilitySystemGlobals::GlobalPreGameplayEffectSpecApply(FGameplayEffectSpec
 
 void UAbilitySystemGlobals::ToggleIgnoreAbilitySystemCooldowns()
 {
-#if WITH_ABILITY_CHEATS
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	bIgnoreAbilitySystemCooldowns = !bIgnoreAbilitySystemCooldowns;
-#endif // WITH_ABILITY_CHEATS
+#endif // #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
 void UAbilitySystemGlobals::ToggleIgnoreAbilitySystemCosts()
 {
-#if WITH_ABILITY_CHEATS
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	bIgnoreAbilitySystemCosts = !bIgnoreAbilitySystemCosts;
-#endif // WITH_ABILITY_CHEATS
+#endif // #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
 bool UAbilitySystemGlobals::ShouldIgnoreCooldowns() const
 {
-#if WITH_ABILITY_CHEATS
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	return bIgnoreAbilitySystemCooldowns;
 #else
 	return false;
-#endif // WITH_ABILITY_CHEATS
+#endif // #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
 bool UAbilitySystemGlobals::ShouldIgnoreCosts() const
 {
-#if WITH_ABILITY_CHEATS
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	return bIgnoreAbilitySystemCosts;
 #else
 	return false;
-#endif // WITH_ABILITY_CHEATS
-}
-
-void UAbilitySystemGlobals::ListPlayerAbilities()
-{
-#if WITH_ABILITY_CHEATS	
-	APlayerController* PC = GWorld->GetFirstPlayerController();
-	IAbilitySystemInterface* AbilitySystem = PC ? Cast<IAbilitySystemInterface>(PC->GetPawn()) : nullptr;
-	if(AbilitySystem)
-	{
-		const UEnum* ExecutionEnumPtr = FindObject<UEnum>(ANY_PACKAGE, TEXT("EGameplayAbilityNetExecutionPolicy"), true);
-		check(ExecutionEnumPtr && TEXT("Couldn't locate EGameplayAbilityNetExecutionPolicy enum!"));
-		const UEnum* SecurityEnumPtr = FindObject<UEnum>(ANY_PACKAGE, TEXT("EGameplayAbilityNetSecurityPolicy"), true);
-		check(SecurityEnumPtr && TEXT("Couldn't locate EGameplayAbilityNetSecurityPolicy enum!"));
-
-		PC->ClientMessage(TEXT("Available abilities:"));
-
-		UAbilitySystemComponent* AbilityComponent = AbilitySystem->GetAbilitySystemComponent();
-		check(AbilityComponent && TEXT("Failed to find ability component on player pawn."));
-		for (FGameplayAbilitySpec &Activatable : AbilityComponent->GetActivatableAbilities())
-		{
-			PC->ClientMessage(FString::Printf(TEXT("   %s (%s - %s)"), *Activatable.Ability->GetName(), *ExecutionEnumPtr->GetDisplayNameTextByIndex(Activatable.Ability->GetNetExecutionPolicy()).ToString(), *SecurityEnumPtr->GetDisplayNameTextByIndex(Activatable.Ability->GetNetSecurityPolicy()).ToString()));
-		}
-	}
-#endif // WITH_ABILITY_CHEATS
-}
-
-void UAbilitySystemGlobals::ServerActivatePlayerAbility(FString AbilityNameMatch)
-{
-#if WITH_ABILITY_CHEATS
-	if (AbilityNameMatch.IsEmpty())
-	{
-		ListPlayerAbilities();
-		return;
-	}
-
-	APlayerController* PC = GWorld->GetFirstPlayerController();
-	IAbilitySystemInterface* AbilitySystem = PC ? Cast<IAbilitySystemInterface>(PC->GetPawn()) : nullptr;
-	if(AbilitySystem)
-	{
-		UAbilitySystemComponent* AbilityComponent = AbilitySystem->GetAbilitySystemComponent();
-		for (FGameplayAbilitySpec &Activatable : AbilityComponent->GetActivatableAbilities())
-		{
-			// Trigger on first match only
-			if (Activatable.Ability->GetName().Contains(AbilityNameMatch))
-			{
-				PC->ClientMessage(FString::Printf(TEXT("Triggering forced server activation of %s"), *Activatable.Ability->GetName()));
-				FPredictionKey MyKey = FPredictionKey::CreateNewPredictionKey(AbilityComponent);
-				AbilityComponent->ServerTryActivateAbility(Activatable.Handle, false, MyKey);
-				return;
-			}
-		}
-
-		PC->ClientMessage(FString::Printf(TEXT("Failed to locate any ability matching %s"), *AbilityNameMatch));
-	}
-#endif // WITH_ABILITY_CHEATS
-}
-
-#if WITH_ABILITY_CHEATS
-static void TerminatePlayerAbility(const FString &AbilityNameMatch, TFunction<FString(UAbilitySystemComponent*, FGameplayAbilitySpec&)> TerminateFn)
-{
-	APlayerController* PC = GWorld->GetFirstPlayerController();
-	IAbilitySystemInterface* AbilitySystem = PC ? Cast<IAbilitySystemInterface>(PC->GetPawn()) : nullptr;
-	if (AbilitySystem)
-	{
-		UAbilitySystemComponent* AbilityComponent = AbilitySystem->GetAbilitySystemComponent();
-		for (FGameplayAbilitySpec &ActivatableSpec : AbilityComponent->GetActivatableAbilities())
-		{
-			if (ActivatableSpec.Ability->IsActive() &&
-				(AbilityNameMatch.IsEmpty() || ActivatableSpec.Ability->GetName().Contains(AbilityNameMatch)))
-			{
-				PC->ClientMessage(TerminateFn(AbilityComponent, ActivatableSpec));
-			}
-		}
-	}
-}
-#endif // WITH_ABILITY_CHEATS
-
-void UAbilitySystemGlobals::ServerEndPlayerAbility(FString AbilityNameMatch)
-{
-#if WITH_ABILITY_CHEATS
-	TerminatePlayerAbility(AbilityNameMatch, [](UAbilitySystemComponent* AbilityComponent, FGameplayAbilitySpec& AbilitySpec) {
-		AbilityComponent->ServerEndAbility(AbilitySpec.Handle, AbilitySpec.Ability->GetCurrentActivationInfo(), AbilityComponent->ScopedPredictionKey);
-		return FString::Printf(TEXT("Triggering forced server ending of %s"), *AbilitySpec.Ability->GetName());
-	});
-#endif // WITH_ABILITY_CHEATS
-}
-
-void UAbilitySystemGlobals::ServerCancelPlayerAbility(FString AbilityNameMatch)
-{
-#if WITH_ABILITY_CHEATS
-	TerminatePlayerAbility(AbilityNameMatch, [](UAbilitySystemComponent* AbilityComponent, FGameplayAbilitySpec& AbilitySpec) {
-		AbilityComponent->ServerCancelAbility(AbilitySpec.Handle, AbilitySpec.Ability->GetCurrentActivationInfo());
-		return FString::Printf(TEXT("Triggering forced server cancellation of %s"), *AbilitySpec.Ability->GetName());
-	});
-#endif // WITH_ABILITY_CHEATS
+#endif // #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 }
 
 #if WITH_EDITOR
@@ -609,8 +508,6 @@ void UAbilitySystemGlobals::NonShipping_ApplyGlobalAbilityScaler_Duration(float&
 
 void FNetSerializeScriptStructCache::InitForType(UScriptStruct* InScriptStruct)
 {
-	ScriptStructs.Reset();
-
 	// Find all script structs of this type and add them to the list
 	// (not sure of a better way to do this but it should only happen once at startup)
 	for (TObjectIterator<UScriptStruct> It; It; ++It)

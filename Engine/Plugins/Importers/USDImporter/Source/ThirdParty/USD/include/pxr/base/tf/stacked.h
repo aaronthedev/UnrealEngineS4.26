@@ -21,18 +21,20 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_STACKED_H
-#define PXR_BASE_TF_STACKED_H
+#ifndef TF_STACKED_H
+#define TF_STACKED_H
 
 #include "pxr/pxr.h"
 #include "pxr/base/tf/api.h"
 #include "pxr/base/tf/diagnostic.h"
 #include "pxr/base/arch/demangle.h"
 
+#include <boost/mpl/if.hpp>
+#include <boost/noncopyable.hpp>
+
 #include <tbb/enumerable_thread_specific.h>
 
 #include <atomic>
-#include <type_traits>
 #include <vector>
 
 PXR_NAMESPACE_OPEN_SCOPE
@@ -93,7 +95,7 @@ private:
 
 public:
     /* Choose the stack storage type based on thea PerThread argument. */
-    typedef typename std::conditional<
+    typedef typename boost::mpl::if_c<
         PerThread, _PerThreadStackStorage, _GlobalStackStorage
     >::type Type;
 };
@@ -134,9 +136,7 @@ struct Tf_StackedStorage {
 ///
 template <class Derived, bool PerThread = true,
           class Holder = Tf_StackedStorage<Derived, PerThread>>
-class TfStacked {
-    TfStacked(TfStacked const &) = delete;
-    TfStacked& operator=(TfStacked const &) = delete;
+class TfStacked : boost::noncopyable {
     typedef typename Holder::Type _StorageType;
 public:
     typedef Holder Storage;
@@ -210,7 +210,7 @@ private:
     }
 
     static Stack &_GetStack() {
-        // Technically unsafe double-checked lock to initialize the stack.
+        // Technically unsafe double-checked lock to intitialize the stack.
         if (ARCH_UNLIKELY(Storage::value.load() == nullptr)) {
             // Make a new stack and try to set it.
             _StorageType *old = nullptr;
@@ -251,4 +251,4 @@ class Derived :                                                                \
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_STACKED_H
+#endif // TF_STACKED_H

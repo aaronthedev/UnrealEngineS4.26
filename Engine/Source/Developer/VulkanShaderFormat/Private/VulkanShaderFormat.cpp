@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VulkanShaderFormat.h"
 #include "VulkanCommon.h"
@@ -8,8 +8,6 @@
 #include "Interfaces/IShaderFormatModule.h"
 #include "hlslcc.h"
 #include "ShaderCore.h"
-#include "ShaderCompilerCore.h"
-#include "DXCWrapper.h"
 
 static FName NAME_VULKAN_ES3_1_ANDROID(TEXT("SF_VULKAN_ES31_ANDROID"));
 static FName NAME_VULKAN_ES3_1_ANDROID_NOUB(TEXT("SF_VULKAN_ES31_ANDROID_NOUB"));
@@ -21,21 +19,18 @@ static FName NAME_VULKAN_SM5_NOUB(TEXT("SF_VULKAN_SM5_NOUB"));
 static FName NAME_VULKAN_SM5(TEXT("SF_VULKAN_SM5"));
 static FName NAME_VULKAN_SM5_LUMIN(TEXT("SF_VULKAN_SM5_LUMIN"));
 static FName NAME_VULKAN_SM5_LUMIN_NOUB(TEXT("SF_VULKAN_SM5_LUMIN_NOUB"));
-static FName NAME_VULKAN_SM5_ANDROID(TEXT("SF_VULKAN_SM5_ANDROID"));
-static FName NAME_VULKAN_SM5_ANDROID_NOUB(TEXT("SF_VULKAN_SM5_ANDROID_NOUB"));
 
 class FShaderFormatVulkan : public IShaderFormat
 {
 	enum 
 	{
-		UE_SHADER_VULKAN_ES3_1_VER	= 30,
-		UE_SHADER_VULKAN_SM5_VER 	= 30,
+		UE_SHADER_VULKAN_ES3_1_VER	= 28,
+		UE_SHADER_VULKAN_SM5_VER 	= 28,
 	};
 
 	int32 InternalGetVersion(FName Format) const
 	{
-		if (Format == NAME_VULKAN_SM5 || Format == NAME_VULKAN_SM5_NOUB || Format == NAME_VULKAN_SM5_LUMIN ||
-			Format == NAME_VULKAN_SM5_LUMIN_NOUB || Format == NAME_VULKAN_SM5_ANDROID || Format == NAME_VULKAN_SM5_ANDROID_NOUB)
+		if (Format == NAME_VULKAN_SM5 || Format == NAME_VULKAN_SM5_NOUB || Format == NAME_VULKAN_SM5_LUMIN || Format == NAME_VULKAN_SM5_LUMIN_NOUB)
 		{
 			return UE_SHADER_VULKAN_SM5_VER;
 		}
@@ -53,7 +48,7 @@ public:
 	{
 		const uint8 HLSLCCVersion = ((HLSLCC_VersionMajor & 0x0f) << 4) | (HLSLCC_VersionMinor & 0x0f);
 		uint16 Version = ((HLSLCCVersion & 0xff) << 8) | (InternalGetVersion(Format) & 0xff);
-#if VULKAN_ENABLE_BINDING_DEBUG_NAMES
+#if VULKAN_ENABLE_SHADER_DEBUG_NAMES
 		Version = (Version << 1) + Version;
 #endif
 		return Version;
@@ -70,8 +65,6 @@ public:
 		OutFormats.Add(NAME_VULKAN_ES3_1_LUMIN_NOUB);
 		OutFormats.Add(NAME_VULKAN_ES3_1_NOUB);
 		OutFormats.Add(NAME_VULKAN_SM5_NOUB);
-		OutFormats.Add(NAME_VULKAN_SM5_ANDROID);
-		OutFormats.Add(NAME_VULKAN_SM5_ANDROID_NOUB);
 	}
 
 	virtual void CompileShader(FName Format, const struct FShaderCompilerInput& Input, struct FShaderCompilerOutput& Output,const FString& WorkingDirectory) const
@@ -93,11 +86,11 @@ public:
 		{
 			DoCompileVulkanShader(Input, Output, WorkingDirectory, EVulkanShaderVersion::ES3_1_ANDROID_NOUB);
 		}
-		else if (Format == NAME_VULKAN_SM5_NOUB || Format == NAME_VULKAN_SM5_LUMIN_NOUB || Format == NAME_VULKAN_SM5_ANDROID_NOUB)
+		else if (Format == NAME_VULKAN_SM5_NOUB || Format == NAME_VULKAN_SM5_LUMIN_NOUB)
 		{
 			DoCompileVulkanShader(Input, Output, WorkingDirectory, EVulkanShaderVersion::SM5_NOUB);
 		}
-		else if (Format == NAME_VULKAN_SM5 || Format == NAME_VULKAN_SM5_LUMIN || Format == NAME_VULKAN_SM5_ANDROID)
+		else if (Format == NAME_VULKAN_SM5 || Format == NAME_VULKAN_SM5_LUMIN)
 		{
 			DoCompileVulkanShader(Input, Output, WorkingDirectory, EVulkanShaderVersion::SM5);
 		}
@@ -114,35 +107,28 @@ public:
 	{
 		return TEXT("Vulkan");
 	}
-
-	virtual bool UsesHLSLcc(const struct FShaderCompilerInput& Input) const override
-	{
-		return !Input.Environment.CompilerFlags.Contains(CFLAG_ForceDXC);
-	}
 };
 
 /**
  * Module for Vulkan shaders
  */
 
-static IShaderFormat* Singleton = nullptr;
+static IShaderFormat* Singleton = NULL;
 
-class FVulkanShaderFormatModule : public IShaderFormatModule, public FShaderConductorModuleWrapper
+class FVulkanShaderFormatModule : public IShaderFormatModule
 {
 public:
 	virtual ~FVulkanShaderFormatModule()
 	{
 		delete Singleton;
-		Singleton = nullptr;
+		Singleton = NULL;
 	}
-
 	virtual IShaderFormat* GetShaderFormat()
 	{
 		if (!Singleton)
 		{
 			Singleton = new FShaderFormatVulkan();
 		}
-
 		return Singleton;
 	}
 };

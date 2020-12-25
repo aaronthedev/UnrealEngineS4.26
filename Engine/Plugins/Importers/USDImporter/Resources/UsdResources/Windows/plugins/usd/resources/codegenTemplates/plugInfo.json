@@ -5,7 +5,7 @@
                 "Types": {
                 }
             }, 
-            "LibraryPath": "../../usd.dll", 
+            "LibraryPath": "../../libusd.dll", 
             "Name": "{{ libraryName }}", 
             "ResourcePath": "resources", 
             "Root": "..", 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 #include "GenericPlatform/GenericApplicationMessageHandler.h"
 
@@ -141,9 +141,6 @@ struct FAndroidGamepadDeviceMapping
 	// Device supports hat as dpad
 	bool bSupportsHat;
 
-	// Device uses threshold to send button pressed events.
-	bool bTriggersUseThresholdForClick;
-
 	// Map L1 and R1 to LTRIGGER and RTRIGGER
 	bool bMapL1R1ToTriggers;
 
@@ -267,8 +264,6 @@ public:
 	virtual void ResetLightColor(int32 ControllerId) override;
 
 	void SetGamepadsAllowed(bool bAllowed) { bAllowControllers = bAllowed; }
-	void SetGamepadsBlockDeviceFeedback(bool bBlock) { bControllersBlockDeviceFeedback = bBlock; }
-
 	virtual bool IsGamepadAttached() const;
 
 
@@ -329,16 +324,10 @@ private:
 
 	/** Vibration settings */
 	static bool VibeIsOn;
-	// Maximum time vibration will be triggered without an update
-	static int32 MaxVibeTime;
-	static double LastVibeUpdateTime;
 	static FForceFeedbackValues VibeValues;
 
 	// should we allow controllers to send input
 	static bool bAllowControllers;
-
-	// bluetooth connected controllers will block force feedback.
-	static bool bControllersBlockDeviceFeedback;
 
 	// should we allow controllers to send Android_Back and Android_Menu events
 	static bool bBlockAndroidKeysOnControllers;

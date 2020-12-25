@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -41,37 +41,11 @@ namespace Gauntlet
         /// Files to copy over to the device, plus what type of files they are.
         /// </summary>
         public List<UnrealFileToCopy> FilesToCopy { get; set; }
-
-		/// <summary>
-		/// Arguments for this instance
-		/// </summary>
-		public string CommandLine
-		{
-			get
-			{
-				if (CommandLineParams == null)
-				{
-					CommandLineParams = new GauntletCommandLine();
-				}
-				return CommandLineParams.GenerateFullCommandLine();
-			}
-			set
-			{
-				if (CommandLineParams == null)
-				{
-					CommandLineParams = new GauntletCommandLine();
-				}
-
-				CommandLineParams.ClearCommandLine();
-
-				CommandLineParams.AddRawCommandline(value, false);
-			}
-		}
-		/// <summary>
-		/// Dictionary of commandline arguments that are turned into a commandline at the end.
-		/// For flags, leave the value set to null.
-		/// </summary>
-		public GauntletCommandLine CommandLineParams;
+        
+        /// <summary>
+        /// Arguments for this instance
+        /// </summary>
+        public string CommandLine { get; set; }
 
 		/// <summary>
 		/// Sandbox that we'd like to install this instance in

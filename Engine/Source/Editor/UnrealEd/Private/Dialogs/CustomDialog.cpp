@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Dialogs/CustomDialog.h"
 
@@ -26,8 +26,6 @@ void SCustomDialog::Construct(const FArguments& InArgs)
 
 	check(InArgs._Buttons.Num() > 0);
 	
-	OnClosed = InArgs._OnClosed;
-
 	TSharedPtr<SHorizontalBox> ContentBox;
 	TSharedPtr<SHorizontalBox> ButtonBox;
 
@@ -119,7 +117,7 @@ void SCustomDialog::Construct(const FArguments& InArgs)
 			.MinDesiredSlotHeight(FEditorStyle::GetFloat("StandardDialog.MinDesiredSlotHeight"))
 		];
 
-	for (int32 i = 0; i < InArgs._Buttons.Num(); ++i)
+	for (int i = 0; i < InArgs._Buttons.Num(); ++i)
 	{
 		const FButton& Button = InArgs._Buttons[i];
 
@@ -141,7 +139,7 @@ void SCustomDialog::Construct(const FArguments& InArgs)
 	}
 }
 
-int32 SCustomDialog::ShowModal()
+int SCustomDialog::ShowModal()
 {
 	FSlateApplication::Get().AddModalWindow(StaticCastSharedRef<SWindow>(this->AsShared()), FGlobalTabmanager::Get()->GetRootWindow());
 
@@ -150,16 +148,11 @@ int32 SCustomDialog::ShowModal()
 
 void SCustomDialog::Show()
 {
-	TSharedRef<SWindow> Window = FSlateApplication::Get().AddWindow(StaticCastSharedRef<SWindow>(this->AsShared()), true);
-
-	if (OnClosed.IsBound())
-	{
-		Window->GetOnWindowClosedEvent().AddLambda([this](const TSharedRef<SWindow>& Window) { OnClosed.Execute(); });
-	}
+	FSlateApplication::Get().AddWindow(StaticCastSharedRef<SWindow>(this->AsShared()), true);
 }
 
 /** Handle the button being clicked */
-FReply SCustomDialog::OnButtonClicked(FSimpleDelegate OnClicked, int32 ButtonIndex)
+FReply SCustomDialog::OnButtonClicked(FSimpleDelegate OnClicked, int ButtonIndex)
 {
 	LastPressedButton = ButtonIndex;
 

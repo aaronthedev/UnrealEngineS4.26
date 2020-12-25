@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #import <UIKit/UIKit.h>
 
@@ -14,7 +14,6 @@
 #include "AudioDevice.h"
 #include "GenericPlatform/GenericPlatformChunkInstall.h"
 #include "IOSAudioDevice.h"
-#include "AudioMixerPlatformAudioUnitUtils.h"
 #include "LocalNotification.h"
 #include "Modules/ModuleManager.h"
 #include "RenderingThread.h"
@@ -62,19 +61,16 @@ void FAppEntry::Suspend(bool bIsInterrupt)
 	{
 		if (GEngine && GEngine->GetMainAudioDevice() && !IsEngineExitRequested())
 		{
-			FAudioDeviceHandle AudioDevice = GEngine->GetMainAudioDevice();
+			FAudioDevice* AudioDevice = GEngine->GetMainAudioDevice();
 			if (bIsInterrupt && DisableAudioSuspendOnAudioInterruptCvar)
 			{
 				if (FTaskGraphInterface::IsRunning() && !IsEngineExitRequested())
 				{
-					FFunctionGraphTask::CreateAndDispatchWhenReady([]()
+					FFunctionGraphTask::CreateAndDispatchWhenReady([AudioDevice]()
 					{
-						FAudioThread::RunCommandOnAudioThread([]()
+						FAudioThread::RunCommandOnAudioThread([AudioDevice]()
 						{
-							if (GEngine && GEngine->GetMainAudioDevice())
-							{
-								GEngine->GetMainAudioDevice()->SetTransientMasterVolume(0.0f);
-							}
+							AudioDevice->SetTransientMasterVolume(0.0f);
 						}, TStatId());
 					}, TStatId(), NULL, ENamedThreads::GameThread);
 				}
@@ -99,14 +95,11 @@ void FAppEntry::Suspend(bool bIsInterrupt)
 
 				if (FTaskGraphInterface::IsRunning())
 				{
-					FGraphEventRef ResignTask = FFunctionGraphTask::CreateAndDispatchWhenReady([]()
+					FGraphEventRef ResignTask = FFunctionGraphTask::CreateAndDispatchWhenReady([AudioDevice]()
 					{
-						FAudioThread::RunCommandOnAudioThread([]()
+						FAudioThread::RunCommandOnAudioThread([AudioDevice]()
 						{
-							if (GEngine && GEngine->GetMainAudioDevice())
-							{
-								GEngine->GetMainAudioDevice()->SuspendContext();
-							}
+							AudioDevice->SuspendContext();
 						}, TStatId());
                 
 						FAudioCommandFence AudioCommandFence;
@@ -137,8 +130,11 @@ void FAppEntry::Suspend(bool bIsInterrupt)
 		}
 		else
 		{
-            // Increment
-            IncrementAudioSuspendCounters();
+			int32& SuspendCounter = FIOSAudioDevice::GetSuspendCounter();
+			if (SuspendCounter == 0)
+			{
+				FPlatformAtomics::InterlockedIncrement(&SuspendCounter);
+			}
 		}
 	}
 }
@@ -156,20 +152,17 @@ void FAppEntry::Resume(bool bIsInterrupt)
 	{
 		if (GEngine && GEngine->GetMainAudioDevice())
 		{
-			FAudioDeviceHandle AudioDevice = GEngine->GetMainAudioDevice();
+			FAudioDevice* AudioDevice = GEngine->GetMainAudioDevice();
         
 			if (bIsInterrupt && DisableAudioSuspendOnAudioInterruptCvar)
 			{
 				if (FTaskGraphInterface::IsRunning())
 				{
-					FFunctionGraphTask::CreateAndDispatchWhenReady([]()
+					FFunctionGraphTask::CreateAndDispatchWhenReady([AudioDevice]()
 					{
-						FAudioThread::RunCommandOnAudioThread([]()
+						FAudioThread::RunCommandOnAudioThread([AudioDevice]()
 						{
-							if (GEngine && GEngine->GetMainAudioDevice())
-							{
-								GEngine->GetMainAudioDevice()->SetTransientMasterVolume(1.0f);
-							}
+							AudioDevice->SetTransientMasterVolume(1.0f);
 						}, TStatId());
 					}, TStatId(), NULL, ENamedThreads::GameThread);
 				}
@@ -194,8 +187,11 @@ void FAppEntry::Resume(bool bIsInterrupt)
 		}
 		else
 		{
-            // Decrement
-            DecrementAudioSuspendCounters();
+			int32& SuspendCounter = FIOSAudioDevice::GetSuspendCounter();
+			if (SuspendCounter > 0)
+			{
+				FPlatformAtomics::InterlockedDecrement(&SuspendCounter);
+			}
 		}
 	}
 }
@@ -205,19 +201,16 @@ void FAppEntry::ResumeAudioContext()
 {
 	if (GEngine && GEngine->GetMainAudioDevice())
 	{
-		FAudioDeviceHandle AudioDevice = GEngine->GetMainAudioDevice();
+		FAudioDevice* AudioDevice = GEngine->GetMainAudioDevice();
 		if (AudioDevice)
 		{
 			if (FTaskGraphInterface::IsRunning())
 			{
-				FFunctionGraphTask::CreateAndDispatchWhenReady([]()
+				FFunctionGraphTask::CreateAndDispatchWhenReady([AudioDevice]()
 				{
-					FAudioThread::RunCommandOnAudioThread([]()
+					FAudioThread::RunCommandOnAudioThread([AudioDevice]()
 					{
-						if (GEngine && GEngine->GetMainAudioDevice())
-						{
-							GEngine->GetMainAudioDevice()->ResumeContext();
-						}
+						AudioDevice->ResumeContext();
 					}, TStatId());
 				}, TStatId(), NULL, ENamedThreads::GameThread);
 			}
@@ -233,21 +226,23 @@ void FAppEntry::RestartAudio()
 {
 	if (GEngine && GEngine->GetMainAudioDevice())
 	{
-		FAudioDeviceHandle AudioDevice = GEngine->GetMainAudioDevice();
+		FAudioDevice* AudioDevice = GEngine->GetMainAudioDevice();
 
 		if (FTaskGraphInterface::IsRunning())
 		{
-            //increment the counter, otherwise ResumeContext won't work
-            IncrementAudioSuspendCounters();
+			int32& SuspendCounter = FIOSAudioDevice::GetSuspendCounter();
 
-			FFunctionGraphTask::CreateAndDispatchWhenReady([]()
+			//increment the counter, otherwise ResumeContext won't work
+			if (SuspendCounter == 0)
 			{
-				FAudioThread::RunCommandOnAudioThread([]()
+				FPlatformAtomics::InterlockedIncrement(&SuspendCounter);
+			}
+
+			FFunctionGraphTask::CreateAndDispatchWhenReady([AudioDevice]()
+			{
+				FAudioThread::RunCommandOnAudioThread([AudioDevice]()
 				{
-					if (GEngine && GEngine->GetMainAudioDevice())
-					{
-						GEngine->GetMainAudioDevice()->ResumeContext();
-					}
+					AudioDevice->ResumeContext();
 				}, TStatId());
 			}, TStatId(), NULL, ENamedThreads::GameThread);
 		}
@@ -256,36 +251,6 @@ void FAppEntry::RestartAudio()
 			AudioDevice->ResumeContext();
 		}
 	}
-}
-
-void FAppEntry::IncrementAudioSuspendCounters()
-{
-    // old backend
-    if(FModuleManager::Get().IsModuleLoaded("IOSAudio"))
-    {
-        FIOSAudioDevice::IncrementSuspendCounter();
-    }
-    
-    // new backend
-    if(FModuleManager::Get().IsModuleLoaded("AudioMixerAudioUnit"))
-    {
-        Audio::IncrementIOSAudioMixerPlatformSuspendCounter();
-    }
-}
-
-void FAppEntry::DecrementAudioSuspendCounters()
-{
-    // old backend
-    if(FModuleManager::Get().IsModuleLoaded("IOSAudio"))
-    {
-        FIOSAudioDevice::DecrementSuspendCounter();
-    }
-    
-    // new backend
-    if(FModuleManager::Get().IsModuleLoaded("AudioMixerAudioUnit"))
-    {
-        Audio::DecrementIOSAudioMixerPlatformSuspendCounter();
-    }
 }
 
 void FAppEntry::PreInit(IOSAppDelegate* AppDelegate, UIApplication* Application)

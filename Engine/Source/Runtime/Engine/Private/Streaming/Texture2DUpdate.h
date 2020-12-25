@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 Texture2DUpdate.h: Helpers to stream in and out mips.
@@ -9,7 +9,6 @@ Texture2DUpdate.h: Helpers to stream in and out mips.
 #include "CoreMinimal.h"
 #include "RenderAssetUpdate.h"
 #include "Engine/Texture2D.h"
-#include "Rendering/Texture2DResource.h"
 #include "Async/AsyncFileHandle.h"
 
 extern TAutoConsoleVariable<int32> CVarFlushRHIThreadOnSTreamingTextureLocks;
@@ -23,9 +22,14 @@ struct FTexture2DUpdateContext
 {
 	typedef int32 EThreadType;
 
-	FTexture2DUpdateContext(const UTexture2D* InTexture, EThreadType InCurrentThread);
+	FTexture2DUpdateContext(UTexture2D* InTexture, EThreadType InCurrentThread);
 
-	FTexture2DUpdateContext(const UStreamableRenderAsset* InTexture, EThreadType InCurrentThread);
+	FTexture2DUpdateContext(UStreamableRenderAsset* InTexture, EThreadType InCurrentThread);
+
+	UStreamableRenderAsset* GetRenderAsset() const
+	{
+		return Texture;
+	}
 
 	EThreadType GetCurrentThread() const
 	{
@@ -33,13 +37,11 @@ struct FTexture2DUpdateContext
 	}
 
 	/** The texture to update, this must be the same one as the one used when creating the FTexture2DUpdate object. */
-	const UTexture2D* Texture = nullptr;
+	UTexture2D* Texture;
 	/** The current 2D resource of this texture. */
-	FTexture2DResource* Resource = nullptr;
-	/** The array view of streamable mips from the asset. Takes into account FStreamableRenderResourceState::AssetLODBias and FStreamableRenderResourceState::MaxNumLODs. */
-	TArrayView<const FTexture2DMipMap*> MipsView;
+	FTexture2DResource* Resource;
 	/** The thread on which the context was created. */
-	EThreadType CurrentThread = 0;
+	EThreadType CurrentThread;
 };
 
 // Declare that TRenderAssetUpdate is instantiated for FTexture2DUpdateContext
@@ -53,7 +55,7 @@ extern template class TRenderAssetUpdate<FTexture2DUpdateContext>;
 class FTexture2DUpdate : public TRenderAssetUpdate<FTexture2DUpdateContext>
 {
 public:
-	FTexture2DUpdate(UTexture2D* InTexture);
+	FTexture2DUpdate(UTexture2D* InTexture, int32 InRequestedMips);
 
 protected:
 

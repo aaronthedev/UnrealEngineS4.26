@@ -1,11 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
-
 #include "Modules/ModuleManager.h"
 #include "IInputDeviceModule.h"
 #include "DisplayClusterInputTypes.h"
-#include "DisplayClusterConfigurationTypes.h"
 
 
 /**
@@ -49,5 +47,5 @@ public:
 	 *
 	 * @return true, if vrpn keyboard name is valid and op success
 	 */
-	virtual bool SetVrpnKeyboardReflectionMode(const FString& VrpnDeviceId, EDisplayClusterInputKeyboardReflectionMode ReflectionMode) = 0;
+	virtual bool SetVrpnKeyboardReflectionMode(const FString& VrpnDeviceId, EDisplayClusterInputKeyboardReflectMode ReflectMode) = 0;
 };

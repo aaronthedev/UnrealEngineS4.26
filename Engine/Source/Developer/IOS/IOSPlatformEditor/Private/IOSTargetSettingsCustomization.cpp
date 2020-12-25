@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IOSTargetSettingsCustomization.h"
 #include "Containers/Ticker.h"
@@ -86,7 +86,24 @@ FIOSTargetSettingsCustomization::FIOSTargetSettingsCustomization()
 	new (IconNames)FPlatformIconInfo(TEXT("Icon83.5@2x.png"), LOCTEXT("AppIcon_iPadProRetina_iOS9", "iPad Pro Retina iOS9 App Icon"), FText::GetEmpty(), 167, 167, FPlatformIconInfo::Required);
 	new (IconNames)FPlatformIconInfo(TEXT("Icon1024.png"), LOCTEXT("AppIcon_Marketing", "Marketing Icon"), FText::GetEmpty(), 1024, 1024, FPlatformIconInfo::Required);
 
-	new (LaunchImageNames)FPlatformIconInfo(TEXT("LaunchScreenIOS.png"), LOCTEXT("LaunchImageIOS", "Launch Screen Image"), LOCTEXT("LaunchImageIOSDesc", "This image is used for the Launch Screen when custom launch screen storyboards are not in use. The image is used in both portait and landscape modes and will be uniformly scaled to occupy the full width or height as necessary for of all devices, so if your app supports both a square image is recommended. The png file supplied must not have an alpha channel."), -1, -1, FPlatformIconInfo::Required);
+	new (LaunchImageNames) FPlatformIconInfo(TEXT("Default-IPhone5-Landscape.png"), LOCTEXT("LaunchImage_iPhone5_Landscape", "iPhone 5/5S/SE in Landscape"), FText::GetEmpty(), 1136, 640, FPlatformIconInfo::Required);
+    new (LaunchImageNames) FPlatformIconInfo(TEXT("Default-568h@2x.png"), LOCTEXT("LaunchImage_iPhone5_Portrait", "iPhone 5/5S/SE in Portrait"), FText::GetEmpty(), 640, 1136, FPlatformIconInfo::Required);
+    new (LaunchImageNames) FPlatformIconInfo(TEXT("Default-IPhone6-Landscape.png"), LOCTEXT("LaunchImage_iPhone6_Landscape", "iPhone 6/7/8 in Landscape"), FText::GetEmpty(), 1334, 750, FPlatformIconInfo::Required);
+    new (LaunchImageNames) FPlatformIconInfo(TEXT("Default-IPhone6.png"), LOCTEXT("LaunchImage_iPhone6", "iPhone 6/7/8 in Portrait"), FText::GetEmpty(), 750, 1334, FPlatformIconInfo::Required);
+    new (LaunchImageNames) FPlatformIconInfo(TEXT("Default-IPhone6Plus-Landscape.png"), LOCTEXT("LaunchImage_iPhone6Plus_Landscape", "iPhone 6+/7+/8+ in Landscape"), FText::GetEmpty(), 2208, 1242, FPlatformIconInfo::Required);
+    new (LaunchImageNames) FPlatformIconInfo(TEXT("Default-IPhone6Plus-Portrait.png"), LOCTEXT("LaunchImage_iPhone6Plus_Portrait", "iPhone 6+/7+/8+ in Portrait"), FText::GetEmpty(), 1242, 2208, FPlatformIconInfo::Required);
+    new (LaunchImageNames) FPlatformIconInfo(TEXT("Default-IPhoneXS-Landscape.png"), LOCTEXT("LaunchImage_iPhoneX_Landscape", "iPhone X/XS in Landscape"), FText::GetEmpty(), 2436, 1125, FPlatformIconInfo::Required);
+    new (LaunchImageNames) FPlatformIconInfo(TEXT("Default-IPhoneXS-Portrait.png"), LOCTEXT("LaunchImage_iPhoneX_Portrait", "iPhone X/XS in Portrait"), FText::GetEmpty(), 1125, 2436, FPlatformIconInfo::Required);
+	new (LaunchImageNames) FPlatformIconInfo(TEXT("Default-IPhoneXSMax-Landscape.png"), LOCTEXT("LaunchImage_iPhoneXSMax_Landscape", "iPhone XS Max in Landscape"), FText::GetEmpty(), 2688, 1242, FPlatformIconInfo::Required);
+	new (LaunchImageNames) FPlatformIconInfo(TEXT("Default-IPhoneXSMax-Portrait.png"), LOCTEXT("LaunchImage_iPhoneXSMax_Portrait", "iPhone XS Max in Portrait"), FText::GetEmpty(), 1242, 2688, FPlatformIconInfo::Required);
+	new (LaunchImageNames) FPlatformIconInfo(TEXT("Default-Landscape@2x.png"), LOCTEXT("LaunchImage_iPadRetina_Landscape", "iPad in Landscape"), FText::GetEmpty(), 2048, 1536, FPlatformIconInfo::Required);
+	new (LaunchImageNames) FPlatformIconInfo(TEXT("Default-Portrait@2x.png"), LOCTEXT("LaunchImage_iPadRetina_Portrait", "iPad in Portrait"), FText::GetEmpty(), 1536, 2048, FPlatformIconInfo::Required);
+	new (LaunchImageNames)FPlatformIconInfo(TEXT("Default-Landscape-1112@2x.png"), LOCTEXT("LaunchImage_iPadPro105Retina_Landscape", "iPad Pro 10.5 in Landscape"), FText::GetEmpty(), 2224, 1668, FPlatformIconInfo::Required);
+	new (LaunchImageNames)FPlatformIconInfo(TEXT("Default-Portrait-1112@2x.png"), LOCTEXT("LaunchImage_iPadPro105Retina_Portrait", "iPad Pro 10.5 in Portrait"), FText::GetEmpty(), 1668, 2224, FPlatformIconInfo::Required);
+	new (LaunchImageNames)FPlatformIconInfo(TEXT("Default-Landscape-1194@2x.png"), LOCTEXT("LaunchImage_iPadPro11Retina_Landscape", "iPad Pro 11 in Landscape"), FText::GetEmpty(), 2388, 1668, FPlatformIconInfo::Required);
+	new (LaunchImageNames)FPlatformIconInfo(TEXT("Default-Portrait-1194@2x.png"), LOCTEXT("LaunchImage_iPadPro11Retina_Portrait", "iPad Pro 11 in Portrait"), FText::GetEmpty(), 1668, 2388, FPlatformIconInfo::Required);
+	new (LaunchImageNames)FPlatformIconInfo(TEXT("Default-Landscape-1336@2x.png"), LOCTEXT("LaunchImage_iPadProRetina_Landscape", "iPad Pro 12.9 in Landscape"), FText::GetEmpty(), 2732, 2048, FPlatformIconInfo::Required);
+	new (LaunchImageNames)FPlatformIconInfo(TEXT("Default-Portrait-1336@2x.png"), LOCTEXT("LaunchImage_iPadProRetina_Portrait", "iPad Pro 12.9 in Portrait"), FText::GetEmpty(), 2048, 2732, FPlatformIconInfo::Required);
 
 	bShowAllProvisions = false;
 	bShowAllCertificates = false;
@@ -769,9 +786,29 @@ void FIOSTargetSettingsCustomization::BuildPListSection(IDetailLayoutBuilder& De
 	FSimpleDelegate OnUpdateOSVersionWarning = FSimpleDelegate::CreateSP(this, &FIOSTargetSettingsCustomization::UpdateOSVersionWarning);
 	FSimpleDelegate OnEnableMetalMRT = FSimpleDelegate::CreateSP(this, &FIOSTargetSettingsCustomization::UpdateMetalMRTWarning);
 
-	/* MinOSPropertyHandle = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UIOSRuntimeSettings, MinimumiOSVersion));
+/*	GLES2PropertyHandle = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UIOSRuntimeSettings, bSupportsOpenGLES2));
+	GLES2PropertyHandle->SetOnPropertyValueChanged(OnUpdateShaderStandardWarning);
+	RenderCategory.AddProperty(GLES2PropertyHandle);
+
+	MinOSPropertyHandle = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UIOSRuntimeSettings, MinimumiOSVersion));
 	MinOSPropertyHandle->SetOnPropertyValueChanged(OnUpdateShaderStandardWarning);
 	OSInfoCategory.AddProperty(MinOSPropertyHandle);*/
+
+	DevArmV7PropertyHandle = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UIOSRuntimeSettings, bDevForArmV7));
+	DevArmV7PropertyHandle->SetOnPropertyValueChanged(OnUpdateOSVersionWarning);
+	BuildCategory.AddProperty(DevArmV7PropertyHandle);
+
+	DevArmV7sPropertyHandle = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UIOSRuntimeSettings, bDevForArmV7S));
+	DevArmV7sPropertyHandle->SetOnPropertyValueChanged(OnUpdateOSVersionWarning);
+	BuildCategory.AddProperty(DevArmV7sPropertyHandle);
+
+	ShipArmV7PropertyHandle = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UIOSRuntimeSettings, bShipForArmV7));
+	ShipArmV7PropertyHandle->SetOnPropertyValueChanged(OnUpdateOSVersionWarning);
+	BuildCategory.AddProperty(ShipArmV7PropertyHandle);
+
+	ShipArmV7sPropertyHandle = DetailLayout.GetProperty(GET_MEMBER_NAME_CHECKED(UIOSRuntimeSettings, bShipForArmV7S));
+	ShipArmV7sPropertyHandle->SetOnPropertyValueChanged(OnUpdateOSVersionWarning);
+	BuildCategory.AddProperty(ShipArmV7sPropertyHandle);
 
 	SETUP_PLIST_PROP(BundleDisplayName, BundleCategory);
 	SETUP_PLIST_PROP(BundleName, BundleCategory);
@@ -784,7 +821,6 @@ void FIOSTargetSettingsCustomization::BuildPListSection(IDetailLayoutBuilder& De
 	SETUP_PLIST_PROP(PreferredLandscapeOrientation, OrientationCategory);
 	
 	SETUP_PLIST_PROP(bSupportsITunesFileSharing, FileSystemCategory);
-	SETUP_PLIST_PROP(bSupportsFilesApp, FileSystemCategory);
 	
 	SETUP_PLIST_PROP(bSupportsMetal, RenderCategory);
 	
@@ -1050,7 +1086,7 @@ void FIOSTargetSettingsCustomization::BuildIconSection(IDetailLayoutBuilder& Det
 	}
 
 	// Add the launch images
-	IDetailCategoryBuilder& LaunchImageCategory = DetailLayout.EditCategory(FName("LaunchScreen"));
+	IDetailCategoryBuilder& LaunchImageCategory = DetailLayout.EditCategory(TEXT("Launch Images"));
 	const FVector2D LaunchImageMaxSize(150.0f, 150.0f);
 	for (const FPlatformIconInfo& Info : LaunchImageNames)
 	{
@@ -1116,8 +1152,6 @@ void FIOSTargetSettingsCustomization::BuildImageRow(IDetailLayoutBuilder& Detail
 				SNew(STextBlock)
 				.Text(Info.IconName)
 				.Font(DetailLayout.GetDetailFont())
-				// IconDescription is not used, repurpose for tooltip
-				.ToolTipText(Info.IconDescription)
 			]
 		]
 		.ValueContent()
@@ -1130,6 +1164,7 @@ void FIOSTargetSettingsCustomization::BuildImageRow(IDetailLayoutBuilder& Detail
 			.VAlign(VAlign_Center)
 			[
 				SNew(SExternalImageReference, AutomaticImagePath, TargetImagePath)
+				.FileDescription(Info.IconDescription)
 				.RequiredSize(Info.IconRequiredSize)
 				.MaxDisplaySize(MaxDisplaySize)
 				.DeleteTargetWhenDefaultChosen(true)
@@ -1755,7 +1790,7 @@ void FIOSTargetSettingsCustomization::SetShaderStandard(int32 Value)
 	{
 		FText Message;
 		
-		uint8 EnumValue = (uint8)EIOSVersion::IOS_12;
+		uint8 EnumValue = (uint8)EIOSVersion::IOS_11;
 		if (MinOSPropertyHandle.IsValid())
 		{
 			MinOSPropertyHandle->GetValue(EnumValue);
@@ -1767,10 +1802,34 @@ void FIOSTargetSettingsCustomization::SetShaderStandard(int32 Value)
 			MRTPropertyHandle->GetValue(bMRTEnabled);
 		}
 		
-		// make sure we never set the min version to less than current supported
-		if (((EIOSVersion)EnumValue < EIOSVersion::IOS_12))
+		if (Value == 1 && ((EIOSVersion)EnumValue < EIOSVersion::IOS_9))
 		{
-			SetMinVersion((int32)EIOSVersion::IOS_12);
+			Message = LOCTEXT("iOSMetalShaderVersion1_1","Enabling Metal Shader Standard v1.1 increases the minimum operating system requirement for Metal from iOS 8.0 or later to iOS 9.0 or later. This does not affect tvOS.");
+			SetMinVersion((int32)EIOSVersion::IOS_9);
+		}
+		else if (Value < 3 && bMRTEnabled)
+		{
+			FPropertyAccess::Result ResMRT = ShaderVersionPropertyHandle->SetValue((uint8)3);
+			check(ResMRT == FPropertyAccess::Success);
+
+			Message = LOCTEXT("MetalMRTStandardv1.2","Enabling the Desktop Forward Renderer Metal requires Shader Standard v2.0 which increases the minimum operating system requirement for Metal from iOS 10.0 or later to iOS 11.0 or later.");
+			SetMinVersion((int32)EIOSVersion::IOS_11);
+		}
+		else if (Value == 3 && (EIOSVersion)EnumValue < EIOSVersion::IOS_11)
+		{
+			Message = LOCTEXT("iOSMetalShaderVersion2_0","Enabling Metal Shader Standard v2.0 increases the minimum operating system requirement for Metal from iOS 10.0/tvOS 10.0 or later to iOS/tvOS 11.0 or later.");
+			SetMinVersion((int32)EIOSVersion::IOS_11);
+		}
+        else if (Value == 4 && (EIOSVersion)EnumValue < EIOSVersion::IOS_12)
+        {
+            Message = LOCTEXT("iOSMetalShaderVersion2_1","Enabling Metal Shader Standard v2.1 increases the minimum operating system requirement for Metal from iOS 10.0/tvOS 10.0 or later to iOS/tvOS 12.0 or later.");
+            SetMinVersion((int32)EIOSVersion::IOS_12);
+        }
+
+		// make sure we never set the min version to less than current supported
+		if (((EIOSVersion)EnumValue < EIOSVersion::IOS_11))
+		{
+			SetMinVersion((int32)EIOSVersion::IOS_11);
 		}
 
 		
@@ -1801,9 +1860,9 @@ void FIOSTargetSettingsCustomization::UpdateOSVersionWarning()
 		{
 			uint8 EnumValue;
 			MinOSPropertyHandle->GetValue(EnumValue);
-			if (EnumValue < (uint8)EIOSVersion::IOS_12)
+			if (EnumValue < (uint8)EIOSVersion::IOS_11)
 			{
-				SetMinVersion((int32)EIOSVersion::IOS_12);
+				SetMinVersion((int32)EIOSVersion::IOS_11);
 				
 				FText Message;
 				Message = LOCTEXT("MetalMRTStandardv1.2","Enabling the Desktop Forward Renderer Metal requires Shader Standard v2.0 which increases the minimum operating system requirement for Metal from iOS 10.0 or later to iOS 11.0 or later.");
@@ -1829,9 +1888,9 @@ void FIOSTargetSettingsCustomization::UpdateMetalMRTWarning()
 		{
 			uint8 EnumValue;
 			MinOSPropertyHandle->GetValue(EnumValue);
-			if (EnumValue < (uint8)EIOSVersion::IOS_12)
+			if (EnumValue < (uint8)EIOSVersion::IOS_11)
 			{
-				SetMinVersion((int32)EIOSVersion::IOS_12);
+				SetMinVersion((int32)EIOSVersion::IOS_11);
 				
 				FText Message;
 				Message = LOCTEXT("MetalMRTStandardv1.2","Enabling the Desktop Forward Renderer Metal requires Shader Standard v2.0 which increases the minimum operating system requirement for Metal from iOS 10.0 or later to iOS 11.0 or later.");
@@ -1858,6 +1917,22 @@ void FIOSTargetSettingsCustomization::UpdateMetalMRTWarning()
 
 void FIOSTargetSettingsCustomization::UpdateGLVersionWarning()
 {
+	bool bEnabled = false;
+	GLES2PropertyHandle->GetValue(bEnabled);
+
+	FText Message;
+	Message = LOCTEXT("GLES2Deprecation", "GLES2 will no longer be supported in 4.17.");
+
+	// Update the UI
+	if (bEnabled)
+	{
+		GLVersionWarningTextBox->SetError(Message);
+	}
+	else
+	{
+		GLVersionWarningTextBox->SetError(TEXT(""));
+	}
+
 	UpdateShaderStandardWarning();
 }
 
@@ -1865,6 +1940,13 @@ void FIOSTargetSettingsCustomization::SetMinVersion(int32 Value)
 {
 	FPropertyAccess::Result Res = MinOSPropertyHandle->SetValue((uint8)Value);
 	check(Res == FPropertyAccess::Success);
+}
+
+void FIOSTargetSettingsCustomization::HandleGLES2CheckBoxCheckStateChanged(ECheckBoxState NewState)
+{
+	GLES2PropertyHandle->SetValue(NewState == ECheckBoxState::Checked ? true : false);
+
+	UpdateGLVersionWarning();
 }
 
 //////////////////////////////////////////////////////////////////////////

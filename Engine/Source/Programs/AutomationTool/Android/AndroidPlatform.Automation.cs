@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -14,8 +14,7 @@ using Tools.DotNETCommon;
 
 public class AndroidPlatform : Platform
 {
-	// Maximum allowed OBB size (1 GiB, 2 GiB or 4 GiB based on project settings)
-	private const Int64 SmallOBBSizeAllowed = 1073741824;
+	// Maximum allowed OBB size (2 GiB or 4 GiB based on project setting)
 	private const Int64 NormalOBBSizeAllowed = 2147483648;
 	private const Int64 MaxOBBSizeAllowed = 4294967296;
 
@@ -187,41 +186,6 @@ public class AndroidPlatform : Platform
 		return PatchName;
 	}
 
-	private static string GetFinalOverflowName(string ApkName, DeploymentContext SC, int Index, bool bUseAppType = true)
-	{
-		// calculate the name for the .obb file
-		string PackageName = GetPackageInfo(ApkName, SC, false);
-		if (PackageName == null)
-		{
-			throw new AutomationException(ExitCode.Error_FailureGettingPackageInfo, "Failed to get package name from " + ApkName);
-		}
-
-		string PackageVersion = GetPackageInfo(ApkName, SC, true);
-		if (PackageVersion == null || PackageVersion.Length == 0)
-		{
-			throw new AutomationException(ExitCode.Error_FailureGettingPackageInfo, "Failed to get package version from " + ApkName);
-		}
-
-		if (PackageVersion.Length > 0)
-		{
-			int IntVersion = int.Parse(PackageVersion);
-			PackageVersion = IntVersion.ToString("0");
-		}
-
-		string AppType = bUseAppType ? GetMetaAppType() : "";
-		if (AppType.Length > 0)
-		{
-			AppType += ".";
-		}
-
-		string OverflowName = string.Format("overflow{0}.{1}.{2}.{3}obb", Index, PackageVersion, PackageName, AppType);
-
-		// plop the .obb right next to the executable
-		OverflowName = Path.Combine(Path.GetDirectoryName(ApkName), OverflowName);
-
-		return OverflowName;
-	}
-
 
 	public override string GetPlatformPakCommandLine(ProjectParams Params, DeploymentContext SC)
 	{
@@ -248,13 +212,6 @@ public class AndroidPlatform : Platform
 		string PatchName = GetFinalPatchName(ApkName, SC, false);
 		string PackageName = GetPackageInfo(ApkName, SC, false);
 		return TargetAndroidLocation + PackageName + "/" + Path.GetFileName(PatchName);
-	}
-
-	private static string GetDeviceOverflowName(string ApkName, DeploymentContext SC, int Index)
-	{
-		string OverflowName = GetFinalOverflowName(ApkName, SC, Index, false);
-		string PackageName = GetPackageInfo(ApkName, SC, false);
-		return TargetAndroidLocation + PackageName + "/" + Path.GetFileName(OverflowName);
 	}
 
 	public static string GetStorageQueryCommand()
@@ -338,28 +295,12 @@ public class AndroidPlatform : Platform
 		return (Ini.GetBool("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings", "bSaveSymbols", out bSave) && bSave);
 	}
 
-	private bool GetEnableBundle(DeploymentContext SC)
-	{
-		ConfigHierarchy Ini = ConfigCache.ReadHierarchy(ConfigHierarchyType.Engine, DirectoryReference.FromFile(SC.RawProjectPath), SC.StageTargetPlatform.PlatformType);
-		bool bEnableBundle = false;
-		return (Ini.GetBool("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings", "bEnableBundle", out bEnableBundle) && bEnableBundle);
-	}
-
-	private bool GetEnableUniversalAPK(DeploymentContext SC)
-	{
-		ConfigHierarchy Ini = ConfigCache.ReadHierarchy(ConfigHierarchyType.Engine, DirectoryReference.FromFile(SC.RawProjectPath), SC.StageTargetPlatform.PlatformType);
-		bool bEnableUniversalAPK = false;
-		return (Ini.GetBool("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings", "bEnableUniversalAPK", out bEnableUniversalAPK) && bEnableUniversalAPK);
-	}
-
 	private Int64 GetMaxOBBSizeAllowed(DeploymentContext SC)
 	{
 		ConfigHierarchy Ini = ConfigCache.ReadHierarchy(ConfigHierarchyType.Engine, DirectoryReference.FromFile(SC.RawProjectPath), SC.StageTargetPlatform.PlatformType);
-		bool bForceSmallOBBFiles = false;
 		bool bAllowLargeOBBFiles = false;
-		Ini.GetBool("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings", "bForceSmallOBBFiles", out bForceSmallOBBFiles);
 		Ini.GetBool("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings", "bAllowLargeOBBFiles", out bAllowLargeOBBFiles);
-		return bForceSmallOBBFiles ? SmallOBBSizeAllowed : (bAllowLargeOBBFiles ? MaxOBBSizeAllowed : NormalOBBSizeAllowed);
+		return bAllowLargeOBBFiles ? MaxOBBSizeAllowed : NormalOBBSizeAllowed;
 	}
 
 	private bool AllowPatchOBBFile(DeploymentContext SC)
@@ -368,14 +309,6 @@ public class AndroidPlatform : Platform
 		bool bAllowPatchOBBFile = false;
 		Ini.GetBool("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings", "bAllowPatchOBBFile", out bAllowPatchOBBFile);
 		return bAllowPatchOBBFile;
-	}
-
-	private bool AllowOverflowOBBFiles(DeploymentContext SC)
-	{
-		ConfigHierarchy Ini = ConfigCache.ReadHierarchy(ConfigHierarchyType.Engine, DirectoryReference.FromFile(SC.RawProjectPath), SC.StageTargetPlatform.PlatformType);
-		bool bAllowOverflowOBBFiles = false;
-		Ini.GetBool("/Script/AndroidRuntimeSettings.AndroidRuntimeSettings", "bAllowOverflowOBBFiles", out bAllowOverflowOBBFiles);
-		return bAllowOverflowOBBFiles;
 	}
 
 	private bool CreateOBBFile(DeploymentContext SC, string StageDirectoryPath, string OutputFilename, List<FileReference> FilesForObb)
@@ -455,8 +388,6 @@ public class AndroidPlatform : Platform
 		bool bMakeSeparateApks = UnrealBuildTool.AndroidExports.ShouldMakeSeparateApks();
 		bool bBuildWithHiddenSymbolVisibility = BuildWithHiddenSymbolVisibility(SC);
 		bool bSaveSymbols = GetSaveSymbols(SC);
-		bool bEnableBundle = GetEnableBundle(SC);
-		bool bEnableUniversalAPK = GetEnableUniversalAPK(SC);
 
 		var Deploy = AndroidExports.CreateDeploymentHandler(Params.RawProjectPath, Params.ForcePackageData);
 		bool bPackageDataInsideApk = Deploy.GetPackageDataInsideApk();
@@ -469,8 +400,6 @@ public class AndroidPlatform : Platform
 
 		string LocalObbName = SC.StageDirectory.FullName+".obb";
 		string LocalPatchName = SC.StageDirectory.FullName + ".patch.obb";
-		string LocalOverflow1Name = SC.StageDirectory.FullName + ".overflow1.obb";
-		string LocalOverflow2Name = SC.StageDirectory.FullName + ".overflow2.obb";
 
 		FileFilter ObbFileFilter = new FileFilter(FileFilterType.Include);
 		ConfigHierarchy EngineIni = ConfigCache.ReadHierarchy(ConfigHierarchyType.Engine, DirectoryReference.FromFile(Params.RawProjectPath), UnrealTargetPlatform.Android);
@@ -504,7 +433,7 @@ public class AndroidPlatform : Platform
 			OBBNeedsUpdate = true;
 		}
 		Int64 OBBSizeAllowed = GetMaxOBBSizeAllowed(SC);
-		string LimitString = (OBBSizeAllowed < NormalOBBSizeAllowed) ? "1 GiB" : ((OBBSizeAllowed < MaxOBBSizeAllowed) ? "2 GiB" : "4 GiB");
+		string LimitString = (OBBSizeAllowed < MaxOBBSizeAllowed) ? "2 GiB" : "4 GiB";
 
 		if (!OBBNeedsUpdate)
 		{
@@ -524,45 +453,25 @@ public class AndroidPlatform : Platform
 				File.Delete(LocalPatchName);
 			}
 
-			// Always delete the target overflow1 OBB file if it exists
-			if (File.Exists(LocalOverflow1Name))
-			{
-				File.Delete(LocalOverflow1Name);
-			}
-
-			// Always delete the target overflow2 OBB file if it exists
-			if (File.Exists(LocalOverflow2Name))
-			{
-				File.Delete(LocalOverflow2Name);
-			}
-
 			List<FileReference> FilesToObb = FilesForObb;
 			List<FileReference> FilesToPatch = new List<FileReference>();
-			List<FileReference> FilesToOverflow1 = new List<FileReference>();
-			List<FileReference> FilesToOverflow2 = new List<FileReference>();
 
 			if (AllowPatchOBBFile(SC))
 			{
-				bool bAllowOverflowOBBs = AllowOverflowOBBFiles(SC);
-
 				FilesToObb = new List<FileReference>();
 
 				// Collect the filesize and place into Obb or Patch list
-				Int64 MinimumObbSize = 22 + 10;		// EOCD with comment (store version)
-				Int64 MainObbSize = MinimumObbSize;
-				Int64 PatchObbSize = MinimumObbSize;
-				Int64 Overflow1ObbSize = MinimumObbSize;
-				Int64 Overflow2ObbSize = MinimumObbSize;
+				Int64 MainObbSize = 22 + 10 + 4096;		// EOCD wit comment (store version) + padding
+				Int64 PatchObbSize = 22 + 10 + 4096;	// EOCD wit comment (store version) + padding
 				foreach (FileReference FileRef in FilesForObb)
 				{
 					FileInfo LocalFileInfo = new FileInfo(FileRef.FullName);
 					Int64 LocalFileLength = LocalFileInfo.Length;
 
 					string DestinationPath = Path.GetDirectoryName(FileRef.FullName).Replace(StageDirectoryPath, SC.ShortProjectName);
-					Int64 FilenameLength = DestinationPath.Length + Path.GetFileName(FileRef.FullName).Length + 1;
-					Int64 LocalOverhead = (30 + FilenameLength + 36);		// local file descriptor
-					Int64 GlobalOverhead = (46 + FilenameLength + 36);		// central directory cost
-					Int64 FileRequirements = LocalFileLength + LocalOverhead + GlobalOverhead;
+					int FilenameLength = DestinationPath.Length;
+					Int64 Overhead = (30 + 36 + FilenameLength) + (46 + 36 + FilenameLength); // local file descriptor + central directory cost per file
+					Int64 FileRequirements = LocalFileLength + Overhead;
 
 					if (MainObbSize + FileRequirements < OBBSizeAllowed)
 					{
@@ -573,25 +482,6 @@ public class AndroidPlatform : Platform
 					{
 						FilesToPatch.Add(FileRef);
 						PatchObbSize += FileRequirements;
-					}
-					else if (bAllowOverflowOBBs)
-					{
-						if (Overflow1ObbSize + FileRequirements < OBBSizeAllowed)
-						{
-							FilesToOverflow1.Add(FileRef);
-							Overflow1ObbSize += FileRequirements;
-						}
-						else if (Overflow2ObbSize + FileRequirements < OBBSizeAllowed)
-						{
-							FilesToOverflow2.Add(FileRef);
-							Overflow2ObbSize += FileRequirements;
-						}
-						else
-						{
-							// no room in either file
-							LogInformation("Failed to build OBB: " + LocalObbName);
-							throw new AutomationException(ExitCode.Error_AndroidOBBError, "Stage Failed. Could not build OBB {0}. The file may be too big to fit in an OBB ({1} limit)", LocalObbName, LimitString);
-						}
 					}
 					else
 					{
@@ -615,26 +505,6 @@ public class AndroidPlatform : Platform
 				if (!CreateOBBFile(SC, StageDirectoryPath, LocalPatchName, FilesToPatch))
 				{
 					LogInformation("Failed to build OBB: " + LocalPatchName);
-					throw new AutomationException(ExitCode.Error_AndroidOBBError, "Stage Failed. Could not build OBB {0}. The file may be too big to fit in an OBB ({1} limit)", LocalPatchName, LimitString);
-				}
-			}
-
-			// Now create the overflow1 OBB as a ZIP archive if required.
-			if (FilesToOverflow1.Count() > 0)
-			{
-				if (!CreateOBBFile(SC, StageDirectoryPath, LocalOverflow1Name, FilesToOverflow1))
-				{
-					LogInformation("Failed to build OBB: " + LocalOverflow1Name);
-					throw new AutomationException(ExitCode.Error_AndroidOBBError, "Stage Failed. Could not build OBB {0}. The file may be too big to fit in an OBB ({1} limit)", LocalPatchName, LimitString);
-				}
-			}
-
-			// Now create the overflow2 OBB as a ZIP archive if required.
-			if (FilesToOverflow2.Count() > 0)
-			{
-				if (!CreateOBBFile(SC, StageDirectoryPath, LocalOverflow2Name, FilesToOverflow2))
-				{
-					LogInformation("Failed to build OBB: " + LocalOverflow2Name);
 					throw new AutomationException(ExitCode.Error_AndroidOBBError, "Stage Failed. Could not build OBB {0}. The file may be too big to fit in an OBB ({1} limit)", LocalPatchName, LimitString);
 				}
 			}
@@ -664,8 +534,6 @@ public class AndroidPlatform : Platform
 			foreach (string GPUArchitecture in GPUArchitectures)
 			{
 				string ApkName = GetFinalApkName(Params, SC.StageExecutables[0], true, bMakeSeparateApks ? Architecture : "", bMakeSeparateApks ? GPUArchitecture : "");
-				string ApkBareName = GetFinalApkName(Params, SC.StageExecutables[0], true, "", "");
-				bool bHaveAPK = !bEnableBundle;     // do not have a standard APK if bundle enabled
 				if (!SC.IsCodeBasedProject)
 				{
 					string UE4SOName = GetFinalApkName(Params, SC.StageExecutables[0], false, bMakeSeparateApks ? Architecture : "", bMakeSeparateApks ? GPUArchitecture : "");
@@ -712,10 +580,6 @@ public class AndroidPlatform : Platform
 			    string ObbName = "";
 				string DevicePatchName = "";
 				string PatchName = "";
-				string DeviceOverflow1Name = "";
-				string Overflow1Name = "";
-				string DeviceOverflow2Name = "";
-				string Overflow2Name = "";
 				if (!bPackageDataInsideApk)
 			    {
 				    DeviceObbName = GetDeviceObbName(ApkName, SC);
@@ -734,48 +598,6 @@ public class AndroidPlatform : Platform
 						// apply store version to OBB to make it unique for PlayStore upload
 						UpdateObbStoreVersion(PatchName);
 					}
-
-					if (File.Exists(LocalOverflow1Name))
-					{
-						DeviceOverflow1Name = GetDeviceOverflowName(ApkName, SC, 1);
-						Overflow1Name = GetFinalOverflowName(ApkName, SC, 1);
-						CopyFile(LocalOverflow1Name, Overflow1Name);
-
-						// apply store version to OBB to make it unique for PlayStore upload
-						UpdateObbStoreVersion(Overflow1Name);
-					}
-
-					if (File.Exists(LocalOverflow2Name))
-					{
-						DeviceOverflow2Name = GetDeviceOverflowName(ApkName, SC, 2);
-						Overflow2Name = GetFinalOverflowName(ApkName, SC, 2);
-						CopyFile(LocalOverflow2Name, Overflow2Name);
-
-						// apply store version to OBB to make it unique for PlayStore upload
-						UpdateObbStoreVersion(Overflow2Name);
-					}
-				}
-
-				// check for optional universal apk
-				string APKDirectory = Path.GetDirectoryName(ApkName);
-				string APKNameWithoutExtension = Path.GetFileNameWithoutExtension(ApkName);
-				string APKBareNameWithoutExtension = Path.GetFileNameWithoutExtension(ApkBareName);
-				string UniversalApkName = Path.Combine(APKDirectory, APKNameWithoutExtension + "_universal.apk");
-				bool bHaveUniversal = false;
-				if (bEnableBundle && bEnableUniversalAPK)
-				{
-					if (FileExists(UniversalApkName))
-					{
-						bHaveUniversal = true;
-					}
-					else
-					{
-						UniversalApkName = Path.Combine(APKDirectory, APKBareNameWithoutExtension + "_universal.apk");
-						if (FileExists(UniversalApkName))
-						{
-							bHaveUniversal = true;
-						}
-					}
 				}
 
 				//figure out which platforms we need to create install files for
@@ -791,30 +613,13 @@ public class AndroidPlatform : Platform
 					// Write install batch file(s).
 					string PackageName = GetPackageInfo(ApkName, SC, false);
 					string BatchName = GetFinalBatchName(ApkName, SC, bMakeSeparateApks ? Architecture : "", bMakeSeparateApks ? GPUArchitecture : "", false, EBatchType.Install, Target);
-					string[] BatchLines = GenerateInstallBatchFile(bPackageDataInsideApk, PackageName, ApkName, Params, ObbName, DeviceObbName, false, PatchName, DevicePatchName, false, 
-						Overflow1Name, DeviceOverflow1Name, false, Overflow2Name, DeviceOverflow2Name, false, bIsPC, Params.Distribution, TargetSDKVersion > 22);
-					if (bHaveAPK)
-					{
-						// make a batch file that can be used to install the .apk and .obb files
-						File.WriteAllLines(BatchName, BatchLines);
-					}
+					// make a batch file that can be used to install the .apk and .obb files
+					string[] BatchLines = GenerateInstallBatchFile(bPackageDataInsideApk, PackageName, ApkName, Params, ObbName, DeviceObbName, false, PatchName, DevicePatchName, false, bIsPC, Params.Distribution, TargetSDKVersion > 22);
+					File.WriteAllLines(BatchName, BatchLines);
 					// make a batch file that can be used to uninstall the .apk and .obb files
 					string UninstallBatchName = GetFinalBatchName(ApkName, SC, bMakeSeparateApks ? Architecture : "", bMakeSeparateApks ? GPUArchitecture : "", false, EBatchType.Uninstall, Target);
-					BatchLines = GenerateUninstallBatchFile(bPackageDataInsideApk, PackageName, ApkName, Params, bIsPC);
-					if (bHaveAPK || bHaveUniversal)
-					{
-						File.WriteAllLines(UninstallBatchName, BatchLines);
-					}
-
-					string UniversalBatchName = "";
-					if (bHaveUniversal)
-					{
-						UniversalBatchName = GetFinalBatchName(UniversalApkName, SC, "", "", false, EBatchType.Install, Target);
-						// make a batch file that can be used to install the .apk
-						string[] UniversalBatchLines = GenerateInstallBatchFile(bPackageDataInsideApk, PackageName, UniversalApkName, Params, ObbName, DeviceObbName, false, PatchName, DevicePatchName, false,
-							Overflow1Name, DeviceOverflow1Name, false, Overflow2Name, DeviceOverflow2Name, false, bIsPC, Params.Distribution, TargetSDKVersion > 22);
-						File.WriteAllLines(UniversalBatchName, UniversalBatchLines);
-					}
+					BatchLines = GenerateUninstallBatchFile(bPackageDataInsideApk, PackageName, ApkName, Params, ObbName, DeviceObbName, false, PatchName, DevicePatchName, false, bIsPC);
+					File.WriteAllLines(UninstallBatchName, BatchLines);
 
 					string SymbolizeBatchName = GetFinalBatchName(ApkName, SC, Architecture, GPUArchitecture, false, EBatchType.Symbolize, Target);
 					if(bBuildWithHiddenSymbolVisibility || bSaveSymbols)
@@ -825,19 +630,9 @@ public class AndroidPlatform : Platform
 
 					if (Utils.IsRunningOnMono)
 					{
-						if (bHaveAPK)
-						{
-							CommandUtils.FixUnixFilePermissions(BatchName);
-						}
-						if (bHaveAPK || bHaveUniversal)
-						{
-							CommandUtils.FixUnixFilePermissions(UninstallBatchName);
-						}
-						if (bHaveUniversal)
-						{
-							CommandUtils.FixUnixFilePermissions(UniversalBatchName);
-						}
-						if (bBuildWithHiddenSymbolVisibility || bSaveSymbols)
+						CommandUtils.FixUnixFilePermissions(BatchName);
+						CommandUtils.FixUnixFilePermissions(UninstallBatchName);
+						if(bBuildWithHiddenSymbolVisibility || bSaveSymbols)
 						{
 							CommandUtils.FixUnixFilePermissions(SymbolizeBatchName);
 						}
@@ -875,9 +670,7 @@ public class AndroidPlatform : Platform
 		PrintRunTime();
 	}
 
-    private string[] GenerateInstallBatchFile(bool bPackageDataInsideApk, string PackageName, string ApkName, ProjectParams Params, string ObbName, string DeviceObbName, bool bNoObbInstall,
-		string PatchName, string DevicePatchName, bool bNoPatchInstall, string Overflow1Name, string DeviceOverflow1Name, bool bNoOverflow1Install, string Overflow2Name, string DeviceOverflow2Name, bool bNoOverflow2Install,
-		bool bIsPC, bool bIsDistribution, bool bRequireRuntimeStoragePermission)
+    private string[] GenerateInstallBatchFile(bool bPackageDataInsideApk, string PackageName, string ApkName, ProjectParams Params, string ObbName, string DeviceObbName, bool bNoObbInstall, string PatchName, string DevicePatchName, bool bNoPatchInstall, bool bIsPC, bool bIsDistribution, bool bRequireRuntimeStoragePermission)
     {
         string[] BatchLines = null;
         string ReadPermissionGrantCommand = "shell pm grant " + PackageName + " android.permission.READ_EXTERNAL_STORAGE";
@@ -891,8 +684,6 @@ public class AndroidPlatform : Platform
 		bool bDontMoveOBB = bPackageDataInsideApk || !bIsDistribution;
 
 		bool bHavePatch = (PatchName != "");
-		bool bHaveOverflow1 = (Overflow1Name != "");
-		bool bHaveOverflow2 = (Overflow2Name != "");
 
 		if (!bIsPC)
         {
@@ -900,8 +691,6 @@ public class AndroidPlatform : Platform
 			// Note that $STORAGE/Android/obb will be the folder that contains the obb if you download the app from playstore.
 			string OBBInstallCommand = bNoObbInstall ? "shell 'rm -r $EXTERNAL_STORAGE/" + DeviceObbName + "'" : "push " + Path.GetFileName(ObbName) + " $STORAGE/" + (bIsDistribution ? "Download/" : "") + DeviceObbName;
 			string PatchInstallCommand = bNoPatchInstall ? "shell 'rm -r $EXTERNAL_STORAGE/" + DevicePatchName + "'" : "push " + Path.GetFileName(PatchName) + " $STORAGE/" + (bIsDistribution ? "Download/" : "") + DevicePatchName;
-			string Overflow1InstallCommand = bNoOverflow1Install ? "shell 'rm -r $EXTERNAL_STORAGE/" + DeviceOverflow1Name + "'" : "push " + Path.GetFileName(Overflow1Name) + " $STORAGE/" + (bIsDistribution ? "Download/" : "") + DeviceOverflow1Name;
-			string Overflow2InstallCommand = bNoOverflow2Install ? "shell 'rm -r $EXTERNAL_STORAGE/" + DeviceOverflow2Name + "'" : "push " + Path.GetFileName(Overflow2Name) + " $STORAGE/" + (bIsDistribution ? "Download/" : "") + DeviceOverflow2Name;
 
 			LogInformation("Writing shell script for install with {0}", bPackageDataInsideApk ? "data in APK" : "separate obb");
             BatchLines = new string[] {
@@ -935,8 +724,6 @@ public class AndroidPlatform : Platform
 						bPackageDataInsideApk ? "" : "\t$ADB $DEVICE " + OBBInstallCommand,
 						bPackageDataInsideApk ? "if [ 1 ]; then" : "\tif [ $? -eq 0 ]; then",
 						!bHavePatch ? "" : (bPackageDataInsideApk ? "" : "\t$ADB $DEVICE " + PatchInstallCommand),
-						!bHaveOverflow1 ? "" : (bPackageDataInsideApk ? "" : "\t$ADB $DEVICE " + Overflow1InstallCommand),
-						!bHaveOverflow2 ? "" : (bPackageDataInsideApk ? "" : "\t$ADB $DEVICE " + Overflow2InstallCommand),
 						bDontMoveOBB ? "" : "\t\t$ADB $DEVICE shell mkdir $STORAGE/Android/" + TargetAndroidLocation + PackageName, // don't check for error since installing may create the obb directory
 						bDontMoveOBB ? "" : "\t\t$ADB $DEVICE shell cp $STORAGE/Download/" + TargetAndroidLocation + PackageName + "/* $STORAGE/Android/" + TargetAndroidLocation + PackageName,
 						bDontMoveOBB ? "" : "\t\t$ADB $DEVICE shell rm -r $STORAGE/Download/" + TargetAndroidLocation + PackageName,
@@ -959,8 +746,6 @@ public class AndroidPlatform : Platform
         {
 			string OBBInstallCommand = bNoObbInstall ? "shell rm -r %STORAGE%/" + DeviceObbName : "push " + Path.GetFileName(ObbName) + " %STORAGE%/" + (bIsDistribution ? "Download/" : "") + DeviceObbName;
 			string PatchInstallCommand = bNoPatchInstall ? "shell rm -r %STORAGE%/" + DevicePatchName : "push " + Path.GetFileName(PatchName) + " %STORAGE%/" + (bIsDistribution ? "Download/" : "") + DevicePatchName;
-			string Overflow1InstallCommand = bNoOverflow1Install ? "shell rm -r %STORAGE%/" + DeviceOverflow1Name : "push " + Path.GetFileName(Overflow1Name) + " %STORAGE%/" + (bIsDistribution ? "Download/" : "") + DeviceOverflow1Name;
-			string Overflow2InstallCommand = bNoOverflow2Install ? "shell rm -r %STORAGE%/" + DeviceOverflow2Name : "push " + Path.GetFileName(Overflow2Name) + " %STORAGE%/" + (bIsDistribution ? "Download/" : "") + DeviceOverflow2Name;
 
 			LogInformation("Writing bat for install with {0}", bPackageDataInsideApk ? "data in APK" : "separate OBB");
             BatchLines = new string[] {
@@ -990,10 +775,6 @@ public class AndroidPlatform : Platform
 						bPackageDataInsideApk ? "" : "if \"%ERRORLEVEL%\" NEQ \"0\" goto Error",
 						!bHavePatch ? "" : (bPackageDataInsideApk ? "" : "%ADB% %DEVICE% " + PatchInstallCommand),
 						!bHavePatch ? "" : (bPackageDataInsideApk ? "" : "if \"%ERRORLEVEL%\" NEQ \"0\" goto Error"),
-						!bHaveOverflow1 ? "" : (bPackageDataInsideApk ? "" : "%ADB% %DEVICE% " + Overflow1InstallCommand),
-						!bHaveOverflow1 ? "" : (bPackageDataInsideApk ? "" : "if \"%ERRORLEVEL%\" NEQ \"0\" goto Error"),
-						!bHaveOverflow2 ? "" : (bPackageDataInsideApk ? "" : "%ADB% %DEVICE% " + Overflow2InstallCommand),
-						!bHaveOverflow2 ? "" : (bPackageDataInsideApk ? "" : "if \"%ERRORLEVEL%\" NEQ \"0\" goto Error"),
 						bDontMoveOBB ? "" : "%ADB% %DEVICE% shell mkdir %STORAGE%/Android/" + TargetAndroidLocation + PackageName, // don't check for error since installing may create the obb directory
 						bDontMoveOBB ? "" : "%ADB% %DEVICE% shell cp %STORAGE%/Download/" + TargetAndroidLocation + PackageName + "/* %STORAGE%/Android/" + TargetAndroidLocation + PackageName,
 						bDontMoveOBB ? "" : "if \"%ERRORLEVEL%\" NEQ \"0\" goto Error",
@@ -1019,7 +800,7 @@ public class AndroidPlatform : Platform
         return BatchLines;
     }
 
-	private string[] GenerateUninstallBatchFile(bool bPackageDataInsideApk, string PackageName, string ApkName, ProjectParams Params, bool bIsPC)
+	private string[] GenerateUninstallBatchFile(bool bPackageDataInsideApk, string PackageName, string ApkName, ProjectParams Params, string ObbName, string DeviceObbName, bool bNoObbInstall, string PatchName, string DevicePatchName, bool bNoPatchInstall, bool bIsPC)
 	{
 		string[] BatchLines = null;
 
@@ -1139,87 +920,18 @@ public class AndroidPlatform : Platform
 		{
 			foreach (string GPUArchitecture in GPUArchitectures)
 			{
-				string ApkBareName = GetFinalApkName(Params, SC.StageExecutables[0], true, "", "");
 				string ApkName = GetFinalApkName(Params, SC.StageExecutables[0], true, bMakeSeparateApks ? Architecture : "", bMakeSeparateApks ? GPUArchitecture : "");
-				bool bHaveAPK = FileExists(ApkName);
 				string ObbName = GetFinalObbName(ApkName, SC);
 				string PatchName = GetFinalPatchName(ApkName, SC);
-				string Overflow1Name = GetFinalOverflowName(ApkName, SC, 1);
-				string Overflow2Name = GetFinalOverflowName(ApkName, SC, 2);
 				bool bBuildWithHiddenSymbolVisibility = BuildWithHiddenSymbolVisibility(SC);
 				bool bSaveSymbols = GetSaveSymbols(SC);
 				//string NoOBBBatchName = GetFinalBatchName(ApkName, Params, bMakeSeparateApks ? Architecture : "", bMakeSeparateApks ? GPUArchitecture : "", true, false);
 
-				string APKDirectory = Path.GetDirectoryName(ApkName);
-				string APKNameWithoutExtension = Path.GetFileNameWithoutExtension(ApkName);
-				string APKBareNameWithoutExtension = Path.GetFileNameWithoutExtension(ApkBareName);
-
-				bool bHaveAAB = false;
-				bool bHaveUniversal = false;
-
-				// copy optional app bundle if exists
-				string AppBundleName = Path.Combine(APKDirectory, APKNameWithoutExtension + ".aab");
-				if (FileExists(AppBundleName))
-				{
-					bHaveAAB = true;
-					SC.ArchiveFiles(APKDirectory, Path.GetFileName(AppBundleName));
-				}
-				else
-				{
-					AppBundleName = Path.Combine(APKDirectory, APKBareNameWithoutExtension + ".aab");
-					if (FileExists(AppBundleName))
-					{
-						bHaveAAB = true;
-						SC.ArchiveFiles(APKDirectory, Path.GetFileName(AppBundleName));
-					}
-				}
-
-				// copy optional apks (zip of split apks) if exists
-				string APKSName = Path.Combine(APKDirectory, APKNameWithoutExtension + ".apks");
-				if (FileExists(APKSName))
-				{
-					SC.ArchiveFiles(APKDirectory, Path.GetFileName(APKSName));
-				}
-				else
-				{
-					APKSName = Path.Combine(APKDirectory, APKBareNameWithoutExtension + ".apks");
-					if (FileExists(APKSName))
-					{
-						SC.ArchiveFiles(APKDirectory, Path.GetFileName(APKSName));
-					}
-				}
-
-				// copy optional universal apk if exists
-				string UniversalApkName = Path.Combine(APKDirectory, APKNameWithoutExtension + "_universal.apk");
-				if (FileExists(UniversalApkName))
-				{
-					bHaveUniversal = true;
-					SC.ArchiveFiles(APKDirectory, Path.GetFileName(UniversalApkName));
-				}
-				else
-				{
-					UniversalApkName = Path.Combine(APKDirectory, APKBareNameWithoutExtension + "_universal.apk");
-					if (FileExists(UniversalApkName))
-					{
-						bHaveUniversal = true;
-						SC.ArchiveFiles(APKDirectory, Path.GetFileName(UniversalApkName));
-					}
-				}
-
 				// verify the files exist
 				if (!FileExists(ApkName))
 				{
-					// still valid if we found an AAB
-					if (!bHaveAAB)
-					{
-						throw new AutomationException(ExitCode.Error_AppNotFound, "ARCHIVE FAILED - {0} was not found", ApkName);
-					}
+					throw new AutomationException(ExitCode.Error_AppNotFound, "ARCHIVE FAILED - {0} was not found", ApkName);
 				}
-				else
-				{
-					SC.ArchiveFiles(Path.GetDirectoryName(ApkName), Path.GetFileName(ApkName));
-				}
-
 				if (!bPackageDataInsideApk && !FileExists(ObbName))
 				{
                     throw new AutomationException(ExitCode.Error_ObbNotFound, "ARCHIVE FAILED - {0} was not found", ObbName);
@@ -1238,6 +950,7 @@ public class AndroidPlatform : Platform
 					SC.ArchiveFiles(Path.GetDirectoryName(SymbolizedSOPath), Path.GetFileName(SymbolizedSOPath), true, null, SymbolizedSODirectory);
 				}
 
+				SC.ArchiveFiles(Path.GetDirectoryName(ApkName), Path.GetFileName(ApkName));
 				if (!bPackageDataInsideApk)
 				{
 					// only add if not already in archive list
@@ -1250,26 +963,18 @@ public class AndroidPlatform : Platform
 						{
 							SC.ArchiveFiles(Path.GetDirectoryName(PatchName), Path.GetFileName(PatchName));
 						}
-						if (FileExists(Overflow1Name))
-						{
-							SC.ArchiveFiles(Path.GetDirectoryName(Overflow1Name), Path.GetFileName(Overflow1Name));
-						}
-						if (FileExists(Overflow2Name))
-						{
-							SC.ArchiveFiles(Path.GetDirectoryName(Overflow2Name), Path.GetFileName(Overflow2Name));
-						}
 					}
 				}
 
 				// copy optional unprotected APK if exists
-				string UnprotectedApkName = Path.Combine(APKDirectory, "unprotected_" + APKNameWithoutExtension + ".apk");
+				string UnprotectedApkName = Path.Combine(Path.GetDirectoryName(ApkName), "unprotected_" + Path.GetFileName(ApkName));
 				if (FileExists(UnprotectedApkName))
 				{
-					SC.ArchiveFiles(APKDirectory, Path.GetFileName(UnprotectedApkName));
+					SC.ArchiveFiles(Path.GetDirectoryName(UnprotectedApkName), Path.GetFileName(UnprotectedApkName));
 				}
 
 				// copy optional logs directory if exists
-				string LogsDirName = Path.Combine(APKDirectory, APKNameWithoutExtension + ".logs");
+				string LogsDirName = Path.Combine(Path.GetDirectoryName(ApkName), Path.GetFileName(ApkName) + ".logs");
 				if (DirectoryExists(LogsDirName))
 				{
 					SC.ArchiveFiles(LogsDirName);
@@ -1283,23 +988,13 @@ public class AndroidPlatform : Platform
 				//helper delegate to prevent code duplication but allow us access to all the local variables we need
 				var CreateBatchFilesAndArchiveAction = new Action<UnrealTargetPlatform>(Target =>
 				{
-					if (bHaveAPK)
-					{
-						string BatchName = GetFinalBatchName(ApkName, SC, bMakeSeparateApks ? Architecture : "", bMakeSeparateApks ? GPUArchitecture : "", false, EBatchType.Install, Target);
-						SC.ArchiveFiles(Path.GetDirectoryName(BatchName), Path.GetFileName(BatchName));
-					}
-					if (bHaveAPK || bHaveUniversal)
-					{
-						string UninstallBatchName = GetFinalBatchName(ApkName, SC, bMakeSeparateApks ? Architecture : "", bMakeSeparateApks ? GPUArchitecture : "", false, EBatchType.Uninstall, Target);
-						SC.ArchiveFiles(Path.GetDirectoryName(UninstallBatchName), Path.GetFileName(UninstallBatchName));
-					}
-					if (bHaveUniversal)
-					{
-						string UniversalBatchName = GetFinalBatchName(UniversalApkName, SC, "", "", false, EBatchType.Install, Target);
-						SC.ArchiveFiles(Path.GetDirectoryName(UniversalBatchName), Path.GetFileName(UniversalBatchName));
-					}
+					string BatchName = GetFinalBatchName(ApkName, SC, bMakeSeparateApks ? Architecture : "", bMakeSeparateApks ? GPUArchitecture : "", false, EBatchType.Install, Target);
+					string UninstallBatchName = GetFinalBatchName(ApkName, SC, bMakeSeparateApks ? Architecture : "", bMakeSeparateApks ? GPUArchitecture : "", false, EBatchType.Uninstall, Target);
 
-					if (bBuildWithHiddenSymbolVisibility || bSaveSymbols)
+					SC.ArchiveFiles(Path.GetDirectoryName(BatchName), Path.GetFileName(BatchName));
+					SC.ArchiveFiles(Path.GetDirectoryName(UninstallBatchName), Path.GetFileName(UninstallBatchName));
+
+					if(bBuildWithHiddenSymbolVisibility || bSaveSymbols)
 					{
 						string SymbolizeBatchName = GetFinalBatchName(ApkName, SC, Architecture, GPUArchitecture, false, EBatchType.Symbolize, Target);
 						SC.ArchiveFiles(Path.GetDirectoryName(SymbolizeBatchName), Path.GetFileName(SymbolizeBatchName));
@@ -1563,8 +1258,6 @@ public class AndroidPlatform : Platform
             String StorageLocation = Result.Output.Trim(); // "/mnt/sdcard";
             string DeviceObbName = StorageLocation + "/" + GetDeviceObbName(ApkName, SC);
 			string DevicePatchName = StorageLocation + "/" + GetDevicePatchName(ApkName, SC);
-			string DeviceOverflow1Name = StorageLocation + "/" + GetDeviceOverflowName(ApkName, SC, 1);
-			string DeviceOverflow2Name = StorageLocation + "/" + GetDeviceOverflowName(ApkName, SC, 2);
 			string RemoteDir = StorageLocation + "/UE4Game/" + Params.ShortProjectName;
 
             // determine if APK out of date
@@ -1941,8 +1634,6 @@ public class AndroidPlatform : Platform
                 // delete the .obb file, since it will cause nothing we just deployed to be used
                 RunAdbCommand(Params, DeviceName, "shell rm " + DeviceObbName);
 				RunAdbCommand(Params, DeviceName, "shell rm " + DevicePatchName);
-				RunAdbCommand(Params, DeviceName, "shell rm " + DeviceOverflow1Name);
-				RunAdbCommand(Params, DeviceName, "shell rm " + DeviceOverflow2Name);
 			}
 			else if (SC.Archive)
             {
@@ -1965,28 +1656,6 @@ public class AndroidPlatform : Platform
 					string BaseCommandline = "push";
 
 					string Commandline = string.Format("{0} \"{1}\" \"{2}\"", BaseCommandline, PatchPath, DevicePatchName);
-					RunAdbCommand(Params, DeviceName, Commandline);
-				}
-
-				// deploy the overflow1 if there is one
-				string Overflow1Path = Path.Combine(SC.StageDirectory.FullName, GetFinalOverflowName(ApkName, SC, 1));
-				if (File.Exists(Overflow1Path))
-				{
-					// cache some strings
-					string BaseCommandline = "push";
-
-					string Commandline = string.Format("{0} \"{1}\" \"{2}\"", BaseCommandline, Overflow1Path, DeviceOverflow1Name);
-					RunAdbCommand(Params, DeviceName, Commandline);
-				}
-
-				// deploy the overflow2 if there is one
-				string Overflow2Path = Path.Combine(SC.StageDirectory.FullName, GetFinalOverflowName(ApkName, SC, 2));
-				if (File.Exists(Overflow2Path))
-				{
-					// cache some strings
-					string BaseCommandline = "push";
-
-					string Commandline = string.Format("{0} \"{1}\" \"{2}\"", BaseCommandline, Overflow2Path, DeviceOverflow2Name);
 					RunAdbCommand(Params, DeviceName, Commandline);
 				}
 			}
@@ -2347,7 +2016,14 @@ public class AndroidPlatform : Platform
 
 	private string GetBestGPUArchitecture(ProjectParams Params, string DeviceName)
 	{
-		return "";
+		bool bMakeSeparateApks = UnrealBuildTool.AndroidExports.ShouldMakeSeparateApks();
+		// if we are joining all .so's into a single .apk, there's no need to find the best one - there is no other one
+		if (!bMakeSeparateApks)
+		{
+			return "";
+		}
+
+		return "-es2";
 	}
 
 	public override IProcessResult RunClient(ERunOptions ClientRunFlags, string ClientApp, string ClientCmdLine, ProjectParams Params)
@@ -2358,6 +2034,18 @@ public class AndroidPlatform : Platform
 		//same with the package names
 		List<string> PackageNames = new List<string>();
 
+		//strip off the device, GPU architecture and extension (.so)
+		int DashIndex = ClientApp.LastIndexOf("-");
+		if (DashIndex >= 0)
+		{
+			ClientApp = ClientApp.Substring(0, DashIndex);
+			DashIndex = ClientApp.LastIndexOf("-");
+			if (DashIndex >= 0)
+			{
+				ClientApp = ClientApp.Substring(0, DashIndex);
+			}
+		}
+
 		foreach (string DeviceName in Params.DeviceNames)
 		{
 			//save the device name
@@ -2366,30 +2054,12 @@ public class AndroidPlatform : Platform
 			//get the package name and save that
 			string DeviceArchitecture = GetBestDeviceArchitecture(Params, DeviceName);
 			string GPUArchitecture = GetBestGPUArchitecture(Params, DeviceName);
-
-			//strip off the device, GPU architecture and extension (.so)
-			int DashIndex = ClientApp.LastIndexOf("-");
-			if (DashIndex >= 0)
-			{
-				ClientApp = ClientApp.Substring(0, DashIndex);
-
-				if (GPUArchitecture.Length > 0)
-				{
-					DashIndex = ClientApp.LastIndexOf("-");
-					if (DashIndex >= 0)
-					{
-						ClientApp = ClientApp.Substring(0, DashIndex);
-					}
-				}
-			}
-
 			string ApkName = GetFinalApkName(Params, Path.GetFileNameWithoutExtension(ClientApp), true, DeviceArchitecture, GPUArchitecture);
-
 			if (!File.Exists(ApkName))
 			{
 				throw new AutomationException(ExitCode.Error_AppNotFound, "Failed to find application " + ApkName);
 			}
-			
+			Console.WriteLine("Apk='{0}', ClientApp='{1}', ExeName='{2}'", ApkName, ClientApp, Params.GetProjectExeForPlatform(UnrealTargetPlatform.Android).ToString());
 
 			// run aapt to get the name of the intent
 			string PackageName = GetPackageInfo(ApkName, false);
@@ -2558,6 +2228,19 @@ public class AndroidPlatformMulti : AndroidPlatform
     }
 }
 
+public class AndroidPlatformATC : AndroidPlatform
+{
+    public override string GetCookPlatform(bool bDedicatedServer, bool bIsClientOnly)
+    {
+		return bIsClientOnly ? "Android_ATCClient" : "Android_ATC";
+	}
+
+	public override TargetPlatformDescriptor GetTargetPlatformDescriptor()
+    {
+        return new TargetPlatformDescriptor(TargetPlatformType, "ATC");
+    }
+}
+
 public class AndroidPlatformDXT : AndroidPlatform
 {
     public override string GetCookPlatform(bool bDedicatedServer, bool bIsClientOnly)
@@ -2570,6 +2253,32 @@ public class AndroidPlatformDXT : AndroidPlatform
         return new TargetPlatformDescriptor(TargetPlatformType, "DXT");
     }
 }
+
+public class AndroidPlatformETC1 : AndroidPlatform
+{
+    public override string GetCookPlatform(bool bDedicatedServer, bool bIsClientOnly)
+    {
+		return bIsClientOnly ? "Android_ETC1Client" : "Android_ETC1";
+    }
+
+    public override TargetPlatformDescriptor GetTargetPlatformDescriptor()
+    {
+        return new TargetPlatformDescriptor(TargetPlatformType, "ETC1");
+    }
+}
+
+public class AndroidPlatformETC1a : AndroidPlatform
+{
+    public override string GetCookPlatform(bool bDedicatedServer, bool bIsClientOnly)
+    {
+        return "Android_ETC1a";
+    }
+    public override TargetPlatformDescriptor GetTargetPlatformDescriptor()
+    {
+        return new TargetPlatformDescriptor(TargetPlatformType, "ETC1a");
+    }
+}
+
 public class AndroidPlatformETC2 : AndroidPlatform
 {
     public override string GetCookPlatform(bool bDedicatedServer, bool bIsClientOnly)
@@ -2579,6 +2288,18 @@ public class AndroidPlatformETC2 : AndroidPlatform
     public override TargetPlatformDescriptor GetTargetPlatformDescriptor()
     {
         return new TargetPlatformDescriptor(TargetPlatformType, "ETC2");
+    }
+}
+
+public class AndroidPlatformPVRTC : AndroidPlatform
+{
+    public override string GetCookPlatform(bool bDedicatedServer, bool bIsClientOnly)
+    {
+		return bIsClientOnly ? "Android_PVRTCClient" : "Android_PVRTC";
+    }
+    public override TargetPlatformDescriptor GetTargetPlatformDescriptor()
+    {
+        return new TargetPlatformDescriptor(TargetPlatformType, "PVRTC");
     }
 }
 

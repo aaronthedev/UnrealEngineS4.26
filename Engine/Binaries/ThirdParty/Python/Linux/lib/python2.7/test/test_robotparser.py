@@ -136,31 +136,6 @@ Disallow: /cyberworld/map/
     bad = ['/cyberworld/map/index.html']
 
 
-class StringFormattingTest(BaseRobotTest, unittest.TestCase):
-    robots_txt = """\
-User-agent: *
-Crawl-delay: 1
-Request-rate: 3/15
-Disallow: /cyberworld/map/ # This is an infinite virtual URL space
-
-# Cybermapper knows where to go.
-User-agent: cybermapper
-Disallow: /some/path
-    """
-
-    expected_output = """\
-User-agent: cybermapper
-Disallow: /some/path
-
-User-agent: *
-Disallow: /cyberworld/map/
-
-"""
-
-    def test_string_formatting(self):
-        self.assertEqual(str(self.parser), self.expected_output)
-
-
 class RobotHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
@@ -251,7 +226,6 @@ def test_main():
         UseFirstUserAgentWildcardTest,
         EmptyQueryStringTest,
         DefaultEntryTest,
-        StringFormattingTest,
         PasswordProtectedSiteTestCase,
         NetworkTestCase)
 

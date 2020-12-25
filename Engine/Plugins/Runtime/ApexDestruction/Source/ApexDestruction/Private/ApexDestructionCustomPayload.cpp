@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ApexDestructionCustomPayload.h"
 #include "DestructibleComponent.h"
@@ -10,7 +10,6 @@
 
 void FApexDestructionSyncActors::BuildSyncData_AssumesLocked(const TArray<physx::PxRigidActor*>& ActiveActors)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	//We want to consolidate the transforms so that we update each destructible component once by passing it an array of chunks to update.
 	//This helps avoid a lot of duplicated work like marking render dirty, computing inverse world component, etc...
 
@@ -47,12 +46,11 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			}
 		}
 	}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
+
 }
 
 void FApexDestructionSyncActors::FinalizeSync()
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	//update each component
 	for (auto It = ComponentUpdateMapping.CreateIterator(); It; ++It)
 	{
@@ -74,7 +72,6 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	}
 
 	ComponentUpdateMapping.Reset();
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 TWeakObjectPtr<UPrimitiveComponent> FApexDestructionCustomPayload::GetOwningComponent() const
@@ -89,7 +86,6 @@ int32 FApexDestructionCustomPayload::GetItemIndex() const
 
 FName FApexDestructionCustomPayload::GetBoneName() const
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	if(UDestructibleComponent* RawOwningComponent = OwningComponent.Get())
 	{
 		return RawOwningComponent->GetBoneName(UDestructibleComponent::ChunkIdxToBoneIdx(ChunkIndex));
@@ -98,14 +94,11 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	{
 		return NAME_None;
 	}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 FBodyInstance* FApexDestructionCustomPayload::GetBodyInstance() const
 {
 	return OwningComponent.IsValid() ? &OwningComponent->BodyInstance : nullptr;
 }
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 #endif // WITH_APEX

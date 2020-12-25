@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Mac/DesktopPlatformMac.h"
 #include "Mac/MacApplication.h"
@@ -196,16 +196,16 @@ private:
 
 	CancelButton = [[NSButton alloc] initWithFrame: NSMakeRect(10, 10, 80, 24)];
 	[CancelButton setTitle: @"Cancel"];
-	[CancelButton setBezelStyle: NSBezelStyleRounded];
-	[CancelButton setButtonType: NSButtonTypeMomentaryPushIn];
+	[CancelButton setBezelStyle: NSRoundedBezelStyle];
+	[CancelButton setButtonType: NSMomentaryPushInButton];
 	[CancelButton setAction: @selector(onCancel:)];
 	[CancelButton setTarget: self];
 	[self addSubview: CancelButton];
 
 	OKButton = [[NSButton alloc] initWithFrame: NSMakeRect(100, 10, 80, 24)];
 	[OKButton setTitle: @"OK"];
-	[OKButton setBezelStyle: NSBezelStyleRounded];
-	[OKButton setButtonType: NSButtonTypeMomentaryPushIn];
+	[OKButton setBezelStyle: NSRoundedBezelStyle];
+	[OKButton setButtonType: NSMomentaryPushInButton];
 	[OKButton setAction: @selector(onOK:)];
 	[OKButton setTarget: self];
 	[self addSubview: OKButton];
@@ -597,10 +597,8 @@ bool FDesktopPlatformMac::UpdateFileAssociations()
 	return Status == noErr;
 }
 
-bool FDesktopPlatformMac::RunUnrealBuildTool(const FText& Description, const FString& RootDir, const FString& Arguments, FFeedbackContext* Warn, int32& OutExitCode)
+bool FDesktopPlatformMac::RunUnrealBuildTool(const FText& Description, const FString& RootDir, const FString& Arguments, FFeedbackContext* Warn)
 {
-	OutExitCode = 1;
-
 	// Get the path to UBT
 	FString UnrealBuildToolPath = RootDir / TEXT("Engine/Binaries/DotNET/UnrealBuildTool.exe");
 	if(IFileManager::Get().FileSize(*UnrealBuildToolPath) < 0)
@@ -614,7 +612,8 @@ bool FDesktopPlatformMac::RunUnrealBuildTool(const FText& Description, const FSt
 	FString CmdLineParams = FString::Printf(TEXT("\"%s\" \"%s\" %s"), *ScriptPath, *UnrealBuildToolPath, *Arguments);
 
 	// Spawn it
-	return FFeedbackContextMarkup::PipeProcessOutput(Description, TEXT("/bin/sh"), CmdLineParams, Warn, &OutExitCode) && OutExitCode == 0;
+	int32 ExitCode = 0;
+	return FFeedbackContextMarkup::PipeProcessOutput(Description, TEXT("/bin/sh"), CmdLineParams, Warn, &ExitCode) && ExitCode == 0;
 }
 
 bool FDesktopPlatformMac::IsUnrealBuildToolRunning()

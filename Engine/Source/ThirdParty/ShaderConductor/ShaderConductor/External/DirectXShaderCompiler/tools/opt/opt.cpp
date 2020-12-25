@@ -14,7 +14,7 @@
 
 #include "BreakpointPrinter.h"
 #include "NewPMDriver.h"
-#include "llvm/PassPrinters/PassPrinters.h"
+#include "PassPrinters.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Analysis/CallGraph.h"
 #include "llvm/Analysis/CallGraphSCCPass.h"
@@ -295,10 +295,6 @@ void initializePollyPasses(llvm::PassRegistry &Registry);
 }
 #endif
 
-// HLSL Change Start
-void __cdecl initializeDxilConvPasses(llvm::PassRegistry &);
-// HLSL Change End
-
 //===----------------------------------------------------------------------===//
 // main for opt
 //
@@ -309,7 +305,7 @@ int __cdecl main(int argc, char **argv) {
     return 1;
   llvm::sys::fs::AutoCleanupPerThreadFileSystem auto_cleanup_fs;
   if (FAILED(DxcInitThreadMalloc())) return 1;
-  DxcSetThreadMallocToDefault();
+  DxcSetThreadMallocOrDefault(nullptr);
   llvm::sys::fs::MSFileSystem* msfPtr;
   if (FAILED(CreateMSFileSystemForDisk(&msfPtr))) return 1;
   std::unique_ptr<llvm::sys::fs::MSFileSystem> msf(msfPtr);
@@ -352,12 +348,13 @@ int __cdecl main(int argc, char **argv) {
   //initializeWinEHPreparePass(Registry);   // HLSL Change: remove EH passes
   //initializeDwarfEHPreparePass(Registry); // HLSL Change: remove EH passes
   //initializeSjLjEHPreparePass(Registry);  // HLSL Change: remove EH passes
-  // HLSL Change Starts
+  // MS Change Starts
   initializeReducibilityAnalysisPass(Registry);
-#ifdef _WIN32
-  initializeDxilConvPasses(Registry);
+#if HLSL_INTERNAL
+  void initializeHlslInternalPasses(PassRegistry &);
+  initializeHlslInternalPasses(Registry);
 #endif
-  // HLSL Change Ends
+  // MS Change Ends
 
 #ifdef LINK_POLLY_INTO_TOOLS
   polly::initializePollyPasses(Registry);

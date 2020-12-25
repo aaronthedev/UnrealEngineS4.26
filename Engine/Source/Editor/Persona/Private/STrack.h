@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,6 +25,7 @@ class STrack;
 class STrackNode;
 
 //////////////////////////////////////////////////////////////////////////
+DECLARE_DELEGATE_RetVal( float, FOnGetScrubValue )
 DECLARE_DELEGATE_OneParam( FOnSelectionChanged, const TArray<UObject*>& )
 DECLARE_DELEGATE( FOnNodeSelectionChanged )
 DECLARE_DELEGATE( FOnUpdatePanel )
@@ -205,10 +206,9 @@ protected:
 	mutable FVector2D	LastSize; //HACK Fixme: Need to update in OnPaint in case we are drag/dropped
 	FGeometry			CachedTrackGeometry; //Our parent tracks geometry, so we can calculate scale/position
 	
-	float				DistanceDragged;
 	bool				bBeingDragged;
 	bool				bCenterOnPosition;
-	bool				bAllowDrag;
+	bool				AllowDrag;
 	bool				bContentOverriden;
 
 	friend class STrack;
@@ -227,6 +227,7 @@ public:
 		, _TrackMaxValue()
 		, _TrackMinValue()
 		, _TrackNumDiscreteValues()
+		, _ScrubPosition()
 		, _TrackColor(FLinearColor::White)
 		, _OnSelectionChanged()
 		, _DraggableBars()
@@ -244,6 +245,7 @@ public:
 		SLATE_ATTRIBUTE( float, TrackMaxValue )
 		SLATE_ATTRIBUTE( float, TrackMinValue )
 		SLATE_ATTRIBUTE( int32, TrackNumDiscreteValues )
+		SLATE_ATTRIBUTE( float, ScrubPosition )
 		SLATE_ARGUMENT( FLinearColor, TrackColor )
 		SLATE_EVENT( FOnNodeSelectionChanged, OnSelectionChanged )
 		SLATE_ATTRIBUTE( TArray<float>, DraggableBars )
@@ -311,6 +313,7 @@ protected:
 	TAttribute<float>						TrackMaxValue;
 	TAttribute<float>						TrackMinValue;
 	TAttribute<int32>						TrackNumDiscreteValues; // Discrete values (such as "number of frames in animation" used for accurate grid lines)
+	TAttribute<float>						ScrubPosition;
 
 	TAttribute<float>						ViewInputMin;
 	TAttribute<float>						ViewInputMax;

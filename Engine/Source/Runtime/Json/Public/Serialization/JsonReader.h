@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -431,38 +431,16 @@ private:
 					return true;
 
 				case CharType('}'):
-					{
-						OutToken = EJsonToken::CurlyClose;
-						if (ParseState.Num())
-						{
-							ParseState.Pop();
-							return true;
-						}
-						else
-						{
-							SetErrorMessage(TEXT("Unknown state reached while parsing Json token."));
-							return false;
-						}
-					}
+					OutToken = EJsonToken::CurlyClose; ParseState.Pop();
+					return true;
 
 				case CharType('['):
 					OutToken = EJsonToken::SquareOpen; ParseState.Push( EJson::Array );
 					return true;
 
 				case CharType(']'):
-					{
-						OutToken = EJsonToken::SquareClose;
-						if (ParseState.Num())
-						{
-							ParseState.Pop();
-							return true;
-						}
-						else
-						{
-							SetErrorMessage(TEXT("Unknown state reached while parsing Json token."));
-							return false;
-						}
-					}
+					OutToken = EJsonToken::SquareClose; ParseState.Pop();
+					return true;
 
 				case CharType(':'):
 					OutToken = EJsonToken::Colon;
@@ -600,8 +578,7 @@ private:
 								return false;
 							}
 
-							//@TODO: FLOATPRECISION: this is gross
-							HexNum += HexDigit * (int32)FMath::Pow(16, (float)Radix);
+							HexNum += HexDigit * FMath::Pow(16, Radix);
 						}
 
 						String += (FString::ElementType)HexNum;

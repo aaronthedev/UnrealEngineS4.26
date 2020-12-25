@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SCompositeFontEditor.h"
 #include "Fonts/FontCache.h"
@@ -1101,7 +1101,7 @@ UFontFace* STypefaceEntryEditor::SaveFontFaceAsAsset(const UFontFace* InFontFace
 	if (bFilenameValid)
 	{
 		const FString NewFaceAssetName = FPackageName::GetLongPackageAssetName(NewPackageName);
-		UPackage* NewFaceAssetPackage = CreatePackage( *NewPackageName);
+		UPackage* NewFaceAssetPackage = CreatePackage(nullptr, *NewPackageName);
 
 		GEditor->GetEditorSubsystem<UImportSubsystem>()->BroadcastAssetPreImport(GetMutableDefault<UFontFileImportFactory>(), UFontFace::StaticClass(), NewFaceAssetPackage, *NewFaceAssetName, *FPaths::GetExtension(InFontFace->GetFontFilename()));
 

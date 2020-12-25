@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #if WITH_ACCESSIBILITY
 
@@ -153,16 +153,20 @@ bool FSlateAccessibleWidget::IsHidden() const
 
 bool FSlateAccessibleWidget::SupportsFocus() const
 {
-	// all widgets that support accessibility support accessibility focus right now 
-	// This check is analogous to Widget.Pin()->IsAccessible()
-	// By definition all FSlateAccessibleWidgets are accessible. So we just return true 
-	return true;
+	if (Widget.IsValid())
+	{
+		return Widget.Pin()->SupportsKeyboardFocus();
+	}
+	return false;
 }
 
 bool FSlateAccessibleWidget::HasFocus() const
 {
-	TSharedPtr<FSlateAccessibleWidget> AccessibilityFocusedWidget = FSlateApplicationBase::Get().GetAccessibleMessageHandler()->GetAccessibilityFocusedWidget();
-	return AccessibilityFocusedWidget == AsShared();
+	if (Widget.IsValid())
+	{
+		return Widget.Pin()->HasKeyboardFocus();
+	}
+	return false;
 }
 
 void FSlateAccessibleWidget::SetFocus()
@@ -177,10 +181,6 @@ void FSlateAccessibleWidget::SetFocus()
 			FWidgetPath WidgetPath;
 			if (FSlateWindowHelper::FindPathToWidget(WindowArray, Widget.Pin().ToSharedRef(), WidgetPath))
 			{
-				// From FSlateApplication::SetUserFocus(), it seems that 
-				// no focus change will occur if we pass in a widget that cannot accept keyboard focus.
-				// this behavior is fine for widgets that don't support keyboard focus but do support accessibility focus 
-//@TODOAccessibility: Possible early out if not keyboard focusable 				
 				FSlateApplicationBase::Get().SetKeyboardFocus(WidgetPath, EFocusCause::SetDirectly);
 			}
 		}
@@ -270,7 +270,7 @@ TSharedPtr<IAccessibleWidget> FSlateAccessibleWindow::GetChildAtPosition(int32 X
 		if (UseHitTestGrid)
 		{
 			TSharedPtr<SWindow> SlateWindow = StaticCastSharedPtr<SWindow>(Widget.Pin());
-			TArray<FWidgetAndPointer> Hits = SlateWindow->GetHittestGrid().GetBubblePath(FVector2D(X, Y), 0.0f, false, INDEX_NONE);
+			TArray<FWidgetAndPointer> Hits = SlateWindow->GetHittestGrid().GetBubblePath(FVector2D(X, Y), 0.0f, false);
 			TSharedPtr<SWidget> LastAccessibleWidget = nullptr;
 			for (int32 i = 0; i < Hits.Num(); ++i)
 			{
@@ -322,7 +322,7 @@ TSharedPtr<IAccessibleWidget> FSlateAccessibleWindow::GetChildAtPosition(int32 X
 
 TSharedPtr<IAccessibleWidget> FSlateAccessibleWindow::GetFocusedWidget() const
 {
-	return FSlateApplicationBase::Get().GetAccessibleMessageHandler()->GetAccessibilityFocusedWidget();
+	return FSlateAccessibleWidgetCache::GetAccessibleWidgetChecked(FSlateApplicationBase::Get().GetKeyboardFocusedWidget());
 }
 
 FString FSlateAccessibleWindow::GetWidgetName() const

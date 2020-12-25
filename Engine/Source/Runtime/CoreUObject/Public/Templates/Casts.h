@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,13 +6,11 @@
 #include "UObject/ObjectMacros.h"
 #include "UObject/Object.h"
 #include "UObject/Class.h"
-#include "Templates/LosesQualifiersFromTo.h"
-#include "Traits/IsVoidType.h"
 
 class AActor;
 class APawn;
 class APlayerController;
-class FSoftClassProperty;
+class USoftClassProperty;
 class UBlueprint;
 class ULevel;
 class UPrimitiveComponent;
@@ -24,7 +22,9 @@ class UStaticMeshComponent;
 template<class TClass> class TSubclassOf;
 /// @endcond
 
-UE_NORETURN COREUOBJECT_API void CastLogError(const TCHAR* FromType, const TCHAR* ToType);
+FUNCTION_NO_RETURN_START
+	COREUOBJECT_API void CastLogError(const TCHAR* FromType, const TCHAR* ToType)
+FUNCTION_NO_RETURN_END;
 
 /**
  * Metafunction which detects whether or not a class is an IInterface.  Rules:
@@ -121,18 +121,6 @@ struct TCastImpl
 	{
 		return (To*)Src;
 	}
-
-	UE_DEPRECATED(4.25, "Cast<>() and CastChecked<>() should not be used with FProperties. Use CastField<>() or CastFieldChecked<>() instead.")
-	FORCEINLINE static To* DoCast( FField* Src )
-	{
-		return Src && Src->IsA<To>() ? (To*)Src : nullptr;
-	}
-
-	UE_DEPRECATED(4.25, "Cast<>() and CastChecked<>() should not be used with FProperties. Use CastField<>() or CastFieldChecked<>() instead.")
-	FORCEINLINE static To* DoCastCheckedWithoutTypeCheck( FField* Src )
-	{
-		return (To*)Src;
-	}
 };
 
 template <typename From, typename To>
@@ -144,18 +132,6 @@ struct TCastImpl<From, To, ECastType::UObjectToUObject>
 	}
 
 	FORCEINLINE static To* DoCastCheckedWithoutTypeCheck( UObject* Src )
-	{
-		return (To*)Src;
-	}
-
-	UE_DEPRECATED(4.25, "Cast<>() and CastChecked<>() should not be used with FProperties. Use CastField<>() or CastFieldChecked<>() instead.")
-	FORCEINLINE static To* DoCast( FField* Src )
-	{
-		return Src && Src->IsA<To>() ? (To*)Src : nullptr;
-	}
-
-	UE_DEPRECATED(4.25, "Cast<>() and CastChecked<>() should not be used with FProperties. Use CastField<>() or CastFieldChecked<>() instead.")
-	FORCEINLINE static To* DoCastCheckedWithoutTypeCheck( FField* Src )
 	{
 		return (To*)Src;
 	}
@@ -227,25 +203,6 @@ FORCEINLINE T* ExactCast( UObject* Src )
 
 #if DO_CHECK
 
-	// Helper function to get the full name for UObjects and UInterfaces
-	template <
-		typename T,
-		typename TEnableIf<!TIsDerivedFrom<T, FField>::Value>::Type* = nullptr
-	>
-	FString GetFullNameForCastLogError(T* InObjectOrInterface)
-	{
-		return Cast<UObject>(InObjectOrInterface)->GetFullName();
-	}
-	// And a special version for FFields
-	template <
-		typename T,
-		typename TEnableIf<TIsDerivedFrom<T, FField>::Value>::Type* = nullptr
-	>
-	FString GetFullNameForCastLogError(T* InField)
-	{
-		return GetFullNameSafe(InField);
-	}
-
 	template <typename To, typename From>
 	FUNCTION_NON_NULL_RETURN_START
 		To* CastChecked(From* Src)
@@ -259,7 +216,7 @@ FORCEINLINE T* ExactCast( UObject* Src )
 		To* Result = Cast<To>(Src);
 		if (!Result)
 		{
-			CastLogError(*GetFullNameForCastLogError(Src), *GetTypeName<To>());
+			CastLogError(*Cast<UObject>(Src)->GetFullName(), *GetTypeName<To>());
 		}
 
 		return Result;
@@ -273,7 +230,7 @@ FORCEINLINE T* ExactCast( UObject* Src )
 			To* Result = Cast<To>(Src);
 			if (!Result)
 			{
-				CastLogError(*GetFullNameForCastLogError(Src), *GetTypeName<To>());
+				CastLogError(*Cast<UObject>(Src)->GetFullName(), *GetTypeName<To>());
 			}
 
 			return Result;
@@ -309,6 +266,11 @@ FORCEINLINE T* ExactCast( UObject* Src )
 template< class T, class U > FORCEINLINE T* Cast       ( const TWeakObjectPtr<U>& Src                                                                   ) { return Cast       <T>(Src.Get()); }
 template< class T, class U > FORCEINLINE T* ExactCast  ( const TWeakObjectPtr<U>& Src                                                                   ) { return ExactCast  <T>(Src.Get()); }
 template< class T, class U > FORCEINLINE T* CastChecked( const TWeakObjectPtr<U>& Src, ECastCheckedType::Type CheckType = ECastCheckedType::NullChecked ) { return CastChecked<T>(Src.Get(), CheckType); }
+
+// FSubobjectPtr versions
+template< class T > FORCEINLINE T* Cast       ( const FSubobjectPtr& Src                                                                   ) { return Cast       <T>(Src.Get()); }
+template< class T > FORCEINLINE T* ExactCast  ( const FSubobjectPtr& Src                                                                   ) { return ExactCast  <T>(Src.Get()); }
+template< class T > FORCEINLINE T* CastChecked( const FSubobjectPtr& Src, ECastCheckedType::Type CheckType = ECastCheckedType::NullChecked ) { return CastChecked<T>(Src.Get(), CheckType); }
 
 // TSubclassOf versions
 template< class T, class U > FORCEINLINE T* Cast       ( const TSubclassOf<U>& Src                                                                   ) { return Cast       <T>(*Src); }
@@ -347,28 +309,28 @@ DECLARE_CAST_BY_FLAG(UEnum)								\
 DECLARE_CAST_BY_FLAG(UStruct)							\
 DECLARE_CAST_BY_FLAG(UScriptStruct)						\
 DECLARE_CAST_BY_FLAG(UClass)							\
-DECLARE_CAST_BY_FLAG(FProperty)							\
-DECLARE_CAST_BY_FLAG(FObjectPropertyBase)				\
-DECLARE_CAST_BY_FLAG(FObjectProperty)					\
-DECLARE_CAST_BY_FLAG(FWeakObjectProperty)				\
-DECLARE_CAST_BY_FLAG(FLazyObjectProperty)				\
-DECLARE_CAST_BY_FLAG(FSoftObjectProperty)				\
-DECLARE_CAST_BY_FLAG(FSoftClassProperty)				\
-DECLARE_CAST_BY_FLAG(FBoolProperty)						\
+DECLARE_CAST_BY_FLAG(UProperty)							\
+DECLARE_CAST_BY_FLAG(UObjectPropertyBase)				\
+DECLARE_CAST_BY_FLAG(UObjectProperty)					\
+DECLARE_CAST_BY_FLAG(UWeakObjectProperty)				\
+DECLARE_CAST_BY_FLAG(ULazyObjectProperty)				\
+DECLARE_CAST_BY_FLAG(USoftObjectProperty)				\
+DECLARE_CAST_BY_FLAG(USoftClassProperty)				\
+DECLARE_CAST_BY_FLAG(UBoolProperty)						\
 DECLARE_CAST_BY_FLAG(UFunction)							\
-DECLARE_CAST_BY_FLAG(FStructProperty)					\
-DECLARE_CAST_BY_FLAG(FByteProperty)						\
-DECLARE_CAST_BY_FLAG(FIntProperty)						\
-DECLARE_CAST_BY_FLAG(FFloatProperty)					\
-DECLARE_CAST_BY_FLAG(FDoubleProperty)					\
-DECLARE_CAST_BY_FLAG(FClassProperty)					\
-DECLARE_CAST_BY_FLAG(FInterfaceProperty)				\
-DECLARE_CAST_BY_FLAG(FNameProperty)						\
-DECLARE_CAST_BY_FLAG(FStrProperty)						\
-DECLARE_CAST_BY_FLAG(FTextProperty)						\
-DECLARE_CAST_BY_FLAG(FArrayProperty)					\
-DECLARE_CAST_BY_FLAG(FDelegateProperty)					\
-DECLARE_CAST_BY_FLAG(FMulticastDelegateProperty)		\
+DECLARE_CAST_BY_FLAG(UStructProperty)					\
+DECLARE_CAST_BY_FLAG(UByteProperty)						\
+DECLARE_CAST_BY_FLAG(UIntProperty)						\
+DECLARE_CAST_BY_FLAG(UFloatProperty)					\
+DECLARE_CAST_BY_FLAG(UDoubleProperty)					\
+DECLARE_CAST_BY_FLAG(UClassProperty)					\
+DECLARE_CAST_BY_FLAG(UInterfaceProperty)				\
+DECLARE_CAST_BY_FLAG(UNameProperty)						\
+DECLARE_CAST_BY_FLAG(UStrProperty)						\
+DECLARE_CAST_BY_FLAG(UTextProperty)						\
+DECLARE_CAST_BY_FLAG(UArrayProperty)					\
+DECLARE_CAST_BY_FLAG(UDelegateProperty)					\
+DECLARE_CAST_BY_FLAG(UMulticastDelegateProperty)		\
 DECLARE_CAST_BY_FLAG(UPackage)							\
 DECLARE_CAST_BY_FLAG(ULevel)							\
 DECLARE_CAST_BY_FLAG(AActor)							\
@@ -381,19 +343,19 @@ DECLARE_CAST_BY_FLAG(USkeletalMeshComponent)			\
 DECLARE_CAST_BY_FLAG(UBlueprint)						\
 DECLARE_CAST_BY_FLAG(UDelegateFunction)					\
 DECLARE_CAST_BY_FLAG(UStaticMeshComponent)				\
-DECLARE_CAST_BY_FLAG(FEnumProperty)						\
-DECLARE_CAST_BY_FLAG(FNumericProperty)					\
-DECLARE_CAST_BY_FLAG(FInt8Property)						\
-DECLARE_CAST_BY_FLAG(FInt16Property)					\
-DECLARE_CAST_BY_FLAG(FInt64Property)					\
-DECLARE_CAST_BY_FLAG(FUInt16Property)					\
-DECLARE_CAST_BY_FLAG(FUInt32Property)					\
-DECLARE_CAST_BY_FLAG(FUInt64Property)					\
-DECLARE_CAST_BY_FLAG(FMapProperty)						\
-DECLARE_CAST_BY_FLAG(FSetProperty)						\
+DECLARE_CAST_BY_FLAG(UEnumProperty)						\
+DECLARE_CAST_BY_FLAG(UNumericProperty)					\
+DECLARE_CAST_BY_FLAG(UInt8Property)						\
+DECLARE_CAST_BY_FLAG(UInt16Property)					\
+DECLARE_CAST_BY_FLAG(UInt64Property)					\
+DECLARE_CAST_BY_FLAG(UUInt16Property)					\
+DECLARE_CAST_BY_FLAG(UUInt32Property)					\
+DECLARE_CAST_BY_FLAG(UUInt64Property)					\
+DECLARE_CAST_BY_FLAG(UMapProperty)						\
+DECLARE_CAST_BY_FLAG(USetProperty)						\
 DECLARE_CAST_BY_FLAG(USparseDelegateFunction)			\
-DECLARE_CAST_BY_FLAG(FMulticastInlineDelegateProperty)	\
-DECLARE_CAST_BY_FLAG(FMulticastSparseDelegateProperty)	\
+DECLARE_CAST_BY_FLAG(UMulticastInlineDelegateProperty)	\
+DECLARE_CAST_BY_FLAG(UMulticastSparseDelegateProperty)	\
 FINISH_DECLARING_CAST_FLAGS		// This is here to hopefully remind people to include the "\" in all declarations above, especially when copy/pasting the final line.
 
 // Now actually declare the flags

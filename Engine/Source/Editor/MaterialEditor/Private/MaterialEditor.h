@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,10 +19,8 @@
 #include "SMaterialEditorViewport.h"
 #include "Materials/Material.h"
 #include "Tickable.h"
-#include "UObject/WeakFieldPtr.h"
 
 struct FAssetData;
-struct FToolMenuSection;
 class FCanvas;
 class FMaterialCompiler;
 class FScopedTransaction;
@@ -52,7 +50,7 @@ public:
 	{
 		// Register this FMaterial derivative with AddEditorLoadedMaterialResource since it does not have a corresponding UMaterialInterface
 		FMaterial::AddEditorLoadedMaterialResource(this);
-		SetQualityLevelProperties(GMaxRHIFeatureLevel);
+		SetQualityLevelProperties(EMaterialQualityLevel::High, false, GMaxRHIFeatureLevel);
 	}
 
 	FMatExpressionPreview(UMaterialExpression* InExpression)
@@ -64,8 +62,8 @@ public:
 		FPlatformMisc::CreateGuid(Id);
 
 		check(InExpression->Material && InExpression->Material->Expressions.Contains(InExpression));
-		ReferencedTextures = InExpression->Material->GetReferencedTextures();
-		SetQualityLevelProperties(GMaxRHIFeatureLevel);
+		InExpression->Material->AppendReferencedTextures(ReferencedTextures);
+		SetQualityLevelProperties(EMaterialQualityLevel::High, false, GMaxRHIFeatureLevel);
 	}
 
 	~FMatExpressionPreview()
@@ -94,9 +92,9 @@ public:
 	 */
 	virtual bool ShouldCache(EShaderPlatform Platform, const FShaderType* ShaderType, const FVertexFactoryType* VertexFactoryType) const override;
 
-	virtual TArrayView<UObject* const> GetReferencedTextures() const override
+	virtual const TArray<UObject*>& GetReferencedTextures() const override
 	{
-		return MakeArrayView(ReferencedTextures);
+		return ReferencedTextures;
 	}
 
 	////////////////
@@ -115,7 +113,7 @@ public:
 		}
 	}
 
-	virtual bool GetVectorValue(const FHashedMaterialParameterInfo& ParameterInfo, FLinearColor* OutValue, const FMaterialRenderContext& Context) const override
+	virtual bool GetVectorValue(const FMaterialParameterInfo& ParameterInfo, FLinearColor* OutValue, const FMaterialRenderContext& Context) const override
 	{
 		if (Expression.IsValid() && Expression->Material)
 		{
@@ -124,7 +122,7 @@ public:
 		return false;
 	}
 
-	virtual bool GetScalarValue(const FHashedMaterialParameterInfo& ParameterInfo, float* OutValue, const FMaterialRenderContext& Context) const override
+	virtual bool GetScalarValue(const FMaterialParameterInfo& ParameterInfo, float* OutValue, const FMaterialRenderContext& Context) const override
 	{
 		if (Expression.IsValid() && Expression->Material)
 		{
@@ -133,7 +131,7 @@ public:
 		return false;
 	}
 
-	virtual bool GetTextureValue(const FHashedMaterialParameterInfo& ParameterInfo,const UTexture** OutValue, const FMaterialRenderContext& Context) const override
+	virtual bool GetTextureValue(const FMaterialParameterInfo& ParameterInfo,const UTexture** OutValue, const FMaterialRenderContext& Context) const override
 	{
 		if (Expression.IsValid() && Expression->Material)
 		{
@@ -142,7 +140,7 @@ public:
 		return false;
 	}
 
-	virtual bool GetTextureValue(const FHashedMaterialParameterInfo& ParameterInfo, const URuntimeVirtualTexture** OutValue, const FMaterialRenderContext& Context) const override
+	virtual bool GetTextureValue(const FMaterialParameterInfo& ParameterInfo, const URuntimeVirtualTexture** OutValue, const FMaterialRenderContext& Context) const override
 	{
 		if (Expression.IsValid() && Expression->Material)
 		{
@@ -276,8 +274,6 @@ public:
 	virtual FText GetToolkitName() const override;
 	virtual FText GetToolkitToolTipText() const override;
 	virtual FString GetWorldCentricTabPrefix() const override;
-	virtual void InitToolMenuContext(struct FToolMenuContext& MenuContext) override;
-
 
 	/** @return the documentation location for this editor */
 	virtual FString GetDocumentationLink() const override
@@ -385,7 +381,6 @@ public:
 	virtual UMaterialExpressionComment* CreateNewMaterialExpressionComment(const FVector2D& NodePos) override;
 	virtual void ForceRefreshExpressionPreviews() override;
 	virtual void AddToSelection(UMaterialExpression* Expression) override;
-	virtual void JumpToExpression(UMaterialExpression* Expression) override;
 	virtual void DeleteSelectedNodes() override;
 	virtual FText GetOriginalObjectName() const override;
 	virtual void UpdateMaterialAfterGraphChange() override;
@@ -396,7 +391,7 @@ public:
 	virtual void GetBoundsForNode(const UEdGraphNode* InNode, class FSlateRect& OutRect, float InPadding) const override;
 	virtual FMatExpressionPreview* GetExpressionPreview(UMaterialExpression* InExpression) override;
 	virtual void DeleteNodes(const TArray<class UEdGraphNode*>& NodesToDelete) override;
-	virtual void GenerateInheritanceMenu(class UToolMenu* Menu) override;
+
 
 	void UpdateStatsMaterials();
 
@@ -417,11 +412,6 @@ public:
 
 	/** Rebuilds the inheritance list for this material. */
 	void RebuildInheritanceList();
-
-	/** Add entry to hierarchy menu */
-	static void AddInheritanceMenuEntry(FToolMenuSection& Section, const FAssetData& AssetData, bool bIsFunctionPreviewMaterial);
-
-	virtual void AddGraphEditorPinActionsToContextMenu(FToolMenuSection& InSection) const override;
 
 public:
 	/** Set to true when modifications have been made to the material */
@@ -554,12 +544,13 @@ protected:
 private:
 	/** Builds the toolbar widget for the material editor */
 	void ExtendToolbar();
-	void RegisterToolBar();
 
 	/** Creates the toolbar buttons. Bound by ExtendToolbar*/
 	void FillToolbar(FToolBarBuilder& ToolbarBuilder);
 
-	void GeneratePreviewMenuContent(class UToolMenu* Menu);
+	TSharedRef<SWidget> GenerateInheritanceMenu();
+
+	TSharedRef< SWidget > GeneratePreviewMenuContent();
 
 	/** Allows editor to veto the setting of a preview asset */
 	virtual bool ApproveSetPreviewAsset(UObject* InAsset) override;
@@ -633,7 +624,7 @@ private:
 	void HideUnrelatedNodes();
 
 	/** Make a drop down menu to control the opacity of unrelated nodes */
-	void MakeHideUnrelatedNodesOptionsMenu(class UToolMenu* Menu);
+	TSharedRef<SWidget> MakeHideUnrelatedNodesOptionsMenu();
 	TOptional<float> HandleUnrelatedNodesOpacityBoxValue() const;
 	void HandleUnrelatedNodesOpacityBoxChanged(float NewOpacity);
 	void OnLockNodeStateCheckStateChanged(ECheckBoxState NewCheckedState);
@@ -668,13 +659,13 @@ private:
 	void OnFindInMaterial();
 
 	/** Will promote selected pin to a parameter of the pin type */
-	void OnPromoteToParameter(const FToolMenuContext& InMenuContext) const;
+	void OnPromoteToParameter();
 
 	/** Used to know if we can promote selected pin to a parameter of the pin type */
-	bool OnCanPromoteToParameter(const FToolMenuContext& InMenuContext) const;
+	bool OnCanPromoteToParameter();
 
 	/** Will  return the UClass to create from the Pin Type */
-	UClass* GetOnPromoteToParameterClass(const UEdGraphPin* TargetPin) const;
+	UClass* GetOnPromoteToParameterClass(UEdGraphPin* TargetPin);
 
 	/** Open documentation for the selected node class */
 	void OnGoToDocumentation();
@@ -695,7 +686,6 @@ private:
 
 	void OnVectorParameterDefaultChanged(class UMaterialExpression*, FName ParameterName, const FLinearColor& Value);
 	void OnScalarParameterDefaultChanged(class UMaterialExpression*, FName ParameterName, float Value);
-	void OnParameterDefaultChanged();
 
 	void SetVectorParameterDefaultOnDependentMaterials(FName ParameterName, const FLinearColor& Value, bool bOverride);
 	void SetScalarParameterDefaultOnDependentMaterials(FName ParameterName, float, bool bOverride);
@@ -705,8 +695,8 @@ private:
 	virtual void PostRedo(bool bSuccess) override { PostUndo(bSuccess); }
 
 	// FNotifyHook interface
-	virtual void NotifyPreChange(FProperty* PropertyAboutToChange) override;
-	virtual void NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, FProperty* PropertyThatChanged) override;
+	virtual void NotifyPreChange(UProperty* PropertyAboutToChange) override;
+	virtual void NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, UProperty* PropertyThatChanged) override;
 
 	/** Flags the material as dirty */
 	void SetMaterialDirty() {bMaterialDirty = true;}
@@ -735,7 +725,7 @@ private:
 
 	/** Pointer to the object that the current color picker is working on. Can be NULL and stale. */
 	TWeakObjectPtr<UObject> ColorPickerObject;
-	TWeakFieldPtr<FProperty> ColorPickerProperty;
+	TWeakObjectPtr<UProperty> ColorPickerProperty;
 
 	/** Called before the color picker commits a change. */
 	void PreColorPickerCommit(FLinearColor LinearColor);
@@ -776,13 +766,10 @@ private:
 	TSharedRef<SDockTab> SpawnTab_Find(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnTab_PreviewSettings(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnTab_ParameterDefaults(const FSpawnTabArgs& Args);
-	TSharedRef<SDockTab> SpawnTab_CustomPrimitiveData(const FSpawnTabArgs& Args);
 	TSharedRef<SDockTab> SpawnTab_LayerProperties(const FSpawnTabArgs& Args);
 
 	void OnFinishedChangingProperties(const FPropertyChangedEvent& PropertyChangedEvent);
 	void OnFinishedChangingParametersFromOverview(const FPropertyChangedEvent& PropertyChangedEvent);
-	void GeneratorRowsRefreshed();
-	void UpdateGenerator();
 private:
 	/** List of open tool panels; used to ensure only one exists at any one time */
 	TMap< FName, TWeakPtr<class SDockableTab> > SpawnedToolPanels;
@@ -814,8 +801,6 @@ private:
 
 	/** Parameter overview list View */
 	TSharedPtr<class SMaterialParametersOverviewPanel> MaterialParametersOverviewWidget;
-
-	TSharedPtr<class SMaterialCustomPrimitiveDataPanel> MaterialCustomPrimitiveDataWidget;
 
 	/** Layer Properties View */
 	TSharedPtr<class SMaterialLayersFunctionsMaterialWrapper> MaterialLayersFunctionsInstance;
@@ -873,7 +858,6 @@ private:
 	static const FName FindTabId;
 	static const FName PreviewSettingsTabId;
 	static const FName ParameterDefaultsTabId;
-	static const FName CustomPrimitiveTabId;
 	static const FName LayerPropertiesTabId;
 
 	/** Object that stores all of the possible parameters we can edit. */
@@ -891,9 +875,6 @@ private:
 	/** Stores the feature level used to preview the material graph */
 	ERHIFeatureLevel::Type NodeFeatureLevel;
 
-	/** True if we want to preview static switches, disabling inactive nodes in the graph */
-	bool bPreviewStaticSwitches;
-
 	/** True if the quality level or feature level to preview has been changed */
 	bool bPreviewFeaturesChanged;
 
@@ -902,6 +883,4 @@ private:
 
 	/** List of children used to populate the inheritance list chain. */
 	TArray< FAssetData > FunctionChildList;
-
-	TSharedPtr<class IPropertyRowGenerator> Generator;
 };

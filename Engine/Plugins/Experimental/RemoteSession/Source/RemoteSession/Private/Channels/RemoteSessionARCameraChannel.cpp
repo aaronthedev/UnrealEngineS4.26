@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Channels/RemoteSessionARCameraChannel.h"
 #include "RemoteSession.h"
@@ -67,15 +67,15 @@ public:
 
 	static bool ShouldCompilePermutation(const FMaterialShaderPermutationParameters& Parameters)
 	{
-		return Parameters.MaterialParameters.MaterialDomain == MD_PostProcess && !IsMobilePlatform(Parameters.Platform);
+		return Parameters.Material->GetMaterialDomain() == MD_PostProcess && !IsMobilePlatform(Parameters.Platform);
 	}
 
 	static void ModifyCompilationEnvironment(const FMaterialShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
-		FMaterialShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		FMaterialShader::ModifyCompilationEnvironment(Parameters.Platform, OutEnvironment);
 		OutEnvironment.SetDefine(TEXT("POST_PROCESS_MATERIAL"), 1);
 		OutEnvironment.SetDefine(TEXT("POST_PROCESS_MATERIAL_MOBILE"), 0);
-		OutEnvironment.SetDefine(TEXT("POST_PROCESS_MATERIAL_BEFORE_TONEMAP"), (Parameters.MaterialParameters.BlendableLocation != BL_AfterTonemapping) ? 1 : 0);
+		OutEnvironment.SetDefine(TEXT("POST_PROCESS_MATERIAL_BEFORE_TONEMAP"), (Parameters.Material->GetBlendableLocation() != BL_AfterTonemapping) ? 1 : 0);
 	}
 };
 
@@ -84,7 +84,7 @@ class FRemoteSessionARCameraVS :
 	public FPostProcessMaterialShader
 {
 public:
-	DECLARE_SHADER_TYPE(FRemoteSessionARCameraVS, Material);
+	DECLARE_MATERIAL_SHADER(FRemoteSessionARCameraVS);
 
 	static void ModifyCompilationEnvironment(const FMaterialShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
@@ -99,18 +99,18 @@ public:
 
 	void SetParameters(FRHICommandList& RHICmdList, const FSceneView& View)
 	{
-		FRHIVertexShader* ShaderRHI = RHICmdList.GetBoundVertexShader();
+		FRHIVertexShader* ShaderRHI = GetVertexShader();
 		FMaterialShader::SetViewParameters(RHICmdList, ShaderRHI, View, View.ViewUniformBuffer);
 	}
 };
 
-IMPLEMENT_SHADER_TYPE(,FRemoteSessionARCameraVS, TEXT("/Engine/Private/PostProcessMaterialShaders.usf"), TEXT("MainVS_VideoOverlay"), SF_Vertex);
+IMPLEMENT_MATERIAL_SHADER(FRemoteSessionARCameraVS, "/Engine/Private/PostProcessMaterialShaders.usf", "MainVS_VideoOverlay", SF_Vertex);
 
 class FRemoteSessionARCameraPS :
 	public FPostProcessMaterialShader
 {
 public:
-	DECLARE_SHADER_TYPE(FRemoteSessionARCameraPS, Material);
+	DECLARE_MATERIAL_SHADER(FRemoteSessionARCameraPS);
 
 	static void ModifyCompilationEnvironment(const FMaterialShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
@@ -125,13 +125,12 @@ public:
 
 	void SetParameters(FRHICommandList& RHICmdList, const FSceneView& View, const FMaterialRenderProxy* Material)
 	{
-		FRHIPixelShader* ShaderRHI = RHICmdList.GetBoundPixelShader();
-		FMaterialShader::SetViewParameters(RHICmdList, ShaderRHI, View, View.ViewUniformBuffer);
-		FMaterialShader::SetParameters(RHICmdList, ShaderRHI, Material, *Material->GetMaterial(View.GetFeatureLevel()), View);
+		FRHIPixelShader* ShaderRHI = GetPixelShader();
+		FMaterialShader::SetParameters(RHICmdList, ShaderRHI, Material, *Material->GetMaterial(View.GetFeatureLevel()), View, View.ViewUniformBuffer, ESceneTextureSetupMode::None);
 	}
 };
 
-IMPLEMENT_SHADER_TYPE(,FRemoteSessionARCameraPS, TEXT("/Engine/Private/PostProcessMaterialShaders.usf"), TEXT("MainPS_VideoOverlay"), SF_Pixel);
+IMPLEMENT_MATERIAL_SHADER(FRemoteSessionARCameraPS, "/Engine/Private/PostProcessMaterialShaders.usf", "MainPS_VideoOverlay", SF_Pixel);
 
 class FARCameraSceneViewExtension :
 	public FSceneViewExtensionBase
@@ -253,13 +252,6 @@ void FARCameraSceneViewExtension::RenderARCamera_RenderThread(FRHICommandListImm
 
 	IRendererModule& RendererModule = GetRendererModule();
 
-	FUniformBufferRHIRef PassUniformBuffer = CreateSceneTextureUniformBufferDependentOnShadingPath(
-		RHICmdList,
-		InView.GetFeatureLevel(),
-		ESceneTextureSetupMode::None);
-	FUniformBufferStaticBindings GlobalUniformBuffers(PassUniformBuffer);
-	SCOPED_UNIFORM_BUFFER_GLOBAL_BINDINGS(RHICmdList, GlobalUniformBuffers);
-
 	const FMaterial* const CameraMaterial = PPMaterial->GetRenderProxy()->GetMaterial(FeatureLevel);
 	const FMaterialShaderMap* const MaterialShaderMap = CameraMaterial->GetRenderingThreadShaderMap();
 
@@ -272,10 +264,12 @@ void FARCameraSceneViewExtension::RenderARCamera_RenderThread(FRHICommandListImm
 	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
 
-	TShaderRef<FRemoteSessionARCameraVS> VertexShader = MaterialShaderMap->GetShader<FRemoteSessionARCameraVS>();
-	TShaderRef<FRemoteSessionARCameraPS> PixelShader = MaterialShaderMap->GetShader<FRemoteSessionARCameraPS>();
-	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+	FRemoteSessionARCameraVS* VertexShader = MaterialShaderMap->GetShader<FRemoteSessionARCameraVS>();
+	FRemoteSessionARCameraPS* PixelShader = MaterialShaderMap->GetShader<FRemoteSessionARCameraPS>();
+	check(PixelShader != nullptr && VertexShader != nullptr);
+
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(VertexShader);
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(PixelShader);
 
 	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
@@ -287,7 +281,7 @@ void FARCameraSceneViewExtension::RenderARCamera_RenderThread(FRHICommandListImm
 			1.0f / ViewSize.X, 1.0f / ViewSize.Y,
 			1.0f, 1.0f);
 
-	SetUniformBufferParameterImmediate(RHICmdList, VertexShader.GetVertexShader(), VertexShader->GetUniformBufferParameter<FDrawRectangleParameters>(), Parameters);
+	SetUniformBufferParameterImmediate(RHICmdList, VertexShader->GetVertexShader(), VertexShader->GetUniformBufferParameter<FDrawRectangleParameters>(), Parameters);
 	VertexShader->SetParameters(RHICmdList, InView);
 	PixelShader->SetParameters(RHICmdList, InView, PPMaterial->GetRenderProxy());
 
@@ -314,7 +308,7 @@ bool FARCameraSceneViewExtension::IsActiveThisFrame(FViewport* InViewport) const
 
 static FName CameraImageParamName(TEXT("CameraImage"));
 
-FRemoteSessionARCameraChannel::FRemoteSessionARCameraChannel(ERemoteSessionChannelMode InRole, TSharedPtr<IBackChannelConnection, ESPMode::ThreadSafe> InConnection)
+FRemoteSessionARCameraChannel::FRemoteSessionARCameraChannel(ERemoteSessionChannelMode InRole, TSharedPtr<FBackChannelOSCConnection, ESPMode::ThreadSafe> InConnection)
 	: IRemoteSessionChannel(InRole, InConnection)
 	, RenderingTextureIndex(0)
 	, Connection(InConnection)
@@ -346,10 +340,9 @@ FRemoteSessionARCameraChannel::FRemoteSessionARCameraChannel(ERemoteSessionChann
 		// Create our image renderer
 		SceneViewExtension = FSceneViewExtensions::NewExtension<FARCameraSceneViewExtension>(*this);
 
-		auto Delegate = FBackChannelRouteDelegate::FDelegate::CreateRaw(this, &FRemoteSessionARCameraChannel::ReceiveARCameraImage);
-		MessageCallbackHandle = Connection->AddRouteDelegate(CAMERA_MESSAGE_ADDRESS, Delegate);
-		// #agrant todo: need equivalent
-		//Connection->SetMessageOptions(CAMERA_MESSAGE_ADDRESS, 1);
+		auto Delegate = FBackChannelDispatchDelegate::FDelegate::CreateRaw(this, &FRemoteSessionARCameraChannel::ReceiveARCameraImage);
+		MessageCallbackHandle = Connection->AddMessageHandler(CAMERA_MESSAGE_ADDRESS, Delegate);
+		Connection->SetMessageOptions(CAMERA_MESSAGE_ADDRESS, 1);
 	}
 }
 
@@ -358,7 +351,7 @@ FRemoteSessionARCameraChannel::~FRemoteSessionARCameraChannel()
 	if (Role == ERemoteSessionChannelMode::Read)
 	{
 		// Remove the callback so it doesn't call back on an invalid this
-		Connection->RemoveRouteDelegate(CAMERA_MESSAGE_ADDRESS, MessageCallbackHandle);
+		Connection->RemoveMessageHandler(CAMERA_MESSAGE_ADDRESS, MessageCallbackHandle);
 	}
 }
 
@@ -416,7 +409,7 @@ void FRemoteSessionARCameraChannel::QueueARCameraImage()
 		return;
 	}
 
-	UARTexture* CameraImage = UARBlueprintLibrary::GetARTexture(EARTextureType::CameraImage);
+	UARTextureCameraImage* CameraImage = UARBlueprintLibrary::GetCameraImage();
 	if (CameraImage != nullptr)
     {
 		CompressionTask = MakeShareable(new FCompressionTask());
@@ -452,11 +445,10 @@ void FRemoteSessionARCameraChannel::SendARCameraImage()
 		TSharedPtr<FCompressionTask, ESPMode::ThreadSafe> SendCompressionTask = CompressionTask;
 		AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this, SendCompressionTask]()
 		{
-			TBackChannelSharedPtr<FBackChannelOSCMessage> Msg = MakeShared<FBackChannelOSCMessage, ESPMode::ThreadSafe>(CAMERA_MESSAGE_ADDRESS);
-
-			Msg->Write(TEXT("Width"), SendCompressionTask->Width);
-			Msg->Write(TEXT("Height"), SendCompressionTask->Height);
-			Msg->Write(TEXT("Data"), SendCompressionTask->AsyncTask->GetData());
+			FBackChannelOSCMessage Msg(CAMERA_MESSAGE_ADDRESS);
+			Msg.Write(SendCompressionTask->Width);
+			Msg.Write(SendCompressionTask->Height);
+			Msg.Write(SendCompressionTask->AsyncTask->GetData());
 
 			Connection->SendPacket(Msg);
 		});
@@ -470,7 +462,7 @@ UMaterialInterface* FRemoteSessionARCameraChannel::GetPostProcessMaterial() cons
 	return MaterialInstanceDynamic;
 }
 
-void FRemoteSessionARCameraChannel::ReceiveARCameraImage(IBackChannelPacket& Message)
+void FRemoteSessionARCameraChannel::ReceiveARCameraImage(FBackChannelOSCMessage& Message, FBackChannelOSCDispatch& Dispatch)
 {
 	IImageWrapperModule* ImageWrapperModule = FModuleManager::GetModulePtr<IImageWrapperModule>(FName("ImageWrapper"));
 	if (ImageWrapperModule == nullptr)
@@ -486,9 +478,9 @@ void FRemoteSessionARCameraChannel::ReceiveARCameraImage(IBackChannelPacket& Mes
 	DecompressionTaskCount.Increment();
 
 	TSharedPtr<FDecompressedImage, ESPMode::ThreadSafe> DecompressedImage = MakeShareable(new FDecompressedImage());
-	Message.Read(TEXT("Width"), DecompressedImage->Width);
-	Message.Read(TEXT("Height"), DecompressedImage->Height);
-	Message.Read(TEXT("Data"), DecompressedImage->ImageData);
+	Message << DecompressedImage->Width;
+	Message << DecompressedImage->Height;
+	Message << DecompressedImage->ImageData;
 
 	AsyncTask(ENamedThreads::AnyBackgroundThreadNormalTask, [this, ImageWrapperModule, DecompressedImage]
 	{
@@ -497,10 +489,11 @@ void FRemoteSessionARCameraChannel::ReceiveARCameraImage(IBackChannelPacket& Mes
 
 		ImageWrapper->SetCompressed(DecompressedImage->ImageData.GetData(), DecompressedImage->ImageData.Num());
 
-		TArray<uint8> RawData;
+		const TArray<uint8>* RawData = nullptr;
 		if (ImageWrapper->GetRaw(ERGBFormat::BGRA, 8, RawData))
 		{
-			DecompressedImage->ImageData = MoveTemp(RawData);
+			check(RawData != nullptr);
+			DecompressedImage->ImageData = MoveTemp(*(TArray<uint8>*)RawData);
 			{
 				FScopeLock sl(&DecompressionQueueLock);
 				DecompressionQueue.Add(DecompressedImage);
@@ -555,7 +548,7 @@ void FRemoteSessionARCameraChannel::UpdateRenderingTexture()
 }
 
 
-TSharedPtr<IRemoteSessionChannel> FRemoteSessionARCameraChannelFactoryWorker::Construct(ERemoteSessionChannelMode InMode, TSharedPtr<IBackChannelConnection, ESPMode::ThreadSafe> InConnection) const
+TSharedPtr<IRemoteSessionChannel> FRemoteSessionARCameraChannelFactoryWorker::Construct(ERemoteSessionChannelMode InMode, TSharedPtr<FBackChannelOSCConnection, ESPMode::ThreadSafe> InConnection) const
 {
 	// Client side sending only works on iOS with Android coming in the future
 	bool bSessionTypeSupported = UARBlueprintLibrary::IsSessionTypeSupported(EARSessionType::World);

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,7 +11,6 @@
 
 class FSlateMaterialShaderVS : public FMaterialShader
 {
-	DECLARE_TYPE_LAYOUT(FSlateMaterialShaderVS, NonVirtual);
 public:
 	FSlateMaterialShaderVS() {}
 	FSlateMaterialShaderVS(const FMaterialShaderType::CompiledShaderInitializerType& Initializer);
@@ -35,19 +34,16 @@ public:
 	void SetVerticalAxisMultiplier(FRHICommandList& RHICmdList, float InMultiplier);
 
 	/** Serializes the shader data */
-	//virtual bool Serialize( FArchive& Ar ) override;
+	virtual bool Serialize( FArchive& Ar ) override;
 private:
-	
-		/** ViewProjection parameter used by the shader */
-		LAYOUT_FIELD(FShaderParameter, ViewProjection)
-		/** Parameter used to determine if we need to swtich the vertical axis for opengl */
-		LAYOUT_FIELD(FShaderParameter, SwitchVerticalAxisMultiplier)
-	
+	/** ViewProjection parameter used by the shader */
+	FShaderParameter ViewProjection;
+	/** Parameter used to determine if we need to swtich the vertical axis for opengl */
+	FShaderParameter SwitchVerticalAxisMultiplier;
 };
 
 class FSlateMaterialShaderPS : public FMaterialShader
 {
-	DECLARE_TYPE_LAYOUT(FSlateMaterialShaderPS, NonVirtual);
 public:
 
 	/** Only compile shaders used with UI. */
@@ -69,13 +65,15 @@ public:
 
 	void SetDrawFlags(FRHICommandList& RHICmdList, bool bDrawDisabledEffect);
 
+	virtual bool Serialize(FArchive& Ar) override;
+
 private:
-	LAYOUT_FIELD(FShaderParameter, GammaAndAlphaValues);
-	LAYOUT_FIELD(FShaderParameter, DrawFlags);
-	LAYOUT_FIELD(FShaderParameter, ShaderParams);
+	FShaderParameter GammaAndAlphaValues;
+	FShaderParameter DrawFlags;
+	FShaderParameter ShaderParams;
 	/** Extra texture (like a font atlas) to be used in addition to any material textures */
-	LAYOUT_FIELD(FShaderResourceParameter, TextureParameterSampler);
-	LAYOUT_FIELD(FShaderResourceParameter, AdditionalTextureParameter);
+	FShaderResourceParameter TextureParameterSampler;
+	FShaderResourceParameter AdditionalTextureParameter;
 };
 
 template<bool bUseInstancing>
@@ -103,6 +101,11 @@ public:
 
 		OutEnvironment.SetDefine(TEXT("USE_SLATE_INSTANCING"), (uint32)( bUseInstancing ? 1 : 0 ));
 	}
+
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		return FSlateMaterialShaderVS::Serialize( Ar );
+	}
 };
 
 template<ESlateShader ShaderType>
@@ -129,5 +132,10 @@ public:
 		FSlateMaterialShaderPS::ModifyCompilationEnvironment(Parameters,OutEnvironment);
 
 		OutEnvironment.SetDefine(TEXT("SHADER_TYPE"), (uint32)ShaderType);
+	}
+
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		return FSlateMaterialShaderPS::Serialize( Ar );
 	}
 };

@@ -1,14 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ChaosCloth/ChaosClothingSimulationFactory.h"
-#include "ChaosCloth/ChaosClothConfig.h"
 #include "ChaosCloth/ChaosClothingSimulation.h"
-#include "ChaosCloth/ChaosWeightMapTarget.h"
-#include "ChaosCloth/ChaosClothingSimulationInteractor.h"
 
 IClothingSimulation* UChaosClothingSimulationFactory::CreateSimulation()
 {
-	IClothingSimulation* Simulation = new Chaos::FClothingSimulation();
+	IClothingSimulation* Simulation = new Chaos::ClothingSimulation();
 	return Simulation;
 }
 
@@ -19,34 +16,15 @@ void UChaosClothingSimulationFactory::DestroySimulation(IClothingSimulation* InS
 
 bool UChaosClothingSimulationFactory::SupportsAsset(UClothingAssetBase* InAsset)
 {
-#if WITH_CHAOS
     return true;
-#else
-    return false;
-#endif
 }
 
 bool UChaosClothingSimulationFactory::SupportsRuntimeInteraction()
 {
-    return true;
+    return false;
 }
 
 UClothingSimulationInteractor* UChaosClothingSimulationFactory::CreateInteractor()
 {
-	return NewObject<UChaosClothingSimulationInteractor>(GetTransientPackage());
-}
-
-TArrayView<const TSubclassOf<UClothConfigBase>> UChaosClothingSimulationFactory::GetClothConfigClasses() const
-{
-	static const TArray<TSubclassOf<UClothConfigBase>> ClothConfigClasses(
-		{
-			TSubclassOf<UClothConfigBase>(UChaosClothConfig::StaticClass()),
-			TSubclassOf<UClothConfigBase>(UChaosClothSharedSimConfig::StaticClass())
-		});
-	return ClothConfigClasses;
-}
-
-const UEnum* UChaosClothingSimulationFactory::GetWeightMapTargetEnum() const
-{
-	return StaticEnum<EChaosWeightMapTarget>();
+	return nullptr;
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Stats/Stats.h"
@@ -460,7 +460,7 @@ float UPrimitiveComponent::CalculateMass(FName)
 
 	if (BodyInstance.BodySetup.IsValid())
 	{
-		return BodyInstance.GetBodySetup()->CalculateMass(this);
+		return BodyInstance.BodySetup->CalculateMass(this);
 	}
 	else if (UBodySetup * BodySetup = GetBodySetup())
 	{
@@ -908,7 +908,7 @@ void UPrimitiveComponent::SetCollisionEnabled(ECollisionEnabled::Type NewType)
 }
 
 // @todo : implement skeletalmeshcomponent version
-void UPrimitiveComponent::SetCollisionProfileName(FName InCollisionProfileName, bool bUpdateOverlaps)
+void UPrimitiveComponent::SetCollisionProfileName(FName InCollisionProfileName)
 {
 	SCOPE_CYCLE_COUNTER(STAT_PrimComp_SetCollisionProfileName);
 
@@ -930,7 +930,7 @@ void UPrimitiveComponent::SetCollisionProfileName(FName InCollisionProfileName, 
 		{
 			EnsurePhysicsStateCreated();
 		}
-		OnComponentCollisionSettingsChanged(bUpdateOverlaps);
+		OnComponentCollisionSettingsChanged();
 	}
 }
 
@@ -942,10 +942,10 @@ FName UPrimitiveComponent::GetCollisionProfileName() const
 void UPrimitiveComponent::OnActorEnableCollisionChanged()
 {
 	BodyInstance.UpdatePhysicsFilterData();
-	OnComponentCollisionSettingsChanged(false);
+	OnComponentCollisionSettingsChanged(true);
 }
 
-void UPrimitiveComponent::OnComponentCollisionSettingsChanged(bool bUpdateOverlaps)
+void UPrimitiveComponent::OnComponentCollisionSettingsChanged(bool bDeferUpdateOverlaps)
 {
 	if (IsRegistered() && !IsTemplate())			// not for CDOs
 	{
@@ -955,7 +955,7 @@ void UPrimitiveComponent::OnComponentCollisionSettingsChanged(bool bUpdateOverla
 			ClearSkipUpdateOverlaps();
 		}
 
-		if (bUpdateOverlaps)
+		if (!bDeferUpdateOverlaps)
 		{
 			UpdateOverlaps();
 		}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AttributeDetails.h"
 #include "UObject/UnrealType.h"
@@ -18,7 +18,6 @@
 #include "AbilitySystemGlobals.h"
 #include "Widgets/Input/SSearchBox.h"
 #include "Widgets/Views/SListView.h"
-#include "SListViewSelectorDropdownMenu.h"
 #include "Widgets/Input/STextComboBox.h"
 #include "AbilitySystemComponent.h"
 #include "SGameplayAttributeWidget.h"
@@ -43,20 +42,20 @@ void FAttributePropertyDetails::CustomizeHeader( TSharedRef<IPropertyHandle> Str
 
 	const FString& FilterMetaStr = StructPropertyHandle->GetProperty()->GetMetaData(TEXT("FilterMetaTag"));
 
-	TArray<FProperty*> PropertiesToAdd;
+	TArray<UProperty*> PropertiesToAdd;
 	FGameplayAttribute::GetAllAttributeProperties(PropertiesToAdd, FilterMetaStr);
 
 	for ( auto* Property : PropertiesToAdd )
 	{
-		PropertyOptions.Add(MakeShareable(new FString(FString::Printf(TEXT("%s.%s"), *Property->GetOwnerVariant().GetName(), *Property->GetName()))));
+		PropertyOptions.Add(MakeShareable(new FString(FString::Printf(TEXT("%s.%s"), *Property->GetOuter()->GetName(), *Property->GetName()))));
 	}
 
-	FProperty* PropertyValue = nullptr;
+	UProperty* PropertyValue = nullptr;
 	if (MyProperty.IsValid())
 	{
-		FProperty *ObjPtr = nullptr;
+		UObject *ObjPtr = nullptr;
 		MyProperty->GetValue(ObjPtr);
-		PropertyValue = ObjPtr;
+		PropertyValue = Cast<UProperty>(ObjPtr);
 	}
 
 	HeaderRow.
@@ -92,13 +91,13 @@ TSharedPtr<FString> FAttributePropertyDetails::GetPropertyType() const
 {
 	if (MyProperty.IsValid())
 	{
-		FProperty *PropertyValue = NULL;
-		FProperty *ObjPtr = NULL;
+		UProperty *PropertyValue = NULL;
+		UObject *ObjPtr = NULL;
 		MyProperty->GetValue(ObjPtr);
-		PropertyValue = ObjPtr;
+		PropertyValue = Cast<UProperty>(ObjPtr);
 		if (PropertyValue)
 		{
-			FString FullString = PropertyValue->GetOwnerVariant().GetName() + TEXT(".") + PropertyValue->GetName();
+			FString FullString = PropertyValue->GetOuter()->GetName() + TEXT(".") + PropertyValue->GetName();
 			for (int32 i=0; i < PropertyOptions.Num(); ++i)
 			{
 				if (PropertyOptions[i].IsValid() && PropertyOptions[i].Get()->Equals(FullString))
@@ -125,7 +124,7 @@ void FAttributePropertyDetails::OnChangeProperty(TSharedPtr<FString> ItemSelecte
 		UClass *FoundClass = FindObject<UClass>(ANY_PACKAGE, *ClassName);
 		if (FoundClass)
 		{
-			FProperty *Property = FindFProperty<FProperty>(FoundClass, *PropertyName);
+			UProperty *Property = FindField<UProperty>(FoundClass, *PropertyName);
 			if (Property)
 			{
 				MyProperty->SetValue(Property);
@@ -141,7 +140,7 @@ void FAttributePropertyDetails::OnChangeProperty(TSharedPtr<FString> ItemSelecte
 	
 }
 
-void FAttributePropertyDetails::OnAttributeChanged(FProperty* SelectedAttribute)
+void FAttributePropertyDetails::OnAttributeChanged(UProperty* SelectedAttribute)
 {
 	if (MyProperty.IsValid())
 	{
@@ -184,9 +183,9 @@ void FAttributeDetails::CustomizeDetails(IDetailLayoutBuilder& DetailLayout)
 	PropertyOptions.Empty();
 	PropertyOptions.Add(MakeShareable(new FString("None")));
 
-	for( TFieldIterator<FProperty> It(UAttributeSet::StaticClass(), EFieldIteratorFlags::ExcludeSuper) ; It ; ++It )
+	for( TFieldIterator<UProperty> It(UAttributeSet::StaticClass(), EFieldIteratorFlags::ExcludeSuper) ; It ; ++It )
 	{
-		FProperty *Property = *It;
+		UProperty *Property = *It;
 		PropertyOptions.Add(MakeShareable(new FString(Property->GetName())));
 	}
 
@@ -219,10 +218,10 @@ TSharedPtr<FString> FAttributeDetails::GetPropertyType() const
 	if (!MyProperty.IsValid())
 		return PropertyOptions[0];
 
-	FProperty *PropertyValue = NULL;
-	FProperty *ObjPtr = NULL;
+	UProperty *PropertyValue = NULL;
+	UObject *ObjPtr = NULL;
 	MyProperty->GetValue(ObjPtr);
-	PropertyValue = ObjPtr;
+	PropertyValue = Cast<UProperty>(ObjPtr);
 
 	if (PropertyValue != NULL)
 	{
@@ -247,9 +246,9 @@ void FAttributeDetails::OnChangeProperty(TSharedPtr<FString> ItemSelected, ESele
 
 	FString PropertyName = *ItemSelected.Get();
 
-	for( TFieldIterator<FProperty> It(UAttributeSet::StaticClass(), EFieldIteratorFlags::ExcludeSuper) ; It ; ++It )
+	for( TFieldIterator<UProperty> It(UAttributeSet::StaticClass(), EFieldIteratorFlags::ExcludeSuper) ; It ; ++It )
 	{
-		FProperty* Property = *It;
+		UProperty* Property = *It;
 		if (PropertyName == Property->GetName())
 		{
 			MyProperty->SetValue(Property);
@@ -319,7 +318,6 @@ void FScalableFloatDetails::CustomizeHeader( TSharedRef<class IPropertyHandle> S
 				+SHorizontalBox::Slot()
 				.FillWidth(0.23f)
 				.HAlign(HAlign_Fill)
-				.VAlign(VAlign_Center)
 				.Padding(2.f, 0.f, 2.f, 0.f)
 				[
 					SAssignNew(RowNameComboButton, SComboButton)
@@ -453,12 +451,7 @@ TSharedPtr<FString> FScalableFloatDetails::InitWidgetContent()
 	return InitialValue;
 }
 
-bool FScalableFloatDetails::OnIsSelectableOrNavigableInternal(TSharedPtr<FString> SelectedItem) const
-{
-	return SelectedItem.IsValid() ? DoesPassFilter(SelectedItem) : false;
-}
-
-UCurveTable* FScalableFloatDetails::GetCurveTable()
+UCurveTable * FScalableFloatDetails::GetCurveTable()
 {
 	UCurveTable* CurveTable = NULL;
 	CurveTableProperty->GetValue((UObject*&)CurveTable);
@@ -498,65 +491,48 @@ void FScalableFloatDetails::SetPreviewLevel(float NewLevel)
 
 TSharedRef<SWidget> FScalableFloatDetails::GetListContent()
 {
-	FilterTerms.Reset();
-
 	SAssignNew(RowNameComboListView, SListView<TSharedPtr<FString> >)
 		.ListItemsSource(&RowNames)
 		.OnSelectionChanged(this, &FScalableFloatDetails::OnSelectionChanged)
 		.OnGenerateRow(this, &FScalableFloatDetails::HandleRowNameComboBoxGenarateWidget)
-		.SelectionMode(ESelectionMode::Single)
-		.OnIsSelectableOrNavigable(this, &FScalableFloatDetails::OnIsSelectableOrNavigableInternal);
+		.SelectionMode(ESelectionMode::Single);
 
 	if (CurrentSelectedItem.IsValid())
 	{
 		RowNameComboListView->SetSelection(CurrentSelectedItem);
 	}
 
-	SearchBoxWidget = SNew(SSearchBox)
-		.OnTextChanged(this, &FScalableFloatDetails::OnFilterTextChanged)
-		.OnTextCommitted(this, &FScalableFloatDetails::OnFilterTextCommitted);
-	
-	RowNameComboButton->SetMenuContentWidgetToFocus(SearchBoxWidget);
-
-	return SNew(SListViewSelectorDropdownMenu<TSharedPtr<FString>>, SearchBoxWidget, RowNameComboListView)
+	return SNew(SVerticalBox)
+		+ SVerticalBox::Slot()
+		.AutoHeight()
 		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot()
-			.AutoHeight()
-			[
-				SearchBoxWidget.ToSharedRef()
-			]
-			+ SVerticalBox::Slot()
-			.FillHeight(1.f)
-			[
-				RowNameComboListView.ToSharedRef()
-			]
+			SNew(SSearchBox)
+			.OnTextChanged(this, &FScalableFloatDetails::OnFilterTextChanged)
+		]
+		+ SVerticalBox::Slot()
+		.FillHeight(1.f)
+		[
+			RowNameComboListView.ToSharedRef()
 		];
 }
 
 void FScalableFloatDetails::OnSelectionChanged(TSharedPtr<FString> SelectedItem, ESelectInfo::Type SelectInfo)
 {
-	if (SelectInfo != ESelectInfo::OnNavigation)
+	if (SelectedItem.IsValid())
 	{
-		if (SelectedItem.IsValid())
-		{
-			CurrentSelectedItem = SelectedItem;
-			
-			const FName NewValue = FName(**SelectedItem);
-			RowNameProperty->SetValue(NewValue);
+		CurrentSelectedItem = SelectedItem;
+		FName NewValue = FName(**SelectedItem);
+		RowNameProperty->SetValue(NewValue);
 
-			RowNameComboButton->SetIsOpen(false);
-		}
+		// Close the combo
+		RowNameComboButton->SetIsOpen(false);
 	}
 }
 
 TSharedRef<ITableRow> FScalableFloatDetails::HandleRowNameComboBoxGenarateWidget(TSharedPtr<FString> InItem, const TSharedRef<STableViewBase>& OwnerTable)
 {
-	const EVisibility WidgetVisibility = DoesPassFilter(InItem) ? EVisibility::Visible : EVisibility::Collapsed;
-
 	return
 		SNew(STableRow<TSharedPtr<FString>>, OwnerTable)
-		.Visibility(WidgetVisibility)
 		[
 			SNew(STextBlock).Text(FText::FromString(*InItem))
 		];
@@ -591,10 +567,10 @@ FText FScalableFloatDetails::GetRowValuePreviewText() const
 {
 	TArray<const void*> RawPtrs;
 	CurveTableHandleProperty->AccessRawData(RawPtrs);
-	if (RawPtrs.Num() == 1 && RawPtrs[0] != nullptr)
+	if ( RawPtrs.Num() == 1 && RawPtrs[0] != nullptr )
 	{
 		const FCurveTableRowHandle& Curve = *reinterpret_cast<const FCurveTableRowHandle*>(RawPtrs[0]);
-		if (Curve.CurveTable && Curve.RowName != NAME_None)
+		if ( Curve.CurveTable && Curve.RowName != NAME_None )
 		{
 			float Value;
 			ValueProperty->GetValue(Value);
@@ -610,73 +586,36 @@ FText FScalableFloatDetails::GetRowValuePreviewText() const
 	return FText::GetEmpty();
 }
 
-bool FScalableFloatDetails::DoesPassFilter(const TSharedPtr<FString>& TestStringPtr) const
-{
-	bool bFilterTextMatches = true;
-	const FString& TestString = *TestStringPtr.Get();
-
-	for (int32 FilterIndex = 0; FilterIndex < FilterTerms.Num() && bFilterTextMatches; ++FilterIndex)
-	{
-		const bool bMatchesTerm = TestString.Contains(FilterTerms[FilterIndex], ESearchCase::IgnoreCase);
-		bFilterTextMatches = bFilterTextMatches && bMatchesTerm;
-	}
-
-	return bFilterTextMatches;
-}
-
+/** Called by Slate when the filter box changes text. */
 void FScalableFloatDetails::OnFilterTextChanged(const FText& InFilterText)
 {
-	// Tokenize the search box text into a set of terms; all of them must be present to pass the filter
-	const FString TrimmedFilterText = FText::TrimPrecedingAndTrailing(InFilterText).ToString();
-	TrimmedFilterText.ParseIntoArray(FilterTerms, TEXT(" "), true);
+	FString CurrentFilterText = InFilterText.ToString();
 
-	TSharedPtr<FString> FirstItemToPassFilter;
-	for (int32 i = 0; i < RowNames.Num(); i++)
+	FName RowName;
+	const FPropertyAccess::Result RowResult = RowNameProperty->GetValue(RowName);
+	RowNames.Empty();
+
+	/** Get the properties we wish to work with */
+	UCurveTable* CurveTable = GetCurveTable();
+
+	if (CurveTable != NULL)
 	{
-		TSharedPtr<ITableRow> Row = RowNameComboListView->WidgetFromItem(RowNames[i]);
-		if (Row)
+		/** Extract all the row names from the RowMap */
+		for (TMap<FName, FRealCurve*>::TConstIterator Iterator(CurveTable->GetRowMap()); Iterator; ++Iterator)
 		{
-			const bool bIncludeRow = DoesPassFilter(RowNames[i]);
-
-			Row->AsWidget()->SetVisibility(bIncludeRow ? EVisibility::Visible : EVisibility::Collapsed);
-
-			// See if the selection no longer passes the filter and clear it
-			if ((RowNames[i] == CurrentSelectedItem) && !bIncludeRow)
+			/** Create a simple array of the row names */
+			FString RowString = Iterator.Key().ToString();
+			if (CurrentFilterText == TEXT("") || RowString.Contains(CurrentFilterText))
 			{
-				CurrentSelectedItem.Reset();
-				RowNameComboListView->SetSelection(CurrentSelectedItem, ESelectInfo::OnNavigation);
-			}
-
-			// Remember the first item that passed the filter in case we need to select that
-			if (bIncludeRow && !FirstItemToPassFilter.IsValid())
-			{
-				FirstItemToPassFilter = RowNames[i];
+				TSharedRef<FString> RowNameItem = MakeShareable(new FString(RowString));
+				RowNames.Add(RowNameItem);
 			}
 		}
 	}
-
-	if (!CurrentSelectedItem.IsValid() && FirstItemToPassFilter.IsValid())
-	{
-		CurrentSelectedItem = FirstItemToPassFilter;
-		RowNameComboListView->SetSelection(CurrentSelectedItem, ESelectInfo::OnNavigation);
-	}
-
 	RowNameComboListView->RequestListRefresh();
 }
 
-void FScalableFloatDetails::OnFilterTextCommitted(const FText& InText, ETextCommit::Type CommitInfo)
-{
-	if (CommitInfo == ETextCommit::OnEnter)
-	{
-		TArray<TSharedPtr<FString>> SelectedItems = RowNameComboListView->GetSelectedItems();
-		if (SelectedItems.Num() > 0)
-		{
-			RowNameComboListView->SetSelection(SelectedItems[0]);
-		}
-	}
-}
-
-bool FScalableFloatDetails::IsEditable() const
+bool FScalableFloatDetails::IsEditable( ) const
 {
 	return true;
 }

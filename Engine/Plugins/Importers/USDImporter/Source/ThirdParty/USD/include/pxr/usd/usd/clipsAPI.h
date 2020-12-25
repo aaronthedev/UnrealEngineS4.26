@@ -31,7 +31,6 @@
 #include "pxr/usd/usd/apiSchemaBase.h"
 #include "pxr/usd/usd/prim.h"
 #include "pxr/usd/usd/stage.h"
-#include "pxr/usd/usd/tokens.h"
 
 #include "pxr/base/vt/value.h"
 
@@ -87,7 +86,7 @@ class SdfAssetPath;
 /// 
 /// Important facts about clips:            
 /// \li Within the layerstack in which clips are established, the           
-/// opinions within the clips will be \em weaker than any local opinions
+/// opinions within the clips will be em weaker than any direct opinions
 /// in the layerstack, but em stronger than varying opinions coming across
 /// references and variants.            
 /// \li We will never look for metadata or default opinions in clips            
@@ -157,7 +156,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USD_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -169,7 +168,7 @@ private:
 
     // override SchemaBase virtuals.
     USD_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // ===================================================================== //

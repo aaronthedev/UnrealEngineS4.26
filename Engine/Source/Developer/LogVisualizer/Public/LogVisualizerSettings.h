@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 GameplayDebuggerSettings.h: Declares the UGameplayDebuggerSettings class.
@@ -162,11 +162,6 @@ public:
 	UPROPERTY(EditAnywhere, config, Category = "VisualLogger")
 	bool bLogNavOctreeOnStop;
 
-	/** controls how we generate log names. When set to TRUE there's a lot lower 
-	 *	chance of name conflict, but it's more expensive */
-	UPROPERTY(EditAnywhere, config, Category = "VisualLogger")
-	bool bForceUniqueLogNames;
-
 	// UObject overrides
 #if WITH_EDITOR
 	virtual void PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent) override;
@@ -179,8 +174,6 @@ public:
 	void ClearPresistentData();
 
 	void LoadPresistentData();
-
-	void ConfigureVisLog();
 
 protected:
 	UPROPERTY(config)

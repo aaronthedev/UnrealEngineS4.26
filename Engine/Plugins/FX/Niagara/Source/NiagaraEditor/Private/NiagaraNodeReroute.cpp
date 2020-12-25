@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraNodeReroute.h"
 #include "NiagaraEditorUtilities.h"
 #include "NiagaraHlslTranslator.h"
-#include "NiagaraConstants.h"
 
 #define LOCTEXT_NAMESPACE "NiagaraNodeReroute"
 
@@ -38,10 +37,12 @@ void UNiagaraNodeReroute::PostLoad()
 
 void UNiagaraNodeReroute::AllocateDefaultPins()
 {
-	UEdGraphPin* MyInputPin = CreatePin(EGPD_Input, PC_Wildcard_Niagara, FNiagaraConstants::InputPinName);
+	const FName InputPinName(TEXT("InputPin"));
+	UEdGraphPin* MyInputPin = CreatePin(EGPD_Input, PC_Wildcard_Niagara, InputPinName);
 	MyInputPin->bDefaultValueIsIgnored = true;
 
-	CreatePin(EGPD_Output, PC_Wildcard_Niagara, FNiagaraConstants::OutputPinName);
+	const FName OutputPinName(TEXT("OutputPin"));
+	CreatePin(EGPD_Output, PC_Wildcard_Niagara, OutputPinName);
 }
 
 FText UNiagaraNodeReroute::GetTooltipText() const
@@ -123,7 +124,7 @@ void UNiagaraNodeReroute::BuildParameterMapHistory(FNiagaraParameterMapHistoryBu
 }
 
 /** Traces one of this node's output pins to its source output pin if it is a reroute node output pin.*/
-UEdGraphPin* UNiagaraNodeReroute::GetTracedOutputPin(UEdGraphPin* LocallyOwnedOutputPin, bool bFilterForCompilation) const
+UEdGraphPin* UNiagaraNodeReroute::GetTracedOutputPin(UEdGraphPin* LocallyOwnedOutputPin) const
 {
 	check(Pins.Contains(LocallyOwnedOutputPin) && LocallyOwnedOutputPin->Direction == EGPD_Output);
 	UEdGraphPin* InputPin = GetInputPin(0);
@@ -131,7 +132,7 @@ UEdGraphPin* UNiagaraNodeReroute::GetTracedOutputPin(UEdGraphPin* LocallyOwnedOu
 	{
 		UEdGraphPin* LinkedPin = InputPin->LinkedTo[0];
 		UNiagaraNode* LinkedNode = CastChecked<UNiagaraNode>(LinkedPin->GetOwningNode());
-		return LinkedNode->GetTracedOutputPin(LinkedPin, bFilterForCompilation);
+		return LinkedNode->GetTracedOutputPin(LinkedPin);
 	}
 	return nullptr;
 }

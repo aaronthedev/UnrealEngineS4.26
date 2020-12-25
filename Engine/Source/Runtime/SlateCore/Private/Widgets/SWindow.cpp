@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/SWindow.h"
 #include "Application/SlateWindowHelper.h"
@@ -500,11 +500,7 @@ FVector2D SWindow::ComputeWindowSizeForContent( FVector2D ContentSize )
 
 TSharedRef<SWidget> SWindow::MakeWindowTitleBar(const TSharedRef<SWindow>& Window, const TSharedPtr<SWidget>& CenterContent, EHorizontalAlignment TitleContentAlignment)
 {
-	FWindowTitleBarArgs Args(Window);
-	Args.CenterContent = CenterContent;
-	Args.CenterContentAlignment = TitleContentAlignment;
-
-	return FSlateApplicationBase::Get().MakeWindowTitleBar(Args, TitleBar);
+	return FSlateApplicationBase::Get().MakeWindowTitleBar(Window, nullptr, TitleContentAlignment, TitleBar);
 }
 
 
@@ -537,11 +533,7 @@ void SWindow::ConstructWindowInternals()
 		SNew( SVerticalBox )
 		.Visibility( EVisibility::SelfHitTestInvisible );
 
-	FWindowTitleBarArgs Args(SharedThis(this));
-	Args.CenterContent = nullptr;
-	Args.CenterContentAlignment = GetTitleAlignment();
-
-	TSharedRef<SWidget> TitleBarWidget = FSlateApplicationBase::Get().MakeWindowTitleBar(Args, TitleBar);
+	TSharedRef<SWidget> TitleBarWidget = MakeWindowTitleBar(SharedThis(this), nullptr, GetTitleAlignment());
 
 	if (bCreateTitleBar)
 	{
@@ -699,13 +691,11 @@ FWindowSizeLimits SWindow::GetSizeLimits() const
 
 void SWindow::SetAllowFastUpdate(bool bInAllowFastUpdate)
 {
-	if (bAllowFastUpdate != bInAllowFastUpdate)
+	bAllowFastUpdate = bInAllowFastUpdate;
+
+	if (bAllowFastUpdate)
 	{
-		bAllowFastUpdate = bInAllowFastUpdate;
-		if (bAllowFastUpdate)
-		{
-			InvalidateChildOrder();
-		}
+		InvalidateChildOrder();
 	}
 }
 
@@ -799,12 +789,12 @@ FGeometry SWindow::GetWindowGeometryInWindow() const
 
 FSlateLayoutTransform SWindow::GetLocalToScreenTransform() const
 {
-	return FSlateLayoutTransform(FSlateApplicationBase::Get().GetApplicationScale() * GetDPIScaleFactor(), ScreenPosition);
+	return FSlateLayoutTransform(FSlateApplicationBase::Get().GetApplicationScale() * NativeWindow->GetDPIScaleFactor(), ScreenPosition);
 }
 
 FSlateLayoutTransform SWindow::GetLocalToWindowTransform() const
 {
-	return FSlateLayoutTransform(FSlateApplicationBase::Get().GetApplicationScale() * GetDPIScaleFactor());
+	return FSlateLayoutTransform(FSlateApplicationBase::Get().GetApplicationScale() * NativeWindow->GetDPIScaleFactor());
 }
 
 
@@ -883,7 +873,7 @@ FMargin SWindow::GetWindowBorderSize( bool bIncTitleBar ) const
 // window is borderless. This causes problems for menu positioning.
 	if (NativeWindow.IsValid() && NativeWindow->IsMaximized())
 	{
-		const float DesktopPixelsToSlateUnits = 1.0f / (FSlateApplicationBase::Get().GetApplicationScale() * GetDPIScaleFactor());
+		const float DesktopPixelsToSlateUnits = 1.0f / (FSlateApplicationBase::Get().GetApplicationScale() * NativeWindow->GetDPIScaleFactor());
 		FMargin BorderSize(NativeWindow->GetWindowBorderSize() * DesktopPixelsToSlateUnits);
 		if(bIncTitleBar)
 		{
@@ -1256,7 +1246,7 @@ void SWindow::SetContent( TSharedRef<SWidget> InContent )
 	{
 		this->ContentSlot->operator[]( InContent );
 	}
-	Invalidate(EInvalidateWidgetReason::ChildOrder);
+	Invalidate(EInvalidateWidget::ChildOrder);
 }
 
 TSharedRef<const SWidget> SWindow::GetContent() const
@@ -1401,7 +1391,7 @@ void SWindow::ShowWindow()
 		// Repositioning the window on show with the new size solves this.
 		if ( SizingRule == ESizingRule::Autosized && AutoCenterRule != EAutoCenter::None )
 		{
-			SlatePrepass( FSlateApplicationBase::Get().GetApplicationScale() * GetDPIScaleFactor() );
+			SlatePrepass( FSlateApplicationBase::Get().GetApplicationScale() * NativeWindow->GetDPIScaleFactor() );
 			const FVector2D WindowDesiredSizePixels = GetDesiredSizeDesktopPixels();
 			ReshapeWindow(InitialDesiredScreenPosition - (WindowDesiredSizePixels * 0.5f), WindowDesiredSizePixels);
 		}
@@ -1875,7 +1865,7 @@ EWindowZone::Type SWindow::GetCurrentWindowZone(FVector2D LocalMousePosition)
 	const bool bIsFullscreenMode = GetWindowMode() == EWindowMode::WindowedFullscreen || GetWindowMode() == EWindowMode::Fullscreen;
 	const bool bIsBorderlessGameWindow = Type == EWindowType::GameWindow && !bHasOSWindowBorder;
 
-	const float WindowDPIScale = FSlateApplicationBase::Get().GetApplicationScale() * (NativeWindow.IsValid() ? GetDPIScaleFactor() : 1.0f);
+	const float WindowDPIScale = FSlateApplicationBase::Get().GetApplicationScale() * (NativeWindow.IsValid() ? NativeWindow->GetDPIScaleFactor() : 1.0f);
 
 	const FMargin DPIScaledResizeBorder = UserResizeBorder * WindowDPIScale;
 
@@ -1936,7 +1926,7 @@ EWindowZone::Type SWindow::GetCurrentWindowZone(FVector2D LocalMousePosition)
 		if (InZone == EWindowZone::ClientArea)
 		{
 			// Hittest to see if the widget under the mouse should be treated as a title bar (i.e. should move the window)
-			FWidgetPath HitTestResults = FSlateApplicationBase::Get().GetHitTesting().LocateWidgetInWindow(FSlateApplicationBase::Get().GetCursorPos(), SharedThis(this), false, INDEX_NONE);
+			FWidgetPath HitTestResults = FSlateApplicationBase::Get().GetHitTesting().LocateWidgetInWindow(FSlateApplicationBase::Get().GetCursorPos(), SharedThis(this), false);
 			if( HitTestResults.Widgets.Num() > 0 )
 			{
 				const EWindowZone::Type ZoneOverride = HitTestResults.Widgets.Last().Widget->GetWindowZoneOverride();
@@ -2070,7 +2060,7 @@ int32 SWindow::PaintWindow( double CurrentTime, float DeltaTime, FSlateWindowEle
 	Context.bParentEnabled = bParentEnabled;
 	// Fast path at the window level should only be enabled if global invalidation is allowed
 	Context.bAllowFastPathUpdate = bAllowFastUpdate && GSlateEnableGlobalInvalidation;
-	Context.LayoutScaleMultiplier = FSlateApplicationBase::Get().GetApplicationScale() * GetDPIScaleFactor();
+	Context.LayoutScaleMultiplier = FSlateApplicationBase::Get().GetApplicationScale() * GetNativeWindow()->GetDPIScaleFactor();
 	Context.PaintArgs = &PaintArgs;
 	Context.IncomingLayerId = 0;
 	Context.CullingRect = GetClippingRectangleInWindow();
@@ -2111,10 +2101,6 @@ int32 SWindow::PaintWindow( double CurrentTime, float DeltaTime, FSlateWindowEle
 	{
 		OutDrawElements.PopCachedElementData();
 	}
-
-#if WITH_SLATE_DEBUGGING
-	FSlateDebugging::PaintDebugElements.Broadcast(PaintArgs, GetWindowGeometryInWindow(), OutDrawElements, Result.MaxLayerIdPainted);
-#endif 
 
 	return Result.MaxLayerIdPainted;
 

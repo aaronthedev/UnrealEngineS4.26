@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Exporter.h"
@@ -420,7 +420,7 @@ FLinearColor FStaticLightingSystem::FinalGatherSample(
 		}
 
 		// Only continue if the ray hit the frontface of the polygon, otherwise the ray started inside a mesh
-		if (Dot3(PathRay.Direction, -RayIntersection.IntersectionVertex.WorldTangentZ) > 0.0f || RayIntersection.Mesh->IsTwoSided(RayIntersection.ElementIndex))
+		if (Dot3(PathRay.Direction, -RayIntersection.IntersectionVertex.WorldTangentZ) > 0.0f)
 		{
 			if (TangentPathDirection.Z > 0.0f)
 			{
@@ -432,7 +432,7 @@ FLinearColor FStaticLightingSystem::FinalGatherSample(
 					check(HitPoint.MappingSurfaceCoordinate >= 0);
 				}
 
-				if (Dot3(PathRay.Direction, -RayIntersection.IntersectionVertex.WorldTangentZ) > 0.0f && GeneralSettings.NumIndirectLightingBounces > 0)
+				if (GeneralSettings.NumIndirectLightingBounces > 0)
 				{
 					LIGHTINGSTAT(FScopedRDTSCTimer CalculateExitantRadianceTimer(MappingContext.Stats.CalculateExitantRadianceTime));
 

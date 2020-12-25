@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "AudioAnalyzerNRT.h"
@@ -15,11 +15,13 @@ class AUDIOSYNESTHESIA_API UAudioSynesthesiaNRTSettings : public UAudioAnalyzerN
 
 	public:
 
+		FText GetAssetActionName() const override;
+
 		const TArray<FText>& GetAssetActionSubmenus() const;
 
-#if WITH_EDITOR
+		UClass* GetSupportedClass() const override;
+
 		FColor GetTypeColor() const override;
-#endif
 };
 
 /** UAudioSynesthesiaNRT
@@ -33,10 +35,12 @@ class AUDIOSYNESTHESIA_API UAudioSynesthesiaNRT : public UAudioAnalyzerNRT
 
 	public:
 
+		FText GetAssetActionName() const override;
+
 		const TArray<FText>& GetAssetActionSubmenus() const;
 
-#if WITH_EDITOR
+		UClass* GetSupportedClass() const override;
+
 		FColor GetTypeColor() const override;
-#endif
 };
 

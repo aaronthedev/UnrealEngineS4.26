@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ImgMediaLoaderWork.h"
 #include "ImgMediaPrivate.h"
@@ -52,23 +52,23 @@ void FImgMediaLoaderWork::Abandon()
 
 void FImgMediaLoaderWork::DoThreadedWork()
 {
-	TSharedPtr<FImgMediaFrame, ESPMode::ThreadSafe> Frame;
-	UE_LOG(LogImgMedia, Warning, TEXT("Loader %p: Starting to read %i"), this, FrameNumber);
+	FImgMediaFrame* Frame;
 
 	if ((FrameNumber == INDEX_NONE) || ImagePath.IsEmpty())
 	{
-		Frame.Reset();
+		Frame = nullptr;
 	}
 	else
 	{
 		SCOPE_CYCLE_COUNTER(STAT_ImgMedia_LoaderReadFrame);
 
 		// read the image frame
-		Frame = MakeShareable(new FImgMediaFrame());
+		Frame = new FImgMediaFrame();
 
-		if (!Reader->ReadFrame(ImagePath, Frame, FrameNumber))
+		if (!Reader->ReadFrame(ImagePath, *Frame))
 		{
-			Frame.Reset();
+			delete Frame;
+			Frame = nullptr;
 		}
 	}
 
@@ -81,18 +81,17 @@ void FImgMediaLoaderWork::DoThreadedWork()
 /* FImgMediaLoaderWork implementation
  *****************************************************************************/
 
-void FImgMediaLoaderWork::Finalize(TSharedPtr<FImgMediaFrame, ESPMode::ThreadSafe> Frame)
+void FImgMediaLoaderWork::Finalize(FImgMediaFrame* Frame)
 {
 	TSharedPtr<FImgMediaLoader, ESPMode::ThreadSafe> Owner = OwnerPtr.Pin();
 
 	if (Owner.IsValid())
 	{
-		Owner->NotifyWorkComplete(*this, FrameNumber, Frame);
+		Owner->NotifyWorkComplete(*this, FrameNumber, MakeShareable(Frame));
 	}
 	else
 	{
-		Frame.Reset();
-		Frame = nullptr;
+		delete Frame;
 		delete this; // owner is gone, self destruct!
 	}
 }

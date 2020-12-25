@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -68,23 +68,6 @@ struct MOVIESCENE_API FMovieSceneIntegerChannel : public FMovieSceneChannel
 	 * @return true if the channel was evaluated successfully, false otherwise
 	 */
 	bool Evaluate(FFrameTime InTime, int32& OutValue) const;
-
-	/**
-	 * Set the channel's times and values to the requested values
-	 */
-	FORCEINLINE void Set(TArray<FFrameNumber> InTimes, TArray<int32> InValues)
-	{
-		check(InTimes.Num() == InValues.Num());
-
-		Times = MoveTemp(InTimes);
-		Values = MoveTemp(InValues);
-
-		KeyHandles.Reset();
-		for (int32 Index = 0; Index < Times.Num(); ++Index)
-		{
-			KeyHandles.AllocateHandle(Index);
-		}
-	}
 
 public:
 

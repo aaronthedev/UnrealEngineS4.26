@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -9,18 +9,17 @@
 #include "Misc/Attribute.h"
 #include "PropertyHandle.h"
 #include "SCurveEditor.h"
-#include "SoundModulationTransform.h"
 
 
 // Forward Declarations
-struct FSoundModulationTransform;
+struct FSoundModulationOutputTransform;
 
-class FSoundModulationTransformLayoutCustomization : public IPropertyTypeCustomization
+class FSoundModulationOutputTransformLayoutCustomization : public IPropertyTypeCustomization
 {
 public:
 	static TSharedRef<IPropertyTypeCustomization> MakeInstance()
 	{
-		return MakeShared<FSoundModulationTransformLayoutCustomization>();
+		return MakeShared<FSoundModulationOutputTransformLayoutCustomization>();
 	}
 
 	//~ Begin IPropertyTypeCustomization
@@ -29,6 +28,6 @@ public:
 	//~ End IPropertyTypeCustomization
 
 private:
-	bool IsScaleableCurve(TSharedPtr<IPropertyHandle> CurveHandle) const;
+	bool IsScaleableCurve(TSharedPtr<IPropertyHandle> CurveHandle, const TArray<FString>& Filter) const;
 	bool IsSharedCurve(TSharedPtr<IPropertyHandle> CurveHandle) const;
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,8 +14,6 @@ CORE_API void appBitsCpy( uint8* Dest, int32 DestBit, uint8* Src, int32 SrcBit, 
 	FBitReader.
 -----------------------------------------------------------------------------*/
 
-//@TODO: FLOATPRECISION: Public API assumes it can have > 2 GB of bits, but internally uses int32 based TArray for bytes and also has uint32 clamping on bit counts in various places
-
 //
 // Reads bitstreams.
 //
@@ -26,7 +24,7 @@ struct CORE_API FBitReader : public FBitArchive
 public:
 	FBitReader( uint8* Src = nullptr, int64 CountBits = 0 );
 
-	FBitReader(const FBitReader&) = default;
+    FBitReader(FBitReader&) = default;
     FBitReader& operator=(const FBitReader&) = default;
     FBitReader(FBitReader&&) = default;
     FBitReader& operator=(FBitReader&&) = default;
@@ -37,7 +35,6 @@ public:
 
 	FORCEINLINE_DEBUGGABLE void SerializeBits( void* Dest, int64 LengthBits )
 	{
-		//@TODO: FLOATPRECISION: This function/class pretends it is 64-bit aware, e.g., in the type of LengthBits and the Pos member, but it is not as appBitsCpy is only 32 bits, the inner Buffer is a 32 bit TArray, etc...
 		if ( IsError() || Pos+LengthBits > Num)
 		{
 			if (!IsError())
@@ -54,14 +51,14 @@ public:
 		if( LengthBits == 1 )
 		{
 			((uint8*)Dest)[0] = 0;
-			if( Buffer[(int32)(Pos>>3)] & Shift(Pos&7) )
+			if( Buffer[Pos>>3] & Shift(Pos&7) )
 				((uint8*)Dest)[0] |= 0x01;
 			Pos++;
 		}
 		else if (LengthBits != 0)
 		{
 			((uint8*)Dest)[((LengthBits+7)>>3) - 1] = 0;
-			appBitsCpy((uint8*)Dest, 0, Buffer.GetData(), (int32)Pos, (int32)LengthBits);
+			appBitsCpy((uint8*)Dest, 0, Buffer.GetData(), Pos, LengthBits);
 			Pos += LengthBits;
 		}
 	}
@@ -86,7 +83,7 @@ public:
 					break;
 				}
 
-				if (Buffer[(int32)(LocalPos >> 3)] & Shift(LocalPos & 7))
+				if (Buffer[LocalPos >> 3] & Shift(LocalPos & 7))
 				{
 					Value |= Mask;
 				}
@@ -124,7 +121,7 @@ public:
 			}
 			else
 			{
-				Bit = !!(Buffer[(int32)(LocalPos>>3)] & Shift(LocalPos&7));
+				Bit = !!(Buffer[LocalPos>>3] & Shift(LocalPos&7));
 				Pos++;
 			}
 		}
@@ -154,20 +151,20 @@ public:
 	FORCEINLINE_DEBUGGABLE uint8* GetDataPosChecked()
 	{
 		check(Pos % 8 == 0);
-		return &Buffer[(int32)(Pos >> 3)];
+		return &Buffer[Pos >> 3];
 	}
 
-	FORCEINLINE_DEBUGGABLE int64 GetBytesLeft() const
+	FORCEINLINE_DEBUGGABLE uint32 GetBytesLeft() const
 	{
 		return ((Num - Pos) + 7) >> 3;
 	}
-	FORCEINLINE_DEBUGGABLE int64 GetBitsLeft() const
+	FORCEINLINE_DEBUGGABLE uint32 GetBitsLeft() const
 	{
 		return (Num - Pos);
 	}
 	FORCEINLINE_DEBUGGABLE bool AtEnd()
 	{
-		return IsError() || Pos>=Num;
+		return ArIsError || Pos>=Num;
 	}
 	FORCEINLINE_DEBUGGABLE int64 GetNumBytes() const
 	{
@@ -183,7 +180,7 @@ public:
 	}
 	FORCEINLINE_DEBUGGABLE void EatByteAlign()
 	{
-		int64 PrePos = Pos;
+		int32 PrePos = Pos;
 
 		// Skip over remaining bits in current byte
 		Pos = (Pos+7) & (~0x07);
@@ -200,10 +197,7 @@ public:
 	 *
 	 * @param LengthBits	The number of bits being read at the time of overflow
 	 */
-	void SetOverflowed(int64 LengthBits);
-
-	/** Set the stream at the end */
-	void SetAtEnd() { Pos = Num; }
+	void SetOverflowed(int32 LengthBits);
 
 	void AppendDataFromChecked( FBitReader& Src );
 	void AppendDataFromChecked( uint8* Src, uint32 NumBits );
@@ -222,7 +216,7 @@ private:
 
 	FORCEINLINE uint8 Shift(uint8 Cnt)
 	{
-		return (uint8)(1<<Cnt);
+		return 1<<Cnt;
 	}
 
 };

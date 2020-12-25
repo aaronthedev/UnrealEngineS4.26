@@ -1,8 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Components/MeshComponent.h"
+#include "Chaos/ChaosSolverActor.h"
+#include "Chaos/PBDRigidParticles.h"
 #include "Chaos/Defines.h"
 #include "Field/FieldSystem.h"
 #include "Field/FieldSystemActor.h"
@@ -13,25 +15,24 @@
 #include "GeometryCollection/GeometryCollectionSimulationTypes.h"
 #include "GeometryCollection/GeometryCollectionSimulationCoreTypes.h"
 #include "Physics/Experimental/PhysScene_Chaos.h"
-#include "GeometryCollectionProxyData.h"
+#include "GeometryCollection/GeometryDynamicCollection.h"
 #include "GeometryCollectionObject.h"
 #include "GeometryCollectionEditorSelection.h"
 #include "GeometryCollection/RecordedTransformTrack.h"
 #include "Templates/UniquePtr.h"
+#include "PhysicalMaterials/Experimental/ChaosPhysicalMaterial.h"
 #include "Chaos/ChaosGameplayEventDispatcher.h"
 #include "Chaos/ChaosNotifyHandlerInterface.h"
 #include "Chaos/ChaosSolverComponentTypes.h"
-#include "Chaos/PBDRigidsEvolutionFwd.h"
 
 #include "GeometryCollectionComponent.generated.h"
 
 struct FGeometryCollectionConstantData;
 struct FGeometryCollectionDynamicData;
+class FGeometryCollectionPhysicsProxy;
 class UGeometryCollectionComponent;
 class UBoxComponent;
 class UGeometryCollectionCache;
-class UChaosPhysicalMaterial;
-class AChaosSolverActor;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnChaosBreakEvent, const FChaosBreakEvent&, BreakEvent);
 
@@ -231,90 +232,28 @@ private:
 //GetArrayRest (gives original rest value)
 //This generates pointers to arrays marked private. Macro assumes getters are public
 //todo(ocohen): may want to take in a static name
-#define COPY_ON_WRITE_ATTRIBUTE(Type, Name, Group)								\
-FORCEINLINE const TManagedArray<Type>& Get##Name##Array() const 				\
-{																				\
-	return Indirect##Name##Array ?												\
-		*Indirect##Name##Array : RestCollection->GetGeometryCollection()->Name;	\
-}																				\
-FORCEINLINE TManagedArray<Type>& Get##Name##ArrayCopyOnWrite()					\
-{																				\
-	if(!Indirect##Name##Array)													\
-	{																			\
-		static FName StaticName(#Name);											\
-		DynamicCollection->AddAttribute<Type>(StaticName, Group);				\
-		DynamicCollection->CopyAttribute(										\
-			*RestCollection->GetGeometryCollection(), StaticName, Group);		\
-		Indirect##Name##Array =													\
-			&DynamicCollection->GetAttribute<Type>(StaticName, Group);			\
-		CopyOnWriteAttributeList.Add(											\
-			reinterpret_cast<FManagedArrayBase**>(&Indirect##Name##Array));		\
-	}																			\
-	return *Indirect##Name##Array;												\
-}																				\
-FORCEINLINE void Reset##Name##ArrayDynamic()									\
-{																				\
-	Indirect##Name##Array = NULL;												\
-}																				\
-FORCEINLINE const TManagedArray<Type>& Get##Name##ArrayRest() const				\
-{																				\
-	return RestCollection->GetGeometryCollection()->Name;						\
-}																				\
-private:																		\
-	TManagedArray<Type>* Indirect##Name##Array;									\
+#define COPY_ON_WRITE_ATTRIBUTE(Type, Name, Group)\
+FORCEINLINE const TManagedArray<Type>& Get##Name##Array() const {\
+	return Indirect##Name##Array ? *Indirect##Name##Array : RestCollection->GetGeometryCollection()->Name;\
+}\
+FORCEINLINE TManagedArray<Type>& Get##Name##ArrayCopyOnWrite(){\
+	if(!Indirect##Name##Array)\
+	{\
+		static FName StaticName(#Name);\
+		DynamicCollection->AddAttribute<Type>(StaticName, Group);\
+		DynamicCollection->CopyAttribute(*RestCollection->GetGeometryCollection(), StaticName, Group);\
+		Indirect##Name##Array = &DynamicCollection->GetAttribute<Type>(StaticName, Group);\
+		CopyOnWriteAttributeList.Add(reinterpret_cast<FManagedArrayBase**>(&Indirect##Name##Array));\
+	}\
+	return *Indirect##Name##Array;\
+}\
+FORCEINLINE void Reset##Name##ArrayDynamic(){\
+	Indirect##Name##Array = NULL;\
+}\
+FORCEINLINE const TManagedArray<Type>& Get##Name##ArrayRest() const{ return RestCollection->GetGeometryCollection()->Name; }\
+private:\
+TManagedArray<Type>* Indirect##Name##Array;\
 public:
-
-/**
- * Raw struct to serialize for network. We need to custom netserialize to optimize
- * the vector serialize as much as possible and rather than have the property system
- * iterate an array of reflected structs we handle everything in the NetSerialize for
- * the container (FGeometryCollectionRepData)
- */
-struct FGeometryCollectionRepPose
-{
-	FVector Position;
-	FVector LinearVelocity;
-	FVector AngularVelocity;
-	FQuat Rotation;
-	uint16 ParticleIndex;
-};
-
-/**
- * Replicated data for a geometry collection when bEnableReplication is true for
- * that component. See UGeomtryCollectionComponent::UpdateRepData
- */
-USTRUCT()
-struct FGeometryCollectionRepData
-{
-	GENERATED_BODY()
-
-	FGeometryCollectionRepData()
-		: Version(0)
-	{
-
-	}
-
-	// Array of per-particle data required to synchronize clients
-	TArray<FGeometryCollectionRepPose> Poses;
-
-	// Version counter, every write to the rep data is a new state so Identical only references this version
-	// as there's no reason to compare the Poses array.
-	int32 Version;
-
-	// Just test version to skip having to traverse the whole pose array for replication
-	bool Identical(const FGeometryCollectionRepData* Other, uint32 PortFlags) const;
-	bool NetSerialize(FArchive& Ar, class UPackageMap* Map, bool& bOutSuccess);
-};
-
-template<>
-struct TStructOpsTypeTraits<FGeometryCollectionRepData> : public TStructOpsTypeTraitsBase2<FGeometryCollectionRepData>
-{
-	enum
-	{
-		WithNetSerializer = true,
-		WithIdentical = true,
-	};
-};
 
 /**
 *	GeometryCollectionComponent
@@ -332,13 +271,12 @@ class GEOMETRYCOLLECTIONENGINE_API UGeometryCollectionComponent : public UMeshCo
 public:
 
 	//~ Begin UActorComponent Interface.
-	virtual void CreateRenderState_Concurrent(FRegisterComponentContext* Context) override;
+	virtual void CreateRenderState_Concurrent() override;
 	virtual void SendRenderDynamicData_Concurrent() override;
 	FORCEINLINE void SetRenderStateDirty() { bRenderStateDirty = true; }
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type ReasonEnd) override;
-	virtual void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const override;
-	virtual void InitializeComponent() override;
+
 	//~ Begin UActorComponent Interface. 
 
 
@@ -435,7 +373,9 @@ public:
 	bool Simulating;
 	ESimulationInitializationState InitializationState;
 
-	/** ObjectType defines how to initialize the rigid objects state, Kinematic, Sleeping, Dynamic. */
+	/*
+	*  ObjectType defines how to initialize the rigid objects state, Kinematic, Sleeping, Dynamic.
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|General")
 	EObjectStateTypeEnum ObjectType;
 
@@ -443,58 +383,68 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|Clustering")
 	bool EnableClustering;
 
-	/** Maximum level for cluster breaks. */
+	/**
+	* Maximum level for cluster breaks
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|Clustering")
 	int32 ClusterGroupIndex;
 
-	/** Maximum level for cluster breaks. */
+	/**
+	* Maximum level for cluster breaks
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|Clustering")
 	int32 MaxClusterLevel;
 
-	/** Damage threshold for clusters at different levels. */
+	/**
+	* Damage threshold for clusters at different levels.
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|Clustering")
 	TArray<float> DamageThreshold;
 
-	/** */
+	/*
+	*  ObjectType defines how to initialize the rigid objects state, Kinematic, Sleeping, Dynamic.
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|Clustering")
 	EClusterConnectionTypeEnum ClusterConnectionType;
 
-	/** */
+	/**
+	* Uniform Friction
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|Collisions")
 	int32 CollisionGroup;
 
-	/** Uniform Friction */
+	/**
+	* Uniform Friction
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|Collisions")
 	float CollisionSampleFraction;
 
-	/** Uniform linear ether drag. */
-	UPROPERTY(meta = (DeprecatedProperty, DeprecationMessage = "Use PhysicalMaterial instead."))
-	float LinearEtherDrag_DEPRECATED;
 
-	/** Uniform angular ether drag. */
-	UPROPERTY(meta=(DeprecatedProperty, DeprecationMessage="Use PhysicalMaterial instead."))
-	float AngularEtherDrag_DEPRECATED;
+	/**
+	* Physical Properties
+	*/
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "ChaosPhysics")
+	const UChaosPhysicalMaterial* PhysicalMaterial;
 
-	/** Physical Properties */
-	UPROPERTY(meta=(DeprecatedProperty, DeprecationMessage="Physical material now derived from render materials, for instance overrides use PhysicalMaterialOverride."))
-	const UChaosPhysicalMaterial* PhysicalMaterial_DEPRECATED;
-
-	/** */
+	/**
+	*
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|Initial Velocity")
 	EInitialVelocityTypeEnum InitialVelocityType;
 
-	/** */
+	/**
+	*
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|Initial Velocity")
 	FVector InitialLinearVelocity;
 
-	/** */
+	/**
+	*
+	*/
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "ChaosPhysics|Initial Velocity")
 	FVector InitialAngularVelocity;
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="ChaosPhysics|Collisions")
-	UPhysicalMaterial* PhysicalMaterialOverride;
-
-	UPROPERTY()
+	UPROPERTY(EditAnywhere, Category = "ChaosPhysics|Caching", meta=(ShowOnlyInnerProperties))
 	FGeomComponentCacheParameters CacheParameters;
 
 	UFUNCTION(BlueprintCallable, Category = "Field")
@@ -520,6 +470,8 @@ public:
 	
 	bool GetIsObjectLoading() { return IsObjectLoading; }
 
+
+
 	/**
 	*
 	*/
@@ -536,11 +488,9 @@ public:
 	FORCEINLINE const TArray<int32>& GetHighlightedBones() const { return HighlightedBones; }
 #endif
 
-	FPhysScene_Chaos* GetInnerChaosScene() const;
+	FPhysScene_Chaos* GetPhysicsScene() const;
 	AChaosSolverActor* GetPhysicsSolverActor() const;
-
 	const FGeometryCollectionPhysicsProxy* GetPhysicsProxy() const { return PhysicsProxy; }
-	FGeometryCollectionPhysicsProxy* GetPhysicsProxy() { return PhysicsProxy; }
 
 #if GEOMETRYCOLLECTION_EDITOR_SELECTION
 	/** Enable/disable the scene proxy per transform selection mode. When disabled the per material id default selection is used instead. */
@@ -589,10 +539,6 @@ public:
 	UPROPERTY(Transient, VisibleAnywhere, BlueprintReadWrite, Category = "Chaos")
 	bool CachePlayback;
 
-	bool DoCustomNavigableGeometryExport(FNavigableGeometryExport& GeomExport) const override;
-
-	/** Gets the physical material to use for this geometry collection, taking into account instance overrides and render materials */
-	UPhysicalMaterial* GetPhysicalMaterial() const;
 
 public:
 	UPROPERTY(BlueprintAssignable, Category = "Collision")
@@ -635,45 +581,7 @@ protected:
 	void UpdateRBCollisionEventRegistration();
 	void UpdateBreakEventRegistration();
 
-	/* Per-instance override to enable/disable replication for the geometry collection */
-	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category=Network)
-	bool bEnableReplication;
-
-	/** 
-	 * Enables use of ReplicationAbandonClusterLevel to stop providing network updates to
-	 * clients when the updated particle is of a level higher then specified.
-	 */
-	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = Network)
-	bool bEnableAbandonAfterLevel;
-
-	/**
-	 * If replicating - the cluster level to stop sending corrections for geometry collection chunks.
-	 * recommended for smaller leaf levels when the size of the objects means they are no longer
-	 * gameplay relevant to cut down on required bandwidth to update a collection.
-	 * @see bEnableAbandonAfterLevel
-	 */ 
-	UPROPERTY(EditInstanceOnly, BlueprintReadOnly, Category = Network)
-	int32 ReplicationAbandonClusterLevel;
-
-	UPROPERTY(ReplicatedUsing=OnRep_RepData)
-	FGeometryCollectionRepData RepData;
-
-	/** Called on non-authoritative clients when receiving new repdata from the server */
-	UFUNCTION()
-	void OnRep_RepData(const FGeometryCollectionRepData& OldData);
-
-	/** Called post solve to allow authoritative components to update their replication data */
-	void UpdateRepData();
-
 private:
-
-	/** 
-	 * Notifies all clients that a server has abandoned control of a particle, clients should restore the strain
-	 * values on abandoned particles and their children then fracture them before continuing
-	 */
-	UFUNCTION(NetMulticast, Reliable)
-	void NetAbandonCluster(int32 TransformIndex);
-
 	bool bRenderStateDirty;
 	bool bShowBoneColors;
 	bool bEnableBoneSelection;
@@ -682,10 +590,6 @@ private:
 	uint32 NavmeshInvalidationTimeSliceIndex;
 	bool IsObjectDynamic;
 	bool IsObjectLoading;
-
-	FCollisionFilterData InitialSimFilter;
-	FCollisionFilterData InitialQueryFilter;
-	FPhysxUserData PhysicsUserData;
 
 #if WITH_EDITORONLY_DATA
 	UPROPERTY(Transient)
@@ -702,6 +606,9 @@ private:
 
 	float CurrentCacheTime;
 	TArray<bool> EventsPlayed;
+
+	//@todo(mlentine): Don't have one per geo collection
+	TUniquePtr<Chaos::TChaosPhysicsMaterial<float>> ChaosMaterial;
 
 	FGeometryCollectionPhysicsProxy* PhysicsProxy;
 	TUniquePtr<FGeometryDynamicCollection> DynamicCollection;
@@ -728,8 +635,6 @@ private:
 	bool IsEqual(const TArray<FMatrix> &A, const TArray<FMatrix> &B, const float Tolerance = 1e-6);
 	TArray<bool> TransformsAreEqual;	
 	int32 TransformsAreEqualIndex;
-
-	UChaosGameplayEventDispatcher* EventDispatcher;
 
 #if GEOMETRYCOLLECTION_EDITOR_SELECTION
 	bool bIsTransformSelectionModeEnabled;

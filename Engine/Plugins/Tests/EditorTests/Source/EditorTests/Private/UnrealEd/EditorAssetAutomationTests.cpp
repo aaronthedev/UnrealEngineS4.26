@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "HAL/FileManager.h"
@@ -233,7 +233,7 @@ namespace CreateAssetHelper
 		void CreateAsset()
 		{
 			const FString PackageName = AssetPath + TEXT("/") + AssetName;
-			AssetPackage = CreatePackage(*PackageName);
+			AssetPackage = CreatePackage(NULL, *PackageName);
 			EObjectFlags Flags = RF_Public | RF_Standalone;
 
 			CreatedAsset = Factory->FactoryCreateNew(Class, AssetPackage, FName(*AssetName), Flags, NULL, GWarn);
@@ -311,7 +311,7 @@ namespace CreateAssetHelper
 				GEditor->GetSelectedObjects()->Deselect(CreatedAsset);
 
 				// Duplicate the asset
-				DuplicatedPackage = CreatePackage(*NewPackageName);
+				DuplicatedPackage = CreatePackage(NULL, *NewPackageName);
 				DuplicatedAsset = StaticDuplicateObject(CreatedAsset, DuplicatedPackage, *NewObjectName);
 
 				if (DuplicatedAsset)
@@ -962,7 +962,7 @@ namespace ImportExportAssetHelper
 			{
 				FString ScreenshotName;
 				const FString TestName = FString::Printf(TEXT("AssetImportExport/Screenshots/%s"), *ImportedAsset->GetName());
-				ScreenshotName = AutomationCommon::GetScreenshotName(TestName);
+				AutomationCommon::GetScreenshotPath(TestName, ScreenshotName);
 
 				TSharedRef<SWidget> WindowRef = ActiveWindow.ToSharedRef();
 
@@ -973,7 +973,7 @@ namespace ImportExportAssetHelper
 					FAutomationScreenshotData Data;
 					Data.Width = OutImageSize.X;
 					Data.Height = OutImageSize.Y;
-					Data.ScreenshotName = ScreenshotName;
+					Data.Path = ScreenshotName;
 					FAutomationTestFramework::Get().OnScreenshotCaptured().ExecuteIfBound(OutImageData, Data);
 				}
 
@@ -1003,9 +1003,9 @@ namespace ImportExportAssetHelper
 					Extension = FPaths::GetExtension(ImportPath);
 				}
 
-				if (Extension.StartsWith(TEXT("."), ESearchCase::CaseSensitive))
+				if (Extension.StartsWith(TEXT(".")))
 				{
-					Extension.RightChopInline(1, false);
+					Extension = Extension.RightChop(1);
 				}
 
 				//Export the asset

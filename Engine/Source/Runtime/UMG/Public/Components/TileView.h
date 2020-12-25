@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,17 +25,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = TileView)
 	void SetEntryHeight(float NewHeight);
 
-	/** Sets the width of every tile entry */
+	/** Sets the width if every tile entry */
 	UFUNCTION(BlueprintCallable, Category = TileView)
 	void SetEntryWidth(float NewWidth);
-
-	/** Gets the height of tile entries */
-	UFUNCTION(BlueprintPure, Category = TileView)
-	float GetEntryHeight() const { return EntryHeight; }
-
-	/** Gets the width of tile entries */
-	UFUNCTION(BlueprintPure, Category = TileView)
-	float GetEntryWidth() const { return EntryWidth; }
 
 protected:
 	virtual TSharedRef<STableViewBase> RebuildListWidget() override;

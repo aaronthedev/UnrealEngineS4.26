@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,7 +12,6 @@
 class FSandboxPlatformFile;
 class IAssetRegistry;
 class ITargetPlatform;
-class IChunkDataGenerator;
 class UChunkDependencyInfo;
 struct FChunkDependencyTreeNode;
 
@@ -73,12 +72,6 @@ public:
 	 * @param bGenerateStreamingInstallManifest should we build a streaming install manifest 
 	 */
 	void BuildChunkManifest(const TSet<FName>& CookedPackages, const TSet<FName>& DevelopmentOnlyPackages, FSandboxPlatformFile* InSandboxFile, bool bGenerateStreamingInstallManifest);
-
-	/**
-	 * Register a chunk data generator with this generator.
-	 * @note Should be called prior to SaveManifests.
-	 */
-	void RegisterChunkDataGenerator(TSharedRef<IChunkDataGenerator> InChunkDataGenerator);
 
 	/**
 	* PreSave
@@ -158,18 +151,6 @@ public:
 	 */
 	void AddAssetToFileOrderRecursive(const FName& InPackageName, TArray<FName>& OutFileOrder, TSet<FName>& OutEncounteredNames, const TSet<FName>& InPackageNameSet, const TSet<FName>& InTopLevelAssets);
 
-	/**
-	 * Get pakchunk file index from ChunkID
-	 *
-	 * @param ChunkID
-	 * @return Index of target pakchunk file
-	 */
-	int32 GetPakchunkIndex(int32 ChunkId) const;
-
-	/**
-	 * Returns the chunks
-	 */
-	void GetChunkAssignments(TArray<TSet<FName>>& OutAssignments) const;
 
 private:
 
@@ -213,15 +194,13 @@ private:
 	FChunkPackageSet				AllCookedPackageSet;
 	/** Array of Maps with chunks<->packages assignments. This version contains all dependent packages */
 	TArray<FChunkPackageSet*>		FinalChunkManifests;
-	/** Additional data generators used when creating chunks */
-	TArray<TSharedRef<IChunkDataGenerator>> ChunkDataGenerators;
 	/** Lookup table of used package names used when searching references. */
 	TSet<FName>						InspectedNames;
 	/** */
 	UChunkDependencyInfo*			DependencyInfo;
 
-	/** Required flags a dependency must have if it is to be followed when adding package dependencies to chunks.*/
-	UE::AssetRegistry::EDependencyQuery DependencyQuery;
+	/** Dependency type to follow when adding package dependencies to chunks.*/
+	EAssetRegistryDependencyType::Type DependencyType;
 
 	/** Mapping from chunk id to pakchunk file index. If not defined, Pakchunk index will be the same as chunk id by default */
 	TMap<int32, int32> ChunkIdPakchunkIndexMapping;
@@ -278,6 +257,14 @@ private:
 	* @param The ID of the chunk to assign it to
 	*/
 	void RemovePackageFromManifest(FName PackageName, int32 ChunkId);
+
+	/**
+	* Get pakchunk file index from ChunkID
+	*
+	* @param ChunkID
+	* @return Index of target pakchunk file
+	*/
+	int32 GetPakchunkIndex(int32 ChunkId);
 
 	/**
 	 * Walks the dependency graph of assets and assigns packages to correct chunks.
@@ -361,7 +348,7 @@ private:
 	bool GetPackageDependencyChain(FName SourcePackage, FName TargetPackage, TSet<FName>& VisitedPackages, TArray<FName>& OutDependencyChain);
 
 	/** Get an array of Packages this package will import */
-	bool GetPackageDependencies(FName PackageName, TArray<FName>& DependentPackageNames, UE::AssetRegistry::EDependencyQuery InDependencyQuery);
+	bool GetPackageDependencies(FName PackageName, TArray<FName>& DependentPackageNames, EAssetRegistryDependencyType::Type InDependencyType);
 
 	/** Save a CSV dump of chunk asset information, if bWriteIndividualFiles is true it writes a CSV per chunk in addition to AllChunksInfo */
 	bool GenerateAssetChunkInformationCSV(const FString& OutputPath, bool bWriteIndividualFiles = false);

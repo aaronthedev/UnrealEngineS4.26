@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*-----------------------------------------------------------------------------
 	Data structures only used for importing skeletal meshes and animations.
@@ -20,29 +20,28 @@ class USkeleton;
 class UThumbnailInfo;
 class FSkeletalMeshLODModel;
 
-struct FExistingMeshLodSectionData
+struct ExistingMeshLodSectionData
 {
-	FExistingMeshLodSectionData(FName InImportedMaterialSlotName, bool InbCastShadow, bool InbRecomputeTangents, ESkinVertexColorChannel InRecomputeTangentsVertexMaskChannel, int32 InGenerateUpTo, bool InbDisabled)
+	ExistingMeshLodSectionData(FName InImportedMaterialSlotName, bool InbCastShadow, bool InbRecomputeTangents, int32 InGenerateUpTo, bool InbDisabled)
 	: ImportedMaterialSlotName(InImportedMaterialSlotName)
 	, bCastShadow(InbCastShadow)
 	, bRecomputeTangents(InbRecomputeTangents)
-	, RecomputeTangentsVertexMaskChannel(InRecomputeTangentsVertexMaskChannel)
 	, GenerateUpTo(InGenerateUpTo)
 	, bDisabled(InbDisabled)
 	{}
 	FName ImportedMaterialSlotName;
 	bool bCastShadow;
 	bool bRecomputeTangents;
-	ESkinVertexColorChannel RecomputeTangentsVertexMaskChannel;
 	int32 GenerateUpTo;
 	bool bDisabled;
 };
 
-struct FExistingSkelMeshData
+struct ExistingSkelMeshData
 {
 	TArray<USkeletalMeshSocket*>			ExistingSockets;
-	TArray<TSharedPtr<FReductionBaseSkeletalMeshBulkData>> ExistingOriginalReductionSourceMeshData;
+	TArray<FReductionBaseSkeletalMeshBulkData*> ExistingOriginalReductionSourceMeshData;
 	TIndirectArray<FSkeletalMeshLODModel>	ExistingLODModels;
+	FSkeletalMeshLODInfo					ExistingBaseLODInfo;
 	TArray<FSkeletalMeshLODInfo>			ExistingLODInfo;
 	FReferenceSkeleton						ExistingRefSkeleton;
 	TArray<FSkeletalMaterial>				ExistingMaterials;
@@ -54,6 +53,13 @@ struct FExistingSkelMeshData
 	TArray<FTransform>						ExistingRetargetBasePose;
 	USkeletalMeshLODSettings*				ExistingLODSettings;
 	TSubclassOf<UAnimInstance>				ExistingPostProcessAnimBlueprint;
+
+	//////////////////////////////////////////////////////////////////////////
+	//Reimport LOD specific data
+
+	//When the specific LOD is reduce, we want to apply the same reduction after the re-import of the LODs
+	bool bIsReimportLODReduced;
+	FSkeletalMeshOptimizationSettings		ExistingReimportLODReductionSettings;
 	
 	//////////////////////////////////////////////////////////////////////////
 
@@ -70,7 +76,7 @@ struct FExistingSkelMeshData
 	bool UseMaterialNameSlotWorkflow;
 	//The existing import material data (the state of sections before the reimport)
 	TArray<FName> ExistingImportMaterialOriginalNameData;
-	TArray<TArray<FExistingMeshLodSectionData>> ExistingImportMeshLodSectionMaterialData;
+	TArray<TArray<ExistingMeshLodSectionData>> ExistingImportMeshLodSectionMaterialData;
 	//The last import material data (fbx original data before user changes)
 	TArray<FName> LastImportMaterialOriginalNameData;
 	TArray<TArray<FName>> LastImportMeshLodSectionMaterialData;
@@ -78,7 +84,6 @@ struct FExistingSkelMeshData
 	FSkeletalMeshSamplingInfo				ExistingSamplingInfo;
 	FPerPlatformInt							MinLOD;
 	FPerPlatformBool						DisableBelowMinLodStripping;
-	bool									bOverrideLODStreamingSettings;
 	FPerPlatformBool						bSupportLODStreaming;
 	FPerPlatformInt							MaxNumStreamedLODs;
 	FPerPlatformInt							MaxNumOptionalLODs;
@@ -86,8 +91,6 @@ struct FExistingSkelMeshData
 	TMap<UAssetUserData*, bool>				ExistingAssetUserData;
 
 	USkeletalMesh::FOnMeshChanged			ExistingOnMeshChanged;
-
-	TMap<FName, FString>* ExistingUMetaDataTagValues;
 };
 
 /** 

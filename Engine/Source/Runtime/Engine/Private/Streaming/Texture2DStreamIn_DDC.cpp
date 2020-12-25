@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 Texture2DStreamIn_DDC.cpp: Stream in helper for 2D textures loading DDC files.
@@ -12,7 +12,7 @@ Texture2DStreamIn_DDC.cpp: Stream in helper for 2D textures loading DDC files.
 
 #if WITH_EDITORONLY_DATA
 
-int32 GStreamingUseAsyncRequestsForDDC = 1;
+int32 GStreamingUseAsyncRequestsForDDC = 0;
 static FAutoConsoleVariableRef CVarStreamingDDCPendingSleep(
 	TEXT("r.Streaming.UseAsyncRequestsForDDC"),
 	GStreamingUseAsyncRequestsForDDC,
@@ -28,60 +28,71 @@ static FAutoConsoleVariableRef CVarStreamingAbandonedDDCHandlePurgeFrequency(
 	ECVF_Default
 );
 
-// ******************************************
-// ******* FAbandonedDDCHandleManager *******
-// ******************************************
-
-FAbandonedDDCHandleManager GAbandonedDDCHandleManager;
-
-void FAbandonedDDCHandleManager::Add(uint32 InHandle)
+namespace
 {
-	check(InHandle);
-
-	bool bPurge = false;
+	class FAbandonedDDCHandleManager
 	{
-		FScopeLock ScopeLock(&CS);
-		Handles.Add(InHandle);
+	public:
+		void Add(uint32 InHandle);
+		void Purge();
+	private:
+		TArray<uint32> Handles;	
+		FCriticalSection CS;
+		uint32 TotalAdd = 0;
+	};
 
-		++TotalAdd;
-		bPurge = (TotalAdd % GStreamingAbandonedDDCHandlePurgeFrequency == 0);
-	}
 
-	if (bPurge)
+	void FAbandonedDDCHandleManager::Add(uint32 InHandle)
 	{
-		Purge();
-	}
-}
+		check(InHandle);
 
-void FAbandonedDDCHandleManager::Purge()
-{
-	TArray<uint32> TempHandles;	
-	{
-		FScopeLock ScopeLock(&CS);
-		FMemory::Memswap(&TempHandles, &Handles, sizeof(TempHandles));
-	}
-
-	FDerivedDataCacheInterface& DDCInterface = GetDerivedDataCacheRef();
-	TArray<uint8> Data;
-
-	for (int32 Index = 0; Index < TempHandles.Num(); ++Index)
-	{
-		uint32 Handle = TempHandles[Index];
-		if (DDCInterface.PollAsynchronousCompletion(Handle))
+		bool bPurge = false;
 		{
-			DDCInterface.GetAsynchronousResults(Handle, Data);
-			Data.Reset();
+			FScopeLock ScopeLock(&CS);
+			Handles.Add(InHandle);
 
-			TempHandles.RemoveAtSwap(Index);
-			--Index;
+			++TotalAdd;
+			bPurge = (TotalAdd % GStreamingAbandonedDDCHandlePurgeFrequency == 0);
+		}
+
+		if (bPurge)
+		{
+			Purge();
 		}
 	}
 
-	if (TempHandles.Num())
+	void FAbandonedDDCHandleManager::Purge()
 	{
-		FScopeLock ScopeLock(&CS);
-		Handles.Append(TempHandles);
+		TArray<uint32> TempHandles;	
+		{
+			FScopeLock ScopeLock(&CS);
+			FMemory::Memswap(&TempHandles, &Handles, sizeof(TempHandles));
+		}
+
+		FDerivedDataCacheInterface& DDCInterface = GetDerivedDataCacheRef();
+		TArray<uint8> Data;
+
+		for (int32 Index = 0; Index < TempHandles.Num(); ++Index)
+		{
+			uint32 Handle = TempHandles[Index];
+			if (DDCInterface.PollAsynchronousCompletion(Handle))
+			{
+				DDCInterface.GetAsynchronousResults(Handle, Data);
+				Data.Reset();
+
+				TempHandles.RemoveAtSwap(Index);
+				--Index;
+			}
+		}
+
+		if (TempHandles.Num())
+		{
+			FScopeLock ScopeLock(&CS);
+			Handles.Append(TempHandles);
+		}
 	}
+
+	FAbandonedDDCHandleManager GAbandonedDDCHandleManager;
 }
 
 void PurgeAbandonedDDCHandles()
@@ -89,14 +100,11 @@ void PurgeAbandonedDDCHandles()
 	GAbandonedDDCHandleManager.Purge();
 }
 
-// ******************************************
-// ********* FTexture2DStreamIn_DDC *********
-// ******************************************
-
-FTexture2DStreamIn_DDC::FTexture2DStreamIn_DDC(UTexture2D* InTexture)
-	: FTexture2DStreamIn(InTexture)
+FTexture2DStreamIn_DDC::FTexture2DStreamIn_DDC(UTexture2D* InTexture, int32 InRequestedMips)
+	: FTexture2DStreamIn(InTexture, InRequestedMips)
+	, bDDCIsInvalid(false)
 {
-	DDCHandles.AddZeroed(ResourceState.MaxNumLODs);
+	DDCHandles.AddZeroed(InTexture->GetNumMips());
 }
 
 FTexture2DStreamIn_DDC::~FTexture2DStreamIn_DDC()
@@ -117,13 +125,17 @@ void FTexture2DStreamIn_DDC::DoCreateAsyncDDCRequests(const FContext& Context)
 {
 	if (Context.Texture && Context.Resource)
 	{
-		for (int32 MipIndex = PendingFirstLODIdx; MipIndex < CurrentFirstLODIdx && !IsCancelled(); ++MipIndex)
+		const TIndirectArray<FTexture2DMipMap>& OwnerMips = Context.Texture->GetPlatformMips();
+		const int32 CurrentFirstMip = Context.Resource->GetCurrentFirstMip();
+		const FTexture2DRHIRef Texture2DRHI = Context.Resource->GetTexture2DRHI();
+
+		for (int32 MipIndex = PendingFirstMip; MipIndex < CurrentFirstMip && !IsCancelled(); ++MipIndex)
 		{
-			const FTexture2DMipMap& MipMap = *Context.MipsView[MipIndex];
+			const FTexture2DMipMap& MipMap = OwnerMips[MipIndex];
 			if (!MipMap.DerivedDataKey.IsEmpty())
 			{
 				check(!DDCHandles[MipIndex]);
-				DDCHandles[MipIndex] = GetDerivedDataCacheRef().GetAsynchronous(*MipMap.DerivedDataKey, Context.Texture->GetPathName());
+				DDCHandles[MipIndex] = GetDerivedDataCacheRef().GetAsynchronous(*MipMap.DerivedDataKey);
 
 #if !UE_BUILD_SHIPPING
 				// On some platforms the IO is too fast to test cancelation requests timing issues.
@@ -144,13 +156,21 @@ void FTexture2DStreamIn_DDC::DoCreateAsyncDDCRequests(const FContext& Context)
 
 bool FTexture2DStreamIn_DDC::DoPoolDDCRequests(const FContext& Context) 
 {
-	for (int32 MipIndex = PendingFirstLODIdx; MipIndex < CurrentFirstLODIdx && !IsCancelled(); ++MipIndex)
+	if (Context.Texture && Context.Resource)
 	{
-		const uint32 Handle = DDCHandles[MipIndex];
-		if (Handle && !GetDerivedDataCacheRef().PollAsynchronousCompletion(Handle))
+		const int32 CurrentFirstMip = Context.Resource->GetCurrentFirstMip();
+		for (int32 MipIndex = PendingFirstMip; MipIndex < CurrentFirstMip && !IsCancelled(); ++MipIndex)
 		{
-			return false;
+			const uint32 Handle = DDCHandles[MipIndex];
+			if (Handle && !GetDerivedDataCacheRef().PollAsynchronousCompletion(Handle))
+			{
+				return false;
+			}
 		}
+	}
+	else
+	{
+		MarkAsCancelled();
 	}
 	return true;
 }
@@ -159,9 +179,14 @@ void FTexture2DStreamIn_DDC::DoLoadNewMipsFromDDC(const FContext& Context)
 {
 	if (Context.Texture && Context.Resource)
 	{
-		for (int32 MipIndex = PendingFirstLODIdx; MipIndex < CurrentFirstLODIdx && !IsCancelled(); ++MipIndex)
+		const TIndirectArray<FTexture2DMipMap>& OwnerMips = Context.Texture->GetPlatformMips();
+		const int32 CurrentFirstMip = Context.Resource->GetCurrentFirstMip();
+		const FTexture2DRHIRef Texture2DRHI = Context.Resource->GetTexture2DRHI();
+
+		for (int32 MipIndex = PendingFirstMip; MipIndex < CurrentFirstMip && !IsCancelled(); ++MipIndex)
 		{
-			const FTexture2DMipMap& MipMap = *Context.MipsView[MipIndex];
+			const FTexture2DMipMap& MipMap = OwnerMips[MipIndex];
+
 			check(MipData[MipIndex]);
 
 			if (!MipMap.DerivedDataKey.IsEmpty())
@@ -178,12 +203,12 @@ void FTexture2DStreamIn_DDC::DoLoadNewMipsFromDDC(const FContext& Context)
 				}
 				else
 				{
-					bDDCValid = GetDerivedDataCacheRef().GetSynchronous(*MipMap.DerivedDataKey, DerivedMipData, Context.Texture->GetPathName());
+					bDDCValid = GetDerivedDataCacheRef().GetSynchronous(*MipMap.DerivedDataKey, DerivedMipData);
 				}
 
 				if (bDDCValid)				
 				{
-					const int32 ExpectedMipSize = CalcTextureMipMapSize(MipMap.SizeX, MipMap.SizeY, Context.Resource->GetPixelFormat(), 0);
+					const int32 ExpectedMipSize = CalcTextureMipMapSize(MipMap.SizeX, MipMap.SizeY, Texture2DRHI->GetFormat(), 0);
 					FMemoryReader Ar(DerivedMipData, true);
 
 					int32 MipSize = 0;
@@ -197,12 +222,14 @@ void FTexture2DStreamIn_DDC::DoLoadNewMipsFromDDC(const FContext& Context)
 					{
 						UE_LOG(LogTexture, Error, TEXT("DDC mip size (%d) not as expected."), MipIndex);
 						MarkAsCancelled();
+						bDDCIsInvalid = true;
 					}
 				}
 				else
 				{
 					// UE_LOG(LogTexture, Warning, TEXT("Failed to stream mip data from the derived data cache for %s. Streaming mips will be recached."), Context.Texture->GetPathName() );
 					MarkAsCancelled();
+					bDDCIsInvalid = true;
 				}
 			}
 			else

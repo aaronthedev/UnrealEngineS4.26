@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	RHICommandList.inl: RHI Command List inline definitions.
@@ -32,7 +32,7 @@ FORCEINLINE_DEBUGGABLE bool FRHICommandListBase::IsImmediateAsyncCompute()
 	return this == &FRHICommandListExecutor::GetImmediateAsyncComputeCommandList();
 }
 
-FORCEINLINE_DEBUGGABLE bool FRHICommandListBase::Bypass() const
+FORCEINLINE_DEBUGGABLE bool FRHICommandListBase::Bypass()
 {
 	return GRHICommandList.Bypass();
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Animation/WidgetMaterialTrackUtilities.h"
@@ -147,13 +147,13 @@ FWidgetMaterialHandle GetPropertyValueByPath(void* DataObject, UStruct* Property
 {
 	if ( DataObject != nullptr && PathIndex < PropertyPath.Num() )
 	{
-		for ( TFieldIterator<FProperty> PropertyIterator( PropertySource ); PropertyIterator; ++PropertyIterator )
+		for ( TFieldIterator<UProperty> PropertyIterator( PropertySource ); PropertyIterator; ++PropertyIterator )
 		{
-			FProperty* Property = *PropertyIterator;
+			UProperty* Property = *PropertyIterator;
 			if ( Property != nullptr && Property->GetFName() == PropertyPath[PathIndex] )
 			{
 				// Only struct properties are relevant for the search.
-				FStructProperty* StructProperty = CastField<FStructProperty>( Property );
+				UStructProperty* StructProperty = Cast<UStructProperty>( Property );
 				if ( StructProperty == nullptr )
 				{
 					return FWidgetMaterialHandle();
@@ -189,18 +189,18 @@ FWidgetMaterialHandle WidgetMaterialTrackUtilities::GetMaterialHandle(UWidget* W
 	return GetPropertyValueByPath(Widget, Widget->GetClass(), BrushPropertyNamePath, 0);
 }
 
-void GetMaterialBrushPropertyPathsRecursive(void* DataObject, UStruct* PropertySource, TArray<FProperty*>& PropertyPath, TArray<FWidgetMaterialPropertyPath>& MaterialBrushPropertyPaths)
+void GetMaterialBrushPropertyPathsRecursive(void* DataObject, UStruct* PropertySource, TArray<UProperty*>& PropertyPath, TArray<FWidgetMaterialPropertyPath>& MaterialBrushPropertyPaths)
 {
 	if ( DataObject != nullptr )
 	{
-		for ( TFieldIterator<FProperty> PropertyIterator( PropertySource ); PropertyIterator; ++PropertyIterator )
+		for ( TFieldIterator<UProperty> PropertyIterator( PropertySource ); PropertyIterator; ++PropertyIterator )
 		{
-			FProperty* Property = *PropertyIterator;
+			UProperty* Property = *PropertyIterator;
 			if ( Property != nullptr && Property->HasAnyPropertyFlags( CPF_Deprecated ) == false )
 			{
 				PropertyPath.Add( Property );
 
-				FStructProperty* StructProperty = CastField<FStructProperty>( Property );
+				UStructProperty* StructProperty = Cast<UStructProperty>( Property );
 				if ( StructProperty != nullptr )
 				{
 					const FName StructName = StructProperty->Struct->GetFName();
@@ -243,7 +243,7 @@ void GetMaterialBrushPropertyPathsRecursive(void* DataObject, UStruct* PropertyS
 
 void WidgetMaterialTrackUtilities::GetMaterialBrushPropertyPaths( UWidget* Widget, TArray<FWidgetMaterialPropertyPath>& MaterialBrushPropertyPaths )
 {
-	TArray<FProperty*> PropertyPath;
+	TArray<UProperty*> PropertyPath;
 	GetMaterialBrushPropertyPathsRecursive( Widget, Widget->GetClass(), PropertyPath, MaterialBrushPropertyPaths );
 }
 

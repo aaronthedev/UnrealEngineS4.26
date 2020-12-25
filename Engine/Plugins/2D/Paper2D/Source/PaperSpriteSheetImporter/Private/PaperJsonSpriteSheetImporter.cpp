@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PaperJsonSpriteSheetImporter.h"
 #include "PaperSpriteSheetImporterLog.h"
@@ -591,7 +591,7 @@ bool FPaperJsonSpriteSheetImporter::PerformImport(const FString& LongPackagePath
 			AssetToolsModule.Get().CreateUniqueAssetName(TentativePackagePath, DefaultSuffix, /*out*/ PackageName, /*out*/ AssetName);
 
 			// Create a unique package name and asset name for the frame
-			OuterForFrame = CreatePackage(*PackageName);
+			OuterForFrame = CreatePackage(nullptr, *PackageName);
 
 			// Create the asset
 			TargetSprite = NewObject<UPaperSprite>(OuterForFrame, *AssetName, Flags);

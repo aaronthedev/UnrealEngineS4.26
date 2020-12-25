@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*===================================================================================
 	Scalability.h: Manager class for handling scalability settings
@@ -15,8 +15,6 @@ namespace Scalability
 		EAbsolute,
 		ERelativeToMax,
 	};
-
-	const int32 DefaultQualityLevel = 3;
 
 	/**
 	 * Structure for holding the state of the engine scalability groups
@@ -48,15 +46,7 @@ namespace Scalability
 		
 		bool operator==(const FQualityLevels& Other ) const
 		{
-			return ResolutionQuality == Other.ResolutionQuality &&
-				ViewDistanceQuality == Other.ViewDistanceQuality &&
-				AntiAliasingQuality == Other.AntiAliasingQuality &&
-				ShadowQuality == Other.ShadowQuality &&
-				PostProcessQuality == Other.PostProcessQuality &&
-				TextureQuality == Other.TextureQuality &&
-				EffectsQuality == Other.EffectsQuality &&
-				FoliageQuality == Other.FoliageQuality &&
-				ShadingQuality == Other.ShadingQuality;
+			return FMemory::Memcmp( this, &Other, sizeof(FQualityLevels) ) == 0;
 		}
 
 		bool operator!=(const FQualityLevels& Other ) const
@@ -67,15 +57,8 @@ namespace Scalability
 		/** used for DisplayInternals to quickly identify why a screenshot looks different */
 		uint32 GetHash() const
 		{
-			return FCrc::TypeCrc32<float>(ResolutionQuality) ^
-				FCrc::TypeCrc32<int32>(ViewDistanceQuality) ^
-				FCrc::TypeCrc32<int32>(AntiAliasingQuality) ^
-				FCrc::TypeCrc32<int32>(ShadowQuality) ^
-				FCrc::TypeCrc32<int32>(PostProcessQuality) ^
-				FCrc::TypeCrc32<int32>(TextureQuality) ^
-				FCrc::TypeCrc32<int32>(EffectsQuality) ^
-				FCrc::TypeCrc32<int32>(FoliageQuality) ^
-				FCrc::TypeCrc32<int32>(ShadingQuality);
+			// Note: this assumes the memory of this class is not containing any uninitialized memory
+			return FCrc::MemCrc32(this, sizeof(*this));
 		}
 
 		// Sets all other settings based on an overall value
@@ -89,10 +72,6 @@ namespace Scalability
 		// Returns the overall value if all settings are set to the same thing
 		// @param Value -1:custom, 0:low, 1:medium, 2:high, 3:epic, 4:cinematic
 		int32 GetSingleQualityLevel() const;
-
-		// Returns the minimum set quality level from all settings
-		// @param Value -1:custom, 0:low, 1:medium, 2:high, 3:epic, 4:cinematic
-		int32 GetMinQualityLevel() const;
 
 		// Sets view distance quality
 		// @param Value 0:low, 1:medium, 2:high, 3:epic, 4:cinematic (gets clamped if needed)
@@ -187,15 +166,8 @@ namespace Scalability
 	/** Returns the current screen percentage */
 	ENGINE_API float GetResolutionScreenPercentage();
 
-	/** Returns a human readable name for a scalability quality level */
-	ENGINE_API FText GetScalabilityNameFromQualityLevel(int32 QualityLevel);
-
 #if WITH_EDITOR
 	/** Set an Editor preview scalability platform */
 	void ENGINE_API ChangeScalabilityPreviewPlatform(FName NewPlatformScalabilityName);
 #endif
-
-	ENGINE_API FText GetQualityLevelText(int32 Value, int32 NumLevels);
-
-	ENGINE_API FString GetScalabilitySectionString(const TCHAR* InGroupName, int32 InQualityLevel, int32 InNumLevels);
 }

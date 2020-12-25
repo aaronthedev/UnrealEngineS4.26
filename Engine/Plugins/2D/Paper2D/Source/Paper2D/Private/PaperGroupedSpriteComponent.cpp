@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PaperGroupedSpriteComponent.h"
 #include "AI/NavigationSystemBase.h"
@@ -519,7 +519,7 @@ bool UPaperGroupedSpriteComponent::DoCustomNavigableGeometryExport(FNavigableGeo
 	{
 		if (InstanceBody != nullptr)
 		{
-			if (UBodySetup* BodySetup = InstanceBody->GetBodySetup())
+			if (UBodySetup* BodySetup = InstanceBody->BodySetup.Get())
 			{
 				GeomExport.ExportRigidBodySetup(*BodySetup, FTransform::Identity);
 			}

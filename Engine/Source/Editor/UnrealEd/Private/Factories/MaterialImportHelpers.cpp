@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Factories/MaterialImportHelpers.h"
 #include "AssetRegistryModule.h"
@@ -9,11 +9,6 @@
 
 UMaterialInterface* UMaterialImportHelpers::FindExistingMaterialFromSearchLocation(const FString& MaterialFullName, const FString& BasePackagePath, EMaterialSearchLocation SearchLocation, FText& OutError)
 {
-	if (SearchLocation == EMaterialSearchLocation::DoNotSearch)
-	{
-		return nullptr;
-	}
-
 	//Search in memory
 	constexpr bool bExactClass = false;
 	UMaterialInterface* FoundMaterial = FindObject<UMaterialInterface>(nullptr, *MaterialFullName, bExactClass);
@@ -39,10 +34,8 @@ UMaterialInterface* UMaterialImportHelpers::FindExistingMaterialFromSearchLocati
 		{
 			// Search recursively in parent's folder
 			SearchPath = FPaths::GetPath(SearchPath);
-			if (!SearchPath.IsEmpty())
-			{
-				FoundMaterial = FindExistingMaterial(SearchPath, MaterialFullName, true, OutError);
-			}
+
+			FoundMaterial = FindExistingMaterial(SearchPath, MaterialFullName, true, OutError);
 		}
 		if (FoundMaterial == nullptr &&
 			(	SearchLocation == EMaterialSearchLocation::UnderRoot ||
@@ -51,10 +44,8 @@ UMaterialInterface* UMaterialImportHelpers::FindExistingMaterialFromSearchLocati
 			// Search recursively in root folder of asset
 			FString OutPackageRoot, OutPackagePath, OutPackageName;
 			FPackageName::SplitLongPackageName(SearchPath, OutPackageRoot, OutPackagePath, OutPackageName);
-			if (!SearchPath.IsEmpty())
-			{
-				FoundMaterial = FindExistingMaterial(OutPackageRoot, MaterialFullName, true, OutError);
-			}
+
+			FoundMaterial = FindExistingMaterial(OutPackageRoot, MaterialFullName, true, OutError);
 		}
 		if (FoundMaterial == nullptr &&
 			SearchLocation == EMaterialSearchLocation::AllAssets)
@@ -73,28 +64,16 @@ UMaterialInterface* UMaterialImportHelpers::FindExistingMaterial(const FString& 
 
 	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
 	IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
-
-	// Finish/update any scans
-	TArray<FString> ScanPaths;
-	if (BasePath.IsEmpty() || BasePath == TEXT("/"))
-	{
-		FPackageName::QueryRootContentPaths(ScanPaths);
-	}
-	else
-	{ 
-		ScanPaths.Add(BasePath);
-	}
-	const bool bForceRescan = false;
-	AssetRegistry.ScanPathsSynchronous(ScanPaths, bForceRescan);
-
-
+	TArray<FAssetData> AssetData;
 	FARFilter Filter;
+
+	AssetRegistry.SearchAllAssets(true);
+
 	Filter.bRecursiveClasses = true;
 	Filter.bRecursivePaths = bRecursivePaths;
 	Filter.ClassNames.Add(UMaterialInterface::StaticClass()->GetFName());
 	Filter.PackagePaths.Add(FName(*BasePath));
 
-	TArray<FAssetData> AssetData;
 	AssetRegistry.GetAssets(Filter, AssetData);
 
 	TArray<UMaterialInterface*> FoundMaterials;

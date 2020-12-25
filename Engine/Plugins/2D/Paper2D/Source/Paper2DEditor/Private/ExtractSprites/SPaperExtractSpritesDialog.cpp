@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ExtractSprites/SPaperExtractSpritesDialog.h"
 #include "Widgets/SBoxPanel.h"
@@ -466,7 +466,7 @@ void SPaperExtractSpritesDialog::CreateExtractedSprites()
 	FScopedSlowTask Feedback(ExtractedSprites.Num(), NSLOCTEXT("Paper2D", "Paper2D_ExtractSpritesFromTexture", "Extracting Sprites From Texture"));
 	Feedback.MakeDialog(true);
 
-	for (const FPaperExtractedSprite& ExtractedSprite : ExtractedSprites)
+	for (const FPaperExtractedSprite ExtractedSprite : ExtractedSprites)
 	{
 		Feedback.EnterProgressFrame(1, NSLOCTEXT("Paper2D", "Paper2D_ExtractSpritesFromTexture", "Extracting Sprites From Texture"));
 

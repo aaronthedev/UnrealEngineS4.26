@@ -17,14 +17,9 @@
 	"Modules" :
 	[
 		{
-			"Name" : "AudioSynesthesiaCore",
-			"Type" : "Runtime",
-			"LoadingPhase" : "PreDefault"
-		},
-		{
 			"Name" : "AudioSynesthesia",
 			"Type" : "Runtime",
-			"LoadingPhase" : "PreDefault"
+			"LoadingPhase" : "Default"
 		},
 		{
 			"Name" : "AudioSynesthesiaEditor",

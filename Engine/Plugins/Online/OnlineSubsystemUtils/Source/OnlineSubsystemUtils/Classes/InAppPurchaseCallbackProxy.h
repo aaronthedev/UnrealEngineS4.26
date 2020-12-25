@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -8,31 +8,10 @@
 #include "Interfaces/OnlineStoreInterface.h"
 #include "InAppPurchaseCallbackProxy.generated.h"
 
-/**
- * Micro-transaction purchase information
- */
-USTRUCT(BlueprintType)
-struct FInAppPurchaseReceiptInfo
-{
-	GENERATED_USTRUCT_BODY()
-
-		// The item name
-		UPROPERTY(BlueprintReadOnly, Category = ProductInfo)
-		FString ItemName;
-
-	// The unique product identifier
-	UPROPERTY(BlueprintReadOnly, Category = ProductInfo)
-		FString ItemId;
-
-	// the unique transaction identifier
-	UPROPERTY(BlueprintReadOnly, Category = ProductInfo)
-		FString ValidationInfo;
-};
-
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FInAppPurchaseResult, EInAppPurchaseState::Type, PurchaseStatus, const FInAppPurchaseProductInfo&, InAppPurchaseReceipts);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FInAppPurchaseResult, EInAppPurchaseState::Type, CompletionStatus, const FInAppPurchaseProductInfo&, InAppPurchaseInformation);
 
 UCLASS(MinimalAPI)
-class UE_DEPRECATED(4.26, "UInAppPurchaseCallbackProxy is deprecated, please use UInAppPurchaseCallbackProxy2 instead.") UInAppPurchaseCallbackProxy : public UObject
+class UInAppPurchaseCallbackProxy : public UObject
 {
 	GENERATED_UCLASS_BODY()
 

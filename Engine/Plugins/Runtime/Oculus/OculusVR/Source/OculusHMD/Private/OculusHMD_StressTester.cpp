@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OculusHMD_StressTester.h"
 
@@ -142,7 +142,7 @@ public:
 	//This function is required to let us bind our runtime surface to the shader using an SRV.
 	void SetSurfaces(FRHICommandList& RHICmdList, FShaderResourceViewRHIRef TextureParameterSRV)
 	{
-		FRHIPixelShader* PixelShaderRHI = RHICmdList.GetBoundPixelShader();
+		FRHIPixelShader* PixelShaderRHI = GetPixelShader();
 
 		if (TextureParameter.IsBound())
 		{
@@ -159,14 +159,14 @@ public:
 		ConstantParametersBuffer = FOculusPixelShaderConstantParametersRef::CreateUniformBufferImmediate(ConstantParameters, UniformBuffer_SingleDraw);
 		VariableParametersBuffer = FOculusPixelShaderVariableParametersRef::CreateUniformBufferImmediate(VariableParameters, UniformBuffer_SingleDraw);
 
-		SetUniformBufferParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), GetUniformBufferParameter<FOculusPixelShaderConstantParameters>(), ConstantParametersBuffer);
-		SetUniformBufferParameter(RHICmdList, RHICmdList.GetBoundPixelShader(), GetUniformBufferParameter<FOculusPixelShaderVariableParameters>(), VariableParametersBuffer);
+		SetUniformBufferParameter(RHICmdList, GetPixelShader(), GetUniformBufferParameter<FOculusPixelShaderConstantParameters>(), ConstantParametersBuffer);
+		SetUniformBufferParameter(RHICmdList, GetPixelShader(), GetUniformBufferParameter<FOculusPixelShaderVariableParameters>(), VariableParametersBuffer);
 	}
 
 	//This is used to clean up the buffer binds after each invocation to let them be changed and used elsewhere if needed.
 	void UnbindBuffers(FRHICommandList& RHICmdList)
 	{
-		FRHIPixelShader* PixelShaderRHI = RHICmdList.GetBoundPixelShader();
+		FRHIPixelShader* PixelShaderRHI = GetPixelShader();
 
 		if (TextureParameter.IsBound())
 		{
@@ -176,7 +176,7 @@ public:
 
 private:
 	//This is how you declare resources that are going to be made available in the HLSL
-	LAYOUT_FIELD(FShaderResourceParameter, TextureParameter)
+	FShaderResourceParameter TextureParameter;
 };
 
 
@@ -371,8 +371,8 @@ void FStressTester::DoTickGPU_RenderThread(FRHICommandListImmediate& RHICmdList,
 			TShaderMapRef<FOculusStressShadersPS> PixelShader(GetGlobalShaderMap(FeatureLevel));
 
 			GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GOculusTextureVertexDeclaration.VertexDeclarationRHI;
-			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 			GraphicsPSOInit.PrimitiveType = PT_TriangleStrip;
 
 			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -417,7 +417,8 @@ static void StressGPUCmdHandler(const TArray<FString>& Args, UWorld* World, FOut
 
 static FAutoConsoleCommand CStressGPUCmd(
 	TEXT("vr.oculus.Stress.GPU"),
-	*NSLOCTEXT("OculusRift", "CCommandText_StressGPU", "Initiates a GPU stress test.\n Usage: vr.oculus.Stress.GPU [LoadMultiplier [TimeLimit]]").ToString(),
+	*NSLOCTEXT("OculusRift", "CCommandText_StressGPU",
+		"Initiates a GPU stress test.\n Usage: vr.oculus.Stress.GPU [LoadMultiplier [TimeLimit]]").ToString(),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(StressGPUCmdHandler));
 
 static void StressCPUCmdHandler(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
@@ -438,7 +439,8 @@ static void StressCPUCmdHandler(const TArray<FString>& Args, UWorld* World, FOut
 
 static FAutoConsoleCommand CStressCPUCmd(
 	TEXT("vr.oculus.Stress.CPU"),
-	*NSLOCTEXT("OculusRift", "CCommandText_StressCPU", "Initiates a CPU stress test.\n Usage: vr.oculus.Stress.CPU [PerFrameTime [TotalTimeLimit]]").ToString(),
+	*NSLOCTEXT("OculusRift", "CCommandText_StressCPU",
+		"Initiates a CPU stress test.\n Usage: vr.oculus.Stress.CPU [PerFrameTime [TotalTimeLimit]]").ToString(),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(StressCPUCmdHandler));
 
 static void StressPDCmdHandler(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
@@ -454,7 +456,8 @@ static void StressPDCmdHandler(const TArray<FString>& Args, UWorld* World, FOutp
 
 static FAutoConsoleCommand CStressPDCmd(
 	TEXT("vr.oculus.Stress.PD"),
-	*NSLOCTEXT("OculusRift", "CCommandText_StressPD", "Initiates a pixel density stress test wher pixel density is changed every frame for TotalTimeLimit seconds.\n Usage: vr.oculus.Stress.PD [TotalTimeLimit]").ToString(),
+	*NSLOCTEXT("OculusRift", "CCommandText_StressPD",
+		"Initiates a pixel density stress test wher pixel density is changed every frame for TotalTimeLimit seconds.\n Usage: vr.oculus.Stress.PD [TotalTimeLimit]").ToString(),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(StressPDCmdHandler));
 
 static void StressResetCmdHandler(const TArray<FString>& Args, UWorld* World, FOutputDevice& Ar)
@@ -465,7 +468,8 @@ static void StressResetCmdHandler(const TArray<FString>& Args, UWorld* World, FO
 
 static FAutoConsoleCommand CStressResetCmd(
 	TEXT("vr.oculus.Stress.Reset"),
-	*NSLOCTEXT("OculusRift", "CCommandText_StressReset", "Resets the stress tester and stops all currently running stress tests.\n Usage: vr.oculus.Stress.Reset").ToString(),
+	*NSLOCTEXT("OculusRift", "CCommandText_StressReset",
+		"Resets the stress tester and stops all currently running stress tests.\n Usage: vr.oculus.Stress.Reset").ToString(),
 	FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateStatic(StressResetCmdHandler));
 
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SNiagaraGraphParameterMapGetNode.h"
 #include "NiagaraNodeParameterMapGet.h"
@@ -7,11 +7,6 @@
 #include "Rendering/DrawElements.h"
 #include "Widgets/SBoxPanel.h"
 #include "SGraphPin.h"
-#include "EdGraphSchema_Niagara.h"
-#include "NiagaraScriptVariable.h"
-#include "SDropTarget.h"
-#include "NiagaraEditorStyle.h"
-
 
 #define LOCTEXT_NAMESPACE "SNiagaraGraphParameterMapGetNode"
 
@@ -33,7 +28,6 @@ void SNiagaraGraphParameterMapGetNode::AddPin(const TSharedRef<SGraphPin>& PinTo
 
 	const UEdGraphPin* PinObj = PinToAdd->GetPinObj();
 	const bool bAdvancedParameter = (PinObj != nullptr) && PinObj->bAdvancedView;
-	const bool bInvisiblePin = (PinObj != nullptr) && PinObj->bDefaultValueIsReadOnly;
 	if (bAdvancedParameter)
 	{
 		PinToAdd->SetVisibility(TAttribute<EVisibility>(PinToAdd, &SGraphPin::IsPinVisibleAsAdvanced));
@@ -42,11 +36,6 @@ void SNiagaraGraphParameterMapGetNode::AddPin(const TSharedRef<SGraphPin>& PinTo
 	// Save the UI building for later...
 	if (PinToAdd->GetDirection() == EEdGraphPinDirection::EGPD_Input)
 	{
-		if (bInvisiblePin)
-		{
-			//PinToAdd->SetOnlyShowDefaultValue(true);
-			PinToAdd->SetPinColorModifier(FLinearColor(0.0f, 0.0f, 0.0f, 0.0f));
-		}
 		InputPins.Add(PinToAdd);
 	}
 	else // Direction == EEdGraphPinDirection::EGPD_Output
@@ -58,23 +47,13 @@ void SNiagaraGraphParameterMapGetNode::AddPin(const TSharedRef<SGraphPin>& PinTo
 TSharedRef<SWidget> SNiagaraGraphParameterMapGetNode::CreateNodeContentArea()
 {
 	// NODE CONTENT AREA
-	return 	SNew(SDropTarget)
-		.OnDrop(this, &SNiagaraGraphParameterMapGetNode::OnDroppedOnTarget)
-		.OnAllowDrop(this, &SNiagaraGraphParameterMapGetNode::OnAllowDrop)
-		.HorizontalImage(FNiagaraEditorStyle::Get().GetBrush("NiagaraEditor.DropTarget.BorderHorizontal"))
-		.VerticalImage(FNiagaraEditorStyle::Get().GetBrush("NiagaraEditor.DropTarget.BorderVertical"))
-		.BackgroundColor(FNiagaraEditorStyle::Get().GetColor("NiagaraEditor.DropTarget.BackgroundColor"))
-		.BackgroundColorHover(FNiagaraEditorStyle::Get().GetColor("NiagaraEditor.DropTarget.BackgroundColorHover"))
-		.Content()
+	return SNew(SBorder)
+		.BorderImage(FEditorStyle::GetBrush("NoBorder"))
+		.HAlign(HAlign_Fill)
+		.VAlign(VAlign_Fill)
+		.Padding(FMargin(0, 3))
 		[
-			SNew(SBorder)
-			.BorderImage(FEditorStyle::GetBrush("NoBorder"))
-			.HAlign(HAlign_Fill)
-			.VAlign(VAlign_Fill)
-			.Padding(FMargin(0, 3))
-			[
-				SAssignNew(PinContainerRoot, SVerticalBox)
-			]
+			SAssignNew(PinContainerRoot, SVerticalBox)
 		];
 }
 
@@ -83,7 +62,6 @@ void SNiagaraGraphParameterMapGetNode::CreatePinWidgets()
 	SGraphNode::CreatePinWidgets();
 	
 	UNiagaraNodeParameterMapGet* GetNode = Cast<UNiagaraNodeParameterMapGet>(GraphNode);
-
 
 	// Deferred pin adding to line up input/output pins by name.
 	for (int32 i = 0; i < OutputPins.Num() + 1; i++)
@@ -154,7 +132,6 @@ void SNiagaraGraphParameterMapGetNode::CreatePinWidgets()
 			.HAlign(HAlign_Fill)
 			.VAlign(VAlign_Fill)
 			.Padding(FMargin(0, 3))
-			//.OnMouseButtonDown(this, &SNiagaraGraphParameterMapGetNode::OnBorderMouseButtonDown, i)
 			[
 				Widget.ToSharedRef()
 			];
@@ -169,49 +146,4 @@ const FSlateBrush* SNiagaraGraphParameterMapGetNode::GetBackgroundBrush(TSharedP
 {
 	return Border->IsHovered() ? BackgroundHoveredBrush	: BackgroundBrush;
 }
-
-
-FReply SNiagaraGraphParameterMapGetNode::OnBorderMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent, int32 InWhichPin)
-{
-	if (InWhichPin >= 0 && InWhichPin < OutputPins.Num() + 1)
-	{
-		UNiagaraNodeParameterMapGet* GetNode = Cast<UNiagaraNodeParameterMapGet>(GraphNode);
-		if (GetNode)
-		{
-			UNiagaraGraph* Graph = GetNode->GetNiagaraGraph();
-			if (Graph && InWhichPin > 0)
-			{
-				const UEdGraphSchema_Niagara* Schema = Graph->GetNiagaraSchema();
-				if (Schema)
-				{
-					FNiagaraVariable Var = Schema->PinToNiagaraVariable(OutputPins[InWhichPin-1]->GetPinObj());
-					UNiagaraScriptVariable** PinAssociatedScriptVariable = Graph->GetAllMetaData().Find(Var);
-					if (PinAssociatedScriptVariable != nullptr)
-					{
-						Graph->OnSubObjectSelectionChanged().Broadcast(*PinAssociatedScriptVariable);
-					}
-				}
-			}
-		}
-
-	}
-	return FReply::Unhandled();
-}
-
-FReply SNiagaraGraphParameterMapGetNode::OnDroppedOnTarget(TSharedPtr<FDragDropOperation> DropOperation)
-{
-	UNiagaraNodeParameterMapBase* MapNode = Cast<UNiagaraNodeParameterMapBase>(GraphNode);
-	if (MapNode != nullptr && MapNode->HandleDropOperation(DropOperation))
-	{
-		return FReply::Handled();
-	}
-	return FReply::Unhandled();
-}
-
-bool SNiagaraGraphParameterMapGetNode::OnAllowDrop(TSharedPtr<FDragDropOperation> DragDropOperation)
-{
-	UNiagaraNodeParameterMapBase* MapNode = Cast<UNiagaraNodeParameterMapBase>(GraphNode);
-	return MapNode != nullptr && MapNode->CanHandleDropOperation(DragDropOperation);
-}
-
 #undef LOCTEXT_NAMESPACE

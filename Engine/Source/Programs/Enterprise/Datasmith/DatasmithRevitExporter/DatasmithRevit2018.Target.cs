@@ -1,9 +1,8 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
 
-[SupportedPlatforms("Win64")]
 public abstract class DatasmithRevitBaseTarget : TargetRules
 {
 	public DatasmithRevitBaseTarget(TargetInfo Target)
@@ -15,7 +14,6 @@ public abstract class DatasmithRevitBaseTarget : TargetRules
 
 		string RevitVersionString = GetVersion();
 		string ProjectName = "DatasmithRevit" + RevitVersionString;
-		string DynamoNodeProjectName = "DatasmithDynamoNode";
 
 		ExeBinariesSubFolder = Path.Combine("Revit", RevitVersionString);
 		LaunchModuleName = ProjectName;
@@ -58,18 +56,13 @@ public abstract class DatasmithRevitBaseTarget : TargetRules
 
 		string RevitExporterPath = @"$(EngineDir)\Source\Programs\Enterprise\Datasmith\DatasmithRevitExporter";
 		string ProjectFile = Path.Combine(RevitExporterPath, ProjectName, ProjectName+".csproj");
-		string DynamoNodeProjectFile = Path.Combine(RevitExporterPath, ProjectName, DynamoNodeProjectName+".csproj");
-		string Config = "Release";
-		string BuildCommand = string.Format(@"$(EngineDir)\Build\BatchFiles\MSBuild.bat /t:Build /p:Configuration={2} /p:{1}=%{1}% {0}", ProjectFile, RevitSDKEnvVar, Config);
-		string BuildCommandDynamoNode = string.Format(@"$(EngineDir)\Build\BatchFiles\MSBuild.bat /t:Build /p:Configuration={2} /p:{1}=%{1}% {0}", DynamoNodeProjectFile, RevitSDKEnvVar, Config);
+		string BuildCommand = string.Format(@"$(EngineDir)\Build\BatchFiles\MSBuild.bat /t:Build /p:Configuration=Release /p:{1}=%{1}% {0}", ProjectFile, RevitSDKEnvVar);
 		string ErrorMsg = string.Format("Cannot build {0}: Environment variable {1} is not defined.", ProjectName, RevitSDKEnvVar);
 
 		// Since the Datasmith Revit Exporter is a C# project, build in batch the release configuration of the Visual Studio C# project file.
 		// Outside of Epic Games, environment variable <RevitSDKEnvVar> (Revit_<year>_API) must be set to the Revit API directory on the developer's workstation.
 		PostBuildSteps.Add("setlocal enableextensions");
 		PostBuildSteps.Add(string.Format(@"if not defined {0} (if exist {1} (set {0}={1}) else ((echo {2}) & (exit /b 1)))", RevitSDKEnvVar, RevitSDKLocation, ErrorMsg));
-		PostBuildSteps.Add(string.Format(@"echo {0}", BuildCommandDynamoNode));
-		PostBuildSteps.Add(BuildCommandDynamoNode);
 		PostBuildSteps.Add(string.Format(@"echo {0}", BuildCommand));
 		PostBuildSteps.Add(BuildCommand);
 	}

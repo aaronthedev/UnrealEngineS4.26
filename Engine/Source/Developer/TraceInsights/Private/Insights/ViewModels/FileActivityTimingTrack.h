@@ -1,22 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 
 // Insights
-#include "Insights/ITimingViewExtender.h"
 #include "Insights/ViewModels/TimingEventsTrack.h"
-
-class FTimingEventSearchParameters;
-class STimingView;
-
-class FOverviewFileActivityTimingTrack;
-class FDetailedFileActivityTimingTrack;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-class FFileActivitySharedState : public Insights::ITimingViewExtender, public TSharedFromThis<FFileActivitySharedState>
+class FFileActivitySharedState
 {
 	friend class FOverviewFileActivityTimingTrack;
 	friend class FDetailedFileActivityTimingTrack;
@@ -28,8 +21,6 @@ public:
 		const TCHAR* Path;
 		double StartTime;
 		double EndTime;
-		double CloseStartTime;
-		double CloseEndTime;
 		int32 EventCount;
 		int32 Depth;
 	};
@@ -42,57 +33,28 @@ public:
 		uint32 Type; // Trace::EFileActivityType + "Failed" flag
 		uint64 Offset;
 		uint64 Size;
-		uint64 ActualSize;
 		TSharedPtr<FIoFileActivity> FileActivity;
 	};
 
 public:
-	explicit FFileActivitySharedState(STimingView* InTimingView) : TimingView(InTimingView) {}
-	virtual ~FFileActivitySharedState() = default;
-
-	// ITimingViewExtender
-	virtual void OnBeginSession(Insights::ITimingViewSession& InSession) override;
-	virtual void OnEndSession(Insights::ITimingViewSession& InSession) override;
-	virtual void Tick(Insights::ITimingViewSession& InSession, const Trace::IAnalysisSession& InAnalysisSession) override;
-	virtual void ExtendFilterMenu(Insights::ITimingViewSession& InSession, FMenuBuilder& InOutMenuBuilder) override;
+	FFileActivitySharedState() {}
 
 	const TArray<FIoTimingEvent>& GetAllEvents() const { return AllIoEvents; }
 
+	~FFileActivitySharedState() {}
+
+	void Reset();
+	void Update();
+
 	void RequestUpdate() { bForceIoEventsUpdate = true; }
-
-	bool IsMergeLanesToggleOn() const { return bMergeIoLanes; }
-	void ToggleMergeLanes() { bMergeIoLanes = !bMergeIoLanes; RequestUpdate(); }
-
-	bool IsAllIoTracksToggleOn() const { return bShowHideAllIoTracks; }
-	void SetAllIoTracksToggle(bool bOnOff);
-	void ShowAllIoTracks() { SetAllIoTracksToggle(true); }
-	void HideAllIoTracks() { SetAllIoTracksToggle(false); }
-	void ShowHideAllIoTracks() { SetAllIoTracksToggle(!IsAllIoTracksToggleOn()); }
-
-	bool IsIoOverviewTrackVisible() const;
-	void ShowHideIoOverviewTrack();
-
-	bool IsIoActivityTrackVisible() const;
-	void ShowHideIoActivityTrack();
-
-	bool IsOnlyErrorsToggleOn() const;
-	void ToggleOnlyErrors();
-
-	bool AreBackgroundEventsVisible() const;
-	void ToggleBackgroundEvents();
+	void ToggleMergeLanes() { bMergeIoLanes = !bMergeIoLanes; }
+	void ToggleBackgroundEvents() { bShowFileActivityBackgroundEvents = !bShowFileActivityBackgroundEvents; }
 
 private:
-	void BuildSubMenu(FMenuBuilder& InOutMenuBuilder);
-
-private:
-	STimingView* TimingView;
-
-	TSharedPtr<FOverviewFileActivityTimingTrack> IoOverviewTrack;
-	TSharedPtr<FDetailedFileActivityTimingTrack> IoActivityTrack;
-
-	bool bShowHideAllIoTracks;
 	bool bForceIoEventsUpdate;
-	bool bMergeIoLanes; // merge lanes of file activity events in a way that avoids duplication (for the Activity track)
+
+	bool bMergeIoLanes;
+	bool bShowFileActivityBackgroundEvents;
 
 	TArray<TSharedPtr<FIoFileActivity>> FileActivities;
 	TMap<uint64, TSharedPtr<FIoFileActivity>> FileActivityMap;
@@ -105,32 +67,21 @@ private:
 
 class FFileActivityTimingTrack : public FTimingEventsTrack
 {
-	INSIGHTS_DECLARE_RTTI(FFileActivityTimingTrack, FTimingEventsTrack)
-
 public:
-	explicit FFileActivityTimingTrack(FFileActivitySharedState& InSharedState, const FString& InName)
-		: FTimingEventsTrack(InName)
-		, SharedState(InSharedState)
-		, bIgnoreEventDepth(false)
-		, bIgnoreDuration(false)
-		, bShowOnlyErrors(false)
+	explicit FFileActivityTimingTrack(uint64 InTrackId, const FName SubType, const FString& InName, TSharedPtr<FFileActivitySharedState> InState)
+		: FTimingEventsTrack(InTrackId, FName(TEXT("FileActivity")), SubType, InName)
+		, State(InState)
 	{
 	}
 	virtual ~FFileActivityTimingTrack() {}
 
-	virtual void InitTooltip(FTooltipDrawState& InOutTooltip, const ITimingEvent& InTooltipEvent) const override;
-
-	bool IsOnlyErrorsToggleOn() const { return bShowOnlyErrors; }
-	void ToggleOnlyErrors() { bShowOnlyErrors = !bShowOnlyErrors; SetDirtyFlag(); }
+	virtual void InitTooltip(FTooltipDrawState& Tooltip, const FTimingEvent& HoveredTimingEvent) const override;
 
 protected:
-	bool FindIoTimingEvent(const FTimingEventSearchParameters& InParameters, TFunctionRef<void(double, double, uint32, const FFileActivitySharedState::FIoTimingEvent&)> InFoundPredicate) const;
+	bool SearchEvent(const double InStartTime, const double InEndTime, TFunctionRef<bool(double, double, uint32)> InPredicate, FTimingEvent& InOutTimingEvent, bool bInStopAtFirstMatch, bool bInSearchForLargestEvent, bool bIgnoreEventDepth) const;
 
 protected:
-	FFileActivitySharedState& SharedState;
-	bool bIgnoreEventDepth;
-	bool bIgnoreDuration;
-	bool bShowOnlyErrors; // shows only the events with errors (for the Overview track)
+	TSharedPtr<FFileActivitySharedState> State;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -138,17 +89,17 @@ protected:
 class FOverviewFileActivityTimingTrack : public FFileActivityTimingTrack
 {
 public:
-	explicit FOverviewFileActivityTimingTrack(FFileActivitySharedState& InSharedState)
-		: FFileActivityTimingTrack(InSharedState, TEXT("I/O Overview"))
+	explicit FOverviewFileActivityTimingTrack(uint64 InTrackId, TSharedPtr<FFileActivitySharedState> InState)
+		: FFileActivityTimingTrack(InTrackId, FName(TEXT("Overview")), TEXT("I/O Overview"), InState)
 	{
-		bIgnoreEventDepth = true;
-		bIgnoreDuration = true;
-		//bShowOnlyErrors = true;
 	}
 
-	virtual void BuildDrawState(ITimingEventsTrackDrawStateBuilder& Builder, const ITimingTrackUpdateContext& Context) override;
-	virtual const TSharedPtr<const ITimingEvent> SearchEvent(const FTimingEventSearchParameters& InSearchParameters) const override;
-	virtual void BuildContextMenu(FMenuBuilder& MenuBuilder) override;
+	virtual void Draw(FTimingViewDrawHelper& Helper) const override;
+	virtual bool SearchTimingEvent(const double InStartTime, const double InEndTime, TFunctionRef<bool(double, double, uint32)> InPredicate, FTimingEvent& InOutTimingEvent, bool bInStopAtFirstMatch, bool bInSearchForLargestEvent) const override
+	{
+		constexpr bool bIgnoreEventDepth = true;
+		return SearchEvent(InStartTime, InEndTime, InPredicate, InOutTimingEvent, bInStopAtFirstMatch, bInSearchForLargestEvent, bIgnoreEventDepth);
+	}
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -156,22 +107,17 @@ public:
 class FDetailedFileActivityTimingTrack : public FFileActivityTimingTrack
 {
 public:
-	explicit FDetailedFileActivityTimingTrack(FFileActivitySharedState& InSharedState)
-		: FFileActivityTimingTrack(InSharedState, TEXT("I/O Activity"))
-		, bShowBackgroundEvents(false)
+	explicit FDetailedFileActivityTimingTrack(uint64 InTrackId, TSharedPtr<FFileActivitySharedState> InState)
+		: FFileActivityTimingTrack(InTrackId, FName(TEXT("Detailed")), TEXT("I/O Activity"), InState)
 	{
-		//bShowOnlyErrors = true;
 	}
 
-	virtual void BuildDrawState(ITimingEventsTrackDrawStateBuilder& Builder, const ITimingTrackUpdateContext& Context) override;
-	virtual const TSharedPtr<const ITimingEvent> SearchEvent(const FTimingEventSearchParameters& InSearchParameters) const override;
-	virtual void BuildContextMenu(FMenuBuilder& MenuBuilder) override;
-
-	bool AreBackgroundEventsVisible() const { return bShowBackgroundEvents; }
-	void ToggleBackgroundEvents() { bShowBackgroundEvents = !bShowBackgroundEvents; SetDirtyFlag(); }
-
-private:
-	bool bShowBackgroundEvents; // shows the file activity backgroud events; from the Open event to the last Read/Write event, for each activity
+	virtual void Draw(FTimingViewDrawHelper& Helper) const override;
+	virtual bool SearchTimingEvent(const double InStartTime, const double InEndTime, TFunctionRef<bool(double, double, uint32)> InPredicate, FTimingEvent& InOutTimingEvent, bool bInStopAtFirstMatch, bool bInSearchForLargestEvent) const override
+	{
+		constexpr bool bIgnoreEventDepth = false;
+		return SearchEvent(InStartTime, InEndTime, InPredicate, InOutTimingEvent, bInStopAtFirstMatch, bInSearchForLargestEvent, bIgnoreEventDepth);
+	}
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

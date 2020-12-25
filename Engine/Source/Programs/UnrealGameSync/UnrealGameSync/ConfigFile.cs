@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -49,14 +49,14 @@ namespace UnrealGameSync
 					string Key = ParseConfigToken(Text, ref Idx);
 					if(ParseConfigToken(Text, ref Idx) == "=")
 					{
-						string Value = ParseConfigValueToken(Text, ref Idx);
+						string Value = ParseConfigToken(Text, ref Idx);
 						SetValue(Key, Value);
 					}
 
 					// Check for the end of the list, or a comma before the next pair
 					for(;;)
 					{
-						string Token = ParseConfigValueToken(Text, ref Idx);
+						string Token = ParseConfigToken(Text, ref Idx);
 						if(Token == ",")
 						{
 							break;
@@ -83,17 +83,17 @@ namespace UnrealGameSync
 			}
 
 			// Read the token
-			if (Text[Idx] == '\"')
+			if(Text[Idx] == '\"')
 			{
 				StringBuilder Token = new StringBuilder();
-				while (++Idx < Text.Length)
+				while(++Idx < Text.Length)
 				{
-					if (Text[Idx] == '\"')
+					if(Text[Idx] == '\"')
 					{
 						Idx++;
 						break;
 					}
-					if (Text[Idx] == '\\' && Idx + 1 < Text.Length)
+					if(Text[Idx] == '\\' && Idx + 1 < Text.Length)
 					{
 						Idx++;
 					}
@@ -101,38 +101,19 @@ namespace UnrealGameSync
 				}
 				return Token.ToString();
 			}
-			else if (ConfigSeparatorCharacters.IndexOf(Text[Idx]) != -1)
+			else if(ConfigSeparatorCharacters.IndexOf(Text[Idx]) != -1)
 			{
 				return Text[Idx++].ToString();
 			}
 			else
 			{
 				int StartIdx = Idx;
-				while (Idx < Text.Length && ConfigSeparatorCharacters.IndexOf(Text[Idx]) == -1)
+				while(Idx < Text.Length && ConfigSeparatorCharacters.IndexOf(Text[Idx]) == -1)
 				{
 					Idx++;
 				}
 				return Text.Substring(StartIdx, Idx - StartIdx);
 			}
-		}
-
-		static string ParseConfigValueToken(string Text, ref int Idx)
-		{
-			string Token = ParseConfigToken(Text, ref Idx);
-			if (Token == "(")
-			{
-				int StartIdx = Idx - 1;
-				for (; ; )
-				{
-					string NextToken = ParseConfigValueToken(Text, ref Idx);
-					if (NextToken == null || NextToken == ")")
-					{
-						break;
-					}
-				}
-				Token = Text.Substring(StartIdx, Idx - StartIdx);
-			}
-			return Token;
 		}
 
 		public string GetValue(string Key, string DefaultValue = null)
@@ -431,36 +412,9 @@ namespace UnrealGameSync
 		{
 		}
 
-		string GetTempFileName(string FileName)
-		{
-			return FileName + ".tmp";
-		}
-
 		public void Load(string FileName)
 		{
 			Parse(File.ReadAllLines(FileName));
-		}
-
-		public bool TryLoad(string FileName, TextWriter Log)
-		{
-			FileInfo FileInfo = new FileInfo(FileName);
-			if (FileInfo.Exists)
-			{
-				Log.WriteLine("Loading config file from {0} ({1} bytes)", FileInfo.FullName, FileInfo.Length);
-				Load(FileInfo.FullName);
-				return true;
-			}
-
-			FileInfo TempFileInfo = new FileInfo(GetTempFileName(FileName));
-			if (TempFileInfo.Exists)
-			{
-				Log.WriteLine("Loading temporary config file from {0} ({1} bytes)", TempFileInfo.FullName, TempFileInfo.Length);
-				Load(TempFileInfo.FullName);
-				return true;
-			}
-
-			Log.WriteLine("No existing config file at {0}", FileName);
-			return false;
 		}
 
 		public void Parse(string[] Lines)
@@ -498,10 +452,7 @@ namespace UnrealGameSync
 
 		public void Save(string FileName)
 		{
-			string TempFileName = GetTempFileName(FileName);
-			File.Delete(TempFileName);
-
-			using (StreamWriter Writer = new StreamWriter(TempFileName))
+			using(StreamWriter Writer = new StreamWriter(FileName))
 			{
 				for(int Idx = 0; Idx < Sections.Count; Idx++)
 				{
@@ -526,9 +477,6 @@ namespace UnrealGameSync
 					}
 				}
 			}
-
-			File.Delete(FileName);
-			File.Move(TempFileName, FileName);
 		}
 
 		public ConfigSection FindSection(string Name)

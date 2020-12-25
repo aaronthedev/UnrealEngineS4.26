@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "STaskGraph.h"
 #include "Stats/Stats.h"
@@ -13,7 +13,6 @@
 #if WITH_EDITOR
 #include "WorkspaceMenuStructure.h"
 #include "WorkspaceMenuStructureModule.h"
-#include "EditorStyleSet.h"
 #endif //#if WITH_EDITOR
 
 /**
@@ -174,7 +173,7 @@ public:
 			.SetDisplayName(NSLOCTEXT("ProfileVisualizerModule", "TabTitle", "Profile Data Visualizer"))
 			.SetTooltipText(NSLOCTEXT("ProfileVisualizerModule", "TooltipText", "Open the Profile Data Visualizer tab."))
 			.SetGroup(WorkspaceMenu::GetMenuStructure().GetDeveloperToolsDebugCategory())
-			.SetIcon(FSlateIcon(FEditorStyle::Get().GetStyleSetName(), "Profiler.Tab"));
+			;
 #endif
 			
 	}

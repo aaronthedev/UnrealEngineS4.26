@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -29,24 +29,21 @@ private:
 typedef FIOSPlatformTextField FPlatformTextField;
 
 #if !PLATFORM_TVOS
-
-@interface SlateTextField : UIAlertController
+@interface SlateTextField : NSObject<UIAlertViewDelegate>
 {
 	TWeakPtr<IVirtualKeyboardEntry> TextWidget;
 	FText TextEntry;
     
-    bool bTransitioning;
-    bool bWantsToShow;
-    NSString* CachedTextContents;
-    NSString* CachedPlaceholderContents;
-    FKeyboardConfig CachedKeyboardConfig;
-    
+#ifdef __IPHONE_8_0
     UIAlertController* AlertController;
+#endif
+#if __IPHONE_OS_VERSION_MIN_REQUIRED < __IPHONE_9_0
+    UIAlertView* AlertView;
+#endif
 }
 
 -(void)show:(TSharedPtr<IVirtualKeyboardEntry>)InTextWidget text:(NSString*)TextContents placeholder:(NSString*)PlaceholderContents keyboardConfig:(FKeyboardConfig)KeyboardConfig;
 -(void)hide;
--(void)updateToDesiredState;
 -(bool)hasTextWidget;
 
 @end

@@ -3,10 +3,10 @@
 	"Version": 1,
 	"VersionName": "1.0",
 	"FriendlyName": "Virtual Production Utilities",
-	"Description": "Utility classes and functions for Virtual Production",
+	"Description": "",
 	"Category": "Virtual Production",
-	"CreatedBy": "Epic Games, Inc.",
-	"CreatedByURL": "http://epicgames.com",
+	"CreatedBy": "",
+	"CreatedByURL": "",
 	"DocsURL": "",
 	"MarketplaceURL": "",
 	"SupportURL": "",
@@ -50,18 +50,6 @@
 		},
 		{
 			"Name": "Takes",
-			"Enabled": true
-		},
-		{
-			"Name": "OSC",
-			"Enabled": true
-		},
-		{
-			"Name": "Composure",
-			"Enabled": true
-		},
-		{
-			"Name": "ColorCorrectRegions",
 			"Enabled": true
 		}
 	]

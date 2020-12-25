@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -46,7 +46,6 @@ protected:
 	uint32 bAttachToOwnersRoot : 1;
 
 	mutable uint32 bBoundsInitialized : 1;
-	uint32 bNavParentCacheInitialized : 1;
 
 	UPROPERTY(transient)
 	UObject* CachedNavParent;

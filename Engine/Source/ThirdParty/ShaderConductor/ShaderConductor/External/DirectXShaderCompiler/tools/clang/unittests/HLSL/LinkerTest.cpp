@@ -12,16 +12,16 @@
 #include <vector>
 #include <string>
 #include "llvm/ADT/ArrayRef.h"
-#include "dxc/Test/CompilationResult.h"
-#include "dxc/Test/HLSLTestData.h"
+#include "CompilationResult.h"
+#include "HLSLTestData.h"
 #include "llvm/Support/ManagedStatic.h"
 
 #include <fstream>
 
 #include "WexTestClass.h"
-#include "dxc/Test/HlslTestUtils.h"
-#include "dxc/Test/DxcTestUtils.h"
+#include "HlslTestUtils.h"
 #include "dxc/dxcapi.h"
+#include "DxcTestUtils.h"
 
 using namespace std;
 using namespace hlsl;
@@ -61,7 +61,6 @@ public:
   TEST_METHOD(RunLinkToLibWithUnusedExport);
   TEST_METHOD(RunLinkToLibWithNoExports);
   TEST_METHOD(RunLinkWithPotentialIntrinsicNameCollisions);
-  TEST_METHOD(RunLinkWithValidatorVersion);
 
 
   dxc::DxcDllSupport m_dllSupport;
@@ -73,8 +72,7 @@ public:
   }
 
   void CompileLib(LPCWSTR filename, IDxcBlob **pResultBlob,
-                  llvm::ArrayRef<LPCWSTR> pArguments = {},
-                  LPCWSTR pShaderTarget = L"lib_6_x") {
+                  llvm::ArrayRef<LPCWSTR> pArguments = {}) {
     std::wstring fullPath = hlsl_test::GetPathToHlslDataFile(filename);
     CComPtr<IDxcBlobEncoding> pSource;
     CComPtr<IDxcLibrary> pLibrary;
@@ -87,9 +85,10 @@ public:
     CComPtr<IDxcOperationResult> pResult;
     CComPtr<IDxcBlob> pProgram;
 
+    CA2W shWide("lib_6_x", CP_UTF8);
     VERIFY_SUCCEEDED(
         m_dllSupport.CreateInstance(CLSID_DxcCompiler, &pCompiler));
-    VERIFY_SUCCEEDED(pCompiler->Compile(pSource, L"hlsl.hlsl", L"", pShaderTarget,
+    VERIFY_SUCCEEDED(pCompiler->Compile(pSource, L"hlsl.hlsl", L"", shWide,
                                         const_cast<LPCWSTR*>(pArguments.data()), pArguments.size(),
                                         nullptr, 0,
                                         nullptr, &pResult));
@@ -219,7 +218,7 @@ TEST_F(LinkerTest, RunLinkFailReDefine) {
 
 TEST_F(LinkerTest, RunLinkGlobalInit) {
   CComPtr<IDxcBlob> pEntryLib;
-  CompileLib(L"..\\CodeGenHLSL\\lib_global.hlsl", &pEntryLib, {}, L"lib_6_3");
+  CompileLib(L"..\\CodeGenHLSL\\lib_global.hlsl", &pEntryLib);
   CComPtr<IDxcLinker> pLinker;
   CreateLinker(&pLinker);
 
@@ -636,29 +635,4 @@ TEST_F(LinkerTest, RunLinkWithPotentialIntrinsicNameCollisions) {
     "declare %dx.types.Handle @\"dx.op.createHandleForLib.class.Texture2D<vector<float, 4> >\"(i32, %\"class.Texture2D<vector<float, 4> >\")",
     "declare %dx.types.Handle @\"dx.op.createHandleForLib.class.Texture2D<float>\"(i32, %\"class.Texture2D<float>\")"
   }, { });
-}
-
-TEST_F(LinkerTest, RunLinkWithValidatorVersion) {
-  if (m_ver.SkipDxilVersion(1, 4)) return;
-
-  CComPtr<IDxcBlob> pEntryLib;
-  CompileLib(L"..\\CodeGenHLSL\\linker\\lib_mat_entry2.hlsl",
-             &pEntryLib, {});
-  CComPtr<IDxcBlob> pLib;
-  CompileLib(
-      L"..\\CodeGenHLSL\\linker\\lib_mat_cast2.hlsl",
-      &pLib, {});
-
-  CComPtr<IDxcLinker> pLinker;
-  CreateLinker(&pLinker);
-
-  LPCWSTR libName = L"ps_main";
-  RegisterDxcModule(libName, pEntryLib, pLinker);
-
-  LPCWSTR libName2 = L"test";
-  RegisterDxcModule(libName2, pLib, pLinker);
-
-  Link(L"", L"lib_6_3", pLinker, {libName, libName2},
-       {"!dx.valver = !{(![0-9]+)}.*\n\\1 = !{i32 1, i32 3}"},
-       {}, {L"-validator-version", L"1.3"}, /*regex*/ true);
 }

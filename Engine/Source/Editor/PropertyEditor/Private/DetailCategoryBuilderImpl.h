@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -152,7 +152,7 @@ private:
 class FDetailCategoryImpl : public IDetailCategoryBuilder, public FDetailTreeNode, public TSharedFromThis<FDetailCategoryImpl>
 {
 public:
-	FDetailCategoryImpl(FName InCategoryName, TSharedRef<FDetailLayoutBuilderImpl> InDetailLayout);
+	FDetailCategoryImpl(FName InCategoryName, TSharedRef<FDetailLayoutBuilderImpl> InDetalLayout);
 	~FDetailCategoryImpl();
 
 	/** IDetailCategoryBuilder interface */
@@ -175,8 +175,6 @@ public:
 	virtual const FText& GetDisplayName() const override { return DisplayName; }
 	virtual void SetCategoryVisibility(bool bIsVisible) override;
 	virtual void SetShowAdvanced(bool bShowAdvanced) override;
-	virtual int32 GetSortOrder() const override;
-	virtual void SetSortOrder(int32 InSortOrder) override;
 
 	/** FDetailTreeNode interface */
 	virtual IDetailsViewPrivate* GetDetailsView() const override { return DetailLayoutBuilder.Pin()->GetDetailsView(); }
@@ -230,6 +228,16 @@ public:
 	 * @param InstanceName			The name of the property instance (for duplicate properties of the same type)
 	 */
 	void AddPropertyNode(TSharedRef<FPropertyNode> PropertyNode, FName InstanceName);
+
+	/**
+	 * Sets the sort order for this category
+	 */
+	void SetSortOrder(int32 InOrder) { SortOrder = InOrder; }
+
+	/**
+	 * Gets the sort order for this category
+	 */
+	int32 GetSortOrder() const { return SortOrder; }
 
 	/**
 	 * Sets the display name of the category string

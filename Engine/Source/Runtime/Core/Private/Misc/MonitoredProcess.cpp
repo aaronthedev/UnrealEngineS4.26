@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Misc/MonitoredProcess.h"
 #include "HAL/RunnableThread.h"
@@ -121,7 +121,7 @@ void FMonitoredProcess::ProcessOutput( const FString& Output )
 	}
 
 	// Remove all the complete lines from the buffer
-	OutputBuffer.MidInline(LineStartIdx, MAX_int32, false);
+	OutputBuffer = OutputBuffer.Mid(LineStartIdx);
 }
 
 void FMonitoredProcess::TickInternal()

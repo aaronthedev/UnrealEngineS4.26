@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using UnrealBuildTool;
 
 public class OpenGL : ModuleRules
@@ -16,12 +16,12 @@ public class OpenGL : ModuleRules
 		}
 		else if (Target.Platform == UnrealTargetPlatform.Mac)
 		{
-			PublicFrameworks.Add("OpenGL");
-			PublicFrameworks.Add("QuartzCore");
+			PublicAdditionalFrameworks.Add(new Framework("OpenGL"));
+			PublicAdditionalFrameworks.Add(new Framework("QuartzCore"));
 		}
 		else if (Target.Platform == UnrealTargetPlatform.IOS)
 		{
-			PublicFrameworks.Add("OpenGLES");
+			PublicAdditionalFrameworks.Add(new Framework("OpenGLES"));
 		}
 	}
 }

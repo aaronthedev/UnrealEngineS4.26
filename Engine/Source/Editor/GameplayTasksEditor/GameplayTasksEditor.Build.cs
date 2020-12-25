@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -6,9 +6,7 @@ namespace UnrealBuildTool.Rules
 	{
         public GameplayTasksEditor(ReadOnlyTargetRules Target) : base(Target)
 		{
-			OverridePackageType = PackageOverrideType.EngineDeveloper;
-
-			PrivateIncludePaths.AddRange(
+            PrivateIncludePaths.AddRange(
                 new string[] {
                     "Editor/GraphEditor/Private",
 				    "Editor/Kismet/Private",

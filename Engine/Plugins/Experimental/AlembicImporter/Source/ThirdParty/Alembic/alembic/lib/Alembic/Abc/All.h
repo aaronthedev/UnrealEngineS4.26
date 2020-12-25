@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_Abc_All_h
-#define Alembic_Abc_All_h
+#ifndef _Alembic_Abc_All_h_
+#define _Alembic_Abc_All_h_
 
 #include <Alembic/Abc/Base.h>
 #include <Alembic/Abc/ErrorHandler.h>

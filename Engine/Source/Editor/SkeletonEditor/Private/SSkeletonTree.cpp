@@ -1,12 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "SSkeletonTree.h"
 #include "Misc/MessageDialog.h"
 #include "Modules/ModuleManager.h"
 #include "UObject/PropertyPortFlags.h"
-#include "UObject/UObjectGlobals.h"
-#include "UObject/PackageReload.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Textures/SlateIcon.h"
 #include "Framework/Commands/UIAction.h"
@@ -125,14 +123,7 @@ public:
 
 void SSkeletonTree::Construct(const FArguments& InArgs, const TSharedRef<FEditableSkeleton>& InEditableSkeleton, const FSkeletonTreeArgs& InSkeletonTreeArgs)
 {
-	if (InSkeletonTreeArgs.bHideBonesByDefault)
-	{
-		BoneFilter = EBoneFilter::None;
-	}
-	else
-	{
-		BoneFilter = EBoneFilter::All;
-	}
+	BoneFilter = EBoneFilter::All;
 	SocketFilter = ESocketFilter::Active;
 	bShowingAdvancedOptions = false;
 	bSelecting = false;
@@ -185,8 +176,6 @@ void SSkeletonTree::Construct(const FArguments& InArgs, const TSharedRef<FEditab
 	{
 		RegisterOnSelectionChanged(InSkeletonTreeArgs.OnSelectionChanged);
 	}
-
-	FCoreUObjectDelegates::OnPackageReloaded.AddSP(this, &SSkeletonTree::HandlePackageReloaded);
 
 	BoneProxy = NewObject<UBoneProxy>(GetTransientPackage());
 	BoneProxy->SkelMeshComponent = PreviewScene.IsValid() ? PreviewScene.Pin()->GetPreviewMeshComponent() : nullptr;
@@ -318,7 +307,6 @@ SSkeletonTree::~SSkeletonTree()
 	{
 		EditableSkeleton.Pin()->UnregisterOnSkeletonHierarchyChanged(this);
 	}
-	FCoreUObjectDelegates::OnPackageReloaded.RemoveAll(this);
 }
 PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
@@ -1417,7 +1405,7 @@ void SSkeletonTree::OnSelectionChanged(TSharedPtr<ISkeletonTreeItem> Selection, 
 							int32 BoneIndex = PreviewComponent->GetBoneIndex(BoneName);
 							if (BoneIndex != INDEX_NONE)
 							{
-								GetPreviewScene()->SetSelectedBone(BoneName, SelectInfo);
+								GetPreviewScene()->SetSelectedBone(BoneName);
 								BoneProxy->BoneName = BoneName;
 
 								PRAGMA_DISABLE_DEPRECATION_WARNINGS
@@ -1544,23 +1532,6 @@ void SSkeletonTree::OnFilterTextChanged( const FText& SearchText )
 	ApplyFilter();
 }
 
-void SSkeletonTree::HandlePackageReloaded(const EPackageReloadPhase InPackageReloadPhase, FPackageReloadedEvent* InPackageReloadedEvent)
-{
-	if (InPackageReloadPhase == EPackageReloadPhase::PostPackageFixup)
-	{
-		for (const auto& RepointedObjectPair : InPackageReloadedEvent->GetRepointedObjects())
-		{
-			if (USkeleton* NewObject = Cast<USkeleton>(RepointedObjectPair.Value))
-			{
-				if (&GetEditableSkeletonInternal()->GetSkeleton() == NewObject)
-				{
-					Refresh();
-				}
-			}
-		}
-	}
-}
-
 void SSkeletonTree::Refresh()
 {
 	CreateFromSkeleton();
@@ -1605,7 +1576,7 @@ void SSkeletonTree::SetSelectedSocket( const FSelectedSocketInfo& SocketInfo )
 	}
 }
 
-void SSkeletonTree::SetSelectedBone( const FName& BoneName, ESelectInfo::Type InSelectInfo )
+void SSkeletonTree::SetSelectedBone( const FName& BoneName )
 {
 	if (!bSelecting)
 	{
@@ -1618,7 +1589,7 @@ void SSkeletonTree::SetSelectedBone( const FName& BoneName, ESelectInfo::Type In
 
 			if (SkeletonRow->GetFilterResult() != ESkeletonTreeFilterResult::Hidden && SkeletonRow->IsOfType<FSkeletonTreeBoneItem>() && SkeletonRow->GetRowItemName() == BoneName)
 			{
-				SkeletonTreeView->SetItemSelection(SkeletonRow, true, InSelectInfo);
+				SkeletonTreeView->SetItemSelection(SkeletonRow, true);
 				SkeletonTreeView->RequestScrollIntoView(SkeletonRow);
 			}
 		}
@@ -2122,7 +2093,7 @@ ESkeletonTreeFilterResult SSkeletonTree::HandleFilterSkeletonTreeItem(const FSke
 
 		if (InArgs.TextFilter.IsValid())
 		{
-			if (InArgs.TextFilter->TestTextFilter(FBasicStringFilterExpressionContext(InItem->GetRowItemName().ToString())))
+			if (InArgs.TextFilter->TestTextFilter(FSkeletonTreeFilterContext(InItem->GetRowItemName())))
 			{
 				Result = ESkeletonTreeFilterResult::ShownHighlighted;
 			}
@@ -2206,9 +2177,9 @@ void SSkeletonTree::AddReferencedObjects( FReferenceCollector& Collector )
 	Collector.AddReferencedObject(BoneProxy);
 }
 
-void SSkeletonTree::HandleSelectedBoneChanged(const FName& InBoneName, ESelectInfo::Type InSelectInfo)
+void SSkeletonTree::HandleSelectedBoneChanged(const FName& InBoneName)
 {
-	SetSelectedBone(InBoneName, InSelectInfo);
+	SetSelectedBone(InBoneName);
 }
 
 void SSkeletonTree::HandleSelectedSocketChanged(const FSelectedSocketInfo& InSocketInfo)

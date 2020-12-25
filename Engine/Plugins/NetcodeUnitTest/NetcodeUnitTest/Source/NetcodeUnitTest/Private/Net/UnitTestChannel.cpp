@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Net/UnitTestChannel.h"
@@ -75,9 +75,9 @@ void UUnitTestChannel::Tick()
 		{
 			if (!Out->ReceivedAck)
 			{
-				const double Wait = Connection->Driver->GetElapsedTime() - Out->Time;
+				float Wait = Connection->Driver->Time - Out->Time;
 
-				if (Wait > 1.0)
+				if (Wait > 1.f)
 				{
 					UE_LOG(LogUnitTest, Log, TEXT("UnitTestChannel %i ack timeout); resending %i..."), ChIndex, Out->ChSequence);
 

@@ -666,7 +666,7 @@ try
 
             // check the path must exist before writing
             MFileObject absoluteFilePath;
-            absoluteFilePath.setRawFullName(absoluteFile.resolvedPath());
+            absoluteFilePath.setRawFullName(absoluteFile.path());
             if (!absoluteFilePath.exists()) {
                 MString error;
                 error.format("Path ^1s does not exist!", absoluteFilePath.resolvedFullName());
@@ -682,7 +682,7 @@ try
                     continue;
                 }
 
-                MPlug abcFilePlug = alembicNode.findPlug("abc_File", true);
+                MPlug abcFilePlug = alembicNode.findPlug("abc_File");
                 if (!abcFilePlug.isNull())
                 {
                     MFileObject alembicFile;
@@ -699,7 +699,7 @@ try
                     }
                 }
 
-                MPlug abcLayerFilePlug = alembicNode.findPlug("abc_layerFiles", true);
+                MPlug abcLayerFilePlug = alembicNode.findPlug("abc_layerFiles");
                 if (!abcLayerFilePlug.isNull())
                 {
                     MFnStringArrayData fnSAD( abcLayerFilePlug.asMObject() );
@@ -841,7 +841,7 @@ try
                 }
 
                 // pattern mismatch, we use acyclic time sampling type
-                if (fabs(timeSamples[i] - pattern[i % pattern.size()]) > 0.00001)
+                if (timeSamples[i] != pattern[i % pattern.size()])
                 {
                     isAcyclic = true;
                     break;

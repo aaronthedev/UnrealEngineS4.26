@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Drawing;
@@ -128,7 +128,7 @@ namespace UnrealGameSync
 			OwnerTextBuilder.AppendFormat(" Open for {0}.", Utility.FormatDurationMinutes((int)(NewIssue.RetrievedAt - NewIssue.CreatedAt).TotalMinutes));
 			string OwnerText = OwnerTextBuilder.ToString();
 
-			bool bNewIsWarning = Issue.bIsWarning;
+			bool bNewIsWarning = Issue.Builds.Count > 0 && !Issue.Builds.Any(x => x.Outcome != IssueBuildOutcome.Warning);
 
 			Issue = NewIssue;
 
@@ -243,21 +243,10 @@ namespace UnrealGameSync
 
 		public void LaunchUrl()
 		{
-			string Url = Issue.BuildUrl;
-			if(String.IsNullOrEmpty(Url))
+			IssueBuildData LastBuild = Issue.Builds.OrderByDescending(x => x.Change).FirstOrDefault();
+			if(LastBuild != null)
 			{
-				MessageBox.Show("No additional information is available");
-			}
-			else
-			{
-				try
-				{
-					System.Diagnostics.Process.Start(Url);
-				}
-				catch (Exception Ex)
-				{
-					MessageBox.Show(String.Format("Unable to launch '{0}' (Error: {1})", Url, Ex.Message));
-				}
+				System.Diagnostics.Process.Start(LastBuild.ErrorUrl);
 			}
 		}
 	}

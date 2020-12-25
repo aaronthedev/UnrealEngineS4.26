@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "K2Node_MakeStruct.h"
 #include "UObject/StructOnScope.h"
@@ -23,22 +23,21 @@
 // UK2Node_MakeStruct
 
 
-UK2Node_MakeStruct::FMakeStructPinManager::FMakeStructPinManager(const uint8* InSampleStructMemory, UBlueprint* InOwningBP)
+UK2Node_MakeStruct::FMakeStructPinManager::FMakeStructPinManager(const uint8* InSampleStructMemory)
 	: FStructOperationOptionalPinManager()
 	, SampleStructMemory(InSampleStructMemory)
-	, OwningBP(InOwningBP)
 	, bHasAdvancedPins(false)
 {
 }
 
-void UK2Node_MakeStruct::FMakeStructPinManager::GetRecordDefaults(FProperty* TestProperty, FOptionalPinFromProperty& Record) const
+void UK2Node_MakeStruct::FMakeStructPinManager::GetRecordDefaults(UProperty* TestProperty, FOptionalPinFromProperty& Record) const
 {
 	UK2Node_StructOperation::FStructOperationOptionalPinManager::GetRecordDefaults(TestProperty, Record);
 	Record.bIsMarkedForAdvancedDisplay = TestProperty ? TestProperty->HasAnyPropertyFlags(CPF_AdvancedDisplay) : false;
 	bHasAdvancedPins |= Record.bIsMarkedForAdvancedDisplay;
 }
 
-void UK2Node_MakeStruct::FMakeStructPinManager::CustomizePinData(UEdGraphPin* Pin, FName SourcePropertyName, int32 ArrayIndex, FProperty* Property) const
+void UK2Node_MakeStruct::FMakeStructPinManager::CustomizePinData(UEdGraphPin* Pin, FName SourcePropertyName, int32 ArrayIndex, UProperty* Property) const
 {
 	UK2Node_StructOperation::FStructOperationOptionalPinManager::CustomizePinData(Pin, SourcePropertyName, ArrayIndex, Property);
 	if (Pin && Property)
@@ -47,10 +46,10 @@ void UK2Node_MakeStruct::FMakeStructPinManager::CustomizePinData(UEdGraphPin* Pi
 		check(Schema);
 
 		// Should pin default value be filled as FText?
-		const bool bIsText = Property->IsA<FTextProperty>();
+		const bool bIsText = Property->IsA<UTextProperty>();
 		checkSlow(bIsText == ((UEdGraphSchema_K2::PC_Text == Pin->PinType.PinCategory) && !Pin->PinType.IsContainer()));
 
-		const bool bIsObject = Property->IsA<FObjectPropertyBase>();
+		const bool bIsObject = Property->IsA<UObjectPropertyBase>();
 		checkSlow(bIsObject == ((UEdGraphSchema_K2::PC_Object == Pin->PinType.PinCategory || UEdGraphSchema_K2::PC_Class == Pin->PinType.PinCategory || 
 			UEdGraphSchema_K2::PC_SoftObject == Pin->PinType.PinCategory || UEdGraphSchema_K2::PC_SoftClass == Pin->PinType.PinCategory) && !Pin->PinType.IsContainer()));
 
@@ -84,19 +83,14 @@ void UK2Node_MakeStruct::FMakeStructPinManager::CustomizePinData(UEdGraphPin* Pi
 	}
 }
 
-static bool CanBeExposed(const FProperty* Property, UBlueprint* BP)
+static bool CanBeExposed(const UProperty* Property)
 {
 	if (Property)
 	{
 		const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
 		check(Schema);
 
-		const bool bIsEditorBP = IsEditorOnlyObject(BP);
-		const bool bIsEditAnywhereProperty = Property->HasAllPropertyFlags(CPF_Edit) &&
-			!Property->HasAnyPropertyFlags(CPF_EditConst);
-
-		if (!Property->HasAllPropertyFlags(CPF_BlueprintReadOnly) || 
-			(bIsEditorBP && bIsEditAnywhereProperty) )
+		if (!Property->HasAllPropertyFlags(CPF_BlueprintReadOnly))
 		{
 			if (Property->HasAllPropertyFlags(CPF_BlueprintVisible) && !(Property->ArrayDim > 1))
 			{
@@ -111,9 +105,9 @@ static bool CanBeExposed(const FProperty* Property, UBlueprint* BP)
 	return false;
 }
 
-bool UK2Node_MakeStruct::FMakeStructPinManager::CanTreatPropertyAsOptional(FProperty* TestProperty) const
+bool UK2Node_MakeStruct::FMakeStructPinManager::CanTreatPropertyAsOptional(UProperty* TestProperty) const
 {
-	return CanBeExposed(TestProperty, OwningBP);
+	return CanBeExposed(TestProperty);
 }
 
 UK2Node_MakeStruct::UK2Node_MakeStruct(const FObjectInitializer& ObjectInitializer)
@@ -132,18 +126,11 @@ void UK2Node_MakeStruct::AllocateDefaultPins()
 		bool bHasAdvancedPins = false;
 		{
 			FStructOnScope StructOnScope(StructType);
-			FMakeStructPinManager OptionalPinManager(StructOnScope.GetStructMemory(), GetBlueprint());
+			FMakeStructPinManager OptionalPinManager(StructOnScope.GetStructMemory());
 			OptionalPinManager.RebuildPropertyList(ShowPinForProperties, StructType);
 			OptionalPinManager.CreateVisiblePins(ShowPinForProperties, StructType, EGPD_Input, this);
 
 			bHasAdvancedPins = OptionalPinManager.HasAdvancedPins();
-		}
-
-		// Set container pin types to have their default values ignored, which will in turn
-		// enable auto generation for any that are not set by the user. 
-		for(UEdGraphPin* Pin : Pins)
-		{
-			Pin->bDefaultValueIsIgnored = Pin->bDefaultValueIsIgnored || Pin->PinType.IsContainer();
 		}
 
 		// When struct has a lot of fields, mark their pins as advanced
@@ -182,11 +169,10 @@ void UK2Node_MakeStruct::ValidateNodeDuringCompilation(class FCompilerResultsLog
 	}
 	else
 	{
-		UBlueprint* BP = GetBlueprint();
-		for (TFieldIterator<FProperty> It(StructType); It; ++It)
+		for (TFieldIterator<UProperty> It(StructType); It; ++It)
 		{
-			const FProperty* Property = *It;
-			if (CanBeExposed(Property, BP))
+			const UProperty* Property = *It;
+			if (CanBeExposed(Property))
 			{
 				if (Property->ArrayDim > 1)
 				{
@@ -260,13 +246,13 @@ bool UK2Node_MakeStruct::CanBeMade(const UScriptStruct* Struct, const bool bForI
 	return (Struct && !Struct->HasMetaData(FBlueprintMetadata::MD_NativeMakeFunction) && UEdGraphSchema_K2::IsAllowableBlueprintVariableType(Struct, bForInternalUse));
 }
 
-bool UK2Node_MakeStruct::CanBeSplit(const UScriptStruct* Struct, UBlueprint* InBP)
+bool UK2Node_MakeStruct::CanBeSplit(const UScriptStruct* Struct)
 {
 	if (CanBeMade(Struct))
 	{
-		for (TFieldIterator<FProperty> It(Struct); It; ++It)
+		for (TFieldIterator<UProperty> It(Struct); It; ++It)
 		{
-			if (CanBeExposed(*It, InBP))
+			if (CanBeExposed(*It))
 			{
 				return true;
 			}
@@ -294,7 +280,7 @@ void UK2Node_MakeStruct::GetMenuActions(FBlueprintActionDatabaseRegistrar& Actio
 {
 	struct GetMenuActions_Utils
 	{
-		static void SetNodeStruct(UEdGraphNode* NewNode, FFieldVariant /*StructField*/, TWeakObjectPtr<UScriptStruct> NonConstStructPtr)
+		static void SetNodeStruct(UEdGraphNode* NewNode, UField const* /*StructField*/, TWeakObjectPtr<UScriptStruct> NonConstStructPtr)
 		{
 			UK2Node_MakeStruct* MakeNode = CastChecked<UK2Node_MakeStruct>(NewNode);
 			MakeNode->StructType = NonConstStructPtr.Get();
@@ -321,7 +307,7 @@ void UK2Node_MakeStruct::GetMenuActions(FBlueprintActionDatabaseRegistrar& Actio
 		
 		if (UK2Node_MakeStruct::CanBeMade(Struct))
 		{
-			NodeSpawner = UBlueprintFieldNodeSpawner::Create(NodeClass, const_cast<UScriptStruct*>(Struct));
+			NodeSpawner = UBlueprintFieldNodeSpawner::Create(NodeClass, Struct);
 			check(NodeSpawner != nullptr);
 			TWeakObjectPtr<UScriptStruct> NonConstStructPtr = MakeWeakObjectPtr(const_cast<UScriptStruct*>(Struct));
 			NodeSpawner->SetNodeFieldDelegate     = UBlueprintFieldNodeSpawner::FSetNodeFieldDelegate::CreateStatic(GetMenuActions_Utils::SetNodeStruct, NonConstStructPtr);
@@ -363,9 +349,9 @@ void UK2Node_MakeStruct::Serialize(FArchive& Ar)
 				// Have to check if this node is even in danger.
 				for (FOptionalPinFromProperty& PropertyEntry : ShowPinForProperties)
 				{
-					FProperty* Property = StructType->FindPropertyByName(PropertyEntry.PropertyName);
+					UProperty* Property = StructType->FindPropertyByName(PropertyEntry.PropertyName);
 					bool bNegate = false;
-					if (FProperty* OverrideProperty = PropertyCustomizationHelpers::GetEditConditionProperty(Property, bNegate))
+					if (UProperty* OverrideProperty = PropertyCustomizationHelpers::GetEditConditionProperty(Property, bNegate))
 					{
 						bool bHadOverridePropertySeparation = false;
 						for (FOptionalPinFromProperty& OverridePropertyEntry : ShowPinForProperties)

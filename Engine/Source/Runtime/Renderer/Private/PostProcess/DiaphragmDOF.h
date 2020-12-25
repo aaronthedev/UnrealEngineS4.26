@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PostProcessDOF.h: Post process Depth of Field implementation.
@@ -10,9 +10,13 @@
 #include "RendererInterface.h"
 #include "PostProcess/PostProcessing.h"
 
+
+// Whitelist diaphragm DOF for platforms that actually have been tested.
+#define WITH_DIAPHRAGM_DOF (PLATFORM_WINDOWS || PLATFORM_XBOXONE || PLATFORM_PS4 || PLATFORM_MAC || PLATFORM_UNIX || PLATFORM_IOS || PLATFORM_SWITCH)
+
+
 class FViewInfo;
 class FSceneTextureParameters;
-class FSeparateTranslucencyTextures;
 struct FTemporalAAHistory;
 
 
@@ -116,8 +120,13 @@ struct FBokehModel
 
 
 /** Returns whether DOF is supported. */
-inline bool IsSupported(const FStaticShaderPlatform ShaderPlatform)
+inline bool IsSupported(EShaderPlatform ShaderPlatform)
 {
+	// Since this is still prototype, only allow it on D3D.
+	#if !WITH_DIAPHRAGM_DOF
+		return false;
+	#endif
+
 	// Only compile diaphragm DOF on platform it has been tested to ensure this is not blocking anyone else.
 	return 
 		ShaderPlatform == SP_PCD3D_SM5 ||
@@ -126,7 +135,7 @@ inline bool IsSupported(const FStaticShaderPlatform ShaderPlatform)
 		IsVulkanSM5Platform(ShaderPlatform) ||
 		IsMetalSM5Platform(ShaderPlatform) ||
 		ShaderPlatform == SP_SWITCH ||
-		FDataDrivenShaderPlatformInfo::GetSupportsDiaphragmDOF(ShaderPlatform);
+		FDataDrivenShaderPlatformInfo::GetInfo(ShaderPlatform).bSupportsDiaphragmDOF;
 }
 
 
@@ -136,6 +145,6 @@ RENDERER_API FRDGTextureRef AddPasses(
 	const FSceneTextureParameters& SceneTextures,
 	const FViewInfo& View,
 	FRDGTextureRef InputSceneColor,
-	const FSeparateTranslucencyTextures& SeparateTranslucencyTextures);
+	FRDGTextureRef SeparateTranslucency);
 
 } // namespace DiaphragmDOF

@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -12,13 +12,12 @@ namespace DatasmithRevitExporter
 {
 	public class FMaterialData
 	{
-		private Material                       CurrentMaterial   = null;
-		private string                         MaterialLabel     = null;	
-		public  int                            MaterialIndex     = 0;
-		public  FDatasmithFacadeMasterMaterial MasterMaterial    = null;
-		public  List<FDatasmithFacadeTexture>  CollectedTextures = new List<FDatasmithFacadeTexture>();
-		private IList<string>                  ExtraTexturePaths = null;
-		public  IList<string>                  MessageList       = new List<string>();
+		private Material                 CurrentMaterial   = null;
+		private string                   MaterialLabel     = null;	
+		public  int                      MaterialIndex     = 0;
+		public  FDatasmithFacadeMaterial MasterMaterial    = null;
+		private IList<string>            ExtraTexturePaths = null;
+		public  IList<string>            MessageList       = new List<string>();
 
 		// Multi-line debug log.
 		// private FDatasmithFacadeLog DebugLog = null;
@@ -43,19 +42,6 @@ namespace DatasmithRevitExporter
 			}
 		}
 
-		// Calculate lightness from color value. 
-		// Result is mapped to range 0..1.
-		static private float LightnessFromColor(Color inColor)
-		{
-			float R = inColor.Red / 255.0f;
-			float G = inColor.Green / 255.0f;
-			float B = inColor.Blue / 255.0f;
-			float Cmax = Math.Max(R, Math.Max(G, B));
-			float Cmin = Math.Min(R, Math.Min(G, B));
-			float Lightness = ((Cmax + Cmin) * 0.5f);
-			return Lightness;
-		}
-
 		public FMaterialData(
 			MaterialNode  InMaterialNode,
 			Material      InMaterial,
@@ -69,13 +55,13 @@ namespace DatasmithRevitExporter
 			ExtraTexturePaths = InExtraTexturePaths;
 
 			// Create a new Datasmith master material.
+			MasterMaterial = new FDatasmithFacadeMaterial(GetMaterialName(InMaterialNode, CurrentMaterial), MaterialLabel);
+
 			// Hash the Datasmith master material name to shorten it.
-			string HashedMaterialName = FDatasmithFacadeElement.GetStringHash(GetMaterialName(InMaterialNode, CurrentMaterial));
-			MasterMaterial = new FDatasmithFacadeMasterMaterial(HashedMaterialName);
-			MasterMaterial.SetLabel(GetMaterialLabel(InMaterialNode, CurrentMaterial));
+			MasterMaterial.HashName();
 
 			// Set the properties of the Datasmith master material.
-			if (!SetMasterMaterial(CurrentMaterial, MasterMaterial, CollectedTextures))
+			if (!SetMasterMaterial(CurrentMaterial, MasterMaterial))
 			{
 				SetFallbackMaterial(InMaterialNode.Color, (float) InMaterialNode.Transparency, InMaterialNode.Smoothness / 100.0F, MasterMaterial);
 			}
@@ -91,10 +77,10 @@ namespace DatasmithRevitExporter
 			MaterialIndex = InMaterialIndex;
 
 			// Create a new Datasmith master material.
+			MasterMaterial = new FDatasmithFacadeMaterial(InMaterialName, MaterialLabel);
+
 			// Hash the Datasmith master material name to shorten it.
-			string HashedMaterialName = FDatasmithFacadeElement.GetStringHash(InMaterialName);
-			MasterMaterial = new FDatasmithFacadeMasterMaterial(HashedMaterialName);
-			MasterMaterial.SetLabel(MaterialLabel);
+			MasterMaterial.HashName();
 
 			// Set the properties of the Datasmith master material.
 			SetFallbackMaterial(InMaterialColor, 0.0F, 0.5F, MasterMaterial);
@@ -126,10 +112,6 @@ namespace DatasmithRevitExporter
 				if (RenderingAsset != null)
 				{
 					string RenderingAssetName = RenderingAsset.Name.Replace("Schema", "");
-					if (RenderingAssetName.Contains("Prism"))
-					{
-						RenderingAssetName = RenderingAssetName.Replace("Prism", "Advanced");
-					}
 					Type RenderingAssetType = Type.GetType($"Autodesk.Revit.DB.Visual.{RenderingAssetName},RevitAPI");
 
 					if (RenderingAssetType != null)
@@ -149,15 +131,9 @@ namespace DatasmithRevitExporter
 							case "Stone":
 							case "WallPaint":
 							case "Generic":
-							// PBR Schemas
-							case "AdvancedGlazing":
-							case "AdvancedLayered":
-							case "AdvancedMetal":
-							case "AdvancedOpaque":
-							case "AdvancedTransparent":
-							return InMaterial.Name;
+								return InMaterial.Name;
 							default:
-							break;
+								break;
 						}
 					}
 
@@ -171,9 +147,8 @@ namespace DatasmithRevitExporter
 		}
 
 		private bool SetMasterMaterial(
-			Material                       InMaterial,
-			FDatasmithFacadeMasterMaterial IOMasterMaterial,
-			List<FDatasmithFacadeTexture>  IOCollectedTextures
+			Material                 InMaterial,
+			FDatasmithFacadeMaterial IOMasterMaterial
 		)
 		{
 			if (InMaterial == null)
@@ -191,11 +166,7 @@ namespace DatasmithRevitExporter
 			}
 
 			string RenderingAssetName = RenderingAsset.Name.Replace("Schema", "");
-			if (RenderingAssetName.Contains("Prism"))
-			{
-				RenderingAssetName = RenderingAssetName.Replace("Prism", "Advanced");
-			}
-			Type RenderingAssetType = Type.GetType($"Autodesk.Revit.DB.Visual.{RenderingAssetName},RevitAPI");
+			Type   RenderingAssetType = Type.GetType($"Autodesk.Revit.DB.Visual.{RenderingAssetName},RevitAPI");
 
 			if (RenderingAssetType == null)
 			{
@@ -211,7 +182,7 @@ namespace DatasmithRevitExporter
 			{
 				case "Ceramic":
 				{
-					IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Opaque);
+					IOMasterMaterial.SetMasterMaterialType(FDatasmithFacadeMaterial.EMasterMaterialType.Opaque);
 
 					Color color = GetColorPropertyValue(RenderingAsset, Ceramic.CeramicColor, sourceMaterialColor);
 
@@ -229,10 +200,8 @@ namespace DatasmithRevitExporter
 						float diffuseMapUVWAngle  = GetTexturePropertyAngle(RenderingAsset, Ceramic.CeramicColor, UnifiedBitmap.TextureWAngle);
 
 						// Control the Unreal material Base Color.
-						IOMasterMaterial.AddFloat("DiffuseMapFading", 1.0F);
-						FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(diffuseMapPath);
-						IOCollectedTextures.Add(TextureElement);
-						IOMasterMaterial.AddTexture("DiffuseMap", TextureElement);
+						IOMasterMaterial.AddFloat("DiffuseMapFading", 1.0F);                          
+						IOMasterMaterial.AddTexture("DiffuseMap", diffuseMapPath);                    
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetX", diffuseMapUVOffsetX);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetY", diffuseMapUVOffsetY);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVScaleX",  diffuseMapUVScaleX);
@@ -289,9 +258,7 @@ namespace DatasmithRevitExporter
 
 							// Control the Unreal material Normal.
 							IOMasterMaterial.AddFloat("BumpAmount", bumpAmount);
-							FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(bumpMapPath);
-							IOCollectedTextures.Add(TextureElement);
-							IOMasterMaterial.AddTexture("BumpMap", TextureElement);
+							IOMasterMaterial.AddTexture("BumpMap", bumpMapPath);
 							IOMasterMaterial.AddFloat("BumpMap_UVOffsetX", bumpMapUVOffsetX);
 							IOMasterMaterial.AddFloat("BumpMap_UVOffsetY", bumpMapUVOffsetY);
 							IOMasterMaterial.AddFloat("BumpMap_UVScaleX",  bumpMapUVScaleX);
@@ -312,7 +279,7 @@ namespace DatasmithRevitExporter
 
 				case "Concrete":
 				{
-					IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Opaque);
+					IOMasterMaterial.SetMasterMaterialType(FDatasmithFacadeMaterial.EMasterMaterialType.Opaque);
 
 					Color color = GetColorPropertyValue(RenderingAsset, Concrete.ConcreteColor, sourceMaterialColor);
 
@@ -330,10 +297,8 @@ namespace DatasmithRevitExporter
 						float diffuseMapUVWAngle  = GetTexturePropertyAngle(RenderingAsset, Concrete.ConcreteColor, UnifiedBitmap.TextureWAngle);
 
 						// Control the Unreal material Base Color.
-						IOMasterMaterial.AddFloat("DiffuseMapFading", 1.0F);
-						FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(diffuseMapPath);
-						IOCollectedTextures.Add(TextureElement);
-						IOMasterMaterial.AddTexture("DiffuseMap", TextureElement);                    
+						IOMasterMaterial.AddFloat("DiffuseMapFading", 1.0F);                          
+						IOMasterMaterial.AddTexture("DiffuseMap", diffuseMapPath);                    
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetX", diffuseMapUVOffsetX);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetY", diffuseMapUVOffsetY);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVScaleX",  diffuseMapUVScaleX);
@@ -376,9 +341,7 @@ namespace DatasmithRevitExporter
 
 							// Control the Unreal material Normal.
 							IOMasterMaterial.AddFloat("BumpAmount", bumpAmount);
-							FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(bumpMapPath);
-							IOCollectedTextures.Add(TextureElement);
-							IOMasterMaterial.AddTexture("BumpMap", TextureElement);
+							IOMasterMaterial.AddTexture("BumpMap", bumpMapPath);
 							IOMasterMaterial.AddFloat("BumpMap_UVOffsetX", bumpMapUVOffsetX);
 							IOMasterMaterial.AddFloat("BumpMap_UVOffsetY", bumpMapUVOffsetY);
 							IOMasterMaterial.AddFloat("BumpMap_UVScaleX",  bumpMapUVScaleX);
@@ -399,7 +362,7 @@ namespace DatasmithRevitExporter
 
 				case "Glazing":
 				{
-					IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Transparent);
+					IOMasterMaterial.SetMasterMaterialType(FDatasmithFacadeMaterial.EMasterMaterialType.Transparent);
 
 					// TODO: Should use the Glazing.GlazingTransmittanceColor to select a predefined color value.
 					Color color           = sourceMaterialColor;
@@ -422,10 +385,8 @@ namespace DatasmithRevitExporter
 						float diffuseMapUVWAngle  = GetTexturePropertyAngle(RenderingAsset, SolidGlass.SolidglassTransmittanceCustomColor, UnifiedBitmap.TextureWAngle);
 
 						// Control the Unreal material Base Color.
-						IOMasterMaterial.AddFloat("DiffuseMapFading", 1.0F);
-						FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(diffuseMapPath);
-						IOCollectedTextures.Add(TextureElement);
-						IOMasterMaterial.AddTexture("DiffuseMap", TextureElement);                    
+						IOMasterMaterial.AddFloat("DiffuseMapFading", 1.0F);                          
+						IOMasterMaterial.AddTexture("DiffuseMap", diffuseMapPath);                    
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetX", diffuseMapUVOffsetX);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetY", diffuseMapUVOffsetY);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVScaleX",  diffuseMapUVScaleX);
@@ -463,7 +424,7 @@ namespace DatasmithRevitExporter
 
 				case "Hardwood":
 				{
-					IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Opaque);
+					IOMasterMaterial.SetMasterMaterialType(FDatasmithFacadeMaterial.EMasterMaterialType.Opaque);
 
 					// Control the Unreal material Base Color.
 					IOMasterMaterial.AddColor("DiffuseColor", sourceMaterialColor.Red / 255.0F, sourceMaterialColor.Green / 255.0F, sourceMaterialColor.Blue / 255.0F, 1.0F);
@@ -479,10 +440,8 @@ namespace DatasmithRevitExporter
 						float diffuseMapUVWAngle  = GetTexturePropertyAngle(RenderingAsset, Hardwood.HardwoodColor, UnifiedBitmap.TextureWAngle);
 
 						// Control the Unreal material Base Color.
-						IOMasterMaterial.AddFloat("DiffuseMapFading", 1.0F);
-						FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(diffuseMapPath);
-						IOCollectedTextures.Add(TextureElement);
-						IOMasterMaterial.AddTexture("DiffuseMap", TextureElement);                    
+						IOMasterMaterial.AddFloat("DiffuseMapFading", 1.0F);                          
+						IOMasterMaterial.AddTexture("DiffuseMap", diffuseMapPath);                    
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetX", diffuseMapUVOffsetX);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetY", diffuseMapUVOffsetY);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVScaleX",  diffuseMapUVScaleX);
@@ -545,9 +504,7 @@ namespace DatasmithRevitExporter
 
 							// Control the Unreal material Normal.
 							IOMasterMaterial.AddFloat("BumpAmount", bumpAmount);
-							FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(bumpMapPath);
-							IOCollectedTextures.Add(TextureElement);
-							IOMasterMaterial.AddTexture("BumpMap", TextureElement);
+							IOMasterMaterial.AddTexture("BumpMap", bumpMapPath);
 							IOMasterMaterial.AddFloat("BumpMap_UVOffsetX", bumpMapUVOffsetX);
 							IOMasterMaterial.AddFloat("BumpMap_UVOffsetY", bumpMapUVOffsetY);
 							IOMasterMaterial.AddFloat("BumpMap_UVScaleX",  bumpMapUVScaleX);
@@ -568,7 +525,7 @@ namespace DatasmithRevitExporter
 
 				case "MasonryCMU":
 				{
-					IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Opaque);
+					IOMasterMaterial.SetMasterMaterialType(FDatasmithFacadeMaterial.EMasterMaterialType.Opaque);
 
 					Color color = GetColorPropertyValue(RenderingAsset, MasonryCMU.MasonryCMUColor, sourceMaterialColor);
 
@@ -586,10 +543,8 @@ namespace DatasmithRevitExporter
 						float diffuseMapUVWAngle  = GetTexturePropertyAngle(RenderingAsset, MasonryCMU.MasonryCMUColor, UnifiedBitmap.TextureWAngle);
 
 						// Control the Unreal material Base Color.
-						IOMasterMaterial.AddFloat("DiffuseMapFading", 1.0F);
-						FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(diffuseMapPath);
-						IOCollectedTextures.Add(TextureElement);
-						IOMasterMaterial.AddTexture("DiffuseMap", TextureElement);                    
+						IOMasterMaterial.AddFloat("DiffuseMapFading", 1.0F);                          
+						IOMasterMaterial.AddTexture("DiffuseMap", diffuseMapPath);                    
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetX", diffuseMapUVOffsetX);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetY", diffuseMapUVOffsetY);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVScaleX",  diffuseMapUVScaleX);
@@ -644,9 +599,7 @@ namespace DatasmithRevitExporter
 
 							// Control the Unreal material Normal.
 							IOMasterMaterial.AddFloat("BumpAmount", bumpAmount);
-							FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(bumpMapPath);
-							IOCollectedTextures.Add(TextureElement);
-							IOMasterMaterial.AddTexture("BumpMap", TextureElement);
+							IOMasterMaterial.AddTexture("BumpMap", bumpMapPath);
 							IOMasterMaterial.AddFloat("BumpMap_UVOffsetX", bumpMapUVOffsetX);
 							IOMasterMaterial.AddFloat("BumpMap_UVOffsetY", bumpMapUVOffsetY);
 							IOMasterMaterial.AddFloat("BumpMap_UVScaleX",  bumpMapUVScaleX);
@@ -667,7 +620,7 @@ namespace DatasmithRevitExporter
 
 				case "Metal":
 				{
-					IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Opaque);
+					IOMasterMaterial.SetMasterMaterialType(FDatasmithFacadeMaterial.EMasterMaterialType.Opaque);
 
 					// TODO: Should use the Metal.MetalColor to select a predefined color value.
 
@@ -718,12 +671,10 @@ namespace DatasmithRevitExporter
 							float cutoutMapUVScaleY  = 1.0F / GetTexturePropertyDistance(RenderingAsset, Metal.MetalPerforationsShader, UnifiedBitmap.TextureRealWorldScaleY, 1.0F);
 							float cutoutMapUVWAngle  = GetTexturePropertyAngle(RenderingAsset, Metal.MetalPerforationsShader, UnifiedBitmap.TextureWAngle);
 
-							IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.CutOut);
+							IOMasterMaterial.SetMasterMaterialType(FDatasmithFacadeMaterial.EMasterMaterialType.CutOut);
 
 							// Control the Unreal material Opacity Mask.
-							FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(cutoutMapPath);
-							IOCollectedTextures.Add(TextureElement);
-							IOMasterMaterial.AddTexture("CutoutOpacityMap", TextureElement);
+							IOMasterMaterial.AddTexture("CutoutOpacityMap",  cutoutMapPath);
 							IOMasterMaterial.AddFloat("CutoutMap_UVOffsetX", cutoutMapUVOffsetX);
 							IOMasterMaterial.AddFloat("CutoutMap_UVOffsetY", cutoutMapUVOffsetY);
 							IOMasterMaterial.AddFloat("CutoutMap_UVScaleX",  cutoutMapUVScaleX);
@@ -747,9 +698,7 @@ namespace DatasmithRevitExporter
 
 							// Control the Unreal material Normal.
 							IOMasterMaterial.AddFloat("BumpAmount", bumpAmount);
-							FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(bumpMapPath);
-							IOCollectedTextures.Add(TextureElement);
-							IOMasterMaterial.AddTexture("BumpMap", TextureElement);
+							IOMasterMaterial.AddTexture("BumpMap", bumpMapPath);
 							IOMasterMaterial.AddFloat("BumpMap_UVOffsetX", bumpMapUVOffsetX);
 							IOMasterMaterial.AddFloat("BumpMap_UVOffsetY", bumpMapUVOffsetY);
 							IOMasterMaterial.AddFloat("BumpMap_UVScaleX",  bumpMapUVScaleX);
@@ -770,7 +719,7 @@ namespace DatasmithRevitExporter
 
 				case "MetallicPaint":
 				{
-					IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Opaque);
+					IOMasterMaterial.SetMasterMaterialType(FDatasmithFacadeMaterial.EMasterMaterialType.Opaque);
 
 					Color color = GetColorPropertyValue(RenderingAsset, MetallicPaint.MetallicpaintBaseColor, sourceMaterialColor);
 
@@ -788,10 +737,8 @@ namespace DatasmithRevitExporter
 						float diffuseMapUVWAngle  = GetTexturePropertyAngle(RenderingAsset, MetallicPaint.MetallicpaintBaseColor, UnifiedBitmap.TextureWAngle);
 
 						// Control the Unreal material Base Color.
-						IOMasterMaterial.AddFloat("DiffuseMapFading", 1.0F);
-						FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(diffuseMapPath);
-						IOCollectedTextures.Add(TextureElement);
-						IOMasterMaterial.AddTexture("DiffuseMap", TextureElement);                    
+						IOMasterMaterial.AddFloat("DiffuseMapFading", 1.0F);                          
+						IOMasterMaterial.AddTexture("DiffuseMap", diffuseMapPath);                    
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetX", diffuseMapUVOffsetX);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetY", diffuseMapUVOffsetY);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVScaleX",  diffuseMapUVScaleX);
@@ -826,7 +773,7 @@ namespace DatasmithRevitExporter
 
 				case "Mirror":
 				{
-					IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Opaque);
+					IOMasterMaterial.SetMasterMaterialType(FDatasmithFacadeMaterial.EMasterMaterialType.Opaque);
 
 					Color color = GetColorPropertyValue(RenderingAsset, Mirror.MirrorTintcolor, sourceMaterialColor);
 
@@ -873,10 +820,8 @@ namespace DatasmithRevitExporter
 						float diffuseMapUVWAngle  = GetTexturePropertyAngle(RenderingAsset, PlasticVinyl.PlasticvinylColor, UnifiedBitmap.TextureWAngle);
 
 						// Control the Unreal material Base Color.
-						IOMasterMaterial.AddFloat("DiffuseMapFading", 1.0F);
-						FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(diffuseMapPath);
-						IOCollectedTextures.Add(TextureElement);
-						IOMasterMaterial.AddTexture("DiffuseMap", TextureElement);                    
+						IOMasterMaterial.AddFloat("DiffuseMapFading", 1.0F);                          
+						IOMasterMaterial.AddTexture("DiffuseMap", diffuseMapPath);                    
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetX", diffuseMapUVOffsetX);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetY", diffuseMapUVOffsetY);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVScaleX",  diffuseMapUVScaleX);
@@ -913,9 +858,7 @@ namespace DatasmithRevitExporter
 
 							// Control the Unreal material Normal.
 							IOMasterMaterial.AddFloat("BumpAmount", bumpAmount);
-							FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(bumpMapPath);
-							IOCollectedTextures.Add(TextureElement);
-							IOMasterMaterial.AddTexture("BumpMap", TextureElement);
+							IOMasterMaterial.AddTexture("BumpMap", bumpMapPath);
 							IOMasterMaterial.AddFloat("BumpMap_UVOffsetX", bumpMapUVOffsetX);
 							IOMasterMaterial.AddFloat("BumpMap_UVOffsetY", bumpMapUVOffsetY);
 							IOMasterMaterial.AddFloat("BumpMap_UVScaleX",  bumpMapUVScaleX);
@@ -934,7 +877,7 @@ namespace DatasmithRevitExporter
 
 					if ((PlasticvinylType) GetIntegerPropertyValue(RenderingAsset, PlasticVinyl.PlasticvinylType, (int) PlasticvinylType.Plasticsolid) == PlasticvinylType.Plastictransparent)
 					{
-						IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Transparent);
+						IOMasterMaterial.SetMasterMaterialType(FDatasmithFacadeMaterial.EMasterMaterialType.Transparent);
 
 						// Control the Unreal material Opacity.
 						IOMasterMaterial.AddFloat("Transparency", 0.5F);
@@ -945,7 +888,7 @@ namespace DatasmithRevitExporter
 					}
 					else
 					{
-						IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Opaque);
+						IOMasterMaterial.SetMasterMaterialType(FDatasmithFacadeMaterial.EMasterMaterialType.Opaque);
 
 						// Control the Unreal material Metallic.
 						IOMasterMaterial.AddBoolean("IsMetal", false);
@@ -972,7 +915,7 @@ namespace DatasmithRevitExporter
 
 				case "SolidGlass":
 				{
-					IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Transparent);
+					IOMasterMaterial.SetMasterMaterialType(FDatasmithFacadeMaterial.EMasterMaterialType.Transparent);
 
 					// TODO: Should use the SolidGlass.SolidglassTransmittance to select a predefined color value.
 					Color color           = sourceMaterialColor;
@@ -995,10 +938,8 @@ namespace DatasmithRevitExporter
 						float diffuseMapUVWAngle  = GetTexturePropertyAngle(RenderingAsset, SolidGlass.SolidglassTransmittanceCustomColor, UnifiedBitmap.TextureWAngle);
 
 						// Control the Unreal material Base Color.
-						IOMasterMaterial.AddFloat("DiffuseMapFading", 1.0F);
-						FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(diffuseMapPath);
-						IOCollectedTextures.Add(TextureElement);
-						IOMasterMaterial.AddTexture("DiffuseMap", TextureElement);                    
+						IOMasterMaterial.AddFloat("DiffuseMapFading", 1.0F);                          
+						IOMasterMaterial.AddTexture("DiffuseMap", diffuseMapPath);                    
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetX", diffuseMapUVOffsetX);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetY", diffuseMapUVOffsetY);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVScaleX",  diffuseMapUVScaleX);
@@ -1041,9 +982,7 @@ namespace DatasmithRevitExporter
 
 							// Control the Unreal material Normal.
 							IOMasterMaterial.AddFloat("BumpAmount", bumpAmount);
-							FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(bumpMapPath);
-							IOCollectedTextures.Add(TextureElement);
-							IOMasterMaterial.AddTexture("BumpMap", TextureElement);
+							IOMasterMaterial.AddTexture("BumpMap", bumpMapPath);
 							IOMasterMaterial.AddFloat("BumpMap_UVOffsetX", bumpMapUVOffsetX);
 							IOMasterMaterial.AddFloat("BumpMap_UVOffsetY", bumpMapUVOffsetY);
 							IOMasterMaterial.AddFloat("BumpMap_UVScaleX",  bumpMapUVScaleX);
@@ -1067,7 +1006,7 @@ namespace DatasmithRevitExporter
 				
 				case "Stone":
 				{
-					IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Opaque);
+					IOMasterMaterial.SetMasterMaterialType(FDatasmithFacadeMaterial.EMasterMaterialType.Opaque);
 
 					// Control the Unreal material Base Color.
 					IOMasterMaterial.AddColor("DiffuseColor", sourceMaterialColor.Red / 255.0F, sourceMaterialColor.Green / 255.0F, sourceMaterialColor.Blue / 255.0F, 1.0F);
@@ -1083,10 +1022,8 @@ namespace DatasmithRevitExporter
 						float diffuseMapUVWAngle  = GetTexturePropertyAngle(RenderingAsset, Stone.StoneColor, UnifiedBitmap.TextureWAngle);
 
 						// Control the Unreal material Base Color.
-						IOMasterMaterial.AddFloat("DiffuseMapFading", 1.0F);
-						FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(diffuseMapPath);
-						IOCollectedTextures.Add(TextureElement);
-						IOMasterMaterial.AddTexture("DiffuseMap", TextureElement);                    
+						IOMasterMaterial.AddFloat("DiffuseMapFading", 1.0F);                          
+						IOMasterMaterial.AddTexture("DiffuseMap", diffuseMapPath);                    
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetX", diffuseMapUVOffsetX);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetY", diffuseMapUVOffsetY);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVScaleX",  diffuseMapUVScaleX);
@@ -1146,9 +1083,7 @@ namespace DatasmithRevitExporter
 
 							// Control the Unreal material Normal.
 							IOMasterMaterial.AddFloat("BumpAmount", bumpAmount);
-							FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(bumpMapPath);
-							IOCollectedTextures.Add(TextureElement);
-							IOMasterMaterial.AddTexture("BumpMap", TextureElement);
+							IOMasterMaterial.AddTexture("BumpMap", bumpMapPath);
 							IOMasterMaterial.AddFloat("BumpMap_UVOffsetX", bumpMapUVOffsetX);
 							IOMasterMaterial.AddFloat("BumpMap_UVOffsetY", bumpMapUVOffsetY);
 							IOMasterMaterial.AddFloat("BumpMap_UVScaleX",  bumpMapUVScaleX);
@@ -1169,7 +1104,7 @@ namespace DatasmithRevitExporter
 
 				case "WallPaint":
 				{
-					IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Opaque);
+					IOMasterMaterial.SetMasterMaterialType(FDatasmithFacadeMaterial.EMasterMaterialType.Opaque);
 
 					Color color = GetColorPropertyValue(RenderingAsset, WallPaint.WallpaintColor, sourceMaterialColor);
 
@@ -1240,10 +1175,8 @@ namespace DatasmithRevitExporter
 						float diffuseMapUVWAngle  = GetTexturePropertyAngle(RenderingAsset, Generic.GenericDiffuse, UnifiedBitmap.TextureWAngle);
 
 						// Control the Unreal material Base Color.
-						IOMasterMaterial.AddFloat("DiffuseMapFading", diffuseImageFade);
-						FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(diffuseMapPath);
-						IOCollectedTextures.Add(TextureElement);
-						IOMasterMaterial.AddTexture("DiffuseMap", TextureElement);                    
+						IOMasterMaterial.AddFloat("DiffuseMapFading", diffuseImageFade);                          
+						IOMasterMaterial.AddTexture("DiffuseMap", diffuseMapPath);                    
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetX", diffuseMapUVOffsetX);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVOffsetY", diffuseMapUVOffsetY);
 						IOMasterMaterial.AddFloat("DiffuseMap_UVScaleX",  diffuseMapUVScaleX);
@@ -1281,9 +1214,7 @@ namespace DatasmithRevitExporter
 
 						// Control the Unreal material Emissive Color.
 						IOMasterMaterial.AddBoolean("SelfIlluminationMapEnable", true);
-						FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(selfIlluminationMapPath);
-						IOCollectedTextures.Add(TextureElement);
-						IOMasterMaterial.AddTexture("SelfIlluminationMap", TextureElement);
+						IOMasterMaterial.AddTexture("SelfIlluminationMap", selfIlluminationMapPath);
 						IOMasterMaterial.AddFloat("SelfIlluminationMap_UVOffsetX", selfIlluminationMapUVOffsetX);
 						IOMasterMaterial.AddFloat("SelfIlluminationMap_UVOffsetY", selfIlluminationMapUVOffsetY);
 						IOMasterMaterial.AddFloat("SelfIlluminationMap_UVScaleX",  selfIlluminationMapUVScaleX);
@@ -1308,9 +1239,7 @@ namespace DatasmithRevitExporter
 
 						// Control the Unreal material Normal.
 						IOMasterMaterial.AddFloat("BumpAmount", bumpAmount);
-						FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(bumpMapPath);
-						IOCollectedTextures.Add(TextureElement);
-						IOMasterMaterial.AddTexture("BumpMap", TextureElement);
+						IOMasterMaterial.AddTexture("BumpMap", bumpMapPath);
 						IOMasterMaterial.AddFloat("BumpMap_UVOffsetX", bumpMapUVOffsetX);
 						IOMasterMaterial.AddFloat("BumpMap_UVOffsetY", bumpMapUVOffsetY);
 						IOMasterMaterial.AddFloat("BumpMap_UVScaleX",  bumpMapUVScaleX);
@@ -1326,7 +1255,7 @@ namespace DatasmithRevitExporter
 
 					if (transparency > 0.0F)
 					{
-						IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Transparent);
+						IOMasterMaterial.SetMasterMaterialType(FDatasmithFacadeMaterial.EMasterMaterialType.Transparent);
 
 						// Control the Unreal material Opacity.
 						IOMasterMaterial.AddFloat("Transparency", transparency);
@@ -1344,9 +1273,7 @@ namespace DatasmithRevitExporter
 
 							// Control the Unreal material Opacity.
 							IOMasterMaterial.AddFloat("TransparencyMapFading", transparencyImageFade);
-							FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(transparencyMapPath);
-							IOCollectedTextures.Add(TextureElement);
-							IOMasterMaterial.AddTexture("TransparencyMap", TextureElement);
+							IOMasterMaterial.AddTexture("TransparencyMap", transparencyMapPath);
 							IOMasterMaterial.AddFloat("TransparencyMap_UVOffsetX", transparencyMapUVOffsetX);
 							IOMasterMaterial.AddFloat("TransparencyMap_UVOffsetY", transparencyMapUVOffsetY);
 							IOMasterMaterial.AddFloat("TransparencyMap_UVScaleX",  transparencyMapUVScaleX);
@@ -1365,7 +1292,7 @@ namespace DatasmithRevitExporter
 					}
 					else
 					{
-						IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Opaque);
+						IOMasterMaterial.SetMasterMaterialType(FDatasmithFacadeMaterial.EMasterMaterialType.Opaque);
 
 						bool isMetal = GetBooleanPropertyValue(RenderingAsset, Generic.GenericIsMetal, false);
 
@@ -1387,109 +1314,16 @@ namespace DatasmithRevitExporter
 							float cutoutMapUVScaleY  = 1.0F / GetTexturePropertyDistance(RenderingAsset, Generic.GenericCutoutOpacity, UnifiedBitmap.TextureRealWorldScaleY, 1.0F);
 							float cutoutMapUVWAngle  = GetTexturePropertyAngle(RenderingAsset, Generic.GenericCutoutOpacity, UnifiedBitmap.TextureWAngle);
 
-							IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.CutOut);
+							IOMasterMaterial.SetMasterMaterialType(FDatasmithFacadeMaterial.EMasterMaterialType.CutOut);
 
 							// Control the Unreal material Opacity Mask.
-							FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(cutoutMapPath);
-							IOCollectedTextures.Add(TextureElement);
-							IOMasterMaterial.AddTexture("CutoutOpacityMap", TextureElement);
+							IOMasterMaterial.AddTexture("CutoutOpacityMap",  cutoutMapPath);
 							IOMasterMaterial.AddFloat("CutoutMap_UVOffsetX", cutoutMapUVOffsetX);
 							IOMasterMaterial.AddFloat("CutoutMap_UVOffsetY", cutoutMapUVOffsetY);
 							IOMasterMaterial.AddFloat("CutoutMap_UVScaleX",  cutoutMapUVScaleX);
 							IOMasterMaterial.AddFloat("CutoutMap_UVScaleY",  cutoutMapUVScaleY);
 							IOMasterMaterial.AddFloat("CutoutMap_UVWAngle",  cutoutMapUVWAngle);
 						}
-					}
-				}
-				break;
-
-				// PBR materials
-
-#if REVIT_API_2020
-				case "AdvancedGlazing":
-				{
-					IOMasterMaterial.AddBoolean("IsPBR", true);
-					IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Transparent);
-
-					Color TranspColor = GetColorPropertyValue(RenderingAsset, AdvancedGlazing.GlazingTransmissionColor, sourceMaterialColor);
-					float Transparency = LightnessFromColor(TranspColor);
-					IOMasterMaterial.AddFloat("Transparency", Transparency);
-					IOMasterMaterial.AddFloat("TransparencyMapFading", 0.0F);
-
-					IOMasterMaterial.AddBoolean("TintEnabled", true);
-					IOMasterMaterial.AddColor("TintColor", TranspColor.Red / 255.0F, TranspColor.Green / 255.0F, TranspColor.Blue / 255.0F, 1.0F);
-
-					ExportRougness(IOMasterMaterial, IOCollectedTextures, RenderingAsset, AdvancedGlazing.GlazingTransmissionRoughness);
-					ExportCutout(IOMasterMaterial, IOCollectedTextures, RenderingAsset, AdvancedGlazing.SurfaceCutout);
-					ExportNormalMap(IOMasterMaterial, IOCollectedTextures, RenderingAsset, AdvancedGlazing.SurfaceNormal);
-				}
-				break;
-#endif
-
-				case "AdvancedLayered":
-				{
-					IOMasterMaterial.AddBoolean("IsPBR", true);
-					ExportDiffuse(IOMasterMaterial, IOCollectedTextures, RenderingAsset, AdvancedLayered.LayeredBottomF0, sourceMaterialColor);
-					ExportRougness(IOMasterMaterial, IOCollectedTextures, RenderingAsset, AdvancedLayered.LayeredRoughness);
-					ExportCutout(IOMasterMaterial, IOCollectedTextures, RenderingAsset, AdvancedLayered.SurfaceCutout);
-					ExportNormalMap(IOMasterMaterial, IOCollectedTextures, RenderingAsset, AdvancedLayered.LayeredNormal);
-				}
-				break;
-
-				case "AdvancedTransparent":
-				{
-					IOMasterMaterial.AddBoolean("IsPBR", true);
-					IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Transparent);
-
-					Color TranspColor = GetColorPropertyValue(RenderingAsset, AdvancedTransparent.TransparentColor, sourceMaterialColor);
-
-					IOMasterMaterial.AddBoolean("TintEnabled", true);
-					IOMasterMaterial.AddColor("TintColor", TranspColor.Red / 255.0F, TranspColor.Green / 255.0F, TranspColor.Blue / 255.0F, 1.0F);
-
-					float Transparency = LightnessFromColor(TranspColor);
-					IOMasterMaterial.AddFloat("Transparency", Transparency);
-					IOMasterMaterial.AddFloat("TransparencyMapFading", 0.0F);
-
-					// Control the Unreal material Refraction.
-					float RefractionIndex = GetFloatPropertyValue(RenderingAsset, AdvancedTransparent.TransparentIor, 1.0f);
-					IOMasterMaterial.AddFloat("RefractionIndex", RefractionIndex);
-
-					ExportRougness(IOMasterMaterial, IOCollectedTextures, RenderingAsset, AdvancedTransparent.SurfaceRoughness);
-					ExportCutout(IOMasterMaterial, IOCollectedTextures, RenderingAsset, AdvancedTransparent.SurfaceCutout);
-					ExportNormalMap(IOMasterMaterial, IOCollectedTextures, RenderingAsset, AdvancedTransparent.SurfaceNormal);
-				}
-				break;
-
-				case "AdvancedMetal":
-				{
-					IOMasterMaterial.AddBoolean("IsPBR", true);
-					IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Opaque);
-					IOMasterMaterial.AddBoolean("IsMetal", true);
-					ExportDiffuse(IOMasterMaterial, IOCollectedTextures, RenderingAsset, AdvancedMetal.MetalF0, sourceMaterialColor);
-					ExportRougness(IOMasterMaterial, IOCollectedTextures, RenderingAsset, AdvancedMetal.SurfaceRoughness);
-					ExportCutout(IOMasterMaterial, IOCollectedTextures, RenderingAsset, AdvancedMetal.SurfaceCutout);
-					ExportNormalMap(IOMasterMaterial, IOCollectedTextures, RenderingAsset, AdvancedMetal.SurfaceNormal);
-				}
-				break;
-
-				case "AdvancedOpaque":
-				{
-					IOMasterMaterial.AddBoolean("IsPBR", true);
-					IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Opaque);
-
-					ExportDiffuse(IOMasterMaterial, IOCollectedTextures, RenderingAsset, AdvancedOpaque.OpaqueAlbedo, sourceMaterialColor);
-					ExportCutout(IOMasterMaterial, IOCollectedTextures, RenderingAsset, AdvancedOpaque.SurfaceCutout);
-					ExportRougness(IOMasterMaterial, IOCollectedTextures, RenderingAsset, AdvancedOpaque.SurfaceRoughness);
-					ExportNormalMap(IOMasterMaterial, IOCollectedTextures, RenderingAsset, AdvancedOpaque.SurfaceNormal);
-
-					bool emission = GetBooleanPropertyValue(RenderingAsset, AdvancedOpaque.OpaqueEmission, false);
-					if (emission)
-					{
-						ExportEmission(IOMasterMaterial, IOCollectedTextures, RenderingAsset, AdvancedOpaque.OpaqueLuminance, AdvancedOpaque.OpaqueLuminanceModifier);
-					}
-					else
-					{
-						IOMasterMaterial.AddBoolean("SelfIlluminationMapEnable", false);
 					}
 				}
 				break;
@@ -1503,117 +1337,13 @@ namespace DatasmithRevitExporter
 
 			// The properties of the Datasmith master material are set.
 			return true;
-		}
-
-		private FDatasmithFacadeTexture ExportTexture(
-			FDatasmithFacadeMasterMaterial IOMasterMaterial, Asset RenderingAsset, string AssetPropertyName, 
-			string MapParamName, string TextureParamPrefix)
-		{
-			string MapPath = GetTexturePropertyPath(RenderingAsset, AssetPropertyName);
-
-			if (!string.IsNullOrEmpty(MapPath))
-			{
-				float UVOffsetX = GetTexturePropertyDistance(RenderingAsset, AssetPropertyName, UnifiedBitmap.TextureRealWorldOffsetX, 0.0F);
-				float UVOffsetY = GetTexturePropertyDistance(RenderingAsset, AssetPropertyName, UnifiedBitmap.TextureRealWorldOffsetY, 0.0F);
-				float UVScaleX = 1.0F / GetTexturePropertyDistance(RenderingAsset, AssetPropertyName, UnifiedBitmap.TextureRealWorldScaleX, 1.0F);
-				float UVScaleY = 1.0F / GetTexturePropertyDistance(RenderingAsset, AssetPropertyName, UnifiedBitmap.TextureRealWorldScaleY, 1.0F);
-				float UVWAngle = GetTexturePropertyAngle(RenderingAsset, AssetPropertyName, UnifiedBitmap.TextureWAngle);
-
-				// Control the Unreal material Normal.
-				FDatasmithFacadeTexture TextureElement = FDatasmithFacadeMaterialsUtils.CreateSimpleTextureElement(MapPath);
-				IOMasterMaterial.AddTexture(MapParamName, TextureElement);
-				IOMasterMaterial.AddFloat($"{TextureParamPrefix}_UVOffsetX", UVOffsetX);
-				IOMasterMaterial.AddFloat($"{TextureParamPrefix}_UVOffsetY", UVOffsetY);
-				IOMasterMaterial.AddFloat($"{TextureParamPrefix}_UVScaleX", UVScaleX);
-				IOMasterMaterial.AddFloat($"{TextureParamPrefix}_UVScaleY", UVScaleY);
-				IOMasterMaterial.AddFloat($"{TextureParamPrefix}_UVWAngle", UVWAngle);
-
-				return TextureElement;
-			}
-
-			return null;
-		}
-
-		private void ExportNormalMap(FDatasmithFacadeMasterMaterial IOMasterMaterial, List<FDatasmithFacadeTexture> IOCollectedTextures, Asset RenderingAsset, string AssetPropertyName)
-		{
-			FDatasmithFacadeTexture TextureElement = ExportTexture(IOMasterMaterial, RenderingAsset, AssetPropertyName, "NormalMap", "NormalMap");
-			if (TextureElement != null)
-			{
-				IOCollectedTextures.Add(TextureElement);
-			}
-		}
-
-		private void ExportDiffuse(FDatasmithFacadeMasterMaterial IOMasterMaterial, List<FDatasmithFacadeTexture> IOCollectedTextures, Asset RenderingAsset, string AssetProperty, Color DefaultColor)
-		{
-			Color DiffuseColor = GetColorPropertyValue(RenderingAsset, AssetProperty, DefaultColor);
-
-			// Control the Unreal material Base Color.
-			IOMasterMaterial.AddColor("DiffuseColor", DiffuseColor.Red / 255.0F, DiffuseColor.Green / 255.0F, DiffuseColor.Blue / 255.0F, 1.0F);
-
-			FDatasmithFacadeTexture TextureElement = ExportTexture(IOMasterMaterial, RenderingAsset, AssetProperty, "DiffuseMap", "DiffuseMap");
-			if (TextureElement != null)
-			{
-				IOCollectedTextures.Add(TextureElement);
-				IOMasterMaterial.AddFloat("DiffuseMapFading", 1.0F);
-			}
-			else
-			{
-				IOMasterMaterial.AddFloat("DiffuseMapFading", 0.0F);
-			}
-		}
-
-		private void ExportEmission(FDatasmithFacadeMasterMaterial IOMasterMaterial, List<FDatasmithFacadeTexture> IOCollectedTextures, Asset RenderingAsset, string LuminanceParam, string ColorParam)
-		{
-			float EmissionLuminance = GetFloatPropertyValue(RenderingAsset, LuminanceParam, 1.0f);
-			Color EmissionFilterColor = GetColorPropertyValue(RenderingAsset, ColorParam, new Color(255, 255, 255));
-
-			// Control the Unreal material Emissive Color.
-			IOMasterMaterial.AddFloat("SelfIlluminationLuminance", EmissionLuminance);
-			IOMasterMaterial.AddColor("SelfIlluminationFilter", EmissionFilterColor.Red / 255.0F, EmissionFilterColor.Green / 255.0F, EmissionFilterColor.Blue / 255.0F, 1.0F);
-
-			FDatasmithFacadeTexture TextureElement = ExportTexture(IOMasterMaterial, RenderingAsset, ColorParam, "SelfIlluminationMap", "SelfIlluminationMap");
-			if (TextureElement != null)
-			{
-				IOCollectedTextures.Add(TextureElement);
-				IOMasterMaterial.AddBoolean("SelfIlluminationMapEnable", true);
-			}
-			else
-			{
-				IOMasterMaterial.AddBoolean("SelfIlluminationMapEnable", false);
-			}
-		}
-
-		private void ExportRougness(FDatasmithFacadeMasterMaterial IOMasterMaterial, List<FDatasmithFacadeTexture> IOCollectedTextures, Asset RenderingAsset, string AssetProperty)
-		{
-			FDatasmithFacadeTexture TextureElement = ExportTexture(IOMasterMaterial, RenderingAsset, AssetProperty, "RoughnessMap", "RoughnessMap");
-			if (TextureElement != null)
-			{
-				IOCollectedTextures.Add(TextureElement);
-				IOMasterMaterial.AddBoolean("RoughnessMapEnable", true);
-			}
-			else
-			{
-				IOMasterMaterial.AddBoolean("RoughnessMapEnable", false);
-				float Rougness = GetFloatPropertyValue(RenderingAsset, AssetProperty, 0f);
-				IOMasterMaterial.AddFloat("Rougness", Rougness);
-			}
-		}
-
-		private void ExportCutout(FDatasmithFacadeMasterMaterial IOMasterMaterial, List<FDatasmithFacadeTexture> IOCollectedTextures, Asset RenderingAsset, string AssetProperty)
-		{
-			FDatasmithFacadeTexture TextureElement = ExportTexture(IOMasterMaterial, RenderingAsset, AssetProperty, "CutoutOpacityMap", "CutoutMap");
-			if (TextureElement != null)
-			{
-				IOCollectedTextures.Add(TextureElement);
-				IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.CutOut);
-			}
-		}
+        }
 
 		private void SetFallbackMaterial(
-			Color                          InMaterialColor,
-			float                          InMaterialTransparency, // in range 0.0-1.0
-			float                          InMaterialGlossiness,   // in range 0.0-1.0
-			FDatasmithFacadeMasterMaterial IOMasterMaterial
+			Color                    InMaterialColor,
+			float                    InMaterialTransparency, // in range 0.0-1.0
+			float                    InMaterialGlossiness,   // in range 0.0-1.0
+			FDatasmithFacadeMaterial IOMasterMaterial
 		)
 		{
 			// Control the Unreal material Base Color.
@@ -1630,7 +1360,7 @@ namespace DatasmithRevitExporter
 
 			if (InMaterialTransparency > 0.0F)
 			{
-				IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Transparent);
+				IOMasterMaterial.SetMasterMaterialType(FDatasmithFacadeMaterial.EMasterMaterialType.Transparent);
 
 				// Control the Unreal material Opacity.
 				IOMasterMaterial.AddFloat("Transparency", InMaterialTransparency);
@@ -1641,7 +1371,7 @@ namespace DatasmithRevitExporter
 			}
 			else
 			{
-				IOMasterMaterial.SetMaterialType(FDatasmithFacadeMasterMaterial.EMasterMaterialType.Opaque);
+				IOMasterMaterial.SetMasterMaterialType(FDatasmithFacadeMaterial.EMasterMaterialType.Opaque);
 
 				// Control the Unreal material Metallic.
 				IOMasterMaterial.AddBoolean("IsMetal", false);
@@ -1794,12 +1524,6 @@ namespace DatasmithRevitExporter
 										sourcePath = rootedSourcePath;
 									}
 								}
-								else if (!File.Exists(sourcePath))
-								{
-									// Path is absolute but file is not found there.
-									// Remove the path component, we'll try searching the extra texture paths.
-									sourcePath = Path.GetFileName(sourcePath);
-								}
 
 								// Also search a relative path in the extra texture paths.
 								if (!Path.IsPathRooted(sourcePath))
@@ -1848,15 +1572,24 @@ namespace DatasmithRevitExporter
 
 				if (unifiedBitmapAsset != null)
 				{
-					AssetPropertyDistance distanceProperty = unifiedBitmapAsset.FindByName(in_distanceName) as AssetPropertyDistance;
+					float scalingFactor = 1.0F;
 
-					if (distanceProperty != null && distanceProperty.Value != 0.0)
+					AssetProperty versionProperty = unifiedBitmapAsset.FindByName("version");
+
+					if (versionProperty != null)
 					{
-#if REVIT_API_2021
-						return (float) UnitUtils.Convert(distanceProperty.Value, distanceProperty.GetUnitTypeId(), UnitTypeId.Feet);
-#else
-						return (float) UnitUtils.Convert(distanceProperty.Value, distanceProperty.DisplayUnitType, DisplayUnitType.DUT_DECIMAL_FEET);
-#endif
+						// DebugLog.AddLine($"Texture version: {(versionProperty as AssetPropertyInteger).Value}");
+
+						scalingFactor = ((versionProperty as AssetPropertyInteger).Value == 4) ? 12.0F /* inches per foot */ : 1.0F;
+					}
+
+					AssetProperty distanceProperty = unifiedBitmapAsset.FindByName(in_distanceName);
+
+					if (distanceProperty != null)
+					{
+						double distance = (distanceProperty as AssetPropertyDistance).Value;
+
+						return (distance != 0.0) ? (float) distance / scalingFactor : in_defaultValue;
 					}
 				}
 			}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WebSocketsModule.h"
 #include "WebSocketsLog.h"
@@ -61,21 +61,19 @@ TSharedRef<IWebSocket> FWebSocketsModule::CreateWebSocket(const FString& Url, co
 	check(WebSocketsManager);
 
 	TArray<FString> ProtocolsCopy = Protocols;
-	ProtocolsCopy.RemoveAll([](const FString& Protocol){ return Protocol.IsEmpty(); });	
-	TSharedRef<IWebSocket> WebSocket = WebSocketsManager->CreateWebSocket(Url, ProtocolsCopy, UpgradeHeaders);
-	OnWebSocketCreated.Broadcast(WebSocket, Protocols, Url);
-	
-	return WebSocket;
+	ProtocolsCopy.RemoveAll([](const FString& Protocol){ return Protocol.IsEmpty(); });
+	return WebSocketsManager->CreateWebSocket(Url, ProtocolsCopy , UpgradeHeaders);
 }
 
 TSharedRef<IWebSocket> FWebSocketsModule::CreateWebSocket(const FString& Url, const FString& Protocol, const TMap<FString, FString>& UpgradeHeaders)
 {
+	check(WebSocketsManager);
+
 	TArray<FString> Protocols;
 	if (!Protocol.IsEmpty())
 	{
 		Protocols.Add(Protocol);
 	}
-	
-	return CreateWebSocket(Url, Protocols, UpgradeHeaders);
+	return WebSocketsManager->CreateWebSocket(Url, Protocols, UpgradeHeaders);
 }
 #endif // #if WITH_WEBSOCKETS

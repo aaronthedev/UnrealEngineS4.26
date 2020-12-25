@@ -1,42 +1,41 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-#include "OpenColorIOModule.h"
+#include "IOpenColorIOModule.h"
 
 #include "Interfaces/IPluginManager.h"
+#include "Modules/ModuleManager.h"
 #include "OpenColorIOLibHandler.h"
-#include "OpenColorIODisplayManager.h"
 #include "ShaderCore.h"
+
 
 
 DEFINE_LOG_CATEGORY(LogOpenColorIO);
 
 #define LOCTEXT_NAMESPACE "OpenColorIOModule"
 
-FOpenColorIOModule::FOpenColorIOModule()
-	: DisplayManager(MakeUnique<FOpenColorIODisplayManager>())
+/**
+ * Implements the OpenColorIO module.
+ */
+class FOpenColorIOModule : public IOpenColorIOModule
 {
+public:
 
-}
+	//~ IModuleInterface interface
+	virtual void StartupModule() override
+	{
+		FOpenColorIOLibHandler::Initialize();
 
-void FOpenColorIOModule::StartupModule()
-{
-	FOpenColorIOLibHandler::Initialize();
+		// Maps virtual shader source directory /Plugin/OpenCVLensDistortion to the plugin's actual Shaders directory.
+		FString PluginShaderDir = FPaths::Combine(IPluginManager::Get().FindPlugin(TEXT("OpenColorIO"))->GetBaseDir(), TEXT("Shaders"));
+		AddShaderSourceDirectoryMapping(TEXT("/Plugin/OpenColorIO"), PluginShaderDir);
+	}
 
-	// Maps virtual shader source directory /Plugin/OpenCVLensDistortion to the plugin's actual Shaders directory.
-	FString PluginShaderDir = FPaths::Combine(IPluginManager::Get().FindPlugin(TEXT("OpenColorIO"))->GetBaseDir(), TEXT("Shaders"));
-	AddShaderSourceDirectoryMapping(TEXT("/Plugin/OpenColorIO"), PluginShaderDir);
-}
+	virtual void ShutdownModule() override
+	{
+		FOpenColorIOLibHandler::Shutdown();
+	}
+};
 
-void FOpenColorIOModule::ShutdownModule()
-{
-	FOpenColorIOLibHandler::Shutdown();
-}
-
-FOpenColorIODisplayManager& FOpenColorIOModule::GetDisplayManager()
-{
-	return *DisplayManager;
-}
-	
 IMPLEMENT_MODULE(FOpenColorIOModule, OpenColorIO);
 
 #undef LOCTEXT_NAMESPACE

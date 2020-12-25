@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Sound/SoundSourceBus.h"
@@ -12,7 +12,7 @@ USoundSourceBus::USoundSourceBus(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	// This is a bus. This will result in the decompression type to be set as DTYPE_Bus. Audio won't be generated from this object but from instance data in audio mixer.
-	bIsSourceBus = true;
+	bIsBus = true;
 
 	Init();
 }
@@ -31,6 +31,10 @@ void USoundSourceBus::Init()
 
 	// This sound wave is looping if the source bus duration is 0.0f
 	bLooping = (SourceBusDuration == 0.0f);
+
+	// Keep playing this bus when the volume is 0
+	// Note source buses can't ever be truly virtual as they are procedurally generated.
+	VirtualizationMode = bAutoDeactivateWhenSilent ? EVirtualizationMode::Disabled : EVirtualizationMode::PlayWhenSilent;
 
 	// Set the channels equal to the users channel count choice
 	switch (SourceBusChannels)

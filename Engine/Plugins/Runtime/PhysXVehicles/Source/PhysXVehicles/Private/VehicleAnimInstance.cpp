@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	UVehicleAnimInstance.cpp: Single Node Tree Instance 
@@ -9,8 +9,6 @@
 #include "WheeledVehicleMovementComponent.h"
 #include "WheeledVehicle.h"
 #include "AnimationRuntime.h"
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 /////////////////////////////////////////////////////
 // UVehicleAnimInstance
@@ -102,5 +100,3 @@ void FVehicleAnimInstanceProxy::PreUpdate(UAnimInstance* InAnimInstance, float D
 		}
 	}
 }
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreTypes.h"
-#include "UnrealTemplate.h"
 
 /**
  * Binary predicate class for sorting elements in reverse order.  Assumes < operator is defined for the template type.
@@ -22,9 +21,9 @@ struct TGreater
 template <>
 struct TGreater<void>
 {
-	template <typename T, typename U>
-	FORCEINLINE bool operator()(T&& A, U&& B) const
+	template <typename T>
+	FORCEINLINE bool operator()(const T& A, const T& B) const
 	{
-		return Forward<U>(B) < Forward<T>(A);
+		return B < A;
 	}
 };

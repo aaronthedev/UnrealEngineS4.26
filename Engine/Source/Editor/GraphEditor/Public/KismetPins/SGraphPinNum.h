@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -35,10 +35,15 @@ protected:
 				.EditableTextBoxStyle(FEditorStyle::Get(), "Graph.EditableTextBox")
 				.BorderForegroundColor(FSlateColor::UseForeground())
 				.Visibility(this, &SGraphPinNum::GetDefaultValueVisibility)
-				.IsEnabled(this, &SGraphPinNum::GetDefaultValueIsEditable)
+				.IsEnabled(this, &SGraphPinNum::GetDefaultValueIsEnabled)
 				.Value(this, &SGraphPinNum::GetNumericValue)
 				.OnValueCommitted(this, &SGraphPinNum::SetNumericValue)
 			];
+	}
+
+	bool GetDefaultValueIsEnabled() const
+	{
+		return !GraphPinObj->bDefaultValueIsReadOnly;
 	}
 
 	TOptional<NumericType> GetNumericValue() const

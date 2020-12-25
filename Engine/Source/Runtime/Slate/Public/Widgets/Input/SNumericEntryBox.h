@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -178,20 +178,20 @@ public:
 
 		if( bAllowSpin )
 		{
-			SAssignNew(SpinBox, SSpinBox<NumericType>)
-				.Style(InArgs._SpinBoxStyle)
-				.Font(InArgs._Font.IsSet() ? InArgs._Font : InArgs._EditableTextBoxStyle->Font)
-				.ContentPadding(TextMargin)
-				.Value(this, &SNumericEntryBox<NumericType>::OnGetValueForSpinBox)
-				.Delta(InArgs._Delta)
+			SAssignNew( SpinBox, SSpinBox<NumericType> )
+				.Style( InArgs._SpinBoxStyle )
+				.Font( InArgs._Font.IsSet() ? InArgs._Font : InArgs._EditableTextBoxStyle->Font )
+				.ContentPadding( TextMargin )
+				.Value( this, &SNumericEntryBox<NumericType>::OnGetValueForSpinBox )
+				.Delta( InArgs._Delta )
 				.ShiftMouseMovePixelPerDelta(InArgs._ShiftMouseMovePixelPerDelta)
 				.LinearDeltaSensitivity(InArgs._LinearDeltaSensitivity)
 				.SupportDynamicSliderMaxValue(InArgs._SupportDynamicSliderMaxValue)
 				.SupportDynamicSliderMinValue(InArgs._SupportDynamicSliderMinValue)
 				.OnDynamicSliderMaxValueChanged(InArgs._OnDynamicSliderMaxValueChanged)
 				.OnDynamicSliderMinValueChanged(InArgs._OnDynamicSliderMinValueChanged)
-				.OnValueChanged(OnValueChanged)
-				.OnValueCommitted(OnValueCommitted)
+				.OnValueChanged( OnValueChanged )
+				.OnValueCommitted( OnValueCommitted )
 				.MinSliderValue(InArgs._MinSliderValue)
 				.MaxSliderValue(InArgs._MaxSliderValue)
 				.MaxValue(InArgs._MaxValue)
@@ -201,23 +201,21 @@ public:
 				.OnBeginSliderMovement(InArgs._OnBeginSliderMovement)
 				.OnEndSliderMovement(InArgs._OnEndSliderMovement)
 				.MinDesiredWidth(InArgs._MinDesiredValueWidth)
-				.TypeInterface(Interface)
-				.ToolTipText(this, &SNumericEntryBox<NumericType>::GetValueAsText);
+				.TypeInterface(Interface);
 		}
 
 		// Always create an editable text box.  In the case of an undetermined value being passed in, we cant use the spinbox.
-		SAssignNew(EditableText, SEditableText)
-			.Text(this, &SNumericEntryBox<NumericType>::OnGetValueForTextBox)
-			.Visibility(bAllowSpin ? EVisibility::Collapsed : EVisibility::Visible)
-			.Font(InArgs._Font.IsSet() ? InArgs._Font : InArgs._EditableTextBoxStyle->Font)
-			.SelectAllTextWhenFocused(true)
-			.ClearKeyboardFocusOnCommit(false)
-			.OnTextChanged(this, &SNumericEntryBox<NumericType>::OnTextChanged)
-			.OnTextCommitted(this, &SNumericEntryBox<NumericType>::OnTextCommitted)
-			.SelectAllTextOnCommit(true)
-			.ContextMenuExtender(InArgs._ContextMenuExtender)
-			.MinDesiredWidth(InArgs._MinDesiredValueWidth)
-			.ToolTipText(this, &SNumericEntryBox<NumericType>::GetValueAsText);
+		SAssignNew( EditableText, SEditableText )
+			.Text( this, &SNumericEntryBox<NumericType>::OnGetValueForTextBox )
+			.Visibility( bAllowSpin ? EVisibility::Collapsed : EVisibility::Visible )
+			.Font( InArgs._Font.IsSet() ? InArgs._Font : InArgs._EditableTextBoxStyle->Font )
+			.SelectAllTextWhenFocused( true )
+			.ClearKeyboardFocusOnCommit( false )
+			.OnTextChanged( this, &SNumericEntryBox<NumericType>::OnTextChanged  )
+			.OnTextCommitted( this, &SNumericEntryBox<NumericType>::OnTextCommitted )
+			.SelectAllTextOnCommit( true )
+			.ContextMenuExtender( InArgs._ContextMenuExtender )
+			.MinDesiredWidth(InArgs._MinDesiredValueWidth);
 
 		TSharedRef<SHorizontalBox> HorizontalBox = SNew(SHorizontalBox);
 	
@@ -358,17 +356,6 @@ private:
 		return 0;
 	}
 
-	FText GetValueAsText() const
-	{
-		const TOptional<NumericType>& Value = ValueAttribute.Get();
-		if (Value.IsSet() == true)
-		{
-			return FText::FromString(Interface->ToString(Value.GetValue()));
-		}
-		
-		return FText::GetEmpty();
-	}
-
 	/**
 	 * Called to get the value for the text box as FText                 
 	 */
@@ -472,18 +459,23 @@ private:
 			return;
 		}
 
-		TOptional<NumericType> ExistingValue = ValueAttribute.Get();
-		TOptional<NumericType> NumericValue = Interface->FromString(NewValue.ToString(), ExistingValue.Get(0));
-
-		if (NumericValue.IsSet())
+		// Only call the delegates if we have a valid numeric value
+		if (bCommit)
 		{
-			if (bCommit)
+			TOptional<NumericType> ExistingValue = ValueAttribute.Get();
+			TOptional<NumericType> NumericValue = Interface->FromString(NewValue.ToString(), ExistingValue.Get(0));
+
+			if (NumericValue.IsSet())
 			{
-				OnValueCommitted.ExecuteIfBound(NumericValue.GetValue(), CommitInfo);
+				OnValueCommitted.ExecuteIfBound(NumericValue.GetValue(), CommitInfo );
 			}
-			else
+		}
+		else
+		{
+			NumericType NumericValue;
+			if (LexTryParseString(NumericValue, *NewValue.ToString()))
 			{
-				OnValueChanged.ExecuteIfBound(NumericValue.GetValue());
+				OnValueChanged.ExecuteIfBound( NumericValue );
 			}
 		}
 	}

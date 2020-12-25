@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_WRAP_TYPE_HELPERS_H
-#define PXR_BASE_TF_WRAP_TYPE_HELPERS_H
+#ifndef TF_WRAP_TYPE_HELPERS_H
+#define TF_WRAP_TYPE_HELPERS_H
 
 #include "pxr/pxr.h"
 
@@ -83,4 +83,4 @@ TF_API TfType TfType_DefinePythonTypeAndBases( const boost::python::object & cla
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_WRAP_TYPE_HELPERS_H
+#endif // TF_WRAP_TYPE_HELPERS_H

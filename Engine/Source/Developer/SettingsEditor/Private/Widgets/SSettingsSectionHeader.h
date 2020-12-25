@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -22,7 +22,8 @@ public:
 	{}
 	SLATE_END_ARGS()
 
-	void Construct(const FArguments& InArgs, const UObject* InSettingsObject, ISettingsEditorModelPtr InModel, TSharedPtr<IDetailsView> InDetailsView, const TSharedPtr<ITableRow>& InTableRow);
+	void Construct(const FArguments& InArgs, const UObject* InSettingsObject, ISettingsEditorModelPtr InModel, TSharedPtr<IDetailsView> InDetailsView);
+	void Construct(const FArguments& InArgs, const UObject* InSettingsObject, ISettingsEditorModelPtr InModel, TSharedPtr<IDetailsView> InDetailsView, const TSharedRef<ITableRow>& InTableRow);
 
 private:
 
@@ -91,11 +92,9 @@ private:
 	void HandleCheckoutNoticeFileProbablyModifiedExternally();
 
 	/** Callback for determining the visibility of the 'Locked' notice. */
-	EVisibility GetCheckoutNoticeVisibility() const;
+	EVisibility HandleCheckoutNoticeVisibility() const;
 
-	EVisibility GetButtonRowVisibility() const;
-
-	EVisibility GetCategoryDescriptionVisibility() const;
+	EVisibility HandleButtonRowVisibility() const;
 
 	void OnSettingsSelectionChanged();
 private:
@@ -106,7 +105,6 @@ private:
 	ISettingsSectionPtr SettingsSection;
 	TWeakObjectPtr<UObject> SettingsObject;
 	TWeakPtr<IDetailsView> DetailsView;
-	TWeakPtr<ITableRow> TableRow;
 };
 
 
@@ -118,10 +116,10 @@ public:
 	void Initialize();
 
 	/** IDetailRootObjectCustomization interface */
-	virtual TSharedPtr<SWidget> CustomizeObjectHeader(const FDetailsObjectSet& InRootObjectSet, const TSharedPtr<ITableRow>& InTableRow) override;
-	virtual bool AreObjectsVisible(const FDetailsObjectSet& InRootObjectSet) const override;
-	virtual bool ShouldDisplayHeader(const FDetailsObjectSet& InRootObjectSet) const override;
-	virtual EExpansionArrowUsage GetExpansionArrowUsage() const override { return EExpansionArrowUsage::Custom; }
+	virtual TSharedPtr<SWidget> CustomizeObjectHeader(const UObject* InRootObject) override;
+	virtual TSharedPtr<SWidget> CustomizeObjectHeader(const UObject* InRootObject, const TSharedRef<ITableRow>& InTableRow) override;
+	virtual bool IsObjectVisible(const UObject* InRootObject) const override;
+	virtual bool ShouldDisplayHeader(const UObject* InRootObject) const override;
 private:
 	void OnSelectedSectionChanged();
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -192,9 +192,9 @@ public:
 	}
 #endif //WITH_ENGINE
 
-	virtual FMediaTimeStamp GetTime() const override
+	virtual FTimespan GetTime() const override
 	{
-		return FMediaTimeStamp(Time);
+		return Time;
 	}
 
 	virtual bool IsCacheable() const override
@@ -251,9 +251,6 @@ protected:
 		{
 			return false; // failed to lock buffer
 		}
-
-		// Recompute the output buffer vertical dimension - we may get a SMALLER buffer (no padding) here than what we expected before!
-		Dim.Y = BufferSize / Stride;
 
 		// copy pixels
 		if ((Bytes != NULL) && (BufferSize > 0))

@@ -21,19 +21,24 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_TYPE_H
-#define PXR_BASE_TF_TYPE_H
+#ifndef TF_TYPE_H
+#define TF_TYPE_H
 
 #include "pxr/pxr.h"
 
 #include "pxr/base/tf/api.h"
+#include "pxr/base/tf/cxxCast.h"
+#include "pxr/base/tf/refPtr.h"
 #include "pxr/base/tf/registryManager.h"
+#include "pxr/base/tf/traits.h"
 #include "pxr/base/tf/typeFunctions.h"
+
+#include <boost/mpl/vector.hpp>
+#include <boost/operators.hpp>
 
 #include <iosfwd>
 #include <memory>
 #include <set>
-#include <string>
 #include <type_traits>
 #include <typeinfo>
 #include <vector>
@@ -43,6 +48,8 @@ PXR_NAMESPACE_OPEN_SCOPE
 #ifdef PXR_PYTHON_SUPPORT_ENABLED
 class TfPyObjWrapper;
 #endif // PXR_PYTHON_SUPPORT_ENABLED
+
+class TfType;
 
 /// \class TfType
 ///
@@ -61,7 +68,7 @@ class TfPyObjWrapper;
 ///   TfType, unlike \c std::type_info.
 /// - totally ordered -- can use as a \c std::map key
 ///
-class TfType
+class TfType : boost::totally_ordered<TfType>
 {
     struct _TypeInfo;
 
@@ -97,7 +104,7 @@ public:
     /// A type-list of C++ base types.
     /// \see TfType::Define()
     template <class ... Args>
-    struct Bases {};
+    struct Bases : boost::mpl::vector<Args ...> {};
 
 public:
     /// Construct an TfType representing an unknown type.
@@ -130,13 +137,9 @@ public:
     /// This is so all unknown types will only occupy one key when used in
     /// an associative map.
     inline bool operator ==(const TfType& t) const { return _info == t._info; }
-    inline bool operator !=(const TfType& t) const { return _info != t._info; }
 
     /// Comparison operator.
     inline bool operator <(const TfType& t) const { return _info < t._info; }
-    inline bool operator >(const TfType& t) const { return _info > t._info; }
-    inline bool operator <=(const TfType& t) const { return _info <= t._info; }
-    inline bool operator >=(const TfType& t) const { return _info >= t._info; }
 
     
     /// \name Finding types
@@ -144,8 +147,8 @@ public:
 
     /// Retrieve the \c TfType corresponding to type \c T.
     ///
-    /// The type \c T must have been declared or defined in the type system or
-    /// the \c TfType corresponding to an unknown type is returned.
+    /// The type \c T must have been defined in the type system or the
+    /// \c TfType corresponding to an unknown type is returned.
     ///
     /// \see IsUnknown()
     ///
@@ -163,19 +166,19 @@ public:
     /// This works for Python subclasses of the C++ type \c T as well,
     /// as long as \c T has been wrapped using TfPyPolymorphic.
     ///
-    /// Of course, the object's type must have been declared or defined in the
-    /// type system or the \c TfType corresponding to an unknown type is
-    /// returned.
+    /// Of course, the object's type must have been defined in the type
+    /// system or the \c TfType corresponding to an unknown type is returned.
     ///
     /// \see IsUnknown()
     ///
     template <typename T>
     static TfType const& Find(const T &obj) {
+        typedef typename TfTraits::Type<T>::UnderlyingType Type;
         // If T is polymorphic to python, we may have to bridge into python.  We
         // could also optimize for Ts that are not polymorphic at all and avoid
         // doing rtti typeid lookups, but we trust the compiler to do this for
         // us.
-        if (auto const *rawPtr = TfTypeFunctions<T>::GetRawPtr(obj))
+        if (Type const *rawPtr = TfTypeFunctions<T>::GetRawPtr(obj))
             return _FindImpl(rawPtr);
         return GetUnknownType();
     }
@@ -311,19 +314,6 @@ public:
     ///
     TF_API
     std::vector<TfType> GetBaseTypes() const;
-    
-    /// Copy the first \p maxBases base types of \p this type to \p out, or all
-    /// the base types if this type has \p maxBases or fewer base types.  Return
-    /// \p this type's number of base types.
-    ///
-    /// Note that it is supported to change a TfType to its first base type by
-    /// calling this function.  For example:
-    /// \code
-    ///     TfType t = ...;
-    ///     t.GetNBaseTypes(&t, 1);
-    /// \endcode
-    TF_API
-    size_t GetNBaseTypes(TfType *out, size_t maxBases) const;
 
     /// Return a vector of types derived directly from this type.
     ///
@@ -458,14 +448,6 @@ public:
              const std::vector<TfType> & bases,
              DefinitionCallback definitionCallback=nullptr );
 
-    /// Declares a TfType with the given C++ type T and C++ base types Bases.
-    /// Each of the base types will be declared (but not defined) as TfTypes if
-    /// they have not already been.  See the other Declare() methods for more
-    /// details.
-    ///
-    template <typename T, typename BaseTypes = TfType::Bases<>>
-    static TfType const& Declare();
- 
     /// Define a TfType with the given C++ type T and C++ base types
     /// B.  Each of the base types will be declared (but not defined)
     /// as TfTypes if they have not already been.
@@ -702,10 +684,8 @@ private:
     // Construct a TfType with the given _TypeInfo.
     explicit TfType(_TypeInfo *info) : _info(info) {}
 
-    // Adds base type(s), and link as a derived type of that bases.
-    void _AddBases(
-        const std::vector<TfType> &bases,
-        std::vector<std::string> *errorToEmit) const;
+    // Add a base type, and link as a derived type of that base.
+    void _AddBase( TfType base ) const;
 
     // Add the given function for casting to/from the given baseType.
     TF_API
@@ -763,4 +743,4 @@ PXR_NAMESPACE_CLOSE_SCOPE
 // Implementation details are put in this header.
 #include "pxr/base/tf/type_Impl.h"
 
-#endif // PXR_BASE_TF_TYPE_H
+#endif // TF_TYPE_H

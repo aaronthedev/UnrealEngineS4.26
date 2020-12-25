@@ -1,8 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "XmlFile.h"
 #include "Misc/FileHelper.h"
-#include "Misc/ScopeExit.h"
+
 FXmlFile::FXmlFile(const FString& InFile, EConstructMethod::Type ConstructMethod)
 	: RootNode(nullptr), bFileLoaded(false)
 {
@@ -162,7 +162,7 @@ void FXmlFile::PreProcessInput(TArray<FString>& Input)
 
 		if(NumWhiteSpace > 0)
 		{
-			Input[i].MidInline(NumWhiteSpace, MAX_int32, false);
+			Input[i] = Input[i].Mid(NumWhiteSpace);
 		}
 	}
 
@@ -281,26 +281,22 @@ void FXmlFile::WhiteOut(TArray<FString>& Input, int32 LineStart, int32 LineEnd, 
 }
 
 /** Checks if the passed character is an operator */
-static bool CheckTagOperator(const TCHAR* PtrStart, const TCHAR* Ptr, const TCHAR* PtrEnd)
+static bool CheckTagOperator(const FString& InString, int32 InIndex)
 {
-	checkSlow(PtrStart <= Ptr && Ptr < PtrEnd);
-
-	TCHAR Ch = *Ptr;
-	if(Ch == TCHAR('/'))
+	check(InIndex >= 0 && InIndex < InString.Len())
+	if(InString[InIndex] == TCHAR('/'))
 	{
-		const TCHAR* PtrNext = Ptr + 1;
-		if(PtrNext != PtrEnd && *PtrNext == TCHAR('>'))
+		if(InIndex < InString.Len() - 1 && InString[InIndex + 1] == TCHAR('>'))
 		{
 			return true;
 		}
-
 		// check either the next or previous chars are tag closures - otherwise, this is just a slash
-		if(Ptr != PtrStart  && *(Ptr - 1) == TCHAR('<'))
+		else if(InIndex > 0 && InString[InIndex - 1] == TCHAR('<'))
 		{
 			return true;
 		}
 	}
-	else if(Ch == TCHAR('<') || Ch == TCHAR('>'))
+	else if(InString[InIndex] == TCHAR('<') || InString[InIndex] == TCHAR('>'))
 	{
 		return true;
 	}
@@ -326,132 +322,125 @@ static bool IsQuote(TCHAR Char)
 	return Char == TCHAR('\"');
 }
 
-void FXmlFile::Tokenize(FStringView Input, TArray<FString>& Tokens)
+void FXmlFile::Tokenize(FString Input, TArray<FString>& Tokens)
 {
 	FString WorkingToken;
-	ON_SCOPE_EXIT
-	{
-		// Add working token if it still exists
-		if (WorkingToken.Len())
-		{
-			Tokens.Add(MoveTemp(WorkingToken));
-		}
-	};
-
-	enum TOKENTYPE { OPERATOR, STRING } Type = STRING;
+	enum TOKENTYPE { OPERATOR, STRING, NONE } Type = NONE;
+	bool bInToken = false;
 	bool bInQuote = false;
-
-	const TCHAR* PtrStart = GetData(Input);
-	const TCHAR* PtrEnd   = PtrStart + GetNum(Input);
-	for (const TCHAR* Ptr = PtrStart; Ptr != PtrEnd; ++Ptr)
+	for(int32 i = 0; i < Input.Len(); ++i)
 	{
-		TCHAR Ch = *Ptr;
-
-		if(IsWhiteSpace(Ch) && !bInQuote)
+		if(IsWhiteSpace(Input[i]) && !bInQuote)
 		{
 			// End the current token 
 			if(WorkingToken.Len())
 			{
-				Tokens.Add(MoveTemp(WorkingToken));
-				checkSlow(WorkingToken.Len() == 0);
+				Tokens.Add(WorkingToken);
+				WorkingToken = TEXT("");
 			}
+			bInToken = false;
+			Type = NONE;
 
 			continue;
 		}
 
 		// Mark the start of a token
-		if(!WorkingToken.Len())
+		if(bInToken == false)
 		{
-			WorkingToken += Ch;
-			if(CheckTagOperator(PtrStart, Ptr, PtrEnd))
+			WorkingToken = TEXT("");
+			WorkingToken += Input[i];
+			bInToken = true;
+			if(CheckTagOperator(Input, i))
 			{
-				// Add the working token if it's final (ie: ends with '>')
-				if (Ch == TCHAR('>'))
-				{
-					Tokens.Add(MoveTemp(WorkingToken));
-					checkSlow(WorkingToken.Len() == 0);
-				}
-				else
-				{
-					Type = OPERATOR;
-				}
+				Type = OPERATOR;
 			}
 			else
 			{
 				Type = STRING;
 			}
-
-			continue;
 		}
 
 		// Already in a token, so continue parsing
-		if(Type == OPERATOR)
+		else
 		{
-			// Still the tag, so add it to the working token
-			if(CheckTagOperator(PtrStart, Ptr, PtrEnd))
+			if(Type == OPERATOR)
 			{
-				WorkingToken += Ch;
-
-				// Add the working token if it's final (ie: ends with '>')
-				if (Ch == TCHAR('>'))
+				// Still the tag, so add it to the working token
+				if(CheckTagOperator(Input, i))
 				{
-					Tokens.Add(MoveTemp(WorkingToken));
-					checkSlow(WorkingToken.Len() == 0);
+					WorkingToken += Input[i];
 				}
-			}
 
-			// Not a tag operator anymore, so add the old token and start a new one
-			else
-			{
-				Tokens.Add(MoveTemp(WorkingToken));
-				checkSlow(WorkingToken.Len() == 0);
-				WorkingToken += Ch;
-				Type = STRING;
-			}
-		}
-		else // STRING
-		{
-			if (IsQuote(Ch))
-			{
-				bInQuote = !bInQuote;
-			}
-
-			// Still a string. Allow '>' within a string
-			if(!CheckTagOperator(PtrStart, Ptr, PtrEnd) || (bInQuote && Ch == TCHAR('>')))
-			{
-				WorkingToken += Ch;
-			}
-
-			// Moving back to operator
-			else
-			{
-				Tokens.Add(MoveTemp(WorkingToken));
-				checkSlow(WorkingToken.Len() == 0);
-				WorkingToken += Ch;
-				bInQuote = false;
-
-				// Add the working token if it's final (ie: ends with '>')
-				if (Ch == TCHAR('>'))
-				{
-					Tokens.Add(MoveTemp(WorkingToken));
-					checkSlow(WorkingToken.Len() == 0);
-				}
+				// Not a tag operator anymore, so add the old token and start a new one
 				else
 				{
+					if(WorkingToken.Len())
+					{
+						Tokens.Add(WorkingToken);
+						WorkingToken = TEXT("");
+					}
+					WorkingToken += Input[i];
+					Type = STRING;
+				}
+			}
+			else // STRING
+			{
+				if(IsQuote(Input[i]) && !bInQuote)
+				{
+					bInQuote = true;
+				}
+				else if(IsQuote(Input[i]) && bInQuote)
+				{
+					bInQuote = false;
+				}
+
+				// Still a string
+				if(!CheckTagOperator(Input, i))
+				{
+					WorkingToken += Input[i];
+				}
+
+				// Moving back to operator
+				else
+				{
+					if(WorkingToken.Len())
+					{
+						Tokens.Add(WorkingToken);
+						WorkingToken = TEXT("");
+					}
+					WorkingToken += Input[i];
 					Type = OPERATOR;
 				}
 			}
 		}
+
+		// If we have a working token, add it if it's final (ie: ends with '>')
+		if(WorkingToken.Len() > 0)
+		{
+			if(WorkingToken[WorkingToken.Len() - 1] == TCHAR('>'))
+			{
+				Tokens.Add(WorkingToken);
+				WorkingToken = TEXT("");
+				bInToken = false;
+				Type = NONE;
+			}
+		}
+	}
+
+	// Add working token if it still exists
+	if(WorkingToken.Len())
+	{
+		Tokens.Add(WorkingToken);
 	}
 }
 
-TArray<FString> FXmlFile::Tokenize(const TArray<FString>& Input)
+TArray<FString> FXmlFile::Tokenize(TArray<FString>& Input)
 {
 	TArray<FString> Tokens;
 	Tokens.Reserve(Input.Num());
-	for(const FString& Line : Input)
+	for(int32 i = 0; i < Input.Num(); ++i)
 	{
-		Tokenize(Line, Tokens);
+		Tokenize(Input[i], Tokens);
 	}
 	return Tokens;
 }

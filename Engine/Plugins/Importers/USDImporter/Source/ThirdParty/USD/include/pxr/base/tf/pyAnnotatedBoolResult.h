@@ -21,12 +21,11 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_PY_ANNOTATED_BOOL_RESULT_H
-#define PXR_BASE_TF_PY_ANNOTATED_BOOL_RESULT_H
+#ifndef TF_PYANNOTATEDBOOLRESULT_H
+#define TF_PYANNOTATEDBOOLRESULT_H
 
 #include "pxr/pxr.h"
 
-#include "pxr/base/tf/py3Compat.h"
 #include "pxr/base/tf/pyLock.h"
 #include "pxr/base/tf/pyUtils.h"
 
@@ -73,7 +72,7 @@ struct TfPyAnnotatedBoolResult :
         using namespace boost::python;
         TfPyLock lock;
         return class_<Derived>(name, no_init)
-            .def(TfPyBoolBuiltinFuncName, &Derived::GetValue)
+            .def("__nonzero__", &Derived::GetValue)
             .def("__repr__", &Derived::GetRepr)
             .def(self == bool())
             .def(self != bool())
@@ -147,4 +146,4 @@ bool operator!=(bool lhs, TfPyAnnotatedBoolResult<Annotation>& rhs)
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_PY_ANNOTATED_BOOL_RESULT_H
+#endif // TF_PYANNOTATEDBOOLRESULT_H

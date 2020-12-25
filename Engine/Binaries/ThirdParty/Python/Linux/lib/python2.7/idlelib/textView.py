@@ -39,8 +39,7 @@ class TextViewer(Toplevel):
         self.textView.insert(0.0, text)
         self.textView.config(state=DISABLED)
 
-        self.is_modal = modal
-        if self.is_modal:
+        if modal:
             self.transient(parent)
             self.grab_set()
             self.wait_window()
@@ -63,8 +62,6 @@ class TextViewer(Toplevel):
         frameText.pack(side=TOP,expand=TRUE,fill=BOTH)
 
     def Ok(self, event=None):
-        if self.is_modal:
-            self.grab_release()
         self.destroy()
 
 

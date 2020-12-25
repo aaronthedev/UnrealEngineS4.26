@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WindowsVivoxVoiceChat.h"
 
@@ -35,22 +35,29 @@ bool FWindowsVivoxVoiceChat::Initialize()
 bool FWindowsVivoxVoiceChat::LoadVivoxModules()
 {
 #if PLATFORM_64BITS
+	const FString PlatformSubdir = TEXT("Win64");
 	const FString VivoxORTPFile = TEXT("ortp_x64.dll");
 	const FString VivoxSDKFile = TEXT("vivoxsdk_x64.dll");
 #elif PLATFORM_32BITS
+	const FString PlatformSubdir = TEXT("Win32");
 	const FString VivoxORTPFile = TEXT("ortp.dll");
 	const FString VivoxSDKFile = TEXT("vivoxsdk.dll");
 #endif
 
+	const FString BinaryPath = FPaths::EngineDir() / TEXT("Binaries/ThirdParty/Vivox") / PlatformSubdir;
+	FPlatformProcess::PushDllDirectory(*BinaryPath);
+
 	if (VivoxORTPHandle == nullptr)
 	{
-		VivoxORTPHandle = FPlatformProcess::GetDllHandle(*VivoxORTPFile);
+		VivoxORTPHandle = FPlatformProcess::GetDllHandle(*(BinaryPath / VivoxORTPFile));
 	}
 
 	if (VivoxSDKHandle == nullptr)
 	{
-		VivoxSDKHandle = FPlatformProcess::GetDllHandle(*VivoxSDKFile);
+		VivoxSDKHandle = FPlatformProcess::GetDllHandle(*(BinaryPath / VivoxSDKFile));
 	}
+
+	FPlatformProcess::PopDllDirectory(*BinaryPath);
 
 	return VivoxORTPHandle && VivoxSDKHandle;
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // Port of geometry3cpp Reducer
 
@@ -31,48 +31,26 @@ class TMeshSimplification : public FMeshRefinerBase
 {
 public:
 
-	typedef QuadricErrorType                       FQuadricErrorType;
-	typedef typename FQuadricErrorType::ScalarType RealType;
-	typedef TQuadricError<RealType>                FSeamQuadricType;
-
-	
-	enum class ESimplificationCollapseModes
-	{
-		MinimalQuadricPositionError = 0,
-		MinimalExistingVertexError = 1,
-		AverageVertexPosition = 2,
-	};
+	typedef QuadricErrorType  FQuadricErrorType;
 
 	/**
-	 * Controls the method used when selecting the position the results from an edge collapse. Note some
-	 * of the simpler methods (such as average) may be significantly slower as they result in many more
-	 * points that are rejected because the would cause a triangle flip.
-	 *
-	 * MinimalQuadricPositionError  Try to find position for collapsed vertices that minimizes quadric error.
-	 *                              If false we just use midpoints, which is actually significantly slower, because it results
-	 *                              in many more points that would cause a triangle flip, which are then rejected.
-	 *
-	 * MinimalExistingVertexError   Use one of the existing vertex position with smallest error for the collapse point.
-	 *
-	 * AverageVertexPosition        Use the midpoint of the two vertex positions.
+	 * If true, we try to find position for collapsed vertices that minimizes quadric error.
+	 * If false we just use midpoints, which is actually significantly slower, because it results
+	 * in may more points that would cause a triangle flip, which are then rejected.
 	 */
-	ESimplificationCollapseModes CollapseMode = ESimplificationCollapseModes::MinimalQuadricPositionError;
-
-
-
+	bool bMinimizeQuadricPositionError = true;
 
 	/** if true, we try to keep boundary vertices on boundary. You probably want this. */
 	bool bPreserveBoundaryShape = true;
 
-	/** if true, we allow UV and Normal seams to collapse during simplification.*/
-	bool bAllowSeamCollapse = true;
+
 
 	TMeshSimplification(FDynamicMesh3* m) : FMeshRefinerBase(m)
 	{
 		NormalOverlay = nullptr;
-		if (FDynamicMeshAttributeSet* Attributes = m->Attributes())
+		if (m->Attributes())
 		{
-			NormalOverlay = Attributes->PrimaryNormals();
+			NormalOverlay = m->Attributes()->PrimaryNormals();
 		}
 	}
 
@@ -101,14 +79,6 @@ public:
 	 * @param MaxError collapse an edge if the corresponding quadric error exceeds this 
 	 */
 	virtual void SimplifyToMaxError(double MaxError);
-
-	/**
-	 * Maximally collapse mesh in a way that does not change shape at all.
-	 * This process does not invove quadric error at all.
-	 * @param AngleTolDeg two triangles are considered coplanar if their normals are within this angle tolerance
-	 */
-	virtual void SimplifyToMinimalPlanar(double CoplanarAngleTolDeg = 0.001);
-
 
 	/** 
 	 * Does N rounds of collapsing edges longer than fMinEdgeLength. Does not use Quadrics or priority queue.
@@ -170,14 +140,10 @@ protected:
 	}
 
 
-	
-	double SeamEdgeWeight = 256.;
+
 
 	TArray<FQuadricErrorType> vertQuadrics;
 	virtual void InitializeVertexQuadrics();
-
-	TMap<int, FSeamQuadricType> seamQuadrics;
-	virtual void InitializeSeamQuadrics();
 
 	TArray<double> triAreas;
 	TArray<FQuadricErrorType> triQuadrics;
@@ -186,10 +152,6 @@ protected:
 	FDynamicMeshNormalOverlay* NormalOverlay;
 
 	FQuadricErrorType ComputeFaceQuadric(const int tid, FVector3d& nface, FVector3d& c, double& Area) const;
-	
-	// uses pre-computed vertex and face quadrics to construct the edge quadric.
-	FQuadricErrorType AssembleEdgeQuadric(const FDynamicMesh3::FEdge& edge) const;
-
 	
 	// internal class for priority queue
 	struct QEdge 
@@ -237,7 +199,7 @@ protected:
 
 
 	// update queue weight for each edge in vertex one-ring
-	virtual void UpdateNeighbours(const FDynamicMesh3::FEdgeCollapseInfo& collapseInfo);
+	virtual void UpdateNeighbours(int vid, FIndex2i removedTris, FIndex2i opposingVerts);
 
 
 	virtual void Reproject() 
@@ -267,11 +229,8 @@ protected:
 
 
 
-	/**
-	 * Collapse given edge. 
-	 * @param RequireCollapseToVert if >= 0 and after constraints/etc the vertex we will collapse "to" cannot be this vertex, do not collapse
-	 */
-	ESimplificationResult CollapseEdge(int edgeID, FVector3d vNewPos, FDynamicMesh3::FEdgeCollapseInfo& collapseInfo, int32 RequireKeepVert = -1);
+
+	ESimplificationResult CollapseEdge(int edgeID, FVector3d vNewPos, int& collapseToV);
 
 
 

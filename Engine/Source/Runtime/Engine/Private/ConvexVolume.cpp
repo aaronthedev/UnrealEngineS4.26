@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ConvexVolume.cpp: Convex volume implementation.
@@ -159,9 +159,11 @@ FOutcode FConvexVolume::GetBoxIntersectionOutcode(const FVector& Origin,const FV
 
 static FORCEINLINE bool IntersectBoxWithPermutedPlanes(
 	const FConvexVolume::FPermutedPlaneArray& PermutedPlanes,
-	const VectorRegister& BoxOrigin,
-	const VectorRegister& BoxExtent )
+	const VectorRegister BoxOrigin,
+	const VectorRegister BoxExtent )
 {
+	bool Result = true;
+
 	checkSlow(PermutedPlanes.Num() % 4 == 0);
 
 	// Splat origin into 3 vectors
@@ -204,10 +206,11 @@ static FORCEINLINE bool IntersectBoxWithPermutedPlanes(
 		// Check for completely outside
 		if ( VectorAnyGreaterThan(Distance,PushOut) )
 		{
-			return false;
+			Result = false;
+			break;
 		}
 	}
-	return true;
+	return Result;
 }
 
 bool FConvexVolume::IntersectBox(const FVector& Origin,const FVector& Extent) const
@@ -237,6 +240,8 @@ bool FConvexVolume::IntersectBox( const FVector& Origin,const FVector& Translati
 
 bool FConvexVolume::IntersectBox(const FVector& Origin,const FVector& Extent, bool& bOutFullyContained) const
 {
+	bool Result = true;
+
 	// Assume fully contained
 	bOutFullyContained = true;
 
@@ -286,8 +291,9 @@ bool FConvexVolume::IntersectBox(const FVector& Origin,const FVector& Extent, bo
 		// Check for completely outside
 		if (VectorAnyGreaterThan(Distance,PushOut))
 		{
+			Result = false;
 			bOutFullyContained = false;
-			return false;
+			break;
 		}
 
 		// Definitely inside frustums, but check to see if it's fully contained
@@ -296,7 +302,7 @@ bool FConvexVolume::IntersectBox(const FVector& Origin,const FVector& Extent, bo
 			bOutFullyContained = false;
 		}
 	}
-	return true;
+	return Result;
 }
 
 //
@@ -305,6 +311,8 @@ bool FConvexVolume::IntersectBox(const FVector& Origin,const FVector& Extent, bo
 
 bool FConvexVolume::IntersectSphere(const FVector& Origin,const float& Radius) const
 {
+	bool Result = true;
+
 	checkSlow(PermutedPlanes.Num() % 4 == 0);
 
 	// Load the origin & radius
@@ -337,10 +345,11 @@ bool FConvexVolume::IntersectSphere(const FVector& Origin,const float& Radius) c
 		// Check for completely outside
 		if (VectorAnyGreaterThan(Distance,VRadius))
 		{
-			return false;
+			Result = false;
+			break;
 		}
 	}
-	return true;
+	return Result;
 }
 
 
@@ -350,6 +359,8 @@ bool FConvexVolume::IntersectSphere(const FVector& Origin,const float& Radius) c
 
 bool FConvexVolume::IntersectSphere(const FVector& Origin,const float& Radius, bool& bOutFullyContained) const
 {
+	bool Result = true;
+
 	//Assume fully contained
 	bOutFullyContained = true;
 
@@ -387,8 +398,9 @@ bool FConvexVolume::IntersectSphere(const FVector& Origin,const float& Radius, b
 		int32 Mask = VectorAnyGreaterThan(Distance,VRadius);
 		if (Mask)
 		{
+			Result = false;
 			bOutFullyContained = false;
-			return false;
+			break;
 		}
 
 		//the sphere is definitely inside the frustums, but let's check if it's FULLY contained by checking the NEGATIVE radius (on the inside of each frustum plane)
@@ -398,7 +410,7 @@ bool FConvexVolume::IntersectSphere(const FVector& Origin,const float& Radius, b
 			bOutFullyContained = false;
 		}
 	}
-	return true;
+	return Result;
 }
 
 bool FConvexVolume::IntersectLineSegment(const FVector& InStart, const FVector& InEnd) const

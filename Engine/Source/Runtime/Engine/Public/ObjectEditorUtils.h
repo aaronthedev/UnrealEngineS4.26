@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,61 +6,36 @@
 #include "UObject/UnrealType.h"
 
 #if WITH_EDITOR
-class FField;
-class FProperty;
+class UProperty;
 
 namespace FObjectEditorUtils
 {
 
 	/**
-	 * Gets the category this field belongs to.
+	 * Gets the category this property belongs to.
 	 *
-	 * @param	InField	Field we want the category name of.
-	 * @return	Category name of the given field.
+	 * @param	InProperty	Property we want the category name of.
+	 * @return	Category name of the given property.
 	 */
-	ENGINE_API FText GetCategoryText( const FField* InField );	
+	ENGINE_API FText GetCategoryText( const class UProperty* InProperty );	
 
 	/**
-	 * Gets the category this field belongs to.
+	 * Gets the category this property belongs to.
 	 *
-	 * @param	InField	Field we want the category name of.
-	 * @return	Category name of the given field.
+	 * @param	InProperty	Property we want the category name of.
+	 * @return	Category name of the given property.
 	 */
-	ENGINE_API FText GetCategoryText( const UField* InField );	
+	ENGINE_API FString GetCategory( const class UProperty* InProperty );	
 
 	/**
-	 * Gets the category this field belongs to.
-	 *
-	 * @param	InField	Field we want the category name of.
-	 * @return	Category name of the given field.
-	 */
-	ENGINE_API FString GetCategory( const FField* InField );
-
-	/**
-	 * Gets the category this field belongs to.
-	 *
-	 * @param	InField	Field we want the category name of.
-	 * @return	Category name of the given field.
-	 */
-	ENGINE_API FString GetCategory( const UField* InField );
-
-	/**
-	 * Gets the FName of the category this field belongs to.  
+	 * Gets the FName of the category this property belongs to.  
 	 * Note, this value is suitable for comparison against other categories but NOT suitable as a display name since it is not localized
 	 *
-	 * @param	InField	Field we want the category name of.
-	 * @return	Category name of the given field.
+	 * @param	InProperty	Property we want the category name of.
+	 * @return	Category name of the given property.
 	 */
-	ENGINE_API FName GetCategoryFName( const FField* InField );
+	ENGINE_API FName GetCategoryFName( const class UProperty* InProperty );
 
-	/**
-	 * Gets the FName of the category this field belongs to.  
-	 * Note, this value is suitable for comparison against other categories but NOT suitable as a display name since it is not localized
-	 *
-	 * @param	InField	Field we want the category name of.
-	 * @return	Category name of the given field.
-	 */
-	ENGINE_API FName GetCategoryFName( const UField* InField );
 
 	/**
 	 * Query if a function is flagged as hidden from the given class either by category or by function name
@@ -80,7 +55,7 @@ namespace FObjectEditorUtils
 	 *
 	 * @return	true if the functions category is hidden in the specified class.
 	 */
-	ENGINE_API bool IsVariableCategoryHiddenFromClass( const FProperty* InVariable, const UClass* Class );
+	ENGINE_API bool IsVariableCategoryHiddenFromClass( const UProperty* InVariable, const UClass* Class );
 
 	/**
 	 * Get the classes development status and return if it's either experimental or early access.
@@ -102,7 +77,7 @@ namespace FObjectEditorUtils
 	 *
 	 * @return true if the value was successfully migrated.
 	 */
-	ENGINE_API bool MigratePropertyValue(UObject* SourceObject, FProperty* SourceProperty, UObject* DestinationObject, FProperty* DestinationProperty);
+	ENGINE_API bool MigratePropertyValue(UObject* SourceObject, UProperty* SourceProperty, UObject* DestinationObject, UProperty* DestinationProperty);
 
 	/**
 	 * Copy the value of a property from source object to a destination object.
@@ -117,8 +92,8 @@ namespace FObjectEditorUtils
 	template <typename SourceType, typename DestinationType>
 	bool MigratePropertyValue(SourceType* SourceObject, FName SourcePropertyName, DestinationType* DestinationObject, FName DestinationPropertyName)
 	{
-		FProperty* SourceProperty = FindFieldChecked<FProperty>(SourceType::StaticClass(), SourcePropertyName);
-		FProperty* DestinationProperty = FindFieldChecked<FProperty>(DestinationType::StaticClass(), DestinationPropertyName);
+		UProperty* SourceProperty = FindFieldChecked<UProperty>(SourceType::StaticClass(), SourcePropertyName);
+		UProperty* DestinationProperty = FindFieldChecked<UProperty>(DestinationType::StaticClass(), DestinationPropertyName);
 
 		return FObjectEditorUtils::MigratePropertyValue(SourceObject, SourceProperty, DestinationObject, DestinationProperty);
 	}
@@ -135,7 +110,7 @@ namespace FObjectEditorUtils
 	bool SetPropertyValue(ObjectType* Object, FName PropertyName, ValueType Value)
 	{
 		// Get the property addresses for the source and destination objects.
-		FProperty* Property = FindFieldChecked<FProperty>(ObjectType::StaticClass(), PropertyName);
+		UProperty* Property = FindFieldChecked<UProperty>(ObjectType::StaticClass(), PropertyName);
 
 		// Get the property addresses for the object
 		ValueType* SourceAddr = Property->ContainerPtrToValuePtr<ValueType>(Object);

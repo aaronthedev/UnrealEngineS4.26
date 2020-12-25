@@ -1,24 +1,30 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
+#include "Engine/SkeletalMesh.h"
 #include "ClothConfig.h"
-#include "ClothConfig_Legacy.h"
-
 #include "ClothConfigNv.generated.h"
 
-/** Container for a constraint setup, these can be horizontal, vertical, shear and bend. */
+namespace nvidia
+{
+	namespace apex
+	{
+		class ClothingAsset;
+	}
+}
+
+// Container for a constraint setup, these can be horizontal, vertical, shear and bend
 USTRUCT()
-struct FClothConstraintSetupNv
+struct FClothConstraintSetup
 {
 	GENERATED_BODY()
 
-	FClothConstraintSetupNv();
-
-	// Migrate from the legacy FClothConstraintSetup structure.
-	void MigrateFrom(const FClothConstraintSetup_Legacy& Setup);
-
-	// Migrate to the legacy FClothConstraintSetup structure.
-	void MigrateTo(FClothConstraintSetup_Legacy& Setup) const;
+	FClothConstraintSetup()
+		: Stiffness(1.0f)
+		, StiffnessMultiplier(1.0f)
+		, StretchLimit(1.0f)
+		, CompressionLimit(1.0f)
+	{}
 
 	// How stiff this constraint is, this affects how closely it will follow the desired position
 	UPROPERTY(EditAnywhere, Category=Constraint)
@@ -28,7 +34,7 @@ struct FClothConstraintSetupNv
 	UPROPERTY(EditAnywhere, Category = Constraint)
 	float StiffnessMultiplier;
 
-	// The hard limit on how far this constraint can stretch
+	// The hard limit on how far this constarint can stretch
 	UPROPERTY(EditAnywhere, Category = Constraint)
 	float StretchLimit;
 
@@ -37,9 +43,8 @@ struct FClothConstraintSetupNv
 	float CompressionLimit;
 };
 
-/** Cloth wind method. */
 UENUM()
-enum class EClothingWindMethodNv : uint8
+enum class EClothingWindMethod : uint8
 {
 	// Use legacy wind mode, where accelerations are modified directly by the simulation
 	// with no regard for drag or lift
@@ -52,56 +57,41 @@ enum class EClothingWindMethodNv : uint8
 };
 
 /** Holds initial, asset level config for clothing actors. */
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 UCLASS()
-class CLOTHINGSYSTEMRUNTIMENV_API UClothConfigNv : public UClothConfigCommon
+class CLOTHINGSYSTEMRUNTIMENV_API UClothConfigNv : public UClothConfigBase
 {
 	GENERATED_BODY()
 public:
 	UClothConfigNv();
 
-	// Set up custom version serialization.
-	virtual void Serialize(FArchive& Ar) override;
+	bool HasSelfCollision() const override;
 
-	// Update the deprecated properties.
-	virtual void PostLoad() override;
-
-	// Migrate from the legacy FClothConfig structure.
-	virtual void MigrateFrom(const FClothConfig_Legacy& ClothConfig) override;
-
-	// Migrate to the legacy FClothConfig structure.
-	virtual bool MigrateTo(FClothConfig_Legacy& ClothConfig) const override;
-
-	// Return whether self collision is enabled for this config.
-	UE_DEPRECATED(4.25, "This function is deprecated. Please use NeedsSelfCollisionIndices or UseSelfCollisions instead.")
-	virtual bool HasSelfCollision() const override
-	{ return UseSelfCollisions(); }
-
-	// Return the collision radius required to calculate the self collision indices, or 0.f if self collision is disabled.
-	virtual float NeedsSelfCollisionIndices() const override;
-
-	// Return whether this Nv config has self collision.
-	bool UseSelfCollisions() const;
+#if WITH_EDITOR
+	virtual bool InitFromApexAssetCallback(
+		nvidia::apex::ClothingAsset* InApexAsset,
+		USkeletalMesh* TargetMesh,
+		FName InName);
+#endif // WITH_EDITOR
 
 	// How wind should be processed, Accurate uses drag and lift to make the cloth react differently, legacy applies similar forces to all clothing without drag and lift (similar to APEX)
 	UPROPERTY(EditAnywhere, Category = ClothConfig)
-	EClothingWindMethodNv ClothingWindMethod;
+	EClothingWindMethod WindMethod;
 
 	// Constraint data for vertical constraints
 	UPROPERTY(EditAnywhere, Category = ClothConfig)
-	FClothConstraintSetupNv VerticalConstraint;
+	FClothConstraintSetup VerticalConstraintConfig;
 
 	// Constraint data for horizontal constraints
 	UPROPERTY(EditAnywhere, Category = ClothConfig)
-	FClothConstraintSetupNv HorizontalConstraint;
+	FClothConstraintSetup HorizontalConstraintConfig;
 
 	// Constraint data for bend constraints
 	UPROPERTY(EditAnywhere, Category = ClothConfig)
-	FClothConstraintSetupNv BendConstraint;
+	FClothConstraintSetup BendConstraintConfig;
 
 	// Constraint data for shear constraints
 	UPROPERTY(EditAnywhere, Category = ClothConfig)
-	FClothConstraintSetupNv ShearConstraint;
+	FClothConstraintSetup ShearConstraintConfig;
 
 	// Size of self collision spheres centered on each vert
 	UPROPERTY(EditAnywhere, Category = ClothConfig)
@@ -196,17 +186,178 @@ public:
 	// Default damper stiffness for anim drive if an anim drive is in use
 	UPROPERTY(EditAnywhere, Category = ClothConfig)
 	float AnimDriveDamperStiffness;
-
-	// Deprecated properties using old legacy structure and enum that couldn't be redirected
-	UPROPERTY()
-	EClothingWindMethod_Legacy WindMethod_DEPRECATED;
-	UPROPERTY()
-	FClothConstraintSetup_Legacy VerticalConstraintConfig_DEPRECATED;
-	UPROPERTY()
-	FClothConstraintSetup_Legacy HorizontalConstraintConfig_DEPRECATED;
-	UPROPERTY()
-	FClothConstraintSetup_Legacy BendConstraintConfig_DEPRECATED;
-	UPROPERTY()
-	FClothConstraintSetup_Legacy ShearConstraintConfig_DEPRECATED;
 };
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
+
+
+
+/** Deprecated. Use UClothConfigNv instead. */
+USTRUCT()
+struct FClothConfig
+{
+	GENERATED_BODY()
+
+	FClothConfig()
+		: WindMethod(EClothingWindMethod::Legacy)
+		, SelfCollisionRadius(0.0f)
+		, SelfCollisionStiffness(0.0f)
+		, SelfCollisionCullScale(1.0f)
+		, Damping(0.4f)
+		, Friction(0.1f)
+		, WindDragCoefficient(0.02f/100.0f)
+		, WindLiftCoefficient(0.02f/100.0f)
+		, LinearDrag(0.2f)
+		, AngularDrag(0.2f)
+		, LinearInertiaScale(1.0f)
+		, AngularInertiaScale(1.0f)
+		, CentrifugalInertiaScale(1.0f)
+		, SolverFrequency(120.0f)
+		, StiffnessFrequency(100.0f)
+		, GravityScale(1.0f)
+		, GravityOverride(FVector::ZeroVector)
+		, bUseGravityOverride(false)
+		, TetherStiffness(1.0f)
+		, TetherLimit(1.0f)
+		, CollisionThickness(1.0f)
+		, AnimDriveSpringStiffness(1.0f)
+		, AnimDriveDamperStiffness(1.0f)
+	{}
+
+	void
+	MigrateTo(UClothConfigNv* Config)
+	{
+		Config->WindMethod = WindMethod;
+		Config->VerticalConstraintConfig = VerticalConstraintConfig;
+		Config->HorizontalConstraintConfig = HorizontalConstraintConfig;
+		Config->BendConstraintConfig = BendConstraintConfig;
+		Config->ShearConstraintConfig = ShearConstraintConfig;
+		Config->SelfCollisionRadius = SelfCollisionRadius;
+		Config->SelfCollisionStiffness = SelfCollisionStiffness;
+		Config->SelfCollisionCullScale = SelfCollisionCullScale;
+		Config->Damping = Damping;
+		Config->Friction = Friction;
+		Config->WindDragCoefficient = WindDragCoefficient;
+		Config->WindLiftCoefficient = WindLiftCoefficient;
+		Config->LinearDrag = LinearDrag;
+		Config->AngularDrag = AngularDrag;
+		Config->LinearInertiaScale = LinearInertiaScale;
+		Config->AngularInertiaScale = AngularInertiaScale;
+		Config->CentrifugalInertiaScale = CentrifugalInertiaScale;
+		Config->SolverFrequency = SolverFrequency;
+		Config->StiffnessFrequency = StiffnessFrequency;
+		Config->GravityScale = GravityScale;
+		Config->GravityOverride = GravityOverride;
+		Config->bUseGravityOverride = bUseGravityOverride;
+		Config->TetherStiffness = TetherStiffness;
+		Config->TetherLimit = TetherLimit;
+		Config->CollisionThickness = CollisionThickness;
+		Config->AnimDriveSpringStiffness = AnimDriveSpringStiffness;
+		Config->AnimDriveDamperStiffness = AnimDriveDamperStiffness;
+	}
+
+	// How wind should be processed, Accurate uses drag and lift to make the cloth react differently, legacy applies similar forces to all clothing without drag and lift (similar to APEX)
+	UPROPERTY(EditAnywhere, Category = ClothConfig)
+	EClothingWindMethod WindMethod;
+
+	// Constraint data for vertical constraints
+	UPROPERTY(EditAnywhere, Category = ClothConfig)
+	FClothConstraintSetup VerticalConstraintConfig;
+
+	// Constraint data for horizontal constraints
+	UPROPERTY(EditAnywhere, Category = ClothConfig)
+	FClothConstraintSetup HorizontalConstraintConfig;
+
+	// Constraint data for bend constraints
+	UPROPERTY(EditAnywhere, Category = ClothConfig)
+	FClothConstraintSetup BendConstraintConfig;
+
+	// Constraint data for shear constraints
+	UPROPERTY(EditAnywhere, Category = ClothConfig)
+	FClothConstraintSetup ShearConstraintConfig;
+
+	// Size of self collision spheres centered on each vert
+	UPROPERTY(EditAnywhere, Category = ClothConfig)
+	float SelfCollisionRadius;
+
+	// Stiffness of the spring force that will resolve self collisions
+	UPROPERTY(EditAnywhere, Category = ClothConfig)
+	float SelfCollisionStiffness;
+
+	UPROPERTY(EditAnywhere, Category = ClothConfig, meta = (UIMin="0", ClampMin="0"))
+	float SelfCollisionCullScale;
+
+	// Damping of particle motion per-axis
+	UPROPERTY(EditAnywhere, Category = ClothConfig)
+	FVector Damping;
+
+	// Friction of the surface when colliding
+	UPROPERTY(EditAnywhere, Category = ClothConfig)
+	float Friction;
+
+	// Drag coefficient for wind calculations, higher values mean wind has more lateral effect on cloth
+	UPROPERTY(EditAnywhere, Category = ClothConfig)
+	float WindDragCoefficient;
+
+	// Lift coefficient for wind calculations, higher values make cloth rise easier in wind
+	UPROPERTY(EditAnywhere, Category = ClothConfig)
+	float WindLiftCoefficient;
+
+	// Drag applied to linear particle movement per-axis
+	UPROPERTY(EditAnywhere, Category = ClothConfig)
+	FVector LinearDrag;
+
+	// Drag applied to angular particle movement, higher values should limit material bending (per-axis)
+	UPROPERTY(EditAnywhere, Category = ClothConfig)
+	FVector AngularDrag;
+
+	// Scale for linear particle inertia, how much movement should translate to linear motion (per-axis)
+	UPROPERTY(EditAnywhere, Category = ClothConfig, meta = (UIMin="0", UIMax="1", ClampMin="0", ClampMax="1"))
+	FVector LinearInertiaScale;
+
+	// Scale for angular particle inertia, how much movement should translate to angular motion (per-axis)
+	UPROPERTY(EditAnywhere, Category = ClothConfig, meta = (UIMin = "0", UIMax = "1", ClampMin = "0", ClampMax = "1"))
+	FVector AngularInertiaScale;
+
+	// Scale for centrifugal particle inertia, how much movement should translate to angular motion (per-axis)
+	UPROPERTY(EditAnywhere, Category = ClothConfig, meta = (UIMin = "0", UIMax = "1", ClampMin = "0", ClampMax = "1"))
+	FVector CentrifugalInertiaScale;
+
+	// Frequency of the position solver, lower values will lead to stretchier, bouncier cloth
+	UPROPERTY(EditAnywhere, Category = ClothConfig, meta = (UIMin = "30", UIMax = "240", ClampMin = "30", ClampMax = "1000"))
+	float SolverFrequency;
+
+	// Frequency for stiffness calculations, lower values will degrade stiffness of constraints
+	UPROPERTY(EditAnywhere, Category = ClothConfig)
+	float StiffnessFrequency;
+
+	// Scale of gravity effect on particles
+	UPROPERTY(EditAnywhere, Category = ClothConfig, meta = (EditCondition = "!bUseGravityOverride"))
+	float GravityScale;
+
+	// Direct gravity override value
+	UPROPERTY(EditAnywhere, Category = ClothConfig, meta = (EditCondition = "bUseGravityOverride"))
+	FVector GravityOverride;
+
+	// Use gravity override value vs gravity scale 
+	UPROPERTY(EditAnywhere, Category = ClothConfig, meta = (InlineEditConditionToggle))
+	bool bUseGravityOverride;
+
+	// Scale for stiffness of particle tethers between each other
+	UPROPERTY(EditAnywhere, Category = ClothConfig)
+	float TetherStiffness;
+
+	// Scale for the limit of particle tethers (how far they can separate)
+	UPROPERTY(EditAnywhere, Category = ClothConfig)
+	float TetherLimit;
+
+	// 'Thickness' of the simulated cloth, used to adjust collisions
+	UPROPERTY(EditAnywhere, Category = ClothConfig)
+	float CollisionThickness;
+
+	// Default spring stiffness for anim drive if an anim drive is in use
+	UPROPERTY(EditAnywhere, Category = ClothConfig)
+	float AnimDriveSpringStiffness;
+
+	// Default damper stiffness for anim drive if an anim drive is in use
+	UPROPERTY(EditAnywhere, Category = ClothConfig)
+	float AnimDriveDamperStiffness;
+};

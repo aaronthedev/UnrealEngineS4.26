@@ -1,30 +1,25 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Rigs/RigCurveContainer.h"
 #include "ControlRig.h"
 #include "HelperUtil.h"
-#include "Animation/Skeleton.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 // FRigCurveContainer
 ////////////////////////////////////////////////////////////////////////////////
 
 FRigCurveContainer::FRigCurveContainer()
-	: Container(nullptr)
-	, bSuspendNotifications(false)
+	:Container(nullptr)
 {
 }
 
 FRigCurveContainer& FRigCurveContainer::operator= (const FRigCurveContainer &InOther)
 {
 #if WITH_EDITOR
-	if (!bSuspendNotifications)
+	for (int32 Index = Num() - 1; Index >= 0; Index--)
 	{
-		for (int32 Index = Num() - 1; Index >= 0; Index--)
-		{
-			FRigCurve CurveToRemove = Curves[Index];
-			OnCurveRemoved.Broadcast(Container, FRigElementKey(CurveToRemove.Name, ERigElementType::Curve));
-		}
+		FRigCurve CurveToRemove = Curves[Index];
+		OnCurveRemoved.Broadcast(Container, FRigElementKey(CurveToRemove.Name, ERigElementType::Curve));
 	}
 #endif
 
@@ -34,12 +29,9 @@ FRigCurveContainer& FRigCurveContainer::operator= (const FRigCurveContainer &InO
 	RefreshMapping();
 
 #if WITH_EDITOR
-	if (!bSuspendNotifications)
+	for (const FRigCurve& CurveAdded : Curves)
 	{
-		for (const FRigCurve& CurveAdded : Curves)
-		{
-			OnCurveAdded.Broadcast(Container, FRigElementKey(CurveAdded.Name, ERigElementType::Curve));
-		}
+		OnCurveAdded.Broadcast(Container, FRigElementKey(CurveAdded.Name, ERigElementType::Curve));
 	}
 #endif
 
@@ -69,10 +61,7 @@ FRigCurve& FRigCurveContainer::Add(const FName& InNewName, float InValue)
 	RefreshMapping();
 
 #if WITH_EDITOR
-	if (!bSuspendNotifications)
-	{
-		OnCurveAdded.Broadcast(Container, NewCurve.GetElementKey());
-	}
+	OnCurveAdded.Broadcast(Container, NewCurve.GetElementKey());
 #endif
 
 	int32 Index = GetIndex(NewCurveName);
@@ -87,16 +76,15 @@ FRigCurve FRigCurveContainer::Remove(const FName& InName)
 
 	int32 IndexToDelete = GetIndex(InName);
 	ensure(IndexToDelete != INDEX_NONE);
+#if WITH_EDITOR
 	Select(InName, false);
+#endif
 	RemovedCurve = Curves[IndexToDelete];
 	Curves.RemoveAt(IndexToDelete);
 	RefreshMapping();
 
 #if WITH_EDITOR
-	if (!bSuspendNotifications)
-	{
-		OnCurveRemoved.Broadcast(Container, RemovedCurve.GetElementKey());
-	}
+	OnCurveRemoved.Broadcast(Container, RemovedCurve.GetElementKey());
 #endif
 
 	return RemovedCurve;
@@ -165,25 +153,24 @@ FName FRigCurveContainer::Rename(const FName& InOldName, const FName& InNewName)
 		{
 			FName NewName = GetSafeNewName(InNewName);
 
+#if WITH_EDITOR
 			bool bWasSelected = IsSelected(InOldName);
 			if(bWasSelected)
 			{
 				Select(InOldName, false);
 			}
+#endif
 
 			Curves[Found].Name = NewName;
 			RefreshMapping();
 
 #if WITH_EDITOR
-			if (!bSuspendNotifications)
-			{
-				OnCurveRenamed.Broadcast(Container, RigElementType(), InOldName, NewName);
-			}
-#endif
+			OnCurveRenamed.Broadcast(Container, RigElementType(), InOldName, NewName);
 			if(bWasSelected)
 			{
 				Select(NewName, true);
 			}
+#endif
 			return NewName;
 		}
 	}
@@ -229,6 +216,8 @@ void FRigCurveContainer::ResetValues()
 	}
 }
 
+#if WITH_EDITOR
+
 bool FRigCurveContainer::Select(const FName& InName, bool bSelect)
 {
 	if(GetIndex(InName) == INDEX_NONE)
@@ -243,6 +232,13 @@ bool FRigCurveContainer::Select(const FName& InName, bool bSelect)
 
 	if(bSelect)
 	{
+		if (Container)
+		{
+			Container->BoneHierarchy.ClearSelection();
+			Container->SpaceHierarchy.ClearSelection();
+			Container->ControlHierarchy.ClearSelection();
+		}
+
 		Selection.Add(InName);
 	}
 	else
@@ -250,10 +246,7 @@ bool FRigCurveContainer::Select(const FName& InName, bool bSelect)
 		Selection.Remove(InName);
 	}
 
-	if (!bSuspendNotifications)
-	{
-		OnCurveSelected.Broadcast(Container, FRigElementKey(InName, RigElementType()), bSelect);
-	}
+	OnCurveSelected.Broadcast(Container, FRigElementKey(InName, RigElementType()), bSelect);
 
 	return true;
 }
@@ -281,68 +274,4 @@ bool FRigCurveContainer::IsSelected(const FName& InName) const
 	return Selection.Contains(InName);
 }
 
-#if WITH_EDITOR
-
-TArray<FRigElementKey> FRigCurveContainer::ImportCurvesFromSkeleton(const USkeleton* InSkeleton, const FName& InNameSpace, bool bRemoveObsoleteCurves, bool bSelectCurves, bool bNotify)
-{
-	check(InSkeleton);
-
-	TGuardValue<bool> SuspendNotification(bSuspendNotifications, !bNotify);
-
-	TArray<FRigElementKey> Keys;
-
-	const FSmartNameMapping* SmartNameMapping = InSkeleton->GetSmartNameContainer(USkeleton::AnimCurveMappingName);
-
-	TArray<FName> NameArray;
-	SmartNameMapping->FillNameArray(NameArray);
-	for (int32 Index = 0; Index < NameArray.Num(); ++Index)
-	{
-		FName Name = NameArray[Index];
-		if (!InNameSpace.IsNone())
-		{
-			Name = *FString::Printf(TEXT("%s::%s"), *InNameSpace.ToString(), *Name.ToString());
-		}
-		Add(Name);
-		Select(Name, true);
-		Keys.Add(FRigElementKey(Name, ERigElementType::Curve));
-	}
-
-	return Keys;
-}
-
-
 #endif
-
-FRigPose FRigCurveContainer::GetPose() const
-{
-	FRigPose Pose;
-	AppendToPose(Pose);
-	return Pose;
-}
-
-void FRigCurveContainer::SetPose(FRigPose& InPose)
-{
-	for(FRigPoseElement& Element : InPose)
-	{
-		if(Element.Index.GetKey().Type == ERigElementType::Curve)
-		{
-			if(Element.Index.UpdateCache(Container))
-			{
-				Curves[Element.Index.GetIndex()].Value = Element.CurveValue;
-			}
-		}
-	}
-}
-
-void FRigCurveContainer::AppendToPose(FRigPose& InOutPose) const
-{
-	for(const FRigCurve& Curve : Curves)
-	{
-		FRigPoseElement Element;
-		if(Element.Index.UpdateCache(Curve.GetElementKey(), Container))
-		{
-			Element.CurveValue = Curve.Value;
-			InOutPose.Elements.Add(Element);
-		}
-	}
-}

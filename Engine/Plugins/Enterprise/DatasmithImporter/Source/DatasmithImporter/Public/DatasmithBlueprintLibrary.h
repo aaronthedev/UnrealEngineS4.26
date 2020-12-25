@@ -1,10 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "DatasmithImportContext.h"
-#include "DatasmithTranslatableSource.h"
 #include "ObjectElements/DatasmithUSceneElement.h"
+#include "Translators/DatasmithTranslatableSource.h"
 
 #include "Kismet/BlueprintFunctionLibrary.h"
 
@@ -40,9 +40,6 @@ struct DATASMITHIMPORTER_API FDatasmithImportFactoryCreateFileResult
 
 	UPROPERTY(BlueprintReadWrite, Transient, Category = Result)
 	bool bImportSucceed;
-
-	UPROPERTY(BlueprintReadWrite, Transient, Category = Result)
-	UDatasmithScene* Scene;
 };
 
 
@@ -61,29 +58,6 @@ public:
 	static UDatasmithSceneElement* ConstructDatasmithSceneFromFile(const FString& FilePath);
 
 	/**
-	 * Open set of CAD files as actors in a single datasmith scene
-	 * Importing set of files into single DatasmithScene asset(with ImportScene) is supported only for CAD files
-	 * @return	The opened DatasmithScene, that can be modified and can be imported.
-	 **/
-	UFUNCTION(BlueprintCallable, Category = "Editor Scripting | Datasmith")
-	static UDatasmithSceneElement* ConstructDatasmithSceneFromCADFiles(const TArray<FString>& FilePaths);
-
-	/**
-	 * Open an existing DatasmithScene asset file from disk.
-	 * @param   AssetPath Path of the DFatasmithScene asset (eg. "/Game/MyAsset")
-	 * @return  The opened DatasmithScene, that can be modified and can be reimported.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Editor Scripting | Datasmith")
-	static UDatasmithSceneElement* GetExistingDatasmithScene(const FString& AssetPath);
-
-	/**
-	 * Trigger the translation phase, which populates the DatasmithScene.
-	 * note that options should have been set before that.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Editor Scripting | Datasmith")
-	bool TranslateScene();
-
-	/**
 	 * Import a Datasmith Scene created with ConstructDatasmithSceneFromFile.
 	 * @param	DestinationFolder	Destination of where you want the asset to be imported. ie: /Game/MyFolder1
 	 * @return	A structure that contains the created actor or the blueprint actor depending of the options specified at the import.
@@ -91,33 +65,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Datasmith | Scene")
 	FDatasmithImportFactoryCreateFileResult ImportScene(const FString& DestinationFolder);
 
-	/**
-	 * Import a Datasmith Scene created with ConstructDatasmithSceneFromFiles into an array of scenes.
-	 * @param	DestinationFolder	Destination of where you want the asset to be imported. ie: /Game/MyFolder1
-	 * @return	An array of import results corresponding to array of input files
-	 **/
-	UFUNCTION(BlueprintCallable, Category = "Datasmith | Scene")
-	TArray<FDatasmithImportFactoryCreateFileResult> ImportScenes(const FString& DestinationFolder);
-
-	/**
-	 * Reimport a scene opened with GetExistingDatasmithScene
-	 * @return	A structure that contains the created actor or the blueprint actor depending of the options specified at the import.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Datasmith | Scene")
-	FDatasmithImportFactoryCreateFileResult ReimportScene();
-
-	/**
-	 * Fetch the typed options for this scene
-	 * @param OptionType	Type of the option structure to get
-	 * @return The option structure found
-	 */
 	UFUNCTION(BlueprintCallable, Category = "Datasmith | Scene", meta = (DeterminesOutputType = "OptionType"))
 	UObject* GetOptions(UClass* OptionType=nullptr);
 
-	/**
-	 * List all the options structures applicable on this scene
-	 * @return A map of options type to option object
-	 */
 	UFUNCTION(BlueprintCallable, Category = "Datasmith | Scene")
 	TMap<UClass*, UObject*> GetAllOptions();
 
@@ -135,10 +85,6 @@ public:
 private:
 	TUniquePtr<FDatasmithTranslatableSceneSource> SourcePtr; // #ueent_todo move to context
 	TUniquePtr<FDatasmithImportContext> ImportContextPtr;
-	bool bTranslated = false;
-
-	bool bMultifile = false;
-	TArray<FString> FilePaths;
 };
 
 
@@ -149,12 +95,12 @@ class UDatasmithStaticMeshBlueprintLibrary : public UBlueprintFunctionLibrary
 
 public:
 	/**
-	 * Sets the proper lightmap resolution to get the desired lightmap density ratio
-	 *
-	 * @param	Objects					List of static meshes and static mesh actors to update.
-	 * @param	bApplyChanges			Indicates if changes must be apply or not.
-	 * @param	IdealRatio				The desired lightmap density ratio
-	 */
+	* Sets the proper lightmap resolution to get the desired lightmap density ratio
+	*
+	* @param	Objects					List of static meshes and static mesh actors to update.
+	* @param	bApplyChanges			Indicates if changes must be apply or not.
+	* @param	IdealRatio				The desired lightmap density ratio
+	*/
 	UFUNCTION(BlueprintCallable, Category = "Datasmith | Static Mesh")
 	static void ComputeLightmapResolution( const TArray< UObject* >& Objects, bool bApplyChanges, float IdealRatio = 0.2f );
 
@@ -174,4 +120,3 @@ private:
 
 	static int32 ComputeLightmapResolution(UStaticMesh* StaticMesh, float IdealRatio, const FVector& StaticMeshScale);
 };
-

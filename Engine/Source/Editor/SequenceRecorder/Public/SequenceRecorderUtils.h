@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -54,7 +54,7 @@ static AssetType* MakeNewAsset(const FString& BaseAssetPath, const FString& Base
 	FString FileName;
 	if(FPackageName::TryConvertLongPackageNameToFilename(AssetPath, FileName))
 	{
-		UObject* Package = CreatePackage( *AssetPath);
+		UObject* Package = CreatePackage(nullptr, *AssetPath);
 		return NewObject<AssetType>(Package, *AssetName, RF_Public | RF_Standalone);	
 	}
 

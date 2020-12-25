@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -277,7 +277,7 @@ namespace AutomationTool
 		}
 
 		// Characters that can appear at the start of
-		private static char[] IgnoredIniValuePrefixes = { '+', '-', ' ', '\t' };
+		private static char[] IgnoredIniValuePrefixes = { '+', '-', ' ', '\t', ';' };
 
 		private static void FilterIniFile(string SourceName, string TargetName, List<string> IniKeyBlacklist, List<string> InSectionBlacklist)
 		{
@@ -288,12 +288,6 @@ namespace AutomationTool
 			foreach (string OriginalLine in Lines)
 			{
 				string Line = OriginalLine.Trim();
-
-				if (Line.StartsWith(";"))
-				{
-					continue;
-				}
-
 				bool bFiltered = bFilteringSection;
 
 				// look for each filter on each line
@@ -379,7 +373,7 @@ namespace AutomationTool
 						}
 						else
 						{
-							Log.TraceInformation("Skip copying file {0} because it doesn't exist.", SourceName);
+							Log.TraceWarning("Skip copying file {0} because it doesn't exist.", SourceName);
 						}
 					}
 					Retry = !File.Exists(TargetName);
@@ -403,7 +397,7 @@ namespace AutomationTool
 				}
 				catch (Exception Ex)
 				{
-					Log.TraceInformation("SafeCopyFile Exception was {0}", LogUtils.FormatException(Ex));
+					Log.TraceWarning("SafeCopyFile Exception was {0}", LogUtils.FormatException(Ex));
 					Retry = true;
 				}
 
@@ -420,7 +414,7 @@ namespace AutomationTool
 					}
 					else
 					{
-						Log.TraceError("Failed to copy {0} to {1}", SourceName, TargetName);
+						Log.TraceWarning("Failed to copy {0} to {1}", SourceName, TargetName);
 					}
 					Result = false;
 				}

@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GenericPlatform/GenericPlatformFile.h"
 #include "HAL/FileManager.h"
 #include "Misc/Paths.h"
-#include "HAL/PlatformMisc.h"
 #include "HAL/ThreadSafeCounter.h"
 #include "Stats/Stats.h"
 #include "Async/AsyncWork.h"
@@ -13,8 +12,6 @@
 
 #include "Async/AsyncFileHandle.h"
 #include "Async/MappedFileHandle.h"
-#include "Async/ParallelFor.h"
-#include "Misc/ScopeRWLock.h"
 
 class FGenericBaseRequest;
 class FGenericAsyncReadFileHandle;
@@ -391,7 +388,6 @@ void FGenericReadRequest::PerformRequest()
 			bMemoryHasBeenAcquired = true;
 		}
 		IFileHandle* Handle = Owner->GetHandle();
-		bCanceled = (Handle == nullptr);
 		if (Handle)
 		{
 			if (BytesToRead == MAX_int64)
@@ -535,52 +531,25 @@ bool IPlatformFile::IterateDirectoryRecursively(const TCHAR* Directory, FDirecto
 	class FRecurse : public FDirectoryVisitor
 	{
 	public:
-		IPlatformFile&      PlatformFile;
-		FDirectoryVisitor&  Visitor;
-		FRWLock             DirectoriesLock;
-		TArray<FString>&    Directories;
-		FRecurse(IPlatformFile&	InPlatformFile, FDirectoryVisitor& InVisitor, TArray<FString>& InDirectories)
-			: FDirectoryVisitor(InVisitor.DirectoryVisitorFlags)
-			, PlatformFile(InPlatformFile)
+		IPlatformFile&		PlatformFile;
+		FDirectoryVisitor&	Visitor;
+		FRecurse(IPlatformFile&	InPlatformFile, FDirectoryVisitor& InVisitor)
+			: PlatformFile(InPlatformFile)
 			, Visitor(InVisitor)
-			, Directories(InDirectories)
 		{
 		}
 		virtual bool Visit(const TCHAR* FilenameOrDirectory, bool bIsDirectory) override
 		{
-			bool bResult = Visitor.Visit(FilenameOrDirectory, bIsDirectory);
-			if (bResult && bIsDirectory)
+			bool Result = Visitor.Visit(FilenameOrDirectory, bIsDirectory);
+			if (Result && bIsDirectory)
 			{
-				FString Directory(FilenameOrDirectory);
-				FRWScopeLock ScopeLock(DirectoriesLock, SLT_Write);
-				Directories.Emplace(MoveTemp(Directory));
+				Result = PlatformFile.IterateDirectory(FilenameOrDirectory, *this);
 			}
-			return bResult;
+			return Result;
 		}
 	};
-
-	TArray<FString> DirectoriesToVisitNext;
-	DirectoriesToVisitNext.Add(Directory);
-
-	TAtomic<bool> bResult(true);
-	FRecurse Recurse(*this, Visitor, DirectoriesToVisitNext);
-	while (bResult && DirectoriesToVisitNext.Num() > 0)
-	{
-		TArray<FString> DirectoriesToVisit = MoveTemp(DirectoriesToVisitNext);
-		ParallelFor(
-			DirectoriesToVisit.Num(),
-			[this, &DirectoriesToVisit, &Recurse, &bResult](int32 Index)
-			{
-				if (bResult && !IterateDirectory(*DirectoriesToVisit[Index], Recurse))
-				{
-					bResult = false;
-				}
-			},
-			Visitor.IsThreadSafe() ? EParallelForFlags::Unbalanced : EParallelForFlags::ForceSingleThread
-		);
-	}
-
-	return bResult;
+	FRecurse Recurse(*this, Visitor);
+	return IterateDirectory(Directory, Recurse);
 }
 
 bool IPlatformFile::IterateDirectoryStatRecursively(const TCHAR* Directory, FDirectoryStatVisitor& Visitor)
@@ -597,12 +566,12 @@ bool IPlatformFile::IterateDirectoryStatRecursively(const TCHAR* Directory, FDir
 		}
 		virtual bool Visit(const TCHAR* FilenameOrDirectory, const FFileStatData& StatData) override
 		{
-			bool bResult = Visitor.Visit(FilenameOrDirectory, StatData);
-			if (bResult && StatData.bIsDirectory)
+			bool Result = Visitor.Visit(FilenameOrDirectory, StatData);
+			if (Result && StatData.bIsDirectory)
 			{
-				bResult = PlatformFile.IterateDirectoryStat(FilenameOrDirectory, *this);
+				Result = PlatformFile.IterateDirectoryStat(FilenameOrDirectory, *this);
 			}
-			return bResult;
+			return Result;
 		}
 	};
 	FStatRecurse Recurse(*this, Visitor);
@@ -624,14 +593,12 @@ bool IPlatformFile::IterateDirectoryStatRecursively(const TCHAR* Directory, FDir
 class FFindFilesVisitor : public IPlatformFile::FDirectoryVisitor
 {
 public:
-	IPlatformFile&   PlatformFile;
-	FRWLock          FoundFilesLock;
-	TArray<FString>& FoundFiles;
-	const TCHAR*     FileExtension;
-	int32            FileExtensionLen;
+	IPlatformFile&		PlatformFile;
+	TArray<FString>&	FoundFiles;
+	const TCHAR*		FileExtension;
+	int32				FileExtensionLen;
 	FFindFilesVisitor(IPlatformFile& InPlatformFile, TArray<FString>& InFoundFiles, const TCHAR* InFileExtension)
-		: IPlatformFile::FDirectoryVisitor(EDirectoryVisitorFlags::ThreadSafe)
-		, PlatformFile(InPlatformFile)
+		: PlatformFile(InPlatformFile)
 		, FoundFiles(InFoundFiles)
 		, FileExtension(InFileExtension)
 		, FileExtensionLen(InFileExtension ? FCString::Strlen(InFileExtension) : 0)
@@ -650,10 +617,8 @@ public:
 					return true;
 				}
 			}
-			
-			FString FileName(FilenameOrDirectory);
-			FRWScopeLock ScopeLock(FoundFilesLock, SLT_Write);
-			FoundFiles.Emplace(MoveTemp(FileName));
+				
+			FoundFiles.Emplace(FString(FilenameOrDirectory));
 		}
 		return true;
 	}
@@ -677,8 +642,6 @@ bool IPlatformFile::DeleteDirectoryRecursively(const TCHAR* Directory)
 	{
 	public:
 		IPlatformFile&		PlatformFile;
-		uint32 FirstError = 0;
-
 		FRecurse(IPlatformFile&	InPlatformFile)
 			: PlatformFile(InPlatformFile)
 		{
@@ -688,10 +651,7 @@ bool IPlatformFile::DeleteDirectoryRecursively(const TCHAR* Directory)
 			if (bIsDirectory)
 			{
 				PlatformFile.IterateDirectory(FilenameOrDirectory, *this);
-				if (!PlatformFile.DeleteDirectory(FilenameOrDirectory) && FirstError == 0)
-				{
-					FirstError = FPlatformMisc::GetLastError();
-				}
+				PlatformFile.DeleteDirectory(FilenameOrDirectory);
 			}
 			else
 			{
@@ -700,22 +660,14 @@ bool IPlatformFile::DeleteDirectoryRecursively(const TCHAR* Directory)
 
 				// File delete failed -- unset readonly flag and try again
 				PlatformFile.SetReadOnly(FilenameOrDirectory, false);
-				if (!PlatformFile.DeleteFile(FilenameOrDirectory) && FirstError == 0)
-				{
-					FirstError = FPlatformMisc::GetLastError();
-				}
+				PlatformFile.DeleteFile(FilenameOrDirectory);
 			}
 			return true; // continue searching
 		}
 	};
 	FRecurse Recurse(*this);
 	Recurse.Visit(Directory, true);
-	const bool bSucceeded = !DirectoryExists(Directory);
-	if (!bSucceeded)
-	{
-		FPlatformMisc::SetLastError(Recurse.FirstError);
-	}
-	return bSucceeded;
+	return !DirectoryExists(Directory);
 }
 
 
@@ -861,18 +813,11 @@ static bool InternalCreateDirectoryTree(IPlatformFile& Ipf, const FString& Direc
 			if (!InternalCreateDirectoryTree(Ipf, Directory.Left(SeparatorIndex)))
 				return false;
 
-			if (Ipf.CreateDirectory(*Directory))
-				return true;
+			return Ipf.CreateDirectory(*Directory) || Ipf.DirectoryExists(*Directory);
 		}
 	}
 
-	uint32 ErrorCode = FPlatformMisc::GetLastError();
-	const bool bExists = Ipf.DirectoryExists(*Directory);
-	if (!bExists)
-	{
-		FPlatformMisc::SetLastError(ErrorCode);
-	}
-	return bExists;
+	return Ipf.DirectoryExists(*Directory);
 }
 
 bool IPlatformFile::CreateDirectoryTree(const TCHAR* Directory)

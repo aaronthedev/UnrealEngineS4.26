@@ -17,18 +17,12 @@
       "Name": "Text3D",
       "Type": "Runtime",
       "LoadingPhase": "Default",
-	  "BlacklistTargets": [ "Server" ]
-    },
-	{
-	  "Name":  "Text3DEditor",
-	  "Type":  "Editor",
-	  "LoadingPhase": "Default"
-	}
-  ],
-  "Plugins": [
-    {
-      "Name": "GeometryProcessing",
-      "Enabled": true,
+      "WhitelistPlatforms": [
+        "Win32",
+        "Win64",
+        "Linux",
+        "Mac"
+      ],
 	  "BlacklistTargets": [ "Server" ]
     }
   ]

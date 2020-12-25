@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Animation/AnimNode_LinkedInputPose.h"
 #include "Animation/AnimInstanceProxy.h"
@@ -29,9 +29,6 @@ void FAnimNode_LinkedInputPose::Update_AnyThread(const FAnimationUpdateContext& 
 	if(InputProxy)
 	{
 		FAnimationUpdateContext InputContext = Context.WithOtherProxy(InputProxy);
-#if ANIM_NODE_IDS_AVAILABLE
-		InputContext = InputContext.WithNodeId(OuterGraphNodeIndex);
-#endif
 		InputPose.Update(InputContext);
 	}
 }
@@ -47,13 +44,11 @@ void FAnimNode_LinkedInputPose::Evaluate_AnyThread(FPoseContext& Output)
 
 		Output.Pose.MoveBonesFrom(InputContext.Pose);
 		Output.Curve.MoveFrom(InputContext.Curve);
-		Output.CustomAttributes.MoveFrom(InputContext.CustomAttributes);
 	}
 	else if(CachedInputPose.IsValid() && CachedInputCurve.IsValid())
 	{
 		Output.Pose.CopyBonesFrom(CachedInputPose);
 		Output.Curve.CopyFrom(CachedInputCurve);
-		Output.CustomAttributes.CopyFrom(CachedAttributes);
 	}
 	else
 	{
@@ -72,13 +67,12 @@ void FAnimNode_LinkedInputPose::GatherDebugData(FNodeDebugData& DebugData)
 	}
 }
 
-void FAnimNode_LinkedInputPose::DynamicLink(FAnimInstanceProxy* InInputProxy, FPoseLinkBase* InPoseLink, int32 InOuterGraphNodeIndex)
+void FAnimNode_LinkedInputPose::DynamicLink(FAnimInstanceProxy* InInputProxy, FPoseLinkBase* InPoseLink)
 {
 	check(InputProxy == nullptr);			// Must be unlinked before re-linking
 
 	InputProxy = InInputProxy;
 	InputPose.SetDynamicLinkNode(InPoseLink);
-	OuterGraphNodeIndex = InOuterGraphNodeIndex;
 }
 
 void FAnimNode_LinkedInputPose::DynamicUnlink()
@@ -87,5 +81,4 @@ void FAnimNode_LinkedInputPose::DynamicUnlink()
 
 	InputProxy = nullptr;
 	InputPose.SetDynamicLinkNode(nullptr);
-	OuterGraphNodeIndex = INDEX_NONE;
 }

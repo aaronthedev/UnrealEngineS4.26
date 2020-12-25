@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "CountersTraceAnalysis.h"
 #include "TraceServices/Model/Counters.h"
 #include "ProfilingDebugging/CountersTrace.h"
@@ -19,7 +19,7 @@ void FCountersAnalyzer::OnAnalysisBegin(const FOnAnalysisContext& Context)
 	Builder.RouteEvent(RouteId_SetValueFloat, "Counters", "SetValueFloat");
 }
 
-bool FCountersAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventContext& Context)
+bool FCountersAnalyzer::OnEvent(uint16 RouteId, const FOnEventContext& Context)
 {
 	Trace::FAnalysisSessionEditScope _(Session);
 
@@ -31,7 +31,7 @@ bool FCountersAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventCont
 		uint16 CounterId = EventData.GetValue<uint16>("Id");
 		ETraceCounterType CounterType = static_cast<ETraceCounterType>(EventData.GetValue<uint8>("Type"));
 		ETraceCounterDisplayHint CounterDisplayHint = static_cast<ETraceCounterDisplayHint>(EventData.GetValue<uint8>("DisplayHint"));
-		Trace::IEditableCounter* Counter = CounterProvider.CreateCounter();
+		Trace::ICounter* Counter = CounterProvider.CreateCounter();
 		if (CounterType == TraceCounterType_Float)
 		{
 			Counter->SetIsFloatingPoint(true);
@@ -48,8 +48,8 @@ bool FCountersAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventCont
 	{
 		uint16 CounterId = EventData.GetValue<uint16>("CounterId");
 		int64 Value = EventData.GetValue<int64>("Value");
-		double Timestamp = Context.EventTime.AsSeconds(EventData.GetValue<uint64>("Cycle"));
-		Trace::IEditableCounter** FindCounter = CountersMap.Find(CounterId);
+		double Timestamp = Context.SessionContext.TimestampFromCycle(EventData.GetValue<uint64>("Cycle"));
+		Trace::ICounter** FindCounter = CountersMap.Find(CounterId);
 		if (FindCounter)
 		{
 			(*FindCounter)->SetValue(Timestamp, Value);
@@ -60,11 +60,11 @@ bool FCountersAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventCont
 	{
 		uint16 CounterId = EventData.GetValue<uint16>("CounterId");
 		float Value = EventData.GetValue<float>("Value");
-		double Timestamp = Context.EventTime.AsSeconds(EventData.GetValue<uint64>("Cycle"));
-		Trace::IEditableCounter* FindCounter = CountersMap.FindRef(CounterId);
+		double Timestamp = Context.SessionContext.TimestampFromCycle(EventData.GetValue<uint64>("Cycle"));
+		Trace::ICounter** FindCounter = CountersMap.Find(CounterId);
 		if (FindCounter)
 		{
-			FindCounter->SetValue(Timestamp, Value);
+			(*FindCounter)->SetValue(Timestamp, Value);
 		}
 		break;
 	}

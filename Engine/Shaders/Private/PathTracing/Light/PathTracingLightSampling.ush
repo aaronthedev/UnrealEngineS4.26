@@ -1,14 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================================
 LightSampling.usf: Light sampling for next-event estimation 
 ===============================================================================================*/
 
 #pragma once
-
-#ifndef ENABLE_TRANSMISSION
-	#define ENABLE_TRANSMISSION 1
-#endif
 
 #include "PathTracingLightCommon.ush"
 #include "PathTracingDirectionalLight.ush"
@@ -52,7 +48,6 @@ void EstimateLight(
 )
 {
 	OutIrradiance = 0.0f;
-	if ((GetLightingChannelMask(LightId) & Payload.PrimitiveLightingChannelMask) == 0) return;
 
 	if (IsPointLight(LightId))
 	{

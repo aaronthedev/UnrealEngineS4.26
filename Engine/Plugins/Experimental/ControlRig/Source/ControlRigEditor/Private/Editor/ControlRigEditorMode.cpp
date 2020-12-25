@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ControlRigEditorMode.h" 
 #include "BlueprintEditorTabs.h"
@@ -9,9 +9,6 @@
 #include "RigHierarchyTabSummoner.h"
 #include "RigStackTabSummoner.h"
 #include "RigCurveContainerTabSummoner.h"
-#include "RigInfluenceMapTabSummoner.h"
-#include "RigValidationTabSummoner.h"
-#include "ToolMenus.h"
 
 FControlRigEditorMode::FControlRigEditorMode(const TSharedRef<FControlRigEditor>& InControlRigEditor)
 	: FBlueprintEditorApplicationMode(InControlRigEditor, FControlRigEditorModes::ControlRigEditorMode, FControlRigEditorModes::GetLocalizedMode, false, false)
@@ -21,8 +18,6 @@ FControlRigEditorMode::FControlRigEditorMode(const TSharedRef<FControlRigEditor>
 	TabFactories.RegisterFactory(MakeShared<FRigHierarchyTabSummoner>(InControlRigEditor));
 	TabFactories.RegisterFactory(MakeShared<FRigStackTabSummoner>(InControlRigEditor));
 	TabFactories.RegisterFactory(MakeShared<FRigCurveContainerTabSummoner>(InControlRigEditor));
-	//TabFactories.RegisterFactory(MakeShared<FRigInfluenceMapTabSummoner>(InControlRigEditor));
-	TabFactories.RegisterFactory(MakeShared<FRigValidationTabSummoner>(InControlRigEditor));
 
 	FPersonaModule& PersonaModule = FModuleManager::LoadModuleChecked<FPersonaModule>("Persona");
 
@@ -121,12 +116,12 @@ FControlRigEditorMode::FControlRigEditorMode(const TSharedRef<FControlRigEditor>
 			)
 		);
 
-	if (UToolMenu* Toolbar = InControlRigEditor->RegisterModeToolbarIfUnregistered(GetModeName()))
-	{
-		InControlRigEditor->GetToolbarBuilder()->AddCompileToolbar(Toolbar);
-		InControlRigEditor->GetToolbarBuilder()->AddScriptingToolbar(Toolbar);
-		InControlRigEditor->GetToolbarBuilder()->AddBlueprintGlobalOptionsToolbar(Toolbar);
-	}
+	// setup toolbar - clear existing toolbar extender from the BP mode
+	ToolbarExtender = MakeShareable(new FExtender);
+	InControlRigEditor->GetToolbarBuilder()->AddCompileToolbar(ToolbarExtender);
+	InControlRigEditor->GetToolbarBuilder()->AddScriptingToolbar(ToolbarExtender);
+	InControlRigEditor->GetToolbarBuilder()->AddBlueprintGlobalOptionsToolbar(ToolbarExtender);
+//	InControlRigEditor->GetToolbarBuilder()->AddDebuggingToolbar(ToolbarExtender);
 }
 
 void FControlRigEditorMode::RegisterTabFactories(TSharedPtr<FTabManager> InTabManager)

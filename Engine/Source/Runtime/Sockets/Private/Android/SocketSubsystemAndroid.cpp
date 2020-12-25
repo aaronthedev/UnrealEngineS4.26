@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SocketSubsystemAndroid.h"
 #include "SocketSubsystemModule.h"
@@ -94,73 +94,32 @@ bool FSocketSubsystemAndroid::HasNetworkDevice()
 
 
 /**
-* @return Label explicitly as Android due to differences in how the kernel handles addresses
+* @return Label explicitly as Android as behavior is slightly different for BSD @refer GetLocalHostAddr
 */
 const TCHAR* FSocketSubsystemAndroid::GetSocketAPIName() const
 {
 	return TEXT("BSD_Android");
 }
 
-/** Priority values for Android adapters. This code is copied from the iOS system as well. */
-enum class EAdapterPriorityValues : uint8
+TSharedRef<FInternetAddr> FSocketSubsystemAndroid::GetLocalHostAddr(FOutputDevice& Out, bool& bCanBindAll)
 {
-	None = 0,
-	Wifi = 1,
-	Cell = 2,
-	Alternative = 3
-};
+	// Get parent address first
+	TSharedRef<FInternetAddr> Addr = FSocketSubsystemBSD::GetLocalHostAddr(Out, bCanBindAll);
 
-/** Helper struct to sort our adapters based off of interface information */
-struct FSortedPriorityAddresses
-{
-	FSortedPriorityAddresses(FSocketSubsystemAndroid* SocketSub) :
-		Priority(EAdapterPriorityValues::None)
+	// If the address is not a loopback one (or none), return it.
+	// NOTE:
+	// Depreciated function gethostname() returns 'localhost' on (all?) Android devices
+	// Which in turn means that FSocketSubsystemBSD::GetLocalHostAddr() resolves to 127.0.0.1
+	// Getting info from android.net.wifi.WifiManager is a little messy due to UE4 modular architecture and JNI
+	// IPv4 code using ioctl(.., SIOCGIFCONF, ..) based on formally FSocketSubsytemLinux::GetLocalHostAddr works fine for now...
+	//
+	// Also NOTE: Network can flip out behind applications back when connectivity changes. eg. Move out of wifi range.
+	// This seems to recover OK between matches as subsystems are reinited each session Host/Join.
+	if (Addr->GetProtocolType() == FNetworkProtocolTypes::IPv4 && Addr->GetRawIp()[0] != 127)
 	{
-		Address = StaticCastSharedRef<FInternetAddrBSD>(SocketSub->CreateInternetAddr());
+		return Addr;
 	}
 
-	TSharedPtr<FInternetAddrBSD> Address;
-	EAdapterPriorityValues Priority;
-
-	bool operator<(const FSortedPriorityAddresses& Other) const
-	{
-		return Priority < Other.Priority;
-	}
-
-	FString ToString() const
-	{
-		FString AdapterPriorityValue;
-		switch (Priority)
-		{
-		default:
-		case EAdapterPriorityValues::None:
-			AdapterPriorityValue = TEXT("Invalid/None");
-			break;
-		case EAdapterPriorityValues::Wifi:
-			AdapterPriorityValue = TEXT("Wifi");
-			break;
-		case EAdapterPriorityValues::Cell:
-			AdapterPriorityValue = TEXT("Cell");
-			break;
-		case EAdapterPriorityValues::Alternative:
-			AdapterPriorityValue = TEXT("Alternative");
-			break;
-		}
-
-		return FString::Printf(TEXT("%s %s (%d)"), *Address->ToString(true), *AdapterPriorityValue, (int32)Priority);
-	}
-};
-
-bool FSocketSubsystemAndroid::GetLocalAdapterAddresses(TArray<TSharedPtr<FInternetAddr>>& OutAddresses)
-{
-	bool bSuccess = false;
-	// Sorted address array. Android selection picking is based off the iOS picker as well.
-	TArray<FSortedPriorityAddresses> SortedAddresses;
-
-	// Due to the Android versions we target, things such as common network extensions like ifaddrs 
-	// or various network scope queries just do not exist.
-	// Because of this, we have to do several workarounds in order to work on all Android platforms.
-	// This is really silly, but that's just how the kernel is.
 	int TempSocket = socket(PF_INET, SOCK_STREAM, 0);
 	if (TempSocket)
 	{
@@ -176,16 +135,18 @@ bool FSocketSubsystemAndroid::GetLocalAdapterAddresses(TArray<TSharedPtr<FIntern
 		{
 			// Temporary cache of the address we get per interface
 			sockaddr_storage TemporaryAddress;
+			// Interface specific address containers
+			sockaddr_storage WifiAddress;
+			sockaddr_storage CellularAddress;
+			sockaddr_storage OtherAddress;
 
-			// Grow the size of the TArray to make it so we don't have to grow on every addition
-			const uint32 NumInterfaces = UE_ARRAY_COUNT(IfReqs);
-			SortedAddresses.Reserve(NumInterfaces);
+			// Clear these out
+			FMemory::Memzero(&WifiAddress, sizeof(sockaddr_storage));
+			FMemory::Memzero(&CellularAddress, sizeof(sockaddr_storage));
+			FMemory::Memzero(&OtherAddress, sizeof(sockaddr_storage));
 
-			for (int32 IdxReq = 0; IdxReq < NumInterfaces; ++IdxReq)
+			for (int32 IdxReq = 0; IdxReq < UE_ARRAY_COUNT(IfReqs); ++IdxReq)
 			{
-				// Clear this out per loop.
-				FMemory::Memzero(&TemporaryAddress, sizeof(sockaddr_storage));
-
 				// Cache the address information, as the following flag lookup will 
 				// write into the ifr_addr field.
 				FMemory::Memcpy((void*)&TemporaryAddress, (void*)(&IfReqs[IdxReq].ifr_addr), sizeof(sockaddr_in));
@@ -193,51 +154,64 @@ bool FSocketSubsystemAndroid::GetLocalAdapterAddresses(TArray<TSharedPtr<FIntern
 				// Examine interfaces that are up and not loop back
 				if (ioctl(TempSocket, SIOCGIFFLAGS, &IfReqs[IdxReq]) == 0 &&
 					(IfReqs[IdxReq].ifr_flags & IFF_UP) &&
-					(IfReqs[IdxReq].ifr_flags & IFF_LOOPBACK) == 0 &&
-					TemporaryAddress.ss_family != AF_UNSPEC)
+					(IfReqs[IdxReq].ifr_flags & IFF_LOOPBACK) == 0)
 				{
-					FSortedPriorityAddresses NewPriorityAddress(this);
-					NewPriorityAddress.Address->SetIp(TemporaryAddress);
-
 					if (strcmp(IfReqs[IdxReq].ifr_name, "wlan0") == 0)
 					{
-						NewPriorityAddress.Priority = EAdapterPriorityValues::Wifi;
+						// 'Usually' wifi, Prefer wifi
+						FMemory::Memcpy((void*)&WifiAddress, (void*)(&TemporaryAddress), sizeof(sockaddr_in));
+						break;
 					}
 					else if (strcmp(IfReqs[IdxReq].ifr_name, "rmnet0") == 0)
 					{
-						NewPriorityAddress.Priority = EAdapterPriorityValues::Cell;
+						// 'Usually' cellular
+						FMemory::Memcpy((void*)&CellularAddress, (void*)(&TemporaryAddress), sizeof(sockaddr_in));
 					}
-					else if(TemporaryAddress.ss_family != AF_UNSPEC)
+					else if (OtherAddress.ss_family == AF_UNSPEC)
 					{
-						NewPriorityAddress.Priority = EAdapterPriorityValues::Alternative;
+						// First alternate found
+						FMemory::Memcpy((void*)&OtherAddress, (void*)(&TemporaryAddress), sizeof(sockaddr_in));
 					}
-
-					SortedAddresses.Add(NewPriorityAddress);
 				}
 			}
 
-			// Sort the array so that we have the correct priorities straight
-			SortedAddresses.Sort();
-
-			// Add the sorted addresses to our output array.
-			for (const auto& SortedAddress : SortedAddresses)
+			TSharedRef<FInternetAddrBSD> NewAddrRef = StaticCastSharedRef<FInternetAddrBSD>(Addr);
+			// Prioritize results found
+			if (WifiAddress.ss_family != AF_UNSPEC)
 			{
-				OutAddresses.Add(SortedAddress.Address);
-				UE_LOG(LogSockets, Log, TEXT("(%s) Address %s"), GetSocketAPIName(), *SortedAddress.ToString());
+				// Prefer Wifi
+				NewAddrRef->SetIp(WifiAddress);
+				UE_LOG(LogSockets, Log, TEXT("(%s) Wifi Adapter IP %s"), GetSocketAPIName(), *Addr->ToString(false));
 			}
-			bSuccess = true;
+			else if (CellularAddress.ss_family != AF_UNSPEC)
+			{
+				// Then cellular
+				NewAddrRef->SetIp(CellularAddress);
+				UE_LOG(LogSockets, Log, TEXT("(%s) Cellular Adapter IP %s"), GetSocketAPIName(), *Addr->ToString(false));
+			}
+			else if (OtherAddress.ss_family != AF_UNSPEC)
+			{
+				// Then whatever else was found
+				NewAddrRef->SetIp(OtherAddress);
+				UE_LOG(LogSockets, Log, TEXT("(%s) Adapter IP %s"), GetSocketAPIName(), *Addr->ToString(false));
+			}
+			else
+			{
+				// Give up
+				Addr->SetLoopbackAddress();  // 127.0.0.1
+				UE_LOG(LogSockets, Warning, TEXT("(%s) NO 'UP' ADAPTER FOUND! using: %s"), GetSocketAPIName(), *Addr->ToString(false));
+			}
 		}
 		else
 		{
 			int ErrNo = errno;
 			UE_LOG(LogSockets, Warning, TEXT("ioctl( ,SIOGCIFCONF, ) failed, errno=%d (%s)"), ErrNo, ANSI_TO_TCHAR(strerror(ErrNo)));
-			bSuccess = false;
 		}
 
 		close(TempSocket);
 	}
 
-	return bSuccess;
+	return Addr;
 }
 
 /**

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -45,11 +45,9 @@ template<> COMPOSURE_API FMovieSceneAnimTypeID GetBlendingDataType<FComposurePos
 
 template<> struct TBlendableTokenTraits<FComposurePostMoveSettings>
 {
-	typedef UE::MovieScene::TMaskedBlendable<float, 6> WorkingDataType;
+	typedef MovieScene::TMaskedBlendable<float, 6> WorkingDataType;
 };
 
-namespace UE
-{
 namespace MovieScene
 {
 	inline void MultiChannelFromData(const FComposurePostMoveSettings& In, TMultiChannelValue<float, 6>& Out)
@@ -64,6 +62,4 @@ namespace MovieScene
 		Out.RotationAngle = In[4];
 		Out.Scale = In[5];
 	}
-
-} // namespace MovieScene
-} // namespace UE
+}

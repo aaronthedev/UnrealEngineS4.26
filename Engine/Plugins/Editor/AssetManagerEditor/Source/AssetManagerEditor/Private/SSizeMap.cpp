@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SSizeMap.h"
 #include "Modules/ModuleManager.h"
@@ -361,12 +361,16 @@ namespace SizeMapInternals
 		string to represent that size, such as "256.0 MB", or "unknown size" */
 	static FString MakeBestSizeString(const SIZE_T SizeInBytes, const bool bHasKnownSize)
 	{
-		FText SizeText;
+		FString BestSizeString;
 
-		if (SizeInBytes < 1000)
+		const FNumericUnit<double> BestUnit = FUnitConversion::QuantizeUnitsToBestFit((double)SizeInBytes, EUnit::Bytes);
+
+		if (BestUnit.Units == EUnit::Bytes)
 		{
 			// We ended up with bytes, so show a decimal number
-			SizeText = FText::AsMemory(SizeInBytes, EMemoryUnitStandard::SI);
+			BestSizeString = FString::Printf(TEXT("%s %s"),
+				*FText::AsNumber(static_cast<uint64>(SizeInBytes)).ToString(),
+				*LOCTEXT("Bytes", "bytes").ToString());
 		}
 		else
 		{
@@ -375,23 +379,25 @@ namespace SizeMapInternals
 			NumberFormattingOptions.MaximumFractionalDigits = 1;	// @todo sizemap: We could make the number of digits customizable in the UI
 			NumberFormattingOptions.MinimumFractionalDigits = 0;
 			NumberFormattingOptions.MinimumIntegralDigits = 1;
-
-			SizeText = FText::AsMemory(SizeInBytes, &NumberFormattingOptions, nullptr, EMemoryUnitStandard::SI);
+			BestSizeString = FString::Printf(TEXT("%s %s"),
+				*FText::AsNumber(BestUnit.Value, &NumberFormattingOptions).ToString(),
+				FUnitConversion::GetUnitDisplayString(BestUnit.Units));
 		}
 
 		if (!bHasKnownSize)
 		{
 			if (SizeInBytes == 0)
 			{
-				SizeText = LOCTEXT("UnknownSize", "unknown size");
+				BestSizeString = LOCTEXT("UnknownSize", "unknown size").ToString();
 			}
 			else
 			{
-				SizeText = FText::Format(LOCTEXT("UnknownSizeButAtLeastThisBigFmt", "at least {0}"), SizeText);
+				BestSizeString = FString::Printf(TEXT("%s %s"),
+					*LOCTEXT("UnknownSizeButAtLeastThisBig", "at least").ToString(),
+					*BestSizeString);
 			}
 		}
-
-		return SizeText.ToString();
+		return BestSizeString;
 	}
 }
 
@@ -402,7 +408,7 @@ void SSizeMap::GatherDependenciesRecursively(TSharedPtr<FAssetThumbnailPool>& In
 	{
 		return;
 	}
-	for (const FAssetIdentifier& AssetIdentifier : AssetIdentifiers)
+	for (const FAssetIdentifier AssetIdentifier : AssetIdentifiers)
 	{
 		FName AssetPackageName = AssetIdentifier.IsPackage() ? AssetIdentifier.PackageName : NAME_None;
 		FString AssetPackageNameString = AssetPackageName != NAME_None ? AssetPackageName.ToString() : FString();
@@ -529,18 +535,7 @@ void SSizeMap::GatherDependenciesRecursively(TSharedPtr<FAssetThumbnailPool>& In
 
 			if (NodeSizeMapData.AssetData.IsValid())
 			{
-				FAssetManagerDependencyQuery DependencyQuery = FAssetManagerDependencyQuery::None();
-				if (AssetPackageName != NAME_None)
-				{
-					DependencyQuery.Categories = UE::AssetRegistry::EDependencyCategory::Package;
-					DependencyQuery.Flags = UE::AssetRegistry::EDependencyQuery::Hard;
-				}
-				else
-				{
-					DependencyQuery.Categories = UE::AssetRegistry::EDependencyCategory::Manage;
-					DependencyQuery.Flags = UE::AssetRegistry::EDependencyQuery::Direct;
-				}
-				
+				EAssetRegistryDependencyType::Type DependencyType = AssetPackageName != NAME_None ? EAssetRegistryDependencyType::Hard : EAssetRegistryDependencyType::HardManage;
 				TArray<FAssetIdentifier> References;
 				
 				if (ChunkId != INDEX_NONE)
@@ -554,11 +549,11 @@ void SSizeMap::GatherDependenciesRecursively(TSharedPtr<FAssetThumbnailPool>& In
 				}
 				else
 				{
-					CurrentPlatformState->GetDependencies(AssetIdentifier, References, DependencyQuery.Categories, DependencyQuery.Flags);
+					CurrentPlatformState->GetDependencies(AssetIdentifier, References, DependencyType);
 				}
 				
 				// Filter for registry source
-				IAssetManagerEditorModule::Get().FilterAssetIdentifiersForCurrentRegistrySource(References, DependencyQuery, true);
+				IAssetManagerEditorModule::Get().FilterAssetIdentifiersForCurrentRegistrySource(References, DependencyType, true);
 
 				TArray<FAssetIdentifier> ReferencedAssetIdentifiers;
 
@@ -582,7 +577,7 @@ void SSizeMap::GatherDependenciesRecursively(TSharedPtr<FAssetThumbnailPool>& In
 							{
 								// Check to see if this is managed by the filter asset
 								TArray<FAssetIdentifier> Managers;
-								CurrentPlatformState->GetReferencers(FoundAssetIdentifier, Managers, UE::AssetRegistry::EDependencyCategory::Manage);
+								CurrentPlatformState->GetReferencers(FoundAssetIdentifier, Managers, EAssetRegistryDependencyType::Manage);
 
 								if (!Managers.Contains(FilterPrimaryAsset))
 								{
@@ -854,9 +849,9 @@ void SSizeMap::RefreshMap()
 		}
 
 		// Set the overview text
-		OverviewText = FText::Format(LOCTEXT("RootNode_Format", "Size map for {0}  ({1} total {1}|plural(one=asset,other=assets)))"),
+		OverviewText = FText::Format(LOCTEXT("RootNode_Format", "Size map for {0}  ({1} total assets))"),
 			FText::AsCultureInvariant(OnlyAssetName),
-			TotalAssetCount);
+			FText::AsNumber(TotalAssetCount));
 	}
 	else
 	{
@@ -892,9 +887,9 @@ void SSizeMap::RefreshMap()
 			*SizeMapInternals::MakeBestSizeString(TotalSize, !bAnyUnknownSizes));
 		RootTreeMapNode->LogicalName = LogicalName;
 
-		OverviewText = FText::Format(LOCTEXT("RootNode_FormatForAssets", "Size map for {0} {0}|plural(one=asset,other=assets)  ({1} total {1}|plural(one=asset,other=assets)))"),
-			RootAssetIdentifiers.Num(),
-			TotalAssetCount);
+		OverviewText = FText::Format(LOCTEXT("RootNode_FormatForAssets", "Size map for {0} assets  ({1} total assets))"),
+			FText::AsNumber(RootAssetIdentifiers.Num()),
+			FText::AsNumber(TotalAssetCount));
 	}
 
 	// OK, now refresh the actual tree map widget so our new tree will be displayed.

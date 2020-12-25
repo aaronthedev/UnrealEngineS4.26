@@ -166,21 +166,13 @@ struct UsdRiTokensType {
     /// 
     /// UsdRiPxrBarnLightFilter
     const TfToken barnMode;
-    /// \brief "beginDistance"
-    /// 
-    /// UsdRiPxrRampLightFilter
-    const TfToken beginDistance;
     /// \brief "bspline"
     /// 
-    /// UsdSplineAPI - BSpline spline interpolation, Possible value for UsdRiPxrRodLightFilter::GetColorRampInterpolationAttr(), Possible value for UsdRiPxrRodLightFilter::GetFalloffInterpolationAttr(), Default value for UsdRiPxrRodLightFilter::GetFalloffInterpolationAttr(), Possible value for UsdRiPxrRampLightFilter::GetColorRampInterpolationAttr(), Possible value for UsdRiPxrRampLightFilter::GetFalloffInterpolationAttr()
+    /// UsdSplineAPI - BSpline spline interpolation
     const TfToken bspline;
-    /// \brief "catmull-rom"
+    /// \brief "catmullRom"
     /// 
     /// UsdSplineAPI - Catmull-Rom spline interpolation
-    const TfToken catmull_rom;
-    /// \brief "catmull-rom"
-    /// 
-    /// Possible value for UsdRiPxrRodLightFilter::GetColorRampInterpolationAttr(), Possible value for UsdRiPxrRodLightFilter::GetFalloffInterpolationAttr(), Possible value for UsdRiPxrRampLightFilter::GetColorRampInterpolationAttr(), Possible value for UsdRiPxrRampLightFilter::GetFalloffInterpolationAttr()
     const TfToken catmullRom;
     /// \brief "clamp"
     /// 
@@ -194,25 +186,9 @@ struct UsdRiTokensType {
     /// 
     /// UsdRiPxrCookieLightFilter
     const TfToken colorMidpoint;
-    /// \brief "colorRamp"
-    /// 
-    /// UsdRiPxrRodLightFilter, UsdRiPxrRampLightFilter
-    const TfToken colorRamp;
-    /// \brief "colorRamp:colors"
-    /// 
-    /// UsdRiPxrRodLightFilter, UsdRiPxrRampLightFilter
-    const TfToken colorRampColors;
-    /// \brief "colorRamp:interpolation"
-    /// 
-    /// UsdRiPxrRodLightFilter, UsdRiPxrRampLightFilter
-    const TfToken colorRampInterpolation;
-    /// \brief "colorRamp:knots"
-    /// 
-    /// UsdRiPxrRodLightFilter, UsdRiPxrRampLightFilter
-    const TfToken colorRampKnots;
     /// \brief "color:saturation"
     /// 
-    /// UsdRiPxrRodLightFilter, UsdRiPxrCookieLightFilter, UsdRiPxrIntMultLightFilter
+    /// UsdRiPxrRodLightFilter, UsdRiPxrCookieLightFilter
     const TfToken colorSaturation;
     /// \brief "color:tint"
     /// 
@@ -228,7 +204,7 @@ struct UsdRiTokensType {
     const TfToken cone;
     /// \brief "constant"
     /// 
-    /// UsdSplineAPI - Constant-value spline interpolation, Possible value for UsdRiPxrRodLightFilter::GetColorRampInterpolationAttr(), Possible value for UsdRiPxrRodLightFilter::GetFalloffInterpolationAttr(), Possible value for UsdRiPxrRampLightFilter::GetColorRampInterpolationAttr(), Possible value for UsdRiPxrRampLightFilter::GetFalloffInterpolationAttr()
+    /// UsdSplineAPI - Constant-value spline interpolation
     const TfToken constant;
     /// \brief "cookieMode"
     /// 
@@ -246,54 +222,42 @@ struct UsdRiTokensType {
     /// 
     /// Possible value for UsdRiPxrRampLightFilter::GetRampModeAttr(), Default value for UsdRiPxrRampLightFilter::GetRampModeAttr()
     const TfToken distanceToLight;
-    /// \brief "edgeScale:back"
+    /// \brief "edge:back"
     /// 
     /// UsdRiPxrRodLightFilter
-    const TfToken edgeScaleBack;
-    /// \brief "edgeScale:bottom"
+    const TfToken edgeBack;
+    /// \brief "edge:bottom"
     /// 
     /// UsdRiPxrRodLightFilter, UsdRiPxrBarnLightFilter
-    const TfToken edgeScaleBottom;
-    /// \brief "edgeScale:front"
+    const TfToken edgeBottom;
+    /// \brief "edge:front"
     /// 
     /// UsdRiPxrRodLightFilter
-    const TfToken edgeScaleFront;
-    /// \brief "edgeScale:left"
+    const TfToken edgeFront;
+    /// \brief "edge:left"
     /// 
     /// UsdRiPxrRodLightFilter, UsdRiPxrBarnLightFilter
-    const TfToken edgeScaleLeft;
-    /// \brief "edgeScale:right"
+    const TfToken edgeLeft;
+    /// \brief "edge:right"
     /// 
     /// UsdRiPxrRodLightFilter, UsdRiPxrBarnLightFilter
-    const TfToken edgeScaleRight;
-    /// \brief "edgeScale:top"
-    /// 
-    /// UsdRiPxrRodLightFilter, UsdRiPxrBarnLightFilter
-    const TfToken edgeScaleTop;
+    const TfToken edgeRight;
     /// \brief "edgeThickness"
     /// 
     /// UsdRiPxrRodLightFilter, UsdRiPxrBarnLightFilter
     const TfToken edgeThickness;
-    /// \brief "endDistance"
+    /// \brief "edge:top"
+    /// 
+    /// UsdRiPxrRodLightFilter, UsdRiPxrBarnLightFilter
+    const TfToken edgeTop;
+    /// \brief "falloffRamp:beginDistance"
     /// 
     /// UsdRiPxrRampLightFilter
-    const TfToken endDistance;
-    /// \brief "falloff"
+    const TfToken falloffRampBeginDistance;
+    /// \brief "falloffRamp:endDistance"
     /// 
-    /// UsdRiPxrRodLightFilter, UsdRiPxrRampLightFilter
-    const TfToken falloff;
-    /// \brief "falloff:floats"
-    /// 
-    /// UsdRiPxrRodLightFilter, UsdRiPxrRampLightFilter
-    const TfToken falloffFloats;
-    /// \brief "falloff:interpolation"
-    /// 
-    /// UsdRiPxrRodLightFilter, UsdRiPxrRampLightFilter
-    const TfToken falloffInterpolation;
-    /// \brief "falloff:knots"
-    /// 
-    /// UsdRiPxrRodLightFilter, UsdRiPxrRampLightFilter
-    const TfToken falloffKnots;
+    /// UsdRiPxrRampLightFilter
+    const TfToken falloffRampEndDistance;
     /// \brief "filePath"
     /// 
     /// UsdRiRisIntegrator
@@ -352,7 +316,7 @@ struct UsdRiTokensType {
     const TfToken latitude;
     /// \brief "linear"
     /// 
-    /// UsdSplineAPI - Linear spline interpolation, Possible value for UsdRiPxrRodLightFilter::GetColorRampInterpolationAttr(), Default value for UsdRiPxrRodLightFilter::GetColorRampInterpolationAttr(), Possible value for UsdRiPxrRodLightFilter::GetFalloffInterpolationAttr(), Possible value for UsdRiPxrRampLightFilter::GetColorRampInterpolationAttr(), Default value for UsdRiPxrRampLightFilter::GetColorRampInterpolationAttr(), Possible value for UsdRiPxrRampLightFilter::GetFalloffInterpolationAttr(), Default value for UsdRiPxrRampLightFilter::GetFalloffInterpolationAttr(), Possible value for UsdRiPxrRampLightFilter::GetRampModeAttr()
+    /// UsdSplineAPI - Linear spline interpolation, Possible value for UsdRiPxrRampLightFilter::GetRampModeAttr()
     const TfToken linear;
     /// \brief "longitude"
     /// 
@@ -372,15 +336,15 @@ struct UsdRiTokensType {
     const TfToken month;
     /// \brief "multiply"
     /// 
-    /// Possible value for UsdRiLightFilterAPI::GetRiCombineModeAttr(), Default value for UsdRiLightFilterAPI::GetRiCombineModeAttr()
+    /// Possible value for UsdRiLightFilterAPI::GetRiCombineModeAttr()
     const TfToken multiply;
     /// \brief "noEffect"
     /// 
-    /// Possible value for UsdRiPxrBarnLightFilter::GetPreBarnEffectAttr()
+    /// Possible value for UsdRiPxrBarnLightFilter::GetPreBarnEffectAttr(), Default value for UsdRiPxrBarnLightFilter::GetPreBarnEffectAttr()
     const TfToken noEffect;
     /// \brief "noLight"
     /// 
-    /// Possible value for UsdRiPxrBarnLightFilter::GetPreBarnEffectAttr(), Default value for UsdRiPxrBarnLightFilter::GetPreBarnEffectAttr()
+    /// Possible value for UsdRiPxrBarnLightFilter::GetPreBarnEffectAttr()
     const TfToken noLight;
     /// \brief "off"
     /// 
@@ -472,7 +436,7 @@ struct UsdRiTokensType {
     const TfToken riExposure;
     /// \brief "ri:intensity"
     /// 
-    /// UsdRiPxrIntMultLightFilter, UsdRiLightFilterAPI
+    /// UsdRiLightFilterAPI
     const TfToken riIntensity;
     /// \brief "ri:intensityNearDist"
     /// 
@@ -586,10 +550,6 @@ struct UsdRiTokensType {
     /// 
     /// UsdRiPxrCookieLightFilter
     const TfToken textureOffsetV;
-    /// \brief "texture:premultipliedAlpha"
-    /// 
-    /// UsdRiPxrCookieLightFilter
-    const TfToken texturePremultipliedAlpha;
     /// \brief "texture:scaleU"
     /// 
     /// UsdRiPxrCookieLightFilter

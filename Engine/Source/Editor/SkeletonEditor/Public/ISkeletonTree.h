@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -50,7 +50,6 @@ struct FSkeletonTreeArgs
 		, bShowFilterMenu(true)
 		, bAllowMeshOperations(true)
 		, bAllowSkeletonOperations(true)
-		, bHideBonesByDefault(false)
 	{}
 
 	PRAGMA_DISABLE_DEPRECATION_WARNINGS
@@ -93,9 +92,6 @@ struct FSkeletonTreeArgs
 
 	/** Whether to allow operations that modify the skeleton */
 	bool bAllowSkeletonOperations;
-
-	/** Whether to hide bones by default */
-	bool bHideBonesByDefault;
 };
 
 /** Interface used to deal with skeleton editing UI */
@@ -128,11 +124,7 @@ public:
 	virtual void SetSelectedSocket(const struct FSelectedSocketInfo& InSocketInfo) = 0;
 
 	/** Set the selected bone */
-	UE_DEPRECATED(4.26, "Please call/implement SetSelectedBone with ESelectInfo")
-	virtual void SetSelectedBone(const FName& InBoneName) final { SetSelectedBone(InBoneName, ESelectInfo::Direct); }
-
-	/** Set the selected bone */
-	virtual void SetSelectedBone(const FName& InBoneName, ESelectInfo::Type InSelectInfo) = 0;
+	virtual void SetSelectedBone(const FName& InBoneName) = 0;
 
 	/** Deselect everything that is currently selected */
 	virtual void DeselectAll() = 0;

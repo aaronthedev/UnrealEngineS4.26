@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,7 +8,7 @@
 /**
  * Returns the time gone by from the previous evaluation
  */
-USTRUCT(meta=(DisplayName="Delta Time", Varying))
+USTRUCT(meta=(DisplayName="Delta Time"))
 struct FRigUnit_GetDeltaTime : public FRigUnit_AnimBase
 {
 	GENERATED_BODY()

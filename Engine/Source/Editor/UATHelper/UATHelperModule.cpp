@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UATHelperModule.h"
 #include "CoreTypes.h"
@@ -118,7 +118,7 @@ public:
 			if (bExpireAndFadeout)
 			{
 				ExpireNotificationItemPtr.Reset();
-				NotificationItem->SetExpireDuration(6.0f);
+				NotificationItem->SetExpireDuration(3.0f);
 				NotificationItem->SetFadeOutDuration(0.5f);
 				NotificationItem->SetCompletionState(CompletionState);
 				NotificationItem->ExpireAndFadeout();
@@ -383,7 +383,7 @@ public:
 	{
 	}
 
-	virtual void CreateUatTask( const FString& CommandLine, const FText& PlatformDisplayName, const FText& TaskName, const FText &TaskShortName, const FSlateBrush* TaskIcon, UatTaskResultCallack ResultCallback, const FString& ResultLocation)
+	virtual void CreateUatTask( const FString& CommandLine, const FText& PlatformDisplayName, const FText& TaskName, const FText &TaskShortName, const FSlateBrush* TaskIcon, UatTaskResultCallack ResultCallback )
 	{
 		// make sure that the UAT batch file is in place
 	#if PLATFORM_WINDOWS
@@ -467,10 +467,9 @@ public:
 		);
 
 		TSharedPtr<SNotificationItem> NotificationItem = FSlateNotificationManager::Get().AddNotification(Info);
-		TSharedPtr<SNotificationItem> OldNotification = NotificationItemPtr.Pin();
-		if(OldNotification.IsValid())
+		if(NotificationItemPtr.IsValid())
 		{
-			OldNotification->Fadeout();
+			NotificationItemPtr.Pin().Get()->Fadeout();
 		}
 
 		if (!NotificationItem.IsValid())
@@ -492,7 +491,7 @@ public:
 		Data.bProjectHasCode = bHasCode;
 		Data.ResultCallback = ResultCallback;
 		UatProcess->OnCanceled().BindStatic(&FUATHelperModule::HandleUatProcessCanceled, NotificationItemPtr, PlatformDisplayName, TaskShortName, Data);
-		UatProcess->OnCompleted().BindStatic(&FUATHelperModule::HandleUatProcessCompleted, NotificationItemPtr, PlatformDisplayName, TaskShortName, Data, ResultLocation);
+		UatProcess->OnCompleted().BindStatic(&FUATHelperModule::HandleUatProcessCompleted, NotificationItemPtr, PlatformDisplayName, TaskShortName, Data);
 		UatProcess->OnOutput().BindStatic(&FUATHelperModule::HandleUatProcessOutput, NotificationItemPtr, PlatformDisplayName, TaskShortName);
 
 		TWeakPtr<FMonitoredProcess> UatProcessPtr(UatProcess);
@@ -525,15 +524,7 @@ public:
 
 	static void HandleUatHyperlinkNavigate()
 	{
-		FGlobalTabmanager::Get()->TryInvokeTab(FName("OutputLog"));
-	}
-
-	static void HandleUatResultHyperlinkNavigate(FString ResultLocation)
-	{
-		if (!ResultLocation.IsEmpty())
-		{
-			FPlatformProcess::ExploreFolder(*(ResultLocation));
-		}
+		FGlobalTabmanager::Get()->InvokeTab(FName("OutputLog"));
 	}
 
 	static void HandleUatCancelButtonClicked(TSharedPtr<FMonitoredProcess> PackagerProcess)
@@ -580,7 +571,7 @@ public:
 		//	FMessageLog("PackagingResults").Warning(FText::Format(LOCTEXT("UatProcessCanceledMessageLog", "{TaskName} for {Platform} canceled by user"), Arguments));
 	}
 
-	static void HandleUatProcessCompleted(int32 ReturnCode, TWeakPtr<SNotificationItem> NotificationItemPtr, FText PlatformDisplayName, FText TaskName, EventData Event, FString ResultLocation)
+	static void HandleUatProcessCompleted(int32 ReturnCode, TWeakPtr<SNotificationItem> NotificationItemPtr, FText PlatformDisplayName, FText TaskName, EventData Event)
 	{
 		FFormatNamedArguments Arguments;
 		Arguments.Add(TEXT("Platform"), PlatformDisplayName);
@@ -589,15 +580,6 @@ public:
 
 		if ( ReturnCode == 0 )
 		{
-			if (!ResultLocation.IsEmpty())
-			{
-				if (TSharedPtr<SNotificationItem> SharedNotificationItemPtr = NotificationItemPtr.Pin())
-				{
-					SharedNotificationItemPtr->SetHyperlink(FSimpleDelegate::CreateStatic(&FUATHelperModule::HandleUatResultHyperlinkNavigate, ResultLocation), LOCTEXT("ShowOutputLocation", "Show in Explorer"));
-				}
-
-			}
-			
 			TGraphTask<FMainFrameActionsNotificationTask>::CreateTask().ConstructAndDispatchWhenReady(
 				NotificationItemPtr,
 				SNotificationItem::CS_Success,

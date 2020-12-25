@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ToolMenuEntryScript.h"
 #include "ToolMenuEntry.h"
@@ -45,26 +45,12 @@ FSlateIcon FScriptSlateIcon::GetSlateIcon() const
 	return FSlateIcon(StyleSetName, StyleName, SmallStyleName);
 }
 
-UToolMenuEntryScript* UToolMenuEntryScript::GetIfCanSafelyRouteCall(const TWeakObjectPtr<UToolMenuEntryScript>& InWeak)
-{
-	UToolMenuEntryScript* Object = InWeak.Get();
-	return (Object && Object->CanSafelyRouteCall()) ? Object : nullptr;
-}
-
 TAttribute<FText> UToolMenuEntryScript::CreateLabelAttribute(FToolMenuContext& Context)
 {
 	static const FName FunctionName = GET_FUNCTION_NAME_CHECKED(UToolMenuEntryScript, GetLabel);
 	if (GetClass()->IsFunctionImplementedInScript(FunctionName))
 	{
-		TWeakObjectPtr<UToolMenuEntryScript> WeakScriptObject(this);
-		TAttribute<FText>::FGetter Getter;
-		Getter.BindLambda([WeakScriptObject, Context]()
-		{
-			UToolMenuEntryScript* Object = GetIfCanSafelyRouteCall(WeakScriptObject);
-			return Object ? Object->GetLabel(Context) : FText();
-		});
-
-		return TAttribute<FText>::Create(Getter);
+		return TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateUFunction(this, FunctionName, Context));
 	}
 
 	return Data.Label;
@@ -75,15 +61,7 @@ TAttribute<FText> UToolMenuEntryScript::CreateToolTipAttribute(FToolMenuContext&
 	static const FName FunctionName = GET_FUNCTION_NAME_CHECKED(UToolMenuEntryScript, GetToolTip);
 	if (GetClass()->IsFunctionImplementedInScript(FunctionName))
 	{
-		TWeakObjectPtr<UToolMenuEntryScript> WeakScriptObject(this);
-		TAttribute<FText>::FGetter Getter;
-		Getter.BindLambda([WeakScriptObject, Context]()
-		{
-			UToolMenuEntryScript* Object = GetIfCanSafelyRouteCall(WeakScriptObject);
-			return Object ? Object->GetToolTip(Context) : FText();
-		});
-
-		return TAttribute<FText>::Create(Getter);
+		return TAttribute<FText>::Create(TAttribute<FText>::FGetter::CreateUFunction(this, FunctionName, Context));
 	}
 
 	return Data.ToolTip;
@@ -94,12 +72,18 @@ TAttribute<FSlateIcon> UToolMenuEntryScript::CreateIconAttribute(FToolMenuContex
 	static const FName FunctionName = GET_FUNCTION_NAME_CHECKED(UToolMenuEntryScript, GetIcon);
 	if (GetClass()->IsFunctionImplementedInScript(FunctionName))
 	{
-		TWeakObjectPtr<UToolMenuEntryScript> WeakScriptObject(this);
+		TWeakObjectPtr<UToolMenuEntryScript> WeakThis(this);
 		TAttribute<FSlateIcon>::FGetter Getter;
-		Getter.BindLambda([WeakScriptObject, Context]()
+		Getter.BindLambda([=]()
 		{
-			UToolMenuEntryScript* Object = GetIfCanSafelyRouteCall(WeakScriptObject);
-			return Object ? Object->GetSlateIcon(Context) : FSlateIcon();
+			if (UToolMenuEntryScript* Object = WeakThis.Get())
+			{
+				return Object->GetIcon(Context).GetSlateIcon();
+			}
+			else
+			{
+				return FSlateIcon();
+			}
 		});
 
 		return TAttribute<FSlateIcon>::Create(Getter);

@@ -10,21 +10,18 @@
 #include "Interfaces/IPluginManager.h"
 #include "IWindowsMixedRealityHMDPlugin.h"
 #include "RHI/Public/PipelineStateCache.h"
+#include "IWindowsMixedRealityHandTrackingPlugin.h"
 #include "GameFramework/InputSettings.h"
 #include "GameFramework/PlayerController.h"
 #include "Async/Async.h"
 
-#include "HeadMountedDisplayFunctionLibrary.h"
-
 #if WITH_EDITOR
 #include "Editor/UnrealEd/Classes/Editor/EditorEngine.h"
-#include "WindowsMixedRealityRuntimeSettings.h"
 #endif
 
 #include "Engine/GameEngine.h"
 #include "HAL/PlatformMisc.h"
 #include "Misc/MessageDialog.h"
-#include "WindowsMixedRealityInteropLoader.h"
 
 // Holographic Remoting is only supported in Windows 10 version 1809 or better
 // Originally we were supporting 1803, but there were rendering issues specific to that version so for now we only support 1809
@@ -35,12 +32,6 @@
 #if SUPPORTS_WINDOWS_MIXED_REALITY_AR
 	#include "HoloLensModule.h"
 #endif
-
-#if WITH_INPUT_SIMULATION
-	#include "WindowsMixedRealityInputSimulationEngineSubsystem.h"
-#endif
-
-#include "GeneralProjectSettings.h"
 
 // Control logging from here so we don't have to change the interop library to enable/disable logging
 #ifndef WANTS_INTEROP_LOGGING
@@ -78,16 +69,27 @@ public:
 
 	void SetParameters(FRHICommandList& RHICmdList, FRHITexture* DepthTexture)
 	{
-		FRHIPixelShader* PixelShaderRHI = RHICmdList.GetBoundPixelShader();
+		FRHIPixelShader* PixelShaderRHI = GetPixelShader();
 
 		FRHISamplerState* SamplerStateRHI = TStaticSamplerState<SF_Point>::GetRHI();
 		SetTextureParameter(RHICmdList, PixelShaderRHI, InDepthTexture, InTextureSampler, SamplerStateRHI, DepthTexture);
 	}
 
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+
+		// Serialize shader inputs.
+		Ar << InDepthTexture;
+		Ar << InTextureSampler;
+
+		return bShaderHasOutdatedParameters;
+	}
+
 private:
 	// Shader parameters.
-	LAYOUT_FIELD(FShaderResourceParameter, InDepthTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, InTextureSampler);
+	FShaderResourceParameter InDepthTexture;
+	FShaderResourceParameter InTextureSampler;
 };
 
 IMPLEMENT_SHADER_TYPE(, FDepthConversionPS, TEXT("/Plugin/WindowsMixedReality/Private/DepthConversion.usf"), TEXT("MainPixelShader"), SF_Pixel)
@@ -113,7 +115,7 @@ namespace WindowsMixedReality
 		{
 #if WITH_WINDOWS_MIXED_REALITY
 			return HMD && HMD->IsAvailable();
-#endif
+#endif 
 			return false;
 		}
 
@@ -127,27 +129,86 @@ namespace WindowsMixedReality
 #if WITH_WINDOWS_MIXED_REALITY
 			IHeadMountedDisplayModule::StartupModule();
 
-			// Set the shader directory even if we won't be able to load the interop so shader compliation does not fail.
-			const FString VirtualShaderDir = TEXT("/Plugin/WindowsMixedReality");
-			if (!AllShaderSourceDirectoryMappings().Contains(VirtualShaderDir))  // Two modules try to map this, so we have to check if its already set.
+#if !PLATFORM_HOLOLENS
+			FString OSVersionLabel;
+			FString OSSubVersionLabel;
+			FPlatformMisc::GetOSVersions(OSVersionLabel, OSSubVersionLabel);
+			// GetOSVersion returns the Win10 release version in the OSVersion rather than the OSSubVersion, so parse it out ourselves
+			OSSubVersionLabel = OSVersionLabel;
+			bool bHasSupportedWindowsVersion = OSSubVersionLabel.RemoveFromStart("Windows 10 (Release ") && OSSubVersionLabel.RemoveFromEnd(")") && (FCString::Atoi(*OSSubVersionLabel) >= MIN_WIN_10_VERSION_FOR_WMR);
+
+			if (bHasSupportedWindowsVersion)
 			{
-				FString PluginShaderDir = FPaths::Combine(IPluginManager::Get().FindPlugin(TEXT("WindowsMixedReality"))->GetBaseDir(), TEXT("Shaders"));
-				AddShaderSourceDirectoryMapping(VirtualShaderDir, PluginShaderDir);
+				// Get the base directory of this plugin
+				FString BaseDir = IPluginManager::Get().FindPlugin("WindowsMixedReality")->GetBaseDir();
+
+				FString EngineDir = FPaths::EngineDir();
+				FString BinariesSubDir = FPlatformProcess::GetBinariesSubdirectory();
+#if WINDOWS_MIXED_REALITY_DEBUG_DLL
+				FString DLLName(TEXT("MixedRealityInteropDebug.dll"));
+#else // WINDOWS_MIXED_REALITY_DEBUG_DLL
+				FString DLLName(TEXT("MixedRealityInterop.dll"));
+#endif // WINDOWS_MIXED_REALITY_DEBUG_DLL
+				FString MRInteropLibraryPath = EngineDir / "Binaries/ThirdParty/MixedRealityInteropLibrary" / BinariesSubDir / DLLName;
+
+#if PLATFORM_64BITS
+				// Load these dependencies first or MixedRealityInteropLibraryHandle fails to load since it doesn't look in the correct path for its dependencies automatically
+				FString HoloLensLibraryDir = EngineDir / "Binaries/ThirdParty/Windows/x64";
+				FPlatformProcess::PushDllDirectory(*HoloLensLibraryDir);
+				FPlatformProcess::GetDllHandle(TEXT("PerceptionDevice.dll"));
+				FPlatformProcess::GetDllHandle(TEXT("Microsoft.Holographic.AppRemoting.dll"));
+				FPlatformProcess::PopDllDirectory(*HoloLensLibraryDir);
+
+				HoloLensLibraryDir = EngineDir / "Binaries/Win64";
+				FPlatformProcess::PushDllDirectory(*HoloLensLibraryDir);
+				FPlatformProcess::GetDllHandle(TEXT("Microsoft.Perception.Simulation.dll"));
+				FPlatformProcess::GetDllHandle(TEXT("HolographicStreamerDesktop.dll"));
+				FPlatformProcess::PopDllDirectory(*HoloLensLibraryDir);
+#endif // PLATFORM_64BITS && WITH_EDITOR
+
+				// Then finally try to load the WMR Interop Library
+				void* MixedRealityInteropLibraryHandle = !MRInteropLibraryPath.IsEmpty() ? FPlatformProcess::GetDllHandle(*MRInteropLibraryPath) : nullptr;
+				if (MixedRealityInteropLibraryHandle)
+				{
+					HMD = new MixedRealityInterop();
+				}
+				else
+				{
+					FText ErrorText = NSLOCTEXT("WindowsMixedRealityHMD", "MixedRealityInteropLibraryError",
+						"Failed to load Windows Mixed Reality Interop Library!  Windows Mixed Reality cannot function.");
+					FMessageDialog::Open(EAppMsgType::Ok, ErrorText);
+					UE_LOG(LogWmrHmd, Error, TEXT("%s"), *ErrorText.ToString());
+				}
+			}
+			else
+			{
+				FText ErrorText = FText::Format(FTextFormat(NSLOCTEXT("WindowsMixedRealityHMD", "MixedRealityInteropLibraryError",
+					"Windows Mixed Reality is not supported on this Windows version. \nNote: UE4 only supports Windows Mixed Reality on Windows 10 Release {0} or higher. Current version: {1}")),
+					FText::FromString(FString::FromInt(MIN_WIN_10_VERSION_FOR_WMR)), FText::FromString(OSVersionLabel));
+				FMessageDialog::Open(EAppMsgType::Ok, ErrorText);
+				if (IsRunningCommandlet())
+				{
+					UE_LOG(LogWmrHmd, Warning, TEXT("%s"), *ErrorText.ToString());
+				}
+				else
+				{
+					UE_LOG(LogWmrHmd, Error, TEXT("%s"), *ErrorText.ToString());
+				}
 			}
 
-			HMD = LoadInteropLibrary();
-			if (!HMD)
-			{
-				return;
-			}
+#else // !PLATFORM_HOLOLENS
+			HMD = new MixedRealityInterop();
+#endif // !PLATFORM_HOLOLENS
 
 #if WANTS_INTEROP_LOGGING
 			if (HMD != nullptr)
 			{
 				HMD->SetLogCallback(&LogCallback);
-			}
+			}	
 #endif // WANTS_INTEROP_LOGGING
 
+			FString PluginShaderDir = FPaths::Combine(IPluginManager::Get().FindPlugin(TEXT("WindowsMixedReality"))->GetBaseDir(), TEXT("Shaders"));
+			AddShaderSourceDirectoryMapping(TEXT("/Plugin/WindowsMixedReality"), PluginShaderDir);
 #else // WITH_WINDOWS_MIXED_REALITY
 			UE_LOG(LogWmrHmd, Error, TEXT("Windows Mixed Reality compiled with unsupported compiler.  Please recompile with Visual Studio 2017"));
 #endif // WITH_WINDOWS_MIXED_REALITY
@@ -218,26 +279,6 @@ namespace WindowsMixedReality
 	// FWindowsMixedRealityHMD IHeadMountedDisplay Implementation
 	//---------------------------------------------------
 
-	bool FWindowsMixedRealityHMD::IsHeadTrackingAllowed() const
-	{
-		if (FHeadMountedDisplayBase::IsHeadTrackingAllowed())
-		{
-			return true;
-		}
-
-#if WITH_INPUT_SIMULATION
-		if (auto* InputSim = UWindowsMixedRealityInputSimulationEngineSubsystem::GetInputSimulationIfEnabled())
-		{
-			if (InputSim->HasPositionalTracking())
-			{
-				return true;
-			}
-		}
-#endif
-
-		return false;
-	}
-
 	bool FWindowsMixedRealityHMD::IsHMDConnected()
 	{
 #if WITH_WINDOWS_MIXED_REALITY
@@ -287,21 +328,14 @@ namespace WindowsMixedReality
 
 	void FWindowsMixedRealityHMD::OnBeginPlay(FWorldContext & InWorldContext)
 	{
-#if PLATFORM_HOLOLENS
-		if (FParse::Param(FCommandLine::Get(), TEXT("vr")) || GetDefault<UGeneralProjectSettings>()->bStartInVR)
-		{
-			EnableStereo(true);
-		}
-		else
-		{
-			bIsStereoDesired = false;
-		}
-#endif
+	#if PLATFORM_HOLOLENS
+		EnableStereo(true);
+	#endif
 
 		//start speech recognition if there are any commands we care to listen for
 		StartSpeechRecognition();
 
-		FWindowsMixedRealityStatics::OnTogglePlayDelegate.Broadcast(true);
+		IWindowsMixedRealityHandTrackingModule::Get().AddLiveLinkSource();
 	}
 
 	void FWindowsMixedRealityHMD::OnEndPlay(FWorldContext & InWorldContext)
@@ -312,7 +346,7 @@ namespace WindowsMixedReality
 
 		StopSpeechRecognition();
 
-		FWindowsMixedRealityStatics::OnTogglePlayDelegate.Broadcast(false);
+		IWindowsMixedRealityHandTrackingModule::Get().RemoveLiveLinkSource();
 	}
 
 	TRefCountPtr<ID3D11Device> FWindowsMixedRealityHMD::InternalGetD3D11Device()
@@ -377,17 +411,8 @@ namespace WindowsMixedReality
 
 	bool FWindowsMixedRealityHMD::HasValidTrackingPosition()
 	{
-#if WITH_INPUT_SIMULATION
-		if (auto* InputSim = UWindowsMixedRealityInputSimulationEngineSubsystem::GetInputSimulationIfEnabled())
-		{
-			return InputSim->HasPositionalTracking();
-		}
-		else
-#endif
-		{
-			const Frame& TheFrame = GetFrame();
-			return TheFrame.bPositionalTrackingUsed;
-		}
+		const Frame& TheFrame = GetFrame();
+		return TheFrame.bPositionalTrackingUsed;
 	}
 
 	FString FWindowsMixedRealityHMD::GetVersionString() const
@@ -425,29 +450,24 @@ namespace WindowsMixedReality
 			ShutdownHolographic();
 
 #if !PLATFORM_HOLOLENS
-			if (bIsStereoDesired)
-			{
-				EnableStereo(true);
-			}
+			EnableStereo(true);
 #endif
 
 			return true;
 		}
 
-		UpdateRemotingStatus();
-
 #if WITH_WINDOWS_MIXED_REALITY
-		if (bIsStereoDesired && !HMD->IsInitialized())
+		if (!HMD->IsInitialized())
 		{
 			D3D11Device = InternalGetD3D11Device();
 			HMD->Initialize(D3D11Device.GetReference(),
-				GNearClippingPlane / GetWorldToMetersScale());
+				GNearClippingPlane / GetWorldToMetersScale(), farPlaneDistance);
 			return true;
 		}
 		else
 		{
 #if !PLATFORM_HOLOLENS
-			if (!HMD->IsRemoting() && (bIsStereoDesired && !HMD->IsImmersiveWindowValid()))
+			if (!HMD->IsRemoting() && !HMD->IsImmersiveWindowValid())
 			{
 				// This can happen if the PC went to sleep.
 				this->bRequestRestart = true;
@@ -546,93 +566,6 @@ namespace WindowsMixedReality
 		return true;
 	}
 
-	void FWindowsMixedRealityHMD::UpdateRemotingStatus()
-	{
-#if WITH_WINDOWS_MIXED_REALITY
-		if (HMD == nullptr)
-		{
-			return;
-		}
-
-		// Set Remoting status
-		HMDRemotingConnectionState state = HMD->GetConnectionState();
-
-		static bool bPreviousFrameDisconnect = false;
-		//if there was a disconnect event and we haven't tried to do anything since, fire the event
-		if (bPreviousFrameDisconnect && (state == HMDRemotingConnectionState::Disconnected))
-		{
-			FString Reason = HMD->GetFailureString();
-			if (UHeadMountedDisplayFunctionLibrary::OnXRDeviceOnDisconnectDelegate.IsBound() && !Reason.IsEmpty())
-			{
-				UHeadMountedDisplayFunctionLibrary::OnXRDeviceOnDisconnectDelegate.Execute(Reason);
-			}
-			bPreviousFrameDisconnect = false;
-		}
-
-#if WITH_EDITOR
-		if (state != prevState)
-		{
-			switch (state)
-			{
-			case HMDRemotingConnectionState::Unknown:
-				UWindowsMixedRealityRuntimeSettings::Get()->OnRemotingStatusChanged.ExecuteIfBound(FString("Connection State Unknown - See log for any errors"), FLinearColor::Gray);
-				break;
-			case HMDRemotingConnectionState::Connecting:
-				UWindowsMixedRealityRuntimeSettings::Get()->OnRemotingStatusChanged.ExecuteIfBound(FString("Connecting..."), FLinearColor::Yellow);
-				break;
-			case HMDRemotingConnectionState::Connected:
-				UWindowsMixedRealityRuntimeSettings::Get()->OnRemotingStatusChanged.ExecuteIfBound(FString("Connected"), FLinearColor::Green);
-				break;
-			case HMDRemotingConnectionState::Disconnected:
-				UWindowsMixedRealityRuntimeSettings::Get()->OnRemotingStatusChanged.ExecuteIfBound(FString("Disconnected"), FLinearColor::Red);
-
-				bPreviousFrameDisconnect = true;
-
-				break;
-			}
-		}
-#else
-		if (state != prevState)
-		{
-			switch (state)
-			{
-			case HMDRemotingConnectionState::Unknown:
-				UE_LOG(LogWmrHmd, Log, TEXT("Connection State Unknown - See log for any errors"));
-				break;
-			case HMDRemotingConnectionState::Connecting:
-				UE_LOG(LogWmrHmd, Log, TEXT("Connecting..."));
-				break;
-			case HMDRemotingConnectionState::Connected:
-				UE_LOG(LogWmrHmd, Log, TEXT("Connected"));
-				break;
-			case HMDRemotingConnectionState::Disconnected:
-				UE_LOG(LogWmrHmd, Log, TEXT("Disconnected"));
-				break;
-			}
-		}
-#endif
-
-		prevState = state;
-#endif
-	}
-	
-#if WITH_WINDOWS_MIXED_REALITY
-	void FWindowsMixedRealityHMD::OnConnectionEvent(WindowsMixedReality::MixedRealityInterop::ConnectionEvent evt)
-	{
-		if (evt == MixedRealityInterop::ConnectionEvent::DisconnectedFromPeer)
-		{
-			if (isRemotingReconnecting)
-			{
-				ConnectToRemoteHoloLens(*RemotingDesc.ip, RemotingDesc.bitrate, RemotingDesc.isHoloLens1, RemotingDesc.port, RemotingDesc.listen);
-			}
-			else
-			{
-				DisconnectFromRemoteHoloLens();
-			}
-		}
-	}
-#endif
-
 	void FWindowsMixedRealityHMD::SetTrackingOrigin(EHMDTrackingOrigin::Type NewOrigin)
 	{
 		HMDTrackingOrigin = NewOrigin;
@@ -677,12 +610,9 @@ namespace WindowsMixedReality
 	void FWindowsMixedRealityHMD::OnBeginRendering_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& ViewFamily)
 	{
 #if WITH_WINDOWS_MIXED_REALITY
-		HMD->BlockUntilNextFrame();
-		if (!HMD->UpdateRenderThreadFrame())
-		{
-			return;
-		}
+		HMD->UpdateRenderThreadFrame();
 		InitTrackingFrame();
+		HMD->BlockUntilNextFrame();
 
 		if (SpectatorScreenController)
 		{
@@ -695,15 +625,6 @@ namespace WindowsMixedReality
 			// Because Windows Mixed Reality can only have 2 rendering parameters in flight at any time, this is fatal.
 			this->bRequestRestart = true;
 		}
-
-#if PLATFORM_HOLOLENS
-		if (bIsMobileMultiViewEnabled && !HMD->IsThirdCameraActive())
-		{
-			ID3D11Texture2D* Texture = HMD->GetBackBufferTexture();
-			FTexture2DArrayRHIRef BackBuffer = GD3D11RHI->RHICreateTexture2DArrayFromResource(PF_B8G8R8A8, TexCreate_RenderTargetable | TexCreate_ShaderResource, FClearValueBinding::None, Texture);
-			GDynamicRHI->RHIAliasTextureResources((FTextureRHIRef&)CurrentBackBuffer, (FTextureRHIRef&)BackBuffer);
-		}
-#endif
 #endif
 	}
 
@@ -720,11 +641,6 @@ namespace WindowsMixedReality
 		{
 			static FVector2D SrcNormRectMin(0.05f, 0.2f);
 			static FVector2D SrcNormRectMax(0.45f, 0.8f);
-
-#if PLATFORM_HOLOLENS
-			SrcNormRectMax.X = (bIsMobileMultiViewEnabled && !HMD->IsThirdCameraActive()) ? 0.95f : 0.45f;
-#endif
-
 			return FIntRect(EyeTexture->GetSizeX() * SrcNormRectMin.X, EyeTexture->GetSizeY() * SrcNormRectMin.Y, EyeTexture->GetSizeX() * SrcNormRectMax.X, EyeTexture->GetSizeY() * SrcNormRectMax.Y);
 		}
 	}
@@ -773,7 +689,7 @@ namespace WindowsMixedReality
 
 			TShaderMapRef<FScreenVS> VertexShader(ShaderMap);
 			GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
 
 			const bool bSameSize = DstRect.Size() == SrcRect.Size();
 			FRHISamplerState* PixelSampler = bSameSize ? TStaticSamplerState<SF_Point>::GetRHI() : TStaticSamplerState<SF_Bilinear>::GetRHI();
@@ -781,7 +697,7 @@ namespace WindowsMixedReality
 			if ((SrcTexture->GetFlags() & TexCreate_SRGB) != 0)
 			{
 				TShaderMapRef<FScreenPSsRGBSource> PixelShader(ShaderMap);
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 
 				SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 				PixelShader->SetParameters(RHICmdList, PixelSampler, SrcTexture);
@@ -789,7 +705,7 @@ namespace WindowsMixedReality
 			else
 			{
 				TShaderMapRef<FScreenPS> PixelShader(ShaderMap);
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 
 				SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 				PixelShader->SetParameters(RHICmdList, PixelSampler, SrcTexture);
@@ -803,7 +719,7 @@ namespace WindowsMixedReality
 				USize, VSize,
 				TargetSize,
 				FIntPoint(1, 1),
-				VertexShader,
+				*VertexShader,
 				EDRF_Default);
 
 			RHICmdList.EndRenderPass();
@@ -820,20 +736,10 @@ namespace WindowsMixedReality
 			return false;
 		}
 
-#if WITH_INPUT_SIMULATION
-		if (auto* InputSim = UWindowsMixedRealityInputSimulationEngineSubsystem::GetInputSimulationIfEnabled())
-		{
-			CurrentOrientation = InputSim->GetHeadOrientation();
-			CurrentPosition = InputSim->GetHeadPosition();
-		}
-		else
-#endif
-		{
-			// Get most recently available tracking data.
-			Frame& TheFrame = GetFrame();
-			CurrentOrientation = TheFrame.HeadOrientation;
-			CurrentPosition = TheFrame.HeadPosition;
-		}
+		// Get most recently available tracking data.
+		Frame& TheFrame = GetFrame();
+		CurrentOrientation = TheFrame.HeadOrientation;
+		CurrentPosition = TheFrame.HeadPosition;
 
 		return true;
 	}
@@ -842,98 +748,16 @@ namespace WindowsMixedReality
 	{
 		OutOrientation = FQuat::Identity;
 		OutPosition = FVector::ZeroVector;
-		if (Eye != eSSP_LEFT_EYE && Eye != eSSP_RIGHT_EYE && Eye != eSSP_THIRD_CAMERA_EYE)
+		if (Eye != eSSP_LEFT_EYE && Eye != eSSP_RIGHT_EYE)
 		{
 			return false;
 		}
 		Frame& TheFrame = GetFrame();
-		FTransform relativeTransform = FTransform::Identity;
-
-		switch (Eye)
-		{
-		case eSSP_LEFT_EYE:
-			relativeTransform = TheFrame.LeftTransform * TheFrame.HeadTransform.Inverse();
-			break;
-		case eSSP_RIGHT_EYE:
-			relativeTransform = TheFrame.RightTransform * TheFrame.HeadTransform.Inverse();
-			break;
-		case eSSP_THIRD_CAMERA_EYE:
-			relativeTransform = TheFrame.ThirdCameraTransform * TheFrame.HeadTransform.Inverse();
-			break;
-		};
-
+		const FTransform relativeTransform = Eye == eSSP_LEFT_EYE ? TheFrame.LeftTransform * TheFrame.HeadTransform.Inverse() : TheFrame.RightTransform * TheFrame.HeadTransform.Inverse();
 		OutPosition = relativeTransform.GetTranslation();
 		OutOrientation = relativeTransform.GetRotation();
 
 		return true;
-	}
-
-	
-	void FWindowsMixedRealityHMD::GetMotionControllerData(UObject* WorldContext, const EControllerHand Hand, FXRMotionControllerData& MotionControllerData)
-	{
-		MotionControllerData.DeviceName = GetSystemName();
-		MotionControllerData.ApplicationInstanceID = FApp::GetInstanceId();
-		MotionControllerData.DeviceVisualType = EXRVisualType::Hand;
-		MotionControllerData.HandIndex = Hand;
-
-		MotionControllerData.TrackingStatus = (ETrackingStatus)GetControllerTrackingStatus((WindowsMixedReality::HMDHand)Hand);
-
-		//sword-grasping transform
-		HMDHand WMRHand = (Hand == EControllerHand::Left ? HMDHand::Left : HMDHand::Right);
-		FRotator GripRotation;
-		GetControllerOrientationAndPosition(WMRHand, GripRotation, MotionControllerData.GripPosition);
-		MotionControllerData.GripRotation = GripRotation.Quaternion();
-
-		//far pointing from elbow transform
-		FPointerPoseInfo PointerPoseInfo = UWindowsMixedRealityFunctionLibrary::GetPointerPoseInfo(Hand);
-		MotionControllerData.AimPosition = PointerPoseInfo.Origin;
-		MotionControllerData.AimRotation = PointerPoseInfo.Orientation;
-
-		MotionControllerData.bIsGrasped = UWindowsMixedRealityFunctionLibrary::IsGrasped(Hand);
-
-		//assume valid
-		FTransform Transform;
-		float Radius = 0.0f;
-		//if there are any valid hand transforms
-		//MotionControllerData.bValid = IWindowsMixedRealityHandTrackingModule::Get().GetHandJointTransform(Hand, EWMRHandKeypoint::Palm, Transform, Radius);
-		FWindowsMixedRealityStatics::OnGetHandJointTransformDelegate.Broadcast(Hand, EHandKeypoint::Palm, Transform, Radius, MotionControllerData.bValid);
-		if (MotionControllerData.bValid)
-		{
-			MotionControllerData.HandKeyPositions.Reserve(EHandKeypointCount);
-			MotionControllerData.HandKeyPositions.Empty();
-			MotionControllerData.HandKeyPositions.Add(Transform.GetTranslation());
-
-			MotionControllerData.HandKeyRotations.Reserve(EHandKeypointCount);
-			MotionControllerData.HandKeyRotations.Empty();
-			MotionControllerData.HandKeyRotations.Add(Transform.GetRotation());
-
-			MotionControllerData.HandKeyRadii.Reserve(EHandKeypointCount);
-			MotionControllerData.HandKeyRadii.Empty();
-			//needed
-			MotionControllerData.HandKeyRadii.Add(Radius);
-
-			//get the remaining points
-			for (int32 HandPointIndex = 1; HandPointIndex < EHandKeypointCount; ++HandPointIndex)
-			{
-				bool bHandPointSuccess = false;
-				FWindowsMixedRealityStatics::OnGetHandJointTransformDelegate.Broadcast(Hand, (EHandKeypoint)HandPointIndex, Transform, Radius, bHandPointSuccess);
-				MotionControllerData.bValid = MotionControllerData.bValid && bHandPointSuccess;
-				MotionControllerData.HandKeyPositions.Add(Transform.GetTranslation());
-				MotionControllerData.HandKeyRotations.Add(Transform.GetRotation());
-
-				//needed
-				MotionControllerData.HandKeyRadii.Add(Radius);
-			}
-		}
-	}
-
-	bool FWindowsMixedRealityHMD::ConfigureGestures(const FXRGestureConfig& GestureConfig)
-	{
-		bool bSuccess = true;
-
-		FWindowsMixedRealityStatics::OnConfigureGesturesDelegate.Broadcast(GestureConfig, bSuccess);
-
-		return bSuccess;
 	}
 
 	void FWindowsMixedRealityHMD::ResetOrientationAndPosition(float yaw)
@@ -946,27 +770,15 @@ namespace WindowsMixedReality
 	FMatrix FetchProjectionMatrix(EStereoscopicPass StereoPassType, WindowsMixedReality::MixedRealityInterop* HMD)
 	{
 		if (StereoPassType != eSSP_LEFT_EYE &&
-			StereoPassType != eSSP_RIGHT_EYE &&
-			StereoPassType != eSSP_THIRD_CAMERA_EYE)
+			StereoPassType != eSSP_RIGHT_EYE)
 		{
 			return FMatrix::Identity;
 		}
 
 #if WITH_WINDOWS_MIXED_REALITY
-		DirectX::XMFLOAT4X4 projection = DirectX::XMFLOAT4X4();
-
-		switch (StereoPassType)
-		{
-		case eSSP_LEFT_EYE:
-			projection = HMD->GetProjectionMatrix(HMDEye::Left);
-			break;
-		case eSSP_RIGHT_EYE:
-			projection = HMD->GetProjectionMatrix(HMDEye::Right);
-			break;
-		case eSSP_THIRD_CAMERA_EYE:
-			projection = HMD->GetProjectionMatrix(HMDEye::ThirdCamera);
-			break;
-		};
+		DirectX::XMFLOAT4X4 projection = (StereoPassType == eSSP_LEFT_EYE)
+			? HMD->GetProjectionMatrix(HMDEye::Left)
+			: HMD->GetProjectionMatrix(HMDEye::Right);
 
 		auto result = WMRUtility::ToFMatrix(projection).GetTransposed();
 		// Convert from RH to LH projection matrix
@@ -975,6 +787,10 @@ namespace WindowsMixedReality
 		result.M[2][1] *= -1;
 		result.M[2][2] *= -1;
 		result.M[2][3] *= -1;
+
+		// Switch to reverse-z, replace near and far distance
+		result.M[2][2] = 0.0f;  // Must be 0 for reverse-z.
+		result.M[3][2] = GNearClippingPlane;
 
 		return result;
 #else
@@ -987,8 +803,6 @@ namespace WindowsMixedReality
 #if WITH_WINDOWS_MIXED_REALITY
 		DirectX::XMMATRIX leftPose;
 		DirectX::XMMATRIX rightPose;
-		DirectX::XMMATRIX thirdCameraPoseLeft;
-		DirectX::XMMATRIX thirdCameraPoseRight;
 		WindowsMixedReality::HMDTrackingOrigin trackingOrigin;
 
 		bool GotPose = false;
@@ -996,47 +810,6 @@ namespace WindowsMixedReality
 		{
 			// This should be false if we fail to get a pose
 			Frame_RenderThread.bPositionalTrackingUsed = false;
-
-			// Get third camera view and projection
-			if (HMD->IsThirdCameraActive())
-			{
-				GotPose = HMD->GetThirdCameraPoseRenderThread(thirdCameraPoseLeft, thirdCameraPoseRight);
-
-				if (GotPose)
-				{
-					// Convert to unreal space
-					FMatrix UPoseL = WMRUtility::ToFMatrix(thirdCameraPoseLeft);
-					FMatrix UPoseR = WMRUtility::ToFMatrix(thirdCameraPoseRight);
-					FQuat RotationL = FQuat(UPoseL);
-					FQuat RotationR = FQuat(UPoseR);
-
-					RotationL = FQuat(-1 * RotationL.Z, RotationL.X, RotationL.Y, -1 * RotationL.W);
-					RotationR = FQuat(-1 * RotationR.Z, RotationR.X, RotationR.Y, -1 * RotationR.W);
-
-					RotationL.Normalize();
-					RotationR.Normalize();
-
-					FQuat ThirdCamRotation = FMath::Lerp(RotationL, RotationR, 0.5f);
-					ThirdCamRotation.Normalize();
-
-					// Position = forward/ backwards, left/ right, up/ down.
-					FVector PositionL = ((FVector(UPoseL.M[2][3], -1 * UPoseL.M[0][3], -1 * UPoseL.M[1][3]) * GetWorldToMetersScale()));
-					FVector PositionR = ((FVector(UPoseR.M[2][3], -1 * UPoseR.M[0][3], -1 * UPoseR.M[1][3]) * GetWorldToMetersScale()));
-
-					PositionL = RotationL.RotateVector(PositionL);
-					PositionR = RotationR.RotateVector(PositionR);
-
-					FVector ThirdCamPosition = FMath::Lerp(PositionL, PositionR, 0.5f);
-
-					Frame_RenderThread.ThirdCameraTransform = FTransform(ThirdCamRotation, ThirdCamPosition, FVector::OneVector);
-					Frame_RenderThread.ProjectionMatrixThirdCamera = FetchProjectionMatrix((EStereoscopicPass)eSSP_THIRD_CAMERA_EYE, HMD);
-
-					// Rescale depth projection range from meters to world units
-					Frame_RenderThread.ProjectionMatrixThirdCamera.M[3][2] *= GetWorldToMetersScale();
-				}
-			}
-
-			// Get HMD view and projection
 			GotPose = HMD->GetCurrentPoseRenderThread(leftPose, rightPose, trackingOrigin);
 
 			if (GotPose)
@@ -1084,10 +857,6 @@ namespace WindowsMixedReality
 
 				Frame_RenderThread.ProjectionMatrixL = FetchProjectionMatrix(eSSP_LEFT_EYE, HMD);
 				Frame_RenderThread.ProjectionMatrixR = FetchProjectionMatrix(eSSP_RIGHT_EYE, HMD);
-
-				// Rescale depth projection range from meters to world units
-				Frame_RenderThread.ProjectionMatrixL.M[3][2] *= GetWorldToMetersScale();
-				Frame_RenderThread.ProjectionMatrixR.M[3][2] *= GetWorldToMetersScale();
 
 				{
 					FScopeLock Lock(&Frame_NextGameThreadLock);
@@ -1170,18 +939,13 @@ namespace WindowsMixedReality
 					int Width, Height;
 					if (HMD->GetDisplayDimensions(Width, Height))
 					{
-						bIsStereoEnabled = HMD->IsStereoEnabled();
-
 						SceneVP->SetViewportSize(
-#if PLATFORM_HOLOLENS
-							Width,
-#else
 							Width * 2,
-#endif
 							Height);
 
 						Window->SetViewportSizeDrivenByWindow(false);
 
+						bIsStereoEnabled = HMD->IsStereoEnabled();
 						if (bIsStereoEnabled)
 						{
 							HMD->CreateHiddenVisibleAreaMesh();
@@ -1220,101 +984,22 @@ namespace WindowsMixedReality
 		return bIsStereoEnabled;
 	}
 
-	static bool ParseAddress(const FString& MatchesStr, FString& address, uint32& Port)
-	{
-		FString portStr;
-		if (MatchesStr.Len() == 0)
-		{
-			return false;
-		}
-
-		if (MatchesStr.Split(TEXT(":"), &address, &portStr))
-		{
-			Port = FCString::Atoi(*portStr);
-		}
-		else
-		{
-			address = MatchesStr;
-			Port = 8265;
-		}
-		return true;
-	}
-
-	bool FWindowsMixedRealityHMD::bEnableStereoReentranceGuard = false;
-
 	bool FWindowsMixedRealityHMD::EnableStereo(bool stereo)
 	{
-		if (bEnableStereoReentranceGuard)
-		{
-			return false;
-		}
-
-		bEnableStereoReentranceGuard = true;
 #if WITH_WINDOWS_MIXED_REALITY
 		if (stereo)
 		{
-			if (FParse::Param(FCommandLine::Get(), TEXT("AutoConnectToRemoting")))
-			{
-				int32 RemotingBitRate = 4000;
-				FString RemotingAppIp;
-				if (FParse::Value(FCommandLine::Get(), TEXT("RemotingAppIp="), RemotingAppIp) &&
-					FParse::Value(FCommandLine::Get(), TEXT("RemotingBitRate="), RemotingBitRate))
-				{
-					FWindowsMixedRealityStatics::ConnectToRemoteHoloLens(*RemotingAppIp, RemotingBitRate, false);
-				}
-			}
-
 			if (bIsStereoDesired && HMD->IsInitialized())
 			{
-				bEnableStereoReentranceGuard = false;
 				return false;
 			}
 
 			FindMRSceneViewport(bIsStereoDesired);
 			if (!bIsStereoDesired)
 			{
-				bEnableStereoReentranceGuard = false;
 				return false;
 			}
 
-#if PLATFORM_WINDOWS && !WITH_EDITOR
-			FString MatchesStr;
-			uint32 BitRate;
-			FString IPAddress;
-			uint32 Port;
-
-			if (!FParse::Value(FCommandLine::Get(), TEXT("RemotingBitrate="), BitRate))
-			{
-				BitRate = 8000;
-			}
-
-
-			if (FParse::Value(FCommandLine::Get(), TEXT("HoloLens1Remoting="), MatchesStr))
-			{
-				if (ParseAddress(MatchesStr, IPAddress, Port))
-				{
-					ConnectToRemoteHoloLens(*IPAddress, BitRate, true, Port);
-				}
-			}
-			else if (FParse::Value(FCommandLine::Get(), TEXT("HoloLensRemoting="), MatchesStr))
-			{
-				if (ParseAddress(MatchesStr, IPAddress, Port))
-				{
-					ConnectToRemoteHoloLens(*IPAddress, BitRate, false, Port);
-				}
-			}
-			else if (FParse::Value(FCommandLine::Get(), TEXT("HoloLensRemotingListen="), MatchesStr))
-			{
-				if (ParseAddress(MatchesStr, IPAddress, Port))
-				{
-					ConnectToRemoteHoloLens(*IPAddress, BitRate, false, Port, true);
-				}
-			}
-			else if (FParse::Value(FCommandLine::Get(), TEXT("HoloLensRemotingListenPort="), Port))
-			{
-				ConnectToRemoteHoloLens(TEXT("0.0.0.0"), BitRate, false, Port, true);
-			}
-#endif
 			HMD->EnableStereo(stereo);
 #if SUPPORTS_WINDOWS_MIXED_REALITY_GESTURES
 			HMD->SetInteractionManagerForCurrentView();
@@ -1326,30 +1011,31 @@ namespace WindowsMixedReality
 
 			FApp::SetUseVRFocus(true);
 			FApp::SetHasVRFocus(true);
-
-			// Start speech recognition if there are any commands we care to listen for
-			StartSpeechRecognition();
 		}
 		else
 		{
-#if PLATFORM_WINDOWS && !WITH_EDITOR
-			if (HMD && HMD->IsRemoting())
-			{
-				DisconnectFromRemoteHoloLens();
-			}
-#endif
-			
 			ShutdownHolographic();
 
 			FApp::SetUseVRFocus(false);
 			FApp::SetHasVRFocus(false);
-
-			StopSpeechRecognition();
 		}
 #endif
-		bEnableStereoReentranceGuard = false;
-
 		return bIsStereoDesired;
+	}
+
+	void FWindowsMixedRealityHMD::AdjustViewRect(
+		EStereoscopicPass StereoPass,
+		int32& X, int32& Y,
+		uint32& SizeX, uint32& SizeY) const
+	{
+		SizeX *= ScreenScalePercentage;
+		SizeY *= ScreenScalePercentage;
+
+		SizeX = SizeX / 2;
+		if (StereoPass == eSSP_RIGHT_EYE)
+		{
+			X += SizeX;
+		}
 	}
 
 	FMatrix FWindowsMixedRealityHMD::GetStereoProjectionMatrix(const enum EStereoscopicPass StereoPassType) const
@@ -1363,10 +1049,6 @@ namespace WindowsMixedReality
 			else if (StereoPassType == eSSP_RIGHT_EYE)
 			{
 				return Frame_RenderThread.ProjectionMatrixR;
-			}
-			else if (StereoPassType == eSSP_THIRD_CAMERA_EYE)
-			{
-				return Frame_RenderThread.ProjectionMatrixThirdCamera;
 			}
 			else
 			{
@@ -1385,115 +1067,47 @@ namespace WindowsMixedReality
 			{
 				return Frame_GameThread.ProjectionMatrixR;
 			}
-			else if (StereoPassType == eSSP_THIRD_CAMERA_EYE)
-			{
-				return Frame_RenderThread.ProjectionMatrixThirdCamera;
-			}
 			else
 			{
 				return FMatrix::Identity;
-			}
+			}		
 		}
 	}
-
-	struct RenderTargetDescription
-	{
-	public:
-		int width = 0;
-		int height = 0;
-		int x = 0;
-		int y = 0;
-		float uvOffsetX = 0;
-		float uvOffsetY = 0;
-		float uvScaleX = 0;
-		float uvScaleY = 0;
-
-		RenderTargetDescription() { }
-		RenderTargetDescription(int width, int height, int x, int y, float uvOffsetX, float uvOffsetY, float uvScaleX, float uvScaleY)
-		{
-			this->width = width;
-			this->height = height;
-			this->x = x;
-			this->y = y;
-			this->uvOffsetX = uvOffsetX;
-			this->uvOffsetY = uvOffsetY;
-			this->uvScaleX = uvScaleX;
-			this->uvScaleY = uvScaleY;
-		}
-	};
-	RenderTargetDescription wmrRenderTargets[3];
 
 	void FWindowsMixedRealityHMD::GetEyeRenderParams_RenderThread(
 		const FRenderingCompositePassContext& Context,
 		FVector2D& EyeToSrcUVScaleValue,
 		FVector2D& EyeToSrcUVOffsetValue) const
 	{
-		RenderTargetDescription desc = wmrRenderTargets[GetViewIndexForPass(Context.View.StereoPass)];
+		if (Context.View.StereoPass == eSSP_LEFT_EYE)
+		{
+			EyeToSrcUVOffsetValue.X = 0.0f;
+			EyeToSrcUVOffsetValue.Y = 0.0f;
 
-		EyeToSrcUVOffsetValue.X = desc.uvOffsetX;
-		EyeToSrcUVOffsetValue.Y = desc.uvOffsetY;
+			EyeToSrcUVScaleValue.X = 0.5f;
+			EyeToSrcUVScaleValue.Y = 1.0f;
+		}
+		else
+		{
+			EyeToSrcUVOffsetValue.X = 0.5f;
+			EyeToSrcUVOffsetValue.Y = 0.0f;
 
-		EyeToSrcUVScaleValue.X = desc.uvScaleX;
-		EyeToSrcUVScaleValue.Y = desc.uvScaleY;
-	}
-
-	void FWindowsMixedRealityHMD::AdjustViewRect(
-		EStereoscopicPass StereoPass,
-		int32& X, int32& Y,
-		uint32& SizeX, uint32& SizeY) const
-	{
-		RenderTargetDescription desc = wmrRenderTargets[GetViewIndexForPass(StereoPass)];
-		X = desc.x;
-		Y = desc.y;
-		SizeX = desc.width;
-		SizeY = desc.height;
+			EyeToSrcUVScaleValue.X = 0.5f;
+			EyeToSrcUVScaleValue.Y = 1.0f;
+		}
 	}
 
 	FIntPoint FWindowsMixedRealityHMD::GetIdealRenderTargetSize() const
 	{
 		int Width, Height;
-		int tcWidth, tcHeight;
 #if WITH_WINDOWS_MIXED_REALITY
 		HMD->GetDisplayDimensions(Width, Height);
-		HMD->GetThirdCameraDimensions(tcWidth, tcHeight);
 #else
 		Width = 100;
 		Height = 100;
-		tcWidth = 0;
-		tcHeight = 0;
 #endif
 
-#if PLATFORM_HOLOLENS
-		int Offset = (bIsMobileMultiViewEnabled && !HMD->IsThirdCameraActive()) ? 0 : Width;
-#else
-		int Offset = Width;
-#endif
-
-		int RenderTargetWidth = Width + Offset + tcWidth;
-		int RenderTargetHeight = FMath::Max(Height, tcHeight);
-
-		// We always prefer the nearest multiple of 4 for our buffer sizes. Make sure we round up here,
-		// so we're consistent with the rest of the engine in creating our buffers.
-		FIntPoint Size = FIntPoint(RenderTargetWidth, RenderTargetHeight);
-		QuantizeSceneBufferSize(Size, Size);
-
-		float eyeUVX = (float)Width / (float)Size.X;
-		float eyeUVY = (float)Height / (float)Size.Y;
-#if PLATFORM_HOLOLENS
-		float offUVX = (bIsMobileMultiViewEnabled && !HMD->IsThirdCameraActive()) ? 0.0f : eyeUVX;
-#else
-		float offUVX = eyeUVX;
-#endif
-
-		float camUVX = (float)tcWidth / (float)Size.X;
-		float camUVY = (float)tcHeight / (float)Size.Y;
-
-		//                                            width,    height,    x,           y,  uvOffsetX,   uvOffsetY, uvScaleX, uvScaleY
-		wmrRenderTargets[0] = RenderTargetDescription(Width,    Height,    0,           0,  0.0f,        0.0f,      eyeUVX,   eyeUVY);  // Left Eye
-		wmrRenderTargets[1] = RenderTargetDescription(Width,    Height,    Offset,      0,  offUVX,      0.0f,      eyeUVX,   eyeUVY);  // Right Eye
-		wmrRenderTargets[2] = RenderTargetDescription(tcWidth,  tcHeight,  Offset * 2,  0,  offUVX * 2,  0.0f,      camUVX,   camUVY);  // Third Camera
-
-		return Size;
+		return FIntPoint(Width * 2, Height);
 	}
 
 	//TODO: Spelling is intentional, overridden from IHeadMountedDisplay.h
@@ -1529,49 +1143,13 @@ namespace WindowsMixedReality
 			SpectatorScreenController->RenderSpectatorScreen_RenderThread(RHICmdList, BackBuffer, SrcTexture, WindowSize);
 		}
 
-#if PLATFORM_HOLOLENS
-		if (bIsMobileMultiViewEnabled && !HMD->IsThirdCameraActive())
-		{
-			FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
-			IPooledRenderTarget* depthRenderTarget = SceneContext.SceneDepthZ.GetReference();
-			if (depthRenderTarget != nullptr)
-			{
-				FTextureRHIRef depthTargetableTexture = depthRenderTarget->GetRenderTargetItem().TargetableTexture;
-				if (depthTargetableTexture != nullptr)
-				{
-					ID3D11Texture2D* Texture = static_cast<ID3D11Texture2D*>(depthTargetableTexture->GetNativeResource());
-					if (Texture != nullptr)
-					{
-						if (mCustomPresent != nullptr)
-						{
-							mCustomPresent->SetDepthTexture(Texture);
-						}
-					}
-				}
-			}
-		}
-		else
-#endif
-		{
-			// We keep refs to the depth texture in the hmd, so this function is non-const.
-			// RenderTexture_RenderThread should perhaps be refactored or made non-const.
-			// But to get this into a hotfix of 4.23 we shall simply cast.
-			FWindowsMixedRealityHMD* nonconstthis = const_cast<FWindowsMixedRealityHMD*>(this);
-			nonconstthis->CreateHMDDepthTexture(RHICmdList);
-		}
+		// We keep refs to the depth texture in the hmd, so this function is non-const.
+		// RenderTexture_RenderThread should perhaps be refactored or made non-const.  
+		// But to get this into a hotfix of 4.23 we shall simply cast.
+		FWindowsMixedRealityHMD* nonconstthis = const_cast<FWindowsMixedRealityHMD*>(this);
+		nonconstthis->CreateHMDDepthTexture(RHICmdList);
 	}
 
-	void FWindowsMixedRealityHMD::PreRenderView_RenderThread(
-		FRHICommandListImmediate& RHICmdList,
-		FSceneView& InView)
-	{
-		if (bIsMobileMultiViewEnabled)
-		{
-			InView.bIsInstancedStereoEnabled = !HMD->IsThirdCameraActive();
-			InView.bIsMobileMultiViewEnabled = !HMD->IsThirdCameraActive();
-		}
-	}
-	
 	// Create a BGRA backbuffer for rendering.
 	bool FWindowsMixedRealityHMD::AllocateRenderTargetTexture(
 		uint32 index,
@@ -1579,8 +1157,8 @@ namespace WindowsMixedReality
 		uint32 sizeY,
 		uint8 format,
 		uint32 numMips,
-		ETextureCreateFlags flags,
-		ETextureCreateFlags targetableTextureFlags,
+		uint32 flags,
+		uint32 targetableTextureFlags,
 		FTexture2DRHIRef& outTargetableTexture,
 		FTexture2DRHIRef& outShaderResourceTexture,
 		uint32 numSamples)
@@ -1590,45 +1168,21 @@ namespace WindowsMixedReality
 			return false;
 		}
 
-		// Since our textures must be BGRA, this plugin did require a change to WindowsD3D11Device.cpp
-		// to add the D3D11_CREATE_DEVICE_BGRA_SUPPORT flag to the graphics device.
 		FRHIResourceCreateInfo CreateInfo;
 
-#if PLATFORM_HOLOLENS
-		if (bIsMobileMultiViewEnabled && !HMD->IsThirdCameraActive())
-		{
-			FTexture2DArrayRHIRef texture, resource;
-			RHICreateTargetableShaderResource2DArray(
-				sizeX,
-				sizeY,
-				2,
-				PF_B8G8R8A8, // must be BGRA
-				numMips,
-				flags,
-				targetableTextureFlags,
-				CreateInfo,
-				texture,
-				resource);
-			outTargetableTexture = texture;
-			outShaderResourceTexture = resource;
-
-			CurrentBackBuffer = outTargetableTexture;
-		}
-		else
-#endif
-		{
-			RHICreateTargetableShaderResource2D(
-				sizeX,
-				sizeY,
-				PF_B8G8R8A8, // must be BGRA
-				numMips,
-				flags,
-				targetableTextureFlags,
-				false,
-				CreateInfo,
-				outTargetableTexture,
-				outShaderResourceTexture);
-		}
+		// Since our textures must be BGRA, this plugin did require a change to WindowsD3D11Device.cpp
+		// to add the D3D11_CREATE_DEVICE_BGRA_SUPPORT flag to the graphics device.
+		RHICreateTargetableShaderResource2D(
+			sizeX,
+			sizeY,
+			PF_B8G8R8A8, // must be BGRA
+			numMips,
+			flags,
+			targetableTextureFlags,
+			false,
+			CreateInfo,
+			outTargetableTexture,
+			outShaderResourceTexture);
 
 		bNeedReallocateDepthTexture = true;
 
@@ -1645,54 +1199,27 @@ namespace WindowsMixedReality
 		return bNeedReallocateDepthTexture;
 	}
 
-	bool FWindowsMixedRealityHMD::AllocateDepthTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, ETextureCreateFlags InTexFlags, ETextureCreateFlags TargetableTextureFlags, FTexture2DRHIRef & OutTargetableTexture, FTexture2DRHIRef & OutShaderResourceTexture, uint32 NumSamples)
+	bool FWindowsMixedRealityHMD::AllocateDepthTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InTexFlags, uint32 TargetableTextureFlags, FTexture2DRHIRef & OutTargetableTexture, FTexture2DRHIRef & OutShaderResourceTexture, uint32 NumSamples)
 	{
 		FRHIResourceCreateInfo CreateInfo;
 		// This binding is necessary - without it there will be a runtime error.
 		// Current shader assumes far depth since scene depth uses far depth.
 		CreateInfo.ClearValueBinding = FClearValueBinding::DepthFar;
 
-#if PLATFORM_HOLOLENS
-		if (bIsMobileMultiViewEnabled && !HMD->IsThirdCameraActive())
-		{
-			FIntPoint size = GetIdealRenderTargetSize();
-
-			FTexture2DArrayRHIRef texture, resource;
-			RHICreateTargetableShaderResource2DArray(
-				size.X,
-				size.Y,
-				2,
-				// Do not use input format - this will resolve to X32_TYPELESS_G8X24_UINT which cannot be used for a depthstencil buffer.
-				// DepthStencil will resolve to R32G8X24_TYPELESS which is usable for a depthstencil buffer!
-				PF_DepthStencil,
-				// Do not use input mips, this will resolve to 0 which will throw creating the texture.
-				1,
-				InTexFlags,
-				TargetableTextureFlags,
-				CreateInfo,
-				texture,
-				resource);
-			OutTargetableTexture = texture;
-			OutShaderResourceTexture = resource;
-		}
-		else
-#endif
-		{
-			RHICreateTargetableShaderResource2D(
-				SizeX,
-				SizeY,
-				// Do not use input format - this will resolve to X32_TYPELESS_G8X24_UINT which cannot be used for a depthstencil buffer.
-				// DepthStencil will resolve to R32G8X24_TYPELESS which is usable for a depthstencil buffer!
-				PF_DepthStencil,
-				// Do not use input mips, this will resolve to 0 which will throw creating the texture.
-				1,
-				InTexFlags,
-				TargetableTextureFlags,
-				false,
-				CreateInfo,
-				OutTargetableTexture,
-				OutShaderResourceTexture);
-		}
+		RHICreateTargetableShaderResource2D(
+			SizeX,
+			SizeY,
+			// Do not use input format - this will resolve to X32_TYPELESS_G8X24_UINT which cannot be used for a depthstencil buffer.
+			// DepthStencil will resolve to R32G8X24_TYPELESS which is usable for a depthstencil buffer!
+			PF_DepthStencil,
+			// Do not use input mips, this will resolve to 0 which will throw creating the texture.
+			1,
+			InTexFlags,
+			TargetableTextureFlags,
+			false,
+			CreateInfo,
+			OutTargetableTexture,
+			OutShaderResourceTexture);
 
 		CurrentDepthBuffer = OutTargetableTexture;
 		bNeedReallocateDepthTexture = false;
@@ -1707,7 +1234,7 @@ namespace WindowsMixedReality
 
 	void FWindowsMixedRealityHMD::DrawHiddenAreaMesh_RenderThread(FRHICommandList& RHICmdList, EStereoscopicPass StereoPass) const
 	{
-		if (StereoPass == eSSP_FULL || StereoPass == eSSP_THIRD_CAMERA_EYE)
+		if (StereoPass == eSSP_FULL)
 		{
 			return;
 		}
@@ -1729,7 +1256,7 @@ namespace WindowsMixedReality
 
 	void FWindowsMixedRealityHMD::DrawVisibleAreaMesh_RenderThread(FRHICommandList& RHICmdList, EStereoscopicPass StereoPass) const
 	{
-		if (StereoPass == eSSP_FULL || StereoPass == eSSP_THIRD_CAMERA_EYE)
+		if (StereoPass == eSSP_FULL)
 		{
 			return;
 		}
@@ -1814,7 +1341,7 @@ namespace WindowsMixedReality
 		if (remappedDepthTexture == nullptr || recreateTextures)
 		{
 			FRHIResourceCreateInfo CreateInfo;
-			remappedDepthTexture = RHICreateTexture2D(depthFRHITexture->GetSizeX(), depthFRHITexture->GetSizeY(),
+			remappedDepthTexture = RHICmdList.CreateTexture2D(depthFRHITexture->GetSizeX(), depthFRHITexture->GetSizeY(),
 				PF_R32_FLOAT, 1, 1, ETextureCreateFlags::TexCreate_RenderTargetable, CreateInfo);
 		}
 
@@ -1837,8 +1364,8 @@ namespace WindowsMixedReality
 			TShaderMapRef<FDepthConversionPS> pixelShader(shaderMap);
 
 			GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = vertexShader.GetVertexShader();
-			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = pixelShader.GetPixelShader();
+			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*vertexShader);
+			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*pixelShader);
 			GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -1853,7 +1380,7 @@ namespace WindowsMixedReality
 				1.0f, 1.0f, // SizeU, SizeV
 				FIntPoint(viewportWidth, viewportHeight), // TargetSize
 				FIntPoint(1, 1), // TextureSize
-				vertexShader,
+				*vertexShader,
 				EDRF_Default);
 		}
 		RHICmdList.EndRenderPass();
@@ -1868,11 +1395,10 @@ namespace WindowsMixedReality
 		// Directly create an ID3D11Texture2D instead of an FTexture2D because we need an ArraySize of 2.
 		if (stereoDepthTexture == nullptr || recreateTextures)
 		{
-			// Create stereo depth texture
 			D3D11_TEXTURE2D_DESC tdesc;
 
-			tdesc.Width = wmrRenderTargets[0].width;
-			tdesc.Height = wmrRenderTargets[0].height;
+			tdesc.Width = viewportWidth / 2;
+			tdesc.Height = viewportHeight;
 			tdesc.MipLevels = 1;
 			tdesc.ArraySize = 2;
 			tdesc.SampleDesc.Count = 1;
@@ -1886,25 +1412,6 @@ namespace WindowsMixedReality
 			device->CreateTexture2D(&tdesc, NULL, &stereoDepthTexture);
 		}
 
-		if (HMD->IsThirdCameraActive() && (monoDepthTexture == nullptr || recreateTextures))
-		{
-			// Create third camera depth texture
-			D3D11_TEXTURE2D_DESC tdesc;
-
-			tdesc.Width = wmrRenderTargets[2].width;
-			tdesc.Height = wmrRenderTargets[2].height;
-			tdesc.MipLevels = 1;
-			tdesc.ArraySize = 1;
-			tdesc.SampleDesc.Count = 1;
-			tdesc.SampleDesc.Quality = 0;
-			tdesc.Usage = D3D11_USAGE_DEFAULT;
-			tdesc.Format = DXGI_FORMAT_R32_FLOAT;
-			tdesc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
-			tdesc.CPUAccessFlags = 0;
-			tdesc.MiscFlags = 0;
-			device->CreateTexture2D(&tdesc, NULL, &monoDepthTexture);
-		}
-
 		ID3D11DeviceContext* context;
 		device->GetImmediateContext(&context);
 
@@ -1912,41 +1419,7 @@ namespace WindowsMixedReality
 			(ID3D11Texture2D*)remappedDepthTexture->GetNativeResource(),
 			stereoDepthTexture);
 
-		if (mCustomPresent != nullptr)
-		{
-			mCustomPresent->SetDepthTexture(stereoDepthTexture);
-		}
-		// Third camera depth
-		if (HMD->IsThirdCameraActive() && remappedDepthTexture != nullptr && monoDepthTexture != nullptr)
-		{
-			ID3D11Texture2D* sourceDepth = (ID3D11Texture2D*)remappedDepthTexture->GetNativeResource();
-			int w, h;
-			HMD->GetThirdCameraDimensions(w, h);
-
-			D3D11_TEXTURE2D_DESC desc{};
-			sourceDepth->GetDesc(&desc);
-
-			if (w > 0 && h > 0
-				&& desc.Width > (unsigned int)w
-				&& desc.Height >= (unsigned int)h)
-			{
-				D3D11_BOX box = {};
-				box.right = desc.Width;
-				box.left = desc.Width - w;
-				box.top = 0;
-				box.bottom = h;
-				box.back = 1;
-
-				context->CopySubresourceRegion(
-					monoDepthTexture,
-					0, 0, 0, 0,
-					sourceDepth,
-					0,
-					&box);
-
-				HMD->CommitThirdCameraDepthBuffer(monoDepthTexture);
-			}
-		}
+		HMD->CommitDepthBuffer(stereoDepthTexture);
 #endif
 	}
 
@@ -1985,7 +1458,7 @@ namespace WindowsMixedReality
 		}
 
 		HMD->SetFocusPointForFrame(WMRUtility::ToMixedRealityVector(TrackingSpacePosition));
-#endif
+#endif	
 	}
 
 	bool FWindowsMixedRealityHMD::IsActiveThisFrame(class FViewport* InViewport) const
@@ -2004,14 +1477,6 @@ namespace WindowsMixedReality
 	{
 		static const FName RendererModuleName("Renderer");
 		RendererModule = FModuleManager::GetModulePtr<IRendererModule>(RendererModuleName);
-		HandlerId = HMD->SubscribeConnectionEvent(std::bind(&FWindowsMixedRealityHMD::OnConnectionEvent, this, std::placeholders::_1));
-
-#if PLATFORM_HOLOLENS
-		static const auto CVarMobileMultiView = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.MobileMultiView"));
-		static const auto CVarMobileHDR = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.MobileHDR"));
-		const bool bMobileHDR = (CVarMobileHDR && CVarMobileHDR->GetValueOnAnyThread() != 0);
-		bIsMobileMultiViewEnabled = (GRHISupportsArrayIndexFromAnyShader && !bMobileHDR) && (CVarMobileMultiView && CVarMobileMultiView->GetValueOnAnyThread() != 0);
-#endif
 
 		HiddenAreaMesh.SetNum(2);
 		VisibleAreaMesh.SetNum(2);
@@ -2024,13 +1489,6 @@ namespace WindowsMixedReality
 
 	FWindowsMixedRealityHMD::~FWindowsMixedRealityHMD()
 	{
-#if WITH_WINDOWS_MIXED_REALITY
-		if (HMD && HMD->IsRemoting())
-		{
-			DisconnectFromRemoteHoloLens();
-		}
-#endif
-
 		ShutdownHolographic();
 	}
 
@@ -2061,11 +1519,6 @@ namespace WindowsMixedReality
 			FCoreDelegates::ApplicationWillEnterBackgroundDelegate.Remove(PauseHandle);
 			PauseHandle.Reset();
 		}
-		if (ResumeHandle.IsValid())
-		{
-			FCoreDelegates::ApplicationHasEnteredForegroundDelegate.Remove(ResumeHandle);
-			ResumeHandle.Reset();
-		}
 
 		bIsStereoDesired = false;
 		bIsStereoEnabled = false;
@@ -2087,7 +1540,7 @@ namespace WindowsMixedReality
 			}
 		}
 #endif
-
+		
 		bNeedReallocateDepthTexture = false;
 
 		GetFrame().bPositionalTrackingUsed = false;
@@ -2108,14 +1561,6 @@ namespace WindowsMixedReality
 			VisibleAreaMesh[i].IndexBufferRHI = nullptr;
 			VisibleAreaMesh[i].VertexBufferRHI = nullptr;
 		}
-
-#if WITH_EDITOR
-#if WITH_WINDOWS_MIXED_REALITY
-		HMD->UnsubscribeConnectionEvent(HandlerId);
-		HandlerId = 0;
-		prevState = HMDRemotingConnectionState::Undefined;
-#endif
-#endif
 	}
 
 	bool FWindowsMixedRealityHMD::IsCurrentlyImmersive()
@@ -2130,11 +1575,7 @@ namespace WindowsMixedReality
 	bool FWindowsMixedRealityHMD::IsDisplayOpaque()
 	{
 #if WITH_WINDOWS_MIXED_REALITY
-		if (HMD->IsActiveAndValid())
-		{
-			return HMD->IsDisplayOpaque();
-		}
-		return false;
+		return HMD->IsDisplayOpaque();
 #else
 		return true;
 #endif
@@ -2163,26 +1604,13 @@ namespace WindowsMixedReality
 		{
 			PauseHandle = FCoreDelegates::ApplicationWillEnterBackgroundDelegate.AddRaw(this, &FWindowsMixedRealityHMD::AppServicePause);
 		}
-
-		if (!ResumeHandle.IsValid())
-		{
-			ResumeHandle = FCoreDelegates::ApplicationHasEnteredForegroundDelegate.AddRaw(this, &FWindowsMixedRealityHMD::AppServiceResume);
-		}
 #endif
 	}
 
 	// Prevent crashes if computer goes to sleep.
 	void FWindowsMixedRealityHMD::AppServicePause()
 	{
-		// We support sleep on hololens.
-#if !PLATFORM_HOLOLENS
 		this->bRequestRestart = true;
-#endif
-	}
-
-	void FWindowsMixedRealityHMD::AppServiceResume()
-	{
-		StartSpeechRecognition();
 	}
 
 	void CallSpeechCallback(FKey InKey, FName InActionName)
@@ -2247,7 +1675,7 @@ namespace WindowsMixedReality
 		//remove keys from "speech" namespace
 		EKeys::RemoveKeysWithCategory(FInputActionSpeechMapping::GetKeyCategory());
 #endif
-	}
+	}	   
 
 	bool WindowsMixedReality::FWindowsMixedRealityHMD::IsAvailable()
 	{
@@ -2264,7 +1692,7 @@ namespace WindowsMixedReality
 #if WITH_WINDOWS_MIXED_REALITY
 		if (mCustomPresent == nullptr)
 		{
-			mCustomPresent = new FWindowsMixedRealityCustomPresent(HMD, D3D11Device, bIsMobileMultiViewEnabled);
+			mCustomPresent = new FWindowsMixedRealityCustomPresent(HMD, D3D11Device);
 		}
 #endif
 	}
@@ -2299,16 +1727,7 @@ namespace WindowsMixedReality
 
 	HMDTrackingStatus FWindowsMixedRealityHMD::GetControllerTrackingStatus(HMDHand hand)
 	{
-#if WITH_INPUT_SIMULATION
-		if (auto* InputSim = UWindowsMixedRealityInputSimulationEngineSubsystem::GetInputSimulationIfEnabled())
-		{
-			return (HMDTrackingStatus)InputSim->GetControllerTrackingStatus((EControllerHand)hand);
-		}
-		else
-#endif
-		{
-			return HMD->GetControllerTrackingStatus(hand);
-		}
+		return HMD->GetControllerTrackingStatus(hand);
 	}
 
 	// GetControllerOrientationAndPosition() is pre-scaled to UE4 world scale
@@ -2343,7 +1762,7 @@ namespace WindowsMixedReality
 	}
 
 	// GetHandJointOrientationAndPosition() is NOT scaled to UE4 world scale, so we must do it here
-	bool FWindowsMixedRealityHMD::GetHandJointOrientationAndPosition(HMDHand hand, HMDHandJoint joint, FRotator& OutOrientation, FVector& OutPosition, float& OutRadius)
+	bool FWindowsMixedRealityHMD::GetHandJointOrientationAndPosition(HMDHand hand, HMDHandJoint joint, FRotator& OutOrientation, FVector& OutPosition)
 	{
 		if (!bIsStereoEnabled)
 		{
@@ -2352,14 +1771,12 @@ namespace WindowsMixedReality
 
 		DirectX::XMFLOAT4 rot;
 		DirectX::XMFLOAT3 pos;
-		float radius;
-		if (HMD->GetHandJointOrientationAndPosition(hand, joint, rot, pos, radius))
+		if (HMD->GetHandJointOrientationAndPosition(hand, joint, rot, pos))
 		{
 			FTransform TrackingSpaceTransform(WMRUtility::FromMixedRealityQuaternion(rot), WMRUtility::FromMixedRealityVector(pos) * GetWorldToMetersScale());
 
 			OutOrientation = FRotator(TrackingSpaceTransform.GetRotation());
 			OutPosition = TrackingSpaceTransform.GetLocation();
-			OutRadius = radius * GetWorldToMetersScale();
 
 			return true;
 		}
@@ -2389,23 +1806,9 @@ namespace WindowsMixedReality
 		return true;
 	}
 
-	HMDInputPressState WindowsMixedReality::FWindowsMixedRealityHMD::GetPressState(HMDHand hand, HMDInputControllerButtons button, bool onlyRegisterClicks)
+	HMDInputPressState WindowsMixedReality::FWindowsMixedRealityHMD::GetPressState(HMDHand hand, HMDInputControllerButtons button)
 	{
-#if WITH_INPUT_SIMULATION
-		if (auto* InputSim = UWindowsMixedRealityInputSimulationEngineSubsystem::GetInputSimulationIfEnabled())
-		{
-			bool IsPressed;
-			if (InputSim->GetPressState((EControllerHand)hand, (EHMDInputControllerButtons)button, onlyRegisterClicks, IsPressed))
-			{
-				return IsPressed ? HMDInputPressState::Pressed : HMDInputPressState::Released;
-			}
-			return HMDInputPressState::NotApplicable;
-		}
-		else
-#endif
-		{
-			return HMD->GetPressState(hand, button, onlyRegisterClicks);
-		}
+		return HMD->GetPressState(hand, button);
 	}
 
 	float FWindowsMixedRealityHMD::GetAxisPosition(HMDHand hand, HMDInputControllerAxes axis)
@@ -2417,7 +1820,7 @@ namespace WindowsMixedReality
 	{
 		HMD->SubmitHapticValue(hand, FMath::Clamp(value, 0.f, 1.f));
 	}
-
+	
 	bool FWindowsMixedRealityHMD::QueryCoordinateSystem(ABI::Windows::Perception::Spatial::ISpatialCoordinateSystem *& pCoordinateSystem, WindowsMixedReality::HMDTrackingOrigin& trackingOrigin)
 	{
 		return HMD->QueryCoordinateSystem(pCoordinateSystem, trackingOrigin);
@@ -2428,53 +1831,23 @@ namespace WindowsMixedReality
 		return HMD->IsTrackingAvailable();
 	}
 
-	bool FWindowsMixedRealityHMD::IsTracking(int32 DeviceId)
-	{
-		if (DeviceId == IXRTrackingSystem::HMDDeviceId)
-		{
-			return IsTrackingAvailable();
-		}
-		return FXRTrackingSystemBase::IsTracking(DeviceId);
-	}
-
-
 	void FWindowsMixedRealityHMD::GetPointerPose(EControllerHand hand, PointerPoseInfo& pi)
 	{
-#if WITH_INPUT_SIMULATION
-		if (auto* InputSim = UWindowsMixedRealityInputSimulationEngineSubsystem::GetInputSimulationIfEnabled())
-		{
-			FWindowsMixedRealityInputSimulationPointerPose InputSimPointerPose;
-			if (InputSim->GetHandPointerPose(hand, InputSimPointerPose))
-			{
-				FVector pos = InputSimPointerPose.Origin;
-				FVector dir = InputSimPointerPose.Direction;
-				FVector up = InputSimPointerPose.Up;
-				FQuat rot = InputSimPointerPose.Orientation;
-				pi.origin = DirectX::XMFLOAT3(pos.X, pos.Y, pos.Z);
-				pi.orientation = DirectX::XMFLOAT4(rot.X, rot.Y, rot.Z, rot.W);
-				pi.up = DirectX::XMFLOAT3(up.X, up.Y, up.Z);
-				pi.direction = DirectX::XMFLOAT3(dir.X, dir.Y, dir.Z);
-			}
-		}
-		else
-#endif
-		{
-			HMD->GetPointerPose((HMDHand)hand, pi);
+		HMD->GetPointerPose((HMDHand)hand, pi);
 
-			FTransform TrackingSpaceTransformOrigin(WMRUtility::FromMixedRealityQuaternion(pi.orientation), WMRUtility::FromMixedRealityVector(pi.origin) * GetWorldToMetersScale());
+		FTransform TrackingSpaceTransformOrigin(WMRUtility::FromMixedRealityQuaternion(pi.orientation), WMRUtility::FromMixedRealityVector(pi.origin) * GetWorldToMetersScale());
 
-			FTransform tOrigin = (TrackingSpaceTransformOrigin * CachedTrackingToWorld);
-			FVector pos = tOrigin.GetLocation();
-			FQuat rot = tOrigin.GetRotation();
+		FTransform tOrigin = (TrackingSpaceTransformOrigin * CachedTrackingToWorld);
+		FVector pos = tOrigin.GetLocation();
+		FQuat rot = tOrigin.GetRotation();
 
-			FVector up = CachedTrackingToWorld.GetRotation() * WMRUtility::FromMixedRealityVector(pi.up);
-			FVector dir = CachedTrackingToWorld.GetRotation() * WMRUtility::FromMixedRealityVector(pi.direction);
+		FVector up = CachedTrackingToWorld.GetRotation() * WMRUtility::FromMixedRealityVector(pi.up);
+		FVector dir = CachedTrackingToWorld.GetRotation() * WMRUtility::FromMixedRealityVector(pi.direction);
 
-			pi.origin = DirectX::XMFLOAT3(pos.X, pos.Y, pos.Z);
-			pi.orientation = DirectX::XMFLOAT4(rot.X, rot.Y, rot.Z, rot.W);
-			pi.up = DirectX::XMFLOAT3(up.X, up.Y, up.Z);
-			pi.direction = DirectX::XMFLOAT3(dir.X, dir.Y, dir.Z);
-		}
+		pi.origin = DirectX::XMFLOAT3(pos.X, pos.Y, pos.Z);
+		pi.orientation = DirectX::XMFLOAT4(rot.X, rot.Y, rot.Z, rot.W);
+		pi.up = DirectX::XMFLOAT3(up.X, up.Y, up.Z);
+		pi.direction = DirectX::XMFLOAT3(dir.X, dir.Y, dir.Z);
 	}
 
 #endif
@@ -2487,83 +1860,34 @@ namespace WindowsMixedReality
 		}
 	}
 
-	EXRDeviceConnectionResult::Type FWindowsMixedRealityHMD::ConnectRemoteXRDevice(const FString& IpAddress, const int32 BitRate)
-	{
-		//call back out into the function used by the editor for IP parsing
-		UE_LOG(LogWmrHmd, Log, TEXT("Connecting to remote HoloLens: %s"), *IpAddress);
-
-		return WindowsMixedReality::FWindowsMixedRealityStatics::ConnectToRemoteHoloLens(IpAddress, BitRate, false);
-	}
-	
-	void FWindowsMixedRealityHMD::DisconnectRemoteXRDevice()
-	{
-		UE_LOG(LogWmrHmd, Log, TEXT("Disconnecting from remote HoloLens"));
-		WindowsMixedReality::FWindowsMixedRealityStatics::DisconnectFromRemoteHoloLens();
-	}
-
-
 	// Remoting
-	EXRDeviceConnectionResult::Type FWindowsMixedRealityHMD::ConnectToRemoteHoloLens(const wchar_t* ip, unsigned int bitrate, bool isHoloLens1, unsigned int Port, bool listen)
+	void FWindowsMixedRealityHMD::ConnectToRemoteHoloLens(const wchar_t* ip, unsigned int bitrate, bool isHoloLens1)
 	{
-		EXRDeviceConnectionResult::Type Result = EXRDeviceConnectionResult::Success;
-
+#if WITH_EDITOR
 		D3D11Device = InternalGetD3D11Device();
 
-#  if WITH_WINDOWS_MIXED_REALITY
-		RemotingDesc.ip = ip;
-		RemotingDesc.bitrate = bitrate;
-		RemotingDesc.isHoloLens1 = isHoloLens1;
-		RemotingDesc.port = Port;
-		RemotingDesc.listen = listen;
-		isRemotingReconnecting = !WITH_EDITOR && listen != 0 && !isHoloLens1;
+#if WITH_WINDOWS_MIXED_REALITY
 		HMD->SetLogCallback(WindowsMixedRealityHMD::LogForInterop);
-		HMD->ConnectToRemoteHoloLens(D3D11Device.GetReference(), ip, bitrate, isHoloLens1, Port, listen);
-#  else
-		UE_LOG(LogWmrHmd, Log, TEXT("FWindowsMixedRealityHMD::ConnectToRemoteHoloLens() is doing nothing because !WITH_WINDOWS_MIXED_REALITY."));
-#  endif
-
-		TWeakPtr<SViewport> ActiveViewport;
-#if WITH_EDITOR
-		UEditorEngine* EditorEngine = Cast<UEditorEngine>(GEngine);
-		if (EditorEngine)
-		{
-			FSceneViewport* PIEViewport = (FSceneViewport*)EditorEngine->GetPIEViewport();
-			if (PIEViewport)
-			{
-				TWeakPtr<SViewport> PIEViewportWidget = PIEViewport->GetViewportWidget();
-				if (PIEViewportWidget.IsValid() && PIEViewportWidget.Pin()->IsStereoRenderingAllowed())
-				{
-					ActiveViewport = PIEViewport->GetViewportWidget();
-				}
-			}
-		}
-		else
+		HMD->ConnectToRemoteHoloLens(D3D11Device.GetReference(), ip, bitrate, isHoloLens1);
 #endif
-		{
-			ActiveViewport = GEngine->GetGameViewportWidget();
-		}
-
-		if (ActiveViewport.IsValid())
-		{
-			ActiveViewport.Pin()->EnableStereoRendering(true);
-			EnableStereo(true);
-		}
-		else
-		{
-			Result = EXRDeviceConnectionResult::NoValidViewport;
-		}
-
-		return Result;
+#endif
 	}
 
 	void FWindowsMixedRealityHMD::DisconnectFromRemoteHoloLens()
 	{
+#if WITH_EDITOR
 #if WITH_WINDOWS_MIXED_REALITY
-		isRemotingReconnecting = false;
 		HMD->DisconnectFromDevice();
 		HMD->SetLogCallback(nullptr);
-
-		EnableStereo(false);
+		
+		// Close PIE if it's running:
+		UEditorEngine* EditorEngine = CastChecked<UEditorEngine>(GEngine);
+		FSceneViewport* PIEViewport = (FSceneViewport*)EditorEngine->GetPIEViewport();
+		if (PIEViewport != NULL && PIEViewport->FindWindow() != NULL)
+		{
+			PIEViewport->FindWindow()->RequestDestroyWindow();
+		}
+#endif
 #endif
 	}
 

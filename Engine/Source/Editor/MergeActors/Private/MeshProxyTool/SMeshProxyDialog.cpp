@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MeshProxyTool/SMeshProxyDialog.h"
 #include "Editor.h"
@@ -536,7 +536,7 @@ int32 SThirdPartyMeshProxyDialog::FindTextureResolutionEntryIndex(int32 InResolu
 
 FText SThirdPartyMeshProxyDialog::GetPropertyToolTipText(const FName& PropertyName) const
 {
-	FProperty* Property = FMeshProxySettings::StaticStruct()->FindPropertyByName(PropertyName);
+	UProperty* Property = FMeshProxySettings::StaticStruct()->FindPropertyByName(PropertyName);
 	if (Property)
 	{
 		return Property->GetToolTipText();

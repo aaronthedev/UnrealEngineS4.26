@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,7 +18,8 @@ public:
 	virtual void SetCanCancel(const TAttribute<bool>& InCanCancel) override;
 	virtual void SetKeepOpenOnSuccess(const TAttribute<bool>& InKeepOpenOnSuccess) override;
 	virtual void SetKeepOpenOnFailure(const TAttribute<bool>& InKeepOpenOnFailure) override;
-	virtual EAsyncTaskNotificationPromptAction GetPromptAction() const override;
+	virtual bool ShouldCancel() const override;
+
 private:
 	//~ FCoreAsyncTaskNotificationImpl
 	virtual void UpdateNotification() override;

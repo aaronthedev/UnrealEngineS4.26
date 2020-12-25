@@ -1,52 +1,35 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PicpProjectionMPCDIPolicyFactory.h"
 #include "PicpProjectionMPCDIPolicy.h"
-
-#include "../Mesh/PicpProjectionMeshPolicy.h"
 
 #include "PicpProjectionLog.h"
 #include "PicpProjectionStrings.h"
 
 
-TArray<TSharedPtr<FPicpProjectionPolicyBase>> FPicpProjectionMPCDIPolicyFactory::GetPicpPolicy()
+FPicpProjectionMPCDIPolicyFactory::FPicpProjectionMPCDIPolicyFactory()
 {
-	return PicpPolicy;
 }
 
-TSharedPtr<FPicpProjectionPolicyBase> FPicpProjectionMPCDIPolicyFactory::GetPicpPolicyByViewport(const FString& ViewportId)
+FPicpProjectionMPCDIPolicyFactory::~FPicpProjectionMPCDIPolicyFactory()
 {
-	for (auto& It : PicpPolicy)
-	{
-		if (!ViewportId.Compare(It->GetViewportId(), ESearchCase::IgnoreCase))
-		{
-			return It;
-		}
-	}
-
-	return nullptr;
 }
+
 
 //////////////////////////////////////////////////////////////////////////////////////////////
 // IDisplayClusterProjectionPolicyFactory
 //////////////////////////////////////////////////////////////////////////////////////////////
-TSharedPtr<IDisplayClusterProjectionPolicy> FPicpProjectionMPCDIPolicyFactory::Create(const FString& PolicyType, const FString& RHIName, const FString& ViewportId, const TMap<FString, FString>& Parameters)
+TSharedPtr<IDisplayClusterProjectionPolicy> FPicpProjectionMPCDIPolicyFactory::Create(const FString& PolicyType, const FString& RHIName, const FString& ViewportId)
 {
-	UE_LOG(LogPicpProjectionMPCDI, Log, TEXT("Instantiating projection policy <%s>..."), *PolicyType);
-
-	if(!PolicyType.Compare(PicpProjectionStrings::projection::PicpMPCDI,ESearchCase::IgnoreCase))
+	//if (RHIName.Compare(PicpProjectionStrings::rhi::D3D11, ESearchCase::IgnoreCase) == 0)
 	{
-		TSharedPtr<FPicpProjectionPolicyBase> Result = MakeShared<FPicpProjectionMPCDIPolicy>(ViewportId, Parameters);
-		PicpPolicy.Add(Result);
-		return StaticCastSharedPtr<IDisplayClusterProjectionPolicy>(Result);
+		UE_LOG(LogPicpProjectionMPCDI, Log, TEXT("Instantiating projection policy <%s>..."), *PolicyType);
+		TSharedPtr<IDisplayClusterProjectionPolicy> Result = MakeShareable(new FPicpProjectionMPCDIPolicy(ViewportId));
+		MPCDIPolicy.Add(Result);
+		return Result;
 	}
 
-	if (!PolicyType.Compare(PicpProjectionStrings::projection::PicpMesh, ESearchCase::IgnoreCase))
-	{
-		TSharedPtr<FPicpProjectionPolicyBase> Result = MakeShared<FPicpProjectionMeshPolicy>(ViewportId, Parameters);
-		PicpPolicy.Add(Result);
-		return StaticCastSharedPtr<IDisplayClusterProjectionPolicy>(Result);
-	}
-
-	return nullptr;
+	//UE_LOG(LogPicpProjectionMPCDI, Warning, TEXT("There is no implementation of '%s' projection policy for RHI %s"), *PolicyType, *RHIName);
+	
+	//return nullptr;
 }

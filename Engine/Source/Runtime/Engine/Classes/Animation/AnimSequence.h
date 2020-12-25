@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -16,12 +16,10 @@
 #include "Animation/AnimCurveTypes.h"
 #include "Animation/AnimSequenceBase.h"
 #include "Animation/AnimCompressionTypes.h"
-#include "CustomAttributes.h"
-#include "Containers/ArrayView.h"
-#include "Animation/CustomAttributes.h"
 
 #include "AnimSequence.generated.h"
 
+#define USE_SEGMENTING_CONTEXT 0 // Uses segmenting in anim compression + context in decompression
 
 typedef TArray<FTransform> FTransformArrayA2;
 
@@ -196,6 +194,8 @@ struct ENGINE_API FRequestAnimCompressionParams
 	void InitFrameStrippingFromPlatform(const class ITargetPlatform* TargetPlatform);
 };
 
+FArchive& operator<<(FArchive& Ar, FCompressedOffsetData& D);
+
 UCLASS(config=Engine, hidecategories=(UObject, Length), BlueprintType)
 class ENGINE_API UAnimSequence : public UAnimSequenceBase
 {
@@ -251,6 +251,12 @@ public:
 
 #if WITH_EDITORONLY_DATA
 	/**
+	 * The compression scheme that was most recently used to compress this animation.
+	 */
+	UPROPERTY(Category=Compression, VisibleAnywhere)
+	class UAnimCompress* CompressionScheme;
+
+	/**
 	 * Allow frame stripping to be performed on this animation if the platform requests it
 	 * Can be disabled if animation has high frequency movements that are being lost.
 	 */
@@ -264,14 +270,11 @@ public:
 	 */
 	UPROPERTY(Category = Compression, EditAnywhere)
 	float CompressionErrorThresholdScale;
+
 #endif
 
-	/** The bone compression settings used to compress bones in this sequence. */
-	UPROPERTY(Category = Compression, EditAnywhere, meta = (ForceShowEngineContent))
-	class UAnimBoneCompressionSettings* BoneCompressionSettings;
-
 	/** The curve compression settings used to compress curves in this sequence. */
-	UPROPERTY(Category = Compression, EditAnywhere, meta = (ForceShowEngineContent))
+	UPROPERTY(Category=Compression, EditAnywhere)
 	class UAnimCurveCompressionSettings* CurveCompressionSettings;
 
 	FCompressedAnimSequence CompressedData;
@@ -425,7 +428,16 @@ public:
 	FTransform ExtractRootTrackTransform(float Pos, const FBoneContainer * RequiredBones) const;
 
 	// Begin Transform related functions 
-	virtual void GetAnimationPose(FAnimationPoseData& OutAnimationPoseData, const FAnimExtractContext& ExtractionContext) const override;
+
+	/**
+	* Get Bone Transform of the Time given, relative to Parent for all RequiredBones
+	* This returns different transform based on additive or not. Or what kind of additive.
+	*
+	* @param	OutPose				[out] Pose object to fill
+	* @param	OutCurve			[out] Curves to fill
+	* @param	ExtractionContext	Extraction Context (position, looping, root motion, etc.)
+	*/
+	virtual void GetAnimationPose(FCompactPose& OutPose, FBlendedCurve& OutCurve, const FAnimExtractContext& ExtractionContext) const override;
 
 	/**
 	* Get Bone Transform of the animation for the Time given, relative to Parent for all RequiredBones
@@ -435,17 +447,7 @@ public:
 	* @param	ExtractionContext	Extraction Context (position, looping, root motion, etc.)
 	* @param	bForceUseRawData	Override other settings and force raw data pose extraction
 	*/
-	UE_DEPRECATED(4.26, "Use other GetBonePose signature")
 	void GetBonePose(FCompactPose& OutPose, FBlendedCurve& OutCurve, const FAnimExtractContext& ExtractionContext, bool bForceUseRawData=false) const;
-	
-	/**
-	* Get Bone Transform of the Time given, relative to Parent for all RequiredBones
-	* This returns different transform based on additive or not. Or what kind of additive.
-	*
-	* @param	OutAnimationPoseData  [out] Animation Pose related data to populate
-	* @param	ExtractionContext	  Extraction Context (position, looping, root motion, etc.)
-	*/
-	void GetBonePose(struct FAnimationPoseData& OutAnimationPoseData, const FAnimExtractContext& ExtractionContext, bool bForceUseRawData = false) const;
 
 	const TArray<FRawAnimSequenceTrack>& GetRawAnimationData() const { return RawAnimationData; }
 
@@ -457,6 +459,9 @@ public:
 	
 	// Adds a new track (if no track of the supplied name is found) to the raw animation data, optionally setting it to TrackData.
 	int32 AddNewRawTrack(FName TrackName, FRawAnimSequenceTrack* TrackData = nullptr);
+
+	// Get the Alternate compression error threshold 
+	float GetAltCompressionErrorThreshold() const;
 #endif
 
 	const TArray<FTrackToSkeletonMap>& GetRawTrackToSkeletonMapTable() const { return TrackToSkeletonMapTable; }
@@ -485,9 +490,7 @@ public:
 	* @param	OutCurve			[out] Curves to fill	
 	* @param	ExtractionContext	Extraction Context (position, looping, root motion, etc.)
 	*/
-	UE_DEPRECATED(4.26, "Use other GetBonePose_Additive signature")
 	void GetBonePose_Additive(FCompactPose& OutPose, FBlendedCurve& OutCurve, const FAnimExtractContext& ExtractionContext) const;
-	void GetBonePose_Additive(FAnimationPoseData& OutAnimationPoseData, const FAnimExtractContext& ExtractionContext) const;
 
 	/**
 	* Get Bone Transform of the base (reference) pose of the additive animation for the Time given, relative to Parent for all RequiredBones
@@ -496,9 +499,7 @@ public:
 	* @param	OutCurve			[out] Curves to fill	
 	* @param	ExtractionContext	Extraction Context (position, looping, root motion, etc.)
 	*/
-	UE_DEPRECATED(4.26, "Use other GetAdditiveBasePose signature")
 	void GetAdditiveBasePose(FCompactPose& OutPose, FBlendedCurve& OutCurve, const FAnimExtractContext& ExtractionContext) const;
-	void GetAdditiveBasePose(FAnimationPoseData& OutAnimationPoseData, const FAnimExtractContext& ExtractionContext) const;
 
 	/**
 	 * Get Bone Transform of the Time given, relative to Parent for the Track Given
@@ -564,6 +565,9 @@ public:
 	 */
 	int32 GetApproxCompressedSize() const;
 
+	// Initialize curve compression settings, does nothing if scheme already valid
+	void InitCurveCompressionScheme();
+
 	/**
 	 * Removes trivial frames -- frames of tracks when position or orientation is constant
 	 * over the entire animation -- from the raw animation data.  If both position and rotation
@@ -581,25 +585,10 @@ public:
 	bool CompressRawAnimData();
 
 	// Get compressed data for this UAnimSequence. May be built directly or pulled from DDC
-#if WITH_EDITOR
-	bool ShouldPerformStripping(const bool bPerformFrameStripping, const bool bPerformStrippingOnOddFramedAnims) const;
-	FString GetDDCCacheKeySuffix(const bool bPerformStripping) const;
-	void ApplyCompressedData(const FString& DataCacheKeySuffix, const bool bPerformFrameStripping, const TArray<uint8>& Data);
-#endif
-	void WaitOnExistingCompression(const bool bWantResults=true);
 	void RequestAnimCompression(FRequestAnimCompressionParams Params);
 	void RequestSyncAnimRecompression(bool bOutput = false) { RequestAnimCompression(FRequestAnimCompressionParams(false, false, bOutput)); }
-	void RequestAsyncAnimRecompression(bool bOutput = false) { RequestAnimCompression(FRequestAnimCompressionParams(true, false, bOutput)); }
-
-protected:
-	void ApplyCompressedData(const TArray<uint8>& Data);
-
-public:
 	bool IsCompressedDataValid() const;
 	bool IsCurveCompressedDataValid() const;
-
-	void ClearCompressedBoneData();
-	void ClearCompressedCurveData();
 
 	// Write the compressed data to the supplied FArchive
 	void SerializeCompressedData(FArchive& Ar, bool bDDCData);
@@ -689,21 +678,10 @@ public:
 	 * Return true if it contains transform curves
 	 */
 	bool DoesContainTransformCurves() const;
-
-	/**
-	 * Returns whether this animation has baked transform curves (i.e. has the raw data been modified)
-	 */
-	bool HasBakedTransformCurves() const;
-
-	/**
-	 * Restore the pre baked transform curve raw data
-	 */
-	void RestoreSourceData();
-
 	/**
 	* Return true if compressed data is out of date / missing and so animation needs to use raw data
 	*/
-	bool DoesNeedRecompress() const { return GetSkeleton() && (bUseRawDataOnly || (GetSkeletonVirtualBoneGuid() != GetSkeleton()->GetVirtualBoneGuid()) || !HasValidBakedCustomAttributes()); }
+	bool DoesNeedRecompress() const { return GetSkeleton() && (bUseRawDataOnly || (GetSkeletonVirtualBoneGuid() != GetSkeleton()->GetVirtualBoneGuid())); }
 
 	/**
 	 * Create Animation Sequence from Reference Pose of the Mesh
@@ -746,7 +724,7 @@ public:
 	virtual bool IsValidToPlay() const override;
 
 	// Get a pointer to the data for a given Anim Notify
-	uint8* FindSyncMarkerPropertyData(int32 SyncMarkerIndex, FArrayProperty*& ArrayProperty);
+	uint8* FindSyncMarkerPropertyData(int32 SyncMarkerIndex, UArrayProperty*& ArrayProperty);
 
 	virtual int32 GetMarkerUpdateCounter() const { return MarkerDataUpdateCounter; }
 #endif
@@ -821,10 +799,7 @@ private:
 	* @param	OutCurve			[out] Curves to fill	
 	* @param	ExtractionContext	Extraction Context (position, looping, root motion, etc.)
 	*/
-	UE_DEPRECATED(4.26, "Use GetBonePose_AdditiveMeshRotationOnly with other signature")
 	void GetBonePose_AdditiveMeshRotationOnly(FCompactPose& OutPose, FBlendedCurve& OutCurve, const FAnimExtractContext& ExtractionContext) const;
-
-	void GetBonePose_AdditiveMeshRotationOnly(FAnimationPoseData& OutAnimationPoseData, const FAnimExtractContext& ExtractionContext) const;
 
 #if WITH_EDITOR
 	/**
@@ -838,7 +813,7 @@ private:
 
 	/** Retargeting functions */
 	bool ConvertAnimationDataToRiggingData(FAnimSequenceTrackContainer & RiggingAnimationData);
-	bool ConvertRiggingDataToAnimationData(FAnimSequenceTrackContainer & RiggingAnimationData, bool bPerformPostProcess=true);
+	bool ConvertRiggingDataToAnimationData(FAnimSequenceTrackContainer & RiggingAnimationData);
 	int32 GetSpaceBasedAnimationData(TArray< TArray<FTransform> > & AnimationDataInComponentSpace, FAnimSequenceTrackContainer * RiggingAnimationData) const;
 
 	/** Verify Track Map is valid, if not, fix up */
@@ -858,11 +833,6 @@ private:
 	 */
 	int32 InsertTrack(const FName& BoneName);
 
-private:
-	/** Internal insert function to be used by BakeTrackCurvesToRawAnimation*/ 
-	int32 InsertTrackInternal(const FName& BoneName);
-
-public:
 	/**
 	 * Utility function to resize the sequence
 	 * It rearranges curve data + notifies
@@ -880,113 +850,13 @@ public:
 	// Should we be always using our raw data (i.e is our compressed data stale)
 	bool bUseRawDataOnly;
 
-#if WITH_EDITOR
+public:
 	// Are we currently compressing this animation
 	bool bCompressionInProgress;
-#endif
 
-public:
-#if WITH_EDITOR
-	UFUNCTION(BlueprintCallable, Category=CustomAttributes)
-	void AddBoneFloatCustomAttribute(const FName& BoneName, const FName& AttributeName, const TArray<float>& TimeKeys, const TArray<float>& ValueKeys)
-	{
-		AddBoneCustomAttribute<float>(BoneName, AttributeName, TimeKeys, ValueKeys);
-	}
-	
-	UFUNCTION(BlueprintCallable, Category = CustomAttributes)
-	void AddBoneIntegerCustomAttribute(const FName& BoneName, const FName& AttributeName, const TArray<float>& TimeKeys, const TArray<int32>& ValueKeys)
-	{
-		AddBoneCustomAttribute<int32>(BoneName, AttributeName, TimeKeys, ValueKeys);
-	}
-
-	UFUNCTION(BlueprintCallable, Category = CustomAttributes)
-	void AddBoneStringCustomAttribute(const FName& BoneName, const FName& AttributeName, const TArray<float>& TimeKeys, const TArray<FString>& ValueKeys)
-	{
-		AddBoneCustomAttribute<FString>(BoneName, AttributeName, TimeKeys, ValueKeys);
-	}
-
-	UFUNCTION(BlueprintCallable, Category = CustomAttributes)
-	void RemoveCustomAttribute(const FName& BoneName, const FName& AttributeName);
-
-	UFUNCTION(BlueprintCallable, Category = CustomAttributes)
-	void RemoveAllCustomAttributesForBone(const FName& BoneName);
-
-	UFUNCTION(BlueprintCallable, Category = CustomAttributes)
-	void RemoveAllCustomAttributes();
-
-	void GetCustomAttributesForBone(const FName& BoneName, TArray<FCustomAttribute>& OutAttributes) const;
-#endif // WITH_EDITOR
-
-	void GetCustomAttributes(FAnimationPoseData& OutAnimationPoseData, const FAnimExtractContext& ExtractionContext, bool bUseRawData) const;
-protected:
-#if WITH_EDITOR
-	template<typename DataType>
-	void AddBoneCustomAttribute(const FName& BoneName, const FName& AttributeName, const TArrayView<const float> TimeKeys, const TArrayView<const DataType> ValueKeys)
-	{
-		ensureMsgf(TimeKeys.Num() == ValueKeys.Num(), TEXT("Time keys do not match value keys"));
-
-		constexpr EVariantTypes VariantType = TVariantTraits<DataType>::GetType();
-		static_assert(VariantType == EVariantTypes::Int32 || VariantType == EVariantTypes::Float || VariantType == EVariantTypes::String, "Unsupported variant (data) type");
-
-		FCustomAttributePerBoneData& PerBoneData = FindOrAddCustomAttributeForBone(BoneName);
-		PerBoneData.BoneTreeIndex = GetSkeleton()->GetReferenceSkeleton().FindBoneIndex(BoneName);
-
-		const bool bAlreadyExists = PerBoneData.Attributes.ContainsByPredicate([AttributeName](FCustomAttribute& Attribute)
-		{
-			return Attribute.Name == AttributeName;
-		});
-
-		if (!bAlreadyExists)
-		{
-			FCustomAttribute& NewAttribute = PerBoneData.Attributes.AddDefaulted_GetRef();
-			NewAttribute.Name = AttributeName;
-			NewAttribute.VariantType = (int32)VariantType;
-
-			NewAttribute.Times = TimeKeys;
-
-			for (const DataType& Value : ValueKeys)
-			{
-				NewAttribute.Values.Add(FVariant(Value));
-			}
-			
-			// Update the Guid used to keep track of raw / baked versions
-			CustomAttributesGuid = FGuid::NewGuid();
-		}
-		else
-		{
-			UE_LOG(LogAnimation, Warning, TEXT("Unable to add Custom Attribute %s to bone %s as it already exist."), *AttributeName.ToString(), *BoneName.ToString());
-		}
-	}
-	
-	void SynchronousCustomAttributesCompression();
-	FCustomAttributePerBoneData& FindOrAddCustomAttributeForBone(const FName& BoneName);
-#endif // WITH_EDITOR
-
-
-private:
-#if WITH_EDITORONLY_DATA
-	UPROPERTY(VisibleAnywhere, EditFixedSize, Category=CustomAttributes)
-	TArray<FCustomAttributePerBoneData> PerBoneCustomAttributeData;
-	
-	UPROPERTY()
-	FGuid CustomAttributesGuid;
-
-	UPROPERTY()
-	FGuid BakedCustomAttributesGuid;
-
-	bool HasValidBakedCustomAttributes() const
-	{
-		// Ensure the raw / baked versions match
-		return CustomAttributesGuid == BakedCustomAttributesGuid;
-	}
-#endif // WITH_EDITOR
-
-	UPROPERTY()
-	TArray<FBakedCustomAttributePerBoneData> BakedPerBoneCustomAttributeData;
-public:
 	friend class UAnimationAsset;
 	friend struct FScopedAnimSequenceRawDataCache;
 	friend class UAnimationBlueprintLibrary;
-	friend class UAnimBoneCompressionSettings;
-	friend class FCustomAttributeCustomization;
 };
+
+

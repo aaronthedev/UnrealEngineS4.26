@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -80,11 +80,6 @@ public:
 	virtual const FString& GetName() const = 0;
 
 	/**
-	 * Return plugin friendly name if available or the same name as GetName() otherwise.
-	 */
-	virtual const FString& GetFriendlyName() const = 0;
-
-	/**
 	 * Get a path to the plugin's descriptor
 	 *
 	 * @return Path to the plugin's descriptor.
@@ -131,7 +126,7 @@ public:
 	 *
 	 * @return True if the plugin is currently enabled by default.
 	 */
-	virtual bool IsEnabledByDefault(bool bAllowEnginePluginsEnabledByDefault) const = 0;
+	virtual bool IsEnabledByDefault() const = 0;
 
 	/**
 	 * Determines if the plugin is should be displayed in-editor for the user to enable/disable freely.
@@ -185,25 +180,12 @@ public:
 	virtual void RefreshPluginsList() = 0;
 
 	/**
-	 * Adds a single plugin to the list of plugins. Faster than refreshing all plugins with RefreshPluginsList() when you only want to add one. Does nothing if already in the list.
-	 * 
-	 * @return True if the plugin was added or already in the list. False if it failed to load.
-	 */
-	virtual bool AddToPluginsList( const FString& PluginFilename ) = 0;
-
-	/**
 	 * Loads all plug-ins
 	 *
 	 * @param	LoadingPhase	Which loading phase we're loading plug-in modules from.  Only modules that are configured to be
 	 *							loaded at the specified loading phase will be loaded during this call.
 	 */
 	virtual bool LoadModulesForEnabledPlugins( const ELoadingPhase::Type LoadingPhase ) = 0;
-
-	/**
-	 * Callback for when modules for when LoadModulesForEnabledPlugins() completes loading for a specific phase.
-	 */
-	DECLARE_EVENT_TwoParams(IPluginManager, FLoadingModulesForPhaseEvent, ELoadingPhase::Type /*LoadingPhase*/, bool /*bSuccess*/);
-	virtual FLoadingModulesForPhaseEvent& OnLoadingPhaseComplete() = 0;
 
 	/**
 	 * Get the localization paths for all enabled plugins.
@@ -223,17 +205,6 @@ public:
 	 */
 	virtual void SetRegisterMountPointDelegate( const FRegisterMountPointDelegate& Delegate ) = 0;
 
-	/** Delegate type for updating the package localization cache.  Used internally by FPackageLocalizationManager code. */
-	DECLARE_DELEGATE( FUpdatePackageLocalizationCacheDelegate );
-
-	/**
-	 * Sets the delegate to call to update the package localization cache.  This is used internally by the plug-in manager system
-	 * and should not be called by you.  This is registered at application startup by FPackageLocalizationManager code in CoreUObject.
-	 *
-	 * @param	Delegate	The delegate to that will be called when plug-in manager needs to update the package localization cache
-	 */
-	virtual void SetUpdatePackageLocalizationCacheDelegate( const FUpdatePackageLocalizationCacheDelegate& Delegate ) = 0;
-
 	/**
 	 * Checks if all the required plug-ins are available. If not, will present an error dialog the first time a plug-in is loaded or this function is called.
 	 *
@@ -245,11 +216,10 @@ public:
 	/** 
 	 * Checks whether modules for the enabled plug-ins are up to date.
 	 *
-	 * @param OutIncompatibleModules Array to receive a list of incompatible module names.
-	 * @param OutIncompatibleEngineModules Array to receive a list of incompatible engine module names.
+	 * @param OutIncompatibleNames	Array to receive a list of incompatible module names.
 	 * @returns true if the enabled plug-in modules are up to date.
 	 */
-	virtual bool CheckModuleCompatibility( TArray<FString>& OutIncompatibleModules, TArray<FString>& OutIncompatibleEngineModules ) = 0;
+	virtual bool CheckModuleCompatibility( TArray<FString>& OutIncompatibleModules ) = 0;
 #endif
 
 	/**
@@ -295,14 +265,8 @@ public:
 	 * 
 	 * @param  ExtraDiscoveryPath	The path you want searched for additional plugins.
 	 * @param  bRefresh				Signals the function to refresh the plugin database after the new path has been added
-	 * @return Whether the plugin search path was modified
 	 */
-	virtual bool AddPluginSearchPath(const FString& ExtraDiscoveryPath, bool bRefresh = true) = 0;
-
-	/**
-	 * Returns the list of extra directories that are recursively searched for plugins (aside from the engine and project plugin directories).
-	 */
-	virtual const TSet<FString>& GetAdditionalPluginSearchPaths() const = 0;
+	virtual void AddPluginSearchPath(const FString& ExtraDiscoveryPath, bool bRefresh = true) = 0;
 
 	/**
 	 * Gets an array of plugins that loaded their own content pak file
@@ -326,12 +290,6 @@ public:
 	 * Marks a newly created plugin as enabled, mounts its content and tries to load its modules
 	 */
 	virtual void MountNewlyCreatedPlugin(const FString& PluginName) = 0;
-
-	/**
-	 * Marks an explicitly loaded plugin as enabled, mounts its content and tries to load its modules.
-	 * These plugins are not loaded implicitly, but instead wait for this function to be called.
-	 */
-	virtual void MountExplicitlyLoadedPlugin(const FString& PluginName) = 0;
 
 	/**
 	* Does a reverse lookup to try to figure out what the UObject package name is for a plugin

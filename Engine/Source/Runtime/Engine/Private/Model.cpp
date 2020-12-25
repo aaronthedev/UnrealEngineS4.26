@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Model.cpp: Unreal model functions
@@ -584,12 +584,6 @@ bool UModel::Modify( bool bAlwaysMarkDirty/*=false*/ )
 	}
 
 	return bSavedToTransactionBuffer;
-}
-
-void UModel::PreEditChange(FProperty*)
-{
-	// Do not call Super! Override PreEditChange to keep the same behavior as the Modify which change the default of `bAlwaysMarkDirty`...
-	Modify(false);
 }
 #endif
 

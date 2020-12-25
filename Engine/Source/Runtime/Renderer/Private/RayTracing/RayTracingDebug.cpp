@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RHI.h"
 #include "ScenePrivate.h"
@@ -25,13 +25,6 @@ static TAutoConsoleVariable<FString> CVarRayTracingDebugMode(
 	TEXT("Sets the ray tracing debug visualization mode (default = None - Driven by viewport menu) .\n")
 	);
 
-TAutoConsoleVariable<int32> CVarRayTracingDebugModeOpaqueOnly(
-	TEXT("r.RayTracing.DebugVisualizationMode.OpaqueOnly"),
-	1,
-	TEXT("Sets whether the view mode rendes opaque objects only (default = 1, render only opaque objects, 0 = render all objects)"),
-	ECVF_RenderThreadSafe
-);
-
 class FRayTracingDebugRGS : public FGlobalShader
 {
 	DECLARE_GLOBAL_SHADER(FRayTracingDebugRGS)
@@ -40,7 +33,6 @@ class FRayTracingDebugRGS : public FGlobalShader
 	BEGIN_SHADER_PARAMETER_STRUCT(FParameters, )
 		SHADER_PARAMETER(uint32, VisualizationMode)
 		SHADER_PARAMETER(int32, ShouldUsePreExposure)
-		SHADER_PARAMETER(int32, OpaqueOnly)
 		SHADER_PARAMETER_SRV(RaytracingAccelerationStructure, TLAS)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, Output)
 		SHADER_PARAMETER_STRUCT_REF(FViewUniformShaderParameters, ViewUniformBuffer)
@@ -58,10 +50,10 @@ void FDeferredShadingSceneRenderer::PrepareRayTracingDebug(const FViewInfo& View
 	// Declare all RayGen shaders that require material closest hit shaders to be bound
 
 	auto RayGenShader = View.ShaderMap->GetShader<FRayTracingDebugRGS>();
-	OutRayGenShaders.Add(RayGenShader.GetRayTracingShader());
+	OutRayGenShaders.Add(RayGenShader->GetRayTracingShader());
 }
 
-void FDeferredShadingSceneRenderer::RenderRayTracingDebug(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureRef SceneColorTexture)
+void FDeferredShadingSceneRenderer::RenderRayTracingDebug(FRHICommandListImmediate& RHICmdList, const FViewInfo& View)
 {
 	static TMap<FName, uint32> RayTracingDebugVisualizationModes;
 	if (RayTracingDebugVisualizationModes.Num() == 0)
@@ -86,8 +78,6 @@ void FDeferredShadingSceneRenderer::RenderRayTracingDebug(FRDGBuilder& GraphBuil
 		RayTracingDebugVisualizationModes.Emplace(FName(*LOCTEXT("HitKind", "HitKind").ToString()),												RAY_TRACING_DEBUG_VIZ_HITKIND);
 		RayTracingDebugVisualizationModes.Emplace(FName(*LOCTEXT("Barycentrics", "Barycentrics").ToString()),									RAY_TRACING_DEBUG_VIZ_BARYCENTRICS);
 		RayTracingDebugVisualizationModes.Emplace(FName(*LOCTEXT("PrimaryRays", "PrimaryRays").ToString()),										RAY_TRACING_DEBUG_VIZ_PRIMARY_RAYS);
-		RayTracingDebugVisualizationModes.Emplace(FName(*LOCTEXT("World Tangent", "World Tangent").ToString()),									RAY_TRACING_DEBUG_VIZ_WORLD_TANGENT);
-		RayTracingDebugVisualizationModes.Emplace(FName(*LOCTEXT("Anisotropy", "Anisotropy").ToString()),										RAY_TRACING_DEBUG_VIZ_ANISOTROPY);
 	}
 
 	uint32 DebugVisualizationMode;
@@ -111,24 +101,30 @@ void FDeferredShadingSceneRenderer::RenderRayTracingDebug(FRDGBuilder& GraphBuil
 
 	if (DebugVisualizationMode == RAY_TRACING_DEBUG_VIZ_BARYCENTRICS)
 	{
-		return RenderRayTracingBarycentrics(GraphBuilder, View, SceneColorTexture);
+		return RenderRayTracingBarycentrics(RHICmdList, View);
 	}
 
+	FRDGBuilder GraphBuilder(RHICmdList);
+	FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
 	if (DebugVisualizationMode == RAY_TRACING_DEBUG_VIZ_PRIMARY_RAYS) 
 	{
 		FRDGTextureRef OutputColor = nullptr;
 		FRDGTextureRef HitDistanceTexture = nullptr;
+		auto SceneColor = GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor());
 
 		RenderRayTracingPrimaryRaysView(
 				GraphBuilder, View, &OutputColor, &HitDistanceTexture, 1, 1, 1,
 			ERayTracingPrimaryRaysFlag::ConsiderSurfaceScatter);
 
-		AddDrawTexturePass(GraphBuilder, View, OutputColor, SceneColorTexture, View.ViewRect.Min, View.ViewRect.Min, View.ViewRect.Size());
+		AddDrawTexturePass(GraphBuilder, View, OutputColor, SceneColor, View.ViewRect.Min, View.ViewRect.Min, View.ViewRect.Size());
+
+		GraphBuilder.Execute();
 		return;
 	}
 
 
-	FGlobalShaderMap* ShaderMap = GetGlobalShaderMap(FeatureLevel);
+
+	TShaderMap<FGlobalShaderType>* ShaderMap = GetGlobalShaderMap(FeatureLevel);
 
 	auto RayGenShader = ShaderMap->GetShader<FRayTracingDebugRGS>();
 
@@ -140,10 +136,9 @@ void FDeferredShadingSceneRenderer::RenderRayTracingDebug(FRDGBuilder& GraphBuil
 
 	RayGenParameters->VisualizationMode = DebugVisualizationMode;
 	RayGenParameters->ShouldUsePreExposure = View.Family->EngineShowFlags.Tonemapper;
-	RayGenParameters->OpaqueOnly = CVarRayTracingDebugModeOpaqueOnly.GetValueOnRenderThread();
 	RayGenParameters->TLAS = RayTracingSceneRHI->GetShaderResourceView();
 	RayGenParameters->ViewUniformBuffer = View.ViewUniformBuffer;
-	RayGenParameters->Output = GraphBuilder.CreateUAV(SceneColorTexture);
+	RayGenParameters->Output = GraphBuilder.CreateUAV(GraphBuilder.RegisterExternalTexture(SceneContext.GetSceneColor()));
 
 	FIntRect ViewRect = View.ViewRect;
 
@@ -151,15 +146,17 @@ void FDeferredShadingSceneRenderer::RenderRayTracingDebug(FRDGBuilder& GraphBuil
 		RDG_EVENT_NAME("RayTracingDebug"),
 		RayGenParameters,
 		ERDGPassFlags::Compute,
-		[this, RayGenParameters, RayGenShader, RayTracingSceneRHI, Pipeline, ViewRect](FRHICommandList& RHICmdList)
+		[this, RayGenParameters, RayGenShader, &SceneContext, RayTracingSceneRHI, Pipeline, ViewRect](FRHICommandList& RHICmdList)
 	{
 		SCOPED_GPU_STAT(RHICmdList, RayTracingDebug);
 
 		FRayTracingShaderBindingsWriter GlobalResources;
 		SetShaderParameters(GlobalResources, RayGenShader, *RayGenParameters);
 
-		RHICmdList.RayTraceDispatch(Pipeline, RayGenShader.GetRayTracingShader(), RayTracingSceneRHI, GlobalResources, ViewRect.Size().X, ViewRect.Size().Y);
+		RHICmdList.RayTraceDispatch(Pipeline, RayGenShader->GetRayTracingShader(), RayTracingSceneRHI, GlobalResources, ViewRect.Size().X, ViewRect.Size().Y);
 	});
+
+	GraphBuilder.Execute();
 }
 
 #undef LOCTEXT_NAMESPACE

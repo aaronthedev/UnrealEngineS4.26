@@ -1,13 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VariableSetHandler.h"
 #include "GameFramework/Actor.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_Variable.h"
 #include "K2Node_VariableSet.h"
-#include "K2Node_Self.h"
 #include "Kismet2/BlueprintEditorUtils.h"
-#include "PushModelHelpers.h"
 
 #include "EdGraphUtilities.h"
 #include "KismetCompiler.h"
@@ -196,29 +194,6 @@ void FKCHandler_VariableSet::Transform(FKismetFunctionContext& Context, UEdGraph
 				NewThenPin->CopyPersistentDataFromOldPin(*OldThenPin);
 				OldThenPin->BreakAllPinLinks();
 				OldThenPin->MakeLinkTo(CallFuncNode->GetExecPin());
-			}
-		}
-
-		if (SetNotify->IsNetProperty())
-		{
-			/**
-			 * This code is for property dirty tracking.
-			 * It works by injecting in extra nodes while compiling that will call UNetPushModelHelpers::MarkPropertyDirtyFromRepIndex.
-			 * See FKCPushModelHelpers::ConstructMarkDirtyNodeForProperty for node generation.
-			 */
-			if (FProperty * Property = SetNotify->GetPropertyForVariable())
-			{
-				if (UEdGraphNode * MarkPropertyDirtyNode = FKCPushModelHelpers::ConstructMarkDirtyNodeForProperty(Context, Property, Node->FindPinChecked(UEdGraphSchema_K2::PN_Self)))
-				{
-					// Hook up our exec pins.
-					UEdGraphPin* OldThenPin = Node->FindPinChecked(UEdGraphSchema_K2::PN_Then);
-					UEdGraphPin* NewThenPin = MarkPropertyDirtyNode->FindPinChecked(UEdGraphSchema_K2::PN_Then);
-					UEdGraphPin* NewInPin = MarkPropertyDirtyNode->FindPinChecked(UEdGraphSchema_K2::PN_Execute);
-
-					NewThenPin->CopyPersistentDataFromOldPin(*OldThenPin);
-					OldThenPin->BreakAllPinLinks();
-					OldThenPin->MakeLinkTo(NewInPin);
-				}
 			}
 		}
 	}

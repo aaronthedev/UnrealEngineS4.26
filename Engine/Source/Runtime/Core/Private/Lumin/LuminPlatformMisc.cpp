@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Lumin/LuminPlatformMisc.h"
 #include "Lumin/LuminLifecycle.h"
@@ -17,6 +17,7 @@
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "Lumin/CAPIShims/LuminAPILifecycle.h"
 #include "Lumin/CAPIShims/LuminAPILogging.h"
 #include "Lumin/CAPIShims/LuminAPILocale.h"
 
@@ -26,7 +27,6 @@ static int32 GBuiltinDisplayHeight = 960;
 
 FString FLuminPlatformMisc::WritableDirPath = "";
 FString FLuminPlatformMisc::PackageDirPath = "";
-FString FLuminPlatformMisc::TempDirPath = "";
 FString FLuminPlatformMisc::PackageName = "";
 FString FLuminPlatformMisc::ComponentName = "";
 bool FLuminPlatformMisc::ApplicationPathsInitialized = false;
@@ -58,12 +58,6 @@ void FLuminPlatformMisc::PlatformPreInit()
 	InitApplicationPaths();
 }
 
-void FLuminPlatformMisc::PlatformInit()
-{
-	// Setup user specified thread affinity if any
-	extern void LuminSetupDefaultThreadAffinity();
-	LuminSetupDefaultThreadAffinity();
-}
 
 // The PhysX Android libraries refer to some Android only utilities.
 // So we reproduce them here as a hack as we build our own PhysX as if it's Android.
@@ -134,11 +128,6 @@ bool FLuminPlatformMisc::GetOverrideResolution(int32 &ResX, int32& ResY)
 	return true;
 }
 
-const TCHAR* FLuminPlatformMisc::GetPlatformFeaturesModuleName()
-{
-	return TEXT("LuminPlatformFeatures");
-}
-
 bool FLuminPlatformMisc::ShouldUseVulkan()
 {
 	bool bUseVulkan = false;
@@ -203,7 +192,7 @@ void FLuminPlatformMisc::LowLevelOutputDebugStringfWithVerbosity(ELogVerbosity::
 // @todo override FOutputDevice and FOutputDeviceError to actually utilize this
 void FLuminPlatformMisc::LocalPrintWithVerbosity(const TCHAR *Message, ELogVerbosity::Type Verbosity)
 {
-#if !UE_BUILD_SHIPPING || USE_LOGGING_IN_SHIPPING
+#if !UE_BUILD_SHIPPING
 	MLLogLevel logLevel = MLLogLevel_Debug;
 	switch (Verbosity)
 	{
@@ -276,12 +265,6 @@ const FString& FLuminPlatformMisc::GetApplicationPackageDirectoryPath()
 {
 	InitApplicationPaths();
 	return PackageDirPath;
-}
-
-const FString& FLuminPlatformMisc::GetApplicationTempDirectoryPath()
-{
-	InitApplicationPaths();
-	return TempDirPath;
 }
 
 const FString& FLuminPlatformMisc::GetApplicationApplicationPackageName()
@@ -366,8 +349,6 @@ void FLuminPlatformMisc::InitApplicationPaths()
 	WritableDirPath.RemoveFromEnd(TEXT("/"));
 	PackageDirPath = FString(ANSI_TO_TCHAR(SelfInfo->package_dir_path));
 	PackageDirPath.RemoveFromEnd(TEXT("/"));
-	TempDirPath = FString(ANSI_TO_TCHAR(SelfInfo->tmp_dir_path));
-	TempDirPath.RemoveFromEnd(TEXT("/"));
 	PackageName = FString(ANSI_TO_TCHAR(SelfInfo->package_name));
 	ComponentName = FString(ANSI_TO_TCHAR(SelfInfo->component_name));
 

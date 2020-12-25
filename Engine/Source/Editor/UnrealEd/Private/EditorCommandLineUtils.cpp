@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EditorCommandLineUtils.h"
 #include "HAL/FileManager.h"
@@ -37,7 +37,7 @@ namespace EditorCommandLineUtilsImpl
 	static const TCHAR* LightmassStatsCommandSwitch = TEXT("LIGHTMASSSTATS");
 
 	static const TCHAR* DiffCommandSwitch  = TEXT("diff");
-	static const FText  DiffCommandHelpTxt = INVTEXT("\
+	static const FText  DiffCommandHelpTxt = LOCTEXT("DiffCommandeHelpText", "\
 Usage: \n\
     -diff [options] left right                                                 \n\
     -diff [options] remote local base result                                   \n\

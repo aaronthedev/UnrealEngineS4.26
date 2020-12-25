@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "DTLSHandlerTypes.h"
-#include "Misc/Timespan.h"
 
 /*
 * Wrapper for a fingerprint (SHA256 hash) of an X509 certificate
@@ -58,10 +57,9 @@ public:
 	/**
 	 * Generate a self-signed certificate
 	 *
-	 * @param Lifetime number of seconds until the certificate should expire
 	 * @return true if creation succeeded
 	 */
-	bool GenerateCertificate(const FTimespan& Lifetime);
+	bool GenerateCertificate();
 
 private:
 	void FreeCertificate();

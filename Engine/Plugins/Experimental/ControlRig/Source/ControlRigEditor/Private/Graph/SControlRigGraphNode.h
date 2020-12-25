@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,11 +6,10 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "SGraphNode.h"
 #include "Widgets/Views/STreeView.h"
-#include "Widgets/Images/SImage.h"
-#include "RigVMModel/RigVMPin.h"
 
 class UControlRigGraphNode;
 class STableViewBase;
+class FControlRigField;
 class SOverlay;
 class SGraphPin;
 class UEdGraphPin;
@@ -30,7 +29,7 @@ public:
 	void Construct(const FArguments& InArgs);
 
 	// SGraphNode interface
-	virtual TSharedRef<SWidget> CreateTitleWidget(TSharedPtr<SNodeTitle> InNodeTitle) override;
+	virtual TSharedRef<SWidget> CreateTitleWidget(TSharedPtr<SNodeTitle> NodeTitle) override;
 	virtual bool UseLowDetailNodeTitles() const override;
 	virtual void EndUserInteraction() const override;
 	virtual void AddPin( const TSharedRef<SGraphPin>& PinToAdd ) override;
@@ -39,14 +38,11 @@ public:
 		TitleAreaWidget = DefaultTitleAreaWidget;
 	}
 	virtual const FSlateBrush * GetNodeBodyBrush() const override;
-	virtual FReply OnMouseButtonDown(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override;
 
 	virtual TSharedRef<SWidget> CreateNodeContentArea() override;
 	virtual TSharedPtr<SGraphPin> GetHoveredPin( const FGeometry& MyGeometry, const FPointerEvent& MouseEvent ) const override;
 	virtual void GetNodeInfoPopups(FNodeInfoContext* Context, TArray<FGraphInformationPopupInfo>& Popups) const override;
-	virtual TArray<FOverlayWidgetInfo> GetOverlayWidgets(bool bSelected, const FVector2D& WidgetSize) const override;
 
-	virtual void RefreshErrorInfo() override;
 	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
 
 private:
@@ -65,38 +61,35 @@ private:
 
 	EVisibility GetOutputTreeVisibility() const;
 
-	TSharedRef<ITableRow> MakeTableRowWidget(URigVMPin* InItem, const TSharedRef<STableViewBase>& OwnerTable);
+	TSharedRef<ITableRow> MakeTableRowWidget(TSharedRef<FControlRigField> InItem, const TSharedRef<STableViewBase>& OwnerTable);
 
-	void HandleGetChildrenForTree(URigVMPin* InItem, TArray<URigVMPin*>& OutChildren);
+	void HandleGetChildrenForTree(TSharedRef<FControlRigField> InItem, TArray<TSharedRef<FControlRigField>>& OutChildren);
 
-	void HandleExpansionChanged(URigVMPin* InItem, bool bExpanded);
-	void HandleExpandRecursively(URigVMPin* InItem, bool bExpanded, TSharedPtr<STreeView<URigVMPin*>>* TreeWidgetPtr);
+	void HandleExpansionChanged(TSharedRef<FControlRigField> InItem, bool bExpanded);
 
 	FText GetPinLabel(TWeakPtr<SGraphPin> GraphPin) const;
 
 	FSlateColor GetPinTextColor(TWeakPtr<SGraphPin> GraphPin) const;
 
-	TSharedRef<SWidget> AddContainerPinContent(URigVMPin* InItem, FText InTooltipText);
+	TSharedRef<SWidget> AddContainerPinContent(TSharedRef<FControlRigField> InItem, FText InTooltipText);
 
-	FReply HandleAddArrayElement(URigVMPin* InItem);
-
-	void HandleNodeTitleDirtied();
+	FReply HandleAddArrayElement(TWeakPtr<FControlRigField> InWeakItem);
 
 private:
 	/** Cached widget title area */
 	TSharedPtr<SOverlay> TitleAreaWidget;
 
 	/** Widget representing collapsible execution pins */
-	TSharedPtr<STreeView<URigVMPin*>> ExecutionTree;
+	TSharedPtr<STreeView<TSharedRef<FControlRigField>>> ExecutionTree;
 
 	/** Widget representing collapsible input pins */
-	TSharedPtr<STreeView<URigVMPin*>> InputTree;
+	TSharedPtr<STreeView<TSharedRef<FControlRigField>>> InputTree;
 
 	/** Widget representing collapsible input-output pins */
-	TSharedPtr<STreeView<URigVMPin*>> InputOutputTree;
+	TSharedPtr<STreeView<TSharedRef<FControlRigField>>> InputOutputTree;
 
 	/** Widget representing collapsible output pins */
-	TSharedPtr<STreeView<URigVMPin*>> OutputTree;
+	TSharedPtr<STreeView<TSharedRef<FControlRigField>>> OutputTree;
 
 	/** Dummy scrollbar, as we cant create a tree view without one! */
 	TSharedPtr<SScrollBar> ScrollBar;
@@ -106,14 +99,4 @@ private:
 
 	/** Map of pin widgets to extra pin widgets */
 	TMap<TSharedRef<SWidget>, TSharedRef<SGraphPin>> ExtraWidgetToPinMap;
-
-	int32 NodeErrorType;
-
-	TSharedPtr<SImage> VisualDebugIndicatorWidget;
-
-	static const FSlateBrush* CachedImg_CR_Pin_Connected;
-	static const FSlateBrush* CachedImg_CR_Pin_Disconnected;
-
-	/** Cache the node title so we can invalidate it */
-	TSharedPtr<SNodeTitle> NodeTitle;
 };

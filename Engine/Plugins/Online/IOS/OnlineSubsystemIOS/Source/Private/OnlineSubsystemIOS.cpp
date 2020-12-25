@@ -1,17 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineSubsystemIOS.h"
 #include "IOS/IOSAppDelegate.h"
 #import "OnlineStoreKitHelper.h"
 #import "OnlineAppStoreUtils.h"
 #include "Misc/ConfigCacheIni.h"
-#include "Stats/Stats.h"
-
-#if (defined(__IPHONE_OS_VERSION_MIN_REQUIRED) && __IPHONE_OS_VERSION_MIN_REQUIRED <= __IPHONE_12_0) || (defined(__TV_OS_VERSION_MIN_REQUIRED) && __TV_OS_VERSION_MIN_REQUIRED <= __TVOS_12_0)
-#define USE_DEPRECATED_PLAYERID 1
-#else
-#define USE_DEPRECATED_PLAYERID 0
-#endif
 
 FOnlineSubsystemIOS::FOnlineSubsystemIOS(FName InInstanceName)
 	: FOnlineSubsystemImpl(IOS_SUBSYSTEM, InInstanceName)
@@ -158,53 +151,48 @@ bool FOnlineSubsystemIOS::Init()
 	
 	if( !IsEnabled() )
 	{
-		UE_LOG_ONLINE(Warning, TEXT("All iOS online features have been disabled in the system settings"));
+		UE_LOG_ONLINE(Warning, TEXT("GameCenter has been disabled in the system settings"));
 		bSuccessfullyStartedUp = false;
 	}
 	else
 	{
 		SessionInterface = MakeShareable(new FOnlineSessionIOS(this));
 		IdentityInterface = MakeShareable(new FOnlineIdentityIOS(this));
-
-		if (IsGameCenterEnabled())
-		{
-			FriendsInterface = MakeShareable(new FOnlineFriendsIOS(this));
-			LeaderboardsInterface = MakeShareable(new FOnlineLeaderboardsIOS(this));
-			AchievementsInterface = MakeShareable(new FOnlineAchievementsIOS(this));
-			ExternalUIInterface = MakeShareable(new FOnlineExternalUIIOS(this));
-			TurnBasedInterface = MakeShareable(new FOnlineTurnBasedIOS());
-		}
-
-		UserCloudInterface = MakeShareable(new FOnlineUserCloudInterfaceIOS());
-		SharedCloudInterface = MakeShareable(new FOnlineSharedCloudInterfaceIOS());
-
-		if (IsInAppPurchasingEnabled())
-		{
-			if (IsV2StoreEnabled())
-			{
-				StoreV2Interface = MakeShareable(new FOnlineStoreIOS(this));
-				PurchaseInterface = MakeShareable(new FOnlinePurchaseIOS(this));
-				InitStoreKitHelper();
-			}
-			else
-			{
-				StoreInterface = MakeShareable(new FOnlineStoreInterfaceIOS());
-			}
-		}
-
-		if (UserCloudInterface && IsCloudKitEnabled())
-		{
-			FString IOSCloudKitSyncStrategy = "";
-			GConfig->GetString(TEXT("/Script/IOSRuntimeSettings.IOSRuntimeSettings"), TEXT("IOSCloudKitSyncStrategy"), IOSCloudKitSyncStrategy, GEngineIni);
-
-			if (!IOSCloudKitSyncStrategy.Equals("None"))
-			{
-				UserCloudInterface->InitCloudSave(IOSCloudKitSyncStrategy.Equals("Always"));
-			}
-		}
-
-		InitAppStoreHelper();
+		FriendsInterface = MakeShareable(new FOnlineFriendsIOS(this));
+		LeaderboardsInterface = MakeShareable(new FOnlineLeaderboardsIOS(this));
+		AchievementsInterface = MakeShareable(new FOnlineAchievementsIOS(this));
+		ExternalUIInterface = MakeShareable(new FOnlineExternalUIIOS(this));
+        TurnBasedInterface = MakeShareable(new FOnlineTurnBasedIOS());
+        UserCloudInterface = MakeShareable(new FOnlineUserCloudInterfaceIOS());
+        SharedCloudInterface = MakeShareable(new FOnlineSharedCloudInterfaceIOS());
 	}
+	
+	if(IsInAppPurchasingEnabled())
+	{
+		if (IsV2StoreEnabled())
+		{
+			StoreV2Interface = MakeShareable(new FOnlineStoreIOS(this));
+			PurchaseInterface = MakeShareable(new FOnlinePurchaseIOS(this));
+			InitStoreKitHelper();
+		}
+		else
+		{
+			StoreInterface = MakeShareable(new FOnlineStoreInterfaceIOS());
+		}
+	}
+
+	if (UserCloudInterface && IsCloudKitEnabled())
+	{
+		FString IOSCloudKitSyncStrategy = "";
+		GConfig->GetString(TEXT("/Script/IOSRuntimeSettings.IOSRuntimeSettings"), TEXT("IOSCloudKitSyncStrategy"), IOSCloudKitSyncStrategy, GEngineIni);
+		
+		if (!IOSCloudKitSyncStrategy.Equals("None"))
+		{
+			UserCloudInterface->InitCloudSave(IOSCloudKitSyncStrategy.Equals("Always"));
+		}
+	}
+	
+	InitAppStoreHelper();
 
 	return bSuccessfullyStartedUp;
 }
@@ -217,15 +205,15 @@ void FOnlineSubsystemIOS::InitStoreKitHelper()
 	// Give each interface a chance to bind to the store kit helper
 	StoreV2Interface->InitStoreKit(StoreHelper);
 	PurchaseInterface->InitStoreKit(StoreHelper);
-
-	// Pump the event queue to handle any events that came in between launch and now.
-	[StoreHelper pumpObserverEventQueue];
+	
+	// Bind the observer after the interfaces have bound their delegates
+	[[SKPaymentQueue defaultQueue] addTransactionObserver:StoreHelper];
 }
 
 void FOnlineSubsystemIOS::CleanupStoreKitHelper()
 {
-	[StoreHelper release];
-	StoreHelper = nil;
+	// @todo MetalMRT: This needs to be analyzed with ASAN - but this pointer is garbage on shutdown...
+	// [StoreHelper release];
 }
 
 void FOnlineSubsystemIOS::InitAppStoreHelper()
@@ -247,8 +235,6 @@ FAppStoreUtils* FOnlineSubsystemIOS::GetAppStoreUtils()
 
 bool FOnlineSubsystemIOS::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FOnlineSubsystemIOS_Tick);
-
 	if (!FOnlineSubsystemImpl::Tick(DeltaTime))
 	{
 		return false;
@@ -340,7 +326,8 @@ bool FOnlineSubsystemIOS::HandlePurchaseExecCommands(UWorld* InWorld, const TCHA
 
 bool FOnlineSubsystemIOS::IsEnabled() const
 {
-	bool bEnableGameCenter = IsGameCenterEnabled();
+	bool bEnableGameCenter = false;
+	GConfig->GetBool(TEXT("/Script/IOSRuntimeSettings.IOSRuntimeSettings"), TEXT("bEnableGameCenterSupport"), bEnableGameCenter, GEngineIni);
 
 	const bool bEnableCloudKit = IsCloudKitEnabled();
 
@@ -348,14 +335,6 @@ bool FOnlineSubsystemIOS::IsEnabled() const
 	const bool bIsEnabledByConfig = FOnlineSubsystemImpl::IsEnabled(); // TODO: Do we want to enable this by this config?
 	
 	return bEnableGameCenter || bEnableCloudKit || bIsInAppPurchasingEnabled || bIsEnabledByConfig;
-}
-
-bool FOnlineSubsystemIOS::IsGameCenterEnabled()
-{
-	bool bEnableGameCenter = false;
-	GConfig->GetBool(TEXT("/Script/IOSRuntimeSettings.IOSRuntimeSettings"), TEXT("bEnableGameCenterSupport"), bEnableGameCenter, GEngineIni);
-
-	return bEnableGameCenter;
 }
 
 bool FOnlineSubsystemIOS::IsCloudKitEnabled()
@@ -383,36 +362,3 @@ bool FOnlineSubsystemIOS::IsInAppPurchasingEnabled()
 	GConfig->GetBool(TEXT("OnlineSubsystemIOS.Store"), TEXT("bSupportInAppPurchasing"), bEnableIAP1, GEngineIni);
 	return bEnableIAP || bEnableIAP1;
 }
-
-NSString* FOnlineSubsystemIOS::GetPlayerId(GKPlayer* Player)
-{
-#if USE_DEPRECATED_PLAYERID
-	if ([GKPlayer respondsToSelector:@selector(gamePlayerID)] == YES)
-	{
-		return Player.gamePlayerID;
-	}
-	else
-	{
-		return Player.playerID;
-	}
-#else
-	return Player.gamePlayerID;
-#endif
-}
-
-NSString* FOnlineSubsystemIOS::GetPlayerId(GKLocalPlayer* Player)
-{
-#if USE_DEPRECATED_PLAYERID
-	if ([GKLocalPlayer respondsToSelector:@selector(gamePlayerID)] == YES)
-	{
-		return Player.gamePlayerID;
-	}
-	else
-	{
-		return Player.playerID;
-	}
-#else
-	return Player.gamePlayerID;
-#endif
-}
-

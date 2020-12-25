@@ -1,9 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "FakeDeviceCallbackRunnable.h"
 #include "CoreGlobals.h"
 #include "HAL/Event.h"
-#include "HAL/PlatformProcess.h"
+#include "GenericPlatform/GenericPlatformProcess.h"
 
 namespace Audio
 {
@@ -24,7 +24,7 @@ namespace Audio
 		{
 			Semaphore->Trigger();
 			Thread->WaitForCompletion();
-			FPlatformProcess::ReturnSynchEventToPool(Semaphore);
+			FGenericPlatformProcess::ReturnSynchEventToPool(Semaphore);
 			Semaphore = nullptr;
 		}
 
@@ -65,7 +65,7 @@ namespace Audio
 	{
 		if (Semaphore == nullptr)
 		{
-			Semaphore = FPlatformProcess::GetSynchEventFromPool();
+			Semaphore = FGenericPlatformProcess::GetSynchEventFromPool();
 			Thread = FRunnableThread::Create(this, TEXT("FakeDeviceCallbackRunnable"), 0, TPri_BelowNormal);
 		}
 

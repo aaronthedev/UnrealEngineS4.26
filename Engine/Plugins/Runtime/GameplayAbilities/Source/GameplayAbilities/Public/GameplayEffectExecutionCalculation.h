@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -319,11 +319,11 @@ public:
 // -------------------------------------------------------------------------
 
 #define DECLARE_ATTRIBUTE_CAPTUREDEF(P) \
-	FProperty* P##Property; \
+	UProperty* P##Property; \
 	FGameplayEffectAttributeCaptureDefinition P##Def; \
 
 #define DEFINE_ATTRIBUTE_CAPTUREDEF(S, P, T, B) \
 { \
-	P##Property = FindFieldChecked<FProperty>(S::StaticClass(), GET_MEMBER_NAME_CHECKED(S, P)); \
+	P##Property = FindFieldChecked<UProperty>(S::StaticClass(), GET_MEMBER_NAME_CHECKED(S, P)); \
 	P##Def = FGameplayEffectAttributeCaptureDefinition(P##Property, EGameplayEffectAttributeCaptureSource::T, B); \
 }

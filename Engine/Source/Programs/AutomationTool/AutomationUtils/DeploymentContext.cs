@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -237,14 +237,12 @@ public class DeploymentContext //: ProjectParams
 	public HashSet<string> RestrictedFolderNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
 	/// <summary>
-	/// List of directories to remap during staging, allowing moving files to different final paths
-	/// This list is read from the +RemapDirectories=(From=, To=) array in the [Staging] section of *Game.ini files
+	/// List of directories to remap during the stage
 	/// </summary>
 	public List<Tuple<StagedDirectoryReference, StagedDirectoryReference>> RemapDirectories = new List<Tuple<StagedDirectoryReference, StagedDirectoryReference>>();
 
 	/// <summary>
-	/// List of directories to allow staging, even if they contain restricted folder names
-	/// This list is read from the +WhitelistDirectories=... array in the [Staging] section of *Game.ini files
+	/// List of directories to allow staging, even if they contain restricted folder names 
 	/// </summary>
 	public List<StagedDirectoryReference> WhitelistDirectories = new List<StagedDirectoryReference>();
 
@@ -341,8 +339,7 @@ public class DeploymentContext //: ProjectParams
 		bool InProgram,
 		bool IsClientInsteadOfNoEditor,
         bool InForceChunkManifests,
-		bool InSeparateDebugStageDirectory,
-		bool bIsDLC
+		bool InSeparateDebugStageDirectory
 		)
 	{
 		bStageCrashReporter = InStageCrashReporter;
@@ -504,10 +501,6 @@ public class DeploymentContext //: ProjectParams
 		if (InForceChunkManifests)
 		{
 			PlatformUsesChunkManifests = true;
-		}
-		else if (bIsDLC)
-		{
-			PlatformUsesChunkManifests = false;
 		}
 		else
 		{
@@ -827,7 +820,7 @@ public class DeploymentContext //: ProjectParams
 		}
 	}
 
-	public int ArchiveFiles(string InPath, string Wildcard = "*", bool bRecursive = true, string[] ExcludeWildcard = null, string NewPath = null, UnrealTargetPlatform[] AdditionalPlatforms = null)
+	public int ArchiveFiles(string InPath, string Wildcard = "*", bool bRecursive = true, string[] ExcludeWildcard = null, string NewPath = null)
 	{
 		int FilesAdded = 0;
 
@@ -864,11 +857,6 @@ public class DeploymentContext //: ProjectParams
 					{
                         if (Plat != StageTargetPlatform.PlatformType)
                         {
-							if (AdditionalPlatforms != null && AdditionalPlatforms.Contains(Plat))
-							{
-								break;
-							}
-
                             var Search = FileToCopy;
                             if (InputFile.IsUnderDirectory(LocalRoot))
                             {

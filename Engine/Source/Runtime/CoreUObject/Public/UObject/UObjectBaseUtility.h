@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	UObjectBaseUtility.h: Unreal UObject functions that only depend on UObjectBase
@@ -324,10 +324,9 @@ public:
 	FString GetPathName( const UObject* StopOuter=NULL ) const;
 
 	/**
-	 * Versions of GetPathName() that eliminates unnecessary copies and allocations.
+	 * Version of GetPathName() that eliminates unnecessary copies.
 	 */
 	void GetPathName(const UObject* StopOuter, FString& ResultString) const;
-	void GetPathName(const UObject* StopOuter, FStringBuilderBase& ResultString) const;
 
 public:
 	/**
@@ -387,7 +386,7 @@ public:
 		return GetFName().ToString();
 	}
 
-	/** Optimized version of GetName that overwrites an existing string */
+	/** Optimized version of GetName that overwries an existing string */
 	FORCEINLINE void GetName(FString &ResultString) const
 	{
 		GetFName().ToString(ResultString);
@@ -400,40 +399,13 @@ public:
 
 
 	/*-------------------
-		Outer & Package
+			Outer
 	-------------------*/
 
-	/**
-	 * Utility function to temporarily detach the object external package, if any
-	 * GetPackage will report the outer's package once detached
-	 */
-	void DetachExternalPackage();
-
-	/**
-	 * Utility function to reattach the object external package, if any
-	 * GetPackage will report the object external package if set after this call
-	 */
-	void ReattachExternalPackage();
-
-	/**
-	 * Walks up the list of outers until it finds the top-level one that isn't a package.
-	 * Will return null if called on a package
-	 * @return outermost non package Outer.
-	 */
-	UObject* GetOutermostObject() const;
-
-	/**
-	 * Walks up the list of outers until it finds a package directly associated with the object.
-	 *
-	 * @return the package the object is in.
-	 */
-	UPackage* GetPackage() const;
-
 	/** 
-	 * Legacy function, has the same behavior as GetPackage
-	 * use GetPackage instead.
-	 * @return the package the object is in.
-	 * @see GetPackage
+	 * Walks up the list of outers until it finds the highest one.
+	 *
+	 * @return outermost non NULL Outer.
 	 */
 	UPackage* GetOutermost() const;
 
@@ -471,23 +443,8 @@ public:
 		return (T *)GetTypedOuter(T::StaticClass());
 	}
 
-	/** 
-	 * Return the dispatch to `IsInOuter` or `IsInPackage` depending on SomeOuter's class. 
-	 * Legacy function, preferably use IsInOuter or IsInPackage depending on use case.
-	 */
+	/** Returns true if the specified object appears somewhere in this object's outer chain. */
 	bool IsIn( const UObject* SomeOuter ) const;
-
-	/** 
-	 * Overload to determine if an object is in the specified package which can now be different than its outer chain.
-	 * Calls IsInPackage.
-	 */
-	bool IsIn(const UPackage* SomePackage) const;
-
-	/** Returns true if the object is contained in the specified outer. */
-	bool IsInOuter(const UObject* SomeOuter) const;
-
-	/** Returns true if the object is contained in the specified package. */
-	bool IsInPackage(const UPackage* SomePackage) const;
 
 	/**
 	 * Find out if this object is inside (has an outer) that is of the specified class
@@ -533,8 +490,8 @@ public:
 		const UClass* ThisClass = GetClass();
 
 		// Stop the compiler doing some unnecessary branching for nullptr checks
-		UE_ASSUME(SomeBaseClass);
-		UE_ASSUME(ThisClass);
+		ASSUME(SomeBaseClass);
+		ASSUME(ThisClass);
 
 		return IsChildOfWorkaround(ThisClass, SomeBaseClass);
 	}
@@ -649,60 +606,6 @@ public:
 	{
 		return GetName() < Other.GetName();
 	}
-
-
-
-	/*******
-	 * Stats
-	 *******/
-#if STATS || ENABLE_STATNAMEDEVENTS_UOBJECT
-	FORCEINLINE void ResetStatID()
-	{
-		GUObjectArray.IndexToObject(InternalIndex)->StatID = TStatId();
-#if ENABLE_STATNAMEDEVENTS_UOBJECT
-		GUObjectArray.IndexToObject(InternalIndex)->StatIDStringStorage = nullptr;
-#endif
-	}
-#endif
-	/**
-	  * Returns the stat ID of the object, used for profiling. This will create a stat ID if needed.
-	  *
-	  * @param bForDeferred If true, a stat ID will be created even if a group is disabled
-	  */
-	FORCEINLINE TStatId GetStatID(bool bForDeferredUse = false) const
-	{
-#if STATS
-		const TStatId& StatID = GUObjectArray.IndexToObject(InternalIndex)->StatID;
-
-		// this is done to avoid even registering stats for a disabled group (unless we plan on using it later)
-		if (bForDeferredUse || FThreadStats::IsCollectingData(GET_STATID(STAT_UObjectsStatGroupTester)))
-		{
-			if (!StatID.IsValidStat())
-			{
-				CreateStatID();
-			}
-			return StatID;
-		}
-#elif ENABLE_STATNAMEDEVENTS_UOBJECT
-		const TStatId& StatID = GUObjectArray.IndexToObject(InternalIndex)->StatID;
-		if (!StatID.IsValidStat() && (bForDeferredUse || GCycleStatsShouldEmitNamedEvents))
-		{
-			CreateStatID();
-		}
-		return StatID;
-#endif // STATS
-		return TStatId(); // not doing stats at the moment, or ever
-	}
-
-private:
-#if STATS || ENABLE_STATNAMEDEVENTS_UOBJECT
-	/** Creates a stat ID for this object */
-	void CreateStatID() const
-	{
-		GUObjectArray.IndexToObject(InternalIndex)->CreateStatID();
-	}
-#endif
-
 };
 
 /** Returns false if this pointer cannot be a valid pointer to a UObject */

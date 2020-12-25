@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VoicePacketSteam.h"
 #include "OnlineSubsystemSteamTypes.h"
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 FVoicePacketSteam::FVoicePacketSteam(const FVoicePacketSteam& Other) :
 	FVoicePacket(Other)
 {
@@ -61,4 +60,6 @@ void FVoicePacketSteam::Serialize(class FArchive& Ar)
 		Ar.Serialize(Buffer.GetData(), Length);
 	}
 }
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
+
+
+

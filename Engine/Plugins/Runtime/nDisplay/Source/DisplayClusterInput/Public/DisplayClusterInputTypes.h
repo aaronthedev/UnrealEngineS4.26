@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,14 +8,14 @@
 #include "DisplayClusterInputTypes.generated.h"
 
 
-// VRPN Keyboard reflection modes
+// Keyboard reflection modes
 UENUM(Blueprintable)
-enum class EDisplayClusterInputKeyboardReflectionMode : uint8
+enum class EDisplayClusterInputKeyboardReflectMode : uint8
 {
-	None     UMETA(DisplayName = "No reflection"),
-	nDisplay UMETA(DisplayName = "nDisplay buttons only"),
-	Core     UMETA(DisplayName = "UE core keyboard events"),
-	All      UMETA(DisplayName = "Both nDisplay and UE4 core")
+	Refl_nDisplay UMETA(DisplayName = "nDisplay buttons only"),
+	Refl_UECore   UMETA(DisplayName = "Native UE4 keyboard events"),
+	Refl_Both     UMETA(DisplayName = "Both nDisplay and UE4 native"),
+	Refl_None     UMETA(DisplayName = "No reflection")
 };
 
 

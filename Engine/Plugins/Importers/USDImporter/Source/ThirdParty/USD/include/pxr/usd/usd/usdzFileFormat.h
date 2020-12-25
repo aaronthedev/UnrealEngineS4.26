@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_USDZ_FILE_FORMAT_H
-#define PXR_USD_USD_USDZ_FILE_FORMAT_H
+#ifndef USD_USDZ_FILE_FORMAT_H
+#define USD_USDZ_FILE_FORMAT_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/usd/api.h"
@@ -34,6 +34,7 @@
 PXR_NAMESPACE_OPEN_SCOPE
 
 TF_DECLARE_WEAK_AND_REF_PTRS(UsdUsdzFileFormat);
+TF_DECLARE_WEAK_PTRS(SdfLayerBase);
 
 #define USD_USDZ_FILE_FORMAT_TOKENS  \
     ((Id,      "usdz"))              \
@@ -52,11 +53,11 @@ public:
     using SdfFileFormat::FileFormatArguments;
 
     USD_API
-    virtual bool IsPackage() const override;
+    virtual bool IsPackage() const;
 
     USD_API
     virtual std::string GetPackageRootLayerPath(
-        const std::string& resolvedPath) const override;
+        const std::string& resolvedPath) const;
 
     USD_API
     virtual SdfAbstractDataRefPtr
@@ -67,25 +68,25 @@ public:
 
     USD_API
     virtual bool Read(
-        SdfLayer* layer,
+        const SdfLayerBasePtr& layerBase,
         const std::string& resolvedPath,
         bool metadataOnly) const override;
 
     USD_API
     virtual bool WriteToFile(
-        const SdfLayer& layer,
+        const SdfLayerBase* layerBase,
         const std::string& filePath,
         const std::string& comment = std::string(),
         const FileFormatArguments& args = FileFormatArguments()) const override;
 
     USD_API
     virtual bool ReadFromString(
-        SdfLayer* layer,
+        const SdfLayerBasePtr& layerBase,
         const std::string& str) const override;
 
     USD_API
     virtual bool WriteToString(
-        const SdfLayer& layer,
+        const SdfLayerBase* layerBase,
         std::string* str,
         const std::string& comment = std::string()) const override;
 
@@ -101,8 +102,10 @@ protected:
 private:
     UsdUsdzFileFormat();
     virtual ~UsdUsdzFileFormat();
+
+    virtual bool _IsStreamingLayer(const SdfLayerBase& layer) const override;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_USD_USDZ_FILE_FORMAT_H
+#endif // USD_USDZ_FILE_FORMAT_H

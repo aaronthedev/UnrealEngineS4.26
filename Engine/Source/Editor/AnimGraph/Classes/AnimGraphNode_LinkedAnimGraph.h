@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,9 +19,6 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = Settings)
 	FAnimNode_LinkedAnimGraph Node;
-
-	// Begin UEdGraphNode
-	virtual void PostPasteNode();
 
 	// Begin UAnimGraphNode_CustomProperty
 	virtual FAnimNode_CustomProperty* GetCustomPropertyNode() override { return &Node;  }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -51,6 +51,6 @@ protected:
 
 	FRichImageRow* FindImageRow(FName TagOrId, bool bWarnIfMissing);
 
-	UPROPERTY(EditAnywhere, Category=Appearance, meta = (RequiredAssetDataTags = "RowStructure=RichImageRow"))
+	UPROPERTY(EditAnywhere, Category=Appearance, meta=(RowType="RichImageRow"))
 	class UDataTable* ImageSet;
 };

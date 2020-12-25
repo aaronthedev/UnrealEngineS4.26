@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -225,9 +225,6 @@ public:
 	/** Flush this cache */
 	void FlushCache();
 
-	/** Give the composite font cache a chance to perform any tasks it has queued. */
-	void Update();
-
 	/**
 	 * Gets the allocated font data for a font data asset
 	 */
@@ -275,9 +272,4 @@ private:
 
 	/** Mapping of font data to FreeType faces */
 	TMap<FFontData, TSharedPtr<FFreeTypeFace>> FontFaceMap;
-
-	/** Update tasks from other threads we need to process. */
-	TArray<class FAsyncTask<class FAsyncLoadFontFaceData>*> LoadFontFaceTasks;
-
-	friend class FAsyncLoadFontFaceData;
 };

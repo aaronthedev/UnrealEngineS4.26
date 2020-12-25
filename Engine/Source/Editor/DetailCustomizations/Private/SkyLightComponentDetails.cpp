@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SkyLightComponentDetails.h"
 #include "Components/SceneComponent.h"
@@ -58,7 +58,7 @@ void FSkyLightComponentDetails::CustomizeDetails( IDetailLayoutBuilder& DetailLa
 		LightIntensityProperty->SetInstanceMetaData("UIMax", TEXT("50000.0f"));
 		LightIntensityProperty->SetInstanceMetaData("SliderExponent", TEXT("10.0f"));
 
-		if (!SkyLightComponent || (SkyLightComponent->SourceType != SLS_CapturedScene && SkyLightComponent->IsRealTimeCaptureEnabled()))
+		if (!SkyLightComponent || SkyLightComponent->SourceType != SLS_CapturedScene)
 		{
 			LightIntensityProperty->SetInstanceMetaData("Units", TEXT("CandelaPerMeter2"));
 		}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BehaviorTreeEditor.h"
 #include "Widgets/Text/STextBlock.h"
@@ -11,7 +11,7 @@
 #include "Modules/ModuleManager.h"
 #include "EditorStyleSet.h"
 #include "Editor/UnrealEdEngine.h"
-#include "BlackboardDataFactory.h"
+#include "Factories/DataAssetFactory.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "UnrealEdGlobals.h"
 #include "Kismet2/KismetEditorUtilities.h"
@@ -129,7 +129,7 @@ void FBehaviorTreeEditor::PostRedo(bool bSuccess)
 	FAIGraphEditor::PostRedo(bSuccess);
 }
 
-void FBehaviorTreeEditor::NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, FProperty* PropertyThatChanged )
+void FBehaviorTreeEditor::NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, UProperty* PropertyThatChanged )
 {
 	if(PropertyChangedEvent.ChangeType != EPropertyChangeType::Interactive)
 	{
@@ -215,9 +215,10 @@ void FBehaviorTreeEditor::InitBehaviorTreeEditor( const EToolkitMode::Type Mode,
 		FBTDebuggerCommands::Register();
 		FBTBlackboardCommands::Register();
 
+		const TSharedRef<FTabManager::FLayout> DummyLayout = FTabManager::NewLayout("NullLayout")->AddArea(FTabManager::NewPrimaryArea());
 		const bool bCreateDefaultStandaloneMenu = true;
 		const bool bCreateDefaultToolbar = true;
-		InitAssetEditor( Mode, InitToolkitHost, FBehaviorTreeEditorModule::BehaviorTreeEditorAppIdentifier, FTabManager::FLayout::NullLayout, bCreateDefaultStandaloneMenu, bCreateDefaultToolbar, ObjectsToEdit );
+		InitAssetEditor( Mode, InitToolkitHost, FBehaviorTreeEditorModule::BehaviorTreeEditorAppIdentifier, DummyLayout, bCreateDefaultStandaloneMenu, bCreateDefaultToolbar, ObjectsToEdit );
 
 		BindCommonCommands();
 		ExtendMenu();
@@ -646,7 +647,10 @@ TSharedRef<SWidget> FBehaviorTreeEditor::SpawnProperties()
 				.Padding(FMargin(5.0f))
 				[
 					SNew(STextBlock)
-					.Text(LOCTEXT("RootLevelNode", "Root-level decorators are only valid and will be executed if this BT is be used\nas static a sub-tree (via \"Run Behavior\"). These decorators will be ignored if\ndynamically injected with \"Run Dynamic Behavior\"."))
+					.Text(LOCTEXT("RootLevelNode", "\
+Root-level decorators are only valid and will be executed if this BT is be used\n\
+as static a sub-tree (via \"Run Behavior\"). These decorators will be ignored if\n\
+dynamically injected with \"Run Dynamic Behavior\"."))
 				]
 			]
 			+SVerticalBox::Slot()
@@ -942,7 +946,7 @@ void FBehaviorTreeEditor::BindCommonCommands()
 
 void FBehaviorTreeEditor::SearchTree()
 {
-	TabManager->TryInvokeTab(FBehaviorTreeEditorTabs::SearchID);
+	TabManager->InvokeTab(FBehaviorTreeEditorTabs::SearchID);
 	FindResults->FocusForUse();
 }
 
@@ -1724,10 +1728,7 @@ TSharedRef<SWidget> FBehaviorTreeEditor::HandleCreateNewServiceMenu() const
 
 void FBehaviorTreeEditor::HandleNewNodeClassPicked(UClass* InClass) const
 {
-	UE_CLOG(InClass == nullptr, LogBehaviorTreeEditor, Error, TEXT("Trying to handle new node of NULL class for Behavior Treee %s ")
-		, *GetNameSafe(BehaviorTree));
-
-	if(BehaviorTree != nullptr && InClass != nullptr && BehaviorTree->GetOutermost())
+	if(BehaviorTree != nullptr)
 	{
 		FString ClassName = FBlueprintEditorUtils::GetClassNameWithoutSuffix(InClass);
 
@@ -1740,7 +1741,7 @@ void FBehaviorTreeEditor::HandleNewNodeClassPicked(UClass* InClass) const
 		FAssetToolsModule& AssetToolsModule = FModuleManager::GetModuleChecked<FAssetToolsModule>("AssetTools");
 		AssetToolsModule.Get().CreateUniqueAssetName(PathName, TEXT("_New"), PackageName, Name);
 
-		UPackage* Package = CreatePackage( *PackageName);
+		UPackage* Package = CreatePackage(NULL, *PackageName);
 		if (ensure(Package))
 		{
 			// Create and init a new Blueprint
@@ -1756,8 +1757,6 @@ void FBehaviorTreeEditor::HandleNewNodeClassPicked(UClass* InClass) const
 			}
 		}
 	}
-
-	FSlateApplication::Get().DismissAllMenus();
 }
 
 void FBehaviorTreeEditor::CreateNewTask() const
@@ -1815,36 +1814,10 @@ void FBehaviorTreeEditor::CreateNewBlackboard()
 	FString PackageName;
 	FAssetToolsModule& AssetToolsModule = FModuleManager::GetModuleChecked<FAssetToolsModule>("AssetTools");
 	AssetToolsModule.Get().CreateUniqueAssetName(PathNameWithFilename, TEXT(""), PackageName, Name);
-	
-	UBlackboardDataFactory* Factory = NewObject<UBlackboardDataFactory>();
-	UBlackboardData* NewAsset = Cast<UBlackboardData>(AssetToolsModule.Get().CreateAssetWithDialog(Name, PathName, UBlackboardData::StaticClass(), Factory));
-	
-	if (NewAsset != nullptr)
-	{
-		UBehaviorTreeGraph* BTGraph = Cast<UBehaviorTreeGraph>(BehaviorTree->BTGraph);
-		if (BTGraph)
-		{
-			// Update root node with the newly created asset
-			UBehaviorTreeGraphNode_Root* RootNode = nullptr;
-			for (const auto& Node : BTGraph->Nodes)
-			{
-				RootNode = Cast<UBehaviorTreeGraphNode_Root>(Node);
-				if (RootNode != nullptr)
-				{
-					RootNode->BlackboardAsset = NewAsset;
-					break;
-				}
-			}
 
-			BTGraph->UpdateBlackboardChange();
-		}
-
-		UE_CLOG(BehaviorTree->BlackboardAsset != nullptr, LogBehaviorTreeEditor, Log, TEXT("Blackboard data asset %s has been replaced by %s"), *GetNameSafe(BlackboardData), *GetNameSafe(NewAsset));
-		BehaviorTree->BlackboardAsset = NewAsset;
-		BlackboardData = NewAsset;
-
-		RefreshBlackboardViewsAssociatedObject();
-	}
+	UDataAssetFactory* DataAssetFactory = NewObject<UDataAssetFactory>();
+	FContentBrowserModule& ContentBrowserModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
+	ContentBrowserModule.Get().CreateNewAsset(Name, PathName, UBlackboardData::StaticClass(), DataAssetFactory);
 }
 
 bool FBehaviorTreeEditor::CanCreateNewBlackboard() const

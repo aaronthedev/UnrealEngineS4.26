@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -129,13 +129,11 @@ public:
 	static void FreeDllHandle( void* DllHandle );
 	static void* GetDllExport( void* DllHandle, const TCHAR* ProcName );
 	static void AddDllDirectory(const TCHAR* Directory);
-	static void GetDllDirectories(TArray<FString>& OutDllDirectories);
 	static void PushDllDirectory(const TCHAR* Directory);
 	static void PopDllDirectory(const TCHAR* Directory);
 	static uint32 GetCurrentProcessId();
 	static uint32 GetCurrentCoreNumber();
 	static void SetThreadAffinityMask( uint64 AffinityMask );
-	static void SetThreadName( const TCHAR* ThreadName );
 	static const TCHAR* BaseDir();
 	static const TCHAR* UserDir();
 	static const TCHAR* UserTempDir();
@@ -155,7 +153,6 @@ public:
 	static bool CanLaunchURL(const TCHAR* URL);
 	static void LaunchURL( const TCHAR* URL, const TCHAR* Parms, FString* Error );
 	static FProcHandle CreateProc( const TCHAR* URL, const TCHAR* Parms, bool bLaunchDetached, bool bLaunchHidden, bool bLaunchReallyHidden, uint32* OutProcessID, int32 PriorityModifier, const TCHAR* OptionalWorkingDirectory, void* PipeWriteChild, void * PipeReadChild = nullptr);
-	static bool SetProcPriority(FProcHandle & InProcHandle, int32 PriorityModifier);
 	static FProcHandle OpenProcess(uint32 ProcessID);
 	static bool IsProcRunning( FProcHandle & ProcessHandle );
 	static void WaitForProc( FProcHandle & ProcessHandle );
@@ -187,8 +184,6 @@ public:
 	static FSemaphore* NewInterprocessSynchObject(const TCHAR* Name, bool bCreate, uint32 MaxLocks = 1);
 	static bool DeleteInterprocessSynchObject(FSemaphore * Object);
 	static bool Daemonize();
-	static void SetupAudioThread();
-	static void TeardownAudioThread();
 protected:
 
 	/**
@@ -223,7 +218,5 @@ private:
 	static void* LoadLibraryWithSearchPaths(const FString& FileName, const TArray<FString>& SearchPaths);
 };
 
-#if WINDOWS_USE_FEATURE_PLATFORMPROCESS_CLASS
-typedef FWindowsPlatformProcess FPlatformProcess;
-#endif
 
+typedef FWindowsPlatformProcess FPlatformProcess;

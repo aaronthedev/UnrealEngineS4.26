@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -32,7 +32,6 @@ class FSlateWindowElementList;
 class UDragDropOperation;
 class UTexture2D;
 class UUMGSequencePlayer;
-class UUMGSequenceTickManager;
 class UWidgetAnimation;
 class UWidgetTree;
 class UNamedSlot;
@@ -196,8 +195,6 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnConstructEvent);
 
 DECLARE_DYNAMIC_DELEGATE( FOnInputAction );
 
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnVisibilityChangedEvent, ESlateVisibility, InVisibility);
-
 /**
  * The user widget is extensible by users through the WidgetBlueprint.
  */
@@ -212,21 +209,30 @@ public:
 
 	//UObject interface
 	virtual class UWorld* GetWorld() const override;
+	virtual void PostEditImport() override;
 	virtual void PostDuplicate(bool bDuplicateForPIE) override;
 	virtual void BeginDestroy() override;
 	virtual void PostLoad() override;
 	virtual void Serialize(FArchive& Ar) override;
 	//~ End UObject Interface
 
+	void TemplateInit();
+	bool VerifyTemplateIntegrity(TArray<FText>& OutErrors);
+
 	void DuplicateAndInitializeFromWidgetTree(UWidgetTree* InWidgetTree);
 
+	bool CanInitialize() const;
 	virtual bool Initialize();
 
 	EWidgetTickFrequency GetDesiredTickFrequency() const { return TickFrequency; }
 
-	UWidgetBlueprintGeneratedClass* GetWidgetTreeOwningClass() const;
+	UWidgetBlueprintGeneratedClass* GetWidgetTreeOwningClass();
 
 protected:
+	virtual void TemplateInitInner();
+
+	bool VerifyTemplateIntegrity(UUserWidget* TemplateRoot, TArray<FText>& OutErrors);
+
 	/** The function is implemented only in nativized widgets (automatically converted from BP to c++) */
 	virtual void InitializeNativeClassData() {}
 
@@ -310,9 +316,6 @@ public:
 	/*  */
 	UFUNCTION(BlueprintPure, BlueprintCosmetic, Category="Appearance", meta=( DeprecatedFunction, DeprecationMessage="Use IsInViewport instead" ))
 	bool GetIsVisible() const;
-
-	/** Sets the visibility of the widget. */
-	virtual void SetVisibility(ESlateVisibility InVisibility) override;
 
 	/* @return true if the widget was added to the viewport using AddToViewport. */
 	UFUNCTION(BlueprintPure, BlueprintCosmetic, Category="Appearance")
@@ -402,24 +405,6 @@ public:
 		}
 
 		return nullptr;
-	}
-
-	/**
-	 * Gets the player camera manager associated with this UI.
-	 * @return Gets the owning player camera manager that's owned by the player controller assigned to this widget.
-	 */
-	UFUNCTION(BlueprintCallable, BlueprintCosmetic, Category = "Player")
-	class APlayerCameraManager* GetOwningPlayerCameraManager() const;
-
-	/**
-	 * Gets the player camera manager associated with this UI cast to the template type.
-	 * @return Gets the owning player camera manager that's owned by the player controller assigned to this widget.
-	 * May be NULL if the cast fails.
-	 */
-	template <class T>
-	T* GetOwningPlayerCameraManager() const
-	{
-		return Cast<T>(GetOwningPlayerCameraManager());
 	}
 
 	/** 
@@ -1006,15 +991,6 @@ public:
 	float GetAnimationCurrentTime(const UWidgetAnimation* InAnimation) const;
 
 	/**
-	 * Sets the current time of the animation in this widget. Does not change state.
-	 * 
-	 * @param The name of the animation to get the current time for
-	 * @param The current time of the animation.
-	 */
-	UFUNCTION(BlueprintCallable, BlueprintCosmetic, Category = "User Interface|Animation")
-	void SetAnimationCurrentTime(const UWidgetAnimation* InAnimation, float InTime);
-
-	/**
 	 * Gets whether an animation is currently playing on this widget.
 	 * 
 	 * @param InAnimation The animation to check the playback status of
@@ -1062,12 +1038,6 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, BlueprintCosmetic, Category = "User Interface|Animation")
 	bool IsAnimationPlayingForward(const UWidgetAnimation* InAnimation);
-
-	/**
-	 * Flushes all animations on all widgets to guarantee that any queued updates are processed before this call returns
-	 */
-	UFUNCTION(BlueprintCallable, BlueprintCosmetic, Category = "User Interface|Animation")
-	void FlushAnimations();
 
 	/**
 	 * Plays a sound through the UI
@@ -1152,12 +1122,6 @@ public:
 	UPROPERTY()
 	FGetSlateColor ForegroundColorDelegate;
 
-	/** Called when the visibility has changed */
-	UPROPERTY(BlueprintAssignable, Category = "Appearance|Event")
-	FOnVisibilityChangedEvent OnVisibilityChanged;
-	DECLARE_EVENT_OneParam(UUserWidget, FNativeOnVisibilityChangedEvent, ESlateVisibility);
-	FNativeOnVisibilityChangedEvent OnNativeVisibilityChanged;
-
 	/** The padding area around the content. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Appearance")
 	FMargin Padding;
@@ -1165,9 +1129,6 @@ public:
 	/** All the sequence players currently playing */
 	UPROPERTY(Transient)
 	TArray<UUMGSequencePlayer*> ActiveSequencePlayers;
-
-	UPROPERTY(Transient)
-	UUMGSequenceTickManager* AnimationTickManager;
 
 	/** List of sequence players to cache and clean up when safe */
 	UPROPERTY(Transient)
@@ -1180,7 +1141,7 @@ private:
 
 public:
 	/** The widget tree contained inside this user widget initialized by the blueprint */
-	UPROPERTY(Transient, DuplicateTransient, TextExportTransient)
+	UPROPERTY(Instanced, TextExportTransient)
 	UWidgetTree* WidgetTree;
 
 public:
@@ -1227,7 +1188,6 @@ public:
 	/** If a widget has an implemented paint blueprint function */
 	UPROPERTY()
 	uint8 bHasScriptImplementedPaint : 1;
-
 protected:
 
 	/** Has this widget been initialized by its class yet? */
@@ -1235,6 +1195,14 @@ protected:
 
 	/** If we're stopping all animations, don't allow new animations to be created as side-effects. */
 	uint8 bStoppingAllAnimations : 1;
+
+public:
+	/**
+	 * If this user widget was created using a cooked widget tree.  If that's true, we want to skip a lot of the normal
+	 * initialization logic for widgets, because these widgets have already been initialized.
+	 */
+	UPROPERTY()
+	uint8 bCookedWidgetTree : 1;
 
 protected:
 
@@ -1316,24 +1284,22 @@ protected:
 	virtual void NativeOnMouseCaptureLost(const FCaptureLostEvent& CaptureLostEvent);
 
 protected:
+	bool ShouldSerializeWidgetTree(const class ITargetPlatform* TargetPlatform) const;
 
 	/**
 	 * Ticks the active sequences and latent actions that have been scheduled for this Widget.
 	 */
-	void TickActionsAndAnimation(float InDeltaTime);
-	void PostTickActionsAndAnimation(float InDeltaTime);
+	void TickActionsAndAnimation(const FGeometry& MyGeometry, float InDeltaTime);
 
 	void RemoveObsoleteBindings(const TArray<FName>& NamedSlots);
 
 	UUMGSequencePlayer* GetSequencePlayer(const UWidgetAnimation* InAnimation) const;
 	UUMGSequencePlayer* GetOrAddSequencePlayer(UWidgetAnimation* InAnimation);
 
-	void TearDownAnimations();
-
 	UE_DEPRECATED(4.21, "You now need to provide the reason you're invalidating.")
 	void Invalidate();
 
-	void Invalidate(EInvalidateWidgetReason InvalidateReason);
+	void Invalidate(EInvalidateWidget InvalidateReason);
 	
 	/**
 	 * Listens for a particular Player Input Action by name.  This requires that those actions are being executed, and
@@ -1408,8 +1374,6 @@ protected:
 private:
 	static void OnLatentActionsChanged(UObject* ObjectWhichChanged, ELatentActionChangeType ChangeType);
 
-	void InvalidateFullScreenWidget(EInvalidateWidgetReason InvalidateReason);
-
 	FAnchors ViewportAnchors;
 	FMargin ViewportOffsets;
 	FVector2D ViewportAlignment;
@@ -1439,8 +1403,6 @@ protected:
 	 * UserWidget of state transitions.
 	 */
 	friend UUMGSequencePlayer;
-
-	friend UUMGSequenceTickManager;
 
 	/** The compiler is a friend so that it can disable initialization from the widget tree */
 	friend class FWidgetBlueprintCompilerContext;

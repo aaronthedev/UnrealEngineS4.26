@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,6 @@
 #include "UObject/GCObject.h"
 #include "Containers/Ticker.h"
 #include "Interfaces/OnlinePartyInterface.h"
-#include "Stats/Stats.h"
 
 /** Util exclusively for use by TPartyDataReplicator to circumvent circular include header issues (we can't include SocialParty.h or PartyMember.h here) */
 class FPartyDataReplicatorHelper
@@ -37,11 +36,6 @@ public:
 		Collector.AddReferencedObject(RepDataType);
 	}
 
-	virtual FString GetReferencerName() const override
-	{
-		return "TPartyDataReplicator";
-	}
-
 	bool IsValid() const { return RepDataType && RepDataPtr && RepDataCopy; }
 	
 	template <typename ChildRepDataT>
@@ -66,7 +60,7 @@ PACKAGE_SCOPE:
 		{
 			if (FVariantDataConverter::VariantMapToUStruct(IncomingPartyData.GetKeyValAttrs(), RepDataType, RepDataPtr, 0, CPF_Transient | CPF_RepSkip))
 			{
-				static_cast<FOnlinePartyRepDataBase*>(RepDataPtr)->PostReplication(*RepDataCopy);
+				static_cast<FOnlinePartyRepDataBase*>(RepDataPtr)->PostReplication();
 
 				if (bCompareToPrevious)
 				{
@@ -113,8 +107,6 @@ private:
 
 	bool DeferredHandleReplicateChanges(float)
 	{
-		QUICK_SCOPE_CYCLE_COUNTER(STAT_TPartyDataReplicator_DeferredHandleReplicateChanges);
-
 		UpdateTickerHandle.Reset();
 
 		FOnlinePartyData OnlinePartyData;

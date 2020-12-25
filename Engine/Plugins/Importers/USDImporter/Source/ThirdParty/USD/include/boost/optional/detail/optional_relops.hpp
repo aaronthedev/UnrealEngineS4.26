@@ -26,7 +26,7 @@ namespace boost {
 template<class T>
 inline
 bool operator == ( optional<T> const& x, optional<T> const& y )
-{ return bool(x) && bool(y) ? *x == *y : bool(x) == bool(y); }
+{ return equal_pointees(x,y); }
 
 template<class T>
 inline

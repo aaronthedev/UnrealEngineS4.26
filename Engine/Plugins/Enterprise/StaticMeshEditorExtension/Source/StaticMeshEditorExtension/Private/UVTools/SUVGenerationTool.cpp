@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SUVGenerationTool.h"
 #include "UVGenerationTool.h"
@@ -7,7 +7,7 @@
 #include "Modules/ModuleManager.h"
 #include "Interfaces/IPluginManager.h"
 #include "StaticMeshAttributes.h"
-#include "StaticMeshOperations.h"
+#include "MeshDescriptionOperations.h"
 #include "UVMapSettings.h"
 #include "ScopedTransaction.h"
 #include "DetailLayoutBuilder.h"
@@ -41,8 +41,7 @@ SGenerateUV::~SGenerateUV()
 	SetPreviewModeActivated(false);
 	SettingObjectUIHolder->OnUVSettingsRefreshNeeded().RemoveAll(this);
 	SettingObjectUIHolder->RemoveFromRoot();
-	SetPreviewModeActivated(false);
-	
+
 	if (StaticMeshEditorPtr.IsValid())
 	{
 		StaticMeshEditorPtr.Pin()->UnRegisterOnSelectedLODChanged(this);
@@ -225,13 +224,13 @@ bool SGenerateUV::GenerateUVTexCoords(TMap<FVertexInstanceID, FVector2D>& OutTex
 		switch (GenerateUVSettings->ProjectionType)
 		{
 		case EGenerateUVProjectionType::Box:
-			FStaticMeshOperations::GenerateBoxUV(*MeshDescription, UVParameters, OutTexCoords);
+			FMeshDescriptionOperations::GenerateBoxUV(*MeshDescription, UVParameters, OutTexCoords);
 			break;
 		case EGenerateUVProjectionType::Cylindrical:
-			FStaticMeshOperations::GenerateCylindricalUV(*MeshDescription, UVParameters, OutTexCoords);
+			FMeshDescriptionOperations::GenerateCylindricalUV(*MeshDescription, UVParameters, OutTexCoords);
 			break;
 		case EGenerateUVProjectionType::Planar:
-			FStaticMeshOperations::GeneratePlanarUV(*MeshDescription, UVParameters, OutTexCoords);
+			FMeshDescriptionOperations::GeneratePlanarUV(*MeshDescription, UVParameters, OutTexCoords);
 			break;
 		}
 
@@ -417,12 +416,6 @@ void SGenerateUV::FitSettings()
 		
 		const int32 CurrentLOD = FMath::Max(0, GetSelectedLOD(EditorPtr));
 		const FMeshDescription* MeshDescription = StaticMesh->GetMeshDescription(CurrentLOD);
-
-		if ( !MeshDescription )
-		{
-			return;
-		}
-
 		FStaticMeshConstAttributes Attributes(*MeshDescription);
 		TMeshAttributesConstRef<FVertexID, FVector> VertexPositions = Attributes.GetVertexPositions();
 		TArray<FVector> RotatedVertexPositions;
@@ -446,7 +439,7 @@ void SGenerateUV::FitSettings()
 			float MaxSqrSize2D = 0;
 			const FVector CylinderExtent = BoundsBox.GetExtent(), VertexOffset = BoundsBox.GetCenter();
 
-			for (const FVector& CurrentVertex : RotatedVertexPositions)
+			for (const FVector CurrentVertex : RotatedVertexPositions)
 			{
 				FVector VertexRatio = (CurrentVertex - VertexOffset) / CylinderExtent;
 				float SqrSize2D = VertexRatio.Y * VertexRatio.Y + VertexRatio.Z * VertexRatio.Z;

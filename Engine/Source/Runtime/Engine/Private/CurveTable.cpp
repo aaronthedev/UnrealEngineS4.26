@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/CurveTable.h"
 #include "Serialization/JsonReader.h"
@@ -111,7 +111,6 @@ void UCurveTable::Serialize(FArchive& Ar)
 		}
 
 		bool bCouldConvertToSimpleCurves = bUpgradingCurveTable;
-		RowMap.Reserve(NumRows);
 		for (int32 RowIdx = 0; RowIdx < NumRows; RowIdx++)
 		{
 			// Load row name
@@ -124,6 +123,11 @@ void UCurveTable::Serialize(FArchive& Ar)
 				FSimpleCurve* NewCurve = new FSimpleCurve();
 				FSimpleCurve::StaticStruct()->SerializeTaggedProperties(Ar, (uint8*)NewCurve, FSimpleCurve::StaticStruct(), nullptr);
 
+				if (!GIsEditor && CVar_CurveTable_RemoveRedundantKeys > 0)
+				{
+					NewCurve->RemoveRedundantKeys(0.f);
+				}
+
 				// Add to map
 				RowMap.Add(RowName, NewCurve);
 			}
@@ -131,6 +135,11 @@ void UCurveTable::Serialize(FArchive& Ar)
 			{
 				FRichCurve* NewCurve = new FRichCurve();
 				FRichCurve::StaticStruct()->SerializeTaggedProperties(Ar, (uint8*)NewCurve, FRichCurve::StaticStruct(), nullptr);
+
+				if (!GIsEditor && CVar_CurveTable_RemoveRedundantKeys > 0)
+				{
+					NewCurve->RemoveRedundantKeys(0.f);
+				}
 
 				// Add to map
 				RowMap.Add(RowName, NewCurve);
@@ -195,20 +204,12 @@ void UCurveTable::Serialize(FArchive& Ar)
 			if (CurveTableMode == ECurveTableMode::SimpleCurves)
 			{
 				FSimpleCurve* Curve = (FSimpleCurve*)RowIt.Value();
-				if (Ar.IsCooking() && Ar.IsPersistent() && !Ar.IsObjectReferenceCollector() && !Ar.ShouldSkipBulkData() && CVar_CurveTable_RemoveRedundantKeys > 0)
-				{
-					Curve->RemoveRedundantKeys(0.f);
-				}
 				FSimpleCurve::StaticStruct()->SerializeTaggedProperties(Ar, (uint8*)Curve, FSimpleCurve::StaticStruct(), nullptr);
 			}
 			else
 			{
 				check(CurveTableMode == ECurveTableMode::RichCurves);
 				FRichCurve* Curve = (FRichCurve*)RowIt.Value();
-				if (Ar.IsCooking() && Ar.IsPersistent() && !Ar.IsObjectReferenceCollector() && !Ar.ShouldSkipBulkData() && CVar_CurveTable_RemoveRedundantKeys > 0)
-				{
-					Curve->RemoveRedundantKeys(0.f);
-				}
 				FRichCurve::StaticStruct()->SerializeTaggedProperties(Ar, (uint8*)Curve, FRichCurve::StaticStruct(), nullptr);
 			}
 		}
@@ -222,7 +223,7 @@ void UCurveTable::Serialize(FArchive& Ar)
 			const size_t SizeOfDirectCurveAllocs = sizeof(FSimpleCurve) * RowMap.Num();
 			Ar.CountBytes(SizeOfDirectCurveAllocs, SizeOfDirectCurveAllocs);
 
-			for (const TPair<FName, FRealCurve*>& CurveRow : RowMap)
+			for (const TPair<FName, FRealCurve*> CurveRow : RowMap)
 			{
 				FSimpleCurve* Curve = (FSimpleCurve*)CurveRow.Value;
 				Curve->Keys.CountBytes(Ar);
@@ -233,7 +234,7 @@ void UCurveTable::Serialize(FArchive& Ar)
 			const size_t SizeOfDirectCurveAllocs = sizeof(FRichCurve) * RowMap.Num();
 			Ar.CountBytes(SizeOfDirectCurveAllocs, SizeOfDirectCurveAllocs);
 
-			for (const TPair<FName, FRealCurve*>& CurveRow : RowMap)
+			for (const TPair<FName, FRealCurve*> CurveRow : RowMap)
 			{
 				FRichCurve* Curve = (FRichCurve*)CurveRow.Value;
 				Curve->Keys.CountBytes(Ar);
@@ -426,8 +427,8 @@ FString UCurveTable::GetTableAsJSON() const
 	return Result;
 }
 
-template<typename CharType, class T>
-void WriteTableAsJSON_Internal(const TMap<FName, T*>& RowMap, const TSharedRef< TJsonWriter<CharType, TPrettyJsonPrintPolicy<CharType> > >& JsonWriter, bool bAsArray)
+template<class T>
+void WriteTableAsJSON_Internal(const TMap<FName, T*>& RowMap, const TSharedRef< TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR> > >& JsonWriter, bool bAsArray)
 {
 	TArray<FName> Names;
 	TArray<T*> Curves;
@@ -480,8 +481,7 @@ void WriteTableAsJSON_Internal(const TMap<FName, T*>& RowMap, const TSharedRef< 
 	}
 }
 
-template <typename CharType>
-bool UCurveTable::WriteTableAsJSON(const TSharedRef< TJsonWriter<CharType, TPrettyJsonPrintPolicy<CharType> > >& JsonWriter, bool bAsArray) const
+bool UCurveTable::WriteTableAsJSON(const TSharedRef< TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR> > >& JsonWriter, bool bAsArray) const
 {
 	if (RowMap.Num() <= 0)
 	{
@@ -490,18 +490,15 @@ bool UCurveTable::WriteTableAsJSON(const TSharedRef< TJsonWriter<CharType, TPret
 
 	if (CurveTableMode == ECurveTableMode::SimpleCurves)
 	{
-		WriteTableAsJSON_Internal<CharType, FSimpleCurve>(*reinterpret_cast<const TMap<FName, FSimpleCurve*>*>(&RowMap), JsonWriter, bAsArray);
+		WriteTableAsJSON_Internal<FSimpleCurve>(*reinterpret_cast<const TMap<FName, FSimpleCurve*>*>(&RowMap), JsonWriter, bAsArray);
 	}
 	else
 	{
-		WriteTableAsJSON_Internal<CharType, FRichCurve>(*reinterpret_cast<const TMap<FName, FRichCurve*>*>(&RowMap), JsonWriter, bAsArray);
+		WriteTableAsJSON_Internal<FRichCurve>(*reinterpret_cast<const TMap<FName, FRichCurve*>*>(&RowMap), JsonWriter, bAsArray);
 	}
 
 	return true;
 }
-
-template ENGINE_API bool UCurveTable::WriteTableAsJSON<TCHAR>(const TSharedRef< TJsonWriter<TCHAR, TPrettyJsonPrintPolicy<TCHAR> > >& JsonWriter, bool bAsArray) const;
-template ENGINE_API bool UCurveTable::WriteTableAsJSON<ANSICHAR>(const TSharedRef< TJsonWriter<ANSICHAR, TPrettyJsonPrintPolicy<ANSICHAR> > >& JsonWriter, bool bAsArray) const;
 
 void UCurveTable::EmptyTable()
 {

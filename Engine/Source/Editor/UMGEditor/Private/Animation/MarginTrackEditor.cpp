@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Animation/MarginTrackEditor.h"
 #include "ISectionLayoutBuilder.h"
@@ -13,7 +13,7 @@ TSharedRef<ISequencerTrackEditor> FMarginTrackEditor::CreateTrackEditor( TShared
 	return MakeShareable( new FMarginTrackEditor( InSequencer ) );
 }
 
-void FMarginTrackEditor::GenerateKeysFromPropertyChanged( const FPropertyChangedParams& PropertyChangedParams, UMovieSceneSection* SectionToKey, FGeneratedTrackKeys& OutGeneratedKeys)
+void FMarginTrackEditor::GenerateKeysFromPropertyChanged( const FPropertyChangedParams& PropertyChangedParams, FGeneratedTrackKeys& OutGeneratedKeys)
 {
 	FPropertyPath StructPath = PropertyChangedParams.StructPathToKey;
 	FName ChannelName = StructPath.GetNumProperties() != 0 ? StructPath.GetLeafMostProperty().Property->GetFName() : NAME_None;
@@ -36,11 +36,10 @@ bool FMarginTrackEditor::ModifyGeneratedKeysByCurrentAndWeight(UObject *Object, 
 	FFrameRate TickResolution = GetSequencer()->GetFocusedTickResolution();
 
 	UMovieSceneMarginTrack* MarginTrack = Cast<UMovieSceneMarginTrack>(Track);
+	FMovieSceneEvaluationTrack EvalTrack = Track->GenerateTrackTemplate();
 
 	if (MarginTrack)
 	{
-		FMovieSceneEvaluationTrack EvalTrack = MarginTrack->GenerateTrackTemplate(MarginTrack);
-
 		FMovieSceneInterrogationData InterrogationData;
 		GetSequencer()->GetEvaluationTemplate().CopyActuators(InterrogationData.GetAccumulator());
 

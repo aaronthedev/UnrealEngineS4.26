@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using nDisplayLauncher.Log;
 using System;
@@ -16,7 +16,6 @@ namespace nDisplayLauncher.Cluster.Config.Entity
 		public int    PortCS    { get; set; } = 0;
 		public int    PortSS    { get; set; } = 0;
 		public int    PortCE    { get; set; } = 0;
-		public int    GPU       { get; set; } = 0;
 
 
 		public EntityClusterNode()
@@ -45,7 +44,6 @@ namespace nDisplayLauncher.Cluster.Config.Entity
 			PortCS   = Parser.GetIntValue(text, "port_cs", 41001);
 			PortSS   = Parser.GetIntValue(text, "port_ss", 41002);
 			PortCE   = Parser.GetIntValue(text, "port_ce", 41003);
-			GPU      = Parser.GetIntValue(text, "gpu", int.MinValue);
 		}
 	}
 }

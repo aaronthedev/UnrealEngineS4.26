@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -29,7 +29,6 @@ public:
 		FHandState();
 
 		FTransform KeypointTransforms[EWMRHandKeypointCount];
-		float Radii[EWMRHandKeypointCount];
 		bool ReceivedJointPoses = false;
 
 		bool GetTransform(EWMRHandKeypoint KeyPoint, FTransform& OutTransform) const;
@@ -69,10 +68,7 @@ public:
 	const FHandState& GetRightHandState() const;
 	bool IsHandTrackingStateValid() const;
 
-	void OnGetXRSystemFlags(int32& XRFlags);
-
 	bool GetKeypointTransform(EControllerHand Hand, EWMRHandKeypoint Keypoint, FTransform& OutTransform) const;
-	bool GetKeypointRadius(EControllerHand Hand, EWMRHandKeypoint Keypoint, float& OutRadius) const;
 
 	/** Parses the enum name removing the prefix */
 	static FName ParseEWMRHandKeypointEnumName(FName EnumName)
@@ -85,6 +81,7 @@ public:
 private:
 	void UpdateTrackerData();
 	void AddKeys();
+	void ConditionallyEnable();
 	
 	void SetupLiveLinkData();
 	void UpdateLiveLink();

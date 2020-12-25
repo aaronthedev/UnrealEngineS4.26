@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -14,10 +14,19 @@ public class OVRPlugin : ModuleRules
 
 		if (Target.Platform == UnrealTargetPlatform.Android)
 		{
-			RuntimeDependencies.Add(SourceDirectory + "Lib/armeabi-v7a/libOVRPlugin.so");
-			RuntimeDependencies.Add(SourceDirectory + "Lib/arm64-v8a/libOVRPlugin.so");
-			RuntimeDependencies.Add(SourceDirectory + "ExtLibs/armeabi-v7a/libvrapi.so");
-			RuntimeDependencies.Add(SourceDirectory + "ExtLibs/arm64-v8a/libvrapi.so");
+			PublicAdditionalLibraries.Add(SourceDirectory + "Lib/armeabi-v7a/" + "libOVRPlugin.so");
+			PublicAdditionalLibraries.Add(SourceDirectory + "Lib/arm64-v8a/" + "libOVRPlugin.so");
+
+			PublicAdditionalLibraries.Add(SourceDirectory + "ExtLibs/armeabi-v7a/" + "libvrapi.so");
+			PublicAdditionalLibraries.Add(SourceDirectory + "ExtLibs/arm64-v8a/" + "libvrapi.so");
+		}
+		if (Target.Platform == UnrealTargetPlatform.Win64)
+		{
+			PublicAdditionalLibraries.Add(SourceDirectory + "Lib/Win64/OVRPlugin.lib");
+		}
+		else if (Target.Platform == UnrealTargetPlatform.Win32 )
+		{
+			PublicAdditionalLibraries.Add(SourceDirectory + "Lib/Win32/OVRPlugin.lib");
 		}
 	}
 }

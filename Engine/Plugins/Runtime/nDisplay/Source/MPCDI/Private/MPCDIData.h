@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -26,10 +26,9 @@ public:
 			Regions.Empty();
 		}
 
-		// Unique buffer name
-		FString ID;
-		// Asset of warp regions
-		TArray<FMPCDIRegion*> Regions;
+		FString                      ID;       // Unique buffer name
+		TArray<MPCDI::FMPCDIRegion*> Regions;  // Asset of warp regions
+		FBox                         AABBox;
 
 		// Shader Lamp view and projection matrices
 		FVector Origin;
@@ -37,7 +36,7 @@ public:
 		FMatrix Camera2World;
 
 		bool Initialize(const FString& BufferName);
-		void AddRegion(FMPCDIRegion* MPCDIRegionPtr);
+		void AddRegion(MPCDI::FMPCDIRegion* MPCDIRegionPtr);
 
 		bool FindRegion(const FString& RegionName, IMPCDI::FRegionLocator& OutRegionLocator) const
 		{
@@ -58,12 +57,14 @@ public:
 	bool LoadFromFile(const FString& MPCIDIFile);
 
 	void CleanupMPCDIData();
+
+
 	void ReloadAll();
 	void ReloadChangedExternalFiles_RenderThread();
 
 	bool AddRegion(const FString& BufferName, const FString& RegionName, IMPCDI::FRegionLocator& OutRegionLocator);
 
-	FMPCDIRegion* GetRegion(const IMPCDI::FRegionLocator& RegionLocator) const
+	MPCDI::FMPCDIRegion* GetRegion(const IMPCDI::FRegionLocator& RegionLocator) const
 	{
 		if (RegionLocator.BufferIndex < Buffers.Num())
 		{

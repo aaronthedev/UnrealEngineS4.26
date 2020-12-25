@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "USDPrimTwin.h"
 
@@ -7,7 +7,7 @@
 
 #include "Engine/World.h"
 
-UUsdPrimTwin& UUsdPrimTwin::AddChild( const FString& InPrimPath )
+FUsdPrimTwin& FUsdPrimTwin::AddChild( const FString& InPrimPath )
 {
 	FScopedUnrealAllocs UnrealAllocs; // Make sure the call to new is done with the UE allocator
 
@@ -15,23 +15,19 @@ UUsdPrimTwin& UUsdPrimTwin::AddChild( const FString& InPrimPath )
 	FString ChildPrimName;
 	InPrimPath.Split( TEXT("/"), &Dummy, &ChildPrimName, ESearchCase::IgnoreCase, ESearchDir::FromEnd );
 
-	Modify();
+	TUniquePtr< FUsdPrimTwin >& ChildPrim = Children.Add( ChildPrimName );
 
-	UUsdPrimTwin*& ChildPrim = Children.Add( ChildPrimName );
-
-	ChildPrim = NewObject<UUsdPrimTwin>(this, NAME_None, RF_Transient | RF_Transactional);
+	ChildPrim = MakeUnique< FUsdPrimTwin >();
 	ChildPrim->PrimPath = InPrimPath;
 
 	return *ChildPrim;
 }
 
-void UUsdPrimTwin::RemoveChild( const TCHAR* InPrimPath )
+void FUsdPrimTwin::RemoveChild( const TCHAR* InPrimPath )
 {
 	FScopedUnrealAllocs UnrealAllocs;
 
-	Modify();
-
-	for ( TMap< FString, UUsdPrimTwin* >::TIterator ChildIt = Children.CreateIterator(); ChildIt; ++ChildIt )
+	for ( TMap< FString, TUniquePtr< FUsdPrimTwin > >::TIterator ChildIt = Children.CreateIterator(); ChildIt; ++ChildIt )
 	{
 		if ( ChildIt->Value->PrimPath == InPrimPath )
 		{
@@ -41,16 +37,10 @@ void UUsdPrimTwin::RemoveChild( const TCHAR* InPrimPath )
 	}
 }
 
-void UUsdPrimTwin::Clear()
+void FUsdPrimTwin::Clear()
 {
 	FScopedUnrealAllocs UnrealAllocs;
 
-	Modify();
-
-	for (const TPair< FString, UUsdPrimTwin* >& Pair : Children)
-	{
-		Pair.Value->Clear();
-	}
 	Children.Empty();
 
 	if ( !PrimPath.IsEmpty() )
@@ -58,31 +48,19 @@ void UUsdPrimTwin::Clear()
 		OnDestroyed.Broadcast( *this );
 	}
 
-	AActor* ActorToDestroy = SpawnedActor.Get();
-
-	if ( !ActorToDestroy )
+	if ( SpawnedActor.IsValid() && !SpawnedActor->IsA<AUsdStageActor>() && !SpawnedActor->IsActorBeingDestroyed() )
 	{
-		if ( SceneComponent.IsValid() && SceneComponent->GetOwner()->GetRootComponent() == SceneComponent.Get() )
-		{
-			ActorToDestroy = SceneComponent->GetOwner();
-		}
-	}
-
-	if ( ActorToDestroy && !ActorToDestroy->IsA< AUsdStageActor >() && !ActorToDestroy->IsActorBeingDestroyed() && ActorToDestroy->GetWorld() )
-	{
-		ActorToDestroy->Modify();
-		ActorToDestroy->GetWorld()->DestroyActor( ActorToDestroy );
+		SpawnedActor->GetWorld()->DestroyActor( SpawnedActor.Get() );
 		SpawnedActor = nullptr;
 	}
 	else if ( SceneComponent.IsValid() && !SceneComponent->IsBeingDestroyed() )
 	{
-		SceneComponent->Modify();
 		SceneComponent->DestroyComponent();
 		SceneComponent = nullptr;
 	}
 }
 
-UUsdPrimTwin* UUsdPrimTwin::Find( const FString& InPrimPath )
+FUsdPrimTwin* FUsdPrimTwin::Find( const FString& InPrimPath )
 {
 	if ( PrimPath == InPrimPath )
 	{
@@ -110,7 +88,7 @@ UUsdPrimTwin* UUsdPrimTwin::Find( const FString& InPrimPath )
 	{
 		if ( RestOfPrimPathToFind.IsEmpty() )
 		{
-			return Children[ ChildPrimName ];
+			return Children[ ChildPrimName ].Get();
 		}
 		else
 		{
@@ -119,43 +97,4 @@ UUsdPrimTwin* UUsdPrimTwin::Find( const FString& InPrimPath )
 	}
 
 	return nullptr;
-}
-
-UUsdPrimTwin* UUsdPrimTwin::Find( const USceneComponent* InSceneComponent )
-{
-	if ( SceneComponent == InSceneComponent )
-	{
-		return this;
-	}
-
-	for ( const TPair< FString, UUsdPrimTwin* >& Child : Children )
-	{
-		UUsdPrimTwin* FoundPrimTwin = Child.Value->Find( InSceneComponent );
-		if ( FoundPrimTwin )
-		{
-			return FoundPrimTwin;
-		}
-	}
-
-	return nullptr;
-}
-
-USceneComponent* UUsdPrimTwin::GetSceneComponent()
-{
-	if ( SceneComponent.IsValid() )
-	{
-		return SceneComponent.Get();
-	}
-
-	if ( SpawnedActor.IsValid() )
-	{
-		return SpawnedActor->GetRootComponent();
-	}
-
-	return nullptr;
-}
-
-const USceneComponent* UUsdPrimTwin::GetSceneComponent() const
-{
-	return static_cast< const USceneComponent* >( const_cast< UUsdPrimTwin* >( this )->GetSceneComponent() );
 }

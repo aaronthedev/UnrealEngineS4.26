@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ParticleEmitterInstances.cpp: Particle emitter instance implementations.
@@ -45,6 +45,7 @@ DEFINE_STAT(STAT_SortingTime);
 DEFINE_STAT(STAT_SpriteRenderingTime);
 DEFINE_STAT(STAT_SpriteTickTime);
 DEFINE_STAT(STAT_SpriteSpawnTime);
+DEFINE_STAT(STAT_SpriteUpdateTime);
 DEFINE_STAT(STAT_PSysCompTickTime);
 DEFINE_STAT(STAT_ParticlePoolTime);
 DEFINE_STAT(STAT_ParticleComputeTickTime);
@@ -93,6 +94,7 @@ DEFINE_STAT(STAT_GPUParticlesSimulationCommands);
 
 /** Particle memory stats */
 
+DEFINE_STAT(STAT_ParticleMemTime);
 DEFINE_STAT(STAT_GTParticleData);
 DEFINE_STAT(STAT_DynamicSpriteGTMem);
 DEFINE_STAT(STAT_DynamicSubUVGTMem);
@@ -224,6 +226,9 @@ FORCEINLINE static void* FastParticleSmallBlockAlloc(size_t AllocSize)
 
 FORCEINLINE static void FastParticleSmallBlockFree(void *RawMemory, size_t AllocSize)
 {
+	QUICK_SCOPE_CYCLE_COUNTER(STAT_PARTALLOC);
+
+
 #if FASTPARTICLEALLOC_CHECKSIZE
 	{
 		FScopeLock S(&GFastPoolSizeMapCriticalSection);
@@ -284,11 +289,13 @@ FORCEINLINE static void FastParticleSmallBlockFree(void *RawMemory, size_t Alloc
 #else
 FORCEINLINE static void* FastParticleSmallBlockAlloc(size_t AllocSize)
 {
+	QUICK_SCOPE_CYCLE_COUNTER(STAT_PARTALLOC);
 	return FMemory::Malloc(AllocSize);
 }
 
 FORCEINLINE static void FastParticleSmallBlockFree(void *RawMemory, size_t AllocSize)
 {
+	QUICK_SCOPE_CYCLE_COUNTER(STAT_PARTALLOC);
 	FMemory::Free(RawMemory);
 }
 
@@ -753,6 +760,8 @@ bool FParticleEmitterInstance::Resize(int32 NewMaxActiveParticles, bool bSetMaxA
 #endif
 
 		{
+			SCOPE_CYCLE_COUNTER(STAT_ParticleMemTime);
+
 			ParticleData = (uint8*) FMemory::Realloc(ParticleData, ParticleStride * NewMaxActiveParticles);
 			check(ParticleData);
 
@@ -829,6 +838,7 @@ void FParticleEmitterInstance::Tick(float DeltaTime, bool bSuppressSpawning)
 		ResetParticleParameters(DeltaTime);
 
 		// Update the particles
+		SCOPE_CYCLE_COUNTER(STAT_SpriteUpdateTime);
 		CurrentMaterial = LODLevel->RequiredModule->Material;
 		Tick_ModuleUpdate(DeltaTime, LODLevel);
 
@@ -1037,6 +1047,7 @@ float FParticleEmitterInstance::Tick_SpawnParticles(float DeltaTime, UParticleLO
 {
 	if (!bHaltSpawning && !bHaltSpawningExternal && !bSuppressSpawning && (EmitterTime >= 0.0f))
 	{
+		SCOPE_CYCLE_COUNTER(STAT_SpriteSpawnTime);
 		// If emitter is not done - spawn at current rate.
 		// If EmitterLoops is 0, then we loop forever, so always spawn.
 		if ((InCurrentLODLevel->RequiredModule->EmitterLoops == 0) ||
@@ -1973,7 +1984,6 @@ void FParticleEmitterInstance::CheckSpawnCount(int32 InNewCount, int32 InMaxCoun
  */
 float FParticleEmitterInstance::Spawn(float DeltaTime)
 {
-	SCOPE_CYCLE_COUNTER(STAT_SpriteSpawnTime);
 	UParticleLODLevel* LODLevel = GetCurrentLODLevelChecked();
 
 	// For beams, we probably want to ignore the SpawnRate distribution,
@@ -2914,16 +2924,16 @@ void FParticleEmitterInstance::GatherMaterialRelevance(FMaterialRelevance* OutMa
 	// These will catch the sprite cases...
 	if (CurrentMaterial)
 	{
-		(*OutMaterialRelevance) |= CurrentMaterial->GetRelevance_Concurrent(InFeatureLevel);
+		(*OutMaterialRelevance) |= CurrentMaterial->GetRelevance(InFeatureLevel);
 	}
 	else if (LODLevel->RequiredModule->Material)
 	{
-		(*OutMaterialRelevance) |= LODLevel->RequiredModule->Material->GetRelevance_Concurrent(InFeatureLevel);
+		(*OutMaterialRelevance) |= LODLevel->RequiredModule->Material->GetRelevance(InFeatureLevel);
 	}
 	else
 	{
 		check( UMaterial::GetDefaultMaterial(MD_Surface) );
-		(*OutMaterialRelevance) |= UMaterial::GetDefaultMaterial(MD_Surface)->GetRelevance_Concurrent(InFeatureLevel);
+		(*OutMaterialRelevance) |= UMaterial::GetDefaultMaterial(MD_Surface)->GetRelevance(InFeatureLevel);
 	}
 }
 
@@ -3047,6 +3057,7 @@ FDynamicEmitterDataBase* FParticleSpriteEmitterInstance::GetDynamicData(bool bSe
 	// Allocate the dynamic data
 	FDynamicSpriteEmitterData* NewEmitterData = new FDynamicSpriteEmitterData(LODLevel->RequiredModule);
 	{
+		SCOPE_CYCLE_COUNTER(STAT_ParticleMemTime);
 		INC_DWORD_STAT(STAT_DynamicEmitterCount);
 		INC_DWORD_STAT(STAT_DynamicSpriteCount);
 		INC_DWORD_STAT_BY(STAT_DynamicEmitterMem, sizeof(FDynamicSpriteEmitterData));
@@ -3692,6 +3703,7 @@ FDynamicEmitterDataBase* FParticleMeshEmitterInstance::GetDynamicData(bool bSele
 	// Allocate the dynamic data
 	FDynamicMeshEmitterData* NewEmitterData = new FDynamicMeshEmitterData(LODLevel->RequiredModule);
 	{
+		SCOPE_CYCLE_COUNTER(STAT_ParticleMemTime);
 		INC_DWORD_STAT(STAT_DynamicEmitterCount);
 		INC_DWORD_STAT(STAT_DynamicMeshCount);
 		INC_DWORD_STAT_BY(STAT_DynamicEmitterMem, sizeof(FDynamicMeshEmitterData));
@@ -3800,7 +3812,7 @@ void FParticleMeshEmitterInstance::GatherMaterialRelevance( FMaterialRelevance* 
 	GetMeshMaterials(Materials, LODLevel, InFeatureLevel, true); // Allow log issues since GatherMaterialRelevance is only called when the proxy is created.
 	for (int32 MaterialIndex = 0; MaterialIndex < Materials.Num(); ++MaterialIndex)
 	{
-		(*OutMaterialRelevance) |= Materials[MaterialIndex]->GetRelevance_Concurrent(InFeatureLevel);
+		(*OutMaterialRelevance) |= Materials[MaterialIndex]->GetRelevance(InFeatureLevel);
 	}
 }
 

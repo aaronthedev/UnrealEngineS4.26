@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -11,49 +11,10 @@
 
 
 // Forward Declarations
-class USoundSubmixBase;
+class USoundSubmix;
 
-UENUM(BlueprintType)
-enum class EAudioSpectrumBandPresetType: uint8
-{
-	/** Band which contains frequencies generally related to kick drums. */
-	KickDrum,
-
-	/** Band which contains frequencies generally related to snare drums. */
-	SnareDrum,
-
-	/** Band which contains frequencies generally related to vocals. */
-	Voice,
-
-	/** Band which contains frequencies generally related to cymbals. */
-	Cymbals	
-};
-
-USTRUCT(BlueprintType)
-struct ENGINE_API FSoundSubmixSpectralAnalysisBandSettings
-{
-	GENERATED_USTRUCT_BODY()
-
-	// The frequency band for the magnitude to analyze
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = SubmixSpectralAnalysis, meta = (ClampMin = "10.0", ClampMax = "20000.0", UIMin = "10.0", UIMax = "10000.0"))
-	float BandFrequency = 440.0f;
-
-	// The attack time for the FFT band interpolation for delegate callback
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = SubmixSpectralAnalysis, meta = (ClampMin = "0.0", UIMin = "10.0", UIMax = "10000.0"))
-	int32 AttackTimeMsec = 10;
-
-	// The release time for the FFT band interpolation for delegate callback
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = SubmixSpectralAnalysis, meta = (ClampMin = "0.0", UIMin = "10.0", UIMax = "10000.0"))
-	int32 ReleaseTimeMsec = 500;
-
-	// The ratio of the bandwidth divided by the center frequency. Only used when the spectral analysis type is set to Constant Q.
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, AdvancedDisplay, Category = SubmixSpectralAnalysis, meta = (ClampMin = "0.001", UIMin = "0.1", UIMax = "100.0"))
-	float QFactor = 10.0f;
-};
 
 DECLARE_DYNAMIC_DELEGATE_OneParam(FOnSubmixEnvelopeBP, const TArray<float>&, Envelope);
-
-DECLARE_DYNAMIC_DELEGATE_OneParam(FOnSubmixSpectralAnalysisBP, const TArray<float>&, Magnitude);
 
 UENUM(BlueprintType)
 enum class EAudioRecordingExportType : uint8
@@ -78,16 +39,6 @@ enum class ESendLevelControlMethod : uint8
 	Manual,
 };
 
-UENUM(BlueprintType)
-enum class ESubmixSendStage : uint8
-{
-	// Whether to do the send pre distance attenuation
-	PostDistanceAttenuation,
-
-	// Whether to do the send post distance attenuation
-	PreDistanceAttenuation,
-};
-
 // Class used to send audio to submixes from USoundBase
 USTRUCT(BlueprintType)
 struct ENGINE_API FSoundSubmixSendInfo
@@ -101,19 +52,15 @@ struct ENGINE_API FSoundSubmixSendInfo
 		Linear: Interpolate between Min and Max Send Levels based on listener distance (between Distance Min and Distance Max)
 		Custom Curve: Use the float curve to map Send Level to distance (0.0-1.0 on curve maps to Distance Min - Distance Max)
 	*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = SubmixSend)
+	UPROPERTY(EditAnywhere, Category = SubmixSend)
 	ESendLevelControlMethod SendLevelControlMethod;
 
-	/** Defines at what mix stage the send should happen.*/
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = SubmixSend)
-	ESubmixSendStage SendStage;
-
 	// The submix to send the audio to
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = SubmixSend)
-	USoundSubmixBase* SoundSubmix;
+	UPROPERTY(EditAnywhere, Category = SubmixSend)
+	USoundSubmix* SoundSubmix;
 
 	// The amount of audio to send
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = SubmixSend)
+	UPROPERTY(EditAnywhere, Category = SubmixSend)
 	float SendLevel;
 
 	// The amount to send to master when sound is located at a distance equal to value specified in the min send distance.

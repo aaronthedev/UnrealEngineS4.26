@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -31,8 +31,6 @@ class SPluginBrowser : public SCompoundWidget
 
 	/** Widget constructor */
 	void Construct( const FArguments& Args );
-
-	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
 
 	/** @return Returns the plugin text filter object, so that child widgets can subscribe to find out about changes */
 	FPluginTextFilter& GetPluginTextFilter()
@@ -102,7 +100,5 @@ private:
 
 	/** Breadcrumb trail widget for the currently selected category */
 	TSharedPtr< SBreadcrumbTrail< TSharedPtr< FPluginCategory > > > BreadcrumbTrail;
-
-	bool bInitialFocusTaken = false;
 };
 

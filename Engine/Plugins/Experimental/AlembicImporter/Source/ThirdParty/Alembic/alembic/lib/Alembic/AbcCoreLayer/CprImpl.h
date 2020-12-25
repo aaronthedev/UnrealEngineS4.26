@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcCoreLayer_CprImpl_h
-#define Alembic_AbcCoreLayer_CprImpl_h
+#ifndef _Alembic_AbcCoreLayer_CprImpl_h_
+#define _Alembic_AbcCoreLayer_CprImpl_h_
 
 #include <Alembic/AbcCoreLayer/Foundation.h>
 
@@ -100,19 +100,14 @@ private:
 
     size_t m_index;
 
-    // we need to own the PropertyHeader on the top compounds
-    // (which have no parents), others we can get from
-    // m_children and m_childHeaderIndex below
-    PropertyHeaderPtr m_topHeader;
+    // this compounds header
+    PropertyHeaderPtr m_header;
 
     // each child is made up of the original parent compound, array and scalar
     // properties will only have 1 entry, compounds could have more
     std::vector< CompoundReaderPtrs > m_children;
 
-    // so we don't have to copy property headers over, keep track of what
-    // index to use for the header from the appropriate parent in m_children
-    typedef std::pair< size_t, size_t > HeaderIndexPair;
-    std::vector< HeaderIndexPair > m_childHeaderIndex;
+    std::vector< PropertyHeaderPtr > m_propertyHeaders;
 
     ChildNameMap m_childNameMap;
 };

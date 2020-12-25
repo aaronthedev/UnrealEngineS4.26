@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // Port of geometry3cpp index_util.h
 
@@ -113,14 +113,15 @@ namespace IndexUtil
 	 * @param TriangleIndex which triangle in array to search
 	 * @return vertex id of other vertex, or InvalidID if not found
 	 */
-	inline int FindTriOtherVtx(int VertexID1, int VertexID2, const TDynamicVector<FIndex3i> & TriIndexArray, int TriangleIndex)
+	template<typename T>
+	inline int FindTriOtherVtx(T VertexID1, T VertexID2, const TDynamicVector<T> & TriIndexArray, T TriangleIndex)
 	{
-		const FIndex3i& Triangle = TriIndexArray[TriangleIndex];
-		for (int j = 0; j < 3; ++j)
+		int i = 3 * TriangleIndex;
+		for (int j = 0; j < 3; ++j) 
 		{
-			if (SamePairUnordered(VertexID1, VertexID2, Triangle[j], Triangle[(j+1)%3]))
+			if (SamePairUnordered(VertexID1, VertexID2, TriIndexArray[i + j], TriIndexArray[i + ((j+1)%3)]))
 			{
-				return Triangle[((j + 2) % 3)];
+				return TriIndexArray[i + ((j + 2) % 3)];
 			}
 		}
 		return IndexConstants::InvalidID;
@@ -255,37 +256,8 @@ namespace IndexUtil
 	{
 		return FVector3<T>(MapFunc[Val[0]], MapFunc[Val[1]], MapFunc[Val[2]]);
 	}
-	
-	/**
-	 * @return false if CheckFn returns false on any element of ToCheck, true otherwise
-	 */
-	template<typename T, typename Func>
-	bool ArrayCheck(const TArray<T>& ToCheck, Func CheckFn)
-	{
-		for (const T& Value : ToCheck)
-		{
-			if (!CheckFn(Value))
-			{
-				return false;
-			}
-		}
-		return true;
-	}
 
-	/**
-	 * integer indices offsets in x/y directions
-	 */
-	extern GEOMETRICOBJECTS_API const FVector2i GridOffsets4[4];
 
-	/**
-	 * integer indices offsets in x/y directions and diagonals
-	 */
-	extern GEOMETRICOBJECTS_API const FVector2i GridOffsets8[8];
-
-	/**
-	 * integer indices offsets in x/y/z directions, corresponds w/ BoxFaces directions
-	 */
-	extern GEOMETRICOBJECTS_API const FVector3i GridOffsets6[6];
 
 	/**
 	 * all permutations of (+-1, +-1, +-1), can be used to iterate over connected face/edge/corner neighbours of a grid cell

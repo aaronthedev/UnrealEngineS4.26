@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -41,7 +41,7 @@ class IStructSerializerBackend;
 struct FStructSerializerState;
 class FWebJSScripting;
 class UObject;
-class FProperty;
+class UProperty;
 class UStruct;
 
 #if WITH_CEF3

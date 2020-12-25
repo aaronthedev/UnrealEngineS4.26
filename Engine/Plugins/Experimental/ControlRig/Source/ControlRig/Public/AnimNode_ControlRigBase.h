@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,37 +7,6 @@
 
 class UControlRig;
 class UNodeMappingContainer;
-
-/** Struct defining the settings to override when driving a control rig */
-USTRUCT()
-struct CONTROLRIG_API FControlRigIOSettings
-{
-	GENERATED_BODY()
-
-	FControlRigIOSettings()
-		: bUpdatePose(true)
-		, bUpdateCurves(true)
-	{}
-
-	FORCEINLINE static FControlRigIOSettings MakeEnabled()
-	{
-		return FControlRigIOSettings();
-	}
-
-	FORCEINLINE static FControlRigIOSettings MakeDisabled()
-	{
-		FControlRigIOSettings Settings;
-		Settings.bUpdatePose = Settings.bUpdateCurves = false;
-		return Settings;
-	}
-
-	UPROPERTY()
-	bool bUpdatePose;
-
-	UPROPERTY()
-	bool bUpdateCurves;
-};
-
 /**
  * Animation node that allows animation ControlRig output to be used in an animation graph
  */
@@ -81,10 +50,7 @@ protected:
 	TWeakObjectPtr<UNodeMappingContainer> NodeMappingContainer;
 
 	UPROPERTY(transient)
-	FControlRigIOSettings InputSettings;
-
-	UPROPERTY(transient)
-	FControlRigIOSettings OutputSettings;
+	bool bUpdateInput;
 
 	UPROPERTY(transient)
 	bool bExecute;
@@ -101,6 +67,5 @@ protected:
 	void ExecuteControlRig(FPoseContext& InOutput);
 
 	friend struct FControlRigSequencerAnimInstanceProxy;
-	friend struct FControlRigLayerInstanceProxy;
 };
 

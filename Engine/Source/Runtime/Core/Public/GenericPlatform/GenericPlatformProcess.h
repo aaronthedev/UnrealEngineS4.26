@@ -1,25 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreTypes.h"
 #include "Containers/UnrealString.h"
 #include "Templates/Function.h"
-
-////////////////////////////////////////////////////////////////////////////////
-#if PLATFORM_CPU_X86_FAMILY
-#include <emmintrin.h>
-#endif
-
-////////////////////////////////////////////////////////////////////////////////
-#if !defined(__clang__)
-#	include <intrin.h>
-#	if defined(_M_ARM)
-#		include <armintr.h>
-#	elif defined(_M_ARM64)
-#		include <arm64intr.h>
-#	endif
-#endif
 
 class Error;
 struct FProcHandle;
@@ -50,12 +35,6 @@ namespace ELaunchVerb
 		/** Launch the application associated with opening file to 'edit' */
 		Edit,
 	};
-}
-
-/** Forward declaration for ENamedThreads */
-namespace ENamedThreads
-{
-	enum Type : int32;
 }
 
 
@@ -195,12 +174,6 @@ struct CORE_API FGenericPlatformProcess
 
 	}
 
-	/** Get the list of registered directories to search in when resolving implicitly loaded or filename-only DLLs. **/
-	FORCEINLINE static void GetDllDirectories(TArray<FString>& OutDllDirectories)
-	{
-
-	}
-
 	/**
 	 * Retrieves the ProcessId of this process.
 	 *
@@ -222,12 +195,6 @@ struct CORE_API FGenericPlatformProcess
 	 */
 	static void SetThreadAffinityMask( uint64 AffinityMask );
 
-	/**
-	 * Helper function to set thread name of the current thread.
-	 * @param ThreadName   Name to set
-	 */
-	static void SetThreadName( const TCHAR* ThreadName ) { }
-
 	/** Allow the platform to do anything it needs for game thread */
 	static void SetupGameThread() { }
 
@@ -237,9 +204,6 @@ struct CORE_API FGenericPlatformProcess
 	/** Allow the platform to do anything it needs for audio thread */
 	static void SetupAudioThread() { }
 
-	/** Allow the platform to tear down the audio thread */
-	static void TeardownAudioThread() { }
-	
 	/** Content saved to the game or engine directories should be rerouted to user directories instead **/
 	static bool ShouldSaveToUserDir();
 
@@ -528,11 +492,6 @@ struct CORE_API FGenericPlatformProcess
 	static class FEvent* GetSynchEventFromPool(bool bIsManualReset = false);
 
 	/**
-	 * Deletes all the recycled sync events contained by the pools
-	 */
-	static void FlushPoolSyncEvents();
-
-	/**
 	 * Returns an event to the pool.
 	 *
 	 * @param Event The event to return.
@@ -670,35 +629,6 @@ struct CORE_API FGenericPlatformProcess
 	 * force skip calling FThreadStats::WaitForStats()
 	 */
 	static bool SkipWaitForStats() { return false; }
-
-	/**
-	 * specifies the thread to use for UObject reference collection
-	 */
-	static ENamedThreads::Type GetDesiredThreadForUObjectReferenceCollector();
-
-	/**
-	 * allows a platform to override the threading configuration for reference collection
-	 */
-	static void ModifyThreadAssignmentForUObjectReferenceCollector( int32& NumThreads, int32& NumBackgroundThreads, ENamedThreads::Type& NormalThreadName, ENamedThreads::Type& BackgroundThreadName );
-
-	/**
-	 * Tells the processor to pause for implementation-specific amount of time. Is used for spin-loops to improve the speed at 
-	 * which the code detects the release of the lock and power-consumption.
-	 */
-	static FORCEINLINE void Yield()
-	{
-#if PLATFORM_CPU_X86_FAMILY
-		_mm_pause();
-#elif PLATFORM_CPU_ARM_FAMILY
-#	if !defined(__clang__)
-		__yield(); // MSVC
-#	else
-		__builtin_arm_yield();
-#	endif
-#else
-#	error Unsupported architecture!
-#endif
-	}
 };
 
 

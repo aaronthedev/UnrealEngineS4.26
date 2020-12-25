@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SDestructibleMeshEditorViewport.h"
 #include "Misc/Paths.h"
@@ -22,8 +22,6 @@
 #include "PhysXPublic.h"
 #include "Settings/SkeletalMeshEditorSettings.h"
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-
 DEFINE_LOG_CATEGORY_STATIC(LogDestructibleMeshEditor, Log, All);
 
 static const float	AnimationEditorViewport_LightRotSpeed = 0.22f;
@@ -36,7 +34,7 @@ class FDestructibleMeshEditorViewportClient : public FEditorViewportClient, publ
 protected:
 	/** Skeletal Mesh Component used for preview */
 	TWeakObjectPtr<UDestructibleComponent> PreviewDestructibleComp;
-	
+
 public:
 	FDestructibleMeshEditorViewportClient(TWeakPtr<IDestructibleMeshEditor> InDestructibleMeshEditor, FPreviewScene& InPreviewScene, const TSharedRef<SDestructibleMeshEditorViewport>& InDestructibleMeshEditorViewport);
 
@@ -452,7 +450,6 @@ void FDestructibleMeshEditorViewportClient::ImportFBXChunks()
 			ImportOptions->bAutoGenerateCollision = false;
 			ImportOptions->bBakePivotInVertex = false;
 			ImportOptions->bCanShowDialog = false;
-			ImportOptions->bIsImportCancelable = false;
 			ImportOptions->bCombineToSingle = false;
 			ImportOptions->bConvertScene = true;
 			ImportOptions->bConvertSceneUnit = true;
@@ -666,19 +663,19 @@ bool SDestructibleMeshEditorViewport::IsVisible() const
 void SDestructibleMeshEditorViewport::SetPreviewDepth(uint32 InPreviewDepth)
 {
 	uint32 DepthCount = 0;
-	uint32 NewPreviewDepth = 0;
 
 #if WITH_APEX
-	if (DestructibleMesh && DestructibleMesh->ApexDestructibleAsset)
+	if (DestructibleMesh != NULL && DestructibleMesh->ApexDestructibleAsset != NULL)
 	{
 		DepthCount = DestructibleMesh->ApexDestructibleAsset->getDepthCount();
-
-		if (DepthCount > 0)
-		{
-			NewPreviewDepth = FMath::Clamp(InPreviewDepth, (uint32)0, DepthCount-1);
-		}
 	}
 #endif // WITH_APEX
+
+	uint32 NewPreviewDepth = 0;
+	if (DepthCount > 0)
+	{
+		NewPreviewDepth = FMath::Clamp(InPreviewDepth, (uint32)0, DepthCount-1);
+	}
 
 	if (NewPreviewDepth != PreviewDepth)
 	{
@@ -749,5 +746,3 @@ void SDestructibleMeshEditorViewport::BindCommands()
 {
 	// No commands. Overridden to prevent the base SEditorViewport commands from being bound.
 }
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

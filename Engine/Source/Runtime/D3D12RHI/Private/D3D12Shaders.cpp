@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	D3D12Shaders.cpp: D3D shader RHI implementation.
@@ -7,9 +7,9 @@
 #include "D3D12RHIPrivate.h"
 
 template <typename TShaderType>
-static inline bool ReadShaderOptionalData(FShaderCodeReader& InShaderCode, TShaderType& OutShader, bool& bOutFoundCodeFeatures, FShaderCodeFeatures& OutCodeFeatures)
+static inline bool ReadShaderOptionalData(FShaderCodeReader& InShaderCode, TShaderType& OutShader)
 {
-	const FShaderCodePackedResourceCounts* PackedResourceCounts = InShaderCode.FindOptionalData<FShaderCodePackedResourceCounts>();
+	auto PackedResourceCounts = InShaderCode.FindOptionalData<FShaderCodePackedResourceCounts>();
 	if (!PackedResourceCounts)
 	{
 		return false;
@@ -19,7 +19,7 @@ static inline bool ReadShaderOptionalData(FShaderCodeReader& InShaderCode, TShad
 	OutShader.ShaderName = InShaderCode.FindOptionalData('n');
 
 	int32 UniformBufferTableSize = 0;
-	const auto* UniformBufferData = InShaderCode.FindOptionalDataAndSize('u', UniformBufferTableSize);
+	auto* UniformBufferData = InShaderCode.FindOptionalDataAndSize('u', UniformBufferTableSize);
 #if 0
 	//#todo-rco
 	if (UniformBufferData && UniformBufferTableSize > 0)
@@ -42,73 +42,27 @@ static inline bool ReadShaderOptionalData(FShaderCodeReader& InShaderCode, TShad
 		FBufferReader Ar((void*)VendorExtensionData, VendorExtensionTableSize, false);
 		Ar << OutShader.VendorExtensions;
 	}
-
-	const FShaderCodeFeatures* CodeFeatures = InShaderCode.FindOptionalData<FShaderCodeFeatures>();
-	if (CodeFeatures)
-	{
-		bOutFoundCodeFeatures = true;
-		OutCodeFeatures = *CodeFeatures;
-	}
-	else
-	{
-		bOutFoundCodeFeatures = false;
-	}
-
 	return true;
 }
 
-template <typename TShaderType>
-static inline bool ReadShaderOptionalData(FShaderCodeReader& InShaderCode, TShaderType& OutShader)
-{
-	bool bHasCodeFeatures = false;
-	FShaderCodeFeatures Features;
-	return ReadShaderOptionalData(InShaderCode, OutShader, bHasCodeFeatures, Features);
-}
-
-template <typename TShaderType>
-static inline void InitUniformBufferStaticSlots(TShaderType* Shader)
-{
-	const FBaseShaderResourceTable& SRT = Shader->ShaderResourceTable;
-
-	Shader->StaticSlots.Reserve(SRT.ResourceTableLayoutHashes.Num());
-
-	for (uint32 LayoutHash : SRT.ResourceTableLayoutHashes)
-	{
-		if (const FShaderParametersMetadata* Metadata = FindUniformBufferStructByLayoutHash(LayoutHash))
-		{
-			Shader->StaticSlots.Add(Metadata->GetLayout().StaticSlot);
-		}
-		else
-		{
-			Shader->StaticSlots.Add(MAX_UNIFORM_BUFFER_STATIC_SLOTS);
-		}
-	}
-}
-
-FVertexShaderRHIRef FD3D12DynamicRHI::RHICreateVertexShader(TArrayView<const uint8> Code, const FSHAHash& Hash)
+FVertexShaderRHIRef FD3D12DynamicRHI::RHICreateVertexShader(const TArray<uint8>& Code)
 {
 	FShaderCodeReader ShaderCode(Code);
 	FD3D12VertexShader* Shader = new FD3D12VertexShader;
 
-	FMemoryReaderView Ar(Code, true);
+	FMemoryReader Ar(Code, true);
 	Ar << Shader->ShaderResourceTable;
 	int32 Offset = Ar.Tell();
 	const uint8* CodePtr = Code.GetData() + Offset;
 	const SIZE_T CodeSize = ShaderCode.GetActualShaderCodeSize() - Offset;
-	bool bFoundCodeFeatures;
-	FShaderCodeFeatures CodeFeatures;
-	if (!ReadShaderOptionalData(ShaderCode, *Shader, bFoundCodeFeatures, CodeFeatures))
-	{
-		return nullptr;
-	}
-	if (bFoundCodeFeatures && CodeFeatures.bUsesWaveOps && !GRHISupportsWaveOperations)
+
+	if (!ReadShaderOptionalData(ShaderCode, *Shader))
 	{
 		return nullptr;
 	}
 
 	Shader->Code = Code;
 	Shader->Offset = Offset;
-	InitUniformBufferStaticSlots(Shader);
 
 	D3D12_SHADER_BYTECODE ShaderBytecode;
 	ShaderBytecode.pShaderBytecode = Shader->Code.GetData() + Offset;
@@ -118,30 +72,24 @@ FVertexShaderRHIRef FD3D12DynamicRHI::RHICreateVertexShader(TArrayView<const uin
 	return Shader;
 }
 
-FPixelShaderRHIRef FD3D12DynamicRHI::RHICreatePixelShader(TArrayView<const uint8> Code, const FSHAHash& Hash)
+FPixelShaderRHIRef FD3D12DynamicRHI::RHICreatePixelShader(const TArray<uint8>& Code)
 {
 	FShaderCodeReader ShaderCode(Code);
 
 	FD3D12PixelShader* Shader = new FD3D12PixelShader;
 
-	FMemoryReaderView Ar(Code, true);
+	FMemoryReader Ar(Code, true);
 	Ar << Shader->ShaderResourceTable;
 	int32 Offset = Ar.Tell();
 	const uint8* CodePtr = Code.GetData() + Offset;
 	const SIZE_T CodeSize = ShaderCode.GetActualShaderCodeSize() - Offset;
-	bool bFoundCodeFeatures;
-	FShaderCodeFeatures CodeFeatures;
-	if (!ReadShaderOptionalData(ShaderCode, *Shader, bFoundCodeFeatures, CodeFeatures))
-	{
-		return nullptr;
-	}
-	if (bFoundCodeFeatures && CodeFeatures.bUsesWaveOps && !GRHISupportsWaveOperations)
+
+	if (!ReadShaderOptionalData(ShaderCode, *Shader))
 	{
 		return nullptr;
 	}
 
 	Shader->Code = Code;
-	InitUniformBufferStaticSlots(Shader);
 
 	D3D12_SHADER_BYTECODE ShaderBytecode;
 	ShaderBytecode.pShaderBytecode = Shader->Code.GetData() + Offset;
@@ -151,30 +99,24 @@ FPixelShaderRHIRef FD3D12DynamicRHI::RHICreatePixelShader(TArrayView<const uint8
 	return Shader;
 }
 
-FHullShaderRHIRef FD3D12DynamicRHI::RHICreateHullShader(TArrayView<const uint8> Code, const FSHAHash& Hash)
+FHullShaderRHIRef FD3D12DynamicRHI::RHICreateHullShader(const TArray<uint8>& Code)
 {
 	FShaderCodeReader ShaderCode(Code);
 
 	FD3D12HullShader* Shader = new FD3D12HullShader;
 
-	FMemoryReaderView Ar(Code, true);
+	FMemoryReader Ar(Code, true);
 	Ar << Shader->ShaderResourceTable;
 	int32 Offset = Ar.Tell();
 	const uint8* CodePtr = Code.GetData() + Offset;
 	const SIZE_T CodeSize = ShaderCode.GetActualShaderCodeSize() - Offset;
-	bool bFoundCodeFeatures;
-	FShaderCodeFeatures CodeFeatures;
-	if (!ReadShaderOptionalData(ShaderCode, *Shader, bFoundCodeFeatures, CodeFeatures))
-	{
-		return nullptr;
-	}
-	if (bFoundCodeFeatures && CodeFeatures.bUsesWaveOps && !GRHISupportsWaveOperations)
+
+	if (!ReadShaderOptionalData(ShaderCode, *Shader))
 	{
 		return nullptr;
 	}
 
 	Shader->Code = Code;
-	InitUniformBufferStaticSlots(Shader);
 
 	D3D12_SHADER_BYTECODE ShaderBytecode;
 	ShaderBytecode.pShaderBytecode = Shader->Code.GetData() + Offset;
@@ -184,30 +126,24 @@ FHullShaderRHIRef FD3D12DynamicRHI::RHICreateHullShader(TArrayView<const uint8> 
 	return Shader;
 }
 
-FDomainShaderRHIRef FD3D12DynamicRHI::RHICreateDomainShader(TArrayView<const uint8> Code, const FSHAHash& Hash)
+FDomainShaderRHIRef FD3D12DynamicRHI::RHICreateDomainShader(const TArray<uint8>& Code)
 {
 	FShaderCodeReader ShaderCode(Code);
 
 	FD3D12DomainShader* Shader = new FD3D12DomainShader;
 
-	FMemoryReaderView Ar(Code, true);
+	FMemoryReader Ar(Code, true);
 	Ar << Shader->ShaderResourceTable;
 	int32 Offset = Ar.Tell();
 	const uint8* CodePtr = Code.GetData() + Offset;
 	const SIZE_T CodeSize = ShaderCode.GetActualShaderCodeSize() - Offset;
-	bool bFoundCodeFeatures;
-	FShaderCodeFeatures CodeFeatures;
-	if (!ReadShaderOptionalData(ShaderCode, *Shader, bFoundCodeFeatures, CodeFeatures))
-	{
-		return nullptr;
-	}
-	if (bFoundCodeFeatures && CodeFeatures.bUsesWaveOps && !GRHISupportsWaveOperations)
+
+	if (!ReadShaderOptionalData(ShaderCode, *Shader))
 	{
 		return nullptr;
 	}
 
 	Shader->Code = Code;
-	InitUniformBufferStaticSlots(Shader);
 
 	D3D12_SHADER_BYTECODE ShaderBytecode;
 	ShaderBytecode.pShaderBytecode = Shader->Code.GetData() + Offset;
@@ -217,30 +153,24 @@ FDomainShaderRHIRef FD3D12DynamicRHI::RHICreateDomainShader(TArrayView<const uin
 	return Shader;
 }
 
-FGeometryShaderRHIRef FD3D12DynamicRHI::RHICreateGeometryShader(TArrayView<const uint8> Code, const FSHAHash& Hash)
+FGeometryShaderRHIRef FD3D12DynamicRHI::RHICreateGeometryShader(const TArray<uint8>& Code)
 {
 	FShaderCodeReader ShaderCode(Code);
 
 	FD3D12GeometryShader* Shader = new FD3D12GeometryShader;
 
-	FMemoryReaderView Ar(Code, true);
+	FMemoryReader Ar(Code, true);
 	Ar << Shader->ShaderResourceTable;
 	int32 Offset = Ar.Tell();
 	const uint8* CodePtr = Code.GetData() + Offset;
 	const SIZE_T CodeSize = ShaderCode.GetActualShaderCodeSize() - Offset;
-	bool bFoundCodeFeatures;
-	FShaderCodeFeatures CodeFeatures;
-	if (!ReadShaderOptionalData(ShaderCode, *Shader, bFoundCodeFeatures, CodeFeatures))
-	{
-		return nullptr;
-	}
-	if (bFoundCodeFeatures && CodeFeatures.bUsesWaveOps && !GRHISupportsWaveOperations)
+
+	if (!ReadShaderOptionalData(ShaderCode, *Shader))
 	{
 		return nullptr;
 	}
 
 	Shader->Code = Code;
-	InitUniformBufferStaticSlots(Shader);
 
 	D3D12_SHADER_BYTECODE ShaderBytecode;
 	ShaderBytecode.pShaderBytecode = Shader->Code.GetData() + Offset;
@@ -250,30 +180,24 @@ FGeometryShaderRHIRef FD3D12DynamicRHI::RHICreateGeometryShader(TArrayView<const
 	return Shader;
 }
 
-FComputeShaderRHIRef FD3D12DynamicRHI::RHICreateComputeShader(TArrayView<const uint8> Code, const FSHAHash& Hash)
+FComputeShaderRHIRef FD3D12DynamicRHI::RHICreateComputeShader(const TArray<uint8>& Code)
 {
 	FShaderCodeReader ShaderCode(Code);
 
 	FD3D12ComputeShader* Shader = new FD3D12ComputeShader;
 
-	FMemoryReaderView Ar(Code, true);
+	FMemoryReader Ar(Code, true);
 	Ar << Shader->ShaderResourceTable;
 	int32 Offset = Ar.Tell();
 	const uint8* CodePtr = Code.GetData() + Offset;
 	const SIZE_T CodeSize = ShaderCode.GetActualShaderCodeSize() - Offset;
-	bool bFoundCodeFeatures;
-	FShaderCodeFeatures CodeFeatures;
-	if (!ReadShaderOptionalData(ShaderCode, *Shader, bFoundCodeFeatures, CodeFeatures))
-	{
-		return nullptr;
-	}
-	if (bFoundCodeFeatures && CodeFeatures.bUsesWaveOps && !GRHISupportsWaveOperations)
+
+	if (!ReadShaderOptionalData(ShaderCode, *Shader))
 	{
 		return nullptr;
 	}
 
 	Shader->Code = Code;
-	InitUniformBufferStaticSlots(Shader);
 
 	D3D12_SHADER_BYTECODE ShaderBytecode;
 	ShaderBytecode.pShaderBytecode = Shader->Code.GetData() + Offset;
@@ -296,62 +220,34 @@ FComputeShaderRHIRef FD3D12DynamicRHI::RHICreateComputeShader(TArrayView<const u
 
 #if D3D12_RHI_RAYTRACING
 
-FRayTracingShaderRHIRef FD3D12DynamicRHI::RHICreateRayTracingShader(TArrayView<const uint8> Code, const FSHAHash& Hash, EShaderFrequency ShaderFrequency)
+FRayTracingShaderRHIRef FD3D12DynamicRHI::RHICreateRayTracingShader(const TArray<uint8>& Code, EShaderFrequency ShaderFrequency)
 {
-	checkf(GRHISupportsRayTracing, TEXT("Tried to create RayTracing shader but RHI doesn't support it!"));
-
 	FShaderCodeReader ShaderCode(Code);
-	FD3D12RayTracingShader* Shader = new FD3D12RayTracingShader(ShaderFrequency);
+	FD3D12RayTracingShader* Shader = new FD3D12RayTracingShader;
 
-	FMemoryReaderView Ar(Code, true);
+	FMemoryReader Ar(Code, true);
 	Ar << Shader->ShaderResourceTable;
 	Ar << Shader->EntryPoint;
 	Ar << Shader->AnyHitEntryPoint;
 	Ar << Shader->IntersectionEntryPoint;
 
 	int32 Offset = Ar.Tell();
+	const uint8* CodePtr = Code.GetData() + Offset;
+	const SIZE_T CodeSize = ShaderCode.GetActualShaderCodeSize() - Offset;
 
-	bool bFoundCodeFeatures;
-	FShaderCodeFeatures CodeFeatures;
-	if (!ReadShaderOptionalData(ShaderCode, *Shader, bFoundCodeFeatures, CodeFeatures))
-	{
-		return nullptr;
-	}
+	ReadShaderOptionalData(ShaderCode, *Shader);
 
-	int32 PrecompiledKey = 0;
-	Ar << PrecompiledKey;
-	if (PrecompiledKey == RayTracingPrecompiledPSOKey)
-	{
-		Offset += sizeof(PrecompiledKey); // Skip the precompiled PSO marker if it's present
-		Shader->bPrecompiledPSO = true;
-	}
-
-	// Copy the native shader data only, skipping any of our own headers.
-	TArrayView<const uint8> NativeShaderCode = MakeArrayView(Code.GetData() + Offset, ShaderCode.GetActualShaderCodeSize() - Offset);
-	Shader->Code = TArray<uint8>(NativeShaderCode);
+	Shader->Code = Code;
 
 	D3D12_SHADER_BYTECODE ShaderBytecode;
-	ShaderBytecode.pShaderBytecode = Shader->Code.GetData();
-	ShaderBytecode.BytecodeLength = Shader->Code.Num();
-
+	ShaderBytecode.pShaderBytecode = Shader->Code.GetData() + Offset;
+	ShaderBytecode.BytecodeLength = CodeSize;
 	Shader->ShaderBytecode.SetShaderBytecode(ShaderBytecode);
 
 	FD3D12Adapter& Adapter = GetAdapter();
 
 #if USE_STATIC_ROOT_SIGNATURE
-	switch (ShaderFrequency)
-	{
-	case SF_RayGen:
-		Shader->pRootSignature = Adapter.GetStaticRayTracingGlobalRootSignature();
-		break;
-	case SF_RayHitGroup:
-	case SF_RayCallable:
-	case SF_RayMiss:
-		Shader->pRootSignature = Adapter.GetStaticRayTracingLocalRootSignature();
-		break;
-	default:
-		checkNoEntry(); // Unexpected shader target frequency
-	}
+	Shader->pRootSignature = Adapter.GetStaticComputeRootSignature();
 #else // USE_STATIC_ROOT_SIGNATURE
 	const D3D12_RESOURCE_BINDING_TIER Tier = Adapter.GetResourceBindingTier();
 	FD3D12QuantizedBoundShaderState QBSS;
@@ -377,19 +273,21 @@ FD3D12BoundShaderState::FD3D12BoundShaderState(
 	FRHIHullShader* InHullShaderRHI,
 	FRHIDomainShader* InDomainShaderRHI,
 	FRHIGeometryShader* InGeometryShaderRHI,
-	FD3D12Adapter* InAdapter
+	FD3D12Device* InDevice
 	) :
 	CacheLink(InVertexDeclarationRHI, InVertexShaderRHI, InPixelShaderRHI, InHullShaderRHI, InDomainShaderRHI, InGeometryShaderRHI, this)
 {
 	INC_DWORD_STAT(STAT_D3D12NumBoundShaderState);
 
+	FD3D12Adapter* Adapter = InDevice->GetParentAdapter();
+
 #if USE_STATIC_ROOT_SIGNATURE
-	pRootSignature = InAdapter->GetStaticGraphicsRootSignature();
+	pRootSignature = Adapter->GetStaticGraphicsRootSignature();
 #else
-	const D3D12_RESOURCE_BINDING_TIER Tier = InAdapter->GetResourceBindingTier();
+	const D3D12_RESOURCE_BINDING_TIER Tier = Adapter->GetResourceBindingTier();
 	FD3D12QuantizedBoundShaderState QuantizedBoundShaderState;
 	QuantizeBoundShaderState(Tier, this, QuantizedBoundShaderState);
-	pRootSignature = InAdapter->GetRootSignature(QuantizedBoundShaderState);
+	pRootSignature = Adapter->GetRootSignature(QuantizedBoundShaderState);
 #endif
 
 #if D3D12_SUPPORTS_PARALLEL_RHI_EXECUTE
@@ -426,7 +324,7 @@ FBoundShaderStateRHIRef FD3D12DynamicRHI::RHICreateBoundShaderState(
 {
 	//SCOPE_CYCLE_COUNTER(STAT_D3D12CreateBoundShaderStateTime);
 
-	checkf(GIsRHIInitialized && GetRHIDevice(0)->GetCommandListManager().IsReady(), (TEXT("Bound shader state RHI resource was created without initializing Direct3D first")));
+	checkf(GIsRHIInitialized && GetRHIDevice()->GetCommandListManager().IsReady(), (TEXT("Bound shader state RHI resource was created without initializing Direct3D first")));
 
 #if D3D12_SUPPORTS_PARALLEL_RHI_EXECUTE
 	// Check for an existing bound shader state which matches the parameters
@@ -464,6 +362,6 @@ FBoundShaderStateRHIRef FD3D12DynamicRHI::RHICreateBoundShaderState(
 	{
 		SCOPE_CYCLE_COUNTER(STAT_D3D12NewBoundShaderStateTime);
 
-		return new FD3D12BoundShaderState(VertexDeclarationRHI, VertexShaderRHI, PixelShaderRHI, HullShaderRHI, DomainShaderRHI, GeometryShaderRHI, &GetAdapter());
+		return new FD3D12BoundShaderState(VertexDeclarationRHI, VertexShaderRHI, PixelShaderRHI, HullShaderRHI, DomainShaderRHI, GeometryShaderRHI, GetRHIDevice());
 	}
 }

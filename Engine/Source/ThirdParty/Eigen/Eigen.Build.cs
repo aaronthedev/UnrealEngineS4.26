@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -9,7 +9,12 @@ public class Eigen : ModuleRules
         Type = ModuleType.External;
 		
 		PublicIncludePaths.Add(ModuleDirectory);
-        PublicIncludePaths.Add( ModuleDirectory + "/Eigen/" );
+
+        if (Target.Platform == UnrealTargetPlatform.Win64 || Target.Platform == UnrealTargetPlatform.Win32 || Target.Platform == UnrealTargetPlatform.Mac)
+        {
+           PublicIncludePaths.Add( ModuleDirectory + "/Eigen/" );
+        }
+
         PublicDefinitions.Add("EIGEN_MPL2_ONLY");
 		ShadowVariableWarningLevel = WarningLevel.Off;
 	}

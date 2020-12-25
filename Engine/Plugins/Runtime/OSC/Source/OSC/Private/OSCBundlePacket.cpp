@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "OSCBundlePacket.h"
 
 #include "OSCBundle.h"
@@ -50,8 +50,6 @@ void FOSCBundlePacket::WriteData(FOSCStream& Stream)
 
 void FOSCBundlePacket::ReadData(FOSCStream& Stream)
 {
-	Packets.Reset();
-
 	FString BundleTag = Stream.ReadString();
 	if (BundleTag != OSC::BundleTag)
 	{
@@ -66,7 +64,7 @@ void FOSCBundlePacket::ReadData(FOSCStream& Stream)
 		int32 PacketLength = Stream.ReadInt32();
 
 		int32 StartPos = Stream.GetPosition();
-		TSharedPtr<IOSCPacket> Packet = IOSCPacket::CreatePacket(Stream.GetData() + Stream.GetPosition(), IPAddress, Port);
+		TSharedPtr<IOSCPacket> Packet = IOSCPacket::CreatePacket(Stream.GetData() + Stream.GetPosition());
 		if (!Packet.IsValid())
 		{
 			break;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameFramework/PlayerController.h"
 #include "Misc/PackageName.h"
@@ -28,7 +28,6 @@
 #include "DrawDebugHelpers.h"
 #include "EngineUtils.h"
 #include "Framework/Application/SlateApplication.h"
-#include "Framework/Application/SlateUser.h"
 #include "Widgets/SViewport.h"
 #include "Engine/Console.h"
 #include "Net/UnrealNetwork.h"
@@ -87,6 +86,13 @@ namespace PlayerControllerCVars
 		TEXT("Whether to reset server prediction data for the possessed Pawn when the pawn ack handshake completes.\n")
 		TEXT("0: Disable, 1: Enable"),
 		ECVF_Default);
+
+	static bool LevelVisibilityDontSerializeFileName = false;
+	FAutoConsoleVariableRef CVarLevelVisibilityDontSerializeFileName(
+		TEXT("PlayerController.LevelVisibilityDontSerializeFileName"),
+		LevelVisibilityDontSerializeFileName,
+		TEXT("When true, we'll always skip serializing FileName with FUpdateLevelVisibilityLevelInfo's. This will save bandwidth when games don't need both.")
+	);
 }
 
 const float RetryClientRestartThrottleTime = 0.5f;
@@ -96,6 +102,40 @@ const float RetryServerCheckSpectatorThrottleTime = 0.25f;
 // Note: This value should be sufficiently small such that it is considered to be in the past before RetryClientRestartThrottleTime and RetryServerAcknowledgeThrottleTime.
 const float ForceRetryClientRestartTime = -100.0f;
 
+FUpdateLevelVisibilityLevelInfo::FUpdateLevelVisibilityLevelInfo(const ULevel* const Level, const bool bInIsVisible)
+	: bIsVisible(bInIsVisible)
+{
+	const UPackage* const LevelPackage = Level->GetOutermost();
+	PackageName = LevelPackage->GetFName();
+
+	// When packages are duplicated for PIE, they may not have a FileName.
+	// For now, just revert to the old behavior.
+	FileName = (LevelPackage->FileName == NAME_None) ? PackageName : LevelPackage->FileName;
+}
+
+bool FUpdateLevelVisibilityLevelInfo::NetSerialize(FArchive& Ar, UPackageMap* PackageMap, bool& bOutSuccess)
+{
+	bool bArePackageAndFileTheSame = !!((PlayerControllerCVars::LevelVisibilityDontSerializeFileName) || (FileName == PackageName) || (FileName == NAME_None));
+	bool bLocalIsVisible = !!bIsVisible;
+
+	Ar.SerializeBits(&bArePackageAndFileTheSame, 1);
+	Ar.SerializeBits(&bLocalIsVisible, 1);
+	Ar << PackageName;
+
+	if (!bArePackageAndFileTheSame)
+	{
+		Ar << FileName;
+	}
+	else if (Ar.IsLoading())
+	{
+		FileName = PackageName;
+	}
+
+	bIsVisible = bLocalIsVisible;
+
+	bOutSuccess = !Ar.IsError();
+	return true;
+}
 
 //////////////////////////////////////////////////////////////////////////
 // APlayerController
@@ -238,7 +278,7 @@ FName APlayerController::NetworkRemapPath(FName InPackageName, bool bReading)
 {
 	// For PIE Networking: remap the packagename to our local PIE packagename
 	FString PackageNameStr = InPackageName.ToString();
-	GEngine->NetworkRemapPath(GetNetConnection(), PackageNameStr, bReading);
+	GEngine->NetworkRemapPath(GetNetDriver(), PackageNameStr, bReading);
 	return FName(*PackageNameStr);
 }
 
@@ -623,22 +663,22 @@ void APlayerController::ForceSingleNetUpdateFor(AActor* Target)
 	}
 	else
 	{
-		if (UNetConnection* Conn = Cast<UNetConnection>(Player))
+		UNetConnection* Conn = Cast<UNetConnection>(Player);
+		if (Conn != NULL)
 		{
 			if (Conn->GetUChildConnection() != NULL)
 			{
 				Conn = ((UChildConnection*)Conn)->Parent;
 				checkSlow(Conn != NULL);
 			}
-
-			if (UActorChannel* Channel = Conn->FindActorChannelRef(Target))
+			UActorChannel* Channel = Conn->FindActorChannelRef(Target);
+			if (Channel != NULL)
 			{
-				if (UNetDriver* NetDriver = Conn->GetDriver())
+				FNetworkObjectInfo* NetActor = Target->FindOrAddNetworkObjectInfo();
+
+				if (NetActor != nullptr)
 				{
-					if (FNetworkObjectInfo* NetActor = NetDriver->FindOrAddNetworkObjectInfo(Target))
-					{
-						NetActor->bPendingNetUpdate = true; // will cause some other clients to do lesser checks too, but that's unavoidable with the current functionality
-					}
+					NetActor->bPendingNetUpdate = true; // will cause some other clients to do lesser checks too, but that's unavoidable with the current functionality
 				}
 			}
 		}
@@ -655,7 +695,7 @@ void APlayerController::InitInputSystem()
 {
 	if (PlayerInput == NULL)
 	{
-		PlayerInput = NewObject<UPlayerInput>(this, UInputSettings::GetDefaultPlayerInputClass());
+		PlayerInput = NewObject<UPlayerInput>(this);
 	}
 
 	SetupInputComponent();
@@ -769,7 +809,7 @@ void APlayerController::ClientRestart_Implementation(APawn* NewPawn)
 void APlayerController::OnPossess(APawn* PawnToPossess)
 {
 	if ( PawnToPossess != NULL && 
-		(PlayerState == NULL || !PlayerState->IsOnlyASpectator()) )
+		(PlayerState == NULL || !PlayerState->bOnlySpectator) )
 	{
 		const bool bNewPawn = (GetPawn() != PawnToPossess);
 
@@ -818,6 +858,14 @@ void APlayerController::OnPossess(APawn* PawnToPossess)
 		{
 			AutoManageActiveCameraTarget(GetPawn());
 			ResetCameraMode();
+		}
+		// not calling UpdateNavigationComponents() anymore. The
+		// PathFollowingComponent is now observing newly possessed
+		// pawns (via OnNewPawn)
+		// need to broadcast here since we don't call Super::OnPossess
+		if (bNewPawn)
+		{
+			OnNewPawn.Broadcast(GetPawn());
 		}
 	}
 }
@@ -936,7 +984,7 @@ void APlayerController::UpdateRotation( float DeltaTime )
 	AActor* ViewTarget = GetViewTarget();
 	if (!PlayerCameraManager || !ViewTarget || !ViewTarget->HasActiveCameraComponent() || ViewTarget->HasActivePawnControlCameraComponent())
 	{
-		if (IsLocalPlayerController() && GEngine->XRSystem.IsValid() && GetWorld() != nullptr && GEngine->XRSystem->IsHeadTrackingAllowedForWorld(*GetWorld()))
+		if (IsLocalPlayerController() && GEngine->XRSystem.IsValid() && GEngine->XRSystem->IsHeadTrackingAllowed())
 		{
 			auto XRCamera = GEngine->XRSystem->GetXRCamera();
 			if (XRCamera.IsValid())
@@ -1171,7 +1219,7 @@ void APlayerController::Reset()
 	SetViewTarget(this);
 	ResetCameraMode();
 
-	bPlayerIsWaiting = !PlayerState->IsOnlyASpectator();
+	bPlayerIsWaiting = !PlayerState->bOnlySpectator;
 	ChangeState(NAME_Spectating);
 }
 
@@ -1182,7 +1230,7 @@ void APlayerController::ClientReset_Implementation()
 	ResetCameraMode();
 	SetViewTarget(this);
 
-	bPlayerIsWaiting = (PlayerState == nullptr) || !PlayerState->IsOnlyASpectator();
+	bPlayerIsWaiting = (PlayerState == nullptr) || !PlayerState->bOnlySpectator;
 	ChangeState(NAME_Spectating);
 }
 
@@ -1454,8 +1502,9 @@ void APlayerController::BeginPlay()
 	//If we are faking touch events show the cursor
 	if (FSlateApplication::IsInitialized() && FSlateApplication::Get().IsFakingTouchEvents())
 	{
-		SetShowMouseCursor(true);
+		bShowMouseCursor = true;
 	}
+
 }
 
 void APlayerController::EndPlay(const EEndPlayReason::Type EndPlayReason)
@@ -1603,15 +1652,13 @@ void APlayerController::ResetCameraMode()
 
 /// @cond DOXYGEN_WARNINGS
 
-void APlayerController::ClientSetCameraFade_Implementation(bool bEnableFading, FColor FadeColor, FVector2D FadeAlpha, float FadeTime, bool bFadeAudio, bool bHoldWhenFinished)
+void APlayerController::ClientSetCameraFade_Implementation(bool bEnableFading, FColor FadeColor, FVector2D FadeAlpha, float FadeTime, bool bFadeAudio)
 {
 	if (PlayerCameraManager != nullptr)
 	{
 		if (bEnableFading)
 		{
-			// Allow fading from the current FadeAmount to allow for smooth transitions into new fades
-			const float FadeStart = FadeAlpha.X >= 0.f ? FadeAlpha.X : PlayerCameraManager->FadeAmount;
-			PlayerCameraManager->StartCameraFade(FadeStart, FadeAlpha.Y, FadeTime, FadeColor.ReinterpretAsLinear(), bFadeAudio, bHoldWhenFinished);
+			PlayerCameraManager->StartCameraFade(FadeAlpha.X, FadeAlpha.Y, FadeTime, FadeColor.ReinterpretAsLinear(), bFadeAudio);
 		}
 		else
 		{
@@ -2413,19 +2460,6 @@ bool APlayerController::ShouldShowMouseCursor() const
 	return bShowMouseCursor;
 }
 
-void APlayerController::SetShowMouseCursor(bool bShow)
-{
-	if (bShowMouseCursor != bShow)
-	{
-		UE_LOG(LogViewport, Display, TEXT("Player bShowMouseCursor Changed, %s -> %s"),
-			bShowMouseCursor ? TEXT("True") : TEXT("False"),
-			bShow ? TEXT("True") : TEXT("False")
-		);
-
-		bShowMouseCursor = bShow;
-	}
-}
-
 EMouseCursor::Type APlayerController::GetMouseCursor() const
 {
 	if (ShouldShowMouseCursor())
@@ -2441,7 +2475,7 @@ void APlayerController::SetupInputComponent()
 	// A subclass could create a different InputComponent class but still want the default bindings
 	if (InputComponent == NULL)
 	{
-		InputComponent = NewObject<UInputComponent>(this, UInputSettings::GetDefaultInputComponentClass(), TEXT("PC_InputComponent0"));
+		InputComponent = NewObject<UInputComponent>(this, TEXT("PC_InputComponent0"));
 		InputComponent->RegisterComponent();
 	}
 
@@ -2651,7 +2685,7 @@ void APlayerController::SpawnPlayerCameraManager()
 	}
 }
 
-void APlayerController::GetAudioListenerPosition(FVector& OutLocation, FVector& OutFrontDir, FVector& OutRightDir) const
+void APlayerController::GetAudioListenerPosition(FVector& OutLocation, FVector& OutFrontDir, FVector& OutRightDir)
 {
 	FVector ViewLocation;
 	FRotator ViewRotation;
@@ -2682,7 +2716,7 @@ void APlayerController::GetAudioListenerPosition(FVector& OutLocation, FVector& 
 	OutRightDir = ViewRotationMatrix.GetUnitAxis( EAxis::Y );
 }
 
-bool APlayerController::GetAudioListenerAttenuationOverridePosition(FVector& OutLocation) const
+bool APlayerController::GetAudioListenerAttenuationOverridePosition(FVector& OutLocation)
 {
 	if (bOverrideAudioAttenuationListener)
 	{
@@ -2887,12 +2921,6 @@ APlayerState* APlayerController::GetNextViewablePlayer(int32 dir)
 	// This will allow us to attempt to find another player to view or, if all else fails, makes sure we have a playerstate set for next time.
 	int32 NextIndex = (NextPlayerState ? GameState->PlayerArray.Find(NextPlayerState) : GameState->PlayerArray.Find(PlayerState));
 
-	//Check that NextIndex is a valid index, as Find() may return INDEX_NONE
-	if (!GameState->PlayerArray.IsValidIndex(NextIndex))
-	{
-		return nullptr;
-	}
-
 	// Cycle through the player states until we find a valid one.
 	for (int32 i = 0; i < GameState->PlayerArray.Num(); ++i)
 	{
@@ -3018,7 +3046,7 @@ void APlayerController::ServerRestartPlayer_Implementation()
 
 bool APlayerController::CanRestartPlayer()
 {
-	return PlayerState && !PlayerState->IsOnlyASpectator() && HasClientLoadedCurrentWorld() && PendingSwapConnection == NULL;
+	return PlayerState && !PlayerState->bOnlySpectator && HasClientLoadedCurrentWorld() && PendingSwapConnection == NULL;
 }
 
 /// @cond DOXYGEN_WARNINGS
@@ -4293,15 +4321,15 @@ void APlayerController::UpdateForceFeedback(IInputInterface* InputInterface, con
 
 /// @cond DOXYGEN_WARNINGS
 
-void APlayerController::ClientStartCameraShake_Implementation( TSubclassOf<class UCameraShakeBase> Shake, float Scale, ECameraShakePlaySpace PlaySpace, FRotator UserPlaySpaceRot )
+void APlayerController::ClientPlayCameraShake_Implementation( TSubclassOf<class UCameraShake> Shake, float Scale, ECameraAnimPlaySpace::Type PlaySpace, FRotator UserPlaySpaceRot )
 {
 	if (PlayerCameraManager != NULL)
 	{
-		PlayerCameraManager->StartCameraShake(Shake, Scale, PlaySpace, UserPlaySpaceRot);
+		PlayerCameraManager->PlayCameraShake(Shake, Scale, PlaySpace, UserPlaySpaceRot);
 	}
 }
 
-void APlayerController::ClientStopCameraShake_Implementation( TSubclassOf<class UCameraShakeBase> Shake, bool bImmediately )
+void APlayerController::ClientStopCameraShake_Implementation( TSubclassOf<class UCameraShake> Shake, bool bImmediately )
 {
 	if (PlayerCameraManager != NULL)
 	{
@@ -4309,25 +4337,9 @@ void APlayerController::ClientStopCameraShake_Implementation( TSubclassOf<class 
 	}
 }
 
-void APlayerController::ClientStartCameraShakeFromSource(TSubclassOf<class UCameraShakeBase> Shake, class UCameraShakeSourceComponent* SourceComponent)
-{
-	if (PlayerCameraManager != NULL)
-	{
-		PlayerCameraManager->StartCameraShakeFromSource(Shake, SourceComponent);
-	}
-}
-
-void APlayerController::ClientStopCameraShakesFromSource(class UCameraShakeSourceComponent* SourceComponent, bool bImmediately)
-{
-	if (PlayerCameraManager != NULL)
-	{
-		PlayerCameraManager->StopAllCameraShakesFromSource(SourceComponent, bImmediately);
-	}
-}
-
 void APlayerController::ClientPlayCameraAnim_Implementation( UCameraAnim* AnimToPlay, float Scale, float Rate,
 						float BlendInTime, float BlendOutTime, bool bLoop,
-						bool bRandomStartTime, ECameraShakePlaySpace Space, FRotator CustomPlaySpace )
+						bool bRandomStartTime, ECameraAnimPlaySpace::Type Space, FRotator CustomPlaySpace )
 {
 	if (PlayerCameraManager != NULL)
 	{
@@ -4472,16 +4484,7 @@ ULocalPlayer* APlayerController::GetLocalPlayer() const
 
 bool APlayerController::IsInViewportClient(UGameViewportClient* ViewportClient) const
 {
-	const ULocalPlayer* LocalPlayer = GetLocalPlayer();
-	if (LocalPlayer && ViewportClient)
-	{
-		TSharedPtr<const FSlateUser> SlateUser = LocalPlayer->GetSlateUser();
-		if (SlateUser && SlateUser->IsWidgetDirectlyUnderCursor(ViewportClient->GetGameViewportWidget()))
-		{
-			return true;
-		}
-	}
-	return false;
+	return ViewportClient && ViewportClient->GetGameViewportWidget().IsValid() && ViewportClient->GetGameViewportWidget()->IsDirectlyHovered();
 }
 
 int32 APlayerController::GetInputIndex() const
@@ -4603,7 +4606,7 @@ void APlayerController::TickActor( float DeltaSeconds, ELevelTick TickType, FAct
 						const AGameNetworkManager* GameNetworkManager = (const AGameNetworkManager*)(AGameNetworkManager::StaticClass()->GetDefaultObject());
 						const float ForcedUpdateInterval = GameNetworkManager->MAXCLIENTUPDATEINTERVAL;
 						const float ForcedUpdateMaxDuration = FMath::Min(GameNetworkManager->MaxClientForcedUpdateDuration, 5.0f);
-
+						
 						// If currently resolving forced updates, and exceeded max duration, then wait for a valid update before enabling them again.
 						ServerData->bForcedUpdateDurationExceeded = false;
 						if (ServerData->bTriggeringForcedUpdates)
@@ -4618,16 +4621,8 @@ void APlayerController::TickActor( float DeltaSeconds, ELevelTick TickType, FAct
 								}
 								else
 								{
-									if (ServerData->bLastRequestNeedsForcedUpdates)
-									{
-										// No valid updates, don't reset anything but don't mark as exceeded either
-										// Keep forced updates going until new and valid move request is received
-									}
-									else
-									{
-										// Waiting for ServerTimeStamp to advance from a client move.
-										ServerData->bForcedUpdateDurationExceeded = true;
-									}
+									// Waiting for ServerTimeStamp to advance from a client move.
+									ServerData->bForcedUpdateDurationExceeded = true;
 								}
 							}
 						}
@@ -4698,7 +4693,6 @@ void APlayerController::TickActor( float DeltaSeconds, ELevelTick TickType, FAct
 
 		if (PlayerInput)
 		{
-			QUICK_SCOPE_CYCLE_COUNTER(PlayerTick);
 			PlayerTick(DeltaSeconds);
 		}
 
@@ -4735,7 +4729,6 @@ void APlayerController::TickActor( float DeltaSeconds, ELevelTick TickType, FAct
 
 	if (!IsPendingKill())
 	{
-		QUICK_SCOPE_CYCLE_COUNTER(Tick);
 		Tick(DeltaSeconds);	// perform any tick functions unique to an actor subclass
 	}
 
@@ -4825,8 +4818,8 @@ bool APlayerController::DefaultCanUnpause()
 void APlayerController::StartSpectatingOnly()
 {
 	ChangeState(NAME_Spectating);
-	PlayerState->SetIsSpectator(true);
-	PlayerState->SetIsOnlyASpectator(true);
+	PlayerState->bIsSpectator = true;
+	PlayerState->bOnlySpectator = true;
 	bPlayerIsWaiting = false; // Can't spawn, we are only allowed to be a spectator.
 }
 
@@ -4958,7 +4951,7 @@ void APlayerController::UpdateStateInputComponents()
 		if (InactiveStateInputComponent == NULL)
 		{
 			static const FName InactiveStateInputComponentName(TEXT("PC_InactiveStateInputComponent0"));
-			InactiveStateInputComponent = NewObject<UInputComponent>(this, UInputSettings::GetDefaultInputComponentClass(), InactiveStateInputComponentName);
+			InactiveStateInputComponent = NewObject<UInputComponent>(this, InactiveStateInputComponentName);
 			SetupInactiveStateInputComponent(InactiveStateInputComponent);
 			InactiveStateInputComponent->RegisterComponent();
 			PushInputComponent(InactiveStateInputComponent);
@@ -5010,11 +5003,11 @@ void APlayerController::EndSpectatingState()
 {
 	if ( PlayerState != NULL )
 	{
-		if ( PlayerState->IsOnlyASpectator() )
+		if ( PlayerState->bOnlySpectator )
 		{
 			UE_LOG(LogPlayerController, Warning, TEXT("Spectator only UPlayer* leaving spectating state"));
 		}
-		PlayerState->SetIsSpectator(false);
+		PlayerState->bIsSpectator = false;
 	}
 
 	bPlayerIsWaiting = false;
@@ -5342,7 +5335,7 @@ void FInputModeUIOnly::ApplyInputMode(FReply& SlateOperations, class UGameViewpo
 
 		GameViewportClient.SetMouseLockMode(MouseLockMode);
 		GameViewportClient.SetIgnoreInput(true);
-		GameViewportClient.SetMouseCaptureMode(EMouseCaptureMode::NoCapture);
+		GameViewportClient.SetCaptureMouseOnClick(EMouseCaptureMode::NoCapture);
 	}
 }
 
@@ -5360,7 +5353,7 @@ void FInputModeGameAndUI::ApplyInputMode(FReply& SlateOperations, class UGameVie
 		GameViewportClient.SetMouseLockMode(MouseLockMode);
 		GameViewportClient.SetIgnoreInput(false);
 		GameViewportClient.SetHideCursorDuringCapture(bHideCursorDuringCapture);
-		GameViewportClient.SetMouseCaptureMode(EMouseCaptureMode::CaptureDuringMouseDown);
+		GameViewportClient.SetCaptureMouseOnClick(EMouseCaptureMode::CaptureDuringMouseDown);
 	}
 }
 
@@ -5375,7 +5368,7 @@ void FInputModeGameOnly::ApplyInputMode(FReply& SlateOperations, class UGameView
 		SlateOperations.LockMouseToWidget(ViewportWidgetRef);
 		GameViewportClient.SetMouseLockMode(EMouseLockMode::LockOnCapture);
 		GameViewportClient.SetIgnoreInput(false);
-		GameViewportClient.SetMouseCaptureMode(bConsumeCaptureMouseDown ? EMouseCaptureMode::CapturePermanently : EMouseCaptureMode::CapturePermanently_IncludingInitialMouseDown);
+		GameViewportClient.SetCaptureMouseOnClick(bConsumeCaptureMouseDown ? EMouseCaptureMode::CapturePermanently : EMouseCaptureMode::CapturePermanently_IncludingInitialMouseDown);
 	}
 }
 

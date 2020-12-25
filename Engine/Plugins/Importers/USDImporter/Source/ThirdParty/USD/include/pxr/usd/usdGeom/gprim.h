@@ -118,7 +118,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDGEOM_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -130,7 +130,7 @@ private:
 
     // override SchemaBase virtuals.
     USDGEOM_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -142,11 +142,10 @@ public:
     /// UsdGeomPrimvar, it can also be used as a gprim override for any shader
     /// that consumes a \em displayColor parameter.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `color3f[] primvars:displayColor` |
-    /// | C++ Type | VtArray<GfVec3f> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Color3fArray |
+    /// \n  C++ Type: VtArray<GfVec3f>
+    /// \n  Usd Type: SdfValueTypeNames->Color3fArray
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDGEOM_API
     UsdAttribute GetDisplayColorAttr() const;
 
@@ -167,11 +166,10 @@ public:
     /// each can be independently overridden, and because shaders rarely consume
     /// rgba parameters.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float[] primvars:displayOpacity` |
-    /// | C++ Type | VtArray<float> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->FloatArray |
+    /// \n  C++ Type: VtArray<float>
+    /// \n  Usd Type: SdfValueTypeNames->FloatArray
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDGEOM_API
     UsdAttribute GetDisplayOpacityAttr() const;
 
@@ -205,12 +203,10 @@ public:
     /// forward-facing normals on each side of the surface for lighting
     /// calculations.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform bool doubleSided = 0` |
-    /// | C++ Type | bool |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Bool |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
+    /// \n  C++ Type: bool
+    /// \n  Usd Type: SdfValueTypeNames->Bool
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: False
     USDGEOM_API
     UsdAttribute GetDoubleSidedAttr() const;
 
@@ -232,13 +228,11 @@ public:
     /// generalization of orientation to composed scenes with transformation
     /// hierarchies.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `uniform token orientation = "rightHanded"` |
-    /// | C++ Type | TfToken |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Token |
-    /// | \ref SdfVariability "Variability" | SdfVariabilityUniform |
-    /// | \ref UsdGeomTokens "Allowed Values" | rightHanded, leftHanded |
+    /// \n  C++ Type: TfToken
+    /// \n  Usd Type: SdfValueTypeNames->Token
+    /// \n  Variability: SdfVariabilityUniform
+    /// \n  Fallback Value: rightHanded
+    /// \n  \ref UsdGeomTokens "Allowed Values": [rightHanded, leftHanded]
     USDGEOM_API
     UsdAttribute GetOrientationAttr() const;
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,32 +6,20 @@
 
 #include "HAL/ThreadSafeBool.h"
 
+class FPixelStreamingBaseVideoEncoder;
 class FPlayerSession;
 
-class FVideoEncoder : public webrtc::VideoEncoder, public AVEncoder::IVideoEncoderListener
+class FVideoEncoder : public webrtc::VideoEncoder
 {
 public:
-
-	struct FEncoderCookie : AVEncoder::FEncoderVideoFrameCookie
-	{
-		virtual ~FEncoderCookie() {}
-		webrtc::EncodedImage EncodedImage;
-		// buffer to hold last encoded frame bitstream, because `webrtc::EncodedImage` doesn't take ownership of
-		// the memory
-		TArray<uint8> EncodedFrameBuffer;
-	};
-
-	FVideoEncoder(FHWEncoderDetails& InHWEncoderDetails, FPlayerSession& OwnerSession);
+	FVideoEncoder(FPixelStreamingBaseVideoEncoder& HWEncoder, FPlayerSession& OwnerSession);
 	~FVideoEncoder() override;
 
 	bool IsQualityController() const
 	{ return bControlsQuality; }
 	void SetQualityController(bool bControlsQuality);
 
-	//
-	// AVEncoder::IVideoEncoderListener
-	//
-	void OnEncodedVideoFrame(const AVEncoder::FAVPacket& Packet, AVEncoder::FEncoderVideoFrameCookie* Cookie) override;
+	void OnEncodedFrame(const webrtc::EncodedImage& EncodedImage);
 
 	//
 	// webrtc::VideoEncoder interface
@@ -48,7 +36,7 @@ public:
 
 private:
 	// Player session that this encoder instance belongs to
-	FHWEncoderDetails& HWEncoderDetails;
+	FPixelStreamingBaseVideoEncoder& HWEncoder;
 	FPlayerSession* PlayerSession = nullptr;
 	webrtc::EncodedImageCallback* Callback = nullptr;
 	webrtc::CodecSpecificInfo CodecSpecific;
@@ -62,7 +50,7 @@ private:
 class FVideoEncoderFactory : public webrtc::VideoEncoderFactory
 {
 public:
-	explicit FVideoEncoderFactory(FHWEncoderDetails& HWEncoderDetails);
+	explicit FVideoEncoderFactory(FPixelStreamingBaseVideoEncoder& HWEncoder);
 
 	/**
 	* This is used from the FPlayerSession::OnSucess to let the factory know
@@ -79,7 +67,7 @@ public:
 	std::unique_ptr<webrtc::VideoEncoder> CreateVideoEncoder(const webrtc::SdpVideoFormat& Format) override;
 
 private:
-	FHWEncoderDetails& HWEncoderDetails;
+	FPixelStreamingBaseVideoEncoder& HWEncoder;
 	TQueue<FPlayerSession*> PendingPlayerSessions;
 };
 

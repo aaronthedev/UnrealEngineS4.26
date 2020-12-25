@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Functionality for capturing the scene into reflection capture cubemaps, and prefiltering
@@ -12,9 +12,6 @@
 #include "GlobalShader.h"
 
 extern void ComputeDiffuseIrradiance(FRHICommandListImmediate& RHICmdList, ERHIFeatureLevel::Type FeatureLevel, FTextureRHIRef LightingSource, int32 LightingSourceMipIndex, FSHVectorRGB3* OutIrradianceEnvironmentMap);
-
-FMatrix CalcCubeFaceViewRotationMatrix(ECubeFace Face);
-FMatrix GetCubeProjectionMatrix(float HalfFovDeg, float CubeMapSize, float NearPlane);
 
 /** Pixel shader used for filtering a mip. */
 class FCubeFilterPS : public FGlobalShader
@@ -33,16 +30,27 @@ public:
 		CubeFace.Bind(Initializer.ParameterMap, TEXT("CubeFace"));
 		MipIndex.Bind(Initializer.ParameterMap, TEXT("MipIndex"));
 		NumMips.Bind(Initializer.ParameterMap, TEXT("NumMips"));
-		SourceCubemapTexture.Bind(Initializer.ParameterMap, TEXT("SourceCubemapTexture"));
-		SourceCubemapSampler.Bind(Initializer.ParameterMap, TEXT("SourceCubemapSampler"));
+		SourceTexture.Bind(Initializer.ParameterMap, TEXT("SourceTexture"));
+		SourceTextureSampler.Bind(Initializer.ParameterMap, TEXT("SourceTextureSampler"));
 	}
 	FCubeFilterPS() {}
 
-	LAYOUT_FIELD(FShaderParameter, CubeFace);
-	LAYOUT_FIELD(FShaderParameter, MipIndex);
-	LAYOUT_FIELD(FShaderParameter, NumMips);
-	LAYOUT_FIELD(FShaderResourceParameter, SourceCubemapTexture);
-	LAYOUT_FIELD(FShaderResourceParameter, SourceCubemapSampler);
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << CubeFace;
+		Ar << MipIndex;
+		Ar << NumMips;
+		Ar << SourceTexture;
+		Ar << SourceTextureSampler;
+		return bShaderHasOutdatedParameters;
+	}
+
+	FShaderParameter CubeFace;
+	FShaderParameter MipIndex;
+	FShaderParameter NumMips;
+	FShaderResourceParameter SourceTexture;
+	FShaderResourceParameter SourceTextureSampler;
 };
 
 template< uint32 bNormalize >

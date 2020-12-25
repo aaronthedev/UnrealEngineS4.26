@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SequencerHotspots.h"
 #include "DisplayNodes/SequencerObjectBindingNode.h"
@@ -65,7 +65,7 @@ void FSectionHotspot::UpdateOnHover(SSequencerTrackArea& InTrackArea, ISequencer
 	{
 		InTrackArea.AttemptToActivateTool(FSequencerEditTool_Movement::Identifier);
 	}
-	else if (ThisSection)
+	else
 	{
 		// Activate selection mode if the section has keys
 		for (const FMovieSceneChannelEntry& Entry : ThisSection->GetChannelProxy().GetAllEntries())
@@ -148,11 +148,11 @@ TOptional<FFrameNumber> FSectionEasingHandleHotspot::GetTime() const
 	{
 		if (HandleType == ESequencerEasingType::In && !ThisSection->GetEaseInRange().IsEmpty())
 		{
-			return UE::MovieScene::DiscreteExclusiveUpper(ThisSection->GetEaseInRange());
+			return MovieScene::DiscreteExclusiveUpper(ThisSection->GetEaseInRange());
 		}
 		else if (HandleType == ESequencerEasingType::Out && !ThisSection->GetEaseOutRange().IsEmpty())
 		{
-			return UE::MovieScene::DiscreteInclusiveLower(ThisSection->GetEaseOutRange());
+			return MovieScene::DiscreteInclusiveLower(ThisSection->GetEaseOutRange());
 		}
 	}
 	return TOptional<FFrameNumber>();

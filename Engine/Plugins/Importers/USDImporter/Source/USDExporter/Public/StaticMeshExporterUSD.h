@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,10 +10,6 @@ UCLASS()
 class UStaticMeshExporterUsd : public UExporter
 {
 	GENERATED_BODY()
-
-public:
-	UFUNCTION(BlueprintCallable, Category = "USD")
-	static bool IsUsdAvailable();
 
 public:
 	UStaticMeshExporterUsd();

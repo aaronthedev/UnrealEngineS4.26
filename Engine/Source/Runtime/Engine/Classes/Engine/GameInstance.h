@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,10 +14,6 @@
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Subsystems/SubsystemCollection.h"
 
-#if WITH_EDITOR
-#include "Settings/LevelEditorPlaySettings.h"
-#endif 
-
 #include "GameInstance.generated.h"
 
 class AGameModeBase;
@@ -28,8 +24,6 @@ class FUniqueNetId;
 class ULocalPlayer;
 class UOnlineSession;
 struct FLatentActionManager;
-class ULevelEditorPlaySettings;
-class IAnalyticsProvider;
 
 // 
 // 	EWelcomeScreen, 	//initial screen.  Used for platforms where we may not have a signed in user yet.
@@ -56,7 +50,6 @@ class FOnlineSessionSearchResult;
  */
 DECLARE_MULTICAST_DELEGATE_ThreeParams(FOnPreClientTravel, const FString& /*PendingURL*/, ETravelType /*TravelType*/, bool /*bIsSeamlessTravel*/);
 typedef FOnPreClientTravel::FDelegate FOnPreClientTravelDelegate;
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnPawnControllerChanged, APawn*, Pawn, AController*, Controller);
 
 #if WITH_EDITOR
 
@@ -97,16 +90,6 @@ private:
 //@TODO: Some of these are really mutually exclusive and should be refactored (put into a struct to make this easier in the future)
 struct FGameInstancePIEParameters
 {
-	FGameInstancePIEParameters()
-		: bSimulateInEditor(false)
-		, bAnyBlueprintErrors(false)
-		, bStartInSpectatorMode(false)
-		, bRunAsDedicated(false)
-		, WorldFeatureLevel(ERHIFeatureLevel::Num)
-		, EditorPlaySettings(nullptr)
-		, NetMode(EPlayNetMode::PIE_Standalone)
-	{}
-
 	// Are we doing SIE instead of PIE?
 	bool bSimulateInEditor;
 
@@ -119,25 +102,11 @@ struct FGameInstancePIEParameters
 	// Is this a dedicated server instance for PIE?
 	bool bRunAsDedicated;
 
-	// What time did we start PIE in the editor?
-	double PIEStartTime = 0;
-
 	// The feature level that PIE world should use
-	ERHIFeatureLevel::Type WorldFeatureLevel;
-
-	// Kept alive externally.
-	ULevelEditorPlaySettings* EditorPlaySettings;
-
-	// Which net mode should this PIE instance start in? Affects which maps are loaded.
-	EPlayNetMode NetMode;
-
-	// The map we should force the game to load instead of the one currently running in the editor. Blank for no override
-	FString OverrideMapURL;
+	ERHIFeatureLevel::Type WorldFeatureLevel = ERHIFeatureLevel::Num;
 };
 
 #endif
-
-DECLARE_EVENT_OneParam(UGameInstance, FOnLocalPlayerEvent, ULocalPlayer*);
 
 /**
  * GameInstance: high-level manager object for an instance of the running game.
@@ -182,22 +151,12 @@ protected:
 	/** Listeners to PreClientTravel call */
 	FOnPreClientTravel NotifyPreClientTravelDelegates;
 
-	/** gets triggered shortly after a pawn's controller is set. Most of the time 
-	 *	it signals that the Controller has changed but in edge cases (like during 
-	 *	replication) it might end up broadcasting the same pawn-controller pair 
-	 *	more than once */
-	UPROPERTY(BlueprintAssignable, DisplayName=OnPawnControllerChanged)
-	FOnPawnControllerChanged OnPawnControllerChangedDelegates;
-
 	/** Handle for delegate for handling PS4 play together system events */
 	FDelegateHandle OnPlayTogetherEventReceivedDelegateHandle;
 
 public:
 
 	FString PIEMapName;
-#if WITH_EDITOR
-	double PIEStartTime = 0;
-#endif
 
 	//~ Begin FExec Interface
 	virtual bool Exec(UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Out = *GLog) override;
@@ -231,7 +190,7 @@ public:
 	void HandleTravelError(ETravelFailure::Type FailureType);
 
 	/* Called to initialize the game instance for standalone instances of the game */
-	void InitializeStandalone(const FName InWorldName = NAME_None, UPackage* InWorldPackage = nullptr);
+	void InitializeStandalone();
 
 	/* Called to initialize the game instance with a minimal world suitable for basic network RPC */
 	void InitializeForMinimalNetRPC(const FName InPackageName);
@@ -273,9 +232,6 @@ public:
 
 	/** Local player access */
 
-	FOnLocalPlayerEvent OnLocalPlayerAddedEvent;
-	FOnLocalPlayerEvent OnLocalPlayerRemovedEvent;
-
 	/**
 	 * Debug console command to create a player.
 	 * @param ControllerId - The controller ID the player should accept input from.
@@ -309,6 +265,7 @@ public:
 	 */
 	virtual int32			AddLocalPlayer(ULocalPlayer* NewPlayer, int32 ControllerId);
 
+
 	/**
 	 * Removes a player.
 	 * @param Player - The player to remove.
@@ -318,7 +275,7 @@ public:
 
 	int32					GetNumLocalPlayers() const;
 	ULocalPlayer*			GetLocalPlayerByIndex(const int32 Index) const;
-	APlayerController*		GetFirstLocalPlayerController(const UWorld* World = nullptr) const;
+	APlayerController*		GetFirstLocalPlayerController(UWorld* World = nullptr) const;
 	ULocalPlayer*			FindLocalPlayerFromControllerId(const int32 ControllerId) const;
 	ULocalPlayer*			FindLocalPlayerFromUniqueNetId(TSharedPtr<const FUniqueNetId> UniqueNetId) const;
 	ULocalPlayer*			FindLocalPlayerFromUniqueNetId(const FUniqueNetId& UniqueNetId) const;
@@ -328,11 +285,11 @@ public:
 	const TArray<ULocalPlayer*> &			GetLocalPlayers() const;
 	/**
 	 * Get the primary player controller on this machine (others are splitscreen children)
-	 * (must have valid player state)
-	 * @param bRequiresValidUniqueId - Whether the controller must also have a valid unique id (default true in order to maintain historical behaviour)
+	 * (must have valid player state and unique id)
+	 *
 	 * @return the primary controller on this machine
 	 */
-	APlayerController* GetPrimaryPlayerController(bool bRequiresValidUniqueId = true) const;
+	APlayerController* GetPrimaryPlayerController() const;
 
 	/**
 	 * Get the unique id for the primary player on this machine (others are splitscreen children)
@@ -401,9 +358,8 @@ public:
 	 * @param InName If not empty, the unique name to use as an identifier for the replay. If empty, a name will be automatically generated by the replay streamer implementation.
 	 * @param FriendlyName An optional (may be empty) descriptive name for the replay. Does not have to be unique.
 	 * @param AdditionalOptions Additional URL options to append to the URL that will be processed by the replay net driver. Will usually remain empty.
-	 * @param AnalyticsProvider Optional pointer to an analytics provider which will also be passed to the replay streamer if set
 	 */
-	virtual void StartRecordingReplay(const FString& InName, const FString& FriendlyName, const TArray<FString>& AdditionalOptions = TArray<FString>(), TSharedPtr<IAnalyticsProvider> AnalyticsProvider = nullptr);
+	virtual void StartRecordingReplay(const FString& InName, const FString& FriendlyName, const TArray<FString>& AdditionalOptions = TArray<FString>());
 
 	/** Stop recording a replay if one is currently in progress */
 	virtual void StopRecordingReplay();
@@ -455,7 +411,7 @@ public:
 	virtual void PreloadContentForURL(FURL InURL);
 
 	/** Call to create the game mode for a given map URL */
-	virtual class AGameModeBase* CreateGameModeForURL(FURL InURL, UWorld* InWorld);
+	virtual class AGameModeBase* CreateGameModeForURL(FURL InURL);
 
 	/** Return the game mode subclass to use for a given map, options, and portal. By default return passed in one */
 	virtual TSubclassOf<AGameModeBase> OverrideGameModeClass(TSubclassOf<AGameModeBase> GameModeClass, const FString& MapName, const FString& Options, const FString& Portal) const;
@@ -505,9 +461,6 @@ public:
 	void NotifyPreClientTravel(const FString& PendingURL, ETravelType TravelType, bool bIsSeamlessTravel);
 	/** @return delegate fired when client travel occurs */
 	FOnPreClientTravel& OnNotifyPreClientTravel() { return NotifyPreClientTravelDelegates; }
-
-	/** @return delegate broadcasted shortly after pawn's controller is set */
-	FOnPawnControllerChanged& GetOnPawnControllerChanged() { return OnPawnControllerChangedDelegates; }
 
 	/**
 	 * Calls HandleDisconnect on either the OnlineSession if it exists or the engine, to cause a travel back to the default map. The instance must have a world.

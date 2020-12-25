@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  *
@@ -24,10 +24,19 @@ enum class EMobileHDRMode
 	Unset,
 	Disabled,
 	EnabledFloat16,
+	EnabledMosaic,
+	EnabledRGBE,
+	EnabledRGBA8
 };
 
 /** True if HDR is enabled for the mobile renderer. */
 ENGINE_API bool IsMobileHDR();
+
+/** True if the mobile renderer is emulating HDR in a 32bpp render target. */
+ENGINE_API bool IsMobileHDR32bpp();
+
+/** True if the mobile renderer is emulating HDR with mosaic. */
+ENGINE_API bool IsMobileHDRMosaic();
 
 ENGINE_API EMobileHDRMode GetMobileHDRMode();
 

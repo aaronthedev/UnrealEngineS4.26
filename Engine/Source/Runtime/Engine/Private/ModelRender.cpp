@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ModelRender.cpp: Unreal model rendering
@@ -707,7 +707,7 @@ private:
 				ENQUEUE_RENDER_COMMAND(FElementInfoCreateLocalVFUniformBuffer)(
 					[UniformBufferPtr, VertexFactory = InVertexFactory, ElementIndex = InElementIndex](FRHICommandListImmediate& RHICmdList)
 				{
-					*UniformBufferPtr = CreateLocalVFUniformBuffer(VertexFactory, ElementIndex, nullptr, 0, 0);
+					*UniformBufferPtr = CreateLocalVFUniformBuffer(VertexFactory, ElementIndex, nullptr, 0);
 				});
 			}
 		}
@@ -815,7 +815,7 @@ public:
 	friend class UModelComponent;
 };
 
-void UModelComponent::CreateRenderState_Concurrent(FRegisterComponentContext* Context)
+void UModelComponent::CreateRenderState_Concurrent()
 {
 	for (int32 ElementIndex = 0; ElementIndex < Elements.Num(); ElementIndex++)
 	{
@@ -829,7 +829,7 @@ void UModelComponent::CreateRenderState_Concurrent(FRegisterComponentContext* Co
 		++GetModel()->VertexBuffer.RefCount;
 	}
 
-	Super::CreateRenderState_Concurrent(Context);
+	Super::CreateRenderState_Concurrent();
 }
 
 void UModelComponent::DestroyRenderState_Concurrent()

@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CleaningOps/SimplifyMeshOp.h"
 
 #include "DynamicMeshAttributeSet.h"
-#include "MeshConstraints.h"
 #include "MeshDescriptionToDynamicMesh.h"
 
 
@@ -13,57 +12,29 @@
 #include "MeshConstraintsUtil.h"
 #include "ProjectionTargets.h"
 
-#include "IMeshReductionInterfaces.h"
-#include "MeshDescription.h"
-#include "MeshNormals.h"
 #include "Operations/MergeCoincidentMeshEdges.h"
+#include "MeshDescription.h"
+#include "MeshDescriptionOperations.h"
 #include "OverlappingCorners.h"
-#include "StaticMeshOperations.h"
+#include "IMeshReductionInterfaces.h"
+
+#include "MeshNormals.h"
+
 
 template <typename SimplificationType>
-void ComputeSimplify(FDynamicMesh3* TargetMesh, const bool bReproject,
-					 int OriginalTriCount, FDynamicMesh3& OriginalMesh, FDynamicMeshAABBTree3& OriginalMeshSpatial,
-					 EEdgeRefineFlags MeshBoundaryConstraint,
-					 EEdgeRefineFlags GroupBoundaryConstraint,
-					 EEdgeRefineFlags MaterialBoundaryConstraint,
-					 bool bPreserveSharpEdges, bool bAllowSeamCollapse,
-					 const ESimplifyTargetType TargetMode,
-					 const float TargetPercentage, const int TargetCount, const float TargetEdgeLength)
+void ComputeSimplify(FDynamicMesh3* TargetMesh, const bool bReproject, int OriginalTriCount, FDynamicMesh3& OriginalMesh, FDynamicMeshAABBTree3& OriginalMeshSpatial, const ESimplifyTargetType TargetMode, const float TargetPercentage, const int TargetCount, const float TargetEdgeLength)
 {
 	SimplificationType Reducer(TargetMesh);
 
-	Reducer.ProjectionMode = (bReproject) ?
+	Reducer.ProjectionMode = (bReproject) ? 
 		SimplificationType::ETargetProjectionMode::AfterRefinement : SimplificationType::ETargetProjectionMode::NoProjection;
 
 	Reducer.DEBUG_CHECK_LEVEL = 0;
 
-	Reducer.bAllowSeamCollapse = bAllowSeamCollapse;
-
-	if (bAllowSeamCollapse)
-	{
-		Reducer.SetEdgeFlipTolerance(1.e-5);
-
-		// eliminate any bowties that might have formed on UV seams.
-		if (FDynamicMeshAttributeSet* Attributes = TargetMesh->Attributes())
-		{
-			// @todo parallelize over NumUVLayers?
-			int NumUVLayers = Attributes->NumUVLayers();
-			for (int i = 0; i < NumUVLayers; ++i)
-			{
-				Attributes->GetUVLayer(i)->SplitBowties();
-			}
-			Attributes->PrimaryNormals()->SplitBowties();
-
-		}
-	}
-
 	FMeshConstraints constraints;
-	FMeshConstraintsUtil::ConstrainAllBoundariesAndSeams(constraints, *TargetMesh,
-														 MeshBoundaryConstraint,
-														 GroupBoundaryConstraint,
-														 MaterialBoundaryConstraint,
-														 true, !bPreserveSharpEdges, bAllowSeamCollapse);
-	Reducer.SetExternalConstraints(MoveTemp(constraints));
+	FMeshConstraintsUtil::ConstrainAllSeams(constraints, *TargetMesh, true, false);
+	//FMeshConstraintsUtil::ConstrainAllSeamJunctions(constraints, *TargetMesh, true, false);
+	Reducer.SetExternalConstraints(&constraints);
 
 	FMeshProjectionTarget ProjTarget(&OriginalMesh, &OriginalMeshSpatial);
 	Reducer.SetProjectionTarget(&ProjTarget);
@@ -73,14 +44,10 @@ void ComputeSimplify(FDynamicMesh3* TargetMesh, const bool bReproject,
 		double Ratio = (double)TargetPercentage / 100.0;
 		int UseTarget = FMath::Max(4, (int)(Ratio * (double)OriginalTriCount));
 		Reducer.SimplifyToTriangleCount(UseTarget);
-	}
+	} 
 	else if (TargetMode == ESimplifyTargetType::TriangleCount)
 	{
 		Reducer.SimplifyToTriangleCount(TargetCount);
-	}
-	else if (TargetMode == ESimplifyTargetType::VertexCount)
-	{
-		Reducer.SimplifyToVertexCount(TargetCount);
 	}
 	else if (TargetMode == ESimplifyTargetType::EdgeLength)
 	{
@@ -114,21 +81,13 @@ void FSimplifyMeshOp::CalculateResult(FProgressCancel* Progress)
 
 		if (SimplifierType == ESimplifyType::QEM)
 		{
-			ComputeSimplify<FQEMSimplification>(TargetMesh, bReproject, OriginalTriCount, *OriginalMesh, *OriginalMeshSpatial,
-												MeshBoundaryConstraint,
-												GroupBoundaryConstraint,
-												MaterialBoundaryConstraint,
-												bPreserveSharpEdges, bAllowSeamCollapse,
-												TargetMode, TargetPercentage, TargetCount, TargetEdgeLength);
+			ComputeSimplify<FQEMSimplification>(TargetMesh, bReproject, OriginalTriCount, *OriginalMesh, *OriginalMeshSpatial, 
+				TargetMode, TargetPercentage, TargetCount, TargetEdgeLength);
 		}
 		else if (SimplifierType == ESimplifyType::Attribute)
 		{
 			ComputeSimplify<FAttrMeshSimplification>(TargetMesh, bReproject, OriginalTriCount, *OriginalMesh, *OriginalMeshSpatial,
-													 MeshBoundaryConstraint,
-													 GroupBoundaryConstraint,
-													 MaterialBoundaryConstraint,
-													 bPreserveSharpEdges, bAllowSeamCollapse,
-													 TargetMode, TargetPercentage, TargetCount, TargetEdgeLength);
+				TargetMode, TargetPercentage, TargetCount, TargetEdgeLength);
 		}
 	}
 	else // SimplifierType == ESimplifyType::UE4Standard
@@ -142,7 +101,7 @@ void FSimplifyMeshOp::CalculateResult(FProgressCancel* Progress)
 		}
 
 		FOverlappingCorners OverlappingCorners;
-		FStaticMeshOperations::FindOverlappingCorners(OverlappingCorners, *SrcMeshDescription, 1.e-5);
+		FMeshDescriptionOperations::FindOverlappingCorners(OverlappingCorners, *SrcMeshDescription, 1.e-5);
 
 		if (Progress->Cancelled())
 		{
@@ -153,19 +112,11 @@ void FSimplifyMeshOp::CalculateResult(FProgressCancel* Progress)
 		if (TargetMode == ESimplifyTargetType::Percentage)
 		{
 			ReductionSettings.PercentTriangles = FMath::Max(TargetPercentage / 100., .001);  // Only support triangle percentage and count, but not edge length
-			ReductionSettings.TerminationCriterion = EStaticMeshReductionTerimationCriterion::Triangles;
 		}
 		else if (TargetMode == ESimplifyTargetType::TriangleCount)
 		{
 			int32 NumTris = SrcMeshDescription->Polygons().Num();
 			ReductionSettings.PercentTriangles = (float)TargetCount / (float)NumTris;
-			ReductionSettings.TerminationCriterion = EStaticMeshReductionTerimationCriterion::Triangles;
-		}
-		else if (TargetMode == ESimplifyTargetType::VertexCount)
-		{
-			int32 NumVerts = SrcMeshDescription->Vertices().Num();
-			ReductionSettings.PercentVertices = (float)TargetCount / (float)NumVerts;
-			ReductionSettings.TerminationCriterion = EStaticMeshReductionTerimationCriterion::Vertices;
 		}
 
 		float Error;

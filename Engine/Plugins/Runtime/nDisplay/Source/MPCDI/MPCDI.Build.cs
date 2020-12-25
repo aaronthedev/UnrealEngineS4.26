@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
-
 
 public class MPCDI : ModuleRules
 {
@@ -11,19 +10,22 @@ public class MPCDI : ModuleRules
 		PublicDefinitions.Add("MPCDI_STATIC");
 
 		PublicDependencyModuleNames.AddRange(
-			new string[] {
+			new string[]
+			{
 				"Core",
 				"CoreUObject",
 				"Engine",
-				"Projects"
-			});
+				"Projects",
+            });
 
 		PrivateDependencyModuleNames.AddRange(
-			new string[] {
+			new string[]
+			{
 				"DisplayCluster",
 				"RenderCore",
 				"RHI"
-			});
+			}
+		);
 
 		if (Target.bBuildEditor == true)
 		{
@@ -51,7 +53,7 @@ public class MPCDI : ModuleRules
 		PublicAdditionalLibraries.Add(Path.Combine(PathLib, "mpcdi.lib"));
 		PublicAdditionalLibraries.Add(Path.Combine(PathLib, "tinyxml2.lib"));
 
-		// Include paths
+		// Include paths		
 		PublicIncludePaths.Add(PathInc);
 		PublicIncludePaths.Add(Path.Combine(PathInc, "Base"));
 		PublicIncludePaths.Add(Path.Combine(PathInc, "Container"));

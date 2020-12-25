@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineSubsystemTwitchPrivate.h"
 #include "OnlineIdentityTwitch.h"
@@ -67,6 +67,11 @@ IOnlineIdentityPtr FOnlineSubsystemTwitch::GetIdentityInterface() const
 }
 
 IOnlineTitleFilePtr FOnlineSubsystemTwitch:: GetTitleFileInterface() const
+{
+	return nullptr;
+}
+
+IOnlineStorePtr FOnlineSubsystemTwitch::GetStoreInterface() const
 {
 	return nullptr;
 }

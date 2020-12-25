@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #ifdef USE_MDLSDK
 
@@ -44,7 +44,7 @@ namespace
 
 	bool IsArrayIndexOperator(mi::neuraylib::IFunction_definition::Semantics Semantic)
 	{
-		return Semantic == mi::neuraylib::IFunction_definition::DS_ARRAY_INDEX;
+		return Semantic == mi::neuraylib::IFunction_definition::DS_INTRINSIC_DAG_INDEX_ACCESS;
 	}
 
 	bool IsUnaryOperator(mi::neuraylib::IFunction_definition::Semantics Semantic)

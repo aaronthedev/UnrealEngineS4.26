@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Misc/Paths.h"
@@ -91,12 +91,6 @@ public:
 	{
 		static FName PlayerName(TEXT("MagicLeapMedia"));
 		return PlayerName;
-	}
-
-	virtual FGuid GetPlayerPluginGUID() const override
-	{
-		static FGuid PlayerPluginGUID(0x9af3a209, 0xed2641e8, 0x9bcee61b, 0x2d529a06);
-		return PlayerPluginGUID;
 	}
 
 	virtual const TArray<FString>& GetSupportedPlatforms() const override

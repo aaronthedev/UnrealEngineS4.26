@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -67,9 +67,6 @@ protected:
 	 * @param bUpdateNodesUnderComment If true then force the rebuild of the list of nodes under the comment
 	 */
 	void HandleSelection(bool bIsSelected, bool bUpdateNodesUnderComment = false) const;
-
-	/** Helper function to determine if a node is under this comment widget or not */
-	virtual bool IsNodeUnderComment(UEdGraphNode_Comment* InCommentNode, const TSharedRef<SGraphNode> InNodeWidget) const;
 
 	/** called when user is moving the comment node */
 	virtual void MoveTo(const FVector2D& NewPosition, FNodeSet& NodeFilter ) override;

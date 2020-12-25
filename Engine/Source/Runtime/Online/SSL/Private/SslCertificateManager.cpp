@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SslCertificateManager.h"
 #include "Ssl.h"
@@ -10,8 +10,6 @@
 #include "Misc/Base64.h"
 #include "Misc/CommandLine.h"
 #include <Algo/Count.h>
-
-FSslCertificateDelegates::FVerifySslCertificates FSslCertificateDelegates::VerifySslCertificates;
 
 #if WITH_SSL
 
@@ -26,27 +24,6 @@ FSslCertificateDelegates::FVerifySslCertificates FSslCertificateDelegates::Verif
 #if PLATFORM_WINDOWS
 #include "Windows/HideWindowsPlatformTypes.h"
 #endif
-
-namespace
-{
-	FString GetCertificateName(X509* const Certificate)
-	{
-		char StaticBuffer[2048];
-		// We do not have to free the return value of get_subject_name
-		X509_NAME_oneline(X509_get_subject_name(Certificate), StaticBuffer, sizeof(StaticBuffer));
-
-		return FString(ANSI_TO_TCHAR(StaticBuffer));
-	}
-
-	FString GetCertificateIssuer(X509* const Certificate)
-	{
-		char StaticBuffer[2048];
-		// We do not have to free the return value of get_subject_name
-		X509_NAME_oneline(X509_get_issuer_name(Certificate), StaticBuffer, sizeof(StaticBuffer));
-
-		return FString(ANSI_TO_TCHAR(StaticBuffer));
-	}
-}
 
 void FSslCertificateManager::AddCertificatesToSslContext(SSL_CTX* SslContextPtr) const
 {
@@ -211,9 +188,8 @@ bool FSslCertificateManager::VerifySslCertificates(X509_STORE_CTX* Context, cons
 	}
 
 	TArray<TArray<uint8, TFixedAllocator<PUBLIC_KEY_DIGEST_SIZE>>> CertDigests;
-	TArray<FSslCertificateDelegates::FCertInfo> CertInfoList;
-	const bool bCollectCertInfo = FSslCertificateDelegates::VerifySslCertificates.IsBound();
 
+	bool bFoundMatch = false;
 	for (int CertIndex = 0; CertIndex < NumCertsInChain; ++CertIndex)
 	{
 		X509* Certificate = sk_X509_value(Chain, CertIndex);
@@ -237,39 +213,14 @@ bool FSslCertificateManager::VerifySslCertificates(X509_STORE_CTX* Context, cons
 		SHA256_Final(Digest.GetData(), &ShaContext);
 
 		CertDigests.Add(Digest);
-
-		if (bCollectCertInfo)
-		{
-			FSslCertificateDelegates::FCertInfo CertInfo;
-			CertInfo.KeyDigest = Digest;
-			CertInfo.Issuer = GetCertificateIssuer(Certificate);
-			CertInfo.Subject = GetCertificateName(Certificate);
-
-			const EVP_MD* CertDigest = EVP_get_digestbyname("sha1");
-			if (CertDigest)
-			{
-				unsigned int DummySize = 0;
-				CertInfo.Thumbprint.AddZeroed(FSslCertificateDelegates::FCertInfo::CERT_DIGEST_SIZE);
-				X509_digest(Certificate, CertDigest, CertInfo.Thumbprint.GetData(), &DummySize);
-			}
-
-			CertInfoList.Add(CertInfo);
-		}
 	}
 
-	bool bFoundMatch = false;
-
-	bool bFoundMatchDelegate = FSslCertificateDelegates::VerifySslCertificates.IsBound() ? FSslCertificateDelegates::VerifySslCertificates.Execute(Domain, CertInfoList) : true;
-	if (bFoundMatchDelegate)
+	bFoundMatch = VerifySslCertificates(CertDigests, Domain);
+	if (!bFoundMatch)
 	{
-		bFoundMatch = VerifySslCertificates(CertDigests, Domain);
+		X509_STORE_CTX_set_error(Context, X509_V_ERR_CERT_UNTRUSTED);
 	}
-
-    if (!bFoundMatch)
-    {
-        X509_STORE_CTX_set_error(Context, X509_V_ERR_CERT_UNTRUSTED);
-    }
-    return bFoundMatch;
+	return bFoundMatch;
 }
 
 bool FSslCertificateManager::VerifySslCertificates(TArray<TArray<uint8, TFixedAllocator<PUBLIC_KEY_DIGEST_SIZE>>>& Digests, const FString& Domain) const
@@ -422,6 +373,18 @@ void FSslCertificateManager::AddPEMFileToRootCertificateArray(const FString& Pat
 			}
 			FoundString = EndString;
 		}
+	}
+}
+
+namespace
+{
+	FString GetCertificateName(X509* const Certificate)
+	{
+		char StaticBuffer[2048];
+		// We do not have to free the return value of get_subject_name
+		X509_NAME_oneline(X509_get_subject_name(Certificate), StaticBuffer, sizeof(StaticBuffer));
+
+		return FString(ANSI_TO_TCHAR(StaticBuffer));
 	}
 }
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BaseGizmos/AxisAngleGizmo.h"
 #include "InteractiveGizmoManager.h"
@@ -106,6 +106,38 @@ void UAxisAngleGizmo::OnClickPress(const FInputDeviceRay& PressPos)
 }
 
 
+// these functions should move to a utility namespace
+
+static float SnapToIncrement(float fValue, float fIncrement, float offset = 0)
+{
+	if (!FMath::IsFinite(fValue))
+	{
+		return 0;
+	}
+	fValue -= offset;
+	float sign = FMath::Sign(fValue);
+	fValue = FMath::Abs(fValue);
+	int nInc = (int)(fValue / fIncrement);
+	float fRem = (float)fmod(fValue, fIncrement);
+	if (fRem > fIncrement / 2)
+	{
+		++nInc;
+	}
+	return sign * (float)nInc * fIncrement + offset;
+}
+
+
+static float SnapToNearbyIncrement(float fValue, float fIncrement, float fTolerance)
+{
+	float snapped = SnapToIncrement(fValue, fIncrement);
+	if (FMath::Abs(snapped - fValue) < fTolerance)
+	{
+		return snapped;
+	}
+	return fValue;
+}
+
+
 
 void UAxisAngleGizmo::OnClickDrag(const FInputDeviceRay& DragPos)
 {
@@ -130,7 +162,7 @@ void UAxisAngleGizmo::OnClickDrag(const FInputDeviceRay& DragPos)
 	float DeltaAngle = InteractionCurAngle - InteractionStartAngle;
 	if (bEnableSnapAngleModifier)
 	{
-		DeltaAngle = GizmoMath::SnapToIncrement(DeltaAngle, 3.14159f / 4.0f);				// hardcoded 45-degree snap
+		DeltaAngle = SnapToIncrement(DeltaAngle, 3.14159f / 4.0f);				// hardcoded 45-degree snap
 	}
 	float NewAngle = InitialTargetAngle + DeltaAngle;
 

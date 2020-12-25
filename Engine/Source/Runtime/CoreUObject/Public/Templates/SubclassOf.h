@@ -1,25 +1,16 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/Class.h"
-#include "UObject/Field.h"
-#include "Templates/ChooseClass.h"
 
 /**
- * Template to allow TClassType's to be passed around with type safety 
+ * Template to allow UClass's to be passed around with type safety 
  */
 template<class TClass>
 class TSubclassOf
 {
-public:
-
-	typedef typename TChooseClass<TIsDerivedFrom<TClass, FField>::IsDerived, FFieldClass, UClass>::Result TClassType;
-	typedef typename TChooseClass<TIsDerivedFrom<TClass, FField>::IsDerived, FField, UObject>::Result TBaseType;
-
-private:
-
 	template <class TClassA>
 	friend class TSubclassOf;
 
@@ -31,20 +22,20 @@ public:
 	}
 
 	/** Constructor that takes a UClass and does a runtime check to make sure this is a compatible class */
-	FORCEINLINE TSubclassOf(TClassType* From) :
+	FORCEINLINE TSubclassOf(UClass* From) :
 		Class(From)
 	{
 	}
 
 	/** Copy Constructor, will only compile if types are compatible */
-	template <class TClassA, class = decltype(ImplicitConv<TClass*>((TClassA*)nullptr))>
+	template <class TClassA, class = typename TEnableIf<TPointerIsConvertibleFromTo<TClassA, TClass>::Value>::Type>
 	FORCEINLINE TSubclassOf(const TSubclassOf<TClassA>& From) :
 		Class(*From)
 	{
 	}
 
 	/** Assignment operator, will only compile if types are compatible */
-	template <class TClassA, class = decltype(ImplicitConv<TClass*>((TClassA*)nullptr))>
+	template <class TClassA, class = typename TEnableIf<TPointerIsConvertibleFromTo<TClassA, TClass>::Value>::Type>
 	FORCEINLINE TSubclassOf& operator=(const TSubclassOf<TClassA>& From)
 	{
 		Class = *From;
@@ -52,14 +43,14 @@ public:
 	}
 	
 	/** Assignment operator from UClass, the type is checked on get not on set */
-	FORCEINLINE TSubclassOf& operator=(TClassType* From)
+	FORCEINLINE TSubclassOf& operator=(UClass* From)
 	{
 		Class = From;
 		return *this;
 	}
 	
 	/** Dereference back into a UClass, does runtime type checking */
-	FORCEINLINE TClassType* operator*() const
+	FORCEINLINE UClass* operator*() const
 	{
 		if (!Class || !Class->IsChildOf(TClass::StaticClass()))
 		{
@@ -69,19 +60,19 @@ public:
 	}
 	
 	/** Dereference back into a UClass */
-	FORCEINLINE TClassType* Get() const
+	FORCEINLINE UClass* Get() const
 	{
 		return **this;
 	}
 
 	/** Dereference back into a UClass */
-	FORCEINLINE TClassType* operator->() const
+	FORCEINLINE UClass* operator->() const
 	{
 		return **this;
 	}
 
 	/** Implicit conversion to UClass */
-	FORCEINLINE operator TClassType* () const
+	FORCEINLINE operator UClass* () const
 	{
 		return **this;
 	}
@@ -93,13 +84,7 @@ public:
 	 */
 	FORCEINLINE TClass* GetDefaultObject() const
 	{
-		TBaseType* Result = nullptr;
-		if (Class)
-		{
-			Result = Class->GetDefaultObject();
-			check(Result && Result->IsA(TClass::StaticClass()));
-		}
-		return (TClass*)Result;
+		return Class ? Class->GetDefaultObject<TClass>() : nullptr;
 	}
 
 	friend FArchive& operator<<(FArchive& Ar, TSubclassOf& SubclassOf)
@@ -123,5 +108,5 @@ public:
 #endif
 
 private:
-	TClassType* Class;
+	UClass* Class;
 };

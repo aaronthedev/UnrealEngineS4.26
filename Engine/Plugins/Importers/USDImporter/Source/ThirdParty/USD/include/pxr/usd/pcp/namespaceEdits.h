@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_PCP_NAMESPACE_EDITS_H
-#define PXR_USD_PCP_NAMESPACE_EDITS_H
+#ifndef PCP_NAMESPACE_EDITS_H
+#define PCP_NAMESPACE_EDITS_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/pcp/api.h"
@@ -45,6 +45,7 @@ class PcpMapFunction;
 
 TF_DECLARE_WEAK_AND_REF_PTRS(PcpLayerStack);
 TF_DECLARE_WEAK_AND_REF_PTRS(Pcp_LayerStackRegistry);
+TF_DECLARE_REF_PTRS(PcpPayloadDecorator);
 SDF_DECLARE_HANDLES(SdfSpec);
 
 /// Sites that must respond to a namespace edit.
@@ -143,4 +144,4 @@ PcpComputeNamespaceEdits(const PcpCache *primaryCache,
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_PCP_NAMESPACE_EDITS_H
+#endif // PCP_NAMESPACE_EDITS_H

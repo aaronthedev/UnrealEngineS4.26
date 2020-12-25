@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -7,13 +7,10 @@ public class Persona : ModuleRules
     public Persona(ReadOnlyTargetRules Target) : base(Target)
     {
         PrivateIncludePaths.Add("Editor/Persona/Private");  // For PCH includes (because they don't work with relative paths, yet)
-        PrivateIncludePaths.Add("Editor/Persona/Private/AnimTimeline");
 
         PublicIncludePathModuleNames.AddRange(
             new string[] {
                 "SkeletonEditor",
-                "AnimationEditor",
-                "AdvancedPreviewScene",
             }
         );
 
@@ -30,10 +27,11 @@ public class Persona : ModuleRules
                 "DesktopPlatform",
                 "ContentBrowser",
                 "AssetTools",
+                "AnimationEditor",
                 "MeshReductionInterface",
                 "SequenceRecorder",
                 "AnimationBlueprintEditor",
-			}
+            }
         );
 
         PrivateDependencyModuleNames.AddRange(
@@ -44,7 +42,6 @@ public class Persona : ModuleRules
 				"ApplicationCore",
                 "Slate", 
                 "SlateCore",
-				"ContentBrowserData",
                 "EditorStyle",
                 "Engine", 
                 "UnrealEd", 
@@ -68,12 +65,7 @@ public class Persona : ModuleRules
                 "PinnedCommandList",
                 "RenderCore",
 				"SkeletalMeshUtilitiesCommon",
-				"ToolMenus",
-                "CurveEditor",
-				"SequencerWidgets",
-				"TimeManagement",
-                "Sequencer",
-			}
+            }
         );
 
         DynamicallyLoadedModuleNames.AddRange(
@@ -87,7 +79,7 @@ public class Persona : ModuleRules
                 "AnimationEditor",
                 "MeshReductionInterface",
                 "SequenceRecorder",
-			}
+            }
         );
     }
 }

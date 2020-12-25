@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,7 +18,9 @@
 		 * Throws a printf-formatted exception as a const TCHAR*.
 		 */
 		template <typename... Types>
-		UE_NORETURN static void VARARGS Throwf(const TCHAR* Fmt, Types... Args)
+		FUNCTION_NO_RETURN_START
+		static void VARARGS Throwf(const TCHAR* Fmt, Types... Args)
+		FUNCTION_NO_RETURN_END
 		{
 			static_assert(TAnd<TIsValidVariadicFunctionArg<Types>...>::Value, "Invalid argument(s) passed to FError::Throwf");
 
@@ -26,7 +28,9 @@
 		}
 
 	private:
-		UE_NORETURN static void VARARGS ThrowfImpl(const TCHAR* Fmt, ...);
+		FUNCTION_NO_RETURN_START
+		static void VARARGS ThrowfImpl(const TCHAR* Fmt, ...)
+		FUNCTION_NO_RETURN_END;
 	};
 #endif
 

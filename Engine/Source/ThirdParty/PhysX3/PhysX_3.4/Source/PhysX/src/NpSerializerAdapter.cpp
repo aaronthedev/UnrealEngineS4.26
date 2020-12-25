@@ -92,7 +92,7 @@ namespace physx
 		};
 
 		RequiresCallback callback(s);
-		dynamic.requiresObjects(callback);
+		dynamic.requires(callback);
 	}
 
 	template<>
@@ -124,7 +124,7 @@ namespace physx
 		};
 
 		RequiresCallback callback(s);
-		shape.requiresObjects(callback);
+		shape.requires(callback);
 	}
 
 	template<>

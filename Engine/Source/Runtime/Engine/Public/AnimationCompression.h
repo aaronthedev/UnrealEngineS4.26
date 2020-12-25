@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AnimationCompression.h: Skeletal mesh animation compression.
@@ -11,7 +11,7 @@
 #include "Animation/AnimEnums.h"
 #include "EngineLogs.h"
 
-ENGINE_API DECLARE_LOG_CATEGORY_EXTERN(LogAnimationCompression, Log, All);
+DECLARE_LOG_CATEGORY_EXTERN(LogAnimationCompression, Log, All);
 
 // Thresholds
 #define TRANSLATION_ZEROING_THRESHOLD (0.0001f)

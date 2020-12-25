@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -7,30 +7,35 @@ public class PicpProjection : ModuleRules
 {
 	public PicpProjection(ReadOnlyTargetRules ROTargetRules) : base(ROTargetRules)
 	{
-		PublicDependencyModuleNames.AddRange(
-			new string[] {
-				"Core",
-				"CoreUObject",
-				"Engine"
-			});
-
-		PrivateDependencyModuleNames.AddRange(
-			new string[] {
-				"Composure",
-				"CinematicCamera",
-				"DisplayCluster",
-				"DisplayClusterProjection",
-				"MPCDI",
-				"PicpMPCDI",
-				"RenderCore",
-				"RHI"
-			});
-
-		PrivateIncludePathModuleNames.AddRange(
+		PrivateIncludePaths.AddRange(
 			new string[]
 			{
-				"DisplayClusterProjection"
-			});
+				"PicpProjection/Private",
+				"DisplayClusterProjection/Private",
+			}
+		);
+
+		PublicDependencyModuleNames.AddRange(
+			new string[]
+			{
+				"Core",
+				"CoreUObject",
+				"Engine",
+            });
+
+		PrivateDependencyModuleNames.AddRange(
+			new string[]
+			{
+				"ApplicationCore",
+                "Composure",
+				"CinematicCamera",
+                "DisplayCluster",
+                "MPCDI",
+                "PicpMPCDI",
+                "RenderCore",
+				"RHI",				
+            }
+        );
 
 		if (Target.bBuildEditor == true)
 		{

@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_REF_PTR_H
-#define PXR_BASE_TF_REF_PTR_H
+#ifndef TF_REFPTR_H
+#define TF_REFPTR_H
 
 /// \file tf/refPtr.h
 /// \ingroup group_tf_Memory
@@ -482,12 +482,13 @@ inline void Tf_RefPtrTracker_Assign(const void*, const void*, const void*) { }
 // becomes unique or non-unique.
 struct Tf_RefPtr_UniqueChangedCounter {
     static inline int
-    AddRef(TfRefBase const *refBase)
+    AddRef(TfRefBase const *refBase,
+           TfRefBase::UniqueChangedListener const &listener)
     {
         if (refBase) {
             // Check to see if we need to invoke the unique changed listener.
             if (refBase->_shouldInvokeUniqueChangedListener)
-                return _AddRef(refBase);
+                return _AddRef(refBase, listener);
             else
                 return refBase->GetRefCount()._FetchAndAdd(1);
         }
@@ -495,11 +496,12 @@ struct Tf_RefPtr_UniqueChangedCounter {
     }
 
     static inline bool
-    RemoveRef(TfRefBase const* refBase) {
+    RemoveRef(TfRefBase const* refBase,
+              TfRefBase::UniqueChangedListener const &listener) {
         if (refBase) {
             // Check to see if we need to invoke the unique changed listener.
             return refBase->_shouldInvokeUniqueChangedListener ?
-                        _RemoveRef(refBase) :
+                        _RemoveRef(refBase, listener) :
                         refBase->GetRefCount()._DecrementAndTestIfZero();
         }
         return false;
@@ -508,11 +510,12 @@ struct Tf_RefPtr_UniqueChangedCounter {
     // Increment ptr's count if it is not zero.  Return true if done so
     // successfully, false if its count is zero.
     static inline bool
-    AddRefIfNonzero(TfRefBase const *ptr) {
+    AddRefIfNonzero(TfRefBase const *ptr,
+                    TfRefBase::UniqueChangedListener const &listener) {
         if (!ptr)
             return false;
         if (ptr->_shouldInvokeUniqueChangedListener) {
-            return _AddRefIfNonzero(ptr);
+            return _AddRefIfNonzero(ptr, listener);
         } else {
             auto &counter = ptr->GetRefCount()._counter;
             auto val = counter.load();
@@ -524,32 +527,38 @@ struct Tf_RefPtr_UniqueChangedCounter {
         }
     }
     
-    TF_API static bool _RemoveRef(TfRefBase const *refBase);
+    TF_API static bool _RemoveRef(TfRefBase const *refBase,
+                           TfRefBase::UniqueChangedListener const &listener);
 
-    TF_API static int _AddRef(TfRefBase const *refBase);
+    TF_API static int _AddRef(TfRefBase const *refBase,
+                       TfRefBase::UniqueChangedListener const &listener);
 
-    TF_API static bool _AddRefIfNonzero(TfRefBase const *refBase);
+    TF_API static bool _AddRefIfNonzero(TfRefBase const *refBase,
+                       TfRefBase::UniqueChangedListener const &listener);
 };
 
 // This code is used to increment and decrement ref counts in the case where
 // the object pointed to explicitly does not support unique changed listeners.
 struct Tf_RefPtr_Counter {
     static inline int
-    AddRef(TfRefBase const *refBase) {
+    AddRef(TfRefBase const *refBase,
+           TfRefBase::UniqueChangedListener const &) {
         if (refBase)
             return refBase->GetRefCount()._FetchAndAdd(1);
         return 0;
     }
 
     static inline bool
-    RemoveRef(TfRefBase const *ptr) {
+    RemoveRef(TfRefBase const *ptr,
+              TfRefBase::UniqueChangedListener const &) {
         return (ptr && (ptr->GetRefCount()._DecrementAndTestIfZero()));
     }
 
     // Increment ptr's count if it is not zero.  Return true if done so
     // successfully, false if its count is zero.
     static inline bool
-    AddRefIfNonzero(TfRefBase const *ptr) {
+    AddRefIfNonzero(TfRefBase const *ptr,
+                    TfRefBase::UniqueChangedListener const &) {
         if (!ptr)
             return false;
         auto &counter = ptr->GetRefCount()._counter;
@@ -1144,11 +1153,11 @@ private:
     friend const std::type_info& TfTypeid(const TfRefPtr<U>& ptr);
 
     void _AddRef() const {
-        _Counter::AddRef(_refBase);
+        _Counter::AddRef(_refBase, TfRefBase::_uniqueChangedListener);
     }
 
     void _RemoveRef(const TfRefBase* ptr) const {
-        if (_Counter::RemoveRef(ptr)) {
+        if (_Counter::RemoveRef(ptr, TfRefBase::_uniqueChangedListener)) {
             Tf_RefPtrTracker_LastRef(this,
                 reinterpret_cast<T*>(const_cast<TfRefBase*>(ptr)));
             delete ptr;
@@ -1411,4 +1420,4 @@ hash_value(const TfRefPtr<T>& ptr)
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_REF_PTR_H
+#endif // TF_REFPTR_H

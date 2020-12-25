@@ -1,32 +1,18 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "Templates/Casts.h"
 #include "UObject/UnrealType.h"
-#include "UObject/UnrealTypePrivate.h"
 #include "UObject/LinkerPlaceholderClass.h"
 #include "Misc/ConfigCacheIni.h"
 #include "UObject/PropertyHelper.h"
 
-// WARNING: This should always be the last include in any file that needs it (except .generated.h)
-#include "UObject/UndefineUPropertyMacros.h"
-
 /*-----------------------------------------------------------------------------
-	FClassProperty.
+	UClassProperty.
 -----------------------------------------------------------------------------*/
-IMPLEMENT_FIELD(FClassProperty)
 
-#if WITH_EDITORONLY_DATA
-FClassProperty::FClassProperty(UField* InField)
-	: FObjectProperty(InField)
-{
-	UClassProperty* SourceProperty = CastChecked<UClassProperty>(InField);
-	MetaClass = SourceProperty->MetaClass;
-}
-#endif // WITH_EDITORONLY_DATA
-
-void FClassProperty::BeginDestroy()
+void UClassProperty::BeginDestroy()
 {
 #if USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
 	if (ULinkerPlaceholderClass* PlaceholderClass = Cast<ULinkerPlaceholderClass>(MetaClass))
@@ -38,14 +24,7 @@ void FClassProperty::BeginDestroy()
 	Super::BeginDestroy();
 }
 
-void FClassProperty::PostDuplicate(const FField& InField)
-{
-	const FClassProperty& Source = static_cast<const FClassProperty&>(InField);
-	MetaClass = Source.MetaClass;
-	Super::PostDuplicate(InField);
-}
-
-void FClassProperty::Serialize( FArchive& Ar )
+void UClassProperty::Serialize( FArchive& Ar )
 {
 	Super::Serialize( Ar );
 	Ar << MetaClass;
@@ -60,7 +39,7 @@ void FClassProperty::Serialize( FArchive& Ar )
 	}
 #endif // USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
 
-	if( !MetaClass )
+	if( !(MetaClass||HasAnyFlags(RF_ClassDefaultObject)) )
 	{
 		// If we failed to load the MetaClass and we're not a CDO, that means we relied on a class that has been removed or doesn't exist.
 		// The most likely cause for this is either an incomplete recompile, or if content was migrated between games that had native class dependencies
@@ -74,7 +53,7 @@ void FClassProperty::Serialize( FArchive& Ar )
 }
 
 #if USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
-void FClassProperty::SetMetaClass(UClass* NewMetaClass)
+void UClassProperty::SetMetaClass(UClass* NewMetaClass)
 {
 	if (ULinkerPlaceholderClass* NewPlaceholderClass = Cast<ULinkerPlaceholderClass>(NewMetaClass))
 	{
@@ -89,15 +68,16 @@ void FClassProperty::SetMetaClass(UClass* NewMetaClass)
 }
 #endif // USE_CIRCULAR_DEPENDENCY_LOAD_DEFERRING
 
-void FClassProperty::AddReferencedObjects(FReferenceCollector& Collector)
+void UClassProperty::AddReferencedObjects(UObject* InThis, FReferenceCollector& Collector)
 {
-	Collector.AddReferencedObject( MetaClass );
-	Super::AddReferencedObjects( Collector );
+	UClassProperty* This = CastChecked<UClassProperty>(InThis);
+	Collector.AddReferencedObject( This->MetaClass, This );
+	Super::AddReferencedObjects( This, Collector );
 }
 
-const TCHAR* FClassProperty::ImportText_Internal( const TCHAR* Buffer, void* Data, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText ) const
+const TCHAR* UClassProperty::ImportText_Internal( const TCHAR* Buffer, void* Data, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText ) const
 {
-	const TCHAR* Result = FObjectProperty::ImportText_Internal( Buffer, Data, PortFlags, Parent, ErrorText );
+	const TCHAR* Result = UObjectProperty::ImportText_Internal( Buffer, Data, PortFlags, Parent, ErrorText );
 	if( Result )
 	{
 		if (UClass* AssignedPropertyClass = dynamic_cast<UClass*>(GetObjectPropertyValue(Data)))
@@ -132,14 +112,14 @@ const TCHAR* FClassProperty::ImportText_Internal( const TCHAR* Buffer, void* Dat
 	return Result;
 }
 
-FString FClassProperty::GetCPPType(FString* ExtendedTypeText, uint32 CPPExportFlags) const
+FString UClassProperty::GetCPPType(FString* ExtendedTypeText, uint32 CPPExportFlags) const
 {
 	check(MetaClass);
 	return GetCPPTypeCustom(ExtendedTypeText, CPPExportFlags,
 		FString::Printf(TEXT("%s%s"), MetaClass->GetPrefixCPP(), *MetaClass->GetName()));
 }
 
-FString FClassProperty::GetCPPTypeCustom(FString* ExtendedTypeText, uint32 CPPExportFlags, const FString& InnerNativeTypeName) const
+FString UClassProperty::GetCPPTypeCustom(FString* ExtendedTypeText, uint32 CPPExportFlags, const FString& InnerNativeTypeName) const
 {
 	if (PropertyFlags & CPF_UObjectWrapper)
 	{
@@ -152,23 +132,23 @@ FString FClassProperty::GetCPPTypeCustom(FString* ExtendedTypeText, uint32 CPPEx
 	}
 }
 
-FString FClassProperty::GetCPPTypeForwardDeclaration() const
+FString UClassProperty::GetCPPTypeForwardDeclaration() const
 {
 	return FString::Printf(TEXT("class %s%s;"), MetaClass->GetPrefixCPP(), *MetaClass->GetName());
 }
 
-FString FClassProperty::GetCPPMacroType( FString& ExtendedTypeText ) const
+FString UClassProperty::GetCPPMacroType( FString& ExtendedTypeText ) const
 {
 	ExtendedTypeText = TEXT("UClass");
 	return TEXT("OBJECT");
 }
 
-bool FClassProperty::SameType(const FProperty* Other) const
+bool UClassProperty::SameType(const UProperty* Other) const
 {
-	return Super::SameType(Other) && (MetaClass == ((FClassProperty*)Other)->MetaClass);
+	return Super::SameType(Other) && (MetaClass == ((UClassProperty*)Other)->MetaClass);
 }
 
-bool FClassProperty::Identical( const void* A, const void* B, uint32 PortFlags ) const
+bool UClassProperty::Identical( const void* A, const void* B, uint32 PortFlags ) const
 {
 	UObject* ObjectA = A ? GetObjectPropertyValue(A) : nullptr;
 	UObject* ObjectB = B ? GetObjectPropertyValue(B) : nullptr;
@@ -178,4 +158,9 @@ bool FClassProperty::Identical( const void* A, const void* B, uint32 PortFlags )
 	return (ObjectA == ObjectB);
 }
 
-#include "UObject/DefineUPropertyMacros.h"
+IMPLEMENT_CORE_INTRINSIC_CLASS(UClassProperty, UObjectProperty,
+	{
+		Class->EmitObjectReference(STRUCT_OFFSET(UClassProperty, MetaClass), TEXT("MetaClass"));
+	}
+);
+

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "CADToolsModule.h"
 
 #include "Modules/ModuleInterface.h"
@@ -16,9 +16,8 @@ bool FCADToolsModule::IsAvailable()
 	return FModuleManager::Get().IsModuleLoaded(CADTOOLS_MODULE_NAME);
 }
 
-uint32 FCADToolsModule::GetCacheVersion()
+void FCADToolsModule::StartupModule()
 {
-	return 7;
 }
 
 IMPLEMENT_MODULE(FCADToolsModule, CADTools);

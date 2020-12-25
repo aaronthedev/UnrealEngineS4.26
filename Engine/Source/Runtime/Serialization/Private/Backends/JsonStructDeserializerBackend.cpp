@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Backends/JsonStructDeserializerBackend.h"
 #include "Backends/StructDeserializerBackendUtilities.h"
@@ -74,7 +74,7 @@ bool FJsonStructDeserializerBackend::GetNextToken( EStructDeserializerBackendTok
 }
 
 
-bool FJsonStructDeserializerBackend::ReadProperty( FProperty* Property, FProperty* Outer, void* Data, int32 ArrayIndex )
+bool FJsonStructDeserializerBackend::ReadProperty( UProperty* Property, UProperty* Outer, void* Data, int32 ArrayIndex )
 {
 	switch (LastNotation)
 	{
@@ -83,14 +83,14 @@ bool FJsonStructDeserializerBackend::ReadProperty( FProperty* Property, FPropert
 		{
 			bool BoolValue = JsonReader->GetValueAsBoolean();
 
-			if (FBoolProperty* BoolProperty = CastField<FBoolProperty>(Property))
+			if (UBoolProperty* BoolProperty = Cast<UBoolProperty>(Property))
 			{
 				return StructDeserializerBackendUtilities::SetPropertyValue(BoolProperty, Outer, Data, ArrayIndex, BoolValue);
 			}
 
 			const FCoreTexts& CoreTexts = FCoreTexts::Get();
 
-			UE_LOG(LogSerialization, Verbose, TEXT("Boolean field %s with value '%s' is not supported in FProperty type %s (%s)"), *Property->GetFName().ToString(), BoolValue ? *(CoreTexts.True.ToString()) : *(CoreTexts.False.ToString()), *Property->GetClass()->GetName(), *GetDebugString());
+			UE_LOG(LogSerialization, Verbose, TEXT("Boolean field %s with value '%s' is not supported in UProperty type %s (%s)"), *Property->GetFName().ToString(), BoolValue ? *(CoreTexts.True.ToString()) : *(CoreTexts.False.ToString()), *Property->GetClass()->GetName(), *GetDebugString());
 
 			return false;
 		}
@@ -101,57 +101,57 @@ bool FJsonStructDeserializerBackend::ReadProperty( FProperty* Property, FPropert
 		{
 			double NumericValue = JsonReader->GetValueAsNumber();
 
-			if (FByteProperty* ByteProperty = CastField<FByteProperty>(Property))
+			if (UByteProperty* ByteProperty = Cast<UByteProperty>(Property))
 			{
 				return StructDeserializerBackendUtilities::SetPropertyValue(ByteProperty, Outer, Data, ArrayIndex, (int8)NumericValue);
 			}
 
-			if (FDoubleProperty* DoubleProperty = CastField<FDoubleProperty>(Property))
+			if (UDoubleProperty* DoubleProperty = Cast<UDoubleProperty>(Property))
 			{
 				return StructDeserializerBackendUtilities::SetPropertyValue(DoubleProperty, Outer, Data, ArrayIndex, (double)NumericValue);
 			}
 
-			if (FFloatProperty* FloatProperty = CastField<FFloatProperty>(Property))
+			if (UFloatProperty* FloatProperty = Cast<UFloatProperty>(Property))
 			{
 				return StructDeserializerBackendUtilities::SetPropertyValue(FloatProperty, Outer, Data, ArrayIndex, (float)NumericValue);
 			}
 
-			if (FIntProperty* IntProperty = CastField<FIntProperty>(Property))
+			if (UIntProperty* IntProperty = Cast<UIntProperty>(Property))
 			{
 				return StructDeserializerBackendUtilities::SetPropertyValue(IntProperty, Outer, Data, ArrayIndex, (int32)NumericValue);
 			}
 
-			if (FUInt32Property* UInt32Property = CastField<FUInt32Property>(Property))
+			if (UUInt32Property* UInt32Property = Cast<UUInt32Property>(Property))
 			{
 				return StructDeserializerBackendUtilities::SetPropertyValue(UInt32Property, Outer, Data, ArrayIndex, (uint32)NumericValue);
 			}
 
-			if (FInt16Property* Int16Property = CastField<FInt16Property>(Property))
+			if (UInt16Property* Int16Property = Cast<UInt16Property>(Property))
 			{
 				return StructDeserializerBackendUtilities::SetPropertyValue(Int16Property, Outer, Data, ArrayIndex, (int16)NumericValue);
 			}
 
-			if (FUInt16Property* FInt16Property = CastField<FUInt16Property>(Property))
+			if (UUInt16Property* UInt16Property = Cast<UUInt16Property>(Property))
 			{
-				return StructDeserializerBackendUtilities::SetPropertyValue(FInt16Property, Outer, Data, ArrayIndex, (uint16)NumericValue);
+				return StructDeserializerBackendUtilities::SetPropertyValue(UInt16Property, Outer, Data, ArrayIndex, (uint16)NumericValue);
 			}
 
-			if (FInt64Property* Int64Property = CastField<FInt64Property>(Property))
+			if (UInt64Property* Int64Property = Cast<UInt64Property>(Property))
 			{
 				return StructDeserializerBackendUtilities::SetPropertyValue(Int64Property, Outer, Data, ArrayIndex, (int64)NumericValue);
 			}
 
-			if (FUInt64Property* FInt64Property = CastField<FUInt64Property>(Property))
+			if (UUInt64Property* UInt64Property = Cast<UUInt64Property>(Property))
 			{
-				return StructDeserializerBackendUtilities::SetPropertyValue(FInt64Property, Outer, Data, ArrayIndex, (uint64)NumericValue);
+				return StructDeserializerBackendUtilities::SetPropertyValue(UInt64Property, Outer, Data, ArrayIndex, (uint64)NumericValue);
 			}
 
-			if (FInt8Property* Int8Property = CastField<FInt8Property>(Property))
+			if (UInt8Property* Int8Property = Cast<UInt8Property>(Property))
 			{
 				return StructDeserializerBackendUtilities::SetPropertyValue(Int8Property, Outer, Data, ArrayIndex, (int8)NumericValue);
 			}
 
-			UE_LOG(LogSerialization, Verbose, TEXT("Numeric field %s with value '%f' is not supported in FProperty type %s (%s)"), *Property->GetFName().ToString(), NumericValue, *Property->GetClass()->GetName(), *GetDebugString());
+			UE_LOG(LogSerialization, Verbose, TEXT("Numeric field %s with value '%f' is not supported in UProperty type %s (%s)"), *Property->GetFName().ToString(), NumericValue, *Property->GetClass()->GetName(), *GetDebugString());
 
 			return false;
 		}
@@ -166,17 +166,17 @@ bool FJsonStructDeserializerBackend::ReadProperty( FProperty* Property, FPropert
 		{
 			const FString& StringValue = JsonReader->GetValueAsString();
 
-			if (FStrProperty* StrProperty = CastField<FStrProperty>(Property))
+			if (UStrProperty* StrProperty = Cast<UStrProperty>(Property))
 			{
 				return StructDeserializerBackendUtilities::SetPropertyValue(StrProperty, Outer, Data, ArrayIndex, StringValue);
 			}
 
-			if (FNameProperty* NameProperty = CastField<FNameProperty>(Property))
+			if (UNameProperty* NameProperty = Cast<UNameProperty>(Property))
 			{
 				return StructDeserializerBackendUtilities::SetPropertyValue(NameProperty, Outer, Data, ArrayIndex, FName(*StringValue));
 			}
 
-			if (FTextProperty* TextProperty = CastField<FTextProperty>(Property))
+			if (UTextProperty* TextProperty = Cast<UTextProperty>(Property))
 			{
 				FText TextValue;
 				if (!FTextStringHelper::ReadFromBuffer(*StringValue, TextValue))
@@ -186,7 +186,7 @@ bool FJsonStructDeserializerBackend::ReadProperty( FProperty* Property, FPropert
 				return StructDeserializerBackendUtilities::SetPropertyValue(TextProperty, Outer, Data, ArrayIndex, TextValue);
 			}
 
-			if (FByteProperty* ByteProperty = CastField<FByteProperty>(Property))
+			if (UByteProperty* ByteProperty = Cast<UByteProperty>(Property))
 			{
 				if (!ByteProperty->Enum)
 				{
@@ -202,7 +202,7 @@ bool FJsonStructDeserializerBackend::ReadProperty( FProperty* Property, FPropert
 				return StructDeserializerBackendUtilities::SetPropertyValue(ByteProperty, Outer, Data, ArrayIndex, (uint8)Value);
 			}
 
-			if (FEnumProperty* EnumProperty = CastField<FEnumProperty>(Property))
+			if (UEnumProperty* EnumProperty = Cast<UEnumProperty>(Property))
 			{
 				int64 Value = EnumProperty->GetEnum()->GetValueByName(*StringValue);
 				if (Value == INDEX_NONE)
@@ -219,32 +219,32 @@ bool FJsonStructDeserializerBackend::ReadProperty( FProperty* Property, FPropert
 				return false;
 			}
 
-			if (FClassProperty* ClassProperty = CastField<FClassProperty>(Property))
+			if (UClassProperty* ClassProperty = Cast<UClassProperty>(Property))
 			{
 				return StructDeserializerBackendUtilities::SetPropertyValue(ClassProperty, Outer, Data, ArrayIndex, LoadObject<UClass>(nullptr, *StringValue, nullptr, LOAD_NoWarn));
 			}
 
-			if (FSoftClassProperty* SoftClassProperty = CastField<FSoftClassProperty>(Property))
+			if (USoftClassProperty* SoftClassProperty = Cast<USoftClassProperty>(Property))
 			{
 				return StructDeserializerBackendUtilities::SetPropertyValue(SoftClassProperty, Outer, Data, ArrayIndex, FSoftObjectPtr(LoadObject<UClass>(nullptr, *StringValue, nullptr, LOAD_NoWarn)));
 			}
 
-			if (FObjectProperty* ObjectProperty = CastField<FObjectProperty>(Property))
+			if (UObjectProperty* ObjectProperty = Cast<UObjectProperty>(Property))
 			{
 				return StructDeserializerBackendUtilities::SetPropertyValue(ObjectProperty, Outer, Data, ArrayIndex, StaticFindObject(ObjectProperty->PropertyClass, nullptr, *StringValue));
 			}
 
-			if (FWeakObjectProperty* WeakObjectProperty = CastField<FWeakObjectProperty>(Property))
+			if (UWeakObjectProperty* WeakObjectProperty = Cast<UWeakObjectProperty>(Property))
 			{
 				return StructDeserializerBackendUtilities::SetPropertyValue(WeakObjectProperty, Outer, Data, ArrayIndex, FWeakObjectPtr(StaticFindObject(WeakObjectProperty->PropertyClass, nullptr, *StringValue)));
 			}
 
-			if (FSoftObjectProperty* SoftObjectProperty = CastField<FSoftObjectProperty>(Property))
+			if (USoftObjectProperty* SoftObjectProperty = Cast<USoftObjectProperty>(Property))
 			{
 				return StructDeserializerBackendUtilities::SetPropertyValue(SoftObjectProperty, Outer, Data, ArrayIndex, FSoftObjectPtr(FSoftObjectPath(StringValue)));
 			}
 
-			UE_LOG(LogSerialization, Verbose, TEXT("String field %s with value '%s' is not supported in FProperty type %s (%s)"), *Property->GetFName().ToString(), *StringValue, *Property->GetClass()->GetName(), *GetDebugString());
+			UE_LOG(LogSerialization, Verbose, TEXT("String field %s with value '%s' is not supported in UProperty type %s (%s)"), *Property->GetFName().ToString(), *StringValue, *Property->GetClass()->GetName(), *GetDebugString());
 
 			return false;
 		}

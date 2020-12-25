@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	VulkanLayers.cpp: Vulkan device layers implementation.
@@ -7,14 +7,7 @@
 #include "VulkanRHIPrivate.h"
 #include "IHeadMountedDisplayModule.h"
 #include "IHeadMountedDisplayVulkanExtensions.h"
-#include "VulkanRHIBridge.h"
-namespace VulkanRHIBridge
-{
-	extern TArray<const ANSICHAR*> InstanceExtensions;
-	extern TArray<const ANSICHAR*> InstanceLayers;
-	extern TArray<const ANSICHAR*> DeviceExtensions;
-	extern TArray<const ANSICHAR*> DeviceLayers;
-}
+
 #if VULKAN_HAS_DEBUGGING_ENABLED
 bool GRenderDocFound = false;
 #endif
@@ -42,15 +35,6 @@ static TAutoConsoleVariable<int32> GStandardValidationCvar(
 	TEXT("2 to use VK_LAYER_KHRONOS_validation (default) if available\n")
 	TEXT("1 to use VK_LAYER_LUNARG_standard_validation if available, or \n")
 	TEXT("0 to use individual validation layers (deprecated)"),
-	ECVF_ReadOnly | ECVF_RenderThreadSafe
-);
-
-TAutoConsoleVariable<int32> GGPUValidationCvar(
-	TEXT("r.Vulkan.GPUValidation"),
-	0,
-	TEXT("2 to use enable GPU assised validation AND extra binding slot when using validation layers, or\n")
-	TEXT("1 to use enable GPU assised validation when using validation layers, or\n")
-	TEXT("0 to not use (default)"),
 	ECVF_ReadOnly | ECVF_RenderThreadSafe
 );
 
@@ -100,42 +84,17 @@ static const ANSICHAR* GDeviceExtensions[] =
 #if VULKAN_SUPPORTS_MAINTENANCE_LAYER1
 	VK_KHR_MAINTENANCE1_EXTENSION_NAME,
 #endif
-
 #if VULKAN_SUPPORTS_MAINTENANCE_LAYER2
 	VK_KHR_MAINTENANCE2_EXTENSION_NAME,
 #endif
-
 #if VULKAN_SUPPORTS_VALIDATION_CACHE
 	VK_EXT_VALIDATION_CACHE_EXTENSION_NAME,
 #endif
-
-#if VULKAN_SUPPORTS_MEMORY_BUDGET
-	VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,
-#endif
-
-#if VULKAN_SUPPORTS_SCALAR_BLOCK_LAYOUT
-	VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME,
-#endif
-
-
 #if VULKAN_SUPPORTS_MEMORY_PRIORITY
 	VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME,
 #endif
 
-#if VULKAN_SUPPORTS_SEPARATE_DEPTH_STENCIL_LAYOUTS
-	// If we decide to support separate depth-stencil transitions, enable this.
-	//VK_KHR_CREATE_RENDERPASS_2_EXTENSION_NAME,
-	//VK_KHR_SEPARATE_DEPTH_STENCIL_LAYOUTS_EXTENSION_NAME,
-#endif
-
 	//VK_KHR_SAMPLER_MIRROR_CLAMP_TO_EDGE_EXTENSION_NAME,
-	
-#if VULKAN_SUPPORTS_BUFFER_64BIT_ATOMICS
-	VK_KHR_SHADER_ATOMIC_INT64_EXTENSION_NAME,
-#endif
-
-	VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME,
-
 	nullptr
 };
 
@@ -168,37 +127,27 @@ struct FLayerExtension
 	TArray<VkExtensionProperties> ExtensionProps;
 };
 
-
-static void ErrorPotentialBadInstallation(const ANSICHAR* VkFunction, const ANSICHAR* Filename, uint32 Line)
-{
-	UE_LOG(LogVulkanRHI, Error, TEXT("%s failed\n at %s:%u\nThis typically means Vulkan is not properly set up in your system; try running vulkaninfo from the Vulkan SDK."), ANSI_TO_TCHAR(VkFunction), ANSI_TO_TCHAR(Filename), Line);
-}
-
-#define VERIFYVULKANRESULT_INIT(VkFunction)		{ const VkResult ScopedResult = VkFunction; \
-													if (ScopedResult == VK_ERROR_INITIALIZATION_FAILED) { ErrorPotentialBadInstallation(#VkFunction, __FILE__, __LINE__); } \
-													else if (ScopedResult < VK_SUCCESS) { VulkanRHI::VerifyVulkanResult(ScopedResult, #VkFunction, __FILE__, __LINE__); }}
-
 static inline void EnumerateInstanceExtensionProperties(const ANSICHAR* LayerName, FLayerExtension& OutLayer)
 {
 	uint32 Count = 0;
-	VERIFYVULKANRESULT_INIT(VulkanRHI::vkEnumerateInstanceExtensionProperties(LayerName, &Count, nullptr));
+	VERIFYVULKANRESULT(VulkanRHI::vkEnumerateInstanceExtensionProperties(LayerName, &Count, nullptr));
 	if (Count > 0)
 	{
 		OutLayer.ExtensionProps.Empty(Count);
 		OutLayer.ExtensionProps.AddUninitialized(Count);
-		VERIFYVULKANRESULT_INIT(VulkanRHI::vkEnumerateInstanceExtensionProperties(LayerName, &Count, OutLayer.ExtensionProps.GetData()));
+		VERIFYVULKANRESULT(VulkanRHI::vkEnumerateInstanceExtensionProperties(LayerName, &Count, OutLayer.ExtensionProps.GetData()));
 	}
 }
 
 static inline void EnumerateDeviceExtensionProperties(VkPhysicalDevice Device, const ANSICHAR* LayerName, FLayerExtension& OutLayer)
 {
 	uint32 Count = 0;
-	VERIFYVULKANRESULT_INIT(VulkanRHI::vkEnumerateDeviceExtensionProperties(Device, LayerName, &Count, nullptr));
+	VERIFYVULKANRESULT(VulkanRHI::vkEnumerateDeviceExtensionProperties(Device, LayerName, &Count, nullptr));
 	if (Count > 0)
 	{
 		OutLayer.ExtensionProps.Empty(Count);
 		OutLayer.ExtensionProps.AddUninitialized(Count);
-		VERIFYVULKANRESULT_INIT(VulkanRHI::vkEnumerateDeviceExtensionProperties(Device, LayerName, &Count, OutLayer.ExtensionProps.GetData()));
+		VERIFYVULKANRESULT(VulkanRHI::vkEnumerateDeviceExtensionProperties(Device, LayerName, &Count, OutLayer.ExtensionProps.GetData()));
 	}
 }
 
@@ -288,11 +237,11 @@ void FVulkanDynamicRHI::GetInstanceLayersAndExtensions(TArray<const ANSICHAR*>& 
 	{
 		TArray<VkLayerProperties> GlobalLayerProperties;
 		uint32 InstanceLayerCount = 0;
-		VERIFYVULKANRESULT_INIT(VulkanRHI::vkEnumerateInstanceLayerProperties(&InstanceLayerCount, nullptr));
+		VERIFYVULKANRESULT(VulkanRHI::vkEnumerateInstanceLayerProperties(&InstanceLayerCount, nullptr));
 		if (InstanceLayerCount > 0)
 		{
 			GlobalLayerProperties.AddZeroed(InstanceLayerCount);
-			VERIFYVULKANRESULT_INIT(VulkanRHI::vkEnumerateInstanceLayerProperties(&InstanceLayerCount, &GlobalLayerProperties[GlobalLayerProperties.Num() - InstanceLayerCount]));
+			VERIFYVULKANRESULT(VulkanRHI::vkEnumerateInstanceLayerProperties(&InstanceLayerCount, &GlobalLayerProperties[GlobalLayerProperties.Num() - InstanceLayerCount]));
 		}
 
 		for (int32 Index = 0; Index < GlobalLayerProperties.Num(); ++Index)
@@ -305,24 +254,16 @@ void FVulkanDynamicRHI::GetInstanceLayersAndExtensions(TArray<const ANSICHAR*>& 
 		}
 	}
 
-	UE_LOG(LogVulkanRHI, Display, TEXT("- Found %d instance layers"), FoundUniqueLayers.Num());
-	if (FoundUniqueLayers.Num() > 0)
+	FoundUniqueLayers.Sort();
+	for (const FString& Name : FoundUniqueLayers)
 	{
-		FoundUniqueLayers.Sort();
-		for (const FString& Name : FoundUniqueLayers)
-		{
-			UE_LOG(LogVulkanRHI, Display, TEXT("* %s"), *Name);
-		}
+		UE_LOG(LogVulkanRHI, Display, TEXT("- Found instance layer %s"), *Name);
 	}
 
-	UE_LOG(LogVulkanRHI, Display, TEXT("- Found %d instance extensions"), FoundUniqueExtensions.Num());
-	if (FoundUniqueExtensions.Num() > 0)
+	FoundUniqueExtensions.Sort();
+	for (const FString& Name : FoundUniqueExtensions)
 	{
-		FoundUniqueExtensions.Sort();
-		for (const FString& Name : FoundUniqueExtensions)
-		{
-			UE_LOG(LogVulkanRHI, Display, TEXT("* %s"), *Name);
-		}
+		UE_LOG(LogVulkanRHI, Display, TEXT("- Found instance extension %s"), *Name);
 	}
 
 	FVulkanPlatform::NotifyFoundInstanceLayersAndExtensions(FoundUniqueLayers, FoundUniqueExtensions);
@@ -360,7 +301,6 @@ void FVulkanDynamicRHI::GetInstanceLayersAndExtensions(TArray<const ANSICHAR*>& 
 	const int32 VulkanValidationOption = GValidationCvar.GetValueOnAnyThread();
 	if (!bVkTrace && VulkanValidationOption > 0)
 	{
-		bool bSkipStandard = false;
 		bool bStandardAvailable = false;
 		if (GStandardValidationCvar.GetValueOnAnyThread() != 0)
 		{
@@ -373,13 +313,7 @@ void FVulkanDynamicRHI::GetInstanceLayersAndExtensions(TArray<const ANSICHAR*>& 
 				}
 				else
 				{
-#if PLATFORM_WINDOWS || PLATFORM_LINUX
-					//#todo-rco: We don't package DLLs so if this fails it means no DLL was found anywhere, so don't try to load standard validation layers
-					UE_LOG(LogVulkanRHI, Warning, TEXT("Unable to find Vulkan instance validation layer %s;  Do you have the Vulkan SDK Installed?"), TEXT(STANDARD_VALIDATION_LAYER_NAME));
-					bSkipStandard = true;
-#else
 					UE_LOG(LogVulkanRHI, Warning, TEXT("Unable to find Vulkan instance validation layer %s; trying individual layers..."), TEXT(STANDARD_VALIDATION_LAYER_NAME));
-#endif
 				}
 			}
 			else
@@ -396,7 +330,7 @@ void FVulkanDynamicRHI::GetInstanceLayersAndExtensions(TArray<const ANSICHAR*>& 
 			}
 		}
 
-		if (!bStandardAvailable && !bSkipStandard)
+		if (!bStandardAvailable)
 		{
 			// Verify that all requested debugging device-layers are available
 			for (uint32 LayerIndex = 0; GIndividualValidationLayers[LayerIndex] != nullptr; ++LayerIndex)
@@ -443,10 +377,6 @@ void FVulkanDynamicRHI::GetInstanceLayersAndExtensions(TArray<const ANSICHAR*>& 
 		}
 	}
 
-	// plugins might have used the VulkanRHIBridge to enable additional extensions
-	OutInstanceExtensions.Append(VulkanRHIBridge::InstanceExtensions);
-	OutInstanceLayers.Append(VulkanRHIBridge::InstanceLayers);
-
 	TArray<const ANSICHAR*> PlatformExtensions;
 	FVulkanPlatform::GetInstanceExtensions(PlatformExtensions);
 
@@ -479,16 +409,6 @@ void FVulkanDynamicRHI::GetInstanceLayersAndExtensions(TArray<const ANSICHAR*>& 
 		{
 			OutInstanceExtensions.Add(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
 		}
-	}
-
-	if (VulkanValidationOption > 0 && !bVkTrace)
-	{
-#if VULKAN_HAS_VALIDATION_FEATURES
-		if (FindLayerExtensionInList(GlobalLayerExtensions, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME) && GGPUValidationCvar.GetValueOnAnyThread() != 0)
-		{
-			OutInstanceExtensions.Add(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
-		}
-#endif
 	}
 #endif
 
@@ -531,9 +451,9 @@ void FVulkanDevice::GetDeviceExtensionsAndLayers(VkPhysicalDevice Gpu, EGpuVendo
 	{
 		uint32 Count = 0;
 		TArray<VkLayerProperties> Properties;
-		VERIFYVULKANRESULT_INIT(VulkanRHI::vkEnumerateDeviceLayerProperties(Gpu, &Count, nullptr));
+		VERIFYVULKANRESULT(VulkanRHI::vkEnumerateDeviceLayerProperties(Gpu, &Count, nullptr));
 		Properties.AddZeroed(Count);
-		VERIFYVULKANRESULT_INIT(VulkanRHI::vkEnumerateDeviceLayerProperties(Gpu, &Count, Properties.GetData()));
+		VERIFYVULKANRESULT(VulkanRHI::vkEnumerateDeviceLayerProperties(Gpu, &Count, Properties.GetData()));
 		check(Count == Properties.Num());
 		for (const VkLayerProperties& Property : Properties)
 		{
@@ -632,10 +552,6 @@ void FVulkanDevice::GetDeviceExtensionsAndLayers(VkPhysicalDevice Gpu, EGpuVendo
 			UE_LOG(LogVulkanRHI, Warning, TEXT( "Trying to use Vulkan with an HMD, but required extensions aren't supported on the selected device!"));
 		}
 	}
-
-	// plugins might have used the VulkanRHIBridge to enable additional extensions
-	OutDeviceExtensions.Append(VulkanRHIBridge::DeviceExtensions);
-	OutDeviceLayers.Append(VulkanRHIBridge::DeviceLayers);
 
 	// Now gather the actually used extensions based on the enabled layers
 	TArray<const ANSICHAR*> AvailableExtensions;
@@ -770,15 +686,7 @@ void FOptionalVulkanDeviceExtensions::Setup(const TArray<const ANSICHAR*>& Devic
 	if (GGPUCrashDebuggingEnabled)
 	{
 		HasAMDBufferMarker = HasExtension(DeviceExtensions, VK_AMD_BUFFER_MARKER_EXTENSION_NAME);
-		bHasAnyCrashExtension = bHasAnyCrashExtension || HasAMDBufferMarker;
-	}
-#endif
-
-#if VULKAN_SUPPORTS_NV_DEVICE_DIAGNOSTIC_CONFIG
-	if (GGPUCrashDebuggingEnabled)
-	{
-		HasNVDeviceDiagnosticConfig = HasExtension(DeviceExtensions, VK_NV_DEVICE_DIAGNOSTICS_CONFIG_EXTENSION_NAME);
-		bHasAnyCrashExtension = bHasAnyCrashExtension || HasNVDeviceDiagnosticConfig;
+		bHasAnyCrashExtension = bHasAnyCrashExtension || !HasAMDBufferMarker;
 	}
 #endif
 
@@ -786,7 +694,7 @@ void FOptionalVulkanDeviceExtensions::Setup(const TArray<const ANSICHAR*>& Devic
 	if (GGPUCrashDebuggingEnabled)
 	{
 		HasNVDiagnosticCheckpoints = HasExtension(DeviceExtensions, VK_NV_DEVICE_DIAGNOSTIC_CHECKPOINTS_EXTENSION_NAME);
-		bHasAnyCrashExtension = bHasAnyCrashExtension || HasNVDiagnosticCheckpoints;
+		bHasAnyCrashExtension = bHasAnyCrashExtension || !HasNVDiagnosticCheckpoints;
 	}
 #endif
 
@@ -794,6 +702,10 @@ void FOptionalVulkanDeviceExtensions::Setup(const TArray<const ANSICHAR*>& Devic
 	{
 		UE_LOG(LogVulkanRHI, Warning, TEXT("Tried to enable GPU crash debugging but no extension found! Will use local tracepoints."));
 	}
+
+#if VULKAN_SUPPORTS_GOOGLE_DISPLAY_TIMING
+	HasGoogleDisplayTiming = HasExtension(DeviceExtensions, VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME);
+#endif
 
 #if VULKAN_SUPPORTS_COLOR_CONVERSIONS
 	HasYcbcrSampler = HasExtension(DeviceExtensions, VK_KHR_SAMPLER_YCBCR_CONVERSION_EXTENSION_NAME) && HasExtension(DeviceExtensions, VK_KHR_BIND_MEMORY_2_EXTENSION_NAME) && HasExtension(DeviceExtensions, VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME);
@@ -809,45 +721,11 @@ void FOptionalVulkanDeviceExtensions::Setup(const TArray<const ANSICHAR*>& Devic
 	HasMemoryPriority = 0;
 #endif
 
-#if VULKAN_SUPPORTS_MEMORY_BUDGET
-	HasMemoryBudget = HasExtension(DeviceExtensions, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);
-	if (FParse::Param(FCommandLine::Get(), TEXT("disablememorybudget")))
-	{
-		HasMemoryBudget = 0;
-	}
-#else
-	HasMemoryBudget = 0;
-#endif
-
-#if VULKAN_SUPPORTS_ASTC_DECODE_MODE
-	HasEXTASTCDecodeMode = HasExtension(DeviceExtensions, VK_EXT_ASTC_DECODE_MODE_EXTENSION_NAME);
-#else
-	HasEXTASTCDecodeMode = 0;
-#endif
-
 #if VULKAN_SUPPORTS_DRIVER_PROPERTIES
 	HasDriverProperties = HasExtension(DeviceExtensions, VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME);
 #endif
 
 	HasEXTFragmentDensityMap = HasExtension(DeviceExtensions, VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME);
-
-#if VULKAN_SUPPORTS_FULLSCREEN_EXCLUSIVE
-	HasEXTFullscreenExclusive = HasExtension(DeviceExtensions, VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME);
-#endif
-
-	HasKHRImageFormatList = HasExtension(DeviceExtensions, VK_KHR_IMAGE_FORMAT_LIST_EXTENSION_NAME);
-
-#if VULKAN_SUPPORTS_QCOM_RENDERPASS_TRANSFORM
-	HasQcomRenderPassTransform = HasExtension(DeviceExtensions, VK_QCOM_RENDER_PASS_TRANSFORM_EXTENSION_NAME);
-#endif
-
-#if VULKAN_SUPPORTS_BUFFER_64BIT_ATOMICS
-	HasAtomicInt64 = HasExtension(DeviceExtensions, VK_KHR_SHADER_ATOMIC_INT64_EXTENSION_NAME);
-#endif
-
-#if VULKAN_SUPPORTS_SCALAR_BLOCK_LAYOUT
-	HasScalarBlockLayoutFeatures = HasExtension(DeviceExtensions, VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME);
-#endif
 }
 
 void FVulkanDynamicRHI::SetupValidationRequests()

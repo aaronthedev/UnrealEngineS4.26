@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SNiagaraCurveEditor.h"
 #include "ViewModels/NiagaraSystemViewModel.h"
@@ -48,7 +48,7 @@ SNiagaraCurveEditor::~SNiagaraCurveEditor()
 
 TSharedRef<SWidget> SNiagaraCurveEditor::ConstructToolBar(TSharedPtr<FUICommandList> CurveEditorCommandList)
 {
-	FToolBarBuilder ToolBarBuilder(CurveEditorCommandList, FMultiBoxCustomization::None, TSharedPtr<FExtender>(), true);
+	FToolBarBuilder ToolBarBuilder(CurveEditorCommandList, FMultiBoxCustomization::None, TSharedPtr<FExtender>(), Orient_Horizontal, true);
 
 	// TODO: Move this to a shared location since it's 99% the same as the sequencer curve toolbar.
 	ToolBarBuilder.AddComboButton(

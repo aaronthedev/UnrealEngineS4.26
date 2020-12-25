@@ -2,7 +2,6 @@
 
 #pragma once
 
-#include "LC_Platform.h"
 
 namespace timeStamp
 {

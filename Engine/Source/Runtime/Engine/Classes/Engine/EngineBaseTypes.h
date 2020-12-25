@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -309,9 +309,6 @@ public:
 	bool IsTickFunctionEnabled() const { return TickState != ETickState::Disabled; }
 	/** Returns whether it is valid to access this tick function's completion handle */
 	bool IsCompletionHandleValid() const { return (InternalData && InternalData->TaskPointer); }
-	/** Update tick interval in the system and overwrite the current cooldown if any. */
-	void UpdateTickIntervalAndCoolDown(float NewTickInterval);
-
 	/**
 	* Gets the current completion handle of this tick function, so it can be delayed until a later point when some additional
 	* tasks have been completed.  Only valid after TG_PreAsyncWork has started and then only until the TickFunction finishes
@@ -914,7 +911,7 @@ enum ENetMode
  * Don't change the order, the ID is serialized with the editor
  */
 UENUM()
-enum EViewModeIndex
+enum EViewModeIndex 
 {
 	/** Wireframe w/ brushes. */
 	VMI_BrushWireframe = 0 UMETA(DisplayName = "Brush Wireframe"),
@@ -973,23 +970,7 @@ enum EViewModeIndex
 
 	VMI_Max UMETA(Hidden),
 
-	// VMI_Unknown - The value assigned to VMI_Unknown must be the highest possible of any member of EViewModeIndex, or GetViewModeName might seg-fault
 	VMI_Unknown = 255 UMETA(DisplayName = "Unknown"),
-};
-
-/**
- * Class containing a static util function to help with EViewModeIndex
- */
-UCLASS(config = Engine)
-class ENGINE_API UViewModeUtils : public UObject
-{
-	GENERATED_BODY()
-
-public:
-	/**
-	 * Get the display name associated with a particular EViewModeIndex
-	 */
-	static FText GetViewModeDisplayName(const EViewModeIndex ViewModeIndex);
 };
 
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ARTraceResult.h"
 #include "ARSystem.h"
@@ -14,10 +14,10 @@ FARTraceResult::FARTraceResult()
 }
 
 
-FARTraceResult::FARTraceResult( const TSharedPtr<FARSupportInterface , ESPMode::ThreadSafe>& InARSystem, float InDistanceFromCamera, EARLineTraceChannels InTraceChannel, const FTransform& InLocalTransform, UARTrackedGeometry* InTrackedGeometry )
+FARTraceResult::FARTraceResult( const TSharedPtr<FARSupportInterface , ESPMode::ThreadSafe>& InARSystem, float InDistanceFromCamera, EARLineTraceChannels InTraceChannel, const FTransform& InLocalToTrackingTransform, UARTrackedGeometry* InTrackedGeometry )
 : DistanceFromCamera(InDistanceFromCamera)
 , TraceChannel(InTraceChannel)
-, LocalTransform(InLocalTransform)
+, LocalToTrackingTransform(InLocalToTrackingTransform)
 , TrackedGeometry(InTrackedGeometry)
 , ARSystem(InARSystem)
 {
@@ -31,25 +31,20 @@ float FARTraceResult::GetDistanceFromCamera() const
 
 void FARTraceResult::SetLocalToWorldTransform(const FTransform& LocalToWorldTransform)
 {
-	const auto TrackingToWorldTransform = ARSystem->GetXRTrackingSystem()->GetTrackingToWorldTransform();
-	const auto AlignmentTransform = ARSystem->GetAlignmentTransform();
-	LocalTransform = LocalToWorldTransform * TrackingToWorldTransform.Inverse() * AlignmentTransform.Inverse();
+	LocalToTrackingTransform = LocalToWorldTransform * ARSystem->GetXRTrackingSystem()->GetTrackingToWorldTransform().Inverse();
 }
 
 FTransform FARTraceResult::GetLocalToTrackingTransform() const
 {
-	return LocalTransform * ARSystem->GetAlignmentTransform();
+	return LocalToTrackingTransform;
 }
+
 
 FTransform FARTraceResult::GetLocalToWorldTransform() const
 {
-	return GetLocalToTrackingTransform() * ARSystem->GetXRTrackingSystem()->GetTrackingToWorldTransform();
+	return LocalToTrackingTransform * ARSystem->GetXRTrackingSystem()->GetTrackingToWorldTransform();
 }
 
-FTransform FARTraceResult::GetLocalTransform() const
-{
-	return LocalTransform;
-}
 
 UARTrackedGeometry* FARTraceResult::GetTrackedGeometry() const
 {

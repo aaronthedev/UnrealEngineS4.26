@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,11 +6,11 @@
 #include "PhysicsEngine/BodySetup.h"
 namespace Chaos
 {
-	class FImplicitObject;
+	template<typename T, int d>
+	class TImplicitObject;
 
-	class FTriangleMeshImplicitObject;
-
-	class FConvex;
+	template <typename T>
+	class TTriangleMeshImplicitObject;
 }
 
 struct FUntypedBulkData;
@@ -21,12 +21,11 @@ class FChaosDerivedDataReader
 public:
 
 	// Only valid use is to explicitly read chaos bulk data
-	explicit FChaosDerivedDataReader(FBulkDataInterface* InBulkData);
+	explicit FChaosDerivedDataReader(FUntypedBulkData* InBulkData);
 
-	TArray<TSharedPtr<Chaos::FConvex, ESPMode::ThreadSafe>> ConvexImplicitObjects;
-	TArray<TSharedPtr<Chaos::FTriangleMeshImplicitObject, ESPMode::ThreadSafe>> TrimeshImplicitObjects;
+	TArray<TUniquePtr<Chaos::TImplicitObject<T, d>>> ConvexImplicitObjects;
+	TArray<TUniquePtr<Chaos::TTriangleMeshImplicitObject<T>>> TrimeshImplicitObjects;
 	FBodySetupUVInfo UVInfo;
-	TArray<int32> FaceRemap;
 
 private:
 	FChaosDerivedDataReader() = delete;

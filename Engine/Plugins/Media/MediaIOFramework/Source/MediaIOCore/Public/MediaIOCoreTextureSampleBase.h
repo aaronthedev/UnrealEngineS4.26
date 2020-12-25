@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -165,9 +165,9 @@ public:
 	}
 #endif //WITH_ENGINE
 
-	virtual FMediaTimeStamp GetTime() const override
+	virtual FTimespan GetTime() const override
 	{
-		return FMediaTimeStamp(Time);
+		return Time;
 	}
 
 	virtual TOptional<FTimecode> GetTimecode() const override

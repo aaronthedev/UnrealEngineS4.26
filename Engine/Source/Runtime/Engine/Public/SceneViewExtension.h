@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	SceneViewExtension.h: Allow changing the view parameters on the render thread
@@ -7,9 +7,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Delegates/DelegateCombinations.h"
-#include "RendererInterface.h"
-#include "SceneViewExtensionContext.h"
 
 /**
  *  SCENE VIEW EXTENSIONS
@@ -17,11 +14,11 @@
  *
  *  This system lets you hook various aspects of UE4 rendering.
  *  To create a view extension, it is advisable to inherit
- *  from FSceneViewExtensionBase, which implements the
+ *  from FSceneViewExtensionBase, which implements the 
  *  ISceneViewExtension interface.
  *
  *
- *
+ *  
  *  INHERITING, INSTANTIATING, LIFETIME
  *  -----------------------------------------------------------------------------------------------
  *
@@ -35,7 +32,7 @@
  *          {
  *          }
  *      };
- *
+ *  
  *  Notice that your first argument must be FAutoRegister, and you must pass it
  *  to FSceneViewExtensionBase constructor. To instantiate your extension and register
  *  it, do the following:
@@ -51,7 +48,7 @@
  *  If you follow this pattern, the cleanup of the extension will be safe and automatic
  *  whenever the `MyExtension` reference goes out of scope. In most cases, the `MyExtension`
  *  variable should be a member of the class owning the extension instance.
- *
+ *  
  *  The engine will keep the extension alive for the duration of the current frame to allow
  *  the render thread to finish.
  *
@@ -82,31 +79,9 @@ class FSceneView;
 class FSceneViewFamily;
 struct FMinimalViewInfo;
 struct FSceneViewProjectionData;
-class FRDGBuilder;
-struct FPostProcessingInputs;
-struct FPostProcessMaterialInputs;
-struct FScreenPassTexture;
-class FViewport;
-
-
-/** This is used to add more flexibility to Post Processing, so that users can subscribe to any after Post Porocessing Pass events. */
-FUNC_DECLARE_DELEGATE(FAfterPassCallbackDelegate, FScreenPassTexture /*ReturnSceneColor*/, FRDGBuilder& /*GraphBuilder*/, const FSceneView& /*View*/, const FPostProcessMaterialInputs& /*Inputs*/)
-using FAfterPassCallbackDelegateArray = TArray<FAfterPassCallbackDelegate, SceneRenderingAllocator>;
-
 
 class ISceneViewExtension
 {
-public:
-
-	enum class EPostProcessingPass : uint32
-	{
-		MotionBlur,
-		Tonemap,
-		FXAA,
-		VisualizeDepthOfField,
-		MAX
-	};
-
 public:
 	virtual ~ISceneViewExtension() {}
 
@@ -151,16 +126,6 @@ public:
 	virtual void PostRenderBasePass_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneView& InView) {};
 
 	/**
-	 * Called right before Post Processing rendering begins
-	 */
-	virtual void PrePostProcessPass_RenderThread(FRDGBuilder& GraphBuilder, const FSceneView& View, const FPostProcessingInputs& Inputs) {};
-
-	/**
-	* This will be called at the beginning of post processing to make sure that each view extension gets a chance to subscribe to an after pass event.
-	*/
-	virtual void SubscribeToPostProcessingPass(EPostProcessingPass Pass, FAfterPassCallbackDelegateArray& InOutPassCallbacks, bool bIsPassEnabled) {};
-
-	/**
 	 * Allows to render content after the 3D content scene, useful for debugging
 	 */
 	virtual void PostRenderViewFamily_RenderThread(FRHICommandListImmediate& RHICmdList, FSceneViewFamily& InViewFamily) {}
@@ -179,11 +144,6 @@ public:
 	 * Returning false disables the extension for the current frame. This will be queried each frame to determine if the extension wants to run.
 	 */
 	virtual bool IsActiveThisFrame(class FViewport* InViewport) const { return true; }
-
-	/**
-     * Returning false disables the extension for the current frame in the given context. This will be queried each frame to determine if the extension wants to run.
-     */
-	virtual bool IsActiveThisFrameInContext(FSceneViewExtensionContext& Context) const { return IsActiveThisFrame(Context.Viewport); }
 };
 
 
@@ -199,18 +159,13 @@ class FAutoRegister
 };
 
 
+
 /** Inherit from this class to make a view extension. */
 class ENGINE_API FSceneViewExtensionBase : public ISceneViewExtension, public TSharedFromThis<FSceneViewExtensionBase, ESPMode::ThreadSafe>
 {
 public:
 	FSceneViewExtensionBase(const FAutoRegister&) {}
 	virtual ~FSceneViewExtensionBase();
-
-	// Array of Functors that can be used to activate an extension for the current frame and given context.
-	TArray<FSceneViewExtensionIsActiveFunctor> IsActiveThisFrameFunctions;
-
-	// Determines if the extension should be active for the current frame and given context.
-	virtual bool IsActiveThisFrameInContext(FSceneViewExtensionContext& Context) const override;
 };
 
 
@@ -239,12 +194,6 @@ public:
 	 * The list is sorted by priority (@see ISceneViewExtension::GetPriority())
 	 */
 	const TArray<TSharedRef<class ISceneViewExtension, ESPMode::ThreadSafe>> GatherActiveExtensions(class FViewport* InViewport = nullptr) const;
-
-	/**
-     * Gathers all ViewExtensions that want to be active this frame (@see ISceneViewExtension::IsActiveThisFrame()).
-     * The list is sorted by priority (@see ISceneViewExtension::GetPriority())
-     */
-	const TArray<TSharedRef<class ISceneViewExtension, ESPMode::ThreadSafe>> GatherActiveExtensions(FSceneViewExtensionContext& InContext) const;
 
 private:
 	static void RegisterExtension(const TSharedRef<class ISceneViewExtension, ESPMode::ThreadSafe>& RegisterMe);

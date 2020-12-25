@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,7 @@
 
 class UNiagaraStackParameterStoreEntry;
 class UNiagaraStackViewModel;
-class SNiagaraParameterNameTextBlock;
+class SInlineEditableTextBlock;
 
 class SNiagaraStackParameterStoreEntryName: public SNiagaraStackEntryWidget
 {
@@ -15,7 +15,6 @@ public:
 
 public:
 	SLATE_BEGIN_ARGS(SNiagaraStackParameterStoreEntryName) { }
-		SLATE_ATTRIBUTE(bool, IsSelected);
 	SLATE_END_ARGS();
 
 	void Construct(const FArguments& InArgs, UNiagaraStackParameterStoreEntry* InStackEntry, UNiagaraStackViewModel* InStackViewModel);
@@ -23,6 +22,8 @@ public:
 	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
 
 private:
+	bool GetIsNameReadOnly() const;
+
 	bool GetIsNameWidgetSelected() const;
 
 	bool VerifyNameTextChanged(const FText& NewText, FText& OutErrorMessage);
@@ -32,7 +33,5 @@ private:
 private:
 	UNiagaraStackParameterStoreEntry* StackEntry;
 
-	TSharedPtr<SNiagaraParameterNameTextBlock> NameTextBlock;
-
-	TAttribute<bool> IsSelected;
+	TSharedPtr<SInlineEditableTextBlock> NameTextBlock;
 };

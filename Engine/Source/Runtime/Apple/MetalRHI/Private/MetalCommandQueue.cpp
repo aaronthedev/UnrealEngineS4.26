@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MetalCommandQueue.cpp: Metal command queue wrapper..
@@ -10,6 +10,9 @@
 #include "MetalCommandBuffer.h"
 #include "MetalCommandList.h"
 #include "MetalProfiler.h"
+#if METAL_STATISTICS
+#include "Modules/ModuleManager.h"
+#endif
 #include "Misc/ConfigCacheIni.h"
 #include "command_buffer.hpp"
 
@@ -23,13 +26,16 @@ bool GMetalCommandBufferDebuggingEnabled = 0;
 
 FMetalCommandQueue::FMetalCommandQueue(mtlpp::Device InDevice, uint32 const MaxNumCommandBuffers /* = 0 */)
 : Device(InDevice)
+#if METAL_STATISTICS
+, Statistics(nullptr)
+#endif
 , ParallelCommandLists(0)
 , RuntimeDebuggingLevel(EMetalDebugLevelOff)
 {
 	int32 MaxShaderVersion = 0;
 	int32 IndirectArgumentTier = 0;
 #if PLATFORM_MAC
-	int32 DefaultMaxShaderVersion = 4;
+	int32 DefaultMaxShaderVersion = 3;
 	int32 MinShaderVersion = 3;
     const TCHAR* const Settings = TEXT("/Script/MacTargetPlatform.MacTargetSettings");
 #else
@@ -278,7 +284,13 @@ FMetalCommandQueue::FMetalCommandQueue(mtlpp::Device InDevice, uint32 const MaxN
     
     if(Device.SupportsFeatureSet(mtlpp::FeatureSet::macOS_GPUFamily1_v3) && FPlatformMisc::MacOSXVersionCompare(10,13,0) >= 0)
     {
-        Features |= EMetalFeaturesMultipleViewports | EMetalFeaturesPipelineBufferMutability | EMetalFeaturesGPUCaptureManager | EMetalFeaturesSeparateTessellation;
+        Features |= EMetalFeaturesMultipleViewports | EMetalFeaturesPipelineBufferMutability | EMetalFeaturesGPUCaptureManager;
+		
+		static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Metal.ForceDXC"));
+		if (CVar && CVar->GetInt() != 0)
+		{
+			Features |= EMetalFeaturesSeparateTessellation;
+		}
 		
 		if (FParse::Param(FCommandLine::Get(),TEXT("metalfence")))
 		{
@@ -304,13 +316,37 @@ FMetalCommandQueue::FMetalCommandQueue(mtlpp::Device InDevice, uint32 const MaxN
 		Features |= EMetalFeaturesValidation;
 	}
 #endif
-
+    
 	static const auto CVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Shaders.Optimize"));
 	if (CVar->GetInt() == 0 || FParse::Param(FCommandLine::Get(),TEXT("metalshaderdebug")))
 	{
 		Features |= EMetalFeaturesGPUTrace;
 	}
-
+	
+#if METAL_STATISTICS
+	if (FParse::Param(FCommandLine::Get(),TEXT("metalstats")))
+	{
+		IMetalStatisticsModule* StatsModule = FModuleManager::Get().LoadModulePtr<IMetalStatisticsModule>(TEXT("MetalStatistics"));		
+		if(StatsModule)
+		{
+			Statistics = StatsModule->CreateMetalStatistics(CommandQueue);
+			if(Statistics->SupportsStatistics())
+			{
+				GSupportsTimestampRenderQueries = true;
+				Features |= EMetalFeaturesStatistics;
+				
+				// Stats doesn't support Parallel Encoders yet
+				Features &= ~(EMetalFeaturesParallelRenderEncoders);
+			}
+			else
+			{
+				delete Statistics;
+				Statistics = nullptr;
+			}
+		}
+	}
+#endif
+    
 	PermittedOptions = 0;
 	PermittedOptions |= mtlpp::ResourceOptions::CpuCacheModeDefaultCache;
 	PermittedOptions |= mtlpp::ResourceOptions::CpuCacheModeWriteCombined;
@@ -332,7 +368,9 @@ FMetalCommandQueue::FMetalCommandQueue(mtlpp::Device InDevice, uint32 const MaxN
 
 FMetalCommandQueue::~FMetalCommandQueue(void)
 {
-	// void
+#if METAL_STATISTICS
+	delete Statistics;
+#endif
 }
 	
 #pragma mark - Public Command Buffer Mutators -
@@ -353,10 +391,15 @@ mtlpp::CommandBuffer FMetalCommandQueue::CreateCommandBuffer(void)
 	{
 		CmdBuffer = bUnretainedRefs ? MTLPP_VALIDATE(mtlpp::CommandQueue, CommandQueue, SafeGetRuntimeDebuggingLevel() >= EMetalDebugLevelValidation, CommandBufferWithUnretainedReferences()) : MTLPP_VALIDATE(mtlpp::CommandQueue, CommandQueue, SafeGetRuntimeDebuggingLevel() >= EMetalDebugLevelValidation, CommandBuffer());
 		
-		if (RuntimeDebuggingLevel > EMetalDebugLevelOff)
+		if (RuntimeDebuggingLevel >= EMetalDebugLevelLogDebugGroups)
 		{			
+			((NSObject<MTLCommandBuffer>*)CmdBuffer.GetPtr()).debugGroups = [[NSMutableArray new] autorelease];
 			METAL_DEBUG_ONLY(FMetalCommandBufferDebugging AddDebugging(CmdBuffer));
 			MTLPP_VALIDATION(mtlpp::CommandBufferValidationTable ValidatedCommandBuffer(CmdBuffer));
+		}
+		if (RuntimeDebuggingLevel >= EMetalDebugLevelTrackResources)
+		{
+			((NSObject<MTLCommandBuffer>*)CmdBuffer.GetPtr()).resourceTracker = [[FMetalResourceTracker new] autorelease];
 		}
 	}
 	CommandBufferFences.Push(new mtlpp::CommandBufferFence(CmdBuffer.GetCompletionFence()));
@@ -482,3 +525,12 @@ int32 FMetalCommandQueue::GetRuntimeDebuggingLevel(void) const
 {
 	return RuntimeDebuggingLevel;
 }
+
+#if METAL_STATISTICS
+#pragma mark - Public Statistics Extensions -
+
+IMetalStatistics* FMetalCommandQueue::GetStatistics(void)
+{
+	return Statistics;
+}
+#endif

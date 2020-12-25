@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -27,8 +27,6 @@ class ISceneViewExtension;
 class FSceneViewFamily;
 class FVolumetricFogViewResources;
 class FIESLightProfileResource;
-class ITemporalUpscaler;
-struct FExposureBufferData;
 
 enum class ERayTracingRenderMode
 {
@@ -217,18 +215,6 @@ struct FSceneViewInitOptions : public FSceneViewProjectionData
 
 struct FViewMatrices
 {
-	struct FMinimalInitializer
-	{
-		FMatrix ViewRotationMatrix = FMatrix::Identity;
-		FMatrix ProjectionMatrix = FMatrix::Identity;
-		FVector ViewOrigin = FVector::ZeroVector;
-		FIntRect ConstrainedViewRect = FIntRect(0, 0, 0, 0);
-		EStereoscopicPass StereoPass = eSSP_FULL;
-#if WITH_EDITOR
-		bool bUseFauxOrthoViewPos = false;
-#endif
-	};
-
 	FViewMatrices()
 	{
 		ProjectionMatrix.SetIdentity();
@@ -244,13 +230,9 @@ struct FViewMatrices
 		ScreenScale = 1.f;
 	}
 
-	ENGINE_API FViewMatrices(const FMinimalInitializer& Initializer);
 	ENGINE_API FViewMatrices(const FSceneViewInitOptions& InitOptions);
 
 private:
-
-	void Init(const FMinimalInitializer& Initializer);
-
 	/** ViewToClip : UE4 projection matrix projects such that clip space Z=1 is the near plane, and Z=0 is the infinite far plane. */
 	FMatrix		ProjectionMatrix;
 	/** ViewToClipNoAA : UE4 projection matrix projects such that clip space Z=1 is the near plane, and Z=0 is the infinite far plane. Don't apply any AA jitter */
@@ -627,13 +609,12 @@ enum ETranslucencyVolumeCascade
 	VIEW_UNIFORM_BUFFER_MEMBER(FVector2D, PrevFieldOfViewWideAngles) \
 	VIEW_UNIFORM_BUFFER_MEMBER_EX(FVector4, ViewRectMin, EShaderPrecisionModifier::Half) \
 	VIEW_UNIFORM_BUFFER_MEMBER(FVector4, ViewSizeAndInvSize) \
-	VIEW_UNIFORM_BUFFER_MEMBER(FVector4, LightProbeSizeRatioAndInvSizeRatio) \
 	VIEW_UNIFORM_BUFFER_MEMBER(FVector4, BufferSizeAndInvSize) \
 	VIEW_UNIFORM_BUFFER_MEMBER(FVector4, BufferBilinearUVMinMax) \
 	VIEW_UNIFORM_BUFFER_MEMBER(FVector4, ScreenToViewSpace) \
 	VIEW_UNIFORM_BUFFER_MEMBER(int32, NumSceneColorMSAASamples) \
-	VIEW_UNIFORM_BUFFER_MEMBER(float, PreExposure) \
-	VIEW_UNIFORM_BUFFER_MEMBER(float, OneOverPreExposure) \
+	VIEW_UNIFORM_BUFFER_MEMBER_EX(float, PreExposure, EShaderPrecisionModifier::Half) \
+	VIEW_UNIFORM_BUFFER_MEMBER_EX(float, OneOverPreExposure, EShaderPrecisionModifier::Half) \
 	VIEW_UNIFORM_BUFFER_MEMBER_EX(FVector4, DiffuseOverrideParameter, EShaderPrecisionModifier::Half) \
 	VIEW_UNIFORM_BUFFER_MEMBER_EX(FVector4, SpecularOverrideParameter, EShaderPrecisionModifier::Half) \
 	VIEW_UNIFORM_BUFFER_MEMBER_EX(FVector4, NormalOverrideParameter, EShaderPrecisionModifier::Half) \
@@ -654,7 +635,6 @@ enum ETranslucencyVolumeCascade
 	VIEW_UNIFORM_BUFFER_MEMBER(uint32, FrameNumber) \
 	VIEW_UNIFORM_BUFFER_MEMBER(uint32, StateFrameIndexMod8) \
 	VIEW_UNIFORM_BUFFER_MEMBER(uint32, StateFrameIndex) \
-	VIEW_UNIFORM_BUFFER_MEMBER(uint32, DebugViewModeMask) \
 	VIEW_UNIFORM_BUFFER_MEMBER_EX(float, CameraCut, EShaderPrecisionModifier::Half) \
 	VIEW_UNIFORM_BUFFER_MEMBER_EX(float, UnlitViewmodeMask, EShaderPrecisionModifier::Half) \
 	VIEW_UNIFORM_BUFFER_MEMBER_EX(FLinearColor, DirectionalLightColor, EShaderPrecisionModifier::Half) \
@@ -663,7 +643,6 @@ enum ETranslucencyVolumeCascade
 	VIEW_UNIFORM_BUFFER_MEMBER_ARRAY(FVector4, TranslucencyLightingVolumeInvSize, [TVC_MAX]) \
 	VIEW_UNIFORM_BUFFER_MEMBER(FVector4, TemporalAAParams) \
 	VIEW_UNIFORM_BUFFER_MEMBER(FVector4, CircleDOFParams) \
-	VIEW_UNIFORM_BUFFER_MEMBER(uint32, ForceDrawAllVelocities) \
 	VIEW_UNIFORM_BUFFER_MEMBER(float, DepthOfFieldSensorWidth) \
 	VIEW_UNIFORM_BUFFER_MEMBER(float, DepthOfFieldFocalDistance) \
 	VIEW_UNIFORM_BUFFER_MEMBER(float, DepthOfFieldScale) \
@@ -676,6 +655,7 @@ enum ETranslucencyVolumeCascade
 	VIEW_UNIFORM_BUFFER_MEMBER(float, GeneralPurposeTweak) \
 	VIEW_UNIFORM_BUFFER_MEMBER_EX(float, DemosaicVposOffset, EShaderPrecisionModifier::Half) \
 	VIEW_UNIFORM_BUFFER_MEMBER(FVector, IndirectLightingColorScale) \
+	VIEW_UNIFORM_BUFFER_MEMBER_EX(float, HDR32bppEncodingMode, EShaderPrecisionModifier::Half) \
 	VIEW_UNIFORM_BUFFER_MEMBER_EX(float, AtmosphericFogSunPower, EShaderPrecisionModifier::Half) \
 	VIEW_UNIFORM_BUFFER_MEMBER_EX(float, AtmosphericFogPower, EShaderPrecisionModifier::Half) \
 	VIEW_UNIFORM_BUFFER_MEMBER_EX(float, AtmosphericFogDensityScale, EShaderPrecisionModifier::Half) \
@@ -694,33 +674,27 @@ enum ETranslucencyVolumeCascade
 	VIEW_UNIFORM_BUFFER_MEMBER_ARRAY(FVector4, AtmosphereLightDiscCosHalfApexAngle, [NUM_ATMOSPHERE_LIGHTS]) \
 	VIEW_UNIFORM_BUFFER_MEMBER(FVector4, SkyViewLutSizeAndInvSize) \
 	VIEW_UNIFORM_BUFFER_MEMBER(FVector, SkyWorldCameraOrigin) \
-	VIEW_UNIFORM_BUFFER_MEMBER(FVector4, SkyPlanetCenterAndViewHeight) \
-	VIEW_UNIFORM_BUFFER_MEMBER(FMatrix, SkyViewLutReferential) \
 	VIEW_UNIFORM_BUFFER_MEMBER(FLinearColor, SkyAtmosphereSkyLuminanceFactor) \
-	VIEW_UNIFORM_BUFFER_MEMBER(float, SkyAtmospherePresentInScene) \
 	VIEW_UNIFORM_BUFFER_MEMBER(float, SkyAtmosphereHeightFogContribution) \
-	VIEW_UNIFORM_BUFFER_MEMBER(float, SkyAtmosphereBottomRadiusKm) \
-	VIEW_UNIFORM_BUFFER_MEMBER(float, SkyAtmosphereTopRadiusKm) \
-	VIEW_UNIFORM_BUFFER_MEMBER(FVector4, SkyAtmosphereCameraAerialPerspectiveVolumeSizeAndInvSize) \
-	VIEW_UNIFORM_BUFFER_MEMBER(float, SkyAtmosphereAerialPerspectiveStartDepthKm) \
+	VIEW_UNIFORM_BUFFER_MEMBER(float, SkyAtmosphereBottomRadius) \
+	VIEW_UNIFORM_BUFFER_MEMBER(float, SkyAtmosphereTopRadius) \
+	VIEW_UNIFORM_BUFFER_MEMBER(float, SkyAtmosphereAerialPerspectiveStartDepth) \
 	VIEW_UNIFORM_BUFFER_MEMBER(float, SkyAtmosphereCameraAerialPerspectiveVolumeDepthResolution) \
 	VIEW_UNIFORM_BUFFER_MEMBER(float, SkyAtmosphereCameraAerialPerspectiveVolumeDepthResolutionInv) \
-	VIEW_UNIFORM_BUFFER_MEMBER(float, SkyAtmosphereCameraAerialPerspectiveVolumeDepthSliceLengthKm) \
-	VIEW_UNIFORM_BUFFER_MEMBER(float, SkyAtmosphereCameraAerialPerspectiveVolumeDepthSliceLengthKmInv) \
+	VIEW_UNIFORM_BUFFER_MEMBER(float, SkyAtmosphereCameraAerialPerspectiveVolumeDepthSliceLength) \
+	VIEW_UNIFORM_BUFFER_MEMBER(float, SkyAtmosphereCameraAerialPerspectiveVolumeDepthSliceLengthInv) \
 	VIEW_UNIFORM_BUFFER_MEMBER(float, SkyAtmosphereApplyCameraAerialPerspectiveVolume) \
 	VIEW_UNIFORM_BUFFER_MEMBER(uint32, AtmosphericFogRenderMask) \
 	VIEW_UNIFORM_BUFFER_MEMBER(uint32, AtmosphericFogInscatterAltitudeSampleNum) \
 	VIEW_UNIFORM_BUFFER_MEMBER(FVector, NormalCurvatureToRoughnessScaleBias) \
 	VIEW_UNIFORM_BUFFER_MEMBER(float, RenderingReflectionCaptureMask) \
-	VIEW_UNIFORM_BUFFER_MEMBER(float, RealTimeReflectionCapture) \
-	VIEW_UNIFORM_BUFFER_MEMBER(float, RealTimeReflectionCapturePreExposure) \
 	VIEW_UNIFORM_BUFFER_MEMBER(FLinearColor, AmbientCubemapTint) \
 	VIEW_UNIFORM_BUFFER_MEMBER(float, AmbientCubemapIntensity) \
 	VIEW_UNIFORM_BUFFER_MEMBER(float, SkyLightApplyPrecomputedBentNormalShadowingFlag) \
 	VIEW_UNIFORM_BUFFER_MEMBER(float, SkyLightAffectReflectionFlag) \
 	VIEW_UNIFORM_BUFFER_MEMBER(float, SkyLightAffectGlobalIlluminationFlag) \
 	VIEW_UNIFORM_BUFFER_MEMBER(FLinearColor, SkyLightColor) \
-	VIEW_UNIFORM_BUFFER_MEMBER_ARRAY(FVector4, MobileSkyIrradianceEnvironmentMap, [7]) \
+	VIEW_UNIFORM_BUFFER_MEMBER_ARRAY(FVector4, SkyIrradianceEnvironmentMap, [7]) \
 	VIEW_UNIFORM_BUFFER_MEMBER(float, MobilePreviewMode) \
 	VIEW_UNIFORM_BUFFER_MEMBER(float, HMDEyePaddingOffset) \
 	VIEW_UNIFORM_BUFFER_MEMBER_EX(float, ReflectionCubemapMaxMip, EShaderPrecisionModifier::Half) \
@@ -749,17 +723,12 @@ enum ETranslucencyVolumeCascade
 	VIEW_UNIFORM_BUFFER_MEMBER(float, IndirectLightingCacheShowFlag) \
 	VIEW_UNIFORM_BUFFER_MEMBER(float, EyeToPixelSpreadAngle) \
 	VIEW_UNIFORM_BUFFER_MEMBER(FMatrix, WorldToVirtualTexture) \
+	VIEW_UNIFORM_BUFFER_MEMBER(FVector4, VirtualTextureParams) \
 	VIEW_UNIFORM_BUFFER_MEMBER_ARRAY(FVector4, XRPassthroughCameraUVs, [2]) \
-	VIEW_UNIFORM_BUFFER_MEMBER(uint32, VirtualTextureFeedbackStride) \
-	VIEW_UNIFORM_BUFFER_MEMBER(FVector4, RuntimeVirtualTextureMipLevel) \
-	VIEW_UNIFORM_BUFFER_MEMBER(FVector2D, RuntimeVirtualTexturePackHeight) \
-	VIEW_UNIFORM_BUFFER_MEMBER(FVector4, RuntimeVirtualTextureDebugParams) \
 	VIEW_UNIFORM_BUFFER_MEMBER(int32, FarShadowStaticMeshLODBias) \
 	VIEW_UNIFORM_BUFFER_MEMBER(float, MinRoughness) \
+	VIEW_UNIFORM_BUFFER_MEMBER(float, ConstantWaterDepth) \
 	VIEW_UNIFORM_BUFFER_MEMBER(FVector4, HairRenderInfo) \
-	VIEW_UNIFORM_BUFFER_MEMBER(uint32, EnableSkyLight) \
-	VIEW_UNIFORM_BUFFER_MEMBER(uint32, HairRenderInfoBits) \
-	VIEW_UNIFORM_BUFFER_MEMBER(uint32, HairComponents) \
 
 #define VIEW_UNIFORM_BUFFER_MEMBER(type, identifier) \
 	SHADER_PARAMETER(type, identifier)
@@ -831,7 +800,6 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT_WITH_CONSTRUCTOR(FViewUniformShaderParamete
 	SHADER_PARAMETER_SRV(StructuredBuffer<float4>, PrimitiveSceneData)
 	SHADER_PARAMETER_TEXTURE(Texture2D<float4>, PrimitiveSceneDataTexture)
 	SHADER_PARAMETER_SRV(StructuredBuffer<float4>, LightmapSceneData)
-	SHADER_PARAMETER_SRV(StructuredBuffer<float4>, SkyIrradianceEnvironmentMap)
 
 	SHADER_PARAMETER_TEXTURE(Texture2D, TransmittanceLutTexture)
 	SHADER_PARAMETER_SAMPLER(SamplerState, TransmittanceLutTextureSampler)
@@ -841,15 +809,6 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT_WITH_CONSTRUCTOR(FViewUniformShaderParamete
 	SHADER_PARAMETER_SAMPLER(SamplerState, DistantSkyLightLutTextureSampler)
 	SHADER_PARAMETER_TEXTURE(Texture3D, CameraAerialPerspectiveVolume)
 	SHADER_PARAMETER_SAMPLER(SamplerState, CameraAerialPerspectiveVolumeSampler)
-
-	SHADER_PARAMETER_TEXTURE(Texture3D, HairScatteringLUTTexture)
-	SHADER_PARAMETER_SAMPLER(SamplerState, HairScatteringLUTSampler)
-
-	SHADER_PARAMETER_SRV(StructuredBuffer<float4>, WaterIndirection)
-	SHADER_PARAMETER_SRV(StructuredBuffer<float4>, WaterData)
-
-	SHADER_PARAMETER_UAV(RWBuffer<uint>, VTFeedbackBuffer)
-	SHADER_PARAMETER_UAV(RWTexture2D<uint>, QuadOverdraw)
 
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
@@ -946,12 +905,6 @@ public:
 	/** Half of the view's stereo IPD (- for lhs, + for rhs) */
 	float StereoIPD;
 
-	/** Allow cross GPU transfer for this view */
-	bool bAllowCrossGPUTransfer;
-
-	/** Use custom GPUmask */
-	bool bOverrideGPUMask;
-
 	/** The GPU nodes on which to render this view. */
 	FRHIGPUMask GPUMask;
 
@@ -970,15 +923,6 @@ public:
 	/** Current buffer visualization mode */
 	FName CurrentBufferVisualizationMode;
 
-	/** Current visualize calibration color material name */
-	FName CurrentVisualizeCalibrationColorMaterialName;
-
-	/** Current visualize calibration grayscale material name */
-	FName CurrentVisualizeCalibrationGrayscaleMaterialName;
-
-	/** Current visualize calibration custom material name */
-	FName CurrentVisualizeCalibrationCustomMaterialName;
-
 #if WITH_EDITOR
 	/* Whether to use the pixel inspector */
 	bool bUsePixelInspector;
@@ -992,9 +936,6 @@ public:
 	FVector4 SpecularOverrideParameter;
 	FVector4 NormalOverrideParameter;
 	FVector2D RoughnessOverrideParameter;
-
-	/** Mip bias to apply in material's samplers. */
-	float MaterialTextureMipBias;
 
 	/** The primitives which are hidden for this view. */
 	TSet<FPrimitiveComponentId> HiddenPrimitives;
@@ -1023,8 +964,10 @@ public:
 	/** World origin offset value. Non-zero only for a single frame when origin is rebased */
 	FVector OriginOffsetThisFrame;
 
-	/** Multiplier for cull distance on objects */
+	/** FOV based multiplier for cull distance on objects */
 	float LODDistanceFactor;
+	/** Square of the FOV based multiplier for cull distance on objects */
+	float LODDistanceFactorSquared;
 
 	/** Whether we did a camera cut for this view this frame. */
 	bool bCameraCut;
@@ -1041,20 +984,11 @@ public:
 	/** Whether this view is being used to render a scene capture. */
 	bool bIsSceneCapture;
 
-	/** Whether this view uses ray tracing, for views that are used to render a scene capture. */
-	bool bSceneCaptureUsesRayTracing;
-
 	/** Whether this view is being used to render a reflection capture. */
 	bool bIsReflectionCapture;
 
 	/** Whether this view is being used to render a planar reflection. */
 	bool bIsPlanarReflection;
-
-	/** Whether this view is being used to render a runtime virtual texture. */
-	bool bIsVirtualTexture;
-
-	/** Whether this view is being used to render a high quality offline render */
-	bool bIsOfflineRender;
 
 	/** Whether to force two sided rendering for this view. */
 	bool bRenderSceneTwoSided;
@@ -1077,16 +1011,11 @@ public:
 	/** True if mobile multi-view is enabled. */
 	bool bIsMobileMultiViewEnabled;
 
+	/** True if mobile multi-view direct is enabled. */
+	bool bIsMobileMultiViewDirectEnabled;
+
 	/** True if we need to bind the instanced view uniform buffer parameters. */
 	bool bShouldBindInstancedViewUB;
-
-	/** How far below the water surface this view is. -1 means the view is out of water. */
-	float UnderwaterDepth;
-
-	/** True if we need to force the camera to discard previous frames occlusion. Necessary for overlapped tile rendering
-	 * where we discard previous frame occlusion because the projection matrix changes.
-	 */
-	bool bForceCameraVisibilityReset;
 
 	/** Global clipping plane being applied to the scene, or all 0's if disabled.  This is used when rendering the planar reflection pass. */
 	FPlane GlobalClippingPlane;
@@ -1103,16 +1032,6 @@ public:
 	/** Translucent sort mode */
 	TEnumAsByte<ETranslucentSortPolicy::Type> TranslucentSortPolicy;
 	
-	/** The frame index to override, useful for keeping determinism when rendering sequences. **/
-	TOptional<uint32> OverrideFrameIndexValue;
-
-	/** In some cases, the principal point of the lens is not at the center of the screen, especially for overlapped tile
-	 *  rendering. So given a UV in [-1,1] viewport space, convert it to the [-1,1] viewport space of the lens using
-	 *  LensUV = LensPrincipalPointOffsetScale.xy ScreenUV * LensPrincipalPointOffsetScale.zw;
-	 *  This value is FVector4(0,0,1,1) unless overridden.
-	 */
-	FVector4 LensPrincipalPointOffsetScale;
-
 #if WITH_EDITOR
 	/** The set of (the first 64) groups' visibility info for this view */
 	uint64 EditorViewBitflag;
@@ -1153,10 +1072,6 @@ public:
 	/** Points to the view state's resources if a view state exists. */
 	FForwardLightingViewResources* ForwardLightingResources;
 
-	/** Water rendering related data */
-	FShaderResourceViewRHIRef WaterIndirectionBuffer;
-	FShaderResourceViewRHIRef WaterDataBuffer;
-
 	/** Feature level for this scene */
 	const ERHIFeatureLevel::Type FeatureLevel;
 
@@ -1166,6 +1081,9 @@ public:
 
 protected:
 	friend class FSceneRenderer;
+
+	/** Custom data per primitives */
+	TArray<void*> PrimitivesCustomData; // Size == MaxPrimitive
 
 public:
 
@@ -1256,13 +1174,16 @@ public:
 	/** @return true:perspective, false:orthographic */
 	inline bool IsPerspectiveProjection() const { return ViewMatrices.IsPerspectiveProjection(); }
 
-	bool IsUnderwater() const { return UnderwaterDepth > 0.0f; }
-
 	/** Returns the location used as the origin for LOD computations
 	 * @param Index, 0 or 1, which LOD origin to return
 	 * @return LOD origin
 	 */
 	FVector GetTemporalLODOrigin(int32 Index, bool bUseLaggedLODTransition = true) const;
+
+	/** Get LOD distance factor: Sqrt(GetLODDistanceFactor()*SphereRadius*SphereRadius / ScreenPercentage) = distance to this LOD transition
+	 * @return distance factor
+	 */
+	float GetLODDistanceFactor() const;
 
 	/** 
 	 * Returns the blend factor between the last two LOD samples
@@ -1304,11 +1225,6 @@ public:
 	/** Configure post process settings for the buffer visualization system */
 	void ConfigureBufferVisualizationSettings();
 
-#if !(UE_BUILD_SHIPPING)
-	/** Configure post process settings for calibration material */
-	void ConfigureVisualizeCalibrationSettings();
-#endif
-
 	/** Get the feature level for this view (cached from the scene so this is not different per view) **/
 	ERHIFeatureLevel::Type GetFeatureLevel() const { return FeatureLevel; }
 
@@ -1346,19 +1262,9 @@ public:
 	/** Current ray tracing debug visualization mode */
 	FName CurrentRayTracingDebugVisualizationMode;
 #endif
-	/** Tells if the eye adaptation texture / buffer exists without attempting to allocate it. */
-	bool HasValidEyeAdaptationTexture() const;
-	bool HasValidEyeAdaptationBuffer() const;
 
-	/** Returns the eye adaptation texture (SM5+ only) or null if it doesn't exist. */
-	IPooledRenderTarget* GetEyeAdaptationTexture() const;
-
-	/** Returns the eye adaptation buffer (mobile) or null if it doesn't exist. */
-	const FExposureBufferData* GetEyeAdaptationBuffer() const;
-
-
-protected:
-	FSceneViewStateInterface* EyeAdaptationViewState = nullptr;
+	/** Will return custom data associated with the specified primitive index.	*/
+	FORCEINLINE void* GetCustomData(int32 InPrimitiveSceneInfoIndex) const { return PrimitivesCustomData.IsValidIndex(InPrimitiveSceneInfoIndex) ? PrimitivesCustomData[InPrimitiveSceneInfoIndex] : nullptr; }
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -1631,9 +1537,6 @@ public:
 	/** When enabled, the post processing will output in HDR space */
 	bool bIsHDR;
 
-	/** True if scenecolor and depth should be multiview-allocated */
-	bool bRequireMultiView;
-
 	/** Gamma correction used when rendering this family. Default is 1.0 */
 	float GammaCorrection;
 	
@@ -1754,27 +1657,12 @@ public:
 		: FSceneViewFamily(static_cast<const FSceneViewFamily&>(InViewFamily))
 	{
 		check(ScreenPercentageInterface == nullptr);
-		check(TemporalUpscalerInterface == nullptr);
 	}
 
-
-	FORCEINLINE void SetTemporalUpscalerInterface(const ITemporalUpscaler* InTemporalUpscalerInterface)
-	{
-		check(InTemporalUpscalerInterface);
-		checkf(TemporalUpscalerInterface == nullptr, TEXT("View family already had a temporal upscaler assigned."));
-		TemporalUpscalerInterface = InTemporalUpscalerInterface;
-	}
-
-	FORCEINLINE const ITemporalUpscaler* GetTemporalUpscalerInterface() const
-	{
-		return TemporalUpscalerInterface;
-	}
 
 private:
 	/** Interface to handle screen percentage of the views of the family. */
 	ISceneViewFamilyScreenPercentage* ScreenPercentageInterface;
-
-	const ITemporalUpscaler* TemporalUpscalerInterface;
 
 	// Only FSceneRenderer can copy a view family.
 	FSceneViewFamily(const FSceneViewFamily&) = default;

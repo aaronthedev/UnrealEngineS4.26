@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,6 @@
 #include "Common/SlabAllocator.h"
 #include "Common/PagedArray.h"
 #include "Containers/Map.h"
-#include "Containers/StringView.h"
 
 namespace Trace
 {
@@ -16,7 +15,6 @@ class FStringStore
 public:
 	FStringStore(FSlabAllocator& Allocator);
 	const TCHAR* Store(const TCHAR* String);
-	const TCHAR* Store(const FStringView& String);
 
 private:
 	enum

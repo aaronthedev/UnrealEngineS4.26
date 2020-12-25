@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WorldTreeItem.h"
 #include "Modules/ModuleManager.h"
@@ -125,7 +125,7 @@ void FWorldTreeItem::OnDrop(FDragDropPayload& DraggedObjects, UWorld& InWorld, c
 void FWorldTreeItem::OpenWorldSettings() const
 {
 	FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>( TEXT("LevelEditor") );
-	LevelEditorModule.GetLevelEditorTabManager()->TryInvokeTab(FName("WorldSettingsTab"));	
+	LevelEditorModule.GetLevelEditorTabManager()->InvokeTab(FName("WorldSettingsTab"));	
 }
 
 }		// namespace SceneOutliner

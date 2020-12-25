@@ -1,21 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Chaos/ArrayCollectionArray.h"
 #include "Chaos/RigidParticles.h"
 #include "Chaos/Rotation.h"
 
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable:4946)
-#endif
-
 namespace Chaos
 {
 template<class T, int d>
 class TPBDRigidsEvolution;
-
-CHAOS_API void EnsureSleepingObjectState(EObjectStateType ObjectState);
 
 template<class T, int d>
 class TPBDRigidParticles : public TRigidParticles<T, d>
@@ -28,7 +21,7 @@ class TPBDRigidParticles : public TRigidParticles<T, d>
 	CHAOS_API TPBDRigidParticles()
 	    : TRigidParticles<T, d>()
 	{
-		this->MParticleType = EParticleType::Rigid;
+		this->MParticleType = EParticleType::Dynamic;
 		TArrayCollection::AddArray(&MP);
 		TArrayCollection::AddArray(&MQ);
 		TArrayCollection::AddArray(&MPreV);
@@ -42,7 +35,7 @@ class TPBDRigidParticles : public TRigidParticles<T, d>
 		, MPreV(MoveTemp(Other.MPreV))
 		, MPreW(MoveTemp(Other.MPreW))
 	{
-		this->MParticleType = EParticleType::Rigid;
+		this->MParticleType = EParticleType::Dynamic;
 		TArrayCollection::AddArray(&MP);
 		TArrayCollection::AddArray(&MQ);
 		TArrayCollection::AddArray(&MPreV);
@@ -52,65 +45,52 @@ class TPBDRigidParticles : public TRigidParticles<T, d>
 	CHAOS_API virtual ~TPBDRigidParticles()
 	{}
 
-	CHAOS_API const TVector<T, d>& P(const int32 index) const { return MP[index]; }
-	CHAOS_API TVector<T, d>& P(const int32 index) { return MP[index]; }
 
-	CHAOS_API const TRotation<T, d>& Q(const int32 index) const { return MQ[index]; }
-	CHAOS_API TRotation<T, d>& Q(const int32 index) { return MQ[index]; }
+	const TVector<T, d>& P(const int32 index) const { return MP[index]; }
+	TVector<T, d>& P(const int32 index) { return MP[index]; }
 
-	CHAOS_API const TVector<T, d>& PreV(const int32 index) const { return MPreV[index]; }
-	CHAOS_API TVector<T, d>& PreV(const int32 index) { return MPreV[index]; }
+	const TRotation<T, d>& Q(const int32 index) const { return MQ[index]; }
+	TRotation<T, d>& Q(const int32 index) { return MQ[index]; }
 
-	CHAOS_API const TVector<T, d>& PreW(const int32 index) const { return MPreW[index]; }
-	CHAOS_API TVector<T, d>& PreW(const int32 index) { return MPreW[index]; }
+	const TVector<T, d>& PreV(const int32 index) const { return MPreV[index]; }
+	TVector<T, d>& PreV(const int32 index) { return MPreV[index]; }
 
-    // Must be reinterpret cast instead of static_cast as it's a forward declare
+	const TVector<T, d>& PreW(const int32 index) const { return MPreW[index]; }
+	TVector<T, d>& PreW(const int32 index) { return MPreW[index]; }
+
 	typedef TPBDRigidParticleHandle<T, d> THandleType;
-	CHAOS_API const THandleType* Handle(int32 Index) const { return reinterpret_cast<const THandleType*>(TGeometryParticles<T,d>::Handle(Index)); }
+	const THandleType* Handle(int32 Index) const { return static_cast<const THandleType*>(TGeometryParticles<T,d>::Handle(Index)); }
 
 	//cannot be reference because double pointer would allow for badness, but still useful to have non const access to handle
-	CHAOS_API THandleType* Handle(int32 Index) { return reinterpret_cast<THandleType*>(TGeometryParticles<T, d>::Handle(Index)); }
+	THandleType* Handle(int32 Index) { return static_cast<THandleType*>(TGeometryParticles<T, d>::Handle(Index)); }
 
-	CHAOS_API void SetSleeping(int32 Index, bool bSleeping)
+	void SetSleeping(int32 Index, bool bSleeping)
 	{
 		if (Sleeping(Index) && bSleeping == false)
 		{
 			PreV(Index) = this->V(Index);
 			PreW(Index) = this->W(Index);
 		}
-		else if(bSleeping)
+
+		if (Sleeping(Index) != bSleeping)
 		{
-			//being put to sleep, so zero out velocities
-			this->V(Index) = TVector<FReal,3>(0);
-			this->W(Index) = TVector<FReal,3>(0);
+			TGeometryParticleHandle<T, d>* Particle = this->Handle(Index);
+			this->AddSleepData(Particle);
 		}
 
-		bool CurrentlySleeping = this->ObjectState(Index) == EObjectStateType::Sleeping;
-		if (CurrentlySleeping != bSleeping)
-		{
-			TGeometryParticleHandle<T, d>* Particle = reinterpret_cast<TGeometryParticleHandle<T, d>*>(this->Handle(Index));
-			this->AddSleepData(Particle, bSleeping);
-		}
-
-		// Dynamic -> Sleeping or Sleeping -> Dynamic
 		if (this->ObjectState(Index) == EObjectStateType::Dynamic || this->ObjectState(Index) == EObjectStateType::Sleeping)
 		{
 			this->ObjectState(Index) = bSleeping ? EObjectStateType::Sleeping : EObjectStateType::Dynamic;
 		}
 
-		// Possible for code to set a Dynamic to Kinematic State then to Sleeping State
-		if (this->ObjectState(Index) == EObjectStateType::Kinematic && bSleeping)
-		{
-			this->ObjectState(Index) =  EObjectStateType::Sleeping;
-		}
-
 		if (bSleeping)
 		{
-			EnsureSleepingObjectState(this->ObjectState(Index));
+			ensure(this->ObjectState(Index) != EObjectStateType::Kinematic);
+			ensure(this->ObjectState(Index) != EObjectStateType::Static);
 		}
 	}
 
-	CHAOS_API void SetObjectState(int32 Index, EObjectStateType InObjectState)
+	void SetObjectState(int32 Index, EObjectStateType InObjectState)
 	{
 		const EObjectStateType CurrentState = this->ObjectState(Index);
 
@@ -121,13 +101,13 @@ class TPBDRigidParticles : public TRigidParticles<T, d>
 			this->InvI(Index) = PMatrix<float, 3, 3>(0);
 		}
 
-		if ((CurrentState == EObjectStateType::Dynamic || CurrentState == EObjectStateType::Sleeping) && (InObjectState == EObjectStateType::Kinematic || InObjectState == EObjectStateType::Static))
+		if (CurrentState == EObjectStateType::Dynamic && (InObjectState == EObjectStateType::Kinematic || InObjectState == EObjectStateType::Static))
 		{
 			// Transitioning from dynamic to static or kinematic, set inverse mass and inertia tensor to zero.
 			this->InvM(Index) = 0.0f;
 			this->InvI(Index) = PMatrix<float, 3, 3>(0);
 		}
-		else if ((CurrentState == EObjectStateType::Kinematic || CurrentState == EObjectStateType::Static || CurrentState == EObjectStateType::Uninitialized) && (InObjectState == EObjectStateType::Dynamic || InObjectState == EObjectStateType::Sleeping))
+		else if ((CurrentState == EObjectStateType::Kinematic || CurrentState == EObjectStateType::Static || CurrentState == EObjectStateType::Uninitialized) && InObjectState == EObjectStateType::Dynamic)
 		{
 			// Transitioning from kinematic or static to dynamic, compute the inverses.
 			checkSlow(this->M(Index) != 0.0);
@@ -139,9 +119,6 @@ class TPBDRigidParticles : public TRigidParticles<T, d>
 				1.f / this->I(Index).M[0][0], 0.f, 0.f,
 				0.f, 1.f / this->I(Index).M[1][1], 0.f,
 				0.f, 0.f, 1.f / this->I(Index).M[2][2]);
-
-			this->P(Index) = this->X(Index);
-			this->Q(Index) = this->R(Index);
 		}
 		else if (InObjectState == EObjectStateType::Sleeping)
 		{
@@ -153,23 +130,8 @@ class TPBDRigidParticles : public TRigidParticles<T, d>
 		const bool bNewSleeping = InObjectState == EObjectStateType::Sleeping;
 		if(bCurrentSleeping != bNewSleeping)
 		{
-			TGeometryParticleHandle<T, d>* Particle = reinterpret_cast<TGeometryParticleHandle<T, d>*>(this->Handle(Index));
- 			this->AddSleepData(Particle, bNewSleeping);
-
-			if (bNewSleeping == false)
-			{
-				// If waking up, reset VSmooth to something roughly in the same direction as what V will be after integration.
-				// This is temp fix, if this is only re-computed after solve, island will get incorrectly put back to sleep.
-				float FakeDT = 1.0f / 30.0f;
-				if (this->LinearImpulse(Index).IsNearlyZero() == false || this->F(Index).IsNearlyZero() == false)
-				{
-					this->VSmooth(Index) = this->F(Index)* this->InvM(Index) * FakeDT  + this->LinearImpulse(Index) * this->InvM(Index);
-				}
-				if (this->AngularImpulse(Index).IsNearlyZero() == false || this->Torque(Index).IsNearlyZero() == false)
-				{
-					this->WSmooth(Index) = this->Torque(Index) * FakeDT + this->AngularImpulse(Index);
-				}
-			}
+			TGeometryParticleHandle<T, d>* Particle = this->Handle(Index);
+			this->AddSleepData(Particle);
 		}
 
 		this->ObjectState(Index) = InObjectState;
@@ -187,23 +149,12 @@ class TPBDRigidParticles : public TRigidParticles<T, d>
 		Ar << MP << MQ << MPreV << MPreW;
 	}
 
-	FORCEINLINE TArray<TVector<T, d>>& AllP() { return MP; }
-	FORCEINLINE TArray<TRotation<T, d>>& AllQ() { return MQ; }
-	FORCEINLINE TArray<TVector<T, d>>& AllPreV() { return MPreV; }
-	FORCEINLINE TArray<TVector<T, d>>& AllPreW() { return MPreW; }
-
   private:
 	TArrayCollectionArray<TVector<T, d>> MP;
 	TArrayCollectionArray<TRotation<T, d>> MQ;
 	TArrayCollectionArray<TVector<T, d>> MPreV;
 	TArrayCollectionArray<TVector<T, d>> MPreW;
 };
-
-#if PLATFORM_MAC || PLATFORM_LINUX
-extern template class CHAOS_API TPBDRigidParticles<float,3>;
-#else
-extern template class TPBDRigidParticles<float,3>;
-#endif
 
 template <typename T, int d>
 FChaosArchive& operator<<(FChaosArchive& Ar, TPBDRigidParticles<T, d>& Particles)
@@ -212,7 +163,3 @@ FChaosArchive& operator<<(FChaosArchive& Ar, TPBDRigidParticles<T, d>& Particles
 	return Ar;
 }
 }
-
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif

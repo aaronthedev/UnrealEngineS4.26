@@ -1,7 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RigUnit_GetControlInitialTransform.h"
 #include "Units/RigUnitContext.h"
+
+FString FRigUnit_GetControlInitialTransform::GetUnitLabel() const
+{
+	return FString::Printf(TEXT("Get Initial Control %s"), *Control.ToString());
+}
 
 FRigUnit_GetControlInitialTransform_Execute()
 {
@@ -13,15 +18,12 @@ FRigUnit_GetControlInitialTransform_Execute()
 		{
 			case EControlRigState::Init:
 			{
-				CachedControlIndex.Reset();
+				CachedControlIndex = Hierarchy->GetIndex(Control);
+				break;				
 			}
 			case EControlRigState::Update:
 			{
-				if (!CachedControlIndex.UpdateCache(Control, Hierarchy))
-				{
-					UE_CONTROLRIG_RIGUNIT_REPORT_WARNING(TEXT("Control '%s' is not valid."), *Control.ToString());
-				}
-				else
+				if (CachedControlIndex != INDEX_NONE)
 				{
 					switch (Space)
 					{

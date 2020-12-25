@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*==============================================================================
 NiagaraRenderer.h: Base class for Niagara render modules
@@ -7,7 +7,6 @@ NiagaraRenderer.h: Base class for Niagara render modules
 
 #include "NiagaraRibbonVertexFactory.h"
 #include "NiagaraRenderer.h"
-#include "NiagaraRibbonRendererProperties.h"
 
 class FNiagaraDataSet;
 
@@ -28,7 +27,7 @@ public:
 	virtual void GetDynamicMeshElements(const TArray<const FSceneView*>& Views, const FSceneViewFamily& ViewFamily, uint32 VisibilityMap, FMeshElementCollector& Collector, const FNiagaraSceneProxy *SceneProxy) const override;
 	virtual FNiagaraDynamicDataBase *GenerateDynamicData(const FNiagaraSceneProxy* Proxy, const UNiagaraRendererProperties* InProperties, const FNiagaraEmitterInstance* Emitteride) const override;
 	virtual int32 GetDynamicDataSize()const override;
-	virtual bool IsMaterialValid(const UMaterialInterface* Mat)const override;
+	virtual bool IsMaterialValid(UMaterialInterface* Mat)const override;
 #if RHI_RAYTRACING
 	virtual void GetDynamicRayTracingInstances(FRayTracingMaterialGatheringContext& Context, TArray<FRayTracingInstance>& OutRayTracingInstances, const FNiagaraSceneProxy* Proxy) final override;
 #endif
@@ -36,24 +35,13 @@ public:
 
 	FORCEINLINE void AddDynamicParam(TArray<FNiagaraRibbonVertexDynamicParameter>& ParamData, const FVector4& DynamicParam);
 protected:
-
-	template <typename TValue>
-	static TValue* AppendToIndexBuffer(TValue* OutIndices, uint32& OutMaxUsedIndex, const TArrayView<int32>& SegmentData, int32 InterpCount, bool bInvertOrder);
-
-	/** Generate the raw index buffer preserving multi ribbon ordering. */
-	template <typename TValue>
-	void GenerateIndexBuffer(
-		FGlobalDynamicIndexBuffer::FAllocationEx& InOutIndexAllocation, 
-		int32 InterpCount, 
-		const FVector& ViewDirection, 
-		const FVector& ViewOriginForDistanceCulling, 
-		struct FNiagaraDynamicDataRibbon* DynamicData) const;
+	static void GenerateIndexBuffer(uint16* OutIndices, uint16& outVertexCount, const TArray<int32>& SegmentData, int32 InterpCount, bool bInvertOrder);
 
 private:
 	struct FCPUSimParticleDataAllocation
 	{
 		FGlobalDynamicReadBuffer& DynamicReadBuffer;
-		FParticleRenderData ParticleData;
+		FGlobalDynamicReadBuffer::FAllocation ParticleData;
 	};
 
 	void SetupMeshBatchAndCollectorResourceForView(
@@ -62,23 +50,26 @@ private:
 		const FNiagaraSceneProxy* SceneProxy,
 		FMeshElementCollector& Collector,
 		struct FNiagaraDynamicDataRibbon* DynamicData,
-		const FGlobalDynamicIndexBuffer::FAllocationEx& IndexAllocation,
+		uint32 NumPrimitives,
+		const FGlobalDynamicIndexBuffer::FAllocation& IndexAllocation,
 		FMeshBatch& OutMeshBatch,
 		class FNiagaraMeshCollectorResourcesRibbon& OutCollectorResources) const;
 
 	void CreatePerViewResources(
-		const FSceneView* View,
-		const FSceneViewFamily& ViewFamily,
-		const FNiagaraSceneProxy* SceneProxy,
-		FMeshElementCollector& Collector,
-		FNiagaraRibbonUniformBufferRef& OutUniformBuffer,
-		FGlobalDynamicIndexBuffer::FAllocationEx& InOutIndexAllocation) const;
+		const FSceneView* View, const FSceneViewFamily& ViewFamily, const FNiagaraSceneProxy* SceneProxy, FMeshElementCollector& Collector,
+		uint16& outVertexCount, uint32& OutNumSegments, FNiagaraRibbonUniformBufferRef& OutUniformBuffer, FGlobalDynamicIndexBuffer::FAllocation& InOutIndexAllocation) const;
 
 	FCPUSimParticleDataAllocation AllocateParticleDataIfCPUSim(struct FNiagaraDynamicDataRibbon* DynamicDataRibbon, FGlobalDynamicReadBuffer& DynamicReadBuffer) const;
 
 	ENiagaraRibbonFacingMode FacingMode;
-	FNiagaraRibbonUVSettings UV0Settings;
-	FNiagaraRibbonUVSettings UV1Settings;
+	float UV0TilingDistance;
+	FVector2D UV0Scale;
+	FVector2D UV0Offset;
+	ENiagaraRibbonAgeOffsetMode UV0AgeOffsetMode;
+	float UV1TilingDistance;
+	FVector2D UV1Scale;
+	FVector2D UV1Offset;
+	ENiagaraRibbonAgeOffsetMode UV1AgeOffsetMode;
 	ENiagaraRibbonDrawDirection DrawDirection;
 	ENiagaraRibbonTessellationMode TessellationMode;
 	float CustomCurveTension;
@@ -88,7 +79,6 @@ private:
 	bool bCustomUseScreenSpace;
 
 	uint32 MaterialParamValidMask;
-	const FNiagaraRendererLayout* RendererLayout;
 
 	// Average curvature of the segments.
 	mutable float TessellationAngle = 0;

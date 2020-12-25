@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WindowsNativeFeedbackContext.h"
 #include "HAL/ThreadHeartBeat.h"
@@ -173,9 +173,6 @@ DWORD FWindowsNativeFeedbackContext::SlowTaskThreadProc(void* ThreadParam)
 
 	HINSTANCE HInstance = (HINSTANCE)GetModuleHandle(NULL);
 
-	extern APPLICATIONCORE_API HWND GetSplashScreenWindowHandle();
-	HWND ParentWindowHandle = GetSplashScreenWindowHandle();
-
 	WNDCLASSEX WndClassEx;
 	ZeroMemory(&WndClassEx, sizeof(WndClassEx));
 	WndClassEx.cbSize = sizeof(WndClassEx);
@@ -222,7 +219,7 @@ DWORD FWindowsNativeFeedbackContext::SlowTaskThreadProc(void* ThreadParam)
 	AdjustWindowRectEx(&WindowRect, WindowStyle, 0, 0);
 
 	const TCHAR* WindowClassName = MAKEINTATOM( WndClassAtom );
-	HWND hWnd = CreateWindow(WindowClassName, TEXT("Unreal Engine"), WindowStyle, WindowRect.left, WindowRect.top, WindowRect.right - WindowRect.left, WindowRect.bottom - WindowRect.top, ParentWindowHandle, NULL, HInstance, NULL);
+	HWND hWnd = CreateWindow(WindowClassName, TEXT("Unreal Engine"), WindowStyle, WindowRect.left, WindowRect.top, WindowRect.right - WindowRect.left, WindowRect.bottom - WindowRect.top, NULL, NULL, HInstance, NULL);
 	SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)&Params);
 	SendMessageW(hWnd, WM_SETFONT, (WPARAM)hFont, 0);
 

@@ -1,12 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SNiagaraSystemScript.h"
 #include "ViewModels/NiagaraSystemViewModel.h"
 #include "NiagaraSystemScriptViewModel.h"
-#include "ViewModels/NiagaraScriptViewModel.h"
+#include "NiagaraScriptViewModel.h"
 #include "NiagaraScriptInputCollectionViewModel.h"
 #include "SNiagaraParameterCollection.h"
-#include "Widgets/SNiagaraScriptGraph.h"
+#include "SNiagaraScriptGraph.h"
 
 #include "Widgets/Layout/SSplitter.h"
 

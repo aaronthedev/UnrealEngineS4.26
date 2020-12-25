@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AnimMontage.cpp: Montage classes that contains slots
@@ -24,7 +24,7 @@ bool UEditorAnimBaseObj::ApplyChangesToMontage()
 	return false;
 }
 
-void UEditorAnimBaseObj::PreEditChange(FProperty* PropertyThatWillChange)
+void UEditorAnimBaseObj::PreEditChange(UProperty* PropertyThatWillChange)
 {
 	Super::PreEditChange(PropertyThatWillChange);
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Concurrent;
@@ -34,98 +34,12 @@ namespace UnrealGameSync
 				{
 					bContainsContent = true;
 				}
-
-				if (bContainsCode && bContainsContent)
-				{
-					break;
-				}
 			}
 		}
-	}
-
-	interface IArchiveInfo
-	{
-		string Name { get; }
-		string Type { get; }
-		string DepotPath { get; }
-		string Target { get;  }
-
-		bool Exists();
-		bool TryGetArchivePathForChangeNumber(int ChangeNumber, out string ArchivePath);
 	}
 
 	class PerforceMonitor : IDisposable
 	{
-		class ArchiveInfo : IArchiveInfo
-		{
-			public string Name { get; }
-			public string Type { get; }
-			public string DepotPath { get; }
-			public string Target { get; }
-			// TODO: executable/configuration?
-			public SortedList<int, string> ChangeNumberToFileRevision = new SortedList<int, string>();
-
-			public ArchiveInfo(string Name, string Type, string DepotPath, string Target)
-			{
-				this.Name = Name;
-				this.Type = Type;
-				this.DepotPath = DepotPath;
-				this.Target = Target;
-			}
-
-			public override bool Equals(object Other)
-			{
-				ArchiveInfo OtherArchive = Other as ArchiveInfo;
-				return OtherArchive != null && Name == OtherArchive.Name && Type == OtherArchive.Type && DepotPath == OtherArchive.DepotPath && Target == OtherArchive.Target && Enumerable.SequenceEqual(ChangeNumberToFileRevision, OtherArchive.ChangeNumberToFileRevision);
-			}
-
-			public override int GetHashCode()
-			{
-				throw new NotImplementedException();
-			}
-
-			public bool Exists()
-			{
-				return ChangeNumberToFileRevision.Count > 0;
-			}
-
-			public static bool TryParseConfigEntry(string Text, out ArchiveInfo Info)
-			{
-				ConfigObject Object = new ConfigObject(Text);
-
-				string Name = Object.GetValue("Name", null);
-				if (Name == null)
-				{
-					Info = null;
-					return false;
-				}
-
-				string DepotPath = Object.GetValue("DepotPath", null);
-				if (DepotPath == null)
-				{
-					Info = null;
-					return false;
-				}
-
-				string Target = Object.GetValue("Target", null);
-
-				string Type = Object.GetValue("Type", null) ?? Name;
-
-				Info = new ArchiveInfo(Name, Type, DepotPath, Target);
-				return true;
-			}
-
-			public bool TryGetArchivePathForChangeNumber(int ChangeNumber, out string ArchivePath)
-			{
-				return ChangeNumberToFileRevision.TryGetValue(ChangeNumber, out ArchivePath);
-			}
-
-			public override string ToString()
-			{
-				return Name;
-			}
-		}
-
 		class PerforceChangeSorter : IComparer<PerforceChangeSummary>
 		{
 			public int Compare(PerforceChangeSummary SummaryA, PerforceChangeSummary SummaryB)
@@ -145,7 +59,7 @@ namespace UnrealGameSync
 		SortedSet<PerforceChangeSummary> Changes = new SortedSet<PerforceChangeSummary>(new PerforceChangeSorter());
 		SortedDictionary<int, PerforceChangeDetails> ChangeDetails = new SortedDictionary<int,PerforceChangeDetails>();
 		SortedSet<int> PromotedChangeNumbers = new SortedSet<int>();
-		List<ArchiveInfo> Archives = new List<ArchiveInfo>();
+		SortedList<int, string> ChangeNumberToZippedBinaries = new SortedList<int,string>();
 		AutoResetEvent RefreshEvent = new AutoResetEvent(false);
 		BoundedLogWriter LogWriter;
 		bool bIsEnterpriseProject;
@@ -179,7 +93,6 @@ namespace UnrealGameSync
 			LocalConfigFiles = InLocalConfigFiles;
 
 			LogWriter = new BoundedLogWriter(InLogPath);
-			AvailableArchives = (new List<IArchiveInfo>()).AsReadOnly();
 		}
 
 		public void Start()
@@ -233,25 +146,6 @@ namespace UnrealGameSync
 
 		void PollForUpdates()
 		{
-			while (!bDisposing)
-			{
-				try
-				{
-					PollForUpdatesInner();
-				}
-				catch (ThreadAbortException)
-				{
-					break;
-				}
-				catch (Exception Ex)
-				{
-					LogWriter.WriteException(Ex, "Unhandled exception in PollForUpdatesInner()");
-				}
-			}
-		}
-
-		void PollForUpdatesInner()
-		{
 			string StreamName;
 			if(!Perforce.GetActiveStream(out StreamName, LogWriter))
 			{
@@ -266,7 +160,7 @@ namespace UnrealGameSync
 			}
 
 			// Try to update the zipped binaries list before anything else, because it causes a state change in the UI
-			UpdateArchives();
+			UpdateZippedBinaries();
 
 			while(!bDisposing)
 			{
@@ -299,7 +193,7 @@ namespace UnrealGameSync
 						{
 							LastStatusMessage = "Failed to update change types";
 						}
-						else if(!UpdateArchives())
+						else if(!UpdateZippedBinaries())
 						{
 							LastStatusMessage = "Failed to update zipped binaries list";
 						}
@@ -337,7 +231,7 @@ namespace UnrealGameSync
 
 			// Build a full list of all the paths to sync
 			List<string> DepotPaths = new List<string>();
-			if (SelectedClientFileName.EndsWith(".uprojectdirs", StringComparison.InvariantCultureIgnoreCase))
+			if(SelectedClientFileName.EndsWith(".uprojectdirs", StringComparison.InvariantCultureIgnoreCase))
 			{
 				DepotPaths.Add(String.Format("{0}/...", BranchClientPath));
 			}
@@ -349,16 +243,6 @@ namespace UnrealGameSync
 				if (bIsEnterpriseProject)
 				{
 					DepotPaths.Add(String.Format("{0}/Enterprise/...", BranchClientPath));
-				}
-
-				// Add in additional paths property
-				ConfigSection ProjectConfigSection = LatestProjectConfigFile.FindSection("Perforce");
-				if (ProjectConfigSection != null)
-				{
-					IEnumerable<string> AdditionalPaths = ProjectConfigSection.GetValues("AdditionalPathsToSync", new string[0]);
-
-					// turn into //ws/path
-					DepotPaths.AddRange(AdditionalPaths.Select(P => string.Format("{0}/{1}", BranchClientPath, P.TrimStart('/'))));
 				}
 			}
 
@@ -392,14 +276,11 @@ namespace UnrealGameSync
 			// If we are using zipped binaries, make sure we have every change since the last zip containing them. This is necessary for ensuring that content changes show as
 			// syncable in the workspace view if there have been a large number of content changes since the last code change.
 			int MinZippedChangeNumber = -1;
-			foreach (ArchiveInfo Archive in Archives)
+			foreach(int ChangeNumber in ChangeNumberToZippedBinaries.Keys)
 			{
-				foreach (int ChangeNumber in Archive.ChangeNumberToFileRevision.Keys)
+				if(ChangeNumber > MinZippedChangeNumber && ChangeNumber <= OldestChangeNumber)
 				{
-					if (ChangeNumber > MinZippedChangeNumber && ChangeNumber <= OldestChangeNumber)
-					{
-						MinZippedChangeNumber = ChangeNumber;
-					}
+					MinZippedChangeNumber = ChangeNumber;
 				}
 			}
 			if(MinZippedChangeNumber != -1 && MinZippedChangeNumber < OldestChangeNumber)
@@ -452,7 +333,7 @@ namespace UnrealGameSync
 						foreach(PerforceChangeSummary Change in Changes)
 						{
 							TrimmedChanges.Add(Change);
-							if(TrimmedChanges.Count >= MaxChanges && Archives.Any(x => x.ChangeNumberToFileRevision.Count == 0 || x.ChangeNumberToFileRevision.ContainsKey(Change.Number) || x.ChangeNumberToFileRevision.First().Key > Change.Number))
+							if(TrimmedChanges.Count >= MaxChanges && (ChangeNumberToZippedBinaries.Count == 0 || ChangeNumberToZippedBinaries.ContainsKey(Change.Number) || ChangeNumberToZippedBinaries.First().Key > Change.Number))
 							{
 								break;
 							}
@@ -561,61 +442,48 @@ namespace UnrealGameSync
 			return true;
 		}
 
-		bool UpdateArchives()
+		bool UpdateZippedBinaries()
 		{
-			List<ArchiveInfo> NewArchives = new List<ArchiveInfo>();
+			string ZippedBinariesPath = null;
 
 			// Find all the zipped binaries under this stream
 			ConfigSection ProjectConfigSection = LatestProjectConfigFile.FindSection(SelectedProjectIdentifier);
-			if (ProjectConfigSection != null)
+			if(ProjectConfigSection != null)
 			{
-				// Legacy
-				string LegacyEditorArchivePath = ProjectConfigSection.GetValue("ZippedBinariesPath", null);
-				if (LegacyEditorArchivePath != null)
-				{
-					NewArchives.Add(new ArchiveInfo("Editor", "Editor", LegacyEditorArchivePath, null));
-				}
+				ZippedBinariesPath = ProjectConfigSection.GetValue("ZippedBinariesPath", null);
+			}
 
-				// New style
-				foreach (string ArchiveValue in ProjectConfigSection.GetValues("Archives", new string[0]))
-				{
-					ArchiveInfo Archive;
-					if (ArchiveInfo.TryParseConfigEntry(ArchiveValue, out Archive))
-					{
-						NewArchives.Add(Archive);
-					}
-				}
-
+			// Build a new list of zipped binaries
+			SortedList<int, string> NewChangeNumberToZippedBinaries = new SortedList<int,string>();
+			if(ZippedBinariesPath != null)
+			{
 				// Make sure the zipped binaries path exists
-				foreach (ArchiveInfo NewArchive in NewArchives)
+				bool bExists;
+				if(!Perforce.FileExists(ZippedBinariesPath, out bExists, LogWriter))
 				{
-					bool bExists;
-					if (!Perforce.FileExists(NewArchive.DepotPath, out bExists, LogWriter))
+					return false;
+				}
+				if(bExists)
+				{
+					// Query all the changes to this file
+					List<PerforceFileChangeSummary> Changes;
+					if(!Perforce.FindFileChanges(ZippedBinariesPath, 100, out Changes, LogWriter))
 					{
 						return false;
 					}
-					if (bExists)
-					{
-						// Query all the changes to this file
-						List<PerforceFileChangeSummary> Changes;
-						if (!Perforce.FindFileChanges(NewArchive.DepotPath, 100, out Changes, LogWriter))
-						{
-							return false;
-						}
 
-						// Build a new list of zipped binaries
-						foreach (PerforceFileChangeSummary Change in Changes)
+					// Build a new list of zipped binaries
+					foreach(PerforceFileChangeSummary Change in Changes)
+					{
+						if(Change.Action != "purge")
 						{
-							if (Change.Action != "purge")
+							string[] Tokens = Change.Description.Split(' ');
+							if(Tokens[0].StartsWith("[CL") && Tokens[1].EndsWith("]"))
 							{
-								string[] Tokens = Change.Description.Split(' ');
-								if (Tokens[0].StartsWith("[CL") && Tokens[1].EndsWith("]"))
+								int OriginalChangeNumber;
+								if(int.TryParse(Tokens[1].Substring(0, Tokens[1].Length - 1), out OriginalChangeNumber) && !NewChangeNumberToZippedBinaries.ContainsKey(OriginalChangeNumber))
 								{
-									int OriginalChangeNumber;
-									if (int.TryParse(Tokens[1].Substring(0, Tokens[1].Length - 1), out OriginalChangeNumber) && !NewArchive.ChangeNumberToFileRevision.ContainsKey(OriginalChangeNumber))
-									{
-										NewArchive.ChangeNumberToFileRevision[OriginalChangeNumber] = String.Format("{0}#{1}", NewArchive.DepotPath, Change.Revision);
-									}
+									NewChangeNumberToZippedBinaries[OriginalChangeNumber] = String.Format("{0}#{1}", ZippedBinariesPath, Change.Revision);
 								}
 							}
 						}
@@ -623,13 +491,27 @@ namespace UnrealGameSync
 				}
 			}
 
-			// Check if the information has changed
-			if (!Enumerable.SequenceEqual(Archives, NewArchives))
+			// Get the new status message
+			string NewZippedBinariesStatus;
+			if(ZippedBinariesPath == null)
 			{
-				Archives = NewArchives;
-				AvailableArchives = Archives.Select(x => (IArchiveInfo)x).ToList();
+				NewZippedBinariesStatus = String.Format("Precompiled binaries are not available for {0}", SelectedProjectIdentifier);
+			}
+			else if(NewChangeNumberToZippedBinaries.Count == 0)
+			{
+				NewZippedBinariesStatus = String.Format("No valid archives found at {0}", ZippedBinariesPath);
+			}
+			else
+			{
+				NewZippedBinariesStatus = null;
+			}
 
-				if (OnUpdateMetadata != null && Changes.Count > 0)
+			// Update the new list of zipped binaries
+			if(!ChangeNumberToZippedBinaries.SequenceEqual(NewChangeNumberToZippedBinaries) || ZippedBinariesStatus != NewZippedBinariesStatus)
+			{
+				ZippedBinariesStatus = NewZippedBinariesStatus;
+				ChangeNumberToZippedBinaries = NewChangeNumberToZippedBinaries;
+				if(OnUpdateMetadata != null && Changes.Count > 0)
 				{
 					OnUpdateMetadata();
 				}
@@ -646,7 +528,7 @@ namespace UnrealGameSync
 
 		public static ConfigFile ReadProjectConfigFile(PerforceConnection Perforce, string BranchClientPath, string SelectedClientFileName, string CacheFolder, List<KeyValuePair<string, DateTime>> LocalConfigFiles, TextWriter Log)
 		{
-			List<string> ConfigFilePaths = Utility.GetDepotConfigPaths(BranchClientPath + "/Engine", SelectedClientFileName);
+			List<string> ConfigFilePaths = Utility.GetConfigFileLocations(BranchClientPath, SelectedClientFileName, '/');
 
 			ConfigFile ProjectConfig = new ConfigFile();
 
@@ -745,10 +627,20 @@ namespace UnrealGameSync
 			private set;
 		}
 
-		public IReadOnlyList<IArchiveInfo> AvailableArchives
+		public string ZippedBinariesStatus
 		{
 			get;
 			private set;
+		}
+
+		public bool HasZippedBinaries
+		{
+			get { return ChangeNumberToZippedBinaries.Count > 0; }
+		}
+
+		public bool TryGetArchivePathForChangeNumber(int ChangeNumber, out string ArchivePath)
+		{
+			return ChangeNumberToZippedBinaries.TryGetValue(ChangeNumber, out ArchivePath);
 		}
 
 		public void Refresh()

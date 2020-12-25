@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -47,20 +47,13 @@ public:
 			// We have to build the TBitArray representing allocated indices by hand, as we don't have access to it from outside TSparseArray.
 			// @todo core: consider replacing TSparseArray serialization with this format.
 			TBitArray<> AllocatedIndices( false, MaxIndex );
-			int32 MaxAllocatedIndex = 0;
-			
 			for( int32 Index = 0; Index < MaxIndex; ++Index )
 			{
 				if( Array.Container.IsAllocated( Index ) )
 				{
 					AllocatedIndices[ Index ] = true;
-					MaxAllocatedIndex = Index;
 				}
 			}
-
-			// Cut off the trailing unallocated indices so that they are not serialized
-			AllocatedIndices.SetNumUninitialized(MaxAllocatedIndex + 1);
-
 			Ar << AllocatedIndices;
 
 			for( auto It = Array.Container.CreateIterator(); It; ++It )

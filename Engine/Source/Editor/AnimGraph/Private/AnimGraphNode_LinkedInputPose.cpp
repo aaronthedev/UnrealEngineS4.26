@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimGraphNode_LinkedInputPose.h"
 #include "Kismet2/BlueprintEditorUtils.h"
@@ -12,7 +12,6 @@
 #include "DetailLayoutBuilder.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Text/STextBlock.h"
-#include "Stats/Stats.h"
 
 #include "Animation/AnimBlueprint.h"
 #include "IAnimationBlueprintEditor.h"
@@ -24,84 +23,12 @@
 #include "Containers/Ticker.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Subsystems/AssetEditorSubsystem.h"
-#include "KismetCompiler.h"
-#include "K2Node_VariableGet.h"
-#include "AnimBlueprintCompiler.h"
 
 #define LOCTEXT_NAMESPACE "LinkedInputPose"
 
 UAnimGraphNode_LinkedInputPose::UAnimGraphNode_LinkedInputPose()
 	: InputPoseIndex(INDEX_NONE)
 {
-}
-
-void UAnimGraphNode_LinkedInputPose::CreateClassVariablesFromBlueprint(IAnimBlueprintVariableCreationContext& InCreationContext)
-{
-	IterateFunctionParameters([this, &InCreationContext](const FName& InName, FEdGraphPinType InPinType)
-	{
-		if(!UAnimationGraphSchema::IsPosePin(InPinType))
-		{
-			UEdGraphPin* Pin = FindPin(InName, EGPD_Output);
-			if(Pin && Pin->LinkedTo.Num() > 0)
-			{
-				// create properties for 'local' linked input pose pins
-				FProperty* NewLinkedInputPoseProperty = InCreationContext.CreateVariable(InName, InPinType);
-				if(NewLinkedInputPoseProperty)
-				{
-					NewLinkedInputPoseProperty->SetPropertyFlags(CPF_BlueprintReadOnly);
-				}
-			}
-		}
-	});
-}
-
-void UAnimGraphNode_LinkedInputPose::ExpandNode(class FKismetCompilerContext& InCompilerContext, UEdGraph* InSourceGraph)
-{
-	IterateFunctionParameters([this, &InCompilerContext](const FName& InName, FEdGraphPinType InPinType)
-	{
-		if(!UAnimationGraphSchema::IsPosePin(InPinType))
-		{
-			if(InCompilerContext.bIsFullCompile)
-			{
-				// Find the property we created in CreateClassVariablesFromBlueprint()
-				FProperty* LinkedInputPoseProperty = FindFProperty<FProperty>(InCompilerContext.NewClass, InName);
-				if(LinkedInputPoseProperty)
-				{
-					UEdGraphPin* Pin = FindPin(InName, EGPD_Output);
-					if(Pin && Pin->LinkedTo.Num() > 0)
-					{
-						// Create new node for property access
-						UK2Node_VariableGet* VariableGetNode = InCompilerContext.SpawnIntermediateNode<UK2Node_VariableGet>(this, GetGraph());
-						VariableGetNode->SetFromProperty(LinkedInputPoseProperty, true, LinkedInputPoseProperty->GetOwnerClass());
-						VariableGetNode->AllocateDefaultPins();
-
-						// Add pin to generated variable association, used for pin watching
-						UEdGraphPin* TrueSourcePin = InCompilerContext.MessageLog.FindSourcePin(Pin);
-						if (TrueSourcePin)
-						{
-							InCompilerContext.NewClass->GetDebugData().RegisterClassPropertyAssociation(TrueSourcePin, LinkedInputPoseProperty);
-						}
-
-						// link up to new node - note that this is not a FindPinChecked because if an interface changes without the
-						// implementing class being loaded, then its graphs will not be conformed until AFTER the skeleton class
-						// has been compiled, so the variable cannot be created. This also doesnt matter, as there wont be anything connected
-						// to the pin yet anyways.
-						UEdGraphPin* VariablePin = VariableGetNode->FindPin(LinkedInputPoseProperty->GetFName());
-						if(VariablePin)
-						{
-							TArray<UEdGraphPin*> Links = Pin->LinkedTo;
-							Pin->BreakAllPinLinks();
-
-							for(UEdGraphPin* LinkPin : Links)
-							{
-								VariablePin->MakeLinkTo(LinkPin);
-							}
-						}
-					}
-				}
-			}
-		}
-	});
 }
 
 void UAnimGraphNode_LinkedInputPose::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
@@ -342,7 +269,6 @@ void UAnimGraphNode_LinkedInputPose::PostPlacedNewNode()
 
 		FTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([WeakThis = TWeakObjectPtr<UAnimGraphNode_LinkedInputPose>(this)](float InDeltaTime)
 		{
-			QUICK_SCOPE_CYCLE_COUNTER(STAT_UAnimGraphNode_LinkedInputPose_PostPlacedNewNode);
 			if(UAnimGraphNode_LinkedInputPose* LinkedInputPoseNode = WeakThis.Get())
 			{
 				// refresh the BP editor's details panel in case we are viewing the graph
@@ -574,10 +500,10 @@ void UAnimGraphNode_LinkedInputPose::IterateFunctionParameters(TFunctionRef<void
 
 		// We need to find all parameters AFTER the pose we are representing
 		int32 CurrentPoseIndex = 0;
-		FProperty* PoseParam = nullptr;
-		for (TFieldIterator<FProperty> PropIt(Function); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
+		UProperty* PoseParam = nullptr;
+		for (TFieldIterator<UProperty> PropIt(Function); PropIt && (PropIt->PropertyFlags & CPF_Parm); ++PropIt)
 		{
-			FProperty* Param = *PropIt;
+			UProperty* Param = *PropIt;
 
 			const bool bIsFunctionInput = !Param->HasAnyPropertyFlags(CPF_OutParm) || Param->HasAnyPropertyFlags(CPF_ReferenceParm);
 
@@ -625,11 +551,6 @@ void UAnimGraphNode_LinkedInputPose::IterateFunctionParameters(TFunctionRef<void
 			InFunc(PinInfo.Name, PinInfo.Type);
 		}
 	}
-}
-
-bool UAnimGraphNode_LinkedInputPose::IsCompatibleWithGraph(UEdGraph const* Graph) const
-{
-	return Graph->GetFName() == UEdGraphSchema_K2::GN_AnimGraph;
 }
 
 #undef LOCTEXT_NAMESPACE

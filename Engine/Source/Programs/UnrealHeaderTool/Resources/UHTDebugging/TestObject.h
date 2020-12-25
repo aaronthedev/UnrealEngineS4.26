@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,7 +11,7 @@ DECLARE_DYNAMIC_DELEGATE(FSimpleClassDelegate);
 DECLARE_DYNAMIC_DELEGATE_OneParam(FRegularDelegate, int32, SomeArgument);
 DECLARE_DYNAMIC_DELEGATE_OneParam(FDelegateWithDelegateParam, FRegularDelegate const &, RegularDelegate);
 
-struct ITestInterface
+struct ITestObject
 {
 };
 
@@ -31,7 +31,7 @@ class alignas(8) UAlignedObject : public UObject
 };
 
 UCLASS()
-class UTestObject : public UObject, public ITestInterface, public SomeNamespace::FSomeNonReflectedType
+class UTestObject : public UObject, public ITestObject
 {
 	GENERATED_BODY()
 
@@ -42,22 +42,13 @@ public:
 	TArray<FContainsInstancedProperty> InstancedPropertyArray;
 
 	UPROPERTY()
-	TArray<TWeakObjectPtr<UObject>, FMemoryImageAllocator> ObjectWrapperArray;
-
-	UPROPERTY()
-	TArray<TWeakObjectPtr<UObject>, TMemoryImageAllocator<64>> ObjectWrapperArrayTemplated;
+	TArray<TWeakObjectPtr<UObject>> ObjectWrapperArray;
 
 	UPROPERTY()
 	TSet<FContainsInstancedProperty> InstancedPropertySet;
 
 	UPROPERTY()
-	LAYOUT_FIELD((TMap<FContainsInstancedProperty, TWeakObjectPtr<UObject>>), InstancedPropertyToObjectWrapperMap);
-
-	UPROPERTY()
-	TMap<FContainsInstancedProperty, TWeakObjectPtr<UObject>, FMemoryImageSetAllocator> InstancedPropertyToObjectWrapperMapFrozen;
-
-	UPROPERTY()
-	LAYOUT_FIELD((TMap<FContainsInstancedProperty, TWeakObjectPtr<UObject>, FMemoryImageSetAllocator>), InstancedPropertyToObjectWrapperMapFrozenWithLayout);
+	TMap<FContainsInstancedProperty, TWeakObjectPtr<UObject>> InstancedPropertyToObjectWrapperMap;
 
 	UPROPERTY()
 	TMap<TWeakObjectPtr<UObject>, FContainsInstancedProperty> ObjectWrapperToInstancedPropertyMap;
@@ -69,7 +60,7 @@ public:
 	void TestPassingArrayOfInterfaces(const TArray<TScriptInterface<ITestInterface> >& ArrayOfInterfaces);
 
 	UPROPERTY()
-	LAYOUT_FIELD_INITIALIZED(int32, Cpp11Init, 123);
+	int32 Cpp11Init = 123;
 
 	UPROPERTY()
 	TArray<int> Cpp11BracedInit { 1, 2, 3 };
@@ -81,19 +72,13 @@ public:
 	int RawInt;
 
 	UPROPERTY()
-	LAYOUT_FIELD_EDITORONLY(int32, EditorOnlyField);
-
-	UPROPERTY()
-	LAYOUT_ARRAY_EDITORONLY(int32, EditorOnlyArray, 20);
-
-	UPROPERTY()
-	LAYOUT_ARRAY(unsigned int, RawUint, 20);
+	unsigned int RawUint;
 
 	UFUNCTION()
 	void FuncTakingRawInts(int Signed, unsigned int Unsigned);
 
 	UPROPERTY()
-	LAYOUT_FIELD(ECppEnum, EnumProperty);
+	ECppEnum EnumProperty;
 
 	UPROPERTY()
 	TMap<int32, bool> TestMap;
@@ -106,9 +91,6 @@ public:
 
 	UPROPERTY()
 	FSimpleClassDelegate DelegateProperty;
-
-	UPROPERTY()
-	LAYOUT_BITFIELD(uint32, bThing, 1);
 
 	UFUNCTION()
 	void CodeGenTestForEnumClasses(ECppEnum Val);
@@ -133,8 +115,6 @@ public:
 	{
 		return FString("Hello").Len();
 	}
-
-	virtual void PureVirtualImplementedFunction() PURE_VIRTUAL(, )
 
 	UFUNCTION()
 	FORCENOINLINE int32 NoInlineFunc()

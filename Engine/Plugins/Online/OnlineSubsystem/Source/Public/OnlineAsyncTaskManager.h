@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -186,10 +186,9 @@ public:
 	*
 	* @param InCallable any object that can be called with no parameters, usually a lambda
 	*/
-	explicit FOnlineAsyncTaskThreadedGenericCallable(const FString& InCallableName, const CallableType& InCallable)
+	explicit FOnlineAsyncTaskThreadedGenericCallable(const CallableType& InCallable)
 		: bHasTicked(false)
 		, CallableObject(InCallable)
-		, CallableName(InCallableName)
 	{
 	}
 
@@ -199,7 +198,7 @@ public:
 		bHasTicked = true;
 	}
 
-	virtual FString ToString() const override { return FString::Printf(TEXT("FOnlineAsyncTaskThreadedGenericCallable (%s)"), *CallableName); }
+	virtual FString ToString() const override { return FString("FOnlineAsyncTaskThreadedGenericCallable"); }
 
 	virtual bool IsDone() const override { return bHasTicked; }
 	virtual bool WasSuccessful() const override { return true; }
@@ -209,8 +208,6 @@ private:
 	bool bHasTicked;
 	/** Stored copy of the object to invoke on the game thread. */
 	CallableType CallableObject;
-	/** Name of the task to help logging */
-	FString CallableName;
 };
 
 template<class T>
@@ -434,9 +431,9 @@ public:
 	* @param InCallable the callable object to execute on the game thread.
 	*/
 	template<class CallableType>
-	void AddGenericToInQueueOnlineThread(const FString& CallableName, const CallableType& InCallable)
+	void AddGenericToInQueueOnlineThread(const CallableType& InCallable)
 	{
-		AddToInQueue(new FOnlineAsyncTaskThreadedGenericCallable<CallableType>(CallableName, InCallable));
+		AddToInQueue(new FOnlineAsyncTaskThreadedGenericCallable<CallableType>(InCallable));
 	}
 
 	/**

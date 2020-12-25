@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_GF_TRANSFORM_H
-#define PXR_BASE_GF_TRANSFORM_H
+#ifndef GF_TRANSFORM_H
+#define GF_TRANSFORM_H
 
 /// \file gf/transform.h
 /// \ingroup group_gf_LinearAlgebra
@@ -249,4 +249,4 @@ GF_API std::ostream& operator<<(std::ostream&, const GfTransform&);
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_GF_TRANSFORM_H
+#endif // GF_TRANSFORM_H

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -58,30 +58,27 @@ public class UnrealLightmass : ModuleRules
 		PrivateIncludePaths.Add("Programs/UnrealLightmass/Private/LightmassCore/Math");
 		PrivateIncludePaths.Add("Programs/UnrealLightmass/Private/LightmassCore/Templates");
 
-        // Always use the official version of IntelTBB
-        string IntelTBBLibs = Target.UEThirdPartySourceDirectory + "Intel/TBB/IntelTBB-2019u8/lib/";
-
         // EMBREE
         if (Target.Platform == UnrealTargetPlatform.Win64)
         {
-            string SDKDir = Target.UEThirdPartySourceDirectory + "Intel/Embree/Embree270/Win64/";
+            string SDKDir = Target.UEThirdPartySourceDirectory + "IntelEmbree/Embree270/Win64/";
 
             PublicIncludePaths.Add(SDKDir + "include");
             PublicAdditionalLibraries.Add(SDKDir + "lib/embree.lib");
-            RuntimeDependencies.Add("$(EngineDir)/Binaries/Win64/embree.dll");
-            RuntimeDependencies.Add("$(EngineDir)/Binaries/Win64/tbb.dll", IntelTBBLibs + "Win64/vc14/tbb.dll");
-            RuntimeDependencies.Add("$(EngineDir)/Binaries/Win64/tbbmalloc.dll", IntelTBBLibs + "Win64/vc14/tbbmalloc.dll");
-            PublicDefinitions.Add("USE_EMBREE=1");
+			RuntimeDependencies.Add("$(EngineDir)/Binaries/Win64/embree.dll");
+			RuntimeDependencies.Add("$(EngineDir)/Binaries/Win64/tbb.dll", Target.UEThirdPartySourceDirectory + "IntelEmbree/Embree2140/Win64/lib/tbb.dll"); // Take latest version to avoid overwriting the editor's copy
+			RuntimeDependencies.Add("$(EngineDir)/Binaries/Win64/tbbmalloc.dll", Target.UEThirdPartySourceDirectory + "IntelEmbree/Embree2140/Win64/lib/tbbmalloc.dll");
+			PublicDefinitions.Add("USE_EMBREE=1");
         }
 		else if (Target.Platform == UnrealTargetPlatform.Mac)
 		{
-            string SDKDir = Target.UEThirdPartySourceDirectory + "Intel/Embree/Embree270/MacOSX/";
+            string SDKDir = Target.UEThirdPartySourceDirectory + "IntelEmbree/Embree270/MacOSX/";
 
             PublicIncludePaths.Add(SDKDir + "include");
             PublicAdditionalLibraries.Add(SDKDir + "lib/libembree.2.dylib");
 			RuntimeDependencies.Add("$(EngineDir)/Binaries/Mac/libembree.2.dylib");
-			RuntimeDependencies.Add("$(EngineDir)/Binaries/Mac/libtbb.dylib", IntelTBBLibs + "Mac/libtbb.dylib"); // Take latest version to avoid overwriting the editor's copy
-			RuntimeDependencies.Add("$(EngineDir)/Binaries/Mac/libtbbmalloc.dylib", IntelTBBLibs + "Mac/libtbbmalloc.dylib");
+			RuntimeDependencies.Add("$(EngineDir)/Binaries/Mac/libtbb.dylib", Target.UEThirdPartySourceDirectory + "IntelEmbree/Embree2140/MacOSX/lib/libtbb.dylib"); // Take latest version to avoid overwriting the editor's copy
+			RuntimeDependencies.Add("$(EngineDir)/Binaries/Mac/libtbbmalloc.dylib", Target.UEThirdPartySourceDirectory + "IntelEmbree/Embree2140/MacOSX/lib/libtbbmalloc.dylib");
 			PublicDefinitions.Add("USE_EMBREE=1");
 		}
         else

@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcGeom_All_h
-#define Alembic_AbcGeom_All_h
+#ifndef _Alembic_AbcGeom_All_h_
+#define _Alembic_AbcGeom_All_h_
 
 #include <Alembic/AbcGeom/ArchiveBounds.h>
 

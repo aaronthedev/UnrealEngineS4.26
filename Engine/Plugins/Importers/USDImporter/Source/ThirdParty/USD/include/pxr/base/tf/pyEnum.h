@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_TF_PY_ENUM_H
-#define PXR_BASE_TF_PY_ENUM_H
+#ifndef TF_PYENUM_H
+#define TF_PYENUM_H
 
 /// \file tf/pyEnum.h
 /// Provide facilities for wrapping enums for script.
@@ -42,6 +42,7 @@
 #include "pxr/base/tf/singleton.h"
 #include "pxr/base/tf/stringUtils.h"
 
+#include <boost/preprocessor/stringize.hpp>
 #include <boost/python/class.hpp>
 #include <boost/python/converter/from_python.hpp>
 #include <boost/python/converter/registered.hpp>
@@ -313,13 +314,6 @@ struct Tf_TypedPyEnumWrapper : Tf_PyEnumWrapper
 TF_API
 std::string Tf_PyCleanEnumName(std::string name);
 
-// Adds attribute of given name with given value to given scope.
-// Issues a coding error if attribute by that name already existed.
-TF_API
-void Tf_PyEnumAddAttribute(boost::python::scope &s,
-                           const std::string &name,
-                           const boost::python::object &value);
-
 /// \class TfPyWrapEnum
 ///
 /// Used to wrap enum types for script.
@@ -350,21 +344,8 @@ void Tf_PyEnumAddAttribute(boost::python::scope &s,
 ///
 /// An enum may be given an explicit name by passing a string to
 /// TfPyWrapEnum's constructor.
-///
-/// If the enum is a C++11 scoped enum (aka enum class), the values will appear
-/// as Foo.Choices.{First, Second, Third} in the following example:
-/// \code
-/// enum class FooChoices {
-///    First,
-///    Second,
-///    Third
-/// };
-/// \endcode
-///
-
-// Detect scoped enums by using that the C++ standard does not allow them to
-// be converted to int implicitly.
-template <typename T, bool IsScopedEnum = !std::is_convertible<T, int>::value>
+/// 
+template <typename T>
 struct TfPyWrapEnum {
 
 private:
@@ -382,7 +363,7 @@ public:
     {
         using namespace boost::python;
 
-        const bool explicitName = !name.empty();
+        bool explicitName = !name.empty();
 
         // First, take either the given name, or the demangled type name.
         std::string enumName = explicitName ? name :
@@ -407,15 +388,6 @@ public:
                 enumName = Tf_PyCleanEnumName(enumName);
         }
         
-        if (IsScopedEnum) {
-            // Make the enumName appear in python representation
-            // for scoped enums.
-            if (!baseName.empty()) {
-                baseName += ".";
-            }
-            baseName += enumName;
-        }
-
         // Make a python type for T.
         _EnumPyClassType enumClass(enumName.c_str(), no_init);
         enumClass.setattr("_baseName", baseName);
@@ -463,14 +435,18 @@ public:
 
             // Take all the values and export them into the current scope.
             std::string valueName = wrappedValue.GetName();
-            if (IsScopedEnum) {
-                // If scoped enum, enum values appear on the enumClass ...
-                boost::python::scope s(enumClass);
-                Tf_PyEnumAddAttribute(s, valueName, pyValue);
-            } else {
-                // ... otherwise, enum values appear on the enclosing scope.
-                boost::python::scope s;
-                Tf_PyEnumAddAttribute(s, valueName, pyValue);
+            boost::python::scope s;
+
+            // Skip exporting attr if the scope already has an attribute
+            // with that name, but do make sure to place it in .allValues
+            // for the class.
+            if (PyObject_HasAttrString(s.ptr(), valueName.c_str())) {
+                TF_CODING_ERROR(
+                    "Ignoring enum value '%s'; an attribute with that "
+                    "name already exists in that scope.", valueName.c_str());
+            }
+            else {
+                s.attr(valueName.c_str()) = pyValue;
             }
 
             valueList.append(pyValue);
@@ -484,4 +460,4 @@ public:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TF_PY_ENUM_H
+#endif // TF_PYENUM_H

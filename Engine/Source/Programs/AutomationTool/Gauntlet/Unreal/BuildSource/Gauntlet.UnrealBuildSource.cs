@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -198,9 +198,10 @@ namespace Gauntlet
 					return false;
 				}
 				
-				// include binaries path for packaged builds if it exists
+				// include binaries path for packaged builds
 				string BinariesPath = Path.Combine(ProjectPath.Directory.FullName, "Binaries");
-				OutBuildPaths = Directory.Exists(BinariesPath) ? new string[] { StagedPath, BinariesPath } : new string[] { StagedPath };
+
+				OutBuildPaths = new string[] { StagedPath, BinariesPath };
 			}
 			else if (BuildDir.Name.Equals("editor", StringComparison.OrdinalIgnoreCase))
 			{
@@ -274,11 +275,11 @@ namespace Gauntlet
 			}
 
 			// Editor?
-			List<EditorBuild> EditorBuilds = CreateEditorBuilds(UnrealPath);
+			IBuild EditorBuild = CreateEditorBuild(UnrealPath);
 
-			if (EditorBuilds.Count > 0)
+			if (EditorBuild != null)
 			{
-				BuildList.AddRange(EditorBuilds);
+				BuildList.Add(EditorBuild);
 			}
 			else
 			{
@@ -395,7 +396,6 @@ namespace Gauntlet
 			Config.Platform = Role.Platform;
 			Config.Configuration = Role.Configuration;
 			Config.CommandLine = "";
-			Config.CommandLineParams = Role.CommandLineParams;
             Config.FilesToCopy = new List<UnrealFileToCopy>();
 
 			// new system of retrieving and encapsulating the info needed to install/launch. Android & Mac
@@ -417,7 +417,7 @@ namespace Gauntlet
 
 			if (string.IsNullOrEmpty(Role.CommandLine) == false)
 			{
-				Config.CommandLine += Role.CommandLine;
+				Config.CommandLine += " " + Role.CommandLine;
 			}
 
 			// Cleanup the commandline
@@ -432,11 +432,11 @@ namespace Gauntlet
 				// add in -game or -server
 				if (Role.RoleType.IsClient())
 				{
-					Config.CommandLineParams.Add("game");
+					Config.CommandLine = "-game " + Config.CommandLine;
 				}
 				else if (Role.RoleType.IsServer())
 				{
-					Config.CommandLineParams.Add("server");
+					Config.CommandLine = "-server " + Config.CommandLine;
 				}
 
 				string ProjectParam = ProjectPath.FullName;
@@ -446,13 +446,16 @@ namespace Gauntlet
 				{
 					ProjectParam = string.Format("../../../{0}/{0}.uproject", ProjectName);
 				}
-				Config.CommandLineParams.Project = ProjectParam;
+
+				// project must be first
+				Config.CommandLine = String.Format("\"{0}\"", ProjectParam) + " " + Config.CommandLine;
 			}
 
             if (Role.FilesToCopy != null)
             {
                 Config.FilesToCopy = Role.FilesToCopy;
             }
+			
 			return Config;
 		}
 
@@ -467,7 +470,7 @@ namespace Gauntlet
 			// Break down Commandline into individual tokens 
 			Dictionary<string, string> CommandlineTokens = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 			// turn Name(p1,etc) into a collection of Name|(p1,etc) groups
-			MatchCollection Matches = Regex.Matches(InCommandLine, "(?<option>\\-?[\\w\\d.:\\[\\]\\/\\\\\\?]+)(=(?<value>(\"([^\"]*)\")|(\\S+)))?");
+			MatchCollection Matches = Regex.Matches(InCommandLine, "(?<option>\\-?[\\w\\d.:\\[\\]\\/\\\\]+)(=(?<value>(\"([^\"]*)\")|(\\S+)))?");
 
 			foreach (Match M in Matches)
 			{
@@ -541,15 +544,7 @@ namespace Gauntlet
 
 			if (TargetType.UsesEditor())
 			{
-				string ExeFileName = "UE4Editor";
-				if (TargetConfiguration != UnrealTargetConfiguration.Development)
-				{
-					ExeFileName += string.Format("-{0}-{1}", TargetPlatform.ToString(), TargetConfiguration.ToString());
-				}
-
-				ExeFileName += Platform.GetExeExtension(TargetPlatform);
-
-				ExePath = string.Format("Engine/Binaries/{0}/{1}", BuildHostPlatform.Current.Platform, ExeFileName);
+				ExePath = string.Format("Engine/Binaries/{0}/UE4Editor{1}", BuildHostPlatform.Current.Platform, Platform.GetExeExtension(TargetPlatform));
 			}
 			else
 			{
@@ -590,7 +585,7 @@ namespace Gauntlet
                     {
                         Flags |= BuildFlags.Bulk;
                     }
-					else if(Globals.Params.ParseParam("notbulk"))
+					else
 					{
 						Flags |= BuildFlags.NotBulk;
 					}
@@ -694,26 +689,24 @@ namespace Gauntlet
 			return PlatformPath;
 		}
 
-		List<EditorBuild> CreateEditorBuilds(DirectoryReference InUnrealPath)
+		EditorBuild CreateEditorBuild(DirectoryReference InUnrealPath)
 		{
-			List<EditorBuild> EditorBuildList = new List<EditorBuild>();
 			if (InUnrealPath == null)
 			{
-				return EditorBuildList;
+				return null;
 			}
 
 			// check for the editor
-			List<UnrealTargetConfiguration> ConfigsToCheck = new List<UnrealTargetConfiguration>() { UnrealTargetConfiguration.Development, UnrealTargetConfiguration.DebugGame, UnrealTargetConfiguration.Debug };
-			foreach (UnrealTargetConfiguration Config in ConfigsToCheck)
+			string EditorExe = Path.Combine(InUnrealPath.FullName, GetRelativeExecutablePath(UnrealTargetRole.Editor, BuildHostPlatform.Current.Platform, UnrealTargetConfiguration.Development));
+
+			if (!Utils.SystemHelpers.ApplicationExists(EditorExe))
 			{
-				string EditorExe = Path.Combine(InUnrealPath.FullName, GetRelativeExecutablePath(UnrealTargetRole.Editor, BuildHostPlatform.Current.Platform, Config));
-				if (Utils.SystemHelpers.ApplicationExists(EditorExe))
-				{
-					EditorBuildList.Add(new EditorBuild(EditorExe, Config));
-				}
+				return null;
 			}
 
-			return EditorBuildList;
+			EditorBuild NewBuild = new EditorBuild(EditorExe);
+
+			return NewBuild;
 		}
 	}
 }

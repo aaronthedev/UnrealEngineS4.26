@@ -1,11 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "OculusHMDPrivate.h"
 #include "IHeadMountedDisplay.h"
 #include "OculusFunctionLibrary.h"
 #include "OculusHMD_VulkanExtensions.h"
-#include "OculusPluginWrapper.h"
+
 
 //-------------------------------------------------------------------------------------------------
 // FOculusHMDModule
@@ -81,7 +81,11 @@ public:
 	bool IsOVRPluginAvailable() const
 	{
 #if OCULUS_HMD_SUPPORTED_PLATFORMS
+	#if PLATFORM_WINDOWS
 		return OVRPluginHandle != nullptr;
+	#else
+		return true;
+	#endif
 #else
 		return false;
 #endif
@@ -89,13 +93,10 @@ public:
 
 #if OCULUS_HMD_SUPPORTED_PLATFORMS
 	OCULUSHMD_API static void* GetOVRPluginHandle();
-	OCULUSHMD_API static inline OculusPluginWrapper& GetPluginWrapper() { return PluginWrapper; }
 	virtual bool PoseToOrientationAndPosition(const FQuat& InOrientation, const FVector& InPosition, FQuat& OutOrientation, FVector& OutPosition) const override;
 
 protected:
 	void SetGraphicsAdapterLuid(uint64 InLuid);
-
-	static OculusPluginWrapper PluginWrapper;
 
 	bool bPreInit;
 	bool bPreInitCalled;

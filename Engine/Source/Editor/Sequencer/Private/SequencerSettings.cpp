@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SequencerSettings.h"
 #include "KeyParams.h"
@@ -28,6 +28,7 @@ USequencerSettings::USequencerSettings( const FObjectInitializer& ObjectInitiali
 	CurveValueSnapInterval = 0.1f;
 	GridSpacing = TOptional<float>();
 	bSnapCurveValueToInterval = true;
+	bLabelBrowserVisible = false;
 	bShowSelectedNodesOnly = false;
 	bRewindOnRecord = true;
 	ZoomPosition = ESequencerZoomPosition::SZP_CurrentTime;
@@ -45,10 +46,7 @@ USequencerSettings::USequencerSettings( const FObjectInitializer& ObjectInitiali
 	bShowCombinedKeyframes = true;
 	bInfiniteKeyAreas = false;
 	bShowChannelColors = false;
-	ReduceKeysTolerance = KINDA_SMALL_NUMBER;
 	bDeleteKeysWhenTrimming = true;
-	bDisableSectionsAfterBaking = true;
-	bCleanPlaybackMode = true;
 	bActivateRealtimeViewports = true;
 	bEvaluateSubSequencesInIsolation = false;
 	bRerunConstructionScripts = true;
@@ -359,6 +357,20 @@ void USequencerSettings::SetSnapCurveValueToInterval( bool InbSnapCurveValueToIn
 	}
 }
 
+bool USequencerSettings::GetLabelBrowserVisible() const
+{
+	return bLabelBrowserVisible;
+}
+
+void USequencerSettings::SetLabelBrowserVisible(bool Visible)
+{
+	if (bLabelBrowserVisible != Visible)
+	{
+		bLabelBrowserVisible = Visible;
+		SaveConfig();
+	}
+}
+
 bool USequencerSettings::GetShowSelectedNodesOnly() const
 {
 	return bShowSelectedNodesOnly;
@@ -565,20 +577,6 @@ void USequencerSettings::SetShowChannelColors(bool InbShowChannelColors)
 	}
 }
 
-float USequencerSettings::GetReduceKeysTolerance() const
-{
-	return ReduceKeysTolerance;
-}
-
-void USequencerSettings::SetReduceKeysTolerance(float InReduceKeysTolerance)
-{
-	if (ReduceKeysTolerance != InReduceKeysTolerance)
-	{
-		ReduceKeysTolerance = InReduceKeysTolerance;
-		SaveConfig();
-	}
-}
-
 bool USequencerSettings::GetDeleteKeysWhenTrimming() const
 {
 	return bDeleteKeysWhenTrimming;
@@ -589,34 +587,6 @@ void USequencerSettings::SetDeleteKeysWhenTrimming(bool bInDeleteKeysWhenTrimmin
 	if (bDeleteKeysWhenTrimming != bInDeleteKeysWhenTrimming)
 	{
 		bDeleteKeysWhenTrimming = bInDeleteKeysWhenTrimming;
-		SaveConfig();
-	}
-}
-
-bool USequencerSettings::GetDisableSectionsAfterBaking() const
-{
-	return bDisableSectionsAfterBaking;
-}
-
-void USequencerSettings::SetDisableSectionsAfterBaking(bool bInDisableSectionsAfterBaking)
-{
-	if (bDisableSectionsAfterBaking != bInDisableSectionsAfterBaking)
-	{
-		bDisableSectionsAfterBaking = bInDisableSectionsAfterBaking;
-		SaveConfig();
-	}
-}
-
-bool USequencerSettings::GetCleanPlaybackMode() const
-{
-	return bCleanPlaybackMode;
-}
-
-void USequencerSettings::SetCleanPlaybackMode(bool bInCleanPlaybackMode)
-{
-	if (bInCleanPlaybackMode != bCleanPlaybackMode)
-	{
-		bCleanPlaybackMode = bInCleanPlaybackMode;
 		SaveConfig();
 	}
 }

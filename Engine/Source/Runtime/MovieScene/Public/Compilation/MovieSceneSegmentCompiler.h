@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -16,10 +16,6 @@ class UMovieSceneSection;
  */
 struct FMovieSceneSectionData
 {
-	FMovieSceneSectionData()
-		: Section(nullptr), TemplateIndex(INDEX_NONE), Flags(ESectionEvaluationFlags::None)
-	{}
-
 	/** Constructor */
 	FMovieSceneSectionData(const UMovieSceneSection* InSection, int32 InTemplateIndex, ESectionEvaluationFlags InFlags)
 		: Section(InSection), TemplateIndex(InTemplateIndex), Flags(InFlags)

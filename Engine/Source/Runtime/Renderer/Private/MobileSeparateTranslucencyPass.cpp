@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 MobileSeparateTranslucencyPass.cpp - Mobile specific separate translucency pass
@@ -8,37 +8,47 @@ MobileSeparateTranslucencyPass.cpp - Mobile specific separate translucency pass
 #include "TranslucentRendering.h"
 #include "DynamicPrimitiveDrawing.h"
 
-bool IsMobileSeparateTranslucencyActive(const FViewInfo* Views, int32 NumViews)
-{
-	for (int32 ViewIdx = 0; ViewIdx < NumViews; ++ViewIdx)
-	{
-		if (IsMobileSeparateTranslucencyActive(Views[ViewIdx]))
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
 bool IsMobileSeparateTranslucencyActive(const FViewInfo& View)
 {
 	return View.ParallelMeshDrawCommandPasses[EMeshPass::TranslucencyAfterDOF].HasAnyDraw();
 }
 
-void AddMobileSeparateTranslucencyPass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FMobileSeparateTranslucencyInputs& Inputs)
+void FRCSeparateTranslucensyPassES2::Process(FRenderingCompositePassContext& Context)
 {
-	FRenderTargetParameters* PassParameters = GraphBuilder.AllocParameters<FRenderTargetParameters>();
-	PassParameters->RenderTargets[0] = FRenderTargetBinding(Inputs.SceneColor.Texture, ERenderTargetLoadAction::ELoad);
-	PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(Inputs.SceneDepth.Texture, ERenderTargetLoadAction::ELoad, ERenderTargetLoadAction::ELoad, FExclusiveDepthStencil::DepthRead_StencilRead);
+	SCOPED_DRAW_EVENT(Context.RHICmdList, SeparateTranslucensyPass);
 
-	GraphBuilder.AddPass(
-		RDG_EVENT_NAME("SeparateTranslucency %dx%d", View.ViewRect.Width(), View.ViewRect.Height()),
-		PassParameters,
-		ERDGPassFlags::Raster,
-		[&View](FRHICommandList& RHICmdList)
+	const FViewInfo& View = Context.View;
+
+	FSceneRenderTargets& SceneTargets = FSceneRenderTargets::Get(Context.RHICmdList);
+	const FSceneRenderTargetItem& DestRenderTarget = GetOutput(ePId_Output0)->RequestSurface(Context);
+		
+	FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, ERenderTargetActions::Load_Store);
+	RPInfo.DepthStencilRenderTarget.Action = EDepthStencilTargetActions::LoadDepthStencil_StoreDepthStencil;
+	RPInfo.DepthStencilRenderTarget.DepthStencilTarget = SceneTargets.GetSceneDepthSurface();
+	RPInfo.DepthStencilRenderTarget.ExclusiveDepthStencil = FExclusiveDepthStencil::DepthRead_StencilRead;
+	Context.RHICmdList.BeginRenderPass(RPInfo, TEXT("SeparateTranslucency"));
 	{
 		// Set the view family's render target/viewport.
-		RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
-		View.ParallelMeshDrawCommandPasses[EMeshPass::TranslucencyAfterDOF].DispatchDraw(nullptr, RHICmdList);
-	});
+		Context.SetViewportAndCallRHI(View.ViewRect);
+		View.ParallelMeshDrawCommandPasses[EMeshPass::TranslucencyAfterDOF].DispatchDraw(nullptr, Context.RHICmdList);
+	}
+	Context.RHICmdList.EndRenderPass();
+}
+
+FRenderingCompositeOutput* FRCSeparateTranslucensyPassES2::GetOutput(EPassOutputId InPassOutputId)
+{
+	// draw on top of input (scenecolor)
+	if (InPassOutputId == ePId_Output0)
+	{
+		return GetInput(EPassInputId::ePId_Input0)->GetOutput();
+	}
+
+	return nullptr;
+}
+
+FPooledRenderTargetDesc FRCSeparateTranslucensyPassES2::ComputeOutputDesc(EPassOutputId InPassOutputId) const
+{
+	FPooledRenderTargetDesc Ret = GetInput(ePId_Input0)->GetOutput()->RenderTargetDesc;
+	Ret.DebugName = TEXT("SeparateTranslucensyPassES2");
+	return Ret;
 }

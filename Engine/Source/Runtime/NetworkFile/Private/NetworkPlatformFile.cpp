@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NetworkPlatformFile.h"
 #include "Misc/CommandLine.h"
@@ -15,8 +15,6 @@
 #include "Modules/ModuleManager.h"
 #include "DerivedDataCacheInterface.h"
 #include "Misc/PackageName.h"
-#include "Misc/PathViews.h"
-#include "SocketSubsystem.h"
 
 #if ENABLE_HTTP_FOR_NETWORK_FILE
 #include "HTTPTransport.h"
@@ -223,7 +221,7 @@ void FNetworkPlatformFile::InitializeAfterSetActive()
 			InnerPlatformFile->DeleteFile(*TestSyncFile);
 			if (InnerPlatformFile->FileExists(*TestSyncFile))
 			{
-				UE_LOG(LogNetworkPlatformFile, Error, TEXT("Could not delete file sync test file %s."), *TestSyncFile);
+				UE_LOG(LogNetworkPlatformFile, Fatal, TEXT("Could not delete file sync test file %s."), *TestSyncFile);
 			}
 
 			EnsureFileIsLocal(TestSyncFile);
@@ -800,7 +798,11 @@ void FNetworkPlatformFile::FillGetFileList(FNetworkFileArchive& Payload)
 
 	TArray<FString> Directories;
 	Directories.Add(EngineRelPath);
+	Directories.Add(EngineRelPluginPath);
 	Directories.Add(GameRelPath);
+	Directories.Add(GameRelPluginPath);
+	Directories.Add(EnginePlatformExtensionsDir);
+	Directories.Add(ProjectPlatformExtensionsDir);
 
 	Payload << TargetPlatformNames;
 	Payload << GameName;
@@ -808,22 +810,11 @@ void FNetworkPlatformFile::FillGetFileList(FNetworkFileArchive& Payload)
 	Payload << GameRelPath;
 	Payload << EnginePlatformExtensionsDir;
 	Payload << ProjectPlatformExtensionsDir;
-	Payload << EngineRelPluginPath;
-	Payload << GameRelPluginPath;
 	Payload << Directories;
 	Payload << ConnectionFlags;
 
 	FString VersionInfo = GetVersionInfo();
 	Payload << VersionInfo;
-
-	bool bBindAllDummy;
-	TSharedRef<FInternetAddr> HostAddr = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->GetLocalHostAddr(*GLog, bBindAllDummy);
-	FString HostAddress = HostAddr->ToString(false);
-	Payload << HostAddress;
-
-	TMap<FString,FString> CustomPlatformData;
-	FPlatformMisc::GetNetworkFileCustomData(CustomPlatformData);
-	Payload << CustomPlatformData;
 }
 
 void FNetworkPlatformFile::ProcessServerInitialResponse(FArrayReader& InResponse, int32& OutServerPackageVersion, int32& OutServerPackageLicenseeVersion)
@@ -931,15 +922,17 @@ public:
 	/** Filename To write to**/
 	FString							Filename;
 	/** An archive to read the file contents from */
-	FArrayReader* FileArchive;
+	FArchive* FileArchive;
 	/** timestamp for the file **/
 	FDateTime ServerTimeStamp;
 	IPlatformFile& InnerPlatformFile;
 	FScopedEvent* Event;
 
+	uint8 Buffer[128 * 1024];
+
 	/** Constructor
 	*/
-	FAsyncNetworkWriteWorker(const TCHAR* InFilename, FArrayReader* InArchive, FDateTime InServerTimeStamp, IPlatformFile* InInnerPlatformFile, FScopedEvent* InEvent)
+	FAsyncNetworkWriteWorker(const TCHAR* InFilename, FArchive* InArchive, FDateTime InServerTimeStamp, IPlatformFile* InInnerPlatformFile, FScopedEvent* InEvent)
 		: Filename(InFilename)
 		, FileArchive(InArchive)
 		, ServerTimeStamp(InServerTimeStamp)
@@ -951,68 +944,69 @@ public:
 	/** Write the file  */
 	void DoWork()
 	{
-		// Read FileSize first so that the correct amount of data is read from the archive
-		// before exiting this worker.
-		uint64 FileSize;
-		*FileArchive << FileSize;
-
-		bool bCopiedExternally = (FileSize == MAX_uint64); // -1 filesize means that we already copied it via TargetPlatform
-
-		if (!bCopiedExternally && InnerPlatformFile.FileExists(*Filename) ) 
+		if (InnerPlatformFile.FileExists(*Filename))
 		{
 			InnerPlatformFile.SetReadOnly(*Filename, false);
 			InnerPlatformFile.DeleteFile(*Filename);
 		}
-
+		// Read FileSize first so that the correct amount of data is read from the archive
+		// before exiting this worker.
+		uint64 FileSize;
+		*FileArchive << FileSize;
 		if (ServerTimeStamp != FDateTime::MinValue())  // if the file didn't actually exist on the server, don't create a zero byte file
 		{
-			if (!bCopiedExternally)
+			FString TempFilename = Filename + TEXT(".tmp");
+			InnerPlatformFile.CreateDirectoryTree(*FPaths::GetPath(Filename));
 			{
-				FString TempFilename = Filename + TEXT(".tmp");
-				InnerPlatformFile.CreateDirectoryTree(*FPaths::GetPath(Filename));
+				TUniquePtr<IFileHandle> FileHandle;
+				FileHandle.Reset(InnerPlatformFile.OpenWrite(*TempFilename));
+
+				if (!FileHandle)
 				{
-					TUniquePtr<IFileHandle> FileHandle;
-					FileHandle.Reset(InnerPlatformFile.OpenWrite(*TempFilename));
+					UE_LOG(LogNetworkPlatformFile, Fatal, TEXT("Could not open file for writing '%s'."), *TempFilename);
+				}
 
-					if (!FileHandle)
-					{
-						UE_LOG(LogNetworkPlatformFile, Fatal, TEXT("Could not open file for writing '%s'."), *TempFilename);
-					}
-
-					// now write the file from bytes pulled from the archive
-					// read/write a chunk at a time
-					uint64 RemainingData = FileSize;
-					if (!FileHandle->Write(FileArchive->GetData() + FileArchive->Tell(), FileSize))
+				// now write the file from bytes pulled from the archive
+				// read/write a chunk at a time
+				uint64 RemainingData = FileSize;
+				while (RemainingData)
+				{
+					// read next chunk from archive
+					uint32 LocalSize = FPlatformMath::Min<uint32>(UE_ARRAY_COUNT(Buffer), RemainingData);
+					FileArchive->Serialize(Buffer, LocalSize);
+					// write it out
+					if (!FileHandle->Write(Buffer, LocalSize))
 					{
 						UE_LOG(LogNetworkPlatformFile, Fatal, TEXT("Could not write '%s'."), *TempFilename);
 					}
-					FileArchive->Seek(FileArchive->Tell() + FileSize);
 
-					// delete async write archives
-					if (Event)
-					{
-						delete FileArchive;
-					}
-
-					if (InnerPlatformFile.FileSize(*TempFilename) != FileSize)
-					{
-						UE_LOG(LogNetworkPlatformFile, Fatal, TEXT("Did not write '%s'."), *TempFilename);
-					}
+					// decrement how much is left
+					RemainingData -= LocalSize;
 				}
 
-				// rename from temp filename to real filename
-				InnerPlatformFile.MoveFile(*Filename, *TempFilename);
+				// delete async write archives
+				if (Event)
+				{
+					delete FileArchive;
+				}
 
-				// now set the server's timestamp on the local file (so we can make valid comparisons)
-				InnerPlatformFile.SetTimeStamp(*Filename, ServerTimeStamp);
-
-			    FDateTime CheckTime = InnerPlatformFile.GetTimeStamp(*Filename);
-			    if (CheckTime < ServerTimeStamp)
-			    {
-				    UE_LOG(LogNetworkPlatformFile, Fatal, TEXT("Could Not Set Timestamp '%s'  %s < %s."), *Filename, *CheckTime.ToString(), *ServerTimeStamp.ToString());
-			    }
+				if (InnerPlatformFile.FileSize(*TempFilename) != FileSize)
+				{
+					UE_LOG(LogNetworkPlatformFile, Fatal, TEXT("Did not write '%s'."), *TempFilename);
+				}
 			}
 
+			// rename from temp filename to real filename
+			InnerPlatformFile.MoveFile(*Filename, *TempFilename);
+
+			// now set the server's timestamp on the local file (so we can make valid comparisons)
+			InnerPlatformFile.SetTimeStamp(*Filename, ServerTimeStamp);
+
+			FDateTime CheckTime = InnerPlatformFile.GetTimeStamp(*Filename);
+			if (CheckTime < ServerTimeStamp)
+			{
+				UE_LOG(LogNetworkPlatformFile, Fatal, TEXT("Could Not Set Timestamp '%s'  %s < %s."), *Filename, *CheckTime.ToString(), *ServerTimeStamp.ToString());
+			}
 		}
 		if (Event)
 		{
@@ -1031,15 +1025,15 @@ public:
 };
 
 /**
- * Write a file async or sync, with the data coming from a FArrayReader
+ * Write a file async or sync, with the data coming from a TArray or an FArchive/Filesize
  */
-void SyncWriteFile(FArrayReader* Archive, const FString& Filename, FDateTime ServerTimeStamp, IPlatformFile& InnerPlatformFile)
+void SyncWriteFile(FArchive* Archive, const FString& Filename, FDateTime ServerTimeStamp, IPlatformFile& InnerPlatformFile)
 {
 	FScopedEvent* NullEvent = NULL;
 	(new FAutoDeleteAsyncTask<FAsyncNetworkWriteWorker>(*Filename, Archive, ServerTimeStamp, &InnerPlatformFile, NullEvent))->StartSynchronousTask();
 }
 
-void AsyncWriteFile(FArrayReader* Archive, const FString& Filename, FDateTime ServerTimeStamp, IPlatformFile& InnerPlatformFile, FScopedEvent* Event = NULL)
+void AsyncWriteFile(FArchive* Archive, const FString& Filename, FDateTime ServerTimeStamp, IPlatformFile& InnerPlatformFile, FScopedEvent* Event = NULL)
 {
 	(new FAutoDeleteAsyncTask<FAsyncNetworkWriteWorker>(*Filename, Archive, ServerTimeStamp, &InnerPlatformFile, Event))->StartBackgroundTask();
 }
@@ -1153,27 +1147,27 @@ void FNetworkPlatformFile::EnsureFileIsLocal(const FString& Filename)
 		{
 			return;
 		}
+	}
 
-		bool bIncrementedPackageWaits = false;
-		if (FinishedAsyncNetworkReadUnsolicitedFiles)
+	bool bIncrimentedPackageWaits = false;
+	if (FinishedAsyncNetworkReadUnsolicitedFiles)
+	{
+		if (FinishedAsyncNetworkReadUnsolicitedFiles->Get() == 0)
 		{
-			if (FinishedAsyncNetworkReadUnsolicitedFiles->Get() == 0)
-			{
-				++UnsolicitedPackageWaits;
-				bIncrementedPackageWaits = true;
-			}
-			delete FinishedAsyncNetworkReadUnsolicitedFiles; // wait here for any async unsolicited files to finish reading being read from the network 
-			FinishedAsyncNetworkReadUnsolicitedFiles = NULL;
+			++UnsolicitedPackageWaits;
+			bIncrimentedPackageWaits = true;
 		}
-		if (FinishedAsyncWriteUnsolicitedFiles)
+		delete FinishedAsyncNetworkReadUnsolicitedFiles; // wait here for any async unsolicited files to finish reading being read from the network 
+		FinishedAsyncNetworkReadUnsolicitedFiles = NULL;
+	}
+	if (FinishedAsyncWriteUnsolicitedFiles)
+	{
+		if (bIncrimentedPackageWaits == false && FinishedAsyncNetworkReadUnsolicitedFiles->Get() == 0) //-V522
 		{
-			if (bIncrementedPackageWaits == false && FinishedAsyncWriteUnsolicitedFiles->Get() == 0) //-V522
-			{
-				++UnsolicitedPackageWaits;
-			}
-			delete FinishedAsyncWriteUnsolicitedFiles; // wait here for any async unsolicited files to finish writing to disk
-			FinishedAsyncWriteUnsolicitedFiles = NULL;
+			++UnsolicitedPackageWaits;
 		}
+		delete FinishedAsyncWriteUnsolicitedFiles; // wait here for any async unsolicited files to finish writing to disk
+		FinishedAsyncWriteUnsolicitedFiles = NULL;
 	}
 
 	FScopeLock ScopeLock(&SynchronizationObject);
@@ -1241,18 +1235,6 @@ void FNetworkPlatformFile::EnsureFileIsLocal(const FString& Filename)
 		return;
 	}
 
-	if (bIsCookable && (FPackageName::GetAssetPackageExtension() == Extension))
-	{
-		// This is meant to handle the fact that FindPackageFileWithoutExtension will attempt to load a *.umap file first as a *.uasset file
-		// Instead of needlessly asking the COTF server to load and cook the map again, this will just see the *.umap in the local cache, and
-		// handle the request for the *.uasset version of the file as being not present.
-		FString AlternatePackageName = FPaths::ChangeExtension(Filename, FPackageName::GetMapPackageExtension());
-		if (InnerPlatformFile->FileExists(*AlternatePackageName))
-		{
-			return;
-		}
-	}
-
 	// send the filename over (cast away const here because we know this << will not modify the string)
 	FNetworkFileArchive Payload(NFS_Messages::SyncFile);
 	Payload << (FString&)Filename;
@@ -1277,7 +1259,7 @@ void FNetworkPlatformFile::EnsureFileIsLocal(const FString& Filename)
 	FString ReplyFile;
 	Response << ReplyFile;
 	ConvertServerFilenameToClientFilename(ReplyFile);
-	check((ReplyFile == Filename) || (FPackageName::IsPackageFilename(Filename) && (FPathViews::GetBaseFilename(Filename) == FPathViews::GetBaseFilename(ReplyFile))) );
+	check(ReplyFile == Filename);
 
 	// get the server file timestamp
 	FDateTime ServerTimeStamp;
@@ -1300,49 +1282,12 @@ void FNetworkPlatformFile::EnsureFileIsLocal(const FString& Filename)
 
 	if (NumUnsolictedFiles)
 	{
+		TotalUnsolicitedPackages += NumUnsolictedFiles;
 		check( FinishedAsyncNetworkReadUnsolicitedFiles == NULL );
 		check( FinishedAsyncWriteUnsolicitedFiles == NULL );
-		TotalUnsolicitedPackages += NumUnsolictedFiles;
-
-		// There are problems with some platforms where writing files can be slow.  In this situation,
-		// the async writing of files can become a bottleneck and 70+ async writes can be spawned as
-		// runnables and at any given moment an indeterminate number of them could be trying to write
-		// at the same time.  Because this is undesirable, the async writing of unsolicited files is disable
-		// for the time being until it can be changed to be more efficient at writing and can be
-		// throttled for simultaneous write attempts.
-		constexpr bool bWriteUnsolicitedAsync = false;
-
-		if (bWriteUnsolicitedAsync)
-		{
-			FinishedAsyncNetworkReadUnsolicitedFiles = new FScopedEvent;
-			FinishedAsyncWriteUnsolicitedFiles = new FScopedEvent;
-			AsyncReadUnsolicitedFiles(NumUnsolictedFiles, *this, *InnerPlatformFile, ServerEngineDir, ServerProjectDir, ServerEnginePlatformExtensionsDir, ServerProjectPlatformExtensionsDir, FinishedAsyncNetworkReadUnsolicitedFiles, FinishedAsyncWriteUnsolicitedFiles);
-		}
-		else
-		{
-			for (int32 Index = 0; Index < NumUnsolictedFiles; Index++)
-			{
-				FArrayReader UnsolictedResponse;
-				if (!ReceiveResponse(UnsolictedResponse))
-				{
-					UE_LOG(LogNetworkPlatformFile, Fatal, TEXT("Receive failure!"));
-					return;
-				}
-				FString UnsolictedReplyFile;
-				UnsolictedResponse << UnsolictedReplyFile;
-
-				if (!UnsolictedReplyFile.IsEmpty())
-				{
-					ConvertServerFilenameToClientFilename(UnsolictedReplyFile);
-					// get the server file timestamp
-					FDateTime UnsolictedServerTimeStamp;
-					UnsolictedResponse << UnsolictedServerTimeStamp;
-
-					// write the file by pulling out of the FArrayReader
-					SyncWriteFile(&UnsolictedResponse, UnsolictedReplyFile, UnsolictedServerTimeStamp, *InnerPlatformFile);
-				}
-			}
-		}
+		FinishedAsyncNetworkReadUnsolicitedFiles = new FScopedEvent;
+		FinishedAsyncWriteUnsolicitedFiles = new FScopedEvent;
+		AsyncReadUnsolicitedFiles(NumUnsolictedFiles, *this, *InnerPlatformFile, ServerEngineDir, ServerProjectDir, ServerEnginePlatformExtensionsDir, ServerProjectPlatformExtensionsDir, FinishedAsyncNetworkReadUnsolicitedFiles, FinishedAsyncWriteUnsolicitedFiles);
 	}
 	
 	ThisTime = 1000.0f * float(FPlatformTime::Seconds() - StartTime);

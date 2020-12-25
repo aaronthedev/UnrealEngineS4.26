@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -30,6 +30,7 @@ public class MaterialUtilities : ModuleRules
         PublicDependencyModuleNames.AddRange(
 			new string [] {
                  "MeshDescription",
+                 "MeshDescriptionOperations",
 				 "StaticMeshDescription"
 			}
 		);      

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,7 +7,7 @@
 #include "Modules/ModuleManager.h"
 #include "UObject/Class.h"
 #include "AndroidRuntimeSettings.h"
-#include "OculusPluginWrapper.h"
+#include "OVR_Plugin.h"
 
 enum EBuildStage
 {
@@ -26,7 +26,6 @@ class FOculusBuildAnalytics
 public:
 	static FOculusBuildAnalytics* GetInstance();
 	static void Shutdown();
-	static bool IsOculusHMDAvailable();
 
 	void RegisterLauncherCallback();
 	void OnTelemetryToggled(bool Enabled);

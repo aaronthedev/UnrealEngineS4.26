@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RigUnit_TransformConstraint.h"
 #include "Units/RigUnitContext.h"
@@ -7,58 +7,28 @@
 
 FRigUnit_TransformConstraint_Execute()
 {
-	FRigUnit_TransformConstraintPerItem::StaticExecute(
-		RigVMExecuteContext, 
-		FRigElementKey(Bone, ERigElementType::Bone),
-		BaseTransformSpace,
-		BaseTransform,
-		FRigElementKey(BaseBone, ERigElementType::Bone),
-		Targets,
-		bUseInitialTransforms,
-		WorkData,
-		ExecuteContext, 
-		Context);
-}
-
-FRigUnit_TransformConstraintPerItem_Execute()
-{
     DECLARE_SCOPE_HIERARCHICAL_COUNTER_RIGUNIT()
 
 	TArray<FConstraintData>&	ConstraintData = WorkData.ConstraintData;
 	TMap<int32, int32>& ConstraintDataToTargets = WorkData.ConstraintDataToTargets;
 
-	auto SetupConstraintData = [&]()
+	if (Context.State == EControlRigState::Init)
 	{
 		ConstraintData.Reset();
 		ConstraintDataToTargets.Reset();
 
-		FRigHierarchyContainer* Hierarchy = ExecuteContext.Hierarchy;
-		if(Hierarchy)
+		FRigBoneHierarchy* Hierarchy = ExecuteContext.GetBones();
+		if (Hierarchy)
 		{
-			if (Item.IsValid())
+			int32 BoneIndex = Hierarchy->GetIndex(Bone);
+			if (BoneIndex != INDEX_NONE)
 			{
 				const int32 TargetNum = Targets.Num();
 				if (TargetNum > 0)
 				{
-					const FTransform SourceTransform = bUseInitialTransforms ? Hierarchy->GetInitialGlobalTransform(Item) : Hierarchy->GetGlobalTransform(Item);
-					FTransform InputBaseTransform =
-						bUseInitialTransforms ?
-						UtilityHelpers::GetBaseTransformByMode(
-							BaseTransformSpace,
-							[Hierarchy](const FRigElementKey& Item) { return Hierarchy->GetInitialGlobalTransform(Item); },
-							Hierarchy->GetParentKey(Item),
-							BaseItem,
-							BaseTransform
-						) :
-						UtilityHelpers::GetBaseTransformByMode(
-							BaseTransformSpace,
-							[Hierarchy](const FRigElementKey& Item) { return Hierarchy->GetGlobalTransform(Item); },
-							Hierarchy->GetParentKey(Item),
-							BaseItem,
-							BaseTransform
-						);
-
-
+					const FTransform SourceTransform = Hierarchy->GetGlobalTransform(BoneIndex);
+					FTransform InputBaseTransform = UtilityHelpers::GetBaseTransformByMode(BaseTransformSpace, [Hierarchy](const FName& JointName) { return Hierarchy->GetGlobalTransform(JointName); },
+						(*Hierarchy)[BoneIndex].ParentName, BaseBone, BaseTransform);
 					for (int32 TargetIndex = 0; TargetIndex < TargetNum; ++TargetIndex)
 					{
 						// talk to Rob about the implication of support both of this
@@ -91,24 +61,14 @@ FRigUnit_TransformConstraintPerItem_Execute()
 				}
 			}
 		}
-	};
-
-	if (Context.State == EControlRigState::Init)
-	{
-		ConstraintData.Reset();
-		ConstraintDataToTargets.Reset();
 	}
 	else if (Context.State == EControlRigState::Update)
 	{
-		FRigHierarchyContainer* Hierarchy = ExecuteContext.Hierarchy;
+		FRigBoneHierarchy* Hierarchy = ExecuteContext.GetBones();
 		if (Hierarchy)
 		{
-			if ((ConstraintData.Num() != Targets.Num()))
-			{
-				SetupConstraintData();
-			}
-
-			if (Item.IsValid())
+			int32 BoneIndex = Hierarchy->GetIndex(Bone);
+			if (BoneIndex != INDEX_NONE)
 			{
 				const int32 TargetNum = Targets.Num();
 				if (TargetNum > 0 && ConstraintData.Num() > 0)
@@ -116,31 +76,27 @@ FRigUnit_TransformConstraintPerItem_Execute()
 					for (int32 ConstraintIndex= 0; ConstraintIndex< ConstraintData.Num(); ++ConstraintIndex)
 					{
 						// for now just try translate
-						const int32* TargetIndexPtr = ConstraintDataToTargets.Find(ConstraintIndex);
-						if (TargetIndexPtr)
-						{
-							const int32 TargetIndex = *TargetIndexPtr;
-							ConstraintData[ConstraintIndex].CurrentTransform = Targets[TargetIndex].Transform;
-							ConstraintData[ConstraintIndex].Weight = Targets[TargetIndex].Weight;
-						}
+						const int32 TargetIndex = *ConstraintDataToTargets.Find(ConstraintIndex);
+						ConstraintData[ConstraintIndex].CurrentTransform = Targets[TargetIndex].Transform;
+						ConstraintData[ConstraintIndex].Weight = Targets[TargetIndex].Weight;
 					}
 
-					FTransform InputBaseTransform = UtilityHelpers::GetBaseTransformByMode(BaseTransformSpace, [Hierarchy](const FRigElementKey& Item) { return Hierarchy->GetGlobalTransform(Item); },
-							Hierarchy->GetParentKey(Item), BaseItem, BaseTransform);
+					FTransform InputBaseTransform = UtilityHelpers::GetBaseTransformByMode(BaseTransformSpace, [Hierarchy](const FName& JointName) { return Hierarchy->GetGlobalTransform(JointName); },
+							(*Hierarchy)[BoneIndex].ParentName, BaseBone, BaseTransform);
 
-					FTransform SourceTransform = Hierarchy->GetGlobalTransform(Item);
+					FTransform SourceTransform = Hierarchy->GetGlobalTransform(BoneIndex);
 
 					// @todo: ignore maintain offset for now
 					FTransform ConstrainedTransform = AnimationCore::SolveConstraints(SourceTransform, InputBaseTransform, ConstraintData);
 
-					Hierarchy->SetGlobalTransform(Item, ConstrainedTransform);
+					Hierarchy->SetGlobalTransform(BoneIndex, ConstrainedTransform);
 				}
 			}
 		}
 	}
 }
 
-void FRigUnit_TransformConstraintPerItem::AddConstraintData(const FRigVMFixedArray<FConstraintTarget>& Targets, ETransformConstraintType ConstraintType, const int32 TargetIndex, const FTransform& SourceTransform, const FTransform& InBaseTransform, TArray<FConstraintData>& OutConstraintData, TMap<int32, int32>& OutConstraintDataToTargets)
+void FRigUnit_TransformConstraint::AddConstraintData(const TArrayView<FConstraintTarget>& Targets, ETransformConstraintType ConstraintType, const int32 TargetIndex, const FTransform& SourceTransform, const FTransform& InBaseTransform, TArray<FConstraintData>& OutConstraintData, TMap<int32, int32>& OutConstraintDataToTargets)
 {
 	const FConstraintTarget& Target = Targets[TargetIndex];
 

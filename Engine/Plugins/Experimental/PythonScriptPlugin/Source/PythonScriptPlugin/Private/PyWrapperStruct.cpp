@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PyWrapperStruct.h"
 #include "PyWrapperTypeRegistry.h"
@@ -8,7 +8,6 @@
 #include "UObject/Package.h"
 #include "UObject/Class.h"
 #include "UObject/PropertyPortFlags.h"
-#include "Misc/ScopeExit.h"
 #include "Templates/Casts.h"
 #include "Engine/UserDefinedStruct.h"
 
@@ -278,7 +277,7 @@ FPyWrapperStruct* FPyWrapperStruct::CastPyObject(PyObject* InPyObject, PyTypeObj
 					break;
 				}
 
-				const int Result = PyUtil::SetPropertyValue(NewStruct->ScriptStruct, NewStruct->StructInstance, SequenceItem, InitParam.ParamProp, InitParam.ParamName.GetData(), nullptr, 0, false, *PyUtil::GetErrorContext(NewStruct.Get()));
+				const int Result = PyUtil::SetPropertyValue(NewStruct->ScriptStruct, NewStruct->StructInstance, SequenceItem, InitParam.ParamProp, InitParam.ParamName.GetData(), FPyWrapperOwnerContext(), 0, false, *PyUtil::GetErrorContext(NewStruct.Get()));
 				if (Result != 0)
 				{
 					return nullptr;
@@ -318,7 +317,7 @@ FPyWrapperStruct* FPyWrapperStruct::CastPyObject(PyObject* InPyObject, PyTypeObj
 			PyObject* MappingItem = PyMapping_GetItemString(InPyObject, (char*)InitParam.ParamName.GetData());
 			if (MappingItem)
 			{
-				const int Result = PyUtil::SetPropertyValue(NewStruct->ScriptStruct, NewStruct->StructInstance, MappingItem, InitParam.ParamProp, InitParam.ParamName.GetData(), nullptr, 0, false, *PyUtil::GetErrorContext(NewStruct.Get()));
+				const int Result = PyUtil::SetPropertyValue(NewStruct->ScriptStruct, NewStruct->StructInstance, MappingItem, InitParam.ParamProp, InitParam.ParamName.GetData(), FPyWrapperOwnerContext(), 0, false, *PyUtil::GetErrorContext(NewStruct.Get()));
 				if (Result != 0)
 				{
 					return nullptr;
@@ -434,7 +433,7 @@ PyObject* FPyWrapperStruct::GetPropertyValue(FPyWrapperStruct* InSelf, const PyG
 	return PyGenUtil::GetPropertyValue(InSelf->ScriptStruct, InSelf->StructInstance, InPropDef, InPythonAttrName, (PyObject*)InSelf, *PyUtil::GetErrorContext(InSelf));
 }
 
-int FPyWrapperStruct::SetPropertyValue(FPyWrapperStruct* InSelf, PyObject* InValue, const PyGenUtil::FGeneratedWrappedProperty& InPropDef, const char* InPythonAttrName, const EPropertyAccessChangeNotifyMode InNotifyMode, const uint64 InReadOnlyFlags)
+int FPyWrapperStruct::SetPropertyValue(FPyWrapperStruct* InSelf, PyObject* InValue, const PyGenUtil::FGeneratedWrappedProperty& InPropDef, const char* InPythonAttrName, const bool InNotifyChange, const uint64 InReadOnlyFlags)
 {
 	if (!ValidateInternalState(InSelf))
 	{
@@ -445,11 +444,11 @@ int FPyWrapperStruct::SetPropertyValue(FPyWrapperStruct* InSelf, PyObject* InVal
 	bool OwnerIsTemplate = false;
 	if (const UObject* OwnerObject = PyUtil::GetOwnerObject((PyObject*)InSelf))
 	{
-		OwnerIsTemplate = PropertyAccessUtil::IsObjectTemplate(OwnerObject);
+		OwnerIsTemplate = OwnerObject->IsTemplate() || OwnerObject->IsAsset();
 	}
 
-	const TUniquePtr<FPropertyAccessChangeNotify> ChangeNotify = FPyWrapperOwnerContext((PyObject*)InSelf, InPropDef.Prop).BuildChangeNotify(InNotifyMode);
-	return PyGenUtil::SetPropertyValue(InSelf->ScriptStruct, InSelf->StructInstance, InValue, InPropDef, InPythonAttrName, ChangeNotify.Get(), InReadOnlyFlags, OwnerIsTemplate, *PyUtil::GetErrorContext(InSelf));
+	const FPyWrapperOwnerContext ChangeOwner = InNotifyChange ? FPyWrapperOwnerContext((PyObject*)InSelf, InPropDef.Prop) : FPyWrapperOwnerContext();
+	return PyGenUtil::SetPropertyValue(InSelf->ScriptStruct, InSelf->StructInstance, InValue, InPropDef, InPythonAttrName, ChangeOwner, InReadOnlyFlags, OwnerIsTemplate, *PyUtil::GetErrorContext(InSelf));
 }
 
 int FPyWrapperStruct::CallMakeFunction_Impl(FPyWrapperStruct* InSelf, PyObject* InArgs, PyObject* InKwds, const PyGenUtil::FGeneratedWrappedFunction& InFuncDef)
@@ -485,7 +484,7 @@ int FPyWrapperStruct::CallMakeFunction_Impl(FPyWrapperStruct* InSelf, PyObject* 
 		{
 			return -1;
 		}
-		if (ensureAlways(InFuncDef.OutputParams.Num() == 1 && CastField<FStructProperty>(InFuncDef.OutputParams[0].ParamProp) && CastFieldChecked<const FStructProperty>(InFuncDef.OutputParams[0].ParamProp)->Struct->IsChildOf(InSelf->ScriptStruct)))
+		if (ensureAlways(InFuncDef.OutputParams.Num() == 1 && Cast<UStructProperty>(InFuncDef.OutputParams[0].ParamProp) && CastChecked<UStructProperty>(InFuncDef.OutputParams[0].ParamProp)->Struct->IsChildOf(InSelf->ScriptStruct)))
 		{
 			// Copy the result back onto ourself
 			const PyGenUtil::FGeneratedWrappedMethodParameter& ReturnParam = InFuncDef.OutputParams[0];
@@ -505,12 +504,12 @@ PyObject* FPyWrapperStruct::CallBreakFunction_Impl(FPyWrapperStruct* InSelf, con
 		UObject* Obj = Class->GetDefaultObject();
 
 		FStructOnScope FuncParams(InFuncDef.Func);
-		if (ensureAlways(InFuncDef.InputParams.Num() == 1 && CastField<FStructProperty>(InFuncDef.InputParams[0].ParamProp) && InSelf->ScriptStruct->IsChildOf(CastFieldChecked<const FStructProperty>(InFuncDef.InputParams[0].ParamProp)->Struct)))
+		if (ensureAlways(InFuncDef.InputParams.Num() == 1 && Cast<UStructProperty>(InFuncDef.InputParams[0].ParamProp) && InSelf->ScriptStruct->IsChildOf(CastChecked<UStructProperty>(InFuncDef.InputParams[0].ParamProp)->Struct)))
 		{
 			// Copy us as the 'self' argument
 			const PyGenUtil::FGeneratedWrappedMethodParameter& SelfParam = InFuncDef.InputParams[0];
 			void* SelfArgInstance = SelfParam.ParamProp->ContainerPtrToValuePtr<void>(FuncParams.GetStructMemory());
-			CastFieldChecked<const FStructProperty>(SelfParam.ParamProp)->Struct->CopyScriptStruct(SelfArgInstance, InSelf->StructInstance);
+			CastChecked<UStructProperty>(SelfParam.ParamProp)->Struct->CopyScriptStruct(SelfArgInstance, InSelf->StructInstance);
 		}
 		if (!PyUtil::InvokeFunctionCall(Obj, InFuncDef.Func, FuncParams.GetStructMemory(), *PyUtil::GetErrorContext(InSelf)))
 		{
@@ -560,10 +559,10 @@ PyObject* FPyWrapperStruct::CallDynamicFunction_Impl(FPyWrapperStruct* InSelf, P
 
 		FStructOnScope FuncParams(InFuncDef.Func);
 		PyGenUtil::ApplyParamDefaults(FuncParams.GetStructMemory(), InFuncDef.InputParams);
-		if (ensureAlways(CastField<FStructProperty>(InSelfParam.ParamProp) && InSelf->ScriptStruct->IsChildOf(CastFieldChecked<const FStructProperty>(InSelfParam.ParamProp)->Struct)))
+		if (ensureAlways(Cast<UStructProperty>(InSelfParam.ParamProp) && InSelf->ScriptStruct->IsChildOf(CastChecked<UStructProperty>(InSelfParam.ParamProp)->Struct)))
 		{
 			void* SelfArgInstance = InSelfParam.ParamProp->ContainerPtrToValuePtr<void>(FuncParams.GetStructMemory());
-			CastFieldChecked<const FStructProperty>(InSelfParam.ParamProp)->Struct->CopyScriptStruct(SelfArgInstance, InSelf->StructInstance);
+			CastChecked<UStructProperty>(InSelfParam.ParamProp)->Struct->CopyScriptStruct(SelfArgInstance, InSelf->StructInstance);
 		}
 		for (int32 ParamIndex = 0; ParamIndex < Params.Num(); ++ParamIndex)
 		{
@@ -584,7 +583,7 @@ PyObject* FPyWrapperStruct::CallDynamicFunction_Impl(FPyWrapperStruct* InSelf, P
 		{
 			return nullptr;
 		}
-		if (InSelfReturn.ParamProp && ensureAlways(CastField<FStructProperty>(InSelfReturn.ParamProp) && CastFieldChecked<const FStructProperty>(InSelfReturn.ParamProp)->Struct->IsChildOf(InSelf->ScriptStruct)))
+		if (InSelfReturn.ParamProp && ensureAlways(Cast<UStructProperty>(InSelfReturn.ParamProp) && CastChecked<UStructProperty>(InSelfReturn.ParamProp)->Struct->IsChildOf(InSelf->ScriptStruct)))
 		{
 			// Copy the 'self' return value back onto ourself
 			const void* SelfReturnInstance = InSelfReturn.ParamProp->ContainerPtrToValuePtr<void>(FuncParams.GetStructMemory());
@@ -632,7 +631,7 @@ PyObject* FPyWrapperStruct::CallOperatorFunction_Impl(FPyWrapperStruct* InSelf, 
 		PyGenUtil::ApplyParamDefaults(FuncParams.GetStructMemory(), InOpFunc.AdditionalParams);
 		if (InOpFunc.OtherParam.ParamProp)
 		{
-			const FPyConversionResult RHSResult = PyConversion::NativizeProperty_InContainer(InRHS, InOpFunc.OtherParam.ParamProp, FuncParams.GetStructMemory(), 0, nullptr, PyConversion::ESetErrorState::No);
+			const FPyConversionResult RHSResult = PyConversion::NativizeProperty_InContainer(InRHS, InOpFunc.OtherParam.ParamProp, FuncParams.GetStructMemory(), 0, FPyWrapperOwnerContext(), PyConversion::ESetErrorState::No);
 			SetOptionalPyConversionResult(RHSResult, OutRHSConversionResult);
 
 			if (!RHSResult)
@@ -645,10 +644,10 @@ PyObject* FPyWrapperStruct::CallOperatorFunction_Impl(FPyWrapperStruct* InSelf, 
 				return nullptr;
 			}
 		}
-		if (ensureAlways(CastField<FStructProperty>(InOpFunc.SelfParam.ParamProp) && InSelf->ScriptStruct->IsChildOf(CastFieldChecked<const FStructProperty>(InOpFunc.SelfParam.ParamProp)->Struct)))
+		if (ensureAlways(Cast<UStructProperty>(InOpFunc.SelfParam.ParamProp) && InSelf->ScriptStruct->IsChildOf(CastChecked<UStructProperty>(InOpFunc.SelfParam.ParamProp)->Struct)))
 		{
 			void* StructArgInstance = InOpFunc.SelfParam.ParamProp->ContainerPtrToValuePtr<void>(FuncParams.GetStructMemory());
-			CastFieldChecked<const FStructProperty>(InOpFunc.SelfParam.ParamProp)->Struct->CopyScriptStruct(StructArgInstance, InSelf->StructInstance);
+			CastChecked<UStructProperty>(InOpFunc.SelfParam.ParamProp)->Struct->CopyScriptStruct(StructArgInstance, InSelf->StructInstance);
 		}
 		if (!PyUtil::InvokeFunctionCall(Obj, InOpFunc.Func, FuncParams.GetStructMemory(), *PyUtil::GetErrorContext(InSelf)))
 		{
@@ -658,7 +657,7 @@ PyObject* FPyWrapperStruct::CallOperatorFunction_Impl(FPyWrapperStruct* InSelf, 
 		PyObject* ReturnPyObj = nullptr;
 		if (InOpFunc.SelfReturn.ParamProp)
 		{
-			if (ensureAlways(CastField<FStructProperty>(InOpFunc.SelfReturn.ParamProp) && CastFieldChecked<const FStructProperty>(InOpFunc.SelfReturn.ParamProp)->Struct->IsChildOf(InSelf->ScriptStruct)))
+			if (ensureAlways(Cast<UStructProperty>(InOpFunc.SelfReturn.ParamProp) && CastChecked<UStructProperty>(InOpFunc.SelfReturn.ParamProp)->Struct->IsChildOf(InSelf->ScriptStruct)))
 			{
 				// Copy the 'self' return value back onto ourself
 				const void* SelfReturnInstance = InOpFunc.SelfReturn.ParamProp->ContainerPtrToValuePtr<void>(FuncParams.GetStructMemory());
@@ -990,40 +989,6 @@ PyTypeObject InitializePyWrapperStructType()
 			return FPyWrapperStruct::BreakStruct(InSelf);
 		}
 
-		static PyGenUtil::FGeneratedWrappedProperty FindEditorPropertyImpl(FPyWrapperStruct* InSelf, const FName InPythonPropName)
-		{
-			PyGenUtil::FGeneratedWrappedProperty WrappedPropDef;
-
-			const FName ResolvedName = FPyWrapperStructMetaData::ResolvePropertyName(InSelf, InPythonPropName);
-			const FProperty* ResolvedProp = InSelf->ScriptStruct->FindPropertyByName(ResolvedName);
-			if (!ResolvedProp)
-			{
-				PyUtil::SetPythonError(PyExc_Exception, InSelf, *FString::Printf(TEXT("Failed to find property '%s' for attribute '%s' on '%s'"), *ResolvedName.ToString(), *InPythonPropName.ToString(), *InSelf->ScriptStruct->GetName()));
-				return WrappedPropDef;
-			}
-
-			TOptional<FString> PropDeprecationMessage;
-			{
-				FString PropDeprecationMessageStr;
-				if (FPyWrapperStructMetaData::IsPropertyDeprecated(InSelf, InPythonPropName, &PropDeprecationMessageStr))
-				{
-					PropDeprecationMessage = MoveTemp(PropDeprecationMessageStr);
-				}
-			}
-
-			if (PropDeprecationMessage.IsSet())
-			{
-				WrappedPropDef.SetProperty(ResolvedProp, PyGenUtil::FGeneratedWrappedProperty::SPF_None);
-				WrappedPropDef.DeprecationMessage = MoveTemp(PropDeprecationMessage);
-			}
-			else
-			{
-				WrappedPropDef.SetProperty(ResolvedProp);
-			}
-
-			return WrappedPropDef;
-		}
-
 		static PyObject* GetEditorProperty(FPyWrapperStruct* InSelf, PyObject* InArgs, PyObject* InKwds)
 		{
 			if (!FPyWrapperStruct::ValidateInternalState(InSelf))
@@ -1046,10 +1011,32 @@ PyTypeObject InitializePyWrapperStructType()
 				return nullptr;
 			}
 
-			const PyGenUtil::FGeneratedWrappedProperty WrappedPropDef = FindEditorPropertyImpl(InSelf, Name);
-			if (!WrappedPropDef.Prop)
+			const FName ResolvedName = FPyWrapperStructMetaData::ResolvePropertyName(InSelf, Name);
+			const UProperty* ResolvedProp = InSelf->ScriptStruct->FindPropertyByName(ResolvedName);
+			if (!ResolvedProp)
 			{
+				PyUtil::SetPythonError(PyExc_Exception, InSelf, *FString::Printf(TEXT("Failed to find property '%s' for attribute '%s' on '%s'"), *ResolvedName.ToString(), *Name.ToString(), *InSelf->ScriptStruct->GetName()));
 				return nullptr;
+			}
+			
+			TOptional<FString> PropDeprecationMessage;
+			{
+				FString PropDeprecationMessageStr;
+				if (FPyWrapperStructMetaData::IsPropertyDeprecated(InSelf, Name, &PropDeprecationMessageStr))
+				{
+					PropDeprecationMessage = MoveTemp(PropDeprecationMessageStr);
+				}
+			}
+
+			PyGenUtil::FGeneratedWrappedProperty WrappedPropDef;
+			if (PropDeprecationMessage.IsSet())
+			{
+				WrappedPropDef.SetProperty(ResolvedProp, PyGenUtil::FGeneratedWrappedProperty::SPF_None);
+				WrappedPropDef.DeprecationMessage = MoveTemp(PropDeprecationMessage);
+			}
+			else
+			{
+				WrappedPropDef.SetProperty(ResolvedProp);
 			}
 
 			return FPyWrapperStruct::GetPropertyValue(InSelf, WrappedPropDef, TCHAR_TO_UTF8(*Name.ToString()));
@@ -1064,10 +1051,9 @@ PyTypeObject InitializePyWrapperStructType()
 
 			PyObject* PyNameObj = nullptr;
 			PyObject* PyValueObj = nullptr;
-			PyObject* PyNotifyModeObj = nullptr;
 
-			static const char *ArgsKwdList[] = { "name", "value", "notify_mode", nullptr };
-			if (!PyArg_ParseTupleAndKeywords(InArgs, InKwds, "OO|O:set_editor_property", (char**)ArgsKwdList, &PyNameObj, &PyValueObj, &PyNotifyModeObj))
+			static const char *ArgsKwdList[] = { "name", "value", nullptr };
+			if (!PyArg_ParseTupleAndKeywords(InArgs, InKwds, "OO:set_editor_property", (char**)ArgsKwdList, &PyNameObj, &PyValueObj))
 			{
 				return nullptr;
 			}
@@ -1079,114 +1065,38 @@ PyTypeObject InitializePyWrapperStructType()
 				return nullptr;
 			}
 
-			static const UEnum* PropertyAccessChangeNotifyModeEnum = FindObjectChecked<UEnum>(ANY_PACKAGE, TEXT("EPropertyAccessChangeNotifyMode"));
-
-			EPropertyAccessChangeNotifyMode NotifyMode = EPropertyAccessChangeNotifyMode::Default;
-			if (PyNotifyModeObj && !PyConversion::NativizeEnumEntry(PyNotifyModeObj, PropertyAccessChangeNotifyModeEnum, NotifyMode))
+			const FName ResolvedName = FPyWrapperStructMetaData::ResolvePropertyName(InSelf, Name);
+			const UProperty* ResolvedProp = InSelf->ScriptStruct->FindPropertyByName(ResolvedName);
+			if (!ResolvedProp)
 			{
-				PyUtil::SetPythonError(PyExc_TypeError, InSelf, *FString::Printf(TEXT("Failed to convert 'notify_mode' (%s) to 'PropertyAccessChangeNotifyMode'"), *PyUtil::GetFriendlyTypename(PyNotifyModeObj)));
+				PyUtil::SetPythonError(PyExc_Exception, InSelf, *FString::Printf(TEXT("Failed to find property '%s' for attribute '%s' on '%s'"), *ResolvedName.ToString(), *Name.ToString(), *InSelf->ScriptStruct->GetName()));
 				return nullptr;
 			}
 
-			const PyGenUtil::FGeneratedWrappedProperty WrappedPropDef = FindEditorPropertyImpl(InSelf, Name);
-			if (!WrappedPropDef.Prop)
+			TOptional<FString> PropDeprecationMessage;
 			{
-				return nullptr;
+				FString PropDeprecationMessageStr;
+				if (FPyWrapperStructMetaData::IsPropertyDeprecated(InSelf, Name, &PropDeprecationMessageStr))
+				{
+					PropDeprecationMessage = MoveTemp(PropDeprecationMessageStr);
+				}
 			}
 
-			const int Result = FPyWrapperStruct::SetPropertyValue(InSelf, PyValueObj, WrappedPropDef, TCHAR_TO_UTF8(*Name.ToString()), NotifyMode, PropertyAccessUtil::EditorReadOnlyFlags);
+			PyGenUtil::FGeneratedWrappedProperty WrappedPropDef;
+			if (PropDeprecationMessage.IsSet())
+			{
+				WrappedPropDef.SetProperty(ResolvedProp, PyGenUtil::FGeneratedWrappedProperty::SPF_None);
+				WrappedPropDef.DeprecationMessage = MoveTemp(PropDeprecationMessage);
+			}
+			else
+			{
+				WrappedPropDef.SetProperty(ResolvedProp);
+			}
+
+			const int Result = FPyWrapperStruct::SetPropertyValue(InSelf, PyValueObj, WrappedPropDef, TCHAR_TO_UTF8(*Name.ToString()), /*InNotifyChange*/true, CPF_EditConst);
 			if (Result != 0)
 			{
 				return nullptr;
-			}
-
-			Py_RETURN_NONE;
-		}
-
-		static PyObject* SetEditorProperties(FPyWrapperStruct* InSelf, PyObject* InArgs, PyObject* InKwds)
-		{
-			if (!FPyWrapperStruct::ValidateInternalState(InSelf))
-			{
-				return nullptr;
-			}
-
-			PyObject* PyPropertyInfoDict = nullptr;
-			if (!PyArg_ParseTuple(InArgs, "O:set_editor_properties", &PyPropertyInfoDict))
-			{
-				return nullptr;
-			}
-
-			if (!PyUtil::IsMappingType(PyPropertyInfoDict))
-			{
-				PyUtil::SetPythonError(PyExc_TypeError, InSelf, *FString::Printf(TEXT("'property_info' (%s) is expected to be a mapping type (eg, dict)"), *PyUtil::GetFriendlyTypename(PyPropertyInfoDict)));
-				return nullptr;
-			}
-
-			// Build up the list of properties and their new values
-			typedef TTuple<FName, PyGenUtil::FGeneratedWrappedProperty, FPyObjectPtr> FPropertyInfoPair;
-			TArray<FPropertyInfoPair> PropertyInfos;
-			{
-				FPyObjectPtr PyPropertyInfoDictIter = FPyObjectPtr::StealReference(PyObject_GetIter(PyPropertyInfoDict));
-				if (PyPropertyInfoDictIter)
-				{
-					FPyObjectPtr PyKeyItem;
-					while ((PyKeyItem = FPyObjectPtr::StealReference(PyIter_Next(PyPropertyInfoDictIter))))
-					{
-						FName Name;
-						if (!PyConversion::Nativize(PyKeyItem, Name))
-						{
-							PyUtil::SetPythonError(PyExc_TypeError, InSelf, *FString::Printf(TEXT("Failed to convert dict key (%s) to 'Name'"), *PyUtil::GetFriendlyTypename(PyKeyItem)));
-							return nullptr;
-						}
-
-						PyGenUtil::FGeneratedWrappedProperty WrappedPropDef = FindEditorPropertyImpl(InSelf, Name);
-						if (!WrappedPropDef.Prop)
-						{
-							return nullptr;
-						}
-
-						FPyObjectPtr PyValueItem = FPyObjectPtr::StealReference(PyObject_GetItem(PyPropertyInfoDict, PyKeyItem));
-						if (ensure(PyValueItem))
-						{
-							PropertyInfos.Add(MakeTuple(Name, MoveTemp(WrappedPropDef), MoveTemp(PyValueItem)));
-						}
-					}
-
-					// Iteration error?
-					if (PyErr_Occurred())
-					{
-						return nullptr;
-					}
-				}
-			}
-
-			// At this point we know that every property we were asked to set was found, but not that the values are going to be compatible
-			// Checking value coercion is tricky without actually doing the conversion, so we'll assume that this point that we need to do the change notifies
-			UObject* OwnerObjectInstance = InSelf->OwnerContext.FindChangeNotifyObject();
-			if (OwnerObjectInstance)
-			{
-				OwnerObjectInstance->PreEditChange(nullptr);
-			}
-			ON_SCOPE_EXIT
-			{
-				if (OwnerObjectInstance)
-				{
-					OwnerObjectInstance->PostEditChange();
-				}
-			};
-
-			// Try and set the value of each property
-			for (const FPropertyInfoPair& PropertyInfo : PropertyInfos)
-			{
-				const FName Name = PropertyInfo.Get<0>();
-				const PyGenUtil::FGeneratedWrappedProperty& WrappedPropDef = PropertyInfo.Get<1>();
-				PyObject* PyValueObj = PropertyInfo.Get<2>().GetPtr();
-
-				const int Result = FPyWrapperStruct::SetPropertyValue(InSelf, PyValueObj, WrappedPropDef, TCHAR_TO_UTF8(*Name.ToString()), EPropertyAccessChangeNotifyMode::Never, PropertyAccessUtil::EditorReadOnlyFlags);
-				if (Result != 0)
-				{
-					return nullptr;
-				}
 			}
 
 			Py_RETURN_NONE;
@@ -1202,8 +1112,7 @@ PyTypeObject InitializePyWrapperStructType()
 		{ "assign", PyCFunctionCast(&FMethods::Assign), METH_VARARGS, "x.assign(object) -> None -- assign the value of this Unreal struct to value of the given object" },
 		{ "to_tuple", PyCFunctionCast(&FMethods::ToTuple), METH_NOARGS, "x.to_tuple() -> tuple -- break this Unreal struct into a tuple of its properties" },
 		{ "get_editor_property", PyCFunctionCast(&FMethods::GetEditorProperty), METH_VARARGS | METH_KEYWORDS, "x.get_editor_property(name) -> object -- get the value of any property visible to the editor" },
-		{ "set_editor_property", PyCFunctionCast(&FMethods::SetEditorProperty), METH_VARARGS | METH_KEYWORDS, "x.set_editor_property(name, value, notify_mode=PropertyAccessChangeNotifyMode.DEFAULT) -> None -- set the value of any property visible to the editor, ensuring that the pre/post change notifications are called" },
-		{ "set_editor_properties", PyCFunctionCast(&FMethods::SetEditorProperties), METH_VARARGS, "x.set_editor_properties(property_info) -> None -- set the value of any properties visible to the editor (from a name->value dict), ensuring that the pre/post change notifications are called" },
+		{ "set_editor_property", PyCFunctionCast(&FMethods::SetEditorProperty), METH_VARARGS | METH_KEYWORDS, "x.set_editor_property(name, value) -> None -- set the value of any property visible to the editor, ensuring that the pre/post change notifications are called" },
 		{ nullptr, nullptr, 0, nullptr }
 	};
 
@@ -1274,12 +1183,10 @@ FPyWrapperStructMetaData::FPyWrapperStructMetaData()
 {
 }
 
+/** Add object references from the given Python object to the given collector */
 void FPyWrapperStructMetaData::AddReferencedObjects(FPyWrapperBase* Instance, FReferenceCollector& Collector)
 {
 	FPyWrapperStruct* Self = static_cast<FPyWrapperStruct*>(Instance);
-
-	Collector.AddReferencedObject(Struct);
-	
 	Collector.AddReferencedObject(Self->ScriptStruct);
 	if (Self->ScriptStruct && Self->StructInstance && !Self->OwnerContext.HasOwner())
 	{
@@ -1472,7 +1379,7 @@ public:
 		return FinalizedStruct;
 	}
 
-	bool CreatePropertyFromDefinition(const FString& InFieldName, FPyFPropertyDef* InPyPropDef)
+	bool CreatePropertyFromDefinition(const FString& InFieldName, FPyUPropertyDef* InPyPropDef)
 	{
 		UScriptStruct* SuperStruct = Cast<UScriptStruct>(NewStruct->GetSuperStruct());
 
@@ -1492,14 +1399,14 @@ public:
 		}
 
 		// Create the property from its definition
-		FProperty* Prop = PyUtil::CreateProperty(InPyPropDef->PropType, 1, NewStruct, PropName);
+		UProperty* Prop = PyUtil::CreateProperty(InPyPropDef->PropType, 1, NewStruct, PropName);
 		if (!Prop)
 		{
 			PyUtil::SetPythonError(PyExc_Exception, PyType, *FString::Printf(TEXT("Failed to create property for '%s' (%s)"), *InFieldName, *PyUtil::GetFriendlyTypename(InPyPropDef->PropType)));
 			return false;
 		}
 		Prop->PropertyFlags |= (CPF_Edit | CPF_BlueprintVisible);
-		FPyFPropertyDef::ApplyMetaData(InPyPropDef, Prop);
+		FPyUPropertyDef::ApplyMetaData(InPyPropDef, Prop);
 		NewStruct->AddCppProperty(Prop);
 
 		// Build the definition data for the new property accessor
@@ -1634,9 +1541,9 @@ UPythonGeneratedStruct* UPythonGeneratedStruct::GenerateStruct(PyTypeObject* InP
 				return nullptr;
 			}
 
-			if (PyObject_IsInstance(FieldValue, (PyObject*)&PyFPropertyDefType) == 1)
+			if (PyObject_IsInstance(FieldValue, (PyObject*)&PyUPropertyDefType) == 1)
 			{
-				FPyFPropertyDef* PyPropDef = (FPyFPropertyDef*)FieldValue;
+				FPyUPropertyDef* PyPropDef = (FPyUPropertyDef*)FieldValue;
 				if (!PythonStructBuilder.CreatePropertyFromDefinition(FieldName, PyPropDef))
 				{
 					return nullptr;

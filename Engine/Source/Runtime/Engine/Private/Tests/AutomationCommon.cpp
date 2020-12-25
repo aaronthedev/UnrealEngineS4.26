@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Tests/AutomationCommon.h"
 #include "Misc/Paths.h"
@@ -22,18 +22,11 @@
 #include "StereoRendering.h"
 #include "Misc/PackageName.h"
 
-#if WITH_AUTOMATION_TESTS
+#if (WITH_DEV_AUTOMATION_TESTS || WITH_PERF_AUTOMATION_TESTS)
 
 DEFINE_LOG_CATEGORY_STATIC(LogEngineAutomationLatentCommand, Log, All);
 DEFINE_LOG_CATEGORY(LogEditorAutomationTests);
 DEFINE_LOG_CATEGORY(LogEngineAutomationTests);
-
-static TAutoConsoleVariable<int32> CVarAutomationAllowFrameTraceCapture(
-	TEXT("AutomationAllowFrameTraceCapture"),
-	1,
-	TEXT("Allow automation to capture frame traces."),
-	ECVF_Default
-	);
 
 //declare static variable
 FOnEditorAutomationMapLoad AutomationCommon::OnEditorAutomationMapLoad;
@@ -80,39 +73,31 @@ namespace AutomationCommon
 		if ( HardwareDetailsString.Len() > 0 )
 		{
 			//Get rid of the leading "_"
-			HardwareDetailsString.RightChopInline(1, false);
+			HardwareDetailsString = HardwareDetailsString.RightChop(1);
 		}
 
 		return HardwareDetailsString;
 	}
 
-#if WITH_AUTOMATION_TESTS
+#if (WITH_DEV_AUTOMATION_TESTS || WITH_PERF_AUTOMATION_TESTS)
 
 	/** Gets a path used for automation testing (PNG sent to the AutomationTest folder) */
-	FString GetScreenshotName(const FString& TestName)
+	void GetScreenshotPath(const FString& TestName, FString& OutScreenshotName)
 	{
-		FString PathName = TestName / FPlatformProperties::IniPlatformName();
+		FString PathName = FPaths::AutomationDir() + TestName / FPlatformProperties::IniPlatformName();
 		PathName = PathName + TEXT("/") + GetRenderDetailsString();
 
-		// We need a unique ID for filenames from this run. We used to use GetDeviceId() but that is not guaranteed to return
-		// a valid string on some platforms.
-		static FString UUID = FGuid::NewGuid().ToString(EGuidFormats::Short).ToLower();
+		FPaths::MakePathRelativeTo(PathName, *FPaths::ProjectDir());
 
-		return FString::Printf(TEXT("%s/%s.png"), *PathName, *UUID);
+		OutScreenshotName = FString::Printf(TEXT("%s/%s.png"), *PathName, *FPlatformMisc::GetDeviceId());
 	}
 
-	FString GetLocalPathForScreenshot(const FString& InScreenshotName)
-	{
-		return FPaths::AutomationDir() + InScreenshotName;
-	}
-	
-	FAutomationScreenshotData BuildScreenshotData(const FString& MapOrContext, const FString& TestName, const FString& ScreenShotName, int32 Width, int32 Height)
+	FAutomationScreenshotData BuildScreenshotData(const FString& MapOrContext, const FString& TestName, int32 Width, int32 Height)
 	{
 		FAutomationScreenshotData Data;
 
-		Data.ScreenShotName = FPaths::MakeValidFileName(ScreenShotName, TEXT('_'));
+		Data.Name = FPaths::MakeValidFileName(TestName, TEXT('_'));
 		Data.Context = MapOrContext;
-		Data.TestName = TestName;
 		Data.Id = FGuid::NewGuid();
 		Data.Commit = FEngineVersion::Current().HasChangelist() ? FString::FromInt(FEngineVersion::Current().GetChangelist()) : FString(TEXT(""));
 
@@ -145,53 +130,15 @@ namespace AutomationCommon
 		// TBD - 
 		// Device's native resolution (we want to use a hardware dump of the frontbuffer at the native resolution so we compare what we actually output rather than what we think we rendered)
 
-		const FString MapAndTest = MapOrContext + TEXT("/") + Data.ScreenShotName;
-		Data.ScreenshotName = GetScreenshotName(MapAndTest);
+		const FString MapAndTest = MapOrContext + TEXT("/") + Data.Name;
+		AutomationCommon::GetScreenshotPath(MapAndTest, Data.Path);
 
 		return Data;
-	}
-
-	TArray<uint8> CaptureFrameTrace(const FString& MapOrContext, const FString& TestName)
-	{
-		TArray<uint8> FrameTrace;
-
-		bool bDisableFrameTraceCapture = FParse::Param(FCommandLine::Get(), TEXT("DisableFrameTraceCapture"));
-		if (!bDisableFrameTraceCapture && CVarAutomationAllowFrameTraceCapture.GetValueOnGameThread() != 0 && FAutomationTestFramework::Get().OnCaptureFrameTrace.IsBound())
-		{
-			const FString MapAndTest = MapOrContext / FPaths::MakeValidFileName(TestName, TEXT('_'));
-			FString ScreenshotName = GetScreenshotName(MapAndTest);
-			FString TempCaptureFilePath = FPaths::ChangeExtension(FPaths::ConvertRelativePathToFull(FPaths::AutomationDir() / TEXT("Incoming/") / ScreenshotName), TEXT(".rdc"));
-
-			UE_LOG(LogEngineAutomationTests, Log, TEXT("Taking Frame Trace: %s"), *TempCaptureFilePath);
-
-			FAutomationTestFramework::Get().OnCaptureFrameTrace.Execute(TempCaptureFilePath, GEngine->GameViewport->Viewport);
-			FlushRenderingCommands();
-
-			IPlatformFile& PlatformFileSystem = IPlatformFile::GetPlatformPhysical();
-			if (PlatformFileSystem.FileExists(*TempCaptureFilePath))
-			{
-				{
-					TUniquePtr<IFileHandle> FileHandle(PlatformFileSystem.OpenRead(*TempCaptureFilePath));
-
-					int64 FileSize = FileHandle->Size();
-					FrameTrace.SetNumUninitialized(FileSize);
-					FileHandle->Read(FrameTrace.GetData(), FileSize);
-				}
-
-				PlatformFileSystem.DeleteFile(*TempCaptureFilePath);
-			}
-			else
-			{
-				UE_LOG(LogEngineAutomationTests, Warning, TEXT("Failed taking frame trace: %s"), *TempCaptureFilePath);
-			}
-		}
-
-		return FrameTrace;
 	}
 #endif
 
 	/** These save a PNG and get sent over the network */
-	static void SaveWindowAsScreenshot(TSharedRef<SWindow> Window, const FString& ScreenshotName)
+	static void SaveWindowAsScreenshot(TSharedRef<SWindow> Window, const FString& FileName)
 	{
 		TSharedRef<SWidget> WindowRef = Window;
 
@@ -202,7 +149,7 @@ namespace AutomationCommon
 			FAutomationScreenshotData Data;
 			Data.Width = OutImageSize.X;
 			Data.Height = OutImageSize.Y;
-			Data.ScreenshotName = ScreenshotName;
+			Data.Path = FileName;
 			FAutomationTestFramework::Get().OnScreenshotCaptured().ExecuteIfBound(OutImageData, Data);
 		}
 	}
@@ -397,7 +344,7 @@ bool FExecStringLatentCommand::Update()
 
 bool FEngineWaitLatentCommand::Update()
 {
-	const double NewTime = FPlatformTime::Seconds();
+	float NewTime = FPlatformTime::Seconds();
 	if (NewTime - StartTime >= Duration)
 	{
 		return true;
@@ -408,11 +355,11 @@ bool FEngineWaitLatentCommand::Update()
 ENGINE_API uint32 GStreamAllResourcesStillInFlight = -1;
 bool FStreamAllResourcesLatentCommand::Update()
 {
-	const double LocalStartTime = FPlatformTime::Seconds();
+	float LocalStartTime = FPlatformTime::Seconds();
 
 	GStreamAllResourcesStillInFlight = IStreamingManager::Get().StreamAllResources(Duration);
 
-	const double Time = FPlatformTime::Seconds();
+	float Time = FPlatformTime::Seconds();
 
 	if(GStreamAllResourcesStillInFlight)
 	{

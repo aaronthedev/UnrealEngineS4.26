@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -29,9 +29,6 @@ public:
 		SLATE_EVENT( FSimpleDelegate, OnTemplateDoubleClick )
 
 	SLATE_END_ARGS()
-
-	SNewProjectWizard() = default;
-	virtual ~SNewProjectWizard();
 
 	/** Constructs this widget with InArgs */
 	void Construct( const FArguments& InArgs );
@@ -207,9 +204,6 @@ private:
 	void HandleTemplateListViewSelectionChanged( TSharedPtr<FTemplateItem> TemplateItem, ESelectInfo::Type SelectInfo );
 
 	TSharedRef<SWidget> MakeProjectSettingsOptionsBox();
-
-	/** Create a project information struct from the currently selected settings. */
-	struct FProjectInformation CreateProjectInfo() const;
 
 private:
 

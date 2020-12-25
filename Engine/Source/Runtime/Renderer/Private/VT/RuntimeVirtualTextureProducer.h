@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,22 +15,14 @@ class FSceneInterface;
 class FRuntimeVirtualTextureFinalizer : public IVirtualTextureFinalizer
 {
 public:
-	FRuntimeVirtualTextureFinalizer(
-		FVTProducerDescription const& InDesc, 
-		uint32 InProducerId, 
-		ERuntimeVirtualTextureMaterialType InMaterialType, 
-		bool InClearTextures, 
-		FSceneInterface* InScene, 
-		FTransform const& InUVToWorld,
-		FBox const& InWorldBounds);
-
+	FRuntimeVirtualTextureFinalizer(FVTProducerDescription const& InDesc, uint32 InProducerId, ERuntimeVirtualTextureMaterialType InMaterialType, bool InClearTextures, FSceneInterface* InScene, FTransform const& InUVToWorld);
 	virtual ~FRuntimeVirtualTextureFinalizer() {}
 
 	/** A description for a single tile to render. */
 	struct FTileEntry
 	{
 		FVTProduceTargetLayer Targets[RuntimeVirtualTexture::MaxTextureLayers];
-		uint64 vAddress = 0;
+		uint32 vAddress = 0;
 		uint8 vLevel = 0;
 	};
 
@@ -62,8 +54,6 @@ private:
 	FSceneInterface* Scene;
 	/** Transform from UV space to world space. */
 	FTransform UVToWorld;
-	/** Bounds of runtime virtual texture volume in world space. */
-	FBox WorldBounds;
 	/** Array of tiles in the queue to finalize. */
 	TArray<FTileEntry> Tiles;
 };
@@ -72,15 +62,7 @@ private:
 class FRuntimeVirtualTextureProducer : public IVirtualTexture
 {
 public:
-	RENDERER_API FRuntimeVirtualTextureProducer(
-		FVTProducerDescription const& InDesc, 
-		uint32 InProducerId, 
-		ERuntimeVirtualTextureMaterialType InMaterialType, 
-		bool InClearTextures, 
-		FSceneInterface* InScene, 
-		FTransform const& InUVToWorld,
-		FBox const& InWorldBounds);
-	
+	RENDERER_API FRuntimeVirtualTextureProducer(FVTProducerDescription const& InDesc, uint32 InProducerId, ERuntimeVirtualTextureMaterialType InMaterialType, bool InClearTextures, FSceneInterface* InScene, FTransform const& InUVToWorld);
 	RENDERER_API virtual ~FRuntimeVirtualTextureProducer() {}
 
 	//~ Begin IVirtualTexture Interface.
@@ -88,7 +70,7 @@ public:
 		const FVirtualTextureProducerHandle& ProducerHandle,
 		uint8 LayerMask,
 		uint8 vLevel,
-		uint64 vAddress,
+		uint32 vAddress,
 		EVTRequestPagePriority Priority
 	) override;
 
@@ -99,7 +81,7 @@ public:
 		const FVirtualTextureProducerHandle& ProducerHandle,
 		uint8 LayerMask,
 		uint8 vLevel,
-		uint64 vAddress,
+		uint32 vAddress,
 		uint64 RequestHandle,
 		const FVTProduceTargetLayer* TargetLayers
 	) override;

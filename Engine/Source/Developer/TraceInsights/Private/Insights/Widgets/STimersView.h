@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -22,7 +22,6 @@
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 class FMenuBuilder;
-class FTimingGraphTrack;
 
 namespace Trace
 {
@@ -34,9 +33,6 @@ namespace Insights
 	class FTable;
 	class FTableColumn;
 	class ITableCellValueSorter;
-
-	class FTimerAggregator;
-	class SAggregatorStatus;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -60,7 +56,7 @@ public:
 	/** Virtual destructor. */
 	virtual ~STimersView();
 
-	SLATE_BEGIN_ARGS(STimersView) {}
+	SLATE_BEGIN_ARGS(STimersView){}
 	SLATE_END_ARGS()
 
 	/**
@@ -78,20 +74,16 @@ public:
 	 * @param bResync - If true, it forces a resync with list of timers from Analysis, even if the list did not changed since last sync.
 	 */
 	void RebuildTree(bool bResync);
-
-	void ResetStats();
 	void UpdateStats(double StartTime, double EndTime);
 
-	void ToggleGraphSeries(TSharedRef<FTimingGraphTrack> GraphTrack, FTimerNodeRef NodePtr);
+	void SelectTimerNode(uint64 Id);
 
-	FTimerNodePtr GetTimerNode(uint32 TimerId) const;
-	void SelectTimerNode(uint32 TimerId);
+	//const TSet<FTimerNodePtr>& GetTimerNodes() const { return TimerNodes; }
+	//const TMap<uint64, FTimerNodePtr> GetTimerNodesIdMap() const { return TimerNodesIdMap; }
+	const FTimerNodePtr* GetTimerNode(uint64 Id) const { return TimerNodesIdMap.Find(Id); }
 
-private:
+protected:
 	void UpdateTree();
-
-	void FinishAggregation();
-	void ApplyAggregation(Trace::ITable<Trace::FTimingProfilerAggregatedStats>* AggregatedStatsTable);
 
 	/** Called when the analysis session has changed. */
 	void InsightsManager_OnSessionChanged();
@@ -145,13 +137,13 @@ private:
 	/** Called by STreeView to generate a table row for the specified item. */
 	TSharedRef<ITableRow> TreeView_OnGenerateRow(FTimerNodePtr TreeNode, const TSharedRef<STableViewBase>& OwnerTable);
 
-	bool TableRow_ShouldBeEnabled(FTimerNodePtr NodePtr) const;
-
-	void TableRow_SetHoveredCell(TSharedPtr<Insights::FTable> TablePtr, TSharedPtr<Insights::FTableColumn> ColumnPtr, FTimerNodePtr NodePtr);
+	void TableRow_SetHoveredCell(TSharedPtr<Insights::FTable> TablePtr, TSharedPtr<Insights::FTableColumn> ColumnPtr, const FTimerNodePtr NodePtr);
 	EHorizontalAlignment TableRow_GetColumnOutlineHAlignment(const FName ColumnId) const;
 
 	FText TableRow_GetHighlightText() const;
 	FName TableRow_GetHighlightedNodeName() const;
+
+	bool TableRow_ShouldBeEnabled(const uint32 TimerId) const;
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 	// Filtering
@@ -162,9 +154,9 @@ private:
 	void FilterOutZeroCountTimers_OnCheckStateChanged(ECheckBoxState NewRadioState);
 	ECheckBoxState FilterOutZeroCountTimers_IsChecked() const;
 
-	TSharedRef<SWidget> GetToggleButtonForTimerType(const ETimerNodeType InNodeType);
-	void FilterByTimerType_OnCheckStateChanged(ECheckBoxState NewRadioState, const ETimerNodeType InNodeType);
-	ECheckBoxState FilterByTimerType_IsChecked(const ETimerNodeType InNodeType) const;
+	TSharedRef<SWidget> GetToggleButtonForTimerType(const ETimerNodeType InTimerType);
+	void FilterByTimerType_OnCheckStateChanged(ECheckBoxState NewRadioState, const ETimerNodeType InTimerType);
+	ECheckBoxState FilterByTimerType_IsChecked(const ETimerNodeType InTimerType) const;
 
 	bool SearchBox_IsEnabled() const;
 	void SearchBox_OnTextChanged(const FText& InFilterText);
@@ -229,7 +221,7 @@ private:
 	void HideColumn(const FName ColumnId);
 
 	// ToggleColumnVisibility
-	bool IsColumnVisible(const FName ColumnId) const;
+	bool IsColumnVisible(const FName ColumnId);
 	bool CanToggleColumnVisibility(const FName ColumnId) const;
 	void ToggleColumnVisibility(const FName ColumnId);
 
@@ -247,16 +239,7 @@ private:
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////
 
-	/**
-	 * Ticks this widget.  Override in derived classes, but always call the parent implementation.
-	 *
-	 * @param  AllottedGeometry The space allotted for this widget
-	 * @param  InCurrentTime  Current absolute real time
-	 * @param  InDeltaTime  Real time passed since last tick
-	 */
-	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override;
-
-private:
+protected:
 	/** Table view model. */
 	TSharedPtr<Insights::FTable> Table;
 
@@ -296,8 +279,11 @@ private:
 	/** A filtered array of group and timer nodes to be displayed in the tree widget. */
 	TArray<FTimerNodePtr> FilteredGroupNodes;
 
-	/** All timer nodes. An index in this array is a TimerId. */
-	TArray<FTimerNodePtr> TimerNodes;
+	/** All timer nodes. */
+	TSet<FTimerNodePtr> TimerNodes;
+
+	/** All timer nodes, stored as TimerId -> FTimerNodePtr. */
+	TMap<uint64, FTimerNodePtr> TimerNodesIdMap;
 
 	/** Currently expanded group nodes. */
 	TSet<FTimerNodePtr> ExpandedNodes;
@@ -310,7 +296,7 @@ private:
 
 	//bool bUseFiltering;
 
-	/** The search box widget used to filter items displayed in the tree. */
+	/** The search box widget used to filter items displayed in the stats and groups tree. */
 	TSharedPtr<SSearchBox> SearchBox;
 
 	/** The text based filter. */
@@ -356,8 +342,8 @@ private:
 
 	//////////////////////////////////////////////////
 
-	TSharedRef<Insights::FTimerAggregator> Aggregator;
-	TSharedPtr<Insights::SAggregatorStatus> AggregatorStatus;
+	double StatsStartTime;
+	double StatsEndTime;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

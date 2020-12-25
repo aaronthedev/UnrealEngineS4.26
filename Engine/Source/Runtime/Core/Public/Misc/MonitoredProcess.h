@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -79,13 +79,14 @@ public:
 	FTimespan GetDuration() const;
 
 	/**
-	 * Gets the Process Handle. The instance can be invalid if the process was not created.
+	 * Checks whether the process is still running.
 	 *
-	 * @return The Process Handle
+	 * @return true if the process is running, false otherwise.
 	 */
-	FProcHandle GetProcessHandle() const
+	UE_DEPRECATED(4.16, "IsRunning() is deprecated because it doesn't support -nothreading. Please use Update()")
+	bool IsRunning() const
 	{
-		return ProcessHandle;
+		return bIsRunning;
 	}
 
 	/**

@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Sound/SoundNodeWavePlayer.h"
 #include "Audio.h"
 #include "ActiveSound.h"
 #include "Sound/SoundWave.h"
 #include "UObject/FrameworkObjectVersion.h"
-#include "Async/Async.h"
 
 #define LOCTEXT_NAMESPACE "SoundNodeWavePlayer"
 
@@ -23,7 +22,7 @@ void USoundNodeWavePlayer::Serialize(FArchive& Ar)
 		}
 		else if (Ar.IsSaving())
 		{
-			USoundWave* HardReference = (ShouldHardReferenceAsset(Ar.CookingTarget()) ? SoundWave : nullptr);
+			USoundWave* HardReference = (ShouldHardReferenceAsset() ? SoundWave : nullptr);
 			Ar << HardReference;
 		}
 	}
@@ -46,7 +45,6 @@ void USoundNodeWavePlayer::LoadAsset(bool bAddToRoot)
 			const FString LongPackageName = SoundWaveAssetPtr.GetLongPackageName();
 			if (!LongPackageName.IsEmpty())
 			{
-				UE_LOG(LogAudio, VeryVerbose, TEXT(" '%s:%s', Async loading..."), *GetNameSafe(GetOuter()), *GetName());
 				bAsyncLoading = true;
 				LoadPackageAsync(LongPackageName, FLoadPackageAsyncDelegate::CreateUObject(this, &USoundNodeWavePlayer::OnSoundWaveLoaded, bAddToRoot));
 			}
@@ -62,12 +60,6 @@ void USoundNodeWavePlayer::LoadAsset(bool bAddToRoot)
 	}
 	else
 	{
-		UE_LOG(LogAudio, VeryVerbose, TEXT("'%s:%s', DOING SYNCRONOUS loading... %s"),
-			*GetNameSafe(GetOuter()),
-			*GetName(),
-			SoundWaveAssetPtr.IsPending() ? TEXT("pending.") : TEXT("not-pending.")
-		);
-
 		SoundWave = SoundWaveAssetPtr.LoadSynchronous();
 		if (SoundWave)
 		{
@@ -189,24 +181,6 @@ void USoundNodeWavePlayer::ParseNodes( FAudioDevice* AudioDevice, const UPTRINT 
 		}
 
 		SoundWave->bLooping = bWaveIsLooping;
-	}
-	else if (!SoundWaveAssetPtr.IsNull() && !bAsyncLoadRequestPending)
-	{
-		UE_LOG(LogAudio, Warning, TEXT("Asynchronous load of %s required in USoundNodeWavePlayer::ParseNodes when we attempted to play, likely because the quality node was changed."), *GetFullNameSafe(this));
-		
-		// raise this flag in case this node is parsed again before the game thread task queue is executed.
-		bAsyncLoadRequestPending = true;
-
-		TWeakObjectPtr<USoundNodeWavePlayer> WeakThis = MakeWeakObjectPtr(this);
-
-		// Dispatch a call to the game thread to load this asset.
-		AsyncTask(ENamedThreads::GameThread, [WeakThis]() {
-			if (WeakThis.IsValid())
-			{
-				WeakThis->LoadAsset();
-				WeakThis->bAsyncLoadRequestPending = false;
-			}
-		});	
 	}
 }
 

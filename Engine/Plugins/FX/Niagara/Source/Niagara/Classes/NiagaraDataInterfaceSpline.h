@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "NiagaraDataInterface.h"
@@ -17,31 +17,6 @@ struct FNDISpline_InstanceData
 	FMatrix Transform;
 	//InverseTranspose of above for transforming normals/tangents.
 	FMatrix TransformInverseTransposed;
-	FTransform ComponentTransform;
-
-	FVector DefaultUpVector;
-
-	FSplineCurves SplineCurves;
-
-	float GetSplineLength() const;
-	bool IsValid() const;
-	FVector GetLocationAtDistanceAlongSpline(float Distance, ESplineCoordinateSpace::Type CoordinateSpace) const;
-	FVector GetLocationAtSplineInputKey(float InKey, ESplineCoordinateSpace::Type CoordinateSpace) const;
-	FQuat GetQuaternionAtSplineInputKey(float InKey, ESplineCoordinateSpace::Type CoordinateSpace) const;
-	FQuat GetQuaternionAtDistanceAlongSpline(float Distance, ESplineCoordinateSpace::Type CoordinateSpace) const;
-	FVector GetUpVectorAtDistanceAlongSpline(float Distance, ESplineCoordinateSpace::Type CoordinateSpace) const;
-	FVector GetUpVectorAtSplineInputKey(float InKey, ESplineCoordinateSpace::Type CoordinateSpace) const;
-	float FindInputKeyClosestToWorldLocation(const FVector& WorldLocation) const;
-	FVector GetDirectionAtSplineInputKey(float InKey, ESplineCoordinateSpace::Type CoordinateSpace) const;
-	FVector GetTangentAtSplineInputKey(float InKey, ESplineCoordinateSpace::Type CoordinateSpace) const;
-	FVector GetDirectionAtDistanceAlongSpline(float Distance, ESplineCoordinateSpace::Type CoordinateSpace) const;
-	FVector GetTangentAtDistanceAlongSpline(float Distance, ESplineCoordinateSpace::Type CoordinateSpace) const;
-
-	FVector GetRightVectorAtDistanceAlongSpline(float Distance, ESplineCoordinateSpace::Type CoordinateSpace) const;
-	FVector GetRightVectorAtSplineInputKey(float InKey, ESplineCoordinateSpace::Type CoordinateSpace) const;
-
-	FInterpCurveVector& GetSplinePointsPosition() { return SplineCurves.Position; }
-
 };
 
 /** Data Interface allowing sampling of in-world spline components. Note that this data interface is very experimental. */
@@ -52,7 +27,7 @@ class NIAGARA_API UNiagaraDataInterfaceSpline : public UNiagaraDataInterface
 
 public:
 	
-	/** The source actor from which to sample.  Note that this can only be set when used as a user variable on a component in the world.*/
+	/** The source actor from which to sample.  */
 	UPROPERTY(EditAnywhere, Category = "Spline")
 	AActor* Source;
 	
@@ -69,13 +44,10 @@ public:
 	virtual void GetVMExternalFunction(const FVMExternalFunctionBindingInfo& BindingInfo, void* InstanceData, FVMExternalFunction &OutFunc) override;
 	virtual bool Equals(const UNiagaraDataInterface* Other) const override;
 	virtual bool CanExecuteOnTarget(ENiagaraSimTarget Target)const override { return Target == ENiagaraSimTarget::CPUSim; }
-	virtual bool HasPreSimulateTick() const override { return true; }
 	//UNiagaraDataInterface Interface End
 
 	template<typename TransformHandlerType, typename SplineSampleType>
 	void SampleSplinePositionByUnitDistance(FVectorVMContext& Context);
-	template<typename TransformHandlerType, typename SplineSampleType>
-	void SampleSplineRotationByUnitDistance(FVectorVMContext& Context);
 	template<typename TransformHandlerType, typename SplineSampleType>
 	void SampleSplineUpVectorByUnitDistance(FVectorVMContext& Context);
 	template<typename TransformHandlerType, typename SplineSampleType>

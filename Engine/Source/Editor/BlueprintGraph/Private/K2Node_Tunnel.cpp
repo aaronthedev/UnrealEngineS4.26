@@ -1,28 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "K2Node_Tunnel.h"
 #include "EdGraphSchema_K2.h"
 #include "K2Node_Composite.h"
 #include "K2Node_MacroInstance.h"
 #include "Kismet2/BlueprintEditorUtils.h"
-#include "Kismet2/CompilerResultsLog.h"
+
 
 #define LOCTEXT_NAMESPACE "K2Node"
-
-// @TODO_BH: Remove the CVar for validity checking when we can get all the errors sorted out in a pre-flight
-// When we remove this then make sure we have a valid cook happening
-namespace PinValidityCheck
-{
-	/** 
-	* CVar controls pin validity warning which will throw when a macro graph is silently failing
-	* @see UE-90009
-	*/
-	static bool bDisplayInvalidPinWarning = true;
-	static FAutoConsoleVariableRef CVarDisplayInvalidPinWarning(
-		TEXT("bp.PinValidityCheck.bDisplayInvalidPinWarning"), bDisplayInvalidPinWarning,
-		TEXT("CVar controls pin validity warning which will throw when a macro graph is silently failing"),
-		ECVF_Default);
-}
 
 UK2Node_Tunnel::UK2Node_Tunnel(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -32,14 +17,14 @@ UK2Node_Tunnel::UK2Node_Tunnel(const FObjectInitializer& ObjectInitializer)
 
 void UK2Node_Tunnel::DestroyNode()
 {
-	if (InputSinkNode != nullptr)
+	if (InputSinkNode != NULL)
 	{
-		InputSinkNode->OutputSourceNode = nullptr;
+		InputSinkNode->OutputSourceNode = NULL;
 	}
 
-	if (OutputSourceNode != nullptr)
+	if (OutputSourceNode != NULL)
 	{
-		OutputSourceNode->InputSinkNode = nullptr;
+		OutputSourceNode->InputSinkNode = NULL;
 	}
 
 	//@TODO: Should we remove the pins provided by this node from the twinned node(s)?
@@ -132,7 +117,9 @@ bool UK2Node_Tunnel::CanUserDeleteNode() const
 
 bool UK2Node_Tunnel::CanDuplicateNode() const
 {
-	return true;
+	// Disallow duplication on tunnels, but not more derived classes (they can override if they also want to disallow)
+	const bool bIsExactlyTunnel = (GetClass() == UK2Node_Tunnel::StaticClass());
+	return !bIsExactlyTunnel;
 }
 
 bool UK2Node_Tunnel::IsNodeSafeToIgnore() const
@@ -194,25 +181,6 @@ void UK2Node_Tunnel::ClearCachedBlueprintData(UBlueprint* Blueprint)
 {
 	// Remove data marking graphs as latent, this will be re-cache'd as needed
 	MetaData.HasLatentFunctions = INDEX_NONE;
-}
-
-void UK2Node_Tunnel::ValidateNodeDuringCompilation(FCompilerResultsLog& MessageLog) const
-{
-	Super::ValidateNodeDuringCompilation(MessageLog);
-	
-	if (PinValidityCheck::bDisplayInvalidPinWarning)
-	{
-		FBlueprintEditorUtils::ValidatePinConnections(this, MessageLog);
-	}
-}
-
-void UK2Node_Tunnel::FixupPinStringDataReferences(FArchive* SavingArchive)
-{
-	Super::FixupPinStringDataReferences(SavingArchive);
-	if (SavingArchive)
-	{
-		UpdateUserDefinedPinDefaultValues();
-	}
 }
 
 UEdGraphPin* UK2Node_Tunnel::CreatePinFromUserDefinition(const TSharedPtr<FUserPinInfo> NewPinInfo)
@@ -277,7 +245,7 @@ ERenamePinResult UK2Node_Tunnel::RenameUserDefinedPinImpl(const FName OldName, c
 
 	// And do the same on the twinned pin
 	ERenamePinResult TargetNodeResult = ERenamePinResult::ERenamePinResult_Success;
-	UEdGraphNode* TargetNode = ((InputSinkNode != nullptr) ? InputSinkNode : OutputSourceNode);
+	UEdGraphNode* TargetNode = ((InputSinkNode != NULL) ? InputSinkNode : OutputSourceNode);
 	if (UK2Node_Composite* CompositeNode = Cast<UK2Node_Composite>(TargetNode))
 	{
 		TargetNodeResult = CompositeNode->RenameUserDefinedPin(OldName, NewName, bTest);
@@ -294,7 +262,7 @@ UObject* UK2Node_Tunnel::GetJumpTargetForDoubleClick() const
 {
 	// Try to select the other side of a tunnel node
 	UEdGraphNode* TargetNode = GetOutputSource();
-	if (TargetNode == nullptr)
+	if (TargetNode == NULL)
 	{
 		TargetNode = GetInputSink();
 	}
@@ -381,27 +349,4 @@ void UK2Node_Tunnel::ReallocatePinsDuringReconstruction(TArray<UEdGraphPin*>& Ol
 	}
 	PostFixupAllWildcardPins(bAllWildcardsAreUnlinked);
 }
-
-bool UK2Node_Tunnel::IsCompatibleWithGraph(const UEdGraph* InGraph) const
-{
-	const bool bIsEntryOrExit = bCanHaveInputs != bCanHaveOutputs;
-
-	// If this is an Entry or Exit, make sure an Entry or exit doesn't already exist in this Graph
-	if (bIsEntryOrExit)
-	{
-		TArray<UK2Node_Tunnel*> Tunnels;
-		InGraph->GetNodesOfClass<UK2Node_Tunnel>(Tunnels);
-
-		for (UK2Node_Tunnel* Node : Tunnels)
-		{
-			if (Node->bCanHaveInputs == bCanHaveInputs && Node->bCanHaveOutputs == bCanHaveOutputs)
-			{
-				return false;
-			}
-		}
-	}
-
-	return Super::IsCompatibleWithGraph(InGraph);
-}
-
 #undef LOCTEXT_NAMESPACE

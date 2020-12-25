@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	GPUScene.cpp
@@ -9,7 +9,7 @@
 #include "RHI.h"
 #include "SceneUtils.h"
 #include "ScenePrivate.h"
-#include "UnifiedBuffer.h"
+#include "ByteBuffer.h"
 #include "SpriteIndexBuffer.h"
 #include "SceneFilterRendering.h"
 #include "ClearQuad.h"
@@ -59,7 +59,7 @@ int32 FGrowOnlySpanAllocator::Allocate(int32 Num)
 			// Fully consumed the free span
 			FreeSpans.RemoveAtSwap(FoundIndex);
 		}
-
+				
 		return FreeSpan.StartOffset;
 	}
 
@@ -128,7 +128,7 @@ void FGrowOnlySpanAllocator::Free(int32 BaseOffset, int32 Num)
 		SpanAfter.StartOffset = NewFreeSpan.StartOffset;
 		SpanAfter.Num += NewFreeSpan.Num;
 	}
-	else
+	else 
 	{
 		// Couldn't merge, store new free span
 		FreeSpans.Add(NewFreeSpan);
@@ -151,83 +151,10 @@ int32 FGrowOnlySpanAllocator::SearchFreeList(int32 Num)
 	return INDEX_NONE;
 }
 
-template<typename ResourceType>
-ResourceType* GetMirrorGPU(FScene& Scene);
-template<>
-FRWBufferStructured* GetMirrorGPU<FRWBufferStructured>(FScene& Scene)
-{
-	return &Scene.GPUScene.PrimitiveBuffer;
-}
-template<>
-FTextureRWBuffer2D* GetMirrorGPU<FTextureRWBuffer2D>(FScene& Scene)
-{
-	return &Scene.GPUScene.PrimitiveTexture;
-}
-
-template<typename ResourceType>
-ResourceType& GetViewStateResourceRef(FViewInfo& View, bool bSingle);
-template<>
-FRWBufferStructured& GetViewStateResourceRef(FViewInfo& View, bool bSingle)
-{
-	return bSingle ? View.OneFramePrimitiveShaderDataBuffer: View.ViewState->PrimitiveShaderDataBuffer;
-}
-template<>
-FTextureRWBuffer2D& GetViewStateResourceRef(FViewInfo& View, bool bSingle)
-{
-	return bSingle ? View.OneFramePrimitiveShaderDataTexture: View.ViewState->PrimitiveShaderDataTexture;
-}
-
-template<typename ResourceType>
-void* LockResource(ResourceType& Resource, uint32& Stride);
-template<>
-void* LockResource<FRWBufferStructured>(FRWBufferStructured& Resource, uint32& Stride)
-{
-	Stride = 0;
-	return RHILockStructuredBuffer(Resource.Buffer, 0, Resource.NumBytes, RLM_ReadOnly);
-}
-template<>
-void* LockResource<FTextureRWBuffer2D>(FTextureRWBuffer2D& Resource, uint32& Stride)
-{
-	return RHILockTexture2D(Resource.Buffer, 0, RLM_ReadOnly, Stride, false);
-}
-
-template<typename ResourceType>
-void UnlockResourceGPUScene(ResourceType& Resource);
-template<>
-void UnlockResourceGPUScene<FRWBufferStructured>(FRWBufferStructured& Resource)
-{
-	RHIUnlockStructuredBuffer(Resource.Buffer);
-}
-template<>
-void UnlockResourceGPUScene<FTextureRWBuffer2D>(FTextureRWBuffer2D& Resource)
-{
-	RHIUnlockTexture2D(Resource.Buffer, 0, false);
-}
-
-template<typename ResourceType>
-void UpdateUniformResource(FViewInfo& View, FScene& Scene, bool bDynamicPrimitives);
-template<>
-void UpdateUniformResource<FTextureRWBuffer2D>(FViewInfo& View, FScene& Scene, bool bDynamicPrimitives)
-{
-	View.CachedViewUniformShaderParameters->PrimitiveSceneDataTexture = bDynamicPrimitives ? GetViewStateResourceRef<FTextureRWBuffer2D>(View, View.ViewState == nullptr).Buffer: GetMirrorGPU<FTextureRWBuffer2D>(Scene)->Buffer;
-}
-template<>
-void UpdateUniformResource<FRWBufferStructured>(FViewInfo& View, FScene& Scene, bool bDynamicPrimitives)
-{
-	View.CachedViewUniformShaderParameters->PrimitiveSceneData = bDynamicPrimitives ? GetViewStateResourceRef<FRWBufferStructured>(View, View.ViewState == nullptr).SRV: GetMirrorGPU<FRWBufferStructured>(Scene)->SRV;
-}
-
-static int32 GetMaxPrimitivesUpdate(uint32 NumUploads, uint32 InStrideInFloat4s)
-{
-	return FMath::Min((uint32)(GetMaxBufferDimension() / InStrideInFloat4s), NumUploads);
-}
-
-template<typename ResourceType>
-void UpdateGPUSceneInternal(FRHICommandListImmediate& RHICmdList, FScene& Scene)
+static void UpdateGPUSceneBuffer(FRHICommandListImmediate& RHICmdList, FScene& Scene)
 {
 	if (UseGPUScene(GMaxRHIShaderPlatform, Scene.GetFeatureLevel()))
 	{
-		SCOPED_NAMED_EVENT( STAT_UpdateGPUScene, FColor::Green );
 		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(UpdateGPUScene);
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_UpdateGPUScene);
 
@@ -253,96 +180,79 @@ void UpdateGPUSceneInternal(FRHICommandListImmediate& RHICmdList, FScene& Scene)
 
 		bool bResizedPrimitiveData = false;
 		bool bResizedLightmapData = false;
-
-		ResourceType* MirrorResourceGPU = GetMirrorGPU<ResourceType>(Scene);
 		{
-			const uint32 SizeReserve = FMath::RoundUpToPowerOfTwo( FMath::Max( Scene.Primitives.Num(), 256 ) );
-			bResizedPrimitiveData = ResizeResourceIfNeeded(RHICmdList, *MirrorResourceGPU, SizeReserve * sizeof(FPrimitiveSceneShaderData::Data), TEXT("PrimitiveData"));
+			const int32 NumPrimitiveEntries = Scene.Primitives.Num();
+			const uint32 PrimitiveSceneNumFloat4s = NumPrimitiveEntries * FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s;
+			// Reserve enough space
+			bResizedPrimitiveData = ResizeBufferIfNeeded(RHICmdList, Scene.GPUScene.PrimitiveBuffer, FMath::RoundUpToPowerOfTwo(PrimitiveSceneNumFloat4s));
 		}
-
+		
 		{
-			const uint32 SizeReserve = FMath::RoundUpToPowerOfTwo( FMath::Max( Scene.GPUScene.LightmapDataAllocator.GetMaxSize(), 256 ) );
-			bResizedLightmapData = ResizeResourceIfNeeded(RHICmdList, Scene.GPUScene.LightmapDataBuffer, SizeReserve * sizeof(FLightmapSceneShaderData::Data), TEXT("LightmapData"));
+			const int32 NumLightmapDataEntries = Scene.GPUScene.LightmapDataAllocator.GetMaxSize();
+			const uint32 LightmapDataNumFloat4s = NumLightmapDataEntries * FLightmapSceneShaderData::LightmapDataStrideInFloat4s;
+			bResizedLightmapData = ResizeBufferIfNeeded(RHICmdList, Scene.GPUScene.LightmapDataBuffer, FMath::RoundUpToPowerOfTwo(LightmapDataNumFloat4s));
 		}
 
 		const int32 NumPrimitiveDataUploads = Scene.GPUScene.PrimitivesToUpdate.Num();
 
 		int32 NumLightmapDataUploads = 0;
-
 		if (NumPrimitiveDataUploads > 0)
 		{
-			const int32 MaxPrimitivesUploads = GetMaxPrimitivesUpdate(NumPrimitiveDataUploads, FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s);
-			for (int32 PrimitiveOffset = 0; PrimitiveOffset < NumPrimitiveDataUploads; PrimitiveOffset += MaxPrimitivesUploads)
+			SCOPED_DRAW_EVENTF(RHICmdList, UpdateGPUScene, TEXT("UpdateGPUScene PrimitivesToUpdate = %u"), NumPrimitiveDataUploads);
+
+			FScatterUploadBuilder PrimitivesUploadBuilder(NumPrimitiveDataUploads, FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s, Scene.GPUScene.PrimitivesUploadScatterBuffer, Scene.GPUScene.PrimitivesUploadDataBuffer);
+
+			for (int32 Index : Scene.GPUScene.PrimitivesToUpdate)
 			{
-				SCOPED_DRAW_EVENTF(RHICmdList, UpdateGPUScene, TEXT("UpdateGPUScene PrimitivesToUpdate and Offset = %u %u"), NumPrimitiveDataUploads, PrimitiveOffset);
-
-
-				Scene.GPUScene.PrimitiveUploadBuffer.Init(MaxPrimitivesUploads, sizeof(FPrimitiveSceneShaderData::Data), true, TEXT("PrimitiveUploadBuffer"));
-
-				for (int32 IndexUpdate = 0; (IndexUpdate < MaxPrimitivesUploads) && ((IndexUpdate + PrimitiveOffset) < NumPrimitiveDataUploads); ++IndexUpdate)
+				// PrimitivesToUpdate may contain a stale out of bounds index, as we don't remove update request on primitive removal from scene.
+				if (Index < Scene.PrimitiveSceneProxies.Num())
 				{
-					int32 Index = Scene.GPUScene.PrimitivesToUpdate[IndexUpdate + PrimitiveOffset];
-					// PrimitivesToUpdate may contain a stale out of bounds index, as we don't remove update request on primitive removal from scene.
-					if (Index < Scene.PrimitiveSceneProxies.Num())
-					{
-						FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy = Scene.PrimitiveSceneProxies[Index];
-						NumLightmapDataUploads += PrimitiveSceneProxy->GetPrimitiveSceneInfo()->GetNumLightmapDataEntries();
+					FPrimitiveSceneProxy* PrimitiveSceneProxy = Scene.PrimitiveSceneProxies[Index];
+					NumLightmapDataUploads += PrimitiveSceneProxy->GetPrimitiveSceneInfo()->GetNumLightmapDataEntries();
 
-						FPrimitiveSceneShaderData PrimitiveSceneData(PrimitiveSceneProxy);
-						Scene.GPUScene.PrimitiveUploadBuffer.Add(Index, &PrimitiveSceneData.Data[0]);
-					}
-					Scene.GPUScene.PrimitivesMarkedToUpdate[Index] = false;
+					FPrimitiveSceneShaderData PrimitiveSceneData(PrimitiveSceneProxy);
+					PrimitivesUploadBuilder.Add(Index, &PrimitiveSceneData.Data[0]);
 				}
 
-				if (bResizedPrimitiveData)
-				{
-					RHICmdList.Transition(FRHITransitionInfo(MirrorResourceGPU->UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
-				}
-				else
-				{
-					RHICmdList.Transition(FRHITransitionInfo(MirrorResourceGPU->UAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
-				}
-
-				{
-					Scene.GPUScene.PrimitiveUploadBuffer.ResourceUploadTo(RHICmdList, *MirrorResourceGPU, true);
-				}
+				Scene.GPUScene.PrimitivesMarkedToUpdate[Index] = false;
 			}
 
-			RHICmdList.Transition(FRHITransitionInfo(MirrorResourceGPU->UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+			if (bResizedPrimitiveData)
+			{
+				RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, Scene.GPUScene.PrimitiveBuffer.UAV);
+			}
+			else
+			{
+				RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, Scene.GPUScene.PrimitiveBuffer.UAV);
+			}
+
+			PrimitivesUploadBuilder.UploadTo_Flush(RHICmdList, Scene.GPUScene.PrimitiveBuffer);
+
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, Scene.GPUScene.PrimitiveBuffer.UAV);
 		}
 
-
-		if (GGPUSceneValidatePrimitiveBuffer && (Scene.GPUScene.PrimitiveBuffer.NumBytes > 0 || Scene.GPUScene.PrimitiveTexture.NumBytes > 0))
+		if (GGPUSceneValidatePrimitiveBuffer && Scene.GPUScene.PrimitiveBuffer.NumBytes > 0)
 		{
 			//UE_LOG(LogRenderer, Warning, TEXT("r.GPUSceneValidatePrimitiveBuffer enabled, doing slow readback from GPU"));
-			uint32 Stride = 0;
-			FPrimitiveSceneShaderData* InstanceBufferCopy = (FPrimitiveSceneShaderData*)(FPrimitiveSceneShaderData*)LockResource(*MirrorResourceGPU, Stride);
+			FPrimitiveSceneShaderData* InstanceBufferCopy = (FPrimitiveSceneShaderData*)RHILockStructuredBuffer(Scene.GPUScene.PrimitiveBuffer.Buffer, 0, Scene.GPUScene.PrimitiveBuffer.NumBytes, RLM_ReadOnly);
 
-			const int32 TotalNumberPrimitives = Scene.PrimitiveSceneProxies.Num();
-			int32 MaxPrimitivesUploads = GetMaxPrimitivesUpdate(TotalNumberPrimitives, FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s);
-			for (int32 IndexOffset = 0; IndexOffset < TotalNumberPrimitives; IndexOffset += MaxPrimitivesUploads)
+			for (int32 Index = 0; Index < Scene.PrimitiveSceneProxies.Num(); Index++)
 			{
-				for (int32 Index = 0; (Index < MaxPrimitivesUploads) && ((Index + IndexOffset) < TotalNumberPrimitives); ++Index)
+				FPrimitiveSceneShaderData PrimitiveSceneData(Scene.PrimitiveSceneProxies[Index]);
+				for (int i = 0; i < FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s; i++)
 				{
-					FPrimitiveSceneShaderData PrimitiveSceneData(Scene.PrimitiveSceneProxies[Index + IndexOffset]);
-
-					for (int i = 0; i < FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s; i++)
-					{
-						check(PrimitiveSceneData.Data[i] == InstanceBufferCopy[Index].Data[i]);
-					}
+					check(PrimitiveSceneData.Data[i] == InstanceBufferCopy[Index].Data[i]);
 				}
-				InstanceBufferCopy += Stride / sizeof(FPrimitiveSceneShaderData);
 			}
 
-			UnlockResourceGPUScene(*MirrorResourceGPU);
+			RHIUnlockStructuredBuffer(Scene.GPUScene.PrimitiveBuffer.Buffer);
 		}
 
 		if (NumPrimitiveDataUploads > 0)
 		{
-
 			if (NumLightmapDataUploads > 0)
 			{
-				Scene.GPUScene.LightmapUploadBuffer.Init(NumLightmapDataUploads, sizeof(FLightmapSceneShaderData::Data), true, TEXT("LightmapUploadBuffer"));
+				FScatterUploadBuilder LightmapDataUploadBuilder(NumLightmapDataUploads, FLightmapSceneShaderData::LightmapDataStrideInFloat4s, Scene.GPUScene.LightmapUploadScatterBuffer, Scene.GPUScene.LightmapUploadDataBuffer);
 
 				for (int32 Index : Scene.GPUScene.PrimitivesToUpdate)
 				{
@@ -353,65 +263,226 @@ void UpdateGPUSceneInternal(FRHICommandListImmediate& RHICmdList, FScene& Scene)
 
 						FPrimitiveSceneProxy::FLCIArray LCIs;
 						PrimitiveSceneProxy->GetLCIs(LCIs);
-
+					
 						check(LCIs.Num() == PrimitiveSceneProxy->GetPrimitiveSceneInfo()->GetNumLightmapDataEntries());
 						const int32 LightmapDataOffset = PrimitiveSceneProxy->GetPrimitiveSceneInfo()->GetLightmapDataOffset();
 
 						for (int32 i = 0; i < LCIs.Num(); i++)
 						{
 							FLightmapSceneShaderData LightmapSceneData(LCIs[i], Scene.GetFeatureLevel());
-							Scene.GPUScene.LightmapUploadBuffer.Add(LightmapDataOffset + i, &LightmapSceneData.Data[0]);
+							LightmapDataUploadBuilder.Add(LightmapDataOffset + i, &LightmapSceneData.Data[0]);
 						}
 					}
 				}
 
 				if (bResizedLightmapData)
 				{
-					RHICmdList.Transition(FRHITransitionInfo(Scene.GPUScene.LightmapDataBuffer.UAV, ERHIAccess::Unknown, ERHIAccess::ERWBarrier));
+					RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, Scene.GPUScene.LightmapDataBuffer.UAV);
 				}
 				else
 				{
-					RHICmdList.Transition(FRHITransitionInfo(Scene.GPUScene.LightmapDataBuffer.UAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
+					RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, Scene.GPUScene.LightmapDataBuffer.UAV);
 				}
 
-				Scene.GPUScene.LightmapUploadBuffer.ResourceUploadTo(RHICmdList, Scene.GPUScene.LightmapDataBuffer, false);
+				LightmapDataUploadBuilder.UploadTo(RHICmdList, Scene.GPUScene.LightmapDataBuffer);
 
-				RHICmdList.Transition(FRHITransitionInfo(Scene.GPUScene.LightmapDataBuffer.UAV, ERHIAccess::Unknown, ERHIAccess::SRVMask));
+				RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, Scene.GPUScene.LightmapDataBuffer.UAV);
 			}
 
 			Scene.GPUScene.PrimitivesToUpdate.Reset();
-			
-			if (Scene.GPUScene.PrimitiveUploadBuffer.GetNumBytes() > (uint32)GGPUSceneMaxPooledUploadBufferSize)
+
+			if (Scene.GPUScene.PrimitivesUploadDataBuffer.NumBytes > (uint32)GGPUSceneMaxPooledUploadBufferSize || Scene.GPUScene.PrimitivesUploadScatterBuffer.NumBytes > (uint32)GGPUSceneMaxPooledUploadBufferSize)
 			{
-				Scene.GPUScene.PrimitiveUploadBuffer.Release();
+				Scene.GPUScene.PrimitivesUploadDataBuffer.Release();
+				Scene.GPUScene.PrimitivesUploadScatterBuffer.Release();
 			}
 
-			if (Scene.GPUScene.LightmapUploadBuffer.GetNumBytes() > (uint32)GGPUSceneMaxPooledUploadBufferSize)
+			if (Scene.GPUScene.LightmapUploadDataBuffer.NumBytes > (uint32)GGPUSceneMaxPooledUploadBufferSize || Scene.GPUScene.LightmapUploadScatterBuffer.NumBytes > (uint32)GGPUSceneMaxPooledUploadBufferSize)
 			{
-				Scene.GPUScene.LightmapUploadBuffer.Release();
+				Scene.GPUScene.LightmapUploadDataBuffer.Release();
+				Scene.GPUScene.LightmapUploadScatterBuffer.Release();
 			}
 		}
 	}
 
 	checkSlow(Scene.GPUScene.PrimitivesToUpdate.Num() == 0);
-	
 }
 
-template void UpdateGPUSceneInternal<FRWBufferStructured>(FRHICommandListImmediate& RHICmdList, FScene& Scene);
-template void UpdateGPUSceneInternal<FTextureRWBuffer2D>(FRHICommandListImmediate& RHICmdList, FScene& Scene);
-
-template<typename ResourceType>
-void UploadDynamicPrimitiveShaderDataForViewInternal(FRHICommandListImmediate& RHICmdList, FScene& Scene, FViewInfo& View)
+static void UpdateGPUSceneTexture(FRHICommandListImmediate& RHICmdList, FScene& Scene)
 {
 	if (UseGPUScene(GMaxRHIShaderPlatform, Scene.GetFeatureLevel()))
 	{
-		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(UploadDynamicPrimitiveShaderData);
-		QUICK_SCOPE_CYCLE_COUNTER(STAT_UploadDynamicPrimitiveShaderData);
+		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(UpdateGPUSceneTexture);
+		QUICK_SCOPE_CYCLE_COUNTER(STAT_UpdateGPUSceneTexture);
+
+		if (GGPUSceneUploadEveryFrame || Scene.GPUScene.bUpdateAllPrimitives)
+		{
+			for (int32 Index : Scene.GPUScene.PrimitivesToUpdate)
+			{
+				Scene.GPUScene.PrimitivesMarkedToUpdate[Index] = false;
+			}
+			Scene.GPUScene.PrimitivesToUpdate.Reset();
+
+			for (int32 i = 0; i < Scene.Primitives.Num(); i++)
+			{
+				Scene.GPUScene.PrimitivesToUpdate.Add(i);
+			}
+
+			Scene.GPUScene.bUpdateAllPrimitives = false;
+		}
+
+		bool bResizedLightmapData = false;
+		bool bResizedPrimitiveTextureData = false;
+
+		{
+			const int32 NumPrimitiveEntries = Scene.Primitives.Num();
+			const uint32 PrimitiveSceneNumFloat4s = NumPrimitiveEntries * FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s;
+			// Reserve enough space
+			bResizedPrimitiveTextureData = ResizeTextureIfNeeded(RHICmdList, Scene.GPUScene.PrimitiveTexture, PrimitiveSceneNumFloat4s, FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s);
+		}
+
+		{
+			const int32 NumLightmapDataEntries = Scene.GPUScene.LightmapDataAllocator.GetMaxSize();
+			const uint32 LightmapDataNumFloat4s = NumLightmapDataEntries * FLightmapSceneShaderData::LightmapDataStrideInFloat4s;
+			bResizedLightmapData = ResizeBufferIfNeeded(RHICmdList, Scene.GPUScene.LightmapDataBuffer, FMath::RoundUpToPowerOfTwo(LightmapDataNumFloat4s));
+		}
+
+		const int32 NumPrimitiveDataUploads = Scene.GPUScene.PrimitivesToUpdate.Num();
+
+		int32 NumLightmapDataUploads = 0;
+
+		if (NumPrimitiveDataUploads > 0)
+		{
+			const int32 MaxPrimitivesUploads = FTextureScatterUploadBuilder::GetMaxPrimitivesUpdate(NumPrimitiveDataUploads, FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s);
+			for (int32 PrimitiveOffset = 0; PrimitiveOffset < NumPrimitiveDataUploads; PrimitiveOffset += MaxPrimitivesUploads)
+			{
+				SCOPED_DRAW_EVENTF(RHICmdList, UpdateGPUScene, TEXT("UpdateGPUScene PrimitivesToUpdate and Offset = %u %u"), NumPrimitiveDataUploads, PrimitiveOffset);
+
+				FTextureScatterUploadBuilder PrimitivesUploadBuilder(MaxPrimitivesUploads, FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s, Scene.GPUScene.PrimitivesUploadScatterBuffer, Scene.GPUScene.PrimitivesUploadDataBuffer);
+
+				for (int32 IndexUpdate = 0; (IndexUpdate < MaxPrimitivesUploads) && ((IndexUpdate + PrimitiveOffset) < NumPrimitiveDataUploads); ++IndexUpdate)
+				{
+					int32 Index = Scene.GPUScene.PrimitivesToUpdate[IndexUpdate + PrimitiveOffset];
+					// PrimitivesToUpdate may contain a stale out of bounds index, as we don't remove update request on primitive removal from scene.
+					if (Index < Scene.PrimitiveSceneProxies.Num())
+					{
+						FPrimitiveSceneProxy* PrimitiveSceneProxy = Scene.PrimitiveSceneProxies[Index];
+						NumLightmapDataUploads += PrimitiveSceneProxy->GetPrimitiveSceneInfo()->GetNumLightmapDataEntries();
+
+						FPrimitiveSceneShaderData PrimitiveSceneData(PrimitiveSceneProxy);
+						PrimitivesUploadBuilder.Add(Index, &PrimitiveSceneData.Data[0]);
+					}
+					Scene.GPUScene.PrimitivesMarkedToUpdate[Index] = false;
+				}
+
+				{
+					if (bResizedPrimitiveTextureData)
+					{
+						RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, Scene.GPUScene.PrimitiveTexture.UAV);
+					}
+					else
+					{
+						RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, Scene.GPUScene.PrimitiveTexture.UAV);
+					}
+				}
+
+				{
+					uint16 PrimitivesPerTextureLine = FPrimitiveSceneShaderData::GetPrimitivesPerTextureLine();
+					PrimitivesUploadBuilder.TextureUploadTo_Flush(RHICmdList, Scene.GPUScene.PrimitiveTexture, Scene.Primitives.Num() * FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s, PrimitivesPerTextureLine * FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s);
+				}
+			}
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, Scene.GPUScene.PrimitiveTexture.UAV);
+		}
+
+		
+		if (NumPrimitiveDataUploads > 0)
+		{
+			if (NumLightmapDataUploads > 0)
+			{
+				const int32 MaxLightmapsUploads = FTextureScatterUploadBuilder::GetMaxPrimitivesUpdate(NumLightmapDataUploads, FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s);
+				for (int32 PrimitiveOffset = 0; PrimitiveOffset < NumPrimitiveDataUploads; PrimitiveOffset += MaxLightmapsUploads)
+				{
+					FScatterUploadBuilder LightmapDataUploadBuilder(NumLightmapDataUploads, FLightmapSceneShaderData::LightmapDataStrideInFloat4s, Scene.GPUScene.LightmapUploadScatterBuffer, Scene.GPUScene.LightmapUploadDataBuffer);
+
+					for (int32 IndexUpdate = 0; (IndexUpdate < MaxLightmapsUploads) && ((IndexUpdate + PrimitiveOffset) < NumPrimitiveDataUploads); ++IndexUpdate)
+					{
+						int32 Index = Scene.GPUScene.PrimitivesToUpdate[IndexUpdate + PrimitiveOffset];
+						// PrimitivesToUpdate may contain a stale out of bounds index, as we don't remove update request on primitive removal from scene.
+						if (Index < Scene.PrimitiveSceneProxies.Num())
+						{
+							FPrimitiveSceneProxy* PrimitiveSceneProxy = Scene.PrimitiveSceneProxies[Index];
+
+							FPrimitiveSceneProxy::FLCIArray LCIs;
+							PrimitiveSceneProxy->GetLCIs(LCIs);
+
+							check(LCIs.Num() == PrimitiveSceneProxy->GetPrimitiveSceneInfo()->GetNumLightmapDataEntries());
+							const int32 LightmapDataOffset = PrimitiveSceneProxy->GetPrimitiveSceneInfo()->GetLightmapDataOffset();
+
+							for (int32 i = 0; i < LCIs.Num(); i++)
+							{
+								FLightmapSceneShaderData LightmapSceneData(LCIs[i], Scene.GetFeatureLevel());
+								LightmapDataUploadBuilder.Add(LightmapDataOffset + i, &LightmapSceneData.Data[0]);
+							}
+						}
+					}
+
+					if (bResizedLightmapData)
+					{
+						RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, Scene.GPUScene.LightmapDataBuffer.UAV);
+					}
+					else
+					{
+						RHICmdList.TransitionResource(EResourceTransitionAccess::EWritable, EResourceTransitionPipeline::EGfxToCompute, Scene.GPUScene.LightmapDataBuffer.UAV);
+					}
+
+					LightmapDataUploadBuilder.UploadTo(RHICmdList, Scene.GPUScene.LightmapDataBuffer);
+	
+				}
+				RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, Scene.GPUScene.LightmapDataBuffer.UAV);
+			}
+
+			Scene.GPUScene.PrimitivesToUpdate.Reset();
+			
+			if (Scene.GPUScene.PrimitivesUploadDataBuffer.NumBytes > (uint32)GGPUSceneMaxPooledUploadBufferSize || Scene.GPUScene.PrimitivesUploadScatterBuffer.NumBytes > (uint32)GGPUSceneMaxPooledUploadBufferSize)
+			{
+				Scene.GPUScene.PrimitivesUploadDataBuffer.Release();
+				Scene.GPUScene.PrimitivesUploadScatterBuffer.Release();
+			}
+
+			if (Scene.GPUScene.LightmapUploadDataBuffer.NumBytes > (uint32)GGPUSceneMaxPooledUploadBufferSize || Scene.GPUScene.LightmapUploadScatterBuffer.NumBytes > (uint32)GGPUSceneMaxPooledUploadBufferSize)
+			{
+				Scene.GPUScene.LightmapUploadDataBuffer.Release();
+				Scene.GPUScene.LightmapUploadScatterBuffer.Release();
+			}
+		}
+	}
+
+	checkSlow(Scene.GPUScene.PrimitivesToUpdate.Num() == 0);
+}
+
+void UpdateGPUScene(FRHICommandListImmediate& RHICmdList, FScene& Scene)
+{
+	if (!GPUSceneUseTexture2D(Scene.GetShaderPlatform()))
+	{
+		UpdateGPUSceneBuffer(RHICmdList, Scene);
+	}
+	else
+	{
+		UpdateGPUSceneTexture(RHICmdList, Scene);
+	}
+}
+
+static void UploadDynamicPrimitiveShaderDataBufferForView(FRHICommandListImmediate& RHICmdList, FScene& Scene, FViewInfo& View)
+{
+	if (UseGPUScene(GMaxRHIShaderPlatform, Scene.GetFeatureLevel()))
+	{
+		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(UploadDynamicPrimitiveShaderDataForView);
+		QUICK_SCOPE_CYCLE_COUNTER(STAT_UploadDynamicPrimitiveShaderDataForView);
 
 		const int32 NumPrimitiveDataUploads = View.DynamicPrimitiveShaderData.Num();
 		if (NumPrimitiveDataUploads > 0)
 		{
-			ResourceType& ViewPrimitiveShaderDataResource = GetViewStateResourceRef<ResourceType>(View, View.ViewState == nullptr);
+			FRWBufferStructured& ViewPrimitiveShaderDataBuffer = View.ViewState ? View.ViewState->PrimitiveShaderDataBuffer : View.OneFramePrimitiveShaderDataBuffer;
 
 			const int32 NumPrimitiveEntries = Scene.Primitives.Num() + View.DynamicPrimitiveShaderData.Num();
 			const uint32 PrimitiveSceneNumFloat4s = NumPrimitiveEntries * FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s;
@@ -420,82 +491,41 @@ void UploadDynamicPrimitiveShaderDataForViewInternal(FRHICommandListImmediate& R
 			uint32 BytesPerElement = GPixelFormats[PF_A32B32G32R32F].BlockBytes;
 
 			// Reserve enough space
-			if (ViewPrimitiveSceneNumFloat4s * BytesPerElement != ViewPrimitiveShaderDataResource.NumBytes)
+			if (ViewPrimitiveSceneNumFloat4s * BytesPerElement != ViewPrimitiveShaderDataBuffer.NumBytes)
 			{
-				ViewPrimitiveShaderDataResource.Release();
-				ResizeResourceIfNeeded(RHICmdList, ViewPrimitiveShaderDataResource, ViewPrimitiveSceneNumFloat4s * BytesPerElement, TEXT("ViewPrimitiveShaderDataBuffer"));
+				ViewPrimitiveShaderDataBuffer.Release();
+				ViewPrimitiveShaderDataBuffer.Initialize(BytesPerElement, ViewPrimitiveSceneNumFloat4s, 0, TEXT("ViewPrimitiveShaderDataBuffer"));
 			}
 
 			// Copy scene primitive data into view primitive data
-			{
-				RHICmdList.Transition(FRHITransitionInfo(ViewPrimitiveShaderDataResource.UAV, ERHIAccess::Unknown, ERHIAccess::UAVCompute));
-				MemcpyResource(RHICmdList, ViewPrimitiveShaderDataResource, *GetMirrorGPU<ResourceType>(Scene), Scene.Primitives.Num() * sizeof(FPrimitiveSceneShaderData::Data), 0, 0);
-				RHICmdList.Transition(FRHITransitionInfo(ViewPrimitiveShaderDataResource.UAV, ERHIAccess::UAVCompute, ERHIAccess::ERWBarrier));
-			}
+			MemcpyBuffer(RHICmdList, Scene.GPUScene.PrimitiveBuffer, ViewPrimitiveShaderDataBuffer, Scene.Primitives.Num() * FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s);
 
-			// Append View.DynamicPrimitiveShaderData to the end of the view primitive data resource
+			// Append View.DynamicPrimitiveShaderData to the end of the view primitive data buffer
 			if (NumPrimitiveDataUploads > 0)
 			{
-				int32 MaxPrimitivesUploads = GetMaxPrimitivesUpdate(NumPrimitiveDataUploads, FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s);
-				for (int32 PrimitiveOffset = 0; PrimitiveOffset < NumPrimitiveDataUploads; PrimitiveOffset += MaxPrimitivesUploads)
+				FScatterUploadBuilder PrimitivesUploadBuilder(NumPrimitiveDataUploads, FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s, Scene.GPUScene.PrimitivesUploadScatterBuffer, Scene.GPUScene.PrimitivesUploadDataBuffer);
+
+				for (int32 DynamicUploadIndex = 0; DynamicUploadIndex < View.DynamicPrimitiveShaderData.Num(); DynamicUploadIndex++)
 				{
-					Scene.GPUScene.PrimitiveUploadViewBuffer.Init( MaxPrimitivesUploads, sizeof( FPrimitiveSceneShaderData::Data ), true, TEXT("PrimitiveUploadViewBuffer") );
-
-					for (int32 IndexUpdate = 0; (IndexUpdate < MaxPrimitivesUploads) && ((IndexUpdate + PrimitiveOffset) < NumPrimitiveDataUploads); ++IndexUpdate)
-					{
-						int32 DynamicUploadIndex = IndexUpdate + PrimitiveOffset;
-						FPrimitiveSceneShaderData PrimitiveSceneData(View.DynamicPrimitiveShaderData[DynamicUploadIndex]);
-						// Place dynamic primitive shader data just after scene primitive data
-						Scene.GPUScene.PrimitiveUploadViewBuffer.Add(Scene.Primitives.Num() + DynamicUploadIndex, &PrimitiveSceneData.Data[0]);
-					}
-
-					{
-						RHICmdList.Transition(FRHITransitionInfo(ViewPrimitiveShaderDataResource.UAV, ERHIAccess::ERWBarrier, ERHIAccess::ERWBarrier));
-						Scene.GPUScene.PrimitiveUploadViewBuffer.ResourceUploadTo(RHICmdList, ViewPrimitiveShaderDataResource, false);
-					}
-				}
-			}
-
-			if (Scene.GPUScene.PrimitiveUploadViewBuffer.GetNumBytes() > (uint32)GGPUSceneMaxPooledUploadBufferSize)
-			{
-				Scene.GPUScene.PrimitiveUploadViewBuffer.Release();
-			}
-
-			RHICmdList.Transition(FRHITransitionInfo(ViewPrimitiveShaderDataResource.UAV, ERHIAccess::ERWBarrier, ERHIAccess::SRVMask));
-
-			
-			if (GGPUSceneValidatePrimitiveBuffer && (Scene.GPUScene.PrimitiveBuffer.NumBytes > 0 || Scene.GPUScene.PrimitiveTexture.NumBytes > 0))
-			{
-				uint32 Stride = 0;
-				FPrimitiveSceneShaderData* InstanceBufferCopy = (FPrimitiveSceneShaderData*)LockResource(ViewPrimitiveShaderDataResource, Stride);
-
-				const int32 TotalNumberPrimitives = Scene.PrimitiveSceneProxies.Num() + View.DynamicPrimitiveShaderData.Num();
-				int32 MaxPrimitivesUploads = GetMaxPrimitivesUpdate(TotalNumberPrimitives, FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s);
-				for (int32 IndexOffset = 0; IndexOffset < TotalNumberPrimitives; IndexOffset += MaxPrimitivesUploads)
-				{
-					for (int32 Index = 0; (Index < MaxPrimitivesUploads) && ((Index + IndexOffset) < TotalNumberPrimitives); ++Index)
-					{
-						FPrimitiveSceneShaderData PrimitiveSceneData;
-						if ((Index + IndexOffset) < Scene.PrimitiveSceneProxies.Num())
-						{
-							PrimitiveSceneData = (Scene.PrimitiveSceneProxies[Index + IndexOffset]);
-						}
-						else
-						{
-							PrimitiveSceneData = FPrimitiveSceneShaderData(View.DynamicPrimitiveShaderData[Index + IndexOffset - Scene.PrimitiveSceneProxies.Num()]);
-						}
-
-						check(FMemory::Memcmp(&InstanceBufferCopy[Index + IndexOffset], &PrimitiveSceneData, sizeof(FPrimitiveSceneShaderData)) == 0);
-					}
-					InstanceBufferCopy += Stride / sizeof(FPrimitiveSceneShaderData);
+					FPrimitiveSceneShaderData PrimitiveSceneData(View.DynamicPrimitiveShaderData[DynamicUploadIndex]);
+					// Place dynamic primitive shader data just after scene primitive data
+					PrimitivesUploadBuilder.Add(Scene.Primitives.Num() + DynamicUploadIndex, &PrimitiveSceneData.Data[0]);
 				}
 
-				UnlockResourceGPUScene(ViewPrimitiveShaderDataResource);
+				RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, ViewPrimitiveShaderDataBuffer.UAV);
+
+				PrimitivesUploadBuilder.UploadTo(RHICmdList, ViewPrimitiveShaderDataBuffer);
 			}
 
+			RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, ViewPrimitiveShaderDataBuffer.UAV);
+
+			View.CachedViewUniformShaderParameters->PrimitiveSceneData = ViewPrimitiveShaderDataBuffer.SRV;
 		}
-
-		UpdateUniformResource<ResourceType>(View, Scene, NumPrimitiveDataUploads > 0);
+		else
+		{
+			// No dynamic primitives for this view, we just use Scene.GPUScene.PrimitiveBuffer.
+			View.CachedViewUniformShaderParameters->PrimitiveSceneData = Scene.GPUScene.PrimitiveBuffer.SRV;
+		}
 
 		// Update view uniform buffer
 		View.CachedViewUniformShaderParameters->LightmapSceneData = Scene.GPUScene.LightmapDataBuffer.SRV;
@@ -503,8 +533,93 @@ void UploadDynamicPrimitiveShaderDataForViewInternal(FRHICommandListImmediate& R
 	}
 }
 
-template void UploadDynamicPrimitiveShaderDataForViewInternal<FRWBufferStructured>(FRHICommandListImmediate& RHICmdList, FScene& Scene, FViewInfo& View);
-template void UploadDynamicPrimitiveShaderDataForViewInternal<FTextureRWBuffer2D>(FRHICommandListImmediate& RHICmdList, FScene& Scene, FViewInfo& View);
+static void UploadDynamicPrimitiveShaderDataTextureForView(FRHICommandListImmediate& RHICmdList, FScene& Scene, FViewInfo& View)
+{
+	uint16 PrimitivesPerTextureLine = FPrimitiveSceneShaderData::GetPrimitivesPerTextureLine();
+
+	if (UseGPUScene(GMaxRHIShaderPlatform, Scene.GetFeatureLevel()))
+	{
+		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(UploadDynamicPrimitiveShaderDataTextureForView);
+		QUICK_SCOPE_CYCLE_COUNTER(STAT_UploadDynamicPrimitiveShaderDataTextureForView);
+
+		const int32 NumPrimitiveDataUploads = View.DynamicPrimitiveShaderData.Num();
+		if (NumPrimitiveDataUploads > 0)
+		{
+			FTextureRWBuffer2D& ViewPrimitiveShaderDataTexture = View.ViewState ? View.ViewState->PrimitiveShaderDataTexture : View.OneFramePrimitiveShaderDataTexture;
+
+			const int32 NumPrimitiveEntries = Scene.Primitives.Num() + View.DynamicPrimitiveShaderData.Num();
+			const uint32 PrimitiveSceneNumFloat4s = NumPrimitiveEntries * FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s;
+
+			uint32 ViewPrimitiveSceneNumFloat4s = FMath::RoundUpToPowerOfTwo(PrimitiveSceneNumFloat4s);
+			uint32 BytesPerElement = GPixelFormats[PF_A32B32G32R32F].BlockBytes;
+
+			// Reserve enough space
+			if (ViewPrimitiveSceneNumFloat4s * BytesPerElement != ViewPrimitiveShaderDataTexture.NumBytes)
+			{
+				ViewPrimitiveShaderDataTexture.Release();
+				ViewPrimitiveShaderDataTexture.Initialize(BytesPerElement, FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s * PrimitivesPerTextureLine, NumPrimitiveEntries / PrimitivesPerTextureLine + 1, PF_A32B32G32R32F, TexCreate_RenderTargetable | TexCreate_UAV);
+			}
+
+			// Copy scene primitive data into view primitive data
+			{
+				MemcpyTextureToTexture(RHICmdList, Scene.GPUScene.PrimitiveTexture, ViewPrimitiveShaderDataTexture, 0, 0, Scene.Primitives.Num() * FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s, PrimitivesPerTextureLine * FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s);
+			}
+
+			// Append View.DynamicPrimitiveShaderData to the end of the view primitive data texture
+			if (NumPrimitiveDataUploads > 0)
+			{
+				int32 MaxPrimitivesUploads = FTextureScatterUploadBuilder::GetMaxPrimitivesUpdate(NumPrimitiveDataUploads, FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s);
+				for (int32 PrimitiveOffset = 0; PrimitiveOffset < NumPrimitiveDataUploads; PrimitiveOffset += MaxPrimitivesUploads)
+				{
+					FTextureScatterUploadBuilder PrimitivesUploadBuilder(MaxPrimitivesUploads, FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s, Scene.GPUScene.PrimitivesUploadScatterBuffer, Scene.GPUScene.PrimitivesUploadDataBuffer);
+
+					for (int32 IndexUpdate = 0; (IndexUpdate < MaxPrimitivesUploads) && ((IndexUpdate + PrimitiveOffset) < NumPrimitiveDataUploads); ++IndexUpdate)
+					{
+						int32 DynamicUploadIndex = IndexUpdate + PrimitiveOffset;
+						FPrimitiveSceneShaderData PrimitiveSceneData(View.DynamicPrimitiveShaderData[DynamicUploadIndex]);
+						// Place dynamic primitive shader data just after scene primitive data
+						PrimitivesUploadBuilder.Add(Scene.Primitives.Num() + DynamicUploadIndex, &PrimitiveSceneData.Data[0]);
+					}
+
+					{
+						RHICmdList.TransitionResource(EResourceTransitionAccess::ERWBarrier, EResourceTransitionPipeline::EComputeToCompute, ViewPrimitiveShaderDataTexture.UAV);
+						PrimitivesUploadBuilder.TextureUploadTo(RHICmdList, ViewPrimitiveShaderDataTexture, NumPrimitiveEntries * FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s, PrimitivesPerTextureLine * FPrimitiveSceneShaderData::PrimitiveDataStrideInFloat4s);
+					}
+				}
+			}
+
+			{
+				RHICmdList.TransitionResource(EResourceTransitionAccess::EReadable, EResourceTransitionPipeline::EComputeToGfx, ViewPrimitiveShaderDataTexture.UAV);
+				View.CachedViewUniformShaderParameters->PrimitiveSceneDataTexture = ViewPrimitiveShaderDataTexture.Buffer;
+			}
+
+		}
+		else
+		{
+			// No dynamic primitives for this view, we just use Scene.GPUScene.PrimitiveTexture.
+			{
+				View.CachedViewUniformShaderParameters->PrimitiveSceneDataTexture = Scene.GPUScene.PrimitiveTexture.Buffer;
+			}
+
+		}
+
+		// Update view uniform buffer
+		View.CachedViewUniformShaderParameters->LightmapSceneData = Scene.GPUScene.LightmapDataBuffer.SRV;
+		View.ViewUniformBuffer.UpdateUniformBufferImmediate(*View.CachedViewUniformShaderParameters);
+	}
+}
+
+void UploadDynamicPrimitiveShaderDataForView(FRHICommandListImmediate& RHICmdList, FScene& Scene, FViewInfo& View)
+{
+	if (!GPUSceneUseTexture2D(Scene.GetShaderPlatform()))
+	{
+		UploadDynamicPrimitiveShaderDataBufferForView(RHICmdList, Scene, View);
+	}
+	else
+	{
+		UploadDynamicPrimitiveShaderDataTextureForView(RHICmdList, Scene, View);
+	}
+}
 
 void AddPrimitiveToUpdateGPU(FScene& Scene, int32 PrimitiveId)
 {
@@ -522,28 +637,5 @@ void AddPrimitiveToUpdateGPU(FScene& Scene, int32 PrimitiveId)
 			Scene.GPUScene.PrimitivesToUpdate.Add(PrimitiveId);
 			Scene.GPUScene.PrimitivesMarkedToUpdate[PrimitiveId] = true;
 		}
-	}
-}
-void UpdateGPUScene(FRHICommandListImmediate& RHICmdList, FScene& Scene)
-{
-	if (GPUSceneUseTexture2D(Scene.GetShaderPlatform()))
-	{
-		UpdateGPUSceneInternal<FTextureRWBuffer2D>(RHICmdList, Scene);
-	}
-	else
-	{
-		UpdateGPUSceneInternal<FRWBufferStructured>(RHICmdList, Scene);
-	}
-}
-
-void UploadDynamicPrimitiveShaderDataForView(FRHICommandListImmediate& RHICmdList, FScene& Scene, FViewInfo& View)
-{
-	if (GPUSceneUseTexture2D(Scene.GetShaderPlatform()))
-	{
-		UploadDynamicPrimitiveShaderDataForViewInternal<FTextureRWBuffer2D>(RHICmdList, Scene, View);
-	}
-	else
-	{
-		UploadDynamicPrimitiveShaderDataForViewInternal<FRWBufferStructured>(RHICmdList, Scene, View);
 	}
 }

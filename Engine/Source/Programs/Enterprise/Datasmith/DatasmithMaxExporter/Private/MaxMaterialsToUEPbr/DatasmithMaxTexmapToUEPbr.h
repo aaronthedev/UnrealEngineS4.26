@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "DatasmithMaxMaterialsToUEPbr.h"
-#include "DatasmithMaxTexmapParser.h"
 
 class IDatasmithExpressionInput;
 class IDatasmithMaterialExpression;
@@ -37,7 +36,6 @@ class FDatasmithMaxNormalToUEPbr : public IDatasmithMaxTexmapToUEPbr
 public:
 	virtual bool IsSupported( const FDatasmithMaxMaterialsToUEPbr* MaxMaterialToUEPbr, Texmap* InTexmap ) const override;
 	virtual IDatasmithMaterialExpression* Convert( FDatasmithMaxMaterialsToUEPbr* MaxMaterialToUEPbr, Texmap* InTexmap ) override;
-	virtual DatasmithMaxTexmapParser::FNormalMapParameters ParseMap( Texmap* InTexmap );
 };
 
 class FDatasmithMaxRGBMultiplyToUEPbr : public IDatasmithMaxTexmapToUEPbr
@@ -85,15 +83,6 @@ public:
 class FDatasmithMaxTextureOutputToUEPbr : public IDatasmithMaxTexmapToUEPbr
 {
 public:
-	virtual bool IsSupported( const FDatasmithMaxMaterialsToUEPbr* MaxMaterialToUEPbr, Texmap* InTexmap ) const override;
-	virtual IDatasmithMaterialExpression* Convert( FDatasmithMaxMaterialsToUEPbr* MaxMaterialToUEPbr, Texmap* InTexmap ) override;
-};
-
-/**
- * Color Correction is baked when possible but we convert some parameters when we can't bake it
- */
-class FDatasmithMaxColorCorrectionToUEPbr : public IDatasmithMaxTexmapToUEPbr
-{
 	virtual bool IsSupported( const FDatasmithMaxMaterialsToUEPbr* MaxMaterialToUEPbr, Texmap* InTexmap ) const override;
 	virtual IDatasmithMaterialExpression* Convert( FDatasmithMaxMaterialsToUEPbr* MaxMaterialToUEPbr, Texmap* InTexmap ) override;
 };

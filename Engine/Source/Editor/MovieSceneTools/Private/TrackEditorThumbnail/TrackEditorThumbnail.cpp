@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TrackEditorThumbnail/TrackEditorThumbnail.h"
 #include "Modules/ModuleManager.h"
@@ -345,19 +345,13 @@ void FTrackEditorThumbnailCache::DrawThumbnail(FTrackEditorThumbnail& TrackEdito
 		ViewportThumbnailClient->PostDraw(TrackEditorThumbnail);
 	}
 
-	FSlateTextureRenderTarget2DResource* pSlateResource = TrackEditorThumbnail.GetRenderTarget();
-	if (pSlateResource != nullptr)
-	{
-		FThreadSafeBool* bHasFinishedDrawingPtr = &TrackEditorThumbnail.bHasFinishedDrawing;
-		ENQUEUE_RENDER_COMMAND(SetFinishedDrawing)(
-			[bHasFinishedDrawingPtr, pSlateResource](FRHICommandList& RHICmdList)
-			{
-				FRHITexture* InTexture = pSlateResource->GetTextureRHI();
-				RHICmdList.Transition(FRHITransitionInfo(InTexture, ERHIAccess::RTV, ERHIAccess::SRVMask));
-				*bHasFinishedDrawingPtr = true;
-			}
-		);
-	}
+	FThreadSafeBool* bHasFinishedDrawingPtr = &TrackEditorThumbnail.bHasFinishedDrawing;
+	ENQUEUE_RENDER_COMMAND(SetFinishedDrawing)(
+		[bHasFinishedDrawingPtr](FRHICommandList& RHICmdList)
+		{
+			*bHasFinishedDrawingPtr = true;
+		}
+	);
 }
 void FTrackEditorThumbnailCache::DrawViewportThumbnail(FTrackEditorThumbnail& TrackEditorThumbnail)
 {

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Chaos/Array.h"
@@ -15,115 +15,45 @@
 
 namespace Chaos
 {
-	class FHeightfieldRaycastVisitor;
-	class FConvex;
-	struct FMTDInfo;
+	template<typename T>
+	class THeightfieldRaycastVisitor;
 }
 
 namespace Chaos
 {
-	class CHAOS_API FHeightField final : public FImplicitObject
+	template<typename T>
+	class CHAOS_API THeightField final : public TImplicitObject<T,3>
 	{
 	public:
-		using FImplicitObject::GetTypeName;
+		using TImplicitObject<T, 3>::GetTypeName;
 
-		FHeightField(TArray<FReal>&& Height, TArray<uint8>&& InMaterialIndices, int32 InNumRows, int32 InNumCols, const FVec3& InScale);
-		FHeightField(TArrayView<const uint16> InHeights, TArrayView<uint8> InMaterialIndices, int32 InNumRows, int32 InNumCols, const FVec3& InScale);
-		FHeightField(const FHeightField& Other) = delete;
-		
-		// Not required as long as FImplicitObject also has deleted move constructor (adding this causes an error on Linux build)
-		//FHeightField(FHeightField&& Other) = default;
+		THeightField(TArray<T>&& Height, int32 InNumRows, int32 InNumCols, const TVector<T,3>& InScale);
+		THeightField(TArrayView<const uint16> InHeights, int32 InNumRows, int32 InNumCols, const TVector<T, 3>& InScale);
+		THeightField(const THeightField& Other) = delete;
+		THeightField(THeightField&& Other) = default;
 
-		virtual ~FHeightField() {}
+		virtual ~THeightField() {}
 
 		/** Support for editing a subsection of the heightfield */
-		void EditHeights(TArrayView<FReal> InHeights, int32 InBeginRow, int32 InBeginCol, int32 InNumRows, int32 InNumCols);
+		void EditHeights(TArrayView<T> InHeights, int32 InBeginRow, int32 InBeginCol, int32 InNumRows, int32 InNumCols);
 		void EditHeights(TArrayView<const uint16> InHeights, int32 InBeginRow, int32 InBeginCol, int32 InNumRows, int32 InNumCols);
-		FReal GetHeight(int32 InIndex) const;
-		FReal GetHeight(int32 InX, int32 InY) const;
-		uint8 GetMaterialIndex(int32 InIndex) const;
-		uint8 GetMaterialIndex(int32 InX, int32 InY) const;
-		bool IsHole(int32 InIndex) const;
-		bool IsHole(int32 InCellX, int32 InCellY) const;
-		FVec3 GetNormalAt(const TVector<FReal, 2>& InGridLocationLocal) const;
-		FReal GetHeightAt(const TVector<FReal, 2>& InGridLocationLocal) const;
 
-		int32 GetNumRows() const { return GeomData.NumRows; }
-		int32 GetNumCols() const { return GeomData.NumCols; }
-
-		virtual FReal PhiWithNormal(const FVec3& x, FVec3& Normal) const;
-
-		virtual bool Raycast(const FVec3& StartPoint, const FVec3& Dir, const FReal Length, const FReal Thickness, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex) const override;
-		virtual bool Overlap(const FVec3& Point, const FReal Thickness) const override;
-		
-		bool OverlapGeom(const TSphere<FReal, 3>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FMTDInfo* OutMTD = nullptr) const;
-		bool OverlapGeom(const TBox<FReal, 3>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FMTDInfo* OutMTD = nullptr) const;
-		bool OverlapGeom(const TCapsule<FReal>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FMTDInfo* OutMTD = nullptr) const;
-		bool OverlapGeom(const FConvex& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FMTDInfo* OutMTD = nullptr) const;
-		bool OverlapGeom(const TImplicitObjectScaled<TSphere<FReal, 3>>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FMTDInfo* OutMTD = nullptr) const;
-		bool OverlapGeom(const TImplicitObjectScaled<TBox<FReal, 3>>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FMTDInfo* OutMTD = nullptr) const;
-		bool OverlapGeom(const TImplicitObjectScaled<TCapsule<FReal>>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FMTDInfo* OutMTD = nullptr) const;
-		bool OverlapGeom(const TImplicitObjectScaled<FConvex>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FMTDInfo* OutMTD = nullptr) const;
-
-		bool SweepGeom(const TSphere<FReal, 3>& QueryGeom, const FRigidTransform3& StartTM, const FVec3& Dir, const FReal Length, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex, const FReal Thickness = 0, bool bComputeMTD = false) const;
-		bool SweepGeom(const TBox<FReal, 3>& QueryGeom, const FRigidTransform3& StartTM, const FVec3& Dir, const FReal Length, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex, const FReal Thickness = 0, bool bComputeMTD = false) const;
-		bool SweepGeom(const TCapsule<FReal>& QueryGeom, const FRigidTransform3& StartTM, const FVec3& Dir, const FReal Length, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex, const FReal Thickness = 0, bool bComputeMTD = false) const;
-		bool SweepGeom(const FConvex& QueryGeom, const FRigidTransform3& StartTM, const FVec3& Dir, const FReal Length, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex, const FReal Thickness = 0, bool bComputeMTD = false) const;
-		bool SweepGeom(const TImplicitObjectScaled<TSphere<FReal, 3>>& QueryGeom, const FRigidTransform3& StartTM, const FVec3& Dir, const FReal Length, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex, const FReal Thickness = 0, bool bComputeMTD = false) const;
-		bool SweepGeom(const TImplicitObjectScaled<TBox<FReal, 3>>& QueryGeom, const FRigidTransform3& StartTM, const FVec3& Dir, const FReal Length, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex, const FReal Thickness = 0, bool bComputeMTD = false) const;
-		bool SweepGeom(const TImplicitObjectScaled<TCapsule<FReal>>& QueryGeom, const FRigidTransform3& StartTM, const FVec3& Dir, const FReal Length, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex, const FReal Thickness = 0, bool bComputeMTD = false) const;
-		bool SweepGeom(const TImplicitObjectScaled<FConvex>& QueryGeom, const FRigidTransform3& StartTM, const FVec3& Dir, const FReal Length, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex, const FReal Thickness = 0, bool bComputeMTD = false) const;
-
-		bool GJKContactPoint(const TBox<FReal, 3>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FVec3& ContactLocation, FVec3& ContactNormal, FReal& ContactPhi) const;
-		bool GJKContactPoint(const TSphere<FReal, 3>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FVec3& ContactLocation, FVec3& ContactNormal, FReal& ContactPhi) const;
-		bool GJKContactPoint(const TCapsule<FReal>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FVec3& ContactLocation, FVec3& ContactNormal, FReal& ContactPhi) const;
-		bool GJKContactPoint(const FConvex& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FVec3& ContactLocation, FVec3& ContactNormal, FReal& ContactPhi) const;
-		bool GJKContactPoint(const TImplicitObjectScaled<TBox<FReal, 3>>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FVec3& ContactLocation, FVec3& ContactNormal, FReal& ContactPhi) const;
-		bool GJKContactPoint(const TImplicitObjectScaled<TSphere<FReal, 3>>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FVec3& ContactLocation, FVec3& ContactNormal, FReal& ContactPhi) const;
-		bool GJKContactPoint(const TImplicitObjectScaled<TCapsule<FReal>>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FVec3& ContactLocation, FVec3& ContactNormal, FReal& ContactPhi) const;
-		bool GJKContactPoint(const TImplicitObjectScaled<FConvex>& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FVec3& ContactLocation, FVec3& ContactNormal, FReal& ContactPhi) const;
-
-
-		virtual int32 FindMostOpposingFace(const FVec3& Position, const FVec3& UnitDir, int32 HintFaceIndex, FReal SearchDist) const override;
-		virtual FVec3 FindGeometryOpposingNormal(const FVec3& DenormDir, int32 FaceIndex, const FVec3& OriginalNormal) const override;
-
-		struct FClosestFaceData
+		virtual T PhiWithNormal(const TVector<T, 3>& x, TVector<T, 3>& Normal) const
 		{
-			int32 FaceIndex = INDEX_NONE;
-			FReal DistanceToFaceSq = TNumericLimits<FReal>::Max();
-			bool bWasSampleBehind = false;
-		};
-
-		FClosestFaceData FindClosestFace(const FVec3& Position, FReal SearchDist) const;
-		
-		virtual uint16 GetMaterialIndex(uint32 HintIndex) const override
-		{
-			ensure(GeomData.MaterialIndices.Num() > 0);
-
-			// If we've only got a default
-			if(GeomData.MaterialIndices.Num() == 1)
-			{
-				return GeomData.MaterialIndices[0];
-			}
-			else
-			{
-				// We store per cell for materials, so change to cell index
-				int32 CellIndex = HintIndex / 2;
-				if(GeomData.MaterialIndices.IsValidIndex(CellIndex))
-				{
-					return GeomData.MaterialIndices[CellIndex];
-				}
-			}
-			
-			// INDEX_NONE will be out of bounds but it is an expected value. If we reach this section of the code and the index isn't INDEX_NONE, we have an issue
-			ensureMsgf(HintIndex == INDEX_NONE,TEXT("GetMaterialIndex called with an invalid MaterialIndex => %d"),HintIndex);
-			
-			return 0;
+			check(false);	//not supported yet - might support it in the future or we may change the interface
+			return (T)0;
 		}
 
-		virtual const FAABB3 BoundingBox() const
+		virtual bool Raycast(const TVector<T, 3>& StartPoint, const TVector<T, 3>& Dir, const T Length, const T Thickness, T& OutTime, TVector<T,3>& OutPosition, TVector<T,3>& OutNormal, int32& OutFaceIndex) const override;
+		virtual bool Overlap(const TVector<T, 3>& Point, const T Thickness) const override;
+		bool OverlapGeom(const TImplicitObject<T, 3>& QueryGeom, const TRigidTransform<T, 3>& QueryTM, const T Thickness) const;
+		bool SweepGeom(const TImplicitObject<T, 3>& QueryGeom, const TRigidTransform<T, 3>& StartTM, const TVector<T, 3>& Dir, const T Length, T& OutTime, TVector<T, 3>& OutPosition, TVector<T, 3>& OutNormal, int32& OutFaceIndex, const T Thickness = 0) const;
+		virtual int32 FindMostOpposingFace(const TVector<T, 3>& Position, const TVector<T, 3>& UnitDir, int32 HintFaceIndex, T SearchDist) const override;
+		virtual TVector<T, 3> FindGeometryOpposingNormal(const TVector<T, 3>& DenormDir, int32 FaceIndex, const TVector<T, 3>& OriginalNormal) const override;
+
+		virtual const TBox<T, 3>& BoundingBox() const
 		{
-			CachedBounds = FAABB3(LocalBounds.Min() * GeomData.Scale, LocalBounds.Max() * GeomData.Scale);
+			CachedBounds = TBox<T, 3>(LocalBounds.Min() * GeomData.Scale, LocalBounds.Max() * GeomData.Scale);
 			return CachedBounds;
 		}
 
@@ -135,12 +65,12 @@ namespace Chaos
 
 			// Saving to an archive is a const operation, but must be non-const
 			// to support loading. Cast const away here to get bytes written
-			const_cast<FHeightField*>(this)->Serialize(ChaosAr);
+			const_cast<THeightField<T>*>(this)->Serialize(ChaosAr);
 
 			return FCrc::MemCrc32(Bytes.GetData(), Bytes.GetAllocatedSize());
 		}
 
-		static constexpr EImplicitObjectType StaticType()
+		static ImplicitObjectType GetType()
 		{
 			return ImplicitObjectType::HeightField;
 		}
@@ -148,7 +78,7 @@ namespace Chaos
 		virtual void Serialize(FChaosArchive& Ar) override
 		{
 			FChaosArchiveScopedMemory ScopedMemory(Ar, GetTypeName());
-			FImplicitObject::SerializeImp(Ar);
+			TImplicitObject<T, 3>::SerializeImp(Ar);
 			
 			GeomData.Serialize(Ar);
 
@@ -158,7 +88,7 @@ namespace Chaos
 				Ar << FlatGrid;
 				Ar << FlattenedBounds.Min;
 				Ar << FlattenedBounds.Max;
-				TBox<FReal, 3>::SerializeAsAABB(Ar, LocalBounds);
+				Ar << LocalBounds;
 			}
 			else
 			{
@@ -169,11 +99,10 @@ namespace Chaos
 			if(Ar.IsLoading())
 			{
 				BuildQueryData();
-				BoundingBox();	//temp hack to initialize cache
 			}
 		}
 
-		void SetScale(const FVec3& InScale)
+		void SetScale(const TVector<T, 3>& InScale)
 		{
 			GeomData.Scale = InScale;
 		}
@@ -205,7 +134,6 @@ namespace Chaos
 			// With HeightPerUnit being the range of the min/max realtype values of
 			// the heightfield divided by the range of StorageType
 			TArray<StorageType> Heights;
-			TArray<uint8> MaterialIndices;
 			TVector<RealType, 3> Scale;
 			RealType MinValue;
 			RealType MaxValue;
@@ -213,6 +141,7 @@ namespace Chaos
 			uint16 NumCols;
 			RealType Range;
 			RealType HeightPerUnit;
+			TArray<TBox<RealType, 3>> CellBounds;
 
 			constexpr float GetCellWidth() const
 			{
@@ -224,22 +153,7 @@ namespace Chaos
 				return Scale[1];
 			}
 
-			FORCEINLINE FVec3 GetPoint(int32 Index) const
-			{
-				const typename FDataType::RealType Height = MinValue + Heights[Index] * HeightPerUnit;
-
-				const int32 X = Index % (NumCols);
-				const int32 Y = Index / (NumCols);
-
-				return {(typename FDataType::RealType)X, (typename FDataType::RealType)Y, Height};
-			}
-
-			FORCEINLINE FVec3 GetPointScaled(int32 Index) const
-			{
-				return GetPoint(Index) * Scale;
-			}
-
-			FORCEINLINE void GetPoints(int32 Index, FVec3 OutPts[4]) const
+			FORCEINLINE void GetPoints(int32 Index, TVector<T, 3> OutPts[4]) const
 			{
 				const typename FDataType::RealType H0 = MinValue + Heights[Index] * HeightPerUnit;
 				const typename FDataType::RealType H1 = MinValue + Heights[Index + 1] * HeightPerUnit;
@@ -255,7 +169,7 @@ namespace Chaos
 				OutPts[3] = {(typename FDataType::RealType)X + 1, (typename FDataType::RealType)Y + 1, H3};
 			}
 
-			FORCEINLINE void GetPointsScaled(int32 Index, FVec3 OutPts[4]) const
+			FORCEINLINE void GetPointsScaled(int32 Index, TVector<T, 3> OutPts[4]) const
 			{
 				GetPoints(Index, OutPts);
 
@@ -263,16 +177,6 @@ namespace Chaos
 				OutPts[1] *= Scale;
 				OutPts[2] *= Scale;
 				OutPts[3] *= Scale;
-			}
-
-			FORCEINLINE FReal GetMinHeight() const
-			{
-				return static_cast<typename FDataType::RealType>(MinValue);
-			}
-
-			FORCEINLINE FReal GetMaxHeight() const
-			{
-				return static_cast<typename FDataType::RealType>(MaxValue);
 			}
 
 			void Serialize(FChaosArchive& Ar)
@@ -301,22 +205,7 @@ namespace Chaos
 				{
 					Ar << Range;
 					Ar << HeightPerUnit;
-
-					if (Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) < FExternalPhysicsCustomObjectVersion::HeightfieldImplicitBounds)
-					{
-						TArray<TBox<RealType, 3>> CellBounds;
-						Ar << CellBounds;
-					}
-					else if(Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) < FExternalPhysicsCustomObjectVersion::HeightfieldUsesHeightsDirectly)
-					{
-						TArray<RealType> OldHeights;
-						Ar << OldHeights;
-					}
-				}
-
-				if(Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) >= FExternalPhysicsCustomObjectVersion::AddedMaterialManager)
-				{
-					Ar << MaterialIndices;
+					Ar << CellBounds;
 				}
 			}
 		};
@@ -329,42 +218,42 @@ namespace Chaos
 		// Struct for 2D bounds and associated operations
 		struct FBounds2D
 		{
-			TVector<FReal, 2> Min;
-			TVector<FReal, 2> Max;
+			TVector<T, 2> Min;
+			TVector<T, 2> Max;
 			
 			FBounds2D()
 				: Min(0)
 				, Max(0)
 			{}
 
-			explicit FBounds2D(const FAABB3& In3DBounds)
+			explicit FBounds2D(const TBox<T, 3>& In3DBounds)
 			{
 				Set(In3DBounds);
 			}
 
-			void Set(const FAABB3& In3DBounds)
+			void Set(const TBox<T, 3>& In3DBounds)
 			{
 				Min = {In3DBounds.Min()[0], In3DBounds.Min()[1]};
 				Max = {In3DBounds.Max()[0], In3DBounds.Max()[1]};
 			}
 
-			TVector<FReal, 2> GetExtent() const
+			TVector<T, 2> GetExtent() const
 			{
 				return Max - Min;
 			}
 
-			bool IsInside(const TVector<FReal, 2>& InPoint) const
+			bool IsInside(const TVector<T, 2>& InPoint) const
 			{
 				return InPoint[0] >= Min[0] && InPoint[0] <= Max[0] && InPoint[1] >= Min[1] && InPoint[1] <= Max[1];
 			}
 
-			TVector<FReal, 2> Clamp(const TVector<FReal, 2>& InToClamp, FReal InNudge = SMALL_NUMBER) const
+			TVector<T, 2> Clamp(const TVector<T, 2>& InToClamp, T InNudge = SMALL_NUMBER) const
 			{
-				const TVector<FReal, 2> NudgeVec(InNudge, InNudge);
-				const TVector<FReal, 2> TestMin = Min + NudgeVec;
-				const TVector<FReal, 2> TestMax = Max - NudgeVec;
+				const TVector<T, 2> NudgeVec(InNudge, InNudge);
+				const TVector<T, 2> TestMin = Min + NudgeVec;
+				const TVector<T, 2> TestMax = Max - NudgeVec;
 
-				TVector<FReal, 2> OutVec = InToClamp;
+				TVector<T, 2> OutVec = InToClamp;
 
 				OutVec[0] = FMath::Max(OutVec[0], TestMin[0]);
 				OutVec[1] = FMath::Max(OutVec[1], TestMin[1]);
@@ -375,20 +264,20 @@ namespace Chaos
 				return OutVec;
 			}
 
-			bool IntersectLine(const TVector<FReal, 2>& InStart, const TVector<FReal, 2>& InEnd)
+			bool IntersectLine(const TVector<T, 2>& InStart, const TVector<T, 2>& InEnd)
 			{
 				if(IsInside(InStart) || IsInside(InEnd))
 				{
 					return true;
 				}
 
-				const TVector<FReal, 2> Extent = GetExtent();
+				const TVector<T, 2> Extent = GetExtent();
 				float TA, TB;
 
-				if(Utilities::IntersectLineSegments2D(InStart, InEnd, Min, TVector<FReal, 2>(Min[0] + Extent[0], Min[1]), TA, TB)
-					|| Utilities::IntersectLineSegments2D(InStart, InEnd, Min, TVector<FReal, 2>(Min[0], Min[1] + Extent[1]), TA, TB)
-					|| Utilities::IntersectLineSegments2D(InStart, InEnd, Max, TVector<FReal, 2>(Max[0] - Extent[0], Max[1]), TA, TB)
-					|| Utilities::IntersectLineSegments2D(InStart, InEnd, Max, TVector<FReal, 2>(Max[0], Max[1] - Extent[1]), TA, TB))
+				if(Utilities::IntersectLineSegments2D(InStart, InEnd, Min, TVector<T, 2>(Min[0] + Extent[0], Min[1]), TA, TB)
+					|| Utilities::IntersectLineSegments2D(InStart, InEnd, Min, TVector<T, 2>(Min[0], Min[1] + Extent[1]), TA, TB)
+					|| Utilities::IntersectLineSegments2D(InStart, InEnd, Max, TVector<T, 2>(Max[0] - Extent[0], Max[1]), TA, TB)
+					|| Utilities::IntersectLineSegments2D(InStart, InEnd, Max, TVector<T, 2>(Max[0], Max[1] - Extent[1]), TA, TB))
 				{
 					return true;
 				}
@@ -396,10 +285,10 @@ namespace Chaos
 				return false;
 			}
 
-			bool ClipLine(const FVec3& InStart, const FVec3& InEnd, TVector<FReal, 2>& OutClippedStart, TVector<FReal, 2>& OutClippedEnd) const
+			bool ClipLine(const TVector<T, 3>& InStart, const TVector<T, 3>& InEnd, TVector<T, 2>& OutClippedStart, TVector<T, 2>& OutClippedEnd) const
 			{
-				TVector<FReal, 2> TempStart(InStart[0], InStart[1]);
-				TVector<FReal, 2> TempEnd(InEnd[0], InEnd[1]);
+				TVector<T, 2> TempStart(InStart[0], InStart[1]);
+				TVector<T, 2> TempEnd(InEnd[0], InEnd[1]);
 
 				bool bLineIntersects = ClipLine(TempStart, TempEnd);
 
@@ -409,158 +298,102 @@ namespace Chaos
 				return bLineIntersects;
 			}
 
-			bool ClipLine(TVector<FReal, 2>& InOutStart, TVector<FReal, 2>& InOutEnd) const
+			bool ClipLine(TVector<T, 2>& InOutStart, TVector<T, 2>& InOutEnd) const
 			{
-				
 				// Test we don't need to clip at all, quite likely with a heightfield so optimize for it.
-				const bool bStartInside = IsInside(InOutStart);
-				const bool bEndInside = IsInside(InOutEnd);
-				if(bStartInside && bEndInside)
+				if(IsInside(InOutStart) && IsInside(InOutEnd))
 				{
 					return true;
 				}
 
-				const TVector<FReal, 2> Dir = InOutEnd - InOutStart;
-
-				// Tiny ray not inside so must be outside
-				if(Dir.SizeSquared() < 1e-4)
+				TArray<T> HitTimes;
+				const TVector<T, 2> Extent = GetExtent();
+				float TA, TB;
+				if(Utilities::IntersectLineSegments2D(InOutStart, InOutEnd, Min, TVector<T, 2>(Min[0] + Extent[0], Min[1]), TA, TB))
 				{
-					return false;
+					HitTimes.Add(TA);
 				}
 
-				bool bPerpendicular[2];
-				TVector<FReal, 2> InvDir;
-				for(int Axis = 0; Axis < 2; ++Axis)
+				if(Utilities::IntersectLineSegments2D(InOutStart, InOutEnd, Min, TVector<T, 2>(Min[0], Min[1] + Extent[1]), TA, TB))
 				{
-					bPerpendicular[Axis] = Dir[Axis] == 0;
-					InvDir[Axis] = bPerpendicular[Axis] ? 0 : 1 / Dir[Axis];
+					HitTimes.Add(TA);
 				}
 
-				
-
-				if(bStartInside)
+				if(Utilities::IntersectLineSegments2D(InOutStart, InOutEnd, Max, TVector<T, 2>(Max[0] - Extent[0], Max[1]), TA, TB))
 				{
-					const FReal TimeToExit = ComputeTimeToExit(InOutStart,InvDir);
-					InOutEnd = InOutStart + Dir * TimeToExit;
-					return true;
+					HitTimes.Add(TA);
 				}
 
-				if(bEndInside)
+				if(Utilities::IntersectLineSegments2D(InOutStart, InOutEnd, Max, TVector<T, 2>(Max[0], Max[1] - Extent[1]), TA, TB))
 				{
-					const FReal TimeToExit = ComputeTimeToExit(InOutEnd,-InvDir);
-					InOutStart = InOutEnd - Dir * TimeToExit;
-					return true;
+					HitTimes.Add(TA);
 				}
 
-				//start and end outside, need to see if we even intersect
-				FReal TimesToEnter[2] = {TNumericLimits<FReal>::Max(),TNumericLimits<FReal>::Max()};
-				FReal TimesToExit[2] = {TNumericLimits<FReal>::Max(),TNumericLimits<FReal>::Max()};
-				
-				for(int Axis = 0; Axis < 2; ++Axis)
+				const int32 NumTimes = HitTimes.Num();
+				if(NumTimes > 0)
 				{
-					if(bPerpendicular[Axis])
+					// Can only ever be 0, 1 or 2 entries in here. First check if we're starting inside the box
+					// so we correctly set the clip extents
+					HitTimes.Sort();
+					const TVector<T, 2> TempStart = InOutStart;
+
+					if(IsInside(InOutStart) && ensure(NumTimes == 1))
 					{
-						if(InOutStart[Axis] >= Min[Axis] && InOutStart[Axis] <= Max[Axis])
-						{
-							TimesToEnter[Axis] = 0;
-						}
+						// we begin somewhere inside the box - just clip the end
+						InOutEnd = TempStart + HitTimes[0] * (InOutEnd - TempStart);
 					}
 					else
 					{
-						if(Dir[Axis] > 0)
+						// Clip the start and if necessary, the end (might not need to if it's already inside)
+						InOutStart = TempStart + HitTimes[0] * (InOutEnd - TempStart);
+
+						if(HitTimes.IsValidIndex(1))
 						{
-							if(InOutStart[Axis] <= Max[Axis])
-							{
-								TimesToEnter[Axis] = FMath::Max<FReal>(Min[Axis] - InOutStart[Axis], 0) * InvDir[Axis];
-								TimesToExit[Axis] = (Max[Axis] - InOutStart[Axis])  * InvDir[Axis];
-							}
-						}
-						else if(Dir[Axis] < 0)
-						{
-							if(InOutStart[Axis] >= Min[Axis])
-							{
-								TimesToEnter[Axis] = FMath::Max<FReal>(InOutStart[Axis] - Max[Axis],0) * InvDir[Axis];
-								TimesToExit[Axis] = (InOutStart[Axis] - Min[Axis]) * InvDir[Axis];
-							}
+							InOutEnd = TempStart + HitTimes[1] * (InOutEnd - TempStart);
 						}
 					}
+
+					// Long rays can leave us barely outside the bounds, clamp the final results to avoid this
+					InOutStart = Clamp(InOutStart);
+					InOutEnd = Clamp(InOutEnd);
+
+					// We must hit the bound in some way
+					return true;
 				}
 
-				const FReal TimeToEnter = FMath::Max(FMath::Abs(TimesToEnter[0]),FMath::Abs(TimesToEnter[1]));
-				const FReal TimeToExit = FMath::Min(FMath::Abs(TimesToExit[0]),FMath::Abs(TimesToExit[1]));
-
-				if(TimeToExit < TimeToEnter)
-				{
-					//no intersection
-					return false;
-				}
-
-				InOutEnd = InOutStart + Dir * TimeToExit;
-				InOutStart = InOutStart + Dir * TimeToEnter;
-				return true;
-			}
-
-		private:
-			//This helper assumes Start is inside the min/max box and uses InvDir to compute how long it takes to exit
-			FReal ComputeTimeToExit(const TVector<FReal, 2>& Start,const TVector<FReal, 2>& InvDir) const
-			{
-				FReal Times[2] ={TNumericLimits<FReal>::Max(),TNumericLimits<FReal>::Max()};
-				for(int Axis = 0; Axis < 2; ++Axis)
-				{
-					if(InvDir[Axis] > 0)
-					{
-						Times[Axis] = (Max[Axis] - Start[Axis]) * InvDir[Axis];
-					}
-					else if(InvDir[Axis] < 0)
-					{
-						Times[Axis] = (Start[Axis] - Min[Axis]) * InvDir[Axis];
-					}
-				}
-
-				const FReal MinTime = FMath::Min(FMath::Abs(Times[0]),FMath::Abs(Times[1]));
-				return MinTime;
+				return false;
 			}
 		};
 
 		// Helpers for accessing bounds
-		bool GetCellBounds2D(const TVector<int32, 2> InCoord, FBounds2D& OutBounds, const TVector<FReal, 2>& InInflate = {0}) const;
-		bool GetCellBounds3D(const TVector<int32, 2> InCoord, FVec3& OutMin, FVec3& OutMax, const FVec3& InInflate = FVec3(0)) const;
-		bool GetCellBounds2DScaled(const TVector<int32, 2> InCoord, FBounds2D& OutBounds, const TVector<FReal, 2>& InInflate = {0}) const;
-		bool GetCellBounds3DScaled(const TVector<int32, 2> InCoord, FVec3& OutMin, FVec3& OutMax, const FVec3& InInflate = FVec3(0)) const;
-		bool CalcCellBounds3D(const TVector<int32, 2> InCoord, FVec3& OutMin, FVec3& OutMax, const FVec3& InInflate = FVec3(0)) const;
+		bool GetCellBounds2D(const TVector<int32, 2> InCoord, FBounds2D& OutBounds, const TVector<T, 2>& InInflate = {0}) const;
+		bool GetCellBounds3D(const TVector<int32, 2> InCoord, TVector<T, 3>& OutMin, TVector<T, 3>& OutMax, const TVector<T, 3>& InInflate = TVector<T, 3>(0)) const;
+		bool GetCellBounds2DScaled(const TVector<int32, 2> InCoord, FBounds2D& OutBounds, const TVector<T, 2>& InInflate = {0}) const;
+		bool GetCellBounds3DScaled(const TVector<int32, 2> InCoord, TVector<T, 3>& OutMin, TVector<T, 3>& OutMax, const TVector<T, 3>& InInflate = TVector<T, 3>(0)) const;
+		bool CalcCellBounds3D(const TVector<int32, 2> InCoord, TVector<T, 3>& OutMin, TVector<T, 3>& OutMax, const TVector<T, 3>& InInflate = TVector<T, 3>(0)) const;
 
 		// Query functions - sweep, ray, overlap
 		template<typename SQVisitor>
-		bool GridSweep(const FVec3& StartPoint, const FVec3& Dir, const FReal Length, const TVector<FReal, 2> InHalfExtents, SQVisitor& Visitor) const;
-		bool GridCast(const FVec3& StartPoint, const FVec3& Dir, const FReal Length, FHeightfieldRaycastVisitor& Visitor) const;
+		bool GridSweep(const TVector<T, 3>& StartPoint, const TVector<T, 3>& Dir, const T Length, const TVector<T, 2> InHalfExtents, SQVisitor& Visitor) const;
+		bool GridCast(const TVector<T, 3>& StartPoint, const TVector<T, 3>& Dir, const T Length, THeightfieldRaycastVisitor<T>& Visitor) const;
 		bool GetGridIntersections(FBounds2D InFlatBounds, TArray<TVector<int32, 2>>& OutInterssctions) const;
 		
 		FBounds2D GetFlatBounds() const;
 
 		// Grid for queries, faster than bounding volumes for heightfields
-		TUniformGrid<FReal, 2> FlatGrid;
+		TUniformGrid<T, 2> FlatGrid;
 		// Bounds in 2D of the whole heightfield, to clip queries against
 		FBounds2D FlattenedBounds;
 		// 3D bounds for the heightfield, for insertion to the scene structure
-		FAABB3 LocalBounds;
+		TBox<T, 3> LocalBounds;
 		// Cached when bounds are requested. Mutable to allow GetBounds to be logical const
-		mutable FAABB3 CachedBounds;
+		mutable TBox<T, 3> CachedBounds;
 
 		void CalcBounds();
 		void BuildQueryData();
-
+		
 		// Needed for serialization
-		FHeightField() : FImplicitObject(EImplicitObject::HasBoundingBox, ImplicitObjectType::HeightField) {}
-		friend FImplicitObject;
-
-		template <typename QueryGeomType>
-		bool OverlapGeomImp(const QueryGeomType& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FMTDInfo* OutMTD = nullptr) const;
-
-		template <typename QueryGeomType>
-		bool SweepGeomImp(const QueryGeomType& QueryGeom, const FRigidTransform3& StartTM, const FVec3& Dir, const FReal Length, FReal& OutTime, FVec3& OutPosition, FVec3& OutNormal, int32& OutFaceIndex, const FReal Thickness, bool bComputeMTD) const;
-
-		template <typename GeomType>
-		bool GJKContactPointImp(const GeomType& QueryGeom, const FRigidTransform3& QueryTM, const FReal Thickness, FVec3& ContactLocation, FVec3& ContactNormal, FReal& ContactPhi) const;
-
+		THeightField() : TImplicitObject<T, 3>(EImplicitObject::HasBoundingBox, ImplicitObjectType::HeightField) {}
+		friend TImplicitObject<T, 3>;
 	};
 }

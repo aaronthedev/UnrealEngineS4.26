@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -135,24 +135,7 @@ namespace Tools.DotNETCommon
 		/// <returns>A new directory object representing the directory containing this object</returns>
 		public DirectoryReference Directory
 		{
-			get
-			{
-				int ParentLength = FullName.LastIndexOf(Path.DirectorySeparatorChar);
-
-				if (ParentLength == 2 && FullName[1] == ':')
-				{
-					// windows root detected (C:)
-					ParentLength++;
-				}
-
-				if (ParentLength == 0 && FullName[0] == Path.DirectorySeparatorChar)
-				{
-					// nix style root (/) detected
-					ParentLength = 1;
-				}
-
-				return new DirectoryReference(FullName.Substring(0, ParentLength), DirectoryReference.Sanitize.None);
-			}
+			get { return DirectoryReference.GetParentDirectory(this); }
 		}
 
 		/// <summary>
@@ -589,69 +572,6 @@ namespace Tools.DotNETCommon
 		public static void WriteAllText(FileReference Location, string Contents, Encoding Encoding)
 		{
 			File.WriteAllText(Location.FullName, Contents, Encoding);
-		}
-
-		/// <summary>
-		/// Appends the contents to a file
-		/// </summary>
-		/// <param name="Location">Location of the file</param>
-		/// <param name="Contents">Contents to append to the file</param>
-		public static void AppendAllLines(FileReference Location, IEnumerable<string> Contents)
-		{
-			File.AppendAllLines(Location.FullName, Contents);
-		}
-
-		/// <summary>
-		/// Appends the contents to a file
-		/// </summary>
-		/// <param name="Location">Location of the file</param>
-		/// <param name="Contents">Contents to append to the file</param>
-		/// <param name="Encoding">The encoding to use when parsing the file</param>
-		public static void AppendAllLines(FileReference Location, IEnumerable<string> Contents, Encoding Encoding)
-		{
-			File.AppendAllLines(Location.FullName, Contents, Encoding);
-		}
-
-		/// <summary>
-		/// Appends the contents to a file
-		/// </summary>
-		/// <param name="Location">Location of the file</param>
-		/// <param name="Contents">Contents to append to the file</param>
-		public static void AppendAllLines(FileReference Location, string[] Contents)
-		{
-			File.AppendAllLines(Location.FullName, Contents);
-		}
-
-		/// <summary>
-		/// Appends the contents to a file
-		/// </summary>
-		/// <param name="Location">Location of the file</param>
-		/// <param name="Contents">Contents to append to the file</param>
-		/// <param name="Encoding">The encoding to use when parsing the file</param>
-		public static void AppendAllLines(FileReference Location, string[] Contents, Encoding Encoding)
-		{
-			File.AppendAllLines(Location.FullName, Contents, Encoding);
-		}
-
-		/// <summary>
-		/// Appends the contents to a file
-		/// </summary>
-		/// <param name="Location">Location of the file</param>
-		/// <param name="Contents">Contents to append to the file</param>
-		public static void AppendAllText(FileReference Location, string Contents)
-		{
-			File.AppendAllText(Location.FullName, Contents);
-		}
-
-		/// <summary>
-		/// Appends the contents to a file
-		/// </summary>
-		/// <param name="Location">Location of the file</param>
-		/// <param name="Contents">Contents to append to the file</param>
-		/// <param name="Encoding">The encoding to use when parsing the file</param>
-		public static void AppendAllText(FileReference Location, string Contents, Encoding Encoding)
-		{
-			File.AppendAllText(Location.FullName, Contents, Encoding);
 		}
 
 		#endregion

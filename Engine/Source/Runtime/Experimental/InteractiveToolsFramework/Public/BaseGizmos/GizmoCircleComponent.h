@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -32,9 +32,6 @@ public:
 	UPROPERTY(EditAnywhere, Category = Options)
 	bool bViewAligned = false;
 
-	// If the circle was on a 3D sphere, then only the 'front' part of the circle can be hit, 
-	// (in other words, if the ray would hit the sphere first, ignore the hit).
-	// Dynamically disabled if the circle is parallel to the view plane (ie "fully visible")
 	UPROPERTY(EditAnywhere, Category = Options)
 	bool bOnlyAllowFrontFacingHits = true;
 
@@ -47,10 +44,4 @@ private:
 	//~ Begin USceneComponent Interface.
 	virtual FBoxSphereBounds CalcBounds(const FTransform& LocalToWorld) const override;
 	//~ Begin USceneComponent Interface.
-
-	// dynamic gizmo visibility as set by proxy
-	bool bRenderVisibility = true;
-
-	// set to true if circle is fully visible, in which case we ignore bOnlyAllowFrontFacingHits
-	bool bCircleIsViewPlaneParallel = false;
 };

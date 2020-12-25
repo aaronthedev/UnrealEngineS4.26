@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TimersViewColumnFactory.h"
 
@@ -40,7 +40,7 @@ const FName FTimersViewColumns::MinExclusiveTimeColumnID(TEXT("MinExclTime"));
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void FTimersViewColumnFactory::CreateTimersViewColumns(TArray<TSharedRef<Insights::FTableColumn>>& Columns)
+void FTimersViewColumnFactory::CreateTimersViewColumns(TArray<TSharedPtr<Insights::FTableColumn>>& Columns)
 {
 	Columns.Reset();
 
@@ -64,7 +64,7 @@ void FTimersViewColumnFactory::CreateTimersViewColumns(TArray<TSharedRef<Insight
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void FTimersViewColumnFactory::CreateTimerTreeViewColumns(TArray<TSharedRef<Insights::FTableColumn>>& Columns)
+void FTimersViewColumnFactory::CreateTimerTreeViewColumns(TArray<TSharedPtr<Insights::FTableColumn>>& Columns)
 {
 	Columns.Reset();
 
@@ -81,12 +81,12 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateNameColumn()
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FTimersViewColumns::NameColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FTimersViewColumns::NameColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
-	Column.SetShortName(LOCTEXT("Name_ColumnName", "Name"));
-	Column.SetTitleName(LOCTEXT("Name_ColumnTitle", "Timer or Group Name"));
-	Column.SetDescription(LOCTEXT("Name_ColumnDesc", "Name of timer or group"));
+	Column.SetShortName(LOCTEXT("TimerNameColumnName", "Name"));
+	Column.SetTitleName(LOCTEXT("TimerNameColumnTitle", "Timer or Group Name"));
+	Column.SetDescription(LOCTEXT("TimerNameColumnDesc", "Name of the timer or group"));
 
 	Column.SetFlags(ETableColumnFlags::ShouldBeVisible |
 					ETableColumnFlags::CanBeFiltered |
@@ -98,16 +98,16 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateNameColumn()
 
 	Column.SetDataType(ETableCellDataType::Text);
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FDisplayNameValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<ITableCellValueGetter> GetterPtr = MakeShareable(new FDisplayNameValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FTextValueFormatter>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<ITableCellValueFormatter> FormatterPtr = MakeShareable(new FTextValueFormatter());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByName>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByName(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -116,12 +116,12 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateMetaGroupName
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FTimersViewColumns::MetaGroupNameColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FTimersViewColumns::MetaGroupNameColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
-	Column.SetShortName(LOCTEXT("MetaGroupName_ColumnName", "Meta Group"));
-	Column.SetTitleName(LOCTEXT("MetaGroupName_ColumnTitle", "Meta Group Name"));
-	Column.SetDescription(LOCTEXT("MetaGroupName_ColumnDesc", "Name of the meta group"));
+	Column.SetShortName(LOCTEXT("TimerMetaGroupNameColumnName", "Meta Group"));
+	Column.SetTitleName(LOCTEXT("TimerMetaGroupNameColumnTitle", "Meta Group Name"));
+	Column.SetDescription(LOCTEXT("TimerMetaGroupNameColumnDesc", "Name of the meta group"));
 
 	Column.SetFlags(ETableColumnFlags::CanBeHidden |
 					//ETableColumnFlags::ShouldBeVisible |
@@ -143,16 +143,16 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateMetaGroupName
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FMetaGroupNameValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FMetaGroupNameValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FTextValueFormatter>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FTextValueFormatter());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByTextValue>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByTextValue(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -161,12 +161,12 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateTypeColumn()
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FTimersViewColumns::TypeColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FTimersViewColumns::TypeColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
-	Column.SetShortName(LOCTEXT("Type_ColumnName", "Type"));
-	Column.SetTitleName(LOCTEXT("Type_ColumnTitle", "Type"));
-	Column.SetDescription(LOCTEXT("Type_ColumnDesc", "Type of timer or group"));
+	Column.SetShortName(LOCTEXT("TimerTypeColumnName", "Type"));
+	Column.SetTitleName(LOCTEXT("TimerTypeColumnTitle", "Type"));
+	Column.SetDescription(LOCTEXT("TimerTypeColumnDesc", "Type of timer or group"));
 
 	Column.SetFlags(ETableColumnFlags::CanBeHidden |
 					//ETableColumnFlags::ShouldBeVisible |
@@ -188,17 +188,17 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateTypeColumn()
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FTimerTypeValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FTimerTypeValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FTextValueFormatter>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FTextValueFormatter());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	//TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByTextValue>(ColumnRef);
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FTimerNodeSortingByTimerType>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	//TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByTextValue(ColumnPtr.ToSharedRef()));
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FTimerNodeSortingByTimerType(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -207,12 +207,12 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateInstanceCount
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FTimersViewColumns::InstanceCountColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FTimersViewColumns::InstanceCountColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
-	Column.SetShortName(LOCTEXT("InstanceCount_ColumnName", "Count"));
-	Column.SetTitleName(LOCTEXT("InstanceCount_ColumnTitle", "Instance Count"));
-	Column.SetDescription(LOCTEXT("InstanceCount_ColumnDesc", "Number of selected timer's instances"));
+	Column.SetShortName(LOCTEXT("InstanceCountName", "Count"));
+	Column.SetTitleName(LOCTEXT("InstanceCountTitle", "Instance Count"));
+	Column.SetDescription(LOCTEXT("InstanceCountDesc", "Number of timer's instances"));
 
 	Column.SetFlags(ETableColumnFlags::CanBeHidden |
 					ETableColumnFlags::ShouldBeVisible |
@@ -234,17 +234,17 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateInstanceCount
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FInstanceCountValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FInstanceCountValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FInt64ValueFormatterAsNumber>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FInt64ValueFormatterAsNumber());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	//TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByInt64Value>(ColumnRef);
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FTimerNodeSortingByInstanceCount>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	//TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByInt64Value(ColumnPtr.ToSharedRef()));
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FTimerNodeSortingByInstanceCount(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -255,12 +255,12 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateTotalInclusiv
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FTimersViewColumns::TotalInclusiveTimeColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FTimersViewColumns::TotalInclusiveTimeColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
-	Column.SetShortName(LOCTEXT("TotalInclusiveTime_ColumnName", "Incl"));
-	Column.SetTitleName(LOCTEXT("TotalInclusiveTime_ColumnTitle", "Total Inclusive Time"));
-	Column.SetDescription(LOCTEXT("TotalInclusiveTime_ColumnDesc", "Total inclusive duration of selected timer's instances"));
+	Column.SetShortName(LOCTEXT("TotalInclusiveTimeName", "Incl"));
+	Column.SetTitleName(LOCTEXT("TotalInclusiveTimeTitle", "Total Inclusive Time"));
+	Column.SetDescription(LOCTEXT("TotalInclusiveTimeDesc", "Total inclusive duration of selected timer's instances"));
 
 	Column.SetFlags(ETableColumnFlags::CanBeHidden |
 					ETableColumnFlags::ShouldBeVisible |
@@ -283,17 +283,17 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateTotalInclusiv
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FTotalInclusiveTimeValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FTotalInclusiveTimeValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FDoubleValueFormatterAsTimeAuto>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FDoubleValueFormatterAsTimeAuto());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	//TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByDoubleValue>(ColumnRef);
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FTimerNodeSortingByTotalInclusiveTime>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	//TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByDoubleValue(ColumnPtr.ToSharedRef()));
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FTimerNodeSortingByTotalInclusiveTime(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -302,12 +302,12 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateMaxInclusiveT
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FTimersViewColumns::MaxInclusiveTimeColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FTimersViewColumns::MaxInclusiveTimeColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
-	Column.SetShortName(LOCTEXT("MaxInclusiveTime_ColumnName", "I.Max"));
-	Column.SetTitleName(LOCTEXT("MaxInclusiveTime_ColumnTitle", "Max Inclusive Time (ms)"));
-	Column.SetDescription(LOCTEXT("MaxInclusiveTime_ColumnDesc", "Maximum inclusive duration of selected timer's instances, in milliseconds"));
+	Column.SetShortName(LOCTEXT("MaxInclusiveTimeName", "I.Max"));
+	Column.SetTitleName(LOCTEXT("MaxInclusiveTimeTitle", "Max Inclusive Time (ms)"));
+	Column.SetDescription(LOCTEXT("MaxInclusiveTimeDesc", "Maximum inclusive duration of selected timer's instances, in milliseconds"));
 
 	Column.SetFlags(ETableColumnFlags::CanBeHidden |
 					//ETableColumnFlags::ShouldBeVisible |
@@ -329,16 +329,16 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateMaxInclusiveT
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FMaxInclusiveTimeValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FMaxInclusiveTimeValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FDoubleValueFormatterAsTimeMs>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FDoubleValueFormatterAsTimeMs());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByDoubleValue>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByDoubleValue(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -347,12 +347,12 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateAverageInclus
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FTimersViewColumns::AverageInclusiveTimeColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FTimersViewColumns::AverageInclusiveTimeColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
-	Column.SetShortName(LOCTEXT("AvgInclusiveTime_ColumnName", "I.Avg"));
-	Column.SetTitleName(LOCTEXT("AvgInclusiveTime_ColumnTitle", "Average Inclusive Time (ms)"));
-	Column.SetDescription(LOCTEXT("AvgInclusiveTime_ColumnDesc", "Average inclusive duration of selected timer's instances, in milliseconds"));
+	Column.SetShortName(LOCTEXT("AvgInclusiveTimeName", "I.Avg"));
+	Column.SetTitleName(LOCTEXT("AvgInclusiveTimeTitle", "Average Inclusive Time (ms)"));
+	Column.SetDescription(LOCTEXT("AvgInclusiveTimeDesc", "Average inclusive duration of selected timer's instances, in milliseconds"));
 
 	Column.SetFlags(ETableColumnFlags::CanBeHidden |
 					//ETableColumnFlags::ShouldBeVisible |
@@ -374,16 +374,16 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateAverageInclus
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FAverageInclusiveTimeValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FAverageInclusiveTimeValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FDoubleValueFormatterAsTimeMs>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FDoubleValueFormatterAsTimeMs());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByDoubleValue>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByDoubleValue(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -392,12 +392,12 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateMedianInclusi
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FTimersViewColumns::MedianInclusiveTimeColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FTimersViewColumns::MedianInclusiveTimeColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
-	Column.SetShortName(LOCTEXT("MedInclusiveTime_ColumnName", "I.Med"));
-	Column.SetTitleName(LOCTEXT("MedInclusiveTime_ColumnTitle", "Median Inclusive Time (ms)"));
-	Column.SetDescription(LOCTEXT("MedInclusiveTime_ColumnDesc", "Median inclusive duration of selected timer's instances, in milliseconds"));
+	Column.SetShortName(LOCTEXT("MedInclusiveTimeName", "I.Med"));
+	Column.SetTitleName(LOCTEXT("MedInclusiveTimeTitle", "Median Inclusive Time (ms)"));
+	Column.SetDescription(LOCTEXT("MedInclusiveTimeDesc", "Median inclusive duration of selected timer's instances, in milliseconds"));
 
 	Column.SetFlags(ETableColumnFlags::CanBeHidden |
 					//ETableColumnFlags::ShouldBeVisible |
@@ -419,16 +419,16 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateMedianInclusi
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FMedianInclusiveTimeValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FMedianInclusiveTimeValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FDoubleValueFormatterAsTimeMs>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FDoubleValueFormatterAsTimeMs());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByDoubleValue>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByDoubleValue(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -437,12 +437,12 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateMinInclusiveT
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FTimersViewColumns::MinInclusiveTimeColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FTimersViewColumns::MinInclusiveTimeColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
-	Column.SetShortName(LOCTEXT("MinInclusiveTime_ColumnName", "I.Min"));
-	Column.SetTitleName(LOCTEXT("MinInclusiveTime_ColumnTitle", "Min Inclusive Time (ms)"));
-	Column.SetDescription(LOCTEXT("MinInclusiveTime_ColumnDesc", "Minimum inclusive duration of selected timer's instances, in milliseconds"));
+	Column.SetShortName(LOCTEXT("MinInclusiveTimeName", "I.Min"));
+	Column.SetTitleName(LOCTEXT("MinInclusiveTimeTitle", "Min Inclusive Time (ms)"));
+	Column.SetDescription(LOCTEXT("MinInclusiveTimeDesc", "Minimum inclusive duration of selected timer's instances, in milliseconds"));
 
 	Column.SetFlags(ETableColumnFlags::CanBeHidden |
 					//ETableColumnFlags::ShouldBeVisible |
@@ -464,16 +464,16 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateMinInclusiveT
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FMinInclusiveTimeValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FMinInclusiveTimeValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FDoubleValueFormatterAsTimeMs>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FDoubleValueFormatterAsTimeMs());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByDoubleValue>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByDoubleValue(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -484,12 +484,12 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateTotalExclusiv
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FTimersViewColumns::TotalExclusiveTimeColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FTimersViewColumns::TotalExclusiveTimeColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
-	Column.SetShortName(LOCTEXT("TotalExclusiveTime_ColumnName", "Excl"));
-	Column.SetTitleName(LOCTEXT("TotalExclusiveTime_ColumnTitle", "Total Exclusive Time"));
-	Column.SetDescription(LOCTEXT("TotalExclusiveTime_ColumnDesc", "Total exclusive duration of selected timer's instances"));
+	Column.SetShortName(LOCTEXT("TotalExclusiveTimeName", "Excl"));
+	Column.SetTitleName(LOCTEXT("TotalExclusiveTimeTitle", "Total Exclusive Time"));
+	Column.SetDescription(LOCTEXT("TotalExclusiveTimeDesc", "Total exclusive duration of selected timer's instances"));
 
 	Column.SetFlags(ETableColumnFlags::CanBeHidden |
 					ETableColumnFlags::ShouldBeVisible |
@@ -512,17 +512,17 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateTotalExclusiv
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FTotalExclusiveTimeValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FTotalExclusiveTimeValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FDoubleValueFormatterAsTimeAuto>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FDoubleValueFormatterAsTimeAuto());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	//TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByDoubleValue>(ColumnRef);
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FTimerNodeSortingByTotalExclusiveTime>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	//TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByDoubleValue(ColumnPtr.ToSharedRef()));
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FTimerNodeSortingByTotalExclusiveTime(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -531,12 +531,12 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateMaxExclusiveT
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FTimersViewColumns::MaxExclusiveTimeColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FTimersViewColumns::MaxExclusiveTimeColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
-	Column.SetShortName(LOCTEXT("MaxExclusiveTime_ColumnName", "E.Max"));
-	Column.SetTitleName(LOCTEXT("MaxExclusiveTime_ColumnTitle", "Max Exclusive Time (ms)"));
-	Column.SetDescription(LOCTEXT("MaxExclusiveTime_ColumnDesc", "Maximum exclusive duration of selected timer's instances, in milliseconds"));
+	Column.SetShortName(LOCTEXT("MaxExclusiveTimeName", "E.Max"));
+	Column.SetTitleName(LOCTEXT("MaxExclusiveTimeTitle", "Max Exclusive Time (ms)"));
+	Column.SetDescription(LOCTEXT("MaxExclusiveTimeDesc", "Maximum exclusive duration of selected timer's instances, in milliseconds"));
 
 	Column.SetFlags(ETableColumnFlags::CanBeHidden |
 					//ETableColumnFlags::ShouldBeVisible |
@@ -558,16 +558,16 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateMaxExclusiveT
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FMaxExclusiveTimeValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FMaxExclusiveTimeValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FDoubleValueFormatterAsTimeMs>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FDoubleValueFormatterAsTimeMs());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByDoubleValue>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByDoubleValue(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -576,12 +576,12 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateAverageExclus
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FTimersViewColumns::AverageExclusiveTimeColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FTimersViewColumns::AverageExclusiveTimeColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
-	Column.SetShortName(LOCTEXT("AvgExclusiveTime_ColumnName", "E.Avg"));
-	Column.SetTitleName(LOCTEXT("AvgExclusiveTime_ColumnTitle", "Average Exclusive Time (ms)"));
-	Column.SetDescription(LOCTEXT("AvgExclusiveTime_ColumnDesc", "Average exclusive duration of selected timer's instances, in milliseconds"));
+	Column.SetShortName(LOCTEXT("AvgExclusiveTimeName", "E.Avg"));
+	Column.SetTitleName(LOCTEXT("AvgExclusiveTimeTitle", "Average Exclusive Time (ms)"));
+	Column.SetDescription(LOCTEXT("AvgExclusiveTimeDesc", "Average exclusive duration of selected timer's instances, in milliseconds"));
 
 	Column.SetFlags(ETableColumnFlags::CanBeHidden |
 					//ETableColumnFlags::ShouldBeVisible |
@@ -603,16 +603,16 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateAverageExclus
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FAverageExclusiveTimeValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FAverageExclusiveTimeValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FDoubleValueFormatterAsTimeMs>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FDoubleValueFormatterAsTimeMs());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByDoubleValue>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByDoubleValue(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -621,12 +621,12 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateMedianExclusi
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FTimersViewColumns::MedianExclusiveTimeColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FTimersViewColumns::MedianExclusiveTimeColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
-	Column.SetShortName(LOCTEXT("MedExclusiveTime_ColumnName", "E.Med"));
-	Column.SetTitleName(LOCTEXT("MedExclusiveTime_ColumnTitle", "Median Exclusive Time (ms)"));
-	Column.SetDescription(LOCTEXT("MedExclusiveTime_ColumnDesc", "Median exclusive duration of selected timer's instances, in milliseconds"));
+	Column.SetShortName(LOCTEXT("MedExclusiveTimeName", "E.Med"));
+	Column.SetTitleName(LOCTEXT("MedExclusiveTimeTitle", "Median Exclusive Time (ms)"));
+	Column.SetDescription(LOCTEXT("MedExclusiveTimeDesc", "Median exclusive duration of selected timer's instances, in milliseconds"));
 
 	Column.SetFlags(ETableColumnFlags::CanBeHidden |
 					//ETableColumnFlags::ShouldBeVisible |
@@ -648,16 +648,16 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateMedianExclusi
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FMedianExclusiveTimeValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FMedianExclusiveTimeValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FDoubleValueFormatterAsTimeMs>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FDoubleValueFormatterAsTimeMs());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByDoubleValue>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByDoubleValue(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -666,12 +666,12 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateMinExclusiveT
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FTimersViewColumns::MinExclusiveTimeColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FTimersViewColumns::MinExclusiveTimeColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
-	Column.SetShortName(LOCTEXT("MinExclusiveTime_ColumnName", "E.Min"));
-	Column.SetTitleName(LOCTEXT("MinExclusiveTime_ColumnTitle", "Min Exclusive Time (ms)"));
-	Column.SetDescription(LOCTEXT("MinExclusiveTime_ColumnDesc", "Minimum exclusive duration of selected timer's instances, in milliseconds"));
+	Column.SetShortName(LOCTEXT("MinExclusiveTimeName", "E.Min"));
+	Column.SetTitleName(LOCTEXT("MinExclusiveTimeTitle", "Min Exclusive Time (ms)"));
+	Column.SetDescription(LOCTEXT("MinExclusiveTimeDesc", "Minimum exclusive duration of selected timer's instances, in milliseconds"));
 
 	Column.SetFlags(ETableColumnFlags::CanBeHidden |
 					//ETableColumnFlags::ShouldBeVisible |
@@ -693,16 +693,16 @@ TSharedRef<Insights::FTableColumn> FTimersViewColumnFactory::CreateMinExclusiveT
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FMinExclusiveTimeValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FMinExclusiveTimeValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FDoubleValueFormatterAsTimeMs>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FDoubleValueFormatterAsTimeMs());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByDoubleValue>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByDoubleValue(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

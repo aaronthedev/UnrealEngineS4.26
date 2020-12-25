@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NavModifierComponent.h"
 #include "GameFramework/Actor.h"
@@ -99,14 +99,16 @@ void UNavModifierComponent::CalcAndCacheBounds() const
 			Bounds = FBox::BuildAABB(MyOwner->GetActorLocation(), FailsafeExtent);
 			ComponentBounds.Add(FRotatedBox(Bounds, MyOwner->GetActorQuat()));
 		}
-
-		for (int32 Idx = 0; Idx < ComponentBounds.Num(); Idx++)
+		else
 		{
-			const FVector BoxOrigin = ComponentBounds[Idx].Box.GetCenter();
-			const FVector BoxExtent = ComponentBounds[Idx].Box.GetExtent();
-
-			const FVector NavModBoxOrigin = FTransform(ComponentBounds[Idx].Quat).InverseTransformPosition(BoxOrigin);
-			ComponentBounds[Idx].Box = FBox::BuildAABB(NavModBoxOrigin, BoxExtent);
+			for (int32 Idx = 0; Idx < ComponentBounds.Num(); Idx++)
+			{
+				const FVector BoxOrigin = ComponentBounds[Idx].Box.GetCenter();
+				const FVector BoxExtent = ComponentBounds[Idx].Box.GetExtent();
+				
+				const FVector NavModBoxOrigin = FTransform(ComponentBounds[Idx].Quat).InverseTransformPosition(BoxOrigin);
+				ComponentBounds[Idx].Box = FBox::BuildAABB(NavModBoxOrigin, BoxExtent);
+			}
 		}
 	}
 }

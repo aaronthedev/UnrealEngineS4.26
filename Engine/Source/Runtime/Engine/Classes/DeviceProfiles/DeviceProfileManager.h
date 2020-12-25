@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	DeviceProfileManager.h: Declares the FDeviceProfileManager class.
@@ -30,7 +30,7 @@ public:
 	 * Startup and select the active device profile
 	 * Then Init the CVars from this profile and it's Device profile parent tree.
 	 */
-	static void InitializeCVarsForActiveDeviceProfile(bool bPushSettings=false, bool bForceDeviceProfilePriority = false);
+	static void InitializeCVarsForActiveDeviceProfile(bool bPushSettings=false);
 
 	/**
 	 * Reapplies the device profile. Useful when configs have changed (i.e. hotfix)
@@ -74,13 +74,20 @@ public:
 	/**
 	* Overrides the device profile. The original profile can be restored with RestoreDefaultDeviceProfile
 	*/
-	void SetOverrideDeviceProfile(UDeviceProfile* DeviceProfile, bool bForceDeviceProfilePriority = false);
+	void SetOverrideDeviceProfile(UDeviceProfile* DeviceProfile);
 
 	/**
 	* Restore the device profile to the default for this device
 	*/
 	void RestoreDefaultDeviceProfile();
 
+
+	/**
+	 * Get the device profile .ini name.
+	 *
+	 * @return the device profile .ini name.
+	 */
+	const FString GetDeviceProfileIniName() const;
 
 	/**
 	 * Load the device profiles from the config file.
@@ -115,28 +122,12 @@ public:
 	void GetAllPossibleParentProfiles(const UDeviceProfile* ChildProfile, OUT TArray<UDeviceProfile*>& PossibleParentProfiles) const;
 
 	/**
-	* Get the current active profile name.
-	*
-	* @return The selected profile.
-	*/
-	const FString GetActiveDeviceProfileName();
-
-	/**
 	* Get the selected device profile name, either the platform name, or the name
 	* provided by a Device Profile Selector Module.
 	*
 	* @return The selected profile.
 	*/
-	UE_DEPRECATED(4.25, "Use either GetActiveDeviceProfileName to have the current active device profile or GetPlatformDeviceProfileName to have the default one. Note, GetActiveDeviceProfileName will fallback on GetPlatformDeviceProfileName, if there is no active device profile ")
 	static const FString GetActiveProfileName();
-
-	/**
-	* Get the selected device profile name, either the platform name, or the name
-	* provided by a Device Profile Selector Module.
-	*
-	* @return The selected profile.
-	*/
-	static const FString GetPlatformDeviceProfileName();
 	
 	/** Retrieves the value of a scalability group cvar if it was set by the active device profile. */
 	static bool GetScalabilityCVar(const FString& CvarName, int32& OutValue);

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -9,8 +9,7 @@ namespace UnrealBuildTool.Rules
 			PublicDependencyModuleNames.AddRange(
 				new string[]
 				{
-					"Core",
-					"AudioExtensions"
+					"Core"
 				}
 			);
 
@@ -20,21 +19,9 @@ namespace UnrealBuildTool.Rules
 					"CoreUObject",
 					"Engine",
 					"AudioMixer",
-					"SignalProcessing",
-					"DeveloperSettings"
+					"SignalProcessing"
 				}
 			);
-
-			if (Target.Type == TargetType.Editor)
-			{
-				PrivateDependencyModuleNames.AddRange(
-					new string[]
-					{
-						"Slate",
-						"SlateCore",
-					}
-				);
-			}
 
 			PublicDefinitions.Add("WITH_AUDIOMODULATION=1");
 		}

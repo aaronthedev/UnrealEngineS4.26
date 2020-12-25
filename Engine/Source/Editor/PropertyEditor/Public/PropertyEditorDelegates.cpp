@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PropertyEditorDelegates.h"
 #include "PropertyHandle.h"
@@ -10,7 +10,7 @@ FPropertyAndParent::FPropertyAndParent(const TSharedRef<IPropertyHandle>& InProp
 	TSharedPtr<IPropertyHandle> ParentHandle = InPropertyHandle->GetParentHandle();
 	while (ParentHandle.IsValid())
 	{
-		const FProperty* ParentProperty = ParentHandle->GetProperty();
+		const UProperty* ParentProperty = ParentHandle->GetProperty();
 		if (ParentProperty != nullptr)
 		{
 			ParentProperties.Add(ParentProperty);

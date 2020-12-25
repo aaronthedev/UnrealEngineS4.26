@@ -1,16 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Curves/KeyHandle.h"
-#include "EntitySystem/IMovieSceneEntityProvider.h"
-#include "EntitySystem/MovieSceneEntityIDs.h"
-#include "Misc/Guid.h"
-#include "MovieSceneObjectBindingID.h"
-#include "MovieSceneSection.h"
 #include "UObject/ObjectMacros.h"
+#include "Misc/Guid.h"
+#include "Curves/KeyHandle.h"
+#include "MovieSceneSection.h"
 #include "UObject/SequencerObjectVersion.h"
+#include "MovieSceneObjectBindingID.h"
 #include "MovieSceneCameraCutSection.generated.h"
 
 struct FMovieSceneSequenceID;
@@ -23,13 +21,18 @@ class UCameraComponent;
 UCLASS(MinimalAPI)
 class UMovieSceneCameraCutSection 
 	: public UMovieSceneSection
-	, public IMovieSceneEntityProvider
 {
 	GENERATED_BODY()
 
 public:
-	/** Constructs a new camera cut section */
-	UMovieSceneCameraCutSection(const FObjectInitializer& Init);
+	UMovieSceneCameraCutSection(const FObjectInitializer& Init)
+		: Super(Init)
+	{
+		EvalOptions.EnableAndSetCompletionMode
+			(GetLinkerCustomVersion(FSequencerObjectVersion::GUID) < FSequencerObjectVersion::WhenFinishedDefaultsToProjectDefault ? 
+				EMovieSceneCompletionMode::RestoreState : 
+				EMovieSceneCompletionMode::ProjectDefault);
+	}
 
 	/** Sets the camera binding for this CameraCut section. Evaluates from the sequence binding ID */
 	void SetCameraGuid(const FGuid& InGuid)
@@ -52,6 +55,7 @@ public:
 	}
 
 	//~ UMovieSceneSection interface
+	virtual FMovieSceneEvalTemplatePtr GenerateTemplate() const override;
 	virtual void OnBindingsUpdated(const TMap<FGuid, FGuid>& OldGuidToNewGuidMap) override;
 	virtual void GetReferencedBindings(TArray<FGuid>& OutBindings) override;
 
@@ -68,25 +72,8 @@ public:
 	 */
 	MOVIESCENETRACKS_API UCameraComponent* GetFirstCamera(IMovieScenePlayer& Player, FMovieSceneSequenceID SequenceID) const;
 
-#if WITH_EDITOR
-	MOVIESCENETRACKS_API virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
-#endif
-
-	/**
-	 * Computes the transform of the bound camera at the section's start time.
-	 * This is for internal use by UMovieSceneCameraCutTrack during pre-compilation.
-	 */
-	void ComputeInitialCameraCutTransform();
-
 private:
-	virtual void ImportEntityImpl(UMovieSceneEntitySystemLinker* EntityLinker, const FEntityImportParams& Params, FImportedEntity* OutImportedEntity) override;
 
-public:
-	/** When blending, lock the previous camera (camera cut or gameplay camera). */
-	UPROPERTY(EditAnywhere, Category="Section")
-	bool bLockPreviousCamera = false;
-
-private:
 	/** The camera possessable or spawnable that this movie CameraCut uses */
 	UPROPERTY()
 	FGuid CameraGuid_DEPRECATED;
@@ -94,12 +81,6 @@ private:
 	/** The camera binding that this movie CameraCut uses */
 	UPROPERTY(EditAnywhere, Category="Section")
 	FMovieSceneObjectBindingID CameraBindingID;
-
-	/** Camera transform at the start of the cut, computed at compile time */
-	UPROPERTY()
-	FTransform InitialCameraCutTransform;
-	UPROPERTY()
-	bool bHasInitialCameraCutTransform = false;
 
 #if WITH_EDITORONLY_DATA
 public:
@@ -122,6 +103,4 @@ private:
 	UPROPERTY()
 	float ThumbnailReferenceOffset;
 #endif
-
-	friend class UMovieSceneCameraCutTrackInstance;
 };

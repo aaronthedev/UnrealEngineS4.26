@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DTLSContext.h"
 #include "DTLSHandlerComponent.h"
@@ -15,8 +15,6 @@ namespace DTLSContext
 {
 	static const char* CipherListPSK = "PSK-AES256-GCM-SHA384";
 	static const char* CipherListCert = "HIGH";
-
-	TAutoConsoleVariable<int32> CVarCertLifetime(TEXT("DTLS.CertLifetime"), 4 * 60 * 60, TEXT("Lifetime to set on generated certificates, in seconds."));
 }
 
 const TCHAR* LexToString(EDTLSContextType ContextType)
@@ -352,10 +350,7 @@ bool FDTLSContext::Initialize(const int32 MaxPacketSize, const FString& CertId, 
 		else
 		{
 			UE_LOG(LogDTLSHandler, Warning, TEXT("Empty certificate identifier"));
-
-			FTimespan Lifetime = FTimespan::FromSeconds(DTLSContext::CVarCertLifetime.GetValueOnAnyThread());
-
-			Cert = FDTLSCertStore::Get().CreateCert(Lifetime);
+			Cert = FDTLSCertStore::Get().CreateCert();
 		}
 
 		if (Cert.IsValid())

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Layout/WidgetPath.h"
 #include "SlateGlobals.h"
@@ -263,29 +263,17 @@ FWeakWidgetPath::EPathResolutionResult::Result FWeakWidgetPath::ToWidgetPath( FW
 {
 	SCOPE_CYCLE_COUNTER(STAT_WeakToStrong_WidgetPath);
 
-	TArray< TSharedPtr<SWidget> > WidgetPtrs;
-
-	// Convert the weak pointers into shared pointers because we are about to do something with this path instead of just observe it.
-	TSharedPtr<SWindow> TopLevelWindowPtr = Window.Pin();
-	int PathSize = 0;
-	for (TArray< TWeakPtr<SWidget> >::TConstIterator SomeWeakWidgetPtr(Widgets); SomeWeakWidgetPtr; ++SomeWeakWidgetPtr)
-	{
-		const int MaxWidgetPath = 1000;
-		++PathSize;
-		if (ensureMsgf(PathSize < MaxWidgetPath, TEXT("Converting a Widget Path of more that 1000 Widget deep.")))
-		{
-			WidgetPtrs.Add(SomeWeakWidgetPtr->Pin());
-		}
-		else
-		{
-			WidgetPath = FWidgetPath();
-			return EPathResolutionResult::Truncated;
-		}
-	}
-
 	if (GSlateFastWidgetPath)
 	{
 		TArray<FWidgetAndPointer> PathWithGeometries;
+		TArray< TSharedPtr<SWidget> > WidgetPtrs;
+
+		// Convert the weak pointers into shared pointers because we are about to do something with this path instead of just observe it.
+		TSharedPtr<SWindow> TopLevelWindowPtr = Window.Pin();
+		for (TArray< TWeakPtr<SWidget> >::TConstIterator SomeWeakWidgetPtr(Widgets); SomeWeakWidgetPtr; ++SomeWeakWidgetPtr)
+		{
+			WidgetPtrs.Add(SomeWeakWidgetPtr->Pin());
+		}
 
 		// The path can get interrupted if some subtree of widgets disappeared, but we still maintain weak references to it.
 		bool bPathUninterrupted = false;
@@ -317,7 +305,7 @@ FWeakWidgetPath::EPathResolutionResult::Result FWeakWidgetPath::ToWidgetPath( FW
 					{
 						if (PointerEvent && !VirtualPointerPos.IsValid())
 						{
-							VirtualPointerPos = CurWidget->TranslateMouseCoordinateForCustomHitTestChild(ChildWidgetPtr.ToSharedRef(), ParentGeometry, PointerEvent->GetScreenSpacePosition(), PointerEvent->GetLastScreenSpacePosition());
+							VirtualPointerPos = CurWidget->TranslateMouseCoordinateFor3DChild(ChildWidgetPtr.ToSharedRef(), ParentGeometry, PointerEvent->GetScreenSpacePosition(), PointerEvent->GetLastScreenSpacePosition());
 						}
 
 						bFoundChild = true;
@@ -341,7 +329,15 @@ FWeakWidgetPath::EPathResolutionResult::Result FWeakWidgetPath::ToWidgetPath( FW
 	}
 	else
 	{
-		TArray<FWidgetAndPointer> PathWithGeometries;		
+		TArray<FWidgetAndPointer> PathWithGeometries;
+		TArray< TSharedPtr<SWidget> > WidgetPtrs;
+
+		// Convert the weak pointers into shared pointers because we are about to do something with this path instead of just observe it.
+		TSharedPtr<SWindow> TopLevelWindowPtr = Window.Pin();
+		for (TArray< TWeakPtr<SWidget> >::TConstIterator SomeWeakWidgetPtr(Widgets); SomeWeakWidgetPtr; ++SomeWeakWidgetPtr)
+		{
+			WidgetPtrs.Add(SomeWeakWidgetPtr->Pin());
+		}
 
 		// The path can get interrupted if some subtree of widgets disappeared, but we still maintain weak references to it.
 		bool bPathUninterrupted = false;
@@ -381,7 +377,7 @@ FWeakWidgetPath::EPathResolutionResult::Result FWeakWidgetPath::ToWidgetPath( FW
 						{
 							if (PointerEvent && !VirtualPointerPos.IsValid())
 							{
-								VirtualPointerPos = CurWidget->TranslateMouseCoordinateForCustomHitTestChild(ArrangedWidget.Widget, ParentGeometry, PointerEvent->GetScreenSpacePosition(), PointerEvent->GetLastScreenSpacePosition());
+								VirtualPointerPos = CurWidget->TranslateMouseCoordinateFor3DChild(ArrangedWidget.Widget, ParentGeometry, PointerEvent->GetScreenSpacePosition(), PointerEvent->GetLastScreenSpacePosition());
 							}
 
 							bFoundChild = true;

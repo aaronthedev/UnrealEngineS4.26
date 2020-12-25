@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -49,7 +49,7 @@ namespace SkeletalSimplifier
 	class FSimplifierTerminator : public FSimplifierTerminatorBase
 	{
 	public:
-		FSimplifierTerminator(uint32 MinTri, uint32 MaxTri, uint32 MinVert, uint32 MaxVert, float MaxCost, float MaxDist)
+		FSimplifierTerminator(int32 MinTri, int32 MaxTri, int32 MinVert, int32 MaxVert, float MaxCost, float MaxDist)
 			: FSimplifierTerminatorBase(MinTri, MinVert, MaxCost)
 			, MaxTriNumToRetain(MaxTri)
 			, MaxVertNumToRetain(MaxVert)
@@ -57,7 +57,7 @@ namespace SkeletalSimplifier
 		{}
 
 		// return true if the simplifier should terminate.
-		inline bool operator()(const uint32 TriNum, const uint32 VertNum, const float SqrError)
+		inline bool operator()(const int32 TriNum, const int32 VertNum, const float SqrError)
 		{
 			if (FSimplifierTerminatorBase::operator()(TriNum, VertNum, SqrError) && TriNum < MaxTriNumToRetain && VertNum < MaxVertNumToRetain)
 			{
@@ -70,13 +70,13 @@ namespace SkeletalSimplifier
 		}
 
 
-		uint32 MaxTriNumToRetain;
-		uint32 MaxVertNumToRetain;
+		int32 MaxTriNumToRetain;
+		int32 MaxVertNumToRetain;
 		float MaxDistance;
 
 	};
 
-	/**
+    /**
 	* Class to allow a single weight value to be applied to all the sparse attributes.
 	*/
 	class UniformWeights
@@ -96,7 +96,7 @@ namespace SkeletalSimplifier
 			Weight = other.Weight;
 			return *this;
 		}
-
+		
 	private:
 		double Weight;
 
@@ -112,8 +112,8 @@ namespace SkeletalSimplifier
 		typedef Quadrics::TFaceQuadric<MeshVertType, UniformWeights>         WedgeQuadricType;
 		typedef TQuadricCache<WedgeQuadricType>                              QuadricCacheType;
 		typedef typename MeshVertType::BasicAttrContainerType                BasicAttrContainerType;
-
-
+		
+		
 
 		typedef typename MeshVertType::AttrContainerType                     AttrContainerType;
 
@@ -132,13 +132,13 @@ namespace SkeletalSimplifier
 
 
 	public:
-
+	
 		FMeshSimplifier(const MeshVertType* InSrcVerts, const uint32 InNumSrcVerts,
-			const uint32* InSrcIndexes, const uint32 InNumSrcIndexes,
-			const float CoAlignmentLimit,
-			const float VolumeImportance,
-			const bool bVolumePreservation,
-			const bool bEnforceBoundaries);
+			            const uint32* InSrcIndexes,     const uint32 InNumSrcIndexes,
+		            	const float CoAlignmentLimit,
+			            const float VolumeImportance,
+			            const bool bVolumePreservation,
+			            const bool bEnforceBoundaries);
 
 		~FMeshSimplifier();
 
@@ -152,24 +152,19 @@ namespace SkeletalSimplifier
 		* Set Quadric weights for the standard attributes ( the attributes that are stored in TBasicVertexAttrs<NumTexCoords> )
 		* The order of the weights corresponds to the order of the attributes :
 		*  Normal (3 weights), Tangent (3 weights ), BiTangent (3 weights), Color (3 weights), TextureCoords( 2 * NumTexCoords weights).
-		*/
+		*/ 
 		void				SetAttributeWeights(const DenseVecDType& Weights);
 
 		/**
-		* Set Quadric weights for sparse attributes
+		* Set Quadric weights for sparse attributes 
 		*/
 		void                SetSparseAttributeWeights(const SparseWeightContainerType& SparseWeights);
-
+		
 		/**
 		* Lock mesh boundary edges to prevent simplification by using the vertex tag ESimpElementFlags::SIMP_LOCKED
 		*/
 		void				SetBoundaryLocked();
-
-		/**
-		* Lock edges that connect different colors to prevent simplification by using the vertex tag ESimpElementFlags::SIMP_LOCKED
-		*/
-		void                SetColorEdgeLocked(float Threshold = 1.e-3);
-
+	
 		/**
 		* Lock vertices at corners of very simple 8-vert boxes.
 		*/
@@ -184,7 +179,7 @@ namespace SkeletalSimplifier
 		*                inline bool operator()(const int32 TriNum, const float SqrError);
 		*             };
 		*/
-		template <typename TerminationCriterionType>
+		                    template <typename TerminationCriterionType>
 		float				SimplifyMesh(TerminationCriterionType TerminationCriterion);
 
 		/**
@@ -198,21 +193,14 @@ namespace SkeletalSimplifier
 		int					GetNumTris() const { return MeshManager.ReducedNumTris; }
 
 		/**
-		*  The fraction of non-manifold edges (edges with more than 2 adjacent tris).
-		*/
-		float               FractionNonManifoldEdges() { return MeshManager.FractionNonManifoldEdges(); }
-
-		/**
-		* Export a copy of the simplified mesh.
+		* Export a copy of the simplified mesh. 
 		*
 		* @param Verts                 - pointer to an array to populate.  Should be least GetNumVerts() in size
 		* @param Indexes               - pointer to index buffer to populate.  Should be at least 3 * GetNumTris() in size
 		* @param bMergeCoincidentBones - if multiple verts have the same position, force them to have the same bones.
-		* @param  bWeldVtxColorAttrs   - Weld verts attributes (colors) that may have been artificially split by the reduction algorithm.
-		*                                note: this could be extended to the other attributes (e.g. normals, uvs )  
 		* @param LockedVerts           - optional pointer to array.  On return the array will hold the indices of any locked verts.
 		*/
-		void				OutputMesh(MeshVertType* Verts, uint32* Indexes, bool bMergeCoincidentVertBones = true, bool bWeldVtxColorAttrs = true, TArray<int32>* LockedVerts = NULL);
+		void				OutputMesh(MeshVertType* Verts, uint32* Indexes, bool bMergeCoincidentVertBones = true, TArray<int32>* LockedVerts = NULL);
 
 
 	protected:
@@ -225,7 +213,7 @@ namespace SkeletalSimplifier
 		float               CalculateNormalShift(const SimpTriType& tri, const SimpVertType* vertToUpdate, const FVector& newPos) const;
 
 		void				ComputeEdgeCollapseVerts(SimpEdgeType* edge, EdgeUpdateTupleArray& newVerts);
-		void				ComputeEdgeCollapseVertsAndFixBones(SimpEdgeType* edge, EdgeUpdateTupleArray& newVerts);
+		void				ComputeEdgeCollapseVertsAndFixBones(SimpEdgeType* edge, EdgeUpdateTupleArray& newVerts); 
 
 
 		double				ComputeEdgeCollapseVertsAndCost(SimpEdgeType* edge, EdgeUpdateTupleArray& newVerts);
@@ -252,13 +240,7 @@ namespace SkeletalSimplifier
 		int32               CountDegenerates() const; // Included for testing.
 
 
-		// Snap the interpolated vertex color in the third tuple element to the closest of the other two
-		void                SnapToClosestSourceVertexColor(EdgeUpdateTuple& UpdateTuple);
-
-		// Returns the closer (AColor or BColor) from the SampleColor
-		const FLinearColor& SnapToClosestColor(const FLinearColor& AColor, const FLinearColor& BColor, const FLinearColor& SampleColor) const;
-
-
+	
 	protected:
 
 		// --- Weights for quadric simplification
@@ -270,9 +252,9 @@ namespace SkeletalSimplifier
 		SparseWeightContainerType AdditionalAttrWeights;
 
 
-		// --- Magic numbers that penalize undesirable simplifications.
+	    // --- Magic numbers that penalize undesirable simplifications.
 
-		// prevent high valence verts.
+	    // prevent high valence verts.
 		uint32               DegreeLimit = 24;
 		double               DegreePenalty = 100.0f;
 
@@ -280,7 +262,7 @@ namespace SkeletalSimplifier
 		double               invalidPenalty = 1.e6;
 
 		// critical angle by which the normal of a triangle is allowed to changed during a collapse.
-		double               coAlignmentLimit = .0871557f;
+		double               coAlignmentLimit = .0871557f;  
 
 		double               VolumeImportance;
 
@@ -291,10 +273,10 @@ namespace SkeletalSimplifier
 
 
 
-		// --- End Magic numbers
+        // --- End Magic numbers
 
 
-		// Heap that maps edges to the cost of collapse
+	    // Heap that maps edges to the cost of collapse
 		FBinaryHeap<double>		CollapseCostHeap;
 
 		// Manage the quadrics
@@ -304,7 +286,7 @@ namespace SkeletalSimplifier
 		// The mesh manager - holds a mesh that supports the topology queries we need and the collapse methods.
 		FSimplifierMeshManager   MeshManager;
 
-
+	
 	private:
 		FMeshSimplifier();
 
@@ -353,13 +335,13 @@ namespace SkeletalSimplifier
 		{
 			return Quadrics::FEdgeQuadric(Pos0, Pos1, Normal, Weight);
 		};
-
+	
 		Quadrics::FEdgeQuadric Quadric = QuadricCache.GetEdgeQuadric(v, EdgeQuadricFactory);
 
 		return Quadric;
 	}
 
-
+	
 
 	FORCEINLINE void FMeshSimplifier::ComputeEdgeCollapseVertsAndQuadrics(SimpEdgeType* edge,
 		EdgeUpdateTupleArray& EdgeAndNewVertArray,
@@ -387,32 +369,6 @@ namespace SkeletalSimplifier
 
 	}
 
-	FORCEINLINE const FLinearColor& FMeshSimplifier::SnapToClosestColor(const FLinearColor& AColor, const FLinearColor& BColor, const FLinearColor& SampleColor) const
-	{
-		// compute the squared distance in linear space - ignoring the alpha channel.
-		float ADistSqrd = (AColor.R - SampleColor.R)*(AColor.R - SampleColor.R) + (AColor.G - SampleColor.G)*(AColor.G - SampleColor.G) + (AColor.B - SampleColor.B)*(AColor.B - SampleColor.B);
-		float BDistSqrt = (BColor.R - SampleColor.R)*(BColor.R - SampleColor.R) + (BColor.G - SampleColor.G)*(BColor.G - SampleColor.G) + (BColor.B - SampleColor.B)*(BColor.B - SampleColor.B);
-
-		// select the closest
-		return (ADistSqrd > BDistSqrt) ? BColor : AColor;
-
-	}
-
-	FORCEINLINE void FMeshSimplifier::SnapToClosestSourceVertexColor(EdgeUpdateTuple& UpdateTuple)
-	{
-		MeshVertType&  VertAttributes = UpdateTuple.Get<2>();
-		FLinearColor& InterpolatedColor = VertAttributes.BasicAttributes.Color;
-
-		const SimpVertType* AVtxPtr = UpdateTuple.Get<0>();
-		const SimpVertType* BVtxPtr = UpdateTuple.Get<1>();
-
-		if (AVtxPtr != nullptr && BVtxPtr != nullptr)
-		{
-			// update to the closest source color.  
-			InterpolatedColor = SnapToClosestColor(AVtxPtr->vert.BasicAttributes.Color, BVtxPtr->vert.BasicAttributes.Color, InterpolatedColor);
-		}
-		
-	}
 
 	FORCEINLINE void FMeshSimplifier::UpdateEdgeCollapseCost(EdgePtrArray& DirtyEdges)
 	{
@@ -562,40 +518,32 @@ namespace SkeletalSimplifier
 
 				}
 
-				
+
 				// Update both verts in the mesh to have the new location and attribute values.
 
 				for (int32 i = 0, Imax = VertexUpdateArray.Num(); i < Imax; ++i)
 				{
 					EdgeUpdateTuple&  EdgeUpdate = VertexUpdateArray[i];
-					
 
-					// New vertex attribute values for the collapsed vertex 
-					const MeshVertType&  CollapsedAttributes = EdgeUpdate.Get<2>();
+					// New vertex values 
+					const MeshVertType&  VertAttributes = EdgeUpdate.Get<2>();
 
 					// update the first edge vertex
 					SimpVertType* VtxPtr = EdgeUpdate.Get<0>();
 					if (VtxPtr != nullptr)
 					{
-						MeshManager.UpdateVertexAttributes(*VtxPtr, CollapsedAttributes);
+						MeshManager.UpdateVertexAttributes(*VtxPtr, VertAttributes);
 					}
 
 					// update the second edge vertex
 					VtxPtr = EdgeUpdate.Get<1>();
 					if (VtxPtr != nullptr)
 					{
-						MeshManager.UpdateVertexAttributes(*VtxPtr, CollapsedAttributes);
+						MeshManager.UpdateVertexAttributes(*VtxPtr, VertAttributes);
 					}
 
 				}
 			}
-
-			// This manages the complicated logic of making sure the attribute element IDs after the collapse
-			// will be in the correct state for a collapse of of a split attribute or non-split attribute.  This applies
-			// to the vertices in the edges, and the loose vertices that don't share a triangle
-			// with the a vertex on the opposite end of the edge.
-
-			MeshManager.UpdateVertexAttriuteIDs(CoincidentEdges);
 
 			// collapse all edges by moving edge->v0 to edge->v1
 			{

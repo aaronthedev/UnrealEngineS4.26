@@ -1,19 +1,18 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MPCDIData.h"
 #include "MPCDIRegion.h"
 #include "MPCDILog.h"
-
-#include "Misc/DisplayClusterHelpers.h"
 
 #include "Stats/Stats.h"
 #include "Engine/Engine.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/Paths.h"
 
-#include "MPCDIWarpTexture.h"
+#include "MPCDIHelpers.h"
 
 THIRD_PARTY_INCLUDES_START
+
 #include "mpcdiProfile.h"
 #include "mpcdiReader.h"
 #include "mpcdiDisplay.h"
@@ -23,19 +22,21 @@ THIRD_PARTY_INCLUDES_START
 #include "mpcdiBetaMap.h"
 #include "mpcdiDistortionMap.h"
 #include "mpcdiGeometryWarpFile.h"
+
 THIRD_PARTY_INCLUDES_END
 
 
 bool FMPCDIData::FMPCDIBuffer::Initialize(const FString& BufferName)
 {
 	ID = BufferName;
+	AABBox = FBox(FVector(FLT_MAX, FLT_MAX, FLT_MAX), FVector(-FLT_MAX, -FLT_MAX, -FLT_MAX));
 	return true;
 }
-
-void FMPCDIData::FMPCDIBuffer::AddRegion(FMPCDIRegion* MPCDIRegionPtr)
+void FMPCDIData::FMPCDIBuffer::AddRegion(MPCDI::FMPCDIRegion* MPCDIRegionPtr)
 {
 	if (MPCDIRegionPtr)
 	{
+		MPCDIRegionPtr->WarpMap.AppendAABB(AABBox);
 		Regions.Add(MPCDIRegionPtr);
 	}
 }
@@ -80,13 +81,7 @@ void FMPCDIData::CleanupMPCDIData()
 	{
 		for (auto& ItRegion : ItBuffer->Regions)
 		{
-
-			if (ItRegion->WarpData && ItRegion->WarpData->GetWarpGeometryType() == EWarpGeometryType::PFM_Texture)
-			{
-				FMPCDIWarpTexture* WarpMap = static_cast<FMPCDIWarpTexture*>(ItRegion->WarpData);
-				BeginReleaseResource(WarpMap);
-			}
-
+			BeginReleaseResource(&ItRegion->WarpMap);
 			BeginReleaseResource(&ItRegion->AlphaMap);
 			BeginReleaseResource(&ItRegion->BetaMap);
 		}
@@ -152,7 +147,7 @@ bool FMPCDIData::AddRegion(const FString& BufferName, const FString& RegionName,
 				FMPCDIBuffer* Buffer = Buffers[OutRegionLocator.BufferIndex];
 				if (Buffer)
 				{
-					FMPCDIRegion* NewRegionPtr = new FMPCDIRegion(*RegionName, 1920, 1080);
+					MPCDI::FMPCDIRegion* NewRegionPtr = new MPCDI::FMPCDIRegion(*RegionName, 1920, 1080);
 					Buffer->AddRegion(NewRegionPtr);
 					return FindRegion(BufferName, RegionName, OutRegionLocator);
 				}
@@ -160,16 +155,17 @@ bool FMPCDIData::AddRegion(const FString& BufferName, const FString& RegionName,
 		}
 	}
 
-	// Region already exists
+	//Region already exist
 	return true;
 }
 
-bool FMPCDIData::Load(const FString& MPCDIFile)
+bool FMPCDIData::Load(const FString& MPCIDIFile)
 {
-	FString MPCIDIFileFullPath = DisplayClusterHelpers::filesystem::GetFullPathForConfigResource(MPCDIFile);
+
+	FString MPCIDIFileFullPath = DisplayClusterHelpers::config::GetFullPath(MPCIDIFile);
 	if (!FPaths::FileExists(MPCIDIFileFullPath))
 	{
-		UE_LOG(LogMPCDI, Error, TEXT("File not found: %s"), *MPCIDIFileFullPath);
+		//! Handle error: mpcdi file not found
 		return false;
 	}
 
@@ -198,21 +194,18 @@ bool FMPCDIData::Load(const FString& MPCDIFile)
 		case mpcdi::ProfileType2d:
 			MPCDIProfileType = IMPCDI::EMPCDIProfileType::mpcdi_2D;
 			break;
-
 		case mpcdi::ProfileType3d:
 			MPCDIProfileType = IMPCDI::EMPCDIProfileType::mpcdi_3D;
 			break;
-
 		case mpcdi::ProfileTypea3:
 			MPCDIProfileType = IMPCDI::EMPCDIProfileType::mpcdi_A3D;
 			break;
-
 		case mpcdi::ProfileTypesl:
 			MPCDIProfileType = IMPCDI::EMPCDIProfileType::mpcdi_SL;
 			break;
 		};
 
-		if (!Initialize(MPCDIFile, MPCDIProfileType))
+		if (!Initialize(MPCIDIFile, MPCDIProfileType))
 		{
 			return false;
 		}
@@ -221,7 +214,9 @@ bool FMPCDIData::Load(const FString& MPCDIFile)
 		Version = version.c_str();
 		UE_LOG(LogMPCDI, Verbose, TEXT("Version: %s"), *Version);
 
-		// Fill buffer information
+		
+
+		// Fill buffer information		
 		for (mpcdi::Display::BufferIterator itBuffer = profile->GetDisplay()->GetBufferBegin(); itBuffer != profile->GetDisplay()->GetBufferEnd(); ++itBuffer)
 		{
 			Buffers.Add(new FMPCDIBuffer());
@@ -235,19 +230,19 @@ bool FMPCDIData::Load(const FString& MPCDIFile)
 				mpcdi::Region *mpcdiRegion = it->second;
 				if (mpcdiRegion)
 				{
-					FMPCDIRegion* NewRegionPtr = new FMPCDIRegion();
+					MPCDI::FMPCDIRegion* NewRegionPtr = new MPCDI::FMPCDIRegion();
 					if (NewRegionPtr->Load(mpcdiRegion, GetProfileType()))
 					{
 						buffer.AddRegion(NewRegionPtr);
 					}
 					else
 					{
+						//@todo handle error
 						UE_LOG(LogMPCDI, Error, TEXT("Can't load mpcdi region %s"), ANSI_TO_TCHAR(mpcdiRegion->GetId().c_str()));
-					}
+					}					
 				}
-			}
-		}
-
+			}// end region loop
+		}//end buffer loop
 		success = true;
 	}
 
@@ -260,7 +255,7 @@ void FMPCDIData::AddReferencedObjects(FReferenceCollector& Collector)
 }
 
 #if 0
-// not supported yet
+//@todo Unsupported now
 bool FMPCDIData::ComputeFrustum_SL(const IMPCDI::FRegionLocator& RegionLocator, IMPCDI::FFrustum &OutFrustum, float WorldScale, float ZNear, float ZFar) const
 {
 	const FMPCDIData::FMPCDIBuffer *MPCDIBuffer = Buffers[RegionLocator.BufferIndex];
@@ -305,29 +300,24 @@ bool FMPCDIData::ComputeFrustum(const IMPCDI::FRegionLocator& RegionLocator, IMP
 	const FMPCDIData::FMPCDIBuffer *MPCDIBuffer = Buffers[RegionLocator.BufferIndex];
 	if (MPCDIBuffer)
 	{
-		FMPCDIRegion* Region = GetRegion(RegionLocator);
-		if (Region && Region->WarpData)
+		switch (GetProfileType())
 		{
-			switch (GetProfileType())
-			{
-			case IMPCDI::EMPCDIProfileType::mpcdi_A3D:
-				return Region->WarpData->GetFrustum_A3D(Frustum, WorldScale, ZNear, ZFar);
-				break;
-#if 0
-			// Not supported yet
-			case EMPCDIProfileType::mpcdi_SL:
-			{
-				return ComputeFrustum_SL(RegionLocator, Frustum, WorldScale, ZNear, ZFar);
-				break;
-			}
+		case IMPCDI::EMPCDIProfileType::mpcdi_A3D:
+			return GetRegion(RegionLocator)->WarpMap.GetFrustum_A3D(Frustum, WorldScale, ZNear, ZFar);
 			break;
+#if 0
+		//@todo Unsupported now
+		case EMPCDIProfileType::mpcdi_SL:
+		{
+			return ComputeFrustum_SL(RegionLocator, Frustum, WorldScale, ZNear, ZFar);
+			break;
+		}
+		break;
 #endif
-			default:
-				UE_LOG(LogMPCDI, Warning, TEXT("Current MPCDI profile is not supported yet"));
-				break;
-			}
+		default:
+			//@todo logs not supported yet
+			break;
 		}
 	}
-
 	return false;
 }

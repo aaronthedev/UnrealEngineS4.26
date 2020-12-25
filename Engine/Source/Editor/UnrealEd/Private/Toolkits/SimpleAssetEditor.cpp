@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Toolkits/SimpleAssetEditor.h"
 #include "Modules/ModuleManager.h"
@@ -232,13 +232,6 @@ FLinearColor FSimpleAssetEditor::GetWorldCentricTabColorScale() const
 void FSimpleAssetEditor::SetPropertyVisibilityDelegate(FIsPropertyVisible InVisibilityDelegate)
 {
 	DetailsView->SetIsPropertyVisibleDelegate(InVisibilityDelegate);
-	DetailsView->ForceRefresh();
-}
-
-void FSimpleAssetEditor::SetPropertyEditingEnabledDelegate(FIsPropertyEditingEnabled InPropertyEditingDelegate)
-{
-	DetailsView->SetIsPropertyEditingEnabledDelegate(InPropertyEditingDelegate);
-	DetailsView->ForceRefresh();
 }
 
 TSharedRef<SDockTab> FSimpleAssetEditor::SpawnPropertiesTab( const FSpawnTabArgs& Args )

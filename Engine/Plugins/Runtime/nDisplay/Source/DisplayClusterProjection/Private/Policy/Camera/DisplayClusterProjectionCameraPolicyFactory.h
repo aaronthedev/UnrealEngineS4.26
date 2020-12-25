@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,10 +12,14 @@ class FDisplayClusterProjectionCameraPolicyFactory
 	: public IDisplayClusterProjectionPolicyFactory
 {
 public:
+	FDisplayClusterProjectionCameraPolicyFactory();
+	virtual ~FDisplayClusterProjectionCameraPolicyFactory();
+
+public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	// IDisplayClusterProjectionPolicyFactory
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	virtual TSharedPtr<IDisplayClusterProjectionPolicy> Create(const FString& PolicyType, const FString& RHIName, const FString& ViewportId, const TMap<FString, FString>& Parameters) override;
+	virtual TSharedPtr<IDisplayClusterProjectionPolicy> Create(const FString& PolicyType, const FString& RHIName, const FString& ViewportId) override;
 
 public:
 	TSharedPtr<IDisplayClusterProjectionPolicy> GetPolicyInstance(const FString& ViewportId);

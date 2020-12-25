@@ -125,7 +125,10 @@ OrData::OrData( ObjectHeaderPtr iHeader,
 OrData::~OrData()
 {
     CloseObject( m_oldGroup );
-    delete [] m_children;
+    if ( m_children )
+    {
+        delete [] m_children;
+    }
 }
 
 //-*****************************************************************************

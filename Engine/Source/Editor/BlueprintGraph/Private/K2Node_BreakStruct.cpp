@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "K2Node_BreakStruct.h"
 #include "Engine/UserDefinedStruct.h"
@@ -84,7 +84,7 @@ public:
 
 	void RegisterOutputTerm(FKismetFunctionContext& Context, UScriptStruct* StructType, UEdGraphPin* Net, FBPTerminal* ContextTerm)
 	{
-		if (FProperty* BoundProperty = FindFProperty<FProperty>(StructType, Net->PinName))
+		if (UProperty* BoundProperty = FindField<UProperty>(StructType, Net->PinName))
 		{
 			if (BoundProperty->HasAnyPropertyFlags(CPF_Deprecated) && Net->LinkedTo.Num())
 			{
@@ -142,7 +142,7 @@ UK2Node_BreakStruct::UK2Node_BreakStruct(const FObjectInitializer& ObjectInitial
 {
 }
 
-static bool CanCreatePinForProperty(const FProperty* Property)
+static bool CanCreatePinForProperty(const UProperty* Property)
 {
 	const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
 	FEdGraphPinType DumbGraphPinType;
@@ -156,7 +156,7 @@ bool UK2Node_BreakStruct::CanBeBroken(const UScriptStruct* Struct, const bool bF
 {
 	if (Struct && !Struct->HasMetaData(FBlueprintMetadata::MD_NativeBreakFunction) && UEdGraphSchema_K2::IsAllowableBlueprintVariableType(Struct, bForInternalUse))
 	{
-		for (TFieldIterator<FProperty> It(Struct); It; ++It)
+		for (TFieldIterator<UProperty> It(Struct); It; ++It)
 		{
 			if (CanCreatePinForProperty(*It))
 			{
@@ -180,7 +180,7 @@ void UK2Node_BreakStruct::AllocateDefaultPins()
 		
 		struct FBreakStructPinManager : public FStructOperationOptionalPinManager
 		{
-			virtual bool CanTreatPropertyAsOptional(FProperty* TestProperty) const override
+			virtual bool CanTreatPropertyAsOptional(UProperty* TestProperty) const override
 			{
 				return CanCreatePinForProperty(TestProperty);
 			}
@@ -262,9 +262,9 @@ void UK2Node_BreakStruct::ValidateNodeDuringCompilation(class FCompilerResultsLo
 	else
 	{
 		bool bHasAnyBlueprintVisibleProperty = false;
-		for (TFieldIterator<FProperty> It(StructType); It; ++It)
+		for (TFieldIterator<UProperty> It(StructType); It; ++It)
 		{
-			const FProperty* Property = *It;
+			const UProperty* Property = *It;
 			if (CanCreatePinForProperty(Property))
 			{
 				const bool bIsBlueprintVisible = Property->HasAnyPropertyFlags(CPF_BlueprintVisible) || (Property->GetOwnerStruct() && Property->GetOwnerStruct()->IsA<UUserDefinedStruct>());
@@ -334,7 +334,7 @@ void UK2Node_BreakStruct::GetMenuActions(FBlueprintActionDatabaseRegistrar& Acti
 {
 	struct GetMenuActions_Utils
 	{
-		static void SetNodeStruct(UEdGraphNode* NewNode, FFieldVariant /*StructField*/, TWeakObjectPtr<UScriptStruct> NonConstStructPtr)
+		static void SetNodeStruct(UEdGraphNode* NewNode, UField const* /*StructField*/, TWeakObjectPtr<UScriptStruct> NonConstStructPtr)
 		{
 			UK2Node_BreakStruct* BreakNode = CastChecked<UK2Node_BreakStruct>(NewNode);
 			BreakNode->StructType = NonConstStructPtr.Get();
@@ -361,7 +361,7 @@ void UK2Node_BreakStruct::GetMenuActions(FBlueprintActionDatabaseRegistrar& Acti
 		
 		if (UK2Node_BreakStruct::CanBeBroken(Struct))
 		{
-			NodeSpawner = UBlueprintFieldNodeSpawner::Create(NodeClass, const_cast<UScriptStruct*>(Struct));
+			NodeSpawner = UBlueprintFieldNodeSpawner::Create(NodeClass, Struct);
 			check(NodeSpawner != nullptr);
 			TWeakObjectPtr<UScriptStruct> NonConstStructPtr = MakeWeakObjectPtr(const_cast<UScriptStruct*>(Struct));
 			NodeSpawner->SetNodeFieldDelegate     = UBlueprintFieldNodeSpawner::FSetNodeFieldDelegate::CreateStatic(GetMenuActions_Utils::SetNodeStruct, NonConstStructPtr);
@@ -389,13 +389,13 @@ void UK2Node_BreakStruct::Serialize(FArchive& Ar)
 		FOptionalPinManager PinManager;
 
 		// Have to check if this node is even in danger.
-		for (TFieldIterator<FProperty> It(StructType, EFieldIteratorFlags::IncludeSuper); It; ++It)
+		for (TFieldIterator<UProperty> It(StructType, EFieldIteratorFlags::IncludeSuper); It; ++It)
 		{
-			FProperty* TestProperty = *It;
+			UProperty* TestProperty = *It;
 			if (PinManager.CanTreatPropertyAsOptional(TestProperty))
 			{
 				bool bNegate = false;
-				if (FProperty* OverrideProperty = PropertyCustomizationHelpers::GetEditConditionProperty(TestProperty, bNegate))
+				if (UProperty* OverrideProperty = PropertyCustomizationHelpers::GetEditConditionProperty(TestProperty, bNegate))
 				{
 					// We have confirmed that there is a property that uses an override variable to enable it, so set it to true.
 					bMadeAfterOverridePinRemoval = false;
@@ -455,7 +455,7 @@ void UK2Node_BreakStruct::ConvertDeprecatedNode(UEdGraph* Graph, bool bOnlySafeC
 			if (BreakNodeFunction)
 			{
 				// Look for the first parameter
-				for (TFieldIterator<FProperty> FieldIterator(BreakNodeFunction); FieldIterator && (FieldIterator->PropertyFlags & CPF_Parm); ++FieldIterator)
+				for (TFieldIterator<UProperty> FieldIterator(BreakNodeFunction); FieldIterator && (FieldIterator->PropertyFlags & CPF_Parm); ++FieldIterator)
 				{
 					if (FieldIterator->PropertyFlags & CPF_Parm && !(FieldIterator->PropertyFlags & CPF_ReturnParm))
 					{

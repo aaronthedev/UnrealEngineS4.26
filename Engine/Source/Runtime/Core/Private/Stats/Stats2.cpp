@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Stats/Stats2.h"
 #include "Misc/AssertionMacros.h"
@@ -65,7 +65,7 @@ DEFINE_STAT(STAT_SecondsPerCycle);
 #if	!UE_BUILD_SHIPPING
 
 static TAutoConsoleVariable<int32> CVarEnableLeakTest(
-	TEXT( "EnableLeakTest" ),
+	TEXT( "debug.EnableLeakTest" ),
 	0,
 	TEXT( "If set to 1, enables leak test, for testing stats based memory profiler" )
 	);
@@ -508,7 +508,6 @@ public:
 	{
 		LLM_SCOPE(ELLMTag::Stats);
 
-		FName Stat;
 		TStatIdData* Result;
 		FString StatDescription;
 		{
@@ -516,7 +515,7 @@ public:
 
 			FStatNameAndInfo LongName(StatShortName, InGroup, InCategory, InDescription, InStatType, bShouldClearEveryFrame, bCycleStat, bSortByName, MemoryRegion);
 
-			Stat = LongName.GetEncodedName();
+			FName Stat = LongName.GetEncodedName();
 
 			FName Group(InGroup);
 			FGroupEnable* Found = HighPerformanceEnable.Find(Group);
@@ -608,6 +607,12 @@ public:
 			}
 		}
 
+#if CPUPROFILERTRACE_ENABLED
+		if (bCycleStat)
+		{
+			Result->TraceCpuProfilerSpecId = FCpuProfilerTrace::OutputEventType(*StatDescription, CpuProfilerGroup_Stats);
+		}
+#endif
 #if STATSTRACE_ENABLED
 		if (!bCycleStat && (InStatType == EStatDataType::ST_int64 || InStatType == EStatDataType::ST_double))
 		{
@@ -759,29 +764,29 @@ FName FStatNameAndInfo::GetShortNameFrom(FName InLongName)
 
 	if (Input.StartsWith(TEXT("//"), ESearchCase::CaseSensitive))
 	{
-		Input.RightChopInline(2, false);
+		Input = Input.RightChop(2);
 		const int32 IndexEnd = Input.Find(TEXT("//"), ESearchCase::CaseSensitive);
 		if (IndexEnd == INDEX_NONE)
 		{
 			checkStats(0);
 			return InLongName;
 		}
-		Input.RightChopInline(IndexEnd + 2, false);
+		Input = Input.RightChop(IndexEnd + 2);
 	}
 	const int32 DescIndexEnd = Input.Find(TEXT("///"), ESearchCase::CaseSensitive);
 	if (DescIndexEnd != INDEX_NONE)
 	{
-		Input.LeftInline(DescIndexEnd, false);
+		Input = Input.Left(DescIndexEnd);
 	}
 	const int32 CategoryIndexEnd = Input.Find( TEXT( "####" ), ESearchCase::CaseSensitive );
 	if( DescIndexEnd == INDEX_NONE && CategoryIndexEnd != INDEX_NONE )
 	{
-		Input.LeftInline(CategoryIndexEnd, false);
+		Input = Input.Left(CategoryIndexEnd);
 	}
 	const int32 SortByNameIndexEnd = Input.Find( TEXT( "/#/#" ), ESearchCase::CaseSensitive );
 	if( DescIndexEnd == INDEX_NONE && CategoryIndexEnd == INDEX_NONE && SortByNameIndexEnd != INDEX_NONE )
 	{
-		Input.LeftInline(SortByNameIndexEnd, false);
+		Input = Input.Left(SortByNameIndexEnd);
 	}
 	return FName(*Input);
 }
@@ -792,10 +797,10 @@ FName FStatNameAndInfo::GetGroupNameFrom(FName InLongName)
 
 	if (Input.StartsWith(TEXT("//"), ESearchCase::CaseSensitive))
 	{
-		Input.RightChopInline(2, false);
+		Input = Input.RightChop(2);
 		if (Input.StartsWith(TEXT("Groups//")))
 		{
-			Input.RightChopInline(8, false);
+			Input = Input.RightChop(8);
 		}
 		const int32 IndexEnd = Input.Find(TEXT("//"), ESearchCase::CaseSensitive);
 		if (IndexEnd != INDEX_NONE)
@@ -814,7 +819,7 @@ FString FStatNameAndInfo::GetDescriptionFrom(FName InLongName)
 	const int32 IndexStart = Input.Find(TEXT("///"), ESearchCase::CaseSensitive);
 	if (IndexStart != INDEX_NONE)
 	{
-		Input.RightChopInline(IndexStart + 3, false);
+		Input = Input.RightChop(IndexStart + 3);
 		const int32 IndexEnd = Input.Find(TEXT("///"), ESearchCase::CaseSensitive);
 		if (IndexEnd != INDEX_NONE)
 		{
@@ -831,7 +836,7 @@ FName FStatNameAndInfo::GetGroupCategoryFrom(FName InLongName)
 	const int32 IndexStart = Input.Find(TEXT("####"), ESearchCase::CaseSensitive);
 	if (IndexStart != INDEX_NONE)
 	{
-		Input.RightChopInline(IndexStart + 4, false);
+		Input = Input.RightChop(IndexStart + 4);
 		const int32 IndexEnd = Input.Find(TEXT("####"), ESearchCase::CaseSensitive);
 		if (IndexEnd != INDEX_NONE)
 		{
@@ -849,7 +854,7 @@ bool FStatNameAndInfo::GetSortByNameFrom(FName InLongName)
 	const int32 IndexStart = Input.Find(TEXT("/#/#"), ESearchCase::CaseSensitive);
 	if (IndexStart != INDEX_NONE)
 	{
-		Input.RightChopInline(IndexStart + 4, false);
+		Input = Input.RightChop(IndexStart + 4);
 		const int32 IndexEnd = Input.Find(TEXT("/#/#"), ESearchCase::CaseSensitive);
 		if (IndexEnd != INDEX_NONE)
 		{
@@ -1280,7 +1285,7 @@ void FThreadStats::FlushRawStats( bool bHasBrokenCallstacks /*= false*/, bool bF
 		}
 		UpdateExplicitFlush();
 
-		const float NumMessagesAsMB = float(NumMessages * sizeof(FStatMessage)) / 1024.0f / 1024.0f;
+		const float NumMessagesAsMB = NumMessages*sizeof(FStatMessage) / 1024.0f / 1024.0f;
 		if( NumMessages > 524288 )
 		{
 			UE_LOG( LogStats, Warning, TEXT( "FlushRawStats NumMessages: %i (%.2f MB), Thread: %u" ), NumMessages, NumMessagesAsMB, Packet.ThreadId );
@@ -1316,7 +1321,7 @@ void FThreadStats::CheckForCollectingStartupStats()
 		{
 			break;
 		}
-		CmdLine.MidInline(Index + StatCmds.Len(), MAX_int32, false);
+		CmdLine = CmdLine.Mid(Index + StatCmds.Len());
 	}
 
 	if (FParse::Param( FCommandLine::Get(), TEXT( "LoadTimeStats" ) ))

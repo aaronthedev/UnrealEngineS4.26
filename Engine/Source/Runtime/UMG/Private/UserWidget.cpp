@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Blueprint/UserWidget.h"
 #include "Rendering/DrawElements.h"
@@ -12,7 +12,6 @@
 #include "Blueprint/WidgetTree.h"
 #include "Blueprint/WidgetBlueprintGeneratedClass.h"
 #include "Animation/UMGSequencePlayer.h"
-#include "Animation/UMGSequenceTickManager.h"
 #include "UObject/UnrealType.h"
 #include "Blueprint/WidgetNavigation.h"
 #include "Animation/WidgetAnimation.h"
@@ -24,20 +23,14 @@
 #include "UMGPrivate.h"
 #include "UObject/UObjectHash.h"
 #include "UObject/PropertyPortFlags.h"
+#include "Compilation/MovieSceneCompiler.h"
 #include "TimerManager.h"
 #include "UObject/Package.h"
 #include "Editor/WidgetCompilerLog.h"
-#include "GameFramework/InputSettings.h"
 
 #define LOCTEXT_NAMESPACE "UMG"
 
-TAutoConsoleVariable<bool> CVarUserWidgetUseParallelAnimation(
-	TEXT("Widget.UseParallelAnimation"),
-	true,
-	TEXT("Use multi-threaded evaluation for widget animations."),
-	ECVF_Default
-);
-
+bool UUserWidget::bTemplateInitializing = false;
 uint32 UUserWidget::bInitializingFromWidgetTree = 0;
 
 static FGeometry NullGeometry;
@@ -95,7 +88,7 @@ UUserWidget::UUserWidget(const FObjectInitializer& ObjectInitializer)
 	}
 }
 
-UWidgetBlueprintGeneratedClass* UUserWidget::GetWidgetTreeOwningClass() const
+UWidgetBlueprintGeneratedClass* UUserWidget::GetWidgetTreeOwningClass()
 {
 	UWidgetBlueprintGeneratedClass* WidgetClass = Cast<UWidgetBlueprintGeneratedClass>(GetClass());
 	if (WidgetClass != nullptr)
@@ -106,10 +99,227 @@ UWidgetBlueprintGeneratedClass* UUserWidget::GetWidgetTreeOwningClass() const
 	return WidgetClass;
 }
 
+void UUserWidget::TemplateInit()
+{
+	TGuardValue<bool> InitGuard(bTemplateInitializing, true);
+	TemplateInitInner();
+
+	ForEachObjectWithOuter(this, [] (UObject* Child)
+	{
+		// Make sure to clear the entire hierarchy of the transient flag, we don't want some errant widget tree
+		// to be culled from serialization accidentally.
+		if ( UWidgetTree* InnerWidgetTree = Cast<UWidgetTree>(Child) )
+		{
+			InnerWidgetTree->ClearFlags(RF_Transient | RF_DefaultSubObject);
+		}
+	}, true);
+}
+
+void UUserWidget::TemplateInitInner()
+{
+	UWidgetBlueprintGeneratedClass* WidgetClass = GetWidgetTreeOwningClass();
+
+	FObjectDuplicationParameters Parameters(WidgetClass->WidgetTree, this);
+	Parameters.FlagMask = RF_Transactional;
+	Parameters.PortFlags = PPF_DuplicateVerbatim;
+
+	WidgetTree = (UWidgetTree*)StaticDuplicateObjectEx(Parameters);
+	bCookedWidgetTree = true;
+
+	if ( ensure(WidgetTree) )
+	{
+		WidgetTree->ForEachWidget([this, WidgetClass] (UWidget* Widget) {
+
+#if !UE_BUILD_SHIPPING
+			Widget->WidgetGeneratedByClass = WidgetClass;
+#endif
+
+			// TODO UMG Make this an FName
+			FString VariableName = Widget->GetName();
+
+			// Find property with the same name as the template and assign the new widget to it.
+			UObjectPropertyBase* Prop = FindField<UObjectPropertyBase>(WidgetClass, *VariableName);
+			if ( Prop )
+			{
+				Prop->SetObjectPropertyValue_InContainer(this, Widget);
+#if UE_BUILD_DEBUG
+				UObject* Value = Prop->GetObjectPropertyValue_InContainer(this);
+				check(Value == Widget);
+#endif
+			}
+
+			// Initialize Navigation Data
+			if ( Widget->Navigation )
+			{
+				Widget->Navigation->ResolveRules(this, WidgetTree);
+			}
+
+			if ( UUserWidget* UserWidget = Cast<UUserWidget>(Widget) )
+			{
+				UserWidget->TemplateInitInner();
+			}
+		});
+
+		// Initialize the named slots!
+		const bool bReparentToWidgetTree = true;
+		InitializeNamedSlots(bReparentToWidgetTree);
+	}
+}
+
+bool UUserWidget::VerifyTemplateIntegrity(TArray<FText>& OutErrors)
+{
+	bool bIsTemplateSafe = true;
+
+	//TODO This method is terrible, need to serialize the object checking that way!
+
+	TArray<UObject*> ClonableSubObjectsSet;
+	ClonableSubObjectsSet.Add(this);
+	GetObjectsWithOuter(this, ClonableSubObjectsSet, true, RF_NoFlags, EInternalObjectFlags::PendingKill);
+
+	TMap<FName, UObject*> QuickLookup;
+
+	for ( UObject* Obj : ClonableSubObjectsSet )
+	{
+		QuickLookup.Add(Obj->GetFName(), Obj);
+
+		for ( TFieldIterator<UObjectPropertyBase> PropIt(Obj->GetClass()); PropIt; ++PropIt )
+		{
+			UObjectPropertyBase* ObjProp = *PropIt;
+
+			// If the property is transient, ignore it, we're not serializing it, so it shouldn't
+			// be a problem if it's not instanced.
+			if ( ObjProp->HasAnyPropertyFlags(CPF_Transient) )
+			{
+				continue;
+			}
+
+			UObject* ExternalObject = ObjProp->GetObjectPropertyValue_InContainer(Obj);
+
+			// If the UObject property references any object in the tree, ensure that it's referenceable back.
+			if ( ExternalObject )
+			{
+				if ( ExternalObject->IsIn(this) || ExternalObject == this )
+				{
+					if ( ObjProp->HasAllPropertyFlags(CPF_InstancedReference) )
+					{
+						continue;
+					}
+
+					OutErrors.Add(FText::Format(LOCTEXT("TemplatingFailed", "This class can not be created using the fast path, because the property {0} on {1} references {2}.  You probably are missing 'Instanced' or the 'Transient' flag on this property in C++."),
+						FText::FromString(ObjProp->GetName()), FText::FromString(ObjProp->GetOwnerClass()->GetName()), FText::FromString(ExternalObject->GetName())));
+
+					bIsTemplateSafe = false;
+				}
+			}
+		}
+	}
+
+	// See if a matching name appeared
+	if ( UWidgetBlueprintGeneratedClass* TemplateClass = GetWidgetTreeOwningClass() )
+	{
+		// This code is only functional in the editor, because we don't always have a widget tree on the class
+		// in non-editor builds that tree is going to be transient for fast template code, so there won't be
+		// a tree available in cooked builds.
+		if (TemplateClass->WidgetTree != nullptr)
+		{
+			TemplateClass->WidgetTree->ForEachWidgetAndDescendants([&OutErrors, &QuickLookup, &bIsTemplateSafe, TemplateClass] (UWidget* Widget) {
+
+				if ( !QuickLookup.Contains(Widget->GetFName()) )
+				{
+					OutErrors.Add(FText::Format(LOCTEXT("MissingOriginWidgetInTemplate", "Widget '{0}' Missing From Template For {1}."),
+						FText::FromString(Widget->GetPathName(TemplateClass->WidgetTree)), FText::FromString(TemplateClass->GetName())));
+
+					bIsTemplateSafe = false;
+				}
+
+			});
+		}
+	}
+
+	return VerifyTemplateIntegrity(this, OutErrors) && bIsTemplateSafe;
+}
+
+bool UUserWidget::VerifyTemplateIntegrity(UUserWidget* TemplateRoot, TArray<FText>& OutErrors)
+{
+	bool bIsTemplateSafe = true;
+
+	if ( WidgetTree == nullptr )
+	{
+		OutErrors.Add(FText::Format(LOCTEXT("NoWidgetTree", "Null Widget Tree {0}"), FText::FromString(GetName())));
+		bIsTemplateSafe = false;
+	}
+
+	if ( bCookedWidgetTree == false )
+	{
+		OutErrors.Add(FText::Format(LOCTEXT("NoCookedWidgetTree", "No Cooked Widget Tree! {0}"), FText::FromString(GetName())));
+		bIsTemplateSafe = false;
+	}
+
+	UClass* TemplateClass = GetClass();
+	if ( WidgetTree != nullptr )
+	{
+		WidgetTree->ForEachWidget([this, TemplateClass, &bIsTemplateSafe, &OutErrors, TemplateRoot] (UWidget* Widget) {
+
+			FName VariableFName = Widget->GetFName();
+
+			// Find property with the same name as the template and assign the new widget to it.
+			UObjectPropertyBase* Prop = FindField<UObjectPropertyBase>(TemplateClass, VariableFName);
+			if ( Prop )
+			{
+				UObject* Value = Prop->GetObjectPropertyValue_InContainer(this);
+				if ( Value != Widget )
+				{
+					OutErrors.Add(FText::Format(LOCTEXT("WidgetTreeVerify", "Property in widget template did not load correctly, {0}. Value was {1} but should have been {2}"),
+						FText::FromName(Prop->GetFName()),
+						FText::FromString(GetPathNameSafe(Value)),
+						FText::FromString(GetPathNameSafe(Widget))
+						));
+
+					bIsTemplateSafe = false;
+				}
+			}
+
+			UUserWidget* UserWidget = Cast<UUserWidget>(Widget);
+			if ( UserWidget )
+			{
+				bIsTemplateSafe &= UserWidget->VerifyTemplateIntegrity(TemplateRoot, OutErrors);
+			}
+		});
+	}
+
+	return bIsTemplateSafe;
+}
+
+bool UUserWidget::CanInitialize() const
+{
+#if (WITH_EDITOR || UE_BUILD_DEBUG)
+	if ( HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject) )
+	{
+		return false;
+	}
+
+	// If this object is outered to an archetype or CDO, don't initialize the user widget.  That leads to a complex
+	// and confusing serialization that when re-initialized later causes problems when copies of the template are made.
+	for ( const UObjectBaseUtility* It = this; It; It = It->GetOuter() )
+	{
+		if ( It->HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject) )
+		{
+			return false;
+		}
+	}
+#endif
+
+	return true;
+}
+
 bool UUserWidget::Initialize()
 {
+	// We don't want to initialize the widgets going into the widget templates, they're being setup in a
+	// different way, and don't need to be initialized in their template form.
+	ensure(bTemplateInitializing == false);
+
 	// If it's not initialized initialize it, as long as it's not the CDO, we never initialize the CDO.
-	if (!bInitialized && !HasAnyFlags(RF_ClassDefaultObject))
+	if ( !bInitialized && ensure(CanInitialize()) )
 	{
 		bInitialized = true;
 
@@ -123,7 +333,7 @@ bool UUserWidget::Initialize()
 		}
 
 		UWidgetBlueprintGeneratedClass* BGClass = Cast<UWidgetBlueprintGeneratedClass>(GetClass());
-		if (BGClass)
+		if (BGClass && !BGClass->HasTemplate())
 		{
 			BGClass = GetWidgetTreeOwningClass();
 		}
@@ -142,7 +352,8 @@ bool UUserWidget::Initialize()
 		{
 			WidgetTree = NewObject<UWidgetTree>(this, TEXT("WidgetTree"), RF_Transient);
 		}
-		else
+
+		if ( bCookedWidgetTree == false )
 		{
 			WidgetTree->SetFlags(RF_Transient);
 
@@ -167,7 +378,7 @@ void UUserWidget::InitializeNamedSlots(bool bReparentToWidgetTree)
 	{
 		if ( UWidget* BindingContent = Binding.Content )
 		{
-			FObjectPropertyBase* NamedSlotProperty = FindFProperty<FObjectPropertyBase>(GetClass(), Binding.Name);
+			UObjectPropertyBase* NamedSlotProperty = FindField<UObjectPropertyBase>(GetClass(), Binding.Name);
 #if !WITH_EDITOR
 			// In editor, renaming a NamedSlot widget will cause this ensure in UpdatePreviewWidget of widget that use that namedslot
 			ensure(NamedSlotProperty);
@@ -197,36 +408,23 @@ void UUserWidget::DuplicateAndInitializeFromWidgetTree(UWidgetTree* InWidgetTree
 
 	if ( ensure(InWidgetTree) )
 	{
-		FObjectInstancingGraph ObjectInstancingGraph;
-		WidgetTree = NewObject<UWidgetTree>(this, InWidgetTree->GetClass(), TEXT("WidgetTree"), RF_Transactional, InWidgetTree, false, &ObjectInstancingGraph);
-		WidgetTree->SetFlags(RF_Transient | RF_DuplicateTransient);
+		FObjectDuplicationParameters Parameters(InWidgetTree, this);
 
-		// After using the widget tree as a template, we need to loop over the instanced sub-objects and
-		// initialize any UserWidgets, so that they can repeat the process for their children.
-		ObjectInstancingGraph.ForEachObjectInstance([this](UObject* Instanced) {
-			if (UUserWidget* InstancedSubUserWidget = Cast<UUserWidget>(Instanced))
-			{
-#if WITH_EDITOR
-				InstancedSubUserWidget->SetDesignerFlags(GetDesignerFlags());
-#endif
-				InstancedSubUserWidget->SetPlayerContext(GetPlayerContext());
-				InstancedSubUserWidget->Initialize();
-			}
-		});
+		// Set to be transient and strip public flags
+		Parameters.FlagMask = Parameters.FlagMask & ~( RF_Public | RF_DefaultSubObject );
+		Parameters.DuplicateMode = EDuplicateMode::Normal;
+
+		// After cloning, only apply transient and duplicate transient to the widget tree, otherwise
+		// when we migrate objects editinlinenew properties they'll inherit transient/duptransient and fail
+		// to be saved.
+		WidgetTree = Cast<UWidgetTree>(StaticDuplicateObjectEx(Parameters));
+		WidgetTree->SetFlags(RF_Transient | RF_DuplicateTransient);
 	}
 }
 
 void UUserWidget::BeginDestroy()
 {
 	Super::BeginDestroy();
-
-	TearDownAnimations();
-
-	if (AnimationTickManager)
-	{
-		AnimationTickManager->RemoveWidget(this);
-		AnimationTickManager = nullptr;
-	}
 
 	//TODO: Investigate why this would ever be called directly, RemoveFromParent isn't safe to call during GC,
 	// as the widget structure may be in a partially destroyed state.
@@ -244,6 +442,13 @@ void UUserWidget::BeginDestroy()
 	{
 		SafeGCWidget->ResetWidget();
 	}
+}
+
+void UUserWidget::PostEditImport()
+{
+	Super::PostEditImport();
+
+	//Initialize();
 }
 
 void UUserWidget::PostDuplicate(bool bDuplicateForPIE)
@@ -384,19 +589,13 @@ UUMGSequencePlayer* UUserWidget::GetOrAddSequencePlayer(UWidgetAnimation* InAnim
 {
 	if (InAnimation && !bStoppingAllAnimations)
 	{
-		if (!AnimationTickManager)
-		{
-			AnimationTickManager = UUMGSequenceTickManager::Get(this);
-			AnimationTickManager->AddWidget(this);
-		}
-
 		// @todo UMG sequencer - Restart animations which have had Play called on them?
 		UUMGSequencePlayer* FoundPlayer = nullptr;
 		for (UUMGSequencePlayer* Player : ActiveSequencePlayers)
 		{
 			// We need to make sure we haven't stopped the animation, otherwise it'll get canceled on the next frame.
 			if (Player->GetAnimation() == InAnimation
-			 && !StoppedSequencePlayers.Contains(Player))
+				&& !StoppedSequencePlayers.Contains(Player))
 			{
 				FoundPlayer = Player;
 				break;
@@ -421,44 +620,18 @@ UUMGSequencePlayer* UUserWidget::GetOrAddSequencePlayer(UWidgetAnimation* InAnim
 	return nullptr;
 }
 
-void UUserWidget::TearDownAnimations()
-{
-	for (UUMGSequencePlayer* Player : ActiveSequencePlayers)
-	{
-		if (Player)
-		{
-			Player->TearDown();
-		}
-	}
-
-	for (UUMGSequencePlayer* Player : StoppedSequencePlayers)
-	{
-		Player->TearDown();
-	}
-
-	ActiveSequencePlayers.Empty();
-	StoppedSequencePlayers.Empty();
-}
-
 void UUserWidget::Invalidate()
 {
-	Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+	Invalidate(EInvalidateWidget::LayoutAndVolatility);
 }
 
-void UUserWidget::Invalidate(EInvalidateWidgetReason InvalidateReason)
+void UUserWidget::Invalidate(EInvalidateWidget InvalidateReason)
 {
-	if (TSharedPtr<SWidget> CachedWidget = GetCachedWidget())
+	TSharedPtr<SWidget> CachedWidget = GetCachedWidget();
+	if (CachedWidget.IsValid())
 	{
 		UpdateCanTick();
 		CachedWidget->Invalidate(InvalidateReason);
-	}
-}
-
-void UUserWidget::InvalidateFullScreenWidget(EInvalidateWidgetReason InvalidateReason)
-{
-	if (TSharedPtr<SWidget> FullScreenWidgetPinned = FullScreenWidget.Pin())
-	{
-		FullScreenWidgetPinned->Invalidate(InvalidateReason);
 	}
 }
 
@@ -589,17 +762,6 @@ float UUserWidget::GetAnimationCurrentTime(const UWidgetAnimation* InAnimation) 
 	return 0;
 }
 
-void UUserWidget::SetAnimationCurrentTime(const UWidgetAnimation* InAnimation, float InTime)
-{
-	if (InAnimation)
-	{
-		if (UUMGSequencePlayer* FoundPlayer = GetSequencePlayer(InAnimation))
-		{
-			FoundPlayer->SetCurrentTime(InTime);
-		}
-	}
-}
-
 bool UUserWidget::IsAnimationPlaying(const UWidgetAnimation* InAnimation) const
 {
 	if (InAnimation)
@@ -637,7 +799,7 @@ void UUserWidget::SetPlaybackSpeed(const UWidgetAnimation* InAnimation, float Pl
 void UUserWidget::ReverseAnimation(const UWidgetAnimation* InAnimation)
 {
 	if (UUMGSequencePlayer* FoundPlayer = GetSequencePlayer(InAnimation))
-		{
+	{
 		FoundPlayer->Reverse();
 	}
 }
@@ -718,7 +880,7 @@ UWidget* UUserWidget::GetWidgetHandle(TSharedRef<SWidget> InWidget)
 TSharedRef<SWidget> UUserWidget::RebuildWidget()
 {
 	check(!HasAnyFlags(RF_ClassDefaultObject | RF_ArchetypeObject));
-	
+
 	// In the event this widget is replaced in memory by the blueprint compiler update
 	// the widget won't be properly initialized, so we ensure it's initialized and initialize
 	// it if it hasn't been.
@@ -791,7 +953,7 @@ UWidget* UUserWidget::GetWidgetFromName(const FName& Name) const
 void UUserWidget::GetSlotNames(TArray<FName>& SlotNames) const
 {
 	// Only do this if this widget is of a blueprint class
-	if (UWidgetBlueprintGeneratedClass* BGClass = GetWidgetTreeOwningClass())
+	if ( UWidgetBlueprintGeneratedClass* BGClass = Cast<UWidgetBlueprintGeneratedClass>(GetClass()) )
 	{
 		SlotNames.Append(BGClass->NamedSlots);
 	}
@@ -1011,13 +1173,6 @@ bool UUserWidget::GetIsVisible() const
 	return FullScreenWidget.IsValid();
 }
 
-void UUserWidget::SetVisibility(ESlateVisibility InVisibility)
-{
-	Super::SetVisibility(InVisibility);
-	OnNativeVisibilityChanged.Broadcast(InVisibility);
-	OnVisibilityChanged.Broadcast(InVisibility);
-}
-
 bool UUserWidget::IsInViewport() const
 {
 	return FullScreenWidget.IsValid();
@@ -1076,9 +1231,9 @@ void UUserWidget::SetOwningPlayer(APlayerController* LocalPlayerController)
 	}
 }
 
-APawn* UUserWidget::GetOwningPlayerPawn() const
+class APawn* UUserWidget::GetOwningPlayerPawn() const
 {
-	if (APlayerController* PC = GetOwningPlayer())
+	if ( APlayerController* PC = GetOwningPlayer() )
 	{
 		return PC->GetPawn();
 	}
@@ -1086,67 +1241,40 @@ APawn* UUserWidget::GetOwningPlayerPawn() const
 	return nullptr;
 }
 
-APlayerCameraManager* UUserWidget::GetOwningPlayerCameraManager() const
-{
-	if (APlayerController* PC = GetOwningPlayer())
-	{
-		return PC->PlayerCameraManager;
-	}
-
-	return nullptr;
-}
-
 void UUserWidget::SetPositionInViewport(FVector2D Position, bool bRemoveDPIScale )
 {
-	if (bRemoveDPIScale)
+	if ( bRemoveDPIScale )
 	{
-		const float Scale = UWidgetLayoutLibrary::GetViewportScale(this);
-		Position /= Scale;
-	}
+		float Scale = UWidgetLayoutLibrary::GetViewportScale(this);
 
-	FAnchors Zero{ 0.f, 0.f };
-	if (ViewportOffsets.Left != Position.X
-		|| ViewportOffsets.Top != Position.Y
-		|| ViewportAnchors != Zero)
+		ViewportOffsets.Left = Position.X / Scale;
+		ViewportOffsets.Top = Position.Y / Scale;
+	}
+	else
 	{
 		ViewportOffsets.Left = Position.X;
 		ViewportOffsets.Top = Position.Y;
-		ViewportAnchors = Zero;
-		InvalidateFullScreenWidget(EInvalidateWidgetReason::Layout);
 	}
+
+	ViewportAnchors = FAnchors(0, 0);
 }
 
 void UUserWidget::SetDesiredSizeInViewport(FVector2D DesiredSize)
 {
-	FAnchors Zero{0.f, 0.f};
-	if (ViewportOffsets.Right != DesiredSize.X
-		|| ViewportOffsets.Bottom != DesiredSize.Y
-		|| ViewportAnchors != Zero)
-	{
-		ViewportOffsets.Right = DesiredSize.X;
-		ViewportOffsets.Bottom = DesiredSize.Y;
-		ViewportAnchors = Zero;
-		InvalidateFullScreenWidget(EInvalidateWidgetReason::Layout);
-	}
+	ViewportOffsets.Right = DesiredSize.X;
+	ViewportOffsets.Bottom = DesiredSize.Y;
 
+	ViewportAnchors = FAnchors(0, 0);
 }
 
 void UUserWidget::SetAnchorsInViewport(FAnchors Anchors)
 {
-	if (ViewportAnchors != Anchors)
-	{
-		ViewportAnchors = Anchors;
-		InvalidateFullScreenWidget(EInvalidateWidgetReason::Layout);
-	}
+	ViewportAnchors = Anchors;
 }
 
 void UUserWidget::SetAlignmentInViewport(FVector2D Alignment)
 {
-	if (ViewportAlignment != Alignment)
-	{
-		ViewportAlignment = Alignment;
-		InvalidateFullScreenWidget(EInvalidateWidgetReason::Layout);
-	}
+	ViewportAlignment = Alignment;
 }
 
 FMargin UUserWidget::GetFullScreenOffset() const
@@ -1155,7 +1283,8 @@ FMargin UUserWidget::GetFullScreenOffset() const
 	FVector2D FinalSize = FVector2D(ViewportOffsets.Right, ViewportOffsets.Bottom);
 	if ( FinalSize.IsZero() && !ViewportAnchors.IsStretchedVertical() && !ViewportAnchors.IsStretchedHorizontal() )
 	{
-		if (TSharedPtr<SWidget> CachedWidget = GetCachedWidget())
+		TSharedPtr<SWidget> CachedWidget = GetCachedWidget();
+		if ( CachedWidget.IsValid() )
 		{
 			FinalSize = CachedWidget->GetDesiredSize();
 		}
@@ -1349,17 +1478,7 @@ void UUserWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 	{
 		GInitRunaway();
 
-#if WITH_EDITOR
-		const bool bTickAnimations = !IsDesignTime();
-#else
-		const bool bTickAnimations = true;
-#endif
-		if (bTickAnimations && !CVarUserWidgetUseParallelAnimation.GetValueOnGameThread())
-		{
-			TickActionsAndAnimation(InDeltaTime);
-			PostTickActionsAndAnimation(InDeltaTime);
-		}
-		// else: the TickManager object will tick all animations at once.
+		TickActionsAndAnimation(MyGeometry, InDeltaTime);
 
 		if (bHasScriptImplementedTick)
 		{
@@ -1368,22 +1487,26 @@ void UUserWidget::NativeTick(const FGeometry& MyGeometry, float InDeltaTime)
 	}
 }
 
-void UUserWidget::TickActionsAndAnimation(float InDeltaTime)
+void UUserWidget::TickActionsAndAnimation(const FGeometry& MyGeometry, float InDeltaTime)
 {
+#if WITH_EDITOR
+	if ( IsDesignTime() )
+	{
+		return;
+	}
+#endif
+
 	// Update active movie scenes, none will be removed here, but new
 	// ones can be added during the tick, if a player ends and triggers
 	// starting another animation
-	for (int32 Index = 0; Index < ActiveSequencePlayers.Num(); Index++)
+	for ( int32 Index = 0; Index < ActiveSequencePlayers.Num(); Index++ )
 	{
 		UUMGSequencePlayer* Player = ActiveSequencePlayers[Index];
-		Player->Tick(InDeltaTime);
+		Player->Tick( InDeltaTime );
 	}
-}
 
-void UUserWidget::PostTickActionsAndAnimation(float InDeltaTime)
-{
 	const bool bWasPlayingAnimation = IsPlayingAnimation();
-	if (bWasPlayingAnimation)
+	if(bWasPlayingAnimation)
 	{ 
 		TSharedPtr<SWidget> CachedWidget = GetCachedWidget();
 		if (CachedWidget.IsValid())
@@ -1393,10 +1516,9 @@ void UUserWidget::PostTickActionsAndAnimation(float InDeltaTime)
 	}
 
 	// The process of ticking the players above can stop them so we remove them after all players have ticked
-	for (UUMGSequencePlayer* StoppedPlayer : StoppedSequencePlayers)
+	for ( UUMGSequencePlayer* StoppedPlayer : StoppedSequencePlayers )
 	{
 		ActiveSequencePlayers.RemoveSwap(StoppedPlayer);
-		StoppedPlayer->TearDown();
 	}
 
 	StoppedSequencePlayers.Empty();
@@ -1407,11 +1529,6 @@ void UUserWidget::PostTickActionsAndAnimation(float InDeltaTime)
 		// Update any latent actions we have for this actor
 		World->GetLatentActionManager().ProcessLatentActions(this, InDeltaTime);
 	}
-}
-
-void UUserWidget::FlushAnimations()
-{
-	UUMGSequenceTickManager::Get(this)->ForceFlush();
 }
 
 void UUserWidget::CancelLatentActions()
@@ -1551,7 +1668,7 @@ void UUserWidget::InitializeInputComponent()
 {
 	if ( APlayerController* Controller = GetOwningPlayer() )
 	{
-		InputComponent = NewObject< UInputComponent >( this, UInputSettings::GetDefaultInputComponentClass(), NAME_None, RF_Transient );
+		InputComponent = NewObject< UInputComponent >( this, NAME_None, RF_Transient );
 		InputComponent->bBlockInput = bStopAction;
 		InputComponent->Priority = Priority;
 		Controller->PushInputComponent( InputComponent );
@@ -1603,7 +1720,12 @@ void UUserWidget::SetMinimumDesiredSize(FVector2D InMinimumDesiredSize)
 	if (MinimumDesiredSize != InMinimumDesiredSize)
 	{
 		MinimumDesiredSize = InMinimumDesiredSize;
-		Invalidate(EInvalidateWidgetReason::Layout);
+
+		TSharedPtr<SWidget> CachedWidget = GetCachedWidget();
+		if (CachedWidget.IsValid())
+		{
+			CachedWidget->Invalidate(EInvalidateWidget::Layout);
+		}
 	}
 }
 
@@ -1792,9 +1914,7 @@ FReply UUserWidget::NativeOnTouchForceChanged(const FGeometry& InGeometry, const
 
 FCursorReply UUserWidget::NativeOnCursorQuery( const FGeometry& InGeometry, const FPointerEvent& InCursorEvent )
 {
-	return (bOverride_Cursor)
-		? FCursorReply::Cursor(Cursor)
-		: FCursorReply::Unhandled();
+	return FCursorReply::Unhandled();
 }
 
 FNavigationReply UUserWidget::NativeOnNavigation(const FGeometry& InGeometry, const FNavigationEvent& InNavigationEvent)
@@ -1807,6 +1927,45 @@ void UUserWidget::NativeOnMouseCaptureLost(const FCaptureLostEvent& CaptureLostE
 	OnMouseCaptureLost();
 }
 
+bool UUserWidget::ShouldSerializeWidgetTree(const ITargetPlatform* TargetPlatform) const
+{
+	// Never save the widget tree of something on the CDO.
+	if (HasAllFlags(RF_ClassDefaultObject))
+	{
+		return false;
+	}
+
+	// We preserve widget trees on Archetypes (that are not the CDO).
+	if (HasAllFlags(RF_ArchetypeObject))
+	{
+		if (UWidgetBlueprintGeneratedClass* BPWidgetClass = Cast<UWidgetBlueprintGeneratedClass>(GetClass()))
+		{
+			if (BPWidgetClass->HasTemplate())
+			{
+				return true;
+			}
+		}
+	}
+
+	// We preserve widget trees if you're a sub-object of an archetype that is going to serialize it's
+	// widget tree.
+	for (const UObject* It = GetOuter(); It; It = It->GetOuter())
+	{
+		if (It->HasAllFlags(RF_ArchetypeObject))
+		{
+			if (const UUserWidget* OuterWidgetArchetype = Cast<UUserWidget>(It))
+			{
+				if (OuterWidgetArchetype->ShouldSerializeWidgetTree(TargetPlatform))
+				{
+					return true;
+				}
+			}
+		}
+	}
+
+	return false;
+}
+
 bool UUserWidget::IsAsset() const
 {
 	// This stops widget archetypes from showing up in the content browser
@@ -1815,8 +1974,30 @@ bool UUserWidget::IsAsset() const
 
 void UUserWidget::PreSave(const class ITargetPlatform* TargetPlatform)
 {
+	if ( WidgetTree )
+	{
+		if ( ShouldSerializeWidgetTree(TargetPlatform) )
+		{
+			bCookedWidgetTree = true;
+			WidgetTree->ClearFlags(RF_Transient);
+		}
+		else
+		{
+			bCookedWidgetTree = false;
+			WidgetTree->SetFlags(RF_Transient);
+		}
+	}
+	else
+	{
+		bCookedWidgetTree = false;
+		if (ShouldSerializeWidgetTree(TargetPlatform))
+		{
+			UE_LOG(LogUMG, Error, TEXT("PreSave: Null Widget Tree - %s"), *GetFullName());
+		}
+	}
+
 	// Remove bindings that are no longer contained in the class.
-	if ( UWidgetBlueprintGeneratedClass* BGClass = GetWidgetTreeOwningClass())
+	if ( UWidgetBlueprintGeneratedClass* BGClass = Cast<UWidgetBlueprintGeneratedClass>(GetClass()) )
 	{
 		RemoveObsoleteBindings(BGClass->NamedSlots);
 	}
@@ -1835,6 +2016,14 @@ void UUserWidget::PostLoad()
 		bHasScriptImplementedTick = DefaultWidget->bHasScriptImplementedTick;
 		bHasScriptImplementedPaint = DefaultWidget->bHasScriptImplementedPaint;
 	}
+#else
+	if ( HasAnyFlags(RF_ArchetypeObject) && !HasAllFlags(RF_ClassDefaultObject) )
+	{
+		if ( UWidgetBlueprintGeneratedClass* WidgetClass = Cast<UWidgetBlueprintGeneratedClass>(GetClass()) )
+		{
+			WidgetClass->SetTemplate(this);
+		}
+	}
 #endif
 }
 
@@ -1851,6 +2040,23 @@ void UUserWidget::Serialize(FArchive& Ar)
 			bIsFocusable = bSupportsKeyboardFocus_DEPRECATED;
 		}
 	}
+
+#if UE_BUILD_DEBUG
+	if ( Ar.IsCooking() )
+	{
+		if ( HasAllFlags(RF_ArchetypeObject) && !HasAllFlags(RF_ClassDefaultObject) )
+		{
+			if ( bCookedWidgetTree )
+			{
+				UE_LOG(LogUMG, Display, TEXT("Widget Class %s - Saving Cooked Template"), *GetClass()->GetName());
+			}
+			else
+			{
+				UE_LOG(LogUMG, Warning, TEXT("Widget Class %s - Unable To Cook Template"), *GetClass()->GetName());
+			}
+		}
+	}
+#endif
 }
 
 /////////////////////////////////////////////////////
@@ -1881,7 +2087,6 @@ UUserWidget* UUserWidget::CreateWidgetInstance(UWidget& OwningWidget, TSubclassO
 
 UUserWidget* UUserWidget::CreateWidgetInstance(UWidgetTree& OwningWidgetTree, TSubclassOf<UUserWidget> UserWidgetClass, FName WidgetName)
 {
-	// If the widget tree we're owned by is outered to a UUserWidget great, initialize it like any old widget.
 	if (UUserWidget* OwningUserWidget = Cast<UUserWidget>(OwningWidgetTree.GetOuter()))
 	{
 		return CreateWidgetInstance(*OwningUserWidget, UserWidgetClass, WidgetName);
@@ -1893,12 +2098,12 @@ UUserWidget* UUserWidget::CreateWidgetInstance(UWidgetTree& OwningWidgetTree, TS
 UUserWidget* UUserWidget::CreateWidgetInstance(APlayerController& OwnerPC, TSubclassOf<UUserWidget> UserWidgetClass, FName WidgetName)
 {
 	if (!OwnerPC.IsLocalPlayerController())
-		{
+	{
 		const FText FormatPattern = LOCTEXT("NotLocalPlayer", "Only Local Player Controllers can be assigned to widgets. {PlayerController} is not a Local Player Controller.");
 		FFormatNamedArguments FormatPatternArgs;
 		FormatPatternArgs.Add(TEXT("PlayerController"), FText::FromName(OwnerPC.GetFName()));
 		FMessageLog("PIE").Error(FText::Format(FormatPattern, FormatPatternArgs));
-		}
+	}
 	else if (!OwnerPC.Player)
 	{
 		const FText FormatPattern = LOCTEXT("NoPlayer", "CreateWidget cannot be used on Player Controller with no attached player. {PlayerController} has no Player attached.");
@@ -1931,8 +2136,6 @@ UUserWidget* UUserWidget::CreateWidgetInstance(UWorld& World, TSubclassOf<UUserW
 
 UUserWidget* UUserWidget::CreateInstanceInternal(UObject* Outer, TSubclassOf<UUserWidget> UserWidgetClass, FName InstanceName, UWorld* World, ULocalPlayer* LocalPlayer)
 {
-	//CSV_SCOPED_TIMING_STAT(Slate, CreateWidget);
-
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	// Only do this on a non-shipping or test build.
 	if (!CreateWidgetHelpers::ValidateUserWidgetClass(UserWidgetClass))
@@ -1948,11 +2151,22 @@ UUserWidget* UUserWidget::CreateInstanceInternal(UObject* Outer, TSubclassOf<UUs
 #endif
 
 #if !UE_BUILD_SHIPPING
+	// In non-shipping builds, ensure that users are allowed to dynamic construct this widget.
+	if (UWidgetBlueprintGeneratedClass* BPClass = Cast<UWidgetBlueprintGeneratedClass>(UserWidgetClass))
+	{
+		if (World && World->IsGameWorld())
+		{
+			ensureMsgf(BPClass->bAllowDynamicCreation, TEXT("This Widget Blueprint's 'Support Dynamic Creation' option either defaults to Off or was explictly turned off.  If you need to create this widget at runtime, turn this option on."));
+		}
+	}
+#endif
+
+#if !UE_BUILD_SHIPPING
 	// Check if the world is being torn down before we create a widget for it.
 	if (World)
 	{
 		// Look for indications that widgets are being created for a dead and dying world.
-		ensureMsgf(!World->bIsTearingDown, TEXT("Widget Class %s - Attempting to be created while tearing down the world '%s'"), *UserWidgetClass->GetName(), *World->GetName());
+		ensureMsgf(!World->bIsTearingDown, TEXT("Widget Class %s - Attempting to be created while tearing down the world."), *UserWidgetClass->GetName());
 	}
 #endif
 
@@ -1962,7 +2176,43 @@ UUserWidget* UUserWidget::CreateInstanceInternal(UObject* Outer, TSubclassOf<UUs
 		return nullptr;
 	}
 
-	UUserWidget* NewWidget = NewObject<UUserWidget>(Outer, UserWidgetClass, InstanceName, RF_Transactional);
+	UUserWidget* NewWidget = nullptr;
+	UWidgetBlueprintGeneratedClass* WBGC = Cast<UWidgetBlueprintGeneratedClass>(UserWidgetClass);
+	if (WBGC && WBGC->HasTemplate())
+	{
+		if (UUserWidget* Template = WBGC->GetTemplate())
+		{
+#if UE_BUILD_DEBUG
+			UE_LOG(LogUMG, Log, TEXT("Widget Class %s - Using Fast CreateWidget Path."), *UserWidgetClass->GetName());
+#endif
+
+			FObjectInstancingGraph ObjectInstancingGraph;
+			NewWidget = NewObject<UUserWidget>(Outer, UserWidgetClass, InstanceName, RF_Transactional, Template, false, &ObjectInstancingGraph);
+		}
+#if !WITH_EDITOR && (UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT)
+		else
+		{
+
+			UE_LOG(LogUMG, Error, TEXT("Widget Class %s - Using Slow CreateWidget path because no template found."), *UserWidgetClass->GetName());
+		}
+#endif
+	}
+#if !WITH_EDITOR && (UE_BUILD_DEBUG || UE_BUILD_DEVELOPMENT)
+	else
+	{
+		// Nativized widget blueprint class types (UDynamicClass) do not currently support the fast path (see FWidgetBlueprintCompiler::CanAllowTemplate), so we bypass the runtime warning in that case.
+		const bool bIsDynamicClass = Cast<UDynamicClass>(UserWidgetClass) != nullptr;
+		if (!bIsDynamicClass)
+		{
+			UE_LOG(LogUMG, Warning, TEXT("Widget Class %s - Using Slow CreateWidget path because this class could not be templated."), *UserWidgetClass->GetName());
+		}
+	}
+#endif
+
+	if (!NewWidget)
+	{
+		NewWidget = NewObject<UUserWidget>(Outer, UserWidgetClass, InstanceName, RF_Transactional);
+	}
 	
 	if (LocalPlayer)
 	{
@@ -1989,7 +2239,7 @@ void UUserWidget::OnLatentActionsChanged(UObject* ObjectWhichChanged, ELatentAct
 			if (SafeGCWidget->GetCanTick() && !bCanTick)
 			{
 				// If the widget can now tick, recache the volatility of the widget.
-				WidgetThatChanged->Invalidate(EInvalidateWidgetReason::LayoutAndVolatility);
+				WidgetThatChanged->Invalidate(EInvalidateWidget::LayoutAndVolatility);
 			}
 		}
 	}

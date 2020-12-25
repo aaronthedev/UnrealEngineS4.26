@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,7 +9,7 @@
 #include "Stats/Stats.h"
 #include "PhysDerivedDataPublic.h"
 
-#if PHYSICS_INTERFACE_PHYSX && WITH_EDITOR
+#if WITH_PHYSX && WITH_EDITOR
 #include "DerivedDataPluginInterface.h"
 #include "IPhysXCooking.h"
 

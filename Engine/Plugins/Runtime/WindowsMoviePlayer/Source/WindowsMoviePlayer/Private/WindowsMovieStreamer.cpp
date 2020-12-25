@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WindowsMovieStreamer.h"
 
@@ -83,7 +83,7 @@ void FMediaFoundationMovieStreamer::ConvertSample()
 
 	{
 		const bool SrgbTexture = false;
-		const ETextureCreateFlags InputCreateFlags = TexCreate_Dynamic | (SrgbTexture ? TexCreate_SRGB : TexCreate_None);
+		const uint32 InputCreateFlags = TexCreate_Dynamic | (SrgbTexture ? TexCreate_SRGB : 0);
 
 		// create a new input render target if necessary
 		if (!InputTarget.IsValid() || (InputTarget->GetSizeXY() != SourceFormat.BufferDim) || (InputTarget->GetFormat() != InputPixelFormat) || ((InputTarget->GetFlags() & InputCreateFlags) != InputCreateFlags))
@@ -118,8 +118,6 @@ void FMediaFoundationMovieStreamer::ConvertSample()
 	// perform the conversion
 	FRHICommandListImmediate& CommandList = FRHICommandListExecutor::GetImmediateCommandList();
 
-	CommandList.Transition(FRHITransitionInfo(RenderTarget, ERHIAccess::Unknown, ERHIAccess::RTV));
-
 	FRHIRenderPassInfo RPInfo(RenderTarget, ERenderTargetActions::Load_Store);
 	CommandList.BeginRenderPass(RPInfo, TEXT("WindowsMovieConvertSample"));
 	{
@@ -138,14 +136,14 @@ void FMediaFoundationMovieStreamer::ConvertSample()
 		TShaderMapRef<FMediaShadersVS> VertexShader(ShaderMap);
 
 		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GMediaVertexDeclaration.VertexDeclarationRHI;
-		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
 
 		switch (SourceFormat.SampleFormat)
 		{
 		case EMediaTextureSampleFormat::CharBMP:
 		{
 			TShaderMapRef<FBMPConvertPS> ConvertShader(ShaderMap);
-			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ConvertShader);
 			SetGraphicsPipelineState(CommandList, GraphicsPSOInit);
 			ConvertShader->SetParameters(CommandList, InputTarget, OutputDim, bSampleIsOutputSrgb && !SrgbOutput);
 		}
@@ -154,7 +152,7 @@ void FMediaFoundationMovieStreamer::ConvertSample()
 		case EMediaTextureSampleFormat::CharYUY2:
 		{
 			TShaderMapRef<FYUY2ConvertPS> ConvertShader(ShaderMap);
-			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = ConvertShader.GetPixelShader();
+			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*ConvertShader);
 			SetGraphicsPipelineState(CommandList, GraphicsPSOInit);
 			ConvertShader->SetParameters(CommandList, InputTarget, OutputDim, MediaShaders::YuvToSrgbDefault, MediaShaders::YUVOffset8bits, bSampleIsOutputSrgb);
 		}
@@ -172,7 +170,7 @@ void FMediaFoundationMovieStreamer::ConvertSample()
 		CommandList.DrawPrimitive(0, 2, 1);
 	}
 	CommandList.EndRenderPass();
-	CommandList.Transition(FRHITransitionInfo(RenderTarget, ERHIAccess::Unknown, ERHIAccess::SRVGraphics));
+	CommandList.TransitionResource(EResourceTransitionAccess::EReadable, RenderTarget);
 }
 
 bool FMediaFoundationMovieStreamer::Tick(float DeltaTime)

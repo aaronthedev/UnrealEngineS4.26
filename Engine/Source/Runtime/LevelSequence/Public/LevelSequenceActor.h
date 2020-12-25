@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,7 +14,6 @@
 #include "LevelSequenceActor.generated.h"
 
 class ULevelSequenceBurnIn;
-class UMovieSceneSequenceTickManager;
 
 UCLASS(Blueprintable, DefaultToInstanced)
 class LEVELSEQUENCE_API ULevelSequenceBurnInInitSettings : public UObject
@@ -84,6 +83,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="General", meta=(AllowedClasses="LevelSequence"))
 	FSoftObjectPath LevelSequence;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="General")
+	TArray<AActor*> AdditionalEventReceivers;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Cameras", meta=(ShowOnlyInnerProperties))
 	FLevelSequenceCameraSettings CameraSettings;
 
@@ -137,6 +139,14 @@ public:
 	 */
 	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
 	void SetSequence(ULevelSequence* InSequence);
+
+	/**
+	 * Set an array of additional actors that will receive events triggerd from this sequence actor
+	 *
+	 * @param AdditionalReceivers An array of actors to receive events
+	 */
+	UFUNCTION(BlueprintCallable, Category="Game|Cinematic")
+	void SetEventReceivers(TArray<AActor*> AdditionalReceivers) { AdditionalEventReceivers = AdditionalReceivers; }
 
 	/**
 	 * Set whether or not to replicate playback for this actor
@@ -260,7 +270,6 @@ protected:
 	virtual void PostInitializeComponents() override;
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
-	virtual void RewindForReplay() override;
 	//~ End AActor interface
 
 public:
@@ -293,6 +302,7 @@ private:
 	UPROPERTY()
 	bool bShowBurnin;
 };
+
 
 USTRUCT()
 struct FBoundActorProxy

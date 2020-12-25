@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TileSetEditor/TileSetDetailsCustomization.h"
 #include "Layout/Margin.h"
@@ -38,7 +38,7 @@ void FTileSetDetailsCustomization::CustomizeDetails(IDetailLayoutBuilder& Detail
 {
 	MyDetailLayout = &DetailLayout;
 	
-	for (const TWeakObjectPtr<UObject>& SelectedObject : DetailLayout.GetSelectedObjects())
+	for (const TWeakObjectPtr<UObject> SelectedObject : DetailLayout.GetSelectedObjects())
 	{
 		if (UPaperTileSet* TileSet = Cast<UPaperTileSet>(SelectedObject.Get()))
 		{

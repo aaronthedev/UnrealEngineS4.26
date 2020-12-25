@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,7 +12,6 @@
 
 class UNiagaraStackViewModel;
 class UNiagaraStackEntry;
-class FNiagaraStackCommandContext;
 
 class SNiagaraStackTableRow: public STableRow<UNiagaraStackEntry*>
 {
@@ -28,7 +27,7 @@ public:
 		, _ShowExecutionCategoryIcon(false)
 		, _RowPadding(FMargin(0, 0, 0, 0))
 	{}
-	SLATE_ARGUMENT(FMargin, ContentPadding)
+		SLATE_ARGUMENT(FMargin, ContentPadding)
 		SLATE_ARGUMENT(FLinearColor, ItemBackgroundColor)
 		SLATE_ARGUMENT(FLinearColor, ItemForegroundColor)
 		SLATE_ARGUMENT(bool, IsCategoryIconHighlighted)
@@ -42,10 +41,10 @@ public:
 		SLATE_EVENT(FOnDragDetected, OnDragDetected)
 		SLATE_EVENT(FOnTableRowDragLeave, OnDragLeave)
 		SLATE_EVENT(FOnCanAcceptDrop, OnCanAcceptDrop)
-		SLATE_EVENT(FOnAcceptDrop, OnAcceptDrop);
+		SLATE_EVENT(FOnAcceptDrop, OnAcceptDrop)
 	SLATE_END_ARGS();
 
-	void Construct(const FArguments& InArgs, UNiagaraStackViewModel* InStackViewModel, UNiagaraStackEntry* InStackEntry, TSharedRef<FNiagaraStackCommandContext> InStackCommandContext, const TSharedRef<STreeView<UNiagaraStackEntry*>>& InOwnerTree);
+	void Construct(const FArguments& InArgs, UNiagaraStackViewModel* InStackViewModel, UNiagaraStackEntry* InStackEntry, const TSharedRef<STreeView<UNiagaraStackEntry*>>& InOwnerTree);
 
 	void SetOverrideNameWidth(TOptional<float> InMinWidth, TOptional<float> InMaxWidth);
 
@@ -61,13 +60,13 @@ public:
 
 	void SetNameAndValueContent(TSharedRef<SWidget> InNameWidget, TSharedPtr<SWidget> InValueWidget);
 
+	bool GetIsRowActive() const;
+
 	void AddFillRowContextMenuHandler(FOnFillRowContextMenu FillRowContextMenuHandler);
 
 	virtual FReply OnMouseButtonDoubleClick(const FGeometry& InMyGeometry, const FPointerEvent& InMouseEvent) override;
 
 	FReply OnMouseButtonUp(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent);
-
-	virtual const FSlateBrush* GetBorder() const override;
 
 private:
 	void CollapseChildren();
@@ -92,9 +91,7 @@ private:
 
 	FSlateColor GetItemBackgroundColor() const;
 
-	const FSlateBrush* GetSelectionBorderBrush() const;
-
-	const FSlateBrush* GetSearchResultBorderBrush() const;
+	EVisibility GetSearchResultBorderVisibility() const;
 
 	void NavigateTo(UNiagaraStackEntry* Item);
 
@@ -114,7 +111,8 @@ private:
 	const FSlateBrush* ExpandedImage;
 	const FSlateBrush* CollapsedImage;
 
-	FLinearColor ItemBackgroundColor;
+	FLinearColor InactiveItemBackgroundColor;
+	FLinearColor ActiveItemBackgroundColor;
 	FLinearColor DisabledItemBackgroundColor;
 	FLinearColor ForegroundColor;
 
@@ -138,6 +136,4 @@ private:
 	bool bShowExecutionCategoryIcon;
 
 	TArray<FOnFillRowContextMenu> OnFillRowContextMenuHanders;
-
-	TSharedPtr<FNiagaraStackCommandContext> StackCommandContext;
 };

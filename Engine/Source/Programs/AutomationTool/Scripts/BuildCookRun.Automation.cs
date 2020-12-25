@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -55,13 +55,6 @@ public class BuildCookRun : BuildCommand
 		{
 			Params.DirectoriesToCook = new ParamList<string>(DirectoriesToCook.Split('+'));
 		}
-
-		var DDCGraph = ParseParamValue("ddc");
-		if (!String.IsNullOrEmpty(DDCGraph))
-		{
-			Params.DDCGraph = DDCGraph;
-		}
-
 
         var InternationalizationPreset = ParseParamValue("i18npreset");
         if (!String.IsNullOrEmpty(InternationalizationPreset))
@@ -327,7 +320,7 @@ public class BuildCookRun : BuildCommand
 					}
 					else
 					{
-						var Branch = new BranchInfo();
+						var Branch = new BranchInfo(new List<UnrealTargetPlatform> { UnrealBuildTool.BuildHostPlatform.Current.Platform });
 						var GameProj = Branch.FindGame(OriginalProjectName);
 						if (GameProj != null)
 						{

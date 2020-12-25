@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/UniformGridPanel.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
@@ -41,7 +41,7 @@ void UUniformGridPanel::OnSlotAdded(UPanelSlot* InSlot)
 void UUniformGridPanel::OnSlotRemoved(UPanelSlot* InSlot)
 {
 	// Remove the widget from the live slot if it exists.
-	if ( MyUniformGridPanel.IsValid() && InSlot->Content)
+	if ( MyUniformGridPanel.IsValid() )
 	{
 		TSharedPtr<SWidget> Widget = InSlot->Content->GetCachedWidget();
 		if ( Widget.IsValid() )

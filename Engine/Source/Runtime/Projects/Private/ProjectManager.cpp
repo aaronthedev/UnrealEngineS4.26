@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ProjectManager.h"
 #include "Misc/MessageDialog.h"
@@ -48,6 +48,7 @@ bool FProjectManager::LoadProjectFile( const FString& InProjectFile )
 	return false;
 }
 
+
 bool FProjectManager::LoadModulesForProject( const ELoadingPhase::Type LoadingPhase )
 {
 	DECLARE_SCOPE_CYCLE_COUNTER(TEXT("Loading Game Modules"), STAT_GameModule, STATGROUP_LoadTime);
@@ -84,7 +85,7 @@ bool FProjectManager::LoadModulesForProject( const ELoadingPhase::Type LoadingPh
 					}
 					else if ( FailureReason == EModuleLoadResult::CouldNotBeLoadedByOS )
 					{
-						FailureMessage = FText::Format( LOCTEXT("PrimaryGameModuleCouldntBeLoaded", "The game module '{0}' could not be loaded. There may be an operating system error, the module may not be properly set up, or a plugin which has been included into the build has not been turned on."), TextModuleName );
+						FailureMessage = FText::Format( LOCTEXT("PrimaryGameModuleCouldntBeLoaded", "The game module '{0}' could not be loaded. There may be an operating system error or the module may not be properly set up."), TextModuleName );
 					}
 					else
 					{
@@ -102,9 +103,8 @@ bool FProjectManager::LoadModulesForProject( const ELoadingPhase::Type LoadingPh
 		}
 	}
 
-	OnLoadingPhaseCompleteEvent.Broadcast(LoadingPhase, bSuccess);
 	return bSuccess;
-} 
+}
 
 #if !IS_MONOLITHIC
 bool FProjectManager::CheckModuleCompatibility(TArray<FString>& OutIncompatibleModules)
@@ -252,13 +252,11 @@ void FProjectManager::ClearSupportedTargetPlatformsForCurrentProject()
 PROJECTS_API bool HasDefaultPluginSettings(const FString& Platform)
 {
 	const FProjectDescriptor* CurrentProject = IProjectManager::Get().GetCurrentProject();
-	bool bAllowEnginePluginsEnabledByDefault = true;
 
 	// Get settings for the plugins which are currently enabled or disabled by the project file
 	TMap<FString, bool> ConfiguredPlugins;
 	if (CurrentProject != nullptr)
 	{
-		bAllowEnginePluginsEnabledByDefault = !CurrentProject->bDisableEnginePluginsByDefault;
 		for (const FPluginReferenceDescriptor& PluginReference : CurrentProject->Plugins)
 		{
 			ConfiguredPlugins.Add(PluginReference.Name, PluginReference.IsEnabledForPlatform(Platform));
@@ -270,8 +268,7 @@ PROJECTS_API bool HasDefaultPluginSettings(const FString& Platform)
 	{
 		if (Plugin->GetDescriptor().SupportsTargetPlatform(Platform))
 		{
-			const bool bEnabledByDefault = Plugin->IsEnabledByDefault(bAllowEnginePluginsEnabledByDefault);
-			bool bEnabled = bEnabledByDefault;
+			bool bEnabled = Plugin->IsEnabledByDefault();
 
 			bool* EnabledPtr = ConfiguredPlugins.Find(Plugin->GetName());
 			if(EnabledPtr != nullptr)
@@ -279,7 +276,7 @@ PROJECTS_API bool HasDefaultPluginSettings(const FString& Platform)
 				bEnabled = *EnabledPtr;
 			}
 
-			bool bEnabledInDefaultExe = (Plugin->GetLoadedFrom() == EPluginLoadedFrom::Engine && bEnabledByDefault && !Plugin->GetDescriptor().bInstalled);
+			bool bEnabledInDefaultExe = (Plugin->GetLoadedFrom() == EPluginLoadedFrom::Engine && Plugin->IsEnabledByDefault() && !Plugin->GetDescriptor().bInstalled);
 			if(bEnabled != bEnabledInDefaultExe)
 			{
 				return false;
@@ -298,42 +295,34 @@ bool FProjectManager::HasDefaultPluginSettings() const
 bool FProjectManager::SetPluginEnabled(const FString& PluginName, bool bEnabled, FText& OutFailReason)
 {
 	// Don't go any further if there's no project loaded
-	if (!CurrentProject.IsValid())
+	if(!CurrentProject.IsValid())
 	{
 		OutFailReason = LOCTEXT("NoProjectLoaded", "No project is currently loaded");
 		return false;
 	}
 
-	bool bProjectChanged = false;
-
-	// Find or create the index of any existing reference in the project descriptor	
-	int32 PluginRefIdx = 0;
-	for (;; PluginRefIdx++)
+	// Find or create the index of any existing reference in the project descriptor
+	int PluginRefIdx = 0;
+	for(;;PluginRefIdx++)
 	{
-		if (PluginRefIdx == CurrentProject->Plugins.Num())
+		if(PluginRefIdx == CurrentProject->Plugins.Num())
 		{
 			PluginRefIdx = CurrentProject->Plugins.Add(FPluginReferenceDescriptor(PluginName, bEnabled));
-			bProjectChanged = true;
 			break;
 		}
-		else if (CurrentProject->Plugins[PluginRefIdx].Name == PluginName)
+		else if(CurrentProject->Plugins[PluginRefIdx].Name == PluginName)
 		{
-			if (CurrentProject->Plugins[PluginRefIdx].bEnabled != bEnabled)
-			{
-				CurrentProject->Plugins[PluginRefIdx].bEnabled = bEnabled;
-				bProjectChanged = true;
-			}
+			CurrentProject->Plugins[PluginRefIdx].bEnabled = bEnabled;
 			break;
 		}
 	}
 
 	// Remove any other references to the plugin
-	for (int Idx = CurrentProject->Plugins.Num() - 1; Idx > PluginRefIdx; Idx--)
+	for(int Idx = CurrentProject->Plugins.Num() - 1; Idx > PluginRefIdx; Idx--)
 	{
-		if (CurrentProject->Plugins[Idx].Name == PluginName)
+		if(CurrentProject->Plugins[Idx].Name == PluginName)
 		{
 			CurrentProject->Plugins.RemoveAt(Idx);
-			bProjectChanged = true;
 		}
 	}
 
@@ -342,46 +331,34 @@ bool FProjectManager::SetPluginEnabled(const FString& PluginName, bool bEnabled,
 
 	// Update the plugin reference with metadata from the plugin instance
 	TSharedPtr<IPlugin> Plugin = IPluginManager::Get().FindPlugin(PluginName);
-	if (Plugin.IsValid())
+	if(Plugin.IsValid())
 	{
 		const FPluginDescriptor& PluginDescriptor = Plugin->GetDescriptor();
-		if (PluginRef.MarketplaceURL != PluginDescriptor.MarketplaceURL)
-		{
-			PluginRef.MarketplaceURL = PluginDescriptor.MarketplaceURL;
-			bProjectChanged = true;
-		}
-
-		if (PluginRef.SupportedTargetPlatforms != PluginDescriptor.SupportedTargetPlatforms)
-		{
-			PluginRef.SupportedTargetPlatforms = PluginDescriptor.SupportedTargetPlatforms;
-			bProjectChanged = true;
-		}
+		PluginRef.MarketplaceURL = PluginDescriptor.MarketplaceURL;
+		PluginRef.SupportedTargetPlatforms = PluginDescriptor.SupportedTargetPlatforms;
 	}
 
 	// If the current plugin reference is the default, just remove it from the list
-	if (PluginRef.WhitelistPlatforms.Num() == 0 && PluginRef.BlacklistPlatforms.Num() == 0)
+	if(PluginRef.WhitelistPlatforms.Num() == 0 && PluginRef.BlacklistPlatforms.Num() == 0)
 	{
 		// We alway need to be explicit about installed plugins, because they'll be auto-enabled again if we're not.
-		if (!Plugin.IsValid() || !Plugin->GetDescriptor().bInstalled)
+		if(!Plugin.IsValid() || !Plugin->GetDescriptor().bInstalled)
 		{
 			// Get the default list of enabled plugins
 			TArray<FString> DefaultEnabledPlugins;
-			GetDefaultEnabledPlugins(DefaultEnabledPlugins, false, !CurrentProject->bDisableEnginePluginsByDefault);
+			GetDefaultEnabledPlugins(DefaultEnabledPlugins, false);
 
 			// Check the enabled state is the same in that
-			if (DefaultEnabledPlugins.Contains(PluginName) == bEnabled)
+			if(DefaultEnabledPlugins.Contains(PluginName) == bEnabled)
 			{
 				CurrentProject->Plugins.RemoveAt(PluginRefIdx);
-				bProjectChanged = true;
+				PluginRefIdx = INDEX_NONE;
 			}
 		}
 	}
 
-	if (bProjectChanged)
-	{
-		// Mark project as dirty
-		bIsCurrentProjectDirty = true;
-	}
+	// Mark project as dirty
+	bIsCurrentProjectDirty = true;
 
 	return true;
 }
@@ -408,12 +385,12 @@ bool FProjectManager::RemovePluginReference(const FString& PluginName, FText& Ou
 	return bPluginFound;
 }
 
-void FProjectManager::GetDefaultEnabledPlugins(TArray<FString>& OutPluginNames, bool bIncludeInstalledPlugins, bool bAllowEnginePluginsEnabledByDefault)
+void FProjectManager::GetDefaultEnabledPlugins(TArray<FString>& OutPluginNames, bool bIncludeInstalledPlugins)
 {
 	// Add all the game plugins and everything marked as enabled by default
 	for (TSharedRef<IPlugin>& Plugin : IPluginManager::Get().GetDiscoveredPlugins())
 	{
-		if(Plugin->IsEnabledByDefault(bAllowEnginePluginsEnabledByDefault))
+		if(Plugin->IsEnabledByDefault())
 		{
 			if(bIncludeInstalledPlugins || !Plugin->GetDescriptor().bInstalled)
 			{
@@ -423,41 +400,24 @@ void FProjectManager::GetDefaultEnabledPlugins(TArray<FString>& OutPluginNames, 
 	}
 }
 
-bool FProjectManager::UpdateAdditionalPluginDirectory(const FString& InDir, const bool bAddOrRemove)
+void FProjectManager::UpdateAdditionalPluginDirectory(const FString& InDir, const bool bAddOrRemove)
 {
 	if (!CurrentProject.IsValid())
 	{
-		return false;
+		return;
 	}
 
-	const FString FullPathNormalizedDir = FPaths::ConvertRelativePathToFull(InDir);
-	bool bChanged = false;
 	if (bAddOrRemove)
 	{
-		bChanged = CurrentProject->AddPluginDirectory(FullPathNormalizedDir);
+		CurrentProject->AddPluginDirectory(InDir);
 	}
 	else
 	{
-		bChanged = CurrentProject->RemovePluginDirectory(FullPathNormalizedDir);
+		CurrentProject->RemovePluginDirectory(InDir);
 	}
 
-	if (bChanged)
-	{
-		FText FailReason;
-		SaveCurrentProjectToDisk(FailReason);
-	}
-
-	return bChanged;
-}
-
-const TArray<FString>& FProjectManager::GetAdditionalPluginDirectories() const
-{
-	if (!CurrentProject.IsValid())
-	{
-		static const TArray<FString> EmptyList;
-		return EmptyList;
-	}
-	return CurrentProject->GetAdditionalPluginDirectories();
+	FText FailReason;
+	SaveCurrentProjectToDisk(FailReason);
 }
 
 bool FProjectManager::IsCurrentProjectDirty() const
@@ -497,21 +457,6 @@ void FProjectManager::SetIsEnterpriseProject(bool bValue)
 TArray<FModuleContextInfo>& FProjectManager::GetCurrentProjectModuleContextInfos()
 {
 	return CurrentProjectModuleContextInfos;
-}
-
-bool FProjectManager::IsSuppressingProjectFileWrite() const
-{
-	return SuppressProjectFileWriteList.Num() > 0;
-}
-
-void FProjectManager::AddSuppressProjectFileWrite(const FName InName)
-{
-	SuppressProjectFileWriteList.AddUnique(InName);
-}
-
-void FProjectManager::RemoveSuppressProjectFileWrite(const FName InName)
-{
-	SuppressProjectFileWriteList.Remove(InName);
 }
 
 IProjectManager& IProjectManager::Get()

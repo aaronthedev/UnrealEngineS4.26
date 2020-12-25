@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "CoreTechMeshLoader.h"
 
 #ifdef CAD_LIBRARY
@@ -27,22 +27,16 @@ bool CoreTechMeshLoader::LoadFile(const FString& FileName, FMeshDescription& Mes
 		return false;
 	}
 
-	if (ImportParameters.StitchingTechnique != StitchingNone)
-	{
-		Result = Repair(MainObjectID, StitchingHeal);
-	}
+	Result = Repair(MainObjectID, ImportParameters.StitchingTechnique);
 	Result = SetCoreTechTessellationState(ImportParameters);
 
-	bool bNeedSwapOrientation = ImportParameters.StitchingTechnique != EStitchingTechnique::StitchingNone ? MeshParameters.bNeedSwapOrientation : false;
+	bool bNeedSwapOrientation = ImportParameters.StitchingTechnique != EStitchingTechnique::StitchingSew ? MeshParameters.bNeedSwapOrientation : false;
 
-	uint32 BodiesNum;
-	Result = CT_KERNEL_IO::AskNbObjectsType(BodiesNum, CT_BODY_TYPE);
-	if (Result != IO_OK)
-	{
-		return false;
-	}
+	// Parse CoreTech model's hierarchy to collect body objects.
+	ExtractComponent(MainObjectID);
 
-	if (BodiesNum == 0)
+	// Nothing useful in the file, abort
+	if (BodySet.Num() == 0)
 	{
 		return false;
 	}

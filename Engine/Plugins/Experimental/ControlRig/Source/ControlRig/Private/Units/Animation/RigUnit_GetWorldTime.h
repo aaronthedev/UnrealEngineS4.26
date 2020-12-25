@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,7 @@
 #include "RigUnit_GetWorldTime.generated.h"
 
 /**
- * Returns the current time (year, month, day, hour, minute)
+ * A constant value of an easing type
  */
 USTRUCT(meta = (DisplayName = "Now", Keywords = "Time,Clock"))
 struct FRigUnit_GetWorldTime : public FRigUnit_AnimBase

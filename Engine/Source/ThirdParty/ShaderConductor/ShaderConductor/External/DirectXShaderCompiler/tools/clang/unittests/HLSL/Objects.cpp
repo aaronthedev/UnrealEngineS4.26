@@ -8,14 +8,14 @@
 //                                                                           //
 ///////////////////////////////////////////////////////////////////////////////
 
-#include "dxc/Test/CompilationResult.h"
-#include "dxc/Test/HLSLTestData.h"
+#include "CompilationResult.h"
+#include "HLSLTestData.h"
 #include <stdint.h>
 
 #ifdef _WIN32
 #include "WexTestClass.h"
 #endif
-#include "dxc/Test/HlslTestUtils.h"
+#include "HlslTestUtils.h"
 
 #include <exception>
 #include <set>

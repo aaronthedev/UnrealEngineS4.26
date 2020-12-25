@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	FilterPixelShader.usf: Filter pixel shader source.
@@ -25,7 +25,7 @@
 #define PACKED_STATIC_SAMPLE_COUNT ((STATIC_SAMPLE_COUNT + 1) / 2)
 #define PACKED_SAMPLE_COUNT_MAX ((SAMPLE_COUNT_MAX + 1) / 2)
 
-#define USE_UNPACKED_UVS (ES3_1_PROFILE)
+#define USE_UNPACKED_UVS (ES2_PROFILE || ES3_1_PROFILE)
 #define USE_DYNAMIC_LOOP (STATIC_SAMPLE_COUNT == 0)
 
 SCREEN_PASS_TEXTURE_VIEWPORT(Filter)
@@ -120,17 +120,19 @@ void MainPS(
 		Color += SampleFilterTexture(InOffsetUVs[i]) * SampleWeights[i];
 	}
 #else
-	UNROLL for (int SampleIndex = 0; SampleIndex < STATIC_SAMPLE_COUNT - 1; SampleIndex += 2)
+	int SampleIndex = 0;
+
+	UNROLL for (; SampleIndex < STATIC_SAMPLE_COUNT - 1; SampleIndex += 2)
 	{
 		float4 UVUV = InOffsetUVs[SampleIndex / 2];
 		Color += SampleFilterTexture(UVUV.xy) * SampleWeights[SampleIndex + 0];
 		Color += SampleFilterTexture(UVUV.zw) * SampleWeights[SampleIndex + 1];
 	}
 
-	FLATTEN if (STATIC_SAMPLE_COUNT & 1)
+	FLATTEN if (SampleIndex < STATIC_SAMPLE_COUNT)
 	{
-		float2 UV = InOffsetUVs[PACKED_STATIC_SAMPLE_COUNT - 1].xy;
-		Color += SampleFilterTexture(UV) * SampleWeights[STATIC_SAMPLE_COUNT - 1];
+		float2 UV = InOffsetUVs[SampleIndex / 2].xy;
+		Color += SampleFilterTexture(UV) * SampleWeights[SampleIndex + 0];
 	}
 #endif
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AtmosphereRendering.h: Fog rendering
@@ -9,7 +9,6 @@
 #include "CoreMinimal.h"
 #include "RenderResource.h"
 #include "Serialization/BulkData.h"
-#include "Shader.h"
 #include "RendererInterface.h"
 
 class FLightSceneInfo;
@@ -19,22 +18,22 @@ class FShader;
 class FViewInfo;
 class UAtmosphericFogComponent;
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS 
-
-enum class EAtmosphereRenderFlag
+namespace EAtmosphereRenderFlag
 {
-	E_EnableAll = 0,
-	E_DisableSunDisk = 1,
-	E_DisableGroundScattering = 2,
-	E_DisableLightShaft = 4, // Light Shaft shadow
-	E_DisableSunAndGround = E_DisableSunDisk | E_DisableGroundScattering,
-	E_DisableSunAndLightShaft = E_DisableSunDisk | E_DisableLightShaft,
-	E_DisableGroundAndLightShaft = E_DisableGroundScattering | E_DisableLightShaft,
-	E_DisableAll = E_DisableSunDisk | E_DisableGroundScattering | E_DisableLightShaft,
-	E_RenderFlagMax = E_DisableAll + 1,
-	E_LightShaftMask = (~E_DisableLightShaft),
-};
-ENUM_CLASS_FLAGS(EAtmosphereRenderFlag);
+	enum Type
+	{
+		E_EnableAll = 0,
+		E_DisableSunDisk = 1,
+		E_DisableGroundScattering = 2,
+		E_DisableLightShaft = 4, // Light Shaft shadow
+		E_DisableSunAndGround = E_DisableSunDisk | E_DisableGroundScattering,
+		E_DisableSunAndLightShaft = E_DisableSunDisk | E_DisableLightShaft,
+		E_DisableGroundAndLightShaft = E_DisableGroundScattering | E_DisableLightShaft,
+		E_DisableAll = E_DisableSunDisk | E_DisableGroundScattering | E_DisableLightShaft,
+		E_RenderFlagMax = E_DisableAll + 1,
+		E_LightShaftMask = (~E_DisableLightShaft),
+	};
+}
 
 /** The properties of a atmospheric fog layer which are used for rendering. (Render side of the application) */
 class FAtmosphericFogSceneInfo : public FRenderResource
@@ -55,7 +54,7 @@ public:
 	float SunDiscScale;
 	FLinearColor DefaultSunColor;
 	FVector DefaultSunDirection;
-	EAtmosphereRenderFlag RenderFlag;
+	uint32 RenderFlag;
 	uint32 InscatterAltitudeSampleNum;
 	bool bAtmosphereAffectsSunIlluminance;
 	class FAtmosphereTextureResource* TransmittanceResource;
@@ -87,13 +86,13 @@ public:
 	void PrepareSunLightProxy(FLightSceneInfo& SunLight) const;
 
 #if WITH_EDITOR
-	void PrecomputeTextures(FRDGBuilder& GraphBuilder, const FViewInfo* View, FSceneViewFamily* ViewFamily);
+	void PrecomputeTextures(FRHICommandListImmediate& RHICmdList, const FViewInfo* View, FSceneViewFamily* ViewFamily);
 	void StartPrecompute();
 
 private:
 	/** Atmosphere pre-computation related functions */
 	FIntPoint GetTextureSize();
-	inline void DrawQuad(FRHICommandList& RHICmdList, const FIntRect& ViewRect, const TShaderRef<FShader>& VertexShader);
+	inline void DrawQuad(FRHICommandList& RHICmdList, const FIntRect& ViewRect, FShader* VertexShader);
 	void GetLayerValue(int Layer, float& AtmosphereR, FVector4& DhdH);
 	void RenderAtmosphereShaders(FRHICommandList& RHICmdList, FGraphicsPipelineStateInitializer& GraphicsPSOInit, const FViewInfo& View, const FIntRect& ViewRect);
 	void PrecomputeAtmosphereData(FRHICommandListImmediate& RHICmdList, const FViewInfo* View, FSceneViewFamily& ViewFamily);
@@ -108,5 +107,3 @@ private:
 
 bool ShouldRenderAtmosphere(const FSceneViewFamily& Family);
 void InitAtmosphereConstantsInView(FViewInfo& View);
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

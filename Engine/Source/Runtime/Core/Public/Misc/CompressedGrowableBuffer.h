@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -77,7 +77,7 @@ public:
 	 *
 	 * @return number of bytes allocated by this buffer
 	 */
-	SIZE_T GetAllocatedSize() const
+	uint32 GetAllocatedSize() const
 	{
 		return CompressedBuffer.GetAllocatedSize()
 			+ PendingCompressionBuffer.GetAllocatedSize()

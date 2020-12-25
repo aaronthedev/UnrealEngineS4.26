@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,7 +11,6 @@
 #include "PhysicsInterfaceTypes.h"
 #include "Containers/ContainerAllocationPolicies.h"
 #include "GenericPhysicsInterface.h"
-#include "Chaos/ChaosEngineInterface.h"	//temp to help get code out of engine
 
 struct FLinearDriveConstraint;
 struct FAngularDriveConstraint;
@@ -145,6 +144,20 @@ private:
 };
 
 /**
+ * Wrapper for internal PhysX materials
+ */
+
+struct ENGINE_API FPhysicsMaterialHandle_PhysX
+{
+	FPhysicsMaterialHandle_PhysX() : Material(nullptr) {}
+	explicit FPhysicsMaterialHandle_PhysX(physx::PxMaterial* InMaterial) : Material(InMaterial) {}
+
+	bool IsValid() const { return Material != nullptr; }
+
+	physx::PxMaterial* Material;
+};
+
+/**
 * API to access the physics interface. All calls to FPhysicsInterface functions should be inside an Execute* callable.
 * This is to ensure correct lock semantics and command buffering if the specific API supports deferred commands.
 */
@@ -169,11 +182,8 @@ struct ENGINE_API FPhysicsCommand_PhysX
 	static void ExecuteShapeWrite(FBodyInstance* InInstance, FPhysicsShapeHandle_PhysX& InShape, TFunctionRef<void(FPhysicsShapeHandle_PhysX& InShape)> InCallable);
 };
 
-struct ENGINE_API FPhysicsInterface_PhysX : public FGenericPhysicsInterface, public FChaosEngineInterface	//temp to help get code out of engine
+struct ENGINE_API FPhysicsInterface_PhysX : public FGenericPhysicsInterface
 {
-	// Describe the interface to identify it to the caller
-	static FString GetInterfaceDescription() { return TEXT("PhysX"); }
-
 	// PhysX Only functions, not related to wider physics interface
 	// To be used only in code that handles PhysX
 	static physx::PxRigidActor* GetPxRigidActorFromScene_AssumesLocked(const FPhysicsActorHandle_PhysX& InActorHandle);
@@ -201,6 +211,7 @@ struct ENGINE_API FPhysicsInterface_PhysX : public FGenericPhysicsInterface, pub
 	static FCollisionFilterData GetQueryFilter(const FPhysicsShapeHandle_PhysX& InShape);
 	static bool IsSimulationShape(const FPhysicsShapeHandle_PhysX& InShape);
 	static bool IsQueryShape(const FPhysicsShapeHandle_PhysX& InShape);
+	static bool IsShapeType(const FPhysicsShapeHandle_PhysX& InShape, ECollisionShapeType InType);
 	static ECollisionShapeType GetShapeType(const FPhysicsShapeHandle_PhysX& InShape);
 	static FPhysicsGeometryCollection_PhysX GetGeometryCollection(const FPhysicsShapeHandle_PhysX& InShape);
 	static FTransform GetLocalTransform(const FPhysicsShapeHandle_PhysX& InShape);

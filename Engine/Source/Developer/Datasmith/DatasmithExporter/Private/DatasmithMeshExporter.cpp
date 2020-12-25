@@ -1,126 +1,56 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithMeshExporter.h"
 
-#include "DatasmithExporterManager.h"
 #include "DatasmithMesh.h"
 #include "DatasmithMeshUObject.h"
 #include "DatasmithSceneFactory.h"
 #include "DatasmithUtils.h"
 
-#include "Containers/LockFreeList.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformFilemanager.h"
-#include "Misc/Guid.h"
 #include "Misc/Paths.h"
 #include "Serialization/MemoryWriter.h"
-#include "StaticMeshAttributes.h"
-#include "StaticMeshOperations.h"
+#include "MeshDescriptionOperations.h"
 #include "UVMapSettings.h"
+#include "StaticMeshAttributes.h"
 
-/**
- *	Implementation class of the DatasmithMeshExporter
- *	We use a lockfree UDatasmithMesh pool to avoid creating new UObject when exporting and reduces our memory footprint.
- */
-class FDatasmithMeshExporterImpl
+
+namespace
 {
-public:
-	struct FDatasmithMeshExporterOptions
+	UDatasmithMesh* FDatasmithMeshToUDatasmithMesh( const FDatasmithMesh& Mesh, bool bValidateRawMesh )
 	{
-		FDatasmithMeshExporterOptions( const FString& InFullPath, FDatasmithMesh& InMesh, EDSExportLightmapUV InLightmapUV, FDatasmithMesh* InCollisionMesh = nullptr )
-			: MeshFullPath( InFullPath )
-			, Mesh( InMesh )
-			, LightmapUV( InLightmapUV )
-			, CollisionMesh( InCollisionMesh )
-		{}
+		UDatasmithMesh* UMesh = NewObject< UDatasmithMesh >();
+		UMesh->AddToRoot();
 
-		FString MeshFullPath;
-		FDatasmithMesh& Mesh;
-		EDSExportLightmapUV LightmapUV;
-		FDatasmithMesh* CollisionMesh;
-	};
+		UMesh->MeshName = Mesh.GetName();
 
-	FDatasmithMeshExporterImpl() :
-		UniqueID(FGuid::NewGuid())
-	{}
+		FRawMesh RawMesh;
+		FDatasmithMeshUtils::ToRawMesh(Mesh, RawMesh, bValidateRawMesh);
 
-	~FDatasmithMeshExporterImpl()
-	{
-		ClearUDatasmithMeshPool();
-	}
+		FDatasmithMeshSourceModel BaseModel;
+		BaseModel.RawMeshBulkData.SaveRawMesh( RawMesh );
 
-	/**
-	 * Generate and fill a UDatasmithMesh from a FDatasmithMesh.
-	 * Note: The returned TSharedPtr uses a special destructor to return the UDatasmithMesh to a pool instead of destroying it (which wouldn't work anyways).
-	 */
-	TSharedPtr<UDatasmithMesh> GeneratePooledUDatasmithMeshFromFDatasmithMesh( const FDatasmithMesh& Mesh, bool bIsCollisionMesh );
+		UMesh->SourceModels.Add( BaseModel );
 
-	bool DoExport( TSharedPtr< IDatasmithMeshElement >& MeshElement, const FDatasmithMeshExporterOptions& ExportOptions );
-	void PreExport( const FDatasmithMeshExporterOptions& ExporterOptions );
-	bool ExportMeshes( const FDatasmithMeshExporterOptions& ExporterOptions, FMD5Hash& OutHash );
-	void PostExport(const FDatasmithMesh& DatasmithMesh, TSharedPtr< IDatasmithMeshElement >& MeshElement);
-
-	void CreateDefaultUVs(FDatasmithMesh& DatasmithMesh);
-	void RegisterStaticMeshAttributes(FMeshDescription& MeshDescription);
-
-	FString LastError;
-
-private:
-	/**
-	 * This function allows reusing an instanced UDatasmithMesh. Reusing the same object will avoid creating new garbage in memory.
-	 */
-	void FillUDatasmithMeshFromFDatasmithMesh( TSharedPtr<UDatasmithMesh>& UMesh, const FDatasmithMesh& Mesh, bool bValidateRawMesh );
-
-	TSharedPtr<UDatasmithMesh> GetPooledUDatasmithMesh(bool bIsCollisionMesh);
-
-	void ReturnUDatasmithMeshToPool(UDatasmithMesh*& UMesh);
-
-	void ClearUDatasmithMeshPool();
-
-	/**
-	 * A pool of UDatasmithMesh that we use to avoid creating new UObject, this greatly reduce the garbage created when one instance of FDatasmithMeshExporter is used to export multiple Meshes.
-	 */
-	TLockFreePointerListLIFO< UDatasmithMesh > DatasmithMeshUObjectPool;
-	static TAtomic<int32> NumberOfUMeshPendingGC;
-
-	/**
-	 * This exporter's UniqueID. Used to make sure pooled meshes are not using the same names across different threads.
-	 */
-	FGuid UniqueID;
-
-	/**
-	 * Custom deleter used by the TSharedPtr of a pooled UDatasmithMesh to return it to the pool instead of deleting them.
-	 */
-	struct FPooledUDatasmithMeshDeleter
-	{
-		FPooledUDatasmithMeshDeleter(FDatasmithMeshExporterImpl* InExporterPtr)
-			: ExporterPtr(InExporterPtr)
-		{}
-
-		FORCEINLINE void operator()(UDatasmithMesh* Object) const
+		for ( int32 LODIndex = 0; LODIndex < Mesh.GetLODsCount(); ++LODIndex )
 		{
-			check(Object != nullptr && ExporterPtr != nullptr);
-			ExporterPtr->ReturnUDatasmithMeshToPool(Object);
+			FDatasmithMeshUtils::ToRawMesh(Mesh.GetLOD( LODIndex ), RawMesh, bValidateRawMesh);
+
+			FRawMeshBulkData LODRawMeshBulkData;
+			LODRawMeshBulkData.SaveRawMesh( RawMesh );
+
+			FDatasmithMeshSourceModel LODModel;
+			LODModel.RawMeshBulkData = LODRawMeshBulkData;
+
+			UMesh->SourceModels.Add( LODModel );
 		}
 
-		FDatasmithMeshExporterImpl* ExporterPtr;
-	};
-};
-
-TAtomic<int32> FDatasmithMeshExporterImpl::NumberOfUMeshPendingGC(0);
-
-FDatasmithMeshExporter::FDatasmithMeshExporter()
-{
-	Impl = new FDatasmithMeshExporterImpl();
+		return UMesh;
+	}
 }
 
-FDatasmithMeshExporter::~FDatasmithMeshExporter()
-{
-	delete Impl;
-	Impl = nullptr;
-}
-
-FString GetMeshFilePath( const TCHAR* Filepath, const TCHAR* Filename )
+TSharedPtr< IDatasmithMeshElement > FDatasmithMeshExporter::ExportToUObject( const TCHAR* Filepath, const TCHAR* Filename, FDatasmithMesh& Mesh, FDatasmithMesh* CollisionMesh, EDSExportLightmapUV LightmapUV )
 {
 	FString NormalizedFilepath = Filepath;
 	FPaths::NormalizeDirectoryName( NormalizedFilepath );
@@ -128,32 +58,32 @@ FString GetMeshFilePath( const TCHAR* Filepath, const TCHAR* Filename )
 	FString NormalizedFilename = Filename;
 	FPaths::NormalizeFilename( NormalizedFilename );
 
-	return FPaths::Combine( *NormalizedFilepath, FPaths::SetExtension( NormalizedFilename, UDatasmithMesh::GetFileExtension() ) );
-}
+	PreExport( Mesh, *NormalizedFilepath, *NormalizedFilename, LightmapUV );
 
-bool FDatasmithMeshExporterImpl::ExportMeshes( const FDatasmithMeshExporterOptions& ExporterOptions, FMD5Hash& OutHash )
-{
-	TArray<TSharedPtr<UDatasmithMesh>, TInlineAllocator<2>> MeshesToExport;
+	TArray< UDatasmithMesh* > MeshesToExport;
 
-	// Static mesh, we keep a static UDatasmithMesh alive as a utility object and re-use it for every export instead of creating a new one every time. This avoid creating garbage in memory.
-	bool bIsCollisionMesh = false;
-	MeshesToExport.Add( GeneratePooledUDatasmithMeshFromFDatasmithMesh( ExporterOptions.Mesh, bIsCollisionMesh ) );
+	// Static mesh
+	MeshesToExport.Add( FDatasmithMeshToUDatasmithMesh( Mesh, true ) );
 
 	// Collision mesh
-	if ( ExporterOptions.CollisionMesh )
+	if ( CollisionMesh )
 	{
-		bIsCollisionMesh = true;
-		MeshesToExport.Add( GeneratePooledUDatasmithMeshFromFDatasmithMesh( *ExporterOptions.CollisionMesh, bIsCollisionMesh ) );
+		UDatasmithMesh* DSColMesh = FDatasmithMeshToUDatasmithMesh( *CollisionMesh, false );
+		DSColMesh->bIsCollisionMesh = true;
+
+		MeshesToExport.Add( DSColMesh );
 	}
 
+	FString FullPath = FPaths::Combine( *NormalizedFilepath, FPaths::SetExtension( *NormalizedFilename, UDatasmithMesh::GetFileExtension() ) );
+
 	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
-	TUniquePtr<FArchive> Archive( IFileManager::Get().CreateFileWriter( *ExporterOptions.MeshFullPath ) );
+	TUniquePtr<FArchive> Archive( IFileManager::Get().CreateFileWriter( *FullPath ) );
 
 	if ( !Archive.IsValid() )
 	{
-		LastError = FString::Printf( TEXT( "Failed writing to file %s" ), *ExporterOptions.MeshFullPath );
+		LastError = FString::Printf( TEXT("Failed writing to file %s"), *FullPath );
 
-		return false;
+		return TSharedPtr< IDatasmithMeshElement >();
 	}
 
 	int32 NumMeshes = MeshesToExport.Num();
@@ -161,89 +91,48 @@ bool FDatasmithMeshExporterImpl::ExportMeshes( const FDatasmithMeshExporterOptio
 	*Archive << NumMeshes;
 
 	FMD5 MD5;
-	for ( TSharedPtr<UDatasmithMesh>& MeshToExport : MeshesToExport )
+	for ( UDatasmithMesh* MeshToExport : MeshesToExport )
 	{
 		TArray< uint8 > Bytes;
 		FMemoryWriter MemoryWriter( Bytes, true );
 		MemoryWriter.ArIgnoreClassRef = false;
 		MemoryWriter.ArIgnoreArchetypeRef = false;
 		MemoryWriter.ArNoDelta = false;
-		MemoryWriter.SetWantBinaryPropertySerialization( true );
+		MemoryWriter.SetWantBinaryPropertySerialization(true);
 
 		MeshToExport->Serialize( MemoryWriter );
 
 		// Calculate the Hash of all the mesh to export
-		for ( FDatasmithMeshSourceModel& Model : MeshToExport->SourceModels )
+		for (FDatasmithMeshSourceModel& Model : MeshToExport->SourceModels)
 		{
 			uint8* Buffer = (uint8*)Model.RawMeshBulkData.GetBulkData().LockReadOnly();
-			MD5.Update( Buffer, Model.RawMeshBulkData.GetBulkData().GetBulkDataSize() );
+			MD5.Update(Buffer, Model.RawMeshBulkData.GetBulkData().GetBulkDataSize());
 			Model.RawMeshBulkData.GetBulkData().Unlock();
 		}
 
 		*Archive << Bytes;
+		MeshToExport->RemoveFromRoot();
 	}
-	OutHash.Set( MD5 );
+	FMD5Hash Hash;
+	Hash.Set(MD5);
 
 	Archive->Close();
 
-	return true;
+	TSharedPtr< IDatasmithMeshElement > MeshElement = FDatasmithSceneFactory::CreateMesh( *FPaths::GetBaseFilename( NormalizedFilename ) );
+	MeshElement->SetFile( *FullPath );
+	MeshElement->SetFileHash(Hash);
+
+	PostExport( Mesh, MeshElement.ToSharedRef() );
+
+	return MeshElement;
 }
 
-TSharedPtr< IDatasmithMeshElement > FDatasmithMeshExporter::ExportToUObject( const TCHAR* Filepath, const TCHAR* Filename, FDatasmithMesh& Mesh, FDatasmithMesh* CollisionMesh, EDSExportLightmapUV LightmapUV )
+void FDatasmithMeshExporter::PreExport( FDatasmithMesh& Mesh, const TCHAR* Filepath, const TCHAR* Filename, EDSExportLightmapUV LightmapUV )
 {
-	FString FullPath( GetMeshFilePath( Filepath, Filename ) );
-	FDatasmithMeshExporterImpl::FDatasmithMeshExporterOptions ExportOptions( MoveTemp( FullPath ), Mesh, LightmapUV, CollisionMesh );
-
-	TSharedPtr<IDatasmithMeshElement> ExportedMeshElement;
-	Impl->DoExport( ExportedMeshElement, ExportOptions );
-
-	return ExportedMeshElement;
-}
-
-bool FDatasmithMeshExporter::ExportToUObject( TSharedPtr< IDatasmithMeshElement >& MeshElement, const TCHAR* Filepath, FDatasmithMesh& Mesh, FDatasmithMesh* CollisionMesh, EDSExportLightmapUV LightmapUV )
-{
-	FString FullPath( GetMeshFilePath( Filepath, MeshElement->GetName() ) );
-	FDatasmithMeshExporterImpl::FDatasmithMeshExporterOptions ExportOptions( MoveTemp( FullPath ), Mesh, LightmapUV, CollisionMesh );
-
-	return Impl->DoExport( MeshElement, ExportOptions );
-}
-
-FString FDatasmithMeshExporter::GetLastError() const
-{
-	return Impl->LastError;
-}
-
-bool FDatasmithMeshExporterImpl::DoExport( TSharedPtr< IDatasmithMeshElement >& MeshElement, const FDatasmithMeshExporterOptions& ExportOptions )
-{
-	FMD5Hash Hash;
-	PreExport( ExportOptions );
-	if ( ExportMeshes( ExportOptions, Hash ) )
-	{
-		// If no existing MeshElement provided, create one.
-		if ( !MeshElement )
-		{
-			FString BaseFileName = FPaths::GetBaseFilename( ExportOptions.MeshFullPath );
-			MeshElement = FDatasmithSceneFactory::CreateMesh( *BaseFileName );
-		}
-		MeshElement->SetFile( *ExportOptions.MeshFullPath );
-		MeshElement->SetFileHash( Hash );
-
-		PostExport( ExportOptions.Mesh, MeshElement );
-
-		return true;
-	}
-
-	return false;
-}
-
-void FDatasmithMeshExporterImpl::PreExport( const FDatasmithMeshExporterOptions& ExporterOptions )
-{
-	FDatasmithMesh& Mesh = ExporterOptions.Mesh;
-
 	// If the mesh doesn't have a name, use the filename as its name
 	if ( FCString::Strlen( Mesh.GetName() ) == 0 )
 	{
-		Mesh.SetName( *FPaths::GetBaseFilename( ExporterOptions.MeshFullPath ) );
+		Mesh.SetName( *FPaths::GetBaseFilename( Filename ) );
 	}
 
 	bool bHasUVs = Mesh.GetUVChannelsCount() > 0;
@@ -258,7 +147,7 @@ void FDatasmithMeshExporterImpl::PreExport( const FDatasmithMeshExporterOptions&
 	}
 }
 
-void FDatasmithMeshExporterImpl::PostExport( const FDatasmithMesh& DatasmithMesh, TSharedPtr< IDatasmithMeshElement >& MeshElement )
+void FDatasmithMeshExporter::PostExport( const FDatasmithMesh& DatasmithMesh, TSharedRef< IDatasmithMeshElement > MeshElement )
 {
 	FBox Extents = DatasmithMesh.GetExtents();
 	float Width = Extents.Max[0] - Extents.Min[0];
@@ -270,7 +159,7 @@ void FDatasmithMeshExporterImpl::PostExport( const FDatasmithMesh& DatasmithMesh
 	MeshElement->SetLightmapSourceUV( DatasmithMesh.GetLightmapSourceUVChannel() );
 }
 
-void FDatasmithMeshExporterImpl::CreateDefaultUVs( FDatasmithMesh& Mesh )
+void FDatasmithMeshExporter::CreateDefaultUVs( FDatasmithMesh& Mesh )
 {
 	if ( Mesh.GetUVChannelsCount() > 0 )
 	{
@@ -283,8 +172,8 @@ void FDatasmithMeshExporterImpl::CreateDefaultUVs( FDatasmithMesh& Mesh )
 	FDatasmithMeshUtils::ToMeshDescription(Mesh, MeshDescription);
 	FUVMapParameters UVParameters(Mesh.GetExtents().GetCenter(), FQuat::Identity, Mesh.GetExtents().GetSize(), FVector::OneVector, FVector2D::UnitVector);
 	TMap<FVertexInstanceID, FVector2D> TexCoords;
-	FStaticMeshOperations::GenerateBoxUV(MeshDescription, UVParameters, TexCoords);
-
+	FMeshDescriptionOperations::GenerateBoxUV(MeshDescription, UVParameters, TexCoords);
+	
 	// Put the results in a map to determine the number of unique values.
 	TMap<FVector2D, TArray<int32>> UniqueTexCoordMap;
 	for (const TPair<FVertexInstanceID, FVector2D>& Pair : TexCoords)
@@ -318,7 +207,7 @@ void FDatasmithMeshExporterImpl::CreateDefaultUVs( FDatasmithMesh& Mesh )
 	}
 }
 
-void FDatasmithMeshExporterImpl::RegisterStaticMeshAttributes(FMeshDescription& MeshDescription)
+void FDatasmithMeshExporter::RegisterStaticMeshAttributes(FMeshDescription& MeshDescription)
 {
 	// This is a local inlining of the UStaticMesh::RegisterMeshAttributes() function, to avoid having to include "Engine" in our dependencies..
 	///////
@@ -339,94 +228,4 @@ void FDatasmithMeshExporterImpl::RegisterStaticMeshAttributes(FMeshDescription& 
 
 	// Add basic polygon group attributes
 	MeshDescription.PolygonGroupAttributes().RegisterAttribute<FName>(MeshAttribute::PolygonGroup::ImportedMaterialSlotName); //The unique key to match the mesh material slot
-}
-
-TSharedPtr<UDatasmithMesh> FDatasmithMeshExporterImpl::GeneratePooledUDatasmithMeshFromFDatasmithMesh(const FDatasmithMesh& Mesh, bool bIsCollisionMesh)
-{
-	TSharedPtr<UDatasmithMesh> PooledMesh = GetPooledUDatasmithMesh(bIsCollisionMesh);
-	FillUDatasmithMeshFromFDatasmithMesh(PooledMesh, Mesh, !bIsCollisionMesh);
-	PooledMesh->bIsCollisionMesh = bIsCollisionMesh;
-	return PooledMesh;
-}
-
-/**
- * This function allows reusing an instanced UDatasmithMesh. Reusing the same object will avoid creating new garbage in memory.
- */
-void FDatasmithMeshExporterImpl::FillUDatasmithMeshFromFDatasmithMesh(TSharedPtr<UDatasmithMesh>& UMesh, const FDatasmithMesh& Mesh, bool bValidateRawMesh)
-{
-	UMesh->MeshName = Mesh.GetName();
-
-	FRawMesh RawMesh;
-	FDatasmithMeshUtils::ToRawMesh(Mesh, RawMesh, bValidateRawMesh);
-
-	FDatasmithMeshSourceModel BaseModel;
-	BaseModel.RawMeshBulkData.SaveRawMesh(RawMesh);
-
-	UMesh->SourceModels.Add(BaseModel);
-
-	for (int32 LODIndex = 0; LODIndex < Mesh.GetLODsCount(); ++LODIndex)
-	{
-		FDatasmithMeshUtils::ToRawMesh(Mesh.GetLOD(LODIndex), RawMesh, bValidateRawMesh);
-
-		FRawMeshBulkData LODRawMeshBulkData;
-		LODRawMeshBulkData.SaveRawMesh(RawMesh);
-
-		FDatasmithMeshSourceModel LODModel;
-		LODModel.RawMeshBulkData = LODRawMeshBulkData;
-
-		UMesh->SourceModels.Add(LODModel);
-	}
-}
-
-TSharedPtr<UDatasmithMesh> FDatasmithMeshExporterImpl::GetPooledUDatasmithMesh(bool bIsCollisionMesh)
-{
-	const FString GuidString = UniqueID.ToString();
-	const FString CollisionString = bIsCollisionMesh ? TEXT("_Collision") : TEXT("");
-	const FString PooledMeshName = FString::Printf(TEXT("DatasmithExporter_%s_TransientPooledUDatasmithMesh%s"), *GuidString, *CollisionString);
-
-	if (UDatasmithMesh* PooledMesh = DatasmithMeshUObjectPool.Pop())
-	{
-		PooledMesh->Rename(*PooledMeshName);
-		return TSharedPtr<UDatasmithMesh>(PooledMesh, FPooledUDatasmithMeshDeleter(this));
-	}
-
-	{
-		FGCScopeGuard GCGuard; // Can't create new objects while the GC is running.
-		return TSharedPtr<UDatasmithMesh>(NewObject< UDatasmithMesh >((UObject*)GetTransientPackage(), *PooledMeshName, RF_Transient | RF_MarkAsRootSet), FPooledUDatasmithMeshDeleter(this));
-	}
-}
-
-void FDatasmithMeshExporterImpl::ReturnUDatasmithMeshToPool(UDatasmithMesh*& UMesh)
-{
-	//Clear the UDatasmithMesh.
-	UMesh->SourceModels.Empty();
-
-	//Put it back into the pool
-	DatasmithMeshUObjectPool.Push(UMesh);
-	//Null the reference to make sure we don't use the object returned to the pool.
-	UMesh = nullptr;
-}
-
-void FDatasmithMeshExporterImpl::ClearUDatasmithMeshPool()
-{
-	TArray<UDatasmithMesh*> PooledMeshes;
-	DatasmithMeshUObjectPool.PopAll(PooledMeshes);
-
-	for (UDatasmithMesh* UMesh : PooledMeshes)
-	{
-		UMesh->RemoveFromRoot();
-		UMesh->MarkPendingKill();
-	}
-
-	//Keep track of the number of garbage UObject generated by clearing the cache so that we can trigger the GC after a while.
-	//Even if our UObjects are basically empty at this point and don't have a big memory footprint, the engine will assert when reaching around 65k UObjects.
-	//So we need to call the GC before that point.
-	NumberOfUMeshPendingGC += PooledMeshes.Num();
-	if (NumberOfUMeshPendingGC > 2000)
-	{
-		if (FDatasmithExporterManager::RunGarbageCollection())
-		{
-			NumberOfUMeshPendingGC = 0;
-		}
-	}
 }

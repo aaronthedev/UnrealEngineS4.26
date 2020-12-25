@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/Text/SRichTextBlock.h"
 
@@ -27,7 +27,6 @@ void SRichTextBlock::Construct( const FArguments& InArgs )
 	WrapTextAt = InArgs._WrapTextAt;
 	AutoWrapText = InArgs._AutoWrapText;
 	WrappingPolicy = InArgs._WrappingPolicy;
-	TransformPolicy = InArgs._TransformPolicy;
 	Margin = InArgs._Margin;
 	LineHeightPercentage = InArgs._LineHeightPercentage;
 	Justification = InArgs._Justification;
@@ -58,14 +57,12 @@ void SRichTextBlock::Construct( const FArguments& InArgs )
 	SetCanTick(false);
 }
 
-int32 SRichTextBlock::OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const
+int32 SRichTextBlock::OnPaint( const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled ) const
 {
 	const FVector2D LastDesiredSize = TextLayoutCache->GetDesiredSize();
 
-	const FGeometry TextBlockScaledGeometry = AllottedGeometry.MakeChild(AllottedGeometry.GetLocalSize() / TextBlockScale, FSlateLayoutTransform(TextBlockScale));
-
 	// OnPaint will also update the text layout cache if required
-	LayerId = TextLayoutCache->OnPaint(Args, TextBlockScaledGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, ShouldBeEnabled(bParentEnabled));
+	LayerId = TextLayoutCache->OnPaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, ShouldBeEnabled(bParentEnabled));
 
 	const FVector2D NewDesiredSize = TextLayoutCache->GetDesiredSize();
 
@@ -86,8 +83,9 @@ FVector2D SRichTextBlock::ComputeDesiredSize(float LayoutScaleMultiplier) const
 {
 	// ComputeDesiredSize will also update the text layout cache if required
 	const FVector2D TextSize = TextLayoutCache->ComputeDesiredSize(
-		FSlateTextBlockLayout::FWidgetArgs(BoundText, HighlightText, WrapTextAt, AutoWrapText, WrappingPolicy, TransformPolicy, Margin, LineHeightPercentage, Justification),
-		LayoutScaleMultiplier * TextBlockScale, TextStyle) * TextBlockScale;
+		FSlateTextBlockLayout::FWidgetArgs(BoundText, HighlightText, WrapTextAt, AutoWrapText, WrappingPolicy, Margin, LineHeightPercentage, Justification),
+		LayoutScaleMultiplier, TextStyle
+		);
 
 	return FVector2D(FMath::Max(TextSize.X, MinDesiredWidth.Get()), TextSize.Y);
 }
@@ -97,18 +95,15 @@ FChildren* SRichTextBlock::GetChildren()
 	return TextLayoutCache->GetChildren();
 }
 
-void SRichTextBlock::OnArrangeChildren(const FGeometry& AllottedGeometry, FArrangedChildren& ArrangedChildren) const
+void SRichTextBlock::OnArrangeChildren( const FGeometry& AllottedGeometry, FArrangedChildren& ArrangedChildren ) const
 {
-	const FGeometry TextBlockScaledGeometry = AllottedGeometry.MakeChild(AllottedGeometry.GetLocalSize() / TextBlockScale, FSlateLayoutTransform(TextBlockScale));
-
-	TextLayoutCache->ArrangeChildren(TextBlockScaledGeometry, ArrangedChildren);
+	TextLayoutCache->ArrangeChildren( AllottedGeometry, ArrangedChildren );
 }
 
 void SRichTextBlock::SetText( const TAttribute<FText>& InTextAttr )
 {
 	BoundText = InTextAttr;
 	Invalidate(EInvalidateWidget::LayoutAndVolatility);
-	InvalidatePrepass();
 }
 
 void SRichTextBlock::SetHighlightText( const TAttribute<FText>& InHighlightText )
@@ -137,17 +132,11 @@ void SRichTextBlock::SetWrapTextAt(const TAttribute<float>& InWrapTextAt)
 void SRichTextBlock::SetAutoWrapText(const TAttribute<bool>& InAutoWrapText)
 {
 	SetAttribute(AutoWrapText, InAutoWrapText, EInvalidateWidgetReason::Layout);
-	InvalidatePrepass();
 }
 
 void SRichTextBlock::SetWrappingPolicy(const TAttribute<ETextWrappingPolicy>& InWrappingPolicy)
 {
 	SetAttribute(WrappingPolicy, InWrappingPolicy, EInvalidateWidgetReason::Layout);
-}
-
-void SRichTextBlock::SetTransformPolicy(const TAttribute<ETextTransformPolicy>& InTransformPolicy)
-{
-	SetAttribute(TransformPolicy, InTransformPolicy, EInvalidateWidgetReason::Layout);
 }
 
 void SRichTextBlock::SetLineHeightPercentage(const TAttribute<float>& InLineHeightPercentage)
@@ -185,13 +174,6 @@ void SRichTextBlock::SetDecoratorStyleSet(const ISlateStyle* NewDecoratorStyleSe
 	}
 }
 
-void SRichTextBlock::SetTextBlockScale(const float NewTextBlockScale)
-{
-	TextBlockScale = NewTextBlockScale;
-	Invalidate(EInvalidateWidget::Layout);
-	InvalidatePrepass();
-}
-
 void SRichTextBlock::Refresh()
 {
 	TextLayoutCache->DirtyContent();
@@ -206,7 +188,6 @@ bool SRichTextBlock::ComputeVolatility() const
 		|| WrapTextAt.IsBound()
 		|| AutoWrapText.IsBound()
 		|| WrappingPolicy.IsBound()
-		|| TransformPolicy.IsBound()
 		|| Margin.IsBound()
 		|| Justification.IsBound()
 		|| LineHeightPercentage.IsBound()

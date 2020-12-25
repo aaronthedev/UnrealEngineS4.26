@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ActorFactoryDestructible.h"
 #include "DestructibleActor.h"
@@ -27,23 +27,19 @@ UActorFactoryDestructible
 UActorFactoryDestructible::UActorFactoryDestructible(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	NewActorClass = ADestructibleActor::StaticClass();
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
 	DisplayName = LOCTEXT("DestructibleDisplayName", "Destructible");
+	NewActorClass = ADestructibleActor::StaticClass();
 	bUseSurfaceOrientation = true;
 }
 
 bool UActorFactoryDestructible::CanCreateActorFrom(const FAssetData& AssetData, FText& OutErrorMsg)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	if (!AssetData.IsValid() || !AssetData.GetClass()->IsChildOf(UDestructibleMesh::StaticClass()))
 	{
 		OutErrorMsg = NSLOCTEXT("CanCreateActor", "NoDestructibleMeshSpecified", "No destructible mesh was specified.");
 		return false;
 	}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
+
 	return true;
 }
 
@@ -51,7 +47,6 @@ void UActorFactoryDestructible::PostSpawnActor(UObject* Asset, AActor* NewActor)
 {
 	Super::PostSpawnActor(Asset, NewActor);
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	UDestructibleMesh* DestructibleMesh = CastChecked<UDestructibleMesh>(Asset);
 	ADestructibleActor* NewDestructibleActor = CastChecked<ADestructibleActor>(NewActor);
 
@@ -63,23 +58,19 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 	// Init Component
 	NewDestructibleActor->GetDestructibleComponent()->RegisterComponent();
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 UObject* UActorFactoryDestructible::GetAssetFromActorInstance(AActor* Instance)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	check(Instance->IsA(NewActorClass));
 	ADestructibleActor* DA = CastChecked<ADestructibleActor>(Instance);
 
 	check(DA->GetDestructibleComponent());
 	return DA->GetDestructibleComponent()->SkeletalMesh;
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 void UActorFactoryDestructible::PostCreateBlueprint(UObject* Asset, AActor* CDO)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	if (Asset != NULL && CDO != NULL)
 	{
 		UDestructibleMesh* DestructibleMesh = CastChecked<UDestructibleMesh>(Asset);
@@ -87,7 +78,6 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 		DestructibleActor->GetDestructibleComponent()->SetSkeletalMesh(DestructibleMesh);
 	}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 FQuat UActorFactoryDestructible::AlignObjectToSurfaceNormal(const FVector& InSurfaceNormal, const FQuat& ActorRotation) const
@@ -109,11 +99,7 @@ UDestructibleMeshFactory::UDestructibleMeshFactory(const FObjectInitializer& Obj
 {
 
 	bEditorImport = true;
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	SupportedClass = UDestructibleMesh::StaticClass();
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
-
 	bCreateNew = false;
 	Formats.Add(TEXT("apx;APEX XML Asset"));
 	Formats.Add(TEXT("apb;APEX Binary Asset"));
@@ -176,7 +162,6 @@ UObject* UDestructibleMeshFactory::FactoryCreateBinary
 {
 	GEditor->GetEditorSubsystem<UImportSubsystem>()->BroadcastAssetPreImport(this, Class, InParent, Name, FileType);
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	// The return value
 	UDestructibleMesh* DestructibleMesh = nullptr;
 
@@ -211,7 +196,6 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 #endif // #if WITH_APEX_CLOTHING
 
 	return DestructibleMesh;
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 #endif // WITH_APEX
@@ -222,10 +206,8 @@ UReimportDestructibleMeshFactory implementation.
 UReimportDestructibleMeshFactory::UReimportDestructibleMeshFactory(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	SupportedClass = UDestructibleMesh::StaticClass();
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
+	SupportedClass = UDestructibleMesh::StaticClass();
 	bCreateNew = false;
 	bText = false;
 	Formats.Add(TEXT("apx;APEX XML Asset"));
@@ -242,7 +224,6 @@ FText UReimportDestructibleMeshFactory::GetDisplayName() const
 
 bool UReimportDestructibleMeshFactory::CanReimport(UObject* Obj, TArray<FString>& OutFilenames)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	UDestructibleMesh* DestructibleMesh = Cast<UDestructibleMesh>(Obj);
 	if (DestructibleMesh)
 	{
@@ -257,23 +238,19 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		return true;
 	}
 	return false;
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 void UReimportDestructibleMeshFactory::SetReimportPaths(UObject* Obj, const TArray<FString>& NewReimportPaths)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	UDestructibleMesh* DestructibleMesh = Cast<UDestructibleMesh>(Obj);
 	if (DestructibleMesh && ensure(NewReimportPaths.Num() == 1))
 	{
 		DestructibleMesh->AssetImportData->UpdateFilenameOnly(NewReimportPaths[0]);
 	}
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 }
 
 EReimportResult::Type UReimportDestructibleMeshFactory::Reimport(UObject* Obj)
 {
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	// Only handle valid skeletal meshes
 	if (!Obj || !Obj->IsA(UDestructibleMesh::StaticClass()))
 	{
@@ -337,8 +314,6 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		FMessageDialog::Open(EAppMsgType::Ok, NSLOCTEXT("UnrealEd", "ImportFailed_Destructible", "Reimport Failed"));
 		UE_LOG(LogDestructibleFactories, Warning, TEXT("-- import failed"));
 	}
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	return EReimportResult::Succeeded;
 }

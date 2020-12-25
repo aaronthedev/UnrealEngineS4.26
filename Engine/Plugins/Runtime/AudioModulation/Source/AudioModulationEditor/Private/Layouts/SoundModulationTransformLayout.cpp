@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "SoundModulationTransformLayout.h"
 
 #include "Audio.h"
@@ -27,11 +27,11 @@
 
 
 #define LOCTEXT_NAMESPACE "SoundModulationOutputTransform"
-void FSoundModulationTransformLayoutCustomization::CustomizeHeader(TSharedRef<IPropertyHandle> StructPropertyHandle, FDetailWidgetRow& HeaderRow, IPropertyTypeCustomizationUtils& CustomizationUtils)
+void FSoundModulationOutputTransformLayoutCustomization::CustomizeHeader(TSharedRef<IPropertyHandle> StructPropertyHandle, FDetailWidgetRow& HeaderRow, IPropertyTypeCustomizationUtils& CustomizationUtils)
 {
 }
 
-void FSoundModulationTransformLayoutCustomization::CustomizeChildren(TSharedRef<IPropertyHandle> StructPropertyHandle, IDetailChildrenBuilder& ChildBuilder, IPropertyTypeCustomizationUtils& StructCustomizationUtils)
+void FSoundModulationOutputTransformLayoutCustomization::CustomizeChildren(TSharedRef<IPropertyHandle> StructPropertyHandle, IDetailChildrenBuilder& ChildBuilder, IPropertyTypeCustomizationUtils& StructCustomizationUtils)
 {
 	uint32 NumChildren;
 	StructPropertyHandle->GetNumChildren(NumChildren);
@@ -45,35 +45,46 @@ void FSoundModulationTransformLayoutCustomization::CustomizeChildren(TSharedRef<
 		PropertyHandles.Add(PropertyName, ChildHandle);
 	}
 
-	TSharedRef<IPropertyHandle>CurveHandle = PropertyHandles.FindChecked(GET_MEMBER_NAME_CHECKED(FSoundModulationTransform, Curve)).ToSharedRef();
+	TSharedRef<IPropertyHandle>InputMinHandle = PropertyHandles.FindChecked(GET_MEMBER_NAME_CHECKED(FSoundModulationOutputTransform, InputMin)).ToSharedRef();
+	ChildBuilder.AddProperty(InputMinHandle);
+
+	TSharedRef<IPropertyHandle>InputMaxHandle = PropertyHandles.FindChecked(GET_MEMBER_NAME_CHECKED(FSoundModulationOutputTransform, InputMax)).ToSharedRef();
+	ChildBuilder.AddProperty(InputMaxHandle);
+
+	TSharedRef<IPropertyHandle>CurveHandle = PropertyHandles.FindChecked(GET_MEMBER_NAME_CHECKED(FSoundModulationOutputTransform, Curve)).ToSharedRef();
 	ChildBuilder.AddProperty(CurveHandle);
 
-	TSharedRef<IPropertyHandle> ScalarHandle = PropertyHandles.FindChecked(GET_MEMBER_NAME_CHECKED(FSoundModulationTransform, Scalar)).ToSharedRef();
+	TSharedRef<IPropertyHandle> ScalarHandle = PropertyHandles.FindChecked(GET_MEMBER_NAME_CHECKED(FSoundModulationOutputTransform, Scalar)).ToSharedRef();
+	const TArray<FString> ScalarFilters = TArray<FString>({ TEXT("Exp"), TEXT("Log") });
 
 	ChildBuilder.AddProperty(ScalarHandle)
-		.EditCondition(TAttribute<bool>::Create([this, CurveHandle]() { return IsScaleableCurve(CurveHandle); }), nullptr)
-		.Visibility(TAttribute<EVisibility>::Create([this, CurveHandle]() { return IsScaleableCurve(CurveHandle) ? EVisibility::Visible : EVisibility::Hidden; }));
+		.EditCondition(TAttribute<bool>::Create([this, CurveHandle, ScalarFilters]() { return IsScaleableCurve(CurveHandle, ScalarFilters); }), nullptr)
+		.Visibility(TAttribute<EVisibility>::Create([this, CurveHandle, ScalarFilters]() { return IsScaleableCurve(CurveHandle, ScalarFilters) ? EVisibility::Visible : EVisibility::Hidden; }));
 
-	TSharedRef<IPropertyHandle> SharedCurveHandle = PropertyHandles.FindChecked(GET_MEMBER_NAME_CHECKED(FSoundModulationTransform, CurveShared)).ToSharedRef();
+	TSharedRef<IPropertyHandle> SharedCurveHandle = PropertyHandles.FindChecked(GET_MEMBER_NAME_CHECKED(FSoundModulationOutputTransform, CurveShared)).ToSharedRef();
 	ChildBuilder.AddProperty(SharedCurveHandle)
-		.EditCondition(TAttribute<bool>::Create([this, CurveHandle]() { return IsSharedCurve(CurveHandle); }), nullptr)
-		.Visibility(TAttribute<EVisibility>::Create([this, CurveHandle]() { return IsSharedCurve(CurveHandle) ? EVisibility::Visible : EVisibility::Hidden; }));
+		.EditCondition(TAttribute<bool>::Create([this, CurveHandle, ScalarFilters]() { return IsSharedCurve(CurveHandle); }), nullptr)
+		.Visibility(TAttribute<EVisibility>::Create([this, CurveHandle, ScalarFilters]() { return IsSharedCurve(CurveHandle) ? EVisibility::Visible : EVisibility::Hidden; }));
+
+	TSharedRef<IPropertyHandle>OutputMinHandle = PropertyHandles.FindChecked(GET_MEMBER_NAME_CHECKED(FSoundModulationOutputTransform, OutputMin)).ToSharedRef();
+	ChildBuilder.AddProperty(OutputMinHandle);
+
+	TSharedRef<IPropertyHandle>OutputMaxHandle = PropertyHandles.FindChecked(GET_MEMBER_NAME_CHECKED(FSoundModulationOutputTransform, OutputMax)).ToSharedRef();
+	ChildBuilder.AddProperty(OutputMaxHandle);
 }
 
-bool FSoundModulationTransformLayoutCustomization::IsScaleableCurve(TSharedPtr<IPropertyHandle> CurveHandle) const
+bool FSoundModulationOutputTransformLayoutCustomization::IsScaleableCurve(TSharedPtr<IPropertyHandle> CurveHandle, const TArray<FString>& Filters) const
 {
 	if (!CurveHandle.IsValid())
 	{
 		return false;
 	}
 
-	uint8 CurveString;
-	CurveHandle->GetValue(CurveString);
-
-	static const TArray<ESoundModulatorCurve> ScalarFilters = { ESoundModulatorCurve::Exp, ESoundModulatorCurve::Exp_Inverse, ESoundModulatorCurve::Log };
-	for (ESoundModulatorCurve Filter : ScalarFilters)
+	FString CurveString;
+	CurveHandle->GetValueAsFormattedString(CurveString);
+	for (const FString& Filter : Filters)
 	{
-		if (CurveString == static_cast<uint8>(Filter))
+		if (CurveString.Contains(*Filter))
 		{
 			return true;
 		}
@@ -82,15 +93,15 @@ bool FSoundModulationTransformLayoutCustomization::IsScaleableCurve(TSharedPtr<I
 	return false;
 }
 
-bool FSoundModulationTransformLayoutCustomization::IsSharedCurve(TSharedPtr<IPropertyHandle> CurveHandle) const
+bool FSoundModulationOutputTransformLayoutCustomization::IsSharedCurve(TSharedPtr<IPropertyHandle> CurveHandle) const
 {
 	if (!CurveHandle.IsValid())
 	{
 		return false;
 	}
 
-	uint8 CurveValue;
-	CurveHandle->GetValue(CurveValue);
-	return CurveValue == static_cast<uint8>(ESoundModulatorCurve::Shared);
+	FString CurveString;
+	CurveHandle->GetValueAsFormattedString(CurveString);
+	return CurveString == TEXT("Shared");
 }
 #undef LOCTEXT_NAMESPACE

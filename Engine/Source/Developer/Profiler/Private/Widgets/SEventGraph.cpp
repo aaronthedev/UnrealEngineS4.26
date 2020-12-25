@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/SEventGraph.h"
 #include "Widgets/Layout/SSplitter.h"
@@ -73,9 +73,12 @@ struct FEventGraphColumns
 {
 	/** Default constructor. */
 	FEventGraphColumns()
+		: NumColumns( (uint32)EEventPropertyIndex::None+1 )
 	{
 		// Make event property is initialized.
 		FEventGraphSample::InitializePropertyManagement();
+
+		Collection = new FEventGraphColumn[NumColumns];
 
 		Collection[(uint32)EEventPropertyIndex::StatName] = FEventGraphColumn
 		(
@@ -164,12 +167,17 @@ struct FEventGraphColumns
 			.Add( TEXT( "NumCallsPerFrame" ), &Collection[(uint32)EEventPropertyIndex::NumCallsPerFrame] )
 			.Add( NAME_None, &Collection[(uint32)EEventPropertyIndex::None] )
 			;
-	}	
+	}
 
-	static constexpr uint32 NumColumns = (uint32)EEventPropertyIndex::None + 1 ;
+	~FEventGraphColumns()
+	{
+		delete[] Collection;
+	}
 
 	/** Contains basic information about columns used in the event graph widget. Names should be localized. */
-	FEventGraphColumn Collection[NumColumns];
+	FEventGraphColumn* Collection;
+
+	const uint32 NumColumns;
 
 	// Generated from a XLSX file.
 	TMap<FName, const FEventGraphColumn*> ColumnNameToIndexMapping;
@@ -1035,7 +1043,7 @@ void SEventGraph::FillThreadFilterOptions()
 	}
 
 	// Add a thread filter entry for each root child
-	for ( const FEventGraphSamplePtr& Child : Root->GetChildren() )
+	for ( const FEventGraphSamplePtr Child : Root->GetChildren() )
 	{
 		ThreadNamesForCombo.Add( MakeShareable( new FName( Child->_ThreadName ) ) );
 	}
@@ -1149,7 +1157,8 @@ TSharedRef<SWidget> SEventGraph::GetWidgetBoxForOptions()
 		[
 			SNew( SButton )
 			.IsEnabled( this, &SEventGraph::ContextMenu_ExpandHotPath_CanExecute )
-			.ToolTipText( LOCTEXT("ContextMenu_Header_Expand_ExpandHotPath_Desc", "Expands hot path for the selected events, based on the inclusive time, also enables descending sorting by inclusive time") )
+			.ToolTipText( LOCTEXT("ContextMenu_Header_Expand_ExpandHotPath_Desc", 
+									"Expands hot path for the selected events, based on the inclusive time, also enables descending sorting by inclusive time") )
 			.HAlign( HAlign_Center )
 			.VAlign( VAlign_Center )
 			.OnClicked( this, &SEventGraph::ExpandHotPath_OnClicked )

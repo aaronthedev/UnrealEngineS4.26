@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "StatsTraceAnalysis.h"
 #include "AnalysisServicePrivate.h"
 #include "Common/Utils.h"
@@ -19,7 +19,7 @@ void FStatsAnalyzer::OnAnalysisBegin(const FOnAnalysisContext& Context)
 	Builder.RouteEvent(RouteId_EventBatch, "Stats", "EventBatch");
 }
 
-bool FStatsAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventContext& Context)
+bool FStatsAnalyzer::OnEvent(uint16 RouteId, const FOnEventContext& Context)
 {
 	Trace::FAnalysisSessionEditScope _(Session);
 
@@ -29,11 +29,16 @@ bool FStatsAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventContext
 	case RouteId_Spec:
 	{
 		uint32 StatId = EventData.GetValue<uint32>("Id");
-		Trace::IEditableCounter* Counter = CountersMap.FindRef(StatId);
-		if (!Counter)
+		Trace::ICounter* Counter;
+		Trace::ICounter** FindIt = CountersMap.Find(StatId);
+		if (!FindIt)
 		{
 			Counter = CounterProvider.CreateCounter();
 			CountersMap.Add(StatId, Counter);
+		}
+		else
+		{
+			Counter = *FindIt;
 		}
 		const ANSICHAR* Name = reinterpret_cast<const ANSICHAR*>(EventData.GetAttachment());
 		const TCHAR* Description = reinterpret_cast<const TCHAR*>(EventData.GetAttachment() + strlen(Name) + 1);
@@ -50,7 +55,7 @@ bool FStatsAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventContext
 	}
 	case RouteId_EventBatch:
 	{
-		uint32 ThreadId = FTraceAnalyzerUtils::GetThreadIdField(Context);
+		uint32 ThreadId = EventData.GetValue<uint32>("ThreadId");
 		TSharedRef<FThreadState> ThreadState = GetThreadState(ThreadId);
 		uint64 BufferSize = EventData.GetAttachmentSize();
 		const uint8* BufferPtr = EventData.GetAttachment();
@@ -69,16 +74,21 @@ bool FStatsAnalyzer::OnEvent(uint16 RouteId, EStyle Style, const FOnEventContext
 
 			uint64 DecodedIdAndOp = FTraceAnalyzerUtils::Decode7bit(BufferPtr);
 			uint32 StatId = DecodedIdAndOp >> 3;
-			Trace::IEditableCounter* Counter = CountersMap.FindRef(StatId);
-			if (!Counter)
+			Trace::ICounter* Counter;
+			Trace::ICounter** FindIt = CountersMap.Find(StatId);
+			if (!FindIt)
 			{
 				Counter = CounterProvider.CreateCounter();
 				CountersMap.Add(StatId, Counter);
 			}
+			else
+			{
+				Counter = *FindIt;
+			}
 			uint8 Op = DecodedIdAndOp & 0x7;
 			uint64 CycleDiff = FTraceAnalyzerUtils::Decode7bit(BufferPtr);
 			uint64 Cycle = ThreadState->LastCycle + CycleDiff;
-			double Time = Context.EventTime.AsSeconds(Cycle);
+			double Time = Context.SessionContext.TimestampFromCycle(Cycle);
 			ThreadState->LastCycle = Cycle;
 			switch (Op)
 			{

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,11 +14,6 @@ DECLARE_LOG_CATEGORY_EXTERN(LogGameplayDebug, Log, All);
 
 class FCanvasItem;
 struct FCanvasIcon;
-
-namespace FGameplayDebuggerUtils
-{
-	bool GAMEPLAYDEBUGGER_API IsAuthority(UWorld* World);
-}
 
 class GAMEPLAYDEBUGGER_API FGameplayDebuggerCanvasContext
 {

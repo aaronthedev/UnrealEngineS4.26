@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	UExporter.cpp: Exporter class implementation.
@@ -25,11 +25,6 @@
 #include "Misc/FeedbackContext.h"
 #include "AssetExportTask.h"
 #include "UObject/GCObjectScopeGuard.h"
-#include "Engine/Selection.h"
-
-#if WITH_EDITOR
-#include "Editor.h"
-#endif
 
 DEFINE_LOG_CATEGORY_STATIC(LogExporter, Log, All);
 
@@ -358,13 +353,12 @@ bool UExporter::RunAssetExportTask(class UAssetExportTask* Task)
 	}
 	else
 	{
-		const int32 FileCount = Exporter->GetFileCount(Task->Object);
-		for( int32 i = 0; i < FileCount; i++ )
+		for( int32 i = 0; i < Exporter->GetFileCount(); i++ )
 		{
 			FBufferArchive Buffer;
 			if(ExportToArchive(Task->Object, Exporter, Buffer, *Extension, i))
 			{
-				FString UniqueFilename = Exporter->GetUniqueFilename(*Task->Filename, i, FileCount);
+				FString UniqueFilename = Exporter->GetUniqueFilename(*Task->Filename, i);
 
 				if(!Task->bReplaceIdentical)
 				{
@@ -475,7 +469,7 @@ void UExporter::EmitBeginObject( FOutputDevice& Ar, UObject* Obj, uint32 PortFla
 			UObject* Archetype = Obj->GetArchetype();
 			// since we could have two object owners with the same name (like named Blueprints in different folders),
 			// we need the fully qualified path for the archetype (so we don't get confused when unpacking this)
-			Ar.Logf(TEXT(" Archetype=%s"), *FObjectPropertyBase::GetExportPath(Archetype, Archetype->GetOutermost(), /*ExportRootScope =*/nullptr, PortFlags & ~PPF_ExportsNotFullyQualified));
+			Ar.Logf(TEXT(" Archetype=%s"), *UObjectPropertyBase::GetExportPath(Archetype, Archetype->GetOutermost(), /*ExportRootScope =*/nullptr, PortFlags & ~PPF_ExportsNotFullyQualified));
 		}
 	}
 
@@ -667,25 +661,25 @@ void ExportProperties
 	FString ThisName = TEXT("(none)");
 	check(ObjectClass != NULL);
 
-	for( FProperty* Property = ObjectClass->PropertyLink; Property; Property = Property->PropertyLinkNext )
+	for( UProperty* Property = ObjectClass->PropertyLink; Property; Property = Property->PropertyLinkNext )
 	{
 		if (!Property->ShouldPort(PortFlags))
 			continue;
 
 		ThisName = Property->GetName();
-		FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Property);
-		FObjectPropertyBase* ExportObjectProp = (Property->PropertyFlags & CPF_ExportObject) != 0 ? CastField<FObjectPropertyBase>(Property) : NULL;
+		UArrayProperty* ArrayProperty = Cast<UArrayProperty>(Property);
+		UObjectPropertyBase* ExportObjectProp = (Property->PropertyFlags & CPF_ExportObject) != 0 ? Cast<UObjectPropertyBase>(Property) : NULL;
 		const uint32 ExportFlags = PortFlags | PPF_Delimited;
 
 		if ( ArrayProperty != NULL )
 		{
 			// Export dynamic array.
-			FProperty* InnerProp = ArrayProperty->Inner;
-			ExportObjectProp = (Property->PropertyFlags & CPF_ExportObject) != 0 ? CastField<FObjectPropertyBase>(InnerProp) : NULL;
+			UProperty* InnerProp = ArrayProperty->Inner;
+			ExportObjectProp = (Property->PropertyFlags & CPF_ExportObject) != 0 ? Cast<UObjectPropertyBase>(InnerProp) : NULL;
 			// This is used as the default value in the case of an array property that has
 			// fewer elements than the exported object.
 			uint8* StructDefaults = NULL;
-			FStructProperty* StructProperty = CastField<FStructProperty>(InnerProp);
+			UStructProperty* StructProperty = Cast<UStructProperty>(InnerProp);
 			if ( StructProperty != NULL )
 			{
 				checkSlow(StructProperty->Struct);
@@ -721,12 +715,11 @@ void ExportProperties
 						// compare each element's value manually so that elements which match the NULL value for the array's inner property type
 						// but aren't in the diff array are still exported
 						uint8* SourceData = ArrayHelper.GetRawPtr(DynamicArrayIndex);
-						bool bHasDiffData = DiffArr && DynamicArrayIndex < DiffArrayHelper.Num();
-						uint8* DiffData = bHasDiffData ? DiffArrayHelper.GetRawPtr(DynamicArrayIndex) : StructDefaults;
+						uint8* DiffData = DiffArr && DynamicArrayIndex < DiffArrayHelper.Num()
+							? DiffArrayHelper.GetRawPtr(DynamicArrayIndex)
+							: StructDefaults;
 
-						// Make sure to export the last element even if it is default value if the default data doesn't have an element at that index (!bHasDiffData && (DynamicArrayIndex == ArrayHelper.Num()-1) && !bHasDiffData) 
-						// because that will ensure the resulting imported array will be of proper size
-						bool bExportItem = DiffData == NULL || (!bHasDiffData && (DynamicArrayIndex == ArrayHelper.Num()-1)) || (DiffData != SourceData && !InnerProp->Identical(SourceData, DiffData, ExportFlags));
+						bool bExportItem = DiffData == NULL || (DiffData != SourceData && !InnerProp->Identical(SourceData, DiffData, ExportFlags));
 						if (bExportItem)
 						{
 							InnerProp->ExportTextItem(Value, SourceData, DiffData, Parent, ExportFlags, ExportRootScope);
@@ -898,34 +891,3 @@ FString DumpObjectToString(UObject* Object)
 
 	return MoveTemp(Archive);
 }
-
-#if WITH_EDITOR
-FSelectedActorExportObjectInnerContext::FSelectedActorExportObjectInnerContext()
-	//call the empty version of the base class
-	: FExportObjectInnerContext(false)
-{
-	// For each selected actor...
-	for (FSelectionIterator It(GEditor->GetSelectedActorIterator()); It; ++It)
-	{
-		AActor* Actor = (AActor*)*It;
-		checkSlow(Actor->IsA(AActor::StaticClass()));
-
-		ForEachObjectWithOuter(Actor, [this](UObject* InnerObj)
-		{
-			UObject* OuterObj = InnerObj->GetOuter();
-			InnerList* Inners = ObjectToInnerMap.Find(OuterObj);
-			if (Inners)
-			{
-				// Add object to existing inner list.
-				Inners->Add( InnerObj );
-			}
-			else
-			{
-				// Create a new inner list for the outer object.
-				InnerList& InnersForOuterObject = ObjectToInnerMap.Add(OuterObj, InnerList());
-				InnersForOuterObject.Add(InnerObj);
-			}
-		}, /** bIncludeNestedObjects */ true, RF_NoFlags, EInternalObjectFlags::PendingKill);
-	}
-}
-#endif

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PropertyEditorHelpers.h"
 #include "Widgets/Layout/SBorder.h"
@@ -35,10 +35,6 @@ void SPropertyNameWidget::Construct( const FArguments& InArgs, TSharedPtr<FPrope
 {
 	PropertyEditor = InPropertyEditor;
 
-	static const FName NAME_TitleProperty = FName(TEXT("TitleProperty"));
-	// If our property has title support we pass in empty below so it retrieves a live value
-	const bool bHasTitleProperty = InPropertyEditor->GetProperty() && InPropertyEditor->GetProperty()->HasMetaData(NAME_TitleProperty);
-
 	TSharedPtr<SHorizontalBox> HorizontalBox;
 	ChildSlot
 	[
@@ -53,7 +49,7 @@ void SPropertyNameWidget::Construct( const FArguments& InArgs, TSharedPtr<FPrope
 			.VAlign(VAlign_Center)
 			[
 				SNew( SPropertyEditorTitle, PropertyEditor.ToSharedRef() )
-				.StaticDisplayName(bHasTitleProperty ? FText::GetEmpty() : PropertyEditor->GetDisplayName())
+				.StaticDisplayName( PropertyEditor->GetDisplayName() )
 				.OnDoubleClicked( InArgs._OnDoubleClicked )
                 .ToolTip( IDocumentation::Get()->CreateToolTip( PropertyEditor->GetToolTipText(), NULL, PropertyEditor->GetDocumentationLink(), PropertyEditor->GetDocumentationExcerptName() ) )
 			]
@@ -86,7 +82,7 @@ void SPropertyValueWidget::Construct( const FArguments& InArgs, TSharedPtr<FProp
 
 	if ( !ValueEditorWidget->GetToolTip().IsValid() )
 	{
-		ValueEditorWidget->SetToolTipText(TAttribute<FText>(PropertyEditor.ToSharedRef(), &FPropertyEditor::GetValueAsText));
+		ValueEditorWidget->SetToolTipText( PropertyEditor->GetToolTipText() );
 	}
 
 
@@ -141,7 +137,7 @@ TSharedRef<SWidget> SPropertyValueWidget::ConstructPropertyEditorWidget( TShared
 
 	const TSharedRef< FPropertyNode > PropertyNode = PropertyEditorRef->GetPropertyNode();
 	const int32 NodeArrayIndex = PropertyNode->GetArrayIndex();
-	FProperty* Property = PropertyNode->GetProperty();
+	UProperty* Property = PropertyNode->GetProperty();
 	
 	FSlateFontInfo FontStyle = FEditorStyle::GetFontStyle( PropertyEditorConstants::PropertyFontStyle );
 	TSharedPtr<SWidget> PropertyWidget; 
@@ -285,12 +281,9 @@ TSharedRef<SWidget> SPropertyValueWidget::ConstructPropertyEditorWidget( TShared
 		}
 		else if ( SPropertyEditorCombo::Supports( PropertyEditorRef ) )
 		{
-			FPropertyComboBoxArgs ComboArgs;
-			ComboArgs.Font = FontStyle;
-
 			TSharedRef<SPropertyEditorCombo> ComboWidget = 
 				SAssignNew( PropertyWidget, SPropertyEditorCombo, PropertyEditorRef )
-				.ComboArgs( ComboArgs );
+				.Font( FontStyle );
 
 			ComboWidget->GetDesiredWidth( MinDesiredWidth, MaxDesiredWidth );
 		}
@@ -341,6 +334,7 @@ TSharedRef<SWidget> SPropertyValueWidget::ConstructPropertyEditorWidget( TShared
 			.Font( FontStyle );
 
 		BasePropertyEditorWidget->GetDesiredWidth( MinDesiredWidth, MaxDesiredWidth );
+
 	}
 
 	return PropertyWidget.ToSharedRef();
@@ -351,49 +345,49 @@ void SEditConditionWidget::Construct( const FArguments& Args, TSharedPtr<FProper
 	PropertyEditor = InPropertyEditor;
 	CustomEditCondition = Args._CustomEditCondition;
 
-	SetVisibility(HasEditConditionToggle() ? EVisibility::Visible : EVisibility::Collapsed);
+	SetVisibility( HasEditCondition() ? EVisibility::Visible : EVisibility::Collapsed );
 
 	ChildSlot
 	[
 		// Some properties become irrelevant depending on the value of other properties.
 		// We prevent the user from editing those properties by disabling their widgets.
 		// This is a shortcut for toggling the property that disables us.
-		SNew(SCheckBox)
-		.OnCheckStateChanged(this, &SEditConditionWidget::OnEditConditionCheckChanged)
-		.IsChecked(this, &SEditConditionWidget::OnGetEditConditionCheckState)
+		SNew( SCheckBox )
+			.OnCheckStateChanged( this, &SEditConditionWidget::OnEditConditionCheckChanged )
+			.IsChecked( this, &SEditConditionWidget::OnGetEditConditionCheckState )
 	];
 }
 
-bool SEditConditionWidget::HasEditConditionToggle() const
-{
-	return (PropertyEditor.IsValid() && PropertyEditor->HasEditCondition() && PropertyEditor->SupportsEditConditionToggle())
-		|| (CustomEditCondition.OnEditConditionValueChanged.IsBound());
+bool SEditConditionWidget::HasEditCondition() const
+{	
+	return
+			( PropertyEditor.IsValid() && PropertyEditor->HasEditCondition() && PropertyEditor->SupportsEditConditionToggle() )
+		||	( CustomEditCondition.OnEditConditionValueChanged.IsBound() );
 }
 
 void SEditConditionWidget::OnEditConditionCheckChanged( ECheckBoxState CheckState )
 {
 	FScopedTransaction EditConditionChangedTransaction(FText::Format(LOCTEXT("UpdatedEditConditionFmt", "{0} Edit Condition Changed"), PropertyEditor->GetDisplayName()));
 
-	if (PropertyEditor.IsValid() && PropertyEditor->HasEditCondition() && PropertyEditor->SupportsEditConditionToggle())
+	if( PropertyEditor.IsValid() && PropertyEditor->HasEditCondition() && PropertyEditor->SupportsEditConditionToggle() )
 	{
 		PropertyEditor->ToggleEditConditionState();
 	}
 	else
 	{
-		CustomEditCondition.OnEditConditionValueChanged.ExecuteIfBound(CheckState == ECheckBoxState::Checked);
+		CustomEditCondition.OnEditConditionValueChanged.ExecuteIfBound( CheckState == ECheckBoxState::Checked );
 	}
 }
 
 ECheckBoxState SEditConditionWidget::OnGetEditConditionCheckState() const
 {
-	bool bEditConditionMet = (PropertyEditor.IsValid() && PropertyEditor->HasEditCondition() && PropertyEditor->IsEditConditionMet())
-		|| CustomEditCondition.EditConditionValue.Get();
+	bool bEditConditionMet = ( PropertyEditor.IsValid() && PropertyEditor->HasEditCondition() && PropertyEditor->IsEditConditionMet() ) || CustomEditCondition.EditConditionValue.Get();
 	return bEditConditionMet ? ECheckBoxState::Checked : ECheckBoxState::Unchecked;
 }
 
 namespace PropertyEditorHelpers
 {
-	bool ShouldBeVisible(const FPropertyNode& InParentNode, const FProperty* Property)
+	bool ShouldBeVisible(const FPropertyNode& InParentNode, const UProperty* Property)
 	{
 		const bool bShouldShowHiddenProperties = !!InParentNode.HasNodeFlags(EPropertyNodeFlags::ShouldShowHiddenProperties);
 		if (bShouldShowHiddenProperties)
@@ -411,11 +405,11 @@ namespace PropertyEditorHelpers
 		return bShowIfEditableProperty && !bOnlyShowAsInlineEditCondition && bShowIfDisableEditOnInstance;
 	}
 
-	bool IsBuiltInStructProperty( const FProperty* Property )
+	bool IsBuiltInStructProperty( const UProperty* Property )
 	{
 		bool bIsBuiltIn = false;
 
-		const FStructProperty* StructProp = CastField<const FStructProperty>( Property );
+		const UStructProperty* StructProp = Cast<const UStructProperty>( Property );
 		if( StructProp && StructProp->Struct )
 		{
 			FName StructName = StructProp->Struct->GetFName();
@@ -450,23 +444,23 @@ namespace PropertyEditorHelpers
 
 	bool IsStaticArray( const FPropertyNode& InPropertyNode )
 	{
-		const FProperty* NodeProperty = InPropertyNode.GetProperty();
+		const UProperty* NodeProperty = InPropertyNode.GetProperty();
 		return NodeProperty && NodeProperty->ArrayDim != 1 && InPropertyNode.GetArrayIndex() == -1;
 	}
 
 	bool IsDynamicArray( const FPropertyNode& InPropertyNode )
 	{
-		const FProperty* NodeProperty = InPropertyNode.GetProperty();
-		return NodeProperty && CastField<const FArrayProperty>(NodeProperty) != NULL;
+		const UProperty* NodeProperty = InPropertyNode.GetProperty();
+		return NodeProperty && Cast<const UArrayProperty>(NodeProperty) != NULL;
 	}
 
-	const FProperty* GetArrayParent( const FPropertyNode& InPropertyNode )
+	const UProperty* GetArrayParent( const FPropertyNode& InPropertyNode )
 	{
-		const FProperty* ParentProperty = InPropertyNode.GetParentNode() != NULL ? InPropertyNode.GetParentNode()->GetProperty() : NULL;
+		const UProperty* ParentProperty = InPropertyNode.GetParentNode() != NULL ? InPropertyNode.GetParentNode()->GetProperty() : NULL;
 		
 		if( ParentProperty )
 		{
-			if( (ParentProperty->IsA<FArrayProperty>()) || // dynamic array
+			if( (ParentProperty->IsA<UArrayProperty>()) || // dynamic array
 				(InPropertyNode.GetArrayIndex() != INDEX_NONE && ParentProperty->ArrayDim > 0) ) //static array
 			{
 				return ParentProperty;
@@ -476,13 +470,13 @@ namespace PropertyEditorHelpers
 		return NULL;
 	}
 
-	const FProperty* GetSetParent( const FPropertyNode& InPropertyNode )
+	const UProperty* GetSetParent( const FPropertyNode& InPropertyNode )
 	{
-		const FProperty* ParentProperty = InPropertyNode.GetParentNode() != NULL ? InPropertyNode.GetParentNode()->GetProperty() : NULL;
+		const UProperty* ParentProperty = InPropertyNode.GetParentNode() != NULL ? InPropertyNode.GetParentNode()->GetProperty() : NULL;
 
 		if ( ParentProperty )
 		{
-			if (ParentProperty->IsA<FSetProperty>())
+			if (ParentProperty->IsA<USetProperty>())
 			{
 				return ParentProperty;
 			}
@@ -491,13 +485,13 @@ namespace PropertyEditorHelpers
 		return NULL;
 	}
 
-	const FProperty* GetMapParent( const FPropertyNode& InPropertyNode )
+	const UProperty* GetMapParent( const FPropertyNode& InPropertyNode )
 	{
-		const FProperty* ParentProperty = InPropertyNode.GetParentNode() != NULL ? InPropertyNode.GetParentNode()->GetProperty() : NULL;
+		const UProperty* ParentProperty = InPropertyNode.GetParentNode() != NULL ? InPropertyNode.GetParentNode()->GetProperty() : NULL;
 
 		if (ParentProperty)
 		{
-			if (ParentProperty->IsA<FMapProperty>())
+			if (ParentProperty->IsA<UMapProperty>())
 			{
 				return ParentProperty;
 			}
@@ -514,7 +508,7 @@ namespace PropertyEditorHelpers
 			&&	(bAllowAbstract || !CheckClass->HasAnyClassFlags(CLASS_Abstract));
 	}
 
-	FText GetToolTipText( const FProperty* const Property )
+	FText GetToolTipText( const UProperty* const Property )
 	{
 		if( Property )
 		{
@@ -524,7 +518,7 @@ namespace PropertyEditorHelpers
 		return FText::GetEmpty();
 	}
 
-	FString GetDocumentationLink( const FProperty* const Property )
+	FString GetDocumentationLink( const UProperty* const Property )
 	{
 		if ( Property != NULL )
 		{
@@ -539,13 +533,13 @@ namespace PropertyEditorHelpers
 		return TEXT("");
 	}
 
-	FString GetEnumDocumentationLink(const FProperty* const Property)
+	FString GetEnumDocumentationLink(const UProperty* const Property)
 	{
 		if(Property != NULL)
 		{
-			const FByteProperty* ByteProperty = CastField<FByteProperty>(Property);
-			const FEnumProperty* EnumProperty = CastField<FEnumProperty>(Property);
-			if(ByteProperty || EnumProperty || (Property->IsA(FStrProperty::StaticClass()) && Property->HasMetaData(TEXT("Enum"))))
+			const UByteProperty* ByteProperty = Cast<UByteProperty>(Property);
+			const UEnumProperty* EnumProperty = Cast<UEnumProperty>(Property);
+			if(ByteProperty || EnumProperty || (Property->IsA(UStrProperty::StaticClass()) && Property->HasMetaData(TEXT("Enum"))))
 			{
 				UEnum* Enum = nullptr;
 				if(ByteProperty)
@@ -573,7 +567,7 @@ namespace PropertyEditorHelpers
 		return TEXT("");
 	}
 
-	FString GetDocumentationExcerptName(const FProperty* const Property)
+	FString GetDocumentationExcerptName(const UProperty* const Property)
 	{
 		if ( Property != NULL )
 		{
@@ -640,10 +634,6 @@ namespace PropertyEditorHelpers
 		{
 			PropertyHandle = MakeShareable( new FPropertyHandleMap( PropertyNode, NotifyHook, PropertyUtilities ) );
 		}
-		else if (FPropertyHandleFieldPath::Supports(PropertyNode))
-		{
-			PropertyHandle = MakeShareable(new FPropertyHandleFieldPath(PropertyNode, NotifyHook, PropertyUtilities));
-		}
 		else
 		{
 			// Untyped or doesn't support getting the property directly but the property is still valid(probably struct property)
@@ -653,26 +643,26 @@ namespace PropertyEditorHelpers
 		return PropertyHandle;
 	}
 
-	static bool SupportsObjectPropertyButtons( FProperty* NodeProperty, bool bUsingAssetPicker )
+	static bool SupportsObjectPropertyButtons( UProperty* NodeProperty, bool bUsingAssetPicker )
 	{
-		return (NodeProperty->IsA<FObjectPropertyBase>() || NodeProperty->IsA<FInterfaceProperty>()) && (!bUsingAssetPicker || !SPropertyEditorAsset::Supports(NodeProperty));
+		return (NodeProperty->IsA<UObjectPropertyBase>() || NodeProperty->IsA<UInterfaceProperty>()) && (!bUsingAssetPicker || !SPropertyEditorAsset::Supports(NodeProperty));
 	}
 	
-	bool IsSoftObjectPath( const FProperty* Property )
+	bool IsSoftObjectPath( const UProperty* Property )
 	{
-		const FStructProperty* StructProp = CastField<const FStructProperty>( Property );
+		const UStructProperty* StructProp = Cast<const UStructProperty>( Property );
 		return StructProp && StructProp->Struct == TBaseStructure<FSoftObjectPath>::Get();
 	}
 
-	bool IsSoftClassPath( const FProperty* Property )
+	bool IsSoftClassPath( const UProperty* Property )
 	{
-		const FStructProperty* StructProp = CastField<const FStructProperty>(Property);
+		const UStructProperty* StructProp = Cast<const UStructProperty>(Property);
 		return StructProp && StructProp->Struct == TBaseStructure<FSoftClassPath>::Get();
 	}
 
 	void GetRequiredPropertyButtons( TSharedRef<FPropertyNode> PropertyNode, TArray<EPropertyButton::Type>& OutRequiredButtons, bool bUsingAssetPicker )
 	{
-		FProperty* NodeProperty = PropertyNode->GetProperty();
+		UProperty* NodeProperty = PropertyNode->GetProperty();
 
 		// If no property is bound, don't create any buttons.
 		if ( !NodeProperty )
@@ -681,14 +671,20 @@ namespace PropertyEditorHelpers
 		}
 
 		// If the property is an item of a const container, don't create any buttons.
-		const FArrayProperty* OuterArrayProp = NodeProperty->GetOwner<FArrayProperty>();
-		const FSetProperty* OuterSetProp = NodeProperty->GetOwner<FSetProperty>();
-		const FMapProperty* OuterMapProp = NodeProperty->GetOwner<FMapProperty>();
+		const UArrayProperty* OuterArrayProp = Cast<UArrayProperty>( NodeProperty->GetOuter() );
+		const USetProperty* OuterSetProp = Cast<USetProperty>( NodeProperty->GetOuter() );
+		const UMapProperty* OuterMapProp = Cast<UMapProperty>( NodeProperty->GetOuter() );
 
 		//////////////////////////////
 		// Handle a container property.
-		if( NodeProperty->IsA(FArrayProperty::StaticClass()) || NodeProperty->IsA(FSetProperty::StaticClass()) || NodeProperty->IsA(FMapProperty::StaticClass()) )
+		if( NodeProperty->IsA(UArrayProperty::StaticClass()) || NodeProperty->IsA(USetProperty::StaticClass()) || NodeProperty->IsA(UMapProperty::StaticClass()) )
 		{
+			if (!NodeProperty->IsA(UArrayProperty::StaticClass()))
+		{
+				// Only Sets and Maps get a Documentation widget
+				OutRequiredButtons.Add(EPropertyButton::Documentation);
+			}
+			
 			if( !(NodeProperty->PropertyFlags & CPF_EditFixedSize) )
 			{
 				OutRequiredButtons.Add( EPropertyButton::Add );
@@ -698,8 +694,8 @@ namespace PropertyEditorHelpers
 
 		//////////////////////////////
 		// Handle a class property.
-		FClassProperty* ClassProp = CastField<FClassProperty>(NodeProperty);
-		FSoftClassProperty* SoftClassProp = CastField<FSoftClassProperty>(NodeProperty);
+		UClassProperty* ClassProp = Cast<UClassProperty>(NodeProperty);
+		USoftClassProperty* SoftClassProp = Cast<USoftClassProperty>(NodeProperty);
 		if( ClassProp || SoftClassProp || IsSoftClassPath(NodeProperty))
 		{
 			OutRequiredButtons.Add( EPropertyButton::Use );			
@@ -754,7 +750,7 @@ namespace PropertyEditorHelpers
 			{
 				if( PropertyNode->HasNodeFlags(EPropertyNodeFlags::EditInlineNew) )
 				{
-					// hmmm, seems like this code could be removed and the code inside the 'if <FClassProperty>' check
+					// hmmm, seems like this code could be removed and the code inside the 'if <UClassProperty>' check
 					// below could be moved outside the else....but is there a reason to allow class properties to have the
 					// following buttons if the class property is marked 'editinline' (which is effectively what this logic is doing)
 					if( !(NodeProperty->PropertyFlags & CPF_NoClear) )
@@ -765,9 +761,9 @@ namespace PropertyEditorHelpers
 				else
 				{
 					// ignore class properties
-					if( (CastField<const FClassProperty>( NodeProperty ) == NULL) && (CastField<const FSoftClassProperty>( NodeProperty ) == NULL) )
+					if( (Cast<const UClassProperty>( NodeProperty ) == NULL) && (Cast<const USoftClassProperty>( NodeProperty ) == NULL) )
 					{
-						FObjectPropertyBase* ObjectProperty = CastField<FObjectPropertyBase>( NodeProperty );
+						UObjectPropertyBase* ObjectProperty = Cast<UObjectPropertyBase>( NodeProperty );
 
 						if( ObjectProperty && ObjectProperty->PropertyClass->IsChildOf( AActor::StaticClass() ) )
 						{
@@ -823,7 +819,7 @@ namespace PropertyEditorHelpers
 
 		if (OuterSetProp || OuterMapProp)
 		{
-			FProperty* OuterNodeProperty = NodeProperty->GetOwner<FProperty>();
+			UProperty* OuterNodeProperty = Cast<UProperty>(NodeProperty->GetOuter());
 
 			if ( PropertyNode->HasNodeFlags(EPropertyNodeFlags::SingleSelectOnly) && !(OuterNodeProperty->PropertyFlags & CPF_EditFixedSize) )
 			{
@@ -891,9 +887,9 @@ namespace PropertyEditorHelpers
 	{
 		FString SelectionPathName;
 
-		FProperty* Property = PropertyNode->GetProperty();
-		FClassProperty* ClassProperty = CastField<FClassProperty>(Property);
-		FSoftClassProperty* SoftClassProperty = CastField<FSoftClassProperty>(Property);
+		UProperty* Property = PropertyNode->GetProperty();
+		UClassProperty* ClassProperty = Cast<UClassProperty>(Property);
+		USoftClassProperty* SoftClassProperty = Cast<USoftClassProperty>(Property);
 
 		if (ClassProperty || SoftClassProperty)
 		{
@@ -910,13 +906,13 @@ namespace PropertyEditorHelpers
 			bool bMustBeLevelActor = false;
 			UClass* RequiredInterface = nullptr;
 
-			if (FObjectPropertyBase* ObjectProperty = CastField<FObjectPropertyBase>(Property))
+			if (UObjectPropertyBase* ObjectProperty = Cast<UObjectPropertyBase>(Property))
 			{
 				ObjectClass = ObjectProperty->PropertyClass;
 				bMustBeLevelActor = ObjectProperty->GetOwnerProperty()->GetBoolMetaData(TEXT("MustBeLevelActor"));
 				RequiredInterface = ObjectProperty->GetOwnerProperty()->GetClassMetaData(TEXT("MustImplement"));
 			}
-			else if (FInterfaceProperty* InterfaceProperty = CastField<FInterfaceProperty>(Property))
+			else if (UInterfaceProperty* InterfaceProperty = Cast<UInterfaceProperty>(Property))
 			{
 				ObjectClass = InterfaceProperty->InterfaceClass;
 			}
@@ -988,9 +984,9 @@ namespace PropertyEditorHelpers
 			TAttribute<bool>::FGetter::CreateLambda([WeakPropertyEditor, PropertyEditor]() {
 			if (WeakPropertyEditor.IsValid())
 			{
-				FProperty* Property = WeakPropertyEditor.Pin()->GetProperty();
+				UProperty* Property = WeakPropertyEditor.Pin()->GetProperty();
 				// Check for multiple array selections with mismatched values
-				FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Property);
+				UArrayProperty* ArrayProperty = Cast<UArrayProperty>(Property);
 				if (ArrayProperty)
 				{
 					FString ArrayString;
@@ -1098,7 +1094,7 @@ namespace PropertyEditorHelpers
 		
 	}
 
-	TArray<FName> GetValidEnumsFromPropertyOverride(const FProperty* Property, const UEnum* InEnum)
+	TArray<FName> GetValidEnumsFromPropertyOverride(const UProperty* Property, const UEnum* InEnum)
 	{
 		TArray<FName> ValidEnumValues;
 
@@ -1132,18 +1128,18 @@ namespace PropertyEditorHelpers
 	*/
 	bool IsVisibleStandaloneProperty(const FPropertyNode& PropertyNode, const FPropertyNode& ParentNode)
 	{
-		const FProperty* Property = PropertyNode.GetProperty();
-		const FArrayProperty* ParentArrayProperty = CastField<const FArrayProperty>(ParentNode.GetProperty());
+		const UProperty* Property = PropertyNode.GetProperty();
+		const UArrayProperty* ParentArrayProperty = Cast<const UArrayProperty>(ParentNode.GetProperty());
 
 		bool bIsVisibleStandalone = false;
 		if (Property)
 		{
-			if (Property->IsA(FObjectPropertyBase::StaticClass()))
+			if (Property->IsA(UObjectPropertyBase::StaticClass()))
 			{
 				// Do not add this child node to the current map if its a single object property in a category (serves no purpose for UI)
 				bIsVisibleStandalone = !ParentArrayProperty && (PropertyNode.GetNumChildNodes() == 0 || PropertyNode.GetNumChildNodes() > 1);
 			}
-			else if (Property->IsA(FArrayProperty::StaticClass()) || (Property->ArrayDim > 1 && PropertyNode.GetArrayIndex() == INDEX_NONE))
+			else if (Property->IsA(UArrayProperty::StaticClass()) || (Property->ArrayDim > 1 && PropertyNode.GetArrayIndex() == INDEX_NONE))
 			{
 				// Base array properties are always visible
 				bIsVisibleStandalone = true;
@@ -1161,15 +1157,15 @@ namespace PropertyEditorHelpers
 	static const FName NAME_DisplayAfter("DisplayAfter");
 	static const FName NAME_DisplayPriority("DisplayPriority");
 
-	void OrderPropertiesFromMetadata(TArray<FProperty*>& Properties)
+	void OrderPropertiesFromMetadata(TArray<UProperty*>& Properties)
 	{
-		TMap<FName, TArray<TTuple<FProperty*, int32>>> DisplayAfterPropertyMap;
-		TArray<TTuple<FProperty*, int32>> OrderedProperties;
+		TMap<FName, TArray<TTuple<UProperty*, int32>>> DisplayAfterPropertyMap;
+		TArray<TTuple<UProperty*, int32>> OrderedProperties;
 		OrderedProperties.Reserve(Properties.Num());
 
 		// First establish the properties that are not dependent on another property in display priority order
 		// At the same time build a display priority sorted list of order after properties for each property name
-		for (FProperty* Prop : Properties)
+		for (UProperty* Prop : Properties)
 		{
 			const FString& DisplayPriorityStr = Prop->GetMetaData(NAME_DisplayPriority);
 			int32 DisplayPriority = (DisplayPriorityStr.IsEmpty() ? MAX_int32 : FCString::Atoi(*DisplayPriorityStr));
@@ -1179,7 +1175,7 @@ namespace PropertyEditorHelpers
 				DisplayPriority = MAX_int32;
 			}
 
-			auto InsertProperty = [Prop, DisplayPriority](TArray<TTuple<FProperty*, int32>>& InsertToArray)
+			auto InsertProperty = [Prop, DisplayPriority](TArray<TTuple<UProperty*, int32>>& InsertToArray)
 			{
 				bool bInserted = false;
 				if (DisplayPriority != MAX_int32)
@@ -1209,7 +1205,7 @@ namespace PropertyEditorHelpers
 			}
 			else
 			{
-				TArray<TPair<FProperty*, int32>>& DisplayAfterProperties = DisplayAfterPropertyMap.FindOrAdd(FName(*DisplayAfterPropertyName));
+				TArray<TPair<UProperty*, int32>>& DisplayAfterProperties = DisplayAfterPropertyMap.FindOrAdd(FName(*DisplayAfterPropertyName));
 				InsertProperty(DisplayAfterProperties);
 			}
 		}
@@ -1222,9 +1218,9 @@ namespace PropertyEditorHelpers
 
 			for (int32 InsertIndex = 0; InsertIndex < OrderedProperties.Num(); ++InsertIndex)
 			{
-				FProperty* Prop = OrderedProperties[InsertIndex].Get<0>();
+				UProperty* Prop = OrderedProperties[InsertIndex].Get<0>();
 
-				if (TArray<TTuple<FProperty*, int32>>* DisplayAfterProperties = DisplayAfterPropertyMap.Find(Prop->GetFName()))
+				if (TArray<TTuple<UProperty*, int32>>* DisplayAfterProperties = DisplayAfterPropertyMap.Find(Prop->GetFName()))
 				{
 					OrderedProperties.Insert(MoveTemp(*DisplayAfterProperties), InsertIndex + 1);
 					DisplayAfterPropertyMap.Remove(Prop->GetFName());
@@ -1238,7 +1234,7 @@ namespace PropertyEditorHelpers
 
 		// Copy the sorted properties back in to the original array
 		Properties.Reset();
-		for (const TTuple<FProperty*, int32>& Property : OrderedProperties)
+		for (const TTuple<UProperty*, int32>& Property : OrderedProperties)
 		{
 			Properties.Add(Property.Get<0>());
 		}
@@ -1247,9 +1243,9 @@ namespace PropertyEditorHelpers
 		{
 			// If we hit this there is either a cycle or a dependency on something that doesn't exist, so just put them at the end of the list
 			// TODO: Some kind of warning?
-			for (TPair<FName, TArray<TTuple<FProperty*, int32>>>& DisplayAfterProperties : DisplayAfterPropertyMap)
+			for (TPair<FName, TArray<TTuple<UProperty*, int32>>>& DisplayAfterProperties : DisplayAfterPropertyMap)
 			{
-				for (const TTuple<FProperty*, int32>& Property : DisplayAfterProperties.Value)
+				for (const TTuple<UProperty*, int32>& Property : DisplayAfterProperties.Value)
 				{
 					Properties.Add(Property.Get<0>());
 				}

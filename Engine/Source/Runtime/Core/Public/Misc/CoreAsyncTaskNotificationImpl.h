@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -28,16 +28,6 @@ public:
 	virtual void SetProgressText(const FText& InProgressText) = 0;
 
 	/**
-	 * Set the prompt text of this notification.
-	 */
-	virtual void SetPromptText(const FText& InPromptText) = 0;
-
-	/**
-	 * Set the hyperlink text of this notification.
-	 */
-	virtual void SetHyperlink(const FSimpleDelegate& InHyperlink, const FText& InHyperlinkText) = 0;
-
-	/**
 	 * Set the task as complete.
 	 */
 	virtual void SetComplete(const bool bSuccess) = 0;
@@ -46,11 +36,6 @@ public:
 	 * Update the text and set the task as complete.
 	 */
 	virtual void SetComplete(const FText& InTitleText, const FText& InProgressText, const bool bSuccess) = 0;
-
-	/**
-	 * Set the task notification state. provides finer control than SetComplete
-	 */
-	virtual void SetNotificationState(const FAsyncNotificationStateData& InState) = 0;
 
 	/**
 	 * Set whether this task be canceled.
@@ -68,10 +53,9 @@ public:
 	virtual void SetKeepOpenOnFailure(const TAttribute<bool>& InKeepOpenOnFailure) = 0;
 
 	/**
-	 * Return the notification prompt action.
-	 * The action resets to `None` when the notification state changes.
+	 * True if the user has requested that the task be canceled
 	 */
-	virtual EAsyncTaskNotificationPromptAction GetPromptAction() const = 0;
+	virtual bool ShouldCancel() const = 0;
 };
 
 /**
@@ -87,22 +71,26 @@ public:
 	virtual void Initialize(const FAsyncTaskNotificationConfig& InConfig) override;
 	virtual void SetTitleText(const FText& InTitleText, const bool bClearProgressText) override;
 	virtual void SetProgressText(const FText& InProgressText) override;
-	virtual void SetPromptText(const FText& InPromptText) override;
-	virtual void SetHyperlink(const FSimpleDelegate& InHyperlink, const FText& InHyperlinkText) override;
 	virtual void SetComplete(const bool bSuccess) override;
 	virtual void SetComplete(const FText& InTitleText, const FText& InProgressText, const bool bSuccess) override;
-	virtual void SetNotificationState(const FAsyncNotificationStateData& InState) override;
 	virtual void SetCanCancel(const TAttribute<bool>& InCanCancel) override;
 	virtual void SetKeepOpenOnSuccess(const TAttribute<bool>& InKeepOpenOnSuccess) override;
 	virtual void SetKeepOpenOnFailure(const TAttribute<bool>& InKeepOpenOnFailure) override;
-	virtual EAsyncTaskNotificationPromptAction GetPromptAction() const override;
+	virtual bool ShouldCancel() const override;
 
 protected:
 	/** Update the notification (the critical section is held while this function is called) */
 	virtual void UpdateNotification();
 
+	enum class ENotificationState : uint8
+	{
+		Pending,
+		Success,
+		Failure,
+	};
+
 	/** The current state of this notification */
-	EAsyncTaskNotificationState State = EAsyncTaskNotificationState::Pending;
+	ENotificationState State = ENotificationState::Pending;
 
 	/** The title text displayed in the notification (if any) */
 	FText TitleText;
@@ -110,14 +98,6 @@ protected:
 	/** The progress text displayed in the notification (if any) */
 	FText ProgressText;
 
-	/** The progress text displayed in the notification (if any) */
-	FText PromptText;
-
-	/** When set this will display as a hyperlink on the right side of the notification. */
-	FSimpleDelegate Hyperlink;
-
-	/** Text to display for the hyperlink message */
-	FText HyperlinkText;
 private:
 	/** Log the current notification state (if any, and if enabled) */
 	void LogNotification();

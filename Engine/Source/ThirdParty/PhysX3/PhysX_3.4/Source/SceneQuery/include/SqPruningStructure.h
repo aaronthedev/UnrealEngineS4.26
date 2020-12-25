@@ -67,7 +67,7 @@ namespace physx
 			static			void					getBinaryMetaData(PxOutputStream& stream);
 			void									exportExtraData(PxSerializationContext&);
 			void									importExtraData(PxDeserializationContext&);
-			virtual			void					requiresObjects(PxProcessPxBaseCallback&);
+			virtual			void					requires(PxProcessPxBaseCallback&);
 			//~PX_SERIALIZATION
 
 			// PX_PRUNING_STRUCTURE

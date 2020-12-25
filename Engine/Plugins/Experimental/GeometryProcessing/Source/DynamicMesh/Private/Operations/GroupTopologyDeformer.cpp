@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Operations/GroupTopologyDeformer.h"
 #include "DynamicMesh3.h"
@@ -6,7 +6,6 @@
 #include "SegmentTypes.h"
 #include "Async/ParallelFor.h"
 #include "Containers/BitArray.h"
-#include "MeshNormals.h"
 
 
 void FGroupTopologyDeformer::Initialize(const FDynamicMesh3* MeshIn, const FGroupTopology* TopologyIn)
@@ -36,29 +35,18 @@ void FGroupTopologyDeformer::SetActiveHandleFaces(const TArray<int>& FaceGroupID
 {
 	Reset();
 
-	// is this right? some HandleBoundaryVertices may also be interior if we do it per-face...
-	for (int GroupID : FaceGroupIDs)
-	{
-		Topology->CollectGroupVertices(GroupID, HandleVertices);
-		Topology->CollectGroupBoundaryVertices(GroupID, HandleBoundaryVertices);
-	}
+	check(FaceGroupIDs.Num() == 1);   // multi-face not supported yet
+	int GroupID = FaceGroupIDs[0];
+
+	// find set of vertices in handle 
+	Topology->CollectGroupVertices(GroupID, HandleVertices);
+	Topology->CollectGroupBoundaryVertices(GroupID, HandleBoundaryVertices);
 	ModifiedVertices = HandleVertices;
 
 	// find neighbour group set
 	TArray<int> HandleGroups = FaceGroupIDs;
-	TArray<int> AllGroupNbrGroups;
-	for (int GroupID : FaceGroupIDs)
-	{
-		const TArray<int>& CurGroupNbrGroups = Topology->GetGroupNbrGroups(GroupID);
-		for (int NbrGroupID : CurGroupNbrGroups)
-		{
-			if (HandleGroups.Contains(NbrGroupID) == false)
-			{
-				AllGroupNbrGroups.AddUnique(NbrGroupID);
-			}
-		}
-	}
-	CalculateROI(HandleGroups, AllGroupNbrGroups);
+	const TArray<int>& GroupNbrGroups = Topology->GetGroupNbrGroups(GroupID);
+	CalculateROI(HandleGroups, GroupNbrGroups);
 
 	SaveInitialPositions();
 
@@ -188,24 +176,6 @@ void FGroupTopologyDeformer::CalculateROI(const TArray<int>& HandleGroups, const
 			ModifiedVertices.Add(vid);
 		}
 	}
-
-	if (Mesh->HasAttributes() && Mesh->Attributes()->PrimaryNormals() != nullptr)
-	{
-		const FDynamicMeshNormalOverlay* Normals = Mesh->Attributes()->PrimaryNormals();
-		for (int32 vid : ModifiedVertices)
-		{
-			for (int32 tid : Mesh->VtxTrianglesItr(vid))
-			{
-				if (Normals->IsSetTriangle(tid))
-				{
-					FIndex3i NormalTri = Normals->GetTriangle(tid);
-					ModifiedOverlayNormals.Add(NormalTri.A);
-					ModifiedOverlayNormals.Add(NormalTri.B);
-					ModifiedOverlayNormals.Add(NormalTri.C);
-				}
-			}
-		}
-	}
 }
 
 
@@ -333,8 +303,6 @@ void FGroupTopologyDeformer::UpdateSolution(FDynamicMesh3* TargetMesh, const TFu
 			TargetMesh->SetVertex(Face.InteriorVerts[vi], Sum);
 		}
 	});
-
-	FMeshNormals::QuickRecomputeOverlayNormals(*TargetMesh);
 }
 
 

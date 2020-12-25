@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 DebugViewModeMaterialProxy.cpp : Contains definitions the debug view mode material shaders.
@@ -31,11 +31,11 @@ FDebugViewModeMaterialProxy::FDebugViewModeMaterialProxy(
 	, bIsDefaultMaterial(InMaterialInterface->GetMaterial()->IsDefaultMaterial())
 	, bSynchronousCompilation(InSynchronousCompilation)
 {
-	SetQualityLevelProperties(FeatureLevel);
+	SetQualityLevelProperties(QualityLevel, false, FeatureLevel);
 	const EShaderPlatform ShaderPlatform = GetFeatureLevelShaderPlatform(FeatureLevel);
 
 	Material = InMaterialInterface->GetMaterial();
-	ReferencedTextures = MaterialInterface->GetReferencedTextures();
+	MaterialInterface->AppendReferencedTextures(ReferencedTextures);
 
 	FMaterialResource* Resource = InMaterialInterface->GetMaterialResource(FeatureLevel);
 	if (Resource)
@@ -62,16 +62,14 @@ FDebugViewModeMaterialProxy::FDebugViewModeMaterialProxy(
 				bIsUsedWithInstancedStaticMeshes = Resource->IsUsedWithInstancedStaticMeshes();
 				bIsUsedWithAPEXCloth = Resource->IsUsedWithAPEXCloth();
 				bIsUsedWithWater = Resource->IsUsedWithWater();
-				bIsUsedWithVirtualHeightfieldMesh = Resource->IsUsedWithVirtualHeightfieldMesh();
-				bIsUsedWithGeometryCache = Resource->IsUsedWithGeometryCache();
-				bIsUsedWithHairStrands = Resource->IsUsedWithHairStrands();
-				bIsUsedWithLidarPointCloud = Resource->IsUsedWithLidarPointCloud();
-				bIsUsedWithGeometryCollections = Resource->IsUsedWithGeometryCollections();
 			}
 		}
 
 		FMaterialShaderMapId ResourceId;
-		Resource->GetShaderMapId(ShaderPlatform, nullptr, ResourceId);
+		Resource->GetShaderMapId(ShaderPlatform, ResourceId);
+
+		FStaticParameterSet StaticParamSet;
+		Resource->GetStaticParameterSet(ShaderPlatform, StaticParamSet);
 
 		{
 			TArray<FShaderType*> ShaderTypes;
@@ -86,7 +84,7 @@ FDebugViewModeMaterialProxy::FDebugViewModeMaterialProxy(
 
 		ResourceId.Usage = Usage;
 
-		CacheShaders(ResourceId, ShaderPlatform);
+		CacheShaders(ResourceId, StaticParamSet, ShaderPlatform);
 	}
 	else
 	{
@@ -112,22 +110,22 @@ const FMaterial& FDebugViewModeMaterialProxy::GetMaterialWithFallback(ERHIFeatur
 	}
 }
 
-bool FDebugViewModeMaterialProxy::GetVectorValue(const FHashedMaterialParameterInfo& ParameterInfo, FLinearColor* OutValue, const FMaterialRenderContext& Context) const
+bool FDebugViewModeMaterialProxy::GetVectorValue(const FMaterialParameterInfo& ParameterInfo, FLinearColor* OutValue, const FMaterialRenderContext& Context) const
 {
 	return MaterialInterface->GetRenderProxy()->GetVectorValue(ParameterInfo, OutValue, Context);
 }
 
-bool FDebugViewModeMaterialProxy::GetScalarValue(const FHashedMaterialParameterInfo& ParameterInfo, float* OutValue, const FMaterialRenderContext& Context) const
+bool FDebugViewModeMaterialProxy::GetScalarValue(const FMaterialParameterInfo& ParameterInfo, float* OutValue, const FMaterialRenderContext& Context) const
 {
 	return MaterialInterface->GetRenderProxy()->GetScalarValue(ParameterInfo, OutValue, Context);
 }
 
-bool FDebugViewModeMaterialProxy::GetTextureValue(const FHashedMaterialParameterInfo& ParameterInfo,const UTexture** OutValue, const FMaterialRenderContext& Context) const
+bool FDebugViewModeMaterialProxy::GetTextureValue(const FMaterialParameterInfo& ParameterInfo,const UTexture** OutValue, const FMaterialRenderContext& Context) const
 {
 	return MaterialInterface->GetRenderProxy()->GetTextureValue(ParameterInfo,OutValue,Context);
 }
 
-bool FDebugViewModeMaterialProxy::GetTextureValue(const FHashedMaterialParameterInfo& ParameterInfo, const URuntimeVirtualTexture** OutValue, const FMaterialRenderContext& Context) const
+bool FDebugViewModeMaterialProxy::GetTextureValue(const FMaterialParameterInfo& ParameterInfo, const URuntimeVirtualTexture** OutValue, const FMaterialRenderContext& Context) const
 {
 	return MaterialInterface->GetRenderProxy()->GetTextureValue(ParameterInfo, OutValue, Context);
 }
@@ -235,14 +233,6 @@ float FDebugViewModeMaterialProxy::GetMaxDisplacement() const
 {
 	FMaterialResource* Resource = MaterialInterface->GetMaterialResource(FeatureLevel);
 	return Resource ? Resource->GetMaxDisplacement() : 0.0f;
-}
-
-void FDebugViewModeMaterialProxy::GetStaticParameterSet(EShaderPlatform Platform, FStaticParameterSet& OutSet) const
-{
-	if (const FMaterialResource* Resource = MaterialInterface->GetMaterialResource(GMaxRHIFeatureLevel))
-	{
-		Resource->GetStaticParameterSet(Platform, OutSet);
-	}
 }
 
 #endif // WITH_EDITORONLY_DATA

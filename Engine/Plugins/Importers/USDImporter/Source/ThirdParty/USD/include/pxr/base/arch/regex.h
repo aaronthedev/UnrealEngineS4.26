@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_ARCH_REGEX_H
-#define PXR_BASE_ARCH_REGEX_H
+#ifndef ARCH_REGEX_H
+#define ARCH_REGEX_H
 
 #include "pxr/pxr.h"
 #include "pxr/base/arch/api.h"
@@ -41,9 +41,9 @@ public:
     ARCH_API ArchRegex();
     ARCH_API ArchRegex(const std::string& pattern, unsigned int flags = 0);
     ArchRegex(const ArchRegex&) = delete;
-    ARCH_API ArchRegex(ArchRegex&&) noexcept;
+    ARCH_API ArchRegex(ArchRegex&&);
     ArchRegex& operator=(const ArchRegex&) = delete;
-    ARCH_API ArchRegex& operator=(ArchRegex&&) noexcept;
+    ARCH_API ArchRegex& operator=(ArchRegex&&);
     ARCH_API ~ArchRegex();
 
     /// Returns \c true if the regex is valid.
@@ -69,4 +69,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_ARCH_REGEX_H
+#endif // ARCH_REGEX_H

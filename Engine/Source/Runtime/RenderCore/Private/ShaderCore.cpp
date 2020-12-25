@@ -1,7 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
-	ShaderCore.cpp: Shader core module implementation.
+	ShaderCore.h: Shader core module implementation.
 =============================================================================*/
 
 #include "ShaderCore.h"
@@ -12,7 +12,6 @@
 #include "Stats/StatsMisc.h"
 #include "Misc/ScopedSlowTask.h"
 #include "Shader.h"
-#include "ShaderCompilerCore.h"
 #include "VertexFactory.h"
 #include "Modules/ModuleManager.h"
 #include "Interfaces/IShaderFormat.h"
@@ -23,10 +22,7 @@
 #include "Interfaces/ITargetPlatform.h"
 #include "Interfaces/ITargetPlatformManagerModule.h"
 #include "Misc/ConfigCacheIni.h"
-#include "Misc/StringBuilder.h"
 #endif
-
-#define VALIDATE_GLOBAL_UNIFORM_BUFFERS (!UE_BUILD_SHIPPING && !UE_BUILD_TEST)
 
 static TAutoConsoleVariable<int32> CVarShaderDevelopmentMode(
 	TEXT("r.ShaderDevelopmentMode"),
@@ -94,7 +90,7 @@ DEFINE_STAT(STAT_Shaders_TotalRTShaderInitForRenderingTime);
 DEFINE_STAT(STAT_Shaders_FrameRTShaderInitForRenderingTime);
 DEFINE_STAT(STAT_Shaders_ShaderMemory);
 DEFINE_STAT(STAT_Shaders_ShaderResourceMemory);
-DEFINE_STAT(STAT_Shaders_ShaderPreloadMemory);
+DEFINE_STAT(STAT_Shaders_ShaderMapMemory);
 
 DEFINE_STAT(STAT_Shaders_NumShadersRegistered);
 DEFINE_STAT(STAT_Shaders_NumShadersDuplicated);
@@ -264,9 +260,7 @@ bool AllowDebugViewmodes(EShaderPlatform Platform)
 	const int32 ForceDebugViewValue = CVarForceDebugViewModes.GetValueOnAnyThread();
 	bool bForceEnable = ForceDebugViewValue == 1;
 	bool bForceDisable = ForceDebugViewValue == 2;
-	TStringBuilder<64> PlatformName;
-	ShaderPlatformToPlatformName(Platform).ToString(PlatformName);
-	ITargetPlatform* TargetPlatform = GetTargetPlatformManager()->FindTargetPlatform(PlatformName);
+	ITargetPlatform* TargetPlatform = GetTargetPlatformManager()->FindTargetPlatform(ShaderPlatformToPlatformName(Platform).ToString());
 	return (!bForceDisable) && (bForceEnable || !TargetPlatform || !TargetPlatform->RequiresCookedData());
 #else
 	return AllowDebugViewmodes();
@@ -356,48 +350,6 @@ bool ShouldExportShaderDebugInfo(EShaderPlatform Platform)
 {
 	static uint64 GExportDebugInfoPlatforms = GetExportShaderDebugInfoPlatforms();
 	return (GExportDebugInfoPlatforms & (uint64(1) << Platform)) != 0;
-}
-
-void ValidateStaticUniformBuffer(FRHIUniformBuffer* UniformBuffer, FUniformBufferStaticSlot Slot, uint32 ExpectedHash)
-{
-#if VALIDATE_GLOBAL_UNIFORM_BUFFERS
-	FUniformBufferStaticSlotRegistry& SlotRegistry = FUniformBufferStaticSlotRegistry::Get();
-
-	if (!UniformBuffer)
-	{
-		const FShaderParametersMetadata* ExpectedStructMetadata = FindUniformBufferStructByLayoutHash(ExpectedHash);
-
-		checkf(
-			ExpectedStructMetadata,
-			TEXT("Shader is requesting a uniform buffer at slot %s with hash '%u', but a reverse lookup of the hash can't find it. The shader cache may be out of date."),
-			*SlotRegistry.GetDebugDescription(Slot), ExpectedHash);
-
-		UE_LOG(LogShaders, Fatal,
-			TEXT("Shader requested a global uniform buffer of type '%s' at static slot '%s', but it was null. The uniform buffer should ")
-			TEXT("be bound using RHICmdList.SetGlobalUniformBuffers() or passed into an RDG pass using SHADER_PARAMETER_STRUCT_REF() or ")
-			TEXT("SHADER_PARAMETER_RDG_UNIFORM_BUFFER()."),
-			ExpectedStructMetadata->GetShaderVariableName(), *SlotRegistry.GetDebugDescription(Slot));
-	}
-	else
-	{
-		const FRHIUniformBufferLayout& Layout = UniformBuffer->GetLayout();
-
-		if (Layout.GetHash() != ExpectedHash)
-		{
-			const FShaderParametersMetadata* ExpectedStructMetadata = FindUniformBufferStructByLayoutHash(ExpectedHash);
-
-			checkf(
-				ExpectedStructMetadata,
-				TEXT("Shader is requesting uniform buffer '%s' at slot %s with hash '%u', but a reverse lookup of the hash can't find it. The shader cache may be out of date."),
-				*Layout.GetDebugName(), *SlotRegistry.GetDebugDescription(Slot), ExpectedHash);
-
-			checkf(
-				false,
-				TEXT("Shader attempted to bind uniform buffer '%s' at slot %s with hash '%u', but the shader expected '%s' with hash '%u'."),
-				*Layout.GetDebugName(), *SlotRegistry.GetDebugDescription(Slot), ExpectedHash, ExpectedStructMetadata->GetShaderVariableName(), Layout.GetHash());
-		}
-	}
-#endif
 }
 
 bool FShaderParameterMap::FindParameterAllocation(const TCHAR* ParameterName,uint16& OutBufferIndex,uint16& OutBaseIndex,uint16& OutSize) const
@@ -529,7 +481,7 @@ bool CheckVirtualShaderFilePath(const FString& VirtualFilePath, TArray<FShaderCo
 * @param OutVirtualFilePaths - [out] list of shader source files to add to
 * @param ShaderFilename - shader file to add
 */
-void AddShaderSourceFileEntry(TArray<FString>& OutVirtualFilePaths, FString VirtualFilePath, EShaderPlatform ShaderPlatform)
+static void AddShaderSourceFileEntry(TArray<FString>& OutVirtualFilePaths, FString VirtualFilePath, EShaderPlatform ShaderPlatform)
 {
 	check(CheckVirtualShaderFilePath(VirtualFilePath));
 	if (!OutVirtualFilePaths.Contains(VirtualFilePath))
@@ -550,7 +502,7 @@ void AddShaderSourceFileEntry(TArray<FString>& OutVirtualFilePaths, FString Virt
 *
 * @param OutVirtualFilePaths - [out] list of shader source files to add to
 */
-void GetAllVirtualShaderSourcePaths(TArray<FString>& OutVirtualFilePaths, EShaderPlatform ShaderPlatform)
+static void GetAllVirtualShaderSourcePaths(TArray<FString>& OutVirtualFilePaths, EShaderPlatform ShaderPlatform)
 {
 	// add all shader source files for hashing
 	for( TLinkedList<FVertexFactoryType*>::TIterator FactoryIt(FVertexFactoryType::GetTypeList()); FactoryIt; FactoryIt.Next() )
@@ -609,7 +561,7 @@ static void LogShaderSourceDirectoryMappings()
 	}
 }
 
-FString GetShaderSourceFilePath(const FString& VirtualFilePath, TArray<FShaderCompilerError>* CompileErrors)
+static FString GetShaderSourceFilePath(const FString& VirtualFilePath, TArray<FShaderCompilerError>* CompileErrors)
 {
 	// Make sure the .usf extension is correctly set.
 	if (!CheckVirtualShaderFilePath(VirtualFilePath, CompileErrors))
@@ -659,18 +611,18 @@ FString GetShaderSourceFilePath(const FString& VirtualFilePath, TArray<FShaderCo
 FString ParseVirtualShaderFilename(const FString& InFilename)
 {
 	FString ShaderDir = FString(FPlatformProcess::ShaderDir());
-	ShaderDir.ReplaceInline(TEXT("\\"), TEXT("/"), ESearchCase::CaseSensitive);
+	ShaderDir.ReplaceInline(TEXT("\\"), TEXT("/"));
 	int32 CharIndex = ShaderDir.Find(TEXT("/"), ESearchCase::CaseSensitive, ESearchDir::FromEnd, ShaderDir.Len() - 1);
 	if (CharIndex != INDEX_NONE)
 	{
-		ShaderDir.RightInline(ShaderDir.Len() - CharIndex, false);
+		ShaderDir = ShaderDir.Right(ShaderDir.Len() - CharIndex);
 	}
 
-	FString RelativeFilename = InFilename.Replace(TEXT("\\"), TEXT("/"), ESearchCase::CaseSensitive);
+	FString RelativeFilename = InFilename.Replace(TEXT("\\"), TEXT("/"));
 	// remove leading "/" because this makes path absolute on Linux (and Mac).
 	if (RelativeFilename.Len() > 0 && RelativeFilename[0] == TEXT('/'))
 	{
-		RelativeFilename.RightInline(RelativeFilename.Len() - 1, false);
+		RelativeFilename = RelativeFilename.Right(RelativeFilename.Len() - 1);
 	}
 	RelativeFilename = IFileManager::Get().ConvertToRelativePath(*RelativeFilename);
 	CharIndex = RelativeFilename.Find(ShaderDir);
@@ -694,7 +646,7 @@ FString ParseVirtualShaderFilename(const FString& InFilename)
 			}
 			while (NewCharIndex != INDEX_NONE && ++NumDirsSkipped < NumDirsToSkip);
 		}
-		RelativeFilename.MidInline(CharIndex, RelativeFilename.Len() - CharIndex, false);
+		RelativeFilename = RelativeFilename.Mid(CharIndex, RelativeFilename.Len() - CharIndex);
 	}
 
 	// add leading "/" to the relative filename because that's what virtual shader path expects
@@ -840,39 +792,6 @@ const TCHAR* SkipToCharOnCurrentLine(const TCHAR* InStr, TCHAR TargetChar)
 }
 
 /**
-* Find the first valid preprocessor include directive in the given text.
-* @return Pointer to start of first include directive if found.  nullptr otherwise.
-*/
-static const TCHAR* FindFirstInclude(const TCHAR* Text)
-{
-	const TCHAR *IncludeToken = TEXT("include");
-	const uint32 IncludeTokenLength = FCString::Strlen(IncludeToken);
-	const TCHAR* PreprocessorDirectiveStart = FCString::Strstr(Text, TEXT("#"));
-	while (PreprocessorDirectiveStart)
-	{
-		// Eat any whitespace between # and the next token.
-		const TCHAR* ParseHead = PreprocessorDirectiveStart + 1;
-		while (*ParseHead == TEXT(' ') || *ParseHead == TEXT('\t'))
-		{
-			++ParseHead;
-		}
-		// Check for "include" token.
-		if (FCString::Strnicmp(ParseHead, IncludeToken, IncludeTokenLength) == 0)
-		{
-			ParseHead += IncludeTokenLength;
-		}
-		// Need a trailing whitespace character to make a valid include directive.
-		if (*ParseHead == TEXT(' ') || *ParseHead == TEXT('\t'))
-		{
-			return PreprocessorDirectiveStart;
-		}
-		// Look for the next preprocess directive.
-		PreprocessorDirectiveStart = *PreprocessorDirectiveStart ? FCString::Strstr(PreprocessorDirectiveStart + 1, TEXT("#")) : nullptr;
-	}
-	return nullptr;
-}
-
-/**
  * Recursively populates IncludeFilenames with the unique include filenames found in the shader file named Filename.
  */
 static void GetShaderIncludes(const TCHAR* EntryPointVirtualFilePath, const TCHAR* VirtualFilePath, TArray<FString>& IncludeVirtualFilePaths, EShaderPlatform ShaderPlatform, uint32 DepthLimit, bool AddToIncludeFile)
@@ -889,7 +808,7 @@ static void GetShaderIncludes(const TCHAR* EntryPointVirtualFilePath, const TCHA
 		}
 
 		//find the first include directive
-		const TCHAR* IncludeBegin = FindFirstInclude(*FileContents);
+		const TCHAR* IncludeBegin = FCString::Strstr(*FileContents, TEXT("#include "));
 
 		uint32 SearchCount = 0;
 		const uint32 MaxSearchCount = 200;
@@ -952,7 +871,7 @@ static void GetShaderIncludes(const TCHAR* EntryPointVirtualFilePath, const TCHA
 			//find the next include directive
 			if (IncludeBegin && *IncludeBegin != 0)
 			{
-				IncludeBegin = FindFirstInclude(IncludeBegin + 1);
+				IncludeBegin = FCString::Strstr(IncludeBegin + 1, TEXT("#include "));
 			}
 			SearchCount++;
 		}
@@ -1307,9 +1226,7 @@ void AddShaderSourceDirectoryMapping(const FString& VirtualShaderDirectory, cons
 {
 	check(IsInGameThread());
 
-	static const bool bNoShaderCompile = FParse::Param(FCommandLine::Get(), TEXT("NoShaderCompile"));
-
-	if (FPlatformProperties::RequiresCookedData() || bNoShaderCompile)
+	if (FPlatformProperties::RequiresCookedData())
 	{
 		return;
 	}
@@ -1323,7 +1240,7 @@ void AddShaderSourceDirectoryMapping(const FString& VirtualShaderDirectory, cons
 	check(!GShaderSourceDirectoryMappings.Contains(VirtualShaderDirectory));
 
 	// Make sure the real directory to map exists.
-	checkf(FPaths::DirectoryExists(RealShaderDirectory), TEXT("FPaths::DirectoryExists(%s)"), *RealShaderDirectory);
+	check(FPaths::DirectoryExists(RealShaderDirectory));
 
 	// Make sure the Generated directory does not exist, because is reserved for C++ generated shader source
 	// by the FShaderCompilerEnvironment::IncludeVirtualPathToContentsMap member.

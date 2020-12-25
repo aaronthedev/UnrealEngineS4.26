@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 /*=============================================================================
 	UniformExpressions.h: Uniform expression definitions.
 =============================================================================*/
@@ -12,156 +12,10 @@
 #include "Engine/Texture.h"
 #include "Materials/MaterialExpressionTextureProperty.h"
 #include "Materials/MaterialLayersFunctions.h"
+#include "UObject/RenderingObjectVersion.h"
 
-/**
- * Represents a subclass of FMaterialUniformExpression.
- */
-class FMaterialUniformExpressionType
-{
-public:
-	/**
-	 * @return The global uniform expression type list.  The list is used to temporarily store the types until
-	 *			the name subsystem has been initialized.
-	 */
-	static TLinkedList<FMaterialUniformExpressionType*>*& GetTypeList();
-
-	/**
-	 * Should not be called until the name subsystem has been initialized.
-	 * @return The global uniform expression type map.
-	 */
-	static TMap<FName, FMaterialUniformExpressionType*>& GetTypeMap();
-
-	/**
-	 * Minimal initialization constructor.
-	 */
-	FMaterialUniformExpressionType(const TCHAR* InName);
-
-	const TCHAR* GetName() const { return Name; }
-
-private:
-	const TCHAR* Name;
-};
-
-#define DECLARE_MATERIALUNIFORMEXPRESSION_TYPE(Name) \
-	public: \
-	static FMaterialUniformExpressionType StaticType; \
-	virtual FMaterialUniformExpressionType* GetType() const { return &StaticType; }
-
-#define IMPLEMENT_MATERIALUNIFORMEXPRESSION_TYPE(Name) \
-	FMaterialUniformExpressionType Name::StaticType(TEXT(#Name));
-
-/**
- * Represents an expression which only varies with uniform inputs.
- */
-class FMaterialUniformExpression : public FRefCountedObject
-{
-public:
-	virtual ~FMaterialUniformExpression() {}
-
-	virtual FMaterialUniformExpressionType* GetType() const = 0;
-	virtual class FMaterialUniformExpressionTexture* GetTextureUniformExpression() { return nullptr; }
-	virtual class FMaterialUniformExpressionExternalTexture* GetExternalTextureUniformExpression() { return nullptr; }
-	virtual bool IsConstant() const { return false; }
-	virtual bool IsIdentical(const FMaterialUniformExpression* OtherExpression) const { return false; }
-
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const;
-
-	virtual void GetNumberValue(const struct FMaterialRenderContext& Context, FLinearColor& OutValue) const;
-};
-
-/**
- * A texture expression.
- */
-class FMaterialUniformExpressionTexture : public FMaterialUniformExpression
-{
-	DECLARE_MATERIALUNIFORMEXPRESSION_TYPE(FMaterialUniformExpressionTexture);
-
-public:
-	FMaterialUniformExpressionTexture();
-	FMaterialUniformExpressionTexture(int32 InTextureIndex, EMaterialSamplerType InSamplerType, ESamplerSourceMode InSamplerSource, bool InVirtualTexture);
-	FMaterialUniformExpressionTexture(int32 InTextureIndex, int16 InTextureLayerIndex, int16 InPageTableLayerIndex, EMaterialSamplerType InSamplerType);
-
-	//~ Begin FMaterialUniformExpression Interface.
-	virtual class FMaterialUniformExpressionTexture* GetTextureUniformExpression() { return this; }
-	virtual class FMaterialUniformExpressionTextureParameter* GetTextureParameterUniformExpression() { return nullptr; }
-	virtual bool IsIdentical(const FMaterialUniformExpression* OtherExpression) const;
-	//~ End FMaterialUniformExpression Interface.
-
-	/** Gets texture index which is the index in the full set of referenced textures for this material. */
-	int32 GetTextureIndex() const { return TextureIndex; }
-	/** Gets the texture layer index in the virtual texture stack if this is fixed. If we don't have a fixed layer then we will allocate during compilation (and not store here). */
-	int32 GetTextureLayerIndex() const { return TextureLayerIndex; }
-	/** Gets the page table channel index in the virtual texture stack if this is fixed. If we don't have a fixed layer then we will allocate during compilation (and not store here). */
-	int32 GetPageTableLayerIndex() const { return PageTableLayerIndex; }
-
-#if WITH_EDITORONLY_DATA
-	/** Get the sampling/decoding logic to compile in the shader for this texture. */
-	EMaterialSamplerType GetSamplerType() const { return SamplerType; }
-#endif
-
-	/** Get the sampler state object to use (globally shared or from texture asset).  */
-	ESamplerSourceMode GetSamplerSource() const { return SamplerSource; }
-
-	virtual void GetTextureParameterInfo(FMaterialTextureParameterInfo& OutParameter) const;
-
-protected:
-	/** Index into FMaterial::GetReferencedTextures */
-	int32 TextureIndex;
-	/** Texture layer index in virtual texture stack if preallocated */
-	int16 TextureLayerIndex;
-	/** Page table layer index in virtual texture stack if preallocated */
-	int16 PageTableLayerIndex;
-#if WITH_EDITORONLY_DATA
-	/** Sampler logic for this expression */
-	EMaterialSamplerType SamplerType;
-#endif
-	/** Sampler state object source for this expression */
-	ESamplerSourceMode SamplerSource;
-	/** Virtual texture flag used only for unique serialization */
-	bool bVirtualTexture;
-};
-
-class FMaterialUniformExpressionExternalTextureBase : public FMaterialUniformExpression
-{
-	DECLARE_MATERIALUNIFORMEXPRESSION_TYPE(FMaterialUniformExpressionExternalTextureBase);
-public:
-
-	FMaterialUniformExpressionExternalTextureBase(int32 InSourceTextureIndex = INDEX_NONE);
-	FMaterialUniformExpressionExternalTextureBase(const FGuid& InExternalTextureGuid);
-
-	virtual bool IsConstant() const override { return false; }
-	virtual bool IsIdentical(const FMaterialUniformExpression* OtherExpression) const override;
-
-	int32 GetSourceTextureIndex() const { return SourceTextureIndex; }
-
-protected:
-
-	/** Resolve the guid that relates to texture information inside FExternalTexture */
-	FGuid ResolveExternalTextureGUID(const FMaterialRenderContext& Context, TOptional<FName> ParameterName = TOptional<FName>()) const;
-
-	/** Index of the texture in the material that should be used to retrieve the external texture GUID at runtime (or INDEX_NONE) */
-	int32 SourceTextureIndex;
-	/** Optional external texture GUID defined at compile time */
-	FGuid ExternalTextureGuid;
-};
-
-/**
-* An external texture expression.
-*/
-class FMaterialUniformExpressionExternalTexture : public FMaterialUniformExpressionExternalTextureBase
-{
-	DECLARE_MATERIALUNIFORMEXPRESSION_TYPE(FMaterialUniformExpressionExternalTexture);
-public:
-
-	FMaterialUniformExpressionExternalTexture(int32 InSourceTextureIndex = INDEX_NONE) : FMaterialUniformExpressionExternalTextureBase(InSourceTextureIndex) {}
-	FMaterialUniformExpressionExternalTexture(const FGuid& InGuid) : FMaterialUniformExpressionExternalTextureBase(InGuid) {}
-
-	// FMaterialUniformExpression interface.
-	virtual FMaterialUniformExpressionExternalTexture* GetExternalTextureUniformExpression() override { return this; }
-	virtual class FMaterialUniformExpressionExternalTextureParameter* GetExternalTextureParameterUniformExpression() { return nullptr; }
-
-	virtual void GetExternalTextureParameterInfo(FMaterialExternalTextureParameterInfo& OutParameter) const;
-};
+// Temporary flag for toggling experimental material layers functionality
+bool AreExperimentalMaterialLayersEnabled();
 
 /**
  */
@@ -176,6 +30,14 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
+	virtual void Serialize(FArchive& Ar)
+	{
+		Ar << Value << ValueType;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		OutValue = Value;
+	}
 	virtual bool IsConstant() const
 	{
 		return true;
@@ -190,17 +52,6 @@ public:
 		return OtherConstant->ValueType == ValueType && OtherConstant->Value == Value;
 	}
 
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
-	{
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::Constant);
-		OutData.Write(Value);
-	}
-
-	virtual void GetNumberValue(const FMaterialRenderContext& Context, FLinearColor& OutValue) const override
-	{
-		OutValue = Value;
-	}
-
 private:
 	FLinearColor Value;
 	uint8 ValueType;
@@ -213,34 +64,70 @@ class FMaterialUniformExpressionVectorParameter: public FMaterialUniformExpressi
 	DECLARE_MATERIALUNIFORMEXPRESSION_TYPE(FMaterialUniformExpressionVectorParameter);
 public:
 
-	FMaterialUniformExpressionVectorParameter() {}
-	FMaterialUniformExpressionVectorParameter(const FMaterialParameterInfo& InParameterInfo, int32 InParameterIndex)
+	FMaterialUniformExpressionVectorParameter()
+#if WITH_EDITOR
+		: bUseOverriddenDefault(false)
+#endif
+	{}
+
+	FMaterialUniformExpressionVectorParameter(const FMaterialParameterInfo& InParameterInfo,const FLinearColor& InDefaultValue)
 		: ParameterInfo(InParameterInfo)
-		, ParameterIndex(InParameterIndex)
-	{
-		check(InParameterIndex >= 0 && InParameterIndex <= 0xffff);
-	}
+		, DefaultValue(InDefaultValue)
+#if WITH_EDITOR
+		, bUseOverriddenDefault(false)
+#endif
+	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::VectorParameter);
-		OutData.Write((uint16)ParameterIndex);
+		Ar << ParameterInfo << DefaultValue;
 	}
+
+	// inefficient compared to GetGameThreadNumberValue(), for editor purpose
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		OutValue.R = OutValue.G = OutValue.B = OutValue.A = 0;
+
+		if(!Context.MaterialRenderProxy || !Context.MaterialRenderProxy->GetVectorValue(ParameterInfo, &OutValue, Context))
+		{
+			const bool bOveriddenParameterOnly = ParameterInfo.Association == EMaterialParameterAssociation::GlobalParameter;
+			
+			if (AreExperimentalMaterialLayersEnabled())
+			{
+				UMaterialInterface* Interface = Context.Material.GetMaterialInterface();
+				if (!Interface || !Interface->GetVectorParameterDefaultValue(ParameterInfo, OutValue, bOveriddenParameterOnly))
+				{
+					GetDefaultValue(OutValue);
+				}
+			}
+			else
+			{
+				GetDefaultValue(OutValue);
+			}
+		}
+	}
+
+	void GetDefaultValue(FLinearColor& OutValue) const
+	{
+#if WITH_EDITOR
+		OutValue = bUseOverriddenDefault ? OverriddenDefaultValue : DefaultValue;
+#else
+		OutValue = DefaultValue;
+#endif
+	}
+
+	// faster than GetNumberValue(), good for run-time use
+	void GetGameThreadNumberValue(const UMaterialInterface* SourceMaterialToCopyFrom, FLinearColor& OutValue) const;
 
 	virtual bool IsConstant() const
 	{
 		return false;
 	}
 
-	const FHashedMaterialParameterInfo& GetParameterInfo() const
+	const FMaterialParameterInfo& GetParameterInfo() const
 	{
 		return ParameterInfo;
-	}
-
-	FName GetParameterName() const
-	{
-		return ParameterInfo.GetName();
 	}
 
 	virtual bool IsIdentical(const FMaterialUniformExpression* OtherExpression) const
@@ -250,12 +137,24 @@ public:
 			return false;
 		}
 		FMaterialUniformExpressionVectorParameter* OtherParameter = (FMaterialUniformExpressionVectorParameter*)OtherExpression;
-		return ParameterInfo == OtherParameter->ParameterInfo && ParameterIndex == OtherParameter->ParameterIndex;
+		return ParameterInfo == OtherParameter->ParameterInfo && DefaultValue == OtherParameter->DefaultValue;
 	}
 
+#if WITH_EDITOR
+	void SetTransientOverrideDefaultValue(const FLinearColor& InOverrideDefaultValue, bool bInUseOverriddenDefault)
+	{
+		bUseOverriddenDefault = bInUseOverriddenDefault;
+		OverriddenDefaultValue = InOverrideDefaultValue;
+	}
+#endif
+
 private:
-	FHashedMaterialParameterInfo ParameterInfo;
-	int32 ParameterIndex;
+	FMaterialParameterInfo ParameterInfo;
+	FLinearColor DefaultValue;
+#if WITH_EDITOR
+	bool bUseOverriddenDefault;
+	FLinearColor OverriddenDefaultValue;
+#endif
 };
 
 /**
@@ -265,34 +164,74 @@ class FMaterialUniformExpressionScalarParameter: public FMaterialUniformExpressi
 	DECLARE_MATERIALUNIFORMEXPRESSION_TYPE(FMaterialUniformExpressionScalarParameter);
 public:
 
-	FMaterialUniformExpressionScalarParameter() {}
-	FMaterialUniformExpressionScalarParameter(const FMaterialParameterInfo& InParameterInfo, int32 InParameterIndex)
+	FMaterialUniformExpressionScalarParameter()
+#if WITH_EDITOR
+		: bUseOverriddenDefault(false)
+#endif
+	{}
+
+	FMaterialUniformExpressionScalarParameter(const FMaterialParameterInfo& InParameterInfo,float InDefaultValue)
 		: ParameterInfo(InParameterInfo)
-		, ParameterIndex(InParameterIndex)
-	{
-		check(InParameterIndex >= 0 && InParameterIndex <= 0xffff);
-	}
+		, DefaultValue(InDefaultValue)
+#if WITH_EDITOR
+		, bUseOverriddenDefault(false)
+#endif
+	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::ScalarParameter);
-		OutData.Write((uint16)ParameterIndex);
+		Ar << ParameterInfo << DefaultValue;
 	}
 
+	// inefficient compared to GetGameThreadNumberValue(), for editor purpose
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{	
+		OutValue.A = 0;
+
+		if (!Context.MaterialRenderProxy || !Context.MaterialRenderProxy->GetScalarValue(ParameterInfo, &OutValue.A, Context))
+		{
+			const bool bOveriddenParameterOnly = ParameterInfo.Association == EMaterialParameterAssociation::GlobalParameter;
+			
+			if (AreExperimentalMaterialLayersEnabled())
+			{
+				UMaterialInterface* Interface = Context.Material.GetMaterialInterface();
+				if (!Interface || !Interface->GetScalarParameterDefaultValue(ParameterInfo, OutValue.A, bOveriddenParameterOnly))
+				{
+					GetDefaultValue(OutValue.A);
+				}
+			}
+			else
+			{
+				GetDefaultValue(OutValue.A);
+			}
+		}
+
+		OutValue.R = OutValue.G = OutValue.B = OutValue.A;
+	}
+
+	void GetDefaultValue(float& OutValue) const
+	{
+#if WITH_EDITOR
+		OutValue = bUseOverriddenDefault ? OverriddenDefaultValue : DefaultValue;
+#else
+		OutValue = DefaultValue;
+#endif
+	}
+	
+	// faster than GetNumberValue(), good for run-time use
+	void GetGameThreadNumberValue(const UMaterialInterface* SourceMaterialToCopyFrom, float& OutValue) const;
+
+	void GetGameThreadUsedAsAtlas(const UMaterialInterface* SourceMaterialToCopyFrom, bool& OutValue, TSoftObjectPtr<class UCurveLinearColor>& Curve, TSoftObjectPtr<class UCurveLinearColorAtlas>& Atlas) const;
+	
 	virtual bool IsConstant() const
 	{
 		return false;
 	}
 
-	const FHashedMaterialParameterInfo& GetParameterInfo() const
+	const FMaterialParameterInfo& GetParameterInfo() const
 	{
 		return ParameterInfo;
-	}
-
-	FName GetParameterName() const
-	{
-		return ParameterInfo.GetName();
 	}
 
 	virtual bool IsIdentical(const FMaterialUniformExpression* OtherExpression) const
@@ -302,12 +241,24 @@ public:
 			return false;
 		}
 		FMaterialUniformExpressionScalarParameter* OtherParameter = (FMaterialUniformExpressionScalarParameter*)OtherExpression;
-		return ParameterInfo == OtherParameter->ParameterInfo && ParameterIndex == OtherParameter->ParameterIndex;
+		return ParameterInfo == OtherParameter->ParameterInfo && DefaultValue == OtherParameter->DefaultValue;
 	}
 
+#if WITH_EDITOR
+	void SetTransientOverrideDefaultValue(float InOverrideDefaultValue, bool bInUseOverriddenDefault)
+	{
+		bUseOverriddenDefault = bInUseOverriddenDefault;
+		OverriddenDefaultValue = InOverrideDefaultValue;
+	}
+#endif
+
 private:
-	FHashedMaterialParameterInfo ParameterInfo;
-	int32 ParameterIndex;
+	FMaterialParameterInfo ParameterInfo;
+	float DefaultValue;
+#if WITH_EDITOR
+	bool bUseOverriddenDefault;
+	float OverriddenDefaultValue;
+#endif
 };
 
 /** @return The texture that was associated with the given index when the given material had its uniform expressions/HLSL code generated. */
@@ -315,7 +266,7 @@ template<typename TextureType>
 static TextureType* GetIndexedTexture(const FMaterial& Material, int32 TextureIndex)
 {
 	UObject* IndexedTexture = nullptr;
-	const TArrayView<UObject* const> ReferencedTextures = Material.GetReferencedTextures();
+	const TArray<UObject*>& ReferencedTextures = Material.GetReferencedTextures();
 	if (ReferencedTextures.IsValidIndex(TextureIndex))
 	{
 		IndexedTexture = ReferencedTextures[TextureIndex];
@@ -359,11 +310,15 @@ public:
 	// FMaterialUniformExpression interface.
 	virtual class FMaterialUniformExpressionTextureParameter* GetTextureParameterUniformExpression() override { return this; }
 
-	virtual void GetTextureParameterInfo(FMaterialTextureParameterInfo& OutParameter) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		Super::GetTextureParameterInfo(OutParameter);
-		OutParameter.ParameterInfo = ParameterInfo;
+		Ar << ParameterInfo;
+		Super::Serialize(Ar);
 	}
+
+	virtual void GetTextureValue(const FMaterialRenderContext& Context, const FMaterial& Material, const UTexture*& OutValue) const override;
+	virtual void GetTextureValue(const FMaterialRenderContext& Context, const FMaterial& Material, const URuntimeVirtualTexture*& OutValue) const override;
+	virtual void GetGameThreadTextureValue(const UMaterialInterface* MaterialInterface, const FMaterial& Material, UTexture*& OutValue, bool bAllowOverride = true) const override;
 
 	virtual bool IsConstant() const
 	{
@@ -372,10 +327,10 @@ public:
 
 	FName GetParameterName() const
 	{
-		return ParameterInfo.GetName();
+		return ParameterInfo.Name;
 	}
 
-	const FHashedMaterialParameterInfo& GetParameterInfo() const
+	const FMaterialParameterInfo& GetParameterInfo() const
 	{
 		return ParameterInfo;
 	}
@@ -391,8 +346,7 @@ public:
 	}
 
 private:
-	FHashedMaterialParameterInfo ParameterInfo;
-	int32 ParameterIndex;
+	FMaterialParameterInfo ParameterInfo;
 };
 
 /**
@@ -405,6 +359,11 @@ class FMaterialUniformExpressionFlipBookTextureParameter : public FMaterialUnifo
 public:
 
 	FMaterialUniformExpressionFlipBookTextureParameter() {}
+
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		OutValue.R = OutValue.G = OutValue.B = OutValue.A = 0;
+	}
 
 	virtual bool IsConstant() const
 	{
@@ -425,8 +384,9 @@ public:
 	FMaterialUniformExpressionExternalTextureParameter();
 	FMaterialUniformExpressionExternalTextureParameter(FName InParameterName, int32 InTextureIndex);
 
+	virtual void Serialize(FArchive& Ar) override;
 	virtual bool IsIdentical(const FMaterialUniformExpression* OtherExpression) const override;
-	virtual void GetExternalTextureParameterInfo(FMaterialExternalTextureParameterInfo& OutParameter) const override;
+	virtual bool GetExternalTexture(const FMaterialRenderContext& Context, FTextureRHIRef& OutTextureRHI, FSamplerStateRHIRef& OutSamplerStateRHI) const override;
 	virtual FMaterialUniformExpressionExternalTextureParameter* GetExternalTextureParameterUniformExpression() override { return this; }
 
 	FName GetParameterName() const
@@ -452,10 +412,18 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		X->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(bIsCosine ? EMaterialPreshaderOpcode::Cos : EMaterialPreshaderOpcode::Sin);
+		Ar << X << bIsCosine;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		FLinearColor ValueX = FLinearColor::Black;
+		X->GetNumberValue(Context,ValueX);
+		OutValue.R = bIsCosine ? FMath::Cos(ValueX.R) : FMath::Sin(ValueX.R);
+		OutValue.G = bIsCosine ? FMath::Cos(ValueX.G) : FMath::Sin(ValueX.G);
+		OutValue.B = bIsCosine ? FMath::Cos(ValueX.B) : FMath::Sin(ValueX.B);
+		OutValue.A = bIsCosine ? FMath::Cos(ValueX.A) : FMath::Sin(ValueX.A);
 	}
 	virtual bool IsConstant() const
 	{
@@ -510,26 +478,38 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		X->WriteNumberOpcodes(OutData);
-		if (Op == TMO_Atan2)
-		{
-			Y->WriteNumberOpcodes(OutData);
-		}
+		Ar << X << Y << Op;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		FLinearColor ValueX = FLinearColor::Black;
+		FLinearColor ValueY = FLinearColor::Black;
+		X->GetNumberValue(Context,ValueX);
+		Y->GetNumberValue(Context,ValueY);
+
 		switch (Op)
 		{
-		case TMO_Sin: OutData.WriteOpcode(EMaterialPreshaderOpcode::Sin); break;
-		case TMO_Cos: OutData.WriteOpcode(EMaterialPreshaderOpcode::Cos); break;
-		case TMO_Tan: OutData.WriteOpcode(EMaterialPreshaderOpcode::Tan); break;
-		case TMO_Asin: OutData.WriteOpcode(EMaterialPreshaderOpcode::Asin); break;
-		case TMO_Acos: OutData.WriteOpcode(EMaterialPreshaderOpcode::Acos); break;
-		case TMO_Atan: OutData.WriteOpcode(EMaterialPreshaderOpcode::Atan); break;
-		case TMO_Atan2: OutData.WriteOpcode(EMaterialPreshaderOpcode::Atan2); break;
-		default: checkNoEntry(); break;
-		}
-	}
+		case TMO_Sin: OutValue.R = FMath::Sin(ValueX.R); OutValue.G = FMath::Sin(ValueX.G); OutValue.B = FMath::Sin(ValueX.B); OutValue.A = FMath::Sin(ValueX.A); break;
+		case TMO_Cos: OutValue.R = FMath::Cos(ValueX.R); OutValue.G = FMath::Cos(ValueX.G); OutValue.B = FMath::Cos(ValueX.B); OutValue.A = FMath::Cos(ValueX.A); break;
+		case TMO_Tan: OutValue.R = FMath::Tan(ValueX.R); OutValue.G = FMath::Tan(ValueX.G); OutValue.B = FMath::Tan(ValueX.B); OutValue.A = FMath::Tan(ValueX.A); break;
 
+		case TMO_Asin: OutValue.R = FMath::Asin(ValueX.R); OutValue.G = FMath::Asin(ValueX.G); OutValue.B = FMath::Asin(ValueX.B); OutValue.A = FMath::Asin(ValueX.A); break;
+		case TMO_Acos: OutValue.R = FMath::Acos(ValueX.R); OutValue.G = FMath::Acos(ValueX.G); OutValue.B = FMath::Acos(ValueX.B); OutValue.A = FMath::Acos(ValueX.A); break;
+		case TMO_Atan: OutValue.R = FMath::Atan(ValueX.R); OutValue.G = FMath::Atan(ValueX.G); OutValue.B = FMath::Atan(ValueX.B); OutValue.A = FMath::Atan(ValueX.A); break;
+
+		case TMO_Atan2:
+			// Note: Param names are reversed here for a trade-off of order consistency vs sharing code
+			OutValue.R = FMath::Atan2(ValueX.R, ValueY.R); OutValue.G = FMath::Atan2(ValueX.G, ValueY.G);
+			OutValue.B = FMath::Atan2(ValueX.B, ValueY.B); OutValue.A = FMath::Atan2(ValueX.A, ValueY.A);
+			break;
+
+		default:
+			checkf(0, TEXT("Invalid trigonometry math operation in uniform expression."));
+		}
+		
+	}
 	virtual bool IsConstant() const
 	{
 		return X->IsConstant() && Y->IsConstant();
@@ -563,10 +543,18 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		X->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::Sqrt);
+		Ar << X;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		FLinearColor ValueX = FLinearColor::Black;
+		X->GetNumberValue(Context,ValueX);
+		OutValue.R = FMath::Sqrt(ValueX.R);
+		OutValue.G = FMath::Sqrt(ValueX.G);
+		OutValue.B = FMath::Sqrt(ValueX.B);
+		OutValue.A = FMath::Sqrt(ValueX.A);
 	}
 	virtual bool IsConstant() const
 	{
@@ -600,10 +588,28 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		X->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::Length).Write((uint8)ValueType);
+		Ar.UsingCustomVersion(FRenderingObjectVersion::GUID);
+		Ar << X;
+				
+		if (Ar.CustomVer(FRenderingObjectVersion::GUID) >= FRenderingObjectVersion::TypeHandlingForMaterialSqrtNodes)
+		{
+			Ar << ValueType;
+		}	
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		FLinearColor ValueX = FLinearColor::Black;
+		X->GetNumberValue(Context,ValueX);
+
+		check(ValueType & MCT_Float);
+		float LengthSq = ValueX.R * ValueX.R;
+		LengthSq += (ValueType >= MCT_Float2) ? ValueX.G * ValueX.G : 0;
+		LengthSq += (ValueType >= MCT_Float3) ? ValueX.B * ValueX.B : 0;
+		LengthSq += (ValueType >= MCT_Float4) ? ValueX.A * ValueX.A : 0;
+
+		OutValue.R = OutValue.G = OutValue.B = OutValue.A = FMath::Sqrt(LengthSq);
 	}
 	virtual bool IsConstant() const
 	{
@@ -637,10 +643,18 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	void Serialize(FArchive& Ar) override
 	{
-		X->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::Log2);
+		Ar << X;
+	}
+	void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const override
+	{
+		FLinearColor ValueX = FLinearColor::Black;
+		X->GetNumberValue(Context,ValueX);
+		OutValue.R = FMath::Log2(ValueX.R);
+		OutValue.G = FMath::Log2(ValueX.G);
+		OutValue.B = FMath::Log2(ValueX.B);
+		OutValue.A = FMath::Log2(ValueX.A);
 	}
 	bool IsConstant() const override
 	{
@@ -674,10 +688,20 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	void Serialize(FArchive& Ar) override
 	{
-		X->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::Log10);
+		Ar << X;
+	}
+	void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const override
+	{
+		FLinearColor ValueX = FLinearColor::Black;
+		X->GetNumberValue(Context,ValueX);
+
+		static const float LogToLog10 = 1.0f / FMath::Loge(10.f);
+		OutValue.R = FMath::Loge(ValueX.R) * LogToLog10;
+		OutValue.G = FMath::Loge(ValueX.G) * LogToLog10;
+		OutValue.B = FMath::Loge(ValueX.B) * LogToLog10;
+		OutValue.A = FMath::Loge(ValueX.A) * LogToLog10;
 	}
 	bool IsConstant() const override
 	{
@@ -710,6 +734,26 @@ enum EFoldedMathOperation
 	FMO_Cross
 };
 
+/** Converts an arbitrary number into a safe divisor. i.e. FMath::Abs(Number) >= DELTA */
+static float GetSafeDivisor(float Number)
+{
+	if(FMath::Abs(Number) < DELTA)
+	{
+		if(Number < 0.0f)
+		{
+			return -DELTA;
+		}
+		else
+		{
+			return +DELTA;
+		}
+	}
+	else
+	{
+		return Number;
+	}
+}
+
 class FMaterialUniformExpressionFoldedMath: public FMaterialUniformExpression
 {
 	DECLARE_MATERIALUNIFORMEXPRESSION_TYPE(FMaterialUniformExpressionFoldedMath);
@@ -724,23 +768,70 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		A->WriteNumberOpcodes(OutData);
-		B->WriteNumberOpcodes(OutData);
-
-		switch (Op)
+		Ar.UsingCustomVersion(FRenderingObjectVersion::GUID);
+		Ar << A << B << Op;
+		
+		if (Ar.CustomVer(FRenderingObjectVersion::GUID) >= FRenderingObjectVersion::TypeHandlingForMaterialSqrtNodes)
 		{
-		case FMO_Add: OutData.WriteOpcode(EMaterialPreshaderOpcode::Add); break;
-		case FMO_Sub: OutData.WriteOpcode(EMaterialPreshaderOpcode::Sub); break;
-		case FMO_Mul: OutData.WriteOpcode(EMaterialPreshaderOpcode::Mul); break;
-		case FMO_Div: OutData.WriteOpcode(EMaterialPreshaderOpcode::Div); break;
-		case FMO_Dot: OutData.WriteOpcode(EMaterialPreshaderOpcode::Dot).Write((uint8)ValueType); break;
-		case FMO_Cross: OutData.WriteOpcode(EMaterialPreshaderOpcode::Cross).Write((uint8)ValueType); break;
-		default: checkNoEntry(); break;
-		}
+			Ar << ValueType;
+		}	
 	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		FLinearColor ValueA = FLinearColor::Black;
+		FLinearColor ValueB = FLinearColor::Black;
+		A->GetNumberValue(Context, ValueA);
+		B->GetNumberValue(Context, ValueB);
 
+		switch(Op)
+		{
+			case FMO_Add: OutValue = ValueA + ValueB; break;
+			case FMO_Sub: OutValue = ValueA - ValueB; break;
+			case FMO_Mul: OutValue = ValueA * ValueB; break;
+			case FMO_Div: 
+				OutValue.R = ValueA.R / GetSafeDivisor(ValueB.R);
+				OutValue.G = ValueA.G / GetSafeDivisor(ValueB.G);
+				OutValue.B = ValueA.B / GetSafeDivisor(ValueB.B);
+				OutValue.A = ValueA.A / GetSafeDivisor(ValueB.A);
+				break;
+			case FMO_Dot: 
+				{
+					check(ValueType & MCT_Float);
+					float DotProduct = ValueA.R * ValueB.R;
+					DotProduct += (ValueType >= MCT_Float2) ? ValueA.G * ValueB.G : 0;
+					DotProduct += (ValueType >= MCT_Float3) ? ValueA.B * ValueB.B : 0;
+					DotProduct += (ValueType >= MCT_Float4) ? ValueA.A * ValueB.A : 0;
+					OutValue.R = OutValue.G = OutValue.B = OutValue.A = DotProduct;
+				}
+				break;
+			case FMO_Cross: 
+				{
+					// Must be Float3, replicate CoerceParameter behavior
+					switch (ValueType)
+					{
+					case MCT_Float:
+						ValueA.B = ValueA.G = ValueA.R;
+						ValueB.B = ValueB.G = ValueB.R;
+						break;
+					case MCT_Float1:
+						ValueA.B = ValueA.G = 0.f;
+						ValueB.B = ValueB.G = 0.f;
+						break;
+					case MCT_Float2:
+						ValueA.B = 0.f;
+						ValueB.B = 0.f;
+						break;
+					};
+					FVector Cross = FVector::CrossProduct(FVector(ValueA), FVector(ValueB));
+					OutValue.R = Cross.X; OutValue.G = Cross.Y; OutValue.B = Cross.Z;
+					OutValue.A = 0.f;
+				}
+				break;
+			default: UE_LOG(LogMaterial, Fatal,TEXT("Unknown folded math operation: %08x"),(int32)Op);
+		};
+	}
 	virtual bool IsConstant() const
 	{
 		return A->IsConstant() && B->IsConstant();
@@ -776,10 +867,19 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		X->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::Fractional);
+		Ar << X;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		FLinearColor TempValue = FLinearColor::Black;
+		X->GetNumberValue(Context,TempValue);
+
+		OutValue.R = FMath::Fractional(TempValue.R);
+		OutValue.G = FMath::Fractional(TempValue.G);
+		OutValue.B = FMath::Fractional(TempValue.B);
+		OutValue.A = FMath::Fractional(TempValue.A);
 	}
 	virtual bool IsConstant() const
 	{
@@ -814,11 +914,21 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		A->WriteNumberOpcodes(OutData);
-		B->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::AppendVector).Write((uint8)NumComponentsA);
+		Ar << A << B << NumComponentsA;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		FLinearColor ValueA = FLinearColor::Black;
+		FLinearColor ValueB = FLinearColor::Black;
+		A->GetNumberValue(Context, ValueA);
+		B->GetNumberValue(Context, ValueB);
+
+		OutValue.R = NumComponentsA >= 1 ? ValueA.R : (&ValueB.R)[0 - NumComponentsA];
+		OutValue.G = NumComponentsA >= 2 ? ValueA.G : (&ValueB.R)[1 - NumComponentsA];
+		OutValue.B = NumComponentsA >= 3 ? ValueA.B : (&ValueB.R)[2 - NumComponentsA];
+		OutValue.A = NumComponentsA >= 4 ? ValueA.A : (&ValueB.R)[3 - NumComponentsA];
 	}
 	virtual bool IsConstant() const
 	{
@@ -854,11 +964,21 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		A->WriteNumberOpcodes(OutData);
-		B->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::Min);
+		Ar << A << B;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		FLinearColor ValueA = FLinearColor::Black;
+		FLinearColor ValueB = FLinearColor::Black;
+		A->GetNumberValue(Context, ValueA);
+		B->GetNumberValue(Context, ValueB);
+
+		OutValue.R = FMath::Min(ValueA.R, ValueB.R);
+		OutValue.G = FMath::Min(ValueA.G, ValueB.G);
+		OutValue.B = FMath::Min(ValueA.B, ValueB.B);
+		OutValue.A = FMath::Min(ValueA.A, ValueB.A);
 	}
 	virtual bool IsConstant() const
 	{
@@ -893,11 +1013,21 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		A->WriteNumberOpcodes(OutData);
-		B->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::Max);
+		Ar << A << B;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		FLinearColor ValueA = FLinearColor::Black;
+		FLinearColor ValueB = FLinearColor::Black;
+		A->GetNumberValue(Context, ValueA);
+		B->GetNumberValue(Context, ValueB);
+
+		OutValue.R = FMath::Max(ValueA.R, ValueB.R);
+		OutValue.G = FMath::Max(ValueA.G, ValueB.G);
+		OutValue.B = FMath::Max(ValueA.B, ValueB.B);
+		OutValue.A = FMath::Max(ValueA.A, ValueB.A);
 	}
 	virtual bool IsConstant() const
 	{
@@ -933,12 +1063,23 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		Input->WriteNumberOpcodes(OutData);
-		Min->WriteNumberOpcodes(OutData);
-		Max->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::Clamp);
+		Ar << Input << Min << Max;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		FLinearColor ValueMin = FLinearColor::Black;
+		FLinearColor ValueMax = FLinearColor::Black;
+		FLinearColor ValueInput = FLinearColor::Black;
+		Min->GetNumberValue(Context, ValueMin);
+		Max->GetNumberValue(Context, ValueMax);
+		Input->GetNumberValue(Context, ValueInput);
+
+		OutValue.R = FMath::Clamp(ValueInput.R, ValueMin.R, ValueMax.R);
+		OutValue.G = FMath::Clamp(ValueInput.G, ValueMin.G, ValueMax.G);
+		OutValue.B = FMath::Clamp(ValueInput.B, ValueMin.B, ValueMax.B);
+		OutValue.A = FMath::Clamp(ValueInput.A, ValueMin.A, ValueMax.A);
 	}
 	virtual bool IsConstant() const
 	{
@@ -973,10 +1114,19 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		Input->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::Saturate);
+		Ar << Input;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		FLinearColor ValueInput = FLinearColor::Black;
+		Input->GetNumberValue(Context, ValueInput);
+
+		OutValue.R = FMath::Clamp<float>(ValueInput.R, 0, 1);
+		OutValue.G = FMath::Clamp<float>(ValueInput.G, 0, 1);
+		OutValue.B = FMath::Clamp<float>(ValueInput.B, 0, 1);
+		OutValue.A = FMath::Clamp<float>(ValueInput.A, 0, 1);
 	}
 	virtual bool IsConstant() const
 	{
@@ -1036,10 +1186,39 @@ public:
 	}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		X->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::ComponentSwizzle).Write((uint8)NumElements).Write((uint8)IndexR).Write((uint8)IndexG).Write((uint8)IndexB).Write((uint8)IndexA);
+		Ar << X;
+		Ar << IndexR;
+		Ar << IndexG;
+		Ar << IndexB;
+		Ar << IndexA;
+		Ar << NumElements;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context, FLinearColor& OutValue) const
+	{
+		FLinearColor Temp = OutValue;
+		X->GetNumberValue(Context, Temp);
+		// Clear
+		OutValue *= 0;
+		switch (NumElements)
+		{
+		case 1:
+			// Replicate scalar
+			OutValue.R = OutValue.G = OutValue.B = OutValue.A = Temp.Component(IndexR);
+			break;
+		case 4:
+			OutValue.A = Temp.Component(IndexA);
+			// Fallthrough...
+		case 3:
+			OutValue.B = Temp.Component(IndexB);
+			// Fallthrough...
+		case 2:
+			OutValue.G = Temp.Component(IndexG);
+			OutValue.R = Temp.Component(IndexR);
+			break;
+		default: UE_LOG(LogMaterial, Fatal, TEXT("Invalid number of swizzle elements: %d"), NumElements);
+		}
 	}
 	virtual bool IsConstant() const
 	{
@@ -1082,10 +1261,18 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		X->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::Floor);
+		Ar << X;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		X->GetNumberValue(Context, OutValue);
+
+		OutValue.R = FMath::FloorToInt(OutValue.R);
+		OutValue.G = FMath::FloorToInt(OutValue.G);
+		OutValue.B = FMath::FloorToInt(OutValue.B);
+		OutValue.A = FMath::FloorToInt(OutValue.A);
 	}
 	virtual bool IsConstant() const
 	{
@@ -1118,10 +1305,18 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		X->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::Ceil);
+		Ar << X;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		X->GetNumberValue(Context, OutValue);
+
+		OutValue.R = FMath::CeilToInt(OutValue.R);
+		OutValue.G = FMath::CeilToInt(OutValue.G);
+		OutValue.B = FMath::CeilToInt(OutValue.B);
+		OutValue.A = FMath::CeilToInt(OutValue.A);
 	}
 	virtual bool IsConstant() const
 	{
@@ -1154,10 +1349,18 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		X->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::Round);
+		Ar << X;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		X->GetNumberValue(Context, OutValue);
+
+		OutValue.R = FMath::RoundToFloat(OutValue.R);
+		OutValue.G = FMath::RoundToFloat(OutValue.G);
+		OutValue.B = FMath::RoundToFloat(OutValue.B);
+		OutValue.A = FMath::RoundToFloat(OutValue.A);
 	}
 	virtual bool IsConstant() const
 	{
@@ -1190,10 +1393,18 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		X->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::Trunc);
+		Ar << X;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		X->GetNumberValue(Context, OutValue);
+
+		OutValue.R = FMath::TruncToFloat(OutValue.R);
+		OutValue.G = FMath::TruncToFloat(OutValue.G);
+		OutValue.B = FMath::TruncToFloat(OutValue.B);
+		OutValue.A = FMath::TruncToFloat(OutValue.A);
 	}
 	virtual bool IsConstant() const
 	{
@@ -1226,10 +1437,18 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		X->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::Sign);
+		Ar << X;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		X->GetNumberValue(Context, OutValue);
+
+		OutValue.R = FMath::Sign(OutValue.R);
+		OutValue.G = FMath::Sign(OutValue.G);
+		OutValue.B = FMath::Sign(OutValue.B);
+		OutValue.A = FMath::Sign(OutValue.A);
 	}
 	virtual bool IsConstant() const
 	{
@@ -1262,10 +1481,18 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		X->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::Frac);
+		Ar << X;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		X->GetNumberValue(Context, OutValue);
+
+		OutValue.R = OutValue.R - FMath::FloorToInt(OutValue.R);
+		OutValue.G = OutValue.G - FMath::FloorToInt(OutValue.G);
+		OutValue.B = OutValue.B - FMath::FloorToInt(OutValue.B);
+		OutValue.A = OutValue.A - FMath::FloorToInt(OutValue.A);
 	}
 	virtual bool IsConstant() const
 	{
@@ -1299,11 +1526,21 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		A->WriteNumberOpcodes(OutData);
-		B->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::Fmod);
+		Ar << A << B;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		FLinearColor ValueA = FLinearColor::Black;
+		FLinearColor ValueB = FLinearColor::Black;
+		A->GetNumberValue(Context, ValueA);
+		B->GetNumberValue(Context, ValueB);
+
+		OutValue.R = FMath::Fmod(ValueA.R, ValueB.R);
+		OutValue.G = FMath::Fmod(ValueA.G, ValueB.G);
+		OutValue.B = FMath::Fmod(ValueA.B, ValueB.B);
+		OutValue.A = FMath::Fmod(ValueA.A, ValueB.A);
 	}
 	virtual bool IsConstant() const
 	{
@@ -1338,10 +1575,17 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar)
 	{
-		X->WriteNumberOpcodes(OutData);
-		OutData.WriteOpcode(EMaterialPreshaderOpcode::Abs);
+		Ar << X;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const
+	{
+		X->GetNumberValue(Context, OutValue);
+		OutValue.R = FMath::Abs<float>(OutValue.R);
+		OutValue.G = FMath::Abs<float>(OutValue.G);
+		OutValue.B = FMath::Abs<float>(OutValue.B);
+		OutValue.A = FMath::Abs<float>(OutValue.A);
 	}
 	virtual bool IsConstant() const
 	{
@@ -1375,19 +1619,34 @@ public:
 	{}
 
 	// FMaterialUniformExpression interface.
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override
+	virtual void Serialize(FArchive& Ar) override
 	{
-		FMaterialTextureParameterInfo TextureParameter;
-		TextureExpression->GetTextureParameterInfo(TextureParameter);
+		Ar << TextureExpression << TextureProperty;
+	}
+	virtual void GetNumberValue(const FMaterialRenderContext& Context,FLinearColor& OutValue) const override
+	{
+		const UTexture* Texture = nullptr;
+		TextureExpression->GetTextureValue(Context, Context.Material, Texture);
 
-		EMaterialPreshaderOpcode Op = EMaterialPreshaderOpcode::Nop;
-		switch (TextureProperty)
+		if (!Texture || !Texture->Resource)
 		{
-		case TMTM_TextureSize: Op = EMaterialPreshaderOpcode::TextureSize; break;
-		case TMTM_TexelSize: Op = EMaterialPreshaderOpcode::TexelSize; break;
-		default: checkNoEntry(); break;
+			return;
 		}
-		OutData.WriteOpcode(Op).Write(TextureParameter.ParameterInfo).Write((int32)TextureParameter.TextureIndex);
+	
+		if (TextureProperty == TMTM_TextureSize)
+		{
+			OutValue.R = Texture->Resource->GetSizeX();
+			OutValue.G = Texture->Resource->GetSizeY();
+		}
+		else if (TextureProperty == TMTM_TexelSize)
+		{
+			OutValue.R = 1.0f / float(Texture->Resource->GetSizeX());
+			OutValue.G = 1.0f / float(Texture->Resource->GetSizeY());
+		}
+		else
+		{
+			check(0);
+		}
 	}
 	virtual bool IsIdentical(const FMaterialUniformExpression* OtherExpression) const override
 	{
@@ -1424,8 +1683,9 @@ public:
 	FMaterialUniformExpressionExternalTextureCoordinateScaleRotation(const FGuid& InGuid) : FMaterialUniformExpressionExternalTextureBase(InGuid) {}
 	FMaterialUniformExpressionExternalTextureCoordinateScaleRotation(int32 InSourceTextureIndex, TOptional<FName> InParameterName) : FMaterialUniformExpressionExternalTextureBase(InSourceTextureIndex), ParameterName(InParameterName) {}
 
+	virtual void Serialize(FArchive& Ar) override;
 	virtual bool IsIdentical(const FMaterialUniformExpression* OtherExpression) const override;
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override;
+	virtual void GetNumberValue(const FMaterialRenderContext& Context, FLinearColor& OutValue) const override;
 
 protected:
 	typedef FMaterialUniformExpressionExternalTextureBase Super;
@@ -1446,8 +1706,9 @@ public:
 	FMaterialUniformExpressionExternalTextureCoordinateOffset(const FGuid& InGuid) : FMaterialUniformExpressionExternalTextureBase(InGuid) {}
 	FMaterialUniformExpressionExternalTextureCoordinateOffset(int32 InSourceTextureIndex, TOptional<FName> InParameterName) : FMaterialUniformExpressionExternalTextureBase(InSourceTextureIndex), ParameterName(InParameterName) {}
 
+	virtual void Serialize(FArchive& Ar) override;
 	virtual bool IsIdentical(const FMaterialUniformExpression* OtherExpression) const override;
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override;
+	virtual void GetNumberValue(const FMaterialRenderContext& Context, FLinearColor& OutValue) const override;
 
 protected:
 	typedef FMaterialUniformExpressionExternalTextureBase Super;
@@ -1472,15 +1733,16 @@ public:
 
 	//~ Begin FMaterialUniformExpression Interface.
 	virtual bool IsConstant() const override { return false; }
+	virtual void Serialize(FArchive& Ar) override;
 	virtual bool IsIdentical(const FMaterialUniformExpression* OtherExpression) const override;
-	virtual void WriteNumberOpcodes(FMaterialPreshaderData& OutData) const override;
+	virtual void GetNumberValue(const struct FMaterialRenderContext& Context, FLinearColor& OutValue) const override;
 	//~ End FMaterialUniformExpression Interface.
 
 protected:
 	/** Is this expression using a material instance parameter. */
 	bool bParameter;
 	/** Contains the parameter info used if bParameter is true. */
-	FHashedMaterialParameterInfo ParameterInfo;
+	FMaterialParameterInfo ParameterInfo;
 	/** Index of the associated URuntimeVirtualTexture in the material texture references used if bParameter is false. */
 	int32 TextureIndex;
 	/** Index of the uniform vector to fetch from the URuntimeVirtualTexture. */

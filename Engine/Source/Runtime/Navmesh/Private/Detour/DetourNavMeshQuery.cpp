@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 // Modified version of Recast/Detour's source file
 
 //
@@ -595,8 +595,7 @@ dtStatus dtNavMeshQuery::findRandomPointAroundCircle(dtPolyRef startRef, const f
 	return foundPt ? DT_SUCCESS : DT_FAILURE;
 }
 
-//@UE4 BEGIN
-#if WITH_NAVMESH_CLUSTER_LINKS
+
 dtStatus dtNavMeshQuery::findRandomPointInCluster(dtClusterRef clusterRef, float (*frand)(), dtPolyRef* randomRef, float* randomPt) const
 {
 	dtAssert(m_nav);
@@ -681,8 +680,6 @@ dtStatus dtNavMeshQuery::findRandomPointInCluster(dtClusterRef clusterRef, float
 
 	return DT_SUCCESS;
 }
-#endif // WITH_NAVMESH_CLUSTER_LINKS
-//@UE4 END
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
@@ -970,8 +967,6 @@ dtStatus dtNavMeshQuery::getPolyHeight(dtPolyRef ref, const float* pos, float* h
 			*height = v0[1] + (v1[1] - v0[1]) * u;
 		return DT_SUCCESS;
 	}
-	//@UE4 BEGIN
-#if WITH_NAVMESH_SEGMENT_LINKS
 	else if (poly->getType() == DT_POLYTYPE_OFFMESH_SEGMENT)
 	{
 		float h;
@@ -992,8 +987,6 @@ dtStatus dtNavMeshQuery::getPolyHeight(dtPolyRef ref, const float* pos, float* h
 			return DT_SUCCESS;
 		}
 	}
-#endif // WITH_NAVMESH_SEGMENT_LINKS
-	//@UE4 END
 	else
 	{
 		const unsigned int ip = (unsigned int)(poly - tile->polys);
@@ -1022,8 +1015,6 @@ dtStatus dtNavMeshQuery::getPolyHeight(dtPolyRef ref, const float* pos, float* h
 	return DT_FAILURE | DT_INVALID_PARAM;
 }
 
-//@UE4 BEGIN
-#if WITH_NAVMESH_CLUSTER_LINKS
 dtStatus dtNavMeshQuery::getPolyCluster(dtPolyRef polyRef, dtClusterRef& clusterRef) const
 {
 	dtAssert(m_nav);
@@ -1049,8 +1040,6 @@ dtStatus dtNavMeshQuery::getPolyCluster(dtPolyRef polyRef, dtClusterRef& cluster
 	clusterRef = m_nav->getClusterRefBase(testTile) | (dtClusterRef)clusterIdx;
 	return DT_SUCCESS;
 }
-#endif // WITH_NAVMESH_CLUSTER_LINKS
-//@UE4 END
 
 /// @par 
 ///
@@ -1434,7 +1423,7 @@ dtStatus dtNavMeshQuery::queryPolygons(const float* center, const float* extents
 ///
 dtStatus dtNavMeshQuery::findPath(dtPolyRef startRef, dtPolyRef endRef,
 								  const float* startPos, const float* endPos,
-								  const float costLimit, const dtQueryFilter* filter, //@UE4
+								  const dtQueryFilter* filter,
 								  dtQueryResult& result, float* totalCost) const
 {
 	dtAssert(m_nav);
@@ -1594,19 +1583,14 @@ dtStatus dtNavMeshQuery::findPath(dtPolyRef startRef, dtPolyRef endRef,
 			const float total = cost + heuristic;
 
 			// The node is already in open list and the new result is worse, skip.
-			if ((neighbourNode->flags & DT_NODE_OPEN) && total >= neighbourNode->total)
-				continue;
-
 			// The node is already visited and process, and the new result is worse, skip.
-			if ((neighbourNode->flags & DT_NODE_CLOSED) && total >= neighbourNode->total)
-				continue;
-
 			// Cost of current link is DT_UNWALKABLE_POLY_COST, skip.
-			if (curCost == DT_UNWALKABLE_POLY_COST)
+			if (((neighbourNode->flags & DT_NODE_OPEN) && total >= neighbourNode->total) ||
+				((neighbourNode->flags & DT_NODE_CLOSED) && total >= neighbourNode->total) ||
+				(curCost == DT_UNWALKABLE_POLY_COST))
+			{
 				continue;
-
-			if (total > costLimit) //@UE4
-				continue;
+			}
 
 			// Add or update the node.
 			neighbourNode->pidx = m_nodePool->getNodeIdx(bestNode);
@@ -1644,7 +1628,7 @@ dtStatus dtNavMeshQuery::findPath(dtPolyRef startRef, dtPolyRef endRef,
 	// Reverse the path.
 	dtNode* prev = 0;
 	dtNode* node = lastBestNode;
-	int n = 1;
+	int n = 0;
 	do
 	{
 		dtNode* next = m_nodePool->getNodeAtIdx(node->pidx);
@@ -1672,7 +1656,7 @@ dtStatus dtNavMeshQuery::findPath(dtPolyRef startRef, dtPolyRef endRef,
 
 		node = m_nodePool->getNodeAtIdx(node->pidx);
 	}
-	while (node && --n > 0);
+	while (node);
 
 	if (totalCost)
 	{
@@ -1682,8 +1666,6 @@ dtStatus dtNavMeshQuery::findPath(dtPolyRef startRef, dtPolyRef endRef,
 	return status;
 }
 
-//@UE4 BEGIN
-#if WITH_NAVMESH_CLUSTER_LINKS
 dtStatus dtNavMeshQuery::testClusterPath(dtPolyRef startRef, dtPolyRef endRef) const
 {
 	const dtMeshTile* startTile = m_nav->getTileByRef(startRef);
@@ -1836,8 +1818,6 @@ dtStatus dtNavMeshQuery::testClusterPath(dtPolyRef startRef, dtPolyRef endRef) c
 
 	return status;
 }
-#endif // WITH_NAVMESH_CLUSTER_LINKS
-//@UE4 END
 
 /// @par
 ///
@@ -1848,7 +1828,7 @@ dtStatus dtNavMeshQuery::testClusterPath(dtPolyRef startRef, dtPolyRef endRef) c
 /// path query.
 ///
 dtStatus dtNavMeshQuery::initSlicedFindPath(dtPolyRef startRef, dtPolyRef endRef,
-											const float* startPos, const float* endPos, const float costLimit, //@UE4
+											const float* startPos, const float* endPos,
 											const dtQueryFilter* filter)
 {
 	dtAssert(m_nav);
@@ -1862,7 +1842,6 @@ dtStatus dtNavMeshQuery::initSlicedFindPath(dtPolyRef startRef, dtPolyRef endRef
 	m_query.endRef = endRef;
 	dtVcopy(m_query.startPos, startPos);
 	dtVcopy(m_query.endPos, endPos);
-	m_query.costLimit = costLimit; //@UE4
 	m_query.filter = filter;
 	
 	if (!startRef || !endRef)
@@ -2019,13 +1998,12 @@ dtStatus dtNavMeshQuery::updateSlicedFindPath(const int maxIter, int* doneIters)
 			// Calculate cost and heuristic.
 			float cost = 0;
 			float heuristic = 0;
-			float curCost = 0; //@UE4
 			
 			// Special case for last node.
 			if (neighbourRef != m_query.endRef)
 			{
 				// Cost
-				curCost = m_query.filter->getCost(bestNode->pos, neiPos,
+				const float curCost = m_query.filter->getCost(bestNode->pos, neiPos,
 					parentRef, parentTile, parentPoly,
 					bestRef, bestTile, bestPoly,
 					neighbourRef, neighbourTile, neighbourPoly);
@@ -2035,34 +2013,26 @@ dtStatus dtNavMeshQuery::updateSlicedFindPath(const int maxIter, int* doneIters)
 			else
 			{
 				// Cost
-				curCost = m_query.filter->getCost(bestNode->pos, neiPos,
-												  parentRef, parentTile, parentPoly,
-												  bestRef, bestTile, bestPoly,
-												  neighbourRef, neighbourTile, neighbourPoly);
+				const float curCost = m_query.filter->getCost(bestNode->pos, neiPos,
+															  parentRef, parentTile, parentPoly,
+															  bestRef, bestTile, bestPoly,
+															  neighbourRef, neighbourTile, neighbourPoly);
 				const float endCost = m_query.filter->getCost(neiPos, m_query.endPos,
-												  bestRef, bestTile, bestPoly,
-												  neighbourRef, neighbourTile, neighbourPoly,
-												  0, 0, 0);
+															  bestRef, bestTile, bestPoly,
+															  neighbourRef, neighbourTile, neighbourPoly,
+															  0, 0, 0);
 				
 				cost = bestNode->cost + curCost + endCost;
 				heuristic = 0;
 			}
 			
 			const float total = cost + heuristic;
-
+			
 			// The node is already in open list and the new result is worse, skip.
 			if ((neighbourNode->flags & DT_NODE_OPEN) && total >= neighbourNode->total)
 				continue;
-
 			// The node is already visited and process, and the new result is worse, skip.
 			if ((neighbourNode->flags & DT_NODE_CLOSED) && total >= neighbourNode->total)
-				continue;
-
-			// Cost of current link is DT_UNWALKABLE_POLY_COST, skip.
-			if (curCost == DT_UNWALKABLE_POLY_COST) //@UE4
-				continue;
-
-			if (total > m_query.costLimit) //@UE4
 				continue;
 			
 			// Add or update the node.
@@ -2442,8 +2412,6 @@ dtStatus dtNavMeshQuery::findStraightPath(const float* startPos, const float* en
 				fromType = toType = DT_POLYTYPE_GROUND;
 			}
 			
-			//@UE4 BEGIN
-#if WITH_NAVMESH_SEGMENT_LINKS
 			// Lock moving through segment off-mesh connections
 			if (fromType == DT_POLYTYPE_OFFMESH_SEGMENT)
 			{
@@ -2479,8 +2447,6 @@ dtStatus dtNavMeshQuery::findStraightPath(const float* startPos, const float* en
 				dtVcopy(left, right);
 				dtVcopy(right, tmp);
 			}
-#endif // WITH_NAVMESH_SEGMENT_LINKS
-//@UE4 END
 
 			// Right vertex.
 			if (dtTriArea2D(portalApex, portalRight, right) <= 0.0f)
@@ -2521,13 +2487,8 @@ dtStatus dtNavMeshQuery::findStraightPath(const float* startPos, const float* en
 					dtVcopy(portalRight, portalApex);
 					leftIndex = apexIndex;
 					rightIndex = apexIndex;
-
-					//@UE4 BEGIN
-#if WITH_NAVMESH_SEGMENT_LINKS
 					if (toType == DT_POLYTYPE_OFFMESH_SEGMENT)
 						dtDistancePtSegSqr2D(portalApex, left, right, segt);
-#endif // WITH_NAVMESH_SEGMENT_LINKS
-					//@UE4 END
 
 					// Restart
 					i = apexIndex;
@@ -2575,14 +2536,9 @@ dtStatus dtNavMeshQuery::findStraightPath(const float* startPos, const float* en
 					dtVcopy(portalRight, portalApex);
 					leftIndex = apexIndex;
 					rightIndex = apexIndex;	
-
-					//@UE4 BEGIN
-#if WITH_NAVMESH_SEGMENT_LINKS
 					if (toType == DT_POLYTYPE_OFFMESH_SEGMENT)
 						dtDistancePtSegSqr2D(portalApex, left, right, segt);
-#endif // WITH_NAVMESH_SEGMENT_LINKS
-					//@UE4 END
-
+					
 					// Restart
 					i = apexIndex;
 					
@@ -2590,8 +2546,6 @@ dtStatus dtNavMeshQuery::findStraightPath(const float* startPos, const float* en
 				}
 			}
 
-			//@UE4 BEGIN
-#if WITH_NAVMESH_SEGMENT_LINKS
 			// Handle entering off-mesh segments
 			if (toType == DT_POLYTYPE_OFFMESH_SEGMENT)
 			{
@@ -2607,8 +2561,6 @@ dtStatus dtNavMeshQuery::findStraightPath(const float* startPos, const float* en
 				leftIndex = i;
 				rightIndex = i;
 			}
-#endif // WITH_NAVMESH_SEGMENT_LINKS
-			//@UE4 END
 		}
 
 		// Append portals along the current straight path segment.
@@ -2677,7 +2629,7 @@ dtStatus dtNavMeshQuery::moveAlongSurface(dtPolyRef startRef, const float* start
 	
 	float bestPos[3];
 	float bestDist = FLT_MAX;
-	dtNode* bestNode = startNode;
+	dtNode* bestNode = 0;
 	dtVcopy(bestPos, startPos);
 	
 	// Search constraints
@@ -2842,11 +2794,6 @@ dtStatus dtNavMeshQuery::moveAlongSurface(dtPolyRef startRef, const float* start
 	
 	*visitedCount = n;
 	
-	if (n == 0)
-	{
-		status |= DT_FAILURE;
-	}
-
 	return status;
 }
 
@@ -2913,8 +2860,6 @@ dtStatus dtNavMeshQuery::getPortalPoints(dtPolyRef from, const dtPoly* fromPoly,
 		}
 		return DT_FAILURE | DT_INVALID_PARAM;
 	}
-	//@UE4 BEGIN
-#if WITH_NAVMESH_SEGMENT_LINKS
 	else if (fromPoly->getType() == DT_POLYTYPE_OFFMESH_SEGMENT)
 	{
 		// Find link that points to first vertex.
@@ -2935,8 +2880,6 @@ dtStatus dtNavMeshQuery::getPortalPoints(dtPolyRef from, const dtPoly* fromPoly,
 
 		return DT_FAILURE | DT_INVALID_PARAM;
 	}
-	//@UE4 END
-#endif // WITH_NAVMESH_SEGMENT_LINKS
 
 	if (toPoly->getType() == DT_POLYTYPE_OFFMESH_POINT)
 	{
@@ -2956,8 +2899,6 @@ dtStatus dtNavMeshQuery::getPortalPoints(dtPolyRef from, const dtPoly* fromPoly,
 		}
 		return DT_FAILURE | DT_INVALID_PARAM;
 	}
-	//@UE4 BEGIN
-#if WITH_NAVMESH_SEGMENT_LINKS
 	else if (toPoly->getType() == DT_POLYTYPE_OFFMESH_SEGMENT)
 	{
 		unsigned int i = toPoly->firstLink;
@@ -2976,8 +2917,6 @@ dtStatus dtNavMeshQuery::getPortalPoints(dtPolyRef from, const dtPoly* fromPoly,
 		}
 		return DT_FAILURE | DT_INVALID_PARAM;
 	}
-#endif // WITH_NAVMESH_SEGMENT_LINKS
-	//@UE4 END
 
 	// Find portal vertices.
 	const int v0 = fromPoly->verts[link->edge];

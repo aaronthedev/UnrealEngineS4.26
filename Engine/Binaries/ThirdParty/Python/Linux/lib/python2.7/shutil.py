@@ -105,13 +105,7 @@ def copymode(src, dst):
         os.chmod(dst, mode)
 
 def copystat(src, dst):
-    """Copy file metadata
-
-    Copy the permission bits, last access time, last modification time, and
-    flags from `src` to `dst`. On Linux, copystat() also copies the "extended
-    attributes" where possible. The file contents, owner, and group are
-    unaffected. `src` and `dst` are path names given as strings.
-    """
+    """Copy all stat info (mode bits, atime, mtime, flags) from src to dst"""
     st = os.stat(src)
     mode = stat.S_IMODE(st.st_mode)
     if hasattr(os, 'utime'):
@@ -140,10 +134,7 @@ def copy(src, dst):
     copymode(src, dst)
 
 def copy2(src, dst):
-    """Copy data and metadata. Return the file's destination.
-
-    Metadata is copied with copystat(). Please see the copystat function
-    for more information.
+    """Copy data and all stat info ("cp -p src dst").
 
     The destination may be a directory.
 
@@ -422,21 +413,17 @@ def _make_tarball(base_name, base_dir, compress="gzip", verbose=0, dry_run=0,
 
     return archive_name
 
-def _call_external_zip(base_dir, zip_filename, verbose, dry_run, logger):
+def _call_external_zip(base_dir, zip_filename, verbose=False, dry_run=False):
     # XXX see if we want to keep an external call here
     if verbose:
         zipoptions = "-r"
     else:
         zipoptions = "-rq"
-    cmd = ["zip", zipoptions, zip_filename, base_dir]
-    if logger is not None:
-        logger.info(' '.join(cmd))
-    if dry_run:
-        return
-    import subprocess
+    from distutils.errors import DistutilsExecError
+    from distutils.spawn import spawn
     try:
-        subprocess.check_call(cmd)
-    except subprocess.CalledProcessError:
+        spawn(["zip", zipoptions, zip_filename, base_dir], dry_run=dry_run)
+    except DistutilsExecError:
         # XXX really should distinguish between "couldn't find
         # external 'zip' command" and "zip failed".
         raise ExecError, \
@@ -471,7 +458,7 @@ def _make_zipfile(base_name, base_dir, verbose=0, dry_run=0, logger=None):
         zipfile = None
 
     if zipfile is None:
-        _call_external_zip(base_dir, zip_filename, verbose, dry_run, logger)
+        _call_external_zip(base_dir, zip_filename, verbose, dry_run)
     else:
         if logger is not None:
             logger.info("creating '%s' and adding '%s' to it",

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -18,8 +18,6 @@ public class MovieSceneTools : ModuleRules
             }
         );
 
-		OverridePackageType = PackageOverrideType.EngineDeveloper;
-
 		PublicDependencyModuleNames.AddRange(
 			new string[] {
 				"Core",
@@ -28,22 +26,19 @@ public class MovieSceneTools : ModuleRules
                 "InputCore",
                 "MovieSceneCapture",
 				"UnrealEd",
-				"Sequencer",
-                "EditorWidgets",
-            }
-        );
+				"Sequencer"
+			}
+		);
 
 		PrivateDependencyModuleNames.AddRange(
 			new string[] {
                 "ActorPickerMode",
-				"AppFramework",
-				"CinematicCamera",
+                "CinematicCamera",
                 "CurveEditor",
                 "DesktopPlatform",
                 "Json",
                 "JsonUtilities",
 				"LevelSequence",
-                "LiveLinkInterface",
                 "MessageLog",
 				"MovieScene",
 				"MovieSceneTracks",
@@ -55,6 +50,7 @@ public class MovieSceneTools : ModuleRules
 				"Slate",
 				"SlateCore",
                 "EditorStyle",
+				"EditorWidgets",
 				"PropertyEditor",
                 "MaterialEditor",
 				"RenderCore",

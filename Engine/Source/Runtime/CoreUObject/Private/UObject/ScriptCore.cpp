@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ScriptCore.cpp: Kismet VM execution and support code.
@@ -51,19 +51,6 @@ static FAutoConsoleVariableRef CVarVerboseScriptStats(
 	ECVF_Default
 );
 
-#if PER_FUNCTION_SCRIPT_STATS
-static int32 GMaxFunctionStatDepth = -1;
-static FAutoConsoleVariableRef CVarMaxFunctionStatDepth(
-	TEXT("bp.MaxFunctionStatDepth"),
-	GMaxFunctionStatDepth,
-	TEXT("Script stack threshold for recording per function stats.\n")
-	TEXT("-1: Record all function stats (default)\n")
-	TEXT("0: Record no function stats\n")
-	TEXT(">0: Record functions with depth < MaxFunctionStatDepth \n"),
-	ECVF_Default
-);
-#endif
-
 /*-----------------------------------------------------------------------------
 	Globals.
 -----------------------------------------------------------------------------*/
@@ -86,19 +73,15 @@ COREUOBJECT_API int32 GMaximumScriptLoopIterations = 1000000;
 #endif
 
 #if DO_BLUEPRINT_GUARD
-
-#define CHECK_RUNAWAY { FBlueprintContextTracker::Get().AddRunaway(); }
+#define CHECK_RUNAWAY { ++FBlueprintExceptionTracker::Get().Runaway; }
 COREUOBJECT_API void GInitRunaway() 
 {
-	FBlueprintContextTracker::Get().ResetRunaway();
+	FBlueprintExceptionTracker::Get().ResetRunaway();
 }
-
 #else
-
 #define CHECK_RUNAWAY
 COREUOBJECT_API void GInitRunaway() {}
-
-#endif // DO_BLUEPRINT_GUARD
+#endif
 
 #define STORE_INSTRUCTION_NAMES SCRIPT_AUDIT_ROUTINES
 
@@ -132,14 +115,10 @@ static struct F##inst##Registrar \
 //////////////////////////////////////////////////////////////////////////
 // FBlueprintCoreDelegates
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
-
 FBlueprintCoreDelegates::FOnScriptDebuggingEvent FBlueprintCoreDelegates::OnScriptException;
 FBlueprintCoreDelegates::FOnScriptExecutionEnd FBlueprintCoreDelegates::OnScriptExecutionEnd;
 FBlueprintCoreDelegates::FOnScriptInstrumentEvent FBlueprintCoreDelegates::OnScriptProfilingEvent;
 FBlueprintCoreDelegates::FOnToggleScriptProfiler FBlueprintCoreDelegates::OnToggleScriptProfiler;
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 void FBlueprintCoreDelegates::ThrowScriptException(const UObject* ActiveObject, const FFrame& StackFrame, const FBlueprintExceptionInfo& Info)
 {
@@ -155,7 +134,31 @@ void FBlueprintCoreDelegates::ThrowScriptException(const UObject* ActiveObject, 
 		break;
 #if WITH_EDITOR && DO_BLUEPRINT_GUARD
 	case EBlueprintExceptionType::AccessViolation:
-		bShouldLogWarning = FBlueprintContextTracker::Get().RecordAccessViolation(ActiveObject);
+		{
+			// Determine if the access none should warn or not (we suppress warnings beyond a certain count for each object to avoid per-frame spaminess)
+			struct FIntConfigValueHelper
+			{
+				int32 Value;
+
+				FIntConfigValueHelper() : Value(0)
+				{
+					GConfig->GetInt(TEXT("ScriptErrorLog"), TEXT("MaxNumOfAccessViolation"), Value, GEditorIni);
+				}
+			};
+
+			static const FIntConfigValueHelper MaxNumOfAccessViolation;
+			if (MaxNumOfAccessViolation.Value > 0)
+			{
+				const FName ActiveObjectName = ActiveObject ? ActiveObject->GetFName() : FName();
+				int32& Num = FBlueprintExceptionTracker::Get().DisplayedWarningsMap.FindOrAdd(ActiveObjectName);
+				if (Num > MaxNumOfAccessViolation.Value)
+				{
+					// Skip the generic warning, we've hit this one too many times
+					bShouldLogWarning = false;
+				}
+				Num++;
+			}
+		}
 		break;
 #endif // WITH_EDITOR && DO_BLUEPRINT_GUARD
 	default:
@@ -202,83 +205,18 @@ void FBlueprintCoreDelegates::SetScriptMaximumLoopIterations( const int32 Maximu
 
 #if DO_BLUEPRINT_GUARD
 
-FBlueprintContextTracker::FOnEnterScriptContext FBlueprintContextTracker::OnEnterScriptContext;
-FBlueprintContextTracker::FOnExitScriptContext FBlueprintContextTracker::OnExitScriptContext;
-
-FBlueprintContextTracker& FBlueprintContextTracker::Get()
-{
-	return TThreadSingleton<FBlueprintContextTracker>::Get();
-}
-
-const FBlueprintContextTracker* FBlueprintContextTracker::TryGet()
-{
-	return TThreadSingleton<FBlueprintContextTracker>::TryGet();
-}
-
-void FBlueprintContextTracker::ResetRunaway()
-{
-	Runaway = 0;
-	Recurse = 0;
-	bRanaway = false;
-}
-
-void FBlueprintContextTracker::EnterScriptContext(const UObject* ContextObject, const UFunction* ContextFunction)
-{
-	ScriptEntryTag++;
-
-	OnEnterScriptContext.Broadcast(*this, ContextObject, ContextFunction);
-}
-
-void FBlueprintContextTracker::ExitScriptContext()
-{
-	OnExitScriptContext.Broadcast(*this);
-
-	ScriptEntryTag--;
-
-	check(ScriptEntryTag >= 0);
-}
-
-bool FBlueprintContextTracker::RecordAccessViolation(const UObject* Object)
-{
-	// Determine if the access none should warn or not (we suppress warnings beyond a certain count for each object to avoid per-frame spaminess)
-	struct FIntConfigValueHelper
-	{
-		int32 Value;
-
-		FIntConfigValueHelper() : Value(0)
-		{
-			GConfig->GetInt(TEXT("ScriptErrorLog"), TEXT("MaxNumOfAccessViolation"), Value, GEditorIni);
-		}
-	};
-
-	static const FIntConfigValueHelper MaxNumOfAccessViolation;
-	if (MaxNumOfAccessViolation.Value > 0)
-	{
-		const FName ActiveObjectName = Object ? Object->GetFName() : FName();
-		int32& Num = DisplayedWarningsMap.FindOrAdd(ActiveObjectName);
-		Num++;
-		if (Num > MaxNumOfAccessViolation.Value)
-		{
-			// Skip the generic warning, we've hit this one too many times
-			return false;
-		}
-	}
-	return true;
-}
-
 // This is meant to be called from the immediate mode, and for confusing reasons the optimized code isn't always safe in that case
 PRAGMA_DISABLE_OPTIMIZATION
 
 void PrintScriptCallStackImpl()
 {
-	const FBlueprintContextTracker* BlueprintExceptionTracker = FBlueprintContextTracker::TryGet();
+	const FBlueprintExceptionTracker* BlueprintExceptionTracker = FBlueprintExceptionTracker::TryGet();
 	if (BlueprintExceptionTracker)
 	{
-		const TArray<const FFrame*>& RawStack = BlueprintExceptionTracker->GetScriptStack();
-		FString ScriptStack = FString::Printf(TEXT("\n\nScript Stack (%d frames):\n"), RawStack.Num());
-		for (int32 FrameIdx = RawStack.Num() - 1; FrameIdx >= 0; --FrameIdx)
+		FString ScriptStack = FString::Printf(TEXT("\n\nScript Stack (%d frames):\n"), BlueprintExceptionTracker->ScriptStack.Num());
+		for (int32 FrameIdx = BlueprintExceptionTracker->ScriptStack.Num() - 1; FrameIdx >= 0; --FrameIdx)
 		{
-			ScriptStack += RawStack[FrameIdx]->GetStackDescription() + TEXT("\n");
+			ScriptStack += BlueprintExceptionTracker->ScriptStack[FrameIdx]->GetStackDescription() + TEXT("\n");
 		}
 		UE_LOG(LogOutputDevice, Warning, TEXT("%s"), *ScriptStack);
 	}
@@ -287,8 +225,7 @@ void PrintScriptCallStackImpl()
 PRAGMA_ENABLE_OPTIMIZATION
 
 extern CORE_API void (*GPrintScriptCallStackFn)();
-
-#endif // DO_BLUEPRINT_GUARD
+#endif
 
 //////////////////////////////////////////////////////////////////////////
 // FEditorScriptExecutionGuard
@@ -401,7 +338,7 @@ void FFrame::Step(UObject* Context, RESULT_DECL)
 	(GNatives[B])(Context,*this,RESULT_PARAM);
 }
 
-void FFrame::StepExplicitProperty(void*const Result, FProperty* Property)
+void FFrame::StepExplicitProperty(void*const Result, UProperty* Property)
 {
 	checkSlow(Result != NULL);
 
@@ -453,7 +390,7 @@ FString FFrame::GetScriptCallstack()
 	FString ScriptStack;
 
 #if DO_BLUEPRINT_GUARD
-	FBlueprintContextTracker& BlueprintExceptionTracker = FBlueprintContextTracker::Get();
+	FBlueprintExceptionTracker& BlueprintExceptionTracker = FBlueprintExceptionTracker::Get();
 	if (BlueprintExceptionTracker.ScriptStack.Num() > 0)
 	{
 		for (int32 i = BlueprintExceptionTracker.ScriptStack.Num() - 1; i >= 0; --i)
@@ -733,7 +670,7 @@ void UObject::SkipFunction(FFrame& Stack, RESULT_DECL, UFunction* Function)
 	// allocate temporary memory on the stack for evaluating parameters
 	uint8* Frame = (uint8*)FMemory_Alloca(Function->PropertiesSize);
 	FMemory::Memzero(Frame, Function->PropertiesSize);
-	for (FProperty* Property = (FProperty*)(Function->ChildProperties); *Stack.Code != EX_EndFunctionParms; Property = (FProperty*)(Property->Next))
+	for (UProperty* Property = (UProperty*)Function->Children; *Stack.Code != EX_EndFunctionParms; Property = (UProperty*)Property->Next)
 	{
 		Stack.MostRecentPropertyAddress = NULL;
 		// evaluate the expression into our temporary memory space
@@ -747,7 +684,7 @@ void UObject::SkipFunction(FFrame& Stack, RESULT_DECL, UFunction* Function)
 
 	// destruct properties requiring it for which we had to use our temporary memory 
 	// @warning: conditions for skipping DestroyValue() here must match conditions for passing NULL to Stack.Step() above
-	for (FProperty* Destruct = Function->DestructorLink; Destruct; Destruct = Destruct->DestructorLinkNext)
+	for (UProperty* Destruct = Function->DestructorLink; Destruct; Destruct = Destruct->DestructorLinkNext)
 	{
 		if (!Destruct->HasAnyPropertyFlags(CPF_OutParm))
 		{
@@ -755,7 +692,7 @@ void UObject::SkipFunction(FFrame& Stack, RESULT_DECL, UFunction* Function)
 		}
 	}
 
-	FProperty* ReturnProp = Function->GetReturnProperty();
+	UProperty* ReturnProp = Function->GetReturnProperty();
 	if (ReturnProp != NULL)
 	{
 		// destroy old value if necessary
@@ -782,7 +719,7 @@ void ProcessScriptFunction(UObject* Context, UFunction* Function, FFrame& Stack,
 	// Allocate any temporary memory the script may need via AllocA. This AllocA dependency, along with
 	// the desire to inline calls to our Execution function are the reason for this template function:
 	uint8* FrameMemory = nullptr;
-	FFrame NewStack(Context, Function, nullptr, &Stack, Function->ChildProperties);
+	FFrame NewStack(Context, Function, nullptr, &Stack, Function->Children);
 #if USE_UBER_GRAPH_PERSISTENT_FRAME
 	FrameMemory = Function->GetOuterUClassUnchecked()->GetPersistentUberGraphFrame(Context, Function);
 #endif
@@ -800,7 +737,7 @@ void ProcessScriptFunction(UObject* Context, UFunction* Function, FFrame& Stack,
 	 */
   	if( Function->ReturnValueOffset != MAX_uint16 )
  	{
-		FProperty* ReturnProperty = Function->GetReturnProperty();
+		UProperty* ReturnProperty = Function->GetReturnProperty();
 		if(ensure(ReturnProperty))
 		{
  			FOutParmRec* RetVal = (FOutParmRec*)FMemory_Alloca(sizeof(FOutParmRec));
@@ -816,7 +753,7 @@ void ProcessScriptFunction(UObject* Context, UFunction* Function, FFrame& Stack,
 	NewStack.Locals = FrameMemory;
 	FOutParmRec** LastOut = &NewStack.OutParms;
 		
-	for (FProperty* Property = (FProperty*)(Function->ChildProperties); *Stack.Code != EX_EndFunctionParms; Property = (FProperty*)(Property->Next))
+	for (UProperty* Property = (UProperty*)Function->Children; *Stack.Code != EX_EndFunctionParms; Property = (UProperty*)Property->Next)
 	{
 		checkfSlow(Property, TEXT("NULL Property in Function %s"), *Function->GetPathName()); 
 
@@ -876,7 +813,7 @@ void ProcessScriptFunction(UObject* Context, UFunction* Function, FFrame& Stack,
 	if (!bUsePersistentFrame)
 	{
 		// Initialize any local struct properties with defaults
-		for (FProperty* LocalProp = Function->FirstPropertyToInit; LocalProp != NULL; LocalProp = (FProperty*)(LocalProp->Next))
+		for (UProperty* LocalProp = Function->FirstPropertyToInit; LocalProp != NULL; LocalProp = (UProperty*)LocalProp->Next)
 		{
 			LocalProp->InitializeValue_InContainer(NewStack.Locals);
 		}
@@ -891,7 +828,7 @@ void ProcessScriptFunction(UObject* Context, UFunction* Function, FFrame& Stack,
 	if (!bUsePersistentFrame)
 	{
 		// destruct properties on the stack, except for out params since we know we didn't use that memory
-		for (FProperty* Destruct = Function->DestructorLink; Destruct; Destruct = Destruct->DestructorLinkNext)
+		for (UProperty* Destruct = Function->DestructorLink; Destruct; Destruct = Destruct->DestructorLinkNext)
 		{
 			if (!Destruct->HasAnyPropertyFlags(CPF_OutParm))
 			{
@@ -955,17 +892,17 @@ void UObject::CallFunction( FFrame& Stack, RESULT_DECL, UFunction* Function )
 			FMemory::Memzero( Buffer, Function->ParmsSize );
 
 			// Form the RPC parameters.
-			for( TFieldIterator<FProperty> It(Function); It && (It->PropertyFlags & (CPF_Parm|CPF_ReturnParm))==CPF_Parm; ++It )
+			for( TFieldIterator<UProperty> It(Function); It && (It->PropertyFlags & (CPF_Parm|CPF_ReturnParm))==CPF_Parm; ++It )
 			{
 				uint8* CurrentPropAddr = It->ContainerPtrToValuePtr<uint8>(Buffer);
-				if ( CastField<FBoolProperty>(*It) && It->ArrayDim == 1 )
+				if ( Cast<UBoolProperty>(*It) && It->ArrayDim == 1 )
 				{
 					// we're going to get '1' returned for bools that are set, so we need to manually mask it in to the proper place
 					bool bValue = false;
 					Stack.Step(Stack.Object, &bValue);
 					if (bValue)
 					{
-						((FBoolProperty*)*It)->SetPropertyValue( CurrentPropAddr, true );
+						((UBoolProperty*)*It)->SetPropertyValue( CurrentPropAddr, true );
 					}
 				}
 				else
@@ -1002,7 +939,7 @@ void UObject::CallFunction( FFrame& Stack, RESULT_DECL, UFunction* Function )
 }
 
 /** Helper function to zero the return value in case of a fatal (runaway / infinite recursion) error */
-void ClearReturnValue(FProperty* ReturnProp, RESULT_DECL)
+void ClearReturnValue(UProperty* ReturnProp, RESULT_DECL)
 {
 	if (ReturnProp != NULL)
 	{
@@ -1025,18 +962,18 @@ void ProcessLocalScriptFunction(UObject* Context, FFrame& Stack, RESULT_DECL)
 	MS_ALIGN(16) uint8 Buffer[MAX_SIMPLE_RETURN_VALUE_SIZE] GCC_ALIGN(16);
 
 #if DO_BLUEPRINT_GUARD
-	FBlueprintContextTracker& BpET = FBlueprintContextTracker::Get();
+	FBlueprintExceptionTracker& BpET = FBlueprintExceptionTracker::Get();
 	if(BpET.bRanaway)
 	{
 		// If we have a return property, return a zeroed value in it, to try and save execution as much as possible
-		FProperty* ReturnProp = (Function)->GetReturnProperty();
+		UProperty* ReturnProp = (Function)->GetReturnProperty();
 		ClearReturnValue(ReturnProp, RESULT_PARAM);
 		return;
 	}
 	else if (++BpET.Recurse == RECURSE_LIMIT)
 	{
 		// If we have a return property, return a zeroed value in it, to try and save execution as much as possible
-		FProperty* ReturnProp = (Function)->GetReturnProperty();
+		UProperty* ReturnProp = (Function)->GetReturnProperty();
 		ClearReturnValue(ReturnProp, RESULT_PARAM);
 
 		// Notify anyone who cares that we've had a fatal error, so we can shut down PIE, etc
@@ -1063,7 +1000,7 @@ void ProcessLocalScriptFunction(UObject* Context, FFrame& Stack, RESULT_DECL)
 		if(BpET.Runaway > GMaximumScriptLoopIterations )
 		{
 			// If we have a return property, return a zeroed value in it, to try and save execution as much as possible
-			FProperty* ReturnProp = (Function)->GetReturnProperty();
+			UProperty* ReturnProp = (Function)->GetReturnProperty();
 			ClearReturnValue(ReturnProp, RESULT_PARAM);
 
 			// Notify anyone who cares that we've had a fatal error, so we can shut down PIE, etc
@@ -1114,10 +1051,6 @@ void ProcessLocalFunction(UObject* Context, UFunction* Fn, FFrame& Stack, RESULT
 	}
 	else
 	{
-#if PER_FUNCTION_SCRIPT_STATS
-		const bool bShouldTrackFunction = Stats::IsThreadCollectingData();
-		FScopeCycleCounterUObject FunctionScope(bShouldTrackFunction ? Fn : nullptr);
-#endif // PER_FUNCTION_SCRIPT_STATS
 		ProcessScriptFunction(Context, Fn, Stack, RESULT_PARAM, ProcessLocalScriptFunction);
 	}
 }
@@ -1149,7 +1082,7 @@ DEFINE_FUNCTION(UObject::ProcessInternal)
 	}
 	else
 	{
-		FProperty* ReturnProp = (Function)->GetReturnProperty();
+		UProperty* ReturnProp = (Function)->GetReturnProperty();
 		ClearReturnValue(ReturnProp, RESULT_PARAM);
 	}
 }
@@ -1181,10 +1114,10 @@ bool UObject::CallFunctionByNameWithArguments(const TCHAR* Str, FOutputDevice& A
 		return false;
 	}
 
-	FProperty* LastParameter = nullptr;
+	UProperty* LastParameter = nullptr;
 
 	// find the last parameter
-	for ( TFieldIterator<FProperty> It(Function); It && (It->PropertyFlags&(CPF_Parm|CPF_ReturnParm)) == CPF_Parm; ++It )
+	for ( TFieldIterator<UProperty> It(Function); It && (It->PropertyFlags&(CPF_Parm|CPF_ReturnParm)) == CPF_Parm; ++It )
 	{
 		LastParameter = *It;
 	}
@@ -1193,9 +1126,9 @@ bool UObject::CallFunctionByNameWithArguments(const TCHAR* Str, FOutputDevice& A
 	uint8* Parms = (uint8*)FMemory_Alloca(Function->ParmsSize);
 	FMemory::Memzero( Parms, Function->ParmsSize );
 
-	for (TFieldIterator<FProperty> It(Function); It && It->HasAnyPropertyFlags(CPF_Parm); ++It)
+	for (TFieldIterator<UProperty> It(Function); It && It->HasAnyPropertyFlags(CPF_Parm); ++It)
 	{
-		FProperty* LocalProp = *It;
+		UProperty* LocalProp = *It;
 		checkSlow(LocalProp);
 		if (!LocalProp->HasAnyPropertyFlags(CPF_ZeroConstructor))
 		{
@@ -1206,13 +1139,13 @@ bool UObject::CallFunctionByNameWithArguments(const TCHAR* Str, FOutputDevice& A
 	const uint32 ExportFlags = PPF_None;
 	bool bFailed = 0;
 	int32 NumParamsEvaluated = 0;
-	for( TFieldIterator<FProperty> It(Function); It && (It->PropertyFlags & (CPF_Parm|CPF_ReturnParm))==CPF_Parm; ++It, NumParamsEvaluated++ )
+	for( TFieldIterator<UProperty> It(Function); It && (It->PropertyFlags & (CPF_Parm|CPF_ReturnParm))==CPF_Parm; ++It, NumParamsEvaluated++ )
 	{
-		FProperty* PropertyParam = *It;
+		UProperty* PropertyParam = *It;
 		checkSlow(PropertyParam); // Fix static analysis warning
 		if (NumParamsEvaluated == 0 && Executor)
 		{
-			FObjectPropertyBase* Op = CastField<FObjectPropertyBase>(*It);
+			UObjectPropertyBase* Op = dynamic_cast<UObjectPropertyBase*>(*It);
 			if( Op && Executor->IsA(Op->PropertyClass) )
 			{
 				// First parameter is implicit reference to object executing the command.
@@ -1251,7 +1184,7 @@ bool UObject::CallFunctionByNameWithArguments(const TCHAR* Str, FOutputDevice& A
 			// if this is the last string property and we have remaining arguments to process, we have to assume that this
 			// is a sub-command that will be passed to another exec (like "cheat giveall weapons", for example). Therefore
 			// we need to use the whole remaining string as an argument, regardless of quotes, spaces etc.
-			if (PropertyParam == LastParameter && PropertyParam->IsA<FStrProperty>() && FCString::Strcmp(Str, TEXT("")) != 0)
+			if (PropertyParam == LastParameter && PropertyParam->IsA<UStrProperty>() && FCString::Strcmp(Str, TEXT("")) != 0)
 			{
 				ArgStr = FString(RemainingStr).TrimStart();
 			}
@@ -1279,7 +1212,7 @@ bool UObject::CallFunctionByNameWithArguments(const TCHAR* Str, FOutputDevice& A
 	}
 
 	//!!destructframe see also UObject::ProcessEvent
-	for( TFieldIterator<FProperty> It(Function); It && It->HasAnyPropertyFlags(CPF_Parm); ++It )
+	for( TFieldIterator<UProperty> It(Function); It && It->HasAnyPropertyFlags(CPF_Parm); ++It )
 	{
 		It->DestroyValue_InContainer(Parms);
 	}
@@ -1808,7 +1741,7 @@ bool FScriptAuditExec::Exec(UWorld* InWorld, const TCHAR* Cmd, FOutputDevice& Ar
 // which can taint profiling results:
 #define LIGHTWEIGHT_PROCESS_EVENT_COUNTER 0 && !DO_BLUEPRINT_GUARD
 
-#if LIGHTWEIGHT_PROCESS_EVENT_COUNTER || PER_FUNCTION_SCRIPT_STATS
+#if LIGHTWEIGHT_PROCESS_EVENT_COUNTER
 thread_local int32 ProcessEventCounter = 0;
 #endif
 
@@ -1816,6 +1749,18 @@ void UObject::ProcessEvent( UFunction* Function, void* Parms )
 {
 	checkf(!IsUnreachable(),TEXT("%s  Function: '%s'"), *GetFullName(), *Function->GetPathName());
 	checkf(!FUObjectThreadContext::Get().IsRoutingPostLoad, TEXT("Cannot call UnrealScript (%s - %s) while PostLoading objects"), *GetFullName(), *Function->GetFullName());
+
+#if LIGHTWEIGHT_PROCESS_EVENT_COUNTER
+	CONDITIONAL_SCOPE_CYCLE_COUNTER(STAT_BlueprintTime, IsInGameThread() && ProcessEventCounter == 0);
+	TGuardValue<int32> PECounter(ProcessEventCounter, ProcessEventCounter+1);
+#endif
+
+#if DO_BLUEPRINT_GUARD
+	FBlueprintExceptionTracker& BlueprintExceptionTracker = FBlueprintExceptionTracker::Get();
+	TGuardValue<int32> EntryCounter( BlueprintExceptionTracker.ScriptEntryTag, BlueprintExceptionTracker.ScriptEntryTag+1);
+
+	CONDITIONAL_SCOPE_CYCLE_COUNTER(STAT_BlueprintTime, IsInGameThread() && BlueprintExceptionTracker.ScriptEntryTag == 1);
+#endif
 
 #if TOTAL_OVERHEAD_SCRIPT_STATS
 	FBlueprintEventTimer::FScopedVMTimer VMTime;
@@ -1859,32 +1804,14 @@ void UObject::ProcessEvent( UFunction* Function, void* Parms )
 	}
 	checkSlow((Function->ParmsSize == 0) || (Parms != NULL));
 
-#if DO_BLUEPRINT_GUARD
-	FBlueprintContextTracker& BlueprintContextTracker = FBlueprintContextTracker::Get();
-	const int32 ProcessEventDepth = BlueprintContextTracker.GetScriptEntryTag();
-	BlueprintContextTracker.EnterScriptContext(this, Function);
-#elif PER_FUNCTION_SCRIPT_STATS || LIGHTWEIGHT_PROCESS_EVENT_COUNTER
-	const int32 ProcessEventDepth = ProcessEventCounter;
-	TGuardValue<int32> PECounter(ProcessEventCounter, ProcessEventCounter + 1);
-#endif
-
 #if PER_FUNCTION_SCRIPT_STATS
-	const bool bShouldTrackFunction = (GMaxFunctionStatDepth == -1 || ProcessEventDepth < GMaxFunctionStatDepth) && Stats::IsThreadCollectingData();
+	const bool bShouldTrackFunction = Stats::IsThreadCollectingData();
 	FScopeCycleCounterUObject FunctionScope(bShouldTrackFunction ? Function : nullptr);
 #endif // PER_FUNCTION_SCRIPT_STATS
 
 #if STATS || ENABLE_STATNAMEDEVENTS
 	const bool bShouldTrackObject = GVerboseScriptStats && Stats::IsThreadCollectingData();
 	FScopeCycleCounterUObject ContextScope(bShouldTrackObject ? this : nullptr);
-#endif
-
-#if LIGHTWEIGHT_PROCESS_EVENT_COUNTER
-	CONDITIONAL_SCOPE_CYCLE_COUNTER(STAT_BlueprintTime, IsInGameThread() && ProcessEventCounter == 1);
-#endif
-
-#if DO_BLUEPRINT_GUARD
-	// Only start stat if this is the top level context
-	CONDITIONAL_SCOPE_CYCLE_COUNTER(STAT_BlueprintTime, IsInGameThread() && BlueprintContextTracker.GetScriptEntryTag() == 1);
 #endif
 
 #if UE_BLUEPRINT_EVENTGRAPH_FASTCALLS
@@ -1925,7 +1852,7 @@ void UObject::ProcessEvent( UFunction* Function, void* Parms )
 		FMemory::Memcpy(Frame, Parms, Function->ParmsSize);
 
 		// Create a new local execution stack.
-		FFrame NewStack(this, Function, Frame, NULL, Function->ChildProperties);
+		FFrame NewStack(this, Function, Frame, NULL, Function->Children);
 
 		checkSlow(NewStack.Locals || Function->ParmsSize == 0);
 
@@ -1935,7 +1862,7 @@ void UObject::ProcessEvent( UFunction* Function, void* Parms )
 		if ( Function->HasAnyFunctionFlags(FUNC_HasOutParms) )
 		{
 			FOutParmRec** LastOut = &NewStack.OutParms;
-			for ( FProperty* Property = (FProperty*)(Function->ChildProperties); Property && (Property->PropertyFlags&(CPF_Parm)) == CPF_Parm; Property = (FProperty*)Property->Next )
+			for ( UProperty* Property = (UProperty*)Function->Children; Property && (Property->PropertyFlags&(CPF_Parm)) == CPF_Parm; Property = (UProperty*)Property->Next )
 			{
 				// this is used for optional parameters - the destination address for out parameter values is the address of the calling function
 				// so we'll need to know which address to use if we need to evaluate the default parm value expression located in the new function's
@@ -1971,7 +1898,7 @@ void UObject::ProcessEvent( UFunction* Function, void* Parms )
 
 		if (!bUsePersistentFrame)
 		{
-			for (FProperty* LocalProp = Function->FirstPropertyToInit; LocalProp != NULL; LocalProp = (FProperty*)LocalProp->Next)
+			for (UProperty* LocalProp = Function->FirstPropertyToInit; LocalProp != NULL; LocalProp = (UProperty*)LocalProp->Next)
 			{
 				LocalProp->InitializeValue_InContainer(NewStack.Locals);
 			}
@@ -1986,7 +1913,7 @@ void UObject::ProcessEvent( UFunction* Function, void* Parms )
 		{
 			// Destroy local variables except function parameters.!! see also UObject::CallFunctionByNameWithArguments
 			// also copy back constructed value parms here so the correct copy is destroyed when the event function returns
-			for (FProperty* P = Function->DestructorLink; P; P = P->DestructorLinkNext)
+			for (UProperty* P = Function->DestructorLink; P; P = P->DestructorLinkNext)
 			{
 				if (!P->IsInContainer(Function->ParmsSize))
 				{
@@ -2000,8 +1927,10 @@ void UObject::ProcessEvent( UFunction* Function, void* Parms )
 		}
 	}
 
-#if DO_BLUEPRINT_GUARD
-	BlueprintContextTracker.ExitScriptContext();
+#if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
+#if WITH_EDITORONLY_DATA
+	FBlueprintCoreDelegates::OnScriptExecutionEnd.Broadcast();
+#endif
 #endif
 }
 
@@ -2019,7 +1948,7 @@ DEFINE_FUNCTION(UObject::execLocalVariable)
 	checkSlow(Stack.Object == P_THIS);
 	checkSlow(Stack.Locals != NULL);
 
-	FProperty* VarProperty = Stack.ReadProperty();
+	UProperty* VarProperty = Stack.ReadProperty();
 	if (VarProperty == nullptr)
 	{
 		FBlueprintExceptionInfo ExceptionInfo(EBlueprintExceptionType::AccessViolation, LOCTEXT("MissingLocalVariable", "Attempted to access missing local variable. If this is a packaged/cooked build, are you attempting to use an editor-only property?"));
@@ -2041,10 +1970,10 @@ IMPLEMENT_VM_FUNCTION( EX_LocalVariable, execLocalVariable );
 
 DEFINE_FUNCTION(UObject::execInstanceVariable)
 {
-	FProperty* VarProperty = (FProperty*)Stack.ReadObject();
+	UProperty* VarProperty = (UProperty*)Stack.ReadObject();
 	Stack.MostRecentProperty = VarProperty;
 
-	if (VarProperty == nullptr || !P_THIS->IsA((UClass*)VarProperty->InternalGetOwnerAsUObjectUnsafe()))
+	if (VarProperty == nullptr || !P_THIS->IsA((UClass*)VarProperty->GetOuter()))
 	{
 		FBlueprintExceptionInfo ExceptionInfo(EBlueprintExceptionType::AccessViolation, FText::Format(LOCTEXT("MissingProperty", "Attempted to access missing property '{0}'. If this is a packaged/cooked build, are you attempting to use an editor-only property?"), FText::FromString(GetNameSafe(VarProperty))));
 		FBlueprintCoreDelegates::ThrowScriptException(P_THIS, Stack, ExceptionInfo);
@@ -2067,12 +1996,12 @@ IMPLEMENT_VM_FUNCTION( EX_InstanceVariable, execInstanceVariable );
 
 DEFINE_FUNCTION(UObject::execClassSparseDataVariable)
 {
-	FProperty* VarProperty = (FProperty*)Stack.ReadObject();
+	UProperty* VarProperty = (UProperty*)Stack.ReadObject();
 	Stack.MostRecentProperty = VarProperty;
 
 	if (VarProperty == nullptr || P_THIS->GetSparseClassDataStruct() == nullptr)
 	{
-		FBlueprintExceptionInfo ExceptionInfo(EBlueprintExceptionType::AccessViolation, FText::Format(LOCTEXT("MissingSparseProperty", "Attempted to access missing sparse property '{0}' {1}, {2}. If this is a packaged/cooked build, are you attempting to use an editor-only property?"), FText::FromString(GetNameSafe(VarProperty)), FText::FromString(GetNameSafe(P_THIS->GetSparseClassDataStruct())), FText::FromString(GetNameSafe(VarProperty ? VarProperty->GetOwner<UClass>() : nullptr))));
+		FBlueprintExceptionInfo ExceptionInfo(EBlueprintExceptionType::AccessViolation, FText::Format(LOCTEXT("MissingSparseProperty", "Attempted to access missing sparse property '{0}' {1}, {2}. If this is a packaged/cooked build, are you attempting to use an editor-only property?"), FText::FromString(GetNameSafe(VarProperty)), FText::FromString(GetNameSafe(P_THIS->GetSparseClassDataStruct())), FText::FromString(GetNameSafe(VarProperty ? (UClass*)VarProperty->GetOuter() : nullptr))));
 		FBlueprintCoreDelegates::ThrowScriptException(P_THIS, Stack, ExceptionInfo);
 
 		Stack.MostRecentPropertyAddress = nullptr;
@@ -2096,7 +2025,7 @@ IMPLEMENT_VM_FUNCTION(EX_ClassSparseDataVariable, execClassSparseDataVariable);
 
 DEFINE_FUNCTION(UObject::execDefaultVariable)
 {
-	FProperty* VarProperty = (FProperty*)Stack.ReadObject();
+	UProperty* VarProperty = (UProperty*)Stack.ReadObject();
 	Stack.MostRecentProperty = VarProperty;
 	Stack.MostRecentPropertyAddress = nullptr;
 
@@ -2110,7 +2039,7 @@ DEFINE_FUNCTION(UObject::execDefaultVariable)
 		// @todo - allow access to archetype properties through object references?
 	}
 
-	if (VarProperty == nullptr || (DefaultObject && !DefaultObject->IsA((UClass*)VarProperty->InternalGetOwnerAsUObjectUnsafe())))
+	if (VarProperty == nullptr || (DefaultObject && !DefaultObject->IsA((UClass*)VarProperty->GetOuter())))
 	{
 		FBlueprintExceptionInfo ExceptionInfo(EBlueprintExceptionType::AccessViolation, LOCTEXT("MissingPropertyDefaultObject", "Attempted to access a missing property on a CDO. If this is a packaged/cooked build, are you attempting to use an editor-only property?"));
 		FBlueprintCoreDelegates::ThrowScriptException(P_THIS, Stack, ExceptionInfo);
@@ -2139,7 +2068,7 @@ DEFINE_FUNCTION(UObject::execLocalOutVariable)
 	checkSlow(Stack.Object == P_THIS);
 
 	// get the property we need to find
-	FProperty* VarProperty = Stack.ReadProperty();
+	UProperty* VarProperty = Stack.ReadProperty();
 	
 	// look through the out parameter infos and find the one that has the address of this property
 	FOutParmRec* Out = Stack.OutParms;
@@ -2209,7 +2138,7 @@ DEFINE_FUNCTION(UObject::execClassContext)
 		}
 
 		const CodeSkipSizeType wSkip = Stack.ReadCodeSkipCount(); // Code offset for NULL expressions. Code += sizeof(CodeSkipSizeType)
-		FProperty* RValueProperty = nullptr;
+		UProperty* RValueProperty = nullptr;
 		const VariableSizeType bSize = Stack.ReadVariableSize(&RValueProperty); // Code += sizeof(ScriptPointerType) + sizeof(uint8)
 		Stack.Code += wSkip;
 		Stack.MostRecentPropertyAddress = NULL;
@@ -2468,7 +2397,7 @@ DEFINE_FUNCTION(UObject::execLetValueOnPersistentFrame)
 	Stack.MostRecentProperty = NULL;
 	Stack.MostRecentPropertyAddress = NULL;
 
-	FProperty* DestProperty = Stack.ReadProperty();
+	UProperty* DestProperty = Stack.ReadProperty();
 	checkSlow(DestProperty);
 	UFunction* UberGraphFunction = CastChecked<UFunction>(DestProperty->GetOwnerStruct());
 	checkSlow(Stack.Object->GetClass()->IsChildOf(UberGraphFunction->GetOuterUClassUnchecked()));
@@ -2492,7 +2421,7 @@ DEFINE_FUNCTION(UObject::execSwitchValue)
 	Stack.MostRecentPropertyAddress = nullptr;
 	Stack.Step(Stack.Object, nullptr);
 
-	FProperty* IndexProperty = Stack.MostRecentProperty;
+	UProperty* IndexProperty = Stack.MostRecentProperty;
 	checkSlow(IndexProperty);
 
 	uint8* IndexAdress = Stack.MostRecentPropertyAddress;
@@ -2564,7 +2493,7 @@ DEFINE_FUNCTION(UObject::execArrayGetByRef)
 	}
 
 	void* ArrayAddr = Stack.MostRecentPropertyAddress;
-	FArrayProperty* ArrayProperty = ExactCastField<FArrayProperty>(Stack.MostRecentProperty);
+	UArrayProperty* ArrayProperty = ExactCast<UArrayProperty>(Stack.MostRecentProperty);
 
  	int32 ArrayIndex;
  	Stack.Step( Stack.Object, &ArrayIndex);
@@ -2614,7 +2543,7 @@ IMPLEMENT_VM_FUNCTION(EX_ArrayGetByRef, execArrayGetByRef);
 DEFINE_FUNCTION(UObject::execLet)
 {
 	Stack.MostRecentProperty = nullptr;
-	FProperty* LocallyKnownProperty = Stack.ReadPropertyUnchecked();
+	UProperty* LocallyKnownProperty = Stack.ReadPropertyUnchecked();
 
 	// Get variable address.
 	Stack.MostRecentProperty = nullptr;
@@ -2667,13 +2596,13 @@ DEFINE_FUNCTION(UObject::execLetObj)
 	}
 
 	void* ObjAddr = Stack.MostRecentPropertyAddress;
-	FObjectPropertyBase* ObjectProperty = CastField<FObjectPropertyBase>(Stack.MostRecentProperty);
+	UObjectPropertyBase* ObjectProperty = dynamic_cast<UObjectPropertyBase*>(Stack.MostRecentProperty);
 	if (ObjectProperty == NULL)
 	{
-		FArrayProperty* ArrayProp = ExactCastField<FArrayProperty>(Stack.MostRecentProperty);
+		UArrayProperty* ArrayProp = ExactCast<UArrayProperty>(Stack.MostRecentProperty);
 		if (ArrayProp != NULL)
 		{
-			ObjectProperty = CastField<FObjectPropertyBase>(ArrayProp->Inner);
+			ObjectProperty = dynamic_cast<UObjectPropertyBase*>(ArrayProp->Inner);
 		}
 	}
 
@@ -2704,13 +2633,13 @@ DEFINE_FUNCTION(UObject::execLetWeakObjPtr)
 	}
 
 	void* ObjAddr = Stack.MostRecentPropertyAddress;
-	FObjectPropertyBase* ObjectProperty = CastField<FObjectPropertyBase>(Stack.MostRecentProperty);
+	UObjectPropertyBase* ObjectProperty = dynamic_cast<UObjectPropertyBase*>(Stack.MostRecentProperty);
 	if (ObjectProperty == NULL)
 	{
-		FArrayProperty* ArrayProp = ExactCastField<FArrayProperty>(Stack.MostRecentProperty);
+		UArrayProperty* ArrayProp = ExactCast<UArrayProperty>(Stack.MostRecentProperty);
 		if (ArrayProp != NULL)
 		{
-			ObjectProperty = CastField<FObjectPropertyBase>(ArrayProp->Inner);
+			ObjectProperty = dynamic_cast<UObjectPropertyBase*>(ArrayProp->Inner);
 		}
 	}
 	
@@ -2744,17 +2673,17 @@ DEFINE_FUNCTION(UObject::execLetBool)
 
 		Bool properties inside dynamic arrays and tmaps are also not packed together.
 		If the bool property we're accessing is an element in a dynamic array, Stack.MostRecentProperty
-		will be pointing to the dynamic array that has a FBoolProperty as its inner, so
+		will be pointing to the dynamic array that has a UBoolProperty as its inner, so
 		we'll need to check for that.
 	*/
 	uint8* BoolAddr = (uint8*)Stack.MostRecentPropertyAddress;
-	FBoolProperty* BoolProperty = ExactCastField<FBoolProperty>(Stack.MostRecentProperty);
+	UBoolProperty* BoolProperty = ExactCast<UBoolProperty>(Stack.MostRecentProperty);
 	if (BoolProperty == NULL)
 	{
-		FArrayProperty* ArrayProp = ExactCastField<FArrayProperty>(Stack.MostRecentProperty);
+		UArrayProperty* ArrayProp = ExactCast<UArrayProperty>(Stack.MostRecentProperty);
 		if (ArrayProp != NULL)
 		{
-			BoolProperty = ExactCastField<FBoolProperty>(ArrayProp->Inner);
+			BoolProperty = ExactCast<UBoolProperty>(ArrayProp->Inner);
 		}
 	}
 
@@ -2764,7 +2693,7 @@ DEFINE_FUNCTION(UObject::execLetBool)
 	Stack.Step( Stack.Object, &NewValue );
 	if( BoolAddr )
 	{
-		checkSlow(CastField<FBoolProperty>(BoolProperty));
+		checkSlow(dynamic_cast<UBoolProperty*>(BoolProperty));
 		BoolProperty->SetPropertyValue( BoolAddr, NewValue );
 	}
 }
@@ -2797,7 +2726,7 @@ DEFINE_FUNCTION(UObject::execLetMulticastDelegate)
 	Stack.MostRecentProperty = NULL;
 	Stack.Step( Stack.Object, NULL ); // Variable.
 
-	FMulticastDelegateProperty* DelegateProp = CastFieldCheckedNullAllowed<FMulticastDelegateProperty>(Stack.MostRecentProperty);
+	UMulticastDelegateProperty* DelegateProp = CastChecked<UMulticastDelegateProperty>(Stack.MostRecentProperty, ECastCheckedType::NullAllowed);
 	void* DelegateAddr = Stack.MostRecentPropertyAddress;
 	FMulticastScriptDelegate Delegate;
 	Stack.Step( Stack.Object, &Delegate );
@@ -2818,7 +2747,7 @@ DEFINE_FUNCTION(UObject::execSelf)
 		*(UObject**)RESULT_PARAM = P_THIS;
 	}
 	// likely it's expecting us to fill out Stack.MostRecentProperty, which you 
-	// cannot because 'self' is not a FProperty (it is essentially a constant)
+	// cannot because 'self' is not a UProperty (it is essentially a constant)
 	else 
 	{
 		FBlueprintExceptionInfo ExceptionInfo(
@@ -2908,7 +2837,7 @@ void UObject::ProcessContextOpcode( FFrame& Stack, RESULT_DECL, bool bCanFailSil
 		}
 
 		const CodeSkipSizeType wSkip = Stack.ReadCodeSkipCount(); // Code offset for NULL expressions. Code += sizeof(CodeSkipSizeType)
-		FProperty* RValueProperty = nullptr;
+		UProperty* RValueProperty = nullptr;
 		const VariableSizeType bSize = Stack.ReadVariableSize(&RValueProperty); // Code += sizeof(ScriptPointerType) + sizeof(uint8)
 		Stack.Code += wSkip;
 		Stack.MostRecentPropertyAddress = NULL;
@@ -2924,7 +2853,7 @@ void UObject::ProcessContextOpcode( FFrame& Stack, RESULT_DECL, bool bCanFailSil
 DEFINE_FUNCTION(UObject::execStructMemberContext)
 {
 	// Get the structure element we care about
-	FProperty* StructProperty = Stack.ReadProperty();
+	UProperty* StructProperty = Stack.ReadProperty();
 	checkSlow(StructProperty);
 
 	// Evaluate an expression leading to the struct.
@@ -3000,13 +2929,13 @@ public:
 		Stack.MostRecentPropertyAddress = NULL;
 		Stack.MostRecentProperty = NULL;
 		Stack.Step( Stack.Object, NULL );
-		FMulticastDelegateProperty* DelegateProp = CastFieldCheckedNullAllowed<FMulticastDelegateProperty>(Stack.MostRecentProperty);
+		UMulticastDelegateProperty* DelegateProp = CastChecked<UMulticastDelegateProperty>(Stack.MostRecentProperty, ECastCheckedType::NullAllowed);
 		const FMulticastScriptDelegate* DelegateAddr = (DelegateProp ? DelegateProp->GetMulticastDelegate(Stack.MostRecentPropertyAddress) : nullptr);
 
 		//Fill parameters
 		uint8* Parameters = (uint8*)FMemory_Alloca(SignatureFunction->ParmsSize);
 		FMemory::Memzero(Parameters, SignatureFunction->ParmsSize);
-		for (FProperty* Property = (FProperty*)SignatureFunction->ChildProperties; *Stack.Code != EX_EndFunctionParms; Property = (FProperty*)Property->Next)
+		for (UProperty* Property = (UProperty*)SignatureFunction->Children; *Stack.Code != EX_EndFunctionParms; Property = (UProperty*)Property->Next)
 		{
 			Stack.MostRecentPropertyAddress = NULL;
 			if (Property->PropertyFlags & CPF_OutParm)
@@ -3036,7 +2965,7 @@ public:
 		}
 		
 		//Clean parameters
-		for (FProperty* Destruct = SignatureFunction->DestructorLink; Destruct; Destruct = Destruct->DestructorLinkNext)
+		for (UProperty* Destruct = SignatureFunction->DestructorLink; Destruct; Destruct = Destruct->DestructorLinkNext)
 		{
 			Destruct->DestroyValue_InContainer(Parameters);
 		}
@@ -3056,7 +2985,7 @@ DEFINE_FUNCTION(UObject::execAddMulticastDelegate)
 	Stack.MostRecentProperty = NULL;
 	Stack.Step( Stack.Object, NULL ); // Variable.
 
-	FMulticastDelegateProperty* DelegateProp = CastFieldCheckedNullAllowed<FMulticastDelegateProperty>(Stack.MostRecentProperty);
+	UMulticastDelegateProperty* DelegateProp = CastChecked<UMulticastDelegateProperty>(Stack.MostRecentProperty, ECastCheckedType::NullAllowed);
 	void* DelegateAddr = Stack.MostRecentPropertyAddress;
 
 	FScriptDelegate Delegate;
@@ -3076,7 +3005,7 @@ DEFINE_FUNCTION(UObject::execRemoveMulticastDelegate)
 	Stack.MostRecentProperty = NULL;
 	Stack.Step( Stack.Object, NULL ); // Variable.
 
-	FMulticastDelegateProperty* DelegateProp = CastFieldCheckedNullAllowed<FMulticastDelegateProperty>(Stack.MostRecentProperty);
+	UMulticastDelegateProperty* DelegateProp = CastChecked<UMulticastDelegateProperty>(Stack.MostRecentProperty, ECastCheckedType::NullAllowed);
 	void* DelegateAddr = Stack.MostRecentPropertyAddress;
 
 	FScriptDelegate Delegate;
@@ -3096,7 +3025,7 @@ DEFINE_FUNCTION(UObject::execClearMulticastDelegate)
 	Stack.MostRecentProperty = NULL;
 	Stack.Step( Stack.Object, NULL );
 
-	FMulticastDelegateProperty* DelegateProp = CastFieldCheckedNullAllowed<FMulticastDelegateProperty>(Stack.MostRecentProperty);
+	UMulticastDelegateProperty* DelegateProp = CastChecked<UMulticastDelegateProperty>(Stack.MostRecentProperty, ECastCheckedType::NullAllowed);
 	void* DelegateAddr = Stack.MostRecentPropertyAddress;
 
 	if (DelegateProp && DelegateAddr)
@@ -3229,12 +3158,6 @@ DEFINE_FUNCTION(UObject::execTextConst)
 }
 IMPLEMENT_VM_FUNCTION( EX_TextConst, execTextConst );
 
-DEFINE_FUNCTION(UObject::execPropertyConst)
-{
-	*(FProperty**)RESULT_PARAM = (FProperty*)Stack.ReadObject();
-}
-IMPLEMENT_VM_FUNCTION(EX_PropertyConst, execPropertyConst);
-
 DEFINE_FUNCTION(UObject::execObjectConst)
 {
 	*(UObject**)RESULT_PARAM = (UObject*)Stack.ReadObject();
@@ -3248,16 +3171,6 @@ DEFINE_FUNCTION(UObject::execSoftObjectConst)
 	*(FSoftObjectPtr*)RESULT_PARAM = FSoftObjectPath(LongPath);
 }
 IMPLEMENT_VM_FUNCTION( EX_SoftObjectConst, execSoftObjectConst);
-
-DEFINE_FUNCTION(UObject::execFieldPathConst)
-{
-	FString StringPath;
-	Stack.Step(Stack.Object, &StringPath);
-	FFieldPath FieldPath;
-	FieldPath.Generate(*StringPath);
-	*(FFieldPath*)RESULT_PARAM = FieldPath;
-}
-IMPLEMENT_VM_FUNCTION(EX_FieldPathConst, execFieldPathConst);
 
 DEFINE_FUNCTION(UObject::execInstanceDelegate)
 {
@@ -3348,7 +3261,7 @@ DEFINE_FUNCTION(UObject::execStructConst)
 	// TODO: Change this once structs/classes can be declared as explicitly editor only
 	bool bIsEditorOnlyStruct = false;
 
-	for( FProperty* StructProp = ScriptStruct->PropertyLink; StructProp; StructProp = StructProp->PropertyLinkNext )
+	for( UProperty* StructProp = ScriptStruct->PropertyLink; StructProp; StructProp = StructProp->PropertyLinkNext )
 	{
 		// Skip transient and editor only properties, this needs to be synched with KismetCompilerVMBackend
 		if (StructProp->PropertyFlags & CPF_Transient || (!bIsEditorOnlyStruct && StructProp->PropertyFlags & CPF_EditorOnly))
@@ -3380,7 +3293,7 @@ DEFINE_FUNCTION(UObject::execSetArray)
 	Stack.MostRecentProperty = NULL;
 	Stack.Step( Stack.Object, NULL ); // Array to set
 	
-	FArrayProperty* ArrayProperty = CastFieldChecked<FArrayProperty>(Stack.MostRecentProperty);
+	UArrayProperty* ArrayProperty = CastChecked<UArrayProperty>(Stack.MostRecentProperty);
  	FScriptArrayHelper ArrayHelper(ArrayProperty, Stack.MostRecentPropertyAddress);
  	ArrayHelper.EmptyValues();
  
@@ -3404,7 +3317,7 @@ DEFINE_FUNCTION(UObject::execSetSet)
 	Stack.Step( Stack.Object, nullptr ); // Set to set
 	const int32 Num = Stack.ReadInt<int32>();
 
-	FSetProperty* SetProperty = CastFieldChecked<FSetProperty>(Stack.MostRecentProperty);
+	USetProperty* SetProperty = CastChecked<USetProperty>(Stack.MostRecentProperty);
  	FScriptSetHelper SetHelper(SetProperty, Stack.MostRecentPropertyAddress);
  	SetHelper.EmptyElements(Num);
  
@@ -3437,7 +3350,7 @@ DEFINE_FUNCTION(UObject::execSetMap)
 	Stack.Step( Stack.Object, nullptr ); // Map to set
 	const int32 Num = Stack.ReadInt<int32>();
 	
-	FMapProperty* MapProperty = CastFieldChecked<FMapProperty>(Stack.MostRecentProperty);
+	UMapProperty* MapProperty = CastChecked<UMapProperty>(Stack.MostRecentProperty);
  	FScriptMapHelper MapHelper(MapProperty, Stack.MostRecentPropertyAddress);
  	MapHelper.EmptyValues(Num);
  
@@ -3465,7 +3378,7 @@ IMPLEMENT_VM_FUNCTION( EX_SetMap, execSetMap );
 
 DEFINE_FUNCTION(UObject::execArrayConst)
 {
-	FProperty* InnerProperty = CastFieldChecked<FProperty>((FField*)Stack.ReadObject());
+	UProperty* InnerProperty = CastChecked<UProperty>(Stack.ReadObject());
 	int32 Num = Stack.ReadInt<int32>();
 	check(RESULT_PARAM);
 	FScriptArrayHelper ArrayHelper = FScriptArrayHelper::CreateHelperFormInnerProperty(InnerProperty, RESULT_PARAM);
@@ -3485,7 +3398,7 @@ IMPLEMENT_VM_FUNCTION(EX_ArrayConst, execArrayConst);
 
 DEFINE_FUNCTION(UObject::execSetConst)
 {
-	FProperty* InnerProperty = CastFieldChecked<FProperty>((FField*)Stack.ReadObject());
+	UProperty* InnerProperty = CastChecked<UProperty>(Stack.ReadObject());
 	int32 Num = Stack.ReadInt<int32>();
 	check(RESULT_PARAM);
 
@@ -3505,8 +3418,8 @@ IMPLEMENT_VM_FUNCTION(EX_SetConst, execSetConst);
 
 DEFINE_FUNCTION(UObject::execMapConst)
 {
-	FProperty* KeyProperty = CastFieldChecked<FProperty>((FField*)Stack.ReadObject());
-	FProperty* ValProperty = CastFieldChecked<FProperty>((FField*)Stack.ReadObject());
+	UProperty* KeyProperty = CastChecked<UProperty>(Stack.ReadObject());
+	UProperty* ValProperty = CastChecked<UProperty>(Stack.ReadObject());
 	int32 Num = Stack.ReadInt<int32>();
 	check(RESULT_PARAM);
 

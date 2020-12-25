@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,12 +14,10 @@
  */
 class FWmfMediaHardwareVideoDecodingShader : public FGlobalShader
 {
-	DECLARE_TYPE_LAYOUT(FWmfMediaHardwareVideoDecodingShader, NonVirtual);
 public:
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5) 
-			|| IsPCPlatform(Parameters.Platform); // to support mobile emulation on PC
+		return IsFeatureLevelSupported(Parameters.Platform, ERHIFeatureLevel::SM5);
 	}
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
@@ -79,14 +77,21 @@ public:
 		SetShaderValue(RHICmdList, ShaderRHI, SrgbToLinear, InIsOutputSrgb ? 1 : 0); // Explicitly specify integer value, as using boolean falls over on XboxOne.
 	}
 
+
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << TextureY << TextureUV << PointClampedSamplerY << BilinearClampedSamplerUV << ColorTransform << SrgbToLinear;
+		return bShaderHasOutdatedParameters;
+	}
+
 private:
-	
-	LAYOUT_FIELD(FShaderResourceParameter, TextureY);
-	LAYOUT_FIELD(FShaderResourceParameter, TextureUV);
-	LAYOUT_FIELD(FShaderResourceParameter, PointClampedSamplerY);
-	LAYOUT_FIELD(FShaderResourceParameter, BilinearClampedSamplerUV);
-	LAYOUT_FIELD(FShaderParameter, ColorTransform);
-	LAYOUT_FIELD(FShaderParameter, SrgbToLinear);
+	FShaderResourceParameter TextureY;
+	FShaderResourceParameter TextureUV;
+	FShaderResourceParameter PointClampedSamplerY;
+	FShaderResourceParameter BilinearClampedSamplerUV;
+	FShaderParameter ColorTransform;
+	FShaderParameter SrgbToLinear;
 };
 
 class FHardwareVideoDecodingVS : public FWmfMediaHardwareVideoDecodingShader

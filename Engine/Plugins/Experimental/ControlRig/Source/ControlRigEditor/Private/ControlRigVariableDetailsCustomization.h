@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "IDetailCustomization.h"
 #include "Styling/SlateTypes.h"
-#include "UObject/WeakFieldPtr.h"
 
 class IDetailLayoutBuilder;
 class IBlueprintEditor;
@@ -26,15 +25,15 @@ public:
 	virtual void CustomizeDetails(IDetailLayoutBuilder& DetailLayout) override;
 
 private:
-	bool IsAnimationFlagEnabled(TWeakFieldPtr<FProperty> PropertyBeingCustomized) const;
+	bool IsAnimationFlagEnabled(TWeakObjectPtr<UProperty> PropertyBeingCustomized) const;
 
-	ECheckBoxState IsAnimationOutputChecked(TWeakFieldPtr<FProperty> PropertyBeingCustomized) const;
+	ECheckBoxState IsAnimationOutputChecked(TWeakObjectPtr<UProperty> PropertyBeingCustomized) const;
 
-	void HandleAnimationOutputCheckStateChanged(ECheckBoxState CheckBoxState, TWeakFieldPtr<FProperty> PropertyBeingCustomized);
+	void HandleAnimationOutputCheckStateChanged(ECheckBoxState CheckBoxState, TWeakObjectPtr<UProperty> PropertyBeingCustomized);
 
-	ECheckBoxState IsAnimationInputChecked(TWeakFieldPtr<FProperty> PropertyBeingCustomized) const;
+	ECheckBoxState IsAnimationInputChecked(TWeakObjectPtr<UProperty> PropertyBeingCustomized) const;
 
-	void HandleAnimationInputCheckStateChanged(ECheckBoxState CheckBoxState, TWeakFieldPtr<FProperty> PropertyBeingCustomized);
+	void HandleAnimationInputCheckStateChanged(ECheckBoxState CheckBoxState, TWeakObjectPtr<UProperty> PropertyBeingCustomized);
 
 private:
 	/** The Blueprint editor we are embedded in */

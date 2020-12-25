@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SSDDefinitions.ush"
 
@@ -17,9 +17,6 @@
 	#define CONFIG_SIGNAL_INPUT_LAYOUT  SIGNAL_BUFFER_LAYOUT_PENUMBRA_INPUT_NSPP
 	#define CONFIG_SIGNAL_OUTPUT_LAYOUT SIGNAL_BUFFER_LAYOUT_PENUMBRA_INJESTION_NSPP
 	#define CONFIG_MULTIPLEXED_SIGNALS_PER_SIGNAL_DOMAIN 1
-
-	#define CONFIG_SIGNAL_INPUT_TEXTURE_TYPE SIGNAL_TEXTURE_TYPE_FLOAT4
-	#define CONFIG_SIGNAL_OUTPUT_TEXTURE_TYPE SIGNAL_TEXTURE_TYPE_UINT2
 
 	#define CONFIG_INPUT_TEXTURE_COUNT DIM_SIGNAL_BATCH_SIZE
 	#define CONFIG_OUTPUT_TEXTURE_COUNT ((DIM_SIGNAL_BATCH_SIZE + 1) / 2)
@@ -119,9 +116,7 @@ void MainCS(
 	}
 
 	// Sample the reference sample.
-	FSSDSignalArray MultiplexedSamples;
-	FSSDSignalFrequencyArray MultiplexedFrequencies;
-	SampleMultiplexedSignals(
+	FSSDSignalArray MultiplexedSamples = SampleMultiplexedSignals(
 		SignalInput_Textures_0,
 		SignalInput_Textures_1,
 		SignalInput_Textures_2,
@@ -129,30 +124,31 @@ void MainCS(
 		GlobalPointClampedSampler,
 		CONFIG_SIGNAL_INPUT_LAYOUT,
 		/* MultiplexedSampleId = */ 0,
-		/* bNormalizeSample = */ true,
+		/* bNormalizeSample = */ false,
 		SceneBufferUV,
-		/* out */ MultiplexedSamples,
-		/* out */ MultiplexedFrequencies);
+		/* MipLevel = */ 0);
 
 	// Performs sample value precomputation.
 	UNROLL
 	for (uint MultiplexId = 0; MultiplexId < CONFIG_SIGNAL_BATCH_SIZE; MultiplexId++)
 	{
 		const uint BatchedSignalId = MultiplexId / CONFIG_MULTIPLEXED_SIGNALS_PER_SIGNAL_DOMAIN;
-		FSSDSignalDomainKnowledge DomainKnowledge = GetSignalDomainKnowledge(BatchedSignalId);
-
-		MultiplexedFrequencies.Array[MultiplexId].WorldBluringRadius = GetSignalWorldBluringRadius(
-			MultiplexedFrequencies.Array[MultiplexId], RefSceneMetadata, DomainKnowledge);
+		MultiplexedSamples.Array[MultiplexId].WorldBluringRadius = GetSignalWorldBluringRadius(
+			MultiplexedSamples.Array[MultiplexId], RefSceneMetadata, BatchedSignalId);
 	}
 
+	// Whitelists computation that needs to be done.
+	const uint MultiplexCount = CONFIG_SIGNAL_BATCH_SIZE;
+	FSSDSignalArray OutputSamples = CreateSignalArrayFromScalarValue(0.0);
+	UNROLL
+	for (uint MultiplexId = 0; MultiplexId < MultiplexCount; MultiplexId++)
+	{
+		OutputSamples.Array[MultiplexId] = MultiplexedSamples.Array[MultiplexId];
+	}
+	
 	// No need to keep DispatchThreadId, while SceneBufferUV is arround at highest VGPR peak because center of the unique pixel to sample.
 	uint2 OutputPixelPostion = BufferUVToBufferPixelCoord(SceneBufferUV);
 		
-	#if DEBUG_OUTPUT
-		//DebugOutput[OutputPixelPostion] = float4(MultiplexedSamples.Array[0].SampleCount, 0, 0, 0);
-		DebugOutput[OutputPixelPostion] = float4(MultiplexedFrequencies.Array[0].WorldBluringRadius, 0, 0, 0);
-	#endif
-
 	BRANCH
 	if (all(OutputPixelPostion < ViewportMax))
 	{
@@ -161,10 +157,7 @@ void MainCS(
 			SignalOutput_UAVs_1,
 			SignalOutput_UAVs_2,
 			SignalOutput_UAVs_3,
-			CONFIG_SIGNAL_OUTPUT_LAYOUT,
-			CONFIG_SIGNAL_BATCH_SIZE,
-			OutputPixelPostion,
-			MultiplexedSamples,
-			MultiplexedFrequencies);
+			CONFIG_SIGNAL_OUTPUT_LAYOUT, MultiplexCount,
+			OutputPixelPostion, OutputSamples.Array);
 	}
 } // MainCS

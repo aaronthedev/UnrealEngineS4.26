@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UDNParser.h"
 #include "Fonts/SlateFontInfo.h"
@@ -653,7 +653,7 @@ FUDNLine FUDNParser::ParseLineIntoUDNContent(int32 LineNumber, const FString& Li
 					if (LineConfig.CalculatedExpectedContentStrings() == Contents.Num())
 					{
 						OutputLine.ContentType = LineConfig.OutputLineType;
-						for (const FString& Content : Contents)
+						for (const FString Content : Contents)
 						{
 							OutputLine.AdditionalContent.Add(Content);
 						}

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -94,12 +94,6 @@ class ENGINE_API ULightComponentBase : public USceneComponent
 	/** Whether the light affects global illumination, when ray-traced global illumination is enabled. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Light, AdvancedDisplay, meta = (DisplayName = "Affect Ray Tracing Global Illumination"))
 	uint32 bAffectGlobalIllumination : 1;
-
-	/**
-	 *Change the deep shadow layers distribution 0:linear distribution (uniform layer distribution), 1:exponential (more details on near small details).
-	 **/
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Light, AdvancedDisplay, meta = (ClampMin = "0.0", ClampMax = "1.0", UIMin = "0.0", UIMax = "1.0"))
-	float DeepShadowLayerDistribution;
 
 	/** 
 	 * Scales the indirect lighting contribution from this light. 
@@ -227,8 +221,7 @@ class ENGINE_API ULightComponentBase : public USceneComponent
 
 	/** UActorComponent Interface */
 	virtual void OnRegister() override;
-	virtual void OnUnregister() override;
-	virtual bool CanEditChange(const FProperty* InProperty) const override;
+	virtual bool CanEditChange(const UProperty* InProperty) const override;
 #endif
 
 	/** We return a small bounds to allow us to non-interpenetrates when placing lights in the level. */

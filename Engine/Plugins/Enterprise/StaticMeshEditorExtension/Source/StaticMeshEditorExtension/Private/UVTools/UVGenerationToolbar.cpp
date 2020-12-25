@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UVGenerationToolbar.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
@@ -91,7 +91,7 @@ void FUVGenerationToolbar::CreateUVMenu(FMenuBuilder& ParentMenuBuilder, const T
 		{
 			return;
 		}
-		EditorInstance->GetAssociatedTabManager()->TryInvokeTab(UVGenerationToolTabId);
+		EditorInstance->GetAssociatedTabManager()->InvokeTab(UVGenerationToolTabId);
 	});
 	ParentMenuBuilder.AddMenuEntry(
 		LOCTEXT("GenerateUVs", "Generate UVs"),

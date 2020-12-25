@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -20,11 +20,10 @@ enum class EARCoreFaceComponentTransformMixing : uint8
 };
 
 /**
- * This component is updated by the ARSystem with face data on devices that have support for it.
- * Note that this class is now deprecated, it's replaced by ARFaceComponent which works on all the platforms support face tracking.
+ * This component is updated by the ARSystem with face data on devices that have support for it
  */
-UCLASS(hidecategories = (Object, LOD, "GoogleARCore|AugmentedFace"), ClassGroup = "AR", Deprecated)
-class GOOGLEARCOREBASE_API UDEPRECATED_GoogleARCoreFaceMeshComponent : public UProceduralMeshComponent
+UCLASS(hidecategories = (Object, LOD, "GoogleARCore|AugmentedFace"), meta = (BlueprintSpawnableComponent), ClassGroup = "AR")
+class GOOGLEARCOREBASE_API UGoogleARCoreFaceMeshComponent : public UProceduralMeshComponent
 {
 	GENERATED_UCLASS_BODY()
 

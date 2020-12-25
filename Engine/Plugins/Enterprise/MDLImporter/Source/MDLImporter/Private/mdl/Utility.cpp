@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #ifdef USE_MDLSDK
 
@@ -21,7 +21,6 @@ MDLSDK_INCLUDES_START
 #include "mi/neuraylib/imaterial_instance.h"
 #include "mi/neuraylib/imdl_compiler.h"
 #include "mi/neuraylib/imdl_factory.h"
-#include "mi/neuraylib/imdl_impexp_api.h"
 #include "mi/neuraylib/imodule.h"
 #include "mi/neuraylib/ineuray.h"
 #include "mi/neuraylib/istring.h"
@@ -161,6 +160,12 @@ namespace Mdl
 			MDL_CHECK_RESULT()                   = ImageApi->write_raw_pixels(Width, Height, Canvas, 0, 0, 0, Src, bFlipY, PixelType);
 
 			return Canvas;
+		}
+
+		void ExportCanvas(const mi::neuraylib::ICanvas* Canvas, const FString& FilePath, mi::neuraylib::INeuray* Neuray)
+		{
+			const mi::neuraylib::IMdl_compiler* Compiler = Neuray->get_api_component<mi::neuraylib::IMdl_compiler>();
+			MDL_CHECK_RESULT()                           = Compiler->export_canvas(TCHAR_TO_ANSI(*FilePath), Canvas, 0);
 		}
 
 		FString CreateTexture(mi::neuraylib::ITransaction* Transaction,

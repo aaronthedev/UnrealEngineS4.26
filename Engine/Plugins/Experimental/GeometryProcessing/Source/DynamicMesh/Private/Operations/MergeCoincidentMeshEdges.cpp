@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Operations/MergeCoincidentMeshEdges.h"
@@ -29,10 +29,7 @@ bool FMergeCoincidentMeshEdges::Apply()
 	if (Mesh->TriangleCount() > 100000)   hashN = 128;
 	if (Mesh->TriangleCount() > 1000000)  hashN = 256;
 	FAxisAlignedBox3d bounds = Mesh->GetCachedBounds();
-	double CellSize = bounds.MaxDim() / (double)hashN;
-	MidpointsHash.Build(CellSize, bounds.Min);
-
-	UseMergeSearchTol = FMathd::Min(CellSize, UseMergeSearchTol);
+	MidpointsHash.Build(bounds.MaxDim() / hashN, bounds.Min);
 
 	// temp values and buffers
 	FVector3d A, B, C, D;

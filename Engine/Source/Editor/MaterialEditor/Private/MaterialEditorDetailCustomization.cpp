@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MaterialEditorDetailCustomization.h"
 #include "Widgets/Text/STextBlock.h"
@@ -215,7 +215,7 @@ void FMaterialExpressionParameterDetails::CustomizeDetails( IDetailLayoutBuilder
 				DetailLayout.HideCategory(MaterialExpressionCategory);
 			}
 
-			if (ValueHandle.IsValid() && ValueHandle->IsValidHandle() && !VectorParameter->IsUsedAsChannelMask())
+			if (ValueHandle.IsValid() && ValueHandle->IsValidHandle())
 			{
 				static const FName Red("R");
 				static const FName Green("G");
@@ -237,12 +237,6 @@ void FMaterialExpressionParameterDetails::CustomizeDetails( IDetailLayoutBuilder
 				{
 					ValueHandle->GetChildHandle(Alpha)->SetPropertyDisplayName(VectorParameter->ChannelNames.A);
 				}
-			}
-
-			if (VectorParameter->IsUsedAsChannelMask())
-			{
-				TSharedPtr<IPropertyHandle> ChannelNameHandle = DetailLayout.GetProperty("ChannelNames", UMaterialExpressionVectorParameter::StaticClass());
-				ChannelNameHandle->MarkHiddenByCustomization();
 			}
 		}
 
@@ -688,18 +682,14 @@ void FMaterialExpressionCollectionParameterDetails::PopulateParameters()
 
 	if (Collection)
 	{
-		TArray<FName> NameList;
-		Collection->GetParameterNames(NameList, false);
-		Collection->GetParameterNames(NameList, true);
-
-		NameList.Sort([](const FName& A, const FName& B) 
+		for (int32 ParameterIndex = 0; ParameterIndex < Collection->ScalarParameters.Num(); ++ParameterIndex)
 		{
-			return A.LexicalLess(B);
-		});
+			ParametersSource.Add(MakeShareable(new FString(Collection->ScalarParameters[ParameterIndex].ParameterName.ToString())));
+		}
 
-		for (const FName& Name : NameList)
+		for (int32 ParameterIndex = 0; ParameterIndex < Collection->VectorParameters.Num(); ++ParameterIndex)
 		{
-			ParametersSource.Add(MakeShareable(new FString(Name.ToString())));
+			ParametersSource.Add(MakeShareable(new FString(Collection->VectorParameters[ParameterIndex].ParameterName.ToString())));
 		}
 	}
 
@@ -765,7 +755,7 @@ void FMaterialDetailCustomization::CustomizeDetails( IDetailLayoutBuilder& Detai
 
 		for( TSharedRef<IPropertyHandle>& PropertyHandle : AllProperties )
 		{
-			FProperty* Property = PropertyHandle->GetProperty();
+			UProperty* Property = PropertyHandle->GetProperty();
 			FName PropertyName = Property->GetFName();
 
 			if (bUIMaterial)
@@ -810,7 +800,7 @@ void FMaterialDetailCustomization::CustomizeDetails( IDetailLayoutBuilder& Detai
 
 			for (TSharedRef<IPropertyHandle>& PropertyHandle : AllProperties)
 			{
-				FProperty* Property = PropertyHandle->GetProperty();
+				UProperty* Property = PropertyHandle->GetProperty();
 				FName PropertyName = Property->GetFName();
 
 				if (PropertyName != GET_MEMBER_NAME_CHECKED(UMaterial, bUseFullPrecision)) 

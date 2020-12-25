@@ -1,7 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-#include "DeferredShadingCommon.ush"
+#include "Common.ush"
 #include "PostProcessCommon.ush"
+#include "SceneTextureParameters.ush"
 
 Texture2D SceneColorTexture;
 SamplerState SceneColorSampler;
@@ -15,7 +16,7 @@ void MainPS(noperspective float4 UVAndScreenPos : TEXCOORD0, float4 SvPosition :
 
 	float3 SceneColor = Texture2DSample(SceneColorTexture, SceneColorSampler, UV).rgb;
 
-	FGBufferData GBufferData = GetGBufferData(UV);
+	FGBufferData GBufferData = GetGBufferDataFromSceneTextures(UV);
 
 	float3 ShadingModelColor = GetShadingModelColor(GBufferData.ShadingModelID);
 

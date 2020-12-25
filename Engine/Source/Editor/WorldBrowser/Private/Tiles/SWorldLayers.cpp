@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "Tiles/SWorldLayers.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/Text/STextBlock.h"
@@ -60,8 +60,6 @@ void SNewWorldLayerPopup::Construct(const FArguments& InArgs)
 					.Text(this, &SNewWorldLayerPopup::GetLayerName)
 					.SelectAllTextWhenFocused(true)
 					.OnTextChanged(this, &SNewWorldLayerPopup::SetLayerName)
-					.OnTextCommitted(this, &SNewWorldLayerPopup::OnNameCommitted)
-					.ClearKeyboardFocusOnCommit(false)
 				]
 
 			]
@@ -89,7 +87,6 @@ void SNewWorldLayerPopup::Construct(const FArguments& InArgs)
 					.MinValue(1)
 					.MaxValue(TNumericLimits<int32>::Max())
 					.OnValueChanged(this, &SNewWorldLayerPopup::SetStreamingDistance)
-					.OnValueCommitted(this, &SNewWorldLayerPopup::OnDistanceCommitted)
 					.LabelPadding(0)
 					.Label()
 					[
@@ -119,44 +116,17 @@ END_SLATE_FUNCTION_BUILD_OPTIMIZATION
 
 FReply SNewWorldLayerPopup::OnClickedCreate()
 {
-	return TryCreateLayer();
-}
-
-void SNewWorldLayerPopup::OnNameCommitted(const FText& InText, ETextCommit::Type CommitType)
-{
-	if (CommitType == ETextCommit::OnEnter)
-	{
-		TryCreateLayer();
-	}
-}
-
-void SNewWorldLayerPopup::OnDistanceCommitted(int32 InValue, ETextCommit::Type CommitType)
-{
-	if (CommitType == ETextCommit::OnEnter)
-	{
-		TryCreateLayer();
-	}
-}
-
-FReply SNewWorldLayerPopup::TryCreateLayer()
-{
-	if (CanCreateLayer())
+	if (OnCreateLayer.IsBound())
 	{
 		return OnCreateLayer.Execute(LayerData);
 	}
 	
-	// Return an unhandled reply if the layer should not be created
 	return FReply::Unhandled();
 }
 
 bool SNewWorldLayerPopup::CanCreateLayer() const
 {
-	const bool bValidStreamingDistance = LayerData.DistanceStreamingEnabled ? LayerData.StreamingDistance > 0 : true;
-
-	return (bValidStreamingDistance &&
-			LayerData.Name.Len() > 0 && 
-			!ExistingLayerNames.Contains(LayerData.Name) && 
-			OnCreateLayer.IsBound());
+	return LayerData.Name.Len() > 0 && !ExistingLayerNames.Contains(LayerData.Name);
 }
 
 /** A class for check boxes in the layer list. 

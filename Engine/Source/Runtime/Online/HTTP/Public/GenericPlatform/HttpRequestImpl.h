@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,13 +14,6 @@ public:
 	virtual FHttpRequestCompleteDelegate& OnProcessRequestComplete() override;
 	virtual FHttpRequestProgressDelegate& OnRequestProgress() override;
 	virtual FHttpRequestHeaderReceivedDelegate& OnHeaderReceived() override;
-	virtual FHttpRequestWillRetryDelegate& OnRequestWillRetry() override;
-
-	virtual void SetTimeout(float InTimeoutSecs) override;
-	virtual void ClearTimeout() override;
-	virtual TOptional<float> GetTimeout() const override;
-
-	float GetTimeoutOrDefault() const;
 
 protected:
 	/** 
@@ -38,10 +31,4 @@ protected:
 
 	/** Delegate that will get called for each new header received */
 	FHttpRequestHeaderReceivedDelegate HeaderReceivedDelegate;
-	
-	/** Delegate that will get called when request will be retried */
-	FHttpRequestWillRetryDelegate OnRequestWillRetryDelegate;
-
-	/** Timeout in seconds for the entire HTTP request to complete */
-	TOptional<float> TimeoutSecs;
 };

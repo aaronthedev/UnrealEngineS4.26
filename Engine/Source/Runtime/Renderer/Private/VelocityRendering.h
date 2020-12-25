@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -32,11 +32,10 @@ EMeshPass::Type GetMeshPassFromVelocityPass(EVelocityPass VelocityPass);
 // Group Velocity Rendering accessors, types, etc.
 struct FVelocityRendering
 {
-	static EPixelFormat GetFormat(EShaderPlatform ShaderPlatform);
-	static FRDGTextureDesc GetRenderTargetDesc(EShaderPlatform ShaderPlatform);
+	static FPooledRenderTargetDesc GetRenderTargetDesc();
 
 	/** Returns true if the separate velocity pass is enabled. */
-	static bool IsSeparateVelocityPassSupported(EShaderPlatform ShaderPlatform);
+	static bool IsSeparateVelocityPassSupported();
 
 	/** Returns true if the velocity can be output in the BasePass. */
 	static bool BasePassCanOutputVelocity(EShaderPlatform ShaderPlatform);

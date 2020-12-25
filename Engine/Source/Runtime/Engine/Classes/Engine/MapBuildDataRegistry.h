@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  * Registry for built data from a map build
@@ -15,7 +15,6 @@
 #include "UObject/UObjectAnnotation.h"
 #include "RenderCommandFence.h"
 #include "LightMap.h"
-#include "Engine/TextureCube.h"
 #include "MapBuildDataRegistry.generated.h"
 
 class FPrecomputedLightVolumeData;
@@ -188,13 +187,12 @@ public:
 	float Brightness;
 
 	TArray<uint8> FullHDRCapturedData;
-	UTextureCube* EncodedCaptureData;
+	TArray<uint8> EncodedHDRCapturedData;
 
 	FReflectionCaptureData() :
 		CubemapSize(0),
 		AverageBrightness(0.0f),
 		Brightness(0.0f),
-		EncodedCaptureData(nullptr),
 		bUploadedFinal(false)
 	{}
 
@@ -211,6 +209,7 @@ public:
 		if (!GIsEditor)
 		{
 			FullHDRCapturedData.Empty();
+			EncodedHDRCapturedData.Empty();
 			CubemapSize = 0;
 			bUploadedFinal = true;
 		}
@@ -248,8 +247,6 @@ public:
 	{
 		return CubemapSize == DefaultAnnotation.CubemapSize && FullHDRCapturedData.Num() == DefaultAnnotation.FullHDRCapturedData.Num();
 	}
-
-	ENGINE_API void AddReferencedObjects(FReferenceCollector& Collector);
 
 	/** Serializer. */
 	friend ENGINE_API FArchive& operator<<(FArchive& Ar,FReflectionCaptureMapBuildData& ReflectionCaptureMapBuildData);
@@ -298,6 +295,10 @@ public:
 	ENGINE_API virtual void BeginDestroy() override;
 	ENGINE_API virtual bool IsReadyForFinishDestroy() override;
 	ENGINE_API virtual void FinishDestroy() override;
+	ENGINE_API virtual bool IsDestructionThreadSafe() const
+	{
+		return false;
+	}
 	//~ End UObject Interface
 
 	/** 
@@ -355,7 +356,6 @@ public:
 	ENGINE_API void ClearSkyAtmosphereBuildData();
 
 	ENGINE_API void InvalidateStaticLighting(UWorld* World, bool bRecreateRenderState = true, const TSet<FGuid>* ResourcesToKeep = nullptr);
-	ENGINE_API void InvalidateSurfaceLightmaps(UWorld* World, bool bRecreateRenderState = true, const TSet<FGuid>* ResourcesToKeep = nullptr);
 	ENGINE_API void InvalidateReflectionCaptures(const TSet<FGuid>* ResourcesToKeep = nullptr);
 
 	ENGINE_API bool IsLegacyBuildData() const;
@@ -370,11 +370,6 @@ public:
 	/** Initializes rendering resources for all lightmap resource clusters. */
 	ENGINE_API void InitializeClusterRenderingResources(ERHIFeatureLevel::Type InFeatureLevel);
 	
-	/**
-		Called by HandleLegacyMapBuildData with legacy BuildData without ReflectionCapture Data
-		or called by PostLoad for legacy BuildData with old EncodedData
-	*/
-	ENGINE_API void HandleLegacyEncodedCubemapData();
 private:
 
 	ENGINE_API void ReleaseResources(const TSet<FGuid>* ResourcesToKeep = nullptr);

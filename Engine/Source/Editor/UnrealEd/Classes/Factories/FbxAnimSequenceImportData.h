@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -17,7 +17,7 @@ b) As for FbxNode::GetAnimationInternval, this one will iterate through all prop
 */
 
 /** Animation length type when importing */
-UENUM(BlueprintType)
+UENUM()
 enum EFBXAnimationLengthImportType
 {
 	/** This option imports animation frames based on what is defined at the time of export */
@@ -33,7 +33,7 @@ enum EFBXAnimationLengthImportType
 /**
 * Import data and options used when importing any mesh from FBX
 */
-UCLASS(BlueprintType, config = EditorPerProjectUserSettings, configdonotcheckdefaults)
+UCLASS(config = EditorPerProjectUserSettings, configdonotcheckdefaults)
 class UNREALED_API UFbxAnimSequenceImportData : public UFbxAssetImportData
 {
 	GENERATED_UCLASS_BODY()
@@ -77,10 +77,6 @@ class UNREALED_API UFbxAnimSequenceImportData : public UFbxAssetImportData
 	/** If true, all previous custom attribute curves will be deleted when doing a re-import. */
 	UPROPERTY(EditAnywhere, AdvancedDisplay, config, Category = ImportSettings)
 	bool bDeleteExistingCustomAttributeCurves;
-
-	/** If true, all previous non-curve custom attributes will be deleted when doing a re-import. */
-	UPROPERTY(EditAnywhere, AdvancedDisplay, config, Category = ImportSettings)
-	bool bDeleteExistingNonCurveCustomAttributes;
 	
 	/** Import bone transform tracks. If false, this will discard any bone transform tracks. (useful for curves only animations)*/
 	UPROPERTY(EditAnywhere, AdvancedDisplay, config, Category = ImportSettings)
@@ -113,7 +109,7 @@ class UNREALED_API UFbxAnimSequenceImportData : public UFbxAssetImportData
 	/** Gets or creates fbx import data for the specified anim sequence */
 	static UFbxAnimSequenceImportData* GetImportDataForAnimSequence(UAnimSequence* AnimSequence, UFbxAnimSequenceImportData* TemplateForCreation);
 
-	virtual bool CanEditChange(const FProperty* InProperty) const override;
+	virtual bool CanEditChange(const UProperty* InProperty) const override;
 
 	virtual void Serialize(FArchive& Ar) override;
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -26,7 +26,7 @@ class FHotReloadClassReinstancer : public FBlueprintCompileReinstancer
 			, SerializedValueSize(0)
 		{}
 
-		FProperty* Property;
+		UProperty* Property;
 		FName SubobjectName;
 		int64 SerializedValueOffset;
 		int64 SerializedValueSize;

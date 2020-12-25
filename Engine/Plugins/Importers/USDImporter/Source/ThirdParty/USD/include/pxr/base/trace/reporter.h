@@ -22,8 +22,8 @@
 // language governing permissions and limitations under the Apache License.
 //
 
-#ifndef PXR_BASE_TRACE_REPORTER_H
-#define PXR_BASE_TRACE_REPORTER_H
+#ifndef TRACE_REPORTER_H
+#define TRACE_REPORTER_H
 
 #include "pxr/pxr.h"
 
@@ -152,16 +152,14 @@ public:
 
     /// @}
 
-    /// This fully re-builds the event and aggregate trees from whatever the 
-    /// current collection holds.  It is ok to call this multiple times in case 
-    /// the collection gets appended on inbetween. 
-    ///
     /// If we want to have multiple reporters per collector, this will need to
     /// be changed so that all reporters reporting on a collector update their
-    /// respective trees. 
+    /// respective trees
     TRACE_API void UpdateAggregateTree();
 
-    /// Placeholder for UpdateAggregateTree().
+    /// Like UpdateAggregateTree() but also builds the event tree.  This
+    /// takes extra time and most clients don't need it so it's a separate
+    /// method.
     TRACE_API void UpdateEventTree();
     
     /// Clears event tree and counters.
@@ -202,7 +200,7 @@ protected:
 
 private:
     void _ProcessCollection(const TraceReporterBase::CollectionPtr&) override;
-    void _RebuildEventAndAggregateTrees();
+    void _UpdateTree(bool buildEventTree);
     void _PrintRecursionMarker(std::ostream &s, const std::string &label, 
                                int indent);
     void _PrintLineTimes(std::ostream &s, double inclusive, double exclusive,
@@ -229,4 +227,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_TRACE_REPORTER_H
+#endif // TRACE_REPORTER_H

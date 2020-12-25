@@ -1,17 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #if WITH_NVCLOTH
 
 #include "ClothingSimulation.h"
+#include "ClothingSimulationContext.h"
 #include "ClothingActor.h"
-#include "ClothConfigNv.h"
-#include "ClothCollisionData.h"
 
-class FPrimitiveDrawInterface;
-class UClothingAssetBase;
-class UClothingAssetCommon;
+#include "Assets/ClothingAssetNv.h"
+
 
 namespace nv
 {
@@ -30,14 +28,13 @@ namespace physx
 	class PxVec4;
 }
 
-class FClothingSimulationContextNv final : public FClothingSimulationContextCommon
+class FClothingSimulationContextNv final : public FClothingSimulationContextBase
 {
 public:
-	FClothingSimulationContextNv();
-	virtual ~FClothingSimulationContextNv() override;
 
-	// Set the world gravity in the parent class while preserving the Nv legacy code behavior
-	virtual void FillWorldGravity(const USkeletalMeshComponent* InComponent) override;
+	// Ref to local matrices from the owning component (for skinning fixed verts)
+	TArray<FMatrix> RefToLocals;
+
 };
 
 // Scratch data for simulation to avoid allocations while processing, per actor data
@@ -135,7 +132,7 @@ private:
 	TArray<FActorLodData> LodData;
 
 	// How we're going to calculate our wind data (see EClothingWindMethod for method descriptions)
-	EClothingWindMethodNv WindMethod;
+	EClothingWindMethod WindMethod;
 
 	// Thickness to add to collisions to fake cloth thickness
 	float CollisionThickness;
@@ -160,11 +157,30 @@ private:
 	// Scratch arrays for processing during simulate, grow-only to avoid repeated allocations.
 	FClothingActorScratchData Scratch;
 
-	// Simulation given access to our data
+	// Simuation given access to our data
 	friend class FClothingSimulationNv;
 };
 
-class FClothingSimulationNv final : public FClothingSimulationCommon
+// Base simulation to fill in common data for the base context
+class FClothingSimulationBase : public IClothingSimulation
+{
+public:
+	FClothingSimulationBase();
+	virtual ~FClothingSimulationBase();
+
+protected:
+	/** Fills in the base data for a clothing simulation */
+	virtual void 
+	FillContext(
+		USkeletalMeshComponent* InComponent, 
+		float InDeltaTime, 
+		IClothingSimulationContext* InOutContext) override;
+
+	/** Maximum physics time, incoming deltas will be clamped down to this value on long frames */
+	float MaxPhysicsDelta;
+};
+
+class FClothingSimulationNv final : public FClothingSimulationBase
 {
 	// Cached from the module for speed, DO NOT DELETE, only for creating cloth objects
 	nv::cloth::Factory* CachedFactory;
@@ -183,12 +199,12 @@ public:
 	// IClothingSimulation Interface
 	virtual void CreateActor(USkeletalMeshComponent* InOwnerComponent, UClothingAssetBase* InAsset, int32 InSimDataIndex) override;
 	virtual IClothingSimulationContext* CreateContext() override;
+	virtual void FillContext(USkeletalMeshComponent* InComponent, float InDeltaTime, IClothingSimulationContext* InOutContext) override;
 	virtual void Initialize() override;
 	virtual void Shutdown() override;
 	virtual bool ShouldSimulate() const override;
 	virtual void Simulate(IClothingSimulationContext* InContext) override;
 	virtual FBoxSphereBounds GetBounds(const USkeletalMeshComponent* InOwnerComponent) const override;
-	virtual float GetSimulationTime() const override { return SimulationTime; }
 
 	virtual void DestroyActors() override;
 	virtual void DestroyContext(IClothingSimulationContext* InContext) override;
@@ -233,21 +249,18 @@ private:
 
 	// The core simulation is only solving unoriented particles, so we need to compute normals after the
 	// simulation runs
-	void ComputePhysicalMeshNormals(FClothingActorNv& Actor);
+	void ComputePhysicalMeshNormals(FClothingActorNv &Actor);
 
 	// Given a clothing config from an asset, apply it to the provided actor. Currently
 	// this is only used from CreateActor, but could be exposed for runtime changes
-	void ApplyClothConfig(const UClothConfigNv* Config, FClothingActorNv& InActor);
+	void ApplyClothConfig(UClothConfigBase *BaseConfig, FClothingActorNv &InActor);
 
 	// Extract collisions from the physics asset inside Asset and apply them to InActor
 	// Not safe to call from workers (i.e. inside the simulation).
-	void ExtractActorCollisions(UClothingAssetCommon* Asset, FClothingActorNv& InActor);
+	void ExtractActorCollisions(UClothingAssetCommon* Asset, FClothingActorNv &InActor);
 
 	// The current LOD index for the owning skeletal mesh component
 	int32 CurrentMeshLodIndex;
-
-	// The current averaged simulation time in ms
-	TAtomic<float> SimulationTime;
 
 #if WITH_EDITOR
 public:

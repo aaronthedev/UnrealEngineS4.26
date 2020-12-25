@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MfMediaPlayer.h"
 
@@ -18,7 +18,7 @@
 	#include "Windows/WindowsHWrapper.h"
 	#include "Windows/AllowWindowsPlatformTypes.h"
 #else
-	#include "XboxCommonAllowPlatformTypes.h"
+	#include "XboxOne/XboxOneAllowPlatformTypes.h"
 #endif
 
 #define LOCTEXT_NAMESPACE "FMfMediaPlayer"
@@ -116,10 +116,10 @@ FString FMfMediaPlayer::GetInfo() const
 }
 
 
-FGuid FMfMediaPlayer::GetPlayerPluginGUID() const
+FName FMfMediaPlayer::GetPlayerName() const
 {
-	static FGuid PlayerPluginGUID(0x6a5bd063, 0xe0854163, 0x867e5978, 0xf3eaa9f2);
-	return PlayerPluginGUID;
+	static FName PlayerName(TEXT("MfMedia"));
+	return PlayerName;
 }
 
 
@@ -771,7 +771,7 @@ void FMfMediaPlayer::ReceiveSourceReaderSample(IMFSample* Sample, HRESULT Status
 #if PLATFORM_WINDOWS || PLATFORM_HOLOLENS
 	#include "Windows/HideWindowsPlatformTypes.h"
 #else
-	#include "XboxCommonHidePlatformTypes.h"
+	#include "XboxOne/XboxOneHidePlatformTypes.h"
 #endif
 
 #endif //MFMEDIA_SUPPORTED_PLATFORM

@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_LAYER_TREE_H
-#define PXR_USD_SDF_LAYER_TREE_H
+#ifndef SDF_LAYER_TREE_H
+#define SDF_LAYER_TREE_H
 
 /// \file sdf/layerTree.h
 
@@ -86,4 +86,4 @@ private:
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_LAYER_TREE_H
+#endif // SDF_LAYER_TREE_H

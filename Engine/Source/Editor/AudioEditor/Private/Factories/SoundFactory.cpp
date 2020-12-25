@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Factories/SoundFactory.h"
 #include "AssetRegistryModule.h"
@@ -215,7 +215,7 @@ UObject* USoundFactory::CreateObject
 		}
 
 		// if we are creating the cue move it when necessary
-		UPackage* CuePackage = bMoveCue ? CreatePackage( *CuePackageName) : nullptr;
+		UPackage* CuePackage = bMoveCue ? CreatePackage(nullptr, *CuePackageName) : nullptr;
 
 		// if the sound already exists, remember the user settings
 		USoundWave* ExistingSound = FindObject<USoundWave>(InParent, *Name.ToString());
@@ -237,28 +237,25 @@ UObject* USoundFactory::CreateObject
 			// to be auditioned in the editor properly.
 			if (!ExistingSound->ResourceData)
 			{
-				if (FAudioDeviceHandle AudioDevice = GEngine->GetMainAudioDevice())
+				if (FAudioDevice* AudioDevice = GEngine->GetMainAudioDevice())
 				{
 					FName RuntimeFormat = AudioDevice->GetRuntimeFormat(ExistingSound);
 					ExistingSound->InitAudioResource(RuntimeFormat);
 				}
 			}
 
+			UE_LOG(LogAudioEditor, Log, TEXT("Stopping Sound Resources of Existing Sound"));
 			if (ComponentsToRestart.Num() > 0)
 			{
-				UE_LOG(LogAudioEditor, Display, TEXT("Stopping the following AudioComponents referencing sound being imported"));
 				for (UAudioComponent* AudioComponent : ComponentsToRestart)
 				{
-					UE_LOG(LogAudioEditor, Display, TEXT("Component '%s' Stopped"), *AudioComponent->GetName());
+					UE_LOG(LogAudioEditor, Log, TEXT("Component '%s' Stopped"), *AudioComponent->GetName());
 					AudioComponent->Stop();
 				}
 			}
 		}
 
-		if (!ExistingSound)
-		{
-			UpdateTemplate();
-		}
+		UpdateTemplate();
 
 		bool bUseExistingSettings = SuppressImportDialogOptions & ESuppressImportDialog::Overwrite;
 		if (ExistingSound && !bUseExistingSettings && !GIsAutomationTesting)
@@ -493,11 +490,10 @@ UObject* USoundFactory::CreateObject
 		Sound->AssetImportData->Update(CurrentFilename);
 
 		// Compressed data is now out of date.
-		const bool bRebuildStreamingChunks = FPlatformCompressionUtilities::IsCurrentPlatformUsingStreamCaching();
-		Sound->InvalidateCompressedData(true /* bFreeResources */, bRebuildStreamingChunks);
+		Sound->InvalidateCompressedData(true /* bFreeResources */);
 
 		// If stream caching is enabled, we need to make sure this asset is ready for playback.
-		if (bRebuildStreamingChunks && Sound->IsStreaming(nullptr))
+		if (FPlatformCompressionUtilities::IsCurrentPlatformUsingStreamCaching() && Sound->IsStreaming())
 		{
 			Sound->EnsureZerothChunkIsLoaded();
 		}

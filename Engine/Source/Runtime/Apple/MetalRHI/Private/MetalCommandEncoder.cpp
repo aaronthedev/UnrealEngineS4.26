@@ -1,13 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MetalCommandEncoder.cpp: Metal command encoder wrapper.
 =============================================================================*/
 
 #include "MetalRHIPrivate.h"
-#include "MetalShaderTypes.h"
-#include "MetalGraphicsPipelineState.h"
-#include "MetalCommandBufferFence.h"
+
 #include "MetalCommandEncoder.h"
 #include "MetalCommandBuffer.h"
 #include "MetalComputeCommandEncoder.h"
@@ -572,11 +570,16 @@ void FMetalCommandEncoder::BeginParallelRenderCommandEncoding(uint32 NumChildren
 		{
 			for (NSString* Group in DebugGroups)
 			{
+				if (CommandList.GetCommandQueue().GetRuntimeDebuggingLevel() >= EMetalDebugLevelLogDebugGroups)
+				{
+					[((NSObject<MTLCommandBuffer>*)CommandBuffer.GetPtr()).debugGroups addObject:Group];
+				}
 				ParallelRenderCommandEncoder.PushDebugGroup(Group);
 				METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, RenderEncoderDebug.PushDebugGroup(Group));
 			}
 		}
 	}
+	// METAL_STATISTIC(FMetalProfiler::GetProfiler()->BeginEncoder(CommandBufferStats, ParallelRenderCommandEncoder));
 	
 	for (uint32 i = 0; i < NumChildren; i++)
 	{
@@ -618,11 +621,23 @@ void FMetalCommandEncoder::BeginRenderCommandEncoding(void)
 		{
 			for (NSString* Group in DebugGroups)
 			{
+				if (CommandList.GetCommandQueue().GetRuntimeDebuggingLevel() >= EMetalDebugLevelLogDebugGroups)
+				{
+					if (!IsParallel())
+					{
+						[((NSObject<MTLCommandBuffer>*)CommandBuffer.GetPtr()).debugGroups addObject:Group];
+					}
+					else if (RenderCommandEncoder)
+					{
+						[((NSObject<MTLRenderCommandEncoder>*)RenderCommandEncoder.GetPtr()).debugGroups addObject:Group];
+					}
+				}
 				RenderCommandEncoder.PushDebugGroup(Group);
 				METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, RenderEncoderDebug.PushDebugGroup(Group));
 			}
 		}
 	}
+	METAL_STATISTIC(FMetalProfiler::GetProfiler()->BeginEncoder(CommandBufferStats, RenderCommandEncoder));
 	
 	if (CommandList.IsImmediate())
 	{
@@ -662,12 +677,16 @@ void FMetalCommandEncoder::BeginComputeCommandEncoding(mtlpp::DispatchType Dispa
 		{
 			for (NSString* Group in DebugGroups)
 			{
+				if (CommandList.GetCommandQueue().GetRuntimeDebuggingLevel() >= EMetalDebugLevelLogDebugGroups)
+				{
+					[((NSObject<MTLCommandBuffer>*)CommandBuffer.GetPtr()).debugGroups addObject:Group];
+				}
 				ComputeCommandEncoder.PushDebugGroup(Group);
 				METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, ComputeEncoderDebug.PushDebugGroup(Group));
 			}
 		}
 	}
-	
+	METAL_STATISTIC(FMetalProfiler::GetProfiler()->BeginEncoder(CommandBufferStats, ComputeCommandEncoder));
 	EncoderFence = CommandList.GetCommandQueue().CreateFence(Label);
 }
 
@@ -696,11 +715,16 @@ void FMetalCommandEncoder::BeginBlitCommandEncoding(void)
 		{
 			for (NSString* Group in DebugGroups)
 			{
+				if (CommandList.GetCommandQueue().GetRuntimeDebuggingLevel() >= EMetalDebugLevelLogDebugGroups)
+				{
+					[((NSObject<MTLCommandBuffer>*)CommandBuffer.GetPtr()).debugGroups addObject:Group];
+				}
 				BlitCommandEncoder.PushDebugGroup(Group);
 				METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, BlitEncoderDebug.PushDebugGroup(Group));
 			}
 		}
 	}
+	METAL_STATISTIC(FMetalProfiler::GetProfiler()->BeginEncoder(CommandBufferStats, BlitCommandEncoder));
 	
 	EncoderFence = CommandList.GetCommandQueue().CreateFence(Label);
 }
@@ -779,6 +803,8 @@ TRefCountPtr<FMetalFence> FMetalCommandEncoder::EndEncoding(void)
 				WaitCount = 0;
 				UpdateCount = 0;
 #endif
+				
+				METAL_STATISTIC(FMetalProfiler::GetProfiler()->EndEncoder(CommandBufferStats, RenderCommandEncoder));
 				RenderCommandEncoder.EndEncoding();
 				METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, RenderEncoderDebug.EndEncoder());
 				RenderCommandEncoder = nil;
@@ -847,6 +873,12 @@ TRefCountPtr<FMetalFence> FMetalCommandEncoder::EndEncoding(void)
 					}
 				}
 
+				for (mtlpp::RenderCommandEncoder& Encoder : ChildRenderCommandEncoders)
+				{
+					[((NSObject<MTLRenderCommandEncoder>*)Encoder.GetPtr()).debugGroups addObjectsFromArray:((NSObject<MTLCommandBuffer>*)CommandBuffer.GetPtr()).debugGroups];
+				}
+
+//				METAL_STATISTIC(FMetalProfiler::GetProfiler()->EndEncoder(CommandBufferStats, ParallelRenderCommandEncoder));
 				ParallelRenderCommandEncoder.EndEncoding();
 				METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, ParallelEncoderDebug.EndEncoder());
 				ParallelRenderCommandEncoder = nil;
@@ -889,6 +921,8 @@ TRefCountPtr<FMetalFence> FMetalCommandEncoder::EndEncoding(void)
 			WaitCount = 0;
 			UpdateCount = 0;
 #endif
+			
+			METAL_STATISTIC(FMetalProfiler::GetProfiler()->EndEncoder(CommandBufferStats, ComputeCommandEncoder));
 			ComputeCommandEncoder.EndEncoding();
 			METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, ComputeEncoderDebug.EndEncoder());
 			ComputeCommandEncoder = nil;
@@ -929,6 +963,8 @@ TRefCountPtr<FMetalFence> FMetalCommandEncoder::EndEncoding(void)
 			WaitCount = 0;
 			UpdateCount = 0;
 #endif
+			
+			METAL_STATISTIC(FMetalProfiler::GetProfiler()->EndEncoder(CommandBufferStats, RenderCommandEncoder));
 			BlitCommandEncoder.EndEncoding();
 			METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, BlitEncoderDebug.EndEncoder());
 			BlitCommandEncoder = nil;
@@ -991,6 +1027,14 @@ void FMetalCommandEncoder::UpdateFence(FMetalFence* Fence)
 				METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, RenderEncoderDebug.AddUpdateFence(VertexFence));
 				Fence->Write(mtlpp::RenderStages::Vertex);
 				METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, UpdateCount++);
+				
+#if ENABLE_METAL_GPUPROFILE && METAL_STATISTICS
+				FMetalProfiler* Profiler = FMetalProfiler::GetProfiler();
+				if (Profiler)
+				{
+					Profiler->EncodeFence(GetCommandBufferStats(), TEXT("UpdateFence"), Fence, EMTLFenceTypeUpdate);
+				}
+#endif
 			}
 
 			if (Fence->NeedsWrite(mtlpp::RenderStages::Fragment))
@@ -999,6 +1043,14 @@ void FMetalCommandEncoder::UpdateFence(FMetalFence* Fence)
 				METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, RenderEncoderDebug.AddUpdateFence(FragmentFence));
 				Fence->Write(mtlpp::RenderStages::Fragment);
 				METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, UpdateCount++);
+				
+#if ENABLE_METAL_GPUPROFILE && METAL_STATISTICS
+				FMetalProfiler* Profiler = FMetalProfiler::GetProfiler();
+				if (Profiler)
+				{
+					Profiler->EncodeFence(GetCommandBufferStats(), TEXT("UpdateFence"), Fence, EMTLFenceTypeUpdate);
+				}
+#endif
 			}
 		}
 		else if (ComputeCommandEncoder && Fence->NeedsWrite(mtlpp::RenderStages::Vertex))
@@ -1007,6 +1059,14 @@ void FMetalCommandEncoder::UpdateFence(FMetalFence* Fence)
 			METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, ComputeEncoderDebug.AddUpdateFence(VertexFence));
 			Fence->Write(mtlpp::RenderStages::Vertex);
 			METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, UpdateCount++);
+			
+#if ENABLE_METAL_GPUPROFILE && METAL_STATISTICS
+			FMetalProfiler* Profiler = FMetalProfiler::GetProfiler();
+			if (Profiler)
+			{
+				Profiler->EncodeFence(GetCommandBufferStats(), TEXT("UpdateFence"), Fence, EMTLFenceTypeUpdate);
+			}
+#endif
 		}
 		else if (BlitCommandEncoder && Fence->NeedsWrite(mtlpp::RenderStages::Vertex))
 		{
@@ -1014,6 +1074,14 @@ void FMetalCommandEncoder::UpdateFence(FMetalFence* Fence)
 			METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, BlitEncoderDebug.AddUpdateFence(VertexFence));
 			Fence->Write(mtlpp::RenderStages::Vertex);
 			METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, UpdateCount++);
+			
+#if ENABLE_METAL_GPUPROFILE && METAL_STATISTICS
+			FMetalProfiler* Profiler = FMetalProfiler::GetProfiler();
+			if (Profiler)
+			{
+				Profiler->EncodeFence(GetCommandBufferStats(), TEXT("UpdateFence"), Fence, EMTLFenceTypeUpdate);
+			}
+#endif
 		}
 	}
 }
@@ -1026,6 +1094,13 @@ void FMetalCommandEncoder::WaitForFence(FMetalFence* Fence)
 	{
 		if (Fence->NeedsWait(mtlpp::RenderStages::Vertex))
 		{
+#if ENABLE_METAL_GPUPROFILE && METAL_STATISTICS
+			FMetalProfiler* Profiler = FMetalProfiler::GetProfiler();
+			if (Profiler)
+			{
+				Profiler->EncodeFence(GetCommandBufferStats(), TEXT("WaitForFence"), Fence, EMTLFenceTypeWait);
+			}
+#endif
 			METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, WaitCount++);
 			
 			mtlpp::Fence VertexFence = Fence->Get(mtlpp::RenderStages::Vertex);
@@ -1051,6 +1126,14 @@ void FMetalCommandEncoder::WaitForFence(FMetalFence* Fence)
 		}
 		if (Fence->NeedsWait(mtlpp::RenderStages::Fragment))
 		{
+#if ENABLE_METAL_GPUPROFILE && METAL_STATISTICS
+			FMetalProfiler* Profiler = FMetalProfiler::GetProfiler();
+			if (Profiler)
+			{
+				Profiler->EncodeFence(GetCommandBufferStats(), TEXT("WaitForFence"), Fence, EMTLFenceTypeWait);
+			}
+#endif
+			
 			if (FenceStage == mtlpp::RenderStages::Vertex || BlitCommandEncoder)
 			{
 				mtlpp::Fence FragmentFence = Fence->Get(mtlpp::RenderStages::Fragment);
@@ -1090,6 +1173,14 @@ void FMetalCommandEncoder::WaitAndUpdateFence(FMetalFence* Fence)
 	static bool bSupportsFences = CommandList.GetCommandQueue().SupportsFeature(EMetalFeaturesFences);
 	if ((bSupportsFences METAL_DEBUG_OPTION(|| CommandList.GetCommandQueue().GetRuntimeDebuggingLevel() >= EMetalDebugLevelValidation)) && Fence)
 	{
+#if ENABLE_METAL_GPUPROFILE && METAL_STATISTICS
+		FMetalProfiler* Profiler = FMetalProfiler::GetProfiler();
+		if (Profiler)
+		{
+			Profiler->EncodeFence(GetCommandBufferStats(), TEXT("WaitForFence"), Fence, EMTLFenceTypeWait);
+			Profiler->EncodeFence(GetCommandBufferStats(), TEXT("UpdateFence"), Fence, EMTLFenceTypeUpdate);
+		}
+#endif
 		METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, WaitCount++);
 		METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, UpdateCount++);
 		
@@ -1148,6 +1239,17 @@ void FMetalCommandEncoder::InsertDebugSignpost(ns::String const& String)
 {
 	if (String)
 	{
+		if (CommandBuffer && CommandList.GetCommandQueue().GetRuntimeDebuggingLevel() >= EMetalDebugLevelLogDebugGroups)
+		{
+			if (!IsParallel())
+			{
+				[((NSObject<MTLCommandBuffer>*)CommandBuffer.GetPtr()).debugGroups addObject:String];
+			}
+			else if (RenderCommandEncoder)
+			{
+				[((NSObject<MTLRenderCommandEncoder>*)RenderCommandEncoder.GetPtr()).debugGroups addObject:String];
+			}
+		}
 		if (RenderCommandEncoder)
 		{
 			RenderCommandEncoder.InsertDebugSignpost(String);
@@ -1175,6 +1277,17 @@ void FMetalCommandEncoder::PushDebugGroup(ns::String const& String)
 {
 	if (String)
 	{
+		if (CommandBuffer && CommandList.GetCommandQueue().GetRuntimeDebuggingLevel() >= EMetalDebugLevelLogDebugGroups)
+		{
+			if (!IsParallel())
+			{
+				[((NSObject<MTLCommandBuffer>*)CommandBuffer.GetPtr()).debugGroups addObject:String];
+			}
+			else if (RenderCommandEncoder)
+			{
+				[((NSObject<MTLRenderCommandEncoder>*)RenderCommandEncoder.GetPtr()).debugGroups addObject:String];
+			}
+		}
 		[DebugGroups addObject:String];
 		if (RenderCommandEncoder)
 		{
@@ -1292,6 +1405,7 @@ void FMetalCommandEncoder::SetRenderPipelineState(FMetalShaderPipeline* Pipeline
 {
 	check (RenderCommandEncoder);
 	{
+		METAL_STATISTIC(FMetalProfiler::GetProfiler()->EncodePipeline(CommandBufferStats, PipelineState));
 		METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, RenderEncoderDebug.SetPipeline(PipelineState));
 		RenderCommandEncoder.SetRenderPipelineState(PipelineState->RenderPipelineState);
 	}
@@ -1417,6 +1531,7 @@ void FMetalCommandEncoder::SetShaderBuffer(mtlpp::FunctionType const FunctionTyp
 		if(Buffer)
 		{
 			ShaderBuffers[uint32(FunctionType)].Bound |= (1 << index);
+			FMetalCommandBufferDebugHelpers::TrackResource(CommandBuffer.GetPtr(), Buffer.GetPtr());
 		}
 		else
 		{
@@ -1500,6 +1615,7 @@ void FMetalCommandEncoder::SetShaderBytes(mtlpp::FunctionType const FunctionType
 			FMetalBuffer Buffer = RingBuffer.NewBuffer(Length, BufferOffsetAlignment);
 			FMemory::Memcpy(((uint8*)Buffer.GetContents()), Bytes, Length);
 			ShaderBuffers[uint32(FunctionType)].Buffers[Index] = Buffer;
+			FMetalCommandBufferDebugHelpers::TrackResource(CommandBuffer.GetPtr(), Buffer.GetPtr());
 		}
 		ShaderBuffers[uint32(FunctionType)].Bytes[Index] = nil;
 		ShaderBuffers[uint32(FunctionType)].Offsets[Index] = 0;
@@ -1585,6 +1701,7 @@ void FMetalCommandEncoder::SetShaderTexture(mtlpp::FunctionType FunctionType, FM
 	
 	if (Texture)
 	{
+		FMetalCommandBufferDebugHelpers::TrackResource(CommandBuffer.GetPtr(), Texture.GetPtr());
 		uint8 Swizzle[4] = {0,0,0,0};
 		assert(sizeof(Swizzle) == sizeof(uint32));
 		if (Texture.GetPixelFormat() == mtlpp::PixelFormat::X32_Stencil8
@@ -1625,6 +1742,11 @@ void FMetalCommandEncoder::SetShaderSamplerState(mtlpp::FunctionType FunctionTyp
 			check(false);
 			break;
 	}
+	
+	if (Sampler)
+	{
+		FMetalCommandBufferDebugHelpers::TrackResource(CommandBuffer.GetPtr(), Sampler.GetPtr());
+	}
 }
 
 void FMetalCommandEncoder::SetShaderSideTable(mtlpp::FunctionType const FunctionType, NSUInteger const Index)
@@ -1660,7 +1782,8 @@ void FMetalCommandEncoder::SetComputePipelineState(FMetalShaderPipeline* State)
 {
 	check (ComputeCommandEncoder);
 	{
-		METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, ComputeEncoderDebug.SetPipeline(State));
+		METAL_STATISTIC(FMetalProfiler::GetProfiler()->EncodePipeline(CommandBufferStats, State));
+        METAL_DEBUG_LAYER(EMetalDebugLevelFastValidation, ComputeEncoderDebug.SetPipeline(State));
 		ComputeCommandEncoder.SetComputePipelineState(State->ComputePipelineState);
 	}
 }

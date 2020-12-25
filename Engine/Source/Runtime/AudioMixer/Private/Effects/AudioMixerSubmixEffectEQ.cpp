@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "SubmixEffects/AudioMixerSubmixEffectEQ.h"
@@ -165,37 +165,35 @@ static float GetClampedFrequency(const float InFrequency)
 	return FMath::Clamp(InFrequency, 20.0f, 20000.0f);
 }
 
-bool FSubmixEffectSubmixEQ::SetParameters(const FAudioEffectParameters& InParameters)
+void FSubmixEffectSubmixEQ::SetEffectParameters(const FAudioEQEffect& InEQEffectParameters)
 {
-	const FAudioEQEffect& EQEffectParameters = static_cast<const FAudioEQEffect&>(InParameters);
-
 	// This function maps the old audio engine eq effect params to the new eq effect.
 	// Note that this is always a 4-band EQ and not flexible w/ respect.
 	FSubmixEffectSubmixEQSettings NewSettings;
 	FSubmixEffectEQBand Band;
 
 	Band.bEnabled = true;
-	Band.Frequency = GetClampedFrequency(EQEffectParameters.FrequencyCenter0);
-	Band.Bandwidth = GetClampedBandwidth(EQEffectParameters.Bandwidth0);
-	Band.GainDb = Audio::ConvertToDecibels(GetClampedGain(EQEffectParameters.Gain0));
+	Band.Frequency = GetClampedFrequency(InEQEffectParameters.FrequencyCenter0);
+	Band.Bandwidth = GetClampedBandwidth(InEQEffectParameters.Bandwidth0);
+	Band.GainDb = Audio::ConvertToDecibels(GetClampedGain(InEQEffectParameters.Gain0));
 	NewSettings.EQBands.Add(Band);
 
 	Band.bEnabled = true;
-	Band.Frequency = GetClampedFrequency(EQEffectParameters.FrequencyCenter1);
-	Band.Bandwidth = GetClampedBandwidth(EQEffectParameters.Bandwidth1);
-	Band.GainDb = Audio::ConvertToDecibels(GetClampedGain(EQEffectParameters.Gain1));
+	Band.Frequency = GetClampedFrequency(InEQEffectParameters.FrequencyCenter1);
+	Band.Bandwidth = GetClampedBandwidth(InEQEffectParameters.Bandwidth1);
+	Band.GainDb = Audio::ConvertToDecibels(GetClampedGain(InEQEffectParameters.Gain1));
 	NewSettings.EQBands.Add(Band);
 
 	Band.bEnabled = true;
-	Band.Frequency = GetClampedFrequency(EQEffectParameters.FrequencyCenter2);
-	Band.Bandwidth = GetClampedBandwidth(EQEffectParameters.Bandwidth2);
-	Band.GainDb = Audio::ConvertToDecibels(GetClampedGain(EQEffectParameters.Gain2));
+	Band.Frequency = GetClampedFrequency(InEQEffectParameters.FrequencyCenter2);
+	Band.Bandwidth = GetClampedBandwidth(InEQEffectParameters.Bandwidth2);
+	Band.GainDb = Audio::ConvertToDecibels(GetClampedGain(InEQEffectParameters.Gain2));
 	NewSettings.EQBands.Add(Band);
 
 	Band.bEnabled = true;
-	Band.Frequency = GetClampedFrequency(EQEffectParameters.FrequencyCenter3);
-	Band.Bandwidth = GetClampedBandwidth(EQEffectParameters.Bandwidth3);
-	Band.GainDb = Audio::ConvertToDecibels(GetClampedGain(EQEffectParameters.Gain3));
+	Band.Frequency = GetClampedFrequency(InEQEffectParameters.FrequencyCenter3);
+	Band.Bandwidth = GetClampedBandwidth(InEQEffectParameters.Bandwidth3);
+	Band.GainDb = Audio::ConvertToDecibels(GetClampedGain(InEQEffectParameters.Gain3));
 	NewSettings.EQBands.Add(Band);
 
 	// Don't make any changes if this is the exact same parameters
@@ -205,7 +203,6 @@ bool FSubmixEffectSubmixEQ::SetParameters(const FAudioEffectParameters& InParame
 		PendingSettings.SetParams(GameThreadEQSettings);
 	}
 
-	return true;
 }
 
 void FSubmixEffectSubmixEQ::UpdateParameters(const int32 InNumOutputChannels)

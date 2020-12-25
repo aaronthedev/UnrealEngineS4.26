@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Mac/MacWindow.h"
 #include "Mac/MacApplication.h"
@@ -155,7 +155,7 @@ void FMacWindow::Initialize( FMacApplication* const Application, const TSharedRe
 
 				// Tell Cocoa that we are opting into drag and drop.
 				// Only makes sense for regular windows (windows that last a while.)
-				[WindowHandle registerForDraggedTypes:@[NSPasteboardTypeFileURL, NSPasteboardTypeString]];
+				[WindowHandle registerForDraggedTypes:@[NSFilenamesPboardType, NSPasteboardTypeString]];
 
 				if( Definition->HasOSWindowBorder )
 				{
@@ -271,14 +271,8 @@ void FMacWindow::Destroy()
 	{
 		SCOPED_AUTORELEASE_POOL;
 		bIsClosed = true;
-
-		FCocoaWindow* WindowHandleCopy = WindowHandle;
-		MainThreadCall(^{
-			SCOPED_AUTORELEASE_POOL;
-			[WindowHandleCopy setAlphaValue:0.0f];
-			[WindowHandleCopy setBackgroundColor:[NSColor clearColor]];
-		}, UE4ShowEventMode, false);
-
+		[WindowHandle setAlphaValue:0.0f];
+		[WindowHandle setBackgroundColor:[NSColor clearColor]];
 		MacApplication->OnWindowDestroyed(SharedThis(this));
 		WindowHandle = nullptr;
 	}

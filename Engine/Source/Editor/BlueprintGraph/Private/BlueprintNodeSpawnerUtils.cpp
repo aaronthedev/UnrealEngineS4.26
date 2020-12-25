@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BlueprintNodeSpawnerUtils.h"
 #include "BlueprintFunctionNodeSpawner.h"
@@ -8,15 +8,15 @@
 #include "BlueprintDelegateNodeSpawner.h"
 
 //------------------------------------------------------------------------------
-FFieldVariant FBlueprintNodeSpawnerUtils::GetAssociatedField(UBlueprintNodeSpawner const* BlueprintAction)
+UField const* FBlueprintNodeSpawnerUtils::GetAssociatedField(UBlueprintNodeSpawner const* BlueprintAction)
 {
-	FFieldVariant ClassField;
+	UField const* ClassField = nullptr;
 
 	if (UFunction const* Function = GetAssociatedFunction(BlueprintAction))
 	{
 		ClassField = Function;
 	}
-	else if (FProperty const* Property = GetAssociatedProperty(BlueprintAction))
+	else if (UProperty const* Property = GetAssociatedProperty(BlueprintAction))
 	{
 		ClassField = Property;
 	}
@@ -46,9 +46,9 @@ UFunction const* FBlueprintNodeSpawnerUtils::GetAssociatedFunction(UBlueprintNod
 }
 
 //------------------------------------------------------------------------------
-FProperty const* FBlueprintNodeSpawnerUtils::GetAssociatedProperty(UBlueprintNodeSpawner const* BlueprintAction)
+UProperty const* FBlueprintNodeSpawnerUtils::GetAssociatedProperty(UBlueprintNodeSpawner const* BlueprintAction)
 {
-	FProperty const* Property = nullptr;
+	UProperty const* Property = nullptr;
 
 	if (UBlueprintDelegateNodeSpawner const* PropertySpawner = Cast<UBlueprintDelegateNodeSpawner>(BlueprintAction))
 	{
@@ -66,20 +66,12 @@ FProperty const* FBlueprintNodeSpawnerUtils::GetAssociatedProperty(UBlueprintNod
 }
 
 //------------------------------------------------------------------------------
-UClass* FBlueprintNodeSpawnerUtils::GetBindingClass(FBindingObject Binding)
+UClass* FBlueprintNodeSpawnerUtils::GetBindingClass(const UObject* Binding)
 {
-	UClass* BindingClass = nullptr;
-	if (Binding.IsUObject())
-	{
-		BindingClass = Binding.Get<UObject>()->GetClass();
-	}
-	else if (const FObjectProperty* ObjProperty = Binding.Get<FObjectProperty>())
+	UClass* BindingClass = Binding->GetClass();
+	if (const UObjectProperty* ObjProperty = Cast<UObjectProperty>(Binding))
 	{
 		BindingClass = ObjProperty->PropertyClass;
-	}
-	else
-	{
-		check(false); // Can the binding object be an FProperty?
 	}
 	return BindingClass;
 }
@@ -88,22 +80,17 @@ UClass* FBlueprintNodeSpawnerUtils::GetBindingClass(FBindingObject Binding)
 bool FBlueprintNodeSpawnerUtils::IsStaleFieldAction(UBlueprintNodeSpawner const* BlueprintAction)
 {
 	bool bHasStaleAssociatedField= false;
-	UClass* ClassOwner = nullptr;
-	
-	if (const UFunction* AssociatedFunction = GetAssociatedFunction(BlueprintAction))
+
+	const UField* AssociatedField = GetAssociatedField(BlueprintAction);
+	if (AssociatedField != nullptr)
 	{
-		ClassOwner = AssociatedFunction->GetOwnerClass();
-	}
-	else if (const FProperty* AssociatedProperty = GetAssociatedProperty(BlueprintAction))
-	{
-		ClassOwner = AssociatedProperty->GetOwnerClass();
-	}
-	
-	if (ClassOwner != nullptr)
-	{
-		// check to see if this field belongs to a TRASH or REINST class,
-		// maybe to a class that was thrown out because of a hot-reload?
-		bHasStaleAssociatedField = ClassOwner->HasAnyClassFlags(CLASS_NewerVersionExists) || (ClassOwner->GetOutermost() == GetTransientPackage());
+		UClass* ClassOwner = AssociatedField->GetOwnerClass();
+		if (ClassOwner != nullptr)
+		{
+			// check to see if this field belongs to a TRASH or REINST class,
+			// maybe to a class that was thrown out because of a hot-reload?
+			bHasStaleAssociatedField = ClassOwner->HasAnyClassFlags(CLASS_NewerVersionExists) || (ClassOwner->GetOutermost() == GetTransientPackage());
+		}
 	}
 
 	return bHasStaleAssociatedField;

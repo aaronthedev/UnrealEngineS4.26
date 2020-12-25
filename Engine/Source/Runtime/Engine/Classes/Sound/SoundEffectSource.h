@@ -1,13 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
-#include "IAudioExtensionPlugin.h"
-#include "IAudioModulation.h"
+#include "UObject/ObjectMacros.h"
 #include "Sound/SoundEffectPreset.h"
 #include "Sound/SoundEffectBase.h"
-#include "Templates/SharedPointer.h"
-#include "UObject/ObjectMacros.h"
+#include "IAudioExtensionPlugin.h"
 
 #include "SoundEffectSource.generated.h"
 
@@ -62,20 +60,19 @@ protected:
 /** Data required to initialize the source effect. */
 struct FSoundEffectSourceInitData
 {
-	// Sample rate of the audio renderer this effect is processing on
-	float SampleRate = 0.0f;
-
-	// The number of channels of the source audio that is fed into the source effect
-	int32 NumSourceChannels = 0;
-
-	// The audio clock of the audio renderer this effect is processing on
-	double AudioClock = 0.0;
+	float SampleRate;
+	int32 NumSourceChannels;
+	double AudioClock;
 
 	// The object id of the parent preset
-	uint32 ParentPresetUniqueId = INDEX_NONE;
+	uint32 ParentPresetUniqueId;
 
-	// The audio device ID of the audio device instance this source instance was created from
-	uint32 AudioDeviceId = INDEX_NONE;
+	FSoundEffectSourceInitData()
+	: SampleRate(0.0f)
+	, NumSourceChannels(0)
+	, AudioClock(0.0)
+	, ParentPresetUniqueId(INDEX_NONE)
+	{}
 };
 
 /** Data required to update the source effect. */
@@ -103,40 +100,14 @@ struct FSoundEffectSourceInputData
 class ENGINE_API FSoundEffectSource : public FSoundEffectBase
 {
 public:
-	virtual ~FSoundEffectSource() = default;
+	virtual ~FSoundEffectSource() {}
 
-	// Called by the audio engine or systems internally. This function calls the virtual Init function implemented by derived classes.
-	void Setup(const FSoundEffectSourceInitData& InInitData)
-	{
-		// Store the init data internally
-		InitData_Internal = InInitData;
+	/** Called on an audio effect at initialization on main thread before audio processing begins. */
+	virtual void Init(const FSoundEffectSourceInitData& InSampleRate) = 0;
 
-		// This may have been set before this call, so set it on the init data struct
-		if (ParentPresetUniqueId != INDEX_NONE)
-		{
-			InitData_Internal.ParentPresetUniqueId = ParentPresetUniqueId;
-		}
-		// Call the virtual function
-		Init(InitData_Internal);
-	}
-
-	// Returns the data that was given to the source effect when initialized.
-	const FSoundEffectSourceInitData& GetInitializedData() const
-	{
-		// Return our copy of the initialization data
-		return InitData_Internal;
-	}
-
-	// Process the input block of audio. Called on audio thread.
+	/** Process the input block of audio. Called on audio thread. */
 	virtual void ProcessAudio(const FSoundEffectSourceInputData& InData, float* OutAudioBufferData) = 0;
 
-	friend class USoundEffectPreset;
-
-private:
-	// Called on an audio effect at initialization on main thread before audio processing begins.
-	virtual void Init(const FSoundEffectSourceInitData& InInitData) = 0;
-
-	// Copy of data used to initialize the source effect.
-	// Can result in init being called again if init conditions have changed (Sample rate changed, channel count changed, etc)
-	FSoundEffectSourceInitData InitData_Internal;
+	/** Process modulation controls if enabled */
+	virtual void ProcessControls(const FSoundModulationControls& InControls) { }
 };

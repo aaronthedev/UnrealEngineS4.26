@@ -1,34 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/Attenuation.h"
 
-#include "DSP/Dsp.h"
-#include "EngineDefines.h"
-
-
-namespace
-{
-	static const float MinAttenuationValue   = 1.e-3f;
-	static const float MinAttenuationValueDb = -60.0f;
-} // namespace <>
-
-
-FBaseAttenuationSettings::FBaseAttenuationSettings()
-	: DistanceAlgorithm(EAttenuationDistanceModel::Linear)
-	, AttenuationShape(EAttenuationShape::Sphere)
-	, dBAttenuationAtMax(MinAttenuationValueDb)
-	, FalloffMode(ENaturalSoundFalloffMode::Continues)
-	, AttenuationShapeExtents(400.f, 0.f, 0.f)
-	, ConeOffset(0.f)
-	, FalloffDistance(3600.f)
-{
-}
-
 float FBaseAttenuationSettings::GetMaxDimension() const
 {
-	float MaxDimension = GetMaxFalloffDistance();
+	float MaxDimension = FalloffDistance;
 
-	switch (AttenuationShape)
+	switch(AttenuationShape)
 	{
 	case EAttenuationShape::Sphere:
 	case EAttenuationShape::Cone:
@@ -42,7 +20,7 @@ float FBaseAttenuationSettings::GetMaxDimension() const
 		break;
 
 	case EAttenuationShape::Capsule:
-
+		
 		MaxDimension += FMath::Max(AttenuationShapeExtents.X, AttenuationShapeExtents.Y);
 		break;
 
@@ -50,84 +28,7 @@ float FBaseAttenuationSettings::GetMaxDimension() const
 		check(false);
 	}
 
-	return FMath::Clamp(MaxDimension, 0.0f, static_cast<float>(WORLD_MAX));
-}
-
-float FBaseAttenuationSettings::GetMaxFalloffDistance() const
-{
-	static const float WorldMax = static_cast<float>(WORLD_MAX);
-	if (FalloffDistance > WorldMax)
-	{
-		return WorldMax;
-	}
-
-	float MaxFalloffDistance = FalloffDistance;
-	switch (DistanceAlgorithm)
-	{
-		case EAttenuationDistanceModel::Custom:
-		{
-			const FRichCurve* Curve = CustomAttenuationCurve.GetRichCurveConst();
-			check(Curve);
-
-			float LastTime = 0.0f;
-			const FRichCurveKey* LastKey = nullptr;
-			for (const FRichCurveKey& Key : Curve->Keys)
-			{
-				if (Key.Time > LastTime)
-				{
-					LastTime = Key.Time;
-					LastKey = &Key;
-				}
-			}
-
-			const float MaxValue = LastKey ? FMath::Max(LastKey->Value, 0.0f) : 0.0f;
-
-			// If last key's distance is near zero, scale the falloff distance accordingly
-			if (FMath::IsNearlyZero(MaxValue, MinAttenuationValue))
-			{
-				MaxFalloffDistance *= LastTime;
-			}
-			// Otherwise, curve never terminates to non-zero value, so return WorldMax
-			else
-			{
-				MaxFalloffDistance = WorldMax;
-			}
-		}
-		break;
-
-		case EAttenuationDistanceModel::NaturalSound:
-		{
-			switch (FalloffMode)
-			{
-				case ENaturalSoundFalloffMode::Hold:
-				{
-					MaxFalloffDistance = WorldMax;
-				}
-				break;
-
-				case ENaturalSoundFalloffMode::Continues:
-				{
-					MaxFalloffDistance = FalloffDistance * MinAttenuationValueDb / FMath::Min(dBAttenuationAtMax, -KINDA_SMALL_NUMBER);
-				}
-				break;
-
-				case ENaturalSoundFalloffMode::Silent:
-				default:
-				break;
-			}
-		}
-		break;
-
-		// All of these cases scale over the provided FalloffDistance, so just return that as max
-		case EAttenuationDistanceModel::Inverse:
-		case EAttenuationDistanceModel::Linear:
-		case EAttenuationDistanceModel::Logarithmic:
-		case EAttenuationDistanceModel::LogReverse:
-		default:
-		break;
-	}
-
-	return MaxFalloffDistance;
+	return MaxDimension;
 }
 
 float FBaseAttenuationSettings::Evaluate(const FTransform& Origin, const FVector Location, const float DistanceScale) const
@@ -212,28 +113,7 @@ float FBaseAttenuationSettings::AttenuationEval(const float Distance, const floa
 		case EAttenuationDistanceModel::NaturalSound:
 		{
 			check(dBAttenuationAtMax <= 0.0f);
-			float Alpha = DistanceCopy / FalloffCopy;
-			if (FalloffMode == ENaturalSoundFalloffMode::Hold)
-			{
-				Alpha = FMath::Clamp(Alpha, 0.0f, 1.0f);
-				Result = Audio::ConvertToLinear(Alpha * dBAttenuationAtMax);
-			}
-			else if (FalloffMode == ENaturalSoundFalloffMode::Silent)
-			{
-				Alpha = FMath::Clamp(Alpha, 0.0f, 1.0f);
-				if (Alpha < 1.0f)
-				{
-					Result = Audio::ConvertToLinear(Alpha * dBAttenuationAtMax);
-				}
-				else
-				{
-					Result = 0.0f;
-				}
-			}
-			else
-			{
-				Result = Audio::ConvertToLinear(Alpha * dBAttenuationAtMax);
-			}
+			Result = FMath::Pow(10.0f, ((DistanceCopy / FalloffCopy) * dBAttenuationAtMax) / 20.0f);
 			break;
 		}
 
@@ -243,8 +123,8 @@ float FBaseAttenuationSettings::AttenuationEval(const float Distance, const floa
 			break;
 
 		default:
-			checkf(false, TEXT("Unknown attenuation distance algorithm!"))
-			break;
+			checkf(false, TEXT("Uknown attenuation distance algorithm!"))
+				break;
 	}
 
 	// Make sure the output is clamped between 0.0 and 1.0f. Some of the algorithms above can

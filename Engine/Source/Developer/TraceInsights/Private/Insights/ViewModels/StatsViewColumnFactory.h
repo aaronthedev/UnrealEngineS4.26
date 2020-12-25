@@ -1,8 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
+
+#include "Insights/ViewModels/StatsViewColumn.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -24,32 +26,24 @@ struct FStatsViewColumns
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace Insights
-{
-	class FTableColumn;
-}
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
 struct FStatsViewColumnFactory
 {
-public:
-	static void CreateStatsViewColumns(TArray<TSharedRef<Insights::FTableColumn>>& Columns);
-
-	static TSharedRef<Insights::FTableColumn> CreateNameColumn();
-	static TSharedRef<Insights::FTableColumn> CreateMetaGroupNameColumn();
-	static TSharedRef<Insights::FTableColumn> CreateTypeColumn();
-	static TSharedRef<Insights::FTableColumn> CreateCountColumn();
-	static TSharedRef<Insights::FTableColumn> CreateSumColumn();
-	static TSharedRef<Insights::FTableColumn> CreateMaxColumn();
-	static TSharedRef<Insights::FTableColumn> CreateUpperQuartileColumn();
-	static TSharedRef<Insights::FTableColumn> CreateAverageColumn();
-	static TSharedRef<Insights::FTableColumn> CreateMedianColumn();
-	static TSharedRef<Insights::FTableColumn> CreateLowerQuartileColumn();
-	static TSharedRef<Insights::FTableColumn> CreateMinColumn();
-
 private:
-	static constexpr float AggregatedStatsColumnInitialWidth = 80.0f;
+	/** Default constructor. */
+	FStatsViewColumnFactory();
+
+	/** Destructor. */
+	~FStatsViewColumnFactory();
+
+public:
+	/** Contains basic information about columns used in the Stats Counters view widget. Names should be localized. */
+	TArray<FStatsViewColumn*> Collection;
+
+	/** Mapping between column IDs and FStatsViewColumn pointers. */
+	TMap<FName, const FStatsViewColumn*> ColumnIdToPtrMapping;
+
+	/** Singleton */
+	static const FStatsViewColumnFactory& Get();
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -79,10 +79,6 @@ public:
 	UFUNCTION(BlueprintCallable, Category=GameState)
 	virtual bool HasMatchStarted() const;
 
-	/** Returns true if the match can be considered ended. Defaults to false. */
-	UFUNCTION(BlueprintCallable, Category = Game)
-	virtual bool HasMatchEnded() const;
-
 	/** Returns the time that should be used as when a player started */
 	UFUNCTION(BlueprintCallable, Category=GameState)
 	virtual float GetPlayerStartTime(AController* Controller) const;
@@ -161,17 +157,11 @@ protected:
 	/** Handle for efficient management of the UpdateServerTimeSeconds timer */
 	FTimerHandle TimerHandle_UpdateServerTimeSeconds;
 
-	/** Cumulative sum of computed server world time deltas for smoothed-averaging */
-	double SumServerWorldTimeSecondsDelta;
-	/** The number of server world time deltas accumulated in SumServerWorldTimeSecondsDelta - used for computing the mean */
-	uint32 NumServerWorldTimeSecondsDeltas;
-
 private:
 	// Hidden functions that don't make sense to use on this class.
 	HIDE_ACTOR_TRANSFORM_FUNCTIONS();
 
 	friend class UDemoNetDriver;
-	friend class FReplayHelper;
 };
 
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "HttpConnectionRequestReadContext.h"
 #include "HttpServerConstants.h"
@@ -97,7 +97,7 @@ bool FHttpConnectionRequestReadContext::ParseHeader(uint8* ByteBuffer, int32 Buf
 
 			// Build header string
 			FUTF8ToTCHAR WByteBuffer(reinterpret_cast<const ANSICHAR*>(HeaderBytes.GetData()), HeaderBytes.Num());
-			const FString IncomingRequestHeaderStr(WByteBuffer.Length(), WByteBuffer.Get());
+			FString IncomingRequestHeaderStr(WByteBuffer.Get(), WByteBuffer.Length());
 			Request = BuildRequest(IncomingRequestHeaderStr);
 			if (!Request)
 			{
@@ -261,7 +261,7 @@ TSharedPtr<FHttpServerRequest> FHttpConnectionRequestReadContext::BuildRequest(c
 	if (RequestHttpPath.FindChar(TCHAR('?'), QueryParamsIndex))
 	{
 		FString QueryParamsStr = RequestHttpPath.Mid(QueryParamsIndex+1);
-		RequestHttpPath.MidInline(0, QueryParamsIndex, false);
+		RequestHttpPath = RequestHttpPath.Mid(0, QueryParamsIndex);
 
 		// Split query params
 		TArray<FString> QueryParamPairs;
@@ -298,7 +298,8 @@ TSharedPtr<FHttpServerRequest> FHttpConnectionRequestReadContext::BuildRequest(c
 			const auto& HeaderValuesStr = HeaderLine.Mid(SplitIndex + 1).TrimStartAndEnd();
 
 			TArray<FString> HeaderValues;
-			HeaderValuesStr.ParseIntoArray(HeaderValues, TEXT(","), true);
+			const TCHAR HeaderValueDelimiters[] = { TCHAR(',') };
+			HeaderValuesStr.ParseIntoArray(HeaderValues, HeaderValueDelimiters, true);
 
 			if (HeaderValues.Num() > 0)
 			{

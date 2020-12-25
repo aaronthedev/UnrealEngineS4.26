@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TireConfig.h"
 #include "EngineDefines.h"
@@ -8,8 +8,6 @@
 #if WITH_PHYSX
 #include "PhysXVehicleManager.h"
 #endif
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 TArray<TWeakObjectPtr<UTireConfig>> UTireConfig::AllTireConfigs;
 
@@ -135,4 +133,3 @@ float UTireConfig::GetTireFriction(UPhysicalMaterial* PhysicalMaterial)
 }
 
 
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

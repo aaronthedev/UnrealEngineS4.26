@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CascadePreviewViewportClient.h"
 #include "EngineGlobals.h"
@@ -521,7 +521,7 @@ void FCascadeEdPreviewViewportClient::Draw(FViewport* InViewport, FCanvas* Canva
 			TArray<FColor> ScaledBitmap;
 			int32 ScaledWidth	 = 512;
 			int32 ScaledHeight = 512;
-			FImageUtils::CropAndScaleImage(SrcWidth, SrcHeight, ScaledWidth, ScaledHeight, OrigBitmap, ScaledBitmap);
+			FImageUtils::ImageResize(SrcWidth, SrcHeight, OrigBitmap, ScaledWidth, ScaledHeight, ScaledBitmap, true);
 
 			// Compress.
 			FCreateTexture2DParameters Params;

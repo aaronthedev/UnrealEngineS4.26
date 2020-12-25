@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -146,15 +146,4 @@ FSSDSignalArray WaveBroadcastSignalArray(const FWaveBroadcastSettings BroadcastS
 		OutSamples.Array[BatchedSignalId] = WaveBroadcastSignal(BroadcastSettings, Samples.Array[BatchedSignalId]);
 	}
 	return OutSamples;
-}
-
-FSSDSignalFrequencyArray WaveBroadcastSignalFrequenciesArray(const FWaveBroadcastSettings BroadcastSettings, FSSDSignalFrequencyArray Frequencies)
-{
-	FSSDSignalFrequencyArray OutFrequencies;
-	UNROLL_N(SIGNAL_ARRAY_SIZE)
-	for (uint BatchedSignalId = 0; BatchedSignalId < SIGNAL_ARRAY_SIZE; BatchedSignalId++)
-	{
-		OutFrequencies.Array[BatchedSignalId] = WaveBroadcastSignalFrequency(BroadcastSettings, Frequencies.Array[BatchedSignalId]);
-	}
-	return OutFrequencies;
 }

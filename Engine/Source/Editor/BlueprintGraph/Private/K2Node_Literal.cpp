@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "K2Node_Literal.h"
@@ -188,7 +188,7 @@ void UK2Node_Literal::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRe
 	{
 		if (Bindings.Num() == 1)
 		{
-			const AActor* ActorObj = Bindings.CreateConstIterator()->Get<AActor>();
+			const AActor* ActorObj = CastChecked<AActor>(Bindings.CreateConstIterator()->Get());
 
 			UiSpecOut->MenuName = FText::Format( NSLOCTEXT("K2Node", "LiteralTitle", "Create a Reference to {0}"), 
 				FText::FromString(ActorObj->GetActorLabel()) );
@@ -205,12 +205,11 @@ void UK2Node_Literal::GetMenuActions(FBlueprintActionDatabaseRegistrar& ActionRe
 				FText::AsNumber(Bindings.Num()) );
 
 			auto BindingIt = Bindings.CreateConstIterator();
-			UObject* Binding = BindingIt->Get<UObject>();
-			check(Binding); // Can the binding object be an FProperty?
-			UClass* CommonClass = Binding->GetClass();
+
+			UClass* CommonClass = BindingIt->Get()->GetClass();
 			for (++BindingIt; BindingIt; ++BindingIt)
 			{
-				UClass* Class = BindingIt->Get<UObject>()->GetClass(); // Can the binding object be an FProperty?
+				UClass* Class = BindingIt->Get()->GetClass();
 				while (!Class->IsChildOf(CommonClass))
 				{
 					CommonClass = CommonClass->GetSuperClass();

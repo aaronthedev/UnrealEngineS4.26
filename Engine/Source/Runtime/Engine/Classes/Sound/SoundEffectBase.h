@@ -1,19 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
 #include "AudioResampler.h"
 #include "UObject/ObjectMacros.h"
 #include "UObject/Object.h"
-#include "UObject/WeakObjectPtr.h"
-#include "UObject/WeakObjectPtrTemplates.h"
 #include "HAL/ThreadSafeBool.h"
+#include "Sound/SoundEffectPreset.h"
 #include "Containers/Queue.h"
 #include "Misc/ScopeLock.h"
-
-
-// Forward Declarations
-class USoundEffectPreset;
 
 
 // The following macro code creates boiler-plate code for a sound effect preset and hides unnecessary details from user-created effects.
@@ -32,8 +27,6 @@ class USoundEffectPreset;
 		F##EFFECT_NAME##Settings Settings = _Preset->GetSettings(); \
 
 #define EFFECT_PRESET_METHODS(EFFECT_NAME) \
-		virtual bool CanFilter() const override { return false; } \
-		virtual bool HasAssetActions() const { return true; } \
 		virtual FText GetAssetActionName() const override { return FText::FromString(#EFFECT_NAME); } \
 		virtual UClass* GetSupportedClass() const override { return EFFECT_PRESET_NAME(EFFECT_NAME)::StaticClass(); } \
 		virtual FSoundEffectBase* CreateNewEffect() const override { return new F##EFFECT_NAME; } \
@@ -54,12 +47,6 @@ class USoundEffectPreset;
 			SettingsCopy = InSettings; \
 			Update(); \
 		} \
-		void UpdateSettings(TUniqueFunction<void(F##EFFECT_NAME##Settings&)> InCommand) \
-		{ \
-			FScopeLock ScopeLock(&SettingsCritSect); \
-			InCommand(SettingsCopy); \
-			Update(); \
-		} \
 		F##EFFECT_NAME##Settings GetSettings() \
 		{ \
 			FScopeLock ScopeLock(&SettingsCritSect); \
@@ -68,13 +55,22 @@ class USoundEffectPreset;
 		FCriticalSection SettingsCritSect; \
 		F##EFFECT_NAME##Settings SettingsCopy; \
 
+
+#define EFFECT_PRESET_METHODS_NO_ASSET_ACTIONS(EFFECT_NAME) \
+		virtual bool HasAssetActions() const override { return false; } \
+		EFFECT_PRESET_METHODS(EFFECT_NAME)
+
+class USoundEffectPreset;
+
 class ENGINE_API FSoundEffectBase
 {
 public:
-	virtual ~FSoundEffectBase() = default;
+	FSoundEffectBase();
+
+	virtual ~FSoundEffectBase();
 
 	/** Called when the sound effect's preset changed. */
-	virtual void OnPresetChanged() { }
+	virtual void OnPresetChanged() {};
 
 	/** Returns if the submix is active or bypassing audio. */
 	bool IsActive() const;
@@ -85,21 +81,21 @@ public:
 	/** Updates preset on audio render thread. Returns true if update processed a preset update, false if not. */
 	bool Update();
 
+	void SetPreset(USoundEffectPreset* Inpreset);
+
 	USoundEffectPreset* GetPreset();
+
+	/** Removes the instance from the preset. */
+	void ClearPreset(bool bRemoveFromPreset = true);
 
 	/** Queries if the given preset object is the uobject preset for this preset instance, i.e. the preset which spawned this effect instance. */
 	bool IsPreset(USoundEffectPreset* InPreset) const;
 
 	/** Enqueues a lambda command on a thread safe queue which is pumped from the audio render thread. */
-	void EffectCommand(TUniqueFunction<void()> Command);
-
-	/** Returns the unique ID of the parent preset. */
-	uint32 GetParentPresetId() const { return ParentPresetUniqueId; }
+	void EffectCommand(TFunction<void()> Command);
 
 protected:
-	FSoundEffectBase();
 
-	/** Pumps messages awaiting execution on the audio render thread */
 	void PumpPendingMessages();
 
 	FCriticalSection SettingsCritSect;
@@ -107,21 +103,15 @@ protected:
 
 	FThreadSafeBool bChanged;
 	TWeakObjectPtr<USoundEffectPreset> Preset;
-	uint32 ParentPresetUniqueId = INDEX_NONE;
 
 	FThreadSafeBool bIsRunning;
 	FThreadSafeBool bIsActive;
 
-	// Effect command queue
-	TQueue<TUniqueFunction<void()>> CommandQueue;
+	// Effect commmand queue
+	TQueue<TFunction<void()>> CommandQueue;
 
-private:
-	/** Removes the instance from the preset. */
-	void ClearPreset();
+	// Allow FAudioMixerSubmix to call ProcessAudio
+	friend class FMixerSubmix;
 
-	// Allow preset to re-register when editor update is requested
-	// and create effects using the templated Create call, as well
-	// as clear preset.
-	friend class USoundEffectPreset;
 };
 

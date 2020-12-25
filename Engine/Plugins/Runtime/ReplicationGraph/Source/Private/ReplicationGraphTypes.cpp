@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ReplicationGraphTypes.h"
 
@@ -192,7 +192,6 @@ private:
 		FPool* Pool = PoolTable.FindByPredicate([&ExpectedMaxSize](const FPool& InPool) { return ExpectedMaxSize <= InPool.ListSize; });
 		if (!Pool)
 		{
-			QUICK_SCOPE_CYCLE_COUNTER(RepList_Pool_Allocation);
 			if (!ForPreAllocation)
 			{
 				UE_LOG(LogReplicationGraph, Warning, TEXT("No pool big enough for requested list size %d. Creating a new pool. (You may want to preallocate a pool of this size or investigate why this size is needed)"), ExpectedMaxSize);
@@ -228,7 +227,6 @@ void FActorRepList::Release()
 
 void FActorRepListRefView::RequestNewList(int32 NewSize, bool CopyExistingContent)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(RepList_RequestNewList);
 	FActorRepList* NewList = &GActorListAllocator.RequestList(NewSize > 0 ? NewSize : InitialListSize);
 	if (CopyExistingContent)
 	{
@@ -476,26 +474,22 @@ void FGlobalActorReplicationInfoMap::AddDependentActor(AActor* Parent, AActor* C
 		bool bChildIsAlreadyDependant(false);
 		if (FGlobalActorReplicationInfo* ParentInfo = Find(Parent))
 		{
-			bChildIsAlreadyDependant = ParentInfo->DependentActorList.Find(Child) != INDEX_NONE;
+			bChildIsAlreadyDependant = ParentInfo->DependentActorList.IsValid() && ParentInfo->DependentActorList.Contains(Child);
 			if (bChildIsAlreadyDependant == false)
 			{
-				if (IsActorValidForReplicationGather(Child))
-				{
-					ParentInfo->DependentActorList.Add(Child);
-				}
+				ParentInfo->DependentActorList.PrepareForWrite();
+				ParentInfo->DependentActorList.ConditionalAdd(Child);
 			}
 		}
 
 		bool bChildHadParentAlready(false);
 		if (FGlobalActorReplicationInfo* ChildInfo = Find(Child))
 		{
-			bChildHadParentAlready = ChildInfo->ParentActorList.Find(Parent) != INDEX_NONE;
+			bChildHadParentAlready = ChildInfo->ParentActorList.IsValid() && ChildInfo->ParentActorList.Contains(Parent);
 			if (bChildHadParentAlready == false)
 			{
-				if (IsActorValidForReplicationGather(Parent))
-				{ 
-					ChildInfo->ParentActorList.Add(Parent);
-				}
+				ChildInfo->ParentActorList.PrepareForWrite();
+				ChildInfo->ParentActorList.ConditionalAdd(Parent);
 			}
 		}
 

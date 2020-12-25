@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "FunctionLoader.h"
 
@@ -259,7 +259,7 @@ namespace Generator
 		}
 
 		FString   FunctionPackageName = UPackageTools::SanitizePackageName(*(AssetPath / FunctionName));
-		UPackage* Package             = CreatePackage(*FunctionPackageName);
+		UPackage* Package             = CreatePackage(nullptr, *FunctionPackageName);
 
 		UMaterialFunction* Function = Function = dynamic_cast<UMaterialFunction*>(
 		    FunctionFactory->FactoryCreateNew(UMaterialFunction::StaticClass(), Package, *FunctionName, RF_Public | RF_Standalone, nullptr, GWarn));

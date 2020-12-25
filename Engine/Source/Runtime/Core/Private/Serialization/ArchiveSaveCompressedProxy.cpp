@@ -1,12 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Serialization/ArchiveSaveCompressedProxy.h"
 #include "Math/UnrealMathUtility.h"
 #include "HAL/UnrealMemory.h"
 #include "Logging/LogMacros.h"
 #include "CoreGlobals.h"
-
-PRAGMA_DISABLE_UNSAFE_TYPECAST_WARNINGS
 
 /*----------------------------------------------------------------------------
 	FArchiveSaveCompressedProxy
@@ -146,4 +144,3 @@ int64 FArchiveSaveCompressedProxy::Tell()
 	}
 }
 
-PRAGMA_ENABLE_UNSAFE_TYPECAST_WARNINGS

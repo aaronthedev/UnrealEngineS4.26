@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MaxMaterialsToUEPbr/DatasmithMaxVRayTexmapToUEPbr.h"
 
@@ -131,8 +131,6 @@ namespace DatasmithMaxVRayTexmapToUEPbrImpl
 					VRayDirtParameters.UnoccludedMap.Weight = ParamBlock2->GetFloat( ParamDefinition.ID, GetCOREInterface()->GetTime() ) / 100.f;
 				}
 			}
-
-			ParamBlock2->ReleaseDesc();
 		}
 
 		return VRayDirtParameters;
@@ -141,7 +139,7 @@ namespace DatasmithMaxVRayTexmapToUEPbrImpl
 
 bool FDatasmithMaxVRayColorTexmapToUEPbr::IsSupported( const FDatasmithMaxMaterialsToUEPbr* MaxMaterialToUEPbr, Texmap* InTexmap ) const
 {
-	return InTexmap ? (bool)( InTexmap->ClassID() == VRAYCOLORCLASS ) : false;
+	return InTexmap ? InTexmap->ClassID() == VRAYCOLORCLASS : false;
 }
 
 IDatasmithMaterialExpression* FDatasmithMaxVRayColorTexmapToUEPbr::Convert( FDatasmithMaxMaterialsToUEPbr* MaxMaterialToUEPbr, Texmap* InTexmap )
@@ -157,7 +155,7 @@ IDatasmithMaterialExpression* FDatasmithMaxVRayColorTexmapToUEPbr::Convert( FDat
 
 bool FDatasmithMaxVRayHDRITexmapToUEPbr::IsSupported( const FDatasmithMaxMaterialsToUEPbr* MaxMaterialToUEPbr, Texmap* InTexmap ) const
 {
-	return InTexmap ? (bool)( InTexmap->ClassID() == VRAYHDRICLASS ) : false;
+	return InTexmap ? InTexmap->ClassID() == VRAYHDRICLASS : false;
 }
 
 IDatasmithMaterialExpression* FDatasmithMaxVRayHDRITexmapToUEPbr::Convert( FDatasmithMaxMaterialsToUEPbr* MaxMaterialToUEPbr, Texmap* InTexmap )
@@ -216,7 +214,7 @@ IDatasmithMaterialExpression* FDatasmithMaxVRayHDRITexmapToUEPbr::Convert( FData
 
 bool FDatasmithMaxVRayDirtTexmapToUEPbr::IsSupported( const FDatasmithMaxMaterialsToUEPbr* MaxMaterialToUEPbr, Texmap* InTexmap ) const
 {
-	return InTexmap ? (bool)( InTexmap->ClassID() == VRAYDIRTCLASS ) : false;
+	return InTexmap ? InTexmap->ClassID() == VRAYDIRTCLASS : false;
 }
 
 IDatasmithMaterialExpression* FDatasmithMaxVRayDirtTexmapToUEPbr::Convert( FDatasmithMaxMaterialsToUEPbr* MaxMaterialToUEPbr, Texmap* InTexmap )

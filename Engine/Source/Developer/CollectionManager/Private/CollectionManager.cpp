@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CollectionManager.h"
 #include "HAL/FileManager.h"
@@ -7,8 +7,6 @@
 #include "CollectionManagerLog.h"
 #include "FileCache.h"
 #include "Misc/FileHelper.h"
-#include "Misc/ScopeRWLock.h"
-#include "Async/ParallelFor.h"
 
 #define LOCTEXT_NAMESPACE "CollectionManager"
 
@@ -714,8 +712,7 @@ bool FCollectionManager::IsValidCollectionName(const FString& CollectionName, EC
 	// Make sure we are not creating an FName that is too large
 	if (CollectionName.Len() > NAME_SIZE)
 	{
-		LastError = FText::Format(LOCTEXT("Error_CollectionNameTooLong", "This collection name is too long ({0} characters), the maximum is {1}. Please choose a shorter name. Collection name: {2}"),
-			FText::AsNumber(CollectionName.Len()), FText::AsNumber(NAME_SIZE), FText::FromString(CollectionName));
+		LastError = LOCTEXT("Error_CollectionNameTooLong", "This collection name is too long. Please choose a shorter name.");
 		return false;
 	}
 
@@ -1818,48 +1815,35 @@ bool FCollectionManager::TickFileCache(float InDeltaTime)
 
 void FCollectionManager::LoadCollections()
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(FCollectionManager::LoadCollections)
-
 	const double LoadStartTime = FPlatformTime::Seconds();
 	const int32 PrevNumCollections = AvailableCollections.Num();
 
-	FRWLock CollectionLock;
-	ParallelFor(
-		ECollectionShareType::CST_All,
-		[this, &CollectionLock](int32 CacheIdx)
+	for (int32 CacheIdx = 0; CacheIdx < ECollectionShareType::CST_All; ++CacheIdx)
+	{
+		const ECollectionShareType::Type ShareType = ECollectionShareType::Type(CacheIdx);
+		const FString& CollectionFolder = CollectionFolders[CacheIdx];
+		const FString WildCard = FString::Printf(TEXT("%s/*.%s"), *CollectionFolder, *CollectionExtension);
+
+		TArray<FString> Filenames;
+		IFileManager::Get().FindFiles(Filenames, *WildCard, true, false);
+
+		for (const FString& BaseFilename : Filenames)
 		{
-			const ECollectionShareType::Type ShareType = ECollectionShareType::Type(CacheIdx);
+			const FString Filename = CollectionFolder / BaseFilename;
 			const bool bUseSCC = ShouldUseSCC(ShareType);
-			const FString& CollectionFolder = CollectionFolders[CacheIdx];
-			const FString WildCard = FString::Printf(TEXT("%s/*.%s"), *CollectionFolder, *CollectionExtension);
 
-			TArray<FString> Filenames;
-			IFileManager::Get().FindFiles(Filenames, *WildCard, true, false);
-
-			ParallelFor(
-				Filenames.Num(),
-				[this, &CollectionLock, &Filenames, &CollectionFolder, bUseSCC, ShareType](int32 FilenameIdx)
-				{
-					const FString& BaseFilename = Filenames[FilenameIdx];
-					const FString Filename = CollectionFolder / BaseFilename;
-
-					FText LoadErrorText;
-					TSharedRef<FCollection> NewCollection = MakeShareable(new FCollection(Filename, bUseSCC, ECollectionStorageMode::Static));
-					if (NewCollection->Load(LoadErrorText))
-					{
-						FRWScopeLock Lock(CollectionLock, SLT_Write);
-						AddCollection(NewCollection, ShareType);
-					}
-					else
-					{
-						UE_LOG(LogCollectionManager, Warning, TEXT("%s"), *LoadErrorText.ToString());
-					}
-				},
-				EParallelForFlags::Unbalanced
-			);
-		},
-		EParallelForFlags::Unbalanced
-	);
+			FText LoadErrorText;
+			TSharedRef<FCollection> NewCollection = MakeShareable(new FCollection(Filename, bUseSCC, ECollectionStorageMode::Static));
+			if (NewCollection->Load(LoadErrorText))
+			{
+				AddCollection(NewCollection, ShareType);
+			}
+			else
+			{
+				UE_LOG(LogCollectionManager, Warning, TEXT("%s"), *LoadErrorText.ToString());
+			}
+		}
+	}
 
 	// AddCollection is assumed to be adding an empty collection, so also notify that collection cache that the collection has "changed" since loaded collections may not always be empty
 	CollectionCache.HandleCollectionChanged();

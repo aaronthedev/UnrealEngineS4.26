@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Internationalization/StringTableCoreFwd.h"
@@ -7,7 +7,6 @@
 #include "Containers/UnrealString.h"
 #include "Internationalization/Text.h"
 #include "Internationalization/LocKeyFuncs.h"
-#include "Internationalization/Internationalization.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogStringTable, Log, All);
 
@@ -185,8 +184,7 @@ public:
 	 */
 	static bool CanFindOrLoadStringTableAsset()
 	{
-		return FInternationalization::IsAvailable()
-			&& (!InstancePtr || InstancePtr->CanFindOrLoadStringTableAssetImpl());
+		return !InstancePtr || InstancePtr->CanFindOrLoadStringTableAssetImpl();
 	}
 
 	/**
@@ -237,11 +235,11 @@ public:
 	}
 
 	/** Collect a string table asset reference */
-	static void CollectStringTableAssetReferences(FName& InOutTableId, FStructuredArchive::FSlot Slot)
+	static void CollectStringTableAssetReferences(const FName InTableId, FStructuredArchive::FSlot Slot)
 	{
 		if (InstancePtr)
 		{
-			InstancePtr->CollectStringTableAssetReferencesImpl(InOutTableId, Slot);
+			InstancePtr->CollectStringTableAssetReferencesImpl(InTableId, Slot);
 		}
 	}
 
@@ -258,13 +256,13 @@ public:
 	}
 
 protected:
-	virtual ~IStringTableEngineBridge() = default;
+	virtual ~IStringTableEngineBridge() {}
 
 	virtual bool CanFindOrLoadStringTableAssetImpl() = 0;
 	virtual int32 LoadStringTableAssetImpl(const FName InTableId, FLoadStringTableAssetCallback InLoadedCallback) = 0;
 	virtual void FullyLoadStringTableAssetImpl(FName& InOutTableId) = 0;
 	virtual void RedirectStringTableAssetImpl(FName& InOutTableId) = 0;
-	virtual void CollectStringTableAssetReferencesImpl(FName& InOutTableId, FStructuredArchive::FSlot Slot) = 0;
+	virtual void CollectStringTableAssetReferencesImpl(const FName InTableId, FStructuredArchive::FSlot Slot) = 0;
 	virtual bool IsStringTableFromAssetImpl(const FName InTableId) = 0;
 	virtual bool IsStringTableAssetBeingReplacedImpl(const UStringTable* InStringTableAsset) = 0;
 

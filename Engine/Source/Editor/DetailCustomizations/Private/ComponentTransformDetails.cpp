@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ComponentTransformDetails.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
@@ -25,7 +25,6 @@
 #include "Editor.h"
 #include "UnrealEdGlobals.h"
 #include "DetailLayoutBuilder.h"
-#include "DetailCategoryBuilder.h"
 #include "Widgets/Input/SVectorInputBox.h"
 #include "Widgets/Input/SRotatorInputBox.h"
 #include "ScopedTransaction.h"
@@ -34,7 +33,6 @@
 #include "Widgets/Input/NumericUnitTypeInterface.inl"
 #include "Settings/EditorProjectSettings.h"
 #include "HAL/PlatformApplicationMisc.h"
-#include "Algo/Transform.h"
 
 #define LOCTEXT_NAMESPACE "FComponentTransformDetails"
 
@@ -91,18 +89,7 @@ FComponentTransformDetails::FComponentTransformDetails( const TArray< TWeakObjec
 	, HiddenFieldMask( 0 )
 {
 	GConfig->GetBool(TEXT("SelectionDetails"), TEXT("PreserveScaleRatio"), bPreserveScaleRatio, GEditorPerProjectIni);
-	if (GEditor)
-	{
-		GEditor->OnObjectsReplaced().AddRaw(this, &FComponentTransformDetails::OnObjectsReplaced);
-	}
-}
 
-FComponentTransformDetails::~FComponentTransformDetails()
-{
-	if (GEditor)
-	{
-		GEditor->OnObjectsReplaced().RemoveAll(this);
-	}
 }
 
 TSharedRef<SWidget> FComponentTransformDetails::BuildTransformFieldLabel( ETransformField::Type TransformField )
@@ -333,7 +320,6 @@ void FComponentTransformDetails::GenerateChildContent( IDetailChildrenBuilder& C
 		ChildrenBuilder.AddCustomRow( LOCTEXT("LocationFilter", "Location") )
 		.CopyAction( CreateCopyAction( ETransformField::Location ) )
 		.PasteAction( CreatePasteAction( ETransformField::Location ) )
-		.PropertyHandleList({ GeneratePropertyHandle(USceneComponent::GetRelativeLocationPropertyName(), ChildrenBuilder) })
 		.NameContent()
 		.HAlign(HAlign_Left)
 		.VAlign(VAlign_Center)
@@ -407,7 +393,6 @@ void FComponentTransformDetails::GenerateChildContent( IDetailChildrenBuilder& C
 		ChildrenBuilder.AddCustomRow( LOCTEXT("RotationFilter", "Rotation") )
 		.CopyAction( CreateCopyAction(ETransformField::Rotation) )
 		.PasteAction( CreatePasteAction(ETransformField::Rotation) )
-		.PropertyHandleList({ GeneratePropertyHandle(USceneComponent::GetRelativeRotationPropertyName(), ChildrenBuilder) })
 		.NameContent()
 		.HAlign(HAlign_Left)
 		.VAlign(VAlign_Center)
@@ -474,7 +459,6 @@ void FComponentTransformDetails::GenerateChildContent( IDetailChildrenBuilder& C
 		ChildrenBuilder.AddCustomRow( LOCTEXT("ScaleFilter", "Scale") )
 		.CopyAction( CreateCopyAction(ETransformField::Scale) )
 		.PasteAction( CreatePasteAction(ETransformField::Scale) )
-		.PropertyHandleList({ GeneratePropertyHandle(USceneComponent::GetRelativeScale3DPropertyName(), ChildrenBuilder) })
 		.NameContent()
 		.HAlign(HAlign_Left)
 		.VAlign(VAlign_Center)
@@ -578,39 +562,6 @@ void FComponentTransformDetails::CacheCommonLocationUnits()
 	SetupFixedDisplay(LargestValue);
 }
 
-TSharedPtr<IPropertyHandle> FComponentTransformDetails::GeneratePropertyHandle(FName PropertyName, IDetailChildrenBuilder& ChildrenBuilder)
-{
-	// Try finding the property handle in the details panel's property map first.
-	IDetailLayoutBuilder& LayoutBuilder = ChildrenBuilder.GetParentCategory().GetParentLayout();
-	TSharedPtr<IPropertyHandle> PropertyHandle = LayoutBuilder.GetProperty(PropertyName, USceneComponent::StaticClass());
-	if (!PropertyHandle || !PropertyHandle->IsValidHandle())
-	{
-		// If it wasn't found, add a collapsed row which contains the property node.
-		TArray<UObject*> SceneComponents;
-		Algo::Transform(SelectedObjects, SceneComponents, [](TWeakObjectPtr<UObject> Obj) { return GetSceneComponentFromDetailsObject(Obj.Get()); });
-		PropertyHandle = LayoutBuilder.AddObjectPropertyData(SceneComponents, PropertyName);
-		CachedHandlesObjects.Append(SceneComponents);
-	}
-
-	PropertyHandles.Add(PropertyHandle);
-	return PropertyHandle;
-}
-
-void FComponentTransformDetails::UpdatePropertyHandlesObjects(const TArray<UObject*> NewSceneComponents)
-{
-	// Cached the old handles objects.
-	CachedHandlesObjects.Reset(NewSceneComponents.Num());
-	Algo::Transform(NewSceneComponents, CachedHandlesObjects, [](UObject* Obj) { return TWeakObjectPtr<UObject>(Obj); });
-
-	for (TSharedPtr<IPropertyHandle>& Handle : PropertyHandles)
-	{
-		if (Handle && Handle->IsValidHandle())
-		{
-			Handle->ReplaceOuterObjects(NewSceneComponents);
-		}
-	}
-}
-
 bool FComponentTransformDetails::GetIsEnabled() const
 {
 	return !GEditor->HasLockedActors() || SelectedActorInfo.NumSelected == 0;
@@ -649,21 +600,21 @@ FText FComponentTransformDetails::GetScaleText() const
 
 void FComponentTransformDetails::OnSetAbsoluteTransform(ETransformField::Type TransformField, bool bAbsoluteEnabled)
 {
-	FBoolProperty* AbsoluteProperty = nullptr;
+	UBoolProperty* AbsoluteProperty = nullptr;
 	FText TransactionText;
 
 	switch (TransformField)
 	{
 	case ETransformField::Location:
-		AbsoluteProperty = FindFProperty<FBoolProperty>(USceneComponent::StaticClass(), USceneComponent::GetAbsoluteLocationPropertyName());
+		AbsoluteProperty = FindField<UBoolProperty>(USceneComponent::StaticClass(), USceneComponent::GetAbsoluteLocationPropertyName());
 		TransactionText = LOCTEXT("ToggleAbsoluteLocation", "Toggle Absolute Location");
 		break;
 	case ETransformField::Rotation:
-		AbsoluteProperty = FindFProperty<FBoolProperty>(USceneComponent::StaticClass(), USceneComponent::GetAbsoluteRotationPropertyName());
+		AbsoluteProperty = FindField<UBoolProperty>(USceneComponent::StaticClass(), USceneComponent::GetAbsoluteRotationPropertyName());
 		TransactionText = LOCTEXT("ToggleAbsoluteRotation", "Toggle Absolute Rotation");
 		break;
 	case ETransformField::Scale:
-		AbsoluteProperty = FindFProperty<FBoolProperty>(USceneComponent::StaticClass(), USceneComponent::GetAbsoluteScalePropertyName());
+		AbsoluteProperty = FindField<UBoolProperty>(USceneComponent::StaticClass(), USceneComponent::GetAbsoluteScalePropertyName());
 		TransactionText = LOCTEXT("ToggleAbsoluteScale", "Toggle Absolute Scale");
 		break;
 	default:
@@ -746,7 +697,7 @@ void FComponentTransformDetails::OnSetAbsoluteTransform(ETransformField::Type Tr
 
 	if (bBeganTransaction)
 	{
-		FPropertyChangedEvent PropertyChangedEvent(AbsoluteProperty, EPropertyChangeType::ValueSet, MakeArrayView(ModifiedObjects));
+		FPropertyChangedEvent PropertyChangedEvent(AbsoluteProperty, EPropertyChangeType::ValueSet, (const TArray<const UObject*>*)&ModifiedObjects);
 
 		for (UObject* Object : ModifiedObjects)
 		{
@@ -1010,63 +961,63 @@ void FComponentTransformDetails::OnSetTransform(ETransformField::Type TransformF
 	}
 
 	FText TransactionText;
-	FProperty* ValueProperty = nullptr;
-	FProperty* AxisProperty = nullptr;
+	UProperty* ValueProperty = nullptr;
+	UProperty* AxisProperty = nullptr;
 	
 	switch (TransformField)
 	{
 	case ETransformField::Location:
 		TransactionText = LOCTEXT("OnSetLocation", "Set Location");
-		ValueProperty = FindFProperty<FProperty>(USceneComponent::StaticClass(), USceneComponent::GetRelativeLocationPropertyName());
+		ValueProperty = FindField<UProperty>(USceneComponent::StaticClass(), USceneComponent::GetRelativeLocationPropertyName());
 		
 		// Only set axis property for single axis set
 		if (Axis == EAxisList::X)
 		{
-			AxisProperty = FindFProperty<FFloatProperty>(TBaseStructure<FVector>::Get(), GET_MEMBER_NAME_CHECKED(FVector, X));
+			AxisProperty = FindField<UFloatProperty>(TBaseStructure<FVector>::Get(), GET_MEMBER_NAME_CHECKED(FVector, X));
 		}
 		else if (Axis == EAxisList::Y)
 		{
-			AxisProperty = FindFProperty<FFloatProperty>(TBaseStructure<FVector>::Get(), GET_MEMBER_NAME_CHECKED(FVector, Y));
+			AxisProperty = FindField<UFloatProperty>(TBaseStructure<FVector>::Get(), GET_MEMBER_NAME_CHECKED(FVector, Y));
 		}
 		else if (Axis == EAxisList::Z)
 		{
-			AxisProperty = FindFProperty<FFloatProperty>(TBaseStructure<FVector>::Get(), GET_MEMBER_NAME_CHECKED(FVector, Z));
+			AxisProperty = FindField<UFloatProperty>(TBaseStructure<FVector>::Get(), GET_MEMBER_NAME_CHECKED(FVector, Z));
 		}
 		break;
 	case ETransformField::Rotation:
 		TransactionText = LOCTEXT("OnSetRotation", "Set Rotation");
-		ValueProperty = FindFProperty<FProperty>(USceneComponent::StaticClass(), USceneComponent::GetRelativeRotationPropertyName());
+		ValueProperty = FindField<UProperty>(USceneComponent::StaticClass(), USceneComponent::GetRelativeRotationPropertyName());
 		
 		// Only set axis property for single axis set
 		if (Axis == EAxisList::X)
 		{
-			AxisProperty = FindFProperty<FFloatProperty>(TBaseStructure<FRotator>::Get(), GET_MEMBER_NAME_CHECKED(FRotator, Roll));
+			AxisProperty = FindField<UFloatProperty>(TBaseStructure<FRotator>::Get(), GET_MEMBER_NAME_CHECKED(FRotator, Roll));
 		}
 		else if (Axis == EAxisList::Y)
 		{
-			AxisProperty = FindFProperty<FFloatProperty>(TBaseStructure<FRotator>::Get(), GET_MEMBER_NAME_CHECKED(FRotator, Pitch));
+			AxisProperty = FindField<UFloatProperty>(TBaseStructure<FRotator>::Get(), GET_MEMBER_NAME_CHECKED(FRotator, Pitch));
 		}
 		else if (Axis == EAxisList::Z)
 		{
-			AxisProperty = FindFProperty<FFloatProperty>(TBaseStructure<FRotator>::Get(), GET_MEMBER_NAME_CHECKED(FRotator, Yaw));
+			AxisProperty = FindField<UFloatProperty>(TBaseStructure<FRotator>::Get(), GET_MEMBER_NAME_CHECKED(FRotator, Yaw));
 		}
 		break;
 	case ETransformField::Scale:
 		TransactionText = LOCTEXT("OnSetScale", "Set Scale");
-		ValueProperty = FindFProperty<FProperty>(USceneComponent::StaticClass(), USceneComponent::GetRelativeScale3DPropertyName());
+		ValueProperty = FindField<UProperty>(USceneComponent::StaticClass(), USceneComponent::GetRelativeScale3DPropertyName());
 
 		// If keep scale is set, don't set axis property
 		if (!bPreserveScaleRatio && Axis == EAxisList::X)
 		{
-			AxisProperty = FindFProperty<FFloatProperty>(TBaseStructure<FVector>::Get(), GET_MEMBER_NAME_CHECKED(FVector, X));
+			AxisProperty = FindField<UFloatProperty>(TBaseStructure<FVector>::Get(), GET_MEMBER_NAME_CHECKED(FVector, X));
 		}
 		else if (!bPreserveScaleRatio && Axis == EAxisList::Y)
 		{
-			AxisProperty = FindFProperty<FFloatProperty>(TBaseStructure<FVector>::Get(), GET_MEMBER_NAME_CHECKED(FVector, Y));
+			AxisProperty = FindField<UFloatProperty>(TBaseStructure<FVector>::Get(), GET_MEMBER_NAME_CHECKED(FVector, Y));
 		}
 		else if (!bPreserveScaleRatio && Axis == EAxisList::Z)
 		{
-			AxisProperty = FindFProperty<FFloatProperty>(TBaseStructure<FVector>::Get(), GET_MEMBER_NAME_CHECKED(FVector, Z));
+			AxisProperty = FindField<UFloatProperty>(TBaseStructure<FVector>::Get(), GET_MEMBER_NAME_CHECKED(FVector, Z));
 		}
 		break;
 	default:
@@ -1076,7 +1027,7 @@ void FComponentTransformDetails::OnSetTransform(ETransformField::Type TransformF
 	bool bBeganTransaction = false;
 	TArray<UObject*> ModifiedObjects;
 
-	FPropertyChangedEvent PropertyChangedEvent(ValueProperty, !bCommitted ? EPropertyChangeType::Interactive : EPropertyChangeType::ValueSet, MakeArrayView(ModifiedObjects));
+	FPropertyChangedEvent PropertyChangedEvent(ValueProperty, !bCommitted ? EPropertyChangeType::Interactive : EPropertyChangeType::ValueSet, (const TArray<const UObject*>*)&ModifiedObjects);
 	FEditPropertyChain PropertyChain;
 
 	if (AxisProperty)
@@ -1511,23 +1462,6 @@ void FComponentTransformDetails::OnEndScaleSlider(float NewValue)
 {
 	bIsSliderTransaction = false;
 	GEditor->EndTransaction();
-}
-
-void FComponentTransformDetails::OnObjectsReplaced(const TMap<UObject*, UObject*>& ReplacementMap)
-{
-	TArray<UObject*> NewSceneComponents;
-	for (const TWeakObjectPtr<UObject> Obj : CachedHandlesObjects)
-	{
-		if (UObject* Replacement = ReplacementMap.FindRef(Obj.GetEvenIfUnreachable()))
-		{
-			NewSceneComponents.Add(Replacement);
-		}
-	}
-
-	if (NewSceneComponents.Num())
-	{
-		UpdatePropertyHandlesObjects(NewSceneComponents);
-	}
 }
 
 #undef LOCTEXT_NAMESPACE

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PrimitiveSceneProxy.cpp: Primitive scene proxy implementation.
@@ -39,19 +39,22 @@ bool CacheShadowDepthsFromPrimitivesUsingWPO()
 	return CVarCacheWPOPrimitives.GetValueOnAnyThread(true) != 0;
 }
 
-bool SupportsCachingMeshDrawCommands(const FMeshBatch& MeshBatch)
+bool SupportsCachingMeshDrawCommands(const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy, const FMeshBatch& MeshBatch)
 {
 	return
 		// Cached mesh commands only allow for a single mesh element per batch.
 		(MeshBatch.Elements.Num() == 1) &&
 
 		// Vertex factory needs to support caching.
-		MeshBatch.VertexFactory->GetType()->SupportsCachingMeshDrawCommands();
+		MeshBatch.VertexFactory->GetType()->SupportsCachingMeshDrawCommands() &&
+
+		// Volumetric self shadow mesh commands need to be generated every frame, as they depend on single frame uniform buffers with self shadow data.
+		!PrimitiveSceneProxy->CastsVolumetricTranslucentShadow();
 }
 
-bool SupportsCachingMeshDrawCommands(const FMeshBatch& MeshBatch, ERHIFeatureLevel::Type FeatureLevel)
+bool SupportsCachingMeshDrawCommands(const FPrimitiveSceneProxy* RESTRICT PrimitiveSceneProxy, const FMeshBatch& MeshBatch, ERHIFeatureLevel::Type FeatureLevel)
 {
-	if (SupportsCachingMeshDrawCommands(MeshBatch))
+	if (SupportsCachingMeshDrawCommands(PrimitiveSceneProxy, MeshBatch))
 	{
 		// External textures get mapped to immutable samplers (which are part of the PSO); the mesh must go through the dynamic path, as the media player might not have
 		// valid textures/samplers the first few calls; once they're available the PSO needs to get invalidated and recreated with the immutable samplers.
@@ -88,8 +91,6 @@ FPrimitiveSceneProxy::FPrimitiveSceneProxy(const UPrimitiveComponent* InComponen
 ,	DrawInGame(InComponent->IsVisible())
 ,	DrawInEditor(InComponent->GetVisibleFlag())
 ,	bReceivesDecals(InComponent->bReceivesDecals)
-,	bVirtualTextureMainPassDrawAlways(true)
-,	bVirtualTextureMainPassDrawNever(false)
 ,	bOnlyOwnerSee(InComponent->bOnlyOwnerSee)
 ,	bOwnerNoSee(InComponent->bOwnerNoSee)
 ,	bParentSelected(InComponent->ShouldRenderSelected())
@@ -101,7 +102,6 @@ FPrimitiveSceneProxy::FPrimitiveSceneProxy(const UPrimitiveComponent* InComponen
 ,	ViewOwnerDepthPriorityGroup(InComponent->ViewOwnerDepthPriorityGroup)
 ,	bStaticLighting(InComponent->HasStaticLighting())
 ,	bVisibleInReflectionCaptures(InComponent->bVisibleInReflectionCaptures)
-,	bVisibleInRealTimeSkyCaptures(InComponent->bVisibleInRealTimeSkyCaptures)
 ,	bVisibleInRayTracing(InComponent->bVisibleInRayTracing)
 ,	bRenderInDepthPass(InComponent->bRenderInDepthPass)
 ,	bRenderInMainPass(InComponent->bRenderInMainPass)
@@ -109,6 +109,7 @@ FPrimitiveSceneProxy::FPrimitiveSceneProxy(const UPrimitiveComponent* InComponen
 ,	bIsComponentLevelVisible(false)
 ,	bCollisionEnabled(InComponent->IsCollisionEnabled())
 ,	bTreatAsBackgroundForOcclusion(InComponent->bTreatAsBackgroundForOcclusion)
+,	bHasMobileMovablePointLightInteraction(false)
 ,	bGoodCandidateForCachedShadowmap(true)
 ,	bNeedsUnbuiltPreviewLighting(!InComponent->IsPrecomputedLightingValid())
 ,	bHasValidSettingsForStaticLighting(InComponent->HasValidSettingsForStaticLighting(false))
@@ -119,7 +120,6 @@ FPrimitiveSceneProxy::FPrimitiveSceneProxy(const UPrimitiveComponent* InComponen
 ,   bAffectDistanceFieldLighting(InComponent->bAffectDistanceFieldLighting)
 ,	bCastStaticShadow(InComponent->CastShadow && InComponent->bCastStaticShadow)
 ,	bCastVolumetricTranslucentShadow(InComponent->bCastDynamicShadow && InComponent->CastShadow && InComponent->bCastVolumetricTranslucentShadow)
-,	bCastContactShadow(InComponent->CastShadow && InComponent->bCastContactShadow)
 ,	bCastCapsuleDirectShadow(false)
 ,	bCastsDynamicIndirectShadow(false)
 ,	bCastHiddenShadow(InComponent->bCastHiddenShadow)
@@ -159,7 +159,7 @@ FPrimitiveSceneProxy::FPrimitiveSceneProxy(const UPrimitiveComponent* InComponen
 ,	PrimitiveSceneInfo(NULL)
 ,	OwnerName(InComponent->GetOwner() ? InComponent->GetOwner()->GetFName() : NAME_None)
 ,	ResourceName(InResourceName)
-,	LevelName(InComponent->GetOwner() ? InComponent->GetOwner()->GetLevel()->GetOutermost()->GetFName() : NAME_None)
+,	LevelName(InComponent->GetOutermost()->GetFName())
 #if WITH_EDITOR
 // by default we are always drawn
 ,	HiddenEditorViews(0)
@@ -230,7 +230,7 @@ FPrimitiveSceneProxy::FPrimitiveSceneProxy(const UPrimitiveComponent* InComponen
 	{
 		for (URuntimeVirtualTexture* VirtualTexture : InComponent->GetRuntimeVirtualTextures())
 		{
-			if (VirtualTexture != nullptr)
+			if (VirtualTexture != nullptr && VirtualTexture->GetEnabled())
 			{
 				RuntimeVirtualTextures.Add(VirtualTexture);
 				RuntimeVirtualTextureMaterialTypes.AddUnique(VirtualTexture->GetMaterialType());
@@ -238,18 +238,18 @@ FPrimitiveSceneProxy::FPrimitiveSceneProxy(const UPrimitiveComponent* InComponen
 		}
 	}
 
-	// Conditionally remove from the main passes based on the runtime virtual texture setup
+	// Conditionally remove from the main render pass based on the runtime virtual texture setup
+	ERuntimeVirtualTextureMainPassType MainPassType = InComponent->GetVirtualTextureRenderPassType();
 	const bool bRequestVirtualTexture = InComponent->GetRuntimeVirtualTextures().Num() > 0;
-	if (bRequestVirtualTexture)
+	const bool bUseVirtualTexture = RuntimeVirtualTextures.Num() > 0;
+	if ((MainPassType == ERuntimeVirtualTextureMainPassType::Never && bRequestVirtualTexture) ||
+		(MainPassType == ERuntimeVirtualTextureMainPassType::Exclusive && bUseVirtualTexture))
 	{
-		ERuntimeVirtualTextureMainPassType MainPassType = InComponent->GetVirtualTextureRenderPassType();
-		bVirtualTextureMainPassDrawNever = MainPassType == ERuntimeVirtualTextureMainPassType::Never;
-		bVirtualTextureMainPassDrawAlways = MainPassType == ERuntimeVirtualTextureMainPassType::Always;
+		bRenderInMainPass = false;
 	}
 
 	// Modify max draw distance for main pass if we are using virtual texturing
-	const bool bUseVirtualTexture = RuntimeVirtualTextures.Num() > 0;
-	if (bUseVirtualTexture && InComponent->GetVirtualTextureMainPassMaxDrawDistance() > 0.f)
+	if (bUseVirtualTexture && bRenderInMainPass && InComponent->GetVirtualTextureMainPassMaxDrawDistance() > 0.f)
 	{
 		MaxDrawDistance = FMath::Min(MaxDrawDistance, InComponent->GetVirtualTextureMainPassMaxDrawDistance());
 	}
@@ -258,40 +258,6 @@ FPrimitiveSceneProxy::FPrimitiveSceneProxy(const UPrimitiveComponent* InComponen
 	const bool bGetDebugMaterials = true;
 	InComponent->GetUsedMaterials(UsedMaterialsForVerification, bGetDebugMaterials);
 #endif
-
-	static const auto CVarVertexDeformationOutputsVelocity = IConsoleManager::Get().FindConsoleVariable(TEXT("r.VertexDeformationOutputsVelocity"));
-
-	if (!bAlwaysHasVelocity && IsMovable() && CVarVertexDeformationOutputsVelocity && CVarVertexDeformationOutputsVelocity->GetInt())
-	{
-		ERHIFeatureLevel::Type FeatureLevel = GetScene().GetFeatureLevel();
-
-		TArray<UMaterialInterface*> UsedMaterials;
-		InComponent->GetUsedMaterials(UsedMaterials);
-
-		for (const UMaterialInterface* MaterialInterface : UsedMaterials)
-		{
-			if (MaterialInterface)
-			{
-				const UMaterial* Material = MaterialInterface->GetMaterial_Concurrent();
-				if (const FMaterialResource* MaterialResource = Material->GetMaterialResource(FeatureLevel))
-				{
-					if (IsInGameThread())
-					{
-						bAlwaysHasVelocity = MaterialResource->MaterialModifiesMeshPosition_GameThread();
-					}
-					else
-					{
-						bAlwaysHasVelocity = MaterialResource->MaterialModifiesMeshPosition_RenderThread();
-					}
-
-					if (bAlwaysHasVelocity)
-					{
-						break;
-					}
-				}
-			}
-		}
-	}
 }
 
 #if WITH_EDITOR
@@ -320,11 +286,7 @@ HHitProxy* FPrimitiveSceneProxy::CreateHitProxies(UPrimitiveComponent* Component
 		}
 		else
 		{
-#if WITH_EDITORONLY_DATA
-			ActorHitProxy = new HActor(Component->GetOwner(), Component, Component->HitProxyPriority);
-#else
 			ActorHitProxy = new HActor(Component->GetOwner(), Component);
-#endif
 		}
 		OutHitProxies.Add(ActorHitProxy);
 		return ActorHitProxy;
@@ -377,8 +339,7 @@ void FPrimitiveSceneProxy::UpdateUniformBuffer()
 				PrimitiveSceneInfo ? PrimitiveSceneInfo->GetLightmapDataOffset() : 0,
 				SingleCaptureIndex, 
 				bOutputVelocity || AlwaysHasVelocity(),
-				GetCustomPrimitiveData(),
-				CastsContactShadow());
+				GetCustomPrimitiveData());
 
 		if (UniformBuffer.GetReference())
 		{
@@ -408,12 +369,6 @@ void FPrimitiveSceneProxy::SetTransform(const FMatrix& InLocalToWorld, const FBo
 	Bounds = InBounds;
 	LocalBounds = InLocalBounds;
 	ActorPosition = InActorPosition;
-	
-	// Update cached reflection capture.
-	if (PrimitiveSceneInfo)
-	{
-		PrimitiveSceneInfo->bNeedsCachedReflectionCaptureUpdate = true;
-	}
 	
 	UpdateUniformBuffer();
 	
@@ -588,20 +543,6 @@ void FPrimitiveSceneProxy::SetHovered_GameThread(const bool bInHovered)
 		});
 }
 
-void FPrimitiveSceneProxy::SetLightingChannels_GameThread(FLightingChannels LightingChannels)
-{
-	check(IsInGameThread());
-
-	FPrimitiveSceneProxy* PrimitiveSceneProxy = this;
-	const uint8 LocalLightingChannelMask = GetLightingChannelMaskForStruct(LightingChannels);
-	ENQUEUE_RENDER_COMMAND(SetLightingChannelsCmd)(
-		[PrimitiveSceneProxy, LocalLightingChannelMask](FRHICommandListImmediate& RHICmdList)
-	{
-		PrimitiveSceneProxy->LightingChannelMask = LocalLightingChannelMask;
-		PrimitiveSceneProxy->GetPrimitiveSceneInfo()->SetNeedsUniformBufferUpdate(true);
-	});
-}
-
 #if !UE_BUILD_SHIPPING
 void FPrimitiveSceneProxy::FDebugMassData::DrawDebugMass(class FPrimitiveDrawInterface* PDI, const FTransform& ElemTM) const
 {
@@ -631,24 +572,6 @@ void FPrimitiveSceneProxy::FDebugMassData::DrawDebugMass(class FPrimitiveDrawInt
 	PDI->DrawLine(COMWorldPosition + ZAxis * Size, COMWorldPosition - Size * ZAxis, FColor(0, 0, 255), SDPG_World, ZThickness);
 }
 #endif
-
-bool FPrimitiveSceneProxy::DrawInVirtualTextureOnly(bool bEditor) const
-{
-	if (bVirtualTextureMainPassDrawAlways)
-	{
-		return false;
-	}
-	else if (bVirtualTextureMainPassDrawNever)
-	{
-		return true;
-	}
-	// Conditional path tests the flags stored on scene virtual texture.
-	uint8 bHideMaskEditor, bHideMaskGame;
-	Scene->GetRuntimeVirtualTextureHidePrimitiveMask(bHideMaskEditor, bHideMaskGame);
-	const uint8 bHideMask = bEditor ? bHideMaskEditor : bHideMaskGame;
-	const uint8 RuntimeVirtualTextureMask = GetPrimitiveSceneInfo()->GetRuntimeVirtualTextureFlags().RuntimeVirtualTextureMask;
-	return (RuntimeVirtualTextureMask & bHideMask) != 0;
-}
 
 /**
  * Updates the hidden editor view visibility map on the game thread which just enqueues a command on the render thread
@@ -733,11 +656,6 @@ bool FPrimitiveSceneProxy::IsShown(const FSceneView* View) const
 		{
 			return false;
 		}
-
-		if (DrawInVirtualTextureOnly(true) && !View->bIsVirtualTexture && !View->Family->EngineShowFlags.VirtualTexturePrimitives && !IsSelected())
-		{
-			return false;
-		}
 	}
 	else
 #endif
@@ -754,11 +672,6 @@ bool FPrimitiveSceneProxy::IsShown(const FSceneView* View) const
 
 		// if primitive requires component level to be visible
 		if (bRequiresVisibleLevelToRender && !bIsComponentLevelVisible)
-		{
-			return false;
-		}
-
-		if (DrawInVirtualTextureOnly(false) && !View->bIsVirtualTexture)
 		{
 			return false;
 		}
@@ -822,11 +735,6 @@ bool FPrimitiveSceneProxy::IsShadowCast(const FSceneView* View) const
 		}
 #endif	//#if WITH_EDITOR
 
-		if (DrawInVirtualTextureOnly(View->Family->EngineShowFlags.Editor) && !View->bIsVirtualTexture)
-		{
-			return false;
-		}
-
 		// In the OwnerSee cases, we still want to respect hidden shadows...
 		// This assumes that bCastHiddenShadow trumps the owner see flags.
 		if(bOnlyOwnerSee && !Owners.Contains(View->ViewActor))
@@ -860,10 +768,11 @@ void FPrimitiveSceneProxy::RenderBounds(
 	}
 }
 
-bool FPrimitiveSceneProxy::VerifyUsedMaterial(const FMaterialRenderProxy* MaterialRenderProxy) const
+void FPrimitiveSceneProxy::VerifyUsedMaterial(const FMaterialRenderProxy* MaterialRenderProxy) const
 {
 	// Only verify GetUsedMaterials if uncooked and we can compile shaders, because FShaderCompilingManager::PropagateMaterialChangesToPrimitives is what needs GetUsedMaterials to be accurate
 #if WITH_EDITOR
+
 	if (bVerifyUsedMaterials)
 	{
 		const UMaterialInterface* MaterialInterface = MaterialRenderProxy->GetMaterialInterface();
@@ -874,11 +783,10 @@ bool FPrimitiveSceneProxy::VerifyUsedMaterial(const FMaterialRenderProxy* Materi
 		{
 			// Shader compiling uses GetUsedMaterials to detect which components need their scene proxy recreated, so we can only render with materials present in that list
 			ensureMsgf(false, TEXT("PrimitiveComponent tried to render with Material %s, which was not present in the component's GetUsedMaterials results\n    Owner: %s, Resource: %s"), *MaterialInterface->GetName(), *GetOwnerName().ToString(), *GetResourceName().ToString());
-			return false;
 		}
 	}
+	
 #endif
-	return true;
 }
 
 void FPrimitiveSceneProxy::DrawArc(FPrimitiveDrawInterface* PDI, const FVector& Start, const FVector& End, const float Height, const uint32 Segments, const FLinearColor& Color, uint8 DepthPriorityGroup, const float Thickness, const bool bScreenSpace)
@@ -975,3 +883,13 @@ bool FPrimitiveSceneProxy::GetMaterialTextureScales(int32 LODIndex, int32 Sectio
 }
 
 #endif // WITH_EDITORONLY_DATA
+
+FLODMask FPrimitiveSceneProxy::GetCustomLOD(const FSceneView& InView, float InViewLODScale, int32 InForcedLODLevel, float& OutScreenSizeSquared) const
+{
+	return FLODMask();
+}
+
+FLODMask FPrimitiveSceneProxy::GetCustomWholeSceneShadowLOD(const FSceneView& InView, float InViewLODScale, int32 InForcedLODLevel, const struct FLODMask& InVisibilePrimitiveLODMask, float InShadowMapTextureResolution, float InShadowMapCascadeSize, int8 InShadowCascadeId, bool InHasSelfShadow) const
+{
+	return FLODMask();
+}

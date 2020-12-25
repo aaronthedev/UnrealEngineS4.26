@@ -1,22 +1,23 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithStaticMeshImporter.h"
 
 #include "DatasmithImportContext.h"
 #include "DatasmithImporterModule.h"
 #include "DatasmithMaterialImporter.h"
+#include "DatasmithMeshHelper.h"
 #include "DatasmithMeshUObject.h"
 #include "IDatasmithSceneElements.h"
 #include "ObjectTemplates/DatasmithStaticMeshTemplate.h"
-#include "DatasmithPayload.h"
+#include "Translators/DatasmithPayload.h"
 #include "Utility/DatasmithImporterUtils.h"
-#include "Utility/DatasmithMeshHelper.h"
 
 #include "Algo/AnyOf.h"
 #include "Async/Async.h"
 #include "Engine/StaticMesh.h"
 #include "LayoutUV.h"
 #include "MeshBuild.h"
+#include "MeshDescriptionOperations.h"
 #include "MeshUtilities.h"
 #include "Misc/FeedbackContext.h"
 #include "Misc/Paths.h"
@@ -25,7 +26,6 @@
 #include "PhysicsEngine/AggregateGeom.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "StaticMeshAttributes.h"
-#include "StaticMeshOperations.h"
 #include "Templates/UniquePtr.h"
 #include "UObject/Package.h"
 #include "UVTools/UVGenerationFlattenMapping.h"
@@ -94,69 +94,6 @@ namespace DatasmithStaticMeshImporterImpl
 	}
 }
 
-void FDatasmithStaticMeshImporter::CleanupMeshDescriptions(TArray<FMeshDescription>& MeshDescriptions)
-{
-	TRACE_CPUPROFILER_EVENT_SCOPE(FDatasmithStaticMeshImporter::CleanupMeshDescriptions)
-
-	TSet<FPolygonID> PolygonsToDelete;
-	for (FMeshDescription& MeshDescription : MeshDescriptions)
-	{
-		FStaticMeshConstAttributes Attributes(MeshDescription);
-		const TVertexAttributesConstRef<FVector> VertexPositions = Attributes.GetVertexPositions();
-		if (VertexPositions.IsValid())
-		{
-			for (const FVertexID VertexID : MeshDescription.Vertices().GetElementIDs())
-			{
-				// Ensure that no vertices contains NaN since it can wreck havoc in other algorithms (i.e. MikkTSpace)
-				if (VertexPositions[VertexID].ContainsNaN())
-				{
-					for (FPolygonID PolygonID : MeshDescription.GetVertexConnectedPolygons(VertexID))
-					{
-						PolygonsToDelete.Add(PolygonID);
-					}
-				}
-			}
-		}
-
-		if (PolygonsToDelete.Num() > 0)
-		{
-			TArray<FEdgeID> OrphanedEdges;
-			TArray<FVertexInstanceID> OrphanedVertexInstances;
-			TArray<FPolygonGroupID> OrphanedPolygonGroups;
-			TArray<FVertexID> OrphanedVertices;
-			for (FPolygonID PolygonID : PolygonsToDelete)
-			{
-				MeshDescription.DeletePolygon(PolygonID, &OrphanedEdges, &OrphanedVertexInstances, &OrphanedPolygonGroups);
-			}
-			for (FPolygonGroupID PolygonGroupID : OrphanedPolygonGroups)
-			{
-				MeshDescription.DeletePolygonGroup(PolygonGroupID);
-			}
-			for (FVertexInstanceID VertexInstanceID : OrphanedVertexInstances)
-			{
-				MeshDescription.DeleteVertexInstance(VertexInstanceID, &OrphanedVertices);
-			}
-			for (FEdgeID EdgeID : OrphanedEdges)
-			{
-				MeshDescription.DeleteEdge(EdgeID, &OrphanedVertices);
-			}
-			for (FVertexID VertexID : OrphanedVertices)
-			{
-				MeshDescription.DeleteVertex(VertexID);
-			}
-
-			FElementIDRemappings Remappings;
-			MeshDescription.Compact(Remappings);
-		}
-
-		// Fix invalid vertex normals and tangents
-		// We need polygon info because ComputeTangentsAndNormals uses it to repair the invalid vertex normals/tangents
-		// Can't calculate just the required polygons as ComputeTangentsAndNormals is parallel and we can't guarantee thread-safe access patterns
-		FStaticMeshOperations::ComputePolygonTangentsAndNormals(MeshDescription);
-		FStaticMeshOperations::ComputeTangentsAndNormals(MeshDescription, EComputeNTBsFlags::UseMikkTSpace);
-	}
-}
-
 UStaticMesh* FDatasmithStaticMeshImporter::ImportStaticMesh(const TSharedRef< IDatasmithMeshElement > MeshElement, FDatasmithMeshElementPayload& Payload, EObjectFlags ObjectFlags, const FDatasmithStaticMeshImportOptions& ImportOptions, FDatasmithAssetsImportContext& AssetsContext, UStaticMesh* ExistingMesh)
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(FDatasmithStaticMeshImporter::ImportStaticMesh);
@@ -171,9 +108,6 @@ UStaticMesh* FDatasmithStaticMeshImporter::ImportStaticMesh(const TSharedRef< ID
 		return nullptr;
 	}
 
-	// Destructive cleanup of the mesh descriptions to avoid passing invalid data to the rest of the editor
-	CleanupMeshDescriptions(MeshDescriptions);
-
 	// 2. find the destination
 	UStaticMesh* ResultStaticMesh = nullptr;
 	FString StaticMeshName = AssetsContext.StaticMeshNameProvider.GenerateUniqueName( MeshElement->GetLabel() );
@@ -183,7 +117,7 @@ UStaticMesh* FDatasmithStaticMeshImporter::ImportStaticMesh(const TSharedRef< ID
 	FText FailReason;
 	if (!FDatasmithImporterUtils::CanCreateAsset<UStaticMesh>( AssetsContext.StaticMeshesFinalPackage.Get(), StaticMeshName, FailReason ))
 	{
-		AssetsContext.GetParentContext().LogError(FailReason);
+		AssetsContext.ParentContext.LogError(FailReason);
 		return nullptr;
 	}
 
@@ -191,9 +125,7 @@ UStaticMesh* FDatasmithStaticMeshImporter::ImportStaticMesh(const TSharedRef< ID
 	{
 		if ( ExistingMesh->GetOuter() != Outer )
 		{
-			// We don't need to copy over the mesh BulkData as it is going to be recreated anyway, this also prevent ExistingMesh from being invalidated.
-			const bool bIgnoreBulkData = true;
-			ResultStaticMesh = FDatasmithImporterUtils::DuplicateStaticMesh( ExistingMesh, Outer, *StaticMeshName, bIgnoreBulkData);
+			ResultStaticMesh = DuplicateObject< UStaticMesh >( ExistingMesh, Outer, *StaticMeshName );
 			IDatasmithImporterModule::Get().ResetOverrides( ResultStaticMesh ); // Don't copy the existing overrides
 		}
 		else
@@ -236,14 +168,14 @@ bool FDatasmithStaticMeshImporter::ShouldRecomputeNormals(const FMeshDescription
 {
 	const TVertexInstanceAttributesConstRef<FVector> Normals = MeshDescription.VertexInstanceAttributes().GetAttributesRef<FVector>(MeshAttribute::VertexInstance::Normal);
 	check(Normals.IsValid());
-	return Algo::AnyOf(MeshDescription.VertexInstances().GetElementIDs(), [&](const FVertexInstanceID& InstanceID) { return !Normals[InstanceID].IsNormalized(); }, Algo::NoRef);
+	return Algo::AnyOf(MeshDescription.VertexInstances().GetElementIDs(), [&](const FVertexInstanceID& InstanceID) { return !Normals[InstanceID].IsNormalized(); });
 }
 
 bool FDatasmithStaticMeshImporter::ShouldRecomputeTangents(const FMeshDescription& MeshDescription, int32 BuildRequirements)
 {
 	const TVertexInstanceAttributesConstRef<FVector> Tangents = MeshDescription.VertexInstanceAttributes().GetAttributesRef<FVector>(MeshAttribute::VertexInstance::Tangent);
 	check(Tangents.IsValid());
-	return Algo::AnyOf(MeshDescription.VertexInstances().GetElementIDs(), [&](const FVertexInstanceID& InstanceID) { return !Tangents[InstanceID].IsNormalized(); }, Algo::NoRef);
+	return Algo::AnyOf(MeshDescription.VertexInstances().GetElementIDs(), [&](const FVertexInstanceID& InstanceID) { return !Tangents[InstanceID].IsNormalized(); });
 }
 
 bool FDatasmithStaticMeshImporter::PreBuildStaticMesh( UStaticMesh* StaticMesh )
@@ -374,12 +306,8 @@ void FDatasmithStaticMeshImporter::PreBuildStaticMeshes( FDatasmithImportContext
 {
 	TRACE_CPUPROFILER_EVENT_SCOPE(FDatasmithStaticMeshImporter::PreBuildStaticMeshes);
 
-	TUniquePtr<FScopedSlowTask> ProgressPtr;
-	if ( ImportContext.FeedbackContext )
-	{
-		ProgressPtr = MakeUnique<FScopedSlowTask>(ImportContext.ImportedStaticMeshes.Num(), LOCTEXT("PreBuildStaticMeshes", "Setting up UVs..."), true, *ImportContext.FeedbackContext);
-		ProgressPtr->MakeDialog(true);
-	}
+	FScopedSlowTask Progress(ImportContext.ImportedStaticMeshes.Num(), LOCTEXT("PreBuildStaticMeshes", "Setting up UVs..."), true, *ImportContext.Warn);
+	Progress.MakeDialog(true);
 
 	IMeshUtilities& MeshUtilities = FModuleManager::Get().LoadModuleChecked< IMeshUtilities >( "MeshUtilities" );
 
@@ -417,17 +345,12 @@ void FDatasmithStaticMeshImporter::PreBuildStaticMeshes( FDatasmithImportContext
 		);
 	}
 
-	FScopedSlowTask* Progress = ProgressPtr.Get();
-
 	// Ensure UI stays responsive by updating the progress even when the number of tasks hasn't changed
 	for (int32 OldTasksDone = 0, NewTasksDone = 0; OldTasksDone != SortedMesh.Num(); OldTasksDone = NewTasksDone)
 	{
 		NewTasksDone = TasksDone.Load();
-		if ( Progress )
-		{
-			Progress->EnterProgressFrame(NewTasksDone - OldTasksDone, FText::FromString(FString::Printf(TEXT("Packing UVs and computing tangents for static mesh %d/%d ..."), NewTasksDone, SortedMesh.Num())));
-			FPlatformProcess::Sleep(0.01);
-		}
+		Progress.EnterProgressFrame(NewTasksDone - OldTasksDone, FText::FromString(FString::Printf(TEXT("Packing UVs and computing tangents for static mesh %d/%d ..."), NewTasksDone, SortedMesh.Num())));
+		FPlatformProcess::Sleep(0.1);
 	}
 
 	for (int32 Index = 0; Index < TasksIsMeshValidResult.Num(); ++Index)
@@ -596,7 +519,7 @@ void FDatasmithStaticMeshImporter::SetupStaticMesh( FDatasmithAssetsImportContex
 				FFormatNamedArguments FormatArgs;
 				FormatArgs.Add(TEXT("LightmapCoordinateIndex"), FText::FromString(FString::FromInt(MeshElement->GetLightmapCoordinateIndex())));
 				FormatArgs.Add(TEXT("MeshName"), FText::FromName(StaticMesh->GetFName()));
-				AssetsContext.GetParentContext().LogError(FText::Format(LOCTEXT("InvalidLightmapSourceUVError", "The lightmap coordinate index '{LightmapCoordinateIndex}' used for the mesh '{MeshName}' is invalid. A valid lightmap coordinate index was set instead."), FormatArgs));
+				AssetsContext.ParentContext.LogError(FText::Format(LOCTEXT("InvalidLightmapSourceUVError", "The lightmap coordinate index '{LightmapCoordinateIndex}' used for the mesh '{MeshName}' is invalid. A valid lightmap coordinate index was set instead."), FormatArgs));
 			}
 
 			DestinationIndex = FirstOpenUVChannel;
@@ -613,26 +536,26 @@ void FDatasmithStaticMeshImporter::SetupStaticMesh( FDatasmithAssetsImportContex
 			//Also, it's okay to set both the source and the destination to be the same index as they are for different containers.
 			SourceIndex = FirstOpenUVChannel;
 		}
-
+		
 		if (bGenerateLightmapUVs)
 		{
 			if (!FMath::IsWithin<int32>(SourceIndex, 0, MAX_MESH_TEXTURE_COORDS_MD))
 			{
-				AssetsContext.GetParentContext().LogError(FText::Format(LOCTEXT("InvalidLightmapSourceIndexError", "Lightmap generation error for mesh {0}: Specified source is invalid {1}. Cannot find an available fallback source channel."), FText::FromName(StaticMesh->GetFName()), MeshElement->GetLightmapSourceUV()));
+				AssetsContext.ParentContext.LogError(FText::Format(LOCTEXT("InvalidLightmapSourceIndexError", "Lightmap generation error for mesh {0}: Specified source is invalid {1}. Cannot find an available fallback source channel."), FText::FromName(StaticMesh->GetFName()), MeshElement->GetLightmapSourceUV()));
 				bGenerateLightmapUVs = false;
 			}
 			else if (!FMath::IsWithin<int32>(DestinationIndex, 0, MAX_MESH_TEXTURE_COORDS_MD))
 			{
-				AssetsContext.GetParentContext().LogError(FText::Format(LOCTEXT("InvalidLightmapDestinationIndexError", "Lightmap generation error for mesh {0}: Cannot find an available destination channel."), FText::FromName(StaticMesh->GetFName())));
+				AssetsContext.ParentContext.LogError(FText::Format(LOCTEXT("InvalidLightmapDestinationIndexError", "Lightmap generation error for mesh {0}: Cannot find an available destination channel."), FText::FromName(StaticMesh->GetFName())));
 				bGenerateLightmapUVs = false;
 			}
 
 			if (!bGenerateLightmapUVs)
 			{
-				AssetsContext.GetParentContext().LogWarning(FText::Format(LOCTEXT("LightmapUVsWontBeGenerated", "Lightmap UVs for mesh {0} won't be generated."), FText::FromName(StaticMesh->GetFName())));
+				AssetsContext.ParentContext.LogWarning(FText::Format(LOCTEXT("LightmapUVsWontBeGenerated", "Lightmap UVs for mesh {0} won't be generated."), FText::FromName(StaticMesh->GetFName())));
 			}
 		}
-
+		
 		FDatasmithMeshBuildSettingsTemplate BuildSettingsTemplate;
 		BuildSettingsTemplate.Load(StaticMesh->GetSourceModel(LodIndex).BuildSettings);
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/SWidgetSnapshotVisualizer.h"
 #include "HAL/FileManager.h"
@@ -12,12 +12,8 @@
 #include "Serialization/JsonSerializer.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/SNavigationSimulationList.h"
 #include "Framework/Layout/ScrollyZoomy.h"
 #include "Misc/Base64.h"
-
-#include "SlateNavigationEventSimulator.h"
-#include "SlateReflectorModule.h"
 
 #if SLATE_REFLECTOR_HAS_DESKTOP_PLATFORM
 #include "DesktopPlatformModule.h"
@@ -25,10 +21,17 @@
 
 #define LOCTEXT_NAMESPACE "WidgetSnapshotVisualizer"
 
-class SScrollableSnapshotImage : public SCompoundWidget, public IScrollableZoomable
+class SScrollableSnapshotImage : public IScrollableZoomable, public SPanel
 {
-	using Super = SCompoundWidget; //SPanel
 public:
+	class FScrollableSnapshotImageSlot : public TSupportsOneChildMixin<FScrollableSnapshotImageSlot>
+	{
+	public:
+		FScrollableSnapshotImageSlot(SWidget* InOwner)
+			: TSupportsOneChildMixin<FScrollableSnapshotImageSlot>(InOwner)
+		{
+		}
+	};
 
 	SLATE_BEGIN_ARGS(SScrollableSnapshotImage)
 		: _SnapshotData(nullptr)
@@ -45,6 +48,7 @@ public:
 	SScrollableSnapshotImage()
 		: PhysicalOffset(ForceInitToZero)
 		, CachedSize(ForceInitToZero)
+		, ChildSlot(this)
 		, ScrollyZoomy(false)
 		, SnapshotDataPtr(nullptr)
 		, bIsPicking(false)
@@ -84,11 +88,6 @@ public:
 		return SnapshotDataPtr->GetBrush(SelectedWindowIndex);
 	}
 
-	void SetNavigationSimulation(TSharedPtr<SNavigationSimulationSnapshotList> InNavigationSimulationOverlay)
-	{
-		NavigationSimulationOverlay = InNavigationSimulationOverlay;
-	}
-
 	void SetIsPicking(const bool InIsPicking)
 	{
 		bIsPicking = InIsPicking;
@@ -119,6 +118,24 @@ public:
 
 			ArrangedChildren.AddWidget(AllottedGeometry.MakeChild(ChildWidget, PhysicalOffset, WidgetDesiredSize));
 		}
+	}
+
+	virtual FVector2D ComputeDesiredSize(float) const override
+	{
+		FVector2D ThisDesiredSize = FVector2D::ZeroVector;
+
+		const TSharedRef<SWidget>& ChildWidget = ChildSlot.GetWidget();
+		if (ChildWidget->GetVisibility() != EVisibility::Collapsed)
+		{
+			ThisDesiredSize = ChildWidget->GetDesiredSize();
+		}
+
+		return ThisDesiredSize;
+	}
+
+	virtual FChildren* GetChildren() override
+	{
+		return &ChildSlot;
 	}
 
 	virtual void Tick(const FGeometry& AllottedGeometry, const double InCurrentTime, const float InDeltaTime) override
@@ -226,18 +243,13 @@ public:
 
 	virtual int32 OnPaint(const FPaintArgs& Args, const FGeometry& AllottedGeometry, const FSlateRect& MyCullingRect, FSlateWindowElementList& OutDrawElements, int32 LayerId, const FWidgetStyle& InWidgetStyle, bool bParentEnabled) const override
 	{
-		FSlateClippingZone ClippingZone(AllottedGeometry);
-		OutDrawElements.PushClip(ClippingZone);
-
-		LayerId = Super::OnPaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
+		LayerId = SPanel::OnPaint(Args, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId, InWidgetStyle, bParentEnabled);
 		LayerId = ScrollyZoomy.PaintSoftwareCursorIfNeeded(AllottedGeometry, MyCullingRect, OutDrawElements, LayerId);
 
 		TSharedPtr<FWidgetReflectorNodeBase> Window = SnapshotDataPtr->GetWindow(SelectedWindowIndex);
 		if (Window.IsValid())
 		{
-			static const FName DebugBorderBrush = TEXT("Debug.Border");
 			const FVector2D RootDrawOffset = PhysicalOffset - Window->GetAccumulatedLayoutTransform().GetTranslation();
-			const FSlateBrush* Brush = FCoreStyle::Get().GetBrush(DebugBorderBrush);
 			if (bIsPicking)
 			{
 				const FLinearColor TopmostWidgetColor(1.0f, 0.0f, 0.0f);
@@ -253,7 +265,7 @@ public:
 						OutDrawElements,
 						++LayerId,
 						AllottedGeometry.ToPaintGeometry(RootDrawOffset + PickedWidget->GetAccumulatedLayoutTransform().GetTranslation(), TransformPoint(PickedWidget->GetAccumulatedLayoutTransform().GetScale(), PickedWidget->GetLocalSize())),
-						Brush,
+						FCoreStyle::Get().GetBrush(TEXT("Debug.Border")),
 						ESlateDrawEffect::None,
 						FMath::Lerp(TopmostWidgetColor, LeafmostWidgetColor, ColorFactor)
 					);
@@ -267,20 +279,14 @@ public:
 						OutDrawElements,
 						++LayerId,
 						AllottedGeometry.ToPaintGeometry(RootDrawOffset + SelectedWidget->GetAccumulatedLayoutTransform().GetTranslation(), TransformPoint(SelectedWidget->GetAccumulatedLayoutTransform().GetScale(), SelectedWidget->GetLocalSize())),
-						Brush,
+						FCoreStyle::Get().GetBrush(TEXT("Debug.Border")),
 						ESlateDrawEffect::None,
 						SelectedWidget->GetTint()
 					);
 				}
 			}
-
-			if (NavigationSimulationOverlay)
-			{
-				NavigationSimulationOverlay->PaintNodesWithOffset(AllottedGeometry, OutDrawElements, LayerId, RootDrawOffset);
-			}
 		}
 
-		OutDrawElements.PopClip();
 		return LayerId;
 	}
 
@@ -343,6 +349,7 @@ private:
 	FVector2D PhysicalOffset;
 	mutable FVector2D CachedSize;
 
+	FScrollableSnapshotImageSlot ChildSlot;
 	FScrollyZoomy ScrollyZoomy;
 
 	/** Snapshot data we're visualizing */
@@ -357,8 +364,6 @@ private:
 	TArray<TSharedRef<FWidgetReflectorNodeBase>> PickedWidgets;
 
 	TArray<TSharedRef<FWidgetReflectorNodeBase>> SelectedWidgets;
-
-	TSharedPtr<SNavigationSimulationSnapshotList> NavigationSimulationOverlay;
 };
 
 
@@ -372,15 +377,15 @@ void FWidgetSnapshotData::ClearSnapshot()
 	Reset();
 }
 
-void FWidgetSnapshotData::TakeSnapshot(bool bSimulateNavigation)
+void FWidgetSnapshotData::TakeSnapshot()
 {
 	TArray<TSharedRef<SWindow>> VisibleWindows;
 	FSlateApplication::Get().GetAllVisibleWindowsOrdered(VisibleWindows);
 
-	CreateSnapshot(VisibleWindows, bSimulateNavigation);
+	CreateSnapshot(VisibleWindows);
 }
 
-void FWidgetSnapshotData::CreateSnapshot(const TArray<TSharedRef<SWindow>>& VisibleWindows, bool bSimulateNavigation)
+void FWidgetSnapshotData::CreateSnapshot(const TArray<TSharedRef<SWindow>>& VisibleWindows)
 {
 	Reset();
 	Reserve(VisibleWindows.Num());
@@ -389,15 +394,6 @@ void FWidgetSnapshotData::CreateSnapshot(const TArray<TSharedRef<SWindow>>& Visi
 	{
 		// Snapshot the current state of this window widget hierarchy
 		Windows.Add(FWidgetReflectorNodeUtils::NewSnapshotNodeTreeFrom(FArrangedWidget(VisibleWindow, VisibleWindow->GetWindowGeometryInScreen())));
-
-		if (bSimulateNavigation)
-		{
-			TArray<FSlateNavigationEventSimulator::FSimulationResult> NavigationSimulation;
-			NavigationSimulation = FSlateReflectorModule::GetModulePtr()->GetNavigationEventSimulator()->SimulateForEachWidgets(VisibleWindow, 0, ENavigationGenesis::Controller, FSlateNavigationEventSimulator::ENavigationStyle::FourCardinalDirections);
-			FWidgetSnapshotNavigationSimulationData SimulationData;
-			SimulationData.SimulationData = FNavigationSimulationNodeUtils::BuildNavigationSimulationNodeListForSnapshot(NavigationSimulation);
-			NavigationSimulationData.Add(MoveTemp(SimulationData));
-		}
 
 		// Screenshot the current window so we can pick against its current state
 		FWidgetSnapshotTextureData& TextureData = WindowTextureData[WindowTextureData.AddDefaulted()];
@@ -664,13 +660,6 @@ TSharedPtr<FWidgetReflectorNodeBase> FWidgetSnapshotData::GetWindow(const int32 
 		: TSharedPtr<FWidgetReflectorNodeBase>(nullptr);
 }
 
-const FWidgetSnapshotNavigationSimulationData& FWidgetSnapshotData::GetNavigationSimulation(const int32 WindowIndex) const
-{
-	return (NavigationSimulationData.IsValidIndex(WindowIndex))
-		? NavigationSimulationData[WindowIndex]
-		: EmptyNavigationSimulationData;
-}
-
 const FSlateBrush* FWidgetSnapshotData::GetBrush(const int32 WindowIndex) const
 {
 	return (WindowTextureBrushes.IsValidIndex(WindowIndex)) ? WindowTextureBrushes[WindowIndex].Get() : nullptr;
@@ -726,7 +715,6 @@ void FWidgetSnapshotData::DestroyBrushes()
 void FWidgetSnapshotData::Reserve(const int32 NumWindows)
 {
 	Windows.Reserve(NumWindows);
-	NavigationSimulationData.Reserve(NumWindows);
 	WindowTextureData.Reserve(NumWindows);
 	WindowTextureBrushes.Reserve(NumWindows);
 }
@@ -736,7 +724,6 @@ void FWidgetSnapshotData::Reset()
 	DestroyBrushes();
 
 	Windows.Reset();
-	NavigationSimulationData.Reset();
 	WindowTextureData.Reset();
 	WindowTextureBrushes.Reset();
 }
@@ -749,88 +736,56 @@ void SWidgetSnapshotVisualizer::Construct(const FArguments& InArgs)
 
 	ChildSlot
 	[
-		SNew(SBorder)
-		.BorderImage(FCoreStyle::Get().GetBrush("ToolPanel.GroupBorder"))
-		.BorderBackgroundColor(FLinearColor::Gray) // Darken the outer border
-		.Padding(2.0f)
+		SNew(SVerticalBox)
+
+		+SVerticalBox::Slot()
+		.AutoHeight()
 		[
-			SNew(SVerticalBox)
+			SNew(SHorizontalBox)
 
-			+SVerticalBox::Slot()
-			.AutoHeight()
-			.Padding(2.f)
+			+SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(FMargin(5.0f, 0.0f))
 			[
-				SNew(SHorizontalBox)
-
-				+SHorizontalBox::Slot()
-				.AutoWidth()
-				.Padding(FMargin(5.0f, 4.0f))
+				SAssignNew(WindowPickerCombo, SComboBox<TSharedPtr<FWidgetReflectorNodeBase>>)
+				.OptionsSource(&SnapshotDataPtr->GetWindowsPtr())
+				.OnSelectionChanged(this, &SWidgetSnapshotVisualizer::OnWindowSelectionChanged)
+				.OnGenerateWidget(this, &SWidgetSnapshotVisualizer::GenerateWindowPickerComboItem)
 				[
-					SAssignNew(WindowPickerCombo, SComboBox<TSharedPtr<FWidgetReflectorNodeBase>>)
-					.OptionsSource(&SnapshotDataPtr->GetWindowsPtr())
-					.OnSelectionChanged(this, &SWidgetSnapshotVisualizer::OnWindowSelectionChanged)
-					.OnGenerateWidget(this, &SWidgetSnapshotVisualizer::GenerateWindowPickerComboItem)
-					[
-						SNew(STextBlock)
-						.Text(this, &SWidgetSnapshotVisualizer::GetSelectedWindowComboItemText)
-					]
-					.IsEnabled(this, &SWidgetSnapshotVisualizer::HasValidSnapshot)
+					SNew(STextBlock)
+					.Text(this, &SWidgetSnapshotVisualizer::GetSelectedWindowComboItemText)
 				]
+			]
 
-				+SHorizontalBox::Slot()
-				.AutoWidth()
-				.Padding(FMargin(5.0f, 4.0f))
-				[
-					SNew(SButton)
-					.Text(this, &SWidgetSnapshotVisualizer::GetPickWidgetText)
-					.ButtonColorAndOpacity(this, &SWidgetSnapshotVisualizer::GetPickWidgetColor)
-					.OnClicked(this, &SWidgetSnapshotVisualizer::OnPickWidgetClicked)
-					.IsEnabled(this, &SWidgetSnapshotVisualizer::HasValidSnapshot)
-				]
+			+SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(FMargin(5.0f, 0.0f))
+			[
+				SNew(SButton)
+				.Text(this, &SWidgetSnapshotVisualizer::GetPickWidgetText)
+				.ButtonColorAndOpacity(this, &SWidgetSnapshotVisualizer::GetPickWidgetColor)
+				.OnClicked(this, &SWidgetSnapshotVisualizer::OnPickWidgetClicked)
+			]
 
 #if SLATE_REFLECTOR_HAS_DESKTOP_PLATFORM
-				+SHorizontalBox::Slot()
-				.AutoWidth()
-				.Padding(FMargin(5.0f, 4.0f))
-				[
-					SNew(SButton)
-					.Text(LOCTEXT("SaveSnapshotButtonText", "Save Snapshot"))
-					.OnClicked(this, &SWidgetSnapshotVisualizer::OnSaveSnapshotClicked)
-					.IsEnabled(this, &SWidgetSnapshotVisualizer::HasValidSnapshot)
-				]
-#endif // SLATE_REFLECTOR_HAS_DESKTOP_PLATFORM
-			]
-
-			+SVerticalBox::Slot()
-			.Padding(2.f)
+			+SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(FMargin(5.0f, 0.0f))
 			[
-				SNew(SSplitter)
-				.Orientation(EOrientation::Orient_Horizontal)
-
-				+ SSplitter::Slot()
-				[
-					SNew(SBorder)
-					.Padding(2.0f)
-					.BorderImage(FCoreStyle::Get().GetBrush(TEXT("FocusRectangle")))
-					[
-						SAssignNew(SnapshotImage, SScrollableSnapshotImage)
-						.SnapshotData(InArgs._SnapshotData)
-						.OnWidgetPathPicked(InArgs._OnWidgetPathPicked)
-					]
-				]
-
-				+ SSplitter::Slot()
-				.SizeRule(SSplitter::SizeToContent)
-				[
-					SAssignNew(NavigationSimulationList, SNavigationSimulationSnapshotList, InArgs._OnSnapshotWidgetSelected, InArgs._OnSnapshotWidgetSelected)
-					.ListItemsSource(&SnapshotDataPtr->GetNavigationSimulation(0).SimulationData)
-					.Visibility(this, &SWidgetSnapshotVisualizer::HandleGetNavigationSimulationListVisibility)
-				]
+				SNew(SButton)
+				.Text(LOCTEXT("SaveSnapshotButtonText", "Save Snapshot"))
+				.OnClicked(this, &SWidgetSnapshotVisualizer::OnSaveSnapshotClicked)
 			]
+#endif // SLATE_REFLECTOR_HAS_DESKTOP_PLATFORM
+		]
+
+		+SVerticalBox::Slot()
+		[
+			SAssignNew(SnapshotImage, SScrollableSnapshotImage)
+			.SnapshotData(InArgs._SnapshotData)
+			.OnWidgetPathPicked(InArgs._OnWidgetPathPicked)
 		]
 	];
-
-	SnapshotImage->SetNavigationSimulation(NavigationSimulationList);
 
 	SnapshotDataUpdated();
 }
@@ -847,11 +802,6 @@ void SWidgetSnapshotVisualizer::SnapshotDataUpdated()
 		WindowPickerCombo->RefreshOptions();
 		WindowPickerCombo->SetSelectedItem(SnapshotDataPtr->GetWindow(0));
 	}
-
-	if (NavigationSimulationList.IsValid())
-	{
-		NavigationSimulationList->SetListItemsSource(SnapshotDataPtr->GetNavigationSimulation(0).SimulationData);
-	}
 }
 
 void SWidgetSnapshotVisualizer::SetSelectedWidgets(const TArray<TSharedRef<FWidgetReflectorNodeBase>>& InSelectedWidgets)
@@ -859,11 +809,6 @@ void SWidgetSnapshotVisualizer::SetSelectedWidgets(const TArray<TSharedRef<FWidg
 	if (SnapshotImage.IsValid())
 	{
 		SnapshotImage->SetSelectedWidgets(InSelectedWidgets);
-	}
-	if (NavigationSimulationList)
-	{
-		FNavigationSimulationWidgetInfo::TPointerAsInt PointerAsInt = InSelectedWidgets.Num() > 0 ? InSelectedWidgets.Last()->GetWidgetAddress() : 0;
-		NavigationSimulationList->SelectSnapshotWidget(PointerAsInt);
 	}
 }
 
@@ -885,10 +830,6 @@ void SWidgetSnapshotVisualizer::OnWindowSelectionChanged(TSharedPtr<FWidgetRefle
 	if (SnapshotImage.IsValid())
 	{
 		SnapshotImage->SetSelectedWindowIndex(SelectedWindowIndex);
-	}
-	if (NavigationSimulationList.IsValid())
-	{
-		NavigationSimulationList->SetListItemsSource(SnapshotDataPtr->GetNavigationSimulation(SelectedWindowIndex).SimulationData);
 	}
 }
 
@@ -933,20 +874,6 @@ FReply SWidgetSnapshotVisualizer::OnPickWidgetClicked()
 		SnapshotImage->SetIsPicking(!SnapshotImage->GetIsPicking());
 	}
 	return FReply::Handled();
-}
-
-bool SWidgetSnapshotVisualizer::HasValidSnapshot() const
-{
-	return SnapshotDataPtr && !SnapshotDataPtr->IsEmpty();
-}
-
-EVisibility SWidgetSnapshotVisualizer::HandleGetNavigationSimulationListVisibility() const
-{
-	if (SnapshotDataPtr && SnapshotDataPtr->GetNavigationSimulation(0).SimulationData.Num() != 0)
-	{
-		return EVisibility::Visible;
-	}
-	return EVisibility::Collapsed;
 }
 
 #if SLATE_REFLECTOR_HAS_DESKTOP_PLATFORM

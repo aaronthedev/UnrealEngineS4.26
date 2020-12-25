@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LevelCollectionModel.h"
 #include "Misc/PackageName.h"
@@ -33,8 +33,6 @@
 #include "FoliageEditModule.h"
 #include "InstancedFoliageActor.h"
 #include "FoliageEditUtility.h"
-#include "Engine/WorldComposition.h"
-#include "Misc/ScopeExit.h"
 #include "LevelUtils.h"
 
 #define LOCTEXT_NAMESPACE "WorldBrowser"
@@ -151,14 +149,6 @@ void FLevelCollectionModel::BindCommands()
 		FExecuteAction::CreateSP(this, &FLevelCollectionModel::DeselectActors_Executed),
 		FCanExecuteAction::CreateSP(this, &FLevelCollectionModel::AreAnySelectedLevelsEditable));
 
-	ActionList.MapAction(Commands.ConvertLevelToExternalActors,
-		FExecuteAction::CreateSP(this, &FLevelCollectionModel::ConvertLevelToExternalActors_Executed, true),
-		FCanExecuteAction::CreateSP(this, &FLevelCollectionModel::CanConvertAnyLevelToExternalActors, true));
-
-	ActionList.MapAction(Commands.ConvertLevelToInternalActors,
-		FExecuteAction::CreateSP(this, &FLevelCollectionModel::ConvertLevelToExternalActors_Executed, false),
-		FCanExecuteAction::CreateSP(this, &FLevelCollectionModel::CanConvertAnyLevelToExternalActors, false));
-
 	//visibility
 	ActionList.MapAction( Commands.World_ShowSelectedLevels,
 		FExecuteAction::CreateSP( this, &FLevelCollectionModel::ShowSelectedLevels_Executed  ),
@@ -186,7 +176,7 @@ void FLevelCollectionModel::BindCommands()
 	ActionList.MapAction( Commands.World_LockSelectedLevels,
 		FExecuteAction::CreateSP( this, &FLevelCollectionModel::LockSelectedLevels_Executed  ) );
 	
-	ActionList.MapAction( Commands.World_UnlockSelectedLevels,
+	ActionList.MapAction( Commands.World_UnockSelectedLevels,
 		FExecuteAction::CreateSP( this, &FLevelCollectionModel::UnlockSelectedLevels_Executed  ) );
 
 	ActionList.MapAction(Commands.World_LockOnlySelectedLevels,
@@ -198,8 +188,8 @@ void FLevelCollectionModel::BindCommands()
 	ActionList.MapAction( Commands.World_LockAllLevels,
 		FExecuteAction::CreateSP( this, &FLevelCollectionModel::LockAllLevels_Executed  ) );
 	
-	ActionList.MapAction( Commands.World_UnlockAllLevels,
-		FExecuteAction::CreateSP( this, &FLevelCollectionModel::UnlockAllLevels_Executed  ) );
+	ActionList.MapAction( Commands.World_UnockAllLevels,
+		FExecuteAction::CreateSP( this, &FLevelCollectionModel::UnockAllLevels_Executed  ) );
 
 	ActionList.MapAction( Commands.World_LockReadOnlyLevels,
 		FExecuteAction::CreateSP( this, &FLevelCollectionModel::ToggleReadOnlyLevels_Executed  ) );
@@ -470,21 +460,6 @@ void FLevelCollectionModel::HideLevels(const FLevelModelList& InLevelList)
 		return;
 	}
 	
-	// Disable Origin Tracking
-	UWorldComposition* WorldComposition = GetWorld()->WorldComposition;
-	if (WorldComposition)
-	{
-		WorldComposition->bTemporarilyDisableOriginTracking = true;
-	}
-	ON_SCOPE_EXIT
-	{
-		// Reenable Origin Tracking
-		if (WorldComposition)
-		{
-			WorldComposition->bTemporarilyDisableOriginTracking = false;
-		}
-	};
-
 	// For efficiency, set visibility of all levels at once
 	TArray<FLevelModel*> LevelModels;
 	TArray<bool> bVisible;
@@ -505,21 +480,6 @@ void FLevelCollectionModel::ShowLevels(const FLevelModelList& InLevelList)
 		return;
 	}
 	
-	// Disable Origin Tracking
-	UWorldComposition* WorldComposition = GetWorld()->WorldComposition;
-	if (WorldComposition)
-	{
-		WorldComposition->bTemporarilyDisableOriginTracking = true;
-	}
-	ON_SCOPE_EXIT
-	{
-		// Reenable Origin Tracking
-		if (WorldComposition)
-		{
-			WorldComposition->bTemporarilyDisableOriginTracking = false;
-		}
-	};
-
 	OnPreShowLevels(InLevelList);
 
 	// For efficiency, set visibility of all levels at once
@@ -1084,18 +1044,6 @@ bool FLevelCollectionModel::AreAnySelectedLevelsDirty() const
 bool FLevelCollectionModel::AreActorsSelected() const
 {
 	return GEditor->GetSelectedActorCount() > 0;
-}
-
-bool FLevelCollectionModel::CanConvertAnyLevelToExternalActors(bool bExternal) const
-{
-	for (const TSharedPtr<FLevelModel>& LevelModel : SelectedLevelsList)
-	{
-		if (!LevelModel->CanConvertLevelToExternalActors(bExternal))
-		{
-			return false;
-		}
-	}
-	return true;
 }
 
 bool FLevelCollectionModel::GetDisplayPathsState() const
@@ -1698,7 +1646,7 @@ void FLevelCollectionModel::LockAllLevels_Executed()
 	}
 }
 
-void FLevelCollectionModel::UnlockAllLevels_Executed()
+void FLevelCollectionModel::UnockAllLevels_Executed()
 {
 	if (!IsReadOnly())
 	{
@@ -1841,15 +1789,6 @@ void FLevelCollectionModel::DeselectActors_Executed()
 	}
 }
 
-void FLevelCollectionModel::ConvertLevelToExternalActors_Executed(bool bExternal)
-{
-	FScopedTransaction Transaction(LOCTEXT("WorldUseExternalActors", "Change World Use External Actors"));
-	for (const TSharedPtr<FLevelModel>& LevelModel : SelectedLevelsList)
-	{
-		LevelModel->ConvertLevelToExternalActors(bExternal);
-	}
-}
-
 void FLevelCollectionModel::ExpandSelectedItems_Executed()
 {
 	struct FExpandLevelVisitor : public FLevelModelVisitor
@@ -1871,11 +1810,11 @@ void FLevelCollectionModel::FillLockSubMenu(FMenuBuilder& InMenuBuilder)
 	const FLevelCollectionCommands& Commands = FLevelCollectionCommands::Get();
 
 	InMenuBuilder.AddMenuEntry( Commands.World_LockSelectedLevels );
-	InMenuBuilder.AddMenuEntry( Commands.World_UnlockSelectedLevels );
-	InMenuBuilder.AddMenuEntry( Commands.World_LockOnlySelectedLevels );
-	InMenuBuilder.AddMenuEntry( Commands.World_LockAllButSelectedLevels );
+	InMenuBuilder.AddMenuEntry( Commands.World_UnockSelectedLevels );
+	InMenuBuilder.AddMenuEntry(Commands.World_LockOnlySelectedLevels);
+	InMenuBuilder.AddMenuEntry(Commands.World_LockAllButSelectedLevels);
 	InMenuBuilder.AddMenuEntry( Commands.World_LockAllLevels );
-	InMenuBuilder.AddMenuEntry( Commands.World_UnlockAllLevels );
+	InMenuBuilder.AddMenuEntry( Commands.World_UnockAllLevels );
 
 	if (GEditor->bLockReadOnlyLevels)
 	{
@@ -1894,7 +1833,7 @@ void FLevelCollectionModel::FillVisibilitySubMenu(FMenuBuilder& InMenuBuilder)
 	InMenuBuilder.AddMenuEntry( Commands.World_ShowSelectedLevels );
 	InMenuBuilder.AddMenuEntry( Commands.World_HideSelectedLevels );
 	InMenuBuilder.AddMenuEntry( Commands.World_ShowOnlySelectedLevels );
-	InMenuBuilder.AddMenuEntry( Commands.World_ShowAllButSelectedLevels );
+	InMenuBuilder.AddMenuEntry(Commands.World_ShowAllButSelectedLevels);
 	InMenuBuilder.AddMenuEntry( Commands.World_ShowAllLevels );
 	InMenuBuilder.AddMenuEntry( Commands.World_HideAllLevels );
 }

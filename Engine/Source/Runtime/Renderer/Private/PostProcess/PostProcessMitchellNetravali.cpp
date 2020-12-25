@@ -1,4 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
+
+/*=============================================================================
+	PostProcessTemporalAA.cpp: Post process MotionBlur implementation.
+=============================================================================*/
 
 #include "PostProcess/PostProcessMitchellNetravali.h"
 #include "SceneUtils.h"
@@ -22,7 +26,7 @@ public:
 		SHADER_PARAMETER_STRUCT(FScreenPassTextureViewportParameters, Input)
 		SHADER_PARAMETER_RDG_TEXTURE_UAV(RWTexture2D<float4>, OutputTexture)
 		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, InputTexture)
-		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, EyeAdaptationTexture)
+		SHADER_PARAMETER_RDG_TEXTURE(Texture2D, EyeAdaptation)
 		SHADER_PARAMETER_SAMPLER(SamplerState, InputSampler)
 		SHADER_PARAMETER(FVector2D, DispatchThreadToInputUVScale)
 		SHADER_PARAMETER(FVector2D, DispatchThreadToInputUVBias)
@@ -37,11 +41,13 @@ FRDGTextureRef ComputeMitchellNetravaliDownsample(
 	FScreenPassTexture Input,
 	const FScreenPassTextureViewport OutputViewport)
 {
-	const FRDGTextureDesc OutputTextureDesc = FRDGTextureDesc::Create2D(
+	const FRDGTextureDesc OutputTextureDesc = FRDGTextureDesc::Create2DDesc(
 		OutputViewport.Extent,
 		PF_FloatRGBA,
 		FClearValueBinding::Black,
-		TexCreate_ShaderResource | TexCreate_UAV);
+		TexCreate_None,
+		TexCreate_ShaderResource | TexCreate_UAV,
+		false);
 
 	FRDGTextureRef OutputTexture = GraphBuilder.CreateTexture(OutputTextureDesc, TEXT("MitchelNetravaliDownsampleOutput"));
 
@@ -51,20 +57,20 @@ FRDGTextureRef ComputeMitchellNetravaliDownsample(
 	PassParameters->InputTexture = Input.Texture;
 	PassParameters->InputSampler = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
 	PassParameters->OutputTexture = GraphBuilder.CreateUAV(OutputTexture);
-	PassParameters->EyeAdaptationTexture = GetEyeAdaptationTexture(GraphBuilder, View);
+	PassParameters->EyeAdaptation = GetEyeAdaptationTexture(GraphBuilder, View);
 
 	// Scale / Bias factor to map the dispatch thread id to the input texture UV.
 	PassParameters->DispatchThreadToInputUVScale.X = Input.ViewRect.Width()  / float(OutputViewport.Rect.Width()  * Input.Texture->Desc.Extent.X);
 	PassParameters->DispatchThreadToInputUVScale.Y = Input.ViewRect.Height() / float(OutputViewport.Rect.Height() * Input.Texture->Desc.Extent.Y);
-	PassParameters->DispatchThreadToInputUVBias.X = PassParameters->DispatchThreadToInputUVScale.X * (0.5f + Input.ViewRect.Min.X);
-	PassParameters->DispatchThreadToInputUVBias.Y = PassParameters->DispatchThreadToInputUVScale.Y * (0.5f + Input.ViewRect.Min.Y);
+	PassParameters->DispatchThreadToInputUVBias.X = PassParameters->DispatchThreadToInputUVScale.X * (0.5f * Input.ViewRect.Min.X);
+	PassParameters->DispatchThreadToInputUVBias.Y = PassParameters->DispatchThreadToInputUVScale.Y * (0.5f * Input.ViewRect.Min.Y);
 
 	TShaderMapRef<FMitchellNetravaliDownsampleCS> ComputeShader(View.ShaderMap);
 
 	FComputeShaderUtils::AddPass(
 		GraphBuilder,
 		RDG_EVENT_NAME("MitchellNetravaliDownsample %dx%d -> %dx%d", Input.ViewRect.Width(), Input.ViewRect.Height(), OutputViewport.Rect.Width(), OutputViewport.Rect.Height()),
-		ComputeShader,
+		*ComputeShader,
 		PassParameters,
 		FComputeShaderUtils::GetGroupCount(OutputViewport.Rect.Size(), FComputeShaderUtils::kGolden2DGroupSize));
 

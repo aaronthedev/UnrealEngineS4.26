@@ -1,9 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Policy/DisplayClusterProjectionPolicyBase.h"
 #include "Policy/EasyBlend/DisplayClusterProjectionEasyBlendViewAdapterBase.h"
+
+class USceneComponent;
+class FDisplayClusterProjectionEasyBlendViewportBase;
 
 
 /**
@@ -13,7 +16,8 @@ class FDisplayClusterProjectionEasyBlendPolicyBase
 	: public FDisplayClusterProjectionPolicyBase
 {
 public:
-	FDisplayClusterProjectionEasyBlendPolicyBase(const FString& ViewportId, const TMap<FString, FString>& Parameters);
+	FDisplayClusterProjectionEasyBlendPolicyBase(const FString& ViewportId);
+	virtual ~FDisplayClusterProjectionEasyBlendPolicyBase();
 
 public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
@@ -32,7 +36,7 @@ public:
 
 protected:
 	// Delegate view adapter instantiation to the RHI specific children
-	virtual TUniquePtr<FDisplayClusterProjectionEasyBlendViewAdapterBase> CreateViewAdapter(const FDisplayClusterProjectionEasyBlendViewAdapterBase::FInitParams& InitParams) = 0;
+	virtual TSharedPtr<FDisplayClusterProjectionEasyBlendViewAdapterBase> CreateViewAdapter(const FDisplayClusterProjectionEasyBlendViewAdapterBase::FInitParams& InitParams) = 0;
 
 private:
 	// Parse EasyBlend related data from the nDisplay config file
@@ -43,5 +47,5 @@ private:
 	float EasyBlendScale = 1.f;
 
 	// RHI depended view adapter (different RHI require different DLL/API etc.)
-	TUniquePtr<FDisplayClusterProjectionEasyBlendViewAdapterBase> ViewAdapter;
+	TSharedPtr<FDisplayClusterProjectionEasyBlendViewAdapterBase> ViewAdapter;
 };

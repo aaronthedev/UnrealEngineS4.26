@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -738,17 +738,12 @@ public:
 		return AreScale3DsEqual(*this, Other, Tolerance);
 	}
 
+
 	// Test if all components of the transforms are equal, within a tolerance.
 	FORCEINLINE bool Equals(const FTransform& Other, float Tolerance=KINDA_SMALL_NUMBER) const
 	{
 		const ScalarRegister ToleranceRegister(Tolerance);
 		return Private_TranslationEquals(Other.Translation, ToleranceRegister) && Private_RotationEquals(Other.Rotation, ToleranceRegister) && Private_Scale3DEquals(Other.Scale3D, ToleranceRegister);
-	}
-
-	// Test if all components of the transform property are equal.
-	FORCEINLINE bool Identical(const FTransform* Other, uint32 PortFlags) const
-	{
-		return Equals(*Other, 0.f);
 	}
 
 	// Test if rotation and translation components of the transforms are equal, within a tolerance.

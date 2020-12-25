@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NUTUtil.h"
 
@@ -136,7 +136,7 @@ bool NUTUtil::ParseEnum(const TCHAR* Stream, const TCHAR* Match, const TCHAR* En
 					PrefixIdx++;
 				}
 
-				Prefix.LeftInline(PrefixIdx);
+				Prefix = Prefix.Left(PrefixIdx);
 			}
 
 
@@ -144,14 +144,7 @@ bool NUTUtil::ParseEnum(const TCHAR* Stream, const TCHAR* Match, const TCHAR* En
 			{
 				int32 UnderscoreIdx = Prefix.Find(TEXT("_"), ESearchCase::CaseSensitive, ESearchDir::FromEnd);
 
-				if (UnderscoreIdx != INDEX_NONE)
-				{
-					Prefix.LeftInline(UnderscoreIdx+1);
-				}
-				else
-				{
-					Prefix.Reset();
-				}
+				Prefix = UnderscoreIdx != INDEX_NONE ? Prefix.Left(UnderscoreIdx+1) : TEXT("");
 
 				if (Prefix.Len() > 0 && !StrValue.StartsWith(Prefix))
 				{

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,7 +8,6 @@
 #include "Templates/EnableIf.h"
 #include "Templates/AndOrNot.h"
 #include "Templates/AreTypesEqual.h"
-#include "Templates/CopyQualifiersAndRefsFromTo.h"
 #include "Templates/IsArithmetic.h"
 #include "Templates/UnrealTypeTraits.h"
 #include "Templates/RemoveReference.h"
@@ -91,9 +90,9 @@ CONSTEXPR const T* GetData(std::initializer_list<T> List)
 * Generically gets the number of items in a contiguous container
 */
 template<typename T, typename = typename TEnableIf<TIsContiguousContainer<T>::Value>::Type>
-auto GetNum(T&& Container) -> decltype(Container.Num())
+SIZE_T GetNum(T&& Container)
 {
-	return Container.Num();
+	return (SIZE_T)Container.Num();
 }
 
 template <typename T, SIZE_T N> CONSTEXPR SIZE_T GetNum(      T (& Container)[N]) { return N; }
@@ -101,34 +100,17 @@ template <typename T, SIZE_T N> CONSTEXPR SIZE_T GetNum(      T (&&Container)[N]
 template <typename T, SIZE_T N> CONSTEXPR SIZE_T GetNum(const T (& Container)[N]) { return N; }
 template <typename T, SIZE_T N> CONSTEXPR SIZE_T GetNum(const T (&&Container)[N]) { return N; }
 
-/**
- * Gets the number of items in an initializer list.
- *
- * The return type is int32 for compatibility with other code in the engine.
- * Realistically, an initializer list should not exceed the limits of int32.
- */
 template <typename T>
-CONSTEXPR int32 GetNum(std::initializer_list<T> List)
+CONSTEXPR SIZE_T GetNum(std::initializer_list<T> List)
 {
-	return static_cast<int32>(List.size());
+	return List.size();
 }
 
 /**
  * Returns a non-const pointer type as const.
  */
 template <typename T>
-UE_DEPRECATED(4.26, "Call with a reference instead of a pointer.")
-constexpr FORCEINLINE const T* AsConst(T* const& Ptr)
-{
-	return Ptr;
-}
-
-/**
- * Returns a non-const pointer type as const.
- */
-template <typename T>
-UE_DEPRECATED(4.26, "Call with a reference instead of a pointer.")
-constexpr FORCEINLINE const T* AsConst(T* const&& Ptr)
+FORCEINLINE const T* AsConst(T* Ptr)
 {
 	return Ptr;
 }
@@ -137,25 +119,9 @@ constexpr FORCEINLINE const T* AsConst(T* const&& Ptr)
  * Returns a non-const reference type as const.
  */
 template <typename T>
-constexpr FORCEINLINE const T& AsConst(T& Ref)
+FORCEINLINE const T& AsConst(T& Ref)
 {
 	return Ref;
-}
-
-/**
- * Disallowed for rvalue references because it cannot extend their lifetime.
- */
-template <typename T>
-void AsConst(const T&& Ref) = delete;
-
-/**
- * Returns a non-const reference type as const.
- * This overload is only required until the pointer overloads are removed.
- */
-template <typename T, SIZE_T N>
-constexpr FORCEINLINE const T (&AsConst(T (&Array)[N]))[N]
-{
-	return Array;
 }
 
 /*----------------------------------------------------------------------------
@@ -562,41 +528,6 @@ FORCEINLINE typename TEnableIf<TAreTypesEqual<T, uint32>::Value, T>::Type Revers
 	return Bits;
 }
 
-/**
- * Generates a bitmask with a given number of bits set.
- */
-template <typename T>
-FORCEINLINE T BitMask( uint32 Count );
-
-template <>
-FORCEINLINE uint64 BitMask<uint64>( uint32 Count )
-{
-	checkSlow(Count <= 64);
-	return (uint64(Count < 64) << Count) - 1;
-}
-
-template <>
-FORCEINLINE uint32 BitMask<uint32>( uint32 Count )
-{
-	checkSlow(Count <= 32);
-	return uint32(uint64(1) << Count) - 1;
-}
-
-template <>
-FORCEINLINE uint16 BitMask<uint16>( uint32 Count )
-{
-	checkSlow(Count <= 16);
-	return uint16((uint32(1) << Count) - 1);
-}
-
-template <>
-FORCEINLINE uint8 BitMask<uint8>( uint32 Count )
-{
-	checkSlow(Count <= 8);
-	return uint8((uint32(1) << Count) - 1);
-}
-
-
 /** Template for initializing a singleton at the boot. */
 template< class T >
 struct TForceInitAtBoot
@@ -615,6 +546,29 @@ struct FNoopStruct
 
 	~FNoopStruct()
 	{}
+};
+
+/**
+ * Copies the cv-qualifiers from one type to another, e.g.:
+ *
+ * TCopyQualifiersFromTo<const    T1,       T2>::Type == const T2
+ * TCopyQualifiersFromTo<volatile T1, const T2>::Type == const volatile T2
+ */
+template <typename From, typename To> struct TCopyQualifiersFromTo                          { typedef                To Type; };
+template <typename From, typename To> struct TCopyQualifiersFromTo<const          From, To> { typedef const          To Type; };
+template <typename From, typename To> struct TCopyQualifiersFromTo<      volatile From, To> { typedef       volatile To Type; };
+template <typename From, typename To> struct TCopyQualifiersFromTo<const volatile From, To> { typedef const volatile To Type; };
+
+/**
+ * Tests if qualifiers are lost between one type and another, e.g.:
+ *
+ * TCopyQualifiersFromTo<const    T1,                T2>::Value == true
+ * TCopyQualifiersFromTo<volatile T1, const volatile T2>::Value == false
+ */
+template <typename From, typename To>
+struct TLosesQualifiersFromTo
+{
+	enum { Value = !TAreTypesEqual<typename TCopyQualifiersFromTo<From, To>::Type, To>::Value };
 };
 
 /**
@@ -638,28 +592,4 @@ template <typename T>
 FORCEINLINE T ImplicitConv(typename TIdentity<T>::Type Obj)
 {
     return Obj;
-}
-
-/**
- * ForwardAsBase will cast a reference to an rvalue reference of a base type.
- * This allows the perfect forwarding of a reference as a base class.
- */
-template <
-	typename T,
-	typename Base,
-	decltype(ImplicitConv<const volatile Base*>((typename TRemoveReference<T>::Type*)nullptr))* = nullptr
->
-FORCEINLINE decltype(auto) ForwardAsBase(typename TRemoveReference<T>::Type& Obj)
-{
-	return (TCopyQualifiersAndRefsFromTo_T<T&&, Base>)Obj;
-}
-
-template <
-	typename T,
-	typename Base,
-	decltype(ImplicitConv<const volatile Base*>((typename TRemoveReference<T>::Type*)nullptr))* = nullptr
->
-FORCEINLINE decltype(auto) ForwardAsBase(typename TRemoveReference<T>::Type&& Obj)
-{
-	return (TCopyQualifiersAndRefsFromTo_T<T&&, Base>)Obj;
 }

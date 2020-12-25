@@ -17,7 +17,8 @@
 	"SupportedTargetPlatforms": [
 		"Win32",
 		"Win64",
-		"Linux"
+		"Linux",
+		"Mac"
 	],
 	"Modules": [
 		{
@@ -27,7 +28,8 @@
 			"WhitelistPlatforms": [
 				"Win64",
 				"Win32",
-				"Linux"
+				"Linux",
+				"Mac"
 			]
 		},
 		{
@@ -35,8 +37,7 @@
 			"Type": "Runtime",
 			"LoadingPhase": "PostConfigInit",
 			"WhitelistPlatforms": [
-				"Win64",
-				"Win32"
+				"Win64"
 			]
 		},
 		{
@@ -44,17 +45,15 @@
 			"Type": "Runtime",
 			"LoadingPhase": "PostConfigInit",
 			"WhitelistPlatforms": [
-				"Win64",
-				"Win32"		
+				"Win64"
 			]
 		},
 		{
 			"Name": "SteamVREditor",
-			"Type": "UncookedOnly",
+			"Type": "Editor",
 			"LoadingPhase": "PostEngineInit",
 			"WhitelistPlatforms": [
-				"Win64",
-				"Win32"
+				"Win64"
 			]
 		}
 	],

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,8 +6,6 @@
 #include "Render/Projection/IDisplayClusterProjectionPolicyFactory.h"
 
 class IDisplayClusterProjectionPolicyFactory;
-class USceneComponent;
-class UStaticMeshComponent;
 
 
 class FDisplayClusterProjectionModule
@@ -30,8 +28,6 @@ public:
 	//////////////////////////////////////////////////////////////////////////////////////////////
 	virtual void GetSupportedProjectionTypes(TArray<FString>& OutProjectionTypes) override;
 	virtual TSharedPtr<IDisplayClusterProjectionPolicyFactory> GetProjectionFactory(const FString& InProjectionType) override;
-
-	virtual bool AssignWarpMeshToViewport(const FString& ViewportId, UStaticMeshComponent* MeshComponent, USceneComponent* OriginComponent) override;
 
 private:
 	// Available factories

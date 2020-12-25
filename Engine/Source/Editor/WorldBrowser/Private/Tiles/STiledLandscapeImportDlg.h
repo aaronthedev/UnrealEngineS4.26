@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -14,9 +14,9 @@
 struct FAssetData;
 
 /////////////////////////////////////////////////////
-// STiledLandscapeImportDlg
+// STiledLandcapeImportDlg
 // 
-class STiledLandscapeImportDlg
+class STiledLandcapeImportDlg
 	: public SCompoundWidget
 {
 public:
@@ -29,7 +29,7 @@ public:
 		int32 NumQuadsPerSection;
 	};
 
-	SLATE_BEGIN_ARGS( STiledLandscapeImportDlg )
+	SLATE_BEGIN_ARGS( STiledLandcapeImportDlg )
 		{}
 	SLATE_END_ARGS()
 
@@ -62,10 +62,6 @@ private:
 	/** */
 	ECheckBoxState GetFlipYAxisState() const;
 	void OnFlipYAxisStateChanged(ECheckBoxState NewState);
-
-	/** */
-	ECheckBoxState GetEditLayersState() const;
-	void OnEditLayersStateChanged(ECheckBoxState NewState);
 
 	/** */
 	void OnSetImportConfiguration(TSharedPtr<FTileImportConfiguration> InTileConfig, ESelectInfo::Type SelectInfo);

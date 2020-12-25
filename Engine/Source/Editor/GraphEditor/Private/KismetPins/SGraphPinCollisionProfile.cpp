@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "KismetPins/SGraphPinCollisionProfile.h"
 #include "SNameComboBox.h"
@@ -24,7 +24,6 @@ TSharedRef<SWidget>	SGraphPinCollisionProfile::GetDefaultValueWidget()
 	return SAssignNew(NameComboBox, SNameComboBox)
 		.ContentPadding(FMargin(6.0f, 2.0f))
 		.OptionsSource(&NameList)
-		.IsEnabled(this, &SGraphPin::GetDefaultValueIsEditable)
 		.InitiallySelectedItem(InitialSelectedName)
 		.OnSelectionChanged(this, &SGraphPinCollisionProfile::OnSelectionChanged)
 		.OnComboBoxOpening(this, &SGraphPinCollisionProfile::OnComboBoxOpening)
@@ -104,16 +103,16 @@ void SGraphPinCollisionProfile::GetPropertyAsName(FName& OutName) const
 
 	FString PinString = GraphPinObj->GetDefaultAsString();
 
-	if (PinString.StartsWith(TEXT("("), ESearchCase::CaseSensitive) && PinString.EndsWith(TEXT(")"), ESearchCase::CaseSensitive))
+	if (PinString.StartsWith(TEXT("(")) && PinString.EndsWith(TEXT(")")))
 	{
-		PinString.LeftChopInline(1, false);
-		PinString.RightChopInline(1, false);
-		PinString.Split(TEXT("="), nullptr, &PinString, ESearchCase::CaseSensitive);
+		PinString = PinString.LeftChop(1);
+		PinString = PinString.RightChop(1);
+		PinString.Split("=", NULL, &PinString);
 
-		if (PinString.StartsWith(TEXT("\""), ESearchCase::CaseSensitive) && PinString.EndsWith(TEXT("\""), ESearchCase::CaseSensitive))
+		if (PinString.StartsWith(TEXT("\"")) && PinString.EndsWith(TEXT("\"")))
 		{
-			PinString.LeftChopInline(1, false);
-			PinString.RightChopInline(1, false);
+			PinString = PinString.LeftChop(1);
+			PinString = PinString.RightChop(1);
 		}
 	}
 

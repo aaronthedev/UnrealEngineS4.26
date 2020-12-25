@@ -1524,7 +1524,13 @@ Yield by itself yields None:
 [None]
 
 
-Yield is allowed only in the outermost iterable in generator expression:
+
+An obscene abuse of a yield expression within a generator expression:
+
+>>> list((yield 21) for i in range(4))
+[21, None, 21, None, 21, None, 21, None]
+
+And a more sane, but still weird usage:
 
 >>> def f(): list(i for i in [(yield 26)])
 >>> type(f())
@@ -1565,7 +1571,7 @@ SyntaxError: 'yield' outside function
 >>> def f(): return lambda x=(yield): 1
 Traceback (most recent call last):
   ...
-SyntaxError: 'return' with argument inside generator (<doctest test.test_generators.__test__.coroutine[21]>, line 1)
+SyntaxError: 'return' with argument inside generator (<doctest test.test_generators.__test__.coroutine[22]>, line 1)
 
 >>> def f(): x = yield = y
 Traceback (most recent call last):
@@ -1778,7 +1784,7 @@ enclosing function a generator:
 >>> type(f())
 <type 'generator'>
 
->>> def f(): x=(i for i in (yield) if i)
+>>> def f(): x=(i for i in (yield) if (yield))
 >>> type(f())
 <type 'generator'>
 
@@ -1877,16 +1883,6 @@ test_generators just happened to be the test that drew these out.
 
 """
 
-crash_test = """
->>> def foo(): yield
->>> gen = foo()
->>> gen.next()
->>> print gen.gi_frame.f_restricted  # This would segfault.
-False
-
-"""
-
-
 __test__ = {"tut":      tutorial_tests,
             "pep":      pep_tests,
             "email":    email_tests,
@@ -1896,7 +1892,6 @@ __test__ = {"tut":      tutorial_tests,
             "weakref":  weakref_tests,
             "coroutine":  coroutine_tests,
             "refleaks": refleaks_tests,
-            "crash": crash_test,
             }
 
 # Magic test name that regrtest.py invokes *after* importing this module.

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShaderPreprocessor.h"
 #include "Misc/FileHelper.h"
@@ -50,11 +50,6 @@ public:
 		Loader.get_file_contents = GetFileContents;
 		Loader.user_data = (void*)this;
 		return Loader;
-	}
-
-	bool HasIncludedMendatoryHeaders() const
-	{
-		return CachedFileContents.Contains(TEXT("/Engine/Public/Platform.ush"));
 	}
 
 private:
@@ -219,7 +214,7 @@ bool PreprocessShader(
 	FShaderCompilerOutput& ShaderOutput,
 	const FShaderCompilerInput& ShaderInput,
 	const FShaderCompilerDefinitions& AdditionalDefines,
-	EDumpShaderDefines DefinesPolicy
+	bool bShaderDumpDefinesAsCommentedCode
 	)
 {
 	// Skip the cache system and directly load the file path (used for debugging)
@@ -237,7 +232,6 @@ bool PreprocessShader(
 
 	static FCriticalSection McppCriticalSection;
 
-	bool bHasIncludedMendatoryHeaders;
 	{
 		FMcppFileLoader FileLoader(ShaderInput, ShaderOutput);
 
@@ -281,8 +275,6 @@ bool PreprocessShader(
 
 		McppOutput = McppOutAnsi;
 		McppErrors = McppErrAnsi;
-
-		bHasIncludedMendatoryHeaders = FileLoader.HasIncludedMendatoryHeaders();
 	}
 
 	if (!ParseMcppErrors(ShaderOutput.Errors, ShaderOutput.PragmaDirectives, McppErrors))
@@ -300,19 +292,8 @@ bool PreprocessShader(
 		return false;
 	}
 
-	if (!bHasIncludedMendatoryHeaders)
-	{
-		FShaderCompilerError Error;
-		Error.ErrorVirtualFilePath = ShaderInput.VirtualSourceFilePath;
-		Error.ErrorLineString = TEXT("1");
-		Error.StrippedErrorMessage = TEXT("Error: Shader is required to include /Engine/Public/Platform.ush");
-
-		ShaderOutput.Errors.Add(Error);
-		return false;
-	}
-
 	// List the defines used for compilation in the preprocessed shaders, especially to know witch permutation vector this shader is.
-	if (DefinesPolicy == EDumpShaderDefines::AlwaysIncludeDefines || (DefinesPolicy == EDumpShaderDefines::DontCare && ShaderInput.DumpDebugInfoPath.Len() > 0))
+	if (bShaderDumpDefinesAsCommentedCode)
 	{
 		DumpShaderDefinesAsCommentedCode(ShaderInput, &OutPreprocessedShader);
 	}

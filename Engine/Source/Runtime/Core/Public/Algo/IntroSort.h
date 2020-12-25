@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -22,8 +22,8 @@ namespace AlgoImpl
 	 * @param Projection	The projection to sort by when applied to the element.
 	 * @param Predicate		predicate class
 	 */
-	template <typename T, typename IndexType, typename ProjectionType, typename PredicateType> 
-	void IntroSortInternal(T* First, IndexType Num, ProjectionType Projection, PredicateType Predicate)
+	template <typename T, typename ProjectionType, typename PredicateType> 
+	void IntroSortInternal(T* First, SIZE_T Num, ProjectionType Projection, PredicateType Predicate)
 	{
 		struct FStack
 		{
@@ -37,13 +37,13 @@ namespace AlgoImpl
 			return;
 		}
 
-		FStack RecursionStack[32]={{First, First+Num-1, (uint32)(FMath::Loge((float)Num) * 2.f)}}, Current, Inner;
+		FStack RecursionStack[32]={{First, First+Num-1, (uint32)(FMath::Loge(Num) * 2.f)}}, Current, Inner;
 		for( FStack* StackTop=RecursionStack; StackTop>=RecursionStack; --StackTop ) //-V625
 		{
 			Current = *StackTop;
 
 		Loop:
-			IndexType Count = (IndexType)(Current.Max - Current.Min + 1);
+			PTRINT Count = Current.Max - Current.Min + 1;
 
 			if ( Current.MaxDepth == 0 )
 			{
@@ -134,7 +134,7 @@ namespace Algo
 	 * @param Range	The range to sort.
 	 */
 	template <typename RangeType>
-	FORCEINLINE void IntroSort(RangeType&& Range)
+	FORCEINLINE void IntroSort(RangeType& Range)
 	{
 		AlgoImpl::IntroSortInternal(GetData(Range), GetNum(Range), FIdentityFunctor(), TLess<>());
 	}
@@ -146,7 +146,7 @@ namespace Algo
 	 * @param Predicate	A binary predicate object used to specify if one element should precede another.
 	 */
 	template <typename RangeType, typename PredicateType>
-	FORCEINLINE void IntroSort(RangeType&& Range, PredicateType Predicate)
+	FORCEINLINE void IntroSort(RangeType& Range, PredicateType Predicate)
 	{
 		AlgoImpl::IntroSortInternal(GetData(Range), GetNum(Range), FIdentityFunctor(), MoveTemp(Predicate));
 	}
@@ -158,7 +158,7 @@ namespace Algo
 	 * @param Projection	The projection to sort by when applied to the element.
 	 */
 	template <typename RangeType, typename ProjectionType>
-	FORCEINLINE void IntroSortBy(RangeType&& Range, ProjectionType Projection)
+	FORCEINLINE void IntroSortBy(RangeType& Range, ProjectionType Projection)
 	{
 		AlgoImpl::IntroSortInternal(GetData(Range), GetNum(Range), MoveTemp(Projection), TLess<>());
 	}
@@ -171,7 +171,7 @@ namespace Algo
 	 * @param Predicate		A binary predicate object, applied to the projection, used to specify if one element should precede another.
 	 */
 	template <typename RangeType, typename ProjectionType, typename PredicateType>
-	FORCEINLINE void IntroSortBy(RangeType&& Range, ProjectionType Projection, PredicateType Predicate)
+	FORCEINLINE void IntroSortBy(RangeType& Range, ProjectionType Projection, PredicateType Predicate)
 	{
 		AlgoImpl::IntroSortInternal(GetData(Range), GetNum(Range), MoveTemp(Projection), MoveTemp(Predicate));
 	}

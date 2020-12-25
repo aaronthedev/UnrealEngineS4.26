@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -16,7 +16,7 @@ struct FWeakObjectPtr;
 /**
  * UObject Memory Reader Archive. Reads from InBytes, writes to Obj.
  */
-class FObjectReader : public FMemoryArchive
+class COREUOBJECT_VTABLE FObjectReader : public FMemoryArchive
 {
 public:
 	FObjectReader(UObject* Obj, TArray<uint8>& InBytes, bool bIgnoreClassRef = false, bool bIgnoreArchetypeRef = false)
@@ -46,7 +46,7 @@ public:
 
 	void Serialize(void* Data, int64 Num)
 	{
-		if (Num && !IsError())
+		if (Num && !ArIsError)
 		{
 			// Only serialize if we have the requested amount of data
 			if (Offset + Num <= TotalSize())
@@ -56,7 +56,7 @@ public:
 			}
 			else
 			{
-				SetError();
+				ArIsError = true;
 			}
 		}
 	}

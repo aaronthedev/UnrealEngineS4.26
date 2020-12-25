@@ -1,17 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ReflectionEnvironmentShared
 =============================================================================*/
-
-#pragma once
-
-#if (FEATURE_LEVEL <= FEATURE_LEVEL_ES3_1)
-#define SkyIrradianceEnvironmentMap		View.MobileSkyIrradianceEnvironmentMap
-#else
-#define SkyIrradianceEnvironmentMap		View.SkyIrradianceEnvironmentMap
-#endif
-
+  
 #define REFLECTION_CAPTURE_ROUGHEST_MIP 1
 #define REFLECTION_CAPTURE_ROUGHNESS_MIP_SCALE 1.2
 
@@ -23,7 +15,7 @@ half ComputeReflectionCaptureMipFromRoughness(half Roughness, half CubemapMaxMip
 	// Heuristic that maps roughness to mip level
 	// This is done in a way such that a certain mip level will always have the same roughness, regardless of how many mips are in the texture
 	// Using more mips in the cubemap just allows sharper reflections to be supported
-	half LevelFrom1x1 = REFLECTION_CAPTURE_ROUGHEST_MIP - REFLECTION_CAPTURE_ROUGHNESS_MIP_SCALE * log2(max(Roughness, 0.001));
+	half LevelFrom1x1 = REFLECTION_CAPTURE_ROUGHEST_MIP - REFLECTION_CAPTURE_ROUGHNESS_MIP_SCALE * log2(Roughness);
 	return CubemapMaxMip - 1 - LevelFrom1x1;
 }
 
@@ -78,20 +70,20 @@ bool ShouldSkyLightAffectGlobalIllumination() {
  */
 float3 GetSkySHDiffuse(float3 Normal)
 {
-	float4 NormalVector = float4(Normal, 1.0f); 
+	float4 NormalVector = float4(Normal, 1);
 
 	float3 Intermediate0, Intermediate1, Intermediate2;
-	Intermediate0.x = dot(SkyIrradianceEnvironmentMap[0], NormalVector);
-	Intermediate0.y = dot(SkyIrradianceEnvironmentMap[1], NormalVector);
-	Intermediate0.z = dot(SkyIrradianceEnvironmentMap[2], NormalVector);
+	Intermediate0.x = dot(View.SkyIrradianceEnvironmentMap[0], NormalVector);
+	Intermediate0.y = dot(View.SkyIrradianceEnvironmentMap[1], NormalVector);
+	Intermediate0.z = dot(View.SkyIrradianceEnvironmentMap[2], NormalVector);
 
 	float4 vB = NormalVector.xyzz * NormalVector.yzzx;
-	Intermediate1.x = dot(SkyIrradianceEnvironmentMap[3], vB);
-	Intermediate1.y = dot(SkyIrradianceEnvironmentMap[4], vB);
-	Intermediate1.z = dot(SkyIrradianceEnvironmentMap[5], vB);
+	Intermediate1.x = dot(View.SkyIrradianceEnvironmentMap[3], vB);
+	Intermediate1.y = dot(View.SkyIrradianceEnvironmentMap[4], vB);
+	Intermediate1.z = dot(View.SkyIrradianceEnvironmentMap[5], vB);
 
 	float vC = NormalVector.x * NormalVector.x - NormalVector.y * NormalVector.y;
-	Intermediate2 = SkyIrradianceEnvironmentMap[6].xyz * vC;
+	Intermediate2 = View.SkyIrradianceEnvironmentMap[6].xyz * vC;
 
 	// max to not get negative colors
 	return max(0, Intermediate0 + Intermediate1 + Intermediate2);
@@ -107,9 +99,9 @@ float3 GetSkySHDiffuseSimple(float3 Normal)
 	float4 NormalVector = float4(Normal, 1);
 
 	float3 Intermediate0;
-	Intermediate0.x = dot(SkyIrradianceEnvironmentMap[0], NormalVector);
-	Intermediate0.y = dot(SkyIrradianceEnvironmentMap[1], NormalVector);
-	Intermediate0.z = dot(SkyIrradianceEnvironmentMap[2], NormalVector);		
+	Intermediate0.x = dot(View.SkyIrradianceEnvironmentMap[0], NormalVector);
+	Intermediate0.y = dot(View.SkyIrradianceEnvironmentMap[1], NormalVector);
+	Intermediate0.z = dot(View.SkyIrradianceEnvironmentMap[2], NormalVector);		
 
 	// max to not get negative colors
 	return max(0, Intermediate0);

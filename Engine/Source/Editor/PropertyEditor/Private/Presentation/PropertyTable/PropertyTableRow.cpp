@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Presentation/PropertyTable/PropertyTableRow.h"
 #include "PropertyNode.h"
@@ -79,9 +79,9 @@ void FPropertyTableRow::GenerateChildren()
 		return;
 	}
 
-	FProperty* Property = PropertyNode->GetProperty();
+	UProperty* Property = PropertyNode->GetProperty();
 
-	if ( Property != NULL && Property->IsA( FArrayProperty::StaticClass() ) )
+	if ( Property != NULL && Property->IsA( UArrayProperty::StaticClass() ) )
 	{
 		for (int Index = 0; Index < PropertyNode->GetNumChildNodes(); Index++)
 		{

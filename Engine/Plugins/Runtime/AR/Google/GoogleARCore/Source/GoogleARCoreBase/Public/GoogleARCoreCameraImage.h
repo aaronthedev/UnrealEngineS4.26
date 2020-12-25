@@ -1,11 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "GoogleARCoreCameraImage.generated.h"
 
 typedef struct ArImage_ ArImage;
-typedef struct ArSession_ ArSession;
+typedef struct AImage AImage;
 
 /**
  * An object that represents an acquired CPU-accessible camera image.
@@ -51,14 +51,14 @@ public:
 	/**
 	 * Get the raw image data of a given plane.
 	 */
-	const uint8 *GetPlaneData(
+	uint8 *GetPlaneData(
 		int32 Plane, int32 &PixelStride,
-		int32 &RowStride, int32 &DataLength) const;
+		int32 &RowStride, int32 &DataLength);
 
 private:
 #if PLATFORM_ANDROID
 	ArImage *ArImage = nullptr;
-	const ArSession* SessionHandle = nullptr;
+	const AImage *NdkImage = nullptr;
 #endif
 
 	friend class FGoogleARCoreFrame;

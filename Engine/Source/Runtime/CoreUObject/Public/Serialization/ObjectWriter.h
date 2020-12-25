@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -16,7 +16,7 @@ struct FWeakObjectPtr;
 /**
  * UObject Memory Writer Archive.
  */
-class FObjectWriter : public FMemoryWriter
+class COREUOBJECT_VTABLE FObjectWriter : public FMemoryWriter
 {
 
 public:

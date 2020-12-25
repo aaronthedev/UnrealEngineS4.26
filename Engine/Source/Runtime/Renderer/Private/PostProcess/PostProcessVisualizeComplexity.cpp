@@ -1,9 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PostProcess/PostProcessVisualizeComplexity.h"
 #include "CanvasTypes.h"
 #include "RenderTargetTemp.h"
-#include "UnrealEngine.h"
 
 class FVisualizeComplexityApplyPS : public FGlobalShader
 {
@@ -28,29 +27,15 @@ public:
 		RENDER_TARGET_BINDING_SLOTS()
 	END_SHADER_PARAMETER_STRUCT()
 
-	enum class EQuadOverdraw
-	{
-		Disable,
-		Enable,
-		MAX
-	};
-
-	class FQuadOverdraw : SHADER_PERMUTATION_ENUM_CLASS("READ_QUAD_OVERDRAW", EQuadOverdraw);
-	using FPermutationDomain = TShaderPermutationDomain<FQuadOverdraw>;
-
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
-		const FPermutationDomain PermutationVector(Parameters.PermutationId);
-		if (PermutationVector.Get<FVisualizeComplexityApplyPS::FQuadOverdraw>() == FVisualizeComplexityApplyPS::EQuadOverdraw::Enable)
-		{
-			return AllowDebugViewShaderMode(DVSM_QuadComplexity, Parameters.Platform, GetMaxSupportedFeatureLevel(Parameters.Platform));
-		}
 		return true;
 	}
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FGlobalShader::ModifyCompilationEnvironment(Parameters, OutEnvironment);
+		OutEnvironment.SetDefine(TEXT("READ_QUAD_OVERDRAW"), AllowDebugViewShaderMode(DVSM_QuadComplexity, Parameters.Platform, GetMaxSupportedFeatureLevel(Parameters.Platform)));
 		OutEnvironment.SetDefine(TEXT("MAX_NUM_COMPLEXITY_COLORS"), MaxNumShaderComplexityColors);
 		// EVisualizeComplexityColorSamplingMethod values
 		OutEnvironment.SetDefine(TEXT("CS_RAMP"), (uint32)FVisualizeComplexityInputs::EColorSamplingMethod::Ramp);
@@ -71,6 +56,8 @@ float GetMaxShaderComplexityCount(ERHIFeatureLevel::Type FeatureLevel)
 {
 	switch (FeatureLevel)
 	{
+	case ERHIFeatureLevel::ES2:
+		return GEngine->MaxES2PixelShaderAdditiveComplexityCount;
 	case ERHIFeatureLevel::ES3_1:
 		return GEngine->MaxES3PixelShaderAdditiveComplexityCount;
 	default:
@@ -121,14 +108,14 @@ FScreenPassTexture AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder, const F
 	const FSceneRenderTargets& SceneRenderTargets = FSceneRenderTargets::Get(GraphBuilder.RHICmdList);
 	const EDebugViewShaderMode DebugViewShaderMode = View.Family->GetDebugViewShaderMode();
 
-	PassParameters->DebugViewShaderMode = DVSM_ShaderComplexity;
-	FVisualizeComplexityApplyPS::EQuadOverdraw QuadOverdrawEnum = FVisualizeComplexityApplyPS::EQuadOverdraw::Disable;
-
-	if (SceneRenderTargets.QuadOverdrawBuffer && AllowDebugViewShaderMode(DVSM_QuadComplexity, View.GetShaderPlatform(), View.FeatureLevel))
+	if (FRDGTextureRef QuadOverdrawTexture = GraphBuilder.TryRegisterExternalTexture(SceneRenderTargets.QuadOverdrawBuffer))
 	{
-		PassParameters->QuadOverdrawTexture = GraphBuilder.RegisterExternalTexture(SceneRenderTargets.QuadOverdrawBuffer);
+		PassParameters->QuadOverdrawTexture = QuadOverdrawTexture;
 		PassParameters->DebugViewShaderMode = DebugViewShaderMode;
-		QuadOverdrawEnum = FVisualizeComplexityApplyPS::EQuadOverdraw::Enable;
+	}
+	else // Otherwise fallback to a complexity mode that does not require the QuadOverdraw resources.
+	{
+		PassParameters->DebugViewShaderMode = DVSM_ShaderComplexity;
 	}
 
 	PassParameters->bLegend = Inputs.bDrawLegend;
@@ -137,13 +124,11 @@ FScreenPassTexture AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder, const F
 	PassParameters->ComplexityScale = Inputs.ComplexityScale;
 	PassParameters->UsedQuadTextureSize = FIntPoint(View.ViewRect.Size() + FIntPoint(1, 1)) / 2;
 
-	FVisualizeComplexityApplyPS::FPermutationDomain PermutationVector;
-	PermutationVector.Set<FVisualizeComplexityApplyPS::FQuadOverdraw>(QuadOverdrawEnum);
-	TShaderMapRef<FVisualizeComplexityApplyPS> PixelShader(View.ShaderMap, PermutationVector);
+	TShaderMapRef<FVisualizeComplexityApplyPS> PixelShader(View.ShaderMap);
 
 	RDG_EVENT_SCOPE(GraphBuilder, "VisualizeComplexity");
 
-	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("Visualizer"), View, FScreenPassTextureViewport(Output), InputViewport, PixelShader, PassParameters);
+	AddDrawScreenPass(GraphBuilder, RDG_EVENT_NAME("Visualizer"), View, FScreenPassTextureViewport(Output), InputViewport, *PixelShader, PassParameters);
 
 	Output.LoadAction = ERenderTargetLoadAction::ELoad;
 
@@ -177,4 +162,43 @@ FScreenPassTexture AddVisualizeComplexityPass(FRDGBuilder& GraphBuilder, const F
 	});
 
 	return MoveTemp(Output);
+}
+
+FRenderingCompositeOutputRef AddVisualizeComplexityPass(
+	FRenderingCompositionGraph& Graph,
+	FRenderingCompositeOutputRef Input,
+	const TArray<FLinearColor>& InColors,
+	FVisualizeComplexityInputs::EColorSamplingMethod InColorSampling,
+	float InComplexityScale,
+	bool bInLegend)
+{
+	FRenderingCompositePass* Pass = Graph.RegisterPass(
+		new(FMemStack::Get()) TRCPassForRDG<1, 1>(
+			[InColors, InColorSampling, InComplexityScale, bInLegend](FRenderingCompositePass* InPass, FRenderingCompositePassContext& InContext)
+	{
+		FRDGBuilder GraphBuilder(InContext.RHICmdList);
+
+		FVisualizeComplexityInputs PassInputs;
+		PassInputs.SceneColor.Texture = InPass->CreateRDGTextureForRequiredInput(GraphBuilder, ePId_Input0, TEXT("SceneColor"));
+		PassInputs.SceneColor.ViewRect = InContext.SceneColorViewRect;
+		PassInputs.Colors = InColors;
+		PassInputs.ColorSamplingMethod = InColorSampling;
+		PassInputs.ComplexityScale = InComplexityScale;
+		PassInputs.bDrawLegend = bInLegend;
+
+		if (FRDGTextureRef OverrideOutputTexture = InPass->FindRDGTextureForOutput(GraphBuilder, ePId_Output0, TEXT("FrameBuffer")))
+		{
+			PassInputs.OverrideOutput.Texture = OverrideOutputTexture;
+			PassInputs.OverrideOutput.ViewRect = InContext.GetSceneColorDestRect(InPass);
+			PassInputs.OverrideOutput.LoadAction = InContext.View.IsFirstInFamily() ? ERenderTargetLoadAction::EClear : ERenderTargetLoadAction::ELoad;
+		}
+
+		FScreenPassTexture PassOutput = AddVisualizeComplexityPass(GraphBuilder, InContext.View, PassInputs);
+
+		InPass->ExtractRDGTextureForOutput(GraphBuilder, ePId_Output0, PassOutput.Texture);
+
+		GraphBuilder.Execute();
+	}));
+	Pass->SetInput(ePId_Input0, Input);
+	return Pass;
 }

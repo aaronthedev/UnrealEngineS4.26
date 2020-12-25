@@ -1,14 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Internationalization/TextLocalizationResource.h"
 #include "Internationalization/TextLocalizationResourceVersion.h"
 #include "Internationalization/Culture.h"
 #include "HAL/FileManager.h"
-#include "Misc/App.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
 #include "Misc/Optional.h"
-#include "Misc/ConfigCacheIni.h"
 #include "Templates/UniquePtr.h"
 #include "Internationalization/Internationalization.h"
 #include "Misc/FileHelper.h"
@@ -235,30 +233,33 @@ bool FTextLocalizationResource::LoadFromArchive(FArchive& Archive, const FTextKe
 
 		if (LocalizedStringArrayOffset != INDEX_NONE)
 		{
-			const int64 CurrentFileOffset = Archive.Tell();
-			Archive.Seek(LocalizedStringArrayOffset);
-			Archive.Precache(LocalizedStringArrayOffset, 0); // Inform the archive that we're going to repeatedly serialize from the current location
-			if (VersionNumber >= FTextLocalizationResourceVersion::ELocResVersion::Optimized_CRC32)
+			if (VersionNumber >= FTextLocalizationResourceVersion::ELocResVersion::Optimized)
 			{
+				const int64 CurrentFileOffset = Archive.Tell();
+				Archive.Seek(LocalizedStringArrayOffset);
 				Archive << LocalizedStringArray;
+				Archive.Seek(CurrentFileOffset);
 			}
 			else
 			{
 				TArray<FString> TmpLocalizedStringArray;
+
+				const int64 CurrentFileOffset = Archive.Tell();
+				Archive.Seek(LocalizedStringArrayOffset);
 				Archive << TmpLocalizedStringArray;
+				Archive.Seek(CurrentFileOffset);
+
 				LocalizedStringArray.Reserve(TmpLocalizedStringArray.Num());
 				for (FString& LocalizedString : TmpLocalizedStringArray)
 				{
 					LocalizedStringArray.Emplace(FTextLocalizationResourceString{ MoveTemp(LocalizedString), INDEX_NONE });
 				}
 			}
-			Archive.Seek(CurrentFileOffset);
-			Archive.Precache(CurrentFileOffset, 0); // Inform the archive that we're going to repeatedly serialize from the current location
 		}
 	}
 
 	// Read entries count
-	if (VersionNumber >= FTextLocalizationResourceVersion::ELocResVersion::Optimized_CRC32)
+	if (VersionNumber >= FTextLocalizationResourceVersion::ELocResVersion::Optimized)
 	{
 		uint32 EntriesCount;
 		Archive << EntriesCount;
@@ -269,27 +270,18 @@ bool FTextLocalizationResource::LoadFromArchive(FArchive& Archive, const FTextKe
 	uint32 NamespaceCount;
 	Archive << NamespaceCount;
 
-	auto SerializeTextKey = [&VersionNumber, &Archive](FTextKey& InOutTextKey)
-	{
-		if (VersionNumber >= FTextLocalizationResourceVersion::ELocResVersion::Optimized_CityHash64_UTF16)
-		{
-			InOutTextKey.SerializeWithHash(Archive);
-		}
-		else if (VersionNumber == FTextLocalizationResourceVersion::ELocResVersion::Optimized_CRC32)
-		{
-			InOutTextKey.SerializeDiscardHash(Archive);
-		}
-		else
-		{
-			InOutTextKey.SerializeAsString(Archive);
-		}
-	};
-
 	for (uint32 i = 0; i < NamespaceCount; ++i)
 	{
 		// Read namespace
 		FTextKey Namespace;
-		SerializeTextKey(Namespace);
+		if (VersionNumber >= FTextLocalizationResourceVersion::ELocResVersion::Optimized)
+		{
+			Archive << Namespace;
+		}
+		else
+		{
+			Namespace.SerializeAsString(Archive);
+		}
 
 		// Read key count
 		uint32 KeyCount;
@@ -299,7 +291,14 @@ bool FTextLocalizationResource::LoadFromArchive(FArchive& Archive, const FTextKe
 		{
 			// Read key
 			FTextKey Key;
-			SerializeTextKey(Key);
+			if (VersionNumber >= FTextLocalizationResourceVersion::ELocResVersion::Optimized)
+			{
+				Archive << Key;
+			}
+			else
+			{
+				Key.SerializeAsString(Archive);
+			}
 
 			FEntry NewEntry;
 			NewEntry.LocResID = LocResID;
@@ -434,7 +433,7 @@ bool FTextLocalizationResource::SaveToArchive(FArchive& Archive, const FTextKey&
 
 		// Write namespace.
 		FTextKey NamespaceTmp = Namespace;
-		NamespaceTmp.SerializeWithHash(Archive);
+		Archive << NamespaceTmp;
 
 		// Write keys count
 		uint32 KeyCount = KeysTable.Num();
@@ -449,7 +448,7 @@ bool FTextLocalizationResource::SaveToArchive(FArchive& Archive, const FTextKey&
 
 			// Write key.
 			FTextKey KeyTmp = Key;
-			KeyTmp.SerializeWithHash(Archive);
+			Archive << KeyTmp;
 
 			// Write string entry.
 			uint32 SourceStringHash = Value->SourceStringHash;
@@ -613,19 +612,14 @@ TArray<FString> TextLocalizationResourceUtil::GetLocalizedCultureNames(const TAr
 	const FString PlatformFolderName = FPaths::GetPlatformLocalizationFolderName();
 	for (const FString& LocalizationPath : InLocalizationPaths)
 	{
-		const FString LocResFilename = FPaths::GetBaseFilename(LocalizationPath) + TEXT(".locres");
-		IFileManager::Get().IterateDirectory(*LocalizationPath, [&CultureNames, &PlatformFolderName, &LocResFilename](const TCHAR* FilenameOrDirectory, bool bIsDirectory) -> bool
+		IFileManager::Get().IterateDirectory(*LocalizationPath, [&CultureNames, &PlatformFolderName](const TCHAR* FilenameOrDirectory, bool bIsDirectory) -> bool
 		{
 			if (bIsDirectory && FCString::Stricmp(FilenameOrDirectory, *PlatformFolderName) != 0)
 			{
-				const FString LocResPath = FilenameOrDirectory / LocResFilename;
-				if (FPaths::FileExists(LocResPath))
-				{
-					// UE localization resource folders use "en-US" style while ICU uses "en_US"
-					const FString LocalizationFolder = FPaths::GetCleanFilename(FilenameOrDirectory);
-					const FString CanonicalName = FCulture::GetCanonicalName(LocalizationFolder);
-					CultureNames.AddUnique(CanonicalName);
-				}
+				// UE localization resource folders use "en-US" style while ICU uses "en_US"
+				const FString LocalizationFolder = FPaths::GetCleanFilename(FilenameOrDirectory);
+				const FString CanonicalName = FCulture::GetCanonicalName(LocalizationFolder);
+				CultureNames.AddUnique(CanonicalName);
 			}
 			return true;
 		});
@@ -639,47 +633,6 @@ TArray<FString> TextLocalizationResourceUtil::GetLocalizedCultureNames(const TAr
 	});
 
 	return CultureNames;
-}
-
-const TArray<FString>& TextLocalizationResourceUtil::GetDisabledLocalizationTargets()
-{
-	static TArray<FString> DisabledLocalizationTargets;
-	static bool bHasInitializedDisabledLocalizationTargets = false;
-
-	if (!bHasInitializedDisabledLocalizationTargets)
-	{
-		check(GConfig && GConfig->IsReadyForUse());
-
-		const bool bShouldLoadEditor = GIsEditor;
-		const bool bShouldLoadGame = FApp::IsGame();
-
-		GConfig->GetArray(TEXT("Internationalization"), TEXT("DisabledLocalizationTargets"), DisabledLocalizationTargets, GEngineIni);
-
-		if (bShouldLoadEditor)
-		{
-			TArray<FString> EditorArray;
-			GConfig->GetArray(TEXT("Internationalization"), TEXT("DisabledLocalizationTargets"), EditorArray, GEditorIni);
-			DisabledLocalizationTargets.Append(MoveTemp(EditorArray));
-		}
-
-		if (bShouldLoadGame)
-		{
-			TArray<FString> GameArray;
-			GConfig->GetArray(TEXT("Internationalization"), TEXT("DisabledLocalizationTargets"), GameArray, GGameIni);
-			DisabledLocalizationTargets.Append(MoveTemp(GameArray));
-		}
-
-		bHasInitializedDisabledLocalizationTargets = true;
-	}
-
-	return DisabledLocalizationTargets;
-}
-
-FString TextLocalizationResourceUtil::GetLocalizationTargetNameForChunkId(const FString& InLocalizationTargetName, const int32 InChunkId)
-{
-	return InChunkId == INDEX_NONE || InChunkId == 0
-		? InLocalizationTargetName
-		: FString::Printf(TEXT("%s_locchunk%d"), *InLocalizationTargetName, InChunkId);
 }
 
 #undef PRELOAD_LOCMETA_FILES

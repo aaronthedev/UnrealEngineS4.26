@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved. 
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved. 
 
 #include "ProceduralMeshComponent.h"
 #include "PrimitiveViewRelevance.h"
@@ -29,11 +29,6 @@ DECLARE_CYCLE_STAT(TEXT("Get ProcMesh Elements"), STAT_ProcMesh_GetMeshElements,
 DECLARE_CYCLE_STAT(TEXT("Update Collision"), STAT_ProcMesh_UpdateCollision, STATGROUP_ProceduralMesh);
 
 DEFINE_LOG_CATEGORY_STATIC(LogProceduralComponent, Log, All);
-
-static TAutoConsoleVariable<int32> CVarRayTracingProceduralMesh(
-	TEXT("r.RayTracing.Geometry.ProceduralMeshes"),
-	1,
-	TEXT("Include procedural meshes in ray tracing effects (default = 1 (procedural meshes enabled in ray tracing))"));
 
 /** Resource array to pass  */
 class FProcMeshVertexResourceArray : public FResourceArrayInterface
@@ -178,10 +173,9 @@ public:
 				if (IsRayTracingEnabled())
 				{
 					ENQUEUE_RENDER_COMMAND(InitProceduralMeshRayTracingGeometry)(
-						[this, DebugName = Component->GetFName(), NewSection](FRHICommandListImmediate& RHICmdList)
+						[this, NewSection/*, VertexBufferRHI, IndexBufferRHI, VertexBufferStride, TrianglesCount, RenderSections*/](FRHICommandListImmediate& RHICmdList)
 					{
 						FRayTracingGeometryInitializer Initializer;
-						Initializer.DebugName = DebugName;
 						Initializer.IndexBuffer = nullptr;
 						Initializer.TotalPrimitiveCount = 0;
 						Initializer.GeometryType = RTGT_Triangles;
@@ -408,7 +402,7 @@ public:
 		Result.bRenderCustomDepth = ShouldRenderCustomDepth();
 		Result.bTranslucentSelfShadow = bCastVolumetricTranslucentShadow;
 		MaterialRelevance.SetPrimitiveViewRelevance(Result);
-		Result.bVelocityRelevance = IsMovable() && Result.bOpaque && Result.bRenderInMainPass;
+		Result.bVelocityRelevance = IsMovable() && Result.bOpaqueRelevance && Result.bRenderInMainPass;
 		return Result;
 	}
 
@@ -433,14 +427,8 @@ public:
 
 	virtual void GetDynamicRayTracingInstances(FRayTracingMaterialGatheringContext& Context, TArray<FRayTracingInstance>& OutRayTracingInstances) override final
 	{
-		if (!CVarRayTracingProceduralMesh.GetValueOnRenderThread())
+		for (const FProcMeshProxySection* Section : Sections)
 		{
-			return;
-		}
-
-		for (int32 SegmentIndex = 0; SegmentIndex < Sections.Num(); ++SegmentIndex)
-		{
-			const FProcMeshProxySection* Section = Sections[SegmentIndex];
 			if (Section != nullptr && Section->bSectionVisible)
 			{
 				FMaterialRenderProxy* MaterialProxy = Section->Material->GetRenderProxy();
@@ -457,7 +445,7 @@ public:
 					FMeshBatch MeshBatch;
 
 					MeshBatch.VertexFactory = &Section->VertexFactory;
-					MeshBatch.SegmentIndex = SegmentIndex;
+					MeshBatch.SegmentIndex = 0;
 					MeshBatch.MaterialRenderProxy = Section->Material->GetRenderProxy();
 					MeshBatch.ReverseCulling = IsLocalToWorldDeterminantNegative();
 					MeshBatch.Type = PT_TriangleList;

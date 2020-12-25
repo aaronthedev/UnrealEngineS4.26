@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "HoloLens/HoloLensApplication.h"
 #include "HoloLens/HoloLensWindow.h"
@@ -13,19 +13,26 @@
 
 DEFINE_LOG_CATEGORY(LogHoloLens);
 
+// Flip this on to make license checks operate against the retail Windows Store environment.
+// We default to simulator which is only permitted when the OS is in developer mode.  Titles
+// will need to manually flip this switch to use retail before ship.  Note that retail license
+// checks will not function until the title has been ingested into the retail store catalog.
+//#define USING_RETAIL_WINDOWS_STORE 1
+#ifndef USING_RETAIL_WINDOWS_STORE
+#define USING_RETAIL_WINDOWS_STORE 0
+#endif
+#if USING_RETAIL_WINDOWS_STORE
+using CurrentStoreApp = Windows::ApplicationModel::Store::CurrentApp;
+#else
+using CurrentStoreApp = Windows::ApplicationModel::Store::CurrentAppSimulator;
+#endif
+
+
 static FHoloLensApplication* HoloLensApplication = NULL;
 FVector2D FHoloLensApplication::DesktopSize;
 
-#if PLATFORM_HOLOLENS
-Windows::Graphics::Holographic::HolographicSpace^ FHoloLensApplication::HoloSpace;
-#endif
-
-bool FHoloLensApplication::buildForRetailWindowsStore = false;
-
 FHoloLensApplication* FHoloLensApplication::CreateHoloLensApplication()
 {
-	GConfig->GetBool(TEXT("/Script/HoloLensPlatformEditor.HoloLensTargetSettings"), TEXT("bBuildForRetailWindowsStore"), buildForRetailWindowsStore, GEngineIni);
-	
 	check( HoloLensApplication == NULL );
 	HoloLensApplication = new FHoloLensApplication();
 
@@ -71,7 +78,7 @@ void FHoloLensApplication::PollGameDeviceState( const float TimeDelta )
 {
 	// @MIXEDREALITY_CHANGE : BEGIN Mixed Reality spatial input support
 	// Initialize any externally-implemented input devices (we delay load initialize the array so any plugins have had time to load)
-	if (!bHasLoadedInputPlugins && GIsRunning)
+	if (!bHasLoadedInputPlugins)
 	{
 		TArray< IInputDeviceModule* > PluginImplementations = IModularFeatures::Get().GetModularFeatureImplementations< IInputDeviceModule >(IInputDeviceModule::GetModularFeatureName());
 		for (auto InputPluginIt = PluginImplementations.CreateIterator(); InputPluginIt; ++InputPluginIt)
@@ -248,14 +255,7 @@ bool FHoloLensApplication::ApplicationLicenseValid(FPlatformUserId PlatformUser)
 {
 	try
 	{
-		if (buildForRetailWindowsStore)
-		{
-			return Windows::ApplicationModel::Store::CurrentApp::LicenseInformation->IsActive;
-		}
-		else
-		{
-			return Windows::ApplicationModel::Store::CurrentAppSimulator::LicenseInformation->IsActive;
-		}
+		return CurrentStoreApp::LicenseInformation->IsActive;
 	}
 	catch (...)
 	{
@@ -268,14 +268,7 @@ void FHoloLensApplication::InitLicensing()
 {
 	try
 	{
-		if (buildForRetailWindowsStore)
-		{
-			Windows::ApplicationModel::Store::CurrentApp::LicenseInformation->LicenseChanged += ref new Windows::ApplicationModel::Store::LicenseChangedEventHandler(LicenseChangedHandler);
-		}
-		else
-		{
-			Windows::ApplicationModel::Store::CurrentAppSimulator::LicenseInformation->LicenseChanged += ref new Windows::ApplicationModel::Store::LicenseChangedEventHandler(LicenseChangedHandler);
-		}
+		CurrentStoreApp::LicenseInformation->LicenseChanged += ref new Windows::ApplicationModel::Store::LicenseChangedEventHandler(LicenseChangedHandler);
 	}
 	catch (...)
 	{

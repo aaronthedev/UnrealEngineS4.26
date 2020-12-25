@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_ATTRIBUTE_SPEC_H
-#define PXR_USD_SDF_ATTRIBUTE_SPEC_H
+#ifndef SDF_ATTRIBUTESPEC_H
+#define SDF_ATTRIBUTESPEC_H
 
 /// \file sdf/attributeSpec.h
 
@@ -35,6 +35,8 @@
 #include "pxr/base/tf/enum.h"
 
 PXR_NAMESPACE_OPEN_SCOPE
+
+template <class T> class Sdf_MarkerUtils;
 
 /// \class SdfAttributeSpec
 ///
@@ -55,7 +57,8 @@ PXR_NAMESPACE_OPEN_SCOPE
 ///
 class SdfAttributeSpec : public SdfPropertySpec
 {
-    SDF_DECLARE_SPEC(SdfAttributeSpec, SdfPropertySpec);
+    SDF_DECLARE_SPEC(SdfSchema, SdfSpecTypeAttribute,
+                     SdfAttributeSpec, SdfPropertySpec);
 
 public:
     typedef SdfAttributeSpec This;
@@ -76,8 +79,23 @@ public:
         SdfVariability variability = SdfVariabilityVarying,
         bool custom = false);
 
+    /// Constructs a new relational attribute instance.
+    ///
+    /// Creates and returns a new attribute for the given relationship
+    /// and target. The \p owner will own the newly created attribute.
+    /// The new attribute will appear at the end of the target's
+    /// attribute list.
+    SDF_API
+    static SdfAttributeSpecHandle
+    New(const SdfRelationshipSpecHandle& owner,
+        const SdfPath& targetPath,
+        const std::string& name, const SdfValueTypeName& typeName,
+        SdfVariability variability = SdfVariabilityVarying,
+        bool custom = false);
+
     /// @}
 
+public:
     /// \name Connections
     /// @{
 
@@ -95,6 +113,56 @@ public:
     /// Clears the connection paths for this attribute.
     SDF_API
     void ClearConnectionPaths();
+
+    /// @}
+    /// \name Mappers
+    /// @{
+
+    /// Returns the mappers for this attribute.
+    ///
+    /// Returns an editable map whose keys are connection paths and whose
+    /// values are mappers.  Mappers may be removed from the map.  Mappers
+    /// are added by directly constructing them.
+    SDF_API
+    SdfConnectionMappersProxy GetConnectionMappers() const;
+
+    /// Returns the target path that mapper \p mapper is associated with.
+    SDF_API
+    SdfPath GetConnectionPathForMapper(const SdfMapperSpecHandle& mapper);
+
+    /// Changes the path a mapper is associated with from \p oldPath to
+    /// \p newPath.
+    SDF_API
+    void ChangeMapperPath(const SdfPath& oldPath, const SdfPath& newPath);
+
+    /// @}
+    /// \name Markers
+    /// @{
+
+    typedef std::map<SdfPath, std::string,
+                     SdfPath::FastLessThan> ConnectionMarkerMap;
+
+    /// Sets all the connection markers for this attribute.
+    SDF_API
+    void SetConnectionMarkers(const ConnectionMarkerMap& markers);
+
+    /// Returns the marker for the given connection path.
+    /// If no marker exists, returns the empty string.
+    SDF_API
+    std::string GetConnectionMarker(const SdfPath& path) const;
+
+    /// Sets the marker for the given connection path.
+    /// Clears the marker if an empty string is given.
+    SDF_API
+    void SetConnectionMarker(const SdfPath& path, const std::string& marker);
+
+    /// Clears the marker for the given connection path.
+    SDF_API
+    void ClearConnectionMarker(const SdfPath& path);
+
+    /// Returns all connection paths on which markers are specified.
+    SDF_API
+    SdfPathVector GetConnectionMarkerPaths() const;
 
     /// @}
     /// \name Attribute value API
@@ -165,27 +233,32 @@ public:
     TfToken GetRoleName() const;
 
     /// @}
-};
 
-/// Convenience function to create an attributeSpec on a primSpec at the given
-/// path, and any necessary parent primSpecs, in the given layer.
-///
-/// If an attributeSpec already exists at the given path, just author typeName,
-/// variability, and custom according to passed arguments and return true.
-///
-/// Any newly created prim specs have SdfSpecifierOver and an empty type (as if
-/// created by SdfJustCreatePrimInLayer()).  attrPath must be a valid prim
-/// property path (see SdfPath::IsPrimPropertyPath()).  Return false and issue
-/// an error if we fail to author the required scene description.
-SDF_API
-bool
-SdfJustCreatePrimAttributeInLayer(
-    const SdfLayerHandle &layer,
-    const SdfPath &attrPath,
-    const SdfValueTypeName &typeName,
-    SdfVariability variability = SdfVariabilityVarying,
-    bool isCustom = false);
+private:
+    static SdfAttributeSpecHandle
+    _New(const SdfSpecHandle &owner,
+         const SdfPath& attributePath,
+         const SdfValueTypeName& typeName,
+         SdfVariability variability,
+         bool custom);
+
+    static SdfAttributeSpecHandle
+    _New(const SdfRelationshipSpecHandle& owner,
+         const SdfPath& targetPath,
+         const std::string& name,
+         const SdfValueTypeName& typeName,
+         SdfVariability variability,
+         bool custom);
+
+    SdfPath _CanonicalizeConnectionPath(const SdfPath& connectionPath) const;
+
+    SdfSpecHandle _FindOrCreateChildSpecForMarker(const SdfPath& key);
+
+    friend class SdfMapperSpec;
+    friend class Sdf_MarkerUtils<SdfAttributeSpec>;
+    friend class Sdf_PyAttributeAccess;
+};
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_ATTRIBUTE_SPEC_H
+#endif // SDF_ATTRIBUTESPEC_H

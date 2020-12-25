@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  * Widget for editor utilities
@@ -19,7 +19,7 @@ enum class EAssetEditorCloseReason : uint8;
 enum class EMapChangeType : uint8;
 
 UCLASS()
-class BLUTILITY_API UEditorUtilityWidgetBlueprint : public UWidgetBlueprint
+class UEditorUtilityWidgetBlueprint : public UWidgetBlueprint
 {
 	GENERATED_UCLASS_BODY()
 
@@ -32,7 +32,7 @@ public:
 	TSharedRef<SWidget> CreateUtilityWidget();
 
 	/** Recreate the tab's content on recompile */
-	void RegenerateCreatedTab(UBlueprint* RecompiledBlueprint);
+	void RegenerateCreatedTab();
 	
 	void UpdateRespawnListIfNeeded(TSharedRef<SDockTab> TabBeingClosed);
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GenericPlatform/GenericPlatformCrashContext.h"
 #include "HAL/PlatformTime.h"
@@ -20,11 +20,9 @@
 #include "Misc/EngineBuildSettings.h"
 #include "Misc/OutputDeviceRedirector.h"
 #include "Stats/Stats.h"
-#include "Internationalization/Regex.h"
 #include "Internationalization/TextLocalizationManager.h"
 #include "Logging/LogScopedCategoryAndVerbosityOverride.h"
 #include "HAL/PlatformOutputDevices.h"
-#include "HAL/PlatformFilemanager.h"
 #include "Misc/OutputDeviceArchiveWrapper.h"
 
 #ifndef NOINITCRASHREPORTER
@@ -70,8 +68,7 @@ const TCHAR* const FGenericCrashContext::EngineModeExDirty = TEXT("Dirty");
 const TCHAR* const FGenericCrashContext::EngineModeExVanilla = TEXT("Vanilla");
 
 bool FGenericCrashContext::bIsInitialized = false;
-uint32 FGenericCrashContext::OutOfProcessCrashReporterPid = 0;
-volatile int64 FGenericCrashContext::OutOfProcessCrashReporterExitCode = 0;
+bool FGenericCrashContext::bIsOutOfProcess = false;
 int32 FGenericCrashContext::StaticCrashContextIndex = 0;
 
 const FGuid FGenericCrashContext::ExecutionGuid = FGuid::NewGuid();
@@ -83,12 +80,6 @@ namespace NCached
 	static TArray<FString> EnabledPluginsList;
 	static TMap<FString, FString> EngineData;
 	static TMap<FString, FString> GameData;
-
-	template <size_t CharCount, typename CharType>
-	void Set(CharType(&Dest)[CharCount], const CharType* pSrc)
-	{
-		TCString<CharType>::Strncpy(Dest, pSrc, CharCount);
-	}
 }
 
 void FGenericCrashContext::Initialize()
@@ -99,43 +90,38 @@ void FGenericCrashContext::Initialize()
 	NCached::Session.bIsSourceDistribution = FEngineBuildSettings::IsSourceDistribution();
 	NCached::Session.ProcessId = FPlatformProcess::GetCurrentProcessId();
 
-	NCached::Set(NCached::Session.GameName, *FString::Printf(TEXT("UE4-%s"), FApp::GetProjectName()));
-	NCached::Set(NCached::Session.GameSessionID, TEXT("")); // Updated by callback
-	NCached::Set(NCached::Session.GameStateName, TEXT("")); // Updated by callback
-	NCached::Set(NCached::Session.UserActivityHint, TEXT("")); // Updated by callback
-	NCached::Set(NCached::Session.BuildConfigurationName, LexToString(FApp::GetBuildConfiguration()));
-	NCached::Set(NCached::Session.ExecutableName, FPlatformProcess::ExecutableName());
-	NCached::Set(NCached::Session.BaseDir, FPlatformProcess::BaseDir());
-	NCached::Set(NCached::Session.RootDir, FPlatformMisc::RootDir());
-	NCached::Set(NCached::Session.EpicAccountId, *FPlatformMisc::GetEpicAccountId());
-	NCached::Set(NCached::Session.LoginIdStr, *FPlatformMisc::GetLoginId());
+	FCString::Strcpy(NCached::Session.GameName, *FString::Printf( TEXT("UE4-%s"), FApp::GetProjectName() ));
+	FCString::Strcpy(NCached::Session.GameSessionID, TEXT("")); // Updated by callback
+	FCString::Strcpy(NCached::Session.GameStateName, TEXT("")); // Updated by callback
+	FCString::Strcpy(NCached::Session.UserActivityHint, TEXT("")); // Updated by callback
+	FCString::Strcpy(NCached::Session.BuildConfigurationName, LexToString(FApp::GetBuildConfiguration()));
+	FCString::Strcpy(NCached::Session.ExecutableName, FPlatformProcess::ExecutableName());
+	FCString::Strcpy(NCached::Session.BaseDir, FPlatformProcess::BaseDir());
+	FCString::Strcpy(NCached::Session.RootDir, FPlatformMisc::RootDir());
+	FCString::Strcpy(NCached::Session.EpicAccountId, *FPlatformMisc::GetEpicAccountId());
+	FCString::Strcpy(NCached::Session.LoginIdStr, *FPlatformMisc::GetLoginId());
 
 	FString OsVersion, OsSubVersion;
 	FPlatformMisc::GetOSVersions(OsVersion, OsSubVersion);
-	NCached::Set(NCached::Session.OsVersion, *OsVersion);
-	NCached::Set(NCached::Session.OsSubVersion, *OsSubVersion);
+	FCString::Strcpy(NCached::Session.OsVersion, *OsVersion);
+	FCString::Strcpy(NCached::Session.OsSubVersion, *OsSubVersion);
 
 	NCached::Session.NumberOfCores = FPlatformMisc::NumberOfCores();
 	NCached::Session.NumberOfCoresIncludingHyperthreads = FPlatformMisc::NumberOfCoresIncludingHyperthreads();
 
-	NCached::Set(NCached::Session.CPUVendor, *FPlatformMisc::GetCPUVendor());
-	NCached::Set(NCached::Session.CPUBrand, *FPlatformMisc::GetCPUBrand());
-	NCached::Set(NCached::Session.PrimaryGPUBrand, *FPlatformMisc::GetPrimaryGPUBrand());
-	NCached::Set(NCached::Session.UserName, FPlatformProcess::UserName());
-	NCached::Set(NCached::Session.DefaultLocale, *FPlatformMisc::GetDefaultLocale());
-
-	NCached::Set(NCached::Session.PlatformName, FPlatformProperties::PlatformName());
-	NCached::Set(NCached::Session.PlatformNameIni, FPlatformProperties::IniPlatformName());
+	FCString::Strcpy(NCached::Session.CPUVendor, *FPlatformMisc::GetCPUVendor());
+	FCString::Strcpy(NCached::Session.CPUBrand, *FPlatformMisc::GetCPUBrand());
+	FCString::Strcpy(NCached::Session.PrimaryGPUBrand, *FPlatformMisc::GetPrimaryGPUBrand());
+	FCString::Strcpy(NCached::Session.UserName, FPlatformProcess::UserName());
+	FCString::Strcpy(NCached::Session.DefaultLocale, *FPlatformMisc::GetDefaultLocale());
 
 	// Information that cannot be gathered if command line is not initialized (e.g. crash during static init)
 	if (FCommandLine::IsInitialized())
 	{
 		NCached::Session.bIsUE4Release = FApp::IsEngineInstalled();
-		NCached::Set(NCached::Session.CommandLine, (FCommandLine::IsInitialized() ? FCommandLine::GetOriginalForLogging() : TEXT("")));
-		NCached::Set(NCached::Session.EngineMode, FGenericPlatformMisc::GetEngineMode());
-		NCached::Set(NCached::Session.EngineModeEx, FGenericCrashContext::EngineModeExUnknown); // Updated from callback
-
-		NCached::Set(NCached::UserSettings.LogFilePath, *FPlatformOutputDevices::GetAbsoluteLogFilename());
+		FCString::Strcpy(NCached::Session.CommandLine, (FCommandLine::IsInitialized() ? FCommandLine::GetOriginalForLogging() : TEXT("")));
+		FCString::Strcpy(NCached::Session.EngineMode, FGenericPlatformMisc::GetEngineMode());
+		FCString::Strcpy(NCached::Session.EngineModeEx, FGenericCrashContext::EngineModeExUnknown); // Updated from callback
 
 		// Use -epicapp value from the commandline to start. This will also be set by the game
 		FParse::Value(FCommandLine::Get(), TEXT("EPICAPP="), NCached::Session.DeploymentName, CR_MAX_GENERIC_FIELD_CHARS, true);
@@ -154,15 +140,12 @@ void FGenericCrashContext::Initialize()
 				NCached::Session.CrashDumpMode = (int32)ECrashDumpMode::FullDump;
 			}
 		}
-
-		NCached::UserSettings.bNoDialog = FApp::IsUnattended() || IsRunningDedicatedServer();
-
 	}
 
 	// Create a unique base guid for bug report ids
 	const FGuid Guid = FGuid::NewGuid();
 	const FString IniPlatformName(FPlatformProperties::IniPlatformName());
-	NCached::Set(NCached::Session.CrashGUIDRoot, *FString::Printf(TEXT("%s%s-%s"), CrashGUIDRootPrefix, *IniPlatformName, *Guid.ToString(EGuidFormats::Digits)));
+	FCString::Strcpy(NCached::Session.CrashGUIDRoot, *FString::Printf(TEXT("%s%s-%s"), CrashGUIDRootPrefix, *IniPlatformName, *Guid.ToString(EGuidFormats::Digits)));
 
 	if (GIsRunning)
 	{
@@ -197,17 +180,17 @@ void FGenericCrashContext::Initialize()
 
 	FCoreDelegates::UserActivityStringChanged.AddLambda([](const FString& InUserActivity)
 	{
-		NCached::Set(NCached::Session.UserActivityHint, *InUserActivity);
+		FCString::Strcpy(NCached::Session.UserActivityHint, *InUserActivity);
 	});
 
 	FCoreDelegates::GameSessionIDChanged.AddLambda([](const FString& InGameSessionID)
 	{
-		NCached::Set(NCached::Session.GameSessionID, *InGameSessionID);
+		FCString::Strcpy(NCached::Session.GameSessionID, *InGameSessionID);
 	});
 
 	FCoreDelegates::GameStateClassChanged.AddLambda([](const FString& InGameStateName)
 	{
-		NCached::Set(NCached::Session.GameStateName, *InGameStateName);
+		FCString::Strcpy(NCached::Session.GameStateName, *InGameStateName);
 	});
 
 PRAGMA_DISABLE_DEPRECATION_WARNINGS
@@ -215,11 +198,11 @@ PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	{
 		if (InParams.bSetCrashReportClientMessageText)
 		{
-			NCached::Set(NCached::Session.CrashReportClientRichText, *InParams.CrashReportClientMessageText);
+			FCString::Strcpy(NCached::Session.CrashReportClientRichText, *InParams.CrashReportClientMessageText);
 		}
 		if (InParams.bSetGameNameSuffix)
 		{
-			NCached::Set(NCached::Session.GameName, *(FString(TEXT("UE4-")) + FApp::GetProjectName() + InParams.GameNameSuffix));
+			FCString::Strcpy(NCached::Session.GameName, *(FString(TEXT("UE4-")) + FApp::GetProjectName() + InParams.GameNameSuffix));
 		}
 		if (InParams.SendUnattendedBugReports.IsSet())
 		{
@@ -236,19 +219,21 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	FCoreDelegates::OnPostEngineInit.AddLambda([] 
 	{
 		// IsEditor global have been properly initialized here.
-		NCached::Set(NCached::Session.EngineMode, FGenericPlatformMisc::GetEngineMode());
+		FCString::Strcpy(NCached::Session.EngineMode, FGenericPlatformMisc::GetEngineMode());
 	});
 
 	FCoreDelegates::IsVanillaProductChanged.AddLambda([](bool bIsVanilla)
 	{
-		NCached::Set(NCached::Session.EngineModeEx, bIsVanilla ? FGenericCrashContext::EngineModeExVanilla : FGenericCrashContext::EngineModeExDirty);
+		FCString::Strcpy(NCached::Session.EngineModeEx, bIsVanilla ? FGenericCrashContext::EngineModeExVanilla : FGenericCrashContext::EngineModeExDirty);
 	});
 
 	FCoreDelegates::ConfigReadyForUse.AddStatic(FGenericCrashContext::InitializeFromConfig);
 
-	SerializeTempCrashContextToFile();
+	FCString::Strcpy(NCached::UserSettings.LogFilePath, *FPlatformOutputDevices::GetAbsoluteLogFilename());
 
-	CleanupPlatformSpecificFiles();
+	NCached::UserSettings.bNoDialog = FApp::IsUnattended() || IsRunningDedicatedServer();
+
+	SerializeTempCrashContextToFile();
 
 	bIsInitialized = true;
 #endif	// !NOINITCRASHREPORTER
@@ -313,45 +298,40 @@ void FGenericCrashContext::CopySharedCrashContext(FSharedCrashContext& Dst)
 	//Copy the session
 	FMemory::Memcpy(Dst.SessionContext, NCached::Session);
 	FMemory::Memcpy(Dst.UserSettings, NCached::UserSettings);
-	FMemory::Memset(Dst.DynamicData, 0);
 
 	TCHAR* DynamicDataStart = &Dst.DynamicData[0];
 	TCHAR* DynamicDataPtr = DynamicDataStart;
 
-	#define CR_DYNAMIC_BUFFER_REMAIN uint32((CR_MAX_DYNAMIC_BUFFER_CHARS) - (DynamicDataPtr-DynamicDataStart))
-
-	Dst.EnabledPluginsOffset = (uint32)(DynamicDataPtr - DynamicDataStart);
+	Dst.EnabledPluginsOffset = DynamicDataPtr - DynamicDataStart;
 	Dst.EnabledPluginsNum = NCached::EnabledPluginsList.Num();
 	for (const FString& Plugin : NCached::EnabledPluginsList)
 	{
-		FCString::Strncat(DynamicDataPtr, *Plugin, CR_DYNAMIC_BUFFER_REMAIN);
-		FCString::Strncat(DynamicDataPtr, CR_PAIR_DELIM, CR_DYNAMIC_BUFFER_REMAIN);
+		FCString::Strcat(DynamicDataPtr, Plugin.Len(), *Plugin);
+		FCString::Strcat(DynamicDataPtr, 1, CR_PAIR_DELIM);
 	}
 	DynamicDataPtr += FCString::Strlen(DynamicDataPtr) + 1;
 
-	Dst.EngineDataOffset = (uint32)(DynamicDataPtr - DynamicDataStart);
+	Dst.EngineDataOffset = DynamicDataPtr - DynamicDataStart;
 	Dst.EngineDataNum = NCached::EngineData.Num();
 	for (const TPair<FString, FString>& Pair : NCached::EngineData)
 	{
-		FCString::Strncat(DynamicDataPtr, *Pair.Key, CR_DYNAMIC_BUFFER_REMAIN);
-		FCString::Strncat(DynamicDataPtr, CR_PAIR_EQ, CR_DYNAMIC_BUFFER_REMAIN);
-		FCString::Strncat(DynamicDataPtr, *Pair.Value, CR_DYNAMIC_BUFFER_REMAIN);
-		FCString::Strncat(DynamicDataPtr, CR_PAIR_DELIM, CR_DYNAMIC_BUFFER_REMAIN);
+		FCString::Strcat(DynamicDataPtr, Pair.Key.Len(), *Pair.Key);
+		FCString::Strcat(DynamicDataPtr, 1, CR_PAIR_EQ);
+		FCString::Strcat(DynamicDataPtr, Pair.Value.Len(), *Pair.Value);
+		FCString::Strcat(DynamicDataPtr, 1, CR_PAIR_DELIM);
 	}
 	DynamicDataPtr += FCString::Strlen(DynamicDataPtr) + 1;
 
-	Dst.GameDataOffset = (uint32)(DynamicDataPtr - DynamicDataStart);
+	Dst.GameDataOffset = DynamicDataPtr - DynamicDataStart;
 	Dst.GameDataNum = NCached::GameData.Num();
 	for (const TPair<FString, FString>& Pair : NCached::GameData)
 	{
-		FCString::Strncat(DynamicDataPtr, *Pair.Key, CR_DYNAMIC_BUFFER_REMAIN);
-		FCString::Strncat(DynamicDataPtr, CR_PAIR_EQ, CR_DYNAMIC_BUFFER_REMAIN);
-		FCString::Strncat(DynamicDataPtr, *Pair.Value, CR_DYNAMIC_BUFFER_REMAIN);
-		FCString::Strncat(DynamicDataPtr, CR_PAIR_DELIM, CR_DYNAMIC_BUFFER_REMAIN);
+		FCString::Strcat(DynamicDataPtr, Pair.Key.Len(), *Pair.Key);
+		FCString::Strcat(DynamicDataPtr, 1, CR_PAIR_EQ);
+		FCString::Strcat(DynamicDataPtr, Pair.Value.Len(), *Pair.Value);
+		FCString::Strcat(DynamicDataPtr, 1, CR_PAIR_DELIM);
 	}
 	DynamicDataPtr += FCString::Strlen(DynamicDataPtr) + 1;
-
-	#undef CR_DYNAMIC_BUFFER_REMAIN
 }
 
 void FGenericCrashContext::SetMemoryStats(const FPlatformMemoryStats& InMemoryStats)
@@ -394,15 +374,6 @@ void FGenericCrashContext::InitializeFromConfig()
 	// Set privacy settings -> WARNING: Ensure those setting have a default values in Engine/Config/BaseEditorSettings.ini file, otherwise, they will not be found.
 	GConfig->GetBool(TEXT("/Script/UnrealEd.CrashReportsPrivacySettings"), TEXT("bSendUnattendedBugReports"), NCached::UserSettings.bSendUnattendedBugReports, GEditorSettingsIni);
 	GConfig->GetBool(TEXT("/Script/UnrealEd.AnalyticsPrivacySettings"), TEXT("bSendUsageData"), NCached::UserSettings.bSendUsageData, GEditorSettingsIni);
-	
-	// Write a marker file to disk indicating the user has allowed unattended crash reports being
-	// sent. This allows us to submit reports for crashes during static initialization when user
-	// settings are not available. 
-	FString MarkerFilePath = FString::Printf(TEXT("%s/NotAllowedUnattendedBugReports"), FPlatformProcess::ApplicationSettingsDir());
-	if (!NCached::UserSettings.bSendUnattendedBugReports)
-	{
-		TUniquePtr<IFileHandle> File(FPlatformFileManager::Get().GetPlatformFile().OpenWrite(*MarkerFilePath));
-	}
 
 	// Make sure we get updated text once the localized version is loaded
 	FTextLocalizationManager::Get().OnTextRevisionChangedEvent.AddStatic(&UpdateLocalizedStrings);
@@ -419,7 +390,7 @@ void FGenericCrashContext::UpdateLocalizedStrings()
 	FText CrashReportClientRichText;
 	if (GConfig->GetText(TEXT("CrashContextProperties"), TEXT("CrashReportClientRichText"), CrashReportClientRichText, GEngineIni))
 	{
-		NCached::Set(NCached::Session.CrashReportClientRichText, *CrashReportClientRichText.ToString());
+		FCString::Strcpy(NCached::Session.CrashReportClientRichText, *CrashReportClientRichText.ToString());
 	}
 #endif
 }
@@ -437,23 +408,6 @@ FGenericCrashContext::FGenericCrashContext(ECrashContextType InType, const TCHAR
 FString FGenericCrashContext::GetTempSessionContextFilePath(uint64 ProcessID)
 {
 	return FPlatformProcess::UserTempDir() / FString::Printf(TEXT("UECrashContext-%u.xml"), ProcessID);
-}
-
-TOptional<int32> FGenericCrashContext::GetOutOfProcessCrashReporterExitCode()
-{
-	TOptional<int32> ExitCode;
-	int64 ExitCodeData = FPlatformAtomics::AtomicRead(&OutOfProcessCrashReporterExitCode);
-	if (ExitCodeData & 0xFFFFFFFF00000000) // If one bit in the 32 MSB is set, the out of process exit code is set in the 32 LSB.
-	{
-		ExitCode.Emplace(static_cast<int32>(ExitCodeData)); // Truncate the 32 MSB.
-	}
-	return ExitCode;
-}
-
-void FGenericCrashContext::SetOutOfProcessCrashReporterExitCode(int32 ExitCode)
-{
-	int64 ExitCodeData = (1ll << 32) | ExitCode; // Set a bit in the 32 MSB to signal that the exit code is set
-	FPlatformAtomics::AtomicStore(&OutOfProcessCrashReporterExitCode, ExitCodeData);
 }
 
 void FGenericCrashContext::SerializeTempCrashContextToFile()
@@ -507,11 +461,7 @@ void FGenericCrashContext::SerializeSessionContext(FString& Buffer)
 	AddCrashPropertyInternal(Buffer, TEXT("GameSessionID"), NCached::Session.GameSessionID);
 
 	// Unique string specifying the symbols to be used by CrashReporter
-#ifdef UE_SYMBOLS_VERSION
-	FString Symbols = FString(UE_SYMBOLS_VERSION);
-#else
 	FString Symbols = FString::Printf(TEXT("%s"), FApp::GetBuildVersion());
-#endif
 #ifdef UE_APP_FLAVOR
 	Symbols = FString::Printf(TEXT("%s-%s"), *Symbols, *FString(UE_APP_FLAVOR));
 #endif
@@ -522,8 +472,8 @@ void FGenericCrashContext::SerializeSessionContext(FString& Buffer)
 
 	AddCrashPropertyInternal(Buffer, TEXT("Symbols"), Symbols);
 
-	AddCrashPropertyInternal(Buffer, TEXT("PlatformName"), NCached::Session.PlatformName);
-	AddCrashPropertyInternal(Buffer, TEXT("PlatformNameIni"), NCached::Session.PlatformNameIni);
+	AddCrashPropertyInternal(Buffer, TEXT("PlatformName"), FPlatformProperties::PlatformName());
+	AddCrashPropertyInternal(Buffer, TEXT("PlatformNameIni"), FPlatformProperties::IniPlatformName());
 	AddCrashPropertyInternal(Buffer, TEXT("EngineMode"), NCached::Session.EngineMode);
 	AddCrashPropertyInternal(Buffer, TEXT("EngineModeEx"), NCached::Session.EngineModeEx);
 
@@ -535,8 +485,6 @@ void FGenericCrashContext::SerializeSessionContext(FString& Buffer)
 	AddCrashPropertyInternal(Buffer, TEXT("AppDefaultLocale"), NCached::Session.DefaultLocale);
 	AddCrashPropertyInternal(Buffer, TEXT("BuildVersion"), FApp::GetBuildVersion());
 	AddCrashPropertyInternal(Buffer, TEXT("IsUE4Release"), NCached::Session.bIsUE4Release);
-
-	// Need to set this at the time of the crash to check if requesting exit had been called
 	AddCrashPropertyInternal(Buffer, TEXT("IsRequestingExit"), NCached::Session.bIsExitRequested);
 
 	// Remove periods from user names to match AutoReporter user names
@@ -622,13 +570,7 @@ void FGenericCrashContext::SerializeContentToBuffer() const
 
 	// Legacy callstack element for current crash reporter
 	AddCrashProperty( TEXT( "NumMinidumpFramesToIgnore"), NumMinidumpFramesToIgnore );
-	// Allow platforms to override callstack property, on some platforms the callstack is not captured by native code, those callstacks can be substituted by platform code here.
-	{
-		CommonBuffer += TEXT("<CallStack>");
-		CommonBuffer += GetCallstackProperty();
-		CommonBuffer += TEXT("</CallStack>");
-		CommonBuffer += LINE_TERMINATOR;
-	}
+	AddCrashProperty( TEXT( "CallStack" ), TEXT("") );
 
 	// Add new portable callstack element with crash stack
 	AddPortableCallStack();
@@ -689,16 +631,6 @@ void FGenericCrashContext::SerializeContentToBuffer() const
 	AddFooter(CommonBuffer);
 }
 
-const TCHAR* FGenericCrashContext::GetCallstackProperty() const
-{
-	return TEXT("");
-}
-
-void FGenericCrashContext::SetEngineExit(bool bIsExiting)
-{
-	NCached::Session.bIsExitRequested = IsEngineExitRequested();
-}
-
 void FGenericCrashContext::SetNumMinidumpFramesToIgnore(int InNumMinidumpFramesToIgnore)
 {
 	NumMinidumpFramesToIgnore = InNumMinidumpFramesToIgnore;
@@ -706,7 +638,7 @@ void FGenericCrashContext::SetNumMinidumpFramesToIgnore(int InNumMinidumpFramesT
 
 void FGenericCrashContext::SetDeploymentName(const FString& EpicApp)
 {
-	NCached::Set(NCached::Session.DeploymentName, *EpicApp);
+	FCString::Strcpy(NCached::Session.DeploymentName, *EpicApp);
 }
 
 void FGenericCrashContext::SetCrashTrigger(ECrashTrigger Type)
@@ -816,7 +748,7 @@ void FGenericCrashContext::AddPortableCallStack() const
 
 	for (TArray<FCrashStackFrame>::TConstIterator It(CallStack); It; ++It)
 	{
-		CrashStackBuffer += FString::Printf(TEXT("%-*s 0x%016llx + %-16llx"),MaxModuleLength + 1, *It->ModuleName, It->BaseAddress, It->Offset);
+		CrashStackBuffer += FString::Printf(TEXT("%-*s 0x%016x + %-8x"),MaxModuleLength + 1, *It->ModuleName, It->BaseAddress, It->Offset);
 		CrashStackBuffer += LINE_TERMINATOR;
 	}
 
@@ -929,8 +861,7 @@ const TCHAR* FGenericCrashContext::GetCrashConfigFilePath()
 	if (FCString::Strlen(NCached::Session.CrashConfigFilePath) == 0)
 	{
 		FString CrashConfigFilePath = FPaths::Combine(GetCrashConfigFolder(), NCached::Session.CrashGUIDRoot, FGenericCrashContext::CrashConfigFileNameW);
-		CrashConfigFilePath = IFileManager::Get().ConvertToAbsolutePathForExternalAppForRead(*CrashConfigFilePath);
-		NCached::Set(NCached::Session.CrashConfigFilePath, *CrashConfigFilePath);
+		FCString::Strcpy(NCached::Session.CrashConfigFilePath, *CrashConfigFilePath);
 	}
 	return NCached::Session.CrashConfigFilePath;
 }
@@ -1108,7 +1039,7 @@ void FGenericCrashContext::SetPortableCallStack(const uint64* StackFrames, int32
 	GetPortableCallStack(StackFrames, NumStackFrames, CallStack);
 }
 
-void FGenericCrashContext::GetPortableCallStack(const uint64* StackFrames, int32 NumStackFrames, TArray<FCrashStackFrame>& OutCallStack) const
+void FGenericCrashContext::GetPortableCallStack(const uint64* StackFrames, int32 NumStackFrames, TArray<FCrashStackFrame>& OutCallStack)
 {
 	// Get all the modules in the current process
 	uint32 NumModules = (uint32)FPlatformStackWalk::GetProcessModuleCount();
@@ -1200,48 +1131,5 @@ FProgramCounterSymbolInfoEx::FProgramCounterSymbolInfoEx( FString InModuleName, 
 
 FString RecoveryService::GetRecoveryServerName()
 {
-	// Requirements: To avoid collision, the name must be unique on the local machine (multiple instances) and across the local network (multiple users).
-	static FGuid RecoverySessionGuid = FGuid::NewGuid();
-	return RecoverySessionGuid.ToString();
-}
-
-FString RecoveryService::MakeSessionName()
-{
-	// Convention: The session name starts with the server name (uniqueness), followed by a zero-based unique sequence number (idendify the latest session reliably), the the session creation time and the project name.
-	static TAtomic<int32> SessionNum(0);
-	return FString::Printf(TEXT("%s_%d_%s_%s"), *RecoveryService::GetRecoveryServerName(), SessionNum++, *FDateTime::UtcNow().ToString(), FApp::GetProjectName());
-}
-
-bool RecoveryService::TokenizeSessionName(const FString& SessionName, FString* OutServerName, int32* SeqNum, FString* ProjName, FDateTime* DateTime)
-{
-	// Parse a sessionName created with 'MakeSessionName()' that have the following format: C6EACAD6419AF672D75E2EA91E05BF55_1_2019.12.05-08.59.03_FP_FirstPerson
-	//     ServerName = C6EACAD6419AF672D75E2EA91E05BF55
-	//     SeqNum = 1
-	//     DateTime = 2019.12.05-08.59.03
-	//     ProjName = FP_FirstPerson
-	FRegexPattern Pattern(TEXT(R"((^[A-Z0-9]+)_([0-9])+_([0-9\.-]+)_(.+))")); // Need help with regex? Try https://regex101.com/
-	FRegexMatcher Matcher(Pattern, SessionName);
-
-	if (!Matcher.FindNext())
-	{
-		return false; // Failed to parse.
-	}
-	if (OutServerName)
-	{
-		*OutServerName = Matcher.GetCaptureGroup(1);
-	}
-	if (SeqNum)
-	{
-		LexFromString(*SeqNum, *Matcher.GetCaptureGroup(2));
-	}
-	if (ProjName)
-	{
-		*ProjName = Matcher.GetCaptureGroup(4);
-	}
-	if (DateTime)
-	{
-		return FDateTime::Parse(Matcher.GetCaptureGroup(3), *DateTime);
-	}
-
-	return true; // Successfully parsed.
+	return FString::Printf(TEXT("RecoverySvr_%d"), FPlatformProcess::GetCurrentProcessId());
 }

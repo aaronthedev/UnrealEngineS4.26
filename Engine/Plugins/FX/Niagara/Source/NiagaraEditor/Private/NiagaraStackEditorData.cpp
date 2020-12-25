@@ -1,16 +1,16 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraStackEditorData.h"
 
-bool UNiagaraStackEditorData::GetStackEntryIsRenamePending(const FString& StackEntryKey) const
+bool UNiagaraStackEditorData::GetModuleInputIsRenamePending(const FString& ModuleInputKey) const
 {
-	const bool* bIsRenamePendingPtr = StackEntryKeyToRenamePendingMap.Find(StackEntryKey);
+	const bool* bIsRenamePendingPtr = ModuleInputKeyToRenamePendingMap.Find(ModuleInputKey);
 	return bIsRenamePendingPtr != nullptr && *bIsRenamePendingPtr;
 }
 
-void UNiagaraStackEditorData::SetStackEntryIsRenamePending(const FString& StackEntryKey, bool bIsRenamePending)
+void UNiagaraStackEditorData::SetModuleInputIsRenamePending(const FString& ModuleInputKey, bool bIsRenamePending)
 {
-	StackEntryKeyToRenamePendingMap.FindOrAdd(StackEntryKey) = bIsRenamePending;
+	ModuleInputKeyToRenamePendingMap.FindOrAdd(ModuleInputKey) = bIsRenamePending;
 }
 
 bool UNiagaraStackEditorData::GetStackEntryIsExpanded(const FString& StackEntryKey, bool bIsExpandedDefault) const
@@ -55,33 +55,6 @@ void UNiagaraStackEditorData::SetStackItemShowAdvanced(const FString& StackEntry
 	}
 }
 
-const FText* UNiagaraStackEditorData::GetStackEntryDisplayName(const FString& StackEntryKey) const
-{
-	return StackEntryKeyToDisplayName.Find(StackEntryKey);
-}
-
-void UNiagaraStackEditorData::SetStackEntryDisplayName(const FString& StackEntryKey, const FText& InDisplayName)
-{
-	bool bBroadcast = false;
-
-	if (InDisplayName.IsEmptyOrWhitespace())
-	{
-		// we assume here that the display name has changed
-		StackEntryKeyToDisplayName.Remove(StackEntryKey);
-		bBroadcast = true;
-	}
-	else if (ensureMsgf(StackEntryKey.IsEmpty() == false, TEXT("Can not set the display name with an empty key")))
-	{
-		StackEntryKeyToDisplayName.FindOrAdd(StackEntryKey) = InDisplayName;
-		bBroadcast = true;
-	}
-
-	if (bBroadcast)
-	{
-		OnPersistentDataChanged().Broadcast();
-	}
-}
-
 bool UNiagaraStackEditorData::GetShowAllAdvanced() const
 {
 	return bShowAllAdvanced;
@@ -110,16 +83,6 @@ bool UNiagaraStackEditorData::GetShowLinkedInputs() const
 void UNiagaraStackEditorData::SetShowLinkedInputs(bool bInShowLinkedInputs)
 {
 	bShowLinkedInputs = bInShowLinkedInputs;
-}
-
-bool UNiagaraStackEditorData::GetShowOnlyIssues() const
-{
-	return bShowOnlyIssues;
-}
-
-void UNiagaraStackEditorData::SetShowOnlyIssues(bool bInShowOnlyIssues)
-{
-	bShowOnlyIssues = bInShowOnlyIssues;
 }
 
 double UNiagaraStackEditorData::GetLastScrollPosition() const

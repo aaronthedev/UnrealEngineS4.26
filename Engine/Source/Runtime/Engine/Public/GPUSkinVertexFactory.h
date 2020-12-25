@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	GPUSkinVertexFactory.h: GPU skinning vertex factory definitions.
@@ -44,7 +44,7 @@ public:
 	enum
 	{
 		NumSafeFrames = 3, /** Number of frames to leaves buffers before reclaiming/reusing */
-		NumPoolBucketSizes = 18, /** Number of pool buckets */
+		NumPoolBucketSizes = 17, /** Number of pool buckets */
 		NumToDrainPerFrame = 10, /** Max. number of resources to cull in a single frame */
 		CullAfterFramesNum = 30 /** Resources are culled if unused for more frames than this */
 	};
@@ -149,11 +149,6 @@ public: // From FTickableObjectRenderThread
 	virtual TStatId GetStatId() const override;
 };
 
-enum GPUSkinBoneInfluenceType
-{
-	DefaultBoneInfluence,	// up to 8 bones per vertex
-	UnlimitedBoneInfluence	// unlimited bones per vertex
-};
 
 /** Vertex factory with vertex stream components for GPU skinned vertices */
 class FGPUBaseSkinVertexFactory : public FVertexFactory
@@ -233,9 +228,6 @@ public:
 			return (bPrevious) ? PreviousRevisionNumber : CurrentRevisionNumber;
 		}
 
-		int32 InputWeightIndexSize = 0;
-		FShaderResourceViewRHIRef InputWeightStream;
-
 	private:
 		// double buffered bone positions+orientations to support normal rendering and velocity (new-old position) rendering
 		FVertexBufferAndSRV BoneBuffer[2];
@@ -300,9 +292,7 @@ public:
 		return ShaderData;
 	}
 
-	virtual GPUSkinBoneInfluenceType GetBoneInfluenceType() const { return DefaultBoneInfluence; }
-	virtual uint32 GetNumBoneInfluences() const { return 0; }
-	virtual bool Use16BitBoneIndex() const { return false; }
+	virtual bool UsesExtraBoneInfluences() const { return false; }
 
 	static bool SupportsTessellationShaders() { return true; }
 
@@ -313,11 +303,8 @@ public:
 
 	ENGINE_API static int32 GetMaxGPUSkinBones();
 
-	static const uint32 GHardwareMaxGPUSkinBones = 65536;
+	static const uint32 GHardwareMaxGPUSkinBones = 256;	
 	
-	ENGINE_API static bool UseUnlimitedBoneInfluences(uint32 MaxBoneInfluences);
-	ENGINE_API static bool GetUnlimitedBoneInfluences();
-
 	virtual const FShaderResourceViewRHIRef GetPositionsSRV() const = 0;
 	virtual const FShaderResourceViewRHIRef GetTangentsSRV() const = 0;
 	virtual const FShaderResourceViewRHIRef GetTextureCoordinatesSRV() const = 0;
@@ -344,12 +331,18 @@ private:
 };
 
 /** Vertex factory with vertex stream components for GPU skinned vertices */
-template<GPUSkinBoneInfluenceType BoneInfluenceType>
+template<bool bExtraBoneInfluencesT>
 class ENGINE_API TGPUSkinVertexFactory : public FGPUBaseSkinVertexFactory
 {
-	DECLARE_VERTEX_FACTORY_TYPE(TGPUSkinVertexFactory<BoneInfluenceType>);
+	DECLARE_VERTEX_FACTORY_TYPE(TGPUSkinVertexFactory<bExtraBoneInfluencesT>);
 
 public:
+
+	enum
+	{
+		HasExtraBoneInfluences = bExtraBoneInfluencesT,
+	};
+
 	struct FDataType : public FStaticMeshDataType
 	{
 		/** The stream to read the bone indices from */
@@ -363,21 +356,6 @@ public:
 
 		/** The stream to read the extra bone weights from */
 		FVertexStreamComponent ExtraBoneWeights;
-
-		/** The stream to read the blend stream offset and num of influences from */
-		FVertexStreamComponent BlendOffsetCount;
-
-		/** The stream to read for vertex offsets pre skinning */
-		FVertexStreamComponent PreSkinningOffsets;
-
-		/** The stream to read for vertex offsets post skinning */
-		FVertexStreamComponent PostSkinningOffsets;
-
-		/** Number of bone influences */
-		uint32 NumBoneInfluences = 0;
-
-		/** If the bone indices are 16 or 8-bit format */
-		bool bUse16BitBoneIndex = 0;
 	};
 
 	/**
@@ -389,21 +367,13 @@ public:
 		: FGPUBaseSkinVertexFactory(InFeatureLevel, InNumVertices)
 	{}
 
-	virtual GPUSkinBoneInfluenceType GetBoneInfluenceType() const override
-	{ return BoneInfluenceType; }
-
-	virtual uint32 GetNumBoneInfluences() const override
+	virtual bool UsesExtraBoneInfluences() const override
 	{
-		return Data.NumBoneInfluences;
+		return bExtraBoneInfluencesT;
 	}
 
-	virtual bool Use16BitBoneIndex() const override
-	{
-		return Data.bUse16BitBoneIndex;
-	}
-
-	static void ModifyCompilationEnvironment(const FVertexFactoryShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment);
-	static bool ShouldCompilePermutation(const FVertexFactoryShaderPermutationParameters& Parameters);
+	static void ModifyCompilationEnvironment(const FVertexFactoryType* Type, EShaderPlatform Platform, const class ::FMaterial* Material, FShaderCompilerEnvironment& OutEnvironment);
+	static bool ShouldCompilePermutation(EShaderPlatform Platform, const class ::FMaterial* Material, const FShaderType* ShaderType);
 	
 	/**
 	* An implementation of the interface used by TSynchronizedResource to 
@@ -422,6 +392,8 @@ public:
 	virtual void InitRHI() override;
 	virtual void InitDynamicRHI() override;
 	virtual void ReleaseDynamicRHI() override;
+
+	static FVertexFactoryShaderParameters* ConstructShaderParameters(EShaderFrequency ShaderFrequency);
 
 	void CopyDataTypeForPassthroughFactory(class FGPUSkinPassthroughVertexFactory* PassthroughVertexFactory);
 
@@ -486,14 +458,14 @@ public:
 		bSupportsManualVertexFetch = true;
 	}
 
-	static void ModifyCompilationEnvironment(const FVertexFactoryShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment);
-	static bool ShouldCompilePermutation(const FVertexFactoryShaderPermutationParameters& Parameters);
+	static void ModifyCompilationEnvironment(const FVertexFactoryType* Type, EShaderPlatform Platform, const class ::FMaterial* Material, FShaderCompilerEnvironment& OutEnvironment);
+	static bool ShouldCompilePermutation(EShaderPlatform Platform, const class ::FMaterial* Material, const FShaderType* ShaderType);
 
-	inline void UpdateVertexDeclaration(FGPUBaseSkinVertexFactory* SourceVertexFactory, struct FRWBuffer* PositionRWBuffer, class FRHIShaderResourceView* PreSkinPositionSRV, struct FRWBuffer* TangentRWBuffer)
+	inline void UpdateVertexDeclaration(FGPUBaseSkinVertexFactory* SourceVertexFactory, struct FRWBuffer* PositionRWBuffer, struct FRWBuffer* TangentRWBuffer)
 	{
 		if (PositionStreamIndex == -1)
 		{
-			InternalUpdateVertexDeclaration(SourceVertexFactory, PositionRWBuffer, PreSkinPositionSRV, TangentRWBuffer);
+			InternalUpdateVertexDeclaration(SourceVertexFactory, PositionRWBuffer, TangentRWBuffer);
 		}
 	}
 
@@ -509,6 +481,9 @@ public:
 	}
 
 	void SetData(const FDataType& InData);
+
+	// FRenderResource interface.
+	static FVertexFactoryShaderParameters* ConstructShaderParameters(EShaderFrequency ShaderFrequency);
 
 	//TODO should be supported
 	bool SupportsPositionOnlyStream() const override { return false; }
@@ -536,19 +511,19 @@ protected:
 	int32 PositionStreamIndex;
 	int32 TangentStreamIndex;
 
-	void InternalUpdateVertexDeclaration(FGPUBaseSkinVertexFactory* SourceVertexFactory, struct FRWBuffer* PositionRWBuffer, class FRHIShaderResourceView* PreSkinPositionSRV, struct FRWBuffer* TangentRWBuffer);
+	void InternalUpdateVertexDeclaration(FGPUBaseSkinVertexFactory* SourceVertexFactory, struct FRWBuffer* PositionRWBuffer, struct FRWBuffer* TangentRWBuffer);
 };
 
 /** Vertex factory with vertex stream components for GPU-skinned and morph target streams */
-template<GPUSkinBoneInfluenceType BoneInfluenceType>
-class TGPUSkinMorphVertexFactory : public TGPUSkinVertexFactory<BoneInfluenceType>
+template<bool bExtraBoneInfluencesT>
+class TGPUSkinMorphVertexFactory : public TGPUSkinVertexFactory<bExtraBoneInfluencesT>
 {
-	DECLARE_VERTEX_FACTORY_TYPE(TGPUSkinMorphVertexFactory<BoneInfluenceType>);
+	DECLARE_VERTEX_FACTORY_TYPE(TGPUSkinMorphVertexFactory<bExtraBoneInfluencesT>);
 
-	typedef TGPUSkinVertexFactory<BoneInfluenceType> Super;
+	typedef TGPUSkinVertexFactory<bExtraBoneInfluencesT> Super;
 public:
 
-	struct FDataType : TGPUSkinVertexFactory<BoneInfluenceType>::FDataType
+	struct FDataType : TGPUSkinVertexFactory<bExtraBoneInfluencesT>::FDataType
 	{
 		/** stream which has the position deltas to add to the vertex position */
 		FVertexStreamComponent DeltaPositionComponent;
@@ -562,11 +537,11 @@ public:
 	 * @param	InBoneMatrices	Reference to shared bone matrices array.
 	 */
 	TGPUSkinMorphVertexFactory(ERHIFeatureLevel::Type InFeatureLevel, uint32 InNumVertices)
-	: TGPUSkinVertexFactory<BoneInfluenceType>(InFeatureLevel, InNumVertices)
+	: TGPUSkinVertexFactory<bExtraBoneInfluencesT>(InFeatureLevel, InNumVertices)
 	{}
 
-	static void ModifyCompilationEnvironment(const FVertexFactoryShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment);
-	static bool ShouldCompilePermutation(const FVertexFactoryShaderPermutationParameters& Parameters);
+	static void ModifyCompilationEnvironment(const FVertexFactoryType* Type, EShaderPlatform Platform, const class ::FMaterial* Material, FShaderCompilerEnvironment& OutEnvironment);
+	static bool ShouldCompilePermutation(EShaderPlatform Platform, const class ::FMaterial* Material, const FShaderType* ShaderType);
 	
 	/**
 	* An implementation of the interface used by TSynchronizedResource to 
@@ -589,16 +564,7 @@ public:
 	*/
 	virtual void InitRHI() override;
 
-
-	virtual uint32 GetNumBoneInfluences() const override
-	{
-		return MorphData.NumBoneInfluences;
-	}
-
-	virtual bool Use16BitBoneIndex() const override
-	{
-		return MorphData.bUse16BitBoneIndex;
-	}
+	static FVertexFactoryShaderParameters* ConstructShaderParameters(EShaderFrequency ShaderFrequency);
 
 	const FShaderResourceViewRHIRef GetPositionsSRV() const override
 	{
@@ -683,8 +649,6 @@ public:
 		FVertexBufferAndSRV& GetClothBufferForWriting(uint32 FrameNumber)
 		{
 			uint32 Index = GetOldestIndex(FrameNumber);
-			Index = (BufferFrameNumber[0] == FrameNumber) ? 0 : Index;
-			Index = (BufferFrameNumber[1] == FrameNumber) ? 1 : Index;
 
 			// we don't write -1 as that is used to invalidate the entry
 			if(FrameNumber == -1)
@@ -716,8 +680,6 @@ public:
 		FMatrix& GetClothLocalToWorldForWriting(uint32 FrameNumber)
 		{
 			uint32 Index = GetOldestIndex(FrameNumber);
-			Index = (BufferFrameNumber[0] == FrameNumber) ? 0 : Index;
-			Index = (BufferFrameNumber[1] == FrameNumber) ? 1 : Index;
 
 			return ClothLocalToWorld[Index];
 		}
@@ -845,17 +807,26 @@ protected:
 };
 
 /** Vertex factory with vertex stream components for GPU-skinned and morph target streams */
-template<GPUSkinBoneInfluenceType BoneInfluenceType>
-class TGPUSkinAPEXClothVertexFactory : public FGPUBaseSkinAPEXClothVertexFactory, public TGPUSkinVertexFactory<BoneInfluenceType>
+template<bool bExtraBoneInfluencesT>
+class TGPUSkinAPEXClothVertexFactory : public FGPUBaseSkinAPEXClothVertexFactory, public TGPUSkinVertexFactory<bExtraBoneInfluencesT>
 {
-	DECLARE_VERTEX_FACTORY_TYPE(TGPUSkinAPEXClothVertexFactory<BoneInfluenceType>);
+	DECLARE_VERTEX_FACTORY_TYPE(TGPUSkinAPEXClothVertexFactory<bExtraBoneInfluencesT>);
 
-	typedef TGPUSkinVertexFactory<BoneInfluenceType> Super;
+	typedef TGPUSkinVertexFactory<bExtraBoneInfluencesT> Super;
 
 public:
 
-	struct FDataType : TGPUSkinVertexFactory<BoneInfluenceType>::FDataType
+	struct FDataType : TGPUSkinVertexFactory<bExtraBoneInfluencesT>::FDataType
 	{
+		/** stream which has the physical mesh position + height offset */
+		FVertexStreamComponent CoordPositionComponent;
+		/** stream which has the physical mesh coordinate for normal + offset */
+		FVertexStreamComponent CoordNormalComponent;
+		/** stream which has the physical mesh coordinate for tangent + offset */
+		FVertexStreamComponent CoordTangentComponent;
+		/** stream which has the physical mesh vertex indices */
+		FVertexStreamComponent SimulIndicesComponent;
+
 		FShaderResourceViewRHIRef ClothBuffer;
 		// Packed Map: u32 Key, u32 Value
 		TArray<uint64> ClothIndexMapping;
@@ -892,11 +863,11 @@ public:
 	 * @param	InBoneMatrices	Reference to shared bone matrices array.
 	 */
 	TGPUSkinAPEXClothVertexFactory(ERHIFeatureLevel::Type InFeatureLevel, uint32 InNumVertices)
-		: TGPUSkinVertexFactory<BoneInfluenceType>(InFeatureLevel, InNumVertices)
+		: TGPUSkinVertexFactory<bExtraBoneInfluencesT>(InFeatureLevel, InNumVertices)
 	{}
 
-	static void ModifyCompilationEnvironment(const FVertexFactoryShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment);
-	static bool ShouldCompilePermutation(const FVertexFactoryShaderPermutationParameters& Parameters);
+	static void ModifyCompilationEnvironment(const FVertexFactoryType* Type, EShaderPlatform Platform, const class ::FMaterial* Material, FShaderCompilerEnvironment& OutEnvironment);
+	static bool ShouldCompilePermutation(EShaderPlatform Platform, const class ::FMaterial* Material, const FShaderType* ShaderType);
 
 	/**
 	* An implementation of the interface used by TSynchronizedResource to 
@@ -920,16 +891,6 @@ public:
 	virtual const FGPUBaseSkinVertexFactory* GetVertexFactory() const override
 	{
 		return this;
-	}
-
-	virtual uint32 GetNumBoneInfluences() const override
-	{
-		return MeshMappingData.NumBoneInfluences;
-	}
-
-	virtual bool Use16BitBoneIndex() const override
-	{
-		return MeshMappingData.bUse16BitBoneIndex;
 	}
 
 	const FShaderResourceViewRHIRef GetPositionsSRV() const override
@@ -971,25 +932,18 @@ public:
 	virtual void InitRHI() override;
 	virtual void ReleaseDynamicRHI() override;
 
+	static FVertexFactoryShaderParameters* ConstructShaderParameters(EShaderFrequency ShaderFrequency);
+
+protected:
+	/**
+	* Add the decl elements for the streams
+	* @param InData - type with stream components
+	* @param OutElements - vertex decl list to modify
+	*/
+	void AddVertexElements(FDataType& InData, FVertexDeclarationElementList& OutElements);
+
 private:
 	/** stream component data bound to this vertex factory */
 	FDataType MeshMappingData; 
 };
 
-
-template<GPUSkinBoneInfluenceType BoneInfluenceType>
-class TMultipleInfluenceClothVertexFactory : public TGPUSkinAPEXClothVertexFactory<BoneInfluenceType>
-{
-	DECLARE_VERTEX_FACTORY_TYPE(TMultipleInfluenceClothVertexFactory<BoneInfluenceType>);
-
-	typedef TGPUSkinAPEXClothVertexFactory<BoneInfluenceType> Super;
-
-public:
-
-	TMultipleInfluenceClothVertexFactory(ERHIFeatureLevel::Type InFeatureLevel, uint32 InNumVertices)
-		: Super(InFeatureLevel, InNumVertices)
-	{}
-
-	static void ModifyCompilationEnvironment(const FVertexFactoryShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment);
-	static bool ShouldCompilePermutation(const FVertexFactoryShaderPermutationParameters& Parameters);
-};

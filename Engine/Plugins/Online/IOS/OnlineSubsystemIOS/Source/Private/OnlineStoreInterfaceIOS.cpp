@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineStoreInterfaceIOS.h"
 #include "OnlineSubsystemNames.h"
@@ -13,13 +13,13 @@
 FOnlineStoreInterfaceIOS::FOnlineStoreInterfaceIOS() 
 {
 	UE_LOG_ONLINE_STORE(Verbose, TEXT( "FOnlineStoreInterfaceIOS::FOnlineStoreInterfaceIOS" ));
+	StoreHelper = [[FStoreKitHelper alloc] init];
+    
+    [[SKPaymentQueue defaultQueue] addTransactionObserver:StoreHelper];
 
 	bIsPurchasing = false;
 	bIsProductRequestInFlight = false;
 	bIsRestoringPurchases = false;
-
-	StoreHelper = [[FStoreKitHelper alloc] init];
-	[StoreHelper pumpObserverEventQueue];
 }
 
 

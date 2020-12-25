@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/SplineMeshComponent.h"
 #include "Serialization/MemoryWriter.h"
@@ -61,9 +61,9 @@ void FSplineMeshVertexFactoryShaderParameters::GetElementShaderBindings(
 		}
 	}
 
-		checkSlow(BatchElement.bIsSplineProxy);
-		FSplineMeshSceneProxy* SplineProxy = BatchElement.SplineMeshSceneProxy;
-		FSplineMeshParams& SplineParams = SplineProxy->SplineParams;
+	checkSlow(BatchElement.bIsSplineProxy);
+	FSplineMeshSceneProxy* SplineProxy = BatchElement.SplineMeshSceneProxy;
+	FSplineMeshParams& SplineParams = SplineProxy->SplineParams;
 
 	FVector4 ParamData[10];
 	ParamData[0] = FVector4(SplineParams.StartPos, SplineParams.StartRoll);
@@ -74,15 +74,15 @@ void FSplineMeshVertexFactoryShaderParameters::GetElementShaderBindings(
 	ParamData[5] = FVector4(SplineParams.EndScale, SplineParams.EndOffset);
 	ParamData[6] = FVector4(SplineProxy->SplineUpDir, SplineProxy->SplineMeshScaleZ);
 
-		FVector DirMask(0, 0, 0);
+	FVector DirMask(0, 0, 0);
 	DirMask = FVector::ZeroVector;
-		DirMask[SplineProxy->ForwardAxis] = 1;
+	DirMask[SplineProxy->ForwardAxis] = 1;
 	ParamData[7] = FVector4(DirMask, 0);
-		DirMask = FVector::ZeroVector;
-		DirMask[(SplineProxy->ForwardAxis + 1) % 3] = 1;
+	DirMask = FVector::ZeroVector;
+	DirMask[(SplineProxy->ForwardAxis + 1) % 3] = 1;
 	ParamData[8] = FVector4(DirMask, 0);
-		DirMask = FVector::ZeroVector;
-		DirMask[(SplineProxy->ForwardAxis + 2) % 3] = 1;
+	DirMask = FVector::ZeroVector;
+	DirMask[(SplineProxy->ForwardAxis + 2) % 3] = 1;
 	ParamData[9] = FVector4(DirMask, 0);
 
 	ShaderBindings.Add(SplineMeshParams, ParamData);
@@ -91,9 +91,13 @@ void FSplineMeshVertexFactoryShaderParameters::GetElementShaderBindings(
 //////////////////////////////////////////////////////////////////////////
 // SplineMeshVertexFactory
 
-IMPLEMENT_VERTEX_FACTORY_PARAMETER_TYPE(FSplineMeshVertexFactory, SF_Vertex, FSplineMeshVertexFactoryShaderParameters);
-
 IMPLEMENT_VERTEX_FACTORY_TYPE(FSplineMeshVertexFactory, "/Engine/Private/LocalVertexFactory.ush", true, true, true, true, true);
+
+
+FVertexFactoryShaderParameters* FSplineMeshVertexFactory::ConstructShaderParameters(EShaderFrequency ShaderFrequency)
+{
+	return ShaderFrequency == SF_Vertex ? new FSplineMeshVertexFactoryShaderParameters() : NULL;
+}
 
 //////////////////////////////////////////////////////////////////////////
 // SplineMeshSceneProxy
@@ -240,7 +244,7 @@ FVector USplineMeshComponent::GetEndTangent() const
 
 void USplineMeshComponent::SetEndTangent(FVector EndTangent, bool bUpdateMesh)
 {
-	SplineParams.EndTangent = EndTangent;
+	SplineParams.EndTangent = ClampVector(EndTangent, FVector(-WORLD_MAX), FVector(WORLD_MAX));
 	bMeshDirty = true;
 	if (bUpdateMesh)
 	{
@@ -906,22 +910,14 @@ void USplineMeshComponent::OnCreatePhysicsState()
 
 UBodySetup* USplineMeshComponent::GetBodySetup()
 {
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 	// Don't return a body setup that has no collision, it means we are interactively moving the spline and don't want to build collision.
 	// Instead we explicitly build collision with USplineMeshComponent::RecreateCollision()
 	if (BodySetup != NULL && (BodySetup->TriMeshes.Num() || BodySetup->AggGeom.GetElementCount() > 0))
 	{
 		return BodySetup;
 	}
-#elif WITH_CHAOS
-	// Don't return a body setup that has no collision, it means we are interactively moving the spline and don't want to build collision.
-	// Instead we explicitly build collision with USplineMeshComponent::RecreateCollision()
-	if (BodySetup != NULL && (BodySetup->ChaosTriMeshes.Num() || BodySetup->AggGeom.GetElementCount() > 0))
-	{
-		return BodySetup;
-	}
-#endif // WITH_CHAOS
-
+#endif // WITH_PHYSX
 	return NULL;
 }
 
@@ -1180,7 +1176,7 @@ float USplineMeshComponent::GetTextureStreamingTransformScale() const
 #if WITH_EDITOR
 void USplineMeshComponent::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
 {
-	FProperty* MemberPropertyThatChanged = PropertyChangedEvent.MemberProperty;
+	UProperty* MemberPropertyThatChanged = PropertyChangedEvent.MemberProperty;
 	bool bIsSplineParamsChange = MemberPropertyThatChanged && MemberPropertyThatChanged->GetNameCPP() == TEXT("SplineParams");
 	if (bIsSplineParamsChange)
 	{
@@ -1189,7 +1185,7 @@ void USplineMeshComponent::PostEditChangeProperty(FPropertyChangedEvent& Propert
 
 	UStaticMeshComponent::PostEditChangeProperty(PropertyChangedEvent);
 
-		// If the spline params were changed the actual geometry is, so flag the owning HLOD cluster as dirty
+	// If the spline params were changed the actual geometry is, so flag the owning HLOD cluster as dirty
 	if (bIsSplineParamsChange)
 	{
 		IHierarchicalLODUtilitiesModule& Module = FModuleManager::LoadModuleChecked<IHierarchicalLODUtilitiesModule>("HierarchicalLODUtilities");

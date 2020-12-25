@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
@@ -7,26 +7,25 @@
 #include "UObject/PropertyHelper.h"
 
 /*-----------------------------------------------------------------------------
-	FLazyObjectProperty.
+	ULazyObjectProperty.
 -----------------------------------------------------------------------------*/
-IMPLEMENT_FIELD(FLazyObjectProperty)
 
-FString FLazyObjectProperty::GetCPPType( FString* ExtendedTypeText/*=NULL*/, uint32 CPPExportFlags/*=0*/ ) const
+FString ULazyObjectProperty::GetCPPType( FString* ExtendedTypeText/*=NULL*/, uint32 CPPExportFlags/*=0*/ ) const
 {
 	return FString::Printf( TEXT("TLazyObjectPtr<%s%s>"), PropertyClass->GetPrefixCPP(), *PropertyClass->GetName() );
 }
-FString FLazyObjectProperty::GetCPPMacroType( FString& ExtendedTypeText ) const
+FString ULazyObjectProperty::GetCPPMacroType( FString& ExtendedTypeText ) const
 {
 	ExtendedTypeText = FString::Printf(TEXT("TLazyObjectPtr<%s%s>"), PropertyClass->GetPrefixCPP(), *PropertyClass->GetName());
 	return TEXT("LAZYOBJECT");
 }
 
-FName FLazyObjectProperty::GetID() const
+FName ULazyObjectProperty::GetID() const
 {
 	return NAME_LazyObjectProperty;
 }
 
-void FLazyObjectProperty::SerializeItem( FStructuredArchive::FSlot Slot, void* Value, void const* Defaults ) const
+void ULazyObjectProperty::SerializeItem( FStructuredArchive::FSlot Slot, void* Value, void const* Defaults ) const
 {
 	FArchive& UnderlyingArchive = Slot.GetUnderlyingArchive();
 
@@ -52,7 +51,7 @@ void FLazyObjectProperty::SerializeItem( FStructuredArchive::FSlot Slot, void* V
 	}
 }
 
-bool FLazyObjectProperty::Identical( const void* A, const void* B, uint32 PortFlags ) const
+bool ULazyObjectProperty::Identical( const void* A, const void* B, uint32 PortFlags ) const
 {
 	FLazyObjectPtr ObjectA = A ? *((FLazyObjectPtr*)A) : FLazyObjectPtr();
 	FLazyObjectPtr ObjectB = B ? *((FLazyObjectPtr*)B) : FLazyObjectPtr();
@@ -87,23 +86,28 @@ bool FLazyObjectProperty::Identical( const void* A, const void* B, uint32 PortFl
 	return bResult;
 }
 
-UObject* FLazyObjectProperty::GetObjectPropertyValue(const void* PropertyValueAddress) const
+UObject* ULazyObjectProperty::GetObjectPropertyValue(const void* PropertyValueAddress) const
 {
 	return GetPropertyValue(PropertyValueAddress).Get();
 }
 
-void FLazyObjectProperty::SetObjectPropertyValue(void* PropertyValueAddress, UObject* Value) const
+void ULazyObjectProperty::SetObjectPropertyValue(void* PropertyValueAddress, UObject* Value) const
 {
 	SetPropertyValue(PropertyValueAddress, TCppType(Value));
 }
 
-bool FLazyObjectProperty::AllowCrossLevel() const
+bool ULazyObjectProperty::AllowCrossLevel() const
 {
 	return true;
 }
 
-uint32 FLazyObjectProperty::GetValueTypeHashInternal(const void* Src) const
+uint32 ULazyObjectProperty::GetValueTypeHashInternal(const void* Src) const
 {
 	return GetTypeHash(GetPropertyValue(Src));
 }
+
+IMPLEMENT_CORE_INTRINSIC_CLASS(ULazyObjectProperty, UObjectPropertyBase,
+	{
+	}
+);
 

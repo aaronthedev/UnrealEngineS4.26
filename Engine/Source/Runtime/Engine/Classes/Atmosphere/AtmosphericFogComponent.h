@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -98,7 +98,7 @@ struct FAtmospherePrecomputeParameters
  *	Used to create fogging effects such as clouds.
  */
 UCLASS(ClassGroup=Rendering, collapsecategories, hidecategories=(Object, Mobility, Activation, "Components|Activation"), editinlinenew, meta=(BlueprintSpawnableComponent), MinimalAPI)
-class UE_DEPRECATED(4.26, "Please use the SkyAtmosphere component instead.") UAtmosphericFogComponent : public USceneComponent
+class UAtmosphericFogComponent : public USceneComponent
 {
 	GENERATED_UCLASS_BODY()
 
@@ -243,7 +243,7 @@ public:
 
 protected:
 	//~ Begin UActorComponent Interface.
-	virtual void CreateRenderState_Concurrent(FRegisterComponentContext* Context) override;
+	virtual void CreateRenderState_Concurrent() override;
 	virtual void SendRenderTransform_Concurrent() override;
 	virtual void DestroyRenderState_Concurrent() override;
 	//~ End UActorComponent Interface.
@@ -272,7 +272,7 @@ public:
 	virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
 	void UpdatePrecomputedData();
 #endif // WITH_EDITOR
-	virtual void PostInterpChange(FProperty* PropertyThatChanged) override;
+	virtual void PostInterpChange(UProperty* PropertyThatChanged) override;
 	virtual void Serialize(FArchive& Ar) override;
 	//~ End UObject Interface
 
@@ -359,13 +359,15 @@ private:
 #if WITH_EDITORONLY_DATA
 	class FAtmospherePrecomputeDataHandler* PrecomputeDataHandler;
 
+public:
+	// Because FAtmospherePrecomputeDataHandler is a FTicableEditorObject and its destruction is not thread safe
+	virtual bool IsDestructionThreadSafe() const override { return false; }
 private:
 #endif
 
 	friend class FAtmosphericFogSceneInfo;
 };
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 /** Used to store data during RerunConstructionScripts */
 USTRUCT()
 struct FAtmospherePrecomputeInstanceData : public FSceneComponentInstanceData
@@ -396,4 +398,3 @@ public:
 	FByteBulkData IrradianceData;
 	FByteBulkData InscatterData;
 };
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

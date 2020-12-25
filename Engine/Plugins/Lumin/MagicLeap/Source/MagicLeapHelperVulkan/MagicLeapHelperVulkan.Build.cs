@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System.IO;
 
@@ -23,7 +23,7 @@ namespace UnrealBuildTool.Rules
 
 			// TODO: Explore linking Unreal modules against a commong header and
 			// having a runtime dll linking against the library according to the platform.
-			if (Target.Platform != UnrealTargetPlatform.Mac && Target.Platform != UnrealTargetPlatform.IOS)
+			if (Target.Platform != UnrealTargetPlatform.Mac)
 			{
 				PrivateDependencyModuleNames.Add("VulkanRHI");
 				PrivateDefinitions.Add("MLSDK_API_USE_VULKAN=1");

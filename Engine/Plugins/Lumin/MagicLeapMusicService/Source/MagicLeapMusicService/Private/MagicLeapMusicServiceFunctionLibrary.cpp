@@ -1,7 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MagicLeapMusicServiceFunctionLibrary.h"
 #include "MagicLeapMusicServicePlugin.h"
+#include "MagicLeapPluginUtil.h"
 #include "Misc/Timespan.h"
 #include "Lumin/CAPIShims/LuminAPIMusicService.h"
 #include "Async/Async.h"
@@ -572,7 +573,7 @@ bool UMagicLeapMusicServiceFunctionLibrary::GetCurrentTrackMetadata(FMagicLeapMu
     bool bSuccess = false;
 #if WITH_MLSDK
     MLMusicServiceMetadata OutMetadata;
-    MLResult Result = MLMusicServiceGetMetadataForIndex(0, &OutMetadata);
+    MLResult Result = MLMusicServiceGetMetadata(&OutMetadata);
     bSuccess = (Result == MLResult_Ok);
     if (bSuccess)
     {
@@ -581,7 +582,7 @@ bool UMagicLeapMusicServiceFunctionLibrary::GetCurrentTrackMetadata(FMagicLeapMu
     }
     else
     {
-        UE_LOG(LogMusicServiceFunctionLibrary, Error, TEXT("MLMusicServiceGetMetadataForIndex failed with error %s!"), UTF8_TO_TCHAR(MLGetResultString(Result)));
+        UE_LOG(LogMusicServiceFunctionLibrary, Error, TEXT("MLMusicServiceGetMetadata failed with error %s!"), UTF8_TO_TCHAR(MLGetResultString(Result)));
     }
 #endif // WITH_MLSDK
     return bSuccess;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AssetDeleteModel.h"
 #include "HAL/FileManager.h"
@@ -28,7 +28,6 @@
 #include "AutoReimport/AutoReimportUtilities.h"
 #include "AutoReimport/AutoReimportManager.h"
 #include "Kismet2/BlueprintEditorUtils.h"
-#include "UObject/ReferencerFinder.h"
 
 #define LOCTEXT_NAMESPACE "FAssetDeleteModel"
 
@@ -92,9 +91,6 @@ void FAssetDeleteModel::SetState( EState NewState )
 
 void FAssetDeleteModel::Tick( const float InDeltaTime )
 {
-	const double MaxTickSeconds   = 0.100;
-	double       StartTickSeconds = FPlatformTime::Seconds();
-
 	switch ( State )
 	{
 	case Waiting:
@@ -109,7 +105,7 @@ void FAssetDeleteModel::Tick( const float InDeltaTime )
 		SetState(Scanning);
 		break;
 	case Scanning:
-		while (PendingDeleteIndex < PendingDeletes.Num() && (FPlatformTime::Seconds() - StartTickSeconds) < MaxTickSeconds)
+		if ( PendingDeleteIndex < PendingDeletes.Num() )
 		{
 			TSharedPtr<FPendingDelete>& PendingDelete = PendingDeletes[PendingDeleteIndex];
 
@@ -146,8 +142,7 @@ void FAssetDeleteModel::Tick( const float InDeltaTime )
 
 			PendingDeleteIndex++;
 		}
-
-		if (PendingDeleteIndex >= PendingDeletes.Num())
+		else
 		{
 			SetState(UpdateActions);
 		}
@@ -362,16 +357,22 @@ bool FAssetDeleteModel::CanReplaceReferencesWith( const FAssetData& InAssetData 
 	{
 		// Get BP native parent classes
 		UClass* OriginalBPParentClass = CastChecked<UBlueprint>(PendingDeletes[0]->GetObject())->ParentClass;
-		const FString NativeClassName = InAssetData.GetTagValueRef<FString>(FBlueprintTags::NativeParentClassPath);
+		const FString BPClassNameToTest = InAssetData.GetTagValueRef<FString>(FBlueprintTags::ParentClassPath);
 
-		if (!NativeClassName.IsEmpty())
+		if (!BPClassNameToTest.IsEmpty())
 		{
-			UClass* NativeParentClassToTest = FindObject<UClass>(ANY_PACKAGE, *NativeClassName);
+			UClass* ParentClassToTest = FindObject<UClass>(ANY_PACKAGE, *BPClassNameToTest);
+			if (!ParentClassToTest)
+			{
+				ParentClassToTest = LoadObject<UClass>(nullptr, *BPClassNameToTest);
+			}
+
 			UClass* NativeParentClassToReplace = FBlueprintEditorUtils::FindFirstNativeClass(OriginalBPParentClass);
+			UClass* NativeParentClassToTest = FBlueprintEditorUtils::FindFirstNativeClass(ParentClassToTest);
 
 			if (!NativeParentClassToTest || !NativeParentClassToTest->IsChildOf(NativeParentClassToReplace))
 			{
-				// If we couldn't determine the asset parent class (e.g. because the NativeParentClass tag wasn't present in the FAssetData), or if
+				// If we couldn't determine the asset parent class (e.g. because the ParentClass tag wasn't present in the FAssetData), or if
 				// the asset parent class wasn't equal to or derived from the pending delete BP class, filter i
 				return true;
 			}
@@ -657,80 +658,69 @@ bool FPendingDelete::IsAssetContained(const FName& PackageName) const
 	return false;
 }
 
-
 void FPendingDelete::CheckForReferences()
 {
-	if (bReferencesChecked)
+	if ( bReferencesChecked )
 	{
 		return;
 	}
 
-	TRACE_CPUPROFILER_EVENT_SCOPE(FPendingDelete::CheckForReferences)
 	bReferencesChecked = true;
 
 	// Load the asset registry module
-	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>( TEXT( "AssetRegistry" ) );
 
 	AssetRegistryModule.Get().GetReferencers(Object->GetOutermost()->GetFName(), DiskReferences);
 
-	IConsoleVariable* UseLegacyGetReferencersForDeletion = IConsoleManager::Get().FindConsoleVariable(TEXT("Editor.UseLegacyGetReferencersForDeletion"));
-	if (UseLegacyGetReferencersForDeletion == nullptr || !UseLegacyGetReferencersForDeletion->GetBool())
+	// Check and see whether we are referenced by any objects that won't be garbage collected (*including* the undo buffer)
+	FReferencerInformationList ReferencesIncludingUndo;
+	bool bReferencedInMemoryOrUndoStack = IsReferenced(Object, GARBAGE_COLLECTION_KEEPFLAGS, EInternalObjectFlags::GarbageCollectionKeepFlags, true, &ReferencesIncludingUndo);
+
+	// Determine the in-memory references, *excluding* the undo buffer
+	if (GEditor && GEditor->Trans)
 	{
-		// This new version uses the fast reference collector to gather referencers and handles transaction referencers in a single pass
-		ObjectTools::GatherObjectReferencersForDeletion(Object, bIsReferencedInMemoryByNonUndo, bIsReferencedInMemoryByUndo, &MemoryReferences);
+		GEditor->Trans->DisableObjectSerialization();
 	}
-	else
+	bIsReferencedInMemoryByNonUndo = IsReferenced(Object, GARBAGE_COLLECTION_KEEPFLAGS, EInternalObjectFlags::GarbageCollectionKeepFlags, true, &MemoryReferences);
+	if (GEditor && GEditor->Trans)
 	{
-		// Check and see whether we are referenced by any objects that won't be garbage collected (*including* the undo buffer)
-		FReferencerInformationList ReferencesIncludingUndo;
-		bool bReferencedInMemoryOrUndoStack = IsReferenced(Object, GARBAGE_COLLECTION_KEEPFLAGS, EInternalObjectFlags::GarbageCollectionKeepFlags, true, &ReferencesIncludingUndo);
+		GEditor->Trans->EnableObjectSerialization();
+	}
 
-		// Determine the in-memory references, *excluding* the undo buffer
-		if (GEditor && GEditor->Trans)
+	// see if this object is the transaction buffer - set a flag so we know we need to clear the undo stack
+	const int32 TotalReferenceCount = ReferencesIncludingUndo.ExternalReferences.Num() + ReferencesIncludingUndo.InternalReferences.Num();
+	const int32 NonUndoReferenceCount = MemoryReferences.ExternalReferences.Num() + MemoryReferences.InternalReferences.Num();
+
+	bIsReferencedInMemoryByUndo = TotalReferenceCount > NonUndoReferenceCount;
+
+	// If the object itself isn't in the transaction buffer, check to see if it's a Blueprint asset. We might have instances of the
+	// Blueprint in the transaction buffer, in which case we also want to both alert the user and clear it prior to deleting the asset.
+	if ( !bIsReferencedInMemoryByUndo )
+	{
+		UBlueprint* Blueprint = Cast<UBlueprint>( Object );
+		if ( Blueprint && Blueprint->GeneratedClass )
 		{
-			GEditor->Trans->DisableObjectSerialization();
-		}
-		bIsReferencedInMemoryByNonUndo = IsReferenced(Object, GARBAGE_COLLECTION_KEEPFLAGS, EInternalObjectFlags::GarbageCollectionKeepFlags, true, &MemoryReferences);
-		if (GEditor && GEditor->Trans)
-		{
-			GEditor->Trans->EnableObjectSerialization();
-		}
-
-		// see if this object is the transaction buffer - set a flag so we know we need to clear the undo stack
-		const int32 TotalReferenceCount = ReferencesIncludingUndo.ExternalReferences.Num() + ReferencesIncludingUndo.InternalReferences.Num();
-		const int32 NonUndoReferenceCount = MemoryReferences.ExternalReferences.Num() + MemoryReferences.InternalReferences.Num();
-
-		bIsReferencedInMemoryByUndo = TotalReferenceCount > NonUndoReferenceCount;
-
-		// If the object itself isn't in the transaction buffer, check to see if it's a Blueprint asset. We might have instances of the
-		// Blueprint in the transaction buffer, in which case we also want to both alert the user and clear it prior to deleting the asset.
-		if (!bIsReferencedInMemoryByUndo)
-		{
-			UBlueprint* Blueprint = Cast<UBlueprint>(Object);
-			if (Blueprint && Blueprint->GeneratedClass)
+			TArray<FReferencerInformation> ExternalMemoryReferences = MemoryReferences.ExternalReferences;
+			for ( auto RefIt = ExternalMemoryReferences.CreateIterator(); RefIt && !bIsReferencedInMemoryByUndo; ++RefIt )
 			{
-				TArray<FReferencerInformation> ExternalMemoryReferences = MemoryReferences.ExternalReferences;
-				for (auto RefIt = ExternalMemoryReferences.CreateIterator(); RefIt && !bIsReferencedInMemoryByUndo; ++RefIt)
+				FReferencerInformation& RefInfo = *RefIt;
+				if ( RefInfo.Referencer->IsA( Blueprint->GeneratedClass ) )
 				{
-					FReferencerInformation& RefInfo = *RefIt;
-					if (RefInfo.Referencer->IsA(Blueprint->GeneratedClass))
+					if (IsReferenced(RefInfo.Referencer, GARBAGE_COLLECTION_KEEPFLAGS, EInternalObjectFlags::GarbageCollectionKeepFlags, true, &ReferencesIncludingUndo))
 					{
-						if (IsReferenced(RefInfo.Referencer, GARBAGE_COLLECTION_KEEPFLAGS, EInternalObjectFlags::GarbageCollectionKeepFlags, true, &ReferencesIncludingUndo))
+						if (GEditor && GEditor->Trans)
 						{
-							if (GEditor && GEditor->Trans)
-							{
-								GEditor->Trans->DisableObjectSerialization();
-							}
+							GEditor->Trans->DisableObjectSerialization();
+						}
 
-							FReferencerInformationList ReferencesExcludingUndo;
-							if (IsReferenced(RefInfo.Referencer, GARBAGE_COLLECTION_KEEPFLAGS, EInternalObjectFlags::GarbageCollectionKeepFlags, true, &ReferencesExcludingUndo))
-							{
-								bIsReferencedInMemoryByUndo = (ReferencesIncludingUndo.InternalReferences.Num() + ReferencesIncludingUndo.ExternalReferences.Num()) > (ReferencesExcludingUndo.InternalReferences.Num() + ReferencesExcludingUndo.ExternalReferences.Num());
-							}
-							if (GEditor && GEditor->Trans)
-							{
-								GEditor->Trans->EnableObjectSerialization();
-							}
+						FReferencerInformationList ReferencesExcludingUndo;
+						if (IsReferenced(RefInfo.Referencer, GARBAGE_COLLECTION_KEEPFLAGS, EInternalObjectFlags::GarbageCollectionKeepFlags, true, &ReferencesExcludingUndo))
+						{
+							bIsReferencedInMemoryByUndo = ( ReferencesIncludingUndo.InternalReferences.Num() + ReferencesIncludingUndo.ExternalReferences.Num() ) > ( ReferencesExcludingUndo.InternalReferences.Num() + ReferencesExcludingUndo.ExternalReferences.Num() );
+						}
+						if (GEditor && GEditor->Trans)
+						{
+							GEditor->Trans->EnableObjectSerialization();
 						}
 					}
 				}

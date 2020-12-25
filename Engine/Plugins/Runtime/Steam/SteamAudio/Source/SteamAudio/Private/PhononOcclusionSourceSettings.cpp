@@ -13,7 +13,7 @@ UPhononOcclusionSourceSettings::UPhononOcclusionSourceSettings()
 {}
 
 #if WITH_EDITOR
-bool UPhononOcclusionSourceSettings::CanEditChange(const FProperty* InProperty) const
+bool UPhononOcclusionSourceSettings::CanEditChange(const UProperty* InProperty) const
 {
 	const bool ParentVal = Super::CanEditChange(InProperty);
 

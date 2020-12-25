@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -26,44 +26,44 @@ class TFunction;
 #define UE_DEBUG_BREAK() ((void)(FPlatformMisc::IsDebuggerPresent() && ([] () { UE_DEBUG_BREAK_IMPL(); } (), 1)))
 #endif
 
-/**
+	/**
  * Available build configurations. Mirorred from UnrealTargetConfiguration.
- */
+	 */
 enum class EBuildConfiguration : uint8
-{
-	/** Unknown build configuration. */
-	Unknown,
+	{
+		/** Unknown build configuration. */
+		Unknown,
 
-	/** Debug build. */
-	Debug,
+		/** Debug build. */
+		Debug,
 
-	/** DebugGame build. */
-	DebugGame,
+		/** DebugGame build. */
+		DebugGame,
 
-	/** Development build. */
-	Development,
+		/** Development build. */
+		Development,
 
-	/** Shipping build. */
-	Shipping,
+		/** Shipping build. */
+		Shipping,
 
-	/** Test build. */
-	Test
-};
+		/** Test build. */
+		Test
+	};
 
-/**
- * Returns the string representation of the specified EBuildConfiguration value.
- *
+	/**
+	 * Returns the string representation of the specified EBuildConfiguration value.
+	 *
  * @param Configuration The string to get the EBuildConfiguration for.
  * @return An EBuildConfiguration value.
- */
+	 */
 CORE_API bool LexTryParseString(EBuildConfiguration& OutConfiguration, const TCHAR* Configuration);
 
-/**
- * Returns the string representation of the specified EBuildConfiguration value.
- *
- * @param Configuration The value to get the string for.
- * @return The string representation.
- */
+	/**
+	 * Returns the string representation of the specified EBuildConfiguration value.
+	 *
+	 * @param Configuration The value to get the string for.
+	 * @return The string representation.
+	 */
 CORE_API const TCHAR* LexToString(EBuildConfiguration Configuration);
 
 namespace EBuildConfigurations
@@ -116,18 +116,18 @@ namespace EBuildConfigurations
 	CORE_API FText ToText( EBuildConfiguration Configuration );
 }
 
-/**
+	/**
  * Enumerates build target types.
- */
+	 */
 enum class EBuildTargetType : uint8
-{
-	/** Unknown build target. */
-	Unknown,
+	{
+		/** Unknown build target. */
+		Unknown,
 
-	/** Game target. */
-	Game,
+		/** Game target. */
+		Game,
 
-	/** Server target. */
+		/** Server target. */
 	Server,
 
 	/** Client target. */
@@ -138,23 +138,23 @@ enum class EBuildTargetType : uint8
 
 	/** Program target. */
 	Program,
-};
+	};
 
-/**
- * Returns the string representation of the specified EBuildTarget value.
- *
+	/**
+	 * Returns the string representation of the specified EBuildTarget value.
+	 *
  * @param OutType The value to get the string for.
  * @param Text The text to parse.
  * @return The string representation.
- */
+	 */
 CORE_API bool LexTryParseString(EBuildTargetType& OutType, const TCHAR* Text);
 
-/**
+	/**
  * Returns the string representation of the specified EBuildTargetType value.
- *
+	 *
  * @param Target The string to get the EBuildTargetType for.
  * @return An EBuildTarget::Type value.
- */
+	 */
 CORE_API const TCHAR* LexToString(EBuildTargetType Type);
 
 namespace EBuildTargets
@@ -176,7 +176,7 @@ namespace EBuildTargets
 
 	UE_DEPRECATED(4.24, "EBuildTargets::FromString is deprecated. Use LexFromString() instead.")
 	CORE_API EBuildTargetType FromString( const FString& Target );
-
+	
 	UE_DEPRECATED(4.24, "EBuildTargets::FromString is deprecated. Use LexFromString() instead.")
 	CORE_API const TCHAR* ToString(EBuildTargetType Target);
 }
@@ -201,22 +201,22 @@ enum class EDeviceScreenOrientation : uint8
 {
 	/** The orientation is not known */
 	Unknown,
-
+	
 	/** The orientation is portrait with the home button at the bottom */
 	Portrait,
-
+	
 	/** The orientation is portrait with the home button at the top */
 	PortraitUpsideDown,
-
+	
 	/** The orientation is landscape with the home button at the right side */
 	LandscapeLeft,
-
+	
 	/** The orientation is landscape with the home button at the left side */
 	LandscapeRight,
-
+	
 	/** The orientation is as if place on a desk with the screen upward */
 	FaceUp,
-
+	
 	/** The orientation is as if place on a desk with the screen downward */
 	FaceDown
 };
@@ -224,7 +224,7 @@ enum class EDeviceScreenOrientation : uint8
 
 namespace EErrorReportMode
 {
-	/**
+	/** 
 	 * Enumerates supported error reporting modes.
 	 */
 	enum Type
@@ -278,14 +278,6 @@ namespace EAppReturnType
 	};
 }
 
-/**
- * Returns the string representation of the specified EAppReturnType::Type value.
- *
- * @param Value The value to get the string for.
- * @return The string representation.
- */
-CORE_API const TCHAR* LexToString(EAppReturnType::Type Value);
-
 /*
  * Holds a computed SHA256 hash.
  */
@@ -311,14 +303,14 @@ enum class EMobileHapticsType : uint8
 
 enum class ENetworkConnectionType : uint8
 {
-	/**
-	 * Enumerates the network connection types
-	 */
-	Unknown,
-	None,
-	AirplaneMode,
-	Cell,
-	WiFi,
+    /**
+     * Enumerates the network connection types
+     */
+    Unknown,
+    None,
+    AirplaneMode,
+    Cell,
+    WiFi,
 	WiMAX,
 	Bluetooth,
 	Ethernet,
@@ -333,8 +325,8 @@ enum class ENetworkConnectionType : uint8
 CORE_API const TCHAR* LexToString( ENetworkConnectionType Target );
 
 /**
- * Generic implementation for most platforms
- */
+* Generic implementation for most platforms
+**/
 struct CORE_API FGenericPlatformMisc
 {
 	/**
@@ -387,7 +379,7 @@ struct CORE_API FGenericPlatformMisc
 	 * Sets an environment variable to the local process's environment
 	 *
 	 * @param VariableName The name of the variable (ie "Path")
-	 * @param Value The string to set the variable to.
+	 * @param Value The string to set the variable to.	
 	 */
 	static void SetEnvironmentVar(const TCHAR* VariableName, const TCHAR* Value);
 
@@ -405,23 +397,23 @@ struct CORE_API FGenericPlatformMisc
 	static const TCHAR* GetPathVarDelimiter();
 
 	/**
-	 * Retrieve the Mac address of the current adapter. This is generally platform-dependent code that other platforms must implement.
-	 *
+	 * Retrieve the Mac address of the current adapter.
+	 * 
 	 * @return array of bytes representing the Mac address, or empty array if unable to determine.
 	 */
 	UE_DEPRECATED(4.14, "GetMacAddress is deprecated. It is not reliable on all platforms")
 	static TArray<uint8> GetMacAddress();
 
 	/**
-	 * Retrieve the Mac address of the current adapter as a string. This generally relies on GetMacAddress() being implemented for the platform, if possible.
-	 *
+	 * Retrieve the Mac address of the current adapter as a string.
+	 * 
 	 * @return String representing the Mac address, or empty string.
 	 */
 	UE_DEPRECATED(4.14, "GetMacAddressString is deprecated. It is not reliable on all platforms")
 	static FString GetMacAddressString();
 
 	/**
-	 * Retrieve the Mac address of the current adapter as a hashed string (privacy). This generally relies on GetMacAddress() being implemented for the platform, if possible.
+	 * Retrieve the Mac address of the current adapter as a hashed string (privacy)
 	 *
 	 * @return String representing the hashed Mac address, or empty string.
 	 */
@@ -429,27 +421,32 @@ struct CORE_API FGenericPlatformMisc
 	static FString GetHashedMacAddressString();
 
 	/**
+	 * Returns a unique string for device identification
+	 * 
+	 * @return the unique string generated by this platform for this device
+	 */
+	UE_DEPRECATED(4.14, "GetUniqueDeviceId is deprecated. Use GetDeviceId instead.")
+	static FString GetUniqueDeviceId();
+
+	/**
 	 * Returns a unique string for device identification. Differs from the deprecated GetUniqueDeviceId
 	 * in that there is no default implementation (which used unreliable Mac address determiniation).
 	 * This code is expected to use platform-specific methods to identify the device.
-	 *
+	 * 
 	 * WARNING: Use of this method in your app may imply technical certification requirments for your platform!
 	 * For instance, consoles often require cert waivers to be in place before calling APIs that can track a device,
 	 * so be very careful that you are following your platform's protocols for accessing device IDs. See the platform-
 	 * specific implementations of this method for details on what APIs are used.
-	 *
-	 * If you do not have permission to call this on one or more of your platforms, set GET_DEVICE_ID_UNAVAILABLE=1
-	 * in your build step to ensure that any calls that may be made to this API will simply return an empty string.
 	 *
 	 * @return the unique string generated by this platform for this device, or an empty string if one is not available.
 	 */
 	static FString GetDeviceId();
 
 	/**
-	 * Returns a unique string for advertising identification
-	 *
-	 * @return the unique string generated by this platform for this device
-	 */
+	* Returns a unique string for advertising identification
+	*
+	* @return the unique string generated by this platform for this device
+	*/
 	static FString GetUniqueAdvertisingId();
 
 	// #CrashReport: 2015-02-24 Remove
@@ -466,7 +463,7 @@ struct CORE_API FGenericPlatformMisc
 	FORCEINLINE static bool IsDebuggerPresent()
 	{
 #if UE_BUILD_SHIPPING
-		return 0;
+		return 0; 
 #else
 		return 1; // unknown platforms return true so that they can crash into a debugger
 #endif
@@ -483,10 +480,10 @@ struct CORE_API FGenericPlatformMisc
 	}
 
 	/**
-	 * Uses cpuid instruction to get the vendor string
-	 *
-	 * @return	CPU vendor name
-	 */
+	* Uses cpuid instruction to get the vendor string
+	*
+	* @return	CPU vendor name
+	*/
 	static FString GetCPUVendor();
 
 	/**
@@ -510,7 +507,7 @@ struct CORE_API FGenericPlatformMisc
 	/** @return whether to check for specific CPU compatibility or not */
 	static bool NeedsNonoptionalCPUFeaturesCheck();
 
-	/**
+	/** 
 	 * Uses cpuid instruction to get the CPU brand string
 	 *
 	 * @return	CPU brand string
@@ -582,7 +579,14 @@ struct CORE_API FGenericPlatformMisc
 	FORCENOINLINE static void MemoryBarrier();
 
 	/**
-	 * Set a handler to be called when there is a memory warning from the OS
+	 * Handles IO failure by ending gameplay.
+	 *
+	 * @param Filename	If not nullptr, name of the file the I/O error occured with
+	 */
+	void static HandleIOFailure( const TCHAR* Filename );
+
+	/**
+	 * Set a handler to be called when there is a memory warning from the OS 
 	 *
 	 * @param Handler	The handler to call
 	 */
@@ -597,13 +601,11 @@ struct CORE_API FGenericPlatformMisc
 	{
 		return false;
 	}
-
+	
 	FORCEINLINE static uint32 GetLastError()
 	{
 		return 0;
 	}
-
-	static void SetLastError(uint32 ErrorCode) {}
 
 	static void RaiseException( uint32 ExceptionCode );
 
@@ -625,8 +627,8 @@ public:
 	static void CustomNamedStat(const ANSICHAR* Text, float Value, const ANSICHAR* Graph, const ANSICHAR* Unit) {}
 
 	/**
-	 * Profiler color stack - this overrides the color for named events with undefined colors (e.g stat namedevents)
-	 */
+	* Profiler color stack - this overrides the color for named events with undefined colors (e.g stat namedevents)
+	*/
 	static void BeginProfilerColor(const struct FColor& Color) {}
 	static void EndProfilerColor() {}
 
@@ -636,39 +638,28 @@ public:
 	{
 	}
 
-	/**
-	 * Platform specific function for initializing storage of tagged memory buffers
-	 */
+    /**
+	* Platform specific function for initializing storage of tagged memory buffers
+	*/
 	FORCEINLINE static void InitTaggedStorage(uint32 NumTags)
 	{
 	}
 
-	/**
-	 * Platform specific function for freeing storage of tagged memory buffers
-	 */
+    /**
+	* Platform specific function for freeing storage of tagged memory buffers
+	*/
 	FORCEINLINE static void ShutdownTaggedStorage()
 	{
 	}
 
-	/**
-	 * Platform specific function for tagging a memory buffer with a label. Helps see memory access in profilers
-	 */
+    /**
+	* Platform specific function for tagging a memory buffer with a label. Helps see memory access in profilers
+	*/
 	FORCEINLINE static void TagBuffer(const char* Label, uint32 Category, const void* Buffer, size_t BufferSize)
 	{
 	}
 
-	/**
-	 *	Set the value for the given section and key in the platform specific key->value store
-	 *  Note: The key->value store is user-specific, but may be used to share data between different applications for the same user
-	 *
-	 *  @param	InStoreId			The name used to identify the store you want to use (eg, MyGame)
-	 *	@param	InSectionName		The section that this key->value pair is placed within (can contain / separators, eg UserDetails/AccountInfo)
-	 *	@param	InKeyValues			The mapping of key->value pairs to set
-	 *	@return	bool				true if the value was set correctly, false if not
-	 */
-	static bool SetStoredValues(const FString& InStoreId, const FString& InSectionName, const TMap<FString, FString>& InKeyValues);
-
-	/**
+	/** 
 	 *	Set the value for the given section and key in the platform specific key->value store
 	 *  Note: The key->value store is user-specific, but may be used to share data between different applications for the same user
 	 *
@@ -680,7 +671,7 @@ public:
 	 */
 	static bool SetStoredValue(const FString& InStoreId, const FString& InSectionName, const FString& InKeyName, const FString& InValue);
 
-	/**
+	/** 
 	 *	Get the value for the given section and key from the platform specific key->value store
 	 *  Note: The key->value store is user-specific, but may be used to share data between different applications for the same user
 	 *
@@ -693,7 +684,7 @@ public:
 	static bool GetStoredValue(const FString& InStoreId, const FString& InSectionName, const FString& InKeyName, FString& OutValue);
 
 	/**
-	 *	Deletes value for the given section and key in the platform specific key->value store
+  	 *	Deletes value for the given section and key in the platform specific key->value store
 	 *  Note: The key->value store is user-specific, but may be used to share data between different applications for the same user
 	 *
 	 *  @param	InStoreId			The name used to identify the store you want to use (eg, MyGame)
@@ -702,16 +693,6 @@ public:
 	 *	@return	bool				true if the value was deleted correctly, false if not found or couldn't delete
 	 */
 	static bool DeleteStoredValue(const FString& InStoreId, const FString& InSectionName, const FString& InKeyName);
-
-	/**
-	 *	Deletes the given section and its contained values in the platform specific key->value store
-	 *  Note: The key->value store is user-specific, but may be used to share data between different applications for the same user
-	 *
-	 *  @param	InStoreId			The name used to identify the store you want to use (eg, MyGame)
-	 *	@param	InSectionName		The section to delete.
-	 *	@return	bool				true if the section was deleted, false if not found or couldn't delete
-	 */
-	static bool DeleteStoredSection(const FString& InStoreId, const FString& InSectionName);
 
 	/** Sends a message to a remote tool, and debugger consoles */
 	static void LowLevelOutputDebugString(const TCHAR *Message);
@@ -726,8 +707,8 @@ public:
 	/** Whether LocalPrint can be called from any thread without overlapping */
 	static bool IsLocalPrintThreadSafe() { return false;  }
 
-	/**
-	 * Whether the platform has a separate debug channel to stdout (eg. OutputDebugString on Windows). Used to suppress messages being output twice
+	/** 
+	 * Whether the platform has a separate debug channel to stdout (eg. OutputDebugString on Windows). Used to suppress messages being output twice 
 	 * if both go to the same place.
 	 */
 	static bool HasSeparateChannelForDebugOutput();
@@ -736,7 +717,7 @@ public:
 	 * Requests application exit.
 	 *
 	 * @param	Force	If true, perform immediate exit (dangerous because config code isn't flushed, etc).
-	 *				  If false, request clean main-loop exit from the platform specific code.
+	 *                  If false, request clean main-loop exit from the platform specific code.
 	 */
 	static void RequestExit( bool Force );
 
@@ -744,7 +725,7 @@ public:
 	 * Requests application exit with a specified return code. Name is different from RequestExit() so overloads of just one of functions are possible.
 	 *
 	 * @param	Force 	   If true, perform immediate exit (dangerous because config code isn't flushed, etc).
-	 *					 If false, request clean main-loop exit from the platform specific code.
+	 *                     If false, request clean main-loop exit from the platform specific code.
 	 * @param   ReturnCode This value will be returned from the program (on the platforms where it's possible). Limited to 0-255 to conform with POSIX.
 	 */
 	static void RequestExitWithStatus( bool Force, uint8 ReturnCode );
@@ -775,7 +756,7 @@ public:
 	/** Create a new globally unique identifier. **/
 	static void CreateGuid(struct FGuid& Result);
 
-	/**
+	/** 
 	 * Show a message box if possible, otherwise print a message and return the default
 	 * @param MsgType What sort of options are provided
 	 * @param Text Specific message
@@ -813,7 +794,7 @@ public:
 		return 1;
 	}
 
-	/**
+	/** 
 	 * Platform-specific normalization of path
 	 * E.g. on Linux/Unix platforms, replaces ~ with user home directory, so ~/.config becomes /home/joe/.config (or /Users/Joe/.config)
 	 */
@@ -834,10 +815,10 @@ public:
 	static bool UseRenderThread();
 
 	/**
-	 * Checks if platform wants to allow an audio thread on current device (note: does not imply it will, only if okay given other criteria met)
-	 *
-	 * @return true if allowed, false if shouldn't use a separate audio thread
-	 */
+	* Checks if platform wants to allow an audio thread on current device (note: does not imply it will, only if okay given other criteria met)
+	*
+	* @return true if allowed, false if shouldn't use a separate audio thread
+	*/
 	static bool AllowAudioThread()
 	{
 		// allow if not overridden
@@ -870,8 +851,8 @@ public:
 	static int32 NumberOfWorkerThreadsToSpawn();
 
 	/**
-	 * Return the number of worker threads we should spawn to service IO, NOT based on number of cores
-	 */
+	* Return the number of worker threads we should spawn to service IO, NOT based on number of cores
+	*/
 	static int32 NumberOfIOWorkerThreadsToSpawn();
 
 	/**
@@ -927,27 +908,24 @@ public:
 	}
 
 	/**
-	 *	Return the GamePersistentDownloadDir.
-	 *	On some platforms, returns the writable directory for downloaded data that persists across play sessions.
-	 *	This dir is always per-game.
-	 */
+	*	Return the GamePersistentDownloadDir.  
+	*	On some platforms, returns the writable directory for downloaded data that persists across play sessions.
+	*	This dir is always per-game.
+	*/
 	static const TCHAR* GamePersistentDownloadDir();
 
 	static const TCHAR* GetUBTPlatform();
 
 	static const TCHAR* GetUBTTarget();
 
-	static void SetUBTTargetName(const TCHAR* InTargetName);
-	static const TCHAR* GetUBTTargetName();
-
 	/** 
-	 * Determines the shader format for the platform
+	 * Determines the shader format for the plarform
 	 *
 	 * @return	Returns the shader format to be used by that platform
 	 */
 	static const TCHAR* GetNullRHIShaderFormat();
 
-	/**
+	/** 
 	 * Returns the platform specific chunk based install interface
 	 *
 	 * @return	Returns the platform specific chunk based install implementation
@@ -964,7 +942,7 @@ public:
 	/**
 	 * Has the OS execute a command and path pair (such as launch a browser)
 	 *
-	 * @param ComandType OS hint as to the type of command
+	 * @param ComandType OS hint as to the type of command 
 	 * @param Command the command to execute
 	 * @param CommandLine the commands to pass to the executable
 	 * @return whether the command was successful or not
@@ -987,16 +965,16 @@ public:
 	}
 
 	/**
-	 * Generates the SHA256 signature of the given data.
-	 *
-	 *
-	 * @param Data Pointer to the beginning of the data to hash
-	 * @param Bytesize Size of the data to has, in bytes.
-	 * @param OutSignature Output Structure to hold the computed signature.
-	 *
-	 * @return whether the hash was computed successfully
-	 */
-	static bool GetSHA256Signature(const void* Data, uint32 ByteSize, FSHA256Signature& OutSignature);
+	* Generates the SHA256 signature of the given data.
+	* 
+	*
+	* @param Data Pointer to the beginning of the data to hash
+	* @param Bytesize Size of the data to has, in bytes.
+	* @param OutSignature Output Structure to hold the computed signature. 
+	*
+	* @return whether the hash was computed successfully
+	*/
+	static bool GetSHA256Signature(const void* Data, uint32 ByteSize, FSHA256Signature& OutSignature);	
 
 	/**
 	 * Get the default language (for localization) used by this platform.
@@ -1039,12 +1017,6 @@ public:
 	/** @return Get the name of the platform specific file manager (eg, Explorer on Windows, Finder on OS X) */
 	static FText GetFileManagerName();
 
-	/** @return Whether filehandles can be opened on one thread and read/written on another thread */
-	static bool SupportsMultithreadedFileHandles()
-	{
-		return true;
-	}
-
 #if !UE_BUILD_SHIPPING
 	static void SetShouldPromptForRemoteDebugging(bool bInShouldPrompt)
 	{
@@ -1057,25 +1029,25 @@ public:
 	}
 #endif	//#if !UE_BUILD_SHIPPING
 
-	/**
+	/** 
 	 * Allows disabling ensure()s without rebuilding the binary, by either a commandline switch or a hotfix.
 	 *
 	 * @return ensure is allowed
 	 */
-#if DO_ENSURE
+#if DO_CHECK
 	static bool IsEnsureAllowed();
 #else
 	static bool IsEnsureAllowed() { return true; }
-#endif // DO_ENSURE
+#endif // DO_CHECK
 
 	/**
 	 * Updates hotfixable ensure settings from config and commandline (config takes priority).
 	 */
-#if DO_ENSURE
+#if DO_CHECK
 	static void UpdateHotfixableEnsureSettings();
 #else
 	static void UpdateHotfixableEnsureSettings() {}
-#endif // DO_ENSURE
+#endif // DO_CHECK
 
 	/**
 	 * Ticks values that can be hotfixable in the config.
@@ -1092,7 +1064,7 @@ public:
 
 	/** Platform-specific instruction prefetch */
 	FORCEINLINE static void Prefetch(void const* x, int32 offset = 0)
-	{
+	{	
 	}
 
 	/**
@@ -1101,7 +1073,7 @@ public:
 	 * @return the default profile name.
 	 */
 	static const TCHAR* GetDefaultDeviceProfileName();
-
+	
 	/**
 	 * Gets the current battery level.
 	 *
@@ -1112,12 +1084,12 @@ public:
 		return -1;
 	}
 
-	FORCEINLINE static void SetBrightness(float bBright) { }
+	FORCEINLINE static void SetBrightness(float bBright) { } 
 	FORCEINLINE static float GetBrightness() { return 1.0f; }
-	FORCEINLINE static void ResetBrightness() { } // resets brightness to brightness application started with
-	FORCEINLINE static bool SupportsBrightness() { return false; }
+    FORCEINLINE static void ResetBrightness() { } // resets brightness to brightness application started with
+    FORCEINLINE static bool SupportsBrightness() { return false; }
 
-	FORCEINLINE static bool IsInLowPowerMode() { return false;}
+    FORCEINLINE static bool IsInLowPowerMode() { return false;}
 
 	/**
 	 * Returns the current device temperature level.
@@ -1126,7 +1098,7 @@ public:
 	 */
 	static float GetDeviceTemperatureLevel();
 
-	/**
+	/** 
 	 * Allows a game/program/etc to control the game directory in a special place (for instance, monolithic programs that don't have .uprojects)
 	 */
 	static void SetOverrideProjectDir(const FString& InOverrideDir);
@@ -1176,15 +1148,15 @@ public:
 	static bool FullscreenSameAsWindowedFullscreen()
 	{
 		// On some platforms, Fullscreen and WindowedFullscreen behave the same.
-		//	 e.g. On Linux, see FLinuxWindow::ReshapeWindow()/SetWindowMode()
-		//		  Allowing Fullscreen window mode confuses higher level code (see UE-19996).
+		//     e.g. On Linux, see FLinuxWindow::ReshapeWindow()/SetWindowMode()
+		//          Allowing Fullscreen window mode confuses higher level code (see UE-19996).
 		return false;
 	}
 
 	/**
-	 * Returns whether this is a 'stereo only' platform. In general, stereo only platforms will not
-	 * support on-screen touch input nor require virtual joysticks (though you should use those query
-	 * functions to verify). The screen is always used for stereo output, and isn't a mode that is
+	 * Returns whether this is a 'stereo only' platform. In general, stereo only platforms will not 
+	 * support on-screen touch input nor require virtual joysticks (though you should use those query 
+	 * functions to verify). The screen is always used for stereo output, and isn't a mode that is 
 	 * enabled/disabled.
 	 */
 	static bool IsStandaloneStereoOnlyDevice()
@@ -1217,14 +1189,14 @@ public:
 		return false;
 	}
 
-	/**
-	 * Returns whether WiFi connection is currently active
-	 */
-	static ENetworkConnectionType GetNetworkConnectionType()
-	{
-		return ENetworkConnectionType::Unknown;
-	}
-
+    /**
+     * Returns whether WiFi connection is currently active
+     */
+    static ENetworkConnectionType GetNetworkConnectionType()
+    {
+        return ENetworkConnectionType::Unknown;
+    }
+    
 	/**
 	 * Returns whether the platform has variable hardware (configurable/upgradeable system).
 	 */
@@ -1246,7 +1218,7 @@ public:
 	 * Returns whether the platform is running on battery power or not.
 	 */
 	static bool IsRunningOnBattery();
-
+	
 	/**
 	 * Returns the orientation of the device: e.g. Portrait, LandscapeRight.
 	 * @see EScreenOrientation
@@ -1271,11 +1243,11 @@ public:
 
 	/**
 	 * Returns a unique string associated with the login account of the current machine.
-	 * Implemented using persistent storage like the registry on window (using HKCU), so
+	 * Implemented using persistent storage like the registry on window (using HKCU), so 
 	 * is susceptible to anything that could reset or revert that storage if the ID is created,
 	 * which is generally during install or first run of the app.
-	 *
-	 * Note: This is NOT a user or machine fingerprint, as multiple logins on the same machine will
+	 * 
+	 * Note: This is NOT a user or machine fingerprint, as multiple logins on the same machine will 
 	 * not share the same ID, and it is not based on the hardware of the user. It is completely random and
 	 * non-identifiable.
 	 *
@@ -1308,7 +1280,7 @@ public:
 	 */
 	static EConvertibleLaptopMode GetConvertibleLaptopMode();
 
-	/**
+	/** 
 	 * Get a string description of the mode the engine was running in.
 	 */
 	static const TCHAR* GetEngineMode();
@@ -1320,15 +1292,15 @@ public:
 	static TArray<FString> GetPreferredLanguages();
 
 	/**
-	 * Returns the currency code associated with the device's locale
-	 * @return the currency code associated with the device's locale
- 	*/
+	* Returns the currency code associated with the device's locale
+	* @return the currency code associated with the device's locale
+	*/
 	static FString GetLocalCurrencyCode();
 
 	/**
-	 * Returns the currency symbol associated with the device's locale
-	 * @return the currency symbol associated with the device's locale
-	 */
+	* Returns the currency symbol associated with the device's locale
+	* @return the currency symbol associated with the device's locale
+	*/
 	static FString GetLocalCurrencySymbol();
 
 	/**
@@ -1393,15 +1365,14 @@ public:
 
 	static bool RequestDeviceCheckToken(TFunction<void(const TArray<uint8>&)> QuerySucceededFunc, TFunction<void(const FString&, const FString&)> QueryFailedFunc);
 
-	static TArray<FCustomChunk> GetOnDemandChunksForPakchunkIndices(const TArray<int32>& PakchunkIndices);
 	static TArray<FCustomChunk> GetAllOnDemandChunks();
 	static TArray<FCustomChunk> GetAllLanguageChunks();
 	static TArray<FCustomChunk> GetCustomChunksByType(ECustomChunkType DesiredChunkType);
 
-	/**
+	/*
 	 * Loads a text file relative to the package root on platforms that distribute apps in package formats.
 	 * For other platforms, the path is relative to the root directory.
-	 */
+	*/
 	static FString LoadTextFileFromPlatformPackage(const FString& RelativePath);
 
 	static bool FileExistsInPlatformPackage(const FString& RelativePath);
@@ -1414,17 +1385,6 @@ public:
 	static void ParseChunkIdPakchunkIndexMapping(TArray<FString> ChunkIndexRedirects, TMap<int32, int32>& OutMapping);
 
 	static void PumpMessagesOutsideMainLoop()
-	{
-	}
-
-	static void PumpMessagesForSlowTask()
-	{
-	}
-	/**
-	 *  Pumps app messages only if there are essential keep-alive messages pending. This function called from time-sensitive 
-	 *  parts of the code and should take minimal time if there are no essential messages waiting
-	 */
-	static void PumpEssentialAppMessages()
 	{
 	}
 
@@ -1442,40 +1402,8 @@ public:
 	{
 	}
 
-	FORCEINLINE static int32 GetChunkIDFromPakchunkIndex(int32 PakchunkIndex)
-	{
-		return PakchunkIndex;
-	}
-
-	static int32 GetPakchunkIndexFromPakFile(const FString& InFilename);
-
-	FORCEINLINE static bool Expand16BitIndicesTo32BitOnLoad()
-	{
-		return false;
-	}
-
-	/**
-	 * Returns any platform-specific key-value data that needs to be sent to the network file server
-	 */
-	FORCEINLINE static void GetNetworkFileCustomData(TMap<FString,FString>& OutCustomPlatformData)
-	{
-	}
-
-	FORCEINLINE static bool SupportsBackbufferSampling()
-	{
-		return true;
-	}
-
-	/**
-	 * retrieves the maximum refresh rate supported by the platform
-	 */
-	static int32 GetMaxRefreshRate()
-	{
-		return 60;
-	}
-	
 #if !UE_BUILD_SHIPPING
-	/**
+	/** 
 	 * Returns any platform specific warning messages we want printed on screen
 	 */
 	static bool GetPlatformScreenWarnings(TArray<FText>& PlatformScreenWarnings)

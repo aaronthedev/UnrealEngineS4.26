@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BootstrapPackagedGame.h"
 
@@ -54,10 +54,6 @@ int InstallMissingPrerequisites(const WCHAR* BaseDirectory, const WCHAR* ExecDir
 	if(!TryLoadDll(ExecDirectory, L"MSVCP140.DLL") || !TryLoadDll(ExecDirectory, L"ucrtbase.dll"))
 	{
 		wcscat_s(MissingPrerequisites, TEXT("Microsoft Visual C++ 2015 Runtime\n"));
-	}
-	if (!TryLoadDll(ExecDirectory, L"vcruntime140_1.dll"))
-	{
-		wcscat_s(MissingPrerequisites, TEXT("Microsoft Visual C++ 2019 Runtime\n"));
 	}
 	if(!TryLoadDll(ExecDirectory, L"XINPUT1_3.DLL"))
 	{

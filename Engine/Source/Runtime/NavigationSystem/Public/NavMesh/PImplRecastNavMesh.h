@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 //
 // Private implementation for communication with Recast library
@@ -14,10 +14,6 @@
 #include "AI/Navigation/NavigationTypes.h"
 #include "NavMesh/RecastNavMesh.h"
 #include "NavMesh/RecastQueryFilter.h"
-
-#if RECAST_INTERNAL_DEBUG_DATA
-#include "NavMesh/RecastInternalDebugData.h"
-#endif
 
 #if WITH_RECAST
 #include "Detour/DetourNavMesh.h"
@@ -76,38 +72,26 @@ public:
 
 	// @TODONAV
 	/** Generates path from the given query. Synchronous. */
-	UE_DEPRECATED(4.25, "Use the version with the added CostLimit parameter (FLT_MAX can be used as default).")
 	ENavigationQueryResult::Type FindPath(const FVector& StartLoc, const FVector& EndLoc, FNavMeshPath& Path, const FNavigationQueryFilter& Filter, const UObject* Owner) const;
-	
-	/** Generates path from the given query. Synchronous. */
-	ENavigationQueryResult::Type FindPath(const FVector& StartLoc, const FVector& EndLoc, const float CostLimit, FNavMeshPath& Path, const FNavigationQueryFilter& Filter, const UObject* Owner) const;
 
 	/** Check if path exists */
 	ENavigationQueryResult::Type TestPath(const FVector& StartLoc, const FVector& EndLoc, const FNavigationQueryFilter& Filter, const UObject* Owner, int32* NumVisitedNodes = 0) const;
+
+	/** Check if path exists using cluster graph */
+	ENavigationQueryResult::Type TestClusterPath(const FVector& StartLoc, const FVector& EndLoc, int32* NumVisitedNodes = 0) const;
 
 	/** Checks if the whole segment is in navmesh */
 	void Raycast(const FVector& StartLoc, const FVector& EndLoc, const FNavigationQueryFilter& InQueryFilter, const UObject* Owner,
 		ARecastNavMesh::FRaycastResult& RaycastResult, NavNodeRef StartNode = INVALID_NAVNODEREF) const;
 
 	/** Generates path from given query and collect data for every step of A* algorithm */
-	int32 DebugPathfinding(const FVector& StartLoc, const FVector& EndLoc, const float CostLimit, const FNavigationQueryFilter& Filter, const UObject* Owner, TArray<FRecastDebugPathfindingData>& Steps);
+	int32 DebugPathfinding(const FVector& StartLoc, const FVector& EndLoc, const FNavigationQueryFilter& Filter, const UObject* Owner, TArray<FRecastDebugPathfindingData>& Steps);
 
 	/** Returns a random location on the navmesh. */
 	FNavLocation GetRandomPoint(const FNavigationQueryFilter& Filter, const UObject* Owner) const;
 
-#if WITH_NAVMESH_CLUSTER_LINKS
-	/** Check if path exists using cluster graph */
-	ENavigationQueryResult::Type TestClusterPath(const FVector& StartLoc, const FVector& EndLoc, int32* NumVisitedNodes = 0) const;
-
 	/** Returns a random location on the navmesh within cluster */
 	bool GetRandomPointInCluster(NavNodeRef ClusterRef, FNavLocation& OutLocation) const;
-#endif // WITH_NAVMESH_CLUSTER_LINKS
-
-	/**	Tries to move current nav location towards target constrained to navigable area. Faster than ProjectPointToNavmesh.
-	 *	@param OutLocation if successful this variable will be filed with result
-	 *	@return true if successful, false otherwise
-	 */
-	bool FindMoveAlongSurface(const FNavLocation& StartLocation, const FVector& TargetPosition, FNavLocation& OutLocation, const FNavigationQueryFilter& Filter, const UObject* Owner) const;
 
 	bool ProjectPointToNavMesh(const FVector& Point, FNavLocation& Result, const FVector& Extent, const FNavigationQueryFilter& Filter, const UObject* Owner) const;
 	
@@ -140,11 +124,8 @@ public:
 
 	/** Updates area on polygons creating point-to-point connection with given UserId */
 	void UpdateNavigationLinkArea(int32 UserId, uint8 AreaType, uint16 PolyFlags) const;
-
-#if WITH_NAVMESH_SEGMENT_LINKS
 	/** Updates area on polygons creating segment-to-segment connection with given UserId */
 	void UpdateSegmentLinkArea(int32 UserId, uint8 AreaType, uint16 PolyFlags) const;
-#endif // WITH_NAVMESH_SEGMENT_LINKS
 
 	/** Retrieves center of the specified polygon. Returns false on error. */
 	bool GetPolyCenter(NavNodeRef PolyID, FVector& OutCenter) const;
@@ -173,13 +154,11 @@ public:
 	/** Check if poly is a custom link */
 	bool IsCustomLink(NavNodeRef PolyRef) const;
 
-#if	WITH_NAVMESH_CLUSTER_LINKS
 	/** Retrieves bounds of cluster. Returns false on error. */
 	bool GetClusterBounds(NavNodeRef ClusterRef, FBox& OutBounds) const;
-	NavNodeRef GetClusterRefFromPolyRef(const NavNodeRef PolyRef) const;
-#endif // WITH_NAVMESH_CLUSTER_LINKS
 
 	uint32 GetTileIndexFromPolyRef(const NavNodeRef PolyRef) const { return DetourNavMesh != NULL ? DetourNavMesh->decodePolyIdTile(PolyRef) : uint32(INDEX_NONE); }
+	NavNodeRef GetClusterRefFromPolyRef(const NavNodeRef PolyRef) const;
 
 	static uint16 GetFilterForbiddenFlags(const FRecastQueryFilter* Filter);
 	static void SetFilterForbiddenFlags(FRecastQueryFilter* Filter, uint16 ForbiddenFlags);
@@ -228,10 +207,6 @@ public:
 
 	/** Compressed layers data, can be reused for tiles generation */
 	TMap<FIntPoint, TArray<FNavMeshTileData> > CompressedTileCacheLayers;
-
-#if RECAST_INTERNAL_DEBUG_DATA
-	TMap<FIntPoint, FRecastInternalDebugData> DebugDataMap;
-#endif
 
 	/** query used for searching data on game thread */
 	mutable dtNavMeshQuery SharedNavQuery;

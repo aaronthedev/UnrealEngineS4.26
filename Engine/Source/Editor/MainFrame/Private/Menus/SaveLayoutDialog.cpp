@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SaveLayoutDialog.h"
 #include "EditorStyleSet.h"
@@ -268,7 +268,6 @@ void SSaveLayoutDialog::Construct(const FArguments& InArgs, const TSharedRef<FSa
 			[
 				SNew(STextBlock)
 				.Text( this, &SSaveLayoutDialog::GetNameErrorLabelText )
-				.ToolTipText(this, &SSaveLayoutDialog::GetNameErrorLabelText)
 				.TextStyle( FEditorStyle::Get(), "AssetDialog.ErrorLabelFont" )
 			]
 		]
@@ -447,7 +446,8 @@ bool SSaveLayoutDialog::IsValidFilePathForCreation(const FString& FilePath, cons
 	if (FullPath.Len() >= FPlatformMisc::GetMaxPathLength())
 	{
 		// The full path for the asset is too long
-		OutErrorMessage = FText::Format(LOCTEXT("SaveLayoutFullPathTooLong", "The full path for the asset is too long ({0} characters), the maximum is {1}. Please choose a shorter name or create it in a shallower folder structure. Full path: {2}"),
+		OutErrorMessage = FText::Format(LOCTEXT("SaveLayoutFullPathTooLong",
+			"The full path for the asset is too long ({0} characters), the maximum is {1}. Please choose a shorter name or create it in a shallower folder structure. Full path: {2}"),
 			FText::AsNumber(FullPath.Len()), FText::AsNumber(FPlatformMisc::GetMaxPathLength() - 1), FText::FromString(FullPath));
 		// Return false to indicate that the user should enter a new name
 		return false;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/TextBlock.h"
 #include "UObject/ConstructorHelpers.h"
@@ -24,7 +24,6 @@ UTextBlock::UTextBlock(const FObjectInitializer& ObjectInitializer)
 	ColorAndOpacity = FLinearColor::White;
 	ShadowColorAndOpacity = FLinearColor::Transparent;
 	bAutoWrapText_DEPRECATED = false;
-	TextTransformPolicy = ETextTransformPolicy::None;
 
 	if (!IsRunningDedicatedServer())
 	{
@@ -136,18 +135,9 @@ void UTextBlock::SetAutoWrapText(bool InAutoWrapText)
 	}
 }
 
-void UTextBlock::SetTextTransformPolicy(ETextTransformPolicy InTransformPolicy)
-{
-	TextTransformPolicy = InTransformPolicy;
-	if(MyTextBlock.IsValid())
-	{
-		MyTextBlock->SetTransformPolicy(TextTransformPolicy);
-	}
-}
-
 UMaterialInstanceDynamic* UTextBlock::GetDynamicFontMaterial()
 {
-	if (Font.FontMaterial)
+	if (ensure(Font.FontMaterial))
 	{
 		UMaterialInterface* Material = CastChecked<UMaterialInterface>(Font.FontMaterial);
 
@@ -169,7 +159,7 @@ UMaterialInstanceDynamic* UTextBlock::GetDynamicFontMaterial()
 
 UMaterialInstanceDynamic* UTextBlock::GetDynamicOutlineMaterial()
 {
-	if (Font.OutlineSettings.OutlineMaterial)
+	if (ensure(Font.OutlineSettings.OutlineMaterial))
 	{
 		UMaterialInterface* Material = CastChecked<UMaterialInterface>(Font.OutlineSettings.OutlineMaterial);
 
@@ -287,7 +277,6 @@ void UTextBlock::SynchronizeProperties()
 		MyTextBlock->SetShadowOffset( ShadowOffset );
 		MyTextBlock->SetShadowColorAndOpacity( ShadowColorAndOpacityBinding );
 		MyTextBlock->SetMinDesiredWidth( MinDesiredWidth );
-		MyTextBlock->SetTransformPolicy( TextTransformPolicy );
 		Super::SynchronizeTextLayoutProperties( *MyTextBlock );
 	}
 }
@@ -350,7 +339,7 @@ void UTextBlock::OnCreationFromPalette()
 	Text = LOCTEXT("TextBlockDefaultValue", "Text Block");
 }
 
-bool UTextBlock::CanEditChange(const FProperty* InProperty) const
+bool UTextBlock::CanEditChange(const UProperty* InProperty) const
 {
 	if (bSimpleTextMode && InProperty)
 	{
@@ -372,7 +361,7 @@ bool UTextBlock::CanEditChange(const FProperty* InProperty) const
 	return Super::CanEditChange(InProperty);
 }
 
-#endif //if WITH_EDITOR
+#endif
 
 /////////////////////////////////////////////////////
 

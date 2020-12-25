@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -75,7 +75,6 @@ enum class ETimerGroupingMode
 
 	ByTotalExclusiveTime,
 
-	/** Creates one group for each logarithmic range ie. 0, [1 .. 10), [10 .. 100), [100 .. 1K), etc. */
 	ByInstanceCount,
 
 	/** Invalid enum type, may be used as a number of enumerations. */
@@ -84,5 +83,17 @@ enum class ETimerGroupingMode
 
 /** Type definition for shared pointers to instances of ETimerGroupingMode. */
 typedef TSharedPtr<ETimerGroupingMode> ETimerGroupingModePtr;
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
+/** Creates a group for each timer type. */
+class FTimerNodeGroupingByTimerType : public Insights::FTreeNodeGrouping
+{
+public:
+	FTimerNodeGroupingByTimerType();
+	virtual ~FTimerNodeGroupingByTimerType() {}
+
+	virtual Insights::FTreeNodeGroupInfo GetGroupForNode(const Insights::FBaseTreeNodePtr InNode) const override;
+};
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

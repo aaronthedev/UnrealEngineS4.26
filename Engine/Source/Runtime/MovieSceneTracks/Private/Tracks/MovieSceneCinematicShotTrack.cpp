@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Tracks/MovieSceneCinematicShotTrack.h"
 #include "MovieSceneSequence.h"
@@ -86,30 +86,55 @@ bool UMovieSceneCinematicShotTrack::SupportsMultipleRows() const
 	return true;
 }
 
-namespace UE
+FMovieSceneTrackSegmentBlenderPtr UMovieSceneCinematicShotTrack::GetTrackSegmentBlender() const
 {
-namespace MovieScene
-{
-	enum class ECinematicShotSectionSortFlags
+	// Apply a high pass filter to overlapping sections such that only the highest row in a track wins
+	struct FCinematicShotTrackRowBlender : FMovieSceneTrackSegmentBlender
 	{
-		None = 0,
-		PreRoll = 1 << 0,
-		PostRoll = 1 << 1
-	};
-	ENUM_CLASS_FLAGS(ECinematicShotSectionSortFlags);
-
-	struct FCinematicShotSectionSortData
-	{
-		int32 Row;
-		int32 OverlapPriority;
-		int32 SectionIndex;
-		TRangeBound<FFrameNumber> LowerBound;
-		ECinematicShotSectionSortFlags Flags = ECinematicShotSectionSortFlags::None;
-
-		friend bool operator<(const FCinematicShotSectionSortData& A, const FCinematicShotSectionSortData& B)
+		virtual void Blend(FSegmentBlendData& BlendData) const override
 		{
-			const bool PrePostRollA = EnumHasAnyFlags(A.Flags, ECinematicShotSectionSortFlags::PreRoll | ECinematicShotSectionSortFlags::PostRoll);
-			const bool PrePostRollB = EnumHasAnyFlags(B.Flags, ECinematicShotSectionSortFlags::PreRoll | ECinematicShotSectionSortFlags::PostRoll);
+			MovieSceneSegmentCompiler::ChooseLowestRowIndex(BlendData);
+		}
+	};
+	return FCinematicShotTrackRowBlender();
+}
+
+FMovieSceneTrackRowSegmentBlenderPtr UMovieSceneCinematicShotTrack::GetRowSegmentBlender() const
+{
+	class FCinematicRowRules : public FMovieSceneTrackRowSegmentBlender
+	{
+		virtual void Blend(FSegmentBlendData& BlendData) const override
+		{
+			// Sort everything by priority, then latest start time wins
+			if (BlendData.Num() <= 1)
+			{
+				return;
+			}
+
+			BlendData.Sort(SortPredicate);
+
+			int32 RemoveAtIndex = 0;
+			// Skip over any pre/postroll sections
+			while (BlendData.IsValidIndex(RemoveAtIndex) && EnumHasAnyFlags(BlendData[RemoveAtIndex].Flags, ESectionEvaluationFlags::PreRoll | ESectionEvaluationFlags::PostRoll))
+			{
+				++RemoveAtIndex;
+			}
+
+			// Skip over the first genuine evaluation if it exists
+			++RemoveAtIndex;
+
+			int32 NumToRemove = BlendData.Num() - RemoveAtIndex;
+			if (NumToRemove > 0)
+			{
+				BlendData.RemoveAt(RemoveAtIndex, NumToRemove, true);
+			}
+		}
+
+		static bool SortPredicate(const FMovieSceneSectionData& A, const FMovieSceneSectionData& B)
+		{
+			// Always sort pre/postroll to the front of the array
+			const bool PrePostRollA = EnumHasAnyFlags(A.Flags, ESectionEvaluationFlags::PreRoll | ESectionEvaluationFlags::PostRoll);
+			const bool PrePostRollB = EnumHasAnyFlags(B.Flags, ESectionEvaluationFlags::PreRoll | ESectionEvaluationFlags::PostRoll);
 
 			if (PrePostRollA != PrePostRollB)
 			{
@@ -119,64 +144,20 @@ namespace MovieScene
 			{
 				return false;
 			}
-			else if (A.OverlapPriority == B.OverlapPriority)
+			else if (A.Section->GetOverlapPriority() == B.Section->GetOverlapPriority())
 			{
-				return TRangeBound<FFrameNumber>::MaxLower(A.LowerBound, B.LowerBound) == A.LowerBound;
+				TRangeBound<FFrameNumber> StartBoundA = A.Section->GetRange().GetLowerBound();
+				return TRangeBound<FFrameNumber>::MaxLower(StartBoundA, B.Section->GetRange().GetLowerBound()) == StartBoundA;
 			}
-			return A.OverlapPriority > B.OverlapPriority;
+			return A.Section->GetOverlapPriority() > B.Section->GetOverlapPriority();
 		}
 	};
-}
-}
 
-bool UMovieSceneCinematicShotTrack::PopulateEvaluationTree(TMovieSceneEvaluationTree<FMovieSceneTrackEvaluationData>& OutData) const
-{
-	using namespace UE::MovieScene;
-
-	TArray<FCinematicShotSectionSortData, TInlineAllocator<16>> SortedSections;
-
-	for (int32 SectionIndex = 0; SectionIndex < Sections.Num(); ++SectionIndex)
-	{
-		UMovieSceneSection* Section = Sections[SectionIndex];
-
-		if (Section && Section->IsActive())
-		{
-			const TRange<FFrameNumber> SectionRange = Section->GetRange();
-			if (!SectionRange.IsEmpty())
-			{
-				FCinematicShotSectionSortData SectionData{ 
-					Section->GetRowIndex(), Section->GetOverlapPriority(), SectionIndex, Section->GetRange().GetLowerBound() };
-				if (!SectionRange.GetLowerBound().IsOpen() && Section->GetPreRollFrames() > 0)
-				{
-					SectionData.Flags |= ECinematicShotSectionSortFlags::PreRoll;
-				}
-				if (!SectionRange.GetUpperBound().IsOpen() && Section->GetPostRollFrames() > 0)
-				{
-					SectionData.Flags |= ECinematicShotSectionSortFlags::PostRoll;
-				}
-				SortedSections.Add(SectionData);
-			}
-		}
-	}
-
-	SortedSections.Sort();
-
-	for (const FCinematicShotSectionSortData& SectionData : SortedSections)
-	{
-		UMovieSceneSection* Section = Sections[SectionData.SectionIndex];
-		OutData.AddIfEmpty(Section->GetRange(), FMovieSceneTrackEvaluationData::FromSection(Section));
-	}
-
-	return true;
-}
-
-int8 UMovieSceneCinematicShotTrack::GetEvaluationFieldVersion() const
-{
-	return 1;
+	return FCinematicRowRules();
 }
 
 #if WITH_EDITOR
-void UMovieSceneCinematicShotTrack::OnSectionMoved(UMovieSceneSection& Section, const FMovieSceneSectionMovedParams& Params)
+void UMovieSceneCinematicShotTrack::OnSectionMoved(UMovieSceneSection& Section)
 {
 	//MovieSceneHelpers::FixupConsecutiveSections(Sections, Section, false);
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WmfMediaFactoryPrivate.h"
 
@@ -9,7 +9,6 @@
 #include "IMediaPlayerFactory.h"
 #include "Internationalization/Internationalization.h"
 #include "Misc/Paths.h"
-#include "Misc/Guid.h"
 #include "Modules/ModuleInterface.h"
 #include "Modules/ModuleManager.h"
 #include "UObject/NameTypes.h"
@@ -119,12 +118,6 @@ public:
 	{
 		static FName PlayerName(TEXT("WmfMedia"));
 		return PlayerName;
-	}
-
-	virtual FGuid GetPlayerPluginGUID() const override
-	{
-		static FGuid PlayerPluginGUID(0x82f2a4c0, 0x225448c6, 0x853ff0a3, 0x0a2b08b7);
-		return PlayerPluginGUID;
 	}
 
 	virtual const TArray<FString>& GetSupportedPlatforms() const override

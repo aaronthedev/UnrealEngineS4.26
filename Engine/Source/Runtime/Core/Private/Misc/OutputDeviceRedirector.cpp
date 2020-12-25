@@ -1,12 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Misc/OutputDeviceRedirector.h"
-
-#include "Containers/BitArray.h"
-#include "HAL/PlatformProcess.h"
-#include "Misc/CoreStats.h"
 #include "Misc/ScopeLock.h"
 #include "Stats/Stats.h"
+#include "Misc/CoreStats.h"
+#include "HAL/PlatformProcess.h"
 
 /*-----------------------------------------------------------------------------
 	FOutputDeviceRedirector.
@@ -17,54 +15,24 @@ class FLogAllocator
 public:
 	bool HasSpace(int32 NumChars) const
 	{
-		return Data[BufferIndex].Num() + NumChars <= BufferSize;
+		return Data.Num() + NumChars <= MaxChars;
 	}
 
 	TCHAR* Alloc(int32 NumChars)
 	{
 		check(HasSpace(NumChars));
-		int32 DataIndex = Data[BufferIndex].AddUninitialized(NumChars);
-		return Data[BufferIndex].GetData() + DataIndex;
+		Data.AddUninitialized(NumChars);
+		return Data.GetData() + Data.Num() - NumChars;
 	}
 
-	/**
-	 * Swap which buffer is being used for new allocations.
-	 *
-	 * Buffer remains valid until BufferCount calls are made to this function.
-	 */
-	void SwapBuffers()
+	void Reset()
 	{
-		BufferIndex = (BufferIndex + 1) % BufferCount;
-		// A failed check within InternalFlushThreadedLogs can cause a stack overflow. This can
-		// currently fail because InternalFlushThreadedLogs can be called from multiple threads
-		// simultaneously if errors cause SetCurrentThreadAsMasterThread to be called from more
-		// than one thread at once, or while the game thread is in InternalFlushThreadedLogs.
-		//check(!DataLocked[BufferIndex]);
-		Data[BufferIndex].Empty();
-	}
-
-	struct FBufferLock { int32 Index = -1; };
-
-	FBufferLock LockBuffer()
-	{
-		DataLocked[BufferIndex] = true;
-		return {BufferIndex};
-	}
-
-	void UnlockBuffer(FBufferLock Lock)
-	{
-		DataLocked[Lock.Index] = false;
+		Data.Empty();
 	}
 
 private:
-	static constexpr int32 BufferSize = 4096;
-	// BufferCount can be 2 once the check in SwapBuffers can be safely re-enabled. Using more
-	// buffers in the interim minimizes the likelihood of writes to a buffer while it is still
-	// being flushed by another thread.
-	static constexpr int32 BufferCount = 4;
-	TArray<TCHAR, TInlineAllocator<BufferSize>> Data[BufferCount];
-	TBitArray<TInlineAllocator<1>> DataLocked{false, BufferCount};
-	int32 BufferIndex = 0;
+	enum { MaxChars = 4096 };
+	TArray<TCHAR, TInlineAllocator<MaxChars>> Data;
 };
 
 FBufferedLine::FBufferedLine(const TCHAR* InData, const FName& InCategory, ELogVerbosity::Type InVerbosity, double InTime, FLogAllocator* ExternalAllocator)
@@ -198,17 +166,12 @@ void FOutputDeviceRedirector::InternalFlushThreadedLogs(TLocalOutputDevicesArray
 	if (BufferedLines.Num())
 	{
 		TArray<FBufferedLine, TInlineAllocator<64>> LocalBufferedLines;
-		FLogAllocator::FBufferLock BufferLock;
 		{
 			FScopeLock ScopeLock(&BufferSynchronizationObject);
 			LocalBufferedLines.AddUninitialized(BufferedLines.Num());
 			for (int32 LineIndex = 0; LineIndex < BufferedLines.Num(); LineIndex++)
 			{
 				new(&LocalBufferedLines[LineIndex]) FBufferedLine(BufferedLines[LineIndex], FBufferedLine::EMoveCtor);
-			}
-			if (BufferedLinesAllocator)
-			{
-				BufferLock = BufferedLinesAllocator->LockBuffer();
 			}
 			EmptyBufferedLines();
 		}
@@ -228,12 +191,6 @@ void FOutputDeviceRedirector::InternalFlushThreadedLogs(TLocalOutputDevicesArray
 				}
 			}
 		}
-
-		if (BufferedLinesAllocator)
-		{
-			FScopeLock ScopeLock(&BufferSynchronizationObject);
-			BufferedLinesAllocator->UnlockBuffer(BufferLock);
-		}
 	}
 }
 
@@ -243,7 +200,7 @@ void FOutputDeviceRedirector::EmptyBufferedLines()
 
 	if (BufferedLinesAllocator)
 	{
-		BufferedLinesAllocator->SwapBuffers();
+		BufferedLinesAllocator->Reset();
 	}
 }
 
@@ -355,7 +312,7 @@ void FOutputDeviceRedirector::SerializeImpl(const TCHAR* Data, ELogVerbosity::Ty
 
 #if PLATFORM_DESKTOP
 	// this is for errors which occur after shutdown we might be able to salvage information from stdout 
-	if ((LocalBufferedDevices.Num() == 0) && IsEngineExitRequested())
+	if ((BufferedOutputDevices.Num() == 0) && IsEngineExitRequested())
 	{
 #if PLATFORM_WINDOWS
 		_tprintf(_T("%s\n"), Data);

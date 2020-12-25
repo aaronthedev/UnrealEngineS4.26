@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CompositingElements/CompositingElementPasses.h"
 #include "ComposureInternals.h"
@@ -169,7 +169,6 @@ UTexture* UCompositingElementInput::GenerateInput(const FInheritedTargetPool& In
 
 UTexture* UCompositingElementInput::GenerateInput_Implementation()
 {
-	// @TODO - Add implementations for all the compositingElementInput types. Currently only the editor default type has the implementation.
 	ensureMsgf(false, TEXT("PURE VIRTUAL - Did you forget to override GenerateInput() for this CompositingElementInput?"));
 	UE_LOG(Composure, Error, TEXT("GenerateInput() not overriden for %s."), *GetClass()->GetName());
 	return nullptr;

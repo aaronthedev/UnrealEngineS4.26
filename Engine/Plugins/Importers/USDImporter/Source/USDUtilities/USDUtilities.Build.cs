@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.IO;
@@ -11,40 +11,39 @@ namespace UnrealBuildTool.Rules
 		{
 			bUseRTTI = true;
 
-			PublicDependencyModuleNames.AddRange(
-				new string[]
-				{
-					"Core",
-					"CoreUObject",
-					"UnrealUSDWrapper",
-				});
-
 			PrivateDependencyModuleNames.AddRange(
 				new string[]
 				{
 					"CinematicCamera",
+					"Core",
+					"CoreUObject",
 					"DesktopPlatform",
-					"EditorStyle",
 					"Engine",
-					"GeometryCache", // Just so that we can fetch its AssetImportData
-					"IntelTBB",
-					"MaterialBaking", // So that we can use the BakeMaterials function
+					"UnrealEd",
+					"InputCore",
+					"SlateCore",
+					"PropertyEditor",
+					"Slate",
+					"EditorStyle",
+					"RawMesh",
+					"GeometryCache",
 					"MaterialEditor",
 					"MeshDescription",
 					"MeshUtilities",
-					"MessageLog",
-					"MovieScene",
-					"MovieSceneTracks",
-					"PropertyEditor",
+					"MikkTSpace",
+					"PythonScriptPlugin",
 					"RenderCore",
-					"RHI", // So that we can use GMaxRHIFeatureLevel when force-loading textures before baking materials
-					"Slate",
-					"SlateCore",
+					"RHI",
 					"StaticMeshDescription",
-					"UnrealEd",
-					"USDClasses",
+					"MessageLog",
+					"JsonUtilities",
 				}
 				);
+
+			if (Target.Platform == UnrealTargetPlatform.Win64)
+			{
+				PrivateDependencyModuleNames.Add("UnrealUSDWrapper");
+			}
 		}
 	}
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	OpenGLRenderTarget.cpp: OpenGL render target implementation.
@@ -135,7 +135,7 @@ GLuint FOpenGLDynamicRHI::GetOpenGLFramebuffer(uint32 NumSimultaneousRenderTarge
 	// Allocate mobile multi-view frame buffer if enabled and supported.
 	// Multi-view doesn't support read buffers, explicitly disable and only bind GL_DRAW_FRAMEBUFFER
 	// TODO: We can't reliably use packed depth stencil?
-	const bool bRenderTargetsDefined = (RenderTargets != nullptr) && RenderTargets[0];
+	const bool bRenderTargetsDefined = RenderTargets[0];
 	const bool bValidMultiViewDepthTarget = !DepthStencilTarget || DepthStencilTarget->Target == GL_TEXTURE_2D_ARRAY;
 	const bool bUsingArrayTextures = (bRenderTargetsDefined) ? (RenderTargets[0]->Target == GL_TEXTURE_2D_ARRAY && bValidMultiViewDepthTarget) : false;
 	const bool bMultiViewCVar = CVarMobileMultiView && CVarMobileMultiView->GetValueOnAnyThread() != 0;
@@ -289,7 +289,15 @@ GLuint FOpenGLDynamicRHI::GetOpenGLFramebuffer(uint32 NumSimultaneousRenderTarge
 #endif
 		case GL_TEXTURE_2D_MULTISAMPLE:
 		{
-			FOpenGL::FramebufferTexture2D(GL_FRAMEBUFFER, DepthStencilTarget->Attachment, DepthStencilTarget->Target, DepthStencilTarget->Resource, 0);
+			if (!FOpenGL::SupportsCombinedDepthStencilAttachment() && DepthStencilTarget->Attachment == GL_DEPTH_STENCIL_ATTACHMENT)
+			{
+				FOpenGL::FramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, DepthStencilTarget->Target, DepthStencilTarget->Resource, 0);
+				FOpenGL::FramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, DepthStencilTarget->Target, DepthStencilTarget->Resource, 0);
+			}
+			else
+			{
+				FOpenGL::FramebufferTexture2D(GL_FRAMEBUFFER, DepthStencilTarget->Attachment, DepthStencilTarget->Target, DepthStencilTarget->Resource, 0);
+			}
 			break;
 		}
 		case GL_RENDERBUFFER:
@@ -299,7 +307,10 @@ GLuint FOpenGLDynamicRHI::GetOpenGLFramebuffer(uint32 NumSimultaneousRenderTarge
 			if (NumSamplesTileMem > 1)
 			{	
 				glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, DepthStencilTarget->Resource);
-				glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, DepthStencilTarget->Resource);
+				if (FOpenGL::SupportsPackedDepthStencil())
+				{
+					glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, DepthStencilTarget->Resource);
+				}
 				VERIFY_GL(glFramebufferRenderbuffer);
 			}
 			break;
@@ -311,7 +322,15 @@ GLuint FOpenGLDynamicRHI::GetOpenGLFramebuffer(uint32 NumSimultaneousRenderTarge
 			FOpenGL::FramebufferTexture(GL_FRAMEBUFFER, DepthStencilTarget->Attachment, DepthStencilTarget->Resource, 0);
 			break;
 		default:
-			FOpenGL::FramebufferRenderbuffer(GL_FRAMEBUFFER, DepthStencilTarget->Attachment, GL_RENDERBUFFER, DepthStencilTarget->Resource);
+			if (!FOpenGL::SupportsCombinedDepthStencilAttachment() && DepthStencilTarget->Attachment == GL_DEPTH_STENCIL_ATTACHMENT)
+			{
+				FOpenGL::FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, DepthStencilTarget->Resource);
+				FOpenGL::FramebufferRenderbuffer(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, GL_RENDERBUFFER, DepthStencilTarget->Resource);
+			}
+			else
+			{
+				FOpenGL::FramebufferRenderbuffer(GL_FRAMEBUFFER, DepthStencilTarget->Attachment, GL_RENDERBUFFER, DepthStencilTarget->Resource);
+			}
 			break;
 		}
 	}
@@ -428,7 +447,7 @@ void FOpenGLDynamicRHI::RHICopyToResolveTarget(FRHITexture* SourceTextureRHI, FR
 	FOpenGLTextureBase* SourceTexture = GetOpenGLTextureFromRHITexture(SourceTextureRHI);
 	FOpenGLTextureBase* DestTexture = GetOpenGLTextureFromRHITexture(DestTextureRHI);
 
-	if (SourceTexture != DestTexture)
+	if (SourceTexture != DestTexture && FOpenGL::SupportsBlitFramebuffer())
 	{
 		VERIFY_GL_SCOPE();
 
@@ -549,7 +568,7 @@ void FOpenGLDynamicRHI::RHICopyToResolveTarget(FRHITexture* SourceTextureRHI, FR
 		// For CPU readback resolve targets we should issue the resolve to the internal PBO immediately.
 		// This makes any subsequent locking of that texture much cheaper as it won't have to stall on a pixel pack op.
 		bool bLockableTarget = DestTextureRHI->GetTexture2D() && (DestTextureRHI->GetFlags() & TexCreate_CPUReadback) && !(DestTextureRHI->GetFlags() & (TexCreate_RenderTargetable|TexCreate_DepthStencilTargetable)) && !DestTextureRHI->IsMultisampled();
-		if(bLockableTarget && !ResolveParams.Rect.IsValid())
+		if(bLockableTarget && FOpenGL::SupportsPixelBuffers() && !ResolveParams.Rect.IsValid())
 		{
 			FOpenGLTexture2D* DestTex = (FOpenGLTexture2D*)DestTexture;
 			DestTex->Resolve(MipmapLevel, DestIndex);
@@ -636,8 +655,8 @@ void FOpenGLDynamicRHI::ReadSurfaceDataRaw(FOpenGLContextState& ContextState, FR
 
 	check( !bDepthFormat || FOpenGL::SupportsDepthStencilReadSurface() );
 	check( !bFloatFormat || FOpenGL::SupportsFloatReadSurface() );
-	const GLenum Attachment = bDepthFormat ? (bDepthStencilFormat ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT) : GL_COLOR_ATTACHMENT0;
-	const bool bIsColorBuffer = (Texture->Attachment == GL_COLOR_ATTACHMENT0) || (Texture->Attachment == 0);
+	const GLenum Attachment = bDepthFormat ? (FOpenGL::SupportsPackedDepthStencil() && bDepthStencilFormat ? GL_DEPTH_STENCIL_ATTACHMENT : GL_DEPTH_ATTACHMENT) : GL_COLOR_ATTACHMENT0;
+	const bool bIsColorBuffer = Texture->Attachment == GL_COLOR_ATTACHMENT0;
 
 	const uint32 MipmapLevel = InFlags.GetMip();
 	GLuint SourceFramebuffer = bIsColorBuffer ? GetOpenGLFramebuffer(1, &Texture, NULL, &MipmapLevel, NULL) : GetOpenGLFramebuffer(0, NULL, NULL, NULL, Texture);
@@ -800,45 +819,36 @@ void FOpenGLDynamicRHI::ReadSurfaceDataRaw(FOpenGLContextState& ContextState, FR
 #if PLATFORM_ANDROID && !PLATFORM_LUMINGL4
 	else
 	{
-		// Flip texture data only for render targets, textures loaded from disk have Attachment set to 0 and don't need flipping.
-		const bool bFlipTextureData = Texture->Attachment != 0;
-		GLubyte* RGBAData = TargetBuffer;
-		if (bFlipTextureData)
-		{
-			// OpenGL ES is limited in what it can do with ReadPixels
-			const int32 PixelComponentCount = 4 * SizeX * SizeY;
-			const int32 RGBADataSize = sizeof(GLubyte) * PixelComponentCount;
-			RGBAData = (GLubyte*)FMemory::Malloc(RGBADataSize);
-		}
+		// OpenGL ES is limited in what it can do with ReadPixels
+		int32 PixelComponentCount = 4 * SizeX * SizeY;
+		int32 RGBADataSize = sizeof(GLubyte)* PixelComponentCount;
+		GLubyte* RGBAData = (GLubyte*)FMemory::Malloc(RGBADataSize);
 
 		glReadPixels(Rect.Min.X, Rect.Min.Y, SizeX, SizeY, GL_RGBA, GL_UNSIGNED_BYTE, RGBAData);
 
-		if (bFlipTextureData)
+		//OpenGL ES reads the pixels "upside down" from what we're expecting (flipped vertically), so we need to transfer the data from the bottom up.
+		uint8* TargetPtr = TargetBuffer;
+		int32 Stride = SizeX * 4;
+		int32 FlipHeight = SizeY;
+		GLubyte* LinePtr = RGBAData + (SizeY - 1) * Stride;
+
+		while (FlipHeight--)
 		{
-			//OpenGL ES reads the pixels "upside down" from what we're expecting (flipped vertically), so we need to transfer the data from the bottom up.
-			uint8* TargetPtr = TargetBuffer;
-			int32 Stride = SizeX * 4;
-			int32 FlipHeight = SizeY;
-			GLubyte* LinePtr = RGBAData + (SizeY - 1) * Stride;
-
-			while (FlipHeight--)
+			GLubyte* DataPtr = LinePtr;
+			int32 Pixels = SizeX;
+			while (Pixels--)
 			{
-				GLubyte* DataPtr = LinePtr;
-				int32 Pixels = SizeX;
-				while (Pixels--)
-				{
-					TargetPtr[0] = DataPtr[2];
-					TargetPtr[1] = DataPtr[1];
-					TargetPtr[2] = DataPtr[0];
-					TargetPtr[3] = DataPtr[3];
-					DataPtr += 4;
-					TargetPtr += 4;
-				}
-				LinePtr -= Stride;
+				TargetPtr[0] = DataPtr[2];
+				TargetPtr[1] = DataPtr[1];
+				TargetPtr[2] = DataPtr[0];
+				TargetPtr[3] = DataPtr[3];
+				DataPtr += 4;
+				TargetPtr += 4;
 			}
-
-			FMemory::Free(RGBAData);
+			LinePtr -= Stride;
 		}
+
+		FMemory::Free(RGBAData);
 	}
 #else
 	else
@@ -895,17 +905,14 @@ void FOpenGLDynamicRHI::RHIReadSurfaceData(FRHITexture* TextureRHI,FIntRect Rect
 
 void FOpenGLDynamicRHI::RHIReadSurfaceData(FRHITexture* TextureRHI, FIntRect Rect, TArray<FLinearColor>& OutData, FReadSurfaceDataFlags InFlags)
 {
+	VERIFY_GL_SCOPE();
+
 	// Verify requirements, but don't crash
 	// Ignore texture format here, GL will convert it for us in glReadPixels
 	if (!ensure(FOpenGL::SupportsFloatReadSurface()) || !ensure(TextureRHI))
 	{
 		return;
 	}
-	
-	FRHICommandListImmediate& RHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
-	
-	RHITHREAD_GLCOMMAND_PROLOGUE();
-	VERIFY_GL_SCOPE();
 
 	FOpenGLTextureBase* Texture = GetOpenGLTextureFromRHITexture(TextureRHI);
 	if (!ensure(Texture))
@@ -936,8 +943,6 @@ void FOpenGLDynamicRHI::RHIReadSurfaceData(FRHITexture* TextureRHI, FIntRect Rec
 	glPixelStorei(GL_PACK_ALIGNMENT, 4);
 
 	GetContextStateForCurrentContext().Framebuffer = (GLuint)-1;
-	
-	RHITHREAD_GLCOMMAND_EPILOGUE();
 }
 
 void FOpenGLDynamicRHI::RHIMapStagingSurface(FRHITexture* TextureRHI, FRHIGPUFence* FenceRHI, void*& OutData, int32& OutWidth, int32& OutHeight, uint32 GPUIndex)
@@ -1129,15 +1134,28 @@ void FOpenGLDynamicRHI::BindPendingFramebuffer( FOpenGLContextState& ContextStat
 
 			if ( FOpenGL::SupportsMultipleRenderTargets() )
 			{
-				FOpenGL::ReadBuffer( PendingState.FirstNonzeroRenderTarget >= 0 ? GL_COLOR_ATTACHMENT0 + PendingState.FirstNonzeroRenderTarget : GL_NONE);
+				//if (ContextState.FirstNonzeroRenderTarget != PendingState.FirstNonzeroRenderTarget)
+				//{
+					FOpenGL::ReadBuffer( PendingState.FirstNonzeroRenderTarget >= 0 ? GL_COLOR_ATTACHMENT0 + PendingState.FirstNonzeroRenderTarget : GL_NONE);
+					//ContextState.FirstNonzeroRenderTarget = PendingState.FirstNonzeroRenderTarget;
+				//}
 				GLenum DrawFramebuffers[MaxSimultaneousRenderTargets];
 				const GLint MaxDrawBuffers = GMaxOpenGLDrawBuffers;
 
+				bool bNeedToDrawBuffers = false;
 				for (int32 RenderTargetIndex = 0; RenderTargetIndex < MaxDrawBuffers; ++RenderTargetIndex)
 				{
 					DrawFramebuffers[RenderTargetIndex] = PendingState.RenderTargets[RenderTargetIndex] ? GL_COLOR_ATTACHMENT0 + RenderTargetIndex : GL_NONE;
+					if (ContextState.DrawFramebuffers[RenderTargetIndex] != DrawFramebuffers[RenderTargetIndex])
+					{
+						bNeedToDrawBuffers = true;
+						ContextState.DrawFramebuffers[RenderTargetIndex] = DrawFramebuffers[RenderTargetIndex];
+					}
 				}
-				FOpenGL::DrawBuffers(MaxDrawBuffers, DrawFramebuffers);
+				if (bNeedToDrawBuffers)
+				{
+					FOpenGL::DrawBuffers(MaxDrawBuffers, DrawFramebuffers);
+				}
 			}
 		}
 		else
@@ -1154,24 +1172,12 @@ void FOpenGLDynamicRHI::BindPendingFramebuffer( FOpenGLContextState& ContextStat
 
 void FOpenGLDynamicRHI::RHIBeginRenderPass(const FRHIRenderPassInfo& InInfo, const TCHAR* InName)
 {
-	FRHISetRenderTargetsInfo RTInfo;
-	InInfo.ConvertToRenderTargetsInfo(RTInfo);
-	SetRenderTargetsAndClear(RTInfo);
-
-	RenderPassInfo = InInfo;
-
+	IRHICommandContext::RHIBeginRenderPass(InInfo, InName);
 	if (InInfo.bOcclusionQueries)
 	{
 		extern void BeginOcclusionQueryBatch(uint32);
 		BeginOcclusionQueryBatch(InInfo.NumOcclusionQueries);
 	}
-
-#if PLATFORM_ANDROID && !PLATFORM_LUMIN && !PLATFORM_LUMINGL4
-	if (FAndroidOpenGL::RequiresAdrenoTilingModeHint())
-	{
-		FAndroidOpenGL::EnableAdrenoTilingModeHint(FCString::Strcmp(InName, TEXT("SceneColorRendering")) == 0);
-	}
-#endif
 }
 
 void FOpenGLDynamicRHI::RHIEndRenderPass()
@@ -1182,22 +1188,7 @@ void FOpenGLDynamicRHI::RHIEndRenderPass()
 		EndOcclusionQueryBatch();
 	}
 
-	for (int32 Index = 0; Index < MaxSimultaneousRenderTargets; ++Index)
-	{
-		if (!RenderPassInfo.ColorRenderTargets[Index].RenderTarget)
-		{
-			break;
-		}
-		if (RenderPassInfo.ColorRenderTargets[Index].ResolveTarget)
-		{
-			RHICopyToResolveTarget(RenderPassInfo.ColorRenderTargets[Index].RenderTarget, RenderPassInfo.ColorRenderTargets[Index].ResolveTarget, RenderPassInfo.ResolveParameters);
-		}
-	}
-
-	if (RenderPassInfo.DepthStencilRenderTarget.DepthStencilTarget && RenderPassInfo.DepthStencilRenderTarget.ResolveTarget)
-	{
-		RHICopyToResolveTarget(RenderPassInfo.DepthStencilRenderTarget.DepthStencilTarget, RenderPassInfo.DepthStencilRenderTarget.ResolveTarget, RenderPassInfo.ResolveParameters);
-	}
+	IRHICommandContext::RHIEndRenderPass();
 
 	// Drop depth and stencil to avoid export
 	if (RenderPassInfo.DepthStencilRenderTarget.DepthStencilTarget)
@@ -1211,10 +1202,6 @@ void FOpenGLDynamicRHI::RHIEndRenderPass()
 			RHIDiscardRenderTargets(bDiscardDepth, bDiscardStencil, 0);
 		}
 	}
-
-	FRHIRenderTargetView RTV(nullptr, ERenderTargetLoadAction::ENoAction);
-	FRHIDepthRenderTargetView DepthRTV(nullptr, ERenderTargetLoadAction::ENoAction, ERenderTargetStoreAction::ENoAction);
-	SetRenderTargets(1, &RTV, &DepthRTV);
 }
 
 void FOpenGLDynamicRHI::RHINextSubpass()
@@ -1227,10 +1214,3 @@ void FOpenGLDynamicRHI::RHINextSubpass()
 	}
 }
 
-void FOpenGLDynamicRHI::RHIBeginTransitions(TArrayView<const FRHITransition*> Transitions)
-{
-}
-
-void FOpenGLDynamicRHI::RHIEndTransitions(TArrayView<const FRHITransition*> Transitions)
-{
-}

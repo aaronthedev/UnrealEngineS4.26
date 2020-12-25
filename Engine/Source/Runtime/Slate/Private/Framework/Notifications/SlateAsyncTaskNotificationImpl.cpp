@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Framework/Notifications/SlateAsyncTaskNotificationImpl.h"
 
@@ -8,7 +8,6 @@
 
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SHyperlink.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SBorder.h"
@@ -39,10 +38,10 @@ public:
 	void SetOwner(TSharedPtr<SNotificationItem> InOwningNotification);
 
 	/** Update the notification state */
-	void UpdateNotification(const FText& InTitleText, const FText& InProgressText, const FText& InPromptText, const FSimpleDelegate& InHyperlink, const FText& InHyperlinkText);
+	void UpdateNotification(const FText& InTitleText, const FText& InProgressText);
 
 	/** Set the pending completion state of the notification (applied during the next Tick) and reset the external UI reference */
-	void SetPendingCompletionState(const EAsyncTaskNotificationState InPendingCompletionState, TSharedPtr<SSlateAsyncTaskNotificationWidget>* ExternalReferenceToReset);
+	void SetPendingCompletionState(const SNotificationItem::ECompletionState InPendingCompletionState, TSharedPtr<SSlateAsyncTaskNotificationWidget>* ExternalReferenceToReset);
 
 	/** Set whether this task be canceled */
 	void SetCanCancel(const TAttribute<bool>& InCanCancel);
@@ -53,7 +52,9 @@ public:
 	/** Set whether to keep this notification open on failure */
 	void SetKeepOpenOnFailure(const TAttribute<bool>& InKeepOpenOnFailure);
 
-	EAsyncTaskNotificationPromptAction GetPromptAction() const;
+	/** True if the user has requested that the task be canceled */
+	bool ShouldCancel() const;
+
 private:
 	/** Sync attribute bindings with the cached values (once per-frame from the game thread) */
 	void SyncAttributes();
@@ -76,26 +77,15 @@ private:
 	EVisibility GetCancelButtonVisibility() const;
 	FReply OnCancelButtonClicked();
 
-	/** Prompt button */
-	bool IsPromptButtonEnabled() const;
-	EVisibility GetPromptButtonVisibility() const;
-	FReply OnPromptButtonClicked();
-	FText GetPromptButtonText() const;
-
 	/** Close button */
 	EVisibility GetCloseButtonVisibility() const;
 	FReply OnCloseButtonClicked();
 
-	/** Hyperlink */
-	void OnHyperlinkClicked() const;
-	FText GetHyperlinkText() const;
-	EVisibility GetHyperlinkVisibility() const;
-
 	/** Get the current completion state from the parent notification */
 	SNotificationItem::ECompletionState GetNotificationCompletionState() const;
 
-	/** Action taken for the task, resets to none on notification state change. */
-	TAtomic<EAsyncTaskNotificationPromptAction> PromptAction;
+	/** True if the user has requested that the task be canceled */
+	TAtomic<bool> bShouldCancel;
 
 	/** Can this task be canceled? Will show a cancel button for in-progress tasks */
 	TAttribute<bool> bCanCancelAttr = false;
@@ -115,20 +105,8 @@ private:
 	/** The progress text displayed in the notification (if any) */
 	FText ProgressText;
 
-	/** The prompt text displayed on the prompt button in the notification (if any)*/
-	FText PromptText;
-
-	/** When set this will display as a hyperlink on the right side of the notification. */
-	FSimpleDelegate Hyperlink;
-
-	/** Text to display for the hyperlink message */
-	FText HyperlinkText;
-
 	/** The pending completion state of the notification (if any, applied during the next Tick) */
-	TOptional<EAsyncTaskNotificationState> PendingCompletionState;
-
-	/** The current completion state of this widget. */
-	EAsyncTaskNotificationState NotificationState = EAsyncTaskNotificationState::None;
+	TOptional<SNotificationItem::ECompletionState> PendingCompletionState;
 
 	/** Pointer to the notification item that owns this widget (this is a deliberate reference cycle as we need this object alive until we choose to expire it, at which point we release our reference to allow everything to be destroyed) */
 	TSharedPtr<SNotificationItem> OwningNotification;
@@ -142,7 +120,7 @@ private:
 
 void SSlateAsyncTaskNotificationWidget::Construct(const FArguments& InArgs, const FAsyncTaskNotificationConfig& InConfig)
 {
-	PromptAction = FApp::IsUnattended() ? EAsyncTaskNotificationPromptAction::Unattended : EAsyncTaskNotificationPromptAction::None;
+	bShouldCancel = false;
 	bCanCancelAttr = InConfig.bCanCancel;
 	bKeepOpenOnSuccessAttr = InConfig.bKeepOpenOnSuccess;
 	bKeepOpenOnFailureAttr = InConfig.bKeepOpenOnFailure;
@@ -235,44 +213,14 @@ void SSlateAsyncTaskNotificationWidget::Construct(const FArguments& InArgs, cons
 					]
 				]
 
-				// Hyperlink
-				+ SVerticalBox::Slot()
-				.AutoHeight()
-				.HAlign(HAlign_Right)
-				.VAlign(VAlign_Bottom)
-				[
-					SNew(SBox)
-					.Padding(FMargin(0.0f, 2.0f, 0.0f, 2.0f))
-					.VAlign(VAlign_Center)
-					.HAlign(HAlign_Left)
-					.Visibility(this, &SSlateAsyncTaskNotificationWidget::GetHyperlinkVisibility)
-					[
-						SNew(SHyperlink)
-						.Text(this, &SSlateAsyncTaskNotificationWidget::GetHyperlinkText)
-						.OnNavigate(this, &SSlateAsyncTaskNotificationWidget::OnHyperlinkClicked)
-					]
-				]
-
 				// Buttons
 				+SVerticalBox::Slot()
 				.AutoHeight()
-				.HAlign(HAlign_Center)
+				.HAlign(HAlign_Right)
 				.VAlign(VAlign_Bottom)
 				.Padding(FMargin(0.0f, 5.0f, 0.0f, 0.0f))
 				[
 					SNew(SHorizontalBox)
-
-					// Prompt Button
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					.VAlign(VAlign_Center)
-					.Padding(FMargin(5.0f, 0.0f, 5.0f, 0.0f))
-					[
-						SNew(SButton)
-						.Text_Raw(this, &SSlateAsyncTaskNotificationWidget::GetPromptButtonText)
-						.Visibility(this, &SSlateAsyncTaskNotificationWidget::GetPromptButtonVisibility)
-						.OnClicked(this, &SSlateAsyncTaskNotificationWidget::OnPromptButtonClicked)
-					]
 
 					// Cancel Button
 					+SHorizontalBox::Slot()
@@ -305,7 +253,7 @@ void SSlateAsyncTaskNotificationWidget::Tick(const FGeometry& AllottedGeometry, 
 {
 	SyncAttributes();
 
-	EAsyncTaskNotificationState CompletionStateToApply = EAsyncTaskNotificationState::None;
+	SNotificationItem::ECompletionState CompletionStateToApply = SNotificationItem::CS_Pending;
 	{
 		FScopeLock Lock(&CompletionCS);
 
@@ -316,29 +264,11 @@ void SSlateAsyncTaskNotificationWidget::Tick(const FGeometry& AllottedGeometry, 
 		}
 	}
 
-	if (OwningNotification && CompletionStateToApply != EAsyncTaskNotificationState::None)
+	if (CompletionStateToApply != SNotificationItem::CS_Pending)
 	{
-		NotificationState = CompletionStateToApply;
-		SNotificationItem::ECompletionState OwningCompletionState = SNotificationItem::CS_None;
-		switch (NotificationState)
+		if (OwningNotification)
 		{
-		case EAsyncTaskNotificationState::Pending:
-			OwningCompletionState = SNotificationItem::CS_Pending;
-			break;
-		case EAsyncTaskNotificationState::Failure:
-			OwningCompletionState = SNotificationItem::CS_Fail;
-			break;
-		case EAsyncTaskNotificationState::Success:
-			OwningCompletionState = SNotificationItem::CS_Success;
-			break;
-		case EAsyncTaskNotificationState::Prompt:
-			OwningNotification->Pulse(FLinearColor(0.f, 0.f, 1.f));
-
-			break;
-		}
-		if (OwningCompletionState != SNotificationItem::CS_None && OwningCompletionState != OwningNotification->GetCompletionState())
-		{
-			OwningNotification->SetCompletionState(OwningCompletionState);
+			OwningNotification->SetCompletionState(CompletionStateToApply);
 		}
 	}
 }
@@ -359,9 +289,6 @@ void SSlateAsyncTaskNotificationWidget::OnSetCompletionState(SNotificationItem::
 			OwningNotification.Reset();
 		}
 	}
-
-	// Reset the `PromptAction` state when changing completion state
-	PromptAction = FApp::IsUnattended() ? EAsyncTaskNotificationPromptAction::Unattended : EAsyncTaskNotificationPromptAction::None;
 }
 
 TSharedRef<SWidget> SSlateAsyncTaskNotificationWidget::AsWidget()
@@ -374,16 +301,13 @@ void SSlateAsyncTaskNotificationWidget::SetOwner(TSharedPtr<SNotificationItem> I
 	OwningNotification = InOwningNotification;
 }
 
-void SSlateAsyncTaskNotificationWidget::UpdateNotification(const FText& InTitleText, const FText& InProgressText, const FText& InPromptText, const FSimpleDelegate& InHyperlink, const FText& InHyperlinkText)
+void SSlateAsyncTaskNotificationWidget::UpdateNotification(const FText& InTitleText, const FText& InProgressText)
 {
 	TitleText = InTitleText;
 	ProgressText = InProgressText;
-	PromptText = InPromptText;
-	Hyperlink = InHyperlink;
-	HyperlinkText = InHyperlinkText;
 }
 
-void SSlateAsyncTaskNotificationWidget::SetPendingCompletionState(const EAsyncTaskNotificationState InPendingCompletionState, TSharedPtr<SSlateAsyncTaskNotificationWidget>* ExternalReferenceToReset)
+void SSlateAsyncTaskNotificationWidget::SetPendingCompletionState(const SNotificationItem::ECompletionState InPendingCompletionState, TSharedPtr<SSlateAsyncTaskNotificationWidget>* ExternalReferenceToReset)
 {
 	FScopeLock Lock(&CompletionCS);
 
@@ -416,9 +340,9 @@ void SSlateAsyncTaskNotificationWidget::SetKeepOpenOnFailure(const TAttribute<bo
 	bKeepOpenOnFailureAttr = InKeepOpenOnFailure;
 }
 
-EAsyncTaskNotificationPromptAction SSlateAsyncTaskNotificationWidget::GetPromptAction() const
+bool SSlateAsyncTaskNotificationWidget::ShouldCancel() const
 {
-	return PromptAction;
+	return bShouldCancel;
 }
 
 void SSlateAsyncTaskNotificationWidget::SyncAttributes()
@@ -456,69 +380,48 @@ FText SSlateAsyncTaskNotificationWidget::GetProgressText() const
 
 EVisibility SSlateAsyncTaskNotificationWidget::GetThrobberVisibility() const
 {
-	return (NotificationState == EAsyncTaskNotificationState::Pending)
+	return (GetNotificationCompletionState() == SNotificationItem::CS_Pending)
 		? EVisibility::Visible
 		: EVisibility::Collapsed;
 }
 
 EVisibility SSlateAsyncTaskNotificationWidget::GetStatusIconVisibility() const
 {
-	return (NotificationState == EAsyncTaskNotificationState::Success || NotificationState == EAsyncTaskNotificationState::Failure)
+	const SNotificationItem::ECompletionState NotificationState = GetNotificationCompletionState();
+	return (NotificationState == SNotificationItem::CS_Success || NotificationState == SNotificationItem::CS_Fail)
 		? EVisibility::Visible
 		: EVisibility::Collapsed;
 }
 
 const FSlateBrush* SSlateAsyncTaskNotificationWidget::GetStatusIconBrush() const
 {
-	return (NotificationState == EAsyncTaskNotificationState::Success)
+	return (GetNotificationCompletionState() == SNotificationItem::CS_Success)
 		? FCoreStyle::Get().GetBrush("NotificationList.SuccessImage")
 		: FCoreStyle::Get().GetBrush("NotificationList.FailImage");
 }
 
 bool SSlateAsyncTaskNotificationWidget::IsCancelButtonEnabled() const
 {
-	return bCanCancel && PromptAction == EAsyncTaskNotificationPromptAction::None;
+	return bCanCancel && !bShouldCancel;
 }
 
 EVisibility SSlateAsyncTaskNotificationWidget::GetCancelButtonVisibility() const
 {
-	return (bCanCancel && (NotificationState == EAsyncTaskNotificationState::Pending || NotificationState == EAsyncTaskNotificationState::Prompt))
+	return (bCanCancel && GetNotificationCompletionState() == SNotificationItem::CS_Pending)
 		? EVisibility::Visible
 		: EVisibility::Collapsed;
 }
 
 FReply SSlateAsyncTaskNotificationWidget::OnCancelButtonClicked()
 {
-	PromptAction = EAsyncTaskNotificationPromptAction::Cancel;
+	bShouldCancel = true;
 	return FReply::Handled();
-}
-
-bool SSlateAsyncTaskNotificationWidget::IsPromptButtonEnabled() const
-{
-	return PromptAction == EAsyncTaskNotificationPromptAction::None;
-}
-
-EVisibility SSlateAsyncTaskNotificationWidget::GetPromptButtonVisibility() const
-{
-	return (!FApp::IsUnattended() && NotificationState == EAsyncTaskNotificationState::Prompt)
-		? EVisibility::Visible
-		: EVisibility::Collapsed;
-}
-
-FReply SSlateAsyncTaskNotificationWidget::OnPromptButtonClicked()
-{
-	PromptAction = EAsyncTaskNotificationPromptAction::Continue;
-	return FReply::Handled();
-}
-
-FText SSlateAsyncTaskNotificationWidget::GetPromptButtonText() const
-{
-	return PromptText;
 }
 
 EVisibility SSlateAsyncTaskNotificationWidget::GetCloseButtonVisibility() const
 {
-	return (!FApp::IsUnattended() && ((bKeepOpenOnSuccess && NotificationState == EAsyncTaskNotificationState::Success) || (bKeepOpenOnFailure && NotificationState == EAsyncTaskNotificationState::Failure)))
+	const SNotificationItem::ECompletionState NotificationState = GetNotificationCompletionState();
+	return (!FApp::IsUnattended() && ((bKeepOpenOnSuccess && NotificationState == SNotificationItem::CS_Success) || (bKeepOpenOnFailure && NotificationState == SNotificationItem::CS_Fail)))
 		? EVisibility::Visible
 		: EVisibility::Collapsed;
 }
@@ -536,21 +439,6 @@ FReply SSlateAsyncTaskNotificationWidget::OnCloseButtonClicked()
 		OwningNotification.Reset();
 	}
 	return FReply::Handled();
-}
-
-void SSlateAsyncTaskNotificationWidget::OnHyperlinkClicked() const
-{
-	Hyperlink.ExecuteIfBound();
-}
-
-FText SSlateAsyncTaskNotificationWidget::GetHyperlinkText() const
-{
-	return HyperlinkText;
-}
-
-EVisibility SSlateAsyncTaskNotificationWidget::GetHyperlinkVisibility() const
-{
-	return Hyperlink.IsBound() ? EVisibility::Visible : EVisibility::Collapsed;
 }
 
 SNotificationItem::ECompletionState SSlateAsyncTaskNotificationWidget::GetNotificationCompletionState() const
@@ -619,17 +507,20 @@ void FSlateAsyncTaskNotificationImpl::UpdateNotification()
 	if (NotificationItemWidget)
 	{
 		// Update the notification text
-		NotificationItemWidget->UpdateNotification(TitleText, ProgressText, PromptText, Hyperlink, HyperlinkText);
+		NotificationItemWidget->UpdateNotification(TitleText, ProgressText);
 
-		// Complete the notification and remove our references to it in a single atomic operation if needed
-		// NotificationItemWidget will be null once this call completes if completion is success or failure
-		NotificationItemWidget->SetPendingCompletionState(State, State == EAsyncTaskNotificationState::Failure || State == EAsyncTaskNotificationState::Success ? &NotificationItemWidget : nullptr);
+		if (State != ENotificationState::Pending)
+		{
+			// Complete the notification and remove our references to it in a single atomic operation
+			// NotificationItemWidget will be null once this call completes
+			NotificationItemWidget->SetPendingCompletionState(State == ENotificationState::Success ? SNotificationItem::CS_Success : SNotificationItem::CS_Fail, &NotificationItemWidget);
+		}
 	}
 }
 
-EAsyncTaskNotificationPromptAction FSlateAsyncTaskNotificationImpl::GetPromptAction() const
+bool FSlateAsyncTaskNotificationImpl::ShouldCancel() const
 {
-	return NotificationItemWidget ? NotificationItemWidget->GetPromptAction() : EAsyncTaskNotificationPromptAction::Unattended;
+	return NotificationItemWidget && NotificationItemWidget->ShouldCancel();
 }
 
 #undef LOCTEXT_NAMESPACE

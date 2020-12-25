@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LevelSequencePlayer.h"
 #include "GameFramework/Actor.h"
@@ -43,7 +43,7 @@ ULevelSequencePlayer* ULevelSequencePlayer::CreateLevelSequencePlayer(UObject* W
 	}
 
 	UWorld* World = GEngine->GetWorldFromContextObject(WorldContextObject, EGetWorldErrorMode::LogAndReturnNull);
-	if (World == nullptr || World->bIsTearingDown)
+	if (World == nullptr)
 	{
 		return nullptr;
 	}
@@ -148,11 +148,10 @@ void ULevelSequencePlayer::OnStopped()
 	LastViewTarget.Reset();
 }
 
-void ULevelSequencePlayer::UpdateMovieSceneInstance(FMovieSceneEvaluationRange InRange, EMovieScenePlayerStatus::Type PlayerStatus, const FMovieSceneUpdateArgs& Args)
+void ULevelSequencePlayer::UpdateMovieSceneInstance(FMovieSceneEvaluationRange InRange, EMovieScenePlayerStatus::Type PlayerStatus, bool bHasJumped)
 {
-	UMovieSceneSequencePlayer::UpdateMovieSceneInstance(InRange, PlayerStatus, Args);
+	UMovieSceneSequencePlayer::UpdateMovieSceneInstance(InRange, PlayerStatus, bHasJumped);
 
-	// TODO-ludovic: we should move this to a post-evaluation callback when the evaluation is asynchronous.
 	FLevelSequencePlayerSnapshot NewSnapshot;
 	TakeFrameSnapshot(NewSnapshot);
 
@@ -168,58 +167,7 @@ void ULevelSequencePlayer::UpdateMovieSceneInstance(FMovieSceneEvaluationRange I
 /* IMovieScenePlayer interface
  *****************************************************************************/
 
-TTuple<EViewTargetBlendFunction, float> BuiltInEasingTypeToBlendFunction(EMovieSceneBuiltInEasing EasingType)
-{
-	using Return = TTuple<EViewTargetBlendFunction, float>;
-	switch (EasingType)
-	{
-		case EMovieSceneBuiltInEasing::Linear:
-			return Return(EViewTargetBlendFunction::VTBlend_Linear, 1.f);
-
-		case EMovieSceneBuiltInEasing::QuadIn:
-			return Return(EViewTargetBlendFunction::VTBlend_EaseIn, 2);
-		case EMovieSceneBuiltInEasing::QuadOut:
-			return Return(EViewTargetBlendFunction::VTBlend_EaseOut, 2);
-		case EMovieSceneBuiltInEasing::QuadInOut:
-			return Return(EViewTargetBlendFunction::VTBlend_EaseInOut, 2);
-
-		case EMovieSceneBuiltInEasing::CubicIn:
-			return Return(EViewTargetBlendFunction::VTBlend_EaseIn, 3);
-		case EMovieSceneBuiltInEasing::CubicOut:
-			return Return(EViewTargetBlendFunction::VTBlend_EaseOut, 3);
-		case EMovieSceneBuiltInEasing::CubicInOut:
-			return Return(EViewTargetBlendFunction::VTBlend_EaseInOut, 3);
-
-		case EMovieSceneBuiltInEasing::QuartIn:
-			return Return(EViewTargetBlendFunction::VTBlend_EaseIn, 4);
-		case EMovieSceneBuiltInEasing::QuartOut:
-			return Return(EViewTargetBlendFunction::VTBlend_EaseOut, 4);
-		case EMovieSceneBuiltInEasing::QuartInOut:
-			return Return(EViewTargetBlendFunction::VTBlend_EaseInOut, 4);
-
-		case EMovieSceneBuiltInEasing::QuintIn:
-			return Return(EViewTargetBlendFunction::VTBlend_EaseIn, 5);
-		case EMovieSceneBuiltInEasing::QuintOut:
-			return Return(EViewTargetBlendFunction::VTBlend_EaseOut, 5);
-		case EMovieSceneBuiltInEasing::QuintInOut:
-			return Return(EViewTargetBlendFunction::VTBlend_EaseInOut, 5);
-
-		// UNSUPPORTED
-		case EMovieSceneBuiltInEasing::SinIn:
-		case EMovieSceneBuiltInEasing::SinOut:
-		case EMovieSceneBuiltInEasing::SinInOut:
-		case EMovieSceneBuiltInEasing::CircIn:
-		case EMovieSceneBuiltInEasing::CircOut:
-		case EMovieSceneBuiltInEasing::CircInOut:
-		case EMovieSceneBuiltInEasing::ExpoIn:
-		case EMovieSceneBuiltInEasing::ExpoOut:
-		case EMovieSceneBuiltInEasing::ExpoInOut:
-			break;
-	}
-	return Return(EViewTargetBlendFunction::VTBlend_Linear, 1.f);
-}
-
-void ULevelSequencePlayer::UpdateCameraCut(UObject* CameraObject, const EMovieSceneCameraCutParams& CameraCutParams)
+void ULevelSequencePlayer::UpdateCameraCut(UObject* CameraObject, UObject* UnlockIfCameraObject, bool bJumpCut)
 {
 	if (World == nullptr || World->GetGameInstance() == nullptr)
 	{
@@ -252,7 +200,7 @@ void ULevelSequencePlayer::UpdateCameraCut(UObject* CameraObject, const EMovieSc
 
 	if (CameraObject == ViewTarget)
 	{
-		if (CameraCutParams.bJumpCut)
+		if ( bJumpCut )
 		{
 			if (PC->PlayerCameraManager)
 			{
@@ -268,7 +216,7 @@ void ULevelSequencePlayer::UpdateCameraCut(UObject* CameraObject, const EMovieSc
 	}
 
 	// skip unlocking if the current view target differs
-	AActor* UnlockIfCameraActor = Cast<AActor>(CameraCutParams.UnlockIfCameraObject);
+	AActor* UnlockIfCameraActor = Cast<AActor>(UnlockIfCameraObject);
 
 	// if unlockIfCameraActor is valid, release lock if currently locked to object
 	if (CameraObject == nullptr && UnlockIfCameraActor != nullptr && UnlockIfCameraActor != ViewTarget)
@@ -308,34 +256,8 @@ void ULevelSequencePlayer::UpdateCameraCut(UObject* CameraObject, const EMovieSc
 		}
 	}
 
-	bool bDoSetViewTarget = true;
 	FViewTargetTransitionParams TransitionParams;
-	if (CameraCutParams.BlendType.IsSet())
-	{
-		// Convert known easing functions to their corresponding view target blend parameters.
-		TTuple<EViewTargetBlendFunction, float> BlendFunctionAndExp = BuiltInEasingTypeToBlendFunction(CameraCutParams.BlendType.GetValue());
-		TransitionParams.BlendTime = CameraCutParams.BlendTime;
-		TransitionParams.bLockOutgoing = CameraCutParams.bLockPreviousCamera;
-		TransitionParams.BlendFunction = BlendFunctionAndExp.Get<0>();
-		TransitionParams.BlendExp = BlendFunctionAndExp.Get<1>();
-
-		// Calling SetViewTarget on a camera that we are currently transitioning to will 
-		// result in that transition being aborted, and the view target being set immediately.
-		// We want to avoid that, so let's leave the transition running if it's the case.
-		if (PC->PlayerCameraManager != nullptr)
-		{
-			const AActor* CurViewTarget = PC->PlayerCameraManager->ViewTarget.Target;
-			const AActor* PendingViewTarget = PC->PlayerCameraManager->PendingViewTarget.Target;
-			if (CameraActor != nullptr && PendingViewTarget == CameraActor)
-			{
-				bDoSetViewTarget = false;
-			}
-		}
-	}
-	if (bDoSetViewTarget)
-	{
-		PC->SetViewTarget(CameraActor, TransitionParams);
-	}
+	PC->SetViewTarget(CameraActor, TransitionParams);
 
 	// Set or restore the aspect ratio constraint if we were overriding it for this sequence.
 	if (LocalPlayer != nullptr && CameraSettings.bOverrideAspectRatioAxisConstraint)
@@ -354,10 +276,7 @@ void ULevelSequencePlayer::UpdateCameraCut(UObject* CameraObject, const EMovieSc
 		}
 	}
 
-	// we want to notify of cuts on hard cuts and time jumps, but not on blend cuts
-	const bool bIsStraightCut = !CameraCutParams.BlendType.IsSet() || CameraCutParams.bJumpCut;
-
-	if (CameraComponent && bIsStraightCut)
+	if (CameraComponent)
 	{
 		CameraComponent->NotifyCameraCut();
 	}
@@ -365,19 +284,12 @@ void ULevelSequencePlayer::UpdateCameraCut(UObject* CameraObject, const EMovieSc
 	if (PC->PlayerCameraManager)
 	{
 		PC->PlayerCameraManager->bClientSimulatingViewTarget = (CameraActor != nullptr);
-
-		if (bIsStraightCut)
-		{
-			PC->PlayerCameraManager->SetGameCameraCutThisFrame();
-		}
+		PC->PlayerCameraManager->SetGameCameraCutThisFrame();
 	}
 
-	if (bIsStraightCut)
+	if (OnCameraCut.IsBound())
 	{
-		if (OnCameraCut.IsBound())
-		{
-			OnCameraCut.Broadcast(CameraComponent);
-		}
+		OnCameraCut.Broadcast(CameraComponent);
 	}
 }
 
@@ -392,6 +304,18 @@ TArray<UObject*> ULevelSequencePlayer::GetEventContexts() const
 	if (World.IsValid())
 	{
 		GetEventContexts(*World, EventContexts);
+	}
+
+	ALevelSequenceActor* OwningActor = GetTypedOuter<ALevelSequenceActor>();
+	if (OwningActor)
+	{
+		for (AActor* Actor : OwningActor->AdditionalEventReceivers)
+		{
+			if (Actor)
+			{
+				EventContexts.Add(Actor);
+			}
+		}
 	}
 
 	return EventContexts;
@@ -533,14 +457,3 @@ void ULevelSequencePlayer::EnableCinematicMode(bool bEnable)
 	}
 }
 
-void ULevelSequencePlayer::RewindForReplay()
-{
-	// Stop the sequence when starting to seek through a replay. This restores our state to be unmodified
-	// in case the replay is seeking to before playback. If we're in the middle of playback after rewinding,
-	// the replay will feed the correct packets to synchronize our playback time and state.
-	Stop();
-
-	NetSyncProps.LastKnownPosition = FFrameTime(0);
-	NetSyncProps.LastKnownStatus = EMovieScenePlayerStatus::Stopped;
-	NetSyncProps.LastKnownNumLoops = 0;
-}

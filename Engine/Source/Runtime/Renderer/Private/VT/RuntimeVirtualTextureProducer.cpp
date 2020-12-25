@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RuntimeVirtualTextureProducer.h"
 
@@ -8,14 +8,7 @@
 #include "VT/RuntimeVirtualTextureSceneProxy.h"
 
 
-FRuntimeVirtualTextureFinalizer::FRuntimeVirtualTextureFinalizer(
-	FVTProducerDescription const& InDesc, 
-	uint32 InProducerId, 
-	ERuntimeVirtualTextureMaterialType InMaterialType, 
-	bool InClearTextures, 
-	FSceneInterface* InScene, 
-	FTransform const& InUVToWorld,
-	FBox const& InWorldBounds)
+FRuntimeVirtualTextureFinalizer::FRuntimeVirtualTextureFinalizer(FVTProducerDescription const& InDesc, uint32 InProducerId, ERuntimeVirtualTextureMaterialType InMaterialType, bool InClearTextures, FSceneInterface* InScene, FTransform const& InUVToWorld)
 	: Desc(InDesc)
 	, ProducerId(InProducerId)
 	, RuntimeVirtualTextureMask(0)
@@ -23,7 +16,6 @@ FRuntimeVirtualTextureFinalizer::FRuntimeVirtualTextureFinalizer(
 	, bClearTextures(InClearTextures)
 	, Scene(InScene)
 	, UVToWorld(InUVToWorld)
-	, WorldBounds(InWorldBounds)
 {
 }
 
@@ -67,7 +59,6 @@ void FRuntimeVirtualTextureFinalizer::Finalize(FRHICommandListImmediate& RHICmdL
 	RenderPageBatchDesc.Scene = Scene->GetRenderScene();
 	RenderPageBatchDesc.RuntimeVirtualTextureMask = RuntimeVirtualTextureMask;
 	RenderPageBatchDesc.UVToWorld = UVToWorld;
-	RenderPageBatchDesc.WorldBounds = WorldBounds;
 	RenderPageBatchDesc.MaterialType = MaterialType;
 	RenderPageBatchDesc.MaxLevel = Desc.MaxLevel;
 	RenderPageBatchDesc.bClearTextures = bClearTextures;
@@ -85,8 +76,8 @@ void FRuntimeVirtualTextureFinalizer::Finalize(FRHICommandListImmediate& RHICmdL
 	{
 		RuntimeVirtualTexture::FRenderPageDesc& RenderPageDesc = RenderPageBatchDesc.PageDescs[BatchSize];
 
-		const float X = (float)FMath::ReverseMortonCode2_64(Entry.vAddress);
-		const float Y = (float)FMath::ReverseMortonCode2_64(Entry.vAddress >> 1);
+		const float X = (float)FMath::ReverseMortonCode2(Entry.vAddress);
+		const float Y = (float)FMath::ReverseMortonCode2(Entry.vAddress >> 1);
 		const float DivisorX = (float)Desc.BlockWidthInTiles / (float)(1 << Entry.vLevel);
 		const float DivisorY = (float)Desc.BlockHeightInTiles / (float)(1 << Entry.vLevel);
 
@@ -138,15 +129,8 @@ void FRuntimeVirtualTextureFinalizer::Finalize(FRHICommandListImmediate& RHICmdL
 	Tiles.SetNumUnsafeInternal(0);
 }
 
-FRuntimeVirtualTextureProducer::FRuntimeVirtualTextureProducer(
-	FVTProducerDescription const& InDesc, 
-	uint32 InProducerId, 
-	ERuntimeVirtualTextureMaterialType InMaterialType, 
-	bool InClearTextures, 
-	FSceneInterface* InScene, 
-	FTransform const& InUVToWorld,
-	FBox const& InWorldBounds)
-	: Finalizer(InDesc, InProducerId, InMaterialType, InClearTextures, InScene, InUVToWorld, InWorldBounds)
+FRuntimeVirtualTextureProducer::FRuntimeVirtualTextureProducer(FVTProducerDescription const& InDesc, uint32 InProducerId, ERuntimeVirtualTextureMaterialType InMaterialType, bool InClearTextures, FSceneInterface* InScene, FTransform const& InUVToWorld)
+	: Finalizer(InDesc, InProducerId, InMaterialType, InClearTextures, InScene, InUVToWorld)
 {
 }
 
@@ -154,7 +138,7 @@ FVTRequestPageResult FRuntimeVirtualTextureProducer::RequestPageData(
 	const FVirtualTextureProducerHandle& ProducerHandle,
 	uint8 LayerMask,
 	uint8 vLevel,
-	uint64 vAddress,
+	uint32 vAddress,
 	EVTRequestPagePriority Priority)
 {
 	//todo[vt]: 
@@ -175,7 +159,7 @@ IVirtualTextureFinalizer* FRuntimeVirtualTextureProducer::ProducePageData(
 	const FVirtualTextureProducerHandle& ProducerHandle,
 	uint8 LayerMask,
 	uint8 vLevel,
-	uint64 vAddress,
+	uint32 vAddress,
 	uint64 RequestHandle,
 	const FVTProduceTargetLayer* TargetLayers)
 {

@@ -1,9 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/Classes/Engine/Texture2D.h"
+
 #include "InteractiveToolBuilder.h"
 
 #include "MeshMaterialProperties.generated.h"
@@ -25,23 +25,26 @@ public:
 
 	/** Material for new mesh*/
 	UPROPERTY(EditAnywhere, NonTransactional, Category = Material, meta = (DisplayName = "Material"))
-	TWeakObjectPtr<UMaterialInterface> Material;
+	UMaterialInterface* Material;
 
 	/** Scale factor for generated UVs */
-	UPROPERTY(EditAnywhere, Category = Material, meta = (DisplayName = "UV Scale", HideEditConditionToggle, EditConditionHides, EditCondition = "bShowExtendedOptions"))
+	UPROPERTY(EditAnywhere, Category = Material, meta = (DisplayName = "UV Scale"))
 	float UVScale = 1.0;
 
 	/** If set, UV scales will be relative to world space so different objects created with the same UV scale should have the same average texel size */
-	UPROPERTY(EditAnywhere, Category = Material, meta = (DisplayName = "UV Scale Relative to World Space", HideEditConditionToggle, EditConditionHides, EditCondition = "bShowExtendedOptions"))
+	UPROPERTY(EditAnywhere, Category = Material, meta = (DisplayName = "UV Scale Relative to World Space"))
 	bool bWorldSpaceUVScale = false;
 
 	/** Overlay wireframe on preview */
-	UPROPERTY(EditAnywhere, Category = Material, meta = (DisplayName = "Show Wireframe", HideEditConditionToggle, EditConditionHides, EditCondition = "bShowExtendedOptions"))
+	UPROPERTY(EditAnywhere, Category = Material, meta = (DisplayName = "Show Wireframe"))
 	bool bWireframe = false;
 
-	// controls visibility of UV/etc properties
-	UPROPERTY()
-	bool bShowExtendedOptions = true;
+
+	//
+	// save/restore support
+	//
+	virtual void SaveProperties(UInteractiveTool* SaveFromTool) override;
+	virtual void RestoreProperties(UInteractiveTool* RestoreToTool) override;
 };
 
 
@@ -77,27 +80,25 @@ public:
 	UPROPERTY(EditAnywhere, Category = MaterialPreview, meta = (EditCondition = "MaterialMode == ESetMeshMaterialMode::Override"))
 	UMaterialInterface* OverrideMaterial = nullptr;
 
-	UPROPERTY(meta = (TransientToolProperty))
+	UPROPERTY()
 	UMaterialInstanceDynamic* CheckerMaterial = nullptr;
-
-	// Needs custom restore in order to call setup
-	virtual void RestoreProperties(UInteractiveTool* RestoreToTool) override;
 
 	void Setup();
 
 	void UpdateMaterials();
-	UMaterialInterface* GetActiveOverrideMaterial() const;
+	void SetMaterialIfChanged(UMaterialInterface* OriginalMaterial, UMaterialInterface* CurrentMaterial, TFunctionRef<void(UMaterialInterface* Material)> SetMaterialFn);
 };
+
+
+
+
+
 
 UENUM()
 enum class EMeshEditingMaterialModes
 {
 	ExistingMaterial = 0,
-	Diffuse = 1,
-	Grey = 2,
-	Soft = 3,
-	TangentNormal = 4,
-	Custom = 5
+	MeshFocusMaterial = 1
 };
 
 
@@ -108,22 +109,13 @@ class MESHMODELINGTOOLS_API UMeshEditingViewProperties : public UInteractiveTool
 
 public:
 	/** Toggle drawing of wireframe overlay on/off [Alt+W] */
-	UPROPERTY(EditAnywhere, Category = Rendering)
+	UPROPERTY(EditAnywhere, Category = ViewOptions)
 	bool bShowWireframe = false;
 
 	/** Set which material to use on object */
-	UPROPERTY(EditAnywhere, Category = Rendering)
-	EMeshEditingMaterialModes MaterialMode = EMeshEditingMaterialModes::Diffuse;
+	UPROPERTY(EditAnywhere, Category = ViewOptions)
+	EMeshEditingMaterialModes MaterialMode = EMeshEditingMaterialModes::MeshFocusMaterial;
 
-	/** Toggle flat shading on/off */
-	UPROPERTY(EditAnywhere, Category = Rendering, meta = (EditConditionHides, EditCondition = "MaterialMode != EMeshEditingMaterialModes::ExistingMaterial") )
-	bool bFlatShading = true;
-
-	/** Main Color of Material */
-	UPROPERTY(EditAnywhere, Category = Rendering, meta = (EditConditionHides, EditCondition = "MaterialMode == EMeshEditingMaterialModes::Diffuse"))
-	FLinearColor Color = FLinearColor(0.4f, 0.4f, 0.4f);
-
-	/** Image used in Image-Based Material */
-	UPROPERTY(EditAnywhere, Category = Rendering, meta = (EditConditionHides, EditCondition = "MaterialMode == EMeshEditingMaterialModes::Custom", TransientToolProperty) )
-	UTexture2D* Image;
+	virtual void SaveProperties(UInteractiveTool* SaveFromTool) override;
+	virtual void RestoreProperties(UInteractiveTool* RestoreToTool) override;
 };

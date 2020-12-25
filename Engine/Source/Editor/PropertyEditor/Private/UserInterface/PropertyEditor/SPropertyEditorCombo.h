@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -17,8 +17,13 @@ class SPropertyEditorCombo : public SCompoundWidget
 public:
 
 	SLATE_BEGIN_ARGS( SPropertyEditorCombo )
+		: _Font( FEditorStyle::GetFontStyle( PropertyEditorConstants::PropertyFontStyle ) ) 
 		{}
-		SLATE_ARGUMENT( FPropertyComboBoxArgs, ComboArgs )
+		SLATE_ARGUMENT( FSlateFontInfo, Font )
+		SLATE_EVENT(FOnGetPropertyComboBoxStrings, OnGetComboBoxStrings)
+		SLATE_EVENT(FOnGetPropertyComboBoxValue, OnGetComboBoxValue)
+		SLATE_EVENT(FOnPropertyComboBoxValueSelected, OnComboBoxValueSelected)
+		SLATE_ARGUMENT(TSharedPtr<IPropertyHandle>, PropertyHandle)
 	SLATE_END_ARGS()
 
 	static bool Supports( const TSharedRef< class FPropertyEditor >& InPropertyEditor );
@@ -49,8 +54,13 @@ private:
 	/** Fills out with generated strings. */
 	TSharedPtr<class SPropertyComboBox> ComboBox;
 
-	/** Arguments used to construct the combo box */
-	FPropertyComboBoxArgs ComboArgs;
+	/** The property handle, will either be passed in or set from PropertyEditor */
+	TSharedPtr<class IPropertyHandle> PropertyHandle;
+
+	/** Delegate to get the strings for combo box */
+	FOnGetPropertyComboBoxStrings OnGetComboBoxStrings;
+	FOnGetPropertyComboBoxValue OnGetComboBoxValue;
+	FOnPropertyComboBoxValueSelected OnComboBoxValueSelected;
 
 	/**
 	 * Indicates that this combo box's values are friendly names for the real values; currently only used for enum drop-downs.

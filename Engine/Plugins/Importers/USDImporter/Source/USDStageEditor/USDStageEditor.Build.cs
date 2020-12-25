@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.IO;
@@ -9,6 +9,8 @@ namespace UnrealBuildTool.Rules
 	{
 		public USDStageEditor(ReadOnlyTargetRules Target) : base(Target)
 		{
+			bUseRTTI = true;
+
 			PrivateDependencyModuleNames.AddRange(
 				new string[]
 				{
@@ -17,20 +19,18 @@ namespace UnrealBuildTool.Rules
 					"DesktopWidgets",
 					"EditorStyle",
 					"Engine",
-					"InputCore",
 					"LevelEditor",
-					"Projects", // So that we can use the IPluginManager, required for our custom style
+					"InputCore",
 					"Slate",
 					"SlateCore",
 					"UnrealEd",
 					"UnrealUSDWrapper",
-					"USDStageImporter",
+					"USDImporter",
 					"USDStage",
-					"USDStageEditorViewModels",
 					"USDUtilities",
 					"WorkspaceMenuStructure",
 				}
-			);
+				);
 		}
 	}
 }

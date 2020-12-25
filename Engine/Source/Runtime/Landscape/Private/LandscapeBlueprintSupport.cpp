@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	LandscapeBlueprintSupport.cpp: Landscape blueprint functions
@@ -11,34 +11,20 @@
 #include "LandscapeSplineRaster.h"
 #include "Components/SplineComponent.h"
 #include "LandscapeComponent.h"
-#include "Landscape.h"
-#include "LandscapePrivate.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "LandscapeProxy.h"
 
-void ALandscapeProxy::EditorApplySpline(USplineComponent* InSplineComponent, float StartWidth, float EndWidth, float StartSideFalloff, float EndSideFalloff, float StartRoll, float EndRoll, int32 NumSubdivisions, bool bRaiseHeights, bool bLowerHeights, ULandscapeLayerInfoObject* PaintLayer, FName EditLayerName)
+void ALandscapeProxy::EditorApplySpline(USplineComponent* InSplineComponent, float StartWidth, float EndWidth, float StartSideFalloff, float EndSideFalloff, float StartRoll, float EndRoll, int32 NumSubdivisions, bool bRaiseHeights, bool bLowerHeights, ULandscapeLayerInfoObject* PaintLayer)
 {
 #if WITH_EDITOR
 	if (InSplineComponent && !GetWorld()->IsGameWorld())
 	{
-		if (ALandscape* Landscape = GetLandscapeInfo()->LandscapeActor.Get())
-		{
-			const FLandscapeLayer* Layer = Landscape->GetLayer(EditLayerName);
-			if (Landscape->HasLayersContent() && (Layer == nullptr))
-			{
-				UE_LOG(LogLandscape, Error, TEXT("Invalid landscape edit layer name (\"%s\") for Edit Layers-enabled landscape. Cannot apply spline. "), *EditLayerName.ToString());
-				return;
-			}
+		TArray<FLandscapeSplineInterpPoint> Points;
+		LandscapeSplineRaster::FPointifyFalloffs Falloffs(StartSideFalloff, EndSideFalloff);
+		LandscapeSplineRaster::Pointify(InSplineComponent->SplineCurves.Position, Points, NumSubdivisions, 0.0f, 0.0f, StartWidth, EndWidth, StartWidth, EndWidth, Falloffs, StartRoll, EndRoll);
 
-			FScopedSetLandscapeEditingLayer Scope(Landscape, Layer ? Layer->Guid : FGuid(), [=] { Landscape->RequestLayersContentUpdate(ELandscapeLayerUpdateMode::Update_All); });
-
-			TArray<FLandscapeSplineInterpPoint> Points;
-			LandscapeSplineRaster::FPointifyFalloffs Falloffs(StartSideFalloff, EndSideFalloff);
-			LandscapeSplineRaster::Pointify(InSplineComponent->SplineCurves.Position, Points, NumSubdivisions, 0.0f, 0.0f, StartWidth, EndWidth, StartWidth, EndWidth, Falloffs, StartRoll, EndRoll);
-
-			FTransform SplineToWorld = InSplineComponent->GetComponentTransform();
-			LandscapeSplineRaster::RasterizeSegmentPoints(GetLandscapeInfo(), MoveTemp(Points), SplineToWorld, bRaiseHeights, bLowerHeights, PaintLayer);
-		}
+		FTransform SplineToWorld = InSplineComponent->GetComponentTransform();
+		LandscapeSplineRaster::RasterizeSegmentPoints(GetLandscapeInfo(), MoveTemp(Points), SplineToWorld, bRaiseHeights, bLowerHeights, PaintLayer);
 	}
 #endif
 }
@@ -100,7 +86,7 @@ void ALandscapeProxy::EditorSetLandscapeMaterial(UMaterialInterface* NewLandscap
 	if (!GetWorld()->IsGameWorld())
 	{
 		LandscapeMaterial = NewLandscapeMaterial;
-		FPropertyChangedEvent PropertyChangedEvent(FindFieldChecked<FProperty>(GetClass(), FName("LandscapeMaterial")));
+		FPropertyChangedEvent PropertyChangedEvent(FindFieldChecked<UProperty>(GetClass(), FName("LandscapeMaterial")));
 		PostEditChangeProperty(PropertyChangedEvent);
 	}
 #endif

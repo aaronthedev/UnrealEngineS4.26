@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	OpenGL3.h: Public OpenGL 3.2 definitions for non-common functionality
@@ -42,8 +42,8 @@ struct FOpenGL3 : public FOpenGLBase
 	static FORCEINLINE bool SupportsGenerateMipmap()				{ return true; }
 	static FORCEINLINE bool AmdWorkaround()							{ return bAmdWorkaround; }
 	static FORCEINLINE bool SupportsTessellation()					{ return bSupportsTessellation; }
+	static FORCEINLINE bool SupportsTextureSwizzle()				{ return true; }
 	static FORCEINLINE bool SupportsSeparateShaderObjects()			{ return bSupportsSeparateShaderObjects; }
-	static FORCEINLINE bool SupportsBufferStorage()					{ return true; }
 
 	// Optional
 	static FORCEINLINE void QueryTimestampCounter(GLuint QueryID)
@@ -144,9 +144,6 @@ struct FOpenGL3 : public FOpenGLBase
 		{
 			case EResourceLockMode::RLM_ReadOnly:
 				Access = GL_MAP_READ_BIT;
-				break;
-			case EResourceLockMode::RLM_ReadOnlyPersistent:
-				Access = (GL_MAP_READ_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
 				break;
 			case EResourceLockMode::RLM_WriteOnly:
 				Access = (GL_MAP_INVALIDATE_BUFFER_BIT | GL_MAP_WRITE_BIT);
@@ -749,16 +746,53 @@ struct FOpenGL3 : public FOpenGLBase
 
 	static FORCEINLINE ERHIFeatureLevel::Type GetFeatureLevel()
 	{
-		return ERHIFeatureLevel::ES3_1;
+		ERHIFeatureLevel::Type PreviewFeatureLevel;
+		if (RHIGetPreviewFeatureLevel(PreviewFeatureLevel))
+		{
+			check(PreviewFeatureLevel == ERHIFeatureLevel::ES2 || PreviewFeatureLevel == ERHIFeatureLevel::ES3_1);
+			return PreviewFeatureLevel;
+		}
+
+		// Shader platform & RHI feature level
+		switch(GetMajorVersion())
+		{
+		case 2:
+			return ERHIFeatureLevel::ES2;
+		case 3:
+			return ERHIFeatureLevel::ES3_1;
+		case 4:
+			return GetMinorVersion() > 2 ? ERHIFeatureLevel::SM5 : ERHIFeatureLevel::ES3_1;
+		default:
+			return ERHIFeatureLevel::ES3_1;
+		}
 	}
 
 	static FORCEINLINE EShaderPlatform GetShaderPlatform()
 	{
 		ERHIFeatureLevel::Type PreviewFeatureLevel;
-		bool bUsePreviewFeatureLevel = RHIGetPreviewFeatureLevel(PreviewFeatureLevel);
-		check(bUsePreviewFeatureLevel);
-		check(PreviewFeatureLevel == ERHIFeatureLevel::ES3_1);
-		return bAndroidGLESCompatibilityMode ? SP_OPENGL_ES3_1_ANDROID : SP_OPENGL_PCES3_1;
+		if (RHIGetPreviewFeatureLevel(PreviewFeatureLevel))
+		{
+			check(PreviewFeatureLevel == ERHIFeatureLevel::ES2 || PreviewFeatureLevel == ERHIFeatureLevel::ES3_1);
+			if (PreviewFeatureLevel == ERHIFeatureLevel::ES2)
+			{
+				return SP_OPENGL_PCES2;
+			}
+			else if (PreviewFeatureLevel == ERHIFeatureLevel::ES3_1)
+			{
+				return bAndroidGLESCompatibilityMode ? SP_OPENGL_ES3_1_ANDROID : SP_OPENGL_PCES3_1;
+			}
+		}
+
+		// Shader platform
+		switch(GetMajorVersion())
+		{
+		case 3:
+			return SP_OPENGL_SM4;
+		case 4:
+			return GetMinorVersion() > 2 ? SP_OPENGL_SM5 : SP_OPENGL_SM4;
+		default:
+			return SP_OPENGL_SM4;
+		}
 	}
 
 	static FORCEINLINE FString GetAdapterName()

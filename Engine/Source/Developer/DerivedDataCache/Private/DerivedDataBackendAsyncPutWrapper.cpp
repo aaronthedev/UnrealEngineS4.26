@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DerivedDataBackendAsyncPutWrapper.h"
 #include "MemoryDerivedDataBackend.h"
@@ -26,9 +26,9 @@ public:
 
 	/** Constructor
 	*/
-	FCachePutAsyncWorker(const TCHAR* InCacheKey, TArrayView<const uint8> InData, FDerivedDataBackendInterface* InInnerBackend, bool InbPutEvenIfExists, FDerivedDataBackendInterface* InInflightCache, FThreadSet* InInFilesInFlight, FDerivedDataCacheUsageStats& InUsageStats)
+	FCachePutAsyncWorker(const TCHAR* InCacheKey, const TArray<uint8>* InData, FDerivedDataBackendInterface* InInnerBackend, bool InbPutEvenIfExists, FDerivedDataBackendInterface* InInflightCache, FThreadSet* InInFilesInFlight, FDerivedDataCacheUsageStats& InUsageStats)
 		: CacheKey(InCacheKey)
-		, Data(InData.GetData(), InData.Num())
+		, Data(*InData)
 		, InnerBackend(InInnerBackend)
 		, InflightCache(InInflightCache)
 		, FilesInFlight(InInFilesInFlight)
@@ -53,19 +53,11 @@ public:
 		// if we tried to put it up there but it isn't there now, retry
 		if (InflightCache && bDidTry && !InnerBackend->CachedDataProbablyExists(*CacheKey))
 		{
-			// retry after a brief wait
-			FPlatformProcess::SleepNoStats(0.2f);
+			// retry
 			InnerBackend->PutCachedData(*CacheKey, Data, false);
-
 			if (!InnerBackend->CachedDataProbablyExists(*CacheKey))
 			{
-				UE_LOG(LogDerivedDataCache, Display, TEXT("%s: Put failed, keeping in memory copy %s."),*InnerBackend->GetName(), *CacheKey);
-
-				// log the filesystem error
-				uint32 ErrorCode = FPlatformMisc::GetLastError();
-				TCHAR ErrorBuffer[1024];
-				FPlatformMisc::GetSystemErrorMessage(ErrorBuffer, 1024, ErrorCode);
-				UE_LOG(LogDerivedDataCache, Display, TEXT("Failed to write %s to %s. Error: %u (%s)"), *CacheKey, *InnerBackend->GetName(), ErrorCode, ErrorBuffer);
+				UE_LOG(LogDerivedDataCache, Log, TEXT("FDerivedDataBackendAsyncPutWrapper: Put failed, keeping in memory copy %s."),*CacheKey);
 				bOk = false;
 			}
 		}
@@ -75,7 +67,6 @@ public:
 		}
 		FilesInFlight->Remove(CacheKey);
 		FDerivedDataBackend::Get().AddToAsyncCompletionCounter(-1);
-		UE_LOG(LogDerivedDataCache, VeryVerbose, TEXT("%s: Completed AsyncPut of %s."), *InnerBackend->GetName(), *CacheKey);
 	}
 
 	FORCEINLINE TStatId GetStatId() const
@@ -98,13 +89,12 @@ public:
 		}
 		FilesInFlight->Remove(CacheKey);
 		FDerivedDataBackend::Get().AddToAsyncCompletionCounter(-1);
-		UE_LOG(LogDerivedDataCache, VeryVerbose, TEXT("%s: Abandoned AsyncPut of %s."), *InnerBackend->GetName(), *CacheKey);
 	}
 };
 
 FDerivedDataBackendAsyncPutWrapper::FDerivedDataBackendAsyncPutWrapper(FDerivedDataBackendInterface* InInnerBackend, bool bCacheInFlightPuts)
 	: InnerBackend(InInnerBackend)
-	, InflightCache(bCacheInFlightPuts ? (new FMemoryDerivedDataBackend(TEXT("AsyncPutCache"))) : NULL)
+	, InflightCache(bCacheInFlightPuts ? (new FMemoryDerivedDataBackend) : NULL)
 {
 	check(InnerBackend);
 }
@@ -113,11 +103,6 @@ FDerivedDataBackendAsyncPutWrapper::FDerivedDataBackendAsyncPutWrapper(FDerivedD
 bool FDerivedDataBackendAsyncPutWrapper::IsWritable()
 {
 	return InnerBackend->IsWritable();
-}
-
-FDerivedDataBackendInterface::ESpeedClass FDerivedDataBackendAsyncPutWrapper::GetSpeedClass()
-{
-	return InnerBackend->GetSpeedClass();
 }
 
 /**
@@ -131,39 +116,7 @@ bool FDerivedDataBackendAsyncPutWrapper::CachedDataProbablyExists(const TCHAR* C
 	COOK_STAT(auto Timer = UsageStats.TimeProbablyExists());
 	bool Result = (InflightCache && InflightCache->CachedDataProbablyExists(CacheKey)) || InnerBackend->CachedDataProbablyExists(CacheKey);
 	COOK_STAT(if (Result) {	Timer.AddHit(0); });
-
-	UE_LOG(LogDerivedDataCache, Verbose, TEXT("%s CachedDataProbablyExists=%d for %s"), *GetName(), Result, CacheKey);
 	return Result;
-}
-
-bool FDerivedDataBackendAsyncPutWrapper::TryToPrefetch(const TCHAR* CacheKey)
-{
-	COOK_STAT(auto Timer = UsageStats.TimePrefetch());
-
-	bool SkipCheck = (!InflightCache && InflightCache->CachedDataProbablyExists(CacheKey));
-	
-	bool Hit = false;
-
-	if (!SkipCheck)
-	{
-		Hit = InnerBackend->TryToPrefetch(CacheKey);
-	}
-
-	COOK_STAT(if (Hit) { Timer.AddHit(0); });
-	return Hit;
-}
-
-/*
-	Determine if we would cache this by asking all our inner layers
-*/
-bool FDerivedDataBackendAsyncPutWrapper::WouldCache(const TCHAR* CacheKey, TArrayView<const uint8> InData)
-{
-	return InnerBackend->WouldCache(CacheKey, InData);
-}
-
-bool FDerivedDataBackendAsyncPutWrapper::ApplyDebugOptions(FBackendDebugOptions& InOptions)
-{
-	return InnerBackend->ApplyDebugOptions(InOptions);
 }
 
 bool FDerivedDataBackendAsyncPutWrapper::GetCachedData(const TCHAR* CacheKey, TArray<uint8>& OutData)
@@ -172,23 +125,17 @@ bool FDerivedDataBackendAsyncPutWrapper::GetCachedData(const TCHAR* CacheKey, TA
 	if (InflightCache && InflightCache->GetCachedData(CacheKey, OutData))
 	{
 		COOK_STAT(Timer.AddHit(OutData.Num()));
-		UE_LOG(LogDerivedDataCache, Verbose, TEXT("%s CacheHit from InFlightCache on %s"), *GetName(), CacheKey);
 		return true;
 	}
 	bool bSuccess = InnerBackend->GetCachedData(CacheKey, OutData);
 	if (bSuccess)
 	{
-		UE_LOG(LogDerivedDataCache, Verbose, TEXT("%s Cache hit on %s"), *GetName(), CacheKey);
 		COOK_STAT(Timer.AddHit(OutData.Num()));
-	}
-	else
-	{
-		UE_LOG(LogDerivedDataCache, Verbose, TEXT("%s Cache miss on %s"), *GetName(), CacheKey);
 	}
 	return bSuccess;
 }
 
-void FDerivedDataBackendAsyncPutWrapper::PutCachedData(const TCHAR* CacheKey, TArrayView<const uint8> InData, bool bPutEvenIfExists)
+void FDerivedDataBackendAsyncPutWrapper::PutCachedData(const TCHAR* CacheKey, TArray<uint8>& InData, bool bPutEvenIfExists)
 {
 	COOK_STAT(auto Timer = PutSyncUsageStats.TimePut());
 	if (!InnerBackend->IsWritable())
@@ -204,17 +151,13 @@ void FDerivedDataBackendAsyncPutWrapper::PutCachedData(const TCHAR* CacheKey, TA
 	{
 		if (InflightCache->CachedDataProbablyExists(CacheKey))
 		{
-			UE_LOG(LogDerivedDataCache, Verbose, TEXT("%s skipping out of key already in in-flight cache %s"), *GetName(), CacheKey);
 			return; // if it is already on its way, we don't need to send it again
 		}
 		InflightCache->PutCachedData(CacheKey, InData, true); // temp copy stored in memory while the async task waits to complete
 		COOK_STAT(Timer.AddHit(InData.Num()));
 	}
-
-	UE_LOG(LogDerivedDataCache, Verbose, TEXT("%s queueing %s for put"), *GetName(), CacheKey);
-
 	FDerivedDataBackend::Get().AddToAsyncCompletionCounter(1);
-	(new FAutoDeleteAsyncTask<FCachePutAsyncWorker>(CacheKey, InData, InnerBackend, bPutEvenIfExists, InflightCache.Get(), &FilesInFlight, UsageStats))->StartBackgroundTask();
+	(new FAutoDeleteAsyncTask<FCachePutAsyncWorker>(CacheKey, &InData, InnerBackend, bPutEvenIfExists, InflightCache.Get(), &FilesInFlight, UsageStats))->StartBackgroundTask();
 }
 
 void FDerivedDataBackendAsyncPutWrapper::RemoveCachedData(const TCHAR* CacheKey, bool bTransient)
@@ -232,8 +175,6 @@ void FDerivedDataBackendAsyncPutWrapper::RemoveCachedData(const TCHAR* CacheKey,
 		InflightCache->RemoveCachedData(CacheKey, bTransient);
 	}
 	InnerBackend->RemoveCachedData(CacheKey, bTransient);
-
-	UE_LOG(LogDerivedDataCache, Verbose, TEXT("%s removed %s"), *GetName(), CacheKey)
 }
 
 void FDerivedDataBackendAsyncPutWrapper::GatherUsageStats(TMap<FString, FDerivedDataCacheUsageStats>& UsageStatsMap, FString&& GraphPath)

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,8 +11,6 @@ class IClothingSimulation;
 class USkeletalMeshComponent;
 class IPersonaPreviewScene;
 class FPrimitiveDrawInterface;
-class FCanvas;
-class FSceneView;
 
 /**
  * A simulation extender is an object responsible for extending certain editor features with respect to a certain
@@ -48,14 +46,4 @@ public:
 	 * @param PDI - The drawing interface to use
 	 */
 	virtual void DebugDrawSimulation(const IClothingSimulation* InSimulation, USkeletalMeshComponent* InOwnerComponent, FPrimitiveDrawInterface* PDI) = 0;
-
-	/**
-	 * Called from the editor when clothing is active to process any active debug drawing of any text strings
-	 * Recommended to use the show menu extension for controlling what data to draw
-	 * @param InSimulation - The running clothing simulation
-	 * @param InOwnerComponent - The component that owns the running clothing simulation
-	 * @param Canvas - The canvas to use for drawing the text
-	 * @param SceneView - The view on which to project the text
-	 */
-	virtual void DebugDrawSimulationTexts(const IClothingSimulation* InSimulation, USkeletalMeshComponent* InOwnerComponent, FCanvas* Canvas, const FSceneView* SceneView) = 0;
 };

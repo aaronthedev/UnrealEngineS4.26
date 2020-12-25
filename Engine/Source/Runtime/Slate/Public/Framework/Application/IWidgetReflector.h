@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -21,8 +21,7 @@ DECLARE_DELEGATE_RetVal_OneParam(bool, FAccessAsset, UObject* /*InAsset*/);
 class IWidgetReflector
 {
 public:
-	UE_DEPRECATED(4.26, "OnEventProcessed is deprecated. Use FSlateDebugging.")
-	virtual void OnEventProcessed( const FInputEvent& Event, const FReplyBase& InReply ) {}
+	virtual void OnEventProcessed( const FInputEvent& Event, const FReplyBase& InReply ) = 0;
 
 public:
 
@@ -63,8 +62,7 @@ public:
 	virtual int32 Visualize( const FWidgetPath& InWidgetsToVisualize, FSlateWindowElementList& OutDrawElements, int32 LayerId ) = 0;
 
 	/** Visualize the cursor position and any pressed keys for demo-recording purposes. */
-	UE_DEPRECATED(4.26, "VisualizeCursorAndKeys is deprecated. Use FSlateDebugging.")
-	virtual int32 VisualizeCursorAndKeys(FSlateWindowElementList& OutDrawElements, int32 LayerId) const { return LayerId; }
+	virtual int32 VisualizeCursorAndKeys(FSlateWindowElementList& OutDrawElements, int32 LayerId) const = 0;
 
 	/**
 	 * Sets the widget that should be visualized.

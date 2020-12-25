@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MeshElementViewportTransformable.h"
 #include "MeshEditorMode.h"
@@ -67,7 +67,7 @@ FBox FMeshElementViewportTransformable::BuildBoundingBox( const FTransform& Boun
 						static TArray<FVertexID> PerimeterVertexIDs;
 						EditableMesh->GetPolygonPerimeterVertices( PolygonID, /* Out */ PerimeterVertexIDs );
 
-						for( const FVertexID& VertexID : PerimeterVertexIDs )
+						for( const FVertexID VertexID : PerimeterVertexIDs )
 						{
 							BoundingBox += ComponentToBoundingBox.TransformPosition( VertexPositions[ VertexID ] );
 						}

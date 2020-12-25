@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Layers/LayersSubsystem.h"
 #include "Engine/Brush.h"
@@ -93,6 +93,8 @@ void FLayersBroadcast::OnEditorRefreshLayerBrowser()
 
 
 
+
+PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 void ULayersSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
@@ -1419,3 +1421,5 @@ ULayer* ULayersSubsystem::EnsureLayerExists(const FName& LayerName)
 
 	return Layer;
 }
+
+PRAGMA_ENABLE_DEPRECATION_WARNINGS

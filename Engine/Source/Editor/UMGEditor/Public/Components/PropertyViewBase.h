@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -50,6 +50,8 @@ public:
 protected:
 	virtual void BuildContentWidget() PURE_VIRTUAL(UPropertyViewBase::BuildContentWidget, );
 	virtual void OnObjectChanged() { }
+
+	void AsynBuildContentWidget();
 	TSharedPtr<SBorder> GetDisplayWidget() const { return DisplayedWidget; }
 	void OnPropertyChangedBroadcast(FName PropertyName);
 
@@ -78,4 +80,5 @@ private:
 	FDelegateHandle AssetLoadedHandle;
 	FDelegateHandle PostLoadMapHandle;
 	FDelegateHandle MapChangeHandle;
+	bool bIsAsyncBuildContentRequested = false;
 };

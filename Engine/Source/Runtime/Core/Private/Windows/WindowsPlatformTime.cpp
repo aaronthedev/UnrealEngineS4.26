@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Windows/WindowsPlatformTime.h"
 #include "Misc/AssertionMacros.h"
@@ -105,9 +105,9 @@ bool FWindowsPlatformTime::UpdateCPUTime( float /*DeltaTime*/ )
 
 	// IntervalUserAndKernelTime == 0.0f means that the OS hasn't updated the data yet, 
 	// so don't update to avoid oscillating between 0 and calculated value.
-	if( IntervalUserAndKernelTime > 0.0 )
+	if( IntervalUserAndKernelTime > 0.0f )
 	{
-		CPUTimePctRelative = (float)(IntervalUserAndKernelTime/IntervalProcessTime * 100.0);
+		CPUTimePctRelative = IntervalUserAndKernelTime/IntervalProcessTime * 100.0f;
 
 		LastTotalProcessTime = CurrentTotalProcessTime;
 		LastTotalUserAndKernelTime = CurrentTotalUserAndKernelTime;

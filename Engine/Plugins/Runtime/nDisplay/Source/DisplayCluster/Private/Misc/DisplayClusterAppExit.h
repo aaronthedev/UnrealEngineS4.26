@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,7 +11,7 @@
 class FDisplayClusterAppExit
 {
 public:
-	enum class EExitType
+	enum class ExitType
 	{
 		// Kills current process. No resource cleaning performed.
 		KillImmediately,
@@ -22,10 +22,10 @@ public:
 	};
 
 public:
-	static void ExitApplication(EExitType ExitType, const FString& Msg);
+	static void ExitApplication(ExitType exitType, const FString& strMsg);
 
 private:
-	static auto ExitTypeToStr(EExitType ExitType);
+	static auto ExitTypeToStr(ExitType type);
 
 private:
 	static FCriticalSection InternalsSyncScope;

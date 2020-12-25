@@ -1,31 +1,29 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
-
-#include "NiagaraEditorDataBase.h"
 
 #include "NiagaraStackEditorData.generated.h"
 struct FStackIssue;
 
 /** Editor only UI data for emitters. */
 UCLASS()
-class UNiagaraStackEditorData : public UNiagaraEditorDataBase
+class UNiagaraStackEditorData : public UObject
 {
 	GENERATED_BODY()
 
 public:
 	/*
-	* Gets whether or not a stack entry has a rename pending.
-	* @param StackEntryKey A unique key for the stack entry.
+	* Gets whether or not a module has a rename pending.
+	* @param ModuleInputKey A unique key for the module.
 	*/
-	bool GetStackEntryIsRenamePending(const FString& StackEntryKey) const;
+	bool GetModuleInputIsRenamePending(const FString& ModuleInputKey) const;
 
 	/*
-	* Sets whether or not a stack entry has a rename pending.
-	* @param StackEntryKey A unique key for the stack entry.
-	* @param bIsRenamePending Whether or not the stack entry has a rename pending.
+	* Sets whether or not a module is pinned.
+	* @param ModuleInputKey A unique key for the module.
+	* @param bIsRenamePending Whether or not the module is pinned.
 	*/
-	void SetStackEntryIsRenamePending(const FString& StackEntryKey, bool bIsRenamePending);
+	void SetModuleInputIsRenamePending(const FString& ModuleInputKey, bool bIsRenamePending);
 
 	/*
 	 * Gets whether or not a stack entry is Expanded.
@@ -63,29 +61,11 @@ public:
 	bool GetStackItemShowAdvanced(const FString& StackEntryKey, bool bShowAdvancedDefault) const;
 
 	/*
-	* Sets whether or not a stack entry is showing advanced items.
+	* Sets whether or not a stack entry is Expanded.
 	* @param StackEntryKey A unique key for the entry.
 	* @param bIsExpanded Whether or not the entry is expanded.
 	*/
 	void SetStackItemShowAdvanced(const FString& StackEntryKey, bool bShowAdanced);
-
-	/*
-	* Gets a stack entry's display name. Returns null if none is found.
-	* @param StackEntryKey A unique key for the stack entry.
-	*/
-	NIAGARAEDITOR_API const FText* GetStackEntryDisplayName(const FString& StackEntryKey) const;
-
-	/*
-	* Gets a map of all renamed stack entry keys to their display name.
-	*/
-	const TMap<FString, FText>& GetAllStackEntryDisplayNames() const { return StackEntryKeyToDisplayName; }
-
-	/*
-	* Sets a stack entry's display name.
-	* @param StackEntryKey A unique key for the stack entry.
-	* @param InDisplayName The display name to set for this entry.
-	*/
-	void SetStackEntryDisplayName(const FString& StackEntryKey, const FText& InDisplayName);
 
 	/* Gets whether or not all advanced items should be shown in the stack. */
 	bool GetShowAllAdvanced() const;
@@ -105,12 +85,6 @@ public:
 	/* Sets whether or not item linked script inputs should be shown in the stack. */
 	void SetShowLinkedInputs(bool bInShowLinkedInputs);
 
-	/* Gets whether or not only modules that have issues should be shown in the stack. */
-	bool GetShowOnlyIssues() const;
-
-	/* Sets whether or not only modules that haves issues should be shown in the stack. */
-	void SetShowOnlyIssues(bool bInShowIssues);
-
 	/* Gets the last scroll position for the associated stack. */
 	double GetLastScrollPosition() const;
 
@@ -129,25 +103,28 @@ public:
 	NIAGARAEDITOR_API const TArray<FString>& GetDismissedStackIssueIds();
 
 private:
-	TMap<FString, bool> StackEntryKeyToRenamePendingMap;
+	UPROPERTY()
+	TMap<FString, bool> ModuleInputKeyToRenamePendingMap;
 
+	UPROPERTY()
 	TMap<FString, bool> StackEntryKeyToExpandedMap;
 
+	UPROPERTY()
 	TMap<FString, bool> StackEntryKeyToPreSearchExpandedMap;
 
+	UPROPERTY()
 	TMap<FString, bool> StackItemKeyToShowAdvancedMap;
 
 	UPROPERTY()
-	TMap<FString, FText> StackEntryKeyToDisplayName;
-
 	bool bShowAllAdvanced;
 
+	UPROPERTY()
 	bool bShowOutputs;
 
+	UPROPERTY()
 	bool bShowLinkedInputs;
 
-	bool bShowOnlyIssues;
-
+	UPROPERTY()
 	double LastScrollPosition;
 
 	UPROPERTY()

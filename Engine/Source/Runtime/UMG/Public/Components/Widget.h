@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -20,6 +20,11 @@
 #include "UObject/UObjectThreadContext.h"
 #include "GameFramework/PlayerController.h"
 #include "Blueprint/WidgetNavigation.h"
+
+#if WITH_EDITOR
+// This violates IWYU, but the alternative is .cpp includes that are invariably not within #if WITH_EDITOR and cause non-editor build failures
+#include "Kismet2/CompilerResultsLog.h"
+#endif
 
 #include "Widget.generated.h"
 
@@ -221,7 +226,7 @@ class UMG_API UWidget : public UVisual
 
 public:
 
-	// Common Bindings - If you add any new common binding, you must provide a UPropertyBinding for it.
+	// Common Bindings - If you add any new common binding, you must provide a UPropertyBinder for it.
 	//                   all primitive binding in UMG goes through native binding evaluators to prevent
 	//                   thunking through the VM.
 	DECLARE_DYNAMIC_DELEGATE_RetVal(bool, FGetBool);
@@ -343,7 +348,7 @@ public:
 	ESlateAccessibleBehavior AccessibleSummaryBehavior;
 
 	/** When AccessibleBehavior is set to Custom, this is the text that will be used to describe the widget. */
-	UPROPERTY(EditAnywhere, Category="Accessibility", meta=(MultiLine=true))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Accessibility", meta=(MultiLine=true))
 	FText AccessibleText;
 
 	/** An optional delegate that may be assigned in place of AccessibleText for creating a TAttribute */
@@ -351,7 +356,7 @@ public:
 	USlateAccessibleWidgetData::FGetText AccessibleTextDelegate;
 
 	/** When AccessibleSummaryBehavior is set to Custom, this is the text that will be used to describe the widget. */
-	UPROPERTY(EditAnywhere, Category="Accessibility", meta=(MultiLine=true), AdvancedDisplay)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Accessibility", meta=(MultiLine=true), AdvancedDisplay)
 	FText AccessibleSummaryText;
 
 	/** An optional delegate that may be assigned in place of AccessibleSummaryText for creating a TAttribute */
@@ -591,10 +596,10 @@ public:
 	bool HasUserFocusedDescendants(APlayerController* PlayerController) const;
 	
 	/** Sets the focus to this widget for the owning user */
-	UFUNCTION(BlueprintCallable, Category="Widget")
+	UFUNCTION(BlueprintCallable, Category = "Widget")
 	void SetFocus();
 
-	/** Sets the focus to this widget for a specific user (if setting focus for the owning user, prefer SetFocus()) */
+	/** Sets the focus to this widget for a specific user */
 	UFUNCTION(BlueprintCallable, Category="Widget")
 	void SetUserFocus(APlayerController* PlayerController);
 
@@ -799,22 +804,6 @@ public:
 	}
 
 	/**
-	 * Gets the accessible text from the underlying Slate accessible widget
-	 * @return The accessible text of the underlying Slate accessible widget. Returns an empty text if
-	  * accessibility is dsabled or the underlying accessible widget is invalid.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Widget")
-	FText GetAccessibleText() const;
-
-	/**
-	 * Gets the accessible summary text from the underlying Slate accessible widget.
-	 * @return The accessible summary text of the underlying Slate accessible widget. Returns an empty text if
-	  * accessibility is dsabled or the underlying accessible widget is invalid.
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Widget")
-	FText GetAccessibleSummaryText() const;
-	
-	/**
 	 * Applies all properties to the native widget if possible.  This is called after a widget is constructed.
 	 * It can also be called by the editor to update modified state, so ensure all initialization to a widgets
 	 * properties are performed here, or the property and visual state may become unsynced.
@@ -885,13 +874,14 @@ public:
 	bool IsChildOf(UWidget* PossibleParent);
 
 	/**  */
-	bool AddBinding(FDelegateProperty* DelegateProperty, UObject* SourceObject, const FDynamicPropertyPath& BindingPath);
+	bool AddBinding(UDelegateProperty* DelegateProperty, UObject* SourceObject, const FDynamicPropertyPath& BindingPath);
 
-	static TSubclassOf<UPropertyBinding> FindBinderClassForDestination(FProperty* Property);
+	static TSubclassOf<UPropertyBinding> FindBinderClassForDestination(UProperty* Property);
 
 	// Begin UObject
 	virtual UWorld* GetWorld() const override;
 	virtual void FinishDestroy() override;
+	virtual bool IsDestructionThreadSafe() const override { return false; }
 	virtual void PreSave(const class ITargetPlatform* TargetPlatform) override;
 	// End UObject
 

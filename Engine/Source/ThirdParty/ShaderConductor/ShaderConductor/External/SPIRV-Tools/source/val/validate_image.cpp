@@ -149,17 +149,6 @@ bool IsExplicitLod(SpvOp opcode) {
   return false;
 }
 
-bool IsValidLodOperand(const ValidationState_t& _, SpvOp opcode) {
-  switch (opcode) {
-    case SpvOpImageRead:
-    case SpvOpImageWrite:
-    case SpvOpImageSparseRead:
-      return _.HasCapability(SpvCapabilityImageReadWriteLodAMD);
-    default:
-      return IsExplicitLod(opcode);
-  }
-}
-
 // Returns true if the opcode is a Image instruction which applies
 // homogenous projection to the coordinates.
 bool IsProj(SpvOp opcode) {
@@ -259,7 +248,6 @@ spv_result_t ValidateImageOperands(ValidationState_t& _,
 
   const bool is_implicit_lod = IsImplicitLod(opcode);
   const bool is_explicit_lod = IsExplicitLod(opcode);
-  const bool is_valid_lod_operand = IsValidLodOperand(_, opcode);
 
   // The checks should be done in the order of definition of OperandImage.
 
@@ -289,7 +277,7 @@ spv_result_t ValidateImageOperands(ValidationState_t& _,
   }
 
   if (mask & SpvImageOperandsLodMask) {
-    if (!is_valid_lod_operand && opcode != SpvOpImageFetch &&
+    if (!is_explicit_lod && opcode != SpvOpImageFetch &&
         opcode != SpvOpImageSparseFetch) {
       return _.diag(SPV_ERROR_INVALID_DATA, inst)
              << "Image Operand Lod can only be used with ExplicitLod opcodes "
@@ -847,7 +835,6 @@ bool IsAllowedSampledImageOperand(SpvOp opcode) {
     case SpvOpImageSparseSampleDrefExplicitLod:
     case SpvOpImageSparseGather:
     case SpvOpImageSparseDrefGather:
-    case SpvOpCopyObject:
       return true;
     default:
       return false;
@@ -1127,17 +1114,6 @@ spv_result_t ValidateImageLod(ValidationState_t& _, const Instruction* inst) {
   }
 
   const uint32_t mask = inst->word(5);
-
-  if (spvIsOpenCLEnv(_.context()->target_env)) {
-    if (opcode == SpvOpImageSampleExplicitLod) {
-      if (mask & SpvImageOperandsConstOffsetMask) {
-        return _.diag(SPV_ERROR_INVALID_DATA, inst)
-               << "ConstOffset image operand not allowed "
-               << "in the OpenCL environment.";
-      }
-    }
-  }
-
   if (spv_result_t result =
           ValidateImageOperands(_, inst, info, mask, /* word_index = */ 6))
     return result;
@@ -1464,15 +1440,6 @@ spv_result_t ValidateImageRead(ValidationState_t& _, const Instruction* inst) {
   if (inst->words().size() <= 5) return SPV_SUCCESS;
 
   const uint32_t mask = inst->word(5);
-
-  if (spvIsOpenCLEnv(_.context()->target_env)) {
-    if (mask & SpvImageOperandsConstOffsetMask) {
-      return _.diag(SPV_ERROR_INVALID_DATA, inst)
-             << "ConstOffset image operand not allowed "
-             << "in the OpenCL environment.";
-    }
-  }
-
   if (spv_result_t result =
           ValidateImageOperands(_, inst, info, mask, /* word_index = */ 6))
     return result;
@@ -1550,15 +1517,7 @@ spv_result_t ValidateImageWrite(ValidationState_t& _, const Instruction* inst) {
     }
   }
 
-  if (inst->words().size() <= 4) {
-    return SPV_SUCCESS;
-  } else {
-    if (spvIsOpenCLEnv(_.context()->target_env)) {
-      return _.diag(SPV_ERROR_INVALID_DATA, inst)
-             << "Optional Image Operands are not allowed in the OpenCL "
-             << "environment.";
-    }
-  }
+  if (inst->words().size() <= 4) return SPV_SUCCESS;
 
   const uint32_t mask = inst->word(4);
   if (spv_result_t result =
@@ -1723,39 +1682,8 @@ spv_result_t ValidateImageQueryLod(ValidationState_t& _,
                                    const Instruction* inst) {
   _.function(inst->function()->id())
       ->RegisterExecutionModelLimitation(
-          [&](SpvExecutionModel model, std::string* message) {
-            if (model != SpvExecutionModelFragment &&
-                model != SpvExecutionModelGLCompute) {
-              if (message) {
-                *message = std::string(
-                    "OpImageQueryLod requires Fragment or GLCompute execution "
-                    "model");
-              }
-              return false;
-            }
-            return true;
-          });
-  _.function(inst->function()->id())
-      ->RegisterLimitation([](const ValidationState_t& state,
-                              const Function* entry_point,
-                              std::string* message) {
-        const auto* models = state.GetExecutionModels(entry_point->id());
-        const auto* modes = state.GetExecutionModes(entry_point->id());
-        if (models->find(SpvExecutionModelGLCompute) != models->end() &&
-            modes->find(SpvExecutionModeDerivativeGroupLinearNV) ==
-                modes->end() &&
-            modes->find(SpvExecutionModeDerivativeGroupQuadsNV) ==
-                modes->end()) {
-          if (message) {
-            *message = std::string(
-                "OpImageQueryLod requires DerivativeGroupQuadsNV "
-                "or DerivativeGroupLinearNV execution mode for GLCompute "
-                "execution model");
-          }
-          return false;
-        }
-        return true;
-      });
+          SpvExecutionModelFragment,
+          "OpImageQueryLod requires Fragment execution model");
 
   const uint32_t result_type = inst->type_id();
   if (!_.IsFloatVectorType(result_type)) {
@@ -1879,44 +1807,9 @@ spv_result_t ImagePass(ValidationState_t& _, const Instruction* inst) {
   const SpvOp opcode = inst->opcode();
   if (IsImplicitLod(opcode)) {
     _.function(inst->function()->id())
-        ->RegisterExecutionModelLimitation([opcode](SpvExecutionModel model,
-                                                    std::string* message) {
-          if (model != SpvExecutionModelFragment &&
-              model != SpvExecutionModelGLCompute) {
-            if (message) {
-              *message =
-                  std::string(
-                      "ImplicitLod instructions require Fragment or GLCompute "
-                      "execution model: ") +
-                  spvOpcodeString(opcode);
-            }
-            return false;
-          }
-          return true;
-        });
-    _.function(inst->function()->id())
-        ->RegisterLimitation([opcode](const ValidationState_t& state,
-                                      const Function* entry_point,
-                                      std::string* message) {
-          const auto* models = state.GetExecutionModels(entry_point->id());
-          const auto* modes = state.GetExecutionModes(entry_point->id());
-          if (models->find(SpvExecutionModelGLCompute) != models->end() &&
-              modes->find(SpvExecutionModeDerivativeGroupLinearNV) ==
-                  modes->end() &&
-              modes->find(SpvExecutionModeDerivativeGroupQuadsNV) ==
-                  modes->end()) {
-            if (message) {
-              *message =
-                  std::string(
-                      "ImplicitLod instructions require DerivativeGroupQuadsNV "
-                      "or DerivativeGroupLinearNV execution mode for GLCompute "
-                      "execution model: ") +
-                  spvOpcodeString(opcode);
-            }
-            return false;
-          }
-          return true;
-        });
+        ->RegisterExecutionModelLimitation(
+            SpvExecutionModelFragment,
+            "ImplicitLod instructions require Fragment execution model");
   }
 
   switch (opcode) {

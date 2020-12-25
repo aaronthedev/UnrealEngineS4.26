@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -39,7 +39,7 @@ struct FSoundCueTemplateQualitySettings
 };
 
 UCLASS(config=Game, defaultconfig, meta=(DisplayName="Sound Cue Templates"))
-class SOUNDCUETEMPLATES_API USoundCueTemplateSettings : public UDeveloperSettings
+class USoundCueTemplateSettings : public UDeveloperSettings
 {
 	GENERATED_UCLASS_BODY()
 

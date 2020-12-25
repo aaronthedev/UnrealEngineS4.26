@@ -15,9 +15,7 @@ import sys
 import tempfile
 import unittest
 
-from test.support import (requires, import_module, verbose, run_unittest,
-                          SaveSignals)
-
+from test.test_support import requires, import_module, verbose, run_unittest
 
 # Optionally test curses module.  This currently requires that the
 # 'curses' resource be given on the regrtest command line using the -u
@@ -26,12 +24,9 @@ requires('curses')
 
 # If either of these don't exist, skip the tests.
 curses = import_module('curses')
+import_module('curses.panel')
 import_module('curses.ascii')
 import_module('curses.textpad')
-try:
-    import curses.panel
-except ImportError:
-    pass
 
 def requires_curses_func(name):
     return unittest.skipUnless(hasattr(curses, name),
@@ -67,8 +62,6 @@ class TestCurses(unittest.TestCase):
             del cls.tmp
 
     def setUp(self):
-        self.save_signals = SaveSignals()
-        self.save_signals.save()
         if verbose:
             # just to make the test output a little more readable
             print('')
@@ -78,7 +71,6 @@ class TestCurses(unittest.TestCase):
     def tearDown(self):
         curses.resetty()
         curses.endwin()
-        self.save_signals.restore()
 
     def test_window_funcs(self):
         "Test the methods of windows"
@@ -92,7 +84,7 @@ class TestCurses(unittest.TestCase):
                          (4,4, 'a'), (5,5, 'a', curses.A_BOLD)]:
                 meth(*args)
 
-        for meth in [stdscr.clear, stdscr.clrtobot,
+        for meth in [stdscr.box, stdscr.clear, stdscr.clrtobot,
                      stdscr.clrtoeol, stdscr.cursyncup, stdscr.delch,
                      stdscr.deleteln, stdscr.erase, stdscr.getbegyx,
                      stdscr.getbkgd, stdscr.getkey, stdscr.getmaxyx,
@@ -125,13 +117,6 @@ class TestCurses(unittest.TestCase):
             win.border(65, 66, 67, 68,
                        69, [], 71, 72)
 
-        win.box(65, 67)
-        win.box('!', '_')
-        win.box(b':', b'~')
-        self.assertRaises(TypeError, win.box, 65, 66, 67)
-        self.assertRaises(TypeError, win.box, 65)
-        win.box()
-
         stdscr.clearok(1)
 
         win4 = stdscr.derwin(2,2)
@@ -147,9 +132,7 @@ class TestCurses(unittest.TestCase):
 
         stdscr.idcok(1)
         stdscr.idlok(1)
-        if hasattr(stdscr, 'immedok'):
-            stdscr.immedok(1)
-            stdscr.immedok(0)
+        stdscr.immedok(1)
         stdscr.insch('c')
         stdscr.insdelln(1)
         stdscr.insnstr('abc', 3)
@@ -183,27 +166,25 @@ class TestCurses(unittest.TestCase):
         stdscr.setscrreg(10,15)
         win3 = stdscr.subwin(10,10)
         win3 = stdscr.subwin(10,10, 5,5)
-        if hasattr(stdscr, 'syncok') and not sys.platform.startswith("sunos"):
-            stdscr.syncok(1)
+        stdscr.syncok(1)
         stdscr.timeout(5)
         stdscr.touchline(5,5)
         stdscr.touchline(5,5,0)
         stdscr.vline('a', 3)
         stdscr.vline('a', 3, curses.A_STANDOUT)
-        if hasattr(stdscr, 'chgat'):
-            stdscr.chgat(5, 2, 3, curses.A_BLINK)
-            stdscr.chgat(3, curses.A_BOLD)
-            stdscr.chgat(5, 8, curses.A_UNDERLINE)
-            stdscr.chgat(curses.A_BLINK)
+        stdscr.chgat(5, 2, 3, curses.A_BLINK)
+        stdscr.chgat(3, curses.A_BOLD)
+        stdscr.chgat(5, 8, curses.A_UNDERLINE)
+        stdscr.chgat(curses.A_BLINK)
         stdscr.refresh()
 
         stdscr.vline(1,1, 'a', 3)
         stdscr.vline(1,1, 'a', 3, curses.A_STANDOUT)
 
-        if hasattr(stdscr, 'resize'):
-            stdscr.resize(25, 80)
-        if hasattr(stdscr, 'enclose'):
-            stdscr.enclose(10, 10)
+        if hasattr(curses, 'resize'):
+            stdscr.resize()
+        if hasattr(curses, 'enclose'):
+            stdscr.enclose()
 
         self.assertRaises(ValueError, stdscr.getstr, -400)
         self.assertRaises(ValueError, stdscr.getstr, 2, 3, -400)
@@ -215,18 +196,14 @@ class TestCurses(unittest.TestCase):
         "Test module-level functions"
         for func in [curses.baudrate, curses.beep, curses.can_change_color,
                      curses.cbreak, curses.def_prog_mode, curses.doupdate,
-                     curses.flash, curses.flushinp,
+                     curses.filter, curses.flash, curses.flushinp,
                      curses.has_colors, curses.has_ic, curses.has_il,
                      curses.isendwin, curses.killchar, curses.longname,
                      curses.nocbreak, curses.noecho, curses.nonl,
                      curses.noqiflush, curses.noraw,
                      curses.reset_prog_mode, curses.termattrs,
-                     curses.termname, curses.erasechar]:
+                     curses.termname, curses.erasechar, curses.getsyx]:
             func()
-        if hasattr(curses, 'filter'):
-            curses.filter()
-        if hasattr(curses, 'getsyx'):
-            curses.getsyx()
 
         # Functions that actually need arguments
         if curses.tigetstr("cnorm"):
@@ -250,18 +227,15 @@ class TestCurses(unittest.TestCase):
         curses.putp(b'abc')
         curses.qiflush()
         curses.raw() ; curses.raw(1)
-        if hasattr(curses, 'setsyx'):
-            curses.setsyx(5,5)
+        curses.setsyx(5,5)
         curses.tigetflag('hc')
         curses.tigetnum('co')
         curses.tigetstr('cr')
         curses.tparm(b'cr')
-        if hasattr(curses, 'typeahead'):
-            curses.typeahead(sys.__stdin__.fileno())
+        curses.typeahead(sys.__stdin__.fileno())
         curses.unctrl('a')
         curses.ungetch('a')
-        if hasattr(curses, 'use_env'):
-            curses.use_env(1)
+        curses.use_env(1)
 
     # Functions only available on a few platforms
     def test_colors_funcs(self):
@@ -295,7 +269,6 @@ class TestCurses(unittest.TestCase):
         curses.ungetmouse(0, 0, 0, 0, curses.BUTTON1_PRESSED)
         m = curses.getmouse()
 
-    @requires_curses_func('panel')
     def test_userptr_without_set(self):
         w = curses.newwin(10, 10)
         p = curses.panel.new_panel(w)
@@ -304,7 +277,6 @@ class TestCurses(unittest.TestCase):
                                msg='userptr should fail since not set'):
             p.userptr()
 
-    @requires_curses_func('panel')
     def test_userptr_memory_leak(self):
         w = curses.newwin(10, 10)
         p = curses.panel.new_panel(w)
@@ -317,20 +289,16 @@ class TestCurses(unittest.TestCase):
         self.assertEqual(sys.getrefcount(obj), nrefs,
                          "set_userptr leaked references")
 
-    @requires_curses_func('panel')
     def test_userptr_segfault(self):
-        w = curses.newwin(10, 10)
-        panel = curses.panel.new_panel(w)
+        panel = curses.panel.new_panel(self.stdscr)
         class A:
             def __del__(self):
                 panel.set_userptr(None)
         panel.set_userptr(A())
         panel.set_userptr(None)
 
-    @requires_curses_func('panel')
     def test_new_curses_panel(self):
-        w = curses.newwin(10, 10)
-        panel = curses.panel.new_panel(w)
+        panel = curses.panel.new_panel(self.stdscr)
         self.assertRaises(TypeError, type(panel))
 
     @requires_curses_func('is_term_resized')
@@ -362,8 +330,6 @@ class TestCurses(unittest.TestCase):
 
     def test_issue13051(self):
         stdscr = self.stdscr
-        if not hasattr(stdscr, 'resize'):
-            raise unittest.SkipTest('requires curses.window.resize')
         box = curses.textpad.Textbox(stdscr, insert_mode=True)
         lines, cols = stdscr.getmaxyx()
         stdscr.resize(lines-2, cols-2)

@@ -1,13 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.IO;
 using System.Collections.Generic;
 using AutomationTool;
 using UnrealBuildTool;
-using System.Diagnostics;
-using System.Diagnostics.Eventing.Reader;
-using Gauntlet.Utils;
 
 namespace Gauntlet
 {
@@ -145,45 +142,21 @@ namespace Gauntlet
 			{
 				ScreenshotTime = DateTime.Now;
 
-				if (!File.Exists(Path.Combine(ScreenshotDirectory, ImageFilename)))
+				try
 				{
-					Log.Info("PGOPlatform.TakeScreenshot returned true, but output image {0} does not exist! skipping", ImageFilename);
+					TimeSpan ImageTimestamp = DateTime.UtcNow - ScreenshotStartTime;
+					string ImageOutputPath = Path.Combine(ScreenshotDirectory, ImageTimestamp.ToString().Replace(':', '-') + ".jpg");
+					ImageUtils.ResaveImageAsJpgWithScaleAndQuality(Path.Combine(ScreenshotDirectory, ImageFilename), ImageOutputPath, ScreenshotScale, ScreenshotQuality);
 				}
-				else if(new FileInfo(Path.Combine(ScreenshotDirectory, ImageFilename)).Length <= 0)
+				catch
 				{
-					Log.Info("PGOPlatform.TakeScreenshot returned true, but output image {0} is size 0! skipping", ImageFilename);
+					// Just ignore errors.
 				}
-				else
+				finally
 				{
-					try
-					{
-						TimeSpan ImageTimestamp = DateTime.UtcNow - ScreenshotStartTime;
-						string ImageOutputPath = Path.Combine(ScreenshotDirectory, ImageTimestamp.ToString().Replace(':', '-') + ".jpg");
-						ImageUtils.ResaveImageAsJpgWithScaleAndQuality(Path.Combine(ScreenshotDirectory, ImageFilename), ImageOutputPath, ScreenshotScale, ScreenshotQuality);
-
-						// Delete the temporary image file
-						try { File.Delete(Path.Combine(ScreenshotDirectory, ImageFilename)); }
-						catch (Exception e)
-						{
-							Log.Warning("Got Exception Deleting temp iamge: {0}", e.ToString());
-						}
-					}
-					catch (Exception e)
-					{
-						Log.Info("Got Exception Renaming PGO image {0}: {1}", ImageFilename, e.ToString());
-
-						TimeSpan ImageTimestamp = DateTime.UtcNow - ScreenshotStartTime;
-						string CopyFileName = Path.Combine(ScreenshotDirectory, ImageTimestamp.ToString().Replace(':', '-') + ".bmp");
-						Log.Info("Copying unconverted image {0} to {1}", ImageFilename, CopyFileName);
-						try
-						{
-							File.Copy(Path.Combine(ScreenshotDirectory, ImageFilename), CopyFileName);
-						}
-						catch (Exception e2)
-						{
-							Log.Warning("Got Exception copying un-converted screenshot image: {0}", e2.ToString());
-						}
-					}
+					// Delete the temporary image file
+					try { File.Delete(Path.Combine(ScreenshotDirectory, ImageFilename)); }
+					catch { }
 				}
 			}
 

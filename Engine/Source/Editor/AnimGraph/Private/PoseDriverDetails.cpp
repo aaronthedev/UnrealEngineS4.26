@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PoseDriverDetails.h"
 #include "AnimGraphNode_PoseDriver.h"
@@ -25,64 +25,6 @@
 static const FName ColumnId_Target("Target");
 TArray< TSharedPtr<FName> > SPDD_TargetRow::DistanceMethodOptions;
 TArray< TSharedPtr<FName> > SPDD_TargetRow::FunctionTypeOptions;
-
-class FSoloToggleButton : public SButton
-{
-public:
-	SLATE_BEGIN_ARGS(FSoloToggleButton)
-	{}
-		SLATE_EVENT(FSimpleDelegate, OnSoloStartAction)
-		SLATE_EVENT(FSimpleDelegate, OnSoloEndAction)
-		SLATE_ATTRIBUTE(bool, SoloState)
-	SLATE_END_ARGS()
-
-	void Construct(const FArguments& InArgs)
-	{
-		OnSoloStartAction = InArgs._OnSoloStartAction;
-		OnSoloEndAction = InArgs._OnSoloEndAction;
-		SoloState = InArgs._SoloState;
-
-		SButton::Construct(
-			SButton::FArguments()
-			.Text(FText::FromString(TEXT("S")))
-			.ButtonStyle(FEditorStyle::Get(), "FlatButton.Default")
-			.TextStyle(FEditorStyle::Get(), "FlatButton.DefaultTextStyle")
-			.ContentPadding(4.0f)
-			.ForegroundColor(FSlateColor::UseForeground())
-			.OnPressed(this, &FSoloToggleButton::OnButtonPressed)
-			.OnReleased(this, &FSoloToggleButton::OnButtonReleased)
-			.IsFocusable(false)
-		);
-	}
-
-	FReply OnMouseButtonDoubleClick(const FGeometry& InMyGeometry, const FPointerEvent& InMouseEvent) override
-	{
-		OnSoloStartAction.ExecuteIfBound();
-		return FReply::Handled();
-	}
-
-protected:
-	bool IsPressed() const override
-	{
-		return SButton::IsPressed() || SoloState.Get(false);
-	}
-
-private:
-	void OnButtonPressed()
-	{
-		OnSoloStartAction.ExecuteIfBound();
-	}
-
-	void OnButtonReleased()
-	{
-		OnSoloEndAction.ExecuteIfBound();	
-	}
-
-	FSimpleDelegate OnSoloStartAction;
-	FSimpleDelegate OnSoloEndAction;
-	TAttribute< bool > SoloState;
-};
-
 
 void SPDD_TargetRow::Construct(const FArguments& InArgs, const TSharedRef<STableViewBase>& InOwnerTableView)
 {
@@ -190,17 +132,6 @@ TSharedRef< SWidget > SPDD_TargetRow::GenerateWidgetForColumn(const FName& Colum
 						SNew(STextBlock)
 						.Text(this, &SPDD_TargetRow::GetTargetWeightText)
 					]
-				]
-
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.Padding(FMargin(3, 0, 6, 0))
-				[
-					SNew(FSoloToggleButton)
-					.SoloState(TAttribute<bool>::Create(TAttribute<bool>::FGetter::CreateLambda([this] { return this->IsSoloTarget(); })))
-					.OnSoloStartAction(FSimpleDelegate::CreateSP(this, &SPDD_TargetRow::SoloTargetStart))
-					.OnSoloEndAction(FSimpleDelegate::CreateSP(this, &SPDD_TargetRow::SoloTargetEnd))
-					.ToolTipText(LOCTEXT("SoloTarget", "Hold to solo temporarily. Doube-click to keep solo enabled."))
 				]
 
 				+ SHorizontalBox::Slot()
@@ -326,7 +257,6 @@ TSharedRef< SWidget > SPDD_TargetRow::GenerateWidgetForColumn(const FName& Colum
 							.OptionsSource(&DistanceMethodOptions)
 							.OnGenerateWidget(this, &SPDD_TargetRow::MakeDrivenNameWidget)
 							.OnSelectionChanged(this, &SPDD_TargetRow::OnDistanceMethodChanged)
-							.IsEnabled_Lambda([this]() { return IsOverrideEnabled(); })
 							.Content()
 							[
 								SNew(STextBlock)
@@ -344,7 +274,6 @@ TSharedRef< SWidget > SPDD_TargetRow::GenerateWidgetForColumn(const FName& Colum
 							.OptionsSource(&FunctionTypeOptions)
 							.OnGenerateWidget(this, &SPDD_TargetRow::MakeDrivenNameWidget)
 							.OnSelectionChanged(this, &SPDD_TargetRow::OnFunctionTypeChanged)
-							.IsEnabled_Lambda([this]() { return IsOverrideEnabled(); })
 							.Content()
 							[
 								SNew(STextBlock)
@@ -387,7 +316,6 @@ TSharedRef< SWidget > SPDD_TargetRow::GenerateWidgetForColumn(const FName& Colum
 					[
 						SNew(SBox)
 						.Visibility_Lambda([=]() { return IsCustomCurveEnabled() ? EVisibility::Visible : EVisibility::Collapsed;  })
-						.IsEnabled_Lambda([this]() { return IsOverrideEnabled(); })
 						.Content()
 						[
 							SAssignNew(CurveEditor, SCurveEditor)
@@ -507,18 +435,6 @@ int32 SPDD_TargetRow::GetTargetIndex() const
 {
 	TSharedPtr<FPDD_TargetInfo> TargetInfo = TargetInfoPtr.Pin();
 	return TargetInfo->TargetIndex;
-}
-
-bool SPDD_TargetRow::IsOverrideEnabled() const
-{
-	bool bOverrideEnabled = true;
-	UAnimGraphNode_PoseDriver* Driver = GetPoseDriverGraphNode();
-	if (Driver)
-	{
-		bOverrideEnabled = Driver->Node.RBFParams.SolverType == ERBFSolverType::Additive;
-	}
-
-	return bOverrideEnabled;
 }
 
 float SPDD_TargetRow::GetTargetWeight() const
@@ -773,8 +689,6 @@ void SPDD_TargetRow::SetDrivenNameText(const FText& NewText, ETextCommit::Type C
 	}
 }
 
-
-
 void SPDD_TargetRow::RemoveTarget()
 {
 	TSharedPtr<FPoseDriverDetails> PoseDriverDetails = PoseDriverDetailsPtr.Pin();
@@ -782,35 +696,6 @@ void SPDD_TargetRow::RemoveTarget()
 	{
 		PoseDriverDetails->RemoveTarget(GetTargetIndex()); // This will remove me
 	}
-}
-
-void SPDD_TargetRow::SoloTargetStart()
-{
-	TSharedPtr<FPoseDriverDetails> PoseDriverDetails = PoseDriverDetailsPtr.Pin();
-	if (PoseDriverDetails.IsValid())
-	{
-		PoseDriverDetails->SetSoloTarget(GetTargetIndex()); 
-	}
-}
-
-void SPDD_TargetRow::SoloTargetEnd()
-{
-	TSharedPtr<FPoseDriverDetails> PoseDriverDetails = PoseDriverDetailsPtr.Pin();
-	if (PoseDriverDetails.IsValid())
-	{
-		PoseDriverDetails->SetSoloTarget(INDEX_NONE); 
-	}
-}
-
-bool SPDD_TargetRow::IsSoloTarget() const
-{
-	TSharedPtr<FPoseDriverDetails> PoseDriverDetails = PoseDriverDetailsPtr.Pin();
-	if (PoseDriverDetails.IsValid())
-	{
-		return PoseDriverDetails->GetSoloTarget() == GetTargetIndex();
-	}
-
-	return false;
 }
 
 void SPDD_TargetRow::ExpandTargetInfo()
@@ -1042,22 +927,6 @@ void FPoseDriverDetails::CustomizeDetails(IDetailLayoutBuilder& DetailBuilder)
 			SNew(SHorizontalBox)
 
 			+ SHorizontalBox::Slot()
-			.VAlign(VAlign_Center)
-			.AutoWidth()
-			.Padding(FMargin(6, 0, 3, 0))
-			[
-				SNew(SCheckBox)
-				.IsChecked_Lambda([=]() { return IsSoloDrivenOnly() ? ECheckBoxState::Checked : ECheckBoxState::Unchecked; })
-				.OnCheckStateChanged(this, &FPoseDriverDetails::OnSoloDrivenOnlyChanged)
-				.Padding(FMargin(4.0f, 0.0f))
-				.ToolTipText(LOCTEXT("SoloDrivenOnlyHelp", "Only solo the driven poses or curves and leave the source joint(s) in place."))
-				[
-					SNew(STextBlock)
-					.Text(LOCTEXT("SoloDrivenOnly", "Solo Driven Pose/Curve Only"))
-				]
-			]
-
-			+ SHorizontalBox::Slot()
 			.FillWidth(1)
 			[
 				SNew(SSpacer)
@@ -1140,21 +1009,6 @@ void FPoseDriverDetails::OnSourceBonesChanged()
 	}
 
 	UpdateTargetInfosList();
-}
-
-void FPoseDriverDetails::OnSoloDrivenOnlyChanged(const ECheckBoxState NewCheckState)
-{	
-	bool bDrivenOnly = (NewCheckState == ECheckBoxState::Checked);
-
-	UAnimGraphNode_PoseDriver* PoseDriver = GetFirstSelectedPoseDriver();
-	if (PoseDriver&& PoseDriver->Node.bSoloDrivenOnly != bDrivenOnly)
-	{
-		PoseDriver->Node.bSoloDrivenOnly = bDrivenOnly;
-
-		// Set this as an interactive change to avoid triggering the "node needs recompile"
-		// message, since it won't be needed anyway.
-		NodePropHandle->NotifyPostChange(EPropertyChangeType::Interactive);
-	}
 }
 
 UAnimGraphNode_PoseDriver* FPoseDriverDetails::GetFirstSelectedPoseDriver() const
@@ -1299,46 +1153,6 @@ void FPoseDriverDetails::RemoveTarget(int32 TargetIndex)
 		UpdateTargetInfosList();
 		NodePropHandle->NotifyPostChange(); // will push changes to preview node instance
 	}
-}
-
-void FPoseDriverDetails::SetSoloTarget(int32 TargetIndex)
-{
-	UAnimGraphNode_PoseDriver* PoseDriver = GetFirstSelectedPoseDriver();
-	if (PoseDriver)
-	{
-		FAnimNode_PoseDriver& Node = PoseDriver->Node;
-
-		if (PoseDriver->Node.PoseTargets.IsValidIndex(TargetIndex))
-		{
-			Node.SoloTargetIndex = TargetIndex;
-		}
-		else
-		{
-			Node.SoloTargetIndex = INDEX_NONE;
-		}
-
-		// Set this as an interactive change to avoid triggering the "node needs recompile"
-		// message, since it won't be needed anyway.
-		NodePropHandle->NotifyPostChange(EPropertyChangeType::Interactive);
-	}
-}
-
-int32 FPoseDriverDetails::GetSoloTarget() const
-{
-	const UAnimGraphNode_PoseDriver* PoseDriver = GetFirstSelectedPoseDriver();
-	if (PoseDriver)
-	{
-		return PoseDriver->Node.SoloTargetIndex;
-	}
-
-	return INDEX_NONE;
-}
-
-bool FPoseDriverDetails::IsSoloDrivenOnly() const
-{
-	const UAnimGraphNode_PoseDriver* PoseDriver = GetFirstSelectedPoseDriver();
-
-	return PoseDriver ? PoseDriver->Node.bSoloDrivenOnly : true;
 }
 
 void FPoseDriverDetails::SelectTarget(int32 TargetIndex, bool bExpandTarget)

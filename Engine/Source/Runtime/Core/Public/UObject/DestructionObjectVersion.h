@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreTypes.h"
@@ -38,10 +38,6 @@ struct CORE_API FDestructionObjectVersion
 
 		// bulk serialize arrays
 		GroupAndAttributeNameRemapping,
-
-		// bulk serialize arrays
-		ImplicitObjectDoCollideAttribute,
-
 
 		// -----<new versions can be added above this line>-------------------------------------------------
 		VersionPlusOne,

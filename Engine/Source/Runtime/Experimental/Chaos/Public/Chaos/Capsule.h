@@ -1,14 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Chaos/Cylinder.h"
 #include "Chaos/ImplicitObject.h"
 #include "Chaos/ImplicitObjectUnion.h"
 #include "Chaos/Sphere.h"
-#include "Chaos/Segment.h"
 #include "ChaosArchive.h"
-
-#include "UObject/ReleaseObjectVersion.h"
 
 namespace Chaos
 {
@@ -16,52 +13,75 @@ namespace Chaos
 	struct TCapsuleSpecializeSamplingHelper;
 
 	template<class T>
-	class TCapsule final : public FImplicitObject
+	class TCapsule final : public TImplicitObject<T, 3>
 	{
 	public:
-		using FImplicitObject::SignedDistance;
-		using FImplicitObject::GetTypeName;
+		using TImplicitObject<T, 3>::SignedDistance;
+		using TImplicitObject<T, 3>::GetTypeName;
 
 		TCapsule()
-		    : FImplicitObject(EImplicitObject::FiniteConvex, ImplicitObjectType::Capsule)
+		    : TImplicitObject<T, 3>(EImplicitObject::FiniteConvex, ImplicitObjectType::Capsule)
 		{}
 		TCapsule(const TVector<T, 3>& x1, const TVector<T, 3>& x2, const T Radius)
-		    : FImplicitObject(EImplicitObject::FiniteConvex, ImplicitObjectType::Capsule)
-			, MSegment(x1, x2)
+		    : TImplicitObject<T, 3>(EImplicitObject::FiniteConvex, ImplicitObjectType::Capsule)
+		    , MPoint(x1)
+		    , MVector(x2 - x1)
+		    , MHeight(MVector.SafeNormalize())
+		    , MRadius(Radius)
+		    , MLocalBoundingBox(x1, x1)
+		    , MUnionedObjects(nullptr)
 		{
-			SetRadius(Radius);
+			MLocalBoundingBox.GrowToInclude(x2);
+			MLocalBoundingBox = TBox<T, 3>(MLocalBoundingBox.Min() - TVector<T, 3>(MRadius), MLocalBoundingBox.Max() + TVector<T, 3>(MRadius));
+			InitUnionedObjects();
 		}
 
 		TCapsule(const TCapsule<T>& Other)
-		    : FImplicitObject(EImplicitObject::FiniteConvex, ImplicitObjectType::Capsule)
-			, MSegment(Other.MSegment)
+		    : TImplicitObject<T, 3>(EImplicitObject::FiniteConvex, ImplicitObjectType::Capsule)
+		    , MPoint(Other.MPoint)
+		    , MVector(Other.MVector)
+		    , MHeight(Other.MHeight)
+		    , MRadius(Other.MRadius)
+		    , MLocalBoundingBox(Other.MLocalBoundingBox)
+		    , MUnionedObjects(nullptr)
 		{
-			SetRadius(Other.GetRadius());
+			InitUnionedObjects();
 		}
 
 		TCapsule(TCapsule<T>&& Other)
-		    : FImplicitObject(EImplicitObject::FiniteConvex, ImplicitObjectType::Capsule)
-			, MSegment(MoveTemp(Other.MSegment))
+		    : TImplicitObject<T, 3>(EImplicitObject::FiniteConvex, ImplicitObjectType::Capsule)
+		    , MPoint(MoveTemp(Other.MPoint))
+		    , MVector(MoveTemp(Other.MVector))
+		    , MHeight(Other.MHeight)
+		    , MRadius(Other.MRadius)
+		    , MLocalBoundingBox(MoveTemp(Other.MLocalBoundingBox))
+		    , MUnionedObjects(MoveTemp(Other.MUnionedObjects))
 		{
-			SetRadius(Other.GetRadius());
+			InitUnionedObjects();
 		}
 
 		TCapsule& operator=(TCapsule<T>&& InSteal)
 		{
 			this->Type = InSteal.Type;
 			this->bIsConvex = InSteal.bIsConvex;
-			this->bDoCollide = InSteal.bDoCollide;
+			this->bIgnoreAnalyticCollisions = InSteal.bIgnoreAnalyticCollisions;
 			this->bHasBoundingBox = InSteal.bHasBoundingBox;
 
-			MSegment = MoveTemp(InSteal.MSegment);
-			SetRadius(InSteal.GetRadius());
+			MPoint = MoveTemp(InSteal.MPoint);
+			MVector = MoveTemp(InSteal.MVector);
+			MHeight = InSteal.MHeight;
+			MRadius = InSteal.MRadius;
+			MLocalBoundingBox = MoveTemp(InSteal.MLocalBoundingBox);
+			MUnionedObjects = MoveTemp(InSteal.MUnionedObjects);
+
+			InitUnionedObjects();
 
 			return *this;
 		}
 
 		~TCapsule() {}
 
-		static constexpr EImplicitObjectType StaticType() { return ImplicitObjectType::Capsule; }
+		static ImplicitObjectType GetType() { return ImplicitObjectType::Capsule; }
 
 		static TCapsule<T> NewFromOriginAndAxis(const TVector<T, 3>& Origin, const TVector<T, 3>& Axis, const T Height, const T Radius)
 		{
@@ -79,7 +99,7 @@ namespace Chaos
 		{
 			TArray<TVector<T, 3>> Points;
 			const TVector<T, 3> Mid = GetCenter();
-			const TCapsule<T> Capsule(GetX1() - Mid, GetX1() + (GetAxis() * GetHeight()) - Mid, GetRadius());
+			const TCapsule<T> Capsule(MPoint - Mid, MPoint + (MVector * MHeight) - Mid, GetRadius());
 			TCapsuleSpecializeSamplingHelper<T>::ComputeSamplePoints(Points, Capsule, NumPoints);
 			return Points;
 		}
@@ -112,18 +132,13 @@ namespace Chaos
 
 		virtual T PhiWithNormal(const TVector<T, 3>& x, TVector<T, 3>& Normal) const override
 		{
-			auto Dot = FMath::Clamp(TVector<T, 3>::DotProduct(x - GetX1(), GetAxis()), (T)0., GetHeight());
-			TVector<T, 3> ProjectedPoint = Dot * GetAxis() + GetX1();
+			auto Dot = FMath::Clamp(TVector<T, 3>::DotProduct(x - MPoint, MVector), (T)0., MHeight);
+			TVector<T, 3> ProjectedPoint = Dot * MVector + MPoint;
 			Normal = x - ProjectedPoint;
-			return Normal.SafeNormalize() - GetRadius();
+			return Normal.SafeNormalize() - MRadius;
 		}
 
-		virtual const TAABB<T, 3> BoundingBox() const override
-		{
-			TAABB<T,3> Box = MSegment.BoundingBox();
-			Box.Thicken(GetRadius());
-			return Box;
-		}
+		virtual const TBox<T, 3>& BoundingBox() const override { return MLocalBoundingBox; }
 
 		static bool RaycastFast(T MRadius, T MHeight, const TVector<T,3>& MVector, const TVector<T,3>& X1, const TVector<T,3>& X2, const TVector<T, 3>& StartPoint, const TVector<T, 3>& Dir, const T Length, const T Thickness, T& OutTime, TVector<T, 3>& OutPosition, TVector<T, 3>& OutNormal, int32& OutFaceIndex)
 		{
@@ -175,10 +190,10 @@ namespace Chaos
 			constexpr T Epsilon = 1e-4;
 			bool bCheckCaps = false;
 
-			if (C <= 0.f)
+			if (A < Epsilon)
 			{
-				// Inside cylinder so check caps
-				bCheckCaps = true;
+				//Parallel and inside cylinder so check caps
+				bCheckCaps = C <= 0;
 			}
 			else
 			{
@@ -195,12 +210,12 @@ namespace Chaos
 					const bool bSingleHit = QuarterUnderRoot < Epsilon;
 					if (bSingleHit)
 					{
-						Time = (A == 0) ? 0 : (-HalfB / A);
+						Time = -HalfB / A;
 
 					}
 					else
 					{
-						Time = (A == 0) ? 0 : ((-HalfB - FMath::Sqrt(QuarterUnderRoot)) / A); //we already checked for initial overlap so just take smallest time
+						Time = (-HalfB - FMath::Sqrt(QuarterUnderRoot)) / A; //we already checked for initial overlap so just take smallest time
 						if (Time < 0)	//we must have passed the cylinder
 						{
 							return false;
@@ -276,76 +291,57 @@ namespace Chaos
 
 		virtual bool Raycast(const TVector<T, 3>& StartPoint, const TVector<T, 3>& Dir, const T Length, const T Thickness, T& OutTime, TVector<T, 3>& OutPosition, TVector<T, 3>& OutNormal, int32& OutFaceIndex) const override
 		{
-			return RaycastFast(GetRadius(), GetHeight(), GetAxis(), GetX1(), GetX2(), StartPoint, Dir, Length, Thickness, OutTime, OutPosition, OutNormal, OutFaceIndex);
+			return RaycastFast(MRadius, MHeight, MVector, GetX1(), GetX2(), StartPoint, Dir, Length, Thickness, OutTime, OutPosition, OutNormal, OutFaceIndex);
 		}
 
-		FORCEINLINE TVector<T,3> Support(const TVector<T, 3>& Direction, const T Thickness) const
+		TVector<T,3> Support(const TVector<T, 3>& Direction, const T Thickness) const override
 		{
-			return MSegment.Support(Direction, GetRadius() + Thickness);
-		}
-
-		FORCEINLINE TVector<T, 3> SupportCore(const TVector<T, 3>& Direction) const
-		{
-			return MSegment.SupportCore(Direction);
-		}
-
-		FORCEINLINE void SerializeImp(FArchive& Ar)
-		{
-			Ar.UsingCustomVersion(FExternalPhysicsCustomObjectVersion::GUID);
-			FImplicitObject::SerializeImp(Ar);
-			MSegment.Serialize(Ar);
-
-			// Radius is now stored in the base class Margin
-			FReal ArRadius = GetRadius();
-			Ar << ArRadius;
-			SetRadius(ArRadius);
-			
-			if(Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) < FExternalPhysicsCustomObjectVersion::CapsulesNoUnionOrAABBs)
+			const T Dot = TVector<T, 3>::DotProduct(Direction, MVector);
+			const TVector<T, 3> FarthestCap = Dot >= 0 ? GetX2() : GetX1();	//orthogonal we choose either
+			//We want N / ||N|| and to avoid inf
+			//So we want N / ||N|| < 1 / eps => N eps < ||N||, but this is clearly true for all eps < 1 and N > 0
+			T SizeSqr = Direction.SizeSquared();
+			if (SizeSqr <= TNumericLimits<T>::Min())
 			{
-				TAABB<T,3> DummyBox;	//no longer store this, computed on demand
-				TBox<FReal,3>::SerializeAsAABB(Ar,DummyBox);
+				return FarthestCap;
 			}
+			const TVector<T, 3> Normalized = Direction / sqrt(SizeSqr);
+			return FarthestCap + Normalized * (MRadius + Thickness);
 		}
 
 		virtual void Serialize(FChaosArchive& Ar) override
 		{
-			Ar.UsingCustomVersion(FExternalPhysicsCustomObjectVersion::GUID);
 			FChaosArchiveScopedMemory ScopedMemory(Ar, GetTypeName());
-			SerializeImp(Ar);
-
-			if(Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) < FExternalPhysicsCustomObjectVersion::CapsulesNoUnionOrAABBs)
-			{
-				TUniquePtr<FImplicitObjectUnion> TmpUnion;
-				Ar << TmpUnion;
-			}
+			TImplicitObject<T, 3>::SerializeImp(Ar);
+			Ar << MPoint << MVector << MHeight << MRadius << MLocalBoundingBox;
+			Ar << MUnionedObjects;
 		}
 
-		virtual TUniquePtr<FImplicitObject> Copy() const override
+		virtual TUniquePtr<TImplicitObject<T, 3>> Copy() const override
 		{
-			return TUniquePtr<FImplicitObject>(new TCapsule<T>(*this));
+			return TUniquePtr<TImplicitObject<T,3>>(new TCapsule<T>(*this));
 		}
 
-		const T GetRadius() const { return GetMargin(); }
-		T GetHeight() const { return MSegment.GetLength(); }
+		const T& GetRadius() const { return MRadius; }
+		const T& GetHeight() const { return MHeight; }
 		/** Returns the bottommost point on the capsule. */
-		const TVector<T, 3> GetOrigin() const { return GetX1() + GetAxis() * -GetRadius(); }
+		const TVector<T, 3> GetOrigin() const { return MPoint + MVector * -MRadius; }
 		/** Returns the topmost point on the capsule. */
-		const TVector<T, 3> GetInsertion() const { return GetX1() + GetAxis() * (GetHeight() + GetRadius()); }
-		TVector<T, 3> GetCenter() const { return MSegment.GetCenter(); }
+		const TVector<T, 3> GetInsertion() const { return MPoint + MVector * (MHeight + MRadius); }
+		TVector<T, 3> GetCenter() const { return MPoint + MVector * (MHeight / 2); }
 		/** Returns the centroid (center of mass). */
 		TVector<T, 3> GetCenterOfMass() const { return GetCenter(); }
-		const TVector<T, 3>& GetAxis() const { return MSegment.GetAxis(); }
-		const TVector<T, 3>& GetX1() const { return MSegment.GetX1(); }
-		TVector<T, 3> GetX2() const { return MSegment.GetX2(); }
-		TSegment<T> GetSegment() const { return TSegment<T>(GetX1(), GetX2()); }
+		const TVector<T, 3>& GetAxis() const { return MVector; }
+		const TVector<T, 3>& GetX1() const { return MPoint; }
+		TVector<T, 3> GetX2() const { return MPoint + MVector * MHeight; }
 
-		T GetArea() const { return GetArea(GetHeight(), GetRadius()); }
-		static T GetArea(const T Height, const T Radius) { static const T PI2 = 2. * PI; return PI2 * Radius * (Height + 2.*Radius); }
+		T GetArea() const { return GetArea(MHeight, MRadius); }
+		static T GetArea(const T Height, const T Radius) { static const T PI2 = 2. * PI; return PI2*Radius * (Height + 2.*Radius); }
 
-		T GetVolume() const { return GetVolume(GetHeight(), GetRadius()); }
-		static T GetVolume(const T Height, const T Radius) { static const T FourThirds = 4. / 3; return PI * Radius*Radius * (Height + FourThirds * Radius); }
+		T GetVolume() const { return GetVolume(MHeight, MRadius); }
+		static T GetVolume(const T Height, const T Radius) { static const T FourThirds = 4./3; return PI*Radius*Radius * (Height + FourThirds*Radius); }
 
-		PMatrix<T, 3, 3> GetInertiaTensor(const T Mass) const { return GetInertiaTensor(Mass, GetHeight(), GetRadius()); }
+		PMatrix<T, 3, 3> GetInertiaTensor(const T Mass) const { return GetInertiaTensor(Mass, MHeight, MRadius); }
 		static PMatrix<T, 3, 3> GetInertiaTensor(const T Mass, const T Height, const T Radius)
 		{
 			// https://www.wolframalpha.com/input/?i=capsule&assumption=%7B%22C%22,+%22capsule%22%7D+-%3E+%7B%22Solid%22%7D
@@ -369,13 +365,30 @@ namespace Chaos
 
 		virtual uint32 GetTypeHash() const override
 		{
-			return HashCombine(::GetTypeHash(GetX1()), ::GetTypeHash(GetAxis()));
+			return HashCombine(::GetTypeHash(MPoint), ::GetTypeHash(MVector));
 		}
 
 	private:
-		void SetRadius(FReal InRadius) { SetMargin(InRadius); }
+		void InitUnionedObjects()
+		{
+			TArray<TUniquePtr<TImplicitObject<float, 3>>> Objects;
 
-		TSegment<T> MSegment;
+			Objects.Add(MakeUnique<Chaos::TCylinder<float>>(MPoint, MPoint + MVector * MHeight, MRadius));
+			Objects.Add(MakeUnique<Chaos::TSphere<float, 3>>(MPoint, MRadius));
+			Objects.Add(MakeUnique<Chaos::TSphere<float, 3>>(MPoint + MVector * MHeight, MRadius));
+
+			MUnionedObjects.Reset(new Chaos::TImplicitObjectUnion<float, 3>(std::move(Objects)));
+		}
+
+		virtual Pair<TVector<T, 3>, bool> FindClosestIntersectionImp(const TVector<T, 3>& StartPoint, const TVector<T, 3>& EndPoint, const T Thickness) const override
+		{
+			return MUnionedObjects->FindClosestIntersection(StartPoint, EndPoint, Thickness);
+		}
+
+		TVector<T, 3> MPoint, MVector;
+		T MHeight, MRadius;
+		TBox<T, 3> MLocalBoundingBox;
+		TUniquePtr<TImplicitObjectUnion<T, 3>> MUnionedObjects;
 	};
 
 	template<typename T>

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -24,7 +24,6 @@ class SWidget;
 class ISequencer;
 class FCurveModel;
 class FStructOnScope;
-class ISequencerSection;
 class UMovieSceneSection;
 class FMovieSceneClipboardBuilder;
 class FMovieSceneClipboardKeyTrack;
@@ -45,7 +44,7 @@ public:
 	 * @param InSection The section that owns the channel that this key area represents
 	 * @param InChannel Handle to the channel this key area represents
 	 */
-	IKeyArea(TWeakPtr<ISequencerSection> InSection, FMovieSceneChannelHandle InChannel);
+	IKeyArea(UMovieSceneSection* InSection, FMovieSceneChannelHandle InChannel);
 
 	/**
 	 * Reinitialize this key area with a new channel
@@ -53,7 +52,7 @@ public:
 	 * @param InSection The section that owns the channel that this key area represents
 	 * @param InChannel Handle to the channel this key area represents
 	 */
-	void Reinitialize(TWeakPtr<ISequencerSection> InSection, FMovieSceneChannelHandle InChannel);
+	void Reinitialize(UMovieSceneSection* InSection, FMovieSceneChannelHandle InChannel);
 
 public:
 
@@ -122,13 +121,6 @@ public:
 	 * @return The owning section, or nullptr if it has been destroyed
 	 */
 	UMovieSceneSection* GetOwningSection() const;
-
-	/**
-	 * Access section editor interface
-	 *
-	 * @return The owning section interface, or nullptr if it has been destroyed
-	 */
-	TSharedPtr<ISequencerSection> GetSectionInterface() const;
 
 public:
 
@@ -284,8 +276,8 @@ public:
 
 private:
 
-	/** A weak pointer back to the originating section interface that owns this channel */
-	TWeakPtr<ISequencerSection> WeakSection;
+	/** A weak pointer back to the originating UMovieSceneSection that owns this channel */
+	TWeakObjectPtr<UMovieSceneSection> WeakOwningSection;
 
 	/** Handle to the channel itself */
 	FMovieSceneChannelHandle ChannelHandle;

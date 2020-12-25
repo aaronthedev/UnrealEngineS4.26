@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MovieScene/MovieSceneLiveLinkPropertyHandler.h"
 
@@ -6,7 +6,7 @@
 #include "Channels/MovieSceneByteChannel.h"
 #include "Channels/MovieSceneIntegerChannel.h"
 #include "Channels/MovieSceneFloatChannel.h"
-#include "Channels/MovieSceneStringChannel.h"
+#include "Sections/MovieSceneStringChannel.h"
 #include "LiveLinkMovieScenePrivate.h"
 
 
@@ -71,16 +71,16 @@ namespace LiveLinkPropertyHandlerUtils
 template <>
 void FMovieSceneLiveLinkPropertyHandler<float>::CreateChannels(const UScriptStruct& InStruct, int32 InElementCount)
 {
-	FProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
+	UProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
 	check(InElementCount > 0);
 
-	if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(FoundProperty))
+	if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(FoundProperty))
 	{
-		check(ArrayProperty->Inner->IsA<FFloatProperty>());
+		check(ArrayProperty->Inner->IsA<UFloatProperty>());
 	}
 	else
 	{
-		check(FoundProperty->IsA<FFloatProperty>());
+		check(FoundProperty->IsA<UFloatProperty>());
 	}
 
 	PropertyStorage->FloatChannel.SetNum(InElementCount);
@@ -94,16 +94,16 @@ void FMovieSceneLiveLinkPropertyHandler<float>::InitializeFromExistingChannels(c
 	ElementCount = PropertyStorage->FloatChannel.Num();
 	check(ElementCount > 0);
 
-	FProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
+	UProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
 	if (FoundProperty)
 	{
-		if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(FoundProperty))
+		if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(FoundProperty))
 		{
-			check(ArrayProperty->Inner->IsA<FFloatProperty>());
+			check(ArrayProperty->Inner->IsA<UFloatProperty>());
 		}
 		else
 		{
-			check(FoundProperty->IsA<FFloatProperty>());
+			check(FoundProperty->IsA<UFloatProperty>());
 		}
 	}
 }
@@ -114,27 +114,17 @@ void FMovieSceneLiveLinkPropertyHandler<float>::Finalize(bool bInReduceKeys, con
 	for (int32 i = 0; i < Keys.Num(); ++i)
 	{
 		const TArray<FLiveLinkPropertyKey<float>>& ElementKeys = Keys[i];
-
-		TArray<FFrameNumber> Times;
-		Times.SetNum(ElementKeys.Num());
-		TArray<FMovieSceneFloatValue> Values;
-		Values.SetNum(ElementKeys.Num());
-		int32 j = 0;
 		for (const FLiveLinkPropertyKey<float>& Key : ElementKeys)
 		{
-			Times[j] = Key.Time;
-			Values[j] = FMovieSceneFloatValue(Key.Value);
-			j++;
+			PropertyStorage->FloatChannel[i].AddCubicKey(Key.Time, Key.Value, RCTM_Auto);
 		}
-
-		PropertyStorage->FloatChannel[i].Set(Times, Values);
 	}
 
 	if (bInReduceKeys)
 	{
 		for (FMovieSceneFloatChannel& Channel : PropertyStorage->FloatChannel)
 		{
-			UE::MovieScene::Optimize(&Channel, InOptimizationParams);
+			MovieScene::Optimize(&Channel, InOptimizationParams);
 		}
 	}
 	else
@@ -167,16 +157,16 @@ float FMovieSceneLiveLinkPropertyHandler<float>::GetChannelValueInterpolated(con
 template <>
 void FMovieSceneLiveLinkPropertyHandler<int32>::CreateChannels(const UScriptStruct& InStruct, int32 InElementCount)
 {
-	FProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
+	UProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
 	check(InElementCount > 0);
 	
-	if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(FoundProperty))
+	if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(FoundProperty))
 	{
-		check(ArrayProperty->Inner->IsA<FIntProperty>());
+		check(ArrayProperty->Inner->IsA<UIntProperty>());
 	}
 	else
 	{
-		check(FoundProperty->IsA<FIntProperty>());
+		check(FoundProperty->IsA<UIntProperty>());
 	}
 
 	PropertyStorage->IntegerChannel.SetNum(InElementCount);
@@ -190,16 +180,16 @@ void FMovieSceneLiveLinkPropertyHandler<int32>::InitializeFromExistingChannels(c
 	ElementCount = PropertyStorage->IntegerChannel.Num();
 	check(ElementCount > 0);
 
-	FProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
+	UProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
 	if (FoundProperty)
 	{
-		if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(FoundProperty))
+		if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(FoundProperty))
 		{
-			check(ArrayProperty->Inner->IsA<FIntProperty>());
+			check(ArrayProperty->Inner->IsA<UIntProperty>());
 		}
 		else
 		{
-			check(FoundProperty->IsA<FIntProperty>());
+			check(FoundProperty->IsA<UIntProperty>());
 		}
 	}
 }
@@ -243,16 +233,16 @@ int32 FMovieSceneLiveLinkPropertyHandler<int32>::GetChannelValueInterpolated(con
 template <>
 void FMovieSceneLiveLinkPropertyHandler<FString>::CreateChannels(const UScriptStruct& InStruct, int32 InElementCount)
 {
-	FProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
+	UProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
 	check(InElementCount > 0);
 
-	if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(FoundProperty))
+	if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(FoundProperty))
 	{
-		check(ArrayProperty->Inner->IsA<FStrProperty>());
+		check(ArrayProperty->Inner->IsA<UStrProperty>());
 	}
 	else
 	{
-		check(FoundProperty->IsA<FStrProperty>());
+		check(FoundProperty->IsA<UStrProperty>());
 	}
 
 	PropertyStorage->StringChannel.SetNum(InElementCount);
@@ -266,16 +256,16 @@ void FMovieSceneLiveLinkPropertyHandler<FString>::InitializeFromExistingChannels
 	ElementCount = PropertyStorage->StringChannel.Num();
 	check(ElementCount > 0);
 
-	FProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
+	UProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
 	if (FoundProperty)
 	{
-		if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(FoundProperty))
+		if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(FoundProperty))
 		{
-			check(ArrayProperty->Inner->IsA<FStrProperty>());
+			check(ArrayProperty->Inner->IsA<UStrProperty>());
 		}
 		else
 		{
-			check(FoundProperty->IsA<FStrProperty>());
+			check(FoundProperty->IsA<UStrProperty>());
 		}
 	}
 }
@@ -318,16 +308,16 @@ FString FMovieSceneLiveLinkPropertyHandler<FString>::GetChannelValueInterpolated
 template <>
 void FMovieSceneLiveLinkPropertyHandler<uint8>::CreateChannels(const UScriptStruct& InStruct, int32 InElementCount)
 {
-	FProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
+	UProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
 	check(InElementCount > 0);
 
-	if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(FoundProperty))
+	if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(FoundProperty))
 	{
-		check(ArrayProperty->Inner->IsA<FByteProperty>());
+		check(ArrayProperty->Inner->IsA<UByteProperty>());
 	}
 	else
 	{
-		check(FoundProperty->IsA<FByteProperty>());
+		check(FoundProperty->IsA<UByteProperty>());
 	}
 
 	PropertyStorage->ByteChannel.SetNum(InElementCount);
@@ -342,16 +332,16 @@ void FMovieSceneLiveLinkPropertyHandler<uint8>::InitializeFromExistingChannels(c
 	ElementCount = PropertyStorage->ByteChannel.Num();
 	check(ElementCount > 0);
 
-	FProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
+	UProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
 	if (FoundProperty)
 	{
-		if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(FoundProperty))
+		if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(FoundProperty))
 		{
-			check(ArrayProperty->Inner->IsA<FByteProperty>());
+			check(ArrayProperty->Inner->IsA<UByteProperty>());
 		}
 		else
 		{
-			check(FoundProperty->IsA<FByteProperty>());
+			check(FoundProperty->IsA<UByteProperty>());
 		}
 	}
 }
@@ -395,16 +385,16 @@ uint8 FMovieSceneLiveLinkPropertyHandler<uint8>::GetChannelValueInterpolated(con
 template <>
 void FMovieSceneLiveLinkPropertyHandler<bool>::CreateChannels(const UScriptStruct& InStruct, int32 InElementCount)
 {
-	FProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
+	UProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
 	check(InElementCount > 0);
 
-	if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(FoundProperty))
+	if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(FoundProperty))
 	{
-		check(ArrayProperty->Inner->IsA<FBoolProperty>());
+		check(ArrayProperty->Inner->IsA<UBoolProperty>());
 	}
 	else
 	{
-		check(FoundProperty->IsA<FBoolProperty>());
+		check(FoundProperty->IsA<UBoolProperty>());
 	}
 
 	PropertyStorage->BoolChannel.SetNum(InElementCount);
@@ -418,16 +408,16 @@ void FMovieSceneLiveLinkPropertyHandler<bool>::InitializeFromExistingChannels(co
 	ElementCount = PropertyStorage->BoolChannel.Num();
 	check(ElementCount > 0);
 
-	FProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
+	UProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
 	if (FoundProperty)
 	{
-		if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(FoundProperty))
+		if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(FoundProperty))
 		{
-			check(ArrayProperty->Inner->IsA<FBoolProperty>());
+			check(ArrayProperty->Inner->IsA<UBoolProperty>());
 		}
 		else
 		{
-			check(FoundProperty->IsA<FBoolProperty>());
+			check(FoundProperty->IsA<UBoolProperty>());
 		}
 	}
 }
@@ -471,17 +461,17 @@ bool FMovieSceneLiveLinkPropertyHandler<bool>::GetChannelValueInterpolated(const
 template <>
 void FMovieSceneLiveLinkPropertyHandler<FVector>::CreateChannels(const UScriptStruct& InStruct, int32 InElementCount)
 {
-	FProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
+	UProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
 	check(InElementCount > 0);
 
-	if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(FoundProperty))
+	if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(FoundProperty))
 	{
-		FStructProperty* ArrayInnerProperty = CastFieldChecked<FStructProperty>(ArrayProperty->Inner);
+		UStructProperty* ArrayInnerProperty = CastChecked<UStructProperty>(ArrayProperty->Inner);
 		check(ArrayInnerProperty->Struct->GetFName() == NAME_Vector);
 	}
 	else
 	{
-		FStructProperty* StructProperty = CastFieldChecked<FStructProperty>(FoundProperty);
+		UStructProperty* StructProperty = CastChecked<UStructProperty>(FoundProperty);
 		check(StructProperty->Struct->GetFName() == NAME_Vector);
 	}
 
@@ -499,18 +489,18 @@ void FMovieSceneLiveLinkPropertyHandler<FVector>::InitializeFromExistingChannels
 	ElementCount = PropertyStorage->FloatChannel.Num() / 3;
 	check(ElementCount > 0);
 
-	FProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
+	UProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
 	if (FoundProperty)
 	{
-		if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(FoundProperty))
+		if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(FoundProperty))
 		{
-			FStructProperty* ArrayStructProperty = CastFieldChecked<FStructProperty>(ArrayProperty->Inner);
+			UStructProperty* ArrayStructProperty = CastChecked<UStructProperty>(ArrayProperty->Inner);
 			check(ArrayStructProperty->Struct->GetFName() == NAME_Vector);
 
 		}
 		else
 		{
-			FStructProperty* StructProperty = CastFieldChecked<FStructProperty>(FoundProperty);
+			UStructProperty* StructProperty = CastChecked<UStructProperty>(FoundProperty);
 			check(StructProperty->Struct->GetFName() == NAME_Vector);
 		}
 	}
@@ -522,40 +512,19 @@ void FMovieSceneLiveLinkPropertyHandler<FVector>::Finalize(bool bInReduceKeys, c
 	for (int32 i = 0; i < Keys.Num(); ++i)
 	{
 		const TArray<FLiveLinkPropertyKey<FVector>>& ElementKeys = Keys[i];
-
-		TArray<FFrameNumber> Times;
-		Times.SetNum(ElementKeys.Num());
-		TArray<FMovieSceneFloatValue> ValuesX, ValuesY, ValuesZ;
-		ValuesX.SetNum(ElementKeys.Num());
-		ValuesY.SetNum(ElementKeys.Num());
-		ValuesZ.SetNum(ElementKeys.Num());
-		int32 j = 0;
 		for (const FLiveLinkPropertyKey<FVector>& Key : ElementKeys)
 		{
-			Times[j] = Key.Time;
-			ValuesX[j] = FMovieSceneFloatValue(Key.Value.X);
-			ValuesY[j] = FMovieSceneFloatValue(Key.Value.Y);
-			ValuesZ[j] = FMovieSceneFloatValue(Key.Value.Z);
-			j++;
+			PropertyStorage->FloatChannel[(i * 3) + 0].AddCubicKey(Key.Time, Key.Value.X, RCTM_Break);
+			PropertyStorage->FloatChannel[(i * 3) + 1].AddCubicKey(Key.Time, Key.Value.Y, RCTM_Break);
+			PropertyStorage->FloatChannel[(i * 3) + 2].AddCubicKey(Key.Time, Key.Value.Z, RCTM_Break);
 		}
-
-		PropertyStorage->FloatChannel[(i * 3) + 0].Set(Times, ValuesX);
-		PropertyStorage->FloatChannel[(i * 3) + 1].Set(Times, ValuesY);
-		PropertyStorage->FloatChannel[(i * 3) + 2].Set(Times, ValuesZ);
 	}
 
 	if (bInReduceKeys)
 	{
 		for (FMovieSceneFloatChannel& Channel : PropertyStorage->FloatChannel)
 		{
-			UE::MovieScene::Optimize(&Channel, InOptimizationParams);
-		}
-	}
-	else
-	{
-		for (FMovieSceneFloatChannel& Channel : PropertyStorage->FloatChannel)
-		{
-			Channel.AutoSetTangents();
+			MovieScene::Optimize(&Channel, InOptimizationParams);
 		}
 	}
 }
@@ -585,17 +554,17 @@ FVector FMovieSceneLiveLinkPropertyHandler<FVector>::GetChannelValueInterpolated
 template <>
 void FMovieSceneLiveLinkPropertyHandler<FColor>::CreateChannels(const UScriptStruct& InStruct, int32 InElementCount)
 {
-	FProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
+	UProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
 	check(InElementCount > 0);
 
-	if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(FoundProperty))
+	if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(FoundProperty))
 	{
-		FStructProperty* ArrayInnerProperty = CastFieldChecked<FStructProperty>(ArrayProperty->Inner);
+		UStructProperty* ArrayInnerProperty = CastChecked<UStructProperty>(ArrayProperty->Inner);
 		check(ArrayInnerProperty->Struct->GetFName() == NAME_Color);
 	}
 	else
 	{
-		FStructProperty* StructProperty = CastFieldChecked<FStructProperty>(FoundProperty);
+		UStructProperty* StructProperty = CastChecked<UStructProperty>(FoundProperty);
 		check(StructProperty->Struct->GetFName() == NAME_Color);
 	}
 
@@ -612,18 +581,18 @@ void FMovieSceneLiveLinkPropertyHandler<FColor>::InitializeFromExistingChannels(
 	ElementCount = PropertyStorage->ByteChannel.Num() / 3;
 	check(ElementCount > 0);
 	
-	FProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
+	UProperty* FoundProperty = PropertyBinding.GetProperty(InStruct);
 	if (FoundProperty)
 	{
-		if (FArrayProperty* ArrayProperty = CastField<FArrayProperty>(FoundProperty))
+		if (UArrayProperty* ArrayProperty = Cast<UArrayProperty>(FoundProperty))
 		{
-			FStructProperty* ArrayStructProperty = CastFieldChecked<FStructProperty>(ArrayProperty->Inner);
+			UStructProperty* ArrayStructProperty = CastChecked<UStructProperty>(ArrayProperty->Inner);
 			check(ArrayStructProperty->Struct->GetFName() == NAME_Color);
 
 		}
 		else
 		{
-			FStructProperty* StructProperty = CastFieldChecked<FStructProperty>(FoundProperty);
+			UStructProperty* StructProperty = CastChecked<UStructProperty>(FoundProperty);
 			check(StructProperty->Struct->GetFName() == NAME_Color);
 		}
 	}
@@ -648,7 +617,7 @@ void FMovieSceneLiveLinkPropertyHandler<FColor>::Finalize(bool bInReduceKeys, co
 	{
 		for (FMovieSceneByteChannel& Channel : PropertyStorage->ByteChannel)
 		{
-			UE::MovieScene::Optimize(&Channel, InOptimizationParams);
+			MovieScene::Optimize(&Channel, InOptimizationParams);
 		}
 	}
 }

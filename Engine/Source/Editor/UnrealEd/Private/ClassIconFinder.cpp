@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "ClassIconFinder.h"
@@ -112,9 +112,7 @@ const UClass* FClassIconFinder::GetIconClassForAssetData(const FAssetData& InAss
 		return FindObject<UClass>(ANY_PACKAGE, *InAssetData.AssetName.ToString());
 	}
 	
-	static const FName IgnoreClassThumbnail(TEXT("IgnoreClassThumbnail"));
-	if ( AssetClass->IsChildOf<UBlueprint>() &&
-		!AssetClass->HasMetaDataHierarchical(IgnoreClassThumbnail))
+	if ( AssetClass->IsChildOf<UBlueprint>() )
 	{
 		if ( bOutIsClassType )
 		{

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AnimCompositeBase.cpp: Anim Composite base class that contains AnimTrack data structure/interface
@@ -9,8 +9,6 @@
 #include "Animation/AnimComposite.h"
 #include "BonePose.h"
 #include "AnimationRuntime.h"
-#include "Animation/AnimationPoseData.h"
-#include "Animation/CustomAttributesRuntime.h"
 
 ///////////////////////////////////////////////////////
 // FAnimSegment
@@ -545,13 +543,6 @@ void FAnimTrack::SortAnimSegments()
 
 void FAnimTrack::GetAnimationPose(/*out*/ FCompactPose& OutPose, /*out*/ FBlendedCurve& OutCurve, const FAnimExtractContext& ExtractionContext) const
 {
-	FStackCustomAttributes TempAttributes;
-	FAnimationPoseData OutAnimationPoseData(OutPose, OutCurve, TempAttributes);
-	GetAnimationPose(OutAnimationPoseData, ExtractionContext);
-}
-
-void FAnimTrack::GetAnimationPose(FAnimationPoseData& OutAnimationPoseData, const FAnimExtractContext& ExtractionContext) const
-{
 	bool bExtractedPose = false;
 	const float ClampedTime = FMath::Clamp(ExtractionContext.CurrentTime, 0.f, GetLength());
 
@@ -567,7 +558,7 @@ void FAnimTrack::GetAnimationPose(FAnimationPoseData& OutAnimationPoseData, cons
 				SequenceExtractionContext.CurrentTime = PositionInAnim;
 				SequenceExtractionContext.bExtractRootMotion &= AnimRef->HasRootMotion();
 
-				AnimRef->GetAnimationPose(OutAnimationPoseData, SequenceExtractionContext);
+				AnimRef->GetAnimationPose(OutPose, OutCurve, SequenceExtractionContext);
 				bExtractedPose = true;
 			}
 		}
@@ -575,7 +566,7 @@ void FAnimTrack::GetAnimationPose(FAnimationPoseData& OutAnimationPoseData, cons
 
 	if (!bExtractedPose)
 	{
-		OutAnimationPoseData.GetPose().ResetToRefPose();
+		OutPose.ResetToRefPose();
 	}
 }
 

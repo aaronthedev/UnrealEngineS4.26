@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "IHeadMountedDisplay.h"
@@ -198,8 +198,8 @@ static void ResolvePendingRenderTarget(FRHICommandListImmediate& RHICmdList, FGr
 		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
 
 		GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+		GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+		GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 		GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 		RHICmdList.DrawIndexedPrimitive(
@@ -284,8 +284,8 @@ void FGoogleVRHMD::RenderTexture_RenderThread(FRHICommandListImmediate& RHICmdLi
 			TShaderMapRef<FScreenPS> PixelShader(ShaderMap);
 
 			GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 			GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -300,14 +300,14 @@ void FGoogleVRHMD::RenderTexture_RenderThread(FRHICommandListImmediate& RHICmdLi
 				1.0f, 1.0f,
 				FIntPoint(ViewportWidth, ViewportHeight),
 				FIntPoint(1, 1),
-				VertexShader,
+				*VertexShader,
 				EDRF_Default);
 		}
 		RHICmdList.EndRenderPass();
 	}
 }
 
-bool FGoogleVRHMD::AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, ETextureCreateFlags InFlags, ETextureCreateFlags TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples)
+bool FGoogleVRHMD::AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumMips, uint32 InFlags, uint32 TargetableTextureFlags, FTexture2DRHIRef& OutTargetableTexture, FTexture2DRHIRef& OutShaderResourceTexture, uint32 NumSamples)
 {
 	check(Index == 0);
 	check(SizeX != 0 && SizeY != 0);
@@ -316,7 +316,7 @@ bool FGoogleVRHMD::AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint3
 #if GOOGLEVRHMD_SUPPORTED_PLATFORMS
 	if(CustomPresent)
 	{
-		const uint32 NumLayers = (IsMobileMultiView()) ? 2 : 1;
+		const uint32 NumLayers = (IsMobileMultiViewDirect()) ? 2 : 1;
 		bool Success = CustomPresent->AllocateRenderTargetTexture(Index, SizeX, SizeY, Format, NumLayers, NumMips, InFlags, TargetableTextureFlags);
 		if (Success)
 		{
@@ -347,7 +347,7 @@ FGoogleVRHMDTexture2DSet::FGoogleVRHMDTexture2DSet(
 	EPixelFormat InFormat,
 	bool bInCubemap,
 	bool bInAllocatedStorage,
-	ETextureCreateFlags InFlags,
+	uint32 InFlags,
 	uint8* InTextureRange
 )
 	: FOpenGLTexture2D(
@@ -366,6 +366,7 @@ FGoogleVRHMDTexture2DSet::FGoogleVRHMDTexture2DSet(
 	bInCubemap,
 	bInAllocatedStorage,
 	InFlags,
+	InTextureRange,
 	FClearValueBinding::Black
 	)
 {
@@ -381,7 +382,7 @@ FGoogleVRHMDTexture2DSet* FGoogleVRHMDTexture2DSet::CreateTexture2DSet(
 	uint32 DesiredSizeX, uint32 DesiredSizeY,
 	uint32 InNumLayers, uint32 InNumSamples, uint32 InNumSamplesTileMem,
 	EPixelFormat InFormat,
-	ETextureCreateFlags InFlags)
+	uint32 InFlags)
 {
 	GLenum Target = (InNumLayers > 1) ? GL_TEXTURE_2D_ARRAY : ((InNumSamples > 1) ? GL_TEXTURE_2D_MULTISAMPLE : GL_TEXTURE_2D);
 	GLenum Attachment = GL_NONE;//GL_COLOR_ATTACHMENT0;
@@ -444,7 +445,7 @@ namespace {
 	}
 }
 
-bool FGoogleVRHMDCustomPresent::AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumLayers, uint32 NumMips, ETextureCreateFlags InFlags, ETextureCreateFlags TargetableTextureFlags)
+bool FGoogleVRHMDCustomPresent::AllocateRenderTargetTexture(uint32 Index, uint32 SizeX, uint32 SizeY, uint8 Format, uint32 NumLayers, uint32 NumMips, uint32 InFlags, uint32 TargetableTextureFlags)
 {
 	FOpenGLDynamicRHI* GLRHI = static_cast<FOpenGLDynamicRHI*>(GDynamicRHI);
 
@@ -492,7 +493,7 @@ void FGoogleVRHMDCustomPresent::CreateGVRSwapChain()
 	gvr_buffer_spec_set_depth_stencil_format(BufferSpec, GVR_DEPTH_STENCIL_FORMAT_NONE);
 	// We are using the default color buffer format in GVRSDK, which is RGBA8, and that is also the format passed in.
 
-	if (HMD->IsMobileMultiView())
+	if (HMD->IsMobileMultiViewDirect())
 	{
 		gvr_sizei BufferSize = gvr_buffer_spec_get_size(BufferSpec);
 		BufferSize.width /= 2;
@@ -576,7 +577,7 @@ void FGoogleVRHMDCustomPresent::BeginRendering(const gvr_mat4f& RenderingHeadPos
 		gvr_frame_bind_buffer(CurrentFrame, 0);
 
 		// API returns framebuffer resource, but we need the texture resource for the pipeline
-		check(PLATFORM_USES_GLES); // Some craziness will only work on OpenGL platforms.
+		check(PLATFORM_USES_ES2); // Some craziness will only work on OpenGL platforms.
 		GLint TextureId = 0;
 		glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, &TextureId);
 		//override the texture set in custom present to the texture id we just bind so that unreal could render to it.

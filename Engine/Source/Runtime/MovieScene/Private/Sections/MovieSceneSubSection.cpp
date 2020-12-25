@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Sections/MovieSceneSubSection.h"
 #include "Tracks/MovieSceneSubTrack.h"
@@ -6,7 +6,6 @@
 #include "MovieSceneTrack.h"
 #include "MovieSceneSequence.h"
 #include "MovieSceneTimeHelpers.h"
-#include "EntitySystem/BuiltInComponentTypes.h"
 #include "Evaluation/MovieSceneEvaluationTemplate.h"
 #include "Misc/FrameRate.h"
 #include "Logging/MessageLog.h"
@@ -33,7 +32,7 @@ FMovieSceneSequenceTransform UMovieSceneSubSection::OuterToInnerTransform() cons
 		return FMovieSceneSequenceTransform();
 	}
 
-	UMovieScene* MovieScenePtr = SequencePtr->GetMovieScene();
+	UMovieScene*         MovieScenePtr = SequencePtr->GetMovieScene();
 
 	TRange<FFrameNumber> SubRange = GetRange();
 	if (!MovieScenePtr || SubRange.GetLowerBound().IsOpen())
@@ -41,70 +40,21 @@ FMovieSceneSequenceTransform UMovieSceneSubSection::OuterToInnerTransform() cons
 		return FMovieSceneSequenceTransform();
 	}
 
+	const FFrameNumber InnerStartTime = MovieScene::DiscreteInclusiveLower(MovieScenePtr->GetPlaybackRange()) + Parameters.StartFrameOffset;
+	const FFrameNumber OuterStartTime = MovieScene::DiscreteInclusiveLower(SubRange);
+
 	const FFrameRate   InnerFrameRate = MovieScenePtr->GetTickResolution();
 	const FFrameRate   OuterFrameRate = GetTypedOuter<UMovieScene>()->GetTickResolution();
+
 	const float        FrameRateScale = (OuterFrameRate == InnerFrameRate) ? 1.f : (InnerFrameRate / OuterFrameRate).AsDecimal();
 
-	const TRange<FFrameNumber> MovieScenePlaybackRange = GetValidatedInnerPlaybackRange(Parameters, *MovieScenePtr);
-	const FFrameNumber InnerStartTime = UE::MovieScene::DiscreteInclusiveLower(MovieScenePlaybackRange);
-	const FFrameNumber OuterStartTime = UE::MovieScene::DiscreteInclusiveLower(SubRange);
-
-	// This is the transform for the "placement" (position and scaling) of the sub-sequence.
-	FMovieSceneTimeTransform LinearTransform =
+	return
 		// Inner play offset
-		FMovieSceneTimeTransform(InnerStartTime)
+		FMovieSceneSequenceTransform(InnerStartTime)
 		// Inner play rate
-		* FMovieSceneTimeTransform(0, Parameters.TimeScale * FrameRateScale)
+		* FMovieSceneSequenceTransform(0, Parameters.TimeScale * FrameRateScale)
 		// Outer section start time
-		* FMovieSceneTimeTransform(-OuterStartTime);
-	
-	if (!Parameters.bCanLoop)
-	{
-		return FMovieSceneSequenceTransform(LinearTransform);
-	}
-	else
-	{
-		const FFrameNumber InnerEndTime = UE::MovieScene::DiscreteExclusiveUpper(MovieScenePlaybackRange);
-		const FMovieSceneTimeWarping LoopingTransform(InnerStartTime, InnerEndTime);
-		LinearTransform = FMovieSceneTimeTransform(Parameters.FirstLoopStartFrameOffset) * LinearTransform;
-
-		FMovieSceneSequenceTransform Result;
-		Result.NestedTransforms.Add(FMovieSceneNestedSequenceTransform(LinearTransform, LoopingTransform));
-		return Result;
-	}
-}
-
-bool UMovieSceneSubSection::GetValidatedInnerPlaybackRange(TRange<FFrameNumber>& OutInnerPlaybackRange) const
-{
-	UMovieSceneSequence* SequencePtr = GetSequence();
-	if (SequencePtr != nullptr)
-	{
-		UMovieScene* MovieScenePtr = SequencePtr->GetMovieScene();
-		if (MovieScenePtr != nullptr)
-		{
-			OutInnerPlaybackRange = GetValidatedInnerPlaybackRange(Parameters, *MovieScenePtr);
-			return true;
-		}
-	}
-	return false;
-}
-
-TRange<FFrameNumber> UMovieSceneSubSection::GetValidatedInnerPlaybackRange(const FMovieSceneSectionParameters& SubSectionParameters, const UMovieScene& InnerMovieScene)
-{
-	const TRange<FFrameNumber> InnerPlaybackRange = InnerMovieScene.GetPlaybackRange();
-	TRangeBound<FFrameNumber> ValidatedLowerBound = InnerPlaybackRange.GetLowerBound();
-	TRangeBound<FFrameNumber> ValidatedUpperBound = InnerPlaybackRange.GetUpperBound();
-	if (ValidatedLowerBound.IsClosed() && ValidatedUpperBound.IsClosed())
-	{
-		const FFrameRate TickResolution = InnerMovieScene.GetTickResolution();
-		const FFrameRate DisplayRate = InnerMovieScene.GetDisplayRate();
-		const FFrameNumber OneFrameInTicks = FFrameRate::TransformTime(FFrameTime(1), DisplayRate, TickResolution).FloorToFrame();
-
-		ValidatedLowerBound.SetValue(ValidatedLowerBound.GetValue() + SubSectionParameters.StartFrameOffset);
-		ValidatedUpperBound.SetValue(FMath::Max(ValidatedUpperBound.GetValue() - SubSectionParameters.EndFrameOffset, ValidatedLowerBound.GetValue() + OneFrameInTicks));
-		return TRange<FFrameNumber>(ValidatedLowerBound, ValidatedUpperBound);
-	}
-	return InnerPlaybackRange;
+		* FMovieSceneSequenceTransform(-OuterStartTime);
 }
 
 FString UMovieSceneSubSection::GetPathNameInMovieScene() const
@@ -248,7 +198,7 @@ AActor* UMovieSceneSubSection::GetActorToRecord()
 }
 
 #if WITH_EDITOR
-void UMovieSceneSubSection::PreEditChange(FProperty* PropertyAboutToChange)
+void UMovieSceneSubSection::PreEditChange(UProperty* PropertyAboutToChange)
 {
 	if (PropertyAboutToChange && PropertyAboutToChange->GetFName() == GET_MEMBER_NAME_CHECKED(UMovieSceneSubSection, SubSequence))
 	{
@@ -263,30 +213,13 @@ void UMovieSceneSubSection::PostEditChangeProperty(FPropertyChangedEvent& Proper
 {
 	if (PropertyChangedEvent.Property && PropertyChangedEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(UMovieSceneSubSection, SubSequence))
 	{
-		// Check whether the subsequence that was just set has master tracks that contain the sequence that this subsection is in.
-		UMovieScene* SubSequenceMovieScene = SubSequence ? SubSequence->GetMovieScene() : nullptr;
-
 		UMovieSceneSubTrack* TrackOuter = Cast<UMovieSceneSubTrack>(GetOuter());
-
-		if (SubSequenceMovieScene && TrackOuter)
+		if (SubSequence && TrackOuter && TrackOuter->ContainsSequence(*SubSequence, true, this))
 		{
-			if (UMovieSceneSequence* CurrentSequence = TrackOuter->GetTypedOuter<UMovieSceneSequence>())
-			{
-				for (UMovieSceneTrack* MasterTrack : SubSequenceMovieScene->GetMasterTracks())
-				{
-					if (UMovieSceneSubTrack* SubTrack = Cast<UMovieSceneSubTrack>(MasterTrack))
-					{
-						if ( SubTrack->ContainsSequence(*CurrentSequence, true))
-						{
-							UE_LOG(LogMovieScene, Error, TEXT("Invalid level sequence %s. It is already contained by: %s."), *SubSequence->GetDisplayName().ToString(), *CurrentSequence->GetDisplayName().ToString());
+			UE_LOG(LogMovieScene, Error, TEXT("Invalid level sequence %s. There could be a circular dependency."), *SubSequence->GetDisplayName().ToString());
 
-							// Restore to the previous sub sequence because there was a circular dependency
-							SubSequence = PreviousSubSequence;
-							break;
-						}
-					}
-				}
-			}
+			// Restore to the previous sub sequence because there was a circular dependency
+			SubSequence = PreviousSubSequence;
 		}
 
 		PreviousSubSequence = nullptr;
@@ -334,7 +267,7 @@ UMovieSceneSection* UMovieSceneSubSection::SplitSection( FQualifiedFrameTime Spl
 				}
 			}
 
-			FFrameNumber LocalResolutionStartOffset = FFrameRate::TransformTime(SplitTime.Time.GetFrame() - UE::MovieScene::DiscreteInclusiveLower(InitialRange), SplitTime.Rate, LocalTickResolution).FrameNumber;
+			FFrameNumber LocalResolutionStartOffset = FFrameRate::TransformTime(SplitTime.Time.GetFrame() - MovieScene::DiscreteInclusiveLower(InitialRange), SplitTime.Rate, LocalTickResolution).FrameNumber;
 
 			FFrameNumber NewStartOffset = LocalResolutionStartOffset * Parameters.TimeScale;
 			NewStartOffset += InitialStartOffset;
@@ -358,13 +291,11 @@ TOptional<TRange<FFrameNumber> > UMovieSceneSubSection::GetAutoSizeRange() const
 {
 	if (SubSequence && SubSequence->GetMovieScene())
 	{
-		// We probably want to just auto-size the section to the sub-sequence's scaled playback range... if this section
-		// is looping, however, it's hard to know what we want to do.
-		FMovieSceneTimeTransform InnerToOuter = OuterToInnerTransform().InverseLinearOnly();
+		FMovieSceneSequenceTransform InnerToOuter = OuterToInnerTransform().Inverse();
 		UMovieScene* InnerMovieScene = SubSequence->GetMovieScene();
 
-		FFrameTime IncAutoStartTime = FFrameTime(UE::MovieScene::DiscreteInclusiveLower(InnerMovieScene->GetPlaybackRange())) * InnerToOuter;
-		FFrameTime ExcAutoEndTime   = FFrameTime(UE::MovieScene::DiscreteExclusiveUpper(InnerMovieScene->GetPlaybackRange())) * InnerToOuter;
+		FFrameTime IncAutoStartTime = FFrameTime(MovieScene::DiscreteInclusiveLower(InnerMovieScene->GetPlaybackRange())) * InnerToOuter;
+		FFrameTime ExcAutoEndTime   = FFrameTime(MovieScene::DiscreteExclusiveUpper(InnerMovieScene->GetPlaybackRange())) * InnerToOuter;
 
 		return TRange<FFrameNumber>(GetInclusiveStartFrame(), GetInclusiveStartFrame() + (ExcAutoEndTime.RoundToFrame() - IncAutoStartTime.RoundToFrame()));
 	}
@@ -385,12 +316,12 @@ void UMovieSceneSubSection::TrimSection( FQualifiedFrameTime TrimTime, bool bTri
 	UMovieSceneSection::TrimSection( TrimTime, bTrimLeft, bDeleteKeys );
 
 	// If trimming off the left, set the offset of the shot
-	if ( bTrimLeft && InitialRange.GetLowerBound().IsClosed() && GetSequence())
+	if ( bTrimLeft && InitialRange.GetLowerBound().IsClosed() )
 	{
 		// Sections need their offsets calculated in their local resolution. Different sequences can have different tick resolutions 
 		// so we need to transform from the parent resolution to the local one before splitting them.
 		FFrameRate LocalTickResolution = GetSequence()->GetMovieScene()->GetTickResolution();
-		FFrameNumber LocalResolutionStartOffset = FFrameRate::TransformTime(TrimTime.Time.GetFrame() - UE::MovieScene::DiscreteInclusiveLower(InitialRange), TrimTime.Rate, LocalTickResolution).FrameNumber;
+		FFrameNumber LocalResolutionStartOffset = FFrameRate::TransformTime(TrimTime.Time.GetFrame() - MovieScene::DiscreteInclusiveLower(InitialRange), TrimTime.Rate, LocalTickResolution).FrameNumber;
 
 
 		FFrameNumber NewStartOffset = LocalResolutionStartOffset * Parameters.TimeScale;
@@ -414,22 +345,3 @@ FFrameNumber UMovieSceneSubSection::MapTimeToSectionFrame(FFrameTime InPosition)
 	FFrameNumber LocalPosition = ((InPosition - Parameters.StartFrameOffset) * Parameters.TimeScale).GetFrame();
 	return LocalPosition;
 }
-
-void UMovieSceneSubSection::BuildDefaultSubSectionComponents(UMovieSceneEntitySystemLinker* EntityLinker, const UE::MovieScene::FEntityImportParams& Params, UE::MovieScene::FImportedEntity* OutImportedEntity) const
-{
-	using namespace UE::MovieScene;
-
-	if (Easing.GetEaseInDuration() > 0 || Easing.GetEaseOutDuration() > 0)
-	{
-		FBuiltInComponentTypes* Components = FBuiltInComponentTypes::Get();
-		FInstanceRegistry* InstanceRegistry = EntityLinker->GetInstanceRegistry();
-
-		const FSequenceInstance& Instance = InstanceRegistry->GetInstance(Params.Sequence.InstanceHandle);
-		const FMovieSceneSequenceID SubSequenceID = GetSequenceID();
-
-		OutImportedEntity->AddBuilder(
-			FEntityBuilder()
-				.AddConditional(Components->HierarchicalEasingProvider, SubSequenceID, SubSequenceID.IsValid()));
-	}
-}
-

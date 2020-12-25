@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BaseTools/MeshSurfacePointTool.h"
 #include "BaseBehaviors/MouseHoverBehavior.h"
-#include "BaseBehaviors/ClickDragBehavior.h"
 #include "InteractiveToolManager.h"
 #include "ToolBuilderUtil.h"
 #include "Components/PrimitiveComponent.h"
@@ -36,13 +35,8 @@ void UMeshSurfacePointToolBuilder::InitializeNewTool(UMeshSurfacePointTool* NewT
 	UActorComponent* ActorComponent = ToolBuilderUtil::FindFirstComponent(SceneState, CanMakeComponentTarget);
 	UPrimitiveComponent* MeshComponent = Cast<UPrimitiveComponent>(ActorComponent);
 	check(MeshComponent != nullptr);
-	NewTool->SetStylusAPI(this->StylusAPI);
 	NewTool->SetSelection( MakeComponentTarget(MeshComponent) );
 }
-
-
-static const int UMeshSurfacePointTool_ShiftModifier = 1;
-static const int UMeshSurfacePointTool_CtrlModifier = 2;
 
 
 /*
@@ -56,23 +50,15 @@ void UMeshSurfacePointTool::Setup()
 	bCtrlToggle = false;
 
 	// add input behaviors
-	UClickDragInputBehavior* DragBehavior = NewObject<UClickDragInputBehavior>();
-	DragBehavior->Modifiers.RegisterModifier(UMeshSurfacePointTool_ShiftModifier, FInputDeviceState::IsShiftKeyDown);
-	DragBehavior->Modifiers.RegisterModifier(UMeshSurfacePointTool_CtrlModifier, FInputDeviceState::IsCtrlKeyDown);
-	DragBehavior->Initialize(this);
-	AddInputBehavior(DragBehavior);
+	UMeshSurfacePointToolMouseBehavior* mouseBehavior = NewObject<UMeshSurfacePointToolMouseBehavior>();
+	mouseBehavior->Initialize(this);
+	AddInputBehavior(mouseBehavior);
 
-	UMouseHoverBehavior* HoverBehavior = NewObject<UMouseHoverBehavior>();
-	HoverBehavior->Modifiers.RegisterModifier(UMeshSurfacePointTool_ShiftModifier, FInputDeviceState::IsShiftKeyDown);
-	HoverBehavior->Modifiers.RegisterModifier(UMeshSurfacePointTool_CtrlModifier, FInputDeviceState::IsCtrlKeyDown);
-	HoverBehavior->Initialize(this);
-	AddInputBehavior(HoverBehavior);
+	UMouseHoverBehavior* hoverBehavior = NewObject<UMouseHoverBehavior>();
+	hoverBehavior->Initialize(this);
+	AddInputBehavior(hoverBehavior);
 }
 
-void UMeshSurfacePointTool::SetStylusAPI(IToolStylusStateProviderAPI* StylusAPIIn)
-{
-	this->StylusAPI = StylusAPIIn;
-}
 
 bool UMeshSurfacePointTool::HitTest(const FRay& Ray, FHitResult& OutHit)
 {
@@ -115,56 +101,6 @@ void UMeshSurfacePointTool::SetCtrlToggle(bool bCtrlDown)
 }
 
 
-
-void UMeshSurfacePointTool::OnUpdateModifierState(int ModifierID, bool bIsOn)
-{
-	if (ModifierID == UMeshSurfacePointTool_ShiftModifier)
-	{
-		bShiftToggle = bIsOn;
-	}
-	else if (ModifierID == UMeshSurfacePointTool_CtrlModifier)
-	{
-		bCtrlToggle = bIsOn;
-	}
-}
-
-
-FInputRayHit UMeshSurfacePointTool::CanBeginClickDragSequence(const FInputDeviceRay& PressPos)
-{
-	FHitResult OutHit;
-	if (HitTest(PressPos.WorldRay, OutHit))
-	{
-		return FInputRayHit(OutHit.Distance);
-	}
-	return FInputRayHit();
-}
-
-void UMeshSurfacePointTool::OnClickPress(const FInputDeviceRay& PressPos)
-{
-	LastWorldRay = PressPos.WorldRay;
-	OnBeginDrag(PressPos.WorldRay);
-}
-
-void UMeshSurfacePointTool::OnClickDrag(const FInputDeviceRay& DragPos)
-{
-	LastWorldRay = DragPos.WorldRay;
-	OnUpdateDrag(DragPos.WorldRay);
-}
-
-void UMeshSurfacePointTool::OnClickRelease(const FInputDeviceRay& ReleasePos)
-{
-	LastWorldRay = ReleasePos.WorldRay;
-	OnEndDrag(ReleasePos.WorldRay);
-}
-
-void UMeshSurfacePointTool::OnTerminateDragSequence()
-{
-	OnEndDrag(LastWorldRay);
-}
-
-
-
-
 FInputRayHit UMeshSurfacePointTool::BeginHoverSequenceHitTest(const FInputDeviceRay& PressPos)
 {
 	FHitResult OutHit;
@@ -176,10 +112,71 @@ FInputRayHit UMeshSurfacePointTool::BeginHoverSequenceHitTest(const FInputDevice
 }
 
 
-float UMeshSurfacePointTool::GetCurrentDevicePressure() const
+
+
+
+
+/*
+ * Mouse Input Behavior
+ */
+
+
+void UMeshSurfacePointToolMouseBehavior::Initialize(UMeshSurfacePointTool* ToolIn)
 {
-	return (StylusAPI != nullptr) ? FMath::Clamp(StylusAPI->GetCurrentPressure(), 0.0f, 1.0f) : 1.0f;
+	this->Tool = ToolIn;
+	bInDragCapture = false;
 }
+
+
+FInputCaptureRequest UMeshSurfacePointToolMouseBehavior::WantsCapture(const FInputDeviceState& input)
+{
+	if ( IsPressed(input) )
+	{
+		FHitResult OutHit;
+		if (Tool->HitTest(input.Mouse.WorldRay, OutHit))
+		{
+			return FInputCaptureRequest::Begin(this, EInputCaptureSide::Any, OutHit.Distance);
+		}
+	}
+	return FInputCaptureRequest::Ignore();
+}
+
+FInputCaptureUpdate UMeshSurfacePointToolMouseBehavior::BeginCapture(const FInputDeviceState& input, EInputCaptureSide eSide)
+{
+	Tool->SetShiftToggle(input.bShiftKeyDown);
+	Tool->SetCtrlToggle(input.bCtrlKeyDown);
+	Tool->OnBeginDrag(input.Mouse.WorldRay);
+	LastWorldRay = input.Mouse.WorldRay;
+	bInDragCapture = true;
+	return FInputCaptureUpdate::Begin(this, EInputCaptureSide::Any);
+}
+
+FInputCaptureUpdate UMeshSurfacePointToolMouseBehavior::UpdateCapture(const FInputDeviceState& input, const FInputCaptureData& data)
+{
+	LastWorldRay = input.Mouse.WorldRay;
+
+	if ( IsReleased(input) ) 
+	{
+		Tool->OnEndDrag(input.Mouse.WorldRay);
+		bInDragCapture = false;
+		return FInputCaptureUpdate::End();
+	}
+
+	Tool->OnUpdateDrag(input.Mouse.WorldRay);
+	return FInputCaptureUpdate::Continue();
+}
+
+void UMeshSurfacePointToolMouseBehavior::ForceEndCapture(const FInputCaptureData& data)
+{
+	if (bInDragCapture)
+	{
+		Tool->OnEndDrag(LastWorldRay);
+		bInDragCapture = false;
+	}
+
+	// nothing to do
+}
+
 
 
 

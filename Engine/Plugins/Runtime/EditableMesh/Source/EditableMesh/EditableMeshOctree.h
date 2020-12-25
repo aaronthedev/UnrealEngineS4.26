@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -48,17 +48,17 @@ struct FEditableMeshOctreeSemantics
 		return ( A.PolygonID == B.PolygonID );
 	}
 
-	FORCEINLINE static void SetElementId( const FEditableMeshOctreePolygon& Element, FOctreeElementId2 OctreeElementID )
+	FORCEINLINE static void SetElementId( const FEditableMeshOctreePolygon& Element, FOctreeElementId OctreeElementID )
 	{
 		Element.EditableMesh.PolygonIDToOctreeElementIDMap.Add( Element.PolygonID, OctreeElementID );
 	}
 };
 
-class FEditableMeshOctree : public TOctree2<FEditableMeshOctreePolygon, FEditableMeshOctreeSemantics>
+class FEditableMeshOctree : public TOctree<FEditableMeshOctreePolygon, FEditableMeshOctreeSemantics>
 {
 public:
 	FEditableMeshOctree( const FVector& InOrigin, float InExtent )
-		: TOctree2( InOrigin, InExtent )
+		: TOctree( InOrigin, InExtent )
 	{
 	}
 };

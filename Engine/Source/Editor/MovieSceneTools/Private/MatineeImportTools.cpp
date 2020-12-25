@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MatineeImportTools.h"
 #include "MovieSceneSequence.h"
@@ -105,7 +105,7 @@ void CleanupCurveKeys(FMovieSceneFloatChannel* InChannel)
 	FKeyDataOptimizationParams Params;
 	Params.bAutoSetInterpolation = true;
 
-	UE::MovieScene::Optimize(InChannel, Params);
+	MovieScene::Optimize(InChannel, Params);
 }
 
 

@@ -1,65 +1,18 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Animation/SkinWeightProfile.h"
 #include "Engine/SkeletalMesh.h"
 #include "UObject/UObjectIterator.h"
 #include "ContentStreaming.h"
-#include "UObject/AnimObjectVersion.h"
+
 #include "Components/SkinnedMeshComponent.h"
 #include "Rendering/SkeletalMeshRenderData.h"
 #include "Rendering/SkinWeightVertexBuffer.h"
-#include "Animation/SkinWeightProfileManager.h"
 
 #if WITH_EDITOR
 #include "Rendering/SkeletalMeshLODImporterData.h"
 #include "Animation/DebugSkelMeshComponent.h"
 #endif
-#include "ComponentRecreateRenderStateContext.h"
-#include "SkeletalMeshTypes.h"
-#include "UObject/WeakObjectPtrTemplates.h"
-#include "Engine/GameEngine.h"
-#include "UObject/ObjectVersion.h"
-#include "Engine/World.h"
-
-class ENGINE_API FSkinnedMeshComponentUpdateSkinWeightsContext
-{
-public:
-	FSkinnedMeshComponentUpdateSkinWeightsContext(USkeletalMesh* InSkeletalMesh)
-	{
-		for (TObjectIterator<USkinnedMeshComponent> It; It; ++It)
-		{
-			if (It->SkeletalMesh == InSkeletalMesh)
-			{
-				checkf(!It->IsUnreachable(), TEXT("%s"), *It->GetFullName());
-
-				if (It->IsRenderStateCreated())
-				{
-					check(It->IsRegistered());
-					MeshComponents.Add(*It);
-				}
-			}
-		}
-	}
-
-	~FSkinnedMeshComponentUpdateSkinWeightsContext()
-	{
-		const int32 ComponentCount = MeshComponents.Num();
-		for (int32 ComponentIndex = 0; ComponentIndex < ComponentCount; ++ComponentIndex)
-		{
-			USkinnedMeshComponent* Component = MeshComponents[ComponentIndex];
-
-			if (Component->IsRegistered())
-			{
-				Component->UpdateSkinWeightOverrideBuffer();
-			}
-		}
-	}
-
-
-private:
-	TArray< class USkinnedMeshComponent*> MeshComponents;
-};
-
 
 static void OnDefaultProfileCVarsChanged(IConsoleVariable* Variable)
 {
@@ -71,7 +24,7 @@ static void OnDefaultProfileCVarsChanged(IConsoleVariable* Variable)
 		if (bClearBuffer || bSetBuffer)
 		{
 			// Make sure no pending skeletal mesh LOD updates
-			if (IStreamingManager::Get_Concurrent() && IStreamingManager::Get().IsRenderAssetStreamingEnabled(EStreamableRenderAssetType::SkeletalMesh))
+			if (IStreamingManager::Get_Concurrent())
 			{
 				IStreamingManager::Get().GetRenderAssetStreamingManager().BlockTillAllRequestsFinished();
 			}
@@ -104,7 +57,7 @@ static void OnDefaultProfileCVarsChanged(IConsoleVariable* Variable)
 }
 
 int32 GSkinWeightProfilesLoadByDefaultMode = -1;
-FAutoConsoleVariableRef CVarSkinWeightsLoadByDefaultMode(
+static FAutoConsoleVariableRef CVarSkinWeightsLoadByDefaultMode(
 	TEXT("a.SkinWeightProfile.LoadByDefaultMode"),
 	GSkinWeightProfilesLoadByDefaultMode,
 	TEXT("Enables/disables run-time optimization to override the original skin weights with a profile designated as the default to replace it. Can be used to optimize memory for specific platforms or devices")
@@ -114,11 +67,11 @@ FAutoConsoleVariableRef CVarSkinWeightsLoadByDefaultMode(
 	TEXT("2 = dynamic disabled")
 	TEXT("3 = dynamic enabled"),
 	FConsoleVariableDelegate::CreateStatic(&OnDefaultProfileCVarsChanged),
-	ECVF_Default
+	ECVF_Scalability
 );
 
 int32 GSkinWeightProfilesDefaultLODOverride = -1;
-FAutoConsoleVariableRef CVarSkinWeightProfilesDefaultLODOverride(
+static FAutoConsoleVariableRef CVarSkinWeightProfilesDefaultLODOverride(
 	TEXT("a.SkinWeightProfile.DefaultLODOverride"),
 	GSkinWeightProfilesDefaultLODOverride,
 	TEXT("Override LOD index from which on the default Skin Weight Profile should override the Skeletal Mesh's default Skin Weights"),
@@ -127,7 +80,7 @@ FAutoConsoleVariableRef CVarSkinWeightProfilesDefaultLODOverride(
 );
 
 int32 GSkinWeightProfilesAllowedFromLOD = -1;
-FAutoConsoleVariableRef CVarSkinWeightProfilesAllowedFromLOD(
+static FAutoConsoleVariableRef CVarSkinWeightProfilesAllowedFromLOD(
 	TEXT("a.SkinWeightProfile.AllowedFromLOD"),
 	GSkinWeightProfilesAllowedFromLOD,
 	TEXT("Override LOD index from which on the Skin Weight Profile can be applied"),
@@ -137,22 +90,9 @@ FAutoConsoleVariableRef CVarSkinWeightProfilesAllowedFromLOD(
 
 FArchive& operator<<(FArchive& Ar, FRuntimeSkinWeightProfileData& OverrideData)
 {
-#if WITH_EDITOR
-	if (Ar.UE4Ver() < VER_UE4_SKINWEIGHT_PROFILE_DATA_LAYOUT_CHANGES)
-	{
-		Ar << OverrideData.OverridesInfo_DEPRECATED;
-		Ar << OverrideData.Weights_DEPRECATED;
-	}
-	else
-#endif
-	{	
-		Ar << OverrideData.BoneIDs;
-		Ar << OverrideData.BoneWeights;
-		Ar << OverrideData.NumWeightsPerVertex;
-	}
-	
-	Ar << OverrideData.VertexIndexToInfluenceOffset;
-
+	Ar << OverrideData.OverridesInfo;
+	Ar << OverrideData.Weights;	
+	Ar << OverrideData.VertexIndexOverrideIndex;
 
 	return Ar;
 }
@@ -166,10 +106,8 @@ FArchive& operator<<(FArchive& Ar, FSkinWeightProfilesData& LODData)
 
 FArchive& operator<<(FArchive& Ar, FRuntimeSkinWeightProfileData::FSkinWeightOverrideInfo& OverrideInfo)
 {
-#if WITH_EDITOR
 	Ar << OverrideInfo.InfluencesOffset;
-	Ar << OverrideInfo.NumInfluences_DEPRECATED;
-#endif
+	Ar << OverrideInfo.NumInfluences;
 
 	return Ar;
 }
@@ -185,39 +123,10 @@ FArchive& operator<<(FArchive& Ar, FImportedSkinWeightProfileData& ProfileData)
 
 FArchive& operator<<(FArchive& Ar, FRawSkinWeight& OverrideEntry)
 {
-	Ar.UsingCustomVersion(FAnimObjectVersion::GUID);
-
-	if (Ar.IsLoading())
+	for (int32 InfluenceIndex = 0; InfluenceIndex < MAX_TOTAL_INFLUENCES; ++InfluenceIndex)
 	{
-		FMemory::Memzero(OverrideEntry.InfluenceBones);
-		FMemory::Memzero(OverrideEntry.InfluenceWeights);
-	}
-
-	if (Ar.CustomVer(FAnimObjectVersion::GUID) < FAnimObjectVersion::UnlimitedBoneInfluences)
-	{
-		for (int32 InfluenceIndex = 0; InfluenceIndex < EXTRA_BONE_INFLUENCES; ++InfluenceIndex)
-		{
-			if (Ar.IsLoading() && Ar.CustomVer(FAnimObjectVersion::GUID) < FAnimObjectVersion::IncreaseBoneIndexLimitPerChunk)
-			{
-				uint8 BoneIndex = 0;
-				Ar << BoneIndex;
-				OverrideEntry.InfluenceBones[InfluenceIndex] = BoneIndex;
-			}
-			else
-			{
-				Ar << OverrideEntry.InfluenceBones[InfluenceIndex];
-			}
-
-			Ar << OverrideEntry.InfluenceWeights[InfluenceIndex];
-		}
-	}
-	else
-	{
-		for (int32 InfluenceIndex = 0; InfluenceIndex < MAX_TOTAL_INFLUENCES; ++InfluenceIndex)
-		{
-			Ar << OverrideEntry.InfluenceBones[InfluenceIndex];
-			Ar << OverrideEntry.InfluenceWeights[InfluenceIndex];
-		}
+		Ar << OverrideEntry.InfluenceBones[InfluenceIndex];
+		Ar << OverrideEntry.InfluenceWeights[InfluenceIndex];
 	}
 
 	return Ar;
@@ -231,14 +140,10 @@ void FSkinWeightProfilesData::Init(FSkinWeightVertexBuffer* InBaseBuffer)
 
 FSkinWeightProfilesData::~FSkinWeightProfilesData()
 {
-	ReleaseResources();
-
-	BaseBuffer = nullptr;
-	DefaultOverrideSkinWeightBuffer = nullptr;
-
 	bDefaultOverriden = false;
 	bStaticOverriden = false;
 	DefaultProfileName = NAME_None;
+	ReleaseResources();
 }
 
 #if !WITH_EDITOR
@@ -270,12 +175,7 @@ void FSkinWeightProfilesData::OverrideBaseBufferSkinWeightData(USkeletalMesh* Me
 		// If we found a profile try and find the override skin weights and apply if found
 		if (DefaultProfileIndex != INDEX_NONE)
 		{
-			const FRuntimeSkinWeightProfileData* ProfilePtr = OverrideData.Find(Profiles[DefaultProfileIndex].Name);
-			if (ProfilePtr)
-			{
-				ProfilePtr->ApplyDefaultOverride(BaseBuffer);
-			}
-
+			ApplyOverrideProfile(BaseBuffer, Profiles[DefaultProfileIndex].Name);
 			bDefaultOverriden = true;
 			bStaticOverriden = true;
 			DefaultProfileName = Profiles[DefaultProfileIndex].Name;
@@ -284,7 +184,7 @@ void FSkinWeightProfilesData::OverrideBaseBufferSkinWeightData(USkeletalMesh* Me
 }
 #endif 
 
-void FSkinWeightProfilesData::SetDynamicDefaultSkinWeightProfile(USkeletalMesh* Mesh, int32 LODIndex, bool bSerialization /*= false*/)
+void FSkinWeightProfilesData::SetDynamicDefaultSkinWeightProfile(USkeletalMesh* Mesh, int32 LODIndex)
 {
 	if (bStaticOverriden)
 	{
@@ -322,83 +222,9 @@ void FSkinWeightProfilesData::SetDynamicDefaultSkinWeightProfile(USkeletalMesh* 
 			const bool bDifferentDefaultProfile = bNoDefaultProfile && (!bDefaultOverriden || DefaultProfileName != Profiles[DefaultProfileIndex].Name);
 			if (bNoDefaultProfile || bDifferentDefaultProfile)
 			{
-				if (GetOverrideBuffer(Profiles[DefaultProfileIndex].Name) == nullptr)
-				{
-					if (bSerialization)
-					{
-						// During serialization the CPU copy of the weight should still be available
-						const void* BaseBufferData = BaseBuffer->GetDataVertexBuffer()->GetWeightData();
-						
-						if (ensure(BaseBufferData))
-						{
-							FSkinWeightVertexBuffer* OverrideBuffer = nullptr;
-							
-							const FName& ProfileName = Profiles[DefaultProfileIndex].Name;
-							const FRuntimeSkinWeightProfileData* ProfilePtr = OverrideData.Find(ProfileName);
-							if (ProfilePtr)
-							{
-								FSkinnedMeshComponentUpdateSkinWeightsContext Context(Mesh);
-
-								OverrideBuffer = new FSkinWeightVertexBuffer();
-								OverrideBuffer->CopyMetaData(*BaseBuffer);
-								ProfileNameToBuffer.Add(ProfileName, OverrideBuffer);
-								
-								const uint32 NumInfluences = BaseBuffer->GetMaxBoneInfluences();
-								OverrideBuffer->SetMaxBoneInfluences(NumInfluences);
-								const bool bUse16BitBoneIndex = BaseBuffer->Use16BitBoneIndex();
-								OverrideBuffer->SetUse16BitBoneIndex(bUse16BitBoneIndex);
-								
-								ProfilePtr->ApplyOverrides(OverrideBuffer, BaseBufferData, BaseBuffer->GetNumVertices());
-
-								DefaultOverrideSkinWeightBuffer = OverrideBuffer;
-								bDefaultOverriden = true;
-								DefaultProfileName = Profiles[DefaultProfileIndex].Name;
-
-								OverrideBuffer->BeginInitResources();
-							}
-						}
-					}
-					else
-					{
-						FSkinWeightProfilesData* DataPtr = this;
-						FRequestFinished Callback = [DataPtr](TWeakObjectPtr<USkeletalMesh> WeakMesh, FName ProfileName)
-						{
-							if (WeakMesh.IsValid())
-							{
-								FSkinnedMeshComponentRecreateRenderStateContext RecreateState(WeakMesh.Get());
-								DataPtr->bDefaultOverriden = true;
-								DataPtr->DefaultProfileName = ProfileName;
-								DataPtr->SetupDynamicDefaultSkinweightProfile();								
-							}
-						};
-
-						UWorld* World = nullptr;
-#if WITH_EDITOR
-						World = GWorld;
-#else
-						UGameEngine* GameEngine = Cast<UGameEngine>(GEngine);
-						if (GameEngine)
-						{
-							World = GameEngine->GetGameWorld();
-						}
-#endif
-
-						if (World)
-						{
-							if (FSkinWeightProfileManager* Manager = FSkinWeightProfileManager::Get(World))
-							{
-								Manager->RequestSkinWeightProfile(Profiles[DefaultProfileIndex].Name, Mesh, Mesh, Callback, LODIndex);
-							}
-						}
-					}
-				}
-				else
-				{
+				DefaultOverrideSkinWeightBuffer = GetOverrideBuffer(Profiles[DefaultProfileIndex].Name);
 				bDefaultOverriden = true;
 				DefaultProfileName = Profiles[DefaultProfileIndex].Name;
-
-					SetupDynamicDefaultSkinweightProfile();
-				}
 			}
 		}
 	}
@@ -416,11 +242,8 @@ void FSkinWeightProfilesData::ClearDynamicDefaultSkinWeightProfile(USkeletalMesh
 	{
 		if (DefaultOverrideSkinWeightBuffer != nullptr)
 		{
-#if !WITH_EDITOR
-			// Only release when not in Editor, as any other viewport / editor could be relying on this buffer
-			ReleaseBuffer(DefaultProfileName, true);
-#endif // !WITH_EDITOR
-			DefaultOverrideSkinWeightBuffer = nullptr;
+			ReleaseBuffer(DefaultProfileName);
+			DefaultOverrideSkinWeightBuffer = nullptr;			
 		}
 
 		bDefaultOverriden = false;
@@ -428,22 +251,11 @@ void FSkinWeightProfilesData::ClearDynamicDefaultSkinWeightProfile(USkeletalMesh
 	}
 }
 
-void FSkinWeightProfilesData::SetupDynamicDefaultSkinweightProfile()
-{
-	if (ProfileNameToBuffer.Contains(DefaultProfileName) && bDefaultOverriden && !bStaticOverriden)
-	{
-		DefaultOverrideSkinWeightBuffer = ProfileNameToBuffer.FindChecked(DefaultProfileName);
-	}
-}
-
-bool FSkinWeightProfilesData::ContainsProfile(const FName& ProfileName) const
-{
-	return OverrideData.Contains(ProfileName);
-}
-
-FSkinWeightVertexBuffer* FSkinWeightProfilesData::GetOverrideBuffer(const FName& ProfileName) const
+FSkinWeightVertexBuffer* FSkinWeightProfilesData::GetOverrideBuffer(const FName& ProfileName)
 {
 	SCOPED_NAMED_EVENT(FSkinWeightProfilesData_GetOverrideBuffer, FColor::Red);
+
+	LLM_SCOPE(ELLMTag::SkeletalMesh);
 
 	// In case we have overridden the default skin weight buffer we do not need to create an override buffer, if it was statically overridden we cannot load any other profile
 	if (bDefaultOverriden && (ProfileName == DefaultProfileName || bStaticOverriden))
@@ -458,24 +270,31 @@ FSkinWeightVertexBuffer* FSkinWeightProfilesData::GetOverrideBuffer(const FName&
 
 	if (BaseBuffer)
 	{
-		check(BaseBuffer->GetNumVertices() > 0);
 		if (ProfileNameToBuffer.Contains(ProfileName))
 		{
-			FSkinWeightVertexBuffer* Buffer = ProfileNameToBuffer.FindChecked(ProfileName);
-			return Buffer;
+			return ProfileNameToBuffer.FindChecked(ProfileName);
 		}
+		else
+		{
+			if (OverrideData.Contains(ProfileName))
+			{
+				FSkinWeightVertexBuffer* OverrideBuffer = new FSkinWeightVertexBuffer();
+				ProfileNameToBuffer.Add(ProfileName, OverrideBuffer);
+				OverrideBuffer->SetNeedsCPUAccess(true);
+
+				ApplyOverrideProfile(OverrideBuffer, ProfileName);
+
+				INC_DWORD_STAT_BY(STAT_SkeletalMeshVertexMemory, OverrideBuffer->GetVertexDataSize());
+				BeginInitResource(OverrideBuffer);
+
+				return OverrideBuffer;
+			}
 		}
+	}
 
 	return nullptr;
 }
 
-
-bool FSkinWeightProfilesData::ContainsOverrideBuffer(const FName& ProfileName) const
-{
-	return ProfileNameToBuffer.Contains(ProfileName);
-}
-
-#if WITH_EDITOR
 const FRuntimeSkinWeightProfileData* FSkinWeightProfilesData::GetOverrideData(const FName& ProfileName) const
 {
 	return OverrideData.Find(ProfileName);
@@ -485,11 +304,29 @@ FRuntimeSkinWeightProfileData& FSkinWeightProfilesData::AddOverrideData(const FN
 {
 	return OverrideData.FindOrAdd(ProfileName);
 }
-#endif // WITH_EDITOR
 
-void FSkinWeightProfilesData::ReleaseBuffer(const FName& ProfileName, bool bForceRelease /*= false*/)
+void FSkinWeightProfilesData::ApplyOverrideProfile(FSkinWeightVertexBuffer* OverrideBuffer, const FName& ProfileName)
 {
-	if (ProfileNameToBuffer.Contains(ProfileName) && (!bDefaultOverriden || ProfileName != DefaultProfileName || bForceRelease))
+	const bool bExtraWeights = BaseBuffer->HasExtraBoneInfluences();
+	OverrideBuffer->SetHasExtraBoneInfluences(bExtraWeights);
+
+	const FRuntimeSkinWeightProfileData* ProfilePtr = OverrideData.Find(ProfileName);
+	if (ProfilePtr)
+	{
+		if (bExtraWeights)
+		{
+			ProfilePtr->ApplyOverrides<true>(OverrideBuffer, BaseBuffer);
+		}
+		else
+		{
+			ProfilePtr->ApplyOverrides<false>(OverrideBuffer, BaseBuffer);
+		}
+	}
+}
+
+void FSkinWeightProfilesData::ReleaseBuffer(const FName& ProfileName)
+{
+	if (ProfileNameToBuffer.Contains(ProfileName) && (!bDefaultOverriden || ProfileName != DefaultProfileName))
 	{
 		FSkinWeightVertexBuffer* Buffer = nullptr;
 		ProfileNameToBuffer.RemoveAndCopyValue(ProfileName, Buffer);
@@ -500,7 +337,7 @@ void FSkinWeightProfilesData::ReleaseBuffer(const FName& ProfileName, bool bForc
 			ENQUEUE_RENDER_COMMAND(ReleaseSkinSkinWeightProfilesDataBufferCommand)(
 				[Buffer](FRHICommandListImmediate& RHICmdList)
 			{			
-				Buffer->ReleaseResources();
+				Buffer->ReleaseResource();
 				delete Buffer;		
 			});
 		}
@@ -522,8 +359,6 @@ void FSkinWeightProfilesData::ReleaseResources()
 
 	Buffers.Remove(nullptr);
 
-	ResetGPUReadback();
-
 	if (Buffers.Num())
 	{
 		ENQUEUE_RENDER_COMMAND(ReleaseSkinSkinWeightProfilesDataBufferCommand)(
@@ -531,7 +366,7 @@ void FSkinWeightProfilesData::ReleaseResources()
 		{
 			for (FSkinWeightVertexBuffer* Buffer : Buffers)
 			{	
-				Buffer->ReleaseResources();
+				Buffer->ReleaseResource();
 				delete Buffer;
 			}
 		});
@@ -574,12 +409,10 @@ void FSkinWeightProfilesData::ReleaseCPUResources()
 	{
 		It->Value = FRuntimeSkinWeightProfileData();
 	}
-
-	ResetGPUReadback();
 }
 
 template <bool bRenderThread>
-void FSkinWeightProfilesData::CreateRHIBuffers_Internal(TArray<TPair<FName, FSkinWeightRHIInfo>>& OutBuffers)
+void FSkinWeightProfilesData::CreateRHIBuffers_Internal(TArray<TPair<FName, FVertexBufferRHIRef>>& OutBuffers)
 {
 	const int32 NumActiveProfiles = ProfileNameToBuffer.Num();
 	check(BaseBuffer || !NumActiveProfiles);
@@ -600,220 +433,13 @@ void FSkinWeightProfilesData::CreateRHIBuffers_Internal(TArray<TPair<FName, FSki
 	}
 }
 
-bool FSkinWeightProfilesData::IsPendingReadback() const
-{
-	return !ReadbackData.BufferReadback.IsValid();
-}
-
-void FSkinWeightProfilesData::EnqueueGPUReadback()
-{
-	ensure(!ReadbackData.BufferReadback.IsValid());
-
-	if (BaseBuffer && BaseBuffer->GetDataVertexBuffer()->IsWeightDataValid() && BaseBuffer->GetDataVertexBuffer()->GetVertexDataSize())
-	{
-		static const FName ReadbackName = TEXT("ReadbackSkinWeightBuffer");
-		FSkinweightReadbackData* DataPtr = &ReadbackData;
-		ENQUEUE_RENDER_COMMAND(FSkinWeightProfilesData_EnqueueGPUReadback)(
-			[DataPtr, this](FRHICommandListImmediate& RHICmdList)
-		{
-			DataPtr->BufferReadback.Reset(new FRHIGPUBufferReadback(ReadbackName));
-			if (DataPtr->BufferReadback.IsValid() && BaseBuffer->GetDataVertexBuffer()->VertexBufferRHI->GetSize())
-			{
-				DataPtr->BufferReadback->EnqueueCopy(RHICmdList, BaseBuffer->GetDataVertexBuffer()->VertexBufferRHI);
-			}
-		});
-	}
-}
-
-bool FSkinWeightProfilesData::IsGPUReadbackFinished() const
-{
-	return !IsPendingReadback() && ReadbackData.BufferReadback->IsReady();
-}
-
-void FSkinWeightProfilesData::EnqueueDataReadback()
-{
-	ensure(ReadbackData.ReadbackData.Num() == 0 && ReadbackData.BufferReadback->IsReady());
-	
-	if ( BaseBuffer )
-	{
-		ReadbackData.ReadbackData.SetNumZeroed(BaseBuffer->GetVertexDataSize());
-
-		FSkinweightReadbackData* DataPtr = &ReadbackData;
-		ENQUEUE_RENDER_COMMAND(FSkinWeightProfilesData_EnqueueDataReadback)(
-				[DataPtr](FRHICommandListImmediate& RHICmdList)
-		{
-			if (DataPtr && DataPtr->BufferReadback.IsValid())
-			{
-				ensure(DataPtr->BufferReadback->IsReady());
-				const void* BufferPtr = DataPtr->BufferReadback->Lock(DataPtr->ReadbackData.Num());
-				FMemory::Memcpy(DataPtr->ReadbackData.GetData(), BufferPtr, DataPtr->ReadbackData.Num());
-				DataPtr->BufferReadback->Unlock();
-
-				DataPtr->ReadbackFinishedFrameIndex = GFrameNumberRenderThread;
-			}
-		});
-	}
-}
-
-bool FSkinWeightProfilesData::IsDataReadbackPending() const
-{
-	return ReadbackData.ReadbackData.Num() > 0;
-}
-
-bool FSkinWeightProfilesData::IsDataReadbackFinished() const
-{
-	return !IsPendingReadback() && IsGPUReadbackFinished() && ReadbackData.ReadbackFinishedFrameIndex != INDEX_NONE && GFrameNumberRenderThread > ReadbackData.ReadbackFinishedFrameIndex;
-}
-
-void FSkinWeightProfilesData::ResetGPUReadback()
-{
-	ReadbackData.BufferReadback.Reset();
-	ReadbackData.ReadbackData.Empty();
-	ReadbackData.ReadbackFinishedFrameIndex = INDEX_NONE;
-}
-
-void FSkinWeightProfilesData::InitialiseProfileBuffer(const FName& ProfileName)
-{
-	LLM_SCOPE(ELLMTag::SkeletalMesh);
-
-	if (ProfileNameToBuffer.Contains(ProfileName))
-	{
-		// Maybe it has already been previously set-up and not unloaded yet
-		return;
-	}
-
-	if (BaseBuffer)
-	{
-		const void* BaseBufferData = nullptr;
-		if (BaseBuffer->GetNeedsCPUAccess())
-		{
-			BaseBufferData = BaseBuffer->GetDataVertexBuffer()->GetWeightData();
-		}
-		else
-		{
-			ensure(IsDataReadbackFinished());
-			BaseBufferData = ReadbackData.ReadbackData.GetData();
-		}
-		
-		if (ensure(BaseBufferData))
-		{
-			FSkinWeightVertexBuffer* OverrideBuffer = nullptr;
-
-			OverrideBuffer = new FSkinWeightVertexBuffer();
-			OverrideBuffer->CopyMetaData(*BaseBuffer);
-			ProfileNameToBuffer.Add(ProfileName, OverrideBuffer);
-
-			const uint32 NumInfluences = BaseBuffer->GetMaxBoneInfluences();
-			OverrideBuffer->SetMaxBoneInfluences(NumInfluences);
-			const bool bUse16BitBoneIndex = BaseBuffer->Use16BitBoneIndex();
-			OverrideBuffer->SetUse16BitBoneIndex(bUse16BitBoneIndex);
-			
-			const FRuntimeSkinWeightProfileData* ProfilePtr = OverrideData.Find(ProfileName);
-			if (ProfilePtr)
-			{
-				ProfilePtr->ApplyOverrides(OverrideBuffer, BaseBufferData, BaseBuffer->GetNumVertices());
-			}
-
-			OverrideBuffer->BeginInitResources();
-		}	
-	}
-}
-
-void FSkinWeightProfilesData::ApplyOverrideProfile(FSkinWeightVertexBuffer* OverrideBuffer, const FName& ProfileName)
-{
-	const uint32 NumInfluences = BaseBuffer->GetMaxBoneInfluences();
-	OverrideBuffer->SetMaxBoneInfluences(NumInfluences);
-	const bool bUse16BitBoneIndex = BaseBuffer->Use16BitBoneIndex();
-	OverrideBuffer->SetUse16BitBoneIndex(bUse16BitBoneIndex);
-
-	const FRuntimeSkinWeightProfileData* ProfilePtr = OverrideData.Find(ProfileName);
-	if (ProfilePtr)
-	{
-		ProfilePtr->ApplyOverrides(OverrideBuffer, BaseBuffer->GetDataVertexBuffer()->GetWeightData(), BaseBuffer->GetNumVertices());
-	}	
-}
-
-void FSkinWeightProfilesData::CreateRHIBuffers_RenderThread(TArray<TPair<FName, FSkinWeightRHIInfo>>& OutBuffers)
+void FSkinWeightProfilesData::CreateRHIBuffers_RenderThread(TArray<TPair<FName, FVertexBufferRHIRef>>& OutBuffers)
 {
 	CreateRHIBuffers_Internal<true>(OutBuffers);
 }
 
-void FSkinWeightProfilesData::CreateRHIBuffers_Async(TArray<TPair<FName, FSkinWeightRHIInfo>>& OutBuffers)
+void FSkinWeightProfilesData::CreateRHIBuffers_Async(TArray<TPair<FName, FVertexBufferRHIRef>>& OutBuffers)
 {
 	CreateRHIBuffers_Internal<false>(OutBuffers);
 }
 
-void FRuntimeSkinWeightProfileData::ApplyOverrides(FSkinWeightVertexBuffer* OverrideBuffer, const void* DataBuffer, const int32 NumVerts) const
-{
-	if (DataBuffer)
-	{
-		if (OverrideBuffer)
-		{
-			const FSkinWeightInfo* BaseSkinWeights = (const FSkinWeightInfo*)DataBuffer;
-			OverrideBuffer->CopySkinWeightInfoData(TArrayView<const FSkinWeightInfo>(BaseSkinWeights, NumVerts));
-
-			uint8* TargetSkinWeightData = (uint8*)OverrideBuffer->GetDataVertexBuffer()->GetWeightData();
-			
-			const uint8 VertexStride = OverrideBuffer->GetConstantInfluencesVertexStride();
-			const uint8 WeightDataOffset = OverrideBuffer->GetBoneIndexByteSize() * OverrideBuffer->GetMaxBoneInfluences();
-
-			// Apply overrides
-			for (auto VertexIndexOverridePair : VertexIndexToInfluenceOffset)
-			{
-				const uint32 VertexIndex = VertexIndexOverridePair.Key;
-				const uint32 InfluenceOffset = VertexIndexOverridePair.Value;
-				
-				const uint8* BoneData = TargetSkinWeightData + (VertexIndex * VertexStride);
-				const uint8* WeightData = BoneData + WeightDataOffset;
-
-#if !UE_BUILD_SHIPPING
-				uint32 VertexOffset = 0;
-				uint32 VertexInfluenceCount = 0;
-				OverrideBuffer->GetVertexInfluenceOffsetCount(VertexIndex, VertexOffset, VertexInfluenceCount);
-				check(NumWeightsPerVertex <= VertexInfluenceCount);
-				check((void*)(((uint8*)TargetSkinWeightData) + VertexOffset) == (void*)BoneData);
-				check(b16BitBoneIndices == OverrideBuffer->Use16BitBoneIndex());
-#endif
-				// BoneIDs either contains FBoneIndexType entries spanning (2) uint8 values, or single uint8 bone indices (1)
-				FMemory::Memcpy((void*)BoneData, &BoneIDs[InfluenceOffset * NumWeightsPerVertex * OverrideBuffer->GetBoneIndexByteSize()], OverrideBuffer->GetBoneIndexByteSize() * NumWeightsPerVertex);
-				FMemory::Memcpy((void*)WeightData, &BoneWeights[InfluenceOffset * NumWeightsPerVertex], sizeof(uint8) * NumWeightsPerVertex);
-			}
-		}
-	}
-}
-
-void FRuntimeSkinWeightProfileData::ApplyDefaultOverride(FSkinWeightVertexBuffer* Buffer) const
-{
-	if (Buffer)
-	{
-		const int32 ExpectedNumVerts = Buffer->GetNumVertices();
-		if (ExpectedNumVerts)
-		{
-			uint8* TargetSkinWeightData = (uint8*)Buffer->GetDataVertexBuffer()->GetWeightData();
-
-			const uint8 VertexStride = Buffer->GetConstantInfluencesVertexStride();
-			const uint8 WeightDataOffset = Buffer->GetBoneIndexByteSize() * Buffer->GetMaxBoneInfluences();
-
-			for (auto VertexIndexOverridePair : VertexIndexToInfluenceOffset)
-			{
-				const uint32 VertexIndex = VertexIndexOverridePair.Key;
-				const uint32 InfluenceOffset = VertexIndexOverridePair.Value;
-
-				const uint8* BoneData = TargetSkinWeightData + (VertexIndex * VertexStride);
-				const uint8* WeightData = BoneData + WeightDataOffset;
-
-#if !UE_BUILD_SHIPPING
-				uint32 VertexOffset = 0;
-				uint32 VertexInfluenceCount = 0;
-				Buffer->GetVertexInfluenceOffsetCount(VertexIndex, VertexOffset, VertexInfluenceCount);
-				check(NumWeightsPerVertex <= VertexInfluenceCount);
-				check((void*)(((uint8*)TargetSkinWeightData) + VertexOffset) == (void*)BoneData);
-				check(b16BitBoneIndices == Buffer->Use16BitBoneIndex());
-#endif
-				// BoneIDs either contains FBoneIndexType entries spanning (2) uint8 values, or single uint8 bone indices (1)
-				FMemory::Memcpy((void*)BoneData, &BoneIDs[InfluenceOffset * NumWeightsPerVertex * Buffer->GetBoneIndexByteSize()], Buffer->GetBoneIndexByteSize() * NumWeightsPerVertex);
-				FMemory::Memcpy((void*)WeightData, &BoneWeights[InfluenceOffset * NumWeightsPerVertex], sizeof(uint8) * NumWeightsPerVertex);
-			}
-		}
-	}
-}

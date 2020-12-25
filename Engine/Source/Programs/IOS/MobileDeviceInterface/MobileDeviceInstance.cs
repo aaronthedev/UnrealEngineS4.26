@@ -1245,9 +1245,6 @@ namespace Manzana
         public ProgressCallback OnGenericProgress = null;
         public int TransferProgressDivisor = 25;
 
-        private int LastCopyPercentReported = 0;
-        DateTime LastLogTime = DateTime.MinValue;
-
         /// <summary>
         /// Generic progress callback implementation (used for install/uninstall/etc...)
         /// </summary>
@@ -1263,34 +1260,15 @@ namespace Manzana
                 string Phase = Dict["Status"] as string;
                 int PercentDone = (int)((Double)(Dict["PercentComplete"]));
 
-                // new copy was started
-                if (PercentDone < LastCopyPercentReported)
-				{
-                    LastCopyPercentReported = 0;
-                }
-
-                // Only log every 20% change, or if there's been more than 5 secs since we last emitted progress
-                bool ShouldLog = LastCopyPercentReported == 0 
-	                            	|| ((PercentDone % 20) == 0 && PercentDone > LastCopyPercentReported)
-	                            	|| (PercentDone > LastCopyPercentReported && (DateTime.Now - LastLogTime).TotalSeconds > 5)
-									|| PercentDone == 100
-								    ;	
-
-                if (PercentDone > 0 && ShouldLog)
+                if (OnGenericProgress != null)
                 {
-                    if (OnGenericProgress != null)
-                    {
-                        string Msg = String.Format("{0} is {1}% complete at phase '{2}'", OuterFunction, PercentDone, Phase);
-                        OnGenericProgress(Msg, PercentDone);
-                    }
-                    else
-                    {
-
-                        Console.WriteLine(" ... {0} {1}% complete (phase '{2}')", OuterFunction, PercentDone, Phase);                        
-                    }
-                    LastCopyPercentReported = PercentDone;
-                    LastLogTime = DateTime.Now;
-                }      
+                    string Msg = String.Format("{0} is {1}% complete at phase '{2}'", OuterFunction, PercentDone, Phase);
+                    OnGenericProgress(Msg, PercentDone);
+                }
+                else
+                {
+                    Console.WriteLine(" ... {0} {1}% complete (phase '{2}')", OuterFunction, PercentDone, Phase);
+                }
             }
             catch (System.Exception)
             {

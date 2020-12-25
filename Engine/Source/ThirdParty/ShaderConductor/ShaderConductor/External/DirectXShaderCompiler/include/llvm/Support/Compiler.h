@@ -248,10 +248,8 @@
 /// compiler to reach this point.  Otherwise is not defined.
 #if __has_builtin(__builtin_unreachable) || LLVM_GNUC_PREREQ(4, 5, 0)
 # define LLVM_BUILTIN_UNREACHABLE __builtin_unreachable()
-/* UE Change Begin: llvm_unreachable() hard-crashes without an exception that we can trap. */
-//#elif defined(_MSC_VER)
-//# define LLVM_BUILTIN_UNREACHABLE __assume(false)
-/* UE Change End: llvm_unreachable() hard-crashes. */
+#elif defined(_MSC_VER)
+# define LLVM_BUILTIN_UNREACHABLE __assume(false)
 #endif
 
 /// LLVM_BUILTIN_TRAP - On compilers which support it, expands to an expression

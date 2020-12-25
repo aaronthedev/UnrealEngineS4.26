@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VREditorMode.h"
 #include "Modules/ModuleManager.h"
@@ -287,7 +287,7 @@ void UVREditorMode::Enter()
 	// Switch us back to placement mode and close any open sequencer windows
 	FVREditorActionCallbacks::ChangeEditorModes(FBuiltinEditorModes::EM_Placement);
 	FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>(TEXT("LevelEditor"));
-	LevelEditorModule.GetLevelEditorTabManager()->TryInvokeTab(FTabId("Sequencer"))->RequestCloseTab();
+	LevelEditorModule.GetLevelEditorTabManager()->InvokeTab(FTabId("Sequencer"))->RequestCloseTab();
 
 	// Setup our avatar
 	if (AvatarActor == nullptr)
@@ -898,11 +898,9 @@ void UVREditorMode::ToggleSIEAndVREditor()
 {
 	if (GEditor->EditorWorld == nullptr && !GEditor->bIsSimulatingInEditor)
 	{
-		FRequestPlaySessionParams SessionParams;
-		SessionParams.DestinationSlateViewport = VREditorLevelViewportWeakPtr;
-		SessionParams.WorldType = EPlaySessionWorldType::SimulateInEditor;
-
-		GEditor->RequestPlaySession(SessionParams);
+		const FVector* StartLoc = NULL;
+		const FRotator* StartRot = NULL;
+		GEditor->RequestPlaySession(false, VREditorLevelViewportWeakPtr.Pin(), true /*bSimulateInEditor*/, StartLoc, StartRot, -1);
 	}
 	else if (GEditor->PlayWorld != nullptr && GEditor->bIsSimulatingInEditor)
 	{
@@ -915,16 +913,10 @@ void UVREditorMode::TogglePIEAndVREditor()
 	bool bRequestedPIE = false;
 	if (GEditor->EditorWorld == nullptr && GEditor->PlayWorld == nullptr && !GEditor->bIsSimulatingInEditor)
 	{
-		FRequestPlaySessionParams SessionParams;
-		SessionParams.DestinationSlateViewport = VREditorLevelViewportWeakPtr;
-		SessionParams.WorldType = EPlaySessionWorldType::PlayInEditor;
-		
+		const FVector* StartLoc = NULL;
+		const FRotator* StartRot = NULL;
 		const bool bHMDIsReady = (GEngine && GEngine->XRSystem.IsValid() && GEngine->XRSystem->GetHMDDevice() && GEngine->XRSystem->GetHMDDevice()->IsHMDConnected());
-		if (bHMDIsReady)
-		{
-			SessionParams.SessionPreviewTypeOverride = EPlaySessionPreviewType::VRPreview;
-		}
-		GEditor->RequestPlaySession(SessionParams);
+		GEditor->RequestPlaySession(true, VREditorLevelViewportWeakPtr.Pin(), false /*bSimulateInEditor*/, StartLoc, StartRot, -1, false, bHMDIsReady);
 		bRequestedPIE = true;
 	}
 	else if (GEditor->PlayWorld != nullptr)

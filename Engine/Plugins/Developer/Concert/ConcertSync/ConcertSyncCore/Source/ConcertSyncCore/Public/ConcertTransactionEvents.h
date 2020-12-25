@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/Object.h"
 #include "UObject/Class.h"
-#include "UObject/Package.h"
 #include "IdentifierTable/ConcertIdentifierTableData.h"
 #include "ConcertTransactionEvents.generated.h"
 
@@ -21,20 +20,16 @@ struct FConcertObjectId
 
 	explicit FConcertObjectId(const UObject* InObject)
 		: ObjectClassPathName(*InObject->GetClass()->GetPathName())
-		, ObjectPackageName(InObject->GetPackage()->GetFName())
-		, ObjectName(InObject->GetFName())
 		, ObjectOuterPathName(InObject->GetOuter() ? FName(*InObject->GetOuter()->GetPathName()) : FName())
-		, ObjectExternalPackageName(InObject->GetExternalPackage() ? InObject->GetExternalPackage()->GetFName() : FName())
+		, ObjectName(InObject->GetFName())
 		, ObjectPersistentFlags(InObject->GetFlags() & RF_Load)
 	{
 	}
 
-	FConcertObjectId(const FName InObjectClassPathName, const FName InObjectPackageName, const FName InObjectName, const FName InObjectOuterPathName, const FName InObjectExternalPackageName,  const uint32 InObjectFlags)
+	FConcertObjectId(const FName InObjectClassPathName, const FName InObjectOuterPathName, const FName InObjectName, const uint32 InObjectFlags)
 		: ObjectClassPathName(InObjectClassPathName)
-		, ObjectPackageName(InObjectPackageName)
-		, ObjectName(InObjectName)
 		, ObjectOuterPathName(InObjectOuterPathName)
-		, ObjectExternalPackageName(InObjectExternalPackageName)
+		, ObjectName(InObjectName)
 		, ObjectPersistentFlags(InObjectFlags & RF_Load)
 	{
 	}
@@ -43,16 +38,10 @@ struct FConcertObjectId
 	FName ObjectClassPathName;
 
 	UPROPERTY()
-	FName ObjectPackageName;
-
-	UPROPERTY()
-	FName ObjectName;
-
-	UPROPERTY()
 	FName ObjectOuterPathName;
 
 	UPROPERTY()
-	FName ObjectExternalPackageName;
+	FName ObjectName;
 
 	UPROPERTY()
 	uint32 ObjectPersistentFlags;
@@ -70,16 +59,10 @@ struct FConcertSerializedObjectData
 	bool bIsPendingKill = false;
 
 	UPROPERTY()
-	FName NewPackageName;
-
-	UPROPERTY()
 	FName NewName;
 
 	UPROPERTY()
 	FName NewOuterPathName;
-
-	UPROPERTY()
-	FName NewExternalPackageName;
 
 	UPROPERTY()
 	TArray<uint8> SerializedData;

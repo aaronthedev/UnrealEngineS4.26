@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Kismet/KismetArrayLibrary.h"
 #include "GameFramework/Actor.h"
@@ -17,7 +17,6 @@ const FName InsertOutOfBoundsWarning = FName("InsertOutOfBoundsWarning");
 const FName RemoveOutOfBoundsWarning = FName("RemoveOutOfBoundsWarning");
 const FName ResizeArrayNegativeWarning = FName("ResizeArrayNegativeWarning");
 const FName SwapElementsInArrayWarning = FName("SwapElementsInArrayWarning");
-const FName RandomAccessToEmptyArrayWarning = FName("RandomAccessToEmptyArrayWarning");
 
 UKismetArrayLibrary::UKismetArrayLibrary(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -58,12 +57,6 @@ UKismetArrayLibrary::UKismetArrayLibrary(const FObjectInitializer& ObjectInitial
 			LOCTEXT("SwapElementsInArrayWarning", "Array swap access out of bounds")
 		)
 	);
-	FBlueprintSupport::RegisterBlueprintWarning(
-		FBlueprintWarningDeclaration(
-			RandomAccessToEmptyArrayWarning,
-			LOCTEXT("RandomAccessToEmptyArrayWarning", "Random access to empty array")
-		)
-	);
 }
 
 void UKismetArrayLibrary::FilterArray(const TArray<AActor*>& TargetArray, TSubclassOf<class AActor> FilterClass, TArray<AActor*>& FilteredArray)
@@ -79,13 +72,13 @@ void UKismetArrayLibrary::FilterArray(const TArray<AActor*>& TargetArray, TSubcl
 	}
 }
 
-int32 UKismetArrayLibrary::GenericArray_Add(void* TargetArray, const FArrayProperty* ArrayProp, const void* NewItem)
+int32 UKismetArrayLibrary::GenericArray_Add(void* TargetArray, const UArrayProperty* ArrayProp, const void* NewItem)
 {
 	int32 NewIndex = INDEX_NONE;
 	if( TargetArray )
 	{
 		FScriptArrayHelper ArrayHelper(ArrayProp, TargetArray);
-		FProperty* InnerProp = ArrayProp->Inner;
+		UProperty* InnerProp = ArrayProp->Inner;
 
 		NewIndex = ArrayHelper.AddValue();
 		InnerProp->CopySingleValueToScriptVM(ArrayHelper.GetRawPtr(NewIndex), NewItem);
@@ -93,13 +86,13 @@ int32 UKismetArrayLibrary::GenericArray_Add(void* TargetArray, const FArrayPrope
 	return NewIndex;
 }
 
-int32 UKismetArrayLibrary::GenericArray_AddUnique(void* TargetArray, const FArrayProperty* ArrayProp, const void* NewItem)
+int32 UKismetArrayLibrary::GenericArray_AddUnique(void* TargetArray, const UArrayProperty* ArrayProp, const void* NewItem)
 {
 	int32 NewIndex = INDEX_NONE;
 	if (TargetArray)
 	{
 		FScriptArrayHelper ArrayHelper(ArrayProp, TargetArray);
-		FProperty* InnerProp = ArrayProp->Inner;
+		UProperty* InnerProp = ArrayProp->Inner;
 
 		if (GenericArray_Find(TargetArray, ArrayProp, NewItem) == INDEX_NONE)
 		{
@@ -110,11 +103,11 @@ int32 UKismetArrayLibrary::GenericArray_AddUnique(void* TargetArray, const FArra
 	return NewIndex;
 }
 
-bool UKismetArrayLibrary::GenericArray_Identical(void* ArrayA, const FArrayProperty* ArrayAProp, void* ArrayB, const FArrayProperty* ArrayBProp)
+bool UKismetArrayLibrary::GenericArray_Identical(void* ArrayA, const UArrayProperty* ArrayAProp, void* ArrayB, const UArrayProperty* ArrayBProp)
 {
 	if (ArrayA && ArrayB)
 	{
-		FProperty* InnerAProp = ArrayAProp->Inner;
+		UProperty* InnerAProp = ArrayAProp->Inner;
 
 		if (InnerAProp->SameType(ArrayBProp->Inner))
 		{
@@ -142,7 +135,7 @@ bool UKismetArrayLibrary::GenericArray_Identical(void* ArrayA, const FArrayPrope
 	return false;
 }
 
-void UKismetArrayLibrary::GenericArray_Append(void* TargetArray, const FArrayProperty* TargetArrayProp, void* SourceArray, const FArrayProperty* SourceArrayProperty)
+void UKismetArrayLibrary::GenericArray_Append(void* TargetArray, const UArrayProperty* TargetArrayProp, void* SourceArray, const UArrayProperty* SourceArrayProperty)
 {
 	if(TargetArray && SourceArray)
 	{
@@ -151,7 +144,7 @@ void UKismetArrayLibrary::GenericArray_Append(void* TargetArray, const FArrayPro
 
 		if(SourceArrayHelper.Num() > 0)
 		{
-			FProperty* InnerProp = TargetArrayProp->Inner;
+			UProperty* InnerProp = TargetArrayProp->Inner;
 
 			int32 StartIdx = TargetArrayHelper.AddValues(SourceArrayHelper.Num());
 			for(int32 x = 0; x < SourceArrayHelper.Num(); ++x, ++StartIdx)
@@ -162,12 +155,12 @@ void UKismetArrayLibrary::GenericArray_Append(void* TargetArray, const FArrayPro
 	}
 }
 
-void UKismetArrayLibrary::GenericArray_Insert(void* TargetArray, const FArrayProperty* ArrayProp, const void* NewItem, int32 Index)
+void UKismetArrayLibrary::GenericArray_Insert(void* TargetArray, const UArrayProperty* ArrayProp, const void* NewItem, int32 Index)
 {
 	if( TargetArray )
 	{
 		FScriptArrayHelper ArrayHelper(ArrayProp, TargetArray);
-		FProperty* InnerProp = ArrayProp->Inner;
+		UProperty* InnerProp = ArrayProp->Inner;
 
 		if (ArrayHelper.IsValidIndex(Index)
 			|| (Index >= 0 && Index <= ArrayHelper.Num()) )
@@ -182,7 +175,7 @@ void UKismetArrayLibrary::GenericArray_Insert(void* TargetArray, const FArrayPro
 	}
 }
 
-void UKismetArrayLibrary::GenericArray_Remove(void* TargetArray, const FArrayProperty* ArrayProp, int32 IndexToRemove)
+void UKismetArrayLibrary::GenericArray_Remove(void* TargetArray, const UArrayProperty* ArrayProp, int32 IndexToRemove)
 {
 	if( TargetArray )
 	{
@@ -199,7 +192,7 @@ void UKismetArrayLibrary::GenericArray_Remove(void* TargetArray, const FArrayPro
 }
 
 
-bool UKismetArrayLibrary::GenericArray_RemoveItem(void* TargetArray, const FArrayProperty* ArrayProp, const void* Item)
+bool UKismetArrayLibrary::GenericArray_RemoveItem(void* TargetArray, const UArrayProperty* ArrayProp, const void* Item)
 {
 	bool bRemoved = false;
 
@@ -219,7 +212,7 @@ bool UKismetArrayLibrary::GenericArray_RemoveItem(void* TargetArray, const FArra
 	return bRemoved;
 }
 
-void UKismetArrayLibrary::GenericArray_Shuffle(void* TargetArray, const FArrayProperty* ArrayProp)
+void UKismetArrayLibrary::GenericArray_Shuffle(void* TargetArray, const UArrayProperty* ArrayProp)
 {
 	if (TargetArray)
 	{
@@ -236,7 +229,7 @@ void UKismetArrayLibrary::GenericArray_Shuffle(void* TargetArray, const FArrayPr
 	}
 }
 
-void UKismetArrayLibrary::GenericArray_Clear(void* TargetArray, const FArrayProperty* ArrayProp)
+void UKismetArrayLibrary::GenericArray_Clear(void* TargetArray, const UArrayProperty* ArrayProp)
 {
 	if( TargetArray )
 	{
@@ -246,7 +239,7 @@ void UKismetArrayLibrary::GenericArray_Clear(void* TargetArray, const FArrayProp
 	}
 }
 
-void UKismetArrayLibrary::GenericArray_Resize(void* TargetArray, const FArrayProperty* ArrayProp, int32 Size)
+void UKismetArrayLibrary::GenericArray_Resize(void* TargetArray, const UArrayProperty* ArrayProp, int32 Size)
 {
 	if( TargetArray )
 	{
@@ -262,20 +255,7 @@ void UKismetArrayLibrary::GenericArray_Resize(void* TargetArray, const FArrayPro
 	}
 }
 
-void UKismetArrayLibrary::GenericArray_Reverse(void* TargetArray, const FArrayProperty* ArrayProp)
-{
-	if (TargetArray)
-	{
-		FScriptArrayHelper ArrayHelper(ArrayProp, TargetArray);
-		const int32 ArraySize = ArrayHelper.Num();
-		for (int32 i = 0, i2 = ArraySize - 1; i < ArraySize / 2 /*rounding down*/; ++i, --i2)
-		{
-			ArrayHelper.SwapValues(i, i2);
-		}
-	}
-}
-
-int32 UKismetArrayLibrary::GenericArray_Length(const void* TargetArray, const FArrayProperty* ArrayProp)
+int32 UKismetArrayLibrary::GenericArray_Length(const void* TargetArray, const UArrayProperty* ArrayProp)
 {
 	if( TargetArray )
 	{
@@ -287,7 +267,7 @@ int32 UKismetArrayLibrary::GenericArray_Length(const void* TargetArray, const FA
 	return 0;
 }
 
-int32 UKismetArrayLibrary::GenericArray_LastIndex(const void* TargetArray, const FArrayProperty* ArrayProp)
+int32 UKismetArrayLibrary::GenericArray_LastIndex(const void* TargetArray, const UArrayProperty* ArrayProp)
 {
 	if( TargetArray )
 	{
@@ -299,13 +279,13 @@ int32 UKismetArrayLibrary::GenericArray_LastIndex(const void* TargetArray, const
 	return INDEX_NONE;
 }
 
-void UKismetArrayLibrary::GenericArray_Get(void* TargetArray, const FArrayProperty* ArrayProp, int32 Index, void* Item)
+void UKismetArrayLibrary::GenericArray_Get(void* TargetArray, const UArrayProperty* ArrayProp, int32 Index, void* Item)
 {
 	if( TargetArray )
 	{
 		FScriptArrayHelper ArrayHelper(ArrayProp, TargetArray);
 
-		FProperty* InnerProp = ArrayProp->Inner;
+		UProperty* InnerProp = ArrayProp->Inner;
 		if( ArrayHelper.IsValidIndex(Index) )
 		{
 			InnerProp->CopyCompleteValueFromScriptVM(Item, ArrayHelper.GetRawPtr(Index));	
@@ -316,7 +296,7 @@ void UKismetArrayLibrary::GenericArray_Get(void* TargetArray, const FArrayProper
 				Index,
 				*ArrayProp->GetName(),
 				ArrayHelper.Num(),
-				*ArrayProp->GetOwnerVariant().GetPathName()),
+				*GetPathNameSafe(ArrayProp->GetOuter())),
 				ELogVerbosity::Warning,
 				GetOutOfBoundsWarning);
 			InnerProp->InitializeValue(Item);
@@ -325,12 +305,12 @@ void UKismetArrayLibrary::GenericArray_Get(void* TargetArray, const FArrayProper
 }
 
 
-void UKismetArrayLibrary::GenericArray_Set(void* TargetArray, const FArrayProperty* ArrayProp, int32 Index, const void* NewItem, bool bSizeToFit)
+void UKismetArrayLibrary::GenericArray_Set(void* TargetArray, const UArrayProperty* ArrayProp, int32 Index, const void* NewItem, bool bSizeToFit)
 {
 	if( TargetArray )
 	{
 		FScriptArrayHelper ArrayHelper(ArrayProp, TargetArray);
-		FProperty* InnerProp = ArrayProp->Inner;
+		UProperty* InnerProp = ArrayProp->Inner;
 
 		// Expand the array, if desired
 		if (!ArrayHelper.IsValidIndex(Index) && bSizeToFit && (Index >= 0))
@@ -349,7 +329,7 @@ void UKismetArrayLibrary::GenericArray_Set(void* TargetArray, const FArrayProper
 	}
 }
 
-void UKismetArrayLibrary::GenericArray_Swap(const void* TargetArray, const FArrayProperty* ArrayProp, int32 First, int32 Second)
+void UKismetArrayLibrary::GenericArray_Swap(const void* TargetArray, const UArrayProperty* ArrayProp, int32 First, int32 Second)
 {
 	if (TargetArray)
 	{
@@ -383,14 +363,14 @@ void UKismetArrayLibrary::GenericArray_Swap(const void* TargetArray, const FArra
 	}
 }
 
-int32 UKismetArrayLibrary::GenericArray_Find(const void* TargetArray, const FArrayProperty* ArrayProperty, const void* ItemToFind)
+int32 UKismetArrayLibrary::GenericArray_Find(const void* TargetArray, const UArrayProperty* ArrayProperty, const void* ItemToFind)
 {
 	int32 ResultIndex = INDEX_NONE;
 
 	if( TargetArray )
 	{
 		FScriptArrayHelper ArrayHelper(ArrayProperty, TargetArray);
-		FProperty* InnerProp = ArrayProperty->Inner;
+		UProperty* InnerProp = ArrayProperty->Inner;
 
 		// compare against each element in the array
 		for (int32 Idx = 0; Idx < ArrayHelper.Num() && ResultIndex == INDEX_NONE; Idx++)
@@ -410,7 +390,7 @@ void UKismetArrayLibrary::GenericArray_SetArrayPropertyByName(UObject* OwnerObje
 {
 	if (OwnerObject != NULL)
 	{
-		FArrayProperty* ArrayProp = FindFProperty<FArrayProperty>(OwnerObject->GetClass(), ArrayPropertyName);
+		UArrayProperty* ArrayProp = FindField<UArrayProperty>(OwnerObject->GetClass(), ArrayPropertyName);
 		if (ArrayProp != NULL)
 		{
 			void* Dest = ArrayProp->ContainerPtrToValuePtr<void>(OwnerObject);
@@ -419,7 +399,7 @@ void UKismetArrayLibrary::GenericArray_SetArrayPropertyByName(UObject* OwnerObje
 	}
 }
 
-bool UKismetArrayLibrary::GenericArray_IsValidIndex(const void* TargetArray, const FArrayProperty* ArrayProp, int32 IndexToTest)
+bool UKismetArrayLibrary::GenericArray_IsValidIndex(const void* TargetArray, const UArrayProperty* ArrayProp, int32 IndexToTest)
 {
 	bool ReturnBool = false;
 
@@ -433,67 +413,15 @@ bool UKismetArrayLibrary::GenericArray_IsValidIndex(const void* TargetArray, con
 	return ReturnBool;
 }
 
-void UKismetArrayLibrary::GenericArray_HandleBool(const FProperty* Property, void* ItemPtr)
+void UKismetArrayLibrary::GenericArray_HandleBool(const UProperty* Property, void* ItemPtr)
 {
-	const FBoolProperty* BoolProperty = CastField<const FBoolProperty>(Property);
+	const UBoolProperty* BoolProperty = Cast<const UBoolProperty>(Property);
 	if (BoolProperty)
 	{
 		ensure((BoolProperty->ElementSize * BoolProperty->ArrayDim) == sizeof(uint8));
 		BoolProperty->SetPropertyValue(ItemPtr, 0 != *(reinterpret_cast<uint8*>(ItemPtr)));
 	}
 }
-
-
-void UKismetArrayLibrary::GenericArray_Random(void* TargetArray, const FArrayProperty* ArrayProp, void* OutItem, int32* OutIndex)
-{
-	*OutIndex = INDEX_NONE;
-	if (TargetArray)
-	{
-		FScriptArrayHelper ArrayHelper(ArrayProp, TargetArray);
-		FProperty* InnerProp = ArrayProp->Inner;
-
-		if (ArrayHelper.Num() > 0)
-		{
-			const int32 Index = FMath::RandRange(0, ArrayHelper.Num() - 1);
-
-			InnerProp->CopySingleValueToScriptVM(OutItem, ArrayHelper.GetRawPtr(Index));
-			*OutIndex = Index;
-		} 
-		else
-		{
-			FFrame::KismetExecutionMessage(*FString::Printf(TEXT("Attempted to access random index from empty array!")),
-				ELogVerbosity::Warning,
-				RandomAccessToEmptyArrayWarning);
-			InnerProp->InitializeValue(OutItem);
-		}
-	}
-}
-
-void UKismetArrayLibrary::GenericArray_RandomFromStream(void* TargetArray, const FArrayProperty* ArrayProp, FRandomStream* RandomStream, void* OutItem, int32* OutIndex)
-{
-	*OutIndex = INDEX_NONE;
-	if (TargetArray && RandomStream)
-	{
-		FScriptArrayHelper ArrayHelper(ArrayProp, TargetArray);
-		FProperty* InnerProp = ArrayProp->Inner;
-
-		if (ArrayHelper.Num() > 0)
-		{
-			const int32 Index = RandomStream->RandRange(0, ArrayHelper.Num() - 1);
-
-			InnerProp->CopySingleValueToScriptVM(OutItem, ArrayHelper.GetRawPtr(Index));
-			*OutIndex = Index;
-		}
-		else
-		{
-			FFrame::KismetExecutionMessage(*FString::Printf(TEXT("Attempted to access random index from empty array!")),
-				ELogVerbosity::Warning,
-				RandomAccessToEmptyArrayWarning);
-			InnerProp->InitializeValue(OutItem);
-		}
-	}
-}
-
 
 //////////////////////////////////////////////////////////////////////////
 // Stubs for the UFunctions declared as kismet callable.  These are never actually called...the CustomThunk code calls the appropriate native function with a void* reference to the array
@@ -593,18 +521,5 @@ bool UKismetArrayLibrary::Array_IsValidIndex(const TArray<int32>& TargetArray, i
 	check(0);
 	return true;
 }
-
-void UKismetArrayLibrary::Array_Random(const TArray<int32>& TargetArray, int32& OutItem, int32& OutIndex)
-{
-	// We should never hit these!  They're stubs to avoid NoExport on the class.  Call the Generic* equivalent instead
-	check(0);
-}
-
-void UKismetArrayLibrary::Array_RandomFromStream(const TArray<int32>& TargetArray, FRandomStream& RandomStream, int32& OutItem, int32& OutIndex)
-{
-	// We should never hit these!  They're stubs to avoid NoExport on the class.  Call the Generic* equivalent instead
-	check(0);
-}
-
 
 #undef LOCTEXT_NAMESPACE

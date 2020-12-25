@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_CHILDREN_PROXY_H
-#define PXR_USD_SDF_CHILDREN_PROXY_H
+#ifndef SDF_CHILDRENPROXY_H
+#define SDF_CHILDRENPROXY_H
 
 /// \file sdf/childrenProxy.h
 
@@ -89,7 +89,7 @@ private:
         _inner_iterator _pos;
     };
 
-    class _PairProxy {
+    class _PairProxy : boost::totally_ordered<_PairProxy> {
     public:
         explicit _PairProxy(This* owner, _inner_iterator i) :
                         first(owner->_view.key(i)), second(owner, i) { }
@@ -475,4 +475,4 @@ struct Vt_DefaultValueFactory<SdfChildrenProxy<_View> > {
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_CHILDREN_PROXY_H
+#endif // SDF_CHILDRENPROXY_H

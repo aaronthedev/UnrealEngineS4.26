@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GeometryCacheComponent.h"
 #include "GeometryCache.h"
@@ -74,8 +74,8 @@ void UGeometryCacheComponent::SetupTrackData()
 			// First time so create rather than update the mesh sections
 			CreateTrackSection(TrackIndex);
 
-			const float TrackDuration = GeometryCache->Tracks[TrackIndex]->GetDuration();
-			Duration = FMath::Max(Duration, TrackDuration);
+			const float TrackMaxSampleTime = GeometryCache->Tracks[TrackIndex]->GetMaxSampleTime();
+			Duration = (Duration > TrackMaxSampleTime) ? Duration : TrackMaxSampleTime;
 		}
 	}
 	UpdateLocalBounds();

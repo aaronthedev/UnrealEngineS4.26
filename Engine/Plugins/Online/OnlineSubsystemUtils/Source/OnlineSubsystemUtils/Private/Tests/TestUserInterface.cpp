@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Tests/TestUserInterface.h"
@@ -46,7 +46,7 @@ void FTestUserInterface::Test(UWorld* InWorld, const TArray<FString>& InUserIds)
 		// Include our own user so we have at least one UserId to query for
 		{
 			TSharedPtr<const FUniqueNetId> UserId = OnlineSub->GetIdentityInterface()->GetUniquePlayerId(0);
-			if (UserId.IsValid() && QueryUserIds.Contains(UserId.ToSharedRef()) == false)
+			if (QueryUserIds.Contains(UserId.ToSharedRef()) == false)
 			{
 				QueryUserIds.Add(UserId.ToSharedRef());
 			}

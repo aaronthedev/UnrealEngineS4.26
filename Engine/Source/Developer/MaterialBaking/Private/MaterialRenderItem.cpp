@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MaterialRenderItem.h"
 #include "MaterialBakingStructures.h"
@@ -10,24 +10,19 @@
 
 #define SHOW_WIREFRAME_MESH 0
 
-FMeshMaterialRenderItem::FMeshMaterialRenderItem(
-	const FMaterialData* InMaterialSettings,
-	const FMeshData* InMeshSettings,
-	EMaterialProperty InMaterialProperty,
-	FDynamicMeshBufferAllocator* InDynamicMeshBufferAllocator)
-	: MeshSettings(InMeshSettings)
-	, MaterialSettings(InMaterialSettings)
-	, MaterialProperty(InMaterialProperty)
-	, MaterialRenderProxy(nullptr)
-	, ViewFamily(nullptr)
-	, bMeshElementDirty(true)
-	, DynamicMeshBufferAllocator(InDynamicMeshBufferAllocator)
+FMeshMaterialRenderItem::FMeshMaterialRenderItem(const FMaterialData* InMaterialSettings, const FMeshData* InMeshSettings, EMaterialProperty InMaterialProperty)
+	: MeshSettings(InMeshSettings), MaterialSettings(InMaterialSettings), MaterialProperty(InMaterialProperty), MaterialRenderProxy(nullptr), ViewFamily(nullptr)
 {
 	GenerateRenderData();
 	LCI = new FMeshRenderInfo(InMeshSettings->LightMap, nullptr, nullptr, InMeshSettings->LightmapResourceCluster);
 }
 
 bool FMeshMaterialRenderItem::Render_RenderThread(FRHICommandListImmediate& RHICmdList, FMeshPassProcessorRenderState& DrawRenderState, const FCanvas* Canvas)
+{
+	return false;
+}
+
+bool FMeshMaterialRenderItem::Render_GameThread(const FCanvas* Canvas, FRenderThreadScope& RenderScope)
 {
 	checkSlow(ViewFamily && MaterialSettings && MeshSettings && MaterialRenderProxy);
 	// current render target set for the canvas
@@ -44,45 +39,51 @@ bool FMeshMaterialRenderItem::Render_RenderThread(FRHICommandListImmediate& RHIC
 	ViewInitOptions.BackgroundColor = FLinearColor::Black;
 	ViewInitOptions.OverlayColor = FLinearColor::White;
 
-	FSceneView View(ViewInitOptions);
-	View.FinalPostProcessSettings.bOverride_IndirectLightingIntensity = 1;
-	View.FinalPostProcessSettings.IndirectLightingIntensity = 0.0f;
+	FSceneView* View = new FSceneView(ViewInitOptions);
+	View->FinalPostProcessSettings.bOverride_IndirectLightingIntensity = 1;
+	View->FinalPostProcessSettings.IndirectLightingIntensity = 0.0f;
+
 
 	const bool bNeedsToSwitchVerticalAxis = RHINeedsToSwitchVerticalAxis(Canvas->GetShaderPlatform()) && !Canvas->GetAllowSwitchVerticalAxis();
 	check(bNeedsToSwitchVerticalAxis == false);
 
+	struct FDrawMaterialParameters
+	{
+		const FSceneView* View;
+		FMeshMaterialRenderItem* RenderItem;
+		uint32 AllowedCanvasModes;
+	};
+
+	const FDrawMaterialParameters Parameters
+	{
+		View,
+		this,
+		Canvas->GetAllowedModes()
+	};
+
 	if (Vertices.Num() && Indices.Num())
 	{
-		FMeshPassProcessorRenderState LocalDrawRenderState(View);
-
-		// disable depth test & writes
-		LocalDrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA>::GetRHI());
-		LocalDrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_Always>::GetRHI());
-
-		QueueMaterial(RHICmdList, LocalDrawRenderState, &View);
-	}
-
-	return true;
-}
-
-bool FMeshMaterialRenderItem::Render_GameThread(const FCanvas* Canvas, FRenderThreadScope& RenderScope)
-{
-	RenderScope.EnqueueRenderCommand(
-		[this, Canvas](FRHICommandListImmediate& RHICmdList)
+		RenderScope.EnqueueRenderCommand(
+			[Parameters](FRHICommandListImmediate& RHICmdList)
 		{
-			// Render_RenderThread uses its own render state
-			FMeshPassProcessorRenderState DummyRenderState;
-			Render_RenderThread(RHICmdList, DummyRenderState, Canvas);
-		}
-	);
+			FMeshPassProcessorRenderState DrawRenderState(*Parameters.View);
 
-	return true;
+			// disable depth test & writes
+			DrawRenderState.SetBlendState(TStaticBlendState<CW_RGBA>::GetRHI());
+			DrawRenderState.SetDepthStencilState(TStaticDepthStencilState<false, CF_Always>::GetRHI());
+
+			Parameters.RenderItem->QueueMaterial(RHICmdList, DrawRenderState, Parameters.View);
+
+			delete Parameters.View;
+		});
+
+	}
+	
+	return true;	
 }
 
 void FMeshMaterialRenderItem::GenerateRenderData()
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(FMeshMaterialRenderItem::GenerateRenderData)
-
 	// Reset array without resizing
 	Vertices.SetNum(0, false);
 	Indices.SetNum(0, false);
@@ -96,39 +97,19 @@ void FMeshMaterialRenderItem::GenerateRenderData()
 		// Use simple rectangle
 		PopulateWithQuadData();
 	}
-
-	bMeshElementDirty = true;
-}
-
-FMeshMaterialRenderItem::~FMeshMaterialRenderItem()
-{
-	// Send the release of the buffers to the render thread
-	ENQUEUE_RENDER_COMMAND(ReleaseResources)(
-		[ToRelease = MoveTemp(MeshBuilderResources)](FRHICommandListImmediate& RHICmdList) {}
-	);
 }
 
 void FMeshMaterialRenderItem::QueueMaterial(FRHICommandListImmediate& RHICmdList, FMeshPassProcessorRenderState& DrawRenderState, const FSceneView* View)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(FMeshMaterialRenderItem::QueueMaterial)
+	FDynamicMeshBuilder DynamicMeshBuilder(View->GetFeatureLevel(), MAX_STATIC_TEXCOORDS, MeshSettings->LightMapIndex);
+	DynamicMeshBuilder.AddVertices(Vertices);
+	DynamicMeshBuilder.AddTriangles(Indices);
 
-	if (bMeshElementDirty)
-	{
-		MeshBuilderResources.Clear();
-		FDynamicMeshBuilder DynamicMeshBuilder(View->GetFeatureLevel(), MAX_STATIC_TEXCOORDS, MeshSettings->LightMapIndex, false, DynamicMeshBufferAllocator);
-		{
-			TRACE_CPUPROFILER_EVENT_SCOPE(CopyData);
-			DynamicMeshBuilder.AddVertices(Vertices);
-			DynamicMeshBuilder.AddTriangles(Indices);
-		}
+	FMeshBatch MeshElement;
+	FMeshBuilderOneFrameResources OneFrameResource;
+	DynamicMeshBuilder.GetMeshElement(FMatrix::Identity, MaterialRenderProxy, SDPG_Foreground, true, false, 0, OneFrameResource, MeshElement);
 
-		DynamicMeshBuilder.GetMeshElement(FMatrix::Identity, MaterialRenderProxy, SDPG_Foreground, true, false, 0, MeshBuilderResources, MeshElement);
-
-		check(MeshBuilderResources.IsValidForRendering());
-		bMeshElementDirty = false;
-	}
-
-	MeshElement.MaterialRenderProxy = MaterialRenderProxy;
+	check(OneFrameResource.IsValidForRendering());
 
 	LCI->CreatePrecomputedLightingUniformBuffer_RenderingThread(View->GetFeatureLevel());
 	MeshElement.LCI = LCI;
@@ -223,20 +204,15 @@ void FMeshMaterialRenderItem::PopulateWithMeshData()
 	{
 		const FPolygonGroupID PolygonGroupID = RawMesh->GetPolygonPolygonGroup(PolygonID);
 		const TArray<FTriangleID>& TriangleIDs = RawMesh->GetPolygonTriangleIDs(PolygonID);
-		for (const FTriangleID& TriangleID : TriangleIDs)
+		for (const FTriangleID TriangleID : TriangleIDs)
 		{
 			if (MeshSettings->MaterialIndices.Contains(PolygonGroupID.GetValue()))
 			{
-				const int32 NUM_VERTICES = 3;
-				for (int32 Corner = 0; Corner < NUM_VERTICES; Corner++)
+				for (int32 Corner = 0; Corner < 3; Corner++)
 				{
-					// Swap vertices order if mesh is mirrored
-					const int32 CornerIdx = !MeshSettings->bMirrored ? Corner : NUM_VERTICES - Corner - 1;
-
-					const int32 SrcVertIndex = FaceIndex * NUM_VERTICES + CornerIdx;
+					const int32 SrcVertIndex = FaceIndex * 3 + Corner;
 					const FVertexInstanceID SrcVertexInstanceID = RawMesh->GetTriangleVertexInstance(TriangleID, Corner);
 					const FVertexID SrcVertexID = RawMesh->GetVertexInstanceVertex(SrcVertexInstanceID);
-
 					// add vertex
 					FDynamicMeshVertex* Vert = new(Vertices)FDynamicMeshVertex();
 					if (!bUseNewUVs)

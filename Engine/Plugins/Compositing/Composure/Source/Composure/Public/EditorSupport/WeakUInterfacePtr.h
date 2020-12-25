@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -47,7 +47,7 @@ public:
 		return Get();
 	}
 
-	FORCEINLINE void Reset()
+	FORCEINLINE void Reset() const
 	{
 		IntrefacePtr = nullptr;
 		Object.Reset();

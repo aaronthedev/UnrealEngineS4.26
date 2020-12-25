@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	NetworkSerialization.h: 
@@ -17,7 +17,6 @@
 #include "EngineLogs.h"
 #include "Containers/ArrayView.h"
 #include "Net/GuidReferences.h"
-#include "HAL/IConsoleManager.h"
 #include "NetSerialization.generated.h"
 
 class Error;
@@ -29,55 +28,6 @@ DECLARE_CYCLE_STAT_EXTERN(TEXT("NetSerializeFast Array BuildMap"), STAT_NetSeria
 DECLARE_CYCLE_STAT_EXTERN(TEXT("NetSerializeFast Array Delta Struct"), STAT_NetSerializeFastArray_DeltaStruct, STATGROUP_ServerCPU, ENGINE_API);
 
 extern ENGINE_API TAutoConsoleVariable<int32> CVarNetEnableDetailedScopeCounters;
-
-/**
- * Helper to optionally serialize a value (using operator<< on Archive).
- * A single signal bit is indicates whether to serialize, or whether to just use the default value.
- * Returns true if the value was not the default and needed to be serialized.
- */
-template<typename ValueType>
-bool SerializeOptionalValue(const bool bIsSaving, FArchive& Ar, ValueType& Value, const ValueType& DefaultValue)
-{
-	bool bNotDefault = (bIsSaving && (Value != DefaultValue));
-	Ar.SerializeBits(&bNotDefault, 1);
-	if (bNotDefault)
-	{
-		// Non-default value, need to save or load it.
-		Ar << Value;
-	}
-	else if (!bIsSaving)
-	{
-		// Loading, and should use default
-		Value = DefaultValue;
-	}
-
-	return bNotDefault;
-}
-
-/**
- * Helper to optionally serialize a value (using the NetSerialize function).
- * A single signal bit indicates whether to serialize, or whether to just use the default value.
- * Returns true if the value was not the default and needed to be serialized.
- */
-template<typename ValueType>
-bool NetSerializeOptionalValue(const bool bIsSaving, FArchive& Ar, ValueType& Value, const ValueType& DefaultValue, class UPackageMap* PackageMap)
-{
-	bool bNotDefault = (bIsSaving && (Value != DefaultValue));
-	Ar.SerializeBits(&bNotDefault, 1);
-	if (bNotDefault)
-	{
-		// Non-default value, need to save or load it.
-		bool bLocalSuccess = true;
-		Value.NetSerialize(Ar, PackageMap, bLocalSuccess);
-	}
-	else if (!bIsSaving)
-	{
-		// Loading, and should use default
-		Value = DefaultValue;
-	}
-
-	return bNotDefault;
-}
 
 /**
  *	===================== NetSerialize and NetDeltaSerialize customization. =====================
@@ -240,7 +190,7 @@ struct TStructOpsTypeTraits< FExampleArray > : public TStructOpsTypeTraitsBase2<
  *
  *	The UActorChannel has 2 ways to decide what properties need to be sent.
  *		The traditional way, which is a flat TArray<uint8> buffer: UActorChannel::Recent. This represents a flat block of the actor properties.
- *		This block literally can be cast to an AActor* and property values can be looked up if you know the FProperty offset.
+ *		This block literally can be cast to an AActor* and property values can be looked up if you know the UProperty offset.
  *		The Recent buffer represents the values that the client using this actor channel has. We use recent to compare to current, and decide what to send.
  *
  *		This works great for 'atomic' properties; ints, floats, object*, etc.
@@ -263,7 +213,7 @@ struct TStructOpsTypeTraits< FExampleArray > : public TStructOpsTypeTraitsBase2<
  *	Base States and dynamic properties replication.
  *		As far as the replication system / UActorChannel is concerned, a base state can be anything. The base state only deals with INetDeltaBaseState*.
  *
- *		UActorChannel::ReplicateActor will ultimately decide whether to call FProperty::NetSerializeItem or FProperty::NetDeltaSerializeItem.
+ *		UActorChannel::ReplicateActor will ultimately decide whether to call UProperty::NetSerializeItem or UProperty::NetDeltaSerializeItem.
  *
  *		As mentioned above NetDeltaSerialize takes in an extra base state and produces a diff state and a full state. The full state produced is used
  *		as the base state for future delta serialization. NetDeltaSerialize uses the base state and the current values of the actor to determine what parts
@@ -275,21 +225,21 @@ struct TStructOpsTypeTraits< FExampleArray > : public TStructOpsTypeTraitsBase2<
  *
  *	
  *	Generic Delta Replication
- *		Generic Delta Replication is implemented by FStructProperty::NetDeltaSerializeItem, FArrayProperty::NetDeltaSerializeItem, FProperty::NetDeltaSerializeItem.
- *		It works by first NetSerializing the current state of the object (the 'full' state) and using memcmp to compare it to previous base state. FProperty
+ *		Generic Delta Replication is implemented by UStructProperty::NetDeltaSerializeItem, UArrayProperty::NetDeltaSerializeItem, UProperty::NetDeltaSerializeItem.
+ *		It works by first NetSerializing the current state of the object (the 'full' state) and using memcmp to compare it to previous base state. UProperty
  *		is what actually implements the comparison, writing the current state to the diff state if it has changed, and always writing to the full state otherwise.
- *		The FStructProperty and FArrayProperty functions work by iterating their fields or array elements and calling the FProperty function, while also embedding
+ *		The UStructProperty and UArrayProperty functions work by iterating their fields or array elements and calling the UProperty function, while also embedding
  *		meta data. 
  *
- *		For example FArrayProperty basically writes: 
- *			"Array has X elements now" -> "Here is element Y" -> Output from FProperty::NetDeltaSerialize -> "Here is element Z" -> etc
+ *		For example UArrayProperty basically writes: 
+ *			"Array has X elements now" -> "Here is element Y" -> Output from UProperty::NetDeltaSerialize -> "Here is element Z" -> etc
  *
- *		Generic Data Replication is the 'default' way of handling FArrayProperty and FStructProperty serialization. This will work for any array or struct with any 
+ *		Generic Data Replication is the 'default' way of handling UArrayProperty and UStructProperty serialization. This will work for any array or struct with any 
  *		sub properties as long as those properties can NetSerialize.
  *
  *	Custom Net Delta Serialiation
  *		Custom Net Delta Serialiation works by using the struct trait system. If a struct has the WithNetDeltaSerializer trait, then its native NetDeltaSerialize
- *		function will be called instead of going through the Generic Delta Replication code path in FStructProperty::NetDeltaSerializeItem.
+ *		function will be called instead of going through the Generic Delta Replication code path in UStructProperty::NetDeltaSerializeItem.
  *
  *	Fast TArray Replication
  *		Fast TArray Replication is implemented through custom net delta serialization. Instead of a flat TArray buffer to repesent states, it only is concerned
@@ -597,22 +547,10 @@ struct FFastArraySerializer
 		return DeltaFlags;
 	}
 
-	static const int32 GetMaxNumberOfAllowedChangesPerUpdate()
-	{
-		return MaxNumberOfAllowedChangesPerUpdate;
-	}
-
-	static const int32 GetMaxNumberOfAllowedDeletionsPerUpdate()
-	{
-		return MaxNumberOfAllowedDeletionsPerUpdate;
-	}
-
 private:
 
-	ENGINE_API static int32 MaxNumberOfAllowedChangesPerUpdate;
-	ENGINE_API static int32 MaxNumberOfAllowedDeletionsPerUpdate;
-	ENGINE_API static FAutoConsoleVariableRef CVarMaxNumberOfAllowedChangesPerUpdate;
-	ENGINE_API static FAutoConsoleVariableRef CVarMaxNumberOfAllowedDeletionsPerUpdate;
+	static constexpr int32 MAX_NUM_CHANGED = 2048;
+	static constexpr int32 MAX_NUM_DELETED = 2048;
 
 	/** Struct containing common header data that is written / read when serializing Fast Arrays. */
 	struct FFastArraySerializerHeader
@@ -733,7 +671,7 @@ private:
 	int32 CachedNumItems;
 	int32 CachedNumItemsToConsiderForWriting;
 
-	UPROPERTY(NotReplicated, Transient)
+	UPROPERTY(NotReplicated)
 	EFastArraySerializerDeltaFlags DeltaFlags;
 };
 
@@ -944,14 +882,6 @@ void FFastArraySerializer::TFastArraySerializeHelper<Type, SerializerType>::Writ
 	UE_LOG(LogNetFastTArray, Log, TEXT("   Writing Bunch. NumChange: %d. NumDel: %d [%d/%d]"),
 		Header.NumChanged, Header.DeletedIndices.Num(), Header.ArrayReplicationKey, Header.BaseReplicationKey);
 
-	const int32 MaxNumDeleted = FFastArraySerializer::GetMaxNumberOfAllowedDeletionsPerUpdate();
-	const int32 MaxNumChanged = FFastArraySerializer::GetMaxNumberOfAllowedChangesPerUpdate();
-	
-	// TODO: We should consider propagating this error in the same way we handle
-	// array overflows in RepLayout SendProperties / CompareProperties.
-	UE_CLOG(NumDeletes > MaxNumDeleted, LogNetFastTArray, Warning, TEXT("NumDeletes > GetMaxNumberOfAllowedDeletionsPerUpdate: %d > %d. (Write)"), NumDeletes, MaxNumDeleted);
-	UE_CLOG(Header.NumChanged > MaxNumChanged, LogNetFastTArray, Warning, TEXT("NumChanged > GetMaxNumberOfAllowedChangesPerUpdate: %d > %d. (Write)"), Header.NumChanged, MaxNumChanged);
-
 	// Serialize deleted items, just by their ID
 	for (auto It = Header.DeletedIndices.CreateIterator(); It; ++It)
 	{
@@ -973,25 +903,23 @@ bool FFastArraySerializer::TFastArraySerializeHelper<Type, SerializerType>::Read
 	Reader << Header.ArrayReplicationKey;
 	Reader << Header.BaseReplicationKey;
 
-	int32 NumDeletes = 0;
+	int32 NumDeletes;
 	Reader << NumDeletes;
 
 	UE_LOG(LogNetFastTArray, Log, TEXT("Received [%d/%d]."), Header.ArrayReplicationKey, Header.BaseReplicationKey);
 
-	const int32 MaxNumDeleted = FFastArraySerializer::GetMaxNumberOfAllowedDeletionsPerUpdate();
-	if (NumDeletes > MaxNumDeleted)
+	if (NumDeletes > MAX_NUM_DELETED)
 	{
-		UE_LOG(LogNetFastTArray, Warning, TEXT("NumDeletes > GetMaxNumberOfAllowedDeletionsPerUpdate: %d > %d. (Read)"), NumDeletes, MaxNumDeleted);
+		UE_LOG(LogNetFastTArray, Warning, TEXT("NumDeletes > MAX_NUM_DELETED: %d."), NumDeletes);
 		Reader.SetError();
 		return false;
 	}
 
 	Reader << Header.NumChanged;
 
-	const int32 MaxNumChanged = FFastArraySerializer::GetMaxNumberOfAllowedChangesPerUpdate();
-	if (Header.NumChanged > MaxNumChanged)
+	if (Header.NumChanged > MAX_NUM_CHANGED)
 	{
-		UE_LOG(LogNetFastTArray, Warning, TEXT("NumChanged > GetMaxNumberOfAllowedChangesPerUpdate: %d > %d. (Read)"), Header.NumChanged, MaxNumChanged);
+		UE_LOG(LogNetFastTArray, Warning, TEXT("NumChanged > MAX_NUM_CHANGED: %d."), Header.NumChanged);
 		Reader.SetError();
 		return false;
 	}
@@ -1005,7 +933,7 @@ bool FFastArraySerializer::TFastArraySerializeHelper<Type, SerializerType>::Read
 	{
 		for (int32 i = 0; i < NumDeletes; ++i)
 		{
-			int32 ElementID = 0;
+			int32 ElementID;
 			Reader << ElementID;
 
 			int32* ElementIndexPtr = ArraySerializer.ItemMap.Find(ElementID);
@@ -1410,7 +1338,7 @@ bool FFastArraySerializer::FastArrayDeltaSerialize(TArray<Type> &Items, FNetDelt
 		//---------------
 		for(int32 i = 0; i < Header.NumChanged; ++i)
 		{
-			int32 ElementID = 0;
+			int32 ElementID;
 			Reader << ElementID;
 
 			int32* ElementIndexPtr = ArraySerializer.ItemMap.Find(ElementID);
@@ -1851,60 +1779,40 @@ bool SerializePackedVector(FVector &Vector, FArchive& Ar)
 // --------------------------------------------------------------
 
 template<int32 MaxValue, int32 NumBits>
-struct TFixedCompressedFloatDetails
-{
-	                                                                // NumBits = 8:
-	static constexpr int32 MaxBitValue = (1 << (NumBits - 1)) - 1;  //   0111 1111 - Max abs value we will serialize
-	static constexpr int32 Bias = (1 << (NumBits - 1));             //   1000 0000 - Bias to pivot around (in order to support signed values)
-	static constexpr int32 SerIntMax = (1 << (NumBits - 0));        // 1 0000 0000 - What we pass into SerializeInt
-	static constexpr int32 MaxDelta = (1 << (NumBits - 0)) - 1;     //   1111 1111 - Max delta is
-
-#if !PLATFORM_COMPILER_HAS_IF_CONSTEXPR
-	static constexpr float GetInvScale()
-	{
-		if (MaxValue > MaxBitValue)
-		{
-			// We have to scale down, scale needs to be a float:
-			return (float)MaxValue / (float)MaxBitValue;
-		}
-		else
-		{
-			int32 scale = MaxBitValue / MaxValue;
-			return 1.f / scale;
-		}
-	}
-#endif
-};
-
-template<int32 MaxValue, int32 NumBits>
 bool WriteFixedCompressedFloat(const float Value, FArchive& Ar)
 {
-	using Details = TFixedCompressedFloatDetails<MaxValue, NumBits>;
+	// Note: enums are used in this function to force bit shifting to be done at compile time
+
+														// NumBits = 8:
+	enum { MaxBitValue	= (1 << (NumBits - 1)) - 1 };	//   0111 1111 - Max abs value we will serialize
+	enum { Bias			= (1 << (NumBits - 1)) };		//   1000 0000 - Bias to pivot around (in order to support signed values)
+	enum { SerIntMax	= (1 << (NumBits - 0)) };		// 1 0000 0000 - What we pass into SerializeInt
+	enum { MaxDelta		= (1 << (NumBits - 0)) - 1 };	//   1111 1111 - Max delta is
 
 	bool clamp = false;
 	int32 ScaledValue;
-	if ( MaxValue > Details::MaxBitValue )
+	if ( MaxValue > MaxBitValue )
 	{
 		// We have to scale this down, scale needs to be a float:
-		const float scale = (float)Details::MaxBitValue / (float)MaxValue;
+		const float scale = (float)MaxBitValue / (float)MaxValue;
 		ScaledValue = FMath::TruncToInt(scale * Value);
 	}
 	else
 	{
 		// We will scale up to get extra precision. But keep is a whole number preserve whole values
-		enum { scale = Details::MaxBitValue / MaxValue };
+		enum { scale = MaxBitValue / MaxValue };
 		ScaledValue = FMath::RoundToInt( scale * Value );
 	}
 
-	uint32 Delta = static_cast<uint32>(ScaledValue + Details::Bias);
+	uint32 Delta = static_cast<uint32>(ScaledValue + Bias);
 
-	if (Delta > Details::MaxDelta)
+	if (Delta > MaxDelta)
 	{
 		clamp = true;
-		Delta = static_cast<int32>(Delta) > 0 ? Details::MaxDelta : 0;
+		Delta = static_cast<int32>(Delta) > 0 ? MaxDelta : 0;
 	}
 
-	Ar.SerializeInt( Delta, Details::SerIntMax );
+	Ar.SerializeInt( Delta, SerIntMax );
 
 	return !clamp;
 }
@@ -1912,30 +1820,31 @@ bool WriteFixedCompressedFloat(const float Value, FArchive& Ar)
 template<int32 MaxValue, int32 NumBits>
 bool ReadFixedCompressedFloat(float &Value, FArchive& Ar)
 {
-	using Details = TFixedCompressedFloatDetails<MaxValue, NumBits>;
+	// Note: enums are used in this function to force bit shifting to be done at compile time
 
+														// NumBits = 8:
+	enum { MaxBitValue	= (1 << (NumBits - 1)) - 1 };	//   0111 1111 - Max abs value we will serialize
+	enum { Bias			= (1 << (NumBits - 1)) };		//   1000 0000 - Bias to pivot around (in order to support signed values)
+	enum { SerIntMax	= (1 << (NumBits - 0)) };		// 1 0000 0000 - What we pass into SerializeInt
+	enum { MaxDelta		= (1 << (NumBits - 0)) - 1 };	//   1111 1111 - Max delta is
+	
 	uint32 Delta;
-	Ar.SerializeInt(Delta, Details::SerIntMax);
-	float UnscaledValue = static_cast<float>( static_cast<int32>(Delta) - Details::Bias );
+	Ar.SerializeInt(Delta, SerIntMax);
+	float UnscaledValue = static_cast<float>( static_cast<int32>(Delta) - Bias );
 
-#if PLATFORM_COMPILER_HAS_IF_CONSTEXPR
-	if constexpr (MaxValue > Details::MaxBitValue)
+	if ( MaxValue > MaxBitValue )
 	{
 		// We have to scale down, scale needs to be a float:
-		const float InvScale = MaxValue / (float)Details::MaxBitValue;
+		const float InvScale = MaxValue / (float)MaxBitValue;
 		Value = UnscaledValue * InvScale;
 	}
 	else
 	{
-		enum { scale = Details::MaxBitValue / MaxValue };
+		enum { scale = MaxBitValue / MaxValue };
 		const float InvScale = 1.f / (float)scale;
 
 		Value = UnscaledValue * InvScale;
 	}
-#else
-	constexpr float InvScale = Details::GetInvScale();
-	Value = UnscaledValue * InvScale;
-#endif
 
 	return true;
 }
@@ -2190,8 +2099,8 @@ struct TStructOpsTypeTraits< FVector_NetQuantizeNormal > : public TStructOpsType
  *	
  */
 
-template<int32 MaxNum, typename T, typename A>
-int32 SafeNetSerializeTArray_HeaderOnly(FArchive& Ar, TArray<T, A>& Array, bool& bOutSuccess)
+template<int32 MaxNum, typename T>
+int32 SafeNetSerializeTArray_HeaderOnly(FArchive& Ar, TArray<T>& Array, bool& bOutSuccess)
 {
 	const uint32 NumBits = FMath::CeilLogTwo(MaxNum)+1;
 	
@@ -2215,12 +2124,6 @@ int32 SafeNetSerializeTArray_HeaderOnly(FArchive& Ar, TArray<T, A>& Array, bool&
 	// Preallocate new items on loading side
 	if (Ar.IsLoading())
 	{
-		if (ArrayNum > MaxNum)
-		{
-			// If MaxNum doesn't fully utilize all bits that are needed to send the array size we can receive a larger value.
-			bOutSuccess = false;
-			ArrayNum = MaxNum;
-		}
 		Array.Reset();
 		Array.AddDefaulted(ArrayNum);
 	}
@@ -2228,11 +2131,11 @@ int32 SafeNetSerializeTArray_HeaderOnly(FArchive& Ar, TArray<T, A>& Array, bool&
 	return ArrayNum;
 }
 
-template<int32 MaxNum, typename T, typename A>
-bool SafeNetSerializeTArray_Default(FArchive& Ar, TArray<T, A>& Array)
+template<int32 MaxNum, typename T>
+bool SafeNetSerializeTArray_Default(FArchive& Ar, TArray<T>& Array)
 {
 	bool bOutSuccess = true;
-	int32 ArrayNum = SafeNetSerializeTArray_HeaderOnly<MaxNum, T, A>(Ar, Array, bOutSuccess);
+	int32 ArrayNum = SafeNetSerializeTArray_HeaderOnly<MaxNum, T>(Ar, Array, bOutSuccess);
 
 	// Serialize each element in the array with the << operator
 	for (int32 idx=0; idx < ArrayNum && Ar.IsError() == false; ++idx)
@@ -2241,15 +2144,15 @@ bool SafeNetSerializeTArray_Default(FArchive& Ar, TArray<T, A>& Array)
 	}
 
 	// Return
-	bOutSuccess &= !Ar.IsError();
+	bOutSuccess |= Ar.IsError();
 	return bOutSuccess;
 }
 
-template<int32 MaxNum, typename T, typename A>
-bool SafeNetSerializeTArray_WithNetSerialize(FArchive& Ar, TArray<T, A>& Array, class UPackageMap* PackageMap)
+template<int32 MaxNum, typename T >
+bool SafeNetSerializeTArray_WithNetSerialize(FArchive& Ar, TArray<T>& Array, class UPackageMap* PackageMap)
 {
 	bool bOutSuccess = true;
-	int32 ArrayNum = SafeNetSerializeTArray_HeaderOnly<MaxNum, T, A>(Ar, Array, bOutSuccess);
+	int32 ArrayNum = SafeNetSerializeTArray_HeaderOnly<MaxNum, T>(Ar, Array, bOutSuccess);
 
 	// Serialize each element in the array with the << operator
 	for (int32 idx=0; idx < ArrayNum && Ar.IsError() == false; ++idx)
@@ -2258,6 +2161,6 @@ bool SafeNetSerializeTArray_WithNetSerialize(FArchive& Ar, TArray<T, A>& Array, 
 	}
 
 	// Return
-	bOutSuccess &= !Ar.IsError();
+	bOutSuccess |= Ar.IsError();
 	return bOutSuccess;
 }

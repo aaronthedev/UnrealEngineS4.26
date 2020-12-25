@@ -34,12 +34,12 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_Util_Config_h
-#define Alembic_Util_Config_h
+#ifndef _Alembic_Util_Config_h_
+#define _Alembic_Util_Config_h_
 
 // Reserve 2 digits for patch number, 2 digits for the minor number and the rest
 // for the major.
-#define ALEMBIC_LIBRARY_VERSION 1 * 10000 + 7 * 100 + 12
+#define ALEMBIC_LIBRARY_VERSION 1 * 10000 + 7 * 100 + 0
 
 #define ALEMBIC_WITH_HDF5
 

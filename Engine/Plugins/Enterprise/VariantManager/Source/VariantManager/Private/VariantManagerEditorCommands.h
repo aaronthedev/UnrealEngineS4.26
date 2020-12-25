@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -21,13 +21,10 @@ public:
 	TSharedPtr<FUICommandInfo> AddVariantSetCommand;
 	TSharedPtr<FUICommandInfo> AddSelectedActorsCommand;
 	TSharedPtr<FUICommandInfo> SwitchOnSelectedVariantCommand;
-	TSharedPtr<FUICommandInfo> CreateThumbnailCommand;
-	TSharedPtr<FUICommandInfo> LoadThumbnailCommand;
-	TSharedPtr<FUICommandInfo> ClearThumbnailCommand;
+	TSharedPtr<FUICommandInfo> CreateThumbnailVariantCommand;
+	TSharedPtr<FUICommandInfo> ClearThumbnailVariantCommand;
 	TSharedPtr<FUICommandInfo> AddPropertyCaptures;
 	TSharedPtr<FUICommandInfo> AddFunction;
-	TSharedPtr<FUICommandInfo> RebindActorDisabled;
-	TSharedPtr<FUICommandInfo> RebindToSelected;
 	TSharedPtr<FUICommandInfo> RemoveActorBindings;
 	TSharedPtr<FUICommandInfo> ApplyProperty;
 	TSharedPtr<FUICommandInfo> RecordProperty;

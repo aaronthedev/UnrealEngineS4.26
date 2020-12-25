@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -167,42 +167,6 @@ struct FInputActionUnifiedDelegate
 		}
 
 		return false;
-	}
-
-	/** Returns the UObject bound to either the native or dynamic delegate (if either is a UFunction or UObject delegate) */
-	inline const UObject* GetUObject() const
-	{
-		switch (BoundDelegateType)
-		{
-		case EBoundDelegate::Delegate:
-			return FuncDelegate->GetUObject();
-
-		case EBoundDelegate::DelegateWithKey:
-			return FuncDelegateWithKey->GetUObject();
-
-		case EBoundDelegate::DynamicDelegate:
-			return FuncDynDelegate->GetUObject();
-		}
-
-		return nullptr;
-	}
-
-	/** Returns the object bound to either the native or dynamic delegate as a raw, untyped pointer. If you're looking for a bound UObject, prefer GetUObject(). */
-	inline const void* GetObject() const
-	{
-		switch (BoundDelegateType)
-		{
-		case EBoundDelegate::Delegate:
-			return FuncDelegate->GetObjectForTimerManager();
-
-		case EBoundDelegate::DelegateWithKey:
-			return FuncDelegateWithKey->GetObjectForTimerManager();
-
-		case EBoundDelegate::DynamicDelegate:
-			return FuncDynDelegate->GetUObject();
-		}
-
-		return nullptr;
 	}
 
 	/** Binds a native delegate and unbinds any bound dynamic delegate */
@@ -550,7 +514,7 @@ struct FInputAxisKeyBinding : public FInputBinding
 		, AxisValue(0.f)
 		, AxisKey(InAxisKey)
 	{
-		ensure(AxisKey.IsAxis1D());
+		ensure(AxisKey.IsFloatAxis());
 	}
 };
 
@@ -612,7 +576,7 @@ struct FInputVectorAxisBinding : public FInputBinding
 		: FInputBinding()
 		, AxisKey(InAxisKey)
 	{
-		ensure(AxisKey.IsAxis2D() || AxisKey.IsAxis3D());
+		ensure(AxisKey.IsVectorAxis());
 	}
 };
 
@@ -837,7 +801,6 @@ public:
 	 * @see AddActionBinding, ClearActionBindings, GetActionBinding, GetNumActionBindings
 	 */
 	void RemoveActionBinding( const int32 BindingIndex );
-	void RemoveActionBinding(FName ActionName, EInputEvent KeyEvent);
 
 	/**
 	 * Removes the action binding at the specified handle.
@@ -1061,8 +1024,6 @@ private:
 	/** Retrieves the X and Y displacement of the given analog stick.  For WhickStick, 0 = left, 1 = right. */
 	UFUNCTION(BlueprintCallable, meta=(DeprecatedFunction, DeprecationMessage="Use PlayerController.GetInputAnalogStickState instead."))
 	void GetControllerAnalogStickState(EControllerAnalogStick::Type WhichStick, float& StickX, float& StickY) const;
-
-	friend class UEnhancedInputComponent;	// TEMP: Support for ongoing input rework
 };
 
 struct FGetActionsBoundToKey

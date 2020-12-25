@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Models/TextureEditorViewportClient.h"
 #include "Widgets/Layout/SScrollBar.h"
@@ -10,9 +10,7 @@
 #include "Engine/Texture2DArray.h"
 #include "Engine/VolumeTexture.h"
 #include "Engine/TextureRenderTarget2D.h"
-#include "Engine/TextureRenderTarget2DArray.h"
 #include "Engine/TextureRenderTargetCube.h"
-#include "Engine/TextureRenderTargetVolume.h"
 #include "UnrealEdGlobals.h"
 #include "CubemapUnwrapUtils.h"
 #include "Slate/SceneViewport.h"
@@ -82,9 +80,7 @@ void FTextureEditorViewportClient::Draw(FViewport* Viewport, FCanvas* Canvas)
 	UTexture2DArray* Texture2DArray = Cast<UTexture2DArray>(Texture);
 	UVolumeTexture* VolumeTexture = Cast<UVolumeTexture>(Texture);
 	UTextureRenderTarget2D* TextureRT2D = Cast<UTextureRenderTarget2D>(Texture);
-	UTextureRenderTarget2DArray* TextureRT2DArray = Cast<UTextureRenderTarget2DArray>(Texture);
 	UTextureRenderTargetCube* RTTextureCube = Cast<UTextureRenderTargetCube>(Texture);
-	UTextureRenderTargetVolume* RTTextureVolume = Cast<UTextureRenderTargetVolume>(Texture);
 
 	// Fully stream in the texture before drawing it.
 	if (Texture2D)
@@ -115,20 +111,10 @@ void FTextureEditorViewportClient::Draw(FViewport* Viewport, FCanvas* Canvas)
 		{
 			BatchedElementParameters = new FBatchedElementVolumeTexturePreviewParameters(
 				Settings.VolumeViewMode == TextureEditorVolumeViewMode_DepthSlices, 
-				FMath::Max<int32>(VolumeTexture->GetSizeZ(), 1), 
+				FMath::Max<int32>(VolumeTexture->GetSizeZ() >> VolumeTexture->GetCachedLODBias(), 1), 
 				MipLevel, 
 				(float)TextureEditorPtr.Pin()->GetVolumeOpacity(),
 				true, 
-				TextureEditorPtr.Pin()->GetVolumeOrientation());
-		}
-		else if (RTTextureVolume)
-		{
-			BatchedElementParameters = new FBatchedElementVolumeTexturePreviewParameters(
-				Settings.VolumeViewMode == TextureEditorVolumeViewMode_DepthSlices,
-				FMath::Max<int32>(RTTextureVolume->SizeZ >> RTTextureVolume->GetCachedLODBias(), 1),
-				MipLevel,
-				(float)TextureEditorPtr.Pin()->GetVolumeOpacity(),
-				true,
 				TextureEditorPtr.Pin()->GetVolumeOrientation());
 		}
 		else if (Texture2D)
@@ -149,10 +135,6 @@ void FTextureEditorViewportClient::Draw(FViewport* Viewport, FCanvas* Canvas)
 		{
 			BatchedElementParameters = new FBatchedElementTexture2DPreviewParameters(MipLevel, LayerIndex, false, false, false, false, false);
 		}
-		else if (TextureRT2DArray)
-		{
-			BatchedElementParameters = new FBatchedElementTexture2DPreviewParameters(MipLevel, LayerIndex, false, false, false, false, true);
-		}
 		else
 		{
 			// Default to treating any UTexture derivative as a 2D texture resource
@@ -162,18 +144,13 @@ void FTextureEditorViewportClient::Draw(FViewport* Viewport, FCanvas* Canvas)
 
 	// Draw the background checkerboard pattern in the same size/position as the render texture so it will show up anywhere
 	// the texture has transparency
-	if (Viewport && CheckerboardTexture)
+	if (Settings.Background == TextureEditorBackground_CheckeredFill)
 	{
-		const int32 CheckerboardSizeX = FMath::Max<int32>(1, CheckerboardTexture->GetSizeX());
-		const int32 CheckerboardSizeY = FMath::Max<int32>(1, CheckerboardTexture->GetSizeY());
-		if (Settings.Background == TextureEditorBackground_CheckeredFill)
-		{
-			Canvas->DrawTile( 0.0f, 0.0f, Viewport->GetSizeXY().X, Viewport->GetSizeXY().Y, 0.0f, 0.0f, (float)Viewport->GetSizeXY().X / CheckerboardSizeX, (float)Viewport->GetSizeXY().Y / CheckerboardSizeY, FLinearColor::White, CheckerboardTexture->Resource);
-		}
-		else if (Settings.Background == TextureEditorBackground_Checkered)
-		{
-			Canvas->DrawTile( XPos, YPos, Width, Height, 0.0f, 0.0f, (float)Width / CheckerboardSizeX, (float)Height / CheckerboardSizeY, FLinearColor::White, CheckerboardTexture->Resource);
-		}
+		Canvas->DrawTile( 0.0f, 0.0f, Viewport->GetSizeXY().X, Viewport->GetSizeXY().Y, 0.0f, 0.0f, (Viewport->GetSizeXY().X / CheckerboardTexture->GetSizeX()), (Viewport->GetSizeXY().Y / CheckerboardTexture->GetSizeY()), FLinearColor::White, CheckerboardTexture->Resource);
+	}
+	else if (Settings.Background == TextureEditorBackground_Checkered)
+	{
+		Canvas->DrawTile( XPos, YPos, Width, Height, 0.0f, 0.0f, (Width / CheckerboardTexture->GetSizeX()), (Height / CheckerboardTexture->GetSizeY()), FLinearColor::White, CheckerboardTexture->Resource);
 	}
 
 	float Exposure = FMath::Pow(2.0f, (float)TextureEditorViewportPtr.Pin()->GetExposureBias());
@@ -183,15 +160,6 @@ void FTextureEditorViewportClient::Draw(FViewport* Viewport, FCanvas* Canvas)
 		FCanvasTileItem TileItem( FVector2D( XPos, YPos ), Texture->Resource, FVector2D( Width, Height ), FLinearColor(Exposure, Exposure, Exposure) );
 		TileItem.BlendMode = TextureEditorPtr.Pin()->GetColourChannelBlendMode();
 		TileItem.BatchedElementParameters = BatchedElementParameters;
-
-		if (bIsVirtualTexture && Texture->Source.GetNumBlocks() > 1)
-		{
-			// Adjust UVs to display entire UDIM range, acounting for UE4 inverted V-axis
-			const FIntPoint BlockSize = Texture->Source.GetSizeInBlocks();
-			TileItem.UV0 = FVector2D(0.0f, 1.0f - (float)BlockSize.Y);
-			TileItem.UV1 = FVector2D((float)BlockSize.X, 1.0f);
-		}
-
 		Canvas->DrawItem( TileItem );
 
 		// Draw a white border around the texture to show its extents
@@ -213,7 +181,7 @@ void FTextureEditorViewportClient::Draw(FViewport* Viewport, FCanvas* Canvas)
  			auto ZeroOrAbsolute = [](int32 value) -> int32 { return value >= 0 ? 0 : FMath::Abs(value); };
 			auto GetCorrectDimension = [](int value, int32 viewportSize, int32 TextureSize) -> int32 { return value <= viewportSize ? TextureSize : viewportSize; };
 
-			const float Zoom = 1.0f / TextureEditorPtr.Pin()->GetCustomZoomLevel();
+			const float Zoom = 1.0f / TextureEditorPtr.Pin()->GetZoom();
 			const int32 VisibleXPos = FMath::FloorToInt(Zoom * -FMath::Min(0, XPos));
 			const int32 VisibleYPos = FMath::FloorToInt(Zoom * -FMath::Min(0, YPos));
 			
@@ -237,11 +205,11 @@ void FTextureEditorViewportClient::Draw(FViewport* Viewport, FCanvas* Canvas)
 	{
 		const uint32 Mip = (uint32)MipLevel;
 		const FIntPoint SizeOnMip = { Texture2D->GetSizeX() >> Mip,Texture2D->GetSizeY() >> Mip };
-		const uint64 NumPixels = static_cast<uint64>(SizeOnMip.X) * SizeOnMip.Y;
+		const uint64 NumPixels = SizeOnMip.X * SizeOnMip.Y;
 
 		const FVirtualTexture2DResource* Resource = (FVirtualTexture2DResource*)Texture2D->Resource;
 		const FIntPoint PhysicalTextureSize = Resource->GetPhysicalTextureSize(0u);
-		const uint64 NumPhysicalPixels = static_cast<uint64>(PhysicalTextureSize.X) * PhysicalTextureSize.Y;
+		const uint64 NumPhysicalPixels = PhysicalTextureSize.X * PhysicalTextureSize.Y;
 
 		if (NumPixels >= NumPhysicalPixels)
 		{
@@ -261,96 +229,45 @@ void FTextureEditorViewportClient::Draw(FViewport* Viewport, FCanvas* Canvas)
 
 bool FTextureEditorViewportClient::InputKey(FViewport* Viewport, int32 ControllerId, FKey Key, EInputEvent Event, float AmountDepressed, bool Gamepad)
 {
-	if (Event == IE_Pressed)
+	if (Key == EKeys::MouseScrollUp)
 	{
-		if (Key == EKeys::MouseScrollUp)
-		{
-			TextureEditorPtr.Pin()->ZoomIn();
+		TextureEditorPtr.Pin()->ZoomIn();
 
-			return true;
-		}
-		else if (Key == EKeys::MouseScrollDown)
-		{
-			TextureEditorPtr.Pin()->ZoomOut();
+		return true;
+	}
+	else if (Key == EKeys::MouseScrollDown)
+	{
+		TextureEditorPtr.Pin()->ZoomOut();
 
-			return true;
-		}
-		else if (Key == EKeys::RightMouseButton)
-		{
-			TextureEditorPtr.Pin()->SetVolumeOrientation(FRotator(90, 0, -90));
-		}
+		return true;
+	}
+	else if (Key == EKeys::RightMouseButton)
+	{
+		TextureEditorPtr.Pin()->SetVolumeOrientation(FRotator(90, 0, -90));
 	}
 	return false;
-}
-
-bool IsTextureUsingVolumeOrientation(UTexture* Texture)
-{
-	return Texture && (Cast<UVolumeTexture>(Texture) || Cast<UTextureRenderTargetVolume>(Texture));
 }
 
 bool FTextureEditorViewportClient::InputAxis(FViewport* Viewport, int32 ControllerId, FKey Key, float Delta, float DeltaTime, int32 NumSamples, bool bGamepad)
 {
 	if (Key == EKeys::MouseX || Key == EKeys::MouseY)
 	{
-		UTexture* Texture = TextureEditorPtr.Pin()->GetTexture();
-		if (IsTextureUsingVolumeOrientation(Texture))
+		FRotator DeltaRotator(ForceInitToZero);
+		const float RotationSpeed = .2f;
+		if (Key == EKeys::MouseY)
 		{
-			FRotator DeltaRotator(ForceInitToZero);
-			const float RotationSpeed = .2f;
-			if (Key == EKeys::MouseY)
-			{
-				DeltaRotator.Pitch = Delta * RotationSpeed;
-			}
-			else
-			{
-				DeltaRotator.Yaw = Delta * RotationSpeed;
-			}
-
-			TextureEditorPtr.Pin()->SetVolumeOrientation((FRotationMatrix::Make(DeltaRotator) * FRotationMatrix::Make(TextureEditorPtr.Pin()->GetVolumeOrientation())).Rotator());
+			DeltaRotator.Pitch = Delta * RotationSpeed;
 		}
-		else if (ShouldUseMousePanning(Viewport))
+		else
 		{
-			TSharedPtr<STextureEditorViewport> EditorViewport = TextureEditorViewportPtr.Pin();
-
-			uint32 Height = 1;
-			uint32 Width = 1;
-			TextureEditorPtr.Pin()->CalculateTextureDimensions(Width, Height);
-
-			if (Key == EKeys::MouseY)
-			{
-				float VDistFromBottom = EditorViewport->GetVerticalScrollBar()->DistanceFromBottom();
-				float VRatio = GetViewportVerticalScrollBarRatio();
-				float localDelta = (Delta / static_cast<float>(Height));
-				EditorViewport->GetVerticalScrollBar()->SetState(FMath::Clamp((1.f - VDistFromBottom - VRatio) + localDelta, 0.0f, 1.0f - VRatio), VRatio);
-			}
-			else
-			{
-				float HDistFromBottom = EditorViewport->GetHorizontalScrollBar()->DistanceFromBottom();
-				float HRatio = GetViewportHorizontalScrollBarRatio();
-				float localDelta = (Delta / static_cast<float>(Width)) * -1.f; // delta needs to be inversed
-				EditorViewport->GetHorizontalScrollBar()->SetState(FMath::Clamp((1.f - HDistFromBottom - HRatio) + localDelta, 0.0f, 1.0f - HRatio), HRatio);
-			}
+			DeltaRotator.Yaw = Delta * RotationSpeed;
 		}
+
+		TextureEditorPtr.Pin()->SetVolumeOrientation((FRotationMatrix::Make(DeltaRotator) * FRotationMatrix::Make(TextureEditorPtr.Pin()->GetVolumeOrientation())).Rotator());
 		return true;
 	}
 
 	return false;
-}
-
-bool FTextureEditorViewportClient::ShouldUseMousePanning(FViewport* Viewport) const
-{
-	if (!IsTextureUsingVolumeOrientation(TextureEditorPtr.Pin()->GetTexture()) && Viewport->KeyState(EKeys::RightMouseButton))
-	{
-		TSharedPtr<STextureEditorViewport> EditorViewport = TextureEditorViewportPtr.Pin();
-		return EditorViewport.IsValid() && EditorViewport->GetVerticalScrollBar().IsValid() && EditorViewport->GetHorizontalScrollBar().IsValid();
-	}
-
-	return false;
-}
-
-EMouseCursor::Type FTextureEditorViewportClient::GetCursor(FViewport* Viewport, int32 X, int32 Y)
-{
-	return ShouldUseMousePanning(Viewport) ? EMouseCursor::GrabHandClosed : EMouseCursor::Default;
 }
 
 bool FTextureEditorViewportClient::InputGesture(FViewport* Viewport, EGestureEvent GestureType, const FVector2D& GestureDelta, bool bIsDirectionInvertedFromDevice)
@@ -360,8 +277,8 @@ bool FTextureEditorViewportClient::InputGesture(FViewport* Viewport, EGestureEve
 
 	if (GestureType == EGestureEvent::Scroll && !LeftMouseButtonDown && !RightMouseButtonDown)
 	{
-		double CurrentZoom = TextureEditorPtr.Pin()->GetCustomZoomLevel();
-		TextureEditorPtr.Pin()->SetCustomZoomLevel(CurrentZoom + GestureDelta.Y * 0.01);
+		double CurrentZoom = TextureEditorPtr.Pin()->GetZoom();
+		TextureEditorPtr.Pin()->SetZoom(CurrentZoom + GestureDelta.Y * 0.01);
 		return true;
 	}
 

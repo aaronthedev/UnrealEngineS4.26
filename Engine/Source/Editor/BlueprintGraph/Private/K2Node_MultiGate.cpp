@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "K2Node_MultiGate.h"
 #include "Kismet/KismetSystemLibrary.h"
@@ -105,42 +105,42 @@ public:
 		FName MarkBitFunctionName = "";
 		UClass* MarkBitFunctionClass = NULL;
 		GateNode->GetMarkBitFunction(MarkBitFunctionName, &MarkBitFunctionClass);
-		UFunction* MarkBitFunction = FindUField<UFunction>(MarkBitFunctionClass, MarkBitFunctionName);
+		UFunction* MarkBitFunction = FindField<UFunction>(MarkBitFunctionClass, MarkBitFunctionName);
 
 		FName HasUnmarkedBitFunctionName = "";
 		UClass* HasUnmarkedBitFunctionClass = NULL;
 		GateNode->GetHasUnmarkedBitFunction(HasUnmarkedBitFunctionName, &HasUnmarkedBitFunctionClass);
-		UFunction* HasUnmarkedBitFunction = FindUField<UFunction>(HasUnmarkedBitFunctionClass, HasUnmarkedBitFunctionName);
+		UFunction* HasUnmarkedBitFunction = FindField<UFunction>(HasUnmarkedBitFunctionClass, HasUnmarkedBitFunctionName);
 
 		FName GetUnmarkedBitFunctionName = "";
 		UClass* GetUnmarkedBitFunctionClass = NULL;
 		GateNode->GetUnmarkedBitFunction(GetUnmarkedBitFunctionName, &GetUnmarkedBitFunctionClass);
-		UFunction* GetUnmarkedBitFunction = FindUField<UFunction>(GetUnmarkedBitFunctionClass, GetUnmarkedBitFunctionName);
+		UFunction* GetUnmarkedBitFunction = FindField<UFunction>(GetUnmarkedBitFunctionClass, GetUnmarkedBitFunctionName);
 
 		FName ConditionalFunctionName = "";
 		UClass* ConditionalFunctionClass = NULL;
 		GateNode->GetConditionalFunction(ConditionalFunctionName, &ConditionalFunctionClass);
-		UFunction* ConditionFunction = FindUField<UFunction>(ConditionalFunctionClass, ConditionalFunctionName);
+		UFunction* ConditionFunction = FindField<UFunction>(ConditionalFunctionClass, ConditionalFunctionName);
 
 		FName EqualityFunctionName = "";
 		UClass* EqualityFunctionClass = NULL;
 		GateNode->GetEqualityFunction(EqualityFunctionName, &EqualityFunctionClass);
-		UFunction* EqualityFunction = FindUField<UFunction>(EqualityFunctionClass, EqualityFunctionName);
+		UFunction* EqualityFunction = FindField<UFunction>(EqualityFunctionClass, EqualityFunctionName);
 
 		FName BoolNotEqualFunctionName = "";
 		UClass* BoolNotEqualFunctionClass = NULL;
 		GateNode->GetBoolNotEqualFunction(BoolNotEqualFunctionName, &BoolNotEqualFunctionClass);
-		UFunction* BoolNotEqualFunction = FindUField<UFunction>(BoolNotEqualFunctionClass, BoolNotEqualFunctionName);
+		UFunction* BoolNotEqualFunction = FindField<UFunction>(BoolNotEqualFunctionClass, BoolNotEqualFunctionName);
 
 		FName PrintStringFunctionName = "";
 		UClass* PrintStringFunctionClass = NULL;
 		GateNode->GetPrintStringFunction(PrintStringFunctionName, &PrintStringFunctionClass);
-		UFunction* PrintFunction = FindUField<UFunction>(PrintStringFunctionClass, PrintStringFunctionName);
+		UFunction* PrintFunction = FindField<UFunction>(PrintStringFunctionClass, PrintStringFunctionName);
 
 		FName ClearBitsFunctionName = "";
 		UClass* ClearBitsFunctionClass = NULL;
 		GateNode->GetClearAllBitsFunction(ClearBitsFunctionName, &ClearBitsFunctionClass);
-		UFunction* ClearBitsFunction = FindUField<UFunction>(ClearBitsFunctionClass, ClearBitsFunctionName);
+		UFunction* ClearBitsFunction = FindField<UFunction>(ClearBitsFunctionClass, ClearBitsFunctionName);
 
 		// Find the data terms if there is already a data node from expansion phase
 		FBPTerminal* DataTerm = NULL;

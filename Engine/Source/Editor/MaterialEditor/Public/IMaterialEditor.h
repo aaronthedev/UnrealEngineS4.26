@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -49,11 +49,6 @@ public:
 	 * Add the specified material expression's graph node to the list of selected nodes
 	 */
 	virtual void AddToSelection(UMaterialExpression* Expression) {};
-
-	/**
-	 * Jumps to the node for this expression, if possible
-	 */
-	virtual void JumpToExpression(UMaterialExpression* Expression) {};
 
 	/**
 	 * Disconnects and removes the selected material graph nodes.
@@ -130,9 +125,6 @@ public:
 
 	/** call this to notify the editor that the edited material changed from outside */
 	virtual void NotifyExternalMaterialChange() {}
-
-	/** Fills inheritance drop down menu */
-	virtual void GenerateInheritanceMenu(class UToolMenu* Menu) {};
 
 private:
 	FMaterialEditorClosedEvent MaterialEditorClosedEvent;

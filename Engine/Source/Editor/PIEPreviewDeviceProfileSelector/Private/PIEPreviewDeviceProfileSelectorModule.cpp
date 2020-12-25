@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PIEPreviewDeviceProfileSelectorModule.h"
 #include "Misc/FileHelper.h"
@@ -222,7 +222,7 @@ void FPIEPreviewDeviceModule::OnViewportCreated()
 	// disable mouse viewport locking
 	if (GEngine->GameViewport != nullptr)
 	{
-		GEngine->GameViewport->SetMouseCaptureMode(EMouseCaptureMode::NoCapture);
+		GEngine->GameViewport->SetCaptureMouseOnClick(EMouseCaptureMode::NoCapture);
 		GEngine->GameViewport->SetMouseLockMode(EMouseLockMode::DoNotLock);
 	}
 }
@@ -265,7 +265,7 @@ bool FPIEPreviewDeviceModule::ReadDeviceSpecification()
 	if (JsonRootObject.IsValid())
 	{
 		// We need to initialize FPIEPreviewDeviceSpecifications early as device profiles need to be evaluated before ProcessNewlyLoadedUObjects can be called.
-		CreatePackage( TEXT("/Script/PIEPreviewDeviceProfileSelector"));
+		CreatePackage(nullptr, TEXT("/Script/PIEPreviewDeviceProfileSelector"));
 
 		Device = MakeShareable(new FPIEPreviewDevice());
 

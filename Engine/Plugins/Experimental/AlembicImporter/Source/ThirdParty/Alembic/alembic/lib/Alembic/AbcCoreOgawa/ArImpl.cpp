@@ -45,10 +45,9 @@ namespace ALEMBIC_VERSION_NS {
 
 //-*****************************************************************************
 ArImpl::ArImpl( const std::string &iFileName,
-                std::size_t iNumStreams,
-                bool iUseMMap)
+                std::size_t iNumStreams )
   : m_fileName( iFileName )
-  , m_archive( iFileName, iNumStreams, iUseMMap )
+  , m_archive( iFileName, iNumStreams )
   , m_header( new AbcA::ObjectHeader() )
   , m_manager( iNumStreams )
 {

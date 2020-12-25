@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,23 +11,17 @@
 
 class ITableRow;
 
-namespace Insights
-{
-	class FTable;
-	class FTableColumn;
-}
-
-DECLARE_DELEGATE_ThreeParams(FSetHoveredStatsTableCell, TSharedPtr<Insights::FTable> /*TablePtr*/, TSharedPtr<Insights::FTableColumn> /*ColumnPtr*/, FStatsNodePtr /*StatsNodePtr*/);
+DECLARE_DELEGATE_TwoParams(FSetHoveredStatsTableCell, const FName /*ColumnId*/, const FStatsNodePtr /*SamplePtr*/);
+DECLARE_DELEGATE_RetVal_OneParam(EHorizontalAlignment, FGetColumnOutlineHAlignmentDelegate, const FName /*ColumnId*/);
 
 class SStatsTableCell : public SCompoundWidget
 {
 public:
 	SLATE_BEGIN_ARGS(SStatsTableCell) {}
-		SLATE_EVENT(FSetHoveredStatsTableCell, OnSetHoveredCell)
+		SLATE_EVENT(FSetHoveredStatsTableCell, OnSetHoveredTableCell)
 		SLATE_ATTRIBUTE(FText, HighlightText)
-		SLATE_ARGUMENT(TSharedPtr<Insights::FTable>, TablePtr)
-		SLATE_ARGUMENT(TSharedPtr<Insights::FTableColumn>, ColumnPtr)
 		SLATE_ARGUMENT(FStatsNodePtr, StatsNodePtr)
+		SLATE_ARGUMENT(FName, ColumnId)
 		SLATE_ARGUMENT(bool, IsNameColumn)
 	SLATE_END_ARGS()
 
@@ -47,7 +41,7 @@ protected:
 	virtual void OnMouseEnter(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent) override
 	{
 		SCompoundWidget::OnMouseEnter(MyGeometry, MouseEvent);
-		SetHoveredCellDelegate.ExecuteIfBound(TablePtr, ColumnPtr, StatsNodePtr);
+		SetHoveredTableCellDelegate.ExecuteIfBound(ColumnId, StatsNodePtr);
 	}
 
 	/**
@@ -58,7 +52,7 @@ protected:
 	virtual void OnMouseLeave(const FPointerEvent& MouseEvent) override
 	{
 		SCompoundWidget::OnMouseLeave(MouseEvent);
-		SetHoveredCellDelegate.ExecuteIfBound(nullptr, nullptr, nullptr);
+		SetHoveredTableCellDelegate.ExecuteIfBound(NAME_None, nullptr);
 	}
 
 	/**
@@ -81,7 +75,7 @@ protected:
 	virtual void OnDragEnter(const FGeometry& MyGeometry, const FDragDropEvent& DragDropEvent) override
 	{
 		SCompoundWidget::OnDragEnter(MyGeometry, DragDropEvent);
-		SetHoveredCellDelegate.ExecuteIfBound(TablePtr, ColumnPtr, StatsNodePtr);
+		SetHoveredTableCellDelegate.ExecuteIfBound(ColumnId, StatsNodePtr);
 	}
 
 	/**
@@ -92,10 +86,10 @@ protected:
 	virtual void OnDragLeave(const FDragDropEvent& DragDropEvent)  override
 	{
 		SCompoundWidget::OnDragLeave(DragDropEvent);
-		SetHoveredCellDelegate.ExecuteIfBound(nullptr, nullptr, nullptr);
+		SetHoveredTableCellDelegate.ExecuteIfBound(NAME_None, nullptr);
 	}
 
-	EVisibility GetBoxVisibility() const
+	EVisibility GetColorBoxVisibility() const
 	{
 		return StatsNodePtr->IsAddedToGraph() ? EVisibility::Visible : EVisibility::Collapsed;
 	}
@@ -134,7 +128,7 @@ protected:
 		return TextColor;
 	}
 
-	FSlateColor GetBoxColorAndOpacity() const
+	FSlateColor GetStatsBoxColorAndOpacity() const
 	{
 		return StatsNodePtr->GetColor();
 	}
@@ -149,14 +143,11 @@ protected:
 	}
 
 protected:
-	/** A shared pointer to the table view model. */
-	TSharedPtr<Insights::FTable> TablePtr;
-
-	/** A shared pointer to the table column view model. */
-	TSharedPtr<Insights::FTableColumn> ColumnPtr;
-
 	/** A shared pointer to the stats node. */
 	FStatsNodePtr StatsNodePtr;
 
-	FSetHoveredStatsTableCell SetHoveredCellDelegate;
+	/** The Id of the column where this stats belongs. */
+	FName ColumnId;
+
+	FSetHoveredStatsTableCell SetHoveredTableCellDelegate;
 };

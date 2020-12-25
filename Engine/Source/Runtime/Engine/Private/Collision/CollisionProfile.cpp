@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/CollisionProfile.h"
 #include "Misc/ConfigCacheIni.h"
@@ -70,7 +70,7 @@ UCollisionProfile* UCollisionProfile::Get()
 	return CollisionProfile;
 }
 
-void UCollisionProfile::PostReloadConfig(FProperty* PropertyThatWasLoaded)
+void UCollisionProfile::PostReloadConfig(UProperty* PropertyThatWasLoaded)
 {
 	if (HasAnyFlags(RF_ClassDefaultObject))
 	{
@@ -273,8 +273,6 @@ void UCollisionProfile::LoadProfileConfig(bool bForceInit)
 	// read "EngineTraceChanne" and "GameTraceChanne" and set meta data
 	FConfigSection* Configs = GConfig->GetSectionPrivate( TEXT("/Script/Engine.CollisionProfile"), false, true, GEngineIni );
 
-	OnLoadProfileConfig.Broadcast(this);
-
 	// before any op, verify if profiles contains invalid name - such as Custom profile name - remove all of them
 	for (auto Iter=Profiles.CreateConstIterator(); Iter; ++Iter)
 	{
@@ -322,14 +320,14 @@ void UCollisionProfile::LoadProfileConfig(bool bForceInit)
 	for ( int32 EnumIndex=0; EnumIndex<NumEnum; ++EnumIndex )
 	{
 		FString EnumName = Enum->GetNameStringByIndex(EnumIndex);
-		EnumName.RightChopInline(Prefix.Len(), false);
+		EnumName = EnumName.RightChop(Prefix.Len());
 		FName DisplayName = FName(*EnumName);
 
 		if ( IS_VALID_COLLISIONCHANNEL(EnumIndex) )
 		{
 			// verify if the Struct name matches
 			// this is to avoid situations where they mismatch and causes random bugs
-			FField* Field = FindFProperty<FField>(Struct, DisplayName);
+			UField* Field = FindField<UField>(Struct, DisplayName);
 
 			if (!Field)
 			{
@@ -453,7 +451,7 @@ void UCollisionProfile::LoadProfileConfig(bool bForceInit)
 				}
 #if WITH_EDITOR
 				// now enum is fixed, so find member variable for the field
-				FField* Field = FindFProperty<FField>(Struct, FName(*VariableName));
+				UField* Field = FindField<UField>(Struct, FName(*VariableName));
 				// I verified up in the class, this can't happen
 				check (Field);
 				Field->SetMetaData(*DisplayNameKey, *DisplayValue);
@@ -828,21 +826,3 @@ void UCollisionProfile::PostEditChangeProperty(FPropertyChangedEvent& PropertyCh
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
 #endif
-
-bool FCollisionProfilePrivateAccessor::AddProfileTemplate(FCollisionResponseTemplate& NewProfileData)
-{
-	UCollisionProfile* CollisionProfile = UCollisionProfile::Get();
-	FCollisionResponseTemplate ProfileData;
-	if (!CollisionProfile->GetProfileTemplate(NewProfileData.Name, ProfileData))
-	{
-		CollisionProfile->SaveCustomResponses(NewProfileData);
-		CollisionProfile->Profiles.Add(NewProfileData);
-		if (CollisionProfile->GetProfileTemplate(NewProfileData.Name, ProfileData))
-		{
-			CollisionProfile->LoadProfileConfig(true);
-			CollisionProfile->UpdateDefaultConfigFile();
-			return true;
-		}
-	}
-	return false;
-}

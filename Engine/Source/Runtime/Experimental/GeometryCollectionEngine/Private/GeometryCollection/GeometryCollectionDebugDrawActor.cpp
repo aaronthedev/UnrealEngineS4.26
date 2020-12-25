@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GeometryCollection/GeometryCollectionDebugDrawActor.h"
 
@@ -20,7 +20,6 @@
 #include "HAL/IConsoleManager.h"
 #include "PBDRigidsSolver.h"
 #include "PhysicsSolver.h"  // #if TODO_REIMPLEMENT_GET_RIGID_PARTICLES
-#include "GeometryCollection/GeometryCollectionDebugDrawComponent.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogGeometryCollectionDebugDrawActor, Log, All);
 
@@ -381,18 +380,18 @@ void AGeometryCollectionDebugDrawActor::Tick(float DeltaSeconds)
 void AGeometryCollectionDebugDrawActor::BeginPlay()
 {
 	Super::BeginPlay();
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	// Initialize text renderer
 	const FDebugDrawDelegate DebugDrawTextDelegate = FDebugDrawDelegate::CreateUObject(this, &AGeometryCollectionDebugDrawActor::DebugDrawText);
 	DebugDrawTextDelegateHandle = UDebugDrawService::Register(TEXT("TextRender"), DebugDrawTextDelegate);  // TextRender is an engine show flag that works in both editor and game modes
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::EndPlay(EEndPlayReason::Type ReasonEnd)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	UDebugDrawService::Unregister(DebugDrawTextDelegateHandle);
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 	Super::EndPlay(ReasonEnd);
 }
 
@@ -639,7 +638,7 @@ void AGeometryCollectionDebugDrawActor::PostEditChangeProperty(FPropertyChangedE
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
 
-bool AGeometryCollectionDebugDrawActor::CanEditChange(const FProperty* InProperty) const
+bool AGeometryCollectionDebugDrawActor::CanEditChange(const UProperty* InProperty) const
 {
 	const FName PropertyName = InProperty->GetFName();
 	if (PropertyName == GET_MEMBER_NAME_CHECKED(AGeometryCollectionDebugDrawActor, bDebugDrawWholeCollection) ||
@@ -654,14 +653,14 @@ bool AGeometryCollectionDebugDrawActor::CanEditChange(const FProperty* InPropert
 
 void AGeometryCollectionDebugDrawActor::AddDebugText(const FString& Text, const FVector& Position, const FColor& Color, float Scale, bool bDrawShadow)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	DebugDrawTexts.Add({ Text, Position, Color, Scale, bDrawShadow });
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DebugDrawText(UCanvas* Canvas, APlayerController* PlayerController)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	for (const FDebugDrawText& DebugDrawText : DebugDrawTexts)
 	{
 		const FVector Position = Canvas->Project(DebugDrawText.Position);
@@ -682,12 +681,12 @@ void AGeometryCollectionDebugDrawActor::DebugDrawText(UCanvas* Canvas, APlayerCo
 		}
 		TextItem.Draw(Canvas->Canvas);
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::Flush()
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	DebugDrawTexts.Reset();
 
 	// Note that a flush will remove all the other persistent debug draw elements, so best to only do them when needed
@@ -698,12 +697,12 @@ void AGeometryCollectionDebugDrawActor::Flush()
 		FlushPersistentDebugLines(World);
 		bNeedsDebugLinesFlush = false;
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawVertices(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 
@@ -753,12 +752,12 @@ void AGeometryCollectionDebugDrawActor::DrawVertices(const TArray<FTransform>& G
 			bNeedsDebugLinesFlush = true;
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawVertices(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -800,12 +799,12 @@ void AGeometryCollectionDebugDrawActor::DrawVertices(const TArray<FTransform>& G
 			DrawVertices(GlobalTransforms, GeometryCollectionComponent, ChildTransformIndex, ActiveColor);
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawVertexIndices(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 
@@ -855,12 +854,12 @@ void AGeometryCollectionDebugDrawActor::DrawVertexIndices(const TArray<FTransfor
 			}
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawVertexIndices(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -902,12 +901,12 @@ void AGeometryCollectionDebugDrawActor::DrawVertexIndices(const TArray<FTransfor
 			DrawVertexIndices(GlobalTransforms, GeometryCollectionComponent, ChildTransformIndex, ActiveColor);
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawVertexNormals(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 
@@ -960,12 +959,12 @@ void AGeometryCollectionDebugDrawActor::DrawVertexNormals(const TArray<FTransfor
 			bNeedsDebugLinesFlush = true;
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawVertexNormals(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -1011,12 +1010,12 @@ void AGeometryCollectionDebugDrawActor::DrawVertexNormals(const TArray<FTransfor
 			DrawVertexNormals(GlobalTransforms, GeometryCollectionComponent, ChildTransformIndex, ActiveColor);
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawFaces(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 
@@ -1072,12 +1071,12 @@ void AGeometryCollectionDebugDrawActor::DrawFaces(const TArray<FTransform>& Glob
 			bNeedsDebugLinesFlush = true;
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawFaces(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -1125,12 +1124,12 @@ void AGeometryCollectionDebugDrawActor::DrawFaces(const TArray<FTransform>& Glob
 			DrawFaces(GlobalTransforms, GeometryCollectionComponent, ChildTransformIndex, ActiveColor);
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawFaceIndices(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 
@@ -1188,12 +1187,12 @@ void AGeometryCollectionDebugDrawActor::DrawFaceIndices(const TArray<FTransform>
 			}
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawFaceIndices(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -1241,12 +1240,12 @@ void AGeometryCollectionDebugDrawActor::DrawFaceIndices(const TArray<FTransform>
 			DrawFaceIndices(GlobalTransforms, GeometryCollectionComponent, ChildTransformIndex, ActiveColor);
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawFaceNormals(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 
@@ -1309,12 +1308,12 @@ void AGeometryCollectionDebugDrawActor::DrawFaceNormals(const TArray<FTransform>
 			bNeedsDebugLinesFlush = true;
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawFaceNormals(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -1369,12 +1368,12 @@ void AGeometryCollectionDebugDrawActor::DrawFaceNormals(const TArray<FTransform>
 			DrawFaceNormals(GlobalTransforms, GeometryCollectionComponent, ChildTransformIndex, ActiveColor);
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawSingleFace(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, const int32 FaceIndex, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 
@@ -1399,12 +1398,12 @@ void AGeometryCollectionDebugDrawActor::DrawSingleFace(const TArray<FTransform>&
 	DrawDebugLine(World, Vertex0, Vertex2, Color, GeometryCollectionDebugDrawActorConstants::bPersistent, GeometryCollectionDebugDrawActorConstants::LifeTime, GeometryCollectionDebugDrawActorConstants::DepthPriority, LineThickness * 2.f);
 	DrawDebugLine(World, Vertex1, Vertex2, Color, GeometryCollectionDebugDrawActorConstants::bPersistent, GeometryCollectionDebugDrawActorConstants::LifeTime, GeometryCollectionDebugDrawActorConstants::DepthPriority, LineThickness * 2.f);
 	bNeedsDebugLinesFlush = true;
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawGeometryIndices(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 
@@ -1446,12 +1445,12 @@ void AGeometryCollectionDebugDrawActor::DrawGeometryIndices(const TArray<FTransf
 			AddDebugText(Text, Position, ActiveColor, TextScale, bTextShadow);
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawGeometryIndex(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -1484,12 +1483,12 @@ void AGeometryCollectionDebugDrawActor::DrawGeometryIndex(const TArray<FTransfor
 			DrawGeometryIndex(GlobalTransforms, GeometryCollectionComponent, ChildTransformIndex, ActiveColor);
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawTransforms(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, float Scale)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	Scale *= AxisScale;
 
 	check(GeometryCollectionComponent);
@@ -1533,12 +1532,12 @@ void AGeometryCollectionDebugDrawActor::DrawTransforms(const TArray<FTransform>&
 			bNeedsDebugLinesFlush = true;
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawTransform(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, float Scale)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -1570,12 +1569,12 @@ void AGeometryCollectionDebugDrawActor::DrawTransform(const TArray<FTransform>& 
 			DrawTransform(GlobalTransforms, GeometryCollectionComponent, ChildTransformIndex, ActiveScale);
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawTransformIndices(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 
@@ -1616,12 +1615,12 @@ void AGeometryCollectionDebugDrawActor::DrawTransformIndices(const TArray<FTrans
 			AddDebugText(Text, Position, ActiveColor, TextScale, bTextShadow);
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawTransformIndex(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -1651,12 +1650,12 @@ void AGeometryCollectionDebugDrawActor::DrawTransformIndex(const TArray<FTransfo
 			DrawTransformIndex(GlobalTransforms, GeometryCollectionComponent, ChildTransformIndex, ActiveColor);
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawLevels(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 
@@ -1698,12 +1697,12 @@ void AGeometryCollectionDebugDrawActor::DrawLevels(const TArray<FTransform>& Glo
 			AddDebugText(Text, Position, ActiveColor, TextScale, bTextShadow);
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawLevel(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -1736,12 +1735,12 @@ void AGeometryCollectionDebugDrawActor::DrawLevel(const TArray<FTransform>& Glob
 			DrawLevel(GlobalTransforms, GeometryCollectionComponent, ChildTransformIndex, ActiveColor);
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawParents(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 
@@ -1788,12 +1787,12 @@ void AGeometryCollectionDebugDrawActor::DrawParents(const TArray<FTransform>& Gl
 			}
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawParent(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -1833,12 +1832,12 @@ void AGeometryCollectionDebugDrawActor::DrawParent(const TArray<FTransform>& Glo
 			DrawParent(GlobalTransforms, GeometryCollectionComponent, ChildTransformIndex, ActiveColor);
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawBoundingBoxes(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 
@@ -1897,12 +1896,12 @@ void AGeometryCollectionDebugDrawActor::DrawBoundingBoxes(const TArray<FTransfor
 			bNeedsDebugLinesFlush = true;
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawBoundingBox(const TArray<FTransform>& GlobalTransforms, const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -1952,12 +1951,12 @@ void AGeometryCollectionDebugDrawActor::DrawBoundingBox(const TArray<FTransform>
 			DrawBoundingBox(GlobalTransforms, GeometryCollectionComponent, ChildTransformIndex, ActiveColor);
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 FTransform AGeometryCollectionDebugDrawActor::GetParticleTransform(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -1971,7 +1970,7 @@ FTransform AGeometryCollectionDebugDrawActor::GetParticleTransform(const UGeomet
 	{
 		return GetParticleTransformNoChecks(GeometryCollectionComponent, TransformIndex, ParticlesData);
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 	return FTransform::Identity;
 }
 
@@ -1982,7 +1981,7 @@ FTransform AGeometryCollectionDebugDrawActor::GetParticleTransformNoChecks(const
 	// Retrieve particle transform
 	Chaos::TVector<float, 3> Translation = Chaos::TVector<float, 3>::ZeroVector;
 	Chaos::TRotation<float, 3> Rotation = Chaos::TRotation<float, 3>::Identity;
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	int32 Index;
 	for (Index = TransformIndex;
 		ParentArray[Index] != FGeometryCollection::Invalid;
@@ -1996,14 +1995,14 @@ FTransform AGeometryCollectionDebugDrawActor::GetParticleTransformNoChecks(const
 	const Chaos::TRotation<float, 3>& RootRotation = ParticlesData.GetR(Index);
 	Translation = RootTranslation + RootRotation.RotateVector(Translation);
 	Rotation = RootRotation * Rotation;
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 	return FTransform(Rotation, Translation);
 }
 
 //void AGeometryCollectionDebugDrawActor::DrawRigidBodiesId(const UGeometryCollectionComponent* GeometryCollectionComponent, const FGeometryCollectionParticlesData& ParticlesData, const TManagedArray<int32>& RigidBodyIdArray, const FColor& Color)
 void AGeometryCollectionDebugDrawActor::DrawRigidBodiesId(const UGeometryCollectionComponent* GeometryCollectionComponent, const FGeometryCollectionParticlesData& ParticlesData, const TManagedArray<FGuid>& RigidBodyIdArray, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(GetWorld());
@@ -2039,13 +2038,13 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodiesId(const UGeometryCollect
 			}
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 //void AGeometryCollectionDebugDrawActor::DrawRigidBodyId(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, const TManagedArray<int32>& RigidBodyIdArray, const FColor& Color)
 void AGeometryCollectionDebugDrawActor::DrawRigidBodyId(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, const TManagedArray<FGuid>& RigidBodyIdArray, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -2072,13 +2071,13 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodyId(const UGeometryCollectio
 			}
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 //void AGeometryCollectionDebugDrawActor::DrawRigidBodyIdNoChecks(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, const TManagedArray<int32>& RigidBodyIdArray, const FColor& Color)
 void AGeometryCollectionDebugDrawActor::DrawRigidBodyIdNoChecks(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, const TManagedArray<FGuid>& RigidBodyIdArray, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	//const int32 RigidBodyId = RigidBodyIdArray[TransformIndex];
 	const FGuid& RigidBodyId = RigidBodyIdArray[TransformIndex];
 
@@ -2095,12 +2094,12 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodyIdNoChecks(const UGeometryC
 	//const FString Text = FString::Printf(TEXT("%d"), RigidBodyId);
 	const FString Text = RigidBodyId.ToString();
 	AddDebugText(Text, Position, DisabledColor, TextScale, bTextShadow);
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawRigidBodiesTransform(const UGeometryCollectionComponent* GeometryCollectionComponent, const FGeometryCollectionParticlesData& ParticlesData, float Scale)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(GetWorld());
@@ -2132,12 +2131,12 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodiesTransform(const UGeometry
 			}
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawRigidBodyTransform(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, float Scale)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -2164,12 +2163,12 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodyTransform(const UGeometryCo
 			}
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawRigidBodyTransformNoChecks(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, float Scale)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	Scale *= AxisScale;
 
 	// Retrieve particle transform
@@ -2206,12 +2205,12 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodyTransformNoChecks(const UGe
 		DrawDebugCoordinateSystem(GetWorld(), Position, Rotator, Scale, GeometryCollectionDebugDrawActorConstants::bPersistent, GeometryCollectionDebugDrawActorConstants::LifeTime, GeometryCollectionDebugDrawActorConstants::DepthPriority, LineThickness);
 	}
 	bNeedsDebugLinesFlush = true;
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawRigidBodiesInertia(const UGeometryCollectionComponent* GeometryCollectionComponent, const FGeometryCollectionParticlesData& ParticlesData, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(GetWorld());
@@ -2244,12 +2243,12 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodiesInertia(const UGeometryCo
 			}
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawRigidBodyInertia(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -2277,12 +2276,12 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodyInertia(const UGeometryColl
 			}
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawRigidBodyInertiaNoChecks(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	// Retrieve particle transform
 	const FTransform Transform = GetParticleTransformNoChecks(GeometryCollectionComponent, TransformIndex, ParticlesData);
 	const FVector Position = Transform.GetTranslation();
@@ -2317,12 +2316,12 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodyInertiaNoChecks(const UGeom
 		DrawDebugLine(GetWorld(), Vertices[BoxEdge(0)], Vertices[BoxEdge(1)], ActiveColor, GeometryCollectionDebugDrawActorConstants::bPersistent, GeometryCollectionDebugDrawActorConstants::LifeTime, GeometryCollectionDebugDrawActorConstants::DepthPriority, LineThickness);
 	}
 	bNeedsDebugLinesFlush = true;
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawRigidBodiesCollision(const UGeometryCollectionComponent* GeometryCollectionComponent, const FGeometryCollectionParticlesData& ParticlesData, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(GetWorld());
@@ -2360,12 +2359,12 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodiesCollision(const UGeometry
 			}
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawRigidBodyCollision(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -2407,12 +2406,12 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodyCollision(const UGeometryCo
 			}
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawRigidBodyCollisionNoChecks(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	const UWorld* const World = GetWorld();
 
 	// Retrieve particle transform
@@ -2440,7 +2439,7 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodyCollisionNoChecks(const UGe
 	const FColor& ActiveColor = (bIsDisabled && !bIsParentUnion) ? FColor::Black: Color;
 
 	// Draw collision volume
-	const Chaos::EImplicitObjectType GeometryType = ParticlesData.GetGeometryType(TransformIndex);
+	const Chaos::ImplicitObjectType GeometryType = ParticlesData.GetGeometryType(TransformIndex);
 	switch (GeometryType)
 	{
 	case Chaos::ImplicitObjectType::Box:
@@ -2476,12 +2475,12 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodyCollisionNoChecks(const UGe
 		break;
 	}
 	bNeedsDebugLinesFlush = true;
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawRigidBodiesInfo(const UGeometryCollectionComponent* GeometryCollectionComponent, const FGeometryCollectionParticlesData& ParticlesData, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(GetWorld());
@@ -2513,12 +2512,12 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodiesInfo(const UGeometryColle
 			}
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawRigidBodyInfo(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -2550,12 +2549,12 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodyInfo(const UGeometryCollect
 			}
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawRigidBodyInfoNoChecks(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	// Retrieve particle information
 	const FString Infos = TEXT("\n") + ParticlesData.ToString(TransformIndex, TEXT("\n"));  // First line is skipped for particle Id
 
@@ -2565,13 +2564,13 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodyInfoNoChecks(const UGeometr
 
 	// Draw string
 	AddDebugText(Infos, Position, Color, TextScale, bTextShadow);
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 //void AGeometryCollectionDebugDrawActor::DrawConnectivityEdges(const UGeometryCollectionComponent* GeometryCollectionComponent, const FGeometryCollectionParticlesData& ParticlesData, const TManagedArray<int32>& RigidBodyIdArray)
 void AGeometryCollectionDebugDrawActor::DrawConnectivityEdges(const UGeometryCollectionComponent* GeometryCollectionComponent, const FGeometryCollectionParticlesData& ParticlesData, const TManagedArray<FGuid>& RigidBodyIdArray)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(GetWorld());
@@ -2601,13 +2600,13 @@ void AGeometryCollectionDebugDrawActor::DrawConnectivityEdges(const UGeometryCol
 			}
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 //void AGeometryCollectionDebugDrawActor::DrawConnectivityEdges(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, const TManagedArray<int32>& RigidBodyIdArray, FColor HSVColor)
 void AGeometryCollectionDebugDrawActor::DrawConnectivityEdges(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, const TManagedArray<FGuid>& RigidBodyIdArray, FColor HSVColor)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -2642,13 +2641,13 @@ void AGeometryCollectionDebugDrawActor::DrawConnectivityEdges(const UGeometryCol
 			}
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 //void AGeometryCollectionDebugDrawActor::DrawConnectivityEdgesNoChecks(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, const TManagedArray<int32>& RigidBodyIdArray, const FColor& Color)
 void AGeometryCollectionDebugDrawActor::DrawConnectivityEdgesNoChecks(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, const TManagedArray<FGuid>& RigidBodyIdArray, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 #if TODO_REIMPLEMENT_RIGID_CLUSTERING
 	const UWorld* const World = GetWorld();
 
@@ -2709,12 +2708,12 @@ void AGeometryCollectionDebugDrawActor::DrawConnectivityEdgesNoChecks(const UGeo
 		}
 	}
 #endif // TODO_REIMPLEMENT_RIGID_CLUSTERING
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawRigidBodiesVelocity(const UGeometryCollectionComponent* GeometryCollectionComponent, const FGeometryCollectionParticlesData& ParticlesData, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(GetWorld());
@@ -2748,12 +2747,12 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodiesVelocity(const UGeometryC
 			}
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawRigidBodyVelocity(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -2787,12 +2786,12 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodyVelocity(const UGeometryCol
 			}
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawRigidBodyVelocityNoChecks(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	// Retrieve particle transform
 	const FTransform Transform = GetParticleTransformNoChecks(GeometryCollectionComponent, TransformIndex, ParticlesData);
 	const FVector Position = Transform.GetTranslation();
@@ -2824,12 +2823,12 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodyVelocityNoChecks(const UGeo
 		DrawDebugCircle(GetWorld(), AngularEnd, Radius, GeometryCollectionDebugDrawActorConstants::CircleSegments, ActiveColor, GeometryCollectionDebugDrawActorConstants::bPersistent, GeometryCollectionDebugDrawActorConstants::LifeTime, GeometryCollectionDebugDrawActorConstants::DepthPriority, LineThickness, YAxis, ZAxis, false);
 	}
 	bNeedsDebugLinesFlush = true;
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawRigidBodiesForce(const UGeometryCollectionComponent* GeometryCollectionComponent, const FGeometryCollectionParticlesData& ParticlesData, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(GetWorld());
@@ -2863,12 +2862,12 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodiesForce(const UGeometryColl
 			}
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawRigidBodyForce(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	check(GeometryCollectionComponent);
 	check(GeometryCollectionComponent->RestCollection);
 	check(TransformIndex >= 0);
@@ -2902,12 +2901,12 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodyForce(const UGeometryCollec
 			}
 		}
 	}
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }
 
 void AGeometryCollectionDebugDrawActor::DrawRigidBodyForceNoChecks(const UGeometryCollectionComponent* GeometryCollectionComponent, int32 TransformIndex, const FGeometryCollectionParticlesData& ParticlesData, const FColor& Color)
 {
-#if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#if ENABLE_DRAW_DEBUG
 	// Retrieve particle transform
 	const FTransform Transform = GetParticleTransformNoChecks(GeometryCollectionComponent, TransformIndex, ParticlesData);
 	const FVector Position = Transform.GetTranslation();
@@ -2939,5 +2938,5 @@ void AGeometryCollectionDebugDrawActor::DrawRigidBodyForceNoChecks(const UGeomet
 		DrawDebugCircle(GetWorld(), AngularEnd, Radius, GeometryCollectionDebugDrawActorConstants::CircleSegments, ActiveColor, GeometryCollectionDebugDrawActorConstants::bPersistent, GeometryCollectionDebugDrawActorConstants::LifeTime, GeometryCollectionDebugDrawActorConstants::DepthPriority, LineThickness, YAxis, ZAxis, false);
 	}
 	bNeedsDebugLinesFlush = true;
-#endif  // #if GEOMETRYCOLLECTION_DEBUG_DRAW && ENABLE_DRAW_DEBUG
+#endif  // #if ENABLE_DRAW_DEBUG
 }

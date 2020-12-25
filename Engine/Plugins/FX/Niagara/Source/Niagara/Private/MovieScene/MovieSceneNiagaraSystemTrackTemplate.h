@@ -1,9 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
-#include "NiagaraCommon.h"
-#include "MovieScene/MovieSceneNiagaraSystemSpawnSection.h"
 #include "Evaluation/MovieSceneEvalTemplate.h"
 #include "Evaluation/MovieSceneTrackImplementation.h"
 #include "MovieSceneNiagaraSystemTrackTemplate.generated.h"
@@ -26,12 +24,9 @@ struct FMovieSceneNiagaraSystemTrackImplementation : public FMovieSceneTrackImpl
 	GENERATED_BODY()
 
 public:
-	FMovieSceneNiagaraSystemTrackImplementation();
-	FMovieSceneNiagaraSystemTrackImplementation(
-		FFrameNumber InSpawnSectionStartFrame, FFrameNumber InSpawnSectionEndFrame,
-		ENiagaraSystemSpawnSectionStartBehavior InSectionStartBehavior, ENiagaraSystemSpawnSectionEvaluateBehavior InSectionEvaluateBehavior,
-		ENiagaraSystemSpawnSectionEndBehavior InSectionEndBehavior, ENiagaraAgeUpdateMode InAgeUpdateMode);
-
+	FMovieSceneNiagaraSystemTrackImplementation() { }
+	FMovieSceneNiagaraSystemTrackImplementation(FFrameNumber InSpawnSectionStartFrame, FFrameNumber InSpawnSectionEndFrame);
+	
 	virtual void SetupOverrides() override
 	{
 		EnableOverrides(CustomEvaluateFlag);
@@ -39,19 +34,11 @@ public:
 
 private:
 	virtual UScriptStruct& GetScriptStructImpl() const override { return *StaticStruct(); }
-	virtual void Evaluate(const FMovieSceneEvaluationTrack& Track, TArrayView<const FMovieSceneFieldEntry_ChildTemplate> Children, const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const override;
+	virtual void Evaluate(const FMovieSceneEvaluationTrack& Track, FMovieSceneSegmentIdentifier SegmentID, const FMovieSceneEvaluationOperand& Operand, const FMovieSceneContext& Context, const FPersistentEvaluationData& PersistentData, FMovieSceneExecutionTokens& ExecutionTokens) const override;
 
 private:
 	UPROPERTY()
 	FFrameNumber SpawnSectionStartFrame;
 	UPROPERTY()
 	FFrameNumber SpawnSectionEndFrame;
-	UPROPERTY()
-	ENiagaraSystemSpawnSectionStartBehavior SpawnSectionStartBehavior;
-	UPROPERTY()
-	ENiagaraSystemSpawnSectionEvaluateBehavior SpawnSectionEvaluateBehavior;
-	UPROPERTY()
-	ENiagaraSystemSpawnSectionEndBehavior SpawnSectionEndBehavior;
-	UPROPERTY()
-	ENiagaraAgeUpdateMode AgeUpdateMode;
 };

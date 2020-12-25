@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,7 +18,6 @@ public:
 };
 
 DECLARE_DELEGATE_OneParam(FRecordedMessageDispatch, FArchive&);
-DECLARE_MULTICAST_DELEGATE_OneParam(FOnRouteTouchDownToWidgetFailedDelegate, const FVector2D& /*ViewportPosition*/);
 
 class FRecordingMessageHandler : public FProxyMessageHandler, public TSharedFromThis<FRecordingMessageHandler>
 {
@@ -93,8 +92,6 @@ public:
 	 * Send any received touch event from the client to the widget directly bypassing the message handler
 	 */
 	void TryRouteTouchMessageToWidget(bool bInRouteMessageToWidget) { bTryRouteTouchMessageToWidget = bInRouteMessageToWidget; }
-
-	FOnRouteTouchDownToWidgetFailedDelegate& GetOnRouteTouchDownToWidgetFailedDelegate() { return OnRouteTouchDownToWidgetFailedDelegate; }
 
 public:
 
@@ -177,6 +174,4 @@ protected:
     FVector2D							LastTouchLocation;
     bool								bIsTouching;
 	bool								bTryRouteTouchMessageToWidget;
-
-	FOnRouteTouchDownToWidgetFailedDelegate OnRouteTouchDownToWidgetFailedDelegate;
 };

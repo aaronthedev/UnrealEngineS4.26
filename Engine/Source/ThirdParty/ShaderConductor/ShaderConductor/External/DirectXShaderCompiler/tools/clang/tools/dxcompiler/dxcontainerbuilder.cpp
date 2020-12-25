@@ -123,8 +123,7 @@ HRESULT STDMETHODCALLTYPE DxcContainerBuilder::RemovePart(_In_ UINT32 fourCC) {
     IFTBOOL(fourCC == DxilFourCC::DFCC_ShaderDebugInfoDXIL ||
                 fourCC == DxilFourCC::DFCC_ShaderDebugName ||
                 fourCC == DxilFourCC::DFCC_RootSignature ||
-                fourCC == DxilFourCC::DFCC_PrivateData ||
-                fourCC == DxilFourCC::DFCC_ShaderStatistics,
+                fourCC == DxilFourCC::DFCC_PrivateData,
             E_INVALIDARG); // You can only remove debug info, debug info name, rootsignature, or private data blob
     PartList::iterator it =
       std::find_if(m_parts.begin(), m_parts.end(),
@@ -156,7 +155,7 @@ HRESULT STDMETHODCALLTYPE DxcContainerBuilder::SerializeContainer(_Out_ IDxcOper
     // Update Parts
     IFT(UpdateParts(pMemoryStream));
 
-    CComPtr<IDxcBlobUtf8> pValErrorUtf8;
+    CComPtr<IDxcBlobEncoding> pErrorBlob;
     HRESULT valHR = S_OK;
     if (m_RequireValidation) {
       CComPtr<IDxcValidator> pValidator;
@@ -165,38 +164,28 @@ HRESULT STDMETHODCALLTYPE DxcContainerBuilder::SerializeContainer(_Out_ IDxcOper
       IFT(pValidator->Validate(pResult, DxcValidatorFlags_RootSignatureOnly, &pValidationResult));
       IFT(pValidationResult->GetStatus(&valHR));
       if (FAILED(valHR)) {
+        CComPtr<AbstractMemoryStream> pErrorOutputStream;
+        CComPtr<IDxcBlob> pErrorResult;
+        IFT(CreateMemoryStream(m_pMalloc, &pErrorOutputStream));
+        IFT(pErrorOutputStream.QueryInterface(&pErrorResult));
+        
+        // Combine existing warnings and errors from validation
         CComPtr<IDxcBlobEncoding> pValError;
         IFT(pValidationResult->GetErrorBuffer(&pValError));
-        if (pValError->GetBufferPointer() && pValError->GetBufferSize())
-          IFT(hlsl::DxcGetBlobAsUtf8(pValError, m_pMalloc, &pValErrorUtf8));
+        IFT(pErrorOutputStream->Reserve(strlen(m_warning) + pValError->GetBufferSize()));
+        ULONG cbWritten;
+        IFT(pErrorOutputStream->Write(m_warning, strlen(m_warning), &cbWritten));
+        IFT(pErrorOutputStream->Write(pValError->GetBufferPointer(), pValError->GetBufferSize(), &cbWritten));
+        DxcCreateBlobWithEncodingSet(pErrorResult, CP_UTF8, &pErrorBlob);
+      }
+      else {
+        DxcCreateBlobWithEncodingOnHeapCopy(m_warning, strlen(m_warning), CP_UTF8, &pErrorBlob);
       }
     }
-    // Combine existing warnings and errors from validation
-    CComPtr<IDxcBlobEncoding> pErrorBlob;
-    CDxcMallocHeapPtr<char> errorHeap(m_pMalloc);
-    SIZE_T warningLength = m_warning ? strlen(m_warning) : 0;
-    SIZE_T valErrorLength = pValErrorUtf8 ? pValErrorUtf8->GetStringLength() : 0;
-    SIZE_T totalErrorLength = warningLength + valErrorLength;
-    if (totalErrorLength) {
-      SIZE_T errorSizeInBytes = totalErrorLength + 1;
-      errorHeap.AllocateBytes(errorSizeInBytes);
-      if (warningLength)
-        memcpy(errorHeap.m_pData, m_warning, warningLength);
-      if (valErrorLength)
-        memcpy(errorHeap.m_pData + warningLength,
-               pValErrorUtf8->GetStringPointer(),
-               valErrorLength);
-      errorHeap.m_pData[totalErrorLength] = L'\0';
-      IFT(hlsl::DxcCreateBlobWithEncodingOnMalloc(
-        errorHeap.m_pData, m_pMalloc, errorSizeInBytes,
-        DXC_CP_UTF8, &pErrorBlob));
-      errorHeap.Detach();
+    else {
+      DxcCreateBlobWithEncodingOnHeapCopy(m_warning, strlen(m_warning), CP_UTF8, &pErrorBlob);
     }
-
-    IFT(DxcResult::Create(valHR, DXC_OUT_OBJECT, {
-        DxcOutputObject::DataOutput(DXC_OUT_OBJECT, pResult, DxcOutNoName),
-        DxcOutputObject::DataOutput(DXC_OUT_ERRORS, pErrorBlob, DxcOutNoName)
-      }, ppResult));
+    DxcOperationResult::CreateFromResultErrorStatus(pResult, pErrorBlob, valHR, ppResult);
     return S_OK;
   }
   CATCH_CPP_RETURN_HRESULT();

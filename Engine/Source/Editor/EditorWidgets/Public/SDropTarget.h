@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -80,9 +80,6 @@ protected:
 
 	/** Get the brightness on the background. */
 	FSlateColor GetBackgroundBrightness() const;
-
-	/** Returns true if this drop target is currently being hovered over by a drag drop event */
-	bool IsDragOver() const { return bIsDragOver; }
 
 private:
 	/** Delegate to call when an asset is dropped */

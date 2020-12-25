@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Rigs/RigHierarchyContainer.h"
 #include "ControlRig.h"
@@ -6,74 +6,11 @@
 #include "UObject/PropertyPortFlags.h"
 
 ////////////////////////////////////////////////////////////////////////////////
-// FRigMirrorSettings
-////////////////////////////////////////////////////////////////////////////////
-
-FTransform FRigMirrorSettings::MirrorTransform(const FTransform& InTransform) const
-{
-	FTransform Transform = InTransform;
-	FQuat Quat = Transform.GetRotation();
-
-	Transform.SetLocation(MirrorVector(Transform.GetLocation()));
-
-	switch (AxisToFlip)
-	{
-		case EAxis::X:
-		{
-			FVector Y = MirrorVector(Quat.GetAxisY());
-			FVector Z = MirrorVector(Quat.GetAxisZ());
-			FMatrix Rotation = FRotationMatrix::MakeFromYZ(Y, Z);
-			Transform.SetRotation(FQuat(Rotation));
-			break;
-		}
-		case EAxis::Y:
-		{
-			FVector X = MirrorVector(Quat.GetAxisX());
-			FVector Z = MirrorVector(Quat.GetAxisZ());
-			FMatrix Rotation = FRotationMatrix::MakeFromXZ(X, Z);
-			Transform.SetRotation(FQuat(Rotation));
-			break;
-		}
-		default:
-		{
-			FVector X = MirrorVector(Quat.GetAxisX());
-			FVector Y = MirrorVector(Quat.GetAxisY());
-			FMatrix Rotation = FRotationMatrix::MakeFromXY(X, Y);
-			Transform.SetRotation(FQuat(Rotation));
-			break;
-		}
-	}
-
-	return Transform;
-}
-
-FVector FRigMirrorSettings::MirrorVector(const FVector& InVector) const
-{
-	FVector Axis = FVector::ZeroVector;
-	Axis.SetComponentForAxis(MirrorAxis, 1.f);
-	return InVector.MirrorByVector(Axis);
-}
-
-////////////////////////////////////////////////////////////////////////////////
 // FRigHierarchyContainer
 ////////////////////////////////////////////////////////////////////////////////
 
 FRigHierarchyContainer::FRigHierarchyContainer()
 {
-	Version = 0;
-	Initialize();
-}
-
-FRigHierarchyContainer::FRigHierarchyContainer(const FRigHierarchyContainer& InOther)
-{
-	BoneHierarchy = InOther.BoneHierarchy;
-	SpaceHierarchy = InOther.SpaceHierarchy;
-	ControlHierarchy = InOther.ControlHierarchy;
-	CurveContainer = InOther.CurveContainer;
-
-	DepthIndexByKey.Reset();
-	Version = InOther.Version + 1;
-
 	Initialize();
 }
 
@@ -83,17 +20,10 @@ FRigHierarchyContainer& FRigHierarchyContainer::operator= (const FRigHierarchyCo
 	SpaceHierarchy = InOther.SpaceHierarchy;
 	ControlHierarchy = InOther.ControlHierarchy;
 	CurveContainer = InOther.CurveContainer;
-
-	DepthIndexByKey.Reset();
-	Version++;
-
-	Initialize();
-
 	return *this;
 }
 
-
-void FRigHierarchyContainer::Initialize(bool bResetTransforms)
+void FRigHierarchyContainer::Initialize()
 {
 	BoneHierarchy.Container = this;
 	SpaceHierarchy.Container = this;
@@ -105,49 +35,37 @@ void FRigHierarchyContainer::Initialize(bool bResetTransforms)
 	BoneHierarchy.OnBoneRemoved.RemoveAll(this);
 	BoneHierarchy.OnBoneRenamed.RemoveAll(this);
 	BoneHierarchy.OnBoneReparented.RemoveAll(this);
-#endif
 	BoneHierarchy.OnBoneSelected.RemoveAll(this);
-#if WITH_EDITOR
 
 	BoneHierarchy.OnBoneAdded.AddRaw(this, &FRigHierarchyContainer::HandleOnElementAdded);
 	BoneHierarchy.OnBoneRemoved.AddRaw(this, &FRigHierarchyContainer::HandleOnElementRemoved);
 	BoneHierarchy.OnBoneRenamed.AddRaw(this, &FRigHierarchyContainer::HandleOnElementRenamed);
 	BoneHierarchy.OnBoneReparented.AddRaw(this, &FRigHierarchyContainer::HandleOnElementReparented);
-#endif
 	BoneHierarchy.OnBoneSelected.AddRaw(this, &FRigHierarchyContainer::HandleOnElementSelected);
-#if WITH_EDITOR
 
 	SpaceHierarchy.OnSpaceAdded.RemoveAll(this);
 	SpaceHierarchy.OnSpaceRemoved.RemoveAll(this);
 	SpaceHierarchy.OnSpaceRenamed.RemoveAll(this);
 	SpaceHierarchy.OnSpaceReparented.RemoveAll(this);
-#endif
 	SpaceHierarchy.OnSpaceSelected.RemoveAll(this);
-#if WITH_EDITOR
 
 	SpaceHierarchy.OnSpaceAdded.AddRaw(this, &FRigHierarchyContainer::HandleOnElementAdded);
 	SpaceHierarchy.OnSpaceRemoved.AddRaw(this, &FRigHierarchyContainer::HandleOnElementRemoved);
 	SpaceHierarchy.OnSpaceRenamed.AddRaw(this, &FRigHierarchyContainer::HandleOnElementRenamed);
 	SpaceHierarchy.OnSpaceReparented.AddRaw(this, &FRigHierarchyContainer::HandleOnElementReparented);
-#endif
 	SpaceHierarchy.OnSpaceSelected.AddRaw(this, &FRigHierarchyContainer::HandleOnElementSelected);
-#if WITH_EDITOR
 
 	ControlHierarchy.OnControlAdded.RemoveAll(this);
 	ControlHierarchy.OnControlRemoved.RemoveAll(this);
 	ControlHierarchy.OnControlRenamed.RemoveAll(this);
 	ControlHierarchy.OnControlReparented.RemoveAll(this);
-#endif
 	ControlHierarchy.OnControlSelected.RemoveAll(this);
-#if WITH_EDITOR
 
 	ControlHierarchy.OnControlAdded.AddRaw(this, &FRigHierarchyContainer::HandleOnElementAdded);
 	ControlHierarchy.OnControlRemoved.AddRaw(this, &FRigHierarchyContainer::HandleOnElementRemoved);
 	ControlHierarchy.OnControlRenamed.AddRaw(this, &FRigHierarchyContainer::HandleOnElementRenamed);
 	ControlHierarchy.OnControlReparented.AddRaw(this, &FRigHierarchyContainer::HandleOnElementReparented);
-#endif
 	ControlHierarchy.OnControlSelected.AddRaw(this, &FRigHierarchyContainer::HandleOnElementSelected);
-#if WITH_EDITOR
 
 	CurveContainer.OnCurveAdded.RemoveAll(this);
 	CurveContainer.OnCurveRemoved.RemoveAll(this);
@@ -172,17 +90,12 @@ void FRigHierarchyContainer::Initialize(bool bResetTransforms)
 
 #endif
 
-	BoneHierarchy.Initialize(bResetTransforms);
-	SpaceHierarchy.Initialize(bResetTransforms);
-	ControlHierarchy.Initialize(bResetTransforms);
+	BoneHierarchy.Initialize();
+	SpaceHierarchy.Initialize();
+	ControlHierarchy.Initialize();
 	CurveContainer.Initialize();
-	DepthIndexByKey.Reset();
-	Version++;
 
-	if (bResetTransforms)
-	{
-		ResetTransforms();
-	}
+	ResetTransforms();
 }
 
 void FRigHierarchyContainer::Reset()
@@ -191,7 +104,6 @@ void FRigHierarchyContainer::Reset()
 	SpaceHierarchy.Reset();
 	ControlHierarchy.Reset();
 	CurveContainer.Reset();
-	DepthIndexByKey.Reset();
 
 	Initialize();
 }
@@ -202,13 +114,6 @@ void FRigHierarchyContainer::ResetTransforms()
 	SpaceHierarchy.ResetTransforms();
 	ControlHierarchy.ResetValues();
 	CurveContainer.ResetValues();
-}
-
-void FRigHierarchyContainer::CopyInitialTransforms(const FRigHierarchyContainer& InOther)
-{
-	BoneHierarchy.CopyInitialTransforms(InOther.BoneHierarchy);
-	SpaceHierarchy.CopyInitialTransforms(InOther.SpaceHierarchy);
-	ControlHierarchy.CopyOffsetTransforms(InOther.ControlHierarchy);
 }
 
 FTransform FRigHierarchyContainer::GetInitialTransform(ERigElementType InElementType, int32 InIndex) const
@@ -222,7 +127,7 @@ FTransform FRigHierarchyContainer::GetInitialTransform(ERigElementType InElement
 	{
 		case ERigElementType::Bone:
 		{
-			return BoneHierarchy.GetInitialLocalTransform(InIndex);
+			return BoneHierarchy.GetInitialTransform(InIndex);
 		}
 		case ERigElementType::Space:
 		{
@@ -230,7 +135,7 @@ FTransform FRigHierarchyContainer::GetInitialTransform(ERigElementType InElement
 		}
 		case ERigElementType::Control:
 		{
-			return ControlHierarchy.GetLocalTransform(InIndex,ERigControlValueType::Initial);
+			return ControlHierarchy.GetInitialValue<FTransform>(InIndex);
 		}
 		case ERigElementType::Curve:
 		{
@@ -240,6 +145,8 @@ FTransform FRigHierarchyContainer::GetInitialTransform(ERigElementType InElement
 
 	return FTransform::Identity;
 }
+
+#if WITH_EDITOR
 
 void FRigHierarchyContainer::SetInitialTransform(ERigElementType InElementType, int32 InIndex, const FTransform& InTransform)
 {
@@ -252,7 +159,7 @@ void FRigHierarchyContainer::SetInitialTransform(ERigElementType InElementType, 
 	{
 		case ERigElementType::Bone:
 		{
-			BoneHierarchy.SetInitialLocalTransform(InIndex, InTransform);
+			BoneHierarchy.SetInitialTransform(InIndex, InTransform);
 			break;
 		}
 		case ERigElementType::Space:
@@ -262,7 +169,7 @@ void FRigHierarchyContainer::SetInitialTransform(ERigElementType InElementType, 
 		}
 		case ERigElementType::Control:
 		{
-			ControlHierarchy.SetLocalTransform(InIndex, InTransform,ERigControlValueType::Initial);
+			ControlHierarchy.SetInitialValue<FTransform>(InIndex, InTransform);
 			break;
 		}
 		case ERigElementType::Curve:
@@ -271,6 +178,8 @@ void FRigHierarchyContainer::SetInitialTransform(ERigElementType InElementType, 
 		}
 	}
 }
+
+#endif
 
 FTransform FRigHierarchyContainer::GetInitialGlobalTransform(ERigElementType InElementType, int32 InIndex) const
 {
@@ -283,7 +192,7 @@ FTransform FRigHierarchyContainer::GetInitialGlobalTransform(ERigElementType InE
 	{
 		case ERigElementType::Bone:
 		{
-			return BoneHierarchy.GetInitialGlobalTransform(InIndex);
+			return BoneHierarchy.GetInitialTransform(InIndex);
 		}
 		case ERigElementType::Space:
 		{
@@ -313,7 +222,7 @@ void FRigHierarchyContainer::SetInitialGlobalTransform(ERigElementType InElement
 	{
 		case ERigElementType::Bone:
 		{
-			BoneHierarchy.SetInitialGlobalTransform(InIndex, InTransform);
+			BoneHierarchy.SetInitialTransform(InIndex, InTransform);
 			break;
 		}
 		case ERigElementType::Space:
@@ -363,7 +272,7 @@ FTransform FRigHierarchyContainer::GetLocalTransform(ERigElementType InElementTy
 	return FTransform::Identity;
 }
 
-void FRigHierarchyContainer::SetLocalTransform(ERigElementType InElementType, int32 InIndex, const FTransform& InTransform, bool bPropagateToChildren)
+void FRigHierarchyContainer::SetLocalTransform(ERigElementType InElementType, int32 InIndex, const FTransform& InTransform)
 {
 	if (InIndex == INDEX_NONE)
 	{
@@ -374,7 +283,7 @@ void FRigHierarchyContainer::SetLocalTransform(ERigElementType InElementType, in
 	{
 		case ERigElementType::Bone:
 		{
-			BoneHierarchy.SetLocalTransform(InIndex, InTransform, bPropagateToChildren);
+			BoneHierarchy.SetLocalTransform(InIndex, InTransform);
 			break;
 		}
 		case ERigElementType::Space:
@@ -424,7 +333,7 @@ FTransform FRigHierarchyContainer::GetGlobalTransform(ERigElementType InElementT
 	return FTransform::Identity;
 }
 
-void FRigHierarchyContainer::SetGlobalTransform(ERigElementType InElementType, int32 InIndex, const FTransform& InTransform, bool bPropagateToChildren)
+void FRigHierarchyContainer::SetGlobalTransform(ERigElementType InElementType, int32 InIndex, const FTransform& InTransform)
 {
 	if (InIndex == INDEX_NONE)
 	{
@@ -435,7 +344,7 @@ void FRigHierarchyContainer::SetGlobalTransform(ERigElementType InElementType, i
 	{
 		case ERigElementType::Bone:
 		{
-			BoneHierarchy.SetGlobalTransform(InIndex, InTransform, bPropagateToChildren);
+			BoneHierarchy.SetGlobalTransform(InIndex, InTransform);
 			break;
 		}
 		case ERigElementType::Space:
@@ -459,41 +368,31 @@ void FRigHierarchyContainer::SetGlobalTransform(ERigElementType InElementType, i
 
 void FRigHierarchyContainer::HandleOnElementAdded(FRigHierarchyContainer* InContainer, const FRigElementKey& InKey)
 {
-	DepthIndexByKey.Reset();
-	Version++;
-
+	// todo
 	OnElementAdded.Broadcast(InContainer, InKey);
 	OnElementChanged.Broadcast(InContainer, InKey);
 }
 
 void FRigHierarchyContainer::HandleOnElementRemoved(FRigHierarchyContainer* InContainer, const FRigElementKey& InKey)
 {
-	DepthIndexByKey.Reset();
-	Version++;
-
+	// todo
 	OnElementRemoved.Broadcast(InContainer, InKey);
 	OnElementChanged.Broadcast(InContainer, InKey);
 }
 
 void FRigHierarchyContainer::HandleOnElementRenamed(FRigHierarchyContainer* InContainer, ERigElementType InElementType, const FName& InOldName, const FName& InNewName)
 {
-	DepthIndexByKey.Reset();
-	Version++;
-
+	// todo
 	OnElementRenamed.Broadcast(InContainer, InElementType, InOldName, InNewName);
 	OnElementChanged.Broadcast(InContainer, FRigElementKey(InNewName, InElementType));
 }
 
 void FRigHierarchyContainer::HandleOnElementReparented(FRigHierarchyContainer* InContainer, const FRigElementKey& InKey, const FName& InOldParentName, const FName& InNewParentName)
 {
-	DepthIndexByKey.Reset();
-	Version++;
-
+	// todo
 	OnElementReparented.Broadcast(InContainer, InKey, InOldParentName, InNewParentName);
 	OnElementChanged.Broadcast(InContainer, InKey);
 }
-
-#endif
 
 void FRigHierarchyContainer::HandleOnElementSelected(FRigHierarchyContainer* InContainer, const FRigElementKey& InKey, bool bSelected)
 {
@@ -501,72 +400,7 @@ void FRigHierarchyContainer::HandleOnElementSelected(FRigHierarchyContainer* InC
 	OnElementChanged.Broadcast(InContainer, InKey);
 }
 
-FRigElementKey FRigHierarchyContainer::GetParentKey(const FRigElementKey& InKey) const
-{
-	switch (InKey.Type)
-	{
-		case ERigElementType::Bone:
-		{
-			return BoneHierarchy[InKey.Name].GetParentElementKey();
-		}
-		case ERigElementType::Space:
-		{
-			return SpaceHierarchy[InKey.Name].GetParentElementKey();
-		}
-		case ERigElementType::Control:
-		{
-			const FRigControl& Control = ControlHierarchy[InKey.Name];
-			FRigElementKey SpaceKey = Control.GetSpaceElementKey();
-			if (SpaceKey.IsValid())
-			{
-				return SpaceKey;
-			}
-			return Control.GetParentElementKey();
-		}
-	}
-
-	return FRigElementKey();
-}
-
-TArray<FRigElementKey> FRigHierarchyContainer::GetChildKeys(const FRigElementKey& InKey, bool bRecursive) const
-{
-	TArray<FRigElementKey> Children;
-	for (const FRigBone& Element : BoneHierarchy)
-	{
-		if (Element.GetParentElementKey() == InKey)
-		{
-			Children.Add(Element.GetElementKey());
-			if (bRecursive)
-			{
-				Children.Append(GetChildKeys(Children.Last()));
-			}
-		}
-	}
-	for (const FRigControl& Element : ControlHierarchy)
-	{
-		if (Element.GetSpaceElementKey() == InKey ||
-			Element.GetParentElementKey() == InKey)
-		{
-			Children.Add(Element.GetElementKey());
-			if (bRecursive)
-			{
-				Children.Append(GetChildKeys(Children.Last()));
-			}
-		}
-	}
-	for (const FRigSpace& Element : SpaceHierarchy)
-	{
-		if (Element.GetParentElementKey() == InKey)
-		{
-			Children.Add(Element.GetElementKey());
-			if (bRecursive)
-			{
-				Children.Append(GetChildKeys(Children.Last()));
-			}
-		}
-	}
-	return Children;
-}
+#endif
 
 bool FRigHierarchyContainer::IsParentedTo(ERigElementType InChildType, int32 InChildIndex, ERigElementType InParentType, int32 InParentIndex) const
 {
@@ -662,7 +496,7 @@ bool FRigHierarchyContainer::IsParentedTo(ERigElementType InChildType, int32 InC
 					}
 					else if (ChildControl.ParentIndex != INDEX_NONE)
 					{
-						if (ChildControl.ParentIndex == InParentIndex && InParentType == ERigElementType::Control)
+						if (ChildControl.ParentIndex == InParentIndex)
 						{
 							return true;
 						}
@@ -680,125 +514,6 @@ bool FRigHierarchyContainer::IsParentedTo(ERigElementType InChildType, int32 InC
 	return false;
 }
 
-void FRigHierarchyContainer::UpdateDepthIndexIfRequired() const
-{
-	if (DepthIndexByKey.Num() > 0)
-	{
-		return;
-	}
-
-	struct Local
-	{
-		static void CollectChildren(const FRigElementKey& Child, const FRigHierarchyContainer* Hierarchy, TMap<FRigElementKey, TArray<FRigElementKey>>& ChildMap)
-		{
-			if (!Child.IsValid())
-			{
-				return;
-			}
-
-			switch (Child.Type)
-			{
-				case ERigElementType::Bone:
-				{
-					const FRigBone& Bone = Hierarchy->BoneHierarchy[Child.Name];
-					CollectChildren(Child, Bone.GetParentElementKey(true), Hierarchy, ChildMap);
-					break;
-				}
-				case ERigElementType::Space:
-				{
-					const FRigSpace& Space = Hierarchy->SpaceHierarchy[Child.Name];
-					CollectChildren(Child, Space.GetParentElementKey(true), Hierarchy, ChildMap);
-					break;
-				}
-				case ERigElementType::Control:
-				{
-					const FRigControl& Control = Hierarchy->ControlHierarchy[Child.Name];
-					CollectChildren(Child, Control.GetSpaceElementKey(true), Hierarchy, ChildMap);
-					CollectChildren(Child, Control.GetParentElementKey(true), Hierarchy, ChildMap);
-					break;
-				}
-				default:
-				{
-					break;
-				}
-			}
-		}
-
-
-		static void CollectChildren(const FRigElementKey& Child, const FRigElementKey& Parent, const FRigHierarchyContainer* Hierarchy, TMap<FRigElementKey, TArray<FRigElementKey>>& ChildMap)
-		{
-			if (!Child.IsValid() || !Parent.IsValid())
-			{
-				return;
-			}
-			ChildMap.FindOrAdd(Parent).Add(Child);
-		}
-
-		static void VisitKey(const FRigElementKey& Key, const FRigHierarchyContainer* Hierarchy, const TMap<FRigElementKey, TArray<FRigElementKey>>& ChildMap, TMap<FRigElementKey, int32>& IndexByKey)
-		{
-			if (!Key.IsValid() || IndexByKey.Contains(Key))
-			{
-				return;
-			}
-
-			IndexByKey.Add(Key, IndexByKey.Num());
-
-			const TArray<FRigElementKey>* ChildrenPtr = ChildMap.Find(Key);
-			if (ChildrenPtr)
-			{
-				const TArray<FRigElementKey>& Children = *ChildrenPtr;
-				for (const FRigElementKey& Child : Children)
-				{
-					VisitKey(Child, Hierarchy, ChildMap, IndexByKey);
-				}
-			}
-		}
-	};
-
-	DepthIndexByKey.Reset();
-
-	TArray<FRigElementKey> AllKeys = GetAllItems(false);
-	TMap<FRigElementKey, TArray<FRigElementKey>> ChildMap;
-
-	for (const FRigElementKey& Key : AllKeys)
-	{
-		Local::CollectChildren(Key, this, ChildMap);
-	}
-
-	for (TPair<FRigElementKey, TArray<FRigElementKey>> Pair : ChildMap)
-	{
-		TArray<FRigElementKey>& Children = Pair.Value;
-
-		Algo::SortBy(Children, [&Children](int32 Index) -> int32
-		{
-			return GetTypeHash(Children[Index].Name);
-		});
-	}
-
-	for (const FRigElementKey& Key : AllKeys)
-	{
-		Local::VisitKey(Key, this, ChildMap, DepthIndexByKey);
-	}
-}
-
-void FRigHierarchyContainer::SortKeyArray(TArray<FRigElementKey>& InOutKeysToSort) const
-{
-	UpdateDepthIndexIfRequired();
-
-	InOutKeysToSort.Sort([&](const FRigElementKey& A, const FRigElementKey& B) {
-
-		const int32* IndexA = DepthIndexByKey.Find(A);
-		const int32* IndexB = DepthIndexByKey.Find(B);
-		if (IndexA == nullptr || IndexB == nullptr)
-		{
-			return false;
-		}
-
-		return *IndexA < * IndexB;
-	});
-}
-
-
 #if WITH_EDITOR
 
 FString FRigHierarchyContainer::ExportSelectionToText() const
@@ -809,12 +524,8 @@ FString FRigHierarchyContainer::ExportSelectionToText() const
 
 FString FRigHierarchyContainer::ExportToText(const TArray<FRigElementKey>& InSelection) const
 {
-	TArray<FRigElementKey> KeysToExport;
-	KeysToExport.Append(InSelection);
-	SortKeyArray(KeysToExport);
-
 	FRigHierarchyCopyPasteContent Data;
-	for (const FRigElementKey& Key : KeysToExport)
+	for (const FRigElementKey& Key : InSelection)
 	{
 		Data.Types.Add(Key.Type);
 		FString Content;
@@ -822,26 +533,22 @@ FString FRigHierarchyContainer::ExportToText(const TArray<FRigElementKey>& InSel
 		{
 		case ERigElementType::Bone:
 		{
-			FRigBone DefaultElement;
-			FRigBone::StaticStruct()->ExportText(Content, &BoneHierarchy[Key.Name], &DefaultElement, nullptr, PPF_None, nullptr);
+			FRigBone::StaticStruct()->ExportText(Content, &BoneHierarchy[Key.Name], nullptr, nullptr, PPF_None, nullptr);
 			break;
 		}
 		case ERigElementType::Control:
 		{
-			FRigControl DefaultElement;
-			FRigControl::StaticStruct()->ExportText(Content, &ControlHierarchy[Key.Name], &DefaultElement, nullptr, PPF_None, nullptr);
+			FRigControl::StaticStruct()->ExportText(Content, &ControlHierarchy[Key.Name], nullptr, nullptr, PPF_None, nullptr);
 			break;
 		}
 		case ERigElementType::Space:
 		{
-			FRigSpace DefaultElement;
-			FRigSpace::StaticStruct()->ExportText(Content, &SpaceHierarchy[Key.Name], &DefaultElement, nullptr, PPF_None, nullptr);
+			FRigSpace::StaticStruct()->ExportText(Content, &SpaceHierarchy[Key.Name], nullptr, nullptr, PPF_None, nullptr);
 			break;
 		}
 		case ERigElementType::Curve:
 		{
-			FRigCurve DefaultElement;
-			FRigCurve::StaticStruct()->ExportText(Content, &CurveContainer[Key.Name], &DefaultElement, nullptr, PPF_None, nullptr);
+			FRigCurve::StaticStruct()->ExportText(Content, &CurveContainer[Key.Name], nullptr, nullptr, PPF_None, nullptr);
 			break;
 		}
 		default:
@@ -856,8 +563,7 @@ FString FRigHierarchyContainer::ExportToText(const TArray<FRigElementKey>& InSel
 	}
 
 	FString ExportedText;
-	FRigHierarchyCopyPasteContent DefaultContent;
-	FRigHierarchyCopyPasteContent::StaticStruct()->ExportText(ExportedText, &Data, &DefaultContent, nullptr, PPF_None, nullptr);
+	FRigHierarchyCopyPasteContent::StaticStruct()->ExportText(ExportedText, &Data, nullptr, nullptr, PPF_None, nullptr);
 	return ExportedText;
 }
 
@@ -979,7 +685,7 @@ TArray<FRigElementKey> FRigHierarchyContainer::ImportFromText(const FString& InC
 						const FRigBone& Element = *static_cast<FRigBone*>(Elements[Index].Get());
 
 						FName ParentName = NAME_None;
-						if (const FRigElementKey* ParentKey = ElementMap.Find(Element.GetParentElementKey(true /* force */)))
+						if (const FRigElementKey* ParentKey = ElementMap.Find(Element.GetParentElementKey()))
 						{
 							ParentName = ParentKey->Name;
 						}
@@ -994,33 +700,18 @@ TArray<FRigElementKey> FRigHierarchyContainer::ImportFromText(const FString& InC
 						const FRigControl& Element = *static_cast<FRigControl*>(Elements[Index].Get());
 
 						FName ParentName = NAME_None;
-						if (const FRigElementKey* ParentKey = ElementMap.Find(Element.GetParentElementKey(true /* force */)))
+						if (const FRigElementKey* ParentKey = ElementMap.Find(Element.GetParentElementKey()))
 						{
 							ParentName = ParentKey->Name;
 						}
 
 						FName SpaceName = NAME_None;
-						if (const FRigElementKey* SpaceKey = ElementMap.Find(Element.GetSpaceElementKey(true /* force */)))
+						if (const FRigElementKey* SpaceKey = ElementMap.Find(Element.GetSpaceElementKey()))
 						{
 							SpaceName = SpaceKey->Name;
 						}
 
-						FRigControl& NewElement = ControlHierarchy.Add(Element.Name, Element.ControlType, ParentName, SpaceName, Element.OffsetTransform, Element.InitialValue, Element.GizmoName, Element.GizmoTransform, Element.GizmoColor);
-
-						// copy additional members
-						NewElement.DisplayName = Element.DisplayName;
-						NewElement.bAnimatable = Element.bAnimatable;
-						NewElement.PrimaryAxis = Element.PrimaryAxis;
-						NewElement.bLimitTranslation = Element.bLimitTranslation;
-						NewElement.bLimitRotation = Element.bLimitRotation;
-						NewElement.bLimitScale= Element.bLimitScale;
-						NewElement.MinimumValue = Element.MinimumValue;
-						NewElement.MaximumValue = Element.MaximumValue;
-						NewElement.bDrawLimits = Element.bDrawLimits;
-						NewElement.bGizmoEnabled = Element.bGizmoEnabled;
-						NewElement.bGizmoVisible = Element.bGizmoVisible;
-						NewElement.ControlEnum = Element.ControlEnum;
-
+						FRigControl& NewElement = ControlHierarchy.Add(Element.Name, Element.ControlType, ParentName, SpaceName, Element.InitialValue, Element.GizmoName, Element.GizmoTransform, Element.GizmoColor);
 						ElementMap.FindOrAdd(Element.GetElementKey()) = NewElement.GetElementKey();
 						PastedKeys.Add(NewElement.GetElementKey());
 
@@ -1031,7 +722,7 @@ TArray<FRigElementKey> FRigHierarchyContainer::ImportFromText(const FString& InC
 						const FRigSpace& Element = *static_cast<FRigSpace*>(Elements[Index].Get());
 
 						FName ParentName = NAME_None;
-						if (const FRigElementKey* ParentKey = ElementMap.Find(Element.GetParentElementKey(true /* force */)))
+						if (const FRigElementKey* ParentKey = ElementMap.Find(Element.GetParentElementKey()))
 						{
 							ParentName = ParentKey->Name;
 						}
@@ -1079,47 +770,12 @@ TArray<FRigElementKey> FRigHierarchyContainer::ImportFromText(const FString& InC
 				if(InImportMode == ERigHierarchyImportMode::ReplaceLocalTransform)
 				{
 					Data.LocalTransforms[Index].NormalizeRotation();
-					switch (Selection[Index].Type)
-					{
-						case ERigElementType::Bone:
-						case ERigElementType::Space:
-						{
-							SetInitialTransform(Selection[Index], Data.LocalTransforms[Index]);
-							SetLocalTransform(Selection[Index], Data.LocalTransforms[Index]);
-							break;
-						}
-						case ERigElementType::Control:
-						{
-							int32 ControlIndex = GetIndex(Selection[Index]);
-							ControlHierarchy.SetControlOffset(ControlIndex, Data.LocalTransforms[Index]);
-							ControlHierarchy[ControlIndex].SetValueFromTransform(FTransform::Identity, ERigControlValueType::Initial);
-							ControlHierarchy[ControlIndex].SetValueFromTransform(FTransform::Identity, ERigControlValueType::Current);
-							break;
-						}
-					}
+					SetLocalTransform(Selection[Index], Data.LocalTransforms[Index]);
 				}
 				else
 				{
 					Data.GlobalTransforms[Index].NormalizeRotation();
-					switch (Selection[Index].Type)
-					{
-						case ERigElementType::Bone:
-						case ERigElementType::Space:
-						{
-							SetInitialGlobalTransform(Selection[Index], Data.GlobalTransforms[Index]);
-							SetGlobalTransform(Selection[Index], Data.GlobalTransforms[Index]);
-							break;
-						}
-						case ERigElementType::Control:
-						{
-							int32 ControlIndex = GetIndex(Selection[Index]);
-							FTransform ParentTransform = ControlHierarchy.GetParentTransform(ControlIndex, false);
-							ControlHierarchy.SetControlOffset(ControlIndex, Data.GlobalTransforms[Index].GetRelativeTransform(ParentTransform));
-							ControlHierarchy[ControlIndex].SetValueFromTransform(FTransform::Identity, ERigControlValueType::Initial);
-							ControlHierarchy[ControlIndex].SetValueFromTransform(FTransform::Identity, ERigControlValueType::Current);
-							break;
-						}
-					}
+					SetGlobalTransform(Selection[Index], Data.GlobalTransforms[Index]);
 				}
 				PastedKeys.Add(Selection[Index]);
 			}
@@ -1150,81 +806,6 @@ TArray<FRigElementKey> FRigHierarchyContainer::ImportFromText(const FString& InC
 	}
 
 	return PastedKeys;
-}
-
-TArray<FRigElementKey> FRigHierarchyContainer::DuplicateItems(const TArray<FRigElementKey>& InSelection, bool bSelectNewElements)
-{
-	FString CopiedText = ExportToText(InSelection);
-	return ImportFromText(CopiedText, ERigHierarchyImportMode::Append, bSelectNewElements);
-}
-
-TArray<FRigElementKey> FRigHierarchyContainer::MirrorItems(const TArray<FRigElementKey>& InSelection, const FRigMirrorSettings& InSettings, bool bSelectNewElements)
-{
-	TArray<FRigElementKey> OriginalItems;
-	OriginalItems.Append(InSelection);
-	SortKeyArray(OriginalItems);
-	TArray<FRigElementKey> DuplicatedItems = DuplicateItems(OriginalItems, bSelectNewElements);
-
-	if (DuplicatedItems.Num() != OriginalItems.Num())
-	{
-		return DuplicatedItems;
-	}
-
-	for (int32 Index = 0; Index < OriginalItems.Num(); Index++)
-	{
-		if (DuplicatedItems[Index].Type != OriginalItems[Index].Type)
-		{
-			return DuplicatedItems;
-		}
-	}
-
-	// mirror the transforms
-	for (int32 Index = 0; Index < OriginalItems.Num(); Index++)
-	{
-		FTransform GlobalTransform = GetGlobalTransform(OriginalItems[Index]);
-		FTransform InitialTransform = GetInitialGlobalTransform(OriginalItems[Index]);
-		SetGlobalTransform(DuplicatedItems[Index], InSettings.MirrorTransform(GlobalTransform));
-		SetInitialGlobalTransform(DuplicatedItems[Index], InSettings.MirrorTransform(InitialTransform));
-	}
-
-	// correct the names
-	if (!InSettings.OldName.IsEmpty() && !InSettings.NewName.IsEmpty())
-	{
-		for (int32 Index = 0; Index < DuplicatedItems.Num(); Index++)
-		{
-			FName OldName = OriginalItems[Index].Name;
-			FString OldNameStr = OldName.ToString();
-			FString NewNameStr = OldNameStr.Replace(*InSettings.OldName, *InSettings.NewName, ESearchCase::CaseSensitive);
-			if (NewNameStr != OldNameStr)
-			{
-				FName NewName(*NewNameStr);
-				switch (DuplicatedItems[Index].Type)
-				{
-					case ERigElementType::Bone:
-					{
-						DuplicatedItems[Index].Name = BoneHierarchy.Rename(DuplicatedItems[Index].Name, NewName);
-						break;
-					}
-					case ERigElementType::Space:
-					{
-						DuplicatedItems[Index].Name = SpaceHierarchy.Rename(DuplicatedItems[Index].Name, NewName);
-						break;
-					}
-					case ERigElementType::Control:
-					{
-						DuplicatedItems[Index].Name = ControlHierarchy.Rename(DuplicatedItems[Index].Name, NewName);
-						break;
-					}
-					default:
-					{
-						break;
-					}
-				}
-			}
-		}
-	}
-
-	return DuplicatedItems;
 }
 
 TArray<FRigElementKey> FRigHierarchyContainer::CurrentSelection() const
@@ -1259,12 +840,14 @@ TArray<FRigElementKey> FRigHierarchyContainer::CurrentSelection() const
 		}
 	}
 
-	SortKeyArray(Selection);
+	Selection.Sort([&](const FRigElementKey& A, const FRigElementKey& B) { 
+		int32 IndexA = GetIndex(A);
+		int32 IndexB = GetIndex(B);
+		return IsParentedTo(B.Type, IndexB, A.Type, IndexA);
+	});
 
 	return Selection;
 }
-
-#endif
 
 TArray<FRigElementKey> FRigHierarchyContainer::GetAllItems(bool bSort) const
 {
@@ -1288,7 +871,11 @@ TArray<FRigElementKey> FRigHierarchyContainer::GetAllItems(bool bSort) const
 	
 	if (bSort)
 	{
-		SortKeyArray(Items);
+		Items.Sort([&](const FRigElementKey& A, const FRigElementKey& B) {
+			int32 IndexA = GetIndex(A);
+			int32 IndexB = GetIndex(B);
+			return IsParentedTo(B.Type, IndexB, A.Type, IndexA);
+		});
 	}
 
 	return Items;
@@ -1375,47 +962,4 @@ bool FRigHierarchyContainer::IsSelected(const FRigElementKey& InKey) const
 	return false;
 }
 
-void FRigHierarchyContainer::SendEvent(const FRigEventContext& InEvent, bool bAsyncronous)
-{
-	if(OnEventReceived.IsBound())
-	{
-		FRigHierarchyContainer* LocalContainer = this;
-		FRigEventDelegate& Delegate = OnEventReceived;
-
-		if (bAsyncronous)
-		{
-			FFunctionGraphTask::CreateAndDispatchWhenReady([LocalContainer, Delegate, InEvent]()
-			{
-				Delegate.Broadcast(LocalContainer, InEvent);
-			}, TStatId(), NULL, ENamedThreads::GameThread);
-		}
-		else
-		{
-			Delegate.Broadcast(LocalContainer, InEvent);
-		}
-	}
-}
-
-FRigPose FRigHierarchyContainer::GetPose() const
-{
-	FRigPose Pose;
-	AppendToPose(Pose);
-	return Pose;
-}
-
-void FRigHierarchyContainer::SetPose(FRigPose& InPose)
-{
-	BoneHierarchy.SetPose(InPose);
-	SpaceHierarchy.SetPose(InPose);
-	ControlHierarchy.SetPose(InPose);
-	CurveContainer.SetPose(InPose);
-}
-
-void FRigHierarchyContainer::AppendToPose(FRigPose& InOutPose) const
-{
-	BoneHierarchy.AppendToPose(InOutPose);
-	SpaceHierarchy.AppendToPose(InOutPose);
-	ControlHierarchy.AppendToPose(InOutPose);
-	CurveContainer.AppendToPose(InOutPose);
-}
-
+#endif

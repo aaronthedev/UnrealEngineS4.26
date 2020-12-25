@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EnvironmentQuery/EQSRenderingComponent.h"
 #include "EnvironmentQuery/Items/EnvQueryItemType_VectorBase.h"
@@ -268,7 +268,7 @@ FPrimitiveViewRelevance FEQSSceneProxy::GetViewRelevance(const FSceneView* View)
 		&& (!bDrawOnlyWhenSelected || SafeIsActorSelected());
 	Result.bDynamicRelevance = true;
 	// ideally the TranslucencyRelevance should be filled out by the material, here we do it conservative
-	Result.bSeparateTranslucency = Result.bNormalTranslucency = IsShown(View);
+	Result.bSeparateTranslucencyRelevance = Result.bNormalTranslucencyRelevance = IsShown(View);
 	return Result;
 }
 
@@ -289,15 +289,8 @@ FPrimitiveSceneProxy* UEQSRenderingComponent::CreateSceneProxy()
 #if  USE_EQS_DEBUGGER
 	if (NewSceneProxy)
 	{
-		if (IsInGameThread())
-		{
-			EQSRenderingDebugDrawDelegateHelper.InitDelegateHelper(NewSceneProxy);
-			EQSRenderingDebugDrawDelegateHelper.ReregisterDebugDrawDelgate();
-		}
-		else
-		{
-			UE_LOG(LogEQS, Warning, TEXT("Couldn't register delegate helper on non-game thread"));
-		}
+		EQSRenderingDebugDrawDelegateHelper.InitDelegateHelper(NewSceneProxy);
+		EQSRenderingDebugDrawDelegateHelper.ReregisterDebugDrawDelgate();
 	}
 #endif
 
@@ -355,9 +348,9 @@ FBoxSphereBounds UEQSRenderingComponent::CalcBounds(const FTransform& LocalToWor
 	return FBoxSphereBounds(BoundingSphere).TransformBy(LocalToWorld);
 }
 
-void UEQSRenderingComponent::CreateRenderState_Concurrent(FRegisterComponentContext* Context)
+void UEQSRenderingComponent::CreateRenderState_Concurrent()
 {
-	Super::CreateRenderState_Concurrent(Context);
+	Super::CreateRenderState_Concurrent();
 
 #if USE_EQS_DEBUGGER
 	EQSRenderingDebugDrawDelegateHelper.RegisterDebugDrawDelgate();

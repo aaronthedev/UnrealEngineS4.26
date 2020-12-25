@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PythonScriptPluginSettings.h"
 #include "PythonScriptPlugin.h"
@@ -19,7 +19,7 @@ UPythonScriptPluginSettings::UPythonScriptPluginSettings()
 
 #if WITH_EDITOR
 
-bool UPythonScriptPluginSettings::CanEditChange(const FProperty* InProperty) const
+bool UPythonScriptPluginSettings::CanEditChange(const UProperty* InProperty) const
 {
 	bool bCanEditChange = Super::CanEditChange(InProperty);
 
@@ -63,20 +63,6 @@ void UPythonScriptPluginSettings::PostEditChangeProperty(struct FPropertyChanged
 FText UPythonScriptPluginSettings::GetSectionText() const
 {
 	return LOCTEXT("SettingsDisplayName", "Python");
-}
-
-#endif	// WITH_EDITOR
-
-UPythonScriptPluginUserSettings::UPythonScriptPluginUserSettings()
-{
-	CategoryName = TEXT("Plugins");
-	SectionName = TEXT("Python");
-}
-
-#if WITH_EDITOR
-FText UPythonScriptPluginUserSettings::GetSectionText() const
-{
-	return LOCTEXT("UserSettingsDisplayName", "Python");
 }
 
 #endif	// WITH_EDITOR

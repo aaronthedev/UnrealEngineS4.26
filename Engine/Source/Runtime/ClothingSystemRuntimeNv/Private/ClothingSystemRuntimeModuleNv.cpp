@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ClothingSystemRuntimeModuleNv.h"
 #include "ClothingSimulationFactoryNv.h"
@@ -73,7 +73,7 @@ nv::cloth::ClothMeshQuadifier* FClothingSystemRuntimeModuleNv::GetMeshQuadifier(
 	return nullptr;
 }
 
-TSubclassOf<UClothingSimulationFactory> FClothingSystemRuntimeModuleNv::GetClothingSimulationFactoryClass() const
+UClass* FClothingSystemRuntimeModuleNv::GetDefaultSimulationFactoryClass()
 {
 #if WITH_NVCLOTH
 	return UClothingSimulationFactoryNv::StaticClass();

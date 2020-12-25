@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,6 +10,8 @@
 #include "Delegates/Delegate.h"
 #include "Internationalization/Text.h"
 #include "Misc/Attribute.h"
+
+class Error;
 
 /** The severity of the message type */
 namespace EMessageSeverity

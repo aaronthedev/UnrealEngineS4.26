@@ -1,48 +1,52 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Cluster/DisplayClusterClusterManager.h"
-#include "Cluster/DisplayClusterClusterEventHandler.h"
 
 #include "Cluster/IDisplayClusterClusterSyncObject.h"
 #include "Cluster/IDisplayClusterClusterEventListener.h"
+#include "Cluster/Controller/DisplayClusterNodeCtrlStandalone.h"
 #include "Cluster/Controller/DisplayClusterClusterNodeCtrlMaster.h"
 #include "Cluster/Controller/DisplayClusterClusterNodeCtrlSlave.h"
 #include "Cluster/Controller/DisplayClusterClusterNodeCtrlEditor.h"
 
 #include "Config/IPDisplayClusterConfigManager.h"
-#include "DisplayClusterConfigurationTypes.h"
-
-#include "Input/IPDisplayClusterInputManager.h"
 
 #include "Dom/JsonObject.h"
 
-#include "Misc/DisplayClusterTypesConverter.h"
-#include "Misc/DisplayClusterGlobals.h"
-#include "Misc/DisplayClusterHelpers.h"
-#include "Misc/DisplayClusterLog.h"
-#include "Misc/DisplayClusterStrings.h"
+#include "Misc/DisplayClusterAppExit.h"
+
+#include "DisplayClusterUtils/DisplayClusterTypesConverter.h"
+
+#include "Input/IPDisplayClusterInputManager.h"
 
 #include "UObject/Interface.h"
+
+#include "DisplayClusterBuildConfig.h"
+#include "DisplayClusterGlobals.h"
+#include "DisplayClusterHelpers.h"
+#include "DisplayClusterLog.h"
+#include "DisplayClusterStrings.h"
+
+#include "SocketSubsystem.h"
 
 
 FDisplayClusterClusterManager::FDisplayClusterClusterManager()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
 	ObjectsToSync.Emplace(EDisplayClusterSyncGroup::PreTick).Reserve(64);
 	ObjectsToSync.Emplace(EDisplayClusterSyncGroup::Tick).Reserve(64);
 	ObjectsToSync.Emplace(EDisplayClusterSyncGroup::PostTick).Reserve(64);
 
-	// Set cluster event handlers. These are the entry points for any incoming cluster events.
-	OnClusterEventJson.AddRaw(this, &FDisplayClusterClusterManager::OnClusterEventJsonHandler);
-	OnClusterEventBinary.AddRaw(this, &FDisplayClusterClusterManager::OnClusterEventBinaryHandler);
-
-	// Set internal system events handler
-	OnClusterEventJson.Add(FDisplayClusterClusterEventHandler::Get().GetJsonListenerDelegate());
+	// Set main event handler. This is an entry point for any incoming cluster events.
+	OnClusterEvent.AddRaw(this, &FDisplayClusterClusterManager::OnClusterEventHandler);
 
 	NativeInputDataAvailableEvent = FPlatformProcess::CreateSynchEvent(true);
 }
 
 FDisplayClusterClusterManager::~FDisplayClusterClusterManager()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
 	delete NativeInputDataAvailableEvent;
 }
 
@@ -52,6 +56,8 @@ FDisplayClusterClusterManager::~FDisplayClusterClusterManager()
 //////////////////////////////////////////////////////////////////////////////////////////////
 bool FDisplayClusterClusterManager::Init(EDisplayClusterOperationMode OperationMode)
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
 	CurrentOperationMode = OperationMode;
 	
 	return true;
@@ -59,37 +65,74 @@ bool FDisplayClusterClusterManager::Init(EDisplayClusterOperationMode OperationM
 
 void FDisplayClusterClusterManager::Release()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
 }
 
-bool FDisplayClusterClusterManager::StartSession(const UDisplayClusterConfigurationData* InConfigData, const FString& InNodeId)
+bool FDisplayClusterClusterManager::StartSession(const FString& configPath, const FString& nodeId)
 {
-	ClusterNodeId = InNodeId;
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
+	ConfigPath = configPath;
+	ClusterNodeId = nodeId;
+
+	if (CurrentOperationMode == EDisplayClusterOperationMode::Cluster)
+	{
+#ifdef DISPLAY_CLUSTER_USE_AUTOMATIC_NODE_ID_RESOLVE
+		if (ClusterNodeId.IsEmpty())
+		{
+			UE_LOG(LogDisplayClusterCluster, Warning, TEXT("Node name was not specified. Trying to resolve address from available interfaces..."));
+
+			// Try to find the node ID by address (this won't work if you want to run several cluster nodes on the same address)
+			FString resolvedNodeId;
+			if (GetResolvedNodeId(resolvedNodeId))
+			{
+				DisplayClusterHelpers::str::TrimStringValue(resolvedNodeId);
+				ClusterNodeId = resolvedNodeId;
+			}
+			else
+			{
+				UE_LOG(LogDisplayClusterCluster, Error, TEXT("Unable to resolve node ID by local addresses"));
+				return false;
+			}
+		}
+#endif
+	}
+	else if (CurrentOperationMode == EDisplayClusterOperationMode::Standalone)
+	{
+	}
+	else if (CurrentOperationMode == EDisplayClusterOperationMode::Editor)
+	{
+		if (ConfigPath.IsEmpty() || ClusterNodeId.IsEmpty())
+		{
+			UE_LOG(LogDisplayClusterCluster, Warning, TEXT("Wrong config path and/or node ID. Using default standalone config."));
+
+#ifdef DISPLAY_CLUSTER_USE_DEBUG_STANDALONE_CONFIG
+			ConfigPath = FString(DisplayClusterStrings::misc::DbgStubConfig);
+			ClusterNodeId     = FString(DisplayClusterStrings::misc::DbgStubNodeId);
+#endif
+		}
+	}
+	else if (CurrentOperationMode == EDisplayClusterOperationMode::Disabled)
+	{
+		return true;
+	}
+	else
+	{
+		UE_LOG(LogDisplayClusterCluster, Warning, TEXT("Unknown operation mode"));
+		return false;
+	}
 
 	UE_LOG(LogDisplayClusterCluster, Log, TEXT("Node ID: %s"), *ClusterNodeId);
 
-	// Node name must be valid
+	// Node name must be specified in cluster mode
 	if (ClusterNodeId.IsEmpty())
 	{
-		UE_LOG(LogDisplayClusterCluster, Error, TEXT("Node ID was not specified"));
-		return false;
-	}
-
-	// Get configuration data
-	const UDisplayClusterConfigurationData* ConfigData = GDisplayCluster->GetPrivateConfigMgr()->GetConfig();
-	if (!ConfigData)
-	{
-		UE_LOG(LogDisplayClusterCluster, Error, TEXT("Couldn't get configuration data"));
-		return false;
-	}
-
-	if (!ConfigData->Cluster->Nodes.Contains(ClusterNodeId))
-	{
-		UE_LOG(LogDisplayClusterCluster, Error, TEXT("Node '%s' not found in the configuration data"), *ClusterNodeId);
+		UE_LOG(LogDisplayClusterCluster, Error, TEXT("Node name was not specified"));
 		return false;
 	}
 
 	// Save nodes amount
-	NodesAmount = ConfigData->Cluster->Nodes.Num();
+	NodesAmount = GDisplayCluster->GetPrivateConfigMgr()->GetClusterNodesAmount();
 
 	// Instantiate node controller
 	Controller = CreateController();
@@ -113,65 +156,45 @@ bool FDisplayClusterClusterManager::StartSession(const UDisplayClusterConfigurat
 
 void FDisplayClusterClusterManager::EndSession()
 {
-	{
-		FScopeLock Lock(&InternalsSyncScope);
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
 
+	{
+		FScopeLock lock(&InternalsSyncScope);
 		if (Controller)
 		{
 			Controller->Release();
 			Controller.Reset();
 		}
 	}
-
-	NodesAmount = 0;
-	ClusterNodeId.Empty();
 }
 
-bool FDisplayClusterClusterManager::StartScene(UWorld* InWorld)
+bool FDisplayClusterClusterManager::StartScene(UWorld* pWorld)
 {
-	check(InWorld);
-	CurrentWorld = InWorld;
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
+	check(pWorld);
+	CurrentWorld = pWorld;
 
 	return true;
 }
 
 void FDisplayClusterClusterManager::EndScene()
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
 	{
-		FScopeLock Lock(&ObjectsToSyncCritSec);
-		for (auto& SyncGroupPair : ObjectsToSync)
+		FScopeLock lock(&ObjectsToSyncCritSec);
+		for (auto& SyncGroupPair: ObjectsToSync)
 		{
 			SyncGroupPair.Value.Reset();
 		}
 	}
-
-	{
-		FScopeLock Lock(&ClusterEventsJsonCritSec);
-		ClusterEventsJsonPoolMain.Reset();
-		ClusterEventsJsonPoolOut.Reset();
-		ClusterEventsJsonNonDiscardedPoolMain.Reset();
-		ClusterEventsJsonNonDiscardedPoolOut.Reset();
-	}
-
-	{
-		FScopeLock Lock(&ClusterEventsBinaryCritSec);
-		ClusterEventsBinaryPoolMain.Reset();
-		ClusterEventsBinaryPoolOut.Reset();
-		ClusterEventsBinaryNonDiscardedPoolMain.Reset();
-		ClusterEventsBinaryNonDiscardedPoolOut.Reset();
-	}
-
-	{
-		FScopeLock Lock(&ClusterEventListenersCritSec);
-		ClusterEventListeners.Reset();
-	}
-
-	NativeInputDataCache.Reset();
-	CurrentWorld = nullptr;
 }
 
 void FDisplayClusterClusterManager::EndFrame(uint64 FrameNum)
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
 	if (Controller)
 	{
 		Controller->ClearCache();
@@ -182,33 +205,16 @@ void FDisplayClusterClusterManager::EndFrame(uint64 FrameNum)
 
 void FDisplayClusterClusterManager::PreTick(float DeltaSeconds)
 {
-	// Move cluster events from the primary pool to the output pool.
-	// They will be replicated on the current frame.
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
 
-	// Json events
+	// Move cluster events from the primary pool to the output pool. These will be synchronized on the current frame.
 	{
-		FScopeLock Lock(&ClusterEventsJsonCritSec);
+		FScopeLock lock(&ClusterEventsCritSec);
 
-		ClusterEventsJsonPoolOut.Reset();
-		ClusterEventsJsonPoolOut = MoveTemp(ClusterEventsJsonPoolMain);
-		ClusterEventsJsonPoolMain.Reset();
-
-		ClusterEventsJsonNonDiscardedPoolOut.Reset();
-		ClusterEventsJsonNonDiscardedPoolOut = MoveTemp(ClusterEventsJsonNonDiscardedPoolMain);
-		ClusterEventsJsonNonDiscardedPoolMain.Reset();
-	}
-
-	// Binary events
-	{
-		FScopeLock Lock(&ClusterEventsBinaryCritSec);
-
-		ClusterEventsBinaryPoolOut.Reset();
-		ClusterEventsBinaryPoolOut = MoveTemp(ClusterEventsBinaryPoolMain);
-		ClusterEventsBinaryPoolMain.Reset();
-
-		ClusterEventsBinaryNonDiscardedPoolOut.Reset();
-		ClusterEventsBinaryNonDiscardedPoolOut = MoveTemp(ClusterEventsBinaryNonDiscardedPoolMain);
-		ClusterEventsBinaryNonDiscardedPoolMain.Reset();
+		// Clear the output pool since we have all data cached already
+		ClusterEventsPoolOut.Empty(ClusterEventsPoolOut.Num() | 0x07);
+		ClusterEventsPoolOut = MoveTemp(ClusterEventsPoolMain);
+		ClusterEventsPoolMain.Empty(ClusterEventsPoolOut.Num() | 0x07);
 	}
 
 	// Update input state in the cluster
@@ -237,9 +243,9 @@ void FDisplayClusterClusterManager::PostTick(float DeltaSeconds)
 //////////////////////////////////////////////////////////////////////////////////////////////
 // IDisplayClusterClusterManager
 //////////////////////////////////////////////////////////////////////////////////////////////
-IDisplayClusterNodeController* FDisplayClusterClusterManager::GetController() const
+IPDisplayClusterNodeController* FDisplayClusterClusterManager::GetController() const
 {
-	FScopeLock Lock(&InternalsSyncScope);
+	FScopeLock lock(&InternalsSyncScope);
 	return Controller ? Controller.Get() : nullptr;
 }
 
@@ -253,135 +259,126 @@ bool FDisplayClusterClusterManager::IsSlave() const
 	return Controller ? Controller->IsSlave() : false;
 }
 
+bool FDisplayClusterClusterManager::IsStandalone() const
+{
+	return Controller ? Controller->IsStandalone() : false;
+}
+
+bool FDisplayClusterClusterManager::IsCluster() const
+{
+	return Controller ? Controller->IsCluster() : false;
+}
+
 void FDisplayClusterClusterManager::RegisterSyncObject(IDisplayClusterClusterSyncObject* SyncObj, EDisplayClusterSyncGroup SyncGroup)
 {
-	FScopeLock Lock(&ObjectsToSyncCritSec);
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
 
-	if (SyncObj)
 	{
-		ObjectsToSync[SyncGroup].Add(SyncObj);
-		UE_LOG(LogDisplayClusterCluster, Log, TEXT("Registered sync object: %s"), *SyncObj->GetSyncId());
+		FScopeLock lock(&ObjectsToSyncCritSec);
+
+		if (SyncObj)
+		{
+			ObjectsToSync[SyncGroup].Add(SyncObj);
+			UE_LOG(LogDisplayClusterCluster, Log, TEXT("Registered sync object: %s"), *SyncObj->GetSyncId());
+		}
 	}
 }
 
 void FDisplayClusterClusterManager::UnregisterSyncObject(IDisplayClusterClusterSyncObject* SyncObj)
 {
-	if (SyncObj)
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
 	{
-		FScopeLock Lock(&ObjectsToSyncCritSec);
+		FScopeLock lock(&ObjectsToSyncCritSec);
 
 		for (auto& GroupPair : ObjectsToSync)
 		{
 			GroupPair.Value.Remove(SyncObj);
 		}
-
-		UE_LOG(LogDisplayClusterCluster, Log, TEXT("Unregistered sync object: %s"), *SyncObj->GetSyncId());
 	}
+
+	UE_LOG(LogDisplayClusterCluster, Log, TEXT("Unregistered sync object: %s"), *SyncObj->GetSyncId());
 }
 
 void FDisplayClusterClusterManager::AddClusterEventListener(TScriptInterface<IDisplayClusterClusterEventListener> Listener)
 {
-	FScopeLock Lock(&ClusterEventListenersCritSec);
-	ClusterEventListeners.Add(Listener);
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
+	{
+		FScopeLock lock(&ClusterEventsCritSec);
+		ClusterEventListeners.Add(Listener);
+	}
 }
 
 void FDisplayClusterClusterManager::RemoveClusterEventListener(TScriptInterface<IDisplayClusterClusterEventListener> Listener)
 {
-	FScopeLock Lock(&ClusterEventListenersCritSec);
-	if (ClusterEventListeners.Contains(Listener))
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
 	{
-		ClusterEventListeners.Remove(Listener);
-		UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Cluster event listeners left: %d"), ClusterEventListeners.Num());
+		FScopeLock lock(&ClusterEventsCritSec);
+		if (ClusterEventListeners.Contains(Listener))
+		{
+			ClusterEventListeners.Remove(Listener);
+			UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Cluster event listeners left: %d"), ClusterEventListeners.Num());
+		}
 	}
 }
 
-void FDisplayClusterClusterManager::AddClusterEventJsonListener(const FOnClusterEventJsonListener& Listener)
+void FDisplayClusterClusterManager::AddClusterEventListener(const FOnClusterEventListener& Listener)
 {
-	FScopeLock Lock(&ClusterEventListenersCritSec);
-	OnClusterEventJson.Add(Listener);
-}
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
 
-void FDisplayClusterClusterManager::RemoveClusterEventJsonListener(const FOnClusterEventJsonListener& Listener)
-{
-	FScopeLock Lock(&ClusterEventListenersCritSec);
-	OnClusterEventJson.Remove(Listener.GetHandle());
-}
-
-void FDisplayClusterClusterManager::AddClusterEventBinaryListener(const FOnClusterEventBinaryListener& Listener)
-{
-	FScopeLock Lock(&ClusterEventListenersCritSec);
-	OnClusterEventBinary.Add(Listener);
-}
-
-void FDisplayClusterClusterManager::RemoveClusterEventBinaryListener(const FOnClusterEventBinaryListener& Listener)
-{
-	FScopeLock Lock(&ClusterEventListenersCritSec);
-	OnClusterEventBinary.Remove(Listener.GetHandle());
-}
-
-void FDisplayClusterClusterManager::EmitClusterEventJson(const FDisplayClusterClusterEventJson& Event, bool bMasterOnly)
-{
-	FScopeLock Lock(&ClusterEventsJsonCritSec);
-
-	if (CurrentOperationMode == EDisplayClusterOperationMode::Cluster || CurrentOperationMode == EDisplayClusterOperationMode::Editor)
 	{
+		FScopeLock lock(&ClusterEventsCritSec);
+		OnClusterEvent.Add(Listener);
+	}
+}
+
+void FDisplayClusterClusterManager::RemoveClusterEventListener(const FOnClusterEventListener& Listener)
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
+	{
+		FScopeLock lock(&ClusterEventsCritSec);
+		OnClusterEvent.Remove(Listener.GetHandle());
+	}
+}
+
+void FDisplayClusterClusterManager::EmitClusterEvent(const FDisplayClusterClusterEvent& Event, bool MasterOnly)
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
+	{
+		FScopeLock lock(&ClusterEventsCritSec);
+
 		// [Master] Since we receive cluster events asynchronously, we push it to a primary events pool
 		if (IsMaster())
 		{
-			// Generate event ID
-			const FString EventId = FString::Printf(TEXT("%s-%s-%s"), *Event.Category, *Event.Type, *Event.Name);
-			// Make it shared ptr
-			TSharedPtr<FDisplayClusterClusterEventJson> EventPtr = MakeShared<FDisplayClusterClusterEventJson>(Event);
-			// Store event object
-			if (EventPtr->bShouldDiscardOnRepeat)
+			// New category event
+			if (!ClusterEventsPoolMain.Contains(Event.Category))
 			{
-				ClusterEventsJsonPoolMain.Emplace(EventPtr->bIsSystemEvent).Emplace(EventId, EventPtr);
+				ClusterEventsPoolMain.Add(Event.Category);
+				ClusterEventsPoolMain[Event.Category].Add(Event.Type);
+				ClusterEventsPoolMain[Event.Category][Event.Type].Add(Event.Name, Event);
+			}
+			// New type event
+			else if (!ClusterEventsPoolMain[Event.Category].Contains(Event.Type))
+			{
+				ClusterEventsPoolMain[Event.Category].Add(Event.Type);
+				ClusterEventsPoolMain[Event.Category][Event.Type].Add(Event.Name, Event);
 			}
 			else
 			{
-				ClusterEventsJsonNonDiscardedPoolMain.Add(EventPtr);
+				ClusterEventsPoolMain[Event.Category][Event.Type].Add(Event.Name, Event);
 			}
 		}
 		// [Slave] Send event to the master
 		else
 		{
 			// An event will be emitted from a slave node if it's explicitly specified by MasterOnly=false
-			if (!bMasterOnly && Controller)
+			if (!MasterOnly && Controller)
 			{
-				Controller->EmitClusterEventJson(Event);
-			}
-		}
-	}
-}
-
-void FDisplayClusterClusterManager::EmitClusterEventBinary(const FDisplayClusterClusterEventBinary& Event, bool bMasterOnly)
-{
-	FScopeLock Lock(&ClusterEventsBinaryCritSec);
-
-	if (CurrentOperationMode == EDisplayClusterOperationMode::Cluster || CurrentOperationMode == EDisplayClusterOperationMode::Editor)
-	{
-		// [Master] Since we receive cluster events asynchronously, we push it to a primary events pool
-		if (IsMaster())
-		{
-			// Make it shared ptr
-			TSharedPtr<FDisplayClusterClusterEventBinary> EventPtr = MakeShared<FDisplayClusterClusterEventBinary>(Event);
-
-			if (EventPtr->bShouldDiscardOnRepeat)
-			{
-				ClusterEventsBinaryPoolMain.Emplace(EventPtr->bIsSystemEvent).Emplace(EventPtr->EventId, EventPtr);
-			}
-			else
-			{
-				ClusterEventsBinaryNonDiscardedPoolMain.Add(EventPtr);
-			}
-		}
-		// [Slave] Send event to the master
-		else
-		{
-			// An event will be emitted from a slave node if it's explicitly specified by MasterOnly=false
-			if (!bMasterOnly && Controller)
-			{
-				Controller->EmitClusterEventBinary(Event);
+				Controller->EmitClusterEvent(Event);
 			}
 		}
 	}
@@ -391,14 +388,16 @@ void FDisplayClusterClusterManager::EmitClusterEventBinary(const FDisplayCluster
 //////////////////////////////////////////////////////////////////////////////////////////////
 // IPDisplayClusterClusterManager
 //////////////////////////////////////////////////////////////////////////////////////////////
-void FDisplayClusterClusterManager::ExportSyncData(TMap<FString, FString>& SyncData, EDisplayClusterSyncGroup SyncGroup) const
+void FDisplayClusterClusterManager::ExportSyncData(FDisplayClusterMessage::DataType& SyncData, EDisplayClusterSyncGroup SyncGroup) const
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
 	UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Exporting sync data for sync group: %d, items to sync: %d"), (int)SyncGroup, ObjectsToSync[SyncGroup].Num());
 
 	{
-		FScopeLock Lock(&ObjectsToSyncCritSec);
+		FScopeLock lock(&ObjectsToSyncCritSec);
 
-		SyncData.Reset();
+		SyncData.Empty(SyncData.Num() | 0x7);
 
 		for (IDisplayClusterClusterSyncObject* SyncObj : ObjectsToSync[SyncGroup])
 		{
@@ -415,8 +414,10 @@ void FDisplayClusterClusterManager::ExportSyncData(TMap<FString, FString>& SyncD
 	}
 }
 
-void FDisplayClusterClusterManager::ImportSyncData(const TMap<FString, FString>& SyncData, EDisplayClusterSyncGroup SyncGroup)
+void FDisplayClusterClusterManager::ImportSyncData(const FDisplayClusterMessage::DataType& SyncData, EDisplayClusterSyncGroup SyncGroup)
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
 	if (SyncData.Num() > 0)
 	{
 		for (auto it = SyncData.CreateConstIterator(); it; ++it)
@@ -445,126 +446,113 @@ void FDisplayClusterClusterManager::ImportSyncData(const TMap<FString, FString>&
 	}
 }
 
-void FDisplayClusterClusterManager::ExportEventsData(TArray<TSharedPtr<FDisplayClusterClusterEventJson>>& JsonEvents, TArray<TSharedPtr<FDisplayClusterClusterEventBinary>>& BinaryEvents)
+void FDisplayClusterClusterManager::ExportEventsData(FDisplayClusterMessage::DataType& EventsData) const
 {
-	FScopeLock Lock(&ClusterEventsJsonCritSec);
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
 
-	// Clear output containers
-	JsonEvents.Reset();
-	BinaryEvents.Reset();
-
-	// Export all system and non-system json events that have 'discard on repeat' flag
-	for (const auto& it : ClusterEventsJsonPoolOut)
 	{
-		TArray<TSharedPtr<FDisplayClusterClusterEventJson>> JsonEventsToExport;
-		it.Value.GenerateValueArray(JsonEventsToExport);
-		JsonEvents.Append(JsonEventsToExport);
-	}
+		FScopeLock lock(&ClusterEventsCritSec);
 
-	// Export all json events that don't have 'discard on repeat' flag
-	JsonEvents.Append(ClusterEventsJsonNonDiscardedPoolOut);
-
-	// Export all binary events that have 'discard on repeat' flag
-	for (const auto& it : ClusterEventsBinaryPoolOut)
-	{
-		TArray<TSharedPtr<FDisplayClusterClusterEventBinary>> BinaryEventsToExport;
-		it.Value.GenerateValueArray(BinaryEventsToExport);
-		BinaryEvents.Append(BinaryEventsToExport);
-	}
-
-	// Export all binary events that don't have 'discard on repeat' flag
-	BinaryEvents.Append(ClusterEventsBinaryNonDiscardedPoolOut);
-}
-
-void FDisplayClusterClusterManager::ImportEventsData(const TArray<TSharedPtr<FDisplayClusterClusterEventJson>>& JsonEvents, const TArray<TSharedPtr<FDisplayClusterClusterEventBinary>>& BinaryEvents)
-{
-	// Process and fire all JSON events
-	if (JsonEvents.Num() > 0)
-	{
-		FScopeLock LockEvents(&ClusterEventsJsonCritSec);
-		FScopeLock LockListeners(&ClusterEventListenersCritSec);
-
-		for (const auto& it : JsonEvents)
+		// Cache the events data for current frame.
+		if (ClusterEventsPoolOut.Num() != 0)
 		{
-			UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Processing json event %s|%s|%s|s%d|d%d..."), *it->Category, *it->Type, *it->Name, it->bIsSystemEvent ? 1 : 0, it->bShouldDiscardOnRepeat ? 1 : 0);
-			// Fire event
-			OnClusterEventJson.Broadcast(*it);
+			int ObjID = 0;
+			for (const auto& CategorytMap : ClusterEventsPoolOut)
+			{
+				for (const auto& TypeMap : CategorytMap.Value)
+				{
+					for (const auto& NamedEvent : TypeMap.Value)
+					{
+						UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Adding event to sync: %s::%s"), *NamedEvent.Value.Name, *NamedEvent.Value.Type);
+						EventsData.Add(FString::Printf(TEXT("EVENT_%d"), ObjID++), NamedEvent.Value.SerializeToString());
+					}
+				}
+			}
 		}
 	}
+}
 
-	// Process and fire all binary events
-	if (BinaryEvents.Num() > 0)
+void FDisplayClusterClusterManager::ImportEventsData(const FDisplayClusterMessage::DataType& data)
+{
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
+	if (data.Num() > 0)
 	{
-		FScopeLock LockEvents(&ClusterEventsBinaryCritSec);
-		FScopeLock LockListeners(&ClusterEventListenersCritSec);
+		FScopeLock lock(&ClusterEventsCritSec);
 
-		for (const auto& it : BinaryEvents)
+		for (const auto& it : data)
 		{
-			UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Processing binary event %d..."), it->EventId);
+			UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("evt-data: %s=%s"), *it.Key, *it.Value);
+
+			FDisplayClusterClusterEvent ClusterEvent;
+			if (ClusterEvent.DeserializeFromString(it.Value) == false)
+			{
+				UE_LOG(LogDisplayClusterCluster, Warning, TEXT("Couldn't deserialize cluster event: %s=%s"), *it.Key, *it.Value);
+				continue;
+			}
+
 			// Fire event
-			OnClusterEventBinary.Broadcast(*it);
+			OnClusterEvent.Broadcast(ClusterEvent);
 		}
 	}
 }
 
 void FDisplayClusterClusterManager::SyncObjects(EDisplayClusterSyncGroup SyncGroup)
 {
-	if (Controller)
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
+	TMap<FString, FString> SyncData;
+
+	UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Downloading synchronization data (objects)..."));
+	Controller->GetSyncData(SyncData, SyncGroup);
+	UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Downloading finished. Available %d records (objects)."), SyncData.Num());
+
+	// We don't have to import data here unless sync data provider is located on master node
+	if (IsSlave())
 	{
-		TMap<FString, FString> SyncData;
-
-		UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Downloading synchronization data (objects)..."));
-		Controller->GetSyncData(SyncData, SyncGroup);
-		UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Downloading finished. Available %d records (objects)."), SyncData.Num());
-
-		// We don't have to import data here unless sync data provider is located on master node
-		if (IsSlave())
-		{
-			// Perform data load (objects state update)
-			ImportSyncData(SyncData, SyncGroup);
-		}
+		// Perform data load (objects state update)
+		ImportSyncData(SyncData, SyncGroup);
 	}
 }
 
 void FDisplayClusterClusterManager::SyncInput()
 {
-	if (Controller)
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
+	TMap<FString, FString> InputData;
+
+	// Get input data from a provider
+	UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Downloading synchronization data (input)..."));
+	Controller->GetInputData(InputData);
+	UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Downloading finished. Available %d records (input)."), InputData.Num());
+
+	// We don't have to import data here unless input data provider is located on master node
+	if (IsSlave())
 	{
-		TMap<FString, FString> InputData;
-
-		// Get input data from a provider
-		UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Downloading synchronization data (input)..."));
-		Controller->GetInputData(InputData);
-		UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Downloading finished. Available %d records (input)."), InputData.Num());
-
-		// We don't have to import data here unless input data provider is located on master node
-		if (IsSlave())
-		{
-			// Perform data load (objects state update)
-			GDisplayCluster->GetPrivateInputMgr()->ImportInputData(InputData);
-		}
+		// Perform data load (objects state update)
+		GDisplayCluster->GetPrivateInputMgr()->ImportInputData(InputData);
 	}
 }
 
 void FDisplayClusterClusterManager::SyncEvents()
 {
-	if (Controller)
-	{
-		TArray<TSharedPtr<FDisplayClusterClusterEventJson>>   JsonEvents;
-		TArray<TSharedPtr<FDisplayClusterClusterEventBinary>> BinaryEvents;
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
 
-		// Get events data from a provider
-		UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Downloading synchronization data (events)..."));
-		Controller->GetEventsData(JsonEvents, BinaryEvents);
-		UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Downloading finished. Available events: json=%d binary=%d"), JsonEvents.Num(), BinaryEvents.Num());
+	TMap<FString, FString> EventsData;
 
-		// Import and process them
-		ImportEventsData(JsonEvents, BinaryEvents);
-	}
+	// Get events data from a provider
+	UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Downloading synchronization data (events)..."));
+	Controller->GetEventsData(EventsData);
+	UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Downloading finished. Available %d records (events)."), EventsData.Num());
+
+	// Import and process them
+	ImportEventsData(EventsData);
 }
 
 void FDisplayClusterClusterManager::ProvideNativeInputData(const TMap<FString, FString>& NativeInputData)
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
 	UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("SyncNativeInput - data available trigger. NativeInput records amount %d"), NativeInputData.Num());
 
 	NativeInputDataCache = NativeInputData;
@@ -573,6 +561,8 @@ void FDisplayClusterClusterManager::ProvideNativeInputData(const TMap<FString, F
 
 void FDisplayClusterClusterManager::SyncNativeInput(TMap<FString, FString>& NativeInputData)
 {
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
 	if (IsMaster())
 	{
 		UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Returning native input data, records amount %d"), NativeInputDataCache.Num());
@@ -584,10 +574,7 @@ void FDisplayClusterClusterManager::SyncNativeInput(TMap<FString, FString>& Nati
 	else
 	{
 		UE_LOG(LogDisplayClusterCluster, Verbose, TEXT("Downloading native input data..."));
-		if (Controller)
-		{
-			Controller->GetNativeInputData(NativeInputData);
-		}
+		Controller->GetNativeInputData(NativeInputData);
 	}
 }
 
@@ -595,30 +582,43 @@ void FDisplayClusterClusterManager::SyncNativeInput(TMap<FString, FString>& Nati
 //////////////////////////////////////////////////////////////////////////////////////////////
 // FDisplayClusterClusterManager
 //////////////////////////////////////////////////////////////////////////////////////////////
-TUniquePtr<IDisplayClusterNodeController> FDisplayClusterClusterManager::CreateController() const
+FDisplayClusterClusterManager::TController FDisplayClusterClusterManager::CreateController() const
 {
-	UE_LOG(LogDisplayClusterCluster, Log, TEXT("Current operation mode: %s"), *DisplayClusterTypesConverter::template ToString(CurrentOperationMode));
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
+	UE_LOG(LogDisplayClusterCluster, Log, TEXT("Current operation mode: %s"), *FDisplayClusterTypesConverter::template ToString(CurrentOperationMode));
 
 	// Instantiate appropriate controller depending on operation mode and cluster role
-	FDisplayClusterNodeCtrlBase* NewController = nullptr;
+	FDisplayClusterNodeCtrlBase* pController = nullptr;
 	if (CurrentOperationMode == EDisplayClusterOperationMode::Cluster)
 	{
-		// Master or slave
-		if (ClusterNodeId.Equals(GDisplayCluster->GetPrivateConfigMgr()->GetMasterNodeId(), ESearchCase::IgnoreCase))
+		FDisplayClusterConfigClusterNode nodeCfg;
+		if (GDisplayCluster->GetPrivateConfigMgr()->GetClusterNode(ClusterNodeId, nodeCfg) == false)
+		{
+			UE_LOG(LogDisplayClusterCluster, Error, TEXT("Configuration data for node %s not found"), *ClusterNodeId);
+			return nullptr;
+		}
+
+		if (nodeCfg.IsMaster)
 		{
 			UE_LOG(LogDisplayClusterCluster, Log, TEXT("Instantiating cluster master controller..."));
-			NewController = new FDisplayClusterClusterNodeCtrlMaster(FString("[CTRL-M]"), ClusterNodeId);
+			pController = new FDisplayClusterClusterNodeCtrlMaster(FString("[CTRL-M]"), ClusterNodeId);
 		}
 		else
 		{
 			UE_LOG(LogDisplayClusterCluster, Log, TEXT("Instantiating cluster slave controller..."));
-			NewController = new FDisplayClusterClusterNodeCtrlSlave(FString("[CTRL-S]"), ClusterNodeId);
+			pController = new FDisplayClusterClusterNodeCtrlSlave(FString("[CTRL-S]"), ClusterNodeId);
 		}
+	}
+	else if (CurrentOperationMode == EDisplayClusterOperationMode::Standalone)
+	{
+		UE_LOG(LogDisplayClusterCluster, Log, TEXT("Instantiating standalone controller"));
+		pController = new FDisplayClusterNodeCtrlStandalone(FString("[CTRL-STNDA]"), FString("standalone"));
 	}
 	else if (CurrentOperationMode == EDisplayClusterOperationMode::Editor)
 	{
 		UE_LOG(LogDisplayClusterCluster, Log, TEXT("Instantiating editor controller..."));
-		NewController = new FDisplayClusterClusterNodeCtrlEditor(FString("[CTRL-EDTR]"), FString("editor"));
+		pController = new FDisplayClusterClusterNodeCtrlEditor(FString("[CTRL-EDTR]"), FString("editor"));
 	}
 	else if (CurrentOperationMode == EDisplayClusterOperationMode::Disabled)
 	{
@@ -632,23 +632,71 @@ TUniquePtr<IDisplayClusterNodeController> FDisplayClusterClusterManager::CreateC
 	}
 
 	// Return the controller
-	return TUniquePtr<IDisplayClusterNodeController>(NewController);
+	return TController(pController);
 }
 
-void FDisplayClusterClusterManager::OnClusterEventJsonHandler(const FDisplayClusterClusterEventJson& Event)
+bool FDisplayClusterClusterManager::GetResolvedNodeId(FString& id) const
 {
-	FScopeLock Lock(&ClusterEventListenersCritSec);
-	for (auto Listener : ClusterEventListeners)
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
+	TArray<TSharedPtr<FInternetAddr>> addrs;
+	if (!ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->GetLocalAdapterAddresses(addrs))
 	{
-		Listener->Execute_OnClusterEventJson(Listener.GetObject(), Event);
+		UE_LOG(LogDisplayClusterCluster, Error, TEXT("Couldn't get local addresses list. Cannot find node ID by its address."));
+		FDisplayClusterAppExit::ExitApplication(FDisplayClusterAppExit::ExitType::KillImmediately, FString("Cluster manager init error"));
+		return false;
 	}
+
+	if (addrs.Num() <= 0)
+	{
+		UE_LOG(LogDisplayClusterCluster, Error, TEXT("No local addresses found"));
+		FDisplayClusterAppExit::ExitApplication(FDisplayClusterAppExit::ExitType::KillImmediately, FString("Cluster manager init error"));
+		return false;
+	}
+
+	const TArray<FDisplayClusterConfigClusterNode> cnodes = GDisplayCluster->GetPrivateConfigMgr()->GetClusterNodes();
+
+	// Look for associated node in config
+	const FDisplayClusterConfigClusterNode* const pNode = cnodes.FindByPredicate([addrs](const FDisplayClusterConfigClusterNode& node)
+	{
+		for (auto addr : addrs)
+		{
+			const FIPv4Endpoint ep(addr);
+			const FString epaddr = ep.Address.ToString();
+			UE_LOG(LogDisplayClusterCluster, Log, TEXT("Comparing addresses: %s - %s"), *epaddr, *node.Addr);
+
+			//@note: don't add "127.0.0.1" or "localhost" here. There will be a bug. It has been proved already.
+			if (epaddr == node.Addr)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	});
+
+	if (!pNode)
+	{
+		UE_LOG(LogDisplayClusterCluster, Error, TEXT("Couldn't find any local address in config file"));
+		FDisplayClusterAppExit::ExitApplication(FDisplayClusterAppExit::ExitType::KillImmediately, FString("Cluster manager init error"));
+		return false;
+	}
+
+	// Ok, we found the node ID by address (this won't work if you want to run several cluster nodes on the same address)
+	id = pNode->Id;
+	return true;
 }
 
-void FDisplayClusterClusterManager::OnClusterEventBinaryHandler(const FDisplayClusterClusterEventBinary& Event)
+// This is cluster events root dispatcher. It forwards events to both BP and C++ event handlers.
+void FDisplayClusterClusterManager::OnClusterEventHandler(const FDisplayClusterClusterEvent& Event)
 {
-	FScopeLock Lock(&ClusterEventListenersCritSec);
-	for (auto Listener : ClusterEventListeners)
+	DISPLAY_CLUSTER_FUNC_TRACE(LogDisplayClusterCluster);
+
 	{
-		Listener->Execute_OnClusterEventBinary(Listener.GetObject(), Event);
+		FScopeLock lock(&ClusterEventsCritSec);
+		for (auto Listener : ClusterEventListeners)
+		{
+			Listener->Execute_OnClusterEvent(Listener.GetObject(), Event);
+		}
 	}
 }

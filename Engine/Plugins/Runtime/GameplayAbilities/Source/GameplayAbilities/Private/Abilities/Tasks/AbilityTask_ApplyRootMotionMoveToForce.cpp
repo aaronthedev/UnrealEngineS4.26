@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Abilities/Tasks/AbilityTask_ApplyRootMotionMoveToForce.h"
 #include "GameFramework/RootMotionSource.h"
@@ -65,7 +65,7 @@ void UAbilityTask_ApplyRootMotionMoveToForce::SharedInitAndApply()
 			}
 
 			ForceName = ForceName.IsNone() ? FName("AbilityTaskApplyRootMotionMoveToForce") : ForceName;
-			TSharedPtr<FRootMotionSource_MoveToForce> MoveToForce = MakeShared<FRootMotionSource_MoveToForce>();
+			FRootMotionSource_MoveToForce* MoveToForce = new FRootMotionSource_MoveToForce();
 			MoveToForce->InstanceName = ForceName;
 			MoveToForce->AccumulateMode = ERootMotionAccumulateMode::Override;
 			MoveToForce->Settings.SetFlag(ERootMotionSourceSettingsFlags::UseSensitiveLiftoffCheck);
@@ -169,7 +169,7 @@ void UAbilityTask_ApplyRootMotionMoveToForce::OnDestroy(bool AbilityIsEnding)
 
 		if (bSetNewMovementMode)
 		{
-			MovementComponent->SetMovementMode(PreviousMovementMode);
+			MovementComponent->SetMovementMode(NewMovementMode);
 		}
 	}
 

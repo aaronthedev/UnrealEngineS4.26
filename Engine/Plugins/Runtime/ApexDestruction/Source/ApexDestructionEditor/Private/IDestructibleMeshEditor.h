@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,9 +13,7 @@ class IDestructibleMeshEditor : public FAssetEditorToolkit
 
 public:
 	/** Returns the UDestructibleMesh being edited. */
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	virtual UDestructibleMesh* GetDestructibleMesh() { return NULL; }
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 	/** Returns the current preview depth selected in the UI */
 	virtual int32 GetCurrentPreviewDepth() const { return 0; }

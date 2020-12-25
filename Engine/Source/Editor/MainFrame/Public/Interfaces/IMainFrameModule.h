@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -129,20 +129,13 @@ public:
 	virtual void SetLevelNameForWindowTitle(const FString& InLevelFileName) = 0;
 
 	/**
-	 * Overrides the title of the application that's displayed in the title bar area and other locations
-	 *
-	 * @param	NewOverriddenApplicationTitle	The text to be displayed in the window title, or empty to use the application's default text
-	 */
-	virtual void SetApplicationTitleOverride(const FText& NewOverriddenApplicationTitle) = 0;
-
-	/**
 	 * Returns a friendly string name for the currently loaded persistent level.
 	 *
 	 * @return Name of the loaded level.
 	 */
 	virtual FString GetLoadedLevelName() const = 0;
 
-	virtual TSharedRef<FUICommandList>& GetMainFrameCommandBindings( ) = 0;
+	virtual const TSharedRef<FUICommandList>& GetMainFrameCommandBindings( ) = 0;
 
 	/**
 	 * Gets the MRU/Favorites list
@@ -177,16 +170,6 @@ public:
 	DECLARE_EVENT_TwoParams(IMainFrameModule, FMainFrameSDKNotInstalled, const FString&, const FString&);
 	virtual FMainFrameSDKNotInstalled& OnMainFrameSDKNotInstalled( ) = 0;
 	virtual void BroadcastMainFrameSDKNotInstalled(const FString& PlatformName, const FString& DocLink) = 0;
-
-	/**
-	 * Enable external control of when main frame is shown
-	 */
-	virtual void EnableDelayedShowMainFrame() = 0;
-
-	/**
-	 * Show main frame now if it was delayed and not shown yet
-	 */
-	virtual void ShowDelayedMainFrame() = 0;
 
 public:
 

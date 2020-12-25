@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -40,7 +40,7 @@ public:
 	{
 		if (OtherPayload->PayloadType == PayloadType)
 		{
-			return this->DocumentID.HasSameIndexAndSerialNumber(StaticCastSharedRef<FTabPayload_UObject>(OtherPayload)->DocumentID);
+			return this->DocumentID == FTabPayload_UObject::CastChecked<UObject>(OtherPayload);
 		}
 
 		return false;

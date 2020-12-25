@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/GridPanel.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
@@ -41,7 +41,7 @@ void UGridPanel::OnSlotAdded(UPanelSlot* InSlot)
 void UGridPanel::OnSlotRemoved(UPanelSlot* InSlot)
 {
 	// Remove the widget from the live slot if it exists.
-	if ( MyGridPanel.IsValid() && InSlot->Content)
+	if ( MyGridPanel.IsValid() )
 	{
 		TSharedPtr<SWidget> Widget = InSlot->Content->GetCachedWidget();
 		if ( Widget.IsValid() )

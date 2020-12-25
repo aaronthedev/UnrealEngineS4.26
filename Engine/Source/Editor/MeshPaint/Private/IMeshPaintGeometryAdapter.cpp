@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IMeshPaintGeometryAdapter.h"
 
@@ -10,7 +10,6 @@
 #include "Materials/Material.h"
 #include "Materials/MaterialExpressionTextureCoordinate.h"
 #include "Materials/MaterialExpressionTextureSampleParameter.h"
-#include "TexturePaintHelpers.h"
 
 //////////////////////////////////////////////////////////////////////////
 // IMeshPaintGeometryAdapter
@@ -57,8 +56,7 @@ void IMeshPaintGeometryAdapter::DefaultQueryPaintableTextures(int32 MaterialInde
 				TextureBase->Texture != NULL &&
 				!TextureBase->Texture->IsNormalMap() && 
 				!TextureBase->Texture->VirtualTextureStreaming &&
-				!TextureBase->Texture->HasHDRSource() && // Currently HDR textures are not supported to paint on.
-				(TextureBase->Texture->Source.GetBytesPerPixel() <= TexturePaintHelpers::GetMaxSupportedBytesPerPixelForPainting())) // Textures' sources must fit in FColor struct to be supported.
+				!TextureBase->Texture->HasHDRSource()) // Currently HDR textures are not supported to paint on 
 			{
 				// Default UV channel to index 0. 
 				PaintableTexture = FPaintableTexture(TextureBase->Texture, 0);

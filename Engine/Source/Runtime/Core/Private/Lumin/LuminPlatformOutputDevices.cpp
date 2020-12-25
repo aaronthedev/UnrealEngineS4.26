@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 // Copyright 2017 Magic Leap, Inc. All Rights Reserved.
 
 #include "Lumin/LuminPlatformOutputDevices.h"
@@ -19,7 +19,7 @@ void FLuminOutputDevices::SetupOutputDevices()
 {
 	check(GLog);
 
-	InitDefaultOutputDeviceFile();
+	CachedAbsoluteFilename[0] = 0;
 
 	GLog->AddOutputDevice(FPlatformOutputDevices::GetLog());
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,13 +8,11 @@
 #include "InputState.h"
 #include "InteractiveToolManager.h"
 #include "EdModeInteractiveToolsContext.h"
-#include "ModelingToolsActions.h"
 
 
 class FEditorComponentSourceFactory;
 class FEditorToolAssetAPI;
 class FUICommandList;
-class FStylusStateTracker;		// for stylus events
 
 class FModelingToolsEditorMode : public FEdMode
 {
@@ -30,23 +28,21 @@ public:
 
 	virtual void Tick(FEditorViewportClient* ViewportClient, float DeltaTime) override;
 	virtual void Render(const FSceneView* View, FViewport* Viewport, FPrimitiveDrawInterface* PDI) override;
-	virtual void DrawHUD(FEditorViewportClient* ViewportClient,FViewport* Viewport,const FSceneView* View,FCanvas* Canvas) override;
-
 	virtual bool UsesToolkits() const override;
 
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
 
+	// these disable the standard gizmo, which is probably want we want in
+	// these tools as we can't hit-test the standard gizmo...
+	virtual bool AllowWidgetMove() override;
 	virtual bool ShouldDrawWidget() const override;
 	virtual bool UsesTransformWidget() const override;
 
 	virtual void ActorSelectionChangeNotify() override;
 
-	virtual bool ProcessEditDelete() override;
-	virtual bool ProcessEditCut() override;
+	virtual bool ProcessEditDelete();
 
 	virtual bool CanAutoSave() const override;
-
-	virtual bool GetPivotForOrbit(FVector& OutPivot) const;
 
 	/*
 	 * focus events
@@ -130,6 +126,7 @@ public:
 	// always called on mouse-up
 	virtual bool EndTracking(FEditorViewportClient* InViewportClient, FViewport* InViewport) override;
 
+
 	//////////////////
 	// End of FEdMode interface
 	//////////////////
@@ -160,10 +157,9 @@ protected:
 	/** Command list lives here so that the key bindings on the commands can be processed in the viewport. */
 	TSharedPtr<FUICommandList> UICommandList;
 
-	TUniquePtr<FStylusStateTracker> StylusStateTracker;
 
-	void ModelingModeShortcutRequested(EModelingModeActionCommands Command);
-	void FocusCameraAtCursorHotkey();
+public:
+	/** Cached pointer to the viewport world interaction object we're using to interact with mesh elements */
+	class UViewportWorldInteraction* ViewportWorldInteraction;
 
-	void ConfigureRealTimeViewportsOverride(bool bEnable);
 };

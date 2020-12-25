@@ -19,12 +19,14 @@
 		"Mac",
 		"Win64"
 	],
-	"Modules": [
+	"Modules" :
+	[
 		{
-			"Name": "MagicLeap",
-			"Type": "Runtime",
-			"LoadingPhase": "PostConfigInit",
-			"WhitelistPlatforms": [
+			"Name" : "MagicLeap",
+			"Type" : "Runtime",
+			"LoadingPhase" : "PostConfigInit",
+			"WhitelistPlatforms" :
+			[
 				"Win64",
 				"Mac",
 				"Lumin"
@@ -41,7 +43,7 @@
 			]
 		},
 		{
-			"Name": "MagicLeapARPinImpl",
+			"Name": "MagicLeapARPin",
 			"Type": "Runtime",
 			"LoadingPhase": "PreDefault",
 			"WhitelistPlatforms": [
@@ -51,8 +53,8 @@
 			]
 		},
 		{
-			"Name": "MagicLeapAudio",
-			"Type": "Runtime",
+			"Name" : "MagicLeapAudio",
+			"Type" : "Runtime",
 			"WhitelistPlatforms": [
 				"Win64",
 				"Mac",
@@ -81,35 +83,72 @@
 			"Name": "MagicLeapEyeTracker",
 			"Type": "Runtime",
 			"LoadingPhase": "PreDefault",
-			"WhitelistPlatforms": [
+			"WhitelistPlatforms": 
+			[
 				"Win64",
 				"Mac",
 				"Lumin"
 			]
 		},
 		{
-			"Name": "MagicLeapHandTracking",
+			"Name" : "MagicLeapHandMeshing",
+			"Type" : "Runtime",
+			"LoadingPhase" : "PreDefault",
+			"WhitelistPlatforms" :
+			[
+				"Win64",
+				"Mac",
+				"Lumin"
+			]
+		},
+		{
+			"Name" : "MagicLeapHandTracking",
+			"Type" : "Runtime",
+			"LoadingPhase" : "PreDefault",
+			"WhitelistPlatforms" :
+			[
+				"Win64",
+				"Mac",
+				"Lumin"
+			]
+		},
+		{
+			"Name" : "MagicLeapImageTracker",
+			"Type" : "Runtime",
+			"LoadingPhase" : "PreDefault",
+			"WhitelistPlatforms" :
+			[
+				"Win64",
+				"Mac",
+				"Lumin"
+			]
+		},
+		{
+			"Name": "MagicLeapSecureStorage",
 			"Type": "Runtime",
 			"LoadingPhase": "PreDefault",
-			"WhitelistPlatforms": [
+			"WhitelistPlatforms": 
+			[
 				"Win64",
 				"Mac",
 				"Lumin"
 			]
 		},
 		{
-			"Name": "MagicLeapHelperOpenGL",
-			"Type": "Runtime",
-			"WhitelistPlatforms": [
+			"Name" : "MagicLeapHelperOpenGL",
+			"Type" : "Runtime",
+			"WhitelistPlatforms" :
+			[
 				"Win64",
 				"Mac",
 				"Lumin"
 			]
 		},
 		{
-			"Name": "MagicLeapHelperVulkan",
-			"Type": "Runtime",
-			"WhitelistPlatforms": [
+			"Name" : "MagicLeapHelperVulkan",
+			"Type" : "Runtime",
+			"WhitelistPlatforms" :
+			[
 				"Win64",
 				"Mac",
 				"Lumin"
@@ -119,17 +158,8 @@
 			"Name": "MagicLeapIdentity",
 			"Type": "Runtime",
 			"LoadingPhase": "PreDefault",
-			"WhitelistPlatforms": [
-				"Win64",
-				"Mac",
-				"Lumin"
-			]
-		},
-		{
-			"Name": "MagicLeapImageTracker",
-			"Type": "Runtime",
-			"LoadingPhase": "PreDefault",
-			"WhitelistPlatforms": [
+			"WhitelistPlatforms": 
+			[
 				"Win64",
 				"Mac",
 				"Lumin"
@@ -154,40 +184,12 @@
 				"Mac",
 				"Lumin"
 			]
-		},
-		{
-			"Name": "MagicLeapSecureStorage",
-			"Type": "Runtime",
-			"LoadingPhase": "PreDefault",
-			"WhitelistPlatforms": [
-				"Win64",
-				"Mac",
-				"Lumin"
-			]
-		},
-		{
-			"Name": "MagicLeapHandMeshing",
-			"Type": "Runtime",
-			"LoadingPhase": "PreDefault",
-			"WhitelistPlatforms": [
-				"Win64",
-				"Mac",
-				"Lumin"
-			]
 		}
 	],
 	"Plugins":
 	[
 		{
 			"Name": "MLSDK",
-			"Enabled": true
-		},
-		{
-			"Name": "MagicLeapPassableWorld",
-			"Enabled": true
-		},
-		{
-			"Name": "MagicLeapLightEstimation",
 			"Enabled": true
 		}
 	]

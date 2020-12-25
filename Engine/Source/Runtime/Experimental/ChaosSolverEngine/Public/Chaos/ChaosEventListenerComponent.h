@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -35,6 +35,11 @@ public:
 
 
 protected:
+
+	const Chaos::FPhysicsSolver* GetSolver() const;
+	const TSharedPtr<FPhysScene_Chaos> GetPhysicsScene() const;
+
+	const AChaosSolverActor* GetSolverActor() const;
 
 	/** Used to know when the physics thread has updated the collision info for processing on the game thread */
 	float LastCollisionTickTime;

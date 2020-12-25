@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,7 @@
 
 #include "Blueprint/UserWidget.h"
 #include "Engine/AssetUserData.h"
-#include "IRemoteSessionRole.h"
+#include "RemoteSessionRole.h"
 #include "SlateFwd.h"
 #include "SlateOptMacros.h"
 #include "TickableEditorObject.h"
@@ -19,7 +19,6 @@
 #include "SRemoteSessionStream.generated.h"
 
 struct FAssetData;
-struct FCanDeleteAssetResult;
 class FMenuBuilder;
 class FWidgetRenderer;
 class IDetailsView;
@@ -68,7 +67,7 @@ public:
 	URemoteSessionStreamWidgetUserData();
 
 	UPROPERTY(EditAnywhere, Category = "Remote Session")
-	TSubclassOf<UUserWidget> WidgetClass;
+	UWidgetBlueprint* WidgetBlueprint;
 
 	UPROPERTY(EditAnywhere, Category = "Remote Session")
 	FVector2D Size;
@@ -126,15 +125,13 @@ private:
 
 	void ResetUObject();
 
-	void OnRemoteSessionChannelChange(IRemoteSessionRole* Role, TWeakPtr<IRemoteSessionChannel> Channel, ERemoteSessionChannelChange Change);
-	void OnImageChannelCreated(TWeakPtr<IRemoteSessionChannel> Instance);
-	void OnInputChannelCreated(TWeakPtr<IRemoteSessionChannel> Instance);
+	void OnInputChannelCreated(TWeakPtr<IRemoteSessionChannel> Instance, const FString& Type, ERemoteSessionChannelMode Mode);
+	void OnImageChannelCreated(TWeakPtr<IRemoteSessionChannel> Instance, const FString& Type, ERemoteSessionChannelMode Mode);
 
 	void OnBlueprintPreCompile(UBlueprint* Blueprint);
 	void OnPrepareToCleanseEditorObject(UObject* Object);
 	void HandleAssetRemoved(const FAssetData& AssetData);
 	void OnMapChanged(UWorld* World, EMapChangeType ChangeType);
-	void CanDeleteAssets(const TArray<UObject*>& InAssetsToDelete, FCanDeleteAssetResult& CanDeleteResult);
 
 private:
 	TSharedPtr<IDetailsView> DetailView;
@@ -147,13 +144,14 @@ private:
 	UTextureRenderTarget2D* RenderTarget2D;
 	UUserWidget* UserWidget;
 	UWorld* WidgetWorld;
+	UWidgetBlueprint* WidgetBlueprint;
 	URemoteSessionMediaOutput* MediaOutput;
 	URemoteSessionMediaCapture* MediaCapture;
 	//~ End GC by AddReferencedObjects
 
 	TSharedPtr<IRemoteSessionUnmanagedRole> RemoteSessionHost;
 	TSharedPtr<SVirtualWindow> VirtualWindow;
-	FWidgetRenderer* WidgetRenderer;
+	TUniquePtr<FWidgetRenderer> WidgetRenderer;
 	TWeakPtr<ILevelViewport> ActiveLevelViewport;
 	FVector2D WidgetSize;
 

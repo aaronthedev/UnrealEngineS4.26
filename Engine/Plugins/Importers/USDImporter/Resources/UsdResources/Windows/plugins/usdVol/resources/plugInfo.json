@@ -47,7 +47,7 @@
                     }
                 }
             }, 
-            "LibraryPath": "../../../../../Binaries/Win64/usdVol.dll", 
+            "LibraryPath": "../../../../../Binaries/Win64/libusdVol.dll", 
             "Name": "usdVol", 
             "ResourcePath": "resources", 
             "Root": "..", 

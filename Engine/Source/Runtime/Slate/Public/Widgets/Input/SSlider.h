@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -225,9 +225,6 @@ protected:
 
 	// Holds the initial cursor in case a custom cursor has been specified, so we can restore it after dragging the slider
 	EMouseCursor::Type CachedCursor;
-
-	/** The location in screenspace the slider was pressed by a touch */
-	FVector2D PressedScreenSpaceTouchDownPosition = FVector2D(0, 0);
 
 	/** Holds the amount to adjust the value by when using a controller or keyboard */
 	TAttribute<float> StepSize;

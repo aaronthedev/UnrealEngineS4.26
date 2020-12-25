@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	CompositionLighting.h: The center for all deferred lighting activities.
@@ -8,9 +8,6 @@
 
 #include "CoreMinimal.h"
 #include "SceneRendering.h"
-#include "PostProcessDeferredDecals.h"
-
-class FPersistentUniformBuffers;
 
 /**
  * The center for all screen space processing activities (e.g. G-buffer manipulation, lighting).
@@ -18,32 +15,21 @@ class FPersistentUniformBuffers;
 class FCompositionLighting
 {
 public:
-	void ProcessBeforeBasePass(
-		FRDGBuilder& GraphBuilder,
-		FPersistentUniformBuffers& UniformBuffers,
-		const FViewInfo& View,
-		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer,
-		bool bDBuffer,
-		uint32 SSAOLevels);
+	void ProcessBeforeBasePass(FRHICommandListImmediate& RHICmdList, FViewInfo& View, bool bDBuffer, uint32 SSAOLevels);
 
-	void ProcessAfterBasePass(
-		FRDGBuilder& GraphBuilder,
-		FPersistentUniformBuffers& UniformBuffers,
-		const FViewInfo& View,
-		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer);
+	void ProcessAfterBasePass(FRHICommandListImmediate& RHICmdList,  FViewInfo& View);
 
 	// only call if LPV is enabled
 	void ProcessLpvIndirect(FRHICommandListImmediate& RHICmdList, FViewInfo& View);
 
-	bool CanProcessAsyncSSAO(const TArray<FViewInfo>& Views);
-
-	void ProcessAsyncSSAO(
-		FRDGBuilder& GraphBuilder,
-		const TArray<FViewInfo>& Views,
-		TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTexturesUniformBuffer);
+	bool CanProcessAsyncSSAO(TArray<FViewInfo>& Views);
+	void ProcessAsyncSSAO(FRHICommandListImmediate& RHICmdList, TArray<FViewInfo>& Views);
+	void GfxWaitForAsyncSSAO(FRHICommandListImmediate& RHICmdList);
 
 private:
-	FDeferredDecalPassTextures DecalPassTextures;
+	void PrepareAsyncSSAO(FRHICommandListImmediate& RHICmdList, TArray<FViewInfo>& Views);
+	void FinishAsyncSSAO(FRHICommandListImmediate& RHICmdList);
+	FComputeFenceRHIRef AsyncSSAOFence;
 };
 
 /** The global used for deferred lighting. */

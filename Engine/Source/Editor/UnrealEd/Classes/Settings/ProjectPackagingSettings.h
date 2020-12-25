@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -173,10 +173,6 @@ public:
 	UPROPERTY(config, EditAnywhere, Category=Packaging)
 	bool UsePakFile;
 
-	/** If enabled, all packages will be put into one or more container files. */
-	UPROPERTY(config, EditAnywhere, Category = Packaging)
-	bool bUseIoStore;
-
 	/** 
 	 * If enabled, will generate pak file chunks.  Assets can be assigned to chunks in the editor or via a delegate (See ShooterGameDelegates.cpp). 
 	 * Can be used for streaming installs (PS4 Playgo, XboxOne Streaming Install, etc)
@@ -259,15 +255,6 @@ public:
 	bool bShareMaterialShaderCode;
 
 	/** 
-	 * With this option off, the shader code will be stored in the library essentially in a random order,
-	 * squarely the same in which the assets were loaded by the cooker. Enabling this will sort the shaders
-	 * by their hash, which makes the shader library more similar between the builds which can help patching, but
-	 * can adversely affect loading times.
-	 */
-	UPROPERTY(config, EditAnywhere, Category = Packaging, meta = (EditCondition = "bShareMaterialShaderCode"))
-	bool bDeterministicShaderCodeOrder;
-
-	/**
 	 * By default shader shader code gets saved into individual platform agnostic files,
 	 * enabling this option will use the platform-specific library format if and only if one is available
 	 * This will reduce overall package size but might increase loading time
@@ -293,14 +280,6 @@ public:
 	/** Cultures whose data should be cooked, staged, and packaged. */
 	UPROPERTY(config, EditAnywhere, Category=Packaging, AdvancedDisplay, meta=(DisplayName="Localizations to Package"))
 	TArray<FString> CulturesToStage;
-
-	/** List of localization targets that should be chunked during cooking (if using chunks) */
-	UPROPERTY(config, EditAnywhere, Category=Packaging, AdvancedDisplay)
-	TArray<FString> LocalizationTargetsToChunk;
-
-	/** The chunk ID that should be used as the catch-all chunk for any non-asset localized strings */
-	UPROPERTY(config, EditAnywhere, Category=Packaging, AdvancedDisplay)
-	int32 LocalizationTargetCatchAllChunkId = 0;
 
 	/**
 	 * Cook all things in the project content directory
@@ -399,25 +378,17 @@ public:
 
 	/**
 	 * Directories containing .uasset files that should always be cooked regardless of whether they're referenced by anything in your project
-	 * These paths are stored either as a full package path (e.g. /Game/Folder, /Engine/Folder, /PluginName/Folder) or as a relative package path from /Game
+	 * These paths are stored relative to the project root so they can start with /game, /engine, or /pluginname
 	 */
 	UPROPERTY(config, EditAnywhere, Category=Packaging, AdvancedDisplay, meta=(DisplayName="Additional Asset Directories to Cook", LongPackageName))
 	TArray<FDirectoryPath> DirectoriesToAlwaysCook;
 
 	/**
 	 * Directories containing .uasset files that should never be cooked even if they are referenced by your project
-	 * These paths are stored either as a full package path (e.g. /Game/Folder, /Engine/Folder, /PluginName/Folder) or as a relative package path from /Game
+	 * These paths are stored relative to the project root so they can start with /game, /engine, or /pluginname
 	 */
 	UPROPERTY(config, EditAnywhere, Category = Packaging, AdvancedDisplay, meta = (DisplayName = "Directories to never cook", LongPackageName))
 	TArray<FDirectoryPath> DirectoriesToNeverCook;
-
-	/**
-	 * Directories containing .uasset files that are for editor testing purposes and should not be included in
-	 * enumerations of all packages in a root directory, because they will cause errors on load
-	 * These paths are stored either as a full package path (e.g. /Game/Folder, /Engine/Folder, /PluginName/Folder) or as a relative package path from /Game
-	 */
-	UPROPERTY(config, EditAnywhere, Category = Packaging, AdvancedDisplay, meta = (DisplayName = "Test directories to not search", LongPackageName))
-	TArray<FDirectoryPath> TestDirectoriesToNotSearch;
 
 	/**
 	 * Directories containing files that should always be added to the .pak file (if using a .pak file; otherwise they're copied as individual files)
@@ -454,6 +425,12 @@ public:
 private:
 	/** Helper array used to mirror Blueprint asset selections across edits */
 	TArray<FFilePath> CachedNativizeBlueprintAssets;
+
+	UPROPERTY(config)
+	bool bNativizeBlueprintAssets_DEPRECATED;
+
+	UPROPERTY(config)
+	bool bNativizeOnlySelectedBlueprints_DEPRECATED;
 	
 public:
 
@@ -461,7 +438,7 @@ public:
 
 	virtual void PostInitProperties() override;
 	virtual void PostEditChangeProperty( struct FPropertyChangedEvent& PropertyChangedEvent ) override;
-	virtual bool CanEditChange( const FProperty* InProperty ) const override;
+	virtual bool CanEditChange( const UProperty* InProperty ) const override;
 
 	/** Adds the given Blueprint asset to the exclusive nativization list. */
 	bool AddBlueprintAssetToNativizationList(const class UBlueprint* InBlueprint);

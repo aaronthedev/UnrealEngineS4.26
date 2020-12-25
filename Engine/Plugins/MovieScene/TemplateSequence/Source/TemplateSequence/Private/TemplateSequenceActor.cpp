@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TemplateSequenceActor.h"
 #include "TemplateSequence.h"
-#include "MovieSceneSequenceTickManager.h"
 #include "Engine/World.h"
 #include "Logging/MessageLog.h"
 #include "Misc/UObjectToken.h"
@@ -50,7 +49,7 @@ void ATemplateSequenceActor::PostInitializeComponents()
 
 void ATemplateSequenceActor::BeginPlay()
 {
-	UMovieSceneSequenceTickManager::Get(this)->SequenceActors.Add(this);
+	GetWorld()->LevelSequenceActors.Add(this);
 
 	Super::BeginPlay();
 	
@@ -68,7 +67,7 @@ void ATemplateSequenceActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 		SequencePlayer->Stop();
 	}
 
-	UMovieSceneSequenceTickManager::Get(this)->SequenceActors.Remove(this);
+	GetWorld()->LevelSequenceActors.Remove(this);
 
 	Super::EndPlay(EndPlayReason);
 }
@@ -171,10 +170,11 @@ void ATemplateSequenceActor::SetBinding(AActor* Actor)
 	UTemplateSequence* TemplateSequenceObject = GetSequence();
 	if (SequencePlayer && TemplateSequenceObject)
 	{
-		const FGuid RootBindingID = TemplateSequenceObject->GetRootObjectBindingID();
-		if (RootBindingID.IsValid())
+		UMovieScene* MovieScene = TemplateSequenceObject->GetMovieScene();
+		if (MovieScene != nullptr && MovieScene->GetBindings().Num() > 0)
 		{
-			SequencePlayer->State.Invalidate(RootBindingID, MovieSceneSequenceID::Root);
+			const FMovieSceneBinding& Binding = MovieScene->GetBindings()[0];
+			SequencePlayer->State.Invalidate(Binding.GetObjectGuid(), MovieSceneSequenceID::Root);
 		}
 	}
 }

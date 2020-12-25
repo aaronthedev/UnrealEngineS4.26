@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,9 +10,7 @@
 #include "Components/SkinnedMeshComponent.h"
 #include "Animation/AnimNotifyQueue.h"
 #include "Serializers/MovieSceneAnimationSerialization.h"
-#include "Misc/QualifiedFrameTime.h"
 
-class UAnimBoneCompressionSettings;
 class UAnimNotify;
 class UAnimNotifyState;
 class UAnimSequence;
@@ -54,9 +52,6 @@ private:
 
 	static float DefaultSampleRate;
 
-	/** Array of times recorded */
-	TArray<FQualifiedFrameTime> RecordedTimes;
-
 public:
 	FAnimationRecorder();
 	~FAnimationRecorder();
@@ -79,11 +74,9 @@ public:
 	/** Sets a new sample rate & max length for this recorder. Don't call while recording. */
 	void SetSampleRateAndLength(float SampleRateHz, float LengthInMinutes);
 
-	bool SetAnimCompressionScheme(UAnimBoneCompressionSettings* Settings);
+	bool SetAnimCompressionScheme(TSubclassOf<class UAnimCompress> SchemeClass);
 
 	const FTransform& GetInitialRootTransform() const { return InitialRootTransform; }
-
-	void ProcessRecordedTimes(UAnimSequence* AnimSequence, USkeletalMeshComponent* SkeletalMeshComponent, const FString& HoursName, const FString& MinutesName, const FString& SecondsName, const FString& FramesName, const FString& SubFramesName, const FString& SlateName, const FString& Slate);
 
 	/** If true, it will record root to include LocalToWorld */
 	uint8 bRecordLocalToWorld :1;
@@ -99,13 +92,7 @@ public:
 	ERichCurveTangentMode TangentMode;
 	/** Serializer, if set we also store data out incrementally while running*/
 	FAnimationSerializer* AnimationSerializer;
-	/** Whether or not to record transforms*/
-	uint8 bRecordTransforms : 1;
-	/** Whether or not to record curves*/
-	uint8 bRecordCurves : 1;
-public:
-	/** Helper function to get space bases depending on master pose component */
-	static void GetBoneTransforms(USkeletalMeshComponent* Component, TArray<FTransform>& BoneTransforms);
+
 
 private:
 	bool Record(USkeletalMeshComponent* Component, FTransform const& ComponentToWorld, const TArray<FTransform>& SpacesBases, const FBlendedHeapCurve& AnimationCurves, int32 FrameToAdd);
@@ -115,20 +102,7 @@ private:
 	void FixupNotifies();
 
 	// recording curve data 
-	struct FBlendedCurve
-	{
-		template<typename Allocator>
-		FBlendedCurve(TArray<float, Allocator> CW, TBitArray<Allocator> VCW)
-		{
-			CurveWeights = CW;
-			ValidCurveWeights = VCW;
-		}
-
-		TArray<float> CurveWeights;
-		TBitArray<> ValidCurveWeights;
-	};
-
-	TArray<FBlendedCurve> RecordedCurves;
+	TArray< TArray<FCurveElement> >  RecordedCurves;
 	TArray<uint16> const * UIDToArrayIndexLUT;
 };
 
@@ -148,7 +122,6 @@ public:
 	bool BeginRecording();
 	void Update(float DeltaTime);
 	void FinishRecording(bool bShowMessage = true);
-	void ProcessRecordedTimes(UAnimSequence* AnimSequence, USkeletalMeshComponent* SkeletalMeshComponent, const FString& HoursName, const FString& MinutesName, const FString& SecondsName, const FString& FramesName, const FString& SubFramesName, const FString& SlateName, const FString& Slate);
 
 private:
 	void InitInternal(USkeletalMeshComponent* InComponent, const FAnimationRecordingSettings& Settings, FAnimationSerializer *InAnimationSerializer = nullptr);

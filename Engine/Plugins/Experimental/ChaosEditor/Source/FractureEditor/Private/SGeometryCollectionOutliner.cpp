@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SGeometryCollectionOutliner.h"
 
@@ -272,25 +272,23 @@ void FGeometryCollectionTreeItemComponent::GetChildrenForBone(FGeometryCollectio
 
 FText FGeometryCollectionTreeItemComponent::GetDisplayNameForBone(const FGuid& Guid) const
 {
-	if (const UGeometryCollection* RestCollection = Component->GetRestCollection())
+	if(FGeometryCollection* Collection = Component->GetRestCollection()->GetGeometryCollection().Get())
 	{
-		if (FGeometryCollection* Collection = RestCollection->GetGeometryCollection().Get())
+		const TManagedArray<FString>& BoneNames = Collection->BoneName;
+		
+		if(const int32* BoneIndex = GuidIndexMap.Find(Guid))
 		{
-			const TManagedArray<FString>& BoneNames = Collection->BoneName;
-
-			if (const int32* BoneIndex = GuidIndexMap.Find(Guid))
+			if(*BoneIndex < BoneNames.Num())
 			{
-				if (*BoneIndex < BoneNames.Num())
-				{
-					return FText::FromString(BoneNames[*BoneIndex]);
-				}
-				else
-				{
-					return FText::Format(LOCTEXT("BoneNameNotFound", "Bone Name Not Found: Index {0}"), (*BoneIndex));
-				}
+				return FText::FromString(BoneNames[*BoneIndex]);
+			}
+			else
+			{
+				return FText::Format(LOCTEXT("BoneNameNotFound", "Bone Name Not Found: Index {0}"), (*BoneIndex));
 			}
 		}
 	}
+
 	return LOCTEXT("BoneNotFound", "Bone Not Found, Invalid Geometry Collection");
 }
 

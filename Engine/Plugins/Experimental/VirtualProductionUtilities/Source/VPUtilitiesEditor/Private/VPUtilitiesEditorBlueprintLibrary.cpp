@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VPUtilitiesEditorBlueprintLibrary.h"
 #include "VPScoutingSubsystem.h"
 #include "VPUtilitiesEditorModule.h"
 #include "Editor.h"
 
-#include "Modules/ModuleManager.h"
 #include "Misc/FileHelper.h"
 #include "ObjectTools.h"
 #include "PackageTools.h"
@@ -14,7 +13,6 @@
 #include "EditorFramework/AssetImportData.h"
 #include "FileHelpers.h"
 #include "Engine/Texture2D.h"
-#include "OSCServer.h"
 
 AVPEditorTickableActorBase* UVPUtilitiesEditorBlueprintLibrary::SpawnVPEditorTickableActor(UObject* ContextObject, const TSubclassOf<AVPEditorTickableActorBase> ActorClass, const FVector Location, const FRotator Rotation)
 {
@@ -78,7 +76,7 @@ UTexture* UVPUtilitiesEditorBlueprintLibrary::ImportSnapshotTexture(FString File
 
 	FString PackageName = TEXT("/Game/Snapshots/" + SubFolderName + "/");
 	PackageName += TextureName;
-	UPackage* Package = CreatePackage(*PackageName);
+	UPackage* Package = CreatePackage(NULL, *PackageName);
 	Package->FullyLoad();
 
 	// try opening from absolute path
@@ -110,9 +108,4 @@ UTexture* UVPUtilitiesEditorBlueprintLibrary::ImportSnapshotTexture(FString File
 	}
 
 	return UnrealTexture;
-}
-
-class UOSCServer* UVPUtilitiesEditorBlueprintLibrary::GetDefaultOSCServer()
-{
-	return FVPUtilitiesEditorModule::Get().GetOSCServer();
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Channels/MovieSceneFloatChannel.h"
 #include "MovieSceneFwd.h"
@@ -7,10 +7,9 @@
 #include "UObject/SequencerObjectVersion.h"
 #include "HAL/ConsoleManager.h"
 
-int32 GSequencerLinearCubicInterpolation = 1;
-static FAutoConsoleVariableRef CVarSequencerLinearCubicInterpolation(
+static TAutoConsoleVariable<int32> CVarSequencerLinearCubicInterpolation(
 	TEXT("Sequencer.LinearCubicInterpolation"),
-	GSequencerLinearCubicInterpolation,
+	1,
 	TEXT("If 1 Linear Keys Act As Cubic Interpolation with Linear Tangents, if 0 Linear Key Forces Linear Interpolation to Next Key."),
 	ECVF_Default);
 
@@ -28,22 +27,13 @@ bool FMovieSceneTangentData::Serialize(FArchive& Ar)
 		return false;
 	}
 
-	if (Ar.CustomVer(FSequencerObjectVersion::GUID) < FSequencerObjectVersion::SerializeFloatChannelCompletely)
-	{
-		Ar << ArriveTangent;
-		Ar << LeaveTangent;
-		Ar << TangentWeightMode;
-		Ar << ArriveTangentWeight;
-		Ar << LeaveTangentWeight;
-	}
-	else
-	{
-		Ar << ArriveTangent;
-		Ar << LeaveTangent;
-		Ar << ArriveTangentWeight;
-		Ar << LeaveTangentWeight;
-		Ar << TangentWeightMode;
-	}
+	// Serialization is handled manually to avoid the extra size overhead of UProperty tagging.
+	// Otherwise with many keys in a FMovieSceneTangentData the size can become quite large.
+	Ar << ArriveTangent;
+	Ar << LeaveTangent;
+	Ar << TangentWeightMode;
+	Ar << ArriveTangentWeight;
+	Ar << LeaveTangentWeight;
 
 	return true;
 }
@@ -65,29 +55,13 @@ bool FMovieSceneFloatValue::Serialize(FArchive& Ar)
 	{
 		return false;
 	}
-	
-	if (Ar.CustomVer(FSequencerObjectVersion::GUID) < FSequencerObjectVersion::SerializeFloatChannelCompletely)
-	{
-		// Serialization is handled manually to avoid the extra size overhead of FProperty tagging.
-		// Otherwise with many keys in a FMovieSceneFloatValue the size can become quite large.
-		Ar << Value;
-		Ar << InterpMode;
-		Ar << TangentMode;
-		Ar << Tangent;
-	}
-	else
-	{
-		Ar << Value;
-		Ar << Tangent.ArriveTangent;
-		Ar << Tangent.LeaveTangent;
-		Ar << Tangent.ArriveTangentWeight;
-		Ar << Tangent.LeaveTangentWeight;
-		Ar << Tangent.TangentWeightMode;
-		Ar << InterpMode;
-		Ar << TangentMode;
-		Ar << PaddingByte;
-	}
 
+	// Serialization is handled manually to avoid the extra size overhead of UProperty tagging.
+	// Otherwise with many keys in a FMovieSceneFloatValue the size can become quite large.
+	Ar << Value;
+	Ar << InterpMode;
+	Ar << TangentMode;
+	Ar << Tangent;
 
 	return true;
 }
@@ -222,7 +196,7 @@ static float EvalForTwoKeys(const FMovieSceneFloatValue& Key1, FFrameNumber Key1
 
 	float Diff = (float)(Key2Time - Key1Time).Value;
 	Diff /= DecimalRate;
-	const int CheckBothLinear = GSequencerLinearCubicInterpolation;
+	const int CheckBothLinear = CVarSequencerLinearCubicInterpolation->GetInt();
 
 	if (Diff > 0 && Key1.InterpMode != RCIM_Constant)
 	{
@@ -560,8 +534,8 @@ bool FMovieSceneFloatChannel::Evaluate(FFrameTime InTime,  float& OutValue) cons
 	// Evaluate the curve data
 	float Interp = 0.f;
 	int32 Index1 = INDEX_NONE, Index2 = INDEX_NONE;
-	UE::MovieScene::EvaluateTime(Times, Params.Time, Index1, Index2, Interp);
-	const int CheckBothLinear = GSequencerLinearCubicInterpolation;
+	MovieScene::EvaluateTime(Times, Params.Time, Index1, Index2, Interp);
+	const int CheckBothLinear = CVarSequencerLinearCubicInterpolation->GetInt();
 
 	if (Index1 == INDEX_NONE)
 	{
@@ -867,7 +841,7 @@ void FMovieSceneFloatChannel::RefineCurvePoints(FFrameRate InTickResolution, dou
 		{
 			bool bSegmentIsLinear = true;
 
-			TTuple<double, double> Evaluated[UE_ARRAY_COUNT(InterpTimes)] = { TTuple<double, double>(0, 0) };
+			TTuple<double, double> Evaluated[UE_ARRAY_COUNT(InterpTimes)];
 
 			for (int32 InterpIndex = 0; InterpIndex < UE_ARRAY_COUNT(InterpTimes); ++InterpIndex)
 			{
@@ -1079,85 +1053,7 @@ void FMovieSceneFloatChannel::AddKeys(const TArray<FFrameNumber>& InTimes, const
 bool FMovieSceneFloatChannel::Serialize(FArchive& Ar)
 {
 	Ar.UsingCustomVersion(FSequencerObjectVersion::GUID);
-	if (Ar.CustomVer(FSequencerObjectVersion::GUID) < FSequencerObjectVersion::SerializeFloatChannelCompletely)
-	{
-		return false;
-	}
-
-	Ar << PreInfinityExtrap;
-	Ar << PostInfinityExtrap;
-
-	//Save FFrameNumber(int32) and  FMovieSceneFloatValue Arrays.
-	//We try to save and load the full array data, unless we are
-	//ByteSwapping or the Size has a mismatch on load, then we do normal save/load
-	if (Ar.IsLoading())
-	{
-		int32 CurrentSerializedElementSize = sizeof(FFrameNumber);
-		int32 SerializedElementSize = 0;
-		Ar << SerializedElementSize;
-		if (SerializedElementSize != CurrentSerializedElementSize || Ar.IsByteSwapping())
-		{
-			Ar << Times;
-		}
-		else
-		{
-			Times.CountBytes(Ar);
-			int32 NewArrayNum = 0;
-			Ar << NewArrayNum;
-			Times.Empty(NewArrayNum);
-			if (NewArrayNum > 0)
-			{
-				Times.AddUninitialized(NewArrayNum);
-				Ar.Serialize(Times.GetData(), NewArrayNum * SerializedElementSize);
-			}
-		}
-		CurrentSerializedElementSize = sizeof(FMovieSceneFloatValue);
-		Ar << SerializedElementSize;
-		if (SerializedElementSize != CurrentSerializedElementSize || Ar.IsByteSwapping())
-		{
-			Ar << Values;
-		}
-		else
-		{
-			Values.CountBytes(Ar);
-			int32 NewArrayNum = 0;
-			Ar << NewArrayNum;
-			Values.Empty(NewArrayNum);
-			if (NewArrayNum > 0)
-			{
-				Values.AddUninitialized(NewArrayNum);
-				Ar.Serialize(Values.GetData(), NewArrayNum * SerializedElementSize);
-			}
-		}
-	}
-	else if (Ar.IsSaving())
-	{
-		int32 SerializedElementSize = sizeof(FFrameNumber);
-		Ar << SerializedElementSize;
-		Times.CountBytes(Ar);
-		int32 ArrayCount = Times.Num();
-		Ar << ArrayCount;
-		if (ArrayCount > 0)
-		{
-			Ar.Serialize(Times.GetData(), ArrayCount * SerializedElementSize);
-		}
-		Values.CountBytes(Ar);
-		SerializedElementSize = sizeof(FMovieSceneFloatValue);
-		Ar << SerializedElementSize;
-		ArrayCount = Values.Num();
-		Ar << ArrayCount;
-		if (ArrayCount > 0)
-		{
-			Ar.Serialize(Values.GetData(), ArrayCount * SerializedElementSize);
-		}
-	}
-
-	Ar << DefaultValue;
-	Ar << bHasDefaultValue;
-	Ar << TickResolution.Numerator;
-	Ar << TickResolution.Denominator;
-
-	return true;
+	return false;
 }
 
 #if WITH_EDITORONLY_DATA

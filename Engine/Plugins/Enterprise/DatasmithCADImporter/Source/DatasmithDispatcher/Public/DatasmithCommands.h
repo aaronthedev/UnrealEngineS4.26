@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 
-#include "CADData.h"
 #include "CADOptions.h"
 #include "DatasmithDispatcherTask.h"
 
@@ -79,14 +78,14 @@ class FRunTaskCommand : public ICommand
 {
 public:
 	FRunTaskCommand() = default;
-	FRunTaskCommand(const FTask& Task) : JobFileDescription(Task.FileDescription), JobIndex(Task.Index) {}
+	FRunTaskCommand(const FTask& Task) : JobFilePath(Task.FileName), JobIndex(Task.Index) {}
 	virtual ECommandId GetType() const override { return ECommandId::RunTask; }
 
 protected:
 	virtual void SerializeImpl(FArchive&) override;
 
 public:
-	CADLibrary::FFileDescription JobFileDescription;
+	FString JobFilePath;
 	int32 JobIndex = -1;
 };
 
@@ -99,11 +98,10 @@ protected:
 	virtual void SerializeImpl(FArchive&) override;
 
 public:
-	TArray<CADLibrary::FFileDescription> ExternalReferences;
+	TArray<FString> ExternalReferences;
 	FString SceneGraphFileName;
 	FString GeomFileName;
 	ETaskState ProcessResult = ETaskState::Unknown;
-	TArray<FString> WarningMessages;
 };
 
 class FImportParametersCommand : public ICommand

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -10,6 +10,11 @@
 #include "Containers/Queue.h"
 #include "Misc/Paths.h"
 
+#define COLORSETLINE    3
+#define MATERIALSETLINE 4
+#define EXTERNALREFLINE 7
+#define MAPCTIDLINE     8
+
 #ifdef CAD_INTERFACE
 #include "kernel_io/attribute_io/attribute_enum.h"
 #include "kernel_io/ct_types.h"
@@ -19,7 +24,6 @@
 
 
 struct FFileStatData;
-struct FFileDescription;
 
 namespace CADLibrary
 {
@@ -33,7 +37,6 @@ enum class ECoretechParsingResult
 	ProcessFailed,
 	FileNotFound,
 };
-
 
 #ifdef CAD_INTERFACE
 
@@ -53,53 +56,44 @@ public:
 	using EProcessResult = ECoretechParsingResult;
 
 	/**
-	 * @param ImportParams Parameters that setting import data like mesh SAG...
-	 * @param EnginePluginsPath Full Path of EnginePlugins. Mandatory to set KernelIO to import DWG, or DGN files
+	 * @param InCTFullPath Full path of the CAD file to parse
 	 * @param InCachePath Full path of the cache in which the data will be saved
+	 * @param ImportParams Parameters that setting import data like mesh SAG...
+	 * @param KernelIOPath Full Path of KernelIO libraries (oda_translator.exe, ...). Mandatory to import DWG, or DGN files
 	 */
-	FCoreTechFileParser(const FImportParameters& ImportParams, const FString& EnginePluginsPath = TEXT(""), const FString& InCachePath = TEXT(""));
+	FCoreTechFileParser(const FString& InCTFullPath, const FString& InCachePath, const FImportParameters& ImportParams, const TCHAR* KernelIOPath = TEXT(""));
 
 	double GetMetricUnit() const { return 0.01; }
 
-	EProcessResult ProcessFile(const CADLibrary::FFileDescription& InCTFileDescription);
+	EProcessResult ProcessFile();
+	void GetBodyTessellation(CT_OBJECT_ID BodyId, FBodyMesh& OutBodyMesh, const FImportParameters& ImportParams, uint32 ParentMaterialHash);
 
-	void GetBodyTessellation(CT_OBJECT_ID BodyId, CT_OBJECT_ID ParentId, FBodyMesh& OutBodyMesh, uint32 ParentMaterialHash, bool bNeedRepair);
 
-	TSet<FFileDescription>& GetExternalRefSet()
+	const TSet<FString>& GetExternalRefSet()
 	{
-		return SceneGraphArchive.ExternalRefSet;
+		return MockUpDescription.ExternalRefSet;
 	}
 
-	const FString& GetSceneGraphFile() const
+	const FString& GetSceneGraphFile()
 	{
-		return SceneGraphArchive.ArchiveFileName;
+		return MockUpDescription.SceneGraphArchive;
 	}
-
-	const FString& GetMeshFileName() const
+	const FString& GetMeshFileName()
 	{
 		return MeshArchiveFile;
 	}
-
-	const CADLibrary::FFileDescription& GetCADFileDescription() const
+	const FString& GetCADFileName()
 	{
-		return FileDescription;
+		return CADFile;
 	}
 
-	const TArray<FString>& GetWarningMessages() const 
-	{
-		return WarningMessages;
-	}
-	
 private:
 	EProcessResult ReadFileWithKernelIO();
 	bool ReadNode(CT_OBJECT_ID NodeId, uint32 ParentMaterialHash);
 	bool ReadInstance(CT_OBJECT_ID NodeId, uint32 ParentMaterialHash);
 	bool ReadComponent(CT_OBJECT_ID NodeId, uint32 ParentMaterialHash);
 	bool ReadUnloadedComponent(CT_OBJECT_ID NodeId);
-	bool ReadBody(CT_OBJECT_ID NodeId, CT_OBJECT_ID ParentId, uint32 ParentMaterialHash, bool bNeedRepair);
-
-	bool FindFile(FFileDescription& FileDescription);
-	uint32 GetFileHash();
+	bool ReadBody(CT_OBJECT_ID NodeId, uint32 ParentMaterialHash);
 
 	void LoadSceneGraphArchive(const FString& SceneGraphFilePath);
 
@@ -114,24 +108,28 @@ private:
 	void ReadNodeMetaData(CT_OBJECT_ID NodeId, TMap<FString, FString>& OutMetaData);
 	void GetStringMetaDataValue(CT_OBJECT_ID NodeId, const TCHAR* InMetaDataName, FString& OutMetaDataValue);
 
-	CT_FLAGS SetCoreTechImportOption();
+	CT_FLAGS SetCoreTechImportOption(const FString& MainFileExt);
 	void GetAttributeValue(CT_ATTRIB_TYPE attrib_type, int ith_field, FString& value);
 
 	void ExportSceneGraphFile();
 	void ExportMeshArchiveFile();
 
 protected:
-	FString CachePath;
+	const FString& CachePath;
 
-	CADLibrary::FFileDescription FileDescription;
-	int64 FileSize;
+	FString FullPath;
+	FString CADFile;
 
-	FArchiveSceneGraph SceneGraphArchive;
-	TArray<FString> WarningMessages;
+	FString FileConfiguration;
+	FString NodeConfiguration;
+
+	FArchiveMockUp MockUpDescription;
 
 	FString MeshArchiveFilePath;
 	FString MeshArchiveFile;
 	TArray<FBodyMesh> BodyMeshes;
+
+	bool bNeedSaveCTFile;
 
 	const FImportParameters& ImportParameters;
 };

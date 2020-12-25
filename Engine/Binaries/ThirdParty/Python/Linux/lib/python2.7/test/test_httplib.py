@@ -702,20 +702,6 @@ class BasicTest(TestCase):
         with self.assertRaisesRegexp(socket.error, "Invalid response"):
             conn._tunnel()
 
-    def test_putrequest_override_validation(self):
-        """
-        It should be possible to override the default validation
-        behavior in putrequest (bpo-38216).
-        """
-        class UnsafeHTTPConnection(httplib.HTTPConnection):
-            def _validate_path(self, url):
-                pass
-
-        conn = UnsafeHTTPConnection('example.com')
-        conn.sock = FakeSocket('')
-        conn.putrequest('GET', '/\x00')
-
-
 class OfflineTest(TestCase):
     def test_responses(self):
         self.assertEqual(httplib.responses[httplib.NOT_FOUND], "Not Found")
@@ -874,7 +860,7 @@ class HTTPSTest(TestCase):
         import ssl
         test_support.requires('network')
         with test_support.transient_internet('self-signed.pythontest.net'):
-            context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+            context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
             context.verify_mode = ssl.CERT_REQUIRED
             context.load_verify_locations(CERT_selfsigned_pythontestdotnet)
             h = httplib.HTTPSConnection('self-signed.pythontest.net', 443, context=context)
@@ -888,7 +874,7 @@ class HTTPSTest(TestCase):
         import ssl
         test_support.requires('network')
         with test_support.transient_internet('self-signed.pythontest.net'):
-            context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+            context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
             context.verify_mode = ssl.CERT_REQUIRED
             context.load_verify_locations(CERT_localhost)
             h = httplib.HTTPSConnection('self-signed.pythontest.net', 443, context=context)
@@ -909,7 +895,7 @@ class HTTPSTest(TestCase):
         # The (valid) cert validates the HTTP hostname
         import ssl
         server = self.make_server(CERT_localhost)
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
         context.verify_mode = ssl.CERT_REQUIRED
         context.load_verify_locations(CERT_localhost)
         h = httplib.HTTPSConnection('localhost', server.port, context=context)
@@ -921,7 +907,7 @@ class HTTPSTest(TestCase):
         # The (valid) cert doesn't validate the HTTP hostname
         import ssl
         server = self.make_server(CERT_fakehostname)
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLSv1)
         context.verify_mode = ssl.CERT_REQUIRED
         context.check_hostname = True
         context.load_verify_locations(CERT_fakehostname)

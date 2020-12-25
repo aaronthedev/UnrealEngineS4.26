@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "IMotionController.h"
@@ -68,14 +68,6 @@ public:
 			}
 		}
 		return false;
-	}
-
-	virtual bool GetControllerOrientationAndPositionForTime(const int32 ControllerIndex, const FName MotionSource, FTimespan Time, bool& OutTimeWasUsed, FRotator& OutOrientation, FVector& OutPosition, bool& OutbProvidedLinearVelocity, FVector& OutLinearVelocity, bool& OutbProvidedAngularVelocity, FVector& OutAngularVelocityRadPerSec, float WorldToMetersScale) const override
-	{
-		OutTimeWasUsed = false;
-		OutbProvidedLinearVelocity = false;
-		OutbProvidedAngularVelocity = false;
-		return GetControllerOrientationAndPosition(ControllerIndex, MotionSource, OutOrientation, OutPosition, WorldToMetersScale);
 	}
 
 	float GetCustomParameterValue(const FName MotionSource, FName ParameterName, bool& bValueFound) const override

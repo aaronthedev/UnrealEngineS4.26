@@ -142,10 +142,6 @@ namespace
 		{
 		}
 
-		virtual ~LoadCallback(void)
-		{
-		}
-
 		virtual HRESULT STDMETHODCALLTYPE QueryInterface(
 			/* [in] */ REFIID riid,
 			/* [iid_is][out] */ _COM_Outptr_ void __RPC_FAR *__RPC_FAR *ppvObject)
@@ -329,23 +325,10 @@ namespace
 		if (libraryName.GetString())
 		{
 			// library names also contain .obj files, we are not interested in those
-			const std::wstring& libExtension = file::GetExtension(libraryName.GetString());
-			if (libExtension.length() != 0u)
+			const std::wstring& uppercaseLibraryName = string::ToUpper(libraryName.GetString());
+			if (string::Contains(uppercaseLibraryName.c_str(), L".LIB"))
 			{
-				// found an extension
-				const std::wstring& uppercaseExtensionName = string::ToUpper(libExtension);
-				if (string::Contains(uppercaseExtensionName.c_str(), L".LIB"))
-				{
-					return true;
-				}
-			}
-			else
-			{
-				const std::wstring& uppercaseLibraryName = string::ToUpper(libraryName.GetString());
-				if (string::Contains(uppercaseLibraryName.c_str(), L".LIB"))
-				{
-					return true;
-				}
+				return true;
 			}
 		}
 
@@ -623,7 +606,7 @@ namespace symbols
 				}
 
 				// prepare size for string table. IDs are 1-based.
-				contributionDB->originalStringTable.resize(highestId + 1u);
+				contributionDB->stringTable.resize(highestId + 1u);
 
 				for (ULONG i = 0u; i < fetched; ++i)
 				{
@@ -638,7 +621,7 @@ namespace symbols
 					DWORD id = 0u;
 					sectionContribution->get_compilandId(&id);
 
-					if (contributionDB->originalStringTable[id].GetLength() == 0)
+					if (contributionDB->stringTable[id].GetLength() == 0)
 					{
 						IDiaSymbol* contributingCompiland = nullptr;
 						sectionContribution->get_compiland(&contributingCompiland);
@@ -649,7 +632,7 @@ namespace symbols
 							// when doing lookups into the string table, we then convert this compiland name
 							// to the real one that exists on disk.
 							const dia::SymbolName& compilandName = dia::GetSymbolName(contributingCompiland);
-							contributionDB->originalStringTable[id] = string::ToUtf8String(compilandName.GetString());
+							contributionDB->stringTable[id] = std::move(string::ToUtf8String(compilandName.GetString()));
 
 							contributingCompiland->Release();
 						}
@@ -672,74 +655,6 @@ namespace symbols
 		std::sort(contributionDB->contributions.begin(), contributionDB->contributions.end(), &SortContributionByAscendingRVA);
 
 		return contributionDB;
-	}
-
-
-	void FinalizeContributions(const CompilandDB* compilandDb, ContributionDB* db)
-	{
-		// first convert the string table of original compilands to their real names of the .objs on disk
-		{
-			const size_t count = db->originalStringTable.size();
-			db->objOnDiskStringTable.reserve(count);
-
-			for (size_t i = 0u; i < count; ++i)
-			{
-				const ImmutableString& originalCompilandName = db->originalStringTable[i];
-
-				// try to find the real name of the .obj on disk
-				const auto it = compilandDb->compilandNameToObjOnDisk.find(originalCompilandName);
-				if (it != compilandDb->compilandNameToObjOnDisk.end())
-				{
-					// found, store this into the database
-					db->objOnDiskStringTable.emplace_back(it->second);
-				}
-				else
-				{
-					// not found, store the original name instead
-					db->objOnDiskStringTable.emplace_back(originalCompilandName);
-				}
-			}
-
-			// clear the string table of original compilands, they are no longer needed and should not be accessed
-			db->originalStringTable.clear();
-			db->originalStringTable.shrink_to_fit();
-		}
-
-		// then build a per-compiland array of contributions for later use
-		{
-			const size_t count = db->objOnDiskStringTable.size();
-			db->contributionsPerCompilandNameIndex.resize(count);
-
-			// make some space first
-			for (size_t i = 0u; i < count; ++i)
-			{
-				db->contributionsPerCompilandNameIndex[i].reserve(256u);
-			}
-
-			// all the contributions are sorted by ascending RVA already, so if we iterate through them and assign them
-			// to their corresponding compiland, those contributions will be sorted as well.
-			for (auto it : db->contributions)
-			{
-				symbols::Contribution* contribution = it;
-				db->contributionsPerCompilandNameIndex[contribution->compilandNameIndex].emplace_back(contribution);
-			}
-
-			// free up wasted space
-			for (size_t i = 0u; i < count; ++i)
-			{
-				db->contributionsPerCompilandNameIndex[i].shrink_to_fit();
-			}
-		}
-
-		// finally, build a lookup-table for going from compiland name to compiland name index
-		{
-			const uint32_t count = static_cast<uint32_t>(db->objOnDiskStringTable.size());
-			for (uint32_t i = 0u; i < count; ++i)
-			{
-				const ImmutableString& compilandName = db->objOnDiskStringTable[i];
-				db->compilandNameToCompilandNameIndex.emplace(compilandName, i);
-			}
-		}
 	}
 
 
@@ -1762,7 +1677,7 @@ namespace symbols
 					break;
 				}
 
-				const ImmutableString& compilandName = symbols::GetContributionCompilandName(contributionDb, contribution);
+				const ImmutableString& compilandName = symbols::GetContributionCompilandName(compilandDb, contributionDb, contribution);
 				LC_LOG_DEV("Contribution from file %s at RVA 0x%X with size %d", compilandName.c_str(), contribution->rva, contribution->size);
 				++contributionIt;
 
@@ -2240,13 +2155,10 @@ namespace symbols
 			memcpy(tempName, symbolName.c_str(), coffSuffixPos);
 			tempName[coffSuffixPos] = '\0';
 
-			// unfortunately, undecorating symbols with these flags still leaves "__ptr64" in the undecorated name,
-			// which is different to how names are stored in the PDB.
-			// we therefore remove "__ptr64" ourselves, as the corresponding flag in the "undname.exe" tool cannot be used in our case.
-			return string::EraseAll(nameMangling::UndecorateSymbol(tempName, 0x1000u), " __ptr64");
+			return nameMangling::UndecorateSymbol(tempName, 0x1000u);
 		}
 
-		return string::EraseAll(nameMangling::UndecorateSymbol(symbolName.c_str(), 0x1000u), " __ptr64");
+		return nameMangling::UndecorateSymbol(symbolName.c_str(), 0x1000u);
 	}
 
 
@@ -2271,29 +2183,17 @@ namespace symbols
 	}
 
 
-	ImmutableString GetContributionCompilandName(const ContributionDB* db, const Contribution* contribution)
+	ImmutableString GetContributionCompilandName(const CompilandDB* compilandDb, const ContributionDB* db, const Contribution* contribution)
 	{
-		return db->objOnDiskStringTable[contribution->compilandNameIndex];
-	}
-
-
-	const ContributionDB::ContributionsPerCompiland* GetContributionsForCompilandName(const ContributionDB* db, const ImmutableString& compilandName)
-	{
-		const auto it = db->compilandNameToCompilandNameIndex.find(compilandName);
-		if (it != db->compilandNameToCompilandNameIndex.end())
+		const ImmutableString& originalCompilandName = db->stringTable[contribution->compilandNameIndex];
+		const auto it = compilandDb->compilandNameToObjOnDisk.find(originalCompilandName);
+		if (it != compilandDb->compilandNameToObjOnDisk.end())
 		{
-			// we know this compiland
-			const uint32_t compilandNameIndex = it->second;
-			return GetContributionsForCompilandNameIndex(db, compilandNameIndex);
+			// found, return the real name of the obj on disk
+			return it->second;
 		}
 
-		return nullptr;
-	}
-
-
-	const ContributionDB::ContributionsPerCompiland* GetContributionsForCompilandNameIndex(const ContributionDB* db, uint32_t compilandNameIndex)
-	{
-		return &db->contributionsPerCompilandNameIndex[compilandNameIndex];
+		return originalCompilandName;
 	}
 
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BaseGizmos/GizmoRectangleComponent.h"
 #include "BaseGizmos/GizmoRenderingUtil.h"
@@ -24,18 +24,69 @@ public:
 		LengthX(InComponent->LengthX),
 		LengthY(InComponent->LengthY),
 		Thickness(InComponent->Thickness),
-		HoverThicknessMultiplier(InComponent->HoverSizeMultiplier),
-		SegmentFlags(InComponent->SegmentFlags)
+		HoverThicknessMultiplier(InComponent->HoverSizeMultiplier)
 	{
 	}
 
 	virtual void GetDynamicMeshElements(const TArray<const FSceneView*>& Views, const FSceneViewFamily& ViewFamily, uint32 VisibilityMap, FMeshElementCollector& Collector) const override
 	{
-		// try to find focused scene view. May return nullptr.
-		const FSceneView* FocusedView = GizmoRenderingUtil::FindFocusedEditorSceneView(Views, ViewFamily, VisibilityMap);
+		// find view to use for gizmo sizing/etc
+		const FSceneView* GizmoControlView = GizmoRenderingUtil::FindActiveSceneView(Views, ViewFamily, VisibilityMap);
+		if (GizmoControlView == nullptr)
+		{
+			return;
+		}
 
 		const FMatrix& LocalToWorldMatrix = GetLocalToWorld();
 		FVector Origin = LocalToWorldMatrix.TransformPosition(FVector::ZeroVector);
+
+		// direction to origin of gizmo
+		FVector ViewDirection = Origin - GizmoControlView->ViewLocation;
+		ViewDirection.Normalize();
+
+		bool bWorldAxis = (bExternalWorldLocalState) ? (*bExternalWorldLocalState) : false;
+		FVector UseDirectionX = (bWorldAxis) ? DirectionX : FVector{ LocalToWorldMatrix.TransformVector(DirectionX) };
+		bool bFlippedX = (FVector::DotProduct(ViewDirection, UseDirectionX) > 0);
+		UseDirectionX = (bFlippedX) ? -UseDirectionX : UseDirectionX;
+		if (bFlippedXExternal)
+		{
+			*bFlippedXExternal = bFlippedX;
+		}
+
+		FVector UseDirectionY = (bWorldAxis) ? DirectionY : FVector{ LocalToWorldMatrix.TransformVector(DirectionY) };
+		bool bFlippedY = (FVector::DotProduct(ViewDirection, UseDirectionY) > 0);
+		UseDirectionY = (bFlippedY) ? -UseDirectionY : UseDirectionY;
+		if (bFlippedYExternal)
+		{
+			*bFlippedYExternal = bFlippedY;
+		}
+
+		if (bExternalRenderVisibility != nullptr)
+		{
+			FVector PlaneNormal = FVector::CrossProduct(UseDirectionX, UseDirectionY);
+			*bExternalRenderVisibility = FMath::Abs(FVector::DotProduct(PlaneNormal, ViewDirection)) > 0.25f;
+			if (*bExternalRenderVisibility == false)
+			{
+				return;
+			}
+		}
+
+		float LengthScale = 1.0f;
+		if (ExternalDynamicPixelToWorldScale != nullptr)
+		{
+			float PixelToWorldScale = GizmoRenderingUtil::CalculateLocalPixelToWorldScale(GizmoControlView, Origin);
+			*ExternalDynamicPixelToWorldScale = PixelToWorldScale;
+			LengthScale = PixelToWorldScale;
+		}
+
+
+		float UseThickness = (bExternalHoverState != nullptr && *bExternalHoverState == true) ?
+			(HoverThicknessMultiplier*Thickness) : (Thickness);
+
+		double UseOffsetX = LengthScale * OffsetX;
+		double UseOffsetLengthX = LengthScale * (OffsetX + LengthX);
+		double UseOffsetY = LengthScale * OffsetY;
+		double UseOffsetLengthY = LengthScale * (OffsetY + LengthY);
 
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex++)
 		{
@@ -43,83 +94,14 @@ public:
 			{
 				const FSceneView* View = Views[ViewIndex];
 				FPrimitiveDrawInterface* PDI = Collector.GetPDI(ViewIndex);
-				bool bIsFocusedView = (FocusedView != nullptr && View == FocusedView);
-				bool bIsOrtho = !View->IsPerspectiveProjection();
-
-				// direction to origin of gizmo
-				FVector ViewDirection = 
-					(bIsOrtho) ? (View->GetViewDirection()) : (Origin - View->ViewLocation);
-				ViewDirection.Normalize();
-
-				bool bWorldAxis = (bExternalWorldLocalState) ? (*bExternalWorldLocalState) : false;
-				FVector UseDirectionX = (bWorldAxis) ? DirectionX : FVector{ LocalToWorldMatrix.TransformVector(DirectionX) };
-				bool bFlippedX = (FVector::DotProduct(ViewDirection, UseDirectionX) > 0);
-				UseDirectionX = (bFlippedX) ? -UseDirectionX : UseDirectionX;
-				if (bIsFocusedView && bFlippedXExternal != nullptr)
-				{
-					*bFlippedXExternal = bFlippedX;
-				}
-
-				FVector UseDirectionY = (bWorldAxis) ? DirectionY : FVector{ LocalToWorldMatrix.TransformVector(DirectionY) };
-				bool bFlippedY = (FVector::DotProduct(ViewDirection, UseDirectionY) > 0);
-				UseDirectionY = (bFlippedY) ? -UseDirectionY : UseDirectionY;
-				if (bIsFocusedView && bFlippedYExternal != nullptr)
-				{
-					*bFlippedYExternal = bFlippedY;
-				}
-
-				FVector PlaneNormal = FVector::CrossProduct(UseDirectionX, UseDirectionY);
-				bool bRenderVisibility = FMath::Abs(FVector::DotProduct(PlaneNormal, ViewDirection)) > 0.25f;
-				if (bIsFocusedView && bExternalRenderVisibility != nullptr)
-				{
-					*bExternalRenderVisibility = bRenderVisibility;
-				}
-				if (bRenderVisibility == false)
-				{
-					continue;
-				}
-
-				float PixelToWorldScale = GizmoRenderingUtil::CalculateLocalPixelToWorldScale(View, Origin);
-				float LengthScale = PixelToWorldScale;
-				if (bIsFocusedView && ExternalDynamicPixelToWorldScale != nullptr)
-				{
-					*ExternalDynamicPixelToWorldScale = PixelToWorldScale;
-				}
-
-
-				float UseThickness = (bExternalHoverState != nullptr && *bExternalHoverState == true) ?
-					(HoverThicknessMultiplier * Thickness) : (Thickness);
-				if (!bIsOrtho)
-				{
-					UseThickness *= (View->FOV / 90.0);		// compensate for FOV scaling in Gizmos...
-				}
-
-				double UseOffsetX = LengthScale * OffsetX;
-				double UseOffsetLengthX = LengthScale * (OffsetX + LengthX);
-				double UseOffsetY = LengthScale * OffsetY;
-				double UseOffsetLengthY = LengthScale * (OffsetY + LengthY);
 
 				FVector Point00 = Origin + UseOffsetX*UseDirectionX + UseOffsetY*UseDirectionY;
 				FVector Point10 = Origin + UseOffsetLengthX*UseDirectionX + UseOffsetY*UseDirectionY;
 				FVector Point11 = Origin + UseOffsetLengthX*UseDirectionX + UseOffsetLengthY*UseDirectionY;
 				FVector Point01 = Origin + UseOffsetX*UseDirectionX + UseOffsetLengthY*UseDirectionY;
 
-				if (SegmentFlags & 0x1)
-				{
-					PDI->DrawLine(Point00, Point10, Color, SDPG_Foreground, UseThickness, 0.0f, true);
-				}
-				if (SegmentFlags & 0x2)
-				{
-					PDI->DrawLine(Point10, Point11, Color, SDPG_Foreground, UseThickness, 0.0f, true);
-				}
-				if (SegmentFlags & 0x4)
-				{
-					PDI->DrawLine(Point11, Point01, Color, SDPG_Foreground, UseThickness, 0.0f, true);
-				}
-				if (SegmentFlags & 0x8)
-				{
-					PDI->DrawLine(Point01, Point00, Color, SDPG_Foreground, UseThickness, 0.0f, true);
-				}
+				PDI->DrawLine(Point10, Point11, Color, SDPG_Foreground, UseThickness, 0.0f, true);
+				PDI->DrawLine(Point11, Point01, Color, SDPG_Foreground, UseThickness, 0.0f, true);
 
 
 				/* 
@@ -197,17 +179,13 @@ private:
 	float LengthX, LengthY;
 	float Thickness;
 	float HoverThicknessMultiplier;
-	uint8 SegmentFlags;
 
-	// set on Component for use in ::GetDynamicMeshElements()
-	bool* bExternalHoverState = nullptr;
-	bool* bExternalWorldLocalState = nullptr;
-
-	// set in ::GetDynamicMeshElements() for use by Component hit testing
 	bool* bFlippedXExternal = nullptr;
 	bool* bFlippedYExternal = nullptr;
 	float* ExternalDynamicPixelToWorldScale = nullptr;
 	bool* bExternalRenderVisibility = nullptr;
+	bool* bExternalHoverState = nullptr;
+	bool* bExternalWorldLocalState = nullptr;
 };
 
 
@@ -242,7 +220,7 @@ bool UGizmoRectangleComponent::LineTraceComponent(FHitResult& OutHit, const FVec
 	FVector UseDirectionX = (bFlippedX) ? -DirectionX : DirectionX;
 	UseDirectionX = (bWorld) ? UseDirectionX : Transform.TransformVector(UseDirectionX);
 	FVector UseDirectionY = (bFlippedY) ? -DirectionY : DirectionY;
-	UseDirectionY = (bWorld) ? UseDirectionY : Transform.TransformVector(UseDirectionY);
+	UseDirectionY = (bWorld) ? DirectionY : Transform.TransformVector(UseDirectionY);
 	FVector UseOrigin = Transform.TransformPosition(FVector::ZeroVector);
 
 	float LengthScale = DynamicPixelToWorldScale;

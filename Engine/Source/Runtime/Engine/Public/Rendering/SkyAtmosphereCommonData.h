@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	SkyAtmosphereCommonData.h
@@ -16,21 +16,17 @@ class USkyAtmosphereComponent;
 
 struct FAtmosphereSetup
 {
-	ENGINE_API static const float CmToSkyUnit;
-	ENGINE_API static const float SkyUnitToCm;
-
-	FVector PlanetCenterKm;			// In sky unit (kilometers)
-	float BottomRadiusKm;			// idem
-	float TopRadiusKm;				// idem
+	float BottomRadius;
+	float TopRadius;
 
 	float MultiScatteringFactor;
 
-	FLinearColor RayleighScattering;// Unit is 1/km
+	FLinearColor RayleighScattering;
 	float RayleighDensityExpScale;
 
-	FLinearColor MieScattering;		// Unit is 1/km
-	FLinearColor MieExtinction;		// idem
-	FLinearColor MieAbsorption;		// idem
+	FLinearColor MieScattering;
+	FLinearColor MieExtinction;
+	FLinearColor MieAbsorption;
 	float MieDensityExpScale;
 	float MiePhaseG;
 
@@ -48,12 +44,6 @@ struct FAtmosphereSetup
 	ENGINE_API FAtmosphereSetup(const USkyAtmosphereComponent& SkyAtmosphereComponent);
 
 	ENGINE_API FLinearColor GetTransmittanceAtGroundLevel(const FVector& SunDirection) const;
-
-	ENGINE_API void UpdateTransform(const FTransform& ComponentTransform, uint8 TranformMode);
-	ENGINE_API void ApplyWorldOffset(const FVector& InOffset);
-
-	ENGINE_API void ComputeViewData(const FVector& WorldCameraOrigin, const FVector& ViewForward, const FVector& ViewRight, 
-		FVector& SkyWorldCameraOrigin, FVector4& SkyPlanetCenterAndViewHeight, FMatrix& SkyViewLutReferential) const;
 };
 
 

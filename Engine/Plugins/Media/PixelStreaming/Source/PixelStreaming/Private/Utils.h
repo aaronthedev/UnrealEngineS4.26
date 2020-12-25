@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,12 +18,12 @@
 
 inline bool IsWindows7Plus()
 {
-	return FPlatformMisc::VerifyWindowsVersion(6, 1);
+	return FWindowsPlatformMisc::VerifyWindowsVersion(6, 1);
 }
 
 inline bool IsWindows8Plus()
 {
-	return FPlatformMisc::VerifyWindowsVersion(6, 2);
+	return FWindowsPlatformMisc::VerifyWindowsVersion(6, 2);
 }
 
 inline FString ToString(const std::string& Str)

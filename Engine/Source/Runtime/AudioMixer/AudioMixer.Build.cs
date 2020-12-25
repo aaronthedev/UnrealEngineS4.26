@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -7,16 +7,19 @@ namespace UnrealBuildTool.Rules
 		public AudioMixer(ReadOnlyTargetRules Target) : base(Target)
 		{
 			PrivateIncludePathModuleNames.Add("TargetPlatform");
-			PublicIncludePathModuleNames.Add("TargetPlatform");
+            PublicIncludePathModuleNames.Add("TargetPlatform");
 
-			PublicIncludePathModuleNames.Add("Engine");
+            PublicIncludePathModuleNames.Add("Engine");
 
-			PrivateIncludePaths.AddRange(
+            PrivateIncludePaths.AddRange(
 				new string[]
 				{
 					"Runtime/AudioMixer/Private",
 				}
 			);
+
+            PublicIncludePaths.Add("Runtime/AudioMixer/Private");
+
 
 			PublicDependencyModuleNames.AddRange(
 				new string[]
@@ -31,13 +34,10 @@ namespace UnrealBuildTool.Rules
 				{
 					"CoreUObject",
 					"Engine",
-					"NonRealtimeAudioRenderer",
-					"AudioMixerCore",
-					"SignalProcessing",
-					"AudioPlatformConfiguration",
-					"SoundFieldRendering",
-					"AudioExtensions",
-				}
+                    "NonRealtimeAudioRenderer",
+                    "AudioMixerCore",
+                    "SignalProcessing"
+                }
 			);
 
 			AddEngineThirdPartyPrivateStaticDependencies(Target,
@@ -48,13 +48,20 @@ namespace UnrealBuildTool.Rules
 					"UELibSampleRate"
 					);
 
-			// Circular references that need to be cleaned up
-			CircularlyReferencedDependentModules.AddRange(
-				new string[] {
-					"NonRealtimeAudioRenderer",
-					"SoundFieldRendering"
-				}
-			);
+			if (Target.IsInPlatformGroup(UnrealPlatformGroup.Windows))
+			{
+				string PlatformName = Target.Platform == UnrealTargetPlatform.Win32 ? "Win32" : "Win64";
+
+                string LibSndFilePath = Target.UEThirdPartyBinariesDirectory + "libsndfile/";
+                LibSndFilePath += PlatformName;
+
+
+                PublicAdditionalLibraries.Add(LibSndFilePath + "/libsndfile-1.lib");
+				PublicDelayLoadDLLs.Add("libsndfile-1.dll");
+				PublicIncludePathModuleNames.Add("UELibSampleRate");
+
+                RuntimeDependencies.Add("$(EngineDir)/Binaries/ThirdParty/libsndfile/" + PlatformName + "/libsndfile-1.dll");
+            }
 		}
 	}
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -16,7 +16,6 @@
 #include "MaterialShared.h"
 #include "TextureResource.h"
 #include "Engine/StreamableRenderAsset.h"
-#include "PerPlatformProperties.h"
 #include "Texture.generated.h"
 
 class ITargetPlatform;
@@ -39,8 +38,6 @@ enum TextureCompressionSettings
 	TC_DistanceFieldFont		UMETA(DisplayName="DistanceFieldFont (R8)"),
 	TC_HDR_Compressed			UMETA(DisplayName="HDRCompressed (RGB, BC6H, DX11)"),
 	TC_BC7						UMETA(DisplayName="BC7 (DX11, optional A)"),
-	TC_HalfFloat				UMETA(DisplayName="Half Float (R16F)"),
-	TC_ReflectionCapture		UMETA(DisplayName="Default (DXT5)"),
 	TC_MAX,
 };
 
@@ -271,7 +268,7 @@ struct FTextureSource
 	ENGINE_API bool GetMipData(TArray64<uint8>& OutMipData, int32 BlockIndex, int32 LayerIndex, int32 MipIndex, class IImageWrapperModule* ImageWrapperModule = nullptr);
 
 	/** Computes the size of a single mip. */
-	ENGINE_API int64 CalcMipSize(int32 BlockIndex, int32 LayerIndex, int32 MipIndex) const;
+	ENGINE_API int32 CalcMipSize(int32 BlockIndex, int32 LayerIndex, int32 MipIndex) const;
 
 	/** Computes the number of bytes per-pixel. */
 	ENGINE_API int32 GetBytesPerPixel(int32 LayerIndex = 0) const;
@@ -304,7 +301,7 @@ struct FTextureSource
 	FORCEINLINE int32 GetNumBlocks() const { return Blocks.Num() + 1; }
 	FORCEINLINE ETextureSourceFormat GetFormat(int32 LayerIndex = 0) const { return (LayerIndex == 0) ? Format : LayerFormat[LayerIndex]; }
 	FORCEINLINE bool IsPNGCompressed() const { return bPNGCompressed; }
-	FORCEINLINE int64 GetSizeOnDisk() const { return BulkData.GetBulkDataSize(); }
+	FORCEINLINE int32 GetSizeOnDisk() const { return BulkData.GetBulkDataSize(); }
 	FORCEINLINE bool IsBulkDataLoaded() const { return BulkData.IsBulkDataLoaded(); }
 	FORCEINLINE bool LoadBulkDataWithFileReader() { return BulkData.LoadBulkDataWithFileReader(); }
 	FORCEINLINE void RemoveBulkData() { BulkData.RemoveBulkData(); }
@@ -318,7 +315,7 @@ struct FTextureSource
 		return GetMipData(OutMipData, 0, 0, MipIndex, ImageWrapperModule);
 	}
 
-	FORCEINLINE int64 CalcMipSize(int32 MipIndex) const { return CalcMipSize(0, 0, MipIndex); }
+	FORCEINLINE int32 CalcMipSize(int32 MipIndex) const { return CalcMipSize(0, 0, MipIndex); }
 	FORCEINLINE uint8* LockMip(int32 MipIndex) { return LockMip(0, 0, MipIndex); }
 	FORCEINLINE void UnlockMip(int32 MipIndex) { UnlockMip(0, 0, MipIndex); }
 
@@ -345,15 +342,14 @@ private:
 	/** Removes source data. */
 	void RemoveSourceData();
 	/** Retrieve the size and offset for a source mip. The size includes all slices. */
-	int64 CalcMipOffset(int32 BlockIndex, int32 LayerIndex, int32 MipIndex) const;
+	int32 CalcMipOffset(int32 BlockIndex, int32 LayerIndex, int32 MipIndex) const;
 
-	int64 CalcBlockSize(int32 BlockIndex) const;
-	int64 CalcLayerSize(int32 BlockIndex, int32 LayerIndex) const;
+	int32 CalcBlockSize(int32 BlockIndex) const;
+	int32 CalcLayerSize(int32 BlockIndex, int32 LayerIndex) const;
 
-public:
 	/** Uses a hash as the GUID, useful to prevent creating new GUIDs on load for legacy assets. */
-	ENGINE_API void UseHashAsGuid();
-
+	void UseHashAsGuid();
+public:
 	void ReleaseSourceMemory(); // release the memory from the mips (does almost the same as remove source data except doesn't rebuild the guid)
 	FORCEINLINE bool HasHadBulkDataCleared() const { return bHasHadBulkDataCleared; }
 private:
@@ -397,7 +393,7 @@ private:
 	UPROPERTY(VisibleAnywhere, Category=TextureSource)
 	bool bPNGCompressed;
 
-	/** Uses hash instead of guid to identify content to improve DDC cache hit. */
+	/** Legacy textures use a hash instead of a GUID. */
 	UPROPERTY(VisibleAnywhere, Category=TextureSource)
 	bool bGuidIsHash;
 
@@ -476,6 +472,11 @@ struct FTexturePlatformData
 	TIndirectArray<struct FTexture2DMipMap> Mips;
 	struct FVirtualTextureBuiltData* VTData;
 
+#if TEXTURE2DMIPMAP_USE_COMPACT_BULKDATA
+	/** Cached UPackage file name where the owning texture is loaded from */
+	FString CachedPackageFileName;
+#endif
+
 #if WITH_EDITORONLY_DATA
 	/** The key associated with this derived data. */
 	FString DerivedDataKey;
@@ -504,10 +505,9 @@ public:
 	 * @param OutMipData -	Must point to an array of pointers with at least
 	 *						Texture.Mips.Num() - FirstMipToLoad + 1 entries. Upon
 	 *						return those pointers will contain mip data.
-	 * @param Texture - The texture to load mips for.
 	 * @returns true if all requested mips have been loaded.
 	 */
-	bool TryLoadMips(int32 FirstMipToLoad, void** OutMipData, UTexture* Texture);
+	bool TryLoadMips(int32 FirstMipToLoad, void** OutMipData);
 
 	/** Serialization. */
 	void Serialize(FArchive& Ar, class UTexture* Owner);
@@ -572,17 +572,12 @@ public:
 		uint32 InFlags,
 		class ITextureCompressorModule* Compressor);
 	void FinishCache();
-	ENGINE_API bool TryInlineMipData(int32 FirstMipToLoad = 0, UTexture* Texture = nullptr);
+	ENGINE_API bool TryInlineMipData(int32 FirstMipToLoad = 0);
 	bool AreDerivedMipsAvailable() const;
 	bool AreDerivedVTChunksAvailable() const;
 #endif
 
-	/** Return the number of mips that are not streamable. */
 	int32 GetNumNonStreamingMips() const;
-	/** Return the number of mips that streamable but not optional. */
-	int32 GetNumNonOptionalMips() const;
-	/** Return true if at least one mip can be loaded either from DDC or disk. */
-	bool CanBeLoaded() const;
 
 	// Only because we don't want to expose FVirtualTextureBuiltData
 	ENGINE_API int32 GetNumVTMips() const;
@@ -622,7 +617,7 @@ struct FTextureFormatSettings
 };
 
 UCLASS(abstract, MinimalAPI, BlueprintType)
-class UTexture : public UStreamableRenderAsset, public IInterface_AssetUserData
+class ENGINE_VTABLE UTexture : public UStreamableRenderAsset, public IInterface_AssetUserData
 {
 	GENERATED_UCLASS_BODY()
 
@@ -690,7 +685,7 @@ public:
 	uint32 CompressionNone:1;
 
 	/** If enabled, defer compression of the texture until save. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Compression, meta=(NoResetToDefault))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Compression)
 	uint32 DeferCompression:1;
 
 	/** How aggressively should any relevant lossy compression be applied. */
@@ -801,19 +796,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=LevelOfDetail, meta=(DisplayName="Texture Group"), AssetRegistrySearchable)
 	TEnumAsByte<enum TextureGroup> LODGroup;
 
-	/** Downscale source texture, applied only to textures without mips 
-	 * 0.0 - use scale value from texture group
-	 * 1.0 - do not scale texture
-	 * > 1.0 - scale texure
-	 */
-	UPROPERTY(EditAnywhere, Category=LevelOfDetail, AdvancedDisplay, meta=(ClampMin="0.0", ClampMax="8.0"))
-	FPerPlatformFloat Downscale;
-
-	/** Texture downscaling options */
-	UPROPERTY(EditAnywhere, Category=LevelOfDetail, AdvancedDisplay)
-	ETextureDownscaleOptions DownscaleOptions;
-
-	
 	/** This should be unchecked if using alpha channels individually as masks. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category=Texture, meta=(DisplayName="sRGB"), AssetRegistrySearchable)
 	uint8 SRGB:1;
@@ -837,10 +819,6 @@ public:
 	/** If true the texture stores YCoCg. Blue channel will be filled with a precision scale during compression. */
 	UPROPERTY()
 	uint8 CompressionYCoCg : 1;
-
-	/** If true, the RHI texture will be created without TexCreate_OfflineProcessed. */
-	UPROPERTY(transient)
-	uint8 bNotOfflineProcessed : 1;
 
 private:
 	/** Whether the async resource release process has already been kicked off or not */
@@ -889,6 +867,18 @@ public:
 	 * @return The material value type of this texture.
 	 */
 	virtual EMaterialValueType GetMaterialType() const PURE_VIRTUAL(UTexture::GetMaterialType,return MCT_Texture;);
+
+	/**
+	 * Waits until all streaming requests for this texture has been fully processed.
+	 */
+	virtual void WaitForStreaming()
+	{
+	}
+
+	virtual bool HasPendingUpdate() const override 
+	{ 
+		return false; // Overriden in UTexture2D
+	}
 
 	/**
 	 * Returns if the texture is actually being rendered using virtual texturing right now.
@@ -1020,7 +1010,7 @@ public:
 	//~ Begin UObject Interface.
 #if WITH_EDITOR
 	ENGINE_API virtual void PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent) override;
-	ENGINE_API virtual bool CanEditChange(const FProperty* InProperty) const override;
+	ENGINE_API virtual bool CanEditChange(const UProperty* InProperty) const override;
 #endif // WITH_EDITOR
 	ENGINE_API virtual void Serialize(FArchive& Ar) override;
 	ENGINE_API virtual void PostInitProperties() override;
@@ -1038,14 +1028,7 @@ public:
 
 	//~ Begin UStreamableRenderAsset Interface
 	virtual int32 GetLODGroupForStreaming() const final override { return static_cast<int32>(LODGroup); }
-	virtual EStreamableRenderAssetType GetRenderAssetType() const final override { return EStreamableRenderAssetType::Texture; }
-	ENGINE_API virtual FIoFilenameHash GetMipIoFilenameHash(const int32 MipIndex) const final override;
-	ENGINE_API virtual bool DoesMipDataExist(const int32 MipIndex) const final override;
-	ENGINE_API virtual bool HasPendingRenderResourceInitialization() const final override;
-	ENGINE_API virtual bool HasPendingLODTransition() const final override;
-	ENGINE_API virtual void InvalidateLastRenderTimeForStreaming() final override;
-	ENGINE_API virtual float GetLastRenderTimeForStreaming() const final override;
-	ENGINE_API virtual bool ShouldMipLevelsBeForcedResident() const final override;
+	virtual bool UpdateStreamingStatus(bool bWaitForMipFading = false) override { return false; }
 	//~ End UStreamableRenderAsset Interface
 
 	/**
@@ -1125,59 +1108,19 @@ public:
 #endif // WITH_EDITORONLY_DATA
 	}
 
-	void SetLightingGuid(const FGuid& Guid)
-	{
-		LightingGuid = Guid;
-	}
-
-	/** Generates a deterministic GUID for the texture based on the full name of the object.
-	  * Used to ensure that assets created during cook can be deterministic
-	  */
-	ENGINE_API void SetDeterministicLightingGuid();
-
 	/**
 	 * Retrieves the pixel format enum for enum <-> string conversions.
 	 */
 	ENGINE_API static class UEnum* GetPixelFormatEnum();
 
-	/** Returns the minimum number of mips that must be resident in memory (cannot be streamed). */
-	static FORCEINLINE int32 GetStaticMinTextureResidentMipCount()
-	{
-		return GMinTextureResidentMipCount;
-	}
-
-	/** Sets the minimum number of mips that must be resident in memory (cannot be streamed). */
-	static void SetMinTextureResidentMipCount(int32 InMinTextureResidentMipCount);
-
 protected:
-
-	/** The minimum number of mips that must be resident in memory (cannot be streamed). */
-	static ENGINE_API int32 GMinTextureResidentMipCount;
 
 #if WITH_EDITOR
 
-	enum class ENotifyMaterialsEffectOnShaders
-	{
-		Default,
-		DoesNotInvalidate
-	};
-
 	/** Notify any loaded material instances that the texture has changed. */
-	ENGINE_API void NotifyMaterials(const ENotifyMaterialsEffectOnShaders EffectOnShaders = ENotifyMaterialsEffectOnShaders::Default);
+	ENGINE_API void NotifyMaterials();
 
-#endif //WITH_EDITOR
-
-	void BeginFinalReleaseResource();
-
-	/**
-	 * Calculates the render resource initial state, expected to be used in InitResource() for derived classes implementing streaming.
-	 *
-	 * @param	PlatformData - the asset platform data.
-	 * @param	bAllowStreaming - where streaming is allowed, might still be disabled based on asset settings.
-	 * @param	MaxMipCount - optional limitation on the max mip count.
-	 * @return  The state to be passed to FStreamableTextureResource.
-	 */
-	FStreamableRenderResourceState GetResourcePostInitState(FTexturePlatformData* PlatformData, bool bAllowStreaming, int32 MinRequestMipCount = 0, int32 MaxMipCount = 0) const;
+#endif //WITH_EDOTIR
 };
 
 /** 

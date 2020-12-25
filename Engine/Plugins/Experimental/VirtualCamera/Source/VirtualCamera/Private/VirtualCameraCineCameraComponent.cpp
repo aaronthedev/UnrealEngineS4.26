@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VirtualCameraCineCameraComponent.h"
 #include "Engine/StaticMesh.h"
@@ -182,7 +182,7 @@ void UVirtualCameraCineCameraComponent::SetFocusMethod(const EVirtualCameraFocus
 	{
 	case EVirtualCameraFocusMethod::None:
 		bAutoFocusEnabled = false;
-		FocusSettings.FocusMethod = ECameraFocusMethod::DoNotOverride;
+		FocusSettings.FocusMethod = ECameraFocusMethod::None;
 		break;
 	case EVirtualCameraFocusMethod::Auto:
 		bAutoFocusEnabled = true;
@@ -229,7 +229,7 @@ void UVirtualCameraCineCameraComponent::SetFocusChangeSmoothness(const float New
 
 void UVirtualCameraCineCameraComponent::SetFocusVisualization(bool bShowFocusVisualization)
 {
-	if (FocusSettings.FocusMethod == ECameraFocusMethod::Disable)
+	if (FocusSettings.FocusMethod == ECameraFocusMethod::None)
 	{
 		UE_LOG(LogActor, Warning, TEXT("Camera focus mode is currently set to none, cannot display focus plane!"))
 		return;
@@ -240,7 +240,7 @@ void UVirtualCameraCineCameraComponent::SetFocusVisualization(bool bShowFocusVis
 
 bool UVirtualCameraCineCameraComponent::IsFocusVisualizationActivated() const
 {
-	return FocusSettings.FocusMethod != ECameraFocusMethod::Disable && FocusSettings.bDrawDebugFocusPlane;
+	return FocusSettings.FocusMethod != ECameraFocusMethod::None && FocusSettings.bDrawDebugFocusPlane;
 }
 
 int32 UVirtualCameraCineCameraComponent::FindClosestPresetIndex(const TArray<float>& ArrayToSearch, const float SearchValue) const

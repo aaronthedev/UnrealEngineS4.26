@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Particles/SubUVAnimation.h"
 #include "Misc/Guid.h"
@@ -103,7 +103,7 @@ void USubUVAnimation::CacheDerivedData()
 	TArray<uint8> Data;
 
 	COOK_STAT(auto Timer = SubUVAnimationCookStats::UsageStats.TimeSyncWork());
-	if (GetDerivedDataCacheRef().GetSynchronous(*KeyString, Data, GetPathName()))
+	if (GetDerivedDataCacheRef().GetSynchronous(*KeyString, Data))
 	{
 		COOK_STAT(Timer.AddHit(Data.Num()));
 		DerivedData.BoundingGeometry.Empty(Data.Num() / sizeof(FVector2D));
@@ -117,7 +117,7 @@ void USubUVAnimation::CacheDerivedData()
 		Data.Empty(DerivedData.BoundingGeometry.Num() * sizeof(FVector2D));
 		Data.AddUninitialized(DerivedData.BoundingGeometry.Num() * sizeof(FVector2D));
 		FPlatformMemory::Memcpy(Data.GetData(), DerivedData.BoundingGeometry.GetData(), DerivedData.BoundingGeometry.Num() * DerivedData.BoundingGeometry.GetTypeSize());
-		GetDerivedDataCacheRef().Put(*KeyString, Data, GetPathName());
+		GetDerivedDataCacheRef().Put(*KeyString, Data);
 		COOK_STAT(Timer.AddMiss(Data.Num()));
 	}
 #endif
@@ -138,12 +138,15 @@ void USubUVAnimation::PostLoad()
 	}
 
 	// The SRV is only needed for platforms that can render particles with instancing
-	BeginInitResource(BoundingGeometryBuffer);
+	if (GRHISupportsInstancing)
+	{
+		BeginInitResource(BoundingGeometryBuffer);
+	}
 }
 
 #if WITH_EDITOR
 
-void USubUVAnimation::PreEditChange(FProperty* PropertyThatChanged)
+void USubUVAnimation::PreEditChange(UProperty* PropertyThatChanged)
 {
 	Super::PreEditChange(PropertyThatChanged);
 
@@ -166,7 +169,10 @@ void USubUVAnimation::PostEditChangeProperty(FPropertyChangedEvent& PropertyChan
 	CacheDerivedData();
 
 	// The SRV is only needed for platforms that can render particles with instancing
-	BeginInitResource(BoundingGeometryBuffer);
+	if (GRHISupportsInstancing)
+	{
+		BeginInitResource(BoundingGeometryBuffer);
+	}
 }
 
 #endif // WITH_EDITOR

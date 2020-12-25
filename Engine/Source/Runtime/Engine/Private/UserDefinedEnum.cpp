@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/UserDefinedEnum.h"
 #include "UObject/EditorObjectVersion.h"
@@ -175,7 +175,7 @@ FString UUserDefinedEnum::GetAuthoredNameStringByIndex(int32 InIndex) const
 	return Super::GetAuthoredNameStringByIndex(InIndex);
 }
 
-bool UUserDefinedEnum::SetEnums(TArray<TPair<FName, int64>>& InNames, ECppForm InCppForm, EEnumFlags InFlags, bool bAddMaxKeyIfMissing)
+bool UUserDefinedEnum::SetEnums(TArray<TPair<FName, int64>>& InNames, ECppForm InCppForm, bool bAddMaxKeyIfMissing)
 {
 	ensure(bAddMaxKeyIfMissing);
 	if (Names.Num() > 0)
@@ -184,7 +184,6 @@ bool UUserDefinedEnum::SetEnums(TArray<TPair<FName, int64>>& InNames, ECppForm I
 	}
 	Names = InNames;
 	CppForm = InCppForm;
-	EnumFlags = InFlags;
 
 	const FString BaseEnumPrefix = GenerateEnumPrefix();
 	checkSlow(BaseEnumPrefix.Len());

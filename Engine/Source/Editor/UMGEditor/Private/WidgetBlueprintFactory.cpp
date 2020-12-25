@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WidgetBlueprintFactory.h"
 #include "UObject/Interface.h"
@@ -54,7 +54,7 @@ UWidgetBlueprintFactory::UWidgetBlueprintFactory(const FObjectInitializer& Objec
 	bCreateNew = true;
 	bEditAfterNew = true;
 	SupportedClass = UWidgetBlueprint::StaticClass();
-	ParentClass = nullptr;
+	ParentClass = UUserWidget::StaticClass();
 }
 
 bool UWidgetBlueprintFactory::ConfigureProperties()
@@ -97,22 +97,16 @@ UObject* UWidgetBlueprintFactory::FactoryCreateNew(UClass* Class, UObject* InPar
 	// Make sure we are trying to factory a Anim Blueprint, then create and init one
 	check(Class->IsChildOf(UWidgetBlueprint::StaticClass()));
 
-	UClass* CurrentParentClass = ParentClass;
-	if (CurrentParentClass == nullptr)
-	{
-		CurrentParentClass = GetDefault <UUMGEditorProjectSettings>()->DefaultWidgetParentClass.LoadSynchronous();
-	}
-
 	// If they selected an interface, force the parent class to be UInterface
 	if (BlueprintType == BPTYPE_Interface)
 	{
-		CurrentParentClass = UInterface::StaticClass();
+		ParentClass = UInterface::StaticClass();
 	}
 
-	if ( (CurrentParentClass == nullptr) || !FKismetEditorUtilities::CanCreateBlueprintOfClass(CurrentParentClass) || !CurrentParentClass->IsChildOf(UUserWidget::StaticClass()) )
+	if ( ( ParentClass == NULL ) || !FKismetEditorUtilities::CanCreateBlueprintOfClass(ParentClass) || !ParentClass->IsChildOf(UUserWidget::StaticClass()) )
 	{
 		FFormatNamedArguments Args;
-		Args.Add( TEXT("ClassName"), CurrentParentClass ? FText::FromString( CurrentParentClass->GetName() ) : LOCTEXT("Null", "(null)") );
+		Args.Add( TEXT("ClassName"), ParentClass ? FText::FromString( ParentClass->GetName() ) : LOCTEXT("Null", "(null)") );
 		FMessageDialog::Open( EAppMsgType::Ok, FText::Format( LOCTEXT("CannotCreateWidgetBlueprint", "Cannot create a Widget Blueprint based on the class '{ClassName}'."), Args ) );
 		return nullptr;
 	}
@@ -123,7 +117,7 @@ UObject* UWidgetBlueprintFactory::FactoryCreateNew(UClass* Class, UObject* InPar
 			RootWidgetClass = GetDefault<UUMGEditorProjectSettings>()->DefaultRootWidget;
 		}
 
-		UWidgetBlueprint* NewBP = CastChecked<UWidgetBlueprint>(FKismetEditorUtilities::CreateBlueprint(CurrentParentClass, InParent, Name, BlueprintType, UWidgetBlueprint::StaticClass(), UWidgetBlueprintGeneratedClass::StaticClass(), CallingContext));
+		UWidgetBlueprint* NewBP = CastChecked<UWidgetBlueprint>(FKismetEditorUtilities::CreateBlueprint(ParentClass, InParent, Name, BlueprintType, UWidgetBlueprint::StaticClass(), UWidgetBlueprintGeneratedClass::StaticClass(), CallingContext));
 
 		// Create the desired root widget specified by the project
 		if ( NewBP->WidgetTree->RootWidget == nullptr )

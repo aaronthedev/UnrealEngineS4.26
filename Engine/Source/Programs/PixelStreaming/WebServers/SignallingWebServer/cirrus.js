@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 //-- Server side logic. Serves pixel streaming WebRTC-based page, proxies data back to Streamer --//
 
@@ -21,8 +21,7 @@ const defaultConfig = {
 	UseAuthentication: false,
 	LogToFile: true,
 	HomepageFile: 'player.htm',
-	AdditionalRoutes: new Map(),
-	EnableWebserver: true
+	AdditionalRoutes: new Map()
 };
 
 const argv = require('yargs').argv;
@@ -86,7 +85,6 @@ var streamerPort = 8888; // port to listen to Streamer connections
 
 var matchmakerAddress = '127.0.0.1';
 var matchmakerPort = 9999;
-var matchmakerRetryInterval = 5;
 
 var gameSessionId;
 var userSessionId;
@@ -132,10 +130,6 @@ try {
 	if (typeof config.matchmakerPort != 'undefined') {
 		matchmakerPort = config.matchmakerPort;
 	}
-
-	if (typeof config.matchmakerRetryInterval != 'undefined') {
-		matchmakerRetryInterval = config.matchmakerRetryInterval;
-	}
 } catch (e) {
 	console.error(e);
 	process.exit(2);
@@ -172,11 +166,9 @@ sendGameSessionData();
 
 //Setup the login page if we are using authentication
 if(config.UseAuthentication){
-	if(config.EnableWebserver) {
-		app.get('/login', function(req, res){
-			res.sendFile(__dirname + '/login.htm');
-		});
-	}
+	app.get('/login', function(req, res){
+		res.sendFile(__dirname + '/login.htm');
+	});
 
 	// create application/x-www-form-urlencoded parser
 	var urlencodedParser = bodyParser.urlencoded({ extended: false })
@@ -195,13 +187,11 @@ if(config.UseAuthentication){
 	);
 }
 
-if(config.EnableWebserver) {
-	//Setup folders
-	app.use(express.static(path.join(__dirname, '/public')))
-	app.use('/images', express.static(path.join(__dirname, './images')))
-	app.use('/scripts', [isAuthenticated('/login'),express.static(path.join(__dirname, '/scripts'))]);
-	app.use('/', [isAuthenticated('/login'), express.static(path.join(__dirname, '/custom_html'))])
-}
+//Setup folders
+app.use(express.static(path.join(__dirname, '/public')))
+app.use('/images', express.static(path.join(__dirname, './images')))
+app.use('/scripts', [isAuthenticated('/login'),express.static(path.join(__dirname, '/scripts'))]);
+app.use('/', [isAuthenticated('/login'), express.static(path.join(__dirname, '/custom_html'))])
 
 try {
 	for (var property in config.AdditionalRoutes) {
@@ -214,22 +204,21 @@ try {
 	console.error(`reading config.AdditionalRoutes: ${err}`)
 }
 
-if(config.EnableWebserver) {
-	app.get('/', isAuthenticated('/login'), function (req, res) {
-		homepageFile = (typeof config.HomepageFile != 'undefined' && config.HomepageFile != '') ? config.HomepageFile.toString() : defaultConfig.HomepageFile;
-		homepageFilePath = path.join(__dirname, homepageFile)
+app.get('/', isAuthenticated('/login'), function (req, res) {
+	homepageFile = (typeof config.HomepageFile != 'undefined' && config.HomepageFile != '') ? config.HomepageFile.toString() : defaultConfig.HomepageFile;
+	homepageFilePath = path.join(__dirname, homepageFile)
 
-		fs.access(homepageFilePath, (err) => {
-			if (err) {
-				console.error('Unable to locate file ' + homepageFilePath)
-				res.status(404).send('Unable to locate file ' + homepageFile);
-			}
-			else {
-				res.sendFile(homepageFilePath);
-			}
-		});
+	fs.access(homepageFilePath, (err) => {
+		if (err) {
+			console.error('Unable to locate file ' + homepageFilePath)
+			res.status(404).send('Unable to locate file ' + homepageFile);
+		}
+		else {
+			res.sendFile(homepageFilePath);
+		}
 	});
-}
+});
+
 
 //Setup http and https servers
 http.listen(httpPort, function () {
@@ -278,7 +267,6 @@ let streamer; // WebSocket connected to Streamer
 
 streamerServer.on('connection', function (ws, req) {
 	console.logColor(logging.Green, `Streamer connected: ${req.connection.remoteAddress}`);
-	sendStreamerConnectedToMatchmaker();
 
 	ws.on('message', function onStreamerMessage(msg) {
 		console.logColor(logging.Blue, `<- Streamer: ${msg}`);
@@ -291,11 +279,6 @@ streamerServer.on('connection', function (ws, req) {
 			return;
 		}
 	
-		if (msg.type == 'ping') {
-			streamer.send(JSON.stringify({ type: "pong", time: msg.time}));
-			return;
-		}
-
 		let playerId = msg.playerId;
 		delete msg.playerId; // no need to send it to the player
 		let player = players.get(playerId);
@@ -309,7 +292,7 @@ streamerServer.on('connection', function (ws, req) {
 		} else if (msg.type == 'iceCandidate') {
 			player.ws.send(JSON.stringify(msg));
 		} else if (msg.type == 'disconnectPlayer') {
-			player.ws.close(1011 /* internal error */, msg.reason);
+			player.ws.close(msg.reason);
 		} else {
 			console.error(`unsupported Streamer message type: ${msg.type}`);
 			streamer.close(1008, 'Unsupported message type');
@@ -317,7 +300,6 @@ streamerServer.on('connection', function (ws, req) {
 	});
 
 	function onStreamerDisconnected() {
-		sendStreamerDisconnectedToMatchmaker();
 		disconnectAllPlayers();
 	}
 	
@@ -436,46 +418,19 @@ function disconnectAllPlayers(code, reason) {
  */
 
 if (config.UseMatchmaker) {
-	var matchmaker = new net.Socket();
-
-	matchmaker.on('connect', function() {
+	var matchmaker = net.connect(matchmakerPort, matchmakerAddress, () => {
 		console.log(`Cirrus connected to Matchmaker ${matchmakerAddress}:${matchmakerPort}`);
 		message = {
 			type: 'connect',
 			address: typeof serverPublicIp === 'undefined' ? '127.0.0.1' : serverPublicIp,
-			port: httpPort,
-			ready: streamer && streamer.readyState === 1
+			port: httpPort
 		};
 		matchmaker.write(JSON.stringify(message));
 	});
 
-	matchmaker.on('error', (err) => {
-		console.log(`Matchmaker connection error ${JSON.stringify(err)}`);
+	matchmaker.on('error', () => {
+		console.error('Cirrus disconnected from matchmaker');
 	});
-
-	matchmaker.on('end', () => {
-		console.log('Matchmaker connection ended');
-	});
-
-	matchmaker.on('close', (hadError) => {
-		console.log(`Matchmaker connection closed (hadError=${hadError})`);
-		reconnect();
-	});
-
-	// Attempt to connect to the Matchmaker
-	function connect() {
-		matchmaker.connect(matchmakerPort, matchmakerAddress);
-	}
-
-	// Try to reconnect to the Matchmaker after a given period of time
-	function reconnect() {
-		console.log(`Try reconnect to Matchmaker in ${matchmakerRetryInterval} seconds`)
-		setTimeout(function() {
-			connect();
-		}, matchmakerRetryInterval * 1000);
-	}
-
-	connect();
 }
 
 //Keep trying to send gameSessionId in case the server isn't ready yet
@@ -618,26 +573,6 @@ function sendPlayerDisconnectedToFrontend() {
 				console.error(err);
 			}
 		});
-}
-
-function sendStreamerConnectedToMatchmaker() {
-	if (!config.UseMatchmaker)
-		return;
-
-	message = {
-		type: 'streamerConnected'
-	};
-	matchmaker.write(JSON.stringify(message));
-}
-
-function sendStreamerDisconnectedToMatchmaker() {
-	if (!config.UseMatchmaker)
-		return;
-
-	message = {
-		type: 'streamerDisconnected'
-	};
-	matchmaker.write(JSON.stringify(message));
 }
 
 // The Matchmaker will not re-direct clients to this Cirrus server if any client

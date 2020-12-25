@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MeshBoneReduction.h"
 #include "Modules/ModuleManager.h"
@@ -132,9 +132,7 @@ public:
 	{
 		// now you have list of bones, remove them from vertex influences
 		{
-			// FBoneIndexType/uint16 max range
-			const int32 FBoneIndexTypeMax = 65536;
-			TMap<FBoneIndexType, FBoneIndexType> BoneMapRemapTable;
+			TMap<uint8, uint8> BoneMapRemapTable;
 			// first go through bone map and see if this contains BonesToRemove
 			int32 BoneMapSize = Section.BoneMap.Num();
 			int32 AdjustIndex=0;
@@ -174,7 +172,7 @@ public:
 					// first fix up all indices of BoneMapRemapTable for the indices higher than BoneMapIndex, since BoneMapIndex is being removed
 					for (auto Iter = BoneMapRemapTable.CreateIterator(); Iter; ++Iter)
 					{
-						FBoneIndexType& Value = Iter.Value();
+						uint8& Value = Iter.Value();
 
 						check (Value != BoneMapIndex);
 						if (Value > BoneMapIndex)
@@ -188,10 +186,10 @@ public:
 					// you still have to add no matter what even if same since indices might change after added
 					{
 						// add to remap table
-						check (OldIndex < FBoneIndexTypeMax && OldIndex >= 0);
-						check (NewIndex < FBoneIndexTypeMax && NewIndex >= 0);
-						check (BoneMapRemapTable.Contains((FBoneIndexType)OldIndex) == false);
-						BoneMapRemapTable.Add((FBoneIndexType)OldIndex, (FBoneIndexType)NewIndex);
+						check (OldIndex < 256 && OldIndex >= 0);
+						check (NewIndex < 256 && NewIndex >= 0);
+						check (BoneMapRemapTable.Contains((uint8)OldIndex) == false);
+						BoneMapRemapTable.Add((uint8)OldIndex, (uint8)NewIndex);
 					}
 
 					// reduce index since the item is removed
@@ -205,10 +203,11 @@ public:
 				{
 					int32 OldIndex = BoneMapIndex+AdjustIndex;
 					int32 NewIndex = BoneMapIndex;
-					check (OldIndex < FBoneIndexTypeMax && OldIndex >= 0);
-					check (NewIndex < FBoneIndexTypeMax && NewIndex >= 0);
-					check (BoneMapRemapTable.Contains((FBoneIndexType)OldIndex) == false);
-					BoneMapRemapTable.Add((FBoneIndexType)OldIndex, (FBoneIndexType)NewIndex);
+
+					check (OldIndex < 256 && OldIndex >= 0);
+					check (NewIndex < 256 && NewIndex >= 0);
+					check (BoneMapRemapTable.Contains((uint8)OldIndex) == false);
+					BoneMapRemapTable.Add((uint8)OldIndex, (uint8)NewIndex);
 				}
 			}
 
@@ -220,13 +219,13 @@ public:
 				{
 					FSoftSkinVertex & Vert = Section.SoftVertices[VertIndex];
 
-					auto RemapBoneInfluenceVertexIndex = [&BoneMapRemapTable](FBoneIndexType InfluenceBones[MAX_TOTAL_INFLUENCES], uint8 InfluenceWeights[MAX_TOTAL_INFLUENCES])
+					auto RemapBoneInfluenceVertexIndex = [&BoneMapRemapTable](uint8 InfluenceBones[MAX_TOTAL_INFLUENCES], uint8 InfluenceWeights[MAX_TOTAL_INFLUENCES])
 					{
 						bool ShouldRenormalize = false;
 
 						for (int32 InfluenceIndex = 0; InfluenceIndex < MAX_TOTAL_INFLUENCES; InfluenceIndex++)
 						{
-							FBoneIndexType *RemappedBone = BoneMapRemapTable.Find(InfluenceBones[InfluenceIndex]);
+							uint8 *RemappedBone = BoneMapRemapTable.Find(InfluenceBones[InfluenceIndex]);
 							if (RemappedBone)
 							{
 								InfluenceBones[InfluenceIndex] = *RemappedBone;
@@ -427,7 +426,7 @@ public:
 						FVector TangentY = Vertex.TangentY;
 						FVector TangentZ = Vertex.TangentZ;
 						FVector Position = Vertex.Position;
-						for (uint8 InfluenceIndex = 0; InfluenceIndex < MAX_TOTAL_INFLUENCES; ++InfluenceIndex)
+						for (uint8 InfluenceIndex = 0; InfluenceIndex < 8; ++InfluenceIndex)
 						{
 							const int32 ArrayIndex = BoneIndices.IndexOfByKey(Section.BoneMap[Vertex.InfluenceBones[InfluenceIndex]]);
 							if (ArrayIndex != INDEX_NONE)
@@ -473,13 +472,17 @@ public:
 		NewModel->ActiveBoneIndices.Sort();
 		NewModel->RequiredBones.Sort();
 
-		// Call post edit change and re-register skeletal mesh component
 		if (bCallPostEditChange)
 		{
-			FScopedSkeletalMeshPostEditChange ScopedSkeletalMeshPostEditChange(SkeletalMesh);
+			SkeletalMesh->PostEditChange();
 		}
 		SkeletalMesh->MarkPackageDirty();
-
+		
+		//Reregister skinned mesh component if we call post edit change
+		if (bCallPostEditChange)
+		{
+			TComponentReregisterContext<USkinnedMeshComponent> ReregisterContext;
+		}
 		return true;
 	}
 };

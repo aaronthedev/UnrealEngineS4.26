@@ -1,15 +1,15 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Binding/TextBinding.h"
 
 #define LOCTEXT_NAMESPACE "UMG"
 
-bool UTextBinding::IsSupportedDestination(FProperty* Property) const
+bool UTextBinding::IsSupportedDestination(UProperty* Property) const
 {
 	return IsConcreteTypeCompatibleWithReflectedType<FText>(Property);
 }
 
-bool UTextBinding::IsSupportedSource(FProperty* Property) const
+bool UTextBinding::IsSupportedSource(UProperty* Property) const
 {
 	return
 		IsConcreteTypeCompatibleWithReflectedType<FText>(Property) ||
@@ -18,7 +18,7 @@ bool UTextBinding::IsSupportedSource(FProperty* Property) const
 		IsConcreteTypeCompatibleWithReflectedType<float>(Property);
 }
 
-void UTextBinding::Bind(FProperty* Property, FScriptDelegate* Delegate)
+void UTextBinding::Bind(UProperty* Property, FScriptDelegate* Delegate)
 {
 	if ( IsConcreteTypeCompatibleWithReflectedType<FText>(Property) )
 	{

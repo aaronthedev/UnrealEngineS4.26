@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "Templates/SharedPointer.h"
@@ -142,7 +142,7 @@ private:
 	void UpdateMarqueeBoundingBox();
 	void UpdateToolOptions();
 	void DrawMarqueeWidget(const FCurveEditorTransformWidget& InTransformWidget, const FPaintArgs& InArgs, const FGeometry& InAllottedGeometry, const FSlateRect& InMyCullingRect, FSlateWindowElementList& OutDrawElements, const int32 InPaintOnLayerId, const FWidgetStyle& InWidgetStyle, const bool bInParentEnabled) const;
-	void ScaleFrom(const FVector2D& InPanelSpaceCenter, const FVector2D& InChangeAmount, const bool bInFalloffOn, const bool bInAffectsX, const bool bInAffectsY);
+	void ScaleFrom(const FVector2D& InPanelSpaceCenter, const FVector2D& InChangeAmount, const bool bInFalloffOn, const bool bInAffectsX, const bool bInAffectsY) const;
 
 	void OnDragStart();
 	void OnDrag(const FPointerEvent& InMouseEvent, const FVector2D& InLocalMousePosition);
@@ -175,8 +175,6 @@ private:
 		TArray<FKeyHandle> Handles;
 		/** The extended key info for each of the above handles */
 		TArray<FKeyPosition> StartKeyPositions;
-		/** Used in OnEndDrag to send final key updates */
-		TArray<FKeyPosition> LastDraggedKeyPositions;
 	};
 
 	/** Key dragging data stored per-curve */

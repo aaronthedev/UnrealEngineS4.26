@@ -1,7 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PyWrapperMap.h"
 #include "PyWrapperTypeRegistry.h"
+#include "PyCore.h"
+#include "PyUtil.h"
 #include "PyConversion.h"
 #include "PyReferenceCollector.h"
 #include "UObject/UnrealType.h"
@@ -433,7 +435,7 @@ FPyWrapperMap* FPyWrapperMap::New(PyTypeObject* InType)
 	if (Self)
 	{
 		new(&Self->OwnerContext) FPyWrapperOwnerContext();
-		new(&Self->MapProp) PyUtil::FConstMapPropOnScope();
+		Self->MapProp = nullptr;
 		Self->MapInstance = nullptr;
 	}
 	return Self;
@@ -444,7 +446,6 @@ void FPyWrapperMap::Free(FPyWrapperMap* InSelf)
 	Deinit(InSelf);
 
 	InSelf->OwnerContext.~FPyWrapperOwnerContext();
-	InSelf->MapProp.~TPropOnScope();
 	FPyWrapperBase::Free(InSelf);
 }
 
@@ -458,23 +459,23 @@ int FPyWrapperMap::Init(FPyWrapperMap* InSelf, const PyUtil::FPropertyDef& InKey
 		return BaseInit;
 	}
 
-	PyUtil::FPropOnScope MapKeyProp = PyUtil::FPropOnScope::OwnedReference(PyUtil::CreateProperty(InKeyDef, 1));
+	UProperty* MapKeyProp = PyUtil::CreateProperty(InKeyDef, 1);
 	if (!MapKeyProp)
 	{
 		PyUtil::SetPythonError(PyExc_Exception, InSelf, TEXT("Map key property was null during init"));
 		return -1;
 	}
 
-	PyUtil::FPropOnScope MapValueProp = PyUtil::FPropOnScope::OwnedReference(PyUtil::CreateProperty(InValueDef, 1));
+	UProperty* MapValueProp = PyUtil::CreateProperty(InValueDef, 1);
 	if (!MapValueProp)
 	{
 		PyUtil::SetPythonError(PyExc_Exception, InSelf, TEXT("Map value property was null during init"));
 		return -1;
 	}
 
-	PyUtil::FMapPropOnScope MapProp = PyUtil::FMapPropOnScope::OwnedReference(new FMapProperty(FFieldVariant(), PyUtil::DefaultPythonPropertyName, RF_NoFlags));
-	MapProp->KeyProp = MapKeyProp.Release();
-	MapProp->ValueProp = MapValueProp.Release();
+	UMapProperty* MapProp = NewObject<UMapProperty>(GetPythonPropertyContainer());
+	MapProp->KeyProp = MapKeyProp;
+	MapProp->ValueProp = MapValueProp;
 
 	// Need to manually call Link to fix-up some data (such as the C++ property flags and the map layout) that are only set during Link
 	{
@@ -485,14 +486,14 @@ int FPyWrapperMap::Init(FPyWrapperMap* InSelf, const PyUtil::FPropertyDef& InKey
 	void* MapValue = FMemory::Malloc(MapProp->GetSize(), MapProp->GetMinAlignment());
 	MapProp->InitializeValue(MapValue);
 
-	InSelf->MapProp = MoveTemp(MapProp);
+	InSelf->MapProp = MapProp;
 	InSelf->MapInstance = MapValue;
 
 	FPyWrapperMapFactory::Get().MapInstance(InSelf->MapInstance, InSelf);
 	return 0;
 }
 
-int FPyWrapperMap::Init(FPyWrapperMap* InSelf, const FPyWrapperOwnerContext& InOwnerContext, const FMapProperty* InProp, void* InValue, const EPyConversionMethod InConversionMethod)
+int FPyWrapperMap::Init(FPyWrapperMap* InSelf, const FPyWrapperOwnerContext& InOwnerContext, const UMapProperty* InProp, void* InValue, const EPyConversionMethod InConversionMethod)
 {
 	InOwnerContext.AssertValidConversionMethod(InConversionMethod);
 
@@ -506,38 +507,37 @@ int FPyWrapperMap::Init(FPyWrapperMap* InSelf, const FPyWrapperOwnerContext& InO
 
 	check(InProp && InValue);
 
-	PyUtil::FConstMapPropOnScope PropToUse;
+	const UMapProperty* PropToUse = nullptr;
 	void* MapInstanceToUse = nullptr;
 	switch (InConversionMethod)
 	{
 	case EPyConversionMethod::Copy:
 	case EPyConversionMethod::Steal:
 		{
-			PyUtil::FPropOnScope MapKeyProp = PyUtil::FPropOnScope::OwnedReference(PyUtil::CreateProperty(InProp->KeyProp, 1));
+			UProperty* MapKeyProp = PyUtil::CreateProperty(InProp->KeyProp, 1);
 			if (!MapKeyProp)
 			{
 				PyUtil::SetPythonError(PyExc_TypeError, InSelf, *FString::Printf(TEXT("Failed to create key property from '%s' (%s)"), *InProp->KeyProp->GetName(), *InProp->KeyProp->GetClass()->GetName()));
 				return -1;
 			}
 
-			PyUtil::FPropOnScope MapValueProp = PyUtil::FPropOnScope::OwnedReference(PyUtil::CreateProperty(InProp->ValueProp, 1));
+			UProperty* MapValueProp = PyUtil::CreateProperty(InProp->ValueProp, 1);
 			if (!MapValueProp)
 			{
 				PyUtil::SetPythonError(PyExc_TypeError, InSelf, *FString::Printf(TEXT("Failed to create value property from '%s' (%s)"), *InProp->ValueProp->GetName(), *InProp->ValueProp->GetClass()->GetName()));
 				return -1;
 			}
 
-			PyUtil::FMapPropOnScope MapProp = PyUtil::FMapPropOnScope::OwnedReference(new FMapProperty(FFieldVariant(), PyUtil::DefaultPythonPropertyName, RF_NoFlags));
-			MapProp->KeyProp = MapKeyProp.Release();
-			MapProp->ValueProp = MapValueProp.Release();
+			UMapProperty* MapProp = NewObject<UMapProperty>(GetPythonPropertyContainer());
+			MapProp->KeyProp = MapKeyProp;
+			MapProp->ValueProp = MapValueProp;
+			PropToUse = MapProp;
 
 			// Need to manually call Link to fix-up some data (such as the C++ property flags and the map layout) that are only set during Link
 			{
 				FArchive Ar;
 				MapProp->LinkWithoutChangingOffset(Ar);
 			}
-
-			PropToUse = MoveTemp(MapProp);
 
 			MapInstanceToUse = FMemory::Malloc(PropToUse->GetSize(), PropToUse->GetMinAlignment());
 			PropToUse->InitializeValue(MapInstanceToUse);
@@ -555,7 +555,7 @@ int FPyWrapperMap::Init(FPyWrapperMap* InSelf, const FPyWrapperOwnerContext& InO
 
 	case EPyConversionMethod::Reference:
 		{
-			PropToUse = PyUtil::FConstMapPropOnScope::ExternalReference(InProp);
+			PropToUse = InProp;
 			MapInstanceToUse = InValue;
 		}
 		break;
@@ -568,7 +568,7 @@ int FPyWrapperMap::Init(FPyWrapperMap* InSelf, const FPyWrapperOwnerContext& InO
 	check(PropToUse && MapInstanceToUse);
 
 	InSelf->OwnerContext = InOwnerContext;
-	InSelf->MapProp = MoveTemp(PropToUse);
+	InSelf->MapProp = PropToUse;
 	InSelf->MapInstance = MapInstanceToUse;
 
 	FPyWrapperMapFactory::Get().MapInstance(InSelf->MapInstance, InSelf);
@@ -594,7 +594,7 @@ void FPyWrapperMap::Deinit(FPyWrapperMap* InSelf)
 		}
 		FMemory::Free(InSelf->MapInstance);
 	}
-	InSelf->MapProp.Reset();
+	InSelf->MapProp = nullptr;
 	InSelf->MapInstance = nullptr;
 }
 
@@ -1852,7 +1852,7 @@ void FPyWrapperMapMetaData::AddReferencedObjects(FPyWrapperBase* Instance, FRefe
 	FPyWrapperMap* Self = static_cast<FPyWrapperMap*>(Instance);
 	if (Self->MapProp && Self->MapInstance && !Self->OwnerContext.HasOwner())
 	{
-		Self->MapProp.AddReferencedObjects(Collector);
+		Collector.AddReferencedObject(Self->MapProp);
 		FPyReferenceCollector::AddReferencedObjectsFromProperty(Collector, Self->MapProp, Self->MapInstance);
 	}
 }

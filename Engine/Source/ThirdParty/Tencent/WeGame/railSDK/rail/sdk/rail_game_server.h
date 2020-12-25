@@ -1,4 +1,4 @@
-// Copyright (C) 2020, Entropy Game Global Limited.
+// Copyright (c) 2016, Entropy Game Global Limited.
 // All rights reserved.
 
 #ifndef RAIL_SDK_RAIL_GAME_SERVER_H
@@ -15,7 +15,7 @@ class IRailGameServer;
 class IRailGameServerHelper {
   public:
     // trigger event GetGameServerPlayerListResult
-    virtual RailResult AsyncGetGameServerPlayerList(const RailID& gameserver_rail_id,
+    virtual RailResult AsyncGetGameServerPlayerList(RailID gameserver_rail_id,
                         const RailString& user_data) = 0;
 
     // trigger event GetGameServerListResult
@@ -37,11 +37,10 @@ class IRailGameServerHelper {
     virtual RailResult AsyncGetFavoriteGameServers(const RailString& user_data = "") = 0;
 
     // collect a game for later use
-    virtual RailResult AsyncAddFavoriteGameServer(const RailID& game_server_id,
+    virtual RailResult AsyncAddFavoriteGameServer(RailID game_server_id,
                         const RailString& user_data = "") = 0;
-
     // remove a game id from collection
-    virtual RailResult AsyncRemoveFavoriteGameServer(const RailID& game_server_id,
+    virtual RailResult AsyncRemoveFavoriteGameServer(RailID game_server_id,
                         const RailString& user_Data = "") = 0;
 };
 
@@ -56,9 +55,10 @@ class IRailGameServer : public IRailComponent {
 
     virtual const RailID GetOwnerRailID() = 0;
 
-    //
     // optional property data
-    //
+    virtual bool SetZoneID(uint64_t zone_id) = 0;
+
+    virtual uint64_t GetZoneID() = 0;
 
     virtual bool SetHost(const RailString& game_server_host) = 0;
 
@@ -108,39 +108,39 @@ class IRailGameServer : public IRailComponent {
     virtual bool ClearAllMetadata() = 0;
 
     // gameserver meta data
-    // get gameserver single Key-Value
+    // get Gameserver single Key-Value
     virtual RailResult GetMetadata(const RailString& key, RailString* value) = 0;
 
-    // set gameserver single Key-Value
+    // set Gameserver single Key-Value
     virtual RailResult SetMetadata(const RailString& key, const RailString& value) = 0;
 
-    // set gameserver multi Key-Value
+    // set Gameserver multi Key-Value
     // trigger event SetGameServerMetadataResult
     virtual RailResult AsyncSetMetadata(const RailArray<RailKeyValue>& key_values,
                         const RailString& user_data) = 0;
 
-    // get gameserver multi Key-Value
+    // get Gameserver multi Key-Value
     // trigger event GetGameServerMetadataResult
     virtual RailResult AsyncGetMetadata(const RailArray<RailString>& keys,
                         const RailString& user_data) = 0;
 
-    // get gameserver all Key-Value
+    // get Gameserver all Key-Value
     // trigger event GetGameServerMetadataResult
     virtual RailResult AsyncGetAllMetadata(const RailString& user_data) = 0;
 
-    // session ticket
+    // session tickect
     // Retrieve ticket to be sent to the entity who wishes to authenticate you
     // trigger event AsyncAcquireGameServerSessionTicketResponse
     virtual RailResult AsyncAcquireGameServerSessionTicket(const RailString& user_data) = 0;
 
-    // Authenticate session ticket to be sure it is valid and isn't reused
+    // Authenticate session ticket to be sure it is valid and isnt reused
     // trigger event GameServerStartSessionWithPlayerResponse
     virtual RailResult AsyncStartSessionWithPlayer(const RailSessionTicket& player_ticket,
-                        const RailID& player_rail_id,
+                        RailID player_rail_id,
                         const RailString& user_data) = 0;
 
     // called when no longer playing game with this entity
-    virtual void TerminateSessionOfPlayer(const RailID& player_rail_id) = 0;
+    virtual void TerminateSessionOfPlayer(RailID player_rail_id) = 0;
 
     //  Abandon session ticket from AsyncAcquireGameServerSessionTicket
     virtual void AbandonGameServerSessionTicket(const RailSessionTicket& session_ticket) = 0;
@@ -168,7 +168,7 @@ class IRailGameServer : public IRailComponent {
 
     virtual RailResult GetFriendsInGameServer(RailArray<RailID>* friend_ids) = 0;
 
-    virtual bool IsUserInGameServer(const RailID& user_rail_id) = 0;
+    virtual bool IsUserInGameServer(RailID user_rail_id) = 0;
 
     virtual bool SetServerInfo(const RailString& server_info) = 0;
 

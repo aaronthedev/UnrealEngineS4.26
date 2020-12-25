@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "XmppNull.h"
 #include "XmppConnection.h"
@@ -37,8 +37,6 @@ public:
 	virtual FOnXmppLoginComplete& OnLoginComplete() override { return OnXmppLoginCompleteDelegate; }
 	virtual FOnXmppLoginChanged& OnLoginChanged() override { return OnXmppLoginChangedDelegate; }
 	virtual FOnXmppLogoutComplete& OnLogoutComplete() override { return OnXmppLogoutCompleteDelegate; }
-	virtual FOnXmppStanzaSent& OnStanzaSent() override { return OnXmppStanzaSentDelegate; }
-	virtual FOnXmppStanzaReceived& OnStanzaReceived() override { return OnXmppStanzaReceivedDelegate; }
 
 	virtual IXmppPresencePtr Presence() override { return NULL; }
 	virtual IXmppPubSubPtr PubSub() override { return NULL; }
@@ -61,9 +59,7 @@ private:
 	// completion delegates
 	FOnXmppLoginComplete OnXmppLoginCompleteDelegate;
 	FOnXmppLoginChanged OnXmppLoginChangedDelegate;
-	FOnXmppLogoutComplete OnXmppLogoutCompleteDelegate;
-	FOnXmppStanzaReceived OnXmppStanzaReceivedDelegate;
-	FOnXmppStanzaSent OnXmppStanzaSentDelegate;
+	FOnXmppLogoutComplete OnXmppLogoutCompleteDelegate;	
 };
 
 

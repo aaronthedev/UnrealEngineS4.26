@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "ScreenPass.h"
 #include "OverridePassSequence.h"
-#include "ScenePrivate.h"
-#include "SceneRenderTargets.h"
+#include "PostProcess/RenderingCompositionGraph.h"
 
 #if WITH_EDITOR
 
@@ -75,5 +74,10 @@ struct FEditorPrimitiveInputs
 };
 
 FScreenPassTexture AddEditorPrimitivePass(FRDGBuilder& GraphBuilder, const FViewInfo& View, const FEditorPrimitiveInputs& Inputs);
+
+FRenderingCompositeOutputRef AddEditorPrimitivePass(
+	FRenderingCompositionGraph& Graph,
+	FRenderingCompositeOutputRef Input,
+	FEditorPrimitiveInputs::EBasePassType BasePassType);
 
 #endif

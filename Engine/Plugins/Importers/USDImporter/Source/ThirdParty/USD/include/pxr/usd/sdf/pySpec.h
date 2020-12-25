@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 
-#ifndef PXR_USD_SDF_PY_SPEC_H
-#define PXR_USD_SDF_PY_SPEC_H
+#ifndef SDF_PYSPEC_H
+#define SDF_PYSPEC_H
 
 /// \file sdf/pySpec.h
 ///
@@ -346,7 +346,8 @@ struct SpecVisitor : bp::def_visitor<SpecVisitor<Abstract> > {
         static std::string Repr(const bp::object& self)
         {
             const HeldType& held = bp::extract<const HeldType&>(self);
-            return _SpecRepr(self, get_pointer(held));
+            return _SpecRepr(self,
+                             held ? boost::get_pointer(held) : NULL);
         }
 
         static bool IsExpired(const HeldType& self)
@@ -411,7 +412,7 @@ public:
 
         // Add methods.
         c.add_property("expired", &_Helper<CLS>::IsExpired);
-        c.def(TfPyBoolBuiltinFuncName, &_Helper<CLS>::NonZero);
+        c.def("__nonzero__", &_Helper<CLS>::NonZero);
         c.def("__hash__", &_Helper<CLS>::__hash__);
         c.def("__eq__", &_Helper<CLS>::__eq__);
         c.def("__ne__", &_Helper<CLS>::__ne__);
@@ -504,4 +505,4 @@ struct NewCtor<R(Args...)> : CtorBase<R(Args...)> {
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_SDF_PY_SPEC_H
+#endif // SDF_PYSPEC_H

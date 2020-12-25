@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,7 +8,6 @@
 #include "InputCoreTypes.h"
 #include "UObject/SoftObjectPath.h"
 #include "GameFramework/PlayerInput.h"
-#include "Components/InputComponent.h"
 
 #include "InputSettings.generated.h"
 
@@ -116,15 +115,6 @@ private:
 	/** List of Axis Mappings */
 	UPROPERTY(config, EditAnywhere, Category = "Bindings")
 	TArray<struct FInputActionSpeechMapping> SpeechMappings;
-
-	/** Default class type for player input object. May be overridden by player controller. */
-	UPROPERTY(config, EditAnywhere, NoClear, Category = DefaultClasses)
-	TSoftClassPtr<UPlayerInput> DefaultPlayerInputClass;
-
-	/** Default class type for pawn input components. */
-	UPROPERTY(config, EditAnywhere, NoClear, Category = DefaultClasses)
-	TSoftClassPtr<UInputComponent> DefaultInputComponentClass;
-
 public:
 	/** The default on-screen touch input interface for the game (can be null to disable the onscreen interface) */
 	UPROPERTY(config, EditAnywhere, Category="Mobile", meta=(AllowedClasses="TouchInterface"))
@@ -141,10 +131,8 @@ public:
 	// UObject interface
 #if WITH_EDITOR
 	virtual void PostEditChangeChainProperty(struct FPropertyChangedChainEvent& PropertyChangedEvent) override;
-	virtual void PostReloadConfig( class FProperty* PropertyThatWasLoaded ) override;
+	virtual void PostReloadConfig( class UProperty* PropertyThatWasLoaded ) override;
 #endif
-
-	void RemoveInvalidKeys();
 
 	virtual void PostInitProperties() override;
 	// End of UObject interface
@@ -222,9 +210,7 @@ public:
 	/** Get the member name for the details panel */
 	static const FName GetAxisMappingsPropertyName();
 
-	// Class accessors
-	static UClass* GetDefaultPlayerInputClass();
-	static UClass* GetDefaultInputComponentClass();
+
 
 private:
 	void PopulateAxisConfigs();

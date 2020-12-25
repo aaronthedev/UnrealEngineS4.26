@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,7 +8,6 @@
 #include "OculusAudioLegacy.h"
 #endif
 #include "OculusAudioSourceSettings.h"
-#include "OculusAmbisonicSpatializer.h"
 
 /************************************************************************/
 /* FOculusSpatializationPluginFactory								   */
@@ -27,13 +26,15 @@ public:
 
 	virtual bool SupportsPlatform(const FString& PlatformName) override
 	{
-		return	PlatformName == FString(TEXT("Windows")) || PlatformName == FString(TEXT("Android"));
+		return PlatformName == FString(TEXT("Windows")) || PlatformName == FString(TEXT("Android"));
 	}
 
 	virtual UClass* GetCustomSpatializationSettingsClass() const override { return UOculusAudioSourceSettings::StaticClass(); }
 
 	virtual TAudioSpatializationPtr CreateNewSpatializationPlugin(FAudioDevice* OwningDevice) override;
 	//~ End IAudioSpatializationFactory
+
+	virtual TAmbisonicsMixerPtr CreateNewAmbisonicsMixer(FAudioDevice* OwningDevice) override;
 
 };
 
@@ -47,10 +48,10 @@ public:
 		return DisplayName;
 	}
 
-	virtual bool SupportsPlatform(const FString& PlatformName) override
+    virtual bool SupportsPlatform(const FString& PlatformName) override
 	{
-		return	PlatformName == FString(TEXT("Windows")) || PlatformName == FString(TEXT("Android"));
-	}
+		return PlatformName == FString(TEXT("Windows"));
+    }
 
 	virtual TAudioReverbPtr CreateNewReverbPlugin(FAudioDevice* OwningDevice) override;
 	//~ End IAudioReverbFactory

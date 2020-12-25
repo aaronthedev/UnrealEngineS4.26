@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 Texture2DStreamIn_DDC_AsyncCreate.h: Load texture 2D mips from the DDC using async create.
@@ -9,8 +9,8 @@ Texture2DStreamIn_DDC_AsyncCreate.h: Load texture 2D mips from the DDC using asy
 
 #if WITH_EDITORONLY_DATA
 
-FTexture2DStreamIn_DDC_AsyncCreate::FTexture2DStreamIn_DDC_AsyncCreate(UTexture2D* InTexture)
-	: FTexture2DStreamIn_DDC(InTexture) 
+FTexture2DStreamIn_DDC_AsyncCreate::FTexture2DStreamIn_DDC_AsyncCreate(UTexture2D* InTexture, int32 InRequestedMips)
+	: FTexture2DStreamIn_DDC(InTexture, InRequestedMips) 
 {
 	if (GStreamingUseAsyncRequestsForDDC)
 	{

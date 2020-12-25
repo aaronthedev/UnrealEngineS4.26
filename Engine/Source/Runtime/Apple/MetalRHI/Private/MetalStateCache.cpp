@@ -1,10 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "MetalRHIPrivate.h"
-#include "MetalRHIRenderQuery.h"
-#include "MetalShaderTypes.h"
-#include "MetalGraphicsPipelineState.h"
 #include "MetalStateCache.h"
 #include "MetalProfiler.h"
 #include "MetalCommandBuffer.h"
@@ -609,7 +606,6 @@ bool FMetalStateCache::SetRenderPassInfo(FRHIRenderPassInfo const& InRenderTarge
 				ColorAttachment.SetLevel(RenderTargetView.MipIndex);
 				if(Surface.Type == RRT_Texture3D)
 				{
-					ColorAttachment.SetSlice(0);
 					ColorAttachment.SetDepthPlane(ArraySliceIndex);
 				}
 				else
@@ -936,6 +932,7 @@ bool FMetalStateCache::SetRenderPassInfo(FRHIRenderPassInfo const& InRenderTarge
 			StencilStore = NewStencilStore;
 		}
 		
+		bHasValidRenderTarget |= (InRenderTargets.NumUAVs > 0);
 		if (SampleCount == 0)
 		{
 			SampleCount = 1;
@@ -1187,18 +1184,18 @@ void FMetalStateCache::SetGraphicsPipelineState(FMetalGraphicsPipelineState* Sta
 				ShaderParameters[EMetalShaderStages::Pixel].PrepareGlobalUniforms(CrossCompiler::PackedTypeNameToTypeIndex(PackedGlobalArray.TypeName), PackedGlobalArray.Size);
 			}
 		}
+		
+		{
+			for (uint32 i = 0; i < RenderPassInfo.NumUAVs; i++)
+			{
+				if (IsValidRef(RenderPassInfo.UAVs[i]))
+				{
+					FMetalUnorderedAccessView* UAV = ResourceCast(RenderPassInfo.UAVs[i].GetReference());
+					SetShaderUnorderedAccessView(EMetalShaderStages::Pixel, i, UAV);
+				}
+			}
+		}
 	}
-}
-
-FMetalShaderPipeline* FMetalStateCache::GetPipelineState() const
-{
-	return GraphicsPSO->GetPipeline(GetIndexType());
-}
-
-EPrimitiveType FMetalStateCache::GetPrimitiveType()
-{
-	check(IsValidRef(GraphicsPSO));
-	return GraphicsPSO->GetPrimitiveType();
 }
 
 void FMetalStateCache::SetIndexType(EMetalIndexType InIndexType)
@@ -1262,7 +1259,7 @@ bool FMetalStateCache::NeedsToSetRenderTarget(const FRHIRenderPassInfo& InRender
 	uint32 NewNumColorRenderTargets = InRenderPassInfo.GetNumColorRenderTargets();
 	
 	// basic checks
-	bool bAllChecksPassed = GetHasValidRenderTarget() && bIsRenderTargetActive && CurrentNumColorRenderTargets == NewNumColorRenderTargets &&
+	bool bAllChecksPassed = GetHasValidRenderTarget() && bIsRenderTargetActive && CurrentNumColorRenderTargets == NewNumColorRenderTargets && InRenderPassInfo.NumUAVs == RenderPassInfo.NumUAVs &&
 		(InRenderPassInfo.DepthStencilRenderTarget.DepthStencilTarget == RenderPassInfo.DepthStencilRenderTarget.DepthStencilTarget);
 
 	// now check each color target if the basic tests passe
@@ -1415,18 +1412,19 @@ void FMetalStateCache::SetShaderTexture(EMetalShaderStages const Frequency, FMet
 {
 	check(Frequency < EMetalShaderStages::Num);
 	check(Index < ML_MaxTextures);
-
-#if (PLATFORM_IOS || PLATFORM_TVOS)
-    UE_CLOG([Texture.GetPtr() storageMode] == MTLStorageModeMemoryless, LogMetal, Fatal, TEXT("FATAL: Attempting to bind a memoryless texture. Stage %u Index %u Texture %@"), Frequency, Index, Texture.GetPtr());
-#endif
 	
 	if (ShaderTextures[Frequency].Textures[Index] != Texture
 		|| ShaderTextures[Frequency].Usage[Index] != Usage)
 	{
-		ShaderTextures[Frequency].Textures[Index] = Texture;
+		bool bMemoryLess = false;
+#if PLATFORM_IOS
+		bMemoryLess = (Texture.GetStorageMode() == mtlpp::StorageMode::Memoryless);
+#endif
+		
+		ShaderTextures[Frequency].Textures[Index] = !bMemoryLess ? Texture : FMetalTexture();
 		ShaderTextures[Frequency].Usage[Index] = Usage;
 		
-		if (Texture)
+		if (Texture && !bMemoryLess)
 		{
 			ShaderTextures[Frequency].Bound |= (FMetalTextureMask(1) << FMetalTextureMask(Index));
 		}
@@ -1530,24 +1528,24 @@ void FMetalStateCache::SetShaderResourceView(FMetalContext* Context, EMetalShade
 			SetShaderTexture(ShaderStage, Tex, BindIndex, mtlpp::ResourceUsage(mtlpp::ResourceUsage::Read|mtlpp::ResourceUsage::Sample));
 			if (VB)
             {
-				SetShaderBuffer(ShaderStage, VB->GetCurrentBufferOrNil(), VB->Data, SRV->Offset, VB->GetSize(), BindIndex, mtlpp::ResourceUsage::Read, (EPixelFormat)SRV->Format);
+                SetShaderBuffer(ShaderStage, VB->Buffer, VB->Data, 0, VB->GetSize(), BindIndex, mtlpp::ResourceUsage::Read, (EPixelFormat)SRV->Format);
             }
             else if (IB)
             {
-                SetShaderBuffer(ShaderStage, IB->GetCurrentBufferOrNil(), nil, SRV->Offset, IB->GetSize(), BindIndex, mtlpp::ResourceUsage::Read, (EPixelFormat)SRV->Format);
+                SetShaderBuffer(ShaderStage, IB->Buffer, nil, 0, IB->GetSize(), BindIndex, mtlpp::ResourceUsage::Read, (EPixelFormat)SRV->Format);
             }
 		}
 		else if (VB)
 		{
-			SetShaderBuffer(ShaderStage, VB->GetCurrentBufferOrNil(), VB->Data, SRV->Offset, VB->GetSize(), BindIndex, mtlpp::ResourceUsage::Read, (EPixelFormat)SRV->Format);
+			SetShaderBuffer(ShaderStage, VB->Buffer, VB->Data, 0, VB->GetSize(), BindIndex, mtlpp::ResourceUsage::Read, (EPixelFormat)SRV->Format);
 		}
 		else if (IB)
 		{
-			SetShaderBuffer(ShaderStage, IB->GetCurrentBufferOrNil(), nil, SRV->Offset, IB->GetSize(), BindIndex, mtlpp::ResourceUsage::Read, (EPixelFormat)SRV->Format);
+			SetShaderBuffer(ShaderStage, IB->Buffer, nil, 0, IB->GetSize(), BindIndex, mtlpp::ResourceUsage::Read, (EPixelFormat)SRV->Format);
 		}
 		else if (SB)
 		{
-			SetShaderBuffer(ShaderStage, SB->GetCurrentBufferOrNil(), nil, SRV->Offset, SB->GetSize(), BindIndex, mtlpp::ResourceUsage::Read);
+			SetShaderBuffer(ShaderStage, SB->Buffer, nil, 0, SB->GetSize(), BindIndex, mtlpp::ResourceUsage::Read);
 		}
 	}
 }
@@ -1602,38 +1600,38 @@ void FMetalStateCache::SetShaderUnorderedAccessView(EMetalShaderStages ShaderSta
 		FMetalSurface* Surface = UAV->SourceView->TextureView;
 		if (StructuredBuffer)
 		{
-			SetShaderBuffer(ShaderStage, StructuredBuffer->GetCurrentBufferOrNil(), nil, 0, StructuredBuffer->GetSize(), BindIndex, mtlpp::ResourceUsage(mtlpp::ResourceUsage::Read | mtlpp::ResourceUsage::Write));
+			SetShaderBuffer(ShaderStage, StructuredBuffer->Buffer, nil, 0, StructuredBuffer->GetSize(), BindIndex, mtlpp::ResourceUsage(mtlpp::ResourceUsage::Read | mtlpp::ResourceUsage::Write));
 		}
 		else if (VertexBuffer)
 		{
-			check(!VertexBuffer->Data && VertexBuffer->GetCurrentBufferOrNil());
+			check(!VertexBuffer->Data && VertexBuffer->Buffer);
 			if (IsLinearBuffer(ShaderStage, BindIndex) && UAV->SourceView->GetLinearTexture(true))
 			{
 				ns::AutoReleased<FMetalTexture> Tex;
 				Tex = UAV->SourceView->GetLinearTexture(true);
 				SetShaderTexture(ShaderStage, Tex, BindIndex, mtlpp::ResourceUsage(mtlpp::ResourceUsage::Read | mtlpp::ResourceUsage::Write));
                 
-                SetShaderBuffer(ShaderStage, VertexBuffer->GetCurrentBufferOrNil(), VertexBuffer->Data, 0, VertexBuffer->GetSize(), BindIndex, mtlpp::ResourceUsage(mtlpp::ResourceUsage::Read | mtlpp::ResourceUsage::Write), (EPixelFormat)UAV->SourceView->Format);
+                SetShaderBuffer(ShaderStage, VertexBuffer->Buffer, VertexBuffer->Data, 0, VertexBuffer->GetSize(), BindIndex, mtlpp::ResourceUsage(mtlpp::ResourceUsage::Read | mtlpp::ResourceUsage::Write), (EPixelFormat)UAV->SourceView->Format);
 			}
 			else
 			{
-				SetShaderBuffer(ShaderStage, VertexBuffer->GetCurrentBufferOrNil(), VertexBuffer->Data, 0, VertexBuffer->GetSize(), BindIndex, mtlpp::ResourceUsage(mtlpp::ResourceUsage::Read | mtlpp::ResourceUsage::Write), (EPixelFormat)UAV->SourceView->Format);
+				SetShaderBuffer(ShaderStage, VertexBuffer->Buffer, VertexBuffer->Data, 0, VertexBuffer->GetSize(), BindIndex, mtlpp::ResourceUsage(mtlpp::ResourceUsage::Read | mtlpp::ResourceUsage::Write), (EPixelFormat)UAV->SourceView->Format);
 			}
 		}
 		else if (IndexBuffer)
 		{
-			check(IndexBuffer->GetCurrentBufferOrNil());
+			check(IndexBuffer->Buffer);
 			if (IsLinearBuffer(ShaderStage, BindIndex) && UAV->SourceView->GetLinearTexture(true))
 			{
 				ns::AutoReleased<FMetalTexture> Tex;
 				Tex = UAV->SourceView->GetLinearTexture(true);
 				SetShaderTexture(ShaderStage, Tex, BindIndex, mtlpp::ResourceUsage(mtlpp::ResourceUsage::Read | mtlpp::ResourceUsage::Write));
 				
-				SetShaderBuffer(ShaderStage, IndexBuffer->GetCurrentBufferOrNil(), nullptr, 0, IndexBuffer->GetSize(), BindIndex, mtlpp::ResourceUsage(mtlpp::ResourceUsage::Read | mtlpp::ResourceUsage::Write), (EPixelFormat)UAV->SourceView->Format);
+				SetShaderBuffer(ShaderStage, IndexBuffer->Buffer, nullptr, 0, IndexBuffer->GetSize(), BindIndex, mtlpp::ResourceUsage(mtlpp::ResourceUsage::Read | mtlpp::ResourceUsage::Write), (EPixelFormat)UAV->SourceView->Format);
 			}
 			else
 			{
-				SetShaderBuffer(ShaderStage, IndexBuffer->GetCurrentBufferOrNil(), nullptr, 0, IndexBuffer->GetSize(), BindIndex, mtlpp::ResourceUsage(mtlpp::ResourceUsage::Read | mtlpp::ResourceUsage::Write), (EPixelFormat)UAV->SourceView->Format);
+				SetShaderBuffer(ShaderStage, IndexBuffer->Buffer, nullptr, 0, IndexBuffer->GetSize(), BindIndex, mtlpp::ResourceUsage(mtlpp::ResourceUsage::Read | mtlpp::ResourceUsage::Write), (EPixelFormat)UAV->SourceView->Format);
 			}
 		}
 		else if (Texture)
@@ -2742,6 +2740,71 @@ void FMetalStateCache::CommitResourceTable(EMetalShaderStages const Frequency, m
 		if (Index < ML_MaxSamplers && SamplerBindings.Samplers[Index])
 		{
 			CommandEncoder.SetShaderSamplerState(Type, SamplerBindings.Samplers[Index], Index);
+		}
+	}
+	
+	uint32 ArgumentBuffers = 0;
+	TMap<uint8, TArray<uint8>> ArgumentBufferMasks;
+	switch(Frequency)
+	{
+		case EMetalShaderStages::Vertex:
+			ArgumentBuffers = GraphicsPSO->VertexShader->Bindings.ArgumentBuffers;
+			ArgumentBufferMasks = GraphicsPSO->VertexShader->Bindings.ArgumentBufferMasks;
+            break;
+#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
+		case EMetalShaderStages::Hull:
+			ArgumentBuffers = GraphicsPSO->HullShader->Bindings.ArgumentBuffers;
+			ArgumentBufferMasks = GraphicsPSO->HullShader->Bindings.ArgumentBufferMasks;
+			break;
+		case EMetalShaderStages::Domain:
+			ArgumentBuffers = GraphicsPSO->DomainShader->Bindings.ArgumentBuffers;
+			ArgumentBufferMasks = GraphicsPSO->DomainShader->Bindings.ArgumentBufferMasks;
+			break;
+#endif
+		case EMetalShaderStages::Pixel:
+			ArgumentBuffers = GraphicsPSO->PixelShader->Bindings.ArgumentBuffers;
+			ArgumentBufferMasks = GraphicsPSO->PixelShader->Bindings.ArgumentBufferMasks;
+			break;
+		case EMetalShaderStages::Compute:
+			ArgumentBuffers = ComputeShader->Bindings.ArgumentBuffers;
+			ArgumentBufferMasks = ComputeShader->Bindings.ArgumentBufferMasks;
+			break;
+		default:
+			break;
+	}
+	
+	while(ArgumentBuffers)
+	{
+		uint32 Index = __builtin_ctz(ArgumentBuffers);
+		ArgumentBuffers &= ~(1 << Index);
+		
+		FMetalUniformBuffer* Buffer = (FMetalUniformBuffer*)BoundUniformBuffers[Frequency][Index];
+		check(Buffer);
+		
+		FMetalUniformBuffer::FMetalIndirectArgumentBuffer& IAB = Buffer->GetIAB();
+		
+		TArray<uint8>& Mask = ArgumentBufferMasks.FindChecked((uint8)Index);
+		for (uint8 Entry : Mask)
+		{
+			FMetalUniformBuffer::Argument const& Resource = IAB.IndirectArgumentResources[Entry];
+			if (Resource.Buffer)
+			{
+				CommandEncoder.UseIndirectArgumentResource(Resource.Buffer, Resource.Usage);
+			}
+			else if (Resource.Texture)
+			{
+				CommandEncoder.UseIndirectArgumentResource(Resource.Texture, Resource.Usage);
+			}
+		}
+		
+		if (IAB.IndirectArgumentBuffer->IndirectArgumentBufferSideTable)
+		{
+			CommandEncoder.UseIndirectArgumentResource(IAB.IndirectArgumentBuffer->IndirectArgumentBufferSideTable, mtlpp::ResourceUsage::Read);
+		}
+		
+		if (Buffer->Buffer)
+		{
+			CommandEncoder.UseIndirectArgumentResource(Buffer->Buffer, mtlpp::ResourceUsage::Read);
 		}
 	}
 }

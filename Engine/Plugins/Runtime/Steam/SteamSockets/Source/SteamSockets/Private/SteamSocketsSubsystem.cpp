@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SteamSocketsSubsystem.h"
 #include "Misc/CoreMisc.h"
@@ -14,7 +14,6 @@
 #include "OnlineSubsystemSteam.h"
 #include "OnlineSubsystemNames.h"
 #include "SteamSocketsTypes.h"
-#include "Stats/Stats.h"
 
 // Log Category for The API Debugger
 DEFINE_LOG_CATEGORY_STATIC(LogSteamSocketsAPI, Log, All);
@@ -401,11 +400,6 @@ TSharedRef<FInternetAddr> FSteamSocketsSubsystem::CreateInternetAddr()
 	return MakeShareable(new FInternetAddrSteamSockets());
 }
 
-TSharedRef<FInternetAddr> FSteamSocketsSubsystem::CreateInternetAddr(const FName RequestedProtocol)
-{
-	return MakeShareable(new FInternetAddrSteamSockets(RequestedProtocol));
-}
-
 const TCHAR* FSteamSocketsSubsystem::GetSocketAPIName() const
 {
 	return TEXT("SteamSockets");
@@ -413,6 +407,13 @@ const TCHAR* FSteamSocketsSubsystem::GetSocketAPIName() const
 
 bool FSteamSocketsSubsystem::GetLocalAdapterAddresses(TArray<TSharedPtr<FInternetAddr>>& OutAddresses)
 {
+	// Add Multihome
+	TSharedRef<FInternetAddr> MultihomeAddress = CreateInternetAddr();
+	if (GetMultihomeAddress(MultihomeAddress))
+	{
+		OutAddresses.Add(MultihomeAddress);
+	}
+
 	// Add the account addresses
 	if (IsUsingRelayNetwork())
 	{
@@ -424,33 +425,22 @@ bool FSteamSocketsSubsystem::GetLocalAdapterAddresses(TArray<TSharedPtr<FInterne
 	}
 
 	// Always include the any address.
-	TSharedRef<FInternetAddr> AnyAddress = CreateInternetAddr(FNetworkProtocolTypes::SteamSocketsIP);
+	TSharedRef<FInternetAddr> AnyAddress = CreateInternetAddr();
 	AnyAddress->SetAnyAddress();
 	OutAddresses.Add(AnyAddress);
 
 	return true;
 }
 
-TArray<TSharedRef<FInternetAddr>> FSteamSocketsSubsystem::GetLocalBindAddresses()
+TSharedRef<FInternetAddr> FSteamSocketsSubsystem::GetLocalBindAddr(FOutputDevice& Out)
 {
-	TArray<TSharedRef<FInternetAddr>> OutAddresses;
-	TArray<TSharedPtr<FInternetAddr>> AdapterAddresses;
-	GetLocalAdapterAddresses(AdapterAddresses);
-
-	// Add Multihome
-	TSharedRef<FInternetAddr> MultihomeAddress = CreateInternetAddr(FNetworkProtocolTypes::SteamSocketsIP);
-	if (GetMultihomeAddress(MultihomeAddress))
+	TArray<TSharedPtr<FInternetAddr>> Adapters;
+	if (GetLocalAdapterAddresses(Adapters))
 	{
-		OutAddresses.Add(MultihomeAddress);
+		return Adapters[0].ToSharedRef();
 	}
 
-	// Add all the adapter addresses
-	for (const auto& AdapterAddress : AdapterAddresses)
-	{
-		OutAddresses.Add(AdapterAddress.ToSharedRef());
-	}
-
-	return OutAddresses;
+	return CreateInternetAddr();
 }
 
 void FSteamSocketsSubsystem::CleanSocketInformation(bool bForceClean)
@@ -502,8 +492,6 @@ void FSteamSocketsSubsystem::DumpSocketInformationMap() const
 
 bool FSteamSocketsSubsystem::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FSteamSocketsSubsystem_Tick);
-
 	// Handle all of our updates from the Steam API callbacks
 	if (SteamEventManager.IsValid())
 	{
@@ -544,6 +532,36 @@ bool FSteamSocketsSubsystem::Exec(class UWorld* InWorld, const TCHAR* Cmd, FOutp
 		bIsHandled = true;
 		bShouldTestPeek = !bShouldTestPeek;
 		UE_LOG(LogSockets, Log, TEXT("SteamSockets: Set Peek Messaging to %d"), bShouldTestPeek);
+	}
+	else if (FParse::Command(&Cmd, TEXT("TestSteamRawAddresses")))
+	{
+		UE_LOG(LogSockets, Log, TEXT("SteamSockets: Testing Raw addresses..."));
+		bIsHandled = true;
+		TSharedRef<FInternetAddrSteamSockets> SteamAddr = StaticCastSharedRef<FInternetAddrSteamSockets>(GetLocalBindAddr(*GLog));
+		TArray<uint8> RawAddress = SteamAddr->GetRawIp();
+		UE_LOG(LogSockets, Log, TEXT("SteamSockets: Address before %s"), *SteamAddr->ToString(false));
+		if (RawAddress.Num() <= 0)
+		{
+			UE_LOG(LogSockets, Warning, TEXT("SteamSockets: Raw address array is empty!"));
+			return true;
+		}
+		SteamAddr->SetRawIp(RawAddress);
+		UE_LOG(LogSockets, Log, TEXT("SteamSockets: Address after %s"), *SteamAddr->ToString(false));
+
+		TSharedPtr<FInternetAddrSteamSockets> SteamIPAddr = StaticCastSharedPtr<FInternetAddrSteamSockets>(GetAddressFromString(TEXT("8.8.8.8")));
+		if (SteamIPAddr)
+		{
+			TArray<uint8> RawIPAddress = SteamIPAddr->GetRawIp();
+			UE_LOG(LogSockets, Log, TEXT("SteamSockets: Address before %s"), *SteamIPAddr->ToString(false));
+			if (RawAddress.Num() <= 0)
+			{
+				UE_LOG(LogSockets, Warning, TEXT("SteamSockets: Raw address array is empty!"));
+				return true;
+			}
+			SteamIPAddr->SetRawIp(RawIPAddress);
+			UE_LOG(LogSockets, Log, TEXT("SteamSockets: Address after %s"), *SteamIPAddr->ToString(false));
+		}
+		UE_LOG(LogSockets, Log, TEXT("SteamSockets: Test complete"));
 	}
 #endif
 
@@ -755,13 +773,9 @@ void FSteamSocketsSubsystem::OnServerLoginComplete(bool bWasSuccessful)
 		if (SteamIdentityAddr.IsValid())
 		{
 			// Push in the new valid information.
-			int32 ListenPort = DelayedListener.Socket->BindAddress.GetPlatformPort();
-			TSharedPtr<FInternetAddrSteamSockets> ListenerAddress = StaticCastSharedRef<FInternetAddrSteamSockets>(SteamIdentityAddr->Clone());
-			ListenerAddress->SetPlatformPort(ListenPort);
-
-			// Update the socket and netdriver addresses
-			DelayedListener.Socket->BindAddress = *ListenerAddress;
-			SteamNetDriver->LocalAddr = ListenerAddress;
+			DelayedListener.Socket->BindAddress.Addr = SteamIdentityAddr->Addr;
+			SteamNetDriver->LocalAddr = SteamIdentityAddr->Clone();
+			SteamNetDriver->LocalAddr->SetPlatformPort(DelayedListener.Socket->BindAddress.GetPlatformPort());
 
 			// Actually start the listen call
 			if (!DelayedListener.Socket->Listen(0))
@@ -787,7 +801,7 @@ void FSteamSocketsSubsystem::OnServerLoginComplete(bool bWasSuccessful)
 TSharedPtr<FInternetAddr> FSteamSocketsSubsystem::GetIdentityAddress()
 {
 	SteamNetworkingIdentity SteamIDData;
-	TSharedRef<FInternetAddrSteamSockets> SteamAddr = StaticCastSharedRef<FInternetAddrSteamSockets>(CreateInternetAddr(FNetworkProtocolTypes::SteamSocketsP2P));
+	TSharedRef<FInternetAddrSteamSockets> SteamAddr = StaticCastSharedRef<FInternetAddrSteamSockets>(CreateInternetAddr());
 
 	// Attempt to get the machine's identity (their steam ID)
 	if (GetSteamSocketsInterface() && GetSteamSocketsInterface()->GetIdentity(&SteamIDData))

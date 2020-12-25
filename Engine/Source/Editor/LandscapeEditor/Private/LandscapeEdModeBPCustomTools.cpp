@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "InputCoreTypes.h"
@@ -22,7 +22,6 @@
 #include "LandscapeBlueprintBrushBase.h"
 #include "LandscapeInfo.h"
 #include "Landscape.h"
-#include "ActorFactories/ActorFactory.h"
 //#include "LandscapeDataAccess.h"
 
 #define LOCTEXT_NAMESPACE "Landscape"
@@ -49,7 +48,6 @@ public:
 
 	virtual const TCHAR* GetToolName() override { return TEXT("BlueprintBrush"); }
 	virtual FText GetDisplayName() override { return FText(); };
-	virtual FText GetDisplayMessage() override { return FText(); };
 
 	virtual void SetEditRenderType() override { GLandscapeEditRenderMode = ELandscapeEditRenderMode::None | (GLandscapeEditRenderMode & ELandscapeEditRenderMode::BitMaskForMask); }
 	virtual bool SupportsMask() override { return false; }
@@ -74,13 +72,12 @@ public:
 
 	virtual bool BeginTool(FEditorViewportClient* ViewportClient, const FLandscapeToolTarget& Target, const FVector& InHitLocation) override
 	{
-		UClass* BrushClassPtr = EdMode->UISettings->BlueprintBrush.Get();
-		if (BrushClassPtr == nullptr)
+		if (EdMode->UISettings->BlueprintBrush == nullptr)
 		{
 			return false;
 		}
 
-		ALandscapeBlueprintBrushBase* DefaultObject = Cast<ALandscapeBlueprintBrushBase>(BrushClassPtr->GetDefaultObject(false));
+		ALandscapeBlueprintBrushBase* DefaultObject = Cast<ALandscapeBlueprintBrushBase>(EdMode->UISettings->BlueprintBrush->GetDefaultObject(false));
 
 		if (DefaultObject == nullptr)
 		{
@@ -95,27 +92,14 @@ public:
 
 			FVector SpawnLocation = Info->GetLandscapeProxy()->LandscapeActorToWorld().TransformPosition(InHitLocation);
 
-			FString BrushActorString = FString::Format(TEXT("{0}_{1}"), { Info->LandscapeActor.Get()->GetActorLabel(), BrushClassPtr->GetName() });
-			FName BrushActorName = MakeUniqueObjectName(Info->LandscapeActor.Get()->GetLevel(), BrushClassPtr, FName(BrushActorString));
-
 			FActorSpawnParameters SpawnInfo;
 			SpawnInfo.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 			SpawnInfo.bNoFail = true;
-			SpawnInfo.OverrideLevel = Info->LandscapeActor.Get()->GetLevel(); // always spawn in the same level as the one containing the ALandscape
-			SpawnInfo.Name = BrushActorName;
+			SpawnInfo.OverrideLevel = Info->LandscapeActor.Get()->GetTypedOuter<ULevel>(); // always spawn in the same level as the one containing the ALandscape
 
 			FScopedTransaction Transaction(LOCTEXT("LandscapeEdModeBlueprintToolSpawn", "Create landscape brush"));
-
-			// Use the class factory if there's one :
-			UActorFactory* BrushActorFactory = GEditor->FindActorFactoryForActorClass(BrushClassPtr);
-
-			UWorld* ActorWorld = ViewportClient->GetWorld();
-			ALandscapeBlueprintBrushBase* Brush = (BrushActorFactory != nullptr)
-				? CastChecked<ALandscapeBlueprintBrushBase>(BrushActorFactory->CreateActor(ActorWorld, SpawnInfo.OverrideLevel, FTransform(SpawnLocation), RF_Transactional, BrushActorName))
-				: ActorWorld->SpawnActor<ALandscapeBlueprintBrushBase>(BrushClassPtr, SpawnLocation, FRotator(0.0f), SpawnInfo);
+			ALandscapeBlueprintBrushBase* Brush = ViewportClient->GetWorld()->SpawnActor<ALandscapeBlueprintBrushBase>(EdMode->UISettings->BlueprintBrush, SpawnLocation, FRotator(0.0f), SpawnInfo);
 			EdMode->UISettings->BlueprintBrush = nullptr;
-
-			Brush->SetActorLabel(BrushActorString);
 
 			GEditor->SelectNone(true, true);
 			GEditor->SelectActor(Brush, true, true);

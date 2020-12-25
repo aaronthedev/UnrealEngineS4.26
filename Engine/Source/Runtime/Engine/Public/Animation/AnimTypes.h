@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -280,7 +280,7 @@ public:
  * which has its Notify method called and passed to the animation.
  */
 USTRUCT(BlueprintType)
-struct FAnimNotifyEvent : public FAnimLinkableElement
+struct ENGINE_VTABLE FAnimNotifyEvent : public FAnimLinkableElement
 {
 	GENERATED_USTRUCT_BODY()
 
@@ -346,10 +346,6 @@ struct FAnimNotifyEvent : public FAnimLinkableElement
 	/** Color of Notify in editor */
 	UPROPERTY()
 	FColor NotifyColor;
-
-	/** Guid for tracking notifies in editor */
-	UPROPERTY()
-	FGuid Guid;
 #endif // WITH_EDITORONLY_DATA
 
 	/** 'Track' that the notify exists on, used for visual placement in editor and sorting priority in runtime */
@@ -392,11 +388,6 @@ public:
 	virtual ~FAnimNotifyEvent()
 	{
 	}
-
-#if WITH_EDITORONLY_DATA
-	ENGINE_API bool Serialize(FArchive& Ar);
-	ENGINE_API void PostSerialize(const FArchive& Ar);
-#endif
 
 	/** Updates trigger offset based on a combination of predicted offset and current offset */
 	ENGINE_API void RefreshTriggerOffset(EAnimEventTriggerOffsets::Type PredictedOffsetType);
@@ -441,17 +432,6 @@ public:
 	ENGINE_API FName GetNotifyEventName() const;
 };
 
-#if WITH_EDITORONLY_DATA
-template<> struct TStructOpsTypeTraits<FAnimNotifyEvent> : public TStructOpsTypeTraitsBase2<FAnimNotifyEvent>
-{
-	enum 
-	{ 
-		WithSerializer = true,
-		WithPostSerialize = true
-	};
-};
-#endif
-
 // Used by UAnimSequenceBase::SortNotifies() to sort its Notifies array
 FORCEINLINE bool FAnimNotifyEvent::operator<(const FAnimNotifyEvent& Other) const
 {
@@ -475,15 +455,7 @@ FORCEINLINE bool FAnimNotifyEvent::operator<(const FAnimNotifyEvent& Other) cons
 USTRUCT(BlueprintType)
 struct FAnimSyncMarker
 {
-	GENERATED_BODY()
-
-	FAnimSyncMarker()
-		: MarkerName(NAME_None)
-		, Time(0.0f)
-#if WITH_EDITORONLY_DATA
-		, TrackIndex(0)
-#endif
-	{}
+	GENERATED_USTRUCT_BODY()
 
 	// The name of this marker
 	UPROPERTY(BlueprintReadOnly, Category=Animation)
@@ -497,28 +469,11 @@ struct FAnimSyncMarker
 	// The editor track this marker sits on
 	UPROPERTY()
 	int32 TrackIndex;
-
-	UPROPERTY()
-	FGuid Guid;
-#endif
-	
-#if WITH_EDITORONLY_DATA
-	ENGINE_API bool Serialize(FArchive& Ar);
 #endif
 
 	/** This can be used with the Sort() function on a TArray of FAnimSyncMarker to sort the notifies array by time, earliest first. */
 	ENGINE_API bool operator <(const FAnimSyncMarker& Other) const { return Time < Other.Time; }
 };
-
-#if WITH_EDITORONLY_DATA
-template<> struct TStructOpsTypeTraits<FAnimSyncMarker> : public TStructOpsTypeTraitsBase2<FAnimSyncMarker>
-{
-	enum 
-	{ 
-		WithSerializer = true
-	};
-};
-#endif
 
 /**
  * Keyframe position data for one track.  Pos(i) occurs at Time(i).  Pos.Num() always equals Time.Num().
@@ -571,20 +526,12 @@ namespace ECurveBlendOption
 {
 	enum Type
 	{
-		/* Last pose that contains valid curve value override it. */
-		Override, // redirect from MaxWeight old legacy behavior
-		/** Only set the value if the previous pose doesn't have the curve value. */
-		DoNotOverride, 
+		/** Find Max Weight of curve and use that weight. */
+		MaxWeight,
 		/** Normalize By Sum of Weight and use it to blend. */
 		NormalizeByWeight,
 		/** Blend By Weight without normalizing*/
-		BlendByWeight, 
-		/** Use Base Pose for all curve values. Do not blend */
-		UseBasePose,
-		/** Find the highest curve value from multiple poses and use that. */
-		UseMaxValue,
-		/** Find the lowest curve value from multiple poses and use that. */
-		UseMinValue,
+		BlendByWeight
 	};
 }
 

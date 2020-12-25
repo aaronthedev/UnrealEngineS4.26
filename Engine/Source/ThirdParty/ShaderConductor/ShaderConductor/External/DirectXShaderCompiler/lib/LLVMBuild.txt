@@ -33,7 +33,6 @@ subdirectories =
  Object
  Option
  Passes
- PassPrinters
  ProfileData
  Support
  TableGen

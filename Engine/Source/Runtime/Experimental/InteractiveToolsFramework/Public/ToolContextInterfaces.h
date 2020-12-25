@@ -1,29 +1,22 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/Interface.h"
 #include "ComponentSourceInterfaces.h"
-#include "UObject/ObjectMacros.h"
 
 
 // predeclarations so we don't have to include these in all tools
-class UWorld;
 class AActor;
 class UActorComponent;
 class FToolCommandChange;
 class UPackage;
 class FPrimitiveDrawInterface;
-class FSceneView;
 class UInteractiveToolManager;
 class UInteractiveGizmoManager;
-struct FMeshDescription;
-class UTexture2D;
 
-#if WITH_EDITOR
-class HHitProxy;
-#endif
+
 
 /**
  * FToolBuilderState is a bucket of state information that a ToolBuilder might need
@@ -56,12 +49,6 @@ struct INTERACTIVETOOLSFRAMEWORK_API FViewCameraState
 	FVector Position;
 	/** Current camera/head orientation */
 	FQuat Orientation;
-	/** Current Horizontal Field of View Angle in Degrees. Only relevant if bIsOrthographic is false. */
-	float HorizontalFOVDegrees;
-	/** Current width of viewport in world space coordinates. Only valid if bIsOrthographic is true. */
-	float OrthoWorldCoordinateWidth;
-	/** Current Aspect Ratio */
-	float AspectRatio;
 	/** Is current view an orthographic view */
 	bool bIsOrthographic;
 	/** Is current view a VR view */
@@ -73,13 +60,6 @@ struct INTERACTIVETOOLSFRAMEWORK_API FViewCameraState
 	FVector Up() const { return Orientation.GetAxisZ(); }
 	/** @return forward camera direction */
 	FVector Forward() const { return Orientation.GetAxisX(); }
-
-	/** @return scaling factor that should be applied to PDI thickness/size */
-	float GetPDIScalingFactor() const { return HorizontalFOVDegrees / 90.0f; }
-
-	/** @return FOV normalization factor that should be applied when comparing angles */
-	float GetFOVAngleNormalizationFactor() const { return HorizontalFOVDegrees / 90.0f; }
-
 };
 
 
@@ -89,8 +69,7 @@ UENUM()
 enum class ESceneSnapQueryType
 {
 	/** snapping a position */
-	Position = 1,
-	Rotation = 2
+	Position = 1		
 };
 
 /** Types of snap targets that a Tool may want to run snap queries against. */
@@ -102,10 +81,8 @@ enum class ESceneSnapQueryTargetType
 	MeshVertex = 1,
 	/** Consider any mesh edge */
 	MeshEdge = 2,
-	/** Grid Snapping */
-	Grid = 4,
 
-	All = MeshVertex | MeshEdge | Grid
+	All = MeshVertex | MeshEdge
 };
 ENUM_CLASS_FLAGS(ESceneSnapQueryTargetType);
 
@@ -115,15 +92,9 @@ ENUM_CLASS_FLAGS(ESceneSnapQueryTargetType);
 struct INTERACTIVETOOLSFRAMEWORK_API FSceneSnapQueryRequest
 {
 	/** What type of snap query geometry is this */
-	ESceneSnapQueryType RequestType = ESceneSnapQueryType::Position;
+	ESceneSnapQueryType RequestType;
 	/** What does caller want to try to snap to */
-	ESceneSnapQueryTargetType TargetTypes = ESceneSnapQueryTargetType::Grid;
-
-	/** Optional explicitly specified position grid */
-	TOptional<FVector> GridSize{};
-
-	/** Optional explicitly specified rotation grid */
-	TOptional<FRotator> RotGridSize{};
+	ESceneSnapQueryTargetType TargetTypes;
 
 	/** Snap input position */
 	FVector Position;
@@ -134,9 +105,6 @@ struct INTERACTIVETOOLSFRAMEWORK_API FSceneSnapQueryRequest
 	FVector Direction;
 	/** Another direction must deviate less than this number of degrees from Direction to be considered an acceptable snap direction */
 	float DirectionAngleThresholdDegrees;
-
-	/** Snap input rotation delta */
-	FQuat DeltaRotation;
 };
 
 
@@ -158,8 +126,6 @@ struct INTERACTIVETOOLSFRAMEWORK_API FSceneSnapQueryResult
 	FVector Normal;
 	/** Snap direction (may not be set depending on query types) */
 	FVector Direction;
-	/** Snap rotation delta (may not be set depending on query types) */
-	FQuat   DeltaRotation;
 
 	/** Vertices of triangle that contains result (for debugging, may not be set) */
 	FVector TriVertices[3];
@@ -233,13 +199,6 @@ public:
 	 * @return Instance of material to use for this purpose
 	 */
 	virtual UMaterialInterface* GetStandardMaterial(EStandardToolContextMaterials MaterialType) const = 0;
-
-#if WITH_EDITOR
-	/**
-	* When selecting, sometimes we need a hit proxy rather than a physics trace or other raycast.                                                                   
-	*/
-	virtual HHitProxy* GetHitProxy(int32 X, int32 Y) const = 0;
-#endif
 };
 
 
@@ -343,14 +302,6 @@ public:
 
 };
 
-UENUM()
-enum class EViewInteractionState {
-	None = 0,
-	Hovered = 1,
-	Focused = 2
-};
-ENUM_CLASS_FLAGS(EViewInteractionState);
-
 /**
  * Users of the Tools Framework need to implement IToolsContextRenderAPI to allow
  * Tools, Indicators, and Gizmos to make low-level rendering calls for things like line drawing.
@@ -364,37 +315,7 @@ public:
 
 	/** @return Current PDI */
 	virtual FPrimitiveDrawInterface* GetPrimitiveDrawInterface() = 0;
-
-	/** @return Current FSceneView */
-	virtual const FSceneView* GetSceneView() = 0;
-
-	/** @return Current Camera State for this Render API */
-	virtual FViewCameraState GetCameraState() = 0;
-
-	/** @return Current interaction state of the view to render */
-	virtual EViewInteractionState GetViewInteractionState() = 0;
 };
-
-
-/**
- * FGeneratedStaticMeshAssetConfig is passed to IToolsContextAssetAPI::GenerateStaticMeshActor() to
- * provide the underlying mesh, materials, and configuration settings. Note that all implementations
- * may not use/respect all settings.
- */
-struct FGeneratedStaticMeshAssetConfig
-{
-	INTERACTIVETOOLSFRAMEWORK_API ~FGeneratedStaticMeshAssetConfig();
-
-	TUniquePtr<FMeshDescription> MeshDescription;
-	TArray<UMaterialInterface*> Materials;
-
-	bool bEnableRecomputeNormals = false;
-	bool bEnableRecomputeTangents = false;
-
-	bool bEnablePhysics = true;
-	bool bEnableComplexAsSimpleCollision = true;
-};
-
 
 /**
  * Users of the Tools Framework need to provide an IToolsContextAssetAPI implementation
@@ -407,18 +328,8 @@ class IToolsContextAssetAPI
 public:
 	virtual ~IToolsContextAssetAPI() {}
 
-	/** 
-	 * Get a path to save assets in that is relative to the given UWorld. 
-	 */
-	virtual FString GetWorldRelativeAssetRootPath(const UWorld* World) = 0;
-
-	/** 
-	 * Get a "currently-visible/selected" location to save assets in. For example the currently-visible path in the Editor Content Browser.
-	 */
+	/** Get default path to save assets in. For example the currently-visible path in the Editor. */
 	virtual FString GetActiveAssetFolderPath() = 0;
-
-	/** Allow the user to select a path and filename for an asset using a modal dialog */
-	virtual FString InteractiveSelectAssetPath(const FString& DefaultAssetName, const FText& DialogTitleMessage) = 0;
 
 	/**
 	 * Creates a new package for an asset
@@ -434,41 +345,5 @@ public:
 
 	/** Autosave asset to persistent storage */
 	virtual void AutoSaveGeneratedAsset(UObject* Asset, UPackage* AssetPackage) = 0;
-
-	/** Notify that asset has been created and is dirty */
-	virtual void NotifyGeneratedAssetModified(UObject* Asset, UPackage* AssetPackage) = 0;
-
-
-
-	/**
-	 * Create a new UStaticMeshAsset for the provided mesh, then a new UStaticMeshComponent and AStaticMeshActor in the TargetWorld
-	 * @param TargetWorld world to create new Actor in
-	 * @param Transform transform to set on Actor
-	 * @param ObjectBaseName a base name for the Asset and Actor. Unique name will be generated by appending a number, if a name collision occurs.
-	 * @param AssetConfig configuration information for the new Asset
-	 * @return new AStaticMeshActor with new Asset assigned to it's UStaticMeshComponent
-	 * @warning this function may return null. In this case the asset creation failed and/or the user cancelled during the process, if it was interactive.
-	 */
-	virtual AActor* GenerateStaticMeshActor(
-		UWorld* TargetWorld,
-		FTransform Transform,
-		FString ObjectBaseName,
-		FGeneratedStaticMeshAssetConfig&& AssetConfig) = 0;
-
-
-	/**
-	 * Save a generated UTexture2D as an Asset.
-	 * Assumption is that the texture was generated in code and is in the Transient package.
-	 * @param GeneratedTexture Texture2D to save
-	 * @param ObjectBaseName a base name for the Asset. Unique name will be generated by appending a number, if a name collision occurs.
-	 * @param RelativeToAsset New texture will be saved at the same path as the UPackage for this UObject, which we assume to be an Asset (eg like a UStaticMesh)
-	 */
-	virtual bool SaveGeneratedTexture2D(
-		UTexture2D* GeneratedTexture,
-		FString ObjectBaseName,
-		const UObject* RelativeToAsset)
-	{
-		check(false); return false;
-	}
 };
 

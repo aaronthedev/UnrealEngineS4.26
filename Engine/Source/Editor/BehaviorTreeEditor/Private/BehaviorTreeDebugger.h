@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -112,11 +112,11 @@ private:
 	/** index of state from buffer to show */
 	int32 ActiveStepIndex;
 
-	/** execution id of displayed step, used to detect changes */
-	int32 DisplayedExecutionStepId;
+	/** index of displayed step, used to detect changes */
+	int32 DisplayedStepIndex;
 
-	/** execution id of last valid step */
-	int32 LastValidExecutionStepId;
+	/** id of last valid step */
+	int32 LastValidStepId;
 
 	/** indices of display steps for different step actions */
 	int32 StepForwardIntoIdx;

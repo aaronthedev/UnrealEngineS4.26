@@ -1,16 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MetalPipeline.cpp: Metal shader pipeline RHI implementation.
 =============================================================================*/
 
 #include "MetalRHIPrivate.h"
-#include "MetalVertexDeclaration.h"
-#include "MetalShaderTypes.h"
-#include "MetalGraphicsPipelineState.h"
-#include "MetalComputePipelineState.h"
 #include "MetalPipeline.h"
 #include "MetalShaderResources.h"
+#include "MetalResources.h"
 #include "MetalProfiler.h"
 #include "MetalCommandQueue.h"
 #include "MetalCommandBuffer.h"
@@ -275,10 +272,7 @@ struct FMetalGraphicsPipelineKey
 	FMetalRenderPipelineHash RenderPipelineHash;
 	FMetalHashedVertexDescriptor VertexDescriptorHash;
 	FSHAHash VertexFunction;
-#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-	FSHAHash HullFunction;
 	FSHAHash DomainFunction;
-#endif
 	FSHAHash PixelFunction;
 
 	template<typename Type>
@@ -302,10 +296,7 @@ struct FMetalGraphicsPipelineKey
 		return (RenderPipelineHash == Other.RenderPipelineHash
 		&& VertexDescriptorHash == Other.VertexDescriptorHash
 		&& VertexFunction == Other.VertexFunction
-#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-		&& HullFunction == Other.HullFunction
 		&& DomainFunction == Other.DomainFunction
-#endif
 		&& PixelFunction == Other.PixelFunction);
 	}
 	
@@ -313,10 +304,7 @@ struct FMetalGraphicsPipelineKey
 	{
 		uint32 H = FCrc::MemCrc32(&Key.RenderPipelineHash, sizeof(Key.RenderPipelineHash), GetTypeHash(Key.VertexDescriptorHash));
 		H = FCrc::MemCrc32(Key.VertexFunction.Hash, sizeof(Key.VertexFunction.Hash), H);
-#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
-		H = FCrc::MemCrc32(Key.HullFunction.Hash, sizeof(Key.HullFunction.Hash), H);
 		H = FCrc::MemCrc32(Key.DomainFunction.Hash, sizeof(Key.DomainFunction.Hash), H);
-#endif
 		H = FCrc::MemCrc32(Key.PixelFunction.Hash, sizeof(Key.PixelFunction.Hash), H);
 		return H;
 	}
@@ -337,7 +325,7 @@ struct FMetalGraphicsPipelineKey
 			if (TargetFormat == PF_Unknown) { continue; }
 
 			mtlpp::PixelFormat MetalFormat = (mtlpp::PixelFormat)GPixelFormats[TargetFormat].PlatformFormat;
-			ETextureCreateFlags Flags = (ETextureCreateFlags)Init.RenderTargetFlags[i];
+			uint32 Flags = Init.RenderTargetFlags[i];
 			if (Flags & TexCreate_SRGB)
 			{
 #if PLATFORM_MAC // Expand as R8_sRGB is iOS only.
@@ -399,8 +387,6 @@ struct FMetalGraphicsPipelineKey
 		Key.SetHashValue(Offset_StencilFormat, NumBits_StencilFormat, StencilFormatKey);
 
 		Key.SetHashValue(Offset_SampleCount, NumBits_SampleCount, Init.NumSamples);
-
-		Key.SetHashValue(Offset_AlphaToCoverage, NumBits_AlphaToCoverage, Init.NumSamples > 1 && BlendState->bUseAlphaToCoverage ? 1 : 0);
 		
 #if PLATFORM_MAC
 		Key.SetHashValue(Offset_PrimitiveTopology, NumBits_PrimitiveTopology, TranslatePrimitiveTopology(Init.PrimitiveType));
@@ -414,10 +400,8 @@ struct FMetalGraphicsPipelineKey
 
 #if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
 		FMetalDomainShader* DomainShader = (FMetalDomainShader*)Init.BoundShaderState.DomainShaderRHI;
-		FMetalHullShader* HullShader = (FMetalHullShader*)Init.BoundShaderState.HullShaderRHI;
-		if (DomainShader && HullShader)
+		if (DomainShader)
 		{
-			Key.HullFunction = HullShader->GetHash();
 			Key.DomainFunction = DomainShader->GetHash();
 			Key.SetHashValue(Offset_IndexType, NumBits_IndexType, IndexType);
 		}
@@ -604,7 +588,7 @@ APPLE_PLATFORM_OBJECT_ALLOC_OVERRIDES(FMetalShaderPipeline)
 		[self initResourceMask:EMetalShaderVertex];
 		[self initResourceMask:EMetalShaderFragment];
 		
-		if (SafeGetRuntimeDebuggingLevel() < EMetalDebugLevelValidation)
+		if (SafeGetRuntimeDebuggingLevel() < EMetalDebugLevelValidation METAL_STATISTICS_ONLY(&& !GetMetalDeviceContext().GetCommandQueue().GetStatistics()))
 		{
 			RenderPipelineReflection = mtlpp::RenderPipelineReflection(nil);
 		}
@@ -613,7 +597,7 @@ APPLE_PLATFORM_OBJECT_ALLOC_OVERRIDES(FMetalShaderPipeline)
 	{
 		[self initResourceMask:EMetalShaderCompute];
 		
-		if (SafeGetRuntimeDebuggingLevel() < EMetalDebugLevelValidation)
+		if (SafeGetRuntimeDebuggingLevel() < EMetalDebugLevelValidation METAL_STATISTICS_ONLY(&& !GetMetalDeviceContext().GetCommandQueue().GetStatistics()))
 		{
 			ComputePipelineReflection = mtlpp::ComputePipelineReflection(nil);
 		}
@@ -622,7 +606,7 @@ APPLE_PLATFORM_OBJECT_ALLOC_OVERRIDES(FMetalShaderPipeline)
 	{
 		[self initResourceMask:EMetalShaderStream];
 		
-		if (SafeGetRuntimeDebuggingLevel() < EMetalDebugLevelValidation)
+		if (SafeGetRuntimeDebuggingLevel() < EMetalDebugLevelValidation METAL_STATISTICS_ONLY(&& !GetMetalDeviceContext().GetCommandQueue().GetStatistics()))
 		{
 			StreamPipelineReflection = mtlpp::RenderPipelineReflection(nil);
 		}
@@ -795,7 +779,7 @@ static bool ConfigureRenderPipelineDescriptor(mtlpp::RenderPipelineDescriptor& R
 		TargetWidth += GPixelFormats[TargetFormat].BlockBytes;
 		
 		mtlpp::PixelFormat MetalFormat = (mtlpp::PixelFormat)GPixelFormats[TargetFormat].PlatformFormat;
-		ETextureCreateFlags Flags = (ETextureCreateFlags)Init.RenderTargetFlags[i];
+		uint32 Flags = Init.RenderTargetFlags[i];
 		if (Flags & TexCreate_SRGB)
 		{
 #if PLATFORM_MAC // Expand as R8_sRGB is iOS only.
@@ -920,9 +904,7 @@ static bool ConfigureRenderPipelineDescriptor(mtlpp::RenderPipelineDescriptor& R
 	}
 	
 	static bool bNoMSAA = FParse::Param(FCommandLine::Get(), TEXT("nomsaa"));
-	uint16 NumSamples = !bNoMSAA ? FMath::Max(Init.NumSamples, (uint16)1u) : (uint16)1u;
-	RenderPipelineDesc.SetSampleCount(NumSamples);
-	RenderPipelineDesc.SetAlphaToCoverageEnabled(NumSamples > 1 && BlendState->bUseAlphaToCoverage);
+	RenderPipelineDesc.SetSampleCount(!bNoMSAA ? FMath::Max(Init.NumSamples, (uint16)1u) : (uint16)1u);
 #if PLATFORM_MAC
 	RenderPipelineDesc.SetInputPrimitiveTopology(TranslatePrimitiveTopology(Init.PrimitiveType));
 	DebugPipelineDesc.SetSampleCount(!bNoMSAA ? FMath::Max(Init.NumSamples, (uint16)1u) : (uint16)1u);
@@ -1029,9 +1011,9 @@ static FMetalShaderPipeline* CreateSeparateMetalTessellationPipeline(bool const 
 	mtlpp::AutoReleasedRenderPipelineReflection* Reflection = nullptr;
 	mtlpp::AutoReleasedRenderPipelineReflection OutReflection;
 	Reflection = &OutReflection;
-	if (GetMetalDeviceContext().GetCommandQueue().GetRuntimeDebuggingLevel() >= EMetalDebugLevelFastValidation)
+	if (GetMetalDeviceContext().GetCommandQueue().GetRuntimeDebuggingLevel() >= EMetalDebugLevelFastValidation METAL_STATISTICS_ONLY(|| GetMetalDeviceContext().GetCommandQueue().GetStatistics()))
 	{
-		RenderOption = mtlpp::PipelineOption::ArgumentInfo | mtlpp::PipelineOption::BufferTypeInfo;
+		RenderOption = mtlpp::PipelineOption::ArgumentInfo|mtlpp::PipelineOption::BufferTypeInfo METAL_STATISTICS_ONLY(|NSUInteger(EMTLPipelineStats));
 	}
 	
 	ns::Error Error;
@@ -1114,10 +1096,10 @@ static FMetalShaderPipeline* CreateSeparateMetalTessellationPipeline(bool const 
 			HullShaderPipelineDesc.SetLabel([NSString stringWithFormat:@"%@", HullName.GetPtr()]);
 		}
 #endif
-		if (GetMetalDeviceContext().GetCommandQueue().GetRuntimeDebuggingLevel() >= EMetalDebugLevelFastValidation)
+		if (GetMetalDeviceContext().GetCommandQueue().GetRuntimeDebuggingLevel() >= EMetalDebugLevelFastValidation METAL_STATISTICS_ONLY(|| GetMetalDeviceContext().GetCommandQueue().GetStatistics()))
 		{
 			mtlpp::AutoReleasedComputePipelineReflection HullReflection;
-			ComputeOption = mtlpp::PipelineOption::ArgumentInfo | mtlpp::PipelineOption::BufferTypeInfo;
+			ComputeOption = mtlpp::PipelineOption::ArgumentInfo|mtlpp::PipelineOption::BufferTypeInfo METAL_STATISTICS_ONLY(|NSUInteger(EMTLPipelineStats));
 			HullPipelineState = Device.NewComputePipelineState(HullShaderPipelineDesc, (mtlpp::PipelineOption)ComputeOption, &HullReflection, &AutoError);
 			Pipeline->ComputePipelineReflection = HullReflection;
 		}
@@ -1576,10 +1558,10 @@ static FMetalShaderPipeline* CreateMTLRenderPipeline(bool const bSync, FMetalGra
 					RenderPipelineDesc.SetLabel([NSString stringWithFormat:@"%@", VertexName.GetPtr()]);
 				}
 #endif
-				if (GetMetalDeviceContext().GetCommandQueue().GetRuntimeDebuggingLevel() >= EMetalDebugLevelFastValidation)
+				if (GetMetalDeviceContext().GetCommandQueue().GetRuntimeDebuggingLevel() >= EMetalDebugLevelFastValidation METAL_STATISTICS_ONLY(|| GetMetalDeviceContext().GetCommandQueue().GetStatistics()))
 				{
 					mtlpp::AutoReleasedComputePipelineReflection Reflection;
-					ComputeOption = mtlpp::PipelineOption::ArgumentInfo | mtlpp::PipelineOption::BufferTypeInfo;
+					ComputeOption = mtlpp::PipelineOption::ArgumentInfo|mtlpp::PipelineOption::BufferTypeInfo METAL_STATISTICS_ONLY(|NSUInteger(EMTLPipelineStats));
 					Pipeline->ComputePipelineState = Device.NewComputePipelineState(ComputePipelineDesc, (mtlpp::PipelineOption)ComputeOption, &Reflection, &AutoError);
 #if METAL_DEBUG_OPTIONS
 					Pipeline->ComputePipelineReflection = Reflection;
@@ -1698,15 +1680,15 @@ static FMetalShaderPipeline* CreateMTLRenderPipeline(bool const bSync, FMetalGra
             }
         }
 #endif
-
-		NSUInteger RenderOption = mtlpp::PipelineOption::NoPipelineOption;
+        
+        NSUInteger RenderOption = mtlpp::PipelineOption::NoPipelineOption;
 		mtlpp::AutoReleasedRenderPipelineReflection* Reflection = nullptr;
 		mtlpp::AutoReleasedRenderPipelineReflection OutReflection;
 		Reflection = &OutReflection;
-		if (GetMetalDeviceContext().GetCommandQueue().GetRuntimeDebuggingLevel() >= EMetalDebugLevelFastValidation)
-		{
-			RenderOption = mtlpp::PipelineOption::ArgumentInfo | mtlpp::PipelineOption::BufferTypeInfo;
-		}
+        if (GetMetalDeviceContext().GetCommandQueue().GetRuntimeDebuggingLevel() >= EMetalDebugLevelFastValidation METAL_STATISTICS_ONLY(|| GetMetalDeviceContext().GetCommandQueue().GetStatistics()))
+        {
+        	RenderOption = mtlpp::PipelineOption::ArgumentInfo|mtlpp::PipelineOption::BufferTypeInfo METAL_STATISTICS_ONLY(|NSUInteger(EMTLPipelineStats));
+        }
 
 		{
 			ns::AutoReleasedError RenderError;
@@ -1739,15 +1721,15 @@ static FMetalShaderPipeline* CreateMTLRenderPipeline(bool const bSync, FMetalGra
 			return nil;
 		}
 		
-#if METAL_DEBUG_OPTIONS
-#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
+    #if METAL_DEBUG_OPTIONS
+	#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
 		Pipeline->ComputeSource = DomainShader ? VertexShader->GetSourceCode() : nil;
         Pipeline->VertexSource = DomainShader ? DomainShader->GetSourceCode() : VertexShader->GetSourceCode();
-#else
+	#else
 		Pipeline->VertexSource = VertexShader->GetSourceCode();
-#endif
+	#endif
         Pipeline->FragmentSource = PixelShader ? PixelShader->GetSourceCode() : nil;
-#endif
+    #endif
 		
 #if !PLATFORM_TVOS
 		if (GMetalCommandBufferDebuggingEnabled)
@@ -1786,14 +1768,88 @@ static FMetalShaderPipeline* CreateMTLRenderPipeline(bool const bSync, FMetalGra
     return !bSync ? nil : Pipeline;
 }
 
-FMetalShaderPipeline* GetMTLRenderPipeline(bool const bSync, FMetalGraphicsPipelineState const* State, const FGraphicsPipelineStateInitializer& Init, EMetalIndexType const IndexType)
+static FMetalShaderPipeline* GetMTLRenderPipeline(bool const bSync, FMetalGraphicsPipelineState const* State, const FGraphicsPipelineStateInitializer& Init, EMetalIndexType const IndexType)
 {
 	return FMetalShaderPipelineCache::Get().GetRenderPipeline(bSync, State, Init, IndexType);
 }
 
-void ReleaseMTLRenderPipeline(FMetalShaderPipeline* Pipeline)
+static void ReleaseMTLRenderPipeline(FMetalShaderPipeline* Pipeline)
 {
 	FMetalShaderPipelineCache::Get().ReleaseRenderPipeline(Pipeline);
+}
+
+bool FMetalGraphicsPipelineState::Compile()
+{
+	FMemory::Memzero(PipelineStates);
+		for (uint32 i = 0; i < EMetalIndexType_Num; i++)
+		{
+			PipelineStates[i] = [GetMTLRenderPipeline(true, this, Initializer, (EMetalIndexType)i) retain];
+			if(!PipelineStates[i])
+			{
+				return false;
+			}
+		}
+	
+	return true;
+}
+
+FMetalGraphicsPipelineState::~FMetalGraphicsPipelineState()
+{
+	for (uint32 i = 0; i < EMetalIndexType_Num; i++)
+	{
+		ReleaseMTLRenderPipeline(PipelineStates[i]);
+		PipelineStates[i] = nil;
+	}
+}
+
+FMetalShaderPipeline* FMetalGraphicsPipelineState::GetPipeline(EMetalIndexType IndexType)
+{
+	check(IndexType < EMetalIndexType_Num);
+
+		if(!PipelineStates[IndexType])
+		{
+			PipelineStates[IndexType] = [GetMTLRenderPipeline(true, this, Initializer, IndexType) retain];
+		}
+	FMetalShaderPipeline* Pipe = PipelineStates[IndexType];
+
+		check(Pipe);
+    return Pipe;
+}
+
+
+FGraphicsPipelineStateRHIRef FMetalDynamicRHI::RHICreateGraphicsPipelineState(const FGraphicsPipelineStateInitializer& Initializer)
+{
+	@autoreleasepool {
+	FMetalGraphicsPipelineState* State = new FMetalGraphicsPipelineState(Initializer);
+		
+	if(!State->Compile())
+	{
+		// Compilation failures are propagated up to the caller.
+		State->DoNoDeferDelete();
+		delete State;
+		return nullptr;
+	}
+	State->VertexDeclaration = ResourceCast(Initializer.BoundShaderState.VertexDeclarationRHI);
+	State->VertexShader = ResourceCast(Initializer.BoundShaderState.VertexShaderRHI);
+	State->PixelShader = ResourceCast(Initializer.BoundShaderState.PixelShaderRHI);
+#if PLATFORM_SUPPORTS_TESSELLATION_SHADERS
+	State->HullShader = ResourceCast(Initializer.BoundShaderState.HullShaderRHI);
+	State->DomainShader = ResourceCast(Initializer.BoundShaderState.DomainShaderRHI);
+#endif
+#if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
+	State->GeometryShader = ResourceCast(Initializer.BoundShaderState.GeometryShaderRHI);
+#endif
+	State->DepthStencilState = ResourceCast(Initializer.DepthStencilState);
+	State->RasterizerState = ResourceCast(Initializer.RasterizerState);
+	return State;
+	}
+}
+
+TRefCountPtr<FRHIComputePipelineState> FMetalDynamicRHI::RHICreateComputePipelineState(FRHIComputeShader* ComputeShader)
+{
+	@autoreleasepool {
+	return new FMetalComputePipelineState(ResourceCast(ComputeShader));
+	}
 }
 
 FMetalPipelineStateCacheManager::FMetalPipelineStateCacheManager()

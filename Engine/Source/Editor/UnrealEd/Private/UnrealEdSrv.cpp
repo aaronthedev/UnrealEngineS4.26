@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "CoreMinimal.h"
@@ -78,6 +78,7 @@
 #include "AssetToolsModule.h"
 #include "IContentBrowserSingleton.h"
 #include "ContentBrowserModule.h"
+#include "Editor/GeometryMode/Public/GeometryEdMode.h"
 #include "AssetRegistryModule.h"
 #include "Matinee/MatineeActor.h"
 #include "MatineeExporter.h"
@@ -102,8 +103,6 @@
 	#include "Windows/WindowsHWrapper.h"
 #endif
 #include "ActorGroupingUtils.h"
-#include "EdMode.h"
-#include "Subsystems/BrushEditingSubsystem.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogUnrealEdSrv, Log, All);
 
@@ -635,8 +634,8 @@ bool UUnrealEdEngine::HandleConvertMatineesCommand( const TCHAR* Str, FOutputDev
 				StartLocation.Y += 50;
 
 				MatineeActor->MatineeData = InterpData;
-				FProperty* MatineeDataProp = NULL;
-				for( FProperty* Property = MatineeActor->GetClass()->PropertyLink; Property != NULL; Property = Property->PropertyLinkNext )
+				UProperty* MatineeDataProp = NULL;
+				for( UProperty* Property = MatineeActor->GetClass()->PropertyLink; Property != NULL; Property = Property->PropertyLinkNext )
 				{
 					if( Property->GetName() == TEXT("MatineeData") )
 					{
@@ -653,17 +652,17 @@ bool UUnrealEdEngine::HandleConvertMatineesCommand( const TCHAR* Str, FOutputDev
 		return true;
 	}
 
-bool UUnrealEdEngine::HandleDisasmScriptCommand(const TCHAR* Str, FOutputDevice& Ar)
-{
-	FString ClassName;
-
-	if (FParse::Token(Str, ClassName, false))
+bool UUnrealEdEngine::HandleDisasmScriptCommand( const TCHAR* Str, FOutputDevice& Ar )
 	{
-		FKismetBytecodeDisassembler::DisassembleAllFunctionsInClasses(Ar, ClassName);
-	}
+		FString ClassName;
 
-	return true;
-}
+		if (FParse::Token(Str, ClassName, false))
+		{
+			FKismetBytecodeDisassembler::DisassembleAllFunctionsInClasses(Ar, ClassName);
+		}
+
+		return true;
+	}
 
 bool UUnrealEdEngine::Exec( UWorld* InWorld, const TCHAR* Stream, FOutputDevice& Ar )
 {
@@ -1086,7 +1085,7 @@ bool UUnrealEdEngine::Exec( UWorld* InWorld, const TCHAR* Stream, FOutputDevice&
 						UAssetImportData* ImportData = nullptr;
 
 						// Root out the asset import data property
-						for (FObjectProperty* Property : TFieldRange<FObjectProperty>(Asset->GetClass()))
+						for (UObjectProperty* Property : TFieldRange<UObjectProperty>(Asset->GetClass()))
 						{
 							ImportData = Cast<UAssetImportData>(Property->GetObjectPropertyValue(Property->ContainerPtrToValuePtr<UObject*>(Asset)));
 							if (ImportData)
@@ -1270,9 +1269,9 @@ bool UUnrealEdEngine::Exec( UWorld* InWorld, const TCHAR* Stream, FOutputDevice&
 						FString CurrentWindowName = OpenWindows[WindowId]->GetTitle().ToString();
 
 						//Strip off the * from the end if it exists
-						if( CurrentWindowName.EndsWith(TEXT("*"), ESearchCase::CaseSensitive) )
+						if( CurrentWindowName.EndsWith(TEXT("*")) )
 						{
-							CurrentWindowName.LeftChopInline(1, false);
+							CurrentWindowName = CurrentWindowName.LeftChop(1);
 						}
 
 						if( CurrentWindowName == WindowNameStr )
@@ -1443,6 +1442,61 @@ void UUnrealEdEngine::ShowPackageNotification()
 		}
 	}
 }
+
+
+void UUnrealEdEngine::AttemptWarnAboutPackageEngineVersions()
+{
+	if ( bNeedWarningForPkgEngineVer )
+	{
+		const bool bCanPrompt = !IsUserInteracting() && !GIsSlowTask && !PlayWorld && (FSlateApplication::Get().GetMouseCaptureWindow() == NULL);
+
+		if ( bCanPrompt )
+		{
+			FString PackageNames;
+			for ( TMap<FString, uint8>::TIterator MapIter( PackagesCheckedForEngineVersion ); MapIter; ++MapIter )
+			{
+				if ( MapIter.Value() == WDWS_PendingWarn )
+				{
+					PackageNames += FString::Printf( TEXT("%s\n"), *MapIter.Key() );
+					MapIter.Value() = WDWS_Warned;
+				}
+			}
+			FFormatNamedArguments Args;
+			Args.Add( TEXT("PackageNames"), FText::FromString( PackageNames ) );
+			const FText Message = FText::Format( NSLOCTEXT("Core", "PackagesSavedWithNewerVersion", "The following assets have been saved with an engine version newer than the current and therefore will not be able to be saved:\n{PackageNames}"), Args );
+
+			FMessageDialog::Open( EAppMsgType::Ok, Message );
+			bNeedWarningForPkgEngineVer = false;
+		}
+	}
+}
+
+void UUnrealEdEngine::AttemptWarnAboutWritePermission()
+{
+	if ( bNeedWarningForWritePermission )
+	{
+		const bool bCanPrompt = !IsUserInteracting() && !GIsSlowTask && !PlayWorld && (FSlateApplication::Get().GetMouseCaptureWindow() == NULL);
+
+		if ( bCanPrompt )
+		{
+			FString PackageNames;
+			for ( TMap<FString, uint8>::TIterator MapIter( PackagesCheckedForWritePermission ); MapIter; ++MapIter )
+			{
+				if ( MapIter.Value() == WDWS_PendingWarn )
+				{
+					PackageNames += FString::Printf( TEXT("%s\n"), *MapIter.Key() );
+					MapIter.Value() = WDWS_Warned;
+				}
+			}
+			
+			const FText Message = FText::Format( LOCTEXT("WritePermissionFailure", "You do not have sufficient permission to save the following content to disk. Any changes you make to this content will only apply during the current editor session.\n\n{0}"), FText::FromString( PackageNames ) );
+			FMessageDialog::Open( EAppMsgType::Ok, Message );
+			
+			bNeedWarningForWritePermission = false;
+		}
+	}
+}
+
 
 void UUnrealEdEngine::PromptToCheckoutModifiedPackages( bool bPromptAll )
 {
@@ -1720,9 +1774,11 @@ static void MirrorActors(const FVector& MirrorScale)
 		LevelDirtyCallback.Request();
 	}
 
-	if (UBrushEditingSubsystem* BrushSubsystem = GEditor->GetEditorSubsystem<UBrushEditingSubsystem>())
+	if ( GLevelEditorModeTools().IsModeActive( FBuiltinEditorModes::EM_Geometry ) )
 	{
-		BrushSubsystem->UpdateGeometryFromSelectedBrushes();
+		// If we are in geometry mode, make sure to update the mode with new source data for selected brushes
+		FEdModeGeometry* Mode = (FEdModeGeometry*)GLevelEditorModeTools().GetActiveMode( FBuiltinEditorModes::EM_Geometry );
+		Mode->GetFromSource();
 	}
 
 	GEditor->RedrawLevelEditingViewports();
@@ -2947,12 +3003,22 @@ bool UUnrealEdEngine::Exec_Mode( const TCHAR* Str, FOutputDevice& Ar )
 	//
 	FEditorModeID EditorMode = FBuiltinEditorModes::EM_None;
 
-	FString CommandToken = FParse::Token(Str, false);
-	FEdMode* FoundMode = GLevelEditorModeTools().GetActiveMode(FName(*CommandToken));
+	if 		(FParse::Command(&Str,TEXT("CAMERAMOVE")))		{ EditorMode = FBuiltinEditorModes::EM_Default;		}
+	else if	(FParse::Command(&Str,TEXT("GEOMETRY"))) 		{ EditorMode = FBuiltinEditorModes::EM_Geometry;	}
+	else if	(FParse::Command(&Str,TEXT("TEXTURE"))) 		{ EditorMode = FBuiltinEditorModes::EM_Texture;		}
+	else if (FParse::Command(&Str,TEXT("MESHPAINT")))		{ EditorMode = FBuiltinEditorModes::EM_MeshPaint;	}
+	else if (FParse::Command(&Str,TEXT("LANDSCAPE")))		{ EditorMode = FBuiltinEditorModes::EM_Landscape;	}
+	else if (FParse::Command(&Str,TEXT("FOLIAGE")))			{ EditorMode = FBuiltinEditorModes::EM_Foliage;		}
 
-	if (FoundMode != NULL)
+	if ( EditorMode == FBuiltinEditorModes::EM_None )
 	{
-		EditorMode = FName( *CommandToken );
+		FString CommandToken = FParse::Token(Str, false);
+		FEdMode* FoundMode = GLevelEditorModeTools().GetActiveMode( FName( *CommandToken ) );
+
+		if ( FoundMode != NULL )
+		{
+			EditorMode = FName( *CommandToken );
+		}
 	}
 
 	if( EditorMode != FBuiltinEditorModes::EM_None )

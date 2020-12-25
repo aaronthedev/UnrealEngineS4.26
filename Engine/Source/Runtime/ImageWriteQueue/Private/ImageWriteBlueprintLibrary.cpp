@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ImageWriteBlueprintLibrary.h"
 #include "Engine/Texture.h"
@@ -21,7 +21,6 @@ EImageFormat ImageFormatFromDesired(EDesiredImageFormat In)
 
 	return EImageFormat::BMP;
 }
-
 
 bool UImageWriteBlueprintLibrary::ResolvePixelData(UTexture* InTexture, const FOnPixelsReady& OnPixelsReady)
 {
@@ -71,12 +70,9 @@ bool UImageWriteBlueprintLibrary::ResolvePixelData(UTexture* InTexture, const FO
 			{
 				case PF_FloatRGBA:
 				{
-					TArray<FFloat16Color> RawPixels;
-					RawPixels.SetNum(SourceRect.Width() * SourceRect.Height());
-					RHICmdList.ReadSurfaceFloatData(Texture2D, SourceRect, RawPixels, (ECubeFace)0, 0, 0);
+					TUniquePtr<TImagePixelData<FFloat16Color>> PixelData = MakeUnique<TImagePixelData<FFloat16Color>>(SourceRect.Size());
 
-					TUniquePtr<TImagePixelData<FFloat16Color>> PixelData = MakeUnique<TImagePixelData<FFloat16Color>>(SourceRect.Size(), TArray64<FFloat16Color>(MoveTemp(RawPixels)));
-
+					RHICmdList.ReadSurfaceFloatData(Texture2D, SourceRect, PixelData->Pixels, (ECubeFace)0, 0, 0);
 					if (PixelData->IsDataWellFormed())
 					{
 						OnPixelsReady(MoveTemp(PixelData));
@@ -91,11 +87,9 @@ bool UImageWriteBlueprintLibrary::ResolvePixelData(UTexture* InTexture, const FO
 					FReadSurfaceDataFlags ReadDataFlags(RCM_MinMax);
 					ReadDataFlags.SetLinearToGamma(false);
 
+					TUniquePtr<TImagePixelData<FLinearColor>> PixelData = MakeUnique<TImagePixelData<FLinearColor>>(SourceRect.Size());
 
-					TArray<FLinearColor> RawPixels;
-					RawPixels.SetNum(SourceRect.Width() * SourceRect.Height());
-					RHICmdList.ReadSurfaceData(Texture2D, SourceRect, RawPixels, ReadDataFlags);
-					TUniquePtr<TImagePixelData<FLinearColor>> PixelData = MakeUnique<TImagePixelData<FLinearColor>>(SourceRect.Size(), TArray64<FLinearColor>(MoveTemp(RawPixels)));
+					RHICmdList.ReadSurfaceData(Texture2D, SourceRect, PixelData->Pixels, ReadDataFlags);
 					if (PixelData->IsDataWellFormed())
 					{
 						OnPixelsReady(MoveTemp(PixelData));
@@ -111,11 +105,9 @@ bool UImageWriteBlueprintLibrary::ResolvePixelData(UTexture* InTexture, const FO
 					FReadSurfaceDataFlags ReadDataFlags;
 					ReadDataFlags.SetLinearToGamma(false);
 
-					TArray<FColor> RawPixels;
-					RawPixels.SetNum(SourceRect.Width() * SourceRect.Height());
-					RHICmdList.ReadSurfaceData(Texture2D, SourceRect, RawPixels, ReadDataFlags);
+					TUniquePtr<TImagePixelData<FColor>> PixelData = MakeUnique<TImagePixelData<FColor>>(SourceRect.Size());
 
-					TUniquePtr<TImagePixelData<FColor>> PixelData = MakeUnique<TImagePixelData<FColor>>(SourceRect.Size(), TArray64<FColor>(MoveTemp(RawPixels)));
+					RHICmdList.ReadSurfaceData(Texture2D, SourceRect, PixelData->Pixels, ReadDataFlags);
 					if (PixelData->IsDataWellFormed())
 					{
 						OnPixelsReady(MoveTemp(PixelData));

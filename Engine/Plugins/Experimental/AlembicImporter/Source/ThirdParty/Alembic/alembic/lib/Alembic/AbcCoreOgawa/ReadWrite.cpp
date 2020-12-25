@@ -72,19 +72,17 @@ WriteArchive::operator()( std::ostream * iStream,
 ReadArchive::ReadArchive()
 {
     m_numStreams = 1;
-    m_useMMap = true;
 }
 
 //-*****************************************************************************
-ReadArchive::ReadArchive( size_t iNumStreams, bool iUseMMap )
+ReadArchive::ReadArchive( size_t iNumStreams )
 {
     m_numStreams = iNumStreams;
-    m_useMMap = iUseMMap;
 }
 
 //-*****************************************************************************
 ReadArchive::ReadArchive( const std::vector< std::istream * > & iStreams )
-    : m_numStreams( 1 ), m_useMMap(true), m_streams( iStreams )
+    : m_numStreams( 1 ), m_streams( iStreams )
 {
 }
 
@@ -97,7 +95,7 @@ ReadArchive::operator()( const std::string &iFileName ) const
     if ( m_streams.empty() )
     {
         archivePtr = Alembic::Util::shared_ptr<ArImpl>(
-            new ArImpl( iFileName, m_numStreams, m_useMMap ) );
+            new ArImpl( iFileName, m_numStreams ) );
     }
     else
     {
@@ -118,7 +116,7 @@ ReadArchive::operator()( const std::string &iFileName,
     if ( m_streams.empty() )
     {
         archivePtr = Alembic::Util::shared_ptr<ArImpl> (
-            new ArImpl( iFileName, m_numStreams, m_useMMap ) );
+            new ArImpl( iFileName, m_numStreams ) );
     }
     else
     {

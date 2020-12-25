@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -6,7 +6,8 @@
 #include "CoreMinimal.h"
 #include "StandaloneRendererPlatformHeaders.h"
 
-#if !PLATFORM_USES_GLES
+// not needed with ES2
+#if !PLATFORM_USES_ES2
 
 #if PLATFORM_WINDOWS
 // buffers
@@ -107,7 +108,6 @@ extern PFNGLISVERTEXARRAYPROC 				glIsVertexArray;
 	EnumMacro(PFNGLLINKPROGRAMPROC,glLinkProgram) \
 	EnumMacro(PFNGLSHADERSOURCEPROC,glShaderSource) \
 	EnumMacro(PFNGLUSEPROGRAMPROC,glUseProgram) \
-	EnumMacro(PFNGLUNIFORM2FPROC,glUniform2f) \
 	EnumMacro(PFNGLUNIFORM4FPROC,glUniform4f) \
 	EnumMacro(PFNGLUNIFORM1IPROC,glUniform1i) \
 	EnumMacro(PFNGLUNIFORM4FVPROC,glUniform4fv) \

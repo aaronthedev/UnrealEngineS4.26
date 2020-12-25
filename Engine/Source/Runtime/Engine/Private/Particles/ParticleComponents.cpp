@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	UnParticleComponent.cpp: Particle component implementation.
@@ -106,6 +106,7 @@ DECLARE_CYCLE_STAT(TEXT("ParticleComponent UpdateDynamicData GT"), STAT_Particle
 DECLARE_CYCLE_STAT(TEXT("ParticleComponent OrientZAxisTowardCamera GT"), STAT_UParticleSystemComponent_OrientZAxisTowardCamera, STATGROUP_Particles);
 DECLARE_CYCLE_STAT(TEXT("ParticleComponent QueueFinalize GT"), STAT_UParticleSystemComponent_QueueFinalize, STATGROUP_Particles);
 DECLARE_CYCLE_STAT(TEXT("ParticleComponent CheckForReset GT"), STAT_UParticleSystemComponent_CheckForReset, STATGROUP_Particles);
+DECLARE_CYCLE_STAT(TEXT("ParticleComponent LOD_Inactive GT"), STAT_UParticleSystemComponent_LOD_Inactive, STATGROUP_Particles);
 DECLARE_CYCLE_STAT(TEXT("ParticleComponent LOD GT"), STAT_UParticleSystemComponent_LOD, STATGROUP_Particles);
 DECLARE_CYCLE_STAT(TEXT("ParticleComponent QueueTasksGT"), STAT_UParticleSystemComponent_QueueTasks, STATGROUP_Particles);
 DECLARE_CYCLE_STAT(TEXT("ParticleComponent QueueAsyncGT"), STAT_UParticleSystemComponent_QueueAsync, STATGROUP_Particles);
@@ -3079,7 +3080,7 @@ bool UParticleSystem::RemoveAllDuplicateModules(bool bInMarkForCooker, TMap<UObj
 							bool bIsDifferent = false;
 							static const FName CascadeCategory(TEXT("Cascade"));
 							// Copy non component properties from the old actor to the new actor
-							for (FProperty* Property = ModuleClass->PropertyLink; Property != NULL; Property = Property->PropertyLinkNext)
+							for (UProperty* Property = ModuleClass->PropertyLink; Property != NULL; Property = Property->PropertyLinkNext)
 							{
 								bool bIsTransient = (Property->PropertyFlags & CPF_Transient) != 0;
 								bool bIsEditorOnly = (Property->PropertyFlags & CPF_EditorOnly) != 0;
@@ -3357,12 +3358,11 @@ UParticleSystemComponent::UParticleSystemComponent(const FObjectInitializer& Obj
 	MaxTimeBeforeForceUpdateTransform = 5.0f;
 	bAutoActivate = true;
 	bResetOnDetach = false;
-	bOldPositionValid = false;
-	OldPosition = FVector::ZeroVector;
+	OldPosition = FVector(0.0f, 0.0f, 0.0f);
 
 	RandomStream.Initialize(FApp::bUseFixedSeed ? GetFName() : NAME_None);
 
-	PartSysVelocity = FVector::ZeroVector;
+	PartSysVelocity = FVector(0.0f, 0.0f, 0.0f);
 
 	WarmupTime = 0.0f;
 	SecondsBeforeInactive = 1.0f;
@@ -3562,6 +3562,7 @@ bool UParticleSystemComponent::CanSkipTickDueToVisibility()
 {
 	if (Template && Template->IsLooping() && CanConsiderInvisible() && !bWasDeactivated)
 	{
+		SCOPE_CYCLE_COUNTER(STAT_UParticleSystemComponent_LOD_Inactive);
 		bForcedInActive = true;
 		SpawnEvents.Empty();
 		DeathEvents.Empty();
@@ -3592,7 +3593,7 @@ bool UParticleSystemComponent::CanConsiderInvisible()const
 		const float ClampedMaxSecondsBeforeInactive = MaxSecondsBeforeInactive > 0 ? FMath::Max(MaxSecondsBeforeInactive, 0.1f) : 0.0f;
 		if (ClampedMaxSecondsBeforeInactive > 0.0f && AccumTickTime > ClampedMaxSecondsBeforeInactive && World->IsGameWorld())
 		{
-			return (GetLastRenderTime() > 0.0f) && (World->GetTimeSeconds() > (GetLastRenderTime() + ClampedMaxSecondsBeforeInactive));
+			return World->GetTimeSeconds() > (GetLastRenderTime() + ClampedMaxSecondsBeforeInactive);
 		}
 	}
 	return false;
@@ -3923,7 +3924,7 @@ void UParticleSystemComponent::OnEndOfFrameUpdateDuringTick()
 	WaitForAsyncAndFinalize(STALL);
 }
 
-void UParticleSystemComponent::CreateRenderState_Concurrent(FRegisterComponentContext* Context)
+void UParticleSystemComponent::CreateRenderState_Concurrent()
 {
 	LLM_SCOPE(ELLMTag::Particles);
 	SCOPE_CYCLE_COUNTER(STAT_ParticleSystemComponent_CreateRenderState_Concurrent);
@@ -3952,7 +3953,7 @@ void UParticleSystemComponent::CreateRenderState_Concurrent(FRegisterComponentCo
 		}
 	}
 
-	Super::CreateRenderState_Concurrent(Context);
+	Super::CreateRenderState_Concurrent();
 
 	bJustRegistered = true;
 }
@@ -3982,7 +3983,6 @@ void UParticleSystemComponent::SendRenderDynamicData_Concurrent()
 	SCOPE_CYCLE_COUNTER(STAT_ParticleSystemComponent_SendRenderDynamicData_Concurrent);
 	SCOPE_CYCLE_COUNTER(STAT_ParticlesOverview_GT_CNC);
 	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(Effects);
-	PARTICLE_PERF_STAT_CYCLES(Template, EndOfFrame);
 
 	ForceAsyncWorkCompletion(ENSURE_AND_STALL, false, true);
 	Super::SendRenderDynamicData_Concurrent();
@@ -4579,7 +4579,7 @@ void UParticleSystemComponent::OrientZAxisTowardCamera()
 }
 
 #if WITH_EDITOR
-void UParticleSystemComponent::PreEditChange(FProperty* PropertyThatWillChange)
+void UParticleSystemComponent::PreEditChange(UProperty* PropertyThatWillChange)
 {
 	ForceAsyncWorkCompletion(ENSURE_AND_STALL);
 	bool bShouldResetParticles = true;
@@ -4612,7 +4612,7 @@ void UParticleSystemComponent::PostEditChangeChainProperty(FPropertyChangedChain
 	ForceAsyncWorkCompletion(ENSURE_AND_STALL);
 	if (PropertyChangedEvent.PropertyChain.Num() > 0)
 	{
-		FProperty* MemberProperty = PropertyChangedEvent.PropertyChain.GetActiveMemberNode()->GetValue();
+		UProperty* MemberProperty = PropertyChangedEvent.PropertyChain.GetActiveMemberNode()->GetValue();
 		if ( MemberProperty != NULL )
 		{
 			FName PropertyName = PropertyChangedEvent.Property->GetFName();
@@ -4791,6 +4791,7 @@ public:
 				Prereqs.Add(FinalizePrereq);
 			}
 			FGraphEventRef Finalize = TGraphTask<FParticleFinalizeTask>::CreateTask(&Prereqs, CurrentThread).ConstructAndDispatchWhenReady(Target);
+			MyCompletionGraphEvent->SetGatherThreadForDontCompleteUntil(ENamedThreads::GameThread);
 			MyCompletionGraphEvent->DontCompleteUntil(Finalize);
 			if (FinalizeDispatchCounter)
 			{
@@ -5043,8 +5044,6 @@ void UParticleSystemComponent::TickComponent(float DeltaTime, enum ELevelTick Ti
 		SetComponentTickEnabled(false);
 		return;
 	}
-	PARTICLE_PERF_STAT_CYCLES(Template, TickGameThread);
-	PARTICLE_PERF_STAT_INSTANCE_COUNT(Template, 1);
 
 	checkf(!IsTickManaged() || !PrimaryComponentTick.IsTickFunctionEnabled(), TEXT("PSC has enabled tick funciton and is also ticking via the tick manager.\nTemplate:%s\nPSC: %s\nParent:%s")
 	, *Template->GetFullName(), *GetFullName(), GetAttachParent() ? *GetAttachParent()->GetFullName() : TEXT("nullptr"));
@@ -5253,6 +5252,7 @@ void UParticleSystemComponent::TickComponent(float DeltaTime, enum ELevelTick Ti
 				FGraphEventArray* Prereqs = FXAsyncBatcher.GetAsyncPrereq(OutFinalizeBatchEvent, FinalizeDispatchCounter);
 				AsyncWork = TGraphTask<FParticleAsyncTask>::CreateTask(Prereqs, ENamedThreads::GameThread).ConstructAndDispatchWhenReady(this, OutFinalizeBatchEvent, FinalizeDispatchCounter);
 #if !WITH_EDITOR  // we need to not complete until this is done because the game thread finalize task has not beed queued yet
+				ThisTickFunction->GetCompletionHandle()->SetGatherThreadForDontCompleteUntil(ENamedThreads::GameThread);
 				ThisTickFunction->GetCompletionHandle()->DontCompleteUntil(AsyncWork);
 #endif
 			}
@@ -5262,6 +5262,7 @@ void UParticleSystemComponent::TickComponent(float DeltaTime, enum ELevelTick Ti
 				FGraphEventArray Prereqs;
 				Prereqs.Add(AsyncWork);
 				FGraphEventRef Finalize = TGraphTask<FParticleFinalizeTask>::CreateTask(&Prereqs, ENamedThreads::GameThread).ConstructAndDispatchWhenReady(this);
+				ThisTickFunction->GetCompletionHandle()->SetGatherThreadForDontCompleteUntil(ENamedThreads::GameThread);
 				ThisTickFunction->GetCompletionHandle()->DontCompleteUntil(Finalize);
 			}
 #endif
@@ -5300,7 +5301,6 @@ void UParticleSystemComponent::ComputeTickComponent_Concurrent()
 	SCOPE_CYCLE_COUNTER(STAT_ParticleComputeTickTime);
 	FScopeCycleCounterUObject AdditionalScope(AdditionalStatObject(), GET_STATID(STAT_ParticleComputeTickTime));
 	SCOPE_CYCLE_COUNTER(STAT_ParticlesOverview_GT_CNC);
-	PARTICLE_PERF_STAT_CYCLES(Template, TickConcurrent);
 
 	// Tick Subemitters.
 	int32 EmitterIndex;
@@ -5376,7 +5376,6 @@ void UParticleSystemComponent::FinalizeTickComponent()
 
 	SCOPE_CYCLE_COUNTER(STAT_ParticleFinalizeTickTime);
 	SCOPE_CYCLE_COUNTER(STAT_ParticlesOverview_GT);
-	PARTICLE_PERF_STAT_CYCLES(Template, Finalize);
 
 	if(bAsyncDataCopyIsValid)
 	{
@@ -5501,16 +5500,8 @@ void UParticleSystemComponent::FinalizeTickComponent()
 		bIsTransformDirty = false;
 	}
 
-	if (bOldPositionValid)
-	{
-		const float InvDeltaTime = (DeltaTimeTick > 0.0f) ? 1.0f / DeltaTimeTick : 0.0f;
-		PartSysVelocity = (GetComponentLocation() - OldPosition) * InvDeltaTime;
-	}
-	else
-	{
-		PartSysVelocity = FVector::ZeroVector;
-	}
-	bOldPositionValid = true;
+	const float InvDeltaTime = (DeltaTimeTick > 0.0f) ? 1.0f / DeltaTimeTick : 0.0f;
+	PartSysVelocity = (GetComponentLocation() - OldPosition) * InvDeltaTime;
 	OldPosition = GetComponentLocation();
 
 	if (bIsViewRelevanceDirty)
@@ -5832,8 +5823,6 @@ void UParticleSystemComponent::SetTemplate(class UParticleSystem* NewTemplate)
 		// speculative fix for OR-11322. May become permanent if the ensure in InitParticles never fires.
 		LODLevel = 0;
 
-		SetComponentTickEnabled(false);
-
 		if(NewTemplate && IsRegistered())
 		{
 			if ((bAutoActivate || bWasActive) && (bIsTemplate == false))
@@ -5894,10 +5883,6 @@ void UParticleSystemComponent::ActivateSystem(bool bFlagAsJustAttached)
 		return;
 	}
 
-	bOldPositionValid = false;
-	OldPosition = FVector::ZeroVector;
-	PartSysVelocity = FVector::ZeroVector;
-
 	UWorld* World = GetWorld();
 	check(World);
 	UE_LOG(LogParticles,Verbose,
@@ -5953,7 +5938,7 @@ void UParticleSystemComponent::ActivateSystem(bool bFlagAsJustAttached)
 					SavedAutoAttachRelativeLocation = GetRelativeLocation();
 					SavedAutoAttachRelativeRotation = GetRelativeRotation();
 					SavedAutoAttachRelativeScale3D = GetRelativeScale3D();
-					AttachToComponent(NewParent, FAttachmentTransformRules(AutoAttachLocationRule, AutoAttachRotationRule, AutoAttachScaleRule, bAutoAttachWeldSimulatedBodies), AutoAttachSocketName);
+					AttachToComponent(NewParent, FAttachmentTransformRules(AutoAttachLocationRule, AutoAttachRotationRule, AutoAttachScaleRule, false), AutoAttachSocketName);
 				}
 
 				bDidAutoAttach = true;
@@ -6147,20 +6132,7 @@ void UParticleSystemComponent::DeactivateSystem()
 	ForceAsyncWorkCompletion(STALL);
 
 	check(World);
-
-	//We have seen some edge case where the world can be null here so avoid the crash and try to leave the component in a decent state until we can fix the underlying issue.
-	if (World == nullptr)
-	{
-		UE_LOG(LogParticles, Error, TEXT("DeactivateSystem called on PSC with null World ptr! %s"), Template != NULL ? *Template->GetName() : TEXT("NULL"));
-
-		ResetParticles(true);
-		bDeactivateTriggered = false;
-		bSuppressSpawning = true;
-		bWasDeactivated = true;
-		return;
-	}
-
-	UE_LOG(LogParticles, Verbose,
+	UE_LOG(LogParticles,Verbose,
 		TEXT("DeactivateSystem @ %fs %s"), World->TimeSeconds,
 		Template != NULL ? *Template->GetName() : TEXT("NULL"));
 
@@ -6352,7 +6324,7 @@ void UParticleSystemComponent::ResetToDefaults()
 		UParticleSystemComponent* Default = (UParticleSystemComponent*)(GetArchetype());
 
 		// copy all non-native, non-duplicatetransient, non-Component properties we have from all classes up to and including UActorComponent
-		for (FProperty* Property = GetClass()->PropertyLink; Property != NULL; Property = Property->PropertyLinkNext)
+		for (UProperty* Property = GetClass()->PropertyLink; Property != NULL; Property = Property->PropertyLinkNext)
 		{
 			if ( !(Property->PropertyFlags & CPF_DuplicateTransient) && !(Property->PropertyFlags & (CPF_InstancedReference | CPF_ContainsInstancedReference)) &&
 				Property->GetOwnerClass()->IsChildOf(UActorComponent::StaticClass()) )
@@ -7069,29 +7041,6 @@ int32 UParticleSystemComponent::GetLODLevel()
 {
 	return LODLevel;
 }
-/**
- *	Set a named float instance parameter on this ParticleSystemComponent.
- *	Updates the parameter if it already exists, or creates a new entry if not.
-	This maps a boolean to a float for parity as cascade doesn't have booleans.
-	This for adding functionality to the parent UFXSystemComponent to set boolean
-	variables.
- */
-void UParticleSystemComponent::SetBoolParameter(FName Name, bool Value)
-{
-	SetFloatParameter(Name, (Value ? 1.0f : 0.0f));
-
-}
-/**
- *	Set a named float instance parameter on this ParticleSystemComponent.
- *	Updates the parameter if it already exists, or creates a new entry if not.
-	This maps a int to a float for parity as cascade doesn't have booleans.
-	This for adding functionality to the parent UFXSystemComponent to set int
-	variables.
- */
-void UParticleSystemComponent::SetIntParameter(FName Name, int Value)
-{
-	SetFloatParameter(Name, float(Value));
-}
 
 /** 
  *	Set a named float instance parameter on this ParticleSystemComponent. 
@@ -7396,6 +7345,7 @@ bool UParticleSystemComponent::GetVectorParameter(const FName InName,FVector& Ou
 			}
 			else if (Param.ParamType == PSPT_VectorUnitRand)
 			{
+				OutVector = Param.Vector + (Param.Vector_Low - Param.Vector) * RandomStream.VRand();
 				return true;
 			}
 		}
@@ -7431,6 +7381,7 @@ bool UParticleSystemComponent::GetAnyVectorParameter(const FName InName,FVector&
 			}
 			else if (Param.ParamType == PSPT_VectorUnitRand)
 			{
+				OutVector = Param.Vector + (Param.Vector_Low - Param.Vector) * RandomStream.VRand();
 				return true;
 			}
 			if (Param.ParamType == PSPT_Scalar)

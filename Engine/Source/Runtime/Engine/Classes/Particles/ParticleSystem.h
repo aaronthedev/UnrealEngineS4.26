@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -7,7 +7,6 @@
 #include "UObject/ObjectMacros.h"
 #include "UObject/Object.h"
 #include "UObject/ScriptMacros.h"
-#include "Particles/ParticlePerfStats.h"
 
 #include "ParticleSystem.generated.h"
 
@@ -119,18 +118,6 @@ public:
 	UPROPERTY(EditAnywhere, Category = Performance)
 	uint32 MaxPoolSize;
 	//TODO: Allow pool size overriding per world and possibly implement some preallocation too.
-
-	/**
-	* How many instances we should use to initially prime the pool.
-	* This can amortize runtime activation cost by moving it to load time.
-	* Use with care as this could cause large hitches for systems loaded/unloaded during play rather than at level load.
-	*/
-	UPROPERTY(EditAnywhere, Category = Performance)
-	uint32 PoolPrimeSize = 0;
-
-#if WITH_PARTICLE_PERF_STATS
-	FParticlePerfStats* ParticlePerfStats;
-#endif
 };
 
 /**

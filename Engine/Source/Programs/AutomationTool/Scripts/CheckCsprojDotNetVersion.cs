@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -37,8 +37,7 @@ class CheckCsprojDotNetVersion : BuildCommand
                 (CsProj.ContainsName("UE4TemplateProject", EngineDir) && CsProj.GetFileName().Equals("ProjectTemplate.csproj")) ||
                 CsProj.GetFileNameWithoutExtension().ToLower().Contains("_mono") ||
                 CsProj.GetFileNameWithoutExtension().ToLower().Contains("unrealvs") ||
-				CsProj.ContainsName("DatasmithRevitExporter", EngineDir) ||
-				CsProj.ContainsName("DatasmithNavisworksExporter", EngineDir))
+				CsProj.GetFileNameWithoutExtension().ToLower().Contains("revit"))
 
             {
                 continue;

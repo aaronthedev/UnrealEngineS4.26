@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ViewModels/Stack/NiagaraStackModuleItemOutput.h"
 #include "NiagaraNodeFunctionCall.h"
@@ -69,6 +69,7 @@ UNiagaraStackEntry::EStackRowStyle UNiagaraStackModuleItemOutput::GetStackRowSty
 
 void UNiagaraStackModuleItemOutput::GetSearchItems(TArray<FStackSearchItem>& SearchItems) const
 {
+	SearchItems.Add({ FName("DisplayName"), GetDisplayName() });
 	SearchItems.Add({ FName("OutputParamHandleText"), GetOutputParameterHandleText() });
 }
 

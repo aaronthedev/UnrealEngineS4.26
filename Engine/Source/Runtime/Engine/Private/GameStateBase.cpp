@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	GameState.cpp: GameState C++ code.
@@ -31,9 +31,6 @@ AGameStateBase::AGameStateBase(const FObjectInitializer& ObjectInitializer)
 
 	// Default to every few seconds.
 	ServerWorldTimeSecondsUpdateFrequency = 0.1f;
-
-	SumServerWorldTimeSecondsDelta = 0.0;
-	NumServerWorldTimeSecondsDeltas = 0;
 }
 
 const AGameModeBase* AGameStateBase::GetDefaultGameMode() const
@@ -110,14 +107,14 @@ void AGameStateBase::SeamlessTravelTransitionCheckpoint(bool bToTransitionMap)
 	// mark all existing player states as from previous level for various bookkeeping
 	for (int32 i = 0; i < PlayerArray.Num(); i++)
 	{
-		PlayerArray[i]->SetIsFromPreviousLevel(true);
+		PlayerArray[i]->bFromPreviousLevel = true;
 	}
 }
 
 void AGameStateBase::AddPlayerState(APlayerState* PlayerState)
 {
 	// Determine whether it should go in the active or inactive list
-	if (!PlayerState->IsInactive())
+	if (!PlayerState->bIsInactive)
 	{
 		// make sure no duplicates
 		PlayerArray.AddUnique(PlayerState);
@@ -161,30 +158,7 @@ void AGameStateBase::OnRep_ReplicatedWorldTimeSeconds()
 	UWorld* World = GetWorld();
 	if (World)
 	{
-		const float ServerWorldTimeDelta = ReplicatedWorldTimeSeconds - World->GetTimeSeconds();
-
-		// Accumulate the computed server world delta
-		SumServerWorldTimeSecondsDelta += ServerWorldTimeDelta;
-		NumServerWorldTimeSecondsDeltas += 1.0;
-
-		// Reset the accumulated values to ensure that we remain representative of the current delta
-		if (NumServerWorldTimeSecondsDeltas > 250)
-		{
-			SumServerWorldTimeSecondsDelta /= NumServerWorldTimeSecondsDeltas;
-			NumServerWorldTimeSecondsDeltas = 1;
-		}
-
-		double TargetWorldTimeSecondsDelta = SumServerWorldTimeSecondsDelta / NumServerWorldTimeSecondsDeltas;
-
-		// Smoothly interpolate towards the new delta if we've already got one to avoid significant spikes
-		if (ServerWorldTimeSecondsDelta == 0.0)
-		{
-			ServerWorldTimeSecondsDelta = TargetWorldTimeSecondsDelta;
-		}
-		else
-		{
-			ServerWorldTimeSecondsDelta += (TargetWorldTimeSecondsDelta - ServerWorldTimeSecondsDelta) * 0.5;
-		}
+		ServerWorldTimeSecondsDelta = ReplicatedWorldTimeSeconds - World->GetTimeSeconds();
 	}
 }
 
@@ -227,11 +201,6 @@ bool AGameStateBase::HasMatchStarted() const
 	return false;
 }
 
-bool AGameStateBase::HasMatchEnded() const
-{
-	return false;
-}
-
 float AGameStateBase::GetPlayerStartTime(AController* Controller) const
 {
 	return GetServerWorldTimeSeconds();
@@ -260,7 +229,7 @@ APlayerState* AGameStateBase::GetPlayerStateFromUniqueNetId(const FUniqueNetIdWr
 	const TArray<APlayerState*>& Players = PlayerArray;
 	for (APlayerState* Player : Players)
 	{
-		if (Player && Player->GetUniqueId() == InPlayerId)
+		if (Player && Player->UniqueId == InPlayerId)
 		{
 			return Player;
 		}

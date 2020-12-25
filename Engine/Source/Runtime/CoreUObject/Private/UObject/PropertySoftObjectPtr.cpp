@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
@@ -8,34 +8,33 @@
 #include "UObject/LinkerLoad.h"
 
 /*-----------------------------------------------------------------------------
-	FSoftObjectProperty.
+	USoftObjectProperty.
 -----------------------------------------------------------------------------*/
-IMPLEMENT_FIELD(FSoftObjectProperty)
 
-FString FSoftObjectProperty::GetCPPTypeCustom(FString* ExtendedTypeText, uint32 CPPExportFlags, const FString& InnerNativeTypeName) const
+FString USoftObjectProperty::GetCPPTypeCustom(FString* ExtendedTypeText, uint32 CPPExportFlags, const FString& InnerNativeTypeName) const
 {
 	ensure(!InnerNativeTypeName.IsEmpty());
 	return FString::Printf(TEXT("TSoftObjectPtr<%s>"), *InnerNativeTypeName);
 }
-FString FSoftObjectProperty::GetCPPMacroType( FString& ExtendedTypeText ) const
+FString USoftObjectProperty::GetCPPMacroType( FString& ExtendedTypeText ) const
 {
 	ExtendedTypeText = FString::Printf(TEXT("TSoftObjectPtr<%s%s>"), PropertyClass->GetPrefixCPP(), *PropertyClass->GetName());
 	return TEXT("SOFTOBJECT");
 }
 
-FString FSoftObjectProperty::GetCPPTypeForwardDeclaration() const
+FString USoftObjectProperty::GetCPPTypeForwardDeclaration() const
 {
 	return FString::Printf(TEXT("class %s%s;"), PropertyClass->GetPrefixCPP(), *PropertyClass->GetName());
 }
 
-FName FSoftObjectProperty::GetID() const
+FName USoftObjectProperty::GetID() const
 {
 	// SoftClass shares the same tag, they are binary compatible
 	return NAME_SoftObjectProperty;
 }
 
 // this is always shallow, can't see that we would want it any other way
-bool FSoftObjectProperty::Identical( const void* A, const void* B, uint32 PortFlags ) const
+bool USoftObjectProperty::Identical( const void* A, const void* B, uint32 PortFlags ) const
 {
 	FSoftObjectPtr ObjectA = A ? *((FSoftObjectPtr*)A) : FSoftObjectPtr();
 	FSoftObjectPtr ObjectB = B ? *((FSoftObjectPtr*)B) : FSoftObjectPtr();
@@ -43,7 +42,7 @@ bool FSoftObjectProperty::Identical( const void* A, const void* B, uint32 PortFl
 	return ObjectA.GetUniqueID() == ObjectB.GetUniqueID();
 }
 
-void FSoftObjectProperty::SerializeItem( FStructuredArchive::FSlot Slot, void* Value, void const* Defaults ) const
+void USoftObjectProperty::SerializeItem( FStructuredArchive::FSlot Slot, void* Value, void const* Defaults ) const
 {
 	FArchive& UnderlyingArchive = Slot.GetUnderlyingArchive();
 
@@ -74,7 +73,7 @@ void FSoftObjectProperty::SerializeItem( FStructuredArchive::FSlot Slot, void* V
 	}
 }
 
-bool FSoftObjectProperty::NetSerializeItem(FArchive& Ar, UPackageMap* Map, void* Data, TArray<uint8>* MetaData) const
+bool USoftObjectProperty::NetSerializeItem(FArchive& Ar, UPackageMap* Map, void* Data, TArray<uint8>* MetaData) const
 {
 	// Serialize directly, will use FBitWriter/Reader
 	Ar << *(FSoftObjectPtr*)Data;
@@ -82,7 +81,7 @@ bool FSoftObjectProperty::NetSerializeItem(FArchive& Ar, UPackageMap* Map, void*
 	return true;
 }
 
-void FSoftObjectProperty::ExportTextItem( FString& ValueStr, const void* PropertyValue, const void* DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope ) const
+void USoftObjectProperty::ExportTextItem( FString& ValueStr, const void* PropertyValue, const void* DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope ) const
 {
 	FSoftObjectPtr& SoftObjectPtr = *(FSoftObjectPtr*)PropertyValue;
 
@@ -108,26 +107,13 @@ void FSoftObjectProperty::ExportTextItem( FString& ValueStr, const void* Propert
 	SoftObjectPath.ExportTextItem(ValueStr, SoftObjectPath, Parent, PortFlags, ExportRootScope);
 }
 
-const TCHAR* FSoftObjectProperty::ImportText_Internal( const TCHAR* InBuffer, void* Data, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText ) const
+const TCHAR* USoftObjectProperty::ImportText_Internal( const TCHAR* InBuffer, void* Data, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText ) const
 {
 	FSoftObjectPtr& SoftObjectPtr = *(FSoftObjectPtr*)Data;
 
 	FSoftObjectPath SoftObjectPath;
 
-	bool bImportTextSuccess = false;
-#if WITH_EDITOR
-	if (HasAnyPropertyFlags(CPF_EditorOnly))
-	{
-		FSoftObjectPathSerializationScope SerializationScope(NAME_None, NAME_None, ESoftObjectPathCollectType::EditorOnlyCollect, ESoftObjectPathSerializeType::AlwaysSerialize);
-		bImportTextSuccess = SoftObjectPath.ImportTextItem(InBuffer, PortFlags, Parent, ErrorText, GetLinker());
-	}
-	else
-#endif // WITH_EDITOR
-	{
-		bImportTextSuccess = SoftObjectPath.ImportTextItem(InBuffer, PortFlags, Parent, ErrorText, GetLinker());
-	}
-
-	if (bImportTextSuccess)
+	if (SoftObjectPath.ImportTextItem(InBuffer, PortFlags, Parent, ErrorText, GetLinker()))
 	{
 		SoftObjectPtr = SoftObjectPath;
 		return InBuffer;
@@ -140,7 +126,7 @@ const TCHAR* FSoftObjectProperty::ImportText_Internal( const TCHAR* InBuffer, vo
 	}
 }
 
-EConvertFromTypeResult FSoftObjectProperty::ConvertFromType(const FPropertyTag& Tag, FStructuredArchive::FSlot Slot, uint8* Data, UStruct* DefaultsStruct)
+EConvertFromTypeResult USoftObjectProperty::ConvertFromType(const FPropertyTag& Tag, FStructuredArchive::FSlot Slot, uint8* Data, UStruct* DefaultsStruct)
 {
 	static FName NAME_AssetObjectProperty = "AssetObjectProperty";
 	static FName NAME_SoftObjectPath = "SoftObjectPath";
@@ -166,7 +152,7 @@ EConvertFromTypeResult FSoftObjectProperty::ConvertFromType(const FPropertyTag& 
 	}
 	else if (Tag.Type == NAME_ObjectProperty)
 	{
-		// This property used to be a raw FObjectProperty Foo* but is now a TSoftObjectPtr<Foo>;
+		// This property used to be a raw UObjectProperty Foo* but is now a TSoftObjectPtr<Foo>;
 		// Serialize from mismatched tag directly into the FSoftObjectPtr's soft object path to ensure that the delegates needed for cooking
 		// are fired
 		FSoftObjectPtr* PropertyValue = GetPropertyValuePtr_InContainer(Data, Tag.ArrayIndex);
@@ -192,48 +178,53 @@ EConvertFromTypeResult FSoftObjectProperty::ConvertFromType(const FPropertyTag& 
 	return EConvertFromTypeResult::UseSerializeItem;
 }
 
-UObject* FSoftObjectProperty::LoadObjectPropertyValue(const void* PropertyValueAddress) const
+UObject* USoftObjectProperty::LoadObjectPropertyValue(const void* PropertyValueAddress) const
 {
 	return GetPropertyValue(PropertyValueAddress).LoadSynchronous();
 }
 
-UObject* FSoftObjectProperty::GetObjectPropertyValue(const void* PropertyValueAddress) const
+UObject* USoftObjectProperty::GetObjectPropertyValue(const void* PropertyValueAddress) const
 {
 	return GetPropertyValue(PropertyValueAddress).Get();
 }
 
-void FSoftObjectProperty::SetObjectPropertyValue(void* PropertyValueAddress, UObject* Value) const
+void USoftObjectProperty::SetObjectPropertyValue(void* PropertyValueAddress, UObject* Value) const
 {
 	SetPropertyValue(PropertyValueAddress, TCppType(Value));
 }
 
-bool FSoftObjectProperty::AllowCrossLevel() const
+bool USoftObjectProperty::AllowCrossLevel() const
 {
 	return true;
 }
 
-uint32 FSoftObjectProperty::GetValueTypeHashInternal(const void* Src) const
+uint32 USoftObjectProperty::GetValueTypeHashInternal(const void* Src) const
 {
 	return GetTypeHash(GetPropertyValue(Src));
 }
 
-void FSoftObjectProperty::CopySingleValueToScriptVM(void* Dest, void const* Src) const
+void USoftObjectProperty::CopySingleValueToScriptVM(void* Dest, void const* Src) const
 {
 	CopySingleValue(Dest, Src);
 }
 
-void FSoftObjectProperty::CopyCompleteValueToScriptVM(void* Dest, void const* Src) const
+void USoftObjectProperty::CopyCompleteValueToScriptVM(void* Dest, void const* Src) const
 {
 	CopyCompleteValue(Dest, Src);
 }
 
-void FSoftObjectProperty::CopySingleValueFromScriptVM(void* Dest, void const* Src) const
+void USoftObjectProperty::CopySingleValueFromScriptVM(void* Dest, void const* Src) const
 {
 	CopySingleValue(Dest, Src);
 }
 
-void FSoftObjectProperty::CopyCompleteValueFromScriptVM(void* Dest, void const* Src) const
+void USoftObjectProperty::CopyCompleteValueFromScriptVM(void* Dest, void const* Src) const
 {
 	CopyCompleteValue(Dest, Src);
 }
+
+IMPLEMENT_CORE_INTRINSIC_CLASS(USoftObjectProperty, UObjectPropertyBase,
+	{
+	}
+);
 

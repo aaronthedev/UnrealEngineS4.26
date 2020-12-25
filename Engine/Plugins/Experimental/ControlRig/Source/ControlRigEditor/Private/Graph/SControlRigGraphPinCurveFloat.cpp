@@ -1,18 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Graph/SControlRigGraphPinCurveFloat.h"
 #include "Graph/ControlRigGraph.h"
-#include "Graph/ControlRigGraphNode.h"
-#include "ControlRigBlueprint.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "EdGraphSchema_K2.h"
 #include "ScopedTransaction.h"
 #include "DetailLayoutBuilder.h"
 #include "PropertyPathHelpers.h"
-#include "RigVMModel/Nodes/RigVMStructNode.h"
-#include "RigVMModel/RigVMController.h"
 
 #include "IControlRigEditorModule.h"
 
@@ -65,14 +61,7 @@ FRuntimeFloatCurve& SControlRigGraphPinCurveFloat::UpdateAndGetCurve()
 {
 	if (UEdGraphPin* Pin = GetPinObj())
 	{
-		if (UControlRigGraphNode* RigNode = Cast<UControlRigGraphNode>(Pin->GetOwningNode()))
-		{
-			if (URigVMPin* ModelPin = RigNode->GetModelPinFromPinPath(Pin->GetName()))
-			{
-				FString TextToImport = ModelPin->GetDefaultValue();
-				FRuntimeFloatCurve::StaticStruct()->ImportText(*TextToImport, &Curve, nullptr, EPropertyPortFlags::PPF_None, nullptr, FRuntimeFloatCurve::StaticStruct()->GetName(), true);
-			}
-		}
+		FRuntimeFloatCurve::StaticStruct()->ImportText(*Pin->DefaultValue, &Curve, nullptr, EPropertyPortFlags::PPF_None, nullptr, FRuntimeFloatCurve::StaticStruct()->GetName(), true);
 	}
 	return Curve;
 }
@@ -109,12 +98,12 @@ bool SControlRigGraphPinCurveFloat::IsValidCurve(FRichCurveEditInfo CurveInfo)
 	{
 		if (UControlRigGraphNode* Node = Cast<UControlRigGraphNode>(Pin->GetOwningNode()))
 		{
-			if (URigVMStructNode* StructModelNode = Cast<URigVMStructNode>(Node->GetModelNode()))
+			if (const UStructProperty* StructProperty = Node->GetUnitProperty())
 			{
 				FString NodeName, PropertyName;
 				Pin->PinName.ToString().Split(TEXT("."), &NodeName, &PropertyName);
 
-				if (FProperty* CurveProperty = StructModelNode->GetScriptStruct()->FindPropertyByName(*PropertyName))
+				if (UProperty* CurveProperty = StructProperty->Struct->FindPropertyByName(*PropertyName))
 				{
 					return true;
 				}
@@ -130,13 +119,9 @@ void SControlRigGraphPinCurveFloat::OnCurveChanged(const TArray<FRichCurveEditIn
 	{
 		if (UControlRigGraphNode* Node = Cast<UControlRigGraphNode>(Pin->GetOwningNode()))
 		{
-			if (UControlRigBlueprint* RigBlueprint = Cast<UControlRigBlueprint>(Node->GetGraph()->GetOuter()))
-			{
-				FString ExportedText;
-				FRuntimeFloatCurve DefaultCurve;
-				FRuntimeFloatCurve::StaticStruct()->ExportText(ExportedText, &Curve, &DefaultCurve, nullptr, EPropertyPortFlags::PPF_None, nullptr, true);
-				RigBlueprint->Controller->SetPinDefaultValue(Pin->GetName(), ExportedText, true, true, true);
-			}
+			Pin->DefaultValue.Empty();
+			FRuntimeFloatCurve::StaticStruct()->ExportText(Pin->DefaultValue, &Curve, nullptr, nullptr, EPropertyPortFlags::PPF_None, nullptr, true);
+			Node->CopyPinDefaultsToModel(Pin);
 		}
 	}
 	ModifyOwner();

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "XmppStrophe/StropheStanza.h"
 #include "XmppStrophe/StropheContext.h"
@@ -117,7 +117,7 @@ void FStropheStanza::AddChild(const FStropheStanza& Child)
 	}
 }
 
-TOptional<FStropheStanza> FStropheStanza::GetChildStropheStanza(const FString& ChildName)
+TOptional<FStropheStanza> FStropheStanza::GetChild(const FString& ChildName)
 {
 	TOptional<FStropheStanza> OptionalStanza;
 
@@ -130,17 +130,7 @@ TOptional<FStropheStanza> FStropheStanza::GetChildStropheStanza(const FString& C
 	return OptionalStanza;
 }
 
-TUniquePtr<IXmppStanza> FStropheStanza::GetChild(const FString& ChildName) const
-{
-	TOptional<const FStropheStanza> Stanza = GetChildStropheStanza(ChildName);
-	if (Stanza.IsSet())
-	{
-		return MakeUnique<FStropheStanza>(Stanza.GetValue());
-	}
-	return nullptr;
-}
-
-TOptional<const FStropheStanza> FStropheStanza::GetChildStropheStanza(const FString& ChildName) const
+TOptional<const FStropheStanza> FStropheStanza::GetChild(const FString& ChildName) const
 {
 	TOptional<const FStropheStanza> OptionalStanza;
 

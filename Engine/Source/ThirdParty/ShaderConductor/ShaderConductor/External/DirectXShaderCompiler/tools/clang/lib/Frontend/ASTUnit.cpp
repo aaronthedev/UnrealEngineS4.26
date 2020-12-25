@@ -48,7 +48,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include "clang/Frontend/VerifyDiagnosticConsumer.h"  // HLSL Change
-#include "llvm/Support/ManagedStatic.h" // HLSL Change
 using namespace clang;
 
 using llvm::TimeRecord;
@@ -105,12 +104,28 @@ static llvm::sys::SmartMutex<false> &getOnDiskMutex() {
   return M;
 }
 
-// HLSL Change: use ManagedStatic
+static void __cdecl cleanupOnDiskMapAtExit(); // HLSL Change - __cdecl
+
 typedef llvm::DenseMap<const ASTUnit *,
                        std::unique_ptr<OnDiskData>> OnDiskDataMap;
 static OnDiskDataMap &getOnDiskDataMap() {
-  static llvm::ManagedStatic<OnDiskDataMap> M;
-  return *M;
+  static OnDiskDataMap M;
+  static bool hasRegisteredAtExit = false;
+  if (!hasRegisteredAtExit) {
+    hasRegisteredAtExit = true;
+    atexit(cleanupOnDiskMapAtExit);
+  }
+  return M;
+}
+
+static void __cdecl cleanupOnDiskMapAtExit() {  // HLSL Change - __cdecl
+  // Use the mutex because there can be an alive thread destroying an ASTUnit.
+  llvm::MutexGuard Guard(getOnDiskMutex());
+  for (const auto &I : getOnDiskDataMap()) {
+    // We don't worry about freeing the memory associated with OnDiskDataMap.
+    // All we care about is erasing stale files.
+    I.second->Cleanup();
+  }
 }
 
 static OnDiskData &getOnDiskData(const ASTUnit *AU) {

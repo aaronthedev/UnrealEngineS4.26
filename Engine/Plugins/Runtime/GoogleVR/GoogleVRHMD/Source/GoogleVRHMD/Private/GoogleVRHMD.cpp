@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GoogleVRHMD.h"
 #include "Engine/LocalPlayer.h"
@@ -269,7 +269,7 @@ FGoogleVRHMD::FGoogleVRHMD(const FAutoRegister& AutoRegister)
 	, bUseOffscreenFramebuffers(false)
 	, bIsInDaydreamMode(false)
 	, bForceStopPresentScene(false)
-	, bIsMobileMultiView(false)
+	, bIsMobileMultiViewDirect(false)
 	, NeckModelScale(1.0f)
 	, BaseOrientation(FQuat::Identity)
 	, PixelDensity(1.0f)
@@ -295,32 +295,50 @@ FGoogleVRHMD::FGoogleVRHMD(const FAutoRegister& AutoRegister)
 	, NumTris(0)
 	, NumIndices(0)
 	, DistortEnableCommand(TEXT("vr.googlevr.DistortionCorrection.bEnable"),
-		*NSLOCTEXT("GoogleVR", "CCommandText_DistortEnable", "Google VR specific extension.\nEnable or disable lens distortion correction.").ToString(),
+		*NSLOCTEXT("GoogleVR", "CCommandText_DistortEnable",
+			"Gogle VR specific extension.\n"
+			"Enable or disable lens distortion correction.").ToString(),
 		FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateRaw(this, &FGoogleVRHMD::DistortEnableCommandHandler))
 	, DistortMethodCommand(TEXT("vr.googlevr.DistortionCorrection.Method"),
-		*NSLOCTEXT("GoogleVR", "CCommandText_DistortMethod", "Google VR specific extension.\nSet the lens distortion method.").ToString(),
+		*NSLOCTEXT("GoogleVR", "CCommandText_DistortMethod",
+			"Gogle VR specific extension.\n"
+			"Set the lens distortion method.").ToString(),
 		FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateRaw(this, &FGoogleVRHMD::DistortMethodCommandHandler))
 	, RenderTargetSizeCommand(TEXT("vr.googlevr.RenderTargetSize"),
-		*NSLOCTEXT("GoogleVR", "CCommandText_RenderTargetSize", "Google VR specific extension.\nSet or reset render target size.").ToString(),
+		*NSLOCTEXT("GoogleVR", "CCommandText_RenderTargetSize",
+			"Gogle VR specific extension.\n"
+			"Set or reset render target size.").ToString(),
 		FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateRaw(this, &FGoogleVRHMD::RenderTargetSizeCommandHandler))
 	, NeckModelScaleCommand(TEXT("vr.googlevr.NeckModelScale"),
-		*NSLOCTEXT("GoogleVR", "CCommandText_NeckModelScale", "Google VR specific extension.\nSet the neck model scale.").ToString(),
+		*NSLOCTEXT("GoogleVR", "CCommandText_NeckModelScale",
+			"Gogle VR specific extension.\n"
+			"Set the neck model scale.").ToString(),
 		FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateRaw(this, &FGoogleVRHMD::NeckModelScaleCommandHandler))
 #if GOOGLEVRHMD_SUPPORTED_PLATFORMS
 	, DistortMeshSizeCommand(TEXT("vr.googlevr.DistortionMesh"),
-		*NSLOCTEXT("GoogleVR", "CCommandText_DistortMeshSizee", "Google VR specific extension.\nSet the size of the distortion mesh.").ToString(),
+		*NSLOCTEXT("GoogleVR", "CCommandText_DistortMeshSizee",
+			"Gogle VR specific extension.\n"
+			"Set the size of the distortion mesh.").ToString(),
 		FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateRaw(this, &FGoogleVRHMD::DistortMeshSizeCommandHandler))
 	, ShowSplashCommand(TEXT("vr.googlevr.bShowSplash"),
-		*NSLOCTEXT("GoogleVR", "CCommandText_ShowSplash", "Google VR specific extension.\nShow or hide the splash screen").ToString(),
+		*NSLOCTEXT("GoogleVR", "CCommandText_ShowSplash",
+			"Gogle VR specific extension.\n"
+			"Show or hide the splash screen").ToString(),
 		FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateRaw(this, &FGoogleVRHMD::ShowSplashCommandHandler))
 	, SplashScreenDistanceCommand(TEXT("vr.googlevr.SplashScreenDistance"),
-		*NSLOCTEXT("GoogleVR", "CCommandText_SplashScreenDistance", "Google VR specific extension.\nSet the distance to the splash screen").ToString(),
+		*NSLOCTEXT("GoogleVR", "CCommandText_SplashScreenDistance",
+			"Gogle VR specific extension.\n"
+			"Set the distance to the splash screen").ToString(),
 		FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateRaw(this, &FGoogleVRHMD::SplashScreenDistanceCommandHandler))
 	, SplashScreenRenderScaleCommand(TEXT("vr.googlevr.SplashScreenRenderScale"),
-		*NSLOCTEXT("GoogleVR", "CCommandText_SplashScreenRenderScale", "Google VR specific extension.\nSet the scale at which the splash screen is rendered").ToString(),
+		*NSLOCTEXT("GoogleVR", "CCommandText_SplashScreenRenderScale",
+			"Gogle VR specific extension.\n"
+			"Set the scale at which the splash screen is rendered").ToString(),
 		FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateRaw(this, &FGoogleVRHMD::SplashScreenRenderScaleCommandHandler))
 	, EnableSustainedPerformanceModeCommand(TEXT("vr.googlevr.bEnableSustainedPerformanceMode"),
-		*NSLOCTEXT("GoogleVR", "CCommandText_EnableSustainedPerformanceMode", "Google VR specific extension.\nEnable or Disable Sustained Performance Mode").ToString(),
+		*NSLOCTEXT("GoogleVR", "CCommandText_EnableSustainedPerformanceMode",
+			"Gogle VR specific extension.\n"
+			"Enable or Disable Sustained Performance Mode").ToString(),
 		FConsoleCommandWithWorldArgsAndOutputDeviceDelegate::CreateRaw(this, &FGoogleVRHMD::EnableSustainedPerformanceModeHandler))
 	, CVarSink(FConsoleCommandDelegate::CreateRaw(this, &FGoogleVRHMD::CVarSinkHandler))
 #endif
@@ -394,11 +412,13 @@ FGoogleVRHMD::FGoogleVRHMD(const FAutoRegister& AutoRegister)
 		bUseGVRApiDistortionCorrection = bUseOffscreenFramebuffers;
 		//bUseGVRApiDistortionCorrection = true;  //Uncomment this line is you want to use GVR distortion when async reprojection is not enabled.
 
-		// Query for mobile multi-view
+		// Query for direct multi-view
 		GSupportsMobileMultiView = gvr_is_feature_supported(GVRAPI, GVR_FEATURE_MULTIVIEW) && bUseOffscreenFramebuffers;
 		const auto CVarMobileMultiView = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.MobileMultiView"));
+		const auto CVarMobileMultiViewDirect = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("vr.MobileMultiView.Direct"));
 		const bool bIsMobileMultiViewEnabled = (CVarMobileMultiView && CVarMobileMultiView->GetValueOnAnyThread() != 0);
-		bIsMobileMultiView = GSupportsMobileMultiView && bIsMobileMultiViewEnabled;
+		const bool bIsMobileMultiViewDirectEnabled = (CVarMobileMultiViewDirect && CVarMobileMultiViewDirect->GetValueOnAnyThread() != 0);
+		bIsMobileMultiViewDirect = GSupportsMobileMultiView && bIsMobileMultiViewEnabled && bIsMobileMultiViewDirectEnabled;
 
 		if(bUseOffscreenFramebuffers)
 		{
@@ -543,7 +563,7 @@ void FGoogleVRHMD::UpdateGVRViewportList() const
 
 	ActiveViewportList = bDistortionCorrectionEnabled ? DistortedBufferViewportList : NonDistortedBufferViewportList;
 
-	if (IsMobileMultiView())
+	if (IsMobileMultiViewDirect())
 	{
 		check(gvr_buffer_viewport_list_get_size(ActiveViewportList) == 2);
 		for (uint32 EyeIndex = 0; EyeIndex < 2; ++EyeIndex)
@@ -738,7 +758,7 @@ bool FGoogleVRHMD::SetGVRHMDRenderTargetSize(int DesiredWidth, int DesiredHeight
 		return false;
 	}
 
-	const uint32 AdjustedDesiredWidth = (IsMobileMultiView()) ? DesiredWidth / 2 : DesiredWidth;
+	const uint32 AdjustedDesiredWidth = (IsMobileMultiViewDirect()) ? DesiredWidth / 2 : DesiredWidth;
 
 	// Ensure sizes are dividable by DividableBy to get post processing effects with lower resolution working well
 	const uint32 DividableBy = 4;
@@ -1254,8 +1274,8 @@ void FGoogleVRHMD::PostRenderViewFamily_RenderThread(FRHICommandListImmediate& R
 			GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
 
 			GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+			GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+			GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 			GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 			SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -1271,7 +1291,7 @@ void FGoogleVRHMD::PostRenderViewFamily_RenderThread(FRHICommandListImmediate& R
 				1, 1,		// Source USize, VSize
 				ReadbackTextureSizes[textureIndex],		// Target buffer size
 				FIntPoint(1, 1),		// Source texture size
-				VertexShader,
+				*VertexShader,
 				EDRF_Default);
 		}
 		RHICmdList.EndRenderPass();
@@ -1312,7 +1332,7 @@ void FGoogleVRHMD::PostRenderViewFamily_RenderThread(FRHICommandListImmediate& R
 #endif  // GOOGLEVRHMD_SUPPORTED_INSTANT_PREVIEW_PLATFORMS
 
 #if GOOGLEVRHMD_SUPPORTED_INSTANT_PREVIEW_PLATFORMS
-bool FGoogleVRHMD::GetCurrentReferencePose(FQuat& CurrentOrientation, FVector& CurrentPosition) const
+bool FGoogleVRHMD::GetCurrentReferencePose(FQuat& CurrentOrientation, FVector& CurrentPosition) const 
 {
 	FMatrix TransposeHeadPoseUnreal;
 	memcpy(&TransposeHeadPoseUnreal.M, CurrentReferencePose.pose.transform, 4 * 4 * sizeof(float));
@@ -1329,7 +1349,7 @@ bool FGoogleVRHMD::GetCurrentReferencePose(FQuat& CurrentOrientation, FVector& C
 	return true;
 }
 
-FVector FGoogleVRHMD::GetLocalEyePos(const instant_preview::EyeView& EyeView)
+FVector FGoogleVRHMD::GetLocalEyePos(const instant_preview::EyeView& EyeView) 
 {
 	const float* mat = EyeView.eye_pose.transform;
 	FMatrix PoseMatrix(
@@ -1340,7 +1360,7 @@ FVector FGoogleVRHMD::GetLocalEyePos(const instant_preview::EyeView& EyeView)
 	return PoseMatrix.TransformPosition(FVector(0, 0, 0));
 }
 
-void FGoogleVRHMD::PushVideoFrame(const FColor* VideoFrameBuffer, int width, int height, int stride, instant_preview::PixelFormat pixel_format, instant_preview::ReferencePose reference_pose)
+void FGoogleVRHMD::PushVideoFrame(const FColor* VideoFrameBuffer, int width, int height, int stride, instant_preview::PixelFormat pixel_format, instant_preview::ReferencePose reference_pose) 
 {
 	instant_preview::Session *session = ip_static_server_acquire_active_session(IpServerHandle);
 	if (session != NULL && width > 0 && height > 0)

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  * This program is designed to execute the Visual C++ compiler (cl.exe) and filter off any output lines from the /showIncludes directive
@@ -16,89 +16,69 @@ void GetLocalizedIncludePrefixes(const wchar_t* CompilerPath, std::vector<std::v
 #define EXIT_CODE_SUCCESS 0
 #define EXIT_CODE_FAILURE -1
 
+#define OUTPUT_FILENAME_INDEX 1
+#define TIMING_FILENAME_INDEX 2
+#define COMPILER_FILENAME_INDEX_OFFSET 2
+#define MINIMUM_VALID_COMMAND_LINE_ARGS 4
+
 void PrintUsage()
 {
 	wprintf(L"Usage: cl-filter.exe -dependencies=<dependencies-file> -compiler=<compiler-file> [Optional Args] -- <child command line>\n");
 	wprintf(L"Optional Args:\n");
 	wprintf(L"\t-timing=<timing-file>\tThe file to write any timing data to.\n");
-	wprintf(L"\t-stderronly\tProcess output from StdErr only and use the default pipe for StdOut.\n");
 }
 
-bool ParseArgumentValue(const wchar_t* Argument, const wchar_t* Prefix, size_t PrefixLen, const wchar_t** OutValue)
+struct CommandLineArgs
 {
-	if (_wcsnicmp(Argument, Prefix, PrefixLen) == 0)
-	{
-		*OutValue = Argument + PrefixLen;
-		return true;
-	}
-	return false;
-}
+	const wchar_t*	OutputFileName = nullptr;
+	const wchar_t*	TimingFileName = nullptr;
+	const wchar_t*	CompilerFileName = nullptr;
+};
 
-template<size_t PrefixLen> 
-bool ParseArgumentValue(const wchar_t* Argument, const wchar_t(&Prefix)[PrefixLen], const wchar_t** OutValue)
+CommandLineArgs* ParseCommandLineArgs(int ArgC, const wchar_t* ArgV[])
 {
-	return ParseArgumentValue(Argument, Prefix, PrefixLen - 1, OutValue);
-}
-
-int wmain(int ArgC, const wchar_t* ArgV[])
-{
-	// Parse the command line arguments
-	const wchar_t* OutputFileName = nullptr;
-	const wchar_t* TimingFileName = nullptr;
-	const wchar_t* CompilerFileName = nullptr;
-	bool bShowIncludes = false;
-	bool bUseStdErrOnly = false;
-
-	for (int Idx = 1; Idx < ArgC; Idx++)
+	CommandLineArgs* ParsedArgs = new CommandLineArgs();
+	for (int i = 1; i < ArgC; ++i)
 	{
 		// If this arg is the splitter, we're done parsing args.
-		const wchar_t* Arg = ArgV[Idx];
-		if (wcscmp(Arg, L"--") == 0)
+		if (wcscmp(ArgV[i], L"--") == 0)
 		{
 			break;
 		}
 
-		// Try to parse another argument
-		const wchar_t* Value;
-		if (ParseArgumentValue(Arg, L"-dependencies=", &Value))
+		// If it starts with a -, parse the arg.
+		if (ArgV[i][0] == '-')
 		{
-			OutputFileName = Value;
-			continue;
+			if (wcsstr(ArgV[i], L"-dependencies=") != nullptr)
+			{
+				ParsedArgs->OutputFileName = ArgV[i] + 14;
+			}
+			else if (wcsstr(ArgV[i], L"-compiler=") != nullptr)
+			{
+				ParsedArgs->CompilerFileName = ArgV[i] + 10;
+			}
+			else if (wcsstr(ArgV[i], L"-timing=") != nullptr)
+			{
+				ParsedArgs->TimingFileName = ArgV[i] + 8;
+			}
 		}
-		if (ParseArgumentValue(Arg, L"-compiler=", &Value))
-		{
-			CompilerFileName = Value;
-			continue;
-		}
-		if (ParseArgumentValue(Arg, L"-timing=", &Value))
-		{
-			TimingFileName = Value;
-			continue;
-		}
-		if (_wcsicmp(Arg, L"-showincludes") == 0)
-		{
-			bShowIncludes = true;
-			continue;
-		}
-		if (_wcsicmp(Arg, L"-stderronly") == 0)
-		{
-			bUseStdErrOnly = true;
-			continue;
-		}
-
-		// Output a warning if it doesn't match
-		wprintf(L"WARNING: Unknown argument '%s'\n", Arg);
 	}
 
+	return ParsedArgs;
+}
+
+int wmain(int ArgC, const wchar_t* ArgV[])
+{
 	wchar_t* CmdLine = ::GetCommandLineW();
-	if (OutputFileName == nullptr)
+	CommandLineArgs* ParsedArgs = ParseCommandLineArgs(ArgC, ArgV);
+	if (ParsedArgs->OutputFileName == nullptr)
 	{
 		wprintf(L"ERROR: No output file name was specified! (%s)\n\n", CmdLine);
 		PrintUsage();
 		return EXIT_CODE_FAILURE;
 	}
 
-	if (CompilerFileName == nullptr)
+	if (ParsedArgs->CompilerFileName == nullptr)
 	{
 		wprintf(L"ERROR: No compiler file name was found! (%s)\n\n", CmdLine);
 		PrintUsage();
@@ -114,10 +94,10 @@ int wmain(int ArgC, const wchar_t* ArgV[])
 		return EXIT_CODE_FAILURE;
 	}
 	ChildCmdLine += 4;
-
+	
 	// Get all the possible localized string prefixes for /showIncludes output
 	std::vector<std::vector<char>> LocalizedIncludePrefixes;
-	GetLocalizedIncludePrefixes(CompilerFileName, LocalizedIncludePrefixes);
+	GetLocalizedIncludePrefixes(ParsedArgs->CompilerFileName, LocalizedIncludePrefixes);
 
 	// Create the child process
 	PROCESS_INFORMATION ProcessInfo;
@@ -127,22 +107,19 @@ int wmain(int ArgC, const wchar_t* ArgV[])
 	ZeroMemory(&SecurityAttributes, sizeof(SecurityAttributes));
 	SecurityAttributes.bInheritHandle = TRUE;
 
-	HANDLE ReadPipeHandle;
-	HANDLE WritePipeHandle;
-	if (CreatePipe(&ReadPipeHandle, &WritePipeHandle, &SecurityAttributes, 0) == 0)
+	HANDLE StdOutReadHandle;
+	HANDLE StdOutWriteHandle;
+	if (CreatePipe(&StdOutReadHandle, &StdOutWriteHandle, &SecurityAttributes, 0) == 0)
 	{
 		wprintf(L"ERROR: Unable to create output pipe for child process\n");
 		return EXIT_CODE_FAILURE;
 	}
 
-	HANDLE AdditionalWritePipeHandle = INVALID_HANDLE_VALUE;
-	if (!bUseStdErrOnly)
+	HANDLE StdErrWriteHandle;
+	if (DuplicateHandle(GetCurrentProcess(), StdOutWriteHandle, GetCurrentProcess(), &StdErrWriteHandle, 0, true, DUPLICATE_SAME_ACCESS) == 0)
 	{
-		if (DuplicateHandle(GetCurrentProcess(), WritePipeHandle, GetCurrentProcess(), &AdditionalWritePipeHandle, 0, true, DUPLICATE_SAME_ACCESS) == 0)
-		{
-			wprintf(L"ERROR: Unable to create stderr pipe handle for child process\n");
-			return EXIT_CODE_FAILURE;
-		}
+		wprintf(L"ERROR: Unable to create stderr pipe handle for child process\n");
+		return EXIT_CODE_FAILURE;
 	}
 
 	// Create the new process as suspended, so we can modify it before it starts executing (and potentially preempting us)
@@ -150,8 +127,8 @@ int wmain(int ArgC, const wchar_t* ArgV[])
 	ZeroMemory(&StartupInfo, sizeof(StartupInfo));
 	StartupInfo.cb = sizeof(StartupInfo);
 	StartupInfo.hStdInput = NULL;
-	StartupInfo.hStdOutput = bUseStdErrOnly ? GetStdHandle(STD_OUTPUT_HANDLE) : WritePipeHandle;
-	StartupInfo.hStdError = bUseStdErrOnly ? WritePipeHandle : AdditionalWritePipeHandle;
+	StartupInfo.hStdOutput = StdOutWriteHandle;
+	StartupInfo.hStdError = StdErrWriteHandle;
 	StartupInfo.dwFlags = STARTF_USESTDHANDLES;
 
 	DWORD ProcessCreationFlags = GetPriorityClass(GetCurrentProcess());
@@ -165,27 +142,24 @@ int wmain(int ArgC, const wchar_t* ArgV[])
 	CloseHandle(ProcessInfo.hThread);
 
 	// Close the write ends of the handle. We don't want any other process to be able to inherit these.
-	CloseHandle(WritePipeHandle);
-	if (AdditionalWritePipeHandle != INVALID_HANDLE_VALUE)
-	{
-		CloseHandle(AdditionalWritePipeHandle);
-	}
+	CloseHandle(StdOutWriteHandle);
+	CloseHandle(StdErrWriteHandle);
 
 	// Delete the output file.
-	DeleteFileW(OutputFileName);
+	DeleteFileW(ParsedArgs->OutputFileName);
 
 	// Delete the timing file if needed.
-	if (TimingFileName != nullptr)
+	if (ParsedArgs->TimingFileName != nullptr)
 	{
-		DeleteFileW(TimingFileName);
+		DeleteFileW(ParsedArgs->TimingFileName);
 	}
 
 	// Get the path to a temporary output filename.
-	std::wstring TempOutputFileName(OutputFileName);
+	std::wstring TempOutputFileName(ParsedArgs->OutputFileName);
 	TempOutputFileName += L".tmp";
 
 	// Get the path to a temporary timing filename.
-	std::wstring TempTimingFileName(TimingFileName == nullptr ? L"" : TimingFileName);
+	std::wstring TempTimingFileName(ParsedArgs->TimingFileName == nullptr ? L"" : ParsedArgs->TimingFileName);
 	TempTimingFileName += L".tmp";
 
 	// Create a file to contain the dependency list.
@@ -198,7 +172,7 @@ int wmain(int ArgC, const wchar_t* ArgV[])
 
 	// If needed, create a file to contain unparsed timing info.
 	HANDLE TimingFile = INVALID_HANDLE_VALUE;
-	if (TimingFileName != nullptr)
+	if (ParsedArgs->TimingFileName != nullptr)
 	{
 		TimingFile = CreateFileW(TempTimingFileName.c_str(), GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 		if (TimingFile == INVALID_HANDLE_VALUE)
@@ -220,7 +194,7 @@ int wmain(int ArgC, const wchar_t* ArgV[])
 		DWORD BytesRead = 0;
 		if (BufferSize < sizeof(Buffer))
 		{
-			if (ReadFile(ReadPipeHandle, Buffer + BufferSize, (DWORD)(sizeof(Buffer) - BufferSize), &BytesRead, NULL))
+			if (ReadFile(StdOutReadHandle, Buffer + BufferSize, (DWORD)(sizeof(Buffer) - BufferSize), &BytesRead, NULL))
 			{
 				BufferSize += BytesRead;
 			}
@@ -270,19 +244,13 @@ int wmain(int ArgC, const wchar_t* ArgV[])
 
 					DWORD BytesWritten;
 					WriteFile(OutputFile, Buffer + FileNameStart, (DWORD)(LineEnd - FileNameStart), &BytesWritten, NULL);
-
-					if (bShowIncludes)
-					{
-						WriteFile(GetStdHandle(bUseStdErrOnly ? STD_ERROR_HANDLE : STD_OUTPUT_HANDLE), Buffer + LineStart, (DWORD)(LineEnd - LineStart), &BytesWritten, NULL);
-					}
-
 					LineStart = LineEnd;
 					break;
 				}
 			}
 
 			// Handling timing info parsing if needed.
-			if (TimingFileName != nullptr && LineStart < LineEnd)
+			if (ParsedArgs->TimingFileName != nullptr && LineStart < LineEnd)
 			{
 				// See if we've moved into a block of timing information. Order is always Headers -> Classes -> Functions, so to keep for loops to a minimum,
 				//   handle by what our current state is.
@@ -306,7 +274,7 @@ int wmain(int ArgC, const wchar_t* ArgV[])
 			if(LineStart < LineEnd)
 			{
 				DWORD BytesWritten;
-				WriteFile(GetStdHandle(bUseStdErrOnly ? STD_ERROR_HANDLE : STD_OUTPUT_HANDLE), Buffer + LineStart, (DWORD)(LineEnd - LineStart), &BytesWritten, NULL);
+				WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), Buffer + LineStart, (DWORD)(LineEnd - LineStart), &BytesWritten, NULL);
 			}
 
 			// Move to the next line
@@ -328,18 +296,18 @@ int wmain(int ArgC, const wchar_t* ArgV[])
 
 	CloseHandle(OutputFile);
 
-	if (ExitCode == 0 && !MoveFileW(TempOutputFileName.c_str(), OutputFileName))
+	if (ExitCode == 0 && !MoveFileW(TempOutputFileName.c_str(), ParsedArgs->OutputFileName))
 	{
-		wprintf(L"ERROR: Unable to rename %s to %s\n", TempOutputFileName.c_str(), OutputFileName);
+		wprintf(L"ERROR: Unable to rename %s to %s\n", TempOutputFileName.c_str(), ParsedArgs->OutputFileName);
 		ExitCode = 1;
 	}
 
-	if (TimingFileName != nullptr)
+	if (ParsedArgs->TimingFileName != nullptr)
 	{
 		CloseHandle(TimingFile);
-		if (ExitCode == 0 && !MoveFileW(TempTimingFileName.c_str(), TimingFileName))
+		if (ExitCode == 0 && !MoveFileW(TempTimingFileName.c_str(), ParsedArgs->TimingFileName))
 		{
-			wprintf(L"ERROR: Unable to rename %s to %s\n", TempTimingFileName.c_str(), TimingFileName);
+			wprintf(L"ERROR: Unable to rename %s to %s\n", TempTimingFileName.c_str(), ParsedArgs->TimingFileName);
 			ExitCode = 1;
 		}
 	}

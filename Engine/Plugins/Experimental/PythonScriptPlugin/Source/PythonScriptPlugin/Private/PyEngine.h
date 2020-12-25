@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -122,7 +122,6 @@ typedef TPyPtr<FPySelectedActorIterator> FPySelectedActorIteratorPtr;
 namespace PyEngine
 {
 	void InitializeModule();
-	void ShutdownModule();
 }
 
 #endif	// WITH_PYTHON

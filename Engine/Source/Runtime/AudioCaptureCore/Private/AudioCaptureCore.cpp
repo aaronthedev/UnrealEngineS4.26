@@ -1,10 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AudioCaptureCore.h"
 #include "AudioCaptureInternal.h"
 #include "CoreMinimal.h"
+#include "Modules/ModuleManager.h"
 
-
+DEFINE_LOG_CATEGORY(LogAudioCaptureCore)
 
 namespace Audio
 {
@@ -16,26 +17,6 @@ namespace Audio
 
 	FAudioCapture::~FAudioCapture()
 	{
-	}
-
-	bool FAudioCapture::RegisterUser(const TCHAR* UserId)
-	{
-		if (Impl.IsValid())
-		{
-			return Impl->RegisterUser(UserId);
-		}
-
-		return false;
-	}
-
-	bool FAudioCapture::UnregisterUser(const TCHAR* UserId)
-	{
-		if (Impl.IsValid())
-		{
-			return Impl->UnregisterUser(UserId);
-		}
-
-		return false;
 	}
 
 	int32 FAudioCapture::GetCaptureDevicesAvailable(TArray<FCaptureDeviceInfo>& OutDevices)
@@ -54,7 +35,10 @@ namespace Audio
 	{
 		if (Impl.IsValid())
 		{
-			return Impl->GetCaptureDeviceInfo(OutInfo, DeviceIndex);
+			if (DeviceIndex == DefaultDeviceIndex)
+			{
+				return Impl->GetCaptureDeviceInfo(OutInfo, DeviceIndex);
+			}
 		}
 
 		return false;
@@ -142,23 +126,6 @@ namespace Audio
 		return false;
 	}
 
-	bool FAudioCapture::GetIfHardwareFeatureIsSupported(EHardwareInputFeature FeatureType)
-	{
-		if (Impl.IsValid())
-		{
-			return Impl->GetIfHardwareFeatureIsSupported(FeatureType);
-		}
-		return false;
-	}
-
-	void FAudioCapture::SetHardwareFeatureEnabled(EHardwareInputFeature FeatureType, bool bIsEnabled)
-	{
-		if (Impl.IsValid())
-		{
-			Impl->SetHardwareFeatureEnabled(FeatureType, bIsEnabled);
-		}
-	}
-
 	FAudioCaptureSynth::FAudioCaptureSynth()
 		: NumSamplesEnqueued(0)
 		, bInitialized(false)
@@ -180,7 +147,7 @@ namespace Audio
 		bool bSuccess = true;
 		if (!AudioCapture.IsStreamOpen())
 		{
-			FOnCaptureFunction OnCapture = [this](const float* AudioData, int32 NumFrames, int32 NumChannels, int32 SampleRate, double StreamTime, bool bOverFlow)
+			FOnCaptureFunction OnCapture = [this](const float* AudioData, int32 NumFrames, int32 NumChannels, double StreamTime, bool bOverFlow)
 			{
 				int32 NumSamples = NumChannels * NumFrames;
 
@@ -275,3 +242,15 @@ namespace Audio
 	}
 
 } // namespace audio
+
+void FAudioCaptureCoreModule::StartupModule()
+{
+
+}
+
+void FAudioCaptureCoreModule::ShutdownModule()
+{
+
+}
+
+IMPLEMENT_MODULE(FAudioCaptureCoreModule, AudioCaptureCore);

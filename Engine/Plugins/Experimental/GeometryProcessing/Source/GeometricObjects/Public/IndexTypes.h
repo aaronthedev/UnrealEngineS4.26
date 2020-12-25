@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,23 +18,26 @@ namespace IndexConstants
  */
 struct FIndex2i
 {
-	int A{ IndexConstants::InvalidID };
-	int B{ IndexConstants::InvalidID };
+	int A, B;
 
-	constexpr FIndex2i() = default;
-	constexpr FIndex2i(int ValA, int ValB)
-		: A(ValA), B(ValB)
-	{}
+	FIndex2i()
+	{
+	}
+	FIndex2i(int ValA, int ValB)
+	{
+		this->A = ValA;
+		this->B = ValB;
+	}
 
-	constexpr static FIndex2i Zero()
+	static FIndex2i Zero()
 	{
 		return FIndex2i(0, 0);
 	}
-	constexpr static FIndex2i Max()
+	static FIndex2i Max()
 	{
 		return FIndex2i(TNumericLimits<int>::Max(), TNumericLimits<int>::Max());
 	}
-	constexpr static FIndex2i Invalid()
+	static FIndex2i Invalid()
 	{
 		return FIndex2i(IndexConstants::InvalidID, IndexConstants::InvalidID);
 	}
@@ -79,7 +82,7 @@ struct FIndex2i
 FORCEINLINE uint32 GetTypeHash(const FIndex2i& Index)
 {
 	// (this is how FIntVector and all the other FVectors do their hash functions)
-	// Note: this assumes there's no padding that could contain non compared data.
+	// Note: this assumes there's no padding that could contain uncompared data.
 	return FCrc::MemCrc_DEPRECATED(&Index, sizeof(FIndex2i));
 }
 
@@ -94,24 +97,27 @@ FORCEINLINE uint32 GetTypeHash(const FIndex2i& Index)
  */
 struct FIndex3i
 {
-	int A{ IndexConstants::InvalidID };
-	int B{ IndexConstants::InvalidID };
-	int C{ IndexConstants::InvalidID };
+	int A, B, C;
 
-	constexpr FIndex3i() = default;
-	constexpr FIndex3i(int ValA, int ValB, int ValC)
-		: A(ValA), B(ValB), C(ValC)
-	{}
+	FIndex3i()
+	{
+	}
+	FIndex3i(int ValA, int ValB, int ValC)
+	{
+		this->A = ValA;
+		this->B = ValB;
+		this->C = ValC;
+	}
 
-	constexpr static FIndex3i Zero()
+	static FIndex3i Zero()
 	{
 		return FIndex3i(0, 0, 0);
 	}
-	constexpr static FIndex3i Max()
+	static FIndex3i Max()
 	{
 		return FIndex3i(TNumericLimits<int>::Max(), TNumericLimits<int>::Max(), TNumericLimits<int>::Max());
 	}
-	constexpr static FIndex3i Invalid()
+	static FIndex3i Invalid()
 	{
 		return FIndex3i(IndexConstants::InvalidID, IndexConstants::InvalidID, IndexConstants::InvalidID);
 	}

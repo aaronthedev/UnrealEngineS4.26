@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DisplayClusterInputControllerBase.h"
 #include "XRMotionControllerBase.h"
@@ -23,7 +23,7 @@ bool FControllerDeviceHelper::FindUnrealEngineKeyByName(EDisplayClusterInputDevi
 		// Check by target type (Float Axis)
 		if (DevType == EDisplayClusterInputDeviceType::VrpnAnalog)
 		{
-			if (!itKey.IsAxis1D())
+			if (!itKey.IsFloatAxis())
 			{
 				// Skip all not buttons keys
 				continue;
@@ -34,7 +34,7 @@ bool FControllerDeviceHelper::FindUnrealEngineKeyByName(EDisplayClusterInputDevi
 		if (DevType == EDisplayClusterInputDeviceType::VrpnButton ||
 			DevType == EDisplayClusterInputDeviceType::VrpnKeyboard)
 		{
-			if (itKey.IsAnalog() || itKey.IsTouch())
+			if (itKey.IsFloatAxis() || itKey.IsTouch() || itKey.IsVectorAxis())
 			{
 				// Skip all not buttons keys
 				continue;

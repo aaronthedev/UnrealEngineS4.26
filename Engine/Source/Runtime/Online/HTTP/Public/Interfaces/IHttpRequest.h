@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -65,10 +65,10 @@ namespace EHttpRequestStatus
 class IHttpRequest;
 class IHttpResponse;
 
-typedef TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> FHttpRequestPtr;
+typedef TSharedPtr<IHttpRequest> FHttpRequestPtr;
 typedef TSharedPtr<IHttpResponse, ESPMode::ThreadSafe> FHttpResponsePtr;
 
-typedef TSharedRef<IHttpRequest, ESPMode::ThreadSafe> FHttpRequestRef;
+typedef TSharedRef<IHttpRequest> FHttpRequestRef;
 typedef TSharedRef<IHttpResponse, ESPMode::ThreadSafe> FHttpResponseRef;
 
 /**
@@ -99,19 +99,10 @@ DECLARE_DELEGATE_ThreeParams(FHttpRequestHeaderReceivedDelegate, FHttpRequestPtr
 DECLARE_DELEGATE_ThreeParams(FHttpRequestProgressDelegate, FHttpRequestPtr /*Request*/, int32 /*BytesSent*/, int32 /*BytesReceived*/);
 
 /**
- * Delegate called when an Http request will be retried in the future
- *
- * @param Request - original Http request that started things
- * @param Response - response received from the server if a successful connection was established
- * @param SecondsToRetry - seconds in the future when the response will be retried
- */
-DECLARE_DELEGATE_ThreeParams(FHttpRequestWillRetryDelegate, FHttpRequestPtr /*Request*/, FHttpResponsePtr /*Response*/, float /*SecondsToRetry*/);
-
-/**
  * Interface for Http requests (created using FHttpFactory)
  */
 class IHttpRequest : 
-	public IHttpBase, public TSharedFromThis<IHttpRequest, ESPMode::ThreadSafe>
+	public IHttpBase, public TSharedFromThis<IHttpRequest>
 {
 public:
 
@@ -148,16 +139,6 @@ public:
 	 * @param ContentPayload - payload to set.
 	 */
 	virtual void SetContent(const TArray<uint8>& ContentPayload) = 0;
-
-	/**
-	 * Sets the content of the request (optional data).
-	 * Usually only set for POST requests.
-	 *
-	 * This version lets the API take ownership of the payload directly, helpful for larger payloads.
-	 *
-	 * @param ContentPayload - payload to set.
-	 */
-	virtual void SetContent(TArray<uint8>&& ContentPayload) = 0;
 
 	/**
 	 * Sets the content of the request as a string encoded as UTF8.
@@ -209,28 +190,6 @@ public:
 	virtual void AppendToHeader(const FString& HeaderName, const FString& AdditionalHeaderValue) = 0;
 
 	/**
-	 * Sets an optional timeout in seconds for this entire HTTP request to complete.
-	 * If set, this value overrides the default HTTP timeout set via FHttpModule::SetTimeout().
-	 *
-	 * @param InTimeoutSecs - Timeout for this HTTP request instance, in seconds
-	 */
-	virtual void SetTimeout(float InTimeoutSecs) = 0;
-
-	/**
-	 * Clears the optional timeout in seconds for this HTTP request, causing the default value
-	 * from FHttpModule::GetTimeout() to be used.
-	 */
-	virtual void ClearTimeout() = 0;
-
-	/**
-	 * Gets the optional timeout in seconds for this entire HTTP request to complete.
-	 * If valid, this value overrides the default HTTP timeout set via FHttpModule::SetTimeout().
-	 *
-	 * @return the timeout for this HTTP request instance, in seconds
-	 */
-	virtual TOptional<float> GetTimeout() const = 0;
-
-	/**
 	 * Called to begin processing the request.
 	 * OnProcessRequestComplete delegate is always called when the request completes or on error if it is bound.
 	 * A request can be re-used but not while still being processed.
@@ -248,11 +207,6 @@ public:
 	 * Delegate called to update the request/response progress. See FHttpRequestProgressDelegate
 	 */
 	virtual FHttpRequestProgressDelegate& OnRequestProgress() = 0;
-	
-	/**
-	* Delegate called when the request will be retried
-	*/
-	virtual FHttpRequestWillRetryDelegate& OnRequestWillRetry() = 0;
 
 	/** 
 	 * Delegate called to signal the receipt of a header.  See FHttpRequestHeaderReceivedDelegate

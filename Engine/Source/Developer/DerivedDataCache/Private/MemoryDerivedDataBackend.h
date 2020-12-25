@@ -1,10 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "HAL/FileManager.h"
-#include "FileBackedDerivedDataBackend.h"
+#include "DerivedDataBackendInterface.h"
 #include "ProfilingDebugging/CookStats.h"
 #include "DerivedDataCacheUsageStats.h"
 #include "Misc/ScopeLock.h"
@@ -14,20 +14,14 @@ class Error;
 /** 
  * A simple thread safe, memory based backend. This is used for Async puts and the boot cache.
 **/
-class FMemoryDerivedDataBackend : public FFileBackedDerivedDataBackend
+class FMemoryDerivedDataBackend : public FDerivedDataBackendInterface
 {
 public:
-	explicit FMemoryDerivedDataBackend(const TCHAR* InName, int64 InMaxCacheSize = -1);
+	explicit FMemoryDerivedDataBackend(int64 InMaxCacheSize = -1);
 	~FMemoryDerivedDataBackend();
-
-	/** Return a name for this interface */
-	virtual FString GetName() const override { return Name; }
 
 	/** return true if this cache is writable **/
 	virtual bool IsWritable() override;
-
-	/** Returns a class of speed for this interface **/
-	virtual ESpeedClass GetSpeedClass() override;
 
 	/**
 	 * Synchronous test for the existence of a cache item
@@ -53,43 +47,30 @@ public:
 	 * @param	InData		Buffer containing the data to cache, can be destroyed after the call returns, immediately
 	 * @param	bPutEvenIfExists	If true, then do not attempt skip the put even if CachedDataProbablyExists returns true
 	 */
-	virtual void PutCachedData(const TCHAR* CacheKey, TArrayView<const uint8> InData, bool bPutEvenIfExists) override;
+	virtual void PutCachedData(const TCHAR* CacheKey, TArray<uint8>& InData, bool bPutEvenIfExists) override;
 
 	virtual void RemoveCachedData(const TCHAR* CacheKey, bool bTransient) override;
 
 	/**
 	 * Save the cache to disk
 	 * @param	Filename	Filename to save
-	 * @return	true if file was saved successfully
+	 * @return	true if file was saved sucessfully
 	 */
 	bool SaveCache(const TCHAR* Filename);
 
 	/**
 	 * Load the cache from disk
 	 * @param	Filename	Filename to load
-	 * @return	true if file was loaded successfully
+	 * @return	true if file was loaded sucessfully
 	 */
 	bool LoadCache(const TCHAR* Filename);
 
 	/**
 	 * Disable cache and ignore all subsequent requests
 	 */
-	void Disable() override;
+	void Disable();
 
 	virtual void GatherUsageStats(TMap<FString, FDerivedDataCacheUsageStats>& UsageStatsMap, FString&& GraphPath) override;
-
-	virtual bool TryToPrefetch(const TCHAR* CacheKey) override;
-
-	/**
-	 *  Determines if we would cache the provided data
-	 */
-	virtual bool WouldCache(const TCHAR* CacheKey, TArrayView<const uint8> InData) override;
-
-	/**
-	 * Apply debug options
-	 */
-	bool ApplyDebugOptions(FBackendDebugOptions& InOptions) override;
-	
 
 private:
 	/** Name of the cache file loaded (if any). */
@@ -100,9 +81,9 @@ private:
 	{
 		int32 Age;
 		TArray<uint8> Data;
-		FCacheValue(TArrayView<const uint8> InData, int32 InAge = 0)
+		FCacheValue(const TArray<uint8>& InData, int32 InAge = 0)
 			: Age(InAge)
-			, Data(InData.GetData(), InData.Num())
+			, Data(InData)
 		{
 		}
 	};
@@ -111,9 +92,6 @@ private:
 	{
 		return (Key.Len() + 1) * sizeof(TCHAR) + sizeof(Val.Age) + Val.Data.Num();
 	}
-
-	/** Name of this cache (used for debugging) */
-	FString Name;
 
 	/** Set of files that are being written to disk asynchronously. */
 	TMap<FString, FCacheValue*> CacheItems;
@@ -141,18 +119,5 @@ private:
 									  + sizeof(int64)	// Size
 									  + sizeof(uint32), // CRC
 	};
-
-protected:
-
-	/* Debug helpers */
-	bool DidSimulateMiss(const TCHAR* InKey);
-	bool ShouldSimulateMiss(const TCHAR* InKey);
-
-	/** Debug Options */
-	FBackendDebugOptions DebugOptions;
-
-	/** Keys we ignored due to miss rate settings */
-	FCriticalSection MissedKeysCS;
-	TSet<FName> DebugMissedKeys;
 };
 

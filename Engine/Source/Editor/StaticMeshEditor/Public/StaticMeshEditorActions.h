@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 
@@ -32,7 +32,6 @@ public:
 	/**  */
 	TSharedPtr< FUICommandInfo > SetShowWireframe;
 	TSharedPtr< FUICommandInfo > SetShowVertexColor;
-	TSharedPtr< FUICommandInfo > SetShowPhysicalMaterialMasks;
 	TSharedPtr< FUICommandInfo > SetDrawUVs;
 	TSharedPtr< FUICommandInfo > SetShowGrid;
 	TSharedPtr< FUICommandInfo > SetShowBounds;
@@ -47,20 +46,6 @@ public:
 	TSharedPtr< FUICommandInfo > ReimportMeshWithNewFile;
 	TSharedPtr< FUICommandInfo > ReimportAllMesh;
 	TSharedPtr< FUICommandInfo > ReimportAllMeshWithNewFile;
-
-	// toolbar commands
-	TSharedPtr< FUICommandInfo > ToggleShowNormals;
-	TSharedPtr< FUICommandInfo > ToggleShowTangents;
-	TSharedPtr< FUICommandInfo > ToggleShowBinormals;
-	TSharedPtr< FUICommandInfo > ToggleShowPivots;
-	TSharedPtr< FUICommandInfo > ToggleShowVertices;
-	TSharedPtr< FUICommandInfo > ToggleShowGrids;
-	TSharedPtr< FUICommandInfo > ToggleShowBounds;
-	TSharedPtr< FUICommandInfo > ToggleShowSimpleCollisions;
-	TSharedPtr< FUICommandInfo > ToggleShowComplexCollisions;
-	TSharedPtr< FUICommandInfo > ToggleShowSockets;
-	TSharedPtr< FUICommandInfo > ToggleShowWireframes;
-	TSharedPtr< FUICommandInfo > ToggleShowVertexColors;
 
 	// View Menu Commands
 	TSharedPtr< FUICommandInfo > SetShowNormals;

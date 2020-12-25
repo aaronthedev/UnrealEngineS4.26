@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -40,18 +40,7 @@ public:
 	 */
 	template< typename OtherType >
 	TAttribute( const OtherType& InInitialValue )
-		: Value( (ObjectType)InInitialValue )
-		, bIsSet(true)
-		, Getter()
-	{ }
-
-	/** 
-	 * Construct implicitly from moving an initial value
-	 *
-	 * @param InInitialValue
-	 */
-	TAttribute( ObjectType&& InInitialValue)
-		: Value(MoveTemp(InInitialValue))
+		: Value( InInitialValue )		
 		, bIsSet(true)
 		, Getter()
 	{ }
@@ -123,18 +112,6 @@ public:
 		bIsSet = true;
 	}
 
-	/**
-	 * Sets the attribute's value
-	 * 
-	 * @param InNewValue  The value to set the attribute to
-	 */
-	void Set( ObjectType&& InNewValue )
-	{
-		Getter.Unbind();
-		Value = MoveTemp(InNewValue);
-		bIsSet = true;
-	}
-
 	/** Was this TAttribute ever assigned? */
 	bool IsSet() const
 	{
@@ -184,20 +161,6 @@ public:
 	{
 		bIsSet = true;
 		Getter = InGetter;
-	}
-	
-
-	/**
-	 * Binds an arbitrary function that will be called to generate this attribute's value on demand.  After
-	 * binding, the attribute will no longer have a value that can be accessed directly, and instead the bound
-	 * function will always be called to generate the value.
-	 *
-	 * @param  InGetter  The delegate object with your function binding
-	 */
-	void Bind( FGetter&& InGetter )
-	{
-		bIsSet = true;
-		Getter = MoveTemp(InGetter);
 	}
 
 	/**

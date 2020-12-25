@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraScriptGraphViewModel.h"
 #include "NiagaraScript.h"
@@ -17,7 +17,7 @@
 
 #define LOCTEXT_NAMESPACE "NiagaraScriptGraphViewModel"
 
-FNiagaraScriptGraphViewModel::FNiagaraScriptGraphViewModel(TAttribute<FText> InDisplayName)
+FNiagaraScriptGraphViewModel::FNiagaraScriptGraphViewModel(FText InDisplayName)
 	: DisplayName(InDisplayName)
 	, Commands(MakeShareable(new FUICommandList()))
 	, NodeSelection(MakeShareable(new FNiagaraObjectSelection()))
@@ -41,7 +41,7 @@ void FNiagaraScriptGraphViewModel::SetScriptSource(UNiagaraScriptSource* InScrip
 
 FText FNiagaraScriptGraphViewModel::GetDisplayName() const
 {
-	return DisplayName.Get();
+	return DisplayName;
 }
 
 UNiagaraScriptSource* FNiagaraScriptGraphViewModel::GetScriptSource()

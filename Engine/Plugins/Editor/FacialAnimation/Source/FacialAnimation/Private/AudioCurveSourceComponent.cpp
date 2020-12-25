@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AudioCurveSourceComponent.h"
 #include "Sound/SoundWave.h"
@@ -61,13 +61,7 @@ void UAudioCurveSourceComponent::FadeIn(float FadeInDuration, float FadeVolumeLe
 
 	if (CachedSyncPreRoll <= 0.0f)
 	{
-		PlayInternalRequestData PlayData;
-		PlayData.StartTime = StartTime;
-		PlayData.FadeInDuration = FadeInDuration;
-		PlayData.FadeVolumeLevel = FadeVolumeLevel;
-		PlayData.FadeCurve = FadeType;
-
-		PlayInternal(PlayData);
+		PlayInternal(StartTime, FadeInDuration, FadeVolumeLevel, FadeType);
 	}
 	else
 	{
@@ -100,10 +94,7 @@ void UAudioCurveSourceComponent::Play(float StartTime)
 
 	if (CachedSyncPreRoll <= 0.0f)
 	{
-		PlayInternalRequestData PlayData;
-		PlayData.StartTime = StartTime;
-
-		PlayInternal(PlayData);
+		PlayInternal(StartTime);
 	}
 	else
 	{
@@ -140,13 +131,7 @@ void UAudioCurveSourceComponent::TickComponent(float DeltaTime, enum ELevelTick 
 	Delay = FMath::Min(Delay + DeltaTime, CachedSyncPreRoll);
 	if (OldDelay < CachedSyncPreRoll && Delay >= CachedSyncPreRoll)
 	{
-		PlayInternalRequestData PlayData;
-		PlayData.StartTime = CachedStartTime;
-		PlayData.FadeInDuration = CachedFadeInDuration;
-		PlayData.FadeVolumeLevel = CachedFadeVolumeLevel;
-		PlayData.FadeCurve = CachedFadeType;
-
-		PlayInternal(PlayData);
+		PlayInternal(CachedStartTime, CachedFadeInDuration, CachedFadeVolumeLevel, CachedFadeType);
 	}
 	else if(Delay < CachedSyncPreRoll)
 	{

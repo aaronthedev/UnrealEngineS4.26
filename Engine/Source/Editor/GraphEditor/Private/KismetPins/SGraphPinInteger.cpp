@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "KismetPins/SGraphPinInteger.h"
 #include "Widgets/Layout/SBox.h"
@@ -54,8 +54,7 @@ TSharedRef<SWidget>	SGraphPinInteger::GetDefaultValueWidget()
 			for(int32 BitmaskEnumIndex = 0; BitmaskEnumIndex < BitmaskEnum->NumEnums() - 1; ++BitmaskEnumIndex)
 			{
 				const int64 EnumValue = BitmaskEnum->GetValueByIndex(BitmaskEnumIndex);
-				const bool bIsHidden = BitmaskEnum->HasMetaData(TEXT("Hidden"), BitmaskEnumIndex);
-				if (EnumValue >= 0 && !bIsHidden)
+				if (EnumValue >= 0)
 				{
 					if (bUseEnumValuesAsMaskValues)
 					{
@@ -136,9 +135,7 @@ TSharedRef<SWidget>	SGraphPinInteger::GetDefaultValueWidget()
 						(
 							FExecuteAction::CreateLambda([=]()
 							{
-								const FScopedTransaction Transaction(NSLOCTEXT("GraphEditor", "ChangePinValue", "Change Pin Value"));
 								const int32 CurValue = FCString::Atoi(*GraphPinObj->GetDefaultAsString());
-								GraphPinObj->Modify();
 								GraphPinObj->GetSchema()->TrySetDefaultValue(*GraphPinObj, FString::FromInt(CurValue ^ BitmaskFlags[i].Value));
 							}),
 							FCanExecuteAction(),

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -11,18 +11,8 @@ public class DynamicMesh : ModuleRules
         PublicDependencyModuleNames.AddRange(
 			new string[] {
 				"Core",
-				"GeometricObjects",
-				"GeometryAlgorithms",
-
-				"MeshUtilitiesCommon"		// currently required for FAllocator2D used in FDynamicMeshUVPacker
+				"GeometricObjects"
 			}
-		);
-
-		PrivateDependencyModuleNames.AddRange(
-			new string[] {
-				"Eigen"
-			}
-		);
-
+			);
 	}
 }

@@ -1,190 +1,123 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "Chaos/PBDRigidsEvolution.h"
 #include "Chaos/Defines.h"
 #include "Chaos/PBDRigidsSOAs.h"
 #include "ChaosStats.h"
 #include "Chaos/PBDRigidsEvolutionGBF.h"
 #include "Chaos/ParticleHandle.h"
-#include "Chaos/SpatialAccelerationCollection.h"
-
-int32 ChaosRigidsEvolutionApplyAllowEarlyOutCVar = 1;
-FAutoConsoleVariableRef CVarChaosRigidsEvolutionApplyAllowEarlyOut(TEXT("p.ChaosRigidsEvolutionApplyAllowEarlyOut"), ChaosRigidsEvolutionApplyAllowEarlyOutCVar, TEXT("Allow Chaos Rigids Evolution apply iterations to early out when resolved.[def:1]"));
-
-int32 ChaosRigidsEvolutionApplyPushoutAllowEarlyOutCVar = 1;
-FAutoConsoleVariableRef CVarChaosRigidsEvolutionApplyPushoutAllowEarlyOut(TEXT("p.ChaosRigidsEvolutionApplyPushoutAllowEarlyOut"), ChaosRigidsEvolutionApplyPushoutAllowEarlyOutCVar, TEXT("Allow Chaos Rigids Evolution apply-pushout iterations to early out when resolved.[def:1]"));
-
-int32 ChaosNumPushOutIterationsOverride = -1;
-FAutoConsoleVariableRef CVarChaosNumPushOutIterationsOverride(TEXT("p.ChaosNumPushOutIterationsOverride"), ChaosNumPushOutIterationsOverride, TEXT("Override for num push out iterations if >= 0 [def:-1]"));
-
-int32 ChaosNumContactIterationsOverride = -1;
-FAutoConsoleVariableRef CVarChaosNumContactIterationsOverride(TEXT("p.ChaosNumContactIterationsOverride"), ChaosNumContactIterationsOverride, TEXT("Override for num contact iterations if >= 0. [def:-1]"));
+#include "Chaos/ISpatialAccelerationCollection.h"
 
 namespace Chaos
 {
-	CHAOS_API int32 FixBadAccelerationStructureRemoval = 1;
-	FAutoConsoleVariableRef CVarFixBadAccelerationStructureRemoval(TEXT("p.FixBadAccelerationStructureRemoval"), FixBadAccelerationStructureRemoval, TEXT(""));
+	int32 BroadphaseType = 3;
+	FAutoConsoleVariableRef CVarBroadphaseIsTree(TEXT("p.BroadphaseType"), BroadphaseType, TEXT(""));
 
-	struct FAccelerationConfig
+	int32 BoundingVolumeNumCells = 35;
+	FAutoConsoleVariableRef CVarBoundingVolumeNumCells(TEXT("p.BoundingVolumeNumCells"), BoundingVolumeNumCells, TEXT(""));
+
+	int32 MaxChildrenInLeaf = 5;
+	FAutoConsoleVariableRef CVarMaxChildrenInLeaf(TEXT("p.MaxChildrenInLeaf"), MaxChildrenInLeaf, TEXT(""));
+
+	int32 MaxTreeDepth = 200;
+	FAutoConsoleVariableRef CVarMaxTreeDepth(TEXT("p.MaxTreeDepth"), MaxTreeDepth, TEXT(""));
+
+	int32 AABBMaxChildrenInLeaf = 500;
+	FAutoConsoleVariableRef CVarAABBMaxChildrenInLeaf(TEXT("p.AABBMaxChildrenInLeaf"), AABBMaxChildrenInLeaf, TEXT(""));
+
+	int32 AABBMaxTreeDepth = 200;
+	FAutoConsoleVariableRef CVarAABBMaxTreeDepth(TEXT("p.AABBMaxTreeDepth"), AABBMaxTreeDepth, TEXT(""));
+
+	float MaxPayloadSize = 20000;
+	FAutoConsoleVariableRef CVarMaxPayloadSize(TEXT("p.MaxPayloadSize"), MaxPayloadSize, TEXT(""));
+
+	template<typename T, int d>
+	struct TDefaultCollectionFactory : public ISpatialAccelerationCollectionFactory<T, d>
 	{
-		int32 BroadphaseType;
-		int32 BVNumCells;
-		int32 MaxChildrenInLeaf;
-		int32 MaxTreeDepth;
-		int32 AABBMaxChildrenInLeaf;
-		int32 AABBMaxTreeDepth;
-		float MaxPayloadSize;
-		int32 IterationsPerTimeSlice;
-
-		FAccelerationConfig()
+		virtual TUniquePtr<ISpatialAccelerationCollection<TAccelerationStructureHandle<T, d>, T, d>> CreateEmptyCollection() override
 		{
-			BroadphaseType = 3;
-			BVNumCells = 35;
-			MaxChildrenInLeaf = 5;
-			MaxTreeDepth = 200;
-			AABBMaxChildrenInLeaf = 500;
-			AABBMaxTreeDepth = 200;
-			MaxPayloadSize = 100000;
-			IterationsPerTimeSlice = 4000;
-		}
-	} ConfigSettings;
-
-	FAutoConsoleVariableRef CVarBroadphaseIsTree(TEXT("p.BroadphaseType"), ConfigSettings.BroadphaseType, TEXT(""));
-	FAutoConsoleVariableRef CVarBoundingVolumeNumCells(TEXT("p.BoundingVolumeNumCells"), ConfigSettings.BVNumCells, TEXT(""));
-	FAutoConsoleVariableRef CVarMaxChildrenInLeaf(TEXT("p.MaxChildrenInLeaf"), ConfigSettings.MaxChildrenInLeaf, TEXT(""));
-	FAutoConsoleVariableRef CVarMaxTreeDepth(TEXT("p.MaxTreeDepth"), ConfigSettings.MaxTreeDepth, TEXT(""));
-	FAutoConsoleVariableRef CVarAABBMaxChildrenInLeaf(TEXT("p.AABBMaxChildrenInLeaf"), ConfigSettings.AABBMaxChildrenInLeaf, TEXT(""));
-	FAutoConsoleVariableRef CVarAABBMaxTreeDepth(TEXT("p.AABBMaxTreeDepth"), ConfigSettings.AABBMaxTreeDepth, TEXT(""));
-	FAutoConsoleVariableRef CVarMaxPayloadSize(TEXT("p.MaxPayloadSize"), ConfigSettings.MaxPayloadSize, TEXT(""));
-	FAutoConsoleVariableRef CVarIterationsPerTimeSlice(TEXT("p.IterationsPerTimeSlice"), ConfigSettings.IterationsPerTimeSlice, TEXT(""));
-
-	struct FDefaultCollectionFactory : public ISpatialAccelerationCollectionFactory
-	{
-		FAccelerationConfig Config;
-
-		using BVType = TBoundingVolume<TAccelerationStructureHandle<FReal, 3>, FReal, 3>;
-		using AABBTreeType = TAABBTree<TAccelerationStructureHandle<FReal, 3>, TAABBTreeLeafArray<TAccelerationStructureHandle<FReal, 3>, FReal>, FReal>;
-		using AABBTreeOfGridsType = TAABBTree<TAccelerationStructureHandle<FReal, 3>, TBoundingVolume<TAccelerationStructureHandle<FReal, 3>, FReal, 3>, FReal>;
-
-		TUniquePtr<ISpatialAccelerationCollection<TAccelerationStructureHandle<FReal, 3>, FReal, 3>> CreateEmptyCollection() override
-		{
-			TConstParticleView<FSpatialAccelerationCache> Empty;
-
-			const uint16 NumBuckets = ConfigSettings.BroadphaseType >= 3 ? 2 : 1;
-			auto Collection = new TSpatialAccelerationCollection<AABBTreeType, BVType, AABBTreeOfGridsType>();
-
-			for (uint16 BucketIdx = 0; BucketIdx < NumBuckets; ++BucketIdx)
+			const TArray<TAccelerationStructureBuilder<T, d>> Empty;
+			if (BroadphaseType == 0)
 			{
-				Collection->AddSubstructure(CreateAccelerationPerBucket_Threaded(Empty, BucketIdx, true), BucketIdx);
+				using AccelType = TBoundingVolume<TAccelerationStructureHandle<T, d>, T, d>;
+				TArray<TSpatialAccelerationParams<TArray<TAccelerationStructureBuilder<T, d>>, TAccelerationStructureHandle<T, d>, T, d>> Buckets = { {AccelType::StaticType, MaxPayloadSize, BoundingVolumeNumCells } };
+
+				auto Structure = MakeUnique<AccelType>(Empty, false, 0, Buckets[0].MaxCells, Buckets[0].MaxPayloadBounds);
+				auto Collection = new TSpatialAccelerationCollection<TArray<TAccelerationStructureBuilder<T, d>>, AccelType>(MoveTemp(Buckets));
+
+				Collection->AddSubstructure(MoveTemp(Structure), 0);
+
+				return TUniquePtr<ISpatialAccelerationCollection<TAccelerationStructureHandle<T, d>, T, d>>(Collection);
 			}
+			else if (BroadphaseType == 1)
+			{
+				using AccelType = TAABBTree<TAccelerationStructureHandle<T, d>, TAABBTreeLeafArray<TAccelerationStructureHandle<T, d>, T>, T>;
+				TArray<TSpatialAccelerationParams<TArray<TAccelerationStructureBuilder<T, d>>, TAccelerationStructureHandle<T, d>, T, d>> Buckets = { {AccelType::StaticType, MaxPayloadSize, 0, MaxChildrenInLeaf, MaxTreeDepth} };
 
-			return TUniquePtr<ISpatialAccelerationCollection<TAccelerationStructureHandle<FReal, 3>, FReal, 3>>(Collection);
-		}
+				auto Structure = MakeUnique<AccelType>(Empty, Buckets[0].MaxChildrenInLeaf, Buckets[0].MaxTreeDepth, Buckets[0].MaxPayloadBounds);
+				auto Collection = new TSpatialAccelerationCollection<TArray<TAccelerationStructureBuilder<T, d>>, AccelType>(MoveTemp(Buckets));
+				Collection->AddSubstructure(MoveTemp(Structure), 0);
+				return TUniquePtr<ISpatialAccelerationCollection<TAccelerationStructureHandle<T, d>, T, d>>(Collection);
+			}
+			else if (BroadphaseType == 2)
+			{
+				using AccelType = TAABBTree<TAccelerationStructureHandle<T, d>, TBoundingVolume<TAccelerationStructureHandle<T, d>, T, d>, T>;
+				TArray<TSpatialAccelerationParams<TArray<TAccelerationStructureBuilder<T, d>>, TAccelerationStructureHandle<T, d>, T, d>> Buckets = { {AccelType::StaticType, MaxPayloadSize, 0, AABBMaxChildrenInLeaf, AABBMaxTreeDepth} };
 
-		virtual uint8 GetActiveBucketsMask() const
-		{
-			return ConfigSettings.BroadphaseType >= 3 ? 3 : 1;
-		}
+				auto Structure = MakeUnique<AccelType>(Empty, Buckets[0].MaxChildrenInLeaf, Buckets[0].MaxTreeDepth, Buckets[0].MaxPayloadBounds);
+				auto Collection = new TSpatialAccelerationCollection<TArray<TAccelerationStructureBuilder<T, d>>, AccelType>(MoveTemp(Buckets));
+				Collection->AddSubstructure(MoveTemp(Structure), 0);
+				return TUniquePtr<ISpatialAccelerationCollection<TAccelerationStructureHandle<T, d>, T, d>>(Collection);
+			}
+			else
+			{
+				using AccelType = TAABBTree<TAccelerationStructureHandle<T, d>, TAABBTreeLeafArray<TAccelerationStructureHandle<T, d>, T>, T>;
+				using GridType = TBoundingVolume<TAccelerationStructureHandle<T, d>, T, d>;
 
-		virtual bool IsBucketTimeSliced(uint16 BucketIdx) const
-		{
-			// TODO: Unduplicate switch statement here with CreateAccelerationPerBucket_Threaded and refactor so that bucket index mapping is better.
-			switch (BucketIdx)
-			{
-			case 0:
-			{
-				if (ConfigSettings.BroadphaseType == 0)
-				{
-					// BVType
-					return false;
-				}
-				else if (ConfigSettings.BroadphaseType == 1 || ConfigSettings.BroadphaseType == 3)
-				{
-					// AABBTreeType
-					return true;
-				}
-				else if (ConfigSettings.BroadphaseType == 4 || ConfigSettings.BroadphaseType == 2)
-				{
-					// AABBTreeOfGridsType
-					return true;
-				}
-			}
-			case 1:
-			{
-				// BVType
-				ensure(ConfigSettings.BroadphaseType == 3 || ConfigSettings.BroadphaseType == 4);
-				return false;
-			}
-			default:
-			{
-				check(false);
-				return false;
-			}
+				TArray<TSpatialAccelerationParams<TArray<TAccelerationStructureBuilder<T, d>>, TAccelerationStructureHandle<T, d>, T, d>> Buckets = {
+					{AccelType::StaticType, MaxPayloadSize, 0, AABBMaxChildrenInLeaf, AABBMaxTreeDepth},
+					{GridType::StaticType, MaxPayloadSize * 100, BoundingVolumeNumCells, AABBMaxChildrenInLeaf, AABBMaxTreeDepth},
+				};
+
+				auto Structure0 = MakeUnique<AccelType>(Empty, Buckets[0].MaxChildrenInLeaf, Buckets[0].MaxTreeDepth, Buckets[0].MaxPayloadBounds);
+
+				auto Structure1 = MakeUnique<GridType>(Empty, false, 0, Buckets[1].MaxCells, Buckets[1].MaxPayloadBounds);
+				auto Collection = new TSpatialAccelerationCollection<TArray<TAccelerationStructureBuilder<T, d>>, AccelType, GridType>(MoveTemp(Buckets));
+				Collection->AddSubstructure(MoveTemp(Structure0), 0);
+				Collection->AddSubstructure(MoveTemp(Structure1), 1);
+
+				return TUniquePtr<ISpatialAccelerationCollection<TAccelerationStructureHandle<T, d>, T, d>>(Collection);
 			}
 		}
 
-		virtual TUniquePtr<ISpatialAcceleration<TAccelerationStructureHandle<FReal, 3>, FReal, 3>> CreateAccelerationPerBucket_Threaded(const TConstParticleView<FSpatialAccelerationCache>& Particles, uint16 BucketIdx, bool ForceFullBuild) override
-		{
-			// TODO: Unduplicate switch statement here with IsBucketTimeSliced and refactor so that bucket index mapping is better.
-			switch (BucketIdx)
-			{
-			case 0:
-			{
-				if (ConfigSettings.BroadphaseType == 0)
-				{
-					return MakeUnique<BVType>(Particles, false, 0, ConfigSettings.BVNumCells, ConfigSettings.MaxPayloadSize);
-				}
-				else if (ConfigSettings.BroadphaseType == 1 || ConfigSettings.BroadphaseType == 3)
-				{
-					return MakeUnique<AABBTreeType>(Particles, ConfigSettings.MaxChildrenInLeaf, ConfigSettings.MaxTreeDepth, ConfigSettings.MaxPayloadSize, ForceFullBuild ? 0 : ConfigSettings.IterationsPerTimeSlice);
-				}
-				else if (ConfigSettings.BroadphaseType == 4 || ConfigSettings.BroadphaseType == 2)
-				{
-					return MakeUnique<AABBTreeOfGridsType>(Particles, ConfigSettings.AABBMaxChildrenInLeaf, ConfigSettings.AABBMaxTreeDepth, ConfigSettings.MaxPayloadSize);
-				}
-			}
-			case 1:
-			{
-				ensure(ConfigSettings.BroadphaseType == 3 || ConfigSettings.BroadphaseType == 4);
-				return MakeUnique<BVType>(Particles, false, 0, ConfigSettings.BVNumCells, ConfigSettings.MaxPayloadSize);
-			}
-			default:
-			{
-				check(false);
-				return nullptr;
-			}
-			}
-		}
-
-		virtual void Serialize(TUniquePtr<ISpatialAccelerationCollection<TAccelerationStructureHandle<FReal, 3>, FReal, 3>>& Ptr, FChaosArchive& Ar) override
+		virtual void Serialize(TUniquePtr<ISpatialAccelerationCollection<TAccelerationStructureHandle<T, d>, T, d>>& Ptr, FChaosArchive& Ar) override
 		{
 			if (Ar.IsLoading())
 			{
+				//todo: actually read in parameters
 				Ptr = CreateEmptyCollection();
 				Ptr->Serialize(Ar);
 			}
 			else
 			{
+				//todo: actually save out parameters
 				Ptr->Serialize(Ar);
 			}
 		}
 	};
 
-	template <typename Traits>
-	TPBDRigidsEvolutionBase<Traits>::TPBDRigidsEvolutionBase(TPBDRigidsSOAs<FReal, 3>& InParticles, THandleArray<FChaosPhysicsMaterial>& InSolverPhysicsMaterials, int32 InNumIterations, int32 InNumPushOutIterations, bool InIsSingleThreaded)
-	    : Particles(InParticles)
-		, SolverPhysicsMaterials(InSolverPhysicsMaterials)
+	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint, class T, int d>
+	TPBDRigidsEvolutionBase<FPBDRigidsEvolution, FPBDCollisionConstraint, T, d>::TPBDRigidsEvolutionBase(TPBDRigidsSOAs<T, d>& InParticles, int32 InNumIterations)
+		: Particles(InParticles)
 		, bExternalReady(false)
-		, bIsSingleThreaded(InIsSingleThreaded)
-		, LatestExternalTimestampConsumed(-1)
+		, Clustering(static_cast<FPBDRigidsEvolution&>(*this), Particles.GetClusteredParticles())
 		, NumIterations(InNumIterations)
-		, NumPushOutIterations(InNumPushOutIterations)
-		, SpatialCollectionFactory(new FDefaultCollectionFactory())
+		, SpatialCollectionFactory(new TDefaultCollectionFactory<T,d>())
 	{
 		Particles.GetParticleHandles().AddArray(&PhysicsMaterials);
 		Particles.GetParticleHandles().AddArray(&PerParticlePhysicsMaterials);
 		Particles.GetParticleHandles().AddArray(&ParticleDisableCount);
 		Particles.GetParticleHandles().AddArray(&Collided);
-
+		
 		for (auto& Particle : InParticles.GetNonDisabledView())
 		{
 			DirtyParticle(Particle);
@@ -193,8 +126,8 @@ namespace Chaos
 		ComputeIntermediateSpatialAcceleration();
 	}
 
-	template <typename Traits>
-	TPBDRigidsEvolutionBase<Traits>::~TPBDRigidsEvolutionBase()
+	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint, class T, int d>
+	TPBDRigidsEvolutionBase<FPBDRigidsEvolution, FPBDCollisionConstraint, T, d>::~TPBDRigidsEvolutionBase()
 	{
 		Particles.GetParticleHandles().RemoveArray(&PhysicsMaterials);
 		Particles.GetParticleHandles().RemoveArray(&PerParticlePhysicsMaterials);
@@ -203,315 +136,199 @@ namespace Chaos
 		WaitOnAccelerationStructure();
 	}
 
-
+	
 	DECLARE_CYCLE_STAT(TEXT("CacheAccelerationBounds"), STAT_CacheAccelerationBounds, STATGROUP_Chaos);
 	DECLARE_CYCLE_STAT(TEXT("ComputeIntermediateSpatialAcceleration"), STAT_ComputeIntermediateSpatialAcceleration, STATGROUP_Chaos);
-	DECLARE_CYCLE_STAT(TEXT("CopyAccelerationStructure"), STAT_CopyAccelerationStructure, STATGROUP_Chaos);
-	DECLARE_CYCLE_STAT(TEXT("SwapAccelerationStructures"), STAT_SwapAccelerationStructures, STATGROUP_Chaos);
-	DECLARE_CYCLE_STAT(TEXT("AccelerationStructureTimeSlice"), STAT_AccelerationStructureTimeSlice, STATGROUP_Chaos);
-	DECLARE_CYCLE_STAT(TEXT("CreateInitialAccelerationStructure"), STAT_CreateInitialAccelerationStructure, STATGROUP_Chaos);
-	DECLARE_CYCLE_STAT(TEXT("CreateNonSlicedStructures"), STAT_CreateNonSlicedStructures, STATGROUP_Chaos);
 
-	template <typename Traits>
-	TPBDRigidsEvolutionBase<Traits>::FChaosAccelerationStructureTask::FChaosAccelerationStructureTask(
-		ISpatialAccelerationCollectionFactory& InSpatialCollectionFactory
-		, const TMap<FSpatialAccelerationIdx, TUniquePtr<FSpatialAccelerationCache>>& InSpatialAccelerationCache
-		, TUniquePtr<FAccelerationStructure>& InInternalAccelerationStructure
-		, TUniquePtr<FAccelerationStructure>& InExternalAccelerationStructure
-		, bool InForceFullBuild
-		, bool InIsSingleThreaded)
-		: SpatialCollectionFactory(InSpatialCollectionFactory)
-		, SpatialAccelerationCache(InSpatialAccelerationCache)
-		, InternalStructure(InInternalAccelerationStructure)
-		, ExternalStructure(InExternalAccelerationStructure)
-		, IsForceFullBuild(InForceFullBuild)
-		, bIsSingleThreaded(InIsSingleThreaded)
+	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint, class T, int d>
+	TPBDRigidsEvolutionBase<FPBDRigidsEvolution, FPBDCollisionConstraint, T, d>::FChaosAccelerationStructureTask::FChaosAccelerationStructureTask(const TArray<FAccelerationStructBuilderCache>& CacheMap
+		, TUniquePtr<FAccelerationStructure>& InAccelerationStructure
+		, TUniquePtr<FAccelerationStructure>& InAccelerationStructureCopy)
+		: BuilderCacheMap(CacheMap)
+		, AccelerationStructure(InAccelerationStructure)
+		, AccelerationStructureCopy(InAccelerationStructureCopy)
 	{
-
 	}
 
-	template <typename Traits>
-	TStatId TPBDRigidsEvolutionBase<Traits>::FChaosAccelerationStructureTask::GetStatId()
+	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint, class T, int d>
+	TStatId TPBDRigidsEvolutionBase<FPBDRigidsEvolution, FPBDCollisionConstraint, T, d>::FChaosAccelerationStructureTask::GetStatId()
 	{
 		RETURN_QUICK_DECLARE_CYCLE_STAT(FChaosAccelerationStructureTask, STATGROUP_Chaos);
 	}
 
-	template <typename Traits>
-	ENamedThreads::Type TPBDRigidsEvolutionBase<Traits>::FChaosAccelerationStructureTask::GetDesiredThread()
+	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint, class T, int d>
+	ENamedThreads::Type TPBDRigidsEvolutionBase<FPBDRigidsEvolution, FPBDCollisionConstraint, T, d>::FChaosAccelerationStructureTask::GetDesiredThread()
 	{
 		return ENamedThreads::AnyBackgroundThreadNormalTask;
 	}
 
-	template <typename Traits>
-	ESubsequentsMode::Type TPBDRigidsEvolutionBase<Traits>::FChaosAccelerationStructureTask::GetSubsequentsMode()
+	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint, class T, int d>
+	ESubsequentsMode::Type TPBDRigidsEvolutionBase<FPBDRigidsEvolution, FPBDCollisionConstraint, T, d>::FChaosAccelerationStructureTask::GetSubsequentsMode()
 	{
 		return ESubsequentsMode::TrackSubsequents;
 	}
 
-	TUniquePtr<ISpatialAccelerationCollection<TAccelerationStructureHandle<FReal, 3>, FReal, 3>> CreateNewSpatialStructureFromSubStructure(TUniquePtr<ISpatialAcceleration<TAccelerationStructureHandle<FReal, 3>, FReal, 3>>&& Substructure)
+	template<typename T, int d>
+	TUniquePtr<ISpatialAccelerationCollection<TAccelerationStructureHandle<T, d>, T, d>> CreateNewSpatialStructureFromSubStructure(TUniquePtr<ISpatialAcceleration<TAccelerationStructureHandle<T,d>, T,d>>&& Substructure)
 	{
-		using BVType = TBoundingVolume<TAccelerationStructureHandle<FReal, 3>, FReal, 3>;
-		using AABBType = TAABBTree<TAccelerationStructureHandle<FReal, 3>, TAABBTreeLeafArray<TAccelerationStructureHandle<FReal, 3>, FReal>, FReal>;
-
+		using BVType = TBoundingVolume<TAccelerationStructureHandle<T, d>, T, d>;
+		using AABBType = TAABBTree<TAccelerationStructureHandle<T, d>, TAABBTreeLeafArray<TAccelerationStructureHandle<T, d>, T>, T>;
+		
 		if (Substructure->template As<BVType>())
 		{
-			auto Collection = MakeUnique<TSpatialAccelerationCollection<BVType>>();
+			TArray<TSpatialAccelerationParams<TArray<TAccelerationStructureBuilder<T,d>>, TAccelerationStructureHandle<T, d>, T, d>> Buckets = { {BVType::StaticType } };
+			auto Collection = MakeUnique<TSpatialAccelerationCollection<TArray<TAccelerationStructureBuilder<T, d>>, BVType>>(MoveTemp(Buckets));
 			Collection->AddSubstructure(MoveTemp(Substructure), 0);
 			return Collection;
 		}
 		else if (Substructure->template As<AABBType>())
 		{
-			auto Collection = MakeUnique<TSpatialAccelerationCollection<AABBType>>();
+			TArray<TSpatialAccelerationParams<TArray<TAccelerationStructureBuilder<T,d>>, TAccelerationStructureHandle<T, d>, T, d>> Buckets = { {AABBType::StaticType } };
+			auto Collection = MakeUnique<TSpatialAccelerationCollection<TArray<TAccelerationStructureBuilder<T, d>>, AABBType>>(MoveTemp(Buckets));
 			Collection->AddSubstructure(MoveTemp(Substructure), 0);
 			return Collection;
 		}
 		else
 		{
-			using AccelType = TAABBTree<TAccelerationStructureHandle<FReal, 3>, TBoundingVolume<TAccelerationStructureHandle<FReal, 3>, FReal, 3>, FReal>;
-			auto Collection = MakeUnique<TSpatialAccelerationCollection<AccelType>>();
+			using AccelType = TAABBTree<TAccelerationStructureHandle<T, d>, TBoundingVolume<TAccelerationStructureHandle<T, d>, T, d>, T>;
+			TArray<TSpatialAccelerationParams<TArray<TAccelerationStructureBuilder<T,d>>, TAccelerationStructureHandle<T, d>, T, d>> Buckets = { {AccelType::StaticType } };
+			auto Collection = MakeUnique<TSpatialAccelerationCollection<TArray<TAccelerationStructureBuilder<T, d>>, AccelType>>(MoveTemp(Buckets));
 			Collection->AddSubstructure(MoveTemp(Substructure), 0);
 			return Collection;
 		}
 	}
 
-	template <typename Traits>
-	void TPBDRigidsEvolutionBase<Traits>::FChaosAccelerationStructureTask::UpdateStructure(FAccelerationStructure* AccelerationStructure)
+	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidsEvolutionBase<FPBDRigidsEvolution, FPBDCollisionConstraint, T, d>::FChaosAccelerationStructureTask::DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
 	{
-		LLM_SCOPE(ELLMTag::ChaosAcceleration);
-
-		uint8 ActiveBucketsMask = SpatialCollectionFactory.GetActiveBucketsMask();
-		TArray<TSOAView<FSpatialAccelerationCache>> ViewsPerBucket[8];
-		TArray<uint8> TimeSlicedBucketsToCreate;
-		TArray<uint8> NonTimeSlicedBucketsToCreate;
-
-		bool IsTimeSlicingProgressing = false;
-
-		//merge buckets. todo: support multiple entries per bucket (i.e. dynamic vs static)
-		for(const auto& Itr : SpatialAccelerationCache)
+		//todo: no reason to do this in serial
+		for (const FAccelerationStructBuilderCache& Cache : BuilderCacheMap)
 		{
-			const FSpatialAccelerationIdx SpatialIdx = Itr.Key;
-			const FSpatialAccelerationCache& Cache = *Itr.Value;
-			const uint8 BucketIdx = (1 << SpatialIdx.Bucket) & ActiveBucketsMask ? SpatialIdx.Bucket : 0;
-			if(AccelerationStructure->GetSubstructure(SpatialIdx) && !AccelerationStructure->GetSubstructure(SpatialIdx)->IsAsyncTimeSlicingComplete())
+			auto OldStruct = AccelerationStructure->RemoveSubstructure(Cache.SpatialIdx);
+			//This is a hack, need to have a Reinitialize API instead of downcasting
+			using BVType = TBoundingVolume<TAccelerationStructureHandle<T, d>, T, d>;
+			using AABBType = TAABBTree<TAccelerationStructureHandle<T, d>, TAABBTreeLeafArray<TAccelerationStructureHandle<T, d>, T>, T>;
+			ISpatialAcceleration<TAccelerationStructureHandle<T,d>,T,d>* NewStruct;
+			if (OldStruct->template As<BVType>())
 			{
-				SCOPE_CYCLE_COUNTER(STAT_AccelerationStructureTimeSlice);
-
-				AccelerationStructure->GetSubstructure(SpatialIdx)->ProgressAsyncTimeSlicing(IsForceFullBuild);
-
-				// is it still progressing or now complete
-				if(!AccelerationStructure->GetSubstructure(SpatialIdx)->IsAsyncTimeSlicingComplete())
-				{
-					IsTimeSlicingProgressing = true;
-				}
+				NewStruct = new BVType(*Cache.CachedSpatialBuilderData);
+			}
+			else if (OldStruct->template As<AABBType>())
+			{
+				NewStruct = new AABBType(*Cache.CachedSpatialBuilderData);
 			}
 			else
 			{
-				ViewsPerBucket[BucketIdx].Add(const_cast<FSpatialAccelerationCache*>(&Cache));
-				if(AccelerationStructure->IsBucketActive(SpatialIdx.Bucket))
-				{
-					AccelerationStructure->RemoveSubstructure(SpatialIdx);
-				}
-
-				if(SpatialCollectionFactory.IsBucketTimeSliced(BucketIdx))
-				{
-					TimeSlicedBucketsToCreate.Add(SpatialIdx.Bucket);
-				} else
-				{
-					NonTimeSlicedBucketsToCreate.Add(SpatialIdx.Bucket);
-				}
+				using AccelType = TAABBTree<TAccelerationStructureHandle<T, d>, TBoundingVolume<TAccelerationStructureHandle<T, d>, T, d>, T>;
+				NewStruct = new AccelType(*Cache.CachedSpatialBuilderData);
 			}
+
+			AccelerationStructure->AddSubstructure(TUniquePtr<ISpatialAcceleration<TAccelerationStructureHandle<T, d>, T,d>>(NewStruct), Cache.SpatialIdx.Bucket); //this assumes bucket size is 1, which will not be true in future. Need to fix all this
 		}
-
-		//todo: creation can go wide, insertion to collection cannot
-		for(uint8 BucketIdx : TimeSlicedBucketsToCreate)
-		{
-			if(ViewsPerBucket[BucketIdx].Num())
-			{
-				SCOPE_CYCLE_COUNTER(STAT_CreateInitialAccelerationStructure);
-
-				auto ParticleView = MakeConstParticleView(MoveTemp(ViewsPerBucket[BucketIdx]));
-				auto NewStruct = SpatialCollectionFactory.CreateAccelerationPerBucket_Threaded(ParticleView,BucketIdx,IsForceFullBuild);
-
-				//If new structure is not done mark time slicing in progress
-				IsTimeSlicingProgressing |= !NewStruct->IsAsyncTimeSlicingComplete();
-
-				AccelerationStructure->AddSubstructure(MoveTemp(NewStruct),BucketIdx);
-
-			}
-		}
-
-		AccelerationStructure->SetAllAsyncTasksComplete(!IsTimeSlicingProgressing);
-
-		// If it's not progressing then it is finished so we can perform the final copy if required
-		if(!IsTimeSlicingProgressing)
-		{
-			//todo: creation can go wide, insertion to collection cannot
-			for(uint8 BucketIdx : NonTimeSlicedBucketsToCreate)
-			{
-				if(ViewsPerBucket[BucketIdx].Num())
-				{
-					SCOPE_CYCLE_COUNTER(STAT_CreateNonSlicedStructures);
-
-					auto ParticleView = MakeConstParticleView(MoveTemp(ViewsPerBucket[BucketIdx]));
-					auto NewStruct = SpatialCollectionFactory.CreateAccelerationPerBucket_Threaded(ParticleView,BucketIdx,IsForceFullBuild);
-
-					AccelerationStructure->AddSubstructure(MoveTemp(NewStruct),BucketIdx);
-
-				}
-			}
-		}
+		AccelerationStructureCopy = AsUniqueSpatialAccelerationChecked<FAccelerationStructure>(AccelerationStructure->Copy());
 	}
 
-	template <typename Traits>
-	void TPBDRigidsEvolutionBase<Traits>::FChaosAccelerationStructureTask::DoTask(ENamedThreads::Type CurrentThread, const FGraphEventRef& MyCompletionGraphEvent)
+	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidsEvolutionBase<FPBDRigidsEvolution, FPBDCollisionConstraint, T, d>::ApplyParticlePendingData(TGeometryParticleHandle<T, d>* Particle, const FPendingSpatialData& SpatialData, FAccelerationStructure& AccelerationStructure, bool bAsync)
 	{
-		LLM_SCOPE(ELLMTag::ChaosAcceleration);
+		//Note: we collapsed several update delete events into one struct. If memory is reused this can lead to problems
+		//Luckily there are only 3 states we care about:
+		//While pending we updated an object several times, this collapses into one update
+		//While pending we may have updated an object, we may have also created and destroyed the object, but the final event is a delete, so just remove from acceleration structure
+		//While pending we destroyed, recreated using the same memory address, and then did an update. In this case we should remove first and then update as global bounds may have changed
+		//As long as we delete first and update second this will be respected
 
-		//Rebuild both structures. TODO: probably faster to time slice the copy instead of doing two time sliced builds
-		UpdateStructure(InternalStructure.Get());
-		UpdateStructure(ExternalStructure.Get());
-	}
-
-	template <typename Traits>
-	void TPBDRigidsEvolutionBase<Traits>::ApplyParticlePendingData(const FPendingSpatialData& SpatialData, FAccelerationStructure& AccelerationStructure, bool bUpdateCache)
-	{
 		if (SpatialData.bDelete)
 		{
-			AccelerationStructure.RemoveElementFrom(SpatialData.AccelerationHandle, SpatialData.SpatialIdx);
+			AccelerationStructure.RemoveElementFrom(SpatialData.AccelerationHandle, SpatialData.DeletedSpatialIdx);
 
-			if (bUpdateCache)
+			if (bAsync)
 			{
-				if (uint32* InnerIdxPtr = ParticleToCacheInnerIdx.Find(SpatialData.UniqueIdx()))
+				if (int32* CacheIdxPtr = ParticleToCacheIdx.Find(Particle))
 				{
-					FSpatialAccelerationCache& Cache = *SpatialAccelerationCache.FindChecked(SpatialData.SpatialIdx);	//can't delete from cache that doesn't exist
-					const uint32 CacheInnerIdx = *InnerIdxPtr;
-					if (CacheInnerIdx + 1 < Cache.Size())	//will get swapped with last element, so update it
+					const auto SpatialIdx = SpatialData.DeletedSpatialIdx;
+					auto MapFound = CachedSpatialBuilderDataMap.FindByPredicate([SpatialIdx](const auto& Cache) { return Cache.SpatialIdx == SpatialIdx; });
+					TArray<TAccelerationStructureBuilder<T,d>>& CachedSpatialBuilderData = *(MapFound ? MapFound->CachedSpatialBuilderData : CachedSpatialBuilderDataMap.Last().CachedSpatialBuilderData);
+					const int32 CacheIdx = *CacheIdxPtr;
+					if (CacheIdx + 1 < CachedSpatialBuilderData.Num())	//will get swapped with last element, so update it
 					{
-						const FUniqueIdx LastParticleInCacheUniqueIdx = Cache.Payload(Cache.Size() - 1).UniqueIdx();
-						ParticleToCacheInnerIdx.FindChecked(LastParticleInCacheUniqueIdx) = CacheInnerIdx;
+						//in cached bounds so must be in mapping, update mapping to new position
+						int32& PrevIdx = ParticleToCacheIdx.FindChecked(CachedSpatialBuilderData.Last().CachedSpatialPayload.GetGeometryParticleHandle_PhysicsThread());
+						PrevIdx = CacheIdx;
 					}
 
-					Cache.DestroyElement(CacheInnerIdx);
-					ParticleToCacheInnerIdx.Remove(SpatialData.UniqueIdx());
+					CachedSpatialBuilderData.RemoveAtSwap(CacheIdx);
+					ParticleToCacheIdx.Remove(Particle);
 				}
 			}
 		}
-		else
+
+		if(SpatialData.bUpdate)
 		{
-			TGeometryParticleHandle<FReal, 3>* UpdateParticle = SpatialData.AccelerationHandle.GetGeometryParticleHandle_PhysicsThread();
-
-			AccelerationStructure.UpdateElementIn(UpdateParticle, UpdateParticle->WorldSpaceInflatedBounds(), UpdateParticle->HasBounds(), SpatialData.SpatialIdx);
-
-			if (bUpdateCache)
+			AccelerationStructure.UpdateElementIn(Particle, Particle->WorldSpaceInflatedBounds(), Particle->HasBounds(), SpatialData.UpdatedSpatialIdx);
+			
+			if (bAsync)
 			{
-				TUniquePtr<FSpatialAccelerationCache>* CachePtrPtr = SpatialAccelerationCache.Find(SpatialData.SpatialIdx);
-				if (CachePtrPtr == nullptr)
-				{
-					CachePtrPtr = &SpatialAccelerationCache.Add(SpatialData.SpatialIdx, TUniquePtr<FSpatialAccelerationCache>(new FSpatialAccelerationCache));
-				}
-
-				FSpatialAccelerationCache& Cache = **CachePtrPtr;
+				const auto SpatialIdx = SpatialData.UpdatedSpatialIdx;
+				auto MapFound = CachedSpatialBuilderDataMap.FindByPredicate([SpatialIdx](const auto& Cache) { return Cache.SpatialIdx == SpatialIdx; });
+				TArray<TAccelerationStructureBuilder<T,d>>& CachedSpatialBuilderData = *(MapFound ? MapFound->CachedSpatialBuilderData : CachedSpatialBuilderDataMap.Last().CachedSpatialBuilderData);
 
 				//make sure in mapping
-				uint32 CacheInnerIdx;
-				if (uint32* CacheInnerIdxPtr = ParticleToCacheInnerIdx.Find(SpatialData.UniqueIdx()))
+				int32 CacheIdx;
+				if (int32* CacheIdxPtr = ParticleToCacheIdx.Find(Particle))
 				{
-					CacheInnerIdx = *CacheInnerIdxPtr;
+					CacheIdx = *CacheIdxPtr;
 				}
 				else
 				{
-					CacheInnerIdx = Cache.Size();
-					Cache.AddElements(1);
-					ParticleToCacheInnerIdx.Add(SpatialData.UniqueIdx(), CacheInnerIdx);
+					CacheIdx = CachedSpatialBuilderData.Num();
+					ParticleToCacheIdx.Add(Particle, CacheIdx);
+					CachedSpatialBuilderData.AddUninitialized();
 				}
 
-				//update cache entry
-				Cache.HasBounds(CacheInnerIdx) = UpdateParticle->HasBounds();
-				Cache.Bounds(CacheInnerIdx) = UpdateParticle->WorldSpaceInflatedBounds();
-				Cache.Payload(CacheInnerIdx) = SpatialData.AccelerationHandle;
+				//update cache itself
+				CachedSpatialBuilderData[CacheIdx] = TAccelerationStructureBuilder<T,d>{ Particle->HasBounds(), Particle->WorldSpaceInflatedBounds(), SpatialData.AccelerationHandle };
 			}
 		}
 	}
 
-	template <typename Traits>
-	void TPBDRigidsEvolutionBase<Traits>::FlushInternalAccelerationQueue()
+	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidsEvolutionBase<FPBDRigidsEvolution, FPBDCollisionConstraint, T, d>::FlushInternalAccelerationQueue()
 	{
-		for (const FPendingSpatialData& PendingData : InternalAccelerationQueue.PendingData)
+		for (auto Itr : InternalAccelerationQueue)
 		{
-			ApplyParticlePendingData(PendingData, *InternalAcceleration, false);
+			ApplyParticlePendingData(Itr.Key, Itr.Value, *InternalAcceleration, false);
 		}
-		InternalAcceleration->SetSyncTimestamp(LatestExternalTimestampConsumed);
-		InternalAccelerationQueue.Reset();
+		InternalAccelerationQueue.Empty();
 	}
 
-	template <typename Traits>
-	void TPBDRigidsEvolutionBase<Traits>::FlushAsyncAccelerationQueue()
+	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidsEvolutionBase<FPBDRigidsEvolution, FPBDCollisionConstraint, T, d>::FlushAsyncAccelerationQueue()
 	{
-		for (const FPendingSpatialData& PendingData : AsyncAccelerationQueue.PendingData)
+		for (auto Itr : AsyncAccelerationQueue)
 		{
-			ApplyParticlePendingData(PendingData, *AsyncInternalAcceleration, true); //only the first queue needs to update the cached acceleration
-			ApplyParticlePendingData(PendingData, *AsyncExternalAcceleration, false);
+			ApplyParticlePendingData(Itr.Key, Itr.Value, *AsyncInternalAcceleration, true);
+			ApplyParticlePendingData(Itr.Key, Itr.Value, *AsyncExternalAcceleration, true);
 		}
-
-		//NOTE: This assumes that we are never creating a PT particle that is replicated to GT
-		//At the moment that is true, and it seems like we have enough mechanisms to avoid this direction
-		//If we want to support that, the UniqueIndex must be kept around until GT goes away
-		//This is hard to do, but would probably mean the ownership of the index is in the proxy
-		for (FUniqueIdx UniqueIdx : UniqueIndicesPendingRelease)
-		{
-			Particles.GetUniqueIndices().ReleaseIdx(UniqueIdx);
-		}
-		UniqueIndicesPendingRelease.Reset();
-		AsyncAccelerationQueue.Reset();
+		AsyncAccelerationQueue.Empty();
 
 		//other queues are no longer needed since we've flushed all operations and now have a pristine structure
-		InternalAccelerationQueue.Reset();
-
-		AsyncInternalAcceleration->SetSyncTimestamp(LatestExternalTimestampConsumed);
-		AsyncExternalAcceleration->SetSyncTimestamp(LatestExternalTimestampConsumed);
+		InternalAccelerationQueue.Empty();
+		ExternalAccelerationQueue.Empty();
 	}
 
-	//TODO: make static and _External suffix
-	template <typename Traits>
-	void TPBDRigidsEvolutionBase<Traits>::FlushExternalAccelerationQueue(FAccelerationStructure& Acceleration, FPendingSpatialDataQueue& ExternalQueue)
+	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidsEvolutionBase<FPBDRigidsEvolution, FPBDCollisionConstraint, T, d>::FlushExternalAccelerationQueue(FAccelerationStructure& Acceleration)
 	{
-		//update structure with any pending operations. Note that we must keep those operations around in case next structure still hasn't consumed them (async mode)
-		const int32 SyncTimestamp = Acceleration.GetSyncTimestamp();
-		for (int32 Idx = ExternalQueue.PendingData.Num() - 1; Idx >=0; --Idx)
+		for (auto Itr : ExternalAccelerationQueue)
 		{
-			const FPendingSpatialData& SpatialData = ExternalQueue.PendingData[Idx];
-			if(SpatialData.SyncTimestamp > SyncTimestamp)
-			{
-				//operation still pending so update structure
-				//note: do we care about roll over? if game ticks at 60fps we'd get 385+ days
-				if(SpatialData.bDelete)
-				{
-					Acceleration.RemoveElementFrom(SpatialData.AccelerationHandle,SpatialData.SpatialIdx);
-				}
-				else
-				{
-					TGeometryParticle<FReal,3>* UpdateParticle = SpatialData.AccelerationHandle.GetExternalGeometryParticle_ExternalThread();
-					TAABB<FReal,3> WorldBounds;
-					const bool bHasBounds = UpdateParticle->Geometry() && UpdateParticle->Geometry()->HasBoundingBox();
-					if(bHasBounds)
-					{
-						TRigidTransform<FReal,3> WorldTM(UpdateParticle->X(),UpdateParticle->R());
-						WorldBounds = UpdateParticle->Geometry()->BoundingBox().TransformedAABB(WorldTM);
-					}
-					Acceleration.UpdateElementIn(UpdateParticle,WorldBounds,bHasBounds,SpatialData.SpatialIdx);
-				}
-			}
-			else
-			{
-				//operation was already considered by sim, so remove it
-				//going in reverse order so PendingData will stay valid
-				ExternalQueue.Remove(SpatialData.UniqueIdx());
-			}
+			ApplyParticlePendingData(Itr.Key, Itr.Value, Acceleration, false);
 		}
+		ExternalAccelerationQueue.Empty();
 	}
 
-	template <typename Traits>
-	void TPBDRigidsEvolutionBase<Traits>::WaitOnAccelerationStructure()
+	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidsEvolutionBase<FPBDRigidsEvolution, FPBDCollisionConstraint, T, d>::WaitOnAccelerationStructure()
 	{
 		if (AccelerationStructureTaskComplete.GetReference())
 		{
@@ -522,25 +339,23 @@ namespace Chaos
 		}
 	}
 
-	template <typename Traits>
-	void TPBDRigidsEvolutionBase<Traits>::ComputeIntermediateSpatialAcceleration(bool bBlock)
+	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidsEvolutionBase<FPBDRigidsEvolution, FPBDCollisionConstraint, T, d>::ComputeIntermediateSpatialAcceleration(bool bBlock)
 	{
-		LLM_SCOPE(ELLMTag::ChaosAcceleration);
 		SCOPE_CYCLE_COUNTER(STAT_ComputeIntermediateSpatialAcceleration);
 		CHAOS_SCOPED_TIMER(ComputeIntermediateSpatialAcceleration);
-
-		bool ForceFullBuild = InternalAccelerationQueue.Num() > 1000;
-
 		if (!AccelerationStructureTaskComplete)
 		{
 			//initial frame so make empty structures
 
 			InternalAcceleration = TUniquePtr<FAccelerationStructure>(SpatialCollectionFactory->CreateEmptyCollection());
-			AsyncInternalAcceleration = TUniquePtr<FAccelerationStructure>(SpatialCollectionFactory->CreateEmptyCollection());
 			ScratchExternalAcceleration = TUniquePtr<FAccelerationStructure>(SpatialCollectionFactory->CreateEmptyCollection());
+			AsyncInternalAcceleration = TUniquePtr<FAccelerationStructure>(SpatialCollectionFactory->CreateEmptyCollection());
 			AsyncExternalAcceleration = TUniquePtr<FAccelerationStructure>(SpatialCollectionFactory->CreateEmptyCollection());
 			FlushInternalAccelerationQueue();
+			FlushExternalAccelerationQueue(*ScratchExternalAcceleration);
 			bExternalReady = true;
+			InitializeAccelerationCache();
 		}
 
 		if (bBlock)
@@ -548,17 +363,10 @@ namespace Chaos
 			WaitOnAccelerationStructure();
 		}
 
-		bool AsyncComplete = !AccelerationStructureTaskComplete || AccelerationStructureTaskComplete->IsComplete();
-
-		if (AsyncComplete)
+		if (!AccelerationStructureTaskComplete || AccelerationStructureTaskComplete->IsComplete())
 		{
-			// only copy when the acceleration structures have completed time-slicing
-			if (AccelerationStructureTaskComplete && AsyncInternalAcceleration->IsAllAsyncTasksComplete())
+			if (AccelerationStructureTaskComplete)
 			{
-				SCOPE_CYCLE_COUNTER(STAT_SwapAccelerationStructures);
-
-				check(AsyncInternalAcceleration->IsAllAsyncTasksComplete());
-
 				FlushAsyncAccelerationQueue();
 
 				//swap acceleration structure for new one
@@ -566,14 +374,8 @@ namespace Chaos
 				std::swap(ScratchExternalAcceleration, AsyncExternalAcceleration);
 				bExternalReady = true;
 			}
-			else
-			{
-				FlushInternalAccelerationQueue();
-			}
-			
-			// we run the task for both starting a new accel structure as well as for the time-slicing
-			AccelerationStructureTaskComplete = TGraphTask<FChaosAccelerationStructureTask>::CreateTask().ConstructAndDispatchWhenReady(*SpatialCollectionFactory, SpatialAccelerationCache, AsyncInternalAcceleration, AsyncExternalAcceleration, ForceFullBuild, bIsSingleThreaded);
 
+			AccelerationStructureTaskComplete = TGraphTask<FChaosAccelerationStructureTask>::CreateTask().ConstructAndDispatchWhenReady(CachedSpatialBuilderDataMap, AsyncInternalAcceleration, AsyncExternalAcceleration);
 		}
 		else
 		{
@@ -581,32 +383,36 @@ namespace Chaos
 		}
 	}
 
-	template <typename Traits>
-	void TPBDRigidsEvolutionBase<Traits>::UpdateExternalAccelerationStructure_External(
-		TUniquePtr<ISpatialAccelerationCollection<TAccelerationStructureHandle<FReal, 3>, FReal, 3>>& StructToUpdate, FPendingSpatialDataQueue& PendingExternal)
+	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidsEvolutionBase<FPBDRigidsEvolution, FPBDCollisionConstraint, T, d>::InitializeAccelerationCache()
+	{
+		WaitOnAccelerationStructure();
+		CachedSpatialBuilderDataMap.Empty();
+		const auto SpatialIndices = InternalAcceleration->GetAllSpatialIndices();
+		for (const auto& Idx : SpatialIndices)
+		{
+			CachedSpatialBuilderDataMap.Add(Idx);
+		}
+	}
+
+	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidsEvolutionBase<FPBDRigidsEvolution, FPBDCollisionConstraint, T, d>::UpdateExternalAccelerationStructure(TUniquePtr<ISpatialAccelerationCollection<TAccelerationStructureHandle<T, d>, T, d>>& StructToUpdate)
 	{
 		DECLARE_SCOPE_CYCLE_COUNTER(TEXT("CreateExternalAccelerationStructure"), STAT_CreateExternalAccelerationStructure, STATGROUP_Physics);
-		LLM_SCOPE(ELLMTag::ChaosAcceleration);
-
 		if (bExternalReady)
 		{
 			std::swap(StructToUpdate, ScratchExternalAcceleration);
-			if(ScratchExternalAcceleration == nullptr)
-			{
-				//first time we swap from external we get null, so make sure it's properly initialized
-				ScratchExternalAcceleration = TUniquePtr<FAccelerationStructure>(SpatialCollectionFactory->CreateEmptyCollection());
-			}
 		}
 		bExternalReady = false;
 
 		if (ensure(StructToUpdate))
 		{
-			FlushExternalAccelerationQueue(*StructToUpdate, PendingExternal);
+			FlushExternalAccelerationQueue(*StructToUpdate);
 		}
 	}
 
-	template <typename Traits>
-	void TPBDRigidsEvolutionBase<Traits>::FlushSpatialAcceleration()
+	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidsEvolutionBase<FPBDRigidsEvolution, FPBDCollisionConstraint, T, d>::FlushSpatialAcceleration()
 	{
 		//force build acceleration structure with latest data
 		ComputeIntermediateSpatialAcceleration(true);
@@ -614,55 +420,18 @@ namespace Chaos
 		ComputeIntermediateSpatialAcceleration(true);
 	}
 
-	template <typename Traits>
-	void TPBDRigidsEvolutionBase<Traits>::RebuildSpatialAccelerationForPerfTest()
+	template<class FPBDRigidsEvolution, class FPBDCollisionConstraint, class T, int d>
+	void TPBDRigidsEvolutionBase<FPBDRigidsEvolution, FPBDCollisionConstraint, T, d>::Serialize(FChaosArchive& Ar)
 	{
-		WaitOnAccelerationStructure();
-
-		ParticleToCacheInnerIdx.Reset();
-		AsyncAccelerationQueue.Reset();
-		InternalAccelerationQueue.Reset();
-
-		AccelerationStructureTaskComplete = nullptr;
-		const auto& NonDisabled = Particles.GetNonDisabledView();
-		for (auto& Particle : NonDisabled)
-		{
-			DirtyParticle(Particle);
-		}
-
-		FlushSpatialAcceleration();
-	}
-
-	template <typename Traits>
-	void TPBDRigidsEvolutionBase<Traits>::Serialize(FChaosArchive& Ar)
-	{
-		ensure(false);	//disabled transient data serialization. Need to rethink
-		int32 DefaultBroadphaseType = ConfigSettings.BroadphaseType;
-
-		Ar.UsingCustomVersion(FExternalPhysicsCustomObjectVersion::GUID);
-		if (Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) >= FExternalPhysicsCustomObjectVersion::SerializeBroadphaseType)
-		{
-			Ar << ConfigSettings.BroadphaseType;
-		}
-		else
-		{
-			//older archives just assume type 3
-			ConfigSettings.BroadphaseType = 3;
-		}
-
 		Particles.Serialize(Ar);
 
+		Ar.UsingCustomVersion(FExternalPhysicsCustomObjectVersion::GUID);
 		if (Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) >= FExternalPhysicsCustomObjectVersion::SerializeEvolutionBV)
 		{
-			if (Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) >= FExternalPhysicsCustomObjectVersion::FlushEvolutionInternalAccelerationQueue)
-			{
-				FlushInternalAccelerationQueue();
-			}
-
 			if (Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) < FExternalPhysicsCustomObjectVersion::SerializeMultiStructures)
 			{
 				//old path assumes single sub-structure
-				TUniquePtr<ISpatialAcceleration<TAccelerationStructureHandle<FReal, 3>, FReal, 3>> SubStructure;
+				TUniquePtr<ISpatialAcceleration<TAccelerationStructureHandle<T, d>, T, d>> SubStructure;
 				if (!Ar.IsLoading())
 				{
 					SubStructure = InternalAcceleration->RemoveSubstructure(FSpatialAccelerationIdx{ 0,0 });
@@ -673,6 +442,7 @@ namespace Chaos
 				{
 					Ar << SubStructure;
 					InternalAcceleration = CreateNewSpatialStructureFromSubStructure(MoveTemp(SubStructure));
+					InitializeAccelerationCache();
 				}
 			}
 			else
@@ -680,12 +450,9 @@ namespace Chaos
 				SpatialCollectionFactory->Serialize(InternalAcceleration, Ar);
 			}
 
-			/*if (Ar.CustomVer(FExternalPhysicsCustomObjectVersion::GUID) < FExternalPhysicsCustomObjectVersion::FlushEvolutionInternalAccelerationQueue)
-			{
-				SerializePendingMap(Ar, InternalAccelerationQueue);
-				SerializePendingMap(Ar, AsyncAccelerationQueue);
-				SerializePendingMap(Ar, ExternalAccelerationQueue);
-			}*/
+			SerializePendingMap(Ar, InternalAccelerationQueue);
+			SerializePendingMap(Ar, AsyncAccelerationQueue);
+			SerializePendingMap(Ar, ExternalAccelerationQueue);
 
 			ScratchExternalAcceleration = AsUniqueSpatialAccelerationChecked<FAccelerationStructure>(InternalAcceleration->Copy());
 		}
@@ -700,11 +467,11 @@ namespace Chaos
 
 			FlushSpatialAcceleration();
 		}
-
-		ConfigSettings.BroadphaseType = DefaultBroadphaseType;
 	}
-
-#define EVOLUTION_TRAIT(Trait) template class TPBDRigidsEvolutionBase<Trait>;
-#include "Chaos/EvolutionTraits.inl"
-#undef EVOLUTION_TRAIT
 }
+
+#ifdef __clang__
+template class CHAOS_API Chaos::TPBDRigidsEvolutionBase<Chaos::TPBDRigidsEvolutionGBF<float, 3>, Chaos::TPBDCollisionConstraint<float,3>, float, 3>;
+#else
+template class Chaos::TPBDRigidsEvolutionBase<Chaos::TPBDRigidsEvolutionGBF<float, 3>, Chaos::TPBDCollisionConstraint<float,3>, float, 3>;
+#endif

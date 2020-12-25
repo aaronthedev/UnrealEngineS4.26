@@ -1,9 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Kismet/BlueprintSetLibrary.h"
 #include "Kismet/KismetArrayLibrary.h"
 
-void UBlueprintSetLibrary::GenericSet_Add(const void* TargetSet, const FSetProperty* SetProperty, const void* ItemPtr)
+void UBlueprintSetLibrary::GenericSet_Add(const void* TargetSet, const USetProperty* SetProperty, const void* ItemPtr)
 {
 	if (TargetSet)
 	{
@@ -12,7 +12,7 @@ void UBlueprintSetLibrary::GenericSet_Add(const void* TargetSet, const FSetPrope
 	}
 }
 
-void UBlueprintSetLibrary::GenericSet_AddItems(const void* TargetSet, const FSetProperty* SetProperty, const void* TargetArray, const FArrayProperty* ArrayProperty)
+void UBlueprintSetLibrary::GenericSet_AddItems(const void* TargetSet, const USetProperty* SetProperty, const void* TargetArray, const UArrayProperty* ArrayProperty)
 {
 	if(TargetSet && TargetArray)
 	{
@@ -26,7 +26,7 @@ void UBlueprintSetLibrary::GenericSet_AddItems(const void* TargetSet, const FSet
 	}
 }
 
-bool UBlueprintSetLibrary::GenericSet_Remove(const void* TargetSet, const FSetProperty* SetProperty, const void* ItemPtr)
+bool UBlueprintSetLibrary::GenericSet_Remove(const void* TargetSet, const USetProperty* SetProperty, const void* ItemPtr)
 {
 	if (TargetSet)
 	{
@@ -36,7 +36,7 @@ bool UBlueprintSetLibrary::GenericSet_Remove(const void* TargetSet, const FSetPr
 	return false;
 }
 
-void UBlueprintSetLibrary::GenericSet_RemoveItems(const void* TargetSet, const FSetProperty* SetProperty, const void* TargetArray, const FArrayProperty* ArrayProperty)
+void UBlueprintSetLibrary::GenericSet_RemoveItems(const void* TargetSet, const USetProperty* SetProperty, const void* TargetArray, const UArrayProperty* ArrayProperty)
 {
 	if (TargetSet && TargetArray)
 	{
@@ -50,7 +50,7 @@ void UBlueprintSetLibrary::GenericSet_RemoveItems(const void* TargetSet, const F
 	}
 }
 
-void UBlueprintSetLibrary::GenericSet_ToArray(const void* TargetSet, const FSetProperty* SetProperty, void* TargetArray, const FArrayProperty* ArrayProperty)
+void UBlueprintSetLibrary::GenericSet_ToArray(const void* TargetSet, const USetProperty* SetProperty, void* TargetArray, const UArrayProperty* ArrayProperty)
 {
 	if (TargetSet && TargetArray)
 	{
@@ -68,7 +68,7 @@ void UBlueprintSetLibrary::GenericSet_ToArray(const void* TargetSet, const FSetP
 	}
 }
 
-void UBlueprintSetLibrary::GenericSet_Clear(const void* TargetSet, const FSetProperty* SetProperty)
+void UBlueprintSetLibrary::GenericSet_Clear(const void* TargetSet, const USetProperty* SetProperty)
 {
 	if (TargetSet)
 	{
@@ -77,7 +77,7 @@ void UBlueprintSetLibrary::GenericSet_Clear(const void* TargetSet, const FSetPro
 	}
 }
 
-int32 UBlueprintSetLibrary::GenericSet_Length(const void* TargetSet, const FSetProperty* SetProperty)
+int32 UBlueprintSetLibrary::GenericSet_Length(const void* TargetSet, const USetProperty* SetProperty)
 {
 	if (TargetSet)
 	{
@@ -88,12 +88,12 @@ int32 UBlueprintSetLibrary::GenericSet_Length(const void* TargetSet, const FSetP
 	return 0;
 }
 
-bool UBlueprintSetLibrary::GenericSet_Contains(const void* TargetSet, const FSetProperty* SetProperty, const void* ItemToFind)
+bool UBlueprintSetLibrary::GenericSet_Contains(const void* TargetSet, const USetProperty* SetProperty, const void* ItemToFind)
 {
 	if (TargetSet)
 	{
 		FScriptSetHelper SetHelper(SetProperty, TargetSet);
-		FProperty* ElementProp = SetProperty->ElementProp;
+		UProperty* ElementProp = SetProperty->ElementProp;
 
 		return SetHelper.FindElementIndexFromHash(ItemToFind) != INDEX_NONE;
 	}
@@ -101,7 +101,7 @@ bool UBlueprintSetLibrary::GenericSet_Contains(const void* TargetSet, const FSet
 	return false;
 }
 
-void UBlueprintSetLibrary::GenericSet_Intersect(const void* SetA, const FSetProperty* SetPropertyA, const void* SetB, const FSetProperty* SetPropertyB, const void* SetResult, const FSetProperty* SetPropertyResult)
+void UBlueprintSetLibrary::GenericSet_Intersect(const void* SetA, const USetProperty* SetPropertyA, const void* SetB, const USetProperty* SetPropertyB, const void* SetResult, const USetProperty* SetPropertyResult)
 {
 	if (SetA && SetB && SetResult)
 	{
@@ -127,7 +127,7 @@ void UBlueprintSetLibrary::GenericSet_Intersect(const void* SetA, const FSetProp
 	}
 }
 
-void UBlueprintSetLibrary::GenericSet_Union(const void* SetA, const FSetProperty* SetPropertyA, const void* SetB, const FSetProperty* SetPropertyB, const void* SetResult, const FSetProperty* SetPropertyResult)
+void UBlueprintSetLibrary::GenericSet_Union(const void* SetA, const USetProperty* SetPropertyA, const void* SetB, const USetProperty* SetPropertyB, const void* SetResult, const USetProperty* SetPropertyResult)
 {
 	if (SetA && SetB && SetResult)
 	{
@@ -159,7 +159,7 @@ void UBlueprintSetLibrary::GenericSet_Union(const void* SetA, const FSetProperty
 	}
 }
 
-void UBlueprintSetLibrary::GenericSet_Difference(const void* SetA, const FSetProperty* SetPropertyA, const void* SetB, const FSetProperty* SetPropertyB, const void* SetResult, const FSetProperty* SetPropertyResult)
+void UBlueprintSetLibrary::GenericSet_Difference(const void* SetA, const USetProperty* SetPropertyA, const void* SetB, const USetProperty* SetPropertyB, const void* SetResult, const USetProperty* SetPropertyResult)
 {
 	if (SetA && SetB && SetResult)
 	{
@@ -189,7 +189,7 @@ void UBlueprintSetLibrary::GenericSet_SetSetPropertyByName(UObject* OwnerObject,
 {
 	if (OwnerObject)
 	{
-		if (FSetProperty* SetProp = FindFProperty<FSetProperty>(OwnerObject->GetClass(), SetPropertyName))
+		if (USetProperty* SetProp = FindField<USetProperty>(OwnerObject->GetClass(), SetPropertyName))
 		{
 			void* Dest = SetProp->ContainerPtrToValuePtr<void>(OwnerObject);
 			SetProp->CopyValuesInternal(Dest, SrcSetAddr, 1);

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ShaderPrint.h"
 #include "ShaderPrintParameters.h"
@@ -12,7 +12,6 @@
 #include "SceneRendering.h"
 #include "SystemTextures.h"
 
-IMPLEMENT_TYPE_LAYOUT(ShaderPrint::FShaderParametersLegacy);
 
 namespace ShaderPrint
 {
@@ -154,21 +153,6 @@ namespace ShaderPrint
 	{
 		return IsSupported(View.GetShaderPlatform());
 	}
-
-	void SetEnabled(bool bInEnabled)
-	{
-		CVarEnable->Set(bInEnabled);
-	}
-
-	void SetFontSize(int32 InFontSize)
-	{
-		CVarFontSize->Set(FMath::Clamp(InFontSize, 6, 128));
-	}
-
-	void SetMaxValueCount(int32 InMaxCount)
-	{
-		CVarMaxValueCount->Set(FMath::Max(256, InMaxCount));
-	}	
 
 	bool IsEnabled()
 	{
@@ -332,14 +316,14 @@ namespace ShaderPrint
 
 		// Clear the output buffer internal counter ready for use
 		const ERHIFeatureLevel::Type FeatureLevel = View.GetFeatureLevel();
-		FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
+		TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 
 		TShaderMapRef< FShaderInitValueBufferCS > ComputeShader(GlobalShaderMap);
 
 		FShaderInitValueBufferCS::FParameters Parameters;
 		Parameters.RWValuesBuffer = View.ShaderPrintValueBuffer.UAV;
 
-		FComputeShaderUtils::Dispatch(RHICmdList, ComputeShader, Parameters, FIntVector(1, 1, 1));
+		FComputeShaderUtils::Dispatch(RHICmdList, *ComputeShader, Parameters, FIntVector(1, 1, 1));
 	}
 
 	void DrawView(FRDGBuilder& GraphBuilder, const FViewInfo& View, FRDGTextureRef OutputTexture)
@@ -347,12 +331,6 @@ namespace ShaderPrint
 		check(OutputTexture);
 
 		RDG_EVENT_SCOPE(GraphBuilder, "ShaderPrintDrawView");
-
-		FRHIUnorderedAccessView* ShaderPrintValueBufferUAV = View.ShaderPrintValueBuffer.UAV;
-		AddPass(GraphBuilder, [ShaderPrintValueBufferUAV](FRHICommandList& RHICmdList)
-		{
-			RHICmdList.Transition(FRHITransitionInfo(ShaderPrintValueBufferUAV, ERHIAccess::UAVMask, ERHIAccess::SRVMask));
-		});
 
 		// Initialize graph managed resources
 		// Symbols buffer contains Count + 1 elements. The first element is only used as a counter.
@@ -362,11 +340,11 @@ namespace ShaderPrint
 
 		// Non graph managed resources
 		FUniformBufferRef UniformBuffer = CreateUniformBuffer(View);
+		FShaderResourceViewRHIRef ValuesBuffer = View.ShaderPrintValueBuffer.SRV;
 		FTextureRHIRef FontTexture = GEngine->MiniFontTexture != nullptr ? GEngine->MiniFontTexture->Resource->TextureRHI : GSystemTextures.BlackDummy->GetRenderTargetItem().ShaderResourceTexture;;
 
-		FShaderResourceViewRHIRef ValuesBuffer = View.ShaderPrintValueBuffer.SRV;
 		const ERHIFeatureLevel::Type FeatureLevel = View.GetFeatureLevel();
-		FGlobalShaderMap* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
+		TShaderMap<FGlobalShaderType>* GlobalShaderMap = GetGlobalShaderMap(FeatureLevel);
 
 		// BuildIndirectDispatchArgs
 		{
@@ -382,7 +360,7 @@ namespace ShaderPrint
 			FComputeShaderUtils::AddPass(
 				GraphBuilder, 
 				RDG_EVENT_NAME("BuildIndirectDispatchArgs"), 
-				ComputeShader, PassParameters,
+				*ComputeShader, PassParameters,
 				FIntVector(1, 1, 1));
 		}
 
@@ -400,7 +378,7 @@ namespace ShaderPrint
 			FComputeShaderUtils::AddPass(
 				GraphBuilder,
 				RDG_EVENT_NAME("BuildSymbolBuffer"),
-				ComputeShader, PassParameters,
+				*ComputeShader, PassParameters,
 				IndirectDispatchArgsBuffer, 0);
 		}
 
@@ -417,7 +395,7 @@ namespace ShaderPrint
 			FComputeShaderUtils::AddPass(
 				GraphBuilder,
 				RDG_EVENT_NAME("BuildIndirectDrawArgs"),
-				ComputeShader, PassParameters,
+				*ComputeShader, PassParameters,
 				FIntVector(1, 1, 1));
 		}
 
@@ -447,12 +425,12 @@ namespace ShaderPrint
 				GraphicsPSOInit.RasterizerState = TStaticRasterizerState<>::GetRHI();
 				GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 				GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GetVertexDeclarationFVector4();
-				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 				SetGraphicsPipelineState(RHICmdListImmediate, GraphicsPSOInit);
 
-				SetShaderParameters(RHICmdListImmediate, VertexShader, VertexShader.GetVertexShader(), *PassParameters);
-				SetShaderParameters(RHICmdListImmediate, PixelShader, PixelShader.GetPixelShader(), *PassParameters);
+				SetShaderParameters(RHICmdListImmediate, *VertexShader, VertexShader->GetVertexShader(), *PassParameters);
+				SetShaderParameters(RHICmdListImmediate, *PixelShader, PixelShader->GetPixelShader(), *PassParameters);
 
 				RHICmdListImmediate.DrawIndexedPrimitiveIndirect(GTwoTrianglesIndexBuffer.IndexBufferRHI, PassParameters->IndirectDrawArgsBuffer->GetIndirectRHICallBuffer(), 0);
 			});

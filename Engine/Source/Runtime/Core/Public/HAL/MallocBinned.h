@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -20,7 +20,7 @@
 #endif
 
 #ifndef USE_OS_SMALL_BLOCK_ALLOC
-#define USE_OS_SMALL_BLOCK_ALLOC PLATFORM_IOS
+#define USE_OS_SMALL_BLOCK_ALLOC 0
 #endif //USE_OS_SMALL_BLOCK_ALLOC
 
 #ifndef USE_OS_SMALL_BLOCK_GRAB_MEMORY_FROM_OS
@@ -106,6 +106,17 @@ DECLARE_LLM_MEMORY_STAT_EXTERN(TEXT("Nano Malloc Pages Waste Current"), STAT_Bin
 DECLARE_LLM_MEMORY_STAT_EXTERN(TEXT("Nano Malloc Pages Waste Peak"),STAT_Binned_NanoMallocPages_WastePeak,STATGROUP_LLMPlatform, CORE_API);
 #endif //USE_OS_SMALL_BLOCK_GRAB_MEMORY_FROM_OS
 
+#if USE_OS_SMALL_BLOCK_GRAB_MEMORY_FROM_OS && ENABLE_LOW_LEVEL_MEM_TRACKER
+enum class ELLMTagNanoMallocGrabber : LLM_TAG_TYPE
+{
+	NanoMallocPagesCurrent = (LLM_TAG_TYPE)ELLMTag::PlatformTagStart, // Use Instruments for detailed breakdown!
+	NanoMallocPagesPeak,
+	NanoMallocPagesWasteCurrent,
+	NanoMallocPagesWastePeak,
+	Count
+};
+#endif //#if USE_OS_SMALL_BLOCK_GRAB_MEMORY_FROM_OS
+
 
 //
 // Optimized virtual memory allocator.
@@ -117,7 +128,7 @@ class FMallocBinned : public FMalloc
 private:
 
 	// Counts.
-	enum { POOL_COUNT = 41 };
+	enum { POOL_COUNT = 42 };
 
 	/** Maximum allocation for the pooled allocator */
 	enum { EXTENDED_PAGE_POOL_ALLOCATION_COUNT = 2 };

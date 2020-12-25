@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "CoreMinimal.h"
@@ -26,7 +26,6 @@
 #include "SnappingUtils.h"
 #include "Logging/MessageLog.h"
 #include "ActorGroupingUtils.h"
-#include "Subsystems/BrushEditingSubsystem.h"
 
 #define LOCTEXT_NAMESPACE "EditorSelectUtils"
 
@@ -354,12 +353,10 @@ void UUnrealEdEngine::UpdatePivotLocationForSelection( bool bOnChange )
 		SetPivot(SingleComponent->GetComponentLocation(), false, true);
 	}
 	else if( SingleActor != NULL ) 
-	{
-		UBrushEditingSubsystem* BrushSubsystem = GEditor->GetEditorSubsystem<UBrushEditingSubsystem>();
-		const bool bGeometryMode = BrushSubsystem ? BrushSubsystem->IsGeometryEditorModeActive() : false;
-
+	{		
 		// For geometry mode use current pivot location as it's set to selected face, not actor
-		if (!bGeometryMode || bOnChange == true)
+		FEditorModeTools& Tools = GLevelEditorModeTools();
+		if( Tools.IsModeActive(FBuiltinEditorModes::EM_Geometry) == false || bOnChange == true )
 		{
 			// Set pivot point to the actor's location, accounting for any set pivot offset
 			FVector PivotPoint = SingleActor->GetTransform().TransformPosition(SingleActor->GetPivotOffset());
@@ -477,7 +474,7 @@ void UUnrealEdEngine::SelectGroup(AGroupActor* InGroupActor, bool bForceSelectio
 bool UUnrealEdEngine::CanSelectActor(AActor* Actor, bool bInSelected, bool bSelectEvenIfHidden, bool bWarnIfLevelLocked ) const
 {
 	// If selections are globally locked, leave.
-	if( !Actor || !Actor->GetLevel() || GEdSelectionLock || !Actor->IsEditable() )
+	if( !Actor || GEdSelectionLock || !Actor->IsEditable() )
 	{
 		return false;
 	}

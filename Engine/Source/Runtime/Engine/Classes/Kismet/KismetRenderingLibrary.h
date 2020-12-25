@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,7 +13,7 @@
 class UCanvas;
 class UMaterialInterface;
 class UTexture2D;
-struct FDrawEvent;
+template<typename TRHICmdList> struct TDrawEvent;
 
 USTRUCT(BlueprintType)
 struct FDrawToRenderTargetContext
@@ -28,7 +28,7 @@ struct FDrawToRenderTargetContext
 	UPROPERTY()
 	UTextureRenderTarget2D* RenderTarget;
 
-	FDrawEvent* DrawEvent;
+	TDrawEvent<FRHICommandList>* DrawEvent;
 };
 
 UCLASS(MinimalAPI, meta=(ScriptName="RenderingLibrary"))
@@ -48,19 +48,7 @@ class UKismetRenderingLibrary : public UBlueprintFunctionLibrary
 	 */
 	UFUNCTION(BlueprintCallable, Category="Rendering", meta=(WorldContext="WorldContextObject"))
 	static ENGINE_API UTextureRenderTarget2D* CreateRenderTarget2D(UObject* WorldContextObject, int32 Width = 256, int32 Height = 256, ETextureRenderTargetFormat Format = RTF_RGBA16f, FLinearColor ClearColor = FLinearColor::Black, bool bAutoGenerateMipMaps = false);
-
-	/**
-	 * Creates a new render target array and initializes it to the specified dimensions
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Rendering", meta = (WorldContext = "WorldContextObject"))
-	static ENGINE_API UTextureRenderTarget2DArray* CreateRenderTarget2DArray(UObject* WorldContextObject, int32 Width = 256, int32 Height = 256, int32 Slices = 1, ETextureRenderTargetFormat Format = RTF_RGBA16f, FLinearColor ClearColor = FLinearColor::Black, bool bAutoGenerateMipMaps = false);
-
-	/**
-	 * Creates a new volume render target and initializes it to the specified dimensions
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Rendering", meta = (WorldContext = "WorldContextObject"))
-	static ENGINE_API UTextureRenderTargetVolume* CreateRenderTargetVolume(UObject* WorldContextObject, int32 Width = 16, int32 Height = 16, int32 Depth = 16, ETextureRenderTargetFormat Format = RTF_RGBA16f, FLinearColor ClearColor = FLinearColor::Black, bool bAutoGenerateMipMaps = false);
-
+	
 	/**
 	 * Manually releases GPU resources of a render target. This is useful for blueprint creating a lot of render target that would
 	 * normally be released too late by the garbage collector that can be problematic on platforms that have tight GPU memory constrains.

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ScriptCodeGeneratorBase.h"
 #include "Misc/FileHelper.h"
@@ -70,29 +70,29 @@ FString FScriptCodeGeneratorBase::GetClassNameCPP(UClass* Class)
 	return FString::Printf(TEXT("%s%s"), Class->GetPrefixCPP(), *Class->GetName());
 }
 
-FString FScriptCodeGeneratorBase::GetPropertyTypeCPP(FProperty* Property, uint32 PortFlags /*= 0*/)
+FString FScriptCodeGeneratorBase::GetPropertyTypeCPP(UProperty* Property, uint32 PortFlags /*= 0*/)
 {
-	static const FString EnumDecl(TEXT("enum "));
-	static const FString StructDecl(TEXT("struct "));
-	static const FString ClassDecl(TEXT("class "));
-	static const FString TEnumAsByteDecl(TEXT("TEnumAsByte<enum "));
-	static const FString TSubclassOfDecl(TEXT("TSubclassOf<class "));
+	static FString EnumDecl(TEXT("enum "));
+	static FString StructDecl(TEXT("struct "));
+	static FString ClassDecl(TEXT("class "));
+	static FString TEnumAsByteDecl(TEXT("TEnumAsByte<enum "));
+	static FString TSubclassOfDecl(TEXT("TSubclassOf<class "));
 
 	FString PropertyType = Property->GetCPPType(NULL, PortFlags);
 	// Strip any forward declaration keywords
-	if (PropertyType.StartsWith(EnumDecl, ESearchCase::CaseSensitive) || PropertyType.StartsWith(StructDecl, ESearchCase::CaseSensitive) || PropertyType.StartsWith(ClassDecl, ESearchCase::CaseSensitive))
+	if (PropertyType.StartsWith(EnumDecl) || PropertyType.StartsWith(StructDecl) || PropertyType.StartsWith(ClassDecl))
 	{
-		int32 FirstSpaceIndex = PropertyType.Find(TEXT(" "), ESearchCase::CaseSensitive);
-		PropertyType.MidInline(FirstSpaceIndex + 1, MAX_int32, false);
+		int FirstSpaceIndex = PropertyType.Find(TEXT(" "));
+		PropertyType = PropertyType.Mid(FirstSpaceIndex + 1);
 	}
-	else if (PropertyType.StartsWith(TEnumAsByteDecl, ESearchCase::CaseSensitive))
+	else if (PropertyType.StartsWith(TEnumAsByteDecl))
 	{
-		int32 FirstSpaceIndex = PropertyType.Find(TEXT(" "), ESearchCase::CaseSensitive);
+		int FirstSpaceIndex = PropertyType.Find(TEXT(" "));
 		PropertyType = TEXT("TEnumAsByte<") + PropertyType.Mid(FirstSpaceIndex + 1);
 	}
-	else if (PropertyType.StartsWith(TSubclassOfDecl), ESearchCase::CaseSensitive)
+	else if (PropertyType.StartsWith(TSubclassOfDecl))
 	{
-		int32 FirstSpaceIndex = PropertyType.Find(TEXT(" "), ESearchCase::CaseSensitive);
+		int FirstSpaceIndex = PropertyType.Find(TEXT(" "));
 		PropertyType = TEXT("TSubclassOf<") + PropertyType.Mid(FirstSpaceIndex + 1);
 	}
 	return PropertyType;
@@ -107,16 +107,16 @@ FString FScriptCodeGeneratorBase::GenerateFunctionDispatch(UFunction* Function)
 	{
 		Params += TEXT("\tstruct FDispatchParams\r\n\t{\r\n");
 
-		for (TFieldIterator<FProperty> ParamIt(Function); ParamIt; ++ParamIt)
+		for (TFieldIterator<UProperty> ParamIt(Function); ParamIt; ++ParamIt)
 		{
-			FProperty* Param = *ParamIt;
+			UProperty* Param = *ParamIt;
 			Params += FString::Printf(TEXT("\t\t%s %s;\r\n"), *GetPropertyTypeCPP(Param, CPPF_ArgumentOrReturnValue), *Param->GetName());
 		}
 		Params += TEXT("\t} Params;\r\n");
 		int32 ParamIndex = 0;
-		for (TFieldIterator<FProperty> ParamIt(Function); ParamIt; ++ParamIt, ++ParamIndex)
+		for (TFieldIterator<UProperty> ParamIt(Function); ParamIt; ++ParamIt, ++ParamIndex)
 		{
-			FProperty* Param = *ParamIt;
+			UProperty* Param = *ParamIt;
 			Params += FString::Printf(TEXT("\tParams.%s = %s;\r\n"), *Param->GetName(), *InitializeFunctionDispatchParam(Function, Param, ParamIndex));
 		}
 	}
@@ -134,9 +134,9 @@ FString FScriptCodeGeneratorBase::GenerateFunctionDispatch(UFunction* Function)
 	return Params;
 }
 
-FString FScriptCodeGeneratorBase::InitializeFunctionDispatchParam(UFunction* Function, FProperty* Param, int32 ParamIndex)
+FString FScriptCodeGeneratorBase::InitializeFunctionDispatchParam(UFunction* Function, UProperty* Param, int32 ParamIndex)
 {
-	if (Param->IsA(FObjectPropertyBase::StaticClass()) || Param->IsA(FClassProperty::StaticClass()))
+	if (Param->IsA(UObjectPropertyBase::StaticClass()) || Param->IsA(UClassProperty::StaticClass()))
 	{
 		return TEXT("NULL");
 	}
@@ -168,15 +168,15 @@ bool FScriptCodeGeneratorBase::CanExportFunction(const FString& ClassNameCPP, UC
 	}
 
 	// Reject if any of the parameter types is unsupported yet
-	for (TFieldIterator<FProperty> ParamIt(Function); ParamIt; ++ParamIt)
+	for (TFieldIterator<UProperty> ParamIt(Function); ParamIt; ++ParamIt)
 	{
-		FProperty* Param = *ParamIt;
-		if (Param->IsA(FArrayProperty::StaticClass()) ||
+		UProperty* Param = *ParamIt;
+		if (Param->IsA(UArrayProperty::StaticClass()) ||
 			  Param->ArrayDim > 1 ||
-			  Param->IsA(FDelegateProperty::StaticClass()) ||
-				Param->IsA(FMulticastDelegateProperty::StaticClass()) ||
-			  Param->IsA(FWeakObjectProperty::StaticClass()) ||
-			  Param->IsA(FInterfaceProperty::StaticClass()))
+			  Param->IsA(UDelegateProperty::StaticClass()) ||
+				Param->IsA(UMulticastDelegateProperty::StaticClass()) ||
+			  Param->IsA(UWeakObjectProperty::StaticClass()) ||
+			  Param->IsA(UInterfaceProperty::StaticClass()))
 		{
 			return false;
 		}
@@ -185,7 +185,7 @@ bool FScriptCodeGeneratorBase::CanExportFunction(const FString& ClassNameCPP, UC
 	return true;
 }
 
-bool FScriptCodeGeneratorBase::CanExportProperty(const FString& ClassNameCPP, UClass* Class, FProperty* Property)
+bool FScriptCodeGeneratorBase::CanExportProperty(const FString& ClassNameCPP, UClass* Class, UProperty* Property)
 {
 	// Property must be DLL exported
 	if (!(Class->ClassFlags & CLASS_RequiredAPI))
@@ -203,13 +203,13 @@ bool FScriptCodeGeneratorBase::CanExportProperty(const FString& ClassNameCPP, UC
 
 
 	// Reject if it's one of the unsupported types (yet)
-	if (Property->IsA(FArrayProperty::StaticClass()) ||
+	if (Property->IsA(UArrayProperty::StaticClass()) ||
 		Property->ArrayDim > 1 ||
-		Property->IsA(FDelegateProperty::StaticClass()) ||
-		Property->IsA(FMulticastDelegateProperty::StaticClass()) ||
-		Property->IsA(FWeakObjectProperty::StaticClass()) ||
-		Property->IsA(FInterfaceProperty::StaticClass()) ||
-		Property->IsA(FStructProperty::StaticClass()))
+		Property->IsA(UDelegateProperty::StaticClass()) ||
+		Property->IsA(UMulticastDelegateProperty::StaticClass()) ||
+		Property->IsA(UWeakObjectProperty::StaticClass()) ||
+		Property->IsA(UInterfaceProperty::StaticClass()) ||
+		Property->IsA(UStructProperty::StaticClass()))
 	{
 		return false;
 	}

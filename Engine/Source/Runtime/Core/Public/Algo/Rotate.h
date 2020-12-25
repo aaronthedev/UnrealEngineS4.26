@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -58,6 +58,6 @@ namespace Algo
 	template <typename RangeType>
 	FORCEINLINE int32 Rotate(RangeType& Range, int32 Count)
 	{
-		return AlgoImpl::RotateInternal(GetData(Range), GetNum(Range), Count);
+		AlgoImpl::RotateInternal(GetData(Range), GetNum(Range), Count);
 	}
 }

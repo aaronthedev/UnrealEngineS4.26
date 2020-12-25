@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NetStatsViewColumnFactory.h"
 
@@ -31,7 +31,7 @@ const FName FNetStatsViewColumns::AverageExclusiveSizeColumnID(TEXT("AverageExcl
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-void FNetStatsViewColumnFactory::CreateNetStatsViewColumns(TArray<TSharedRef<Insights::FTableColumn>>& Columns)
+void FNetStatsViewColumnFactory::CreateNetStatsViewColumns(TArray<TSharedPtr<Insights::FTableColumn>>& Columns)
 {
 	Columns.Reset();
 
@@ -55,8 +55,8 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateNameColumn(
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FNetStatsViewColumns::NameColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FNetStatsViewColumns::NameColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
 	Column.SetShortName(LOCTEXT("Name_ColumnName", "Name"));
 	Column.SetTitleName(LOCTEXT("Name_ColumnTitle", "NetEvent or Group Name"));
@@ -72,16 +72,16 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateNameColumn(
 
 	Column.SetDataType(ETableCellDataType::Text);
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FDisplayNameValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<ITableCellValueGetter> GetterPtr = MakeShareable(new FDisplayNameValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FTextValueFormatter>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<ITableCellValueFormatter> FormatterPtr = MakeShareable(new FTextValueFormatter());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByName>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByName(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -90,8 +90,8 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateTypeColumn(
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FNetStatsViewColumns::TypeColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FNetStatsViewColumns::TypeColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
 	Column.SetShortName(LOCTEXT("Type_ColumnName", "Type"));
 	Column.SetTitleName(LOCTEXT("Type_ColumnTitle", "Type"));
@@ -117,17 +117,17 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateTypeColumn(
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FNetEventTypeValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FNetEventTypeValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FTextValueFormatter>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FTextValueFormatter());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	//TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByTextValue>(ColumnRef);
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FNetEventNodeSortingByEventType>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	//TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByTextValue(ColumnPtr.ToSharedRef()));
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FNetEventNodeSortingByEventType(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -136,8 +136,8 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateLevelColumn
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FNetStatsViewColumns::LevelColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FNetStatsViewColumns::LevelColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
 	Column.SetShortName(LOCTEXT("Level_ColumnName", "Level"));
 	Column.SetTitleName(LOCTEXT("Level_ColumnTitle", "Level"));
@@ -163,16 +163,16 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateLevelColumn
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FLevelValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FLevelValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FInt64ValueFormatterAsNumber>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FInt64ValueFormatterAsNumber());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByInt64Value>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByInt64Value(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -181,8 +181,8 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateInstanceCou
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FNetStatsViewColumns::InstanceCountColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FNetStatsViewColumns::InstanceCountColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
 	Column.SetShortName(LOCTEXT("InstanceCount_ColumnName", "Count"));
 	Column.SetTitleName(LOCTEXT("InstanceCount_ColumnTitle", "Instance Count"));
@@ -208,17 +208,17 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateInstanceCou
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FInstanceCountValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FInstanceCountValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FInt64ValueFormatterAsNumber>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FInt64ValueFormatterAsNumber());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	//TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByInt64Value>(ColumnRef);
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FNetEventNodeSortingByInstanceCount>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	//TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByInt64Value(ColumnPtr.ToSharedRef()));
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FNetEventNodeSortingByInstanceCount(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -229,8 +229,8 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateTotalInclus
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FNetStatsViewColumns::TotalInclusiveSizeColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FNetStatsViewColumns::TotalInclusiveSizeColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
 	Column.SetShortName(LOCTEXT("TotalInclusive_ColumnName", "Incl"));
 	Column.SetTitleName(LOCTEXT("TotalInclusive_ColumnTitle", "Total Inclusive Size"));
@@ -257,17 +257,17 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateTotalInclus
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FTotalInclusiveValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FTotalInclusiveValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FInt64ValueFormatterAsNumber>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FInt64ValueFormatterAsNumber());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	//TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByInt64Value>(ColumnRef);
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FNetEventNodeSortingByTotalInclusiveSize>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	//TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByInt64Value(ColumnPtr.ToSharedRef()));
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FNetEventNodeSortingByTotalInclusiveSize(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -276,8 +276,8 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateMaxInclusiv
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FNetStatsViewColumns::MaxInclusiveSizeColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FNetStatsViewColumns::MaxInclusiveSizeColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
 	Column.SetShortName(LOCTEXT("MaxInclusive_ColumnName", "I.Max"));
 	Column.SetTitleName(LOCTEXT("MaxInclusive_ColumnTitle", "Max Inclusive Size"));
@@ -303,16 +303,16 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateMaxInclusiv
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FMaxInclusiveValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FMaxInclusiveValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FInt64ValueFormatterAsNumber>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FInt64ValueFormatterAsNumber());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByInt64Value>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByInt64Value(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -321,8 +321,8 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateAverageIncl
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FNetStatsViewColumns::AverageInclusiveSizeColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FNetStatsViewColumns::AverageInclusiveSizeColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
 	Column.SetShortName(LOCTEXT("AvgInclusive_ColumnName", "I.Avg"));
 	Column.SetTitleName(LOCTEXT("AvgInclusive_ColumnTitle", "Average Inclusive Size"));
@@ -348,16 +348,16 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateAverageIncl
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FAverageInclusiveValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FAverageInclusiveValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FInt64ValueFormatterAsNumber>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FInt64ValueFormatterAsNumber());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByInt64Value>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByInt64Value(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -368,8 +368,8 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateTotalExclus
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FNetStatsViewColumns::TotalExclusiveSizeColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FNetStatsViewColumns::TotalExclusiveSizeColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
 	Column.SetShortName(LOCTEXT("TotalExclusive_ColumnName", "Excl"));
 	Column.SetTitleName(LOCTEXT("TotalExclusive_ColumnTitle", "Total Exclusive Size"));
@@ -396,17 +396,17 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateTotalExclus
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FTotalExclusiveValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FTotalExclusiveValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FInt64ValueFormatterAsNumber>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FInt64ValueFormatterAsNumber());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	//TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByInt64Value(ColumnRef));
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FNetEventNodeSortingByTotalExclusiveSize>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	//TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByInt64Value(ColumnPtr.ToSharedRef()));
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FNetEventNodeSortingByTotalExclusiveSize(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -415,12 +415,12 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateMaxExclusiv
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FNetStatsViewColumns::MaxExclusiveSizeColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FNetStatsViewColumns::MaxExclusiveSizeColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
 	Column.SetShortName(LOCTEXT("MaxExclusive_ColumnName", "E.Max"));
 	Column.SetTitleName(LOCTEXT("MaxExclusive_ColumnTitle", "Max Exclusive Size"));
-	Column.SetDescription(LOCTEXT("MaxExclusive_ColumnDesc", "Maximum exclusive size (bits) of selected net event instances"));
+	Column.SetDescription(LOCTEXT("MaxExclusive_ColumnDesc", "Maximum exclusive size of selected net event instances"));
 
 	Column.SetFlags(ETableColumnFlags::CanBeHidden |
 					//ETableColumnFlags::ShouldBeVisible |
@@ -442,16 +442,16 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateMaxExclusiv
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FMaxExclusiveValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FMaxExclusiveValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FInt64ValueFormatterAsNumber>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FInt64ValueFormatterAsNumber());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByInt64Value>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByInt64Value(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -460,12 +460,12 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateAverageExcl
 {
 	using namespace Insights;
 
-	TSharedRef<FTableColumn> ColumnRef = MakeShared<FTableColumn>(FNetStatsViewColumns::AverageExclusiveSizeColumnID);
-	FTableColumn& Column = *ColumnRef;
+	TSharedPtr<FTableColumn> ColumnPtr = MakeShareable(new FTableColumn(FNetStatsViewColumns::AverageExclusiveSizeColumnID));
+	FTableColumn& Column = *ColumnPtr;
 
-	Column.SetShortName(LOCTEXT("AvgExclusive_ColumnName", "E.Avg"));
-	Column.SetTitleName(LOCTEXT("AvgExclusive_ColumnTitle", "Average Exclusive Size)"));
-	Column.SetDescription(LOCTEXT("AvgExclusive_ColumnDesc", "Average exclusive size (bits) of selected net event instances"));
+	Column.SetShortName(LOCTEXT("AvgExclusiveName", "E.Avg"));
+	Column.SetTitleName(LOCTEXT("AvgExclusiveTitle", "Average Exclusive  (ms)"));
+	Column.SetDescription(LOCTEXT("AvgExclusiveDesc", "Average exclusive size of selected net event instances"));
 
 	Column.SetFlags(ETableColumnFlags::CanBeHidden |
 					//ETableColumnFlags::ShouldBeVisible |
@@ -488,16 +488,16 @@ TSharedRef<Insights::FTableColumn> FNetStatsViewColumnFactory::CreateAverageExcl
 		}
 	};
 
-	TSharedRef<ITableCellValueGetter> Getter = MakeShared<FAverageExclusiveValueGetter>();
-	Column.SetValueGetter(Getter);
+	TSharedPtr<FTableCellValueGetter> GetterPtr = MakeShareable(new FAverageExclusiveValueGetter());
+	Column.SetValueGetter(GetterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueFormatter> Formatter = MakeShared<FInt64ValueFormatterAsNumber>();
-	Column.SetValueFormatter(Formatter);
+	TSharedPtr<FTableCellValueFormatter> FormatterPtr = MakeShareable(new FInt64ValueFormatterAsNumber());
+	Column.SetValueFormatter(FormatterPtr.ToSharedRef());
 
-	TSharedRef<ITableCellValueSorter> Sorter = MakeShared<FSorterByInt64Value>(ColumnRef);
-	Column.SetValueSorter(Sorter);
+	TSharedPtr<ITableCellValueSorter> SorterPtr = MakeShareable(new FSorterByInt64Value(ColumnPtr.ToSharedRef()));
+	Column.SetValueSorter(SorterPtr);
 
-	return ColumnRef;
+	return ColumnPtr.ToSharedRef();
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

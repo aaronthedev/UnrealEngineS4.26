@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PackageRestore.h"
 #include "HAL/FileManager.h"
@@ -20,7 +20,7 @@
 #include "Widgets/Input/SCheckBox.h"
 #include "EditorStyleSet.h"
 #include "Editor.h"
-#include "Misc/MessageDialog.h"
+#include "Dialogs/Dialogs.h"
 #include "PackageTools.h"
 #include "AutoSaveUtils.h"
 
@@ -553,13 +553,11 @@ FEditorFileUtils::EPromptReturnCode PackageRestore::PromptToRestorePackages(cons
 		else
 		{
 			// A package may not exist on disk if it was for a newly added or imported asset, which hasn't yet had SaveDirtyPackages called for it
-			if (FPackageName::TryConvertLongPackageNameToFilename(PackageFullPath, PackageFilename)) // no extension yet
-			{
-				PackageFilename += FPaths::GetExtension(AutoSavePath, true/*bIncludeDot*/);
+			PackageFilename = FPackageName::LongPackageNameToFilename(PackageFullPath); // no extension yet
+			PackageFilename += FPaths::GetExtension(AutoSavePath, true/*bIncludeDot*/);
 
-				FPackageRestoreItemPtr PackageItemPtr = MakeShareable(new FPackageRestoreItem(PackageFullPath, PackageFilename, AutoSaveDir / AutoSavePath, false/*bIsExistingPackage*/));
-				PackageRestoreItems.Add(PackageItemPtr);
-			}
+			FPackageRestoreItemPtr PackageItemPtr = MakeShareable(new FPackageRestoreItem(PackageFullPath, PackageFilename, AutoSaveDir / AutoSavePath, false/*bIsExistingPackage*/));
+			PackageRestoreItems.Add(PackageItemPtr);
 		}
 	}
 
@@ -658,9 +656,8 @@ FEditorFileUtils::EPromptReturnCode PackageRestore::PromptToRestorePackages(cons
 		Args.Add(TEXT("FailedPackages"), FText::FromString(FailedPackagesStr));
 
 		const FText Message = FText::Format(FText::FromString("{FailedRestoreMessage}:\n{FailedPackages}"), Args);
-		const FText Title = LOCTEXT("FailedRestoreDlgTitle", "Failed to restore packages!");
 
-		FMessageDialog::Open(EAppMsgType::Ok, Message, &Title);
+		OpenMsgDlgInt(EAppMsgType::Ok, Message, LOCTEXT("FailedRestoreDlgTitle", "Failed to restore packages!"));
 
 		return FEditorFileUtils::PR_Failure;
 	}

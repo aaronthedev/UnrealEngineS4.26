@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -27,9 +27,6 @@ class UMaterialExpressionMakeMaterialAttributes : public UMaterialExpression
 	FExpressionInput Roughness;
 
 	UPROPERTY()
-	FExpressionInput Anisotropy;
-
-	UPROPERTY()
 	FExpressionInput EmissiveColor;
 
 	UPROPERTY()
@@ -40,9 +37,6 @@ class UMaterialExpressionMakeMaterialAttributes : public UMaterialExpression
 
 	UPROPERTY()
 	FExpressionInput Normal;
-
-	UPROPERTY()
-	FExpressionInput Tangent;
 
 	UPROPERTY()
 	FExpressionInput WorldPositionOffset;

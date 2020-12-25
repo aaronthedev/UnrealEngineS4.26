@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraEmitterDetailsCustomization.h"
 #include "PropertyHandle.h"
@@ -16,5 +16,10 @@ void FNiagaraEmitterDetails::CustomizeDetails(IDetailLayoutBuilder& InDetailLayo
 {
 	TSharedPtr<IPropertyHandle> EventHandlersPropertyHandle = InDetailLayout.GetProperty(UNiagaraEmitter::PrivateMemberNames::EventHandlerScriptProps);
 	EventHandlersPropertyHandle->MarkHiddenByCustomization();
+
+	if (GbShowFastPathOptions <= 0)
+	{
+		InDetailLayout.EditCategory("Script Fast Path").SetCategoryVisibility(false);
+	}
 }
 

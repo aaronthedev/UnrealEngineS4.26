@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,6 +9,7 @@
 #include "Internationalization/Text.h"
 #include "Logging/TokenizedMessage.h"
 
+class Error;
 class IMessageLog;
 
 class FMessageLog

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GeometryCacheTrackStreamable.h"
 #include "GeometryCacheStreamingManager.h"
@@ -19,7 +19,7 @@ DECLARE_CYCLE_STAT(TEXT("Encode Mesh Frame"), STAT_AddMeshSample, STATGROUP_Geom
 void UGeometryCacheTrackStreamable::TriggerSerializationCrash()
 {
 	const FString PackageName = TEXT("/Game/CrashTest/CrashTest");
-	UPackage *AssetPackage = CreatePackage(*PackageName);
+	UPackage *AssetPackage = CreatePackage(NULL, *PackageName);
 	EObjectFlags Flags = RF_Public | RF_Standalone;
 
 	UGeometryCacheTrackStreamable* Track = NewObject<UGeometryCacheTrackStreamable>(AssetPackage, FName(*FString(TEXT("DeleteMe"))), Flags);
@@ -205,8 +205,9 @@ void UGeometryCacheTrackStreamable::EndCoding()
 			else if (bVisible != VisibilitySample.Value)
 			{				
 				TRange<float> VisibilityRange(RangeStart, ImportVisibilitySamples[SampleIndex].Key);
-				FVisibilitySample Sample(bVisible);
+				FVisibilitySample Sample;
 				Sample.Range = VisibilityRange;
+				Sample.bVisibilityState = bVisible;
 				VisibilitySamples.Add(Sample);
 				
 				bVisible = ImportVisibilitySamples[SampleIndex].Value;
@@ -215,8 +216,9 @@ void UGeometryCacheTrackStreamable::EndCoding()
 			else if (SampleIndex == ImportVisibilitySamples.Num() - 1)
 			{
 				TRange<float> VisibilityRange(RangeStart, ImportVisibilitySamples[SampleIndex].Key);
-				FVisibilitySample Sample(ImportVisibilitySamples[SampleIndex].Value);
+				FVisibilitySample Sample;
 				Sample.Range = VisibilityRange;
+				Sample.bVisibilityState = ImportVisibilitySamples[SampleIndex].Value;
 				VisibilitySamples.Add(Sample);
 			}
 		}
@@ -224,8 +226,9 @@ void UGeometryCacheTrackStreamable::EndCoding()
 	else
 	{
 		TRange<float> VisibilityRange(StartSampleTime, Samples.Last().SampleTime);
-		FVisibilitySample Sample(true);
+		FVisibilitySample Sample;
 		Sample.Range = VisibilityRange;
+		Sample.bVisibilityState = true;
 
 		VisibilitySamples.Add(Sample);
 	}
@@ -485,7 +488,7 @@ const FGeometryCacheTrackStreamableSampleInfo& UGeometryCacheTrackStreamable::Ge
 	return Samples[SampleID];
 }
 
-const FGeometryCacheTrackSampleInfo& UGeometryCacheTrackStreamable::GetSampleInfo(float Time, bool bLooping)
+const FGeometryCacheTrackStreamableSampleInfo& UGeometryCacheTrackStreamable::GetSampleInfo(float Time, bool bLooping) const
 {
 	return GetSampleInfo(FindSampleIndexFromTime(Time, bLooping));
 }

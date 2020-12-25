@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimNodes/AnimNode_PoseHandler.h"
 #include "Animation/AnimInstanceProxy.h"
-#include "Animation/AnimTrace.h"
 
 /////////////////////////////////////////////////////
 // FAnimPoseByNameNode
@@ -60,7 +59,7 @@ void FAnimNode_PoseHandler::RebuildPoseList(const FBoneContainer& InBoneContaine
 		for (int32 PoseIndex = 0; PoseIndex < PoseNames.Num(); ++PoseIndex)
 		{
 			const FSmartName& PoseName = PoseNames[PoseIndex];
-			if (ensureMsgf(LUTIndex.IsValidIndex(PoseName.UID), TEXT("Invalid PoseName %s in PoseAsset %s for BoneContainer using %s"), *PoseName.DisplayName.ToString(), *GetPathNameSafe(InPoseAsset), *GetPathNameSafe(InBoneContainer.GetAsset())) && LUTIndex[PoseName.UID] != MAX_uint16)
+			if (ensure(LUTIndex.IsValidIndex(PoseName.UID)) && LUTIndex[PoseName.UID] != MAX_uint16)
 			{
 				// we keep pose index as that is the fastest way to search when extracting pose asset
 				PoseExtractContext.PoseCurves.Add(FPoseCurve(PoseIndex, PoseName.UID, 0.f));
@@ -78,9 +77,6 @@ void FAnimNode_PoseHandler::UpdateAssetPlayer(const FAnimationUpdateContext& Con
 	{
 		UpdatePoseAssetProperty(Context.AnimInstanceProxy);
 	}
-
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Name"), CurrentPoseAsset.IsValid() ? *CurrentPoseAsset.Get()->GetName() : TEXT("None"));
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Pose Asset"), CurrentPoseAsset.IsValid() ? *CurrentPoseAsset.Get()->GetName() : TEXT("None"));
 }
 
 void FAnimNode_PoseHandler::OverrideAsset(UAnimationAsset* NewAsset)

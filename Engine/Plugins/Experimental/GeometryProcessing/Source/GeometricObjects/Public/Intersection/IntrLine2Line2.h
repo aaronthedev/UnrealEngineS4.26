@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // Port of geometry3Sharp IntrLine2Line2
 
@@ -104,7 +104,7 @@ public:
 			return (Result == EIntersectionResult::Intersects);
 		}
 
-		// if either line direction is not a normalized vector, 
+		// [RMS] if either line direction is not a normalized vector, 
 		//   results are garbage, so fail query
 		if (Line1.Direction.IsNormalized() == false || Line2.Direction.IsNormalized() == false) 
 		{
@@ -126,7 +126,7 @@ public:
 		}
 		else if (Type == EIntersectionType::Line) 
 		{
-			Quantity = TNumericLimits<int32>::Max();
+			Quantity = std::numeric_limits<int>::max();
 		}
 		else 
 		{

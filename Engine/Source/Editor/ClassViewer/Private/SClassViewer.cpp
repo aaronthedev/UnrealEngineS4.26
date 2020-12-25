@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SClassViewer.h"
 #include "Misc/MessageDialog.h"
@@ -38,7 +38,7 @@
 #include "EditorWidgetsModule.h"
 #include "Styling/SlateIconFinder.h"
 #include "DragAndDrop/ClassDragDropOp.h"
-#include "ContentBrowserDataDragDropOp.h"
+#include "DragAndDrop/AssetDragDropOp.h"
 
 #include "IAssetTools.h"
 #include "ARFilter.h"
@@ -53,6 +53,7 @@
 
 #include "AssetRegistryModule.h"
 #include "AssetToolsModule.h"
+
 
 #include "ClassViewerNode.h"
 
@@ -83,25 +84,20 @@ DEFINE_LOG_CATEGORY_STATIC(LogEditorClassViewer, Log, All);
 
 //////////////////////////////////////////////////////////////
 
-struct FClassViewerNodeNameLess
+// A hack to make IMPLEMENT_COMPARE_CONSTREF with a templated type
+typedef TSharedPtr<FClassViewerNode> FClassViewerNodeSharedPtr;
+
+FORCEINLINE bool CompareFClassViewerNodes( const FClassViewerNodeSharedPtr& A, const FClassViewerNodeSharedPtr& B )
 {
-	FClassViewerNodeNameLess(EClassViewerNameTypeToDisplay NameTypeToDisplay = EClassViewerNameTypeToDisplay::ClassName) : NameTypeToDisplay(NameTypeToDisplay) {}
+	check(A.IsValid());
+	check(B.IsValid());
 
-	bool operator()(TSharedPtr<FClassViewerNode> A, TSharedPtr<FClassViewerNode> B) const
-	{ 
-		check(A.IsValid());
-		check(B.IsValid());
+	// Pull out the FString, for ease of reading.
+	FString AString = *A->GetClassName().Get();
+	FString BString = *B->GetClassName().Get();
 
-		// The display name only matters when NameTypeToDisplay == DisplayName. For NameTypeToDisplay == Dynamic,
-		// the class name is displayed first with the display name in parentheses, but only if it differs from the display name.
-		bool bUseDisplayName = NameTypeToDisplay == EClassViewerNameTypeToDisplay::DisplayName;
-		const FString& NameA = *A->GetClassName(bUseDisplayName).Get();
-		const FString& NameB = *B->GetClassName(bUseDisplayName).Get();
-		return NameA.Compare(NameB, ESearchCase::IgnoreCase) < 0;
-	}
-
-	EClassViewerNameTypeToDisplay NameTypeToDisplay;
-};
+	return *A->GetClassName().Get() < *B->GetClassName().Get();
+}
 
 class FClassHierarchy
 {
@@ -116,7 +112,7 @@ public:
 	/** Recursive function to sort a tree.
 	 *	@param InOutRootNode						The current node to sort.
 	 */	
-	void SortChildren(TSharedPtr< FClassViewerNode >& InRootNode);
+	void SortChildren( TSharedPtr< FClassViewerNode >& InRootNode );
 
 	/** Checks if a particular class is placeable.
 	 *	@return The ObjectClassRoot for building a duplicate tree using.
@@ -144,12 +140,12 @@ public:
 	*/
 	void UpdateClassInNode(FName InGeneratedClassPath, UClass* InNewClass, UBlueprint* InNewBluePrint );
 
-	/** Finds the node, recursively going deeper into the hierarchy. Does so by comparing generated class package names.
-	 *	@param InGeneratedClassPath		The path of the generated class to find the node for.
-	 *
-	 *	@return The node.
-	 */
-	TSharedPtr< FClassViewerNode > FindNodeByGeneratedClassPath(const TSharedPtr< FClassViewerNode >& InRootNode, FName InGeneratedClassPath);
+	/** Finds the node, recursively going deeper into the hierarchy. Does so by comparing class names.
+	*	@param InClassName			The name of the generated class package to find the node for.
+	*
+	*	@return The node.
+	*/
+	TSharedPtr< FClassViewerNode > FindNodeByClassName(const TSharedPtr< FClassViewerNode >& InRootNode, const FString& InClassName);
 
 private:
 	/** Recursive function to build a tree, will not filter.
@@ -160,6 +156,13 @@ private:
 
 	/** Called when hot reload has finished */
 	void OnHotReload( bool bWasTriggeredAutomatically );
+
+	/** Finds the node, recursively going deeper into the hierarchy. Does so by comparing generated class package names.
+	 *	@param InGeneratedClassPath		The path of the generated class to find the node for.
+	 *
+	 *	@return The node.
+	 */
+	TSharedPtr< FClassViewerNode > FindNodeByGeneratedClassPath(const TSharedPtr< FClassViewerNode >& InRootNode, FName InGeneratedClassPath);
 
 	/** 
 	 * Loads the tag data for an unloaded blueprint asset.
@@ -318,7 +321,7 @@ namespace ClassViewer
 			TArray< TSharedPtr< FClassViewerNode > >& ChildList = InOriginalRootNode->GetChildrenList();
 			for(int32 ChildIdx = 0; ChildIdx < ChildList.Num(); ChildIdx++)
 			{
-				TSharedPtr< FClassViewerNode > NewNode = MakeShared<FClassViewerNode>( *ChildList[ChildIdx].Get() );
+				TSharedPtr< FClassViewerNode > NewNode = MakeShareable( new FClassViewerNode( *ChildList[ChildIdx].Get() ) );
 
 				const bool bChildrenPassesFilter = AddChildren_Tree(NewNode, ChildList[ChildIdx], InClassFilter, InInitOptions);
 				bReturnPassesFilter |= bChildrenPassesFilter;
@@ -327,11 +330,6 @@ namespace ClassViewer
 				{
 					InOutRootNode->AddChild(NewNode);
 				}
-			}
-
-			if (bReturnPassesFilter)
-			{
-				InOutRootNode->GetChildrenList().Sort(FClassViewerNodeNameLess(InInitOptions.NameTypeToDisplay));
 			}
 
 			return bReturnPassesFilter;
@@ -350,13 +348,13 @@ namespace ClassViewer
 			const TSharedPtr< FClassViewerNode > ObjectClassRoot = ClassHierarchy->GetObjectRootNode();
 
 			// Duplicate the node, it will have no children.
-			InOutRootNode = MakeShared<FClassViewerNode>(*ObjectClassRoot);
+			InOutRootNode = MakeShareable(new FClassViewerNode(*ObjectClassRoot));
 
 			if (InInitOptions.bIsActorsOnly)
 			{
 				for (int32 ClassIdx = 0; ClassIdx < ObjectClassRoot->GetChildrenList().Num(); ClassIdx++)
 				{
-					TSharedPtr<FClassViewerNode> ChildNode = MakeShared<FClassViewerNode>(*ObjectClassRoot->GetChildrenList()[ClassIdx].Get());
+					TSharedPtr<FClassViewerNode> ChildNode = MakeShareable(new FClassViewerNode(*ObjectClassRoot->GetChildrenList()[ClassIdx].Get()));
 					if (AddChildren_Tree(ChildNode, ObjectClassRoot->GetChildrenList()[ClassIdx], InClassFilter, InInitOptions))
 					{
 						InOutRootNode->AddChild(ChildNode);
@@ -383,7 +381,7 @@ namespace ClassViewer
 			const bool bCheckTextFilter = true;
 			if (InClassFilter->IsNodeAllowed(InInitOptions, InOriginalRootNode.ToSharedRef(), bCheckTextFilter))
 			{
-				TSharedPtr< FClassViewerNode > NewNode = MakeShared<FClassViewerNode>(*InOriginalRootNode.Get());
+				TSharedPtr< FClassViewerNode > NewNode = MakeShareable(new FClassViewerNode(*InOriginalRootNode.Get()));
 				NewNode->bPassesFilter = true;
 				NewNode->bPassesFilterRegardlessTextFilter = true;
 				NewNode->PropertyHandle = InOriginalRootNode->PropertyHandle;
@@ -419,7 +417,7 @@ namespace ClassViewer
 				const bool bCheckTextFilter = true;
 				if (InClassFilter->IsNodeAllowed(InInitOptions, ObjectClassRoot.ToSharedRef(), bCheckTextFilter))
 				{
-					TSharedPtr< FClassViewerNode > NewNode = MakeShared<FClassViewerNode>(*ObjectClassRoot.Get());
+					TSharedPtr< FClassViewerNode > NewNode = MakeShareable(new FClassViewerNode(*ObjectClassRoot.Get()));
 					NewNode->bPassesFilter = true;
 					NewNode->bPassesFilterRegardlessTextFilter = true;
 					NewNode->PropertyHandle = InInitOptions.PropertyHandle;
@@ -488,7 +486,7 @@ namespace ClassViewer
 			FString PackageName = InBlueprintName;
 
 			// Then find/create it.
-			UPackage* Package = CreatePackage( *PackageName);
+			UPackage* Package = CreatePackage(nullptr, *PackageName);
 			check(Package);
 
 			// Handle fully loading packages before creating new objects.
@@ -502,7 +500,7 @@ namespace ClassViewer
 
 			FName BPName(*FPackageName::GetLongPackageAssetName(PackageName));
 
-			if(PromptUserIfExistingObject(BPName.ToString(), PackageName, Package))
+			if(PromptUserIfExistingObject(BPName.ToString(), PackageName,FString(), Package))
 			{
 				// Create and init a new Blueprint
 				UBlueprint* NewBP = FKismetEditorUtilities::CreateBlueprint(InCreationClass, Package, BPName, BPTYPE_Normal, UBlueprint::StaticClass(), UBlueprintGeneratedClass::StaticClass(), FName("ClassViewer"));
@@ -1040,7 +1038,7 @@ FClassHierarchy::~FClassHierarchy()
 			HotReloadSupport.OnHotReload().RemoveAll(this);
 		}
 
-		if (GEditor)
+		if(GEditor)
 		{
 			// Unregister to have Populate called when a Blueprint is compiled.
 			GEditor->OnBlueprintCompiled().Remove(OnBlueprintCompiledRequestPopulateClassHierarchyDelegateHandle);
@@ -1051,7 +1049,7 @@ FClassHierarchy::~FClassHierarchy()
 	FModuleManager::Get().OnModulesChanged().RemoveAll(this);
 }
 
-void FClassHierarchy::OnHotReload(bool bWasTriggeredAutomatically)
+void FClassHierarchy::OnHotReload( bool bWasTriggeredAutomatically )
 {
 	ClassViewer::Helpers::RequestPopulateClassHierarchy();
 }
@@ -1060,76 +1058,57 @@ void FClassHierarchy::AddChildren_NoFilter( TSharedPtr< FClassViewerNode >& InOu
 {
 	UClass* RootClass = UObject::StaticClass();
 
-	ObjectClassRoot = MakeShared<FClassViewerNode>(RootClass);
+	ObjectClassRoot = MakeShareable(new FClassViewerNode(RootClass));
 	ObjectClassRoot->Class = RootClass;
 
 	InOutClassPathToNode.Add(ObjectClassRoot->ClassPath, ObjectClassRoot);
 
-	TMap< UClass*, TSharedPtr< FClassViewerNode > > VisitedNodes;
-	VisitedNodes.Add(RootClass, ObjectClassRoot);
+	TMap< UClass*, TSharedPtr< FClassViewerNode > > Nodes;
+
+	Nodes.Add(RootClass, ObjectClassRoot);
+
+	TSet<UClass*> Visited;
+	Visited.Add(RootClass);
 
 	// Go through all of the classes children and see if they should be added to the list.
-	for (TObjectIterator<UClass> ClassIt; ClassIt; ++ClassIt)
+	for ( TObjectIterator<UClass> ClassIt; ClassIt; ++ClassIt )
 	{
 		UClass* CurrentClass = *ClassIt;
 
 		// Ignore deprecated and temporary trash classes.
-		if (CurrentClass->HasAnyClassFlags(CLASS_Deprecated | CLASS_NewerVersionExists) ||
+		if (CurrentClass->HasAnyClassFlags(CLASS_Deprecated | CLASS_NewerVersionExists) || 
 			FKismetEditorUtilities::IsClassABlueprintSkeleton(CurrentClass))
 		{
 			continue;
 		}
-
-		TSharedPtr<FClassViewerNode>& Entry = VisitedNodes.FindOrAdd(CurrentClass);
-		// If the entry is valid we already visited it.
-		if (Entry.IsValid())
+		
+		TSharedPtr<FClassViewerNode>& Entry = Nodes.FindOrAdd(CurrentClass);
+		if ( Visited.Contains(CurrentClass) )
 		{
 			continue;
 		}
 		else
 		{
-			// Process this node and all it's parent classes.
-			while (CurrentClass->GetSuperClass() != nullptr)
+			while ( CurrentClass->GetSuperClass() != nullptr )
 			{
-				TSharedPtr<FClassViewerNode>& ParentEntry = VisitedNodes.FindOrAdd(CurrentClass->GetSuperClass());
-				// If ParentEntry is not valid, it's the first time we visited that class.
-				// We add it to the ClassPathToNode map if it's not there
-				if (!ParentEntry.IsValid())
+				TSharedPtr<FClassViewerNode>& ParentEntry = Nodes.FindOrAdd(CurrentClass->GetSuperClass());
+				if ( !ParentEntry.IsValid() )
 				{
-					/// If the class is already present, make sure we use it.
-					FName ParentClassPath = FName(*CurrentClass->GetSuperClass()->GetPathName());
-					TSharedPtr<FClassViewerNode>* AlreadyExisting = InOutClassPathToNode.Find(ParentClassPath);
-					if (AlreadyExisting)
-					{
-						ParentEntry = *AlreadyExisting;
-					}
-					else
-					{
-						ParentEntry = MakeShared<FClassViewerNode>(CurrentClass->GetSuperClass());
-						InOutClassPathToNode.Add(ParentEntry->ClassPath, ParentEntry);
-					}
-
+					ParentEntry = MakeShareable(new FClassViewerNode(CurrentClass->GetSuperClass()));
+                    InOutClassPathToNode.Add(ParentEntry->ClassPath, ParentEntry);
 				}
 
-				TSharedPtr<FClassViewerNode>& MyEntry = VisitedNodes.FindOrAdd(CurrentClass);
-				// If MyEntry is not valid, it's the first time we visited that class.
-				// We add it to the ClassPathToNode map if it's not there and add it as a child to MyEntry
-				if (!MyEntry.IsValid())
+				TSharedPtr<FClassViewerNode>& MyEntry = Nodes.FindOrAdd(CurrentClass);
+				if ( !MyEntry.IsValid() )
 				{
-					/// If the class is already present, make sure we use it.
-					FName ClassPath = FName(*CurrentClass->GetPathName());
-					TSharedPtr<FClassViewerNode>* AlreadyExisting = InOutClassPathToNode.Find(ClassPath);
-					if (AlreadyExisting)
-					{
-						MyEntry = *AlreadyExisting;
-						ParentEntry->AddUniqueChild(MyEntry);
-					}
-					else
-					{
-						MyEntry = MakeShared<FClassViewerNode>(CurrentClass);
-						InOutClassPathToNode.Add(MyEntry->ClassPath, MyEntry);
-						ParentEntry->AddChild(MyEntry);
-					}
+					MyEntry = MakeShareable(new FClassViewerNode(CurrentClass));
+                    InOutClassPathToNode.Add(MyEntry->ClassPath, MyEntry);
+				}
+
+				if ( !Visited.Contains(CurrentClass) )
+				{
+					ParentEntry->AddChild(MyEntry);
+					Visited.Add(CurrentClass);
 				}
 
 				CurrentClass = CurrentClass->GetSuperClass();
@@ -1170,6 +1149,31 @@ TSharedPtr< FClassViewerNode > FClassHierarchy::FindParent(const TSharedPtr< FCl
 		ReturnNode = FindParent(InRootNode->GetChildrenList()[ChildClassIndex], InParentClassname, InParentClass);
 
 		if(ReturnNode.IsValid())
+		{
+			break;
+		}
+	}
+
+	return ReturnNode;
+}
+
+TSharedPtr< FClassViewerNode > FClassHierarchy::FindNodeByClassName(const TSharedPtr< FClassViewerNode >& InRootNode, const FString& InClassName)
+{
+	FString NodeClassName = InRootNode->Class.IsValid() ? InRootNode->Class->GetPathName() : FString();
+	if (NodeClassName == InClassName)
+	{
+		return InRootNode;
+	}
+
+	TSharedPtr< FClassViewerNode > ReturnNode;
+
+	// Search the children recursively, one of them might have the parent.
+	for (int32 ChildClassIndex = 0; !ReturnNode.IsValid() && ChildClassIndex < InRootNode->GetChildrenList().Num(); ChildClassIndex++)
+	{
+		// Check the child, then check the return to see if it is valid. If it is valid, end the recursion.
+		ReturnNode = FindNodeByClassName(InRootNode->GetChildrenList()[ChildClassIndex], InClassName);
+
+		if (ReturnNode.IsValid())
 		{
 			break;
 		}
@@ -1220,7 +1224,7 @@ bool FClassHierarchy::FindAndRemoveNodeByClassPath(const TSharedPtr< FClassViewe
 	// Search the children recursively, one of them might have the parent.
 	for(int32 ChildClassIndex = 0; ChildClassIndex < InRootNode->GetChildrenList().Num(); ChildClassIndex++)
 	{
-		if(InRootNode->GetChildrenList()[ChildClassIndex]->ClassPath == InClassPath)						   
+		if(InRootNode->GetChildrenList()[ChildClassIndex]->ClassPath == InClassPath)
 		{
 			InRootNode->GetChildrenList().RemoveAt(ChildClassIndex);
 			return true;
@@ -1242,14 +1246,6 @@ void FClassHierarchy::RemoveAsset(const FAssetData& InRemovedAssetData)
 	if (InRemovedAssetData.GetTagValue(FBlueprintTags::GeneratedClassPath, ClassObjectPath))
 	{
 		ClassObjectPath = FPackageName::ExportTextPathToObjectPath(ClassObjectPath);
-
-		if (ClassObjectPath == "None")
-		{
-			// This can happen if the generated class was already deleted prior to 
-			// the notification being sent. Let's try to reconstruct the generated
-			// class name from the object path.
-			ClassObjectPath = InRemovedAssetData.ObjectPath.ToString() + "_C";
-		}
 	}
 
 	if (FindAndRemoveNodeByClassPath(ObjectClassRoot, FName(*ClassObjectPath)))
@@ -1288,10 +1284,10 @@ void FClassHierarchy::AddAsset(const FAssetData& InAddedAssetData)
 				FString ParentClassPath = NewNode->ParentClassPath.ToString();
 				UClass* ParentClass = FindObject<UClass>(nullptr, *ParentClassPath);
 				TSharedPtr< FClassViewerNode > ParentNode = FindParent(ObjectClassRoot, NewNode->ParentClassPath, ParentClass); 
-				if (ParentNode.IsValid())
+				if(ParentNode.IsValid())
 				{
 					ParentNode->AddChild(NewNode);
-
+				
 					// Make sure the children are properly sorted.
 					SortChildren(ObjectClassRoot);
 
@@ -1303,17 +1299,20 @@ void FClassHierarchy::AddAsset(const FAssetData& InAddedAssetData)
 	}
 }
 
-void FClassHierarchy::SortChildren( TSharedPtr< FClassViewerNode >& InRootNode)
+void FClassHierarchy::SortChildren( TSharedPtr< FClassViewerNode >& InRootNode )
 {
 	TArray< TSharedPtr< FClassViewerNode > >& ChildList = InRootNode->GetChildrenList();
 	for(int32 ChildIndex = 0; ChildIndex < ChildList.Num(); ChildIndex++)
 	{
+		// Setup the parent weak pointer, useful for going up the tree for unloaded blueprints.
+		ChildList[ChildIndex]->ParentNode = InRootNode;
+
 		// Check the child, then check the return to see if it is valid. If it is valid, end the recursion.
 		SortChildren(ChildList[ChildIndex]);
 	}
 
 	// Sort the children.
-	ChildList.Sort(FClassViewerNodeNameLess());
+	ChildList.Sort(CompareFClassViewerNodes);
 }
 
 void FClassHierarchy::FindClass(TSharedPtr< FClassViewerNode > InOutClassNode)
@@ -1336,7 +1335,7 @@ void FClassHierarchy::LoadUnloadedTagData(TSharedPtr<FClassViewerNode>& InOutCla
 		ClassDisplayName = ClassName;
 	}
 	// Create the viewer node. We use the name without _C for both
-	InOutClassViewerNode = MakeShared<FClassViewerNode>(ClassName, ClassDisplayName);
+	InOutClassViewerNode = MakeShareable(new FClassViewerNode(ClassName, ClassDisplayName));
 
 	InOutClassViewerNode->BlueprintAssetPath = InAssetData.ObjectPath;
 
@@ -1449,7 +1448,7 @@ void FClassHierarchy::PopulateClassHierarchy()
 
 	// Recursively sort the children.
 	SortChildren(ObjectClassRoot);
-
+	
 	// All viewers must refresh.
 	ClassViewer::Helpers::RefreshAll();
 }
@@ -1894,19 +1893,10 @@ TSharedRef< ITableRow > SClassViewer::OnGenerateRowForClassViewer( TSharedPtr<FC
 {	
 	// If the item was accepted by the filter, leave it bright, otherwise dim it.
 	float AlphaValue = Item->bPassesFilter? 1.0f : 0.5f;
-
-	// If the item passed the filter, it may be from a match with hidden class name strings, update the search box text to retain highlighting of valid matching text
-	FText SearchBoxTextForHighlight = SearchBox->GetText();
-	TSharedPtr<FString> ClassNameDisplay = Item->GetClassName(InitOptions.NameTypeToDisplay);
-	if (!SearchBoxTextForHighlight.IsEmpty() && (ClassNameDisplay->Find(*SearchBoxTextForHighlight.ToString()) == INDEX_NONE))
-	{
-		SearchBoxTextForHighlight = FText::FromString(UObjectBase::RemoveClassPrefix(*SearchBoxTextForHighlight.ToString()));
-	}
-
 	TSharedRef< SClassItem > ReturnRow = SNew(SClassItem, OwnerTable)
-		.ClassName(ClassNameDisplay)
+		.ClassName(Item->GetClassName(InitOptions.NameTypeToDisplay))
 		.bIsPlaceable(Item->IsClassPlaceable())
-		.HighlightText(SearchBoxTextForHighlight)
+		.HighlightText(SearchBox->GetText())
 		.TextColor(Item->IsClassPlaceable()? FLinearColor(0.2f, 0.4f, 0.6f, AlphaValue) : FLinearColor(1.0f, 1.0f, 1.0f, AlphaValue))
 		.AssociatedNode(Item)
 		.bIsInClassViewer( InitOptions.Mode == EClassViewerMode::ClassBrowsing )
@@ -2127,8 +2117,9 @@ FReply SClassViewer::OnDragDetected( const FGeometry& Geometry, const FPointerEv
 				// Spawn a loaded blueprint just like any other asset from the Content Browser.
 				if ( Item->Blueprint.IsValid() )
 				{
-					const FAssetData AssetData(Item->Blueprint.Get());
-					return FReply::Handled().BeginDragDrop(FContentBrowserDataDragDropOp::Legacy_New(MakeArrayView(&AssetData, 1)));
+					TArray<FAssetData> InAssetData;
+					InAssetData.Add(FAssetData(Item->Blueprint.Get()));
+					return FReply::Handled().BeginDragDrop(FAssetDragDropOp::New(InAssetData));
 				}
 				else
 				{
@@ -2141,8 +2132,9 @@ FReply SClassViewer::OnDragDetected( const FGeometry& Geometry, const FPointerEv
 				FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
 
 				// Pull asset data out of asset registry
-				const FAssetData AssetData = AssetRegistryModule.Get().GetAssetByObjectPath(Item->BlueprintAssetPath);
-				return FReply::Handled().BeginDragDrop(FContentBrowserDataDragDropOp::Legacy_New(MakeArrayView(&AssetData, 1)));
+				TArray<FAssetData> InAssetData;
+				InAssetData.Add(AssetRegistryModule.Get().GetAssetByObjectPath(Item->BlueprintAssetPath));
+				return FReply::Handled().BeginDragDrop(FAssetDragDropOp::New(InAssetData));
 			}
 		}
 	}
@@ -2355,12 +2347,10 @@ void SClassViewer::SetExpansionStatesInTree( TSharedPtr<FClassViewerNode> InItem
 int32 SClassViewer::CountTreeItems(FClassViewerNode* Node)
 {
 	if (Node == nullptr)
-	{
 		return 0;
-	}
 	int32 Count = 1;
 	TArray<TSharedPtr<FClassViewerNode>>& ChildArray = Node->GetChildrenList();
-	for (int32 i = 0; i < ChildArray.Num(); i++)
+	for (int i = 0; i < ChildArray.Num(); i++)
 	{
 		Count += CountTreeItems(ChildArray[i].Get());
 	}
@@ -2369,21 +2359,6 @@ int32 SClassViewer::CountTreeItems(FClassViewerNode* Node)
 
 void SClassViewer::Populate()
 {
-	TArray<FName> PreviousSelection;
-	{
-		TArray<TSharedPtr<FClassViewerNode>> SelectedItems = GetSelectedItems();
-		if (SelectedItems.Num() > 0)
-		{
-			for (TSharedPtr<FClassViewerNode>& Node : SelectedItems)
-			{
-				if (Node.IsValid())
-				{
-					PreviousSelection.Add(Node->ClassPath);
-				}
-			}
-		}
-	}
-
 	bPendingSetExpansionStates = false;
 
 	// If showing a class tree, we may need to save expansion states.
@@ -2422,8 +2397,8 @@ void SClassViewer::Populate()
 		// Take the package names for the internal only classes and convert them into their UClass
 		for (int i = 0; i < InternalClassNames.Num(); i++)
 		{
-			FName PackageClassName = *InternalClassNames[i].ToString();
-			const TSharedPtr<FClassViewerNode> ClassNode = ClassViewer::Helpers::ClassHierarchy->FindNodeByGeneratedClassPath(ClassViewer::Helpers::ClassHierarchy->GetObjectRootNode(), PackageClassName);
+			FString PackageClassName = InternalClassNames[i].ToString();
+			const TSharedPtr<FClassViewerNode> ClassNode = ClassViewer::Helpers::ClassHierarchy->FindNodeByClassName(ClassViewer::Helpers::ClassHierarchy->GetObjectRootNode(), PackageClassName);
 
 			if (ClassNode.IsValid())
 			{
@@ -2489,58 +2464,11 @@ void SClassViewer::Populate()
 		}
 
 		NumClasses = 0;
-		for (int32 i = 0; i < RootTreeItems.Num(); i++)
-		{
+		for (int i = 0; i < RootTreeItems.Num(); i++)
 			NumClasses += CountTreeItems(RootTreeItems[i].Get());
-		}
 
 		// Now that new items are in the tree, we need to request a refresh.
 		ClassTree->RequestTreeRefresh();
-
-		TSharedPtr<FClassViewerNode> ClassNode;
-		TSharedPtr<FClassViewerNode> ExpandNode;
-		if (PreviousSelection.Num() > 0)
-		{
-			ClassNode = ClassViewer::Helpers::ClassHierarchy->FindNodeByGeneratedClassPath(RootNode, PreviousSelection[0]);
-			ExpandNode = ClassNode ? ClassNode->ParentNode.Pin() : nullptr;
-		}
-		else if (InitOptions.InitiallySelectedClass)
-		{
-			UClass* CurrentClass = InitOptions.InitiallySelectedClass;
-			InitOptions.InitiallySelectedClass = nullptr;
-
-			TArray<UClass*> ClassHierarchy;
-			while (CurrentClass)
-			{
-				ClassHierarchy.Add(CurrentClass);
-				CurrentClass = CurrentClass->GetSuperClass();
-			}
-
-			ClassNode = RootNode;
-			for (int32 Index = ClassHierarchy.Num() - 2; Index >= 0; --Index)
-			{
-				for (const TSharedPtr<FClassViewerNode>& ChildClassNode : ClassNode->GetChildrenList())
-				{
-					UClass* ChildClass = ChildClassNode->Class.Get();
-					if (ChildClass == ClassHierarchy[Index])
-					{
-						ClassNode = ChildClassNode;
-						break;
-					}
-				}
-			}
-			ExpandNode = ClassNode;
-		}
-
-		for (; ExpandNode; ExpandNode = ExpandNode->ParentNode.Pin())
-		{
-			ClassTree->SetItemExpansion(ExpandNode, true);
-		}
-
-		if (ClassNode)
-		{
-			ClassTree->SetSelection(ClassNode);
-		}
 	}
 	else
 	{
@@ -2548,7 +2476,19 @@ void SClassViewer::Populate()
 		ClassViewer::Helpers::GetClassList(RootTreeItems, ClassFilter, InitOptions);
 
 		// Sort the list alphabetically.
-		RootTreeItems.Sort(FClassViewerNodeNameLess(InitOptions.NameTypeToDisplay));
+		struct FCompareFClassViewerNode
+		{
+			FORCEINLINE bool operator()( TSharedPtr<FClassViewerNode> A, TSharedPtr<FClassViewerNode> B ) const
+			{
+				check(A.IsValid());
+				check(B.IsValid());
+				// Pull out the FString, for ease of reading.
+				const FString& AString = *A->GetClassName().Get();
+				const FString& BString = *B->GetClassName().Get();
+				return AString < BString;
+			}
+		};
+		RootTreeItems.Sort( FCompareFClassViewerNode() );
 
 		// Only display this option if the user wants it and in Picker Mode.
 		if(InitOptions.bShowNoneOption && InitOptions.Mode == EClassViewerMode::ClassPicker)
@@ -2559,32 +2499,11 @@ void SClassViewer::Populate()
 		}
 
 		NumClasses = 0;
-		for (int32 i = 0; i < RootTreeItems.Num(); i++)
-		{
-			NumClasses += CountTreeItems(RootTreeItems[i].Get());
-		}
+		for (int i = 0; i < RootTreeItems.Num(); i++)
+			NumClasses += CountTreeItems(RootTreeItems[i].Get() );
 
 		// Now that new items are in the list, we need to request a refresh.
 		ClassList->RequestListRefresh();
-
-		FString ClassPathNameToSelect;
-		if (PreviousSelection.Num() > 0)
-		{
-			ClassPathNameToSelect = PreviousSelection[0].ToString();
-		}
-		else if (InitOptions.InitiallySelectedClass)
-		{
-			ClassPathNameToSelect = InitOptions.InitiallySelectedClass->GetPathName();
-		}
-
-		if (ClassPathNameToSelect.Len() > 0)
-		{
-			if(TSharedPtr<FClassViewerNode>* ClassNode = RootTreeItems.FindByPredicate([ClassPathNameToSelect](const TSharedPtr< FClassViewerNode > InClassNode) { return InClassNode->Class.IsValid() && (InClassNode->Class->GetPathName() == ClassPathNameToSelect); }))
-			{
-				ClassList->SetSelection(*ClassNode);
-			}
-			InitOptions.InitiallySelectedClass = nullptr;
-		}
 	}
 }
 
@@ -2597,10 +2516,14 @@ FReply SClassViewer::OnKeyDown( const FGeometry& MyGeometry, const FKeyEvent& In
 
 FReply SClassViewer::OnFocusReceived( const FGeometry& MyGeometry, const FFocusEvent& InFocusEvent )
 {
-	if (InFocusEvent.GetCause() == EFocusCause::Navigation)
+	if (RootTreeItems.Num() > 0)
 	{
-		FSlateApplication::Get().SetKeyboardFocus(SearchBox.ToSharedRef(), EFocusCause::SetDirectly);
+		ClassTree->SetItemSelection(RootTreeItems[0], true, ESelectInfo::OnMouseClick);
+		ClassTree->SetItemExpansion(RootTreeItems[0], true);
+		OnClassViewerSelectionChanged(RootTreeItems[0],ESelectInfo::OnMouseClick);
 	}
+
+	FSlateApplication::Get().SetKeyboardFocus(SearchBox.ToSharedRef(), EFocusCause::SetDirectly);
 	
 	return FReply::Unhandled();
 }
@@ -2617,7 +2540,7 @@ void SClassViewer::DestroyClassHierarchy()
 
 TSharedPtr<FClassViewerNode> SClassViewer::CreateNoneOption()
 {
-	TSharedPtr<FClassViewerNode> NoneItem = MakeShared<FClassViewerNode>("None", "None");
+	TSharedPtr<FClassViewerNode> NoneItem = MakeShareable( new FClassViewerNode("None", "None") );
 
 	// The item "passes" the filter so it does not appear grayed out.
 	NoneItem->bPassesFilter = true;
@@ -2653,13 +2576,6 @@ void SClassViewer::Tick( const FGeometry& AllottedGeometry, const double InCurre
 		if (InitOptions.bExpandRootNodes)
 		{
 			ExpandRootNodes();
-		}
-
-		// Scroll the first item into view if applicable
-		const TArray<TSharedPtr<FClassViewerNode>> SelectedItems = GetSelectedItems();
-		if (SelectedItems.Num() > 0)
-		{
-			ClassTree->RequestScrollIntoView(SelectedItems[0]);
 		}
 	}
 

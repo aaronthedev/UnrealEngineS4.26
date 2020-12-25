@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Navigation/NavLinkProxy.h"
 #include "UObject/ConstructorHelpers.h"
@@ -206,7 +206,7 @@ bool ANavLinkProxy::GetNavigationLinksArray(TArray<FNavigationLink>& OutLink, TA
 	return (PointLinks.Num() > 0) || (SegmentLinks.Num() > 0) || bIsSmartLinkActive;
 }
 
-FBox ANavLinkProxy::GetComponentsBoundingBox(bool bNonColliding, bool bIncludeFromChildActors) const
+FBox ANavLinkProxy::GetComponentsBoundingBox(bool bNonColliding) const
 {
 	FBox LinksBB(FVector(0.f, 0.f, -10.f), FVector(0.f,0.f,10.f));
 
@@ -289,13 +289,3 @@ bool ANavLinkProxy::HasMovingAgents() const
 {
 	return SmartLinkComp->HasMovingAgents();
 }
-
-#if WITH_EDITOR
-void ANavLinkProxy::CopyEndPointsFromSimpleLinkToSmartLink()
-{
-	if (PointLinks.Num() && SmartLinkComp)
-	{
-		SmartLinkComp->SetLinkData(PointLinks[0].Left, PointLinks[0].Right, PointLinks[0].Direction);
-	}
-}
-#endif // WITH_EDITOR

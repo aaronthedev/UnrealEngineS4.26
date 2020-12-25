@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -10,7 +10,7 @@
 /**
  * Implements a factory for ULevelSequence objects.
  */
-UCLASS(BlueprintType, hidecategories=Object)
+UCLASS(hidecategories=Object)
 class ULevelSequenceFactoryNew
 	: public UFactory
 {

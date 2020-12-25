@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -139,19 +139,16 @@ namespace UnrealBuildTool
 						Dictionary<string, FileReference> TargetNameToProjectFile = new Dictionary<string, FileReference>();
 						foreach(FileReference ProjectFile in EnumerateProjectFiles())
 						{
-							foreach (DirectoryReference ExtensionDir in UnrealBuildTool.GetExtensionDirs(ProjectFile.Directory))
+							DirectoryReference SourceDirectory = DirectoryReference.Combine(ProjectFile.Directory, "Source");
+							if(DirectoryLookupCache.DirectoryExists(SourceDirectory))
 							{
-								DirectoryReference SourceDirectory = DirectoryReference.Combine(ExtensionDir, "Source");
-								if (DirectoryLookupCache.DirectoryExists(SourceDirectory))
-								{
-									FindTargetFiles(SourceDirectory, TargetNameToProjectFile, ProjectFile);
-								}
+								FindTargetFiles(SourceDirectory, TargetNameToProjectFile, ProjectFile);
+							}
 
-								DirectoryReference IntermediateSourceDirectory = DirectoryReference.Combine(ExtensionDir, "Intermediate", "Source");
-								if (DirectoryLookupCache.DirectoryExists(IntermediateSourceDirectory))
-								{
-									FindTargetFiles(IntermediateSourceDirectory, TargetNameToProjectFile, ProjectFile);
-								}
+							DirectoryReference IntermediateSourceDirectory = DirectoryReference.Combine(ProjectFile.Directory, "Intermediate", "Source");
+							if(DirectoryLookupCache.DirectoryExists(IntermediateSourceDirectory))
+							{
+								FindTargetFiles(IntermediateSourceDirectory, TargetNameToProjectFile, ProjectFile);
 							}
 						}
 						CachedTargetNameToProjectFile = TargetNameToProjectFile;

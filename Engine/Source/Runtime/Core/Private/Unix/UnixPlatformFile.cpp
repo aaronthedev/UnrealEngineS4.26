@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Unix/UnixPlatformFile.h"
 #include "GenericPlatform/GenericPlatformProcess.h"
@@ -37,7 +37,7 @@ namespace
 			UnixEpoch + FTimespan::FromSeconds(FileInfo.st_mtime), 
 			FileSize,
 			bIsDirectory,
-			!(FileInfo.st_mode & S_IWUSR)
+			!!(FileInfo.st_mode & S_IWUSR)
 		);
 	}
 
@@ -231,10 +231,7 @@ public:
 	virtual bool Truncate(int64 NewSize) override
 	{
 		check(IsValid());
-		
-		int Result = 0;
-		do { Result = ftruncate(FileHandle, NewSize); } while (Result < 0 && errno == EINTR);
-		return Result == 0;
+		return ftruncate(FileHandle, NewSize) == 0;
 	}
 
 	virtual int64 Size() override
@@ -1017,7 +1014,7 @@ bool FUnixPlatformFile::DirectoryExists(const TCHAR* Directory)
 
 bool FUnixPlatformFile::CreateDirectory(const TCHAR* Directory)
 {
-	return mkdir(TCHAR_TO_UTF8(*NormalizeFilename(Directory, true)), 0775) == 0 || (errno == EEXIST);
+	return mkdir(TCHAR_TO_UTF8(*NormalizeFilename(Directory, true)), 0755) == 0 || (errno == EEXIST);
 }
 
 bool FUnixPlatformFile::DeleteDirectory(const TCHAR* Directory)
@@ -1161,22 +1158,28 @@ bool FUnixPlatformFile::CreateDirectoriesFromPath(const TCHAR* Path)
 		{
 			SubPath[i+1] = 0;
 
-			if (mkdir(SubPath, 0775) == -1)
+			// directory exists?
+			struct stat SubPathFileInfo;
+			if (stat(SubPath, &SubPathFileInfo) == -1)
 			{
-				int ErrNo = errno;
-
-				// Folder already exists, continue and make sure the rest of the path is created
-				if (ErrNo == EEXIST)
+				// nope. create it.
+				if (mkdir(SubPath, 0755) == -1)
 				{
-					continue;
+					int ErrNo = errno;
+
+					// We happen to have gotten into a position after stat that the folder was created so dont treat this as an error
+					bool bErrnoDirExist = ErrNo == EEXIST;
+
+					if (!bErrnoDirExist)
+					{
+						UE_LOG_UNIX_FILE(Warning, TEXT( "create dir('%s') failed: errno=%d (%s)" ), UTF8_TO_TCHAR(DirPath), ErrNo, UTF8_TO_TCHAR(strerror(ErrNo)));
+					}
+
+					FMemory::Free(DirPath);
+					FMemory::Free(SubPath);
+
+					return bErrnoDirExist;
 				}
-
-				UE_LOG_UNIX_FILE(Warning, TEXT( "create dir('%s') failed: errno=%d (%s)" ), UTF8_TO_TCHAR(DirPath), ErrNo, UTF8_TO_TCHAR(strerror(ErrNo)));
-
-				FMemory::Free(DirPath);
-				FMemory::Free(SubPath);
-
-				return false;
 			}
 		}
 	}

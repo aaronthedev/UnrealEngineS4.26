@@ -10,6 +10,7 @@ class TestUntestedModules(unittest.TestCase):
         with test_support.check_warnings(quiet=True):
             import CGIHTTPServer
             import audiodev
+            import bdb
             import cgitb
             import code
             import compileall

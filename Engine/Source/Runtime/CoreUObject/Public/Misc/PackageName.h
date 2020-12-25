@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PackageName.h: Unreal package name utility functions.
@@ -7,8 +7,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Containers/ArrayView.h"
-#include "Containers/StringView.h"
 
 struct FFileStatData;
 
@@ -126,7 +124,7 @@ public:
 	 */
 	static bool IsValidLongPackageName(const FString& InLongPackageName, bool bIncludeReadOnlyRoots = false, FText* OutReason = nullptr);
 
-	/**
+	/** 
 	 * Returns true if the path starts with a valid root (i.e. /Game/, /Engine/, etc) and contains no illegal characters.
 	 * This validates that the packagename is valid, and also makes sure the object after package name is also correct.
 	 * This will return false if passed a path starting with Classname'
@@ -138,15 +136,6 @@ public:
 	static bool IsValidObjectPath(const FString& InObjectPath, FText* OutReason = nullptr);
 
 	/**
-	 * Returns true if the path starts with a valid root (i.e. /Game/, /Engine/, etc).
-	 * 
-	 *
-	 * @param InObjectPath				The object path to test
-	 * @return							true if a valid object path
-	 */
-	static bool IsValidPath(const FString& InPath);
-
-	/**
 	 * Checks if the given string is a long package name or not.
 	 *
 	 * @param PossiblyLongName Package name.
@@ -154,7 +143,6 @@ public:
 	 */
 	static bool IsShortPackageName(const FString& PossiblyLongName);
 	static bool IsShortPackageName(const FName PossiblyLongName);
-	static bool IsShortPackageName(FStringView PossiblyLongName);
 
 	/**
 	 * Converts package name to short name.
@@ -185,18 +173,6 @@ public:
 	static FName GetShortFName(const TCHAR* LongName);
 
 	/**
-	 * Tries to convert a file or directory in game-relative package name format to the corresponding local path
-	 * Game-relative package names can be a full package path (/Game/Folder/File, /Engine/Folder/File, /PluginName/Folder/File) or
-	 * a relative path (Folder/File).
-	 * Full package paths must be in a mounted directory to be successfully converted.
-	 *
-	 * @param RelativePackagePath The path in game-relative package format (allowed to have or not have an extension).
-	 * @param OutLocalPath The corresponding local-path file (with the extension or lack of extension from the input).
-	 * @return Whether the conversion was successful.
-	 */
-	static bool TryConvertGameRelativePackagePathToLocalPath(FStringView RelativePackagePath, FString& OutLocalPath);
-
-	/**
 	 * This will insert a mount point at the head of the search chain (so it can overlap an existing mount point and win).
 	 *
 	 * @param RootPath Logical Root Path.
@@ -213,18 +189,12 @@ public:
 	static void UnRegisterMountPoint(const FString& RootPath, const FString& ContentPath);
 
 	/**
-	 * Returns whether the specific logical root path is a valid mount point.
-	 */
-	static bool MountPointExists(const FString& RootPath);
-
-	/**
 	 * Get the mount point for a given package path
 	 * 
 	 * @param InPackagePath The package path to get the mount point for
-	 * @param InWithoutSlashes Optional parameters that keeps the slashes around the mount point if false
 	 * @return FName corresponding to the mount point, or Empty if invalid
 	 */
-	static FName GetPackageMountPoint(const FString& InPackagePath, bool InWithoutSlashes = true);
+	static FName GetPackageMountPoint(const FString& InPackagePath);
 
 	/**
 	 * Checks if the package exists on disk.
@@ -342,59 +312,14 @@ public:
 		return TextMapPackageExtension;
 	}
 
-	/**
-	 * Returns whether the passed in extension is a valid text package
-	 * extension. Extensions with and without trailing dots are supported.
-	 *
-	 * @param	Extension to test.
-	 * @return	True if Ext is either an text asset or a text map extension, otherwise false
-	 */
-	static bool IsTextPackageExtension(const TCHAR* Ext);
-
-	/**
-	 * Returns whether the passed in extension is a valid text asset package
-	 * extension. Extensions with and without trailing dots are supported.
-	 *
-	 * @param	Extension to test.
-	 * @return	True if Ext is a text asset extension, otherwise false
-	 */
-	static bool IsTextAssetPackageExtension(const TCHAR* Ext);
-
-	/**
-	 * Returns whether the passed in extension is a valid text map package
-	 * extension. Extensions with and without trailing dots are supported.
-	 *
-	 * @param	Extension to test.
-	 * @return	True if Ext is a text map extension, otherwise false
-	 */
-	static bool IsTextMapPackageExtension(const TCHAR* Ext);
-
 	/** 
-	 * Returns whether the passed in extension is a valid binary package
+	 * Returns whether the passed in extension is a valid package 
 	 * extension. Extensions with and without trailing dots are supported.
 	 *
 	 * @param	Extension to test. 
-	 * @return	True if Ext is either a binary  asset or map extension, otherwise false
+	 * @return	True if Ext is either an asset or a map extension, otherwise false
 	 */
 	static bool IsPackageExtension(const TCHAR* Ext);
-
-	/**
-	 * Returns whether the passed in extension is a valid binary asset package
-	 * extension. Extensions with and without trailing dots are supported.
-	 *
-	 * @param	Extension to test.
-	 * @return	True if Ext is a binary asset extension, otherwise false
-	 */
-	static bool IsAssetPackageExtension(const TCHAR* Ext);
-
-	/**
-	 * Returns whether the passed in extension is a valid binary map package
-	 * extension. Extensions with and without trailing dots are supported.
-	 *
-	 * @param	Extension to test.
-	 * @return	True if Ext is a binary asset extension, otherwise false
-	 */
-	static bool IsMapPackageExtension(const TCHAR* Ext);
 
 	/** 
 	 * Returns whether the passed in filename ends with any of the known
@@ -411,20 +336,11 @@ public:
 	/**
 	 * This will recurse over a directory structure looking for packages.
 	 * 
-	 * @param	OutPackages			The output array that is filled out with the discovered file paths
-	 * @param	RootDir				The root of the directory structure to recurse through
+	 * @param	OutPackages			The output array that is filled out with a file paths
+	 * @param	RootDirectory		The root of the directory structure to recurse through
 	 * @return	Returns true if any packages have been found, otherwise false
 	 */
 	static bool FindPackagesInDirectory(TArray<FString>& OutPackages, const FString& RootDir);
-
-	/**
-	 * This will recurse over the given list of directory structures looking for packages.
-	 *
-	 * @param	OutPackages			The output array that is filled out with the discovered file paths
-	 * @param	RootDirss			The roots of the directory structures to recurse through
-	 * @return	Returns true if any packages have been found, otherwise false
-	 */
-	static bool FindPackagesInDirectories(TArray<FString>& OutPackages, const TArrayView<const FString>& RootDirs);
 
 	/**
 	 * This will recurse over a directory structure looking for packages.
@@ -469,10 +385,7 @@ public:
 	 * @param OutObjectPath The path to the object.
 	 * @return True if the supplied export text path could be parsed
 	 */
-	static bool ParseExportTextPath(FStringView InExportTextPath, FStringView* OutClassName, FStringView* OutObjectPath);
-	static bool ParseExportTextPath(const FString& InExportTextPath, FString* OutClassName, FString* OutObjectPath);	
-	static bool ParseExportTextPath(const TCHAR* InExportTextPath, FStringView* OutClassName, FStringView* OutObjectPath);
-
+	static bool ParseExportTextPath(const FString& InExportTextPath, FString* OutClassName, FString* OutObjectPath);
 
 	/** 
 	 * Returns the path to the object referred to by the supplied export text path, excluding the class name.
@@ -480,9 +393,7 @@ public:
 	 * @param InExportTextPath The export text path for an object. Takes on the form: ClassName'ObjectPath'
 	 * @return The path to the object referred to by the supplied export path.
 	 */
-	static FStringView	ExportTextPathToObjectPath(FStringView InExportTextPath);
-	static FString		ExportTextPathToObjectPath(const FString& InExportTextPath);
-	static FString		ExportTextPathToObjectPath(const TCHAR* InExportTextPath);
+	static FString ExportTextPathToObjectPath(const FString& InExportTextPath);
 
 	/** 
 	 * Returns the name of the package referred to by the specified object path
@@ -492,44 +403,38 @@ public:
 	/** 
 	 * Returns the name of the object referred to by the specified object path
 	 */
-	static FStringView ObjectPathToObjectName(FStringView InObjectPath);
 	static FString ObjectPathToObjectName(const FString& InObjectPath);
-
-	/**
-	 * Checks the root of the package's path to see if it's an extra package
-	 */
-	static bool IsExtraPackage(FStringView InPackageName);
 
 	/**
 	 * Checks the root of the package's path to see if it is a script package
 	 * @return true if the root of the path matches the script path
 	 */
-	static bool IsScriptPackage(FStringView InPackageName);
+	static bool IsScriptPackage(const FString& InPackageName);
 
 	/**
 	 * Checks the root of the package's path to see if it's a memory package
 	 * This should be set for packages that reside in memory and not on disk, we treat them similar to a script package
 	 * @return true if the root of the patch matches the memory path
 	 */
-	static bool IsMemoryPackage(FStringView InPackageName);
+	static bool IsMemoryPackage(const FString& InPackageName);
 
 	/**
 	 * Checks the root of the package's path to see if it is a temp package
 	 * Temp packages are sometimes saved to disk, and sometimes only exist in memory. They are never in source control
 	 * @return true if the root of the patch matches the temp path
 	 */
-	static bool IsTempPackage(FStringView InPackageName);
+	static bool IsTempPackage(const FString& InPackageName);
 
 	/**
 	 * Checks the root of the package's path to see if it is a localized package
 	 * @return true if the root of the path matches any localized root path
 	 */
-	static bool IsLocalizedPackage(FStringView InPackageName);
+	static bool IsLocalizedPackage(const FString& InPackageName);
 
 	/**
 	 * Checks if a package name contains characters that are invalid for package names.
 	 */
-	static bool DoesPackageNameContainInvalidCharacters(FStringView InLongPackageName, FText* OutReason = NULL);
+	static bool DoesPackageNameContainInvalidCharacters(const FString& InLongPackageName, FText* OutReason = NULL);
 	
 	/**
 	* Checks if a package can be found using known package extensions.
@@ -548,20 +453,13 @@ public:
 	 * @param Extension The extension for this package
 	 * @return True if the long package name was fixed up, false otherwise
 	 */
-	static bool FixPackageNameCase(FString& LongPackageName, FStringView Extension);
+	static bool FixPackageNameCase(FString& LongPackageName, const FString& Extension);
 
 	UE_DEPRECATED(4.17, "Deprecated. Call TryConvertLongPackageNameToFilename instead, which also works on nested paths")
 	static bool ConvertRootPathToContentPath(const FString& RootPath, FString& OutContentPath);
 
 	UE_DEPRECATED(4.17, "Deprecated. Call TryConvertFilenameToLongPackageName instead")
 	static FString PackageFromPath(const TCHAR* InPathName);
-
-	/** Override whether a package exist or not. */
-	DECLARE_DELEGATE_RetVal_OneParam(bool, FDoesPackageExistOverride, FName);
-	static FDoesPackageExistOverride& DoesPackageExistOverride()
-	{
-		return DoesPackageExistOverrideDelegate;
-	}
 
 private:
 
@@ -574,17 +472,14 @@ private:
 	 * Internal function used to rename filename to long package name.
 	 *
 	 * @param InFilename
-	 * @param OutPackageName Long package name.
+	 * @return Long package name.
 	 */
-	static void InternalFilenameToLongPackageName(FStringView InFilename, FStringBuilderBase& OutPackageName);
+	static FString InternalFilenameToLongPackageName(const FString& InFilename);
 
 	/** Event that is triggered when a new content path is mounted */
 	static FOnContentPathMountedEvent OnContentPathMountedEvent;
 
 	/** Event that is triggered when a new content path is removed */
 	static FOnContentPathDismountedEvent OnContentPathDismountedEvent;
-
-	/** Delegate used to check whether a package exist without using the filesystem. */
-	static FDoesPackageExistOverride DoesPackageExistOverrideDelegate;
 };
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Definitions.usf: Defines undefined defines to 0 as Cg can't handle them.
@@ -161,13 +161,4 @@
 
 #ifndef SINGLE_LAYER_WATER_SIMPLE_FORWARD
 #define SINGLE_LAYER_WATER_SIMPLE_FORWARD				0
-#endif
-
-#ifndef CLOUD_LAYER_PIXEL_SHADER
-#define CLOUD_LAYER_PIXEL_SHADER						0
-#endif
-
-
-#ifndef SUPPORTS_ANISOTROPIC_MATERIALS
-#define SUPPORTS_ANISOTROPIC_MATERIALS					0
 #endif

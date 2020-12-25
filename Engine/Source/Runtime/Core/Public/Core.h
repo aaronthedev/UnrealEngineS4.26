@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -61,6 +61,7 @@ MONOLITHIC_HEADER_BOILERPLATE()
 #include "Misc/AssertionMacros.h"
 #include "HAL/UnrealMemory.h"
 #include "Templates/PointerIsConvertibleFromTo.h"
+#include "Templates/TypeWrapper.h"
 #include "Templates/AlignmentTemplates.h"
 #include "Templates/RemoveReference.h"
 #include "Templates/ChooseClass.h"

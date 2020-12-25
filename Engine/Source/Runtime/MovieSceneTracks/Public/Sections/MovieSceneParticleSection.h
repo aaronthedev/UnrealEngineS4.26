@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -62,6 +62,11 @@ public:
 	/** Curve containing the particle keys. */
 	UPROPERTY()
 	FMovieSceneParticleChannel ParticleKeys;
+
+protected:
+
+	//~ UMovieSceneSection interface
+	virtual FMovieSceneEvalTemplatePtr GenerateTemplate() const override;
 };
 
 

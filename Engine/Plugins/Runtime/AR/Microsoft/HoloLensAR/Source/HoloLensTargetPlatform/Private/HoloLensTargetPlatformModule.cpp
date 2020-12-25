@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "HoloLensTargetDevice.h"
 #include "Interfaces/ITargetPlatformModule.h"
@@ -11,6 +11,30 @@
 #include "UObject/Package.h"
 
 #define LOCTEXT_NAMESPACE "FHoloLensTargetPlatformModule"
+
+class HoloLensTargetPlatform : public FHoloLensTargetPlatform
+{
+public:
+	HoloLensTargetPlatform()
+	{
+	}
+
+	virtual FText GetVariantDisplayName() const override
+	{
+		return LOCTEXT("HoloLensVariantDisplayName", "HoloLens");
+	}
+
+	virtual float GetVariantPriority() const override
+	{
+		return 1.0f;
+	}
+
+protected:
+	virtual bool SupportsDevice(FName DeviceType, bool DeviceIs64Bits)
+	{
+		return true;
+	}
+};
 
 
 
@@ -47,7 +71,7 @@ public:
 		{
 			//@todo HoloLens: Check for SDK?
 
-			HoloLensTargetSingleton = new FHoloLensTargetPlatform();
+			HoloLensTargetSingleton = new HoloLensTargetPlatform();
 		}
 		
 		return HoloLensTargetSingleton;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,7 +19,6 @@
 
 struct FPolyglotTextData;
 class ILocalizedTextSource;
-class IPakFile;
 class FTextLocalizationResource;
 
 typedef TSharedRef<FString, ESPMode::ThreadSafe> FTextDisplayStringRef;
@@ -28,7 +27,6 @@ typedef TSharedPtr<FString, ESPMode::ThreadSafe> FTextDisplayStringPtr;
 /** Singleton class that manages display strings for FText. */
 class CORE_API FTextLocalizationManager
 {
-	friend CORE_API void BeginPreInitTextLocalization();
 	friend CORE_API void BeginInitTextLocalization();
 	friend CORE_API void InitEngineTextLocalization();
 	friend CORE_API void InitGameTextLocalization();
@@ -93,16 +91,6 @@ public:
 	void CompactDataStructures();
 
 	/**
-	 * Get the language that will be requested during localization initialization, based on the hierarchy of: command line -> configs -> OS default.
-	 */
-	FString GetRequestedLanguageName() const;
-
-	/**
-	 * Get the locale that will be requested during localization initialization, based on the hierarchy of: command line -> configs -> OS default.
-	 */
-	FString GetRequestedLocaleName() const;
-
-	/**
 	 * Given a localization category, get the native culture for the category (if known).
 	 * @return The native culture for the given localization category, or an empty string if the native culture is unknown.
 	 */
@@ -144,11 +132,6 @@ public:
 	 *	Returns true if found and sets the out parameters. Otherwise, returns false.
 	 */
 	bool FindNamespaceAndKeyFromDisplayString(const FTextDisplayStringRef& InDisplayString, FString& OutNamespace, FString& OutKey);
-
-	/**	Finds the namespace and key associated with the specified display string.
-	 *	Returns true if found and sets the out parameters. Otherwise, returns false.
-	 */
-	bool FindNamespaceAndKeyFromDisplayString(const FTextDisplayStringRef& InDisplayString, FTextKey& OutNamespace, FTextKey& OutKey);
 	
 	/**
 	 * Attempts to find a local revision history for the given display string.
@@ -244,9 +227,6 @@ public:
 	FTextRevisionChangedEvent OnTextRevisionChangedEvent;
 
 private:
-	/** Callback for when a PAK file is loaded. Loads any chunk specific localization resources. */
-	void OnPakFileMounted(const IPakFile& PakFile);
-
 	/** Callback for changes in culture. Loads the new culture's localization resources. */
 	void OnCultureChanged();
 
@@ -270,9 +250,6 @@ private:
 
 	/** Array of registered localized text sources, sorted by priority (@see RegisterTextSource) */
 	TArray<TSharedPtr<ILocalizedTextSource>> LocalizedTextSources;
-
-	/** The LocRes text source (this is also added to LocalizedTextSources, but we keep a pointer to it directly so we can patch in chunked LocRes data at runtime) */
-	TSharedPtr<class FLocalizationResourceTextSource> LocResTextSource;
 
 	/** The polyglot text source (this is also added to LocalizedTextSources, but we keep a pointer to it directly so we can add new polyglot data to it at runtime) */
 	TSharedPtr<class FPolyglotTextSource> PolyglotTextSource;

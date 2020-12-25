@@ -1,10 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PostProcessBloom.usf: PostProcessing bloom
 =============================================================================*/
-
-#define EYE_ADAPTATION_LOOSE_PARAMETERS 1
 
 #include "Common.ush"
 #include "PostProcessCommon.ush"

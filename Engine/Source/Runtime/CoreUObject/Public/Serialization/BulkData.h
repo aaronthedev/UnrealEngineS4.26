@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,12 +8,10 @@
 #include "Async/Future.h"
 #include "Async/AsyncFileHandle.h"
 #include "GenericPlatform/GenericPlatformFile.h"
-#include "Serialization/FileRegions.h"
-#include "BulkDataCommon.h"
 #include "BulkData2.h"
 
 #if WITH_EDITOR == 0 && WITH_EDITORONLY_DATA == 0 //Runtime
-	#define USE_NEW_BULKDATA 1 // Set to 1 to enable 
+	#define USE_NEW_BULKDATA 0
 #else
 	#define USE_NEW_BULKDATA 0
 #endif
@@ -21,11 +19,66 @@
 // Enable the following to use the more compact FBulkDataStreamingToken in places where it is implemented
 #define USE_BULKDATA_STREAMING_TOKEN !USE_NEW_BULKDATA
 
-#if USE_BULKDATA_STREAMING_TOKEN
-	#define STREAMINGTOKEN_PARAM(param) param,
-#else
-	#define STREAMINGTOKEN_PARAM(param) 
-#endif
+/**
+ * Flags serialized with the bulk data.
+ */
+enum EBulkDataFlags
+{
+	/** Empty flag set.																*/
+	BULKDATA_None								= 0,
+	/** If set, payload is stored at the end of the file and not inline				*/
+	BULKDATA_PayloadAtEndOfFile					= 1<<0,
+	/** If set, payload should be [un]compressed using ZLIB during serialization.	*/
+	BULKDATA_SerializeCompressedZLIB			= 1<<1,
+	/** Force usage of SerializeElement over bulk serialization.					*/
+	BULKDATA_ForceSingleElementSerialization	= 1<<2,
+	/** Bulk data is only used once at runtime in the game.							*/
+	BULKDATA_SingleUse							= 1<<3,
+	/** Bulk data won't be used and doesn't need to be loaded						*/
+	BULKDATA_Unused								= 1<<5,
+	/** Forces the payload to be saved inline, regardless of its size				*/
+	BULKDATA_ForceInlinePayload					= 1<<6,
+	/** Flag to check if either compression mode is specified						*/
+	BULKDATA_SerializeCompressed				= (BULKDATA_SerializeCompressedZLIB),
+	/** Forces the payload to be always streamed, regardless of its size */
+	BULKDATA_ForceStreamPayload					= 1 << 7,
+	/** If set, payload is stored in a .upack file alongside the uasset				*/
+	BULKDATA_PayloadInSeperateFile				= 1 << 8,
+	/** DEPRECATED: If set, payload is compressed using platform specific bit window	*/
+	BULKDATA_SerializeCompressedBitWindow		= 1 << 9,
+	/** There is a new default to inline unless you opt out */
+	BULKDATA_Force_NOT_InlinePayload			= 1 << 10,
+	/** This payload is optional and may not be on device */
+	BULKDATA_OptionalPayload					= 1 << 11,
+	/** This payload will be memory mapped, this requires alignment, no compression etc. */
+	BULKDATA_MemoryMappedPayload = 1 << 12,
+	/** Bulk data size is 64 bits long */
+	BULKDATA_Size64Bit							= 1 << 13,
+	/** Duplicate non-optional payload in optional bulk data. */
+	BULKDATA_DuplicateNonOptionalPayload		= 1 << 14
+};
+
+/**
+ * Enumeration for bulk data lock status.
+ */
+enum EBulkDataLockStatus
+{
+	/** Unlocked array													*/
+	LOCKSTATUS_Unlocked							= 0,
+	/** Locked read-only												*/
+	LOCKSTATUS_ReadOnlyLock						= 1,
+	/** Locked read-write-realloc										*/
+	LOCKSTATUS_ReadWriteLock					= 2,
+};
+
+/**
+ * Enumeration for bulk data lock behavior
+ */
+enum EBulkDataLockFlags
+{
+	LOCK_READ_ONLY								= 1,
+	LOCK_READ_WRITE								= 2,
+};
 
 class IMappedFileHandle;
 class IMappedFileRegion;
@@ -39,7 +92,8 @@ class IMappedFileRegion;
  */
 struct COREUOBJECT_API FOwnedBulkDataPtr
 {
-	explicit FOwnedBulkDataPtr(void* InAllocatedData)
+
+	FOwnedBulkDataPtr(void* InAllocatedData)
 		: AllocatedData(InAllocatedData)
 		, MappedHandle(nullptr)
 		, MappedRegion(nullptr)
@@ -87,23 +141,38 @@ private:
 	IMappedFileRegion* MappedRegion;
 };
 
-class FBulkDataIORequest : public IBulkDataIORequest
+/**
+ * Represents an IO request from the FUntypedBulkData streaming API.
+ *
+ * It functions pretty much the same as IAsyncReadRequest expect that it also holds
+ * the file handle as well. 
+ *
+ * 
+ */
+struct COREUOBJECT_API FBulkDataIORequest
 {
-public:
-	FBulkDataIORequest(IAsyncReadFileHandle* InFileHandle);
-	FBulkDataIORequest(IAsyncReadFileHandle* InFileHandle, IAsyncReadRequest* InReadRequest, int64 BytesToRead);
+	FBulkDataIORequest(IAsyncReadFileHandle* InFileHandle, IAsyncReadRequest* InReadRequest, int64 BytesToRead)
+		: FileHandle(InFileHandle)
+		, ReadRequest(InReadRequest)
+		, Size(BytesToRead)
+	{
 
-	virtual ~FBulkDataIORequest();
+	}
 
-	bool MakeReadRequest(int64 Offset, int64 BytesToRead, EAsyncIOPriorityAndFlags PriorityAndFlags, FBulkDataIORequestCallBack* CompleteCallback, uint8* UserSuppliedMemory);
+	~FBulkDataIORequest();
 
-	virtual bool PollCompletion() const override;
-	virtual bool WaitCompletion( float TimeLimitSeconds = 0.0f ) override;
+	bool PollCompletion() const;
+	bool WaitCompletion( float TimeLimitSeconds = 0.0f ) const;
 
-	virtual uint8* GetReadResults() override;
-	virtual int64 GetSize() const override;
+	uint8* GetReadResults() const;
+	int64 GetSize() const;
 
-	virtual void Cancel() override;
+	bool operator == (const IAsyncReadRequest* InReadRequest)
+	{
+		return ReadRequest == InReadRequest;
+	}
+
+	void Cancel() const;
 
 private:
 	IAsyncReadFileHandle* FileHandle;
@@ -146,7 +215,7 @@ public:
 		return OffsetInFile;
 	}
 
-	uint32 GetBulkDataSize() const
+	uint32 GetSize() const
 	{
 		return BulkDataSize;
 	}
@@ -155,8 +224,6 @@ private:
 	uint32 OffsetInFile{ InvalidOffset };
 	uint32 BulkDataSize{ 0 };
 };
-#else
-class FBulkDataStreamingToken; // Forward declared but not implemented
 #endif
 
 /**
@@ -288,7 +355,6 @@ private:
 
 public:
 	friend class FLinkerLoad;
-	using BulkDataRangeArray = TArray<FBulkDataStreamingToken*, TInlineAllocator<8>>;
 
 	/*-----------------------------------------------------------------------------
 		Constructors and operators
@@ -377,11 +443,6 @@ public:
 	 * Returns true if the data can be loaded from disk.
 	 */
 	bool CanLoadFromDisk() const;
-	
-	/**
-	 * Returns true if the data references a file that currently exists and can be referenced by the file system.
-	 */
-	bool DoesExist() const;
 
 	/**
 	 * Returns flags usable to decompress the bulk data
@@ -428,25 +489,13 @@ public:
 		return   (GetBulkDataFlags() & BULKDATA_PayloadAtEndOfFile) == 0;
 	}
 
-	UE_DEPRECATED(4.25, "Use ::IsInSeparateFile() instead")
-	FORCEINLINE bool InSeperateFile() const { return IsInSeparateFile(); }
-
 	/**
 	* Returns whether this bulk data is currently stored in it's own file or not
 	* @return true if BULKDATA_PayloadInSeperateFile is not set
 	*/
-	bool IsInSeparateFile() const
+	bool InSeperateFile() const
 	{
 		return	(GetBulkDataFlags() & BULKDATA_PayloadInSeperateFile) != 0;
-	}
-
-	/**
-	* Returns whether this bulk data is accessed via the IoDispatcher or not.
-	* @return false as the old BulkData API does not support it
-	*/
-	bool IsUsingIODispatcher() const
-	{
-		return false;
 	}
 
 	/**
@@ -500,13 +549,6 @@ public:
 	 **/
 	const FString& GetFilename() const { return Filename; }
 
-	/** 
-	 * Returns the io filename hash associated with this bulk data.
-	 *
-	 * @return Hash or INVALID_IO_FILENAME_HASH if invalid.
-	 **/
-	FIoFilenameHash GetIoFilenameHash() const { return MakeIoFilenameHash(Filename); }
-
 	/*-----------------------------------------------------------------------------
 		Data retrieval and manipulation.
 	-----------------------------------------------------------------------------*/
@@ -518,18 +560,6 @@ public:
 	 * @param bDiscardInternalCopy Whether to discard/ free the potentially internally allocated copy of the data
 	 */
 	void GetCopy( void** Dest, bool bDiscardInternalCopy = true );
-
-	/**
-	 * Returns a copy encapsulated by a FBulkDataBuffer.
-	 *
-	 * @param RequestedElementCount If set to greater than 0, the returned FBulkDataBuffer will be limited to
-	 * this number of elements. This will give an error if larger than the actual number of elements in the BulkData object.
-	 * @param bDiscardInternalCopy If true then the BulkData object will free it's internal buffer once called.
-	 *
-	 * @return A FBulkDataBuffer that owns a copy of the BulkData, this might be a subset of the data depending on the value of RequestedSize.
-	 */
-	template<typename ElementType>
-	FBulkDataBuffer<ElementType> GetCopyAsBuffer(int64 RequestedElementCount, bool bDiscardInternalCopy);
 
 	/**
 	 * Locks the bulk data and returns a pointer to it.
@@ -576,16 +606,6 @@ public:
 	 * Forces the bulk data to be resident in memory and detaches the archive.
 	 */
 	void ForceBulkDataResident();
-
-	/** 
-	* Initiates a new asynchronous operation to load the dulkdata from disk assuming that it is not already
-	* loaded.
-	* Note that a new asynchronous loading operation will not be created if one is already in progress.
-	*
-	* @return True if an asynchronous loading operation is in progress by the time that the method returns
-	* and false if the data is already loaded or cannot be loaded from disk.
-	*/
-	bool StartAsyncLoading();
 	
 	/**
 	 * Sets whether we should store the data compressed on disk.
@@ -615,9 +635,8 @@ public:
 	 * @param Owner	Object owning the bulk data
 	 * @param Idx	Index of bulk data item being serialized
 	 * @param bAttemptFileMapping	If true, attempt to map this instead of loading it into malloc'ed memory
-	 * @param FileRegionType	When cooking, a hint describing the type of data, used by some platforms to improve compression ratios
 	 */
-	void Serialize( FArchive& Ar, UObject* Owner, int32 Idx=INDEX_NONE, bool bAttemptFileMapping = false, EFileRegionType FileRegionType = EFileRegionType::None );
+	void Serialize( FArchive& Ar, UObject* Owner, int32 Idx=INDEX_NONE, bool bAttemptFileMapping = false);
 
 	FOwnedBulkDataPtr* StealFileMapping()
 	{
@@ -636,62 +655,56 @@ public:
 	/*-----------------------------------------------------------------------------
 		Async Streaming Interface.
 	-----------------------------------------------------------------------------*/
+	
+	/**
+	* Create an async read request for the bulk data.
+	* This version will load the entire data range that the FUntypedBulkData represents.
+	*
+	* @param Priority			Priority and flags of the request. If this includes AIOP_FLAG_PRECACHE, then memory will never be returned. The request should always be canceled and waited for, even for a precache request.
+	* @param CompleteCallback	Called from an arbitrary thread when the request is complete. Can be nullptr, if non-null, must remain valid until it is called. It will always be called.
+	* @param UserSuppliedMemory A pointer to memory for the IO request to be written to, it is up to the caller to make sure that it is large enough. If the pointer is null then the system will allocate memory instead.
+	* @return					A request for the read. This is owned by the caller and must be deleted by the caller.
+	**/
+	FBulkDataIORequest* CreateStreamingRequest(EAsyncIOPriorityAndFlags Priority, FAsyncFileCallBack* CompleteCallback, uint8* UserSuppliedMemory) const;
 
 	/**
-	 * Opens a new IAsyncReadFileHandle that references the file that the BulkData object represents.
-	 *
-	 * @return A valid handle if the file can be accessed, if it cannot then nullptr.
-	 */
-	IAsyncReadFileHandle* OpenAsyncReadHandle() const;
-
-	/**
-	 * Create an async read request for the bulk data.
-	 * This version will load the entire data range that the FUntypedBulkData represents.
-	 *
-	 * @param Priority				Priority and flags of the request. If this includes AIOP_FLAG_PRECACHE, then memory will never be returned. The request should always be canceled and waited for, even for a precache request.
-	 * @param CompleteCallback		Called from an arbitrary thread when the request is complete. Can be nullptr, if non-null, must remain valid until it is called. It will always be called.
-	 * @param UserSuppliedMemory	A pointer to memory for the IO request to be written to, it is up to the caller to make sure that it is large enough. If the pointer is null then the system will allocate memory instead.
-	 * @return						A request for the read. This is owned by the caller and must be deleted by the caller.
-	 */
-	IBulkDataIORequest* CreateStreamingRequest(EAsyncIOPriorityAndFlags Priority, FBulkDataIORequestCallBack* CompleteCallback, uint8* UserSuppliedMemory) const;
-
-	/**
-	 * Create an async read request for the bulk data.
-	 * This version allows the user to request a subset of the data that the FUntypedBulkData represents.
-	 *
-	 * @param OffsetInBulkData		Offset into the bulk data to start reading from.
-	 * @param BytesToRead			The number of bytes to read. If this request is AIOP_Preache, the size can be anything, even MAX_int64, otherwise the size and offset must be fully contained in the file.
-	 * @param Priority				Priority and flags of the request. If this includes AIOP_FLAG_PRECACHE, then memory will never be returned. The request should always be canceled and waited for, even for a precache request.
-	 * @param CompleteCallback		Called from an arbitrary thread when the request is complete. Can be nullptr, if non-null, must remain valid until it is called. It will always be called.
-	 * @param UserSuppliedMemory	A pointer to memory for the IO request to be written to, it is up to the caller to make sure that it is large enough. If the pointer is null then the system will allocate memory instead.
-	 * @return						A request for the read. This is owned by the caller and must be deleted by the caller.
-	 */
-	IBulkDataIORequest* CreateStreamingRequest(int64 OffsetInBulkData, int64 BytesToRead, EAsyncIOPriorityAndFlags Priority, FBulkDataIORequestCallBack* CompleteCallback, uint8* UserSuppliedMemory) const;
+	* Create an async read request for the bulk data.
+	* This version allows the user to request a subset of the data that the FUntypedBulkData represents.
+	*
+	* @param OffsetInBulkData	Offset into the bulk data to start reading from.
+	* @param BytesToRead		The number of bytes to read. If this request is AIOP_Preache, the size can be anything, even MAX_int64, otherwise the size and offset must be fully contained in the file.
+	* @param Priority			Priority and flags of the request. If this includes AIOP_FLAG_PRECACHE, then memory will never be returned. The request should always be canceled and waited for, even for a precache request.
+	* @param CompleteCallback	Called from an arbitrary thread when the request is complete. Can be nullptr, if non-null, must remain valid until it is called. It will always be called.
+	* @param UserSuppliedMemory A pointer to memory for the IO request to be written to, it is up to the caller to make sure that it is large enough. If the pointer is null then the system will allocate memory instead.
+	* @return					A request for the read. This is owned by the caller and must be deleted by the caller.
+	**/
+	FBulkDataIORequest* CreateStreamingRequest(int64 OffsetInBulkData, int64 BytesToRead, EAsyncIOPriorityAndFlags Priority, FAsyncFileCallBack* CompleteCallback, uint8* UserSuppliedMemory) const;
 
 #if USE_BULKDATA_STREAMING_TOKEN 
 
 	/**
-	 * Creates a FBulkDataStreamingToken representing the area of the file that the FUntypedBulkData represents. See the declaration of
-	 * FBulkDataStreamingToken for further details.
-	 *
-	 * @return	A FBulkDataStreamingToken valid for the FUntypedBulkData.
-	 */
+	* Creates a FBulkDataStreamingToken representing the area of the file that the FUntypedBulkData represents. See the declaration of 
+	* FBulkDataStreamingToken for further details.
+	* 
+	* @return	A FBulkDataStreamingToken valid for the FUntypedBulkData.
+	**/
 	FBulkDataStreamingToken CreateStreamingToken() const;
 
 	/**
-	 * Create an async read request for a range of bulk data streaming tokens
-	 * The request will read all data between the two given streaming tokens objects. They must both represent areas of data in the file!
-	 * There is no way to validate this and it is up to the caller to make sure that it is correct.
-	 * The memory to be read into will be automatically allocated the size of which can be retrieved by calling IBulkDataIORequest::GetSize()
-	 *
-	 * @param Filename			The file to read from.
-	 * @param Start				The bulk data to start reading from.
-	 * @param End				The bulk data to finish reading from.
-	 * @param Priority			Priority and flags of the request. If this includes AIOP_FLAG_PRECACHE, then memory will never be returned. The request should always be canceled and waited for, even for a precache request.
-	 * @param CompleteCallback	Called from an arbitrary thread when the request is complete. Can be nullptr, if non-null, must remain valid until it is called. It will always be called.
-	 * @return					A request for the read. This is owned by the caller and must be deleted by the caller.
+	* Create an async read request for a range of bulk data streaming tokens
+	* The request will read all data between the two given streaming tokens objects. They must both represent areas of data in the file!
+	* There is no way to validate this and it is up to the caller to make sure that it is correct.
+	* The memory to be read into will be automatically allocated the size of which can be retrieved by calling FBulkDataIORequest::GetSize()
+	*
+	* @param Filename			The file to read from.
+	* @param Start				The bulk data to start reading from.
+	* @param End				The bulk data to finish reading from.
+	* @param Priority			Priority and flags of the request. If this includes AIOP_FLAG_PRECACHE, then memory will never be returned. The request should always be canceled and waited for, even for a precache request.
+	* @param CompleteCallback	Called from an arbitrary thread when the request is complete. Can be nullptr, if non-null, must remain valid until it is called. It will always be called.
+	* @return					A request for the read. This is owned by the caller and must be deleted by the caller.
 	**/
-	static IBulkDataIORequest* CreateStreamingRequestForRange(const FString& Filename, const BulkDataRangeArray& RangeArray, EAsyncIOPriorityAndFlags Priority, FBulkDataIORequestCallBack* CompleteCallback);
+	static FBulkDataIORequest* CreateStreamingRequestForRange(const FString& Filename, const FBulkDataStreamingToken& Start, const FBulkDataStreamingToken& End, EAsyncIOPriorityAndFlags Priority, FAsyncFileCallBack* CompleteCallback);
+
 #endif
 
 	/*-----------------------------------------------------------------------------
@@ -785,15 +798,12 @@ private:
 	/** Returns true if bulk data should be loaded asynchronously */
 	bool ShouldStreamBulkData();
 
-	/** Returns if the offset needs fixing when serialized */
-	bool NeedsOffsetFixup() const;
-
 	/*-----------------------------------------------------------------------------
 		Member variables.
 	-----------------------------------------------------------------------------*/
 
 	/** Serialized flags for bulk data																					*/
-	EBulkDataFlags			BulkDataFlags;
+	uint32					BulkDataFlags;
 	/** Alignment of bulk data																							*/
 	uint16					BulkDataAlignment;
 	/** Current lock status																								*/
@@ -826,20 +836,7 @@ protected:
 #endif // WITH_EDITOR
 };
 
-template<typename ElementType>
-FBulkDataBuffer<ElementType> FUntypedBulkData::GetCopyAsBuffer(int64 RequestedElementCount, bool bDiscardInternalCopy)
-{
-	const int64 MaxElementCount = GetElementCount();
 
-	check(RequestedElementCount <= MaxElementCount);
-
-	ElementType* Ptr = nullptr;
-	GetCopy((void**)& Ptr, bDiscardInternalCopy);
-
-	const int64 BufferSize = (RequestedElementCount > 0 ? RequestedElementCount : MaxElementCount);
-
-	return FBulkDataBuffer<ElementType>(Ptr, BufferSize);
-}
 /*-----------------------------------------------------------------------------
 	uint8 version of bulk data.
 -----------------------------------------------------------------------------*/
@@ -861,17 +858,6 @@ struct COREUOBJECT_API FByteBulkDataOld : public FUntypedBulkData
 	 * @param ElementIndex	Element index to serialize
 	 */
 	virtual void SerializeElement( FArchive& Ar, void* Data, int64 ElementIndex );
-
-	/**
-	 * Returns a copy encapsulated by a FBulkDataBuffer.
-	 *
-	 * @param RequestedElementCount If set to greater than 0, the returned FBulkDataBuffer will be limited to
-	 * this number of elements. This will give an error if larger than the actual number of elements in the BulkData object.
-	 * @param bDiscardInternalCopy If true then the BulkData object will free it's internal buffer once called.
-	 *
-	 * @return A FBulkDataBuffer that owns a copy of the BulkData, this might be a subset of the data depending on the value of RequestedSize.
-	 */
-	FBulkDataBuffer<uint8> GetCopyAsBuffer(int64 RequestedElementCount, bool bDiscardInternalCopy) { return FUntypedBulkData::GetCopyAsBuffer<uint8>(RequestedElementCount, bDiscardInternalCopy); }
 };
 
 /*-----------------------------------------------------------------------------
@@ -895,17 +881,6 @@ struct COREUOBJECT_API FWordBulkDataOld : public FUntypedBulkData
 	 * @param ElementIndex	Element index to serialize
 	 */
 	virtual void SerializeElement( FArchive& Ar, void* Data, int64 ElementIndex );
-
-	/**
-	 * Returns a copy encapsulated by a FBulkDataBuffer.
-	 *
-	 * @param RequestedElementCount If set to greater than 0, the returned FBulkDataBuffer will be limited to
-	 * this number of elements. This will give an error if larger than the actual number of elements in the BulkData object.
-	 * @param bDiscardInternalCopy If true then the BulkData object will free it's internal buffer once called.
-	 *
-	 * @return A FBulkDataBuffer that owns a copy of the BulkData, this might be a subset of the data depending on the value of RequestedSize.
-	 */
-	FBulkDataBuffer<uint16> GetCopyAsBuffer(int64 RequestedElementCount, bool bDiscardInternalCopy) { return FUntypedBulkData::GetCopyAsBuffer<uint16>(RequestedElementCount, bDiscardInternalCopy); }
 };
 
 /*-----------------------------------------------------------------------------
@@ -929,17 +904,6 @@ struct COREUOBJECT_API FIntBulkDataOld : public FUntypedBulkData
 	 * @param ElementIndex	Element index to serialize
 	 */
 	virtual void SerializeElement( FArchive& Ar, void* Data, int64 ElementIndex );
-
-	/**
-	 * Returns a copy encapsulated by a FBulkDataBuffer.
-	 *
-	 * @param RequestedElementCount If set to greater than 0, the returned FBulkDataBuffer will be limited to
-	 * this number of elements. This will give an error if larger than the actual number of elements in the BulkData object.
-	 * @param bDiscardInternalCopy If true then the BulkData object will free it's internal buffer once called.
-	 *
-	 * @return A FBulkDataBuffer that owns a copy of the BulkData, this might be a subset of the data depending on the value of RequestedSize.
-	 */
-	FBulkDataBuffer<int32> GetCopyAsBuffer(int64 RequestedElementCount, bool bDiscardInternalCopy) { return FUntypedBulkData::GetCopyAsBuffer<int32>(RequestedElementCount, bDiscardInternalCopy); }
 };
 
 /*-----------------------------------------------------------------------------
@@ -963,17 +927,6 @@ struct COREUOBJECT_API FFloatBulkDataOld : public FUntypedBulkData
 	 * @param ElementIndex	Element index to serialize
 	 */
 	virtual void SerializeElement( FArchive& Ar, void* Data, int64 ElementIndex );
-
-	/**
-	 * Returns a copy encapsulated by a FBulkDataBuffer.
-	 *
-	 * @param RequestedElementCount If set to greater than 0, the returned FBulkDataBuffer will be limited to
-	 * this number of elements. This will give an error if larger than the actual number of elements in the BulkData object.
-	 * @param bDiscardInternalCopy If true then the BulkData object will free it's internal buffer once called.
-	 *
-	 * @return A FBulkDataBuffer that owns a copy of the BulkData, this might be a subset of the data depending on the value of RequestedSize.
-	 */
-	FBulkDataBuffer<float> GetCopyAsBuffer(int64 RequestedElementCount, bool bDiscardInternalCopy) { return FUntypedBulkData::GetCopyAsBuffer<float>(RequestedElementCount, bDiscardInternalCopy); }
 };
 
 // Switch between the old and new types based on USE_NEW_BULKDATA
@@ -990,6 +943,22 @@ using FWordBulkData			= FWordBulkData2;
 using FIntBulkData			= FIntBulkData2;
 using FFloatBulkData		= FFloatBulkData2;
 #endif
+
+namespace BulkDataUtils
+{
+	/**
+	* Create an async read request for a range of bulk data
+	* The request will read all data between the two given BulkData objects. They must both represent areas of data in the same file!
+	* The memory to be read into will be automatically allocated the size of which can be retrieved by calling FBulkDataIORequest::GetSize()
+	*
+	* @param Start				The bulk data to start reading from.
+	* @param End				The bulk data to finish reading from.
+	* @param Priority			Priority and flags of the request. If this includes AIOP_FLAG_PRECACHE, then memory will never be returned. The request should always be canceled and waited for, even for a precache request.
+	* @param CompleteCallback	Called from an arbitrary thread when the request is complete. Can be nullptr, if non-null, must remain valid until it is called. It will always be called.
+	* @return					A request for the read. This is owned by the caller and must be deleted by the caller.
+	**/
+	COREUOBJECT_API FBulkDataIORequest* CreateStreamingRequestForRange(const FBulkDataInterface& Start, const FBulkDataInterface& End, EAsyncIOPriorityAndFlags Priority, FAsyncFileCallBack* CompleteCallback);
+}
 
 class FFormatContainer
 {

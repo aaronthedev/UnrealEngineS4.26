@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -24,7 +24,7 @@ class STimingView;
 
 namespace Insights
 {
-	class SUntypedTableTreeView;
+	class STableTreeView;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -38,7 +38,6 @@ struct FLoadingProfilerTabs
 	static const FName ObjectTypeAggregationTreeViewID;
 	static const FName PackageDetailsTreeViewID;
 	static const FName ExportDetailsTreeViewID;
-	static const FName RequestsTreeViewID;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -58,11 +57,6 @@ public:
 
 	void Reset();
 	void UpdateTableTreeViews();
-	void UpdateEventAggregationTreeView();
-	void UpdateObjectTypeAggregationTreeView();
-	void UpdatePackageDetailsTreeView();
-	void UpdateExportDetailsTreeView();
-	void UpdateRequestsTreeView();
 
 	/** Constructs this widget. */
 	void Construct(const FArguments& InArgs, const TSharedRef<SDockTab>& ConstructUnderMajorTab, const TSharedPtr<SWindow>& ConstructUnderWindow);
@@ -74,11 +68,10 @@ public:
 	TSharedPtr<FTabManager> GetTabManager() const { return TabManager; }
 
 	TSharedPtr<STimingView> GetTimingView() const { return TimingView; }
-	TSharedPtr<Insights::SUntypedTableTreeView> GetEventAggregationTreeView() const { return EventAggregationTreeView; }
-	TSharedPtr<Insights::SUntypedTableTreeView> GetObjectTypeAggregationTreeView() const { return ObjectTypeAggregationTreeView; }
-	TSharedPtr<Insights::SUntypedTableTreeView> GetPackageDetailsTreeView() const { return PackageDetailsTreeView; }
-	TSharedPtr<Insights::SUntypedTableTreeView> GetExportDetailsTreeView() const { return ExportDetailsTreeView; }
-	TSharedPtr<Insights::SUntypedTableTreeView> GetRequestsTreeView() const { return RequestsTreeView; }
+	TSharedPtr<Insights::STableTreeView> GetEventAggregationTreeView() const { return EventAggregationTreeView; }
+	TSharedPtr<Insights::STableTreeView> GetObjectTypeAggregationTreeView() const { return ObjectTypeAggregationTreeView; }
+	TSharedPtr<Insights::STableTreeView> GetPackageDetailsTreeView() const { return PackageDetailsTreeView; }
+	TSharedPtr<Insights::STableTreeView> GetExportDetailsTreeView() const { return ExportDetailsTreeView; }
 
 private:
 	TSharedRef<SDockTab> SpawnTab_Toolbar(const FSpawnTabArgs& Args);
@@ -98,9 +91,6 @@ private:
 
 	TSharedRef<SDockTab> SpawnTab_ExportDetailsTreeView(const FSpawnTabArgs& Args);
 	void OnExportDetailsTreeViewTabClosed(TSharedRef<SDockTab> TabBeingClosed);
-
-	TSharedRef<SDockTab> SpawnTab_RequestsTreeView(const FSpawnTabArgs& Args);
-	void OnRequestsTreeViewTabClosed(TSharedRef<SDockTab> TabBeingClosed);
 
 	/**
 	 * Fill the main menu with menu items.
@@ -178,19 +168,16 @@ private:
 	TSharedPtr<STimingView> TimingView;
 
 	/** The Event Aggregation tree view widget */
-	TSharedPtr<Insights::SUntypedTableTreeView> EventAggregationTreeView;
+	TSharedPtr<Insights::STableTreeView> EventAggregationTreeView;
 
 	/** The Object Type Aggregation tree view widget */
-	TSharedPtr<Insights::SUntypedTableTreeView> ObjectTypeAggregationTreeView;
+	TSharedPtr<Insights::STableTreeView> ObjectTypeAggregationTreeView;
 
 	/** The Package Details tree view widget */
-	TSharedPtr<Insights::SUntypedTableTreeView> PackageDetailsTreeView;
+	TSharedPtr<Insights::STableTreeView> PackageDetailsTreeView;
 
 	/** The Export Details tree view widget */
-	TSharedPtr<Insights::SUntypedTableTreeView> ExportDetailsTreeView;
-
-	/** The Requests tree view widget */
-	TSharedPtr<Insights::SUntypedTableTreeView> RequestsTreeView;
+	TSharedPtr<Insights::STableTreeView> ExportDetailsTreeView;
 
 	/** Holds the tab manager that manages the front-end's tabs. */
 	TSharedPtr<FTabManager> TabManager;

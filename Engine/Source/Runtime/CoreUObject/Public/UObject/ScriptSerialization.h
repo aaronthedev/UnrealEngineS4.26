@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "HAL/Platform.h"
 
@@ -134,7 +134,7 @@
 #endif	// XFER_FUNC_NAME
 
 #ifndef XFER_PROP_POINTER
-	#define XFER_PROP_POINTER	XFERPTR(FProperty*)
+	#define XFER_PROP_POINTER	XFERPTR(UProperty*)
 #endif
 
 #ifndef XFER_OBJECT_POINTER
@@ -199,7 +199,7 @@
 		}
 		case EX_StructMemberContext:
 		{
-			XFERPTR(FProperty*);        // struct member expr.
+			XFERPTR(UProperty*);        // struct member expr.
 			SerializeExpr( iCode, Ar ); // struct expr.
 			break;
 		}
@@ -218,7 +218,6 @@
 		case EX_DefaultVariable:
 		case EX_LocalOutVariable:
 		case EX_ClassSparseDataVariable:
-		case EX_PropertyConst:
 		{
 			XFER_PROP_POINTER;
 			break;
@@ -313,7 +312,7 @@
 		{
 			SerializeExpr( iCode, Ar ); // Object expression.
 			XFER(CodeSkipSizeType);		// Code offset for NULL expressions.
-			XFERPTR(FField*);			// Property corresponding to the r-value data, in case the l-value needs to be mem-zero'd
+			XFERPTR(UField*);			// Property corresponding to the r-value data, in case the l-value needs to be mem-zero'd
 			SerializeExpr( iCode, Ar ); // Context expression.
 			break;
 		}
@@ -381,11 +380,6 @@
 			SerializeExpr(iCode, Ar);
 			break;
 		}
-		case EX_FieldPathConst:
-		{
-			SerializeExpr(iCode, Ar);
-			break;
-		}
 		case EX_NameConst:
 		{
 			XFERNAME();
@@ -429,7 +423,7 @@
 			else
 			{
 				// Array Inner Prop
-				XFERPTR(FProperty*);
+				XFERPTR(UProperty*);
 			}
 		
 			while( SerializeExpr( iCode, Ar) != EX_EndArray );
@@ -447,22 +441,22 @@
 			break;
 		case EX_ArrayConst:
 		{
-			XFERPTR(FProperty*);	// Inner property
+			XFERPTR(UProperty*);	// Inner property
 			XFER(int32);			// Number of elements
 			while (SerializeExpr(iCode, Ar) != EX_EndArrayConst);
 			break;
 		}
 		case EX_SetConst:
 		{
-			XFERPTR(FProperty*);	// Inner property
+			XFERPTR(UProperty*);	// Inner property
 			XFER(int32);			// Number of elements
 			while (SerializeExpr(iCode, Ar) != EX_EndSetConst);
 			break;
 		}
 		case EX_MapConst:
 		{
-			XFERPTR(FProperty*);	// Key property
-			XFERPTR(FProperty*);	// Val property
+			XFERPTR(UProperty*);	// Key property
+			XFERPTR(UProperty*);	// Val property
 			XFER(int32);			// Number of elements
 			while (SerializeExpr(iCode, Ar) != EX_EndMapConst);
 			break;

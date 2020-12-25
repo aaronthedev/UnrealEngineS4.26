@@ -1,7 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
+#include "PostProcess/RenderingCompositionGraph.h"
 #include "ScreenPass.h"
 
 class FEyeAdaptationParameters;
@@ -92,3 +93,12 @@ private:
 	TStaticArray<FScreenPassTexture, StageCount> Textures;
 	bool bInitialized = false;
 };
+
+FRenderingCompositeOutputRef AddDownsamplePass(
+	FRenderingCompositionGraph& Graph,
+	const TCHAR *Name,
+	FRenderingCompositeOutputRef Input,
+	uint32 SceneColorDownsampleFactor,
+	EDownsampleQuality Quality = EDownsampleQuality::Low,
+	EDownsampleFlags Flags = EDownsampleFlags::None,
+	EPixelFormat FormatOverride = PF_Unknown);

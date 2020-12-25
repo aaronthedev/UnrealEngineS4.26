@@ -22,8 +22,8 @@
 // language governing permissions and limitations under the Apache License.
 //
 
-#ifndef PXR_USD_NDR_DECLARE_H
-#define PXR_USD_NDR_DECLARE_H
+#ifndef NDR_DECLARE_H
+#define NDR_DECLARE_H
 
 /// \file ndr/declare.h
 
@@ -208,4 +208,4 @@ enum NdrVersionFilter {
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_NDR_DECLARE_H
+#endif // NDR_DECLARE_H

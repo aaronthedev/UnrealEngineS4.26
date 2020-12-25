@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	UCurveLinearColor.cpp
@@ -267,9 +267,7 @@ void UCurveLinearColor::PostEditChangeProperty(struct FPropertyChangedEvent& Pro
 {
 	if (PropertyChangedEvent.ChangeType != EPropertyChangeType::Interactive)
 	{
-		PRAGMA_DISABLE_DEPRECATION_WARNINGS
 		OnUpdateGradient.Broadcast(this);
-		PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	}
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
@@ -307,11 +305,8 @@ void UCurveLinearColor::PushToSourceData(TArray<FFloat16Color> &SrcData, int32 S
 
 void UCurveLinearColor::OnCurveChanged(const TArray<FRichCurveEditInfo>& ChangedCurveEditInfos)
 {
-	Super::OnCurveChanged(ChangedCurveEditInfos);
-
-	PRAGMA_DISABLE_DEPRECATION_WARNINGS
-	OnUpdateGradient.Broadcast(this);
-	PRAGMA_ENABLE_DEPRECATION_WARNINGS
+	FPropertyChangedEvent PropertyChangeStruct(nullptr, EPropertyChangeType::ValueSet);
+	PostEditChangeProperty(PropertyChangeStruct);
 }
 #endif
 

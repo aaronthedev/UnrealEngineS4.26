@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Misc/FileHelper.h"
 #include "Containers/StringConv.h"
@@ -12,7 +12,6 @@
 #include "ProfilingDebugging/ProfilingHelpers.h"
 #include "Misc/ConfigCacheIni.h"
 #include "Misc/SecureHash.h"
-#include "HAL/FileManagerGeneric.h"
 
 #define LOCTEXT_NAMESPACE "FileHelper"
 
@@ -42,37 +41,10 @@ bool FFileHelper::LoadFileToArray( TArray<uint8>& Result, const TCHAR* Filename,
 		}
 		return false;
 	}
-	int32 TotalSize = (int32)Reader->TotalSize();
+	int64 TotalSize = Reader->TotalSize();
 	// Allocate slightly larger than file size to avoid re-allocation when caller null terminates file buffer
 	Result.Reset( TotalSize + 2 );
 	Result.AddUninitialized( TotalSize );
-	Reader->Serialize(Result.GetData(), Result.Num());
-	bool Success = Reader->Close();
-	delete Reader;
-	return Success;
-}
-
-/**
- * Load a binary file to a dynamic array with two uninitialized bytes at end as padding.
- * TArray64 version.
- */
-bool FFileHelper::LoadFileToArray(TArray64<uint8>& Result, const TCHAR* Filename, uint32 Flags)
-{
-	FScopedLoadingState ScopedLoadingState(Filename);
-
-	FArchive* Reader = IFileManager::Get().CreateFileReader(Filename, Flags);
-	if (!Reader)
-	{
-		if (!(Flags & FILEREAD_Silent))
-		{
-			UE_LOG(LogStreaming, Warning, TEXT("Failed to read file '%s' error."), Filename);
-		}
-		return false;
-	}
-	int64 TotalSize = Reader->TotalSize();
-	// Allocate slightly larger than file size to avoid re-allocation when caller null terminates file buffer
-	Result.Reset(TotalSize + 2);
-	Result.AddUninitialized(TotalSize);
 	Reader->Serialize(Result.GetData(), Result.Num());
 	bool Success = Reader->Close();
 	delete Reader;
@@ -118,10 +90,10 @@ void FFileHelper::BufferToString( FString& Result, const uint8* Buffer, int32 Si
 			Size   -= 3;
 		}
 
-		int32 Length = FUTF8ToTCHAR_Convert::ConvertedLength(reinterpret_cast<const ANSICHAR*>(Buffer), Size);
-		ResultArray.AddUninitialized(Length + 1); // +1 for the null terminator
-		FUTF8ToTCHAR_Convert::Convert(ResultArray.GetData(), ResultArray.Num(), reinterpret_cast<const ANSICHAR*>(Buffer), Size);
-		ResultArray[Length] = TEXT('\0');
+		FUTF8ToTCHAR Conv((const ANSICHAR*)Buffer, Size);
+		int32 Length = Conv.Length();
+		ResultArray.AddUninitialized(Length + 1); // For the null terminator
+		CopyAssignItems(ResultArray.GetData(), Conv.Get(), Length);
 	}
 
 	if (ResultArray.Num() == 1)
@@ -142,34 +114,41 @@ void FFileHelper::BufferToString( FString& Result, const uint8* Buffer, int32 Si
 	}
 }
 
-bool FFileHelper::LoadFileToString(FString& Result, FArchive& Reader, EHashOptions VerifyFlags /*= EHashOptions::None*/)
+/**
+ * Load a text file to an FString.
+ * Supports all combination of ANSI/Unicode files and platforms.
+ * @param Result string representation of the loaded file
+ * @param Filename name of the file to load
+ * @param VerifyFlags flags controlling the hash verification behavior ( see EHashOptions )
+ */
+bool FFileHelper::LoadFileToString( FString& Result, const TCHAR* Filename, EHashOptions VerifyFlags, uint32 ReadFlags)
 {
-	FScopedLoadingState ScopedLoadingState(*Reader.GetArchiveName());
+	FScopedLoadingState ScopedLoadingState(Filename);
 
-	int64 Size = Reader.TotalSize();
-	if (!Size)
+	TUniquePtr<FArchive> Reader( IFileManager::Get().CreateFileReader( Filename, ReadFlags) );
+	if( !Reader )
+	{
+		return false;
+	}
+	
+	int32 Size = Reader->TotalSize();
+	if( !Size )
 	{
 		Result.Empty();
 		return true;
 	}
 
-	if (Reader.Tell() != 0)
-	{
-		UE_LOG(LogStreaming, Warning, TEXT("Archive '%s' has already been read from."), *Reader.GetArchiveName());
-		return false;
-	}
-
 	uint8* Ch = (uint8*)FMemory::Malloc(Size);
-	Reader.Serialize(Ch, Size);
-	bool Success = Reader.Close();
-
-	BufferToString(Result, Ch, (int32)Size);
+	Reader->Serialize( Ch, Size );
+	bool Success = Reader->Close();
+	Reader = nullptr;
+	BufferToString( Result, Ch, Size );
 
 	// handle SHA verify of the file
-	if (EnumHasAnyFlags(VerifyFlags, EHashOptions::EnableVerify) && (EnumHasAnyFlags(VerifyFlags, EHashOptions::ErrorMissingHash) || FSHA1::GetFileSHAHash(*Reader.GetArchiveName(), nullptr)))
+	if( EnumHasAnyFlags(VerifyFlags, EHashOptions::EnableVerify) && ( EnumHasAnyFlags(VerifyFlags, EHashOptions::ErrorMissingHash) || FSHA1::GetFileSHAHash(Filename, NULL) ) )
 	{
 		// kick off SHA verify task. this frees the buffer on close
-		FBufferReaderWithSHA Ar(Ch, Size, true, *Reader.GetArchiveName(), false, true);
+		FBufferReaderWithSHA Ar( Ch, Size, true, Filename, false, true );
 	}
 	else
 	{
@@ -180,155 +159,37 @@ bool FFileHelper::LoadFileToString(FString& Result, FArchive& Reader, EHashOptio
 	return Success;
 }
 
-/**
- * Load a text file to an FString.
- * Supports all combination of ANSI/Unicode files and platforms.
- * @param Result string representation of the loaded file
- * @param Filename name of the file to load
- * @param VerifyFlags flags controlling the hash verification behavior ( see EHashOptions )
- */
-bool FFileHelper::LoadFileToString( FString& Result, const TCHAR* Filename, EHashOptions VerifyFlags, uint32 ReadFlags)
-{
-	TUniquePtr<FArchive> Reader(IFileManager::Get().CreateFileReader(Filename, ReadFlags));
-	if (!Reader)
-	{
-		return false;
-	}
-
-	return LoadFileToString(Result, *Reader.Get(), VerifyFlags);
-}
-
-bool FFileHelper::LoadFileToString(FString& Result, IPlatformFile* PlatformFile, const TCHAR* Filename, EHashOptions VerifyFlags /*= EHashOptions::None*/)
-{
-	if (!PlatformFile)
-	{
-		return false;
-	}
-
-	IFileHandle* File = PlatformFile->OpenRead(Filename);
-	if (!File)
-	{
-		UE_LOG(LogStreaming, Warning, TEXT("Failed to read file '%s' error."), Filename);
-		return false;
-	}
-
-	TUniquePtr<FArchive> Reader = MakeUnique<FArchiveFileReaderGeneric>(File, Filename, File->Size());
-	if (!Reader)
-	{
-		return false;
-	}
-
-	return LoadFileToString(Result, *Reader.Get(), VerifyFlags);
-}
-
-bool FFileHelper::LoadFileToStringArray( TArray<FString>& Result, const TCHAR* Filename )
-{
-	return LoadFileToStringArrayWithPredicate(Result, Filename, [](const FString&) { return true;  });
-}
-
-// DEPRECATED
-bool FFileHelper::LoadFileToStringArray(TArray<FString>& Result, const TCHAR* Filename, EHashOptions VerifyFlags)
-{
-	return LoadFileToStringArray(Result, Filename);
-}
-
-bool FFileHelper::LoadFileToStringArrayWithPredicate(TArray<FString>& Result, const TCHAR* Filename, TFunctionRef<bool(const FString&)> Predicate)
+bool FFileHelper::LoadFileToStringArray( TArray<FString>& Result, const TCHAR* Filename, EHashOptions VerifyFlags )
 {
 	Result.Empty();
 
-	TArray64<uint8> RawBuffer;
-	// can be silent here, since returning false is enough
-	if (!LoadFileToArray(RawBuffer, Filename, FILEREAD_Silent))
+	FString Buffer;
+	if(!LoadFileToString(Buffer, Filename, VerifyFlags))
 	{
 		return false;
 	}
 
-	// we only support the 64-bit enabled "per-line conversion" functionality for UTF-8/ANSI strings, because the \r checks against a byte may fail
-	// so we have to use the old "full string conversion" method, which doesn't work with 64-bits worth of data
-	if (RawBuffer.Num() >= 2 && !(RawBuffer.Num() & 1) && 
-		((RawBuffer[0] == 0xFF && RawBuffer[1] == 0xFE) || (RawBuffer[0] == 0xFE && RawBuffer[1] == 0xFF)))
+	for(const TCHAR* Pos = *Buffer; *Pos != 0; )
 	{
-		// make sure we can use 32-bit algorithm
-		if (RawBuffer.Num() > MAX_int32)
-		{
-			UE_LOG(LogStreaming, Error, TEXT("A widechar format file used in LoadFileToStringArray[WithPredicate], but it's too large to be processed. File: %s"), Filename);
-			return false;
-		}
-
-		FString Buffer;
-		BufferToString(Buffer, RawBuffer.GetData(), (int32)RawBuffer.Num());
-
-		for (const TCHAR* Pos = *Buffer; *Pos != 0; )
-		{
-			const TCHAR* LineStart = Pos;
-			while (*Pos != 0 && *Pos != '\r' && *Pos != '\n')
-			{
-				Pos++;
-			}
-
-			FString Line(UE_PTRDIFF_TO_INT32(Pos - LineStart), LineStart);
-			if (Invoke(Predicate, Line))
-			{
-				Result.Add(MoveTemp(Line));
-			}
-
-			if (*Pos == '\r')
-			{
-				Pos++;
-			}
-			if (*Pos == '\n')
-			{
-				Pos++;
-			}
-		}
-
-		return true;
-	}
-
-
-	int64 Length = RawBuffer.Num();
-	for (const uint8* Pos = (uint8*)RawBuffer.GetData(); Length > 0; )
-	{
-		const uint8* LineStart = Pos;
-		while (Length > 0 && *Pos != '\r' && *Pos != '\n')
+		const TCHAR* LineStart = Pos;
+		while(*Pos != 0 && *Pos != '\r' && *Pos != '\n')
 		{
 			Pos++;
-			Length--;
 		}
 
-		if (Pos - LineStart > MAX_int32)
-		{
-			UE_LOG(LogStreaming, Error, TEXT("Single line too long found in LoadFileToStringArrayWithPredicate, File: %s"), Filename);
-			return false;
-		}
+		Result.Add(FString(Pos - LineStart, LineStart));
 
-		FString Line;
-		BufferToString(Line, LineStart, UE_PTRDIFF_TO_INT32(Pos - LineStart));
-		
-		if (Invoke(Predicate, Line))
-		{
-			Result.Add(MoveTemp(Line));
-		}
-
-		if (*Pos == '\r')
+		if(*Pos == '\r')
 		{
 			Pos++;
-			Length--;
 		}
-		if (*Pos == '\n')
+		if(*Pos == '\n')
 		{
 			Pos++;
-			Length--;
 		}
 	}
 
 	return true;
-}
-
-// DEPRECATED
-bool FFileHelper::LoadFileToStringArrayWithPredicate(TArray<FString>& Result, const TCHAR* Filename, TFunctionRef<bool(const FString&)> Predicate, EHashOptions VerifyFlags)
-{
-	return LoadFileToStringArrayWithPredicate(Result, Filename, Predicate);
 }
 
 /**
@@ -341,29 +202,7 @@ bool FFileHelper::SaveArrayToFile(TArrayView<const uint8> Array, const TCHAR* Fi
 	{
 		return false;
 	}
-	Ar->Serialize(const_cast<uint8*>(Array.GetData()), Array.Num());
-
-	// Always explicitly close to catch errors from flush/close
-	Ar->Close();
-
-	return !Ar->IsError() && !Ar->IsCriticalError();
-}
-
-/**
- * Save a binary array to a file.
- */
-bool FFileHelper::SaveArrayToFile(const TArray64<uint8>& Array, const TCHAR* Filename, IFileManager* FileManager /*= &IFileManager::Get()*/, uint32 WriteFlags /*= 0*/)
-{
-	TUniquePtr<FArchive> Ar = TUniquePtr<FArchive>(FileManager->CreateFileWriter(Filename, WriteFlags));
-	if (!Ar)
-	{
-		return false;
-	}
-	Ar->Serialize(const_cast<uint8*>(Array.GetData()), Array.Num());
-
-	// Always explicitly close to catch errors from flush/close
-	Ar->Close();
-
+	Ar->Serialize(const_cast<uint8*>(Array.GetData()), Array.Num());	
 	return !Ar->IsError() && !Ar->IsCriticalError();
 }
 
@@ -371,7 +210,7 @@ bool FFileHelper::SaveArrayToFile(const TArray64<uint8>& Array, const TCHAR* Fil
  * Write the FString to a file.
  * Supports all combination of ANSI/Unicode files and platforms.
  */
-bool FFileHelper::SaveStringToFile( FStringView String, const TCHAR* Filename,  EEncodingOptions EncodingOptions, IFileManager* FileManager /*= &IFileManager::Get()*/, uint32 WriteFlags )
+bool FFileHelper::SaveStringToFile( const FString& String, const TCHAR* Filename,  EEncodingOptions EncodingOptions, IFileManager* FileManager /*= &IFileManager::Get()*/, uint32 WriteFlags )
 {
 	// max size of the string is a UCS2CHAR for each character and some UNICODE magic 
 	TUniquePtr<FArchive> Ar = TUniquePtr<FArchive>( FileManager->CreateFileWriter( Filename, WriteFlags ) );
@@ -381,18 +220,18 @@ bool FFileHelper::SaveStringToFile( FStringView String, const TCHAR* Filename,  
 	if( String.IsEmpty() )
 		return true;
 
-	bool SaveAsUnicode = EncodingOptions == EEncodingOptions::ForceUnicode || ( EncodingOptions == EEncodingOptions::AutoDetect && !FCString::IsPureAnsi(String.GetData(), String.Len()) );
+	bool SaveAsUnicode = EncodingOptions == EEncodingOptions::ForceUnicode || ( EncodingOptions == EEncodingOptions::AutoDetect && !FCString::IsPureAnsi(*String) );
 	if( EncodingOptions == EEncodingOptions::ForceUTF8 )
 	{
 		UTF8CHAR UTF8BOM[] = { 0xEF, 0xBB, 0xBF };
 		Ar->Serialize( &UTF8BOM, UE_ARRAY_COUNT(UTF8BOM) * sizeof(UTF8CHAR) );
 
-		FTCHARToUTF8 UTF8String(String.GetData(), String.Len());
+		FTCHARToUTF8 UTF8String(*String, String.Len());
 		Ar->Serialize( (UTF8CHAR*)UTF8String.Get(), UTF8String.Length() * sizeof(UTF8CHAR) );
 	}
 	else if ( EncodingOptions == EEncodingOptions::ForceUTF8WithoutBOM )
 	{
-		FTCHARToUTF8 UTF8String(String.GetData(), String.Len());
+		FTCHARToUTF8 UTF8String(*String, String.Len());
 		Ar->Serialize((UTF8CHAR*)UTF8String.Get(), UTF8String.Length() * sizeof(UTF8CHAR));
 	}
 	else if (SaveAsUnicode)
@@ -401,17 +240,14 @@ bool FFileHelper::SaveStringToFile( FStringView String, const TCHAR* Filename,  
 		Ar->Serialize( &BOM, sizeof(UTF16CHAR) );
 
 		// Note: This is a no-op on platforms that are using a 16-bit TCHAR
-		FTCHARToUTF16 UTF16String(String.GetData(), String.Len());
+		FTCHARToUTF16 UTF16String(*String, String.Len());
 		Ar->Serialize((UTF16CHAR*)UTF16String.Get(), UTF16String.Length() * sizeof(UTF16CHAR));
 	}
 	else
 	{
-		auto Src = StringCast<ANSICHAR>(String.GetData(), String.Len());
+		auto Src = StringCast<ANSICHAR>(*String, String.Len());
 		Ar->Serialize( (ANSICHAR*)Src.Get(), Src.Length() * sizeof(ANSICHAR) );
 	}
-
-	// Always explicitly close to catch errors from flush/close
-	Ar->Close();
 
 	return !Ar->IsError() && !Ar->IsCriticalError();
 }
@@ -515,12 +351,12 @@ void FFileHelper::GenerateDateTimeBasedBitmapFilename(const FString& Pattern, co
  * @param SubRectangle optional, specifies a sub-rectangle of the source image to save out. If NULL, the whole bitmap is saved
  * @param FileManager must not be 0
  * @param OutFilename optional, if specified filename will be output
- * @param ChannelMask optional, specifies a specific channel to write out (will be written out to all channels gray scale).
  *
  * @return true if success
  */
-bool FFileHelper::CreateBitmap( const TCHAR* Pattern, int32 SourceWidth, int32 SourceHeight, const FColor* Data, struct FIntRect* SubRectangle, IFileManager* FileManager /*= &IFileManager::Get()*/, FString* OutFilename /*= NULL*/, bool bInWriteAlpha /*= false*/, EChannelMask ChannelMask /*= All */ )
+bool FFileHelper::CreateBitmap( const TCHAR* Pattern, int32 SourceWidth, int32 SourceHeight, const FColor* Data, struct FIntRect* SubRectangle, IFileManager* FileManager /*= &IFileManager::Get()*/, FString* OutFilename /*= NULL*/, bool bInWriteAlpha /*= false*/ )
 {
+#if ALLOW_DEBUG_FILES
 	FIntRect Src(0, 0, SourceWidth, SourceHeight);
 	if (SubRectangle == NULL || SubRectangle->Area() == 0)
 	{
@@ -548,7 +384,7 @@ bool FFileHelper::CreateBitmap( const TCHAR* Pattern, int32 SourceWidth, int32 S
 		}
 	}
 
-	FArchive* Ar = FileManager->CreateFileWriter( *File );
+	FArchive* Ar = FileManager->CreateDebugFileWriter( *File );
 	if( Ar )
 	{
 		// Types.
@@ -650,51 +486,14 @@ bool FFileHelper::CreateBitmap( const TCHAR* Pattern, int32 SourceWidth, int32 S
 		{
 			for( int32 j = SubRectangle->Min.X; j < SubRectangle->Max.X; j++ )
 			{
-				if (ChannelMask == EChannelMask::All)
+				Ar->Serialize( (void *)&Data[i*SourceWidth+j].B, 1 );
+				Ar->Serialize( (void *)&Data[i*SourceWidth+j].G, 1 );
+				Ar->Serialize( (void *)&Data[i*SourceWidth+j].R, 1 );
+
+				if (bInWriteAlpha)
 				{
-					Ar->Serialize((void*)&Data[i * SourceWidth + j].B, 1);
-					Ar->Serialize((void*)&Data[i * SourceWidth + j].G, 1);
-					Ar->Serialize((void*)&Data[i * SourceWidth + j].R, 1);
-
-					if (bInWriteAlpha)
-					{
-						Ar->Serialize((void*)&Data[i * SourceWidth + j].A, 1);
-					}
+					Ar->Serialize( (void *)&Data[i * SourceWidth + j].A, 1 );
 				}
-				else
-				{
-					const uint8 Max = 255;
-					uint8 ChannelValue = 0;
-					// When using Channel mask write the masked channel to all channels (except alpha).
-					switch (ChannelMask)
-					{
-					case EChannelMask::B:
-						ChannelValue = Data[i * SourceWidth + j].B;
-						break;
-					case EChannelMask::G:
-						ChannelValue = Data[i * SourceWidth + j].G;
-						break;
-					case EChannelMask::R:
-						ChannelValue = Data[i * SourceWidth + j].R;
-						break;
-					case EChannelMask::A:
-						ChannelValue = Data[i * SourceWidth + j].A;
-						break;
-					}
-										
-					// replicate Channel in B, G, R
-					Ar->Serialize((void*)&ChannelValue, 1);
-					Ar->Serialize((void*)&ChannelValue, 1);
-					Ar->Serialize((void*)&ChannelValue, 1);
-
-					// if write alpha write max value in there (we don't want transparency)
-					if (bInWriteAlpha)
-					{
-						Ar->Serialize((void*)&Max, 1);
-					}
-				}
-
-				
 			}
 
 			// Pad each row's length to be a multiple of 4 bytes.
@@ -717,7 +516,7 @@ bool FFileHelper::CreateBitmap( const TCHAR* Pattern, int32 SourceWidth, int32 S
 	{
 		return false;
 	}
-
+#endif
 	// Success.
 	return true;
 }
@@ -742,7 +541,7 @@ bool FFileHelper::LoadANSITextFileToStrings(const TCHAR* InFilename, IFileManage
 	if (TextFile != NULL)
 	{
 		// get the size of the file
-		int32 Size = (int32)TextFile->TotalSize();
+		int32 Size = TextFile->TotalSize();
 		// read the file
 		TArray<uint8> Buffer;
 		Buffer.Empty(Size + 1);
@@ -866,8 +665,8 @@ bool FFileHelper::IsFilenameValidForSaving(const FString& Filename, FText& OutEr
 		}
 		else
 		{
-			OutError = FText::Format(NSLOCTEXT("UnrealEd", "Error_FilenameIsTooLongForCooking", "Filename is too long ({0} characters); this may interfere with cooking for consoles. Unreal filenames should be no longer than {1} characters. Filename value: {2}"),
-				FText::AsNumber(BaseFilename.Len()), FText::AsNumber(FPlatformMisc::GetMaxPathLength()), FText::FromString(BaseFilename));
+			OutError = FText::Format(NSLOCTEXT("UnrealEd", "Error_FilenameIsTooLongForCooking", "Filename '{0}' is too long; this may interfere with cooking for consoles.  Unreal filenames should be no longer than {1} characters."),
+				FText::FromString(BaseFilename), FText::AsNumber(FPlatformMisc::GetMaxPathLength()));
 		}
 	}
 	else

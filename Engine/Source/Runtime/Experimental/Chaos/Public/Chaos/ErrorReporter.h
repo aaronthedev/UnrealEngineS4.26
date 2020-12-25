@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 #include "ChaosLog.h"
 #include "Logging/LogMacros.h"
@@ -25,19 +25,7 @@ public:
 		return bUnhandledErrors;
 	}
 
-	void ReportLog(const TCHAR* ErrorMsg)
-	{
-		if(Prefix != "")
-		{
-			UE_LOG(LogChaos, Log, TEXT("ErrorReporter (%s): %s"), *Prefix, ErrorMsg);
-		}
-		else
-		{
-			UE_LOG(LogChaos, Log, TEXT("ErrorReporter: %s"), *Prefix, ErrorMsg);
-		}
-	}
-
-	void ReportWarning(const TCHAR* ErrorMsg)
+	void ReportError(const TCHAR* ErrorMsg)
 	{
 		if (Prefix != "")
 		{
@@ -47,11 +35,6 @@ public:
 		{
 			UE_LOG(LogChaos, Warning, TEXT("ErrorReporter: %s"), *Prefix, ErrorMsg);
 		}
-	}
-
-	void ReportError(const TCHAR* ErrorMsg)
-	{
-		ReportWarning(ErrorMsg);
 		bEncountedErrors = true;
 		bUnhandledErrors = true;
 	}

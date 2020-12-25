@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DataprepTessellationOperation.h"
 
@@ -69,7 +69,7 @@ void UDataprepTessellationOperation::OnExecution_Implementation(const FDataprepC
 
 	if(	!IsCancelled() && SelectedMeshes.Num() > 0)
 	{
-		FDatasmithRetessellationOptions TessellationSettings( ChordTolerance, MaxEdgeLength, NormalTolerance);
+		FDatasmithTessellationOptions TessellationSettings( ChordTolerance, MaxEdgeLength, NormalTolerance );
 
 		TSharedPtr<FDataprepWorkReporter> Task = CreateTask( LOCTEXT( "LogCADLibrary_Tessellating", "Tessellating meshes ..." ), (float)SelectedMeshes.Num() );
 
@@ -88,14 +88,9 @@ void UDataprepTessellationOperation::OnExecution_Implementation(const FDataprepC
 			if( StaticMesh->IsMeshDescriptionValid( 0 ) )
 			{
 				FText OutReason;
-				if( UCoreTechBlueprintLibrary::RetessellateStaticMeshWithNotification( StaticMesh, TessellationSettings, false, OutReason ) )
+				if( UCoreTechBlueprintLibrary::RetessellateStaticMesh( StaticMesh, TessellationSettings, false, OutReason ) )
 				{
 					ModifiedStaticMeshes.Add( StaticMesh );
-					if (!OutReason.IsEmpty())
-					{
-						FText WarningMsg = FText::Format(LOCTEXT("DataprepTessellationOperation_TessellationCompletedWithWarning", "{0}"), OutReason);
-						LogInfo(WarningMsg);
-					}
 				}
 				else
 				{

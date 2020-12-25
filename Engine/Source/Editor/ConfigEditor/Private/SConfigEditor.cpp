@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SConfigEditor.h"
 #include "UObject/UnrealType.h"
@@ -18,7 +18,7 @@
 
 
 BEGIN_SLATE_FUNCTION_BUILD_OPTIMIZATION
-void SConfigEditor::Construct(const FArguments& InArgs, TWeakFieldPtr<FProperty> InEditProperty)
+void SConfigEditor::Construct(const FArguments& InArgs, TWeakObjectPtr<UProperty> InEditProperty)
 {
 	TargetPlatformSelection = SNew(STargetPlatformSelector)
 		.OnTargetPlatformChanged(this, &SConfigEditor::HandleTargetPlatformChanged);
@@ -78,7 +78,7 @@ void SConfigEditor::CreateDisplayObjectForSelectedTargetPlatform()
 		PropHelper->AddToRoot();
 	}
 
-	PropHelper->EditProperty = EditProperty.Get();
+	PropHelper->EditProperty = EditProperty;
 	FString ClassConfigName = PropHelper->EditProperty->GetOwnerClass()->ClassConfigName.ToString();
 
 	FConfigFile PlatformIniFile;

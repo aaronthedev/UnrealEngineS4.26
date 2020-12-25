@@ -1,11 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "MeshConstraints.h"
-#include "ModelingOperators.h"
 #include "Util/ProgressCancel.h"
+#include "ModelingOperators.h"
+
 
 #include "SimplifyMeshOp.generated.h"
 
@@ -16,6 +16,7 @@ template <class TriangleMeshType>
 class TMeshAABBTree3;
 typedef TMeshAABBTree3<FDynamicMesh3> FDynamicMeshAABBTree3;
 
+
 UENUM()
 enum class ESimplifyTargetType : uint8
 {
@@ -25,11 +26,8 @@ enum class ESimplifyTargetType : uint8
 	/** Target triangle count */
 	TriangleCount = 1 UMETA(DisplayName = "Triangle Count"),
 
-	/** Target vertex count */
-	VertexCount = 2 UMETA(DisplayName = "Vertex Count"),
-
 	/** Target edge length */
-	EdgeLength = 3 UMETA(DisplayName = "Edge Length")
+	EdgeLength = 2 UMETA(DisplayName = "Edge Length")
 };
 
 UENUM()
@@ -45,6 +43,10 @@ enum class ESimplifyType : uint8
 	UE4Standard = 2 UMETA(DisplayName = "UE4 Standard"),
 };
 
+
+
+
+
 class MODELINGOPERATORSEDITORONLY_API FSimplifyMeshOp : public FDynamicMeshOperator
 {
 public:
@@ -57,8 +59,7 @@ public:
 	ESimplifyType SimplifierType;
 	int TargetPercentage, TargetCount;
 	float TargetEdgeLength;
-	bool bDiscardAttributes, bReproject, bPreventNormalFlips, bPreserveSharpEdges, bAllowSeamCollapse;
-	EEdgeRefineFlags MeshBoundaryConstraint, GroupBoundaryConstraint, MaterialBoundaryConstraint;
+	bool bDiscardAttributes, bReproject, bPreventNormalFlips;
 
 	// stored for the UE4 Standard path
 	TSharedPtr<FMeshDescription> OriginalMeshDescription;

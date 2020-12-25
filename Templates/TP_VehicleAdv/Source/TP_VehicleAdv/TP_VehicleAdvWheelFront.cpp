@@ -1,10 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TP_VehicleAdvWheelFront.h"
 #include "TireConfig.h"
 #include "UObject/ConstructorHelpers.h"
-
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 UTP_VehicleAdvWheelFront::UTP_VehicleAdvWheelFront()
 {
@@ -24,5 +22,3 @@ UTP_VehicleAdvWheelFront::UTP_VehicleAdvWheelFront()
 	static ConstructorHelpers::FObjectFinder<UTireConfig> TireData(TEXT("/Game/VehicleAdv/Vehicle/WheelData/Vehicle_FrontTireConfig.Vehicle_FrontTireConfig"));
 	TireConfig = TireData.Object;
 }
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

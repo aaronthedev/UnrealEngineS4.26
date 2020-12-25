@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -39,30 +39,6 @@ public:
 	FORCEINLINE bool operator!=(const FObjectKey& Other) const
 	{
 		return ObjectIndex != Other.ObjectIndex || ObjectSerialNumber != Other.ObjectSerialNumber;
-	}
-
-	/** Compare this key with another */
-	FORCEINLINE bool operator<(const FObjectKey& Other) const
-	{
-		return ObjectIndex < Other.ObjectIndex || (ObjectIndex == Other.ObjectIndex && ObjectSerialNumber < Other.ObjectSerialNumber);
-	}
-
-	/** Compare this key with another */
-	FORCEINLINE bool operator<=(const FObjectKey& Other) const
-	{
-		return ObjectIndex <= Other.ObjectIndex || (ObjectIndex == Other.ObjectIndex && ObjectSerialNumber <= Other.ObjectSerialNumber);
-	}
-
-	/** Compare this key with another */
-	FORCEINLINE bool operator>(const FObjectKey& Other) const
-	{
-		return ObjectIndex > Other.ObjectIndex || (ObjectIndex == Other.ObjectIndex && ObjectSerialNumber > Other.ObjectSerialNumber);
-	}
-
-	/** Compare this key with another */
-	FORCEINLINE bool operator>=(const FObjectKey& Other) const
-	{
-		return ObjectIndex > Other.ObjectIndex || (ObjectIndex == Other.ObjectIndex && ObjectSerialNumber >= Other.ObjectSerialNumber);
 	}
 
 	/**
@@ -116,30 +92,6 @@ public:
 	FORCEINLINE bool operator!=(const TObjectKey& Other) const
 	{
 		return ObjectKey != Other.ObjectKey;
-	}
-
-	/** Compare this key with another */
-	FORCEINLINE bool operator<(const TObjectKey& Other) const
-	{
-		return ObjectKey < Other.ObjectKey;
-	}
-
-	/** Compare this key with another */
-	FORCEINLINE bool operator<=(const TObjectKey& Other) const
-	{
-		return ObjectKey <= Other.ObjectKey;
-	}
-
-	/** Compare this key with another */
-	FORCEINLINE bool operator>(const TObjectKey& Other) const
-	{
-		return ObjectKey > Other.ObjectKey;
-	}
-
-	/** Compare this key with another */
-	FORCEINLINE bool operator>=(const TObjectKey& Other) const
-	{
-		return ObjectKey >= Other.ObjectKey;
 	}
 
 	//** Hash function */

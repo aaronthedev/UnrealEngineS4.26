@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	ShaderCompiler.h: Platform independent shader compilation definitions.
@@ -10,18 +10,15 @@
 #include "Templates/RefCounting.h"
 #include "HAL/PlatformProcess.h"
 #include "ShaderCore.h"
-#include "ShaderCompilerCore.h"
 #include "Shader.h"
 #include "HAL/RunnableThread.h"
 #include "HAL/Runnable.h"
 #include "Templates/Atomic.h"
 #include "Templates/UniquePtr.h"
-#include "HAL/ThreadSafeCounter.h"
 
 class FShaderCompileJob;
 class FShaderPipelineCompileJob;
 class FVertexFactoryType;
-class IDistributedBuildController;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogShaderCompilers, Log, All);
 
@@ -32,7 +29,7 @@ class FShaderPipelineCompileJob;
 
 
 /** Stores all of the common information used to compile a shader or pipeline. */
-class FShaderCommonCompileJob
+class FShaderCommonCompileJob : public FRefCountedObject
 {
 public:
 	/** Id of the shader map this shader belongs to. */
@@ -57,14 +54,6 @@ public:
 	virtual const FShaderCompileJob* GetSingleShaderJob() const { return nullptr; }
 	virtual FShaderPipelineCompileJob* GetShaderPipelineJob() { return nullptr; }
 	virtual const FShaderPipelineCompileJob* GetShaderPipelineJob() const { return nullptr; }
-
-	/** This returns a unique id for a shader compiler job */
-	ENGINE_API static uint32 GetNextJobId();
-
-private:
-
-	/** Value counter for job ids. */
-	static FThreadSafeCounter JobIdCounter;
 };
 
 
@@ -100,7 +89,7 @@ public:
 class FShaderPipelineCompileJob : public FShaderCommonCompileJob
 {
 public:
-	TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>> StageJobs;
+	TArray<FShaderCommonCompileJob*> StageJobs;
 	bool bFailedRemovingUnused;
 
 	/** Shader pipeline that this shader belongs to, may (currently) be NULL */
@@ -116,6 +105,15 @@ public:
 		StageJobs.Empty(NumStages);
 	}
 
+	~FShaderPipelineCompileJob()
+	{
+		for (int32 Index = 0; Index < StageJobs.Num(); ++Index)
+		{
+			delete StageJobs[Index];
+		}
+		StageJobs.Reset();
+	}
+
 	virtual FShaderPipelineCompileJob* GetShaderPipelineJob() override { return this; }
 	virtual const FShaderPipelineCompileJob* GetShaderPipelineJob() const override { return this; }
 };
@@ -126,12 +124,12 @@ public:
 	/**
 	* Enqueues compilation of a shader of this type.
 	*/
-	ENGINE_API static class FShaderCompileJob* BeginCompileShader(FGlobalShaderType* ShaderType, int32 PermutationId, EShaderPlatform Platform, const FShaderPipelineType* ShaderPipeline, TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>>& NewJobs);
+	ENGINE_API static class FShaderCompileJob* BeginCompileShader(FGlobalShaderType* ShaderType, int32 PermutationId, EShaderPlatform Platform, const FShaderPipelineType* ShaderPipeline, TArray<FShaderCommonCompileJob*>& NewJobs);
 
 	/**
 	* Enqueues compilation of a shader pipeline of this type.
 	*/
-	ENGINE_API static void BeginCompileShaderPipeline(EShaderPlatform Platform, const FShaderPipelineType* ShaderPipeline, const TArray<FGlobalShaderType*>& ShaderStages, TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>>& NewJobs);
+	ENGINE_API static void BeginCompileShaderPipeline(EShaderPlatform Platform, const FShaderPipelineType* ShaderPipeline, const TArray<FGlobalShaderType*>& ShaderStages, TArray<FShaderCommonCompileJob*>& NewJobs);
 
 	/** Either returns an equivalent existing shader of this type, or constructs a new instance. */
 	static FShader* FinishCompileShader(FGlobalShaderType* ShaderType, const FShaderCompileJob& CompileJob, const FShaderPipelineType* ShaderPipelineType);
@@ -224,8 +222,8 @@ private:
 
 namespace FShaderCompileUtilities
 {
-	bool DoWriteTasks(const TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>>& QueuedJobs, FArchive& TransferFile);
-	void DoReadTaskResults(const TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>>& QueuedJobs, FArchive& OutputFile);
+	bool DoWriteTasks(const TArray<FShaderCommonCompileJob*>& QueuedJobs, FArchive& TransferFile);
+	void DoReadTaskResults(const TArray<FShaderCommonCompileJob*>& QueuedJobs, FArchive& OutputFile);
 
 	/** Execute the specified (single or pipeline) shader compile job. */
 	void ExecuteShaderCompileJob(FShaderCommonCompileJob& Job);
@@ -248,7 +246,7 @@ private:
 	 */
 	class FShaderBatch
 	{
-		TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>> Jobs;
+		TArray<FShaderCommonCompileJob*> Jobs;
 		bool bTransferFileWritten;
 
 	public:
@@ -283,12 +281,12 @@ private:
 		{
 			return Jobs.Num();
 		}
-		inline const TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>>& GetJobs() const
+		inline const TArray<FShaderCommonCompileJob*>& GetJobs() const
 		{
 			return Jobs;
 		}
 
-		void AddJob(TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe> Job);
+		void AddJob(FShaderCommonCompileJob* Job);
 		
 		void WriteTransferFile();
 	};
@@ -322,34 +320,27 @@ public:
 	static bool IsSupported();
 };
 
-#endif // PLATFORM_WINDOWS
-
-class FShaderCompileDistributedThreadRunnable_Interface : public FShaderCompileThreadRunnableBase
+class FShaderCompileXGEThreadRunnable_InterceptionInterface : public FShaderCompileThreadRunnableBase
 {
 	uint32 NumDispatchedJobs;
 
-	TSparseArray<class FDistributedShaderCompilerTask*> DispatchedTasks;
+	TSparseArray<class FXGEShaderCompilerTask*> DispatchedTasks;
 
 public:
 	/** Initialization constructor. */
-	FShaderCompileDistributedThreadRunnable_Interface(class FShaderCompilingManager* InManager, class IDistributedBuildController& InController);
-	virtual ~FShaderCompileDistributedThreadRunnable_Interface();
+	FShaderCompileXGEThreadRunnable_InterceptionInterface(class FShaderCompilingManager* InManager);
+	virtual ~FShaderCompileXGEThreadRunnable_InterceptionInterface();
 
 	/** Main work loop. */
 	virtual int32 CompilingLoop() override;
 
 	static bool IsSupported();
 
-protected:
-	
-	IDistributedBuildController& CachedController;
-	TMap<EShaderPlatform, TArray<FString> >	PlatformShaderInputFilesCache;
-
 private:
-	void DispatchShaderCompileJobsBatch(TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>>& JobsToSerialize);
-
-	TArray<FString> GetDependencyFilesForJobs(TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>> Jobs);
+	void DispatchShaderCompileJobsBatch(TArray<FShaderCommonCompileJob*>& JobsToSerialize);
 };
+
+#endif // PLATFORM_WINDOWS
 
 /** Results for a single compiled shader map. */
 struct FShaderMapCompileResults
@@ -357,15 +348,13 @@ struct FShaderMapCompileResults
 	FShaderMapCompileResults() :
 		NumJobsQueued(0),
 		bAllJobsSucceeded(true),
-		bRecreateComponentRenderStateOnCompletion(false),
-		bSkipResultProcessing(false)
+		bRecreateComponentRenderStateOnCompletion(false)
 	{}
 
 	int32 NumJobsQueued;
 	bool bAllJobsSucceeded;
 	bool bRecreateComponentRenderStateOnCompletion;
-	TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>> FinishedJobs;
-	bool bSkipResultProcessing;
+	TArray<FShaderCommonCompileJob*> FinishedJobs;
 };
 
 /** Results for a single compiled and finalized shader map. */
@@ -383,50 +372,6 @@ struct FShaderMapFinalizeResults : public FShaderMapCompileResults
 	{}
 };
 
-class FShaderCompilerStats
-{
-public:
-	struct FShaderCompilerSinglePermutationStat
-	{
-		FShaderCompilerSinglePermutationStat(FString PermutationString, uint32 Compiled, uint32 Cooked)
-			: PermutationString(PermutationString)
-			, Compiled(Compiled)
-			, Cooked(Cooked)
-			, CompiledDouble(0)
-			, CookedDouble(0)
-
-		{}
-		FString PermutationString;
-		uint32 Compiled;
-		uint32 Cooked;
-		uint32 CompiledDouble;
-		uint32 CookedDouble;
-	};
-	struct FShaderStats
-	{
-		TArray<FShaderCompilerSinglePermutationStat> PermutationCompilations;
-		uint32 Compiled = 0;
-		uint32 Cooked = 0;
-		uint32 CompiledDouble = 0;
-		uint32 CookedDouble = 0;
-		float CompileTime = 0.f;
-
-	};
-	using ShaderCompilerStats = TMap<FString, FShaderStats>;
-
-
-	ENGINE_API void RegisterCookedShaders(uint32 NumCooked, float CompileTime, EShaderPlatform Platform, const FString MaterialPath, FString PermutationString = FString(""));
-	ENGINE_API void RegisterCompiledShaders(uint32 NumPermutations, EShaderPlatform Platform, const FString MaterialPath, FString PermutationString = FString(""));
-	ENGINE_API const TSparseArray<ShaderCompilerStats>& GetShaderCompilerStats() { return CompileStats; }
-	ENGINE_API void WriteStats();
-
-private:
-	FCriticalSection CompileStatsLock;
-	TSparseArray<ShaderCompilerStats> CompileStats;
-};
-
-
-
 /**  
  * Manager of asynchronous and parallel shader compilation.
  * This class contains an interface to enqueue and retreive asynchronous shader jobs, and manages a FShaderCompileThreadRunnable.
@@ -438,8 +383,8 @@ class FShaderCompilingManager
 
 #if PLATFORM_WINDOWS
 	friend class FShaderCompileXGEThreadRunnable_XmlInterface;
+	friend class FShaderCompileXGEThreadRunnable_InterceptionInterface;
 #endif // PLATFORM_WINDOWS
-	friend class FShaderCompileDistributedThreadRunnable_Interface;
 
 private:
 
@@ -449,7 +394,7 @@ private:
 	/** Tracks whether we are compiling while the game is running.  If true, we need to throttle down shader compiling CPU usage to avoid starving the runtime threads. */
 	bool bCompilingDuringGame;
 	/** Queue of tasks that haven't been assigned to a worker yet. */
-	TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>> CompileQueue;
+	TArray<FShaderCommonCompileJob*> CompileQueue;
 	/** Map from shader map Id to the compile results for that map, used to gather compiled results. */
 	TMap<int32, FShaderMapCompileResults> ShaderMapJobs;
 
@@ -480,8 +425,6 @@ private:
 	uint32 NumShaderCompilingThreadsDuringGame;
 	/** Largest number of jobs that can be put in the same batch. */
 	int32 MaxShaderJobBatchSize;
-	/** Number of runs through single-threaded compiling before we can retry to compile through workers. -1 if not used. */
-	int32 NumSingleThreadedRunsBeforeRetry;
 	/** Process Id of UE4. */
 	uint32 ProcessId;
 	/** Whether to allow compiling shaders through the worker application, which allows multiple cores to be used. */
@@ -514,12 +457,6 @@ private:
 	 */
 	uint64 SuppressedShaderPlatforms;
 
-	/** Cached Engine loop initialization state */
-	bool bIsEngineLoopInitialized;
-
-	/** Interface to the build distribution controller (XGE/SN-DBS) */
-	IDistributedBuildController* BuildDistributionController;
-
 	/** Launches the worker, returns the launched process handle. */
 	FProcHandle LaunchWorker(const FString& WorkingDirectory, uint32 ProcessId, uint32 ThreadId, const FString& WorkerInputFile, const FString& WorkerOutputFile);
 
@@ -540,12 +477,6 @@ private:
 
 	/** Recompiles shader jobs with errors if requested, and returns true if a retry was needed. */
 	bool HandlePotentialRetryOnError(TMap<int32, FShaderMapFinalizeResults>& CompletedShaderMaps);
-	
-	/** Checks if any target platform down't support remote shader compiling */
-	bool AllTargetPlatformSupportsRemoteShaderCompiling();
-	
-	/** Returns the first remote compiler controller found */
-	IDistributedBuildController* FindRemoteCompilerController() const;
 
 public:
 	
@@ -599,17 +530,7 @@ public:
 		NumExternalJobs = NumJobs;
 	}
 
-	enum class EDumpShaderDebugInfo : int32
-	{
-		Never				= 0,
-		Always				= 1,
-		OnError				= 2,
-		OnErrorOrWarning	= 3
-	};
-
-	ENGINE_API EDumpShaderDebugInfo GetDumpShaderDebugInfo() const;
-	ENGINE_API FString CreateShaderDebugInfoPath(const FShaderCompilerInput& ShaderCompilerInput) const;
-	ENGINE_API bool ShouldRecompileToDumpShaderDebugInfo(const FShaderCompileJob& Job) const;
+	ENGINE_API bool GetDumpShaderDebugInfo() const;
 
 	const FString& GetAbsoluteShaderDebugInfoDirectory() const
 	{
@@ -630,7 +551,7 @@ public:
 	 * Adds shader jobs to be asynchronously compiled. 
 	 * FinishCompilation or ProcessAsyncResults must be used to get the results.
 	 */
-	ENGINE_API void AddJobs(TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>>& NewJobs, bool bOptimizeForLowLatency, bool bRecreateComponentRenderStateOnCompletion, const FString MaterialBasePath, FString PermutationString = FString(""), bool bSkipResultProcessing = false);
+	ENGINE_API void AddJobs(TArray<FShaderCommonCompileJob*>& NewJobs, bool bOptimizeForLowLatency, bool bRecreateComponentRenderStateOnCompletion);
 
 	/**
 	* Removes all outstanding compile jobs for the passed shader maps.
@@ -648,6 +569,7 @@ public:
 	 * This should be called before exit if the DDC needs to be made up to date. 
 	 */
 	ENGINE_API void FinishAllCompilation();
+
 
 	/** 
 	 * Shutdown the shader compiler manager, this will shutdown immediately and not process any more shader compile requests. 
@@ -673,9 +595,6 @@ public:
 /** The global shader compiling thread manager. */
 extern ENGINE_API FShaderCompilingManager* GShaderCompilingManager;
 
-/** The global shader compiling stats */
-extern ENGINE_API FShaderCompilerStats* GShaderCompilerStats;
-
 /** The shader precompilers for each platform.  These are only set during the console shader compilation while cooking or in the PrecompileShaders commandlet. */
 extern class FConsoleShaderPrecompiler* GConsoleShaderPrecompilers[SP_NumPlatforms];
 
@@ -688,14 +607,12 @@ extern ENGINE_API void GlobalBeginCompileShader(
 	const TCHAR* SourceFilename,
 	const TCHAR* FunctionName,
 	FShaderTarget Target,
-	TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe> NewJob,
-	TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>>& NewJobs,
+	FShaderCompileJob* NewJob,
+	TArray<FShaderCommonCompileJob*>& NewJobs,
 	bool bAllowDevelopmentShaderCompile = true,
 	const FString& DebugDescription = "",
 	const FString& DebugExtension = ""
 	);
-
-extern void GetOutdatedShaderTypes(TArray<const FShaderType*>& OutdatedShaderTypes, TArray<const FShaderPipelineType*>& OutdatedShaderPipelineTypes, TArray<const FVertexFactoryType*>& OutdatedFactoryTypes);
 
 /** Implementation of the 'recompileshaders' console command.  Recompiles shaders at runtime based on various criteria. */
 extern bool RecompileShaders(const TCHAR* Cmd, FOutputDevice& Ar);
@@ -703,20 +620,13 @@ extern bool RecompileShaders(const TCHAR* Cmd, FOutputDevice& Ar);
 /** Returns whether all global shader types containing the substring are complete and ready for rendering. if type name is null, check everything */
 extern ENGINE_API bool IsGlobalShaderMapComplete(const TCHAR* TypeNameSubstring = nullptr);
 
-/** Returns the delegate triggered when global shaders compilation jobs start. */
-DECLARE_MULTICAST_DELEGATE(FOnGlobalShadersCompilation);
-extern ENGINE_API FOnGlobalShadersCompilation& GetOnGlobalShaderCompilation();
-
 /**
 * Makes sure all global shaders are loaded and/or compiled for the passed in platform.
 * Note: if compilation is needed, this only kicks off the compile.
 *
-* @param	Platform						Platform to verify global shaders for
-* @param	bLoadedFromCacheFile			Load the shaders from cache, will error out and not compile shaders if missing
-* @param	OutdatedShaderTypes				Optional list of shader types, will trigger compilation job for shader types found in this list even if the map already has the shader.
-* @param	OutdatedShaderPipelineTypes		Optional list of shader pipeline types, will trigger compilation job for shader pipeline types found in this list even if the map already has the pipeline.
+* @param	Platform	Platform to verify global shaders for
 */
-extern ENGINE_API void VerifyGlobalShaders(EShaderPlatform Platform, bool bLoadedFromCacheFile, const TArray<const FShaderType*>* OutdatedShaderTypes = nullptr, const TArray<const FShaderPipelineType*>* OutdatedShaderPipelineTypes = nullptr);
+extern ENGINE_API void VerifyGlobalShaders(EShaderPlatform Platform, bool bLoadedFromCacheFile);
 
 /**
 * Forces a recompile of the global shaders.
@@ -735,13 +645,13 @@ extern ENGINE_API bool RecompileChangedShadersForPlatform(const FString& Platfor
 * Begins recompiling the specified global shader types, and flushes their bound shader states.
 * FinishRecompileGlobalShaders must be called after this and before using the global shaders for anything.
 */
-extern ENGINE_API void BeginRecompileGlobalShaders(const TArray<const FShaderType*>& OutdatedShaderTypes, const TArray<const FShaderPipelineType*>& OutdatedShaderPipelineTypes, EShaderPlatform ShaderPlatform, const ITargetPlatform* TargetPlatform = nullptr);
+extern ENGINE_API void BeginRecompileGlobalShaders(const TArray<FShaderType*>& OutdatedShaderTypes, const TArray<const FShaderPipelineType*>& OutdatedShaderPipelineTypes, EShaderPlatform ShaderPlatform);
 
 /** Finishes recompiling global shaders.  Must be called after BeginRecompileGlobalShaders. */
 extern ENGINE_API void FinishRecompileGlobalShaders();
 
 /** Called by the shader compiler to process completed global shader jobs. */
-extern ENGINE_API void ProcessCompiledGlobalShaders(const TArray<TSharedRef<FShaderCommonCompileJob, ESPMode::ThreadSafe>>& CompilationResults);
+extern ENGINE_API void ProcessCompiledGlobalShaders(const TArray<FShaderCommonCompileJob*>& CompilationResults);
 
 /**
 * Saves the global shader map as a file for the target platform.
@@ -755,6 +665,7 @@ extern ENGINE_API FString SaveGlobalShaderFile(EShaderPlatform Platform, FString
 * @param PlatformName					Name of the Platform the shaders are compiled for
 * @param OutputDirectory				The directory the compiled data will be stored to
 * @param MaterialsToLoad				List of Materials that need to be loaded and compiled
+* @param SerializedShaderResources		Serialized shader resources
 * @param MeshMaterialMaps				Mesh material maps
 * @param ModifiedFiles					Returns the list of modified files if not NULL
 * @param bCompileChangedShaders		Whether to compile all changed shaders or the specific material that is passed
@@ -764,14 +675,14 @@ extern ENGINE_API void RecompileShadersForRemote(
 	EShaderPlatform ShaderPlatform,
 	const FString& OutputDirectory,
 	const TArray<FString>& MaterialsToLoad,
+	const TArray<uint8>& SerializedShaderResources,
 	TArray<uint8>* MeshMaterialMaps,
 	TArray<FString>* ModifiedFiles,
 	bool bCompileChangedShaders = true);
 
 extern ENGINE_API void CompileGlobalShaderMap(bool bRefreshShaderMap=false);
-extern ENGINE_API void CompileGlobalShaderMap(ERHIFeatureLevel::Type InFeatureLevel, bool bRefreshShaderMap=false);
 extern ENGINE_API void CompileGlobalShaderMap(EShaderPlatform Platform, bool bRefreshShaderMap = false);
-extern ENGINE_API void CompileGlobalShaderMap(EShaderPlatform Platform, const ITargetPlatform* TargetPlatform, bool bRefreshShaderMap);
+extern ENGINE_API void CompileGlobalShaderMap(ERHIFeatureLevel::Type InFeatureLevel, bool bRefreshShaderMap=false);
 
 extern ENGINE_API FString GetGlobalShaderMapDDCKey();
 

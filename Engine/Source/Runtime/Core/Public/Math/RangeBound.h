@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,6 @@
 #include "Misc/AssertionMacros.h"
 #include "Templates/TypeHash.h"
 #include "Containers/EnumAsByte.h"
-#include "Misc/FrameNumber.h"
 #include "Misc/DateTime.h"
 
 namespace ERangeBoundTypes
@@ -336,7 +335,7 @@ private:
 };
 
 
-/* Default range bounds for built-in types (for FProperty support)
+/* Default range bounds for built-in types (for UProperty support)
  *****************************************************************************/
 
 #define DEFINE_RANGEBOUND_WRAPPER_STRUCT(Name, ElementType) \
@@ -354,7 +353,7 @@ private:
 			: Super(Other) \
 		{ } \
 		 \
-		Name(const ElementType InValue) \
+		Name(const int64& InValue) \
 			: Super(InValue) \
 		{ } \
 		 \
@@ -419,4 +418,3 @@ DEFINE_RANGEBOUND_WRAPPER_STRUCT(FInt8RangeBound,   int8)
 DEFINE_RANGEBOUND_WRAPPER_STRUCT(FInt16RangeBound,  int16)
 DEFINE_RANGEBOUND_WRAPPER_STRUCT(FInt32RangeBound,  int32)
 DEFINE_RANGEBOUND_WRAPPER_STRUCT(FInt64RangeBound,  int64)
-DEFINE_RANGEBOUND_WRAPPER_STRUCT(FFrameNumberRangeBound, FFrameNumber)

@@ -1,7 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
+#include "Trace/Trace.h"
 #include "Trace/Analyzer.h"
 #include "Containers/Map.h"
 #include "Model/CsvProfilerPrivate.h"
@@ -13,7 +14,7 @@ namespace Trace
 	class IFrameProvider;
 	class IThreadProvider;
 	class ICounterProvider;
-	class IEditableCounter;
+	class ICounter;
 }
 
 class FCsvProfilerAnalyzer
@@ -23,7 +24,7 @@ public:
 	FCsvProfilerAnalyzer(Trace::IAnalysisSession& Session, Trace::FCsvProfilerProvider& CsvProfilerProvider, Trace::ICounterProvider& CounterProvider, const Trace::IFrameProvider& FrameProvider, const Trace::IThreadProvider& ThreadProvider);
 	~FCsvProfilerAnalyzer();
 	virtual void OnAnalysisBegin(const FOnAnalysisContext& Context) override;
-	virtual bool OnEvent(uint16 RouteId, EStyle Style, const FOnEventContext& Context) override;
+	virtual bool OnEvent(uint16 RouteId, const FOnEventContext& Context) override;
 	virtual void OnAnalysisEnd() override;
 
 private:
@@ -86,7 +87,7 @@ private:
 	{
 		uint64 ProviderHandle = uint64(-1);
 		uint64 ProviderCountHandle = uint64(-1);
-		Trace::IEditableCounter* Counter = nullptr;
+		Trace::ICounter* Counter = nullptr;
 		int64 CurrentFrame = -1;
 		FStatSeriesValue CurrentValue;
 		int64 CurrentCount = 0;

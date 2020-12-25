@@ -1,11 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "MovieSceneSection.h"
-#include "Channels/MovieSceneStringChannel.h"
+#include "MovieSceneStringChannel.h"
 #include "MovieSceneStringSection.generated.h"
 
 /**

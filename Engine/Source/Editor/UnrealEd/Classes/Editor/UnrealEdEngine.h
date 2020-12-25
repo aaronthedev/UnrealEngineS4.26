@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -44,6 +44,18 @@ enum EPackageNotifyState
 	/** The package has been marked dirty but cannot be checked out, and is pending a modal warning dialog. */
 	NS_PendingWarning,
 	NS_MAX,
+};
+
+UENUM()
+enum EWriteDisallowedWarningState
+{
+	/** The user needs to be warned about the package. */
+	WDWS_PendingWarn,
+	/** The user has been warned about the package. */
+	WDWS_Warned,
+	/** Warning for the package unnecessary. */
+	WDWS_WarningUnnecessary,
+	WDWS_MAX,
 };
 
 /** Used during asset renaming/duplication to specify class-specific package/group targets. */
@@ -99,6 +111,21 @@ struct FTemplateMapInfo
 class FPerformanceMonitor;
 
 
+/** Struct used in filtering allowed references between assets. Passes context about the referencers to game-level filters */
+struct FAssetReferenceFilterContext
+{
+	TArray<FAssetData> ReferencingAssets;
+};
+
+/** Used in filtering allowed references between assets. Implement a subclass of this and return it in OnMakeAssetReferenceFilter */
+class IAssetReferenceFilter
+{
+public:
+	virtual ~IAssetReferenceFilter() { }
+	/** Filter function to pass/fail an asset. Called in some situations that are performance-sensitive so is expected to be fast. */
+	virtual bool PassesFilter(const FAssetData& AssetData, FText* OutOptionalFailureReason = nullptr) const = 0;
+};
+
 UCLASS(config=Engine, transient)
 class UNREALED_API UUnrealEdEngine : public UEditorEngine, public FNotifyHook
 {
@@ -144,6 +171,10 @@ public:
 	UPROPERTY()
 	uint32 bNeedWarningForPkgEngineVer:1;
 
+	/** Whether the user needs to be prompted about a package being saved when the user does not have permission to write the file */
+	UPROPERTY()
+	uint32 bNeedWarningForWritePermission:1;
+
 	/** Whether there is a pending package notification */
  	uint32 bShowPackageNotification:1;
 
@@ -155,7 +186,7 @@ public:
 	UPROPERTY(config)
 	TArray<FTemplateMapInfo> TemplateMapInfos;
 
-	/** Cooker server incase we want to cook on the side while editing... */
+	/** Cooker server incase we want to cook ont he side while editing... */
 	UPROPERTY()
 	class UCookOnTheFlyServer* CookServer;
 
@@ -163,7 +194,13 @@ public:
 	TArray<TWeakObjectPtr<UPackage>> PackagesDirtiedThisTick;
 
 	/** A mapping of packages to their checkout notify state.  This map only contains dirty packages.  Once packages become clean again, they are removed from the map.*/
-	TMap<TWeakObjectPtr<UPackage>, uint8> PackageToNotifyState;
+	TMap<TWeakObjectPtr<UPackage>, uint8>	PackageToNotifyState;
+
+	/** Map to track which packages have been checked for engine version when modified */
+	TMap<FString, uint8>		PackagesCheckedForEngineVersion;
+
+	/** Map to track which packages have been checked for write permission when modified */
+	TMap<FString, uint8>		PackagesCheckedForWritePermission;
 
 	/** Mapping of sprite category ids to their matching indices in the sorted sprite categories array */
 	TMap<FName, int32>			SpriteIDToIndexMap;
@@ -181,8 +218,8 @@ public:
 	//~ End UObject Interface.
 
 	//~ Begin FNotify Interface.
-	virtual void NotifyPreChange( FProperty* PropertyAboutToChange ) override;
-	virtual void NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, FProperty* PropertyThatChanged ) override;
+	virtual void NotifyPreChange( UProperty* PropertyAboutToChange ) override;
+	virtual void NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, UProperty* PropertyThatChanged ) override;
 	//~ End FNotify Interface.
 
 	//~ Begin UEditorEngine Interface
@@ -218,7 +255,6 @@ public:
 
 	//~ Begin UEngine Interface.
 	virtual void Init(IEngineLoop* InEngineLoop) override;
-
 	virtual void PreExit() override;
 	virtual void Tick(float DeltaSeconds, bool bIdleMode) override;
 	//~ End UEngine Interface.
@@ -627,6 +663,18 @@ public:
 	void AttemptModifiedPackageNotification();
 
 	/**
+	 * Alerts the user to any packages that have been modified which have been previously saved with an engine version newer than
+	 * the current version. These packages cannot be saved, so the user should be alerted ASAP.
+	 */
+	void AttemptWarnAboutPackageEngineVersions();
+
+	/**
+	 * Alerts the user to any packages that they do not have permission to write to. This may happen in the program files directory if the user is not an admin.
+	 * These packages cannot be saved, so the user should be alerted ASAP.
+	 */
+	void AttemptWarnAboutWritePermission();
+
+	/**
 	 * Prompts the user with a modal checkout dialog to checkout packages from source control.
 	 * This should only be called by the auto prompt to checkout package notification system.
 	 * For a general checkout packages routine use FEditorFileUtils::PromptToCheckoutPackages
@@ -782,18 +830,27 @@ public:
 	bool HandleDisasmScriptCommand( const TCHAR* Str, FOutputDevice& Ar );	
 
 	/** OnEditorModeChanged delegate which looks for Matinee editor closing */
+	UE_DEPRECATED(4.24, "Use UpdateEdModeOnMatineeClose() instead")
+	void OnMatineeEditorClosed( class FEdMode* Mode, bool IsEntering );
 	void UpdateEdModeOnMatineeClose(const FEditorModeID& EditorModeID, bool IsEntering);
 
 	bool IsComponentSelected(const UPrimitiveComponent* PrimComponent);
 
-	/** Return if we have write permission under the mount point this packages lives in. */
-	bool HasMountWritePersmissionForPackage(const FString& PackageName);
-
+	/** Returns a filter to restruct what assets show up in asset pickers based on what the selection is used for (i.e. what will reference the assets) */
+	DECLARE_DELEGATE_RetVal_OneParam(TSharedPtr<IAssetReferenceFilter>, FOnMakeAssetReferenceFilter, const FAssetReferenceFilterContext& /*Context*/);
+	FOnMakeAssetReferenceFilter& OnMakeAssetReferenceFilter() { return OnMakeAssetReferenceFilterDelegate; }
+	TSharedPtr<IAssetReferenceFilter> MakeAssetReferenceFilter(const FAssetReferenceFilterContext& Context) { return OnMakeAssetReferenceFilterDelegate.IsBound() ? OnMakeAssetReferenceFilterDelegate.Execute(Context) : nullptr; }
+	
 protected:
+
+	/** Returns a filter to restruct what assets show up in asset pickers based on what the selection is used for (i.e. what will reference the assets) */
+	FOnMakeAssetReferenceFilter OnMakeAssetReferenceFilterDelegate;
 
 	/** Called when global editor selection changes */
 	void OnEditorSelectionChanged(UObject* SelectionThatChanged);
 
+	EWriteDisallowedWarningState GetWarningStateForWritePermission(const FString& PackageName) const;
+	
 	/** The package auto-saver instance used by the editor */
 	TUniquePtr<IPackageAutoSaver> PackageAutoSaver;
 
@@ -816,25 +873,9 @@ protected:
 	/** Whether the pivot has been moved independently */
 	bool bPivotMovedIndependently;
 
-	/** Weak Pointer to the file checkout notification toast. */
 	TWeakPtr<SNotificationItem> CheckOutNotificationWeakPtr;
 
 private:
-	/** Verify if we have write permission under the specified mount point. */
-	bool VerifyMountPointWritePermission(FName MountPoint);
-
-	/** Delegate when a new mount point is added, used to test writing permission. */
-	void OnContentPathMounted(const FString& AssetPath, const FString& FileSystemPath);
-
-	/** Delegate when a new mount point is removed, used to test writing permission. */
-	void OnContentPathDismounted(const FString& AssetPath, const FString& FileSystemPath);
-
-	/** Map to track which mount point has write permissions. */
-	TMap<FName, bool> MountPointCheckedForWritePermission;
-
-	/** Weak Pointer to the write permission warning toast. */
-	TWeakPtr<SNotificationItem> WritePermissionWarningNotificationWeakPtr;
-
 	/**
 	* Internal helper function to count how many dirty packages require checkout.
 	*
@@ -843,10 +884,4 @@ private:
 	* @return	Returns the number of dirty packages that require checkout. If bCheckIfAny is true, returns 1 if any packages will require checkout.
 	*/
 	int32 InternalGetNumDirtyPackagesThatNeedCheckout(bool bCheckIfAny) const;
-
-	/**
-	* Internal function to validate free space on drives used by Unreal Engine
-	* The intent is to notify the user of situations where stability maybe impacted.
-	*/
-	void ValidateFreeDiskSpace() const;
 };

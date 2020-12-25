@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -23,7 +23,7 @@ public:
 
 public:
 	/** Create a new view model with the supplied  display name. */
-	FNiagaraScriptGraphViewModel(TAttribute<FText> InDisplayName);
+	FNiagaraScriptGraphViewModel(FText InDisplayName);
 
 	~FNiagaraScriptGraphViewModel();
 
@@ -89,7 +89,7 @@ private:
 	TWeakObjectPtr<UNiagaraScriptSource> ScriptSource;
 
 	/** The display name for the script graph. */
-	TAttribute<FText> DisplayName;
+	FText DisplayName;
 
 	/** Commands for editing the graph. */
 	TSharedRef<FUICommandList> Commands;

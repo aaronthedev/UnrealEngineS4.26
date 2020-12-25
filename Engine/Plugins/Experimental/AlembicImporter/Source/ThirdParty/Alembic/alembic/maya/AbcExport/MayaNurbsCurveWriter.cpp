@@ -196,7 +196,7 @@ void MayaNurbsCurveWriter::write()
     bool useConstWidth = false;
 
     MFnDependencyNode dep(mRootDagPath.transform());
-    MPlug constWidthPlug = dep.findPlug("width", true);
+    MPlug constWidthPlug = dep.findPlug("width");
 
     if (!constWidthPlug.isNull())
     {
@@ -296,32 +296,32 @@ void MayaNurbsCurveWriter::write()
             if (knotsArray[0] == knotsArray[knotsLength - 1] ||
                 knotsArray[0] == knotsArray[1])
             {
-                knots.push_back(static_cast<float>(knotsArray[0]));
+                knots.push_back(knotsArray[0]);
             }
             else
             {
-                knots.push_back(static_cast<float>(2 * knotsArray[0] - knotsArray[1]));
+                knots.push_back(2 * knotsArray[0] - knotsArray[1]);
             }
 
             for (unsigned int j = 0; j < knotsLength; ++j)
             {
-                knots.push_back(static_cast<float>(knotsArray[j]));
+                knots.push_back(knotsArray[j]);
             }
 
             if (knotsArray[0] == knotsArray[knotsLength - 1] ||
                 knotsArray[knotsLength - 1] == knotsArray[knotsLength - 2])
             {
-                knots.push_back(static_cast<float>((knotsArray[knotsLength - 1])));
+                knots.push_back(knotsArray[knotsLength - 1]);
             }
             else
             {
-                knots.push_back(static_cast<float>(2 * knotsArray[knotsLength - 1] -
-                                knotsArray[knotsLength - 2]));
+                knots.push_back(2 * knotsArray[knotsLength - 1] -
+                                knotsArray[knotsLength - 2]);
             }
         }
 
         // width
-        MPlug widthPlug = curve.findPlug("width", true);
+        MPlug widthPlug = curve.findPlug("width");
 
         if (!useConstWidth && !widthPlug.isNull())
         {
@@ -337,7 +337,6 @@ void MayaNurbsCurveWriter::write()
                     width.push_back(static_cast<float>(doubleArrayData[i]));
                 }
             }
-            // successfully got as a double array but not enough values!
             else if (status == MS::kSuccess)
             {
                 MString msg = "Curve ";
@@ -353,10 +352,9 @@ void MayaNurbsCurveWriter::write()
             else
             {
                 width.push_back(widthPlug.asFloat());
+                useConstWidth = true;
             }
         }
-        // no width plug on the curve, but not yet noticed as constant width
-        // force constant
         else if (!useConstWidth)
         {
             // pick a default value
@@ -367,15 +365,8 @@ void MayaNurbsCurveWriter::write()
     }
 
     Alembic::AbcGeom::GeometryScope scope = Alembic::AbcGeom::kVertexScope;
-    if (!useConstWidth && width.size() > 1 && width.size() == numCurves)
-    {
-        scope = Alembic::AbcGeom::kUniformScope;
-    }
-    else if (width.size() == 1)
-    {
+    if (useConstWidth)
         scope = Alembic::AbcGeom::kConstantScope;
-    }
-
 
     samp.setCurvesNumVertices(Alembic::Abc::Int32ArraySample(nVertices));
     samp.setPositions(Alembic::Abc::V3fArraySample(

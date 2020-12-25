@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	VulkanCommandBuffer.cpp: Vulkan device RHI implementation.
@@ -24,16 +24,6 @@ static FAutoConsoleVariableRef CVarVulkanProfileCmdBuffers(
 	GVulkanProfileCmdBuffers,
 	TEXT("Insert GPU timing queries in every cmd buffer\n"),
 	ECVF_Default
-);
-
-static int32 GVulkanUploadCmdBufferSemaphore = 0;	// despite this behavior being more correct, default to off to avoid changing the existing (as of UE 4.24) behavior
-static FAutoConsoleVariableRef CVarVulkanPreventOverlapWithUpload(
-	TEXT("r.Vulkan.UploadCmdBufferSemaphore"),
-	GVulkanUploadCmdBufferSemaphore,
-	TEXT("Whether command buffers for uploads and graphics can be executed simultaneously.\n")
-	TEXT(" 0: The buffers are submitted without any synch(default)\n")
-	TEXT(" 1: Graphics buffers will not overlap with the upload buffers"),
-	ECVF_ReadOnly
 );
 
 #define CMD_BUFFER_TIME_TO_WAIT_BEFORE_DELETING		10
@@ -184,18 +174,6 @@ void FVulkanCmdBuffer::BeginRenderPass(const FVulkanRenderTargetLayout& Layout, 
 	Info.clearValueCount = Layout.GetNumUsedClearValues();
 	Info.pClearValues = AttachmentClearValues;
 
-#if VULKAN_SUPPORTS_QCOM_RENDERPASS_TRANSFORM
-	VkRenderPassTransformBeginInfoQCOM RPTransformBeginInfoQCOM;
-	VkSurfaceTransformFlagBitsKHR QCOMTransform = Layout.GetQCOMRenderPassTransform();
-
-	if (QCOMTransform != VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
-	{
-		ZeroVulkanStruct(RPTransformBeginInfoQCOM, (VkStructureType)VK_STRUCTURE_TYPE_RENDER_PASS_TRANSFORM_BEGIN_INFO_QCOM);
-
-		RPTransformBeginInfoQCOM.transform = QCOMTransform;
-		Info.pNext = &RPTransformBeginInfoQCOM;
-	}
-#endif
 	VulkanRHI::vkCmdBeginRenderPass(CommandBufferHandle, &Info, VK_SUBPASS_CONTENTS_INLINE);
 
 	State = EState::IsInsideRenderPass;
@@ -272,14 +250,7 @@ void FVulkanCmdBuffer::Begin()
 {
 	{
 		FScopeLock ScopeLock(CommandBufferPool->GetCS());
-		if(State == EState::NeedReset)
-		{
-			VulkanRHI::vkResetCommandBuffer(CommandBufferHandle, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
-		}
-		else
-		{
-			checkf(State == EState::ReadyForBegin, TEXT("Can't Begin as we're NOT ready! CmdBuffer 0x%p State=%d"), CommandBufferHandle, (int32)State);
-		}
+		checkf(State == EState::ReadyForBegin, TEXT("Can't Begin as we're NOT ready! CmdBuffer 0x%p State=%d"), CommandBufferHandle, (int32)State);
 		State = EState::IsInsideBegin;
 	}
 
@@ -357,6 +328,8 @@ void FVulkanCmdBuffer::RefreshFenceStatus()
 			FMemory::Memzero(CurrentViewport);
 			FMemory::Memzero(CurrentScissor);
 			CurrentStencilRef = 0;
+
+			VulkanRHI::vkResetCommandBuffer(CommandBufferHandle, VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT);
 #if VULKAN_REUSE_FENCES
 			Fence->GetOwner()->ResetFence(Fence);
 #else
@@ -379,7 +352,7 @@ void FVulkanCmdBuffer::RefreshFenceStatus()
 			}
 
 			// Change state at the end to be safe
-			State = EState::NeedReset;
+			State = EState::ReadyForBegin;
 		}
 	}
 	else
@@ -400,6 +373,7 @@ FVulkanCommandBufferPool::~FVulkanCommandBufferPool()
 	for (int32 Index = 0; Index < CmdBuffers.Num(); ++Index)
 	{
 		FVulkanCmdBuffer* CmdBuffer = CmdBuffers[Index];
+		CmdBuffer->FreeMemory();
 		delete CmdBuffer;
 	}
 
@@ -429,17 +403,10 @@ FVulkanCommandBufferManager::FVulkanCommandBufferManager(FVulkanDevice* InDevice
 	, Queue(InContext->GetQueue())
 	, ActiveCmdBuffer(nullptr)
 	, UploadCmdBuffer(nullptr)
-	, ActiveCmdBufferSemaphore(nullptr)
-	, UploadCmdBufferSemaphore(nullptr)
 {
 	check(Device);
 
 	Pool.Create(Queue->GetFamilyIndex());
-
-	if (GVulkanUploadCmdBufferSemaphore)
-	{
-		ActiveCmdBufferSemaphore = new VulkanRHI::FSemaphore(*Device);
-	}
 
 	ActiveCmdBuffer = Pool.Create(false);
 	ActiveCmdBuffer->InitializeTimings(InContext);
@@ -514,60 +481,19 @@ void FVulkanCommandBufferManager::SubmitUploadCmdBuffer(uint32 NumSignalSemaphor
 		VulkanRHI::DebugHeavyWeightBarrier(UploadCmdBuffer->GetHandle(), 4);
 
 		UploadCmdBuffer->End();
-
-		if (GVulkanUploadCmdBufferSemaphore)
-		{
-			// Add semaphores associated with the recent active cmdbuf(s), if any. That will prevent
-			// the overlap, delaying execution of this cmdbuf until the graphics one(s) is complete.
-			for (FSemaphore* WaitForThis : RenderingCompletedSemaphores)
-			{
-				UploadCmdBuffer->AddWaitSemaphore(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, WaitForThis);
-			}
-
-			if (NumSignalSemaphores == 0)
-			{
-				checkf(UploadCmdBufferSemaphore != nullptr, TEXT("FVulkanCommandBufferManager::SubmitUploadCmdBuffer: upload command buffer does not have an associated completion semaphore."));
-				VkSemaphore Sema = UploadCmdBufferSemaphore->GetHandle();
-				Queue->Submit(UploadCmdBuffer, 1, &Sema);
-				UploadCompletedSemaphores.Add(UploadCmdBufferSemaphore);
-				UploadCmdBufferSemaphore = nullptr;
-			}
-			else
-			{
-				TArray<VkSemaphore, TInlineAllocator<16>> CombinedSemaphores;
-				CombinedSemaphores.Add(UploadCmdBufferSemaphore->GetHandle());
-				CombinedSemaphores.Append(SignalSemaphores, NumSignalSemaphores);
-				Queue->Submit(UploadCmdBuffer, CombinedSemaphores.Num(), CombinedSemaphores.GetData());
-			}
-			// the buffer will now hold on to the wait semaphores, so we can clear them here
-			RenderingCompletedSemaphores.Empty();
-		}
-		else
-		{
-			Queue->Submit(UploadCmdBuffer, NumSignalSemaphores, SignalSemaphores);
-		}
-
+		Queue->Submit(UploadCmdBuffer, NumSignalSemaphores, SignalSemaphores);
 		UploadCmdBuffer->SubmittedTime = FPlatformTime::Seconds();
 	}
 
 	UploadCmdBuffer = nullptr;
 }
 
-void FVulkanCommandBufferManager::SubmitActiveCmdBuffer(TArrayView<VulkanRHI::FSemaphore*> SignalSemaphores)
+void FVulkanCommandBufferManager::SubmitActiveCmdBuffer(VulkanRHI::FSemaphore* SignalSemaphore)
 {
 	FScopeLock ScopeLock(&Pool.CS);
 	FlushResetQueryPools();
 	check(!UploadCmdBuffer);
 	check(ActiveCmdBuffer);
-
-	FMemMark Mark(FMemStack::Get());
-	TArray<VkSemaphore, TMemStackAllocator<>> SemaphoreHandles;
-	SemaphoreHandles.Reserve(SignalSemaphores.Num() + 1);
-	for (VulkanRHI::FSemaphore* Semaphore : SignalSemaphores)
-	{
-		SemaphoreHandles.Add(Semaphore->GetHandle());
-	}
-
 	if (!ActiveCmdBuffer->IsSubmitted() && ActiveCmdBuffer->HasBegun())
 	{
 		if (!ActiveCmdBuffer->IsOutsideRenderPass())
@@ -579,71 +505,6 @@ void FVulkanCommandBufferManager::SubmitActiveCmdBuffer(TArrayView<VulkanRHI::FS
 		VulkanRHI::DebugHeavyWeightBarrier(ActiveCmdBuffer->GetHandle(), 8);
 
 		ActiveCmdBuffer->End();
-
-		if (GVulkanUploadCmdBufferSemaphore)
-		{
-			checkf(ActiveCmdBufferSemaphore != nullptr, TEXT("FVulkanCommandBufferManager::SubmitUploadCmdBuffer: graphics command buffer does not have an associated completion semaphore."));
-
-			// Add semaphores associated with the recent upload cmdbuf(s), if any. That will prevent
-			// the overlap, delaying execution of this cmdbuf until upload one(s) are complete.
-			for (FSemaphore* UploadCompleteSema : UploadCompletedSemaphores)
-			{
-				ActiveCmdBuffer->AddWaitSemaphore(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, UploadCompleteSema);
-			}
-
-			SemaphoreHandles.Add(ActiveCmdBufferSemaphore->GetHandle());
-			Queue->Submit(ActiveCmdBuffer, SemaphoreHandles.Num(), SemaphoreHandles.GetData());
-
-			RenderingCompletedSemaphores.Add(ActiveCmdBufferSemaphore);
-			ActiveCmdBufferSemaphore = nullptr;
-
-			// the buffer will now hold on to the wait semaphores, so we can clear them here
-			UploadCompletedSemaphores.Empty();
-		}
-		else
-		{
-			Queue->Submit(ActiveCmdBuffer, SemaphoreHandles.Num(), SemaphoreHandles.GetData());
-		}
-		ActiveCmdBuffer->SubmittedTime = FPlatformTime::Seconds();
-	}
-
-	ActiveCmdBuffer = nullptr;
-	if (GVulkanUploadCmdBufferSemaphore && ActiveCmdBufferSemaphore != nullptr)
-	{
-		// most likely we didn't submit as it wasn't begun
-		check(ActiveCmdBufferSemaphore->GetRefCount() == 0);
-		delete ActiveCmdBufferSemaphore;
-		ActiveCmdBufferSemaphore = nullptr;
-	}
-}
-
-void FVulkanCommandBufferManager::SubmitActiveCmdBufferFromPresent(VulkanRHI::FSemaphore* SignalSemaphore)
-{
-	if (GVulkanUploadCmdBufferSemaphore)
-	{
-		// unlike more advanced regular SACB(), this is just a wrapper
-		// around Queue->Submit() to avoid rewriting the logic in Present
-		if (SignalSemaphore)
-		{
-			VkSemaphore SignalThis[2] =
-			{
-				SignalSemaphore->GetHandle(),
-				ActiveCmdBufferSemaphore->GetHandle()
-			};
-
-			Queue->Submit(ActiveCmdBuffer, UE_ARRAY_COUNT(SignalThis), SignalThis);
-		}
-		else
-		{
-			VkSemaphore SignalThis = ActiveCmdBufferSemaphore->GetHandle();
-			Queue->Submit(ActiveCmdBuffer, 1, &SignalThis);
-		}
-
-		RenderingCompletedSemaphores.Add(ActiveCmdBufferSemaphore);
-		ActiveCmdBufferSemaphore = nullptr;
-	}
-	else
-	{
 		if (SignalSemaphore)
 		{
 			Queue->Submit(ActiveCmdBuffer, SignalSemaphore->GetHandle());
@@ -652,7 +513,10 @@ void FVulkanCommandBufferManager::SubmitActiveCmdBufferFromPresent(VulkanRHI::FS
 		{
 			Queue->Submit(ActiveCmdBuffer);
 		}
+		ActiveCmdBuffer->SubmittedTime = FPlatformTime::Seconds();
 	}
+
+	ActiveCmdBuffer = nullptr;
 }
 
 FVulkanCmdBuffer* FVulkanCommandBufferPool::Create(bool bIsUploadOnly)
@@ -696,13 +560,6 @@ void FVulkanCommandBufferManager::PrepareForNewActiveCommandBuffer()
 	FScopeLock ScopeLock(&Pool.CS);
 	check(!UploadCmdBuffer);
 
-	if (GVulkanUploadCmdBufferSemaphore)
-	{
-		// create a completion semaphore
-		checkf(ActiveCmdBufferSemaphore == nullptr, TEXT("FVulkanCommandBufferManager::PrepareForNewActiveCommandBuffer: a semaphore from the previous active buffer has been leaked."));
-		ActiveCmdBufferSemaphore = new VulkanRHI::FSemaphore(*Device);
-	}
-
 	for (int32 Index = 0; Index < Pool.CmdBuffers.Num(); ++Index)
 	{
 		FVulkanCmdBuffer* CmdBuffer = Pool.CmdBuffers[Index];
@@ -711,7 +568,7 @@ void FVulkanCommandBufferManager::PrepareForNewActiveCommandBuffer()
 		if (!CmdBuffer->bIsUploadOnly)
 #endif
 		{
-			if (CmdBuffer->State == FVulkanCmdBuffer::EState::ReadyForBegin || CmdBuffer->State == FVulkanCmdBuffer::EState::NeedReset)
+			if (CmdBuffer->State == FVulkanCmdBuffer::EState::ReadyForBegin)
 			{
 				ActiveCmdBuffer = CmdBuffer;
 				ActiveCmdBuffer->Begin();
@@ -748,13 +605,6 @@ FVulkanCmdBuffer* FVulkanCommandBufferManager::GetUploadCmdBuffer()
 	FScopeLock ScopeLock(&Pool.CS);
 	if (!UploadCmdBuffer)
 	{
-		if (GVulkanUploadCmdBufferSemaphore)
-		{
-			// create a completion semaphore
-			checkf(UploadCmdBufferSemaphore == nullptr, TEXT("FVulkanCommandBufferManager::GetUploadCmdBuffer: a semaphore from the previous upload buffer has been leaked."));
-			UploadCmdBufferSemaphore = new VulkanRHI::FSemaphore(*Device);
-		}
-
 		for (int32 Index = 0; Index < Pool.CmdBuffers.Num(); ++Index)
 		{
 			FVulkanCmdBuffer* CmdBuffer = Pool.CmdBuffers[Index];
@@ -763,7 +613,7 @@ FVulkanCmdBuffer* FVulkanCommandBufferManager::GetUploadCmdBuffer()
 			if (CmdBuffer->bIsUploadOnly)
 #endif
 			{
-				if (CmdBuffer->State == FVulkanCmdBuffer::EState::ReadyForBegin || CmdBuffer->State == FVulkanCmdBuffer::EState::NeedReset)
+				if (CmdBuffer->State == FVulkanCmdBuffer::EState::ReadyForBegin)
 				{
 					UploadCmdBuffer = CmdBuffer;
 					UploadCmdBuffer->Begin();
@@ -805,24 +655,24 @@ void FVulkanCommandBufferPool::FreeUnusedCmdBuffers(FVulkanQueue* InQueue)
 #if VULKAN_DELETE_STALE_CMDBUFFERS
 	FScopeLock ScopeLock(&CS);
 	const double CurrentTime = FPlatformTime::Seconds();
-
-	// In case Queue stores pointer to a cmdbuffer, do not delete it
+	
+	// In case Queue stores pointer to a cmdbuffer, do not delete it 
 	FVulkanCmdBuffer* LastSubmittedCmdBuffer = nullptr;
 	uint64 LastSubmittedFenceCounter = 0;
 	InQueue->GetLastSubmittedInfo(LastSubmittedCmdBuffer, LastSubmittedFenceCounter);
 
 	// Deferred deletion queue caches pointers to cmdbuffers
-	FDeferredDeletionQueue2& DeferredDeletionQueue = Device->GetDeferredDeletionQueue();
-
+	FDeferredDeletionQueue& DeferredDeletionQueue = Device->GetDeferredDeletionQueue();
+	
 	for (int32 Index = CmdBuffers.Num() - 1; Index >= 0; --Index)
 	{
 		FVulkanCmdBuffer* CmdBuffer = CmdBuffers[Index];
 		if (CmdBuffer != LastSubmittedCmdBuffer &&
-			(CmdBuffer->State == FVulkanCmdBuffer::EState::ReadyForBegin || CmdBuffer->State == FVulkanCmdBuffer::EState::NeedReset) &&
+			CmdBuffer->State == FVulkanCmdBuffer::EState::ReadyForBegin && 
 			(CurrentTime - CmdBuffer->SubmittedTime) > CMD_BUFFER_TIME_TO_WAIT_BEFORE_DELETING)
 		{
 			DeferredDeletionQueue.OnCmdBufferDeleted(CmdBuffer);
-
+			
 			CmdBuffer->FreeMemory();
 			CmdBuffers.RemoveAtSwap(Index, 1, false);
 			FreeCmdBuffers.Add(CmdBuffer);

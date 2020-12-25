@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraEditorCommon.h"
 #include "AssetData.h"
@@ -786,31 +786,6 @@ void FNiagaraOpInfo::Init()
 		Op->BuildName(TEXT("Rand"), CategoryName);
 		OpInfoMap.Add(Op->Name) = Idx;
 
-		// Non-deterministic integer random number generation. Calls FRandomStream on the CPU. 
-		Idx = OpInfos.AddDefaulted();
-		Op = &OpInfos[Idx];
-		Op->Category = CategoryText;
-		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Rand Integer Name", "Random Integer");
-		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Rand Integer Desc", "Returns a non-deterministic random integer value between 0 and Max-1");
-		Op->Inputs.Add(FNiagaraOpInOutInfo(Max, Type, MaxText, MaxText, DefaultStr_One));
-		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, Type, ResultText, ResultText, DefaultStr_One, TEXT("rand_int({0})")));
-		Op->BuildName(TEXT("Rand Integer"), CategoryName);
-		Op->bNumericsCanBeIntegers = true;
-		Op->bNumericsCanBeFloats = false;
-		OpInfoMap.Add(Op->Name) = Idx;
-
-		// Non-deterministic float random number generation. Calls FRandomStream on the CPU. 
-		Idx = OpInfos.AddDefaulted();
-		Op = &OpInfos[Idx];
-		Op->Category = CategoryText;
-		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Rand Float Name", "Random Float");
-		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Rand Float Desc", "Returns a non-deterministic random float value between 0 and Max");
-		Op->Inputs.Add(FNiagaraOpInOutInfo(Max, Type, MaxText, MaxText, DefaultStr_One));
-		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, Type, ResultText, ResultText, DefaultStr_One, TEXT("rand_float({0})")));
-		Op->BuildName(TEXT("Rand Float"), CategoryName);
-		Op->bNumericsCanBeIntegers = false;
-		Op->bNumericsCanBeFloats = true;
-		OpInfoMap.Add(Op->Name) = Idx;
 
 		// Deterministic/seeded random number generation. 
 		static FName SeedName1(TEXT("Seed 1"));
@@ -835,36 +810,6 @@ void FNiagaraOpInfo::Init()
 		Op->BuildName(TEXT("SeededRand"), CategoryName);
 		OpInfoMap.Add(Op->Name) = Idx;
 
-		Idx = OpInfos.AddDefaulted();
-		Op = &OpInfos[Idx];
-		Op->Category = CategoryText;
-		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Seeded Integer Rand Name", "Seeded Integer Random");
-		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Seeded Integer Rand Desc", "Returns a deterministic random integer value between 0 and Max-1.");
-		Op->Inputs.Add(FNiagaraOpInOutInfo(Max, Type, MaxText, MaxText, DefaultStr_One));
-		Op->Inputs.Add(FNiagaraOpInOutInfo(SeedName1, SeedType, SeedText1, SeedText1, DefaultSeed_Zero));
-		Op->Inputs.Add(FNiagaraOpInOutInfo(SeedName2, SeedType, SeedText2, SeedText2, DefaultSeed_Zero));
-		Op->Inputs.Add(FNiagaraOpInOutInfo(SeedName3, SeedType, SeedText3, SeedText3, DefaultSeed_Zero));
-		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, Type, ResultText, ResultText, DefaultStr_One, TEXT("rand_int({0}, {1}, {2}, {3})")));
-		Op->BuildName(TEXT("SeededRand Integer"), CategoryName);
-		Op->bNumericsCanBeIntegers = true;
-		Op->bNumericsCanBeFloats = false;
-		OpInfoMap.Add(Op->Name) = Idx;
-
-		Idx = OpInfos.AddDefaulted();
-		Op = &OpInfos[Idx];
-		Op->Category = CategoryText;
-		Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "Seeded Float Rand Name", "Seeded Float Random");
-		Op->Description = NSLOCTEXT("NiagaraOpInfo", "Seeded Float Rand Desc", "Returns a deterministic random float value between 0 and Max.");
-		Op->Inputs.Add(FNiagaraOpInOutInfo(Max, Type, MaxText, MaxText, DefaultStr_One));
-		Op->Inputs.Add(FNiagaraOpInOutInfo(SeedName1, SeedType, SeedText1, SeedText1, DefaultSeed_Zero));
-		Op->Inputs.Add(FNiagaraOpInOutInfo(SeedName2, SeedType, SeedText2, SeedText2, DefaultSeed_Zero));
-		Op->Inputs.Add(FNiagaraOpInOutInfo(SeedName3, SeedType, SeedText3, SeedText3, DefaultSeed_Zero));
-		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, Type, ResultText, ResultText, DefaultStr_One, TEXT("rand_float({0}, {1}, {2}, {3})")));
-		Op->BuildName(TEXT("SeededRand Float"), CategoryName);
-		Op->bNumericsCanBeIntegers = false;
-		Op->bNumericsCanBeFloats = true;
-		OpInfoMap.Add(Op->Name) = Idx;
-
 		//Comparison ops
 		Idx = OpInfos.AddDefaulted();
 		Op = &OpInfos[Idx];
@@ -874,7 +819,7 @@ void FNiagaraOpInfo::Init()
 		Op->Keywords = FText::FromString(TEXT("<"));
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_Zero));
 		Op->Inputs.Add(FNiagaraOpInOutInfo(B, Type, BText, BText, DefaultStr_One));
-		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, FNiagaraTypeDefinition::GetBoolDef(), ResultText, ResultText, DefaultStr_One, TEXT("NiagaraAll({0} < {1})")));
+		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, FNiagaraTypeDefinition::GetBoolDef(), ResultText, ResultText, DefaultStr_One, TEXT("{0} < {1}")));
 		Op->BuildName(TEXT("CmpLT"), CategoryName);
 		OpInfoMap.Add(Op->Name) = Idx;
 
@@ -886,7 +831,7 @@ void FNiagaraOpInfo::Init()
 		Op->Keywords = FText::FromString(TEXT("<="));
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_Zero));
 		Op->Inputs.Add(FNiagaraOpInOutInfo(B, Type, BText, BText, DefaultStr_One));
-		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, FNiagaraTypeDefinition::GetBoolDef(), ResultText, ResultText, DefaultStr_One, TEXT("NiagaraAll({0} <= {1})")));
+		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, FNiagaraTypeDefinition::GetBoolDef(), ResultText, ResultText, DefaultStr_One, TEXT("{0} <= {1}")));
 		Op->BuildName(TEXT("CmpLE"), CategoryName);
 		OpInfoMap.Add(Op->Name) = Idx;
 
@@ -898,7 +843,7 @@ void FNiagaraOpInfo::Init()
 		Op->Keywords = FText::FromString(TEXT(">"));
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_Zero));
 		Op->Inputs.Add(FNiagaraOpInOutInfo(B, Type, BText, BText, DefaultStr_One));
-		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, FNiagaraTypeDefinition::GetBoolDef(), ResultText, ResultText, DefaultStr_One, TEXT("NiagaraAll({0} > {1})")));
+		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, FNiagaraTypeDefinition::GetBoolDef(), ResultText, ResultText, DefaultStr_One, TEXT("{0} > {1}")));
 		Op->BuildName(TEXT("CmpGT"), CategoryName);
 		OpInfoMap.Add(Op->Name) = Idx;
 
@@ -910,7 +855,7 @@ void FNiagaraOpInfo::Init()
 		Op->Keywords = FText::FromString(TEXT(">="));
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_Zero));
 		Op->Inputs.Add(FNiagaraOpInOutInfo(B, Type, BText, BText, DefaultStr_One));
-		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, FNiagaraTypeDefinition::GetBoolDef(), ResultText, ResultText, DefaultStr_One, TEXT("NiagaraAll({0} >= {1})")));
+		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, FNiagaraTypeDefinition::GetBoolDef(), ResultText, ResultText, DefaultStr_One, TEXT("{0} >= {1}")));
 		Op->BuildName(TEXT("CmpGE"), CategoryName);
 		OpInfoMap.Add(Op->Name) = Idx;
 
@@ -922,7 +867,7 @@ void FNiagaraOpInfo::Init()
 		Op->Keywords = FText::FromString(TEXT("=="));
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_Zero));
 		Op->Inputs.Add(FNiagaraOpInOutInfo(B, Type, BText, BText, DefaultStr_One));
-		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, FNiagaraTypeDefinition::GetBoolDef(), ResultText, ResultText, DefaultStr_One, TEXT("NiagaraAll({0} == {1})")));
+		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, FNiagaraTypeDefinition::GetBoolDef(), ResultText, ResultText, DefaultStr_One, TEXT("{0} == {1}")));
 		Op->BuildName(TEXT("CmpEQ"), CategoryName);
 		OpInfoMap.Add(Op->Name) = Idx;
 		
@@ -934,7 +879,7 @@ void FNiagaraOpInfo::Init()
 		Op->Keywords = FText::FromString(TEXT("!="));
 		Op->Inputs.Add(FNiagaraOpInOutInfo(A, Type, AText, AText, DefaultStr_Zero));
 		Op->Inputs.Add(FNiagaraOpInOutInfo(B, Type, BText, BText, DefaultStr_One));
-		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, FNiagaraTypeDefinition::GetBoolDef(), ResultText, ResultText, DefaultStr_One, TEXT("NiagaraAll({0} != {1})")));
+		Op->Outputs.Add(FNiagaraOpInOutInfo(Result, FNiagaraTypeDefinition::GetBoolDef(), ResultText, ResultText, DefaultStr_One, TEXT("{0} != {1}")));
 		Op->BuildName(TEXT("CmpNEQ"), CategoryName);
 		OpInfoMap.Add(Op->Name) = Idx;
 	}
@@ -1083,30 +1028,6 @@ void FNiagaraOpInfo::Init()
 	Op->BuildName(TEXT("LogicNot"), BoolCategoryName);
 	OpInfoMap.Add(Op->Name) = Idx;
 
-	Idx = OpInfos.AddDefaulted();
-	Op = &OpInfos[Idx];
-	Op->Category = BoolCategory;
-	Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "LogicEq Name", "Bool Equal");
-	Op->Description = NSLOCTEXT("NiagaraOpInfo", "LogicEq Desc", "Result = A == B");
-	Op->Keywords = FText::FromString(TEXT("=="));
-	Op->Inputs.Add(FNiagaraOpInOutInfo(A, BoolType, AText, AText, Default_BoolZero));
-	Op->Inputs.Add(FNiagaraOpInOutInfo(B, BoolType, BText, BText, Default_BoolOne));
-	Op->Outputs.Add(FNiagaraOpInOutInfo(Result, BoolType, ResultText, ResultText, Default_BoolOne, TEXT("NiagaraAll({0} == {1})")));
-	Op->BuildName(TEXT("LogicEq"), BoolCategoryName);
-	OpInfoMap.Add(Op->Name) = Idx;
-
-	Idx = OpInfos.AddDefaulted();
-	Op = &OpInfos[Idx];
-	Op->Category = BoolCategory;
-	Op->FriendlyName = NSLOCTEXT("NiagaraOpInfo", "LogicNEq Name", "Bool Not Equal");
-	Op->Description = NSLOCTEXT("NiagaraOpInfo", "LogicNEq Desc", "Result = A != B");
-	Op->Keywords = FText::FromString(TEXT("!="));
-	Op->Inputs.Add(FNiagaraOpInOutInfo(A, BoolType, AText, AText, Default_BoolZero));
-	Op->Inputs.Add(FNiagaraOpInOutInfo(B, BoolType, BText, BText, Default_BoolOne));
-	Op->Outputs.Add(FNiagaraOpInOutInfo(Result, BoolType, ResultText, ResultText, Default_BoolOne, TEXT("NiagaraAll({0} != {1})")));
-	Op->BuildName(TEXT("LogicNEq"), BoolCategoryName);
-	OpInfoMap.Add(Op->Name) = Idx;
-
 	//////////////////////////////////////////////////////////////////////////
 	//Matrix only ops
 	FString Default_MatrixZero(TEXT(
@@ -1194,11 +1115,11 @@ void FNiagaraOpInfo::Init()
 	Op->Description = NSLOCTEXT("NiagaraOpInfo", "MatrixMatrix Desc", "Multiplies one matrix by another.");
 	Op->Inputs.Add(FNiagaraOpInOutInfo(A, MatrixType, AText, AText, Default_MatrixOne));
 	Op->Inputs.Add(FNiagaraOpInOutInfo(B, MatrixType, BText, BText, Default_MatrixOne));
-	Op->Outputs.Add(FNiagaraOpInOutInfo(Result, MatrixType, ResultText, ResultText, Default_MatrixOne, TEXT("mul({0},{1})")));
+	Op->Outputs.Add(FNiagaraOpInOutInfo(Result, MatrixType, ResultText, ResultText, Default_MatrixOne, TEXT("{0} * {1}")));
 	Op->BuildName(TEXT("MatrixMultiply"), MatrixCategoryName);
 	Op->bSupportsAddedInputs = true;
 	Op->AddedInputTypeRestrictions.Add(MatrixType);
-	Op->AddedInputFormatting = TEXT("mul({A},{B})");
+	Op->AddedInputFormatting = TEXT("{A} * {B}");
 	OpInfoMap.Add(Op->Name) = Idx;
 	
 	Idx = OpInfos.AddDefaulted();
@@ -1361,9 +1282,4 @@ void UActorFactoryNiagara::PostCreateBlueprint(UObject* Asset, AActor* CDO)
 INiagaraScriptGraphFocusInfo::~INiagaraScriptGraphFocusInfo()
 {
 	//Stand-in definition for abstract INiagaraScriptGraphFocusInfo's pure virtual dtor
-}
-
-bool FNiagaraScriptVariableAndViewInfo::operator==(const FNiagaraScriptVariableAndViewInfo& Other) const
-{
-	return ScriptVariable == Other.ScriptVariable && MetaData.GetUsage() == Other.MetaData.GetUsage();
 }

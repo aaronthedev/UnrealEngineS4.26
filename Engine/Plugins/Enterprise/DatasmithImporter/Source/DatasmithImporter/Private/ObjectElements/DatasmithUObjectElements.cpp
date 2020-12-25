@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ObjectElements/DatasmithUObjectElements.h"
 
@@ -914,18 +914,6 @@ void UDatasmithTextureElement::SetRGBCurve(float InValue)
 {
 	DATASMITHOBJECTELEMENT_GETSHARED_AND_EARLYRETURN(IDatasmithTextureElement, TextureElemement, );
 	return Element->SetRGBCurve(InValue);
-}
-
-EDatasmithColorSpace UDatasmithTextureElement::GetColorSpace() const
-{
-	DATASMITHOBJECTELEMENT_GETSHARED_AND_EARLYRETURN(IDatasmithTextureElement, TextureElemement, EDatasmithColorSpace::Default);
-	return Element->GetSRGB();
-}
-
-void UDatasmithTextureElement::SetColorSpace(EDatasmithColorSpace Option)
-{
-	DATASMITHOBJECTELEMENT_GETSHARED_AND_EARLYRETURN(IDatasmithTextureElement, TextureElemement, );
-	return Element->SetSRGB(Option);
 }
 
 bool UDatasmithTextureElement::IsElementValid() const

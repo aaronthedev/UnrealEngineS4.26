@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PluginBrowserModule.h"
 #include "Textures/SlateIcon.h"
@@ -168,8 +168,7 @@ void FPluginBrowserModule::OnMainFrameLoaded(TSharedPtr<SWindow> InRootWindow, b
 		Info.bFireAndForget = false;
 		Info.bUseLargeFont = true;
 		Info.bUseThrobber = false;
-		Info.FadeOutDuration = 0.0f;
-		Info.ExpireDuration = 0.0f;
+		Info.FadeOutDuration = 0.5f;
 		Info.ButtonDetails.Add(FNotificationButtonInfo(LOCTEXT("NewPluginsPopupSettings", "Manage Plugins..."), LOCTEXT("NewPluginsPopupSettingsTT", "Open the plugin browser to enable plugins"), FSimpleDelegate::CreateRaw(this, &FPluginBrowserModule::OnNewPluginsPopupSettingsClicked)));
 		Info.ButtonDetails.Add(FNotificationButtonInfo(LOCTEXT("NewPluginsPopupDismiss", "Dismiss"), LOCTEXT("NewPluginsPopupDismissTT", "Dismiss this notification"), FSimpleDelegate::CreateRaw(this, &FPluginBrowserModule::OnNewPluginsPopupDismissClicked)));
 
@@ -180,14 +179,12 @@ void FPluginBrowserModule::OnMainFrameLoaded(TSharedPtr<SWindow> InRootWindow, b
 
 void FPluginBrowserModule::OnNewPluginsPopupSettingsClicked()
 {
-	FGlobalTabmanager::Get()->TryInvokeTab(PluginsEditorTabName);
-	NewPluginsNotification.Pin()->SetCompletionState(SNotificationItem::CS_None);
+	FGlobalTabmanager::Get()->InvokeTab(PluginsEditorTabName);
 	NewPluginsNotification.Pin()->ExpireAndFadeout();
 }
 
 void FPluginBrowserModule::OnNewPluginsPopupDismissClicked()
 {
-	NewPluginsNotification.Pin()->SetCompletionState(SNotificationItem::CS_None);
 	NewPluginsNotification.Pin()->ExpireAndFadeout();
 	UpdatePreviousInstalledPlugins();
 }

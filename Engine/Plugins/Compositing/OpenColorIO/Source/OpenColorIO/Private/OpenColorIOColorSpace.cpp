@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OpenColorIOColorSpace.h"
 
@@ -73,14 +73,4 @@ FString FOpenColorIOColorConversionSettings::ToString() const
 		return FString::Printf(TEXT("%s config - %s to %s"), *ConfigurationSource->GetName(), *SourceColorSpace.ToString(), *DestinationColorSpace.ToString());
 	}
 	return TEXT("<Invalid Conversion>");
-}
-
-bool FOpenColorIOColorConversionSettings::IsValid() const
-{
-	if (ConfigurationSource)
-	{
-		return ConfigurationSource->HasTransform(SourceColorSpace.ColorSpaceName, DestinationColorSpace.ColorSpaceName);
-	}
-
-	return false;
 }

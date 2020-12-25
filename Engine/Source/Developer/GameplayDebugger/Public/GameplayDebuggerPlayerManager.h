@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -28,7 +28,7 @@ struct FGameplayDebuggerPlayerData
 };
 
 UCLASS(NotBlueprintable, NotBlueprintType, notplaceable, noteditinlinenew, hidedropdown, Transient)
-class GAMEPLAYDEBUGGER_API AGameplayDebuggerPlayerManager : public AActor
+class AGameplayDebuggerPlayerManager : public AActor
 {
 	GENERATED_UCLASS_BODY()
 

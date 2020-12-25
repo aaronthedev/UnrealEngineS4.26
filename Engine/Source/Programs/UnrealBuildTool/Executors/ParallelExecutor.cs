@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -33,16 +33,16 @@ namespace UnrealBuildTool
 		}
 
 		/// <summary>
-		/// Maximum processor count for local execution. 
-		/// </summary>
-		[XmlConfigFile]
-		int MaxProcessorCount = int.MaxValue;
-
-		/// <summary>
 		/// Processor count multiplier for local execution. Can be below 1 to reserve CPU for other tasks.
 		/// </summary>
 		[XmlConfigFile]
 		double ProcessorCountMultiplier = 1.0;
+
+		/// <summary>
+		/// Maximum processor count for local execution. 
+		/// </summary>
+		[XmlConfigFile]
+		int MaxProcessorCount = int.MaxValue;
 
 		/// <summary>
 		/// When enabled, will stop compiling targets after a compile error occurs.
@@ -51,28 +51,11 @@ namespace UnrealBuildTool
 		bool bStopCompilationAfterErrors = false;
 
 		/// <summary>
-		/// How many processes that will be executed in parallel
-		/// </summary>
-		int NumParallelProcesses;
-
-		/// <summary>
 		/// Constructor
 		/// </summary>
-		/// <param name="MaxLocalActions">How many actions to execute in parallel</param>
-		public ParallelExecutor(int MaxLocalActions)
+		public ParallelExecutor()
 		{
 			XmlConfig.ApplyTo(this);
-
-			// if specified this caps how many processors we can use
-			if (MaxLocalActions > 0)
-			{
-				NumParallelProcesses = MaxLocalActions;
-			}
-			else
-			{
-				// Figure out how many processors to use
-				NumParallelProcesses = Math.Min((int)(Environment.ProcessorCount * ProcessorCountMultiplier), MaxProcessorCount);
-			}
 		}
 
 		/// <summary>
@@ -98,7 +81,9 @@ namespace UnrealBuildTool
 		/// <returns>True if all the tasks successfully executed, or false if any of them failed.</returns>
 		public override bool ExecuteActions(List<Action> InputActions, bool bLogDetailedActionStats)
 		{
-			Log.TraceInformation("Building {0} {1} with {2} {3}...", InputActions.Count, (InputActions.Count == 1) ? "action" : "actions", NumParallelProcesses, (NumParallelProcesses == 1)? "process" : "processes");
+			// Figure out how many processors to use
+			int MaxProcesses = Math.Min((int)(Environment.ProcessorCount * ProcessorCountMultiplier), MaxProcessorCount);
+			Log.TraceInformation("Building {0} {1} with {2} {3}...", InputActions.Count, (InputActions.Count == 1) ? "action" : "actions", MaxProcesses, (MaxProcesses == 1)? "process" : "processes");
 
 			// Create actions with all our internal metadata
 			List<BuildAction> Actions = new List<BuildAction>();
@@ -107,12 +92,6 @@ namespace UnrealBuildTool
 				BuildAction Action = new BuildAction();
 				Action.SortIndex = Idx;
 				Action.Inner = InputActions[Idx];
-
-				if (!Action.Inner.StatusDescription.EndsWith(".ispc"))
-				{
-					Action.SortIndex += 10000;
-				}
-
 				Actions.Add(Action);
 			}
 
@@ -179,7 +158,7 @@ namespace UnrealBuildTool
 								QueuedActions.Sort((A, B) => (A.TotalDependantCount == B.TotalDependantCount)? (B.SortIndex - A.SortIndex) : (B.TotalDependantCount - A.TotalDependantCount));
 
 								// Create threads up to the maximum number of actions
-								while(ExecutingActions.Count < NumParallelProcesses && QueuedActions.Count > 0)
+								while(ExecutingActions.Count < MaxProcesses && QueuedActions.Count > 0)
 								{
 									BuildAction Action = QueuedActions[QueuedActions.Count - 1];
 									QueuedActions.RemoveAt(QueuedActions.Count - 1);

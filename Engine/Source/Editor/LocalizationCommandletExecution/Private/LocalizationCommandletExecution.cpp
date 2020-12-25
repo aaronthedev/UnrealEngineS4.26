@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LocalizationCommandletExecution.h"
 #include "HAL/FileManager.h"
@@ -480,6 +480,7 @@ namespace
 			{
 				FPlatformProcess::TerminateProc(CommandletProcessHandle, true);
 			}
+			CommandletProcess.Reset();
 		}
 
 		if (RunnableThread)
@@ -495,8 +496,6 @@ namespace
 			Runnable = nullptr;
 		}
 
-		// Reset now to close the read and write pipes which were used by the FCommandletLogPump thread
-		CommandletProcess.Reset();
 	}
 
 	bool SLocalizationCommandletExecutor::HasCompleted() const

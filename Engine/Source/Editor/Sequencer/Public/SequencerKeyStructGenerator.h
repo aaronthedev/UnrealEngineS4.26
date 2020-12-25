@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "UObject/Object.h"
 #include "UObject/GCObject.h"
 #include "UObject/Class.h"
-#include "UObject/FieldPath.h"
 #include "MovieSceneKeyStruct.h"
 #include "Curves/KeyHandle.h"
 #include "Channels/MovieSceneChannelData.h"
@@ -13,9 +12,6 @@
 #include "SequencerKeyStructGenerator.generated.h"
 
 class FSequencerKeyStructGenerator;
-class FArrayProperty;
-class FStructProperty;
-class FProperty;
 
 /**
  * Struct type that is generated from an FMovieSceneChannel type to create a single edit interface for a key/value pair
@@ -33,24 +29,24 @@ public:
 	 */
 	bool IsComplete() const
 	{
-		return SourceValuesProperty.Get() && SourceTimesProperty.Get() && DestValueProperty.Get() && DestTimeProperty.Get();
+		return SourceValuesProperty && SourceTimesProperty && DestValueProperty && DestTimeProperty;
 	}
 
 	/** The (external) source TArray<FFrameNumber> property that stores the key times in the channel */
 	UPROPERTY()
-	TFieldPath<FArrayProperty> SourceTimesProperty;
+	UArrayProperty* SourceTimesProperty;
 
 	/** The (external) source TArray<T> property that stores the key values in the channel */
 	UPROPERTY()
-	TFieldPath<FArrayProperty> SourceValuesProperty;
+	UArrayProperty* SourceValuesProperty;
 
 	/** The time property for this reflected struct, of type FFrameNumber */
 	UPROPERTY()
-	TFieldPath<FStructProperty> DestTimeProperty;
+	UStructProperty* DestTimeProperty;
 
 	/** The value property for this reflected struct, of the same type as SourceValuesProperty->Inner */
 	UPROPERTY()
-	TFieldPath<FProperty> DestValueProperty;
+	UProperty* DestValueProperty;
 };
 
 /**
@@ -87,7 +83,7 @@ public:
 	/**
 	 * Helper function to locate an array property with the specified meta-data tag
 	 */
-	static FArrayProperty* FindArrayPropertyWithTag(UScriptStruct* ChannelStruct, FName MetaDataTag);
+	static UArrayProperty* FindArrayPropertyWithTag(UScriptStruct* ChannelStruct, FName MetaDataTag);
 
 public:
 
@@ -230,7 +226,7 @@ void FSequencerKeyStructGenerator::CopyInstanceToKey(const TMovieSceneChannelHan
 				uint8*       DestValueData = GeneratedStructType->SourceValuesProperty->ContainerPtrToValuePtr<uint8>(DestinationChannel);
 				const uint8* SrcValueData  = GeneratedStructType->DestValueProperty->ContainerPtrToValuePtr<uint8>(SourceInstance->GetStructMemory());
 
-				FScriptArrayHelper SourceValuesArray(GeneratedStructType->SourceValuesProperty.Get(), DestValueData);
+				FScriptArrayHelper SourceValuesArray(GeneratedStructType->SourceValuesProperty, DestValueData);
 				GeneratedStructType->DestValueProperty->CopyCompleteValue(SourceValuesArray.GetRawPtr(KeyIndex), SrcValueData);
 			}
 

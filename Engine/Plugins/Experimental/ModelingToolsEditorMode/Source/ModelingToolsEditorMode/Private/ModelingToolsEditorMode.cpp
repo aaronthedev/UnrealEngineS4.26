@@ -1,101 +1,60 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ModelingToolsEditorMode.h"
-#include "InteractiveTool.h"
 #include "ModelingToolsEditorModeToolkit.h"
 #include "Toolkits/ToolkitManager.h"
 #include "Framework/Commands/UICommandList.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "EditorViewportClient.h"
-#include "EngineAnalytics.h"
 
 //#include "SingleClickTool.h"
 //#include "MeshSurfacePointTool.h"
 //#include "MeshVertexDragTool.h"
 #include "DynamicMeshSculptTool.h"
-#include "MeshVertexSculptTool.h"
 #include "EditMeshPolygonsTool.h"
-#include "DeformMeshPolygonsTool.h"
-#include "GroupEdgeInsertionTool.h"
-#include "EdgeLoopInsertionTool.h"
 #include "ConvertToPolygonsTool.h"
 #include "AddPrimitiveTool.h"
-#include "AddPatchTool.h"
-#include "RevolveBoundaryTool.h"
 #include "SmoothMeshTool.h"
-#include "OffsetMeshTool.h"
 #include "RemeshMeshTool.h"
 #include "SimplifyMeshTool.h"
 #include "MeshInspectorTool.h"
 #include "WeldMeshEdgesTool.h"
 #include "DrawPolygonTool.h"
-#include "DrawPolyPathTool.h"
-#include "DrawAndRevolveTool.h"
 #include "ShapeSprayTool.h"
 #include "MergeMeshesTool.h"
 #include "VoxelCSGMeshesTool.h"
-#include "VoxelSolidifyMeshesTool.h"
-#include "VoxelBlendMeshesTool.h"
-#include "VoxelMorphologyMeshesTool.h"
 #include "PlaneCutTool.h"
-#include "MirrorTool.h"
-#include "SelfUnionMeshesTool.h"
-#include "CSGMeshesTool.h"
-#include "BspConversionTool.h"
-#include "MeshToVolumeTool.h"
-#include "VolumeToMeshTool.h"
-#include "HoleFillTool.h"
 #include "PolygonOnMeshTool.h"
 #include "DisplaceMeshTool.h"
 #include "MeshSpaceDeformerTool.h"
 #include "EditNormalsTool.h"
-#include "RemoveOccludedTrianglesTool.h"
 #include "AttributeEditorTool.h"
 #include "TransformMeshesTool.h"
 #include "MeshSelectionTool.h"
 #include "UVProjectionTool.h"
-#include "UVLayoutTool.h"
-#include "EditMeshMaterialsTool.h"
-#include "EditPivotTool.h"
-#include "BakeTransformTool.h"
-#include "CombineMeshesTool.h"
-#include "AlignObjectsTool.h"
-#include "EditUVIslandsTool.h"
-#include "BakeMeshAttributeMapsTool.h"
-#include "MeshAttributePaintTool.h"
+
 #include "ParameterizeMeshTool.h"
-#include "MeshTangentsTool.h"
-#include "ProjectToTargetTool.h"
-#include "SeamSculptTool.h"
-
-#include "Physics/PhysicsInspectorTool.h"
-#include "Physics/SetCollisionGeometryTool.h"
-#include "Physics/ExtractCollisionGeometryTool.h"
-//#include "Physics/EditCollisionGeometryTool.h"
-
-// hair tools
-#include "Hair/GroomToMeshTool.h"
-#include "Hair/GroomCardsEditorTool.h"
-#include "GenerateLODMeshesTool.h"
 
 #include "EditorModeManager.h"
 
-// stylus support
-#include "IStylusInputModule.h"
-
+// viewport interaction support
+#include "ViewportInteractor.h"
+#include "ActorViewportTransformable.h"
+#include "ViewportWorldInteraction.h"
+#include "IViewportInteractionModule.h"
 #include "LevelEditor.h"
 #include "IAssetViewport.h"
 #include "SLevelViewport.h"
 
 #include "ModelingToolsActions.h"
 #include "ModelingToolsManagerActions.h"
-#include "ModelingModeAssetAPI.h"
 
 #define LOCTEXT_NAMESPACE "FModelingToolsEditorMode"
 
 
 //#define ENABLE_DEBUG_PRINTING
+//#define TOOLED_ENABLE_VIEWPORT_INTERACTION
 
 const FEditorModeID FModelingToolsEditorMode::EM_ModelingToolsEditorModeId = TEXT("EM_ModelingToolsEditorMode");
 
@@ -123,35 +82,8 @@ void FModelingToolsEditorMode::ActorSelectionChangeNotify()
 
 bool FModelingToolsEditorMode::ProcessEditDelete()
 {
-	if (ToolsContext->ProcessEditDelete())
-	{
-		return true;
-	}
-
-	// for now we disable deleting in an Accept-style tool because it can result in crashes if we are deleting target object
-	if ( GetToolManager()->HasAnyActiveTool() && GetToolManager()->GetActiveTool(EToolSide::Mouse)->HasAccept() )
-	{
-		GetToolManager()->DisplayMessage(
-			LOCTEXT("CannotDeleteWarning", "Cannot delete objects while this Tool is active"), EToolMessageLevel::UserWarning);
-		return true;
-	}
-
-	return false;
+	return ToolsContext->ProcessEditDelete();
 }
-
-
-bool FModelingToolsEditorMode::ProcessEditCut()
-{
-	// for now we disable deleting in an Accept-style tool because it can result in crashes if we are deleting target object
-	if (GetToolManager()->HasAnyActiveTool() && GetToolManager()->GetActiveTool(EToolSide::Mouse)->HasAccept())
-	{
-		GetToolManager()->DisplayMessage(
-			LOCTEXT("CannotCutWarning", "Cannot cut objects while this Tool is active"), EToolMessageLevel::UserWarning);
-		return true;
-	}
-	return false;
-}
-
 
 
 bool FModelingToolsEditorMode::CanAutoSave() const
@@ -160,14 +92,19 @@ bool FModelingToolsEditorMode::CanAutoSave() const
 	return ToolsContext->ToolManager->HasAnyActiveTool() == false;
 }
 
+bool FModelingToolsEditorMode::AllowWidgetMove()
+{ 
+	return false; 
+}
+
 bool FModelingToolsEditorMode::ShouldDrawWidget() const
 { 
 	// allow standard xform gizmo if we don't have an active tool
-	if (ToolsContext != nullptr && ToolsContext->ToolManager->HasAnyActiveTool())
+	if (ToolsContext != nullptr)
 	{
-		return false;
+		return ToolsContext->ToolManager->HasAnyActiveTool() == false;
 	}
-	return FEdMode::ShouldDrawWidget(); 
+	return true; 
 }
 
 bool FModelingToolsEditorMode::UsesTransformWidget() const
@@ -183,12 +120,6 @@ void FModelingToolsEditorMode::Tick(FEditorViewportClient* ViewportClient, float
 	if (ToolsContext != nullptr)
 	{
 		ToolsContext->Tick(ViewportClient, DeltaTime);
-	}
-
-	if (Toolkit.IsValid())
-	{
-		FModelingToolsEditorModeToolkit* ModelingToolkit = (FModelingToolsEditorModeToolkit*)Toolkit.Get();
-		ModelingToolkit->EnableShowRealtimeWarning(ViewportClient->IsRealtime() == false);
 	}
 }
 
@@ -211,15 +142,6 @@ void FModelingToolsEditorMode::Render(const FSceneView* View, FViewport* Viewpor
 	}
 }
 
-void FModelingToolsEditorMode::DrawHUD(FEditorViewportClient* ViewportClient,FViewport* Viewport,const FSceneView* View,FCanvas* Canvas)
-{
-	FEdMode::DrawHUD(ViewportClient, Viewport, View, Canvas);
-	if (ToolsContext != nullptr)
-	{
-		ToolsContext->DrawHUD(ViewportClient, Viewport, View, Canvas);
-	}
-}
-
 
 
 
@@ -229,12 +151,9 @@ bool FModelingToolsEditorMode::InputKey(FEditorViewportClient* ViewportClient, F
 	// try hotkeys
 	if (Event != IE_Released)
 	{
-		if (ToolsContext->ShouldIgnoreHotkeys() == false)		// allow the context to capture keyboard input if necessary
+		if (UICommandList->ProcessCommandBindings(Key, FSlateApplication::Get().GetModifierKeys(), false/*Event == IE_Repeat*/))
 		{
-			if (UICommandList->ProcessCommandBindings(Key, FSlateApplication::Get().GetModifierKeys(), false/*Event == IE_Repeat*/))
-			{
-				return true;
-			}
+			return true;
 		}
 	}
 
@@ -333,93 +252,6 @@ bool FModelingToolsEditorMode::MouseLeave(FEditorViewportClient* ViewportClient,
 
 
 
-
-//
-// FStylusStateTracker registers itself as a listener for stylus events and implements
-// the IToolStylusStateProviderAPI interface, which allows MeshSurfacePointTool implementations
- // to query for the pen pressure.
-//
-// This is kind of a hack. Unfortunately the current Stylus module is a Plugin so it
-// cannot be used in the base ToolsFramework, and we need this in the Mode as a workaround.
-//
-class FStylusStateTracker : public IStylusMessageHandler, public IToolStylusStateProviderAPI
-{
-public:
-	const IStylusInputDevice* ActiveDevice = nullptr;
-	int32 ActiveDeviceIndex = -1;
-
-	bool bPenDown = false;
-	float ActivePressure = 1.0;
-
-	FStylusStateTracker()
-	{
-		UStylusInputSubsystem* StylusSubsystem = GEditor->GetEditorSubsystem<UStylusInputSubsystem>();
-		StylusSubsystem->AddMessageHandler(*this);
-
-		ActiveDevice = FindFirstPenDevice(StylusSubsystem, ActiveDeviceIndex);
-		bPenDown = false;
-	}
-
-	virtual ~FStylusStateTracker()
-	{
-		UStylusInputSubsystem* StylusSubsystem = GEditor->GetEditorSubsystem<UStylusInputSubsystem>();
-		StylusSubsystem->RemoveMessageHandler(*this);
-	}
-
-	virtual void OnStylusStateChanged(const FStylusState& NewState, int32 StylusIndex) override
-	{
-		if (ActiveDevice == nullptr)
-		{
-			UStylusInputSubsystem* StylusSubsystem = GEditor->GetEditorSubsystem<UStylusInputSubsystem>();
-			ActiveDevice = FindFirstPenDevice(StylusSubsystem, ActiveDeviceIndex);
-			bPenDown = false;
-		}
-		if (ActiveDevice != nullptr && ActiveDeviceIndex == StylusIndex)
-		{
-			bPenDown = NewState.IsStylusDown();
-			ActivePressure = NewState.GetPressure();
-		}
-	}
-
-
-	bool HaveActiveStylusState() const
-	{
-		return ActiveDevice != nullptr && bPenDown;
-	}
-
-	static const IStylusInputDevice* FindFirstPenDevice(const UStylusInputSubsystem* StylusSubsystem, int32& ActiveDeviceOut)
-	{
-		int32 NumDevices = StylusSubsystem->NumInputDevices();
-		for (int32 k = 0; k < NumDevices; ++k)
-		{
-			const IStylusInputDevice* Device = StylusSubsystem->GetInputDevice(k);
-			const TArray<EStylusInputType>& Inputs = Device->GetSupportedInputs();
-			for (EStylusInputType Input : Inputs)
-			{
-				if (Input == EStylusInputType::Pressure)
-				{
-					ActiveDeviceOut = k;
-					return Device;
-				}
-			}
-		}
-		return nullptr;
-	}
-
-
-
-	// IToolStylusStateProviderAPI implementation
-	virtual float GetCurrentPressure() const override
-	{
-		return (ActiveDevice != nullptr && bPenDown) ? ActivePressure : 1.0f;
-	}
-
-};
-
-
-
-
-
 void FModelingToolsEditorMode::Enter()
 {
 	FEdMode::Enter();
@@ -428,7 +260,7 @@ void FModelingToolsEditorMode::Enter()
 
 	//ToolsContext = NewObject<UEdModeInteractiveToolsContext>(GetTransientPackage(), TEXT("ToolsContext"), RF_Transient);
 	ToolsContext = NewObject<UEdModeInteractiveToolsContext>();
-	ToolsContext->InitializeContextFromEdMode(this, new FModelingModeAssetAPI);
+	ToolsContext->InitializeContextFromEdMode(this);
 
 	ToolsContext->OnToolNotificationMessage.AddLambda([this](const FText& Message)
 	{
@@ -438,9 +270,6 @@ void FModelingToolsEditorMode::Enter()
 	{
 		this->OnToolWarningMessage.Broadcast(Message);
 	});
-
-	// register stylus event handler
-	StylusStateTracker = MakeUnique<FStylusStateTracker>();
 
 	if (!Toolkit.IsValid() && UsesToolkits())
 	{
@@ -477,18 +306,7 @@ void FModelingToolsEditorMode::Enter()
 			FIsActionButtonVisible::CreateLambda([this]() {return ToolsContext->CanCompleteActiveTool(); }),
 			EUIActionRepeatMode::RepeatDisabled
 		);
-		CommandList->MapAction(
-		    ToolManagerCommands.CancelOrCompleteActiveTool,
-		    FExecuteAction::CreateLambda([this]() {
-				const EToolShutdownType ShutdownType = ToolsContext->CanCancelActiveTool() ? EToolShutdownType::Cancel : EToolShutdownType::Completed;
-				ToolsContext->EndTool(ShutdownType);
-			}),
-		    FCanExecuteAction::CreateLambda([this]() {
-			    return ToolsContext->CanCompleteActiveTool() || ToolsContext->CanCancelActiveTool();
-		    }),
-		    FGetActionCheckState(),
-		    FIsActionButtonVisible::CreateLambda([this]() { return ToolsContext->CanCompleteActiveTool() || ToolsContext->CanCancelActiveTool();}),
-		    EUIActionRepeatMode::RepeatDisabled);
+
 	}
 
 	const FModelingToolsManagerCommands& ToolManagerCommands = FModelingToolsManagerCommands::Get();
@@ -505,74 +323,15 @@ void FModelingToolsEditorMode::Enter()
 	// register tool set
 
 	//
-	// primitive tools
-	//
-	auto RegisterPrimitiveToolFunc  =
-		[this, &RegisterToolFunc](TSharedPtr<FUICommandInfo> UICommand,
-								  FString&& ToolIdentifier,
-								  UAddPrimitiveToolBuilder::EMakeMeshShapeType ShapeTypeIn)
-	{
-		auto AddPrimitiveToolBuilder = NewObject<UAddPrimitiveToolBuilder>();
-		AddPrimitiveToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-		AddPrimitiveToolBuilder->ShapeType = ShapeTypeIn;
-		RegisterToolFunc(UICommand, ToolIdentifier, AddPrimitiveToolBuilder);
-	};
-	RegisterPrimitiveToolFunc(ToolManagerCommands.BeginAddBoxPrimitiveTool,
-							  TEXT("BeginAddBoxPrimitiveTool"),
-							  UAddPrimitiveToolBuilder::EMakeMeshShapeType::Box);
-	RegisterPrimitiveToolFunc(ToolManagerCommands.BeginAddCylinderPrimitiveTool,
-							  TEXT("BeginAddCylinderPrimitiveTool"),
-							  UAddPrimitiveToolBuilder::EMakeMeshShapeType::Cylinder);
-	RegisterPrimitiveToolFunc(ToolManagerCommands.BeginAddConePrimitiveTool,
-							  TEXT("BeginAddConePrimitiveTool"),
-							  UAddPrimitiveToolBuilder::EMakeMeshShapeType::Cone);
-	RegisterPrimitiveToolFunc(ToolManagerCommands.BeginAddArrowPrimitiveTool,
-							  TEXT("BeginAddArrowPrimitiveTool"),
-							  UAddPrimitiveToolBuilder::EMakeMeshShapeType::Arrow);
-	RegisterPrimitiveToolFunc(ToolManagerCommands.BeginAddRectanglePrimitiveTool,
-							  TEXT("BeginAddRectanglePrimitiveTool"),
-							  UAddPrimitiveToolBuilder::EMakeMeshShapeType::Rectangle);
-	RegisterPrimitiveToolFunc(ToolManagerCommands.BeginAddRoundedRectanglePrimitiveTool,
-							  TEXT("BeginAddRoundedRectanglePrimitiveTool"),
-							  UAddPrimitiveToolBuilder::EMakeMeshShapeType::RoundedRectangle);
-	RegisterPrimitiveToolFunc(ToolManagerCommands.BeginAddDiscPrimitiveTool,
-							  TEXT("BeginAddDiscPrimitiveTool"),
-							  UAddPrimitiveToolBuilder::EMakeMeshShapeType::Disc);
-	RegisterPrimitiveToolFunc(ToolManagerCommands.BeginAddPuncturedDiscPrimitiveTool,
-							  TEXT("BeginAddPuncturedDiscPrimitiveTool"),
-							  UAddPrimitiveToolBuilder::EMakeMeshShapeType::PuncturedDisc);
-	RegisterPrimitiveToolFunc(ToolManagerCommands.BeginAddTorusPrimitiveTool,
-							  TEXT("BeginAddTorusPrimitiveTool"),
-							  UAddPrimitiveToolBuilder::EMakeMeshShapeType::Torus);
-	RegisterPrimitiveToolFunc(ToolManagerCommands.BeginAddSpherePrimitiveTool,
-							  TEXT("BeginAddSpherePrimitiveTool"),
-							  UAddPrimitiveToolBuilder::EMakeMeshShapeType::Sphere);
-	RegisterPrimitiveToolFunc(ToolManagerCommands.BeginAddSphericalBoxPrimitiveTool,
-							  TEXT("BeginAddSphericalBoxPrimitiveTool"),
-							  UAddPrimitiveToolBuilder::EMakeMeshShapeType::SphericalBox);
-
-	//
 	// make shape tools
 	//
-	auto AddPatchToolBuilder = NewObject<UAddPatchToolBuilder>();
-	AddPatchToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginAddPatchTool, TEXT("AddPatchTool"), AddPatchToolBuilder);
-
-	auto RevolveBoundaryToolBuilder = NewObject<URevolveBoundaryToolBuilder>();
-	RevolveBoundaryToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginRevolveBoundaryTool, TEXT("RevolveBoundaryTool"), RevolveBoundaryToolBuilder);
+	auto AddPrimitiveToolBuilder = NewObject<UAddPrimitiveToolBuilder>();
+	AddPrimitiveToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
+	RegisterToolFunc(ToolManagerCommands.BeginAddPrimitiveTool, TEXT("AddPrimitiveTool"), AddPrimitiveToolBuilder);
 
 	auto DrawPolygonToolBuilder = NewObject<UDrawPolygonToolBuilder>();
 	DrawPolygonToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
 	RegisterToolFunc(ToolManagerCommands.BeginDrawPolygonTool, TEXT("DrawPolygonTool"), DrawPolygonToolBuilder);
-
-	auto DrawPolyPathToolBuilder = NewObject<UDrawPolyPathToolBuilder>();
-	DrawPolyPathToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginDrawPolyPathTool, TEXT("DrawPolyPath"), DrawPolyPathToolBuilder);
-
-	auto DrawAndRevolveToolBuilder = NewObject<UDrawAndRevolveToolBuilder>();
-	DrawAndRevolveToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginDrawAndRevolveTool, TEXT("RevolveTool"), DrawAndRevolveToolBuilder);
 
 	auto ShapeSprayToolBuilder = NewObject<UShapeSprayToolBuilder>();
 	ShapeSprayToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
@@ -581,78 +340,36 @@ void FModelingToolsEditorMode::Enter()
 
 	//
 	// vertex deform tools
-	//
+	// 
 
-	auto MoveVerticesToolBuilder = NewObject<UMeshVertexSculptToolBuilder>();
-	MoveVerticesToolBuilder->StylusAPI = StylusStateTracker.Get();
+	auto MoveVerticesToolBuilder = NewObject<UDynamicMeshSculptToolBuilder>();
+	MoveVerticesToolBuilder->bEnableRemeshing = false;
 	RegisterToolFunc(ToolManagerCommands.BeginSculptMeshTool, TEXT("MoveVerticesTool"), MoveVerticesToolBuilder);
 
 	RegisterToolFunc(ToolManagerCommands.BeginPolyEditTool, TEXT("EditMeshPolygonsTool"), NewObject<UEditMeshPolygonsToolBuilder>());
-	UEditMeshPolygonsToolBuilder* TriEditBuilder = NewObject<UEditMeshPolygonsToolBuilder>();
-	TriEditBuilder->bTriangleMode = true;
-	RegisterToolFunc(ToolManagerCommands.BeginTriEditTool, TEXT("EditMeshTrianglesTool"), TriEditBuilder);
-	RegisterToolFunc(ToolManagerCommands.BeginPolyDeformTool, TEXT("DeformMeshPolygonsTool"), NewObject<UDeformMeshPolygonsToolBuilder>());
 	RegisterToolFunc(ToolManagerCommands.BeginSmoothMeshTool, TEXT("SmoothMeshTool"), NewObject<USmoothMeshToolBuilder>());
-	RegisterToolFunc(ToolManagerCommands.BeginOffsetMeshTool, TEXT("OffsetMeshTool"), NewObject<UOffsetMeshToolBuilder>());
 	RegisterToolFunc(ToolManagerCommands.BeginDisplaceMeshTool, TEXT("DisplaceMeshTool"), NewObject<UDisplaceMeshToolBuilder>());
 	RegisterToolFunc(ToolManagerCommands.BeginMeshSpaceDeformerTool, TEXT("MeshSpaceDeformerTool"), NewObject<UMeshSpaceDeformerToolBuilder>());
 	RegisterToolFunc(ToolManagerCommands.BeginTransformMeshesTool, TEXT("TransformMeshesTool"), NewObject<UTransformMeshesToolBuilder>());
-	RegisterToolFunc(ToolManagerCommands.BeginEditPivotTool, TEXT("EditPivotTool"), NewObject<UEditPivotToolBuilder>());
-	RegisterToolFunc(ToolManagerCommands.BeginAlignObjectsTool, TEXT("AlignObjects"), NewObject<UAlignObjectsToolBuilder>());
-	RegisterToolFunc(ToolManagerCommands.BeginBakeTransformTool, TEXT("BakeTransformTool"), NewObject<UBakeTransformToolBuilder>());
-	RegisterToolFunc(ToolManagerCommands.BeginTransformUVIslandsTool, TEXT("EditUVIslands"), NewObject<UEditUVIslandsToolBuilder>());
-
-	UCombineMeshesToolBuilder* CombineMeshesToolBuilder = NewObject<UCombineMeshesToolBuilder>();
-	CombineMeshesToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginCombineMeshesTool, TEXT("CombineMeshesTool"), CombineMeshesToolBuilder);
-
-	UCombineMeshesToolBuilder* DuplicateMeshesToolBuilder = NewObject<UCombineMeshesToolBuilder>();
-	DuplicateMeshesToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	DuplicateMeshesToolBuilder->bIsDuplicateTool = true;
-	RegisterToolFunc(ToolManagerCommands.BeginDuplicateMeshesTool, TEXT("DuplicateMeshesTool"), DuplicateMeshesToolBuilder);
-
 
 	// edit tools
 
 
 	auto DynaSculptToolBuilder = NewObject<UDynamicMeshSculptToolBuilder>();
 	DynaSculptToolBuilder->bEnableRemeshing = true;
-	DynaSculptToolBuilder->StylusAPI = StylusStateTracker.Get();
 	RegisterToolFunc(ToolManagerCommands.BeginRemeshSculptMeshTool, TEXT("DynaSculptTool"), DynaSculptToolBuilder);
 
 	RegisterToolFunc(ToolManagerCommands.BeginRemeshMeshTool, TEXT("RemeshMeshTool"), NewObject<URemeshMeshToolBuilder>());
-	RegisterToolFunc(ToolManagerCommands.BeginProjectToTargetTool, TEXT("ProjectToTargetTool"), NewObject<UProjectToTargetToolBuilder>());
 	RegisterToolFunc(ToolManagerCommands.BeginSimplifyMeshTool, TEXT("SimplifyMeshTool"), NewObject<USimplifyMeshToolBuilder>());
 
-	auto GroupEdgeInsertionToolBuilder = NewObject<UGroupEdgeInsertionToolBuilder>();
-	GroupEdgeInsertionToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginGroupEdgeInsertionTool, TEXT("GroupEdgeInsertionTool"), GroupEdgeInsertionToolBuilder);
-
-	auto EdgeLoopInsertionToolBuilder = NewObject<UEdgeLoopInsertionToolBuilder>();
-	EdgeLoopInsertionToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginEdgeLoopInsertionTool, TEXT("EdgeLoopInsertionTool"), EdgeLoopInsertionToolBuilder);
 
 	auto EditNormalsToolBuilder = NewObject<UEditNormalsToolBuilder>();
 	EditNormalsToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
 	RegisterToolFunc(ToolManagerCommands.BeginEditNormalsTool, TEXT("EditNormalsTool"), EditNormalsToolBuilder);
 
-	auto TangentsToolBuilder = NewObject<UMeshTangentsToolBuilder>();
-	RegisterToolFunc(ToolManagerCommands.BeginEditTangentsTool, TEXT("MeshTangentsTool"), TangentsToolBuilder);
-
-	auto RemoveOccludedTrianglesToolBuilder = NewObject<URemoveOccludedTrianglesToolBuilder>();
-	RemoveOccludedTrianglesToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginRemoveOccludedTrianglesTool, TEXT("RemoveOccludedTrianglesTool"), RemoveOccludedTrianglesToolBuilder);
-
-	auto HoleFillToolBuilder = NewObject<UHoleFillToolBuilder>();
-	RegisterToolFunc(ToolManagerCommands.BeginHoleFillTool, TEXT("HoleFillTool"), HoleFillToolBuilder);
-
 	auto UVProjectionToolBuilder = NewObject<UUVProjectionToolBuilder>();
 	UVProjectionToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
 	RegisterToolFunc(ToolManagerCommands.BeginUVProjectionTool, TEXT("UVProjectionTool"), UVProjectionToolBuilder);
-
-	auto UVLayoutToolBuilder = NewObject<UUVLayoutToolBuilder>();
-	UVLayoutToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginUVLayoutTool, TEXT("UVLayoutTool"), UVLayoutToolBuilder);
 
 	auto MergeMeshesToolBuilder = NewObject<UMergeMeshesToolBuilder>();
 	MergeMeshesToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
@@ -662,74 +379,22 @@ void FModelingToolsEditorMode::Enter()
 	VoxelCSGMeshesToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
 	RegisterToolFunc(ToolManagerCommands.BeginVoxelBooleanTool, TEXT("VoxelCSGMeshesTool"), VoxelCSGMeshesToolBuilder);
 
-	auto VoxelSolidifyMeshesToolBuilder = NewObject<UVoxelSolidifyMeshesToolBuilder>();
-	VoxelSolidifyMeshesToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginVoxelSolidifyTool, TEXT("VoxelSolidifyMeshesTool"), VoxelSolidifyMeshesToolBuilder);
-
-	auto VoxelBlendMeshesToolBuilder = NewObject<UVoxelBlendMeshesToolBuilder>();
-	VoxelBlendMeshesToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginVoxelBlendTool, TEXT("VoxelBlendMeshesTool"), VoxelBlendMeshesToolBuilder);
-
-	auto VoxelMorphologyMeshesToolBuilder = NewObject<UVoxelMorphologyMeshesToolBuilder>();
-	VoxelMorphologyMeshesToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginVoxelMorphologyTool, TEXT("VoxelMorphologyMeshesTool"), VoxelMorphologyMeshesToolBuilder);
-
-	auto SelfUnionMeshesToolBuilder = NewObject<USelfUnionMeshesToolBuilder>();
-	SelfUnionMeshesToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginSelfUnionTool, TEXT("SelfUnionMeshesTool"), SelfUnionMeshesToolBuilder);
-
-	auto CSGMeshesToolBuilder = NewObject<UCSGMeshesToolBuilder>();
-	CSGMeshesToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginMeshBooleanTool, TEXT("CSGMeshesTool"), CSGMeshesToolBuilder);
-
-	auto BspConversionToolBuilder = NewObject<UBspConversionToolBuilder>();
-	BspConversionToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginBspConversionTool, TEXT("BspConversionTool"), BspConversionToolBuilder);
-
-	auto MeshToVolumeToolBuilder = NewObject<UMeshToVolumeToolBuilder>();
-	MeshToVolumeToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginMeshToVolumeTool, TEXT("MeshToVolumeTool"), MeshToVolumeToolBuilder);
-
-	auto VolumeToMeshToolBuilder = NewObject<UVolumeToMeshToolBuilder>();
-	VolumeToMeshToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginVolumeToMeshTool, TEXT("VolumeToMeshTool"), VolumeToMeshToolBuilder);
-
 	auto PlaneCutToolBuilder = NewObject<UPlaneCutToolBuilder>();
 	PlaneCutToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
 	RegisterToolFunc(ToolManagerCommands.BeginPlaneCutTool, TEXT("PlaneCutTool"), PlaneCutToolBuilder);
 
-	auto MirrorToolBuilder = NewObject<UMirrorToolBuilder>();
-	MirrorToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginMirrorTool, TEXT("MirrorTool"), MirrorToolBuilder);
+	auto PolygonOnMeshToolBuilder = NewObject<UPolygonOnMeshToolBuilder>();
+	PolygonOnMeshToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
+	RegisterToolFunc(ToolManagerCommands.BeginPolygonOnMeshTool, TEXT("PolygonOnMeshTool"), PolygonOnMeshToolBuilder);
 
-	auto PolygonCutToolBuilder = NewObject<UPolygonOnMeshToolBuilder>();
-	RegisterToolFunc(ToolManagerCommands.BeginPolygonCutTool, TEXT("PolyCutTool"), PolygonCutToolBuilder);
-
-	auto GlobalUVGenerateToolBuilder = NewObject<UParameterizeMeshToolBuilder>();
-	GlobalUVGenerateToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	GlobalUVGenerateToolBuilder->bDoAutomaticGlobalUnwrap = true;
-	RegisterToolFunc(ToolManagerCommands.BeginGlobalUVGenerateTool, TEXT("GlobalParameterizeMeshTool"), GlobalUVGenerateToolBuilder);
-
-	auto GroupUVGenerateToolBuilder = NewObject<UParameterizeMeshToolBuilder>();
-	GroupUVGenerateToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	GroupUVGenerateToolBuilder->bDoAutomaticGlobalUnwrap = false;
-	RegisterToolFunc(ToolManagerCommands.BeginGroupUVGenerateTool, TEXT("GroupParameterizeMeshTool"), GroupUVGenerateToolBuilder);
-
-	RegisterToolFunc(ToolManagerCommands.BeginUVSeamEditTool, TEXT("UVSeamSculptTool"), NewObject< USeamSculptToolBuilder>());
+	auto ParameterizeMeshToolBuilder = NewObject<UParameterizeMeshToolBuilder>();
+	ParameterizeMeshToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
+	RegisterToolFunc(ToolManagerCommands.BeginParameterizeMeshTool, TEXT("ParameterizeMeshTool"), ParameterizeMeshToolBuilder);
 
 	auto MeshSelectionToolBuilder = NewObject<UMeshSelectionToolBuilder>();
 	MeshSelectionToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
 	RegisterToolFunc(ToolManagerCommands.BeginMeshSelectionTool, TEXT("MeshSelectionTool"), MeshSelectionToolBuilder);
 
-	auto EditMeshMaterialsToolBuilder = NewObject<UEditMeshMaterialsToolBuilder>();
-	EditMeshMaterialsToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginEditMeshMaterialsTool, TEXT("EditMaterialsTool"), EditMeshMaterialsToolBuilder);
-	
-	RegisterToolFunc(ToolManagerCommands.BeginMeshAttributePaintTool, TEXT("MeshAttributePaintTool"), NewObject<UMeshAttributePaintToolBuilder>());
-
-	auto BakeMeshAttributeMapsToolBuilder = NewObject<UBakeMeshAttributeMapsToolBuilder>();
-	BakeMeshAttributeMapsToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginBakeMeshAttributeMapsTool, TEXT("BakeMeshMapsTool"), BakeMeshAttributeMapsToolBuilder);
 
 	// analysis tools
 
@@ -739,38 +404,8 @@ void FModelingToolsEditorMode::Enter()
 	RegisterToolFunc(ToolManagerCommands.BeginAttributeEditorTool, TEXT("AttributeEditorTool"), NewObject<UAttributeEditorToolBuilder>());
 
 
-	// Physics Tools
-
-	RegisterToolFunc(ToolManagerCommands.BeginPhysicsInspectorTool, TEXT("PhysicsInspectorTool"), NewObject<UPhysicsInspectorToolBuilder>());
-	RegisterToolFunc(ToolManagerCommands.BeginSetCollisionGeometryTool, TEXT("SetCollisionGeoTool"), NewObject<USetCollisionGeometryToolBuilder>());
-	//RegisterToolFunc(ToolManagerCommands.BeginEditCollisionGeometryTool, TEXT("EditCollisionGeoTool"), NewObject<UEditCollisionGeometryToolBuilder>());
-
-	auto ExtractCollisionGeoToolBuilder = NewObject<UExtractCollisionGeometryToolBuilder>();
-	ExtractCollisionGeoToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginExtractCollisionGeometryTool, TEXT("ExtractCollisionGeoTool"), ExtractCollisionGeoToolBuilder);
-
-
-
-	// (experimental) hair tools
-
-	UGroomToMeshToolBuilder* GroomToMeshToolBuilder = NewObject<UGroomToMeshToolBuilder>();
-	GroomToMeshToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginGroomToMeshTool, TEXT("GroomToMeshTool"), GroomToMeshToolBuilder);
-
-	RegisterToolFunc(ToolManagerCommands.BeginGroomCardsEditorTool, TEXT("GroomCardsEditorTool"), NewObject<UGroomCardsEditorToolBuilder>());
-
-	UGenerateLODMeshesToolBuilder* GenerateLODMeshesToolBuilder = NewObject<UGenerateLODMeshesToolBuilder>();
-	GenerateLODMeshesToolBuilder->AssetAPI = ToolsContext->GetAssetAPI();
-	RegisterToolFunc(ToolManagerCommands.BeginGenerateLODMeshesTool, TEXT("GenerateLODMeshesTool"), GenerateLODMeshesToolBuilder);
-
-
 
 	ToolsContext->ToolManager->SelectActiveToolType(EToolSide::Left, TEXT("DynaSculptTool"));
-
-	// register modeling mode hotkeys
-	FModelingModeActionCommands::RegisterCommandBindings(UICommandList, [this](EModelingModeActionCommands Command) {
-		ModelingModeShortcutRequested(Command);
-	});
 
 	// listen for Tool start/end events to bind/unbind any hotkeys relevant to that Tool
 	ToolsContext->ToolManager->OnToolStarted.AddLambda([this](UInteractiveToolManager* Manager, UInteractiveTool* Tool)
@@ -782,76 +417,85 @@ void FModelingToolsEditorMode::Enter()
 		FModelingToolActionCommands::UpdateToolCommandBinding(Tool, UICommandList, true);
 	});
 
-	// enable realtime viewport override
-	ConfigureRealTimeViewportsOverride(true);
 
-	//
-	// Engine Analytics
-	//
-	// Log Analytic of mode starting
-	if( FEngineAnalytics::IsAvailable() )
+#ifdef TOOLED_ENABLE_VIEWPORT_INTERACTION
+	///
+	// Viewport Interaction
+	///
+	UEditorWorldExtensionCollection* ExtensionCollection = GEditor->GetEditorWorldExtensionsManager()->GetEditorWorldExtensions(GetWorld());
+	check(ExtensionCollection != nullptr);
+	this->ViewportWorldInteraction = NewObject<UViewportWorldInteraction>(ExtensionCollection);
+	ExtensionCollection->AddExtension(this->ViewportWorldInteraction);
+		//Cast<UViewportWorldInteraction>(ExtensionCollection->AddExtension(UViewportWorldInteraction::StaticClass()));
+	check(ViewportWorldInteraction != nullptr);
+	//this->ViewportWorldInteraction->UseLegacyInteractions();
+	//this->ViewportWorldInteraction->AddMouseCursorInteractor();
+	this->ViewportWorldInteraction->SetUseInputPreprocessor(true);
+	this->ViewportWorldInteraction->SetGizmoHandleType(EGizmoHandleTypes::All);
+
+	// Set the current viewport.
 	{
-		FEngineAnalytics::GetProvider().RecordEvent( TEXT( "Editor.Usage.MeshModelingMode.Enter" ) );
+		const TSharedRef< ILevelEditor >& LevelEditor = FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor").GetFirstLevelEditor().ToSharedRef();
+
+		// Do we have an active perspective viewport that is valid for VR?  If so, go ahead and use that.
+		TSharedPtr<FEditorViewportClient> ViewportClient;
+		{
+			TSharedPtr<IAssetViewport> ActiveLevelViewport = LevelEditor->GetActiveViewportInterface();
+			if (ActiveLevelViewport.IsValid())
+			{
+				ViewportClient = StaticCastSharedRef<SLevelViewport>(ActiveLevelViewport->AsWidget())->GetViewportClient();
+			}
+		}
+
+		this->ViewportWorldInteraction->SetDefaultOptionalViewportClient(ViewportClient);
 	}
-	ToolsContext->ToolManager->OnToolStarted.AddLambda([this](UInteractiveToolManager* Manager, UInteractiveTool* Tool)
-	{
-		if( FEngineAnalytics::IsAvailable() )
-		{
-			FEngineAnalytics::GetProvider().RecordEvent( TEXT( "Editor.Usage.MeshModelingMode.ToolStarted" ),
-														 TEXT( "DisplayName" ),
-														 Tool->GetToolInfo().ToolDisplayName.ToString() );
-		}
-	});
-	ToolsContext->ToolManager->OnToolEnded.AddLambda([this](UInteractiveToolManager* Manager, UInteractiveTool* Tool)
-	{
-		if( FEngineAnalytics::IsAvailable() )
-		{
-			FEngineAnalytics::GetProvider().RecordEvent( TEXT( "Editor.Usage.MeshModelingMode.ToolEnded" ),
-														 TEXT( "DisplayName" ),
-														 Tool->GetToolInfo().ToolDisplayName.ToString() );
-		}
-	});
+#endif  // TOOLED_ENABLE_VIEWPORT_INTERACTION
 }
 
 
 
 void FModelingToolsEditorMode::Exit()
 {
-	//
-	// Engine Analytics
-	//
-	// Log Analytic of mode ending
-	if( FEngineAnalytics::IsAvailable() )
-	{
-		FEngineAnalytics::GetProvider().RecordEvent( TEXT( "Editor.Usage.MeshModelingMode.Exit" ) );
-	}
-
 	OnToolNotificationMessage.Clear();
 	OnToolWarningMessage.Clear();
-
-
-	StylusStateTracker = nullptr;
 
 	ToolsContext->ShutdownContext();
 	ToolsContext = nullptr;
 
 	if (Toolkit.IsValid())
 	{
-		const FModelingToolsManagerCommands& ToolManagerCommands = FModelingToolsManagerCommands::Get();
-		const TSharedRef<FUICommandList>& ToolkitCommandList = Toolkit->GetToolkitCommands();
-		ToolkitCommandList->UnmapAction(ToolManagerCommands.AcceptActiveTool);
-		ToolkitCommandList->UnmapAction(ToolManagerCommands.CancelActiveTool);
-		ToolkitCommandList->UnmapAction(ToolManagerCommands.CancelOrCompleteActiveTool);
-		ToolkitCommandList->UnmapAction(ToolManagerCommands.CompleteActiveTool);
-
 		FToolkitManager::Get().CloseToolkit(Toolkit.ToSharedRef());
 		Toolkit.Reset();
 	}
 
-	FModelingModeActionCommands::UnRegisterCommandBindings(UICommandList);
 
-	// clear realtime viewport override
-	ConfigureRealTimeViewportsOverride(false);
+#ifdef TOOLED_ENABLE_VIEWPORT_INTERACTION
+	///
+	// Viewport Interaction
+	//
+	if (IViewportInteractionModule::IsAvailable())
+	{
+		if (ViewportWorldInteraction != nullptr)
+		{
+			ViewportWorldInteraction->ReleaseMouseCursorInteractor();
+
+			// Make sure gizmo is visible.  We may have hidden it
+			ViewportWorldInteraction->SetTransformGizmoVisible(true);
+
+			// Unregister mesh element transformer
+			//ViewportWorldInteraction->SetTransformer(nullptr);
+
+			UEditorWorldExtensionCollection* ExtensionCollection = GEditor->GetEditorWorldExtensionsManager()->GetEditorWorldExtensions(GetWorld());
+			if (ExtensionCollection != nullptr)
+			{
+				ExtensionCollection->RemoveExtension(ViewportWorldInteraction);
+			}
+
+			ViewportWorldInteraction = nullptr;
+		}
+	}
+#endif // TOOLED_ENABLE_VIEWPORT_INTERACTION
+
 
 	// Call base Exit method to ensure proper cleanup
 	FEdMode::Exit();
@@ -869,69 +513,6 @@ void FModelingToolsEditorMode::AddReferencedObjects(FReferenceCollector& Collect
 }
 
 
-void FModelingToolsEditorMode::ModelingModeShortcutRequested(EModelingModeActionCommands Command)
-{
-	if (Command == EModelingModeActionCommands::FocusViewToCursor)
-	{
-		FocusCameraAtCursorHotkey();
-	}
-}
-
-
-void FModelingToolsEditorMode::FocusCameraAtCursorHotkey()
-{
-	FRay Ray = ToolsContext->GetLastWorldRay();
-
-	FHitResult HitResult;
-	bool bHitWorld = ToolSceneQueriesUtil::FindNearestVisibleObjectHit(GetWorld(), HitResult, Ray.Origin, Ray.PointAt(HALF_WORLD_MAX));
-	if (bHitWorld)
-	{
-		FVector HitPoint = HitResult.ImpactPoint;
-		if (GCurrentLevelEditingViewportClient)
-		{
-			GCurrentLevelEditingViewportClient->CenterViewportAtPoint(HitPoint, false);
-		}
-	}
-}
-
-
-bool FModelingToolsEditorMode::GetPivotForOrbit(FVector& OutPivot) const
-{
-	if (GCurrentLevelEditingViewportClient)
-	{
-		OutPivot = GCurrentLevelEditingViewportClient->GetViewTransform().GetLookAt();
-		return true;
-	}
-	return false;
-}
-
-
-
-void FModelingToolsEditorMode::ConfigureRealTimeViewportsOverride(bool bEnable)
-{
-	FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor");
-	TSharedPtr<ILevelEditor> LevelEditor = LevelEditorModule.GetFirstLevelEditor();
-	if (LevelEditor.IsValid())
-	{
-		TArray<TSharedPtr<IAssetViewport>> Viewports = LevelEditor->GetViewports();
-		for (const TSharedPtr<IAssetViewport>& ViewportWindow : Viewports)
-		{
-			if (ViewportWindow.IsValid())
-			{
-				FEditorViewportClient& Viewport = ViewportWindow->GetAssetViewportClient();
-				const FText SystemDisplayName = LOCTEXT("RealtimeOverrideMessage_ModelingMode", "Modeling Mode");
-				if (bEnable)
-				{
-					Viewport.AddRealtimeOverride(bEnable, SystemDisplayName);
-				}
-				else
-				{
-					Viewport.RemoveRealtimeOverride(SystemDisplayName, false);
-				}
-			}
-		}
-	}
-}
 
 
 

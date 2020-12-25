@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Components/CanvasPanelSlot.h"
 #include "Components/CanvasPanel.h"
@@ -318,7 +318,7 @@ void UCanvasPanelSlot::SynchronizeProperties()
 
 #if WITH_EDITOR
 
-void UCanvasPanelSlot::PreEditChange(FProperty* PropertyThatWillChange)
+void UCanvasPanelSlot::PreEditChange(UProperty* PropertyThatWillChange)
 {
 	Super::PreEditChange(PropertyThatWillChange);
 
@@ -335,7 +335,7 @@ void UCanvasPanelSlot::PostEditChangeChainProperty(struct FPropertyChangedChainE
 	{
 		if (FEditPropertyChain::TDoubleLinkedListNode* LayoutDataNode = AnchorNode->GetNextNode())
 		{
-			FProperty* AnchorProperty = LayoutDataNode->GetValue();
+			UProperty* AnchorProperty = LayoutDataNode->GetValue();
 			if (AnchorProperty && AnchorProperty->GetFName() == AnchorsProperty)
 			{
 				RebaseLayout();

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.IO;
@@ -97,7 +97,6 @@ namespace UnrealBuildTool.Rules
 					AddEngineThirdPartyPrivateStaticDependencies(Target, "DirectSound");
 					AddEngineThirdPartyPrivateStaticDependencies(Target, "NVAftermath");
 					AddEngineThirdPartyPrivateStaticDependencies(Target, "IntelMetricsDiscovery");
-					AddEngineThirdPartyPrivateStaticDependencies(Target, "IntelExtensionsFramework");
 				}
 
 				// Vulkan
@@ -107,7 +106,7 @@ namespace UnrealBuildTool.Rules
 
 				// OVRPlugin
 				{
-					//PublicDelayLoadDLLs.Add("OVRPlugin.dll");
+					PublicDelayLoadDLLs.Add("OVRPlugin.dll");
 					RuntimeDependencies.Add("$(EngineDir)/Binaries/ThirdParty/Oculus/OVRPlugin/OVRPlugin/" + Target.Platform.ToString() + "/OVRPlugin.dll");
 				}
 			}

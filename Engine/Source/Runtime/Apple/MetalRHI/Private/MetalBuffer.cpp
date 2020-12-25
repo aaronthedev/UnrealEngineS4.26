@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MetalRHIPrivate.h"
 #include "MetalBuffer.h"
@@ -156,12 +156,11 @@ void FMetalBuffer::Release()
 	}
 }
 
-void FMetalBuffer::SetOwner(class FMetalRHIBuffer* Owner, bool bIsSwap)
+void FMetalBuffer::SetOwner(class FMetalRHIBuffer* Owner)
 {
-	check(Owner == nullptr);
 	if (Heap)
 	{
-		Heap->SetOwner(ns::Range(GetOffset(), GetLength()), Owner, bIsSwap);
+		Heap->SetOwner(ns::Range(GetOffset(), GetLength()), Owner);
 	}
 }
 
@@ -220,16 +219,15 @@ FMetalSubBufferHeap::~FMetalSubBufferHeap()
 	}
 }
 
-void FMetalSubBufferHeap::SetOwner(ns::Range const& Range, FMetalRHIBuffer* Owner, bool bIsSwap)
+void FMetalSubBufferHeap::SetOwner(ns::Range const& Range, FMetalRHIBuffer* Owner)
 {
-	check(Owner == nullptr);
 	FScopeLock Lock(&PoolMutex);
 	for (uint32 i = 0; i < AllocRanges.Num(); i++)
 	{
 		if (AllocRanges[i].Range.Location == Range.Location)
 		{
 			check(AllocRanges[i].Range.Length == Range.Length);
-			check(AllocRanges[i].Owner == nullptr || Owner == nullptr || bIsSwap);
+			check(AllocRanges[i].Owner == nullptr || Owner == nullptr);
 			AllocRanges[i].Owner = Owner;
 			break;
 		}
@@ -1217,6 +1215,18 @@ void FMetalBufferPoolPolicyData::FreeResource(FMetalBuffer& Resource)
 {
 	DEC_MEMORY_STAT_BY(STAT_MetalBufferUnusedMemory, Resource.GetLength());
 	DEC_MEMORY_STAT_BY(STAT_MetalPooledBufferUnusedMemory, Resource.GetLength());
+#if METAL_DEBUG_OPTIONS // Helps to track down incorrect resource retain/release behaviour
+	if([Resource.GetPtr() retainCount] > 1)
+	{
+		UE_LOG(LogMetal, Warning, TEXT("Attempting to free an over-retained Buffer: %p: %s"), Resource.GetPtr(), *FString([Resource.GetPtr() debugDescription]));
+		void* Ptr = (void*)Resource.GetPtr();
+		objc_setAssociatedObject(Resource.GetPtr(), (void*)FMetalBufferPoolPolicyData::BucketSizes,
+			[[[FMetalDeallocHandler alloc] initWithBlock:^{
+			UE_LOG(LogMetal, Warning, TEXT("Released over-retained Buffer: %p"), Ptr);
+		}] autorelease],
+		OBJC_ASSOCIATION_RETAIN);
+	}
+#endif
 	Resource = nil;
 }
 
@@ -1512,7 +1522,7 @@ FMetalBuffer FMetalResourceHeap::CreateBuffer(uint32 Size, uint32 Alignment, uin
 				 	}
 				 	if (!Found)
 				 	{
-				 		Found = new FMetalSubBufferLinear(HeapAllocSizes[NumHeapSizes - 1], BufferOffsetAlignment, mtlpp::ResourceOptions((NSUInteger)Options & (mtlpp::ResourceStorageModeMask|mtlpp::ResourceHazardTrackingModeMask)), Mutex);
+				 		Found = new FMetalSubBufferLinear(HeapAllocSizes[NumHeapSizes - 1], BufferOffsetAlignment, mtlpp::ResourceOptions((NSUInteger)Options & mtlpp::ResourceStorageModeMask), Mutex);
 				 		ManagedSubHeaps.Add(Found);
 				 	}
 				 	check(Found);
@@ -1761,6 +1771,53 @@ void FMetalResourceHeap::Compact(FMetalRenderPass* Pass, bool const bForce)
             
             for (uint32 i = 0; i < NumHeapSizes; i++)
             {
+				// When not forcing the disposal of all resources we can compact them using the render-pass
+                for (uint32 j = 1; !bForce && j < BufferHeaps[u][t][i].Num(); j++)
+                {
+                    FMetalSubBufferHeap* Data = BufferHeaps[u][t][i][j];
+                    if (Data->AllocRanges.Num() > 0 && BytesCompacted < BytesToCompact)
+                    {
+                        for (FMetalSubBufferHeap::Allocation const& Alloc : Data->AllocRanges)
+                        {
+                            if (Alloc.Owner)
+                            {
+                                for (uint32 AllocIndex = 0; AllocIndex < j && BytesCompacted < BytesToCompact; AllocIndex++)
+                                {
+                                    FMetalSubBufferHeap* Prev = BufferHeaps[u][t][i][AllocIndex];
+                                    if (Prev->MaxAvailableSize() >= Alloc.Range.Length)
+                                    {
+                                        FMetalBuffer NewBuffer = Prev->NewBuffer(Alloc.Range.Length);
+                                        check(NewBuffer && NewBuffer.GetPtr());
+                                        
+                                        FMetalBuffer SourceResource = FMetalBuffer((id<MTLBuffer>)Alloc.Resource);
+										Pass->AsyncCopyFromBufferToBuffer(SourceResource, Alloc.Range.Location, NewBuffer, 0, Alloc.Range.Length);
+										
+                                        FMetalBuffer PrevBuffer;
+                                        FMetalBuffer PrevCPUBuffer;
+                                        if (Alloc.Owner->Buffer.GetPtr() == Alloc.Resource && Alloc.Owner->Buffer.GetOffset() == Alloc.Range.Location)
+                                        {
+                                            PrevBuffer = Alloc.Owner->Buffer;
+                                            Alloc.Owner->Buffer = NewBuffer;
+                                        }
+                                        if (Alloc.Owner->CPUBuffer.GetPtr() == Alloc.Resource && Alloc.Owner->CPUBuffer.GetOffset() == Alloc.Range.Location)
+                                        {
+                                            PrevCPUBuffer = Alloc.Owner->CPUBuffer;
+                                            Alloc.Owner->CPUBuffer = NewBuffer;
+                                        }
+                                        if (PrevBuffer)
+                                            SafeReleaseMetalBuffer(PrevBuffer);
+                                        if (PrevCPUBuffer)
+                                            SafeReleaseMetalBuffer(PrevCPUBuffer);
+                                        
+                                        BytesCompacted += Alloc.Range.Length;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
                 for (auto It = BufferHeaps[u][t][i].CreateIterator(); It; ++It)
                 {
                     FMetalSubBufferHeap* Data = *It;

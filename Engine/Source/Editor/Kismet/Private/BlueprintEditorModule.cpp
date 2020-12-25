@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "BlueprintEditorModule.h"
@@ -130,10 +130,7 @@ void FixSubObjectReferencesPostUndoRedo(const FTransaction* Transaction)
 
 			if (Blueprint != nullptr)
 			{
-				if (Blueprint->ShouldBeMarkedDirtyUponTransaction())
-				{
-					ModifiedBlueprints.AddUnique(Blueprint);
-				}
+				ModifiedBlueprints.AddUnique(Blueprint);
 			}
 		}
 	}
@@ -143,7 +140,7 @@ void FixSubObjectReferencesPostUndoRedo(const FTransaction* Transaction)
 	{
 		FixSubObjectReferencesPostUndoRedo(Blueprint->GeneratedClass->GetDefaultObject());
 		// Will cause a call to RefreshEditors()
-		if (Blueprint->ShouldBeMarkedDirtyUponTransaction())
+		if (Blueprint->RequiresMarkAsStructurallyModifiedOnUndo())
 		{
 			FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
 		}
@@ -258,20 +255,33 @@ void FBlueprintEditorModule::ShutdownModule()
 	UEdGraphPin::ShutdownVerification();
 }
 
+
 TSharedRef<IBlueprintEditor> FBlueprintEditorModule::CreateBlueprintEditor(const EToolkitMode::Type Mode, const TSharedPtr< IToolkitHost >& InitToolkitHost, UBlueprint* Blueprint, bool bShouldOpenInDefaultsMode)
 {
-	TArray<UBlueprint*> BlueprintsToEdit = { Blueprint };
-	return CreateBlueprintEditor(Mode, InitToolkitHost, BlueprintsToEdit, bShouldOpenInDefaultsMode);
+	TSharedRef< FBlueprintEditor > NewBlueprintEditor( new FBlueprintEditor() );
+	
+	TArray<UBlueprint*> Blueprints;
+	Blueprints.Add(Blueprint);
+	NewBlueprintEditor->InitBlueprintEditor(Mode, InitToolkitHost, Blueprints, bShouldOpenInDefaultsMode);
+
+	for(auto It(SCSEditorCustomizations.CreateConstIterator()); It; ++It)
+	{
+		NewBlueprintEditor->RegisterSCSEditorCustomization(It->Key, It->Value.Execute(NewBlueprintEditor));
+	}
+	
+	WatchViewer::UpdateWatchListFromBlueprint(Blueprint);
+
+	EBlueprintType const BPType = Blueprint ? (EBlueprintType)Blueprint->BlueprintType : BPTYPE_Normal;
+	BlueprintEditorOpened.Broadcast(BPType);
+
+	return NewBlueprintEditor;
 }
 
-TSharedRef<IBlueprintEditor> FBlueprintEditorModule::CreateBlueprintEditor(const EToolkitMode::Type Mode, const TSharedPtr< IToolkitHost >& InitToolkitHost, const TArray< UBlueprint* >& BlueprintsToEdit, bool bShouldOpenInDefaultsMode)
+TSharedRef<IBlueprintEditor> FBlueprintEditorModule::CreateBlueprintEditor(const EToolkitMode::Type Mode, const TSharedPtr< IToolkitHost >& InitToolkitHost, const TArray< UBlueprint* >& BlueprintsToEdit )
 {
 	TSharedRef< FBlueprintEditor > NewBlueprintEditor( new FBlueprintEditor() );
 
-	NewBlueprintEditor->InitBlueprintEditor(Mode, InitToolkitHost, BlueprintsToEdit, bShouldOpenInDefaultsMode);
-
-	NewBlueprintEditor->SetDetailsCustomization(DetailsObjectFilter, DetailsRootCustomization);
-	NewBlueprintEditor->SetSCSEditorUICustomization(SCSEditorUICustomization);
+	NewBlueprintEditor->InitBlueprintEditor(Mode, InitToolkitHost, BlueprintsToEdit, true);
 
 	for(auto It(SCSEditorCustomizations.CreateConstIterator()); It; ++It)
 	{
@@ -289,35 +299,7 @@ TSharedRef<IBlueprintEditor> FBlueprintEditorModule::CreateBlueprintEditor(const
 
 	BlueprintEditorOpened.Broadcast(BPType);
 
-	BlueprintEditors.Add(NewBlueprintEditor);
-
 	return NewBlueprintEditor;
-}
-
-TArray<TSharedRef<IBlueprintEditor>> FBlueprintEditorModule::GetBlueprintEditors() const
-{
-	TArray<TSharedRef<IBlueprintEditor>> ValidBlueprintEditors;
-	ValidBlueprintEditors.Reserve(BlueprintEditors.Num());
-
-	for (TWeakPtr<FBlueprintEditor> BlueprintEditor : BlueprintEditors)
-	{
-		if (TSharedPtr<FBlueprintEditor> BlueprintEditorPinned = BlueprintEditor.Pin())
-		{
-			ValidBlueprintEditors.Add(BlueprintEditorPinned.ToSharedRef());
-		}
-	}
-
-	if (BlueprintEditors.Num() > ValidBlueprintEditors.Num())
-	{
-		TArray<TWeakPtr<FBlueprintEditor>>& BlueprintEditorsNonConst = const_cast<TArray<TWeakPtr<FBlueprintEditor>>&>(BlueprintEditors);
-		BlueprintEditorsNonConst.Reset(ValidBlueprintEditors.Num());
-		for (const TSharedRef<IBlueprintEditor>& ValidBlueprintEditor : ValidBlueprintEditors)
-		{
-			BlueprintEditorsNonConst.Add(StaticCastSharedRef<FBlueprintEditor>(ValidBlueprintEditor));
-		}
-	}
-
-	return ValidBlueprintEditors;
 }
 
 TSharedRef<IUserDefinedEnumEditor> FBlueprintEditorModule::CreateUserDefinedEnumEditor(const EToolkitMode::Type Mode, const TSharedPtr< IToolkitHost >& InitToolkitHost, UUserDefinedEnum* UDEnum)
@@ -334,27 +316,6 @@ TSharedRef<IUserDefinedStructureEditor> FBlueprintEditorModule::CreateUserDefine
 	return UserDefinedStructureEditor;
 }
 
-void FBlueprintEditorModule::SetDetailsCustomization(TSharedPtr<FDetailsViewObjectFilter> InDetailsObjectFilter, TSharedPtr<IDetailRootObjectCustomization> InDetailsRootCustomization)
-{
-	DetailsObjectFilter = InDetailsObjectFilter;
-	DetailsRootCustomization = InDetailsRootCustomization;
-
-	for (const TSharedRef<IBlueprintEditor>& BlueprintEditor : GetBlueprintEditors())
-	{
-		StaticCastSharedRef<FBlueprintEditor>(BlueprintEditor)->SetDetailsCustomization(DetailsObjectFilter, DetailsRootCustomization);
-	}
-}
-
-void FBlueprintEditorModule::SetSCSEditorUICustomization(TSharedPtr<ISCSEditorUICustomization> InSCSEditorUICustomization)
-{
-	SCSEditorUICustomization = InSCSEditorUICustomization;
-
-	for (const TSharedRef<IBlueprintEditor>& BlueprintEditor : GetBlueprintEditors())
-	{
-		StaticCastSharedRef<FBlueprintEditor>(BlueprintEditor)->SetSCSEditorUICustomization(SCSEditorUICustomization);
-	}
-}
-
 void FBlueprintEditorModule::RegisterSCSEditorCustomization(const FName& InComponentName, FSCSEditorCustomizationBuilder InCustomizationBuilder)
 {
 	SCSEditorCustomizations.Add(InComponentName, InCustomizationBuilder);
@@ -365,14 +326,14 @@ void FBlueprintEditorModule::UnregisterSCSEditorCustomization(const FName& InCom
 	SCSEditorCustomizations.Remove(InComponentName);
 }
 
-void FBlueprintEditorModule::RegisterVariableCustomization(FFieldClass* InFieldClass, FOnGetVariableCustomizationInstance InOnGetVariableCustomization)
+void FBlueprintEditorModule::RegisterVariableCustomization(UStruct* InStruct, FOnGetVariableCustomizationInstance InOnGetVariableCustomization)
 {
-	VariableCustomizations.Add(InFieldClass, InOnGetVariableCustomization);
+	VariableCustomizations.Add(InStruct, InOnGetVariableCustomization);
 }
 
-void FBlueprintEditorModule::UnregisterVariableCustomization(FFieldClass* InFieldClass)
+void FBlueprintEditorModule::UnregisterVariableCustomization(UStruct* InStruct)
 {
-	VariableCustomizations.Remove(InFieldClass);
+	VariableCustomizations.Remove(InStruct);
 }
 
 void FBlueprintEditorModule::RegisterGraphCustomization(const UEdGraphSchema* InGraphSchema, FOnGetGraphCustomizationInstance InOnGetGraphCustomization)
@@ -385,24 +346,24 @@ void FBlueprintEditorModule::UnregisterGraphCustomization(const UEdGraphSchema* 
 	GraphCustomizations.Remove(InGraphSchema);
 }
 
-TArray<TSharedPtr<IDetailCustomization>> FBlueprintEditorModule::CustomizeVariable(FFieldClass* InFieldClass, TSharedPtr<IBlueprintEditor> InBlueprintEditor)
+TArray<TSharedPtr<IDetailCustomization>> FBlueprintEditorModule::CustomizeVariable(UStruct* InStruct, TSharedPtr<IBlueprintEditor> InBlueprintEditor)
 {
 	TArray<TSharedPtr<IDetailCustomization>> DetailsCustomizations;
-	TArray<FFieldClass*> ParentClassesToQuery;
-	if (InFieldClass)
+	TArray<UStruct*> ParentStructsToQuery;
+	if (InStruct)
 	{
-		ParentClassesToQuery.Add(InFieldClass);
+		ParentStructsToQuery.Add(InStruct);
 
-		FFieldClass* ParentClass = InFieldClass->GetSuperClass();
-		while (ParentClass)
+		UStruct* ParentStruct = InStruct->GetSuperStruct();
+		while (ParentStruct && ParentStruct->IsA(UClass::StaticClass()))
 		{
-			ParentClassesToQuery.Add(ParentClass);
-			ParentClass = ParentClass->GetSuperClass();
+			ParentStructsToQuery.Add(ParentStruct);
+			ParentStruct = ParentStruct->GetSuperStruct();
 		}
 
-		for (FFieldClass* ClassToQuery : ParentClassesToQuery)
+		for (UStruct* StructToQuery : ParentStructsToQuery)
 		{
-			FOnGetVariableCustomizationInstance* CustomizationDelegate = VariableCustomizations.Find(ClassToQuery);
+			FOnGetVariableCustomizationInstance* CustomizationDelegate = VariableCustomizations.Find(StructToQuery);
 			if (CustomizationDelegate && CustomizationDelegate->IsBound())
 			{
 				TSharedPtr<IDetailCustomization> Customization = CustomizationDelegate->Execute(InBlueprintEditor);

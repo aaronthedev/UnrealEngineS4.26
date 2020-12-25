@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 //General Includes
 #include "LiveLinkCurveDebugUIModule.h"
@@ -184,7 +184,7 @@ void FLiveLinkCurveDebugUIModule::ShutdownModule()
 void FLiveLinkCurveDebugUIModule::DisplayThroughTab()
 {
 	check(bHasRegisteredTabSpawners);
-	FGlobalTabmanager::Get()->TryInvokeTab(FTabId("LiveLinkCurveDebug"));
+	FGlobalTabmanager::Get()->InvokeTab(FTabId("LiveLinkCurveDebug"));
 }
 
 TSharedPtr<SLiveLinkCurveDebugUI> FLiveLinkCurveDebugUIModule::CreateDebugWidget()

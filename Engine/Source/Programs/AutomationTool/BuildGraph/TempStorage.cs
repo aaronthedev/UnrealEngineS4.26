@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Concurrent;
@@ -1134,10 +1134,6 @@ namespace AutomationTool
 				return true;
 			}
 			if (FileName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
-			{
-				return true;
-			}
-			if (FileName.StartsWith("lib", StringComparison.OrdinalIgnoreCase) && FileName.EndsWith(".dylib", StringComparison.OrdinalIgnoreCase))
 			{
 				return true;
 			}

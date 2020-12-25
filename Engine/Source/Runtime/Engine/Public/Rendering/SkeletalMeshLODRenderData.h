@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -37,9 +37,6 @@ struct FSkelMeshRenderSection
 	/** This section will cast shadow */
 	bool bCastShadow;
 
-	/** Which channel for masking the recompute tangents */
-	ESkinVertexColorChannel RecomputeTangentsVertexMaskChannel;
-
 	/** The offset into the LOD's vertex buffer of this section's vertices. */
 	uint32 BaseVertexIndex;
 
@@ -74,7 +71,6 @@ struct FSkelMeshRenderSection
 		, NumTriangles(0)
 		, bRecomputeTangent(false)
 		, bCastShadow(true)
-		, RecomputeTangentsVertexMaskChannel(ESkinVertexColorChannel::Green)
 		, BaseVertexIndex(0)
 		, NumVertices(0)
 		, MaxBoneInfluences(4)
@@ -100,7 +96,7 @@ struct FSkelMeshRenderSection
 	friend FArchive& operator<<(FArchive& Ar, FSkelMeshRenderSection& S);
 };
 
-class FSkeletalMeshLODRenderData : public FRefCountBase
+class FSkeletalMeshLODRenderData
 {
 public:
 
@@ -134,7 +130,11 @@ public:
 
 	uint32 BuffersSize;
 
-	typename TChooseClass<USE_BULKDATA_STREAMING_TOKEN, FBulkDataStreamingToken, FByteBulkData>::Result StreamingBulkData;
+#if USE_BULKDATA_STREAMING_TOKEN
+	FBulkDataStreamingToken BulkDataStreamingToken;
+#else
+	FByteBulkData StreamingBulkData;
+#endif
 
 	/** Whether buffers of this LOD is inlined (i.e. stored in .uexp instead of .ubulk) */
 	uint32 bStreamedDataInlined : 1;
@@ -163,20 +163,11 @@ public:
 	void ReleaseCPUResources(bool bForStreaming = false);
 
 	/** Constructor (default) */
-	ENGINE_API FSkeletalMeshLODRenderData(bool bAddRef = true)
+	FSkeletalMeshLODRenderData()
 		: BuffersSize(0)
-		, bStreamedDataInlined(true)
+		, bStreamedDataInlined(false)
 		, bIsLODOptional(false)
 	{
-		if (bAddRef)
-		{
-			AddRef();
-		}
-	}
-
-	FORCEINLINE ~FSkeletalMeshLODRenderData()
-	{
-		check(GetRefCount() == 0);
 	}
 
 	/**
@@ -204,7 +195,7 @@ public:
 	 * Initialize render data (e.g. vertex buffers) from model info
 	 * @param BuildFlags See ESkeletalMeshVertexFlags.
 	 */
-	void ENGINE_API BuildFromLODModel(const FSkeletalMeshLODModel* LODModel, uint32 BuildFlags);
+	void BuildFromLODModel(const FSkeletalMeshLODModel* LODModel, uint32 BuildFlags);
 #endif // WITH_EDITOR
 
 	uint32 GetNumVertices() const
@@ -212,14 +203,9 @@ public:
 		return StaticVertexBuffers.PositionVertexBuffer.GetNumVertices();
 	}
 
-	uint32 GetVertexBufferMaxBoneInfluences() const
+	bool DoesVertexBufferHaveExtraBoneInfluences() const
 	{
-		return SkinWeightVertexBuffer.GetMaxBoneInfluences();
-	}
-
-	bool DoesVertexBufferUse16BitBoneIndex() const
-	{
-		return SkinWeightVertexBuffer.Use16BitBoneIndex();
+		return SkinWeightVertexBuffer.HasExtraBoneInfluences();
 	}
 
 	uint32 GetNumTexCoords() const
@@ -255,7 +241,7 @@ public:
 	/**
 	* Get Resource Size
 	*/
-	ENGINE_API void GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize) const;
+	void GetResourceSizeEx(FResourceSizeEx& CumulativeResourceSize) const;
 
 	// O(1)
 	// @return -1 if not found

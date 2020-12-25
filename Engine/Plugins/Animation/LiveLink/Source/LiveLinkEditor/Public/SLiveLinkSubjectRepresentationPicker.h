@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,7 +15,7 @@
 #include "Widgets/Views/SListView.h"
 
 struct FAssetData;
-struct FLiveLinkSubjectRepresentationPickerEntry;
+struct FLiveLinkSubjectRepEntry;
 struct FSlateBrush;
 
 class FMenuBuilder;
@@ -23,7 +23,7 @@ class ITableRow;
 class SComboButton;
 class STableViewBase;
 
-typedef TSharedPtr<FLiveLinkSubjectRepresentationPickerEntry> FLiveLinkSubjectRepresentationPickerEntryPtr;
+typedef TSharedPtr<FLiveLinkSubjectRepEntry> FLiveLinkSubjectRepEntryPtr;
 
 
 /**
@@ -32,28 +32,7 @@ typedef TSharedPtr<FLiveLinkSubjectRepresentationPickerEntry> FLiveLinkSubjectRe
 class LIVELINKEDITOR_API SLiveLinkSubjectRepresentationPicker : public SCompoundWidget
 {
 public:
-	struct FLiveLinkSourceSubjectRole
-	{
-		FLiveLinkSourceSubjectRole() = default;
-		explicit FLiveLinkSourceSubjectRole(FLiveLinkSubjectRepresentation InSubjectRepresentation)
-			: Subject(InSubjectRepresentation.Subject), Role(InSubjectRepresentation.Role)
-		{}
-		explicit FLiveLinkSourceSubjectRole(FLiveLinkSubjectKey InSubjectKey)
-			: Source(InSubjectKey.Source), Subject(InSubjectKey.SubjectName)
-		{}
-		FLiveLinkSourceSubjectRole(FGuid InSource, FLiveLinkSubjectName InSubject, TSubclassOf<ULiveLinkRole> InRole)
-			: Source(InSource), Subject(InSubject), Role(InRole)
-		{}
-
-		FLiveLinkSubjectRepresentation ToSubjectRepresentation() const { return FLiveLinkSubjectRepresentation(Subject, Role); }
-		FLiveLinkSubjectKey ToSubjectKey() const { return FLiveLinkSubjectKey(Source, Subject); }
-
-		FGuid Source;
-		FLiveLinkSubjectName Subject;
-		TSubclassOf<ULiveLinkRole> Role;
-	};
-
-	DECLARE_DELEGATE_OneParam(FOnValueChanged, FLiveLinkSourceSubjectRole);
+	DECLARE_DELEGATE_OneParam(FOnValueChanged, FLiveLinkSubjectRepresentation);
 
 	SLATE_BEGIN_ARGS(SLiveLinkSubjectRepresentationPicker)
 		: _ComboButtonStyle(&FCoreStyle::Get().GetWidgetStyle< FComboButtonStyle >("ComboButton"))
@@ -61,7 +40,6 @@ public:
 		, _ForegroundColor(FCoreStyle::Get().GetSlateColor("InvertedForeground"))
 		, _ContentPadding(FMargin(2.f, 0.f))
 		, _HasMultipleValues(false)
-		, _ShowSource(false)
 		, _ShowRole(false)
 		, _Font()
 	{}
@@ -79,16 +57,13 @@ public:
 		SLATE_ATTRIBUTE(FMargin, ContentPadding)
 	
 		/** Attribute used to retrieve the current value. */
-		SLATE_ATTRIBUTE(FLiveLinkSourceSubjectRole, Value)
+		SLATE_ATTRIBUTE(FLiveLinkSubjectRepresentation, Value)
 	
 		/** Delegate for handling when for when the current value changes. */
 		SLATE_EVENT(FOnValueChanged, OnValueChanged)
 	
 		/** Attribute used to retrieve whether the picker has multiple values. */
 		SLATE_ATTRIBUTE(bool, HasMultipleValues)
-
-		/** Attribute used to retrieve whether the picker should show the source name. */
-		SLATE_ARGUMENT(bool, ShowSource)
 
 		/** Attribute used to retrieve whether the picker should show roles. */
 		SLATE_ARGUMENT(bool, ShowRole)
@@ -106,10 +81,9 @@ public:
 	/**
 	 * Access the current value of this picker
 	 */
-	FLiveLinkSourceSubjectRole GetCurrentValue() const;
+	FLiveLinkSubjectRepresentation GetCurrentValue() const;
 
 private:
-	FText GetSourceNameValueText() const;
 	FText GetSubjectNameValueText() const;
 	const FSlateBrush* GetRoleIcon() const;
 	FText GetRoleText() const;
@@ -120,13 +94,13 @@ private:
 	FReply ClearCurrentPreset();
 	bool HasCurrentPreset() const;
 	
-	TSharedRef<ITableRow> MakeSubjectRepListViewWidget(FLiveLinkSubjectRepresentationPickerEntryPtr Entry, const TSharedRef<STableViewBase>& OwnerTable) const;
-	void OnSubjectRepListSelectionChanged(FLiveLinkSubjectRepresentationPickerEntryPtr Entry, ESelectInfo::Type SelectionType);
+	TSharedRef<ITableRow> MakeSubjectRepListViewWidget(FLiveLinkSubjectRepEntryPtr Entry, const TSharedRef<STableViewBase>& OwnerTable) const;
+	void OnSubjectRepListSelectionChanged(FLiveLinkSubjectRepEntryPtr Entry, ESelectInfo::Type SelectionType);
 
 	TSharedRef<SWidget> BuildPresetSubMenu();
 	void NewPresetSelected(const FAssetData& AssetData);
 	void OnComboTextCommitted(const FText& NewText, ETextCommit::Type InTextCommit);
-	void SetValue(const FLiveLinkSourceSubjectRole& InValue);
+	void SetValue(const FLiveLinkSubjectRepresentation& InValue);
 
 	void BuildSubjectRepDataList();
 
@@ -134,13 +108,11 @@ private:
 	TWeakObjectPtr<ULiveLinkPreset> SelectedLiveLinkPreset;
 	TWeakPtr<SComboButton> PickerComboButton;
 	TWeakPtr<SComboButton> SelectPresetComboButton;
-	TWeakPtr<SListView<FLiveLinkSubjectRepresentationPickerEntryPtr>> SubjectListView;
-	TArray<FLiveLinkSubjectRepresentationPickerEntryPtr> SubjectRepData;
+	TWeakPtr<SListView<FLiveLinkSubjectRepEntryPtr>> SubjectListView;
+	TArray<FLiveLinkSubjectRepEntryPtr> SubjectRepData;
 
-	FText CachedSourceType;
-	TAttribute<FLiveLinkSourceSubjectRole> ValueAttribute;
+	TAttribute<FLiveLinkSubjectRepresentation> ValueAttribute;
 	FOnValueChanged OnValueChangedDelegate;
 	TAttribute<bool> HasMultipleValuesAttribute;
-	bool bShowSource;
 	bool bShowRole;
 };

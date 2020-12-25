@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "Misc/AutomationTest.h"
@@ -47,7 +47,7 @@ namespace Impl
 	{
 		FMovieSceneRootEvaluationTemplateInstance Template;
 		virtual FMovieSceneRootEvaluationTemplateInstance& GetEvaluationTemplate() override { return Template; }
-		virtual void UpdateCameraCut(UObject* CameraObject, const EMovieSceneCameraCutParams& CameraCutParams) override {}
+		virtual void UpdateCameraCut(UObject* CameraObject, UObject* UnlockIfCameraObject = nullptr, bool bJumpCut = false) override {}
 		virtual void SetViewportSettings(const TMap<FViewportClient*, EMovieSceneViewportParams>& ViewportParamsMap) override {}
 		virtual void GetViewportSettings(TMap<FViewportClient*, EMovieSceneViewportParams>& ViewportParamsMap) const override {}
 		virtual EMovieScenePlayerStatus::Type GetPlaybackStatus() const override { return EMovieScenePlayerStatus::Playing; }
@@ -58,6 +58,8 @@ namespace Impl
 
 	int32 TestValue1 = TestMagicNumber;
 	int32 TestValue2 = TestMagicNumber;
+
+	FTestMovieScenePlayer TestPlayer;
 
 	FMovieSceneTrackIdentifier TrackID = FMovieSceneTrackIdentifier::Invalid();
 
@@ -90,7 +92,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMovieScenePreAnimatedStateGlobalTest, "System.
 bool FMovieScenePreAnimatedStateGlobalTest::RunTest(const FString& Parameters)
 {
 	using namespace Impl;
-	FTestMovieScenePlayer TestPlayer;
 
 	ResetValues();
 
@@ -121,7 +122,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMovieScenePreAnimatedStateEntityTest, "System.
 bool FMovieScenePreAnimatedStateEntityTest::RunTest(const FString& Parameters)
 {
 	using namespace Impl;
-	FTestMovieScenePlayer TestPlayer;
 
 	ResetValues();
 
@@ -152,7 +152,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMovieScenePreAnimatedStateOverlappingEntitiesT
 bool FMovieScenePreAnimatedStateOverlappingEntitiesTest::RunTest(const FString& Parameters)
 {
 	using namespace Impl;
-	FTestMovieScenePlayer TestPlayer;
 
 	ResetValues();
 
@@ -220,7 +219,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FMovieScenePreAnimatedStateKeepThenRestoreEntit
 bool FMovieScenePreAnimatedStateKeepThenRestoreEntityTest::RunTest(const FString& Parameters)
 {
 	using namespace Impl;
-	FTestMovieScenePlayer TestPlayer;
 
 	ResetValues();
 

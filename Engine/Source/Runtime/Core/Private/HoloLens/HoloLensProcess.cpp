@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 HoloLensProcess.cpp: HoloLens implementations of Process functions
@@ -13,9 +13,6 @@ HoloLensProcess.cpp: HoloLens implementations of Process functions
 #include "HoloLens/WindowsHWrapper.h"
 
 #include "AllowWindowsPlatformTypes.h"
-
-// static variables
-TArray<FString> FHoloLensProcess::DllDirectoryStack;
 
 const TCHAR* FHoloLensProcess::BaseDir()
 {
@@ -158,50 +155,18 @@ const TCHAR* FHoloLensProcess::ExecutableName(bool bRemoveExtension)
 void* FHoloLensProcess::GetDllHandle(const TCHAR* Filename)
 {
 	check(Filename);
-
 	FString PackageRelativePath(Filename);
 
-	if (DllDirectoryStack.Num() > 0)
-	{
-		// If a path has been pushed on the stack use that
-		FString Path = DllDirectoryStack.Top() / PackageRelativePath;
-		return ::LoadPackagedLibrary(*Path, 0ul);
-	}
-	else
-	{
-		// Incoming paths are relative to the BaseDir, but LoadPackagedLibrary wants package relative
-		// which in UE terms is the RootDir.
-		FPaths::MakePathRelativeTo(PackageRelativePath, *(FPaths::RootDir() + TEXT("/")));
-		return ::LoadPackagedLibrary(*PackageRelativePath, 0ul);
-	}
+	// Incoming paths are relative to the BaseDir, but LoadPackagedLibrary wants package relative
+	// which in UE terms is the RootDir.
+	FPaths::MakePathRelativeTo(PackageRelativePath, *(FPaths::RootDir() + TEXT("/")));
+	return ::LoadPackagedLibrary(*PackageRelativePath, 0ul);
 }
 
 void FHoloLensProcess::FreeDllHandle(void* DllHandle)
 {
 	// It is okay to call FreeLibrary on 0
 	::FreeLibrary((HMODULE)DllHandle);
-}
-
-void* FHoloLensProcess::GetDllExport(void* DllHandle, const TCHAR* ProcName)
-{
-	check(DllHandle);
-	check(ProcName);
-	return (void*)::GetProcAddress((HMODULE)DllHandle, TCHAR_TO_ANSI(ProcName));
-}
-
-void FHoloLensProcess::PushDllDirectory(const TCHAR* Directory)
-{
-	DllDirectoryStack.Push(Directory);
-}
-
-void FHoloLensProcess::PopDllDirectory(const TCHAR* Directory)
-{
-	// don't allow too many pops (indicates bad code that should be fixed, but won't kill anything, so using ensure)
-	ensureMsgf(DllDirectoryStack.Num() > 0, TEXT("Tried to PopDllDirectory too many times"));
-	// verify we are popping the top
-	checkf(DllDirectoryStack.Top() == Directory, TEXT("There was a PushDllDirectory/PopDllDirectory mismatch (Popped %s, which didn't match %s)"), *DllDirectoryStack.Top(), Directory);
-	// pop it off
-	DllDirectoryStack.Pop();
 }
 
 void FHoloLensProcess::SetCurrentWorkingDirectoryToBaseDir()

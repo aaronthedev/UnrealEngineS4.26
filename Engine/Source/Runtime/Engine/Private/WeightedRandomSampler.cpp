@@ -1,8 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WeightedRandomSampler.h"
-
-IMPLEMENT_ABSTRACT_TYPE_LAYOUT(FWeightedRandomSampler);
 
 FWeightedRandomSampler::FWeightedRandomSampler()
 	: TotalWeight(0.0f)
@@ -64,14 +62,12 @@ void FWeightedRandomSampler::Initialize()
 	for (int32& LargeIdx : Large)
 	{
 		Prob[LargeIdx] = 1;
-		Alias[LargeIdx] = LargeIdx;
 	}
 
 	//FP inaccuracies can lead S to still have entries on occasion, these should also be now 1.
 	for (int32& SmallIdx : Small)
 	{
 		Prob[SmallIdx] = 1;
-		Alias[SmallIdx] = SmallIdx;
 	}
 }
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GoogleARCoreAugmentedImageDatabase.h"
 
@@ -209,7 +209,9 @@ void UGoogleARCoreAugmentedImageDatabase::Serialize(FArchive& Ar)
 
 			if (OutReturnCode)
 			{
-				Ar.SetCriticalError();
+				Ar.SetError();
+				Ar.ArIsError = 1;
+				Ar.ArIsCriticalError = 1;
 				UE_LOG(LogGoogleARCoreAPI, Error, TEXT("Failed to build augmented image database: %s"), *OutStderr);
 			}
 			else

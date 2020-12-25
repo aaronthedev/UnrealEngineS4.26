@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -58,12 +58,6 @@ namespace Audio
 		FORCEINLINE float GetValue() const
 		{
 			return CurrentValue;
-		}
-
-		// Returns the target value
-		FORCEINLINE float GetTarget() const
-		{
-			return TargetValue;
 		}
 
 	private:

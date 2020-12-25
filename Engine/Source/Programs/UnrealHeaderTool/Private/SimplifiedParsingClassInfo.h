@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,7 +14,7 @@ class FSimplifiedParsingClassInfo
 {
 public:
 	// Constructor.
-	FSimplifiedParsingClassInfo(FString&& InClassName, FString&& InBaseClassName, int32 InClassDefLine, bool bInClassIsAnInterface)
+	FSimplifiedParsingClassInfo(FString InClassName, FString InBaseClassName, int32 InClassDefLine, bool bInClassIsAnInterface)
 		: ClassName          (MoveTemp(InClassName))
 		, BaseClassName      (MoveTemp(InBaseClassName))
 		, ClassDefLine       (InClassDefLine)

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -43,7 +43,7 @@ struct FTreeNodeGroupInfo
 class FTreeNodeGrouping : public ITreeNodeGrouping
 {
 public:
-	FTreeNodeGrouping(const FText& InShortName, const FText& InTitleName, const FText& InDescription, const FName InBrushName, const FSlateBrush* InIcon);
+	FTreeNodeGrouping(FText InShortName, FText InTitleName, FText InDescription, FName InBrushName,  FSlateBrush* InIcon);
 	virtual ~FTreeNodeGrouping() {}
 
 	virtual FText GetShortName() const override { return ShortName; }

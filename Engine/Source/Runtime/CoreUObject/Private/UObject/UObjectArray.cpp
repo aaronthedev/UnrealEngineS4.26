@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	UnObjArray.cpp: Unreal array of all objects
@@ -14,69 +14,6 @@ DEFINE_LOG_CATEGORY_STATIC(LogUObjectArray, Log, All);
 
 FUObjectClusterContainer GUObjectClusters;
 
-#if STATS || ENABLE_STATNAMEDEVENTS_UOBJECT
-void FUObjectItem::CreateStatID() const
-{
-	// @todo can we put this in a header?
-//		SCOPE_CYCLE_COUNTER(STAT_CreateStatID);
-
-	FString LongName;
-	LongName.Reserve(255);
-	TArray<UObjectBase const*, TInlineAllocator<24>> ClassChain;
-
-	// Build class hierarchy
-	UObjectBase const* Target = Object;
-	do
-	{
-		ClassChain.Add(Target);
-		Target = Target->GetOuter();
-	} while (Target);
-
-	// Start with class name
-	if (Object->GetClass())
-	{
-		Object->GetClass()->GetFName().GetDisplayNameEntry()->AppendNameToString(LongName);
-	}
-
-	// Now process from parent -> child so we can append strings more efficiently.
-	bool bFirstEntry = true;
-	for (int32 i = ClassChain.Num() - 1; i >= 0; i--)
-	{
-		Target = ClassChain[i];
-		const FNameEntry* NameEntry = Target->GetFName().GetDisplayNameEntry();
-		if (bFirstEntry)
-		{
-			NameEntry->AppendNameToPathString(LongName);
-		}
-		else
-		{
-			if (!LongName.IsEmpty())
-			{
-				LongName += TEXT(".");
-			}
-			NameEntry->AppendNameToString(LongName);
-		}
-		bFirstEntry = false;
-	}
-
-#if STATS
-	StatID = FDynamicStats::CreateStatId<FStatGroup_STATGROUP_UObjects>(LongName);
-#else // ENABLE_STATNAMEDEVENTS
-	const auto& ConversionData = StringCast<PROFILER_CHAR>(*LongName);
-	const int32 NumStorageChars = (ConversionData.Length() + 1);	//length doesn't include null terminator
-
-	PROFILER_CHAR* StoragePtr = new PROFILER_CHAR[NumStorageChars];
-	FMemory::Memcpy(StoragePtr, ConversionData.Get(), NumStorageChars * sizeof(PROFILER_CHAR));
-
-	if (FPlatformAtomics::InterlockedCompareExchangePointer((void**)&StatIDStringStorage, StoragePtr, nullptr) != nullptr)
-	{
-		delete[] StoragePtr;
-	}
-
-	StatID = TStatId(StatIDStringStorage);
-#endif
-}
-#endif
 FUObjectArray::FUObjectArray()
 : ObjFirstGCIndex(0)
 , ObjLastNonGCIndex(INDEX_NONE)
@@ -253,25 +190,6 @@ void FUObjectArray::AllocateUObjectIndex(UObjectBase* Object, bool bMergingThrea
 }
 
 /**
- * Removes an object from delete listeners
- *
- * @param Object to remove from delete listeners
- */
-void FUObjectArray::RemoveObjectFromDeleteListeners(UObjectBase* Object)
-{
-#if THREADSAFE_UOBJECTS
-	FScopeLock UObjectDeleteListenersLock(&UObjectDeleteListenersCritical);
-#endif
-	int32 Index = Object->InternalIndex;
-	check(Index >= 0);
-	// Iterate in reverse order so that when one of the listeners removes itself from the array inside of NotifyUObjectDeleted we don't skip the next listener.
-	for (int32 ListenerIndex = UObjectDeleteListeners.Num() - 1; ListenerIndex >= 0; --ListenerIndex)
-	{
-		UObjectDeleteListeners[ListenerIndex]->NotifyUObjectDeleted(Object, Index);
-	}
-}
-
-/**
  * Returns a UObject index to the global uobject array
  *
  * @param Object object to free
@@ -288,6 +206,16 @@ void FUObjectArray::FreeUObjectIndex(UObjectBase* Object)
 		UE_LOG(LogUObjectArray, Fatal, TEXT("Unexpected concurency while adding new object"));
 	}
 
+	{
+#if THREADSAFE_UOBJECTS
+		FScopeLock UObjectDeleteListenersLock(&UObjectDeleteListenersCritical);
+#endif
+		// Iterate in reverse order so that when one of the listeners removes itself from the array inside of NotifyUObjectDeleted we don't skip the next listener.
+		for (int32 ListenerIndex = UObjectDeleteListeners.Num() - 1; ListenerIndex >= 0; --ListenerIndex)
+		{
+			UObjectDeleteListeners[ListenerIndex]->NotifyUObjectDeleted(Object, Index);
+		}
+	}
 	// You cannot safely recycle indicies in the non-GC range
 	// No point in filling this list when doing exit purge. Nothing should be allocated afterwards anyway.
 	IndexToObject(Index)->ResetSerialNumberAndFlags();

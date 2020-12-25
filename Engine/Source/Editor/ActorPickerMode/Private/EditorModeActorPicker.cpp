@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EditorModeActorPicker.h"
 #include "Framework/Application/SlateApplication.h"
@@ -6,19 +6,17 @@
 #include "EngineUtils.h"
 #include "LevelEditorViewport.h"
 #include "EditorModes.h"
-#include "Widgets/SWindow.h"
 
 #define LOCTEXT_NAMESPACE "PropertyPicker"
 
 FEdModeActorPicker::FEdModeActorPicker()
 {
-}
-
-void FEdModeActorPicker::Enter()
-{
-	FEdMode::Enter();
 	PickState = EPickState::NotOverViewport;
 	HoveredActor.Reset();
+}
+
+void FEdModeActorPicker::Initialize()
+{
 	CursorDecoratorWindow = SWindow::MakeCursorDecorator();
 	FSlateApplication::Get().AddWindow(CursorDecoratorWindow.ToSharedRef(), true);
 	CursorDecoratorWindow->SetContent(
@@ -233,8 +231,7 @@ bool FEdModeActorPicker::IsActorValid(const AActor *const Actor) const
 			OnGetAllowedClasses.Execute(AllowedClasses);
 			for(const UClass* AllowedClass : AllowedClasses)
 			{
-				if ((AllowedClass->IsChildOf(UInterface::StaticClass()) && Actor->GetClass()->ImplementsInterface(AllowedClass)) ||
-					Actor->IsA(AllowedClass))
+				if(Actor->IsA(AllowedClass))
 				{
 					bHasValidClass = true;
 					break;

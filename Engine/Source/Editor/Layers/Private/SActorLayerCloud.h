@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -55,7 +55,7 @@ public:
 			+SOverlay::Slot()
 			[
 				SAssignNew( TagArea, SWrapBox )
-				.UseAllottedSize( true )
+				.UseAllottedWidth( true )
 			]
 
 			+SOverlay::Slot()

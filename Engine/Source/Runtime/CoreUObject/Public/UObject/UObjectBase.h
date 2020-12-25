@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	UObjectBase.h: Base class for UObject, defines low level functionality
@@ -34,6 +34,9 @@ class COREUOBJECT_API UObjectBase
 protected:
 	UObjectBase() :
 		 NamePrivate(NoInit)  // screwy, but the name was already set and we don't want to set it again
+#if ENABLE_STATNAMEDEVENTS_UOBJECT
+		, StatIDStringStorage(nullptr)
+#endif
 	{
 	}
 
@@ -138,17 +141,39 @@ public:
 		return NamePrivate;
 	}
 
-	/** Removes the class prefix from the given string */
-	static FString RemoveClassPrefix(const TCHAR* ClassName);
+	/** 
+	 * Returns the stat ID of the object, used for profiling. This will create a stat ID if needed.
+	 *
+	 * @param bForDeferred If true, a stat ID will be created even if a group is disabled
+	 */
+	FORCEINLINE TStatId GetStatID(bool bForDeferredUse = false) const
+	{
+#if STATS
+		// this is done to avoid even registering stats for a disabled group (unless we plan on using it later)
+		if (bForDeferredUse || FThreadStats::IsCollectingData(GET_STATID(STAT_UObjectsStatGroupTester)))
+		{
+			if (!StatID.IsValidStat())
+			{
+				CreateStatID();
+			}
+			return StatID;
+		}
+#elif ENABLE_STATNAMEDEVENTS_UOBJECT
+		if (!StatID.IsValidStat() && (bForDeferredUse || GCycleStatsShouldEmitNamedEvents))
+		{
+			CreateStatID();
+		}
+		return StatID;
+#endif // STATS
+		return TStatId(); // not doing stats at the moment, or ever
+	}
 
-	/** Returns the external UPackage associated with this object, if any */
-	UPackage* GetExternalPackage() const;
 	
-	/** Associate an external package directly to this object. */
-	void SetExternalPackage(UPackage* InPackage);
-
-	/** Returns the external UPackage for this object, if any, NOT THREAD SAFE, used by internal gc reference collecting. */
-	UPackage* GetExternalPackageInternal() const;
+private:
+#if STATS || ENABLE_STATNAMEDEVENTS_UOBJECT
+	/** Creates a stat ID for this object */
+	void CreateStatID() const;
+#endif
 
 protected:
 	/**
@@ -214,7 +239,7 @@ private:
 	EObjectFlags					ObjectFlags;
 
 	/** Index into GObjectArray...very private. */
-	int32							InternalIndex;
+	int32								InternalIndex;
 
 	/** Class the object belongs to. */
 	UClass*							ClassPrivate;
@@ -224,9 +249,19 @@ private:
 
 	/** Object this object resides in. */
 	UObject*						OuterPrivate;
+
+
+#if STATS || ENABLE_STATNAMEDEVENTS_UOBJECT
+	/** Stat id of this object, 0 if nobody asked for it yet */
+	mutable TStatId				StatID;
+
+#if ENABLE_STATNAMEDEVENTS_UOBJECT
+	mutable PROFILER_CHAR* StatIDStringStorage;
+#endif
+#endif // STATS || ENABLE_STATNAMEDEVENTS
+
 	
 	friend class FBlueprintCompileReinstancer;
-	friend class FContextObjectManager;
 
 	/** This is used by the reinstancer to re-class and re-archetype the current instances of a class before recompiling */
 	void SetClass(UClass* NewClass);

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -11,7 +11,7 @@
 class FTextureResource;
 
 UCLASS(hidecategories=Object, MinimalAPI)
-class UTextureCube : public UTexture
+class ENGINE_VTABLE UTextureCube : public UTexture
 {
 	GENERATED_UCLASS_BODY()
 

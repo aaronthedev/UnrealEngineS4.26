@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PointCloudSceneProxy.h"
 #include "PointCloud.h"
@@ -29,7 +29,6 @@ FNoFetchPointCloudSceneProxy::FNoFetchPointCloudSceneProxy(UPointCloudComponent*
 	, Color(Component->PointColor)
 	, Size(Component->PointSize)
 	, bIsVisible(Component->bIsVisible)
-	, SpriteTexture(Component->SpriteTexture)
 	, MaterialRelevance(Component->GetMaterialRelevance(GetScene().GetFeatureLevel()))
 {
 	if (Size <= 0.f)
@@ -70,21 +69,9 @@ void FNoFetchPointCloudSceneProxy::GetDynamicMeshElements(const TArray<const FSc
 			}
 			FPrimitiveDrawInterface* PDI = Collector.GetPDI(ViewIndex);
 			// Loop through manually drawing the points since PT_PointList isn't really a supported primitive type
-			if (SpriteTexture && SpriteTexture->Resource)
+			for (const FVector& Point : Points)
 			{
-				const auto SpriteSizeX = Size / (float)SpriteTexture->Resource->GetSizeX();
-				const auto SpriteSizeY = Size / (float)SpriteTexture->Resource->GetSizeY();
-				for (const FVector& Point : Points)
-				{
-					PDI->DrawSprite(Point, SpriteSizeX, SpriteSizeY, SpriteTexture->Resource, Color, SDPG_World, 0.f, 0.f, 0.f, 0.f, SE_BLEND_Masked);
-				}
-			}
-			else
-			{
-				for (const FVector& Point : Points)
-				{
-					PDI->DrawPoint(Point, Color, Size, SDPG_World);
-				}
+				PDI->DrawPoint(Point, Color, Size, SDPG_World);
 			}
 		}
 	}

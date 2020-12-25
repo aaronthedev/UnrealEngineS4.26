@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DisplayNodes/VariantManagerStringPropertyNode.h"
 
@@ -69,13 +69,47 @@ TSharedPtr<SWidget> FVariantManagerStringPropertyNode::GetPropertyValueWidget()
 	}
 	if(!bAtLeastOneResolved)
 	{
-		return GetFailedToResolveWidget(FirstPropertyValue);
+		UObject* ActorAsObj = FirstPropertyValue->GetParent()->GetObject();
+		FString ActorName;
+		if (AActor* Actor = Cast<AActor>(ActorAsObj))
+		{
+			ActorName = Actor->GetActorLabel();
+		}
+		else
+		{
+			ActorName = ActorAsObj->GetName();
+		}
+
+		return SNew(SBox)
+		.VAlign(VAlign_Center)
+		.HAlign(HAlign_Left)
+		.Padding(FMargin(3.0f, 0.0f, 0.0f, 0.0f))
+		[
+			SNew(STextBlock)
+			.Text(LOCTEXT("FailedToResolveText", "Failed to resolve!"))
+			.Font(FEditorStyle::GetFontStyle("Sequencer.AnimationOutliner.RegularFont"))
+			.ColorAndOpacity(this, &FVariantManagerDisplayNode::GetDisplayNameColor)
+			.ToolTipText(FText::Format(
+				LOCTEXT("FailedToResolveTooltip", "Make sure actor '{0}' has a property with path '{1}'"),
+				FText::FromString(ActorName),
+				FText::FromString(FirstPropertyValue->GetFullDisplayString())))
+		];
 	}
+
 
 	// If properties have different values, just give back a "Multiple Values" text block
 	if (!PropertiesHaveSameValue())
 	{
-		return GetMultipleValuesWidget();
+		return SNew(SBox)
+		.VAlign(VAlign_Center)
+		.HAlign(HAlign_Left)
+		[
+			SNew(STextBlock)
+			.Text(LOCTEXT("MultipleValuesText", "Multiple Values"))
+			.Font(FEditorStyle::GetFontStyle("Sequencer.AnimationOutliner.RegularFont"))
+			.ColorAndOpacity(this, &FVariantManagerDisplayNode::GetDisplayNameColor)
+			.ToolTipText(LOCTEXT("MultipleValuesTooltip", "The selected actors have different values for this property"))
+		];
 	}
 
 	FSinglePropertyParams InitParams;
@@ -86,16 +120,16 @@ TSharedPtr<SWidget> FVariantManagerStringPropertyNode::GetPropertyValueWidget()
 
 	// Find the property responsible for Template's UObject*
 	// Assumes it has only one
-	FObjectProperty* TemplateObjectProp = nullptr;
-	if (FirstPropertyValue->GetPropertyClass() == FObjectProperty::StaticClass())
+	UObjectProperty* TemplateObjectProp = nullptr;
+	if (FirstPropertyValue->GetPropertyClass() == UObjectProperty::StaticClass())
 	{
-		for (TFieldIterator<FObjectProperty> PropertyIterator(Template->GetClass()); PropertyIterator; ++PropertyIterator)
+		for (TFieldIterator<UObjectProperty> PropertyIterator(Template->GetClass()); PropertyIterator; ++PropertyIterator)
 		{
 			TemplateObjectProp = *PropertyIterator;
 		}
 	}
 
-	// HACK to cause the widget to display an FObjectProperty editor restricted to objects of our desired class
+	// HACK to cause the widget to display an UObjectProperty editor restricted to objects of our desired class
 	// Note that we undo this right aftewards, so that other property value widgets can do the same to different
 	// classes. The template's property itself will then be free to be set with whatever object, but the created
 	// widget is already locked in place
@@ -136,15 +170,15 @@ TSharedPtr<SWidget> FVariantManagerStringPropertyNode::GetPropertyValueWidget()
 	// Very important we don't transact on these SetValues, because this very function is called when Undo/Redo'ing,
 	// which would put us in a loop
 	TSharedPtr<IPropertyHandle> PropHandle = SinglePropView->GetPropertyHandle();
-	if (FirstPropertyValue->GetPropertyClass()->IsChildOf(FStrProperty::StaticClass()))
+	if (FirstPropertyValue->GetPropertyClass()->IsChildOf(UStrProperty::StaticClass()))
 	{
 		PropHandle->SetValue(FirstPropertyValue->GetStrPropertyString(), EPropertyValueSetFlags::NotTransactable);
 	}
-    else if (FirstPropertyValue->GetPropertyClass()->IsChildOf(FNameProperty::StaticClass()))
+    else if (FirstPropertyValue->GetPropertyClass()->IsChildOf(UNameProperty::StaticClass()))
 	{
 		PropHandle->SetValue(FirstPropertyValue->GetNamePropertyName(), EPropertyValueSetFlags::NotTransactable);
 	}
-    else if (FirstPropertyValue->GetPropertyClass()->IsChildOf(FTextProperty::StaticClass()))
+    else if (FirstPropertyValue->GetPropertyClass()->IsChildOf(UTextProperty::StaticClass()))
 	{
 		PropHandle->SetValue(FirstPropertyValue->GetTextPropertyText(), EPropertyValueSetFlags::NotTransactable);
 	}
@@ -163,19 +197,19 @@ void FVariantManagerStringPropertyNode::UpdateRecordedDataFromSinglePropView(TSh
 	{
 		if (PropertyValue.IsValid())
 		{
-			if (PropertyValue->GetPropertyClass()->IsChildOf(FStrProperty::StaticClass()))
+			if (PropertyValue->GetPropertyClass()->IsChildOf(UStrProperty::StaticClass()))
 			{
 				FString CurValue;
 				PropHandle->GetValue(CurValue);
 				PropertyValue.Get()->SetRecordedData((uint8*)&CurValue, sizeof(FString));
 			}
-			else if (PropertyValue->GetPropertyClass()->IsChildOf(FNameProperty::StaticClass()))
+			else if (PropertyValue->GetPropertyClass()->IsChildOf(UNameProperty::StaticClass()))
 			{
 				FName CurValue;
 				PropHandle->GetValue(CurValue);
 				PropertyValue.Get()->SetRecordedData((uint8*)&CurValue, sizeof(FName));
 			}
-            else if (PropertyValue->GetPropertyClass()->IsChildOf(FTextProperty::StaticClass()))
+            else if (PropertyValue->GetPropertyClass()->IsChildOf(UTextProperty::StaticClass()))
 			{
 				FText CurValue;
 				PropHandle->GetValue(CurValue);

@@ -9,8 +9,6 @@
 //  http://www.boost.org/LICENSE_1_0.txt
 //
 
-#include <boost/config.hpp>
-
 namespace boost
 {
 
@@ -18,13 +16,6 @@ template<class T> struct type_identity
 {
     typedef T type;
 };
-
-#if !defined(BOOST_NO_CXX11_TEMPLATE_ALIASES)
-
-template <class T> using type_identity_t = typename type_identity<T>::type;
-
-#endif
-
 
 } // namespace boost
 

@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_WORK_LOOPS_H
-#define PXR_BASE_WORK_LOOPS_H
+#ifndef WORK_LOOPS_H
+#define WORK_LOOPS_H
 
 /// \file work/loops.h
 #include "pxr/pxr.h"
@@ -155,4 +155,4 @@ WorkParallelForEach(
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_BASE_WORK_LOOPS_H
+#endif // WORK_LOOPS_H

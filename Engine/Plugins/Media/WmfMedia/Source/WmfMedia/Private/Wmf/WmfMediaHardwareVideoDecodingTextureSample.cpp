@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WmfMediaHardwareVideoDecodingTextureSample.h"
 
@@ -40,11 +40,7 @@ ID3D11Texture2D* FWmfMediaHardwareVideoDecodingTextureSample::InitializeSourceTe
 	TextureDesc.MiscFlags = D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
 
 	SourceTexture.Reset();
-	HRESULT res = InD3D11Device->CreateTexture2D(&TextureDesc, nullptr, &SourceTexture);
-	if (res != S_OK)
-	{
-		UE_LOG(LogWmfMedia, Warning, TEXT("InD3D11Device->CreateTexture2D() for media source texture failed. (HR=%x)"), res);
-	}
+	InD3D11Device->CreateTexture2D(&TextureDesc, nullptr, &SourceTexture);
 
 	D3D11Device = InD3D11Device;
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -8,8 +8,6 @@
 #include "Engine/EngineTypes.h"
 #include "Templates/Casts.h"
 #include "Interfaces/OnlineIdentityInterface.h"
-#include "PatchCheck.h"
-#include "InstallBundleTypes.h"
 #include "UpdateManager.generated.h"
 
 class Error;
@@ -67,6 +65,22 @@ enum class EUpdateCompletionStatus : uint8
 };
 
 HOTFIX_API FString LexToString(EUpdateCompletionStatus Status);
+
+/**
+ * Possible outcomes at the end of just the patch check
+ */
+UENUM(BlueprintType)
+enum class EPatchCheckResult : uint8
+{
+	/** No patch required */
+	NoPatchRequired,
+	/** Patch required to continue */
+	PatchRequired,
+	/** Logged in user required for a patch check */
+	NoLoggedInUser,
+	/** Patch check failed */
+	PatchCheckFailure,
+};
 
 /**
  * Delegate fired when changes to the update progress have been made
@@ -226,7 +240,6 @@ protected:
 	/** @return true if update checks are enabled */
 	virtual bool ChecksEnabled() const;
 	/** @return true if the backend environment requires update checks */
-	UE_DEPRECATED_FORGAME(4.25, "UUpdateManager::EnvironmentWantsPatchCheck is deprecated, please override FPatchCheck::EnvironmentWantsPatchCheck instead.")
 	virtual bool EnvironmentWantsPatchCheck() const;
 
 	/** 
@@ -251,20 +264,22 @@ protected:
 	/** Amount of time to wait at the end of the entire check before notifying listening entities (availability check only) */
 	UPROPERTY(Config)
 	float UpdateCheckAvailabilityCompleteDelay;
-
 	/** Check the platform OSS for an update */
-	UE_DEPRECATED(4.25, "Set FPatchCheck::bCheckPlatformOSSForUpdate using section [PatchCheck] instead.")
+	UPROPERTY(Config)
 	bool bCheckPlatformOSSForUpdate;
 	/** Check the default OSS for an update */
-	UE_DEPRECATED(4.25, "Set FPatchCheck::bCheckOSSForUpdate using section [PatchCheck] instead.")
+	UPROPERTY(Config)
 	bool bCheckOSSForUpdate;
+
 
 	/**
 	 * Patch check
 	 */
 	virtual void StartPatchCheck();
-	void InstallBundlePatchCheckComplete(EInstallBundleManagerPatchCheckResult PatchResult);
-	void PatchCheckComplete(EPatchCheckResult PatchResult);
+	virtual void StartPlatformOSSPatchCheck();
+	virtual void StartOSSPatchCheck();
+	virtual void OnCheckForPatchComplete(const FUniqueNetId& UniqueId, EUserPrivileges::Type Privilege, uint32 PrivilegeResult, bool bConsoleCheck);
+	virtual void PatchCheckComplete(EPatchCheckResult PatchResult);
 
 	/**
 	 * Hotfix check
@@ -349,8 +364,9 @@ protected:
 	UPROPERTY()
 	int32 WorstNumFilesPendingLoadViewed;
 
-	/** Result of the last patch check */	
-	EInstallBundleManagerPatchCheckResult LastPatchCheckResult;
+	/** Result of the last patch check */
+	UPROPERTY()
+	EPatchCheckResult LastPatchCheckResult;
 
 	/** Result of the last hotfix */
 	UPROPERTY()

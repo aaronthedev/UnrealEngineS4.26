@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	DepthOnlyPixelShader.hlsl: Depth-only pixel shader.
@@ -8,31 +8,23 @@
 #include "/Engine/Generated/Material.ush"
 #include "/Engine/Generated/VertexFactory.ush"
 
-#if OUTPUT_MOBILE_COLOR_VALUE
+#if (FEATURE_LEVEL <= FEATURE_LEVEL_ES3_1)
 // used to write custom stencil values to color target
 float MobileColorValue;
 #endif
 
 void Main(
-#if !MATERIALBLENDING_SOLID || OUTPUT_PIXEL_DEPTH_OFFSET || OUTPUT_MOBILE_COLOR_VALUE
-	in INPUT_POSITION_QUALIFIERS float4 SvPosition : SV_Position,
-#endif
-
 #if !MATERIALBLENDING_SOLID || OUTPUT_PIXEL_DEPTH_OFFSET
-	FVertexFactoryInterpolantsVSToPS FactoryInterpolants
-	, float4 PixelPosition : TEXCOORD6 //-- Not used currently
+	in INPUT_POSITION_QUALIFIERS float4 SvPosition : SV_Position,
 #if USE_WORLD_POSITION_EXCLUDING_SHADER_OFFSETS
-	, float3 PixelPositionExcludingWPO : TEXCOORD7
+	float3 PixelPositionExcludingWPO : TEXCOORD7,
 #endif
+	FVertexFactoryInterpolantsVSToPS FactoryInterpolants
+	// float4 PixelPosition : TEXCOORD6 -- Not used currently
 	OPTIONAL_IsFrontFace
 	OPTIONAL_OutDepthConservative,
 #endif
-#if OUTPUT_MOBILE_COLOR_VALUE
-	out half OutCustomDepth : SV_Target0,
-	out half OutCustomStencil : SV_Target1
-#else
 	out float4 OutColor : SV_Target0
-#endif
 #if MATERIALBLENDING_MASKED_USING_COVERAGE
 	, out uint OutCoverage : SV_Coverage
 #endif
@@ -57,13 +49,7 @@ void Main(
 	#endif
 
 	#if OUTPUT_PIXEL_DEPTH_OFFSET
-		#if ALLOW_DEBUG_VIEW_MODES
-		OutDepth = SvPosition.z;
-		if (!ResolvedView.DebugViewModeMask)
-		#endif
-		{
-			ApplyPixelDepthOffsetToMaterialParameters(MaterialParameters, PixelMaterialInputs, OutDepth);
-		}
+	ApplyPixelDepthOffsetToMaterialParameters(MaterialParameters, PixelMaterialInputs, OutDepth);
 	#endif
 
 	#if MATERIALBLENDING_TRANSLUCENT
@@ -75,9 +61,8 @@ void Main(
 	#endif
 #endif
 
-#if OUTPUT_MOBILE_COLOR_VALUE
-	OutCustomDepth = SvPosition.z;
-	OutCustomStencil = MobileColorValue;
+#if (FEATURE_LEVEL <= FEATURE_LEVEL_ES3_1)
+	OutColor = MobileColorValue;
 #else
 	OutColor = 0;
 #endif

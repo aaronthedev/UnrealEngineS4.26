@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -12,8 +12,7 @@ public class NetCore : ModuleRules
 			new string[]
 			{
 				"Core",
-				"CoreUObject",
-				"TraceLog"
+				"CoreUObject"
 			}
 		);
 	}

@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcGeom_IPoints_h
-#define Alembic_AbcGeom_IPoints_h
+#ifndef _Alembic_AbcGeom_IPoints_h_
+#define _Alembic_AbcGeom_IPoints_h_
 
 #include <Alembic/Util/Export.h>
 #include <Alembic/AbcGeom/Foundation.h>

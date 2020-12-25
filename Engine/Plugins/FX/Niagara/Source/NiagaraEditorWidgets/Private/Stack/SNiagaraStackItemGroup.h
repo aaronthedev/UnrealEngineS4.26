@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -19,17 +19,9 @@ public:
 private:
 	TSharedRef<SWidget> ConstructAddButton();
 
-	FText GetDeleteButtonToolTip() const;
-
-	bool GetDeleteButtonIsEnabled() const;
-
 	EVisibility GetDeleteButtonVisibility() const;
 
 	FReply DeleteClicked();
-
-	void OnCheckStateChanged(ECheckBoxState InCheckState);
-	ECheckBoxState CheckEnabledStatus() const;
-	bool GetEnabledCheckBoxEnabled() const;
 
 private:
 	UNiagaraStackItemGroup* Group;

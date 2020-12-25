@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -22,17 +22,7 @@ public:
 	 * Only call from Initialize() of Systems to ensure initialization order
 	 * Note: Dependencies only work within a collection
 	 */
-	USubsystem* InitializeDependency(TSubclassOf<USubsystem> SubsystemClass);
-
-	/**
-	 * Only call from Initialize() of Systems to ensure initialization order
-	 * Note: Dependencies only work within a collection
-	 */
-	template <typename TSubsystemClass>
-	TSubsystemClass* InitializeDependency()
-	{
-		return Cast<TSubsystemClass>(InitializeDependency(TSubsystemClass::StaticClass()));
-	}
+	bool InitializeDependency(TSubclassOf<USubsystem> SubsystemClass);
 
 	/* FGCObject Interface */
 	virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
@@ -55,7 +45,7 @@ protected:
 	const TSubclassOf<USubsystem>& GetBaseType() const { return BaseType; }
 
 private:
-	USubsystem* AddAndInitializeSubsystem(UClass* SubsystemClass);
+	bool AddAndInitializeSubsystem(UClass* SubsystemClass);
 
 	void RemoveAndDeinitializeSubsystem(USubsystem* Subsystem);
 

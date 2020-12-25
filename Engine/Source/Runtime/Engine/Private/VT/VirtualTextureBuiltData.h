@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "CoreMinimal.h"
@@ -60,7 +60,7 @@ struct FVirtualTextureDataChunk
 	bool ShortenKey(const FString& CacheKey, FString& Result);
 	FThreadSafeBool bFileAvailableInVTDDCDache;
 
-	uint32 StoreInDerivedDataCache(const FString& InDerivedDataKey, const FStringView& TextureName);
+	uint32 StoreInDerivedDataCache(const FString& InDerivedDataKey);
 #endif // WITH_EDITORONLY_DATA
 };
 

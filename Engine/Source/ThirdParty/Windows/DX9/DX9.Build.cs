@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 using UnrealBuildTool;
 
 public class DX9 : ModuleRules
@@ -18,6 +18,7 @@ public class DX9 : ModuleRules
 		{
 			DirectXSDKDir = Target.UEThirdPartySourceDirectory + "Windows/DirectX";
 		}
+		PublicSystemIncludePaths.Add(DirectXSDKDir + "/include");
 
 		string LibDir = null;
 		if (Target.Platform == UnrealTargetPlatform.Win64)
@@ -29,23 +30,18 @@ public class DX9 : ModuleRules
 			LibDir = DirectXSDKDir + "/Lib/x86/";
 		}
 
-		if (Target.Platform == UnrealTargetPlatform.Win64 || Target.Platform == UnrealTargetPlatform.Win32 || Target.Platform == UnrealTargetPlatform.HoloLens)
-		{
-			PublicSystemIncludePaths.Add(DirectXSDKDir + "/include");
-
-			PublicAdditionalLibraries.AddRange(
-				new string[] {
-					LibDir + "d3d9.lib",
-					LibDir + "dxguid.lib",
-					LibDir + "d3dcompiler.lib",
-					(Target.Configuration == UnrealTargetConfiguration.Debug && Target.bDebugBuildsActuallyUseDebugCRT) ? LibDir + "d3dx9d.lib" : LibDir + "d3dx9.lib",
-					LibDir + "dinput8.lib",
-					LibDir + "X3DAudio.lib",
-					LibDir + "xapobase.lib",
-					LibDir + "XAPOFX.lib"
-				}
-			);
-		}
+		PublicAdditionalLibraries.AddRange(
+			new string[] {
+				LibDir + "d3d9.lib",
+				LibDir + "dxguid.lib",
+				LibDir + "d3dcompiler.lib",
+				(Target.Configuration == UnrealTargetConfiguration.Debug && Target.bDebugBuildsActuallyUseDebugCRT) ? LibDir + "d3dx9d.lib" : LibDir + "d3dx9.lib",
+				LibDir + "dinput8.lib",
+				LibDir + "X3DAudio.lib",
+				LibDir + "xapobase.lib",
+				LibDir + "XAPOFX.lib"
+			}
+		);
 	}
 }
 

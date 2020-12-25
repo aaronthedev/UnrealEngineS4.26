@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	DistanceFieldLightingPost.usf
@@ -174,11 +174,11 @@ void UpdateHistoryDepthRejectionPS(
 	float2 Screenvelocity = UVAndScreenPos.zw - PrevScreen;
 		
 	float2 FullResTexel = UVAndScreenPos.xy - .5f * View.BufferSizeAndInvSize.zw;
-	float4 EncodedVelocity = Texture2DSampleLevel(VelocityTexture, VelocityTextureSampler, FullResTexel, 0);
+	float2 VelocityN = Texture2DSampleLevel(VelocityTexture, VelocityTextureSampler, FullResTexel, 0).xy;
 		
-	if (EncodedVelocity.x > 0.0)
+	if (VelocityN.x > 0.0)
 	{
-		Screenvelocity = DecodeVelocityFromTexture(EncodedVelocity).xy;
+		Screenvelocity = DecodeVelocityFromTexture(VelocityN);
 	}
 		
 	float PixelSpeed = 0.5 * length(Screenvelocity);

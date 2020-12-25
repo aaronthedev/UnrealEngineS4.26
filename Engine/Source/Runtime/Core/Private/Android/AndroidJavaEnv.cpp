@@ -1,11 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Android/AndroidJavaEnv.h"
 #include "CoreMinimal.h"
 #include "HAL/ThreadSingleton.h"
 #include "HAL/PlatformMisc.h"
-#include "HAL/ThreadManager.h"
-#include "Containers/UnrealString.h"
 
 //////////////////////////////////////////////////////////////////////////
 // FJNIHelper
@@ -121,13 +119,8 @@ JNIEnv* AndroidJavaEnv::GetJavaEnv( bool bRequireGlobalThis /*= true*/ )
 	if (Env == nullptr)
 	{
 		CurrentJavaVM->GetEnv((void **)&Env, CurrentJavaVersion);
-		JavaVMAttachArgs Args;
-		Args.version = CurrentJavaVersion;
-		Args.group = nullptr;
-		const FString& ThreadName = FThreadManager::GetThreadName(FPlatformTLS::GetCurrentThreadId());
-		Args.name = ThreadName.IsEmpty() ? nullptr : TCHAR_TO_ANSI(*ThreadName);
 
-		jint AttachResult = CurrentJavaVM->AttachCurrentThread(&Env, &Args);
+		jint AttachResult = CurrentJavaVM->AttachCurrentThread(&Env, NULL);
 		if (AttachResult == JNI_ERR)
 		{
 			FPlatformMisc::LowLevelOutputDebugString(L"UNIT TEST -- Failed to get the JNI environment!");
@@ -151,13 +144,7 @@ JNIEnv* AndroidJavaEnv::GetJavaEnv( bool bRequireGlobalThis /*= true*/ )
 	if (GetEnvResult == JNI_EDETACHED)
 	{
 		// attach to this thread
-		JavaVMAttachArgs Args;
-		Args.version = CurrentJavaVersion;
-		Args.group = nullptr;
-		const FString& ThreadName = FThreadManager::GetThreadName(FPlatformTLS::GetCurrentThreadId());
-		Args.name = ThreadName.IsEmpty() ? nullptr : TCHAR_TO_ANSI(*ThreadName);
-
-		jint AttachResult = CurrentJavaVM->AttachCurrentThread(&Env, &Args);
+		jint AttachResult = CurrentJavaVM->AttachCurrentThread(&Env, NULL);
 		if (AttachResult == JNI_ERR)
 		{
 			FPlatformMisc::LowLevelOutputDebugString(TEXT("UNIT TEST -- Failed to attach thread to get the JNI environment!"));

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,7 +9,7 @@ class USubsystem;
 class FKismetCompilerContext;
 
 UCLASS()
-class BLUEPRINTGRAPH_API UK2Node_GetSubsystem : public UK2Node
+class UK2Node_GetSubsystem : public UK2Node
 {
 	GENERATED_BODY()
 public:

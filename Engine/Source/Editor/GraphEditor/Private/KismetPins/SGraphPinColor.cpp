@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "KismetPins/SGraphPinColor.h"
@@ -20,7 +20,6 @@ TSharedRef<SWidget>	SGraphPinColor::GetDefaultValueWidget()
 	return SAssignNew(DefaultValueWidget, SBorder)
 		.BorderImage( FEditorStyle::GetBrush("FilledBorder") )
 		.Visibility( this, &SGraphPin::GetDefaultValueVisibility )
-		.IsEnabled(this, &SGraphPin::GetDefaultValueIsEditable)
 		.Padding(1)
 		[
 			SNew(SHorizontalBox)

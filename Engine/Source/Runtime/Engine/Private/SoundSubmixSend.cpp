@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "Sound/SoundSubmixSend.h"
 
 #include "Sound/SoundSubmix.h"
 
 FSoundSubmixSendInfo::FSoundSubmixSendInfo()
 	: SendLevelControlMethod(ESendLevelControlMethod::Manual)
-	, SendStage(ESubmixSendStage::PostDistanceAttenuation)
 	, SoundSubmix(nullptr)
 	, SendLevel(0.0f)
 	, MinSendLevel(0.0f)

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Framework/Application/AnalogCursor.h"
 #include "InputCoreTypes.h"
@@ -7,7 +7,6 @@
 #include "Layout/ArrangedChildren.h"
 #include "Layout/WidgetPath.h"
 #include "Framework/Application/SlateApplication.h"
-#include "Framework/Application/SlateUser.h"
 
 
 FAnalogCursor::FAnalogCursor()
@@ -23,52 +22,50 @@ FAnalogCursor::FAnalogCursor()
 	AnalogValues[ static_cast< uint8 >( EAnalogStick::Right ) ] = FVector2D::ZeroVector;
 }
 
-void FAnalogCursor::Tick(const float DeltaTime, FSlateApplication& SlateApp, TSharedRef<ICursor>)
+void FAnalogCursor::Tick(const float DeltaTime, FSlateApplication& SlateApp, TSharedRef<ICursor> Cursor)
 {
-	if (TSharedPtr<FSlateUser> SlateUser = SlateApp.GetUser(GetOwnerUserIndex()))
+	const FVector2D OldPosition = Cursor->GetPosition();
+
+	float SpeedMult = 1.0f; // Used to do a speed multiplication before adding the delta to the position to make widgets sticky
+	FVector2D AdjAnalogVals = GetAnalogValue(EAnalogStick::Left); // A copy of the analog values so I can modify them based being over a widget, not currently doing this
+
+	// Adjust analog values according to dead zone
+	const float AnalogValsSize = AdjAnalogVals.Size();
+
+	if (AnalogValsSize > 0.0f)
 	{
-		const FVector2D OldPosition = SlateUser->GetCursorPosition();
+		const float TargetSize = FMath::Max(AnalogValsSize - DeadZone, 0.0f) / (1.0f - DeadZone);
+		AdjAnalogVals /= AnalogValsSize;
+		AdjAnalogVals *= TargetSize;
+	}
 
-		float SpeedMult = 1.0f; // Used to do a speed multiplication before adding the delta to the position to make widgets sticky
-		FVector2D AdjAnalogVals = GetAnalogValue(EAnalogStick::Left); // A copy of the analog values so I can modify them based being over a widget, not currently doing this
 
-		// Adjust analog values according to dead zone
-		const float AnalogValsSize = AdjAnalogVals.Size();
-
-		if (AnalogValsSize > 0.0f)
+	// Check if there is a sticky widget beneath the cursor
+	FWidgetPath WidgetPath = SlateApp.LocateWindowUnderMouse(OldPosition, SlateApp.GetInteractiveTopLevelWindows());
+	if (WidgetPath.IsValid())
+	{
+		const FArrangedChildren::FArrangedWidgetArray& AllArrangedWidgets = WidgetPath.Widgets.GetInternalArray();
+		for(const FArrangedWidget& ArrangedWidget : AllArrangedWidgets)
 		{
-			const float TargetSize = FMath::Max(AnalogValsSize - DeadZone, 0.0f) / (1.0f - DeadZone);
-			AdjAnalogVals /= AnalogValsSize;
-			AdjAnalogVals *= TargetSize;
-		}
-
-
-		// Check if there is a sticky widget beneath the cursor
-		FWidgetPath WidgetPath = SlateApp.LocateWindowUnderMouse(OldPosition, SlateApp.GetInteractiveTopLevelWindows(), false, SlateUser->GetUserIndex());
-		if (WidgetPath.IsValid())
-		{
-			const FArrangedChildren::FArrangedWidgetArray& AllArrangedWidgets = WidgetPath.Widgets.GetInternalArray();
-			for (const FArrangedWidget& ArrangedWidget : AllArrangedWidgets)
+			TSharedRef<SWidget> Widget = ArrangedWidget.Widget;
+			if (Widget->IsInteractable())
 			{
-				TSharedRef<SWidget> Widget = ArrangedWidget.Widget;
-				if (Widget->IsInteractable())
-				{
-					SpeedMult = StickySlowdown;
-					//FVector2D Adjustment = WidgetsAndCursors.Last().Geometry.Position - OldPosition; // example of calculating distance from cursor to widget center
-					break;
-				}
+				SpeedMult = StickySlowdown;
+				//FVector2D Adjustment = WidgetsAndCursors.Last().Geometry.Position - OldPosition; // example of calculating distance from cursor to widget center
+				break;
 			}
 		}
+	}
 
-		switch (Mode)
-		{
+	switch(Mode)
+	{
 		case AnalogCursorMode::Accelerated:
 		{
 			// Generate Min and Max for X to clamp the speed, this gives us instant direction change when crossing the axis
 			float CurrentMinSpeedX = 0.0f;
 			float CurrentMaxSpeedX = 0.0f;
 			if (AdjAnalogVals.X > 0.0f)
-			{
+			{ 
 				CurrentMaxSpeedX = AdjAnalogVals.X * MaxSpeed;
 			}
 			else
@@ -107,60 +104,53 @@ void FAnalogCursor::Tick(const float DeltaTime, FSlateApplication& SlateApp, TSh
 			CurrentSpeed = AdjAnalogVals * MaxSpeed;
 
 			break;
-		}
-
-		CurrentOffset += CurrentSpeed * DeltaTime * SpeedMult;
-		const FVector2D NewPosition = OldPosition + CurrentOffset;
-
-		// save the remaining sub-pixel offset 
-		CurrentOffset.X = FGenericPlatformMath::Frac(NewPosition.X);
-		CurrentOffset.Y = FGenericPlatformMath::Frac(NewPosition.Y);
-
-		// update the cursor position
-		UpdateCursorPosition(SlateApp, SlateUser.ToSharedRef(), NewPosition);
 	}
+
+	CurrentOffset += CurrentSpeed * DeltaTime * SpeedMult;
+	const FVector2D NewPosition = OldPosition + CurrentOffset;
+
+	// save the remaining sub-pixel offset 
+	CurrentOffset.X = FGenericPlatformMath::Frac(NewPosition.X);
+	CurrentOffset.Y = FGenericPlatformMath::Frac(NewPosition.Y);
+
+	// update the cursor position
+	UpdateCursorPosition(SlateApp, Cursor, NewPosition);
 }
 
 bool FAnalogCursor::HandleKeyDownEvent(FSlateApplication& SlateApp, const FKeyEvent& InKeyEvent)
 {
-	if (IsRelevantInput(InKeyEvent))
+	FKey Key = InKeyEvent.GetKey();
+
+	// Consume the sticks input so it doesn't effect other things
+	if (Key == EKeys::Gamepad_LeftStick_Right || 
+		Key == EKeys::Gamepad_LeftStick_Left ||
+		Key == EKeys::Gamepad_LeftStick_Up ||
+		Key == EKeys::Gamepad_LeftStick_Down)
 	{
-		FKey Key = InKeyEvent.GetKey();
-		// Consume the sticks input so it doesn't effect other things
-		if (Key == EKeys::Gamepad_LeftStick_Right ||
-			Key == EKeys::Gamepad_LeftStick_Left ||
-			Key == EKeys::Gamepad_LeftStick_Up ||
-			Key == EKeys::Gamepad_LeftStick_Down)
+		return true;
+	}
+
+	// Bottom face button is a click
+	if (Key == EKeys::Virtual_Accept)
+	{
+		if ( !InKeyEvent.IsRepeat() )
 		{
-			return true;
+			FPointerEvent MouseEvent(
+				InKeyEvent.GetUserIndex(),
+				SlateApp.CursorPointerIndex,
+				SlateApp.GetCursorPos(),
+				SlateApp.GetLastCursorPos(),
+				SlateApp.GetPressedMouseButtons(),
+				EKeys::LeftMouseButton,
+				0,
+				SlateApp.GetPlatformApplication()->GetModifierKeys()
+				);
+
+			TSharedPtr<FGenericWindow> GenWindow;
+			return SlateApp.ProcessMouseButtonDownEvent(GenWindow, MouseEvent);
 		}
 
-		// Bottom face button is a click
-		if (Key == EKeys::Virtual_Accept)
-		{
-			if (!InKeyEvent.IsRepeat())
-			{
-				if (TSharedPtr<FSlateUser> SlateUser = SlateApp.GetUser(InKeyEvent))
-				{
-					const bool bIsPrimaryUser = FSlateApplication::CursorUserIndex == SlateUser->GetUserIndex();
-					FPointerEvent MouseEvent(
-						SlateUser->GetUserIndex(),
-						FSlateApplication::CursorPointerIndex,
-						SlateUser->GetCursorPosition(),
-						SlateUser->GetPreviousCursorPosition(),
-						bIsPrimaryUser ? SlateApp.GetPressedMouseButtons() : TSet<FKey>(),
-						EKeys::LeftMouseButton,
-						0,
-						bIsPrimaryUser ? SlateApp.GetModifierKeys() : FModifierKeysState()
-					);
-
-					TSharedPtr<FGenericWindow> GenWindow;
-					return SlateApp.ProcessMouseButtonDownEvent(GenWindow, MouseEvent);
-				}
-			}
-
-			return true;
-		}
+		return true;
 	}
 
 	return false;
@@ -168,75 +158,67 @@ bool FAnalogCursor::HandleKeyDownEvent(FSlateApplication& SlateApp, const FKeyEv
 
 bool FAnalogCursor::HandleKeyUpEvent(FSlateApplication& SlateApp, const FKeyEvent& InKeyEvent)
 {
-	if (IsRelevantInput(InKeyEvent))
+	FKey Key = InKeyEvent.GetKey();
+
+	// Consume the sticks input so it doesn't effect other things
+	if (Key == EKeys::Gamepad_LeftStick_Right ||
+		Key == EKeys::Gamepad_LeftStick_Left ||
+		Key == EKeys::Gamepad_LeftStick_Up ||
+		Key == EKeys::Gamepad_LeftStick_Down)
 	{
-		FKey Key = InKeyEvent.GetKey();
-
-		// Consume the sticks input so it doesn't effect other things
-		if (Key == EKeys::Gamepad_LeftStick_Right ||
-			Key == EKeys::Gamepad_LeftStick_Left ||
-			Key == EKeys::Gamepad_LeftStick_Up ||
-			Key == EKeys::Gamepad_LeftStick_Down)
-		{
-			return true;
-		}
-
-		// Bottom face button is a click
-		if (Key == EKeys::Virtual_Accept && !InKeyEvent.IsRepeat())
-		{
-			if (TSharedPtr<FSlateUser> SlateUser = SlateApp.GetUser(InKeyEvent))
-			{
-				const bool bIsPrimaryUser = FSlateApplication::CursorUserIndex == SlateUser->GetUserIndex();
-				FPointerEvent MouseEvent(
-					SlateUser->GetUserIndex(),
-					FSlateApplication::CursorPointerIndex,
-					SlateUser->GetCursorPosition(),
-					SlateUser->GetPreviousCursorPosition(),
-					bIsPrimaryUser ? SlateApp.GetPressedMouseButtons() : TSet<FKey>(),
-					EKeys::LeftMouseButton,
-					0,
-					bIsPrimaryUser ? SlateApp.GetModifierKeys() : FModifierKeysState()
-				);
-
-				return SlateApp.ProcessMouseButtonUpEvent(MouseEvent);
-			}
-		}
+		return true;
 	}
+
+	// Bottom face button is a click
+	if (Key == EKeys::Virtual_Accept && !InKeyEvent.IsRepeat())
+	{
+		FPointerEvent MouseEvent(
+			InKeyEvent.GetUserIndex(),
+			SlateApp.CursorPointerIndex,
+			SlateApp.GetCursorPos(),
+			SlateApp.GetLastCursorPos(),
+			SlateApp.GetPressedMouseButtons(),
+			EKeys::LeftMouseButton,
+			0,
+			SlateApp.GetPlatformApplication()->GetModifierKeys()
+			);
+
+		return SlateApp.ProcessMouseButtonUpEvent(MouseEvent);
+	}
+	
 	return false;
 }
 
 bool FAnalogCursor::HandleAnalogInputEvent(FSlateApplication& SlateApp, const FAnalogInputEvent& InAnalogInputEvent)
 {
-	if (IsRelevantInput(InAnalogInputEvent))
-	{
-		FKey Key = InAnalogInputEvent.GetKey();
-		float AnalogValue = InAnalogInputEvent.GetAnalogValue();
+	FKey Key = InAnalogInputEvent.GetKey();
+	float AnalogValue = InAnalogInputEvent.GetAnalogValue();
 
-		if (Key == EKeys::Gamepad_LeftX)
-		{
-			FVector2D& Value = GetAnalogValue(EAnalogStick::Left);
-			Value.X = AnalogValue;
-		}
-		else if (Key == EKeys::Gamepad_LeftY)
-		{
-			FVector2D& Value = GetAnalogValue(EAnalogStick::Left);
-			Value.Y = -AnalogValue;
-		}
-		else if (Key == EKeys::Gamepad_RightX)
-		{
-			FVector2D& Value = GetAnalogValue(EAnalogStick::Right);
-			Value.X = AnalogValue;
-		}
-		else if (Key == EKeys::Gamepad_RightY)
-		{
-			FVector2D& Value = GetAnalogValue(EAnalogStick::Right);
-			Value.Y = -AnalogValue;
-		}
-		else
-		{
-			return false;
-		}
+	if (Key == EKeys::Gamepad_LeftX)
+	{
+		FVector2D& Value = GetAnalogValue( EAnalogStick::Left );
+		Value.X = AnalogValue;
 	}
+	else if (Key == EKeys::Gamepad_LeftY)
+	{
+		FVector2D& Value = GetAnalogValue( EAnalogStick::Left );
+		Value.Y = -AnalogValue;
+	}
+	else if ( Key == EKeys::Gamepad_RightX )
+	{
+		FVector2D& Value = GetAnalogValue( EAnalogStick::Right );
+		Value.X = AnalogValue;
+	}
+	else if ( Key == EKeys::Gamepad_RightY )
+	{
+		FVector2D& Value = GetAnalogValue( EAnalogStick::Right );
+		Value.Y = -AnalogValue;
+	}
+	else 
+	{
+		return false;
+	}
+
 	return true;
 }
 
@@ -272,26 +254,6 @@ void FAnalogCursor::SetMode(AnalogCursorMode::Type NewMode)
 	CurrentSpeed = FVector2D::ZeroVector;
 }
 
-bool FAnalogCursor::IsRelevantInput(const FInputEvent& InputEvent) const
-{
-	return GetOwnerUserIndex() == InputEvent.GetUserIndex();
-}
-
-bool FAnalogCursor::IsRelevantInput(const FKeyEvent& KeyEvent) const
-{
-	return IsRelevantInput(static_cast<FInputEvent>(KeyEvent));
-}
-
-bool FAnalogCursor::IsRelevantInput(const FAnalogInputEvent& AnalogInputEvent) const
-{
-	return IsRelevantInput(static_cast<FInputEvent>(AnalogInputEvent));
-}
-
-bool FAnalogCursor::IsRelevantInput(const FPointerEvent& MouseEvent) const
-{
-	return IsRelevantInput(static_cast<FInputEvent>(MouseEvent));
-}
-
 void FAnalogCursor::ClearAnalogValues()
 {
 	AnalogValues[static_cast<uint8>(EAnalogStick::Left)] = FVector2D::ZeroVector;
@@ -312,57 +274,22 @@ void FAnalogCursor::UpdateCursorPosition(FSlateApplication& SlateApp, TSharedRef
 	{
 		//put the cursor in the correct spot
 		Cursor->SetPosition(NewIntPosX, NewIntPosY);
-
-		// Since the cursor may have been locked and its location clamped, get the actual new position
-		const FVector2D UpdatedPosition = Cursor->GetPosition();
-		if (TSharedPtr<FSlateUser> SlateUser = SlateApp.GetUser(GetOwnerUserIndex()))
-		{
-			//create a new mouse event
-			const bool bIsPrimaryUser = FSlateApplication::CursorUserIndex == SlateUser->GetUserIndex();
-			FPointerEvent MouseEvent(
-				SlateApp.CursorPointerIndex,
-				UpdatedPosition,
-				OldPosition,
-				bIsPrimaryUser ? SlateApp.GetPressedMouseButtons() : TSet<FKey>(),
-				EKeys::Invalid,
-				0,
-				bIsPrimaryUser ? SlateApp.GetModifierKeys() : FModifierKeysState()
-			);
-			//process the event
-			SlateApp.ProcessMouseMoveEvent(MouseEvent);
-		}
-	}
-}
-
-void FAnalogCursor::UpdateCursorPosition(FSlateApplication& SlateApp, TSharedRef<FSlateUser> SlateUser, const FVector2D& NewPosition, bool bForce)
-{
-	//grab the old position
-	const FVector2D OldPosition = SlateUser->GetCursorPosition();
-
-	//make sure we are actually moving
-	int32 NewIntPosX = NewPosition.X;
-	int32 NewIntPosY = NewPosition.Y;
-	int32 OldIntPosX = OldPosition.X;
-	int32 OldIntPosY = OldPosition.Y;
-	if (bForce || OldIntPosX != NewIntPosX || OldIntPosY != NewIntPosY)
-	{
-		//put the cursor in the correct spot
-		SlateUser->SetCursorPosition(NewIntPosX, NewIntPosY);
 	
 		// Since the cursor may have been locked and its location clamped, get the actual new position
-		const FVector2D UpdatedPosition = SlateUser->GetCursorPosition();
+		const FVector2D UpdatedPosition = Cursor->GetPosition();
+
 		//create a new mouse event
-		const bool bIsPrimaryUser = FSlateApplication::CursorUserIndex == SlateUser->GetUserIndex();
 		FPointerEvent MouseEvent(
-			SlateUser->GetUserIndex(),
+			SlateApp.CursorPointerIndex,
 			UpdatedPosition,
 			OldPosition,
-			bIsPrimaryUser ? SlateApp.GetPressedMouseButtons() : TSet<FKey>(),
+			SlateApp.GetPressedMouseButtons(),
 			EKeys::Invalid,
 			0,
-			bIsPrimaryUser ? SlateApp.GetModifierKeys() : FModifierKeysState()
-		);
+			SlateApp.GetPlatformApplication()->GetModifierKeys()
+			);
 
+		
 		//process the event
 		SlateApp.ProcessMouseMoveEvent(MouseEvent);
 	}

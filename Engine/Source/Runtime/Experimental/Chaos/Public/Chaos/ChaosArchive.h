@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -9,7 +9,8 @@
 
 namespace Chaos
 {
-class CHAOS_API FImplicitObject; //needed for legacy serializer
+template <typename T, int d>
+class CHAOS_API TImplicitObject; //needed for legacy serializer
 
 
 #if CHAOS_MEMORY_TRACKING
@@ -173,7 +174,7 @@ public:
 				Context->TagToObject[Tag] = (void*)Obj.Get();
 			}
 		}
-		else if (InnerArchive.IsSaving() || InnerArchive.IsCountingMemory())
+		else if (InnerArchive.IsSaving())
 		{
 			void* ObjRaw = (void*)Obj.Get();
 			check(Context->PendingAdds.Contains(ObjRaw) == false);	//catch dependency cycles. Not supported
@@ -256,7 +257,7 @@ private:
 		check(false);
 	}
 
-	void SerializeLegacy(TUniquePtr<FImplicitObject>& Obj);
+	void SerializeLegacy(TUniquePtr<TImplicitObject<float, 3>>& Obj);
 
 	template <typename T>
 	void StaticSerialize(TSerializablePtr<T>& Serializable)
@@ -328,7 +329,6 @@ FChaosArchive& operator<<(FChaosArchive& Ar, TArray<T, TAllocator>& Array)
 {
 	int32 ArrayNum = Array.Num();
 	Ar << ArrayNum;
-	Array.Reserve(ArrayNum);
 	Array.SetNum(ArrayNum);
 
 	for (int32 Idx = 0; Idx < ArrayNum; ++Idx)
@@ -377,7 +377,6 @@ typename TEnableIf<IsSerializablePtr<T>(), FChaosArchive& > ::Type operator<<(FC
 {
 	int32 ArrayNum = Array.Num();
 	Ar << ArrayNum;
-	Array.Reserve(ArrayNum);
 	Array.SetNum(ArrayNum);
 
 	for (int32 Idx = 0; Idx < ArrayNum; ++Idx)
@@ -400,7 +399,6 @@ typename TEnableIf<IsSerializablePtr<T>(), FChaosArchive& > ::Type operator<<(FC
 {
 	int32 ArrayNum = Array.Num();
 	Ar << ArrayNum;
-	Array.Reserve(ArrayNum);
 	Array.SetNum(ArrayNum);
 
 	for (int32 Idx = 0; Idx < ArrayNum; ++Idx)
@@ -416,7 +414,6 @@ typename TEnableIf<IsSerializablePtr<T>(), FChaosArchive& > ::Type operator<<(FC
 {
 	int32 ArrayNum = Array.Num();
 	Ar << ArrayNum;
-	Array.Reserve(ArrayNum);
 	Array.SetNum(ArrayNum);
 
 	for (int32 Idx = 0; Idx < ArrayNum; ++Idx)
@@ -432,7 +429,6 @@ typename TEnableIf<IsSerializablePtr<T>(), FChaosArchive& > ::Type operator<<(FC
 {
 	int32 ArrayNum = Array.Num();
 	Ar << ArrayNum;
-	Array.Reserve(ArrayNum);
 	Array.SetNum(ArrayNum);
 
 	for (int32 Idx = 0; Idx < ArrayNum; ++Idx)
@@ -448,7 +444,6 @@ typename TEnableIf<IsSerializablePtr<T>(), FChaosArchive& > ::Type operator<<(FC
 {
 	int32 ArrayNum = Array.Num();
 	Ar << ArrayNum;
-	Array.Reserve(ArrayNum);
 	Array.SetNum(ArrayNum);
 
 	for (int32 Idx = 0; Idx < ArrayNum; ++Idx)

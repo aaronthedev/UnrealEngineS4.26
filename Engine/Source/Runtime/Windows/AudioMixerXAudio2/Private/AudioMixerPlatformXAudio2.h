@@ -1,27 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "AudioMixer.h"
 #include "Windows/AllowWindowsPlatformTypes.h"
-#if PLATFORM_WINDOWS
-#include <xaudio2redist.h>
-#else
 #include <xaudio2.h>
-#endif
 #include "Windows/HideWindowsPlatformTypes.h"
-
-#if PLATFORM_WINDOWS
-#pragma comment(lib,"xaudio2_9redist.lib")
-#endif
-
-#ifndef XAUDIO_SUPPORTS_DEVICE_DETAILS
-    #define XAUDIO_SUPPORTS_DEVICE_DETAILS		1
-#endif	//XAUDIO_SUPPORTS_DEVICE_DETAILS
-
-#ifndef PLATFORM_NEEDS_SUSPEND_ON_BACKGROUND
-	#define PLATFORM_NEEDS_SUSPEND_ON_BACKGROUND	0
-#endif //PLATFORM_NEEDS_SUSPEND_ON_BACKGROUND
 
 // Any platform defines
 namespace Audio
@@ -100,28 +84,23 @@ namespace Audio
 
 	private:
 
+		const TCHAR* GetErrorString(HRESULT Result);
 		bool AllowDeviceSwap();
 
 		// Used to teardown and reinitialize XAudio2.
 		// This must be done to repopulate the playback device list in XAudio 2.7.
 		bool ResetXAudio2System();
 
-		void Suspend();
-		void Resume();
-
+		typedef TArray<long> TChannelTypeMap;
+		
 		// Handle to XAudio2DLL
-		FName DllName;
 		HMODULE XAudio2Dll;
-
-		FDelegateHandle DeactiveHandle;
-		FDelegateHandle ReactivateHandle;
-		FDelegateHandle EnteredBackgroundHandle;
-		FDelegateHandle EnteredForegroundHandle;
 
 		// Bool indicating that the default audio device changed
 		// And that we need to restart the audio device.
 		FThreadSafeBool bDeviceChanged;
 
+		TChannelTypeMap ChannelTypeMap;
 		IXAudio2* XAudio2System;
 		IXAudio2MasteringVoice* OutputAudioStreamMasteringVoice;
 		IXAudio2SourceVoice* OutputAudioStreamSourceVoice;
@@ -135,11 +114,10 @@ namespace Audio
 		// we check whether a new audio device was connected every second or so.
 		float TimeSinceNullDeviceWasLastChecked;
 
-		bool FirstBufferSubmitted{false};
-
+		uint32 bIsComInitialized : 1;
 		uint32 bIsInitialized : 1;
 		uint32 bIsDeviceOpen : 1;
-		uint32 bIsSuspended : 1;
+
 	};
 
 }

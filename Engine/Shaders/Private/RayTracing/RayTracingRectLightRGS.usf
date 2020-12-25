@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "../Common.ush"
 #include "../DeferredShadingCommon.ush"
@@ -274,7 +274,6 @@ RAY_TRACING_ENTRY_RAYGEN(RectLightRGS)
 			TLAS,
 			RayFlags,
 			InstanceInclusionMask,
-			PixelCoord,
 			Ray);
 
 		if (MinimalPayload.IsHit())

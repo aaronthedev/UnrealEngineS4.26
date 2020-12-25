@@ -143,7 +143,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDGEOM_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -155,7 +155,7 @@ private:
 
     // override SchemaBase virtuals.
     USDGEOM_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -168,11 +168,10 @@ public:
     /// 'widths' and 'primvars:widths' are both specified, the latter
     /// has precedence.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float[] widths` |
-    /// | C++ Type | VtArray<float> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->FloatArray |
+    /// \n  C++ Type: VtArray<float>
+    /// \n  Usd Type: SdfValueTypeNames->FloatArray
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDGEOM_API
     UsdAttribute GetWidthsAttr() const;
 
@@ -195,11 +194,10 @@ public:
     /// binary state on Id'd points without adding a separate 
     /// primvar.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `int64[] ids` |
-    /// | C++ Type | VtArray<int64_t> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Int64Array |
+    /// \n  C++ Type: VtArray<int64_t>
+    /// \n  Usd Type: SdfValueTypeNames->Int64Array
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDGEOM_API
     UsdAttribute GetIdsAttr() const;
 

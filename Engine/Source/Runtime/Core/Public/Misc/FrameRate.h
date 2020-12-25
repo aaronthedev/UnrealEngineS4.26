@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -164,7 +164,7 @@ inline double FFrameRate::AsDecimal() const
 inline double FFrameRate::AsSeconds(FFrameTime FrameTime) const
 {
 	const int64  IntegerPart  = FrameTime.GetFrame().Value * int64(Denominator);
-	const double FloatPart    = FrameTime.GetSubFrame()    * double(Denominator);
+	const double FloatPart    = FrameTime.GetSubFrame()    * Denominator;
 
 	return (double(IntegerPart) + FloatPart) / Numerator;
 }
@@ -173,14 +173,14 @@ inline double FFrameRate::AsSeconds(FFrameTime FrameTime) const
 
 inline FFrameTime FFrameRate::AsFrameTime(double TimeInSeconds) const
 {
-	// @todo: sequencer-timecode: proper large number integer multiplication/division before coercion to float ?
+	// @todo: sequencer-timecode: proper large number integer multiplication/division before coersion to float ?
 	const double       TimeAsFrame = (TimeInSeconds * Numerator) / Denominator;
 	const FFrameNumber FrameNumber = static_cast<int32>(FMath::FloorToDouble(TimeAsFrame));
 
-	float SubFrame = static_cast<float>(TimeAsFrame - FMath::FloorToDouble(TimeAsFrame));
-	if (SubFrame > 0.f)
+	double SubFrame = TimeAsFrame - FMath::FloorToDouble(TimeAsFrame);
+	if (SubFrame > 0 )
 	{
-		SubFrame = FMath::Min(SubFrame, FFrameTime::MaxSubframe);
+		SubFrame = FMath::Min(SubFrame, (double)FFrameTime::MaxSubframe);
 	}
 
 	return FFrameTime(FrameNumber, SubFrame);
@@ -188,7 +188,7 @@ inline FFrameTime FFrameRate::AsFrameTime(double TimeInSeconds) const
 
 inline FFrameNumber FFrameRate::AsFrameNumber(double TimeInSeconds) const
 {
-	// @todo: sequencer-timecode: proper large number integer multiplication/division before coercion to float ?
+	// @todo: sequencer-timecode: proper large number integer multiplication/division before coersion to float ?
 	const double       TimeAsFrame = (double(TimeInSeconds) * Numerator) / Denominator;
 	return static_cast<int32>(FMath::FloorToDouble(TimeAsFrame));
 }
@@ -261,30 +261,25 @@ inline FFrameTime ConvertFrameTime(FFrameTime SourceTime, FFrameRate SourceRate,
 	}
 	//We want NewTime =SourceTime * (DestinationRate/SourceRate);
 	//And want to limit conversions and keep int precision as much as possible
-
-	//@todo: These integers should not need the volatile keyword here, but adding it works around
-	//       a compiler bug that results in an uninitialized vector register being used
-	volatile int64 NewNumerator = static_cast<int64>(DestinationRate.Numerator) * SourceRate.Denominator;
-	volatile int64 NewDenominator = static_cast<int64>(DestinationRate.Denominator) * SourceRate.Numerator;
-
+	int64 NewNumerator = DestinationRate.Numerator * SourceRate.Denominator;
+	int64 NewDenominator = DestinationRate.Denominator * SourceRate.Numerator;
 	double NewNumerator_d = double(NewNumerator);
 	double NewDenominator_d = double(NewDenominator);
 	//Now the IntegerPart may have a Float Part, and then the FloatPart may have an IntegerPart,
 	//So we add the extra Float from the IntegerPart to the FloatPart and then add back any extra Integer to IntegerPart
 	int64  IntegerPart = ( (int64)(SourceTime.GetFrame().Value) * NewNumerator ) / NewDenominator;
-	const double IntegerFloatPart = ((double(SourceTime.GetFrame().Value) * double(NewNumerator)) / double(NewDenominator)) - double(IntegerPart);
+	const double IntegerFloatPart = ((double(SourceTime.GetFrame().Value) * NewNumerator) / NewDenominator) - double(IntegerPart);
 	const double FloatPart = ((SourceTime.GetSubFrame()    * NewNumerator_d) / NewDenominator_d) + IntegerFloatPart;
 	const double FloatPartFloored = FMath::FloorToDouble(FloatPart);
 	const int64 FloatAsInt = int64(FloatPartFloored);
 	IntegerPart += FloatAsInt;
-	float SubFrame = static_cast<float>(FloatPart - FloatPartFloored);
-	if (SubFrame > 0.f)
+	double SubFrame = FloatPart - FloatPartFloored;
+	if (SubFrame > 0)
 	{
-		SubFrame = FMath::Min(SubFrame, FFrameTime::MaxSubframe);
+		SubFrame = FMath::Min(SubFrame, 0.999999940);
 	}
 
-	IntegerPart = FMath::Clamp<int64>(IntegerPart,TNumericLimits<int32>::Min(),TNumericLimits<int32>::Max());
-	return FFrameTime(static_cast<int32>(IntegerPart), SubFrame);
+	return FFrameTime( (int32)IntegerPart, SubFrame);
 }
 
 inline FFrameTime FFrameRate::TransformTime(FFrameTime SourceTime, FFrameRate SourceRate, FFrameRate DestinationRate)

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "InAppPurchaseCallbackProxy.h"
 #include "Async/TaskGraphInterfaces.h"
@@ -28,7 +28,6 @@ void UInAppPurchaseCallbackProxy::Trigger(APlayerController* PlayerController, c
 	{
 		if (IOnlineSubsystem* const OnlineSub = IOnlineSubsystem::IsLoaded() ? IOnlineSubsystem::Get() : nullptr)
 		{
-			PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			IOnlineStorePtr StoreInterface = OnlineSub->GetStoreInterface();
 			if (StoreInterface.IsValid())
 			{
@@ -48,7 +47,6 @@ void UInAppPurchaseCallbackProxy::Trigger(APlayerController* PlayerController, c
 				TempState = EInAppPurchaseState::NotAllowed;
 				FFrame::KismetExecutionMessage(TEXT("UInAppPurchaseCallbackProxy::Trigger - In-App Purchases are not supported by Online Subsystem"), ELogVerbosity::Warning);
 			}
-			PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		}
 		else
 		{
@@ -81,9 +79,7 @@ void UInAppPurchaseCallbackProxy::OnInAppPurchaseComplete(EInAppPurchaseState::T
 		FSimpleDelegateGraphTask::CreateAndDispatchWhenReady(
 			FSimpleDelegateGraphTask::FDelegate::CreateLambda([=](){
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 				OnInAppPurchaseComplete_Delayed();
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 
 			}),
 			GET_STATID(STAT_FSimpleDelegateGraphTask_DelayInAppPurchaseComplete), 
@@ -127,13 +123,11 @@ void UInAppPurchaseCallbackProxy::RemoveDelegate()
 	{
 		if (IOnlineSubsystem* OnlineSub = IOnlineSubsystem::IsLoaded() ? IOnlineSubsystem::Get() : nullptr)
 		{
-			PRAGMA_DISABLE_DEPRECATION_WARNINGS
 			IOnlineStorePtr InAppPurchases = OnlineSub->GetStoreInterface();
 			if (InAppPurchases.IsValid())
 			{
 				InAppPurchases->ClearOnInAppPurchaseCompleteDelegate_Handle(InAppPurchaseCompleteDelegateHandle);
 			}
-			PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		}
 	}
 }
@@ -148,7 +142,6 @@ void UInAppPurchaseCallbackProxy::BeginDestroy()
 }
 
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 UInAppPurchaseCallbackProxy* UInAppPurchaseCallbackProxy::CreateProxyObjectForInAppPurchase(class APlayerController* PlayerController, const FInAppPurchaseProductRequest& ProductRequest)
 {
 	UInAppPurchaseCallbackProxy* Proxy = NewObject<UInAppPurchaseCallbackProxy>();
@@ -156,4 +149,3 @@ UInAppPurchaseCallbackProxy* UInAppPurchaseCallbackProxy::CreateProxyObjectForIn
 	Proxy->Trigger(PlayerController, ProductRequest);
 	return Proxy;
 }
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

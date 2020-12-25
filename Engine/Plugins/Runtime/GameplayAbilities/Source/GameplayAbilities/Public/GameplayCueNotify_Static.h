@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -51,9 +51,11 @@ class GAMEPLAYABILITIES_API UGameplayCueNotify_Static : public UObject
 	UFUNCTION(BlueprintNativeEvent, BlueprintPure, Category = "GameplayCueNotify")
 	bool OnRemove(AActor* MyTarget, const FGameplayCueParameters& Parameters) const;
 
-	/** Tag this notify is activated by */
 	UPROPERTY(EditDefaultsOnly, Category = GameplayCue, meta=(Categories="GameplayCue"))
 	FGameplayTag	GameplayCueTag;
+
+	UPROPERTY(EditAnywhere, Category="GameplayCue")
+	FGameplayTagReferenceHelper ReferenceHelper;
 
 	/** Mirrors GameplayCueTag in order to be asset registry searchable */
 	UPROPERTY(AssetRegistrySearchable)

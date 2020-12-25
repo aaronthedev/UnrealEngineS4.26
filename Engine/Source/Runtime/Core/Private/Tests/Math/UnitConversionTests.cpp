@@ -1,12 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreTypes.h"
 #include "Math/UnrealMathUtility.h"
 #include "Containers/UnrealString.h"
 #include "Misc/AutomationTest.h"
 #include "Math/UnitConversion.h"
-
-PRAGMA_DISABLE_UNSAFE_TYPECAST_WARNINGS
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -83,9 +81,6 @@ bool FUnitUnitTests::RunTest(const FString& Parameters)
 		{ 0.75,		18,			1e-6,	EUnit::Days,				EUnit::Hours,				},
 		{ 3,		0.25,		1e-6,	EUnit::Months,				EUnit::Years,				},
 		{ 0.5,		6,			1e-6,	EUnit::Years,				EUnit::Months,				},
-
-		{ 22.5,		0.225,		1e-6,	EUnit::Percentage,			EUnit::Multiplier,			},
-		{ 22.5,		2250,		0.f,	EUnit::Multiplier,			EUnit::Percentage,			},
 
 	};
 
@@ -165,5 +160,3 @@ bool FParsingUnitTests::RunTest(const FString& Parameters)
 }
 
 #endif //WITH_DEV_AUTOMATION_TESTS
-
-PRAGMA_ENABLE_UNSAFE_TYPECAST_WARNINGS

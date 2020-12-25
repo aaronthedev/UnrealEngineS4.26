@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -204,10 +204,7 @@ FORCEINLINE VectorRegisterInt MakeVectorRegisterInt(int32 X, int32 Y, int32 Z, i
  * @param Vec	Vector to store
  * @param Ptr	Aligned memory pointer
  */
-FORCEINLINE void VectorStoreAligned(const VectorRegister& Vec, void* Ptr)
-{
-	FMemory::Memcpy(Ptr, &Vec, 16);
-}
+#define VectorStoreAligned( Vec, Ptr )	FMemory::Memcpy( Ptr, &(Vec), 16 )
 
 /**
  * Performs non-temporal store of a vector to aligned memory without polluting the caches

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 SkeletalMeshUpdate.h: Helpers to stream in and out skeletal mesh LODs.
@@ -8,7 +8,7 @@ SkeletalMeshUpdate.h: Helpers to stream in and out skeletal mesh LODs.
 
 #include "CoreMinimal.h"
 #include "Engine/SkeletalMesh.h"
-#include "Serialization/BulkData.h"
+#include "Async/AsyncFileHandle.h"
 
 /**
 * A context used to update or proceed with the next update step.
@@ -19,9 +19,14 @@ struct FSkelMeshUpdateContext
 {
 	typedef int32 EThreadType;
 
-	FSkelMeshUpdateContext(const USkeletalMesh* InMesh, EThreadType InCurrentThread);
+	FSkelMeshUpdateContext(USkeletalMesh* InMesh, EThreadType InCurrentThread);
 
-	FSkelMeshUpdateContext(const UStreamableRenderAsset* InMesh, EThreadType InCurrentThread);
+	FSkelMeshUpdateContext(UStreamableRenderAsset* InMesh, EThreadType InCurrentThread);
+
+	UStreamableRenderAsset* GetRenderAsset() const
+	{
+		return Mesh;
+	}
 
 	EThreadType GetCurrentThread() const
 	{
@@ -29,12 +34,9 @@ struct FSkelMeshUpdateContext
 	}
 
 	/** The mesh to update, this must be the same one as the one used when creating the FSkeletalMeshUpdate object. */
-	const USkeletalMesh* Mesh;
+	USkeletalMesh* Mesh;
 	/** The current render data of this mesh. */
 	FSkeletalMeshRenderData* RenderData;
-	/** The array view of streamable LODs from the asset. Takes into account FStreamableRenderResourceState::AssetLODBias and FStreamableRenderResourceState::MaxNumLODs. */
-	TArrayView<FSkeletalMeshLODRenderData*> LODResourcesView;
-
 	/** The thread on which the context was created. */
 	EThreadType CurrentThread;
 };
@@ -49,7 +51,7 @@ extern template class TRenderAssetUpdate<FSkelMeshUpdateContext>;
 class FSkeletalMeshUpdate : public TRenderAssetUpdate<FSkelMeshUpdateContext>
 {
 public:
-	FSkeletalMeshUpdate(const USkeletalMesh* InMesh);
+	FSkeletalMeshUpdate(USkeletalMesh* InMesh, int32 InRequestedMips);
 
 	virtual ~FSkeletalMeshUpdate() {}
 
@@ -57,12 +59,21 @@ public:
 	{
 		TRenderAssetUpdate<FSkelMeshUpdateContext>::Abort();
 	}
+
+#if WITH_EDITOR
+	/** Returns whether DDC of this mesh needs to be regenerated.  */
+	virtual bool DDCIsInvalid() const { return false; }
+#endif
+
+protected:
+	/** Cached index of current first LOD that will be replaced by PendingFirstMip */
+	int32 CurrentFirstLODIdx;
 };
 
 class FSkeletalMeshStreamIn : public FSkeletalMeshUpdate
 {
 public:
-	FSkeletalMeshStreamIn(const USkeletalMesh* InMesh);
+	FSkeletalMeshStreamIn(USkeletalMesh* InMesh, int32 InRequestedMips);
 
 	virtual ~FSkeletalMeshStreamIn();
 
@@ -74,14 +85,14 @@ protected:
 		FVertexBufferRHIRef TexCoordVertexBuffer;
 		FVertexBufferRHIRef PositionVertexBuffer;
 		FVertexBufferRHIRef ColorVertexBuffer;
-		FSkinWeightRHIInfo SkinWeightVertexBuffer;
+		FVertexBufferRHIRef SkinWeightVertexBuffer;
 		FVertexBufferRHIRef ClothVertexBuffer;
 		FIndexBufferRHIRef IndexBuffer;
 		FIndexBufferRHIRef AdjacencyIndexBuffer;
-		TArray<TPair<FName, FSkinWeightRHIInfo>> AltSkinWeightVertexBuffers;
+		TArray<TPair<FName, FVertexBufferRHIRef>> AltSkinWeightVertexBuffers;
 
-		void CreateFromCPUData_RenderThread(FSkeletalMeshLODRenderData& LODResource);
-		void CreateFromCPUData_Async(FSkeletalMeshLODRenderData& LODResource);
+		void CreateFromCPUData_RenderThread(USkeletalMesh* Mesh, FSkeletalMeshLODRenderData& LODResource);
+		void CreateFromCPUData_Async(USkeletalMesh* Mesh, FSkeletalMeshLODRenderData& LODResource);
 
 		void SafeRelease();
 
@@ -116,33 +127,26 @@ private:
 class FSkeletalMeshStreamOut : public FSkeletalMeshUpdate
 {
 public:
-	FSkeletalMeshStreamOut(const USkeletalMesh* InMesh);
+	FSkeletalMeshStreamOut(USkeletalMesh* InMesh, int32 InRequestedMips);
 
 	virtual ~FSkeletalMeshStreamOut() {}
 
 private:
+	void DoConditionalMarkComponentsDirty(const FContext& Context);
 
-	int32 NumReferenceChecks = 0;
-	uint32 PreviousNumberOfExternalReferences = 0;
+	/** Release RHI buffers and update SRVs */
+	void DoReleaseBuffers(const FContext& Context);
 
+	/** */
+	void DoCancel(const FContext& Context);
 
-	/** Notify components that the LOD is being streamed out so that they can release references. */
-	void ConditionalMarkComponentsDirty(const FContext& Context);
-
-	/** Wait for all references to be released. */
-	void WaitForReferences(const FContext& Context);
-
-	/** Release RHI buffers and update SRVs. */
-	void ReleaseBuffers(const FContext& Context);
-
-	/** Cancel the pending mip change. */
-	void Cancel(const FContext& Context);
+	uint32 StartFrameNumber;
 };
 
 class FSkeletalMeshStreamIn_IO : public FSkeletalMeshStreamIn
 {
 public:
-	FSkeletalMeshStreamIn_IO(const USkeletalMesh* InMesh, bool bHighPrio);
+	FSkeletalMeshStreamIn_IO(USkeletalMesh* InMesh, int32 InRequestedMips, bool bHighPrio);
 
 	virtual ~FSkeletalMeshStreamIn_IO() {}
 
@@ -164,46 +168,40 @@ protected:
 		}
 
 	private:
-		TRefCountPtr<FSkeletalMeshStreamIn_IO> PendingUpdate;
+		FSkeletalMeshStreamIn_IO* PendingUpdate;
 	};
 
 	typedef FAutoDeleteAsyncTask<FCancelIORequestsTask> FAsyncCancelIORequestsTask;
 	friend class FCancelIORequestsTask;
 
+	/** Figure out the full name of the .bulk file */
+	FString GetIOFilename(const FContext& Context);
+
 	/** Set a callback called when IORequest is completed or cancelled */
 	void SetAsyncFileCallback(const FContext& Context);
 
 	/** Create a new async IO request to read in LOD data */
-	void SetIORequest(const FContext& Context);
+	void SetIORequest(const FContext& Context, const FString& IOFilename);
 
 	/** Release IORequest and IOFileHandle. IORequest will be cancelled if still inflight */
 	void ClearIORequest(const FContext& Context);
 
-	/** Report IO errors if any. */
-	void ReportIOError(const FContext& Context);
-
 	/** Serialize data of new LODs to corresponding FStaticMeshLODResources */
 	void SerializeLODData(const FContext& Context);
-
-	/** Cancel and report IO error */
-	void Cancel(const FContext& Context);
 
 	/** Called by FAsyncCancelIORequestsTask to cancel inflight IO request if any */
 	void CancelIORequest();
 
-	class IBulkDataIORequest* IORequest;
-	FBulkDataIORequestCallBack AsyncFileCallback;
+	struct FBulkDataIORequest* IORequest;
+	FAsyncFileCallBack AsyncFileCallback;
 	bool bHighPrioIORequest;
-
-	// Whether an IO error was detected (when files do not exists).
-	bool bFailedOnIOError = false;
 };
 
 template <bool bRenderThread>
 class TSkeletalMeshStreamIn_IO : public FSkeletalMeshStreamIn_IO
 {
 public:
-	TSkeletalMeshStreamIn_IO(const USkeletalMesh* InMesh, bool bHighPrio);
+	TSkeletalMeshStreamIn_IO(USkeletalMesh* InMesh, int32 InRequestedMips, bool bHighPrio);
 
 	virtual ~TSkeletalMeshStreamIn_IO() {}
 
@@ -224,19 +222,23 @@ typedef TSkeletalMeshStreamIn_IO<false> FSkeletalMeshStreamIn_IO_Async;
 class FSkeletalMeshStreamIn_DDC : public FSkeletalMeshStreamIn
 {
 public:
-	FSkeletalMeshStreamIn_DDC(const USkeletalMesh* InMesh);
+	FSkeletalMeshStreamIn_DDC(USkeletalMesh* InMesh, int32 InRequestedMips);
 
 	virtual ~FSkeletalMeshStreamIn_DDC() {}
 
+	virtual bool DDCIsInvalid() const override { return bDerivedDataInvalid; }
+
 protected:
 	void LoadNewLODsFromDDC(const FContext& Context);
+
+	bool bDerivedDataInvalid;
 };
 
 template <bool bRenderThread>
 class TSkeletalMeshStreamIn_DDC : public FSkeletalMeshStreamIn_DDC
 {
 public:
-	TSkeletalMeshStreamIn_DDC(const USkeletalMesh* InMesh);
+	TSkeletalMeshStreamIn_DDC(USkeletalMesh* InMesh, int32 InRequestedMips);
 
 	virtual ~TSkeletalMeshStreamIn_DDC() {}
 

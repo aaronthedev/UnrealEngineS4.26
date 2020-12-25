@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ParameterizeMeshTool.h"
 #include "InteractiveToolManager.h"
@@ -6,7 +6,8 @@
 
 #include "DynamicMesh3.h"
 #include "DynamicMeshToMeshDescription.h"
-#include "FaceGroupUtil.h"
+
+
 
 #include "SimpleDynamicMeshComponent.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -40,16 +41,18 @@ UInteractiveTool* UParameterizeMeshToolBuilder::BuildTool(const FToolBuilderStat
 	NewTool->SetSelection(MakeComponentTarget(MeshComponent));
 	NewTool->SetWorld(SceneState.World);
 	NewTool->SetAssetAPI(AssetAPI);
-	NewTool->SetUseAutoGlobalParameterizationMode(bDoAutomaticGlobalUnwrap);
 
 	return NewTool;
 }
 
+
 /*
  * Tool
  */
+
 UParameterizeMeshTool::UParameterizeMeshTool()
 {
+	ChartStretch = 0.11f;
 }
 
 void UParameterizeMeshTool::SetWorld(UWorld* World)
@@ -62,15 +65,13 @@ void UParameterizeMeshTool::SetAssetAPI(IToolsContextAssetAPI* AssetAPIIn)
 	this->AssetAPI = AssetAPIIn;
 }
 
-void UParameterizeMeshTool::SetUseAutoGlobalParameterizationMode(bool bEnable)
-{
-	bDoAutomaticGlobalUnwrap = bEnable;
-}
-
-
 void UParameterizeMeshTool::Setup()
 {
 	UInteractiveTool::Setup();
+
+	// Deep copy of input mesh to be shared with the UV generation tool.
+	InputMesh = MakeShared<FMeshDescription>(*ComponentTarget->GetMesh());
+
 
 	// Copy existing material if there is one	
 	DefaultMaterial = ComponentTarget->GetMaterial(0);
@@ -79,103 +80,71 @@ void UParameterizeMeshTool::Setup()
 		DefaultMaterial = LoadObject<UMaterial>(nullptr, TEXT("/Engine/EngineMaterials/DefaultMaterial"));  
 	}
 
+	
+
 	// hide input StaticMeshComponent
 	ComponentTarget->SetOwnerVisibility(false);
 
+	// initialize our properties
+	ToolPropertyObjects.Add(this);
+
+	
 	// Construct the preview object and set the material on it
 	Preview = NewObject<UMeshOpPreviewWithBackgroundCompute>(this, "Preview");
 	Preview->Setup(this->TargetWorld, this);
-	Preview->PreviewMesh->SetTangentsMode(EDynamicMeshTangentCalcType::AutoCalculated);
-
-	Preview->PreviewMesh->InitializeMesh(ComponentTarget->GetMesh());
 
 	// Initialize the preview mesh with a copy of the source mesh.
-	bool bHasGroups = false;
 	{
-		InputMesh = MakeShared<FDynamicMesh3>( * Preview->PreviewMesh->GetMesh() );
+		FDynamicMesh3 Mesh;
 		FMeshDescriptionToDynamicMesh Converter;
-		bHasGroups = FaceGroupUtil::HasMultipleGroups(*InputMesh);
+		Converter.bPrintDebugMessages = false;
+		Converter.Convert(InputMesh.Get(), Mesh);
 
-		FComponentMaterialSet MaterialSet;
-		ComponentTarget->GetMaterialSet(MaterialSet);
-		Preview->ConfigureMaterials(MaterialSet.Materials,
-			ToolSetupUtil::GetDefaultWorkingMaterial(GetToolManager())
-		);
-
+		Preview->PreviewMesh->UpdatePreview(&Mesh);
 		Preview->PreviewMesh->SetTransform(ComponentTarget->GetWorldTransform());
 	}
-
-	if (bDoAutomaticGlobalUnwrap == false && bHasGroups == false)
-	{
-		GetToolManager()->DisplayMessage(
-			LOCTEXT("NoGroupsWarning", "This mesh has no PolyGroups!"),
-			EToolMessageLevel::UserWarning);
-		//bDoAutomaticGlobalUnwrap = true;
-	}
-
-	// initialize our properties
-	Settings = NewObject<UParameterizeMeshToolProperties>(this);
-	Settings->RestoreProperties(this);
-	Settings->bIsGlobalMode = bDoAutomaticGlobalUnwrap;
-	AddToolPropertySource(Settings);
+	Preview->ConfigureMaterials(
+		ToolSetupUtil::GetDefaultMaterial(GetToolManager(), DefaultMaterial),
+		ToolSetupUtil::GetDefaultWorkingMaterial(GetToolManager())
+	);
 
 
 	MaterialSettings = NewObject<UExistingMeshMaterialProperties>(this);
-	MaterialSettings->RestoreProperties(this);
+	MaterialSettings->Setup();
 	AddToolPropertySource(MaterialSettings);
-	// force update
-	MaterialSettings->UpdateMaterials();
-	Preview->OverrideMaterial = MaterialSettings->GetActiveOverrideMaterial();
 
 
 	Preview->SetVisibility(true);
 	Preview->InvalidateResult();    // start compute
-
-
-	if (bDoAutomaticGlobalUnwrap)
-	{
-		GetToolManager()->DisplayMessage(
-			LOCTEXT("OnStartTool_Global", "Automatically partition the selected Mesh into UV islands, flatten, and pack into a single UV chart"),
-			EToolMessageLevel::UserNotification);
-	}
-	else
-	{
-		GetToolManager()->DisplayMessage(
-			LOCTEXT("OnStartTool_Regions", "Generate UVs for polygroups or existing UV charts of the Mesh using various strategies. Does not calculate layout/packing."),
-			EToolMessageLevel::UserNotification);
-	}
 }
 
-void UParameterizeMeshTool::OnPropertyModified(UObject* PropertySet, FProperty* Property)
+void UParameterizeMeshTool::OnPropertyModified(UObject* PropertySet, UProperty* Property)
 {
 	if (PropertySet == MaterialSettings)
 	{
 		MaterialSettings->UpdateMaterials();
-		Preview->OverrideMaterial = MaterialSettings->GetActiveOverrideMaterial();
-	}
-	if (PropertySet == Settings)
-	{
-		// One of the UV generation properties must have changed.  Dirty the result to force a recompute
-		Preview->InvalidateResult();
+		MaterialSettings->SetMaterialIfChanged(ComponentTarget->GetMaterial(0), Preview->StandardMaterial, [this](UMaterialInterface* Material)
+		{
+			Preview->ConfigureMaterials(ToolSetupUtil::GetDefaultMaterial(GetToolManager(), Material), Preview->WorkingMaterial);
+		});
 	}
 }
 
 
 void UParameterizeMeshTool::Shutdown(EToolShutdownType ShutdownType)
 {
-	Settings->SaveProperties(this);
-	MaterialSettings->SaveProperties(this);
-	FDynamicMeshOpResult Result = Preview->Shutdown();
+
+	TUniquePtr<FDynamicMeshOpResult> Result = Preview->Shutdown();
 	if (ShutdownType == EToolShutdownType::Accept)
 	{
-		FDynamicMesh3* DynamicMeshResult = Result.Mesh.Get();
+		FDynamicMesh3* DynamicMeshResult = Result->Mesh.Get();
 		check(DynamicMeshResult != nullptr);
 		GetToolManager()->BeginUndoTransaction(LOCTEXT("ParameterizeMesh", "Parameterize Mesh"));
 
-		ComponentTarget->CommitMesh([DynamicMeshResult](const FPrimitiveComponentTarget::FCommitParams& CommitParams)
+		ComponentTarget->CommitMesh([DynamicMeshResult](FMeshDescription* MeshDescription)
 		{
 			FDynamicMeshToMeshDescription Converter;
-			Converter.Convert(DynamicMeshResult, *CommitParams.MeshDescription);
+			Converter.Convert(DynamicMeshResult, *MeshDescription);
 		});
 		GetToolManager()->EndUndoTransaction();
 	}
@@ -185,56 +154,43 @@ void UParameterizeMeshTool::Shutdown(EToolShutdownType ShutdownType)
 
 }
 
-void UParameterizeMeshTool::OnTick(float DeltaTime)
+void UParameterizeMeshTool::Tick(float DeltaTime)
 {
 	Preview->Tick(DeltaTime);
 }
 
-bool UParameterizeMeshTool::CanAccept() const
+void UParameterizeMeshTool::Render(IToolsContextRenderAPI* RenderAPI)
 {
-	return Super::CanAccept() && Preview->HaveValidResult();
 }
 
-TUniquePtr<FDynamicMeshOperator> UParameterizeMeshTool::MakeNewOperator()
+bool UParameterizeMeshTool::HasAccept() const
 {
-	FAxisAlignedBox3d MeshBounds = Preview->PreviewMesh->GetMesh()->GetBounds();
-	TUniquePtr<FParameterizeMeshOp> ParameterizeMeshOp = MakeUnique<FParameterizeMeshOp>();
-	ParameterizeMeshOp->Stretch   = Settings->ChartStretch;
-	ParameterizeMeshOp->NumCharts = 0;
-	ParameterizeMeshOp->InputMesh = InputMesh;
-	
-	if (bDoAutomaticGlobalUnwrap)
-	{
-		ParameterizeMeshOp->IslandMode = EParamOpIslandMode::Auto;
-		ParameterizeMeshOp->UnwrapType = EParamOpUnwrapType::MinStretch;
-	}
-	else
-	{
-		ParameterizeMeshOp->IslandMode = (EParamOpIslandMode)(int)Settings->IslandMode;
-		ParameterizeMeshOp->UnwrapType = (EParamOpUnwrapType)(int)Settings->UnwrapType;
-	}
+	return true;
+}
 
-	switch (Settings->UVScaleMode)
-	{
-		case EParameterizeMeshToolUVScaleMode::NoScaling:
-			ParameterizeMeshOp->bNormalizeAreas = false;
-			ParameterizeMeshOp->AreaScaling = 1.0;
-			break;
-		case EParameterizeMeshToolUVScaleMode::NormalizeToBounds:
-			ParameterizeMeshOp->bNormalizeAreas = true;
-			ParameterizeMeshOp->AreaScaling = Settings->UVScale / MeshBounds.MaxDim();
-			break;
-		case EParameterizeMeshToolUVScaleMode::NormalizeToWorld:
-			ParameterizeMeshOp->bNormalizeAreas = true;
-			ParameterizeMeshOp->AreaScaling = Settings->UVScale;
-			break;
-	}
+bool UParameterizeMeshTool::CanAccept() const
+{
+	return Preview->HaveValidResult();
+}
+
+void UParameterizeMeshTool::PostEditChangeProperty(FPropertyChangedEvent& PropertyChangedEvent)
+{
+	// One of the UV generation properties must have changed.  Dirty the result to force a recompute
+	Preview->InvalidateResult();
+}
+
+TSharedPtr<FDynamicMeshOperator> UParameterizeMeshTool::MakeNewOperator()
+{
+	TSharedPtr<FParameterizeMeshOp> ParamertizeMeshOp = MakeShared<FParameterizeMeshOp>();
+	ParamertizeMeshOp->Stretch   = ChartStretch;
+	ParamertizeMeshOp->NumCharts = 0;
+	ParamertizeMeshOp->InputMesh = InputMesh;
 
 	const FTransform XForm = ComponentTarget->GetWorldTransform();
 	FTransform3d XForm3d(XForm);
-	ParameterizeMeshOp->SetTransform(XForm3d);
+	ParamertizeMeshOp->SetTransform(XForm3d);
 
-	return ParameterizeMeshOp;
+	return ParamertizeMeshOp;
 }
 
 

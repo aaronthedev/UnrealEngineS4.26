@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -18,7 +18,7 @@ CORE_API void AnsiFree(void* Ptr);
 //
 // ANSI C memory allocator.
 //
-class FMallocAnsi final
+class FMallocAnsi
 	: public FMalloc
 {
 	
@@ -31,11 +31,7 @@ public:
 	// FMalloc interface.
 	virtual void* Malloc( SIZE_T Size, uint32 Alignment ) override;
 
-	virtual void* TryMalloc(SIZE_T Size, uint32 Alignment) override;
-
 	virtual void* Realloc( void* Ptr, SIZE_T NewSize, uint32 Alignment ) override;
-
-	virtual void* TryRealloc(void* Ptr, SIZE_T NewSize, uint32 Alignment) override;
 
 	virtual void Free( void* Ptr ) override;
 

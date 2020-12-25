@@ -1,21 +1,20 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PersonaEditorModeManager.h"
 #include "IPersonaEditMode.h"
 
 bool FPersonaEditorModeManager::GetCameraTarget(FSphere& OutTarget) const
 {
-	for (UEdMode* Mode : ActiveScriptableModes)
+	// Note: assumes all of our modes are IPersonaEditMode!
+	for(int32 ModeIndex = 0; ModeIndex < ActiveModes.Num(); ++ModeIndex)
 	{
-		FEdMode* LegacyMode = Mode->AsLegacyMode();
-		if (IPersonaEditMode* EditMode = static_cast<IPersonaEditMode*>(LegacyMode))
+		TSharedPtr<IPersonaEditMode> EditMode = StaticCastSharedPtr<IPersonaEditMode>(ActiveModes[ModeIndex]);
+
+		FSphere Target;
+		if (EditMode->GetCameraTarget(Target))
 		{
-			FSphere Target;
-			if (EditMode->GetCameraTarget(Target))
-			{
-				OutTarget = Target;
-				return true;
-			}
+			OutTarget = Target;
+			return true;
 		}
 	}
 
@@ -24,12 +23,10 @@ bool FPersonaEditorModeManager::GetCameraTarget(FSphere& OutTarget) const
 
 void FPersonaEditorModeManager::GetOnScreenDebugInfo(TArray<FText>& OutDebugText) const
 {
-	for (UEdMode* Mode : ActiveScriptableModes)
+	// Note: assumes all of our modes are IPersonaEditMode!
+	for (int32 ModeIndex = 0; ModeIndex < ActiveModes.Num(); ++ModeIndex)
 	{
-		FEdMode* LegacyMode = Mode->AsLegacyMode();
-		if (IPersonaEditMode* EditMode = static_cast<IPersonaEditMode*>(LegacyMode))
-		{
-			EditMode->GetOnScreenDebugInfo(OutDebugText);
-		}
+		TSharedPtr<IPersonaEditMode> EditMode = StaticCastSharedPtr<IPersonaEditMode>(ActiveModes[ModeIndex]);
+		EditMode->GetOnScreenDebugInfo(OutDebugText);
 	}
 }

@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_SDF_PROPERTY_SPEC_H
-#define PXR_USD_SDF_PROPERTY_SPEC_H
+#ifndef SDF_PROPERTYSPEC_H
+#define SDF_PROPERTYSPEC_H
 
 /// \file sdf/propertySpec.h
 
@@ -58,7 +58,7 @@ PXR_NAMESPACE_OPEN_SCOPE
 ///
 class SdfPropertySpec : public SdfSpec
 {
-    SDF_DECLARE_ABSTRACT_SPEC(SdfPropertySpec, SdfSpec);
+    SDF_DECLARE_ABSTRACT_SPEC(SdfSchema, SdfPropertySpec, SdfSpec);
 
 public:
     ///
@@ -370,9 +370,9 @@ public:
     bool HasOnlyRequiredFields() const;
 
 private:
-    inline TfToken _GetAttributeValueTypeName() const;
+    TfToken _GetAttributeValueTypeName() const;
 };
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif  // #ifndef PXR_USD_SDF_PROPERTY_SPEC_H
+#endif  // #ifndef SDF_PROPERTYSPEC_H

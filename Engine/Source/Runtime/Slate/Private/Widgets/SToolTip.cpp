@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Widgets/SToolTip.h"
 #include "HAL/IConsoleManager.h"
@@ -81,11 +81,6 @@ void SToolTip::SetContentWidget(const TSharedRef<SWidget>& InContentWidget)
 	}
 }
 
-void SToolTip::ResetContentWidget()
-{
-	WidgetContent.Reset();
-	SetContentWidget(SNullWidget::NullWidget);
-}
 
 bool SToolTip::IsEmpty() const
 {

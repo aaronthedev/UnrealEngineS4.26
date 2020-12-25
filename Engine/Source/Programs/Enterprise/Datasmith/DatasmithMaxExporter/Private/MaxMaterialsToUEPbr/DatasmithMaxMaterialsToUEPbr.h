@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -53,7 +53,6 @@ public:
 
 		bool bCanBake = true;
 		bool bIsMonoChannel = false; // true if we are parsing a mono channel (ie: opacity)
-		bool bTreatNormalMapsAsLinear = false; // Corona has an option that treats all normal map inputs as linear
 
 		EDatasmithTextureMode DefaultTextureMode = EDatasmithTextureMode::Diffuse;
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ConcertLocalEndpoint.h"
 #include "ConcertLogGlobal.h"
@@ -9,7 +9,6 @@
 #include "HAL/Runnable.h"
 #include "HAL/RunnableThread.h"
 #include "Containers/Ticker.h"
-#include "Stats/Stats.h"
 
 class FConcertLocalEndpointKeepAliveRunnable : public FRunnable
 {
@@ -290,8 +289,6 @@ FConcertRemoteEndpointPtr FConcertLocalEndpoint::FindRemoteEndpoint(const FMessa
 
 bool FConcertLocalEndpoint::HandleTick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FConcertLocalEndpoint_HandleTick2);
-
 	const FDateTime UtcNow = FDateTime::UtcNow();
 
 	// Flush the task graph to grab any pending messages
@@ -738,9 +735,8 @@ void FConcertLocalEndpoint::SendKeepAlives(const FDateTime& UtcNow)
 		FConcertRemoteEndpointPtr RemoteEndpoint = RemoteEndpointPair.Value;
 		check(RemoteEndpoint.IsValid());
 
-		// if no message have been sent to this endpoint for some time, send a keep alive to ensure the UDP nodes re-registered if MessageBus decided to unregister them.
-		FTimespan KeepAliveSpan = RemoteEndpoint->GetEndpointTimeoutSpan().IsZero() ? FTimespan(0, 0, 10) : RemoteEndpoint->GetEndpointTimeoutSpan() * 0.25f;
-		if (RemoteEndpoint->GetLastSentMessageTime() + KeepAliveSpan <= UtcNow)
+		// if no message have been sent to this endpoint for a quarter of the timeout span, send a keep alive
+		if (!RemoteEndpoint->GetEndpointTimeoutSpan().IsZero() && RemoteEndpoint->GetLastSentMessageTime() + (RemoteEndpoint->GetEndpointTimeoutSpan() * 0.25f) <= UtcNow)
 		{
 			SendKeepAlive(RemoteEndpoint.ToSharedRef(), UtcNow);
 		}

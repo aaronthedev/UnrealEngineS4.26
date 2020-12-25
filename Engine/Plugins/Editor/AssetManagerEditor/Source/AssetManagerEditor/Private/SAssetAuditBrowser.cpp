@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "SAssetAuditBrowser.h"
@@ -276,7 +276,6 @@ void SAssetAuditBrowser::Construct(const FArguments& InArgs)
 	Config.bAddFilterUI = true;
 	Config.bShowPathInColumnView = true;
 	Config.bSortByPathInColumnView = true;
-	Config.bCanShowClasses = false;
 
 	// Configure response to click and double-click
 	Config.OnAssetDoubleClicked = FOnAssetDoubleClicked::CreateSP(this, &SAssetAuditBrowser::OnRequestOpenAsset);

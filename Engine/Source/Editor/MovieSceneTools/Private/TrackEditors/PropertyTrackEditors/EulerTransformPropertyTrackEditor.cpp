@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TrackEditors/PropertyTrackEditors/EulerTransformPropertyTrackEditor.h"
 #include "MatineeImportTools.h"
@@ -7,10 +7,7 @@
 #include "SequencerUtilities.h"
 #include "TransformPropertySection.h"
 #include "MovieSceneToolHelpers.h"
-#include "IKeyArea.h"
-
-#include "MovieSceneTracksComponentTypes.h"
-#include "Systems/MovieScenePropertyInstantiator.h"
+#include "Evaluation/MovieScenePropertyTemplate.h"
 
 TSharedRef<ISequencerTrackEditor> FEulerTransformPropertyTrackEditor::CreateTrackEditor( TSharedRef<ISequencer> InSequencer )
 {
@@ -51,111 +48,7 @@ TSharedPtr<SWidget> FEulerTransformPropertyTrackEditor::BuildOutlinerEditWidget(
 }
 
 
-void FEulerTransformPropertyTrackEditor::ProcessKeyOperation(FFrameNumber InKeyTime, const UE::Sequencer::FKeyOperation& Operation, ISequencer& InSequencer)
-{
-	using namespace UE::Sequencer;
-
-	auto Iterator = [this, InKeyTime, &Operation, &InSequencer](UMovieSceneTrack* Track, TArrayView<const UE::Sequencer::FKeySectionOperation> Operations)
-	{
-		FGuid ObjectBinding = Track->FindObjectBindingGuid();
-		if (ObjectBinding.IsValid())
-		{
-			for (TWeakObjectPtr<> WeakObject : InSequencer.FindBoundObjects(ObjectBinding, InSequencer.GetFocusedTemplateID()))
-			{
-				if (UObject* Object = WeakObject.Get())
-				{
-					this->ProcessKeyOperation(Object, Operations, InSequencer, InKeyTime);
-					return;
-				}
-			}
-		}
-
-		// Default behavior
-		FKeyOperation::ApplyOperations(InKeyTime, Operations, ObjectBinding, InSequencer);
-	};
-
-	Operation.IterateOperations(Iterator);
-}
-
-
-void FEulerTransformPropertyTrackEditor::ProcessKeyOperation(UObject* ObjectToKey, TArrayView<const UE::Sequencer::FKeySectionOperation> SectionsToKey, ISequencer& InSequencer, FFrameNumber KeyTime)
-{
-	using namespace UE::MovieScene;
-	using namespace UE::Sequencer;
-
-	FMovieSceneSequenceID SequenceID = GetSequencer()->GetFocusedTemplateID();
-	const FMovieSceneRootEvaluationTemplateInstance& EvaluationTemplate = GetSequencer()->GetEvaluationTemplate();
-
-	UMovieSceneEulerTransformTrack* Track = nullptr;
-
-	TArray<FMovieSceneEntityID> EntitiesPerSection, ValidEntities;
-	for (const FKeySectionOperation& Operation : SectionsToKey)
-	{
-		FMovieSceneEntityID EntityID = EvaluationTemplate.FindEntityFromOwner(Operation.Section->GetSectionObject(), 0, SequenceID);
-
-		if (!Track)
-		{
-			Track = CastChecked<UMovieSceneEulerTransformTrack>(Operation.Section->GetSectionObject()->GetOuter());
-		}
-
-		EntitiesPerSection.Add(EntityID);
-		if (EntityID)
-		{
-			ValidEntities.Add(EntityID);
-		}
-	}
-
-	if (!ensure(Track))
-	{
-		return;
-	}
-
-	UMovieSceneEntitySystemLinker*         EntityLinker = EvaluationTemplate.GetEntitySystemLinker();
-	UMovieScenePropertyInstantiatorSystem* System = EntityLinker ? EntityLinker->FindSystem<UMovieScenePropertyInstantiatorSystem>() : nullptr;
-
-	if (System && ValidEntities.Num() != 0)
-	{
-		FDecompositionQuery Query;
-		Query.Entities = ValidEntities;
-		Query.Object   = ObjectToKey;
-
-		TGuardValue<FEntityManager*> DebugVizGuard(GEntityManagerForDebuggingVisualizers, &EntityLinker->EntityManager);
-
-		FIntermediate3DTransform CurrentValue;
-		ConvertOperationalProperty(Track->GetCurrentValue<FEulerTransform>(ObjectToKey).Get(FEulerTransform::Identity), CurrentValue);
-		TRecompositionResult<FIntermediate3DTransform> TransformData = System->RecomposeBlendOperational(FMovieSceneTracksComponentTypes::Get()->EulerTransform, Query, CurrentValue);
-
-		for (int32 Index = 0; Index < SectionsToKey.Num(); ++Index)
-		{
-			FMovieSceneEntityID EntityID = EntitiesPerSection[Index];
-			if (!EntityID)
-			{
-				continue;
-			}
-
-			const FIntermediate3DTransform& RecomposedTransform = TransformData.Values[Index];
-
-			for (TSharedPtr<IKeyArea> KeyArea : SectionsToKey[Index].KeyAreas)
-			{
-				FMovieSceneChannelHandle Handle  = KeyArea->GetChannel();
-				if (Handle.GetChannelTypeName() == FMovieSceneFloatChannel::StaticStruct()->GetFName() && Handle.GetChannelIndex() < 9)
-				{
-					FMovieSceneFloatChannel* Channel = static_cast<FMovieSceneFloatChannel*>(Handle.Get());
-
-					float Value = RecomposedTransform[Handle.GetChannelIndex()];
-					AddKeyToChannel(Channel, KeyTime, Value, InSequencer.GetKeyInterpolation());
-				}
-				else
-				{
-					KeyArea->AddOrUpdateKey(KeyTime, FGuid(), InSequencer);
-				}
-			}
-		}
-	}
-}
-
-
-void FEulerTransformPropertyTrackEditor::GenerateKeysFromPropertyChanged( const FPropertyChangedParams& PropertyChangedParams, UMovieSceneSection* SectionToKey, FGeneratedTrackKeys& OutGeneratedKeys)
+void FEulerTransformPropertyTrackEditor::GenerateKeysFromPropertyChanged( const FPropertyChangedParams& PropertyChangedParams, FGeneratedTrackKeys& OutGeneratedKeys)
 {
 	const TCHAR* ChannelNames[9] = {
 		TEXT("Location.X"),    TEXT("Location.Y"),     TEXT("Location.Z"),
@@ -200,49 +93,57 @@ void FEulerTransformPropertyTrackEditor::GenerateKeysFromPropertyChanged( const 
 		}
 	}
 
-	FEulerTransform Transform           = PropertyChangedParams.GetPropertyValue<FEulerTransform>();
-	FEulerTransform RecomposedTransform = RecomposeTransform(Transform, PropertyChangedParams.ObjectsThatChanged[0], SectionToKey);
+	FEulerTransform Transform = PropertyChangedParams.GetPropertyValue<FEulerTransform>();
 
-	FVector Translation = RecomposedTransform.Location;
+	FVector Translation = Transform.Location;
 	OutGeneratedKeys.Add(FMovieSceneChannelValueSetter::Create<FMovieSceneFloatChannel>(0, Translation.X, bKeyChannels[0]));
 	OutGeneratedKeys.Add(FMovieSceneChannelValueSetter::Create<FMovieSceneFloatChannel>(1, Translation.Y, bKeyChannels[1]));
 	OutGeneratedKeys.Add(FMovieSceneChannelValueSetter::Create<FMovieSceneFloatChannel>(2, Translation.Z, bKeyChannels[2]));
 
-	FRotator Rotator = RecomposedTransform.Rotation;
+	FRotator Rotator = Transform.Rotation;
 	OutGeneratedKeys.Add(FMovieSceneChannelValueSetter::Create<FMovieSceneFloatChannel>(3, Rotator.Roll,  bKeyChannels[3]));
 	OutGeneratedKeys.Add(FMovieSceneChannelValueSetter::Create<FMovieSceneFloatChannel>(4, Rotator.Pitch, bKeyChannels[4]));
 	OutGeneratedKeys.Add(FMovieSceneChannelValueSetter::Create<FMovieSceneFloatChannel>(5, Rotator.Yaw,   bKeyChannels[5]));
 
-	FVector Scale = RecomposedTransform.Scale;
+	FVector Scale = Transform.Scale;
 	OutGeneratedKeys.Add(FMovieSceneChannelValueSetter::Create<FMovieSceneFloatChannel>(6, Scale.X, bKeyChannels[6]));
 	OutGeneratedKeys.Add(FMovieSceneChannelValueSetter::Create<FMovieSceneFloatChannel>(7, Scale.Y, bKeyChannels[7]));
 	OutGeneratedKeys.Add(FMovieSceneChannelValueSetter::Create<FMovieSceneFloatChannel>(8, Scale.Z, bKeyChannels[8]));
 }
 
-
-FEulerTransform FEulerTransformPropertyTrackEditor::RecomposeTransform(const FEulerTransform& InTransform, UObject* AnimatedObject, UMovieSceneSection* Section)
+bool FEulerTransformPropertyTrackEditor::ModifyGeneratedKeysByCurrentAndWeight(UObject *Object, UMovieSceneTrack *Track, UMovieSceneSection* SectionToKey, FFrameNumber KeyTime, FGeneratedTrackKeys& GeneratedTotalKeys, float Weight) const
 {
-	using namespace UE::MovieScene;
 
-	const FMovieSceneRootEvaluationTemplateInstance& EvaluationTemplate = GetSequencer()->GetEvaluationTemplate();
+	FFrameRate TickResolution = GetSequencer()->GetFocusedTickResolution();
 
-	UMovieSceneEntitySystemLinker* EntityLinker = EvaluationTemplate.GetEntitySystemLinker();
-	FMovieSceneEntityID EntityID = EvaluationTemplate.FindEntityFromOwner(Section, 0, GetSequencer()->GetFocusedTemplateID());
+	FMovieSceneEvaluationTrack EvalTrack = Track->GenerateTrackTemplate();
+	
+	FMovieSceneInterrogationData InterrogationData;
+	GetSequencer()->GetEvaluationTemplate().CopyActuators(InterrogationData.GetAccumulator());
 
-	if (EntityLinker && EntityID)
+	FMovieSceneContext Context(FMovieSceneEvaluationRange(KeyTime, GetSequencer()->GetFocusedTickResolution()));
+	EvalTrack.Interrogate(Context, InterrogationData, Object);
+
+	FVector CurrentPos(0.f); FRotator CurrentRot(0.f);
+	FVector CurrentScale(1.f);
+	for (const FTransformData& Transform : InterrogationData.Iterate<FTransformData>(FMovieSceneInterrogationKey::GetTransformInterrogationKey()))
 	{
-		TGuardValue<FEntityManager*> DebugVizGuard(GEntityManagerForDebuggingVisualizers, &EntityLinker->EntityManager);
+		CurrentPos = Transform.Translation;
+		CurrentRot = Transform.Rotation;
+		CurrentScale = Transform.Scale;
 
-		UMovieScenePropertyInstantiatorSystem* System = EntityLinker->FindSystem<UMovieScenePropertyInstantiatorSystem>();
-		if (System)
-		{
-			FDecompositionQuery Query;
-			Query.Entities = MakeArrayView(&EntityID, 1);
-			Query.Object   = AnimatedObject;
-
-			return System->RecomposeBlendFinal(FMovieSceneTracksComponentTypes::Get()->EulerTransform, Query, InTransform).Values[0];
-		}
+		FMovieSceneChannelProxy& Proxy = SectionToKey->GetChannelProxy();
+		GeneratedTotalKeys[0]->ModifyByCurrentAndWeight(Proxy, KeyTime, (void *)&CurrentPos.X, Weight);
+		GeneratedTotalKeys[1]->ModifyByCurrentAndWeight(Proxy, KeyTime, (void *)&CurrentPos.Y, Weight);
+		GeneratedTotalKeys[2]->ModifyByCurrentAndWeight(Proxy, KeyTime, (void *)&CurrentPos.Z, Weight);
+		GeneratedTotalKeys[3]->ModifyByCurrentAndWeight(Proxy, KeyTime, (void *)&CurrentRot.Roll, Weight);
+		GeneratedTotalKeys[4]->ModifyByCurrentAndWeight(Proxy, KeyTime, (void *)&CurrentRot.Pitch, Weight);
+		GeneratedTotalKeys[5]->ModifyByCurrentAndWeight(Proxy, KeyTime, (void *)&CurrentRot.Yaw, Weight);
+		GeneratedTotalKeys[6]->ModifyByCurrentAndWeight(Proxy, KeyTime, (void *)&CurrentScale.X, Weight);
+		GeneratedTotalKeys[7]->ModifyByCurrentAndWeight(Proxy, KeyTime, (void *)&CurrentScale.Y, Weight);
+		GeneratedTotalKeys[8]->ModifyByCurrentAndWeight(Proxy, KeyTime, (void *)&CurrentScale.Z, Weight);
+		return true;
 	}
+	return false;
 
-	return InTransform;
 }

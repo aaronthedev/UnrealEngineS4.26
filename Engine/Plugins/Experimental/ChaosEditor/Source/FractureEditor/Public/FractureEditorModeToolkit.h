@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,6 +7,7 @@
 #include "Toolkits/BaseToolkit.h"
 #include "Widgets/Input/SCheckBox.h"
 #include "Widgets/Layout/SSplitter.h"
+#include "GeometryCollection/GeometryCollectionActor.h"
 
 class IDetailsView;
 class SScrollBox;
@@ -15,14 +16,6 @@ class UEditableMesh;
 struct FFractureContext;
 class FGeometryCollection;
 class SGeometryCollectionOutliner;
-class AGeometryCollectionActor;
-class UGeometryCollectionComponent;
-class UGeometryCollection;
-
-namespace GeometryCollection
-{
-enum class ESelectionMode: uint8;
-}
 
 class FFractureEditorModeToolkit : public FModeToolkit, public FGCObject
 {
@@ -72,7 +65,6 @@ public:
 	void OnMerge(){}
 	void OnMoveUp();
 	void GenerateAsset();
-	void ResetAsset();
 
 	void ViewUpOneLevel();
 	void ViewDownOneLevel();
@@ -107,13 +99,9 @@ public:
 	/** Returns the number of Mode specific tabs in the mode toolbar **/ 
 	const static TArray<FName> PaletteNames;
 	virtual void GetToolPaletteNames( TArray<FName>& InPaletteName ) const { InPaletteName = PaletteNames; }
-	virtual FText GetToolPaletteDisplayName(FName PaletteName) const; 
+	virtual FText GetToolPaletteDisplayName(FName PaletteName); 
 	virtual void BuildToolPalette(FName PaletteName, class FToolBarBuilder& ToolbarBuilder);
 	virtual void OnToolPaletteChanged(FName PaletteName) override;
-
-	/** Modes Panel Header Information **/
-	virtual FText GetActiveToolDisplayName() const;
-	virtual FText GetActiveToolMessage() const;
 
 	TSharedPtr<SWidget> ExplodedViewWidget;
 	TSharedPtr<SWidget> LevelViewWidget;

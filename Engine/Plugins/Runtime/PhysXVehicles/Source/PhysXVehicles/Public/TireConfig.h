@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 
@@ -33,7 +33,6 @@ struct FTireConfigMaterialFriction
 };
 
 /** Represents a type of tire surface used to specify friction values against physical materials. */
-class UE_DEPRECATED(4.26, "PhysX is deprecated. Use the Chaos physics and the ChaosVehiclePhysics Plugin.") UTireConfig;
 UCLASS()
 class PHYSXVEHICLES_API UTireConfig : public UDataAsset
 {

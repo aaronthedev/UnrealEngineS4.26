@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System.IO;
 
@@ -23,10 +23,10 @@ namespace UnrealBuildTool.Rules
 					"CADLibrary",
 					"CADTools",
 					"DatasmithCore",
-					"DatasmithCoreTechParametricSurfaceData",
+					"DatasmithCoreTechExtension",
 					"DatasmithContent",
+					"DatasmithImporter",
 					"DatasmithDispatcher",
-					"DatasmithTranslator",
 					"Engine",
 					"MeshDescription",
 					"Sockets",

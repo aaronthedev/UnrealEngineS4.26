@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_PCP_ITERATOR_H
-#define PXR_USD_PCP_ITERATOR_H
+#ifndef PCP_ITERATOR_H
+#define PCP_ITERATOR_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/pcp/api.h"
@@ -58,7 +58,8 @@ class PcpNodeIterator
 {
 public:
     /// Constructs an invalid iterator.
-    PcpNodeIterator() : _graph(0), _nodeIdx(PCP_INVALID_INDEX) {}
+    PCP_API
+    PcpNodeIterator();
 
     // Returns a compressed Sd site.  For internal use only.
     Pcp_CompressedSdSite GetCompressedSdSite(size_t layerIndex) const
@@ -68,23 +69,22 @@ public:
 
 private:
     friend class PcpPrimIndex;
-    PcpNodeIterator(PcpPrimIndex_Graph* graph, size_t nodeIdx) :
-        _graph(graph), _nodeIdx(nodeIdx) {}
+    PCP_API
+    PcpNodeIterator(PcpPrimIndex_Graph* graph, size_t nodeIdx);
 
     friend class boost::iterator_core_access;
-
-    void increment() { ++_nodeIdx; }
-    void decrement() { --_nodeIdx; }
-    void advance(difference_type n) { _nodeIdx += n; }
-    difference_type distance_to(const PcpNodeIterator& other) const {
-        return (difference_type)(other._nodeIdx) - _nodeIdx;
-    }
-    bool equal(const PcpNodeIterator& other) const {
-        return (_graph == other._graph) & (_nodeIdx == other._nodeIdx);
-    }
-    reference dereference() const {
-        return PcpNodeRef(_graph, _nodeIdx);
-    }
+    PCP_API
+    void increment();
+    PCP_API
+    void decrement();
+    PCP_API
+    void advance(difference_type n);
+    PCP_API
+    difference_type distance_to(const PcpNodeIterator& other) const;
+    PCP_API
+    bool equal(const PcpNodeIterator& other) const;
+    PCP_API
+    reference dereference() const;
 
 private:
     PcpPrimIndex_Graph* _graph;
@@ -344,4 +344,4 @@ struct PcpIteratorTraits<PcpPropertyIterator>
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_PCP_ITERATOR_H
+#endif // PCP_ITERATOR_H

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,12 +6,19 @@
 
 #if USE_USD_SDK
 
-#include "USDReferencesViewModel.h"
+#include "USDMemory.h"
 
-namespace UE
+#include "USDIncludesStart.h"
+
+#include "pxr/pxr.h"
+#include "pxr/usd/usd/prim.h"
+
+#include "USDIncludesEnd.h"
+
+struct FUsdReference : public TSharedFromThis< FUsdReference >
 {
-	class FUsdStage;
-}
+	FString AssetPath;
+};
 
 class SUsdReferenceRow : public SMultiColumnTableRow< TSharedPtr< FUsdReference > >
 {
@@ -35,14 +42,15 @@ class SUsdReferencesList : public SListView< TSharedPtr< FUsdReference > >
 	SLATE_END_ARGS()
 
 public:
-	void Construct( const FArguments& InArgs, const UE::FUsdStage& UsdStage, const TCHAR* PrimPath );
-	void SetPrimPath( const UE::FUsdStage& UsdStage, const TCHAR* PrimPath );
+	void Construct( const FArguments& InArgs, const TUsdStore< pxr::UsdStageRefPtr >& UsdStage, const TCHAR* PrimPath );
+	void SetPrimPath( const TUsdStore< pxr::UsdStageRefPtr >& UsdStage, const TCHAR* PrimPath );
 
 protected:
+	void UpdateReferences( const TUsdStore< pxr::UsdStageRefPtr >& UsdStage, const TCHAR* PrimPath );
 	TSharedRef< ITableRow > OnGenerateRow( TSharedPtr< FUsdReference > InDisplayNode, const TSharedRef< STableViewBase >& OwnerTable );
 
 private:
-	FUsdReferencesViewModel ViewModel;
+	TArray< TSharedPtr< FUsdReference > > References;
 	TSharedPtr< SHeaderRow > HeaderRowWidget;
 };
 

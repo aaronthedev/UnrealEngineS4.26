@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,20 +6,22 @@
 
 #include "Logging/LogMacros.h"
 #include "AudioMixerDevice.h"
-#include "AVEncoder.h"
+#include "GameplayMediaEncoderSample.h"
 
 #include "RHI.h"
 #include "RHIResources.h"
 
+class FBaseVideoEncoder;
+class FWmfAudioEncoder;
 class SWindow;
 
 class IGameplayMediaEncoderListener
 {
 public:
-	virtual void OnMediaSample(const AVEncoder::FAVPacket& Sample) = 0;
+	virtual void OnMediaSample(const FGameplayMediaEncoderSample& Sample) = 0;
 };
 
-class GAMEPLAYMEDIAENCODER_API FGameplayMediaEncoder final : private ISubmixBufferListener, private AVEncoder::IAudioEncoderListener, private AVEncoder::IVideoEncoderListener
+class GAMEPLAYMEDIAENCODER_API FGameplayMediaEncoder final : private ISubmixBufferListener
 {
 public:
 
@@ -28,39 +30,17 @@ public:
 	 */
 	static FGameplayMediaEncoder* Get();
 
+	FGameplayMediaEncoder();
 	~FGameplayMediaEncoder();
 
 	bool RegisterListener(IGameplayMediaEncoderListener* Listener);
 	void UnregisterListener(IGameplayMediaEncoderListener* Listener);
 
+	bool GetAudioOutputType(TRefCountPtr<IMFMediaType>& OutType);
+	bool GetVideoOutputType(TRefCountPtr<IMFMediaType>& OutType);
+
 	void SetVideoBitrate(uint32 Bitrate);
 	void SetVideoFramerate(uint32 Framerate);
-
-	/*
-	 * When capturing frame data, we should use the App Time rather than Platform time
-	 * Default is to use Platform Time
-	 * This is useful for fixed framerate video rendering
-	 * **AUDIO is not supported**
-	*/
-	void SetFramesShouldUseAppTime(bool bUseAppTime);
-
-	bool IsFramesUsingAppTime() const
-	{
-		static bool bIsForcedAppTime = FParse::Param(FCommandLine::Get(), TEXT("GameplayMediaEncoder.UseAppTime"));
-
-		return bIsForcedAppTime || bShouldFramesUseAppTime;
-	}
-
-	double QueryClock() const
-	{
-		return IsFramesUsingAppTime() ? FApp::GetCurrentTime() : FPlatformTime::Seconds();
-	}
-
-	/**
-	 * Returns the audio codec name and configuration
-	 */
-	TPair<FString, AVEncoder::FAudioEncoderConfig> GetAudioConfig() const;
-	TPair<FString, AVEncoder::FVideoEncoderConfig> GetVideoConfig() const;
 
 	bool Initialize();
 	void Shutdown();
@@ -92,43 +72,39 @@ public:
 	}
 
 private:
-
-	// Private to control how our single instance is created
-	FGameplayMediaEncoder();
-
-	// Returns how long it has been recording for.
 	FTimespan GetMediaTimestamp() const;
+
+	bool OnMediaSampleReady(const FGameplayMediaEncoderSample& Sample);
 
 	// Back buffer capture
 	void OnBackBufferReady(SWindow& SlateWindow, const FTexture2DRHIRef& BackBuffer);
 	// ISubmixBufferListener interface
 	void OnNewSubmixBuffer(const USoundSubmix* OwningSubmix, float* AudioData, int32 NumSamples, int32 NumChannels, const int32 SampleRate, double AudioClock) override;
 
-	void ProcessAudioFrame(const float* AudioData, int32 NumSamples, int32 NumChannels, int32 SampleRate);
-	void ProcessVideoFrame(const FTexture2DRHIRef& BackBuffer);
+	bool ProcessAudioFrame(const float* AudioData, int32 NumSamples, int32 NumChannels, int32 SampleRate);
+	bool ProcessVideoFrame(const FTexture2DRHIRef& BackBuffer);
 
 	bool ChangeVideoConfig();
-
-	//
-	// AVEncoder::IAudioEncoderListener interface
-	void OnEncodedAudioFrame(const AVEncoder::FAVPacket& Packet) override;
-	//
-	// AVEncoder::IVideoEncoderListener interface
-	void OnEncodedVideoFrame(const AVEncoder::FAVPacket& Packet, AVEncoder::FEncoderVideoFrameCookie* Cookie) override;
-
-	void OnEncodedFrame(const AVEncoder::FAVPacket& Packet);
 
 	FCriticalSection ListenersCS;
 	TArray<IGameplayMediaEncoderListener*> Listeners;
 
 	FCriticalSection AudioProcessingCS;
 	FCriticalSection VideoProcessingCS;
-	TUniquePtr<AVEncoder::FAudioEncoder> AudioEncoder;
-	TUniquePtr<AVEncoder::FVideoEncoder> VideoEncoder;
+
+	TUniquePtr<FWmfAudioEncoder> AudioEncoder;
+	TUniquePtr<FBaseVideoEncoder> VideoEncoder;
+#if PLATFORM_WINDOWS
+	TSharedPtr<class FEncoderDevice> EncoderDevice;
+#endif
+	bool bAudioFormatChecked = false;
+	bool bDoFrameSkipping = false;
+
+	// Keep this as a member variables, to reuse the memory allocation
+	Audio::TSampleBuffer<int16> PCM16;
 
 	uint64 NumCapturedFrames = 0;
 	FTimespan StartTime = 0;
-
 	// Instead of using the AudioClock parameter ISubmixBufferListener::OnNewSubmixBuffer gives us, we calculate our own, by
 	// advancing it as we receive more data.
 	// This is so that we can adjust the clock if things get out of sync, such as if we break into the debugger.
@@ -136,18 +112,16 @@ private:
 
 	FTimespan LastVideoInputTimestamp = 0;
 
-	bool bAudioFormatChecked = false;
-	bool bDoFrameSkipping = false;
-
-	friend class FGameplayMediaEncoderModule;
-	static FGameplayMediaEncoder* Singleton;
+	// It is possible to suspend the processing of media samples which is
+	// required during resolution change.
+	FCriticalSection ProcessMediaSamplesCS;
+	bool bProcessMediaSamples = true;
 
 	// live streaming: quality adaptation to available uplink b/w
 	TAtomic<uint32> NewVideoBitrate{ 0 };
 	FThreadSafeBool bChangeBitrate = false;
+	FTimespan FramerateMonitoringStart = -1;
 	TAtomic<uint32> NewVideoFramerate{ 0 };
 	FThreadSafeBool bChangeFramerate = false;
-
-	bool bShouldFramesUseAppTime = false;
 };
 

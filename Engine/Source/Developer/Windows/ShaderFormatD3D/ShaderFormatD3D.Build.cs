@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -8,9 +8,8 @@ public class ShaderFormatD3D : ModuleRules
 	{
 		PrivateIncludePathModuleNames.Add("TargetPlatform");
 		PrivateIncludePathModuleNames.Add("D3D11RHI");
-		PrivateIncludePathModuleNames.Add("D3D12RHI");
 
-        PrivateIncludePaths.Add("../Shaders/Shared");
+		PrivateIncludePaths.Add("../Shaders/Shared");
 
         PrivateDependencyModuleNames.AddRange(
 			new string[] {
@@ -27,15 +26,8 @@ public class ShaderFormatD3D : ModuleRules
             string DxDllsPath = "$(EngineDir)/Binaries/ThirdParty/Windows/DirectX/x64/";
 
             RuntimeDependencies.Add("$(TargetOutputDir)/dxil.dll", DxDllsPath + "dxil.dll");
-
-			string BinaryFolder = Target.UEThirdPartyBinariesDirectory + "ShaderConductor/Win64";
-			RuntimeDependencies.Add(BinaryFolder + "/dxcompiler.dll");
-			RuntimeDependencies.Add(BinaryFolder + "/ShaderConductor.dll");
-
-			AddEngineThirdPartyPrivateStaticDependencies(Target,
-				"ShaderConductor"
-			);
-		}
-		AddEngineThirdPartyPrivateStaticDependencies(Target, "DX11");
+            RuntimeDependencies.Add("$(TargetOutputDir)/dxcompiler.dll", DxDllsPath + "dxcompiler.dll");
+        }
+        AddEngineThirdPartyPrivateStaticDependencies(Target, "DX11");
 	}
 }

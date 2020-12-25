@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SBlueprintPalette.h"
 #include "Widgets/IToolTip.h"
@@ -54,9 +54,6 @@
 #include "Widgets/Text/SInlineEditableTextBlock.h"
 #include "SPinTypeSelector.h"
 #include "GraphEditorSettings.h"
-#include "UObject/WeakFieldPtr.h"
-#include "BlueprintNodeSpawner.h"
-#include "Dialogs/Dialogs.h"
 
 #define LOCTEXT_NAMESPACE "BlueprintPalette"
 
@@ -88,13 +85,13 @@ static FString GetVarType(UStruct* VarScope, FName VarName, bool bUseObjToolTip,
 
 	if (VarScope)
 	{
-		if (FProperty* Property = FindFProperty<FProperty>(VarScope, VarName))
+		if (UProperty* Property = FindField<UProperty>(VarScope, VarName))
 		{
 			// If it is an object property, see if we can get a nice class description instead of just the name
-			FObjectProperty* ObjProp = CastField<FObjectProperty>(Property);
+			UObjectProperty* ObjProp = Cast<UObjectProperty>(Property);
 			if (bUseObjToolTip && ObjProp && ObjProp->PropertyClass)
 			{
-				VarDesc = ObjProp->PropertyClass->GetToolTipText(GetDefault<UBlueprintEditorSettings>()->bShowShortTooltips).ToString();
+				VarDesc = ObjProp->PropertyClass->GetToolTipText().ToString();
 			}
 
 			// Name of type
@@ -129,7 +126,7 @@ static FString GetVarTooltip(UBlueprint* InBlueprint, UClass* VarClass, FName Va
 	if (VarClass)
 	{
 	
-		if (FProperty* Property = FindFProperty<FProperty>(VarClass, VarName))
+		if (UProperty* Property = FindField<UProperty>(VarClass, VarName))
 		{
 			// discover if the variable property is a non blueprint user variable
 			UClass* SourceClass = Property->GetOwnerClass();
@@ -223,7 +220,7 @@ static void GetSubGraphIcon(FEdGraphSchemaAction_K2Graph const* const ActionIn, 
 			{
 				// Need to see if this is a function overriding something in the parent, or 
 				;
-				if (UFunction* OverrideFunc = FindUField<UFunction>(BlueprintIn->ParentClass, ActionIn->FuncName))
+				if (UFunction* OverrideFunc = FindField<UFunction>(BlueprintIn->ParentClass, ActionIn->FuncName))
 				{
 					ToolTipOut = LOCTEXT("Override_Tooltip", "Override");
 				}
@@ -241,11 +238,12 @@ static void GetSubGraphIcon(FEdGraphSchemaAction_K2Graph const* const ActionIn, 
 			FFormatNamedArguments Args;
 			Args.Add(TEXT("InterfaceName"), FText::FromName(ActionIn->FuncName));
 			ToolTipOut = FText::Format(LOCTEXT("FunctionFromInterface_Tooltip", "Function (from Interface '{InterfaceName}')"), Args);
-			if (UFunction* OverrideFunc = FindUField<UFunction>(BlueprintIn->SkeletonGeneratedClass, ActionIn->FuncName))
+			if (UFunction* OverrideFunc = FindField<UFunction>(BlueprintIn->SkeletonGeneratedClass, ActionIn->FuncName))
 			{
 				if (UEdGraphSchema_K2::FunctionCanBePlacedAsEvent(OverrideFunc))
 				{
-					ToolTipOut = FText::Format(LOCTEXT("EventFromInterface_Tooltip", "Event (from Interface '{InterfaceName}')"), Args);
+					Args.Add(TEXT("BaseTooltip"), ToolTipOut);
+					ToolTipOut = FText::Format(LOCTEXT("InterfaceFunctionExpectedAsEvent_Tooltip", "{BaseTooltip}\nInterface '{InterfaceName}' is already implemented as a function graph but is expected as an event. Remove the function graph and reimplement as an event."), Args);
 					ColorOut = FLinearColor::Yellow;
 				}
 			}
@@ -264,7 +262,7 @@ static void GetSubGraphIcon(FEdGraphSchemaAction_K2Graph const* const ActionIn, 
 				{
 					IconOut = FEditorStyle::GetBrush(TEXT("GraphEditor.Animation_16x"));
 				}
-				else if (UFunction* OverrideFunc = FindUField<UFunction>(BlueprintIn->ParentClass, ActionIn->FuncName))
+				else if (UFunction* OverrideFunc = FindField<UFunction>(BlueprintIn->ParentClass, ActionIn->FuncName))
 				{
 					const bool bIsPureFunction = OverrideFunc && OverrideFunc->HasAnyFunctionFlags(FUNC_BlueprintPure);
 					IconOut = FEditorStyle::GetBrush(bIsPureFunction ? TEXT("GraphEditor.OverridePureFunction_16x") : TEXT("GraphEditor.OverrideFunction_16x"));
@@ -272,7 +270,7 @@ static void GetSubGraphIcon(FEdGraphSchemaAction_K2Graph const* const ActionIn, 
 				}
 				else
 				{
-					UFunction* Function = FindUField<UFunction>(BlueprintIn->SkeletonGeneratedClass, ActionIn->FuncName);
+					UFunction* Function = FindField<UFunction>(BlueprintIn->SkeletonGeneratedClass, ActionIn->FuncName);
 					const bool bIsPureFunction = Function && Function->HasAnyFunctionFlags(FUNC_BlueprintPure);
 
 					IconOut = FEditorStyle::GetBrush(bIsPureFunction ? TEXT("GraphEditor.PureFunction_16x") : TEXT("GraphEditor.Function_16x"));
@@ -311,15 +309,6 @@ static void GetPaletteItemIcon(TSharedPtr<FEdGraphSchemaAction> ActionIn, UBluep
 	{
 		FBlueprintActionMenuItem* NodeSpawnerAction = (FBlueprintActionMenuItem*)ActionIn.Get();
 		BrushOut = NodeSpawnerAction->GetMenuIcon(ColorOut);
-
-		TSubclassOf<UEdGraphNode> VarNodeClass = NodeSpawnerAction->GetRawAction()->NodeClass;
-		// if the node is a variable getter or setter, use the variable icon instead, because maps need two brushes
-		if (*VarNodeClass && VarNodeClass->IsChildOf(UK2Node_Variable::StaticClass()))
-		{
-			const UK2Node_Variable* TemplateNode = Cast<UK2Node_Variable>(NodeSpawnerAction->GetRawAction()->GetTemplateNode());
-			FProperty* Property = TemplateNode->GetPropertyForVariable();
-			BrushOut = FBlueprintEditor::GetVarIconAndColorFromProperty(Property, ColorOut, SecondaryBrushOut, SecondaryColorOut);
-		}
 	}
 	else if (ActionIn->GetTypeId() == FBlueprintDragDropMenuItem::StaticGetTypeId())
 	{
@@ -705,7 +694,7 @@ public:
 	 * @param  InVariableProperty		The variable property to select
 	 * @param  InBlueprintEditor			A pointer to the blueprint editor that the palette belongs to.
 	 */
-	void Construct(const FArguments& InArgs, FProperty* InVariableProperty, UBlueprint* InBlueprint, TWeakPtr<FBlueprintEditor> InBlueprintEditor)
+	void Construct(const FArguments& InArgs, UProperty* InVariableProperty, UBlueprint* InBlueprint, TWeakPtr<FBlueprintEditor> InBlueprintEditor)
 	{
 		BlueprintObj = InBlueprint;
 		BlueprintEditorPtr = InBlueprintEditor;
@@ -726,7 +715,7 @@ public:
 private:
 	FEdGraphPinType OnGetVarType() const
 	{
-		if (FProperty* VarProp = const_cast<FProperty*>(VariableProperty.Get()))
+		if (UProperty* VarProp = VariableProperty.Get())
 		{
 			const UEdGraphSchema_K2* K2Schema = GetDefault<UEdGraphSchema_K2>();
 			FEdGraphPinType Type;
@@ -740,7 +729,7 @@ private:
 	{
 		if (FBlueprintEditorUtils::IsPinTypeValid(InNewPinType))
 		{
-			if (FProperty* VarProp = VariableProperty.Get())
+			if (UProperty* VarProp = VariableProperty.Get())
 			{
 				FName VarName = VarProp->GetFName();
 
@@ -749,7 +738,7 @@ private:
 					// Set the MyBP tab's last pin type used as this, for adding lots of variables of the same type
 					BlueprintEditorPtr.Pin()->GetMyBlueprintWidget()->GetLastPinTypeUsed() = InNewPinType;
 
-					if (UFunction* LocalVariableScope = VarProp->GetOwner<UFunction>())
+					if (UFunction* LocalVariableScope = Cast<UFunction>(VarProp->GetOuter()))
 					{
 						FBlueprintEditorUtils::ChangeLocalVariableType(BlueprintObj, LocalVariableScope, VarName, InNewPinType);
 					}
@@ -773,7 +762,7 @@ private:
 	TWeakPtr<FBlueprintEditor>     BlueprintEditorPtr;
 
 	/** Variable Property to change the type of */
-	TWeakFieldPtr<FProperty> VariableProperty;
+	TWeakObjectPtr<UProperty> VariableProperty;
 };
 
 /*******************************************************************************
@@ -804,10 +793,10 @@ public:
 		bool bShouldHaveAVisibilityToggle = false;
 		if (PaletteAction->GetTypeId() == FEdGraphSchemaAction_K2Var::StaticGetTypeId())
 		{
-			FProperty* VariableProp = StaticCastSharedPtr<FEdGraphSchemaAction_K2Var>(PaletteAction)->GetProperty();
-			FObjectProperty* VariableObjProp = CastField<FObjectProperty>(VariableProp);
+			UProperty* VariableProp = StaticCastSharedPtr<FEdGraphSchemaAction_K2Var>(PaletteAction)->GetProperty();
+			UObjectProperty* VariableObjProp = Cast<UObjectProperty>(VariableProp);
 
-			UStruct* VarSourceScope = (VariableProp ? CastChecked<UStruct>(VariableProp->GetOwner<UObject>()) : nullptr);
+			UStruct* VarSourceScope = (VariableProp ? CastChecked<UStruct>(VariableProp->GetOuter()) : nullptr);
 			const bool bIsBlueprintVariable = (VarSourceScope == BlueprintObj->SkeletonGeneratedClass);
 			const bool bIsComponentVar = (VariableObjProp && VariableObjProp->PropertyClass && VariableObjProp->PropertyClass->IsChildOf(UActorComponent::StaticClass()));
 			bShouldHaveAVisibilityToggle = bIsBlueprintVariable && (!bIsComponentVar || FBlueprintEditorUtils::IsVariableCreatedByBlueprint(BlueprintObj, VariableObjProp));
@@ -855,7 +844,7 @@ private:
 		if ( PaletteAction->GetTypeId() == FEdGraphSchemaAction_K2Var::StaticGetTypeId() )
 		{
 			TSharedPtr<FEdGraphSchemaAction_K2Var> VarAction = StaticCastSharedPtr<FEdGraphSchemaAction_K2Var>(PaletteAction);
-			if (FProperty* VariableProperty = VarAction->GetProperty())
+			if (UProperty* VariableProperty = VarAction->GetProperty())
 			{
 				return VariableProperty->HasAnyPropertyFlags(CPF_DisableEditOnInstance) ? ECheckBoxState::Unchecked : ECheckBoxState::Checked;
 			}
@@ -1034,22 +1023,6 @@ void SBlueprintPaletteItem::Construct(const FArguments& InArgs, FCreateWidgetFor
 	TSharedRef<SWidget> IconWidget = CreateIconWidget(IconToolTip, IconBrush, IconColor, IconDocLink, IconDocExcerpt, SecondaryBrush, SecondaryIconColor);
 	IconWidget->SetEnabled(bIsEditingEnabled);
 
-	UBlueprintEditorSettings* Settings = GetMutableDefault<UBlueprintEditorSettings>();
-
-	// Enum representing the access specifier of this function or variable
-	enum class EAccessSpecifier : uint8
-	{
-		None		= 0,
-		Private		= 1,
-		Protected	= 2,
-		Public		= 3
-	};
-
-	// We should only bother checking for access if the setting is on and this is not an animation graph
-	const bool bShouldCheckForAccessSpec = Settings->bShowAccessSpecifier;
-
-	EAccessSpecifier ActionAccessSpecifier = EAccessSpecifier::None;	
-
 	// Setup a meta tag for this node
 	FTutorialMetaData TagMeta("PaletteItem"); 
 	if( ActionPtr.IsValid() )
@@ -1061,154 +1034,60 @@ void SBlueprintPaletteItem::Construct(const FArguments& InArgs, FCreateWidgetFor
 	FSlateFontInfo NameFont = FCoreStyle::GetDefaultFontStyle("Regular", 10);
 	TSharedRef<SWidget> NameSlotWidget = CreateTextSlotWidget( NameFont, InCreateData, bIsReadOnly );
 	
-	// Will set the icon of this property to be a Pin Type selector. 
-	auto GenerateVariableSettings = [&](FProperty* VariableProp)
+	// For Variables and Local Variables, we will convert the icon widget into a pin type selector.
+	if (GraphAction->GetTypeId() == FEdGraphSchemaAction_K2Var::StaticGetTypeId() || GraphAction->GetTypeId() == FEdGraphSchemaAction_K2LocalVar::StaticGetTypeId())
 	{
+		UProperty* VariableProp = nullptr;
+
+		if (GraphAction->GetTypeId() == FEdGraphSchemaAction_K2Var::StaticGetTypeId())
+		{
+			VariableProp = StaticCastSharedPtr<FEdGraphSchemaAction_K2Var>(GraphAction)->GetProperty();
+		}
+		else if (GraphAction->GetTypeId() == FEdGraphSchemaAction_K2LocalVar::StaticGetTypeId())
+		{
+			VariableProp = StaticCastSharedPtr<FEdGraphSchemaAction_K2LocalVar>(GraphAction)->GetProperty();
+		}
+
+		// If the variable is not a local variable or created by the current Blueprint, do not use the PinTypeSelector
 		if (VariableProp)
 		{
-			if (bShouldCheckForAccessSpec)
-			{
-				if (VariableProp->GetBoolMetaData(FBlueprintMetadata::MD_Private))
-				{
-					ActionAccessSpecifier = EAccessSpecifier::Private;
-				}
-				else if (VariableProp->GetBoolMetaData(FBlueprintMetadata::MD_Protected))
-				{
-					ActionAccessSpecifier = EAccessSpecifier::Protected;
-				}
-				else
-				{
-					ActionAccessSpecifier = EAccessSpecifier::Public;
-				}
-			}
-
-			if (FBlueprintEditorUtils::IsVariableCreatedByBlueprint(Blueprint, VariableProp) || VariableProp->GetOwner<UFunction>())
+			if (FBlueprintEditorUtils::IsVariableCreatedByBlueprint(Blueprint, VariableProp) || Cast<UFunction>(VariableProp->GetOuter()))
 			{
 				const UEdGraphSchema_K2* Schema = GetDefault<UEdGraphSchema_K2>();
 				IconWidget = SNew(SPinTypeSelectorHelper, VariableProp, Blueprint, BlueprintEditorPtr)
 					.IsEnabled(bIsEditingEnabled);
 			}
 		}
-	};
-
-	// For Variables and Local Variables, we will convert the icon widget into a pin type selector.
-	if (GraphAction->GetTypeId() == FEdGraphSchemaAction_K2Var::StaticGetTypeId())
-	{	
-		GenerateVariableSettings(StaticCastSharedPtr<FEdGraphSchemaAction_K2Var>(GraphAction)->GetProperty());
-	}
-	else if (GraphAction->GetTypeId() == FEdGraphSchemaAction_K2LocalVar::StaticGetTypeId())
-	{
-		GenerateVariableSettings(StaticCastSharedPtr<FEdGraphSchemaAction_K2LocalVar>(GraphAction)->GetProperty());
-	}
-	// Determine the access level of this action if it is a function graph or for interface events
-	else if (bShouldCheckForAccessSpec && GraphAction->GetTypeId() == FEdGraphSchemaAction_K2Graph::StaticGetTypeId())
-	{
-		UFunction* FunctionToCheck = nullptr;
-
-		if (FEdGraphSchemaAction_K2Graph* FuncGraphAction = (FEdGraphSchemaAction_K2Graph*)(GraphAction.Get()))
-		{
-			FunctionToCheck = FindUField<UFunction>(Blueprint->SkeletonGeneratedClass, FuncGraphAction->FuncName);
-
-			// Handle override/interface functions
-			if(!FunctionToCheck)
-			{
-				FBlueprintEditorUtils::GetOverrideFunctionClass(Blueprint, FuncGraphAction->FuncName, &FunctionToCheck);			
-			}
-		}
-
-		// If we have found a function that matches this action name, then grab it's access specifier
-		if (FunctionToCheck)
-		{
-			if (FunctionToCheck->HasAnyFunctionFlags(FUNC_Protected))
-			{
-				ActionAccessSpecifier = EAccessSpecifier::Protected;
-			}
-			else if (FunctionToCheck->HasAnyFunctionFlags(FUNC_Private))
-			{
-				ActionAccessSpecifier = EAccessSpecifier::Private;
-			}
-			else
-			{
-				ActionAccessSpecifier = EAccessSpecifier::Public;
-			}
-		}
 	}
 
-	FText AccessModifierText = FText::GetEmpty();
-
-	switch (ActionAccessSpecifier)
-	{
-		case EAccessSpecifier::Public:
-		{
-			AccessModifierText = LOCTEXT("AccessModifierPublic", "public");
-		}
-		break;
-		case EAccessSpecifier::Protected:
-		{
-			AccessModifierText = LOCTEXT("AccessModifierProtected", "protected");
-		}
-		break;
-		case EAccessSpecifier::Private:
-		{
-			AccessModifierText = LOCTEXT("AccessModifierPrivate", "private");
-		}
-		break;
-	}
-
-	// Calculate a color so that the text gets brighter the more accessible the action is
-	const bool AccessSpecifierEnabled = (ActionAccessSpecifier != EAccessSpecifier::None) && bShouldCheckForAccessSpec;
-
-	// Create the widget with an icon
-	TSharedRef<SHorizontalBox> ActionBox = SNew(SHorizontalBox)		
-		.AddMetaData<FTutorialMetaData>(TagMeta);
-
-	ActionBox.Get().AddSlot()
-		.AutoWidth()
+	// now, create the actual widget
+	ChildSlot
+	[
+		SNew(SHorizontalBox)
+		.AddMetaData<FTutorialMetaData>(TagMeta)
+		// icon slot
+		+SHorizontalBox::Slot()
+			.AutoWidth()
 		[
 			IconWidget
-		];
-
-	// Only add an access specifier if we have one
-	if (ActionAccessSpecifier != EAccessSpecifier::None)
-	{
-		ActionBox.Get().AddSlot()
-			.MaxWidth(50.f)
-			.FillWidth(AccessSpecifierEnabled ? 0.4f : 0.0f)
-			.Padding(FMargin(/* horizontal */ AccessSpecifierEnabled ? 6.0f : 0.0f, /* vertical */ 0.0f))
+		]
+		// name slot
+		+SHorizontalBox::Slot()
+			.FillWidth(1.f)
 			.VAlign(VAlign_Center)
-			.HAlign(HAlign_Right)
-			[
-				SNew(STextBlock)
-				// Will only display text if we have a modifier level
-					.IsEnabled(AccessSpecifierEnabled)
-					.Text(AccessModifierText)
-					.ColorAndOpacity(FSlateColor::UseSubduedForeground())
-					// Bold if public
-					.TextStyle(FEditorStyle::Get(), ActionAccessSpecifier == EAccessSpecifier::Public ? "BlueprintEditor.AccessModifier.Public" : "BlueprintEditor.AccessModifier.Default")
-			];
-	}
-
-	ActionBox.Get().AddSlot()
-		.FillWidth(1.f)
-		.VAlign(VAlign_Center)
-		.Padding(/* horizontal */ 3.0f, /* vertical */ 0.0f)
+			.Padding(3,0)
 		[
 			NameSlotWidget
-		];
-
-	ActionBox.Get().AddSlot()
-		.AutoWidth()
-		.Padding(FMargin(3.0f, 0.0f))
-		.VAlign(VAlign_Center)
+		]
+		// optional visibility slot
+		+SHorizontalBox::Slot()
+			.AutoWidth()
+			.Padding(FMargin(3,0))
+			.VAlign(VAlign_Center)
 		[
 			SNew(SPaletteItemVisibilityToggle, ActionPtr, InBlueprintEditor, InBlueprint)
 			.IsEnabled(bIsEditingEnabled)
-		];
-
-	// Now, create the actual widget
-	ChildSlot
-	[
-		ActionBox
+		]
 	];
 }
 
@@ -1436,50 +1315,11 @@ void SBlueprintPaletteItem::OnNameTextCommitted(const FText& NewText, ETextCommi
 				}
 			}
 
-			FBPVariableDescription* RepNotifyVar = FBlueprintEditorUtils::GetVariableFromOnRepFunction(Blueprint, GraphAction->FuncName);
-			if (RepNotifyVar)
-			{
-				FSuppressableWarningDialog::FSetupInfo Info(LOCTEXT("RenameRepNotifyMessage", "This function is linked to a RepNotify variable. Renaming it will still allow the variable to be replicated, but this function will not be called. Do you wish to proceed?"),
-					LOCTEXT("RenameRepNotifyTitle", "Rename RepNotify Function?"), TEXT("RenameRepNotifyWarning"));
-				Info.ConfirmText = LOCTEXT("Confirm", "Confirm");
-				Info.CancelText = LOCTEXT("Cancel", "Cancel");
-
-				if (FSuppressableWarningDialog(Info).ShowModal() == FSuppressableWarningDialog::Cancel)
-				{
-					return;
-				}
-			}
-
 			// Make sure we aren't renaming the graph into something that already exists
 			UEdGraph* ExistingGraph = FindObject<UEdGraph>(Graph->GetOuter(), *NewNameString );
 			if (ExistingGraph == nullptr || ExistingGraph == Graph)
 			{
 				const FScopedTransaction Transaction( LOCTEXT( "Rename Function", "Rename Function" ) );
-
-				if (RepNotifyVar)
-				{
-					if (const UEdGraphSchema_K2* K2Schema = Cast<UEdGraphSchema_K2>(Graph->GetSchema()))
-					{
-						Graph->Modify();
-						// make function editable
-						// reconfigure the graph as if it were user created
-						int32 ExtraFunctionFlags = (FUNC_BlueprintCallable | FUNC_BlueprintEvent | FUNC_Public);
-						if (BPTYPE_FunctionLibrary == Blueprint->BlueprintType)
-						{
-							ExtraFunctionFlags |= FUNC_Static;
-						}
-						if (BPTYPE_Const == Blueprint->BlueprintType)
-						{
-							ExtraFunctionFlags |= FUNC_Const;
-						}
-						K2Schema->MarkFunctionEntryAsEditable(Graph, true);
-						K2Schema->AddExtraFunctionFlags(Graph, ExtraFunctionFlags);
-
-						Blueprint->Modify();
-						RepNotifyVar->RepNotifyFunc = NAME_None;
-					}
-				}
-
 				FBlueprintEditorUtils::RenameGraph(Graph, NewNameString );
 			}
 		}
@@ -1531,10 +1371,10 @@ void SBlueprintPaletteItem::OnNameTextCommitted(const FText& NewText, ETextCommi
 
 		// Double check we're not renaming a timeline disguised as a variable
 		bool bIsTimeline = false;
-		if (FProperty* VariableProperty = VarAction->GetProperty())
+		if (UProperty* VariableProperty = VarAction->GetProperty())
 		{
 			// Don't allow removal of timeline properties - you need to remove the timeline node for that
-			FObjectProperty* ObjProperty = CastField<FObjectProperty>(VariableProperty);
+			UObjectProperty* ObjProperty = Cast<UObjectProperty>(VariableProperty);
 			if (ObjProperty && ObjProperty->PropertyClass == UTimelineComponent::StaticClass())
 			{
 				bIsTimeline = true;

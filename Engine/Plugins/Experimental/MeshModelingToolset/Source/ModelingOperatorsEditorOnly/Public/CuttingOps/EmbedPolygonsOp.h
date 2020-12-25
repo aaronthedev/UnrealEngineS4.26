@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,10 +15,9 @@
 UENUM()
 enum class EEmbeddedPolygonOpMethod : uint8
 {
-	TrimOutside,
-	TrimInside,
-	InsertPolygon,
+	CutAndFill,
 	CutThrough
+	//, Extrude  // TODO: extrude(/intrude?) would also be easy/natural to support here
 };
 
 
@@ -29,13 +28,13 @@ public:
 
 	
 	// inputs
-	FFrame3d PolygonFrame;
-	FPolygon2d EmbedPolygon;
+	FVector LocalPlaneOrigin, LocalPlaneNormal;
+	float PolygonScale;
 
-	// TODO: switch to FGeneralPolygon2d?
+	// TODO: stop hardcoding the polygon shape, switch to FGeneralPolygon2d
 	FPolygon2d GetPolygon()
 	{
-		return EmbedPolygon;
+		return FPolygon2d::MakeCircle(PolygonScale, 20);
 	}
 
 	bool bDiscardAttributes;
@@ -46,19 +45,13 @@ public:
 
 	TSharedPtr<FDynamicMesh3> OriginalMesh;
 
+	void SetTransform(const FTransform& Transform);
+
 	//
 	// FDynamicMeshOperator implementation
 	// 
 
 	virtual void CalculateResult(FProgressCancel* Progress) override;
-
-
-	// Outputs
-	TArray<int> EmbeddedEdges;
-	bool bEmbedSucceeded = false;
-
-private:
-	void RecordEmbeddedEdges(TArray<int>& PathVertIDs);
 };
 
 

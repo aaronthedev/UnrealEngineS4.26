@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -295,7 +295,7 @@ public:
 		{
 			// Flip the bits, then we only need to find the first one bit -- easy.
 			const WordType Bits = ~(Words[WordIndex]);
-			UE_ASSUME(Bits != 0);
+			ASSUME(Bits != 0);
 
 			const int32 LowestBitIndex = FMath::CountTrailingZeros64(Bits) + (WordIndex << NumBitsPerWordLog2);
 			if (LowestBitIndex < LocalNumBits)
@@ -327,7 +327,7 @@ public:
 		if (WordIndex < NumWords)
 		{
 			const WordType Bits = Words[WordIndex];
-			UE_ASSUME(Bits != 0);
+			ASSUME(Bits != 0);
 
 			const int32 LowestBitIndex = (int32)FMath::CountTrailingZeros64(Bits) + (WordIndex << NumBitsPerWordLog2);
 			if (LowestBitIndex < LocalNumBits)

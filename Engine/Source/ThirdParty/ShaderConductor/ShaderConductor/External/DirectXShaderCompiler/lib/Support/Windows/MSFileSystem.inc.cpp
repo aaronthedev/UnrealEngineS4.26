@@ -148,7 +148,7 @@ error_code SetCurrentThreadFileSystem(MSFileSystemRef value) throw()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 // Support for CRT-like file stream functions.
 
-int msf_read(int fd, void* buffer, unsigned int count) throw()
+int msf_read(int fd, void* buffer, unsigned int count)
 {
   MSFileSystemRef fsr = GetCurrentThreadFileSystem();
   if (fsr == nullptr) {
@@ -158,7 +158,7 @@ int msf_read(int fd, void* buffer, unsigned int count) throw()
   return fsr->Read(fd, buffer, count);
 }
 
-int msf_write(int fd, const void* buffer, unsigned int count) throw()
+int msf_write(int fd, const void* buffer, unsigned int count)
 {
   MSFileSystemRef fsr = GetCurrentThreadFileSystem();
   if (fsr == nullptr) {
@@ -168,7 +168,7 @@ int msf_write(int fd, const void* buffer, unsigned int count) throw()
   return fsr->Write(fd, buffer, count);
 }
 
-int msf_close(int fd) throw()
+int msf_close(int fd)
 {
   MSFileSystemRef fsr = GetCurrentThreadFileSystem();
   if (fsr == nullptr) {
@@ -188,7 +188,7 @@ long msf_lseek(int fd, long offset, int origin)
   return fsr->lseek(fd, offset, origin);
 }
 
-int msf_setmode(int fd, int mode) throw()
+int msf_setmode(int fd, int mode)
 {
   MSFileSystemRef fsr = GetCurrentThreadFileSystem();
   if (fsr == nullptr) {

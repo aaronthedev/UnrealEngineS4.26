@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Collections.Generic;
@@ -44,11 +44,6 @@ namespace UnrealBuildTool
 		/// BaseEditorSettings.ini, DefaultEditorSettings.ini, etc...
 		/// </summary>
 		EditorSettings,
-
-		/// <summary>
-		/// BaseInstallBundle.ini, DefaultInstallBundle.ini, etc...
-		/// </summary>
-		InstallBundle,
 	}
 
 	/// <summary>
@@ -627,9 +622,9 @@ namespace UnrealBuildTool
 
 					// Parse the value
 					Value.Clear();
-					if (Char.IsLetterOrDigit(Chars[Idx]) || Chars[Idx] == '_' || Chars[Idx] == '-')
+					if (Char.IsLetterOrDigit(Chars[Idx]) || Chars[Idx] == '_')
 					{
-						while (Char.IsLetterOrDigit(Chars[Idx]) || Chars[Idx] == '_' || Chars[Idx] == '-' || Chars[Idx] == '.')
+						while (Char.IsLetterOrDigit(Chars[Idx]) || Chars[Idx] == '_' || Chars[Idx] == '.')
 						{
 							Value.Append(Chars[Idx]);
 							Idx++;
@@ -729,50 +724,79 @@ namespace UnrealBuildTool
 		}
 
 
-		class ConfigLayerExpansion
+		enum EConfigFlag
 		{
-			// a set of replacements from the source file to possible other files
-			public string Before1 = null;
-			public string After1 = null;
-			public string Before2 = null;
-			public string After2 = null;
+			None,
+			// Required,  // not needed in C# land
+			// AllowCommandLineOverride,  // not needed in C# land
+			// DedicatedServerOnly, // not needed in C# land
+			// GenerateCacheKey,  // not needed in C# land
 		};
 
-		static string [] ConfigLayers =
+		class ConfigLayer
+		{
+			// Used by the editor to display in the ini-editor
+			// string EditorName; // don't need editor name in C# land
+			// Path to the ini file (with variables)
+			public string Path;
+			// Special flag
+			// public EConfigFlag Flag = EConfigFlag.None;
+
+			public string ExtEnginePath = null;
+			public string ExtProjectPath = null;
+		}
+
+		struct ConfigLayerExpansion
+		{
+			// The subdirectory for this expansion (ie "NoRedist")
+			public string DirectoryPrefix;
+			// The filename prefix for this expansion (ie "Shippable")
+			public string FilePrefix;
+			// Optional flags 
+			// public EConfigFlag Flag;
+		};
+
+		static ConfigLayer[] ConfigLayers = 
 		{
 			// Engine/Base.ini
-			"{ENGINE}/Config/Base.ini",
+			new ConfigLayer { Path = "{ENGINE}/Config/Base.ini" }, //, Flag = EConfigFlag.Required },
 			// Engine/Base*.ini
- 			"{ENGINE}/Config/Base{TYPE}.ini",
+ 			new ConfigLayer { Path = "{ENGINE}/Config/{ED}{EF}Base{TYPE}.ini" },
 			// Engine/Platform/BasePlatform*.ini
-			"{ENGINE}/Config/{PLATFORM}/Base{PLATFORM}{TYPE}.ini",
+			new ConfigLayer { Path = "{ENGINE}/Config/{ED}{PLATFORM}/{EF}Base{PLATFORM}{TYPE}.ini", ExtEnginePath = "{EXTENGINE}/Config/{ED}{EF}Base{PLATFORM}{TYPE}.ini" },
 			// Project/Default*.ini
-			"{PROJECT}/Config/Default{TYPE}.ini",
+			new ConfigLayer { Path = "{PROJECT}/Config/{ED}{EF}Default{TYPE}.ini" }, //, Flag = EConfigFlag.AllowCommandLineOverride },
 			// Engine/Platform/Platform*.ini
-			"{ENGINE}/Config/{PLATFORM}/{PLATFORM}{TYPE}.ini",
+			new ConfigLayer { Path = "{ENGINE}/Config/{ED}{PLATFORM}/{EF}{PLATFORM}{TYPE}.ini", ExtEnginePath = "{EXTENGINE}/Config/{ED}{EF}{PLATFORM}{TYPE}.ini" },
 			// Project/Platform/Platform*.ini
-			"{PROJECT}/Config/{PLATFORM}/{PLATFORM}{TYPE}.ini",
+			new ConfigLayer { Path = "{PROJECT}/Config/{ED}{PLATFORM}/{EF}{PLATFORM}{TYPE}.ini", ExtProjectPath = "{EXTPROJECT}/Config/{ED}{EF}{PLATFORM}{TYPE}.ini" },
 
 			// UserSettings/.../User*.ini
-			"{USERSETTINGS}/Unreal Engine/Engine/Config/User{TYPE}.ini",
+			new ConfigLayer { Path = "{USERSETTINGS}/Unreal Engine/Engine/Config/User{TYPE}.ini" },
 			// UserDir/.../User*.ini
-			"{USER}/Unreal Engine/Engine/Config/User{TYPE}.ini",
+			new ConfigLayer { Path = "{USER}/Unreal Engine/Engine/Config/User{TYPE}.ini" },
 			// Project/User*.ini
-			"{PROJECT}/User{TYPE}.ini",
+			new ConfigLayer { Path = "{PROJECT}/Config/User{TYPE}.ini" },
 		};
 
 		static ConfigLayerExpansion[] ConfigLayerExpansions =
 		{
 			// The base expansion (ie, no expansion)
-			new ConfigLayerExpansion { }, 
-			// Restricted Locations
-			new ConfigLayerExpansion { Before1 = "{ENGINE}/", After1 = "{ENGINE}/Restricted/NotForLicensees/",	Before2 = "{PROJECT}/Config/", After2 = "{RESTRICTEDPROJECT_NFL}/Config/" },
-			new ConfigLayerExpansion { Before1 = "{ENGINE}/", After1 = "{ENGINE}/Restricted/NoRedist/",			Before2 = "{PROJECT}/Config/", After2 = "{RESTRICTEDPROJECT_NR}/Config/" },
-			// Platform Extensions
-			new ConfigLayerExpansion { Before1 = "{ENGINE}/Config/{PLATFORM}/", After1 = "{EXTENGINE}/Config/",	Before2 = "{PROJECT}/Config/{PLATFORM}/", After2 = "{EXTPROJECT}/Config/" },
-			// Platform Extensions in Restricted Locations
-			new ConfigLayerExpansion { Before1 = "{ENGINE}/Config/{PLATFORM}/", After1 = "{ENGINE}/Restricted/NotForLicensees/Platforms/{PLATFORM}/Config/",   Before2 = "{PROJECT}/Config/{PLATFORM}/", After2 = "{RESTRICTEDPROJECT_NFL}/Platforms/{PLATFORM}/Config/" },
-			new ConfigLayerExpansion { Before1 = "{ENGINE}/Config/{PLATFORM}/", After1 = "{ENGINE}/Restricted/NoRedist/Platforms/{PLATFORM}/Config/",          Before2 = "{PROJECT}/Config/{PLATFORM}/", After2 = "{RESTRICTEDPROJECT_NR}/Platforms/{PLATFORM}/Config/" },
+			new ConfigLayerExpansion { DirectoryPrefix = "", FilePrefix = "" }, 
+
+			// When running a dedicated server, not used in UBT
+			// new ConfigLayerExpansion { DirectoryPrefix = "", FilePrefix = "DedicatedServer" }, //  Flag_DedicatedServerOnly },
+
+			// This file is remapped in UAT from inside NFL or NoRedist, because those directories are stripped while packaging
+			new ConfigLayerExpansion { DirectoryPrefix = "", FilePrefix = "Shippable" },
+			// Hidden directory from licensees
+			new ConfigLayerExpansion { DirectoryPrefix = "NotForLicensees/", FilePrefix = "" },
+			// Settings that need to be hidden from licensees, but are needed for shipping
+			new ConfigLayerExpansion { DirectoryPrefix = "NotForLicensees/", FilePrefix = "Shippable" },
+			// Hidden directory from non-Epic
+			new ConfigLayerExpansion { DirectoryPrefix = "NoRedist/", FilePrefix = "" },
+			// Settings that need to be hidden from non-Epic, but are needed for shipping
+			new ConfigLayerExpansion { DirectoryPrefix = "NoRedist/", FilePrefix = "Shippable" },
 		};
 
 		// Match FPlatformProcess::UserDir()
@@ -793,72 +817,66 @@ namespace UnrealBuildTool
 			return PersonalConfigFolder;
 		}
 
-
-		private static string PerformBasicReplacements(string InString, string BaseIniName)
+		private static string GetLayerPath(ConfigLayer Layer, string PlatformExtensionName, string IniPlatformName, DirectoryReference ProjectDir, string BaseIniName,
+			out bool bHasPlatformTag, out bool bHasProjectTag, out bool bHasExpansionTag)
 		{
-			string OutString = InString.Replace("{TYPE}", BaseIniName);
-			OutString = OutString.Replace("{USERSETTINGS}", Utils.GetUserSettingDirectory().FullName);
-			OutString = OutString.Replace("{USER}", GetUserDir());
+			// cache some platform extension information that can be used inside the loops
+			string PlatformExtensionEngineConfigDir = DirectoryReference.Combine(UnrealBuildTool.EnginePlatformExtensionsDirectory, PlatformExtensionName).FullName;
+			string PlatformExtensionProjectConfigDir = ProjectDir != null ? DirectoryReference.Combine(UnrealBuildTool.ProjectPlatformExtensionsDirectory(ProjectDir), PlatformExtensionName).FullName : null;
+			bool bHasPlatformExtensionEngineConfigDir = Directory.Exists(PlatformExtensionEngineConfigDir);
+			bool bHasPlatformExtensionProjectConfigDir = PlatformExtensionProjectConfigDir != null && Directory.Exists(PlatformExtensionProjectConfigDir);
 
-			return OutString;
-		}
+			bHasPlatformTag = Layer.Path.Contains("{PLATFORM}");
+			bHasProjectTag = Layer.Path.Contains("{PROJECT}");
+			bHasExpansionTag = Layer.Path.Contains("{ED}") || Layer.Path.Contains("{EF}");
+			bool bHasUserTag = Layer.Path.Contains("{USER}");
 
-
-		private static string PerformExpansionReplacements(ConfigLayerExpansion Expansion, string InString)
-		{
-			// if there's replacement to do, the output is just the output
-			if (Expansion.Before1 == null)
-			{
-				return InString;
-			}
-
-			// if nothing to replace, then skip it entirely
-			if (!InString.Contains(Expansion.Before1) && (Expansion.Before2 == null || !InString.Contains(Expansion.Before2)))
+			// skip platform layers if we are "platform-less", or user layers without a user dir
+			if ((bHasPlatformTag && IniPlatformName == "None") ||
+				(bHasProjectTag && ProjectDir == null) ||
+				(bHasUserTag && GetUserDir() == null))
 			{
 				return null;
 			}
 
-			// replace the directory bits
-			string OutString = InString.Replace(Expansion.Before1, Expansion.After1);
-			if (Expansion.Before2 != null)
+			// basic replacements
+			string LayerPath;
+			// you can only have PROJECT or ENGINE, not both
+			if (bHasProjectTag)
 			{
-				OutString = OutString.Replace(Expansion.Before2, Expansion.After2);
-			}
-			return OutString;
-		}
-
-		private static string PerformFinalExpansions(string InString, string PlatformName, DirectoryReference ProjectDir)
-		{
-			string PlatformExtensionEngineConfigDir = DirectoryReference.Combine(UnrealBuildTool.EngineDirectory, "Platforms", PlatformName).FullName;
-
-			string OutString = InString.Replace("{ENGINE}", UnrealBuildTool.EngineDirectory.FullName);
-			OutString = OutString.Replace("{EXTENGINE}", PlatformExtensionEngineConfigDir);
-			OutString = OutString.Replace("{PLATFORM}", PlatformName);
-
-			if (ProjectDir != null)
-			{
-				DirectoryReference NFLDir;
-				DirectoryReference NRDir;
-				if (ProjectDir.IsUnderDirectory(UnrealBuildTool.EngineDirectory))
+				if (bHasPlatformTag && bHasPlatformExtensionProjectConfigDir)
 				{
-					string RelativeDir = ProjectDir.MakeRelativeTo(UnrealBuildTool.EngineDirectory);
-					NFLDir = DirectoryReference.Combine(UnrealBuildTool.EngineDirectory, "Restricted/NotForLicensees", RelativeDir);
-					NRDir = DirectoryReference.Combine(UnrealBuildTool.EngineDirectory, "Restricted/NoRedist", RelativeDir);
+					LayerPath = Layer.ExtProjectPath.Replace("{EXTPROJECT}", PlatformExtensionProjectConfigDir);
 				}
 				else
 				{
-					NFLDir = DirectoryReference.Combine(ProjectDir, "Restricted/NotForLicensees");
-					NRDir = DirectoryReference.Combine(ProjectDir, "Restricted/NoRedist");
+					LayerPath = Layer.Path.Replace("{PROJECT}", ProjectDir.FullName);
 				}
-				string PlatformExtensionProjectConfigDir = DirectoryReference.Combine(ProjectDir, "Platforms", PlatformName).FullName;
-
-				OutString = OutString.Replace("{PROJECT}", ProjectDir.FullName);
-				OutString = OutString.Replace("{EXTPROJECT}", PlatformExtensionProjectConfigDir);
-				OutString = OutString.Replace("{RESTRICTEDPROJECT_NFL}", NFLDir.FullName);
-				OutString = OutString.Replace("{RESTRICTEDPROJECT_NR}", NRDir.FullName);
 			}
+			else
+			{
+				if (bHasPlatformTag && bHasPlatformExtensionEngineConfigDir)
+				{
+					LayerPath = Layer.ExtEnginePath.Replace("{EXTENGINE}", PlatformExtensionEngineConfigDir);
+				}
+				else
+				{
+					LayerPath = Layer.Path.Replace("{ENGINE}", UnrealBuildTool.EngineDirectory.FullName);
+				}
+			}
+			LayerPath = LayerPath.Replace("{TYPE}", BaseIniName);
+			LayerPath = LayerPath.Replace("{USERSETTINGS}", Utils.GetUserSettingDirectory().FullName);
+			LayerPath = LayerPath.Replace("{USER}", GetUserDir());
 
-			return OutString;
+			return LayerPath;
+		}
+
+		private static string GetExpansionPath(ConfigLayerExpansion Expansion, string LayerPath)
+		{
+			string ExpansionPath = LayerPath.Replace("{ED}", Expansion.DirectoryPrefix);
+			ExpansionPath = ExpansionPath.Replace("{EF}", Expansion.FilePrefix);
+
+			return ExpansionPath;
 		}
 
 		/// <summary>
@@ -869,35 +887,24 @@ namespace UnrealBuildTool
 			string BaseIniName = Enum.GetName(typeof(ConfigHierarchyType), Type);
 			string PlatformName = GetIniPlatformName(Platform);
 
-			foreach (string Layer in ConfigLayers)
+			foreach (ConfigLayer Layer in ConfigLayers)
 			{
-				bool bHasPlatformTag = Layer.Contains("{PLATFORM}");
-				bool bHasProjectTag = Layer.Contains("{PROJECT}");
-				bool bHasUserTag = Layer.Contains("{USER}");
+				bool bHasPlatformTag, bHasProjectTag, bHasExpansionTag;
+				string LayerPath = GetLayerPath(Layer, Platform.ToString(), PlatformName, ProjectDir, BaseIniName, out bHasPlatformTag, out bHasProjectTag, out bHasExpansionTag);
 
-				// skip certain layers if we are platform-less, project-less, or userdir-less
-				if ((bHasPlatformTag && PlatformName == "None") ||
-					(bHasProjectTag && ProjectDir == null) ||
-					(bHasUserTag && GetUserDir() == null))
+				// skip the layer if we aren't going to use it
+				if (LayerPath == null)
 				{
 					continue;
 				}
 
-				string LayerPath = PerformBasicReplacements(Layer, BaseIniName);
-
-				// we only expand engine/project inis
-				if (Layer.Contains("{ENGINE}") || Layer.Contains("{PROJECT}"))
+				// handle expansion (and platform - the C++ code will validate that only expansion layers have platforms)
+				if (bHasExpansionTag)
 				{
 					foreach (ConfigLayerExpansion Expansion in ConfigLayerExpansions)
 					{
 						// expansion replacements
-						string ExpandedPath = PerformExpansionReplacements(Expansion, LayerPath);
-
-						// if nothing was replaced, then skip it, as it won't change anything
-						if (ExpandedPath == null)
-						{
-							continue;
-						}
+						string ExpansionPath = GetExpansionPath(Expansion, LayerPath);
 
 						// now go up the ini parent chain
 						if (bHasPlatformTag)
@@ -912,15 +919,17 @@ namespace UnrealBuildTool
 									// may not even exist as a UnrealTargetPlatform, and all we have is a string to look up, and it would just get the same
 									// string back, if we did look it up. This could become an issue if Win64 becomes a PlatformExtension, and wants to have 
 									// a parent Platform, of ... something. This is likely to never be an issue, but leaving this note here just in case.
-									yield return new FileReference(PerformFinalExpansions(ExpandedPath, ParentPlatform, ProjectDir));
+									string LocalLayerPath = GetLayerPath(Layer, ParentPlatform, ParentPlatform, ProjectDir, BaseIniName, out bHasPlatformTag, out bHasProjectTag, out bHasExpansionTag);
+									string LocalExpansionPath = GetExpansionPath(Expansion, LocalLayerPath);
+									yield return new FileReference(LocalExpansionPath.Replace("{PLATFORM}", ParentPlatform));
 								}
 							}
 							// always yield the active platform last 
-							yield return new FileReference(PerformFinalExpansions(ExpandedPath, PlatformName, ProjectDir));
+							yield return new FileReference(ExpansionPath.Replace("{PLATFORM}", PlatformName));
 						}
 						else
 						{
-							yield return new FileReference(PerformFinalExpansions(ExpandedPath, "", ProjectDir));
+							yield return new FileReference(ExpansionPath);
 						}
 					}
 				}
@@ -1003,7 +1012,7 @@ namespace UnrealBuildTool
 			}
 			else
 			{
-				return TargetPlatform.ToString();
+				return TargetPlatform == null ? "None" : TargetPlatform.ToString();
 			}
 		}
 	}

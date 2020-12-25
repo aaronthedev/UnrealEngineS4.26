@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -104,8 +104,7 @@ private:
 	FReply OnArrayDrop(const FDragDropEvent& DragDropEvent);
 	FReply OnArrayHeaderDrop(const FDragDropEvent& DragDropEvent);
 
-	TSharedPtr<FPropertyNode> GetPropertyNode() const;
-	TSharedPtr<IPropertyHandle> GetPropertyHandle() const;
+	TSharedPtr<FPropertyNode> GetCopyPastePropertyNode() const;
 private:
 	TWeakPtr<IDetailKeyframeHandler> KeyframeHandler;
 	/** Customization for this widget */

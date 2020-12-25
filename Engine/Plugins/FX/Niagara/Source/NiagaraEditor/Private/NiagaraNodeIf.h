@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 #include "NiagaraNodeWithDynamicPins.h"
@@ -43,10 +43,10 @@ public:
 	UPROPERTY()
 	TArray<FNiagaraVariable> OutputVars;
 
-	UPROPERTY(meta = (SkipForCompileHash = "true"))
+	UPROPERTY()
 	TArray<FPinGuidsForPath> PathAssociatedPinGuids;
 
-	UPROPERTY(meta = (SkipForCompileHash = "true"))
+	UPROPERTY()
 	FGuid ConditionPinGuid;
 
 	//~ Begin UObject Interface

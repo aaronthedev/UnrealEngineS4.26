@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ProxyGenerationProcessor.h"
 #include "MaterialUtilities.h"
@@ -9,7 +9,6 @@
 #include "IMeshReductionManagerModule.h"
 #include "Modules/ModuleManager.h"
 #include "StaticMeshAttributes.h"
-#include "Stats/Stats.h"
 
 #if WITH_EDITOR
 #include "Editor.h"
@@ -64,8 +63,6 @@ void FProxyGenerationProcessor::AddProxyJob(FGuid InJobGuid, FMergeCompleteData*
 
 bool FProxyGenerationProcessor::Tick(float DeltaTime)
 {
-	QUICK_SCOPE_CYCLE_COUNTER(STAT_FProxyGenerationProcessor_Tick);
-
 	FScopeLock Lock(&StateLock);
 	for (const auto& Entry : ToProcessJobDataMap)
 	{
@@ -170,7 +167,7 @@ void FProxyGenerationProcessor::ProcessJob(const FGuid& JobGuid, FProxyGeneratio
 	FString MeshAssetName = TEXT("SM_") + AssetBaseName;
 	if (MeshPackage == nullptr)
 	{
-		MeshPackage = CreatePackage( *(AssetBasePath + MeshAssetName));
+		MeshPackage = CreatePackage(NULL, *(AssetBasePath + MeshAssetName));
 		MeshPackage->FullyLoad();
 		MeshPackage->Modify();
 	}
@@ -218,7 +215,7 @@ void FProxyGenerationProcessor::ProcessJob(const FGuid& JobGuid, FProxyGeneratio
 			//We cannot remove the vertex color with the mesh description so we assign a white value to all color
 			TVertexInstanceAttributesRef<FVector4> VertexInstanceColors = Data->RawMesh.VertexInstanceAttributes().GetAttributesRef<FVector4>(MeshAttribute::VertexInstance::Color);
 			//set all value to white
-			for (const FVertexInstanceID VertexInstanceID : Data->RawMesh.VertexInstances().GetElementIDs())
+			for (const FVertexInstanceID& VertexInstanceID : Data->RawMesh.VertexInstances().GetElementIDs())
 			{
 				VertexInstanceColors[VertexInstanceID] = FVector4(1.0f, 1.0f, 1.0f);
 			}
@@ -281,7 +278,7 @@ void FProxyGenerationProcessor::ProcessJob(const FGuid& JobGuid, FProxyGeneratio
 	// setup section info map
 	TPolygonGroupAttributesConstRef<FName> PolygonGroupImportedMaterialSlotNames = Data->RawMesh.PolygonGroupAttributes().GetAttributesRef<FName>(MeshAttribute::PolygonGroup::ImportedMaterialSlotName);
 	TArray<int32> UniqueMaterialIndices;
-	for (const FPolygonGroupID PolygonGroupID : Data->RawMesh.PolygonGroups().GetElementIDs())
+	for (const FPolygonGroupID& PolygonGroupID : Data->RawMesh.PolygonGroups().GetElementIDs())
 	{
 		int32 PolygonGroupMaterialIndex = PolygonGroupID.GetValue();
 		FName PolygonGroupName = PolygonGroupImportedMaterialSlotNames[PolygonGroupID];

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,6 +25,8 @@ public:
 	/** Default constructors. */
 	TIndirectArray() = default;
 	TIndirectArray(TIndirectArray&&) = default;
+	TIndirectArray& operator=(TIndirectArray&&) = default;
+
 	/**
 	 * Copy constructor.
 	 *
@@ -39,7 +41,7 @@ public:
 	}
 
 	/**
-	 * Assignment operators.
+	 * Assignment operator.
 	 *
 	 * @param Other Other array to assign with.
 	 */
@@ -56,17 +58,6 @@ public:
 
 		return *this;
 	}
-	TIndirectArray &operator=(TIndirectArray && Other)
-	{
-		if (&Other != this)
-		{
-			Empty();
-			Array = MoveTemp(Other.Array);
-		}
-
-		return *this;
-	}
-
 
 	/** Destructor. */
 	~TIndirectArray()
@@ -197,7 +188,7 @@ public:
 		if (Ar.IsLoading())
 		{
 			// Load array.
-			int32 NewNum = 0;
+			int32 NewNum;
 			Ar << NewNum;
 			Empty(NewNum);
 			for (int32 Index = 0; Index < NewNum; Index++)

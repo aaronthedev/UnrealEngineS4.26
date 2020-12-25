@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -14,7 +14,7 @@ class FWidgetSnapshotService;
  * Widget reflector implementation.
  * User widget to enable iteration without recompilation.
  */
-class SWidgetReflector
+class SLATEREFLECTOR_API SWidgetReflector
 	: public SUserWidget
 	, public IWidgetReflector
 {

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -57,7 +57,7 @@ public:
 	 *
 	 * @return new Http request instance
 	 */
-	virtual TSharedRef<IHttpRequest, ESPMode::ThreadSafe> CreateRequest();
+	virtual TSharedRef<IHttpRequest> CreateRequest();
 
 	/**
 	 * Only meant to be used by Http request/response implementations
@@ -127,7 +127,7 @@ public:
 	}
 
 	/**
-	 * Sets the maximum size for the read buffer
+	 * Sets timeout in seconds for the entire http request to complete
 	 * @param SizeInBytes	The maximum number of bytes to use for the read buffer
 	 */
 	inline void SetMaxReadBufferSize(int32 SizeInBytes)

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -136,9 +136,9 @@ public:
 	DECLARE_FUNCTION(execSet_Add)
 	{
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FSetProperty>(NULL);
+		Stack.StepCompiledIn<USetProperty>(NULL);
 		void* SetAddr = Stack.MostRecentPropertyAddress;
-		FSetProperty* SetProperty = CastField<FSetProperty>(Stack.MostRecentProperty);
+		USetProperty* SetProperty = Cast<USetProperty>(Stack.MostRecentProperty);
 		if (!SetProperty)
 		{
 			Stack.bArrayContextFailed = true;
@@ -146,13 +146,13 @@ public:
 		}
 
 		// Since ItemPtr isn't really an int, step the stack manually
-		const FProperty* ElementProp = SetProperty->ElementProp;
+		const UProperty* ElementProp = SetProperty->ElementProp;
 		const int32 PropertySize = ElementProp->ElementSize * ElementProp->ArrayDim;
 		void* StorageSpace = FMemory_Alloca(PropertySize);
 		ElementProp->InitializeValue(StorageSpace);
 
 		Stack.MostRecentPropertyAddress = NULL;
-		Stack.StepCompiledIn<FProperty>(StorageSpace);
+		Stack.StepCompiledIn<UProperty>(StorageSpace);
 		void* ItemPtr = StorageSpace;
 
 		P_FINISH;
@@ -167,9 +167,9 @@ public:
 	DECLARE_FUNCTION(execSet_AddItems)
 	{
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FSetProperty>(NULL);
+		Stack.StepCompiledIn<USetProperty>(NULL);
 		void* SetAddr = Stack.MostRecentPropertyAddress;
-		FSetProperty* SetProperty = CastField<FSetProperty>(Stack.MostRecentProperty);
+		USetProperty* SetProperty = Cast<USetProperty>(Stack.MostRecentProperty);
 		if (!SetProperty)
 		{
 			Stack.bArrayContextFailed = true;
@@ -177,9 +177,9 @@ public:
 		}
 
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FArrayProperty>(NULL);
+		Stack.StepCompiledIn<UArrayProperty>(NULL);
 		void* TargetArrayAddr = Stack.MostRecentPropertyAddress;
-		FArrayProperty* TargetArrayProperty = CastField<FArrayProperty>(Stack.MostRecentProperty);
+		UArrayProperty* TargetArrayProperty = Cast<UArrayProperty>(Stack.MostRecentProperty);
 		if (!TargetArrayProperty)
 		{
 			Stack.bArrayContextFailed = true;
@@ -196,9 +196,9 @@ public:
 	DECLARE_FUNCTION(execSet_Remove)
 	{
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FSetProperty>(NULL);
+		Stack.StepCompiledIn<USetProperty>(NULL);
 		void* SetAddr = Stack.MostRecentPropertyAddress;
-		FSetProperty* SetProperty = CastField<FSetProperty>(Stack.MostRecentProperty);
+		USetProperty* SetProperty = Cast<USetProperty>(Stack.MostRecentProperty);
 		if (!SetProperty)
 		{
 			Stack.bArrayContextFailed = true;
@@ -206,13 +206,13 @@ public:
 		}
 
 		// Since ItemPtr isn't really an int, step the stack manually
-		const FProperty* ElementProp = SetProperty->ElementProp;
+		const UProperty* ElementProp = SetProperty->ElementProp;
 		const int32 PropertySize = ElementProp->ElementSize * ElementProp->ArrayDim;
 		void* StorageSpace = FMemory_Alloca(PropertySize);
 		ElementProp->InitializeValue(StorageSpace);
 
 		Stack.MostRecentPropertyAddress = NULL;
-		Stack.StepCompiledIn<FProperty>(StorageSpace);
+		Stack.StepCompiledIn<UProperty>(StorageSpace);
 		void* ItemPtr = StorageSpace;
 
 		P_FINISH;
@@ -227,9 +227,9 @@ public:
 	DECLARE_FUNCTION(execSet_RemoveItems)
 	{
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FSetProperty>(NULL);
+		Stack.StepCompiledIn<USetProperty>(NULL);
 		void* SetAddr = Stack.MostRecentPropertyAddress;
-		FSetProperty* SetProperty = CastField<FSetProperty>(Stack.MostRecentProperty);
+		USetProperty* SetProperty = Cast<USetProperty>(Stack.MostRecentProperty);
 		if (!SetProperty)
 		{
 			Stack.bArrayContextFailed = true;
@@ -237,9 +237,9 @@ public:
 		}
 
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FArrayProperty>(NULL);
+		Stack.StepCompiledIn<UArrayProperty>(NULL);
 		void* TargetArrayAddr = Stack.MostRecentPropertyAddress;
-		FArrayProperty* TargetArrayProperty = CastField<FArrayProperty>(Stack.MostRecentProperty);
+		UArrayProperty* TargetArrayProperty = Cast<UArrayProperty>(Stack.MostRecentProperty);
 		if (!TargetArrayProperty)
 		{
 			Stack.bArrayContextFailed = true;
@@ -256,9 +256,9 @@ public:
 	DECLARE_FUNCTION(execSet_ToArray)
 	{
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FSetProperty>(NULL);
+		Stack.StepCompiledIn<USetProperty>(NULL);
 		void* SetAddr = Stack.MostRecentPropertyAddress;
-		FSetProperty* SetProperty = CastField<FSetProperty>(Stack.MostRecentProperty);
+		USetProperty* SetProperty = Cast<USetProperty>(Stack.MostRecentProperty);
 		if (!SetProperty)
 		{
 			Stack.bArrayContextFailed = true;
@@ -266,9 +266,9 @@ public:
 		}
 
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FArrayProperty>(NULL);
+		Stack.StepCompiledIn<UArrayProperty>(NULL);
 		void* TargetArrayAddr = Stack.MostRecentPropertyAddress;
-		FArrayProperty* TargetArrayProperty = CastField<FArrayProperty>(Stack.MostRecentProperty);
+		UArrayProperty* TargetArrayProperty = Cast<UArrayProperty>(Stack.MostRecentProperty);
 		if (!TargetArrayProperty)
 		{
 			Stack.bArrayContextFailed = true;
@@ -285,9 +285,9 @@ public:
 	DECLARE_FUNCTION(execSet_Clear)
 	{
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FSetProperty>(NULL);
+		Stack.StepCompiledIn<USetProperty>(NULL);
 		void* SetAddr = Stack.MostRecentPropertyAddress;
-		FSetProperty* SetProperty = CastField<FSetProperty>(Stack.MostRecentProperty);
+		USetProperty* SetProperty = Cast<USetProperty>(Stack.MostRecentProperty);
 		if (!SetProperty)
 		{
 			Stack.bArrayContextFailed = true;
@@ -306,9 +306,9 @@ public:
 	DECLARE_FUNCTION(execSet_Length)
 	{
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FSetProperty>(NULL);
+		Stack.StepCompiledIn<USetProperty>(NULL);
 		void* SetAddr = Stack.MostRecentPropertyAddress;
-		FSetProperty* SetProperty = CastField<FSetProperty>(Stack.MostRecentProperty);
+		USetProperty* SetProperty = Cast<USetProperty>(Stack.MostRecentProperty);
 		if (!SetProperty)
 		{
 			Stack.bArrayContextFailed = true;
@@ -326,9 +326,9 @@ public:
 	DECLARE_FUNCTION(execSet_Contains)
 	{
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FSetProperty>(NULL);
+		Stack.StepCompiledIn<USetProperty>(NULL);
 		void* SetAddr = Stack.MostRecentPropertyAddress;
-		FSetProperty* SetProperty = CastField<FSetProperty>(Stack.MostRecentProperty);
+		USetProperty* SetProperty = Cast<USetProperty>(Stack.MostRecentProperty);
 		if (!SetProperty)
 		{
 			// @todo(dano): rename to 'container context failed'
@@ -337,13 +337,13 @@ public:
 		}
 
 		// Since ItemToFind isn't really an int, step the stack manually
-		const FProperty* ElementProp = SetProperty->ElementProp;
+		const UProperty* ElementProp = SetProperty->ElementProp;
 		const int32 PropertySize = ElementProp->ElementSize * ElementProp->ArrayDim;
 		void* StorageSpace = FMemory_Alloca(PropertySize);
 		ElementProp->InitializeValue(StorageSpace);
 
 		Stack.MostRecentPropertyAddress = NULL;
-		Stack.StepCompiledIn<FProperty>(StorageSpace);
+		Stack.StepCompiledIn<UProperty>(StorageSpace);
 		void* ItemToFindPtr = StorageSpace;
 
 		P_FINISH;
@@ -358,9 +358,9 @@ public:
 	DECLARE_FUNCTION(execSet_Intersection)
 	{
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FSetProperty>(NULL);
+		Stack.StepCompiledIn<USetProperty>(NULL);
 		void* SetAddrA = Stack.MostRecentPropertyAddress;
-		FSetProperty* SetPropertyA = CastField<FSetProperty>(Stack.MostRecentProperty);
+		USetProperty* SetPropertyA = Cast<USetProperty>(Stack.MostRecentProperty);
 		if (!SetPropertyA)
 		{
 			Stack.bArrayContextFailed = true;
@@ -368,9 +368,9 @@ public:
 		}
 
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FSetProperty>(NULL);
+		Stack.StepCompiledIn<USetProperty>(NULL);
 		void* SetAddrB = Stack.MostRecentPropertyAddress;
-		FSetProperty* SetPropertyB = CastField<FSetProperty>(Stack.MostRecentProperty);
+		USetProperty* SetPropertyB = Cast<USetProperty>(Stack.MostRecentProperty);
 		if (!SetPropertyB)
 		{
 			Stack.bArrayContextFailed = true;
@@ -378,9 +378,9 @@ public:
 		}
 
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FSetProperty>(NULL);
+		Stack.StepCompiledIn<USetProperty>(NULL);
 		void* SetAddrResult = Stack.MostRecentPropertyAddress;
-		FSetProperty* SetPropertyResult = CastField<FSetProperty>(Stack.MostRecentProperty);
+		USetProperty* SetPropertyResult = Cast<USetProperty>(Stack.MostRecentProperty);
 		if (!SetPropertyResult)
 		{
 			Stack.bArrayContextFailed = true;
@@ -397,9 +397,9 @@ public:
 	DECLARE_FUNCTION(execSet_Union)
 	{
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FSetProperty>(NULL);
+		Stack.StepCompiledIn<USetProperty>(NULL);
 		void* SetAddrA = Stack.MostRecentPropertyAddress;
-		FSetProperty* SetPropertyA = CastField<FSetProperty>(Stack.MostRecentProperty);
+		USetProperty* SetPropertyA = Cast<USetProperty>(Stack.MostRecentProperty);
 		if (!SetPropertyA)
 		{
 			Stack.bArrayContextFailed = true;
@@ -407,9 +407,9 @@ public:
 		}
 
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FSetProperty>(NULL);
+		Stack.StepCompiledIn<USetProperty>(NULL);
 		void* SetAddrB = Stack.MostRecentPropertyAddress;
-		FSetProperty* SetPropertyB = CastField<FSetProperty>(Stack.MostRecentProperty);
+		USetProperty* SetPropertyB = Cast<USetProperty>(Stack.MostRecentProperty);
 		if (!SetPropertyB)
 		{
 			Stack.bArrayContextFailed = true;
@@ -417,9 +417,9 @@ public:
 		}
 
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FSetProperty>(NULL);
+		Stack.StepCompiledIn<USetProperty>(NULL);
 		void* SetAddrResult = Stack.MostRecentPropertyAddress;
-		FSetProperty* SetPropertyResult = CastField<FSetProperty>(Stack.MostRecentProperty);
+		USetProperty* SetPropertyResult = Cast<USetProperty>(Stack.MostRecentProperty);
 		if (!SetPropertyResult)
 		{
 			Stack.bArrayContextFailed = true;
@@ -436,9 +436,9 @@ public:
 	DECLARE_FUNCTION(execSet_Difference)
 	{
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FSetProperty>(NULL);
+		Stack.StepCompiledIn<USetProperty>(NULL);
 		void* SetAddrA = Stack.MostRecentPropertyAddress;
-		FSetProperty* SetPropertyA = CastField<FSetProperty>(Stack.MostRecentProperty);
+		USetProperty* SetPropertyA = Cast<USetProperty>(Stack.MostRecentProperty);
 		if (!SetPropertyA)
 		{
 			Stack.bArrayContextFailed = true;
@@ -446,9 +446,9 @@ public:
 		}
 
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FSetProperty>(NULL);
+		Stack.StepCompiledIn<USetProperty>(NULL);
 		void* SetAddrB = Stack.MostRecentPropertyAddress;
-		FSetProperty* SetPropertyB = CastField<FSetProperty>(Stack.MostRecentProperty);
+		USetProperty* SetPropertyB = Cast<USetProperty>(Stack.MostRecentProperty);
 		if (!SetPropertyB)
 		{
 			Stack.bArrayContextFailed = true;
@@ -456,9 +456,9 @@ public:
 		}
 
 		Stack.MostRecentProperty = nullptr;
-		Stack.StepCompiledIn<FSetProperty>(NULL);
+		Stack.StepCompiledIn<USetProperty>(NULL);
 		void* SetAddrResult = Stack.MostRecentPropertyAddress;
-		FSetProperty* SetPropertyResult = CastField<FSetProperty>(Stack.MostRecentProperty);
+		USetProperty* SetPropertyResult = Cast<USetProperty>(Stack.MostRecentProperty);
 		if (!SetPropertyResult)
 		{
 			Stack.bArrayContextFailed = true;
@@ -475,9 +475,9 @@ public:
 	DECLARE_FUNCTION(execSetSetPropertyByName)
 	{
 		P_GET_OBJECT(UObject, OwnerObject);
-		P_GET_PROPERTY(FNameProperty, SetPropertyName);
+		P_GET_PROPERTY(UNameProperty, SetPropertyName);
 
-		Stack.StepCompiledIn<FSetProperty>(nullptr);
+		Stack.StepCompiledIn<USetProperty>(nullptr);
 		void* SrcSetAddr = Stack.MostRecentPropertyAddress;
 
 		P_FINISH;
@@ -487,17 +487,17 @@ public:
 		P_NATIVE_END;
 	}
 
-	static void GenericSet_Add(const void* TargetSet, const FSetProperty* SetProperty, const void* ItemPtr);
-	static void GenericSet_AddItems(const void* TargetSet, const FSetProperty* SetProperty, const void* TargetArray, const FArrayProperty* ArrayProperty);
-	static bool GenericSet_Remove(const void* TargetSet, const FSetProperty* SetProperty, const void* ItemPtr);
-	static void GenericSet_RemoveItems(const void* TargetSet, const FSetProperty* SetProperty, const void* TargetArray, const FArrayProperty* ArrayProperty);
-	static void GenericSet_ToArray(const void* TargetSet, const FSetProperty* SetProperty, void* TargetArray, const FArrayProperty* ArrayProperty);
-	static void GenericSet_Clear(const void* TargetSet, const FSetProperty* SetProperty);
-	static int32 GenericSet_Length(const void* TargetSet, const FSetProperty* SetProperty);
-	static bool GenericSet_Contains(const void* TargetSet, const FSetProperty* SetProperty, const void* ItemToFind);
-	static void GenericSet_Intersect(const void* SetA, const FSetProperty* SetPropertyA, const void* SetB, const FSetProperty* SetPropertyB, const void* SetResult, const FSetProperty* SetPropertyResult);
-	static void GenericSet_Union(const void* SetA, const FSetProperty* SetPropertyA, const void* SetB, const FSetProperty* SetPropertyB, const void* SetResult, const FSetProperty* SetPropertyResult);
-	static void GenericSet_Difference(const void* SetA, const FSetProperty* SetPropertyA, const void* SetB, const FSetProperty* SetPropertyB, const void* SetResult, const FSetProperty* SetPropertyResult);
+	static void GenericSet_Add(const void* TargetSet, const USetProperty* SetProperty, const void* ItemPtr);
+	static void GenericSet_AddItems(const void* TargetSet, const USetProperty* SetProperty, const void* TargetArray, const UArrayProperty* ArrayProperty);
+	static bool GenericSet_Remove(const void* TargetSet, const USetProperty* SetProperty, const void* ItemPtr);
+	static void GenericSet_RemoveItems(const void* TargetSet, const USetProperty* SetProperty, const void* TargetArray, const UArrayProperty* ArrayProperty);
+	static void GenericSet_ToArray(const void* TargetSet, const USetProperty* SetProperty, void* TargetArray, const UArrayProperty* ArrayProperty);
+	static void GenericSet_Clear(const void* TargetSet, const USetProperty* SetProperty);
+	static int32 GenericSet_Length(const void* TargetSet, const USetProperty* SetProperty);
+	static bool GenericSet_Contains(const void* TargetSet, const USetProperty* SetProperty, const void* ItemToFind);
+	static void GenericSet_Intersect(const void* SetA, const USetProperty* SetPropertyA, const void* SetB, const USetProperty* SetPropertyB, const void* SetResult, const USetProperty* SetPropertyResult);
+	static void GenericSet_Union(const void* SetA, const USetProperty* SetPropertyA, const void* SetB, const USetProperty* SetPropertyB, const void* SetResult, const USetProperty* SetPropertyResult);
+	static void GenericSet_Difference(const void* SetA, const USetProperty* SetPropertyA, const void* SetB, const USetProperty* SetPropertyB, const void* SetResult, const USetProperty* SetPropertyResult);
 	static void GenericSet_SetSetPropertyByName(UObject* OwnerObject, FName SetPropertyName, const void* SrcSetAddr);
 };
 

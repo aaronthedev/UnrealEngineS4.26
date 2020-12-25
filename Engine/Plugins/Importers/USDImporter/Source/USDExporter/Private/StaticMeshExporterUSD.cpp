@@ -1,43 +1,32 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "StaticMeshExporterUSD.h"
 
-#include "USDConversionUtils.h"
 #include "USDGeomMeshConversion.h"
 #include "USDMemory.h"
 #include "USDTypesConversion.h"
 
-#include "UsdWrappers/SdfLayer.h"
-#include "UsdWrappers/SdfPath.h"
-#include "UsdWrappers/UsdPrim.h"
-#include "UsdWrappers/UsdStage.h"
-
 #include "Engine/StaticMesh.h"
 
-
-bool UStaticMeshExporterUsd::IsUsdAvailable()
-{
 #if USE_USD_SDK
-	return true;
-#else
-	return false;
-#endif
-}
+
+#include "USDIncludesStart.h"
+
+#include "pxr/pxr.h"
+#include "pxr/usd/sdf/path.h"
+#include "pxr/usd/usd/stage.h"
+#include "pxr/usd/usdGeom/mesh.h"
+#include "pxr/usd/usdGeom/tokens.h"
+
+#include "USDIncludesEnd.h"
+
+#endif // #if USE_USD_SDK
 
 UStaticMeshExporterUsd::UStaticMeshExporterUsd()
 {
 #if USE_USD_SDK
-	for ( const FString& Extension : UnrealUSDWrapper::GetAllSupportedFileFormats() )
-	{
-		// USDZ is not supported for writing for now
-		if ( Extension.Equals( TEXT( "usdz" ) ) )
-		{
-			continue;
-		}
-
-		FormatExtension.Add( Extension );
-		FormatDescription.Add( TEXT( "USD file" ) );
-	}
+	FormatExtension.Append( { TEXT("usd"), TEXT("usda") } );
+	FormatDescription.Append( {TEXT("USD File"), TEXT("USD File") } );
 	SupportedClass = UStaticMesh::StaticClass();
 	bText = false;
 #endif // #if USE_USD_SDK
@@ -49,26 +38,31 @@ bool UStaticMeshExporterUsd::ExportBinary( UObject* Object, const TCHAR* Type, F
 	UStaticMesh* StaticMesh = CastChecked< UStaticMesh >( Object );
 
 	{
-		UE::FUsdStage UsdStage = UnrealUSDWrapper::NewStage( *UExporter::CurrentFilename );
+		FScopedUsdAllocs UsdAllocs;
+
+		TUsdStore< pxr::UsdStageRefPtr > UsdStageStore = pxr::UsdStage::CreateNew( UnrealToUsd::ConvertString( *UExporter::CurrentFilename ).Get() );
+		pxr::UsdStageRefPtr UsdStage = UsdStageStore.Get();
 
 		if ( !UsdStage )
 		{
 			return false;
 		}
 
-		FString RootPrimPath = ( TEXT("/") + StaticMesh->GetName() );
+		// Set up axis
+		UsdUtils::SetUsdStageAxis( UsdStage, pxr::UsdGeomTokens->z );
 
-		UE::FUsdPrim RootPrim = UsdStage.DefinePrim( UE::FSdfPath( *RootPrimPath ) );
-		if ( !RootPrim )
+		TUsdStore< pxr::UsdGeomMesh > UsdGeomMeshStore = pxr::UsdGeomMesh::Define( UsdStage, UnrealToUsd::ConvertPath( *( TEXT("/") + StaticMesh->GetName() ) ).Get() );
+		pxr::UsdGeomMesh& UsdGeomMesh = UsdGeomMeshStore.Get();
+
+		if ( UsdGeomMesh )
 		{
-			return false;
+			// Set default prim
+			UsdStage->SetDefaultPrim( UsdGeomMesh.GetPrim() );
+
+			UnrealToUsd::ConvertStaticMesh( StaticMesh, UsdGeomMeshStore.Get() );
 		}
 
-		UsdStage.SetDefaultPrim( RootPrim );
-
-		UnrealToUsd::ConvertStaticMesh( StaticMesh, RootPrim );
-
-		UsdStage.GetRootLayer().Save();
+		UsdStage->GetRootLayer()->Save();
 	}
 
 	return true;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -37,6 +37,8 @@ private:
 
 	void ParameterPropertyValueChanged(const FPropertyChangedEvent& PropertyChangedEvent);
 
+	EVisibility GetDeleteButtonVisibility() const;
+
 	EVisibility GetReferenceVisibility() const;
 
 	EVisibility GetResetButtonVisibility() const;
@@ -49,7 +51,7 @@ private:
 
 	FSlateColor GetInputIconColor() const;
 
-	void OnAssetSelectedFromPicker(const FAssetData& InAssetData, UClass* InClass);
+	void OnAssetSelectedFromPicker(const FAssetData& InAssetData);
 	FString GetCurrentAssetPath() const;
 
 private:

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ThumbnailRendering/ThumbnailManager.h"
 #include "HAL/FileManager.h"
@@ -190,14 +190,7 @@ void UThumbnailManager::RegisterCustomRenderer(UClass* Class, TSubclassOf<UThumb
 	FThumbnailRenderingInfo& Info = *(new (RenderableThumbnailTypes) FThumbnailRenderingInfo());
 	Info.ClassNeedingThumbnailName = NewClassPathName;
 	Info.ClassNeedingThumbnail = Class;
-	if (FApp::CanEverRender())
-	{
-		Info.Renderer = NewObject<UThumbnailRenderer>(GetTransientPackage(), RendererClass);
-	}
-	else
-	{
-		Info.Renderer = nullptr;
-	}
+	Info.Renderer = NewObject<UThumbnailRenderer>(GetTransientPackage(), RendererClass);
 	Info.RendererClassName = RendererClass->GetPathName();
 
 	bMapNeedsUpdate = true;

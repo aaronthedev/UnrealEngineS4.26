@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  * Includes
@@ -157,7 +157,7 @@ public:
 
 	virtual void Serialize(void* Data, int64 Num) override
 	{
-		if (Num > 0 && !IsError())
+		if (Num > 0 && !ArIsError)
 		{
 			if (Offset + Num <= TotalSize())
 			{
@@ -166,7 +166,7 @@ public:
 			}
 			else
 			{
-				SetError();
+				ArIsError = true;
 			}
 		}
 	}

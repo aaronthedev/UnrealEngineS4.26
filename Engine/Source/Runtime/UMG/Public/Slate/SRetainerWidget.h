@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -96,23 +96,13 @@ protected:
 	virtual bool CustomPrepass(float LayoutScaleMultiplier) override;
 
 	/** FSlateInvalidationRoot interface */
-	virtual int32 PaintSlowPath(const FSlateInvalidationContext& Context) override;
-
-	enum class EPaintRetainedContentResult
-	{
-		NotPainted,
-		Painted,
-		Queued,
-		InvalidSize,
-	};
-	EPaintRetainedContentResult PaintRetainedContentImpl(const FSlateInvalidationContext& Context, const FGeometry& AllottedGeometry);
+	int32 PaintSlowPath(const FSlateInvalidationContext& Context);
 
 	void RefreshRenderingMode();
 	bool ShouldBeRenderingOffscreen() const;
 	bool IsAnythingVisibleToRender() const;
 	void OnRetainerModeChanged();
-	void OnRootInvalidated();
-
+	void OnGlobalInvalidate(bool bClearResourcesImmediately);
 private:
 	void OnGlobalInvalidationToggled(bool bGlobalInvalidationEnabled);
 #if !UE_BUILD_SHIPPING
@@ -130,7 +120,7 @@ private:
 	TSharedPtr<SWidget> MyWidget;
 	TSharedRef<SVirtualWindow> VirtualWindow;
 
-	TSharedRef<FHittestGrid> HittestGrid;
+	mutable FHittestGrid HittestGrid;
 
 	int32 Phase;
 	int32 PhaseCount;
@@ -142,7 +132,6 @@ private:
 	bool RenderOnInvalidation;
 
 	bool bRenderRequested;
-	bool bInvalidSizeLogged;
 
 	double LastDrawTime;
 	int64 LastTickedFrame;

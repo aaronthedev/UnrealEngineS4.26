@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Animation/AnimNodeSpaceConversions.h"
 
@@ -28,16 +28,11 @@ void FAnimNode_ConvertComponentToLocalSpace::Evaluate_AnyThread(FPoseContext & O
 {
 	// Evaluate the child and convert
 	FComponentSpacePoseContext InputCSPose(Output.AnimInstanceProxy);
-#if ANIM_NODE_IDS_AVAILABLE
-	// If trace is enabled, we need to preserve the node ID chain as we use the proxy-based constructor above
-	InputCSPose.SetNodeIds(Output);
-#endif
 	ComponentPose.EvaluateComponentSpace(InputCSPose);
 
 	checkSlow( InputCSPose.Pose.GetPose().IsValid() );
 	FCSPose<FCompactPose>::ConvertComponentPosesToLocalPoses(MoveTemp(InputCSPose.Pose), Output.Pose);
 	Output.Curve = MoveTemp(InputCSPose.Curve);
-	Output.CustomAttributes = MoveTemp(InputCSPose.CustomAttributes);
 }
 
 void FAnimNode_ConvertComponentToLocalSpace::GatherDebugData(FNodeDebugData& DebugData)
@@ -80,13 +75,8 @@ void FAnimNode_ConvertLocalToComponentSpace::EvaluateComponentSpace_AnyThread(FC
 {
 	// Evaluate the child and convert
 	FPoseContext InputPose(OutputCSPose.AnimInstanceProxy);
-#if ANIM_NODE_IDS_AVAILABLE
-	// If trace is enabled, we need to preserve the node ID chain as we use the proxy-based constructor above
-	InputPose.SetNodeIds(OutputCSPose);
-#endif
 	LocalPose.Evaluate(InputPose);
 
 	OutputCSPose.Pose.InitPose(MoveTemp(InputPose.Pose));
 	OutputCSPose.Curve = MoveTemp(InputPose.Curve);
-	OutputCSPose.CustomAttributes = MoveTemp(InputPose.CustomAttributes);
 }

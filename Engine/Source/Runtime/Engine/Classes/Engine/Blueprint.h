@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -430,7 +430,7 @@ class ENGINE_API UBlueprint : public UBlueprintCore
 	 * deleting the parent blueprint. Exported as Alphabetical in GetAssetRegistryTags
 	 */
 	UPROPERTY()
-	TSubclassOf<UObject> ParentClass;
+	TSubclassOf<class UObject> ParentClass;
 
 	/** The type of this blueprint */
 	UPROPERTY(AssetRegistrySearchable)
@@ -525,16 +525,12 @@ public:
 	TEnumAsByte<enum EBlueprintStatus> Status;
 
 	/** Overrides the BP's display name in the editor UI */
-	UPROPERTY(EditAnywhere, Category=BlueprintOptions, DuplicateTransient)
+	UPROPERTY(EditAnywhere, Category=BlueprintOptions)
 	FString BlueprintDisplayName;
 
-	/** Shows up in the content browser tooltip when the blueprint is hovered */
-	UPROPERTY(EditAnywhere, Category=BlueprintOptions, meta=(MultiLine=true), DuplicateTransient)
+	/** Shows up in the content browser when the blueprint is hovered, exported as Hidden in GetAssetRegistryTags */
+	UPROPERTY(EditAnywhere, Category=BlueprintOptions, meta=(MultiLine=true))
 	FString BlueprintDescription;
-
-	/** The namespace of this blueprint (if set, the Blueprint will be treated differently for the context menu) */
-	UPROPERTY(EditAnywhere, Category = BlueprintOptions, AssetRegistrySearchable)
-	FString BlueprintNamespace;
 
 	/** The category of the Blueprint, used to organize this Blueprint class when displayed in palette windows */
 	UPROPERTY(EditAnywhere, Category=BlueprintOptions)
@@ -543,6 +539,10 @@ public:
 	/** Additional HideCategories. These are added to HideCategories from parent. */
 	UPROPERTY(EditAnywhere, Category=BlueprintOptions)
 	TArray<FString> HideCategories;
+	 
+	/** Guid key for finding searchable data for Blueprint in the DDC */
+	UPROPERTY()
+	FGuid SearchGuid;
 
 #endif //WITH_EDITORONLY_DATA
 
@@ -675,10 +675,7 @@ public:
 
 protected:
 	/** Current object being debugged for this blueprint */
-	TWeakObjectPtr< UObject > CurrentObjectBeingDebugged;
-
-	/** Raw path of object to be debugged, this might have been spawned inside a specific PIE level so is not stored as an object path type */
-	FString ObjectPathToDebug;
+	TWeakObjectPtr< class UObject > CurrentObjectBeingDebugged;
 
 	/** Current world being debugged for this blueprint */
 	TWeakObjectPtr< class UWorld > CurrentWorldBeingDebugged;
@@ -700,18 +697,7 @@ public:
 	uint32 CrcLastCompiledSignature;
 
 	bool bCachedDependenciesUpToDate;
-	/**
-	 * Set of blueprints that we reference - i.e. blueprints that we have
-	 * some kind of reference to (variable of that blueprints type or function 
-	 * call
-	 */
 	TSet<TWeakObjectPtr<UBlueprint>> CachedDependencies;
-
-	/** 
-	 * Transient cache of dependent blueprints - i.e. blueprints that call
-	 * functions declared in this blueprint. Used to speed up compilation checks 
-	 */
-	TSet<TWeakObjectPtr<UBlueprint>> CachedDependents;
 
 	// User Defined Structures, the blueprint depends on
 	TSet<TWeakObjectPtr<UStruct>> CachedUDSDependencies;
@@ -793,9 +779,6 @@ public:
 	/** Sets the current object being debugged */
 	virtual void SetObjectBeingDebugged(UObject* NewObject);
 
-	/** Clears the current object being debugged because it is gone, but do not reset the saved information */
-	virtual void UnregisterObjectBeingDebugged();
-
 	virtual void SetWorldBeingDebugged(UWorld* NewWorld);
 
 	virtual void GetReparentingRules(TSet< const UClass* >& AllowedChildrenOfClasses, TSet< const UClass* >& DisallowedChildrenOfClasses) const;
@@ -827,12 +810,6 @@ public:
 		return CurrentObjectBeingDebugged.Get(bEvenIfPendingKill);
 	}
 
-	/** @return path to object that should be debugged next, may be inside a nonexistent world */
-	const FString& GetObjectPathToDebug() const
-	{
-		return ObjectPathToDebug;
-	}
-
 	/** @return the current world being debugged, which can be nullptr */
 	class UWorld* GetWorldBeingDebugged(EGetObjectOrWorldBeingDebuggedFlags InFlags = EGetObjectOrWorldBeingDebuggedFlags::None) const
 	{
@@ -848,7 +825,10 @@ public:
 	virtual bool Rename(const TCHAR* NewName = nullptr, UObject* NewOuter = nullptr, ERenameFlags Flags = REN_None) override;
 	virtual UClass* RegenerateClass(UClass* ClassToRegenerate, UObject* PreviousCDO) override;
 	virtual void PostLoad() override;
+	virtual void PostLoadSubobjects( FObjectInstancingGraph* OuterInstanceGraph ) override;
+#if WITH_EDITOR
 	virtual bool Modify(bool bAlwaysMarkDirty = true) override;
+#endif
 	virtual void GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const override;
 	virtual FPrimaryAssetId GetPrimaryAssetId() const override;
 	virtual void BeginCacheForCookedPlatformData(const ITargetPlatform *TargetPlatform) override;
@@ -898,7 +878,6 @@ public:
 	 */
 	virtual bool FindDiffs(const UBlueprint* OtherBlueprint, FDiffResults& Results) const;
 
-	void ConformNativeComponents();
 #endif	//#if WITH_EDITOR
 
 	//~ Begin UObject Interface
@@ -935,7 +914,7 @@ public:
 	template<class TFieldType>
 	static FName GetFieldNameFromClassByGuid(const UClass* InClass, const FGuid VarGuid)
 	{
-		FProperty* AssertPropertyType = (TFieldType*)0;
+		UProperty* AssertPropertyType = (TFieldType*)0;
 
 		TArray<UBlueprint*> Blueprints;
 		UBlueprint::GetBlueprintHierarchyFromClass(InClass, Blueprints);
@@ -959,7 +938,7 @@ public:
 	template<class TFieldType>
 	static bool GetGuidFromClassByFieldName(const UClass* InClass, const FName VarName, FGuid& VarGuid)
 	{
-		FProperty* AssertPropertyType = (TFieldType*)0;
+		UProperty* AssertPropertyType = (TFieldType*)0;
 
 		TArray<UBlueprint*> Blueprints;
 		UBlueprint::GetBlueprintHierarchyFromClass(InClass, Blueprints);
@@ -1027,9 +1006,12 @@ public:
 	virtual void GetInstanceActions(FBlueprintActionDatabaseRegistrar& ActionRegistrar) const {}
 
 	/**
-	 * Returns true if this blueprint should be marked dirty upon a transaction
+	 * Allows child classes to override the undo behaviour on undo / redo.
+	 * Normally blueprints are marked as dirty / structurally modified on undo,
+	 * which might not be required for specialized classes.
+	 * @return True if the blueprint should be marked as structurally modified on undo redo.
 	 */
-	virtual bool ShouldBeMarkedDirtyUponTransaction() const { return true; }
+	virtual bool RequiresMarkAsStructurallyModifiedOnUndo() const { return true; }
 
 #if WITH_EDITOR
 private:
@@ -1076,7 +1058,7 @@ public:
 	virtual bool SupportsGlobalVariables() const { return true; }
 
 	/**
-	 * Returns true if this blueprint supports global variables
+	 * Returns true if this blueprint supports lobal variables
 	 */
 	virtual bool SupportsLocalVariables() const { return true; }
 

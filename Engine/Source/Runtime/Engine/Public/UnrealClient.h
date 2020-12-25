@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	UnrealClient.h: Interface definition for platform specific client code.
@@ -24,7 +24,7 @@ class UModel;
 /**
  * A render target.
  */
-class FRenderTarget
+class ENGINE_VTABLE FRenderTarget
 {
 public:
 
@@ -213,7 +213,7 @@ struct FStatUnitData
 	/** Unit frame times filtered with a simple running average */
 	float RenderThreadTime;
 	float GameThreadTime;
-	float GPUFrameTime[MAX_NUM_GPUS];
+	float GPUFrameTime;
 	float FrameTime;
 	float RHITTime;
 	float InputLatencyTime;
@@ -221,7 +221,7 @@ struct FStatUnitData
 	/** Raw equivalents of the above variables */
 	float RawRenderThreadTime;
 	float RawGameThreadTime;
-	float RawGPUFrameTime[MAX_NUM_GPUS];
+	float RawGPUFrameTime;
 	float RawFrameTime;
 	float RawRHITTime;
 	float RawInputLatencyTime;
@@ -235,7 +235,7 @@ struct FStatUnitData
 	int32 CurrentIndex;
 	TArray<float> RenderThreadTimes;
 	TArray<float> GameThreadTimes;
-	TArray<float> GPUFrameTimes[MAX_NUM_GPUS];
+	TArray<float> GPUFrameTimes;
 	TArray<float> FrameTimes;
 	TArray<float> RHITTimes;
 	TArray<float> InputLatencyTimes;
@@ -245,13 +245,13 @@ struct FStatUnitData
 	FStatUnitData()
 		: RenderThreadTime(0.0f)
 		, GameThreadTime(0.0f)
-		, GPUFrameTime{ 0.0f }
+		, GPUFrameTime(0.0f)
 		, FrameTime(0.0f)
 		, RHITTime(0.0f)
 		, InputLatencyTime(0.0f)
 		, RawRenderThreadTime(0.0f)
 		, RawGameThreadTime(0.0f)
-		, RawGPUFrameTime{ 0.0f }
+		, RawGPUFrameTime(0.0f)
 		, RawFrameTime(0.0f)
 		, RawRHITTime(0.0f)
 		, RawInputLatencyTime(0.0f)
@@ -261,10 +261,7 @@ struct FStatUnitData
 		CurrentIndex = 0;
 		RenderThreadTimes.AddZeroed(NumberOfSamples);
 		GameThreadTimes.AddZeroed(NumberOfSamples);
-		for (auto& GPUFrameTimesArray : GPUFrameTimes)
-		{
-			GPUFrameTimesArray.AddZeroed(NumberOfSamples);
-		}
+		GPUFrameTimes.AddZeroed(NumberOfSamples);
 		FrameTimes.AddZeroed(NumberOfSamples);
 		RHITTimes.AddZeroed(NumberOfSamples);
 		InputLatencyTimes.AddZeroed(NumberOfSamples);
@@ -308,7 +305,7 @@ struct FStatHitchesData
  * Encapsulates the I/O of a viewport.
  * The viewport display is implemented using the platform independent RHI.
  */
-class FViewport : public FRenderTarget, protected FRenderResource
+class ENGINE_VTABLE FViewport : public FRenderTarget, protected FRenderResource
 {
 public:
 	/** delegate type for viewport resize events ( Params: FViewport* Viewport, uint32 ) */
@@ -606,8 +603,6 @@ public:
 	/** Returns dimensions of RenderTarget texture. Can be called on a game thread. */
 	virtual FIntPoint GetRenderTargetTextureSizeXY() const { return GetSizeXY(); }
 
-	inline FName GetViewportType() const { return ViewportType; }
-
 protected:
 
 	/** The viewport's client. */
@@ -718,9 +713,6 @@ protected:
 
 	/** If true this viewport is being displayed on a HDR monitor */
 	uint32 bIsHDR : 1;
-
-	/** Used internally for testing runtime instance type before casting */
-	FName ViewportType;
 
 	/** true if we should draw game viewports (has no effect on Editor viewports) */
 	ENGINE_API static bool bIsGameRenderingEnabled;
@@ -914,7 +906,7 @@ public:
 	 *
 	 * @return	the cursor that the OS should display
 	 */
-	virtual EMouseCursor::Type GetCursor(FViewport* Viewport, int32 X,int32 Y) { return EMouseCursor::Default; }
+	virtual EMouseCursor::Type GetCursor(FViewport* Viewport,int32 X,int32 Y) { return EMouseCursor::Default; }
 
 	/**
 	 * Called to map a cursor reply to an actual widget to render.
@@ -939,8 +931,8 @@ public:
 
 	virtual bool IsInPermanentCapture()
 	{ 
-		return  !GIsEditor && ((GetMouseCaptureMode() == EMouseCaptureMode::CapturePermanently) ||
-			(GetMouseCaptureMode() == EMouseCaptureMode::CapturePermanently_IncludingInitialMouseDown));
+		return  !GIsEditor && ((CaptureMouseOnClick() == EMouseCaptureMode::CapturePermanently) ||
+			(CaptureMouseOnClick() == EMouseCaptureMode::CapturePermanently_IncludingInitialMouseDown));
 	}
 
 	/**
@@ -1042,10 +1034,7 @@ public:
 	/**
 	 * Gets the mouse capture behavior when the viewport is clicked
 	 */
-	virtual EMouseCaptureMode GetMouseCaptureMode() const { return EMouseCaptureMode::CapturePermanently; }
-
-	UE_DEPRECATED(4.26, "Please call GetMouseCaptureMode() instead.")
-	void CaptureMouseOnClick() { GetMouseCaptureMode(); }
+	virtual EMouseCaptureMode CaptureMouseOnClick() { return EMouseCaptureMode::CapturePermanently; }
 
 	/**
 	 * Gets whether or not the viewport captures the Mouse on launch of the application
@@ -1068,7 +1057,7 @@ public:
 	/**
 	 * Gets whether or not the cursor is hidden when the viewport captures the mouse
 	 */
-	virtual bool HideCursorDuringCapture() const { return false; }
+	virtual bool HideCursorDuringCapture() { return false; }
 
 	/** 
 	 * Should we make new windows for popups or create an overlay in the current window.
@@ -1098,7 +1087,7 @@ extern ENGINE_API class FCommonViewportClient* GStatProcessingViewportClient;
  * Common functionality for game and editor viewport clients
  */
 
-class FCommonViewportClient : public FViewportClient
+class ENGINE_VTABLE FCommonViewportClient : public FViewportClient
 {
 public:
 	FCommonViewportClient()

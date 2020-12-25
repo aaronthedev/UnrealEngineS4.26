@@ -1,12 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ClothingAsset.h"
-#include "ClothingAssetCustomVersion.h"
-#include "ClothPhysicalMeshData.h"
-#include "ClothConfig.h"
 
 #include "Utils/ClothingMeshUtils.h"
-#include "Features/IModularFeatures.h"
 
 #if WITH_EDITOR
 #include "Engine/SkeletalMesh.h"
@@ -176,12 +172,10 @@ void ClothingAssetUtils::ClearSectionClothingData(FSkelMeshSection& InSection)
 UClothingAssetCommon::UClothingAssetCommon(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 	, PhysicsAsset(nullptr)
-	, ClothSimConfig_DEPRECATED(nullptr)
-	, ChaosClothSimConfig_DEPRECATED(nullptr)
+	, ClothSimConfig(nullptr)
 	, ReferenceBoneIndex(0)
 	, CustomData(nullptr)
-{
-}
+{}
 
 #if WITH_EDITOR
 
@@ -200,19 +194,6 @@ bool UClothingAssetCommon::BindToSkeletalMesh(
 	const int32 InSectionIndex, 
 	const int32 InAssetLodIndex)
 {
-	// Make sure the legacy LOD are upgraded (BindToSkeletalMesh could be called before the Cloth Asset's PostLoad is completed)
-	for (UClothLODDataCommon_Legacy* LodDeprecated : ClothLodData_DEPRECATED)
-	{
-		if (LodDeprecated)
-		{
-			LodDeprecated->ConditionalPostLoad();
-
-			const int32 Idx = AddNewLod();
-			LodDeprecated->MigrateTo(LodData[Idx]);
-		}
-	}
-	ClothLodData_DEPRECATED.Empty();
-
 	// If we've been added to the wrong mesh
 	if(InSkelMesh != GetOuter())
 	{
@@ -224,7 +205,7 @@ bool UClothingAssetCommon::BindToSkeletalMesh(
 	}
 
 	// If we don't have clothing data
-	if(!LodData.IsValidIndex(InAssetLodIndex))
+	if(!ClothLodData.IsValidIndex(InAssetLodIndex))
 	{
 		FText Error = FText::Format(
 			LOCTEXT("Error_NoClothingLod", "Failed to bind clothing asset {0} LOD{1} as LOD{2} does not exist."), 
@@ -283,7 +264,7 @@ bool UClothingAssetCommon::BindToSkeletalMesh(
 	CalculateReferenceBoneIndex();
 
 	// Grab the clothing and skel lod data
-	FClothLODDataCommon& ClothLodData = LodData[InAssetLodIndex];
+	UClothLODDataBase* LodData = ClothLodData[InAssetLodIndex];
 	FSkeletalMeshLODModel& SkelLod = InSkelMesh->GetImportedModel()->LODModels[InMeshLodIndex];
 
 	FSkelMeshSection& OriginalSection = SkelLod.Sections[InSectionIndex];
@@ -311,12 +292,11 @@ bool UClothingAssetCommon::BindToSkeletalMesh(
 
 	ClothingMeshUtils::ClothMeshDesc TargetMesh(RenderPositions, RenderNormals, IndexView);
 	ClothingMeshUtils::ClothMeshDesc SourceMesh(
-		ClothLodData.PhysicalMeshData.Vertices, 
-		ClothLodData.PhysicalMeshData.Normals, 
-		ClothLodData.PhysicalMeshData.Indices);
+		LodData->PhysicalMeshData->Vertices, 
+		LodData->PhysicalMeshData->Normals, 
+		LodData->PhysicalMeshData->Indices);
 
-	ClothingMeshUtils::GenerateMeshToMeshSkinningData(MeshToMeshData, TargetMesh, &RenderTangents, SourceMesh, 
-		ClothLodData.bUseMultipleInfluences, ClothLodData.SkinningKernelRadius);
+	ClothingMeshUtils::GenerateMeshToMeshSkinningData(MeshToMeshData, TargetMesh, &RenderTangents, SourceMesh);
 
 	if(MeshToMeshData.Num() == 0)
 	{
@@ -326,15 +306,14 @@ bool UClothingAssetCommon::BindToSkeletalMesh(
 	}
 
 	// Calculate fixed verts
-	const FPointWeightMap* const MaxDistances = ClothLodData.PhysicalMeshData.FindWeightMap(EWeightMapTargetCommon::MaxDistance);
-	if (MaxDistances && MaxDistances->Num())
+	for(FMeshToMeshVertData& VertData : MeshToMeshData)
 	{
-		for(FMeshToMeshVertData& VertData : MeshToMeshData)
+		if(LodData->PhysicalMeshData->IsFixed(
+			VertData.SourceMeshVertIndices[0], 
+			VertData.SourceMeshVertIndices[1], 
+			VertData.SourceMeshVertIndices[2])) // Default threshold is 0.1, not 0.0.  Using 0.1 for consistency.
 		{
-			if (MaxDistances->AreAllBelowThreshold(VertData.SourceMeshVertIndices[0], VertData.SourceMeshVertIndices[1], VertData.SourceMeshVertIndices[2]))
-			{
-				VertData.SourceMeshVertIndices[3] = 0xFFFF;
-			}
+			VertData.SourceMeshVertIndices[3] = 0xFFFF;
 		}
 	}
 
@@ -529,57 +508,13 @@ void UClothingAssetCommon::ForEachInteractorUsingClothing(TFunction<void(UClothi
 	}
 }
 
-void UClothingAssetCommon::ApplyParameterMasks(bool bUpdateFixedVertData)
+void UClothingAssetCommon::ApplyParameterMasks()
 {
-	for(FClothLODDataCommon& Lod : LodData)
+	for(UClothLODDataBase* Lod : ClothLodData)
 	{
-		Lod.PushWeightsToMesh();
+		Lod->PushWeightsToMesh();
 	}
 	InvalidateCachedData();
-
-	// Recompute weights if needed
-	USkeletalMesh* const SkeletalMesh = Cast<USkeletalMesh>(GetOuter());
-	
-	if (bUpdateFixedVertData && SkeletalMesh)
-	{
-		FSkeletalMeshModel* Resource = SkeletalMesh->GetImportedModel();
-		FScopedSkeletalMeshPostEditChange ScopedSkeletalMeshPostEditChange(SkeletalMesh);
-
-		SkeletalMesh->PreEditChange(nullptr);
-
-		for (FSkeletalMeshLODModel& LodModel : Resource->LODModels)
-		{
-			for (FSkelMeshSection& Section : LodModel.Sections)
-			{
-				if (!Section.HasClothingData() || Cast<UClothingAssetCommon>(SkeletalMesh->GetClothingAsset(Section.ClothingData.AssetGuid)) != this)
-				{
-					continue;
-				}
-				const FClothLODDataCommon& LodDatum = LodData[Section.ClothingData.AssetLodIndex];
-				const FPointWeightMap* const MaxDistances = LodDatum.PhysicalMeshData.FindWeightMap(EWeightMapTargetCommon::MaxDistance);
-
-				if (MaxDistances && MaxDistances->Num())
-				{
-					for (FMeshToMeshVertData& VertData : Section.ClothMappingData)
-					{
-						VertData.SourceMeshVertIndices[3] = MaxDistances->AreAllBelowThreshold(
-							VertData.SourceMeshVertIndices[0],
-							VertData.SourceMeshVertIndices[1],
-							VertData.SourceMeshVertIndices[2]) ? 0xFFFF : 0;
-					}
-				}
-				else
-				{
-					for (FMeshToMeshVertData& VertData : Section.ClothMappingData)
-					{
-						VertData.SourceMeshVertIndices[3] = 0;
-					}
-				}
-			}
-		}
-		// We must always dirty the DDC key unless previewing
-		SkeletalMesh->InvalidateDeriveDataCacheGUID();
-	}
 }
 
 void UClothingAssetCommon::BuildLodTransitionData()
@@ -590,11 +525,12 @@ void UClothingAssetCommon::BuildLodTransitionData()
 		const bool bHasPrevLod = LodIndex > 0;
 		const bool bHasNextLod = LodIndex < NumLods - 1;
 
-		FClothLODDataCommon& CurrentLod = LodData[LodIndex];
-		const FClothPhysicalMeshData& CurrentPhysMesh = CurrentLod.PhysicalMeshData;
+		UClothLODDataBase* CurrentLod = ClothLodData[LodIndex];
+		check(CurrentLod->PhysicalMeshData);
+		UClothPhysicalMeshDataBase& CurrentPhysMesh = *CurrentLod->PhysicalMeshData;
 
-		FClothLODDataCommon* const PrevLod = bHasPrevLod ? &LodData[LodIndex - 1] : nullptr;
-		FClothLODDataCommon* const NextLod = bHasNextLod ? &LodData[LodIndex + 1] : nullptr;
+		UClothLODDataBase* PrevLod = bHasPrevLod ? ClothLodData[LodIndex - 1] : nullptr;
+		UClothLODDataBase* NextLod = bHasNextLod ? ClothLodData[LodIndex + 1] : nullptr;
 
 		const int32 CurrentLodNumVerts = CurrentPhysMesh.Vertices.Num();
 
@@ -602,19 +538,19 @@ void UClothingAssetCommon::BuildLodTransitionData()
 
 		if(PrevLod)
 		{
-			FClothPhysicalMeshData& PrevPhysMesh = PrevLod->PhysicalMeshData;
-			CurrentLod.TransitionUpSkinData.Empty(CurrentLodNumVerts);
+			check(PrevLod->PhysicalMeshData);
+			UClothPhysicalMeshDataBase& PrevPhysMesh = *PrevLod->PhysicalMeshData;
+			CurrentLod->TransitionUpSkinData.Empty(CurrentLodNumVerts);
 			ClothingMeshUtils::ClothMeshDesc PrevMeshDesc(PrevPhysMesh.Vertices, PrevPhysMesh.Normals, PrevPhysMesh.Indices);
-			ClothingMeshUtils::GenerateMeshToMeshSkinningData(CurrentLod.TransitionUpSkinData, CurrentMeshDesc, nullptr, 
-				PrevMeshDesc, CurrentLod.bUseMultipleInfluences, CurrentLod.SkinningKernelRadius);
+			ClothingMeshUtils::GenerateMeshToMeshSkinningData(CurrentLod->TransitionUpSkinData, CurrentMeshDesc, nullptr, PrevMeshDesc);
 		}
 		if(NextLod)
 		{
-			FClothPhysicalMeshData& NextPhysMesh = NextLod->PhysicalMeshData;
-			CurrentLod.TransitionDownSkinData.Empty(CurrentLodNumVerts);
+			check(NextLod->PhysicalMeshData);
+			UClothPhysicalMeshDataBase& NextPhysMesh = *NextLod->PhysicalMeshData;
+			CurrentLod->TransitionDownSkinData.Empty(CurrentLodNumVerts);
 			ClothingMeshUtils::ClothMeshDesc NextMeshDesc(NextPhysMesh.Vertices, NextPhysMesh.Normals, NextPhysMesh.Indices);
-			ClothingMeshUtils::GenerateMeshToMeshSkinningData(CurrentLod.TransitionDownSkinData, CurrentMeshDesc, 
-				nullptr, NextMeshDesc, CurrentLod.bUseMultipleInfluences, CurrentLod.SkinningKernelRadius);
+			ClothingMeshUtils::GenerateMeshToMeshSkinningData(CurrentLod->TransitionDownSkinData, CurrentMeshDesc, nullptr, NextMeshDesc);
 		}
 	}
 }
@@ -649,14 +585,6 @@ void UClothingAssetCommon::CalculateReferenceBoneIndex()
 	// Starts at root
 	ReferenceBoneIndex = 0;
 
-#if WITH_APEX_CLOTHING
-	const TSubclassOf<class UClothingSimulationFactory> ClothingSimulationFactory = UClothingSimulationFactory::GetDefaultClothingSimulationFactoryClass();
-	if (ClothingSimulationFactory->GetName() == TEXT("ClothingSimulationFactoryNv"))
-	{
-		return;
-	}
-#endif
-
 	// Find the root bone for this clothing asset (common bone for all used bones)
 	typedef TArray<int32> BoneIndexArray;
 
@@ -667,21 +595,24 @@ void UClothingAssetCommon::CalculateReferenceBoneIndex()
 
 	if(OwnerMesh)
 	{
+		FReferenceSkeleton& RefSkel = OwnerMesh->RefSkeleton;
 		// First build a list per used bone for it's path to root
-		TArray<int32> WeightedBones;  // List of actually weighted (not just used) bones
+		const int32 NumUsedBones = UsedBoneIndices.Num();
 
-		for(FClothLODDataCommon& CurLod : LodData)
+		// List of actually weighted (not just used) bones
+		TArray<int32> WeightedBones;
+
+		for(UClothLODDataBase* CurLod : ClothLodData)
 		{
-			const FClothPhysicalMeshData& MeshData = CurLod.PhysicalMeshData;
-			for(const FClothVertBoneData& VertBoneData : MeshData.BoneData)
+			check(CurLod && CurLod->PhysicalMeshData);
+			UClothPhysicalMeshDataBase* MeshData = CurLod->PhysicalMeshData;
+			for(FClothVertBoneData& VertBoneData : MeshData->BoneData)
 			{
 				for(int32 InfluenceIndex = 0; InfluenceIndex < MAX_TOTAL_INFLUENCES; ++InfluenceIndex)
 				{
 					if(VertBoneData.BoneWeights[InfluenceIndex] > SMALL_NUMBER)
 					{
-						const int32 UnmappedBoneIndex = VertBoneData.BoneIndices[InfluenceIndex];
-						check(UsedBoneIndices.IsValidIndex(UnmappedBoneIndex));
-						WeightedBones.AddUnique(UsedBoneIndices[UnmappedBoneIndex]);
+						WeightedBones.AddUnique(VertBoneData.BoneIndices[InfluenceIndex]);
 					}
 					else
 					{
@@ -696,7 +627,6 @@ void UClothingAssetCommon::CalculateReferenceBoneIndex()
 		PathsToRoot.Reserve(NumWeightedBones);
 		
 		// Compute paths to the root bone
-		const FReferenceSkeleton& RefSkel = OwnerMesh->RefSkeleton;
 		for(int32 WeightedBoneIndex = 0; WeightedBoneIndex < NumWeightedBones; ++WeightedBoneIndex)
 		{
 			PathsToRoot.AddDefaulted();
@@ -758,497 +688,29 @@ void UClothingAssetCommon::CalculateReferenceBoneIndex()
 	}
 }
 
-bool UClothingAssetCommon::IsValidLod(int32 InLodIndex) const
+bool UClothingAssetCommon::IsValidLod(int32 InLodIndex)
 {
-	return LodData.IsValidIndex(InLodIndex);
+	return ClothLodData.IsValidIndex(InLodIndex);
 }
 
-int32 UClothingAssetCommon::GetNumLods() const
+int32 UClothingAssetCommon::GetNumLods()
 {
-	return LodData.Num();
+	return ClothLodData.Num();
 }
 
 void UClothingAssetCommon::BuildSelfCollisionData()
 {
-	if (ClothConfigs.Num())
+	if(!ClothSimConfig || !ClothSimConfig->HasSelfCollision())
 	{
-		for(FClothLODDataCommon& Lod : LodData)
-		{
-			Lod.PhysicalMeshData.BuildSelfCollisionData(ClothConfigs);
-		}
+		// No self collision, can't generate data
+		return;
+	}
+	for(UClothLODDataBase* Lod : ClothLodData)
+	{
+		check(Lod && Lod->PhysicalMeshData);
+		Lod->PhysicalMeshData->BuildSelfCollisionData(ClothSimConfig);
 	}
 }
-
-void UClothingAssetCommon::PostLoad()
-{
-	Super::PostLoad();
-
-	// Migrate the deprecated UObject based lod class to the non-UObject lod structure to prevent PostLoad dependency issues
-	// TODO: Remove all UObject PostLoad dependencies.
-	//       Even with these ConditionalPostLoad calls, the UObject PostLoads' order of execution cannot be guaranteed.
-	for (UClothLODDataCommon_Legacy* LodDeprecated : ClothLodData_DEPRECATED)
-	{
-		if (LodDeprecated)
-		{
-			LodDeprecated->ConditionalPostLoad();
-
-			const int32 Idx = AddNewLod();
-			LodDeprecated->MigrateTo(LodData[Idx]);
-		}
-	}
-	ClothLodData_DEPRECATED.Empty();
-
-	const int32 AnimPhysCustomVersion = GetLinkerCustomVersion(FAnimPhysObjectVersion::GUID);
-	if (AnimPhysCustomVersion < FAnimPhysObjectVersion::AddedClothingMaskWorkflow)
-	{
-#if WITH_EDITORONLY_DATA
-		// Convert current parameters to masks
-		for (FClothLODDataCommon& Lod : LodData)
-		{
-			const FClothPhysicalMeshData& PhysMesh = Lod.PhysicalMeshData;
-
-			// Didn't do anything previously - clear out in case there's something in there
-			// so we can use it correctly now.
-			Lod.PointWeightMaps.Reset(3);
-
-			// Max distances
-			const FPointWeightMap* const MaxDistances = PhysMesh.FindWeightMap(EWeightMapTargetCommon::MaxDistance);
-			if (MaxDistances)
-			{
-				Lod.PointWeightMaps.AddDefaulted();
-				FPointWeightMap& MaxDistanceMask = Lod.PointWeightMaps.Last();
-				MaxDistanceMask.Initialize(*MaxDistances, EWeightMapTargetCommon::MaxDistance);
-			}
-
-			// Following params are only added if necessary, if we don't have any backstop
-			// radii then there's no backstops.
-			const FPointWeightMap* const BackstopRadiuses = PhysMesh.FindWeightMap(EWeightMapTargetCommon::BackstopRadius);
-			if (BackstopRadiuses && !BackstopRadiuses->IsZeroed())
-			{
-				// Backstop radii
-				Lod.PointWeightMaps.AddDefaulted();
-				FPointWeightMap& BackstopRadiusMask = Lod.PointWeightMaps.Last();
-				BackstopRadiusMask.Initialize(*BackstopRadiuses, EWeightMapTargetCommon::BackstopRadius);
-
-				// Backstop distances
-				Lod.PointWeightMaps.AddDefaulted();
-				FPointWeightMap& BackstopDistanceMask = Lod.PointWeightMaps.Last();
-				const FPointWeightMap& BackstopDistances = PhysMesh.GetWeightMap(EWeightMapTargetCommon::BackstopDistance);
-				BackstopDistanceMask.Initialize(BackstopDistances, EWeightMapTargetCommon::BackstopDistance);
-			}
-		}
-#endif
-
-		// Make sure we're transactional
-		SetFlags(RF_Transactional);
-	}
-
-	const int32 ClothingCustomVersion = GetLinkerCustomVersion(FClothingAssetCustomVersion::GUID);
-#if WITH_EDITORONLY_DATA
-	// Fix content imported before we kept vertex colors
-	if (ClothingCustomVersion < FClothingAssetCustomVersion::AddVertexColorsToPhysicalMesh)
-	{
-		for (FClothLODDataCommon& Lod : LodData)
-		{
-			const int32 NumVerts = Lod.PhysicalMeshData.Vertices.Num(); // number of verts
-
-			Lod.PhysicalMeshData.VertexColors.Reset();
-			Lod.PhysicalMeshData.VertexColors.AddUninitialized(NumVerts);
-			for (int32 VertIdx = 0; VertIdx < NumVerts; VertIdx++)
-			{
-				Lod.PhysicalMeshData.VertexColors[VertIdx] = FColor::White;
-			}
-		}
-	}
-#endif // WITH_EDITORONLY_DATA
-
-#if WITH_EDITOR
-	if (AnimPhysCustomVersion < FAnimPhysObjectVersion::CacheClothMeshInfluences)
-	{
-		// Rebuild data cache
-		InvalidateCachedData();
-	}
-#endif
-
-	// Add any missing configs for the available cloth factories, and try to migrate them from any existing one
-	// TODO: Remove all UObject PostLoad dependencies.
-	//       Even with these ConditionalPostLoad calls, the UObject PostLoads' order of execution cannot be guaranteed.
-	for (TPair<FName, UClothConfigBase*>& ClothConfig : ClothConfigs)
-	{
-		if (ClothConfig.Value)
-		{
-			ClothConfig.Value->ConditionalPostLoad();  // PostLoad configs before adding new ones
-		}
-	}
-	if (ClothSimConfig_DEPRECATED)
-	{
-		ClothSimConfig_DEPRECATED->ConditionalPostLoad();  // PostLoad old configs before replacing them
-		ClothSimConfig_DEPRECATED->Rename(nullptr, nullptr, REN_DoNotDirty | REN_DontCreateRedirectors | REN_ForceNoResetLoaders | REN_NonTransactional);  // Rename the config so that the name doesn't collide with the new config map name
-	}
-	if (ChaosClothSimConfig_DEPRECATED)
-	{
-		ChaosClothSimConfig_DEPRECATED->ConditionalPostLoad();  // PostLoad old configs before replacing them
-		ChaosClothSimConfig_DEPRECATED->Rename(nullptr, nullptr, REN_DoNotDirty | REN_DontCreateRedirectors | REN_ForceNoResetLoaders | REN_NonTransactional);  // Rename the config so that the name doesn't collide with the new config map name
-	}
-	if (ClothSharedSimConfig_DEPRECATED)
-	{
-		ClothSharedSimConfig_DEPRECATED->ConditionalPostLoad();  // PostLoad old configs before replacing them
-		ClothSharedSimConfig_DEPRECATED->Rename(nullptr, nullptr, REN_DoNotDirty | REN_DontCreateRedirectors | REN_ForceNoResetLoaders | REN_NonTransactional);  // Rename the config so that the name doesn't collide with the new config map name
-	}
-	AddClothConfigs();
-
-	// Migrate configs
-	bool bMigrateSharedConfigToConfig = true;  // Shared config to config migration can be disabled to avoid overriding the newly migrated values
-
-	if (ClothingCustomVersion < FClothingAssetCustomVersion::MovePropertiesToCommonBaseClasses)
-	{
-		// Remap legacy struct FClothConfig to new config objects
-		for (TPair<FName, UClothConfigBase*>& ClothConfig : ClothConfigs)
-		{
-			if (UClothConfigCommon* const ClothConfigCommon = Cast<UClothConfigCommon>(ClothConfig.Value))
-			{
-				ClothConfigCommon->ConditionalPostLoad();
-				ClothConfigCommon->MigrateFrom(ClothConfig_DEPRECATED);
-			}
-		}
-		bMigrateSharedConfigToConfig = false;
-	}
-	else
-	{
-		// Migrate simulation dependent config parameters to the new config map
-		if (ClothSimConfig_DEPRECATED)
-		{
-			// Try a remap to the new config objects through the legacy structure
-			if (const UClothConfigCommon* const ClothSimConfigCommon = Cast<UClothConfigCommon>(ClothSimConfig_DEPRECATED))
-			{
-				FClothConfig_Legacy ClothConfigLegacy;
-				if (ClothSimConfigCommon->MigrateTo(ClothConfigLegacy))
-				{
-					for (TPair<FName, UClothConfigBase*>& ClothConfig : ClothConfigs)
-					{
-						if (UClothConfigCommon* const ClothConfigCommon = Cast<UClothConfigCommon>(ClothConfig.Value))
-						{
-							ClothConfigCommon->ConditionalPostLoad();
-							ClothConfigCommon->MigrateFrom(ClothConfigLegacy);
-						}
-					}
-				}
-			}
-			// And keep the old config too
-			SetClothConfig(ClothSimConfig_DEPRECATED);
-			ClothSimConfig_DEPRECATED = nullptr;
-			bMigrateSharedConfigToConfig = false;
-		}
-		if (ChaosClothSimConfig_DEPRECATED)
-		{
-			SetClothConfig(ChaosClothSimConfig_DEPRECATED);
-			ChaosClothSimConfig_DEPRECATED = nullptr;
-			bMigrateSharedConfigToConfig = false;
-		}
-		if (ClothSharedSimConfig_DEPRECATED)
-		{
-			SetClothConfig(ClothSharedSimConfig_DEPRECATED);
-			ClothSharedSimConfig_DEPRECATED = nullptr;
-			bMigrateSharedConfigToConfig = false;
-		}
-	}
-
-	// Propagate shared configs between cloth assets
-	PropagateSharedConfigs(bMigrateSharedConfigToConfig);
-
-	// After fixing the content, we are ready to call functions that rely on it
-	BuildSelfCollisionData();
-#if WITH_EDITORONLY_DATA
-	CalculateReferenceBoneIndex();
-#endif
-}
-
-void UClothingAssetCommon::Serialize(FArchive& Ar)
-{
-	Super::Serialize(Ar);
-	Ar.UsingCustomVersion(FAnimPhysObjectVersion::GUID);
-	Ar.UsingCustomVersion(FClothingAssetCustomVersion::GUID);
-}
-
-void UClothingAssetCommon::AddClothConfigs()
-{
-	const TArray<IClothingSimulationFactoryClassProvider*> ClassProviders =
-		IModularFeatures::Get().GetModularFeatureImplementations<IClothingSimulationFactoryClassProvider>(IClothingSimulationFactoryClassProvider::FeatureName);
-
-	for (IClothingSimulationFactoryClassProvider* Provider : ClassProviders)
-	{
-		check(Provider);
-		if (UClass* const ClothingSimulationFactoryClass = *TSubclassOf<class UClothingSimulationFactory>(Provider->GetClothingSimulationFactoryClass()))
-		{
-			const UClothingSimulationFactory* const ClothingSimulationFactory = ClothingSimulationFactoryClass->GetDefaultObject<UClothingSimulationFactory>();
-			for (TSubclassOf<UClothConfigBase> ClothConfigClass : ClothingSimulationFactory->GetClothConfigClasses())
-			{
-				const FName ClothConfigName = ClothConfigClass->GetFName();
-				if (!ClothConfigs.Find(ClothConfigName))
-				{
-					// Create new config object
-					check(!StaticFindObject(ClothConfigClass, this, *ClothConfigClass->GetName(), true));
-					UClothConfigBase* const ClothConfig = NewObject<UClothConfigBase>(this, ClothConfigClass, ClothConfigClass->GetFName(), RF_Transactional);
-
-					// Use the legacy config struct to try find a common config as an acceptable migration source
-					// This code could be removed once the legacy code is removed, although this will then prevent
-					// migration from compatible config sources
-					if (UClothConfigCommon* const ClothConfigCommon = Cast<UClothConfigCommon>(ClothConfig))
-					{
-						for (TPair<FName, UClothConfigBase*> ClothConfigPair : ClothConfigs)
-						{
-							if (const UClothConfigCommon* SourceConfig = Cast<UClothConfigCommon>(ClothConfigPair.Value))
-							{
-								FClothConfig_Legacy LegacyConfig;
-								if (SourceConfig->MigrateTo(LegacyConfig))
-								{
-									ClothConfigCommon->MigrateFrom(LegacyConfig);
-									break;
-								}
-							}
-						}
-					}
-
-					// Add the new config
-					check(ClothConfig);
-					ClothConfigs.Add(ClothConfigName, ClothConfig);
-				}
-			}
-		}
-	}
-}
-
-void UClothingAssetCommon::PropagateSharedConfigs(bool bMigrateSharedConfigToConfig)
-{
-	// Update this asset's shared config when the asset belongs to a skeletal mesh
-	if (USkeletalMesh* const SkeletalMesh = Cast<USkeletalMesh>(GetOuter()))
-	{
-		const TArray<UClothingAssetBase*>& ClothingAssets = SkeletalMesh->MeshClothingAssets;
- 
-		// Collect all shared configs found in the other assets
-		TMap<FName, UClothConfigBase*> ClothSharedConfigs;
-
-		for (const UClothingAssetBase* ClothingAssetBase : ClothingAssets)
-		{
-			if (ClothingAssetBase == static_cast<UClothingAssetBase* >(this))
-			{
-				continue;
-			}
-
-			// Only common assets have shared configs
-			if (const UClothingAssetCommon* const ClothingAsset = Cast<UClothingAssetCommon>(ClothingAssetBase))
-			{
-				// Reserve space in the map, use the total number of configs in case they're unlikely all shared configs
-				const int32 Max = ClothSharedConfigs.Num() + ClothingAsset->ClothConfigs.Num();
-				ClothSharedConfigs.Reserve(Max);
-
-				// Iterate through all configs, and find the shared ones
-				for (const TPair<FName, UClothConfigBase*>& ClothSharedConfigItem : ClothingAsset->ClothConfigs)
-				{
-					if (Cast<UClothSharedConfigCommon>(ClothSharedConfigItem.Value) &&  // Only needs shared configs
-						!ClothSharedConfigs.Find(ClothSharedConfigItem.Key))            // Only needs a single shared config per type
-					{
-						ClothSharedConfigs.Add(ClothSharedConfigItem);
-					}
-				}
-			}
-		}
-
-		// Propagate the found shared configs to this asset
-		for (const TPair<FName, UClothConfigBase*>& ClothSharedConfigItem : ClothSharedConfigs)
-		{
-			// Set share config
-			if (UClothConfigBase** const ClothConfigBase = ClothConfigs.Find(ClothSharedConfigItem.Key))
-			{
-				// Reset this shared config
-				*ClothConfigBase = ClothSharedConfigItem.Value;
-			}
-			else
-			{
-				// Add new map entry
-				ClothConfigs.Add(ClothSharedConfigItem);
-			}
-		}
-
-		// Migrate the common shared configs' deprecated parameters to all per cloth configs
-		if (bMigrateSharedConfigToConfig)
-		{
-			// Iterate through all this asset's shared configs
-			for (const TPair<FName, UClothConfigBase*>& ClothSharedConfigItem : ClothConfigs)
-			{
-				if (const UClothSharedConfigCommon* const ClothSharedConfig = Cast<UClothSharedConfigCommon>(ClothSharedConfigItem.Value))
-				{
-					// Iterate through all this asset's configs, and migrate from the shared ones
-					for (const TPair<FName, UClothConfigBase*>& ClothConfigItem : ClothConfigs)
-					{
-						if (Cast<UClothSharedConfigCommon>(ClothConfigItem.Value))
-						{
-							continue;  // Don't migrate shared configs to another shared configs (or itself)
-						}
-						if (UClothConfigCommon* const ClothConfig = Cast<UClothConfigCommon>(ClothConfigItem.Value))
-						{
-							ClothConfig->MigrateFrom(ClothSharedConfig);
-						}
-					}
-				}
-			}
-		}
-	}
-}
-
-void UClothingAssetCommon::PostUpdateAllAssets()
-{
-	// Add any missing configs for the available cloth factories, and try to migrate them from any existing one
-	AddClothConfigs();
-
-	// Propagate shared configs
-	PropagateSharedConfigs();
-}
-
-#if WITH_EDITOR
-
-void UClothingAssetCommon::InvalidateCachedData()
-{
-#if WITH_CHAOS_CLOTHING
-	ForEachInteractorUsingClothing([](UClothingSimulationInteractor* InInteractor)
-	{
-		if (InInteractor)
-		{
-			InInteractor->ClothConfigUpdated();
-		}
-	});
-#endif  // #if WITH_CHAOS_CLOTHING
-
-	// TODO: This mass calculation isn't used by Chaos, check what can be stripped out
-	for(FClothLODDataCommon& CurrentLodData : LodData)
-	{
-		// Recalculate inverse masses for the physical mesh particles
-		FClothPhysicalMeshData& PhysMesh = CurrentLodData.PhysicalMeshData;
-		check(PhysMesh.Indices.Num() % 3 == 0);
-
-		TArray<float>& InvMasses = PhysMesh.InverseMasses;
-
-		const int32 NumVerts = PhysMesh.Vertices.Num();
-		InvMasses.Empty(NumVerts);
-		InvMasses.AddZeroed(NumVerts);
-
-		for(int32 TriBaseIndex = 0; TriBaseIndex < PhysMesh.Indices.Num(); TriBaseIndex += 3)
-		{
-			const int32 Index0 = PhysMesh.Indices[TriBaseIndex];
-			const int32 Index1 = PhysMesh.Indices[TriBaseIndex + 1];
-			const int32 Index2 = PhysMesh.Indices[TriBaseIndex + 2];
-
-			const FVector AB = PhysMesh.Vertices[Index1] - PhysMesh.Vertices[Index0];
-			const FVector AC = PhysMesh.Vertices[Index2] - PhysMesh.Vertices[Index0];
-			const float TriArea = FVector::CrossProduct(AB, AC).Size();
-
-			InvMasses[Index0] += TriArea;
-			InvMasses[Index1] += TriArea;
-			InvMasses[Index2] += TriArea;
-		}
-
-		PhysMesh.NumFixedVerts = 0;
-
-		const FPointWeightMap* const MaxDistances = PhysMesh.FindWeightMap(EWeightMapTargetCommon::MaxDistance);
-		const TFunction<bool(int32)> IsKinematic = (!MaxDistances || !MaxDistances->Num()) ?
-			TFunction<bool(int32)>([](int32)->bool { return false; }) :
-			TFunction<bool(int32)>([&MaxDistances](int32 Index)->bool { return (*MaxDistances)[Index] < SMALL_NUMBER; });  // For consistency, the default Threshold should be 0.1, not SMALL_NUMBER. But for backward compatibility it needs to be SMALL_NUMBER for now.
-
-		float MassSum = 0.0f;
-		for (int32 CurrVertIndex = 0; CurrVertIndex < NumVerts; ++CurrVertIndex)
-		{
-			float& InvMass = InvMasses[CurrVertIndex];
-
-			if (IsKinematic(CurrVertIndex))
-			{
-				InvMass = 0.0f;
-				++PhysMesh.NumFixedVerts;
-			}
-			else
-			{
-				MassSum += InvMass;
-			}
-		}
-
-		if (MassSum > 0.0f)
-		{
-			const float MassScale = (float)(NumVerts - PhysMesh.NumFixedVerts) / MassSum;
-			for (float& InvMass : InvMasses)
-			{
-				if (InvMass != 0.0f)
-				{
-					InvMass *= MassScale;
-					InvMass = 1.0f / InvMass;
-				}
-			}
-		}
-
-		// Calculate number of influences per vertex
-		for(int32 VertIndex = 0; VertIndex < NumVerts; ++VertIndex)
-		{
-			FClothVertBoneData& BoneData = PhysMesh.BoneData[VertIndex];
-			const uint16* BoneIndices = BoneData.BoneIndices;
-			const float* BoneWeights = BoneData.BoneWeights;
-
-			BoneData.NumInfluences = MAX_TOTAL_INFLUENCES;
-
-			int32 NumInfluences = 0;
-			for(int32 InfluenceIndex = 0; InfluenceIndex < MAX_TOTAL_INFLUENCES; ++InfluenceIndex)
-			{
-				if(BoneWeights[InfluenceIndex] == 0.0f || BoneIndices[InfluenceIndex] == INDEX_NONE)
-				{
-					BoneData.NumInfluences = NumInfluences;
-					break;
-				}
-				++NumInfluences;
-			}
-		}
-	}
-}
-
-int32 UClothingAssetCommon::AddNewLod()
-{
-	return LodData.AddDefaulted();
-}
-
-void UClothingAssetCommon::PostEditChangeChainProperty(FPropertyChangedChainEvent& ChainEvent)
-{
-	Super::PostEditChangeChainProperty(ChainEvent);
-
-	bool bReregisterComponents = false;
-
-	if (ChainEvent.ChangeType != EPropertyChangeType::Interactive)
-	{
-		if (ChainEvent.Property->GetFName() == FName("SelfCollisionRadius") ||
-			ChainEvent.Property->GetFName() == FName("SelfCollisionCullScale"))
-		{
-			BuildSelfCollisionData();
-			bReregisterComponents = true;
-		}
-		else if(ChainEvent.Property->GetFName() == GET_MEMBER_NAME_CHECKED(UClothingAssetCommon, PhysicsAsset))
-		{
-			bReregisterComponents = true;
-		}
-		else
-		{
-			// Other properties just require a config refresh
-			ForEachInteractorUsingClothing([](UClothingSimulationInteractor* InInteractor)
-			{
-				if (InInteractor)
-				{
-					InInteractor->ClothConfigUpdated();
-				}
-			});
-		}
-	}
-
-	if (bReregisterComponents)
-	{
-		ReregisterComponentsUsingClothing();
-	}
-}
-
-#endif // WITH_EDITOR
 
 
 #undef LOCTEXT_NAMESPACE

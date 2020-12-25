@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 // Implementation of Device Context State Caching to improve draw
 //	thread performance by removing redundant device context calls.
@@ -96,9 +96,13 @@ struct FD3D12IndexBufferCache
 	inline void Clear()
 	{
 		FMemory::Memzero(&CurrentIndexBufferView, sizeof(CurrentIndexBufferView));
+		CurrentIndexBufferLocation = nullptr;
+		ResidencyHandle = nullptr;
 	}
 
 	D3D12_INDEX_BUFFER_VIEW CurrentIndexBufferView;
+	FD3D12ResourceLocation* CurrentIndexBufferLocation;
+	FD3D12ResidencyHandle* ResidencyHandle;
 };
 
 template<typename ResourceSlotMask>
@@ -107,11 +111,6 @@ struct FD3D12ResourceCache
 	static inline void CleanSlot(ResourceSlotMask& SlotMask, uint32 SlotIndex)
 	{
 		SlotMask &= ~((ResourceSlotMask)1 << SlotIndex);
-	}
-
-	static inline void CleanSlots(ResourceSlotMask& SlotMask, uint32 NumSlots)
-	{
-		SlotMask &= ~(((ResourceSlotMask)1 << NumSlots) - 1);
 	}
 
 	static inline void DirtySlot(ResourceSlotMask& SlotMask, uint32 SlotIndex)
@@ -338,6 +337,7 @@ protected:
 	FD3D12CommandContext* CmdContext;
 
 	bool bNeedSetVB;
+	bool bNeedSetIB;
 	bool bNeedSetRTs;
 	bool bNeedSetSOs;
 	bool bSRVSCleared;
@@ -347,7 +347,7 @@ protected:
 	bool bNeedSetBlendFactor;
 	bool bNeedSetStencilRef;
 	bool bNeedSetDepthBounds;
-	bool bNeedSetShadingRate;
+	bool bAutoFlushComputeShaderCache;
 	D3D12_RESOURCE_BINDING_TIER ResourceBindingTier;
 
 	struct
@@ -403,9 +403,6 @@ protected:
 
 			float MinDepth;
 			float MaxDepth;
-
-			EVRSShadingRate  DrawShadingRate;
-			EVRSRateCombiner Combiner;
 		} Graphics;
 
 		struct
@@ -440,7 +437,7 @@ protected:
 
 	FD3D12DescriptorCache DescriptorCache;
 
-	void InternalSetIndexBuffer(FD3D12Resource* Resource);
+	void InternalSetIndexBuffer(FD3D12ResourceLocation *IndexBufferLocation, DXGI_FORMAT Format, uint32 Offset);
 
 	void InternalSetStreamSource(FD3D12ResourceLocation* VertexBufferLocation, uint32 StreamIndex, uint32 Stride, uint32 Offset);
 
@@ -476,7 +473,7 @@ protected:
 			PipelineState.Common.CurrentShaderUAVCounts[Traits::Frequency]     = (Shader) ? Shader->ResourceCounts.NumUAVs     : 0;
 		
 			// Shader changed so its resource table is dirty
-			SetDirtyUniformBuffers(this->CmdContext, Traits::Frequency);
+			this->CmdContext->DirtyUniformBuffers[Traits::Frequency] = 0xffff;
 		}
 	}
 
@@ -510,28 +507,11 @@ protected:
 		if (bNeedSetPSO)
 		{
 			check(CurrentPSO);
-			SetPipelineState(this->CmdContext, CurrentPSO);
+			this->CmdContext->CommandListHandle->SetPipelineState(CurrentPSO);
 			PipelineState.Common.bNeedSetPSO = false;
 		}
 	}
 
-private:
-
-	// SetDirtyUniformBuffers and SetPipelineState helper functions are required
-	// to allow using FD3D12CommandContext type which is not defined at this point.
-	// Making ContextType a template parameter delays instantiation of these functions.
-
-	template <typename ContextType>
-	static void SetDirtyUniformBuffers(ContextType* Context, EShaderFrequency Frequency)
-	{
-		Context->DirtyUniformBuffers[Frequency] = 0xffff;
-	}
-
-	template <typename ContextType>
-	static void SetPipelineState(ContextType* Context, ID3D12PipelineState* State)
-	{
-		Context->CommandListHandle->SetPipelineState(State);
-	}
 
 public:
 
@@ -894,24 +874,14 @@ public:
 
 public:
 
-	D3D12_STATE_CACHE_INLINE void SetIndexBuffer(const FD3D12ResourceLocation& IndexBufferLocation, DXGI_FORMAT Format, uint32 Offset)
+	D3D12_STATE_CACHE_INLINE void SetIndexBuffer(FD3D12ResourceLocation* IndexBufferLocation, DXGI_FORMAT Format, uint32 Offset)
 	{
-		D3D12_GPU_VIRTUAL_ADDRESS BufferLocation = IndexBufferLocation.GetGPUVirtualAddress() + Offset;
-		UINT SizeInBytes = IndexBufferLocation.GetSize() - Offset;
+		InternalSetIndexBuffer(IndexBufferLocation, Format, Offset);
+	}
 
-		D3D12_INDEX_BUFFER_VIEW& CurrentView = PipelineState.Graphics.IBCache.CurrentIndexBufferView;
-
-		if (BufferLocation != CurrentView.BufferLocation ||
-			SizeInBytes != CurrentView.SizeInBytes ||
-			Format != CurrentView.Format ||
-			GD3D12SkipStateCaching)
-		{
-			CurrentView.BufferLocation = BufferLocation;
-			CurrentView.SizeInBytes = SizeInBytes;
-			CurrentView.Format = Format;
-
-			InternalSetIndexBuffer(IndexBufferLocation.GetResource());
-		}
+	D3D12_STATE_CACHE_INLINE bool IsIndexBuffer(const FD3D12ResourceLocation *ResourceLocation) const
+	{
+		return PipelineState.Graphics.IBCache.CurrentIndexBufferLocation == ResourceLocation;
 	}
 
 	D3D12_STATE_CACHE_INLINE void GetPrimitiveTopology(D3D12_PRIMITIVE_TOPOLOGY* PrimitiveTopology) const
@@ -921,7 +891,7 @@ public:
 
 	FD3D12StateCacheBase(FRHIGPUMask Node);
 
-	void Init(FD3D12Device* InParent, FD3D12CommandContext* InCmdContext, const FD3D12StateCacheBase* AncestralState);
+	void Init(FD3D12Device* InParent, FD3D12CommandContext* InCmdContext, const FD3D12StateCacheBase* AncestralState, FD3D12SubAllocatedOnlineHeap::SubAllocationDesc& SubHeapDesc);
 
 	virtual ~FD3D12StateCacheBase()
 	{
@@ -969,9 +939,6 @@ public:
 
 	template <EShaderFrequency ShaderStage>
 	void SetUAVs(uint32 UAVStartSlot, uint32 NumSimultaneousUAVs, FD3D12UnorderedAccessView** UAVArray, uint32* UAVInitialCountArray);
-	template <EShaderFrequency ShaderStage>
-	void ClearUAVs();
-
 
 	void SetDepthBounds(float MinDepth, float MaxDepth)
 	{
@@ -984,24 +951,14 @@ public:
 		}
 	}
 
-	void SetShadingRate(EVRSShadingRate ShadingRate, EVRSRateCombiner Combiner)
-	{
-		if (PipelineState.Graphics.DrawShadingRate != ShadingRate )
-		{
-			PipelineState.Graphics.DrawShadingRate = ShadingRate;
-			bNeedSetShadingRate = GRHISupportsVariableRateShading;
-		}
-
-		if (PipelineState.Graphics.Combiner != Combiner)
-		{
-			PipelineState.Graphics.Combiner = Combiner;
-			bNeedSetShadingRate = GRHISupportsVariableRateShading;
-		}
-	}
-
 	void SetComputeBudget(EAsyncComputeBudget ComputeBudget)
 	{
 		PipelineState.Compute.ComputeBudget = ComputeBudget;
+	}
+
+	D3D12_STATE_CACHE_INLINE void AutoFlushComputeShaderCache(bool bEnable)
+	{
+		bAutoFlushComputeShaderCache = bEnable;
 	}
 
 	void FlushComputeShaderCache(bool bForce = false);
@@ -1021,6 +978,7 @@ public:
 	void ForceSetGraphicsRootSignature() { PipelineState.Graphics.bNeedSetRootSignature = true; }
 	void ForceSetComputeRootSignature() { PipelineState.Compute.bNeedSetRootSignature = true; }
 	void ForceSetVB() { bNeedSetVB = true; }
+	void ForceSetIB() { bNeedSetIB = true; }
 	void ForceSetRTs() { bNeedSetRTs = true; }
 	void ForceSetSOs() { bNeedSetSOs = true; }
 	void ForceSetSamplersPerShaderStage(uint32 Frequency) { PipelineState.Common.SamplerCache.Dirty((EShaderFrequency)Frequency); }
@@ -1032,6 +990,7 @@ public:
 	void ForceSetStencilRef() { bNeedSetStencilRef = true; }
 
 	bool GetForceSetVB() const { return bNeedSetVB; }
+	bool GetForceSetIB() const { return bNeedSetIB; }
 	bool GetForceSetRTs() const { return bNeedSetRTs; }
 	bool GetForceSetSOs() const { return bNeedSetSOs; }
 	bool GetForceSetSamplersPerShaderStage(uint32 Frequency) const { return PipelineState.Common.SamplerCache.DirtySlotMask[Frequency] != 0; }

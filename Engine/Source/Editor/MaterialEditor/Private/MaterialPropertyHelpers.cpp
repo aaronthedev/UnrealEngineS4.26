@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MaterialPropertyHelpers.h"
 #include "Misc/MessageDialog.h"
@@ -119,25 +119,34 @@ void FMaterialPropertyHelpers::OnMaterialLayerAssetChanged(const struct FAssetDa
 	const FName FilterTag = FName(TEXT("MaterialFunctionUsage"));
 	if (InAssetData.TagsAndValues.Contains(FilterTag) || InAssetData.AssetName == NAME_None)
 	{
-		UMaterialFunctionInterface* LayerFunction = Cast<UMaterialFunctionInterface>(InAssetData.GetAsset());
 		switch (MaterialType)
 		{
 		case EMaterialParameterAssociation::LayerParameter:
-			if (InMaterialFunction->Layers[Index] != LayerFunction)
+		{
+			if (Cast<UMaterialFunctionInterface>(InAssetData.GetAsset()))
 			{
-				InMaterialFunction->Layers[Index] = LayerFunction;
-				InMaterialFunction->UnlinkLayerFromParent(Index);
+				InMaterialFunction->Layers[Index] = Cast<UMaterialFunctionInterface>(InAssetData.GetAsset());
 			}
-			break;
+			else
+			{
+				InMaterialFunction->Layers[Index] = nullptr;
+			}
+		}
+		break;
 		case EMaterialParameterAssociation::BlendParameter:
-			if (InMaterialFunction->Blends[Index] != LayerFunction)
+		{
+			if (Cast<UMaterialFunctionInterface>(InAssetData.GetAsset()))
 			{
-				InMaterialFunction->Blends[Index] = LayerFunction;
-				InMaterialFunction->UnlinkLayerFromParent(Index + 1); // Blend indices are offset by 1, no blend for base layer
+				InMaterialFunction->Blends[Index] = Cast<UMaterialFunctionInterface>(InAssetData.GetAsset());
 			}
-			break;
+			else
+			{
+				InMaterialFunction->Blends[Index] = nullptr;
+			}
+		}
+		break;
 		default:
-			break;
+		break;
 		}
 	}
 	InHandle->NotifyPostChange();
@@ -445,19 +454,6 @@ void FMaterialPropertyHelpers::TransitionAndCopyParameters(UMaterialInstanceCons
 							continue;
 						}
 					}
-
-					UDEditorRuntimeVirtualTextureParameterValue* RVTParameterValue = Cast<UDEditorRuntimeVirtualTextureParameterValue>(Group.Parameters[ParameterIdx]);
-					if (RVTParameterValue)
-					{
-						if (RVTParameterValue->bOverride || bForceCopy)
-						{
-							FMaterialParameterInfo TransitionedTextureInfo = FMaterialParameterInfo();
-							TransitionedTextureInfo.Name = RVTParameterValue->ParameterInfo.Name;
-							ChildInstance->SetRuntimeVirtualTextureParameterValueEditorOnly(TransitionedTextureInfo, RVTParameterValue->ParameterValue);
-							continue;
-						}
-					}
-
 					UDEditorVectorParameterValue* VectorParameterValue = Cast<UDEditorVectorParameterValue>(Group.Parameters[ParameterIdx]);
 					if (VectorParameterValue)
 					{
@@ -716,30 +712,27 @@ void FMaterialPropertyHelpers::OnOverrideParameter(bool NewValue, class UDEditor
 
 FText FMaterialPropertyHelpers::GetParameterExpressionDescription(UDEditorParameterValue* Parameter, UObject* MaterialEditorInstance)
 {
-	if (Parameter->ExpressionId.IsValid())
+	UMaterial* BaseMaterial = nullptr;
+
+	UMaterialEditorInstanceConstant* MaterialInstanceEditor = Cast<UMaterialEditorInstanceConstant>(MaterialEditorInstance);
+	if (MaterialInstanceEditor)
 	{
-		UMaterial* BaseMaterial = nullptr;
+		BaseMaterial = MaterialInstanceEditor->SourceInstance->GetMaterial();
+	}
+	UMaterialEditorPreviewParameters* MaterialEditor = Cast<UMaterialEditorPreviewParameters>(MaterialEditorInstance);
+	if (MaterialEditor)
+	{
+		BaseMaterial = MaterialEditor->OriginalMaterial;
+	}
 
-		UMaterialEditorInstanceConstant* MaterialInstanceEditor = Cast<UMaterialEditorInstanceConstant>(MaterialEditorInstance);
-		if (MaterialInstanceEditor)
-		{
-			BaseMaterial = MaterialInstanceEditor->SourceInstance->GetMaterial();
-		}
-		UMaterialEditorPreviewParameters* MaterialEditor = Cast<UMaterialEditorPreviewParameters>(MaterialEditorInstance);
-		if (MaterialEditor)
-		{
-			BaseMaterial = MaterialEditor->OriginalMaterial;
-		}
+	// TODO: This needs to support functions added by SourceInstance layers
+	if ( BaseMaterial )
+	{
+		UMaterialExpression* MaterialExpression = BaseMaterial->FindExpressionByGUID<UMaterialExpression>(Parameter->ExpressionId);
 
-		// TODO: This needs to support functions added by SourceInstance layers
-		if (BaseMaterial)
+		if (MaterialExpression)
 		{
-			UMaterialExpression* MaterialExpression = BaseMaterial->FindExpressionByGUID<UMaterialExpression>(Parameter->ExpressionId);
-
-			if (MaterialExpression)
-			{
-				return FText::FromString(MaterialExpression->Desc);
-			}
+			return FText::FromString(MaterialExpression->Desc);
 		}
 	}
 
@@ -1247,11 +1240,6 @@ bool FMaterialPropertyHelpers::OnShouldSetCurveAsset(const FAssetData& AssetData
 
 	for (UCurveLinearColor* GradientCurve : Atlas->GradientCurves)
 	{
-		if (!GradientCurve || !GradientCurve->GetOutermost())
-		{
-			continue;
-		}
-
 		if (GradientCurve->GetOutermost()->GetPathName() == AssetData.PackageName.ToString())
 		{
 			return true;
@@ -1302,6 +1290,7 @@ void FMaterialPropertyHelpers::ResetCurveToDefault(TSharedPtr<IPropertyHandle> P
 {
 	const FScopedTransaction Transaction(LOCTEXT("ResetToDefault", "Reset To Default"));
 	Parameter->Modify();
+	bool TempBool;
 	const FMaterialParameterInfo& ParameterInfo = Parameter->ParameterInfo;
 
 	UDEditorScalarParameterValue* ScalarParam = Cast<UDEditorScalarParameterValue>(Parameter);
@@ -1312,12 +1301,6 @@ void FMaterialPropertyHelpers::ResetCurveToDefault(TSharedPtr<IPropertyHandle> P
 		if (MaterialEditorInstance->SourceInstance->GetScalarParameterDefaultValue(ParameterInfo, OutValue))
 		{
 			ScalarParam->ParameterValue = OutValue;
-			
-			// Purge cached values, which will cause non-default values for the atlas data to be returned by IsScalarParameterUsedAsAtlasPosition
-			MaterialEditorInstance->SourceInstance->ClearParameterValuesEditorOnly();
-
-			// Update the atlas data from default values
-			bool TempBool;
 			MaterialEditorInstance->SourceInstance->IsScalarParameterUsedAsAtlasPosition(ParameterInfo, TempBool, ScalarParam->AtlasData.Curve, ScalarParam->AtlasData.Atlas);
 			MaterialEditorInstance->CopyToSourceInstance();
 		}

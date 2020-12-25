@@ -33,7 +33,7 @@ public:
 	int					GetNumVerts() const { return numVerts; }
 	int					GetNumTris() const { return numTris; }
 
-	void				OutputMesh( T* Verts, uint32* Indexes, uint32* OutNumVertices = nullptr, uint32* OutNumIndices = nullptr ) const;
+	void				OutputMesh( T* Verts, uint32* Indexes );
 
 protected:
 	void				LockVertFlags( uint32 flag );
@@ -1543,7 +1543,7 @@ float TMeshSimplifier<T, NumAttributes>::SimplifyMesh( float maxErrorLimit, int 
 }
 
 template< typename T, uint32 NumAttributes >
-void TMeshSimplifier<T, NumAttributes>::OutputMesh( T* verts, uint32* indexes, uint32* OutNumVertices, uint32* OutNumIndices ) const
+void TMeshSimplifier<T, NumAttributes>::OutputMesh( T* verts, uint32* indexes )
 {
 	FHashTable HashTable( 4096, GetNumVerts() );
 
@@ -1595,13 +1595,6 @@ void TMeshSimplifier<T, NumAttributes>::OutputMesh( T* verts, uint32* indexes, u
 	check( numV <= numVerts );
 	check( numI <= numTris * 3 );
 	
-	if (OutNumVertices)
-	{
-		*OutNumVertices = numV;
-	}
-
-	if (OutNumIndices)
-	{
-		*OutNumIndices = numI;
-	}
+	numVerts = numV;
+	numTris = numI / 3;
 }

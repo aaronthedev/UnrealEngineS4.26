@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -21,6 +21,7 @@ public class CrashReportClient : ModuleRules
 				"Core",
 				"CoreUObject",
 				"ApplicationCore",
+				"CrashDebugHelper",
 				"CrashReportCore",
 				"HTTP",
 				"Json",
@@ -39,21 +40,20 @@ public class CrashReportClient : ModuleRules
 			}
 		);
 
-		if (Target.Configuration != UnrealTargetConfiguration.Shipping)
-		{
-			PrivateIncludePathModuleNames.AddRange(
-				new string[] {
+		PrivateIncludePathModuleNames.AddRange(
+			new string[] {
 				"SlateReflector",
-				}
-			);
+			}
+		);
 
-			DynamicallyLoadedModuleNames.AddRange(
-				new string[] {
+		DynamicallyLoadedModuleNames.AddRange(
+			new string[] {
 				"SlateReflector",
-				}
-			);
-		}
+			}
+		);
 
 		PrivateIncludePaths.Add("Runtime/Launch/Private");		// For LaunchEngineLoop.cpp include
+
+		WhitelistRestrictedFolders.Add("Private/NotForLicensees");
 	}
 }

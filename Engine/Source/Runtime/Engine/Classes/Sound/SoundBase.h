@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 /**
@@ -9,14 +9,11 @@
 #include "CoreMinimal.h"
 #include "IAudioExtensionPlugin.h"
 #include "SoundConcurrency.h"
-#include "SoundModulationDestination.h"
 #include "SoundSourceBusSend.h"
 #include "SoundSubmixSend.h"
-#include "SoundGenerator.h"
 #include "UObject/Object.h"
 #include "UObject/ObjectMacros.h"
-#include "AudioDeviceManager.h"
-#include "Interfaces/Interface_AssetUserData.h"
+
 #include "SoundBase.generated.h"
 
 
@@ -24,7 +21,6 @@ class USoundEffectSourcePreset;
 class USoundSourceBus;
 class USoundSubmix;
 class USoundEffectSourcePresetChain;
-class UAssetUserData;
 
 struct FActiveSound;
 struct FSoundParseParameters;
@@ -53,7 +49,7 @@ enum class EVirtualizationMode : uint8
 };
 
 UCLASS(config=Engine, hidecategories=Object, abstract, editinlinenew, BlueprintType)
-class ENGINE_API USoundBase : public UObject, public IInterface_AssetUserData
+class ENGINE_API USoundBase : public UObject
 {
 	GENERATED_UCLASS_BODY()
 
@@ -65,8 +61,8 @@ public:
 	UPROPERTY(EditAnywhere, Category = Sound, meta = (DisplayName = "Class"), AssetRegistrySearchable)
 	USoundClass* SoundClassObject;
 
-	/** When "au.debug.Sounds -debug" has been specified, draw this sound's attenuation shape when the sound is audible. For debugging purpose only. */
-	UPROPERTY(EditAnywhere, Category = Developer)
+	/** When "stat sounds -debug" has been specified, draw this sound's attenuation shape when the sound is audible. For debugging purpose only. */
+	UPROPERTY(EditAnywhere, Category = Debug)
 	uint8 bDebug : 1;
 
 	/** Whether or not to override the sound concurrency object with local concurrency settings. */
@@ -74,7 +70,7 @@ public:
 	uint8 bOverrideConcurrency : 1;
 
 	/** Whether or not to only send this audio's output to a bus. If true, will not be this sound won't be audible except through bus sends. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effects|Source")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Effects)
 	uint8 bOutputToBusOnly : 1;
 
 	/** Whether or not to only send this audio's output to a bus. If true, will not be this sound won't be audible except through bus sends. */
@@ -127,15 +123,15 @@ public:
 #endif
 
 	/** Duration of sound in seconds. */
-	UPROPERTY(Category = Developer, AssetRegistrySearchable, VisibleAnywhere, BlueprintReadOnly)
+	UPROPERTY(Category=Info, AssetRegistrySearchable, VisibleAnywhere, BlueprintReadOnly)
 	float Duration;
 
 	/** The max distance of the asset, as determined by attenuation settings. */
-	UPROPERTY(Category = Developer, AssetRegistrySearchable, VisibleAnywhere, BlueprintReadOnly)
+	UPROPERTY(Category = Info, AssetRegistrySearchable, VisibleAnywhere, BlueprintReadOnly)
 	float MaxDistance;
 
 	/** Total number of samples (in the thousands). Useful as a metric to analyze the relative size of a given sound asset in content browser. */
-	UPROPERTY(Category = Developer, AssetRegistrySearchable, VisibleAnywhere, BlueprintReadOnly)
+	UPROPERTY(Category = Info, AssetRegistrySearchable, VisibleAnywhere, BlueprintReadOnly)
 	float TotalSamples;
 
 	/** Used to determine whether sound can play or remain active if channel limit is met, where higher value is higher priority
@@ -149,34 +145,32 @@ public:
 	UPROPERTY(EditAnywhere, Category = Attenuation)
 	USoundAttenuation* AttenuationSettings;
 
-	/** Modulation Settings */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Modulation")
-	FSoundModulationDefaultRoutingSettings ModulationSettings;
+	/** Modulation for the sound */
+	UPROPERTY(EditAnywhere, Category = Modulation)
+	FSoundModulation Modulation;
 
-	/** Submix to route sound output to. If unset, falls back to referenced SoundClass submix.
-	  * If SoundClass submix is unset, sends to the 'Master Submix' as set in the 'Audio' category of Project Settings'. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effects|Submix", meta = (DisplayName = "Submix"))
-	USoundSubmixBase* SoundSubmixObject;
+	/** Sound submix this sound belongs to.
+	  * Audio will play here and traverse through the submix graph.
+	  * A null entry will make the sound obey the default master effects graph.
+	  */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Effects, meta = (DisplayName = "Sound Submix"))
+	USoundSubmix* SoundSubmixObject;
 
-	/** Array of submix sends to which a prescribed amount (see 'Send Level') of this sound is sent. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effects|Submix", meta = (DisplayName = "Submix Sends"))
+	/** An array of submix sends. Audio from this sound will send a portion of its audio to these effects. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Effects)
 	TArray<FSoundSubmixSendInfo> SoundSubmixSends;
 
 	/** The source effect chain to use for this sound. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effects|Source")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Effects)
 	USoundEffectSourcePresetChain* SourceEffectChain;
 
 	/** This sound will send its audio output to this list of buses if there are bus instances playing after source effects are processed. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effects|Source", meta = (DisplayName = "Post-Effect Bus Sends"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Effects, meta = (DisplayName = "Post-Effect Bus Sends"))
 	TArray<FSoundSourceBusSendInfo> BusSends;
 
 	/** This sound will send its audio output to this list of buses if there are bus instances playing before source effects are processed. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Effects|Source", meta = (DisplayName = "Pre-Effect Bus Sends"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = Effects, meta = (DisplayName = "Pre-Effect Bus Sends"))
 	TArray<FSoundSourceBusSendInfo> PreEffectBusSends;
-
-	/** Array of user data stored with the asset */
-	UPROPERTY(EditAnywhere, AdvancedDisplay, Instanced, Category = Sound)
-	TArray<UAssetUserData*> AssetUserData;
 
 public:
 
@@ -246,7 +240,7 @@ public:
 	virtual USoundClass* GetSoundClass() const;
 
 	/** Returns the SoundSubmix used for this sound. */
-	virtual USoundSubmixBase* GetSoundSubmix() const;
+	virtual USoundSubmix* GetSoundSubmix() const;
 
 	/** Returns the sound submix sends for this sound. */
 	void GetSoundSubmixSends(TArray<FSoundSubmixSendInfo>& OutSends) const;
@@ -265,16 +259,5 @@ public:
 	/** Queries if the sound has cooked FFT or envelope data. */
 	virtual bool HasCookedFFTData() const { return false; }
 	virtual bool HasCookedAmplitudeEnvelopeData() const { return false; }
-
-	//~ Begin IInterface_AssetUserData Interface
-	virtual void AddAssetUserData(UAssetUserData* InUserData) override;
-	virtual void RemoveUserDataOfClass(TSubclassOf<UAssetUserData> InUserDataClass) override;
-	virtual UAssetUserData* GetAssetUserDataOfClass(TSubclassOf<UAssetUserData> InUserDataClass) override;
-	virtual const TArray<UAssetUserData*>* GetAssetUserDataArray() const override;
-	//~ End IInterface_AssetUserData Interface
-
-	/** Creates a sound generator instance from this sound base. Return true if this is being implemented by a subclass. Sound generators procedurally generate audio in the audio render thread. */
-	virtual ISoundGeneratorPtr CreateSoundGenerator(int32 InSampleRate, int32 InNumChannels) { return nullptr; }
-
 };
 

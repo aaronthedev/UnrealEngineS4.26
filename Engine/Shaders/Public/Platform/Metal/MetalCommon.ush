@@ -1,11 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MetalCommon.usf: Common Metal shader code
 =============================================================================*/
 
 // Update this GUID to improve shader recompilation for Metal only shaders
-// GUID = 58B83ABA-46B7-4D8A-B64B-766CE8FC28AD
+// GUID = c5ad1ae7-36ce-47c3-b5a9-41e9093577fe
 
 #pragma once
 
@@ -29,26 +29,13 @@
 
 #define COMPILER_SUPPORTS_MINMAX3 0
 
-#if IOS && PIXELSHADER 
-	// The load operation here will be patched by the MetalShaderCompiler,
-	// do NOT change any character in the "SubpassFetch*" macro definition, including white spaces!
-	
-	// 4 components: RGBA_0
-	Texture2D<float4> gl_LastFragDataRGBA_0;
-	#define SubpassFetchRGBA_0() gl_LastFragDataRGBA_0.Load(uint3(0, 0, 0), 0)
-	// 1 component: R_4
-	Texture2D<float> gl_LastFragDataR_4;
-	#define SubpassFetchR_4() gl_LastFragDataR_4.Load(uint3(0, 0, 0), 0)
-	//
-	// Rest of SubpassFetch can be found in MetalSubpassSupport.ush
-	//
-	#if MOBILE_DEFERRED_SHADING
-		#define DepthbufferFetchES2() SubpassFetchR_4()
-	#else
-		#define DepthbufferFetchES2() SubpassFetchRGBA_0().w
-	#endif
+#if IOS
+#if COMPILER_HLSLCC > 1
+#if PIXELSHADER
+ 	Texture2D<float4> gl_LastFragData;
+	#define FramebufferFetchES2() gl_LastFragData.Load(uint3(0,0,0),0)
 #else
-	#define SubpassFetchRGBA_0() ((float4)0.0)
-	#define SubpassFetchR_0() (0.0)
-	#define SubpassFetchR_4() (0.0)
-#endif //IOS && PIXELSHADER 
+	#define FramebufferFetchES2() float4(0,0,0,0)
+#endif
+#endif
+#endif

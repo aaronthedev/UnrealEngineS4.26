@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,17 +11,17 @@ LUMIN_THIRD_PARTY_INCLUDES_START
 #include <ml_media_cea608_caption.h>
 LUMIN_THIRD_PARTY_INCLUDES_END
 
-namespace LUMIN_MLSDK_API
+namespace MLSDK_API
 {
 
 CREATE_FUNCTION_SHIM(ml_media_ccparser, MLResult, MLMediaCCParserCreate)
-#define MLMediaCCParserCreate ::LUMIN_MLSDK_API::MLMediaCCParserCreateShim
+#define MLMediaCCParserCreate ::MLSDK_API::MLMediaCCParserCreateShim
 CREATE_FUNCTION_SHIM(ml_media_ccparser, MLResult, MLMediaCCParserGetDisplayable)
-#define MLMediaCCParserGetDisplayable ::LUMIN_MLSDK_API::MLMediaCCParserGetDisplayableShim
+#define MLMediaCCParserGetDisplayable ::MLSDK_API::MLMediaCCParserGetDisplayableShim
 CREATE_FUNCTION_SHIM(ml_media_ccparser, MLResult, MLMediaCCParserReleaseSegment)
-#define MLMediaCCParserReleaseSegment ::LUMIN_MLSDK_API::MLMediaCCParserReleaseSegmentShim
+#define MLMediaCCParserReleaseSegment ::MLSDK_API::MLMediaCCParserReleaseSegmentShim
 CREATE_FUNCTION_SHIM(ml_media_ccparser, MLResult, MLMediaCCParserDestroy)
-#define MLMediaCCParserDestroy ::LUMIN_MLSDK_API::MLMediaCCParserDestroyShim
+#define MLMediaCCParserDestroy ::MLSDK_API::MLMediaCCParserDestroyShim
 
 }
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UserInterface/PropertyEditor/SPropertyEditorClass.h"
 #include "Engine/Blueprint.h"
@@ -83,10 +83,10 @@ bool SPropertyEditorClass::Supports(const TSharedRef< class FPropertyEditor >& I
 	}
 
 	const TSharedRef< FPropertyNode > PropertyNode = InPropertyEditor->GetPropertyNode();
-	const FProperty* Property = InPropertyEditor->GetProperty();
+	const UProperty* Property = InPropertyEditor->GetProperty();
 	int32 ArrayIndex = PropertyNode->GetArrayIndex();
 
-	if ((Property->IsA(FClassProperty::StaticClass()) || Property->IsA(FSoftClassProperty::StaticClass())) 
+	if ((Property->IsA(UClassProperty::StaticClass()) || Property->IsA(USoftClassProperty::StaticClass())) 
 		&& ((ArrayIndex == -1 && Property->ArrayDim == 1) || (ArrayIndex > -1 && Property->ArrayDim > 0)))
 	{
 		return true;
@@ -102,12 +102,12 @@ void SPropertyEditorClass::Construct(const FArguments& InArgs, const TSharedPtr<
 	if (PropertyEditor.IsValid())
 	{
 		const TSharedRef<FPropertyNode> PropertyNode = PropertyEditor->GetPropertyNode();
-		FProperty* const Property = PropertyNode->GetProperty();
-		if (FClassProperty* const ClassProp = CastField<FClassProperty>(Property))
+		UProperty* const Property = PropertyNode->GetProperty();
+		if (UClassProperty* const ClassProp = Cast<UClassProperty>(Property))
 		{
 			MetaClass = ClassProp->MetaClass;
 		}
-		else if (FSoftClassProperty* const SoftClassProperty = CastField<FSoftClassProperty>(Property))
+		else if (USoftClassProperty* const SoftClassProperty = Cast<USoftClassProperty>(Property))
 		{
 			MetaClass = SoftClassProperty->MetaClass;
 		}
@@ -116,9 +116,7 @@ void SPropertyEditorClass::Construct(const FArguments& InArgs, const TSharedPtr<
 			check(false);
 		}
 		
-		const FString* AllowAbstractString = Property->GetOwnerProperty()->FindMetaData(TEXT("AllowAbstract"));
-		bAllowAbstract = AllowAbstractString && (AllowAbstractString->IsEmpty() || AllowAbstractString->ToBool());
-		
+		bAllowAbstract = Property->GetOwnerProperty()->HasMetaData(TEXT("AllowAbstract"));
 		bAllowOnlyPlaceable = Property->GetOwnerProperty()->HasMetaData(TEXT("OnlyPlaceable"));
 		bIsBlueprintBaseOnly = Property->GetOwnerProperty()->HasMetaData(TEXT("BlueprintBaseOnly"));
 		RequiredInterface = Property->GetOwnerProperty()->GetClassMetaData(TEXT("MustImplement"));
@@ -136,10 +134,13 @@ void SPropertyEditorClass::Construct(const FArguments& InArgs, const TSharedPtr<
 			if (!ClassesFilterString->IsEmpty())
 			{
 				TArray<FString> ClassFilterNames;
-				ClassesFilterString->ParseIntoArrayWS(ClassFilterNames, TEXT(","), true);
+				ClassesFilterString->ParseIntoArray(ClassFilterNames, TEXT(","), true);
 
-				for (const FString& ClassName : ClassFilterNames)
+				for (FString& ClassName : ClassFilterNames)
 				{
+					// User can potentially list class names with leading or trailing whitespace
+					ClassName.TrimStartAndEndInline();
+
 					UClass* Class = FindObject<UClass>(ANY_PACKAGE, *ClassName);
 
 					if (!Class)
@@ -239,7 +240,7 @@ FText SPropertyEditorClass::GetDisplayValueAsString() const
 	// Guard against re-entrancy which can happen if the delegate executed below (SelectedClass.Get()) forces a slow task dialog to open, thus causing this to lose context and regain focus later starting the loop over again
 	if( !bIsReentrant )
 	{
-		TGuardValue<bool> Guard( bIsReentrant, true );
+		TGuardValue<bool>( bIsReentrant, true );
 		if(PropertyEditor.IsValid())
 		{
 			UObject* ObjectValue = NULL;

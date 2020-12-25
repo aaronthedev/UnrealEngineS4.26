@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Misc/Guid.h"
 #include "MovieSceneNameableTrack.h"
 #include "UObject/ObjectMacros.h"
-#include "Compilation/IMovieSceneTrackTemplateProducer.h"
 
 #include "MovieSceneMediaTrack.generated.h"
 
@@ -18,7 +17,6 @@ class UMediaSource;
 UCLASS(MinimalAPI)
 class UMovieSceneMediaTrack
 	: public UMovieSceneNameableTrack
-	, public IMovieSceneTrackTemplateProducer
 {
 public:
 

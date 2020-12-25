@@ -1,9 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
-#include "Chaos/Core.h"
+#include "Chaos/DynamicParticles.h"
 #include "Chaos/Matrix.h"
+#include "Chaos/PBDParticles.h"
+#include "Chaos/PerParticleGravity.h"
 #include "Chaos/Transform.h"
 #include "Chaos/Vector.h"
 
@@ -141,94 +143,28 @@ namespace Chaos
 		 * Multiple two matrices: C = L.R
 		 * @note This is the mathematically expected operator. FMatrix operator* calculates C = R.Transpose(L), so this is not equivalent to that.
 		 */
-		inline PMatrix<float, 3, 3> Multiply(const PMatrix<float, 3, 3>& L, const PMatrix<float, 3, 3>& R)
+		inline PMatrix<float, 3, 3> Multiply(const PMatrix<float, 3, 3>& LIn, const PMatrix<float, 3, 3>& RIn)
 		{
-			// @todo(ccaulfield): optimize: simd
+			// @todo(ccaulfield): optimize: remove transposes and use simd etc
+			PMatrix<float, 3, 3> L = LIn.GetTransposed();
+			PMatrix<float, 3, 3> R = RIn.GetTransposed();
 
 			// We want L.R (FMatrix operator* actually calculates R.(L)T; i.e., Right is on the left, and the Left is transposed on the right.)
 			// NOTE: PMatrix constructor takes values in column order
 			return PMatrix<float, 3, 3>(
-				L.M[0][0] * R.M[0][0] + L.M[1][0] * R.M[0][1] + L.M[2][0] * R.M[0][2],	// x00
-				L.M[0][0] * R.M[1][0] + L.M[1][0] * R.M[1][1] + L.M[2][0] * R.M[1][2],	// x01
-				L.M[0][0] * R.M[2][0] + L.M[1][0] * R.M[2][1] + L.M[2][0] * R.M[2][2],	// x02
+			    L.M[0][0] * R.M[0][0] + L.M[0][1] * R.M[1][0] + L.M[0][2] * R.M[2][0], // x00
+			    L.M[1][0] * R.M[0][0] + L.M[1][1] * R.M[1][0] + L.M[1][2] * R.M[2][0], // x10
+			    L.M[2][0] * R.M[0][0] + L.M[2][1] * R.M[1][0] + L.M[2][2] * R.M[2][0], // x20
 
-				L.M[0][1] * R.M[0][0] + L.M[1][1] * R.M[0][1] + L.M[2][1] * R.M[0][2],	// x10
-				L.M[0][1] * R.M[1][0] + L.M[1][1] * R.M[1][1] + L.M[2][1] * R.M[1][2],	// x11
-				L.M[0][1] * R.M[2][0] + L.M[1][1] * R.M[2][1] + L.M[2][1] * R.M[2][2],	// x12
+			    L.M[0][0] * R.M[0][1] + L.M[0][1] * R.M[1][1] + L.M[0][2] * R.M[2][1], // x01
+			    L.M[1][0] * R.M[0][1] + L.M[1][1] * R.M[1][1] + L.M[1][2] * R.M[2][1], // x11
+			    L.M[2][0] * R.M[0][1] + L.M[2][1] * R.M[1][1] + L.M[2][2] * R.M[2][1], // x21
 
-				L.M[0][2] * R.M[0][0] + L.M[1][2] * R.M[0][1] + L.M[2][2] * R.M[0][2],	// x20
-				L.M[0][2] * R.M[1][0] + L.M[1][2] * R.M[1][1] + L.M[2][2] * R.M[1][2],	// x21
-				L.M[0][2] * R.M[2][0] + L.M[1][2] * R.M[2][1] + L.M[2][2] * R.M[2][2]	// x22
-				);
-		}
-
-		inline PMatrix<float, 4, 4> Multiply(const PMatrix<float, 4, 4>& L, const PMatrix<float, 4, 4>& R)
-		{
-			// @todo(ccaulfield): optimize: simd
-
-			// We want L.R (FMatrix operator* actually calculates R.(L)T; i.e., Right is on the left, and the Left is transposed on the right.)
-			// NOTE: PMatrix constructor takes values in column order
-			return PMatrix<float, 4, 4>(
-				L.M[0][0] * R.M[0][0] + L.M[1][0] * R.M[0][1] + L.M[2][0] * R.M[0][2] + L.M[3][0] * R.M[0][3],	// x00
-				L.M[0][0] * R.M[1][0] + L.M[1][0] * R.M[1][1] + L.M[2][0] * R.M[1][2] + L.M[3][0] * R.M[1][3],	// x01
-				L.M[0][0] * R.M[2][0] + L.M[1][0] * R.M[2][1] + L.M[2][0] * R.M[2][2] + L.M[3][0] * R.M[2][3],	// x02
-				L.M[0][0] * R.M[3][0] + L.M[1][0] * R.M[3][1] + L.M[2][0] * R.M[3][2] + L.M[3][0] * R.M[3][3],	// x03
-
-				L.M[0][1] * R.M[0][0] + L.M[1][1] * R.M[0][1] + L.M[2][1] * R.M[0][2] + L.M[3][1] * R.M[0][3],	// x10
-				L.M[0][1] * R.M[1][0] + L.M[1][1] * R.M[1][1] + L.M[2][1] * R.M[1][2] + L.M[3][1] * R.M[1][3],	// x11
-				L.M[0][1] * R.M[2][0] + L.M[1][1] * R.M[2][1] + L.M[2][1] * R.M[2][2] + L.M[3][1] * R.M[2][3],	// x12
-				L.M[0][1] * R.M[3][0] + L.M[1][1] * R.M[3][1] + L.M[2][1] * R.M[3][2] + L.M[3][1] * R.M[3][3],	// x13
-
-				L.M[0][2] * R.M[0][0] + L.M[1][2] * R.M[0][1] + L.M[2][2] * R.M[0][2] + L.M[3][2] * R.M[0][3],	// x20
-				L.M[0][2] * R.M[1][0] + L.M[1][2] * R.M[1][1] + L.M[2][2] * R.M[1][2] + L.M[3][2] * R.M[1][3],	// x21
-				L.M[0][2] * R.M[2][0] + L.M[1][2] * R.M[2][1] + L.M[2][2] * R.M[2][2] + L.M[3][2] * R.M[2][3],	// x22
-				L.M[0][2] * R.M[3][0] + L.M[1][2] * R.M[3][1] + L.M[2][2] * R.M[3][2] + L.M[3][2] * R.M[3][3],	// x23
-
-				L.M[0][3] * R.M[0][0] + L.M[1][3] * R.M[0][1] + L.M[2][3] * R.M[0][2] + L.M[3][3] * R.M[0][3],	// x30
-				L.M[0][3] * R.M[1][0] + L.M[1][3] * R.M[1][1] + L.M[2][3] * R.M[1][2] + L.M[3][3] * R.M[1][3],	// x31
-				L.M[0][3] * R.M[2][0] + L.M[1][3] * R.M[2][1] + L.M[2][3] * R.M[2][2] + L.M[3][3] * R.M[2][3],	// x32
-				L.M[0][3] * R.M[3][0] + L.M[1][3] * R.M[3][1] + L.M[2][3] * R.M[3][2] + L.M[3][3] * R.M[3][3]	// x33
-				);
-		}
-
-		inline PMatrix<float, 3, 3> MultiplyAB(const PMatrix<float, 3, 3>& LIn, const PMatrix<float, 3, 3>& RIn)
-		{
-			return Multiply(LIn, RIn);
-		}
-
-		inline PMatrix<float, 3, 3> MultiplyABt(const PMatrix<float, 3, 3>& L, const PMatrix<float, 3, 3>& R)
-		{
-			return PMatrix<float, 3, 3>(
-				L.M[0][0] * R.M[0][0] + L.M[1][0] * R.M[1][0] + L.M[2][0] * R.M[2][0],	// x00
-				L.M[0][0] * R.M[0][1] + L.M[1][0] * R.M[1][1] + L.M[2][0] * R.M[2][1],	// x01
-				L.M[0][0] * R.M[0][2] + L.M[1][0] * R.M[1][2] + L.M[2][0] * R.M[2][2],	// x02
-
-				L.M[0][1] * R.M[0][0] + L.M[1][1] * R.M[1][0] + L.M[2][1] * R.M[2][0],	// x10
-				L.M[0][1] * R.M[0][1] + L.M[1][1] * R.M[1][1] + L.M[2][1] * R.M[2][1],	// x11
-				L.M[0][1] * R.M[0][2] + L.M[1][1] * R.M[1][2] + L.M[2][1] * R.M[2][2],	// x12
-
-				L.M[0][2] * R.M[0][0] + L.M[1][2] * R.M[1][0] + L.M[2][2] * R.M[2][0],	// x20
-				L.M[0][2] * R.M[0][1] + L.M[1][2] * R.M[1][1] + L.M[2][2] * R.M[2][1],	// x21
-				L.M[0][2] * R.M[0][2] + L.M[1][2] * R.M[1][2] + L.M[2][2] * R.M[2][2]	// x22
-				);
-		}
-
-		inline PMatrix<float, 3, 3> MultiplyAtB(const PMatrix<float, 3, 3>& L, const PMatrix<float, 3, 3>& R)
-		{
-			return PMatrix<float, 3, 3>(
-				L.M[0][0] * R.M[0][0] + L.M[0][1] * R.M[0][1] + L.M[0][2] * R.M[0][2],	// x00
-				L.M[0][0] * R.M[1][0] + L.M[0][1] * R.M[1][1] + L.M[0][2] * R.M[1][2],	// x01
-				L.M[0][0] * R.M[2][0] + L.M[0][1] * R.M[2][1] + L.M[0][2] * R.M[2][2],	// x02
-
-				L.M[1][0] * R.M[0][0] + L.M[1][1] * R.M[0][1] + L.M[1][2] * R.M[0][2],	// x10
-				L.M[1][0] * R.M[1][0] + L.M[1][1] * R.M[1][1] + L.M[1][2] * R.M[1][2],	// x11
-				L.M[1][0] * R.M[2][0] + L.M[1][1] * R.M[2][1] + L.M[1][2] * R.M[2][2],	// x12
-
-				L.M[2][0] * R.M[0][0] + L.M[2][1] * R.M[0][1] + L.M[2][2] * R.M[0][2],	// x20
-				L.M[2][0] * R.M[1][0] + L.M[2][1] * R.M[1][1] + L.M[2][2] * R.M[1][2],	// x21
-				L.M[2][0] * R.M[2][0] + L.M[2][1] * R.M[2][1] + L.M[2][2] * R.M[2][2]	// x22
-				);
-
+			    L.M[0][0] * R.M[0][2] + L.M[0][1] * R.M[1][2] + L.M[0][2] * R.M[2][2], // x02
+			    L.M[1][0] * R.M[0][2] + L.M[1][1] * R.M[1][2] + L.M[1][2] * R.M[2][2], // x12
+			    L.M[2][0] * R.M[0][2] + L.M[2][1] * R.M[1][2] + L.M[2][2] * R.M[2][2] // x22
+			    )
+			    .GetTransposed();
 		}
 
 		/**
@@ -246,19 +182,6 @@ namespace Chaos
 			    L.M[2][0] * R.X + L.M[2][1] * R.Y + L.M[2][2] * R.Z);
 		}
 
-		inline TVector<float, 4> Multiply(const PMatrix<float, 4, 4>& LIn, const TVector<float, 4>& R)
-		{
-			// @todo(ccaulfield): optimize: remove transposes and use simd etc
-			PMatrix<float, 4, 4> L = LIn.GetTransposed();
-
-			return TVector<float, 4>(
-				L.M[0][0] * R.X + L.M[0][1] * R.Y + L.M[0][2] * R.Z + L.M[0][3] * R.W,
-				L.M[1][0] * R.X + L.M[1][1] * R.Y + L.M[1][2] * R.Z + L.M[1][3] * R.W,
-				L.M[2][0] * R.X + L.M[2][1] * R.Y + L.M[2][2] * R.Z + L.M[2][3] * R.W,
-				L.M[3][0] * R.X + L.M[3][1] * R.Y + L.M[3][2] * R.Z + L.M[3][3] * R.W
-				);
-		}
-
 		/**
 		 * Concatenate two transforms. This returns a transform that logically applies R then L.
 		 */
@@ -269,21 +192,6 @@ namespace Chaos
 		inline TRigidTransform<float, 3> Multiply(const TRigidTransform<float, 3> L, const TRigidTransform<float, 3>& R)
 		{
 			return TRigidTransform<float, 3>(L.GetTranslation() + L.GetRotation().RotateVector(R.GetTranslation()), L.GetRotation() * R.GetRotation());
-		}
-
-		/**
-		 * Calculate the world-space inertia (or inverse inertia) for a body with center-of-mass rotation "CoMRotation" and local-space inertia/inverse-inertia "I".
-		 */
-		static FMatrix33 ComputeWorldSpaceInertia(const FRotation3& CoMRotation, const FMatrix33& I)
-		{
-			FMatrix33 QM = CoMRotation.ToMatrix();
-			return MultiplyAB(QM, MultiplyABt(I, QM));
-		}
-
-		static FMatrix33 ComputeWorldSpaceInertia(const FRotation3& CoMRotation, const FVec3& I)
-		{
-			// @todo(ccaulfield): optimize ComputeWorldSpaceInertia
-			return ComputeWorldSpaceInertia(CoMRotation, FMatrix33(I.X, I.Y, I.Z));
 		}
 
 		/**
@@ -326,161 +234,6 @@ namespace Chaos
 			OutTB = ((InStartA[1] - InEndA[1]) * (InStartA[0] - InStartB[0]) + (InEndA[0] - InStartA[0]) * (InStartA[1] - InStartB[1])) / Divisor;
 
 			return OutTA >= 0 && OutTA <= 1 && OutTB > 0 && OutTB < 1;
-		}
-
-		/**
-		 * Clip a line segment to inside a plane (plane normal pointing outwards).
-		 * @return false if the line is completely outside the plane, true otherwise.
-		 */
-		inline bool ClipLineSegmentToPlane(FVec3& V0, FVec3& V1, const FVec3& PlaneNormal, const FVec3& PlanePos)
-		{
-			FReal Dist0 = FVec3::DotProduct(V0 - PlanePos, PlaneNormal);
-			FReal Dist1 = FVec3::DotProduct(V1 - PlanePos, PlaneNormal);
-			if ((Dist0 > 0.0f) && (Dist1 > 0.0f))
-			{
-				// Whole line segment is outside of face - reject it
-				return false;
-			}
-			
-			if ((Dist0 > 0.0f) && (Dist1 < 0.0f))
-			{
-				// We must move vert 0 to the plane
-				FReal ClippedT = -Dist1 / (Dist0 - Dist1);
-				V0 = FMath::Lerp(V1, V0, ClippedT);
-			}
-			else if ((Dist1 > 0.0f) && (Dist0 < 0.0f))
-			{
-				// We must move vert 1 to the plane
-				FReal ClippedT = -Dist0 / (Dist1 - Dist0);
-				V1 = FMath::Lerp(V0, V1, ClippedT);
-			}
-
-			return true;
-		}
-
-		/**
-		 * Clip a line segment to the inside of an axis aligned plane (normal pointing outwards).
-		 */
-		inline bool ClipLineSegmentToAxisAlignedPlane(FVec3& V0, FVec3& V1, const int32 AxisIndex, const FReal PlaneDir, const FReal PlanePos)
-		{
-			FReal Dist0 = (V0[AxisIndex] - PlanePos) * PlaneDir;
-			FReal Dist1 = (V1[AxisIndex] - PlanePos) * PlaneDir;
-			if ((Dist0 > 0.0f) && (Dist1 > 0.0f))
-			{
-				// Whole line segment is outside of face - reject it
-				return false;
-			}
-
-			if ((Dist0 > 0.0f) && (Dist1 < 0.0f))
-			{
-				// We must move vert 0 to the plane
-				FReal ClippedT = -Dist1 / (Dist0 - Dist1);
-				V0 = FMath::Lerp(V1, V0, ClippedT);
-			}
-			else if ((Dist1 > 0.0f) && (Dist0 < 0.0f))
-			{
-				// We must move vert 1 to the plane
-				FReal ClippedT = -Dist0 / (Dist1 - Dist0);
-				V1 = FMath::Lerp(V0, V1, ClippedT);
-			}
-
-			return true;
-		}
-
-		/**
-		 * Project a point V along direction Dir onto an axis aligned plane.
-		 * /note Does not check for division by zero (Dir parallel to plane).
-		 */
-		inline void ProjectPointOntoAxisAlignedPlane(FVec3& V, const FVec3& Dir, int32 AxisIndex, FReal PlaneDir, FReal PlanePos)
-		{
-			// V -> V + ((PlanePos - V) | PlaneNormal) / (Dir | PlaneNormal)
-			FReal Denominator = Dir[AxisIndex] * PlaneDir;
-			FReal Numerator = (PlanePos - V[AxisIndex]) * PlaneDir;
-			FReal F = Numerator / Denominator;
-			V = V + F * Dir;
-		}
-
-		/**
-		 * Project a point V along direction Dir onto an axis aligned plane.
-		 * /return true if the point was successfully projected onto the plane; false if the direction is parallel to the plane.
-		 */
-		inline bool ProjectPointOntoAxisAlignedPlaneSafe(FVec3& V, const FVec3& Dir, int32 AxisIndex, FReal PlaneDir, FReal PlanePos, FReal Epsilon)
-		{
-			// V -> V + ((PlanePos - V) | PlaneNormal) / (Dir | PlaneNormal)
-			FReal Denominator = Dir[AxisIndex] * PlaneDir;
-			if (Denominator > Epsilon)
-			{
-				FReal Numerator = (PlanePos - V[AxisIndex]) * PlaneDir;
-				FReal F = Numerator / Denominator;
-				V = V + F * Dir;
-				return true;
-			}
-			return false;
-		}
-
-		inline bool NormalizeSafe(FVec3& V, FReal EpsilonSq = SMALL_NUMBER)
-		{
-			FReal VLenSq = V.SizeSquared();
-			if (VLenSq > EpsilonSq)
-			{
-				V = V * FMath::InvSqrt(VLenSq);
-				return true;
-			}
-			return false;
-		}
-
-		/**
-		 * Given the local-space diagonal inertia for an unscaled object, return an inertia as if generated from a non-uniformly scaled shape with the specified scale.
-		 * If bScaleMass is true, it also takes into account the fact that the mass would have changed by the increase in volume.
-		 */
-		inline FVec3 ScaleInertia(const FVec3& Inertia, const FVec3& Scale, const bool bScaleMass)
-		{
-			FVec3 XYZSq = (FVec3(0.5f * (Inertia.X + Inertia.Y + Inertia.Z)) - Inertia) * Scale * Scale;
-			FReal XX = XYZSq.Y + XYZSq.Z;
-			FReal YY = XYZSq.X + XYZSq.Z;
-			FReal ZZ = XYZSq.X + XYZSq.Y;
-			FVec3 ScaledInertia = FVec3(XX, YY, ZZ);
-			FReal MassScale = (bScaleMass) ? Scale.X * Scale.Y * Scale.Z : 1.0f;
-			return MassScale * ScaledInertia;
-		}
-
-		/**
-		 * Given the local-space inertia for an unscaled object, return an inertia as if generated from a non-uniformly scaled shape with the specified scale.
-		 * If bScaleMass is true, it also takes into account the fact that the mass would have changed by the increase in volume.
-		 */
-		inline FMatrix33 ScaleInertia(const FMatrix33& Inertia, const FVec3& Scale, const bool bScaleMass)
-		{
-			// @todo(chaos): do we need to support a rotation of the scale axes?
-			FVec3 D = Inertia.GetDiagonal();
-			FVec3 XYZSq = (FVec3(0.5f * (D.X + D.Y + D.Z)) - D) * Scale * Scale;
-			FReal XX = XYZSq.Y + XYZSq.Z;
-			FReal YY = XYZSq.X + XYZSq.Z;
-			FReal ZZ = XYZSq.X + XYZSq.Y;
-			FReal XY = Inertia.M[0][1] * Scale.X * Scale.Y;
-			FReal XZ = Inertia.M[0][2] * Scale.X * Scale.Z;
-			FReal YZ = Inertia.M[1][2] * Scale.Y * Scale.Z;
-			FReal MassScale = (bScaleMass) ? Scale.X * Scale.Y * Scale.Z : 1.0f;
-			FMatrix33 ScaledInertia = FMatrix33(
-				MassScale * XX, MassScale * XY, MassScale * XZ,
-				MassScale * XY, MassScale * YY, MassScale * YZ,
-				MassScale * XZ, MassScale * YZ, MassScale * ZZ);
-			return ScaledInertia;
-		}
-
-		// Replacement for FMath::Wrap that works for integers and returns a value in [Begin, End).
-		// Note: this implementation uses a loop to bring the value into range - it should not be used if the value is much larger than the range.
-		inline int32 WrapIndex(int32 V, int32 Begin, int32 End)
-		{
-			int32 Range = End - Begin;
-			while (V < Begin)
-			{
-				V += Range;
-			}
-			while (V >= End)
-			{
-				V -= Range;
-			}
-			return V;
 		}
 
 	} // namespace Utilities

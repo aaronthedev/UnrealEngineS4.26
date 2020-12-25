@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -14,7 +14,7 @@ public class OpenSubdiv : ModuleRules
 		PublicIncludePaths.Add( OpenSubdivPath + "/opensubdiv" );
 
 		// @todo mesheditor subdiv: Support other platforms, 32-bit Windows, and older/newer compiler toolchains
-		if (Target.Platform.IsInGroup(UnrealPlatformGroup.Windows) && Target.Platform != UnrealTargetPlatform.Win32)
+		if (Target.Platform == UnrealTargetPlatform.Win64)
 		{
             string LibFolder = "/lib/Win64/VS2015";
             if (LibFolder != "")

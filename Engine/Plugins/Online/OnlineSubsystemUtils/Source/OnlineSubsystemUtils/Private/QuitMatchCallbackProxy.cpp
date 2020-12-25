@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "QuitMatchCallbackProxy.h"
 #include "EngineGlobals.h"
@@ -29,7 +29,7 @@ UQuitMatchCallbackProxy* UQuitMatchCallbackProxy::QuitMatch(UObject* WorldContex
 
 void UQuitMatchCallbackProxy::Activate()
 {
-	FOnlineSubsystemBPCallHelper Helper(TEXT("QuitMatch"), WorldContextObject);
+	FOnlineSubsystemBPCallHelper Helper(TEXT("ConnectToService"), WorldContextObject);
 	Helper.QueryIDFromPlayerController(PlayerControllerWeakPtr.Get());
 
 	if (Helper.IsValid())

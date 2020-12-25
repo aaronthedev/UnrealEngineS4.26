@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,6 @@
 #include "Widgets/DeclarativeSyntaxSupport.h"
 #include "Widgets/SCompoundWidget.h"
 #include "LandscapeEdMode.h"
-#include "LandscapeEditorDetails.h"
 #include "Toolkits/IToolkitHost.h"
 #include "AssetThumbnail.h"
 #include "Toolkits/BaseToolkit.h"
@@ -39,13 +38,6 @@ private:
 	TSharedPtr<FAssetThumbnail> AssetThumbnail;
 };
 
-namespace LandscapeEditorNames
-{
-	static const FName Manage(TEXT("ToolMode_Manage")); 
-	static const FName Sculpt(TEXT("ToolMode_Sculpt")); 
-	static const FName Paint(TEXT("ToolMode_Paint"));
-}
-
 /**
  * Mode Toolkit for the Landscape Editor Mode
  */
@@ -68,18 +60,6 @@ public:
 	void NotifyBrushChanged();
 	void RefreshDetailPanel();
 
-	/** Mode Toolbar Palettes **/
-	virtual void GetToolPaletteNames(TArray<FName>& InPaletteName) const;
-	virtual FText GetToolPaletteDisplayName(FName PaletteName) const; 
-	virtual void BuildToolPalette(FName PaletteName, class FToolBarBuilder& ToolbarBuilder);
-	virtual void OnToolPaletteChanged(FName PaletteName) override;
-
-	/** Modes Panel Header Information **/
-	virtual FText GetActiveToolDisplayName() const;
-	virtual FText GetActiveToolMessage() const;
-
-	bool GetIsPropertyVisibleFromProperty(const FProperty& Property) const;
-
 protected:
 	void OnChangeMode(FName ModeName);
 	bool IsModeEnabled(FName ModeName) const;
@@ -88,7 +68,6 @@ protected:
 	void OnChangeTool(FName ToolName);
 	bool IsToolEnabled(FName ToolName) const;
 	bool IsToolActive(FName ToolName) const;
-	bool IsToolAvailable(FName ToolName) const;
 
 	void OnChangeBrushSet(FName BrushSetName);
 	bool IsBrushSetEnabled(FName BrushSetName) const;
@@ -98,10 +77,8 @@ protected:
 	bool IsBrushActive(FName BrushName) const;
 
 private:
+	/** Geometry tools widget */
 	TSharedPtr<SLandscapeEditor> LandscapeEditorWidgets;
-	TSharedPtr<FLandscapeEditorDetails> BrushesWidgets;
-
-	const static TArray<FName> PaletteNames;
 };
 
 /**
@@ -130,6 +107,6 @@ protected:
 
 protected:
 	TSharedPtr<SErrorText> Error;
+
 	TSharedPtr<IDetailsView> DetailsPanel;
-	TWeakPtr<FLandscapeToolKit> ParentToolkit;
 };

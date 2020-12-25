@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CameraDetails.h"
 #include "Styling/SlateColor.h"
@@ -256,7 +256,7 @@ void FCameraDetails::OnCommitAspectRatioText(const FText& ItemFText, ETextCommit
 			FString RemainingText = ItemText.Mid(DelimIdx + 1).TrimStart();
 			if (RemainingText.FindChar(TCHAR(' '), WSIdx))
 			{
-				RemainingText.LeftInline(WSIdx, false);
+				RemainingText = RemainingText.Left(WSIdx);
 			}
 			int32 Height;
 			TTypeFromString<int32>::FromString(Height, *RemainingText);

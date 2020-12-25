@@ -1,46 +1,53 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Network/Service/DisplayClusterService.h"
+#include "Network/Session/DisplayClusterSessionBase.h"
 
 #include "Config/IPDisplayClusterConfigManager.h"
-#include "DisplayClusterConfigurationTypes.h"
+#include "Config/DisplayClusterConfigTypes.h"
 
-#include "Misc/DisplayClusterGlobals.h"
-#include "Misc/DisplayClusterLog.h"
-
-#include "Interfaces\IPv4\IPv4Endpoint.h"
+#include "Misc/DisplayClusterAppExit.h"
+#include "DisplayClusterGlobals.h"
 
 
-FDisplayClusterService::FDisplayClusterService(const FString& Name)
-	: FDisplayClusterServer(Name)
+FDisplayClusterService::FDisplayClusterService(const FString& InName, const FString& InAddr, const int32 InPort) :
+	FDisplayClusterServer(InName, InAddr, InPort)
 {
 }
 
-bool FDisplayClusterService::IsClusterIP(const FIPv4Endpoint& Endpoint)
+bool FDisplayClusterService::IsClusterIP(const FIPv4Endpoint& InEP)
 {
-	// Get configuration data
-	const UDisplayClusterConfigurationData* ConfigData = GDisplayCluster->GetPrivateConfigMgr()->GetConfig();
-	if (!ConfigData)
+	IPDisplayClusterConfigManager* const ConfigMgr = GDisplayCluster->GetPrivateConfigMgr();
+	if (ConfigMgr == nullptr)
 	{
-		UE_LOG(LogDisplayClusterNetwork, Error, TEXT("Couldn't get configuration data"));
 		return false;
 	}
 
-	const FString Address = Endpoint.Address.ToString();
-	for (const auto& Node : ConfigData->Cluster->Nodes)
+	TArray<FDisplayClusterConfigClusterNode> nodes = ConfigMgr->GetClusterNodes();
+	const FString addr = InEP.Address.ToString();
+	
+	return nullptr != nodes.FindByPredicate([addr](const FDisplayClusterConfigClusterNode& node)
 	{
-		//@todo IP + Hostname comparison
-		if (Node.Value->Host.Equals(Address, ESearchCase::IgnoreCase))
-		{
-			return true;
-		}
-	}
-
-	return false;
+		return addr == node.Addr;
+	});
 }
 
-bool FDisplayClusterService::IsConnectionAllowed(FSocket* Socket, const FIPv4Endpoint& Endpoint)
+bool FDisplayClusterService::IsConnectionAllowed(FSocket* InSocket, const FIPv4Endpoint& InEP)
 {
-	// By default only cluster node IP addresses are allowed
-	return FDisplayClusterService::IsClusterIP(Endpoint);
+	// By default any DisplayCluster service must be within a cluster
+	return FDisplayClusterService::IsClusterIP(InEP);
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////
+// IDisplayClusterSessionListener
+//////////////////////////////////////////////////////////////////////////////////////////////
+void FDisplayClusterService::NotifySessionOpen(FDisplayClusterSessionBase* InSession)
+{
+	FDisplayClusterServer::NotifySessionOpen(InSession);
+}
+
+void FDisplayClusterService::NotifySessionClose(FDisplayClusterSessionBase* InSession)
+{
+	FDisplayClusterServer::NotifySessionClose(InSession);
 }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "SGraphPanel.h"
@@ -13,7 +13,6 @@
 #include "GraphEditorSettings.h"
 #include "GraphEditorDragDropAction.h"
 #include "NodeFactory.h"
-#include "Classes/EditorStyleSettings.h"
 
 #include "DragAndDrop/DecoratedDragDropOp.h"
 #include "DragAndDrop/ActorDragDropGraphEdOp.h"
@@ -105,9 +104,7 @@ int32 SGraphPanel::OnPaint( const FPaintArgs& Args, const FGeometry& AllottedGeo
 	// First paint the background
 	const UEditorExperimentalSettings& Options = *GetDefault<UEditorExperimentalSettings>();
 
-	const FSlateBrush* DefaultBackground = FEditorStyle::GetBrush(TEXT("Graph.Panel.SolidBackground"));
-	const FSlateBrush* CustomBackground = &GetDefault<UEditorStyleSettings>()->GraphBackgroundBrush;
-	const FSlateBrush* BackgroundImage = CustomBackground->HasUObject() ? CustomBackground : DefaultBackground;
+	const FSlateBrush* BackgroundImage = FEditorStyle::GetBrush(TEXT("Graph.Panel.SolidBackground"));
 	PaintBackgroundAsLines(BackgroundImage, AllottedGeometry, MyCullingRect, OutDrawElements, LayerId);
 
 	const float ZoomFactor = AllottedGeometry.Scale * GetZoomAmount();
@@ -349,14 +346,14 @@ int32 SGraphPanel::OnPaint( const FPaintArgs& Args, const FGeometry& AllottedGeo
 				ChildNode->GetPins(NodePins);
 
 				const FVector2D NodeLoc = ChildNode->GetPosition();
-				const FGeometry SynthesizedNodeGeometry(GraphCoordToPanelCoord(NodeLoc) * AllottedGeometry.Scale, AllottedGeometry.AbsolutePosition, FVector2D::ZeroVector, 1.f);
+				const FGeometry SynthesizedNodeGeometry(GraphCoordToPanelCoord(NodeLoc), AllottedGeometry.AbsolutePosition, FVector2D::ZeroVector, 1.f);
 
 				for (TArray< TSharedRef<SWidget> >::TConstIterator NodePinIterator(NodePins); NodePinIterator; ++NodePinIterator)
 				{
 					const SGraphPin& PinWidget = static_cast<const SGraphPin&>((*NodePinIterator).Get());
 					FVector2D PinLoc = NodeLoc + PinWidget.GetNodeOffset();
 
-					const FGeometry SynthesizedPinGeometry(GraphCoordToPanelCoord(PinLoc) * AllottedGeometry.Scale, AllottedGeometry.AbsolutePosition, FVector2D::ZeroVector, 1.f);
+					const FGeometry SynthesizedPinGeometry(GraphCoordToPanelCoord(PinLoc), AllottedGeometry.AbsolutePosition, FVector2D::ZeroVector, 1.f);
 					PinGeometries.Add(*NodePinIterator, FArrangedWidget(*NodePinIterator, SynthesizedPinGeometry));
 				}
 
@@ -729,13 +726,47 @@ void SGraphPanel::ArrangeChildrenForContextMenuSummon(const FGeometry& AllottedG
 
 TSharedPtr<SWidget> SGraphPanel::OnSummonContextMenu(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
 {
-	TSharedPtr<SGraphNode> NodeUnderMouse = GetGraphNodeUnderMouse(MyGeometry, MouseEvent);
-	UEdGraphPin* PinUnderCursor = GetPinUnderMouse(MyGeometry, MouseEvent, NodeUnderMouse);
-	UEdGraphNode* EdNodeUnderMouse = NodeUnderMouse.IsValid() ? NodeUnderMouse->GetNodeObj() : nullptr;
-	TArray<UEdGraphPin*> NoSourcePins;
+	//Editability is up to the user to consider for menu options
+	{
+		// If we didn't drag very far, summon a context menu.
+		// Figure out what's under the mouse: Node, Pin or just the Panel, and summon the context menu for that.
+		UEdGraphNode* NodeUnderCursor = nullptr;
+		UEdGraphPin* PinUnderCursor = nullptr;
+		{
+			FArrangedChildren ArrangedNodes(EVisibility::Visible);
+			this->ArrangeChildrenForContextMenuSummon(MyGeometry, ArrangedNodes);
+			const int32 HoveredNodeIndex = SWidget::FindChildUnderMouse( ArrangedNodes, MouseEvent );
+			if (HoveredNodeIndex != INDEX_NONE)
+			{
+				const FArrangedWidget& HoveredNode = ArrangedNodes[HoveredNodeIndex];
+				TSharedRef<SGraphNode> GraphNode = StaticCastSharedRef<SGraphNode>(HoveredNode.Widget);
+				TSharedPtr<SGraphNode> GraphSubNode = GraphNode->GetNodeUnderMouse(HoveredNode.Geometry, MouseEvent);
+				GraphNode = GraphSubNode.IsValid() ? GraphSubNode.ToSharedRef() : GraphNode;
+				NodeUnderCursor = GraphNode->GetNodeObj();
 
-	const FVector2D NodeAddPosition = PanelCoordToGraphCoord(MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition()));
-	return SummonContextMenu(MouseEvent.GetScreenSpacePosition(), NodeAddPosition, EdNodeUnderMouse, PinUnderCursor, NoSourcePins);
+				// Selection should switch to this code if it isn't already selected.
+				// When multiple nodes are selected, we do nothing, provided that the
+				// node for which the context menu is being created is in the selection set.
+				if (!SelectionManager.IsNodeSelected(GraphNode->GetObjectBeingDisplayed()))
+				{
+					SelectionManager.SelectSingleNode(GraphNode->GetObjectBeingDisplayed());
+				}
+
+				const TSharedPtr<SGraphPin> HoveredPin = GraphNode->GetHoveredPin(GraphNode->GetCachedGeometry(), MouseEvent);
+				if (HoveredPin.IsValid())
+				{
+					PinUnderCursor = HoveredPin->GetPinObj();
+				}
+			}				
+		}
+
+		const FVector2D NodeAddPosition = PanelCoordToGraphCoord( MyGeometry.AbsoluteToLocal(MouseEvent.GetScreenSpacePosition()) );
+		TArray<UEdGraphPin*> NoSourcePins;
+
+		return SummonContextMenu(MouseEvent.GetScreenSpacePosition(), NodeAddPosition, NodeUnderCursor, PinUnderCursor, NoSourcePins);
+	}
+
+	return TSharedPtr<SWidget>();
 }
 
 
@@ -974,7 +1005,7 @@ FReply SGraphPanel::OnDrop( const FGeometry& MyGeometry, const FDragDropEvent& D
 
 bool SGraphPanel::PassesAssetReferenceFilter(const TArray<FAssetData>& ReferencedAssets, FText* OutFailureReason) const
 {
-	if (GEditor)
+	if (GUnrealEd)
 	{
 		FAssetReferenceFilterContext AssetReferenceFilterContext;
 		UObject* GraphOuter = GraphObj ? GraphObj->GetOuter() : nullptr;
@@ -982,7 +1013,7 @@ bool SGraphPanel::PassesAssetReferenceFilter(const TArray<FAssetData>& Reference
 		{
 			AssetReferenceFilterContext.ReferencingAssets.Add(FAssetData(GraphOuter));
 		}
-		TSharedPtr<IAssetReferenceFilter> AssetReferenceFilter = GEditor->MakeAssetReferenceFilter(AssetReferenceFilterContext);
+		TSharedPtr<IAssetReferenceFilter> AssetReferenceFilter = GUnrealEd->MakeAssetReferenceFilter(AssetReferenceFilterContext);
 		if (AssetReferenceFilter.IsValid())
 		{
 			for (const FAssetData& Asset : ReferencedAssets)
@@ -996,46 +1027,6 @@ bool SGraphPanel::PassesAssetReferenceFilter(const TArray<FAssetData>& Reference
 	}
 
 	return true;
-}
-
-TSharedPtr<SGraphNode> SGraphPanel::GetGraphNodeUnderMouse(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent)
-{
-	TSharedPtr<SGraphNode> GraphNode;
-	FArrangedChildren ArrangedNodes(EVisibility::Visible);
-	this->ArrangeChildrenForContextMenuSummon(MyGeometry, ArrangedNodes);
-	const int32 HoveredNodeIndex = SWidget::FindChildUnderMouse(ArrangedNodes, MouseEvent);
-	if (HoveredNodeIndex != INDEX_NONE)
-	{
-		const FArrangedWidget& HoveredNode = ArrangedNodes[HoveredNodeIndex];
-		GraphNode = StaticCastSharedRef<SGraphNode>(HoveredNode.Widget);
-		TSharedPtr<SGraphNode> GraphSubNode = GraphNode->GetNodeUnderMouse(HoveredNode.Geometry, MouseEvent);
-		GraphNode = GraphSubNode.IsValid() ? GraphSubNode.ToSharedRef() : GraphNode;
-
-		// Selection should switch to this code if it isn't already selected.
-		// When multiple nodes are selected, we do nothing, provided that the
-		// node for which the context menu is being created is in the selection set.
-		if (!SelectionManager.IsNodeSelected(GraphNode->GetObjectBeingDisplayed()))
-		{
-			SelectionManager.SelectSingleNode(GraphNode->GetObjectBeingDisplayed());
-		}
-	}
-
-	return GraphNode;
-}
-
-UEdGraphPin* SGraphPanel::GetPinUnderMouse(const FGeometry& MyGeometry, const FPointerEvent& MouseEvent, TSharedPtr<SGraphNode> GraphNode) const
-{
-	UEdGraphPin* PinUnderCursor = nullptr;
-	if (GraphNode.IsValid())
-	{
-		const TSharedPtr<SGraphPin> HoveredPin = GraphNode->GetHoveredPin(GraphNode->GetCachedGeometry(), MouseEvent);
-		if (HoveredPin.IsValid())
-		{
-			PinUnderCursor = HoveredPin->GetPinObj();
-		}
-	}
-
-	return PinUnderCursor;
 }
 
 void SGraphPanel::OnBeginMakingConnection(UEdGraphPin* InOriginatingPin)
@@ -1115,7 +1106,7 @@ TSharedPtr<SWidget> SGraphPanel::SummonContextMenu(const FVector2D& WhereToSummo
 			FPopupTransitionEffect( FPopupTransitionEffect::ContextMenu )
 			);
 
-		if (Menu.IsValid() && Menu->GetOwnedWindow().IsValid() && FocusedContent.WidgetToFocus.IsValid())
+		if (Menu.IsValid() && Menu->GetOwnedWindow().IsValid())
 		{
 			Menu->GetOwnedWindow()->SetWidgetToFocusOnActivate(FocusedContent.WidgetToFocus);
 		}
@@ -1133,30 +1124,6 @@ TSharedPtr<SWidget> SGraphPanel::SummonContextMenu(const FVector2D& WhereToSummo
 	}
 
 	return TSharedPtr<SWidget>();
-}
-
-void SGraphPanel::SummonCreateNodeMenuFromUICommand(uint32 NumNodesAdded)
-{
-	FVector2D WhereToSummonMenu = LastPointerEvent.GetScreenSpacePosition();
-	const float AdditionalOffset = 1.0f + (NumNodesAdded * GetDefault<UGraphEditorSettings>()->PaddingAutoCollateIncrement);
-	FVector2D WhereToAddNode = PastePosition + AdditionalOffset;
-
-	TSharedPtr<SGraphNode> NodeUnderMouse = GetGraphNodeUnderMouse(LastPointerGeometry, LastPointerEvent);
-
-	// Do not open the context menu on top of non-empty graph area
-	if (NodeUnderMouse.IsValid())
-	{
-		return;
-	}
-	
-	TArray<UEdGraphPin*> DragFromPins;
-	TSharedPtr<SWidget> CreateNodeMenuWidget = SummonContextMenu(WhereToSummonMenu, WhereToAddNode, nullptr, nullptr, DragFromPins);
-
-	if (CreateNodeMenuWidget.IsValid())
-	{
-		FSlateApplication::Get().SetKeyboardFocus(CreateNodeMenuWidget);
-		return;
-	}
 }
 
 void SGraphPanel::AttachGraphEvents(TSharedPtr<SGraphNode> CreatedSubNode)
@@ -1587,9 +1554,6 @@ void SGraphPanel::Update()
 
 	// Invoke any delegate methods
 	OnUpdateGraphPanel.ExecuteIfBound();
-
-	// Clear the update pending flag to allow deferred zoom commands to run.
-	bVisualUpdatePending = false;
 }
 
 // Purges the existing visual representation (typically followed by an Update call in the next tick)
@@ -1600,9 +1564,6 @@ void SGraphPanel::PurgeVisualRepresentation()
 
 	// Clear all of the nodes and pins
 	RemoveAllNodes();
-
-	// Set a flag to know that an update is pending to prevent running pending commands like zoom to fit until widgets are generated.
-	bVisualUpdatePending = true;
 }
 
 bool SGraphPanel::IsNodeTitleVisible(const class UEdGraphNode* Node, bool bRequestRename)

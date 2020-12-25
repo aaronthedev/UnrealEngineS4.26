@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SControlRigStackView.h"
 #include "Widgets/Layout/SBorder.h"
@@ -17,11 +17,12 @@
 //////////////////////////////////////////////////////////////
 /// FRigStackEntry
 ///////////////////////////////////////////////////////////
-FRigStackEntry::FRigStackEntry(int32 InEntryIndex, ERigStackEntry::Type InEntryType, int32 InInstructionIndex, ERigVMOpCode InOpCode, const FString& InLabel)
+FRigStackEntry::FRigStackEntry(int32 InEntryIndex, ERigStackEntry::Type InEntryType, int32 InOpIndex, EControlRigOpCode InOpCode, const FName& InName, const FString& InLabel)
 	: EntryIndex(InEntryIndex)
 	, EntryType(InEntryType)
-	, InstructionIndex(InInstructionIndex)
+	, OpIndex(InOpIndex)
 	, OpCode(InOpCode)
+	, Name(InName)
 	, Label(InLabel)
 {
 
@@ -106,7 +107,7 @@ void SRigStackItem::Construct(const FArguments& InArgs, const TSharedRef<STableV
 
 FText SRigStackItem::GetIndexText() const
 {
-	FString IndexStr = FString::FromInt(WeakStackEntry.Pin()->EntryIndex) + TEXT(".");
+	FString IndexStr = FString::FromInt(WeakStackEntry.Pin()->EntryIndex + 1) + TEXT(".");
 	return FText::FromString(IndexStr);
 }
 
@@ -127,18 +128,14 @@ SControlRigStackView::~SControlRigStackView()
 		{
 			ControlRigEditor.Pin()->GetControlRigBlueprint()->OnModified().Remove(OnModelModified);
 		}
-		if (OnControlRigInitializedHandle.IsValid())
+		if (OnControlRigInitializedHandle.IsValid() && ControlRigEditor.Pin()->ControlRig)
 		{
-			ControlRigEditor.Pin()->ControlRig->OnInitialized_AnyThread().Remove(OnControlRigInitializedHandle);
-		}
-		if (OnPreviewControlRigUpdatedHandle.IsValid())
-		{
-			ControlRigEditor.Pin()->OnPreviewControlRigUpdated().Remove(OnPreviewControlRigUpdatedHandle);
+			ControlRigEditor.Pin()->ControlRig->OnInitialized().Remove(OnControlRigInitializedHandle);
 		}
 	}
-	if (ControlRigBlueprint.IsValid() && OnVMCompiledHandle.IsValid())
+	if (ControlRigBlueprint.IsValid() && OnBlueprintCompiledHandle.IsValid())
 	{
-		ControlRigBlueprint->OnVMCompiled().Remove(OnVMCompiledHandle);
+		ControlRigBlueprint->OnCompiled().Remove(OnBlueprintCompiledHandle);
 	}
 }
 
@@ -149,7 +146,6 @@ void SControlRigStackView::Construct( const FArguments& InArgs, TSharedRef<FCont
 	Graph = Cast<UControlRigGraph>(ControlRigBlueprint->GetLastEditedUberGraph());
 	CommandList = MakeShared<FUICommandList>();
 	bSuspendModelNotifications = false;
-	bSuspendControllerSelection = false;
 
 	BindCommands();
 
@@ -175,39 +171,22 @@ void SControlRigStackView::Construct( const FArguments& InArgs, TSharedRef<FCont
 			]
 		];
 
-	RefreshTreeView(nullptr);
+	RefreshTreeView();
 
 	if (ControlRigBlueprint.IsValid())
 	{
-		if (OnVMCompiledHandle.IsValid())
+		if(OnBlueprintCompiledHandle.IsValid())
 		{
-			ControlRigBlueprint->OnVMCompiled().Remove(OnVMCompiledHandle);
+			ControlRigBlueprint->OnCompiled().Remove(OnBlueprintCompiledHandle);
 		}
-		if (OnModelModified.IsValid())
-		{
-			ControlRigBlueprint->OnModified().Remove(OnModelModified);
-		}
-		OnVMCompiledHandle = ControlRigBlueprint->OnVMCompiled().AddSP(this, &SControlRigStackView::OnVMCompiled);
-		OnModelModified = ControlRigBlueprint->OnModified().AddSP(this, &SControlRigStackView::HandleModifiedEvent);
-
-		if (ControlRigEditor.IsValid())
-		{
-			if (UControlRig* ControlRig = ControlRigEditor.Pin()->ControlRig)
-			{
-				OnVMCompiled(ControlRigBlueprint.Get(), ControlRig->VM);
-			}
-		}
-	}
-
-	if (ControlRigEditor.IsValid())
-	{
-		OnPreviewControlRigUpdatedHandle = ControlRigEditor.Pin()->OnPreviewControlRigUpdated().AddSP(this, &SControlRigStackView::HandlePreviewControlRigUpdated);
+		OnBlueprintCompiledHandle = ControlRigBlueprint->OnCompiled().AddSP(this, &SControlRigStackView::OnBlueprintCompiled);
+		OnModelModified = ControlRigBlueprint->OnModified().AddSP(this, &SControlRigStackView::HandleModelModified);
 	}
 }
 
 void SControlRigStackView::OnSelectionChanged(TSharedPtr<FRigStackEntry> Selection, ESelectInfo::Type SelectInfo)
 {
-	if (bSuspendModelNotifications || bSuspendControllerSelection)
+	if (bSuspendModelNotifications)
 	{
 		return;
 	}
@@ -227,26 +206,23 @@ void SControlRigStackView::OnSelectionChanged(TSharedPtr<FRigStackEntry> Selecti
 			return;
 		}
 
-		TMap<int32, FName> InstructionIndexToNodeName;
-		for (URigVMNode* ModelNode : ControlRigBlueprint->Model->GetNodes())
-		{
-			if (ModelNode->GetInstructionIndex() != INDEX_NONE)
-			{
-				InstructionIndexToNodeName.Add(ModelNode->GetInstructionIndex(), ModelNode->GetFName());
-			}
-		}
-
 		TArray<FName> SelectedNodes;
 		for (TSharedPtr<FRigStackEntry>& Entry : SelectedItems)
 		{
-			const FName* NodeName = InstructionIndexToNodeName.Find(Entry->InstructionIndex);
-			if (NodeName)
+			if (Entry->OpIndex >= GeneratedClass->Operators.Num())
 			{
-				SelectedNodes.Add(*NodeName);
+				return;
+			}
+
+			FControlRigOperator& Operator = GeneratedClass->Operators[Entry->OpIndex];
+			if (Operator.OpCode == EControlRigOpCode::Exec)
+			{
+				FString PropertyPath = Operator.CachedPropertyPath1.ToString();
+				SelectedNodes.Add(*PropertyPath);
 			}
 		}
 
-		ControlRigBlueprint->Controller->SetNodeSelection(SelectedNodes);
+		ControlRigBlueprint->ModelController->SetSelection(SelectedNodes);
 	}
 }
 
@@ -267,66 +243,107 @@ void SControlRigStackView::HandleGetChildrenForTree(TSharedPtr<FRigStackEntry> I
 	OutChildren = InItem->Children;
 }
 
-void SControlRigStackView::RefreshTreeView(URigVM* InVM)
+void SControlRigStackView::RefreshTreeView(UControlRig* ControlRig)
 {
 	Operators.Reset();
-	
-	if (InVM)
+
+	if (ControlRigBlueprint.IsValid())
 	{
-		TArray<FString> Labels = InVM->DumpByteCodeAsTextArray(TArray<int32>(), false);
-		FRigVMInstructionArray Instructions = InVM->GetInstructions();
-		ensure(Labels.Num() == Instructions.Num());
-
-		for (int32 InstructionIndex = 0; InstructionIndex < Labels.Num(); InstructionIndex++)
+		UControlRigBlueprintGeneratedClass* GeneratedClass = ControlRigBlueprint->GetControlRigBlueprintGeneratedClass();
+		if (GeneratedClass)
 		{
-			const FRigVMInstruction& Instruction = Instructions[InstructionIndex];
-			FString Label = Labels[InstructionIndex];
-			FString Left, Right;
-			if (Label.Split(TEXT("("), &Left, &Right))
-			{
-				Label = FString::Printf(TEXT("%s(...)"), *Left);
-			}
-			
-			TSharedPtr<FRigStackEntry> NewEntry = MakeShared<FRigStackEntry>(Operators.Num(), ERigStackEntry::Operator, InstructionIndex, Instruction.OpCode, Label);
-			Operators.Add(NewEntry);
-		}
+			TMap<FName, int32> UnitToOperatorIndex;
 
-		// fill the children from the log
-		if (ControlRigEditor.IsValid())
-		{
-			UControlRig* ControlRig = ControlRigEditor.Pin()->ControlRig;
-			if(ControlRig && ControlRig->ControlRigLog)
+			for (int32 OperatorIndex=0;OperatorIndex< GeneratedClass->Operators.Num();OperatorIndex++)
 			{
-				const TArray<FControlRigLog::FLogEntry>& LogEntries = ControlRig->ControlRigLog->Entries;
-				for (const FControlRigLog::FLogEntry& LogEntry : LogEntries)
+				FControlRigOperator Operator = GeneratedClass->Operators[OperatorIndex];
+				switch (Operator.OpCode)
 				{
-					if (Operators.Num() <= LogEntry.InstructionIndex)
+					case EControlRigOpCode::Exec:
 					{
-						continue;
+						FName UnitPath = *Operator.CachedPropertyPath1.ToString();
+						FString OperatorLabel;
+
+						UStructProperty * StructProperty = Cast<UStructProperty>(GeneratedClass->FindPropertyByName(UnitPath));
+						if (StructProperty)
+						{
+							if (StructProperty->Struct->IsChildOf(FRigUnit::StaticStruct()))
+							{
+								StructProperty->Struct->GetStringMetaDataHierarchical(UControlRig::DisplayNameMetaName, &OperatorLabel);
+								if (OperatorLabel.IsEmpty())
+								{
+									OperatorLabel = FName::NameToDisplayString(StructProperty->Struct->GetFName().ToString(), false);
+								}
+
+								if (ControlRig)
+								{
+									const FRigUnit* UnitPtr = StructProperty->ContainerPtrToValuePtr<FRigUnit>(ControlRig);
+									if (UnitPtr)
+									{
+										FString UnitLabel = UnitPtr->GetUnitLabel();
+										if (!UnitLabel.IsEmpty())
+										{
+											OperatorLabel = UnitLabel;
+										}
+									}
+								}
+							}
+						}
+
+						if (OperatorLabel.IsEmpty())
+						{
+							OperatorLabel = UnitPath.ToString();
+						}
+
+						TSharedPtr<FRigStackEntry> NewEntry = MakeShared<FRigStackEntry>(Operators.Num(), ERigStackEntry::Operator, OperatorIndex, Operator.OpCode, UnitPath, OperatorLabel);
+						UnitToOperatorIndex.Add(UnitPath, Operators.Num());
+						Operators.Add(NewEntry);
+						break;
 					}
-					int32 ChildIndex = Operators[LogEntry.InstructionIndex]->Children.Num();
-					switch (LogEntry.Severity)
+					default:
 					{
+						break;
+					}
+				}
+			}
+
+			// fill the children from the log
+			if (ControlRig)
+			{
+				if(ControlRig->ControlRigLog)
+				{
+					const TArray<FControlRigLog::FLogEntry>& LogEntries = ControlRig->ControlRigLog->Entries;
+					for (const FControlRigLog::FLogEntry& LogEntry : LogEntries)
+					{
+						if (!UnitToOperatorIndex.Contains(LogEntry.Unit))
+						{
+							continue;
+						}
+						int32 OperatorIndex = UnitToOperatorIndex.FindChecked(LogEntry.Unit);
+						int32 ChildIndex = Operators[OperatorIndex]->Children.Num();
+						switch (LogEntry.Severity)
+						{
 						case EMessageSeverity::Info:
 						{
-							Operators[LogEntry.InstructionIndex]->Children.Add(MakeShared<FRigStackEntry>(ChildIndex, ERigStackEntry::Info, LogEntry.InstructionIndex, ERigVMOpCode::Invalid, LogEntry.Message));
+							Operators[OperatorIndex]->Children.Add(MakeShared<FRigStackEntry>(ChildIndex, ERigStackEntry::Info, OperatorIndex, EControlRigOpCode::Invalid, LogEntry.Unit, LogEntry.Message));
 							break;
 						}
 						case EMessageSeverity::Warning:
 						case EMessageSeverity::PerformanceWarning:
 						{
-							Operators[LogEntry.InstructionIndex]->Children.Add(MakeShared<FRigStackEntry>(ChildIndex, ERigStackEntry::Warning, LogEntry.InstructionIndex, ERigVMOpCode::Invalid, LogEntry.Message));
+							Operators[OperatorIndex]->Children.Add(MakeShared<FRigStackEntry>(ChildIndex, ERigStackEntry::Warning, OperatorIndex, EControlRigOpCode::Invalid, LogEntry.Unit, LogEntry.Message));
 							break;
 						}
 						case EMessageSeverity::Error:
 						case EMessageSeverity::CriticalError:
 						{
-							Operators[LogEntry.InstructionIndex]->Children.Add(MakeShared<FRigStackEntry>(ChildIndex, ERigStackEntry::Error, LogEntry.InstructionIndex, ERigVMOpCode::Invalid, LogEntry.Message));
+							Operators[OperatorIndex]->Children.Add(MakeShared<FRigStackEntry>(ChildIndex, ERigStackEntry::Error, OperatorIndex, EControlRigOpCode::Invalid, LogEntry.Unit, LogEntry.Message));
 							break;
 						}
 						default:
 						{
 							break;
+						}
 						}
 					}
 				}
@@ -339,19 +356,18 @@ void SControlRigStackView::RefreshTreeView(URigVM* InVM)
 
 TSharedPtr< SWidget > SControlRigStackView::CreateContextMenu()
 {
-	TArray<TSharedPtr<FRigStackEntry>> SelectedItems = TreeView->GetSelectedItems();
-	if(SelectedItems.Num() == 0)
-	{
-		return nullptr;
-	}
-
 	const FControlRigStackCommands& Actions = FControlRigStackCommands::Get();
+
+	TArray<TSharedPtr<FRigStackEntry>> SelectedItems = TreeView->GetSelectedItems();
 
 	const bool CloseAfterSelection = true;
 	FMenuBuilder MenuBuilder(CloseAfterSelection, CommandList);
 	{
 		MenuBuilder.BeginSection("RigStackToolsAction", LOCTEXT("ToolsAction", "Tools"));
-		MenuBuilder.AddMenuEntry(Actions.FocusOnSelection);
+		if (SelectedItems.Num() > 0)
+		{
+			MenuBuilder.AddMenuEntry(Actions.FocusOnSelection);
+		}
 		MenuBuilder.EndSection();
 	}
 
@@ -364,55 +380,26 @@ void SControlRigStackView::HandleFocusOnSelectedGraphNode()
 	ControlRigEditor.Pin()->ZoomToSelection_Clicked();
 }
 
-void SControlRigStackView::OnVMCompiled(UBlueprint* InCompiledBlueprint, URigVM* InCompiledVM)
+void SControlRigStackView::OnBlueprintCompiled(UBlueprint* InCompiledBlueprint)
 {
-	RefreshTreeView(InCompiledVM);
-
-	if (ControlRigEditor.IsValid() && !OnControlRigInitializedHandle.IsValid())
-	{
-		UControlRig* ControlRig = ControlRigEditor.Pin()->ControlRig;
-		OnControlRigInitializedHandle = ControlRig->OnInitialized_AnyThread().AddSP(this, &SControlRigStackView::HandleControlRigInitializedEvent);
-	}
-}
-
-void SControlRigStackView::HandleModifiedEvent(ERigVMGraphNotifType InNotifType, URigVMGraph* InGraph, UObject* InSubject)
-{
-	if (bSuspendModelNotifications)
+	UControlRig* ControlRig = ControlRigEditor.Pin()->ControlRig;
+	if (ControlRig == nullptr)
 	{
 		return;
 	}
 
-	switch (InNotifType)
+	RefreshTreeView(ControlRig);
+	OnSelectionChanged(TSharedPtr<FRigStackEntry>(), ESelectInfo::Direct);
+
+	if (ControlRigEditor.IsValid())
 	{
-		case ERigVMGraphNotifType::NodeSelected:
-		case ERigVMGraphNotifType::NodeDeselected:
-		{
-			URigVMNode* Node = Cast<URigVMNode>(InSubject);
-			if (Node)
-			{
-				if (Node->GetInstructionIndex() != INDEX_NONE)
-				{
-					if (Operators.Num() > Node->GetInstructionIndex())
-					{
-						TGuardValue<bool> SuspendNotifs(bSuspendModelNotifications, true);
-						TreeView->SetItemSelection(Operators[Node->GetInstructionIndex()], InNotifType == ERigVMGraphNotifType::NodeSelected, ESelectInfo::Direct);
-					}
-				}
-			}
-			break;
-		}
-		default:
-		{
-			break;
-		}
+		OnControlRigInitializedHandle = ControlRig->OnInitialized().AddSP(this, &SControlRigStackView::OnControlRigInitialized);
 	}
 }
 
-void SControlRigStackView::HandleControlRigInitializedEvent(UControlRig* InControlRig, const EControlRigState InState, const FName& InEventName)
+void SControlRigStackView::OnControlRigInitialized(UControlRig* ControlRig, EControlRigState State)
 {
-	TGuardValue<bool> SuspendControllerSelection(bSuspendControllerSelection, true);
-
-	RefreshTreeView(InControlRig->VM);
+	RefreshTreeView(ControlRig);
 	OnSelectionChanged(TSharedPtr<FRigStackEntry>(), ESelectInfo::Direct);
 
 	for (TSharedPtr<FRigStackEntry>& Operator : Operators)
@@ -426,27 +413,51 @@ void SControlRigStackView::HandleControlRigInitializedEvent(UControlRig* InContr
 			}
 		}
 	}
-	
-	if (ControlRigEditor.IsValid())
-	{
-		InControlRig->OnInitialized_AnyThread().Remove(OnControlRigInitializedHandle);
-		OnControlRigInitializedHandle.Reset();
-
-		if (UControlRigBlueprint* RigBlueprint = ControlRigEditor.Pin()->GetControlRigBlueprint())
-		{
-			for (URigVMNode* ModelNode : RigBlueprint->Model->GetNodes())
-			{
-				if (ModelNode->IsSelected())
-				{
-					HandleModifiedEvent(ERigVMGraphNotifType::NodeSelected, RigBlueprint->Model, ModelNode);
-				}
-			}
-		}
-	}
 }
 
-void SControlRigStackView::HandlePreviewControlRigUpdated(FControlRigEditor* InEditor)
+void SControlRigStackView::HandleModelModified(const UControlRigModel* InModel, EControlRigModelNotifType InType, const void* InPayload)
 {
+	if (bSuspendModelNotifications)
+	{
+		return;
+	}
+
+	switch (InType)
+	{
+		case EControlRigModelNotifType::NodeSelected:
+		case EControlRigModelNotifType::NodeDeselected:
+		{
+			const FControlRigModelNode* Node = (const FControlRigModelNode*)InPayload;
+			if (Node != nullptr)
+			{
+				if (!ControlRigBlueprint.IsValid())
+				{
+					return;
+				}
+
+				UControlRigBlueprintGeneratedClass* GeneratedClass = ControlRigBlueprint->GetControlRigBlueprintGeneratedClass();
+				if (GeneratedClass == nullptr)
+				{
+					return;
+				}
+
+				TGuardValue<bool> SuspendNotifs(bSuspendModelNotifications, true);
+				for (const TSharedPtr<FRigStackEntry>& Entry : Operators)
+				{
+					if (Node->Name == Entry->Name)
+					{
+						TreeView->SetItemSelection(Entry, InType == EControlRigModelNotifType::NodeSelected, ESelectInfo::Direct);
+					}
+				}
+			}
+			break;
+		}
+		default:
+		{
+			// todo... other cases
+			break;
+		}
+	}
 }
 
 #undef LOCTEXT_NAMESPACE

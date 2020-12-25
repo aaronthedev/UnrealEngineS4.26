@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -8,7 +8,7 @@
 #include "AutomationScreenshotOptions.h"
 #include "HAL/IConsoleManager.h"
 #include "Templates/UniquePtr.h"
-#include "Misc/AutomationTest.h"
+
 #include "AutomationBlueprintFunctionLibrary.generated.h"
 
 class ACameraActor;
@@ -53,17 +53,6 @@ private:
 	TUniquePtr<FAutomationTaskStatusBase> Task;
 };
 
-USTRUCT(BlueprintType)
-struct FAutomationWaitForLoadingOptions
-{
-	GENERATED_BODY()
-
-public:
-
-	UPROPERTY(BlueprintReadWrite, Category = "Automation")
-	bool WaitForReplicationToSettle = false;
-};
-
 /**
  * 
  */
@@ -75,9 +64,7 @@ class FUNCTIONALTESTING_API UAutomationBlueprintFunctionLibrary : public UBluepr
 public:
 	static void FinishLoadingBeforeScreenshot();
 
-	static bool TakeAutomationScreenshotInternal(UObject* WorldContextObject, const FString& ScreenShotName, const FString& Notes, FAutomationScreenshotOptions Options);
-
-	static FAutomationScreenshotData BuildScreenshotData(const FString& MapOrContext, const FString& ScreenShotName, int32 Width, int32 Height);
+	static bool TakeAutomationScreenshotInternal(UObject* WorldContextObject, const FString& Name, const FString& Notes, FAutomationScreenshotOptions Options);
 
 	static FIntPoint GetAutomationScreenshotSize(const FAutomationScreenshotOptions& Options);
 
@@ -129,13 +116,13 @@ public:
 	static bool AreAutomatedTestsRunning();
 
 	UFUNCTION(BlueprintCallable, Category = "Automation", meta = (Latent, HidePin = "WorldContextObject", DefaultToSelf = "WorldContextObject", LatentInfo = "LatentInfo"))
-	static void AutomationWaitForLoading(UObject* WorldContextObject, FLatentActionInfo LatentInfo, FAutomationWaitForLoadingOptions Options);
+	static void AutomationWaitForLoading(UObject* WorldContextObject, FLatentActionInfo LatentInfo);
 
 	/**
 	* take high res screenshot in editor.
 	*/
 	UFUNCTION(BlueprintCallable, Category = "Automation", meta = (AdvancedDisplay="Camera, bMaskEnabled, bCaptureHDR, ComparisonTolerance, ComparisonNotes"))
-	static UAutomationEditorTask* TakeHighResScreenshot(int32 ResX, int32 ResY, FString Filename, ACameraActor* Camera = nullptr, bool bMaskEnabled = false, bool bCaptureHDR = false, EComparisonTolerance ComparisonTolerance = EComparisonTolerance::Low, FString ComparisonNotes = TEXT(""), float Delay = 0.0);
+	static UAutomationEditorTask* TakeHighResScreenshot(int32 ResX, int32 ResY, FString Filename, ACameraActor* Camera = nullptr, bool bMaskEnabled = false, bool bCaptureHDR = false, EComparisonTolerance ComparisonTolerance = EComparisonTolerance::Low, FString ComparisonNotes = TEXT(""));
 
 	/**
 	 * 
@@ -169,7 +156,7 @@ public:
 	static void SetScalabilityQualityToLow(UObject* WorldContextObject);
 };
 
-#if WITH_AUTOMATION_TESTS
+#if (WITH_DEV_AUTOMATION_TESTS || WITH_PERF_AUTOMATION_TESTS)
 
 template<typename T>
 class FConsoleVariableSwapperTempl

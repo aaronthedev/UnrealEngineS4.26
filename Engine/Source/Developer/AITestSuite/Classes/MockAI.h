@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,8 +13,6 @@
 
 class UAIPerceptionComponent;
 class UBlackboardComponent;
-class UPawnActionsComponent;
-class UBrainComponent;
 class UMockAI;
 
 struct FTestTickHelper : FTickableGameObject

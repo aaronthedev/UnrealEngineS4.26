@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,30 +6,27 @@
 
 #if WITH_LIBWEBSOCKETS
 	#if PLATFORM_SWITCH
-		#include "Lws/LwsSwitchWebSocketsManager.h"
+		#include "Lws/Switch/LwsSwitchWebSocketsManager.h"
 	#else
 		#include "Lws/LwsWebSocketsManager.h"
 	#endif //PLATFORM_SWITCH
-#elif WITH_WINHTTPWEBSOCKETS
-	#include "WinHttp/WinHttpWebSocketsManager.h"
-#elif PLATFORM_XBOXONE && WITH_LEGACY_XDK
-	#include "XboxOneWebSocketsManager.h"
+
+#elif PLATFORM_XBOXONE
+#include "XboxOne/XboxOneWebSocketsManager.h"
 #elif PLATFORM_HOLOLENS
-	#include "HoloLens/HoloLensWebSocketsManager.h"
+#include "HoloLens/HoloLensWebSocketsManager.h"
+typedef FHoloLensWebSocketsManager FPlatformWebSocketsManager;
 #else
-	#error "Web Sockets not implemented on this platform yet"
-#endif
+#error "Web sockets not implemented on this platform yet"
+#endif // WITH_LIBWEBSOCKETS
 
 #if WITH_LIBWEBSOCKETS
 	#if PLATFORM_SWITCH
 		typedef FLwsSwitchWebSocketsManager FPlatformWebSocketsManager;
 	#else
 		typedef FLwsWebSocketsManager FPlatformWebSocketsManager;
-	#endif // !PLATFORM_SWITCH
-#elif WITH_WINHTTPWEBSOCKETS
-	typedef FWinHttpWebSocketsManager FPlatformWebSocketsManager;
-#elif PLATFORM_XBOXONE && WITH_LEGACY_XDK
+	#endif // PLATFORM_SWITCH
+
+#elif PLATFORM_XBOXONE
 	typedef FXboxOneWebSocketsManager FPlatformWebSocketsManager;
-#elif PLATFORM_HOLOLENS
-	typedef FHoloLensWebSocketsManager FPlatformWebSocketsManager;
-#endif
+#endif //WITH_LIBWEBSOCKETS

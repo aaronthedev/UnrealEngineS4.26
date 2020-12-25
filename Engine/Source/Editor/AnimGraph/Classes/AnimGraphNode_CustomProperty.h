@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,24 +7,19 @@
 #include "Misc/Guid.h"
 #include "AnimGraphNode_Base.h"
 #include "Animation/AnimNode_CustomProperty.h"
-#include "IClassVariableCreator.h"
 
 #include "AnimGraphNode_CustomProperty.generated.h"
 
 class FCompilerResultsLog;
 class IDetailLayoutBuilder;
 class IPropertyHandle;
-class FAnimBlueprintCompilerHandler;
 
 UCLASS(Abstract)
-class ANIMGRAPH_API UAnimGraphNode_CustomProperty : public UAnimGraphNode_Base, public IClassVariableCreator
+class ANIMGRAPH_API UAnimGraphNode_CustomProperty : public UAnimGraphNode_Base
 {
 	GENERATED_BODY()
 
 public:
-
-	// IClassVariableCreator interface
-	virtual void CreateClassVariablesFromBlueprint(IAnimBlueprintVariableCreationContext& InCreationContext) override;
 
 	//~ Begin UEdGraphNode Interface.
 	virtual void ValidateAnimNodeDuringCompilation(USkeleton* ForSkeleton, FCompilerResultsLog& MessageLog) override;
@@ -35,10 +30,8 @@ public:
 
 	// UAnimGraphNode_Base interface
 	virtual void CustomizeDetails(IDetailLayoutBuilder& DetailBuilder) override;
-	virtual void OnProcessDuringCompilation(IAnimBlueprintCompilationContext& InCompilationContext, IAnimBlueprintGeneratedClassCompiledData& OutCompiledData) override;
-
 	// Gets the property on InOwnerInstanceClass that corresponds to InInputPin
-	void GetInstancePinProperty(const IAnimBlueprintCompilationContext& InCompilationContext, UEdGraphPin* InInputPin, FProperty*& OutProperty);
+	void GetInstancePinProperty(const UClass* InOwnerInstanceClass, UEdGraphPin* InInputPin, UProperty*& OutProperty);
 	// Gets the unique name for the property linked to a given pin
 	FString GetPinTargetVariableName(const UEdGraphPin* InPin) const;
 	// Gets Target Class this properties to link
@@ -74,9 +67,9 @@ protected:
 	TArray<FName> ExposedPropertyNames;
 
 	// Searches the instance class for properties that we can expose (public and BP visible)
-	virtual void GetExposableProperties(TArray<FProperty*>& OutExposableProperties) const;
+	virtual void GetExposableProperties(TArray<UProperty*>& OutExposableProperties) const;
 	// Gets a property's type as FText (for UI)
-	FText GetPropertyTypeText(FProperty* Property);
+	FText GetPropertyTypeText(UProperty* Property);
 	// Given a new class, rebuild the known property list (for tracking class changes and moving pins)
 	virtual void RebuildExposedProperties();
 
@@ -85,7 +78,7 @@ protected:
 	virtual const FAnimNode_CustomProperty* GetCustomPropertyNode() const PURE_VIRTUAL(UAnimGraphNode_CustomProperty::GetCustomPropertyNode, return nullptr;);
 
 	// Check whether the specified property is structural (i.e. should we rebuild the UI if it changes)
-	virtual bool IsStructuralProperty(FProperty* InProperty) const { return false; }
+	virtual bool IsStructuralProperty(UProperty* InProperty) const { return false; }
 
 	// Whether this node needs a valid target class up-front
 	virtual bool NeedsToSpecifyValidTargetClass() const { return true; }

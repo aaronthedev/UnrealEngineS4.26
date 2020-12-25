@@ -1,15 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraRendererRibbons.h"
 #include "ParticleResources.h"
 #include "NiagaraRibbonVertexFactory.h"
 #include "NiagaraDataSet.h"
-#include "NiagaraDataSetAccessor.h"
 #include "NiagaraStats.h"
 #include "RayTracingDefinitions.h"
 #include "RayTracingDynamicGeometryCollection.h"
 #include "RayTracingInstance.h"
-#include "Math/NumericLimits.h"
 
 DECLARE_CYCLE_STAT(TEXT("Generate Ribbon Vertex Data [GT]"), STAT_NiagaraGenRibbonVertexData, STATGROUP_Niagara);
 DECLARE_CYCLE_STAT(TEXT("Render Ribbons [RT]"), STAT_NiagaraRenderRibbons, STATGROUP_Niagara);
@@ -69,11 +67,6 @@ static FAutoConsoleVariableRef CVarEnableNiagaraRibbonRendering(
 	ECVF_Default
 );
 
-static TAutoConsoleVariable<int32> CVarRayTracingNiagaraRibbons(
-	TEXT("r.RayTracing.Geometry.NiagaraRibbons"),
-	1,
-	TEXT("Include Niagara ribbons in ray tracing effects (default = 1 (Niagara ribbons enabled in ray tracing))"));
-
 // max absolute error 9.0x10^-3
 // Eberly's polynomial degree 1 - respect bounds
 // input [-1, 1] and output [0, PI]
@@ -99,43 +92,23 @@ struct FNiagaraDynamicDataRibbon : public FNiagaraDynamicDataBase
 	// The list of all segments, each one connecting SortedIndices[SegmentId] to SortedIndices[SegmentId + 1].
 	// We use this format because the final index buffer gets generated based on view sorting and InterpCount.
 	TArray<int32> SegmentData;
-	/** The list of all particle (instance) indices. Converts raw indices to particles indices. Ordered along each ribbons, from head to tail. */
 	TArray<int32> SortedIndices;
-	/** The tangent and distance between segments, for each raw index (raw VS particle indices). */
 	TArray<FVector4> TangentAndDistances;
-	/** The multi ribbon index, for each raw index. (raw VS particle indices). */
 	TArray<uint32> MultiRibbonIndices;
-	/** Data for each multi ribbon. There are several entries per ribbon. */
 	TArray<float> PackedPerRibbonDataByIndex;
 
-	struct FMultiRibbonInfo
+	// start and end world space position of the ribbon, to figure out draw direction
+	FVector StartPos;
+	FVector EndPos;
+
+	void PackPerRibbonData(float U0Scale, float U0Offset, float U1Scale, float U1Offset, uint32 NumSegments, uint32 FirstParticleId)
 	{
-		/** start and end world space position of the ribbon, to figure out draw direction */
-		FVector StartPos;
-		FVector EndPos;
-		int32 BaseSegmentDataIndex = 0;
-		int32 NumSegmentDataIndices = 0;
-
-		FORCEINLINE bool UseInvertOrder(const FVector& ViewDirection, const FVector& ViewOriginForDistanceCulling, ENiagaraRibbonDrawDirection DrawDirection) const
-		{
-			const float StartDist = FVector::DotProduct(ViewDirection, StartPos - ViewOriginForDistanceCulling);
-			const float EndDist = FVector::DotProduct(ViewDirection, EndPos - ViewOriginForDistanceCulling);
-			return ((StartDist >= EndDist) && DrawDirection == ENiagaraRibbonDrawDirection::BackToFront)
-				|| ((StartDist < EndDist) && DrawDirection == ENiagaraRibbonDrawDirection::FrontToBack);
-		}
-	};
-
-	/** Ribbon perperties required for sorting. */
-	TArray<FMultiRibbonInfo> MultiRibbonInfos;
-
-	void PackPerRibbonData(float U0Scale, float U0Offset, float U0DistributionScaler, float U1Scale, float U1Offset, float U1DistributionScaler, uint32 FirstParticleId)
-	{
+		const float OneOverNumSegments = 1 / (float)FMath::Max<uint32>(1, NumSegments);
 		PackedPerRibbonDataByIndex.Add(U0Scale);
 		PackedPerRibbonDataByIndex.Add(U0Offset);
-		PackedPerRibbonDataByIndex.Add(U0DistributionScaler);
 		PackedPerRibbonDataByIndex.Add(U1Scale);
 		PackedPerRibbonDataByIndex.Add(U1Offset);
-		PackedPerRibbonDataByIndex.Add(U1DistributionScaler);
+		PackedPerRibbonDataByIndex.Add(OneOverNumSegments);
 		PackedPerRibbonDataByIndex.Add(*(float*)&FirstParticleId);
 	}
 };
@@ -152,9 +125,36 @@ public:
 	}
 };
 
+namespace ENiagaraRibbonVFLayout
+{
+	enum Type
+	{
+		Position,
+		Velocity,
+		Color,
+		Width,
+		Twist,
+		Facing,
+		NormalizedAge,
+		MaterialRandom,
+		MaterialParam0,
+		MaterialParam1,
+		MaterialParam2,
+		MaterialParam3,
+		Num,
+	};
+};
+
+
 FNiagaraRendererRibbons::FNiagaraRendererRibbons(ERHIFeatureLevel::Type FeatureLevel, const UNiagaraRendererProperties *InProps, const FNiagaraEmitterInstance* Emitter)
 	: FNiagaraRenderer(FeatureLevel, InProps, Emitter)
 	, FacingMode(ENiagaraRibbonFacingMode::Screen)
+	, UV0TilingDistance(0.0f)
+	, UV0Scale(FVector2D(1.0f, 1.0f))
+	, UV0AgeOffsetMode(ENiagaraRibbonAgeOffsetMode::Scale)
+	, UV1TilingDistance(0.0f)
+	, UV1Scale(FVector2D(1.0f, 1.0f))
+	, UV1AgeOffsetMode(ENiagaraRibbonAgeOffsetMode::Scale)
 	, TessellationMode(ENiagaraRibbonTessellationMode::Automatic)
 	, CustomCurveTension(0.f)
 	, CustomTessellationFactor(16)
@@ -163,9 +163,17 @@ FNiagaraRendererRibbons::FNiagaraRendererRibbons(ERHIFeatureLevel::Type FeatureL
 	, bCustomUseScreenSpace(true)
 {
 	const UNiagaraRibbonRendererProperties* Properties = CastChecked<const UNiagaraRibbonRendererProperties>(InProps);
+	const FNiagaraDataSet& Data = Emitter->GetData();
+
 	FacingMode = Properties->FacingMode;
-	UV0Settings = Properties->UV0Settings;
-	UV1Settings = Properties->UV1Settings;
+	UV0TilingDistance = Properties->UV0TilingDistance;
+	UV0Scale = Properties->UV0Scale;
+	UV0Offset = Properties->UV0Offset;
+	UV0AgeOffsetMode = Properties->UV0AgeOffsetMode;
+	UV1TilingDistance = Properties->UV1TilingDistance;
+	UV1Scale = Properties->UV1Scale;
+	UV1Offset = Properties->UV1Offset;
+	UV1AgeOffsetMode = Properties->UV1AgeOffsetMode;
 	DrawDirection = Properties->DrawDirection;
 	TessellationMode = Properties->TessellationMode;
 	CustomCurveTension = FMath::Clamp<float>(Properties->CurveTension, 0.f, 0.9999f);
@@ -174,8 +182,26 @@ FNiagaraRendererRibbons::FNiagaraRendererRibbons(ERHIFeatureLevel::Type FeatureL
 	CustomTessellationMinAngle = Properties->TessellationAngle > 0.f && Properties->TessellationAngle < 1.f ? 1.f : Properties->TessellationAngle;
 	CustomTessellationMinAngle *= PI / 180.f;
 	bCustomUseScreenSpace = Properties->bScreenSpaceTessellation;
-	MaterialParamValidMask = Properties->MaterialParamValidMask;
-	RendererLayout = &Properties->RendererLayout;
+
+	TotalVFComponents = 0;
+	VFVariables.SetNum(ENiagaraRibbonVFLayout::Num);
+	// required attributes
+	SetVertexFactoryVariable(Data, Properties->PositionBinding.DataSetVariable, ENiagaraRibbonVFLayout::Position);
+	SetVertexFactoryVariable(Data, Properties->VelocityBinding.DataSetVariable, ENiagaraRibbonVFLayout::Velocity);
+	SetVertexFactoryVariable(Data, Properties->ColorBinding.DataSetVariable, ENiagaraRibbonVFLayout::Color);
+
+	// optional attributes
+	SetVertexFactoryVariable(Data, Properties->RibbonWidthBinding.DataSetVariable, ENiagaraRibbonVFLayout::Width);
+	SetVertexFactoryVariable(Data, Properties->RibbonTwistBinding.DataSetVariable, ENiagaraRibbonVFLayout::Twist);
+	SetVertexFactoryVariable(Data, Properties->RibbonFacingBinding.DataSetVariable, ENiagaraRibbonVFLayout::Facing);
+	SetVertexFactoryVariable(Data, Properties->NormalizedAgeBinding.DataSetVariable, ENiagaraRibbonVFLayout::NormalizedAge);
+	SetVertexFactoryVariable(Data, Properties->MaterialRandomBinding.DataSetVariable, ENiagaraRibbonVFLayout::MaterialRandom);
+
+	MaterialParamValidMask = 0;
+	MaterialParamValidMask |= SetVertexFactoryVariable(Data, Properties->DynamicMaterialBinding.DataSetVariable, ENiagaraRibbonVFLayout::MaterialParam0) ? 1 : 0;
+	MaterialParamValidMask |= SetVertexFactoryVariable(Data, Properties->DynamicMaterial1Binding.DataSetVariable, ENiagaraRibbonVFLayout::MaterialParam1) ? 2 : 0;
+	MaterialParamValidMask |= SetVertexFactoryVariable(Data, Properties->DynamicMaterial2Binding.DataSetVariable, ENiagaraRibbonVFLayout::MaterialParam2) ? 4 : 0;
+	MaterialParamValidMask |= SetVertexFactoryVariable(Data, Properties->DynamicMaterial3Binding.DataSetVariable, ENiagaraRibbonVFLayout::MaterialParam3) ? 8 : 0;
 }
 
 FNiagaraRendererRibbons::~FNiagaraRendererRibbons()
@@ -187,7 +213,7 @@ void FNiagaraRendererRibbons::ReleaseRenderThreadResources()
 	FNiagaraRenderer::ReleaseRenderThreadResources();
 #if RHI_RAYTRACING
 	if (IsRayTracingEnabled())
-	{	
+	{
 		RayTracingGeometry.ReleaseResource();
 		RayTracingDynamicVertexBuffer.Release();
 	}
@@ -201,10 +227,9 @@ void FNiagaraRendererRibbons::CreateRenderThreadResources(NiagaraEmitterInstance
 #if RHI_RAYTRACING
 	if (IsRayTracingEnabled())
 	{
+		RayTracingDynamicVertexBuffer.Initialize(4, 256, PF_R32_FLOAT, BUF_UnorderedAccess | BUF_ShaderResource, TEXT("RayTracingDynamicVertexBuffer"));
+
 		FRayTracingGeometryInitializer Initializer;
-		static const FName DebugName("FNiagaraRendererRibbons");
-		static int32 DebugNumber = 0;
-		Initializer.DebugName = FName(DebugName, DebugNumber++);
 		Initializer.IndexBuffer = nullptr;
 		Initializer.TotalPrimitiveCount = 0;
 		Initializer.GeometryType = RTGT_Triangles;
@@ -216,25 +241,23 @@ void FNiagaraRendererRibbons::CreateRenderThreadResources(NiagaraEmitterInstance
 #endif
 }
 
-template <typename TValue>
-TValue* FNiagaraRendererRibbons::AppendToIndexBuffer(TValue* OutIndices, uint32& OutMaxUsedIndex, const TArrayView<int32>& SegmentData, int32 InterpCount, bool bInvertOrder)
+void FNiagaraRendererRibbons::GenerateIndexBuffer(uint16* OutIndices, uint16& outVertexCount, const TArray<int32>& SegmentData, int32 InterpCount, bool bInvertOrder)
 {
-	TValue MaxIndex = 0;
-
-	auto AddTriangleIndices = [&MaxIndex, &OutIndices, InterpCount](int32 SegmentIndex)
+	outVertexCount = 0;
+	auto AddTriangleIndices = [&outVertexCount, &OutIndices, InterpCount](int32 SegmentIndex)
 	{
 		for (int32 SubSegmentIndex = 0; SubSegmentIndex < InterpCount; ++SubSegmentIndex)
 		{
-			const TValue BaseVertexIndex = (TValue)(SegmentIndex * InterpCount + SubSegmentIndex) * 2;
+			const uint16 BaseVertexIndex = (int16)(SegmentIndex * InterpCount + SubSegmentIndex) * 2;
 			OutIndices[0] = BaseVertexIndex + 0;
 			OutIndices[1] = BaseVertexIndex + 1;
 			OutIndices[2] = BaseVertexIndex + 2;
 			OutIndices[3] = BaseVertexIndex + 1;
 			OutIndices[4] = BaseVertexIndex + 3;
 			OutIndices[5] = BaseVertexIndex + 2;
-			OutIndices += 6;
 
-			MaxIndex = FMath::Max<TValue>(MaxIndex, BaseVertexIndex + 4);
+			outVertexCount = FMath::Max<uint16>(outVertexCount, BaseVertexIndex + 4u);
+			OutIndices += 6;
 		}
 	};
 
@@ -253,46 +276,12 @@ TValue* FNiagaraRendererRibbons::AppendToIndexBuffer(TValue* OutIndices, uint32&
 			AddTriangleIndices(SegmentData[SegmentDataIndex]);
 		}
 	}
-
-	OutMaxUsedIndex = MaxIndex;
-	return OutIndices;
-}
-
-template <typename TValue>
-void FNiagaraRendererRibbons::GenerateIndexBuffer(
-	FGlobalDynamicIndexBuffer::FAllocationEx& InOutIndexAllocation, 
-	int32 InterpCount, 
-	const FVector& ViewDirection, 
-	const FVector& ViewOriginForDistanceCulling, 
-	FNiagaraDynamicDataRibbon* DynamicData) const
-{
-	check(DynamicData);
-
-	FMaterialRenderProxy* MaterialRenderProxy = DynamicData->Material;
-	check(MaterialRenderProxy);
-	const EBlendMode BlendMode = MaterialRenderProxy->GetMaterial(FeatureLevel)->GetBlendMode();
-
-	TValue* CurrentIndexBuffer = (TValue*)InOutIndexAllocation.Buffer;
-	if (IsTranslucentBlendMode(BlendMode) && DynamicData->MultiRibbonInfos.Num())
-	{
-		for (const FNiagaraDynamicDataRibbon::FMultiRibbonInfo& MultiRibbonInfo : DynamicData->MultiRibbonInfos)
-		{
-			TArrayView<int32> CurrentSegmentData(DynamicData->SegmentData.GetData() + MultiRibbonInfo.BaseSegmentDataIndex, MultiRibbonInfo.NumSegmentDataIndices);
-			CurrentIndexBuffer = AppendToIndexBuffer(CurrentIndexBuffer, InOutIndexAllocation.MaxUsedIndex, CurrentSegmentData, InterpCount, MultiRibbonInfo.UseInvertOrder(ViewDirection, ViewOriginForDistanceCulling, DrawDirection));
-		}
-	}
-	else // Otherwise ignore multi ribbon ordering.
-	{
-		TArrayView<int32> CurrentSegmentData(DynamicData->SegmentData.GetData(), DynamicData->SegmentData.Num());
-		CurrentIndexBuffer = AppendToIndexBuffer(CurrentIndexBuffer, InOutIndexAllocation.MaxUsedIndex, CurrentSegmentData, InterpCount, false);
-	}
 }
 
 void FNiagaraRendererRibbons::GetDynamicMeshElements(const TArray<const FSceneView*>& Views, const FSceneViewFamily& ViewFamily, uint32 VisibilityMap, FMeshElementCollector& Collector, const FNiagaraSceneProxy *SceneProxy) const
 {
 	SCOPE_CYCLE_COUNTER(STAT_NiagaraRender);
 	SCOPE_CYCLE_COUNTER(STAT_NiagaraRenderRibbons);
-	PARTICLE_PERF_STAT_CYCLES(SceneProxy->PerfAsset, GetDynamicMeshElements);
 
 	FNiagaraDynamicDataRibbon *DynamicDataRibbon = static_cast<FNiagaraDynamicDataRibbon*>(DynamicDataRender);
 	if (!DynamicDataRibbon)
@@ -323,20 +312,19 @@ void FNiagaraRendererRibbons::GetDynamicMeshElements(const TArray<const FSceneVi
 			const FSceneView* View = Views[ViewIndex];
 			check(View);
 
-			if (View->bIsInstancedStereoEnabled && IStereoRendering::IsStereoEyeView(*View) && !IStereoRendering::IsAPrimaryView(*View))
-			{
-				// We don't have to generate batches for non-primary views in stereo instance rendering
-				continue;
-			}
-
 			FMeshBatch& MeshBatch = Collector.AllocateMesh();
 
-			FGlobalDynamicIndexBuffer::FAllocationEx DynamicIndexAllocation;
+			FGlobalDynamicIndexBuffer::FAllocation DynamicIndexAllocation;
 			FNiagaraMeshCollectorResourcesRibbon& CollectorResources = Collector.AllocateOneFrameResource<FNiagaraMeshCollectorResourcesRibbon>();
 
-			CreatePerViewResources(View, ViewFamily, SceneProxy, Collector, CollectorResources.UniformBuffer, DynamicIndexAllocation);
+			uint16 VertexCount;
+			uint32 NumPrimitives;
+			CreatePerViewResources(View, ViewFamily, SceneProxy, Collector,
+				VertexCount, NumPrimitives, CollectorResources.UniformBuffer, DynamicIndexAllocation);
 
-			SetupMeshBatchAndCollectorResourceForView(View, ViewFamily, SceneProxy, Collector, DynamicDataRibbon, DynamicIndexAllocation, MeshBatch, CollectorResources);
+			SetupMeshBatchAndCollectorResourceForView(
+				View, ViewFamily, SceneProxy, Collector,
+				DynamicDataRibbon, NumPrimitives, DynamicIndexAllocation, MeshBatch, CollectorResources);
 
 			Collector.AddMesh(ViewIndex, MeshBatch);
 		}
@@ -360,98 +348,57 @@ int FNiagaraRendererRibbons::GetDynamicDataSize()const
 }
 
 void CalculateUVScaleAndOffsets(
-	const FNiagaraRibbonUVSettings& UVSettings,
-	const TArray<int32>& RibbonIndices,
-	const TArray<FVector4>& RibbonTangentsAndDistances,
-	const FNiagaraDataSetReaderFloat<float>& SortKeyReader,
-	int32 StartIndex, int32 EndIndex,
-	int32 NumSegments, float TotalLength,
-	float& OutUScale, float& OutUOffset, float& OutUDistributionScaler)
+	const FNiagaraDataSetAccessor<float>& SortKeyData, const TArray<int32>& RibbonIndices,
+	bool bSortKeyIsAge, int32 StartIndex, int32 EndIndex, int32 NumSegments,
+	float InUTilingDistance, float InUScale, float InUOffset, ENiagaraRibbonAgeOffsetMode InAgeOffsetMode,
+	float& OutUScale, float& OutUOffset)
 {
-	float NormalizedLeadingSegmentOffset;
-	if (UVSettings.LeadingEdgeMode == ENiagaraRibbonUVEdgeMode::SmoothTransition)
+	if (EndIndex - StartIndex > 0 && bSortKeyIsAge && InUTilingDistance == 0)
 	{
-		float FirstAge = SortKeyReader[RibbonIndices[StartIndex]];
-		float SecondAge = SortKeyReader[RibbonIndices[StartIndex + 1]];
+		float AgeUScale;
+		float AgeUOffset;
+		if (InAgeOffsetMode == ENiagaraRibbonAgeOffsetMode::Scale)
+		{
+			// In scale mode we scale and offset the UVs so that no part of the texture is clipped. In order to prevent
+			// clipping at the ends we'll have to move the UVs in up to the size of a single segment of the ribbon since
+			// that's the distance we'll need to to smoothly interpolate when a new segment is added, or when an old segment
+			// is removed.  We calculate the end offset when the end of the ribbon is within a single time step of 0 or 1
+			// which is then normalized to the range of a single segment.  We can then calculate how many segments we actually
+			// have to draw the scaled ribbon, and can offset the start by the correctly scaled offset.
+			float FirstAge = SortKeyData[RibbonIndices[StartIndex]];
+			float SecondAge = SortKeyData[RibbonIndices[StartIndex + 1]];
+			float SecondToLastAge = SortKeyData[RibbonIndices[EndIndex - 1]];
+			float LastAge = SortKeyData[RibbonIndices[EndIndex]];
 
-		float StartTimeStep = SecondAge - FirstAge;
-		float StartTimeOffset = FirstAge < StartTimeStep ? StartTimeStep - FirstAge : 0;
+			float StartTimeStep = SecondAge - FirstAge;
+			float StartTimeOffset = FirstAge < StartTimeStep ? StartTimeStep - FirstAge : 0;
+			float StartSegmentOffset = StartTimeOffset / StartTimeStep;
 
-		NormalizedLeadingSegmentOffset = StartTimeOffset / StartTimeStep;
-	}
-	else if (UVSettings.LeadingEdgeMode == ENiagaraRibbonUVEdgeMode::Locked)
-	{
-		NormalizedLeadingSegmentOffset = 0;
-	}
-	else
-	{
-		NormalizedLeadingSegmentOffset = 0;
-		checkf(false, TEXT("Unsupported ribbon uv edge mode"));
-	}
+			float EndTimeStep = LastAge - SecondToLastAge;
+			float EndTimeOffset = 1 - LastAge < EndTimeStep ? EndTimeStep - (1 - LastAge) : 0;
+			float EndSegmentOffset = EndTimeOffset / EndTimeStep;
 
-	float NormalizedTrailingSegmentOffset;
-	if (UVSettings.TrailingEdgeMode == ENiagaraRibbonUVEdgeMode::SmoothTransition)
-	{
-		float SecondToLastAge = SortKeyReader[RibbonIndices[EndIndex - 1]];
-		float LastAge = SortKeyReader[RibbonIndices[EndIndex]];
+			float AvailableSegments = NumSegments - (StartSegmentOffset + EndSegmentOffset);
+			AgeUScale = NumSegments / AvailableSegments;
+			AgeUOffset = -((StartSegmentOffset / NumSegments) * AgeUScale);
+		}
+		else
+		{
+			float FirstAge = SortKeyData[RibbonIndices[StartIndex]];
+			float LastAge = SortKeyData[RibbonIndices[EndIndex]];
 
-		float EndTimeStep = LastAge - SecondToLastAge;
-		float EndTimeOffset = 1 - LastAge < EndTimeStep ? EndTimeStep - (1 - LastAge) : 0;
+			AgeUScale = LastAge - FirstAge;
+			AgeUOffset = FirstAge;
+		}
 
-		NormalizedTrailingSegmentOffset = EndTimeOffset / EndTimeStep;
-	}
-	else if (UVSettings.TrailingEdgeMode == ENiagaraRibbonUVEdgeMode::Locked)
-	{
-		NormalizedTrailingSegmentOffset = 0;
-	}
-	else
-	{
-		NormalizedTrailingSegmentOffset = 0;
-		checkf(false, TEXT("Unsupported ribbon uv edge mode"));
-	}
-
-	float CalculatedUOffset;
-	float CalculatedUScale;
-	if (UVSettings.DistributionMode == ENiagaraRibbonUVDistributionMode::ScaledUniformly)
-	{
-		float AvailableSegments = NumSegments - (NormalizedLeadingSegmentOffset + NormalizedTrailingSegmentOffset);
-		CalculatedUScale = NumSegments / AvailableSegments;
-		CalculatedUOffset = -((NormalizedLeadingSegmentOffset / NumSegments) * CalculatedUScale);
-		OutUDistributionScaler = 1.0f / NumSegments;
-	}
-	else if (UVSettings.DistributionMode == ENiagaraRibbonUVDistributionMode::ScaledUsingRibbonSegmentLength)
-	{
-		float SecondDistance = RibbonTangentsAndDistances[StartIndex + 1].W;
-		float LeadingDistanceOffset = SecondDistance * NormalizedLeadingSegmentOffset;
-
-		float SecondToLastDistance = RibbonTangentsAndDistances[EndIndex - 1].W;
-		float LastDistance = RibbonTangentsAndDistances[EndIndex].W;
-		float TrailingDistanceOffset = (LastDistance - SecondToLastDistance) * NormalizedTrailingSegmentOffset;
-
-		float AvailableLength = TotalLength - (LeadingDistanceOffset + TrailingDistanceOffset);
-
-		CalculatedUScale = TotalLength / AvailableLength;
-		CalculatedUOffset = -((LeadingDistanceOffset / TotalLength) * CalculatedUScale);
-		OutUDistributionScaler = 1.0f / TotalLength;
-	}
-	else if (UVSettings.DistributionMode == ENiagaraRibbonUVDistributionMode::TiledOverRibbonLength)
-	{
-		float SecondDistance = RibbonTangentsAndDistances[StartIndex + 1].W;
-		float LeadingDistanceOffset = SecondDistance * NormalizedLeadingSegmentOffset;
-
-		CalculatedUScale = TotalLength / UVSettings.TilingLength;
-		CalculatedUOffset = -(LeadingDistanceOffset / UVSettings.TilingLength);
-		OutUDistributionScaler = 1.0f / TotalLength;
+		OutUScale = AgeUScale * InUScale;
+		OutUOffset = (AgeUOffset * InUScale) + InUOffset;
 	}
 	else
 	{
-		CalculatedUScale = 1;
-		CalculatedUOffset = 0;
-		checkf(false, TEXT("Unsupported ribbon distribution mode"));
+		OutUScale = InUScale;
+		OutUOffset = InUOffset;
 	}
-
-	OutUScale = CalculatedUScale * UVSettings.Scale.X;
-	OutUOffset = (CalculatedUOffset * UVSettings.Scale.X) + UVSettings.Offset.X;
 }
 
 FNiagaraDynamicDataBase* FNiagaraRendererRibbons::GenerateDynamicData(const FNiagaraSceneProxy* Proxy, const UNiagaraRendererProperties* InProperties, const FNiagaraEmitterInstance* Emitter)const
@@ -466,30 +413,31 @@ FNiagaraDynamicDataBase* FNiagaraRendererRibbons::GenerateDynamicData(const FNia
 	FNiagaraDataSet& Data = Emitter->GetData();
 	const UNiagaraRibbonRendererProperties* Properties = CastChecked<const UNiagaraRibbonRendererProperties>(InProperties);
 
+	bool bSortKeyIsAge = false;
+	FNiagaraDataSetAccessor<float> SortKeyData(Data, Properties->RibbonLinkOrderBinding.DataSetVariable);
+	if (SortKeyData.IsValid() == false)
+	{
+		SortKeyData = FNiagaraDataSetAccessor<float>(Data, Properties->NormalizedAgeBinding.DataSetVariable);
+		bSortKeyIsAge = true;
+	}
+
+	FNiagaraDataSetAccessor<FVector> PosData(Data, Properties->PositionBinding.DataSetVariable);
+	FNiagaraDataSetAccessor<float> SizeData(Data, Properties->RibbonWidthBinding.DataSetVariable);
+	FNiagaraDataSetAccessor<float> TwistData(Data, Properties->RibbonTwistBinding.DataSetVariable);
+	FNiagaraDataSetAccessor<FVector> FacingData(Data, Properties->RibbonFacingBinding.DataSetVariable);
+	FNiagaraDataSetAccessor<FVector4> MaterialParamData(Data, Properties->DynamicMaterialBinding.DataSetVariable);
+	FNiagaraDataSetAccessor<FVector4> MaterialParam1Data(Data, Properties->DynamicMaterial1Binding.DataSetVariable);
+	FNiagaraDataSetAccessor<FVector4> MaterialParam2Data(Data, Properties->DynamicMaterial2Binding.DataSetVariable);
+	FNiagaraDataSetAccessor<FVector4> MaterialParam3Data(Data, Properties->DynamicMaterial3Binding.DataSetVariable);
+
+	FNiagaraDataSetAccessor<int32> RibbonIdData;
+	FNiagaraDataSetAccessor<FNiagaraID> RibbonFullIDData;
+
 	FNiagaraDataBuffer* DataToRender = Emitter->GetData().GetCurrentData();
-	if (DataToRender == nullptr || DataToRender->GetNumInstances() < 2 || !Properties->PositionDataSetAccessor.IsValid() || !Properties->SortKeyDataSetAccessor.IsValid())
+	if (DataToRender == nullptr || DataToRender->GetNumInstances() < 2 || !PosData.IsValid() || !SortKeyData.IsValid())
 	{
 		return nullptr;
 	}
-
-	const bool bSortKeyIsAge = Properties->bSortKeyDataSetAccessorIsAge;
-	const auto SortKeyReader = Properties->SortKeyDataSetAccessor.GetReader(Data);
-
-	const auto PosData = Properties->PositionDataSetAccessor.GetReader(Data);
-	const auto SizeData = Properties->SizeDataSetAccessor.GetReader(Data);
-	const auto TwistData = Properties->TwistDataSetAccessor.GetReader(Data);
-	const auto FacingData = Properties->FacingDataSetAccessor.GetReader(Data);
-
-	const auto MaterialParam0Data = Properties->MaterialParam0DataSetAccessor.GetReader(Data);
-	const auto MaterialParam1Data = Properties->MaterialParam1DataSetAccessor.GetReader(Data);
-	const auto MaterialParam2Data = Properties->MaterialParam2DataSetAccessor.GetReader(Data);
-	const auto MaterialParam3Data = Properties->MaterialParam3DataSetAccessor.GetReader(Data);
-
-	bool U0OverrideIsBound = Properties->U0OverrideIsBound;
-	bool U1OverrideIsBound = Properties->U1OverrideIsBound;
-
-	const auto RibbonIdData = Properties->RibbonIdDataSetAccessor.GetReader(Data);
-	const auto RibbonFullIDData = Properties->RibbonFullIDDataSetAccessor.GetReader(Data);
 
 	FNiagaraDynamicDataRibbon* DynamicData = new FNiagaraDynamicDataRibbon(Emitter);
 
@@ -508,6 +456,17 @@ FNiagaraDynamicDataBase* FNiagaraRendererRibbons::GenerateDynamicData(const FNia
 	float AverageSegmentAngle = 0;
 	float AverageTwistAngle = 0;
 	float AverageWidth = 0;
+
+	if (Properties->RibbonIdBinding.DataSetVariable.GetType() == FNiagaraTypeDefinition::GetIDDef())
+	{
+		RibbonFullIDData.Create(&Data, Properties->RibbonIdBinding.DataSetVariable);
+		RibbonFullIDData.InitForAccess();
+	}
+	else
+	{
+		RibbonIdData.Create(&Data, Properties->RibbonIdBinding.DataSetVariable);
+		RibbonIdData.InitForAccess();
+	}
 
 	bool bFullIDs = RibbonFullIDData.IsValid();
 	bool bSimpleIDs = !bFullIDs && RibbonIdData.IsValid();
@@ -629,12 +588,6 @@ FNiagaraDynamicDataBase* FNiagaraRendererRibbons::GenerateDynamicData(const FNia
 
 		if (NumSegments > 0)
 		{
-			FNiagaraDynamicDataRibbon::FMultiRibbonInfo& MultiRibbonInfo = DynamicData->MultiRibbonInfos[RibbonIndex];
-			MultiRibbonInfo.StartPos = PosData[RibbonIndices[0]];
-			MultiRibbonInfo.EndPos = PosData[RibbonIndices.Last()];
-			MultiRibbonInfo.BaseSegmentDataIndex = SegmentData.Num();
-			MultiRibbonInfo.NumSegmentDataIndices = NumSegments;
-
 			// Update the tangents for the first and last vertex, apply a reflect vector logic so that the initial and final curvature is continuous.
 			if (NumSegments > 1)
 			{
@@ -652,54 +605,21 @@ FNiagaraDynamicDataBase* FNiagaraRendererRibbons::GenerateDynamicData(const FNia
 			{
 				SegmentData.Add(SegmentIndex);
 			}
-			
-			float U0Offset;
-			float U0Scale;
-			float U0DistributionScaler;
-			if(UV0Settings.bEnablePerParticleUOverride && U0OverrideIsBound)
-			{ 
-				U0Offset = 0;
-				U0Scale = 1.0f;
-				U0DistributionScaler = 1;
-			}
-			else
-			{
-				CalculateUVScaleAndOffsets(
-					UV0Settings, DynamicData->SortedIndices, DynamicData->TangentAndDistances,
-					SortKeyReader,
-					StartIndex, DynamicData->SortedIndices.Num() - 1,
-					NumSegments, TotalDistance,
-					U0Scale, U0Offset, U0DistributionScaler);
-			}
 
-			float U1Offset;
-			float U1Scale;
-			float U1DistributionScaler;
-			if (UV1Settings.bEnablePerParticleUOverride && U1OverrideIsBound)
-			{
-				U1Offset = 0;
-				U1Scale = 1.0f;
-				U1DistributionScaler = 1;
-			}
-			else
-			{
-				CalculateUVScaleAndOffsets(
-					UV1Settings, DynamicData->SortedIndices, DynamicData->TangentAndDistances,
-					SortKeyReader,
-					StartIndex, DynamicData->SortedIndices.Num() - 1,
-					NumSegments, TotalDistance,
-					U1Scale, U1Offset, U1DistributionScaler);
-			}
+			float U0Offset, U0Scale, U1Offset, U1Scale;
 
-			DynamicData->PackPerRibbonData(U0Scale, U0Offset, U0DistributionScaler, U1Scale, U1Offset, U1DistributionScaler, StartIndex);
-		}
-		else
-		{
-			DynamicData->PackPerRibbonData(0, 0, 0, 0, 0, 0, 0);
+			CalculateUVScaleAndOffsets(SortKeyData, DynamicData->SortedIndices, bSortKeyIsAge, StartIndex, DynamicData->SortedIndices.Num() - 1, NumSegments,
+				Properties->UV0TilingDistance, Properties->UV0Scale.X, Properties->UV0Offset.X, Properties->UV0AgeOffsetMode, U0Scale, U0Offset);
+			CalculateUVScaleAndOffsets(SortKeyData, DynamicData->SortedIndices, bSortKeyIsAge, StartIndex, DynamicData->SortedIndices.Num() - 1, NumSegments,
+				Properties->UV1TilingDistance, Properties->UV1Scale.X, Properties->UV1Offset.X, Properties->UV1AgeOffsetMode, U1Scale, U1Offset);
+
+			DynamicData->PackPerRibbonData(U0Scale, U0Offset, U1Scale, U1Offset, NumSegments, StartIndex);
 		}
 	};
 
-	DynamicData->MultiRibbonInfos.Reset();
+	// store the start and end positions for the ribbon for draw distance flipping 
+	DynamicData->StartPos = PosData[0];
+	DynamicData->EndPos = PosData[Data.GetCurrentDataChecked().GetNumInstances() - 1];
 
 	//TODO: Move sorting to share code with sprite and mesh sorting and support the custom sorting key.
 	int32 TotalIndices = Data.GetCurrentDataChecked().GetNumInstances();
@@ -711,9 +631,8 @@ FNiagaraDynamicDataBase* FNiagaraRendererRibbons::GenerateDynamicData(const FNia
 		{
 			SortedIndices.Add(i);
 		}
-		DynamicData->MultiRibbonInfos.AddZeroed(1);
 
-		SortedIndices.Sort([&SortKeyReader](const int32& A, const int32& B) {	return (SortKeyReader[A] < SortKeyReader[B]); });
+		SortedIndices.Sort([&SortKeyData](const int32& A, const int32& B) {	return (SortKeyData[A] < SortKeyData[B]); });
 
 		AddRibbonVerts(SortedIndices, 0);
 	}
@@ -728,16 +647,12 @@ FNiagaraDynamicDataBase* FNiagaraRendererRibbons::GenerateDynamicData(const FNia
 				TArray<int32>& Indices = MultiRibbonSortedIndices.FindOrAdd(RibbonFullIDData[i]);
 				Indices.Add(i);
 			}
-			DynamicData->MultiRibbonInfos.AddZeroed(MultiRibbonSortedIndices.Num());
-
-			// Sort the ribbons by ID so that the draw order stays consistent.
-			MultiRibbonSortedIndices.KeySort(TLess<FNiagaraID>());
 
 			uint32 RibbonIndex = 0;
 			for (TPair<FNiagaraID, TArray<int32>>& Pair : MultiRibbonSortedIndices)
 			{
 				TArray<int32>& SortedIndices = Pair.Value;
-				SortedIndices.Sort([&SortKeyReader](const int32& A, const int32& B) {	return (SortKeyReader[A] < SortKeyReader[B]); });
+				SortedIndices.Sort([&SortKeyData](const int32& A, const int32& B) {	return (SortKeyData[A] < SortKeyData[B]); });
 				AddRibbonVerts(SortedIndices, RibbonIndex);
 
 				RibbonIndex++;
@@ -755,16 +670,12 @@ FNiagaraDynamicDataBase* FNiagaraRendererRibbons::GenerateDynamicData(const FNia
 				TArray<int32>& Indices = MultiRibbonSortedIndices.FindOrAdd(RibbonIdData[i]);
 				Indices.Add(i);
 			}
-			DynamicData->MultiRibbonInfos.AddZeroed(MultiRibbonSortedIndices.Num());
-
-			// Sort the ribbons by ID so that the draw order stays consistent.
-			MultiRibbonSortedIndices.KeySort(TLess<int32>());
 
 			uint32 RibbonIndex = 0;
 			for (TPair<int32, TArray<int32>>& Pair : MultiRibbonSortedIndices)
 			{
 				TArray<int32>& SortedIndices = Pair.Value;
-				SortedIndices.Sort([&SortKeyReader](const int32& A, const int32& B) {	return (SortKeyReader[A] < SortKeyReader[B]); });
+				SortedIndices.Sort([&SortKeyData](const int32& A, const int32& B) {	return (SortKeyData[A] < SortKeyData[B]); });
 				AddRibbonVerts(SortedIndices, RibbonIndex);
 				RibbonIndex++;
 			};
@@ -817,10 +728,11 @@ void FNiagaraRendererRibbons::AddDynamicParam(TArray<FNiagaraRibbonVertexDynamic
 	ParamData.Add(Param);
 }
 
-bool FNiagaraRendererRibbons::IsMaterialValid(const UMaterialInterface* Mat)const
+bool FNiagaraRendererRibbons::IsMaterialValid(UMaterialInterface* Mat)const
 {
-	return Mat && Mat->CheckMaterialUsage_Concurrent(MATUSAGE_NiagaraRibbons);
+	return Mat && Mat->CheckMaterialUsage(MATUSAGE_NiagaraRibbons);
 }
+
 
 void FNiagaraRendererRibbons::SetupMeshBatchAndCollectorResourceForView(
 	const FSceneView* View,
@@ -828,7 +740,8 @@ void FNiagaraRendererRibbons::SetupMeshBatchAndCollectorResourceForView(
 	const FNiagaraSceneProxy* SceneProxy,
 	FMeshElementCollector& Collector,
 	struct FNiagaraDynamicDataRibbon* DynamicDataRibbon,
-	const FGlobalDynamicIndexBuffer::FAllocationEx& IndexAllocation,
+	uint32 NumPrimitives,
+	const FGlobalDynamicIndexBuffer::FAllocation& IndexAllocation,
 	FMeshBatch& MeshBatch,
 	class FNiagaraMeshCollectorResourcesRibbon& CollectorResources) const
 {
@@ -843,10 +756,8 @@ void FNiagaraRendererRibbons::SetupMeshBatchAndCollectorResourceForView(
 	FCPUSimParticleDataAllocation CPUSimParticleDataAllocation = AllocateParticleDataIfCPUSim(DynamicDataRibbon, Collector.GetDynamicReadBuffer());
 	auto& ParticleData = CPUSimParticleDataAllocation.ParticleData;
 
-	int32 ParticleDataFloatStride = GbEnableMinimalGPUBuffers ? SourceParticleData->GetNumInstances() : SourceParticleData->GetFloatStride() / sizeof(float);
-	int32 ParticleDataHalfStride = GbEnableMinimalGPUBuffers ? SourceParticleData->GetNumInstances() : SourceParticleData->GetHalfStride() / sizeof(FFloat16);
-
-	check(ParticleDataFloatStride == ParticleDataHalfStride);
+	int32 ParticleDataStride = GbEnableMinimalGPUBuffers ? SourceParticleData->GetNumInstances() : SourceParticleData->GetFloatStride() / sizeof(float);
+	CollectorResources.VertexFactory.SetParticleData(ParticleData.ReadBuffer->SRV, ParticleData.FirstIndex / sizeof(float), ParticleDataStride);
 
 	// TODO: need to make these two a global alloc buffer as well, not recreate
 				// pass in the sorted indices so the VS can fetch the particle data in order
@@ -879,19 +790,16 @@ void FNiagaraRendererRibbons::SetupMeshBatchAndCollectorResourceForView(
 	RHIUnlockVertexBuffer(PackedPerRibbonDataByIndexBuffer.Buffer);
 	CollectorResources.VertexFactory.SetPackedPerRibbonDataByIndexSRV(PackedPerRibbonDataByIndexBuffer.Buffer, PackedPerRibbonDataByIndexBuffer.SRV);
 
-	FRHIShaderResourceView* FloatSRV = ParticleData.FloatData.IsValid() ? ParticleData.FloatData.SRV : (FRHIShaderResourceView*)FNiagaraRenderer::GetDummyFloatBuffer();
-	FRHIShaderResourceView* HalfSRV = ParticleData.HalfData.IsValid() ? ParticleData.HalfData.SRV : (FRHIShaderResourceView*)FNiagaraRenderer::GetDummyHalfBuffer();
-
 	FNiagaraRibbonVFLooseParameters VFLooseParams;
 	VFLooseParams.SortedIndices = SortedIndicesBuffer.SRV;
 	VFLooseParams.TangentsAndDistances = TangentsAndDistancesBuffer.SRV;
 	VFLooseParams.MultiRibbonIndices = MultiRibbonIndicesBuffer.SRV;
 	VFLooseParams.PackedPerRibbonDataByIndex = PackedPerRibbonDataByIndexBuffer.SRV;
-	VFLooseParams.NiagaraParticleDataFloat = FloatSRV;
-	VFLooseParams.NiagaraParticleDataHalf = HalfSRV;
-	VFLooseParams.NiagaraFloatDataStride = ParticleDataFloatStride;
+	VFLooseParams.NiagaraParticleDataFloat = CollectorResources.VertexFactory.GetParticleDataFloatSRV();
+	VFLooseParams.NiagaraFloatDataOffset = CollectorResources.VertexFactory.GetFloatDataOffset();
+	VFLooseParams.NiagaraFloatDataStride = CollectorResources.VertexFactory.GetFloatDataStride();
 	VFLooseParams.SortedIndicesOffset = CollectorResources.VertexFactory.GetSortedIndicesOffset();
-	VFLooseParams.FacingMode = static_cast<uint32>(FacingMode);
+	VFLooseParams.FacingMode = CollectorResources.VertexFactory.GetFacingMode();
 
 	// Collector.AllocateOneFrameResource uses default ctor, initialize the vertex factory
 	CollectorResources.VertexFactory.SetParticleFactoryType(NVFT_Ribbon);
@@ -927,36 +835,37 @@ void FNiagaraRendererRibbons::SetupMeshBatchAndCollectorResourceForView(
 	FMeshBatchElement& MeshElement = MeshBatch.Elements[0];
 	MeshElement.IndexBuffer = IndexAllocation.IndexBuffer;
 	MeshElement.FirstIndex = IndexAllocation.FirstIndex;
-	MeshElement.NumPrimitives = IndexAllocation.NumIndices / 3; // 3 indices per triangle
+	MeshElement.NumPrimitives = NumPrimitives;
 	check(MeshElement.NumPrimitives > 0);
 	MeshElement.NumInstances = 1;
 	MeshElement.MinVertexIndex = 0;
 	MeshElement.MaxVertexIndex = 0;
-	MeshElement.PrimitiveUniformBuffer = SceneProxy->GetUniformBufferNoVelocity();	// Note: Ribbons don't generate accurate velocities so disabling
+	MeshElement.PrimitiveUniformBuffer = SceneProxy->GetUniformBuffer();
+
 }
 
 FNiagaraRendererRibbons::FCPUSimParticleDataAllocation FNiagaraRendererRibbons::AllocateParticleDataIfCPUSim(FNiagaraDynamicDataRibbon* DynamicDataRibbon, FGlobalDynamicReadBuffer& DynamicReadBuffer) const
 {
 	FNiagaraDataBuffer* SourceParticleData = DynamicDataRibbon->GetParticleDataToRender();
 	check(SourceParticleData);//Can be null but should be checked before here.
+	int32 TotalFloatSize = SourceParticleData->GetFloatBuffer().Num() / sizeof(float);
 
 	FCPUSimParticleDataAllocation CPUSimParticleDataAllocation{ DynamicReadBuffer };
+
+	bool bShouldDoFacing = FacingMode == ENiagaraRibbonFacingMode::Custom || FacingMode == ENiagaraRibbonFacingMode::CustomSideVector;
+	VFVariables[ENiagaraRibbonVFLayout::Facing].bUpload = bShouldDoFacing;
 
 	if (SimTarget == ENiagaraSimTarget::CPUSim)
 	{
 		SCOPE_CYCLE_COUNTER(STAT_NiagaraRenderRibbonsCPUSimMemCopy);
 		if (GbEnableMinimalGPUBuffers)
 		{
-			CPUSimParticleDataAllocation.ParticleData = TransferDataToGPU(DynamicReadBuffer, RendererLayout, SourceParticleData);
+			CPUSimParticleDataAllocation.ParticleData = TransferDataToGPU(DynamicReadBuffer, SourceParticleData);
 		}
 		else
 		{
-			int32 TotalFloatSize = SourceParticleData->GetFloatBuffer().Num() / sizeof(float);
-			CPUSimParticleDataAllocation.ParticleData.FloatData = DynamicReadBuffer.AllocateFloat(TotalFloatSize);
-			FMemory::Memcpy(CPUSimParticleDataAllocation.ParticleData.FloatData.Buffer, SourceParticleData->GetFloatBuffer().GetData(), SourceParticleData->GetFloatBuffer().Num());
-			int32 TotalHalfSize = SourceParticleData->GetHalfBuffer().Num() / sizeof(FFloat16);
-			CPUSimParticleDataAllocation.ParticleData.HalfData = DynamicReadBuffer.AllocateHalf(TotalFloatSize);
-			FMemory::Memcpy(CPUSimParticleDataAllocation.ParticleData.HalfData.Buffer, SourceParticleData->GetHalfBuffer().GetData(), SourceParticleData->GetHalfBuffer().Num());
+			CPUSimParticleDataAllocation.ParticleData = DynamicReadBuffer.AllocateFloat(TotalFloatSize);
+			FMemory::Memcpy(CPUSimParticleDataAllocation.ParticleData.Buffer, SourceParticleData->GetFloatBuffer().GetData(), SourceParticleData->GetFloatBuffer().Num());
 		}
 	}
 
@@ -964,12 +873,8 @@ FNiagaraRendererRibbons::FCPUSimParticleDataAllocation FNiagaraRendererRibbons::
 }
 
 void FNiagaraRendererRibbons::CreatePerViewResources(
-	const FSceneView* View, 
-	const FSceneViewFamily& ViewFamily, 
-	const FNiagaraSceneProxy* SceneProxy, 
-	FMeshElementCollector& Collector,
-	FNiagaraRibbonUniformBufferRef& OutUniformBuffer, 
-	FGlobalDynamicIndexBuffer::FAllocationEx& InOutIndexAllocation) const
+	const FSceneView* View, const FSceneViewFamily& ViewFamily, const FNiagaraSceneProxy* SceneProxy, FMeshElementCollector& Collector,
+	uint16& OutVertexCount, uint32& OutNumberOfPrimitives, FNiagaraRibbonUniformBufferRef& OutUniformBuffer, FGlobalDynamicIndexBuffer::FAllocation& InOutIndexAllocation) const
 {
 	FNiagaraDynamicDataRibbon* DynamicDataRibbon = static_cast<FNiagaraDynamicDataRibbon*>(DynamicDataRender);
 	FNiagaraDataBuffer* SourceParticleData = DynamicDataRibbon->GetParticleDataToRender();
@@ -1016,37 +921,39 @@ void FNiagaraRendererRibbons::CreatePerViewResources(
 				return FMath::Max<float>(1.f, FMath::Max(TessellationTwistAngle, TessellationAngle) / FMath::Max<float>(SMALL_NUMBER, TessellationMinAngle));
 			}
 		}();
-		const float MAX_CURVATURE_FACTOR = 0.002f; // This will clamp the curvature to around 2.5 km and avoid numerical issues.
 		const float ViewDistance = SceneProxy->GetBounds().ComputeSquaredDistanceFromBoxToPoint(ViewOriginForDistanceCulling);
 		const float MaxDisplacementError = FMath::Max(GNiagaraRibbonTessellationMinDisplacementError, ScreenPercentage * FMath::Sqrt(ViewDistance) / View->LODDistanceFactor);
-		float Tess = TessellationAngle / FMath::Max(MAX_CURVATURE_FACTOR, AcosFast(TessellationCurvature / (TessellationCurvature + MaxDisplacementError)));
+		float Tess = TessellationAngle / FMath::Max(SMALL_NUMBER, AcosFast(TessellationCurvature / (TessellationCurvature + MaxDisplacementError)));
 		// FMath::RoundUpToPowerOfTwo ? This could avoid vertices moving around as tesselation increases
 
 		if (TessellationTwistAngle > 0 && TessellationTwistCurvature > 0)
 		{
-			const float TwistTess = TessellationTwistAngle / FMath::Max(MAX_CURVATURE_FACTOR, AcosFast(TessellationTwistCurvature / (TessellationTwistCurvature + MaxDisplacementError)));
+			const float TwistTess = TessellationTwistAngle / FMath::Max(SMALL_NUMBER, AcosFast(TessellationTwistCurvature / (TessellationTwistCurvature + MaxDisplacementError)));
 			Tess = FMath::Max(TwistTess, Tess);
 		}
 		SegmentTessellation = FMath::Clamp<int32>(FMath::RoundToInt(Tess), FMath::RoundToInt(MinTesselation), TessellationFactor);
 		NumSegments *= SegmentTessellation;
 	}
 
+
+	OutNumberOfPrimitives = NumSegments * 2;
+
+	// Figure out whether start is closer to the view plane than end
+	// TODO : This doesn't work with multi-ribbons.
+	const float StartDist = FVector::DotProduct(View->GetViewDirection(), DynamicDataRibbon->StartPos - ViewOriginForDistanceCulling);
+	const float EndDist = FVector::DotProduct(View->GetViewDirection(), DynamicDataRibbon->EndPos - ViewOriginForDistanceCulling);
+	const bool bInvertOrder = ((StartDist > EndDist) && DrawDirection == ENiagaraRibbonDrawDirection::BackToFront)
+		|| ((StartDist < EndDist) && DrawDirection == ENiagaraRibbonDrawDirection::FrontToBack);
+
 	// Copy the index data over.
 	FGlobalDynamicIndexBuffer& DynamicIndexBuffer = Collector.GetDynamicIndexBuffer();
 
-	// *2 because each position get mapped on each side, *3 for triangles.
-	const uint32 MaxTessellationIndex = SourceParticleData->GetNumInstances() * SegmentTessellation * 2;
-	const uint32 NumIndices = NumSegments * 2 * 3;
-	if (MaxTessellationIndex < MAX_uint16)
-	{
-		InOutIndexAllocation = DynamicIndexBuffer.Allocate<uint16>(NumIndices);
-		GenerateIndexBuffer<uint16>(InOutIndexAllocation, SegmentTessellation, View->GetViewDirection(), ViewOriginForDistanceCulling, DynamicDataRibbon);
-	}
-	else
-	{
-		InOutIndexAllocation = DynamicIndexBuffer.Allocate<uint32>(NumIndices);
-		GenerateIndexBuffer<uint32>(InOutIndexAllocation, SegmentTessellation, View->GetViewDirection(), ViewOriginForDistanceCulling, DynamicDataRibbon);
-	}
+	const uint32 IndicesPerPrimitive = 3;
+
+	// the extra plus 3 is for safe padding, the actual size is `NumberOfPrimitives * IndicesPerPrimitive`
+	InOutIndexAllocation = DynamicIndexBuffer.Allocate(OutNumberOfPrimitives * IndicesPerPrimitive, sizeof(uint16));
+
+	GenerateIndexBuffer((uint16*)InOutIndexAllocation.Buffer, OutVertexCount, DynamicDataRibbon->SegmentData, SegmentTessellation, bInvertOrder);
 
 	FNiagaraRibbonUniformParameters PerViewUniformParameters;
 	FMemory::Memzero(&PerViewUniformParameters,sizeof(PerViewUniformParameters)); // Clear unset bytes
@@ -1060,7 +967,6 @@ void FNiagaraRendererRibbons::CreatePerViewResources(
 	PerViewUniformParameters.InterpCount = SegmentTessellation;
 	PerViewUniformParameters.OneOverInterpCount = 1.f / (float)SegmentTessellation;
 
-	TConstArrayView<FNiagaraRendererVariableInfo> VFVariables = RendererLayout->GetVFVariables_RenderThread();
 	PerViewUniformParameters.PositionDataOffset = VFVariables[ENiagaraRibbonVFLayout::Position].GetGPUOffset();
 	PerViewUniformParameters.VelocityDataOffset = VFVariables[ENiagaraRibbonVFLayout::Velocity].GetGPUOffset();
 	PerViewUniformParameters.ColorDataOffset = VFVariables[ENiagaraRibbonVFLayout::Color].GetGPUOffset();
@@ -1072,19 +978,18 @@ void FNiagaraRendererRibbons::CreatePerViewResources(
 	PerViewUniformParameters.MaterialParam1DataOffset = VFVariables[ENiagaraRibbonVFLayout::MaterialParam1].GetGPUOffset();
 	PerViewUniformParameters.MaterialParam2DataOffset = VFVariables[ENiagaraRibbonVFLayout::MaterialParam2].GetGPUOffset();
 	PerViewUniformParameters.MaterialParam3DataOffset = VFVariables[ENiagaraRibbonVFLayout::MaterialParam3].GetGPUOffset();
-	PerViewUniformParameters.U0OverrideDataOffset = UV0Settings.bEnablePerParticleUOverride ? VFVariables[ENiagaraRibbonVFLayout::U0Override].GetGPUOffset() : -1;
-	PerViewUniformParameters.V0RangeOverrideDataOffset = UV0Settings.bEnablePerParticleVRangeOverride ? VFVariables[ENiagaraRibbonVFLayout::V0RangeOverride].GetGPUOffset() : -1;
-	PerViewUniformParameters.U1OverrideDataOffset = UV1Settings.bEnablePerParticleUOverride ? VFVariables[ENiagaraRibbonVFLayout::U1Override].GetGPUOffset() : -1;
-	PerViewUniformParameters.V1RangeOverrideDataOffset = UV1Settings.bEnablePerParticleVRangeOverride ? VFVariables[ENiagaraRibbonVFLayout::V1RangeOverride].GetGPUOffset() : -1;
 
 	PerViewUniformParameters.MaterialParamValidMask = MaterialParamValidMask;
 
 	bool bShouldDoFacing = FacingMode == ENiagaraRibbonFacingMode::Custom || FacingMode == ENiagaraRibbonFacingMode::CustomSideVector;
 	PerViewUniformParameters.FacingDataOffset = bShouldDoFacing ? VFVariables[ENiagaraRibbonVFLayout::Facing].GetGPUOffset() : -1;
+	PerViewUniformParameters.OneOverUV0TilingDistance = UV0TilingDistance ? 1.f / (UV0TilingDistance) : 0.f;
+	PerViewUniformParameters.OneOverUV1TilingDistance = UV1TilingDistance ? 1.f / (UV1TilingDistance) : 0.f;
+	PerViewUniformParameters.PackedVData = FVector4(UV0Scale.Y, UV0Offset.Y, UV1Scale.Y, UV1Offset.Y);
 
-	PerViewUniformParameters.U0DistributionMode = (int32)UV0Settings.DistributionMode;
-	PerViewUniformParameters.U1DistributionMode = (int32)UV1Settings.DistributionMode;
-	PerViewUniformParameters.PackedVData = FVector4(UV0Settings.Scale.Y, UV0Settings.Offset.Y, UV1Settings.Scale.Y, UV1Settings.Offset.Y);
+	PerViewUniformParameters.OneOverUV0TilingDistance = UV0TilingDistance ? 1.f / (UV0TilingDistance) : 0.f;
+	PerViewUniformParameters.OneOverUV1TilingDistance = UV1TilingDistance ? 1.f / (UV1TilingDistance) : 0.f;
+	PerViewUniformParameters.PackedVData = FVector4(UV0Scale.Y, UV0Offset.Y, UV1Scale.Y, UV1Offset.Y);
 
 	OutUniformBuffer = FNiagaraRibbonUniformBufferRef::CreateUniformBufferImmediate(PerViewUniformParameters, UniformBuffer_SingleFrame);
 
@@ -1093,11 +998,6 @@ void FNiagaraRendererRibbons::CreatePerViewResources(
 #if RHI_RAYTRACING
 void FNiagaraRendererRibbons::GetDynamicRayTracingInstances(FRayTracingMaterialGatheringContext& Context, TArray<FRayTracingInstance>& OutRayTracingInstances, const FNiagaraSceneProxy* SceneProxy)
 {
-	if (!CVarRayTracingNiagaraRibbons.GetValueOnRenderThread())
-	{
-		return;
-	}
-
 	SCOPE_CYCLE_COUNTER(STAT_NiagaraRender);
 	SCOPE_CYCLE_COUNTER(STAT_NiagaraRenderRibbons);
 	check(SceneProxy);
@@ -1125,49 +1025,48 @@ void FNiagaraRendererRibbons::GetDynamicRayTracingInstances(FRayTracingMaterialG
 		return;
 	}
 
-	auto& View = Context.ReferenceView;
-	auto& ViewFamily = Context.ReferenceViewFamily;
-	// Setup material for our ray tracing instance
-	FNiagaraMeshCollectorResourcesRibbon& CollectorResources = Context.RayTracingMeshResourceCollector.AllocateOneFrameResource<FNiagaraMeshCollectorResourcesRibbon>();
-
-	FGlobalDynamicIndexBuffer::FAllocationEx DynamicIndexAllocation;
-	CreatePerViewResources(Context.ReferenceView, Context.ReferenceViewFamily, SceneProxy, Context.RayTracingMeshResourceCollector, CollectorResources.UniformBuffer, DynamicIndexAllocation);
-
-	if (DynamicIndexAllocation.MaxUsedIndex <= 0)
-	{
-		return;
-	}
-
 	FRayTracingInstance RayTracingInstance;
 	RayTracingInstance.Geometry = &RayTracingGeometry;
 	RayTracingInstance.InstanceTransforms.Add(FMatrix::Identity);
 
-	RayTracingGeometry.Initializer.IndexBuffer = DynamicIndexAllocation.IndexBuffer->IndexBufferRHI;
-	RayTracingGeometry.Initializer.IndexBufferOffset = DynamicIndexAllocation.FirstIndex * DynamicIndexAllocation.IndexStride;
+	{
+		auto& View = Context.ReferenceView;
+		auto& ViewFamily = Context.ReferenceViewFamily;
+		// Setup material for our ray tracing instance
+		FNiagaraMeshCollectorResourcesRibbon& CollectorResources = Context.RayTracingMeshResourceCollector.AllocateOneFrameResource<FNiagaraMeshCollectorResourcesRibbon>();
 
-	FMeshBatch MeshBatch;
+		FGlobalDynamicIndexBuffer::FAllocation DynamicIndexAllocation;
+		uint16 VertexCount;
 
-	SetupMeshBatchAndCollectorResourceForView(Context.ReferenceView, Context.ReferenceViewFamily, SceneProxy, Context.RayTracingMeshResourceCollector, DynamicDataRibbon, DynamicIndexAllocation, MeshBatch, CollectorResources);
+		uint32 NumPrimitives;
+		CreatePerViewResources(Context.ReferenceView, Context.ReferenceViewFamily, SceneProxy, Context.RayTracingMeshResourceCollector,
+			VertexCount, NumPrimitives, CollectorResources.UniformBuffer, DynamicIndexAllocation);
 
-	RayTracingInstance.Materials.Add(MeshBatch);
+		RayTracingGeometry.Initializer.IndexBuffer = DynamicIndexAllocation.IndexBuffer->IndexBufferRHI;
+		RayTracingGeometry.Initializer.IndexBufferOffset = DynamicIndexAllocation.FirstIndex * sizeof(uint16);
 
-	// Use the internal vertex buffer only when initialized otherwise used the shared vertex buffer - needs to be updated every frame
-	FRWBuffer* VertexBuffer = RayTracingDynamicVertexBuffer.NumBytes > 0 ? &RayTracingDynamicVertexBuffer : nullptr;
 
-	const uint32 VertexCount = DynamicIndexAllocation.MaxUsedIndex;
-	Context.DynamicRayTracingGeometriesToUpdate.Add(
-		FRayTracingDynamicGeometryUpdateParams
-		{
-			RayTracingInstance.Materials,
-			false,
-			VertexCount,
-			VertexCount * (uint32)sizeof(FVector),
-			MeshBatch.Elements[0].NumPrimitives,
-			&RayTracingGeometry,
-			VertexBuffer,
-			true
-		}
-	);
+		FMeshBatch MeshBatch;
+
+		SetupMeshBatchAndCollectorResourceForView(
+			Context.ReferenceView, Context.ReferenceViewFamily, SceneProxy, Context.RayTracingMeshResourceCollector,
+			DynamicDataRibbon, NumPrimitives, DynamicIndexAllocation, MeshBatch, CollectorResources);
+
+		RayTracingInstance.Materials.Add(MeshBatch);
+
+		Context.DynamicRayTracingGeometriesToUpdate.Add(
+			FRayTracingDynamicGeometryUpdateParams
+			{
+				RayTracingInstance.Materials,
+				false,
+				VertexCount,
+				VertexCount * (uint32)sizeof(FVector),
+				MeshBatch.Elements[0].NumPrimitives,
+				&RayTracingGeometry,
+				&RayTracingDynamicVertexBuffer,
+			}
+		);
+	}
 
 	RayTracingInstance.BuildInstanceMaskAndFlags();
 

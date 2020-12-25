@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NavFilters/NavigationQueryFilter.h"
 #include "NavigationSystem.h"
@@ -38,12 +38,12 @@ FSharedConstNavQueryFilter UNavigationQueryFilter::GetQueryFilter(const ANavigat
 	FSharedConstNavQueryFilter SharedFilter = bInstantiateForQuerier ? nullptr : NavData.GetQueryFilter(GetClass());
 	if (!SharedFilter.IsValid())
 	{
-		// Clone the default filter so we get search nodes and other fields
-		FSharedNavQueryFilter NavFilter = NavData.GetDefaultQueryFilter()->GetCopy();
+		FNavigationQueryFilter* NavFilter = new FNavigationQueryFilter();
+		NavFilter->SetFilterImplementation(NavData.GetDefaultQueryFilterImpl());
 
-		InitializeFilter(NavData, Querier, *NavFilter.Get());
+		InitializeFilter(NavData, Querier, *NavFilter);
 
-		SharedFilter = NavFilter;
+		SharedFilter = MakeShareable(NavFilter);
 		if (!bInstantiateForQuerier)
 		{
 			const_cast<ANavigationData&>(NavData).StoreQueryFilter(GetClass(), SharedFilter);

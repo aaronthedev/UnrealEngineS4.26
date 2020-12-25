@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MessageLogModule.h"
 #include "Logging/IMessageLog.h"
@@ -124,7 +124,7 @@ void FMessageLogModule::OpenMessageLog(const FName& LogName)
 #endif
 	   )
 	{
-		FGlobalTabmanager::Get()->TryInvokeTab(FName("MessageLog"));
+		FGlobalTabmanager::Get()->InvokeTab(FName("MessageLog"));
 		MessageLogViewModel->ChangeCurrentListingViewModel(LogName);
 	}
 }

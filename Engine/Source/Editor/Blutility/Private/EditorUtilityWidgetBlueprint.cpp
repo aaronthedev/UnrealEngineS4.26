@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EditorUtilityWidgetBlueprint.h"
 #include "WidgetBlueprint.h"
@@ -56,7 +56,7 @@ TSharedRef<SDockTab> UEditorUtilityWidgetBlueprint::SpawnEditorUITab(const FSpaw
 	SpawnedTab->SetOnTabClosed(SDockTab::FOnTabClosedCallback::CreateUObject(this, &UEditorUtilityWidgetBlueprint::UpdateRespawnListIfNeeded));
 	CreatedTab = SpawnedTab;
 	
-	OnCompiled().AddUObject(this, &UEditorUtilityWidgetBlueprint::RegenerateCreatedTab);
+	GEditor->OnBlueprintReinstanced().AddUObject(this, &UEditorUtilityWidgetBlueprint::RegenerateCreatedTab);
 	
 	FLevelEditorModule& LevelEditor = FModuleManager::LoadModuleChecked<FLevelEditorModule>("LevelEditor");
 	LevelEditor.OnMapChanged().AddUObject(this, &UEditorUtilityWidgetBlueprint::ChangeTabWorld);
@@ -75,7 +75,7 @@ TSharedRef<SWidget> UEditorUtilityWidgetBlueprint::CreateUtilityWidget()
 	{
 		if (CreatedUMGWidget)
 		{
-			CreatedUMGWidget->Rename(nullptr, GetTransientPackage(), REN_DoNotDirty);
+			CreatedUMGWidget->Rename(nullptr, GetTransientPackage());
 		}
 		CreatedUMGWidget = CreateWidget<UEditorUtilityWidget>(World, WidgetClass);
 	}
@@ -92,7 +92,7 @@ TSharedRef<SWidget> UEditorUtilityWidgetBlueprint::CreateUtilityWidget()
 	return TabWidget;
 }
 
-void UEditorUtilityWidgetBlueprint::RegenerateCreatedTab(UBlueprint* RecompiledBlueprint)
+void UEditorUtilityWidgetBlueprint::RegenerateCreatedTab()
 {
 	if (CreatedTab.IsValid())
 	{
@@ -118,7 +118,7 @@ void UEditorUtilityWidgetBlueprint::ChangeTabWorld(UWorld* World, EMapChangeType
 	else if (MapChangeType != EMapChangeType::SaveMap)
 	{
 		// Recreate the widget if we are loading a map or opening a new map
-		RegenerateCreatedTab(nullptr);
+		RegenerateCreatedTab();
 	}
 }
 

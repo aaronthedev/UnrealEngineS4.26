@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -25,10 +25,10 @@ protected:
 
 		if (UUserWidget* OwningUserWidget = WidgetInstance.template GetTypedOuter<UUserWidget>())
 		{
-			// Find the native BindWidget FProperty that corresponds to this table view
-			for (TFieldIterator<FObjectProperty> PropertyIter(OwningUserWidget->GetClass()); PropertyIter; ++PropertyIter)
+			// Find the native BindWidget UProperty that corresponds to this table view
+			for (TFieldIterator<UObjectProperty> PropertyIter(OwningUserWidget->GetClass()); PropertyIter; ++PropertyIter)
 			{
-				FObjectProperty* Property = *PropertyIter;
+				UObjectProperty* Property = *PropertyIter;
 				if (Property->PropertyClass && Property->PropertyClass->IsChildOf<WidgetT>())
 				{
 					WidgetT** WidgetPropertyInstance = Property->ContainerPtrToValuePtr<WidgetT*>(OwningUserWidget);

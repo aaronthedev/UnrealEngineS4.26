@@ -1,11 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreTypes.h"
 #include "Misc/Timespan.h"
 #include "Templates/SharedPointer.h"
-#include "IMediaTimeSource.h"
+
 
 /**
  * Interface for media sample sinks.
@@ -52,17 +52,7 @@ public:
 
 
 /** Type definition for audio sample sink. */
-class FMediaAudioSampleSink : public TMediaSampleSink<class IMediaAudioSample>
-{
-public:
-	/**
-	 * Get last sampled current audio timestamp being played
-	 */
-	virtual FMediaTimeStampSample GetAudioTime() const = 0;
-	virtual void InvalidateAudioTime() = 0;
-
-	virtual bool CanAcceptSamples(int32 NumSamples) const = 0;
-};
+typedef TMediaSampleSink<class IMediaAudioSample> FMediaAudioSampleSink;
 
 /** Type definition for binary sample sink. */
 typedef TMediaSampleSink<class IMediaBinarySample> FMediaBinarySampleSink;

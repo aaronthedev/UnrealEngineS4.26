@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DisplayClusterProjectionModule.h"
 
@@ -7,19 +7,12 @@
 
 #include "Policy/Camera/DisplayClusterProjectionCameraPolicyFactory.h"
 #include "Policy/EasyBlend/DisplayClusterProjectionEasyBlendPolicyFactory.h"
-#include "Policy/VIOSO/DisplayClusterProjectionVIOSOPolicyFactory.h"
 #include "Policy/Simple/DisplayClusterProjectionSimplePolicyFactory.h"
 #include "Policy/MPCDI/DisplayClusterProjectionMPCDIPolicyFactory.h"
 #include "Policy/Manual/DisplayClusterProjectionManualPolicyFactory.h"
-#include "Policy/Domeprojection/DisplayClusterProjectionDomeprojectionPolicyFactory.h"
-
-#include "Policy/Mesh/DisplayClusterProjectionMeshPolicy.h"
 
 #include "IDisplayCluster.h"
 #include "Render/IDisplayClusterRenderManager.h"
-
-#include "Components/SceneComponent.h"
-#include "Components/StaticMeshComponent.h"
 
 
 FDisplayClusterProjectionModule::FDisplayClusterProjectionModule()
@@ -27,33 +20,24 @@ FDisplayClusterProjectionModule::FDisplayClusterProjectionModule()
 	TSharedPtr<IDisplayClusterProjectionPolicyFactory> Factory;
 
 	// Camera projection
-	Factory = MakeShared<FDisplayClusterProjectionCameraPolicyFactory>();
-	ProjectionPolicyFactories.Emplace(DisplayClusterProjectionStrings::projection::Camera, Factory);
+	Factory = MakeShareable(new FDisplayClusterProjectionCameraPolicyFactory);
+	ProjectionPolicyFactories.Emplace(DisplayClusterStrings::projection::Camera, Factory);
 
 	// Simple projection
-	Factory = MakeShared<FDisplayClusterProjectionSimplePolicyFactory>();
-	ProjectionPolicyFactories.Emplace(DisplayClusterProjectionStrings::projection::Simple, Factory);
+	Factory = MakeShareable(new FDisplayClusterProjectionSimplePolicyFactory);
+	ProjectionPolicyFactories.Emplace(DisplayClusterStrings::projection::Simple, Factory);
 
-	// MPCDI and Mesh projection
-	Factory = MakeShared<FDisplayClusterProjectionMPCDIPolicyFactory>();
-	ProjectionPolicyFactories.Emplace(DisplayClusterProjectionStrings::projection::MPCDI, Factory);
-	ProjectionPolicyFactories.Emplace(DisplayClusterProjectionStrings::projection::Mesh,  Factory);
+	// MPCDI projection
+	Factory = MakeShareable(new FDisplayClusterProjectionMPCDIPolicyFactory);
+	ProjectionPolicyFactories.Emplace(DisplayClusterStrings::projection::MPCDI, Factory);
 
 	// EasyBlend projection
-	Factory = MakeShared<FDisplayClusterProjectionEasyBlendPolicyFactory>();
-	ProjectionPolicyFactories.Emplace(DisplayClusterProjectionStrings::projection::EasyBlend, Factory);
-
-	// VIOSO projection
-	Factory = MakeShared<FDisplayClusterProjectionVIOSOPolicyFactory>();
-	ProjectionPolicyFactories.Emplace(DisplayClusterProjectionStrings::projection::VIOSO, Factory);
+	Factory = MakeShareable(new FDisplayClusterProjectionEasyBlendPolicyFactory);
+	ProjectionPolicyFactories.Emplace(DisplayClusterStrings::projection::EasyBlend, Factory);
 
 	// Manual projection
-	Factory = MakeShared<FDisplayClusterProjectionManualPolicyFactory>();
-	ProjectionPolicyFactories.Emplace(DisplayClusterProjectionStrings::projection::Manual, Factory);
-
-	// Domeprojection projection
-	Factory = MakeShared<FDisplayClusterProjectionDomeprojectionPolicyFactory>();
-	ProjectionPolicyFactories.Emplace(DisplayClusterProjectionStrings::projection::Domeprojection, Factory);
+	Factory = MakeShareable(new FDisplayClusterProjectionManualPolicyFactory);
+	ProjectionPolicyFactories.Emplace(DisplayClusterStrings::projection::Manual, Factory);
 
 	UE_LOG(LogDisplayClusterProjection, Log, TEXT("Projection module has been instantiated"));
 }
@@ -107,6 +91,7 @@ void FDisplayClusterProjectionModule::ShutdownModule()
 	}
 }
 
+
 //////////////////////////////////////////////////////////////////////////////////////////////
 // IDisplayClusterProjection
 //////////////////////////////////////////////////////////////////////////////////////////////
@@ -127,30 +112,5 @@ TSharedPtr<IDisplayClusterProjectionPolicyFactory> FDisplayClusterProjectionModu
 	return nullptr;
 }
 
-bool FDisplayClusterProjectionModule::AssignWarpMeshToViewport(const FString& ViewportId, UStaticMeshComponent* MeshComponent, USceneComponent* OriginComponent)
-{
-	TSharedPtr<IDisplayClusterProjectionPolicyFactory> Factory = GetProjectionFactory(DisplayClusterProjectionStrings::projection::Mesh);
-	if (Factory.IsValid())
-	{
-		FDisplayClusterProjectionMPCDIPolicyFactory* MPCDIFactory = static_cast<FDisplayClusterProjectionMPCDIPolicyFactory*>(Factory.Get());
-		if (MPCDIFactory)
-		{
-			TSharedPtr<FDisplayClusterProjectionPolicyBase> ViewportPolicy = MPCDIFactory->GetPolicyByViewport(ViewportId);
-			if (ViewportPolicy.IsValid())
-			{
-				FDisplayClusterProjectionMeshPolicy* MeshPolicy = static_cast<FDisplayClusterProjectionMeshPolicy*>(ViewportPolicy.Get());
-				if (MeshPolicy != nullptr)
-				{
-					if (MeshPolicy->GetWarpType() == FDisplayClusterProjectionMPCDIPolicy::EWarpType::mesh)
-					{
-						return MeshPolicy->AssignWarpMesh(MeshComponent, OriginComponent);
-					}
-				}
-			}
-		}
-	}
 
-	return false;
-}
-
-IMPLEMENT_MODULE(FDisplayClusterProjectionModule, DisplayClusterProjection);
+IMPLEMENT_MODULE(FDisplayClusterProjectionModule, DisplayClusterProjection)

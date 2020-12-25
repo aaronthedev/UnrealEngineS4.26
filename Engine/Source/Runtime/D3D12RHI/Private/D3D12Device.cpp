@@ -1,9 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 D3D12Device.cpp: D3D device RHI implementation.
 =============================================================================*/
 #include "D3D12RHIPrivate.h"
+#include "RHIValidation.h"
+
 
 namespace D3D12RHI
 {
@@ -35,14 +37,13 @@ FD3D12Device::FD3D12Device(FRHIGPUMask InGPUMask, FD3D12Adapter* InAdapter) :
 	GlobalViewHeap(this, InGPUMask),
 	OcclusionQueryHeap(this, D3D12_QUERY_TYPE_OCCLUSION, 65536, 4 /*frames to keep results */ * 1 /*batches per frame*/),
 	TimestampQueryHeap(this, D3D12_QUERY_TYPE_TIMESTAMP, 8192, 4 /*frames to keep results */ * 5 /*batches per frame*/ ),
-#if WITH_PROFILEGPU || D3D12_SUBMISSION_GAP_RECORDER
+#if WITH_PROFILEGPU
 	CmdListExecTimeQueryHeap(this, D3D12_QUERY_HEAP_TYPE_TIMESTAMP, 8192),
 #endif
-	DefaultBufferAllocator(this, FRHIGPUMask::All()), //Note: Cross node buffers are possible 
+	DefaultBufferAllocator(this, InGPUMask), //Note: Cross node buffers are possible 
 	SamplerID(0),
-	DefaultFastAllocator(this, FRHIGPUMask::All(), D3D12_HEAP_TYPE_UPLOAD, 1024 * 1024 * 4),
-	TextureAllocator(this, FRHIGPUMask::All()),
-	GPUProfilingData(this)
+	DefaultFastAllocator(this, InGPUMask, D3D12_HEAP_TYPE_UPLOAD, 1024 * 1024 * 4),
+	TextureAllocator(this, FRHIGPUMask::All())
 {
 	InitPlatformSpecific();
 }
@@ -64,9 +65,6 @@ FD3D12Device::~FD3D12Device()
 	delete CommandListManager;
 	delete CopyCommandListManager;
 	delete AsyncCommandListManager;
-#if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
-	delete BackBufferWriteBarrierTracker;
-#endif // #if PLATFORM_USE_BACKBUFFER_WRITE_TRANSITION_TRACKING
 }
 
 ID3D12Device* FD3D12Device::GetDevice()
@@ -75,20 +73,15 @@ ID3D12Device* FD3D12Device::GetDevice()
 }
 
 #if D3D12_RHI_RAYTRACING
-ID3D12Device5* FD3D12Device::GetDevice5()
+ID3D12Device5* FD3D12Device::GetRayTracingDevice()
 {
-	return GetParentAdapter()->GetD3DDevice5();
-}
-
-ID3D12Device7* FD3D12Device::GetDevice7()
-{
-	return GetParentAdapter()->GetD3DDevice7();
+	return GetParentAdapter()->GetD3DRayTracingDevice();
 }
 #endif // D3D12_RHI_RAYTRACING
 
 FD3D12LinearQueryHeap* FD3D12Device::GetCmdListExecTimeQueryHeap()
 {
-#if WITH_PROFILEGPU || D3D12_SUBMISSION_GAP_RECORDER
+#if WITH_PROFILEGPU
 	return &CmdListExecTimeQueryHeap;
 #else
 	return nullptr;
@@ -107,17 +100,23 @@ void FD3D12Device::CreateCommandContexts()
 
 	const uint32 NumContexts = FTaskGraphInterface::Get().GetNumWorkerThreads() + 1;
 	const uint32 NumAsyncComputeContexts = GEnableAsyncCompute ? 1 : 0;
+	const uint32 TotalContexts = NumContexts + NumAsyncComputeContexts;
 	
 	// We never make the default context free for allocation by the context containers
 	CommandContextArray.Reserve(NumContexts);
 	FreeCommandContexts.Reserve(NumContexts - 1);
 	AsyncComputeContextArray.Reserve(NumAsyncComputeContexts);
 
+	const uint32 DescriptorSuballocationPerContext = GlobalViewHeap.GetTotalSize() / TotalContexts;
+	uint32 CurrentGlobalHeapOffset = 0;
+
 	for (uint32 i = 0; i < NumContexts; ++i)
-	{	
+	{
+		FD3D12SubAllocatedOnlineHeap::SubAllocationDesc SubHeapDesc(&GlobalViewHeap, CurrentGlobalHeapOffset, DescriptorSuballocationPerContext);
+
 		const bool bIsDefaultContext = (i == 0);
-		const bool bIsAsyncComputeContext = false;
-		FD3D12CommandContext* NewCmdContext = GetOwningRHI()->CreateCommandContext(this, bIsDefaultContext, bIsAsyncComputeContext);
+		FD3D12CommandContext* NewCmdContext = GetOwningRHI()->CreateCommandContext(this, SubHeapDesc, bIsDefaultContext);
+		CurrentGlobalHeapOffset += DescriptorSuballocationPerContext;
 
 		// without that the first RHIClear would get a scissor rect of (0,0)-(0,0) which means we get a draw call clear 
 		NewCmdContext->RHISetScissorRect(false, 0, 0, 0, 0);
@@ -132,11 +131,14 @@ void FD3D12Device::CreateCommandContexts()
 	}
 
 	for (uint32 i = 0; i < NumAsyncComputeContexts; ++i)
-	{		
+	{
+		FD3D12SubAllocatedOnlineHeap::SubAllocationDesc SubHeapDesc(&GlobalViewHeap, CurrentGlobalHeapOffset, DescriptorSuballocationPerContext);
+
 		const bool bIsDefaultContext = (i == 0); //-V547
 		const bool bIsAsyncComputeContext = true;
-		FD3D12CommandContext* NewCmdContext = GetOwningRHI()->CreateCommandContext(this, bIsDefaultContext, bIsAsyncComputeContext);
-	
+		FD3D12CommandContext* NewCmdContext = GetOwningRHI()->CreateCommandContext(this, SubHeapDesc, bIsDefaultContext, bIsAsyncComputeContext);
+		CurrentGlobalHeapOffset += DescriptorSuballocationPerContext;
+
 		AsyncComputeContextArray.Add(NewCmdContext);
 	}
 
@@ -153,7 +155,7 @@ bool FD3D12Device::IsGPUIdle()
 	return Fence.IsFenceComplete(Fence.GetLastSignaledFence());
 }
 
-#if (PLATFORM_WINDOWS || PLATFORM_HOLOLENS)
+#if PLATFORM_WINDOWS
 typedef HRESULT(WINAPI *FDXGIGetDebugInterface1)(UINT, REFIID, void **);
 #endif
 
@@ -163,9 +165,7 @@ void FD3D12Device::SetupAfterDeviceCreation()
 {
 	ID3D12Device* Direct3DDevice = GetParentAdapter()->GetD3DDevice();
 
-	GRHISupportsArrayIndexFromAnyShader = true;
-
-#if (PLATFORM_WINDOWS || PLATFORM_HOLOLENS)
+#if PLATFORM_WINDOWS
 	// Check if we're running under GPU capture
 	bool bUnderGPUCapture = false;
 
@@ -202,18 +202,11 @@ void FD3D12Device::SetupAfterDeviceCreation()
 		bUnderGPUCapture = true;
 	}
 #if USE_PIX
-
-	// Only check windows version on PLATFORM_WINDOWS - Hololens can assume windows > 10.0 so the condition would always be true.
-#if PLATFORM_WINDOWS
 	// PIX (note that DXGIGetDebugInterface1 requires Windows 8.1 and up)
-	if (FPlatformMisc::VerifyWindowsVersion(6, 3))
-#endif
+	if (FWindowsPlatformMisc::VerifyWindowsVersion(6, 3))
 	{
 		FDXGIGetDebugInterface1 DXGIGetDebugInterface1FnPtr = nullptr;
 
-#if PLATFORM_HOLOLENS
-		DXGIGetDebugInterface1FnPtr = DXGIGetDebugInterface1;
-#else
 		// CreateDXGIFactory2 is only available on Win8.1+, find it if it exists
 		HMODULE DxgiDLL = LoadLibraryA("dxgi.dll");
 		if (DxgiDLL)
@@ -224,7 +217,6 @@ void FD3D12Device::SetupAfterDeviceCreation()
 #pragma warning(pop)
 			FreeLibrary(DxgiDLL);
 		}
-#endif
 		
 		if (DXGIGetDebugInterface1FnPtr)
 		{
@@ -244,9 +236,9 @@ void FD3D12Device::SetupAfterDeviceCreation()
 
 	if(bUnderGPUCapture)
 	{
-		GDynamicRHI->EnableIdealGPUCaptureOptions(true);
+		GetDynamicRHI<FD3D12DynamicRHI>()->EnableIdealGPUCaptureOptions(true);
 	}
-#endif // (PLATFORM_WINDOWS || PLATFORM_HOLOLENS)
+#endif
 
 	// Init offline descriptor allocators
 	RTVAllocator.Init(Direct3DDevice);
@@ -258,7 +250,7 @@ void FD3D12Device::SetupAfterDeviceCreation()
 #endif
 	SamplerAllocator.Init(Direct3DDevice);
 
-	GlobalSamplerHeap.Init(NUM_SAMPLER_DESCRIPTORS);
+	GlobalSamplerHeap.Init(NUM_SAMPLER_DESCRIPTORS, FD3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
 
 	// This value can be tuned on a per app basis. I.e. most apps will never run into descriptor heap pressure so
 	// can make this global heap smaller
@@ -282,7 +274,7 @@ void FD3D12Device::SetupAfterDeviceCreation()
 	}
 	check(NumGlobalViewDesc <= MaximumSupportedHeapSize);
 		
-	GlobalViewHeap.Init(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, NumGlobalViewDesc);
+	GlobalViewHeap.Init(NumGlobalViewDesc, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 	// Init the occlusion and timestamp query heaps
 	OcclusionQueryHeap.Init();
@@ -299,8 +291,6 @@ void FD3D12Device::SetupAfterDeviceCreation()
 	CreateCommandContexts();
 
 	UpdateMSAASettings();
-
-	GPUProfilingData.Init();
 }
 
 void FD3D12Device::UpdateConstantBufferPageProperties()
@@ -339,30 +329,6 @@ void FD3D12Device::UpdateMSAASettings()
 
 void FD3D12Device::Cleanup()
 {
-	const auto ValidateCommandQueue = [this](ED3D12CommandQueueType QueueType, const TCHAR* Name)
-	{
-		ID3D12CommandQueue* CommandQueue = GetD3DCommandQueue(QueueType);
-		if (CommandQueue)
-		{
-			CommandQueue->AddRef();
-			int RefCount = CommandQueue->Release();
-			if (RefCount < 0)
-			{
-				UE_LOG(LogD3D12RHI, Error, TEXT("%s CommandQueue is already destroyed  (Refcount %d)!"), Name, RefCount);
-			}
-			else if (RefCount > 2)
-			{
-				UE_LOG(LogD3D12RHI, Warning, TEXT("%s CommandQueue is leaking (Refcount %d)"), Name, RefCount);
-			}
-			ensure(RefCount >= 1);
-		}
-	};
-
-	// Validate that all the D3D command queues are still valid (temp code to check for a shutdown crash)
-	ValidateCommandQueue(ED3D12CommandQueueType::Default, TEXT("Direct"));
-	ValidateCommandQueue(ED3D12CommandQueueType::Copy, TEXT("Copy"));
-	ValidateCommandQueue(ED3D12CommandQueueType::Async, TEXT("Async"));
-
 	// Wait for the command queues to flush
 	CommandListManager->WaitForCommandQueueFlush();
 	CopyCommandListManager->WaitForCommandQueueFlush();
@@ -374,9 +340,6 @@ void FD3D12Device::Cleanup()
 
 	ReleasePooledUniformBuffers();
 
-	// Flush all pending deletes before destroying the device or any command contexts.
-	FRHIResource::FlushPendingDeletes();
-
 	// Delete array index 0 (the default context) last
 	for (int32 i = CommandContextArray.Num() - 1; i >= 0; i--)
 	{
@@ -384,13 +347,8 @@ void FD3D12Device::Cleanup()
 		CommandContextArray[i] = nullptr;
 	}
 
-	// Delete array index 0 last
-	for (int32 i = AsyncComputeContextArray.Num() - 1; i >= 0; i--)
-	{
-		delete AsyncComputeContextArray[i];
-		AsyncComputeContextArray[i] = nullptr;
-	}
-
+	// Flush all pending deletes before destroying the device.
+	FRHIResource::FlushPendingDeletes();
 
 	/*
 	// Cleanup thread resources
@@ -410,24 +368,21 @@ void FD3D12Device::Cleanup()
 	TimestampQueryHeap.Destroy();
 
 	D3DX12Residency::DestroyResidencyManager(ResidencyManager);
-
-	// Release buffered timestamp queries
-	GPUProfilingData.FrameTiming.ReleaseResource();
 }
 
-FD3D12CommandListManager* FD3D12Device::GetCommandListManager(ED3D12CommandQueueType InQueueType) const
+ID3D12CommandQueue* FD3D12Device::GetD3DCommandQueue(ED3D12CommandQueueType InQueueType) const
 {
 	switch (InQueueType)
 	{
 	case ED3D12CommandQueueType::Default:
 		check(CommandListManager->GetQueueType() == InQueueType);
-		return CommandListManager;
+		return CommandListManager->GetD3DCommandQueue();
 	case ED3D12CommandQueueType::Async:
 		check(AsyncCommandListManager->GetQueueType() == InQueueType);
-		return AsyncCommandListManager;
+		return AsyncCommandListManager->GetD3DCommandQueue();
 	case ED3D12CommandQueueType::Copy:
 		check(CopyCommandListManager->GetQueueType() == InQueueType);
-		return CopyCommandListManager;
+		return CopyCommandListManager->GetD3DCommandQueue();
 	default:
 		check(false);
 		return nullptr;
@@ -436,12 +391,29 @@ FD3D12CommandListManager* FD3D12Device::GetCommandListManager(ED3D12CommandQueue
 
 void FD3D12Device::RegisterGPUWork(uint32 NumPrimitives, uint32 NumVertices)
 {
-	GetGPUProfiler().RegisterGPUWork(NumPrimitives, NumVertices);
+	GetParentAdapter()->GetGPUProfiler().RegisterGPUWork(NumPrimitives, NumVertices);
 }
 
 void FD3D12Device::RegisterGPUDispatch(FIntVector GroupCount)
 {
-	GetGPUProfiler().RegisterGPUDispatch(GroupCount);
+	GetParentAdapter()->GetGPUProfiler().RegisterGPUDispatch(GroupCount);
+}
+
+void FD3D12Device::PushGPUEvent(const TCHAR* Name, FColor Color)
+{
+	GetParentAdapter()->GetGPUProfiler().PushEvent(Name, Color);
+}
+
+#if NV_AFTERMATH
+void FD3D12Device::PushGPUEvent(const TCHAR* Name, FColor Color, GFSDK_Aftermath_ContextHandle Context)
+{
+	GetParentAdapter()->GetGPUProfiler().PushEvent(Name, Color, Context);
+}
+#endif
+
+void FD3D12Device::PopGPUEvent()
+{
+	GetParentAdapter()->GetGPUProfiler().PopEvent();
 }
 
 void FD3D12Device::BlockUntilIdle()

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "VPViewportTickableActorBase.h"
 
@@ -66,17 +66,12 @@ void AVPViewportTickableActorBase::Destroyed()
 	Super::Destroyed();
 }
 
-void AVPViewportTickableActorBase::EditorLockLocation(bool bSetLockLocation)
-{
-#if WITH_EDITOR
-	bLockLocation = bSetLockLocation;
-#endif
-}
 
 void AVPViewportTickableActorBase::EditorTick_Implementation(float DeltaSeconds)
 {
 
 }
+
 
 void AVPViewportTickableActorBase::EditorDestroyed_Implementation()
 {

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -24,32 +24,31 @@ class FEditorTickableLevelBounds
  * Updates bounding box automatically based on actors transformation changes or holds fixed user defined bounding box
  * Uses only actors where AActor::IsLevelBoundsRelevant() == true
  */
-UCLASS(hidecategories=(Advanced, Collision, Display, Rendering, Physics, Input), showcategories=("Input|MouseInput", "Input|TouchInput"))
-class ENGINE_API ALevelBounds
+UCLASS(hidecategories=(Advanced, Collision, Display, Rendering, Physics, Input), showcategories=("Input|MouseInput", "Input|TouchInput"), MinimalAPI)
+class ALevelBounds 
 	: public AActor
 	, public FEditorTickableLevelBounds 
 {
 	GENERATED_UCLASS_BODY()
 		
-	/** Bounding box for the level bounds. */
-	UPROPERTY(EditAnywhere, Category = LevelBounds)
-	class UBoxComponent* BoxComponent;
-
 	/** Whether to automatically update actor bounds based on all relevant actors bounds belonging to the same level */
 	UPROPERTY(EditAnywhere, Category=LevelBounds)
 	bool bAutoUpdateBounds;
 
 	//~ Begin UObject Interface
 	virtual void PostLoad() override;
+#if WITH_EDITOR // because of FEditorTickableLevelBounds
+	virtual bool IsDestructionThreadSafe() const override { return false; }
+#endif
 	//~ End UObject Interface
 	
 	//~ Begin AActor Interface.
-	virtual FBox GetComponentsBoundingBox(bool bNonColliding = false, bool bIncludeFromChildActors = false) const override;
+	virtual FBox GetComponentsBoundingBox(bool bNonColliding = false) const override;
 	virtual bool IsLevelBoundsRelevant() const override { return false; }
 	//~ End AActor Interface.
 
 	/** @return Bounding box which includes all relevant actors bounding boxes belonging to specified level */
-	static FBox CalculateLevelBounds(ULevel* InLevel);
+	ENGINE_API static FBox CalculateLevelBounds(ULevel* InLevel);
 
 #if WITH_EDITOR
 	virtual void PostEditUndo() override;
@@ -62,12 +61,12 @@ class ENGINE_API ALevelBounds
 	void MarkLevelBoundsDirty();
 
 	/** @return True if there were no actors contributing to bounds and we are currently using the default bounds */
-	bool IsUsingDefaultBounds() const;
+	ENGINE_API bool IsUsingDefaultBounds() const;
 
 	/** Update level bounds immediately so the bounds are accurate when returning. Use only when needed because updating the bounds is slow */
-	void UpdateLevelBoundsImmediately();
+	ENGINE_API void UpdateLevelBoundsImmediately();
 	
-protected:
+private:
 	/** FTickableGameObject interface */
 	virtual void Tick(float DeltaTime) override;
 	virtual UWorld* GetTickableGameObjectWorld() const override { return GetWorld(); }

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "SEditToolMenuDialog.h"
@@ -913,7 +913,7 @@ void SEditToolMenuDialog::SaveSettingsToDisk()
 FReply SEditToolMenuDialog::UndoAllChanges()
 {
 	UToolMenus* ToolMenus = UToolMenus::Get();
-	for (const FName& HierarchyMenuName : MenuNames)
+	for (const FName HierarchyMenuName : MenuNames)
 	{
 		ToolMenus->RemoveCustomization(HierarchyMenuName);
 	}

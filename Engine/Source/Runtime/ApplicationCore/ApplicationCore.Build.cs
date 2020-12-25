@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 
@@ -26,7 +26,8 @@ public class ApplicationCore : ModuleRules
 			}
 		);
 
-		if ((Target.IsInPlatformGroup(UnrealPlatformGroup.Windows)))
+		if ((Target.Platform == UnrealTargetPlatform.Win64) ||
+			(Target.Platform == UnrealTargetPlatform.Win32))
 		{
 			AddEngineThirdPartyPrivateStaticDependencies(Target,
 				"XInput"
@@ -43,8 +44,7 @@ public class ApplicationCore : ModuleRules
 			);
 			if (Target.bBuildEditor == true)
 			{
-				string SDKROOT = Utils.RunLocalProcessAndReturnStdOut("/usr/bin/xcrun", "--sdk macosx --show-sdk-path");
-				PublicAdditionalLibraries.Add(SDKROOT + "/System/Library/PrivateFrameworks/MultitouchSupport.framework/Versions/Current/MultitouchSupport.tbd");
+				PublicAdditionalLibraries.Add("/System/Library/PrivateFrameworks/MultitouchSupport.framework/Versions/Current/MultitouchSupport");
 			}
 		}
 		else if (Target.IsInPlatformGroup(UnrealPlatformGroup.Linux))
@@ -68,13 +68,10 @@ public class ApplicationCore : ModuleRules
 
 			// export ApplicationCore symbols for embedded Dlls
 			ModuleSymbolVisibility = ModuleRules.SymbolVisibility.VisibileForDll;
-			
-			//Need to add this as BackgroundHTTP files can end up doing work directly from our AppDelegate in iOS and thus we need acccess to correct file locations to save these very early.
-			PrivateDependencyModuleNames.Add("BackgroundHTTPFileHash");
 		}
 		else if (Target.Platform == UnrealTargetPlatform.Android || Target.Platform == UnrealTargetPlatform.Lumin)
 		{
-			PrivateIncludePathModuleNames.AddRange(
+			PrivateDependencyModuleNames.AddRange(
 				new string[] {
 					"Launch"
 				}

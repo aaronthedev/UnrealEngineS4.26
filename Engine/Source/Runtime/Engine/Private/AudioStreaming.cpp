@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 AudioStreaming.cpp: Implementation of audio streaming classes.
@@ -68,7 +68,7 @@ void FAsyncStreamDerivedChunkWorker::DoWork()
 
 	TArray<uint8> DerivedChunkData;
 
-	if (GetDerivedDataCacheRef().GetSynchronous(*DerivedDataKey, DerivedChunkData, TEXT("Unknown Audio"_SV)))
+	if (GetDerivedDataCacheRef().GetSynchronous(*DerivedDataKey, DerivedChunkData))
 	{
 		FMemoryReader Ar(DerivedChunkData, true);
 		int32 ChunkSize = 0;
@@ -324,7 +324,7 @@ void FStreamingWaveData::BeginPendingRequests(const TArray<uint32>& IndicesToLoa
 			// returns.
 			PendingChunkChangeRequestStatus.Increment();
 
-			EAsyncIOPriorityAndFlags AsyncIOPriority = AIOP_High | AIOP_FLAG_DONTCACHE;
+			EAsyncIOPriorityAndFlags AsyncIOPriority = AIOP_High;
 
 			// Load and decompress async.
 #if WITH_EDITORONLY_DATA
@@ -355,8 +355,8 @@ void FStreamingWaveData::BeginPendingRequests(const TArray<uint32>& IndicesToLoa
 				check(!ChunkStorage->Data); // Make sure we do not already have data
 				check(Chunk.BulkData.GetBulkDataSize() == ChunkStorage->DataSize); // Make sure that the bulkdata size matches
 				
-				FBulkDataIORequestCallBack AsyncFileCallBack =
-					[this, LoadedChunkStorageIndex](bool bWasCancelled, IBulkDataIORequest* Req)
+				FAsyncFileCallBack AsyncFileCallBack =
+					[this, LoadedChunkStorageIndex](bool bWasCancelled, IAsyncReadRequest* Req)
 				{
 					AudioStreamingManager->OnAsyncFileCallback(this, LoadedChunkStorageIndex, Req);
 
@@ -491,7 +491,7 @@ FLegacyAudioStreamingManager::~FLegacyAudioStreamingManager()
 {
 }
 
-void FLegacyAudioStreamingManager::OnAsyncFileCallback(FStreamingWaveData* StreamingWaveData, int32 LoadedAudioChunkIndex, IBulkDataIORequest* ReadRequest)
+void FLegacyAudioStreamingManager::OnAsyncFileCallback(FStreamingWaveData* StreamingWaveData, int32 LoadedAudioChunkIndex, IAsyncReadRequest* ReadRequest)
 {
 	// Check to see if we successfully managed to load anything
 	uint8* Mem = ReadRequest->GetReadResults();
@@ -709,7 +709,7 @@ void FLegacyAudioStreamingManager::NotifyLevelOffset(class ULevel* Level, const 
 
 void FLegacyAudioStreamingManager::AddStreamingSoundWave(USoundWave* SoundWave)
 {
-	if (FPlatformProperties::SupportsAudioStreaming() && SoundWave->IsStreaming(nullptr))
+	if (FPlatformProperties::SupportsAudioStreaming() && SoundWave->IsStreaming())
 	{
 		FScopeLock Lock(&CriticalSection);
 
@@ -873,7 +873,7 @@ void FLegacyAudioStreamingManager::AddStreamingSoundSource(FSoundSource* SoundSo
 void FLegacyAudioStreamingManager::RemoveStreamingSoundSource(FSoundSource* SoundSource)
 {
 	const FWaveInstance* WaveInstance = SoundSource->GetWaveInstance();
-	if (WaveInstance && WaveInstance->WaveData && WaveInstance->WaveData->IsStreaming(nullptr) && !WaveInstance->WaveData->ShouldUseStreamCaching())
+	if (WaveInstance && WaveInstance->WaveData && WaveInstance->WaveData->IsStreaming() && !WaveInstance->WaveData->ShouldUseStreamCaching())
 	{
 		FScopeLock Lock(&CriticalSection);
 
@@ -890,13 +890,13 @@ bool FLegacyAudioStreamingManager::IsManagedStreamingSoundSource(const FSoundSou
 	return StreamingSoundSources.FindByKey(SoundSource) != NULL;
 }
 
-bool FLegacyAudioStreamingManager::RequestChunk(USoundWave* SoundWave, uint32 ChunkIndex, TFunction<void(EAudioChunkLoadResult)> OnLoadCompleted, ENamedThreads::Type ThreadToCallOnLoadCompletedOn, bool bForImmediatePlayback)
+bool FLegacyAudioStreamingManager::RequestChunk(USoundWave* SoundWave, uint32 ChunkIndex, TFunction<void(EAudioChunkLoadResult)> OnLoadCompleted, ENamedThreads::Type ThreadToCallOnLoadCompletedOn)
 {
 	UE_LOG(LogAudio, Warning, TEXT("RequestChunk is only supported in Stream Caching."));
 	return false;
 }
 
-FAudioChunkHandle FLegacyAudioStreamingManager::GetLoadedChunk(const USoundWave* SoundWave, uint32 ChunkIndex, bool bBlockForLoad, bool bForImmediatePlayback) const
+FAudioChunkHandle FLegacyAudioStreamingManager::GetLoadedChunk(const USoundWave* SoundWave, uint32 ChunkIndex, bool bBlockForLoad) const
 {
 	// Check for the spoof of failing to load a stream chunk
 	if (SpoofFailedStreamChunkLoad > 0)
@@ -920,7 +920,7 @@ FAudioChunkHandle FLegacyAudioStreamingManager::GetLoadedChunk(const USoundWave*
 				if (WaveData->LoadedChunks[Index].Index == ChunkIndex)
 				{
 					CriticalSection.Unlock();
-					return BuildChunkHandle(WaveData->LoadedChunks[Index].Data, WaveData->LoadedChunks[Index].AudioDataSize, SoundWave, SoundWave->GetFName(), ChunkIndex, InvalidAudioStreamCacheLookupID);
+					return BuildChunkHandle(WaveData->LoadedChunks[Index].Data, WaveData->LoadedChunks[Index].AudioDataSize, SoundWave, SoundWave->GetFName(), ChunkIndex);
 				}
 			}
 		}
@@ -941,11 +941,6 @@ FWaveRequest& FLegacyAudioStreamingManager::GetWaveRequest(USoundWave* SoundWave
 		WaveRequest->bPrioritiseRequest = false;
 	}
 	return *WaveRequest;
-}
-
-FString FLegacyAudioStreamingManager::GenerateMemoryReport()
-{
-	return FString(TEXT("Only supported when stream caching is enabled.\n"));
 }
 
 uint64 FLegacyAudioStreamingManager::TrimMemory(uint64 NumBytesToFree)

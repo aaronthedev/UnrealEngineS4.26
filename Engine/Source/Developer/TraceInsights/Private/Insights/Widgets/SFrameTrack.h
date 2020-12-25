@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -129,7 +129,7 @@ public:
 	virtual FCursorReply OnCursorQuery(const FGeometry& MyGeometry, const FPointerEvent& CursorEvent) const override;
 
 protected:
-	TSharedRef<FFrameTrackSeries> FindOrAddSeries(int32 FrameType);
+	TSharedPtr<FFrameTrackSeries> FindOrAddSeries(int32 FrameType);
 	TSharedPtr<FFrameTrackSeries> FindSeries(int32 FrameType) const;
 	void UpdateState();
 
@@ -152,7 +152,6 @@ protected:
 	void ContextMenu_AutoZoom_Execute();
 	bool ContextMenu_AutoZoom_CanExecute();
 	bool ContextMenu_AutoZoom_IsChecked();
-	void AutoZoom();
 
 	/** Binds our UI commands to delegates. */
 	void BindCommands();
@@ -180,9 +179,6 @@ protected:
 	bool bShowGameFrames;
 	bool bShowRenderingFrames;
 	bool bIsAutoZoomEnabled;
-	float AutoZoomViewportPos;
-	float AutoZoomViewportScale;
-	float AutoZoomViewportSize;
 
 	uint64 AnalysisSyncNextTimestamp;
 

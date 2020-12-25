@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -22,10 +22,10 @@ struct FMessageAddress;
 class IMessagingModule
 	: public IModuleInterface
 {
-	using FMessageBusWeakPtr = TWeakPtr<IMessageBus, ESPMode::ThreadSafe>;
 
 public:
-	DECLARE_MULTICAST_DELEGATE_OneParam(FOnMessageBusStartupOrShutdown, FMessageBusWeakPtr);
+	// delegate type, helper macro cannot be used due to comma in expansion can't be avoided with extra parenthesis.
+	typedef TMulticastDelegate<void, TWeakPtr<IMessageBus, ESPMode::ThreadSafe>> FOnMessageBusStartupOrShutdown;
 	
 	/** Event triggered when a message bus is started. */
 	virtual FOnMessageBusStartupOrShutdown& OnMessageBusStartup() = 0;

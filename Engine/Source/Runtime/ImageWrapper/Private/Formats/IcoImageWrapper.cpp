@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IcoImageWrapper.h"
 
@@ -83,7 +83,7 @@ void FIcoImageWrapper::Uncompress( const ERGBFormat InFormat, const int32 InBitD
 }
 
 
-bool FIcoImageWrapper::SetCompressed( const void* InCompressedData, int64 InCompressedSize )
+bool FIcoImageWrapper::SetCompressed( const void* InCompressedData, int32 InCompressedSize )
 {
 	bool bResult = FImageWrapperBase::SetCompressed( InCompressedData, InCompressedSize );
 
@@ -91,14 +91,14 @@ bool FIcoImageWrapper::SetCompressed( const void* InCompressedData, int64 InComp
 }
 
 
-bool FIcoImageWrapper::GetRaw( const ERGBFormat InFormat, int32 InBitDepth, TArray64<uint8>& OutRawData )
+bool FIcoImageWrapper::GetRaw( const ERGBFormat InFormat, int32 InBitDepth, const TArray<uint8>*& OutRawData )
 {
 	LastError.Empty();
 	Uncompress(InFormat, InBitDepth);
 
 	if (LastError.IsEmpty())
 	{
-		SubImageWrapper->MoveRawData(OutRawData);
+		OutRawData = &SubImageWrapper->GetRawData();
 	}
 
 	return LastError.IsEmpty();

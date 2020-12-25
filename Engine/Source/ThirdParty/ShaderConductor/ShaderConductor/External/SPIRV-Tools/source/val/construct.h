@@ -116,9 +116,7 @@ class Construct {
   //  * branch to the associated merge
   //  * branch to the merge or continue of the innermost loop containing the
   //  selection
-  //  * branch to the merge block of the innermost switch containing the
-  //  selection
-  //  Loop:
+  // Loop:
   //  * branch to the associated merge or continue
   // Continue:
   //  * back-edge to the associated loop header

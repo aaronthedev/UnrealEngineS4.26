@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,8 +7,8 @@
 #include "UObject/Object.h"
 #include "FbxSceneImportOptions.generated.h"
 
-UENUM(BlueprintType)
-enum class EFBXSceneOptionsCreateHierarchyType : uint8
+UENUM()
+enum EFBXSceneOptionsCreateHierarchyType
 {
 	FBXSOCHT_CreateLevelActors UMETA(DisplayName = "Create Level Actors", ToolTip = "Create an actor for every node in the fbx hierarchy. No reimport of the hierarchy."),
 	FBXSOCHT_CreateActorComponents UMETA(DisplayName = "Create one Actor with Components", ToolTip = "Create one actor and a component for every node in the fbx hierarchy. No reimport of the hierarchy."),
@@ -19,7 +19,7 @@ enum class EFBXSceneOptionsCreateHierarchyType : uint8
 
 
 
-UCLASS(BlueprintType, config = EditorPerProjectUserSettings, HideCategories=Object, MinimalAPI)
+UCLASS(config = EditorPerProjectUserSettings, HideCategories=Object, MinimalAPI)
 class UFbxSceneImportOptions : public UObject
 {
 	GENERATED_UCLASS_BODY()
@@ -44,7 +44,7 @@ class UFbxSceneImportOptions : public UObject
 
 	/** Choose if you want to generate the scene hierarchy with normal level actors, one actor with multiple components, or one blueprint asset with multiple components. */
 	UPROPERTY(EditAnywhere, config, category = ImportOptions)
-	EFBXSceneOptionsCreateHierarchyType HierarchyType;
+	TEnumAsByte<enum EFBXSceneOptionsCreateHierarchyType> HierarchyType;
 
 	/** Whether to force the front axis to be align with X instead of -Y. */
 	UPROPERTY(EditAnywhere, config, category = ImportOptions)

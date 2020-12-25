@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithLightImporter.h"
 
@@ -8,7 +8,6 @@
 #include "DatasmithImportOptions.h"
 #include "DatasmithMaterialExpressions.h"
 #include "DatasmithSceneFactory.h"
-#include "Utility/DatasmithImporterUtils.h"
 
 #include "ObjectTemplates/DatasmithAreaLightActorTemplate.h"
 #include "ObjectTemplates/DatasmithLightComponentTemplate.h"
@@ -107,12 +106,6 @@ namespace
 
 		return LightActorType;
 	}
-
-	UTextureLightProfile* GetIesTexture(const TSharedRef< IDatasmithLightActorElement >& LightElement, FDatasmithAssetsImportContext& AssetsContext)
-	{
-		UTexture* Texture = FDatasmithImporterUtils::FindAsset<UTexture>(AssetsContext, LightElement->GetIesTexturePathName());
-		return Cast<UTextureLightProfile>(Texture);
-	}
 }
 
 AActor* FDatasmithLightImporter::ImportLightActor( const TSharedRef< IDatasmithLightActorElement >& LightElement, FDatasmithImportContext& ImportContext )
@@ -121,6 +114,8 @@ AActor* FDatasmithLightImporter::ImportLightActor( const TSharedRef< IDatasmithL
 	{
 		return nullptr;
 	}
+
+	CreateIESTexture( ImportContext, LightElement );
 
 	AActor* ImportedLightActor = nullptr;
 	UClass* LightActorClass = GetActorClassForLightActorElement( LightElement );
@@ -167,7 +162,7 @@ AActor* FDatasmithLightImporter::ImportLightActor( const TSharedRef< IDatasmithL
 				return nullptr;
 			}
 
-			SetupLightComponent( DirectionalLight->GetLightComponent(), LightElement, ImportContext.AssetsContext );
+			SetupLightComponent( DirectionalLight->GetLightComponent(), LightElement, *ImportContext.AssetsContext.MaterialsFinalPackage->GetPathName(), *ImportContext.AssetsContext.LightPackage->GetPathName() );
 
 			ImportedLightActor = DirectionalLight;
 		}
@@ -180,7 +175,8 @@ AActor* FDatasmithLightImporter::ImportLightActor( const TSharedRef< IDatasmithL
 				return nullptr;
 			}
 
-			SetupSpotLightComponent( Cast< USpotLightComponent >( SpotLight->GetLightComponent() ), StaticCastSharedRef< IDatasmithSpotLightElement >( LightElement ), ImportContext.AssetsContext );
+			SetupSpotLightComponent( Cast< USpotLightComponent >( SpotLight->GetLightComponent() ), StaticCastSharedRef< IDatasmithSpotLightElement >( LightElement ),
+				*ImportContext.AssetsContext.LightPackage->GetPathName(), *ImportContext.AssetsContext.MaterialsFinalPackage->GetPathName() );
 
 			ImportedLightActor = SpotLight;
 		}
@@ -193,7 +189,8 @@ AActor* FDatasmithLightImporter::ImportLightActor( const TSharedRef< IDatasmithL
 				return nullptr;
 			}
 
-			SetupPointLightComponent( Cast< UPointLightComponent >( PointLight->GetLightComponent() ), StaticCastSharedRef< IDatasmithPointLightElement >( LightElement ), ImportContext.AssetsContext );
+			SetupPointLightComponent( Cast< UPointLightComponent >( PointLight->GetLightComponent() ), StaticCastSharedRef< IDatasmithPointLightElement >( LightElement ),
+				*ImportContext.AssetsContext.LightPackage->GetPathName(), *ImportContext.AssetsContext.MaterialsFinalPackage->GetPathName() );
 
 			ImportedLightActor = PointLight;
 		}
@@ -207,23 +204,25 @@ AActor* FDatasmithLightImporter::ImportLightActor( const TSharedRef< IDatasmithL
 	return ImportedLightActor;
 }
 
-USceneComponent* FDatasmithLightImporter::ImportLightComponent( const TSharedRef< IDatasmithLightActorElement >& LightElement, FDatasmithImportContext& ImportContext, UObject* Outer, FDatasmithActorUniqueLabelProvider& UniqueNameProvider )
+USceneComponent* FDatasmithLightImporter::ImportLightComponent( const TSharedRef< IDatasmithLightActorElement >& LightElement, FDatasmithImportContext& ImportContext, UObject* Outer )
 {
+	CreateIESTexture( ImportContext, LightElement );
+
 	USceneComponent* LightComponent = nullptr;
 
 	if ( LightElement->IsA(EDatasmithElementType::AreaLight) )
 	{
 		TSharedRef< IDatasmithAreaLightElement > AreaLightElement = StaticCastSharedRef< IDatasmithAreaLightElement >( LightElement );
-		LightComponent = ImportAreaLightComponent( AreaLightElement, ImportContext, Outer, UniqueNameProvider );
+		LightComponent = ImportAreaLightComponent( AreaLightElement, ImportContext, Outer );
 	}
 	else if ( LightElement->IsA( EDatasmithElementType::LightmassPortal ) )
 	{
 		TSharedRef< IDatasmithLightmassPortalElement > LightmassPortalElement = StaticCastSharedRef< IDatasmithLightmassPortalElement >( LightElement );
-		LightComponent = ImportLightmassPortalComponent( LightmassPortalElement, ImportContext, Outer, UniqueNameProvider );
+		LightComponent = ImportLightmassPortalComponent( LightmassPortalElement, ImportContext, Outer );
 	}
 	else if ( LightElement->IsA( EDatasmithElementType::DirectionalLight ) )
 	{
-		USceneComponent* SceneComponent = FDatasmithActorImporter::ImportSceneComponent( UDirectionalLightComponent::StaticClass(), LightElement, ImportContext, Outer, UniqueNameProvider );
+		USceneComponent* SceneComponent = FDatasmithActorImporter::ImportSceneComponent( UDirectionalLightComponent::StaticClass(), LightElement, ImportContext, Outer );
 
 		UDirectionalLightComponent* DirectionalLightComponent = Cast< UDirectionalLightComponent >( SceneComponent );
 
@@ -232,7 +231,7 @@ USceneComponent* FDatasmithLightImporter::ImportLightComponent( const TSharedRef
 			return nullptr;
 		}
 
-		SetupLightComponent( DirectionalLightComponent, LightElement, ImportContext.AssetsContext );
+		SetupLightComponent( DirectionalLightComponent, LightElement, *ImportContext.AssetsContext.MaterialsFinalPackage->GetPathName(), *ImportContext.AssetsContext.LightPackage->GetPathName() );
 
 		LightComponent = DirectionalLightComponent;
 	}
@@ -248,7 +247,7 @@ USceneComponent* FDatasmithLightImporter::ImportLightComponent( const TSharedRef
 
 		if ( LightElement->IsA( EDatasmithElementType::SpotLight ) )
 		{
-			USceneComponent* SceneComponent = FDatasmithActorImporter::ImportSceneComponent( USpotLightComponent::StaticClass(), LightElement, ImportContext, Outer, UniqueNameProvider );
+			USceneComponent* SceneComponent = FDatasmithActorImporter::ImportSceneComponent( USpotLightComponent::StaticClass(), LightElement, ImportContext, Outer );
 
 			USpotLightComponent* SpotLightComponent = Cast< USpotLightComponent >( SceneComponent );
 
@@ -258,13 +257,13 @@ USceneComponent* FDatasmithLightImporter::ImportLightComponent( const TSharedRef
 			}
 
 			TSharedRef< IDatasmithSpotLightElement > SpotLightElement = StaticCastSharedRef< IDatasmithSpotLightElement >( LightElement );
-			SetupSpotLightComponent( SpotLightComponent, SpotLightElement, ImportContext.AssetsContext );
+			SetupSpotLightComponent( SpotLightComponent, SpotLightElement, *ImportContext.AssetsContext.LightPackage->GetPathName(), *ImportContext.AssetsContext.MaterialsFinalPackage->GetPathName() );
 
 			LightComponent = SpotLightComponent;
 		}
 		else if ( LightElement->IsA( EDatasmithElementType::PointLight ) )
 		{
-			USceneComponent* SceneComponent = FDatasmithActorImporter::ImportSceneComponent( UPointLightComponent::StaticClass(), LightElement, ImportContext, Outer, UniqueNameProvider );
+			USceneComponent* SceneComponent = FDatasmithActorImporter::ImportSceneComponent( UPointLightComponent::StaticClass(), LightElement, ImportContext, Outer );
 
 			UPointLightComponent* PointLightComponent = Cast< UPointLightComponent >( SceneComponent );
 
@@ -273,7 +272,8 @@ USceneComponent* FDatasmithLightImporter::ImportLightComponent( const TSharedRef
 				return nullptr;
 			}
 
-			SetupPointLightComponent( PointLightComponent, StaticCastSharedRef< IDatasmithPointLightElement >( LightElement ), ImportContext.AssetsContext );
+			SetupPointLightComponent( PointLightComponent, StaticCastSharedRef< IDatasmithPointLightElement >( LightElement ),
+				*ImportContext.AssetsContext.LightPackage->GetPathName(), *ImportContext.AssetsContext.MaterialsFinalPackage->GetPathName() );
 
 			LightComponent = PointLightComponent;
 		}
@@ -289,7 +289,7 @@ USceneComponent* FDatasmithLightImporter::ImportLightComponent( const TSharedRef
 	return LightComponent;
 }
 
-void FDatasmithLightImporter::SetTextureLightProfile( const TSharedRef< IDatasmithLightActorElement >& LightElement, UDatasmithLightComponentTemplate* LightComponentTemplate, FDatasmithAssetsImportContext& AssetsContext )
+void FDatasmithLightImporter::SetTextureLightProfile( const TSharedRef< IDatasmithLightActorElement >& LightElement, UDatasmithLightComponentTemplate* LightComponentTemplate, const TCHAR* LightsFolderPath )
 {
 	if ( !LightComponentTemplate )
 	{
@@ -300,11 +300,57 @@ void FDatasmithLightImporter::SetTextureLightProfile( const TSharedRef< IDatasmi
 	{
 		LightComponentTemplate->bUseIESBrightness = LightElement->GetUseIesBrightness();
 		LightComponentTemplate->IESBrightnessScale = LightElement->GetIesBrightnessScale();
-		LightComponentTemplate->IESTexture = GetIesTexture(LightElement, AssetsContext);
+
+		if ( FCString::Strlen( LightElement->GetIesFile() ) > 0 && FPaths::FileExists( LightElement->GetIesFile() ) )
+		{
+			UTextureLightProfile* LightProfile = FindTextureLightProfile( LightElement, LightsFolderPath );
+
+			if ( LightProfile )
+			{
+				LightComponentTemplate->IESTexture = LightProfile;
+			}
+		}
 	}
 }
 
-void FDatasmithLightImporter::SetupLightComponent( ULightComponent* LightComponent, const TSharedPtr< IDatasmithLightActorElement >& LightElement, FDatasmithAssetsImportContext& AssetsContext )
+UTextureLightProfile* FDatasmithLightImporter::FindTextureLightProfile( const TSharedRef< IDatasmithLightActorElement >& LightElement, const TCHAR* LightsFolderPath )
+{
+	UTextureLightProfile* IESTexture = nullptr;
+
+	if ( FCString::Strlen( LightElement->GetIesFile() ) > 0 && FPaths::FileExists( LightElement->GetIesFile() ) )
+	{
+		FString TextureName = FPaths::GetBaseFilename(FString(LightElement->GetIesFile())) + TEXT("_IES");
+		TextureName = ObjectTools::SanitizeObjectName(TextureName);
+
+		FSoftObjectPath LightProfileObjectPath( FPaths::Combine( LightsFolderPath, TextureName ) );
+
+		IESTexture = Cast< UTextureLightProfile >( LightProfileObjectPath.TryLoad() );
+	}
+
+	return IESTexture;
+}
+
+void FDatasmithLightImporter::CreateIESTexture(FDatasmithImportContext& InContext, const TSharedPtr< IDatasmithLightActorElement >& InLightElement)
+{
+	if (InLightElement->GetUseIes())
+	{
+		FString IESFilename(InLightElement->GetIesFile());
+		if (!IESFilename.IsEmpty() && FPaths::FileExists(IESFilename))
+		{
+			FString IesName = FPaths::GetBaseFilename(IESFilename) + TEXT("_IES");
+			IesName = ObjectTools::SanitizeObjectName(IesName);
+
+			if ( !InContext.ParsedIesFiles.Contains( IesName ) )
+			{
+				InContext.ParsedIesFiles.Add( IesName );
+
+				FDatasmithMaterialExpressions::CreateDatasmithIES( InLightElement->GetIesFile(), InContext.AssetsContext.LightPackage.Get(), InContext.ObjectFlags );
+			}
+		}
+	}
+}
+
+void FDatasmithLightImporter::SetupLightComponent( ULightComponent* LightComponent, const TSharedPtr< IDatasmithLightActorElement >& LightElement, const TCHAR* MaterialsFolderPath, const TCHAR* LightsFolderPath )
 {
 	if ( !LightComponent )
 	{
@@ -323,7 +369,7 @@ void FDatasmithLightImporter::SetupLightComponent( ULightComponent* LightCompone
 	if ( LightElement->GetLightFunctionMaterial().IsValid() )
 	{
 		FString BaseName = LightElement->GetLightFunctionMaterial()->GetName();
-		FString MaterialName = FPaths::Combine( AssetsContext.MaterialsFinalPackage->GetPathName(), BaseName + TEXT(".") + BaseName );
+		FString MaterialName = FPaths::Combine( MaterialsFolderPath, BaseName + TEXT(".") + BaseName );
 		UMaterialInterface* Material = Cast< UMaterialInterface >( FSoftObjectPath( *MaterialName ).TryLoad() );
 
 		if ( Material )
@@ -334,21 +380,21 @@ void FDatasmithLightImporter::SetupLightComponent( ULightComponent* LightCompone
 
 	if ( LightComponent->IsA< UPointLightComponent >() )
 	{
-		SetTextureLightProfile( LightElement.ToSharedRef(), LightComponentTemplate, AssetsContext );
+		SetTextureLightProfile( LightElement.ToSharedRef(), LightComponentTemplate, LightsFolderPath );
 	}
 
 	LightComponentTemplate->Apply( LightComponent );
 	LightComponent->UpdateColorAndBrightness();
 }
 
-void FDatasmithLightImporter::SetupPointLightComponent( UPointLightComponent* PointLightComponent, const TSharedRef< IDatasmithPointLightElement >& PointLightElement, FDatasmithAssetsImportContext& AssetsContext )
+void FDatasmithLightImporter::SetupPointLightComponent( UPointLightComponent* PointLightComponent, const TSharedRef< IDatasmithPointLightElement >& PointLightElement, const TCHAR* LightsFolderPath, const TCHAR* MaterialsFolderPath )
 {
 	if ( !PointLightComponent )
 	{
 		return;
 	}
 
-	SetupLightComponent( PointLightComponent, PointLightElement, AssetsContext );
+	SetupLightComponent( PointLightComponent, PointLightElement, MaterialsFolderPath, LightsFolderPath );
 
 	UDatasmithPointLightComponentTemplate* PointLightComponentTemplate = NewObject< UDatasmithPointLightComponentTemplate >( PointLightComponent );
 
@@ -384,9 +430,9 @@ void FDatasmithLightImporter::SetupPointLightComponent( UPointLightComponent* Po
 	PointLightComponent->UpdateColorAndBrightness();
 }
 
-void FDatasmithLightImporter::SetupSpotLightComponent( USpotLightComponent* SpotLightComponent, const TSharedRef< IDatasmithSpotLightElement >& SpotLightElement, FDatasmithAssetsImportContext& AssetsContext )
+void FDatasmithLightImporter::SetupSpotLightComponent( USpotLightComponent* SpotLightComponent, const TSharedRef< IDatasmithSpotLightElement >& SpotLightElement, const TCHAR* LightsFolderPath, const TCHAR* MaterialsFolderPath )
 {
-	SetupPointLightComponent( SpotLightComponent, SpotLightElement, AssetsContext );
+	SetupPointLightComponent( SpotLightComponent, SpotLightElement, LightsFolderPath, MaterialsFolderPath );
 
 	SpotLightComponent->InnerConeAngle = SpotLightElement->GetInnerConeAngle();
 	SpotLightComponent->OuterConeAngle = SpotLightElement->GetOuterConeAngle();
@@ -399,10 +445,8 @@ AActor* FDatasmithLightImporter::ImportAreaLightActor( const TSharedRef< IDatasm
 	return AreaLightActor;
 }
 
-USceneComponent* FDatasmithLightImporter::ImportAreaLightComponent( const TSharedRef< IDatasmithAreaLightElement >& AreaLightElement, FDatasmithImportContext& ImportContext, UObject* Outer, FDatasmithActorUniqueLabelProvider& UniqueNameProvider )
+USceneComponent* FDatasmithLightImporter::ImportAreaLightComponent( const TSharedRef< IDatasmithAreaLightElement >& AreaLightElement, FDatasmithImportContext& ImportContext, UObject* Outer )
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(FDatasmithLightImporter::ImportAreaLightComponent);
-
 	USceneComponent* MainComponent = nullptr;
 
 	FSoftObjectPath LightShapeBlueprintRef = FSoftObjectPath( TEXT("/DatasmithContent/Datasmith/DatasmithArealight.DatasmithArealight") );
@@ -410,7 +454,7 @@ USceneComponent* FDatasmithLightImporter::ImportAreaLightComponent( const TShare
 
 	if ( LightShapeBlueprint )
 	{
-		UChildActorComponent* ChildActorComponent = Cast< UChildActorComponent >( FDatasmithActorImporter::ImportSceneComponent( UChildActorComponent::StaticClass(), AreaLightElement, ImportContext, Outer, UniqueNameProvider ) );
+		UChildActorComponent* ChildActorComponent = Cast< UChildActorComponent >( FDatasmithActorImporter::ImportSceneComponent( UChildActorComponent::StaticClass(), AreaLightElement, ImportContext, Outer ) );
 		ChildActorComponent->SetChildActorClass( TSubclassOf< AActor > ( LightShapeBlueprint->GeneratedClass ) );
 		ChildActorComponent->CreateChildActor();
 
@@ -428,9 +472,9 @@ USceneComponent* FDatasmithLightImporter::ImportAreaLightComponent( const TShare
 	return MainComponent;
 }
 
-ULightmassPortalComponent* FDatasmithLightImporter::ImportLightmassPortalComponent( const TSharedRef< IDatasmithLightmassPortalElement >& LightElement, FDatasmithImportContext& ImportContext, UObject* Outer, FDatasmithActorUniqueLabelProvider& UniqueNameProvider )
+ULightmassPortalComponent* FDatasmithLightImporter::ImportLightmassPortalComponent( const TSharedRef< IDatasmithLightmassPortalElement >& LightElement, FDatasmithImportContext& ImportContext, UObject* Outer )
 {
-	USceneComponent* SceneComponent = FDatasmithActorImporter::ImportSceneComponent( ULightmassPortalComponent::StaticClass(), LightElement, ImportContext, Outer, UniqueNameProvider );
+	USceneComponent* SceneComponent = FDatasmithActorImporter::ImportSceneComponent( ULightmassPortalComponent::StaticClass(), LightElement, ImportContext, Outer );
 
 	SceneComponent->RegisterComponent();
 
@@ -480,7 +524,7 @@ void FDatasmithLightImporter::SetupAreaLightActor( const TSharedRef< IDatasmithA
 
 	if ( AreaLightElement->GetUseIes() )
 	{
-		LightActorTemplate->IESTexture = GetIesTexture( AreaLightElement, ImportContext.AssetsContext );
+		LightActorTemplate->IESTexture = FindTextureLightProfile( AreaLightElement, *ImportContext.AssetsContext.LightPackage->GetPathName() );
 		LightActorTemplate->bUseIESBrightness = AreaLightElement->GetUseIesBrightness();
 		LightActorTemplate->IESBrightnessScale = AreaLightElement->GetIesBrightnessScale();
 		LightActorTemplate->Rotation = AreaLightElement->GetIesRotation().Rotator();

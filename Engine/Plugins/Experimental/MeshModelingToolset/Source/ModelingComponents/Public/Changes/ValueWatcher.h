@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -40,13 +40,5 @@ public:
 			CachedValue = GetValueFunc();
 			OnValueChangedFunc(CachedValue);
 		}
-	}
-
-	/**
-	 * Update known value without calling OnValueChangedFunc. Sometimes necessary during undo/redo.
-	 */
-	void SilentUpdate()
-	{
-		CachedValue = GetValueFunc();
 	}
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "EdGraph/EdGraphSchema.h"
 #include "UObject/MetaData.h"
@@ -19,7 +19,6 @@
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "ScopedTransaction.h"
 #include "EditorCategoryUtils.h"
-#include "Classes/EditorStyleSettings.h"
 #endif
 
 #define LOCTEXT_NAMESPACE "EdGraph"
@@ -290,6 +289,8 @@ FGraphContextMenuBuilder::FGraphContextMenuBuilder(const UEdGraph* InGraph)
 /////////////////////////////////////////////////////
 // FEdGraphSchemaAction_NewNode
 
+#define SNAP_GRID (16) // @todo ensure this is the same as SNodePanel::GetSnapGridSize()
+
 namespace 
 {
 	// Maximum distance a drag can be off a node edge to require 'push off' from node
@@ -330,7 +331,7 @@ UEdGraphNode* FEdGraphSchemaAction_NewNode::CreateNode(class UEdGraph* ParentGra
 
 	ResultNode->NodePosX = XLocation;
 	ResultNode->NodePosY = Location.Y;
-	ResultNode->SnapToGrid(GetDefault<UEditorStyleSettings>()->GridSnapSize);
+	ResultNode->SnapToGrid(SNAP_GRID);
 #endif // WITH_EDITOR
 
 	return ResultNode;
@@ -503,7 +504,7 @@ bool UEdGraphSchema::DoesDefaultValueMatch(const UEdGraphPin& InPin, const FStri
 	FText ValueAsText;
 	if (!InPin.DefaultTextValue.IsEmpty() && FTextStringHelper::ReadFromBuffer(*InValue, ValueAsText))
 	{
-		return FTextProperty::Identical_Implementation(ValueAsText, InPin.DefaultTextValue, 0);
+		return UTextProperty::Identical_Implementation(ValueAsText, InPin.DefaultTextValue, 0);
 	}
 	else
 	{

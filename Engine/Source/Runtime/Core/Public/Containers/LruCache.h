@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -468,7 +468,7 @@ public:
 		{
 			if (Pred(Entry->Key, Entry->Value))
 			{
-				Remove(const_cast<FCacheEntry*>(Entry));
+				Remove(Entry);
 				++NumRemoved;
 			}
 		}

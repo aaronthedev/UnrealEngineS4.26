@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Stack.h: Kismet VM execution stack definition.
@@ -54,7 +54,6 @@ enum EPropertyType
 	CPT_Double,
 	CPT_Map,
 	CPT_Set,
-	CPT_FieldPath,
 
 	CPT_MAX
 };
@@ -72,7 +71,7 @@ typedef TArray< CodeSkipSizeType, TInlineAllocator<8> > FlowStackType;
 //
 struct FOutParmRec
 {
-	FProperty* Property;
+	UProperty* Property;
 	uint8*      PropAddr;
 	FOutParmRec* NextOutParm;
 };
@@ -90,7 +89,7 @@ public:
 	uint8* Code;
 	uint8* Locals;
 
-	FProperty* MostRecentProperty;
+	UProperty* MostRecentProperty;
 	uint8* MostRecentPropertyAddress;
 
 	/** The execution flow stack for compiled Kismet code */
@@ -103,7 +102,7 @@ public:
 	FOutParmRec* OutParms;
 
 	/** If a class is compiled in then this is set to the property chain for compiled-in functions. In that case, we follow the links to setup the args instead of executing by code. */
-	FField* PropertyChainForCompiledIn;
+	UField* PropertyChainForCompiledIn;
 
 	/** Currently executed native function */
 	UFunction* CurrentNativeFunction;
@@ -112,12 +111,12 @@ public:
 public:
 
 	// Constructors.
-	FFrame( UObject* InObject, UFunction* InNode, void* InLocals, FFrame* InPreviousFrame = NULL, FField* InPropertyChainForCompiledIn = NULL );
+	FFrame( UObject* InObject, UFunction* InNode, void* InLocals, FFrame* InPreviousFrame = NULL, UField* InPropertyChainForCompiledIn = NULL );
 
 	virtual ~FFrame()
 	{
 #if DO_BLUEPRINT_GUARD
-		FBlueprintContextTracker& BlueprintExceptionTracker = FBlueprintContextTracker::Get();
+		FBlueprintExceptionTracker& BlueprintExceptionTracker = FBlueprintExceptionTracker::Get();
 		if (BlueprintExceptionTracker.ScriptStack.Num())
 		{
 			BlueprintExceptionTracker.ScriptStack.Pop(false);
@@ -129,12 +128,11 @@ public:
 	COREUOBJECT_API void Step( UObject* Context, RESULT_DECL );
 
 	/** Replacement for Step that uses an explicitly specified property to unpack arguments **/
-	COREUOBJECT_API void StepExplicitProperty(void*const Result, FProperty* Property);
+	COREUOBJECT_API void StepExplicitProperty(void*const Result, UProperty* Property);
 
 	/** Replacement for Step that checks the for byte code, and if none exists, then PropertyChainForCompiledIn is used. Also, makes an effort to verify that the params are in the correct order and the types are compatible. **/
 	template<class TProperty>
-	FORCEINLINE_DEBUGGABLE void StepCompiledIn(void* Result);
-	FORCEINLINE_DEBUGGABLE void StepCompiledIn(void* Result, const FFieldClass* ExpectedPropertyType);
+	FORCEINLINE_DEBUGGABLE void StepCompiledIn(void*const Result);
 
 	/** Replacement for Step that checks the for byte code, and if none exists, then PropertyChainForCompiledIn is used. Also, makes an effort to verify that the params are in the correct order and the types are compatible. **/
 	template<class TProperty, typename TNativeType>
@@ -156,10 +154,10 @@ public:
 	FName ReadName();
 	UObject* ReadObject();
 	int32 ReadWord();
-	FProperty* ReadProperty();
+	UProperty* ReadProperty();
 
 	/** May return null */
-	FProperty* ReadPropertyUnchecked();
+	UProperty* ReadPropertyUnchecked();
 
 	/**
 	 * Reads a value from the bytestream, which represents the number of bytes to advance
@@ -177,7 +175,7 @@ public:
 	 * @param	ExpressionField		receives a pointer to the field representing the expression; used by various execs
 	 *								to drive VM logic
 	 */
-	VariableSizeType ReadVariableSize(FProperty** ExpressionField);
+	VariableSizeType ReadVariableSize(UProperty** ExpressionField);
 
 	/**
  	 * This will return the StackTrace of the current callstack from the last native entry point
@@ -204,7 +202,7 @@ public:
 	FFrame implementation.
 -----------------------------------------------------------------------------*/
 
-inline FFrame::FFrame( UObject* InObject, UFunction* InNode, void* InLocals, FFrame* InPreviousFrame, FField* InPropertyChainForCompiledIn )
+inline FFrame::FFrame( UObject* InObject, UFunction* InNode, void* InLocals, FFrame* InPreviousFrame, UField* InPropertyChainForCompiledIn )
 	: Node(InNode)
 	, Object(InObject)
 	, Code(InNode->Script.GetData())
@@ -218,7 +216,7 @@ inline FFrame::FFrame( UObject* InObject, UFunction* InNode, void* InLocals, FFr
 	, bArrayContextFailed(false)
 {
 #if DO_BLUEPRINT_GUARD
-	FBlueprintContextTracker::Get().ScriptStack.Push(this);
+	FBlueprintExceptionTracker::Get().ScriptStack.Push(this);
 #endif
 }
 
@@ -241,9 +239,9 @@ inline UObject* FFrame::ReadObject()
 	return Result;
 }
 
-inline FProperty* FFrame::ReadProperty()
+inline UProperty* FFrame::ReadProperty()
 {
-	FProperty* Result = (FProperty*)ReadObject();
+	UProperty* Result = (UProperty*)ReadObject();
 	MostRecentProperty = Result;
 
 	// Callers don't check for NULL; this method is expected to succeed.
@@ -252,9 +250,9 @@ inline FProperty* FFrame::ReadProperty()
 	return Result;
 }
 
-inline FProperty* FFrame::ReadPropertyUnchecked()
+inline UProperty* FFrame::ReadPropertyUnchecked()
 {
-	FProperty* Result = (FProperty*)ReadObject();
+	UProperty* Result = (UProperty*)ReadObject();
 	MostRecentProperty = Result;
 	return Result;
 }
@@ -284,18 +282,18 @@ inline CodeSkipSizeType FFrame::ReadCodeSkipCount()
 	return Result;
 }
 
-inline VariableSizeType FFrame::ReadVariableSize( FProperty** ExpressionField )
+inline VariableSizeType FFrame::ReadVariableSize( UProperty** ExpressionField )
 {
 	VariableSizeType Result=0;
 
-	FField* Field = (FField*)ReadObject(); // Is it safe to assume it's an FField?
-	FProperty* Property = CastField<FProperty>(Field);
+	UObject* Field = ReadObject();
+	UProperty* Property = dynamic_cast<UProperty*>(Field);
 	if (Property)
 	{
-		Result = (VariableSizeType)Property->GetSize();
+		Result = Property->GetSize();
 	}
 
-	if (ExpressionField != nullptr)
+	if ( ExpressionField != nullptr )
 	{
 		*ExpressionField = Property;
 	}
@@ -317,12 +315,7 @@ COREUOBJECT_API void GInitRunaway();
  * Also makes an effort to verify that the params are in the correct order and the types are compatible.
  **/
 template<class TProperty>
-FORCEINLINE_DEBUGGABLE void FFrame::StepCompiledIn(void* Result)
-{
-	StepCompiledIn(Result, TProperty::StaticClass());
-}
-
-FORCEINLINE_DEBUGGABLE void FFrame::StepCompiledIn(void* Result, const FFieldClass* ExpectedPropertyType)
+FORCEINLINE_DEBUGGABLE void FFrame::StepCompiledIn(void*const Result)
 {
 	if (Code)
 	{
@@ -330,9 +323,8 @@ FORCEINLINE_DEBUGGABLE void FFrame::StepCompiledIn(void* Result, const FFieldCla
 	}
 	else
 	{
-		checkSlow(ExpectedPropertyType && ExpectedPropertyType->IsChildOf(FProperty::StaticClass()));
-		checkSlow(PropertyChainForCompiledIn && PropertyChainForCompiledIn->IsA(ExpectedPropertyType));
-		FProperty* Property = (FProperty*)PropertyChainForCompiledIn;
+		checkSlow(dynamic_cast<TProperty*>(PropertyChainForCompiledIn) && dynamic_cast<UProperty*>(PropertyChainForCompiledIn));
+		TProperty* Property = (TProperty*)PropertyChainForCompiledIn;
 		PropertyChainForCompiledIn = Property->Next;
 		StepExplicitProperty(Result, Property);
 	}
@@ -349,7 +341,7 @@ FORCEINLINE_DEBUGGABLE TNativeType& FFrame::StepCompiledInRef(void*const Tempora
 	}
 	else
 	{
-		checkSlow(CastField<TProperty>(PropertyChainForCompiledIn) && CastField<FProperty>(PropertyChainForCompiledIn));
+		checkSlow(dynamic_cast<TProperty*>(PropertyChainForCompiledIn) && dynamic_cast<UProperty*>(PropertyChainForCompiledIn));
 		TProperty* Property = (TProperty*)PropertyChainForCompiledIn;
 		PropertyChainForCompiledIn = Property->Next;
 		StepExplicitProperty(TemporaryBuffer, Property);

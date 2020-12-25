@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "WatchPointViewer.h"
 
@@ -766,7 +766,7 @@ void WatchViewer::UpdateInstancedWatchDisplay()
 #if DO_BLUEPRINT_GUARD
 	{
 		Private_InstanceWatchSource.Reset();
-		const TArray<const FFrame*>& ScriptStack = FBlueprintContextTracker::Get().GetScriptStack();
+		const TArray<const FFrame*>& ScriptStack = FBlueprintExceptionTracker::Get().ScriptStack;
 
 		TSet<const UBlueprint*> SeenBlueprints;
 

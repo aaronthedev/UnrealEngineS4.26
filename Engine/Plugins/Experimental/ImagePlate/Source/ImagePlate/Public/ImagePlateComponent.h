@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -114,7 +114,7 @@ public:
 
 #if WITH_EDITOR
 	/** Access the property relating to this component's image plate */
-	static FStructProperty* GetImagePlateProperty();
+	static UStructProperty* GetImagePlateProperty();
 #endif
 
 	/**

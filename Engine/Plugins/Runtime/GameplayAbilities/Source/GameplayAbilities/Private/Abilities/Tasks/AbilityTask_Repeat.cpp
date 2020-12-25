@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Abilities/Tasks/AbilityTask_Repeat.h"
 #include "TimerManager.h"
@@ -41,11 +41,7 @@ void UAbilityTask_Repeat::Activate()
 		PerformAction();
 		if (ActionCounter < ActionPerformancesDesired)
 		{
-			UWorld* World = GetWorld();
-			if (World)
-			{
-				World->GetTimerManager().SetTimer(TimerHandle_PerformAction, this, &UAbilityTask_Repeat::PerformAction, TimeBetweenActions, true);
-			}
+			GetWorld()->GetTimerManager().SetTimer(TimerHandle_PerformAction, this, &UAbilityTask_Repeat::PerformAction, TimeBetweenActions, true);
 		}
 	}
 	else
@@ -60,11 +56,7 @@ void UAbilityTask_Repeat::Activate()
 
 void UAbilityTask_Repeat::OnDestroy(bool AbilityIsEnding)
 {
-	UWorld* World = GetWorld();
-	if (World)
-	{
-		World->GetTimerManager().ClearTimer(TimerHandle_PerformAction);
-	}
+	GetWorld()->GetTimerManager().ClearTimer(TimerHandle_PerformAction);
 
 	Super::OnDestroy(AbilityIsEnding);
 }

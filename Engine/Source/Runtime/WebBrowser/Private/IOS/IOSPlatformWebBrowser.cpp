@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "IOSPlatformWebBrowser.h"
 
@@ -11,6 +11,7 @@
 
 #import <UIKit/UIKit.h>
 #import <MetalKit/MetalKit.h>
+#include <OpenGLES/ES2/glext.h>
 #include "ExternalTexture.h"
 #include "WebBrowserModule.h"
 #include "IWebBrowserSingleton.h"
@@ -159,8 +160,9 @@ class SIOSWebBrowserWidget : public SLeafWidget
 							if (VideoTexture == nullptr)
 							{
 								FRHIResourceCreateInfo CreateInfo;
+								FRHICommandListImmediate& LocalRHICmdList = FRHICommandListExecutor::GetImmediateCommandList();
 								FIntPoint Size = Params.Size;
-								VideoTexture = RHICreateTextureExternal2D(Size.X, Size.Y, PF_R8G8B8A8, 1, 1, TexCreate_None, CreateInfo);
+								VideoTexture = LocalRHICmdList.CreateTextureExternal2D(Size.X, Size.Y, PF_R8G8B8A8, 1, 1, 0, CreateInfo);
 								[NativeWebBrowser SetVideoTexture : VideoTexture];
 								//UE_LOG(LogIOS, Log, TEXT("NativeWebBrowser SetVideoTexture:VideoTexture!"));
 
@@ -336,36 +338,31 @@ class SIOSWebBrowserWidget : public SLeafWidget
 		}
 	}
 
-	void ProcessScriptMessage(const FString& InMessage)
+	void ProcessScriptMessage(const FString& Message)
 	{
-		FString Message = InMessage;
 		if (WebBrowserWindowPtr.IsValid())
 		{
-			[FIOSAsyncTask CreateTaskWithBlock : ^ bool(void)
+			TSharedPtr<FWebBrowserWindow> BrowserWindow = WebBrowserWindowPtr.Pin();
+			if (BrowserWindow.IsValid())
 			{
-				TSharedPtr<FWebBrowserWindow> BrowserWindow = WebBrowserWindowPtr.Pin();
-				if (BrowserWindow.IsValid())
+				TArray<FString> Params;
+				Message.ParseIntoArray(Params, TEXT("/"), false);
+				if (Params.Num() > 0)
 				{
-					TArray<FString> Params;
-					Message.ParseIntoArray(Params, TEXT("/"), false);
-					if (Params.Num() > 0)
+					for (int I = 0; I < Params.Num(); I++)
 					{
-						for (int I = 0; I < Params.Num(); I++)
-						{
-							Params[I] = FPlatformHttp::UrlDecode(Params[I]);
-						}
+						Params[I] = FPlatformHttp::UrlDecode(Params[I]);
+					}
 
-						FString Command = Params[0];
-						Params.RemoveAt(0, 1);
-						BrowserWindow->OnJsMessageReceived(Command, Params, "");
-					}
-					else
-					{
-						GLog->Logf(ELogVerbosity::Error, TEXT("Invalid message from browser view: %s"), *Message);
-					}
+					FString Command = Params[0];
+					Params.RemoveAt(0, 1);
+					BrowserWindow->OnJsMessageReceived(Command, Params, "");
 				}
-				return true;
-			}];
+				else
+				{
+					GLog->Logf(ELogVerbosity::Error, TEXT("Invalid message from browser view: %s"), *Message);
+				}
+			}
 		}
 	}
 

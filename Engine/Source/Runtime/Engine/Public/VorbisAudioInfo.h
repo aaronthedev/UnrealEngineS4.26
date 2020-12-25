@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	VorbisAudioInfo.h: Unreal audio vorbis decompression interface object.
@@ -16,14 +16,6 @@
 #ifndef WITH_OGGVORBIS
 	#define WITH_OGGVORBIS 0
 #endif
-
-/**
- * Whether to load OggVorbis DLLs
- **/
-#ifndef WITH_OGGVORBIS_DLL
-	#define WITH_OGGVORBIS_DLL (PLATFORM_WINDOWS || PLATFORM_HOLOLENS)
-#endif
-
 
 namespace VorbisChannelInfo
 {
@@ -115,10 +107,6 @@ private:
 	uint32 SrcBufferDataSize;
 	uint32 BufferOffset;
 	uint32 CurrentBufferChunkOffset;
-
-	// In case Ogg Vorbis fails to return any compressed audio for an asset,
-	// we use this counter to exit out of the decoder's while loop early.
-	int32 TimesLoopedWithoutDecompressedAudio;
 
 	/** Critical section used to prevent multiple threads accessing same ogg-vorbis file handles at the same time */
 	FCriticalSection VorbisCriticalSection;

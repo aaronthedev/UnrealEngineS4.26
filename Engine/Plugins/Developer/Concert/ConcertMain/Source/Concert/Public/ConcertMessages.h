@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -85,10 +85,6 @@ struct FConcertAdmin_DiscoverServersEvent : public FConcertEndpointDiscoveryEven
 	/** The required version of the server (eg, 4.22, 4.23, etc) */
 	UPROPERTY(VisibleAnywhere, Category = "Concert Message")
 	FString RequiredVersion;
-
-	/** If a server was configured to restrict access to specific client(s), it will search for this key in its list of authorized keys.*/
-	UPROPERTY(VisibleAnywhere, Category = "Concert Message")
-	FString ClientAuthenticationKey;
 };
 
 USTRUCT()
@@ -272,38 +268,34 @@ struct FConcertAdmin_FindSessionRequest : public FConcertRequestData
 	FConcertSessionVersionInfo VersionInfo;
 };
 
-/** Used to copy a live session or restore an archived one. */
 USTRUCT()
-struct FConcertAdmin_CopySessionRequest : public FConcertRequestData
+struct FConcertAdmin_RestoreSessionRequest : public FConcertRequestData
 {
 	GENERATED_BODY()
 
-	/** The ID of the session to copy or restore. It can be a live or an archived session unless bRestoreOnly is true, in which case, the session to copy must be an archived one. */
+	/** The ID of the session to restore (must be an archived session). */
 	UPROPERTY(VisibleAnywhere, Category="Concert Message")
 	FGuid SessionId;
 
-	/** The name of the session to create. */
+	/** The name of the restored session to create. */
 	UPROPERTY(VisibleAnywhere, Category="Concert Message")
 	FString SessionName;
 
-	/** Information about the owner of the copied session. */
+	/** Information about the owner of the restored session. */
 	UPROPERTY(VisibleAnywhere, Category="Concert Message")
 	FConcertClientInfo OwnerClientInfo;
 
-	/** Settings to apply to the copied session. */
+	/** Settings to apply to the restored session. */
 	UPROPERTY(VisibleAnywhere, Category="Concert Message")
 	FConcertSessionSettings SessionSettings;
 
-	/** Version information of the client requesting the copy. */
+	/** Version information of the client requesting the restore. */
 	UPROPERTY(VisibleAnywhere, Category="Concert Message")
 	FConcertSessionVersionInfo VersionInfo;
 
-	/** The filter controlling which activities from the session should be copied over. */
+	/** The filter controlling which activities from the session should be restored. */
 	UPROPERTY(VisibleAnywhere, Category="Concert Message")
 	FConcertSessionFilter SessionFilter;
-
-	/** True to constrain the session to copy to be an archive (implying a restore operation). */
-	bool bRestoreOnly = false;
 };
 
 USTRUCT()

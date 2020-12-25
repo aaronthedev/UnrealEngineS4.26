@@ -70,8 +70,8 @@ class SdfAssetPath;
 /// In spite of these slight differences in the spec, curves generated in Maya
 /// should be preserved when roundtripping.
 /// 
-/// \em order and \em range, when representing a batched NurbsCurve should be
-/// authored one value per curve.  \em knots should be the concatentation of
+/// 'order' and 'range', when representing a batched NurbsCurve should be
+/// authored one value per curve.  'knots' should be the concatentation of
 /// all batched curves.
 ///
 class UsdGeomNurbsCurves : public UsdGeomCurves
@@ -154,7 +154,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDGEOM_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -166,7 +166,7 @@ private:
 
     // override SchemaBase virtuals.
     USDGEOM_API
-    const TfType &_GetTfType() const override;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // --------------------------------------------------------------------- //
@@ -174,14 +174,13 @@ public:
     // --------------------------------------------------------------------- //
     /// Order of the curve.  Order must be positive and is
     /// equal to the degree of the polynomial basis to be evaluated, plus 1.
-    /// Its value for the 'i'th curve must be less than or equal to
-    /// curveVertexCount[i]
+    /// Its value for the 'i'th curve must be less than or equal to the 
+    /// number of cvs in the curveVertexCount[i]
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `int[] order = []` |
-    /// | C++ Type | VtArray<int> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->IntArray |
+    /// \n  C++ Type: VtArray<int>
+    /// \n  Usd Type: SdfValueTypeNames->IntArray
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: []
     USDGEOM_API
     UsdAttribute GetOrderAttr() const;
 
@@ -202,11 +201,10 @@ public:
     /// must be ( curveVertexCount[i] + order[i] ), and its
     /// entries must take on monotonically increasing values.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `double[] knots` |
-    /// | C++ Type | VtArray<double> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->DoubleArray |
+    /// \n  C++ Type: VtArray<double>
+    /// \n  Usd Type: SdfValueTypeNames->DoubleArray
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDGEOM_API
     UsdAttribute GetKnotsAttr() const;
 
@@ -229,11 +227,10 @@ public:
     /// than or equal to the last element's value in knots['i'th curve slice].
     /// Range maps to (vmin, vmax) in the RenderMan spec.
     ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `double2[] ranges` |
-    /// | C++ Type | VtArray<GfVec2d> |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Double2Array |
+    /// \n  C++ Type: VtArray<GfVec2d>
+    /// \n  Usd Type: SdfValueTypeNames->Double2Array
+    /// \n  Variability: SdfVariabilityVarying
+    /// \n  Fallback Value: No Fallback
     USDGEOM_API
     UsdAttribute GetRangesAttr() const;
 

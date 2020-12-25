@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AndroidMovieStreamer.h"
 
@@ -203,7 +203,7 @@ bool FAndroidMediaPlayerStreamer::StartNextMovie()
 
 		FPakFile* PakFile = NULL;
 		FPakEntry FileEntry;
-		if (PakPlatformFile == nullptr || !PakPlatformFile->FindFileInPakFiles(*MoviePath, &PakFile, &FileEntry))
+		if (!PakPlatformFile->FindFileInPakFiles(*MoviePath, &PakFile, &FileEntry))
 		{
 			return false;
 		}

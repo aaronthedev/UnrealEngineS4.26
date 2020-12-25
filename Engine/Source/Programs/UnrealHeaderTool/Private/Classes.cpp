@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Classes.h"
 #include "UnrealHeaderTool.h"
@@ -16,7 +16,7 @@ namespace
 	 * @param InNameToCheck - Name w/ potential prefix to check
 	 * @param OriginalClass - Class to check against
 	 */
-	bool ClassNameHasValidPrefix(const FString& InNameToCheck, const FClass* OriginalClass)
+	bool ClassNameHasValidPrefix(const FString InNameToCheck, const FClass* OriginalClass)
 	{
 		bool bIsLabledDeprecated;
 		GetClassPrefix( InNameToCheck, bIsLabledDeprecated );
@@ -44,13 +44,13 @@ namespace
 	}
 }
 
-FClasses::FClasses(const TArray<UClass*>* Classes)
+FClasses::FClasses(UPackage* InPackage)
 	: UObjectClass((FClass*)UObject::StaticClass())
-	, ClassTree(UObjectClass)
+	, ClassTree   (UObjectClass)
 {
-	if (Classes)
+	for (UClass* Class : TObjectRange<UClass>())
 	{
-		for (UClass* Class : *Classes)
+		if (Class->IsIn(InPackage))
 		{
 			ClassTree.AddClass(Class);
 		}
@@ -79,7 +79,7 @@ bool FClasses::IsDependentOn(const FClass* Suspect, const FClass* Source, TSet<c
 		return true;
 	}
 
-	// Prevent circular #includes from causing infinite recursion
+	// Prevent circular #includes from causing inifinite recursion
 	// Note that although it may mean there's a circular dependency somewhere, it does not
 	// necessarily mean it's the one we're looking for
 	if (VisitedDpendencies.Contains(Suspect))
@@ -101,14 +101,10 @@ FClass* FClasses::FindClass(const TCHAR* ClassName) const
 	UObject* ClassPackage = ANY_PACKAGE;
 
 	if (UClass* Result = FindObject<UClass>(ClassPackage, ClassName))
-	{
 		return (FClass*)Result;
-	}
 
 	if (UObjectRedirector* RenamedClassRedirector = FindObject<UObjectRedirector>(ClassPackage, ClassName))
-	{
 		return (FClass*)CastChecked<UClass>(RenamedClassRedirector->DestinationObject);
-	}
 
 	return nullptr;
 }
@@ -120,8 +116,7 @@ TArray<FClass*> FClasses::GetDerivedClasses(FClass* Parent) const
 	ClassLeaf->GetChildClasses(ChildLeaves);
 
 	TArray<FClass*> Result;
-	Result.Reserve(ChildLeaves.Num());
-	for (const FClassTree* Node : ChildLeaves)
+	for (auto Node : ChildLeaves)
 	{
 		Result.Add((FClass*)Node->GetClass());
 	}
@@ -132,13 +127,20 @@ TArray<FClass*> FClasses::GetDerivedClasses(FClass* Parent) const
 FClass* FClasses::FindAnyClass(const TCHAR* ClassName) const
 {
 	check(ClassName);
+
 	return (FClass*)FindObject<UClass>(ANY_PACKAGE, ClassName);
+}
+
+FClass* FClasses::FindScriptClass(const FString& InClassName) const
+{
+	FString ErrorMsg;
+	return FindScriptClass(InClassName, ErrorMsg);
 }
 
 FClass* FClasses::FindScriptClassOrThrow(const FString& InClassName) const
 {
 	FString ErrorMsg;
-	if (FClass* Result = FindScriptClass(InClassName, &ErrorMsg))
+	if (FClass* Result = FindScriptClass(InClassName, ErrorMsg))
 	{
 		return Result;
 	}
@@ -149,7 +151,7 @@ FClass* FClasses::FindScriptClassOrThrow(const FString& InClassName) const
 	return 0;
 }
 
-FClass* FClasses::FindScriptClass(const FString& InClassName, FString* OutErrorMsg) const
+FClass* FClasses::FindScriptClass(const FString& InClassName, FString& OutErrorMsg) const
 {
 	// Strip the class name of its prefix and then do a search for the class
 	FString ClassNameStripped = GetClassNameWithPrefixRemoved(InClassName);
@@ -158,11 +160,8 @@ FClass* FClasses::FindScriptClass(const FString& InClassName, FString* OutErrorM
 		// If the class was found with the stripped class name, verify that the correct prefix was used and throw an error otherwise
 		if (!ClassNameHasValidPrefix(InClassName, FoundClass))
 		{
-			if (OutErrorMsg)
-			{
-				*OutErrorMsg = FString::Printf(TEXT("Class '%s' has an incorrect prefix, expecting '%s'"), *InClassName, *FoundClass->GetNameWithPrefix());
-			}
-			return nullptr;
+			OutErrorMsg = FString::Printf(TEXT("Class '%s' has an incorrect prefix, expecting '%s'"), *InClassName, *FoundClass->GetNameWithPrefix());
+			return NULL;
 		}
 
 		return (FClass*)FoundClass;
@@ -173,21 +172,15 @@ FClass* FClasses::FindScriptClass(const FString& InClassName, FString* OutErrorM
 	if (FClass* FoundClass = FindClass(*InClassName))
 	{
 		// If the class was found with the given identifier, the user forgot to use the correct Unreal prefix	
-		if (OutErrorMsg)
-		{
-			*OutErrorMsg = FString::Printf(TEXT("Class '%s' is missing a prefix, expecting '%s'"), *InClassName, *FoundClass->GetNameWithPrefix());
-		}
+		OutErrorMsg = FString::Printf(TEXT("Class '%s' is missing a prefix, expecting '%s'"), *InClassName, *FoundClass->GetNameWithPrefix());
 	}
 	else
 	{
 		// If the class was still not found, it wasn't a valid identifier
-		if (OutErrorMsg)
-		{
-			*OutErrorMsg = FString::Printf(TEXT("Class '%s' not found."), *InClassName);
-		}
+		OutErrorMsg = FString::Printf(TEXT("Class '%s' not found."), *InClassName );
 	}
 
-	return nullptr;
+	return NULL;
 }
 
 TArray<FClass*> FClasses::GetClassesInPackage(const UPackage* InPackage) const

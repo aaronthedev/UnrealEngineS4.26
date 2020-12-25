@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.IO;
@@ -55,13 +55,6 @@ namespace UnrealBuildTool
 		public bool bAllowXGE = true;
 
 		/// <summary>
-		/// Whether FASTBuild may be used.
-		/// </summary>
-		[XmlConfigFile]
-		[CommandLine("-NoFASTBuild", Value = "false")]
-		public bool bAllowFASTBuild = true;
-
-		/// <summary>
 		/// Whether SN-DBS may be used.
 		/// </summary>
 		[XmlConfigFile]
@@ -106,14 +99,6 @@ namespace UnrealBuildTool
 		public bool bAllowParallelExecutor = true;
 
 		/// <summary>
-		/// Number of actions that can be executed in parallel. If 0 then code will pick a default based
-		/// on the number of cores available. Only applies to the ParallelExecutor
-		/// </summary>
-		[XmlConfigFile]
-		[CommandLine("-MaxParallelActions")]
-		public int MaxParallelActions = 0;
-
-		/// <summary>
 		/// If true, force header regeneration. Intended for the build machine.
 		/// </summary>
 		[CommandLine("-ForceHeaderGeneration")]
@@ -152,17 +137,5 @@ namespace UnrealBuildTool
 		/// </summary>
 		[CommandLine("-SkipRulesCompile")]
 		public bool bSkipRulesCompile = false;
-
-		/// <summary>
-		/// Maximum recommended root path length.
-		/// </summary>
-		[XmlConfigFile(Category = "WindowsPlatform")]
-		public int MaxRootPathLength = 50;
-
-		/// <summary>
-		/// Maximum length of a path relative to the root directory. Used on Windows to ensure paths are portable between machines. Defaults to off.
-		/// </summary>
-		[XmlConfigFile(Category = "WindowsPlatform")]
-		public int MaxNestedPathLength = 200;
 	}
 }

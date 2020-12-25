@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -26,10 +26,6 @@ class FAssetTypeActions_Base : public IAssetTypeActions
 public:
 
 	// IAssetTypeActions interface
-	virtual FString GetObjectDisplayName(UObject* Object) const override
-	{
-		return Object->GetName();
-	}
 
 	virtual bool HasActions( const TArray<UObject*>& InObjects ) const override
 	{
@@ -72,11 +68,6 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	virtual bool AssetsActivatedOverride(const TArray<UObject*>& InObjects, EAssetTypeActivationMethod::Type ActivationType) override
 	{
 		return false;
-	}
-
-	virtual TArray<FAssetData> GetValidAssetsForPreviewOrEdit(TArrayView<const FAssetData> InAssetDatas, bool bIsPreview) override
-	{
-		return TArray<FAssetData>(InAssetDatas);
 	}
 
 	virtual bool CanFilter() override
@@ -171,19 +162,9 @@ PRAGMA_ENABLE_DEPRECATION_WARNINGS
 		InFilter.bRecursiveClasses = true;
 	}
 	
-	virtual FText GetDisplayNameFromAssetData(const FAssetData& AssetData) const override
+	virtual FText GetDisplayNameFromAssetData(const FAssetData& AssetData) const
 	{
 		return FText::GetEmpty();
-	}
-
-	virtual void SetSupported(bool bInSupported) final
-	{
-		bIsSupported = bInSupported;
-	}
-
-	virtual bool IsSupported() const final
-	{
-		return bIsSupported;
 	}
 
 protected:
@@ -226,11 +207,11 @@ protected:
 	}
 
 	template <typename T>
-	static TArray<T*> GetTypedObjectPtrs(const TArray<UObject*>& InObjects)
+	static TArray<T> GetTypedObjectPtrs(const TArray<UObject*>& InObjects)
 	{
 		check(InObjects.Num() > 0);
 
-		TArray<T*> TypedObjects;
+		TArray<T> TypedObjects;
 		for (UObject* ObjIt : InObjects)
 		{
 			TypedObjects.Add(CastChecked<T>(ObjIt));
@@ -238,7 +219,4 @@ protected:
 
 		return TypedObjects;
 	}
-
-private:
-	bool bIsSupported = true;
 };

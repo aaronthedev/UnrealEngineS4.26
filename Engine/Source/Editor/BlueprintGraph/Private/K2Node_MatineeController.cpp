@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "K2Node_MatineeController.h"
 #include "EdGraphSchema_K2.h"
@@ -52,7 +52,7 @@ void UK2Node_MatineeController::AllocateDefaultPins()
 		TArray<FName> EventNames;
 		MatineeActor->MatineeData->GetAllEventNames(EventNames);
 
-		for (const FName& EventName : EventNames)
+		for (const FName EventName : EventNames)
 		{
 			CreatePin(EGPD_Output, UEdGraphSchema_K2::PC_Exec, EventName);			
 		}
@@ -165,7 +165,7 @@ void UK2Node_MatineeController::GetMenuActions(FBlueprintActionDatabaseRegistrar
 		if (Bindings.Num() == 1)
 		{
 			UiSpecOut->MenuName = FText::Format(NSLOCTEXT("K2Node", "MatineeeControllerTitle", "Create a Matinee Controller for {0}"),
-				FText::FromString((*(Bindings.CreateConstIterator())).GetName()));
+				FText::FromString((*(Bindings.CreateConstIterator()))->GetName()));
 		}
 		else if (Bindings.Num() > 1)
 		{

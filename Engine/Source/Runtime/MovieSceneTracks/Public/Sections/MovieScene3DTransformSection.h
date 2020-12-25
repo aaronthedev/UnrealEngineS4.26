@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -9,7 +9,6 @@
 #include "MovieSceneSection.h"
 #include "MovieSceneKeyStruct.h"
 #include "Channels/MovieSceneFloatChannel.h"
-#include "EntitySystem/IMovieSceneEntityProvider.h"
 #include "TransformData.h"
 #include "MovieScene3DTransformSection.generated.h"
 
@@ -213,7 +212,6 @@ private:
 UCLASS(MinimalAPI)
 class UMovieScene3DTransformSection
 	: public UMovieSceneSection
-	, public IMovieSceneEntityProvider
 {
 	GENERATED_UCLASS_BODY()
 
@@ -246,23 +244,15 @@ public:
 	*/
 	MOVIESCENETRACKS_API bool GetUseQuaternionInterpolation() const;
 
-	/**
-	* Set whether we should use quaternion interpolation for our rotations.
-	*/
-	MOVIESCENETRACKS_API void SetUseQuaternionInterpolation(bool bInUseQuaternionInterpolation);
-
 protected:
 
+	virtual void Serialize(FArchive& Ar) override;
+	virtual void PostEditImport() override;
 	virtual TSharedPtr<FStructOnScope> GetKeyStruct(TArrayView<const FKeyHandle> KeyHandles) override;
-	virtual EMovieSceneChannelProxyType CacheChannelProxy() override;
-
-private:
-
-	virtual void ImportEntityImpl(UMovieSceneEntitySystemLinker* EntityLinker, const FEntityImportParams& Params, FImportedEntity* OutImportedEntity) override;
-	virtual void InterrogateEntityImpl(UMovieSceneEntitySystemLinker* EntityLinker, const FEntityImportParams& Params, FImportedEntity* OutImportedEntity) override;
-
-	template<typename BaseBuilderType>
-	void BuildEntity(BaseBuilderType& InBaseBuilder, UMovieSceneEntitySystemLinker* EntityLinker, const FEntityImportParams& Params, FImportedEntity* OutImportedEntity);
+	virtual FMovieSceneEvalTemplatePtr GenerateTemplate() const override;
+	virtual float GetTotalWeightValue(FFrameTime InTime) const override;
+	
+	void UpdateChannelProxy();
 
 private:
 
@@ -285,11 +275,18 @@ private:
 	UPROPERTY()
 	FMovieSceneFloatChannel ManualWeight;
 
+	/** Unserialized mask that defines the mask of the current channel proxy so we don't needlessly re-create it on post-undo */
+	EMovieSceneTransformChannel ProxyChannels;
+
 	/** Whether to use a quaternion linear interpolation between keys. This finds the 'shortest' distance between keys */
 	UPROPERTY(EditAnywhere, DisplayName = "Use Quaternion Interpolation", Category = "Rotation")
 	bool bUseQuaternionInterpolation;
 
 public:
+	/**
+	 * Access the interrogation key for transform data - any interrgation data stored with this key is guaranteed to be of type 'FTransform'
+	 */
+	MOVIESCENETRACKS_API static FMovieSceneInterrogationKey GetInterrogationKey();
 
 #if WITH_EDITORONLY_DATA
 
@@ -298,12 +295,7 @@ public:
 	/**
 	 * Return the trajectory visibility
 	 */
-	MOVIESCENETRACKS_API EShow3DTrajectory GetShow3DTrajectory() const { return Show3DTrajectory; }
-
-	/**
-	 * Return the trajectory visibility
-	 */
-	MOVIESCENETRACKS_API void SetShow3DTrajectory(EShow3DTrajectory InShow3DTrajectory) { Show3DTrajectory = InShow3DTrajectory; }
+	MOVIESCENETRACKS_API EShow3DTrajectory GetShow3DTrajectory() { return Show3DTrajectory; }
 
 private:
 

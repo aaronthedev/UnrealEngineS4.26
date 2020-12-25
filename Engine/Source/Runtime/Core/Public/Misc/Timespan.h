@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -203,7 +203,7 @@ public:
 	 */
 	FTimespan operator*(double Scalar) const
 	{
-		return FTimespan((int64)((double)Ticks * Scalar));
+		return FTimespan((int64)(Ticks * Scalar));
 	}
 
 	/**
@@ -214,7 +214,7 @@ public:
 	 */
 	FTimespan& operator*=(double Scalar)
 	{
-		Ticks = (int64)((double)Ticks * Scalar);
+		Ticks = (int64)(Ticks * Scalar);
 		return *this;
 	}
 
@@ -226,7 +226,7 @@ public:
 	 */
 	FTimespan operator/(double Scalar) const
 	{
-		return FTimespan((int64)((double)Ticks / Scalar));
+		return FTimespan((int64)(Ticks / Scalar));
 	}
 
 	/**
@@ -237,7 +237,7 @@ public:
 	 */
 	FTimespan& operator/=(double Scalar)
 	{
-		Ticks = (int64)((double)Ticks / Scalar);
+		Ticks = (int64)(Ticks / Scalar);
 		return *this;
 	}
 
@@ -609,7 +609,7 @@ public:
 	 */
 	static FTimespan FromDays(double Days)
 	{
-		return FTimespan((int64)FMath::FloorToDouble(Days * ETimespan::TicksPerDay + 0.5));
+		return FTimespan(FMath::FloorToDouble(Days * ETimespan::TicksPerDay + 0.5));
 	}
 
 	/**
@@ -621,7 +621,7 @@ public:
 	 */
 	static FTimespan FromHours(double Hours)
 	{
-		return FTimespan((int64)FMath::FloorToDouble(Hours * ETimespan::TicksPerHour + 0.5));
+		return FTimespan(FMath::FloorToDouble(Hours * ETimespan::TicksPerHour + 0.5));
 	}
 
 	/**
@@ -633,7 +633,7 @@ public:
 	 */
 	static FTimespan FromMicroseconds(double Microseconds)
 	{
-		return FTimespan((int64)FMath::FloorToDouble(Microseconds * ETimespan::TicksPerMicrosecond + 0.5));
+		return FTimespan(FMath::FloorToDouble(Microseconds * ETimespan::TicksPerMicrosecond + 0.5));
 	}
 
 	/**
@@ -645,7 +645,7 @@ public:
 	 */
 	static FTimespan FromMilliseconds(double Milliseconds)
 	{
-		return FTimespan((int64)FMath::FloorToDouble(Milliseconds * ETimespan::TicksPerMillisecond + 0.5));
+		return FTimespan(FMath::FloorToDouble(Milliseconds * ETimespan::TicksPerMillisecond + 0.5));
 	}
 
 	/**
@@ -657,7 +657,7 @@ public:
 	 */
 	static FTimespan FromMinutes(double Minutes)
 	{
-		return FTimespan((int64)FMath::FloorToDouble(Minutes * ETimespan::TicksPerMinute + 0.5));
+		return FTimespan(FMath::FloorToDouble(Minutes * ETimespan::TicksPerMinute + 0.5));
 	}
 
 	/**
@@ -669,7 +669,7 @@ public:
 	 */
 	static FTimespan FromSeconds(double Seconds)
 	{
-		return FTimespan((int64)FMath::FloorToDouble(Seconds * ETimespan::TicksPerSecond + 0.5));
+		return FTimespan(FMath::FloorToDouble(Seconds * ETimespan::TicksPerSecond + 0.5));
 	}
 
 	/**

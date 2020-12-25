@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -48,8 +48,6 @@ struct FTrackRecorderSettings
 	bool bRemoveRedundantTracks;
 	bool bReduceKeys;
 	bool bSaveRecordedAssets;
-
-	float ReduceKeysTolerance;
 
 	TArray<FTakeRecorderTrackSettings> DefaultTracks;
 
@@ -107,12 +105,6 @@ struct FTrackRecorderSettings
 
 			for (const FTakeRecorderPropertyTrackSettings& PropertyTrackSetting : DefaultTrack.ExcludePropertyTracks)
 			{
-				// If property path is empty, consider it as an exclusion for all properties on this component
-				if (PropertyTrackSetting.PropertyPath.IsEmpty())
-				{
-					return true;
-				}
-
 				if (InPropertyPath != PropertyTrackSetting.PropertyPath)
 				{
 					continue;

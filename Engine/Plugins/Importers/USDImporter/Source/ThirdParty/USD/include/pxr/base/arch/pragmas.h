@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_BASE_ARCH_PRAGMAS_H
-#define PXR_BASE_ARCH_PRAGMAS_H
+#ifndef ARCH_PRAGMAS_H
+#define ARCH_PRAGMAS_H
 
 /// \file arch/pragmas.h
 /// Pragmas for controlling compiler-specific behaviors.
@@ -64,9 +64,6 @@
 
     #define ARCH_PRAGMA_MACRO_REDEFINITION \
         _Pragma("clang diagnostic ignored \"-Wbuiltin-macro-redefined\"")
-
-    #define ARCH_PRAGMA_UNDEFINED_VAR_TEMPLATE \
-        _Pragma("clang diagnostic ignored \"-Wundefined-var-template\"")
 
     #define ARCH_PRAGMA_WRITE_STRINGS \
         _Pragma("clang diagnostic ignored \"-Wwrite-strings\"")
@@ -195,8 +192,4 @@
     #define ARCH_PRAGMA_INSTANTIATION_AFTER_SPECIALIZATION
 #endif
 
-#if !defined ARCH_PRAGMA_UNDEFINED_VAR_TEMPLATE
-    #define ARCH_PRAGMA_UNDEFINED_VAR_TEMPLATE
-#endif
-
-#endif // PXR_BASE_ARCH_PRAGMAS_H
+#endif // ARCH_PRAGMAS_H

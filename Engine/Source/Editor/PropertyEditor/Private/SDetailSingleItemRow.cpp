@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SDetailSingleItemRow.h"
 #include "ObjectPropertyNode.h"
@@ -13,9 +13,6 @@
 #include "HAL/PlatformApplicationMisc.h"
 #include "Editor.h"
 #include "PropertyHandleImpl.h"
-#include "PropertyEditorModule.h"
-#include "Modules/ModuleInterface.h"
-#include "Modules/ModuleManager.h"
 
 
 void SConstrainedBox::Construct(const FArguments& InArgs)
@@ -189,6 +186,10 @@ FReply SDetailSingleItemRow::OnArrayDrop(const FDragDropEvent& DragDropEvent)
 		{
 			int32 OriginalIndex = SwappingPropertyNode->GetArrayIndex();
 			int32 NewIndex = SwappablePropertyNode->GetArrayIndex();
+			if (NewIndex > OriginalIndex)
+			{
+				NewIndex += 1;
+			}
 			TSharedPtr<IPropertyHandle> SwappingHandle = PropertyEditorHelpers::GetPropertyHandle(SwappingPropertyNode.ToSharedRef(), OwnerTreeNode.Pin()->GetDetailsView()->GetNotifyHook(), OwnerTreeNode.Pin()->GetDetailsView()->GetPropertyUtilities());
 			TSharedPtr<IPropertyHandleArray> ParentHandle = SwappingHandle->GetParentHandle()->AsArray();
 			if (ParentHandle.IsValid() && SwappablePropertyNode->GetParentNode() == SwappingPropertyNode->GetParentNode())
@@ -226,7 +227,7 @@ FReply SDetailSingleItemRow::OnArrayHeaderDrop(const FDragDropEvent& DragDropEve
 	return FReply::Handled();
 }
 
-TSharedPtr<FPropertyNode> SDetailSingleItemRow::GetPropertyNode() const
+TSharedPtr<FPropertyNode> SDetailSingleItemRow::GetCopyPastePropertyNode() const
 {
 	TSharedPtr<FPropertyNode> PropertyNode = Customization->GetPropertyNode();
 	if (!PropertyNode.IsValid() && Customization->DetailGroup.IsValid())
@@ -246,23 +247,6 @@ TSharedPtr<FPropertyNode> SDetailSingleItemRow::GetPropertyNode() const
 	}
 
 	return PropertyNode;
-}
-
-TSharedPtr<IPropertyHandle> SDetailSingleItemRow::GetPropertyHandle() const
-{
-	TSharedPtr<IPropertyHandle> Handle;
-	TSharedPtr<FPropertyNode> PropertyNode = GetPropertyNode();
-	if (PropertyNode.IsValid())
-	{
-		Handle = PropertyEditorHelpers::GetPropertyHandle(PropertyNode.ToSharedRef(), OwnerTreeNode.Pin()->GetDetailsView()->GetNotifyHook(), OwnerTreeNode.Pin()->GetDetailsView()->GetPropertyUtilities());
-	}
-	else if (Customization->GetWidgetRow().PropertyHandles.Num() > 0)
-	{
-		// @todo: Handle more than 1 property handle?
-		Handle = Customization->GetWidgetRow().PropertyHandles[0];
-	}
-
-	return Handle;
 }
 
 const FSlateBrush* SDetailSingleItemRow::GetFavoriteButtonBrush() const
@@ -327,12 +311,6 @@ void SDetailSingleItemRow::Construct( const FArguments& InArgs, FDetailLayoutCus
 				ExtensionWidget->SetEnabled(Row.IsEnabledAttr);
 			}
 
-			TArray<TSharedRef<SWidget>> GlobalWidgetExtensions;
-			FOnGenerateGlobalRowExtensionArgs Args{ GetPropertyHandle(), GetPropertyNode(), OwnerTreeNode };
-
-			FPropertyEditorModule& Module = FModuleManager::LoadModuleChecked<FPropertyEditorModule>("PropertyEditor");
-			Module.GetGlobalRowExtensionDelegate().Broadcast(Args, FOnGenerateGlobalRowExtensionArgs::EWidgetPosition::Left, GlobalWidgetExtensions);
-
 			TSharedRef<SWidget> KeyFrameButton = CreateKeyframeButton(*Customization, InOwnerTreeNode);
 			TAttribute<bool> IsPropertyEditingEnabled = InOwnerTreeNode->IsPropertyEditingEnabled();
 
@@ -342,31 +320,7 @@ void SDetailSingleItemRow::Construct( const FArguments& InArgs, FDetailLayoutCus
 				SNew(SHorizontalBox)
 				.Clipping(EWidgetClipping::OnDemand);
 
-			if(GlobalWidgetExtensions.Num() > 0)
-			{
-				TSharedRef<SHorizontalBox> LeftExtensions = SNew(SHorizontalBox);
-
-				for (TSharedRef<SWidget>& GlobalExtensionWidget : GlobalWidgetExtensions)
-				{
-					LeftExtensions->AddSlot()
-					.AutoWidth()
-					[
-						MoveTemp(GlobalExtensionWidget)
-					];
-				}
-
-				InternalLeftColumnRowBox->AddSlot()
-					.Padding(0.0f, 0.0f)
-					.HAlign(HAlign_Left)
-					.VAlign(VAlign_Center)
-					.AutoWidth()
-					[
-						MoveTemp(LeftExtensions)
-					];
-
-			}
-
-			if (bEnableFavoriteSystem)
+			if(bEnableFavoriteSystem)
 			{
 				InternalLeftColumnRowBox->AddSlot()
 					.Padding(0.0f, 0.0f)
@@ -415,8 +369,8 @@ void SDetailSingleItemRow::Construct( const FArguments& InArgs, FDetailLayoutCus
 				SwappablePropertyNode = PropertyNode;
 			}
 			else if (PropertyNode.IsValid() 
-				&& CastField<FArrayProperty>(PropertyNode->GetProperty()) != nullptr // Is an array
-				&& CastField<FObjectProperty>(CastField<FArrayProperty>(PropertyNode->GetProperty())->Inner) != nullptr) // Is an object array
+				&& Cast<UArrayProperty>(PropertyNode->GetProperty()) != nullptr // Is an array
+				&& Cast<UObjectProperty>(Cast<UArrayProperty>(PropertyNode->GetProperty())->Inner) != nullptr) // Is an object array
 			{
 				ArrayDragDelegate = FOnTableRowDragEnter::CreateSP(this, &SDetailSingleItemRow::OnArrayDragEnter);
 				ArrayDragLeaveDelegate = FOnTableRowDragLeave::CreateSP(this, &SDetailSingleItemRow::OnArrayDragLeave);
@@ -460,31 +414,6 @@ void SDetailSingleItemRow::Construct( const FArguments& InArgs, FDetailLayoutCus
 					[
 						KeyFrameButton
 					];
-
-				GlobalWidgetExtensions.Reset();
-				Module.GetGlobalRowExtensionDelegate().Broadcast(Args, FOnGenerateGlobalRowExtensionArgs::EWidgetPosition::Right, GlobalWidgetExtensions);
-				if (GlobalWidgetExtensions.Num() > 0)
-				{
-					TSharedRef<SHorizontalBox> RightExtensions = SNew(SHorizontalBox);
-
-					for (TSharedRef<SWidget>& GlobalRowExtension: GlobalWidgetExtensions)
-					{
-						RightExtensions->AddSlot()
-						.AutoWidth()
-						[
-							MoveTemp(GlobalRowExtension)
-						];
-					}
-
-					InternalLeftColumnRowBox->AddSlot()
-						.Padding(0.0f, 0.0f)
-						.HAlign(HAlign_Right)
-						.VAlign(VAlign_Center)
-						.AutoWidth()
-						[
-							MoveTemp(RightExtensions)
-						];
-				}
 
 				TSharedRef<SSplitter> Splitter =
 					SNew(SSplitter)
@@ -593,7 +522,7 @@ bool SDetailSingleItemRow::OnContextMenuOpening(FMenuBuilder& MenuBuilder)
 	}
 	else
 	{
-		TSharedPtr<FPropertyNode> PropertyNode = GetPropertyNode();
+		TSharedPtr<FPropertyNode> PropertyNode = GetCopyPastePropertyNode();
 		static const FName DisableCopyPasteMetaDataName("DisableCopyPaste");
 		if (PropertyNode.IsValid() && !PropertyNode->ParentOrSelfHasMetaData(DisableCopyPasteMetaDataName))
 		{
@@ -662,7 +591,7 @@ void SDetailSingleItemRow::OnCopyProperty()
 {
 	if (OwnerTreeNode.IsValid())
 	{
-		TSharedPtr<FPropertyNode> PropertyNode = GetPropertyNode();
+		TSharedPtr<FPropertyNode> PropertyNode = GetCopyPastePropertyNode();
 		if (PropertyNode.IsValid())
 		{
 			TSharedPtr<IPropertyHandle> Handle = PropertyEditorHelpers::GetPropertyHandle(PropertyNode.ToSharedRef(), OwnerTreeNode.Pin()->GetDetailsView()->GetNotifyHook(), OwnerTreeNode.Pin()->GetDetailsView()->GetPropertyUtilities());
@@ -683,7 +612,7 @@ void SDetailSingleItemRow::OnPasteProperty()
 
 	if (!ClipboardContent.IsEmpty() && OwnerTreeNode.IsValid())
 	{
-		TSharedPtr<FPropertyNode> PropertyNode = GetPropertyNode();
+		TSharedPtr<FPropertyNode> PropertyNode = GetCopyPastePropertyNode();
 		if (!PropertyNode.IsValid() && Customization->DetailGroup.IsValid())
 		{
 			PropertyNode = Customization->DetailGroup->GetHeaderPropertyNode();
@@ -693,13 +622,6 @@ void SDetailSingleItemRow::OnPasteProperty()
 			TSharedPtr<IPropertyHandle> Handle = PropertyEditorHelpers::GetPropertyHandle(PropertyNode.ToSharedRef(), OwnerTreeNode.Pin()->GetDetailsView()->GetNotifyHook(), OwnerTreeNode.Pin()->GetDetailsView()->GetPropertyUtilities());
 
 			Handle->SetValueFromFormattedString(ClipboardContent);
-
-			// Cache expansion state and then rebuild child nodes, in case we're pasting an array of a different size. This ensures instanced properties can be rebuild properly
-			TSet<FString> ExpandedChildPropertyPaths;
-			PropertyNode->GetExpandedChildPropertyPaths(ExpandedChildPropertyPaths);
-			PropertyNode->RebuildChildren();
-			PropertyNode->SetExpandedChildPropertyNodes(ExpandedChildPropertyPaths);
-
 			TArray<TSharedPtr<IPropertyHandle>> CopiedHandles;
 
 			CopiedHandles.Add(Handle);

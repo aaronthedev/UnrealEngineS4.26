@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	PhysXSupport.cpp: PhysX
@@ -12,7 +12,7 @@
 #include "PhysicalMaterials/PhysicalMaterial.h"
 #include "CustomPhysXPayload.h"
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 
 #include "PhysXPublic.h"
 #include "PhysicsEngine/ConstraintInstance.h"
@@ -24,6 +24,7 @@ int32						GNumPhysXConvexMeshes = 0;
 TArray<PxConvexMesh*>	GPhysXPendingKillConvex;
 TArray<PxTriangleMesh*>	GPhysXPendingKillTriMesh;
 TArray<PxHeightField*>	GPhysXPendingKillHeightfield;
+TArray<PxMaterial*>		GPhysXPendingKillMaterial;
 ///////////////////// Utils /////////////////////
 
 
@@ -504,47 +505,27 @@ FPhysXCookingDataReader::FPhysXCookingDataReader( FByteBulkData& InBulkData, FBo
 	ConvexMeshes.Empty(NumConvexElementsCooked);
 	for( int32 ElementIndex = 0; ElementIndex < NumConvexElementsCooked; ElementIndex++ )
 	{
-		//NOTE: these tags currently get ignored because of low level allocator
-		PxConvexMesh* ConvexMesh;
-		{
-			LLM_SCOPE(ELLMTag::PhysXConvex);
-			ConvexMesh = ReadConvexMesh(Ar,DataPtr,InBulkData.GetBulkDataSize());
-		}
-		
+		PxConvexMesh* ConvexMesh = ReadConvexMesh( Ar, DataPtr, InBulkData.GetBulkDataSize() );
 		ConvexMeshes.Add( ConvexMesh );
 	}
 
 	ConvexMeshesNegX.Empty(NumMirroredElementsCooked);
 	for( int32 ElementIndex = 0; ElementIndex < NumMirroredElementsCooked; ElementIndex++ )
 	{
-		PxConvexMesh* ConvexMeshNegX;
-		{
-			LLM_SCOPE(ELLMTag::PhysXConvex);
-			ConvexMeshNegX = ReadConvexMesh( Ar, DataPtr, InBulkData.GetBulkDataSize() );
-		}
-		
+		PxConvexMesh* ConvexMeshNegX = ReadConvexMesh( Ar, DataPtr, InBulkData.GetBulkDataSize() );
 		ConvexMeshesNegX.Add( ConvexMeshNegX );
 	}
 
 	TriMeshes.Empty(NumTriMeshesCooked);
 	for(int32 ElementIndex = 0; ElementIndex < NumTriMeshesCooked; ++ElementIndex)
 	{
-		PxTriangleMesh* TriMesh;
-		{
-			LLM_SCOPE(ELLMTag::PhysXTrimesh);
-			TriMesh = ReadTriMesh( Ar, DataPtr, InBulkData.GetBulkDataSize() );
-		}
-		
+		PxTriangleMesh* TriMesh = ReadTriMesh( Ar, DataPtr, InBulkData.GetBulkDataSize() );
 		TriMeshes.Add(TriMesh);
 	}
 
 	// Init UVInfo pointer
 	check(UVInfo);
-	{
-		LLM_SCOPE(ELLMTag::PhysXTrimesh);
-		Ar << *UVInfo;
-	}
-	
+	Ar << *UVInfo;
 
 	InBulkData.Unlock();
 }

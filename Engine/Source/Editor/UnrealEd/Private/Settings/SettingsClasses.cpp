@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreMinimal.h"
 #include "HAL/FileManager.h"
@@ -38,8 +38,6 @@
 #include "DeviceProfiles/DeviceProfileManager.h"
 #include "DesktopPlatformModule.h"
 #include "InstalledPlatformInfo.h"
-#include "DrawDebugHelpers.h"
-#include "ToolMenus.h"
 
 #define LOCTEXT_NAMESPACE "SettingsClasses"
 
@@ -195,6 +193,8 @@ void UEditorExperimentalSettings::PostInitProperties()
 
 void UEditorExperimentalSettings::PostEditChangeProperty( struct FPropertyChangedEvent& PropertyChangedEvent )
 {
+	static const FName NAME_EQS = GET_MEMBER_NAME_CHECKED(UEditorExperimentalSettings, bEQSEditor);
+
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
 	const FName Name = (PropertyChangedEvent.Property != nullptr) ? PropertyChangedEvent.Property->GetFName() : NAME_None;
@@ -202,6 +202,13 @@ void UEditorExperimentalSettings::PostEditChangeProperty( struct FPropertyChange
 	if (Name == FName(TEXT("ConsoleForGamepadLabels")))
 	{
 		EKeys::SetConsoleForGamepadLabels(ConsoleForGamepadLabels);
+	}
+	else if (Name == NAME_EQS)
+	{
+		if (bEQSEditor)
+		{
+			FModuleManager::Get().LoadModule(TEXT("EnvironmentQueryEditor"));
+		}
 	}
 	else if (Name == FName(TEXT("bHDREditor")))
 	{
@@ -423,8 +430,6 @@ ULevelEditorMiscSettings::ULevelEditorMiscSettings( const FObjectInitializer& Ob
 	PercentageThresholdForPrompt = 20.0f;
 	MinimumBoundsForCheckingSize = FVector(500.0f, 500.0f, 50.0f);
 	bCreateNewAudioDeviceForPlayInEditor = true;
-	bEnableLegacyMeshPaintMode = false;
-	bAvoidRelabelOnPasteSelected = false;
 }
 
 void ULevelEditorMiscSettings::PostEditChangeProperty( struct FPropertyChangedEvent& PropertyChangedEvent )
@@ -456,51 +461,18 @@ ULevelEditorPlaySettings::ULevelEditorPlaySettings( const FObjectInitializer& Ob
 {
 	ClientWindowWidth = 640;
 	ClientWindowHeight = 480;
-	PlayNetMode = EPlayNetMode::PIE_Standalone;
-	bLaunchSeparateServer = false;
 	PlayNumberOfClients = 1;
 	ServerPort = 17777;
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 	PlayNetDedicated = false;
-	AutoConnectToServer = true;
-PRAGMA_ENABLE_DEPRECATION_WARNINGS
 	RunUnderOneProcess = true;
 	RouteGamepadToSecondWindow = false;
+	AutoConnectToServer = true;
 	BuildGameBeforeLaunch = EPlayOnBuildMode::PlayOnBuild_Default;
 	LaunchConfiguration = EPlayOnLaunchConfiguration::LaunchConfig_Default;
 	bAutoCompileBlueprintsOnLaunch = true;
-	CenterNewWindow = false;
-	NewWindowPosition = FIntPoint::NoneValue; // It will center PIE to the middle of the screen the first time it is run (until the user drag the window somewhere else)
+	CenterNewWindow = true;
 
 	EnablePIEEnterAndExitSounds = false;
-
-	bShowServerDebugDrawingByDefault = true;
-	ServerDebugDrawingColorTintStrength = 0.0f;
-	ServerDebugDrawingColorTint = FLinearColor(0.0f, 0.0f, 0.0f, 1.0f);
-}
-
-void ULevelEditorPlaySettings::PushDebugDrawingSettings()
-{
-#if ENABLE_DRAW_DEBUG
-	extern ENGINE_API float GServerDrawDebugColorTintStrength;
-	extern ENGINE_API FLinearColor GServerDrawDebugColorTint;
-
-	GServerDrawDebugColorTintStrength = ServerDebugDrawingColorTintStrength;
-	GServerDrawDebugColorTint = ServerDebugDrawingColorTint;
-#endif
-}
-
-void FPlayScreenResolution::PostInitProperties()
-{
-	ScaleFactor = 1.0f;
-	LogicalHeight = Height;
-	LogicalWidth = Width;
-
-	UDeviceProfile* DeviceProfile = UDeviceProfileManager::Get().FindProfile(ProfileName, false);
-	if (DeviceProfile)
-	{
-		GetMutableDefault<ULevelEditorPlaySettings>()->RescaleForMobilePreview(DeviceProfile, LogicalWidth, LogicalHeight, ScaleFactor);
-	}
 }
 
 void ULevelEditorPlaySettings::PostEditChangeProperty(struct FPropertyChangedEvent& PropertyChangedEvent)
@@ -523,22 +495,6 @@ void ULevelEditorPlaySettings::PostEditChangeProperty(struct FPropertyChangedEve
 		NetworkEmulationSettings.OnPostEditChange(PropertyChangedEvent);
 	}
 
-	PushDebugDrawingSettings();
-	if (PropertyChangedEvent.MemberProperty && PropertyChangedEvent.MemberProperty->GetFName() == GET_MEMBER_NAME_CHECKED(ULevelEditorPlaySettings, bShowServerDebugDrawingByDefault))
-	{
-		// If the show option is turned on or off, force it on or off in any active PIE instances too as a QOL aid so they don't have to stop and restart PIE again for it to take effect
-		for (const FWorldContext& WorldContext : GEngine->GetWorldContexts())
-		{
-			if ((WorldContext.WorldType == EWorldType::PIE) &&
-				(WorldContext.World() != nullptr) &&
-				(WorldContext.World()->GetNetMode() == NM_Client) &&
-				(WorldContext.GameViewport != nullptr))
-			{
-				WorldContext.GameViewport->EngineShowFlags.SetServerDrawDebug(bShowServerDebugDrawingByDefault);
-			}
-		}
-	}
-
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 }
 
@@ -552,66 +508,17 @@ void ULevelEditorPlaySettings::PostInitProperties()
 	NetworkEmulationSettings.OnPostInitProperties();
 
 #if WITH_EDITOR
-	FCoreDelegates::OnSafeFrameChangedEvent.AddUObject(this, &ULevelEditorPlaySettings::UpdateCustomSafeZones);
+	FCoreDelegates::OnSafeFrameChangedEvent.AddUObject(this, &ULevelEditorPlaySettings::SwapSafeZoneTypes);
 #endif
-
-	for (FPlayScreenResolution& Resolution : LaptopScreenResolutions)
-	{
-		Resolution.PostInitProperties();
-	}
-	for (FPlayScreenResolution& Resolution : MonitorScreenResolutions)
-	{
-		Resolution.PostInitProperties();
-	}
-	for (FPlayScreenResolution& Resolution : PhoneScreenResolutions)
-	{
-		Resolution.PostInitProperties();
-	}
-	for (FPlayScreenResolution& Resolution : TabletScreenResolutions)
-	{
-		Resolution.PostInitProperties();
-	}
-	for (FPlayScreenResolution& Resolution : TelevisionScreenResolutions)
-	{
-		Resolution.PostInitProperties();
-	}
-
-	PushDebugDrawingSettings();
-}
-
-bool ULevelEditorPlaySettings::CanEditChange(const FProperty* InProperty) const
-{
-	const bool ParentVal = Super::CanEditChange(InProperty);
-	FName PropertyName = InProperty->GetFName();
-
-	if (PropertyName == GET_MEMBER_NAME_CHECKED(ULevelEditorPlaySettings, AdditionalServerLaunchParameters))
-	{
-		return ParentVal && (!RunUnderOneProcess && (PlayNetMode == EPlayNetMode::PIE_Client || bLaunchSeparateServer));
-	}
-
-	return ParentVal;
 }
 
 #if WITH_EDITOR
-void ULevelEditorPlaySettings::UpdateCustomSafeZones()
+void ULevelEditorPlaySettings::SwapSafeZoneTypes()
 {
-	// Prefer to use r.DebugSafeZone.TitleRatio if it is set
 	if (FDisplayMetrics::GetDebugTitleSafeZoneRatio() < 1.f)
 	{
-		FSlateApplication::Get().ResetCustomSafeZone();
-		PIESafeZoneOverride = FMargin();
+		DeviceToEmulate = FString();
 	}
-	else
-	{
-		PIESafeZoneOverride = CalculateCustomUnsafeZones(CustomUnsafeZoneStarts, CustomUnsafeZoneDimensions, DeviceToEmulate, FVector2D(NewWindowWidth, NewWindowHeight));
-	}
-
-	FMargin SafeZoneRatio = PIESafeZoneOverride;
-	SafeZoneRatio.Left /= (NewWindowWidth / 2.0f);
-	SafeZoneRatio.Right /= (NewWindowWidth / 2.0f);
-	SafeZoneRatio.Bottom /= (NewWindowHeight / 2.0f);
-	SafeZoneRatio.Top /= (NewWindowHeight / 2.0f);
-	FSlateApplication::Get().OnDebugSafeZoneChanged.Broadcast(SafeZoneRatio, true);
 }
 #endif
 
@@ -813,72 +720,7 @@ void ULevelEditorPlaySettings::RescaleForMobilePreview(const UDeviceProfile* Dev
 			PreviewWidth *= ScaleFactor;
 			PreviewHeight *= ScaleFactor;
 		}
-
-	}
-}
-
-void ULevelEditorPlaySettings::RegisterCommonResolutionsMenu()
-{
-	UToolMenu* Menu = UToolMenus::Get()->RegisterMenu(GetCommonResolutionsMenuName());
-	check(Menu);
-
-	FToolMenuSection& ResolutionsSection = Menu->AddSection("CommonResolutions");
-	const ULevelEditorPlaySettings* PlaySettings = GetDefault<ULevelEditorPlaySettings>();
-
-	auto AddSubMenuToSection = [&ResolutionsSection](const FString& SectionName, const FText& SubMenuTitle, const TArray<FPlayScreenResolution>& Resolutions)
-	{
-		ResolutionsSection.AddSubMenu(
-			FName(*SectionName),
-			SubMenuTitle,
-			FText(),
-			FNewToolMenuChoice(FNewToolMenuDelegate::CreateStatic(&ULevelEditorPlaySettings::AddScreenResolutionSection, &Resolutions, SectionName))
-		);
-	};
-
-	AddSubMenuToSection(FString("Phones"), LOCTEXT("CommonPhonesSectionHeader", "Phones"), PlaySettings->PhoneScreenResolutions);
-	AddSubMenuToSection(FString("Tablets"), LOCTEXT("CommonTabletsSectionHeader", "Tablets"), PlaySettings->TabletScreenResolutions);
-	AddSubMenuToSection(FString("Laptops"), LOCTEXT("CommonLaptopsSectionHeader", "Laptops"), PlaySettings->LaptopScreenResolutions);
-	AddSubMenuToSection(FString("Monitors"), LOCTEXT("CommonMonitorsSectionHeader", "Monitors"), PlaySettings->MonitorScreenResolutions);
-	AddSubMenuToSection(FString("Televisions"), LOCTEXT("CommonTelevesionsSectionHeader", "Televisions"), PlaySettings->TelevisionScreenResolutions);
-}
-
-FName ULevelEditorPlaySettings::GetCommonResolutionsMenuName()
-{
-	const static FName MenuName("EditorSettingsViewer.LevelEditorPlaySettings");
-	return MenuName;
-}
-
-void ULevelEditorPlaySettings::AddScreenResolutionSection(UToolMenu* InToolMenu, const TArray<FPlayScreenResolution>* Resolutions, const FString SectionName)
-{
-	check(Resolutions);
-	for (const FPlayScreenResolution& Resolution : *Resolutions)
-	{
-		FInternationalization& I18N = FInternationalization::Get();
-
-		FFormatNamedArguments Args;
-		Args.Add(TEXT("Width"), FText::AsNumber(Resolution.Width, NULL, I18N.GetInvariantCulture()));
-		Args.Add(TEXT("Height"), FText::AsNumber(Resolution.Height, NULL, I18N.GetInvariantCulture()));
-		Args.Add(TEXT("AspectRatio"), FText::FromString(Resolution.AspectRatio));
-
-		FText ToolTip;
-		if (!Resolution.ProfileName.IsEmpty())
-		{
-			Args.Add(TEXT("LogicalWidth"), FText::AsNumber(Resolution.LogicalWidth, NULL, I18N.GetInvariantCulture()));
-			Args.Add(TEXT("LogicalHeight"), FText::AsNumber(Resolution.LogicalHeight, NULL, I18N.GetInvariantCulture()));
-			Args.Add(TEXT("ScaleFactor"), FText::AsNumber(Resolution.ScaleFactor, NULL, I18N.GetInvariantCulture()));
-			ToolTip = FText::Format(LOCTEXT("CommonResolutionFormatWithContentScale", "{Width} x {Height} ({AspectRatio}, Logical Res: {LogicalWidth} x {LogicalHeight}, Content Scale: {ScaleFactor})"), Args);
-		}
-		else
-		{
-			ToolTip = FText::Format(LOCTEXT("CommonResolutionFormat", "{Width} x {Height} ({AspectRatio})"), Args);
-		}
-
-		UCommonResolutionMenuContext* Context = InToolMenu->FindContext<UCommonResolutionMenuContext>();
-		check(Context);
-		check(Context->GetUIActionFromLevelPlaySettings.IsBound());
-
-		FUIAction Action = Context->GetUIActionFromLevelPlaySettings.Execute(Resolution);
-		InToolMenu->AddMenuEntry(FName(*SectionName), FToolMenuEntry::InitMenuEntry(FName(*Resolution.Description), FText::FromString(Resolution.Description), ToolTip, FSlateIcon(), Action));
+	
 	}
 }
 
@@ -888,14 +730,9 @@ void ULevelEditorPlaySettings::AddScreenResolutionSection(UToolMenu* InToolMenu,
 ULevelEditorViewportSettings::ULevelEditorViewportSettings( const FObjectInitializer& ObjectInitializer )
 	: Super(ObjectInitializer)
 {
-	MinimumOrthographicZoom = 250.0f;
 	bLevelStreamingVolumePrevis = false;
 	BillboardScale = 1.0f;
 	TransformWidgetSizeAdjustment = 0.0f;
-	SelectedSplinePointSizeAdjustment = 0.0f;
-	SplineLineThicknessAdjustment = 0.0f;
-	SplineTangentHandleSizeAdjustment = 0.0f;
-	SplineTangentScale = 1.0f;
 	MeasuringToolUnits = MeasureUnits_Centimeters;
 	bAllowArcballRotate = false;
 	bAllowScreenRotate = false;
@@ -1022,6 +859,21 @@ UProjectPackagingSettings::UProjectPackagingSettings( const FObjectInitializer& 
 
 void UProjectPackagingSettings::PostInitProperties()
 {
+	// Migrate from deprecated Blueprint nativization packaging flags.
+	// Note: This assumes that LoadConfig() has been called before getting here.
+	FString NewValue;
+	const FString ConfigFileName = UProjectPackagingSettings::StaticClass()->GetConfigName();
+	const FString ClassSectionName = UProjectPackagingSettings::StaticClass()->GetPathName();
+	const bool bIgnoreOldFlags = GConfig->GetString(*ClassSectionName, GET_MEMBER_NAME_STRING_CHECKED(UProjectPackagingSettings, BlueprintNativizationMethod), NewValue, ConfigFileName);
+	if (!bIgnoreOldFlags && bNativizeBlueprintAssets_DEPRECATED)
+	{
+		BlueprintNativizationMethod = bNativizeOnlySelectedBlueprints_DEPRECATED ? EProjectPackagingBlueprintNativizationMethod::Exclusive : EProjectPackagingBlueprintNativizationMethod::Inclusive;
+	}
+
+	// Reset deprecated settings to defaults.
+	bNativizeBlueprintAssets_DEPRECATED = false;
+	bNativizeOnlySelectedBlueprints_DEPRECATED = false;
+
 	// Build code projects by default
 	Build = EProjectPackagingBuild::IfProjectHasCode;
 
@@ -1051,14 +903,6 @@ void UProjectPackagingSettings::FixCookingPaths()
 			PathToFix.Path = FString::Printf(TEXT("/Game/%s"), *PathToFix.Path);
 		}
 	}
-
-	for (FDirectoryPath& PathToFix : TestDirectoriesToNotSearch)
-	{
-		if (!PathToFix.Path.IsEmpty() && !PathToFix.Path.StartsWith(TEXT("/"), ESearchCase::CaseSensitive))
-		{
-			PathToFix.Path = FString::Printf(TEXT("/Game/%s"), *PathToFix.Path);
-		}
-	}
 }
 
 void UProjectPackagingSettings::PostEditChangeProperty( FPropertyChangedEvent& PropertyChangedEvent )
@@ -1069,7 +913,7 @@ void UProjectPackagingSettings::PostEditChangeProperty( FPropertyChangedEvent& P
 		? PropertyChangedEvent.MemberProperty->GetFName()
 		: NAME_None;
 
-	if (Name == FName(TEXT("DirectoriesToAlwaysCook")) || Name == FName(TEXT("DirectoriesToNeverCook")) || Name == FName(TEXT("TestDirectoriesToNotSearch")) || Name == NAME_None)
+	if (Name == FName(TEXT("DirectoriesToAlwaysCook")) || Name == FName(TEXT("DirectoriesToNeverCook")) || Name == NAME_None)
 	{
 		// We need to fix paths for no name updates to catch the reloadconfig call
 		FixCookingPaths();
@@ -1240,7 +1084,7 @@ void UProjectPackagingSettings::PostEditChangeProperty( FPropertyChangedEvent& P
 	}
 }
 
-bool UProjectPackagingSettings::CanEditChange( const FProperty* InProperty ) const
+bool UProjectPackagingSettings::CanEditChange( const UProperty* InProperty ) const
 {
 	if (InProperty->GetFName() == FName(TEXT("NativizeBlueprintAssets")))
 	{

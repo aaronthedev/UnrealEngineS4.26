@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "Graph/SControlRigGraphPinNameList.h"
@@ -11,7 +11,6 @@
 
 void SControlRigGraphPinNameList::Construct(const FArguments& InArgs, UEdGraphPin* InGraphPinObj)
 {
-	this->ModelPin = InArgs._ModelPin;
 	this->OnGetNameListContent = InArgs._OnGetNameListContent;
 
 	SGraphPin::Construct(SGraphPin::FArguments(), InGraphPinObj);
@@ -30,10 +29,11 @@ TSharedRef<SWidget>	SControlRigGraphPinNameList::GetDefaultValueWidget()
 
 	return SNew(SBox)
 		.MinDesiredWidth(150)
+		.MaxDesiredWidth(400)
 		[
 			SAssignNew(NameListComboBox, SControlRigGraphPinNameListValueWidget)
 				.Visibility(this, &SGraphPin::GetDefaultValueVisibility)
-				.OptionsSource(&CurrentList)
+				.OptionsSource(&GetNameList())
 				.OnGenerateWidget(this, &SControlRigGraphPinNameList::MakeNameListItemWidget)
 				.OnSelectionChanged(this, &SControlRigGraphPinNameList::OnNameListChanged)
 				.OnComboBoxOpening(this, &SControlRigGraphPinNameList::OnNameListComboBox)
@@ -50,7 +50,7 @@ const TArray<TSharedPtr<FString>>& SControlRigGraphPinNameList::GetNameList() co
 {
 	if (OnGetNameListContent.IsBound())
 	{
-		return OnGetNameListContent.Execute(ModelPin);
+		return OnGetNameListContent.Execute();
 	}
 	return EmptyList;
 }
@@ -79,20 +79,15 @@ void SControlRigGraphPinNameList::OnNameListChanged(TSharedPtr<FString> NewSelec
 {
 	if (SelectInfo != ESelectInfo::Direct)
 	{
-		FString NewValue = FName(NAME_None).ToString();
-		if (NewSelection.IsValid())
-		{
-			NewValue = *NewSelection.Get();
-		}
+		FString NewValue = *NewSelection.Get();
 		SetNameListText(FText::FromString(NewValue), ETextCommit::OnEnter);
 	}
 }
 
 void SControlRigGraphPinNameList::OnNameListComboBox()
 {
-	CurrentList = GetNameList();
 	TSharedPtr<FString> CurrentlySelected;
-	for (TSharedPtr<FString> Item : CurrentList)
+	for (TSharedPtr<FString> Item : GetNameList())
 	{
 		if (Item->Equals(GetNameListText().ToString()))
 		{

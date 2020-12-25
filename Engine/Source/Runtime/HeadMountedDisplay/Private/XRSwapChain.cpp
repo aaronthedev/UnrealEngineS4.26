@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "XRSwapChain.h"
 #include "RenderingThread.h"
@@ -25,16 +25,16 @@ FORCEINLINE void CheckInRenderThread()
 
 bool InRHIOrValidThread()
 {
-	if (GIsThreadedRendering && !GIsRenderingThreadSuspended.Load(EMemoryOrder::Relaxed))
+	if (GRenderingThread && !GIsRenderingThreadSuspended.Load(EMemoryOrder::Relaxed))
 	{
-		if (IsRHIThreadRunning())
+		if (GRHIThreadId)
 		{
-			if (IsInRHIThread())
+			if (FPlatformTLS::GetCurrentThreadId() == GRHIThreadId)
 			{
 				return true;
 			}
 
-			if (IsInActualRenderingThread())
+			if (FPlatformTLS::GetCurrentThreadId() == GRenderingThread->GetThreadID())
 			{
 				return GetImmediateCommandList_ForRenderCommand().Bypass();
 			}
@@ -43,7 +43,7 @@ bool InRHIOrValidThread()
 		}
 		else
 		{
-			return IsInActualRenderingThread();
+			return FPlatformTLS::GetCurrentThreadId() == GRenderingThread->GetThreadID();
 		}
 	}
 	else
@@ -117,7 +117,7 @@ void FXRSwapChain::IncrementSwapChainIndex_RHIThread(int64 /* TimeoutNanoseconds
 	CheckInRHIThread();
 
 	SwapChainIndex_RHIThread = (SwapChainIndex_RHIThread + 1) % GetSwapChainLength();
-	GDynamicRHI->RHIAliasTextureResources((FTextureRHIRef&)RHITexture, (FTextureRHIRef&)RHITextureSwapChain[SwapChainIndex_RHIThread]);
+	GDynamicRHI->RHIAliasTextureResources(RHITexture, RHITextureSwapChain[SwapChainIndex_RHIThread]);
 }
 
 

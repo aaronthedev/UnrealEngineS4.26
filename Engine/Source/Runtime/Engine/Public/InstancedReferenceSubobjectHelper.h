@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -17,23 +17,23 @@ struct FInstancedPropertyPath
 private:
 	struct FPropertyLink
 	{
-		FPropertyLink(const FProperty* Property, int32 ArrayIndexIn = INDEX_NONE)
+		FPropertyLink(const UProperty* Property, int32 ArrayIndexIn = INDEX_NONE)
 			: PropertyPtr(Property), ArrayIndex(ArrayIndexIn)
 		{}
 
-		const FProperty* PropertyPtr;
+		const UProperty* PropertyPtr;
 		int32            ArrayIndex;
 	};
 
 public:
 	//--------------------------------------------------------------------------
-	FInstancedPropertyPath(FProperty* RootProperty)
+	FInstancedPropertyPath(UProperty* RootProperty)
 	{
 		PropertyChain.Add(FPropertyLink(RootProperty));
 	}
 
 	//--------------------------------------------------------------------------
-	void Push(const FProperty* Property, int32 ArrayIndex = INDEX_NONE)
+	void Push(const UProperty* Property, int32 ArrayIndex = INDEX_NONE)
 	{
 		PropertyChain.Add(FPropertyLink(Property, ArrayIndex));		
 	}
@@ -45,7 +45,7 @@ public:
 	}
 
 	//--------------------------------------------------------------------------
-	const FProperty* Head() const
+	const UProperty* Head() const
 	{
 		return PropertyChain.Last().PropertyPtr;
 	}
@@ -102,7 +102,7 @@ public:
 	static void GetInstancedSubObjects(const UObject* Container, T& OutObjects)
 	{
 		const UClass* ContainerClass = Container->GetClass();
-		for (FProperty* Prop = ContainerClass->RefLink; Prop; Prop = Prop->NextRef)
+		for (UProperty* Prop = ContainerClass->RefLink; Prop; Prop = Prop->NextRef)
 		{
 			FInstancedPropertyPath RootPropertyPath(Prop);
 			GetInstancedSubObjects_Inner(RootPropertyPath, reinterpret_cast<const uint8*>(Container), [&OutObjects](const FInstancedSubObjRef& Ref){ OutObjects.Add(Ref); });

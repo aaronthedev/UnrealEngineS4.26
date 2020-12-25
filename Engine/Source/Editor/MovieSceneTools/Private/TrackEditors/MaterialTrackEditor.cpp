@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "TrackEditors/MaterialTrackEditor.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
-#include "Components/DecalComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialInstance.h"
@@ -89,7 +88,7 @@ TSharedRef<SWidget> FMaterialTrackEditor::OnGetAddParameterMenuContent( FGuid Ob
 		Material->GetAllScalarParameterInfo(ScalarParameterInfo, ScalarParameterGuids );
 		for (int32 ScalarParameterIndex = 0; ScalarParameterIndex < ScalarParameterInfo.Num(); ++ScalarParameterIndex)
 		{
-			if (!bCollectedVisibleParameters || VisibleExpressions.Contains(FMaterialParameterInfo(ScalarParameterInfo[ScalarParameterIndex].Name)))
+			if (!bCollectedVisibleParameters || VisibleExpressions.Contains(ScalarParameterInfo[ScalarParameterIndex].Name))
 			{
 				FName ScalarParameterName = ScalarParameterInfo[ScalarParameterIndex].Name;
 				FUIAction AddParameterMenuAction( FExecuteAction::CreateSP( this, &FMaterialTrackEditor::AddScalarParameter, ObjectBinding, MaterialTrack, ScalarParameterName ) );
@@ -104,7 +103,7 @@ TSharedRef<SWidget> FMaterialTrackEditor::OnGetAddParameterMenuContent( FGuid Ob
 		Material->GetAllVectorParameterInfo( ColorParameterInfo, ColorParameterGuids );
 		for (int32 ColorParameterIndex = 0; ColorParameterIndex < ColorParameterInfo.Num(); ++ColorParameterIndex)
 		{
-			if (!bCollectedVisibleParameters || VisibleExpressions.Contains(FMaterialParameterInfo(ColorParameterInfo[ColorParameterIndex].Name)))
+			if (!bCollectedVisibleParameters || VisibleExpressions.Contains(ColorParameterInfo[ColorParameterIndex].Name))
 			{
 				FName ColorParameterName = ColorParameterInfo[ColorParameterIndex].Name;
 				FUIAction AddParameterMenuAction( FExecuteAction::CreateSP( this, &FMaterialTrackEditor::AddColorParameter, ObjectBinding, MaterialTrack, ColorParameterName ) );
@@ -213,33 +212,18 @@ UMaterialInterface* FComponentMaterialTrackEditor::GetMaterialInterfaceForTrack(
 		return nullptr;
 	}
 
+	UPrimitiveComponent* Component = Cast<UPrimitiveComponent>(SequencerPtr->FindSpawnedObjectOrTemplate( ObjectBinding ));
 	UMovieSceneComponentMaterialTrack* ComponentMaterialTrack = Cast<UMovieSceneComponentMaterialTrack>( MaterialTrack );
-	if (!ComponentMaterialTrack)
-	{
-		return nullptr;
-	}
-
-	UObject* Object = GetSequencer()->FindSpawnedObjectOrTemplate(ObjectBinding);
-	if (!Object)
-	{
-		return nullptr;
-	}
-
-	if (UPrimitiveComponent* Component = Cast<UPrimitiveComponent>(Object))
+	if ( Component != nullptr && ComponentMaterialTrack != nullptr )
 	{
 		return Component->GetMaterial( ComponentMaterialTrack->GetMaterialIndex() );
 	}
-	else if (UDecalComponent* DecalComponent = Cast<UDecalComponent>(Object))
-	{
-		return DecalComponent->GetDecalMaterial();
-	}
-
 	return nullptr;
 }
 
 void FComponentMaterialTrackEditor::ExtendObjectBindingTrackMenu(TSharedRef<FExtender> Extender, const TArray<FGuid>& ObjectBindings, const UClass* ObjectClass)
 {
-	if (ObjectClass->IsChildOf(UPrimitiveComponent::StaticClass()) || ObjectClass->IsChildOf(UDecalComponent::StaticClass()))
+	if (ObjectClass->IsChildOf(UPrimitiveComponent::StaticClass()))
 	{
 		Extender->AddMenuExtension(SequencerMenuExtensionPoints::AddTrackMenu_PropertiesSection, EExtensionHook::Before, nullptr, FMenuExtensionDelegate::CreateSP(this, &FComponentMaterialTrackEditor::ConstructObjectBindingTrackMenu, ObjectBindings));
 	}
@@ -253,13 +237,7 @@ void FComponentMaterialTrackEditor::ConstructObjectBindingTrackMenu(FMenuBuilder
 		return;
 	}
 
-	USceneComponent* SceneComponent = Cast<USceneComponent>(Object);
-	if (!SceneComponent)
-	{
-		return;
-	}
-
-	if (UPrimitiveComponent* PrimitiveComponent = Cast<UPrimitiveComponent>(SceneComponent))
+	if (UPrimitiveComponent* PrimitiveComponent = Cast<UPrimitiveComponent>(Object))
 	{
 		int32 NumMaterials = PrimitiveComponent->GetNumMaterials();
 		if (NumMaterials > 0)
@@ -268,7 +246,7 @@ void FComponentMaterialTrackEditor::ConstructObjectBindingTrackMenu(FMenuBuilder
 			{
 				for (int32 MaterialIndex = 0; MaterialIndex < NumMaterials; MaterialIndex++)
 				{
-					FUIAction AddComponentMaterialAction(FExecuteAction::CreateRaw(this, &FComponentMaterialTrackEditor::HandleAddComponentMaterialActionExecute, SceneComponent, MaterialIndex));
+					FUIAction AddComponentMaterialAction(FExecuteAction::CreateRaw(this, &FComponentMaterialTrackEditor::HandleAddComponentMaterialActionExecute, PrimitiveComponent, MaterialIndex));
 					FText AddComponentMaterialLabel = FText::Format(LOCTEXT("ComponentMaterialIndexLabelFormat", "Element {0}"), FText::AsNumber(MaterialIndex));
 					FText AddComponentMaterialToolTip = FText::Format(LOCTEXT("ComponentMaterialIndexToolTipFormat", "Add material element {0}"), FText::AsNumber(MaterialIndex));
 					MenuBuilder.AddMenuEntry(AddComponentMaterialLabel, AddComponentMaterialToolTip, FSlateIcon(), AddComponentMaterialAction);
@@ -277,22 +255,9 @@ void FComponentMaterialTrackEditor::ConstructObjectBindingTrackMenu(FMenuBuilder
 			MenuBuilder.EndSection();
 		}
 	}
-	else if (UDecalComponent* DecalComponent = Cast<UDecalComponent>(SceneComponent))
-	{
-		if (UMaterialInterface* DecalMaterial = DecalComponent->GetDecalMaterial())
-		{
-			MenuBuilder.BeginSection("Materials", LOCTEXT("MaterialSection", "Material Parameters"));
-			{
-				FUIAction AddComponentMaterialAction(FExecuteAction::CreateRaw(this, &FComponentMaterialTrackEditor::HandleAddComponentMaterialActionExecute, SceneComponent, 0));
-				FText AddDecalMaterialToolTip = FText::Format(LOCTEXT("AddDecalMaterialToolTipFormat", "Add decal material {0}"), FText::FromString(DecalMaterial->GetName()));
-				MenuBuilder.AddMenuEntry(FText::FromString(DecalMaterial->GetName()), AddDecalMaterialToolTip, FSlateIcon(), AddComponentMaterialAction);
-			}
-			MenuBuilder.EndSection();
-		}
-	}
 }
 
-void FComponentMaterialTrackEditor::HandleAddComponentMaterialActionExecute(USceneComponent* Component, int32 MaterialIndex)
+void FComponentMaterialTrackEditor::HandleAddComponentMaterialActionExecute(UPrimitiveComponent* Component, int32 MaterialIndex)
 {
 	TSharedPtr<ISequencer> SequencerPtr = GetSequencer();
 	UMovieScene* MovieScene = SequencerPtr->GetFocusedMovieSceneSequence()->GetMovieScene();

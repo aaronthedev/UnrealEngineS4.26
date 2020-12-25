@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "FoliageEdMode.h"
 #include "SceneView.h"
@@ -32,7 +32,6 @@
 #include "FoliageEditActions.h"
 #include "FoliageHelper.h"
 #include "ISceneOutliner.h"
-#include "AssetData.h"
 
 #include "AssetRegistryModule.h"
 #include "Misc/ScopeExit.h"
@@ -233,8 +232,6 @@ FEdModeFoliage::FEdModeFoliage()
 	, FoliageInteractor(nullptr)
 	, UpdateSelectionCounter(0)
 	, bHasDeferredSelectionNotification(false)
-	, bMoving(false)
-	, bTracking(false)
 {
 	// Load resources and construct brush component
 	UStaticMesh* StaticMesh = nullptr;
@@ -265,6 +262,8 @@ FEdModeFoliage::FEdModeFoliage()
 	FName OpacityParamName("OpacityAmount");
 	BrushMID->GetScalarParameterValue(OpacityParamName, DefaultBrushOpacity);
 
+	UICommandList = MakeShareable(new FUICommandList);
+	BindCommands();
 }
 
 void FEdModeFoliage::BindCommands()
@@ -307,7 +306,7 @@ void FEdModeFoliage::BindCommands()
 		FCanExecuteAction(),
 		FIsActionChecked::CreateLambda([=]
 	{
-		return UISettings.GetPaintToolSelected() && !UISettings.GetIsInSingleInstantiationMode();
+		return UISettings.GetPaintToolSelected();
 	}));
 
 	UICommandList->MapAction(
@@ -316,7 +315,7 @@ void FEdModeFoliage::BindCommands()
 		FCanExecuteAction(),
 		FIsActionChecked::CreateLambda([=]
 	{
-		return UISettings.GetReapplyToolSelected() && !UISettings.GetIsInSingleInstantiationMode();
+		return UISettings.GetReapplyToolSelected();
 	}));
 
 	UICommandList->MapAction(
@@ -404,15 +403,13 @@ void FEdModeFoliage::Enter()
 	// Force real-time viewports.  We'll back up the current viewport state so we can restore it when the
 	// user exits this mode.
 	const bool bWantRealTime = true;
-	ForceRealTimeViewports(bWantRealTime);
+	const bool bRememberCurrentState = true;
+	ForceRealTimeViewports(bWantRealTime, bRememberCurrentState);
 
 	if (!Toolkit.IsValid())
 	{
 		Toolkit = MakeShareable(new FFoliageEdModeToolkit);
 		Toolkit->Init(Owner->GetToolkitHost());
-
-		UICommandList = Toolkit->GetToolkitCommands();
-		BindCommands();
 	}
 
 	if (UISettings.GetSelectToolSelected() || UISettings.GetLassoSelectToolSelected())
@@ -477,16 +474,6 @@ void FEdModeFoliage::Enter()
 /** FEdMode: Called when the mode is exited */
 void FEdModeFoliage::Exit()
 {
-	if (bToolActive)
-	{
-		EndFoliageBrushTrace();
-	}
-	else if (bTracking)
-	{
-		EndTracking();
-	}
-	check(!GEditor->IsTransactionActive());
-
 	// Unregister VR mode from event handlers
 	{
 		UViewportWorldInteraction* ViewportWorldInteraction = Cast<UViewportWorldInteraction>( GEditor->GetEditorWorldExtensionsManager()->GetEditorWorldExtensions( GetWorld() )->FindExtension( UViewportWorldInteraction::StaticClass() ) );
@@ -527,7 +514,9 @@ void FEdModeFoliage::Exit()
 	SphereBrushComponent->UnregisterComponent();
 
 	// Restore real-time viewport state if we changed it
-	ForceRealTimeViewports(false);
+	const bool bWantRealTime = false;
+	const bool bRememberCurrentState = false;
+	ForceRealTimeViewports(bWantRealTime, bRememberCurrentState);
 
 	// Clear the cache (safety, should be empty!)
 	LandscapeLayerCaches.Empty();
@@ -684,7 +673,7 @@ void FEdModeFoliage::OnVRAction(class FEditorViewportClient& ViewportClient, UVi
 
 							if (HitResult.Actor.Get() != nullptr)
 							{
-								FScopedTransaction Transaction(NSLOCTEXT("UnrealEd", "FoliageMode_EditTransaction", "Foliage Editing"));
+								GEditor->BeginTransaction(NSLOCTEXT("UnrealEd", "FoliageMode_EditTransaction", "Foliage Editing"));
 
 								if (IsModifierButtonPressed(&ViewportClient))
 								{
@@ -694,6 +683,8 @@ void FEdModeFoliage::OnVRAction(class FEditorViewportClient& ViewportClient, UVi
 								{
 									ApplyPaintBucket_Add(HitResult.Actor.Get());
 								}
+
+								GEditor->EndTransaction();
 							}
 						}
 						// Select an instanced foliage
@@ -701,7 +692,7 @@ void FEdModeFoliage::OnVRAction(class FEditorViewportClient& ViewportClient, UVi
 						{
 							FHitResult HitResult = Interactor->GetHitResultFromLaserPointer();
 
-							FScopedTransaction Transaction(NSLOCTEXT("UnrealEd", "FoliageMode_EditTransaction", "Foliage Editing"));
+							GEditor->BeginTransaction(NSLOCTEXT("UnrealEd", "FoliageMode_EditTransaction", "Foliage Editing"));
 
 							if (HitResult.GetActor() != nullptr)
 							{
@@ -714,6 +705,8 @@ void FEdModeFoliage::OnVRAction(class FEditorViewportClient& ViewportClient, UVi
 									SelectInstanceAtLocation(ViewportClient.GetWorld(), Settings, HitResult.ImpactPoint, !IsModifierButtonPressed(&ViewportClient));
 								}
 							}
+
+							GEditor->EndTransaction();
 
 							// @todo vreditor: we currently don't have a key mapping scheme to snap selected instances to ground 
 							// SnapSelectedInstancesToGround(GetWorld());
@@ -813,15 +806,11 @@ void FEdModeFoliage::HandleToolChanged()
 
 void FEdModeFoliage::ClearAllToolSelection()
 {
-	UISettings.SetEraseToolSelected(false);
 	UISettings.SetLassoSelectToolSelected(false);
 	UISettings.SetPaintToolSelected(false);
 	UISettings.SetReapplyToolSelected(false);
 	UISettings.SetSelectToolSelected(false);
 	UISettings.SetPaintBucketToolSelected(false);
-	UISettings.SetIsInQuickEraseMode(false);
-	UISettings.SetIsInQuickSingleInstantiationMode(false);
-	UISettings.SetIsInSingleInstantiationMode(false);
 }
 
 void FEdModeFoliage::OnSetPaint()
@@ -856,22 +845,6 @@ void FEdModeFoliage::OnSetPaintFill()
 {
 	ClearAllToolSelection();
 	UISettings.SetPaintBucketToolSelected(true);
-	HandleToolChanged();
-}
-
-void FEdModeFoliage::OnSetErase()
-{
-	ClearAllToolSelection();
-	UISettings.SetPaintToolSelected(true);
-	UISettings.SetEraseToolSelected(true);
-	HandleToolChanged();
-}
-
-void FEdModeFoliage::OnSetPlace()
-{
-	ClearAllToolSelection();
-	UISettings.SetPaintToolSelected(true);
-	UISettings.SetIsInSingleInstantiationMode(true);
 	HandleToolChanged();
 }
 
@@ -1303,7 +1276,7 @@ bool GetMaxHitWeight(const FVector& Location, UActorComponent* Component, const 
 	{
 		if (ULandscapeComponent* HitLandscape = HitLandscapeCollision->RenderComponent.Get())
 		{
-			for (const FName& LandscapeLayerName : LandscapeLayersArray)
+			for (const FName LandscapeLayerName : LandscapeLayersArray)
 			{
 				// Cache store mapping between component and weight data
 				TMap<ULandscapeComponent*, TArray<uint8> >* LandscapeLayerCache = &LandscapeLayerCaches->FindOrAdd(LandscapeLayerName);;
@@ -1535,32 +1508,22 @@ static void SpawnFoliageInstance(UWorld* InWorld, const UFoliageType* Settings, 
 {
 	SCOPE_CYCLE_COUNTER(STAT_FoliageSpawnInstance);
 
-	TMap<ULevel*, TArray<const FFoliageInstance*>> PerLevelPlacedInstances;
+	TMap<ULevel*, TSet<const FFoliageInstance*>> PerLevelPlacedInstances;
 
 	if (UISettings != nullptr && UISettings->GetIsInSpawnInCurrentLevelMode())
 	{
-		if (const ILevelPartitionInterface* LevelPartition = InWorld->GetCurrentLevel()->GetLevelPartition())
-		{
-			for (const FFoliageInstance& PlacedInstance : PlacedInstances)
-			{
-				PerLevelPlacedInstances.FindOrAdd(LevelPartition->GetSubLevel(PlacedInstance.Location)).Add(&PlacedInstance);
-			}
-		}
-		else
-		{
-			TArray<const FFoliageInstance*>& LevelInstances = PerLevelPlacedInstances.FindOrAdd(InWorld->GetCurrentLevel());
+		TSet<const FFoliageInstance*>& LevelInstances = PerLevelPlacedInstances.FindOrAdd(InWorld->GetCurrentLevel());
 
-			for (const FFoliageInstance& PlacedInstance : PlacedInstances)
-			{
-				LevelInstances.Add(&PlacedInstance);
-			}
+		for (const FFoliageInstance& PlacedInstance : PlacedInstances)
+		{
+			LevelInstances.Add(&PlacedInstance);
 		}
 	}
 	else
 	{
 		for (const FFoliageInstance& PlacedInstance : PlacedInstances)
 		{
-			TArray<const FFoliageInstance*>& LevelInstances = PerLevelPlacedInstances.FindOrAdd(PlacedInstance.BaseComponent->GetComponentLevel());
+			TSet<const FFoliageInstance*>& LevelInstances = PerLevelPlacedInstances.FindOrAdd(PlacedInstance.BaseComponent->GetComponentLevel());
 			LevelInstances.Add(&PlacedInstance);
 		}
 	}
@@ -2047,96 +2010,6 @@ void FEdModeFoliage::ApplySelection(UWorld* InWorld, bool bApply)
 	}
 }
 
-void FEdModeFoliage::UpdateInstancePartitioning(UWorld* InWorld)
-{
-	if (!bMoving)
-	{
-		return;
-	}
-
-	const int32 NumLevels = InWorld->GetNumLevels();
-	for (int32 LevelIdx = 0; LevelIdx < NumLevels; ++LevelIdx)
-	{
-		ULevel* Level = InWorld->GetLevel(LevelIdx);
-
-		const ILevelPartitionInterface* LevelPartition = Level->GetLevelPartition();
-		if (LevelPartition == nullptr)
-		{
-			continue;
-		}
-		
-		AInstancedFoliageActor* IFA = AInstancedFoliageActor::GetInstancedFoliageActorForLevel(Level);
-		if (IFA)
-		{
-			for (auto& MeshPair : IFA->FoliageInfos)
-			{
-				FFoliageInfo& FoliageInfo = *MeshPair.Value;
-				if (FoliageInfo.Type == EFoliageImplType::Actor)
-				{
-					continue; // Actors are handled through the Partitioning code
-				}
-
-				ULevel* TargetLevel = nullptr;
-				// Loop here because SelectedIndices will change on MoveInstancesToLevel so we need to process the modified remaining SelectedIndices
-				do
-				{
-					TargetLevel = nullptr;
-					TSet<int32> InstancesToMove;
-
-					for (int32 SelectedInstanceIdx : FoliageInfo.SelectedIndices)
-					{
-						FFoliageInstance& Instance = FoliageInfo.Instances[SelectedInstanceIdx];
-						ULevel* NewLevel = LevelPartition->GetSubLevel(Instance.Location);
-						if ((TargetLevel == nullptr || TargetLevel == NewLevel) && NewLevel != Level)
-						{
-							TargetLevel = NewLevel;
-							InstancesToMove.Add(SelectedInstanceIdx);
-						}
-					}
-
-					if (TargetLevel && InstancesToMove.Num())
-					{
-						IFA->MoveInstancesToLevel(TargetLevel, InstancesToMove, &MeshPair.Value.Get(), MeshPair.Key, true);
-					}
-
-				} while (TargetLevel && FoliageInfo.SelectedIndices.Num() > 0);
-			}
-		}
-	}
-}
-
-void FEdModeFoliage::PostTransformSelectedInstances(UWorld* InWorld)
-{
-	if (!bMoving)
-	{
-		return;
-	}
-
-	bMoving = false;
-	const int32 NumLevels = InWorld->GetNumLevels();
-	for (int32 LevelIdx = 0; LevelIdx < NumLevels; ++LevelIdx)
-	{
-		ULevel* Level = InWorld->GetLevel(LevelIdx);
-		AInstancedFoliageActor* IFA = AInstancedFoliageActor::GetInstancedFoliageActorForLevel(Level);
-		if (IFA)
-		{
-			bool bFoundSelection = false;
-
-			for (auto& MeshPair : IFA->FoliageInfos)
-			{
-				FFoliageInfo& FoliageInfo = *MeshPair.Value;
-				TArray<int32> SelectedIndices = FoliageInfo.SelectedIndices.Array();
-
-				if (SelectedIndices.Num() > 0)
-				{
-					const bool bFinished = true;
-					FoliageInfo.PostMoveInstances(IFA, SelectedIndices, bFinished);
-				}
-			}
-		}
-	}
-}
-
 void FEdModeFoliage::TransformSelectedInstances(UWorld* InWorld, const FVector& InDrag, const FRotator& InRot, const FVector& InScale, bool bDuplicate)
 {
 	const int32 NumLevels = InWorld->GetNumLevels();
@@ -2152,7 +2025,7 @@ void FEdModeFoliage::TransformSelectedInstances(UWorld* InWorld, const FVector& 
 			{
 				FFoliageInfo& FoliageInfo = *MeshPair.Value;
 				TArray<int32> SelectedIndices = FoliageInfo.SelectedIndices.Array();
-			
+
 				if (SelectedIndices.Num() > 0)
 				{
 					// Mark actor once we found selection
@@ -2168,7 +2041,6 @@ void FEdModeFoliage::TransformSelectedInstances(UWorld* InWorld, const FVector& 
 						OnInstanceCountUpdated(MeshPair.Key);
 					}
 
-					bMoving = true;
 					FoliageInfo.PreMoveInstances(IFA, SelectedIndices);
 
 					for (int32 SelectedInstanceIdx : SelectedIndices)
@@ -2180,8 +2052,7 @@ void FEdModeFoliage::TransformSelectedInstances(UWorld* InWorld, const FVector& 
 						Instance.DrawScale3D += InScale;
 					}
 
-					const bool bFinished = false;
-					FoliageInfo.PostMoveInstances(IFA, SelectedIndices, bFinished);
+					FoliageInfo.PostMoveInstances(IFA, SelectedIndices);
 				}
 			}
 
@@ -2193,39 +2064,49 @@ void FEdModeFoliage::TransformSelectedInstances(UWorld* InWorld, const FVector& 
 	}
 }
 
-bool FEdModeFoliage::GetSelectionLocation(UWorld* InWorld, FVector& OutLocation) const
+AInstancedFoliageActor* FEdModeFoliage::GetSelectionLocation(UWorld* InWorld, FVector& OutLocation) const
 {
-	FBox OutBox(EForceInit::ForceInit);
-	bool bHasSelection = false;
+	// Prefer current level
+	{
+		AInstancedFoliageActor* IFA = AInstancedFoliageActor::GetInstancedFoliageActorForCurrentLevel(InWorld);
+		if (IFA && IFA->GetSelectionLocation(OutLocation))
+		{
+			return IFA;
+		}
+	}
+
 	// Go through all sub-levels
 	const int32 NumLevels = InWorld->GetNumLevels();
 	for (int32 LevelIdx = 0; LevelIdx < NumLevels; ++LevelIdx)
 	{
 		ULevel* Level = InWorld->GetLevel(LevelIdx);
-		AInstancedFoliageActor* IFA = AInstancedFoliageActor::GetInstancedFoliageActorForLevel(Level);
-		bHasSelection |= (IFA && IFA->GetSelectionLocation(OutBox));
+		if (Level != InWorld->GetCurrentLevel())
+		{
+			AInstancedFoliageActor* IFA = AInstancedFoliageActor::GetInstancedFoliageActorForLevel(Level);
+			if (IFA && IFA->GetSelectionLocation(OutLocation))
+			{
+				return IFA;
+			}
+		}
 	}
 
-	if (bHasSelection)
-	{
-		OutLocation = OutBox.GetCenter();
-	}
-
-	return bHasSelection;
+	return nullptr;
 }
 
 void FEdModeFoliage::UpdateWidgetLocationToInstanceSelection()
 {
 	FVector SelectionLocation = FVector::ZeroVector;
-	if (GetSelectionLocation(GetWorld(), SelectionLocation))
-	{
-		Owner->PivotLocation = Owner->SnappedLocation = SelectionLocation;
-	}
+	AInstancedFoliageActor* IFA = GetSelectionLocation(GetWorld(), SelectionLocation);
+	Owner->PivotLocation = Owner->SnappedLocation = SelectionLocation;
+	//if (IFA)
+	//{
+	//	IFA->MarkComponentsRenderStateDirty();
+	//}
 }
 
 void FEdModeFoliage::RemoveSelectedInstances(UWorld* InWorld)
 {
-	FScopedTransaction Transaction(NSLOCTEXT("UnrealEd", "FoliageMode_EditTransaction", "Foliage Editing"));
+	GEditor->BeginTransaction(NSLOCTEXT("UnrealEd", "FoliageMode_EditTransaction", "Foliage Editing"));
 
 	const int32 NumLevels = InWorld->GetNumLevels();
 	for (int32 LevelIdx = 0; LevelIdx < NumLevels; ++LevelIdx)
@@ -2261,6 +2142,8 @@ void FEdModeFoliage::RemoveSelectedInstances(UWorld* InWorld)
 			}
 		}
 	}
+
+	GEditor->EndTransaction();
 }
 
 void FEdModeFoliage::GetSelectedInstanceFoliageTypes(TArray<const UFoliageType*>& OutFoliageTypes) const
@@ -2853,7 +2736,7 @@ void FEdModeFoliage::ApplyBrush(FEditorViewportClient* ViewportClient)
 		}
 		else if (UISettings.GetPaintToolSelected())
 		{
-			if (UISettings.GetEraseToolSelected() || IsModifierButtonPressed(ViewportClient))
+			if (IsModifierButtonPressed(ViewportClient))
 			{
 				int32 DesiredInstanceCount = FMath::RoundToInt(BrushArea * Settings->Density * UISettings.GetUnpaintDensity() / (1000.f*1000.f));
 
@@ -3171,8 +3054,10 @@ bool FEdModeFoliage::GetStaticMeshVertexColorForHit(const UStaticMeshComponent* 
 	const FPositionVertexBuffer& PositionVertexBuffer = LODModel.VertexBuffers.PositionVertexBuffer;
 
 	int32 SectionFirstTriIndex = 0;
-	for (const FStaticMeshSection& Section : LODModel.Sections)
+	for (TArray<FStaticMeshSection>::TConstIterator SectionIt(LODModel.Sections); SectionIt; ++SectionIt)
 	{
+		const FStaticMeshSection& Section = *SectionIt;
+
 		if (Section.bEnableCollision)
 		{
 			int32 NextSectionTriIndex = SectionFirstTriIndex + Section.NumTriangles;
@@ -3228,7 +3113,7 @@ bool FEdModeFoliage::GetStaticMeshVertexColorForHit(const UStaticMeshComponent* 
 
 void FEdModeFoliage::SnapSelectedInstancesToGround(UWorld* InWorld)
 {
-	FScopedTransaction Transaction(NSLOCTEXT("UnrealEd", "FoliageMode_Transaction_SnapToGround", "Snap Foliage To Ground"));
+	GEditor->BeginTransaction(NSLOCTEXT("UnrealEd", "FoliageMode_Transaction_SnapToGround", "Snap Foliage To Ground"));
 	{
 		bool bMovedInstance = false;
 
@@ -3273,6 +3158,7 @@ void FEdModeFoliage::SnapSelectedInstancesToGround(UWorld* InWorld)
 			UpdateWidgetLocationToInstanceSelection();
 		}
 	}
+	GEditor->EndTransaction();
 }
 
 void FEdModeFoliage::HandleOnActorSpawned(AActor* Actor)
@@ -3708,13 +3594,13 @@ bool FEdModeFoliage::RemoveFoliageType(UFoliageType** FoliageTypeList, int32 Num
 
 	if (IFAList.Num())
 	{
-		{	// Transaction scope
-			FScopedTransaction Transaction(NSLOCTEXT("UnrealEd", "FoliageMode_RemoveMeshTransaction", "Foliage Editing: Remove Mesh"));
-			for (AInstancedFoliageActor* IFA : IFAList)
-			{
-				IFA->RemoveFoliageType(FoliageTypeList, Num);
-			}
+		GEditor->BeginTransaction(NSLOCTEXT("UnrealEd", "FoliageMode_RemoveMeshTransaction", "Foliage Editing: Remove Mesh"));
+		for (AInstancedFoliageActor* IFA : IFAList)
+		{
+			IFA->RemoveFoliageType(FoliageTypeList, Num);
 		}
+		GEditor->EndTransaction();
+
 		PopulateFoliageMeshList();
 		return true;
 	}
@@ -3870,24 +3756,7 @@ bool FEdModeFoliage::InputKey(FEditorViewportClient* ViewportClient, FViewport* 
 
 			bHandled = true;
 		}
-		else if (Key == EKeys::I && Event == IE_Released)
-		{
-			UISettings.SetIsInQuickSingleInstantiationMode(false);
-		}
-		else if (Key == EKeys::I && Event == IE_Pressed)
-		{
-			UISettings.SetIsInQuickSingleInstantiationMode(true);
-		}
-		else if ((Key == EKeys::LeftShift || Key == EKeys::RightShift) && Event == IE_Released)
-		{
-			UISettings.SetIsInQuickEraseMode(false);
-		}
-		else if ((Key == EKeys::LeftShift || Key == EKeys::RightShift) && Event == IE_Pressed)
-		{
-			UISettings.SetIsInQuickEraseMode(true);
-		}
-
-		if (IsCtrlDown(Viewport))
+		else if (IsCtrlDown(Viewport))
 		{
 			// Control + scroll adjusts the brush radius
 			static const float RadiusAdjustmentAmount = 25.f;
@@ -3903,6 +3772,14 @@ bool FEdModeFoliage::InputKey(FEditorViewportClient* ViewportClient, FViewport* 
 
 				bHandled = true;
 			}
+		}
+		else if (Key == EKeys::I && Event == IE_Released)
+		{
+			UISettings.SetIsInQuickSingleInstantiationMode(false);
+		}
+		else if (Key == EKeys::I && Event == IE_Pressed)
+		{
+			UISettings.SetIsInQuickSingleInstantiationMode(true);
 		}
 	}
 
@@ -3960,7 +3837,7 @@ void FEdModeFoliage::ActorSelectionChangeNotify()
 
 
 /** Forces real-time perspective viewports */
-void FEdModeFoliage::ForceRealTimeViewports(const bool bEnable)
+void FEdModeFoliage::ForceRealTimeViewports(const bool bEnable, const bool bStoreCurrentState)
 {
 	FLevelEditorModule& LevelEditorModule = FModuleManager::GetModuleChecked<FLevelEditorModule>("LevelEditor");
 	TSharedPtr< IAssetViewport > ViewportWindow = LevelEditorModule.GetFirstActiveViewport();
@@ -3969,16 +3846,16 @@ void FEdModeFoliage::ForceRealTimeViewports(const bool bEnable)
 		FEditorViewportClient &Viewport = ViewportWindow->GetAssetViewportClient();
 		if (Viewport.IsPerspective())
 		{
-			const FText SystemDisplayName = LOCTEXT("RealtimeOverrideMessage_Foliage", "Foliage Mode");
 			if (bEnable)
 			{
-				const bool bShouldBeRealtime = true;
-				Viewport.AddRealtimeOverride(bShouldBeRealtime, SystemDisplayName);
+				Viewport.SetRealtime(bEnable, bStoreCurrentState);
 			}
 			else
 			{
-				Viewport.RemoveRealtimeOverride(SystemDisplayName, false);
+				const bool bAllowDisable = true;
+				Viewport.RestoreRealtime(bAllowDisable);
 			}
+
 		}
 	}
 }
@@ -4028,7 +3905,7 @@ bool FEdModeFoliage::HandleClick(FEditorViewportClient* InViewportClient, HHitPr
 	{
 		if (HitProxy && HitProxy->IsA(HActor::StaticGetType()))
 		{
-			FScopedTransaction Transaction(NSLOCTEXT("UnrealEd", "FoliageMode_EditTransaction", "Foliage Editing"));
+			GEditor->BeginTransaction(NSLOCTEXT("UnrealEd", "FoliageMode_EditTransaction", "Foliage Editing"));
 			
 			if (IsModifierButtonPressed(InViewportClient))
 			{
@@ -4038,6 +3915,8 @@ bool FEdModeFoliage::HandleClick(FEditorViewportClient* InViewportClient, HHitPr
 			{
 				ApplyPaintBucket_Add(((HActor*)HitProxy)->Actor);
 			}
+
+			GEditor->EndTransaction();
 		}
 
 		return true;
@@ -4055,10 +3934,10 @@ FVector FEdModeFoliage::GetWidgetLocation() const
 /** FEdMode: Called when a mouse button is pressed */
 bool FEdModeFoliage::StartTracking(FEditorViewportClient* InViewportClient, FViewport* InViewport)
 {
-	bTracking = true;
 	if (IsCtrlDown(InViewport) && InViewport->KeyState(EKeys::MiddleMouseButton) && (UISettings.GetPaintToolSelected() || UISettings.GetReapplyToolSelected() || UISettings.GetLassoSelectToolSelected()))
 	{
 		bAdjustBrushRadius = true;
+		return true;
 	}
 	else if (UISettings.GetSelectToolSelected() || UISettings.GetLassoSelectToolSelected())
 	{
@@ -4066,43 +3945,25 @@ bool FEdModeFoliage::StartTracking(FEditorViewportClient* InViewportClient, FVie
 		UpdateWidgetLocationToInstanceSelection();
 
 		GEditor->BeginTransaction(NSLOCTEXT("UnrealEd", "FoliageMode_EditTransaction", "Foliage Editing"));
-		
+
 		bCanAltDrag = true;
-	}
-	else
-	{	
-		bTracking = false;
-		return FEdMode::StartTracking(InViewportClient, InViewport);
-	}
 
-	return true;
-}
-
-bool FEdModeFoliage::EndTracking()
-{
-	bTracking = false;
-
-	if (bAdjustBrushRadius)
-	{
-		bAdjustBrushRadius = false;
 		return true;
 	}
-	else if (UISettings.GetSelectToolSelected() || UISettings.GetLassoSelectToolSelected())
-	{
-		UpdateInstancePartitioning(GetWorld());
-		PostTransformSelectedInstances(GetWorld());
-		GEditor->EndTransaction();
-		return true;
-	}
-		
-	return false;
+	return FEdMode::StartTracking(InViewportClient, InViewport);
 }
 
 /** FEdMode: Called when the a mouse button is released */
 bool FEdModeFoliage::EndTracking(FEditorViewportClient* InViewportClient, FViewport* InViewport)
 {
-	if (EndTracking())
+	if (!bAdjustBrushRadius && (UISettings.GetSelectToolSelected() || UISettings.GetLassoSelectToolSelected()))
 	{
+		GEditor->EndTransaction();
+		return true;
+	}
+	else
+	{
+		bAdjustBrushRadius = false;
 		return true;
 	}
 
@@ -4155,7 +4016,7 @@ bool FEdModeFoliage::ShouldDrawWidget() const
 	if (UISettings.GetSelectToolSelected() || (UISettings.GetLassoSelectToolSelected() && !bToolActive))
 	{
 		FVector Location;
-		return GetSelectionLocation(GetWorld(), Location);
+		return GetSelectionLocation(GetWorld(), Location) != nullptr;
 	}
 	return false;
 }

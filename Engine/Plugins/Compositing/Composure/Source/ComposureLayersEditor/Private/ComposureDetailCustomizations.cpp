@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "ComposureDetailCustomizations.h"
 #include "DetailLayoutBuilder.h"
@@ -1431,7 +1431,7 @@ void FCompositingMaterialPassCustomization::RebuildTextureSourceList()
 				FoundSelf = true;
 				break;
 			}
-			else if (Input && Input->IsPassEnabled())
+			else if (Input && Input->bEnabled)
 			{
 				if (Input->bIntermediate)
 				{
@@ -1463,7 +1463,7 @@ void FCompositingMaterialPassCustomization::RebuildTextureSourceList()
 					FoundSelf = true;
 					break;
 				}
-				else if (Transform->IsPassEnabled())
+				else if (Transform->bEnabled)
 				{
 					if (Transform->bIntermediate)
 					{
@@ -1593,7 +1593,7 @@ TArray<TSharedPtr<FName>> FCompositingMaterialPassCustomization::GetPassNamesRec
 
 	for (UCompositingElementInput* Input : Element->GetInputsList())
 	{
-		if (Input->IsPassEnabled() && !Input->bIntermediate)
+		if (Input->bEnabled && !Input->bIntermediate)
 		{
 			AddPassNameToList(Input->PassName);
 		}
@@ -1601,7 +1601,7 @@ TArray<TSharedPtr<FName>> FCompositingMaterialPassCustomization::GetPassNamesRec
 
 	for (UCompositingElementTransform* Transform : Element->GetTransformsList())
 	{
-		if (Transform->IsPassEnabled() && !Transform->bIntermediate)
+		if (Transform->bEnabled && !Transform->bIntermediate)
 		{
 			AddPassNameToList(Transform->PassName);
 		}

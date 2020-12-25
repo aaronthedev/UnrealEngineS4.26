@@ -1,10 +1,11 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Network/DisplayClusterServer.h"
+#include "Sockets.h"
 
-class FSocket;
+class FDisplayClusterSessionBase;
 struct FIPv4Endpoint;
 
 
@@ -15,13 +16,19 @@ class FDisplayClusterService
 	: public FDisplayClusterServer
 {
 public:
-	FDisplayClusterService(const FString& Name);
+	FDisplayClusterService(const FString& InName, const FString& InAddr, const int32 InPort);
 
 public:
-	// Returns true if requested Endpoint is a part of nDisplay cluster (listed in a config file)
-	static bool IsClusterIP(const FIPv4Endpoint& Endpoint);
+	static bool IsClusterIP(const FIPv4Endpoint& InEP);
 
 protected:
-	// Ask a server implementation if it's  allowed to accept incoming connections from non-cluster addresses
-	virtual bool IsConnectionAllowed(FSocket* Socket, const FIPv4Endpoint& Endpoint) override;
+	virtual bool IsConnectionAllowed(FSocket* InSocket, const FIPv4Endpoint& InEP) override;
+
+protected:
+	//////////////////////////////////////////////////////////////////////////////////////////////
+	// IDisplayClusterSessionListener
+	//////////////////////////////////////////////////////////////////////////////////////////////
+	virtual void NotifySessionOpen(FDisplayClusterSessionBase* InSession) override;
+	virtual void NotifySessionClose(FDisplayClusterSessionBase* InSession) override;
 };
+

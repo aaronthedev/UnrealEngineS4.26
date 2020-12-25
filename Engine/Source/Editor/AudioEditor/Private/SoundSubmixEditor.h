@@ -1,10 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "AudioEditorModule.h"
+#include "GraphEditor.h"
 #include "EditorUndoClient.h"
 #include "Framework/Docking/TabManager.h"
-#include "GraphEditor.h"
 #include "ISoundSubmixEditor.h"
 #include "Toolkits/IToolkitHost.h"
 #include "UObject/Object.h"
@@ -13,7 +13,7 @@
 
 // Forward Declarations
 class UEdGraphPin;
-class USoundSubmixBase;
+class USoundSubmix;
 class UEdGraph;
 
 class FSoundSubmixEditor : public ISoundSubmixEditor, public FGCObject, public FEditorUndoClient
@@ -57,7 +57,7 @@ public:
 	void AddMissingEditableSubmixes();
 
 	/** Select node associated with the provided submix */
-	void SelectSubmixes(TSet<USoundSubmixBase*>& InSubmixes);
+	void SelectSubmixes(TSet<USoundSubmix*>& InSubmixes);
 
 	/** Returns current graph handled by editor */
 	UEdGraph* GetGraph();
@@ -67,10 +67,10 @@ private:
 	TSharedRef<SDockTab> SpawnTab_Properties(const FSpawnTabArgs& Args);
 
 	/** Creates all internal widgets for the tabs to point at */
-	void CreateInternalWidgets(USoundSubmixBase* InSoundSubmix);
+	void CreateInternalWidgets(USoundSubmix* InSoundSubmix);
 
 	/** Create new graph editor widget */
-	TSharedRef<SGraphEditor> CreateGraphEditorWidget(USoundSubmixBase* InSoundSubmix);
+	TSharedRef<SGraphEditor> CreateGraphEditorWidget(USoundSubmix* InSoundSubmix);
 
 	/** Called when the selection changes in the GraphEditor */
 	void OnSelectedNodesChanged(const TSet<UObject*>& NewSelection);
@@ -79,7 +79,7 @@ private:
 	FActionMenuContent OnCreateGraphActionMenu(UEdGraph* InGraph, const FVector2D& InNodePosition, const TArray<UEdGraphPin*>& InDraggedPins, bool bAutoExpand, SGraphEditor::FActionMenuClosed InOnMenuClosed);
 
 	/** Adds all children of provided root submix as editable */
-	void AddEditableSubmixChildren(USoundSubmixBase* RootSubmix);
+	void AddEditableSubmixChildren(USoundSubmix* RootSubmix);
 
 	/** Select every node in the graph */
 	void SelectAllNodes();

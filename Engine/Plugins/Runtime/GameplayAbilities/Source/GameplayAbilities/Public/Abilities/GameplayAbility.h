@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -138,16 +138,10 @@ public:
 		return ReplicationPolicy;
 	}
 
-	/** Where does an ability execute on the network? Does a client "ask and predict", "ask and wait", "don't ask (just do it)" */
+	/** How does an ability execute on the network. Does a client "ask and predict", "ask and wait", "don't ask (just do it)" */
 	EGameplayAbilityNetExecutionPolicy::Type GetNetExecutionPolicy() const
 	{
 		return NetExecutionPolicy;
-	}
-
-	/** Where should an ability execute on the network? Provides protection from clients attempting to execute restricted abilities. */
-	EGameplayAbilityNetSecurityPolicy::Type GetNetSecurityPolicy() const
-	{
-		return NetSecurityPolicy;
 	}
 
 	/** Returns the actor info associated with this ability, has cached pointers to useful objects */
@@ -237,14 +231,10 @@ public:
 	bool IsForRemoteClient() const;
 
 	/** True if the owning actor is locally controlled, true in single player */
-	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = Ability, Meta = (ExpandBoolAsExecs = "ReturnValue"))
 	bool IsLocallyControlled() const;
 
 	/** True if this is the server or single player */
 	bool HasAuthority(const FGameplayAbilityActivationInfo* ActivationInfo) const;
-
-	UFUNCTION(BlueprintCallable, BlueprintPure = false, Category = Ability, DisplayName = "HasAuthority", Meta = (ExpandBoolAsExecs = "ReturnValue"))
-	bool K2_HasAuthority() const;
 
 	/** True if we are authority or we have a valid prediciton key that is expected to work */
 	bool HasAuthorityOrPredictionKey(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo* ActivationInfo) const;
@@ -345,12 +335,12 @@ public:
 	UFUNCTION(BlueprintCallable, Category = Ability, DisplayName = "CheckAbilityCost", meta=(ScriptName = "CheckAbilityCost"))
 	virtual bool K2_CheckAbilityCost();
 
-	virtual bool CommitAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, OUT FGameplayTagContainer* OptionalRelevantTags = nullptr);
-	virtual bool CommitAbilityCooldown(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const bool ForceCooldown, OUT FGameplayTagContainer* OptionalRelevantTags = nullptr);
-	virtual bool CommitAbilityCost(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, OUT FGameplayTagContainer* OptionalRelevantTags = nullptr);
+	virtual bool CommitAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo);
+	virtual bool CommitAbilityCooldown(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, const bool ForceCooldown);
+	virtual bool CommitAbilityCost(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo);
 
 	/** The last chance to fail before committing, this will usually be the same as CanActivateAbility. Some abilities may need to do extra checks here if they are consuming extra stuff in CommitExecute */
-	virtual bool CommitCheck(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, OUT FGameplayTagContainer* OptionalRelevantTags = nullptr);
+	virtual bool CommitCheck(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo);
 
 	/** BP event called from CommitAbility */
 	UFUNCTION(BlueprintImplementableEvent, Category = Ability, DisplayName = "CommitExecute", meta = (ScriptName = "CommitExecute"))
@@ -441,9 +431,6 @@ public:
 
 	/** Called when the ability is given to an AbilitySystemComponent */
 	virtual void OnGiveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec);
-
-	/** Called when the ability is removed from an AbilitySystemComponent */
-	virtual void OnRemoveAbility(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec) {}
 
 	/** Called when the avatar actor is set/changes */
 	virtual void OnAvatarSet(const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilitySpec& Spec);
@@ -661,13 +648,11 @@ protected:
 	//	Protected properties
 	// -------------------------------------
 
-	/** How an ability replicates state/events to everyone on the network. Replication is not required for NetExecutionPolicy. */
 	UPROPERTY(EditDefaultsOnly, Category = Advanced)
 	TEnumAsByte<EGameplayAbilityReplicationPolicy::Type> ReplicationPolicy;
 
-	/** How the ability is instanced when executed. This limits what an ability can do in its implementation. */
 	UPROPERTY(EditDefaultsOnly, Category = Advanced)
-	TEnumAsByte<EGameplayAbilityInstancingPolicy::Type>	InstancingPolicy;
+	TEnumAsByte<EGameplayAbilityInstancingPolicy::Type>	InstancingPolicy;					
 
 	/** If this is set, the server-side version of the ability can be canceled by the client-side version. The client-side version can always be canceled by the server. */
 	UPROPERTY(EditDefaultsOnly, Category = Advanced)
@@ -681,17 +666,11 @@ protected:
 	UPROPERTY(BlueprintReadOnly, Category = Ability)
 	FGameplayAbilityActivationInfo	CurrentActivationInfo;
 
-	/** Information specific to this instance of the ability, if it was activated by an event */
 	UPROPERTY(BlueprintReadOnly, Category = Ability)
 	FGameplayEventData CurrentEventData;
 
-	/** How does an ability execute on the network. Does a client "ask and predict", "ask and wait", "don't ask (just do it)". */
 	UPROPERTY(EditDefaultsOnly, Category=Advanced)
 	TEnumAsByte<EGameplayAbilityNetExecutionPolicy::Type> NetExecutionPolicy;
-
-	/** What protections does this ability have? Should the client be allowed to request changes to the execution of the ability? */
-	UPROPERTY(EditDefaultsOnly, Category = Advanced)
-	TEnumAsByte<EGameplayAbilityNetSecurityPolicy::Type> NetSecurityPolicy;
 
 	/** This GameplayEffect represents the cost (mana, stamina, etc) of the ability. It will be applied when the ability is committed. */
 	UPROPERTY(EditDefaultsOnly, Category = Costs)
@@ -708,6 +687,10 @@ protected:
 	// ----------------------------------------------------------------------------------------------------------------
 	//	Ability exclusion / canceling
 	// ----------------------------------------------------------------------------------------------------------------
+
+	/** Abilities matching query are cancelled when this ability is executed */
+	UPROPERTY(EditDefaultsOnly, Category = TagQueries, meta=(Categories="AbilityTagCategory"))
+	FGameplayTagQuery CancelAbilitiesMatchingTagQuery;
 
 	/** Abilities with these tags are cancelled when this ability is executed */
 	UPROPERTY(EditDefaultsOnly, Category = Tags, meta=(Categories="AbilityTagCategory"))
@@ -749,7 +732,7 @@ protected:
 	//	Ability Tasks
 	// ----------------------------------------------------------------------------------------------------------------
 
-	/** Finds all currently active tasks named InstanceName and confirms them. What this means depends on the individual task. By default, this does nothing other than ending if bEndTask is true. */
+	/** Destroys instanced-per-execution abilities. Instance-per-actor abilities should 'reset'. Non instance abilities - what can we do? */
 	UFUNCTION(BlueprintCallable, Category = Ability)
 	void ConfirmTaskByInstanceName(FName InstanceName, bool bEndTask);
 

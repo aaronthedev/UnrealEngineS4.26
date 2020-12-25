@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -39,7 +39,7 @@ class SPropertyNameColumnHeader : public SColumnHeader
 
 		SColumnHeader::FArguments ColumnArgs;
 		ColumnArgs.Style( Style );
-		ColumnArgs.Customization( InArgs._Customization );
+		ColumnArgs.Customization( Customization );
 
 		SColumnHeader::Construct( ColumnArgs, InPropertyTableColumn, InPropertyUtilities );
 		ChildSlot
@@ -54,7 +54,7 @@ class SPropertyNameColumnHeader : public SColumnHeader
 			
 		if( PropertyTableRow->GetDataSource()->AsPropertyPath().IsValid() )
 		{	
-			const TWeakFieldPtr< FProperty > Property = PropertyTableRow->GetDataSource()->AsPropertyPath()->GetLeafMostProperty().Property;
+			const TWeakObjectPtr< UProperty > Property = PropertyTableRow->GetDataSource()->AsPropertyPath()->GetLeafMostProperty().Property;
 			PropertyName = UEditorEngine::GetFriendlyName( Property.Get() );
 		}
 

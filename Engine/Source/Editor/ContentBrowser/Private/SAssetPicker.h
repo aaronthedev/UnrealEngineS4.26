@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -76,14 +76,11 @@ private:
 	/** Handler for when the "None" button is clicked */
 	FReply OnNoneButtonClicked();
 
-	/** Handler for when a new item is requested in the asset view */
-	void HandleNewItemRequested(const FContentBrowserItem& NewItem);
-
 	/** Handle forwarding picking events. We wrap OnAssetSelected here to prevent 'Direct' selections being identified as user actions */
-	void HandleItemSelectionChanged(const FContentBrowserItem& InSelectedItem, ESelectInfo::Type InSelectInfo);
+	void HandleAssetSelectionChanged(const FAssetData& InAssetData, ESelectInfo::Type InSelectInfo);
 
 	/** Handler for when the user double clicks, presses enter, or presses space on an asset */
-	void HandleItemsActivated(TArrayView<const FContentBrowserItem> ActivatedItems, EAssetTypeActivationMethod::Type ActivationMethod);
+	void HandleAssetsActivated(const TArray<FAssetData>& ActivatedAssets, EAssetTypeActivationMethod::Type ActivationMethod);
 
 	/** Selects the paths containing the specified assets. */
 	void SyncToAssets(const TArray<FAssetData>& AssetDataList);
@@ -123,9 +120,6 @@ private:
 
 	void HandleSearchSettingsChanged();
 
-	/** Handler for the context menu for asset or folder items */
-	TSharedPtr<SWidget> GetItemContextMenu(TArrayView<const FContentBrowserItem> SelectedItems);
-
 private:
 
 	/** The list of FrontendFilters currently applied to the asset view */
@@ -157,12 +151,6 @@ private:
 
 	/** Called when a folder is entered in the asset view */
 	FOnPathSelected OnFolderEnteredDelegate;
-
-	/** Delegate to invoke when a context menu for an asset is opening. */
-	FOnGetAssetContextMenu OnGetAssetContextMenu;
-
-	/** Delegate to invoke when a context menu for a folder is opening. */
-	FOnGetFolderContextMenu OnGetFolderContextMenu;
 
 	/** True if the search box will take keyboard focus next frame */
 	bool bPendingFocusNextFrame;

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	LightmassRender.cpp: lightmass rendering-related implementation.
@@ -174,16 +174,6 @@ struct FLightmassMaterialCompiler : public FProxyMaterialCompiler
 		return Compiler->Constant4(1.0f,1.0f,1.0f,1.0f);
 	}
 
-	virtual int32 PreSkinVertexOffset() override
-	{
-		return Compiler->Constant3(0.f, 0.f, 0.f);
-	}
-
-	virtual int32 PostSkinVertexOffset() override
-	{
-		return Compiler->Constant3(0.f, 0.f, 0.f);
-	}
-
 	virtual int32 PreSkinnedPosition() override
 	{
 		return Compiler->Constant3(0.f,0.f,0.f);
@@ -236,7 +226,7 @@ class FLightmassMaterialProxy : public FMaterial, public FMaterialRenderProxy
 public:
 	FLightmassMaterialProxy(): FMaterial()
 	{
-		SetQualityLevelProperties(GMaxRHIFeatureLevel);
+		SetQualityLevelProperties(EMaterialQualityLevel::High, false, GMaxRHIFeatureLevel);
 	}
 
 	/** Initializes the material proxy and kicks off async shader compiling. */
@@ -249,13 +239,16 @@ public:
 			PropertyToCompile = InPropertyToCompile;
 			Usage = InUsage;
 
-			ReferencedTextures = MaterialInterface->GetReferencedTextures();
+			MaterialInterface->AppendReferencedTextures(ReferencedTextures);
 
 			FMaterialResource* Resource = InMaterialInterface->GetMaterialResource(GMaxRHIFeatureLevel);
 			if (Resource)
 			{
 				FMaterialShaderMapId ResourceId;
-				Resource->GetShaderMapId(GMaxRHIShaderPlatform, nullptr, ResourceId);
+				Resource->GetShaderMapId(GMaxRHIShaderPlatform, ResourceId);
+
+				FStaticParameterSet StaticParamSet;
+				Resource->GetStaticParameterSet(GMaxRHIShaderPlatform, StaticParamSet);
 
 				{
 					TArray<FShaderType*> ShaderTypes;
@@ -270,12 +263,12 @@ public:
 
 				// Override with a special usage so we won't re-use the shader map used by the material for rendering
 				ResourceId.Usage = GetShaderMapUsage();
-				CacheShaders(ResourceId, GMaxRHIShaderPlatform);
+				CacheShaders(ResourceId, StaticParamSet, GMaxRHIShaderPlatform);
 			}
 		}
 	}
 
-	virtual TArrayView<UObject* const> GetReferencedTextures() const override
+	virtual const TArray<UObject*>& GetReferencedTextures() const override
 	{
 		return ReferencedTextures;
 	}
@@ -329,22 +322,22 @@ public:
 		}
 	}
 
-	virtual bool GetVectorValue(const FHashedMaterialParameterInfo& ParameterInfo, FLinearColor* OutValue, const FMaterialRenderContext& Context) const override
+	virtual bool GetVectorValue(const FMaterialParameterInfo& ParameterInfo, FLinearColor* OutValue, const FMaterialRenderContext& Context) const override
 	{
 		return MaterialInterface->GetRenderProxy()->GetVectorValue(ParameterInfo, OutValue, Context);
 	}
 
-	virtual bool GetScalarValue(const FHashedMaterialParameterInfo& ParameterInfo, float* OutValue, const FMaterialRenderContext& Context) const override
+	virtual bool GetScalarValue(const FMaterialParameterInfo& ParameterInfo, float* OutValue, const FMaterialRenderContext& Context) const override
 	{
 		return MaterialInterface->GetRenderProxy()->GetScalarValue(ParameterInfo, OutValue, Context);
 	}
 
-	virtual bool GetTextureValue(const FHashedMaterialParameterInfo& ParameterInfo,const UTexture** OutValue, const FMaterialRenderContext& Context) const override
+	virtual bool GetTextureValue(const FMaterialParameterInfo& ParameterInfo,const UTexture** OutValue, const FMaterialRenderContext& Context) const override
 	{
 		return MaterialInterface->GetRenderProxy()->GetTextureValue(ParameterInfo,OutValue,Context);
 	}
 
-	virtual bool GetTextureValue(const FHashedMaterialParameterInfo& ParameterInfo, const URuntimeVirtualTexture** OutValue, const FMaterialRenderContext& Context) const override
+	virtual bool GetTextureValue(const FMaterialParameterInfo& ParameterInfo, const URuntimeVirtualTexture** OutValue, const FMaterialRenderContext& Context) const override
 	{
 		return MaterialInterface->GetRenderProxy()->GetTextureValue(ParameterInfo, OutValue, Context);
 	}
@@ -458,7 +451,7 @@ public:
 	
 			return Compiler->Constant(0.0f);
 		}
-		else if( Property == MP_WorldPositionOffset || Property == MP_PixelDepthOffset )
+		else if( Property == MP_WorldPositionOffset)
 		{
 			//This property MUST return 0 as a default or during the process of rendering textures out for lightmass to use, pixels will be off by 1.
 			return Compiler->Constant(0.0f);
@@ -829,14 +822,6 @@ public:
 		if (Material)
 		{
 			Material->GetAllExpressionsForCustomInterpolators(OutExpressions);
-		}
-	}
-
-	virtual void GetStaticParameterSet(EShaderPlatform Platform, FStaticParameterSet& OutSet) const override
-	{
-		if (const FMaterialResource* Resource = MaterialInterface->GetMaterialResource(GMaxRHIFeatureLevel))
-		{
-			Resource->GetStaticParameterSet(Platform, OutSet);
 		}
 	}
 

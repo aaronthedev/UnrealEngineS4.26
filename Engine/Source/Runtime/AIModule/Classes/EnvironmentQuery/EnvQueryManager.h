@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -161,6 +161,10 @@ class AIMODULE_API UEnvQueryManager : public UAISubsystem, public FSelfRegisteri
 	// Any loaded instance will get marked as PendingKill
 	virtual void PostLoad() override;
 	virtual void PostInitProperties() override;
+	virtual bool IsDestructionThreadSafe() const
+	{
+		return false;
+	}
 
 	// FTickableGameObject begin
 	virtual void Tick(float DeltaTime) override;
@@ -199,11 +203,8 @@ class AIMODULE_API UEnvQueryManager : public UAISubsystem, public FSelfRegisteri
 	/** find value of named param stored with active query */
 	float FindNamedParam(int32 QueryId, FName ParamName) const;
 
-	/** aborts specific query */
+	/** execute query */
 	bool AbortQuery(int32 RequestID);
-
-	/** outputs active queries to log */
-	void PrintActiveQueryInfo() const;
 
 	/** fail all running queries on cleaning the world */
 	virtual void OnWorldCleanup();
@@ -306,12 +307,11 @@ private:
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 	static bool bAllowEQSTimeSlicing;
-#endif
-#if !(UE_BUILD_SHIPPING)
+
 	mutable double LastQueryCountWarningThresholdTime;
 
 	void CheckQueryCount() const;
-	void LogQueryInfo(bool bDisplayThresholdWarning) const;
+	void LogQueryCountWarning() const;
 #endif
 
 #if WITH_EDITOR

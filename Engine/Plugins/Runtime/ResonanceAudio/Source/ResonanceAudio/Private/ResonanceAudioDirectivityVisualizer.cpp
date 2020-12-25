@@ -15,10 +15,12 @@ AResonanceAudioDirectivityVisualizer::AResonanceAudioDirectivityVisualizer()
 
 #if SUPPORTS_PROCEDURAL_MESH
 	Mesh = CreateDefaultSubobject<UProceduralMeshComponent>(TEXT("VisualizationMesh"));
-	RootComponent = Mesh;
+	Mesh->AddToRoot();
 
 	// Disable collision data.
 	Mesh->ContainsPhysicsTriMeshData(false);
+
+	RootComponent = Mesh;
 #endif // SUPPORTS_PROCEDURAL_MESH
 }
 
@@ -59,3 +61,13 @@ void AResonanceAudioDirectivityVisualizer::DrawPattern()
 #endif // SUPPORTS_PROCEDURAL_MESH
 }
 
+void AResonanceAudioDirectivityVisualizer::BeginDestroy()
+{
+#if SUPPORTS_PROCEDURAL_MESH
+	if (Mesh)
+	{
+		Mesh->RemoveFromRoot();
+	}
+#endif // SUPPORTS_PROCEDURAL_MESH
+	AActor::BeginDestroy();
+}

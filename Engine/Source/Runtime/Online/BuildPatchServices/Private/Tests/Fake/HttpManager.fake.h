@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "Containers/Ticker.h"
@@ -39,14 +39,14 @@ namespace BuildPatchServices
 	{
 	public:
 		FFakeHttpManager(FTicker& Ticker);
-		virtual TSharedRef<IHttpRequest, ESPMode::ThreadSafe> CreateRequest() override;
+		virtual TSharedRef<IHttpRequest> CreateRequest() override;
 		virtual bool Tick(float Delta);
 		virtual bool OnProcessRequest(FFakeHttpRequest* FakeHttpRequest);
 
 	public:
-		TArray<TSharedRef<FFakeHttpRequest, ESPMode::ThreadSafe>> NewRequests;
-		TArray<TSharedRef<FFakeHttpRequest, ESPMode::ThreadSafe>> RunningRequests;
-		TArray<TSharedRef<FFakeHttpRequest, ESPMode::ThreadSafe>> ProgressedRequests;
+		TArray<TSharedRef<FFakeHttpRequest>> NewRequests;
+		TArray<TSharedRef<FFakeHttpRequest>> RunningRequests;
+		TArray<TSharedRef<FFakeHttpRequest>> ProgressedRequests;
 		TMap<FString, TArray<uint8>> DataServed;
 	};
 
@@ -83,7 +83,7 @@ namespace BuildPatchServices
 		Ticker.AddTicker(FTickerDelegate::CreateRaw(this, &FFakeHttpManager::Tick));
 	}
 
-	TSharedRef<IHttpRequest, ESPMode::ThreadSafe> FFakeHttpManager::CreateRequest()
+	TSharedRef<IHttpRequest> FFakeHttpManager::CreateRequest()
 	{
 		++RxCreateRequest;
 		NewRequests.Emplace(new FFakeHttpRequest());
@@ -94,7 +94,7 @@ namespace BuildPatchServices
 	bool FFakeHttpManager::Tick(float Delta)
 	{
 		// Complete progressed.
-		for (const TSharedRef<FFakeHttpRequest, ESPMode::ThreadSafe>& ProgressedRequest : ProgressedRequests)
+		for (const TSharedRef<FFakeHttpRequest>& ProgressedRequest : ProgressedRequests)
 		{
 			FFakeHttpResponse* FakeHttpResponse = new FFakeHttpResponse();
 			FakeHttpResponse->Code = EHttpResponseCodes::Ok;
@@ -111,7 +111,7 @@ namespace BuildPatchServices
 
 		// Progress started.
 		ProgressedRequests = MoveTemp(RunningRequests);
-		for (const TSharedRef<FFakeHttpRequest, ESPMode::ThreadSafe>& ProgressedRequest : ProgressedRequests)
+		for (const TSharedRef<FFakeHttpRequest>& ProgressedRequest : ProgressedRequests)
 		{
 			const FString& Url = ProgressedRequest->RxSetURL.Last().Get<0>();
 			int32 Progress = 0;
@@ -130,14 +130,14 @@ namespace BuildPatchServices
 
 	bool FFakeHttpManager::OnProcessRequest(FFakeHttpRequest* FakeHttpRequest)
 	{
-		int32 Index = NewRequests.IndexOfByPredicate([FakeHttpRequest](const TSharedRef<FFakeHttpRequest, ESPMode::ThreadSafe>& Element)
+		int32 Index = NewRequests.IndexOfByPredicate([FakeHttpRequest](const TSharedRef<FFakeHttpRequest>& Element)
 		{
 			return &Element.Get() == FakeHttpRequest;
 		});
 		bool bValidRequest = Index >= 0;
 		if (bValidRequest)
 		{
-			const TSharedRef<FFakeHttpRequest, ESPMode::ThreadSafe>& Request = NewRequests[Index];
+			const TSharedRef<FFakeHttpRequest>& Request = NewRequests[Index];
 			bValidRequest = Request->RxSetURL.Num() > 0;
 			if (bValidRequest)
 			{

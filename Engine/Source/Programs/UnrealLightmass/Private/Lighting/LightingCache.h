@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -192,7 +192,7 @@ public:
 			Id(-1)
 		{
 			// Clamp to be larger than the texel
-			Radius = FMath::Clamp(GatherInfo.MinDistance, SampleRadius, IrradianceCachingSettings.MaxRecordRadius) * IrradianceCachingSettings.RecordRadiusScale;
+			Radius = FMath::Clamp(GatherInfo.MinDistance * IrradianceCachingSettings.RecordRadiusScale, SampleRadius, IrradianceCachingSettings.MaxRecordRadius);
 			// Use a larger radius to interpolate, which smooths the error
 			InterpolationRadius = Radius * FMath::Max(IrradianceCachingSettings.DistanceSmoothFactor * GeneralSettings.IndirectLightingSmoothness, 1.0f);
 
@@ -211,10 +211,10 @@ public:
 	struct FRecordOctreeSemantics
 	{
 		enum { MaxElementsPerLeaf = 4 };
-		enum { MaxNodeDepth = 24 };
+		enum { MaxNodeDepth = 12 };
 		enum { LoosenessDenominator = 16 };
 
-		typedef TInlineAllocator<MaxElementsPerLeaf * 8> ElementAllocator;
+		typedef TInlineAllocator<MaxElementsPerLeaf> ElementAllocator;
 
 		static FBoxCenterAndExtent GetBoundingBox(const FRecord<SampleType>& LightingRecord)
 		{

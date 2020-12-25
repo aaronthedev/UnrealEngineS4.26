@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -23,11 +23,6 @@ public:
 	{
 		static FName DefaultName(TEXT("SimpleHMD"));
 		return DefaultName;
-	}
-
-	int32 GetXRSystemFlags() const
-	{
-		return EXRSystemFlags::IsHeadMounted;
 	}
 
 	virtual bool EnumerateTrackedDevices(TArray<int32>& OutDevices, EXRTrackedDeviceType Type = EXRTrackedDeviceType::Any) override;

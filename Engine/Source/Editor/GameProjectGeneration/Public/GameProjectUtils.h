@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -36,9 +36,6 @@ struct FProjectInformation
 
 	TOptional<EHardwareClass::Type> TargetedHardware;
 	TOptional<EGraphicsPreset::Type> DefaultGraphicsPerformance;
-
-	/** The name of the feature pack to use as starter content. Must be located under FeaturePacks\. */
-	FString StarterContent;
 };
 
 DECLARE_DELEGATE_RetVal_OneParam(bool, FProjectDescriptorModifier, FProjectDescriptor&);
@@ -165,7 +162,6 @@ public:
 
 	/** Returns true if there are starter content files available for instancing into new projects. */
 	static bool IsStarterContentAvailableForNewProjects();
-	static bool IsStarterContentAvailableForProject(const FProjectInformation& ProjectInfo);
 
 	/**
 	 * Get the information about any modules referenced in the .uproject file of the currently loaded project
@@ -278,26 +274,21 @@ public:
 	 *
 	 * @param	InDir directory to add/remove
 	 * @param	bAddOrRemove true if the directory should be added to this project, false if it should not
-	 * @return Whether the plugin directory list was changed
 	 */
-	static bool UpdateAdditionalPluginDirectory(const FString& InDir, const bool bAddOrRemove);
+	static void UpdateAdditionalPluginDirectory(const FString& InDir, const bool bAddOrRemove);
 
 	/** Gets the default build settings version for UBT */
 	static const TCHAR* GetDefaultBuildSettingsVersion();
 
 private:
-	
-	/** Add hardware-specific config values such as the target platform and RHI. */
+
 	static void AddHardwareConfigValues(const FProjectInformation& InProjectInfo, TArray<FTemplateConfigValue>& ConfigValues);
-	
-	/** Get the name of the starter content pack to use for the given project. */
-	static FString GetStarterContentName(const FProjectInformation& InProjectInfo);
 
 	/** Generates a new project without using a template project */
-	static TOptional<FGuid> GenerateProjectFromScratch(const FProjectInformation& InProjectInfo, FText& OutFailReason, FText& OutFailLog);
+	static bool GenerateProjectFromScratch(const FProjectInformation& InProjectInfo, FText& OutFailReason, FText& OutFailLog);
 
 	/** Generates a new project using a template project */
-	static TOptional<FGuid> CreateProjectFromTemplate(const FProjectInformation& InProjectInfo, FText& OutFailReason, FText& OutFailLog, TArray<FString>* OutCreatedFiles = nullptr);
+	static bool CreateProjectFromTemplate(const FProjectInformation& InProjectInfo, FText& OutFailReason, FText& OutFailLog, TArray<FString>* OutCreatedFiles = nullptr);
 
 	/** Sets the engine association for a new project. Handles foreign and non-foreign projects. */
 	static bool SetEngineAssociationForForeignProject(const FString& ProjectFileName, FText& OutFailReason);
@@ -318,9 +309,6 @@ private:
 	/** Returns the template defs ini filename */
 	static FString GetTemplateDefsFilename();
 
-	/** Returns the include header path for a given fully specified, normalized file path */
-	static FString GetIncludePathForFile(const FString& InFullFilePath, const FString& ModuleRootPath);
-
 	/** Checks the name for an underscore and the existence of XB1 XDK */
 	static bool NameContainsUnderscoreAndXB1Installed(const FString& TestName);
 
@@ -334,7 +322,7 @@ private:
 	static bool CleanupIsEnabled();
 
 	/** Creates ini files for a new project. On failure, OutFailReason will be populated. */
-	static bool GenerateConfigFiles(const FProjectInformation& InProjectInfo, TArray<FString>& OutCreatedFiles, FText& OutFailReason, FGuid& OutProjectID);
+	static bool GenerateConfigFiles(const FProjectInformation& InProjectInfo, TArray<FString>& OutCreatedFiles, FText& OutFailReason);
 
 	/* Creates new ini files for a specific project's platform configurations. */
 	static bool GeneratePlatformConfigFiles(const FProjectInformation& InProjectInfo, FText& OutFailReason);
@@ -500,6 +488,7 @@ private:
 	 */
 	static bool UpdateRequiredAdditionalDependencies(FProjectDescriptor& Descriptor, TArray<FString>& RequiredDependencies, const FString& ModuleName);
 
+private:
 	/**
 	 * Updates the projects and modifies FProjectDescriptor accordingly to given modifier.
 	 *
@@ -519,13 +508,9 @@ private:
 	 */
 	static bool UpdateGameProjectFile_Impl(const FString& ProjectFilename, const FString& EngineIdentifier, const FProjectDescriptorModifier* Modifier, FText& OutFailReason);
 
-private:
-
 	static TWeakPtr<SNotificationItem> UpdateGameProjectNotification;
 	static TWeakPtr<SNotificationItem> WarningProjectNameNotification;
 
 	// Whether we should use AudioMixer for all platforms:
 	static bool bUseAudioMixerForAllPlatforms;
-
-	constexpr static const TCHAR IncludePathFormatString[] = TEXT("#include \"%s\"");
 };

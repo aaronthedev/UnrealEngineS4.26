@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AndroidDeviceDetectionModule.cpp: Implements the FAndroidDeviceDetectionModule class.
@@ -122,16 +122,13 @@ private:
 			OutStdErr = &DefaultError;
 		}
 
-		if (FPaths::FileExists(*ADBPath))
+		FPlatformProcess::ExecProcess(*ADBPath, *CommandLine, &ReturnCode, OutStdOut, OutStdErr);
+
+		if (ReturnCode != 0)
 		{
-			FPlatformProcess::ExecProcess(*ADBPath, *CommandLine, &ReturnCode, OutStdOut, OutStdErr);
+			FPlatformMisc::LowLevelOutputDebugStringf(TEXT("The Android SDK command '%s' failed to run. Return code: %d, Error: %s\n"), *CommandLine, ReturnCode, **OutStdErr);
 
-			if (ReturnCode != 0)
-			{
-				FPlatformMisc::LowLevelOutputDebugStringf(TEXT("The Android SDK command '%s' failed to run. Return code: %d, Error: %s\n"), *CommandLine, ReturnCode, **OutStdErr);
-
-				return false;
-			}
+			return false;
 		}
 
 		return true;
@@ -692,6 +689,7 @@ public:
 			bOpenGL3x = DeviceInfo->OpenGLVersionString.Contains(TEXT("OpenGL ES 3"));
 			if (bOpenGL3x)
 			{
+				DeviceSpecs.AndroidProperties.GLES31RHIState.SupportsInstancing = true;
 				DeviceSpecs.AndroidProperties.GLES31RHIState.MaxTextureDimensions = 4096;
 				DeviceSpecs.AndroidProperties.GLES31RHIState.MaxShadowDepthBufferSizeX = 2048;
 				DeviceSpecs.AndroidProperties.GLES31RHIState.MaxShadowDepthBufferSizeY = 2048;
@@ -702,11 +700,26 @@ public:
 			}
 
 			// OpenGL ES 2.0
-			UE_CLOG(!bOpenGL3x, LogCore, Fatal, TEXT("OpenGL ES 3 Required."));
+			{
+				DeviceSpecs.AndroidProperties.GLES2RHIState.SupportsInstancing = false;
+				DeviceSpecs.AndroidProperties.GLES2RHIState.MaxTextureDimensions = 2048;
+				DeviceSpecs.AndroidProperties.GLES2RHIState.MaxShadowDepthBufferSizeX = 1024;
+				DeviceSpecs.AndroidProperties.GLES2RHIState.MaxShadowDepthBufferSizeY = 1024;
+				DeviceSpecs.AndroidProperties.GLES2RHIState.MaxCubeTextureDimensions = 512;
+				DeviceSpecs.AndroidProperties.GLES2RHIState.SupportsRenderTargetFormat_PF_G8 = true;
+				DeviceSpecs.AndroidProperties.GLES2RHIState.SupportsRenderTargetFormat_PF_FloatRGBA = DeviceInfo->GLESExtensions.Contains(TEXT("GL_EXT_color_buffer_half_float"));
+				DeviceSpecs.AndroidProperties.GLES2RHIState.SupportsMultipleRenderTargets = false;
+			}
 		} // FScopeLock ExportLock released
 
 		// create a JSon object from the above structure
 		TSharedPtr<FJsonObject> JsonObject = FJsonObjectConverter::UStructToJsonObject<FPIEPreviewDeviceSpecifications>(DeviceSpecs);
+
+		// if device does not support OpenGL 3.x avoid exporting anything about it
+		if (!bOpenGL3x)
+		{
+			JsonObject->RemoveField("GLES31RHIState");
+		}
 
 		// remove IOS fields
 		JsonObject->RemoveField("IOSProperties");

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineAsyncTasksTencent.h"
 #include "OnlineSubsystemTencentPCH.h"
@@ -7,7 +7,6 @@
 #include "Interfaces/OnlinePresenceInterface.h"
 #include "Internationalization/Culture.h"
 #include "Internationalization/FastDecimalFormat.h"
-#include "PlayTimeLimitImpl.h"
 
 #if WITH_TENCENT_RAIL_SDK
 
@@ -466,7 +465,6 @@ void FOnlineAsyncTaskRailShowFloatingWindow::Initialize()
 				// Register events before triggering code
 				FOnlineAsyncTaskRail::Initialize();
 				Result = FloatingWindow->AsyncShowRailFloatingWindow(WindowType, RailString());
-				FloatingWindow->SetNotifyWindowEnable(rail::kRailNotifyWindowAntiAddiction, false); //prevent AntiAddiction message from Tencent to be shown.
 			}
 		}
 	}
@@ -1510,10 +1508,6 @@ void FOnlineAsyncEventRailSystemStateChanged::TriggerDelegates()
 	case rail::RailSystemState::kSystemStatePlayerOwnershipExpired:
 	case rail::RailSystemState::kSystemStatePlayerOwnershipActivated:
 		UE_LOG_ONLINE(Log, TEXT("FOnlineAsyncEventRailSystemStateChanged: Unsure of what to do for player ownership state %s"), *LexToString(State));
-		break;
-	case rail::RailSystemState::kSystemStateGameExitByAntiAddiction:
-		UE_LOG_ONLINE(Log, TEXT("FOnlineAsyncEventRailSystemStateChanged: Exiting the game by AntiAddiction on state %s"), *LexToString(State));
-		FPlayTimeLimitImpl::Get().GameExitByRequest();
 		break;
 
 	default:

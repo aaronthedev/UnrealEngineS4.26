@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System;
@@ -200,9 +200,37 @@ public class APEX : ModuleRules
 					string LibraryPath = PhysXBinariesDir + String.Format(RuntimeDependency, LibrarySuffix);
 					PublicAdditionalLibraries.Add(LibraryPath);
 					RuntimeDependencies.Add(LibraryPath);
-					RuntimeDependencies.Add(Path.ChangeExtension(LibraryPath, ".debug"), StagedFileType.DebugNonUFS);
 				}
 			}
+		}
+		else if (Target.Platform == UnrealTargetPlatform.XboxOne)
+		{
+			bIsApexStaticallyLinked = true;
+			bHasApexLegacy = false;
+
+			PublicDefinitions.Add("_XBOX_ONE=1");
+
+			// This MUST be defined for XboxOne!
+			PublicDefinitions.Add("PX_HAS_SECURE_STRCPY=1");
+
+			ApexLibDir = Path.Combine(ApexLibDir, "XboxOne", "VS2015");
+
+			ApexLibraries.Add("NvParameterized{0}");
+			ApexLibraries.Add("RenderDebug{0}");
+
+			LibraryFormatString = "{0}.lib";
+		}
+		else if (Target.Platform == UnrealTargetPlatform.Switch)
+		{
+			bIsApexStaticallyLinked = true;
+			bHasApexLegacy = false;
+
+			ApexLibDir = Path.Combine(ApexLibDir, "Switch");
+
+			ApexLibraries.Add("NvParameterized{0}");
+			ApexLibraries.Add("RenderDebug{0}");
+
+			LibraryFormatString = "lib{0}.a";
 		}
 
 		PublicDefinitions.Add("APEX_UE4=1");

@@ -49,11 +49,9 @@ namespace {
     MemoryDependenceAnalysis *MD;
     DominatorTree *DT;
     const TargetLibraryInfo *TLI;
-    unsigned ScanLimit; // HLSL Change - Add ScanLimit
 
     static char ID; // Pass identification, replacement for typeid
-    DSE(unsigned ScanLimit = 0) :
-      FunctionPass(ID), AA(nullptr), MD(nullptr), DT(nullptr), ScanLimit(ScanLimit) {// HLSL Change - Add ScanLimit
+    DSE() : FunctionPass(ID), AA(nullptr), MD(nullptr), DT(nullptr) {
       initializeDSEPass(*PassRegistry::getPassRegistry());
     }
 
@@ -103,7 +101,7 @@ INITIALIZE_PASS_DEPENDENCY(MemoryDependenceAnalysis)
 INITIALIZE_AG_DEPENDENCY(AliasAnalysis)
 INITIALIZE_PASS_END(DSE, "dse", "Dead Store Elimination", false, false)
 
-FunctionPass *llvm::createDeadStoreEliminationPass(unsigned ScanLimit) { return new DSE(ScanLimit); } // HLSL Change - add ScanLimit
+FunctionPass *llvm::createDeadStoreEliminationPass() { return new DSE(); }
 
 //===----------------------------------------------------------------------===//
 // Helper functions
@@ -493,7 +491,7 @@ bool DSE::runOnBasicBlock(BasicBlock &BB) {
     if (!hasMemoryWrite(Inst, TLI))
       continue;
 
-    MemDepResult InstDep = MD->getDependency(Inst, ScanLimit);
+    MemDepResult InstDep = MD->getDependency(Inst);
 
     // Ignore any store where we can't find a local dependence.
     // FIXME: cross-block DSE would be fun. :)

@@ -1,7 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RigUnit_GetCurveValue.h"
 #include "Units/RigUnitContext.h"
+
+FString FRigUnit_GetCurveValue::GetUnitLabel() const
+{
+	return FString::Printf(TEXT("Get Curve %s"), *Curve.ToString());
+}
 
 FRigUnit_GetCurveValue_Execute()
 {
@@ -13,11 +18,11 @@ FRigUnit_GetCurveValue_Execute()
 		{
 			case EControlRigState::Init:
 			{
-				CachedCurveIndex.Reset();
+				CachedCurveIndex = CurveContainer->GetIndex(Curve);
 			}
 			case EControlRigState::Update:
 			{
-				if(CachedCurveIndex.UpdateCache(Curve, CurveContainer))
+				if (CachedCurveIndex != INDEX_NONE)
 				{
 					Value = CurveContainer->GetValue(CachedCurveIndex);
 				}

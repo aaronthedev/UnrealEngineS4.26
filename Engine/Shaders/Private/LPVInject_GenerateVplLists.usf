@@ -17,7 +17,6 @@
 	Compile time parameters:
 ------------------------------------------------------------------------------*/
 
-#include "LPVListEntry.ush"
 #include "Common.ush"
 #include "LPVWriteVplCommon.ush"
 

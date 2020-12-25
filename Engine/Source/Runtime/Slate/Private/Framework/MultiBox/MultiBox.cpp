@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Framework/MultiBox/MultiBox.h"
 #include "Misc/ConfigCacheIni.h"
@@ -10,7 +10,6 @@
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Framework/MultiBox/ToolMenuBase.h"
 #include "Widgets/Input/SButton.h"
-#include "Widgets/Input/SSearchBox.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/SToolTip.h"
 #include "Widgets/Views/STableViewBase.h"
@@ -22,11 +21,7 @@
 #include "Framework/MultiBox/SMenuSeparatorBlock.h"
 #include "Framework/MultiBox/MultiBoxCustomization.h"
 #include "Framework/MultiBox/SClippingHorizontalBox.h"
-#include "Framework/MultiBox/SWidgetBlock.h"
 #include "Framework/Commands/UICommandDragDropOp.h"
-#include "SUniformToolbarPanel.h"
-
-#define LOCTEXT_NAMESPACE "MultiBox"
 
 
 TAttribute<bool> FMultiBoxSettings::UseSmallToolBarIcons;
@@ -177,9 +172,8 @@ bool FMultiBlock::GetSearchable() const
  * @param	InType	Type of MultiBox
  * @param	bInShouldCloseWindowAfterMenuSelection	Sets whether or not the window that contains this multibox should be destroyed after the user clicks on a menu item in this box
  */
-FMultiBox::FMultiBox(const EMultiBoxType InType, FMultiBoxCustomization InCustomization, const bool bInShouldCloseWindowAfterMenuSelection)
-	: bHasSearchWidget(false)
-	, CommandLists()
+FMultiBox::FMultiBox( const EMultiBoxType InType, FMultiBoxCustomization InCustomization, const bool bInShouldCloseWindowAfterMenuSelection )
+	: CommandLists()
 	, Blocks()
 	, StyleSet( &FCoreStyle::Get() )
 	, StyleName( "ToolBar" )
@@ -204,7 +198,9 @@ TSharedRef<FMultiBox> FMultiBox::Create( const EMultiBoxType InType, FMultiBoxCu
  */
 void FMultiBox::AddMultiBlock( TSharedRef< const FMultiBlock > InBlock )
 {
-	checkSlow( !Blocks.Contains( InBlock ) );
+#if UE_BUILD_DEBUG
+	check( !Blocks.Contains( InBlock ) );
+#endif
 
 	if( InBlock->GetActionList().IsValid() )
 	{
@@ -212,18 +208,6 @@ void FMultiBox::AddMultiBlock( TSharedRef< const FMultiBlock > InBlock )
 	}
 
 	Blocks.Add( InBlock );
-}
-
-void FMultiBox::AddMultiBlockToFront(TSharedRef< const FMultiBlock > InBlock)
-{
-	checkSlow(!Blocks.Contains(InBlock));
-
-	if (InBlock->GetActionList().IsValid())
-	{
-		CommandLists.AddUnique(InBlock->GetActionList());
-	}
-
-	Blocks.Insert(InBlock, 0);
 }
 
 void FMultiBox::RemoveCustomMultiBlock( TSharedRef< const FMultiBlock> InBlock )
@@ -348,7 +332,7 @@ void FMultiBox::InsertCustomMultiBlock( TSharedRef<const FMultiBlock> InBlock, i
  *
  * @return  MultiBox widget object
  */
-TSharedRef< SMultiBoxWidget > FMultiBox::MakeWidget( bool bSearchable, FOnMakeMultiBoxBuilderOverride* InMakeMultiBoxBuilderOverride /* = nullptr */, TAttribute<float> InMaxHeight )
+TSharedRef< SMultiBoxWidget > FMultiBox::MakeWidget( bool bSearchable, FOnMakeMultiBoxBuilderOverride* InMakeMultiBoxBuilderOverride /* = nullptr */ )
 {	
 	TSharedRef< SMultiBoxWidget > NewMultiBoxWidget =
 		SNew( SMultiBoxWidget );
@@ -358,9 +342,6 @@ TSharedRef< SMultiBoxWidget > FMultiBox::MakeWidget( bool bSearchable, FOnMakeMu
 
 	// Assign ourselves to the MultiBox widget
 	NewMultiBoxWidget->SetMultiBox( AsShared() );
-
-	// Set the maximum height the MultiBox widget should be
-	NewMultiBoxWidget->SetMaxHeight( InMaxHeight );
 
 	if( (InMakeMultiBoxBuilderOverride != nullptr) && (InMakeMultiBoxBuilderOverride->IsBound()) )
 	{
@@ -429,7 +410,6 @@ TSharedPtr<FMultiBlock> FMultiBox::MakeMultiBlockFromCommand( TSharedPtr<const F
 		switch ( Type )
 		{
 		case EMultiBoxType::ToolBar:
-		case EMultiBoxType::UniformToolBar:
 			{
 				NewBlock = MakeShareable( new FToolBarButtonBlock( CommandInfo, CommandList ) );
 			}
@@ -530,22 +510,22 @@ TSharedRef<ITableRow> SMultiBoxWidget::GenerateTiles(TSharedPtr<SWidget> Item, c
 
 float SMultiBoxWidget::GetItemWidth() const
 {
-	float MaxItemWidth = 0;
+	float MaxWidth = 0;
 	for (int32 i = 0; i < TileViewWidgets.Num(); ++i)
 	{
-		MaxItemWidth = FMath::Max(TileViewWidgets[i]->GetDesiredSize().X, MaxItemWidth);
+		MaxWidth = FMath::Max(TileViewWidgets[i]->GetDesiredSize().X, MaxWidth);
 	}
-	return MaxItemWidth;
+	return MaxWidth;
 }
 
 float SMultiBoxWidget::GetItemHeight() const
 {
-	float MaxItemHeight = 0;
+	float MaxHeight = 0;
 	for (int32 i = 0; i < TileViewWidgets.Num(); ++i)
 	{
-		MaxItemHeight = FMath::Max(TileViewWidgets[i]->GetDesiredSize().Y, MaxItemHeight);
+		MaxHeight = FMath::Max(TileViewWidgets[i]->GetDesiredSize().Y, MaxHeight);
 	}
-	return MaxItemHeight;
+	return MaxHeight;
 }
 
 bool SMultiBoxWidget::IsBlockBeingDragged( TSharedPtr<const FMultiBlock> Block ) const
@@ -615,61 +595,54 @@ void SMultiBoxWidget::AddBlockWidget( const FMultiBlock& Block, TSharedPtr<SHori
 		FinalWidget = BlockWidget;
 	}
 
-	TSharedRef<SWidget> FinalWidgetWithHook = 
-		SNew(SVerticalBox)
-		+ SVerticalBox::Slot()
-		.HAlign(HAlign_Center)
-		.AutoHeight()
-		[
-			SNew(STextBlock)
-			.Visibility(bDisplayExtensionHooks ? EVisibility::Visible : EVisibility::Collapsed)
-			.ColorAndOpacity(StyleSet->GetColor("MultiboxHookColor"))
-			.Text(FText::FromName(Block.GetExtensionHook()))
-		]
-		+ SVerticalBox::Slot()
-		[
-			FinalWidget.ToSharedRef()
-		];
-
 	switch (MultiBox->GetType())
 	{
 	case EMultiBoxType::MenuBar:
 	case EMultiBoxType::ToolBar:
+	case EMultiBoxType::ToolMenuBar:
 		{
 			HorizontalBox->AddSlot()
 			.AutoWidth()
-			.Padding(0)
+			.Padding( 0 )
 			[
-				FinalWidgetWithHook
+				SNew(SVerticalBox)
+				+SVerticalBox::Slot()
+				.HAlign(HAlign_Center)
+				.AutoHeight()
+				[
+					SNew(STextBlock)
+					.Visibility(bDisplayExtensionHooks ? EVisibility::Visible : EVisibility::Collapsed)
+					.ColorAndOpacity(StyleSet->GetColor("MultiboxHookColor"))
+					.Text(FText::FromName(Block.GetExtensionHook()))
+				]
+				+SVerticalBox::Slot()
+				[
+					FinalWidget.ToSharedRef()
+				]
 			];
 		}
 		break;
 	case EMultiBoxType::VerticalToolBar:
 		{
-			if (UniformToolbarPanel.IsValid())
-			{
-				UniformToolbarPanel->AddSlot()
-				[
-					FinalWidgetWithHook
-				];
-			}
-			else
-			{
-				VerticalBox->AddSlot()
+			VerticalBox->AddSlot()
 				.AutoHeight()
-				.Padding(0.0f, 1.0f, 0.0f, 1.0f)
+				.Padding( 0.0f, 1.0f, 0.0f, 1.0f )
 				[
-					FinalWidgetWithHook
+					SNew(SVerticalBox)
+					+SVerticalBox::Slot()
+					.HAlign(HAlign_Center)
+					.AutoHeight()
+					[
+						SNew(STextBlock)
+						.Visibility(bDisplayExtensionHooks ? EVisibility::Visible : EVisibility::Collapsed)
+						.ColorAndOpacity(StyleSet->GetColor("MultiboxHookColor"))
+						.Text(FText::FromName(Block.GetExtensionHook()))
+					]
+					+SVerticalBox::Slot()
+					[
+						FinalWidget.ToSharedRef()
+					]
 				];
-			}
-		}
-		break;
-	case EMultiBoxType::UniformToolBar:
-		{
-			UniformToolbarPanel->AddSlot()
-			[
-				FinalWidgetWithHook
-			];
 		}
 		break;
 	case EMultiBoxType::ButtonRow:
@@ -712,33 +685,6 @@ bool SMultiBoxWidget::GetSearchable() const
 	return bSearchable;
 }
 
-/** Creates the SearchTextWidget if the MultiBox has requested one */
-void SMultiBoxWidget::CreateSearchTextWidget()
-{
-	if (!MultiBox->bHasSearchWidget)
-	{
-		return;
-	}
-
-	SearchTextWidget = 
-		SNew(SSearchBox)
-		   .HintText(LOCTEXT("SearchHint", "Search"))
-		   .OnTextChanged(this, &SMultiBoxWidget::OnFilterTextChanged);
-
-	TSharedRef< FWidgetBlock > NewWidgetBlock(new FWidgetBlock(SearchTextWidget.ToSharedRef(), FText::GetEmpty(), false));
-	NewWidgetBlock->SetSearchable(false);
-
-	MultiBox->AddMultiBlockToFront(NewWidgetBlock);
-}
-
-/** Called when the SearchText changes */
-void SMultiBoxWidget::OnFilterTextChanged(const FText& InFilterText)
-{
-	SearchText = InFilterText;
-
-	FilterMultiBoxEntries();
-}
-
 /**
  * Builds this MultiBox widget up from the MultiBox associated with it
  */
@@ -753,8 +699,6 @@ void SMultiBoxWidget::BuildMultiBoxWidget()
 		return;
 	}
 
-	CreateSearchTextWidget();
-
 	// Select background brush based on the type of multibox.
 	const ISlateStyle* const StyleSet = MultiBox->GetStyleSet();
 	const FName& StyleName = MultiBox->GetStyleName();
@@ -762,9 +706,9 @@ void SMultiBoxWidget::BuildMultiBoxWidget()
 
 	// Create a box panel that the various multiblocks will resides within
 	// @todo Slate MultiBox: Expose margins and other useful bits
+	TSharedPtr< SHorizontalBox > HorizontalBox;
 	TSharedPtr< SVerticalBox > VerticalBox;
 	TSharedPtr< SWidget > MainWidget;
-	TSharedPtr<SHorizontalBox> HorizontalBox;
 
 	/** The current row of buttons for if the multibox type is a button row */
 	TSharedPtr<SHorizontalBox> ButtonRow;
@@ -775,29 +719,18 @@ void SMultiBoxWidget::BuildMultiBoxWidget()
 	{
 	case EMultiBoxType::MenuBar:
 	case EMultiBoxType::ToolBar:
+	case EMultiBoxType::ToolMenuBar:
 		{
-			MainWidget = HorizontalBox = ClippedHorizontalBox = SNew(SClippingHorizontalBox)
-				.BackgroundBrush(BackgroundBrush)
-				.OnWrapButtonClicked(FOnGetContent::CreateSP(this, &SMultiBoxWidget::OnWrapButtonClicked))
-				.StyleSet(StyleSet)
-				.StyleName(StyleName);
+				MainWidget = HorizontalBox = ClippedHorizontalBox = SNew( SClippingHorizontalBox )
+					.BackgroundBrush(BackgroundBrush)
+					.OnWrapButtonClicked(FOnGetContent::CreateSP(this, &SMultiBoxWidget::OnWrapButtonClicked))
+					.StyleSet( StyleSet )
+					.StyleName( StyleName );
 		}
 		break;
 	case EMultiBoxType::VerticalToolBar:
 		{
-			MainWidget = VerticalBox = SNew(SVerticalBox);
-		}
-		break;
-	case EMultiBoxType::UniformToolBar:
-		{
-			MainWidget = UniformToolbarPanel =
-				SAssignNew(UniformToolbarPanel, SUniformToolbarPanel)
-				.Orientation(Orient_Horizontal)
-				.StyleSet(StyleSet)
-				.StyleName(StyleName)
-				.MinUniformSize(StyleSet->GetFloat(StyleName, ".MinUniformToolbarSize", 0.0f))
-				.MaxUniformSize(StyleSet->GetFloat(StyleName, ".MaxUniformToolbarSize", 0.0f))
-				.OnDropdownOpened(FOnGetContent::CreateSP(this, &SMultiBoxWidget::OnWrapButtonClicked));
+			MainWidget = VerticalBox = SNew( SVerticalBox );
 		}
 		break;
 	case EMultiBoxType::ButtonRow:
@@ -812,29 +745,12 @@ void SMultiBoxWidget::BuildMultiBoxWidget()
 		break;
 	case EMultiBoxType::Menu:
 		{
-			if (MaxHeight.IsSet())
-			{
-				MainWidget = SNew(SVerticalBox)
-					+ SVerticalBox::Slot()
-					.MaxHeight(MaxHeight)
-					[
-						// wrap menu content in a scrollbox to support vertical scrolling if needed
-						SNew(SScrollBox)
-						+ SScrollBox::Slot()
-						[
-							SAssignNew(VerticalBox, SVerticalBox)
-						]
-					];
-			}
-			else
-			{
-				// wrap menu content in a scrollbox to support vertical scrolling if needed
-				MainWidget = SNew(SScrollBox)
-					+ SScrollBox::Slot()
-					[
-						SAssignNew(VerticalBox, SVerticalBox)
-					];
-			}
+			// wrap menu content in a scrollbox to support vertical scrolling if needed
+			MainWidget = SNew(SScrollBox)
+				+SScrollBox::Slot()
+				[
+					SAssignNew( VerticalBox, SVerticalBox )
+				];
 		}
 		break;
 	}
@@ -844,6 +760,9 @@ void SMultiBoxWidget::BuildMultiBoxWidget()
 	// Start building up the actual UI from each block in this MultiBox
 	bool bSectionContainsIcons = false;
 	int32 NextMenuSeparator = INDEX_NONE;
+
+	// Assign and add the search widget at the top
+	SearchTextWidget = MultiBox->SearchTextWidget;
 
 	for( int32 Index = 0; Index < Blocks.Num(); Index++ )
 	{
@@ -859,7 +778,7 @@ void SMultiBoxWidget::BuildMultiBoxWidget()
 					bSectionContainsIcons = true;
 				}
 
-				if (TestBlock.GetType() == EMultiBlockType::Separator)
+				if (TestBlock.GetType() == EMultiBlockType::MenuSeparator)
 				{
 					break;
 				}
@@ -868,7 +787,7 @@ void SMultiBoxWidget::BuildMultiBoxWidget()
 
 		const FMultiBlock& Block = *Blocks[Index];
 		EMultiBlockLocation::Type Location = EMultiBlockLocation::None;
-		
+
 		// Determine the location of the current block, used for group styling information
 		{
 			// Check if we are a start or end block
@@ -952,6 +871,7 @@ void SMultiBoxWidget::BuildMultiBoxWidget()
 	{
 	case EMultiBoxType::MenuBar:
 	case EMultiBoxType::ToolBar:
+	case EMultiBoxType::ToolMenuBar:
 		{
 			RootBorder =
 				SNew( SBorder )
@@ -992,16 +912,11 @@ TSharedRef<SWidget> SMultiBoxWidget::OnWrapButtonClicked()
 {
 	FMenuBuilder MenuBuilder(true, NULL, TSharedPtr<FExtender>(), false, GetStyleSet());
 	{ 
-		const int32 ClippedIndex = ClippedHorizontalBox.IsValid() ? ClippedHorizontalBox->GetClippedIndex() : UniformToolbarPanel->GetClippedIndex();
 		// Iterate through the array of blocks telling each one to add itself to the menu
 		const TArray< TSharedRef< const FMultiBlock > >& Blocks = MultiBox->GetBlocks();
-		for (int32 BlockIdx = ClippedIndex; BlockIdx < Blocks.Num(); ++BlockIdx)
+		for (int32 BlockIdx = ClippedHorizontalBox->GetClippedIndex(); BlockIdx < Blocks.Num(); ++BlockIdx)
 		{
-			// Skip the first entry if its a separator
-			if (BlockIdx != ClippedIndex || !Blocks[BlockIdx]->IsSeparator())
-			{
-				Blocks[BlockIdx]->CreateMenuEntry(MenuBuilder);
-			}
+			Blocks[BlockIdx]->CreateMenuEntry(MenuBuilder);
 		}
 	}
 
@@ -1259,8 +1174,6 @@ FReply SMultiBoxWidget::FocusNextWidget(EUINavigation NavigationType)
 
 FReply SMultiBoxWidget::OnFocusReceived( const FGeometry& MyGeometry, const FFocusEvent& InFocusEvent )
 {
-	ResetSearch();
-
 	if (InFocusEvent.GetCause() == EFocusCause::Navigation)
 	{
 		// forward focus to children
@@ -1274,8 +1187,16 @@ FReply SMultiBoxWidget::OnKeyDown( const FGeometry& MyGeometry, const FKeyEvent&
 {
 	SCompoundWidget::OnKeyDown( MyGeometry, KeyEvent );
 
+	if( bSearchable && KeyEvent.GetKey() == EKeys::BackSpace )
+	{
+		ReduceSearch();
+	}
+	else if( bSearchable && KeyEvent.GetKey() == EKeys::Delete )
+	{
+		ResetSearch();
+	}
 	// allow use of up and down keys to transfer focus/hover state
-	if( KeyEvent.GetKey() == EKeys::Up )
+	else if( KeyEvent.GetKey() == EKeys::Up )
 	{
 		return FocusNextWidget( EUINavigation::Previous );
 	}
@@ -1287,78 +1208,93 @@ FReply SMultiBoxWidget::OnKeyDown( const FGeometry& MyGeometry, const FKeyEvent&
 	return FReply::Unhandled();
 }
 
-FReply SMultiBoxWidget::OnKeyChar(const FGeometry& MyGeometry, const FCharacterEvent& InCharacterEvent)
+FReply SMultiBoxWidget::OnKeyChar( const FGeometry& MyGeometry, const FCharacterEvent& InCharacterEvent )
 {
 	FReply Reply = FReply::Unhandled();
-
-	if (bSearchable && SearchText.IsEmpty())
+	
+	if (bSearchable)
 	{
 		// Check for special characters
 		const TCHAR Character = InCharacterEvent.GetCharacter();
-		BeginSearch(Character);
+		TypeChar(Character);
 		Reply = FReply::Handled();
 	}
 
 	return Reply;
 }
 
-void SMultiBoxWidget::BeginSearch(const TCHAR InChar)
+void SMultiBoxWidget::TypeChar(const TCHAR InChar)
 {
 	// Certain characters are not allowed
 	bool bIsCharAllowed = true;
 	{
-		if (InChar <= 0x1F)
+		if ( InChar <= 0x1F )
 		{
 			bIsCharAllowed = false;
 		}
 	}
 
-	if (bIsCharAllowed)
+	if ( bIsCharAllowed )
 	{
-		FString NewSearchText;
-		NewSearchText += InChar;
-
-		if (SearchTextWidget.IsValid() && SearchBlockWidget.IsValid())
-		{
-			// Make the search box visible and focused
-			SearchBlockWidget->SetVisibility(EVisibility::Visible);
-			FSlateApplication::Get().SetUserFocus(0, SearchTextWidget);
-
-			SearchTextWidget->SetText(FText::FromString(NewSearchText));
-		}
+		UpdateSearch( InChar );
 	}
+}
+
+void SMultiBoxWidget::UpdateSearch( const TCHAR CharToAdd )
+{
+	const FString& OldSearchText = SearchText.ToString();
+	SearchText = FText::FromString( OldSearchText + CharToAdd );
+
+	if ( SearchTextWidget.IsValid() && SearchBlockWidget.IsValid())
+	{
+		SearchTextWidget->SetText( FText::Format( FText::FromString("Searching: {0}"), SearchText ) );
+		SearchBlockWidget->SetVisibility(EVisibility::Visible);
+	}
+
+	FilterMultiBoxEntries();
 }
 
 void SMultiBoxWidget::ResetSearch()
 {
-	// Empty search text
-	if (SearchTextWidget.IsValid())
+	// Empty search name
+	SearchText = FText::GetEmpty();
+
+	for( auto It = SearchElements.CreateConstIterator(); It; ++It )
 	{
-		SearchTextWidget->SetText(FText::GetEmpty());
+		It.Key()->SetVisibility( EVisibility::Visible );
+	}
+
+	if (SearchTextWidget.IsValid() && SearchBlockWidget.IsValid())
+	{
+		SearchTextWidget->SetText( FText::FromString("No Search") );
+		SearchBlockWidget->SetVisibility( EVisibility::Collapsed );
+	}
+}
+
+void SMultiBoxWidget::ReduceSearch()
+{
+	if (SearchText.ToString().Len() <= 1)
+	{
+		ResetSearch();
+	}
+	else
+	{
+		SearchText = FText::FromString(SearchText.ToString().LeftChop(1));
+
+		if (SearchTextWidget.IsValid() && SearchBlockWidget.IsValid())
+		{
+			SearchTextWidget->SetText(FText::Format(FText::FromString("Searching: {0}"), SearchText));
+			SearchBlockWidget->SetVisibility(EVisibility::Visible);
+		}
+
+		FilterMultiBoxEntries();
 	}
 }
 
 void SMultiBoxWidget::FilterMultiBoxEntries()
 {
-	if (SearchText.IsEmpty())
-	{
-		for (auto It = MultiBoxWidgets.CreateConstIterator(); It; ++It)
-		{
-			It.Key()->SetVisibility(EVisibility::Visible);
-		}
-
-		if (SearchBlockWidget.IsValid())
-		{
-			SearchBlockWidget->SetVisibility(EVisibility::Collapsed);
-		}
-
-		// Return focus to parent widget
-		FSlateApplication::Get().SetUserFocus(0, SharedThis(this));
-
-		return;
-	}
-
-	for(auto It = MultiBoxWidgets.CreateConstIterator(); It; ++It)
+	bool NoSearchedItems = true;
+	for(auto It = SearchElements.CreateConstIterator(); It; ++It)
 	{
 		// Non-searched elements should not be rendered while searching
 		if(It.Value().IsEmpty())
@@ -1378,6 +1314,7 @@ void SMultiBoxWidget::FilterMultiBoxEntries()
 			if( It.Value().ToString().Contains( SearchText.ToString() ) )
 			{
 				It.Key()->SetVisibility( EVisibility::Visible );
+				NoSearchedItems = false;
 			}
 			else
 			{
@@ -1386,9 +1323,10 @@ void SMultiBoxWidget::FilterMultiBoxEntries()
 		}
 	}
 
-	if (SearchBlockWidget.IsValid())
+	if (NoSearchedItems && SearchTextWidget.IsValid() && SearchBlockWidget.IsValid() )
 	{
-		SearchBlockWidget->SetVisibility(EVisibility::Visible);
+		SearchTextWidget->SetText( FText::Format( FText::FromString("No Results: {0}"), SearchText ) );
+		SearchBlockWidget->SetVisibility( EVisibility::Visible );
 	}
 }
 
@@ -1397,7 +1335,7 @@ FText SMultiBoxWidget::GetSearchText() const
 	return SearchText;
 }
 
-TSharedPtr<SWidget> SMultiBoxWidget::GetSearchTextWidget()
+TSharedPtr<STextBlock> SMultiBoxWidget::GetSearchTextWidget()
 {
 	return SearchTextWidget;
 }
@@ -1409,24 +1347,11 @@ void SMultiBoxWidget::SetSearchBlockWidget(TSharedPtr<SWidget> InWidget)
 
 void SMultiBoxWidget::AddSearchElement( TSharedPtr<SWidget> BlockWidget, FText BlockDisplayText )
 {
-	AddElement(BlockWidget, BlockDisplayText, true);
+	SearchElements.Add( BlockWidget, BlockDisplayText );
 }
-
-void SMultiBoxWidget::AddElement(TSharedPtr<SWidget> BlockWidget, FText BlockDisplayText, bool bInSearchable)
-{
-	 // Non-Searchable widgets shouldn't have search text
-	if (!bInSearchable)
-	{
-		BlockDisplayText = FText::GetEmpty();
-	}
-
-	MultiBoxWidgets.Add(BlockWidget, BlockDisplayText);
-}
-
 
 bool SMultiBoxWidget::OnVisualizeTooltip(const TSharedPtr<SWidget>& TooltipContent)
 {
 	// tooltips on multibox widgets are not supported outside of the editor or programs
 	return !GIsEditor && !FGenericPlatformProperties::IsProgram();
 }
-#undef LOCTEXT_NAMESPACE

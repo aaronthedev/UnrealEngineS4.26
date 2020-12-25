@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using System;
 using System.Net;
@@ -42,7 +42,7 @@ namespace nDisplay
 				server.Start();
 
 				//@note: I'm note sure is it allowed to use copyright strings in the code
-				//PrintColorText("Copyright Epic Games, Inc. All Rights Reserved.", ConsoleColor.Cyan);
+				//PrintColorText("Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.", ConsoleColor.Cyan);
 				PrintColorText(string.Format("Listening to port {0}", Port.ToString()), ConsoleColor.Cyan);
 				Console.WriteLine("---------------------------------------------------------");
 
@@ -188,13 +188,10 @@ namespace nDisplay
 				string appPath = ExtractApplicationPath(data).Trim();
 				string argList = data.Substring(appPath.Length).Trim();
 
-				appPath = appPath.Trim(new char[] { '"' });
-
 				// For now we just forward arguments list as is.
 				Process proc = new Process();
 				proc.StartInfo.FileName = appPath;
 				proc.StartInfo.Arguments = argList;
-				proc.StartInfo.WorkingDirectory = Path.GetDirectoryName(appPath);
 				proc.Start();
 
 				lock (LockPIDList)

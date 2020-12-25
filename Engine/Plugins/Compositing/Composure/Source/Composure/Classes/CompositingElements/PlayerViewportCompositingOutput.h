@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -17,7 +17,7 @@ class UPlayerCompOutputCameraModifier;
 /* UPlayerViewportCompositingOutput
  *****************************************************************************/
 
-UCLASS()
+UCLASS(meta=(DisplayName="Player Viewport"))
 class COMPOSURE_API UPlayerViewportCompositingOutput : public UColorConverterOutputPass, public IBlendableInterface
 {
 	GENERATED_BODY()

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #pragma once
 
 #include "CoreMinimal.h"
@@ -18,7 +18,7 @@ struct FResolvedProperty
 	{
 	}
 
-	FResolvedProperty(const void* InObject, const FProperty* InProperty)
+	FResolvedProperty(const void* InObject, const UProperty* InProperty)
 		: Object(InObject)
 		, Property(InProperty)
 	{
@@ -32,7 +32,7 @@ struct FResolvedProperty
 	inline bool operator!=(const FResolvedProperty& RHS) const { return !(*this == RHS); }
 
 	const void* Object;
-	const FProperty* Property;
+	const UProperty* Property;
 };
 
 /**
@@ -62,7 +62,7 @@ struct FPropertySoftPath
 		}
 	}
 
-	FPropertySoftPath(const FPropertySoftPath& SubPropertyPath, const FProperty* LeafProperty)
+	FPropertySoftPath(const FPropertySoftPath& SubPropertyPath, const UProperty* LeafProperty)
 		: PropertyChain(SubPropertyPath.PropertyChain)
 	{
 		PropertyChain.Push(FChainElement(LeafProperty));
@@ -125,7 +125,7 @@ private:
 			}
 		}
 
-		FChainElement(const FProperty* Property)
+		FChainElement(const UProperty* Property)
 		{
 			if (Property)
 			{

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Kismet2/CompilerResultsLog.h"
 #include "Engine/Blueprint.h"
@@ -443,21 +443,21 @@ void FCompilerResultsLog::InternalLogMessage(FName MessageID, const TSharedRef<F
 		{
 			if (IsRunningCommandlet())
 			{
-				UE_ASSET_LOG(LogBlueprint, Error, *SourcePath, TEXT("[Compiler] %s from Source: %s"), *Message->ToText().ToString(), *SourcePath);
+				UE_LOG(LogBlueprint, Error, TEXT("[Compiler %s] %s from Source: %s"), *FPackageName::ObjectPathToObjectName(SourcePath), *Message->ToText().ToString(), *SourcePath);
 			}
 			else
 			{
 				// in editor the compiler log is 'rich' and we don't need to annotate with the full blueprint path, just the name:
-				UE_ASSET_LOG(LogBlueprint, Error, *SourcePath, TEXT("[Compiler] %s"), *Message->ToText().ToString());
+				UE_LOG(LogBlueprint, Error, TEXT("[Compiler %s] %s"), *FPackageName::ObjectPathToObjectName(SourcePath), *Message->ToText().ToString());
 			}
 		}
 		else if (Severity == EMessageSeverity::Warning || Severity == EMessageSeverity::PerformanceWarning)
 		{
-			UE_ASSET_LOG(LogBlueprint, Warning, *SourcePath, TEXT("[Compiler] %s"), *Message->ToText().ToString());
+			UE_LOG(LogBlueprint, Warning, TEXT("[Compiler %s] %s"), *FPackageName::ObjectPathToObjectName(SourcePath), *Message->ToText().ToString());
 		}
 		else
 		{
-			UE_ASSET_LOG(LogBlueprint, Log, *SourcePath, TEXT("[Compiler] %s"), *Message->ToText().ToString());
+			UE_LOG(LogBlueprint, Log, TEXT("[Compiler %s] %s"), *FPackageName::ObjectPathToObjectName(SourcePath), *Message->ToText().ToString());
 		}
 	}
 }
@@ -529,12 +529,11 @@ TArray< TSharedRef<FTokenizedMessage> > FCompilerResultsLog::ParseCompilerLogDum
 	for (int32 i = 0; i < MessageLines.Num(); ++i)
 	{
 		FString Line = MessageLines[i];
-		if (Line.EndsWith(TEXT("\r"), ESearchCase::CaseSensitive))
+		if (Line.EndsWith(TEXT("\r")))
 		{
-			Line.LeftChopInline(1, false);
+			Line = Line.LeftChop(1);
 		}
-		Line.ConvertTabsToSpacesInline(4);
-		Line.TrimEndInline();
+		Line = Line.ConvertTabsToSpaces(4).TrimEnd();
 
 		// handle output line error message if applicable
 		// @todo Handle case where there are parenthesis in path names
@@ -595,7 +594,7 @@ void FCompilerResultsLog::OnGotoError(const TSharedRef<IMessageToken>& Token)
 	FString FullPath, LineNumberString;
 	if (Token->ToText().ToString().Split(TEXT("("), &FullPath, &LineNumberString, ESearchCase::CaseSensitive))
 	{
-		LineNumberString.LeftChopInline(1, false); // remove right parenthesis
+		LineNumberString = LineNumberString.LeftChop(1); // remove right parenthesis
 		int32 LineNumber = FCString::Strtoi(*LineNumberString, NULL, 10);
 
 		FSourceCodeNavigation::OpenSourceFile( FullPath, LineNumber );

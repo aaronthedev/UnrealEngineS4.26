@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PerfCounters.h"
 #include "GenericPlatform/GenericPlatformTime.h"
@@ -54,7 +54,8 @@ bool FPerfCounters::Initialize()
 	LastTimeInternalCountersUpdated = FPlatformTime::Seconds() - InternalCountersUpdateInterval * FMath::FRand();	// randomize between servers
 
 	// get the requested port from the command line (if specified)
-	const int32 StatsPort = IPerfCountersModule::GetHTTPStatsPort();
+	int32 StatsPort = -1;
+	FParse::Value(FCommandLine::Get(), TEXT("statsPort="), StatsPort);
 	if (StatsPort < 0)
 	{
 		UE_LOG(LogPerfCounters, Log, TEXT("FPerfCounters JSON socket disabled."));

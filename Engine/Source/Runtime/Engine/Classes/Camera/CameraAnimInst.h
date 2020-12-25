@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  *	A CameraAnimInst is an active instance of a CameraAnim.
@@ -91,7 +91,7 @@ public:
 	class UInterpTrackInstMove* MoveInst;
 
 	UPROPERTY()
-	ECameraShakePlaySpace PlaySpace;
+	TEnumAsByte<ECameraAnimPlaySpace::Type> PlaySpace;
 
 	/** The user-defined space for UserDefined PlaySpace */
 	FMatrix UserPlaySpaceMatrix;
@@ -140,7 +140,7 @@ public:
 	void ApplyTransientScaling(float Scalar);
 	
 	/** Sets this anim to play in an alternate playspace */
-	void SetPlaySpace(ECameraShakePlaySpace NewSpace, FRotator UserPlaySpace = FRotator::ZeroRotator);
+	void SetPlaySpace(ECameraAnimPlaySpace::Type NewSpace, FRotator UserPlaySpace = FRotator::ZeroRotator);
 
 	/** Changes the running duration of this active anim, while maintaining playback position. */
 	UFUNCTION(BlueprintCallable, Category=CameraAnimInst)

@@ -34,8 +34,8 @@
 //
 //-*****************************************************************************
 
-#ifndef Alembic_AbcCoreHDF5_ReadWrite_h
-#define Alembic_AbcCoreHDF5_ReadWrite_h
+#ifndef _Alembic_AbcCoreHDF5_ReadWrite_h_
+#define _Alembic_AbcCoreHDF5_ReadWrite_h_
 
 #include <Alembic/AbcCoreAbstract/All.h>
 #include <Alembic/Util/Export.h>

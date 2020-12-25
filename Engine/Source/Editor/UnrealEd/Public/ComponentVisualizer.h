@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,7 +7,6 @@
 #include "Components/ActorComponent.h"
 #include "HitProxies.h"
 #include "ConvexVolume.h"
-#include "ComponentVisualizer.generated.h"
 
 class AActor;
 class FCanvas;
@@ -35,12 +34,9 @@ struct HComponentVisProxy : public HHitProxy
 	TWeakObjectPtr<const UActorComponent> Component;
 };
 
-USTRUCT()
+
 struct FPropertyNameAndIndex
 {
-public:
-	GENERATED_USTRUCT_BODY()
-
 	FPropertyNameAndIndex()
 		: Name(NAME_None)
 		, Index(INDEX_NONE)
@@ -59,15 +55,7 @@ public:
 		Index = INDEX_NONE;
 	}
 
-	bool operator ==(const FPropertyNameAndIndex& InRHS) const
-	{
-		return (Name == InRHS.Name && Index == InRHS.Index);
-	}
-
-	UPROPERTY()
 	FName Name;
-
-	UPROPERTY()
 	int32 Index;
 };
 
@@ -75,11 +63,9 @@ public:
 /**
  * Describes a chain of properties from the parent actor of a given component, to the component itself.
  */
-USTRUCT()
-struct UNREALED_API FComponentPropertyPath
+class UNREALED_API FComponentPropertyPath
 {
 public:
-	 GENERATED_USTRUCT_BODY()
 
 	FComponentPropertyPath() = default;
 	explicit FComponentPropertyPath(const UActorComponent* Component) { Set(Component); }
@@ -101,28 +87,13 @@ public:
 	/** Determines whether the property path is valid or not */
 	bool IsValid() const;
 
-	bool operator ==(const FComponentPropertyPath& InRHS) const
-	{
-		return (ParentOwningActor == InRHS.ParentOwningActor && LastResortComponentPtr == InRHS.LastResortComponentPtr && PropertyChain == InRHS.PropertyChain);
-	}
-
-	bool operator !=(const FComponentPropertyPath& InRHS) const
-	{
-		return (ParentOwningActor != InRHS.ParentOwningActor || LastResortComponentPtr != InRHS.LastResortComponentPtr || PropertyChain != InRHS.PropertyChain);
-	}
-
 private:
 
 	/** Sets the component referred to by the object */
 	void Set(const UActorComponent* Component);
 
-	UPROPERTY()
 	TWeakObjectPtr<AActor> ParentOwningActor;
-
-	UPROPERTY()
 	TWeakObjectPtr<UActorComponent> LastResortComponentPtr;
-
-	UPROPERTY()
 	TArray<FPropertyNameAndIndex> PropertyChain;
 };
 
@@ -163,9 +134,6 @@ public:
 	virtual bool HasFocusOnSelectionBoundingBox(FBox& OutBoundingBox) { return false; }
 	/** Pass snap input to active visualizer */
 	virtual bool HandleSnapTo(const bool bInAlign, const bool bInUseLineTrace, const bool bInUseBounds, const bool bInUsePivot, AActor* InDestination) { return false;  }
-	/** Get currently edited component, this is needed to reset the active visualizer after undo/redo */
-	virtual UActorComponent* GetEditedComponent() const { return nullptr;  }
-
 	/** */
 	virtual TSharedPtr<SWidget> GenerateContextMenu() const { return TSharedPtr<SWidget>(); }
 	/** */
@@ -183,10 +151,10 @@ public:
 	static UActorComponent* GetComponentFromPropertyName(const AActor* CompOwner, const FPropertyNameAndIndex& Property);
 
 	/** Notify that a component property has been modified */
-	static void NotifyPropertyModified(UActorComponent* Component, FProperty* Property);
+	static void NotifyPropertyModified(UActorComponent* Component, UProperty* Property);
 
 	/** Notify that many component properties have been modified */
-	static void NotifyPropertiesModified(UActorComponent* Component, const TArray<FProperty*>& Properties);
+	static void NotifyPropertiesModified(UActorComponent* Component, const TArray<UProperty*>& Properties);
 };
 
 struct FCachedComponentVisualizer

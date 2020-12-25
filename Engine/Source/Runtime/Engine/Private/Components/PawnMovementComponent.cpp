@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameFramework/PawnMovementComponent.h"
 #include "GameFramework/Pawn.h"
@@ -23,7 +23,7 @@ void UPawnMovementComponent::SetUpdatedComponent(USceneComponent* NewUpdatedComp
 
 	Super::SetUpdatedComponent(NewUpdatedComponent);
 
-	PawnOwner = UpdatedComponent ? CastChecked<APawn>(UpdatedComponent->GetOwner()) : NULL;
+	PawnOwner = NewUpdatedComponent ? CastChecked<APawn>(NewUpdatedComponent->GetOwner()) : NULL;
 }
 
 void UPawnMovementComponent::Serialize(FArchive& Ar)

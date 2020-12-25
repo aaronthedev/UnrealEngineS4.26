@@ -1,12 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Math/UnitConversion.h"
 #include "Internationalization/Internationalization.h"
 #include "Misc/ExpressionParserTypes.h"
 #include "Misc/ExpressionParser.h"
 #include "Math/BasicMathExpressionEvaluator.h"
-
-PRAGMA_DISABLE_UNSAFE_TYPECAST_WARNINGS
 
 #define LOCTEXT_NAMESPACE "UnitConversion"
 
@@ -144,7 +142,9 @@ const EUnitType UnitTypes[] = {
 
 	EUnitType::PixelDensity,
 
-	EUnitType::Multipliers, EUnitType::Multipliers,
+	EUnitType::Multipliers,
+
+	EUnitType::Arbitrary,
 };
 
 
@@ -700,45 +700,45 @@ namespace UnitConversion
 
 			FStaticBounds()
 			{
-				MetricDistance.Emplace(EUnit::Micrometers,	1000.0f);
-				MetricDistance.Emplace(EUnit::Millimeters,	10.0f);
-				MetricDistance.Emplace(EUnit::Centimeters,	100.0f);
-				MetricDistance.Emplace(EUnit::Meters,			1000.0f);
-				MetricDistance.Emplace(EUnit::Kilometers,		0.0f);
+				MetricDistance.Emplace(EUnit::Micrometers,	1000);
+				MetricDistance.Emplace(EUnit::Millimeters,	10);
+				MetricDistance.Emplace(EUnit::Centimeters,	100);
+				MetricDistance.Emplace(EUnit::Meters,			1000);
+				MetricDistance.Emplace(EUnit::Kilometers,		0);
 
-				ImperialDistance.Emplace(EUnit::Inches,	12.0f);
-				ImperialDistance.Emplace(EUnit::Feet,		3.0f);
-				ImperialDistance.Emplace(EUnit::Yards,	1760.0f);
-				ImperialDistance.Emplace(EUnit::Miles,	0.0f);
+				ImperialDistance.Emplace(EUnit::Inches,	12);
+				ImperialDistance.Emplace(EUnit::Feet,		3);
+				ImperialDistance.Emplace(EUnit::Yards,	1760);
+				ImperialDistance.Emplace(EUnit::Miles,	0);
 
-				MetricMass.Emplace(EUnit::Micrograms,	1000.0f);
-				MetricMass.Emplace(EUnit::Milligrams,	1000.0f);
-				MetricMass.Emplace(EUnit::Grams,		1000.0f);
-				MetricMass.Emplace(EUnit::Kilograms,	1000.0f);
-				MetricMass.Emplace(EUnit::MetricTons,	0.0f);
+				MetricMass.Emplace(EUnit::Micrograms,	1000);
+				MetricMass.Emplace(EUnit::Milligrams,	1000);
+				MetricMass.Emplace(EUnit::Grams,		1000);
+				MetricMass.Emplace(EUnit::Kilograms,	1000);
+				MetricMass.Emplace(EUnit::MetricTons,	0);
 
-				ImperialMass.Emplace(EUnit::Ounces,	16.0f);
-				ImperialMass.Emplace(EUnit::Pounds,	14.0f);
-				ImperialMass.Emplace(EUnit::Stones,	0.0f);
+				ImperialMass.Emplace(EUnit::Ounces,	16);
+				ImperialMass.Emplace(EUnit::Pounds,	14);
+				ImperialMass.Emplace(EUnit::Stones,	0);
 
-				Frequency.Emplace(EUnit::Hertz,		1000.0f);
-				Frequency.Emplace(EUnit::Kilohertz,	1000.0f);
-				Frequency.Emplace(EUnit::Megahertz,	1000.0f);
-				Frequency.Emplace(EUnit::Gigahertz,	0.0f);
+				Frequency.Emplace(EUnit::Hertz,		1000);
+				Frequency.Emplace(EUnit::Kilohertz,	1000);
+				Frequency.Emplace(EUnit::Megahertz,	1000);
+				Frequency.Emplace(EUnit::Gigahertz,	0);
 
-				DataSize.Emplace(EUnit::Bytes,		1000.0f);
-				DataSize.Emplace(EUnit::Kilobytes,	1000.0f);
-				DataSize.Emplace(EUnit::Megabytes,	1000.0f);
-				DataSize.Emplace(EUnit::Gigabytes,	1000.0f);
-				DataSize.Emplace(EUnit::Terabytes,	0.0f);
+				DataSize.Emplace(EUnit::Bytes,		1000);
+				DataSize.Emplace(EUnit::Kilobytes,	1000);
+				DataSize.Emplace(EUnit::Megabytes,	1000);
+				DataSize.Emplace(EUnit::Gigabytes,	1000);
+				DataSize.Emplace(EUnit::Terabytes,	0);
 
-				Time.Emplace(EUnit::Milliseconds,		1000.0f);
-				Time.Emplace(EUnit::Seconds,			60.0f);
-				Time.Emplace(EUnit::Minutes,			60.0f);
-				Time.Emplace(EUnit::Hours,			24.0f);
-				Time.Emplace(EUnit::Days,				365.242f / 12.0f);
-				Time.Emplace(EUnit::Months,			12.0f);
-				Time.Emplace(EUnit::Years,			0.0f);
+				Time.Emplace(EUnit::Milliseconds,		1000);
+				Time.Emplace(EUnit::Seconds,			60);
+				Time.Emplace(EUnit::Minutes,			60);
+				Time.Emplace(EUnit::Hours,			24);
+				Time.Emplace(EUnit::Days,				365.242f / 12);
+				Time.Emplace(EUnit::Months,			12);
+				Time.Emplace(EUnit::Years,			0);
 			}
 		};
 
@@ -775,5 +775,3 @@ namespace UnitConversion
 }	// namespace UnitConversion
 
 #undef LOCTEXT_NAMESPACE
-
-PRAGMA_ENABLE_UNSAFE_TYPECAST_WARNINGS

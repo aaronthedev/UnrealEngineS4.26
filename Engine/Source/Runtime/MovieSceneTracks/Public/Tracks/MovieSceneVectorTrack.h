@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "Tracks/MovieScenePropertyTrack.h"
-#include "Compilation/IMovieSceneTrackTemplateProducer.h"
 
 #include "MovieSceneVectorTrack.generated.h"
 
@@ -13,7 +12,7 @@
  * Handles manipulation of component transforms in a movie scene
  */
 UCLASS(MinimalAPI)
-class UMovieSceneVectorTrack : public UMovieScenePropertyTrack, public IMovieSceneTrackTemplateProducer
+class UMovieSceneVectorTrack : public UMovieScenePropertyTrack
 {
 	GENERATED_UCLASS_BODY()
 public:

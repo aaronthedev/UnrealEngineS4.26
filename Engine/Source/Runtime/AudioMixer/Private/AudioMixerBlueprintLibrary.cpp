@@ -1,16 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AudioMixerBlueprintLibrary.h"
 #include "Engine/World.h"
 #include "AudioDevice.h"
 #include "AudioMixerDevice.h"
 #include "CoreMinimal.h"
-#include "DSP/ConstantQ.h"
 #include "DSP/SpectrumAnalyzer.h"
 #include "ContentStreaming.h"
 #include "AudioCompressionSettingsUtils.h"
 #include "Async/Async.h"
-#include "Sound/SoundEffectPreset.h"
 
 // This is our global recording task:
 static TUniquePtr<Audio::FAudioRecordingData> RecordingData;
@@ -24,7 +22,7 @@ static FAudioDevice* GetAudioDeviceFromWorldContext(const UObject* WorldContextO
 		return nullptr;
 	}
 
-	return ThisWorld->GetAudioDevice().GetAudioDevice();
+	return ThisWorld->GetAudioDevice();
 }
 
 static Audio::FMixerDevice* GetAudioMixerDeviceFromWorldContext(const UObject* WorldContextObject)
@@ -53,17 +51,24 @@ void UAudioMixerBlueprintLibrary::AddMasterSubmixEffect(const UObject* WorldCont
 
 	if (Audio::FMixerDevice* MixerDevice = GetAudioMixerDeviceFromWorldContext(WorldContextObject))
 	{
+		// Immediately create a new sound effect base here before the object becomes potentially invalidated
+		FSoundEffectBase* SoundEffectBase = SubmixEffectPreset->CreateNewEffect();
+
+		// Cast it to a sound effect submix type
+		FSoundEffectSubmix* SoundEffectSubmix = static_cast<FSoundEffectSubmix*>(SoundEffectBase);
+
 		FSoundEffectSubmixInitData InitData;
 		InitData.SampleRate = MixerDevice->GetSampleRate();
-		InitData.DeviceID = MixerDevice->DeviceID;
-		InitData.PresetSettings = nullptr;
-		InitData.ParentPresetUniqueId = SubmixEffectPreset->GetUniqueID();
 
-		// Immediately create a new sound effect base here before the object becomes potentially invalidated
-		TSoundEffectSubmixPtr SoundEffectSubmix = USoundEffectPreset::CreateInstance<FSoundEffectSubmixInitData, FSoundEffectSubmix>(InitData, *SubmixEffectPreset);
+		// Initialize and set the preset immediately
+		SoundEffectSubmix->Init(InitData);
+		SoundEffectSubmix->SetPreset(SubmixEffectPreset);
 		SoundEffectSubmix->SetEnabled(true);
 
-		MixerDevice->AddMasterSubmixEffect(SoundEffectSubmix);
+		// Get a unique id for the preset object on the game thread. Used to refer to the object on audio render thread.
+		uint32 SubmixPresetUniqueId = SubmixEffectPreset->GetUniqueID();
+
+		MixerDevice->AddMasterSubmixEffect(SubmixPresetUniqueId, SoundEffectSubmix);
 	}
 }
 
@@ -92,102 +97,6 @@ void UAudioMixerBlueprintLibrary::ClearMasterSubmixEffects(const UObject* WorldC
 	}
 }
 
-int32 UAudioMixerBlueprintLibrary::AddSubmixEffect(const UObject* WorldContextObject, USoundSubmix* InSoundSubmix, USoundEffectSubmixPreset* SubmixEffectPreset)
-{
-	if (!SubmixEffectPreset || !InSoundSubmix)
-	{
-		return 0;
-	}
-
-	if (Audio::FMixerDevice* MixerDevice = GetAudioMixerDeviceFromWorldContext(WorldContextObject))
-	{
-		FSoundEffectSubmixInitData InitData;
-		InitData.SampleRate = MixerDevice->GetSampleRate();
-		InitData.ParentPresetUniqueId = SubmixEffectPreset->GetUniqueID();
-
-		TSoundEffectSubmixPtr SoundEffectSubmix = USoundEffectPreset::CreateInstance<FSoundEffectSubmixInitData, FSoundEffectSubmix>(InitData, *SubmixEffectPreset);
-		SoundEffectSubmix->SetEnabled(true);
-
-		return MixerDevice->AddSubmixEffect(InSoundSubmix, SoundEffectSubmix);
-	}
-
-	return 0;
-}
-
-void UAudioMixerBlueprintLibrary::RemoveSubmixEffectPreset(const UObject* WorldContextObject, USoundSubmix* InSoundSubmix, USoundEffectSubmixPreset* InSubmixEffectPreset)
-{
-	if (Audio::FMixerDevice* MixerDevice = GetAudioMixerDeviceFromWorldContext(WorldContextObject))
-	{
-		uint32 SubmixPresetUniqueId = InSubmixEffectPreset->GetUniqueID();
-		MixerDevice->RemoveSubmixEffect(InSoundSubmix, SubmixPresetUniqueId);
-	}
-}
-
-void UAudioMixerBlueprintLibrary::RemoveSubmixEffectPresetAtIndex(const UObject* WorldContextObject, USoundSubmix* InSoundSubmix, int32 SubmixChainIndex)
-{
-	if (Audio::FMixerDevice* MixerDevice = GetAudioMixerDeviceFromWorldContext(WorldContextObject))
-	{
-		MixerDevice->RemoveSubmixEffectAtIndex(InSoundSubmix, SubmixChainIndex);
-	}
-}
-
-void UAudioMixerBlueprintLibrary::ReplaceSoundEffectSubmix(const UObject* WorldContextObject, USoundSubmix* InSoundSubmix, int32 SubmixChainIndex, USoundEffectSubmixPreset* SubmixEffectPreset)
-{
-	if (!SubmixEffectPreset || !InSoundSubmix)
-	{
-		return;
-	}
-
-	if (Audio::FMixerDevice* MixerDevice = GetAudioMixerDeviceFromWorldContext(WorldContextObject))
-	{
-		FSoundEffectSubmixInitData InitData;
-		InitData.SampleRate = MixerDevice->GetSampleRate();
-
-		TSoundEffectSubmixPtr SoundEffectSubmix = USoundEffectPreset::CreateInstance<FSoundEffectSubmixInitData, FSoundEffectSubmix>(InitData, *SubmixEffectPreset);
-		SoundEffectSubmix->SetEnabled(true);
-
-		MixerDevice->ReplaceSoundEffectSubmix(InSoundSubmix, SubmixChainIndex, SoundEffectSubmix);
-	}
-}
-
-void UAudioMixerBlueprintLibrary::ClearSubmixEffects(const UObject* WorldContextObject, USoundSubmix* InSoundSubmix)
-{
-	if (Audio::FMixerDevice* MixerDevice = GetAudioMixerDeviceFromWorldContext(WorldContextObject))
-	{
-		MixerDevice->ClearSubmixEffects(InSoundSubmix);
-	}
-}
-
-void UAudioMixerBlueprintLibrary::SetSubmixEffectChainOverride(const UObject* WorldContextObject, USoundSubmix* InSoundSubmix, TArray<USoundEffectSubmixPreset*> InSubmixEffectPresetChain, float InFadeTimeSec)
-{
-	if (Audio::FMixerDevice* MixerDevice = GetAudioMixerDeviceFromWorldContext(WorldContextObject))
-	{
-		TArray<FSoundEffectSubmixPtr> NewSubmixEffectPresetChain;
-
-		for (USoundEffectSubmixPreset* SubmixEffectPreset : InSubmixEffectPresetChain)
-		{
-			FSoundEffectSubmixInitData InitData;
-			InitData.SampleRate = MixerDevice->GetSampleRate();
-			InitData.ParentPresetUniqueId = SubmixEffectPreset->GetUniqueID();
-
-			TSoundEffectSubmixPtr SoundEffectSubmix = USoundEffectPreset::CreateInstance<FSoundEffectSubmixInitData, FSoundEffectSubmix>(InitData, *SubmixEffectPreset);
-			SoundEffectSubmix->SetEnabled(true);
-
-			NewSubmixEffectPresetChain.Add(SoundEffectSubmix);
-		}
-		
-		MixerDevice->SetSubmixEffectChainOverride(InSoundSubmix, NewSubmixEffectPresetChain, InFadeTimeSec);
-	}
-}
-
-void UAudioMixerBlueprintLibrary::ClearSubmixEffectChainOverride(const UObject* WorldContextObject, USoundSubmix* InSoundSubmix, float InFadeTimeSec)
-{
-	if (Audio::FMixerDevice* MixerDevice = GetAudioMixerDeviceFromWorldContext(WorldContextObject))
-	{
-		MixerDevice->ClearSubmixEffectChainOverride(InSoundSubmix, InFadeTimeSec);
-	}
-}
-
 void UAudioMixerBlueprintLibrary::StartRecordingOutput(const UObject* WorldContextObject, float ExpectedDuration, USoundSubmix* SubmixToRecord)
 {
 	if (Audio::FMixerDevice* MixerDevice = GetAudioMixerDeviceFromWorldContext(WorldContextObject))
@@ -196,7 +105,7 @@ void UAudioMixerBlueprintLibrary::StartRecordingOutput(const UObject* WorldConte
 	}
 	else
 	{
-		UE_LOG(LogAudioMixer, Error, TEXT("Output recording is an audio mixer only feature."));
+		UE_LOG(LogAudioMixer, Error, TEXT("Output recording is an audio mixer only feature. Please run the game with -audiomixer to enable this feature."));
 	}
 }
 
@@ -254,13 +163,13 @@ USoundWave* UAudioMixerBlueprintLibrary::StopRecordingOutput(const UObject* Worl
 	}
 	else
 	{
-		UE_LOG(LogAudioMixer, Error, TEXT("Output recording is an audio mixer only feature."));
+		UE_LOG(LogAudioMixer, Error, TEXT("Output recording is an audio mixer only feature. Please run the game with -audiomixer to enable this feature."));
 	}
 
 	return nullptr;
 }
 
-void UAudioMixerBlueprintLibrary::PauseRecordingOutput(const UObject* WorldContextObject, USoundSubmix* SubmixToPause)
+void UAudioMixerBlueprintLibrary::PauseRecordingOutput(const UObject* WorldContextObject, USoundSubmix* SubmixToPause /* = nullptr */)
 {
 	if (Audio::FMixerDevice* MixerDevice = GetAudioMixerDeviceFromWorldContext(WorldContextObject))
 	{
@@ -268,11 +177,11 @@ void UAudioMixerBlueprintLibrary::PauseRecordingOutput(const UObject* WorldConte
 	}
 	else
 	{
-		UE_LOG(LogAudioMixer, Error, TEXT("Output recording is an audio mixer only feature."));
+		UE_LOG(LogAudioMixer, Error, TEXT("Output recording is an audio mixer only feature. Please run the game with -audiomixer to enable this feature."));
 	}
 }
 
-void UAudioMixerBlueprintLibrary::ResumeRecordingOutput(const UObject* WorldContextObject, USoundSubmix* SubmixToResume)
+void UAudioMixerBlueprintLibrary::ResumeRecordingOutput(const UObject* WorldContextObject, USoundSubmix* SubmixToResume /* = nullptr */)
 {
 	if (Audio::FMixerDevice* MixerDevice = GetAudioMixerDeviceFromWorldContext(WorldContextObject))
 	{
@@ -280,24 +189,25 @@ void UAudioMixerBlueprintLibrary::ResumeRecordingOutput(const UObject* WorldCont
 	}
 	else
 	{
-		UE_LOG(LogAudioMixer, Error, TEXT("Output recording is an audio mixer only feature."));
+		UE_LOG(LogAudioMixer, Error, TEXT("Output recording is an audio mixer only feature. Please run the game with -audiomixer to enable this feature."));
 	}
 }
 
-void UAudioMixerBlueprintLibrary::StartAnalyzingOutput(const UObject* WorldContextObject, USoundSubmix* SubmixToAnalyze, EFFTSize FFTSize, EFFTPeakInterpolationMethod InterpolationMethod, EFFTWindowType WindowType, float HopSize, EAudioSpectrumType AudioSpectrumType)
+void UAudioMixerBlueprintLibrary::StartAnalyzingOutput(const UObject* WorldContextObject, USoundSubmix* SubmixToAnalyze /*= nullptr*/, EFFTSize FFTSize /*= EFFTSize::Default*/, EFFTPeakInterpolationMethod InterpolationMethod /*= Linear*/, EFFTWindowType WindowType /*= EFFTWindowType::Hamming*/, float HopSize /*= 0*/)
 {
 	if (Audio::FMixerDevice* MixerDevice = GetAudioMixerDeviceFromWorldContext(WorldContextObject))
 	{
-		FSoundSpectrumAnalyzerSettings Settings = USoundSubmix::GetSpectrumAnalyzerSettings(FFTSize, InterpolationMethod, WindowType, HopSize, AudioSpectrumType);
+		Audio::FSpectrumAnalyzerSettings Settings = Audio::FSpectrumAnalyzerSettings();
+		PopulateSpectrumAnalyzerSettings(FFTSize, InterpolationMethod, WindowType, HopSize, Settings);
 		MixerDevice->StartSpectrumAnalysis(SubmixToAnalyze, Settings);
 	}
 	else
 	{
-		UE_LOG(LogAudioMixer, Error, TEXT("Spectrum Analysis is an audio mixer only feature."));
+		UE_LOG(LogAudioMixer, Error, TEXT("Spectrum Analysis is an audio mixer only feature. Please run the game with -audiomixer to enable this feature."));
 	}
 }
 
-void UAudioMixerBlueprintLibrary::StopAnalyzingOutput(const UObject* WorldContextObject, USoundSubmix* SubmixToStopAnalyzing)
+void UAudioMixerBlueprintLibrary::StopAnalyzingOutput(const UObject* WorldContextObject, USoundSubmix* SubmixToStopAnalyzing /*= nullptr*/)
 {
 	if (Audio::FMixerDevice* MixerDevice = GetAudioMixerDeviceFromWorldContext(WorldContextObject))
 	{
@@ -305,114 +215,8 @@ void UAudioMixerBlueprintLibrary::StopAnalyzingOutput(const UObject* WorldContex
 	}
 	else
 	{
-		UE_LOG(LogAudioMixer, Error, TEXT("Spectrum Analysis is an audio mixer only feature."));
+		UE_LOG(LogAudioMixer, Error, TEXT("Spectrum Analysis is an audio mixer only feature. Please run the game with -audiomixer to enable this feature."));
 	}
-}
-
-TArray<FSoundSubmixSpectralAnalysisBandSettings> UAudioMixerBlueprintLibrary::MakeMusicalSpectralAnalysisBandSettings(int32 InNumNotes, EMusicalNoteName InStartingMusicalNote, int32 InStartingOctave, int32 InAttackTimeMsec, int32 InReleaseTimeMsec)
-{
-	// Make values sane.
-	InNumNotes = FMath::Clamp(InNumNotes, 0, 10000);
-	InStartingOctave = FMath::Clamp(InStartingOctave, -1, 10);
-	InAttackTimeMsec = FMath::Clamp(InAttackTimeMsec, 0, 10000);
-	InReleaseTimeMsec = FMath::Clamp(InReleaseTimeMsec, 0, 10000);
-
-	// Some assumptions here on what constitutes "music". 12 notes, equal temperament.
-	const float BandsPerOctave = 12.f;
-	// This QFactor makes the bandwidth equal to the difference in frequency between adjacent notes.
-	const float QFactor = 1.f / (FMath::Pow(2.f, 1.f / BandsPerOctave) - 1.f);
-
-	// Base note index off of A4 which we know to be 440 hz.
-	// Make note relative to A
-	int32 NoteIndex = static_cast<int32>(InStartingMusicalNote) - static_cast<int32>(EMusicalNoteName::A);
-	// Make relative to 4th octave of A
-	NoteIndex += 12 * (InStartingOctave - 4);
-
-	const float StartingFrequency = 440.f * FMath::Pow(2.f, static_cast<float>(NoteIndex) / 12.f);
-
-
-	TArray<FSoundSubmixSpectralAnalysisBandSettings> BandSettingsArray;
-	for (int32 i = 0; i < InNumNotes; i++)
-	{
-		FSoundSubmixSpectralAnalysisBandSettings BandSettings;
-
-		BandSettings.BandFrequency = Audio::FPseudoConstantQ::GetConstantQCenterFrequency(i, StartingFrequency, BandsPerOctave);
-
-		BandSettings.QFactor = QFactor;
-		BandSettings.AttackTimeMsec = InAttackTimeMsec;
-		BandSettings.ReleaseTimeMsec = InReleaseTimeMsec;
-
-		BandSettingsArray.Add(BandSettings);
-	}
-
-	return BandSettingsArray;
-}
-
-TArray<FSoundSubmixSpectralAnalysisBandSettings> UAudioMixerBlueprintLibrary::MakeFullSpectrumSpectralAnalysisBandSettings(int32 InNumBands, float InMinimumFrequency, float InMaximumFrequency, int32 InAttackTimeMsec, int32 InReleaseTimeMsec)
-{
-	// Make inputs sane.
-	InNumBands = FMath::Clamp(InNumBands, 0, 10000);
-	InMinimumFrequency = FMath::Clamp(InMinimumFrequency, 20.0f, 20000.0f);
-	InMaximumFrequency = FMath::Clamp(InMaximumFrequency, InMinimumFrequency, 20000.0f);
-	InAttackTimeMsec = FMath::Clamp(InAttackTimeMsec, 0, 10000);
-	InReleaseTimeMsec = FMath::Clamp(InReleaseTimeMsec, 0, 10000);
-
-	// Calculate CQT settings needed to space bands.
-	const float NumOctaves = FMath::Loge(InMaximumFrequency / InMinimumFrequency) / FMath::Loge(2.f);
-	const float BandsPerOctave = static_cast<float>(InNumBands) / FMath::Max(NumOctaves, 0.01f);
-	const float QFactor = 1.f / (FMath::Pow(2.f, 1.f / FMath::Max(BandsPerOctave, 0.01f)) - 1.f);
-
-	TArray<FSoundSubmixSpectralAnalysisBandSettings> BandSettingsArray;
-	for (int32 i = 0; i < InNumBands; i++)
-	{
-		FSoundSubmixSpectralAnalysisBandSettings BandSettings;
-
-		BandSettings.BandFrequency = Audio::FPseudoConstantQ::GetConstantQCenterFrequency(i, InMinimumFrequency, BandsPerOctave);
-
-		BandSettings.QFactor = QFactor;
-		BandSettings.AttackTimeMsec = InAttackTimeMsec;
-		BandSettings.ReleaseTimeMsec = InReleaseTimeMsec;
-
-		BandSettingsArray.Add(BandSettings);
-	}
-
-	return BandSettingsArray;
-}
-
-TArray<FSoundSubmixSpectralAnalysisBandSettings> UAudioMixerBlueprintLibrary::MakePresetSpectralAnalysisBandSettings(EAudioSpectrumBandPresetType InBandPresetType, int32 InNumBands, int32 InAttackTimeMsec, int32 InReleaseTimeMsec)
-{
-	float MinimumFrequency = 20.f;
-	float MaximumFrequency = 20000.f;
-
-	// Likely all these are debatable. What we are shooting for is the most active frequency
-	// ranges, so when an instrument plays a significant amount of spectral energy from that
-	// instrument will show up in the frequency range. 
-	switch (InBandPresetType)
-	{
-		case EAudioSpectrumBandPresetType::KickDrum:
-			MinimumFrequency = 40.f;
-			MaximumFrequency = 100.f;
-			break;
-
-		case EAudioSpectrumBandPresetType::SnareDrum:
-			MinimumFrequency = 150.f;
-			MaximumFrequency = 4500.f;
-			break;
-
-		case EAudioSpectrumBandPresetType::Voice:
-			MinimumFrequency = 300.f;
-			MaximumFrequency = 3000.f;
-			break;
-
-		case EAudioSpectrumBandPresetType::Cymbals:
-			MinimumFrequency = 6000.f;
-			MaximumFrequency = 16000.f;
-			break;
-
-		// More presets can be added. The possibilities are endless.
-	}
-
-	return MakeFullSpectrumSpectralAnalysisBandSettings(InNumBands, MinimumFrequency, MaximumFrequency, InAttackTimeMsec, InReleaseTimeMsec);
 }
 
 void UAudioMixerBlueprintLibrary::GetMagnitudeForFrequencies(const UObject* WorldContextObject, const TArray<float>& Frequencies, TArray<float>& Magnitudes, USoundSubmix* SubmixToAnalyze /*= nullptr*/)
@@ -423,7 +227,7 @@ void UAudioMixerBlueprintLibrary::GetMagnitudeForFrequencies(const UObject* Worl
 	}
 	else
 	{
-		UE_LOG(LogAudioMixer, Error, TEXT("Getting magnitude for frequencies is an audio mixer only feature."));
+		UE_LOG(LogAudioMixer, Error, TEXT("Output recording is an audio mixer only feature. Please run the game with -audiomixer to enable this feature."));
 	}
 }
 
@@ -435,7 +239,7 @@ void UAudioMixerBlueprintLibrary::GetPhaseForFrequencies(const UObject* WorldCon
 	}
 	else
 	{
-		UE_LOG(LogAudioMixer, Error, TEXT("Output recording is an audio mixer only feature."));
+		UE_LOG(LogAudioMixer, Error, TEXT("Output recording is an audio mixer only feature. Please run the game with -audiomixer to enable this feature."));
 	}
 }
 
@@ -590,44 +394,64 @@ float UAudioMixerBlueprintLibrary::TrimAudioCache(float InMegabytesToFree)
 	return (float)(((double) NumBytesFreed / 1024) / 1024.0);
 }
 
-void UAudioMixerBlueprintLibrary::StartAudioBus(const UObject* WorldContextObject, UAudioBus* AudioBus)
+void UAudioMixerBlueprintLibrary::PopulateSpectrumAnalyzerSettings(EFFTSize FFTSize, EFFTPeakInterpolationMethod InterpolationMethod, EFFTWindowType WindowType, float HopSize, Audio::FSpectrumAnalyzerSettings &OutSettings)
 {
-	if (Audio::FMixerDevice* MixerDevice = GetAudioMixerDeviceFromWorldContext(WorldContextObject))
+	switch (FFTSize)
 	{
-		uint32 AudioBusId = AudioBus->GetUniqueID();
-		int32 NumChannels = (int32)AudioBus->AudioBusChannels + 1;
-		MixerDevice->StartAudioBus(AudioBusId, NumChannels, false);
+	case EFFTSize::DefaultSize:
+		OutSettings.FFTSize = Audio::FSpectrumAnalyzerSettings::EFFTSize::Default;
+		break;
+	case EFFTSize::Min:
+		OutSettings.FFTSize = Audio::FSpectrumAnalyzerSettings::EFFTSize::Min_64;
+		break;
+	case EFFTSize::Small:
+		OutSettings.FFTSize = Audio::FSpectrumAnalyzerSettings::EFFTSize::Small_256;
+		break;
+	case EFFTSize::Medium:
+		OutSettings.FFTSize = Audio::FSpectrumAnalyzerSettings::EFFTSize::Medium_512;
+		break;
+	case EFFTSize::Large:
+		OutSettings.FFTSize = Audio::FSpectrumAnalyzerSettings::EFFTSize::Large_1024;
+		break;
+	case EFFTSize::Max:
+		OutSettings.FFTSize = Audio::FSpectrumAnalyzerSettings::EFFTSize::TestLarge_4096;
+		break;
+	default:
+		break;
 	}
-	else
-	{
-		UE_LOG(LogAudioMixer, Error, TEXT("Audio buses are an audio mixer only feature. Please run the game with audio mixer enabled for this feature."));
-	}
-}
 
-void UAudioMixerBlueprintLibrary::StopAudioBus(const UObject* WorldContextObject, UAudioBus* AudioBus)
-{
-	if (Audio::FMixerDevice* MixerDevice = GetAudioMixerDeviceFromWorldContext(WorldContextObject))
+	switch (InterpolationMethod)
 	{
-		uint32 AudioBusId = AudioBus->GetUniqueID();
-		MixerDevice->StopAudioBus(AudioBusId);
+	case EFFTPeakInterpolationMethod::NearestNeighbor:
+		OutSettings.InterpolationMethod = Audio::FSpectrumAnalyzerSettings::EPeakInterpolationMethod::NearestNeighbor;
+		break;
+	case EFFTPeakInterpolationMethod::Linear:
+		OutSettings.InterpolationMethod = Audio::FSpectrumAnalyzerSettings::EPeakInterpolationMethod::Linear;
+		break;
+	case EFFTPeakInterpolationMethod::Quadratic:
+		OutSettings.InterpolationMethod = Audio::FSpectrumAnalyzerSettings::EPeakInterpolationMethod::Quadratic;
+		break;
+	default:
+		break;
 	}
-	else
-	{
-		UE_LOG(LogAudioMixer, Error, TEXT("Audio buses are an audio mixer only feature. Please run the game with audio mixer enabled for this feature."));
-	}
-}
 
-bool UAudioMixerBlueprintLibrary::IsAudioBusActive(const UObject* WorldContextObject, UAudioBus* AudioBus)
-{
-	if (Audio::FMixerDevice* MixerDevice = GetAudioMixerDeviceFromWorldContext(WorldContextObject))
+	switch (WindowType)
 	{
-		uint32 AudioBusId = AudioBus->GetUniqueID();
-		return MixerDevice->IsAudioBusActive(AudioBusId);
+	case EFFTWindowType::None:
+		OutSettings.WindowType = Audio::EWindowType::None;
+		break;
+	case EFFTWindowType::Hamming:
+		OutSettings.WindowType = Audio::EWindowType::Hamming;
+		break;
+	case EFFTWindowType::Hann:
+		OutSettings.WindowType = Audio::EWindowType::Hann;
+		break;
+	case EFFTWindowType::Blackman:
+		OutSettings.WindowType = Audio::EWindowType::Blackman;
+		break;
+	default:
+		break;
 	}
-	else
-	{
-		UE_LOG(LogAudioMixer, Error, TEXT("Audio buses are an audio mixer only feature. Please run the game with audio mixer enabled for this feature."));
-		return false;
-	}
-}
 
+	OutSettings.HopSize = HopSize;
+}

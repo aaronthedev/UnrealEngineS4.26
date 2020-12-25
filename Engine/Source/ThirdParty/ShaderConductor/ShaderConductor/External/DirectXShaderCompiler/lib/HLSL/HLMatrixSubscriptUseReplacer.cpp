@@ -237,10 +237,7 @@ Value *HLMatrixSubscriptUseReplacer::loadVector(IRBuilder<> &Builder) {
   }
 
   // Otherwise load elements one by one
-  // Lowered form may be array when AllowLoweredPtrGEPs == true.
-  Type* LoweredTy = LoweredPtr->getType()->getPointerElementType();
-  Type* ElemTy = LoweredTy->isVectorTy() ? LoweredTy->getScalarType() :
-              cast<ArrayType>(LoweredTy)->getArrayElementType();
+  Type* ElemTy = LoweredPtr->getType()->getPointerElementType()->getScalarType();
   VectorType *VecTy = VectorType::get(ElemTy, static_cast<unsigned>(ElemIndices.size()));
   Value *Result = UndefValue::get(VecTy);
   for (unsigned SubIdx = 0; SubIdx < ElemIndices.size(); ++SubIdx) {

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SRowEditor.h"
 #include "Modules/ModuleManager.h"
@@ -81,7 +81,7 @@ SRowEditor::~SRowEditor()
 {
 }
 
-void SRowEditor::NotifyPreChange( FProperty* PropertyAboutToChange )
+void SRowEditor::NotifyPreChange( UProperty* PropertyAboutToChange )
 {
 	check(DataTable.IsValid());
 	DataTable->Modify();
@@ -89,20 +89,13 @@ void SRowEditor::NotifyPreChange( FProperty* PropertyAboutToChange )
 	FDataTableEditorUtils::BroadcastPreChange(DataTable.Get(), FDataTableEditorUtils::EDataTableChangeInfo::RowData);
 }
 
-void SRowEditor::NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, FProperty* PropertyThatChanged )
+void SRowEditor::NotifyPostChange( const FPropertyChangedEvent& PropertyChangedEvent, UProperty* PropertyThatChanged )
 {
 	check(DataTable.IsValid());
 
-	FName RowName = NAME_None;
-	if (SelectedName.IsValid())
-	{
-		RowName = *SelectedName.Get();
-	}
-
-	DataTable->HandleDataTableChanged(RowName);
-	DataTable->MarkPackageDirty();
-
 	FDataTableEditorUtils::BroadcastPostChange(DataTable.Get(), FDataTableEditorUtils::EDataTableChangeInfo::RowData);
+
+	DataTable->MarkPackageDirty();
 }
 
 void SRowEditor::PreChange(const class UUserDefinedStruct* Struct, FStructureEditorUtils::EStructureEditorChangeInfo Info)

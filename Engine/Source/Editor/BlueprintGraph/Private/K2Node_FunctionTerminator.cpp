@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "K2Node_FunctionTerminator.h"
@@ -43,7 +43,7 @@ FName UK2Node_FunctionTerminator::CreateUniquePinName(FName InSourcePinName) con
 	FName ResultName = InSourcePinName;
 	int UniqueNum = 0;
 	// Prevent the unique name from being the same as another of the UFunction's properties
-	while(FindPin(ResultName) || FindFProperty<const FProperty>(FoundFunction, ResultName) != nullptr)
+	while(FindPin(ResultName) || FindField<const UProperty>(FoundFunction, ResultName) != nullptr)
 	{
 		ResultName = *FString::Printf(TEXT("%s%d"), *InSourcePinName.ToString(), ++UniqueNum);
 	}
@@ -105,17 +105,6 @@ bool UK2Node_FunctionTerminator::HasExternalDependencies(TArray<class UStruct*>*
 	return bSuperResult || bResult;
 }
 
-void UK2Node_FunctionTerminator::PostPasteNode()
-{
-	Super::PostPasteNode();
-
-	UEdGraph* Graph = GetGraph();
-	if (ensure(Graph))
-	{
-		FunctionReference.SetExternalMember(Graph->GetFName(), nullptr);
-	}
-}
-
 void UK2Node_FunctionTerminator::PromoteFromInterfaceOverride(bool bIsPrimaryTerminator)
 {
 	// Remove the signature class, that is not relevant.
@@ -145,7 +134,7 @@ UFunction* UK2Node_FunctionTerminator::FindSignatureFunction() const
 	if (!FoundFunction && FoundClass && GetOuter())
 	{
 		// The resolve will fail if this is a locally-created function, so search using the event graph name
-		FoundFunction = FindUField<UFunction>(FoundClass, *GetOuter()->GetName());
+		FoundFunction = FindField<UFunction>(FoundClass, *GetOuter()->GetName());
 	}
 
 	return FoundFunction;

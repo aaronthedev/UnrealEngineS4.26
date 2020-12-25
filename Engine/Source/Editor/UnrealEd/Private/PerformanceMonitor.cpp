@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #include "PerformanceMonitor.h"
@@ -27,7 +27,6 @@
 
 #include "Settings/EditorSettings.h"
 #include "Editor/EditorPerformanceSettings.h"
-#include "EditorViewportClient.h"
 
 #define LOCTEXT_NAMESPACE "PerformanceMonitor"
 
@@ -63,7 +62,8 @@ public:
 					.Padding(5.f)
 					[
 						SNew(STextBlock)
-						.Text(LOCTEXT("PerformanceWarningDescription", "The current performance of the editor seems to be low.\nUse the options below to reduce the amount of detail and increase performance."))
+						.Text(LOCTEXT("PerformanceWarningDescription",
+							"The current performance of the editor seems to be low.\nUse the options below to reduce the amount of detail and increase performance."))
 					]
 					
 					+ SVerticalBox::Slot()
@@ -86,7 +86,8 @@ public:
 							]
 						)
 						.AutoWrapText(true)
-						.Text(LOCTEXT("PerformanceWarningChangeLater", "You can modify these settings in future via \"Quick Settings\" button on the level editor toolbar and choosing \"Engine Scalability Settings\"."))
+						.Text(LOCTEXT("PerformanceWarningChangeLater",
+							"You can modify these settings in future via \"Quick Settings\" button on the level editor toolbar and choosing \"Engine Scalability Settings\"."))
 					]
 
 					+ SVerticalBox::Slot()
@@ -205,14 +206,7 @@ void FPerformanceMonitor::AutoApplyScalability()
 	const bool bAutoApplied = false;
 	Scalability::RecordQualityLevelsAnalytics(bAutoApplied);
 
-	for (FEditorViewportClient* VC : GEditor->GetAllViewportClients())
-	{
-		if (VC)
-		{
-			VC->SetRealtime(false);
-			VC->Invalidate();
-		}
-	}
+	GEditor->DisableRealtimeViewports();
 
 	// Reset the timers so as not to skew the data with the time it took to do the benchmark	
 	FineMovingAverage.Reset();

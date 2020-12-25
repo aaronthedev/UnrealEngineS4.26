@@ -1,6 +1,6 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
-#if PHYSICS_INTERFACE_PHYSX
+#if WITH_PHYSX
 
 #include "PhysXPublicCore.h"
 #include "PhysicsPublicCore.h"

@@ -1,18 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimationBlueprintLibrary.h" 
 
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimationAsset.h"
-#include "Animation/AnimBoneCompressionSettings.h"
-#include "Animation/AnimCurveCompressionSettings.h"
 #include "Animation/AnimMetaData.h"
-#include "Animation/AnimNotifies/AnimNotifyState.h"
+#include "Animation/AnimNotifies/AnimNotifyState.h" 
 #include "Animation/Skeleton.h"
 #include "Animation/AnimNotifies/AnimNotify.h"
-#include "Animation/AnimCurveTypes.h"
 #include "BonePose.h" 
-#include "Algo/Transform.h"
 
 #include "AnimationRuntime.h"
 
@@ -44,49 +40,6 @@ void UAnimationBlueprintLibrary::GetAnimationTrackNames(const UAnimSequence* Ani
 	{
 		UE_LOG(LogAnimationBlueprintLibrary, Warning, TEXT("Invalid Animation Sequence supplied for GetAnimationTrackNames"));
 	}	
-}
-
-void UAnimationBlueprintLibrary::GetAnimationCurveNames(const UAnimSequence* AnimationSequence, ERawCurveTrackTypes CurveType, TArray<FName>& CurveNames)
-{
-	CurveNames.Empty();
-	if (AnimationSequence)
-	{
-		auto GetCurveName = [](const auto& Curve) -> FName
-		{
-			return Curve.Name.DisplayName;
-		};
-
-		switch (CurveType)
-		{
-			case ERawCurveTrackTypes::RCT_Float:
-			{
-				Algo::Transform(AnimationSequence->RawCurveData.FloatCurves, CurveNames, GetCurveName);
-				break;
-			}
-
-			case ERawCurveTrackTypes::RCT_Vector:
-			{
-				Algo::Transform(AnimationSequence->RawCurveData.VectorCurves, CurveNames, GetCurveName);				
-				break;
-			}
-
-			case ERawCurveTrackTypes::RCT_Transform:
-			{
-				Algo::Transform(AnimationSequence->RawCurveData.TransformCurves, CurveNames, GetCurveName);
-				break;
-			}
-
-			default:
-			{
-				UE_LOG(LogAnimationBlueprintLibrary, Warning, TEXT("Invalid CurveType supplied for GetAnimationCurveNames"));
-			}
-		}
-		
-	}
-	else
-	{
-		UE_LOG(LogAnimationBlueprintLibrary, Warning, TEXT("Invalid Animation Sequence supplied for GetAnimationCurveNames"));
-	}
 }
 
 void UAnimationBlueprintLibrary::GetRawTrackPositionData(const UAnimSequence* AnimationSequence, const FName TrackName, TArray<FVector>& PositionData)
@@ -179,60 +132,27 @@ const FRawAnimSequenceTrack&  UAnimationBlueprintLibrary::GetRawAnimationTrackBy
 	return AnimationSequence->GetRawAnimationTrack(TrackIndex);	
 }
 
-void UAnimationBlueprintLibrary::GetBoneCompressionSettings(const UAnimSequence* AnimationSequence, UAnimBoneCompressionSettings*& CompressionSettings)
+void UAnimationBlueprintLibrary::GetCompressionScheme(const UAnimSequence* AnimationSequence, UAnimCompress*& CompressionScheme)
 {
-	if (AnimationSequence == nullptr)
+	if (AnimationSequence)
 	{
-		UE_LOG(LogAnimationBlueprintLibrary, Warning, TEXT("Invalid Animation Sequence supplied for GetBoneCompressionSettings"));
-		return;
+		CompressionScheme = AnimationSequence->CompressionScheme;
 	}
-
-	CompressionSettings = AnimationSequence->BoneCompressionSettings;
+	else
+	{
+		UE_LOG(LogAnimationBlueprintLibrary, Warning, TEXT("Invalid Animation Sequence supplied for GetCompressionScheme"));
+	}
 }
 
-void UAnimationBlueprintLibrary::SetBoneCompressionSettings(UAnimSequence* AnimationSequence, UAnimBoneCompressionSettings* CompressionSettings)
+void UAnimationBlueprintLibrary::SetCompressionScheme(UAnimSequence* AnimationSequence, UAnimCompress* CompressionScheme)
 {
-	if (AnimationSequence == nullptr)
+	if (AnimationSequence)
 	{
-		UE_LOG(LogAnimationBlueprintLibrary, Warning, TEXT("Invalid Animation Sequence supplied for SetBoneCompressionSettings"));
-		return;
+		AnimationSequence->CompressionScheme = CompressionScheme;
 	}
-
-	if (CompressionSettings == nullptr || !CompressionSettings->AreSettingsValid())
 	{
-		UE_LOG(LogAnimationBlueprintLibrary, Warning, TEXT("Invalid Bone Compression Settings supplied for SetBoneCompressionSettings"));
-		return;
+		UE_LOG(LogAnimationBlueprintLibrary, Warning, TEXT("Invalid Animation Sequence supplied for SetCompressionScheme"));
 	}
-
-	AnimationSequence->BoneCompressionSettings = CompressionSettings;
-}
-
-void UAnimationBlueprintLibrary::GetCurveCompressionSettings(const UAnimSequence* AnimationSequence, UAnimCurveCompressionSettings*& CompressionSettings)
-{
-	if (AnimationSequence == nullptr)
-	{
-		UE_LOG(LogAnimationBlueprintLibrary, Warning, TEXT("Invalid Animation Sequence supplied for GetCurveCompressionSettings"));
-		return;
-	}
-
-	CompressionSettings = AnimationSequence->CurveCompressionSettings;
-}
-
-void UAnimationBlueprintLibrary::SetCurveCompressionSettings(UAnimSequence* AnimationSequence, UAnimCurveCompressionSettings* CompressionSettings)
-{
-	if (AnimationSequence == nullptr)
-	{
-		UE_LOG(LogAnimationBlueprintLibrary, Warning, TEXT("Invalid Animation Sequence supplied for SetCurveCompressionSettings"));
-		return;
-	}
-
-	if (CompressionSettings == nullptr || !CompressionSettings->AreSettingsValid())
-	{
-		UE_LOG(LogAnimationBlueprintLibrary, Warning, TEXT("Invalid Bone Compression Settings supplied for SetCurveCompressionSettings"));
-		return;
-	}
-
-	AnimationSequence->CurveCompressionSettings = CompressionSettings;
 }
 
 void UAnimationBlueprintLibrary::GetAdditiveAnimationType(const UAnimSequence* AnimationSequence, TEnumAsByte<enum EAdditiveAnimationType>& AdditiveAnimationType)
@@ -1614,7 +1534,7 @@ FName UAnimationBlueprintLibrary::RetrieveContainerNameForCurve(const UAnimSeque
 	for (int32 Index = 0; Index < (int32)ESmartNameContainerType::SNCT_MAX; ++Index)
 	{
 		const FSmartNameMapping* CurveMapping = AnimationSequence->GetSkeleton()->GetSmartNameContainer(SmartContainerNames[Index]);
-		if (CurveMapping && CurveMapping->Exists(CurveName))
+		if (CurveMapping->Exists(CurveName))
 		{
 			return SmartContainerNames[Index];
 		}

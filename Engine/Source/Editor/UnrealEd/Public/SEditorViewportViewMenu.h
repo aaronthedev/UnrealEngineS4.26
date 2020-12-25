@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
@@ -12,7 +12,6 @@
 #include "Styling/SlateTypes.h"
 
 struct FSlateBrush;
-class UToolMenu;
 
 class UNREALED_API SEditorViewportViewMenu : public SEditorViewportToolbarMenu
 {
@@ -26,14 +25,11 @@ public:
 private:
 	FText GetViewMenuLabel() const;
 	const FSlateBrush* GetViewMenuLabelIcon() const;
-	void FillViewMenu(UToolMenu* Menu) const;
 
 protected:
 	virtual TSharedRef<SWidget> GenerateViewMenuContent() const;
-	virtual void RegisterMenus() const;
-
 	TWeakPtr<SEditorViewport> Viewport;
-	TSharedPtr<class FExtender> MenuExtenders;
 
-	static const FName BaseMenuName;
+private:
+	TSharedPtr<class FExtender> MenuExtenders;
 };

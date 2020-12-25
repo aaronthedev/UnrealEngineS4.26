@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /**
  * Shader Pipeline Precompilation Cache
@@ -72,6 +72,7 @@ class RENDERCORE_API FShaderPipelineCache : public FTickableObjectRenderThread
 	{
 		FPipelineCacheFileFormatPSO PSO;
 		FShaderPipelineCacheArchive* ReadRequests;
+		TSet<FSHAHash> ShaderCodeReads;
 	};
 
 public:
@@ -223,10 +224,6 @@ private:
     
     void OnShaderLibraryStateChanged(ELibraryState State, EShaderPlatform Platform, FString const& Name);
 
-	FRHIBlendState* GetOrCreateBlendState(const FBlendStateInitializerRHI& Initializer);
-	FRHIRasterizerState* GetOrCreateRasterizerState(const FRasterizerStateInitializerRHI& Initializer);
-	FRHIDepthStencilState* GetOrCreateDepthStencilState(const FDepthStencilStateInitializerRHI& Initializer);
-	
 private:
 	static FShaderPipelineCache* ShaderPipelineCache;
 	TArray<CompileJob> ReadTasks;
@@ -242,14 +239,13 @@ private:
 	bool bPaused;
 	bool bOpened;
 	bool bReady;
-	bool bPreOptimizing;
     int32 PausedCount;
 	FShaderCachePrecompileContext ShaderCachePrecompileContext;
 	
-	MS_ALIGN(8) volatile int64 TotalActiveTasks GCC_ALIGN(8);
-	MS_ALIGN(8) volatile int64 TotalWaitingTasks GCC_ALIGN(8);
-	MS_ALIGN(8) volatile int64 TotalCompleteTasks GCC_ALIGN(8);
-	MS_ALIGN(8) volatile int64 TotalPrecompileTime GCC_ALIGN(8);
+    volatile int64 TotalActiveTasks;
+    volatile int64 TotalWaitingTasks;
+    volatile int64 TotalCompleteTasks;
+    volatile int64 TotalPrecompileTime;
 	double PrecompileStartTime;
 
 	FCriticalSection Mutex;
@@ -271,10 +267,4 @@ private:
 	int32 LastAutoSaveNum;
 	
 	TSet<uint64> CompletedMasks;
-	float TotalPrecompileWallTime;
-	int64 TotalPrecompileTasks;
-
-	TMap<FBlendStateInitializerRHI, FRHIBlendState*> BlendStateCache;
-	TMap<FRasterizerStateInitializerRHI, FRHIRasterizerState*> RasterizerStateCache;
-	TMap<FDepthStencilStateInitializerRHI, FRHIDepthStencilState*> DepthStencilStateCache;
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "GeometryCollection/SkeletalMeshSimulationComponent.h"
 #include "GeometryCollection/GeometryCollectionCollisionStructureManager.h"
 #include "GeometryCollection/GeometryCollectionSimulationTypes.h"
@@ -27,10 +27,6 @@
 #include "Math/NumericLimits.h"
 #include "Modules/ModuleManager.h"
 #include "Chaos/ChaosGameplayEventDispatcher.h"
-
-#include "Chaos/ChaosSolverActor.h"
-#include "Chaos/ChaosPhysicalMaterial.h"
-#include "Physics/Experimental/PhysScene_Chaos.h"
 
 
 //DEFINE_LOG_CATEGORY_STATIC(USkeletalMeshSimulationComponentLogging, NoLogging, All);
@@ -69,16 +65,8 @@ USkeletalMeshSimulationComponent::USkeletalMeshSimulationComponent(const FObject
 {
 	// Enable calls to TickComponent()
 	UActorComponent::PrimaryComponentTick.bCanEverTick = true;	
-	ChaosMaterial = MakeUnique<Chaos::FChaosPhysicsMaterial>();
+	ChaosMaterial = MakeUnique<Chaos::TChaosPhysicsMaterial<float>>();
 }
-
-USkeletalMeshSimulationComponent::USkeletalMeshSimulationComponent(FVTableHelper& Helper)
-	: Super(Helper)
-{
-
-}
-
-USkeletalMeshSimulationComponent::~USkeletalMeshSimulationComponent() = default;
 
 Chaos::FPhysicsSolver* GetSolver(const USkeletalMeshSimulationComponent& SkeletalMeshSimulationComponent)
 {

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -155,8 +155,6 @@ protected:
 	virtual FChildren* GetChildren( ) override;
 	virtual bool ComputeVolatility() const override { return WidgetIndex.IsBound(); }
 	const FSlot* GetActiveSlot() const;
-
-	TPanelChildren<FSlot>& GetTypedChildren() { return AllChildren; }
 
 private:
 

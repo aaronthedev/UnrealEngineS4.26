@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -22,9 +22,6 @@ namespace Audio
 
 		// Resets the sample delay to 0
 		void Reset();
-
-		// Resets the audio to silence.
-		void FlushAudio();
 
 		// Sets the filter frequency using normalized frequency (between 0.0 and 1.0f or 0.0 hz and Nyquist Frequency in Hz) 
 		void SetFrequency(const float InFrequency);

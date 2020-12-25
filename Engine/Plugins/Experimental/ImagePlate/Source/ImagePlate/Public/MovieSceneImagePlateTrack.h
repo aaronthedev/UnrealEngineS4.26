@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,6 @@
 #include "UObject/ObjectMacros.h"
 #include "Misc/Guid.h"
 #include "Tracks/MovieScenePropertyTrack.h"
-#include "Compilation/IMovieSceneTrackTemplateProducer.h"
 #include "MovieSceneImagePlateTrack.generated.h"
 
 /**
@@ -15,7 +14,6 @@
 UCLASS(MinimalAPI)
 class UMovieSceneImagePlateTrack
 	: public UMovieScenePropertyTrack
-	, public IMovieSceneTrackTemplateProducer
 {
 public:
 	GENERATED_BODY()

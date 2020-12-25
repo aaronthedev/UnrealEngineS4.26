@@ -1,18 +1,17 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "Tracks/MovieScenePropertyTrack.h"
-#include "Compilation/IMovieSceneTrackTemplateProducer.h"
 #include "MovieSceneColorTrack.generated.h"
 
 /**
  * Handles manipulation of float properties in a movie scene
  */
 UCLASS( MinimalAPI )
-class UMovieSceneColorTrack : public UMovieScenePropertyTrack, public IMovieSceneTrackTemplateProducer
+class UMovieSceneColorTrack : public UMovieScenePropertyTrack
 {
 	GENERATED_UCLASS_BODY()
 

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithDeltaGenTranslator.h"
 
@@ -7,7 +7,7 @@
 #include "IDatasmithSceneElements.h"
 #include "DatasmithDeltaGenImporter.h"
 #include "DatasmithDeltaGenLog.h"
-#include "HAL/FileManager.h"
+
 #include "FbxImporter.h"
 #include "MeshDescription.h"
 
@@ -22,8 +22,6 @@ void FDatasmithDeltaGenTranslator::Initialize(FDatasmithTranslatorCapabilities& 
 
 bool FDatasmithDeltaGenTranslator::IsSourceSupported(const FDatasmithSceneSource& Source)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(FDatasmithDeltaGenTranslator::IsSourceSupported)
-
 	const FString& FilePath = Source.GetSourceFile();
 	const FString& Extension = Source.GetSourceFileExtension();
 	if (!Extension.Equals(TEXT("fbx"), ESearchCase::IgnoreCase))
@@ -31,54 +29,29 @@ bool FDatasmithDeltaGenTranslator::IsSourceSupported(const FDatasmithSceneSource
 		return false;
 	}
 
-	FArchive* Reader = IFileManager::Get().CreateFileReader( *FilePath );
-	if( !Reader )
+	UnFbx::FFbxImporter* FbxImporter = UnFbx::FFbxImporter::GetInstance();
+	UnFbx::FBXImportOptions* GlobalImportSettings = FbxImporter->GetImportOptions();
+	UnFbx::FBXImportOptions::ResetOptions(GlobalImportSettings);
+
+	if (!FbxImporter->ImportFromFile(FilePath, Extension, false))
 	{
+		FbxImporter->ReleaseScene();
 		return false;
 	}
 
-	ANSICHAR Header[64*1024] = { 0 };
-	Reader->Serialize(Header, FMath::Min(Reader->TotalSize(), (int64)sizeof(Header) - 1));
-	delete Reader;
-
-	// Replace 0 with anything for Strstr to work on binary files
-	for (int32 Index = 0; Index < sizeof(Header) - 1; ++Index)
+	FString ProductName = UTF8_TO_TCHAR(FbxImporter->Scene->GetSceneInfo()->Original_ApplicationName.Get().Buffer());
+	if (ProductName != TEXT("RTT_AG"))
 	{
-		if (Header[Index] == '\0')
-		{
-			Header[Index] = '.';
-		}
+		FbxImporter->ReleaseScene();
+		return false;
 	}
 
-	// Quick and dirty way of identifying with a high degree of confidence if the file
-	// is from DeltaGen without parsing the whole scene using the SDK which can take a
-	// long time for big scenes.
-	//
-	// Supports both ASCII and binary formats.
-	{
-		const ANSICHAR* TagName = FPlatformString::Strstr(Header, "Original|ApplicationName");
-		if (TagName)
-		{
-			const ANSICHAR* TagType = FPlatformString::Strstr(TagName, "KString");
-			if (TagType)
-			{
-				const ANSICHAR* TagData = FPlatformString::Strstr(TagType, "RTT_AG");
-				if (TagData)
-				{
-					// The whole tag should be in the same vicinity
-					return (TagData - TagName) < 256;
-				}
-			}
-		}
-	}
-
-	return false;
+	FbxImporter->ReleaseScene();
+	return true;
 }
 
 bool FDatasmithDeltaGenTranslator::LoadScene(TSharedRef<IDatasmithScene> OutScene)
 {
-	TRACE_CPUPROFILER_EVENT_SCOPE(FDatasmithDeltaGenTranslator::LoadScene)
-
 	OutScene->SetHost(TEXT("DeltaGenTranslator"));
 
     Importer = MakeShared<FDatasmithDeltaGenImporter>(OutScene, ImportOptions.Get());
@@ -136,7 +109,7 @@ bool FDatasmithDeltaGenTranslator::LoadLevelSequence(const TSharedRef<IDatasmith
 	return false;
 }
 
-void FDatasmithDeltaGenTranslator::GetSceneImportOptions(TArray<TStrongObjectPtr<UDatasmithOptionsBase>>& Options)
+void FDatasmithDeltaGenTranslator::GetSceneImportOptions(TArray<TStrongObjectPtr<UObject>>& Options)
 {
 	if (!ImportOptions.IsValid())
 	{
@@ -149,11 +122,12 @@ void FDatasmithDeltaGenTranslator::GetSceneImportOptions(TArray<TStrongObjectPtr
 	Options.Add(ImportOptions);
 }
 
-void FDatasmithDeltaGenTranslator::SetSceneImportOptions(TArray<TStrongObjectPtr<UDatasmithOptionsBase>>& Options)
+void FDatasmithDeltaGenTranslator::SetSceneImportOptions(TArray<TStrongObjectPtr<UObject>>& Options)
 {
-	for (const TStrongObjectPtr<UDatasmithOptionsBase>& OptionPtr : Options)
+	for (TStrongObjectPtr<UObject>& OptionPtr : Options)
 	{
-		if (UDatasmithDeltaGenImportOptions* InImportOptions = Cast<UDatasmithDeltaGenImportOptions>(OptionPtr.Get()))
+		UObject* Option = OptionPtr.Get();
+		if (UDatasmithDeltaGenImportOptions* InImportOptions = Cast<UDatasmithDeltaGenImportOptions>(Option))
 		{
 			ImportOptions.Reset(InImportOptions);
 		}

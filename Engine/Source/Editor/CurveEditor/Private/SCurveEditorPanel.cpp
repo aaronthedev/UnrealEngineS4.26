@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SCurveEditorPanel.h"
 #include "Templates/Tuple.h"
@@ -11,12 +11,9 @@
 #include "Framework/MultiBox/MultiBoxBuilder.h"
 #include "Widgets/SNullWidget.h"
 #include "Widgets/SOverlay.h"
-#include "Widgets/SWindow.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSplitter.h"
 #include "Widgets/Text/STextBlock.h"
-#include "Widgets/Docking/SDockTab.h"
-#include "Framework/Docking/TabManager.h"
 #include "EditorStyleSet.h"
 #include "Misc/Attribute.h"
 #include "Algo/Sort.h"
@@ -235,13 +232,13 @@ void SCurveEditorPanel::Construct(const FArguments& InArgs, TSharedRef<FCurveEdi
 			.PhysicalSplitterHandleSize(2.0f)
 
 			+ SSplitter::Slot()
-			.Value(InArgs._TreeSplitterWidth)
+			.Value(0.30f)
 			[
 				InArgs._TreeContent.Widget
 			]
 
 			+ SSplitter::Slot()
-			.Value(InArgs._ContentSplitterWidth)
+			.Value(0.7f)
 			[
 				MainContent
 			]
@@ -446,12 +443,6 @@ void SCurveEditorPanel::RemoveCurveFromViews(FCurveModelID InCurveID)
 	}
 }
 
-void SCurveEditorPanel::PostUndo()
-{
-	EditObjects->CurveIDToKeyProxies.Empty();
-	CachedSelectionSerialNumber = 0;
-}
-
 void SCurveEditorPanel::AddView(TSharedRef<SCurveEditorView> ViewToAdd)
 {
 	ExternalViews.Add(ViewToAdd);
@@ -617,16 +608,16 @@ void SCurveEditorPanel::UpdateCommonCurveInfo()
 {
 	// Gather up common extended curve info for the current set of curves
 	TOptional<FCurveAttributes> AccumulatedCurveAttributes;
-	for (const TTuple<FCurveModelID, FKeyHandleSet>& Pair : CurveEditor->Selection.GetAll())
+	for (const FCurveModelID& CurveID : CurveEditor->GetEditedCurves())
 	{
 		FCurveAttributes Attributes;
 		
-		FCurveModel* Curve = CurveEditor->FindCurve(Pair.Key);
+		FCurveModel* Curve = CurveEditor->FindCurve(CurveID);
 		if (Curve)
 		{
 			Curve->GetCurveAttributes(Attributes);
 
-			// Some curves don't support extrapolation. We don't count them for determine the accumulated state.
+			// Some curves don't support extrapolation. We don't count them for determinine the accumulated state.
 			if (Attributes.HasPreExtrapolation() && Attributes.GetPreExtrapolation() == RCCE_None && Attributes.HasPostExtrapolation() && Attributes.GetPostExtrapolation() == RCCE_None)
 			{
 				continue;
@@ -693,14 +684,12 @@ void SCurveEditorPanel::UpdateEditBox()
 	for (TTuple<FCurveModelID, TMap<FKeyHandle, UObject*>>& OuterPair : EditObjects->CurveIDToKeyProxies)
 	{
 		const FKeyHandleSet* SelectedKeys = Selection.FindForCurve(OuterPair.Key);
-		if(SelectedKeys)
+
+		for (TTuple<FKeyHandle, UObject*>& InnerPair : OuterPair.Value)
 		{
-			for (TTuple<FKeyHandle, UObject*>& InnerPair : OuterPair.Value)
+			if (ICurveEditorKeyProxy* Proxy = Cast<ICurveEditorKeyProxy>(InnerPair.Value))
 			{
-				if (ICurveEditorKeyProxy* Proxy = Cast<ICurveEditorKeyProxy>(InnerPair.Value))
-				{
-					Proxy->UpdateValuesFromRawData();
-				}
+				Proxy->UpdateValuesFromRawData();
 			}
 		}
 	}
@@ -786,13 +775,10 @@ void SCurveEditorPanel::SetCurveAttributes(FCurveAttributes CurveAttributes, FTe
 {
 	FScopedTransaction Transaction(Description);
 
-	for (const TTuple<FCurveModelID, FKeyHandleSet>& Pair : CurveEditor->Selection.GetAll())
+	for (const TTuple<FCurveModelID, TUniquePtr<FCurveModel>>& Pair : CurveEditor->GetCurves())
 	{
-		if (FCurveModel* Curve = CurveEditor->FindCurve(Pair.Key))
-		{
-			Curve->Modify();
-			Curve->SetCurveAttributes(CurveAttributes);
-		}
+		Pair.Value->Modify();
+		Pair.Value->SetCurveAttributes(CurveAttributes);
 	}
 }
 
@@ -990,10 +976,10 @@ FSlateIcon SCurveEditorPanel::GetCurveExtrapolationPostIcon() const
 void SCurveEditorPanel::ShowCurveFilterUI(TSubclassOf<UCurveEditorFilterBase> FilterClass)
 {
 	TSharedPtr<FTabManager> TabManager = WeakTabManager.Pin();
-	TSharedPtr<SDockTab> OwnerTab = TabManager.IsValid() ? TabManager->GetOwnerTab() : TSharedPtr<SDockTab>();
-	TSharedPtr<SWindow> RootWindow = OwnerTab.IsValid() ? OwnerTab->GetParentWindow() : TSharedPtr<SWindow>();
-
-	SCurveEditorFilterPanel::OpenDialog(RootWindow, CurveEditor.ToSharedRef(), FilterClass);
+	if (TabManager)
+	{
+		SCurveEditorFilterPanel::OpenDialog(TabManager.ToSharedRef(), CurveEditor.ToSharedRef(), FilterClass);
+	}
 }
 
 const FGeometry& SCurveEditorPanel::GetScrollPanelGeometry() const
@@ -1193,7 +1179,7 @@ TSharedRef<SWidget> SCurveEditorPanel::MakeTimeSnapMenu()
 		.PresetValues({
 		// We re-use the common frame rates but omit some of them.
 		FCommonFrameRateInfo{ FCommonFrameRates::FPS_12(),	LOCTEXT("Snap_Input_Twelve", "82ms (1/12s)"), LOCTEXT("Snap_Input_Description_Twelve", "Snap time values to one twelfth of a second (ie: 12fps)") },
-		FCommonFrameRateInfo{ FCommonFrameRates::FPS_15(),	LOCTEXT("Snap_Input_Fifteen", "66ms (1/15s)"), LOCTEXT("Snap_Input_Description_Fifteen", "Snap time values to one fifteenth of a second (ie: 15fps)") },
+		FCommonFrameRateInfo{ FCommonFrameRates::FPS_15(),	LOCTEXT("Snap_Input_Fifteen", "66s (1/15s)"), LOCTEXT("Snap_Input_Description_Fifteen", "Snap time values to one fifteenth of a second (ie: 15fps)") },
 		FCommonFrameRateInfo{ FCommonFrameRates::FPS_24(),	LOCTEXT("Snap_Input_TwentyFour", "42ms (1/24s)"), LOCTEXT("Snap_Input_Description_TwentyFour", "Snap time values to one twenty-fourth of a second (ie: 24fps)") },
 		FCommonFrameRateInfo{ FCommonFrameRates::FPS_25(),	LOCTEXT("Snap_Input_TwentyFive", "40ms (1/25s)"), LOCTEXT("Snap_Input_Description_TwentyFive", "Snap time values to one twenty-fifth of a second (ie: 25fps)") },
 		FCommonFrameRateInfo{ FCommonFrameRates::FPS_30(),	LOCTEXT("Snap_Input_Thirty", "33ms (1/30s)"), LOCTEXT("Snap_Input_Description_Thirty", "Snap time values to one thirtieth of a second (ie: 30fps)") },

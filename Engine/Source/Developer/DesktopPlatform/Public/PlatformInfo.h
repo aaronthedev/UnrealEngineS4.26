@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -44,7 +44,7 @@ namespace PlatformInfo
 			/** The flavor generates different output when building (eg, 32 or 64-bit) */
 			BuildFlavor = 1<<0,
 
-			/** The flavor generates different output when cooking (eg, ETC2 or ASTC texture format) */
+			/** The flavor generates different output when cooking (eg, ATC or PVRTC texture format) */
 			CookFlavor = 1<<1,
 		};
 	}
@@ -99,35 +99,19 @@ namespace PlatformInfo
 		FString XLargePath;
 	};
 
-
-	/** Information for feature level menu item added by this platform */
-	struct FPreviewPlatformMenuItem
-	{
-		FName PlatformName;
-		FName ShaderFormat;
-		FString ActiveIconPath;
-		FName ActiveIconName;
-		FString InactiveIconPath;
-		FName InactiveIconName;
-		FText MenuText;
-		FText MenuTooltip;
-		FText IconText;
-		FName DeviceProfileName;
-	};
-
 	/** Information about a given platform */
 	struct FPlatformInfo
 	{
-		/** Name used to identify this platform, eg "Android_ETC2" */
+		/** Name used to identify this platform, eg "Android_ATC" */
 		FName PlatformInfoName;
 
 		/** Name used to find the corresponding ITargetPlatform for this platform (also used by UAT) */
 		FName TargetPlatformName;
 
-		/** Vanilla name for this platform, eg "Android" for "Android_ETC2" */
+		/** Vanilla name for this platform, eg "Android" for "Android_ATC" */
 		FName VanillaPlatformName;
 
-		/** Platform flavor, eg "ETC2" for "Android_ETC2" */
+		/** Platform flavor, eg "ATC" for "Android_ATC" */
 		FName PlatformFlavor;
 
 		/** The friendly (and localized) display name of this platform */
@@ -314,11 +298,4 @@ namespace PlatformInfo
 	* @return An array of FNames.
 	*/
 	DESKTOPPLATFORM_API const TArray<FName>& GetAllVanillaPlatformNames();
-
-	/**
-	* Returns a map of all preview platform shader format names to their menu items
-	* Used to generate the editor preview platform menu 
-	* @return the map of shader format names to the menu items
-	*/
-	DESKTOPPLATFORM_API const TMap<FName, PlatformInfo::FPreviewPlatformMenuItem>& GetPreviewPlatformMenuItems();
 }

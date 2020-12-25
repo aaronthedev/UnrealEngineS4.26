@@ -1,8 +1,7 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "AnimNodes/AnimNode_Slot.h"
 #include "Animation/AnimInstanceProxy.h"
-#include "Animation/AnimTrace.h"
 
 /////////////////////////////////////////////////////
 // FAnimNode_Slot
@@ -44,14 +43,6 @@ void FAnimNode_Slot::Update_AnyThread(const FAnimationUpdateContext& Context)
 		const float SourceWeight = FMath::Max(FAnimWeight::GetSmallestRelevantWeight(), WeightData.SourceWeight);
 		Source.Update(Context.FractionalWeight(SourceWeight));
 	}
-
-#if ANIM_TRACE_ENABLED
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Name"), SlotName);
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Slot Weight"), WeightData.SlotNodeWeight);
-	TRACE_ANIM_NODE_VALUE(Context, TEXT("Pose Source"), (WeightData.SourceWeight <= ZERO_ANIMWEIGHT_THRESH));
-
-	Context.AnimInstanceProxy->TraceMontageEvaluationData(Context, SlotName);
-#endif
 }
 
 void FAnimNode_Slot::Evaluate_AnyThread(FPoseContext & Output)
@@ -70,9 +61,7 @@ void FAnimNode_Slot::Evaluate_AnyThread(FPoseContext & Output)
 			Source.Evaluate(SourceContext);
 		}
 
-		const FAnimationPoseData SourcePoseData(SourceContext);
-		FAnimationPoseData OutputPoseData(Output);
-		Output.AnimInstanceProxy->SlotEvaluatePose(SlotName, SourcePoseData, WeightData.SourceWeight, OutputPoseData, WeightData.SlotNodeWeight, WeightData.TotalNodeWeight);
+		Output.AnimInstanceProxy->SlotEvaluatePose(SlotName, SourceContext.Pose, SourceContext.Curve, WeightData.SourceWeight, Output.Pose, Output.Curve, WeightData.SlotNodeWeight, WeightData.TotalNodeWeight);
 
 		checkSlow(!Output.ContainsNaN());
 		checkSlow(Output.IsNormalized());

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "BaseTools/SingleClickTool.h"
 #include "InteractiveToolManager.h"
@@ -40,9 +40,9 @@ void USingleClickTool::Setup()
 }
 
 
-FInputRayHit USingleClickTool::IsHitByClick(const FInputDeviceRay& ClickPos)
+bool USingleClickTool::IsHitByClick(const FInputDeviceRay& ClickPos)
 {
-	return FInputRayHit(0.0f);
+	return true;
 }
 
 

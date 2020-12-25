@@ -1,12 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Details/DetailWidgetExtensionHandler.h"
+#include "Details/SPropertyBinding.h"
 #include "UMGEditorProjectSettings.h"
 #include "WidgetBlueprintEditor.h"
 #include "Engine/Blueprint.h"
 #include "Binding/WidgetBinding.h"
 #include "WidgetBlueprint.h"
-#include "Customizations/UMGDetailCustomizations.h"
 
 FDetailWidgetExtensionHandler::FDetailWidgetExtensionHandler(TSharedPtr<FWidgetBlueprintEditor> InBlueprintEditor)
 	: BlueprintEditor( InBlueprintEditor )
@@ -26,18 +26,12 @@ bool FDetailWidgetExtensionHandler::IsPropertyExtendable(const UClass* InObjectC
 			return false;
 		}
 
-		TSharedPtr<FWidgetBlueprintEditor> BPEd = BlueprintEditor.Pin();
-		if (BPEd == nullptr || Objects[0] == BPEd->GetPreview())
-		{
-			return false;
-		}
-
-		FProperty* Property = InPropertyHandle.GetProperty();
+		UProperty* Property = InPropertyHandle.GetProperty();
 		FString DelegateName = Property->GetName() + "Delegate";
 
-		if ( UClass* ContainerClass = Property->GetOwner<UClass>() )
+		if ( UClass* ContainerClass = Cast<UClass>(Property->GetOuter()) )
 		{
-			FDelegateProperty* DelegateProperty = FindFProperty<FDelegateProperty>(ContainerClass, FName(*DelegateName));
+			UDelegateProperty* DelegateProperty = FindField<UDelegateProperty>(ContainerClass, FName(*DelegateName));
 			if ( DelegateProperty )
 			{
 				return true;
@@ -50,10 +44,10 @@ bool FDetailWidgetExtensionHandler::IsPropertyExtendable(const UClass* InObjectC
 
 TSharedRef<SWidget> FDetailWidgetExtensionHandler::GenerateExtensionWidget(const IDetailLayoutBuilder& InDetailBuilder, const UClass* InObjectClass, TSharedPtr<IPropertyHandle> InPropertyHandle)
 {
-	FProperty* Property = InPropertyHandle->GetProperty();
+	UProperty* Property = InPropertyHandle->GetProperty();
 	FString DelegateName = Property->GetName() + "Delegate";
 	
-	FDelegateProperty* DelegateProperty = FindFieldChecked<FDelegateProperty>(Property->GetOwnerChecked<UClass>(), FName(*DelegateName));
+	UDelegateProperty* DelegateProperty = FindFieldChecked<UDelegateProperty>(CastChecked<UClass>(Property->GetOuter()), FName(*DelegateName));
 
 	const bool bIsEditable = Property->HasAnyPropertyFlags(CPF_Edit | CPF_EditConst);
 	const bool bDoSignaturesMatch = DelegateProperty->SignatureFunction->GetReturnProperty()->SameType(Property);
@@ -74,5 +68,6 @@ TSharedRef<SWidget> FDetailWidgetExtensionHandler::GenerateExtensionWidget(const
 		}
 	}
 
-	return FBlueprintWidgetCustomization::MakePropertyBindingWidget(BlueprintEditor, DelegateProperty, InPropertyHandle.ToSharedRef(), true);
+	return SNew(SPropertyBinding, BlueprintEditor.Pin().ToSharedRef(), DelegateProperty, InPropertyHandle.ToSharedRef())
+		.GeneratePureBindings(true);
 }

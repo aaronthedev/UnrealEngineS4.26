@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "UserDefinedStructure/UserDefinedStructEditorData.h"
 #include "Misc/ITransaction.h"
@@ -196,9 +196,9 @@ void UUserDefinedStructEditorData::ReinitializeDefaultInstance(FString* OutLog)
 
 		ScriptStruct->DefaultStructInstance.SetPackage(ScriptStruct->GetOutermost());
 
-		for (TFieldIterator<FProperty> It(ScriptStruct); It; ++It)
+		for (TFieldIterator<UProperty> It(ScriptStruct); It; ++It)
 		{
-			FProperty* Property = *It;
+			UProperty* Property = *It;
 			if (Property)
 			{
 				FGuid VarGuid = FStructureEditorUtils::GetGuidFromPropertyName(Property->GetFName());

@@ -1,11 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "Modules/ModuleManager.h"
 #include "OculusAudio.h"
 #include "OculusAudioDllManager.h"
-#include "OculusAmbisonicSpatializer.h"
 
 /************************************************************************/
 /* FOculusAudioPlugin												   */
@@ -30,5 +29,4 @@ private:
 	TArray<FAudioDevice*> RegisteredAudioDevices;
 	FOculusSpatializationPluginFactory PluginFactory;
 	FOculusReverbPluginFactory ReverbPluginFactory;
-	FOculusAmbisonicsFactory AmbisonicsFactory;
 };

@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*================================================================================
 	IOSPlatformProperties.h - Basic static properties of a platform 
@@ -96,11 +96,6 @@ struct FIOSPlatformProperties
 	}
 
 	static FORCEINLINE bool SupportsAudioStreaming()
-	{
-		return true;
-	}
-	
-	static FORCEINLINE bool SupportsMeshLODStreaming()
 	{
 		return true;
 	}

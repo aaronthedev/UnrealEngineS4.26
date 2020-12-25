@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SkeletalMeshBuilder.h"
 #include "Modules/ModuleManager.h"
@@ -7,6 +7,7 @@
 #include "Engine/SkeletalMesh.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "MeshDescription.h"
+#include "MeshDescriptionOperations.h"
 #include "MeshAttributes.h"
 #include "MeshDescriptionHelper.h"
 #include "MeshBuild.h"
@@ -49,6 +50,62 @@ struct FSkeletalMeshVertInstanceIDAndZ
 	float Z;
 };
 
+//TODO: move that in a public header and use it everywhere we call FSkeletalMeshImportData::CopyLODImportData
+//or simply add parameter to FSkeletalMeshImportData::CopyLODImportData to do the job inside the function.
+namespace SkeletalMeshBuilderHelperNS
+{
+	void FixFaceMaterial(USkeletalMesh* SkeletalMesh, TArray<SkeletalMeshImportData::FMaterial>& RawMeshMaterials, TArray<SkeletalMeshImportData::FMeshFace>& LODFaces)
+	{
+		if (RawMeshMaterials.Num() <= 1)
+		{
+			//Nothing to fix if we have 1 or less material
+			return;
+		}
+
+		//Fix the material for the faces
+		TArray<int32> MaterialRemap;
+		MaterialRemap.Reserve(RawMeshMaterials.Num());
+		//Optimization to avoid doing the remap if no material have to change
+		bool bNeedRemapping = false;
+		for (int32 MaterialIndex = 0; MaterialIndex < RawMeshMaterials.Num(); ++MaterialIndex)
+		{
+			MaterialRemap.Add(MaterialIndex);
+			FName MaterialImportName = *(RawMeshMaterials[MaterialIndex].MaterialImportName);
+			for (int32 MeshMaterialIndex = 0; MeshMaterialIndex < SkeletalMesh->Materials.Num(); ++MeshMaterialIndex)
+			{
+				FName MeshMaterialName = SkeletalMesh->Materials[MeshMaterialIndex].ImportedMaterialSlotName;
+				if (MaterialImportName == MeshMaterialName)
+				{
+					if (MaterialRemap[MaterialIndex] != MeshMaterialIndex)
+					{
+						bNeedRemapping = true;
+					}
+					MaterialRemap[MaterialIndex] = MeshMaterialIndex;
+					break;
+				}
+			}
+		}
+		if (bNeedRemapping)
+		{
+			//Make sure the data is good before doing the change, We cannot do the remap if we
+			//have a bad synchronization between the face data and the Materials data.
+			for (int32 FaceIndex = 0; FaceIndex < LODFaces.Num(); ++FaceIndex)
+			{
+				if (!MaterialRemap.IsValidIndex(LODFaces[FaceIndex].MeshMaterialIndex))
+				{
+					return;
+				}
+			}
+
+			//Update all the faces
+			for (int32 FaceIndex = 0; FaceIndex < LODFaces.Num(); ++FaceIndex)
+			{
+				LODFaces[FaceIndex].MeshMaterialIndex = MaterialRemap[LODFaces[FaceIndex].MeshMaterialIndex];
+			}
+		}
+	}
+}
+
 FSkeletalMeshBuilder::FSkeletalMeshBuilder()
 {
 
@@ -67,7 +124,7 @@ bool FSkeletalMeshBuilder::Build(USkeletalMesh* SkeletalMesh, const int32 LODInd
 
 	const FReferenceSkeleton& RefSkeleton = SkeletalMesh->RefSkeleton;
 
-	FScopedSlowTask SlowTask(6.01f, NSLOCTEXT("SkeltalMeshBuilder", "BuildingSkeletalMeshLOD", "Building skeletal mesh LOD"));
+	FScopedSlowTask SlowTask(6.0f, NSLOCTEXT("SkeltalMeshBuilder", "BuildingSkeletalMeshLOD", "Building skeletal mesh LOD"));
 	SlowTask.MakeDialog();
 
 	//Prevent any PostEdit change during the build
@@ -77,14 +134,14 @@ bool FSkeletalMeshBuilder::Build(USkeletalMesh* SkeletalMesh, const int32 LODInd
 	FLODUtilities::UnbindClothingAndBackup(SkeletalMesh, ClothingBindings, LODIndex);
 
 	FSkeletalMeshImportData SkeletalMeshImportData;
+	float ProgressStepSize = SkeletalMesh->IsReductionActive(LODIndex) ? 0.5f : 1.0f;
 	int32 NumTextCoord = 1; //We need to send rendering at least one tex coord buffer
 
 	//This scope define where we can use the LODModel, after a reduction the LODModel must be requery since it is a new instance
 	{
 		FSkeletalMeshLODModel& BuildLODModel = SkeletalMesh->GetImportedModel()->LODModels[LODIndex];
-
-		//Load the imported data
-		SkeletalMesh->LoadLODImportedData(LODIndex, SkeletalMeshImportData);
+		
+		BuildLODModel.RawSkeletalMeshBulkData.LoadRawMesh(SkeletalMeshImportData);
 
 		TArray<FVector> LODPoints;
 		TArray<SkeletalMeshImportData::FMeshWedge> LODWedges;
@@ -95,23 +152,18 @@ bool FSkeletalMeshBuilder::Build(USkeletalMesh* SkeletalMesh, const int32 LODInd
 
 		//Use the max because we need to have at least one texture coordinnate
 		NumTextCoord = FMath::Max<int32>(NumTextCoord, SkeletalMeshImportData.NumTexCoords);
-		
-		//BaseLOD need to make sure the source data fit with the skeletalmesh materials array before using meshutilities.BuildSkeletalMesh
-		FLODUtilities::AdjustImportDataFaceMaterialIndex(SkeletalMesh->Materials, SkeletalMeshImportData.Materials, LODFaces, LODIndex);
+
+		SkeletalMeshBuilderHelperNS::FixFaceMaterial(SkeletalMesh, SkeletalMeshImportData.Materials, LODFaces);
 
 		//Build the skeletalmesh using mesh utilities module
 		IMeshUtilities::MeshBuildOptions Options;
 		Options.FillOptions(LODInfo->BuildSettings);
-		//Force the normals or tangent in case the data is missing
-		Options.bComputeNormals |= !SkeletalMeshImportData.bHasNormals;
-		Options.bComputeTangents |= !SkeletalMeshImportData.bHasTangents;
 		IMeshUtilities& MeshUtilities = FModuleManager::Get().LoadModuleChecked<IMeshUtilities>("MeshUtilities");
 
 		// Create skinning streams for NewModel.
 		SlowTask.EnterProgressFrame(1.0f);
 		MeshUtilities.BuildSkeletalMesh(
-			BuildLODModel, 
-			SkeletalMesh->GetPathName(),
+			BuildLODModel,
 			RefSkeleton,
 			LODInfluences,
 			LODWedges,
@@ -131,7 +183,7 @@ bool FSkeletalMeshBuilder::Build(USkeletalMesh* SkeletalMesh, const int32 LODInd
 		SlowTask.EnterProgressFrame(1.0f, NSLOCTEXT("SkeltalMeshBuilder", "RebuildMorphTarget", "Rebuilding morph targets..."));
 		if (SkeletalMeshImportData.MorphTargetNames.Num() > 0)
 		{
-			FLODUtilities::BuildMorphTargets(SkeletalMesh, SkeletalMeshImportData, LODIndex, !Options.bComputeNormals, !Options.bComputeTangents, Options.bUseMikkTSpace, Options.OverlappingThresholds);
+			FLODUtilities::BuildMorphTargets(SkeletalMesh, SkeletalMeshImportData, LODIndex, !Options.bComputeNormals, !Options.bComputeTangents, Options.bUseMikkTSpace);
 		}
 
 		//Re-apply the alternate skinning it must be after the inline reduction
@@ -149,7 +201,7 @@ bool FSkeletalMeshBuilder::Build(USkeletalMesh* SkeletalMesh, const int32 LODInd
 		//We are reduce ourself in this case we reduce ourself from the original data and return true.
 		if (SkeletalMesh->IsReductionActive(LODIndex))
 		{
-			SlowTask.EnterProgressFrame(1.0f, NSLOCTEXT("SkeltalMeshBuilder", "RegenerateLOD", "Regenerate LOD..."));
+			SlowTask.EnterProgressFrame(ProgressStepSize, NSLOCTEXT("SkeltalMeshBuilder", "RegenerateLOD", "Regenerate LOD..."));
 			//Update the original reduction data since we just build a new LODModel.
 			if (LODInfo->ReductionSettings.BaseLOD == LODIndex && SkeletalMesh->GetImportedModel()->OriginalReductionSourceMeshData.IsValidIndex(LODIndex))
 			{
@@ -206,11 +258,14 @@ bool FSkeletalMeshBuilder::Build(USkeletalMesh* SkeletalMesh, const int32 LODInd
 	LODModelAfterReduction.NumTexCoords = NumTextCoord;
 	LODModelAfterReduction.BuildStringID = BackupBuildStringID;
 
-	SlowTask.EnterProgressFrame(1.0f, NSLOCTEXT("SkeltalMeshBuilder", "RegenerateDependentLODs", "Regenerate Dependent LODs..."));
+	SlowTask.EnterProgressFrame(ProgressStepSize, NSLOCTEXT("SkeltalMeshBuilder", "RegenerateDependentLODs", "Regenerate Dependent LODs..."));
 	if (bRegenDepLODs)
 	{
 		//Regenerate dependent LODs
 		FLODUtilities::RegenerateDependentLODs(SkeletalMesh, LODIndex);
 	}
+
+	SlowTask.EnterProgressFrame();
+
 	return true;
 }

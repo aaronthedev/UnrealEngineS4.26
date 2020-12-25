@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RenderUtils.h"
 #include "Containers/ResourceArray.h"
@@ -7,42 +7,12 @@
 #include "RHIStaticStates.h"
 #include "RenderGraphUtils.h"
 #include "PipelineStateCache.h"
-#include "Misc/ConfigCacheIni.h"
 
 #if WITH_EDITOR
 #include "Misc/CoreMisc.h"
 #include "Interfaces/ITargetPlatform.h"
 #include "Interfaces/ITargetPlatformManagerModule.h"
 #endif
-
-FTextureWithRDG::FTextureWithRDG() = default;
-FTextureWithRDG::FTextureWithRDG(const FTextureWithRDG& Other) = default;
-FTextureWithRDG& FTextureWithRDG::operator=(const FTextureWithRDG & Other) = default;
-FTextureWithRDG::~FTextureWithRDG() = default;
-
-FRDGTexture* FTextureWithRDG::GetRDG(FRDGBuilder& GraphBuilder) const
-{
-	checkf(RenderTarget, TEXT("InitRDG was not called before use."));
-	return GraphBuilder.RegisterExternalTexture(RenderTarget);
-}
-
-FRDGTexture* FTextureWithRDG::GetPassthroughRDG() const
-{
-	checkf(RenderTarget, TEXT("InitRDG was not called before use."));
-	return FRDGTexture::GetPassthrough(RenderTarget);
-}
-
-void FTextureWithRDG::ReleaseRHI()
-{
-	RenderTarget = nullptr;
-	FTexture::ReleaseRHI();
-}
-
-void FTextureWithRDG::InitRDG(const TCHAR* Name)
-{
-	check(TextureRHI);
-	RenderTarget = CreateRenderTarget(TextureRHI, Name);
-}
 
 const uint16 GCubeIndices[12*3] =
 {
@@ -63,7 +33,6 @@ const uint16 GCubeIndices[12*3] =
 TGlobalResource<FCubeIndexBuffer> GCubeIndexBuffer;
 TGlobalResource<FTwoTrianglesIndexBuffer> GTwoTrianglesIndexBuffer;
 TGlobalResource<FScreenSpaceVertexBuffer> GScreenSpaceVertexBuffer;
-TGlobalResource<FTileVertexDeclaration> GTileVertexDeclaration;
 
 //
 // FPackedNormal serializer
@@ -89,6 +58,183 @@ FArchive& operator<<(FArchive& Ar, FPackedRGBA16N& N)
 	return Ar;
 }
 
+//
+//	Pixel format information.
+//
+
+FPixelFormatInfo	GPixelFormats[PF_MAX] =
+{
+	// Name						BlockSizeX	BlockSizeY	BlockSizeZ	BlockBytes	NumComponents	PlatformFormat	Supported		UnrealFormat
+
+	{ TEXT("unknown"),			0,			0,			0,			0,			0,				0,				0,				PF_Unknown			},
+	{ TEXT("A32B32G32R32F"),	1,			1,			1,			16,			4,				0,				1,				PF_A32B32G32R32F	},
+	{ TEXT("B8G8R8A8"),			1,			1,			1,			4,			4,				0,				1,				PF_B8G8R8A8			},
+	{ TEXT("G8"),				1,			1,			1,			1,			1,				0,				1,				PF_G8				},
+	{ TEXT("G16"),				1,			1,			1,			2,			1,				0,				1,				PF_G16				},
+	{ TEXT("DXT1"),				4,			4,			1,			8,			3,				0,				1,				PF_DXT1				},
+	{ TEXT("DXT3"),				4,			4,			1,			16,			4,				0,				1,				PF_DXT3				},
+	{ TEXT("DXT5"),				4,			4,			1,			16,			4,				0,				1,				PF_DXT5				},
+	{ TEXT("UYVY"),				2,			1,			1,			4,			4,				0,				0,				PF_UYVY				},
+	{ TEXT("FloatRGB"),			1,			1,			1,			4,			3,				0,				1,				PF_FloatRGB			},
+	{ TEXT("FloatRGBA"),		1,			1,			1,			8,			4,				0,				1,				PF_FloatRGBA		},
+	{ TEXT("DepthStencil"),		1,			1,			1,			4,			1,				0,				0,				PF_DepthStencil		},
+	{ TEXT("ShadowDepth"),		1,			1,			1,			4,			1,				0,				0,				PF_ShadowDepth		},
+	{ TEXT("R32_FLOAT"),		1,			1,			1,			4,			1,				0,				1,				PF_R32_FLOAT		},
+	{ TEXT("G16R16"),			1,			1,			1,			4,			2,				0,				1,				PF_G16R16			},
+	{ TEXT("G16R16F"),			1,			1,			1,			4,			2,				0,				1,				PF_G16R16F			},
+	{ TEXT("G16R16F_FILTER"),	1,			1,			1,			4,			2,				0,				1,				PF_G16R16F_FILTER	},
+	{ TEXT("G32R32F"),			1,			1,			1,			8,			2,				0,				1,				PF_G32R32F			},
+	{ TEXT("A2B10G10R10"),      1,          1,          1,          4,          4,              0,              1,				PF_A2B10G10R10		},
+	{ TEXT("A16B16G16R16"),		1,			1,			1,			8,			4,				0,				1,				PF_A16B16G16R16		},
+	{ TEXT("D24"),				1,			1,			1,			4,			1,				0,				1,				PF_D24				},
+	{ TEXT("PF_R16F"),			1,			1,			1,			2,			1,				0,				1,				PF_R16F				},
+	{ TEXT("PF_R16F_FILTER"),	1,			1,			1,			2,			1,				0,				1,				PF_R16F_FILTER		},
+	{ TEXT("BC5"),				4,			4,			1,			16,			2,				0,				1,				PF_BC5				},
+	{ TEXT("V8U8"),				1,			1,			1,			2,			2,				0,				1,				PF_V8U8				},
+	{ TEXT("A1"),				1,			1,			1,			1,			1,				0,				0,				PF_A1				},
+	{ TEXT("FloatR11G11B10"),	1,			1,			1,			4,			3,				0,				0,				PF_FloatR11G11B10	},
+	{ TEXT("A8"),				1,			1,			1,			1,			1,				0,				1,				PF_A8				},	
+	{ TEXT("R32_UINT"),			1,			1,			1,			4,			1,				0,				1,				PF_R32_UINT			},
+	{ TEXT("R32_SINT"),			1,			1,			1,			4,			1,				0,				1,				PF_R32_SINT			},
+
+	// IOS Support
+	{ TEXT("PVRTC2"),			8,			4,			1,			8,			4,				0,				0,				PF_PVRTC2			},
+	{ TEXT("PVRTC4"),			4,			4,			1,			8,			4,				0,				0,				PF_PVRTC4			},
+
+	{ TEXT("R16_UINT"),			1,			1,			1,			2,			1,				0,				1,				PF_R16_UINT			},
+	{ TEXT("R16_SINT"),			1,			1,			1,			2,			1,				0,				1,				PF_R16_SINT			},
+	{ TEXT("R16G16B16A16_UINT"),1,			1,			1,			8,			4,				0,				1,				PF_R16G16B16A16_UINT},
+	{ TEXT("R16G16B16A16_SINT"),1,			1,			1,			8,			4,				0,				1,				PF_R16G16B16A16_SINT},
+	{ TEXT("R5G6B5_UNORM"),     1,          1,          1,          2,          3,              0,              1,              PF_R5G6B5_UNORM		},
+	{ TEXT("R8G8B8A8"),			1,			1,			1,			4,			4,				0,				1,				PF_R8G8B8A8			},
+	{ TEXT("A8R8G8B8"),			1,			1,			1,			4,			4,				0,				1,				PF_A8R8G8B8			},
+	{ TEXT("BC4"),				4,			4,			1,			8,			1,				0,				1,				PF_BC4				},
+	{ TEXT("R8G8"),				1,			1,			1,			2,			2,				0,				1,				PF_R8G8				},
+
+	{ TEXT("ATC_RGB"),			4,			4,			1,			8,			3,				0,				0,				PF_ATC_RGB			},
+	{ TEXT("ATC_RGBA_E"),		4,			4,			1,			16,			4,				0,				0,				PF_ATC_RGBA_E		},
+	{ TEXT("ATC_RGBA_I"),		4,			4,			1,			16,			4,				0,				0,				PF_ATC_RGBA_I		},
+	{ TEXT("X24_G8"),			1,			1,			1,			1,			1,				0,				0,				PF_X24_G8			},
+	{ TEXT("ETC1"),				4,			4,			1,			8,			3,				0,				0,				PF_ETC1				},
+	{ TEXT("ETC2_RGB"),			4,			4,			1,			8,			3,				0,				0,				PF_ETC2_RGB			},
+	{ TEXT("ETC2_RGBA"),		4,			4,			1,			16,			4,				0,				0,				PF_ETC2_RGBA		},
+	{ TEXT("PF_R32G32B32A32_UINT"),1,		1,			1,			16,			4,				0,				1,				PF_R32G32B32A32_UINT},
+	{ TEXT("PF_R16G16_UINT"),	1,			1,			1,			4,			4,				0,				1,				PF_R16G16_UINT},
+
+	// ASTC support
+	{ TEXT("ASTC_4x4"),			4,			4,			1,			16,			4,				0,				0,				PF_ASTC_4x4			},
+	{ TEXT("ASTC_6x6"),			6,			6,			1,			16,			4,				0,				0,				PF_ASTC_6x6			},
+	{ TEXT("ASTC_8x8"),			8,			8,			1,			16,			4,				0,				0,				PF_ASTC_8x8			},
+	{ TEXT("ASTC_10x10"),		10,			10,			1,			16,			4,				0,				0,				PF_ASTC_10x10		},
+	{ TEXT("ASTC_12x12"),		12,			12,			1,			16,			4,				0,				0,				PF_ASTC_12x12		},
+
+	{ TEXT("BC6H"),				4,			4,			1,			16,			3,				0,				1,				PF_BC6H				},
+	{ TEXT("BC7"),				4,			4,			1,			16,			4,				0,				1,				PF_BC7				},
+	{ TEXT("R8_UINT"),			1,			1,			1,			1,			1,				0,				1,				PF_R8_UINT			},
+	{ TEXT("L8"),				1,			1,			1,			1,			1,				0,				0,				PF_L8				},
+	{ TEXT("XGXR8"),			1,			1,			1,			4,			4,				0,				1,				PF_XGXR8 			},
+	{ TEXT("R8G8B8A8_UINT"),	1,			1,			1,			4,			4,				0,				1,				PF_R8G8B8A8_UINT	},
+	{ TEXT("R8G8B8A8_SNORM"),	1,			1,			1,			4,			4,				0,				1,				PF_R8G8B8A8_SNORM	},
+
+	{ TEXT("R16G16B16A16_UINT"),1,			1,			1,			8,			4,				0,				1,				PF_R16G16B16A16_UNORM },
+	{ TEXT("R16G16B16A16_SINT"),1,			1,			1,			8,			4,				0,				1,				PF_R16G16B16A16_SNORM },
+	{ TEXT("PLATFORM_HDR_0"),	0,			0,			0,			0,			0,				0,				0,				PF_PLATFORM_HDR_0   },
+	{ TEXT("PLATFORM_HDR_1"),	0,			0,			0,			0,			0,				0,				0,				PF_PLATFORM_HDR_1   },
+	{ TEXT("PLATFORM_HDR_2"),	0,			0,			0,			0,			0,				0,				0,				PF_PLATFORM_HDR_2   },
+
+	// NV12 contains 2 textures: R8 luminance plane followed by R8G8 1/4 size chrominance plane.
+	// BlockSize/BlockBytes/NumComponents values don't make much sense for this format, so set them all to one.
+	{ TEXT("NV12"),				1,			1,			1,			1,			1,				0,				0,				PF_NV12             },
+
+	{ TEXT("PF_R32G32_UINT"),   1,   		1,			1,			8,			2,				0,				1,				PF_R32G32_UINT      },
+};
+
+static struct FValidatePixelFormats
+{
+	FValidatePixelFormats()
+	{
+		for (int32 X = 0; X < UE_ARRAY_COUNT(GPixelFormats); ++X)
+		{
+			// Make sure GPixelFormats has an entry for every unreal format
+			check(X == GPixelFormats[X].UnrealFormat);
+		}
+	}
+} ValidatePixelFormats;
+
+//
+//	CalculateImageBytes
+//
+
+SIZE_T CalculateImageBytes(uint32 SizeX,uint32 SizeY,uint32 SizeZ,uint8 Format)
+{
+	if ( Format == PF_A1 )
+	{
+		// The number of bytes needed to store all 1 bit pixels in a line is the width of the image divided by the number of bits in a byte
+		uint32 BytesPerLine = SizeX / 8;
+		// The number of actual bytes in a 1 bit image is the bytes per line of pixels times the number of lines
+		return sizeof(uint8) * BytesPerLine * SizeY;
+	}
+	else if( SizeZ > 0 )
+	{
+		return (SizeX / GPixelFormats[Format].BlockSizeX) * (SizeY / GPixelFormats[Format].BlockSizeY) * (SizeZ / GPixelFormats[Format].BlockSizeZ) * GPixelFormats[Format].BlockBytes;
+	}
+	else
+	{	
+		return (SizeX / GPixelFormats[Format].BlockSizeX) * (SizeY / GPixelFormats[Format].BlockSizeY) * GPixelFormats[Format].BlockBytes;
+	}
+}
+
+//
+// FWhiteTexture implementation
+//
+
+/**
+ * A solid-colored 1x1 texture.
+ */
+template <int32 R, int32 G, int32 B, int32 A>
+class FColoredTexture : public FTextureWithSRV
+{
+public:
+	// FResource interface.
+	virtual void InitRHI() override
+	{
+		// Create the texture RHI.  		
+		FRHIResourceCreateInfo CreateInfo(TEXT("ColoredTexture"));
+		FTexture2DRHIRef Texture2D = RHICreateTexture2D(1, 1, PF_B8G8R8A8, 1, 1, TexCreate_ShaderResource, CreateInfo);
+		TextureRHI = Texture2D;
+
+		// Write the contents of the texture.
+		uint32 DestStride;
+		FColor* DestBuffer = (FColor*)RHILockTexture2D(Texture2D, 0, RLM_WriteOnly, DestStride, false);
+		*DestBuffer = FColor(R, G, B, A);
+		RHIUnlockTexture2D(Texture2D, 0, false);
+
+		// Create the sampler state RHI resource.
+		FSamplerStateInitializerRHI SamplerStateInitializer(SF_Point,AM_Wrap,AM_Wrap,AM_Wrap);
+		SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
+
+		// Create a view of the texture
+		ShaderResourceViewRHI = RHICreateShaderResourceView(TextureRHI, 0u);
+	}
+
+	/** Returns the width of the texture in pixels. */
+	virtual uint32 GetSizeX() const override
+	{
+		return 1;
+	}
+
+	/** Returns the height of the texture in pixels. */
+	virtual uint32 GetSizeY() const override
+	{
+		return 1;
+	}
+};
+
+FTextureWithSRV* GWhiteTextureWithSRV = new TGlobalResource<FColoredTexture<255,255,255,255> >;
+FTextureWithSRV* GBlackTextureWithSRV = new TGlobalResource<FColoredTexture<0,0,0,255> >;
+FTexture* GWhiteTexture = GWhiteTextureWithSRV;
+FTexture* GBlackTexture = GBlackTextureWithSRV;
+
 /**
  * Bulk data interface for providing a single black color used to initialize a
  * volume texture.
@@ -100,12 +246,6 @@ public:
 	/** Default constructor. */
 	FBlackVolumeTextureResourceBulkDataInterface(uint8 Alpha)
 		: Color(0, 0, 0, Alpha)
-	{
-	}
-
-	/** Default constructor. */
-	FBlackVolumeTextureResourceBulkDataInterface(FColor InColor)
-		: Color(InColor)
 	{
 	}
 
@@ -138,110 +278,11 @@ private:
 	FColor Color;
 };
 
-//
-// FWhiteTexture implementation
-//
-
-/**
- * A solid-colored 1x1 texture.
- */
-template <int32 R, int32 G, int32 B, int32 A, bool bWithUAV = false>
-class FColoredTexture : public FTextureWithSRV
-{
-public:
-	// FResource interface.
-	virtual void InitRHI() override
-	{
-		// Create the texture RHI.  		
-		FBlackVolumeTextureResourceBulkDataInterface BlackTextureBulkData(FColor(R, G, B, A));
-		FRHIResourceCreateInfo CreateInfo(&BlackTextureBulkData);
-		CreateInfo.DebugName = TEXT("ColoredTexture");
-		ETextureCreateFlags CreateFlags = TexCreate_ShaderResource;
-		if(bWithUAV)
-		{
-			CreateFlags |= TexCreate_UAV;
-		}
-		// BGRA typed UAV is unsupported per D3D spec, use RGBA here.
-		FTexture2DRHIRef Texture2D = RHICreateTexture2D(1, 1, PF_R8G8B8A8, 1, 1, CreateFlags, CreateInfo);
-		TextureRHI = Texture2D;
-
-		// Create the sampler state RHI resource.
-		FSamplerStateInitializerRHI SamplerStateInitializer(SF_Point,AM_Wrap,AM_Wrap,AM_Wrap);
-		SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
-
-		// Create a view of the texture
-		ShaderResourceViewRHI = RHICreateShaderResourceView(TextureRHI, 0u);
-		if(bWithUAV)
-		{
-			UnorderedAccessViewRHI = RHICreateUnorderedAccessView(TextureRHI, 0u);
-		}
-	}
-
-	/** Returns the width of the texture in pixels. */
-	virtual uint32 GetSizeX() const override
-	{
-		return 1;
-	}
-
-	/** Returns the height of the texture in pixels. */
-	virtual uint32 GetSizeY() const override
-	{
-		return 1;
-	}
-};
-
-class FEmptyVertexBuffer : public FVertexBufferWithSRV
-{
-public:
-	virtual void InitRHI() override
-	{
-		// Create the texture RHI.  		
-		FRHIResourceCreateInfo CreateInfo(TEXT("EmptyVertexBuffer"));
-		
-		VertexBufferRHI = RHICreateVertexBuffer(16u, BUF_Static | BUF_ShaderResource | BUF_UnorderedAccess, CreateInfo);
-
-		// Create a view of the buffer
-		ShaderResourceViewRHI = RHICreateShaderResourceView(VertexBufferRHI, 4u, PF_R32_UINT);
-		UnorderedAccessViewRHI = RHICreateUnorderedAccessView(VertexBufferRHI, PF_R32_UINT);
-	}
-};
-
-FTextureWithSRV* GWhiteTextureWithSRV = new TGlobalResource<FColoredTexture<255,255,255,255> >;
-FTextureWithSRV* GBlackTextureWithSRV = new TGlobalResource<FColoredTexture<0,0,0,255> >;
-FTextureWithSRV* GTransparentBlackTextureWithSRV = new TGlobalResource<FColoredTexture<0,0,0,0> >;
-FTexture* GWhiteTexture = GWhiteTextureWithSRV;
-FTexture* GBlackTexture = GBlackTextureWithSRV;
-FTexture* GTransparentBlackTexture = GTransparentBlackTextureWithSRV;
-FTextureWithSRV* GBlackTextureWithUAV = new TGlobalResource<FColoredTexture<0,0,0,0,true> >;
-
-FVertexBufferWithSRV* GEmptyVertexBufferWithUAV = new TGlobalResource<FEmptyVertexBuffer>;
-
-class FWhiteVertexBuffer : public FVertexBufferWithSRV
-{
-public:
-	virtual void InitRHI() override
-	{
-		// Create the texture RHI.  		
-		FRHIResourceCreateInfo CreateInfo(TEXT("WhiteVertexBuffer"));
-
-		VertexBufferRHI = RHICreateVertexBuffer(sizeof(FVector4), BUF_Static | BUF_ShaderResource, CreateInfo);
-
-		FVector4* BufferData = (FVector4*)RHILockVertexBuffer(VertexBufferRHI, 0, sizeof(FVector4), RLM_WriteOnly);
-		*BufferData = FVector4(1.0f, 1.0f, 1.0f, 1.0f);
-		RHIUnlockVertexBuffer(VertexBufferRHI);
-
-		// Create a view of the buffer
-		ShaderResourceViewRHI = RHICreateShaderResourceView(VertexBufferRHI, sizeof(FVector4), PF_A32B32G32R32F);
-	}
-};
-
-FVertexBufferWithSRV* GWhiteVertexBufferWithSRV = new TGlobalResource<FWhiteVertexBuffer>;
-
 /**
  * A class representing a 1x1x1 black volume texture.
  */
 template <EPixelFormat PixelFormat, uint8 Alpha>
-class FBlackVolumeTexture : public FTextureWithRDG
+class FBlackVolumeTexture : public FTexture
 {
 public:
 	
@@ -250,14 +291,12 @@ public:
 	 */
 	virtual void InitRHI() override
 	{
-		const TCHAR* Name = TEXT("BlackVolumeTexture");
-
 		if (GSupportsTexture3D)
 		{
 			// Create the texture.
 			FBlackVolumeTextureResourceBulkDataInterface BlackTextureBulkData(Alpha);
 			FRHIResourceCreateInfo CreateInfo(&BlackTextureBulkData);
-			CreateInfo.DebugName = Name;
+			CreateInfo.DebugName = TEXT("BlackVolumeTexture");
 			FTexture3DRHIRef Texture3D = RHICreateTexture3D(1,1,1,PixelFormat,1,TexCreate_ShaderResource,CreateInfo);
 			TextureRHI = Texture3D;	
 		}
@@ -266,16 +305,13 @@ public:
 			// Create a texture, even though it's not a volume texture
 			FBlackVolumeTextureResourceBulkDataInterface BlackTextureBulkData(Alpha);
 			FRHIResourceCreateInfo CreateInfo(&BlackTextureBulkData);
-			CreateInfo.DebugName = Name;
 			FTexture2DRHIRef Texture2D = RHICreateTexture2D(1, 1, PixelFormat, 1, 1, TexCreate_ShaderResource, CreateInfo);
 			TextureRHI = Texture2D;
 		}
 
 		// Create the sampler state.
 		FSamplerStateInitializerRHI SamplerStateInitializer(SF_Point, AM_Wrap, AM_Wrap, AM_Wrap);
-		SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
-
-		FTextureWithRDG::InitRDG(Name);
+		SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
 	}
 
 	/**
@@ -296,11 +332,11 @@ public:
 };
 
 /** Global black volume texture resource. */
-FTextureWithRDG* GBlackVolumeTexture = new TGlobalResource<FBlackVolumeTexture<PF_B8G8R8A8, 0>>();
-FTextureWithRDG* GBlackAlpha1VolumeTexture = new TGlobalResource<FBlackVolumeTexture<PF_B8G8R8A8, 255>>();
+FTexture* GBlackVolumeTexture = new TGlobalResource<FBlackVolumeTexture<PF_B8G8R8A8, 0>>();
+FTexture* GBlackAlpha1VolumeTexture = new TGlobalResource<FBlackVolumeTexture<PF_B8G8R8A8, 255>>();
 
 /** Global black volume texture resource. */
-FTextureWithRDG* GBlackUintVolumeTexture = new TGlobalResource<FBlackVolumeTexture<PF_R8G8B8A8_UINT, 0>>();
+FTexture* GBlackUintVolumeTexture = new TGlobalResource<FBlackVolumeTexture<PF_R8G8B8A8_UINT, 0>>();
 
 class FBlackArrayTexture : public FTexture
 {
@@ -319,7 +355,7 @@ public:
 
 			// Create the sampler state RHI resource.
 			FSamplerStateInitializerRHI SamplerStateInitializer(SF_Point,AM_Wrap,AM_Wrap,AM_Wrap);
-			SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
+			SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
 		}
 	}
 
@@ -383,7 +419,7 @@ public:
 
 		// Create the sampler state RHI resource.
 		FSamplerStateInitializerRHI SamplerStateInitializer(SF_Point,AM_Wrap,AM_Wrap,AM_Wrap);
-		SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
+		SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
 	}
 
 	/** Returns the width of the texture in pixels. */
@@ -467,7 +503,7 @@ public:
 
 		// Create the sampler state RHI resource.
 		FSamplerStateInitializerRHI SamplerStateInitializer(SF_Point, AM_Wrap, AM_Wrap, AM_Wrap);
-		SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
+		SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
 	}
 
 	/** Returns the width of the texture in pixels. */
@@ -518,7 +554,7 @@ public:
 	// FResource interface.
 	virtual void InitRHI() override
 	{
-		if (SupportsTextureCubeArray(GetFeatureLevel() ))
+		if (GetFeatureLevel() >= ERHIFeatureLevel::SM5)
 		{
 			// Create the texture RHI.
 			FRHIResourceCreateInfo CreateInfo(TEXT("BlackCubeArray"));
@@ -536,7 +572,7 @@ public:
 
 			// Create the sampler state RHI resource.
 			FSamplerStateInitializerRHI SamplerStateInitializer(SF_Point,AM_Wrap,AM_Wrap,AM_Wrap);
-			SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
+			SamplerStateRHI = RHICreateSamplerState(SamplerStateInitializer);
 		}
 	}
 
@@ -553,89 +589,6 @@ public:
 	}
 };
 FTexture* GBlackCubeArrayTexture = new TGlobalResource<FBlackCubeArrayTexture>;
-
-/**
- * A UINT 1x1 texture.
- */
-template <EPixelFormat Format, uint32 R = 0, uint32 G = 0, uint32 B = 0, uint32 A = 0>
-class FUintTexture : public FTextureWithSRV
-{
-public:
-	// FResource interface.
-	virtual void InitRHI() override
-	{
-		// Create the texture RHI.  		
-		FRHIResourceCreateInfo CreateInfo(TEXT("UintTexture"));
-		FTexture2DRHIRef Texture2D = RHICreateTexture2D(1, 1, Format, 1, 1, TexCreate_ShaderResource, CreateInfo);
-		TextureRHI = Texture2D;
-
-		// Write the contents of the texture.
-		uint32 DestStride;
-		void* DestBuffer = RHILockTexture2D(Texture2D, 0, RLM_WriteOnly, DestStride, false);
-		WriteData(DestBuffer);
-		RHIUnlockTexture2D(Texture2D, 0, false);
-
-		// Create the sampler state RHI resource.
-		FSamplerStateInitializerRHI SamplerStateInitializer(SF_Point, AM_Wrap, AM_Wrap, AM_Wrap);
-		SamplerStateRHI = GetOrCreateSamplerState(SamplerStateInitializer);
-
-		// Create a view of the texture
-		ShaderResourceViewRHI = RHICreateShaderResourceView(TextureRHI, 0u);
-	}
-
-	/** Returns the width of the texture in pixels. */
-	virtual uint32 GetSizeX() const override
-	{
-		return 1;
-	}
-
-	/** Returns the height of the texture in pixels. */
-	virtual uint32 GetSizeY() const override
-	{
-		return 1;
-	}
-
-protected:
-	static int32 GetNumChannels()
-	{
-		return GPixelFormats[Format].NumComponents;
-	}
-
-	static int32 GetBytesPerChannel()
-	{
-		return GPixelFormats[Format].BlockBytes / GPixelFormats[Format].NumComponents;
-	}
-
-	template<typename T>
-	static void DoWriteData(T* DataPtr)
-	{
-		T Values[] = { R, G, B, A };
-		for (int32 i = 0; i < GetNumChannels(); ++i)
-		{
-			DataPtr[i] = Values[i];
-		}
-	}
-
-	static void WriteData(void* DataPtr)
-	{
-		switch (GetBytesPerChannel())
-		{
-		case 1: 
-			DoWriteData((uint8*)DataPtr);
-			return;
-		case 2:
-			DoWriteData((uint16*)DataPtr);
-			return;
-		case 4:
-			DoWriteData((uint32*)DataPtr);
-			return;
-		}
-		// Unsupported format
-		check(0);
-	}
-};
-
-FTexture* GBlackUintTexture = new TGlobalResource< FUintTexture<PF_R32G32B32A32_UINT> >;
 
 /*
 	3 XYZ packed in 4 bytes. (11:11:10 for X:Y:Z)
@@ -713,7 +666,7 @@ SIZE_T CalcTextureMipMapSize3D( uint32 TextureSizeX, uint32 TextureSizeY, uint32
 	const uint32 NumRows = YExtent / GPixelFormats[Format].BlockSizeY;
 	const uint32 NumLayers = ZExtent / GPixelFormats[Format].BlockSizeZ;
 
-	return static_cast<SIZE_T>(NumLayers) * NumRows * XPitch;
+	return NumLayers * NumRows * XPitch;
 }
 
 SIZE_T CalcTextureSize3D( uint32 SizeX, uint32 SizeY, uint32 SizeZ, EPixelFormat Format, uint32 MipCount )
@@ -751,7 +704,7 @@ SIZE_T CalcTextureMipMapSize( uint32 TextureSizeX, uint32 TextureSizeY, EPixelFo
 {
 	const uint32 WidthInBlocks = CalcTextureMipWidthInBlocks(TextureSizeX, Format, MipIndex);
 	const uint32 HeightInBlocks = CalcTextureMipHeightInBlocks(TextureSizeY, Format, MipIndex);
-	return static_cast<SIZE_T>(WidthInBlocks) * HeightInBlocks * GPixelFormats[Format].BlockBytes;
+	return WidthInBlocks * HeightInBlocks * GPixelFormats[Format].BlockBytes;
 }
 
 SIZE_T CalcTextureSize( uint32 SizeX, uint32 SizeY, EPixelFormat Format, uint32 MipCount )
@@ -773,14 +726,7 @@ void CopyTextureData2D(const void* Source,void* Dest,uint32 SizeY,EPixelFormat F
 	if(SourceStride == DestStride || DestStride == 0)
 	{
 		// If the source and destination have the same stride, copy the data in one block.
-		if (ensure(Source))
-		{
-			FMemory::Memcpy(Dest,Source,NumBlocksY * SourceStride);
-		}
-		else
-		{
-			FMemory::Memzero(Dest,NumBlocksY * SourceStride);
-		}
+		FMemory::Memcpy(Dest,Source,NumBlocksY * SourceStride);
 	}
 	else
 	{
@@ -788,18 +734,11 @@ void CopyTextureData2D(const void* Source,void* Dest,uint32 SizeY,EPixelFormat F
 		const uint32 NumBytesPerRow = FMath::Min<uint32>(SourceStride, DestStride);
 		for(uint32 BlockY = 0;BlockY < NumBlocksY;++BlockY)
 		{
-			if (ensure(Source))
-			{
-				FMemory::Memcpy(
-					(uint8*)Dest   + DestStride   * BlockY,
-					(uint8*)Source + SourceStride * BlockY,
-					NumBytesPerRow
-					);
-			}
-			else
-			{
-				FMemory::Memzero((uint8*)Dest + DestStride * BlockY, NumBytesPerRow);
-			}
+			FMemory::Memcpy(
+				(uint8*)Dest   + DestStride   * BlockY,
+				(uint8*)Source + SourceStride * BlockY,
+				NumBytesPerRow
+				);
 		}
 	}
 }
@@ -953,45 +892,27 @@ RENDERCORE_API FVertexDeclarationRHIRef& GetVertexDeclarationFVector2()
 	return GVector2VertexDeclaration.VertexDeclarationRHI;
 }
 
-RENDERCORE_API bool PlatformSupportsSimpleForwardShading(const FStaticShaderPlatform Platform)
+RENDERCORE_API bool PlatformSupportsSimpleForwardShading(EShaderPlatform Platform)
 {
 	static const auto SupportSimpleForwardShadingCVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.SupportSimpleForwardShading"));
 	// Scalability feature only needed / used on PC
 	return IsPCPlatform(Platform) && SupportSimpleForwardShadingCVar->GetValueOnAnyThread() != 0;
 }
 
-RENDERCORE_API bool IsSimpleForwardShadingEnabled(const FStaticShaderPlatform Platform)
+RENDERCORE_API bool IsSimpleForwardShadingEnabled(EShaderPlatform Platform)
 {
 	static const auto CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.SimpleForwardShading"));
 	return CVar->GetValueOnAnyThread() != 0 && PlatformSupportsSimpleForwardShading(Platform);
 }
 
-RENDERCORE_API bool MobileSupportsGPUScene(const FStaticShaderPlatform Platform)
+RENDERCORE_API bool MobileSupportsGPUScene(EShaderPlatform Platform)
 {
 	// make it shader platform setting?
 	static TConsoleVariableData<int32>* CVar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.SupportGPUScene"));
 	return (CVar && CVar->GetValueOnAnyThread() != 0) ? true : false;
 }
 
-RENDERCORE_API bool IsMobileDeferredShadingEnabled(const FStaticShaderPlatform Platform)
-{
-	if (IsOpenGLPlatform(Platform))
-	{
-		// needs MRT framebuffer fetch or PLS
-		return false;
-	}
-	static auto* MobileShadingPathCvar = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.ShadingPath"));
-	return MobileShadingPathCvar->GetValueOnAnyThread() == 1;
-}
-
-RENDERCORE_API bool SupportsTextureCubeArray(ERHIFeatureLevel::Type FeatureLevel)
-{
-	return FeatureLevel == ERHIFeatureLevel::SM5 
-		// mobile deferred requries ES3.2 feature set
-		|| IsMobileDeferredShadingEnabled(GMaxRHIShaderPlatform);
-}
-
-RENDERCORE_API bool GPUSceneUseTexture2D(const FStaticShaderPlatform Platform)
+RENDERCORE_API bool GPUSceneUseTexture2D(EShaderPlatform Platform)
 {
 	if (IsMobilePlatform(Platform))
 	{
@@ -1008,21 +929,7 @@ RENDERCORE_API bool GPUSceneUseTexture2D(const FStaticShaderPlatform Platform)
 	return false;
 }
 
-RENDERCORE_API bool MaskedInEarlyPass(const FStaticShaderPlatform Platform)
-{
-	static IConsoleVariable* CVarMobileEarlyZPassOnlyMaterialMasking = IConsoleManager::Get().FindConsoleVariable(TEXT("r.Mobile.EarlyZPassOnlyMaterialMasking"));
-	static IConsoleVariable* CVarEarlyZPassOnlyMaterialMasking = IConsoleManager::Get().FindConsoleVariable(TEXT("r.EarlyZPassOnlyMaterialMasking"));
-	if (IsMobilePlatform(Platform))
-	{
-		return (CVarMobileEarlyZPassOnlyMaterialMasking && CVarMobileEarlyZPassOnlyMaterialMasking->GetInt() != 0);
-	}
-	else
-	{
-		return (CVarEarlyZPassOnlyMaterialMasking && CVarEarlyZPassOnlyMaterialMasking->GetInt() != 0);
-	}
-}
-
-RENDERCORE_API bool AllowPixelDepthOffset(const FStaticShaderPlatform Platform)
+RENDERCORE_API bool AllowPixelDepthOffset(EShaderPlatform Platform)
 {
 	if (IsMobilePlatform(Platform))
 	{
@@ -1067,25 +974,8 @@ static_assert(SP_NumPlatforms <= sizeof(GSelectiveBasePassOutputsPlatformMask) *
 RENDERCORE_API uint64 GDistanceFieldsPlatformMask = 0;
 static_assert(SP_NumPlatforms <= sizeof(GDistanceFieldsPlatformMask) * 8, "GDistanceFieldsPlatformMask must be large enough to support all shader platforms");
 
-RENDERCORE_API uint64 GSimpleSkyDiffusePlatformMask = 0;
-static_assert(SP_NumPlatforms <= sizeof(GSimpleSkyDiffusePlatformMask) * 8, "GSimpleSkyDiffusePlatformMask must be large enough to support all shader platforms");
-
-// Specifies whether ray tracing *can* be enabled on a particular platform.
-// This takes into account whether RT is globally enabled for the project and specifically enabled on a target platform.
-// Safe to use to make cook-time decisions, such as whether to compile ray tracing shaders.
-RENDERCORE_API uint64 GRayTracingPlaformMask = 0;
-static_assert(SP_NumPlatforms <= sizeof(GRayTracingPlaformMask) * 8, "GRayTracingPlaformMask must be large enough to support all shader platforms");
-
-// Specifies whether ray tracing *is* enabled on the current running system (in current game or editor process).
-// This takes into account additional factors, such as concrete current GPU/OS/Driver capability, user-set game graphics options, etc.
-// Only safe to make run-time decisions, such as whether to build acceleration structures and render ray tracing effects.
-// Value may be queried using IsRayTracingEnabled().
-RENDERCORE_API bool GUseRayTracing = false;
-
 RENDERCORE_API void RenderUtilsInit()
 {
-	checkf(GIsRHIInitialized, TEXT("RenderUtilsInit() may only be called once RHI is initialized."));
-
 	if (GUseForwardShading)
 	{
 		GForwardShadingPlatformMask = ~0ull;
@@ -1113,12 +1003,6 @@ RENDERCORE_API void RenderUtilsInit()
 	if (DistanceFieldsCVar && DistanceFieldsCVar->GetInt())
 	{
 		GDistanceFieldsPlatformMask = ~0ull;
-	}
-
-	static IConsoleVariable* RayTracingCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.RayTracing"));
-	if (RayTracingCVar && RayTracingCVar->GetInt())
-	{
-		GRayTracingPlaformMask = ~0ull;
 	}
 
 #if WITH_EDITOR
@@ -1178,99 +1062,10 @@ RENDERCORE_API void RenderUtilsInit()
 				{
 					GDistanceFieldsPlatformMask &= ~Mask;
 				}
-
-				if (TargetPlatform->UsesRayTracing())
-				{
-					GRayTracingPlaformMask |= Mask;
-				}
-				else
-				{
-					GRayTracingPlaformMask &= ~Mask;
-				}
-
-				if (TargetPlatform->ForcesSimpleSkyDiffuse())
-				{
-					GSimpleSkyDiffusePlatformMask |= Mask;
-				}
-				else
-				{
-					GSimpleSkyDiffusePlatformMask &= ~Mask;
-				}
 			}
 		}
 	}
-#endif // WITH_EDITOR
-
-	// Run-time ray tracing support depends on the following factors:
-	// - Ray tracing must be enabled for the project
-	// - Skin cache must be enabled for the project
-	// - Current GPU, OS and driver must support ray tracing
-	// - User is running the Editor *OR* running the game with ray tracing enabled in graphics options
-
-	// When ray tracing is enabled, we must load additional shaders and build acceleration structures for meshes.
-	// For this reason it is only possible to enable RT at startup and changing the state requires restart.
-	// This is also the reason why IsRayTracingEnabled() lives in RenderCore module, as it controls creation of 
-	// RT pipelines in ShaderPipelineCache.cpp.
-
-	if (RayTracingCVar && RayTracingCVar->GetBool())
-	{
-		const bool bRayTracingAllowedOnCurrentPlatform = !!(GRayTracingPlaformMask & (1ull << GMaxRHIShaderPlatform));
-		if (GRHISupportsRayTracing && bRayTracingAllowedOnCurrentPlatform)
-		{
-			if (GIsEditor)
-			{
-				// Ray tracing is enabled for the project and we are running on RT-capable machine,
-				// therefore the core ray tracing features are also enabled, so that required shaders
-				// are loaded, acceleration structures are built, etc.
-				GUseRayTracing = true;
-
-				UE_LOG(LogRendererCore, Log, TEXT("Ray tracing is enabled for the editor. Reason: r.RayTracing=1."));
-			}
-			else
-			{
-				// If user preference exists in game settings file, the bRayTracingEnabled will be set based on its value.
-				// Otherwise the current value is preserved.
-				if (GConfig->GetBool(TEXT("RayTracing"), TEXT("r.RayTracing.EnableInGame"), GUseRayTracing, GGameUserSettingsIni))
-				{
-					UE_LOG(LogRendererCore, Log, TEXT("Ray tracing is %s for the game. Reason: user setting r.RayTracing.EnableInGame=%d."),
-						GUseRayTracing ? TEXT("enabled") : TEXT("disabled"),
-						(int)GUseRayTracing);
-				}
-				else
-				{
-					GUseRayTracing = true;
-
-					UE_LOG(LogRendererCore, Log, TEXT("Ray tracing is enabled for the game. Reason: r.RayTracing=1 and r.RayTracing.EnableInGame is not present (default true)."));
-				}
-			}
-
-			// Sanity check: skin cache is *required* for ray tracing.
-			// It can be dynamically enabled only when its shaders have been compiled.
-			IConsoleVariable* SkinCacheCompileShadersCVar = IConsoleManager::Get().FindConsoleVariable(TEXT("r.SkinCache.CompileShaders"));
-			if (GUseRayTracing && SkinCacheCompileShadersCVar->GetInt() <= 0)
-			{
-				GUseRayTracing = false;
-
-				UE_LOG(LogRendererCore, Fatal, TEXT("Ray tracing requires skin cache to be enabled. Set r.SkinCache.CompileShaders=1."));
-			}
-
-		}
-		else
-		{
-			if (!GRHISupportsRayTracing)
-			{
-				UE_LOG(LogRendererCore, Log, TEXT("Ray tracing is disabled. Reason: not supported by current RHI."));
-			}
-			else
-			{
-				UE_LOG(LogRendererCore, Log, TEXT("Ray tracing is disabled. Reason: disabled on current platform."));
-			}
-		}
-	}
-	else
-	{
-		UE_LOG(LogRendererCore, Log, TEXT("Ray tracing is disabled. Reason: r.RayTracing=0."));
-	}
+#endif
 }
 
 class FUnitCubeVertexBuffer : public FVertexBuffer
@@ -1352,14 +1147,14 @@ RENDERCORE_API void QuantizeSceneBufferSize(const FIntPoint& InBufferSize, FIntP
 	// Ensure sizes are dividable by the ideal group size for 2d tiles to make it more convenient.
 	const uint32 DividableBy = 4;
 
-	static_assert(DividableBy % 4 == 0, "A lot of graphic algorithms where previously assuming DividableBy == 4");
+	check(DividableBy % 4 == 0); // A lot of graphic algorithms where previously assuming DividableBy == 4.
 
 	const uint32 Mask = ~(DividableBy - 1);
 	OutBufferSize.X = (InBufferSize.X + DividableBy - 1) & Mask;
 	OutBufferSize.Y = (InBufferSize.Y + DividableBy - 1) & Mask;
 }
 
-RENDERCORE_API bool UseVirtualTexturing(const FStaticFeatureLevel InFeatureLevel, const ITargetPlatform* TargetPlatform)
+RENDERCORE_API bool UseVirtualTexturing(ERHIFeatureLevel::Type InFeatureLevel, const ITargetPlatform* TargetPlatform)
 {
 #if !PLATFORM_SUPPORTS_VIRTUAL_TEXTURE_STREAMING
 	if (GIsEditor == false)
@@ -1369,6 +1164,12 @@ RENDERCORE_API bool UseVirtualTexturing(const FStaticFeatureLevel InFeatureLevel
 	else
 #endif
 	{
+		// only at SM5 
+		if (InFeatureLevel < ERHIFeatureLevel::SM5)
+		{
+			return false;
+		}
+
 		// does the platform supports it.
 #if WITH_EDITOR
 		if (GIsEditor && TargetPlatform == nullptr)
@@ -1386,6 +1187,13 @@ RENDERCORE_API bool UseVirtualTexturing(const FStaticFeatureLevel InFeatureLevel
 		}
 #endif
 
+		// Remove this when UE-80097 is implemented
+		static bool bIsVulkanRHI = FCString::Strcmp(GDynamicRHI->GetName(), TEXT("Vulkan")) == 0;
+		if (bIsVulkanRHI)
+		{
+			return false;
+		}
+
 		// does the project has it enabled ?
 		static const auto CVarVirtualTexture = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.VirtualTextures"));
 		check(CVarVirtualTexture);
@@ -1393,13 +1201,6 @@ RENDERCORE_API bool UseVirtualTexturing(const FStaticFeatureLevel InFeatureLevel
 		{
 			return false;
 		}		
-
-		// mobile needs an additional switch to enable VT		
-		static const auto CVarMobileVirtualTexture = IConsoleManager::Get().FindTConsoleVariableDataInt(TEXT("r.Mobile.VirtualTextures"));
-		if (InFeatureLevel == ERHIFeatureLevel::ES3_1 && CVarMobileVirtualTexture->GetValueOnAnyThread() == 0)
-		{
-			return false;
-		}
 
 		return true;
 	}

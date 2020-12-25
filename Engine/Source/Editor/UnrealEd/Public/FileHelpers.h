@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "AssetData.h"
-#include "PackageTools.h"
 #include "ISourceControlProvider.h"
 #include "UObject/TextProperty.h"
 #include "FileHelpers.generated.h"
@@ -163,17 +162,6 @@ public:
 	*/
 	UFUNCTION(BlueprintCallable, Category = "Editor Scripting | Editor Loading and Saving")
 	static UNREALED_API void UnloadPackages(const TArray<UPackage*>& PackagesToUnload, bool& bOutAnyPackagesUnloaded, FText& OutErrorMessage);
-
-	/**
-	 * Helper function that attempts to reload the specified top-level packages.
-	 *
-	 * @param	PackagesToReload		The list of packages that should be reloaded
-	 * @param	bOutAnyPackagesReloaded	True if the set of loaded packages was changed
-	 * @param	OutErrorMessage			An error message specifying any problems with reloading packages
-	 * @param	InteractionMode			Whether the function is allowed to ask the user questions (such as whether to reload dirty packages)
-	 */
-	UFUNCTION(BlueprintCallable, Category = "Editor Scripting | Editor Loading and Saving")
-	static UNREALED_API void ReloadPackages(const TArray<UPackage*>& PackagesToReload, bool& bOutAnyPackagesReloaded, FText& OutErrorMessage, const EReloadPackagesInteractionMode InteractionMode = EReloadPackagesInteractionMode::Interactive);
 };
 
 
@@ -260,7 +248,7 @@ public:
 	 *
 	 * @return					true if the map was saved successfully.
 	 */
-	static UNREALED_API bool SaveMap(UWorld* World, const FString& Filename );
+	static bool SaveMap(UWorld* World, const FString& Filename );
 
 	/**
 	 * Saves the specified level.  SaveAs is performed as necessary.
@@ -274,7 +262,7 @@ public:
 	static UNREALED_API bool SaveLevel(ULevel* Level, const FString& DefaultFilename = TEXT( "" ), FString* OutSavedFilename = nullptr );
 
 	/** Saves packages which contain map data but are not map packages themselves. */
-	static UNREALED_API void SaveMapDataPackages(UWorld* World, bool bCheckDirty, bool bSaveExternal = false);
+	static UNREALED_API void SaveMapDataPackages(UWorld* World, bool bCheckDirty);
 
 	/**
 	 * Does a SaveAs for the specified assets.
@@ -452,11 +440,10 @@ public:
 	 * @param	PkgsToCheckOut							Reference to array of packages to check out 
 	 * @param	OutPackagesCheckedOut					If not NULL, this array will be populated with packages that were checked out.
 	 * @param	bErrorIfAlreadyCheckedOut				true to consider being unable to checkout a package because it is already checked out an error, false to allow this without error
-	 * @param	bConfirmPackageBranchCheckOutStatus		true to prompt user on whether a package that is checked out or modified in another branch should be checked out, false to silently attempt check out.
 	 *
 	 * @return	true if all the packages were checked out successfully
 	 */
-	UNREALED_API static ECommandResult::Type CheckoutPackages(const TArray<UPackage*>& PkgsToCheckOut, TArray<UPackage*>* OutPackagesCheckedOut = NULL, const bool bErrorIfAlreadyCheckedOut = true, const bool bConfirmPackageBranchCheckOutStatus = true);
+	UNREALED_API static ECommandResult::Type CheckoutPackages(const TArray<UPackage*>& PkgsToCheckOut, TArray<UPackage*>* OutPackagesCheckedOut = NULL, const bool bErrorIfAlreadyCheckedOut = true);
 
 	/**
 	 * Check out the specified packages from source control and report any errors while checking out
@@ -586,7 +573,7 @@ public:
 	 * @param	ObjectPath		The path to the package to test
 	 * @return					The package name from the string
 	 */
-	UNREALED_API static FString ExtractPackageName(const FString& ObjectPath);
+	UNREALED_API static FString ExtractPackageName(const FString& ObjectPath);\
 
 	////////////////////////////////////////////////////////////////////////////
 	// File

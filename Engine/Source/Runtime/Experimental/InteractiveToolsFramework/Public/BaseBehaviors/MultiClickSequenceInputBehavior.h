@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -46,7 +46,7 @@ public:
 
 
 	/**
-	 * The first click will only be accepted if this function returns true (or is null)
+	 * WantsCapture() will only return capture request if this function returns true (or is null)
 	 */
 	TFunction<bool(const FInputDeviceState&)> ModifierCheckFunc = nullptr;
 
@@ -68,14 +68,9 @@ public:
 public:
 
 protected:
-	enum class ESequenceState
-	{
-		NotStarted,
-		WaitingForNextClick,
-	};
-
 	/** Click Target object */
 	IClickSequenceBehaviorTarget* Target;
 
-	ESequenceState State = ESequenceState::NotStarted;
+	bool bInActiveSequence;
 };
+

@@ -1,23 +1,13 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 var httpPort = 90;
 var matchmakerPort = 9999;
-var enableRedirectionLinks = true;
-var enableRESTAPI = true;
-var enableLogToFile = true;
 
 const argv = require('yargs').argv;
 
 const express = require('express');
-var cors = require('cors')
 const app = express();
 const http = require('http').Server(app);
-const logging = require('./modules/logging.js');
-logging.RegisterConsoleLogger();
-
-if (enableLogToFile) {
-	logging.RegisterFileLogger('./logs');
-}
 
 // A list of all the Cirrus server which are connected to the Matchmaker.
 var cirrusServers = new Map();
@@ -44,7 +34,7 @@ http.listen(httpPort, () => {
 // Get a Cirrus server if there is one available which has no clients connected.
 function getAvailableCirrusServer() {
 	for (cirrusServer of cirrusServers.values()) {
-		if (cirrusServer.numConnectedClients === 0 && cirrusServer.ready === true) {
+		if (cirrusServer.numConnectedClients === 0) {
 			return cirrusServer;
 		}
 	}
@@ -70,44 +60,27 @@ function sendRetryResponse(res) {
 	</script>`);
 }
 
-if(enableRESTAPI) {
-	// Handle REST signalling server only request.
-	app.options('/signallingserver', cors())
-	app.get('/signallingserver', cors(),  (req, res) => {
-		cirrusServer = getAvailableCirrusServer();
-		if (cirrusServer != undefined) {
-			res.json({ signallingServer: `${cirrusServer.address}:${cirrusServer.port}`});
-			console.log(`Returning ${cirrusServer.address}:${cirrusServer.port}`);
-		} else {
-			res.json({ signallingServer: '', error: 'No signalling servers available'});
-		}
-	});
-}
+// Handle standard URL.
+app.get('/', (req, res) => {
+	cirrusServer = getAvailableCirrusServer();
+	if (cirrusServer != undefined) {
+		res.redirect(`http://${cirrusServer.address}:${cirrusServer.port}/`);
+		console.log(`Redirect to ${cirrusServer.address}:${cirrusServer.port}`);
+	} else {
+		sendRetryResponse(res);
+	}
+});
 
-if(enableRedirectionLinks) {
-	// Handle standard URL.
-	app.get('/', (req, res) => {
-		cirrusServer = getAvailableCirrusServer();
-		if (cirrusServer != undefined) {
-			res.redirect(`http://${cirrusServer.address}:${cirrusServer.port}/`);
-			console.log(req);
-			console.log(`Redirect to ${cirrusServer.address}:${cirrusServer.port}`);
-		} else {
-			sendRetryResponse(res);
-		}
-	});
-
-	// Handle URL with custom HTML.
-	app.get('/custom_html/:htmlFilename', (req, res) => {
-		cirrusServer = getAvailableCirrusServer();
-		if (cirrusServer != undefined) {
-			res.redirect(`http://${cirrusServer.address}:${cirrusServer.port}/custom_html/${req.params.htmlFilename}`);
-			console.log(`Redirect to ${cirrusServer.address}:${cirrusServer.port}`);
-		} else {
-			sendRetryResponse(res);
-		}
-	});
-}
+// Handle URL with custom HTML.
+app.get('/custom_html/:htmlFilename', (req, res) => {
+	cirrusServer = getAvailableCirrusServer();
+	if (cirrusServer != undefined) {
+		res.redirect(`http://${cirrusServer.address}:${cirrusServer.port}/custom_html/${req.params.htmlFilename}`);
+		console.log(`Redirect to ${cirrusServer.address}:${cirrusServer.port}`);
+	} else {
+		sendRetryResponse(res);
+	}
+});
 
 //
 // Connection to Cirrus.
@@ -136,46 +109,18 @@ const matchmaker = net.createServer((connection) => {
 				port: message.port,
 				numConnectedClients: 0
 			};
-			cirrusServer.ready = message.ready === true;
-
 			cirrusServers.set(connection, cirrusServer);
-			console.log(`Cirrus server ${cirrusServer.address}:${cirrusServer.port} connected to Matchmaker, ready: ${cirrusServer.ready}`);
-		} else if (message.type === 'streamerConnected') {
-			// The stream connects to a Cirrus server and so is ready to be used
-			cirrusServer = cirrusServers.get(connection);
-			if(cirrusServer) {
-				cirrusServer.ready = true;
-				console.log(`Cirrus server ${cirrusServer.address}:${cirrusServer.port} ready for use`);
-			} else {
-				disconnect(connection);
-			}
-		} else if (message.type === 'streamerDisconnected') {
-			// The stream connects to a Cirrus server and so is ready to be used
-			cirrusServer = cirrusServers.get(connection);
-			if(cirrusServer) {
-				cirrusServer.ready = false;
-				console.log(`Cirrus server ${cirrusServer.address}:${cirrusServer.port} no longer ready for use`);
-			} else {
-				disconnect(connection);
-			}
+			console.log(`Cirrus server ${cirrusServer.address}:${cirrusServer.port} connected to Matchmaker`);
 		} else if (message.type === 'clientConnected') {
 			// A client connects to a Cirrus server.
 			cirrusServer = cirrusServers.get(connection);
-			if(cirrusServer) {
-				cirrusServer.numConnectedClients++;
-				console.log(`Client connected to Cirrus server ${cirrusServer.address}:${cirrusServer.port}`);
-			} else {
-				disconnect(connection);
-			}
+			cirrusServer.numConnectedClients++;
+			console.log(`Client connected to Cirrus server ${cirrusServer.address}:${cirrusServer.port}`);
 		} else if (message.type === 'clientDisconnected') {
 			// A client disconnects from a Cirrus server.
 			cirrusServer = cirrusServers.get(connection);
-			if(cirrusServer) {
-				cirrusServer.numConnectedClients--;
-				console.log(`Client disconnected from Cirrus server ${cirrusServer.address}:${cirrusServer.port}`);
-			} else {
-				disconnect(connection);
-			}
+			cirrusServer.numConnectedClients--;
+			console.log(`Client disconnected from Cirrus server ${cirrusServer.address}:${cirrusServer.port}`);
 		} else {
 			console.log('ERROR: Unknown data: ' + JSON.stringify(message));
 			disconnect(connection);
@@ -184,13 +129,8 @@ const matchmaker = net.createServer((connection) => {
 
 	// A Cirrus server disconnects from this Matchmaker server.
 	connection.on('error', () => {
-		cirrusServer = cirrusServers.get(connection);
 		cirrusServers.delete(connection);
-		if(cirrusServer) {
-			console.log(`Cirrus server ${cirrusServer.address}:${cirrusServer.port} disconnected from Matchmaker`);
-		} else {
-			console.log(`Disconnected machine that wasn't a registered cirrus server, remote address: ${connection.remoteAddress}`);
-		}
+		console.log(`Cirrus server ${cirrusServer.address}:${cirrusServer.port} disconnected from Matchmaker`);
 	});
 });
 

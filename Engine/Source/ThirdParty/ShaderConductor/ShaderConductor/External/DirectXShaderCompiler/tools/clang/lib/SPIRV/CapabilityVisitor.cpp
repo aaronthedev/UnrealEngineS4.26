@@ -273,9 +273,8 @@ bool CapabilityVisitor::visit(SpirvDecoration *decor) {
       break;
     }
     case spv::BuiltIn::PrimitiveId: {
-      // PrimitiveID can be used as PSIn or MSPOut.
-      if (shaderModel == spv::ExecutionModel::Fragment ||
-          shaderModel == spv::ExecutionModel::MeshNV)
+      // PrimitiveID can be used as PSIn
+      if (shaderModel == spv::ExecutionModel::Fragment)
         addCapability(spv::Capability::Geometry);
       break;
     }
@@ -286,9 +285,8 @@ bool CapabilityVisitor::visit(SpirvDecoration *decor) {
         addExtension(Extension::EXT_shader_viewport_index_layer,
                      "SV_RenderTargetArrayIndex", loc);
         addCapability(spv::Capability::ShaderViewportIndexLayerEXT);
-      } else if (shaderModel == spv::ExecutionModel::Fragment ||
-                 shaderModel == spv::ExecutionModel::MeshNV) {
-        // SV_RenderTargetArrayIndex can be used as PSIn or MSPOut.
+      } else if (shaderModel == spv::ExecutionModel::Fragment) {
+        // SV_RenderTargetArrayIndex can be used as PSIn.
         addCapability(spv::Capability::Geometry);
       }
       break;
@@ -301,9 +299,8 @@ bool CapabilityVisitor::visit(SpirvDecoration *decor) {
                      "SV_ViewPortArrayIndex", loc);
         addCapability(spv::Capability::ShaderViewportIndexLayerEXT);
       } else if (shaderModel == spv::ExecutionModel::Fragment ||
-                 shaderModel == spv::ExecutionModel::Geometry ||
-                 shaderModel == spv::ExecutionModel::MeshNV) {
-        // SV_ViewportArrayIndex can be used as PSIn or GSOut or MSPOut.
+                 shaderModel == spv::ExecutionModel::Geometry) {
+        // SV_ViewportArrayIndex can be used as PSIn.
         addCapability(spv::Capability::MultiViewport);
       }
       break;
@@ -325,13 +322,6 @@ bool CapabilityVisitor::visit(SpirvDecoration *decor) {
     case spv::BuiltIn::BaryCoordPullModelAMD: {
       addExtension(Extension::AMD_shader_explicit_vertex_parameter,
                    "SV_Barycentrics", loc);
-      break;
-    }
-    case spv::BuiltIn::FragSizeEXT: {
-      addExtension(Extension::EXT_fragment_invocation_density, "SV_ShadingRate",
-                   loc);
-      addCapability(spv::Capability::FragmentDensityEXT);
-      break;
     }
     default:
       break;
@@ -384,7 +374,6 @@ bool CapabilityVisitor::visit(SpirvImageSparseTexelsResident *instr) {
   addCapabilityForType(instr->getResultType(), instr->getSourceLocation(),
                        instr->getStorageClass());
   addCapability(spv::Capability::ImageGatherExtended);
-  addCapability(spv::Capability::SparseResidency);
   return true;
 }
 
@@ -466,15 +455,6 @@ bool CapabilityVisitor::visitInstruction(SpirvInstruction *instr) {
   case spv::Op::OpGroupNonUniformQuadSwap:
     addCapability(spv::Capability::GroupNonUniformQuad);
     break;
-  case spv::Op::OpVariable: {
-    if (spvOptions.enableReflect &&
-        !cast<SpirvVariable>(instr)->getHlslUserType().empty()) {
-      addExtension(Extension::GOOGLE_user_type, "HLSL User Type", loc);
-      addExtension(Extension::GOOGLE_hlsl_functionality1, "HLSL User Type",
-                   loc);
-    }
-    break;
-  }
   default:
     break;
   }
@@ -503,18 +483,8 @@ bool CapabilityVisitor::visit(SpirvEntryPoint *entryPoint) {
   case spv::ExecutionModel::AnyHitNV:
   case spv::ExecutionModel::MissNV:
   case spv::ExecutionModel::CallableNV:
-    if (featureManager.isExtensionEnabled("SPV_NV_ray_tracing")) {
-      addCapability(spv::Capability::RayTracingNV);
-      addExtension(Extension::NV_ray_tracing, "SPV_NV_ray_tracing", {});
-    } else {
-      addCapability(spv::Capability::RayTracingProvisionalKHR);
-      addExtension(Extension::KHR_ray_tracing, "SPV_KHR_ray_tracing", {});
-    }
-    break;
-  case spv::ExecutionModel::MeshNV:
-  case spv::ExecutionModel::TaskNV:
-    addCapability(spv::Capability::MeshShadingNV);
-    addExtension(Extension::NV_mesh_shader, "SPV_NV_mesh_shader", {});
+    addCapability(spv::Capability::RayTracingNV);
+    addExtension(Extension::NV_ray_tracing, "SPV_NV_ray_tracing", {});
     break;
   default:
     llvm_unreachable("found unknown shader model");
@@ -535,15 +505,37 @@ bool CapabilityVisitor::visit(SpirvExecutionMode *execMode) {
 
 bool CapabilityVisitor::visit(SpirvExtInst *instr) {
   // OpExtInst using the GLSL extended instruction allows only 32-bit types by
-  // default for interpolation instructions. The AMD_gpu_shader_half_float
-  // extension adds support for 16-bit floating-point component types for these
-  // instructions:
-  // InterpolateAtCentroid, InterpolateAtSample, InterpolateAtOffset
+  // default. The AMD_gpu_shader_half_float extension adds support for 16-bit
+  // floating-point component types for the following instructions described in
+  // the GLSL.std.450 extended instruction set:
+  // Acos, Acosh, Asin, Asinh, Atan2, Atanh, Atan, Cos, Cosh, Degrees, Exp,
+  // Exp2, InterpolateAtCentroid, InterpolateAtSample, InterpolateAtOffset, Log,
+  // Log2, Pow, Radians, Sin, Sinh, Tan, Tanh
   if (SpirvType::isOrContainsType<FloatType, 16>(instr->getResultType()))
     switch (instr->getInstruction()) {
+    case GLSLstd450::GLSLstd450Acos:
+    case GLSLstd450::GLSLstd450Acosh:
+    case GLSLstd450::GLSLstd450Asin:
+    case GLSLstd450::GLSLstd450Asinh:
+    case GLSLstd450::GLSLstd450Atan2:
+    case GLSLstd450::GLSLstd450Atanh:
+    case GLSLstd450::GLSLstd450Atan:
+    case GLSLstd450::GLSLstd450Cos:
+    case GLSLstd450::GLSLstd450Cosh:
+    case GLSLstd450::GLSLstd450Degrees:
+    case GLSLstd450::GLSLstd450Exp:
+    case GLSLstd450::GLSLstd450Exp2:
     case GLSLstd450::GLSLstd450InterpolateAtCentroid:
     case GLSLstd450::GLSLstd450InterpolateAtSample:
     case GLSLstd450::GLSLstd450InterpolateAtOffset:
+    case GLSLstd450::GLSLstd450Log:
+    case GLSLstd450::GLSLstd450Log2:
+    case GLSLstd450::GLSLstd450Pow:
+    case GLSLstd450::GLSLstd450Radians:
+    case GLSLstd450::GLSLstd450Sin:
+    case GLSLstd450::GLSLstd450Sinh:
+    case GLSLstd450::GLSLstd450Tan:
+    case GLSLstd450::GLSLstd450Tanh:
       addExtension(Extension::AMD_gpu_shader_half_float, "16-bit float",
                    instr->getSourceLocation());
     default:

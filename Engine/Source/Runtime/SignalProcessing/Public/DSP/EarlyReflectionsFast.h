@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -65,9 +65,6 @@ namespace Audio
 
 		// Process the single audio frame
 		void ProcessAudio(const AlignedFloatBuffer& InSamples, const int32 InNumChannels, AlignedFloatBuffer& OutLeftSamples, AlignedFloatBuffer& OutRightSamples);
-
-		// Silence internal audio.
-		void FlushAudio();
 
 		// Clamps settings to acceptable values. 
 		static void ClampSettings(FEarlyReflectionsFastSettings& InOutSettings);

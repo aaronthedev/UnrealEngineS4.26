@@ -44,6 +44,8 @@ If --leave-output was not specified, all temporary files and directories will
 be deleted.
 """
 
+from __future__ import print_function
+
 import argparse
 import fnmatch
 import inspect
@@ -70,7 +72,7 @@ def get_all_methods(instance):
 
 
 def get_all_superclasses(cls):
-  """Returns all superclasses of a given class. Omits root 'object' superclass.
+  """Returns all superclasses of a given class.
 
     Returns:
       A list of superclasses of the given class. The order guarantees that
@@ -83,12 +85,11 @@ def get_all_superclasses(cls):
   classes = []
   for superclass in cls.__bases__:
     for c in get_all_superclasses(superclass):
-      if c is not object and c not in classes:
+      if c not in classes:
         classes.append(c)
   for superclass in cls.__bases__:
-    if superclass is not object and superclass not in classes:
+    if superclass not in classes:
       classes.append(superclass)
-
   return classes
 
 
@@ -143,28 +144,8 @@ class TestStatus:
                inputs, input_filenames):
     self.test_manager = test_manager
     self.returncode = returncode
-    # Some of our MacOS bots still run Python 2, so need to be backwards
-    # compatible here.
-    if type(stdout) is not str:     
-      if sys.version_info[0] is 2:
-       self.stdout = stdout.decode('utf-8')
-      elif sys.version_info[0] is 3:
-        self.stdout = str(stdout, encoding='utf-8') if stdout is not None else stdout
-      else:
-        raise Exception('Unable to determine if running Python 2 or 3 from {}'.format(sys.version_info))
-    else:
-      self.stdout = stdout
-    
-    if type(stderr) is not str:     
-      if sys.version_info[0] is 2:
-       self.stderr = stderr.decode('utf-8')
-      elif sys.version_info[0] is 3:
-        self.stderr = str(stderr, encoding='utf-8') if stderr is not None else stderr
-      else:
-        raise Exception('Unable to determine if running Python 2 or 3 from {}'.format(sys.version_info))
-    else:
-      self.stderr = stderr
-
+    self.stdout = stdout
+    self.stderr = stderr
     # temporary directory where the test runs
     self.directory = directory
     # List of inputs, as PlaceHolder objects.

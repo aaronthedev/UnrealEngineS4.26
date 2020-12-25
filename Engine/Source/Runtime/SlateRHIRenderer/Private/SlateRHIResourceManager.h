@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -130,9 +130,6 @@ public:
 	virtual int32 GetNumAtlasPages() const override;
 	virtual FSlateShaderResource* GetAtlasPageResource(const int32 InIndex) const override;
 	virtual bool IsAtlasPageResourceAlphaOnly(const int32 InIndex) const override;
-#if WITH_ATLAS_DEBUGGING
-	virtual FAtlasSlotInfo GetAtlasSlotInfoAtPosition(FIntPoint InPosition, int32 AtlasIndex) const override;
-#endif
 
 	/** FTickableGameObject interface */
 	virtual ETickableTickType GetTickableTickType() const override { return ETickableTickType::Always; }
@@ -222,11 +219,9 @@ public:
 	FCriticalSection* GetResourceCriticalSection() { return &ResourceCriticalSection; }
 
 private:
-	void OnPreGarbageCollect();
 	void OnPostGarbageCollect();
 
 	void TryToCleanupExpiredResources(bool bForceCleanup);
-	void CleanupExpiredResources();
 
 	/**
 	 * Deletes resources created by the manager
@@ -255,7 +250,7 @@ private:
 	 * 
 	 * @param Info	Information on how to generate the texture
 	 */
-	FSlateShaderResourceProxy* GenerateTextureResource( const FNewTextureInfo& Info, const FName TextureName );
+	FSlateShaderResourceProxy* GenerateTextureResource( const FNewTextureInfo& Info );
 	
 	/**
 	 * Returns a texture rendering resource from for a dynamically loaded texture or utexture object
@@ -288,9 +283,6 @@ private:
 	 * accessed by multiple threads when loading.
 	 */
 	FCriticalSection ResourceCriticalSection;
-
-	/** Was ResourceCriticalSection lock before GC and need to be released */
-	bool bResourceCriticalSectionLockedForGC;
 
 	/** Attempt to cleanup */
 	bool bExpiredResourcesNeedCleanup;

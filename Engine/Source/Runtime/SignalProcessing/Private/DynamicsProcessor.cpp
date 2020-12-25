@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DSP/DynamicsProcessor.h"
 
@@ -14,13 +14,9 @@ namespace Audio
 		, HalfKneeBandwidthDb(5.0f)
 		, InputGain(1.0f)
 		, OutputGain(1.0f)
-		, KeyGain(1.0f)
 		, NumChannels(0)
-		, LinkMode(EDynamicsProcessorChannelLinkMode::Disabled)
+		, bIsChannelLinked(true)
 		, bIsAnalogMode(true)
-		, bKeyAuditionEnabled(false)
-		, bKeyHighshelfEnabled(false)
-		, bKeyLowshelfEnabled(false)
 	{
 		// The knee will have 2 points
 		KneePoints.Init(FVector2D(), 2);
@@ -33,29 +29,15 @@ namespace Audio
 	void FDynamicsProcessor::Init(const float SampleRate, const int32 InNumChannels)
 	{
 		NumChannels = InNumChannels;
-
-		LookaheadDelay.Reset();
-		LookaheadDelay.AddDefaulted(InNumChannels);
-
-		EnvFollower.Reset();
-		EnvFollower.AddDefaulted(InNumChannels);
-
 		for (int32 Channel = 0; Channel < InNumChannels; ++Channel)
 		{
-			LookaheadDelay[Channel].Init(SampleRate, 0.1f);
-			LookaheadDelay[Channel].SetDelayMsec(LookaheedDelayMsec);
+			int32 Index = LookaheadDelay.Add(FDelay());
+			LookaheadDelay[Index].Init(SampleRate, 0.1f);
+			LookaheadDelay[Index].SetDelayMsec(LookaheedDelayMsec);
 
-			EnvFollower[Channel].Init(SampleRate, AttackTimeMsec, ReleaseTimeMsec, EPeakMode::RootMeanSquared, bIsAnalogMode);
+			Index = EnvFollower.Add(FEnvelopeFollower());
+			EnvFollower[Index].Init(SampleRate, AttackTimeMsec, ReleaseTimeMsec, EPeakMode::RootMeanSquared, bIsAnalogMode);
 		}
-
-		InputLowshelfFilter.Init(SampleRate, InNumChannels, EBiquadFilter::LowShelf);
-		InputHighshelfFilter.Init(SampleRate, InNumChannels, EBiquadFilter::HighShelf);
-
-		DetectorOuts.Reset();
-		DetectorOuts.AddZeroed(InNumChannels);
-
-		Gain.Reset();
-		Gain.AddZeroed(InNumChannels);
 	}
 
 	void FDynamicsProcessor::SetLookaheadMsec(const float InLookAheadMsec)
@@ -106,54 +88,14 @@ namespace Audio
 		InputGain = ConvertToLinear(InInputGainDb);
 	}
 
-	void FDynamicsProcessor::SetKeyAudition(const bool InAuditionEnabled)
-	{
-		bKeyAuditionEnabled = InAuditionEnabled;
-	}
-
-	void FDynamicsProcessor::SetKeyGain(const float InKeyGain)
-	{
-		KeyGain = ConvertToLinear(InKeyGain);
-	}
-
-	void FDynamicsProcessor::SetKeyHighshelfCutoffFrequency(const float InCutoffFreq)
-	{
-		InputHighshelfFilter.SetFrequency(InCutoffFreq);
-	}
-
-	void FDynamicsProcessor::SetKeyHighshelfEnabled(const bool bInEnabled)
-	{
-		bKeyHighshelfEnabled = bInEnabled;
-	}
-
-	void FDynamicsProcessor::SetKeyHighshelfGain(const float InGainDb)
-	{
-		InputHighshelfFilter.SetGainDB(InGainDb);
-	}
-
-	void FDynamicsProcessor::SetKeyLowshelfCutoffFrequency(const float InCutoffFreq)
-	{
-		InputLowshelfFilter.SetFrequency(InCutoffFreq);
-	}
-
-	void FDynamicsProcessor::SetKeyLowshelfEnabled(const bool bInEnabled)
-	{
-		bKeyLowshelfEnabled = bInEnabled;
-	}
-
-	void FDynamicsProcessor::SetKeyLowshelfGain(const float InGainDb)
-	{
-		InputLowshelfFilter.SetGainDB(InGainDb);
-	}
-
 	void FDynamicsProcessor::SetOutputGain(const float InOutputGainDb)
 	{
 		OutputGain = ConvertToLinear(InOutputGainDb);
 	}
 
-	void FDynamicsProcessor::SetChannelLinkMode(const EDynamicsProcessorChannelLinkMode InLinkMode)
+	void FDynamicsProcessor::SetChannelLinked(const bool bInIsChannelLinked)
 	{
-		LinkMode = InLinkMode;
+		bIsChannelLinked = bInIsChannelLinked;
 	}
 
 	void FDynamicsProcessor::SetAnalogMode(const bool bInIsAnalogMode)
@@ -178,108 +120,69 @@ namespace Audio
 		ProcessingMode = InProcessingMode;
 	}
 
-	void FDynamicsProcessor::ProcessAudioFrame(const float* InFrame, float* OutFrame, const float* InKeyFrame)
+	void FDynamicsProcessor::ProcessAudioFrame(const float* InFrame, float* OutFrame)
 	{
-		checkSlow(NumChannels == DetectorOuts.Num());
-		checkSlow(NumChannels == Gain.Num());
-
 		// Get detector outputs
-		const float* DetectorIn = InKeyFrame;
-		if (NumChannels > 0)
+		DetectorOuts.Reset();
+		 
+		for (int32 Channel = 0; Channel < NumChannels; ++Channel)
 		{
-			if (bKeyLowshelfEnabled)
-			{
-				InputLowshelfFilter.ProcessAudioFrame(DetectorIn, DetectorOuts.GetData());
-				DetectorIn = DetectorOuts.GetData();
-			}
-
-			if (bKeyHighshelfEnabled)
-			{
-				InputHighshelfFilter.ProcessAudioFrame(DetectorIn, DetectorOuts.GetData());
-				DetectorIn = DetectorOuts.GetData();
-			}
+			DetectorOuts.Add(EnvFollower[Channel].ProcessAudio(InputGain * InFrame[Channel]));
 		}
 
-		const float DetectorGain = KeyGain * InputGain;
-		if (bKeyAuditionEnabled)
+		Gain.Reset();
+
+		if (bIsChannelLinked)
 		{
+			// average all channels
+			float DetectorOutLinked = 0.0f;
 			for (int32 Channel = 0; Channel < NumChannels; ++Channel)
 			{
-				OutFrame[Channel] = DetectorGain * DetectorIn[Channel];
+				DetectorOutLinked += DetectorOuts[Channel];
+			}
+			DetectorOutLinked /= (float)NumChannels;
+
+			// convert to decibels
+			const float DetectorOutLinkedDb = ConvertToDecibels(DetectorOutLinked);
+
+			const float ComputedGain = ComputeGain(DetectorOutLinkedDb);
+
+			for (int32 Channel = 0; Channel < NumChannels; ++Channel)
+			{
+				Gain.Add(ComputedGain);
 			}
 		}
 		else
 		{
+			// compute gain individually per channel
 			for (int32 Channel = 0; Channel < NumChannels; ++Channel)
 			{
-				DetectorOuts[Channel] = EnvFollower[Channel].ProcessAudio(DetectorGain * DetectorIn[Channel]);
+				// convert to decibels
+				const float DetectorOutLinkedDb = ConvertToDecibels(DetectorOuts[Channel]);
+
+				const float ComputedGain = ComputeGain(DetectorOutLinkedDb);
+
+				Gain.Add(ComputedGain);
 			}
+		}
 
-			switch (LinkMode)
-			{
-				case EDynamicsProcessorChannelLinkMode::Average:
-				{
-					float DetectorOutLinked = 0.0f;
-					for (int32 Channel = 0; Channel < NumChannels; ++Channel)
-					{
-						DetectorOutLinked += DetectorOuts[Channel];
-					}
-					DetectorOutLinked /= static_cast<float>(NumChannels);
-					const float DetectorOutLinkedDb = ConvertToDecibels(DetectorOutLinked);
-					const float ComputedGain = ComputeGain(DetectorOutLinkedDb);
-					for (int32 Channel = 0; Channel < NumChannels; ++Channel)
-					{
-						Gain[Channel] = ComputedGain;
-					}
-				}
-				break;
+		for (int32 Channel = 0; Channel < NumChannels; ++Channel)
+		{
+			// Write and read into the look ahead delay line.
+			// We apply the compression output of the direct input to the output of this delay line
+			// This way sharp transients can be "caught" with the gain.
+			float LookaheadOutput = LookaheadDelay[Channel].ProcessAudioSample(InFrame[Channel]);
 
-				case EDynamicsProcessorChannelLinkMode::Peak:
-				{
-					float DetectorOutLinked = FMath::Max<float>(DetectorOuts);
-					const float DetectorOutLinkedDb = ConvertToDecibels(DetectorOutLinked);
-					const float ComputedGain = ComputeGain(DetectorOutLinkedDb);
-					for (int32 Channel = 0; Channel < NumChannels; ++Channel)
-					{
-						Gain[Channel] = ComputedGain;
-					}
-				}
-				break;
-
-				case EDynamicsProcessorChannelLinkMode::Disabled:
-				default:
-				{
-					// compute gain individually per channel
-					for (int32 Channel = 0; Channel < NumChannels; ++Channel)
-					{
-						// convert to decibels
-						const float DetectorOutLinkedDb = ConvertToDecibels(DetectorOuts[Channel]);
-						const float ComputedGain = ComputeGain(DetectorOutLinkedDb);
-						Gain[Channel] = ComputedGain;
-					}
-				}
-				break;
-			}
-
-			for (int32 Channel = 0; Channel < NumChannels; ++Channel)
-			{
-				// Write and read into the look ahead delay line.
-				// We apply the compression output of the direct input to the output of this delay line
-				// This way sharp transients can be "caught" with the gain.
-				float LookaheadOutput = LookaheadDelay[Channel].ProcessAudioSample(InFrame[Channel]);
-
-				// Write into the output with the computed gain value
-				OutFrame[Channel] = Gain[Channel] * LookaheadOutput * OutputGain * InputGain;
-			}
+			// Write into the output with the computed gain value
+			OutFrame[Channel] = Gain[Channel] * LookaheadOutput * OutputGain * InputGain;
 		}
 	}
 
-	void FDynamicsProcessor::ProcessAudio(const float* InBuffer, const int32 InNumSamples, float* OutBuffer, const float* InKeyBuffer)
+	void FDynamicsProcessor::ProcessAudio(const float* InBuffer, const int32 InNumSamples, float* OutBuffer)
 	{
 		for (int32 SampleIndex = 0; SampleIndex < InNumSamples; SampleIndex += NumChannels)
 		{
-			const float* KeyFrame = InKeyBuffer ? &InKeyBuffer[SampleIndex] : &InBuffer[SampleIndex];
-			ProcessAudioFrame(&InBuffer[SampleIndex], &OutBuffer[SampleIndex], KeyFrame);
+			ProcessAudioFrame(&InBuffer[SampleIndex], &OutBuffer[SampleIndex]);
 		}
 	}
 
@@ -333,4 +236,6 @@ namespace Audio
 		OutputGainDb = FMath::Min(0.0f, OutputGainDb);
 		return ConvertToLinear(OutputGainDb);
 	}
+
+
 }

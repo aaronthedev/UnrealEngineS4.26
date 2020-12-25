@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Misc/ExclusiveLoadPackageTimeTracker.h"
 #include "Misc/OutputDeviceArchiveWrapper.h"
@@ -69,16 +69,16 @@ void FExclusiveLoadPackageTimeTracker::InternalPopLoadPackage(UPackage* LoadedPa
 		}
 		else if (LoadedPackage)
 		{
-
-			ForEachObjectWithPackage(LoadedPackage, [&ClassName](UObject* Object)
+			TArray<UObject*> ObjectsInPackage;
+			GetObjectsWithOuter(LoadedPackage, ObjectsInPackage, false);
+			for (UObject* Object : ObjectsInPackage)
 			{
 				if (Object && Object->IsAsset())
 				{
 					ClassName = Object->GetClass()->GetFName();
-					return false;
+					break;
 				}
-				return true;
-			}, false);
+			}
 		}
 
 		double InclusiveTime = CurrentTime - Time.OriginalStartTime;

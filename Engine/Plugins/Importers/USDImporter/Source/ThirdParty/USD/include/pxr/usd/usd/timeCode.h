@@ -21,14 +21,12 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_TIME_CODE_H
-#define PXR_USD_USD_TIME_CODE_H
+#ifndef USD_TIMECODE_H
+#define USD_TIMECODE_H
 
 #include "pxr/pxr.h"
 #include "pxr/usd/usd/api.h"
-#include "pxr/usd/sdf/timeCode.h"
 #include "pxr/base/arch/hints.h"
-#include "pxr/base/tf/staticTokens.h"
 
 #include <boost/functional/hash.hpp>
 
@@ -36,15 +34,7 @@
 #include <iosfwd>
 #include <cmath>
 
-
 PXR_NAMESPACE_OPEN_SCOPE
-
-
-#define USD_TIME_CODE_TOKENS \
-    (DEFAULT) \
-    (EARLIEST)
-
-TF_DECLARE_PUBLIC_TOKENS(UsdTimeCodeTokens, USD_API, USD_TIME_CODE_TOKENS);
 
 
 /// \class UsdTimeCode
@@ -85,11 +75,7 @@ TF_DECLARE_PUBLIC_TOKENS(UsdTimeCodeTokens, USD_API, USD_TIME_CODE_TOKENS);
 class UsdTimeCode {
 public:
     /// Construct with optional time value.  Impilicitly convert from double.
-    constexpr UsdTimeCode(double t = 0.0) noexcept : _value(t) {}
-
-    /// Construct and implicitly cast from SdfTimeCode.
-    constexpr UsdTimeCode(const SdfTimeCode &timeCode) noexcept 
-        : _value(timeCode.GetValue()) {}
+    constexpr UsdTimeCode(double t = 0.0) : _value(t) {}
 
     /// Produce a UsdTimeCode representing the lowest/earliest possible
     /// timeCode.  Thus, for any given timeSample \em s, its time ordinate 
@@ -127,12 +113,6 @@ public:
     SafeStep(double maxValue=1e6, double maxCompression=10.0) {
         return std::numeric_limits<double>::epsilon() *
             maxValue * maxCompression * 2.0;
-    }
-
-    /// Return true if this time represents the lowest/earliest possible
-    /// timeCode, false otherwise.
-    bool IsEarliestTime() const {
-        return IsNumeric() && (_value == std::numeric_limits<double>::lowest());
     }
 
     /// Return true if this time represents the 'default' sentinel value, false
@@ -205,14 +185,11 @@ private:
     double _value;
 };
 
-// Stream I/O operators.
+// Stream insertion.
 USD_API
 std::ostream& operator<<(std::ostream& os, const UsdTimeCode& time);
-
-USD_API
-std::istream& operator>>(std::istream& is, UsdTimeCode& time);
 
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_USD_TIME_CODE_H
+#endif // USD_TIMECODE_H

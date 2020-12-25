@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithAssetImportData.h"
 
@@ -15,7 +15,7 @@
 #if WITH_EDITORONLY_DATA
 
 #if WITH_EDITOR
-bool UDatasmithSceneImportData::CanEditChange(const FProperty* InProperty) const
+bool UDatasmithSceneImportData::CanEditChange(const UProperty* InProperty) const
 {
 	if (!Super::CanEditChange(InProperty))
 	{

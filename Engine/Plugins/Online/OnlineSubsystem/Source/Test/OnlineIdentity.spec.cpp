@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "OnlineSubsystem.h"
 #include "Online.h"
@@ -1222,9 +1222,9 @@ void FOnlineIdentitySpec::Define()
 						{
 							TestEqual("Verify that bLoginWasSuccessful returns as: True", bLoginWasSuccessful, true);
 
-							FPlatformUserId PlatformId = PLATFORMUSERID_NONE;
+							FPlatformUserId PlatformId = -1;
 							PlatformId = OnlineIdentity->GetPlatformUserIdFromUniqueNetId(LoginUserId);
-							TestNotEqual("Verify that the PlatformId is populated", PlatformId, PLATFORMUSERID_NONE);
+							TestNotEqual("Verify that the PlatformId is populated", PlatformId, -1);
 
 							TestDone.Execute();
 						}));

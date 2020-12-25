@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 using UnrealBuildTool;
 using System.IO;
@@ -25,7 +25,7 @@ namespace UnrealBuildTool.Rules
             {
                 PrivateIncludePaths.Add(EngineDir + "/Source/Runtime/VulkanRHI/Private/Windows");
             }
-            else if (Target.Platform != UnrealTargetPlatform.HoloLens)
+            else
             {
                 PrivateIncludePaths.Add(EngineDir + "/Source/Runtime/VulkanRHI/Private/" + Target.Platform);
             }
@@ -45,60 +45,48 @@ namespace UnrealBuildTool.Rules
                     "HeadMountedDisplay",
                     "Slate",
                     "SlateCore",
-					"AugmentedReality",
-				}
+                    "OpenGLDrv",
+                    "VulkanRHI",
+                    "OpenXR"
+                }
 				);
 
-			if (Target.bBuildEditor == true)
+            if (Target.bBuildEditor == true)
             {
                 PrivateDependencyModuleNames.Add("UnrealEd");
-			}
+            }
 
-            if (Target.Platform == UnrealTargetPlatform.Win32 || Target.Platform == UnrealTargetPlatform.Win64 || Target.Platform == UnrealTargetPlatform.HoloLens)
+            AddEngineThirdPartyPrivateStaticDependencies(Target, "OpenXR");
+            AddEngineThirdPartyPrivateStaticDependencies(Target, "OpenGL");
+
+            if (Target.Platform == UnrealTargetPlatform.Win32 || Target.Platform == UnrealTargetPlatform.Win64)
             {
                 PrivateDependencyModuleNames.AddRange(new string[] {
-					"D3D11RHI",
-					"D3D12RHI"
-				});
+                    "D3D11RHI",
+                    "D3D12RHI"
+                });
 
                 // Required for some private headers needed for the rendering support.
                 PrivateIncludePaths.AddRange(
                     new string[] {
                             Path.Combine(EngineDir, @"Source\Runtime\Windows\D3D11RHI\Private"),
                             Path.Combine(EngineDir, @"Source\Runtime\Windows\D3D11RHI\Private\Windows"),
-							Path.Combine(EngineDir, @"Source\Runtime\D3D12RHI\Private"),
-							Path.Combine(EngineDir, @"Source\Runtime\D3D12RHI\Private\Windows")
-								});
+                            Path.Combine(EngineDir, @"Source\Runtime\D3D12RHI\Private"),
+                            Path.Combine(EngineDir, @"Source\Runtime\D3D12RHI\Private\Windows")
+                                });
 
                 AddEngineThirdPartyPrivateStaticDependencies(Target, "DX11");
-				AddEngineThirdPartyPrivateStaticDependencies(Target, "DX12");
-				AddEngineThirdPartyPrivateStaticDependencies(Target, "NVAPI");
+                AddEngineThirdPartyPrivateStaticDependencies(Target, "DX12");
+                AddEngineThirdPartyPrivateStaticDependencies(Target, "NVAPI");
                 AddEngineThirdPartyPrivateStaticDependencies(Target, "AMD_AGS");
                 AddEngineThirdPartyPrivateStaticDependencies(Target, "NVAftermath");
 				AddEngineThirdPartyPrivateStaticDependencies(Target, "IntelMetricsDiscovery");
-				AddEngineThirdPartyPrivateStaticDependencies(Target, "IntelExtensionsFramework");
+
+                // Vulkan
+                {
+                    AddEngineThirdPartyPrivateStaticDependencies(Target, "Vulkan");
+                }
             }
-
-            if (Target.Platform == UnrealTargetPlatform.Win32 || Target.Platform == UnrealTargetPlatform.Win64)
-            {
-                PrivateDependencyModuleNames.AddRange(new string[] {
-                    "OpenGLDrv",
-                });
-
-                AddEngineThirdPartyPrivateStaticDependencies(Target, "OpenGL");
-			}
-
-            if (Target.Platform != UnrealTargetPlatform.HoloLens)
-            {
-                PrivateDependencyModuleNames.AddRange(new string[] {
-                    "VulkanRHI"
-                });
-
-                AddEngineThirdPartyPrivateStaticDependencies(Target, "Vulkan");
-            }
-
-            PublicDependencyModuleNames.Add("HeadMountedDisplay");
-			PublicIncludePathModuleNames.Add("OpenXR");
-		}
+        }
 	}
 }

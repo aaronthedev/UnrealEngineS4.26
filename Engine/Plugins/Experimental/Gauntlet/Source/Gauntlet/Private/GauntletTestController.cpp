@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GauntletTestController.h"
 #include "Engine/Engine.h"
@@ -69,6 +69,5 @@ void UGauntletTestController::EndTest(int32 ExitCode /*= 0*/)
 	UE_LOG(LogGauntlet, Display, TEXT("**** TEST COMPLETE. EXIT CODE: %d ****"), ExitCode);
 	// we flush logs because we don't (currently...) want to treat shutdown errors as failures
 	GLog->PanicFlushThreadedLogs();
-	// force exit only if platform doesn't support quitting
-	FPlatformMisc::RequestExit(!FPlatformProperties::SupportsQuit());
+	FPlatformMisc::RequestExit(1);
 }

@@ -5,8 +5,6 @@ set(LLVM_LINK_COMPONENTS
   BitReader
   BitWriter
   Core
-  DXIL
-  DxilRootSignature
   IPO
   IRReader
   InstCombine
@@ -55,8 +53,6 @@ add_clang_library(clangCodeGen
   CGExprScalar.cpp
   CGHLSLRuntime.cpp
   CGHLSLMS.cpp
-  CGHLSLMSFinishCodeGen.cpp
-  CGHLSLRootSignature.cpp
   CGLoopInfo.cpp
   CGObjC.cpp
   # CGObjCGNU.cpp # HLSL Change - no definitions used

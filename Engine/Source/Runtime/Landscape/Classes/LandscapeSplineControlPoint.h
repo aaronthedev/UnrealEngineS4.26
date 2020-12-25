@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -60,8 +60,8 @@ class ULandscapeSplineControlPoint : public UObject
 	UPROPERTY(EditAnywhere, Category=LandscapeSpline)
 	FRotator Rotation;
 
-	/** Half-Width of the spline at this point. */
-	UPROPERTY(EditAnywhere, Category=LandscapeSpline, meta = (DisplayName = "Half-Width"))
+	/** Width of the spline at this point. */
+	UPROPERTY(EditAnywhere, Category=LandscapeSpline)
 	float Width;
 
 	/** Layer Width ratio of the spline at this point. */
@@ -120,6 +120,10 @@ class ULandscapeSplineControlPoint : public UObject
 	UPROPERTY(EditAnywhere, Category=Mesh)
 	FVector MeshScale;
 
+	/** Whether to hide the mesh in game */
+	UPROPERTY(EditAnywhere, Category=Mesh, AdvancedDisplay)
+	uint8 bHiddenInGame:1;
+	
 	UPROPERTY()
 	uint32 bEnableCollision_DEPRECATED:1;
 
@@ -130,14 +134,6 @@ class ULandscapeSplineControlPoint : public UObject
 	/** Whether the Control Point Mesh should cast a shadow. */
 	UPROPERTY(EditAnywhere, Category=Mesh)
 	uint32 bCastShadow:1;
-
-	/** Whether to hide the mesh in game */
-	UPROPERTY(EditAnywhere, Category = Mesh, AdvancedDisplay)
-	uint8 bHiddenInGame : 1;
-
-	/** Whether control point mesh should be placed in landscape proxy streaming level (true) or the spline's level (false) */
-	UPROPERTY(EditAnywhere, Category = Mesh, AdvancedDisplay)
-	uint32 bPlaceSplineMeshesInStreamingLevels : 1;
 
 	/**  Max draw distance for the mesh used on this control point */
 	UPROPERTY(EditAnywhere, Category=Mesh, AdvancedDisplay, meta=(DisplayName="Max Draw Distance"))
@@ -154,27 +150,19 @@ class ULandscapeSplineControlPoint : public UObject
 	UPROPERTY(EditAnywhere, Category=Mesh, AdvancedDisplay)
 	int32 TranslucencySortPriority;
 
-	/** If true, this component will be rendered in the CustomDepth pass (usually used for outlines) */
-	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = Mesh, meta = (DisplayName = "Render CustomDepth Pass"))
-	uint8 bRenderCustomDepth : 1;
-
-	/** Mask used for stencil buffer writes. */
-	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = Mesh, meta = (editcondition = "bRenderCustomDepth"))
-	ERendererStencilMask CustomDepthStencilWriteMask;
-
-	/** Optionally write this 0-255 value to the stencil buffer in CustomDepth pass (Requires project setting or r.CustomDepth == 3) */
-	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = Mesh, meta = (UIMin = "0", UIMax = "255", editcondition = "bRenderCustomDepth", DisplayName = "CustomDepth Stencil Value"))
-	int32 CustomDepthStencilValue;
+	/** Whether control point mesh should be placed in landscape proxy streaming level (true) or the spline's level (false) */
+	UPROPERTY(EditAnywhere, Category=Mesh, AdvancedDisplay)
+	uint32 bPlaceSplineMeshesInStreamingLevels : 1;
 
 	/** 
-	 * Array of runtime virtual textures into which we draw the spline segment. 
+	 * Array of runtime virtual textures into which we render the spline segment. 
 	 * The material also needs to be set up to output to a virtual texture. 
 	 */
-	UPROPERTY(EditAnywhere, Category = VirtualTexture, meta = (DisplayName = "Draw in Virtual Textures"))
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = VirtualTexture, meta = (DisplayName = "Render to Virtual Textures"))
 	TArray<URuntimeVirtualTexture*> RuntimeVirtualTextures;
 
 	/** Lod bias for rendering to runtime virtual texture. */
-	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = VirtualTexture, meta = (DisplayName = "Virtual Texture LOD Bias", UIMin = "-7", UIMax = "8"))
+	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = VirtualTexture, meta = (DisplayName = "Virtual Texture LOD Bias", UIMin = "-7", UIMax = "8"))
 	int32 VirtualTextureLodBias = 0;
 
 	/**
@@ -182,15 +170,15 @@ class ULandscapeSplineControlPoint : public UObject
 	 * Larger values reduce the effective draw distance in the runtime virtual texture.
 	 * This culling method doesn't take into account primitive size or virtual texture size.
 	 */
-	UPROPERTY(EditAnywhere, AdvancedDisplay,  Category = VirtualTexture, meta = (DisplayName = "Virtual Texture Skip Mips", UIMin = "0", UIMax = "7"))
+	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = VirtualTexture, meta = (DisplayName = "Virtual Texture Skip Mips", UIMin = "0", UIMax = "7"))
 	int32 VirtualTextureCullMips = 0;
 
 	/** Desired cull distance in the main pass if we are rendering to both the virtual texture AND the main pass. A value of 0 has no effect. */
-	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = VirtualTexture, meta = (DisplayName = "Max Draw Distance in Main Pass"))
+	UPROPERTY(EditAnywhere, AdvancedDisplay, BlueprintReadOnly, Category = VirtualTexture, meta = (DisplayName = "Max Draw Distance in Main Pass"))
 	float VirtualTextureMainPassMaxDrawDistance = 0.f;
 
-	/** Controls if this component draws in the main pass as well as in the virtual texture. */
-	UPROPERTY(EditAnywhere, Category = VirtualTexture, meta = (DisplayName = "Draw in Main Pass"))
+	/** Render to the main pass based on the virtual texture settings. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = VirtualTexture, meta = (DisplayName = "Virtual Texture Pass Type"))
 	ERuntimeVirtualTextureMainPassType VirtualTextureRenderPassType = ERuntimeVirtualTextureMainPassType::Exclusive;
 
 	/** Mesh Collision Settings */
@@ -282,5 +270,4 @@ public:
 #endif // WITH_EDITOR
 
 	friend class FLandscapeToolSplines;
-	friend class ULandscapeInfo;
 };

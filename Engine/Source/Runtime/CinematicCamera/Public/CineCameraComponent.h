@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -46,16 +46,16 @@ struct FCameraFilmbackSettings
 };
 
 /** A named bundle of filmback settings used to implement filmback presets */
-USTRUCT(BlueprintType)
+USTRUCT()
 struct FNamedFilmbackPreset
 {
 	GENERATED_USTRUCT_BODY()
 
 	/** Name for the preset. */
-	UPROPERTY(BlueprintReadWrite, Category = "Filmback")
+	UPROPERTY()
 	FString Name;
 
-	UPROPERTY(BlueprintReadWrite, Category = "Filmback")
+	UPROPERTY()
 	FCameraFilmbackSettings FilmbackSettings;
 };
 
@@ -67,23 +67,12 @@ struct FCameraLensSettings
 {
 	GENERATED_USTRUCT_BODY()
 
-	/** Default constructor, initializing with default values */
-	FCameraLensSettings()
-		: MinFocalLength(50.f)
-		, MaxFocalLength(50.f)
-		, MinFStop(2.f)
-		, MaxFStop(2.f)
-		, MinimumFocusDistance(15.f)
-		, DiaphragmBladeCount(FPostProcessSettings::kDefaultDepthOfFieldBladeCount)
-	{
-	}
-
 	/** Minimum focal length for this lens */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lens", meta = (ForceUnits = mm, ClampMin = "0.001"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lens", meta = (ForceUnits = mm))
 	float MinFocalLength;
 
 	/** Maximum focal length for this lens */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lens", meta = (ForceUnits = mm, ClampMin = "0.001"))
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lens", meta = (ForceUnits = mm))
 	float MaxFocalLength;
 
 	/** Minimum aperture for this lens (e.g. 2.8 for an f/2.8 lens) */
@@ -131,19 +120,14 @@ struct FNamedLensPreset
 UENUM()
 enum class ECameraFocusMethod : uint8
 {
-	/** Don't override, ie. allow post process volume settings to persist. */
-	DoNotOverride,
+	/** Disables DoF entirely. */
+	None,
 
 	/** Allows for specifying or animating exact focus distances. */
 	Manual,
 
 	/** Locks focus to specific object. */
 	Tracking,
-
-	/** Disable depth of field entirely. */
-	Disable,
-
-	MAX UMETA(Hidden)
 };
 
 /** Settings to control tracking-focus mode. */
@@ -278,7 +262,7 @@ public:
 	virtual void SetFieldOfView(float InFieldOfView) override;
 	
 	UFUNCTION(BlueprintCallable, BlueprintSetter, Category = "Cine Camera")
-	void SetCurrentFocalLength(float InFocalLength);
+	void SetCurrentFocalLength(const float& InFocalLength);
 
 	/** Returns the horizonal FOV of the camera with current settings. */
 	UFUNCTION(BlueprintCallable, Category = "Cine Camera")
@@ -307,10 +291,6 @@ public:
 	/** Set the current lens settings by preset name. */
 	UFUNCTION(BlueprintCallable, Category = "Cine Camera")
 	void SetLensPresetByName(const FString& InPresetName);
-
-	/** Returns a copy of the list of available filmback presets. */
-	UFUNCTION(BlueprintCallable, Category = "Cine Camera")
-	static TArray<FNamedFilmbackPreset> GetFilmbackPresetsCopy();
 
 	/** Returns a copy of the list of available lens presets. */
 	UFUNCTION(BlueprintCallable, Category = "Cine Camera")

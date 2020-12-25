@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LandscapeProxyUIDetails.h"
 #include "Widgets/DeclarativeSyntaxSupport.h"
@@ -102,18 +102,6 @@ void FLandscapeProxyUIDetails::CustomizeDetails( IDetailLayoutBuilder& DetailBui
 				.ValueContent()
 				[
 					GenerateTextWidget(FText::Format(LOCTEXT("LandscapeCountValue", "{0}"), LandscapeCount), true)
-				];
-
-				int32 TotalComponentCount = LandscapeInfo->XYtoComponentMap.Num();
-				RowDisplayText = LOCTEXT("TotalLandscapeComponentCount", "Total Component Count");
-				CategoryBuilder.AddCustomRow(RowDisplayText)
-				.NameContent()
-				[
-					GenerateTextWidget(RowDisplayText)
-				]
-				.ValueContent()
-				[
-					GenerateTextWidget(FText::Format(LOCTEXT("TotalLandscapeComponentCountValue", "{0}"), TotalComponentCount), true)
 				];
 
 				LandscapeInfo->GetLandscapeExtent(Rect.Min.X, Rect.Min.Y, Rect.Max.X, Rect.Max.Y);

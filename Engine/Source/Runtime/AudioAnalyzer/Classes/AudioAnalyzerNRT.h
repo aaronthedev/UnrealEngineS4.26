@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /** Interface for Non Real-Time (NRT) Audio Analyzer UObjects. */
 
@@ -139,7 +139,7 @@ class AUDIOANALYZER_API UAudioAnalyzerNRT : public UAudioAnalyzerAsset
 		 * if the UPROPERTY is a UAudioAnalyzerNRTSettings. If so, the previous settings' 
 		 * AnalyzeAudioDelegate will be unbound from this object's AnalyzeAudio()
 		 */
-		void PreEditChange(FProperty* PropertyAboutToChange) override;
+		void PreEditChange(UProperty* PropertyAboutToChange) override;
 
 		/**
 		 * Called when a UPROPERTY of this class is edited. Triggering 
@@ -178,7 +178,7 @@ class AUDIOANALYZER_API UAudioAnalyzerNRT : public UAudioAnalyzerAsset
 	private:
 
 		// Returns UAudioAnalyzerNRTSettings* if property points to a valid UAudioAnalyzerNRTSettings, otherwise returns nullptr.
-		UAudioAnalyzerNRTSettings* GetSettingsFromProperty(FProperty* Property);
+		UAudioAnalyzerNRTSettings* GetSettingsFromProperty(UProperty* Property);
 
 		TSharedPtr<Audio::IAnalyzerNRTResult, ESPMode::ThreadSafe> Result;
 

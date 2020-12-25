@@ -1,10 +1,10 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "CoreTypes.h"
 #include "Misc/AssertionMacros.h"
 #include "ProfilingDebugging/ExternalProfiler.h"
 #include "Features/IModularFeatures.h"
-#include "HAL/PlatformProcess.h"
+#include "Windows/WindowsPlatformProcess.h"
 #include "Templates/UniquePtr.h"
 
 #if UE_EXTERNAL_PROFILING_ENABLED
@@ -32,7 +32,7 @@ public:
 	{
 		if( DLLHandle != NULL )
 		{
-			FWindowsPlatformProcess::FreeDllHandle( DLLHandle );
+			FPlatformProcess::FreeDllHandle( DLLHandle );
 			DLLHandle = NULL;
 		}
 		IModularFeatures::Get().UnregisterModularFeature( FExternalProfiler::GetFeatureName(), this );
@@ -76,17 +76,17 @@ public:
 		check( DLLHandle == NULL );
 
 		// Try to load the VTune DLL
-		DLLHandle = FWindowsPlatformProcess::GetDllHandle( TEXT( "aqProf.dll" ) );
+		DLLHandle = FPlatformProcess::GetDllHandle( TEXT( "aqProf.dll" ) );
 		if( DLLHandle != NULL )
 		{
 			// Get API function pointers of interest
 			// "EnableProfiling"
-			EnableProfiling = (EnableProfilingFunctionPtr)FWindowsPlatformProcess::GetDllExport( DLLHandle, TEXT( "EnableProfiling" ) );
+			EnableProfiling = (EnableProfilingFunctionPtr)FPlatformProcess::GetDllExport( DLLHandle, TEXT( "EnableProfiling" ) );
 
 			if( EnableProfiling == NULL )
 			{
 				// Couldn't find the function we need.  AQtime support will not be active.
-				FWindowsPlatformProcess::FreeDllHandle( DLLHandle );
+				FPlatformProcess::FreeDllHandle( DLLHandle );
 				DLLHandle = NULL;
 			}
 		}

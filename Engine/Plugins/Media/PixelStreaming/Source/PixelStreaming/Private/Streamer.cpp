@@ -1,6 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Streamer.h"
+#include "Codecs/PixelStreamingNvVideoEncoder.h"
+#include "Codecs/PixelStreamingAmfVideoEncoder.h"
 #include "AudioCapturer.h"
 #include "VideoCapturer.h"
 #include "PlayerSession.h"
@@ -11,15 +13,15 @@
 #include "Modules/ModuleManager.h"
 #include "WebSocketsModule.h"
 #include "HAL/Thread.h"
-#include "Misc/ScopeLock.h"
 
 DEFINE_LOG_CATEGORY(PixelStreamer);
 
-extern TAutoConsoleVariable<int32> CVarPixelStreamingEncoderMaxBitrate;
-
 bool FStreamer::CheckPlatformCompatibility()
 {
-	return AVEncoder::FVideoEncoderFactory::FindFactory(TEXT("h264")) ? true : false;
+	return 
+		FPixelStreamingNvVideoEncoder::CheckPlatformCompatibility() ||
+		FPixelStreamingAmfVideoEncoder::CheckPlatformCompatibility();
+
 }
 
 FStreamer::FStreamer(const FString& InSignallingServerUrl):
@@ -27,46 +29,21 @@ FStreamer::FStreamer(const FString& InSignallingServerUrl):
 {
 	RedirectWebRtcLogsToUE4(rtc::LoggingSeverity::LS_VERBOSE);
 
-	FModuleManager::LoadModuleChecked<IModuleInterface>(TEXT("AVEncoder"));
-
 	// required for communication with Signalling Server and must be called in the game thread, while it's used in signalling thread
 	FModuleManager::LoadModuleChecked<FWebSocketsModule>("WebSockets");
 
 	FParse::Value(FCommandLine::Get(), TEXT("WebRtcPlanB"), *reinterpret_cast<uint8*>(&bPlanB));
 
-	AVEncoder::FVideoEncoderFactory* UEVideoEncoderFactory = AVEncoder::FVideoEncoderFactory::FindFactory(TEXT("h264"));
-	if (!UEVideoEncoderFactory)
+	if (FPixelStreamingNvVideoEncoder::CheckPlatformCompatibility())
 	{
-		UE_LOG(PixelStreamer, Fatal, TEXT("No video encoder found"));
+		HWEncoder = MakeUnique<FPixelStreamingNvVideoEncoder>();
+	}
+	else
+	{
+		HWEncoder = MakeUnique<FPixelStreamingAmfVideoEncoder>();
 	}
 
-	HWEncoderDetails.InitialMaxFPS = GEngine->GetMaxFPS();
-	if (HWEncoderDetails.InitialMaxFPS == 0)
-	{
-		check(IsInGameThread());
-		HWEncoderDetails.InitialMaxFPS = 60;
-		GEngine->SetMaxFPS(HWEncoderDetails.InitialMaxFPS);
-	}
-
-	HWEncoderDetails.Encoder = UEVideoEncoderFactory->CreateEncoder(TEXT("h264"));
-	if (!HWEncoderDetails.Encoder)
-	{
-		UE_LOG(PixelStreamer, Fatal, TEXT("Could not create video encoder"));
-	}
-
-	AVEncoder::FVideoEncoderConfig Cfg;
-	Cfg.Width = 1920;
-	Cfg.Height = 1080;
-	Cfg.Framerate = 60;
-	Cfg.MaxBitrate = CVarPixelStreamingEncoderMaxBitrate.GetValueOnAnyThread();
-	Cfg.Bitrate = FMath::Min((uint32)1000000, Cfg.MaxBitrate);
-	Cfg.Preset = AVEncoder::FVideoEncoderConfig::EPreset::LowLatency;
-	if (!HWEncoderDetails.Encoder->Initialize(Cfg))
-	{
-		UE_LOG(PixelStreamer, Fatal, TEXT("Could not initialize video encoder"));
-	}
-
-	VideoEncoderFactoryStrong = std::make_unique<FVideoEncoderFactory>(HWEncoderDetails);
+	VideoEncoderFactoryStrong = std::make_unique<FVideoEncoderFactory>(*HWEncoder);
 
 	// #HACK: Keep a pointer to the Video encoder factory, so we can use it to figure out the
 	// FPlayerSession <-> FVideoEncoder relationship later on
@@ -81,7 +58,6 @@ FStreamer::~FStreamer()
 	// stop WebRtc WndProc thread
 	PostThreadMessage(WebRtcSignallingThreadId, WM_QUIT, 0, 0);
 	WebRtcSignallingThread->Join();
-	HWEncoderDetails.Encoder->Shutdown();
 }
 
 void FStreamer::WebRtcSignallingThreadFunc()
@@ -147,8 +123,6 @@ void FStreamer::OnFrameBufferReady(const FTexture2DRHIRef& FrameBuffer)
 	{
 		VideoCapturer->OnFrameReady(FrameBuffer);
 	}
-
-	SendVideoEncoderQP();
 }
 
 void FStreamer::OnConfig(const webrtc::PeerConnectionInterface::RTCConfiguration& Config)
@@ -195,7 +169,6 @@ FPlayerSession* FStreamer::GetPlayerSession(FPlayerId PlayerId)
 
 void FStreamer::DeleteAllPlayerSessions()
 {
-	FScopeLock PlayersLock(&PlayersCS);
 	while (Players.Num() > 0)
 	{
 		DeletePlayerSession(Players.CreateIterator().Key());
@@ -215,7 +188,6 @@ void FStreamer::CreatePlayerSession(FPlayerId PlayerId)
 		// With unified plan, we get several calls to OnOffer, which in turn calls
 		// this several times.
 		// Therefore, we only try to create the player if not created already
-		FScopeLock PlayersLock(&PlayersCS);
 		if (Players.Find(PlayerId))
 		{
 			return;
@@ -225,17 +197,12 @@ void FStreamer::CreatePlayerSession(FPlayerId PlayerId)
 	webrtc::FakeConstraints Constraints;
 	Constraints.AddOptional(webrtc::MediaConstraintsInterface::kEnableDtlsSrtp, "true");
 
-	// this is called from WebRTC signalling thread, the only thread were `Players` map is modified, so no need to lock it
 	bool bOriginalQualityController = Players.Num() == 0; // first player controls quality by default
 	TUniquePtr<FPlayerSession> Session = MakeUnique<FPlayerSession>(*this, PlayerId, bOriginalQualityController);
 	rtc::scoped_refptr<webrtc::PeerConnectionInterface> PeerConnection = PeerConnectionFactory->CreatePeerConnection(PeerConnectionConfig, webrtc::PeerConnectionDependencies{ Session.Get() });
 	check(PeerConnection);
 	Session->SetPeerConnection(PeerConnection);
-
-	{
-		FScopeLock PlayersLock(&PlayersCS);
-		Players.Add(PlayerId) = MoveTemp(Session);
-	}
+	Players.Add(PlayerId) = MoveTemp(Session);
 }
 
 void FStreamer::DeletePlayerSession(FPlayerId PlayerId)
@@ -249,11 +216,7 @@ void FStreamer::DeletePlayerSession(FPlayerId PlayerId)
 
 	bool bWasQualityController = Player->IsQualityController();
 
-	{
-		FScopeLock PlayersLock(&PlayersCS);
-		Players.Remove(PlayerId);
-	}
-	// this is called from WebRTC signalling thread, the only thread were `Players` map is modified, so no need to lock it
+	Players.Remove(PlayerId);
 	if (Players.Num() == 0)
 	{
 		bStreamingStarted = false;
@@ -311,7 +274,7 @@ void FStreamer::AddStreams(FPlayerId PlayerId)
 
 			Stream->AddTrack(AudioTrackLocal);
 
-			auto VideoCapturerStrong = std::make_unique<FVideoCapturer>(HWEncoderDetails);
+			auto VideoCapturerStrong = std::make_unique<FVideoCapturer>(*HWEncoder);
 			VideoCapturer = VideoCapturerStrong.get();
 			rtc::scoped_refptr<webrtc::VideoTrackInterface> VideoTrackLocal(PeerConnectionFactory->CreateVideoTrack(
 				VideoLabel, PeerConnectionFactory->CreateVideoSource(std::move(VideoCapturerStrong))));
@@ -338,7 +301,7 @@ void FStreamer::AddStreams(FPlayerId PlayerId)
 
 		if (!VideoTrack)
 		{
-			auto VideoCapturerStrong = std::make_unique<FVideoCapturer>(HWEncoderDetails);
+			auto VideoCapturerStrong = std::make_unique<FVideoCapturer>(*HWEncoder);
 			VideoCapturer = VideoCapturerStrong.get();
 			VideoTrack = PeerConnectionFactory->CreateVideoTrack(
 				VideoLabel, PeerConnectionFactory->CreateVideoSource(std::move(VideoCapturerStrong)));
@@ -361,8 +324,6 @@ void FStreamer::AddStreams(FPlayerId PlayerId)
 void FStreamer::OnQualityOwnership(FPlayerId PlayerId)
 {
 	checkf(GetPlayerSession(PlayerId), TEXT("player %d not found"), PlayerId);
-
-	FScopeLock PlayersLock(&PlayersCS);
 	for (auto&& PlayerEntry : Players)
 	{
 		FPlayerSession& Player = *PlayerEntry.Value;
@@ -372,25 +333,19 @@ void FStreamer::OnQualityOwnership(FPlayerId PlayerId)
 
 void FStreamer::SendPlayerMessage(PixelStreamingProtocol::EToPlayerMsg Type, const FString& Descriptor)
 {
-	UE_LOG(PixelStreamer, Verbose, TEXT("SendPlayerMessage: %d - %s"), static_cast<int32>(Type), *Descriptor);
-
-	FScopeLock PlayersLock(&PlayersCS);
+	UE_LOG(PixelStreamer, Log, TEXT("SendPlayerMessage: %d - %s"), static_cast<int32>(Type), *Descriptor);
 	for (auto&& PlayerEntry : Players)
 	{
 		PlayerEntry.Value->SendMessage(Type, Descriptor);
 	}
 }
 
-void FStreamer::SendFreezeFrame(const TArray64<uint8>& JpegBytes)
+void FStreamer::SendFreezeFrame(const TArray<uint8>& JpegBytes)
 {
 	UE_LOG(PixelStreamer, Log, TEXT("Sending freeze frame to players: %d bytes"), JpegBytes.Num());
-
+	for (auto&& PlayerEntry : Players)
 	{
-		FScopeLock PlayersLock(&PlayersCS);
-		for (auto&& PlayerEntry : Players)
-		{
-			PlayerEntry.Value->SendFreezeFrame(JpegBytes);
-		}
+		PlayerEntry.Value->SendFreezeFrame(JpegBytes);
 	}
 
 	CachedJpegBytes = JpegBytes;
@@ -409,28 +364,10 @@ void FStreamer::SendUnfreezeFrame()
 {
 	UE_LOG(PixelStreamer, Log, TEXT("Sending unfreeze message to players"));
 
+	for (auto&& PlayerEntry : Players)
 	{
-		FScopeLock PlayersLock(&PlayersCS);
-		for (auto&& PlayerEntry : Players)
-		{
-			PlayerEntry.Value->SendUnfreezeFrame();
-		}
+		PlayerEntry.Value->SendUnfreezeFrame();
 	}
 
 	CachedJpegBytes.Empty();
-}
-
-void FStreamer::SendVideoEncoderQP()
-{
-	if (HWEncoderDetails.LastAvgQP != FHWEncoderDetails::InvalidQP)
-	{
-		VideoEncoderAvgQP.Update(HWEncoderDetails.LastAvgQP);
-	}
-
-	double Now = FPlatformTime::Seconds();
-	if (Now - LastVideoEncoderQPReportTime > 1)
-	{
-		SendPlayerMessage(PixelStreamingProtocol::EToPlayerMsg::VideoEncoderAvgQP, FString::Printf(TEXT("%.0f"), VideoEncoderAvgQP.Get()));
-		LastVideoEncoderQPReportTime = Now;
-	}
 }

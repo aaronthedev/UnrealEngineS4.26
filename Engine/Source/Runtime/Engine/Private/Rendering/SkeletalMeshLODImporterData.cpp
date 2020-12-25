@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #if WITH_EDITOR
 
@@ -10,15 +10,12 @@
 #include "Rendering/SkeletalMeshModel.h"
 #include "Engine/SkeletalMesh.h"
 #include "Factories/FbxSkeletalMeshImportData.h"
-#include "Misc/ScopedSlowTask.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogSkeletalMeshLODImporterData, Log, All);
 
 void FSkeletalMeshImportData::CopyDataNeedByMorphTargetImport(FSkeletalMeshImportData& Other) const
 {
-	//The points array is the only data we need to compute the morph target in the skeletalmesh build
 	Other.Points = Points;
-	//PointToRawMap should not be save when saving morph target data, we only need it temporary to gather the point from the fbx shape
 	Other.PointToRawMap = PointToRawMap;
 	Other.bDiffPose = bDiffPose;
 	Other.bUseT0AsRefPose = bUseT0AsRefPose;
@@ -138,7 +135,7 @@ bool FSkeletalMeshImportData::ReplaceSkeletalMeshGeometryImportData(const USkele
 
 	//Load the original skeletal mesh import data
 	FSkeletalMeshImportData OriginalSkeletalMeshImportData;
-	SkeletalMesh->LoadLODImportedData(LodIndex, OriginalSkeletalMeshImportData);
+	SkeletalMeshLODModel.RawSkeletalMeshBulkData.LoadRawMesh(OriginalSkeletalMeshImportData);
 
 	//Backup the new geometry and rig to be able to apply the rig to the old geometry
 	FSkeletalMeshImportData NewGeometryAndRigData = *ImportData;
@@ -193,7 +190,7 @@ bool FSkeletalMeshImportData::ReplaceSkeletalMeshRigImportData(const USkeletalMe
 
 	//Load the original skeletal mesh import data
 	FSkeletalMeshImportData OriginalSkeletalMeshImportData;
-	SkeletalMesh->LoadLODImportedData(LodIndex, OriginalSkeletalMeshImportData);
+	SkeletalMeshLODModel.RawSkeletalMeshBulkData.LoadRawMesh(OriginalSkeletalMeshImportData);
 
 	ImportData->bDiffPose = OriginalSkeletalMeshImportData.bDiffPose;
 	ImportData->bUseT0AsRefPose = OriginalSkeletalMeshImportData.bUseT0AsRefPose;
@@ -224,17 +221,9 @@ bool FSkeletalMeshImportData::ApplyRigToGeo(FSkeletalMeshImportData& Other)
 	// new vertex will have correct bone weight apply to them.
 	TArray<TArray<int32>> OldToNewRemap;
 	OldToNewRemap.AddDefaulted(Other.Points.Num());
-	const int32 WedgeNum = Wedges.Num();
-	int32 ProgressStep = FMath::Max<int32>(1, FMath::FloorToInt((float)WedgeNum/100.0f));
-	int32 StepCount = FMath::CeilToInt((float)WedgeNum / (float)ProgressStep);
 
-	FScopedSlowTask SlowTask((float)(StepCount), NSLOCTEXT("FSkeletalMeshImportData", "FSkeletalMeshImportData_ApplyRigToGeo_MainSlowTask", "Applying skinning to geometry..."));
-	for (int32 WedgeIndex = 0; WedgeIndex < WedgeNum; ++WedgeIndex)
+	for (int32 WedgeIndex = 0, NewWedgesNum = Wedges.Num(); WedgeIndex < NewWedgesNum; ++WedgeIndex)
 	{
-		if (WedgeIndex % ProgressStep == 0)
-		{
-			SlowTask.EnterProgressFrame(1.0f);
-		}
 		const FVector2D& CurWedgeUV = Wedges[WedgeIndex].UVs[0];
 		int32 NewVertexIndex = (int32)(Wedges[WedgeIndex].VertexIndex);
 		FVector& NewPointA = Points[NewVertexIndex];
@@ -540,12 +529,6 @@ void FReductionBaseSkeletalMeshBulkData::LoadReductionData(FSkeletalMeshLODModel
 			Ar << ReductionSkeletalMeshData;
 
 			CacheGeometryInfo(BaseLODModel);
-
-			//This call will filled missing chunked data for old asset that cannot build normal and chunking (not re import since the new skeletal mesh chunk build refactor)
-			if (!BaseLODModel.bIsBuildDataAvailable)
-			{
-				BaseLODModel.UpdateChunkedSectionInfo(Owner ? Owner->GetName() : FString(TEXT("")));
-			}
 		}
 		// Unlock the bulk data
 	}
@@ -558,10 +541,13 @@ void FReductionBaseSkeletalMeshBulkData::CacheGeometryInfo(const FSkeletalMeshLO
 	for (int32 SectionIndex = 0; SectionIndex < SourceLODModel.Sections.Num(); ++SectionIndex)
 	{
 		const FSkelMeshSection& Section = SourceLODModel.Sections[SectionIndex];
-		//We count disabled section, since the render buffer contain the disabled section data. This is crucial for memory budget
-		//Make sure the count fit in a uint32
-		CacheLODVertexNumber += Section.NumVertices < 0 ? 0 : Section.NumVertices;
-		CacheLODTriNumber += Section.NumTriangles;
+
+		if (!Section.bDisabled)
+		{
+			//Make sure the count fit in a uint32
+			CacheLODVertexNumber += Section.NumVertices < 0 ? 0 : Section.NumVertices;
+			CacheLODTriNumber += Section.NumTriangles;
+		}
 	}
 }
 
@@ -646,7 +632,7 @@ FArchive& operator<<(FArchive& Ar, FSkeletalMeshImportData& RawMesh)
 	//We now save it after the processing is done so for old version we do it here when loading
 	if (Ar.IsLoading() && Version < RAW_SKELETAL_MESH_BULKDATA_VER_AlternateInfluence)
 	{
-		SkeletalMeshHelper::ProcessImportMeshInfluences(RawMesh, FString(TEXT("Unknown"))); // Not sure how to get owning mesh name at this point...
+		ProcessImportMeshInfluences(RawMesh);
 	}
 
 	
@@ -669,57 +655,22 @@ FArchive& operator<<(FArchive& Ar, FSkeletalMeshImportData& RawMesh)
 
 	if (Ar.IsLoading() && Version < RAW_SKELETAL_MESH_BULKDATA_VER_CompressMorphTargetData)
 	{
-		if (RawMesh.MorphTargetModifiedPoints.Num() != 0)
+		//Compress the morph target data
+		for (int32 MorphTargetIndex = 0; MorphTargetIndex < RawMesh.MorphTargets.Num(); ++MorphTargetIndex)
 		{
-			//Compress the morph target data
-			for (int32 MorphTargetIndex = 0; MorphTargetIndex < RawMesh.MorphTargets.Num(); ++MorphTargetIndex)
+			const TSet<uint32>& ModifiedPoints = RawMesh.MorphTargetModifiedPoints[MorphTargetIndex];
+			FSkeletalMeshImportData& ToCompressShapeImportData = RawMesh.MorphTargets[MorphTargetIndex];
+			TArray<FVector> CompressPoints;
+			CompressPoints.Reserve(ToCompressShapeImportData.Points.Num());
+			for (uint32 PointIndex : ModifiedPoints)
 			{
-				if (!RawMesh.MorphTargetModifiedPoints.IsValidIndex(MorphTargetIndex))
-				{
-					continue;
-				}
-				const TSet<uint32>& ModifiedPoints = RawMesh.MorphTargetModifiedPoints[MorphTargetIndex];
-				FSkeletalMeshImportData& ToCompressShapeImportData = RawMesh.MorphTargets[MorphTargetIndex];
-				TArray<FVector> CompressPoints;
-				CompressPoints.Reserve(ToCompressShapeImportData.Points.Num());
-				for (uint32 PointIndex : ModifiedPoints)
-				{
-					CompressPoints.Add(ToCompressShapeImportData.Points[PointIndex]);
-				}
-				ToCompressShapeImportData.Points = CompressPoints;
+				CompressPoints.Add(ToCompressShapeImportData.Points[PointIndex]);
 			}
+			ToCompressShapeImportData.Points = CompressPoints;
 		}
 	}
 
 	return Ar;
-}
-
-void FRawSkeletalMeshBulkData::Serialize(FArchive& Ar, TArray<TSharedRef<FRawSkeletalMeshBulkData>>& RawSkeltalMeshBulkDatas, UObject* Owner)
-{
-	Ar.CountBytes(RawSkeltalMeshBulkDatas.Num() * sizeof(FRawSkeletalMeshBulkData), RawSkeltalMeshBulkDatas.Num() * sizeof(FRawSkeletalMeshBulkData));
-	if (Ar.IsLoading())
-	{
-		// Load array.
-		int32 NewNum;
-		Ar << NewNum;
-		RawSkeltalMeshBulkDatas.Empty(NewNum);
-		for (int32 Index = 0; Index < NewNum; Index++)
-		{
-			int32 NewEntryIndex = RawSkeltalMeshBulkDatas.Add(MakeShared<FRawSkeletalMeshBulkData>());
-			check(NewEntryIndex == Index);
-			RawSkeltalMeshBulkDatas[Index].Get().Serialize(Ar, Owner);
-		}
-	}
-	else
-	{
-		// Save array.
-		int32 Num = RawSkeltalMeshBulkDatas.Num();
-		Ar << Num;
-		for (int32 Index = 0; Index < Num; Index++)
-		{
-			RawSkeltalMeshBulkDatas[Index].Get().Serialize(Ar, Owner);
-		}
-	}
 }
 
 void FRawSkeletalMeshBulkData::Serialize(FArchive& Ar, UObject* Owner)
@@ -854,10 +805,6 @@ FByteBulkData& FRawSkeletalMeshBulkData::GetBulkData()
 	return BulkData;
 }
 
-const FByteBulkData& FRawSkeletalMeshBulkData::GetBulkData() const
-{
-	return BulkData;
-}
 
 /************************************************************************
 * FWedgePosition
@@ -944,36 +891,54 @@ void FOctreeQueryHelper::FindNearestWedgeIndexes(const FVector& SearchPosition, 
 	{
 		return;
 	}
-
+	float MinSquaredDistance = MAX_FLT;
 	OutNearestWedges.Empty();
-	const float OctreeExtent = WedgePosOctree->GetRootBounds().Extent.Size3();
-	//Use the max between 1e-4 cm and 1% of the bounding box extend
-	FVector Extend(FMath::Max(KINDA_SMALL_NUMBER, OctreeExtent*0.005f));
-
-	//Pass Extent size % of the Octree bounding box extent
-	//PassIndex 0 -> 0.5%
-	//PassIndex n -> 0.05*n
-	//PassIndex 1 -> 5%
-	//PassIndex 2 -> 10%
-	//...
-	for(int32 PassIndex = 0; PassIndex < 5; ++PassIndex)
+	
+	FVector Extend(2.0f);
+	for (int i = 0; i < 2; ++i)
 	{
-		// Query the octree to find the vertices close(inside the extend) to the SearchPosition
-		WedgePosOctree->FindElementsWithBoundsTest(FBoxCenterAndExtent(SearchPosition, Extend), [&OutNearestWedges](const FWedgeInfo& WedgeInfo)
+		TWedgeInfoPosOctree::TConstIterator<> OctreeIter((*WedgePosOctree));
+		// Iterate through the octree attempting to find the vertices closest to the current new point
+		while (OctreeIter.HasPendingNodes())
 		{
+			const TWedgeInfoPosOctree::FNode& CurNode = OctreeIter.GetCurrentNode();
+			const FOctreeNodeContext& CurContext = OctreeIter.GetCurrentContext();
+
+			// Find the child of the current node, if any, that contains the current new point
+
+			//The first shot is an intersection with a 1 CM cube box around the search position, this ensure we dont fall in the wrong neighbourg
+			FOctreeChildNodeSubset ChilNodesSubset = CurContext.GetIntersectingChildren(FBoxCenterAndExtent(SearchPosition, Extend));
+			FOREACH_OCTREE_CHILD_NODE(OctreeChildRef)
+			{
+				if (ChilNodesSubset.Contains(OctreeChildRef) && CurNode.HasChild(OctreeChildRef))
+				{
+					OctreeIter.PushChild(OctreeChildRef);
+				}
+			}
 			// Add all of the elements in the current node to the list of points to consider for closest point calculations
-			OutNearestWedges.Add(WedgeInfo);
-		});
-		if (OutNearestWedges.Num() == 0)
-		{
-			float ExtentPercent = 0.05f*((float)PassIndex+1.0f);
-			Extend = FVector(FMath::Max(KINDA_SMALL_NUMBER, OctreeExtent * ExtentPercent));
+			for (const FWedgeInfo& WedgeInfo : CurNode.GetElements())
+			{
+				float VectorDelta = FVector::DistSquared(SearchPosition, WedgeInfo.Position);
+				MinSquaredDistance = FMath::Min(VectorDelta, MinSquaredDistance);
+				OutNearestWedges.Add(WedgeInfo);
+			}
+			OctreeIter.Advance();
 		}
-		else
+
+		if (i == 0)
 		{
-			break;
+			float MinDistance = FMath::Sqrt(MinSquaredDistance);
+			if (MinDistance < Extend.X)
+			{
+				//We found the closest points
+				break;
+			}
+			OutNearestWedges.Empty();
+			//Change the extend to the distance we found so we are sure to find any closer point in the neighbourg
+			Extend = FVector(MinDistance + KINDA_SMALL_NUMBER);
 		}
 	}
+
 }
 
 void FWedgePosition::FillWedgePosition(

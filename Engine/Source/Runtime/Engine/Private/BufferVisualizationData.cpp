@@ -1,10 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 #include "BufferVisualizationData.h"
 #include "HAL/IConsoleManager.h"
 #include "Materials/Material.h"
 #include "Misc/ConfigCacheIni.h"
-
-#define LOCTEXT_NAMESPACE "FBufferVisualizationData"
 
 static FBufferVisualizationData GBufferVisualizationData;
 
@@ -31,7 +29,6 @@ void FBufferVisualizationData::Initialize()
 		if (AllowDebugViewmodes())
 		{
 			check(MaterialMap.Num() == 0);
-			check(MaterialMapFromMaterialName.Num() == 0);
 
 			FConfigSection* MaterialSection = GConfig->GetSectionPrivate( TEXT("Engine.BufferVisualizationMaterials"), false, true, GEngineIni );
 
@@ -39,20 +36,10 @@ void FBufferVisualizationData::Initialize()
 			{
 				for (FConfigSection::TIterator It(*MaterialSection); It; ++It)
 				{
-					FString EnabledCVar;
-					if (FParse::Value(*It.Value().GetValue(), TEXT("Display="), EnabledCVar, true))
-					{
-						IConsoleVariable* CVar = IConsoleManager::Get().FindConsoleVariable(*EnabledCVar);
-						if (CVar && !CVar->GetBool())
-						{
-							continue;
-						}
-					}
-
 					FString MaterialName;
 					if( FParse::Value( *It.Value().GetValue(), TEXT("Material="), MaterialName, true ) )
 					{
-						UMaterialInterface* Material = LoadObject<UMaterialInterface>(NULL, *MaterialName);
+						UMaterial* Material = LoadObject<UMaterial>(NULL, *MaterialName);
 			
 						if (Material)
 						{
@@ -63,7 +50,6 @@ void FBufferVisualizationData::Initialize()
 							FText DisplayName;
 							FParse::Value( *It.Value().GetValue(), TEXT("Name="), DisplayName, TEXT("Engine.BufferVisualizationMaterials") );
 							Rec.DisplayName = DisplayName;
-							MaterialMapFromMaterialName.Add(Material->GetFName(), Rec);
 						}
 					}
 				}
@@ -87,7 +73,7 @@ void FBufferVisualizationData::ConfigureConsoleCommand()
 		{
 		}
 
-		void ProcessValue(const FString& InMaterialName, const UMaterialInterface* InMaterial, const FText& InDisplayName)
+		void ProcessValue(const FString& InMaterialName, const UMaterial* InMaterial, const FText& InDisplayName)
 		{
 			Message += FString(TEXT("\n  "));
 			Message += InMaterialName;
@@ -110,61 +96,23 @@ void FBufferVisualizationData::ConfigureConsoleCommand()
 	ConsoleDocumentationOverviewTargets = TEXT("Specify the list of post process materials that can be used in the buffer visualization overview. Put nothing between the commas to leave a gap.\n\n\tChoose from:\n");
 	ConsoleDocumentationOverviewTargets += AvailableVisualizationMaterials;
 
-	IConsoleManager::Get().RegisterConsoleVariable(
-		TEXT("r.BufferVisualizationOverviewTargets"),
-		TEXT("BaseColor,Specular,SubsurfaceColor,WorldNormal,SeparateTranslucencyRGB,,,WorldTangent,SeparateTranslucencyA,,,Opacity,SceneDepth,Roughness,Metallic,ShadingModel,,SceneDepthWorldUnits,SceneColor,PreTonemapHDRColor,PostTonemapHDRColor"),
+	IConsoleManager::Get().RegisterConsoleVariable(TEXT("r.BufferVisualizationOverviewTargets"),
+		TEXT("BaseColor,Specular,SubsurfaceColor,WorldNormal,SeparateTranslucencyRGB,,,Opacity,SeparateTranslucencyA,,,,SceneDepth,Roughness,Metallic,ShadingModel,,SceneDepthWorldUnits,SceneColor,PreTonemapHDRColor,PostTonemapHDRColor"), 
 		*ConsoleDocumentationOverviewTargets,
-		ECVF_Default
-		);
+		ECVF_Default);
 }
 
-UMaterialInterface* FBufferVisualizationData::GetMaterial(FName InMaterialName)
+UMaterial* FBufferVisualizationData::GetMaterial(FName InMaterialName)
 {
-	// Get UMaterial from the TMaterialMap FName
-	if (const Record* Result = MaterialMap.Find(InMaterialName))
+	Record* Result = MaterialMap.Find(InMaterialName);
+	if (Result)
 	{
 		return Result->Material;
 	}
-	// Get UMaterial from the UMaterial FName
-	// Almost all BufferVisualizationData variables contain a FMaterial with its same FName.
-	// But not all, e.g., ShadingModel uses the FMaterial LightingModel. This could confuse the developer depending on which one he is using
-	// This "else if" case handles the case in which we look for "LightingModel" rather than "ShadingModel", returning the same value
-	else if (const Record* ResultFromMaterialName = MaterialMapFromMaterialName.Find(InMaterialName))
-	{
-		return ResultFromMaterialName->Material;
-	}
-	// Not found
 	else
 	{
-		return nullptr;
+		return NULL;
 	}
-}
-
-FText FBufferVisualizationData::GetMaterialDisplayName(FName InMaterialName) const
-{
-	// Get UMaterial from the TMaterialMap FName
-	if (const Record* Result = MaterialMap.Find(InMaterialName))
-	{
-		return Result->DisplayName;
-	}
-	// Get UMaterial from the UMaterial FName
-	// Almost all BufferVisualizationData variables contain a FMaterial with its same FName.
-	// But not all, e.g., ShadingModel uses the FMaterial LightingModel. This could confuse the developer depending on which one he is using
-	// This "else if" case handles the case in which we look for "LightingModel" rather than "ShadingModel", returning the same value
-	else if (const Record* ResultFromMaterialName = MaterialMapFromMaterialName.Find(InMaterialName))
-	{
-		return ResultFromMaterialName->DisplayName;
-	}
-	// Not found
-	else
-	{
-		return FText::GetEmpty();
-	}
-}
-
-FText FBufferVisualizationData::GetMaterialDefaultDisplayName()
-{
-	return LOCTEXT("BufferVisualization", "Overview");
 }
 
 void FBufferVisualizationData::SetCurrentOverviewMaterialNames(const FString& InNameList)
@@ -177,7 +125,7 @@ bool FBufferVisualizationData::IsDifferentToCurrentOverviewMaterialNames(const F
 	return InNameList != CurrentOverviewMaterialNames;
 }
 
-TArray<UMaterialInterface*>& FBufferVisualizationData::GetOverviewMaterials()
+TArray<UMaterial*>& FBufferVisualizationData::GetOverviewMaterials()
 {
 	return OverviewMaterials;
 }
@@ -191,5 +139,3 @@ FBufferVisualizationData& GetBufferVisualizationData()
 
 	return GBufferVisualizationData;
 }
-
-#undef LOCTEXT_NAMESPACE

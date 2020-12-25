@@ -1,4 +1,4 @@
-# Copyright Epic Games, Inc. All Rights Reserved.
+# Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 # /*=============================================================================
 #	LLDB Data Formatters for Unreal Types
@@ -10,9 +10,7 @@ import lldb.formatters.Logger
 # Uncomment the line below to have the data formatters emit debug logging
 # lldb.formatters.Logger._lldb_formatters_debug_level=1
 
-# What documentation there is for parsing values in LLDB can be found here:
-# https://lldb.llvm.org/python_reference/index.html
-# https://lldb.llvm.org/python_reference/lldb.SBValue-class.html
+# What documentation there is for parsing values in LLDB can be found here: http://lldb.llvm.org/cpp_reference/html/classlldb_1_1SBValue.html
 
 # To install:
 # 1) Open Terminal and run:
@@ -56,50 +54,40 @@ def UE4FStringSummaryProvider(valobj,dict):
         Val = str(ValRef.GetSummary())
         return 'string=' + Val
 
-def UE4FNameEntrySummaryProvider(valobj,dict):
-    Header = valobj.GetChildMemberWithName('Header')
-    DataPtr = valobj.GetChildAtIndex(1).AddressOf().GetValueAsUnsigned(0)
-    IsWide = Header.GetChildMemberWithName('bIsWide').GetValueAsUnsigned(0)
-    Len = min(Header.GetChildMemberWithName('Len').GetValueAsUnsigned(0), 1023)
-    if IsWide:
-        SizeOfTChar = valobj.CreateValueFromExpression('size', 'sizeof(TCHAR))').GetValueAsUnsigned(0)
-        Encoding = "utf-16" if SizeOfTChar == 2 else "utf-32"
-        NumBytes = Len * SizeOfTChar
-        Data = valobj.process.ReadMemory(DataPtr,NumBytes,lldb.SBError())
-        Name = Data.decode(Encoding).encode("utf-8")
-    else:
-        Name = valobj.process.ReadMemory(DataPtr,Len,lldb.SBError())
-    return 'name=%s' % Name
-
 def UE4FNameSummaryProvider(valobj,dict):
-    EntryId = valobj.GetChildMemberWithName('DisplayIndex')
-    if not EntryId.IsValid():
-        EntryId = valobj.GetChildMemberWithName('ComparisonIndex')
-    if not EntryId.IsValid():
-        EntryId = valobj.GetChildMemberWithName('Index')
-    Index = EntryId.GetChildMemberWithName('Value').GetValueAsUnsigned(0)
-    Number = valobj.GetChildMemberWithName('Number').GetValueAsUnsigned(0)
-
-    # FNameDebugVisualizer::OffsetBits = 16
-    # FNameDebugVisualizer::OffsetMask = (1 << OffsetBits) - 1 = 65535
-    NameEntryExpr = '(FNameEntry*)(GNameBlocksDebug['+str(Index)+' >> 16]+((alignof(FNameEntry) * ('+str(Index)+' & 65535))))'
-    NameEntry = valobj.CreateValueFromExpression('NameEntry', NameEntryExpr)
-    NameStr = UE4FNameEntrySummaryProvider(NameEntry, dict)
-    if Number != 0:
-        return '%s_%s' % (NameStr, Number-1)
+    Index = valobj.GetChildMemberWithName('DisplayIndex')
+    if not Index.IsValid():
+        Index = valobj.GetChildMemberWithName('ComparisonIndex')
+    IndexVal = Index.GetValueAsUnsigned(0)
+    if IndexVal >= 4194304:
+        return 'name=Invalid'
     else:
-        return '%s' % NameStr
+        Expr = '(char*)((FNameEntry&)GNameBlocksDebug['+str(IndexVal)+' >> FNameDebugVisualizer::OffsetBits][FNameDebugVisualizer::EntryStride * ('+str(IndexVal)+' & FNameDebugVisualizer::OffsetMask)]).AnsiName'
+        FNameRef = valobj.CreateValueFromExpression(str(IndexVal), Expr)
+        assert FNameRef != None
+        Val = FNameRef.GetSummary()
+        if IndexVal != 0:
+            return 'name=' + Val + '_' + str(IndexVal-1)
+        else:
+            return 'name=' + Val
+			
+def UE4FMinimalNameSummaryProvider(valobj,dict):
+    Index = valobj.GetChildMemberWithName('Index')
+    IndexVal = Index.GetValueAsUnsigned(0)
+    if IndexVal >= 4194304:
+        return 'name=Invalid'
+    else:
+        Expr = '(char*)((FNameEntry&)GNameBlocksDebug['+str(IndexVal)+' >> FNameDebugVisualizer::OffsetBits][FNameDebugVisualizer::EntryStride * ('+str(IndexVal)+' & FNameDebugVisualizer::OffsetMask)]).AnsiName'
+        FNameRef = valobj.CreateValueFromExpression(str(IndexVal), Expr)
+        assert FNameRef != None
+        Val = FNameRef.GetSummary()
+        if IndexVal == 0:
+            return 'name=' + Val + '_' + str(IndexVal-1)
+        else:
+            return 'name=' + Val
 
 def UE4UObjectBaseSummaryProvider(valobj,dict):
-    Name = valobj.GetChildMemberWithName('NamePrivate')
-    return Name.GetSummary()
-
-def UE4FFieldClassSummaryProvider(valobj,dict):
     Name = valobj.GetChildMemberWithName('Name')
-    return Name.GetSummary()
-
-def UE4FFieldSummaryProvider(valobj,dict):
-    Name = valobj.GetChildMemberWithName('NamePrivate')
     return Name.GetSummary()
 
 class UE4TWeakObjectPtrSynthProvider:
@@ -659,14 +647,11 @@ def UE4MapSummaryProvider(valobj,dict):
 def __lldb_init_module(debugger,dict):
     debugger.HandleCommand('type summary add -F UE4DataFormatters.UE4TCharSummaryProvider -e TCHAR -w UE4DataFormatters')
     debugger.HandleCommand('type summary add -F UE4DataFormatters.UE4FStringSummaryProvider -e -x "FString$" -w UE4DataFormatters')
-    debugger.HandleCommand('type summary add -F UE4DataFormatters.UE4FNameEntrySummaryProvider -e -x "FNameEntry$" -w UE4DataFormatters')
     debugger.HandleCommand('type summary add -F UE4DataFormatters.UE4FNameSummaryProvider -e -x "FName$" -w UE4DataFormatters')
-    debugger.HandleCommand('type summary add -F UE4DataFormatters.UE4FNameSummaryProvider -e -x "FMinimalName$" -w UE4DataFormatters')
+    debugger.HandleCommand('type summary add -F UE4DataFormatters.UE4FMinimalNameSummaryProvider -e -x "UE4FMinimalName$" -w UE4DataFormatters')
     debugger.HandleCommand('type summary add -F UE4DataFormatters.UE4UObjectBaseSummaryProvider -e UObject -w UE4DataFormatters')
     debugger.HandleCommand('type summary add -F UE4DataFormatters.UE4UObjectBaseSummaryProvider -e UObjectBase -w UE4DataFormatters')
     debugger.HandleCommand('type summary add -F UE4DataFormatters.UE4UObjectBaseSummaryProvider -e UObjectBaseUtility -w UE4DataFormatters')
-    debugger.HandleCommand('type summary add -F UE4DataFormatters.UE4FFieldClassSummaryProvider -e FFieldClass -w UE4DataFormatters')
-    debugger.HandleCommand('type summary add -F UE4DataFormatters.UE4FFieldSummaryProvider -e FField -w UE4DataFormatters')
     debugger.HandleCommand('type summary add -F UE4DataFormatters.UE4FWeakObjectPtrSummaryProvider -e FWeakObjectPtr -w UE4DataFormatters')
     debugger.HandleCommand('type synthetic add -l UE4DataFormatters.UE4TWeakObjectPtrSynthProvider -x "TWeakObjectPtr<.+>$" -w UE4DataFormatters')
     debugger.HandleCommand('type synthetic add -l UE4DataFormatters.UE4TWeakObjectPtrSynthProvider -x "TAutoWeakObjectPtr<.+>$" -w UE4DataFormatters')

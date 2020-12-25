@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "LiveLinkMessageBusFinder.h"
 
@@ -7,7 +7,6 @@
 #include "ILiveLinkClient.h"
 #include "LiveLinkMessages.h"
 #include "LiveLinkMessageBusSource.h"
-#include "LiveLinkMessageBusSourceFactory.h"
 #include "MessageEndpointBuilder.h"
 
 
@@ -92,15 +91,7 @@ void ULiveLinkMessageBusFinder::ConnectToProvider(UPARAM(ref) FProviderPollResul
 	{
 		ILiveLinkClient* LiveLinkClient = &ModularFeatures.GetModularFeature<ILiveLinkClient>(ILiveLinkClient::ModularFeatureName);
 		TSharedPtr<FLiveLinkMessageBusSource> NewSource = MakeShared<FLiveLinkMessageBusSource>(FText::FromString(Provider.Name), FText::FromString(Provider.MachineName), Provider.Address, Provider.MachineTimeOffset);
-		FGuid NewSourceGuid = LiveLinkClient->AddSource(NewSource);
-		if (NewSourceGuid.IsValid())
-		{
-			if (ULiveLinkSourceSettings* Settings = LiveLinkClient->GetSourceSettings(NewSourceGuid))
-			{
-				Settings->ConnectionString = ULiveLinkMessageBusSourceFactory::CreateConnectionString(Provider);
-				Settings->Factory = ULiveLinkMessageBusSourceFactory::StaticClass();
-			}
-		}
+		LiveLinkClient->AddSource(NewSource);
 		SourceHandle.SetSourcePointer(NewSource);
 	}
 	else

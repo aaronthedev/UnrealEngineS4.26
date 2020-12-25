@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	Movement.cpp: Character movement implementation
@@ -23,6 +23,7 @@
 #include "Engine/Canvas.h"
 #include "AI/Navigation/PathFollowingAgentInterface.h"
 #include "AI/Navigation/AvoidanceManager.h"
+#include "Engine.h"
 #include "Components/BrushComponent.h"
 #include "Misc/App.h"
 
@@ -98,22 +99,6 @@ static const FString PerfCounter_NumServerMoveCorrections = TEXT("NumServerMoveC
 // CVars
 namespace CharacterMovementCVars
 {
-	// Use newer RPCs and RPC parameter serialization that allow variable length data without changing engine APIs.
-	static int32 NetUsePackedMovementRPCs = 1;
-	FAutoConsoleVariableRef CVarNetUsePackedMovementRPCs(
-		TEXT("p.NetUsePackedMovementRPCs"),
-		NetUsePackedMovementRPCs,
-		TEXT("Whether to use newer movement RPC parameter packed serialization. If disabled, old deprecated movement RPCs will be used instead.\n")
-		TEXT("0: Disable, 1: Enable"),
-		ECVF_Default);
-
-	static int32 NetPackedMovementMaxBits = 2048;
-	FAutoConsoleVariableRef CVarNetPackedMovementMaxBits(
-		TEXT("p.NetPackedMovementMaxBits"),
-		NetPackedMovementMaxBits,
-		TEXT("Max number of bits allowed in each packed movement RPC. Used to protect against bad data causing the server to allocate too much memory.\n"),
-		ECVF_Default);
-
 	// Listen server smoothing
 	static int32 NetEnableListenServerSmoothing = 1;
 	FAutoConsoleVariableRef CVarNetEnableListenServerSmoothing(
@@ -537,10 +522,6 @@ UCharacterMovementComponent::UCharacterMovementComponent(const FObjectInitialize
 
 	ClientPredictionData = NULL;
 	ServerPredictionData = NULL;
-	SetNetworkMoveDataContainer(DefaultNetworkMoveDataContainer);
-	SetMoveResponseDataContainer(DefaultMoveResponseDataContainer);
-	ServerMoveBitWriter.SetAllowResize(true);
-	MoveResponseBitWriter.SetAllowResize(true);
 
 	// This should be greater than tolerated player timeout * 2.
 	MinTimeBetweenTimeStampResets = 4.f * 60.f; 
@@ -614,7 +595,7 @@ void UCharacterMovementComponent::PostEditChangeProperty(FPropertyChangedEvent& 
 {
 	Super::PostEditChangeProperty(PropertyChangedEvent);
 
-	const FProperty* PropertyThatChanged = PropertyChangedEvent.MemberProperty;
+	const UProperty* PropertyThatChanged = PropertyChangedEvent.MemberProperty;
 	if (PropertyThatChanged && PropertyThatChanged->GetFName() == GET_MEMBER_NAME_CHECKED(UCharacterMovementComponent, WalkableFloorAngle))
 	{
 		// Compute WalkableFloorZ from the Angle.
@@ -646,9 +627,8 @@ void UCharacterMovementComponent::OnRegister()
 	if (bIsReplay)
 	{
 		// At least one of these conditions will be true
-		const UDemoNetDriver* DemoNetDriver = MyWorld ? MyWorld->GetDemoNetDriver() : nullptr;
-		const bool bHasInterpolationData = DemoNetDriver && (DemoNetDriver->GetPlaybackDemoVersion() < HISTORY_CHARACTER_MOVEMENT_NOINTERP);
-		const bool bHasRepMovement = DemoNetDriver && (DemoNetDriver->GetPlaybackDemoVersion() >= HISTORY_CHARACTER_MOVEMENT);
+		const bool bHasInterpolationData = MyWorld && MyWorld->DemoNetDriver && (MyWorld->DemoNetDriver->GetPlaybackDemoVersion() < HISTORY_CHARACTER_MOVEMENT_NOINTERP);
+		const bool bHasRepMovement = MyWorld && MyWorld->DemoNetDriver && (MyWorld->DemoNetDriver->GetPlaybackDemoVersion() >= HISTORY_CHARACTER_MOVEMENT);
 
 		if (CharacterMovementCVars::ReplayUseInterpolation == 1)
 		{
@@ -817,11 +797,6 @@ bool UCharacterMovementComponent::HasValidData() const
 	}
 #endif
 	return bIsValid;
-}
-
-bool UCharacterMovementComponent::ShouldUsePackedMovementRPCs() const
-{
-	return CharacterMovementCVars::NetUsePackedMovementRPCs != 0;
 }
 
 FCollisionShape UCharacterMovementComponent::GetPawnCapsuleCollisionShape(const EShrinkCapsuleExtent ShrinkMode, const float CustomShrinkAmount) const
@@ -1109,9 +1084,6 @@ void UCharacterMovementComponent::OnMovementModeChanged(EMovementMode PreviousMo
 	// Update collision settings if needed
 	if (MovementMode == MOVE_NavWalking)
 	{
-		// Reset cached nav location used by NavWalking
-		CachedNavLocation = FNavLocation();
-
 		GroundMovementMode = MovementMode;
 		// Walking uses only XY velocity
 		Velocity.Z = 0.f;
@@ -1346,9 +1318,28 @@ void UCharacterMovementComponent::TickComponent(float DeltaTime, enum ELevelTick
 		}
 
 		// Allow root motion to move characters that have no controller.
-		if (CharacterOwner->IsLocallyControlled() || (!CharacterOwner->Controller && bRunPhysicsWithNoController) || (!CharacterOwner->Controller && CharacterOwner->IsPlayingRootMotion()))
+		if( CharacterOwner->IsLocallyControlled() || (!CharacterOwner->Controller && bRunPhysicsWithNoController) || (!CharacterOwner->Controller && CharacterOwner->IsPlayingRootMotion()) )
 		{
-			ControlledCharacterMove(InputVector, DeltaTime);
+			{
+				SCOPE_CYCLE_COUNTER(STAT_CharUpdateAcceleration);
+
+				// We need to check the jump state before adjusting input acceleration, to minimize latency
+				// and to make sure acceleration respects our potentially new falling state.
+				CharacterOwner->CheckJumpInput(DeltaTime);
+
+				// apply input to acceleration
+				Acceleration = ScaleInputAcceleration(ConstrainInputAcceleration(InputVector));
+				AnalogInputModifier = ComputeAnalogInputModifier();
+			}
+
+			if (CharacterOwner->GetLocalRole() == ROLE_Authority)
+			{
+				PerformMovement(DeltaTime);
+			}
+			else if (bIsClient)
+			{
+				ReplicateMoveToServer(DeltaTime, Acceleration);
+			}
 		}
 		else if (CharacterOwner->GetRemoteRole() == ROLE_AutonomousProxy)
 		{
@@ -1469,12 +1460,9 @@ void UCharacterMovementComponent::SimulatedTick(float DeltaSeconds)
 		UpdateComponentVelocity();
 		bJustTeleported = false;
 
-		if (CharacterOwner)
-		{
-			CharacterOwner->RootMotionRepMoves.Empty();
-			CurrentRootMotion.Clear();
-			CharacterOwner->SavedRootMotion.Clear();
-		}
+		CharacterOwner->RootMotionRepMoves.Empty();
+		CurrentRootMotion.Clear();
+		CharacterOwner->SavedRootMotion.Clear();
 
 		// Note: we do not call the Super implementation, that runs prediction.
 		// We do still need to call these though
@@ -1496,7 +1484,7 @@ void UCharacterMovementComponent::SimulatedTick(float DeltaSeconds)
 		UE_LOG(LogRootMotion, Verbose, TEXT("UCharacterMovementComponent::SimulatedTick"));
 
 		// Tick animations before physics.
-		if( CharacterOwner && CharacterOwner->GetMesh() )
+		if( CharacterOwner->GetMesh() )
 		{
 			TickCharacterPose(DeltaSeconds);
 
@@ -1515,15 +1503,15 @@ void UCharacterMovementComponent::SimulatedTick(float DeltaSeconds)
 
 #if !(UE_BUILD_SHIPPING)
 			// debug
-			if (CharacterOwner && false)
+			if (false)
 			{
 				const FRotator OldRotation = OldRotationQuat.Rotator();
 				const FRotator NewRotation = UpdatedComponent->GetComponentRotation();
 				const FVector NewLocation = UpdatedComponent->GetComponentLocation();
-				DrawDebugCoordinateSystem(GetWorld(), CharacterOwner->GetMesh()->GetComponentLocation() + FVector(0,0,1), NewRotation, 50.f, false);
+				DrawDebugCoordinateSystem(GetWorld(), CharacterOwner->GetMesh()->GetComponentLocation() + FVector(0,0,1), NewRotation, 50.f, false); //-V595
 				DrawDebugLine(GetWorld(), OldLocation, NewLocation, FColor::Red, false, 10.f);
 
-				UE_LOG(LogRootMotion, Log,  TEXT("UCharacterMovementComponent::SimulatedTick DeltaMovement Translation: %s, Rotation: %s, MovementBase: %s"),
+				UE_LOG(LogRootMotion, Log,  TEXT("UCharacterMovementComponent::SimulatedTick DeltaMovement Translation: %s, Rotation: %s, MovementBase: %s"), //-V595
 					*(NewLocation - OldLocation).ToCompactString(), *(NewRotation - OldRotation).GetNormalized().ToCompactString(), *GetNameSafe(CharacterOwner->GetMovementBase()) );
 			}
 #endif // !(UE_BUILD_SHIPPING)
@@ -1576,7 +1564,7 @@ void UCharacterMovementComponent::SimulatedTick(float DeltaSeconds)
 		PerformMovement(DeltaSeconds);
 
 		// After movement correction, smooth out error in position if any.
-		if( bCorrectedToServer || CurrentRootMotion.NeedsSimulatedSmoothing() )
+		if( bCorrectedToServer )
 		{
 			SmoothCorrection(OldLocation, OldRotation, UpdatedComponent->GetComponentLocation(), UpdatedComponent->GetComponentQuat());
 		}
@@ -1788,8 +1776,6 @@ void UCharacterMovementComponent::SimulateMovement(float DeltaSeconds)
 			}
 		}
 
-		UpdateCharacterStateBeforeMovement(DeltaSeconds);
-
 		if (MovementMode != MOVE_None)
 		{
 			//TODO: Also ApplyAccumulatedForces()?
@@ -1887,8 +1873,6 @@ void UCharacterMovementComponent::SimulateMovement(float DeltaSeconds)
 		{
 			UE_LOG(LogCharacterMovement, Verbose, TEXT("Proxy %s SKIPPING simulate movement"), *GetNameSafe(CharacterOwner));
 		}
-
-		UpdateCharacterStateAfterMovement(DeltaSeconds);
 
 		// consume path following requested velocity
 		bHasRequestedVelocity = false;
@@ -2456,16 +2440,6 @@ void UCharacterMovementComponent::PerformMovement(float DeltaSeconds)
 			// Root Motion has been used, clear
 			RootMotionParams.Clear();
 		}
-		else if (CurrentRootMotion.HasActiveRootMotionSources())
-		{
-			FQuat RootMotionRotationQuat;
-			if (CharacterOwner && UpdatedComponent && CurrentRootMotion.GetOverrideRootMotionRotation(DeltaSeconds, *CharacterOwner, *this, RootMotionRotationQuat))
-			{
-				const FQuat OldActorRotationQuat = UpdatedComponent->GetComponentQuat();
-				const FQuat NewActorRotationQuat = RootMotionRotationQuat * OldActorRotationQuat;
-				MoveUpdatedComponent(FVector::ZeroVector, NewActorRotationQuat, true);
-			}
-		}
 
 		// consume path following requested velocity
 		bHasRequestedVelocity = false;
@@ -2569,28 +2543,25 @@ void UCharacterMovementComponent::SaveBaseLocation()
 	}
 
 	const UPrimitiveComponent* MovementBase = CharacterOwner->GetMovementBase();
-	if (MovementBase)
+	if (MovementBaseUtility::UseRelativeLocation(MovementBase) && !CharacterOwner->IsMatineeControlled())
 	{
-		// Read transforms into OldBaseLocation, OldBaseQuat. Do this regardless of whether the object is movable, since mobility can change.
+		// Read transforms into OldBaseLocation, OldBaseQuat
 		MovementBaseUtility::GetMovementBaseTransform(MovementBase, CharacterOwner->GetBasedMovement().BoneName, OldBaseLocation, OldBaseQuat);
 
-		if (MovementBaseUtility::UseRelativeLocation(MovementBase) && !CharacterOwner->IsMatineeControlled())
-		{
-			// Relative Location
-			const FVector RelativeLocation = UpdatedComponent->GetComponentLocation() - OldBaseLocation;
+		// Location
+		const FVector RelativeLocation = UpdatedComponent->GetComponentLocation() - OldBaseLocation;
 
-			// Rotation
-			if (bIgnoreBaseRotation)
-			{
-				// Absolute rotation
-				CharacterOwner->SaveRelativeBasedMovement(RelativeLocation, UpdatedComponent->GetComponentRotation(), false);
-			}
-			else
-			{
-				// Relative rotation
-				const FRotator RelativeRotation = (FQuatRotationMatrix(UpdatedComponent->GetComponentQuat()) * FQuatRotationMatrix(OldBaseQuat).GetTransposed()).Rotator();
-				CharacterOwner->SaveRelativeBasedMovement(RelativeLocation, RelativeRotation, true);
-			}
+		// Rotation
+		if (bIgnoreBaseRotation)
+		{
+			// Absolute rotation
+			CharacterOwner->SaveRelativeBasedMovement(RelativeLocation, UpdatedComponent->GetComponentRotation(), false);
+		}
+		else
+		{
+			// Relative rotation
+			const FRotator RelativeRotation = (FQuatRotationMatrix(UpdatedComponent->GetComponentQuat()) * FQuatRotationMatrix(OldBaseQuat).GetTransposed()).Rotator();
+			CharacterOwner->SaveRelativeBasedMovement(RelativeLocation, RelativeRotation, true);
 		}
 	}
 }
@@ -2688,10 +2659,10 @@ void UCharacterMovementComponent::Crouch(bool bClientSimulation)
 	CharacterOwner->OnStartCrouch( HalfHeightAdjust, ScaledHalfHeightAdjust );
 
 	// Don't smooth this change in mesh position
-	if ((bClientSimulation && CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy) || (IsNetMode(NM_ListenServer) && CharacterOwner->GetRemoteRole() == ROLE_AutonomousProxy))
+	if (bClientSimulation && CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy)
 	{
 		FNetworkPredictionData_Client_Character* ClientData = GetPredictionData_Client_Character();
-		if (ClientData)
+		if (ClientData && ClientData->MeshTranslationOffset.Z != 0.f)
 		{
 			ClientData->MeshTranslationOffset -= FVector(0.f, 0.f, MeshAdjust);
 			ClientData->OriginalMeshTranslationOffset = ClientData->MeshTranslationOffset;
@@ -2833,10 +2804,10 @@ void UCharacterMovementComponent::UnCrouch(bool bClientSimulation)
 	CharacterOwner->OnEndCrouch( HalfHeightAdjust, ScaledHalfHeightAdjust );
 
 	// Don't smooth this change in mesh position
-	if ((bClientSimulation && CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy) || (IsNetMode(NM_ListenServer) && CharacterOwner->GetRemoteRole() == ROLE_AutonomousProxy))
+	if (bClientSimulation && CharacterOwner->GetLocalRole() == ROLE_SimulatedProxy)
 	{
 		FNetworkPredictionData_Client_Character* ClientData = GetPredictionData_Client_Character();
-		if (ClientData)
+		if (ClientData && ClientData->MeshTranslationOffset.Z != 0.f)
 		{
 			ClientData->MeshTranslationOffset += FVector(0.f, 0.f, MeshAdjust);
 			ClientData->OriginalMeshTranslationOffset = ClientData->MeshTranslationOffset;
@@ -2846,32 +2817,24 @@ void UCharacterMovementComponent::UnCrouch(bool bClientSimulation)
 
 void UCharacterMovementComponent::UpdateCharacterStateBeforeMovement(float DeltaSeconds)
 {
-	// Proxies get replicated crouch state.
-	if (CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy)
+	// Check for a change in crouch state. Players toggle crouch by changing bWantsToCrouch.
+	const bool bIsCrouching = IsCrouching();
+	if (bIsCrouching && (!bWantsToCrouch || !CanCrouchInCurrentState()))
 	{
-		// Check for a change in crouch state. Players toggle crouch by changing bWantsToCrouch.
-		const bool bIsCrouching = IsCrouching();
-		if (bIsCrouching && (!bWantsToCrouch || !CanCrouchInCurrentState()))
-		{
-			UnCrouch(false);
-		}
-		else if (!bIsCrouching && bWantsToCrouch && CanCrouchInCurrentState())
-		{
-			Crouch(false);
-		}
+		UnCrouch(false);
+	}
+	else if (!bIsCrouching && bWantsToCrouch && CanCrouchInCurrentState())
+	{
+		Crouch(false);
 	}
 }
 
 void UCharacterMovementComponent::UpdateCharacterStateAfterMovement(float DeltaSeconds)
 {
-	// Proxies get replicated crouch state.
-	if (CharacterOwner->GetLocalRole() != ROLE_SimulatedProxy)
+	// Uncrouch if no longer allowed to be crouched
+	if (IsCrouching() && !CanCrouchInCurrentState())
 	{
-		// Uncrouch if no longer allowed to be crouched
-		if (IsCrouching() && !CanCrouchInCurrentState())
-		{
-			UnCrouch(false);
-		}
+		UnCrouch(false);
 	}
 }
 
@@ -3299,11 +3262,6 @@ void UCharacterMovementComponent::CalcVelocity(float DeltaTime, float Friction, 
 	}
 }
 
-bool UCharacterMovementComponent::ShouldComputeAccelerationToReachRequestedVelocity(const float RequestedSpeed) const
-{
-	// Compute acceleration if accelerating toward requested speed, 1% buffer.
-	return bRequestedMoveUseAcceleration && Velocity.SizeSquared() < FMath::Square(RequestedSpeed * 1.01f);
-}
 
 bool UCharacterMovementComponent::ApplyRequestedMove(float DeltaTime, float MaxAccel, float MaxSpeed, float Friction, float BrakingDeceleration, FVector& OutAcceleration, float& OutRequestedSpeed)
 {
@@ -3326,7 +3284,7 @@ bool UCharacterMovementComponent::ApplyRequestedMove(float DeltaTime, float MaxA
 		// Compute acceleration. Use MaxAccel to limit speed increase, 1% buffer.
 		FVector NewAcceleration = FVector::ZeroVector;
 		const float CurrentSpeedSq = Velocity.SizeSquared();
-		if (ShouldComputeAccelerationToReachRequestedVelocity(RequestedSpeed))
+		if (bRequestedMoveUseAcceleration && CurrentSpeedSq < FMath::Square(RequestedSpeed * 1.01f))
 		{
 			// Turn in the same manner as with input acceleration.
 			const float VelSize = FMath::Sqrt(CurrentSpeedSq);
@@ -3595,29 +3553,14 @@ FVector UCharacterMovementComponent::GetVelocityForRVOConsideration()
 	return Velocity;
 }
 
-void UCharacterMovementComponent::SetAvoidanceGroupMask(int32 GroupFlags)
-{
-	AvoidanceGroup.SetFlagsDirectly(GroupFlags);
-}
-
 int32 UCharacterMovementComponent::GetAvoidanceGroupMask()
 {
 	return AvoidanceGroup.Packed;
 }
 
-void UCharacterMovementComponent::SetGroupsToAvoidMask(int32 GroupFlags)
-{
-	GroupsToAvoid.SetFlagsDirectly(GroupFlags);
-}
-
 int32 UCharacterMovementComponent::GetGroupsToAvoidMask()
 {
 	return GroupsToAvoid.Packed;
-}
-
-void UCharacterMovementComponent::SetGroupsToIgnoreMask(int32 GroupFlags)
-{
-	GroupsToIgnore.SetFlagsDirectly(GroupFlags);
 }
 
 int32 UCharacterMovementComponent::GetGroupsToIgnoreMask()
@@ -4398,7 +4341,7 @@ void UCharacterMovementComponent::PhysFalling(float deltaTime, int32 Iterations)
 				if (subTimeTickRemaining > KINDA_SMALL_NUMBER && !bJustTeleported)
 				{
 					const FVector NewVelocity = (Delta / subTimeTickRemaining);
-					Velocity = HasAnimRootMotion() || CurrentRootMotion.HasOverrideVelocityWithIgnoreZAccumulate() ? FVector(Velocity.X, Velocity.Y, NewVelocity.Z) : NewVelocity;
+					Velocity = HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity() ? FVector(Velocity.X, Velocity.Y, NewVelocity.Z) : NewVelocity;
 				}
 
 				if (subTimeTickRemaining > KINDA_SMALL_NUMBER && (Delta | Adjusted) > 0.f)
@@ -4454,7 +4397,7 @@ void UCharacterMovementComponent::PhysFalling(float deltaTime, int32 Iterations)
 						if (subTimeTickRemaining > KINDA_SMALL_NUMBER && !bJustTeleported)
 						{
 							const FVector NewVelocity = (Delta / subTimeTickRemaining);
-							Velocity = HasAnimRootMotion() || CurrentRootMotion.HasOverrideVelocityWithIgnoreZAccumulate() ? FVector(Velocity.X, Velocity.Y, NewVelocity.Z) : NewVelocity;
+							Velocity = HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity() ? FVector(Velocity.X, Velocity.Y, NewVelocity.Z) : NewVelocity;
 						}
 
 						// bDitch=true means that pawn is straddling two slopes, neither of which he can stand on
@@ -4783,7 +4726,6 @@ void UCharacterMovementComponent::MoveAlongFloor(const FVector& InVelocity, floa
 			if (CanStepUp(Hit) || (CharacterOwner->GetMovementBase() != NULL && CharacterOwner->GetMovementBase()->GetOwner() == Hit.GetActor()))
 			{
 				// hit a barrier, try to step up
-				const FVector PreStepUpLocation = UpdatedComponent->GetComponentLocation();
 				const FVector GravDir(0.f, 0.f, -1.f);
 				if (!StepUp(GravDir, Delta * (1.f - PercentTimeApplied), Hit, OutStepDownResult))
 				{
@@ -4793,18 +4735,9 @@ void UCharacterMovementComponent::MoveAlongFloor(const FVector& InVelocity, floa
 				}
 				else
 				{
+					// Don't recalculate velocity based on this height adjustment, if considering vertical adjustments.
 					UE_LOG(LogCharacterMovement, Verbose, TEXT("+ StepUp (ImpactNormal %s, Normal %s"), *Hit.ImpactNormal.ToString(), *Hit.Normal.ToString());
-					if (!bMaintainHorizontalGroundVelocity)
-					{
-						// Don't recalculate velocity based on this height adjustment, if considering vertical adjustments. Only consider horizontal movement.
-						bJustTeleported = true;
-						const float StepUpTimeSlice = (1.f - PercentTimeApplied) * DeltaSeconds;
-						if (!HasAnimRootMotion() && !CurrentRootMotion.HasOverrideVelocity() && StepUpTimeSlice >= KINDA_SMALL_NUMBER)
-						{
-							Velocity = (UpdatedComponent->GetComponentLocation() - PreStepUpLocation) / StepUpTimeSlice;
-							Velocity.Z = 0;
-						}
-					}
+					bJustTeleported |= !bMaintainHorizontalGroundVelocity;
 				}
 			}
 			else if ( Hit.Component.IsValid() && !Hit.Component.Get()->CanCharacterStepUp(CharacterOwner) )
@@ -5044,7 +4977,6 @@ void UCharacterMovementComponent::PhysWalking(float deltaTime, int32 Iterations)
 			{
 				// TODO-RootMotionSource: Allow this to happen during partial override Velocity, but only set allowed axes?
 				Velocity = (UpdatedComponent->GetComponentLocation() - OldLocation) / timeTick;
-				MaintainHorizontalGroundVelocity();
 			}
 		}
 
@@ -5554,30 +5486,6 @@ void UCharacterMovementComponent::SetPostLandedPhysics(const FHitResult& Hit)
 	}
 }
 
-void UCharacterMovementComponent::ControlledCharacterMove(const FVector& InputVector, float DeltaSeconds)
-{
-	{
-		SCOPE_CYCLE_COUNTER(STAT_CharUpdateAcceleration);
-
-		// We need to check the jump state before adjusting input acceleration, to minimize latency
-		// and to make sure acceleration respects our potentially new falling state.
-		CharacterOwner->CheckJumpInput(DeltaSeconds);
-
-		// apply input to acceleration
-		Acceleration = ScaleInputAcceleration(ConstrainInputAcceleration(InputVector));
-		AnalogInputModifier = ComputeAnalogInputModifier();
-	}
-
-	if (CharacterOwner->GetLocalRole() == ROLE_Authority)
-	{
-		PerformMovement(DeltaSeconds);
-	}
-	else if (CharacterOwner->GetLocalRole() == ROLE_AutonomousProxy && IsNetMode(NM_Client))
-	{
-		ReplicateMoveToServer(DeltaSeconds, Acceleration);
-	}
-}
-
 void UCharacterMovementComponent::SetNavWalkingPhysics(bool bEnable)
 {
 	if (UpdatedPrimitive)
@@ -5709,8 +5617,7 @@ void UCharacterMovementComponent::OnTeleported()
 
 float GetAxisDeltaRotation(float InAxisRotationRate, float DeltaTime)
 {
-	// Values over 360 don't do anything, see FMath::FixedTurn. However we are trying to avoid giant floats from overflowing other calculations.
-	return (InAxisRotationRate >= 0.f) ? FMath::Min(InAxisRotationRate * DeltaTime, 360.f) : 360.f;
+	return (InAxisRotationRate >= 0.f) ? (InAxisRotationRate * DeltaTime) : 360.f;
 }
 
 FRotator UCharacterMovementComponent::GetDeltaRotation(float DeltaTime) const
@@ -6228,6 +6135,7 @@ void UCharacterMovementComponent::ComputeFloorDist(const FVector& CapsuleLocatio
 	
 	// No hits were acceptable.
 	OutFloorResult.bWalkableFloor = false;
+	OutFloorResult.FloorDist = SweepDistance;
 }
 
 
@@ -6319,8 +6227,7 @@ void UCharacterMovementComponent::FindFloor(const FVector& CapsuleLocation, FFin
 				// If the regular capsule is on an unwalkable surface but the perched one would allow us to stand, override the normal to be one that is walkable.
 				if (!OutFloorResult.bWalkableFloor)
 				{
-					// Floor distances are used as the distance of the regular capsule to the point of collision, to make sure AdjustFloorHeight() behaves correctly.
-					OutFloorResult.SetFromLineTrace(PerchFloorResult.HitResult, OutFloorResult.FloorDist, FMath::Max(OutFloorResult.FloorDist, MIN_FLOOR_DIST), true);
+					OutFloorResult.SetFromLineTrace(PerchFloorResult.HitResult, OutFloorResult.FloorDist, FMath::Min(PerchFloorResult.FloorDist, PerchFloorResult.LineDist), true);
 				}
 			}
 			else
@@ -6515,7 +6422,7 @@ bool UCharacterMovementComponent::ComputePerchResult(const float TestRadius, con
 {
 	if (InMaxFloorDist <= 0.f)
 	{
-		return false;
+		return 0.f;
 	}
 
 	// Sweep further than actual requested distance, because a reduced capsule radius means we could miss some hits that the normal radius would contact.
@@ -7250,12 +7157,7 @@ void UCharacterMovementComponent::SmoothCorrection(const FVector& OldLocation, c
 
 		// Using server timestamp lets us know how much time actually elapsed, regardless of packet lag variance.
 		double OldServerTimeStamp = ClientData->SmoothingServerTimeStamp;
-		if (bIsSimulatedProxy)
-		{
-			// This value is normally only updated on the server, however some code paths might try to read it instead of the replicated value so copy it for proxies as well.
-			ServerLastTransformUpdateTimeStamp = CharacterOwner->GetReplicatedServerLastTransformUpdateTimeStamp();
-		}
-		ClientData->SmoothingServerTimeStamp = ServerLastTransformUpdateTimeStamp;
+		ClientData->SmoothingServerTimeStamp = (bIsSimulatedProxy ? CharacterOwner->GetReplicatedServerLastTransformUpdateTimeStamp() : ServerLastTransformUpdateTimeStamp);
 
 		// Initial update has no delta.
 		if (ClientData->LastCorrectionTime == 0)
@@ -7436,11 +7338,9 @@ void UCharacterMovementComponent::SmoothClientPosition_Interpolate(float DeltaSe
 			if ( CharacterMovementCVars::NetVisualizeSimulatedCorrections >= 1 )
 			{
 				const FColor DebugColor = FColor::White;
-				const FVector DebugLocation = CharacterOwner->GetMesh()->GetComponentLocation() + FVector( 0.f, 0.f, 130.0f ) - CharacterOwner->GetBaseTranslationOffset();
+				const FVector DebugLocation = CharacterOwner->GetMesh()->GetComponentLocation() + FVector( 0.f, 0.f, 300.0f ) - CharacterOwner->GetBaseTranslationOffset();
 				FString DebugText = FString::Printf( TEXT( "Lerp: %2.2f" ), LerpPercent );
 				DrawDebugString( GetWorld(), DebugLocation, DebugText, nullptr, DebugColor, 0.f, true );
-				FString TimeText = FString::Printf( TEXT("ClientTime: %2.2f ServerTime: %2.2f" ), ClientData->SmoothingClientTimeStamp, ClientData->SmoothingServerTimeStamp);
-				DrawDebugString( GetWorld(), DebugLocation + 25.f, TimeText, nullptr, DebugColor, 0.f, true);
 			}
 #endif
 		}
@@ -7483,14 +7383,13 @@ void UCharacterMovementComponent::SmoothClientPosition_Interpolate(float DeltaSe
 		else if ( NetworkSmoothingMode == ENetworkSmoothingMode::Replay )
 		{
 			const UWorld* MyWorld = GetWorld();
-			UDemoNetDriver* DemoNetDriver = MyWorld ? MyWorld->GetDemoNetDriver() : nullptr;
 
-			if ( !MyWorld || !DemoNetDriver )
+			if ( !MyWorld || !MyWorld->DemoNetDriver )
 			{
 				return;
 			}
 
-			const float CurrentTime = DemoNetDriver->GetDemoCurrentTime();
+			const float CurrentTime = MyWorld->DemoNetDriver->DemoCurrentTime;
 
 			// Remove old samples
 			while ( ClientData->ReplaySamples.Num() > 0 )
@@ -7503,7 +7402,7 @@ void UCharacterMovementComponent::SmoothClientPosition_Interpolate(float DeltaSe
 				ClientData->ReplaySamples.RemoveAt( 0 );
 			}
 
-			FReplayExternalDataArray* ExternalReplayData = DemoNetDriver->GetExternalDataArrayForObject( CharacterOwner );
+			FReplayExternalDataArray* ExternalReplayData = MyWorld->DemoNetDriver->GetExternalDataArrayForObject( CharacterOwner );
 
 			// Grab any samples available, deserialize them, then clear originals
 			if ( ExternalReplayData && ExternalReplayData->Num() > 0 )
@@ -7860,21 +7759,8 @@ bool UCharacterMovementComponent::ClientUpdatePositionAfterServerUpdate()
 		FSavedMove_Character* const CurrentMove = ClientData->SavedMoves[i].Get();
 		checkSlow(CurrentMove != nullptr);
 		CurrentMove->PrepMoveFor(CharacterOwner);
-
-		if (ShouldUsePackedMovementRPCs())
-		{
-			// Make current move data accessible to MoveAutonomous or any other functions that might need it.
-			if (FCharacterNetworkMoveData* NewMove = GetNetworkMoveDataContainer().GetNewMoveData())
-			{
-				SetCurrentNetworkMoveData(NewMove);
-				NewMove->ClientFillNetworkMoveData(*CurrentMove, FCharacterNetworkMoveData::ENetworkMoveType::NewMove);
-			}
-		}
-
 		MoveAutonomous(CurrentMove->TimeStamp, CurrentMove->DeltaTime, CurrentMove->GetCompressedFlags(), CurrentMove->Acceleration);
-
 		CurrentMove->PostUpdate(CharacterOwner, FSavedMove_Character::PostUpdate_Replay);
-		SetCurrentNetworkMoveData(nullptr);
 	}
 
 	if (FSavedMove_Character* const PendingMove = ClientData->PendingMove.Get())
@@ -8229,8 +8115,8 @@ void UCharacterMovementComponent::ReplicateMoveToServer(float DeltaTime, const F
 
 		ClientData->ClientUpdateTime = MyWorld->TimeSeconds;
 
-		UE_CLOG(CharacterOwner && UpdatedComponent, LogNetPlayerMovement, VeryVerbose, TEXT("ClientMove Time %f Acceleration %s Velocity %s Position %s Rotation %s DeltaTime %f Mode %s MovementBase %s.%s (Dynamic:%d) DualMove? %d"),
-			NewMove->TimeStamp, *NewMove->Acceleration.ToString(), *Velocity.ToString(), *UpdatedComponent->GetComponentLocation().ToString(), *UpdatedComponent->GetComponentRotation().ToCompactString(), NewMove->DeltaTime, *GetMovementName(),
+		UE_CLOG(CharacterOwner && UpdatedComponent, LogNetPlayerMovement, VeryVerbose, TEXT("ClientMove Time %f Acceleration %s Velocity %s Position %s DeltaTime %f Mode %s MovementBase %s.%s (Dynamic:%d) DualMove? %d"),
+			NewMove->TimeStamp, *NewMove->Acceleration.ToString(), *Velocity.ToString(), *UpdatedComponent->GetComponentLocation().ToString(), NewMove->DeltaTime, *GetMovementName(),
 			*GetNameSafe(NewMove->EndBase.Get()), *NewMove->EndBoneName.ToString(), MovementBaseUtility::IsDynamicBase(NewMove->EndBase.Get()) ? 1 : 0, ClientData->PendingMove.IsValid() ? 1 : 0);
 
 		
@@ -8260,67 +8146,17 @@ void UCharacterMovementComponent::ReplicateMoveToServer(float DeltaTime, const F
 		if (bSendServerMove)
 		{
 			SCOPE_CYCLE_COUNTER(STAT_CharacterMovementCallServerMove);
-			if (ShouldUsePackedMovementRPCs())
-			{
-				CallServerMovePacked(NewMove, ClientData->PendingMove.Get(), OldMove.Get());
-			}
-			else
-			{
-				CallServerMove(NewMove, OldMove.Get());
-			}
+			CallServerMove(NewMove, OldMove.Get());
 		}
 	}
 
 	ClientData->PendingMove = NULL;
 }
 
-
-void UCharacterMovementComponent::CallServerMovePacked(const FSavedMove_Character* NewMove, const FSavedMove_Character* PendingMove, const FSavedMove_Character* OldMove)
-{
-	// Get storage container we'll be using and fill it with movement data
-	FCharacterNetworkMoveDataContainer& MoveDataContainer = GetNetworkMoveDataContainer();
-	MoveDataContainer.ClientFillNetworkMoveData(NewMove, PendingMove, OldMove);
-
-	// Reset bit writer without affecting allocations
-	FBitWriterMark BitWriterReset;
-	BitWriterReset.Pop(ServerMoveBitWriter);
-
-	// Extract the net package map used for serializing object references.
-	APlayerController* PC = Cast<APlayerController>(CharacterOwner->GetController());
-	UNetConnection* NetConnection = PC ? PC->GetNetConnection() : nullptr;
-	ServerMoveBitWriter.PackageMap = NetConnection ? NetConnection->PackageMap : nullptr;
-	if (ServerMoveBitWriter.PackageMap == nullptr)
-	{
-		UE_LOG(LogNetPlayerMovement, Error, TEXT("CallServerMovePacked: Failed to find a NetConnection/PackageMap for data serialization!"));
-		return;
-	}
-
-	// Serialize move struct into a bit stream
-	if (!MoveDataContainer.Serialize(*this, ServerMoveBitWriter, ServerMoveBitWriter.PackageMap) || ServerMoveBitWriter.IsError())
-	{
-		UE_LOG(LogNetPlayerMovement, Error, TEXT("CallServerMovePacked: Failed to serialize out movement data!"));
-		return;
-	}
-
-	// Copy bits to our struct that we can NetSerialize to the server.
-	// 'static' to avoid reallocation each invocation
-	static FCharacterServerMovePackedBits PackedBits;
-	PackedBits.DataBits.SetNumUninitialized(ServerMoveBitWriter.GetNumBits());
-	
-	check(PackedBits.DataBits.Num() >= ServerMoveBitWriter.GetNumBits());
-	FMemory::Memcpy(PackedBits.DataBits.GetData(), ServerMoveBitWriter.GetData(), ServerMoveBitWriter.GetNumBytes());
-
-	// Send bits to server!
-	ServerMovePacked_ClientSend(PackedBits);
-
-	MarkForClientCameraUpdate();
-}
-
-
 void UCharacterMovementComponent::CallServerMove
 	(
-	const FSavedMove_Character* NewMove,
-	const FSavedMove_Character* OldMove
+	const class FSavedMove_Character* NewMove,
+	const class FSavedMove_Character* OldMove
 	)
 {
 	check(NewMove != nullptr);
@@ -8501,7 +8337,6 @@ void UCharacterMovementComponent::ServerMoveDualHybridRootMotion_Implementation(
 bool UCharacterMovementComponent::VerifyClientTimeStamp(float TimeStamp, FNetworkPredictionData_Server_Character& ServerData)
 {
 	bool bTimeStampResetDetected = false;
-	bool bNeedsForcedUpdate = false;
 	const bool bIsValid = IsClientTimeStampValid(TimeStamp, ServerData, bTimeStampResetDetected);
 	if (bIsValid)
 	{
@@ -8520,6 +8355,7 @@ bool UCharacterMovementComponent::VerifyClientTimeStamp(float TimeStamp, FNetwor
 			UE_LOG(LogNetPlayerMovement, VeryVerbose, TEXT("TimeStamp %f Accepted! CurrentTimeStamp: %f"), TimeStamp, ServerData.CurrentClientTimeStamp);
 			ProcessClientTimeStampForTimeDiscrepancy(TimeStamp, ServerData);
 		}
+		return true;
 	}
 	else
 	{
@@ -8527,15 +8363,8 @@ bool UCharacterMovementComponent::VerifyClientTimeStamp(float TimeStamp, FNetwor
 		{
 			UE_LOG(LogNetPlayerMovement, Log, TEXT("TimeStamp expired. Before TimeStamp Reset. CurrentTimeStamp: %f, TimeStamp: %f"), ServerData.CurrentClientTimeStamp, TimeStamp);
 		}
-		else
-		{
-			bNeedsForcedUpdate = (TimeStamp <= ServerData.LastReceivedClientTimeStamp);
-		}
+		return false;
 	}
-
-	ServerData.LastReceivedClientTimeStamp = TimeStamp;
-	ServerData.bLastRequestNeedsForcedUpdates = bNeedsForcedUpdate;
-	return bIsValid;
 }
 
 void UCharacterMovementComponent::ProcessClientTimeStampForTimeDiscrepancy(float ClientTimeStamp, FNetworkPredictionData_Server_Character& ServerData)
@@ -8574,18 +8403,18 @@ void UCharacterMovementComponent::ProcessClientTimeStampForTimeDiscrepancy(float
 			{
 				if (NewTimeDiscrepancy > 0.f)
 				{
-					NewTimeDiscrepancy = FMath::Max(NewTimeDiscrepancy - ServerDelta * DriftAllowance, 0.f);
+					NewTimeDiscrepancy = FMath::Max(NewTimeDiscrepancy - ServerDelta*DriftAllowance, 0.f); 
 				}
 				else
 				{
-					NewTimeDiscrepancy = FMath::Min(NewTimeDiscrepancy + ServerDelta * DriftAllowance, 0.f);
+					NewTimeDiscrepancy = FMath::Min(NewTimeDiscrepancy + ServerDelta*DriftAllowance, 0.f); 
 				}
 			}
 
 			// Enforce bounds
 			// Never go below MinTimeMargin - ClientError being negative means the client is BEHIND
 			// the server (they are going slower).
-			NewTimeDiscrepancy = FMath::Max(NewTimeDiscrepancy, GameNetworkManager->MovementTimeDiscrepancyMinTimeMargin);
+			NewTimeDiscrepancy = FMath::Max(NewTimeDiscrepancy, GameNetworkManager->MovementTimeDiscrepancyMinTimeMargin); 
 		}
 
 		// Determine EffectiveClientError, which is error for the currently-being-processed move after 
@@ -8605,7 +8434,7 @@ void UCharacterMovementComponent::ProcessClientTimeStampForTimeDiscrepancy(float
 		// Per-frame spew of time discrepancy-related values - useful for investigating state of time discrepancy tracking
 		if (CharacterMovementCVars::DebugTimeDiscrepancy > 0)
 		{
-			UE_LOG(LogNetPlayerMovement, Warning, TEXT("TimeDiscrepancyDetection: ClientError: %f, TimeDiscrepancy: %f, LifetimeRawTimeDiscrepancy: %f (Lifetime %f), Resolving: %d, ClientDelta: %f, ServerDelta: %f, ClientTimeStamp: %f"),
+			UE_LOG(LogNetPlayerMovement, Warning, TEXT("TimeDiscrepancyDetection: ClientError: %f, TimeDiscrepancy: %f, LifetimeRawTimeDiscrepancy: %f (Lifetime %f), Resolving: %d, ClientDelta: %f, ServerDelta: %f, ClientTimeStamp: %f"), 
 				ClientError, ServerData.TimeDiscrepancy, ServerData.LifetimeRawTimeDiscrepancy, WorldTimeSeconds - ServerData.WorldCreationTime, ServerData.bResolvingTimeDiscrepancy, ClientDelta, ServerDelta, ClientTimeStamp);
 		}
 #endif // !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
@@ -8618,7 +8447,7 @@ void UCharacterMovementComponent::ProcessClientTimeStampForTimeDiscrepancy(float
 		//
 		// 3. Determine if NewTimeDiscrepancy is significant enough to trigger detection, and if so, trigger resolution if enabled
 		//
-		if (!ServerData.bResolvingTimeDiscrepancy)
+		if (!ServerData.bResolvingTimeDiscrepancy) 
 		{
 			if (NewTimeDiscrepancy > GameNetworkManager->MovementTimeDiscrepancyMaxTimeMargin)
 			{
@@ -8691,7 +8520,7 @@ void UCharacterMovementComponent::ProcessClientTimeStampForTimeDiscrepancy(float
 				ServerData.TimeDiscrepancyAccumulatedClientDeltasSinceLastServerTick += BaseDeltaTime;
 			}
 
-			float ServerBoundDeltaTime = FMath::Min(BaseDeltaTime + ServerData.TimeDiscrepancyAccumulatedClientDeltasSinceLastServerTick, ServerDeltaSinceLastMovementUpdate);
+			float ServerBoundDeltaTime = FMath::Min(BaseDeltaTime + ServerData.TimeDiscrepancyAccumulatedClientDeltasSinceLastServerTick, ServerDeltaSinceLastMovementUpdate); 
 			ServerBoundDeltaTime = FMath::Max(ServerBoundDeltaTime, 0.f); // No negative deltas allowed
 
 			if (bIsFirstServerMoveThisServerTick)
@@ -8716,12 +8545,12 @@ void UCharacterMovementComponent::ProcessClientTimeStampForTimeDiscrepancy(float
 			ServerData.TimeDiscrepancy -= TimeToPayBack;
 
 #if !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
-			// Per-frame spew of time discrepancy resolution related values - useful for investigating state of time discrepancy tracking
-			if (CharacterMovementCVars::DebugTimeDiscrepancy > 1)
-			{
-				UE_LOG(LogNetPlayerMovement, Warning, TEXT("TimeDiscrepancyResolution: DeltaOverride: %f, TimeToPayBack: %f, BaseDelta: %f, ServerDeltaSinceLastMovementUpdate: %f, TimeDiscrepancyAccumulatedClientDeltasSinceLastServerTick: %f"),
-					ServerData.TimeDiscrepancyResolutionMoveDeltaOverride, TimeToPayBack, BaseDeltaTime, ServerDeltaSinceLastMovementUpdate, ServerData.TimeDiscrepancyAccumulatedClientDeltasSinceLastServerTick);
-			}
+		// Per-frame spew of time discrepancy resolution related values - useful for investigating state of time discrepancy tracking
+		if ( CharacterMovementCVars::DebugTimeDiscrepancy > 1 )
+		{
+			UE_LOG(LogNetPlayerMovement, Warning, TEXT("TimeDiscrepancyResolution: DeltaOverride: %f, TimeToPayBack: %f, BaseDelta: %f, ServerDeltaSinceLastMovementUpdate: %f, TimeDiscrepancyAccumulatedClientDeltasSinceLastServerTick: %f"), 
+				ServerData.TimeDiscrepancyResolutionMoveDeltaOverride, TimeToPayBack, BaseDeltaTime, ServerDeltaSinceLastMovementUpdate, ServerData.TimeDiscrepancyAccumulatedClientDeltasSinceLastServerTick);
+		}
 #endif // !(UE_BUILD_SHIPPING || UE_BUILD_TEST)
 		}
 	}
@@ -8729,7 +8558,7 @@ void UCharacterMovementComponent::ProcessClientTimeStampForTimeDiscrepancy(float
 
 bool UCharacterMovementComponent::IsClientTimeStampValid(float TimeStamp, const FNetworkPredictionData_Server_Character& ServerData, bool& bTimeStampResetDetected) const
 {
-	if (TimeStamp <= 0.f || !FMath::IsFinite(TimeStamp))
+	if (TimeStamp <= 0.f)
 	{
 		return false;
 	}
@@ -8791,334 +8620,12 @@ void UCharacterMovementComponent::OnTimeDiscrepancyDetected(float CurrentTimeDis
 		CurrentMoveError);
 }
 
-
-bool FCharacterNetworkSerializationPackedBits::NetSerialize(FArchive& Ar, class UPackageMap* Map, bool& bOutSuccess)
-{
-	bool bLocalSuccess = true;
-	SavedPackageMap = Map;
-
-	// Array size in bits, using minimal number of bytes to write it out.
-	uint32 NumBits = DataBits.Num();
-	Ar.SerializeIntPacked(NumBits);
-
-	if (!ensure(NumBits <= (uint32)CharacterMovementCVars::NetPackedMovementMaxBits))
-	{
-		// Protect against bad data that could cause server to allocate way too much memory.
-		devCode(UE_LOG(LogNetPlayerMovement, Error, TEXT("FCharacterNetworkSerializationPackedBits::NetSerialize: NumBits (%d) exceeds allowable limit!"), NumBits));
-		return false;
-	}
-
-	if (Ar.IsLoading())
-	{
-		DataBits.Init(0, NumBits);
-	}
-
-	// Array data
-	Ar.SerializeBits(DataBits.GetData(), NumBits);
-
-	bOutSuccess = bLocalSuccess;
-	return !Ar.IsError();
-}
-
-void FCharacterNetworkMoveDataContainer::ClientFillNetworkMoveData(const FSavedMove_Character* ClientNewMove, const FSavedMove_Character* ClientPendingMove, const FSavedMove_Character* ClientOldMove)
-{
-	bDisableCombinedScopedMove = false;
-
-	if (ensure(ClientNewMove))
-	{
-		NewMoveData->ClientFillNetworkMoveData(*ClientNewMove, FCharacterNetworkMoveData::ENetworkMoveType::NewMove);
-		bDisableCombinedScopedMove |= ClientNewMove->bForceNoCombine;
-	}
-
-	bHasPendingMove = (ClientPendingMove != nullptr);
-	if (bHasPendingMove)
-	{
-		PendingMoveData->ClientFillNetworkMoveData(*ClientPendingMove, FCharacterNetworkMoveData::ENetworkMoveType::PendingMove);
-		bIsDualHybridRootMotionMove = (ClientPendingMove->RootMotionMontage == nullptr) && (ClientNewMove && ClientNewMove->RootMotionMontage != nullptr);
-		bDisableCombinedScopedMove |= ClientPendingMove->bForceNoCombine;
-	}
-	else
-	{
-		bIsDualHybridRootMotionMove = false;
-	}
-	
-	bHasOldMove = (ClientOldMove != nullptr);
-	if (bHasOldMove)
-	{
-		OldMoveData->ClientFillNetworkMoveData(*ClientOldMove, FCharacterNetworkMoveData::ENetworkMoveType::OldMove);
-	}
-}
-
-
-bool FCharacterNetworkMoveDataContainer::Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap)
-{
-	// We must have data storage initialized. If not, then the storage container wasn't properly initialized.
-	check(NewMoveData && PendingMoveData && OldMoveData);
-
-	// Base move always serialized.
-	if (!NewMoveData->Serialize(CharacterMovement, Ar, PackageMap, FCharacterNetworkMoveData::ENetworkMoveType::NewMove))
-	{
-		return false;
-	}
-		
-	// Optional pending dual move
-	Ar.SerializeBits(&bHasPendingMove, 1);
-	if (bHasPendingMove)
-	{
-		Ar.SerializeBits(&bIsDualHybridRootMotionMove, 1);
-		if (!PendingMoveData->Serialize(CharacterMovement, Ar, PackageMap, FCharacterNetworkMoveData::ENetworkMoveType::PendingMove))
-		{
-			return false;
-		}
-	}
-
-	// Optional old move
-	Ar.SerializeBits(&bHasOldMove, 1);
-	if (bHasOldMove)
-	{
-		if (!OldMoveData->Serialize(CharacterMovement, Ar, PackageMap, FCharacterNetworkMoveData::ENetworkMoveType::OldMove))
-		{
-			return false;
-		}
-	}
-
-	Ar.SerializeBits(&bDisableCombinedScopedMove, 1);
-
-	return !Ar.IsError();
-}
-
-
-void FCharacterNetworkMoveData::ClientFillNetworkMoveData(const FSavedMove_Character& ClientMove, FCharacterNetworkMoveData::ENetworkMoveType MoveType)
-{
-	NetworkMoveType = MoveType;
-
-	TimeStamp = ClientMove.TimeStamp;
-	Acceleration = ClientMove.Acceleration;
-	ControlRotation = ClientMove.SavedControlRotation;
-	CompressedMoveFlags = ClientMove.GetCompressedFlags();
-	MovementMode = ClientMove.MovementMode;
-
-	// Location, relative movement base, and ending movement mode is only used for error checking, so only fill in the more complex parts if actually required.
-	if (MoveType == ENetworkMoveType::NewMove)
-	{
-		// Determine if we send absolute or relative location
-		UPrimitiveComponent* ClientMovementBase = ClientMove.EndBase.Get();
-		const bool bDynamicBase = MovementBaseUtility::UseRelativeLocation(ClientMovementBase);
-		const FVector SendLocation = bDynamicBase ? ClientMove.SavedRelativeLocation : ClientMove.SavedLocation;
-
-		Location = SendLocation;
-		MovementBase = bDynamicBase ? ClientMovementBase : nullptr;
-		MovementBaseBoneName = bDynamicBase ? ClientMove.EndBoneName : NAME_None;
-	}
-	else
-	{
-		Location = ClientMove.SavedLocation;
-		MovementBase = nullptr;
-		MovementBaseBoneName = NAME_None;
-	}
-}
-
-
-bool FCharacterNetworkMoveData::Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap, FCharacterNetworkMoveData::ENetworkMoveType MoveType)
-{
-	NetworkMoveType = MoveType;
-
-	bool bLocalSuccess = true;
-	const bool bIsSaving = Ar.IsSaving();
-
-	Ar << TimeStamp;
-
-	// TODO: better packing with single bit per component indicating zero/non-zero
-	Acceleration.NetSerialize(Ar, PackageMap, bLocalSuccess);
-
-	Location.NetSerialize(Ar, PackageMap, bLocalSuccess);
-
-	// ControlRotation : FRotator handles each component zero/non-zero test; it uses a single signal bit for zero/non-zero, and uses 16 bits per component if non-zero.
-	ControlRotation.NetSerialize(Ar, PackageMap, bLocalSuccess);
-
-	SerializeOptionalValue<uint8>(bIsSaving, Ar, CompressedMoveFlags, 0);
-
-	if (MoveType == ENetworkMoveType::NewMove)
-	{
-		// Location, relative movement base, and ending movement mode is only used for error checking, so only save for the final move.
-		SerializeOptionalValue<UPrimitiveComponent*>(bIsSaving, Ar, MovementBase, nullptr);
-		SerializeOptionalValue<FName>(bIsSaving, Ar, MovementBaseBoneName, NAME_None);
-		SerializeOptionalValue<uint8>(bIsSaving, Ar, MovementMode, MOVE_Walking);
-	}
-
-	return !Ar.IsError();
-}
-
-
-void UCharacterMovementComponent::ServerMovePacked_ClientSend(const FCharacterServerMovePackedBits& PackedBits)
-{
-	// Pass through RPC call to character on server, there is less RPC bandwidth overhead when used on an Actor rather than a Component.
-	CharacterOwner->ServerMovePacked(PackedBits);
-}
-
-void UCharacterMovementComponent::ServerMovePacked_ServerReceive(const FCharacterServerMovePackedBits& PackedBits)
-{
-	if (!HasValidData() || !IsActive())
-	{
-		return;
-	}
-
-	const int32 NumBits = PackedBits.DataBits.Num();
-	if (!ensure(NumBits <= CharacterMovementCVars::NetPackedMovementMaxBits))
-	{
-		// Protect against bad data that could cause server to allocate way too much memory.
-		devCode(UE_LOG(LogNetPlayerMovement, Error, TEXT("ServerMovePacked_ServerReceive: NumBits (%d) exceeds allowable limit!"), NumBits));
-		return;
-	}
-
-	// Reuse bit reader to avoid allocating memory each time.
-	ServerMoveBitReader.SetData((uint8*)PackedBits.DataBits.GetData(), NumBits);
-	ServerMoveBitReader.PackageMap = PackedBits.GetPackageMap();
-
-	// Deserialize bits to move data struct.
-	// We had to wait until now and use the temp bit stream because the RPC doesn't know about the virtual overrides on the possibly custom struct that is our data container.
-	FCharacterNetworkMoveDataContainer& MoveDataContainer = GetNetworkMoveDataContainer();
-	if (!MoveDataContainer.Serialize(*this, ServerMoveBitReader, ServerMoveBitReader.PackageMap) || ServerMoveBitReader.IsError())
-	{
-		devCode(UE_LOG(LogNetPlayerMovement, Error, TEXT("ServerMovePacked_ServerReceive: Failed to serialize movement data!")));
-		return;
-	}
-
-	ServerMove_HandleMoveData(MoveDataContainer);
-}
-
-void UCharacterMovementComponent::ServerMove_HandleMoveData(const FCharacterNetworkMoveDataContainer& MoveDataContainer)
-{
-	// Optional "old move"
-	if (MoveDataContainer.bHasOldMove)
-	{
-		if (FCharacterNetworkMoveData* OldMove = MoveDataContainer.GetOldMoveData())
-		{
-			SetCurrentNetworkMoveData(OldMove);
-			ServerMove_PerformMovement(*OldMove);
-		}
-	}
-
-	// Optional scoped movement update for dual moves to combine moves for cheaper performance on the server.
-	const bool bMoveAllowsScopedDualMove = MoveDataContainer.bHasPendingMove && !MoveDataContainer.bDisableCombinedScopedMove;
-	FScopedMovementUpdate ScopedMovementUpdate(UpdatedComponent, (bMoveAllowsScopedDualMove && bEnableServerDualMoveScopedMovementUpdates && bEnableScopedMovementUpdates) ? EScopedUpdate::DeferredUpdates : EScopedUpdate::ImmediateUpdates);
-
-	// Optional pending move as part of "dual move"
-	if (MoveDataContainer.bHasPendingMove)
-	{
-		if (FCharacterNetworkMoveData* PendingMove = MoveDataContainer.GetPendingMoveData())
-		{
-			CharacterOwner->bServerMoveIgnoreRootMotion = MoveDataContainer.bIsDualHybridRootMotionMove && CharacterOwner->IsPlayingNetworkedRootMotionMontage();
-			SetCurrentNetworkMoveData(PendingMove);
-			ServerMove_PerformMovement(*PendingMove);
-			CharacterOwner->bServerMoveIgnoreRootMotion = false;
-		}
-	}
-
-	// Final standard move
-	if (FCharacterNetworkMoveData* NewMove = MoveDataContainer.GetNewMoveData())
-	{
-		SetCurrentNetworkMoveData(NewMove);
-		ServerMove_PerformMovement(*NewMove);
-	}
-
-	SetCurrentNetworkMoveData(nullptr);
-}
-
-
-void UCharacterMovementComponent::ServerMove_PerformMovement(const FCharacterNetworkMoveData& MoveData)
-{
-	SCOPE_CYCLE_COUNTER(STAT_CharacterMovementServerMove);
-	CSV_SCOPED_TIMING_STAT(CharacterMovement, CharacterMovementServerMove);
-
-	if (!HasValidData() || !IsActive())
-	{
-		return;
-	}	
-
-	const float ClientTimeStamp = MoveData.TimeStamp;
-	FVector_NetQuantize10 ClientAccel = MoveData.Acceleration;
-	const uint8 ClientMoveFlags = MoveData.CompressedMoveFlags;
-	const FRotator ClientControlRotation = MoveData.ControlRotation;
-
-	FNetworkPredictionData_Server_Character* ServerData = GetPredictionData_Server_Character();
-	check(ServerData);
-
-	if( !VerifyClientTimeStamp(ClientTimeStamp, *ServerData) )
-	{
-		const float ServerTimeStamp = ServerData->CurrentClientTimeStamp;
-		// This is more severe if the timestamp has a large discrepancy and hasn't been recently reset.
-		if (ServerTimeStamp > 1.0f && FMath::Abs(ServerTimeStamp - ClientTimeStamp) > CharacterMovementCVars::NetServerMoveTimestampExpiredWarningThreshold)
-		{
-			UE_LOG(LogNetPlayerMovement, Warning, TEXT("ServerMove: TimeStamp expired: %f, CurrentTimeStamp: %f, Character: %s"), ClientTimeStamp, ServerTimeStamp, *GetNameSafe(CharacterOwner));
-		}
-		else
-		{
-			UE_LOG(LogNetPlayerMovement, Log, TEXT("ServerMove: TimeStamp expired: %f, CurrentTimeStamp: %f, Character: %s"), ClientTimeStamp, ServerTimeStamp, *GetNameSafe(CharacterOwner));
-		}		
-		return;
-	}
-
-	bool bServerReadyForClient = true;
-	APlayerController* PC = Cast<APlayerController>(CharacterOwner->GetController());
-	if (PC)
-	{
-		bServerReadyForClient = PC->NotifyServerReceivedClientData(CharacterOwner, ClientTimeStamp);
-		if (!bServerReadyForClient)
-		{
-			ClientAccel = FVector::ZeroVector;
-		}
-	}
-
-	const UWorld* MyWorld = GetWorld();
-	const float DeltaTime = ServerData->GetServerMoveDeltaTime(ClientTimeStamp, CharacterOwner->GetActorTimeDilation(*MyWorld));
-
-	if (DeltaTime > 0.f)
-	{
-		ServerData->CurrentClientTimeStamp = ClientTimeStamp;
-		ServerData->ServerAccumulatedClientTimeStamp += DeltaTime;
-		ServerData->ServerTimeStamp = MyWorld->GetTimeSeconds();
-		ServerData->ServerTimeStampLastServerMove = ServerData->ServerTimeStamp;
-
-		if (PC)
-		{
-			PC->SetControlRotation(ClientControlRotation);
-		}
-
-		if (!bServerReadyForClient)
-		{
-			return;
-		}
-
-		// Perform actual movement
-		if ((MyWorld->GetWorldSettings()->GetPauserPlayerState() == NULL))
-		{
-			if (PC)
-			{
-				PC->UpdateRotation(DeltaTime);
-			}
-
-			MoveAutonomous(ClientTimeStamp, DeltaTime, ClientMoveFlags, ClientAccel);
-		}
-
-		UE_CLOG(CharacterOwner && UpdatedComponent, LogNetPlayerMovement, VeryVerbose, TEXT("ServerMove Time %f Acceleration %s Velocity %s Position %s Rotation %s DeltaTime %f Mode %s MovementBase %s.%s (Dynamic:%d)"),
-			ClientTimeStamp, *ClientAccel.ToString(), *Velocity.ToString(), *UpdatedComponent->GetComponentLocation().ToString(), *UpdatedComponent->GetComponentRotation().ToCompactString(), DeltaTime, *GetMovementName(),
-			*GetNameSafe(GetMovementBase()), *CharacterOwner->GetBasedMovement().BoneName.ToString(), MovementBaseUtility::IsDynamicBase(GetMovementBase()) ? 1 : 0);
-	}
-
-	// Validate move only after old and first dual portion, after all moves are completed.
-	if (MoveData.NetworkMoveType == FCharacterNetworkMoveData::ENetworkMoveType::NewMove)
-	{
-		ServerMoveHandleClientError(ClientTimeStamp, DeltaTime, ClientAccel, MoveData.Location, MoveData.MovementBase, MoveData.MovementBaseBoneName, MoveData.MovementMode);
-	}
-}
-
-
 void UCharacterMovementComponent::ServerMove(float TimeStamp, FVector_NetQuantize10 InAccel, FVector_NetQuantize100 ClientLoc, uint8 CompressedMoveFlags, uint8 ClientRoll, uint32 View, UPrimitiveComponent* ClientMovementBase, FName ClientBaseBoneName, uint8 ClientMovementMode)
 {
 	if (MovementBaseUtility::IsDynamicBase(ClientMovementBase))
 	{
 		//UE_LOG(LogCharacterMovement, Log, TEXT("ServerMove: base %s"), *ClientMovementBase->GetName());
+		GEngine->AddOnScreenDebugMessage(1, 0.0f, FColor::Black, FString::Printf(TEXT("Server move")));
 		CharacterOwner->ServerMove(TimeStamp, InAccel, ClientLoc, CompressedMoveFlags, ClientRoll, View, ClientMovementBase, ClientBaseBoneName, ClientMovementMode);
 	}
 	else
@@ -9215,8 +8722,8 @@ void UCharacterMovementComponent::ServerMove_Implementation(
 		MoveAutonomous(TimeStamp, DeltaTime, MoveFlags, Accel);
 	}
 
-	UE_CLOG(CharacterOwner && UpdatedComponent, LogNetPlayerMovement, VeryVerbose, TEXT("ServerMove Time %f Acceleration %s Velocity %s Position %s Rotation %s DeltaTime %f Mode %s MovementBase %s.%s (Dynamic:%d)"),
-			TimeStamp, *Accel.ToString(), *Velocity.ToString(), *UpdatedComponent->GetComponentLocation().ToString(), *UpdatedComponent->GetComponentRotation().ToCompactString(), DeltaTime, *GetMovementName(),
+	UE_CLOG(CharacterOwner && UpdatedComponent, LogNetPlayerMovement, VeryVerbose, TEXT("ServerMove Time %f Acceleration %s Velocity %s Position %s DeltaTime %f Mode %s MovementBase %s.%s (Dynamic:%d)"),
+			TimeStamp, *Accel.ToString(), *Velocity.ToString(), *UpdatedComponent->GetComponentLocation().ToString(), DeltaTime, *GetMovementName(),
 			*GetNameSafe(GetMovementBase()), *CharacterOwner->GetBasedMovement().BoneName.ToString(), MovementBaseUtility::IsDynamicBase(GetMovementBase()) ? 1 : 0);
 
 	ServerMoveHandleClientError(TimeStamp, DeltaTime, Accel, ClientLoc, ClientMovementBase, ClientBaseBoneName, ClientMovementMode);
@@ -9225,12 +8732,9 @@ void UCharacterMovementComponent::ServerMove_Implementation(
 
 void UCharacterMovementComponent::ServerMoveHandleClientError(float ClientTimeStamp, float DeltaTime, const FVector& Accel, const FVector& RelativeClientLoc, UPrimitiveComponent* ClientMovementBase, FName ClientBaseBoneName, uint8 ClientMovementMode)
 {
-	if (!ShouldUsePackedMovementRPCs())
+	if (RelativeClientLoc == FVector(1.f,2.f,3.f)) // first part of double servermove
 	{
-		if (RelativeClientLoc == FVector(1.f,2.f,3.f)) // first part of double servermove
-		{
-			return;
-		}
+		return;
 	}
 
 	FNetworkPredictionData_Server_Character* ServerData = GetPredictionData_Server_Character();
@@ -9502,8 +9006,6 @@ void UCharacterMovementComponent::MoveAutonomous
 	const FVector OldLocation = UpdatedComponent->GetComponentLocation();
 	const FQuat OldRotation = UpdatedComponent->GetComponentQuat();
 
-	const bool bWasPlayingRootMotion = CharacterOwner->IsPlayingRootMotion();
-
 	PerformMovement(DeltaTime);
 
 	// Check if data is valid as PerformMovement can mark character for pending kill
@@ -9515,10 +9017,7 @@ void UCharacterMovementComponent::MoveAutonomous
 	// If not playing root motion, tick animations after physics. We do this here to keep events, notifies, states and transitions in sync with client updates.
 	if( CharacterOwner && !CharacterOwner->bClientUpdating && !CharacterOwner->IsPlayingRootMotion() && CharacterOwner->GetMesh() )
 	{
-		if (!bWasPlayingRootMotion) // If we were playing root motion before PerformMovement but aren't anymore, we're on the last frame of anim root motion and have already ticked character
-		{
-			TickCharacterPose(DeltaTime);
-		}
+		TickCharacterPose(DeltaTime);
 		// TODO: SaveBaseLocation() in case tick moves us?
 
 		// Trigger Events right away, as we could be receiving multiple ServerMoves per frame.
@@ -9558,250 +9057,6 @@ void UCharacterMovementComponent::UpdateFloorFromAdjustment()
 }
 
 
-void UCharacterMovementComponent::MoveResponsePacked_ServerSend(const FCharacterMoveResponsePackedBits& PackedBits)
-{
-	// Pass through RPC call to character on client, there is less RPC bandwidth overhead when used on an Actor rather than a Component.
-	CharacterOwner->ClientMoveResponsePacked(PackedBits);
-}
-
-void UCharacterMovementComponent::MoveResponsePacked_ClientReceive(const FCharacterMoveResponsePackedBits& PackedBits)
-{
-	if (!HasValidData() || !IsActive())
-	{
-		return;
-	}
-
-	const int32 NumBits = PackedBits.DataBits.Num();
-	if (!ensure(NumBits <= CharacterMovementCVars::NetPackedMovementMaxBits))
-	{
-		// Protect against bad data that could cause client to allocate way too much memory.
-		devCode(UE_LOG(LogNetPlayerMovement, Error, TEXT("MoveResponsePacked_ClientReceive: NumBits (%d) exceeds allowable limit!"), NumBits));
-		return;
-	}
-
-	// Reuse bit reader to avoid allocating memory each time.
-	MoveResponseBitReader.SetData((uint8*)PackedBits.DataBits.GetData(), NumBits);
-	MoveResponseBitReader.PackageMap = PackedBits.GetPackageMap();
-
-	// Deserialize bits to response data struct.
-	// We had to wait until now and use the temp bit stream because the RPC doesn't know about the virtual overrides on the possibly custom struct that is our data container.
-	FCharacterMoveResponseDataContainer& ResponseDataContainer = GetMoveResponseDataContainer();
-	if (!ResponseDataContainer.Serialize(*this, MoveResponseBitReader, MoveResponseBitReader.PackageMap) || MoveResponseBitReader.IsError())
-	{
-		devCode(UE_LOG(LogNetPlayerMovement, Error, TEXT("MoveResponsePacked_ClientReceive: Failed to serialize response data!")));
-		return;
-	}
-
-	ClientHandleMoveResponse(ResponseDataContainer);
-}
-
-
-void UCharacterMovementComponent::ServerSendMoveResponse(const FClientAdjustment& PendingAdjustment)
-{
-	// Get storage container we'll be using and fill it with movement data
-	FCharacterMoveResponseDataContainer& ResponseDataContainer = GetMoveResponseDataContainer();
-	ResponseDataContainer.ServerFillResponseData(*this, PendingAdjustment);
-
-	// Reset bit writer without affecting allocations
-	FBitWriterMark BitWriterReset;
-	BitWriterReset.Pop(MoveResponseBitWriter);
-
-	// Extract the net package map used for serializing object references.
-	APlayerController* PC = Cast<APlayerController>(CharacterOwner->GetController());
-	UNetConnection* NetConnection = PC ? PC->GetNetConnection() : nullptr;
-	MoveResponseBitWriter.PackageMap = NetConnection ? NetConnection->PackageMap : nullptr;
-	if (MoveResponseBitWriter.PackageMap == nullptr)
-	{
-		UE_LOG(LogNetPlayerMovement, Error, TEXT("ServerSendMoveResponse: Failed to find a NetConnection/PackageMap for data serialization!"));
-		return;
-	}
-
-	// Serialize move struct into a bit stream
-	if (!ResponseDataContainer.Serialize(*this, MoveResponseBitWriter, MoveResponseBitWriter.PackageMap) || MoveResponseBitWriter.IsError())
-	{
-		UE_LOG(LogNetPlayerMovement, Error, TEXT("ServerSendMoveResponse: Failed to serialize out response data!"));
-		return;
-	}
-
-	// Copy bits to our struct that we can NetSerialize to the client.
-	// 'static' to avoid reallocation each invocation
-	static FCharacterMoveResponsePackedBits PackedBits;
-	PackedBits.DataBits.SetNumUninitialized(MoveResponseBitWriter.GetNumBits());
-
-	check(PackedBits.DataBits.Num() >= MoveResponseBitWriter.GetNumBits());
-	FMemory::Memcpy(PackedBits.DataBits.GetData(), MoveResponseBitWriter.GetData(), MoveResponseBitWriter.GetNumBytes());
-
-	// Send bits to client!
-	MoveResponsePacked_ServerSend(PackedBits);
-}
-
-
-void FCharacterMoveResponseDataContainer::ServerFillResponseData(const UCharacterMovementComponent& CharacterMovement, const FClientAdjustment& PendingAdjustment)
-{
-	bHasBase = false;
-	bHasRotation = false;
-	bRootMotionMontageCorrection = false;
-	bRootMotionSourceCorrection = false;
-	RootMotionTrackPosition = -1.0f;
-
-	ClientAdjustment = PendingAdjustment;
-
-	if (!PendingAdjustment.bAckGoodMove)
-	{
-		bHasBase = (PendingAdjustment.NewBase != nullptr);
-		if (const ACharacter* CharacterOwner = CharacterMovement.GetCharacterOwner())
-		{
-			bRootMotionMontageCorrection = CharacterOwner->IsPlayingNetworkedRootMotionMontage();
-			RootMotionTrackPosition = bRootMotionMontageCorrection ? CharacterOwner->GetRootMotionAnimMontageInstance()->GetPosition() : -1.f;
-
-			const FRotator Rotation = PendingAdjustment.NewRot.GetNormalized();
-			RootMotionRotation = FVector_NetQuantizeNormal(Rotation.Pitch / 180.f, Rotation.Yaw / 180.f, Rotation.Roll / 180.f);
-
-			if (CharacterMovement.CurrentRootMotion.HasActiveRootMotionSources())
-			{
-				// Setting this flag will cause GetRootMotionSourceGroup() to return the correct server verision of the current root motion for serialization.
-				bRootMotionSourceCorrection = true;
-			}
-		}
-	}
-}
-
-bool FCharacterMoveResponseDataContainer::Serialize(UCharacterMovementComponent& CharacterMovement, FArchive& Ar, UPackageMap* PackageMap)
-{
-	bool bLocalSuccess = true;
-	const bool bIsSaving = Ar.IsSaving();
-
-	Ar.SerializeBits(&ClientAdjustment.bAckGoodMove, 1);
-	Ar << ClientAdjustment.TimeStamp;
-
-	if (IsCorrection())
-	{
-		Ar.SerializeBits(&bHasBase, 1);
-		Ar.SerializeBits(&bHasRotation, 1);
-		Ar.SerializeBits(&bRootMotionMontageCorrection, 1);
-		Ar.SerializeBits(&bRootMotionSourceCorrection, 1);
-
-		ClientAdjustment.NewLoc.NetSerialize(Ar, PackageMap, bLocalSuccess);
-		ClientAdjustment.NewVel.NetSerialize(Ar, PackageMap, bLocalSuccess);
-
-		if (bHasRotation)
-		{
-			ClientAdjustment.NewRot.NetSerialize(Ar, PackageMap, bLocalSuccess);
-		}
-		else if (!bIsSaving)
-		{
-			ClientAdjustment.NewRot = FRotator::ZeroRotator;
-		}
-
-		SerializeOptionalValue<UPrimitiveComponent*>(bIsSaving, Ar, ClientAdjustment.NewBase, nullptr);
-		SerializeOptionalValue<FName>(bIsSaving, Ar, ClientAdjustment.NewBaseBoneName, NAME_None);
-		SerializeOptionalValue<uint8>(bIsSaving, Ar, ClientAdjustment.MovementMode, MOVE_Walking);
-		Ar.SerializeBits(&ClientAdjustment.bBaseRelativePosition, 1);
-
-		if (bRootMotionMontageCorrection)
-		{
-			Ar << RootMotionTrackPosition;
-		}
-		else if (!bIsSaving)
-		{
-			RootMotionTrackPosition = -1.0f;
-		}
-
-		if (bRootMotionSourceCorrection)
-		{
-			if (FRootMotionSourceGroup* RootMotionSourceGroup = GetRootMotionSourceGroup(CharacterMovement))
-			{
-				RootMotionSourceGroup->NetSerialize(Ar, PackageMap, bLocalSuccess);
-			}
-		}
-
-		if (bRootMotionMontageCorrection || bRootMotionSourceCorrection)
-		{
-			RootMotionRotation.NetSerialize(Ar, PackageMap, bLocalSuccess);
-		}
-	}
-
-	return !Ar.IsError();
-}
-
-void UCharacterMovementComponent::ClientHandleMoveResponse(const FCharacterMoveResponseDataContainer& MoveResponse)
-{
-	if (MoveResponse.IsGoodMove())
-	{
-		ClientAckGoodMove_Implementation(MoveResponse.ClientAdjustment.TimeStamp);
-	}
-	else
-	{
-		// Wrappers to old RPC handlers, to maintain compatibility. If overrides need additional serialized data, they can access GetMoveResponseDataContainer()
-		if (MoveResponse.bRootMotionSourceCorrection)
-		{
-			if (FRootMotionSourceGroup* RootMotionSourceGroup = MoveResponse.GetRootMotionSourceGroup(*this))
-			{
-				ClientAdjustRootMotionSourcePosition_Implementation(
-					MoveResponse.ClientAdjustment.TimeStamp,
-					*RootMotionSourceGroup,
-					MoveResponse.bRootMotionMontageCorrection,
-					MoveResponse.RootMotionTrackPosition,
-					MoveResponse.ClientAdjustment.NewLoc,
-					MoveResponse.RootMotionRotation,
-					MoveResponse.ClientAdjustment.NewVel.Z,
-					MoveResponse.ClientAdjustment.NewBase,
-					MoveResponse.ClientAdjustment.NewBaseBoneName,
-					MoveResponse.bHasBase,
-					MoveResponse.ClientAdjustment.bBaseRelativePosition,
-					MoveResponse.ClientAdjustment.MovementMode);
-			}
-		}
-		else if (MoveResponse.bRootMotionMontageCorrection)
-		{
-			ClientAdjustRootMotionPosition_Implementation(
-				MoveResponse.ClientAdjustment.TimeStamp,
-				MoveResponse.RootMotionTrackPosition,
-				MoveResponse.ClientAdjustment.NewLoc,
-				MoveResponse.RootMotionRotation,
-				MoveResponse.ClientAdjustment.NewVel.Z,
-				MoveResponse.ClientAdjustment.NewBase,
-				MoveResponse.ClientAdjustment.NewBaseBoneName,
-				MoveResponse.bHasBase,
-				MoveResponse.ClientAdjustment.bBaseRelativePosition,
-				MoveResponse.ClientAdjustment.MovementMode);
-		}
-		else
-		{
-			ClientAdjustPosition_Implementation(
-				MoveResponse.ClientAdjustment.TimeStamp,
-				MoveResponse.ClientAdjustment.NewLoc,
-				MoveResponse.ClientAdjustment.NewVel,
-				MoveResponse.ClientAdjustment.NewBase,
-				MoveResponse.ClientAdjustment.NewBaseBoneName,
-				MoveResponse.bHasBase,
-				MoveResponse.ClientAdjustment.bBaseRelativePosition,
-				MoveResponse.ClientAdjustment.MovementMode);
-		}
-	}
-}
-
-
-FRootMotionSourceGroup* FCharacterMoveResponseDataContainer::GetRootMotionSourceGroup(UCharacterMovementComponent& CharacterMovement) const
-{
-	if (!bRootMotionSourceCorrection)
-	{
-		return nullptr;
-	}
-
-	if (CharacterMovement.GetNetMode() < NM_Client)
-	{
-		// Servers use current root motion state
-		return &CharacterMovement.CurrentRootMotion;
-	}
-	else
-	{
-		// Clients use a container for server correction data
-		return &CharacterMovement.ServerCorrectionRootMotion;
-	}
-}
-
-
 void UCharacterMovementComponent::SendClientAdjustment()
 {
 	if (!HasValidData())
@@ -9824,14 +9079,7 @@ void UCharacterMovementComponent::SendClientAdjustment()
 		if (CurrentTime - ServerLastClientGoodMoveAckTime > NetworkMinTimeBetweenClientAckGoodMoves)
 		{
 			ServerLastClientGoodMoveAckTime = CurrentTime;
-			if (ShouldUsePackedMovementRPCs())
-			{
-				ServerSendMoveResponse(ServerData->PendingAdjustment);
-			}
-			else
-			{
-				ClientAckGoodMove(ServerData->PendingAdjustment.TimeStamp);
-			}
+			ClientAckGoodMove(ServerData->PendingAdjustment.TimeStamp);
 		}
 	}
 	else
@@ -9847,79 +9095,71 @@ void UCharacterMovementComponent::SendClientAdjustment()
 		{
 			ServerLastClientAdjustmentTime = CurrentTime;
 
-			if (ShouldUsePackedMovementRPCs())
+			const bool bIsPlayingNetworkedRootMotionMontage = CharacterOwner->IsPlayingNetworkedRootMotionMontage();
+			if (HasRootMotionSources())
 			{
-				ServerData->PendingAdjustment.MovementMode = PackNetworkMovementMode();
-				ServerSendMoveResponse(ServerData->PendingAdjustment);
+				FRotator Rotation = ServerData->PendingAdjustment.NewRot.GetNormalized();
+				FVector_NetQuantizeNormal CompressedRotation(Rotation.Pitch / 180.f, Rotation.Yaw / 180.f, Rotation.Roll / 180.f);
+				ClientAdjustRootMotionSourcePosition
+				(
+				ServerData->PendingAdjustment.TimeStamp,
+				CurrentRootMotion,
+				bIsPlayingNetworkedRootMotionMontage,
+				bIsPlayingNetworkedRootMotionMontage ? CharacterOwner->GetRootMotionAnimMontageInstance()->GetPosition() : -1.f,
+				ServerData->PendingAdjustment.NewLoc,
+				CompressedRotation,
+				ServerData->PendingAdjustment.NewVel.Z,
+				ServerData->PendingAdjustment.NewBase,
+				ServerData->PendingAdjustment.NewBaseBoneName,
+				ServerData->PendingAdjustment.NewBase != NULL,
+				ServerData->PendingAdjustment.bBaseRelativePosition,
+				PackNetworkMovementMode()
+				);
+			}
+			else if (bIsPlayingNetworkedRootMotionMontage)
+			{
+				FRotator Rotation = ServerData->PendingAdjustment.NewRot.GetNormalized();
+				FVector_NetQuantizeNormal CompressedRotation(Rotation.Pitch / 180.f, Rotation.Yaw / 180.f, Rotation.Roll / 180.f);
+				ClientAdjustRootMotionPosition
+				(
+				ServerData->PendingAdjustment.TimeStamp,
+				CharacterOwner->GetRootMotionAnimMontageInstance()->GetPosition(),
+				ServerData->PendingAdjustment.NewLoc,
+				CompressedRotation,
+				ServerData->PendingAdjustment.NewVel.Z,
+				ServerData->PendingAdjustment.NewBase,
+				ServerData->PendingAdjustment.NewBaseBoneName,
+				ServerData->PendingAdjustment.NewBase != NULL,
+				ServerData->PendingAdjustment.bBaseRelativePosition,
+				PackNetworkMovementMode()
+				);
+			}
+			else if (ServerData->PendingAdjustment.NewVel.IsZero())
+			{
+				ClientVeryShortAdjustPosition
+				(
+				ServerData->PendingAdjustment.TimeStamp,
+				ServerData->PendingAdjustment.NewLoc,
+				ServerData->PendingAdjustment.NewBase,
+				ServerData->PendingAdjustment.NewBaseBoneName,
+				ServerData->PendingAdjustment.NewBase != NULL,
+				ServerData->PendingAdjustment.bBaseRelativePosition,
+				PackNetworkMovementMode()
+				);
 			}
 			else
 			{
-				const bool bIsPlayingNetworkedRootMotionMontage = CharacterOwner->IsPlayingNetworkedRootMotionMontage();
-				if (CurrentRootMotion.HasActiveRootMotionSources())
-				{
-					FRotator Rotation = ServerData->PendingAdjustment.NewRot.GetNormalized();
-					FVector_NetQuantizeNormal CompressedRotation(Rotation.Pitch / 180.f, Rotation.Yaw / 180.f, Rotation.Roll / 180.f);
-					ClientAdjustRootMotionSourcePosition
-					(
-						ServerData->PendingAdjustment.TimeStamp,
-						CurrentRootMotion,
-						bIsPlayingNetworkedRootMotionMontage,
-						bIsPlayingNetworkedRootMotionMontage ? CharacterOwner->GetRootMotionAnimMontageInstance()->GetPosition() : -1.f,
-						ServerData->PendingAdjustment.NewLoc,
-						CompressedRotation,
-						ServerData->PendingAdjustment.NewVel.Z,
-						ServerData->PendingAdjustment.NewBase,
-						ServerData->PendingAdjustment.NewBaseBoneName,
-						ServerData->PendingAdjustment.NewBase != NULL,
-						ServerData->PendingAdjustment.bBaseRelativePosition,
-						PackNetworkMovementMode()
-					);
-				}
-				else if (bIsPlayingNetworkedRootMotionMontage)
-				{
-					FRotator Rotation = ServerData->PendingAdjustment.NewRot.GetNormalized();
-					FVector_NetQuantizeNormal CompressedRotation(Rotation.Pitch / 180.f, Rotation.Yaw / 180.f, Rotation.Roll / 180.f);
-					ClientAdjustRootMotionPosition
-					(
-						ServerData->PendingAdjustment.TimeStamp,
-						CharacterOwner->GetRootMotionAnimMontageInstance()->GetPosition(),
-						ServerData->PendingAdjustment.NewLoc,
-						CompressedRotation,
-						ServerData->PendingAdjustment.NewVel.Z,
-						ServerData->PendingAdjustment.NewBase,
-						ServerData->PendingAdjustment.NewBaseBoneName,
-						ServerData->PendingAdjustment.NewBase != NULL,
-						ServerData->PendingAdjustment.bBaseRelativePosition,
-						PackNetworkMovementMode()
-					);
-				}
-				else if (ServerData->PendingAdjustment.NewVel.IsZero())
-				{
-					ClientVeryShortAdjustPosition
-					(
-						ServerData->PendingAdjustment.TimeStamp,
-						ServerData->PendingAdjustment.NewLoc,
-						ServerData->PendingAdjustment.NewBase,
-						ServerData->PendingAdjustment.NewBaseBoneName,
-						ServerData->PendingAdjustment.NewBase != NULL,
-						ServerData->PendingAdjustment.bBaseRelativePosition,
-						PackNetworkMovementMode()
-					);
-				}
-				else
-				{
-					ClientAdjustPosition
-					(
-						ServerData->PendingAdjustment.TimeStamp,
-						ServerData->PendingAdjustment.NewLoc,
-						ServerData->PendingAdjustment.NewVel,
-						ServerData->PendingAdjustment.NewBase,
-						ServerData->PendingAdjustment.NewBaseBoneName,
-						ServerData->PendingAdjustment.NewBase != NULL,
-						ServerData->PendingAdjustment.bBaseRelativePosition,
-						PackNetworkMovementMode()
-					);
-				}
+				ClientAdjustPosition
+				(
+				ServerData->PendingAdjustment.TimeStamp,
+				ServerData->PendingAdjustment.NewLoc,
+				ServerData->PendingAdjustment.NewVel,
+				ServerData->PendingAdjustment.NewBase,
+				ServerData->PendingAdjustment.NewBaseBoneName,
+				ServerData->PendingAdjustment.NewBase != NULL,
+				ServerData->PendingAdjustment.bBaseRelativePosition,
+				PackNetworkMovementMode()
+				);
 			}
 		}
 	}
@@ -9985,8 +9225,7 @@ void UCharacterMovementComponent::ClientAdjustPosition_Implementation
 	{
 		if (bBaseRelativePosition)
 		{
-			UE_LOG(LogNetPlayerMovement, Warning, TEXT("ClientAdjustPosition_Implementation could not resolve the new relative movement base actor, ignoring server correction! Client currently at world location %s on base %s"),
-				*UpdatedComponent->GetComponentLocation().ToString(), *GetNameSafe(GetMovementBase()));
+			UE_LOG(LogNetPlayerMovement, Warning, TEXT("ClientAdjustPosition_Implementation could not resolve the new relative movement base actor, ignoring server correction!"));
 			return;
 		}
 		else
@@ -10027,10 +9266,7 @@ void UCharacterMovementComponent::ClientAdjustPosition_Implementation
 	OnClientCorrectionReceived(*ClientData, TimeStamp, WorldShiftedNewLocation, NewVelocity, NewBase, NewBaseBoneName, bHasBase, bBaseRelativePosition, ServerMovementMode);
 
 	// Trust the server's positioning.
-	if (UpdatedComponent)
-	{
-		UpdatedComponent->SetWorldLocation(WorldShiftedNewLocation, false, nullptr, ETeleportType::TeleportPhysics);
-	}
+	UpdatedComponent->SetWorldLocation(WorldShiftedNewLocation, false, nullptr, ETeleportType::TeleportPhysics);
 	Velocity = NewVelocity;
 
 	// Trust the server's movement mode
@@ -10047,9 +9283,9 @@ void UCharacterMovementComponent::ClientAdjustPosition_Implementation
 		
 		// We had an unresolved base from the server
 		// If walking, we'd like to continue walking if possible, to avoid falling for a frame, so try to find a base where we moved to.
-		if (PreviousBase && UpdatedComponent)
+		if (PreviousBase)
 		{
-			FindFloor(UpdatedComponent->GetComponentLocation(), CurrentFloor, false);
+			FindFloor(UpdatedComponent->GetComponentLocation(), CurrentFloor, false); //-V595
 			if (CurrentFloor.IsWalkableFloor())
 			{
 				FinalBase = CurrentFloor.HitResult.Component.Get();
@@ -10090,25 +9326,13 @@ void UCharacterMovementComponent::OnClientCorrectionReceived(FNetworkPredictionD
 #if !UE_BUILD_SHIPPING
 	if (CharacterMovementCVars::NetShowCorrections != 0)
 	{
-		const FVector ClientLocAtCorrectedMove = ClientData.LastAckedMove.IsValid() ? ClientData.LastAckedMove->SavedLocation : UpdatedComponent->GetComponentLocation();
-		const FVector LocDiff = ClientLocAtCorrectedMove - NewLocation;
+		const FVector LocDiff = UpdatedComponent->GetComponentLocation() - NewLocation;
 		const FString NewBaseString = NewBase ? NewBase->GetPathName(NewBase->GetOutermost()) : TEXT("None");
 		UE_LOG(LogNetPlayerMovement, Warning, TEXT("*** Client: Error for %s at Time=%.3f is %3.3f LocDiff(%s) ClientLoc(%s) ServerLoc(%s) NewBase: %s NewBone: %s ClientVel(%s) ServerVel(%s) SavedMoves %d"),
-			   *GetNameSafe(CharacterOwner), TimeStamp, LocDiff.Size(), *LocDiff.ToString(), *ClientLocAtCorrectedMove.ToString(), *NewLocation.ToString(), *NewBaseString, *NewBaseBoneName.ToString(), *Velocity.ToString(), *NewVelocity.ToString(), ClientData.SavedMoves.Num());
+			   *GetNameSafe(CharacterOwner), TimeStamp, LocDiff.Size(), *LocDiff.ToString(), *UpdatedComponent->GetComponentLocation().ToString(), *NewLocation.ToString(), *NewBaseString, *NewBaseBoneName.ToString(), *Velocity.ToString(), *NewVelocity.ToString(), ClientData.SavedMoves.Num());
 		const float DebugLifetime = CharacterMovementCVars::NetCorrectionLifetime;
-		if (!LocDiff.IsNearlyZero())
-		{
-			// When server corrects us to a new location, draw red at location where client thought they were, green where the server corrected us to
-			DrawDebugCapsule(GetWorld(), ClientLocAtCorrectedMove, CharacterOwner->GetSimpleCollisionHalfHeight(), CharacterOwner->GetSimpleCollisionRadius(), FQuat::Identity, FColor(255, 100, 100), false, DebugLifetime);
-			DrawDebugCapsule(GetWorld(), NewLocation, CharacterOwner->GetSimpleCollisionHalfHeight(), CharacterOwner->GetSimpleCollisionRadius(), FQuat::Identity, FColor(100, 255, 100), false, DebugLifetime);
-		}
-		else
-		{
-			// When we receive a server correction that doesn't change our position from where our client move had us, draw yellow (otherwise would be overlapping)
-			// This occurs when we receive an initial correction, replay moves to get us into the right location, and then receive subsequent corrections by the server (who doesn't know if we corrected already
-			// so continues to send corrections). This is a "no-op" server correction with regards to location since we already corrected (occurs with latency)
-			DrawDebugCapsule(GetWorld(), NewLocation, CharacterOwner->GetSimpleCollisionHalfHeight(), CharacterOwner->GetSimpleCollisionRadius(), FQuat::Identity, FColor(255, 255, 100), false, DebugLifetime);
-		}
+		DrawDebugCapsule(GetWorld(), UpdatedComponent->GetComponentLocation(), CharacterOwner->GetSimpleCollisionHalfHeight(), CharacterOwner->GetSimpleCollisionRadius(), FQuat::Identity, FColor(255, 100, 100), false, DebugLifetime);
+		DrawDebugCapsule(GetWorld(), NewLocation, CharacterOwner->GetSimpleCollisionHalfHeight(), CharacterOwner->GetSimpleCollisionRadius(), FQuat::Identity, FColor(100, 255, 100), false, DebugLifetime);
 	}
 #endif //!UE_BUILD_SHIPPING
 
@@ -10142,7 +9366,7 @@ void UCharacterMovementComponent::ClientAdjustRootMotionPosition_Implementation(
 	}
 
 	// Call ClientAdjustPosition first. This will Ack the move if it's not outdated.
-	ClientAdjustPosition_Implementation(TimeStamp, ServerLoc, FVector(0.f, 0.f, ServerVelZ), ServerBase, ServerBaseBoneName, bHasBase, bBaseRelativePosition, ServerMovementMode);
+	ClientAdjustPosition(TimeStamp, ServerLoc, FVector(0.f, 0.f, ServerVelZ), ServerBase, ServerBaseBoneName, bHasBase, bBaseRelativePosition, ServerMovementMode);
 	
 	FNetworkPredictionData_Client_Character* ClientData = GetPredictionData_Client_Character();
 	check(ClientData);
@@ -10223,7 +9447,7 @@ void UCharacterMovementComponent::ClientAdjustRootMotionSourcePosition_Implement
 #endif
 
 	// Call ClientAdjustPosition first. This will Ack the move if it's not outdated.
-	ClientAdjustPosition_Implementation(TimeStamp, ServerLoc, FVector(0.f, 0.f, ServerVelZ), ServerBase, ServerBaseBoneName, bHasBase, bBaseRelativePosition, ServerMovementMode);
+	ClientAdjustPosition(TimeStamp, ServerLoc, FVector(0.f, 0.f, ServerVelZ), ServerBase, ServerBaseBoneName, bHasBase, bBaseRelativePosition, ServerMovementMode);
 	
 	FNetworkPredictionData_Client_Character* ClientData = GetPredictionData_Client_Character();
 	check(ClientData);
@@ -10329,7 +9553,6 @@ void UCharacterMovementComponent::ClientAckGoodMove_Implementation(float TimeSta
 	ClientData->AckMove(MoveIndex, *this);
 }
 
-
 void UCharacterMovementComponent::CapsuleTouched(UPrimitiveComponent* OverlappedComp, AActor* Other, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult )
 {
 	if (!bEnablePhysicsInteraction)
@@ -10371,32 +9594,32 @@ void UCharacterMovementComponent::CapsuleTouched(UPrimitiveComponent* Overlapped
 
 void UCharacterMovementComponent::SetAvoidanceGroup(int32 GroupFlags)
 {
-	SetAvoidanceGroupMask(GroupFlags);
+	AvoidanceGroup.SetFlagsDirectly(GroupFlags);
 }
 
 void UCharacterMovementComponent::SetAvoidanceGroupMask(const FNavAvoidanceMask& GroupMask)
 {
-	SetAvoidanceGroupMask(GroupMask.Packed);
+	AvoidanceGroup.SetFlagsDirectly(GroupMask.Packed);
 }
 
 void UCharacterMovementComponent::SetGroupsToAvoid(int32 GroupFlags)
 {
-	SetGroupsToAvoidMask(GroupFlags);
+	GroupsToAvoid.SetFlagsDirectly(GroupFlags);
 }
 
 void UCharacterMovementComponent::SetGroupsToAvoidMask(const FNavAvoidanceMask& GroupMask)
 {
-	SetGroupsToAvoidMask(GroupMask.Packed);
+	GroupsToAvoid.SetFlagsDirectly(GroupMask.Packed);
 }
 
 void UCharacterMovementComponent::SetGroupsToIgnore(int32 GroupFlags)
 {
-	SetGroupsToIgnoreMask(GroupFlags);
+	GroupsToIgnore.SetFlagsDirectly(GroupFlags);
 }
 
 void UCharacterMovementComponent::SetGroupsToIgnoreMask(const FNavAvoidanceMask& GroupMask)
 {
-	SetGroupsToIgnoreMask(GroupMask.Packed);
+	GroupsToIgnore.SetFlagsDirectly(GroupMask.Packed);
 }
 
 void UCharacterMovementComponent::SetAvoidanceEnabled(bool bEnable)
@@ -10718,9 +9941,9 @@ bool UCharacterMovementComponent::HasRootMotionSources() const
 	return CurrentRootMotion.HasActiveRootMotionSources() || (CharacterOwner && CharacterOwner->IsPlayingRootMotion() && CharacterOwner->GetMesh());
 }
 
-uint16 UCharacterMovementComponent::ApplyRootMotionSource(TSharedPtr<FRootMotionSource> SourcePtr)
+uint16 UCharacterMovementComponent::ApplyRootMotionSource(FRootMotionSource* SourcePtr)
 {
-	if (ensure(SourcePtr.IsValid()))
+	if (SourcePtr != nullptr)
 	{
 		// Set default StartTime if it hasn't been set manually
 		if (!SourcePtr->IsStartTimeValid())
@@ -10748,17 +9971,16 @@ uint16 UCharacterMovementComponent::ApplyRootMotionSource(TSharedPtr<FRootMotion
 			}
 		}
 
-		OnRootMotionSourceBeingApplied(SourcePtr.Get());
+		OnRootMotionSourceBeingApplied(SourcePtr);
 
 		return CurrentRootMotion.ApplyRootMotionSource(SourcePtr);
 	}
+	else
+	{
+		checkf(false, TEXT("Passing nullptr into UCharacterMovementComponent::ApplyRootMotionSource"));
+	}
 
 	return (uint16)ERootMotionSourceID::Invalid;
-}
-
-uint16 UCharacterMovementComponent::ApplyRootMotionSource(FRootMotionSource* SourcePtr)
-{
-	return ApplyRootMotionSource(TSharedPtr<FRootMotionSource>(SourcePtr));
 }
 
 void UCharacterMovementComponent::OnRootMotionSourceBeingApplied(const FRootMotionSource* Source)
@@ -11320,7 +10542,10 @@ void FSavedMove_Character::SetMoveFor(ACharacter* Character, float InDeltaTime, 
 	
 	MaxSpeed = Character->GetCharacterMovement()->GetMaxSpeed();
 
-	JumpCurrentCount = Character->JumpCurrentCountPreJump;
+	// CheckJumpInput will increment JumpCurrentCount.
+	// Therefore, for replicated moves we want it to set it at 1 less to properly
+	// handle the change.
+	JumpCurrentCount = Character->JumpCurrentCount > 0 ? Character->JumpCurrentCount - 1 : 0;
 	bWantsToCrouch = Character->GetCharacterMovement()->bWantsToCrouch;
 	bForceMaxAccel = Character->GetCharacterMovement()->bForceMaxAccel;
 	StartPackedMovementMode = Character->GetCharacterMovement()->PackNetworkMovementMode();
@@ -11331,13 +10556,6 @@ void FSavedMove_Character::SetMoveFor(ACharacter* Character, float InDeltaTime, 
 	// a move with it will cause the DeltaTime for that next move to be larger than
 	// intended (effectively root motion applies to movement that happened prior to its activation)
 	if (Character->GetCharacterMovement()->CurrentRootMotion.HasActiveRootMotionSources())
-	{
-		bForceNoCombine = true;
-	}
-
-	// Moves with anim root motion should not be combined
-	const FAnimMontageInstance* RootMotionMontageInstance = Character->GetRootMotionAnimMontageInstance();
-	if (RootMotionMontageInstance)
 	{
 		bForceNoCombine = true;
 	}
@@ -11441,24 +10659,17 @@ void FSavedMove_Character::PostUpdate(ACharacter* Character, FSavedMove_Characte
 	if (PostUpdateMode == PostUpdate_Record)
 	{
 		const FAnimMontageInstance* RootMotionMontageInstance = Character->GetRootMotionAnimMontageInstance();
-		if (RootMotionMontageInstance)
+		if (RootMotionMontageInstance && !RootMotionMontageInstance->IsRootMotionDisabled())
 		{
-			if (!RootMotionMontageInstance->IsRootMotionDisabled())
-			{
-				RootMotionMontage = RootMotionMontageInstance->Montage;
-				RootMotionTrackPosition = RootMotionMontageInstance->GetPosition();
-				RootMotionMovement = Character->ClientRootMotionParams;
-			}
-
-			// Moves where anim root motion is being played should not be combined
-			bForceNoCombine = true;
+			RootMotionMontage = RootMotionMontageInstance->Montage;
+			RootMotionTrackPosition = RootMotionMontageInstance->GetPosition();
+			RootMotionMovement = Character->ClientRootMotionParams;
 		}
 
 		// Save off Root Motion Sources
 		if( Character->SavedRootMotion.HasActiveRootMotionSources() )
 		{
 			SavedRootMotion = Character->SavedRootMotion;
-			bForceNoCombine = true;
 		}
 
 		// Don't want to combine moves that trigger overlaps, because by moving back and replaying the move we could retrigger overlaps.
@@ -11818,9 +11029,9 @@ void FSavedMove_Character::CombineWith(const FSavedMove_Character* OldMove, ACha
 	DeltaTime += OldMove->DeltaTime;
 
 	// Roll back jump force counters. SetInitialPosition() below will copy them to the saved move.
+	// Changes in certain counters like JumpCurrentCount don't allow move combining, so no need to roll those back (they are the same).
 	InCharacter->JumpForceTimeRemaining = OldMove->JumpForceTimeRemaining;
 	InCharacter->JumpKeyHoldTime = OldMove->JumpKeyHoldTime;
-	InCharacter->JumpCurrentCountPreJump = OldMove->JumpCurrentCount;
 }
 
 void FSavedMove_Character::PrepMoveFor(ACharacter* Character)
@@ -11838,7 +11049,6 @@ void FSavedMove_Character::PrepMoveFor(ACharacter* Character)
 				RootMotionTrackPosition = RootMotionMontageInstance->GetPosition();
 				RootMotionMontageInstance->SimulateAdvance(DeltaTime, RootMotionTrackPosition, RootMotionMovement);
 				RootMotionMontageInstance->SetPosition(RootMotionTrackPosition);
-				RootMotionMovement.ScaleRootMotionTranslation(Character->GetAnimRootMotionTranslationScale());
 			}
 		}
 
@@ -11847,7 +11057,7 @@ void FSavedMove_Character::PrepMoveFor(ACharacter* Character)
 	}
 
 	// Resimulate Root Motion Sources if we need to - occurs after server RPCs over a correction during root motion sources.
-	if( SavedRootMotion.HasActiveRootMotionSources() || Character->SavedRootMotion.HasActiveRootMotionSources() )
+	if( SavedRootMotion.HasActiveRootMotionSources() )
 	{
 		if( Character->bClientResimulateRootMotionSources )
 		{
@@ -11861,18 +11071,6 @@ void FSavedMove_Character::PrepMoveFor(ACharacter* Character)
 			SavedRootMotion.CleanUpInvalidRootMotion(DeltaTime, *Character, *Character->GetCharacterMovement());
 			SavedRootMotion.PrepareRootMotion(DeltaTime, *Character, *Character->GetCharacterMovement());
 		}
-		else
-		{
-			// If this is not the first SavedMove we are replaying, clean up any currently applied root motion sources so that if they have
-			// SetVelocity/ClampVelocity finish settings they get applied correctly before CurrentRootMotion gets stomped below
-			if (FNetworkPredictionData_Client_Character* ClientData = Character->GetCharacterMovement()->GetPredictionData_Client_Character())
-			{
-				if (ClientData->SavedMoves[0].Get() != this)
-				{
-					Character->GetCharacterMovement()->CurrentRootMotion.CleanUpInvalidRootMotion(DeltaTime, *Character, *Character->GetCharacterMovement());
-				}
-			}
-		}
 
 		// Restore root motion to that of this SavedMove to be used during replaying the Move
 		Character->GetCharacterMovement()->CurrentRootMotion = SavedRootMotion;
@@ -11884,8 +11082,6 @@ void FSavedMove_Character::PrepMoveFor(ACharacter* Character)
 	Character->JumpForceTimeRemaining = JumpForceTimeRemaining;
 	Character->JumpMaxCount = JumpMaxCount;
 	Character->JumpCurrentCount = JumpCurrentCount;
-	Character->JumpCurrentCountPreJump = JumpCurrentCount;
-
 	StartPackedMovementMode = Character->GetCharacterMovement()->PackNetworkMovementMode();
 }
 
@@ -11957,14 +11153,7 @@ void UCharacterMovementComponent::FlushServerMoves()
 				NewMove->TimeStamp, *NewMove->Acceleration.ToString(), *Velocity.ToString(), *UpdatedComponent->GetComponentLocation().ToString(), NewMove->DeltaTime, *GetMovementName(),
 				*GetNameSafe(NewMove->EndBase.Get()), *NewMove->EndBoneName.ToString(), MovementBaseUtility::IsDynamicBase(NewMove->EndBase.Get()) ? 1 : 0, ClientData->PendingMove.IsValid() ? 1 : 0);
 
-			if (ShouldUsePackedMovementRPCs())
-			{
-				CallServerMovePacked(NewMove.Get(), nullptr, nullptr);
-			}
-			else
-			{
-				CallServerMove(NewMove.Get(), nullptr);
-			}
+			CallServerMove(NewMove.Get(), nullptr);
 		}
 	}
 }

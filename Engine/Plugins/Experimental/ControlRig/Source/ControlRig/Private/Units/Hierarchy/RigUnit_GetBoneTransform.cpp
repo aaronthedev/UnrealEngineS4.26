@@ -1,8 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "RigUnit_GetBoneTransform.h"
-#include "RigUnit_GetInitialBoneTransform.h"
 #include "Units/RigUnitContext.h"
+
+FString FRigUnit_GetBoneTransform::GetUnitLabel() const
+{
+	return FString::Printf(TEXT("Get Transform %s"), *Bone.ToString());
+}
 
 FRigUnit_GetBoneTransform_Execute()
 {
@@ -14,27 +18,23 @@ FRigUnit_GetBoneTransform_Execute()
 		{
 			case EControlRigState::Init:
 			{
-				FRigUnit_GetInitialBoneTransform::StaticExecute(RigVMExecuteContext, Bone, Space, Transform, CachedBone, Context);;
+				CachedBoneIndex = Hierarchy->GetIndex(Bone);
 				break;
 			}
 			case EControlRigState::Update:
 			{
-				if (!CachedBone.UpdateCache(Bone, Hierarchy))
-				{
-					UE_CONTROLRIG_RIGUNIT_REPORT_WARNING(TEXT("Bone '%s' is not valid."), *Bone.ToString());
-				}
-				else
+				if (CachedBoneIndex != INDEX_NONE)
 				{
 					switch (Space)
 					{
 						case EBoneGetterSetterMode::GlobalSpace:
 						{
-							Transform = Hierarchy->GetGlobalTransform(CachedBone);
+							Transform = Hierarchy->GetGlobalTransform(CachedBoneIndex);
 							break;
 						}
 						case EBoneGetterSetterMode::LocalSpace:
 						{
-							Transform = Hierarchy->GetLocalTransform(CachedBone);
+							Transform = Hierarchy->GetLocalTransform(CachedBoneIndex);
 							break;
 						}
 						default:

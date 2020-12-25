@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -29,16 +29,12 @@ public:
 	UPROPERTY(transient, BlueprintReadWrite, EditAnywhere, Category=Platforms, Meta=(DisplayName="Player Overrides"))
 	TMap<FString, FName> PlatformPlayerNames;
 
-private:
-	/** Platform to player plugin GUID mappings that could not be resolved on load (e.g. missing platform support) */
-	TMap<FGuid, FGuid> BlindPlatformGuidPlayerNames;
-
 #endif
 
 public:
 
 	//~ UObject interface
-	virtual void PreSave(const class ITargetPlatform* TargetPlatform);
+
 	virtual void GetAssetRegistryTags(TArray<FAssetRegistryTag>& OutTags) const override;
 	virtual void Serialize(FArchive& Ar) override;
 

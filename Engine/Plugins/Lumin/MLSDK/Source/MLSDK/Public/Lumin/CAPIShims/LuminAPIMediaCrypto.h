@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -11,19 +11,19 @@ LUMIN_THIRD_PARTY_INCLUDES_START
 #include <ml_media_crypto.h>
 LUMIN_THIRD_PARTY_INCLUDES_END
 
-namespace LUMIN_MLSDK_API
+namespace MLSDK_API
 {
 
 CREATE_FUNCTION_SHIM(ml_mediacrypto, MLResult, MLMediaCryptoCreate)
-#define MLMediaCryptoCreate ::LUMIN_MLSDK_API::MLMediaCryptoCreateShim
+#define MLMediaCryptoCreate ::MLSDK_API::MLMediaCryptoCreateShim
 CREATE_FUNCTION_SHIM(ml_mediacrypto, MLResult, MLMediaCryptoRelease)
-#define MLMediaCryptoRelease ::LUMIN_MLSDK_API::MLMediaCryptoReleaseShim
+#define MLMediaCryptoRelease ::MLSDK_API::MLMediaCryptoReleaseShim
 CREATE_FUNCTION_SHIM(ml_mediacrypto, MLResult, MLMediaCryptoIsCryptoSchemeSupported)
-#define MLMediaCryptoIsCryptoSchemeSupported ::LUMIN_MLSDK_API::MLMediaCryptoIsCryptoSchemeSupportedShim
+#define MLMediaCryptoIsCryptoSchemeSupported ::MLSDK_API::MLMediaCryptoIsCryptoSchemeSupportedShim
 CREATE_FUNCTION_SHIM(ml_mediacrypto, MLResult, MLMediaCryptoRequiresSecureDecoderComponent)
-#define MLMediaCryptoRequiresSecureDecoderComponent ::LUMIN_MLSDK_API::MLMediaCryptoRequiresSecureDecoderComponentShim
+#define MLMediaCryptoRequiresSecureDecoderComponent ::MLSDK_API::MLMediaCryptoRequiresSecureDecoderComponentShim
 CREATE_FUNCTION_SHIM(ml_mediacrypto, MLResult, MLMediaCryptoSetMediaDRMSession)
-#define MLMediaCryptoSetMediaDRMSession ::LUMIN_MLSDK_API::MLMediaCryptoSetMediaDRMSessionShim
+#define MLMediaCryptoSetMediaDRMSession ::MLSDK_API::MLMediaCryptoSetMediaDRMSessionShim
 
 }
 

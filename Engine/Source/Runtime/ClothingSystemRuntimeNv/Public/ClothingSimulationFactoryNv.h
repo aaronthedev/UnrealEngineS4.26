@@ -1,7 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
+#include "ClothingSimulation.h"
 #include "ClothingSimulationFactory.h"
 
 #include "ClothingSimulationFactoryNv.generated.h"
@@ -18,7 +19,4 @@ public:
 
 	virtual bool SupportsRuntimeInteraction() override;
 	virtual UClothingSimulationInteractor* CreateInteractor() override;
-
-	virtual TArrayView<const TSubclassOf<UClothConfigBase>> GetClothConfigClasses() const override;
-	virtual const UEnum* GetWeightMapTargetEnum() const override;
 };

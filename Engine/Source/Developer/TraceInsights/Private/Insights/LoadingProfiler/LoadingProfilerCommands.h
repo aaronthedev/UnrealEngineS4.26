@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -43,9 +43,6 @@ public:
 
 	/** Toggles visibility for the Export Details tree view. Global and custom command. */
 	TSharedPtr<FUICommandInfo> ToggleExportDetailsTreeViewVisibility;
-
-	/** Toggles visibility for the Requests tree view. Global and custom command. */
-	TSharedPtr<FUICommandInfo> ToggleRequestsTreeViewVisibility;
 };
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -102,7 +99,6 @@ protected:\
 	DECLARE_TOGGLE_COMMAND(ToggleObjectTypeAggregationTreeViewVisibility)
 	DECLARE_TOGGLE_COMMAND(TogglePackageDetailsTreeViewVisibility)
 	DECLARE_TOGGLE_COMMAND(ToggleExportDetailsTreeViewVisibility)
-	DECLARE_TOGGLE_COMMAND(ToggleRequestsTreeViewVisibility)
 #undef DECLARE_TOGGLE_COMMAND
 
 	//////////////////////////////////////////////////

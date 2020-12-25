@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "MDLImporter.h"
 
@@ -109,7 +109,7 @@ FMDLImporter::FMDLImporter(const FString& PluginPath)
 #endif
 
 	MdlContext.Reset(new Mdl::FApiContext());
-	
+	UE_LOG(LogMDLImporter, Error, TEXT("%s"), *ThirdPartyPath);
 	if (MdlContext->Load(FPaths::Combine(ThirdPartyPath, TEXT("MDL"), Platform), UMDLImporterOptions::GetMdlSystemPath()))
 	{
 		const FString MdlUserPath = UMDLImporterOptions::GetMdlUserPath();
@@ -168,6 +168,15 @@ bool FMDLImporter::OpenFile(const FString& InFileName, const UMDLImporterOptions
 	if (!IsLoaded())
 	{
 		return false;
+	}
+
+	// set export path for textures
+	{
+		const FString  ExporthPath  = FPaths::ConvertRelativePathToFull(FPaths::ProjectContentDir() + FPaths::GetBaseFilename(InFileName));
+		IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+		PlatformFile.CreateDirectory(*ExporthPath);
+
+		MdlContext->GetDistiller()->SetExportPath(ExporthPath);
 	}
 
 	bool bSuccess = false;
@@ -269,9 +278,11 @@ void FMDLImporter::ConvertUnsuportedVirtualTextures() const
 	{
 		if (UMaterial* CurrentMaterial = Cast<UMaterial>(CurrentMaterialInterface))
 		{
+			TArray<UObject*> ReferencedTextures;
+			CurrentMaterial->AppendReferencedTextures(ReferencedTextures);
 			for (UTexture2D* VirtualTexture : VirtualTexturesToConvert)
 			{
-				if (CurrentMaterial->GetCachedExpressionData().ReferencedTextures.Contains(VirtualTexture))
+				if (ReferencedTextures.Contains(VirtualTexture))
 				{
 					MaterialsToRefreshAfterVirtualTextureConversion.Add(CurrentMaterial);
 					break;

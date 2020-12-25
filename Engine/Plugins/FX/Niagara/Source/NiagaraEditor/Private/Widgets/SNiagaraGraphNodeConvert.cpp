@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SNiagaraGraphNodeConvert.h"
 #include "NiagaraNodeConvert.h"
@@ -62,7 +62,7 @@ FReply SNiagaraGraphNodeConvert::ToggleShowWiring()
 TSharedRef<SWidget> ConstructPinSocketsRecursive(const TArray<TSharedRef<FNiagaraConvertPinSocketViewModel>>& SocketViewModels)
 {
 	TSharedRef<SVerticalBox> SocketBox = SNew(SVerticalBox);
-	for (const TSharedRef<FNiagaraConvertPinSocketViewModel>& SocketViewModel : SocketViewModels)
+	for (const TSharedRef<FNiagaraConvertPinSocketViewModel> SocketViewModel : SocketViewModels)
 	{
 		if(SocketViewModel->CanBeConnected())
 		{

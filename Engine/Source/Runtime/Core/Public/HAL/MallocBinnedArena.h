@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -31,7 +31,6 @@
 #define MBA_STAT(x)
 #endif
 
-PRAGMA_DISABLE_UNSAFE_TYPECAST_WARNINGS
 
 class CORE_API FMallocBinnedArena final : public FMalloc
 {
@@ -351,26 +350,26 @@ class CORE_API FMallocBinnedArena final : public FMalloc
 			{
 				PoolIndex = ArenaParams.PoolCount - 1;
 			}
-			if ((uint8*)Ptr < PoolBaseVMPtr[(int32)PoolIndex])
+			if ((uint8*)Ptr < PoolBaseVMPtr[PoolIndex])
 			{
 				do
 				{
 					PoolIndex--;
 					check(PoolIndex < ArenaParams.PoolCount);
-				} while ((uint8*)Ptr < PoolBaseVMPtr[(int32)PoolIndex]);
-				if ((uint8*)Ptr >= PoolBaseVMPtr[(int32)PoolIndex] + ArenaParams.MaxMemoryPerBlockSize)
+				} while ((uint8*)Ptr < PoolBaseVMPtr[PoolIndex]);
+				if ((uint8*)Ptr >= PoolBaseVMPtr[PoolIndex] + ArenaParams.MaxMemoryPerBlockSize)
 				{
 					PoolIndex = ArenaParams.PoolCount; // was in the gap
 				}
 			}
-			else if ((uint8*)Ptr >= PoolBaseVMPtr[(int32)PoolIndex] + ArenaParams.MaxMemoryPerBlockSize)
+			else if ((uint8*)Ptr >= PoolBaseVMPtr[PoolIndex] + ArenaParams.MaxMemoryPerBlockSize)
 			{
 				do
 				{
 					PoolIndex++;
 					check(PoolIndex < ArenaParams.PoolCount);
-				} while ((uint8*)Ptr >= PoolBaseVMPtr[(int32)PoolIndex] + ArenaParams.MaxMemoryPerBlockSize);
-				if ((uint8*)Ptr < PoolBaseVMPtr[(int32)PoolIndex])
+				} while ((uint8*)Ptr >= PoolBaseVMPtr[PoolIndex] + ArenaParams.MaxMemoryPerBlockSize);
+				if ((uint8*)Ptr < PoolBaseVMPtr[PoolIndex])
 				{
 					PoolIndex = ArenaParams.PoolCount; // was in the gap
 				}
@@ -383,7 +382,7 @@ class CORE_API FMallocBinnedArena final : public FMalloc
 	{
 		return PoolBaseVMPtr[InPoolIndex];
 	}
-	FORCEINLINE uint64 PoolIndexFromPtrChecked(const void* Ptr)
+	FORCEINLINE uint32 PoolIndexFromPtrChecked(const void* Ptr)
 	{
 		uint64 Result = PoolIndexFromPtr(Ptr);
 		check(Result < ArenaParams.PoolCount);
@@ -689,7 +688,5 @@ public:
 
 	TArray<void*> MallocedPointers;
 };
-
-PRAGMA_ENABLE_UNSAFE_TYPECAST_WARNINGS
 
 #endif

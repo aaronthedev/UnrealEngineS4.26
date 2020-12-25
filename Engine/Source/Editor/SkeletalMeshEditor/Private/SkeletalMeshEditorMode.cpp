@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SkeletalMeshEditorMode.h"
 #include "PersonaModule.h"
@@ -85,8 +85,6 @@ FSkeletalMeshEditorMode::FSkeletalMeshEditorMode(TSharedRef<FWorkflowCentricAppl
 	LayoutExtender = MakeShared<FLayoutExtender>();
 	PersonaModule.OnRegisterLayoutExtensions().Broadcast(*LayoutExtender.Get());
 	TabLayout->ProcessExtensions(*LayoutExtender.Get());
-
-	SkeletalMeshEditor->RegisterModeToolbarIfUnregistered(GetModeName());
 }
 
 void FSkeletalMeshEditorMode::RegisterTabFactories(TSharedPtr<FTabManager> InTabManager)

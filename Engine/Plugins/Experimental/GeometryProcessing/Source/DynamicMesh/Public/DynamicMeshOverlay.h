@@ -1,17 +1,14 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 
 #pragma once
 
 #include "Util/DynamicVector.h"
 #include "Util/RefCountVector.h"
-#include "Util/CompactMaps.h"
 #include "VectorTypes.h"
 #include "GeometryTypes.h"
-#include "InfoTypes.h"
-#include "IndexTypes.h"
+#include "DynamicMesh3.h"
 
-class FDynamicMesh3;
 
 /**
  * TDynamicMeshOverlay is an add-on to a FDynamicMesh3 that allows for per-triangle storage
@@ -63,13 +60,7 @@ public:
 	{
 		ParentMesh = ParentMeshIn;
 	}
-private:
-	/** @set the parent mesh for this overlay.  Only safe for use during FDynamicMesh move */
-	void Reparent(FDynamicMesh3* ParentMeshIn)
-	{
-		ParentMesh = ParentMeshIn;
-	}
-public:
+
 	/** @return the parent mesh for this overlay */
 	const FDynamicMesh3* GetParentMesh() const { return ParentMesh; }
 	/** @return the parent mesh for this overlay */
@@ -84,117 +75,6 @@ public:
 		ElementTriangles = Copy.ElementTriangles;
 	}
 
-	/** Copy the Copy overlay to a compact rep, also updating parent references based on the CompactMaps */
-	void CompactCopy(const FCompactMaps& CompactMaps, const TDynamicMeshOverlay<RealType, ElementSize>& Copy)
-	{
-		ClearElements();
-
-		// map of element IDs
-		TArray<int> MapE; MapE.SetNumUninitialized(Copy.MaxElementID());
-
-		// copy elements across
-		RealType Data[ElementSize];
-		for (int EID = 0; EID < Copy.MaxElementID(); EID++)
-		{
-			if (Copy.IsElement(EID))
-			{
-				Copy.GetElement(EID, Data);
-				MapE[EID] = AppendElement(Data);
-			}
-			else
-			{
-				MapE[EID] = -1;
-			}
-		}
-
-		// copy triangles across
-		check(CompactMaps.bKeepTriangleMap && CompactMaps.MapT.Num() == Copy.GetParentMesh()->MaxTriangleID()); // must have valid triangle map
-		for (int FromTID : Copy.GetParentMesh()->TriangleIndicesItr())
-		{
-			if (!Copy.IsSetTriangle(FromTID))
-			{
-				continue;
-			}
-			int ToTID = CompactMaps.MapT[FromTID];
-			FIndex3i FromTriElements = Copy.GetTriangle(FromTID);
-			SetTriangle(ToTID, FIndex3i(MapE[FromTriElements.A], MapE[FromTriElements.B], MapE[FromTriElements.C]));
-		}
-	}
-
-	/** Compact overlay and update links to parent based on CompactMaps */
-	void CompactInPlace(const FCompactMaps& CompactMaps)
-	{
-		int iLastE = MaxElementID() - 1, iCurE = 0;
-		while (iLastE >= 0 && ElementsRefCounts.IsValidUnsafe(iLastE) == false)
-		{
-			iLastE--;
-		}
-		while (iCurE < iLastE && ElementsRefCounts.IsValidUnsafe(iCurE))
-		{
-			iCurE++;
-		}
-
-		// make a map to track element index changes, to use to update element triangles later
-		// TODO: it may be faster to not construct this and to do the remapping per element as we go (by iterating the one ring of each parent vertex for each element)
-		TArray<int> MapE; MapE.SetNumUninitialized(MaxElementID());
-		for (int ID = 0; ID < MapE.Num(); ID++)
-		{
-			// mapping is 1:1 by default; sparsely re-mapped below
-			MapE[ID] = ID;
-		}
-
-		TDynamicVector<short>& ERef = ElementsRefCounts.GetRawRefCountsUnsafe();
-		RealType Data[ElementSize];
-		while (iCurE < iLastE)
-		{
-			// remap the element data
-			GetElement(iLastE, Data);
-			SetElement(iCurE, Data);
-			int OrigParent = ParentVertices[iLastE];
-			if (OrigParent == IndexConstants::InvalidID)
-			{
-				ParentVertices[iCurE] = IndexConstants::InvalidID;
-			}
-			else 
-			{
-				ParentVertices[iCurE] = CompactMaps.GetVertex(OrigParent);
-			}
-			ERef[iCurE] = ERef[iLastE];
-			ERef[iLastE] = FRefCountVector::INVALID_REF_COUNT;
-			MapE[iLastE] = iCurE;
-
-			// move cur forward one, last back one, and  then search for next valid
-			iLastE--; iCurE++;
-			while (iLastE >= 0 && ElementsRefCounts.IsValidUnsafe(iLastE) == false)
-			{
-				iLastE--;
-			}
-			while (iCurE < iLastE && ElementsRefCounts.IsValidUnsafe(iCurE))
-			{
-				iCurE++;
-			}
-		}
-		ElementsRefCounts.Trim(ElementCount());
-		Elements.Resize(ElementCount() * ElementSize);
-		ParentVertices.Resize(ElementCount());
-
-		for (int TID = 0, OldMaxTID = ElementTriangles.Num() / 3; TID < OldMaxTID; TID++)
-		{
-			int OldStart = TID * 3;
-			if (ElementTriangles[OldStart] == -1)
-			{
-				continue; // triangle was not set; skip it
-			}
-			int NewStart = CompactMaps.GetTriangle(TID) * 3;
-			for (int SubIdx = 0; SubIdx < 3; SubIdx++)
-			{
-				ElementTriangles[NewStart + SubIdx] = MapE[ElementTriangles[OldStart + SubIdx]];
-			}
-		}
-
-		checkSlow(IsCompact());
-	}
-
 	/** Discard current set of elements, but keep triangles */
 	void ClearElements();
 
@@ -205,9 +85,6 @@ public:
 	/** @return true if this element index is in use */
 	inline bool IsElement(int vID) const { return ElementsRefCounts.IsValid(vID); }
 
-	/** @return true if the elements are compact */
-	bool IsCompact() const { return ElementsRefCounts.IsDense(); }
-
 
 	typedef typename FRefCountVector::IndexEnumerable element_iterator;
 
@@ -215,31 +92,18 @@ public:
 	element_iterator ElementIndicesItr() const { return ElementsRefCounts.Indices(); }
 
 
-	/** Allocate a new element with the given constant value */
-	int AppendElement(RealType ConstantValue);
-	/** Allocate a new element with the given value */
-	int AppendElement(const RealType* Value);
+	/** Allocate a new element with the given constant value and parent-mesh vertex */
+	int AppendElement(RealType ConstantValue, int ParentVertex);
+	/** Allocate a new element with the given value and parent-mesh vertex */
+	int AppendElement(const RealType* Value, int ParentVertex);
 
 	/** Initialize the triangle list to the given size, and set all triangles to InvalidID */
 	void InitializeTriangles(int MaxTriangleID);
 	/** Set the triangle to the given Element index tuple, and increment element reference counts */
 	EMeshResult SetTriangle(int TriangleID, const FIndex3i& TriElements);
 
-	/**
-	 * Set the triangle to have InvalidID element IDs, decrementing element reference counts if needed.
-	 * Deletes elements that are no longer used after the triangle is unset.
-	 */
-	void UnsetTriangle(int TriangleID);
-
 	/** @return true if this triangle was set */
-	bool IsSetTriangle(int TID) const
-	{
-		bool bIsSet = ElementTriangles[3 * TID] >= 0;
-		// we require that triangle elements either be all set or all unset
-		checkSlow(ElementTriangles[3 * TID + 1] >= 0 == bIsSet);
-		checkSlow(ElementTriangles[3 * TID + 2] >= 0 == bIsSet);
-		return bIsSet;
-	}
+	bool IsSetTriangle(int TID) const { return ElementTriangles[3 * TID] >= 0; }
 
 
 	/**
@@ -259,34 +123,6 @@ public:
 	 * @param GetNewElementValue function to assign a new value to any element that is split out
 	 */
 	void SplitVerticesWithPredicate(TFunctionRef<bool(int ElementIdx, int TriID)> ShouldSplitOutVertex, TFunctionRef<void(int ElementIdx, int TriID, RealType* FillVect)> GetNewElementValue);
-
-
-	/**
-	 * Create a new copy of ElementID, and update connected triangles in the TrianglesToUpdate array to reference the copy of ElementID where they used to reference ElementID
-	 * (Note: This just calls "SplitElementWithNewParent" with the existing element's parent id.)
-	 *
-	 * @param ElementID the element to copy
-	 * @param TrianglesToUpdate the triangles that should now reference the new element
-	 * @return the ID of the newly created element
-	 */
-	int SplitElement(int ElementID, const TArrayView<const int>& TrianglesToUpdate);
-
-	/**
-	* Create a new copy of ElementID, and update connected triangles in the TrianglesToUpdate array to reference the copy of ElementID where they used to reference ElementID.  The new element will have the given parent vertex ID.
-	* Deletes any elements that are no longer used after the triangles are changed.
-	*
-	* @param ElementID the element to copy
-	* @param SplitParentVertexID the new parent vertex for copied elements
-	* @param TrianglesToUpdate the triangles that should now reference the new element.  Note: this is allowed to include triangles that do not have the element at all; sometimes you may want to do so to avoid creating a new array for each call.
-	* @return the ID of the newly created element
-	*/
-	int SplitElementWithNewParent(int ElementID, int SplitParentVertexID, const TArrayView<const int>& TrianglesToUpdate);
-
-
-	/**
-	* Refine an existing overlay topology by splitting any bow ties
-	*/
-	void SplitBowties();
 
 
 	//
@@ -314,7 +150,7 @@ public:
 	 * If bUnsafe, we use fast id allocation that does not update free list.
 	 * You should only be using this between BeginUnsafeElementsInsert() / EndUnsafeElementsInsert() calls
 	 */
-	EMeshResult InsertElement(int ElementID, const RealType* Value, bool bUnsafe = false);
+	EMeshResult InsertElement(int ElementID, const RealType* Value, int ParentVertex, bool bUnsafe = false);
 
 
 	//
@@ -393,16 +229,6 @@ public:
 	/** Returns true if the parent-mesh vertex is connected to any seam edges */
 	bool IsSeamVertex(int VertexID, bool bBoundaryIsSeam = true) const;
 
-	/**
-	 * Determines whether the base-mesh vertex has "bowtie" topology in the Overlay.
-	 * Bowtie topology means that one or more elements at the vertex are shared across disconnected UV-components.
-	 * @return true if the base-mesh vertex has "bowtie" topology in the overlay
-	 */
-	bool IsBowtieInOverlay(int32 VertexID) const;
-
-	/** @return true if the two triangles are connected, ie shared edge exists and is not a seam edge */
-	bool AreTrianglesConnected(int TriangleID0, int TriangleID1) const;
-
 	/** find the elements associated with a given parent-mesh vertex */
 	void GetVertexElements(int VertexID, TArray<int>& OutElements) const;
 	/** Count the number of unique elements for a given parent-mesh vertex */
@@ -411,28 +237,8 @@ public:
 	/** find the triangles connected to an element */
 	void GetElementTriangles(int ElementID, TArray<int>& OutTriangles) const;
 
-	/** @return true if overlay has any interior seam edges. This requires an O(N) search unless it early-outs. */
+	/** Currently an iteration every time */
 	bool HasInteriorSeamEdges() const;
-
-	/**
-	 * Compute interpolated parameter value inside triangle using barycentric coordinates
-	 * @param TriangleID index of triangle
-	 * @param BaryCoords 3 barycentric coordinates inside triangle
-	 * @param DataOut resulting interpolated overlay parameter value (of size ElementSize)
-	 */
-	template<typename AsType>
-	void GetTriBaryInterpolate(int32 TriangleID, const AsType* BaryCoords, AsType* DataOut) const
-	{
-		int32 TriIndex = 3 * TriangleID;
-		int32 ElemIndex0 = ElementTriangles[TriIndex] * ElementSize;
-		int32 ElemIndex1 = ElementTriangles[TriIndex+1] * ElementSize;
-		int32 ElemIndex2 = ElementTriangles[TriIndex+2] * ElementSize;
-		const AsType Bary0 = (AsType)BaryCoords[0], Bary1 = (AsType)BaryCoords[1], Bary2 = (AsType)BaryCoords[2];
-		for (int32 i = 0; i < ElementSize; ++i)
-		{
-			DataOut[i] = Bary0*(AsType)Elements[ElemIndex0+i] + Bary1*(AsType)Elements[ElemIndex1+i] + Bary2*(AsType)Elements[ElemIndex2+i];
-		}
-	}
 
 	/**
 	 * Checks that the overlay mesh is well-formed, ie all internal data structures are consistent
@@ -448,17 +254,15 @@ public:
 	/** Reverse the orientation of a triangle's elements */
 	void OnReverseTriOrientation(int TriangleID);
 	/** Update the overlay to reflect an edge split in the parent mesh */
-	void OnSplitEdge(const DynamicMeshInfo::FEdgeSplitInfo& SplitInfo);
+	void OnSplitEdge(const FDynamicMesh3::FEdgeSplitInfo& SplitInfo);
 	/** Update the overlay to reflect an edge flip in the parent mesh */
-	void OnFlipEdge(const DynamicMeshInfo::FEdgeFlipInfo& FlipInfo);
+	void OnFlipEdge(const FDynamicMesh3::FEdgeFlipInfo& FlipInfo);
 	/** Update the overlay to reflect an edge collapse in the parent mesh */
-	void OnCollapseEdge(const DynamicMeshInfo::FEdgeCollapseInfo& CollapseInfo);
+	void OnCollapseEdge(const FDynamicMesh3::FEdgeCollapseInfo& CollapseInfo);
 	/** Update the overlay to reflect a face poke in the parent mesh */
-	void OnPokeTriangle(const DynamicMeshInfo::FPokeTriangleInfo& PokeInfo);
+	void OnPokeTriangle(const FDynamicMesh3::FPokeTriangleInfo& PokeInfo);
 	/** Update the overlay to reflect an edge merge in the parent mesh */
-	void OnMergeEdges(const DynamicMeshInfo::FMergeEdgesInfo& MergeInfo);
-	/** Update the overlay to reflect a vertex split in the parent mesh */
-	void OnSplitVertex(const DynamicMeshInfo::FVertexSplitInfo& SplitInfo, const TArrayView<const int>& TrianglesToUpdate);
+	void OnMergeEdges(const FDynamicMesh3::FMergeEdgesInfo& MergeInfo);
 
 protected:
 	/** Set the value at an Element to be a linear interpolation of two other Elements */
@@ -468,7 +272,6 @@ protected:
 
 	/** updates the triangles array and optionally the element reference counts */
 	void InternalSetTriangle(int TriangleID, const FIndex3i& TriElements, bool bIncrementRefCounts);
-
 };
 
 
@@ -500,9 +303,9 @@ public:
 	/**
 	 * Append a new Element to the overlay
 	 */
-	inline int AppendElement(const VectorType& Value)
+	inline int AppendElement(const VectorType& Value, int SourceVertex)
 	{
-		return BaseType::AppendElement((const RealType*)Value);
+		return BaseType::AppendElement((const RealType*)Value, SourceVertex);
 	}
 
 	/**

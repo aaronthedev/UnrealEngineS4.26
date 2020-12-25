@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -20,9 +20,6 @@ public:
 
 	FWindowsPlatformNamedPipe();
 	virtual ~FWindowsPlatformNamedPipe();
-
-	FWindowsPlatformNamedPipe(const FWindowsPlatformNamedPipe&) = delete;
-	FWindowsPlatformNamedPipe& operator=(const FWindowsPlatformNamedPipe&) = delete;
 
 public:
 

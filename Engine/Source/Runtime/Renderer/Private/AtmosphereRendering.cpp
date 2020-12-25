@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	AtmosphereRendering.cpp: Fog rendering implementation.
@@ -30,12 +30,10 @@ DECLARE_GPU_STAT(AtmospherePreCompute);
 //////////////////////////////////////////////////////////////////////////
 // FAtmosphereShaderTextureParameters
 
-PRAGMA_DISABLE_DEPRECATION_WARNINGS
 
 /** Shader parameters needed for atmosphere passes. */
 class FAtmosphereShaderTextureParameters
 {
-	DECLARE_INLINE_TYPE_LAYOUT(FAtmosphereShaderTextureParameters, NonVirtual);
 public:
 	void Bind(const FShaderParameterMap& ParameterMap);
 
@@ -56,14 +54,12 @@ public:
 	friend FArchive& operator<<(FArchive& Ar, FAtmosphereShaderTextureParameters& P);
 
 private:
-	
-		LAYOUT_FIELD(FShaderResourceParameter, TransmittanceTexture)
-		LAYOUT_FIELD(FShaderResourceParameter, TransmittanceTextureSampler)
-		LAYOUT_FIELD(FShaderResourceParameter, IrradianceTexture)
-		LAYOUT_FIELD(FShaderResourceParameter, IrradianceTextureSampler)
-		LAYOUT_FIELD(FShaderResourceParameter, InscatterTexture)
-		LAYOUT_FIELD(FShaderResourceParameter, InscatterTextureSampler)
-	
+	FShaderResourceParameter TransmittanceTexture;
+	FShaderResourceParameter TransmittanceTextureSampler;
+	FShaderResourceParameter IrradianceTexture;
+	FShaderResourceParameter IrradianceTextureSampler;
+	FShaderResourceParameter InscatterTexture;
+	FShaderResourceParameter InscatterTextureSampler;
 };
 
 void FAtmosphereShaderTextureParameters::Bind(const FShaderParameterMap& ParameterMap)
@@ -104,7 +100,6 @@ FArchive& operator<<(FArchive& Ar, FAtmosphereShaderTextureParameters& Parameter
 
 class FAtmosphereShaderPrecomputeTextureParameters
 {
-	DECLARE_INLINE_TYPE_LAYOUT(FAtmosphereShaderPrecomputeTextureParameters, NonVirtual);
 public:
 	enum TexType
 	{
@@ -154,76 +149,71 @@ public:
 	}
 
 	template<typename ShaderRHIParamRef>
-	void Set(FRHICommandList& RHICmdList, const ShaderRHIParamRef ShaderRHI, uint32 TextureIdx, FTextureRHIRef Texture) const
+	void Set(FRHICommandList& RHICmdList, const ShaderRHIParamRef ShaderRHI, uint32 TextureIdx, const FTextureRHIRef Texture) const
 	{
 		if (TextureIdx >= 4)
 		{
 			return;
 		}
 
-		RHICmdList.Transition(FRHITransitionInfo(Texture, ERHIAccess::Unknown, ERHIAccess::SRVMask));
-		SetTextureParameter(RHICmdList, ShaderRHI, AtmosphereTexture[TextureIdx], AtmosphereTextureSampler[TextureIdx],
+		SetTextureParameter(RHICmdList, ShaderRHI, AtmosphereTexture[TextureIdx], AtmosphereTextureSampler[TextureIdx], 
 			TStaticSamplerState<SF_Bilinear>::GetRHI(), 
 			Texture);
 	}
 
 	template<typename ShaderRHIParamRef>
-	void Set(FRHICommandList& RHICmdList, const ShaderRHIParamRef ShaderRHI, uint32 TextureIdx, TexType TextureType, FAtmosphereTextures* AtmosphereTextures) const
+	void Set(FRHICommandList& RHICmdList, const ShaderRHIParamRef ShaderRHI, uint32 TextureIdx, TexType TextureType, const FAtmosphereTextures* AtmosphereTextures) const
 	{
 		if (TextureIdx >= 4 || TextureType >= Type_MAX || !AtmosphereTextures)
 		{
 			return;
 		}
 
-		IPooledRenderTarget* Texture = nullptr;
-		FRHISamplerState* SamplerState = nullptr;
-
 		switch(TextureType)
 		{
 		case Transmittance:
-			Texture = AtmosphereTextures->AtmosphereTransmittance;
-			SamplerState = TStaticSamplerState<SF_Bilinear>::GetRHI();
+			SetTextureParameter(RHICmdList, ShaderRHI, AtmosphereTexture[TextureIdx], AtmosphereTextureSampler[TextureIdx], 
+				TStaticSamplerState<SF_Bilinear>::GetRHI(), 
+				AtmosphereTextures->AtmosphereTransmittance->GetRenderTargetItem().ShaderResourceTexture);
 			break;
 		case Irradiance:
-			Texture = AtmosphereTextures->AtmosphereIrradiance;
-			SamplerState = TStaticSamplerState<SF_Bilinear>::GetRHI();
+			SetTextureParameter(RHICmdList, ShaderRHI, AtmosphereTexture[TextureIdx], AtmosphereTextureSampler[TextureIdx], 
+				TStaticSamplerState<SF_Bilinear>::GetRHI(), 
+				AtmosphereTextures->AtmosphereIrradiance->GetRenderTargetItem().ShaderResourceTexture);
 			break;
 		case DeltaE:
-			Texture = AtmosphereTextures->AtmosphereDeltaE;
-			SamplerState = TStaticSamplerState<SF_Bilinear>::GetRHI();
+			SetTextureParameter(RHICmdList, ShaderRHI, AtmosphereTexture[TextureIdx], AtmosphereTextureSampler[TextureIdx], 
+				TStaticSamplerState<SF_Bilinear>::GetRHI(), 
+				AtmosphereTextures->AtmosphereDeltaE->GetRenderTargetItem().ShaderResourceTexture);
 			break;
 		case Inscatter:
-			Texture = AtmosphereTextures->AtmosphereInscatter;
-			SamplerState = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+			SetTextureParameter(RHICmdList, ShaderRHI, AtmosphereTexture[TextureIdx], AtmosphereTextureSampler[TextureIdx], 
+				TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), 
+				AtmosphereTextures->AtmosphereInscatter->GetRenderTargetItem().ShaderResourceTexture);
 			break;
 		case DeltaSR:
-			Texture = AtmosphereTextures->AtmosphereDeltaSR;
-			SamplerState = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+			SetTextureParameter(RHICmdList, ShaderRHI, AtmosphereTexture[TextureIdx], AtmosphereTextureSampler[TextureIdx], 
+				TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), 
+				AtmosphereTextures->AtmosphereDeltaSR->GetRenderTargetItem().ShaderResourceTexture);
 			break;
 		case DeltaSM:
-			Texture = AtmosphereTextures->AtmosphereDeltaSM;
-			SamplerState = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+			SetTextureParameter(RHICmdList, ShaderRHI, AtmosphereTexture[TextureIdx], AtmosphereTextureSampler[TextureIdx], 
+				TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), 
+				AtmosphereTextures->AtmosphereDeltaSM->GetRenderTargetItem().ShaderResourceTexture);
 			break;
 		case DeltaJ:
-			Texture = AtmosphereTextures->AtmosphereDeltaJ;
-			SamplerState = TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI();
+			SetTextureParameter(RHICmdList, ShaderRHI, AtmosphereTexture[TextureIdx], AtmosphereTextureSampler[TextureIdx], 
+				TStaticSamplerState<SF_Bilinear, AM_Clamp, AM_Clamp, AM_Clamp>::GetRHI(), 
+				AtmosphereTextures->AtmosphereDeltaJ->GetRenderTargetItem().ShaderResourceTexture);
 			break;
 		}
-
-		check(Texture && SamplerState);
-
-		FRHITexture* RHITexture = Texture->GetRenderTargetItem().ShaderResourceTexture;
-		RHICmdList.Transition(FRHITransitionInfo(RHITexture, ERHIAccess::Unknown, ERHIAccess::SRVMask));
-		SetTextureParameter(RHICmdList, ShaderRHI, AtmosphereTexture[TextureIdx], AtmosphereTextureSampler[TextureIdx], SamplerState, RHITexture);
 	}
 
 	friend FArchive& operator<<(FArchive& Ar,FAtmosphereShaderPrecomputeTextureParameters& P);
 
 private:
-	
-		LAYOUT_ARRAY(FShaderResourceParameter, AtmosphereTexture, 4)
-		LAYOUT_ARRAY(FShaderResourceParameter, AtmosphereTextureSampler, 4)
-	
+	FShaderResourceParameter AtmosphereTexture[4];
+	FShaderResourceParameter AtmosphereTextureSampler[4];
 };
 
 FArchive& operator<<(FArchive& Ar,FAtmosphereShaderPrecomputeTextureParameters& Parameters)
@@ -244,7 +234,7 @@ FArchive& operator<<(FArchive& Ar,FAtmosphereShaderPrecomputeTextureParameters& 
 /** A pixel shader for rendering atmospheric fog. */
 class FAtmosphericFogPS : public FGlobalShader
 {
-	DECLARE_INLINE_TYPE_LAYOUT(FAtmosphericFogPS, NonVirtual);
+	DECLARE_SHADER_TYPE(FAtmosphericFogPS, Global);
 public:
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters)
 	{
@@ -255,32 +245,33 @@ public:
 	FAtmosphericFogPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer):
 		FGlobalShader(Initializer)
 	{
+		SceneTextureParameters.Bind(Initializer);
 		AtmosphereTextureParameters.Bind(Initializer.ParameterMap);
 		OcclusionTextureParameter.Bind(Initializer.ParameterMap, TEXT("OcclusionTexture"));
 		OcclusionTextureSamplerParameter.Bind(Initializer.ParameterMap, TEXT("OcclusionTextureSampler"));
 	}
 
-	void SetParameters(FRHICommandList& RHICmdList, const FSceneView& View, FRHITexture* LightShaftOcclusion)
+	void SetParameters(FRHICommandList& RHICmdList, const FSceneView& View, const TRefCountPtr<IPooledRenderTarget>& LightShaftOcclusion)
 	{
-		FRHIPixelShader* PixelShader = RHICmdList.GetBoundPixelShader();
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, PixelShader, View.ViewUniformBuffer);
-		AtmosphereTextureParameters.Set(RHICmdList, PixelShader, View);
+		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, GetPixelShader(), View.ViewUniformBuffer);
+		SceneTextureParameters.Set(RHICmdList, GetPixelShader(), View.FeatureLevel, ESceneTextureSetupMode::All);
+		AtmosphereTextureParameters.Set(RHICmdList, GetPixelShader(), View);
 
 		if (LightShaftOcclusion)
 		{
 			SetTextureParameter(
 				RHICmdList, 
-				RHICmdList.GetBoundPixelShader(),
+				GetPixelShader(),
 				OcclusionTextureParameter, OcclusionTextureSamplerParameter,
 				TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI(),
-				LightShaftOcclusion
+				LightShaftOcclusion->GetRenderTargetItem().ShaderResourceTexture
 				);
 		}
 		else
 		{
 			SetTextureParameter(
 				RHICmdList, 
-				RHICmdList.GetBoundPixelShader(),
+				GetPixelShader(),
 				OcclusionTextureParameter, OcclusionTextureSamplerParameter,
 				TStaticSamplerState<SF_Bilinear,AM_Clamp,AM_Clamp,AM_Clamp>::GetRHI(),
 				GWhiteTexture->TextureRHI
@@ -288,14 +279,24 @@ public:
 		}
 	}
 
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << SceneTextureParameters;
+		Ar << AtmosphereTextureParameters;
+		Ar << OcclusionTextureParameter;
+		Ar << OcclusionTextureSamplerParameter;
+		return bShaderHasOutdatedParameters;
+	}
+
 private:
-	
-	LAYOUT_FIELD(FAtmosphereShaderTextureParameters, AtmosphereTextureParameters);
-	LAYOUT_FIELD(FShaderResourceParameter, OcclusionTextureParameter);
-	LAYOUT_FIELD(FShaderResourceParameter, OcclusionTextureSamplerParameter);
+	FSceneTextureShaderParameters SceneTextureParameters;
+	FAtmosphereShaderTextureParameters AtmosphereTextureParameters;
+	FShaderResourceParameter OcclusionTextureParameter;
+	FShaderResourceParameter OcclusionTextureSamplerParameter;
 };
 
-template<EAtmosphereRenderFlag RenderFlag>
+template<uint32 RenderFlag>
 class TAtmosphericFogPS : public FAtmosphericFogPS
 {
 	DECLARE_SHADER_TYPE(TAtmosphericFogPS, Global);
@@ -315,9 +316,9 @@ public:
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)
 	{
 		FAtmosphericFogPS::ModifyCompilationEnvironment(Parameters, OutEnvironment);
-		OutEnvironment.SetDefine(TEXT("ATMOSPHERIC_NO_SUN_DISK"), uint32(RenderFlag & EAtmosphereRenderFlag::E_DisableSunDisk));
-		OutEnvironment.SetDefine(TEXT("ATMOSPHERIC_NO_GROUND_SCATTERING"), uint32(RenderFlag & EAtmosphereRenderFlag::E_DisableGroundScattering));
-		OutEnvironment.SetDefine(TEXT("ATMOSPHERIC_NO_LIGHT_SHAFT"), uint32(RenderFlag & EAtmosphereRenderFlag::E_DisableLightShaft));
+		OutEnvironment.SetDefine(TEXT("ATMOSPHERIC_NO_SUN_DISK"), (RenderFlag & EAtmosphereRenderFlag::E_DisableSunDisk));
+		OutEnvironment.SetDefine(TEXT("ATMOSPHERIC_NO_GROUND_SCATTERING"), (RenderFlag & EAtmosphereRenderFlag::E_DisableGroundScattering));
+		OutEnvironment.SetDefine(TEXT("ATMOSPHERIC_NO_LIGHT_SHAFT"), (RenderFlag & EAtmosphereRenderFlag::E_DisableLightShaft));
 	}
 };
 
@@ -373,7 +374,13 @@ public:
 
 	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View)
 	{
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, RHICmdList.GetBoundVertexShader(),View.ViewUniformBuffer);
+		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, GetVertexShader(),View.ViewUniformBuffer);
+	}
+
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -411,52 +418,54 @@ void InitAtmosphereConstantsInView(FViewInfo& View)
 	}
 }
 
-void SetAtmosphericFogShaders(FRHICommandList& RHICmdList, FGraphicsPipelineStateInitializer& GraphicsPSOInit, EAtmosphereRenderFlag RenderFlag, const FViewInfo& View, FRHITexture* LightShaftOcclusion)
+void SetAtmosphericFogShaders(FRHICommandList& RHICmdList, FGraphicsPipelineStateInitializer& GraphicsPSOInit, FScene* Scene, const FViewInfo& View, const TRefCountPtr<IPooledRenderTarget>& LightShaftOcclusion)
 {
+	uint32 RenderFlag = Scene->AtmosphericFog->RenderFlag;
+
 	auto ShaderMap = View.ShaderMap;
 
 	if (View.bIsReflectionCapture)
 	{
 		// We do not render the sun in in reflection captures as the specular component is already handled analytically when rendering directional lights.
-		RenderFlag |= EAtmosphereRenderFlag::E_DisableSunDisk;
+		RenderFlag |= uint32(EAtmosphereRenderFlag::E_DisableSunDisk);
 	}
 
 	TShaderMapRef<FAtmosphericVS> VertexShader(ShaderMap);
-	TShaderRef<FAtmosphericFogPS> PixelShader;
+	FAtmosphericFogPS* PixelShader = NULL;
 	switch (RenderFlag)
 	{
 	default:
 		checkSlow(false)
 
 	case EAtmosphereRenderFlag::E_EnableAll:
-		PixelShader = TShaderMapRef<TAtmosphericFogPS<EAtmosphereRenderFlag::E_EnableAll> >(ShaderMap);
+		PixelShader = *TShaderMapRef<TAtmosphericFogPS<EAtmosphereRenderFlag::E_EnableAll> >(ShaderMap);
 		break;
 	case EAtmosphereRenderFlag::E_DisableSunDisk:
-		PixelShader = TShaderMapRef<TAtmosphericFogPS<EAtmosphereRenderFlag::E_DisableSunDisk> >(ShaderMap);
+		PixelShader = *TShaderMapRef<TAtmosphericFogPS<EAtmosphereRenderFlag::E_DisableSunDisk> >(ShaderMap);
 		break;
 	case EAtmosphereRenderFlag::E_DisableGroundScattering:
-		PixelShader = TShaderMapRef<TAtmosphericFogPS<EAtmosphereRenderFlag::E_DisableGroundScattering> >(ShaderMap);
+		PixelShader = *TShaderMapRef<TAtmosphericFogPS<EAtmosphereRenderFlag::E_DisableGroundScattering> >(ShaderMap);
 		break;
 	case EAtmosphereRenderFlag::E_DisableSunAndGround :
-		PixelShader = TShaderMapRef<TAtmosphericFogPS<EAtmosphereRenderFlag::E_DisableSunAndGround> >(ShaderMap);
+		PixelShader = *TShaderMapRef<TAtmosphericFogPS<EAtmosphereRenderFlag::E_DisableSunAndGround> >(ShaderMap);
 		break;
 	case EAtmosphereRenderFlag::E_DisableLightShaft :
-		PixelShader = TShaderMapRef<TAtmosphericFogPS<EAtmosphereRenderFlag::E_DisableLightShaft> >(ShaderMap);
+		PixelShader = *TShaderMapRef<TAtmosphericFogPS<EAtmosphereRenderFlag::E_DisableLightShaft> >(ShaderMap);
 		break;
 	case EAtmosphereRenderFlag::E_DisableSunAndLightShaft :
-		PixelShader = TShaderMapRef<TAtmosphericFogPS<EAtmosphereRenderFlag::E_DisableSunAndLightShaft> >(ShaderMap);
+		PixelShader = *TShaderMapRef<TAtmosphericFogPS<EAtmosphereRenderFlag::E_DisableSunAndLightShaft> >(ShaderMap);
 		break;
 	case EAtmosphereRenderFlag::E_DisableGroundAndLightShaft :
-		PixelShader = TShaderMapRef<TAtmosphericFogPS<EAtmosphereRenderFlag::E_DisableGroundAndLightShaft> >(ShaderMap);
+		PixelShader = *TShaderMapRef<TAtmosphericFogPS<EAtmosphereRenderFlag::E_DisableGroundAndLightShaft> >(ShaderMap);
 		break;
 	case EAtmosphereRenderFlag::E_DisableAll:
-		PixelShader = TShaderMapRef<TAtmosphericFogPS<EAtmosphereRenderFlag::E_DisableAll> >(ShaderMap);
+		PixelShader = *TShaderMapRef<TAtmosphericFogPS<EAtmosphereRenderFlag::E_DisableAll> >(ShaderMap);
 		break;
 	}
 	
 	GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GAtmophereVertexDeclaration.VertexDeclarationRHI;
-	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+	GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+	GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(PixelShader);
 	GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 	SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -464,79 +473,42 @@ void SetAtmosphericFogShaders(FRHICommandList& RHICmdList, FGraphicsPipelineStat
 	PixelShader->SetParameters(RHICmdList, View, LightShaftOcclusion);
 }
 
-BEGIN_SHADER_PARAMETER_STRUCT(FAtmospherePassParameters, )
-	SHADER_PARAMETER_RDG_UNIFORM_BUFFER(FSceneTextureUniformParameters, SceneTextures)
-	RDG_TEXTURE_ACCESS(LightShaftOcclusionTexture, ERHIAccess::SRVGraphics)
-	RENDER_TARGET_BINDING_SLOTS()
-END_SHADER_PARAMETER_STRUCT()
-
-void FDeferredShadingSceneRenderer::RenderAtmosphere(
-	FRDGBuilder& GraphBuilder,
-	FRDGTextureRef SceneColorTexture,
-	FRDGTextureRef SceneDepthTexture,
-	FRDGTextureRef LightShaftOcclusionTexture,
-	TRDGUniformBufferRef<FSceneTextureUniformParameters> SceneTextures)
+void FDeferredShadingSceneRenderer::RenderAtmosphere(FRHICommandListImmediate& RHICmdList, const FLightShaftsOutput& LightShaftsOutput)
 {
-	FAtmosphericFogSceneInfo* AtmosphericFog = Scene->AtmosphericFog;
-	if (!AtmosphericFog)
+	// Atmospheric fog?
+	if (Scene->GetFeatureLevel() >= ERHIFeatureLevel::SM5 && Scene->HasAtmosphericFog())
 	{
-		return;
-	}
+		FSceneRenderTargets& SceneContext = FSceneRenderTargets::Get(RHICmdList);
+		
+		SceneContext.BeginRenderingSceneColor(RHICmdList, ESimpleRenderTargetMode::EUninitializedColorExistingDepth, FExclusiveDepthStencil::DepthRead_StencilWrite);
+		
+		FGraphicsPipelineStateInitializer GraphicsPSOInit;
+		RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
 
-	// Update RenderFlag based on LightShaftTexture is valid or not
-	if (LightShaftOcclusionTexture)
-	{
-		AtmosphericFog->RenderFlag &= EAtmosphereRenderFlag::E_LightShaftMask;
-	}
-	else
-	{
-		AtmosphericFog->RenderFlag |= EAtmosphereRenderFlag::E_DisableLightShaft;
-	}
-#if WITH_EDITOR
-	if (Scene->bIsEditorScene)
-	{
-		// Precompute Atmospheric Textures
-		AtmosphericFog->PrecomputeTextures(GraphBuilder, Views.GetData(), &ViewFamily);
-	}
-#endif
+		GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
+		// disable alpha writes in order to preserve scene depth values on PC
+		GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGB, BO_Add, BF_One, BF_SourceAlpha>::GetRHI();
+		GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
 
-	const EAtmosphereRenderFlag RenderFlag = AtmosphericFog->RenderFlag;
-
-	RDG_EVENT_SCOPE(GraphBuilder, "AtmosphericFog");
-
-	FAtmospherePassParameters* PassParameters = GraphBuilder.AllocParameters<FAtmospherePassParameters>();
-	PassParameters->SceneTextures = SceneTextures;
-	PassParameters->LightShaftOcclusionTexture = LightShaftOcclusionTexture;
-	PassParameters->RenderTargets[0] = FRenderTargetBinding(SceneColorTexture, ERenderTargetLoadAction::ELoad);
-	PassParameters->RenderTargets.DepthStencil = FDepthStencilBinding(SceneDepthTexture, ERenderTargetLoadAction::ELoad, ERenderTargetLoadAction::ELoad, FExclusiveDepthStencil::DepthRead_StencilWrite);
-
-	for(int32 ViewIndex = 0; ViewIndex < Views.Num(); ++ViewIndex)
-	{
-		const FViewInfo& View = Views[ViewIndex];
-
-		RDG_EVENT_SCOPE_CONDITIONAL(GraphBuilder, Views.Num() > 1, "View%d", ViewIndex);
-		RDG_GPU_MASK_SCOPE(GraphBuilder, View.GPUMask);
-		RDG_GPU_STAT_SCOPE(GraphBuilder, Atmosphere);
-
-		GraphBuilder.AddPass({}, PassParameters, ERDGPassFlags::Raster, [this, &View, LightShaftOcclusionTexture, RenderFlag](FRHICommandList& RHICmdList)
+		for(int32 ViewIndex = 0;ViewIndex < Views.Num();ViewIndex++)
 		{
-			FGraphicsPipelineStateInitializer GraphicsPSOInit;
-			RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
+			const FViewInfo& View = Views[ViewIndex];
 
-			GraphicsPSOInit.RasterizerState = TStaticRasterizerState<FM_Solid, CM_None>::GetRHI();
-			// disable alpha writes in order to preserve scene depth values on PC
-			GraphicsPSOInit.BlendState = TStaticBlendState<CW_RGB, BO_Add, BF_One, BF_SourceAlpha>::GetRHI();
-			GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
+			SCOPED_GPU_MASK(RHICmdList, View.GPUMask);
+			SCOPED_DRAW_EVENTF(RHICmdList, Atmosphere, TEXT("Atmosphere %dx%d"), View.ViewRect.Width(), View.ViewRect.Height());
+			SCOPED_GPU_STAT(RHICmdList, Atmosphere);
 
 			// Set the device viewport for the view.
-			RHICmdList.SetViewport((float)View.ViewRect.Min.X, (float)View.ViewRect.Min.Y, 0.0f, (float)View.ViewRect.Max.X, (float)View.ViewRect.Max.Y, 1.0f);
+			RHICmdList.SetViewport(View.ViewRect.Min.X, View.ViewRect.Min.Y, 0.0f, View.ViewRect.Max.X, View.ViewRect.Max.Y, 1.0f);
 
-			SetAtmosphericFogShaders(RHICmdList, GraphicsPSOInit, RenderFlag, View, LightShaftOcclusionTexture ? LightShaftOcclusionTexture->GetRHI() : nullptr);
+			SetAtmosphericFogShaders(RHICmdList, GraphicsPSOInit, Scene, View, LightShaftsOutput.LightShaftOcclusion);
 
 			// Draw a quad covering the view.
 			RHICmdList.SetStreamSource(0, GScreenSpaceVertexBuffer.VertexBufferRHI, 0);
 			RHICmdList.DrawIndexedPrimitive(GTwoTrianglesIndexBuffer.IndexBufferRHI, 0, 0, 4, 0, 2, 1);
-		});
+		}
+
+		SceneContext.FinishRenderingSceneColor(RHICmdList);
 	}
 }
 
@@ -566,9 +538,16 @@ public:
 	{
 	}
 
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		return bShaderHasOutdatedParameters;
+	}
+
 	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View)
 	{
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, RHICmdList.GetBoundPixelShader(), View.ViewUniformBuffer);
+		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, GetPixelShader(), View.ViewUniformBuffer);
 	}
 };
 
@@ -585,7 +564,7 @@ class FAtmosphereIrradiance1PS : public FGlobalShader
 	FAtmosphereIrradiance1PS() {}
 
 public:
-	LAYOUT_FIELD(FAtmosphereShaderPrecomputeTextureParameters, AtmosphereParameters);
+	FAtmosphereShaderPrecomputeTextureParameters AtmosphereParameters;
 
 	/* Initialization constructor. */
 	FAtmosphereIrradiance1PS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -594,9 +573,17 @@ public:
 		AtmosphereParameters.Bind(Initializer.ParameterMap, 0, FAtmosphereShaderPrecomputeTextureParameters::Transmittance);
 	}
 
-	void SetParameters(FRHICommandList& RHICmdList, FAtmosphereTextures* Textures)
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
 	{
-		AtmosphereParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::Transmittance, Textures);
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << AtmosphereParameters;
+		return bShaderHasOutdatedParameters;
+	}
+
+	void SetParameters(FRHICommandList& RHICmdList, const FAtmosphereTextures* Textures)
+	{
+		AtmosphereParameters.Set(RHICmdList, GetPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::Transmittance, Textures);
 	}
 };
 
@@ -613,8 +600,8 @@ class FAtmosphereIrradianceNPS : public FGlobalShader
 	FAtmosphereIrradianceNPS() {}
 
 public:
-	LAYOUT_FIELD(FAtmosphereShaderPrecomputeTextureParameters, AtmosphereParameters);
-	LAYOUT_FIELD(FShaderParameter, FirstOrderParameter);
+	FAtmosphereShaderPrecomputeTextureParameters AtmosphereParameters;
+	FShaderParameter FirstOrderParameter;
 
 	/* Initialization constructor. */
 	FAtmosphereIrradianceNPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -626,13 +613,21 @@ public:
 		FirstOrderParameter.Bind(Initializer.ParameterMap, TEXT("FirstOrder"));
 	}
 
-	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View, float FirstOrder, FAtmosphereTextures* Textures)
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
 	{
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, RHICmdList.GetBoundPixelShader(), View.ViewUniformBuffer);
-		AtmosphereParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::Transmittance, Textures);
-		AtmosphereParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), 1, FAtmosphereShaderPrecomputeTextureParameters::DeltaSR, Textures);
-		AtmosphereParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), 2, FAtmosphereShaderPrecomputeTextureParameters::DeltaSM, Textures);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), FirstOrderParameter, FirstOrder);
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << AtmosphereParameters << FirstOrderParameter;
+		return bShaderHasOutdatedParameters;
+	}
+
+	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View, float FirstOrder, const FAtmosphereTextures* Textures)
+	{
+		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, GetPixelShader(), View.ViewUniformBuffer);
+		AtmosphereParameters.Set(RHICmdList, GetPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::Transmittance, Textures);
+		AtmosphereParameters.Set(RHICmdList, GetPixelShader(), 1, FAtmosphereShaderPrecomputeTextureParameters::DeltaSR, Textures);
+		AtmosphereParameters.Set(RHICmdList, GetPixelShader(), 2, FAtmosphereShaderPrecomputeTextureParameters::DeltaSM, Textures);
+		SetShaderValue(RHICmdList, GetPixelShader(), FirstOrderParameter, FirstOrder);
 	}
 };
 
@@ -649,7 +644,7 @@ class FAtmosphereCopyIrradiancePS : public FGlobalShader
 	FAtmosphereCopyIrradiancePS() {}
 
 public:
-	LAYOUT_FIELD(FAtmosphereShaderPrecomputeTextureParameters, AtmosphereParameters);
+	FAtmosphereShaderPrecomputeTextureParameters AtmosphereParameters;
 
 	/* Initialization constructor. */
 	FAtmosphereCopyIrradiancePS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -658,9 +653,17 @@ public:
 		AtmosphereParameters.Bind(Initializer.ParameterMap, 0, FAtmosphereShaderPrecomputeTextureParameters::DeltaE);
 	}
 
-	void SetParameters(FRHICommandList& RHICmdList, FAtmosphereTextures* Textures)
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
 	{
-		AtmosphereParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::DeltaE, Textures);
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << AtmosphereParameters;
+		return bShaderHasOutdatedParameters;
+	}
+
+	void SetParameters(FRHICommandList& RHICmdList, const FAtmosphereTextures* Textures)
+	{
+		AtmosphereParameters.Set(RHICmdList, GetPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::DeltaE, Textures);
 	}
 };
 
@@ -676,7 +679,7 @@ class FAtmosphereGS : public FGlobalShader
 	FAtmosphereGS() {}
 
 public:
-	LAYOUT_FIELD(FShaderParameter, AtmosphereLayerParameter);
+	FShaderParameter AtmosphereLayerParameter;
 
 	FAtmosphereGS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
 		: FGlobalShader(Initializer)
@@ -686,7 +689,14 @@ public:
 
 	void SetParameters(FRHICommandList& RHICmdList, int AtmosphereLayer)
 	{
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundGeometryShader(), AtmosphereLayerParameter, AtmosphereLayer);
+		SetShaderValue(RHICmdList, GetGeometryShader(), AtmosphereLayerParameter, AtmosphereLayer);
+	}
+
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << AtmosphereLayerParameter;
+		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -703,9 +713,9 @@ class FAtmosphereInscatter1PS : public FGlobalShader
 	FAtmosphereInscatter1PS() {}
 
 public:
-	LAYOUT_FIELD(FAtmosphereShaderPrecomputeTextureParameters, AtmosphereParameters);
-	LAYOUT_FIELD(FShaderParameter, dhdHParameter);
-	LAYOUT_FIELD(FShaderParameter, AtmosphereRParameter);
+	FAtmosphereShaderPrecomputeTextureParameters AtmosphereParameters;
+	FShaderParameter dhdHParameter;
+	FShaderParameter AtmosphereRParameter;
 
 	/* Initialization constructor. */
 	FAtmosphereInscatter1PS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -716,12 +726,20 @@ public:
 		AtmosphereRParameter.Bind(Initializer.ParameterMap, TEXT("AtmosphereR"));
 	}
 
-	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View, float AtmosphereR, const FVector4& DhdH, FAtmosphereTextures* Textures)
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
 	{
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, RHICmdList.GetBoundPixelShader(), View.ViewUniformBuffer);
-		AtmosphereParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::Transmittance, Textures);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), dhdHParameter, DhdH);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), AtmosphereRParameter, AtmosphereR);
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << AtmosphereParameters << dhdHParameter << AtmosphereRParameter;
+		return bShaderHasOutdatedParameters;
+	}
+
+	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View, float AtmosphereR, const FVector4& DhdH, const FAtmosphereTextures* Textures)
+	{
+		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, GetPixelShader(), View.ViewUniformBuffer);
+		AtmosphereParameters.Set(RHICmdList, GetPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::Transmittance, Textures);
+		SetShaderValue(RHICmdList, GetPixelShader(), dhdHParameter, DhdH);
+		SetShaderValue(RHICmdList, GetPixelShader(), AtmosphereRParameter, AtmosphereR);
 	}
 };
 
@@ -738,10 +756,10 @@ class FAtmosphereCopyInscatter1PS : public FGlobalShader
 	FAtmosphereCopyInscatter1PS() {}
 
 public:
-	LAYOUT_FIELD(FAtmosphereShaderPrecomputeTextureParameters, AtmosphereParameters);
-	LAYOUT_FIELD(FShaderParameter, dhdHParameter);
-	LAYOUT_FIELD(FShaderParameter, AtmosphereRParameter);
-	LAYOUT_FIELD(FShaderParameter, AtmosphereLayerParameter);
+	FAtmosphereShaderPrecomputeTextureParameters AtmosphereParameters;
+	FShaderParameter dhdHParameter;
+	FShaderParameter AtmosphereRParameter;
+	FShaderParameter AtmosphereLayerParameter;
 
 	/* Initialization constructor. */
 	FAtmosphereCopyInscatter1PS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -754,14 +772,22 @@ public:
 		AtmosphereLayerParameter.Bind(Initializer.ParameterMap, TEXT("AtmosphereLayer"));
 	}
 
-	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View, float AtmosphereR, const FVector4& DhdH, int AtmosphereLayer, FAtmosphereTextures* Textures)
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
 	{
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, RHICmdList.GetBoundPixelShader(), View.ViewUniformBuffer);
-		AtmosphereParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::DeltaSR, Textures);
-		AtmosphereParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), 1, FAtmosphereShaderPrecomputeTextureParameters::DeltaSM, Textures);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), AtmosphereRParameter, AtmosphereR);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), dhdHParameter, DhdH);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), AtmosphereLayerParameter, AtmosphereLayer);
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << AtmosphereParameters << dhdHParameter << AtmosphereRParameter << AtmosphereLayerParameter;
+		return bShaderHasOutdatedParameters;
+	}
+
+	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View, float AtmosphereR, const FVector4& DhdH, int AtmosphereLayer, const FAtmosphereTextures* Textures)
+	{
+		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, GetPixelShader(), View.ViewUniformBuffer);
+		AtmosphereParameters.Set(RHICmdList, GetPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::DeltaSR, Textures);
+		AtmosphereParameters.Set(RHICmdList, GetPixelShader(), 1, FAtmosphereShaderPrecomputeTextureParameters::DeltaSM, Textures);
+		SetShaderValue(RHICmdList, GetPixelShader(), AtmosphereRParameter, AtmosphereR);
+		SetShaderValue(RHICmdList, GetPixelShader(), dhdHParameter, DhdH);
+		SetShaderValue(RHICmdList, GetPixelShader(), AtmosphereLayerParameter, AtmosphereLayer);
 	}
 };
 
@@ -778,10 +804,10 @@ class FAtmosphereCopyInscatterNPS : public FGlobalShader
 	FAtmosphereCopyInscatterNPS() {}
 
 public:
-	LAYOUT_FIELD(FAtmosphereShaderPrecomputeTextureParameters, AtmosphereParameters);
-	LAYOUT_FIELD(FShaderParameter, dhdHParameter);
-	LAYOUT_FIELD(FShaderParameter, AtmosphereRParameter);
-	LAYOUT_FIELD(FShaderParameter, AtmosphereLayerParameter);
+	FAtmosphereShaderPrecomputeTextureParameters AtmosphereParameters;
+	FShaderParameter dhdHParameter;
+	FShaderParameter AtmosphereRParameter;
+	FShaderParameter AtmosphereLayerParameter;
 
 	/* Initialization constructor. */
 	FAtmosphereCopyInscatterNPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -793,13 +819,21 @@ public:
 		AtmosphereLayerParameter.Bind(Initializer.ParameterMap, TEXT("AtmosphereLayer"));
 	}
 
-	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View, float AtmosphereR, const FVector4& DhdH, int AtmosphereLayer, FAtmosphereTextures* Textures)
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
 	{
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, RHICmdList.GetBoundPixelShader(), View.ViewUniformBuffer);
-		AtmosphereParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::DeltaSR, Textures);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), AtmosphereRParameter, AtmosphereR);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), dhdHParameter, DhdH);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), AtmosphereLayerParameter, AtmosphereLayer);
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << AtmosphereParameters << dhdHParameter << AtmosphereRParameter << AtmosphereLayerParameter;
+		return bShaderHasOutdatedParameters;
+	}
+
+	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View, float AtmosphereR, const FVector4& DhdH, int AtmosphereLayer, const FAtmosphereTextures* Textures)
+	{
+		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, GetPixelShader(), View.ViewUniformBuffer);
+		AtmosphereParameters.Set(RHICmdList, GetPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::DeltaSR, Textures);
+		SetShaderValue(RHICmdList, GetPixelShader(), AtmosphereRParameter, AtmosphereR);
+		SetShaderValue(RHICmdList, GetPixelShader(), dhdHParameter, DhdH);
+		SetShaderValue(RHICmdList, GetPixelShader(), AtmosphereLayerParameter, AtmosphereLayer);
 	}
 };
 
@@ -816,10 +850,10 @@ class FAtmosphereInscatterSPS : public FGlobalShader
 	FAtmosphereInscatterSPS() {}
 
 public:
-	LAYOUT_FIELD(FAtmosphereShaderPrecomputeTextureParameters, AtmosphereParameters);
-	LAYOUT_FIELD(FShaderParameter, dhdHParameter);
-	LAYOUT_FIELD(FShaderParameter, AtmosphereRParameter);
-	LAYOUT_FIELD(FShaderParameter, FirstOrderParameter);
+	FAtmosphereShaderPrecomputeTextureParameters AtmosphereParameters;
+	FShaderParameter dhdHParameter;
+	FShaderParameter AtmosphereRParameter;
+	FShaderParameter FirstOrderParameter;
 
 	/* Initialization constructor. */
 	FAtmosphereInscatterSPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -834,16 +868,24 @@ public:
 		FirstOrderParameter.Bind(Initializer.ParameterMap, TEXT("FirstOrder"));
 	}
 
-	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View, float AtmosphereR, const FVector4& DhdH, float FirstOrder, FAtmosphereTextures* Textures)
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
 	{
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, RHICmdList.GetBoundPixelShader(), View.ViewUniformBuffer);
-		AtmosphereParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::Transmittance, Textures);
-		AtmosphereParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), 1, FAtmosphereShaderPrecomputeTextureParameters::DeltaE, Textures);
-		AtmosphereParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), 2, FAtmosphereShaderPrecomputeTextureParameters::DeltaSR, Textures);
-		AtmosphereParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), 3, FAtmosphereShaderPrecomputeTextureParameters::DeltaSM, Textures);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), AtmosphereRParameter, AtmosphereR);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), dhdHParameter, DhdH);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), FirstOrderParameter, FirstOrder);
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << AtmosphereParameters << dhdHParameter << AtmosphereRParameter << FirstOrderParameter;
+		return bShaderHasOutdatedParameters;
+	}
+
+	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View, float AtmosphereR, const FVector4& DhdH, float FirstOrder, const FAtmosphereTextures* Textures)
+	{
+		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, GetPixelShader(), View.ViewUniformBuffer);
+		AtmosphereParameters.Set(RHICmdList, GetPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::Transmittance, Textures);
+		AtmosphereParameters.Set(RHICmdList, GetPixelShader(), 1, FAtmosphereShaderPrecomputeTextureParameters::DeltaE, Textures);
+		AtmosphereParameters.Set(RHICmdList, GetPixelShader(), 2, FAtmosphereShaderPrecomputeTextureParameters::DeltaSR, Textures);
+		AtmosphereParameters.Set(RHICmdList, GetPixelShader(), 3, FAtmosphereShaderPrecomputeTextureParameters::DeltaSM, Textures);
+		SetShaderValue(RHICmdList, GetPixelShader(), AtmosphereRParameter, AtmosphereR);
+		SetShaderValue(RHICmdList, GetPixelShader(), dhdHParameter, DhdH);
+		SetShaderValue(RHICmdList, GetPixelShader(), FirstOrderParameter, FirstOrder);
 	}
 };
 
@@ -860,10 +902,10 @@ class FAtmosphereInscatterNPS : public FGlobalShader
 	FAtmosphereInscatterNPS() {}
 
 public:
-	LAYOUT_FIELD(FAtmosphereShaderPrecomputeTextureParameters, AtmosphereParameters);
-	LAYOUT_FIELD(FShaderParameter, dhdHParameter);
-	LAYOUT_FIELD(FShaderParameter, AtmosphereRParameter);
-	LAYOUT_FIELD(FShaderParameter, FirstOrderParameter);
+	FAtmosphereShaderPrecomputeTextureParameters AtmosphereParameters;
+	FShaderParameter dhdHParameter;
+	FShaderParameter AtmosphereRParameter;
+	FShaderParameter FirstOrderParameter;
 
 	/* Initialization constructor. */
 	FAtmosphereInscatterNPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -876,14 +918,22 @@ public:
 		FirstOrderParameter.Bind(Initializer.ParameterMap, TEXT("FirstOrder"));
 	}
 
-	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View, float AtmosphereR, const FVector4& DhdH, float FirstOrder, FAtmosphereTextures* Textures)
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
 	{
-		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, RHICmdList.GetBoundPixelShader(), View.ViewUniformBuffer);
-		AtmosphereParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::Transmittance, Textures);
-		AtmosphereParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), 1, FAtmosphereShaderPrecomputeTextureParameters::DeltaJ, Textures);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), AtmosphereRParameter, AtmosphereR);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), dhdHParameter, DhdH);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), FirstOrderParameter, FirstOrder);
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << AtmosphereParameters << dhdHParameter << AtmosphereRParameter << FirstOrderParameter;
+		return bShaderHasOutdatedParameters;
+	}
+
+	void SetParameters(FRHICommandList& RHICmdList, const FViewInfo& View, float AtmosphereR, const FVector4& DhdH, float FirstOrder, const FAtmosphereTextures* Textures)
+	{
+		FGlobalShader::SetParameters<FViewUniformShaderParameters>(RHICmdList, GetPixelShader(), View.ViewUniformBuffer);
+		AtmosphereParameters.Set(RHICmdList, GetPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::Transmittance, Textures);
+		AtmosphereParameters.Set(RHICmdList, GetPixelShader(), 1, FAtmosphereShaderPrecomputeTextureParameters::DeltaJ, Textures);
+		SetShaderValue(RHICmdList, GetPixelShader(), AtmosphereRParameter, AtmosphereR);
+		SetShaderValue(RHICmdList, GetPixelShader(), dhdHParameter, DhdH);
+		SetShaderValue(RHICmdList, GetPixelShader(), FirstOrderParameter, FirstOrder);
 	}
 };
 
@@ -906,6 +956,12 @@ public:
 		:	FGlobalShader(Initializer)
 	{
 	}
+
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		return bShaderHasOutdatedParameters;
+	}
 };
 		
 class FAtmospherePrecomputeInscatterVS : public FGlobalShader
@@ -920,7 +976,7 @@ class FAtmospherePrecomputeInscatterVS : public FGlobalShader
 	/* Default constructor. */
 	FAtmospherePrecomputeInscatterVS() {}
 	
-	LAYOUT_FIELD(FShaderParameter, AtmosphereLayerParameter);
+	FShaderParameter AtmosphereLayerParameter;
 	
 public:
 	
@@ -933,7 +989,14 @@ public:
 
 	void SetParameters(FRHICommandList& RHICmdList, int AtmosphereLayer)
 	{
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundVertexShader(), AtmosphereLayerParameter, AtmosphereLayer);
+		SetShaderValue(RHICmdList, GetVertexShader(), AtmosphereLayerParameter, AtmosphereLayer);
+	}
+
+	virtual bool Serialize(FArchive& Ar) override
+	{
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << AtmosphereLayerParameter;
+		return bShaderHasOutdatedParameters;
 	}
 };
 
@@ -951,10 +1014,10 @@ class FAtmosphereCopyInscatterFPS : public FGlobalShader
 	FAtmosphereCopyInscatterFPS() {}
 
 public:
-	LAYOUT_FIELD(FAtmosphereShaderPrecomputeTextureParameters, AtmosphereParameters);
-	LAYOUT_FIELD(FShaderParameter, dhdHParameter);
-	LAYOUT_FIELD(FShaderParameter, AtmosphereRParameter);
-	LAYOUT_FIELD(FShaderParameter, AtmosphereLayerParameter);
+	FAtmosphereShaderPrecomputeTextureParameters AtmosphereParameters;
+	FShaderParameter dhdHParameter;
+	FShaderParameter AtmosphereRParameter;
+	FShaderParameter AtmosphereLayerParameter;
 
 	/* Initialization constructor. */
 	FAtmosphereCopyInscatterFPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -966,12 +1029,20 @@ public:
 		AtmosphereLayerParameter.Bind(Initializer.ParameterMap, TEXT("AtmosphereLayer"));
 	}
 
-	void SetParameters(FRHICommandList& RHICmdList, float AtmosphereR, const FVector4& DhdH, int AtmosphereLayer, FAtmosphereTextures* Textures)
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
 	{
-		AtmosphereParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::Inscatter, Textures);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), AtmosphereRParameter, AtmosphereR);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), dhdHParameter, DhdH);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), AtmosphereLayerParameter, AtmosphereLayer);
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << AtmosphereParameters << dhdHParameter << AtmosphereRParameter << AtmosphereLayerParameter;
+		return bShaderHasOutdatedParameters;
+	}
+
+	void SetParameters(FRHICommandList& RHICmdList, float AtmosphereR, const FVector4& DhdH, int AtmosphereLayer, const FAtmosphereTextures* Textures)
+	{
+		AtmosphereParameters.Set(RHICmdList, GetPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::Inscatter, Textures);
+		SetShaderValue(RHICmdList, GetPixelShader(), AtmosphereRParameter, AtmosphereR);
+		SetShaderValue(RHICmdList, GetPixelShader(), dhdHParameter, DhdH);
+		SetShaderValue(RHICmdList, GetPixelShader(), AtmosphereLayerParameter, AtmosphereLayer);
 	}
 };
 
@@ -988,10 +1059,10 @@ class FAtmosphereCopyInscatterFBackPS : public FGlobalShader
 	FAtmosphereCopyInscatterFBackPS() {}
 
 public:
-	LAYOUT_FIELD(FAtmosphereShaderPrecomputeTextureParameters, AtmosphereParameters);
-	LAYOUT_FIELD(FShaderParameter, dhdHParameter);
-	LAYOUT_FIELD(FShaderParameter, AtmosphereRParameter);
-	LAYOUT_FIELD(FShaderParameter, AtmosphereLayerParameter);
+	FAtmosphereShaderPrecomputeTextureParameters AtmosphereParameters;
+	FShaderParameter dhdHParameter;
+	FShaderParameter AtmosphereRParameter;
+	FShaderParameter AtmosphereLayerParameter;
 
 	/* Initialization constructor. */
 	FAtmosphereCopyInscatterFBackPS(const ShaderMetaType::CompiledShaderInitializerType& Initializer)
@@ -1003,12 +1074,20 @@ public:
 		AtmosphereLayerParameter.Bind(Initializer.ParameterMap, TEXT("AtmosphereLayer"));
 	}
 
-	void SetParameters(FRHICommandList& RHICmdList, float AtmosphereR, const FVector4& DhdH, int AtmosphereLayer, FAtmosphereTextures* Textures)
+	// FShader interface.
+	virtual bool Serialize(FArchive& Ar) override
 	{
-		AtmosphereParameters.Set(RHICmdList, RHICmdList.GetBoundPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::DeltaSR, Textures);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), AtmosphereRParameter, AtmosphereR);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), dhdHParameter, DhdH);
-		SetShaderValue(RHICmdList, RHICmdList.GetBoundPixelShader(), AtmosphereLayerParameter, AtmosphereLayer);
+		bool bShaderHasOutdatedParameters = FGlobalShader::Serialize(Ar);
+		Ar << AtmosphereParameters << dhdHParameter << AtmosphereRParameter << AtmosphereLayerParameter;
+		return bShaderHasOutdatedParameters;
+	}
+
+	void SetParameters(FRHICommandList& RHICmdList, float AtmosphereR, const FVector4& DhdH, int AtmosphereLayer, const FAtmosphereTextures* Textures)
+	{
+		AtmosphereParameters.Set(RHICmdList, GetPixelShader(), 0, FAtmosphereShaderPrecomputeTextureParameters::DeltaSR, Textures);
+		SetShaderValue(RHICmdList, GetPixelShader(), AtmosphereRParameter, AtmosphereR);
+		SetShaderValue(RHICmdList, GetPixelShader(), dhdHParameter, DhdH);
+		SetShaderValue(RHICmdList, GetPixelShader(), AtmosphereLayerParameter, AtmosphereLayer);
 	}
 };
 
@@ -1088,7 +1167,7 @@ FIntPoint FAtmosphericFogSceneInfo::GetTextureSize()
 	return AtmosphereTextures->AtmosphereTransmittance->GetDesc().Extent;
 }
 
-void FAtmosphericFogSceneInfo::DrawQuad(FRHICommandList& RHICmdList, const FIntRect& ViewRect, const TShaderRef<FShader>& VertexShader)
+void FAtmosphericFogSceneInfo::DrawQuad(FRHICommandList& RHICmdList, const FIntRect& ViewRect, FShader* VertexShader)
 {
 	// Draw a quad mapping scene color to the view's render target
 	DrawRectangle( 
@@ -1129,7 +1208,6 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 			const FSceneRenderTargetItem& DestRenderTarget = AtmosphereTextures->AtmosphereTransmittance->GetRenderTargetItem();
 
 			FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, MakeRenderTargetActions(ERenderTargetLoadAction::ELoad, ERenderTargetStoreAction::EStore));
-			TransitionRenderPassTargets(RHICmdList, RPInfo);
 			RHICmdList.BeginRenderPass(RPInfo, TEXT("AP_Transmittance"));
 			{
 				RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -1138,13 +1216,13 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 				TShaderMapRef<FAtmosphereTransmittancePS> PixelShader(ShaderMap);
 
 				GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 				GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 				SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 				PixelShader->SetParameters(RHICmdList, View);
-				DrawQuad(RHICmdList, ViewRect, VertexShader);
+				DrawQuad(RHICmdList, ViewRect, *VertexShader);
 			}
 			RHICmdList.EndRenderPass();
 			RHICmdList.CopyToResolveTarget(DestRenderTarget.TargetableTexture, DestRenderTarget.ShaderResourceTexture, FResolveParams());
@@ -1154,7 +1232,6 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 		{
 			const FSceneRenderTargetItem& DestRenderTarget = AtmosphereTextures->AtmosphereDeltaE->GetRenderTargetItem();
 			FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, MakeRenderTargetActions(ERenderTargetLoadAction::ELoad, ERenderTargetStoreAction::EStore));
-			TransitionRenderPassTargets(RHICmdList, RPInfo);
 			RHICmdList.BeginRenderPass(RPInfo, TEXT("AP_Transmittance"));
 			{
 				RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -1163,15 +1240,15 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 				TShaderMapRef<FAtmosphereIrradiance1PS> PixelShader(ShaderMap);
 
 				GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 				GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 				SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
 				PixelShader->SetParameters(RHICmdList, AtmosphereTextures);
 
-				DrawQuad(RHICmdList, ViewRect, VertexShader);
+				DrawQuad(RHICmdList, ViewRect, *VertexShader);
 			}
 			RHICmdList.EndRenderPass();
 			RHICmdList.CopyToResolveTarget(DestRenderTarget.TargetableTexture, DestRenderTarget.ShaderResourceTexture, FResolveParams());
@@ -1188,7 +1265,6 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 				};
 
 				FRHIRenderPassInfo RPInfo(2, RenderTargets, MakeRenderTargetActions(ERenderTargetLoadAction::ELoad, ERenderTargetStoreAction::EStore));
-				TransitionRenderPassTargets(RHICmdList, RPInfo);
 				RHICmdList.BeginRenderPass(RPInfo, TEXT("AP_Inscatter"));
 				{
 					RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -1198,11 +1274,11 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 					TShaderMapRef<FAtmosphereInscatter1PS> PixelShader(ShaderMap);
 
 					GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
 #if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
-					GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GeometryShader.GetGeometryShader();
+					GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GETSAFERHISHADER_GEOMETRY(*GeometryShader);
 #endif
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 					GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -1217,7 +1293,7 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 						GeometryShader->SetParameters(RHICmdList, Layer);
 					}
 					PixelShader->SetParameters(RHICmdList, View, r, DhdH, AtmosphereTextures);
-					DrawQuad(RHICmdList, ViewRect, VertexShader);
+					DrawQuad(RHICmdList, ViewRect, *VertexShader);
 				}
 				RHICmdList.EndRenderPass();
 				if (Atmosphere3DTextureIndex == Component->PrecomputeParams.InscatterAltitudeSampleNum - 1)
@@ -1236,7 +1312,6 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 			ensure(DestRenderTarget.TargetableTexture->GetClearColor() == FLinearColor::Black);
 
 			FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, ERenderTargetActions::Clear_Store);
-			TransitionRenderPassTargets(RHICmdList, RPInfo);
 			RHICmdList.BeginRenderPass(RPInfo, TEXT("AP_ClearIrradiance"));
 			RHICmdList.EndRenderPass();
 			RHICmdList.CopyToResolveTarget(DestRenderTarget.TargetableTexture, DestRenderTarget.ShaderResourceTexture, FResolveParams());
@@ -1249,7 +1324,6 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 				const FSceneRenderTargetItem& DestRenderTarget = AtmosphereTextures->AtmosphereInscatter->GetRenderTargetItem();
 
 				FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, ERenderTargetActions::Load_Store);
-				TransitionRenderPassTargets(RHICmdList, RPInfo);
 				RHICmdList.BeginRenderPass(RPInfo, TEXT("AP_CopyInscatter1"));
 				{
 					RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -1259,11 +1333,11 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 					TShaderMapRef<FAtmosphereCopyInscatter1PS> PixelShader(ShaderMap);
 
 					GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
 #if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
-					GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GeometryShader.GetGeometryShader();
+					GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GETSAFERHISHADER_GEOMETRY(*GeometryShader);
 #endif
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 					GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -1277,7 +1351,7 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 						GeometryShader->SetParameters(RHICmdList, Layer);
 					}
 					PixelShader->SetParameters(RHICmdList, View, r, DhdH, Layer, AtmosphereTextures);
-					DrawQuad(RHICmdList, ViewRect, VertexShader);
+					DrawQuad(RHICmdList, ViewRect, *VertexShader);
 				}
 				RHICmdList.EndRenderPass();
 				if (Atmosphere3DTextureIndex == Component->PrecomputeParams.InscatterAltitudeSampleNum - 1)
@@ -1294,7 +1368,6 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 				const FSceneRenderTargetItem& DestRenderTarget = AtmosphereTextures->AtmosphereDeltaJ->GetRenderTargetItem();
 
 				FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, ERenderTargetActions::Load_Store);
-				TransitionRenderPassTargets(RHICmdList, RPInfo);
 				RHICmdList.BeginRenderPass(RPInfo, TEXT("InscatterS"));
 				{
 					RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -1304,11 +1377,11 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 					TShaderMapRef<FAtmosphereInscatterSPS> PixelShader(ShaderMap);
 
 					GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
 #if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
-					GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GeometryShader.GetGeometryShader();
+					GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GETSAFERHISHADER_GEOMETRY(*GeometryShader);
 #endif
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 					GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -1322,7 +1395,7 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 						GeometryShader->SetParameters(RHICmdList, Layer);
 					}
 					PixelShader->SetParameters(RHICmdList, View, r, DhdH, AtmoshpereOrder == 2 ? 1.f : 0.f, AtmosphereTextures);
-					DrawQuad(RHICmdList, ViewRect, VertexShader);
+					DrawQuad(RHICmdList, ViewRect, *VertexShader);
 				}
 				RHICmdList.EndRenderPass();
 				if (Atmosphere3DTextureIndex == Component->PrecomputeParams.InscatterAltitudeSampleNum - 1)
@@ -1336,7 +1409,6 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 		{
 			const FSceneRenderTargetItem& DestRenderTarget = AtmosphereTextures->AtmosphereDeltaE->GetRenderTargetItem();
 			FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, ERenderTargetActions::Load_Store);
-			TransitionRenderPassTargets(RHICmdList, RPInfo);
 			RHICmdList.BeginRenderPass(RPInfo, TEXT("IrradianceN"));
 			{
 				RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -1345,15 +1417,15 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 				TShaderMapRef<FAtmosphereIrradianceNPS> PixelShader(ShaderMap);
 
 				GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 				GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 				SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
 				PixelShader->SetParameters(RHICmdList, View, AtmoshpereOrder == 2 ? 1.f : 0.f, AtmosphereTextures);
 
-				DrawQuad(RHICmdList, ViewRect, VertexShader);
+				DrawQuad(RHICmdList, ViewRect, *VertexShader);
 			}
 			RHICmdList.EndRenderPass();
 			RHICmdList.CopyToResolveTarget(DestRenderTarget.TargetableTexture, DestRenderTarget.ShaderResourceTexture, FResolveParams());
@@ -1367,7 +1439,6 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 				const FSceneRenderTargetItem& DestRenderTarget = AtmosphereTextures->AtmosphereDeltaSR->GetRenderTargetItem();
 
 				FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, ERenderTargetActions::Load_Store);
-				TransitionRenderPassTargets(RHICmdList, RPInfo);
 				RHICmdList.BeginRenderPass(RPInfo, TEXT("InscatterN"));
 				{
 					RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -1377,11 +1448,11 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 					TShaderMapRef<FAtmosphereInscatterNPS> PixelShader(ShaderMap);
 
 					GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
 #if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
-					GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GeometryShader.GetGeometryShader();
+					GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GETSAFERHISHADER_GEOMETRY(*GeometryShader);
 #endif
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 					GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -1395,7 +1466,7 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 						GeometryShader->SetParameters(RHICmdList, Layer);
 					}
 					PixelShader->SetParameters(RHICmdList, View, r, DhdH, AtmoshpereOrder == 2 ? 1.f : 0.f, AtmosphereTextures);
-					DrawQuad(RHICmdList, ViewRect, VertexShader);
+					DrawQuad(RHICmdList, ViewRect, *VertexShader);
 				}
 				RHICmdList.EndRenderPass();
 				if (Atmosphere3DTextureIndex == Component->PrecomputeParams.InscatterAltitudeSampleNum - 1)
@@ -1410,7 +1481,6 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 			const FSceneRenderTargetItem& DestRenderTarget = AtmosphereTextures->AtmosphereIrradiance->GetRenderTargetItem();
 
 			FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, ERenderTargetActions::Load_Store);
-			TransitionRenderPassTargets(RHICmdList, RPInfo);
 			RHICmdList.BeginRenderPass(RPInfo, TEXT("CopyIrradiance"));
 			{
 				RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -1421,15 +1491,15 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 				TShaderMapRef<FAtmosphereCopyIrradiancePS> PixelShader(ShaderMap);
 
 				GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
-				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+				GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
+				GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 				GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 				SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
 
 				PixelShader->SetParameters(RHICmdList, AtmosphereTextures);
 
-				DrawQuad(RHICmdList, ViewRect, VertexShader);
+				DrawQuad(RHICmdList, ViewRect, *VertexShader);
 			}
 			RHICmdList.EndRenderPass();
 			RHICmdList.CopyToResolveTarget(DestRenderTarget.TargetableTexture, DestRenderTarget.ShaderResourceTexture, FResolveParams());
@@ -1445,7 +1515,6 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 				const FSceneRenderTargetItem& DestRenderTarget = AtmosphereTextures->AtmosphereInscatter->GetRenderTargetItem();
 				
 				FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, ERenderTargetActions::Load_Store);
-				TransitionRenderPassTargets(RHICmdList, RPInfo);
 				RHICmdList.BeginRenderPass(RPInfo, TEXT("CopyInscatterN"));
 				{
 					RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -1457,11 +1526,11 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 					TShaderMapRef<FAtmosphereCopyInscatterNPS> PixelShader(ShaderMap);
 
 					GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
 #if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
-					GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GeometryShader.GetGeometryShader();
+					GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GETSAFERHISHADER_GEOMETRY(*GeometryShader);
 #endif
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 					GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -1475,7 +1544,7 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 						GeometryShader->SetParameters(RHICmdList, Layer);
 					}
 					PixelShader->SetParameters(RHICmdList, View, r, DhdH, Layer, AtmosphereTextures);
-					DrawQuad(RHICmdList, ViewRect, VertexShader);
+					DrawQuad(RHICmdList, ViewRect, *VertexShader);
 				}
 				RHICmdList.EndRenderPass();
 				if (Atmosphere3DTextureIndex == Component->PrecomputeParams.InscatterAltitudeSampleNum - 1)
@@ -1495,7 +1564,6 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 				const FSceneRenderTargetItem& DestRenderTarget = AtmosphereTextures->AtmosphereDeltaSR->GetRenderTargetItem();
 				
 				FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, ERenderTargetActions::Load_Store);
-				TransitionRenderPassTargets(RHICmdList, RPInfo);
 				RHICmdList.BeginRenderPass(RPInfo, TEXT("CopyInscatterF"));
 				{
 					RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -1505,11 +1573,11 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 					TShaderMapRef<FAtmosphereCopyInscatterFPS> PixelShader(ShaderMap);
 
 					GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
 #if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
-					GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GeometryShader.GetGeometryShader();
+					GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GETSAFERHISHADER_GEOMETRY(*GeometryShader);
 #endif
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 					GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -1523,7 +1591,7 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 						GeometryShader->SetParameters(RHICmdList, Layer);
 					}
 					PixelShader->SetParameters(RHICmdList, r, DhdH, Layer, AtmosphereTextures);
-					DrawQuad(RHICmdList, ViewRect, VertexShader);
+					DrawQuad(RHICmdList, ViewRect, *VertexShader);
 				}
 				RHICmdList.EndRenderPass();
 				if (Atmosphere3DTextureIndex == Component->PrecomputeParams.InscatterAltitudeSampleNum - 1)
@@ -1540,7 +1608,6 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 				const FSceneRenderTargetItem& DestRenderTarget = AtmosphereTextures->AtmosphereInscatter->GetRenderTargetItem();
 
 				FRHIRenderPassInfo RPInfo(DestRenderTarget.TargetableTexture, ERenderTargetActions::Load_Store);
-				TransitionRenderPassTargets(RHICmdList, RPInfo);
 				RHICmdList.BeginRenderPass(RPInfo, TEXT("CopyInscatterFBack"));
 				{
 					RHICmdList.ApplyCachedRenderTargets(GraphicsPSOInit);
@@ -1550,11 +1617,11 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 					TShaderMapRef<FAtmosphereCopyInscatterFBackPS> PixelShader(ShaderMap);
 
 					GraphicsPSOInit.BoundShaderState.VertexDeclarationRHI = GFilterVertexDeclaration.VertexDeclarationRHI;
-					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = VertexShader.GetVertexShader();
+					GraphicsPSOInit.BoundShaderState.VertexShaderRHI = GETSAFERHISHADER_VERTEX(*VertexShader);
 #if PLATFORM_SUPPORTS_GEOMETRY_SHADERS
-					GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GeometryShader.GetGeometryShader();
+					GraphicsPSOInit.BoundShaderState.GeometryShaderRHI = GETSAFERHISHADER_GEOMETRY(*GeometryShader);
 #endif
-					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = PixelShader.GetPixelShader();
+					GraphicsPSOInit.BoundShaderState.PixelShaderRHI = GETSAFERHISHADER_PIXEL(*PixelShader);
 					GraphicsPSOInit.PrimitiveType = PT_TriangleList;
 
 					SetGraphicsPipelineState(RHICmdList, GraphicsPSOInit);
@@ -1568,7 +1635,7 @@ void FAtmosphericFogSceneInfo::RenderAtmosphereShaders(FRHICommandList& RHICmdLi
 						GeometryShader->SetParameters(RHICmdList, Layer);
 					}
 					PixelShader->SetParameters(RHICmdList, r, DhdH, Layer, AtmosphereTextures);
-					DrawQuad(RHICmdList, ViewRect, VertexShader);
+					DrawQuad(RHICmdList, ViewRect, *VertexShader);
 				}
 				RHICmdList.EndRenderPass();
 				if (Atmosphere3DTextureIndex == Component->PrecomputeParams.InscatterAltitudeSampleNum - 1)
@@ -1596,7 +1663,7 @@ void FAtmosphericFogSceneInfo::PrecomputeAtmosphereData(FRHICommandListImmediate
 	// turn off depth reads/writes
 	GraphicsPSOInit.DepthStencilState = TStaticDepthStencilState<false, CF_Always>::GetRHI();
 
-	RHICmdList.SetViewport(0.0f, 0.0f, 0.0f, (float)TexSize.X, (float)TexSize.Y, 0.0f);
+	RHICmdList.SetViewport(0, 0, 0.0f, TexSize.X, TexSize.Y, 0.0f);
 
 	RenderAtmosphereShaders(RHICmdList, GraphicsPSOInit, *View, ViewRect);
 }
@@ -1639,9 +1706,9 @@ void FAtmosphericFogSceneInfo::Read3DPixelsPtr(FRHICommandListImmediate& RHICmdL
 	FMemory::Memcpy(OutData, Data.GetData(), Data.Num() * sizeof(FFloat16Color));
 }
 
-void FAtmosphericFogSceneInfo::PrecomputeTextures(FRDGBuilder& GraphBuilder, const FViewInfo* View, FSceneViewFamily* ViewFamily)
+void FAtmosphericFogSceneInfo::PrecomputeTextures(FRHICommandListImmediate& RHICmdList, const FViewInfo* View, FSceneViewFamily* ViewFamily)
 {
-	RDG_GPU_STAT_SCOPE(GraphBuilder, AtmospherePreCompute);
+	SCOPED_GPU_STAT(RHICmdList, AtmospherePreCompute);
 	check(Component != NULL);
 	if (AtmosphereTextures == NULL)
 	{
@@ -1664,98 +1731,95 @@ void FAtmosphericFogSceneInfo::PrecomputeTextures(FRDGBuilder& GraphBuilder, con
 	// Atmosphere 
 	if (bPrecomputationStarted && !bPrecomputationFinished)
 	{
-		AddUntrackedAccessPass(GraphBuilder, [this, View, ViewFamily](FRHICommandListImmediate& RHICmdList)
+		PrecomputeAtmosphereData(RHICmdList, View, *ViewFamily);
+
+		switch(AtmospherePhase)
 		{
-			PrecomputeAtmosphereData(RHICmdList, View, *ViewFamily);
-
-			switch (AtmospherePhase)
+		case AP_Inscatter1:
+		case AP_CopyInscatter1:
+		case AP_CopyInscatterF:
+		case AP_CopyInscatterFBack:
+		case AP_InscatterN:
+		case AP_CopyInscatterN:
+		case AP_InscatterS:
+			Atmosphere3DTextureIndex++;
+			if (Atmosphere3DTextureIndex >= Component->PrecomputeParams.InscatterAltitudeSampleNum)
 			{
-			case AP_Inscatter1:
-			case AP_CopyInscatter1:
-			case AP_CopyInscatterF:
-			case AP_CopyInscatterFBack:
-			case AP_InscatterN:
-			case AP_CopyInscatterN:
-			case AP_InscatterS:
-				Atmosphere3DTextureIndex++;
-				if (Atmosphere3DTextureIndex >= Component->PrecomputeParams.InscatterAltitudeSampleNum)
-				{
-					AtmospherePhase++;
-					Atmosphere3DTextureIndex = 0;
-				}
-				break;
-			default:
 				AtmospherePhase++;
-				break;
-			}
-
-			if (AtmospherePhase == AP_EndOrder)
-			{
-				AtmospherePhase = AP_StartOrder;
-				AtmoshpereOrder++;
-			}
-
-			if (AtmospherePhase == AP_StartOrder)
-			{
-				if (AtmoshpereOrder > MaxScatteringOrder)
-				{
-					if (Component->PrecomputeParams.DensityHeight > 0.678f) // Fixed artifacts only for some value
-					{
-						AtmospherePhase = AP_CopyInscatterF;
-					}
-					else
-					{
-						AtmospherePhase = AP_MAX;
-					}
-					AtmoshpereOrder = 2;
-				}
-			}
-
-			if (AtmospherePhase >= AP_MAX)
-			{
-				AtmospherePhase = 0;
 				Atmosphere3DTextureIndex = 0;
-				AtmoshpereOrder = 2;
-
-				// Save precomputed data to bulk data
-				{
-					FIntPoint Extent = AtmosphereTextures->AtmosphereTransmittance->GetDesc().Extent;
-					int32 TotalByte = sizeof(FColor) * Extent.X * Extent.Y;
-					PrecomputeTransmittance.Lock(LOCK_READ_WRITE);
-					FColor* TransmittanceData = (FColor*)PrecomputeTransmittance.Realloc(TotalByte);
-					ReadPixelsPtr(RHICmdList, AtmosphereTextures->AtmosphereTransmittance, TransmittanceData, FIntRect(0, 0, Extent.X, Extent.Y));
-					PrecomputeTransmittance.Unlock();
-				}
-
-				{
-					FIntPoint Extent = AtmosphereTextures->AtmosphereIrradiance->GetDesc().Extent;
-					int32 TotalByte = sizeof(FColor) * Extent.X * Extent.Y;
-					PrecomputeIrradiance.Lock(LOCK_READ_WRITE);
-					FColor* IrradianceData = (FColor*)PrecomputeIrradiance.Realloc(TotalByte);
-					ReadPixelsPtr(RHICmdList, AtmosphereTextures->AtmosphereIrradiance, IrradianceData, FIntRect(0, 0, Extent.X, Extent.Y));
-					PrecomputeIrradiance.Unlock();
-				}
-
-				{
-					int32 SizeX = Component->PrecomputeParams.InscatterMuSNum * Component->PrecomputeParams.InscatterNuNum;
-					int32 SizeY = Component->PrecomputeParams.InscatterMuNum;
-					int32 SizeZ = Component->PrecomputeParams.InscatterAltitudeSampleNum;
-					int32 TotalByte = sizeof(FFloat16Color) * SizeX * SizeY * SizeZ;
-					PrecomputeInscatter.Lock(LOCK_READ_WRITE);
-					FFloat16Color* InscatterData = (FFloat16Color*)PrecomputeInscatter.Realloc(TotalByte);
-					Read3DPixelsPtr(RHICmdList, AtmosphereTextures->AtmosphereInscatter, InscatterData, FIntRect(0, 0, SizeX, SizeY), FIntPoint(0, SizeZ));
-					PrecomputeInscatter.Unlock();
-				}
-
-				// Delete render targets
-				delete AtmosphereTextures;
-				AtmosphereTextures = NULL;
-
-				// Save to bulk data is done
-				bPrecomputationFinished = true;
-				Component->GameThreadServiceRequest.Increment();
 			}
-		});
+			break;
+		default:
+			AtmospherePhase++;
+			break;
+		}
+
+		if (AtmospherePhase == AP_EndOrder)
+		{
+			AtmospherePhase = AP_StartOrder;
+			AtmoshpereOrder++;
+		}
+
+		if (AtmospherePhase == AP_StartOrder)
+		{
+			if (AtmoshpereOrder > MaxScatteringOrder)
+			{
+				if (Component->PrecomputeParams.DensityHeight > 0.678f) // Fixed artifacts only for some value
+				{
+					AtmospherePhase = AP_CopyInscatterF;
+				}
+				else
+				{
+					AtmospherePhase = AP_MAX;
+				}
+				AtmoshpereOrder = 2;
+			}
+		}
+
+		if (AtmospherePhase >= AP_MAX)
+		{
+			AtmospherePhase = 0;
+			Atmosphere3DTextureIndex = 0;
+			AtmoshpereOrder = 2;
+
+			// Save precomputed data to bulk data
+			{
+				FIntPoint Extent = AtmosphereTextures->AtmosphereTransmittance->GetDesc().Extent;
+				int32 TotalByte = sizeof(FColor) * Extent.X * Extent.Y;
+				PrecomputeTransmittance.Lock(LOCK_READ_WRITE);
+				FColor* TransmittanceData = (FColor*)PrecomputeTransmittance.Realloc(TotalByte);
+				ReadPixelsPtr(RHICmdList, AtmosphereTextures->AtmosphereTransmittance, TransmittanceData, FIntRect(0, 0, Extent.X, Extent.Y));
+				PrecomputeTransmittance.Unlock();
+			}
+
+			{
+				FIntPoint Extent = AtmosphereTextures->AtmosphereIrradiance->GetDesc().Extent;
+				int32 TotalByte = sizeof(FColor) * Extent.X * Extent.Y;
+				PrecomputeIrradiance.Lock(LOCK_READ_WRITE);
+				FColor* IrradianceData = (FColor*)PrecomputeIrradiance.Realloc(TotalByte);
+				ReadPixelsPtr(RHICmdList, AtmosphereTextures->AtmosphereIrradiance, IrradianceData, FIntRect(0, 0, Extent.X, Extent.Y));
+				PrecomputeIrradiance.Unlock();
+			}
+
+			{
+				int32 SizeX = Component->PrecomputeParams.InscatterMuSNum * Component->PrecomputeParams.InscatterNuNum;
+				int32 SizeY = Component->PrecomputeParams.InscatterMuNum;
+				int32 SizeZ = Component->PrecomputeParams.InscatterAltitudeSampleNum;
+				int32 TotalByte = sizeof(FFloat16Color) * SizeX * SizeY * SizeZ;
+				PrecomputeInscatter.Lock(LOCK_READ_WRITE);
+				FFloat16Color* InscatterData = (FFloat16Color*)PrecomputeInscatter.Realloc(TotalByte);
+				Read3DPixelsPtr(RHICmdList, AtmosphereTextures->AtmosphereInscatter, InscatterData, FIntRect(0, 0, SizeX, SizeY), FIntPoint(0, SizeZ));
+				PrecomputeInscatter.Unlock();
+			}
+
+			// Delete render targets
+			delete AtmosphereTextures;
+			AtmosphereTextures = NULL;
+
+			// Save to bulk data is done
+			bPrecomputationFinished = true;
+			Component->GameThreadServiceRequest.Increment();
+		}
 	}
 }
 #endif
@@ -1773,8 +1837,7 @@ void FAtmosphericFogSceneInfo::PrepareSunLightProxy(FLightSceneInfo& SunLight) c
 	const float SunSolidAngle = 2.0f * PI * (1.0f - FMath::Cos(SunLight.Proxy->GetSunLightHalfApexAngleRadian())); // Solid angle from aperture https://en.wikipedia.org/wiki/Solid_angle 
 	FLinearColor SunDiskOuterSpaceLuminance = SunOuterSpaceIlluminance / SunSolidAngle; // approximation  
 
-	const bool bApplyAtmosphereTransmittanceToLightShaderParam = true;
-	SunLight.Proxy->SetAtmosphereRelatedProperties(TransmittanceTowardSun / TransmittanceAtZenithFinal, SunDiskOuterSpaceLuminance, bApplyAtmosphereTransmittanceToLightShaderParam);
+	SunLight.Proxy->SetAtmosphereRelatedProperties(TransmittanceTowardSun / TransmittanceAtZenithFinal, SunDiskOuterSpaceLuminance);
 }
 
 /** Initialization constructor. */
@@ -1856,7 +1919,7 @@ bool ShouldRenderAtmosphere(const FSceneViewFamily& Family)
 // FScene
 
 
-void FScene::AddAtmosphericFog_Impl(UAtmosphericFogComponent* FogComponent)
+void FScene::AddAtmosphericFog(UAtmosphericFogComponent* FogComponent)
 {
 	check(FogComponent);
 
@@ -1870,7 +1933,7 @@ void FScene::AddAtmosphericFog_Impl(UAtmosphericFogComponent* FogComponent)
 		});
 }
 
-void FScene::RemoveAtmosphericFog_Impl(UAtmosphericFogComponent* FogComponent)
+void FScene::RemoveAtmosphericFog(UAtmosphericFogComponent* FogComponent)
 {
 	FScene* Scene = this;
 	ENQUEUE_RENDER_COMMAND(FRemoveAtmosphericFogCommand)(
@@ -1886,7 +1949,7 @@ void FScene::RemoveAtmosphericFog_Impl(UAtmosphericFogComponent* FogComponent)
 }
 
 
-void FScene::RemoveAtmosphericFogResource_RenderThread_Impl(FRenderResource* FogResource)
+void FScene::RemoveAtmosphericFogResource_RenderThread(FRenderResource* FogResource)
 {
 	check(IsInRenderingThread());
 
@@ -1899,5 +1962,3 @@ void FScene::RemoveAtmosphericFogResource_RenderThread_Impl(FRenderResource* Fog
 		}
 	}
 }
-
-PRAGMA_ENABLE_DEPRECATION_WARNINGS

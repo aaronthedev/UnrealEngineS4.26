@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -56,7 +56,6 @@ class STutorialsBrowser : public SCompoundWidget
 	SLATE_ARGUMENT(FSimpleDelegate, OnClosed)
 	SLATE_ARGUMENT(FOnLaunchTutorial, OnLaunchTutorial)
 	SLATE_ARGUMENT(TWeakPtr<SWindow>, ParentWindow)
-	SLATE_ARGUMENT(TArray<FTutorialCategory>, ExternalCategories)
 
 	SLATE_END_ARGS()
 
@@ -157,7 +156,4 @@ private:
 
 	/** Prevent us from refreshing too often */
 	float RefreshTimer;
-
-	/** Categories that were registered externally, i.e. by a plugin */
-	TArray<FTutorialCategory> ExternalCategories;
 };

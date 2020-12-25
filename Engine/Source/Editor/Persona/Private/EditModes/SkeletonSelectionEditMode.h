@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -13,7 +13,6 @@ class FSceneView;
 class FViewport;
 struct FViewportClick;
 struct FSelectedSocketInfo;
-class FViewportClient;
 
 class FSkeletonSelectionEditMode : public IPersonaEditMode
 {

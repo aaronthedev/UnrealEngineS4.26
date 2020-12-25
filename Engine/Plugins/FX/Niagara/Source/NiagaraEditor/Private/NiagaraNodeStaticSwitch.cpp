@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "NiagaraNodeStaticSwitch.h"
 #include "NiagaraEditorUtilities.h"
 #include "NiagaraHlslTranslator.h"
 #include "NiagaraConstants.h"
-#include "NiagaraScriptVariable.h"
 
 #define LOCTEXT_NAMESPACE "NiagaraNodeStaticSwitch"
 
@@ -15,7 +14,7 @@ UNiagaraNodeStaticSwitch::UNiagaraNodeStaticSwitch(const FObjectInitializer& Obj
 
 void UNiagaraNodeStaticSwitch::DestroyNode()
 {
-	GetNiagaraGraph()->RemoveParameter(FNiagaraVariable(GetInputType(), InputParameterName));
+	GetNiagaraGraph()->RemoveParameter(FNiagaraVariable(GetInputType(), InputParameterName), true);
 	Super::DestroyNode();
 }
 
@@ -49,10 +48,7 @@ void UNiagaraNodeStaticSwitch::OnSwitchParameterTypeChanged(const FNiagaraTypeDe
 {
 	TOptional<FNiagaraVariableMetaData> OldMetaData = GetNiagaraGraph()->GetMetaData(FNiagaraVariable(OldType, InputParameterName));
 	RefreshFromExternalChanges(); // Magick happens here: The old pins are destroyed and new ones are created.
-	if (OldMetaData.IsSet())
-	{
-		GetNiagaraGraph()->SetMetaData(FNiagaraVariable(GetInputType(), InputParameterName), OldMetaData.GetValue());
-	}
+	GetNiagaraGraph()->SetMetaData(FNiagaraVariable(GetInputType(), InputParameterName), OldMetaData.GetValue());
 
 	VisualsChangedDelegate.Broadcast(this);
 	RemoveUnusedGraphParameter(FNiagaraVariable(OldType, InputParameterName));
@@ -70,7 +66,7 @@ void UNiagaraNodeStaticSwitch::SetSwitchValue(const FCompileConstantResolver& Co
 	{
 		return;
 	}
-	ClearSwitchValue();
+	IsValueSet = false;
 
 	const FNiagaraVariable* Found = FNiagaraConstants::FindStaticSwitchConstant(SwitchTypeData.SwitchConstant);
 	FNiagaraVariable Constant = Found ? *Found : FNiagaraVariable();
@@ -106,7 +102,6 @@ void UNiagaraNodeStaticSwitch::RemoveUnusedGraphParameter(const FNiagaraVariable
 	int Index = GraphVariables.Find(OldParameter);
 	if (Index == INDEX_NONE)
 	{
-		// Force delete the old static switch parameter.
 		GetNiagaraGraph()->RemoveParameter(OldParameter, true);
 	}
 	else
@@ -252,7 +247,7 @@ void UNiagaraNodeStaticSwitch::UpdateCompilerConstantValue(FHlslNiagaraTranslato
 	{
 		return;
 	}
-	ClearSwitchValue();
+	IsValueSet = false;
 
 	const FNiagaraVariable* Found = FNiagaraConstants::FindStaticSwitchConstant(SwitchTypeData.SwitchConstant);
 	FNiagaraVariable Constant = Found ? *Found : FNiagaraVariable();
@@ -296,7 +291,7 @@ bool UNiagaraNodeStaticSwitch::GetVarIndex(FHlslNiagaraTranslator* Translator, i
 			{
 				Translator->Warning(FText::Format(LOCTEXT("InvalidStaticSwitchIntValue", "The supplied int value {0} is outside the bounds for the static switch."), FText::FromString(FString::FromInt(Value))), this, nullptr);
 			}
-			VarIndexOut = FMath::Clamp(Value, 0, MaxValue) * (InputPinCount / (MaxValue + 1));
+			VarIndexOut = FMath::Clamp(Value, 0, MaxValue) * (InputPinCount / MaxValue);
 			Success = true;
 		}
 		else if (Translator)
@@ -310,7 +305,7 @@ bool UNiagaraNodeStaticSwitch::GetVarIndex(FHlslNiagaraTranslator* Translator, i
 		if (MaxValue > 0)
 		{
 			// do a sanity check here if the number of pins actually matches the enum count (which might have changed in the meantime without us noticing)
-			FPinCollectorArray LocalOutputPins;
+			TArray<UEdGraphPin*> LocalOutputPins;
 			GetOutputPins(LocalOutputPins);
 			int32 OutputPinCount = LocalOutputPins.Num() - 1;
 			int32 ReservedValues = (InputPinCount / OutputPinCount);
@@ -366,9 +361,9 @@ bool UNiagaraNodeStaticSwitch::SubstituteCompiledPin(FHlslNiagaraTranslator* Tra
 		return false;
 	}
 
-	FPinCollectorArray InputPins;
+	TArray<UEdGraphPin*> InputPins;
 	GetInputPins(InputPins);
-	FPinCollectorArray OutputPins;
+	TArray<UEdGraphPin*> OutputPins;
 	GetOutputPins(OutputPins);
 
 	for (int i = 0; i < OutputPins.Num(); i++)
@@ -380,7 +375,7 @@ bool UNiagaraNodeStaticSwitch::SubstituteCompiledPin(FHlslNiagaraTranslator* Tra
 			UEdGraphPin* InputPin = InputPins[VarIdx + i];
 			if (InputPin->LinkedTo.Num() == 1)
 			{
-				*LocallyOwnedPin = GetTracedOutputPin(InputPin->LinkedTo[0], true);
+				*LocallyOwnedPin = GetTracedOutputPin(InputPin->LinkedTo[0]);
 				return true;
 			}
 			else
@@ -393,39 +388,16 @@ bool UNiagaraNodeStaticSwitch::SubstituteCompiledPin(FHlslNiagaraTranslator* Tra
 	return false;
 }
 
-
-void UNiagaraNodeStaticSwitch::PostLoad()
+UEdGraphPin* UNiagaraNodeStaticSwitch::GetTracedOutputPin(UEdGraphPin* LocallyOwnedOutputPin) const
 {
-	Super::PostLoad();
-
-	// Make sure that we are added to the static switch list.
-	if (GetInputType().IsValid() && InputParameterName.IsValid())
-	{
-		UNiagaraScriptVariable* Var = GetNiagaraGraph()->GetScriptVariable(InputParameterName);
-		if (Var != nullptr && Var->Variable.GetType() == GetInputType() && Var->Metadata.GetIsStaticSwitch() == false)
-		{
-			UE_LOG(LogNiagaraEditor, Log, TEXT("Static switch constant \"%s\" in \"%s\" didn't have static switch meta-data conversion set properly. Fixing now."), *InputParameterName.ToString(), *GetPathName())
-			Var->Metadata.SetIsStaticSwitch(true);
-			MarkNodeRequiresSynchronization(TEXT("Static switch metadata updated"), true);
-		}
-	}
+	return GetTracedOutputPin(LocallyOwnedOutputPin, true);
 }
 
-UEdGraphPin* UNiagaraNodeStaticSwitch::GetTracedOutputPin(UEdGraphPin* LocallyOwnedOutputPin, bool bFilterForCompilation) const
+UEdGraphPin* UNiagaraNodeStaticSwitch::GetTracedOutputPin(UEdGraphPin* LocallyOwnedOutputPin, bool bRecursive) const
 {
-	return GetTracedOutputPin(LocallyOwnedOutputPin, true, bFilterForCompilation);
-}
-
-UEdGraphPin* UNiagaraNodeStaticSwitch::GetTracedOutputPin(UEdGraphPin* LocallyOwnedOutputPin, bool bRecursive, bool bFilterForCompilation) const
-{
-	if (!bFilterForCompilation)
-	{
-		return LocallyOwnedOutputPin;
-	}
-	
-	FPinCollectorArray InputPins;
+	TArray<UEdGraphPin*> InputPins;
 	GetInputPins(InputPins);
-	FPinCollectorArray OutputPins;
+	TArray<UEdGraphPin*> OutputPins;
 	GetOutputPins(OutputPins);
 
 	for (int i = 0; i < OutputPins.Num(); i++)
@@ -441,20 +413,11 @@ UEdGraphPin* UNiagaraNodeStaticSwitch::GetTracedOutputPin(UEdGraphPin* LocallyOw
 			UEdGraphPin* InputPin = InputPins[VarIdx + i];
 			if (InputPin->LinkedTo.Num() == 1)
 			{
-				return bRecursive ? UNiagaraNode::TraceOutputPin(InputPin->LinkedTo[0], bFilterForCompilation) : InputPin->LinkedTo[0];
+				return bRecursive ? UNiagaraNode::TraceOutputPin(InputPin->LinkedTo[0]) : InputPin->LinkedTo[0];
 			}
 		}
 	}
 	return LocallyOwnedOutputPin;
-}
-
-UEdGraphPin* UNiagaraNodeStaticSwitch::GetPassThroughPin(const UEdGraphPin* LocallyOwnedOutputPin,	ENiagaraScriptUsage MasterUsage) const
-{
-	if (IsValueSet)
-	{
-		return GetTracedOutputPin(const_cast<UEdGraphPin*>(LocallyOwnedOutputPin), true);
-	}
-	return Super::GetPassThroughPin(LocallyOwnedOutputPin, MasterUsage);
 }
 
 void UNiagaraNodeStaticSwitch::BuildParameterMapHistory(FNiagaraParameterMapHistoryBuilder& OutHistory, bool bRecursive /*= true*/, bool bFilterForCompilation /*= true*/) const

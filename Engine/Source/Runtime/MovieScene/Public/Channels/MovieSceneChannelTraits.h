@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -12,7 +12,7 @@
 enum class EMovieSceneKeyInterpolation : uint8;
 
 /**
- * Parameter structure passed to UE::MovieScene::Optimize that defines optimization parameters
+ * Parameter structure passed to MovieScene::Optimize that defines optimization parameters
  */
 struct FKeyDataOptimizationParams
 {
@@ -53,8 +53,6 @@ struct TMovieSceneChannelTraits : TMovieSceneChannelTraitsBase<ChannelType>
 {
 };
 
-namespace UE
-{
 namespace MovieScene
 {
 	/**
@@ -217,7 +215,7 @@ namespace MovieScene
 	template<typename ChannelType>
 	void Optimize(ChannelType* InChannel, const FKeyDataOptimizationParams& Params)
 	{
-		using namespace UE::MovieScene;
+		using namespace MovieScene;
 
 		auto ChannelInterface = InChannel->GetData();
 		if (ChannelInterface.GetTimes().Num() > 1)
@@ -250,5 +248,4 @@ namespace MovieScene
 			}
 		}
 	}
-} // namespace MovieScene
-} // namespace UE
+}

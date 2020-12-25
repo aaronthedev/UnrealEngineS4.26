@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/CompositeDataTable.h"
 #include "Serialization/PropertyLocalizationDataGathering.h"
@@ -15,11 +15,7 @@
 #include "DataTableEditorUtils.h"
 #endif
 
-#include "HAL/IConsoleManager.h"
-
 #define LOCTEXT_NAMESPACE "CompositeDataTables"
-
-#define DATATABLE_CHANGE_SCOPE()	UDataTable::FScopedDataTableChange ActiveScope(this);
 
 UCompositeDataTable::UCompositeDataTable(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
@@ -84,8 +80,6 @@ void UCompositeDataTable::UpdateCachedRowMap(bool bWarnOnInvalidChildren)
 			return;
 		}
 	}
-
-	DATATABLE_CHANGE_SCOPE();
 
 #if WITH_EDITOR
 	FDataTableEditorUtils::BroadcastPreChange(this, FDataTableEditorUtils::EDataTableChangeInfo::RowList);
@@ -259,7 +253,7 @@ void UCompositeDataTable::PostEditChangeProperty(FPropertyChangedEvent& Property
 {
 	static FName Name_ParentTables = GET_MEMBER_NAME_CHECKED(UCompositeDataTable, ParentTables);
 
-	FProperty* PropertyThatChanged = PropertyChangedEvent.Property;
+	UProperty* PropertyThatChanged = PropertyChangedEvent.Property;
 	const FName PropertyName = PropertyThatChanged != nullptr ? PropertyThatChanged->GetFName() : NAME_None;
 
 	if (PropertyName == Name_ParentTables)

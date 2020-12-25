@@ -30,10 +30,6 @@
 		{
 			"Name": "ConcertSyncClient",
 			"Enabled": true
-		},
-		{
-			"Name": "MultiUserTakes",
-			"Enabled": true
 		}
 	]
 }

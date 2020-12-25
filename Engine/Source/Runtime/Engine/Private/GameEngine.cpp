@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	GameEngine.cpp: Unreal game engine.
@@ -52,7 +52,6 @@
 #include "Misc/EmbeddedCommunication.h"
 #include "Engine/CoreSettings.h"
 #include "EngineAnalytics.h"
-#include "StudioAnalytics.h"
 #include "Engine/DemoNetDriver.h"
 
 #include "Tickable.h"
@@ -62,7 +61,6 @@
 #include "ProfilingDebugging/CsvProfiler.h"
 #include "RenderTargetPool.h"
 #include "RenderGraphBuilder.h"
-#include "CustomResourcePool.h"
 
 #if WITH_EDITOR
 #include "PIEPreviewDeviceProfileSelectorModule.h"
@@ -71,10 +69,6 @@
 
 #if !UE_SERVER
 	#include "IMediaModule.h"
-#endif
-
-#if WITH_CHAOS
-#include "ChaosSolversModule.h"
 #endif
 
 CSV_DECLARE_CATEGORY_MODULE_EXTERN(CORE_API, Basic);
@@ -97,8 +91,6 @@ static FAutoConsoleVariableRef CVarDoAsyncEndOfFrameTasks(
 	GDoAsyncEndOfFrameTasks,
 	TEXT("Experimental option to run various things concurrently with the HUD render.")
 	);
-
-bool ParseResolution(const TCHAR* InResolution, uint32& OutX, uint32& OutY, int32& WindowMode);
 
 /** Benchmark results to the log */
 static void RunSynthBenchmark(const TArray<FString>& Args)
@@ -317,39 +309,11 @@ void UGameEngine::ConditionallyOverrideSettings(int32& ResolutionX, int32& Resol
 
 void UGameEngine::DetermineGameWindowResolution( int32& ResolutionX, int32& ResolutionY, EWindowMode::Type& WindowMode, bool bUseWorkAreaForWindowed )
 {
-	FString ResolutionStr;;
-	if (FParse::Value(FCommandLine::Get(), TEXT("Res="), ResolutionStr))
-	{
-		uint32 ResX = 0;
-		uint32 ResY = 0;
-		int32 WinMode = EWindowMode::Windowed;
-
-		if (ParseResolution(*ResolutionStr, ResX, ResY, WinMode))
-		{
-			ResolutionX = ResX;
-			ResolutionY = ResY;
-			WindowMode = EWindowMode::ConvertIntToWindowMode(WinMode);
-		}
-	}
-	else
-	{
-		bool UserSpecifiedWidth = FParse::Value(FCommandLine::Get(), TEXT("ResX="), ResolutionX);
-		bool UserSpecifiedHeight = FParse::Value(FCommandLine::Get(), TEXT("ResY="), ResolutionY);
-
-		const float AspectRatio = 16.0 / 9.0;
-
-		if (UserSpecifiedWidth && !UserSpecifiedHeight)
-		{
-			ResolutionY = int32(ResolutionX / AspectRatio);
-		}
-		else if (UserSpecifiedHeight && !UserSpecifiedWidth)
-		{
-			ResolutionX = int32(ResolutionY * AspectRatio);
-		}
-	}
-
 	//fullscreen is always supported, but don't allow windowed mode on platforms that dont' support it.
 	WindowMode = (!FPlatformProperties::SupportsWindowedMode() && (WindowMode == EWindowMode::Windowed || WindowMode == EWindowMode::WindowedFullscreen)) ? EWindowMode::Fullscreen : WindowMode;
+
+	FParse::Value(FCommandLine::Get(), TEXT("ResX="), ResolutionX);
+	FParse::Value(FCommandLine::Get(), TEXT("ResY="), ResolutionY);
 
 	// consume available desktop area
 	FDisplayMetrics DisplayMetrics;
@@ -378,17 +342,9 @@ void UGameEngine::DetermineGameWindowResolution( int32& ResolutionX, int32& Reso
 		{
 			if (MonitorInfo.bIsPrimary)
 			{
-				// This is the primary monitor. Use this monitor's max width/height.
-				MaxResolutionX = MonitorInfo.MaxResolution.X;
-				MaxResolutionY = MonitorInfo.MaxResolution.Y;
-
-				// Fall back to the monitor's native width/height if there was no max width/height found.
-				if (MaxResolutionX == 0 || MaxResolutionY == 0)
-				{
-					MaxResolutionX = MonitorInfo.NativeWidth;
-					MaxResolutionY = MonitorInfo.NativeHeight;
-				}
-
+				// This is the primary monitor. Use this monitor's native width/height
+				MaxResolutionX = MonitorInfo.NativeWidth;
+				MaxResolutionY = MonitorInfo.NativeHeight;
 				break;
 			}
 		}
@@ -749,6 +705,9 @@ UEngine::UEngine(const FObjectInitializer& ObjectInitializer)
 
 	SelectionHighlightIntensityBillboards = 0.25f;
 
+	bUseSound = true;
+
+	bHardwareSurveyEnabled_DEPRECATED = false;
 	bIsInitialized = false;
 
 	BeginStreamingPauseDelegate = NULL;
@@ -762,10 +721,6 @@ UEngine::UEngine(const FObjectInitializer& ObjectInitializer)
 	FixedFrameRate = 30.f;
 
 	bIsVanillaProduct = false;
-
-	bGenerateDefaultTimecode = true;
-	GenerateDefaultTimecodeFrameRate = FFrameRate(24, 1);
-	GenerateDefaultTimecodeFrameDelay = 0.f;
 
 	GameScreenshotSaveDirectory.Path = FPaths::ScreenShotDir();
 
@@ -783,6 +738,8 @@ UEngine::UEngine(const FObjectInitializer& ObjectInitializer)
 		}
 	}
 	#endif
+
+	DefaultTimecodeFrameRate = FFrameRate(30, 1);
 }
 
 
@@ -1153,6 +1110,17 @@ void UGameEngine::Init(IEngineLoop* InEngineLoop)
 		UGameViewportClient::OnViewportCreated().Broadcast();
 	}
 
+	// Make sure new back buffers are initialized with scene render results before drawing UI.
+	// This fixes a glitch where only UI is drawn when windows are resized
+	if (FSlateApplication::IsInitialized())
+	{
+		FSlateRenderer* SlateRenderer = FSlateApplication::Get().GetRenderer();
+		if (SlateRenderer)
+		{
+			SlateRenderer->OnPostResizeWindowBackBuffer().AddWeakLambda(this, [this](void*) { RedrawViewports(false); });
+		}
+	}
+
 	UE_LOG(LogInit, Display, TEXT("Game Engine Initialized.") );
 
 	// for IsInitialized()
@@ -1206,6 +1174,15 @@ void UGameEngine::PreExit()
 		}
 	}
 
+	if (FSlateApplication::IsInitialized())
+	{
+		FSlateRenderer* SlateRenderer = FSlateApplication::Get().GetRenderer();
+		if (SlateRenderer)
+		{
+			SlateRenderer->OnPostResizeWindowBackBuffer().RemoveAll(this);
+		}
+	}
+
 	Super::PreExit();
 }
 
@@ -1218,81 +1195,6 @@ void UGameEngine::FinishDestroy()
 	}
 
 	Super::FinishDestroy();
-}
-
-//@todo: unify this and the driver version
-bool UGameEngine::NetworkRemapPath(UNetConnection* Connection, FString& Str, bool bReading /*= true*/)
-{
-	if (Connection == nullptr)
-	{
-		return false;
-	}
-
-	UWorld* const World = Connection->GetWorld();
-
-	if (World == nullptr)
-	{
-		return false;
-	}
-
-	if (!bReading)
-	{
-		return false;
-	}
-
-	// Try to find the level script objects and remap them for when demos are being replayed.
-	if (Connection->IsInternalAck() && World->RemapCompiledScriptActor(Str))
-	{
-		return true;
-	}
-
-	// If the game has created multiple worlds, some of them may have prefixed package names,
-	// so we need to remap the world package and streaming levels for replay playback to work correctly.
-	FWorldContext& Context = GetWorldContextFromWorldChecked(World);
-	if (Context.PIEInstance == INDEX_NONE)
-	{
-		if (WorldList.Num() > 1)
-		{
-			// If this is not a PIE instance but sender is PIE, we need to strip the PIE prefix
-			const FString Stripped = UWorld::RemovePIEPrefix(Str);
-			if (!Stripped.Equals(Str, ESearchCase::CaseSensitive))
-			{
-				Str = Stripped;
-				return true;
-			}
-		}
-		return false;
-	}
-
-	// If the prefixed path matches the world package name or the name of a streaming level,
-	// return the prefixed name.
-	FString PackageNameOnly = Str;
-	FPackageName::TryConvertFilenameToLongPackageName(PackageNameOnly, PackageNameOnly);
-
-	const FString PrefixedFullName = UWorld::ConvertToPIEPackageName(Str, Context.PIEInstance);
-	const FString PrefixedPackageName = UWorld::ConvertToPIEPackageName(PackageNameOnly, Context.PIEInstance);
-	const FString WorldPackageName = World->GetOutermost()->GetName();
-
-	if (WorldPackageName == PrefixedPackageName)
-	{
-		Str = PrefixedFullName;
-		return true;
-	}
-
-	for (ULevelStreaming* StreamingLevel : World->GetStreamingLevels())
-	{
-		if (StreamingLevel != nullptr)
-		{
-			const FString StreamingLevelName = StreamingLevel->GetWorldAsset().GetLongPackageName();
-			if (StreamingLevelName == PrefixedPackageName)
-			{
-				Str = PrefixedFullName;
-				return true;
-			}
-		}
-	}
-
-	return false;
 }
 
 bool UGameEngine::NetworkRemapPath(UNetDriver* Driver, FString& Str, bool bReading /*= true*/)
@@ -1339,7 +1241,7 @@ bool UGameEngine::NetworkRemapPath(UNetDriver* Driver, FString& Str, bool bReadi
 	}
 
 	// Try to find the level script objects and remap them for when demos are being replayed.
-	if (World->GetDemoNetDriver() == Driver && World->RemapCompiledScriptActor(Str))
+	if (World->DemoNetDriver == Driver && World->RemapCompiledScriptActor(Str))
 	{
 		return true;
 	}
@@ -1653,6 +1555,9 @@ void UGameEngine::Tick( float DeltaSeconds, bool bIdleMode )
 	SCOPE_TIME_GUARD(TEXT("UGameEngine::Tick"));
 	SCOPE_CYCLE_COUNTER(STAT_GameEngineTick);
 	NETWORK_PROFILER(GNetworkProfiler.TrackFrameBegin());
+
+	int32 LocalTickCycles=0;
+	CLOCK_CYCLES(LocalTickCycles);
 	
 	// -----------------------------------------------------
 	// Non-World related stuff
@@ -1680,7 +1585,6 @@ void UGameEngine::Tick( float DeltaSeconds, bool bIdleMode )
 		double CurrentTime = FPlatformTime::Seconds();
 		if (CurrentTime - LastTimeLogsFlushed > static_cast<double>(ServerFlushLogInterval))
 		{
-			CSV_SCOPED_TIMING_STAT_EXCLUSIVE(LogFlush);
 			GLog->Flush();
 
 			LastTimeLogsFlushed = FPlatformTime::Seconds();
@@ -1717,11 +1621,6 @@ void UGameEngine::Tick( float DeltaSeconds, bool bIdleMode )
 	{
 		SCOPE_TIME_GUARD(TEXT("UGameEngine::Tick - Analytics"));
 		FEngineAnalytics::Tick(DeltaSeconds);
-	}
-
-	{
-		SCOPE_TIME_GUARD(TEXT("UGameEngine::Tick - Studio Analytics"));
-		FStudioAnalytics::Tick(DeltaSeconds);
 	}
 
 	// -----------------------------------------------------
@@ -1761,7 +1660,10 @@ void UGameEngine::Tick( float DeltaSeconds, bool bIdleMode )
 			SCOPE_TIME_GUARD(TEXT("UGameEngine::Tick - WorldTick"));
 
 			// Tick the world.
+			GameCycles=0;
+			CLOCK_CYCLES(GameCycles);
 			Context.World()->Tick( LEVELTICK_All, DeltaSeconds );
+			UNCLOCK_CYCLES(GameCycles);
 		}
 
 		if (!IsRunningDedicatedServer() && !IsRunningCommandlet())
@@ -1810,6 +1712,9 @@ void UGameEngine::Tick( float DeltaSeconds, bool bIdleMode )
 			SCOPE_CYCLE_COUNTER(STAT_UpdateLevelStreaming);
 			Context.World()->UpdateLevelStreaming();
 		}
+
+		UNCLOCK_CYCLES(LocalTickCycles);
+		TickCycles=LocalTickCycles;
 
 		// See whether any map changes are pending and we requested them to be committed.
 		QUICK_SCOPE_CYCLE_COUNTER(STAT_UGameEngine_Tick_ConditionalCommitMapChange);
@@ -1913,7 +1818,6 @@ void UGameEngine::Tick( float DeltaSeconds, bool bIdleMode )
 			
 			GRenderTargetPool.TickPoolElements();
 			FRDGBuilder::TickPoolElements();
-			ICustomResourcePool::TickPoolElements(RHICmdList);
 		});
 	}
 

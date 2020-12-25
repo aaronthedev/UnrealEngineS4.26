@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -59,7 +59,7 @@ enum class EMagicLeapMeshState : uint8
 
 /** Representation of a mesh block. */
 USTRUCT(BlueprintType)
-struct MAGICLEAP_API FMagicLeapMeshBlockInfo
+struct FMagicLeapMeshBlockInfo
 {
 	GENERATED_BODY()
 
@@ -91,7 +91,7 @@ public:
 
 /** Response structure for the mesh block info. */
 USTRUCT(BlueprintType)
-struct MAGICLEAP_API FMagicLeapTrackingMeshInfo
+struct FMagicLeapTrackingMeshInfo
 {
 	GENERATED_BODY()
 
@@ -107,7 +107,7 @@ public:
 
 /** Request structure to get the actual mesh for a block. */
 USTRUCT(BlueprintType)
-struct MAGICLEAP_API FMagicLeapMeshBlockRequest
+struct FMagicLeapMeshBlockRequest
 {
 	GENERATED_BODY()
 

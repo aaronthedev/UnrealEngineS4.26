@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Engine/UserDefinedStruct.h"
 #include "UObject/UObjectHash.h"
@@ -52,13 +52,6 @@ UUserDefinedStruct::UUserDefinedStruct(const FObjectInitializer& ObjectInitializ
 	DefaultStructInstance.SetPackage(GetOutermost());
 }
 
-void UUserDefinedStruct::PrepareCppStructOps()
-{
-	// User structs can never have struct ops, this stops it from incorrectly assigning a native struct of the same raw name to this user struct
-	CppStructOps = nullptr;
-	bPrepareCppStructOpsCompleted = true;
-}
-
 void UUserDefinedStruct::Serialize(FStructuredArchive::FRecord Record)
 {
 	Super::Serialize(Record);
@@ -100,7 +93,7 @@ void UUserDefinedStruct::Serialize(FStructuredArchive::FRecord Record)
 	{
 		if (UnderlyingArchive.CustomVer(FFrameworkObjectVersion::GUID) < FFrameworkObjectVersion::UserDefinedStructsBlueprintVisible)
 		{
-			for (TFieldIterator<FProperty> PropIt(this); PropIt; ++PropIt)
+			for (TFieldIterator<UProperty> PropIt(this); PropIt; ++PropIt)
 			{
 				PropIt->PropertyFlags |= CPF_BlueprintVisible;
 			}
@@ -116,9 +109,9 @@ void UUserDefinedStruct::Serialize(FStructuredArchive::FRecord Record)
 				if (!(UnderlyingArchive.GetPortFlags() & PPF_Duplicate))
 				{
 					if(!DefaultStructInstance.IsValid())
-				{
-					FStructureEditorUtils::RecreateDefaultInstanceInEditorData(this);
-				}
+					{
+						FStructureEditorUtils::RecreateDefaultInstanceInEditorData(this);
+					}
 					else
 					{
 						UUserDefinedStructEditorData* UDSEditorData = Cast<UUserDefinedStructEditorData>(EditorData);
@@ -189,12 +182,12 @@ void UUserDefinedStruct::ValidateGuid()
 
 #endif	// WITH_EDITOR
 
-FProperty* UUserDefinedStruct::CustomFindProperty(const FName Name) const
+UProperty* UUserDefinedStruct::CustomFindProperty(const FName Name) const
 {
 #if WITH_EDITOR
 	// If we have the editor data, check that first as it's more up to date
 	const FGuid PropertyGuid = FStructureEditorUtils::GetGuidFromPropertyName(Name);
-	FProperty* EditorProperty = PropertyGuid.IsValid() ? FStructureEditorUtils::GetPropertyByGuid(this, PropertyGuid) : FStructureEditorUtils::GetPropertyByFriendlyName(this, Name.ToString());
+	UProperty* EditorProperty = PropertyGuid.IsValid() ? FStructureEditorUtils::GetPropertyByGuid(this, PropertyGuid) : FStructureEditorUtils::GetPropertyByFriendlyName(this, Name.ToString());
 	ensure(!EditorProperty || !PropertyGuid.IsValid() || PropertyGuid == FStructureEditorUtils::GetGuidForProperty(EditorProperty));
 	if (EditorProperty)
 	{
@@ -204,7 +197,7 @@ FProperty* UUserDefinedStruct::CustomFindProperty(const FName Name) const
 
 	// Check the authored names for each field
 	FString NameString = Name.ToString();
-	for (FProperty* CurrentProp : TFieldRange<FProperty>(this))
+	for (UProperty* CurrentProp : TFieldRange<UProperty>(this))
 	{
 		if (GetAuthoredNameForField(CurrentProp) == NameString)
 		{
@@ -214,9 +207,9 @@ FProperty* UUserDefinedStruct::CustomFindProperty(const FName Name) const
 	return nullptr;
 }
 
-FString UUserDefinedStruct::GetAuthoredNameForField(const FField* Field) const
+FString UUserDefinedStruct::GetAuthoredNameForField(const UField* Field) const
 {
-	const FProperty* Property = CastField<FProperty>(Field);
+	const UProperty* Property = Cast<UProperty>(Field);
 	if (!Property)
 	{
 		return Super::GetAuthoredNameForField(Field);
@@ -228,7 +221,7 @@ FString UUserDefinedStruct::GetAuthoredNameForField(const FField* Field) const
 	{
 		return EditorName;
 	}
-#endif	// WITH_EDITOR
+#endif // WITH_EDITOR
 
 	const int32 GuidStrLen = 32;
 	const int32 MinimalPostfixlen = GuidStrLen + 3;
@@ -350,9 +343,9 @@ FGuid UUserDefinedStruct::GetCustomGuid() const
 ENGINE_API FString GetPathPostfix(const UObject* ForObject)
 {
 	FString FullAssetName = ForObject->GetOutermost()->GetPathName();
-	if (FullAssetName.StartsWith(UDynamicClass::GetTempPackagePrefix(), ESearchCase::CaseSensitive))
+	if (FullAssetName.StartsWith(TEXT("/Temp/__TEMP_BP__"), ESearchCase::CaseSensitive))
 	{
-		FullAssetName.RemoveFromStart(UDynamicClass::GetTempPackagePrefix(), ESearchCase::CaseSensitive);
+		FullAssetName.RemoveFromStart(TEXT("/Temp/__TEMP_BP__"), ESearchCase::CaseSensitive);
 	}
 	FString AssetName = FPackageName::GetLongPackageAssetName(FullAssetName);
 	// append a hash of the path, this uniquely identifies assets with the same name, but different folders:
@@ -383,16 +376,16 @@ uint32 UUserDefinedStruct::GetUserDefinedStructTypeHash(const void* Src, const U
 
 	uint32 ValueHash = 0;
 	// combining bool values and hashing them together, small range enums could get stuffed into here as well,
-	// but FBoolProperty does not actually provide GetValueTypeHash (and probably shouldn't). For structs
+	// but UBoolProperty does not actually provide GetValueTypeHash (and probably shouldn't). For structs
 	// with more than 64 boolean values we lose some information, but that is acceptable, just slightly 
 	// increasing risk of hash collision:
 	bool bHasBoolValues = false;
 	uint64 BoolValues = 0;
 	// for blueprint defined structs we can just loop and hash the individual properties:
-	for (TFieldIterator<const FProperty> It(Type); It; ++It)
+	for (TFieldIterator<const UProperty> It(Type); It; ++It)
 	{
 		uint32 CurrentHash = 0;
-		if (const FBoolProperty* BoolProperty = CastField<const FBoolProperty>(*It))
+		if (const UBoolProperty* BoolProperty = Cast<const UBoolProperty>(*It))
 		{
 			for (int32 I = 0; I < It->ArrayDim; ++I)
 			{
@@ -439,6 +432,7 @@ void UUserDefinedStruct::AddReferencedObjects(UObject* InThis, FReferenceCollect
 
 	Super::AddReferencedObjects(This, Collector);
 }
+
 void UUserDefinedStruct::UpdateStructFlags()
 {
 	// Adapted from PrepareCppStructOps, where we 'discover' zero constructability
@@ -461,9 +455,9 @@ void UUserDefinedStruct::UpdateStructFlags()
 
 		if(bIsZeroConstruct)
 		{	
-			for (TFieldIterator<FProperty> It(this); It; ++It)
+			for (TFieldIterator<UProperty> It(this); It; ++It)
 			{
-				FProperty* Property = *It;
+				UProperty* Property = *It;
 				if (Property && !Property->HasAnyPropertyFlags(CPF_ZeroConstructor))
 				{
 					bIsZeroConstruct = false;
@@ -477,9 +471,9 @@ void UUserDefinedStruct::UpdateStructFlags()
 	// the structs default values, but it is convenient to calculate them all in one place:
 	bool bIsPOD = true;
 	{
-		for (TFieldIterator<FProperty> It(this); It; ++It)
+		for (TFieldIterator<UProperty> It(this); It; ++It)
 		{
-			FProperty* Property = *It;
+			UProperty* Property = *It;
 			if (Property && !Property->HasAnyPropertyFlags(CPF_IsPlainOldData))
 			{
 				bIsPOD = false;
@@ -494,9 +488,9 @@ void UUserDefinedStruct::UpdateStructFlags()
 		{
 			// we're not POD, but we still may have no destructor, check properties:
 			bHasNoDtor = true;
-			for (TFieldIterator<FProperty> It(this); It; ++It)
+			for (TFieldIterator<UProperty> It(this); It; ++It)
 			{
-				FProperty* Property = *It;
+				UProperty* Property = *It;
 				if (Property && !Property->HasAnyPropertyFlags(CPF_NoDestructor))
 				{
 					bHasNoDtor = false;

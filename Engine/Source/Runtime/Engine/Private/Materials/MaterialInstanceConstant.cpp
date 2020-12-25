@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 /*=============================================================================
 	MaterialInstanceConstant.cpp: MaterialInstanceConstant implementation.
@@ -12,7 +12,6 @@
 UMaterialInstanceConstant::UMaterialInstanceConstant(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
-	PhysMaterialMask = nullptr;
 }
 
 void UMaterialInstanceConstant::PostLoad()
@@ -40,11 +39,6 @@ UTexture* UMaterialInstanceConstant::K2_GetTextureParameterValue(FName Parameter
 	UTexture* Result = NULL;
 	Super::GetTextureParameterValue(ParameterName, Result);
 	return Result;
-}
-
-UPhysicalMaterialMask* UMaterialInstanceConstant::GetPhysicalMaterialMask() const
-{
-	return PhysMaterialMask;
 }
 
 #if WITH_EDITOR

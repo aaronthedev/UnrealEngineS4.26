@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -97,8 +97,6 @@ public:
 	TSharedPtr< FLinuxWindow > FindWindowBySDLWindow( SDL_Window *win );
 
 	virtual bool IsCursorDirectlyOverSlateWindow() const override;
-
- 	virtual TSharedPtr<FGenericWindow> GetWindowUnderCursor() override;
 
 	/** Returns true if this application is foreground */
 	FORCEINLINE bool IsForeground()
@@ -313,7 +311,6 @@ private:
 	TSharedPtr< FLinuxWindow > CurrentlyActiveWindow;
 	TSharedPtr< FLinuxWindow > CurrentFocusWindow;
 	TSharedPtr< FLinuxWindow > CurrentClipWindow;
-	TSharedPtr< FLinuxWindow > CurrentUnderCursorWindow;
 
 	/** Stores (unescaped) file URIs received during current drag-n-drop operation. */
 	TArray<FString> DragAndDropQueue;

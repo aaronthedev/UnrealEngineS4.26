@@ -1,4 +1,4 @@
-﻿// Copyright Epic Games, Inc. All Rights Reserved.
+﻿// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -15,14 +15,14 @@ struct FSubjectMetadata
 {
 	GENERATED_USTRUCT_BODY()
 
-	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "LiveLink")
-	TMap<FName, FString> StringMetadata;
+		UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "LiveLink")
+		TMap<FName, FString> StringMetadata;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "LiveLink")
-	FTimecode SceneTimecode;
+		FTimecode SceneTimecode;
 
 	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "LiveLink")
-	FFrameRate SceneFramerate;
+		FFrameRate SceneFramerate;
 };
 
 USTRUCT()
@@ -30,53 +30,52 @@ struct FCachedSubjectFrame
 {
 	GENERATED_USTRUCT_BODY()
 
-	FCachedSubjectFrame();
+		FCachedSubjectFrame();
 
 	FCachedSubjectFrame(const FLiveLinkSkeletonStaticData* InStaticData, const FLiveLinkAnimationFrameData* InAnimData);
 
 	virtual ~FCachedSubjectFrame() = default;
 
-	void SetCurvesFromCache(TMap<FName, float>& OutCurves) const;
+	void SetCurvesFromCache(TMap<FName, float>& OutCurves);
 
-	bool GetCurveValueByName(FName InCurveName, float& OutCurveValue) const;
+	void GetSubjectMetadata(FSubjectMetadata& OutSubjectMetadata);
 
-	void GetSubjectMetadata(FSubjectMetadata& OutSubjectMetadata) const;
+	int32 GetNumberOfTransforms();
 
-	int32 GetNumberOfTransforms() const;
+	void GetTransformNames(TArray<FName>& OutTransformNames);
 
-	void GetTransformNames(TArray<FName>& OutTransformNames) const;
+	void GetTransformName(const int32 InTransformIndex, FName& OutName);
 
-	void GetTransformName(const int32 InTransformIndex, FName& OutName) const;
+	int32 GetTransformIndexFromName(FName InTransformName);
 
-	int32 GetTransformIndexFromName(FName InTransformName) const;
+	int32 GetParentTransformIndex(const int32 InTransformIndex);
 
-	int32 GetParentTransformIndex(const int32 InTransformIndex) const;
+	void GetChildTransformIndices(const int32 InTransformIndex, TArray<int32>& OutChildIndices);
 
-	void GetChildTransformIndices(const int32 InTransformIndex, TArray<int32>& OutChildIndices) const;
+	void GetTransformParentSpace(const int32 InTransformIndex, FTransform& OutTransform);
 
-	void GetTransformParentSpace(const int32 InTransformIndex, FTransform& OutTransform) const;
+	void GetTransformRootSpace(const int32 InTransformIndex, FTransform& OutTransform);
 
-	void GetTransformRootSpace(const int32 InTransformIndex, FTransform& OutTransform) const;
+	int32 GetRootIndex();
 
-	int32 GetRootIndex() const;
-
+	FLiveLinkSkeletonStaticData& GetSourceSkeletonData() { return SourceSkeletonData; }
 	const FLiveLinkSkeletonStaticData& GetSourceSkeletonData() const { return SourceSkeletonData; }
 
+	FLiveLinkAnimationFrameData& GetSourceAnimationFrameData() { return SourceAnimationFrameData; }
 	const FLiveLinkAnimationFrameData& GetSourceAnimationFrameData() const { return SourceAnimationFrameData; }
 
 private:
 	FLiveLinkSkeletonStaticData SourceSkeletonData;
 	FLiveLinkAnimationFrameData SourceAnimationFrameData;
+	TArray<TPair<bool, FTransform>> RootSpaceTransforms;
+	TArray<TPair<bool, TArray<int32>>> ChildTransformIndices;
+	TMap<FName, float> CachedCurves;
 
-	// Cache. Does not affect the underlying frame data
-	mutable TArray<TPair<bool, FTransform>> CachedRootSpaceTransforms;
-	mutable TArray<TPair<bool, TArray<int32>>> CachedChildTransformIndices;
-	mutable TMap<FName, float> CachedCurves;
-	mutable bool bHaveCachedCurves;
+	bool bHaveCachedCurves;
 
-	void CacheCurves() const;
+	void CacheCurves();
 
-	bool IsValidTransformIndex(int32 InTransformIndex) const;
+	bool IsValidTransformIndex(int32 InTransformIndex);
 };
 
 USTRUCT(BlueprintType)
@@ -84,23 +83,23 @@ struct LIVELINKINTERFACE_API FLiveLinkTransform
 {
 	GENERATED_USTRUCT_BODY()
 
-	FLiveLinkTransform();
+		FLiveLinkTransform();
 
 	virtual ~FLiveLinkTransform() = default;
 
-	void GetName(FName& Name) const;
+	void GetName(FName& Name);
 
-	void GetTransformParentSpace(FTransform& OutTransform) const;
+	void GetTransformParentSpace(FTransform& OutTransform);
 
-	void GetTransformRootSpace(FTransform& OutTransform) const;
+	void GetTransformRootSpace(FTransform& OutTransform);
 
-	bool HasParent() const;
+	bool HasParent();
 
-	void GetParent(FLiveLinkTransform& OutParentTransform) const;
+	void GetParent(FLiveLinkTransform& OutParentTransform);
 
-	int32 GetChildCount() const;
+	int32 GetChildCount();
 
-	void GetChildren(TArray<FLiveLinkTransform>& OutChildTransforms) const;
+	void GetChildren(TArray<FLiveLinkTransform>& OutChildTransforms);
 
 	void SetCachedFrame(TSharedPtr<FCachedSubjectFrame> InCachedFrame);
 
@@ -118,31 +117,29 @@ struct LIVELINKINTERFACE_API FSubjectFrameHandle : public FLiveLinkBaseBlueprint
 {
 	GENERATED_USTRUCT_BODY()
 
-	FSubjectFrameHandle() = default;
+		FSubjectFrameHandle() = default;
 
 	virtual ~FSubjectFrameHandle() = default;
 
-	void GetCurves(TMap<FName, float>& OutCurves) const;
+	void GetCurves(TMap<FName, float>& OutCurves);
 
-	bool GetCurveValueByName(FName CurveName, float& CurveValue) const;
+	void GetSubjectMetadata(FSubjectMetadata& OutMetadata);
 
-	void GetSubjectMetadata(FSubjectMetadata& OutMetadata) const;
+	int32 GetNumberOfTransforms();
 
-	int32 GetNumberOfTransforms() const;
+	void GetTransformNames(TArray<FName>& OutTransformNames);
 
-	void GetTransformNames(TArray<FName>& OutTransformNames) const;
+	void GetRootTransform(FLiveLinkTransform& OutLiveLinkTransform);
 
-	void GetRootTransform(FLiveLinkTransform& OutLiveLinkTransform) const;
+	void GetTransformByIndex(int32 InTransformIndex, FLiveLinkTransform& OutLiveLinkTransform);
 
-	void GetTransformByIndex(int32 InTransformIndex, FLiveLinkTransform& OutLiveLinkTransform) const;
-
-	void GetTransformByName(FName InTransformName, FLiveLinkTransform& OutLiveLinkTransform) const;
+	void GetTransformByName(FName InTransformName, FLiveLinkTransform& OutLiveLinkTransform);
 
 	void SetCachedFrame(TSharedPtr<FCachedSubjectFrame> InCachedFrame);
 
-	const FLiveLinkSkeletonStaticData* GetSourceSkeletonStaticData() const;
+	FLiveLinkSkeletonStaticData* GetSourceSkeletonStaticData();
 
-	const FLiveLinkAnimationFrameData* GetSourceAnimationFrameData() const;
+	FLiveLinkAnimationFrameData* GetSourceAnimationFrameData();
 
 private:
 	TSharedPtr<FCachedSubjectFrame> CachedFrame;

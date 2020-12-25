@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -6,7 +6,6 @@
 #include "Interfaces/IHttpRequest.h"
 #include "Runtime/Online/HTTP/Private/IHttpThreadedRequest.h"
 #include "Containers/Ticker.h"
-#include "Containers/Queue.h"
 #include "HttpPackage.h"
 
 class FHttpThread;
@@ -42,7 +41,7 @@ public:
 	 *
 	 * @param Request - the request object to add
 	 */
-	void AddRequest(const TSharedRef<IHttpRequest, ESPMode::ThreadSafe>& Request);
+	void AddRequest(const TSharedRef<IHttpRequest>& Request);
 
 	/**
 	 * Removes an Http request instance from the manager
@@ -50,7 +49,7 @@ public:
 	 *
 	 * @param Request - the request object to remove
 	 */
-	void RemoveRequest(const TSharedRef<IHttpRequest, ESPMode::ThreadSafe>& Request);
+	void RemoveRequest(const TSharedRef<IHttpRequest>& Request);
 
 	/**
 	* Find an Http request in the lists of current valid requests
@@ -77,26 +76,19 @@ public:
 	 */
 	bool Tick(float DeltaSeconds) override;
 
-	/**
-	 * Tick called during Flush
-	 *
-	 * @param DeltaSeconds - time in seconds since the last tick
-	 */
-	virtual void FlushTick(float DeltaSeconds);
-
 	/** 
 	 * Add a http request to be executed on the http thread
 	 *
 	 * @param Request - the request object to add
 	 */
-	void AddThreadedRequest(const TSharedRef<IHttpThreadedRequest, ESPMode::ThreadSafe>& Request);
+	void AddThreadedRequest(const TSharedRef<IHttpThreadedRequest>& Request);
 
 	/**
 	 * Mark a threaded http request as cancelled to be removed from the http thread
 	 *
 	 * @param Request - the request object to cancel
 	 */
-	void CancelThreadedRequest(const TSharedRef<IHttpThreadedRequest, ESPMode::ThreadSafe>& Request);
+	void CancelThreadedRequest(const TSharedRef<IHttpThreadedRequest>& Request);
 
 	/**
 	 * List all of the Http requests currently being processed
@@ -154,24 +146,6 @@ public:
 	 */
 	virtual void OnAfterFork();
 
-	/**
-	 * Inform the HTTP Manager that we finished ticking right after forking. Only called on the forked process
-	 */
-	virtual void OnEndFramePostFork();
-
-
-	/**
-	 * Update configuration. Called when config has been updated and we need to apply any changes.
-	 */
-	virtual void UpdateConfigs();
-
-	/**
-	 * Add task to be ran on the game thread next tick
-	 *
-	 * @param Task The task to be ran next tick
-	 */
-	void AddGameThreadTask(TFunction<void()>&& Task);
-
 protected:
 	/** 
 	 * Create HTTP thread object
@@ -183,15 +157,12 @@ protected:
 
 protected:
 	/** List of Http requests that are actively being processed */
-	TArray<TSharedRef<IHttpRequest, ESPMode::ThreadSafe>> Requests;
+	TArray<TSharedRef<IHttpRequest>> Requests;
 
 	FHttpThread* Thread;
 
 	/** This method will be called to generate a CorrelationId on all requests being sent if one is not already set */
 	TFunction<FString()> CorrelationIdMethod;
-
-	/** Queue of tasks to run on the game thread */
-	TQueue<TFunction<void()>, EQueueMode::Mpsc> GameThreadQueue;
 
 PACKAGE_SCOPE:
 

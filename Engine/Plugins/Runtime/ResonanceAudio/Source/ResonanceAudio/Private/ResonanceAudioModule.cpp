@@ -111,6 +111,12 @@ namespace ResonanceAudio
 		return TAudioSpatializationPtr(new FResonanceAudioSpatialization());
 	}
 
+
+	TAmbisonicsMixerPtr FSpatializationPluginFactory::CreateNewAmbisonicsMixer(FAudioDevice* OwningDevice)
+	{
+		return TAmbisonicsMixerPtr(new FResonanceAudioAmbisonicsMixer());
+	}
+
 	TAudioReverbPtr FReverbPluginFactory::CreateNewReverbPlugin(FAudioDevice* OwningDevice)
 	{
 		// Register the audio device to the Resonance Audio module.

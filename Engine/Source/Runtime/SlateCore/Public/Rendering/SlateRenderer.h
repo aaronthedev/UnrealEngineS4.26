@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -7,8 +7,6 @@
 #include "Brushes/SlateDynamicImageBrush.h"
 #include "Rendering/DrawElements.h"
 #include "Templates/RefCounting.h"
-#include "Fonts/FontTypes.h"
-#include "PixelFormat.h"
 
 class FRHITexture2D;
 class FRenderTarget;
@@ -49,11 +47,6 @@ public:
 	 * These pointers may be the same if your renderer doesn't need a separate render thread font cache
 	 */
 	FSlateFontServices(TSharedRef<class FSlateFontCache> InGameThreadFontCache, TSharedRef<class FSlateFontCache> InRenderThreadFontCache);
-
-	/**
-	 * Destruct the font services
-	 */
-	~FSlateFontServices();
 
 	/**
 	 * Get the font cache to use for the current thread
@@ -117,21 +110,12 @@ public:
 	 */
 	void ReleaseResources();
 
-	/**
-	 * Delegate called after releasing the rendering resources used by this font service
-	 */
-	FOnReleaseFontResources& OnReleaseResources();
-
 private:
-	void HandleFontCacheReleaseResources(const class FSlateFontCache& InFontCache);
-
 	TSharedRef<class FSlateFontCache> GameThreadFontCache;
 	TSharedRef<class FSlateFontCache> RenderThreadFontCache;
 
 	TSharedRef<class FSlateFontMeasure> GameThreadFontMeasure;
 	TSharedRef<class FSlateFontMeasure> RenderThreadFontMeasure;
-
-	FOnReleaseFontResources OnReleaseResourcesDelegate;
 };
 
 
@@ -169,10 +153,15 @@ class SLATECORE_API FSlateRenderer
 public:
 
 	/** Constructor. */
-	explicit FSlateRenderer(const TSharedRef<FSlateFontServices>& InSlateFontServices);
+	explicit FSlateRenderer(const TSharedRef<FSlateFontServices>& InSlateFontServices)
+		: SlateFontServices(InSlateFontServices)
+	{
+	}
 
 	/** Virtual destructor. */
-	virtual ~FSlateRenderer();
+	virtual ~FSlateRenderer()
+	{
+	}
 
 public:
 
@@ -423,7 +412,7 @@ public:
 	 * Prepares the renderer to take a screenshot of the UI.  The Rect is portion of the rendered output
 	 * that will be stored into the TArray of FColors.
 	 */
-	virtual void PrepareToTakeScreenshot(const FIntRect& Rect, TArray<FColor>* OutColorData, SWindow* InScreenshotWindow) {}
+	virtual void PrepareToTakeScreenshot(const FIntRect& Rect, TArray<FColor>* OutColorData) {}
 
 	/**
 	 * Pushes the rendering of the specified window to the specified render target
@@ -496,15 +485,11 @@ public:
 											Care must be taken to destroy anything referenced in the context when it is safe to do so.
 	 */
 	virtual void AddWidgetRendererUpdate(const struct FRenderThreadUpdateContext& Context, bool bDeferredRenderTargetUpdate) {}
-
-	virtual EPixelFormat GetSlateRecommendedColorFormat() { return PF_B8G8R8A8; }
 private:
 
 	// Non-copyable
 	FSlateRenderer(const FSlateRenderer&);
 	FSlateRenderer& operator=(const FSlateRenderer&);
-
-	void HandleFontCacheReleaseResources(const class FSlateFontCache& InFontCache);
 
 protected:
 

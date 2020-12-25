@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "PerforceSourceControlOperations.h"
 #include "PerforceSourceControlPrivate.h"
@@ -11,7 +11,6 @@
 #include "PerforceSourceControlCommand.h"
 #include "PerforceConnection.h"
 #include "PerforceSourceControlModule.h"
-#include "PerforceSourceControlChangeStatusOperation.h"
 #include "SPerforceSourceControlSettings.h"
 
 #define LOCTEXT_NAMESPACE "PerforceSourceControl"
@@ -61,17 +60,6 @@ struct FBranchModification
 	TArray<FString> CheckedOutBranches;
 };
 
-/** Checks if the name of an action corresponds to EPerforceState::OpenForAdd */
-static bool IsAddAction(const FString& Action)
-{
-	return Action == TEXT("add") || Action == TEXT("move/add");
-}
-
-/** Checks if the name of an action corresponds to EPerforceState::MarkedForDelete */
-static bool IsDeleteAction(const FString& Action)
-{
-	return Action == TEXT("delete") || Action == TEXT("move/delete");
-}
 
 /**
  * Remove redundant errors (that contain a particular string) and also
@@ -134,7 +122,7 @@ static void ParseRecordSetForState(const FP4RecordSet& InRecords, TMap<FString, 
 
 		if(Action.Len() > 0)
 		{
-			if(IsAddAction(Action))
+			if(Action == TEXT("add"))
 			{
 				OutResults.Add(FullPath, EPerforceState::OpenForAdd);
 			}
@@ -142,7 +130,7 @@ static void ParseRecordSetForState(const FP4RecordSet& InRecords, TMap<FString, 
 			{
 				OutResults.Add(FullPath, EPerforceState::CheckedOut);
 			}
-			else if(IsDeleteAction(Action))
+			else if(Action == TEXT("delete"))
 			{
 				OutResults.Add(FullPath, EPerforceState::MarkedForDelete);
 			}
@@ -153,7 +141,7 @@ static void ParseRecordSetForState(const FP4RecordSet& InRecords, TMap<FString, 
 			else if(Action == TEXT("reverted"))
 			{
 				FString OldAction = ClientRecord(TEXT("oldAction"));
-				if(IsAddAction(OldAction))
+				if(OldAction == TEXT("add"))
 				{
 					OutResults.Add(FullPath, EPerforceState::NotInDepot);
 				}
@@ -161,7 +149,7 @@ static void ParseRecordSetForState(const FP4RecordSet& InRecords, TMap<FString, 
 				{
 					OutResults.Add(FullPath, EPerforceState::ReadOnly);
 				}
-				else if(IsDeleteAction(OldAction))
+				else if(OldAction == TEXT("delete"))
 				{
 					OutResults.Add(FullPath, EPerforceState::ReadOnly);
 				}
@@ -614,20 +602,12 @@ bool FPerforceSyncWorker::Execute(FPerforceSourceControlCommand& InCommand)
 		TArray<FString> Parameters;
 		Parameters.Append(InCommand.Files);
 
-		TSharedRef<FSync, ESPMode::ThreadSafe> Operation = StaticCastSharedRef<FSync>(InCommand.Operation);
-		const FString& Revision = Operation->GetRevision();
-
 		// check for directories and add '...'
-		for(FString& FileName : Parameters)
+		for(auto& FileName : Parameters)
 		{
 			if(FileName.EndsWith(TEXT("/")))
 			{
 				FileName += TEXT("...");
-			}
-			if (!Revision.IsEmpty())
-			{
-				// @= syncs the file to the submitted/shelved changelist number
-				FileName += FString::Printf(TEXT("@%s"), *Revision);
 			}
 		}
 
@@ -709,12 +689,6 @@ static void ParseBranchModificationResults(const FP4RecordSet& InRecords, const 
 				{
 					continue;
 				}
-			}
-
-			// filter deletes if file re-added. move/delete files cannot be re-added as they're bound to an add/delete
-			if (HeadAction == TEXT("delete") && BranchModification.ChangeList > HeadChange)
-			{
-				continue;
 			}
 
 			if (BranchModification.ModTime <= HeadModTime)
@@ -836,11 +810,11 @@ static void ParseUpdateStatusResults(const FP4RecordSet& InRecords, const TArray
 		}
 
 		State.State = EPerforceState::ReadOnly;
-		if (Action.Len() > 0 && IsAddAction(Action))
+		if (Action.Len() > 0 && Action == TEXT("add"))
 		{
 			State.State = EPerforceState::OpenForAdd;
 		}
-		else if (Action.Len() > 0 && IsDeleteAction(Action))
+		else if (Action.Len() > 0 && Action == TEXT("delete"))
 		{
 			State.State = EPerforceState::MarkedForDelete;
 		}
@@ -879,7 +853,7 @@ static void ParseUpdateStatusResults(const FP4RecordSet& InRecords, const TArray
 
 			State.State = EPerforceState::CheckedOutOther;
 		}
-		//file has been previously deleted, ok to add again. move/delete is not eligible for this
+		//file has been previously deleted, ok to add again
 		else if (HeadAction.Len() > 0 && HeadAction == TEXT("delete"))
 		{
 			State.State = EPerforceState::NotInDepot;
@@ -896,21 +870,8 @@ static void ParseUpdateStatusResults(const FP4RecordSet& InRecords, const TArray
 
 			if (BranchModification.BranchName.Len())
 			{
-				bool Skip = false;
-
-				// don't record if we deleted on a status branch, though have since re-added
-				if (BranchModification.Action == TEXT("delete") && BranchModification.ChangeList < State.HeadChangeList)
-				{
-					Skip = true;
-				}
-
-				// If the branch modification change is less recent skip it
-				if (BranchModification.ModTime <= State.HeadModTime)
-				{
-					Skip = true;
-				}
-				
-				if (!Skip)
+				// If the branch modification change is more recent record it
+				if (BranchModification.ModTime > State.HeadModTime)
 				{
 					State.HeadBranch = BranchModification.BranchName;
 					State.HeadAction = BranchModification.Action;
@@ -1037,7 +998,7 @@ static void ParseOpenedResults(const FP4RecordSet& InRecords, const FString& Cli
 			{
 				// Null clients use the pattern in PathRoot: //Workspace/FileName
 				// Here we chop off the '//Workspace/' to return the workspace filename
-				FullPath.RightChopInline(PathRoot.Len() + 1, false);
+				FullPath = FullPath.RightChop(PathRoot.Len() + 1);
 			}
 			else
 			{
@@ -1053,7 +1014,7 @@ static void ParseOpenedResults(const FP4RecordSet& InRecords, const FString& Cli
 
 		if (Action.Len() > 0)
 		{
-			if(IsAddAction(Action))
+			if(Action == TEXT("add"))
 			{
 				OutResults.Add(FullPath, EPerforceState::OpenForAdd);
 			}
@@ -1061,7 +1022,7 @@ static void ParseOpenedResults(const FP4RecordSet& InRecords, const FString& Cli
 			{
 				OutResults.Add(FullPath, EPerforceState::CheckedOut);
 			}
-			else if(IsDeleteAction(Action))
+			else if(Action == TEXT("delete"))
 			{
 				OutResults.Add(FullPath, EPerforceState::MarkedForDelete);
 			}
@@ -1137,7 +1098,7 @@ static void ParseHistoryResults(const FP4RecordSet& InRecords, const TArray<FPer
 				FString FileSize(TEXT("0"));
 
 				// Extract the file size
-				if(!IsDeleteAction(Action)) //delete actions don't have a fileSize from PV4
+				if(Action.ToLower() != TEXT("delete") && Action.ToLower() != TEXT("move/delete")) //delete actions don't have a fileSize from PV4
 				{
 					VarName = FString::Printf(TEXT("fileSize%d"), RevisionNumbers);
 					check(ClientRecord.Contains(*VarName));
@@ -1530,54 +1491,5 @@ bool FPerforceResolveWorker::UpdateStates() const
 
 	return UpdatedFiles.Num() > 0;
 }
-
-FName FPerforceChangeStatusWorker::GetName() const
-{
-	return "ChangeStatus";
-}
-
-bool FPerforceChangeStatusWorker::Execute(class FPerforceSourceControlCommand& InCommand)
-{
-	FScopedPerforceConnection ScopedConnection(InCommand);
-	if (!InCommand.IsCanceled() && ScopedConnection.IsValid())
-	{
-		FPerforceConnection& Connection = ScopedConnection.GetConnection();
-
-		TArray<FString> Parameters;
-		Parameters.Append(InCommand.Files);
-
-		FP4RecordSet Records;
-		InCommand.bCommandSuccessful = Connection.RunCommand(TEXT("cstat"), Parameters, Records, InCommand.ResultInfo.ErrorMessages, FOnIsCancelled::CreateRaw(&InCommand, &FPerforceSourceControlCommand::IsCanceled), InCommand.bConnectionDropped);
-		if (InCommand.bCommandSuccessful)
-		{
-			TSharedRef<FPerforceSourceControlChangeStatusOperation, ESPMode::ThreadSafe> Operation = StaticCastSharedRef<FPerforceSourceControlChangeStatusOperation>(InCommand.Operation);
-
-			for (const FP4Record& Record : Records)
-			{
-				const FString Changelist = Record[TEXT("change")];
-				const FString StatusText = Record[TEXT("status")];
-				EChangelistStatus Status = EChangelistStatus::Have;
-				if (StatusText == TEXT("need"))
-				{
-					Status = EChangelistStatus::Need;
-				}
-				else if (StatusText == TEXT("partial"))
-				{
-					Status = EChangelistStatus::Partial;
-				}
-				
-				Operation->OutResults.Add({ Changelist, Status });
-			}
-		}
-	}
-
-	return InCommand.bCommandSuccessful;
-}
-
-bool FPerforceChangeStatusWorker::UpdateStates() const
-{
-	return true;
-}
-
 
 #undef LOCTEXT_NAMESPACE

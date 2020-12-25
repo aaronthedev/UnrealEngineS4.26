@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 //
 #include "MaterialStatsCommon.h"
 #include "EngineGlobals.h"
@@ -7,7 +7,6 @@
 #include "GPUSkinVertexFactory.h"
 #include "MaterialEditorSettings.h"
 #include "RHIShaderFormatDefinitions.inl"
-#include "ShaderCompilerCore.h"
 
 /***********************************************************************************************************************/
 /*begin FMaterialResourceStats functions*/
@@ -52,9 +51,6 @@ FString FMaterialStatsUtils::MaterialQualityToString(const EMaterialQualityLevel
 		case EMaterialQualityLevel::Low:
 			StrQuality = TEXT("Low Quality");
 		break;
-		case EMaterialQualityLevel::Epic:
-			StrQuality = TEXT("Epic Quality");
-		break;
 	}
 
 	return StrQuality;
@@ -75,9 +71,6 @@ FString FMaterialStatsUtils::MaterialQualityToShortString(const EMaterialQuality
 		case EMaterialQualityLevel::Low:
 			StrQuality = TEXT("Low");
 		break;
-		case EMaterialQualityLevel::Epic:
-			StrQuality = TEXT("Epic");
-		break;
 	}
 
 	return StrQuality;
@@ -96,10 +89,6 @@ EMaterialQualityLevel::Type FMaterialStatsUtils::StringToMaterialQuality(const F
 	else if (StrQuality.Equals(TEXT("Low Quality")))
 	{
 		return EMaterialQualityLevel::Low;
-	}
-	else if (StrQuality.Equals(TEXT("Epic Quality")))
-	{
-		return EMaterialQualityLevel::Epic;
 	}
 
 	return EMaterialQualityLevel::Num;
@@ -120,9 +109,6 @@ FString FMaterialStatsUtils::GetPlatformTypeName(const EPlatformCategoryType InE
 		case EPlatformCategoryType::IOS:
 			PlatformName = FString("IOS");
 		break;
-		case EPlatformCategoryType::Console:
-			PlatformName = FString("Console");
-		break;
 	}
 
 	return PlatformName;
@@ -134,10 +120,22 @@ FString FMaterialStatsUtils::ShaderPlatformTypeName(const EShaderPlatform Platfo
 	{
 		case SP_PCD3D_SM5:
 			return FString("PCD3D_SM5");
+		case SP_OPENGL_SM4:
+			return FString("OPENGL_SM4");
 		case SP_PS4:
 			return FString("PS4");
+		case SP_OPENGL_PCES2:
+			return FString("OPENGL_PCES2");
 		case SP_XBOXONE_D3D12:
 			return FString("XBOXONE_D3D12");
+		case SP_OPENGL_SM5:
+			return FString("OPENGL_SM5");
+		case SP_PCD3D_ES2:
+			return FString("PCD3D_ES2");
+		case SP_OPENGL_ES2_ANDROID:
+			return FString("OPENGL_ES2_ANDROID");
+		case SP_OPENGL_ES2_WEBGL:
+			return FString("OPENGL_ES2_WEBGL");
 		case SP_METAL:
 			return FString("METAL");
 		case SP_METAL_MRT:
@@ -146,6 +144,8 @@ FString FMaterialStatsUtils::ShaderPlatformTypeName(const EShaderPlatform Platfo
 			return FString("METAL_TVOS");
 		case SP_METAL_MRT_TVOS:
 			return FString("METAL_MRT_TVOS");
+		case SP_OPENGL_ES31_EXT:
+			return FString("OPENGL_ES31_EXT");
 		case SP_PCD3D_ES3_1:
 			return FString("PCD3D_ES3_1");
 		case SP_OPENGL_PCES3_1:
@@ -160,10 +160,10 @@ FString FMaterialStatsUtils::ShaderPlatformTypeName(const EShaderPlatform Platfo
 			return FString("VULKAN_SM5");
 		case SP_VULKAN_ES3_1_ANDROID:
 			return FString("VULKAN_ES3_1_ANDROID");
-		case SP_VULKAN_SM5_ANDROID:
-			return FString("VULKAN_SM5_ANDROID");
 		case SP_METAL_MACES3_1:
 			return FString("METAL_MACES3_1");
+		case SP_METAL_MACES2:
+			return FString("METAL_MACES2");
 		case SP_OPENGL_ES3_1_ANDROID:
 			return FString("OPENGL_ES3_1_ANDROID");
 		case SP_SWITCH:
@@ -176,7 +176,7 @@ FString FMaterialStatsUtils::ShaderPlatformTypeName(const EShaderPlatform Platfo
 			FString FormatName = ShaderPlatformToShaderFormatName(PlatformID).ToString();
 			if (FormatName.StartsWith(TEXT("SF_")))
 			{
-				FormatName.MidInline(3, MAX_int32, false);
+				FormatName = FormatName.Mid(3);
 			}
 			return FormatName;
 	}
@@ -186,9 +186,9 @@ FString FMaterialStatsUtils::GetPlatformOfflineCompilerPath(const EShaderPlatfor
 {
 	switch (ShaderPlatform)
 	{
+		case SP_OPENGL_ES2_ANDROID:
 		case SP_OPENGL_ES3_1_ANDROID:
 		case SP_VULKAN_ES3_1_ANDROID:
-		case SP_VULKAN_SM5_ANDROID:
 			return FPaths::ConvertRelativePathToFull(GetDefault<UMaterialEditorSettings>()->MaliOfflineCompilerPath.FilePath);
 		break;
 
@@ -213,18 +213,24 @@ bool FMaterialStatsUtils::PlatformNeedsOfflineCompiler(const EShaderPlatform Sha
 {
 	switch (ShaderPlatform)
 	{
+		case SP_OPENGL_SM4:
 		case SP_PS4:
+		case SP_OPENGL_PCES2:
+		case SP_OPENGL_SM5:
+		case SP_OPENGL_ES2_ANDROID:
+		case SP_OPENGL_ES31_EXT:
 		case SP_OPENGL_PCES3_1:
+		case SP_OPENGL_ES2_WEBGL:
 		case SP_VULKAN_PCES3_1:
 		case SP_VULKAN_SM5:
 		case SP_VULKAN_ES3_1_ANDROID:
-		case SP_VULKAN_SM5_ANDROID:
 		case SP_OPENGL_ES3_1_ANDROID:
 			return true;
 
 
 		case SP_PCD3D_SM5:
 		case SP_XBOXONE_D3D12:
+		case SP_PCD3D_ES2:
 		case SP_METAL:
 		case SP_METAL_MRT:
 		case SP_METAL_TVOS:
@@ -233,13 +239,14 @@ bool FMaterialStatsUtils::PlatformNeedsOfflineCompiler(const EShaderPlatform Sha
 		case SP_METAL_SM5:
 		case SP_METAL_SM5_NOTESS:
 		case SP_METAL_MACES3_1:
+		case SP_METAL_MACES2:
 		case SP_SWITCH:
 		case SP_SWITCH_FORWARD:
 		case SP_METAL_MRT_MAC:
 			return false;
 
 		default:
-			return FDataDrivenShaderPlatformInfo::GetNeedsOfflineCompiler(ShaderPlatform);
+			return FDataDrivenShaderPlatformInfo::GetInfo(ShaderPlatform).bNeedsOfflineCompiler;
 	}
 
 	return false;
@@ -307,9 +314,6 @@ FLinearColor FMaterialStatsUtils::PlatformTypeColor(EPlatformCategoryType Platfo
 		case EPlatformCategoryType::IOS:
 			Color = FLinearColor::Gray;
 		break;
-		case EPlatformCategoryType::Console:
-			Color = FLinearColor::Red;
-		break;
 
 		default:
 			return Color;
@@ -332,9 +336,7 @@ FLinearColor FMaterialStatsUtils::QualitySettingColor(const EMaterialQualityLeve
 		case EMaterialQualityLevel::Medium:
 			return YellowColor;
 		break;
-		case EMaterialQualityLevel::Epic:
-			return FLinearColor::Red;
-		break;
+
 		default:
 			return FLinearColor::Black;
 		break;
@@ -349,13 +351,13 @@ void FMaterialStatsUtils::GetRepresentativeShaderTypesAndDescriptions(TMap<FName
 	bool bMobileHDR = MobileHDR && MobileHDR->GetValueOnAnyThread() == 1;
 
 	static const FName FLocalVertexFactoryName = FLocalVertexFactory::StaticType.GetFName();
-	static const FName FGPUFactoryName = TEXT("TGPUSkinVertexFactoryDefault");
+	static const FName FGPUFactoryName = TGPUSkinVertexFactory<true>::StaticType.GetFName();
 
 	if (TargetMaterial->IsUIMaterial())
 	{
-		static FName TSlateMaterialShaderPSDefaultName = TEXT("TSlateMaterialShaderPSDefault");
+		static FName TSlateMaterialShaderPSDefaultfalseName = TEXT("TSlateMaterialShaderPSDefaultfalse");
 		ShaderTypeNamesAndDescriptions.FindOrAdd(FLocalVertexFactoryName)
-			.Add(FRepresentativeShaderInfo(ERepresentativeShader::UIDefaultFragmentShader, TSlateMaterialShaderPSDefaultName, TEXT("Default UI Pixel Shader")));
+			.Add(FRepresentativeShaderInfo(ERepresentativeShader::UIDefaultFragmentShader, TSlateMaterialShaderPSDefaultfalseName, TEXT("Default UI Pixel Shader")));
 
 		static FName TSlateMaterialShaderVSfalseName = TEXT("TSlateMaterialShaderVSfalse");
 		ShaderTypeNamesAndDescriptions.FindOrAdd(FLocalVertexFactoryName)
@@ -421,18 +423,6 @@ void FMaterialStatsUtils::GetRepresentativeShaderTypesAndDescriptions(TMap<FName
 			const FString Description = FString::Printf(TEXT("Mobile base pass shader without light map%s"), DescSuffix);
 			ShaderTypeNamesAndDescriptions.Add(FLocalVertexFactoryName)
 				.Add(FRepresentativeShaderInfo(ERepresentativeShader::StationarySurface, TBasePassForForwardShadingPSFNoLightMapPolicy0Name, Description));
-
-			static const FName Name_NoLM_HDRLinear64 = TEXT("TMobileBasePassVSFNoLightMapPolicyHDRLinear64");
-			static const FName Name_NoLM_LDRGamma32 = TEXT("TMobileBasePassVSFNoLightMapPolicyLDRGamma32");
-			static const FName TBasePassForForwardShadingVSFNoLightMapPolicyName = bMobileHDR ? Name_NoLM_HDRLinear64 : Name_NoLM_LDRGamma32;
-
-			ShaderTypeNamesAndDescriptions.FindOrAdd(FLocalVertexFactoryName)
-				.Add(FRepresentativeShaderInfo(ERepresentativeShader::StaticMesh, TBasePassForForwardShadingVSFNoLightMapPolicyName,
-					FString::Printf(TEXT("Mobile base pass vertex shader%s"), DescSuffix)));
-
-			ShaderTypeNamesAndDescriptions.FindOrAdd(FGPUFactoryName)
-				.Add(FRepresentativeShaderInfo(ERepresentativeShader::SkeletalMesh, TBasePassForForwardShadingVSFNoLightMapPolicyName,
-					FString::Printf(TEXT("Mobile base pass vertex shader%s"), DescSuffix)));
 		}
 		else
 		{
@@ -623,7 +613,6 @@ void FMaterialStatsUtils::GetRepresentativeInstructionCounts(TArray<FShaderInstr
 					const FRepresentativeShaderInfo& ShaderInfo = DescriptionArray[i];
 
 					FShaderType* ShaderType = FindShaderTypeByName(ShaderInfo.ShaderName);
-					check(ShaderType);
 					const int32 NumInstructions = MaterialShaderMap->GetMaxNumInstructionsForShader(ShaderType);
 
 					FShaderInstructionsInfo Info;
@@ -643,8 +632,8 @@ void FMaterialStatsUtils::GetRepresentativeInstructionCounts(TArray<FShaderInstr
 				const FMeshMaterialShaderMap* MeshShaderMap = MaterialShaderMap->GetMeshShaderMap(FactoryType);
 				if (MeshShaderMap)
 				{
-					TMap<FHashedName, TShaderRef<FShader>> ShaderMap;
-					MeshShaderMap->GetShaderList(*MaterialShaderMap, ShaderMap);
+					TMap<FName, FShader*> ShaderMap;
+					MeshShaderMap->GetShaderList(ShaderMap);
 
 					auto& DescriptionArray = DescriptionPair.Value;
 
@@ -652,12 +641,12 @@ void FMaterialStatsUtils::GetRepresentativeInstructionCounts(TArray<FShaderInstr
 					{
 						const FRepresentativeShaderInfo& ShaderInfo = DescriptionArray[i];
 
-						TShaderRef<FShader>* ShaderEntry = ShaderMap.Find(ShaderInfo.ShaderName);
+						FShader** ShaderEntry = ShaderMap.Find(ShaderInfo.ShaderName);
 						if (ShaderEntry != nullptr)
 						{
-							FShaderType* ShaderType = (*ShaderEntry).GetType();
+							FShaderType* ShaderType = (*ShaderEntry)->GetType();
 							{
-								const int32 NumInstructions = MeshShaderMap->GetMaxNumInstructionsForShader(*MaterialShaderMap, ShaderType);
+								const int32 NumInstructions = MeshShaderMap->GetMaxNumInstructionsForShader(ShaderType);
 
 								FShaderInstructionsInfo Info;
 								Info.ShaderType = ShaderInfo.ShaderType;
@@ -724,7 +713,7 @@ void FMaterialStatsUtils::ExtractMatertialStatsInfo(FShaderStatsInfo& OutInfo, c
 		// extract estimated VT info
 		const uint32 NumVirtualTextureLookups = MaterialResource->GetEstimatedNumVirtualTextureLookups();
 		OutInfo.VirtualTextureLookupCount.StrDescription = FString::Printf(TEXT("%u"), NumVirtualTextureLookups);
-		OutInfo.VirtualTextureLookupCount.StrDescriptionLong = FString::Printf(TEXT("Virtual Texture Lookups (Est.): %u"), NumVirtualTextureLookups);
+		OutInfo.TextureSampleCount.StrDescriptionLong = FString::Printf(TEXT("Virtual Texture Lookups (Est.): %u"), NumVirtualTextureLookups);
 
 		// extract interpolators info
 		uint32 UVScalarsUsed, CustomInterpolatorScalarsUsed;

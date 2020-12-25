@@ -21,8 +21,8 @@
 // KIND, either express or implied. See the Apache License for the specific
 // language governing permissions and limitations under the Apache License.
 //
-#ifndef PXR_USD_USD_PRIM_DATA_H
-#define PXR_USD_USD_PRIM_DATA_H
+#ifndef USD_PRIMDATA_H
+#define USD_PRIMDATA_H
 
 /// \file usd/primData.h
 
@@ -30,8 +30,6 @@
 #include "pxr/usd/usd/api.h"
 #include "pxr/usd/usd/common.h"
 #include "pxr/usd/usd/primFlags.h"
-#include "pxr/usd/usd/primDefinition.h"
-#include "pxr/usd/usd/primTypeInfo.h"
 #include "pxr/usd/sdf/types.h"
 
 #include "pxr/base/tf/declarePtrs.h"
@@ -49,6 +47,7 @@
 #include <vector>
 
 PXR_NAMESPACE_OPEN_SCOPE
+
 
 TF_DECLARE_WEAK_PTRS(UsdStage);
 
@@ -91,16 +90,9 @@ public:
 
     UsdStage *GetStage() const { return _stage; }
 
-    /// Returns the prim definition for this prim.
-    const UsdPrimDefinition &GetPrimDefinition() const {
-        return _primTypeInfo->GetPrimDefinition();
-    }
-
     /// Returns the composed type name for the prim.
     /// Note that this value is cached and is efficient to query.
-    const TfToken& GetTypeName() const { 
-        return _primTypeInfo->GetTypeName(); 
-    }
+    const TfToken &GetTypeName() const { return _typeName; };
 
     /// Return true if this prim is active, meaning neither it nor any of its
     /// ancestors have active=false.  Return false otherwise.
@@ -149,7 +141,7 @@ public:
     /// \name Parent & Stage
     // --------------------------------------------------------------------- //
 
-    /// Return this prim's parent prim.  Return nullptr if this is a root prim.
+    /// Return this prim's parent prim.  Return NULL if this is a root prim.
     USD_API
     Usd_PrimDataConstPtr GetParent() const;
 
@@ -189,21 +181,21 @@ public:
     // Tree Structure
     // --------------------------------------------------------------------- //
 
-    // Return this prim data's first child if it has one, nullptr otherwise.
+    // Return this prim data's first child if it has one, NULL otherwise.
     Usd_PrimDataPtr GetFirstChild() const { return _firstChild; }
 
-    // Return this prim data's next sibling if it has one, nullptr otherwise.
+    // Return this prim data's next sibling if it has one, NULL otherwise.
     Usd_PrimDataPtr GetNextSibling() const {
         return !_nextSiblingOrParent.BitsAs<bool>() ?
-            _nextSiblingOrParent.Get() : nullptr;
+            _nextSiblingOrParent.Get() : NULL;
     }
 
     // Return this prim data's parent if this prim data is the last in its chain
     // of siblings.  That is, if the _nextSiblingOrParent field is pointing to
-    // its parent.  Return nullptr otherwise.
+    // its parent.  Return NULL otherwise.
     Usd_PrimDataPtr GetParentLink() const {
         return _nextSiblingOrParent.BitsAs<bool>() ?
-            _nextSiblingOrParent.Get() : nullptr;
+            _nextSiblingOrParent.Get() : NULL;
     }
 
     // Return the next prim data "to the right" of this one.  That is, this
@@ -216,7 +208,7 @@ public:
             if (Usd_PrimDataPtr sibling = p->GetNextSibling())
                 return sibling;
         }
-        return nullptr;
+        return NULL;
     }
     
     // Return the prim data at \p path.  If \p path indicates a prim
@@ -241,7 +233,7 @@ public:
     bool IsInMaster() const { return _flags[Usd_PrimMasterFlag]; }
 
     /// If this prim is an instance, return the prim data for the corresponding
-    /// master.  Otherwise, return nullptr.
+    /// master.  Otherwise, return NULL.
     USD_API Usd_PrimDataConstPtr GetMaster() const;
 
     // --------------------------------------------------------------------- //
@@ -254,9 +246,8 @@ private:
     USD_API
     ~Usd_PrimData();
 
-    // Compute and store type info and cached flags.
-    void _ComposeAndCacheTypeAndFlags(
-        Usd_PrimDataConstPtr parent, bool isMasterPrim);
+    // Compute and store cached flags.
+    void _ComposeAndCacheFlags(Usd_PrimDataConstPtr parent, bool isMasterPrim);
 
     // Flags direct access for Usd_PrimFlagsPredicate.
     friend class Usd_PrimFlagsPredicate;
@@ -280,11 +271,22 @@ private:
         _nextSiblingOrParent.Set(parent, /* isParent */ true);
     }
 
+    void _AddChild(Usd_PrimDataPtr child) {
+        // Add \a child as the first child.  If _firstChild is NULL, we are
+        // adding this primdata's first child so we instead set its parent link
+        // to this.
+        if (_firstChild)
+            child->_SetSiblingLink(_firstChild);
+        else
+            child->_SetParentLink(this);
+        _firstChild = child;
+    };
+
     // Set the dead bit on this prim data object.
     void _MarkDead() {
         _flags[Usd_PrimDeadFlag] = true;
-        _stage = nullptr;
-        _primIndex = nullptr;
+        _stage = NULL;
+        _primIndex = NULL;
     }
 
     // Return true if this prim's dead flag is set, false otherwise.
@@ -314,7 +316,7 @@ private:
     UsdStage *_stage;
     const PcpPrimIndex *_primIndex;
     SdfPath _path;
-    const Usd_PrimTypeInfo *_primTypeInfo;
+    TfToken _typeName;
     Usd_PrimData *_firstChild;
     TfPointerAndBits<Usd_PrimData> _nextSiblingOrParent;
     mutable std::atomic<int64_t> _refCount;
@@ -629,4 +631,4 @@ Usd_MoveToChild(PrimDataPtr &p, SdfPath &proxyPrimPath,
 
 PXR_NAMESPACE_CLOSE_SCOPE
 
-#endif // PXR_USD_USD_PRIM_DATA_H
+#endif // USD_PRIMDATA_H

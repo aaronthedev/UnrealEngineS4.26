@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "SMediaPlayerEditorInfo.h"
 
@@ -144,7 +144,7 @@ void SMediaPlayerEditorInfo::HandleMediaPlayerMediaEvent(EMediaEvent Event)
 			}
 
 			InfoTextBlock->SetText(
-				FText::Format(INVTEXT(
+				FText::Format(LOCTEXT("InfoFormat",
 					"Player: {PlayerName}\n"
 					"\n"
 					"Play Rates\n"

@@ -20,7 +20,7 @@ namespace {
 using spvtest::ScopedContext;
 using spvtest::TextToBinaryTest;
 
-TEST_F(TextToBinaryTest, InstOpcodeProducesResultIDButNoIDDefinedFails) {
+TEST_F(TextToBinaryTest, NotPlacingResultIDAtTheBeginning) {
   SetText("OpTypeMatrix %1 %2 1000");
   EXPECT_EQ(SPV_ERROR_INVALID_TEXT,
             spvTextToBinary(ScopedContext().context, text.str, text.length,
@@ -31,19 +31,6 @@ TEST_F(TextToBinaryTest, InstOpcodeProducesResultIDButNoIDDefinedFails) {
       "'OpTypeMatrix'.",
       diagnostic->error);
   EXPECT_EQ(0u, diagnostic->position.line);
-}
-
-TEST_F(TextToBinaryTest,
-       InstDefinesResultIDButOpcodeDoesNotProduceAResultFails) {
-  SetText("\n\n%foo = OpName %1 \"bar\"");
-  EXPECT_EQ(SPV_ERROR_INVALID_TEXT,
-            spvTextToBinary(ScopedContext().context, text.str, text.length,
-                            &binary, &diagnostic));
-  ASSERT_NE(nullptr, diagnostic);
-  EXPECT_STREQ(
-      "Cannot set ID %foo because OpName does not produce a result ID.",
-      diagnostic->error);
-  EXPECT_EQ(2u, diagnostic->position.line);
 }
 
 }  // namespace

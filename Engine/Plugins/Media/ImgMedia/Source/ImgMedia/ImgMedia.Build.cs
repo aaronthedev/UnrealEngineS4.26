@@ -1,7 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
-
-using System;
-using System.IO;
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 namespace UnrealBuildTool.Rules
 {
@@ -22,7 +19,6 @@ namespace UnrealBuildTool.Rules
 					"Engine",
 					"ImgMediaFactory",
 					"RenderCore",
-					"Renderer",
 					"RHI",
 				});
 
@@ -52,32 +48,12 @@ namespace UnrealBuildTool.Rules
 			bool bLinuxEnabled = Target.Platform == UnrealTargetPlatform.Linux && Target.Architecture.StartsWith("x86_64");
 
 			if ((Target.Platform == UnrealTargetPlatform.Mac) ||
-				Target.Platform.IsInGroup(UnrealPlatformGroup.Windows) ||
+				(Target.Platform == UnrealTargetPlatform.Win32) ||
+				(Target.Platform == UnrealTargetPlatform.Win64) ||
 				bLinuxEnabled)
 			{
 				PrivateDependencyModuleNames.Add("OpenExrWrapper");
-				PrivateDependencyModuleNames.Add("ExrReaderGpu");
 			}
-
-			var EngineDir = Path.GetFullPath(Target.RelativeEnginePath);
-
-			if (Target.Platform.IsInGroup(UnrealPlatformGroup.Windows))
-			{
-				AddEngineThirdPartyPrivateStaticDependencies(Target, "DX12");
-				PrivateDependencyModuleNames.Add("D3D12RHI");
-				PrivateIncludePaths.AddRange(
-					new string[]{
-						//required for FD3D12GPUFence
-						Path.Combine(EngineDir, "Source/Runtime/D3D12RHI/Private"),
-						Path.Combine(EngineDir, "Source/Runtime/D3D12RHI/Private/Windows")
-					});
-			}
-			
-			PrivateIncludePaths.AddRange(
-				new string[] {
-					//required for FPostProcessMaterialInputs
-					Path.Combine(EngineDir, "Source/Runtime/Renderer/Private")
-				});
 		}
 	}
 }

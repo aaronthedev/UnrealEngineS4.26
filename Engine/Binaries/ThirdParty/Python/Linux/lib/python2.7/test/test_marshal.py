@@ -227,22 +227,8 @@ class BugsTestCase(unittest.TestCase):
                 pass
 
     def test_loads_recursion(self):
-        def run_tests(N, check):
-            # (((...None...),),)
-            check(b'(\x01\x00\x00\x00' * N + b'N')
-            # [[[...None...]]]
-            check(b'[\x01\x00\x00\x00' * N + b'N')
-            # {None: {None: {None: ...None...}}}
-            check(b'{N' * N + b'N' + b'0' * N)
-            # frozenset([frozenset([frozenset([...None...])])])
-            check(b'>\x01\x00\x00\x00' * N + b'N')
-        # Check that the generated marshal data is valid and marshal.loads()
-        # works for moderately deep nesting
-        run_tests(100, marshal.loads)
-        # Very deeply nested structure shouldn't blow the stack
-        def check(s):
-            self.assertRaises(ValueError, marshal.loads, s)
-        run_tests(2**20, check)
+        s = 'c' + ('X' * 4*4) + '{' * 2**20
+        self.assertRaises(ValueError, marshal.loads, s)
 
     def test_recursion_limit(self):
         # Create a deeply nested structure.

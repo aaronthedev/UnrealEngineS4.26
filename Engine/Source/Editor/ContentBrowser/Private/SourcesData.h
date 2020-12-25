@@ -1,49 +1,84 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
+#include "ARFilter.h"
 #include "CollectionManagerTypes.h"
 #include "ICollectionManager.h"
 #include "CollectionManagerModule.h"
 
 struct FSourcesData
 {
-	TArray<FName> VirtualPaths;
+	TArray<FName> PackagePaths;
 	TArray<FCollectionNameType> Collections;
 
-	FSourcesData() = default;
-
-	explicit FSourcesData(FName InVirtualPath)
+	FSourcesData()
+		: PackagePaths()
+		, Collections()
 	{
-		VirtualPaths.Add(InVirtualPath);
+	}
+
+	explicit FSourcesData(FName InPackagePath)
+		: PackagePaths()
+		, Collections()
+	{
+		PackagePaths.Add(InPackagePath);
 	}
 
 	explicit FSourcesData(FCollectionNameType InCollection)
+		: PackagePaths()
+		, Collections()
 	{
 		Collections.Add(InCollection);
 	}
 
-	FSourcesData(TArray<FName> InVirtualPaths, TArray<FCollectionNameType> InCollections)
-		: VirtualPaths(MoveTemp(InVirtualPaths))
+	FSourcesData(TArray<FName> InPackagePaths, TArray<FCollectionNameType> InCollections)
+		: PackagePaths(MoveTemp(InPackagePaths))
 		, Collections(MoveTemp(InCollections))
 	{
 	}
 
-	FSourcesData(const FSourcesData& Other) = default;
-	FSourcesData(FSourcesData&& Other) = default;
+	FSourcesData(const FSourcesData& Other)
+		: PackagePaths(Other.PackagePaths)
+		, Collections(Other.Collections)
+	{
+	}
 
-	FSourcesData& operator=(const FSourcesData& Other) = default;
-	FSourcesData& operator=(FSourcesData&& Other) = default;
+	FSourcesData(FSourcesData&& Other)
+		: PackagePaths(MoveTemp(Other.PackagePaths))
+		, Collections(MoveTemp(Other.Collections))
+	{
+	}
+
+	FSourcesData& operator=(const FSourcesData& Other)
+	{
+		if (this != &Other)
+		{
+			PackagePaths = Other.PackagePaths;
+			Collections = Other.Collections;
+		}
+		return *this;
+	}
+
+	FSourcesData& operator=(FSourcesData&& Other)
+	{
+		if (this != &Other)
+		{
+			PackagePaths = MoveTemp(Other.PackagePaths);
+			Collections = MoveTemp(Other.Collections);
+		}
+		return *this;
+	}
 
 	FORCEINLINE bool IsEmpty() const
 	{
-		return VirtualPaths.Num() == 0 && Collections.Num() == 0;
+		return PackagePaths.Num() == 0 && Collections.Num() == 0;
 	}
 
-	FORCEINLINE bool HasVirtualPaths() const
+	FORCEINLINE bool HasPackagePaths() const
 	{
-		return VirtualPaths.Num() > 0;
+		return PackagePaths.Num() > 0;
 	}
 
 	FORCEINLINE bool HasCollections() const
@@ -63,5 +98,41 @@ struct FSourcesData
 		}
 
 		return false;
+	}
+
+	FARFilter MakeFilter(bool bRecurse, bool bUsingFolders) const
+	{
+		FARFilter Filter;
+
+		// Package Paths
+		Filter.PackagePaths = PackagePaths;
+		Filter.bRecursivePaths = bRecurse || !bUsingFolders;
+
+		// If we have a dynamic source, then we need to make sure that the root path is searched for matching objects as the dynamic filter will sort through them
+		if (IsDynamicCollection())
+		{
+			Filter.PackagePaths.AddUnique(TEXT("/"));
+		}
+
+		// Collections
+		TArray<FName> ObjectPathsFromCollections;
+		if ( Collections.Num() && FCollectionManagerModule::IsModuleAvailable() )
+		{
+			// Collection manager module should already be loaded since it may cause a hitch on the first search
+			FCollectionManagerModule& CollectionManagerModule = FCollectionManagerModule::GetModule();
+
+			// Include objects from child collections if we're recursing
+			const ECollectionRecursionFlags::Flags CollectionRecursionMode = (Filter.bRecursivePaths) ? ECollectionRecursionFlags::SelfAndChildren : ECollectionRecursionFlags::Self;
+
+			for ( int32 CollectionIdx = 0; CollectionIdx < Collections.Num(); ++CollectionIdx )
+			{
+				// Find the collection
+				const FCollectionNameType& CollectionNameType = Collections[CollectionIdx];
+				CollectionManagerModule.Get().GetObjectsInCollection(CollectionNameType.Name, CollectionNameType.Type, ObjectPathsFromCollections, CollectionRecursionMode);
+			}
+		}
+		Filter.ObjectPaths = ObjectPathsFromCollections;
+
+		return Filter;
 	}
 };

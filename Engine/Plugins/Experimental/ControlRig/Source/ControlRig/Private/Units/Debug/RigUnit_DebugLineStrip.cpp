@@ -1,23 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Units/Debug/RigUnit_DebugLineStrip.h"
 #include "Units/RigUnitContext.h"
 
 FRigUnit_DebugLineStrip_Execute()
-{
-	FRigUnit_DebugLineStripItemSpace::StaticExecute(
-		RigVMExecuteContext, 
-		Points,
-		Color,
-		Thickness,
-		FRigElementKey(Space, ERigElementType::Bone), 
-		WorldOffset, 
-		bEnabled,
-		ExecuteContext, 
-		Context);
-}
-
-FRigUnit_DebugLineStripItemSpace_Execute()
 {
     DECLARE_SCOPE_HIERARCHICAL_COUNTER_RIGUNIT()
 	if (Context.State == EControlRigState::Init)
@@ -30,9 +16,9 @@ FRigUnit_DebugLineStripItemSpace_Execute()
 		return;
 	}
 
-	if (Space.IsValid())
+	if (Space != NAME_None && Context.GetBones() != nullptr)
 	{
-		FTransform Transform = Context.Hierarchy->GetGlobalTransform(Space);
+		FTransform Transform = Context.GetBones()->GetGlobalTransform(Space);
 		TArray<FVector> PointsTransformed;
 		PointsTransformed.Reserve(Points.Num());
 		for(const FVector& Point : Points)

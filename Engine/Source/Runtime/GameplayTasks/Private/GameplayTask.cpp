@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "GameplayTask.h"
 #include "UObject/Package.h"
@@ -313,13 +313,7 @@ void UGameplayTask::Resume()
 
 	TaskState = EGameplayTaskState::Active;
 
-	UE_CLOG(TasksComponent.IsValid() == false, LogGameplayTasks, Error
-		, TEXT("%s Resume called while TasksComponent is no longer valid"), *GetName());
-
-	if (TasksComponent.IsValid())
-	{
-		TasksComponent->OnGameplayTaskActivated(*this);
-	}
+	TasksComponent->OnGameplayTaskActivated(*this);
 }
 
 //----------------------------------------------------------------------//

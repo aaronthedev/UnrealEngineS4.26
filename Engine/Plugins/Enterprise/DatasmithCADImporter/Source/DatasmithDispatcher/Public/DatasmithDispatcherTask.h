@@ -1,10 +1,9 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "CoreTechFileParser.h"
-#include "CADData.h"
 
 namespace DatasmithDispatcher
 {
@@ -14,13 +13,13 @@ struct FTask
 {
 	FTask() = default;
 
-	FTask(const CADLibrary::FFileDescription& InFile)
+	FTask(const FString& InFile)
 	{
-		FileDescription = InFile;
+		FileName = InFile;
 		State = ETaskState::UnTreated;
 	}
 
-	CADLibrary::FFileDescription FileDescription;
+	FString FileName;
 	int32 Index = -1;
 	ETaskState State = ETaskState::Unknown;
 };

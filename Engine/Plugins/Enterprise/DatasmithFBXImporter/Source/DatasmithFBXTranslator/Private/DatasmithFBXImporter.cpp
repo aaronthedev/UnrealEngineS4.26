@@ -1,18 +1,21 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "DatasmithFBXImporter.h"
 #include "DatasmithFBXImporterLog.h"
 #include "DatasmithFBXImportOptions.h"
 #include "DatasmithFBXScene.h"
 #include "DatasmithFBXSceneProcessor.h"
+#include "DatasmithImportContext.h"
 #include "DatasmithImportedSequencesActor.h"
+#include "DatasmithLightImporter.h"
+#include "DatasmithMaterialExpressions.h"
+#include "DatasmithMeshHelper.h"
 #include "DatasmithScene.h"
 #include "DatasmithSceneActor.h"
 #include "DatasmithSceneFactory.h"
 #include "DatasmithUtils.h"
 #include "IDatasmithSceneElements.h"
 #include "ObjectTemplates/DatasmithStaticMeshTemplate.h"
-#include "Utility/DatasmithMeshHelper.h"
 
 #include "AssetRegistryModule.h"
 #include "Editor.h"

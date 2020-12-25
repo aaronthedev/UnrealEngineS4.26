@@ -31,7 +31,6 @@
 #include "pxr/usd/usdLux/lightFilter.h"
 #include "pxr/usd/usd/prim.h"
 #include "pxr/usd/usd/stage.h"
-#include "pxr/usd/usdRi/tokens.h"
 
 #include "pxr/base/vt/value.h"
 
@@ -134,7 +133,7 @@ protected:
     ///
     /// \sa UsdSchemaType
     USDRI_API
-    UsdSchemaType _GetSchemaType() const override;
+    virtual UsdSchemaType _GetSchemaType() const;
 
 private:
     // needs to invoke _GetStaticTfType.
@@ -146,53 +145,7 @@ private:
 
     // override SchemaBase virtuals.
     USDRI_API
-    const TfType &_GetTfType() const override;
-
-public:
-    // --------------------------------------------------------------------- //
-    // RIINTENSITY 
-    // --------------------------------------------------------------------- //
-    /// Multipier for the light intensity.
-    /// This setting is meant to override the fallback value in RiLightFilterAPI
-    ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float ri:intensity = 1` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
-    USDRI_API
-    UsdAttribute GetRiIntensityAttr() const;
-
-    /// See GetRiIntensityAttr(), and also 
-    /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
-    /// If specified, author \p defaultValue as the attribute's default,
-    /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
-    /// the default for \p writeSparsely is \c false.
-    USDRI_API
-    UsdAttribute CreateRiIntensityAttr(VtValue const &defaultValue = VtValue(), bool writeSparsely=false) const;
-
-public:
-    // --------------------------------------------------------------------- //
-    // COLORSATURATION 
-    // --------------------------------------------------------------------- //
-    /// Saturation of the light before hitting the surface (0=greyscale,1=normal,
-    /// >1=boosted colors).
-    ///
-    /// | ||
-    /// | -- | -- |
-    /// | Declaration | `float color:saturation = 1` |
-    /// | C++ Type | float |
-    /// | \ref Usd_Datatypes "Usd Type" | SdfValueTypeNames->Float |
-    USDRI_API
-    UsdAttribute GetColorSaturationAttr() const;
-
-    /// See GetColorSaturationAttr(), and also 
-    /// \ref Usd_Create_Or_Get_Property for when to use Get vs Create.
-    /// If specified, author \p defaultValue as the attribute's default,
-    /// sparsely (when it makes sense to do so) if \p writeSparsely is \c true -
-    /// the default for \p writeSparsely is \c false.
-    USDRI_API
-    UsdAttribute CreateColorSaturationAttr(VtValue const &defaultValue = VtValue(), bool writeSparsely=false) const;
+    virtual const TfType &_GetTfType() const;
 
 public:
     // ===================================================================== //

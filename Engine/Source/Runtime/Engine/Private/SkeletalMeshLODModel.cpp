@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #include "Rendering/SkeletalMeshLODModel.h"
 
@@ -19,8 +19,6 @@
 #include "Rendering/SkeletalMeshLODImporterData.h"
 #include "UObject/FortniteMainBranchObjectVersion.h"
 #include "GPUSkinVertexFactory.h"
-#include "UObject/AnimObjectVersion.h"
-#include "Misc/ScopeLock.h"
 
 /*-----------------------------------------------------------------------------
 FSoftSkinVertex
@@ -59,50 +57,28 @@ FArchive& operator<<(FArchive& Ar, FSoftSkinVertex& V)
 
 	Ar << V.Color;
 
-	if (Ar.IsLoading())
-	{
-		FMemory::Memzero(V.InfluenceBones);
-		FMemory::Memzero(V.InfluenceWeights);
-	}
-
 	// serialize bone and weight uint8 arrays in order
 	// this is required when serializing as bulk data memory (see TArray::BulkSerialize notes)
 	for (uint32 InfluenceIndex = 0; InfluenceIndex < MAX_INFLUENCES_PER_STREAM; InfluenceIndex++)
 	{
-		if (Ar.IsLoading() && Ar.CustomVer(FAnimObjectVersion::GUID) < FAnimObjectVersion::IncreaseBoneIndexLimitPerChunk)
-		{
-			uint8 BoneIndex = 0;
-			Ar << BoneIndex;
-			V.InfluenceBones[InfluenceIndex] = BoneIndex;
-		}
-		else
-		{
-			Ar << V.InfluenceBones[InfluenceIndex];
-		}
+		Ar << V.InfluenceBones[InfluenceIndex];
 	}
 
 	if (Ar.UE4Ver() >= VER_UE4_SUPPORT_8_BONE_INFLUENCES_SKELETAL_MESHES)
 	{
-		for (uint32 InfluenceIndex = MAX_INFLUENCES_PER_STREAM; InfluenceIndex < EXTRA_BONE_INFLUENCES; InfluenceIndex++)
-		{
-			if (Ar.IsLoading() && Ar.CustomVer(FAnimObjectVersion::GUID) < FAnimObjectVersion::IncreaseBoneIndexLimitPerChunk)
-			{
-				uint8 BoneIndex = 0;
-				Ar << BoneIndex;
-				V.InfluenceBones[InfluenceIndex] = BoneIndex;
-			}
-			else
-			{
-				Ar << V.InfluenceBones[InfluenceIndex];
-			}
-		}
-	}
-
-	if (Ar.CustomVer(FAnimObjectVersion::GUID) >= FAnimObjectVersion::UnlimitedBoneInfluences)
-	{
-		for (uint32 InfluenceIndex = EXTRA_BONE_INFLUENCES; InfluenceIndex < MAX_TOTAL_INFLUENCES; InfluenceIndex++)
+		for (uint32 InfluenceIndex = MAX_INFLUENCES_PER_STREAM; InfluenceIndex < MAX_TOTAL_INFLUENCES; InfluenceIndex++)
 		{
 			Ar << V.InfluenceBones[InfluenceIndex];
+		}
+	}
+	else
+	{
+		if (Ar.IsLoading())
+		{
+			for (uint32 InfluenceIndex = MAX_INFLUENCES_PER_STREAM; InfluenceIndex < MAX_TOTAL_INFLUENCES; InfluenceIndex++)
+			{
+				V.InfluenceBones[InfluenceIndex] = 0;
+			}
 		}
 	}
 
@@ -113,24 +89,26 @@ FArchive& operator<<(FArchive& Ar, FSoftSkinVertex& V)
 
 	if (Ar.UE4Ver() >= VER_UE4_SUPPORT_8_BONE_INFLUENCES_SKELETAL_MESHES)
 	{
-		for (uint32 InfluenceIndex = MAX_INFLUENCES_PER_STREAM; InfluenceIndex < EXTRA_BONE_INFLUENCES; InfluenceIndex++)
+		for (uint32 InfluenceIndex = MAX_INFLUENCES_PER_STREAM; InfluenceIndex < MAX_TOTAL_INFLUENCES; InfluenceIndex++)
 		{
 			Ar << V.InfluenceWeights[InfluenceIndex];
 		}
 	}
-
-	if (Ar.CustomVer(FAnimObjectVersion::GUID) >= FAnimObjectVersion::UnlimitedBoneInfluences)
+	else
 	{
-		for (uint32 InfluenceIndex = EXTRA_BONE_INFLUENCES; InfluenceIndex < MAX_TOTAL_INFLUENCES; InfluenceIndex++)
+		if (Ar.IsLoading())
 		{
-			Ar << V.InfluenceWeights[InfluenceIndex];
+			for (uint32 InfluenceIndex = MAX_INFLUENCES_PER_STREAM; InfluenceIndex < MAX_TOTAL_INFLUENCES; InfluenceIndex++)
+			{
+				V.InfluenceWeights[InfluenceIndex] = 0;
+			}
 		}
 	}
 
 	return Ar;
 }
 
-bool FSoftSkinVertex::GetRigidWeightBone(FBoneIndexType& OutBoneIndex) const
+bool FSoftSkinVertex::GetRigidWeightBone(uint8& OutBoneIndex) const
 {
 	bool bIsRigid = false;
 
@@ -273,38 +251,12 @@ void FSkelMeshSection::CalcMaxBoneInfluences()
 	}
 }
 
-/**
-* Calculate if this skel mesh section needs 16-bit bone indices
-*/
-void FSkelMeshSection::CalcUse16BitBoneIndex()
-{
-	bUse16BitBoneIndex = false;
-	FBoneIndexType MaxBoneIndex = 0;
-	for (int32 VertIdx = 0; VertIdx < SoftVertices.Num(); VertIdx++)
-	{
-		FSoftSkinVertex& SoftVert = SoftVertices[VertIdx];
-		for (int32 InfluenceIdx = 0; InfluenceIdx < MAX_TOTAL_INFLUENCES; InfluenceIdx++)
-		{
-			MaxBoneIndex = FMath::Max(SoftVert.InfluenceBones[InfluenceIdx], MaxBoneIndex);
-			if (MaxBoneIndex > 255)
-			{
-				bUse16BitBoneIndex = true;
-				return;
-			}
-		}
-	}
-}
-
 // Serialization.
 FArchive& operator<<(FArchive& Ar, FSkelMeshSection& S)
 {
 	Ar.UsingCustomVersion(FEditorObjectVersion::GUID);
 	Ar.UsingCustomVersion(FReleaseObjectVersion::GUID);
 	Ar.UsingCustomVersion(FRenderingObjectVersion::GUID);
-	Ar.UsingCustomVersion(FAnimObjectVersion::GUID); // Also used by FSoftSkinVertex serializer
-	Ar.UsingCustomVersion(FSkeletalMeshCustomVersion::GUID);
-	Ar.UsingCustomVersion(FRecomputeTangentCustomVersion::GUID);
-	Ar.UsingCustomVersion(FOverlappingVerticesCustomVersion::GUID);
 
 	// When data is cooked for server platform some of the
 	// variables are not serialized so that they're always
@@ -313,6 +265,7 @@ FArchive& operator<<(FArchive& Ar, FSkelMeshSection& S)
 
 	Ar << S.MaterialIndex;
 
+	Ar.UsingCustomVersion(FSkeletalMeshCustomVersion::GUID);
 	if (Ar.CustomVer(FSkeletalMeshCustomVersion::GUID) < FSkeletalMeshCustomVersion::CombineSectionWithChunk)
 	{
 		uint16 DummyChunkIndex;
@@ -353,26 +306,13 @@ FArchive& operator<<(FArchive& Ar, FSkelMeshSection& S)
 
 	if (Ar.UE4Ver() >= VER_UE4_APEX_CLOTH_LOD)
 	{
-		if (Ar.CustomVer(FSkeletalMeshCustomVersion::GUID) < FSkeletalMeshCustomVersion::RemoveEnableClothLOD)
-		{
-			uint8 DummyEnableClothLOD;
-			Ar << DummyEnableClothLOD;
-		}
+		Ar << S.bEnableClothLOD_DEPRECATED;
 	}
 
+	Ar.UsingCustomVersion(FRecomputeTangentCustomVersion::GUID);
 	if (Ar.CustomVer(FRecomputeTangentCustomVersion::GUID) >= FRecomputeTangentCustomVersion::RuntimeRecomputeTangent)
 	{
 		Ar << S.bRecomputeTangent;
-	}
-
-	if (Ar.CustomVer(FRecomputeTangentCustomVersion::GUID) >= FRecomputeTangentCustomVersion::RecomputeTangentVertexColorMask)
-	{
-		Ar << S.RecomputeTangentsVertexMaskChannel;
-	}
-	else
-	{
-		// Our default is to use the green vertex color channel 
-		S.RecomputeTangentsVertexMaskChannel = ESkinVertexColorChannel::Green;
 	}
 
 	if (Ar.CustomVer(FEditorObjectVersion::GUID) >= FEditorObjectVersion::RefactorMeshEditorMaterials)
@@ -393,7 +333,7 @@ FArchive& operator<<(FArchive& Ar, FSkelMeshSection& S)
 			Ar << S.BaseVertexIndex;
 		}
 
-		if (!StripFlags.IsEditorDataStripped() && !(Ar.IsFilterEditorOnly() && Ar.IsCountingMemory()) && !Ar.IsObjectReferenceCollector())
+		if (!StripFlags.IsEditorDataStripped() && !(Ar.IsFilterEditorOnly() && Ar.IsCountingMemory()))
 		{
 			// For backwards compat, read rigid vert array into array
 			TArray<FLegacyRigidSkinVertex> LegacyRigidVertices;
@@ -429,17 +369,6 @@ FArchive& operator<<(FArchive& Ar, FSkelMeshSection& S)
 				UE_LOG(LogSkeletalMesh, Warning, TEXT("Cannot set FSkelMeshSection::NumVertices for older content, loading in non-editor build."));
 				S.NumVertices = 0;
 			}
-		}
-
-		if (Ar.IsLoading() && Ar.CustomVer(FAnimObjectVersion::GUID) < FAnimObjectVersion::IncreaseBoneIndexLimitPerChunk)
-		{
-			// Previous versions only supported 8-bit bone indices and bUse16BitBoneIndex wasn't serialized 
-			S.CalcUse16BitBoneIndex();
-			check(!S.bUse16BitBoneIndex);
-		}
-		else
-		{
-			Ar << S.bUse16BitBoneIndex;
 		}
 
 		Ar << S.BoneMap;
@@ -494,6 +423,8 @@ FArchive& operator<<(FArchive& Ar, FSkelMeshSection& S)
 			Ar << S.ClothingData;
 		}
 
+		Ar.UsingCustomVersion(FOverlappingVerticesCustomVersion::GUID);
+		
 		if (Ar.CustomVer(FOverlappingVerticesCustomVersion::GUID) >= FOverlappingVerticesCustomVersion::DetectOVerlappingVertices)
 		{
 			Ar << S.OverlappingVertices;
@@ -532,8 +463,6 @@ FArchive& operator<<(FArchive& Ar, FSkelMeshSection& S)
 // Serialization.
 FArchive& operator<<(FArchive& Ar, FSkelMeshSourceSectionUserData& S)
 {
-	Ar.UsingCustomVersion(FRecomputeTangentCustomVersion::GUID); 
-
 	FStripDataFlags StripFlags(Ar);
 	// When data is cooked we do not serialize anything
 	//This is for editor only editing
@@ -543,16 +472,6 @@ FArchive& operator<<(FArchive& Ar, FSkelMeshSourceSectionUserData& S)
 	}
 
 	Ar << S.bRecomputeTangent;
-	if (Ar.CustomVer(FRecomputeTangentCustomVersion::GUID) >= FRecomputeTangentCustomVersion::RecomputeTangentVertexColorMask)
-	{
-		Ar << S.RecomputeTangentsVertexMaskChannel;
-	}
- 	else
-	{
-		// Our default is to use the green vertex color channel 
-		S.RecomputeTangentsVertexMaskChannel = ESkinVertexColorChannel::Green;
-	}
-
 	Ar << S.bCastShadow;
 	Ar << S.bDisabled;
 	Ar << S.GenerateUpToLodIndex;
@@ -769,20 +688,9 @@ void FSkeletalMeshLODModel::Serialize(FArchive& Ar, UObject* Owner, int32 Idx)
 	if (!StripFlags.IsEditorDataStripped())
 	{
 		RawPointIndices.Serialize(Ar, Owner);
-		if (Ar.IsLoading()
-			&& (Ar.CustomVer(FFortniteMainBranchObjectVersion::GUID) >= FFortniteMainBranchObjectVersion::NewSkeletalMeshImporterWorkflow)
-			&& (Ar.CustomVer(FEditorObjectVersion::GUID) < FEditorObjectVersion::SkeletalMeshMoveEditorSourceDataToPrivateAsset))
+		if (Ar.IsSaving() || (Ar.CustomVer(FFortniteMainBranchObjectVersion::GUID) >= FFortniteMainBranchObjectVersion::NewSkeletalMeshImporterWorkflow))
 		{
-			RawSkeletalMeshBulkData_DEPRECATED.Serialize(Ar, Owner);
-			RawSkeletalMeshBulkDataID = RawSkeletalMeshBulkData_DEPRECATED.GetIdString();
-			bIsBuildDataAvailable = RawSkeletalMeshBulkData_DEPRECATED.IsBuildDataAvailable();
-			bIsRawSkeletalMeshBulkDataEmpty = RawSkeletalMeshBulkData_DEPRECATED.IsEmpty();
-		}
-		if (Ar.CustomVer(FEditorObjectVersion::GUID) >= FEditorObjectVersion::SkeletalMeshMoveEditorSourceDataToPrivateAsset)
-		{
-			Ar << RawSkeletalMeshBulkDataID;
-			Ar << bIsBuildDataAvailable;
-			Ar << bIsRawSkeletalMeshBulkDataEmpty;
+			RawSkeletalMeshBulkData.Serialize(Ar, Owner);
 		}
 	}
 
@@ -1033,22 +941,11 @@ void FSkeletalMeshLODModel::GetNonClothVertices(TArray<FSoftSkinVertex>& OutVert
 	}
 }
 
-int32 FSkeletalMeshLODModel::GetMaxBoneInfluences() const
-{
-	int32 NumBoneInfluences = 0;
-	for (int32 SectionIdx = 0; SectionIdx < Sections.Num(); ++SectionIdx)
-	{
-		NumBoneInfluences = FMath::Max(NumBoneInfluences, Sections[SectionIdx].GetMaxBoneInfluences());
-	}
-
-	return NumBoneInfluences;
-}
-
-bool FSkeletalMeshLODModel::DoSectionsUse16BitBoneIndex() const
+bool FSkeletalMeshLODModel::DoSectionsNeedExtraBoneInfluences() const
 {
 	for (int32 SectionIdx = 0; SectionIdx < Sections.Num(); ++SectionIdx)
 	{
-		if (Sections[SectionIdx].Use16BitBoneIndex())
+		if (Sections[SectionIdx].HasExtraBoneInfluences())
 		{
 			return true;
 		}
@@ -1066,7 +963,6 @@ void FSkeletalMeshLODModel::SyncronizeUserSectionsDataArray(bool bResetNonUsedSe
 		FSkelMeshSourceSectionUserData& SectionUserData = UserSectionsData.FindOrAdd(Section.OriginalDataSectionIndex);
 		Section.bCastShadow					= SectionUserData.bCastShadow;
 		Section.bRecomputeTangent			= SectionUserData.bRecomputeTangent;
-		Section.RecomputeTangentsVertexMaskChannel = SectionUserData.RecomputeTangentsVertexMaskChannel;
 		Section.bDisabled					= SectionUserData.bDisabled;
 		Section.GenerateUpToLodIndex		= SectionUserData.GenerateUpToLodIndex;
 		Section.CorrespondClothAssetIndex	= SectionUserData.CorrespondClothAssetIndex;
@@ -1090,7 +986,6 @@ void FSkeletalMeshLODModel::SyncronizeUserSectionsDataArray(bool bResetNonUsedSe
 			FSkelMeshSourceSectionUserData& SectionUserData = UserSectionsData.FindOrAdd(Section.OriginalDataSectionIndex);
 			SectionUserData.bCastShadow = Section.bCastShadow;
 			SectionUserData.bRecomputeTangent = Section.bRecomputeTangent;
-			SectionUserData.RecomputeTangentsVertexMaskChannel = Section.RecomputeTangentsVertexMaskChannel;
 			SectionUserData.bDisabled = Section.bDisabled;
 			SectionUserData.GenerateUpToLodIndex = Section.GenerateUpToLodIndex;
 			SectionUserData.CorrespondClothAssetIndex = Section.CorrespondClothAssetIndex;
@@ -1108,7 +1003,7 @@ FString FSkeletalMeshLODModel::GetLODModelDeriveDataKey() const
 	FMemoryWriter Ar(ByteData, true);
 
 	//Add the bulk data ID (if someone modify the original imported data, this ID will change)
-	FString BulkDatIDString = RawSkeletalMeshBulkDataID; //Need to re-assign to tmp var because function is const
+	FString BulkDatIDString = RawSkeletalMeshBulkData.GetIdString();
 	Ar << BulkDatIDString;
 	int32 UserSectionCount = UserSectionsData.Num();
 	Ar << UserSectionCount;
@@ -1129,8 +1024,14 @@ FString FSkeletalMeshLODModel::GetLODModelDeriveDataKey() const
 	return KeySuffix;
 }
 
-void FSkeletalMeshLODModel::UpdateChunkedSectionInfo(const FString& SkeletalMeshName)
+void FSkeletalMeshLODModel::UpdateChunkedSectionInfo(const FString& SkeletalMeshName, TArray<int32>& LODMaterialMap)
 {
+	//Look if the data is pre skeletalmesh build refactor
+	if (RawSkeletalMeshBulkData.IsBuildDataAvailable())
+	{
+		//If the data is up to date just return and do nothing
+		return;
+	}
 	int32 LODModelSectionNum = Sections.Num();
 	//Fill the ChunkedParentSectionIndex data, we assume that every section using the same material are chunked
 	int32 LastMaterialIndex = INDEX_NONE;
@@ -1154,7 +1055,6 @@ void FSkeletalMeshLODModel::UpdateChunkedSectionInfo(const FString& SkeletalMesh
 			Section.bDisabled = SectionUserData.bDisabled;
 			Section.bCastShadow = SectionUserData.bCastShadow;
 			Section.bRecomputeTangent = SectionUserData.bRecomputeTangent;
-			Section.RecomputeTangentsVertexMaskChannel = SectionUserData.RecomputeTangentsVertexMaskChannel;
 			Section.GenerateUpToLodIndex = SectionUserData.GenerateUpToLodIndex;
 			//Chunked section cannot have cloth, a cloth section will be a parent section
 			Section.CorrespondClothAssetIndex = INDEX_NONE;
@@ -1168,7 +1068,6 @@ void FSkeletalMeshLODModel::UpdateChunkedSectionInfo(const FString& SkeletalMesh
 			SectionUserData.bDisabled = Section.bDisabled;
 			SectionUserData.bCastShadow = Section.bCastShadow;
 			SectionUserData.bRecomputeTangent = Section.bRecomputeTangent;
-			SectionUserData.RecomputeTangentsVertexMaskChannel = Section.RecomputeTangentsVertexMaskChannel;
 			SectionUserData.GenerateUpToLodIndex = Section.GenerateUpToLodIndex;
 			SectionUserData.CorrespondClothAssetIndex = Section.CorrespondClothAssetIndex;
 			SectionUserData.ClothingData.AssetGuid = Section.ClothingData.AssetGuid;
@@ -1186,35 +1085,22 @@ void FSkeletalMeshLODModel::UpdateChunkedSectionInfo(const FString& SkeletalMesh
 	}
 }
 
-void FSkeletalMeshLODModel::CopyStructure(FSkeletalMeshLODModel* Destination, const FSkeletalMeshLODModel* Source)
+bool FSkeletalMeshLODModel::CopyStructure(FSkeletalMeshLODModel* Destination, FSkeletalMeshLODModel* Source)
 {
-	//The private Lock should always be valid
-	check(Source);
-	check(Destination);
-	check(Source->BulkDataReadMutex);
-	check(Destination->BulkDataReadMutex);
-	//Lock both mutex before touching the bulk data
-	FScopeLock LockSource(Source->BulkDataReadMutex);
-	FScopeLock LockDestination(Destination->BulkDataReadMutex);
-
-	FCriticalSection* DestinationBulkDataReadMutex = Destination->BulkDataReadMutex;
-
-	//Empty the Destination BulkData to avoid leaks
-	Destination->RawPointIndices.RemoveBulkData();
-	Destination->LegacyRawPointIndices.RemoveBulkData();
-	Destination->RawSkeletalMeshBulkData_DEPRECATED.EmptyBulkData();
-
+	if (Source->RawPointIndices.IsLocked() || Source->LegacyRawPointIndices.IsLocked() || Source->RawSkeletalMeshBulkData.GetBulkData().IsLocked())
+	{
+		return false;
+	}
 	// Bulk data arrays need to be locked before a copy can be made.
-	Source->RawPointIndices.LockReadOnly();
-	Source->LegacyRawPointIndices.LockReadOnly();
-	Source->RawSkeletalMeshBulkData_DEPRECATED.GetBulkData().LockReadOnly();
+	Source->RawPointIndices.Lock(LOCK_READ_ONLY);
+	Source->LegacyRawPointIndices.Lock(LOCK_READ_ONLY);
+	Source->RawSkeletalMeshBulkData.GetBulkData().Lock(LOCK_READ_ONLY);
 	*Destination = *Source;
-	Source->RawSkeletalMeshBulkData_DEPRECATED.GetBulkData().Unlock();
+	Source->RawSkeletalMeshBulkData.GetBulkData().Unlock();
 	Source->RawPointIndices.Unlock();
 	Source->LegacyRawPointIndices.Unlock();
 
-	//Make sure the mutex of the copy is set back to the original destination mutex, we can recycle the pointer.
-	Destination->BulkDataReadMutex = DestinationBulkDataReadMutex;
+	return true;
 }
 
 #endif // WITH_EDITOR

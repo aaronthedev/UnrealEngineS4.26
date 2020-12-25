@@ -1,10 +1,8 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "BlueprintConnectionDrawingPolicy.h"
-
-class UControlRigGraphNode;
 
 class FControlRigConnectionDrawingPolicy : public FKismetConnectionDrawingPolicy
 {
@@ -25,14 +23,4 @@ public:
 	UEdGraphPin* InputPin,
 	/*out*/ FArrangedWidget*& StartWidgetGeometry,
 	/*out*/ FArrangedWidget*& EndWidgetGeometry) override;
-	virtual void DetermineWiringStyle(UEdGraphPin* OutputPin, UEdGraphPin* InputPin, /*inout*/ FConnectionParams& Params) override;
-
-private:
-	// Each time a reroute node is encountered, input geometry is compared to output geometry to see if the pins on the reroute node need to be reversed
-	TMap<UControlRigGraphNode*, bool> RerouteNodeToReversedDirectionMap;
-
-	bool ShouldChangeTangentForReouteControlPoint(UControlRigGraphNode* Node);
-	// Average of the positions of all pins connected to InPin
-	bool GetAverageConnectedPositionForPin(UEdGraphPin* InPin, FVector2D& OutPos) const;
-
 };

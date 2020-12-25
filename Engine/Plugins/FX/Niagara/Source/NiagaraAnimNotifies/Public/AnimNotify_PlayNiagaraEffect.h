@@ -1,19 +1,17 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "Animation/AnimNotifies/AnimNotify.h"
-
 #include "AnimNotify_PlayNiagaraEffect.generated.h"
-
-
 
 class UAnimSequenceBase;
 class UNiagaraSystem;
 class USkeletalMeshComponent;
 class UNiagaraSystemComponent;
+
 class UNiagaraSystem;
 class UFXSystemComponent;
 
@@ -57,25 +55,12 @@ public:
 	UPROPERTY(EditAnywhere, Category = "AnimNotify")
 	FVector Scale;
 
-	// Whether or not we are in absolute scale mode
-	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "AnimNotify")
-	bool bAbsoluteScale;
-
-	// Return FXSystemComponent created from SpawnEffect
-	UFUNCTION(BlueprintCallable, Category = "AnimNotify")
-	UFXSystemComponent* GetSpawnedEffect();
-
 protected:
-
-	//FXSystem Pointer to Spawned Effect called from Notify.
-	UFXSystemComponent* SpawnedEffect;
-
 	// Cached version of the Rotation Offset already in Quat form
 	FQuat RotationOffsetQuat;
 
 	// Spawns the NiagaraSystemComponent. Called from Notify.
 	virtual UFXSystemComponent* SpawnEffect(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation);
-
 
 public:
 
@@ -83,7 +68,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AnimNotify")
 	uint32 Attached : 1; 	//~ Does not follow coding standard due to redirection from BP
 
-	// SocketName to attach to
+		// SocketName to attach to
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "AnimNotify", meta = (AnimNotifyBoneName = "true"))
 	FName SocketName;
 };

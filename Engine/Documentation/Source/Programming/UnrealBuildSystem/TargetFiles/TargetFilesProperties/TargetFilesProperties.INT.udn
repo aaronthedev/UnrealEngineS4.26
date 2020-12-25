@@ -2,9 +2,11 @@ Availability: NoPublish
 Title: Build Configuration Properties Page
 Crumbs:
 Description: This is a procedurally generated markdown page.
-Version: 4.26
+Version: 4.24
 
 ### Read-Only Properties
+
+$ Name (String): The name of this target.
 
 $ Platform (UnrealTargetPlatform): Platform that this target is being built for.
 
@@ -37,8 +39,6 @@ $ UndecoratedConfiguration (UnrealTargetConfiguration): Specifies the configurat
 $ bBuildAllPlugins (Boolean): Build all the plugins that we can find, even if they're not enabled. This is particularly useful for content-only projects, where you're building the UE4Editor target but running it with a game that enables a plugin.
 
 $ bBuildAllModules (Boolean): Build all the modules that are valid for this target type. Used for CIS and making installed engine builds.
-
-$ BuildPlugins (List&lt;String&gt;): Additional plugins that are built for this target type but not enabled.
 
 $ AdditionalPlugins (List&lt;String&gt;): A list of additional plugins which need to be included in this target. This allows referencing non-optional plugin modules which cannot be disabled, and allows building against specific modules in program targets which do not fit the categories in ModuleHostType.
 
@@ -80,8 +80,6 @@ $ bCompileICU (Boolean): Whether to include ICU unicode/i18n support in Core.
 
 $ bCompileCEF3 (Boolean): Whether to compile CEF3 support.
 
-$ bCompileISPC (Boolean): Whether to compile using ISPC.
-
 $ bForceBuildTargetPlatforms (Boolean): Whether to force compiling the target platform modules, even if they wouldn't normally be built.
 
 $ bForceBuildShaderFormats (Boolean): Whether to force compiling shader format modules, even if they wouldn't normally be built.
@@ -97,10 +95,6 @@ $ bCompileAgainstCoreUObject (Boolean): Enabled for all builds that include the 
 $ bCompileAgainstApplicationCore (Boolean): Enabled for builds that need to initialize the ApplicationCore module. Command line utilities do not normally need this.
 
 $ bCompileRecast (Boolean): Whether to compile Recast navmesh generation.
-
-$ bCompileNavmeshSegmentLinks (Boolean): Whether to compile with navmesh segment links.
-
-$ bCompileNavmeshClusterLinks (Boolean): Whether to compile with navmesh cluster links.
 
 $ bForceEnableExceptions (Boolean): Enable exceptions for all modules.
 
@@ -127,8 +121,6 @@ $ bLoggingToMemoryEnabled (Boolean): Whether to turn on logging to memory for te
 $ bUseLauncherChecks (Boolean): Whether to check that the process was launched through an external launcher.
 
 $ bUseChecksInShipping (Boolean): Whether to turn on checks (asserts) for test/shipping builds.
-
-$ bUseEstimatedUtcNow (Boolean): Whether to use the EstimatedUtcNow or PlatformUtcNow.  EstimatedUtcNow is appropriate in cases where PlatformUtcNow can be slow.
 
 $ bCompileFreeType (Boolean): True if we need FreeType support.
 
@@ -172,8 +164,6 @@ $ MinGameModuleSourceFilesForUnityBuild (Int32): The number of source files in a
 
 $ ShadowVariableWarningLevel (WarningLevel): Forces shadow variable warnings to be treated as errors on platforms that support it.
 
-$ UnsafeTypeCastWarningLevel (WarningLevel): Indicates what warning/error level to treat unsafe type casts as on platforms that support it (e.g., double->float or int64->int32)
-
 $ bUndefinedIdentifierErrors (Boolean): Forces the use of undefined identifiers in conditional expressions to be treated as errors.
 
 $ bUseFastMonoCalls (Boolean): New Monolithic Graphics drivers have optional "fast calls" replacing various D3d functions
@@ -209,6 +199,8 @@ $ bAllowLTCG (Boolean): Whether to allow the use of link time code generation (L
 $ bPGOProfile (Boolean): Whether to enable Profile Guided Optimization (PGO) instrumentation in this build.
 
 $ bPGOOptimize (Boolean): Whether to optimize this build with Profile Guided Optimization (PGO).
+
+$ bAllowASLRInShipping (Boolean): Whether to allow the use of ASLR (address space layout randomization) if supported. Only applies to shipping builds.
 
 $ bSupportEditAndContinue (Boolean): Whether to support edit and continue.  Only works on Microsoft compilers.
 
@@ -277,8 +269,6 @@ $ ManifestFileNames (List&lt;FileReference&gt;): Path to a manifest to output fo
 $ DependencyListFileNames (List&lt;FileReference&gt;): Path to a list of dependencies for this target, when precompiling
 
 $ bOverrideBuildEnvironment (Boolean): Whether to ignore violations to the shared build environment (eg. editor targets modifying definitions)
-
-$ PreBuildTargets (List&lt;TargetInfo&gt;): Specifies a list of targets which should be built before this target is built.
 
 $ PreBuildSteps (List&lt;String&gt;): Specifies a list of steps which should be executed before this target is built, in the context of the host platform's shell. The following variables will be expanded before execution: $(EngineDir), $(ProjectDir), $(TargetName), $(TargetPlatform), $(TargetConfiguration), $(TargetType), $(ProjectFile).
 

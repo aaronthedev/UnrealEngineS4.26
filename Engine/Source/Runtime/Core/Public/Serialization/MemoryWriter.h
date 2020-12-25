@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -49,7 +49,7 @@ public:
 		
 		if( Num )
 		{
-			FMemory::Memcpy( &Bytes[(int32)Offset], Data, Num );
+			FMemory::Memcpy( &Bytes[Offset], Data, Num );
 			Offset+=Num;
 		}
 	}

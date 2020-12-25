@@ -1,4 +1,4 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+// Copyright 1998-2019 Epic Games, Inc. All Rights Reserved.
 
 #pragma once
 
@@ -478,12 +478,6 @@ struct NamedSlotProperty
 			return *this; \
 		} \
 		\
-		WidgetArgsType& EventName( DelegateName&& InDelegate ) \
-		{ \
-			_##EventName = MoveTemp(InDelegate); \
-			return *this; \
-		} \
-		\
 		/* Set event delegate to a global function */ \
 		/* NOTE: We use a template here to avoid 'typename' issues when hosting attributes inside templated classes */ \
 		template< typename StaticFuncPtr > \
@@ -519,10 +513,10 @@ struct NamedSlotProperty
 		\
 		/* Set event delegate to a lambda
 		 * technically this works for any functor types, but lambdas are the primary use case */ \
-		template<typename FunctorType, typename... VarTypes> \
-		WidgetArgsType& EventName##_Lambda(FunctorType&& InFunctor, VarTypes... Vars) \
+		template<typename FunctorType> \
+		WidgetArgsType& EventName##_Lambda(FunctorType&& InFunctor) \
 		{ \
-			_##EventName = DelegateName::CreateLambda(Forward<FunctorType>(InFunctor), Vars... ); \
+			_##EventName = DelegateName::CreateLambda(Forward<FunctorType>(InFunctor)); \
 			return this->Me(); \
 		} \
 		\
